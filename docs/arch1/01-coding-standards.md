@@ -8,6 +8,7 @@
 - **目标用户**：库开发者、系统开发者
 - **平台支持**：`no_std`（带 alloc），`std` 为默认 feature
 - **Feature gates**：`std`（默认）、`parallel`（rayon）、`simd`（pulp）
+- **默认布局**：F-order（列优先），构造函数支持 Order 参数切换为 C-order
 - **MSRV**：Rust 1.85+
 - **许可证**：MIT
 
@@ -44,7 +45,7 @@ pub struct ArcRepr<A> { /* ... */ }
 pub struct IxDyn { /* ... */ }
 
 // Primary type aliases
-pub type Tensor<A, D> = TensorBase<Owned<A>, D>;
+pub type Tensor<A, D> = TensorBase<OwnedRepr<A>, D>;
 pub type TensorView<'a, A, D> = TensorBase<ViewRepr<&'a A>, D>;
 pub type TensorViewMut<'a, A, D> = TensorBase<ViewMutRepr<&'a mut A>, D>;
 pub type ArcTensor<A, D> = TensorBase<ArcRepr<A>, D>;
@@ -81,6 +82,8 @@ pub trait element { /* ... */ }
 pub trait ELEMENT { /* ... */ }
 pub trait Has_Element { /* ... */ }
 ```
+
+> **索引类型别名**：全文中 `Ix` 为 `usize` 的别名，用于维度值和索引：`pub type Ix = usize;`
 
 ### 1.4 函数和方法名
 
@@ -132,8 +135,9 @@ pub const maxdimension: usize = 12;
 pub struct TensorBase<S, D> {
     storage: S,
     shape: D,
-    strides: D,   // signed (isize units), supports negative strides
+    strides: D,   // Dimension trait provides as_strides_isize() -> &[isize]
     offset: usize, // data start offset for slice views
+    flags: LayoutFlags, // u8 bitflags: F_CONTIGUOUS | C_CONTIGUOUS | ALIGNED | HAS_ZERO_STRIDE | HAS_NEG_STRIDE
 }
 
 pub trait FromShape<A> {
@@ -152,8 +156,11 @@ pub struct TensorBase<storage, dimension> { /* ... */ }
 ```rust
 // Good
 pub struct View<'a, A, D> {
-    data: &'a [A],
-    dim: D,
+    ptr: NonNull<A>,
+    shape: D,
+    strides: D,
+    offset: usize,
+    _marker: PhantomData<&'a [A]>,
 }
 
 impl<'a, A, D> View<'a, A, D> {
@@ -509,6 +516,37 @@ pub struct Bad<A> {
 | `PhantomData<fn() -> T>` | 仅返回 T | 协变 |
 | `PhantomData<fn(T) -> ()>` | 仅消费 T | 逆变 |
 
+### 3.5 Send/Sync 实现规范
+
+按存储模式声明 `unsafe impl Send/Sync`，须严格遵循以下规则：
+
+| 存储模式 | Send | Sync | 条件 |
+|----------|------|------|------|
+| `OwnedRepr<A>` | 是 | 是 | `A: Send + Sync` |
+| `ViewRepr<&'a A>` | 是 | 是 | `A: Sync` |
+| `ViewMutRepr<&'a mut A>` | 是 | **否** | `A: Send`（独占借用不可共享） |
+| `ArcRepr<A>` | 是 | 是 | `A: Send + Sync` |
+
+> **关键约束**：`ViewMutRepr` 永远不实现 `Sync`——独占借用语义要求同一时刻只有一个线程可访问。
+
+```rust
+// OwnedRepr: Send+Sync when A: Send+Sync
+unsafe impl<A: Send> Send for OwnedRepr<A> {}
+unsafe impl<A: Sync> Sync for OwnedRepr<A> {}
+
+// ViewRepr: Send+Sync when A: Sync (shared reference semantics)
+unsafe impl<'a, A: Sync> Send for ViewRepr<&'a A> {}
+unsafe impl<'a, A: Sync> Sync for ViewRepr<&'a A> {}
+
+// ViewMutRepr: Send only, NEVER Sync (exclusive borrow semantics)
+unsafe impl<'a, A: Send> Send for ViewMutRepr<&'a mut A> {}
+// No Sync impl — intentionally omitted
+
+// ArcRepr: Send+Sync when A: Send+Sync (atomic reference counting)
+unsafe impl<A: Send + Sync> Send for ArcRepr<A> {}
+unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
+```
+
 ---
 
 ## 4. 错误处理规范
@@ -641,8 +679,11 @@ impl fmt::Display for XenonError {
 
 /// Formats a shape slice as "2, 3, 4" for human-readable output.
 fn fmt_shape(s: &[usize]) -> alloc::string::String {
-    // implementation omitted for brevity
-    todo!()
+    use alloc::string::ToString;
+    s.iter()
+        .map(|d| d.to_string())
+        .collect::<alloc::vec::Vec<_>>()
+        .join(", ")
 }
 
 #[cfg(feature = "std")]
@@ -656,30 +697,37 @@ impl Error for XenonError {}
 错误信息必须包含期望值和实际值。
 
 ```rust
-// Good
-pub fn index(&self, index: &[Ix]) -> Result<&A, IndexError> {
-    if index.len() != self.ndim() {
-        return Err(IndexError::DimensionMismatch {
-            expected: self.ndim(),
-            actual: index.len(),
+// Good - 错误信息包含期望值和实际值
+pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>> {
+    if self.len() != shape.size() {
+        return Err(XenonError::InvalidShape {
+            from: self.len(),
+            to: shape.size(),
         });
-    }
-    for (i, (&idx, &dim)) in index.iter().zip(self.shape()).enumerate() {
-        if idx >= dim {
-            return Err(IndexError::OutOfBounds {
-                axis: i,
-                index: idx,
-                size: dim,
-            });
-        }
     }
     // ...
 }
 
+// Good - 索引越界使用 panic（参见 §4.2 注意事项）
+pub fn index(&self, index: &[Ix]) -> &A {
+    assert_eq!(
+        index.len(), self.ndim(),
+        "index dimension mismatch: expected {}, got {}", self.ndim(), index.len()
+    );
+    for (i, (&idx, &dim)) in index.iter().zip(self.shape()).enumerate() {
+        assert!(
+            idx < dim,
+            "index {} out of bounds for axis {} with size {}", idx, i, dim
+        );
+    }
+    // SAFETY: bounds checked above
+    unsafe { self.get_unchecked(index) }
+}
+
 // Bad - 缺少上下文
-pub fn index_bad(&self, index: &[Ix]) -> Result<&A, IndexError> {
-    if index.len() != self.ndim() {
-        return Err(IndexError::DimensionMismatch);  // 缺少具体值
+pub fn reshape_bad<D2>(self, shape: D2) -> Result<Tensor<A, D2>> {
+    if self.len() != shape.size() {
+        return Err(XenonError::InvalidShape { from: 0, to: 0 });  // 缺少具体值
     }
     // ...
 }
@@ -746,12 +794,12 @@ where
 {
     /// Returns a reference to the element at the given index.
     ///
-    /// # Errors
-    /// Returns `Err` if the index is out of bounds.
-    pub fn get(&self, index: &[Ix]) -> Result<&A, IndexError> {
-        self.check_index(index)?;
+    /// # Panics
+    /// Panics if the index is out of bounds.
+    pub fn get(&self, index: &[Ix]) -> &A {
+        self.check_index(index);
         // SAFETY: index is validated by check_index
-        Ok(unsafe { self.get_unchecked(index) })
+        unsafe { self.get_unchecked(index) }
     }
     
     /// Returns a reference to the element at the given index without bounds checking.
@@ -766,23 +814,17 @@ where
         self.data.get_unchecked(offset)
     }
     
-    fn check_index(&self, index: &[Ix]) -> Result<(), IndexError> {
-        if index.len() != self.ndim() {
-            return Err(IndexError::DimensionMismatch {
-                expected: self.ndim(),
-                actual: index.len(),
-            });
-        }
+    fn check_index(&self, index: &[Ix]) {
+        assert_eq!(
+            index.len(), self.ndim(),
+            "index dimension mismatch: expected {}, got {}", self.ndim(), index.len()
+        );
         for (i, (&idx, &dim)) in index.iter().zip(self.shape()).enumerate() {
-            if idx >= dim {
-                return Err(IndexError::OutOfBounds {
-                    axis: i,
-                    index: idx,
-                    size: dim,
-                });
-            }
+            assert!(
+                idx < dim,
+                "index {} out of bounds for axis {} with size {}", idx, i, dim
+            );
         }
-        Ok(())
     }
 }
 ```
@@ -828,17 +870,17 @@ pub fn get_unchecked(&self, index: usize) -> &A {
 ///
 /// # Safety
 /// The caller must ensure that:
-/// - `ptr` is valid for `len * size_of::<A>()` bytes and properly aligned
-/// - `ptr` points to `len` properly initialized values of type `A`
+/// - `ptr` is valid for reads/writes over the region defined by shape, strides, and offset
+/// - `ptr` is properly aligned to `align_of::<A>()`
 /// - The memory at `ptr` is not accessed by any other pointer for the
 ///   lifetime `'a` (except through the returned tensor)
-/// - `shape.size() == len`
-/// - `strides` are valid for accessing all elements of the shape
+/// - `shape` and `strides` have the same dimensionality
+/// - All indices reachable via shape/strides/offset are within the allocated region
 pub unsafe fn from_raw_parts<'a>(
     ptr: *mut A,
-    len: usize,
     shape: D,
     strides: D,
+    offset: usize,
 ) -> ViewMut<'a, A, D> {
     // ...
 }
@@ -992,7 +1034,7 @@ pub struct TensorBase<S, D> {
 ///
 /// Elements must be `Copy` because tensors may have multiple views
 /// to the same data, and we want predictable behavior.
-pub trait Element: Copy + Clone + 'static {
+pub trait Element: Copy + PartialEq + Debug + Display + Send + Sync + 'static {
     // ...
 }
 
@@ -1422,16 +1464,16 @@ assert_eq!(result[[0, 0]], 58.0);  // 可能因舍入误差失败
 ### 7.7 归约操作溢出行为
 
 归约操作（sum, prod 等）的溢出行为遵循元素类型语义：
-- **整数类型**：debug 模式 panic，release 模式 wrapping（与 Rust 默认一致）
+- **整数类型**：debug 和 release 模式均 panic（须使用 `checked_add`/`checked_mul` 等 checked 算术，参见 require-v18 §10.3.1）
 - **浮点类型**：返回 `±Infinity`（IEEE 754 语义）
 - **空数组**：返回加法单位元 `zero()`（sum）或乘法单位元 `one()`（prod）
 
 ```rust
 #[test]
-fn test_integer_sum_overflow_debug() {
+#[should_panic(expected = "overflow")]
+fn test_integer_sum_overflow() {
     let arr = Tensor::from_vec(vec![i32::MAX, 1]);
-    // In debug mode: panics on overflow
-    // In release mode: wraps around
+    let _ = arr.sum();  // Must panic in both debug and release
 }
 
 #[test]
@@ -1447,9 +1489,36 @@ fn test_empty_sum_returns_zero() {
 }
 ```
 
----
+### 7.8 NaN/Inf 处理约定
 
-## 8. 性能规范
+浮点运算中 NaN 和 Inf 的处理须遵循以下编码约定（参见 require-v18 §2.7）：
+
+| 场景 | 行为 |
+|------|------|
+| 归约（sum/prod）含 NaN | 结果为 NaN |
+| min/max 含 NaN | NaN 传播（任一参数为 NaN 则返回 NaN） |
+| 排序/比较含 NaN | NaN 不参与排序，`PartialOrd` 返回 `None` |
+| Inf 参与算术 | 遵循 IEEE 754 规则 |
+
+```rust
+// Good - min/max 使用 NaN 传播语义
+pub fn max(&self) -> A
+where
+    A: RealScalar,
+{
+    // NaN propagation: if any element is NaN, result is NaN
+    self.iter().copied().fold(A::nan(), |acc, x| {
+        if acc.is_nan() || x.is_nan() { A::nan() } else if x > acc { x } else { acc }
+    })
+}
+
+// Bad - 跳过 NaN（违反约定）
+pub fn max_bad(&self) -> A {
+    self.iter().copied().filter(|x| !x.is_nan()).fold(...)  // 禁止
+}
+```
+
+---
 
 ### 8.1 `#[inline]` 使用
 
@@ -1674,6 +1743,11 @@ pub fn to_vec(&self) -> Vec<A> {
 # Optional dependencies with dep: syntax
 rayon = { version = "1.10", optional = true }
 pulp = { version = "0.18", optional = true }
+
+[dev-dependencies]
+quickcheck = "1"
+quickcheck_macros = "1"
+criterion = { version = "0.5", features = ["html_reports"] }
 
 [features]
 default = ["std"]
@@ -1948,6 +2022,8 @@ verbose = false
 
 ### D. CI 检查清单
 
+> **注意**：`cargo-llvm-cov` 和 `cargo-miri` 为 CI 工具链组件，不是 crate 依赖。`miri` 需要 nightly toolchain（`rustup +nightly component add miri`）。
+
 ```yaml
 # .github/workflows/ci.yml
 jobs:
@@ -1967,5 +2043,6 @@ jobs:
 
 | 版本 | 日期 |
 |------|------|
+| 1.2.0 | 2026-03-29 |
 | 1.1.0 | 2026-03-28 |
 | 1.0.0 | 2026-03-28 |
