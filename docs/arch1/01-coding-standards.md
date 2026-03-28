@@ -38,9 +38,26 @@ mod tensor-base;
 ```rust
 // Good
 pub struct TensorBase<S, D> { /* ... */ }
-pub struct ViewRepr { /* ... */ }
+pub struct ViewRepr<'a, A> { /* ... */ }
+pub struct ViewMutRepr<'a, A> { /* ... */ }
+pub struct ArcRepr<A> { /* ... */ }
 pub struct IxDyn { /* ... */ }
-pub type Tensor<A, D> = TensorBase<OwnedRepr<A>, D>;
+
+// Primary type aliases
+pub type Tensor<A, D> = TensorBase<Owned<A>, D>;
+pub type TensorView<'a, A, D> = TensorBase<ViewRepr<&'a A>, D>;
+pub type TensorViewMut<'a, A, D> = TensorBase<ViewMutRepr<&'a mut A>, D>;
+pub type ArcTensor<A, D> = TensorBase<ArcRepr<A>, D>;
+
+// Dimension convenience aliases (Tensor shown; same pattern for View/ViewMut/Arc)
+pub type Tensor0<A> = Tensor<A, Ix0>;
+pub type Tensor1<A> = Tensor<A, Ix1>;
+pub type Tensor2<A> = Tensor<A, Ix2>;
+pub type Tensor3<A> = Tensor<A, Ix3>;
+pub type Tensor4<A> = Tensor<A, Ix4>;
+pub type Tensor5<A> = Tensor<A, Ix5>;
+pub type Tensor6<A> = Tensor<A, Ix6>;
+pub type TensorD<A> = Tensor<A, IxDyn>;
 
 // Bad
 pub struct tensor_base<S, D> { /* ... */ }
@@ -53,9 +70,9 @@ Trait 名使用 `CamelCase`。对于标记 trait，考虑使用描述性形容�
 
 ```rust
 // Good
-pub trait Element: Copy + Clone { /* ... */ }
-pub trait Numeric: Element + Num { /* ... */ }
-pub trait RealScalar: Numeric + Float { /* ... */ }
+pub trait Element: Copy + PartialEq + Debug + Display + Send + Sync { /* ... */ }
+pub trait Numeric: Element + Add<Output=Self> + Sub<Output=Self> + Mul<Output=Self> + Div<Output=Self> + Neg<Output=Self> { /* ... */ }
+pub trait RealScalar: Numeric + PartialOrd { /* ... */ }
 pub trait Dimension { /* ... */ }
 pub trait Storage { /* ... */ }
 
@@ -72,7 +89,7 @@ pub trait Has_Element { /* ... */ }
 ```rust
 // Good
 pub fn shape(&self) -> &[Ix];
-pub fn reshape(&self, shape: Shape) -> Result<Tensor<A, D>, ShapeError>;
+pub fn reshape(&self, shape: Shape) -> Result<Tensor<A, D>>;
 fn compute_strides(shape: &[Ix]) -> Vec<Ix>;
 
 // Bad
@@ -114,8 +131,9 @@ pub const maxdimension: usize = 12;
 // Good
 pub struct TensorBase<S, D> {
     storage: S,
-    dim: D,
-    strides: D,
+    shape: D,
+    strides: D,   // signed (isize units), supports negative strides
+    offset: usize, // data start offset for slice views
 }
 
 pub trait FromShape<A> {
@@ -292,7 +310,7 @@ use std::error::Error;
 use rayon::prelude::*;
 
 use crate::dimension::Dimension;
-use crate::error::ShapeError;
+use crate::error::XenonError;
 use crate::layout::Layout;
 use crate::storage::Storage;
 
@@ -322,16 +340,16 @@ use crate::parallel::ParallelIterator;
 
 ## 3. 类型系统规范
 
-### 3.1 禁止 `as` 类型转换
+### 3.1 限制 `as` 数值类型转换
 
-禁止使用 `as` 进行数值类型转换。使用 `From`/`TryFrom`/`Into` trait。
+公开 API 和常规代码中禁止使用 `as` 进行数值类型转换。使用 `From`/`TryFrom`/`Into` trait。
 
 ```rust
 // Good
 let x: i32 = value.try_into().map_err(|_| ConversionError)?;
 let y: f64 = value.into();  // From<i32> for f64
 
-// Bad
+// Bad — in public API or general code
 let x: i32 = value as i32;  // 危险：可能截断、改变符号
 let y: f64 = value as f64;  // 危险：精度丢失
 ```
@@ -348,6 +366,10 @@ let len = slice.len() as isize;
 
 // 3. 原始指针操作
 let offset = ptr as usize;
+
+// 4. 内部 cast 实现（须注释说明安全性）
+// CAST-SAFETY: saturating semantics per IEEE 754, matches require-v18 §13.5
+let truncated = float_val as i32;
 ```
 
 ### 3.2 泛型约束写法
@@ -375,7 +397,7 @@ where
 pub fn matmul<A, D1, D2>(
     lhs: &Tensor<A, D1>,
     rhs: &Tensor<A, D2>,
-) -> Result<Tensor<A, Ix2>, ShapeError>
+) -> Result<Tensor<A, Ix2>>
 where
     A: RealScalar + Mul<Output = A> + Add<Output = A>,
     D1: Dimension<Smaller = D2>,
@@ -439,7 +461,7 @@ impl<A, D> Tensor<A, D>
 where
     D: Dimension,
 {
-    pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>, ShapeError>
+    pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>>
     where
         D2: Dimension,
     {
@@ -505,9 +527,9 @@ pub struct Bad<A> {
 
 ```rust
 // Good - 可恢复错误
-pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>, ShapeError> {
+pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>> {
     if self.len() != shape.size() {
-        return Err(ShapeError::IncompatibleSize {
+        return Err(XenonError::InvalidShape {
             from: self.len(),
             to: shape.size(),
         });
@@ -538,64 +560,96 @@ pub fn reshape_bad<D2>(self, shape: D2) -> Tensor<A, D2> {
 
 ### 4.2 自定义错误类型
 
-自定义错误类型必须实现 `Display` 和 `Error` trait。
+自定义错误类型必须实现 `Display` 和 `Error` trait。错误变体须与需求文档 §16.1 一致。
 
 ```rust
 use core::fmt;
+use alloc::borrow::Cow;
+
 #[cfg(feature = "std")]
 use std::error::Error;
 
+/// Unified error type for all Xenon operations.
 #[derive(Debug, Clone)]
-pub enum ShapeError {
-    /// Shape dimensions don't match for the operation.
-    IncompatibleShape {
-        expected: Vec<usize>,
-        actual: Vec<usize>,
+pub enum XenonError {
+    /// Binary operation / zip shapes are incompatible and cannot broadcast.
+    ShapeMismatch {
+        expected: Cow<'static, [usize]>,
+        actual: Cow<'static, [usize]>,
     },
-    /// Total element count doesn't match.
-    IncompatibleSize {
+    /// Broadcast rule violated (non-size-1 dimensions differ).
+    BroadcastError {
+        shape_a: Cow<'static, [usize]>,
+        shape_b: Cow<'static, [usize]>,
+    },
+    /// Contiguous layout required but input is non-contiguous.
+    LayoutMismatch {
+        expected: &'static str,
+        actual: &'static str,
+    },
+    /// Axis index exceeds the number of dimensions.
+    InvalidAxis {
+        axis: usize,
+        ndim: usize,
+    },
+    /// Reshape target total size differs from source.
+    InvalidShape {
         from: usize,
         to: usize,
     },
-    /// Dimension order is invalid for the operation.
-    IncompatibleOrder,
+    /// Static/dynamic dimension conversion mismatch.
+    DimensionMismatch {
+        expected: usize,
+        actual: usize,
+    },
+    /// min/max/argmin/argmax on an empty array.
+    EmptyArray,
 }
 
-impl fmt::Display for ShapeError {
+/// Convenience type alias.
+pub type Result<T> = core::result::Result<T, XenonError>;
+
+impl fmt::Display for XenonError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::IncompatibleShape { expected, actual } => {
-                write!(
-                    f,
-                    "incompatible shapes: expected {:?}, got {:?}",
-                    expected, actual
-                )
+            Self::ShapeMismatch { expected, actual } => {
+                write!(f, "shape mismatch: expected [{}], got [{}]",
+                    fmt_shape(expected), fmt_shape(actual))
             }
-            Self::IncompatibleSize { from, to } => {
-                write!(
-                    f,
-                    "incompatible sizes: cannot reshape {} elements into {}",
-                    from, to
-                )
+            Self::BroadcastError { shape_a, shape_b } => {
+                write!(f, "cannot broadcast [{}] with [{}]",
+                    fmt_shape(shape_a), fmt_shape(shape_b))
             }
-            Self::IncompatibleOrder => {
-                write!(f, "incompatible dimension order")
+            Self::LayoutMismatch { expected, actual } => {
+                write!(f, "layout mismatch: expected {}, got {}", expected, actual)
+            }
+            Self::InvalidAxis { axis, ndim } => {
+                write!(f, "axis {} out of bounds for {}-dimensional array", axis, ndim)
+            }
+            Self::InvalidShape { from, to } => {
+                write!(f, "cannot reshape {} elements into {}", from, to)
+            }
+            Self::DimensionMismatch { expected, actual } => {
+                write!(f, "dimension mismatch: expected {}, got {}", expected, actual)
+            }
+            Self::EmptyArray => {
+                write!(f, "operation requires a non-empty array")
             }
         }
     }
 }
 
-#[cfg(feature = "std")]
-impl Error for ShapeError {}
-
-// For no_std, implement Error only when std feature is enabled
-#[cfg(not(feature = "std"))]
-impl core::fmt::Debug for ShapeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
-    }
+/// Formats a shape slice as "2, 3, 4" for human-readable output.
+fn fmt_shape(s: &[usize]) -> alloc::string::String {
+    // implementation omitted for brevity
+    todo!()
 }
+
+#[cfg(feature = "std")]
+impl Error for XenonError {}
 ```
+
+> **注意**：`IndexOutOfBounds` 使用 panic（checked）/ UB（unchecked），不纳入 `XenonError`。
 
 ### 4.3 错误信息包含上下文
 
@@ -631,15 +685,25 @@ pub fn index_bad(&self, index: &[Ix]) -> Result<&A, IndexError> {
 }
 ```
 
-### 4.4 禁止 `unwrap()` 在库代码中
+### 4.4 限制 `unwrap()` / `expect()` 在库代码中
 
-库代码中禁止使用 `unwrap()`、`expect()`。测试代码除外。
+库代码中禁止使用 `unwrap()`。`expect()` 仅允许用于断言已证明的不变量或前置条件，且消息必须说明为何此处不会失败。测试代码不受此限制。
 
 ```rust
 // Good - 使用 ? 和 Result
-pub fn sum(&self) -> Result<A, EmptyError> {
-    let first = self.first().ok_or(EmptyError)?;
-    self.iter().try_fold(*first, |acc, x| acc.checked_add(x))
+pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>> {
+    if self.len() != shape.size() {
+        return Err(XenonError::InvalidShape { from: self.len(), to: shape.size() });
+    }
+    // ...
+}
+
+// Good - expect() 断言已证明的不变量
+pub fn split_at(&self, axis: usize, index: usize) -> (TensorView<A, D>, TensorView<A, D>) {
+    // axis and index already validated above
+    let left = self.slice_axis(axis, ..index)
+        .expect("split_at: left slice cannot fail after validation");
+    // ...
 }
 
 // Good - 使用模式匹配
@@ -656,13 +720,17 @@ pub fn sum_bad(&self) -> A {
     self.iter().fold(*first, |acc, x| acc + x)
 }
 
+// Bad - expect() 未说明不变量
+let val = map.get("key").expect("should exist");  // 禁止：未证明为何一定存在
+
 // Allowed - 测试代码
 #[cfg(test)]
 mod tests {
     #[test]
-    fn test_sum() {
-        let arr = Tensor::from_vec(vec![1, 2, 3]);
-        assert_eq!(arr.sum().unwrap(), 6);  // 测试中允许
+    fn test_reshape() {
+        let arr = Tensor::from_vec(vec![1, 2, 3, 4, 5, 6]);
+        let reshaped = arr.reshape([2, 3]).unwrap();  // 测试中允许
+        assert_eq!(reshaped.shape(), &[2, 3]);
     }
 }
 ```
@@ -962,7 +1030,7 @@ pub fn ndim(&self) -> usize {
 /// A new tensor with the given shape, or an error if the shapes are incompatible.
 ///
 /// # Errors
-/// Returns [`ShapeError::IncompatibleSize`] if `shape.size() != self.len()`.
+/// Returns [`XenonError::InvalidShape`] if `shape.size() != self.len()`.
 ///
 /// # Examples
 /// ```rust
@@ -971,12 +1039,12 @@ pub fn ndim(&self) -> usize {
 /// let arr = Tensor::<i32, _>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6])?;
 /// let reshaped = arr.reshape(Ix2(3, 2))?;
 /// assert_eq!(reshaped.shape(), &[3, 2]);
-/// # Ok::<(), xenon::ShapeError>(())
+/// # Ok::<(), xenon::XenonError>(())
 /// ```
 ///
 /// [`reorder`]: Self::reorder
-/// [`ShapeError::IncompatibleSize`]: ShapeError::IncompatibleSize
-pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>, ShapeError>
+/// [`XenonError::InvalidShape`]: XenonError::InvalidShape
+pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>>
 where
     D2: Dimension,
 {
@@ -1065,6 +1133,7 @@ pub unsafe fn write_unchecked(&mut self, offset: usize, value: A) {
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
 #![warn(rust_2024_compatibility)]
+#![warn(unsafe_op_in_unsafe_fn)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 extern crate alloc;
@@ -1295,6 +1364,85 @@ mod tests {
         assert!(!transposed.is_contiguous());
         assert_eq!(transposed.shape(), &[3, 2]);
     }
+    
+    // 5. 高维张量
+    #[test]
+    fn test_high_dimensional_tensor() {
+        let arr = Tensor::<f32, _>::zeros([2, 2, 2, 2, 2, 2]);  // 6-D
+        assert_eq!(arr.ndim(), 6);
+        assert_eq!(arr.len(), 64);
+    }
+    
+    // 6. 大张量（验证不会栈溢出）
+    #[test]
+    fn test_large_tensor_allocation() {
+        let arr = Tensor::<f64, _>::zeros([1000, 1000]);
+        assert_eq!(arr.len(), 1_000_000);
+    }
+    
+    // 7. Subnormal 浮点数
+    #[test]
+    fn test_subnormal_float_handling() {
+        let tiny = f64::MIN_POSITIVE * f64::EPSILON;  // subnormal
+        let arr = Tensor::from_vec(vec![tiny, tiny]);
+        assert!(arr.sum() > 0.0);  // subnormal arithmetic must not flush to zero
+    }
+}
+```
+
+### 7.6 测试覆盖率与数值精度
+
+**覆盖率要求**：
+- 行覆盖率 ≥ 80%（CI 通过 `cargo llvm-cov --fail-under-lines 80` 强制执行）
+- unsafe 代码块必须有对应测试
+- 每个公开 API 至少一个正向 + 一个负向测试
+
+**数值精度要求**：
+- 浮点比较使用相对误差容限，禁止直接 `==` 比较浮点结果
+
+```rust
+// Good - 相对误差容限
+fn assert_close(a: f64, b: f64, rtol: f64) {
+    let diff = (a - b).abs();
+    let max_abs = a.abs().max(b.abs()).max(1e-15);
+    assert!(diff / max_abs < rtol, "expected {a} ≈ {b}, rtol={rtol}");
+}
+
+#[test]
+fn test_matmul_precision() {
+    // ...
+    assert_close(result[[0, 0]], 58.0, 1e-12);
+}
+
+// Bad - 直接比较浮点
+assert_eq!(result[[0, 0]], 58.0);  // 可能因舍入误差失败
+```
+
+### 7.7 归约操作溢出行为
+
+归约操作（sum, prod 等）的溢出行为遵循元素类型语义：
+- **整数类型**：debug 模式 panic，release 模式 wrapping（与 Rust 默认一致）
+- **浮点类型**：返回 `±Infinity`（IEEE 754 语义）
+- **空数组**：返回加法单位元 `zero()`（sum）或乘法单位元 `one()`（prod）
+
+```rust
+#[test]
+fn test_integer_sum_overflow_debug() {
+    let arr = Tensor::from_vec(vec![i32::MAX, 1]);
+    // In debug mode: panics on overflow
+    // In release mode: wraps around
+}
+
+#[test]
+fn test_float_sum_overflow() {
+    let arr = Tensor::from_vec(vec![f64::MAX, f64::MAX]);
+    assert!(arr.sum().is_infinite());
+}
+
+#[test]
+fn test_empty_sum_returns_zero() {
+    let arr: Tensor<f64, Ix1> = Tensor::zeros([0]);
+    assert_eq!(arr.sum(), 0.0);
 }
 ```
 
@@ -1337,7 +1485,7 @@ where
 }
 
 // Good - 不使用 inline（大函数）
-pub fn matmul(&self, other: &Self) -> Result<Tensor<A, Ix2>, ShapeError> {
+pub fn matmul(&self, other: &Self) -> Result<Tensor<A, Ix2>> {
     // Complex implementation, let compiler decide
     // ...
 }
@@ -1500,15 +1648,11 @@ simd = ["dep:pulp"]           # Additive: enables SIMD
 ```
 
 ```rust
-// Good - additive features
+// Good - additive features: std adds I/O, Display impls, etc.
 #[cfg(feature = "std")]
-pub fn to_vec(&self) -> Vec<A> {
+pub fn write_npy<W: std::io::Write>(&self, writer: W) -> std::io::Result<()> {
+    // Only available with std — uses std::io
     // ...
-}
-
-#[cfg(not(feature = "std"))]
-pub fn to_vec(&self) -> alloc::vec::Vec<A> {
-    // Same functionality, different allocator
 }
 
 // Bad - non-additive
@@ -1526,11 +1670,7 @@ pub fn to_vec(&self) -> Vec<A> {
 # Cargo.toml
 
 [dependencies]
-# Required dependencies
-num-traits = { version = "0.2", default-features = false }
-
 # Optional dependencies with dep: syntax
-[dependencies]
 rayon = { version = "1.10", optional = true }
 pulp = { version = "0.18", optional = true }
 
@@ -1606,29 +1746,31 @@ use core::fmt::Display;
 // src/error.rs
 
 use core::fmt;
-use alloc::vec::Vec;
+use alloc::borrow::Cow;
 
 #[derive(Debug, Clone)]
-pub enum ShapeError {
-    IncompatibleShape {
-        expected: Vec<usize>,
-        actual: Vec<usize>,
+pub enum XenonError {
+    ShapeMismatch {
+        expected: Cow<'static, [usize]>,
+        actual: Cow<'static, [usize]>,
     },
+    // ... other variants (see §4.2)
 }
 
-impl fmt::Display for ShapeError {
+impl fmt::Display for XenonError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::IncompatibleShape { expected, actual } => {
-                write!(f, "incompatible shapes: expected {:?}, got {:?}", expected, actual)
+            Self::ShapeMismatch { expected, actual } => {
+                write!(f, "shape mismatch: expected {:?}, got {:?}", expected, actual)
             }
+            // ... other variants
         }
     }
 }
 
 // Only implement std::error::Error when std is available
 #[cfg(feature = "std")]
-impl std::error::Error for ShapeError {}
+impl std::error::Error for XenonError {}
 ```
 
 ---
@@ -1768,6 +1910,7 @@ pub fn new_method(&self) -> i32 { /* ... */ }
 ```toml
 edition = "2024"
 max_width = 100
+comment_width = 100
 tab_spaces = 4
 use_small_heuristics = "Default"
 imports_granularity = "Crate"
@@ -1813,12 +1956,15 @@ jobs:
     - cargo test --all-features
     - cargo test --no-default-features  # no_std test
     - cargo doc --all-features
+    - cargo llvm-cov --all-features --fail-under-lines 80  # coverage ≥80%
+    - cargo +nightly miri test  # detect UB in unsafe code
 ```
 
 ---
 
 ## 版本历史
 
-| 版本 | 日期 | 变更说明 |
-|------|------|----------|
-| 1.0.0 | 2026-03-28 | 初始版本 |
+| 版本 | 日期 |
+|------|------|
+| 1.1.0 | 2026-03-28 |
+| 1.0.0 | 2026-03-28 |
