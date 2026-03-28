@@ -1075,6 +1075,7 @@ where
 ///
 /// let arr = Tensor::from_vec(vec![1, 2, 3, 4]).unwrap();  // 不要这样做
 /// ```
+```
 
 对于不返回 Result 的示例，使用隐藏的 main 函数：
 
