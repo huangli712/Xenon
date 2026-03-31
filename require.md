@@ -697,11 +697,9 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 
 # 第四部分：API 规范
 
-## 11. 运算操作
+## 12. 逐元素运算
 
-### 11.1 逐元素运算
-
-#### 11.1.1 基本类型
+### 12.1 基本类型
 
 | 类别 | 操作 |
 |------|------|
@@ -711,7 +709,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 数值函数 | abs, sign, floor, ceil, round, square, reciprocal, pow |
 | 比较 | eq, ne, lt, le, gt, ge |
 
-#### 11.1.2 比较操作语义
+### 12.2 比较操作语义
 
 | 操作 | 方法 | 返回类型 | 说明 |
 |------|------|----------|------|
@@ -722,22 +720,24 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 大于 | `gt(&self, other) -> Tensor<bool, D>` | bool Tensor | 逐元素比较，要求 `Element: PartialOrd` |
 | 大于等于 | `ge(&self, other) -> Tensor<bool, D>` | bool Tensor | 逐元素比较，要求 `Element: PartialOrd` |
 
-#### 11.1.3 约束
+### 12.3 约束
 
 **约束 1**：逐元素算术运算（add, sub, mul, div, 三角函数, 指数/对数, 数值函数）仅适用于数值类型（整数、浮点、复数），不适用于 bool。bool 类型仅支持逻辑运算（`all/any`）和比较运算（eq, ne）。bool **不支持**位运算（`& | ^ !`）的运算符重载——需要位运算时，应先 `.map(|b| b as u8)` 转为整数类型后操作。
 
 **约束 2**：`eq`/`ne` 仅要求 `PartialEq`；`lt`/`le`/`gt`/`ge` 要求 `PartialOrd`（浮点类型因 NaN 为偏序）。所有比较方法仅通过方法调用提供，不提供 `< <= > >=` 运算符语法（见 §14.2 设计决策）。支持广播。返回的 bool Tensor 可用于 `select()`、`mask()`、`compress()` 等条件操作。
 
-### 11.2 矩阵运算
+---
 
-#### 11.2.1 支持的操作
+## 13. 矩阵运算
+
+### 13.1 支持的操作
 
 | 类别 | 操作 |
 |------|------|
 | 基本运算 | matvec、dot/inner、outer |
 | 批量运算 | batch_matvec、batch_dot、batch_add、batch_scale |
 
-#### 11.2.2 矩阵运算语义
+### 13.2 矩阵运算语义
 
 **matvec 语义**：
 
@@ -764,7 +764,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 约束 | self 和 other 均须为 1D，否则返回 `InvalidShape` |
 | 输出布局 | F-contiguous（默认布局，见 §7.1） |
 
-#### 11.2.3 批量运算维度约定
+### 13.3 批量运算维度约定
 
 | 约定 | 规则 |
 |------|------|
@@ -775,7 +775,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | batch_dot | 输入：(..., N) × (..., N) → 输出：(...) |
 | batch_add/scale | 输入形状须一致或可广播，逐元素操作 |
 
-#### 11.2.4 批量运算签名与错误处理
+### 13.4 批量运算签名与错误处理
 
 | 运算 | 签名 | 输入约束 | 错误 |
 |------|------|----------|------|
@@ -790,9 +790,11 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 
 **与 `dot` 返回类型差异**：`dot` 返回 `A`（标量值），`batch_dot` 返回 `Tensor<A, D::Reduced>`（标量张量）。两者定位不同：`dot` 是 1D×1D → 标量的便捷方法；`batch_dot` 支持任意批次维度，统一返回 Tensor 以保持泛型一致性（`D::Reduced` 推导需 Tensor 包装）。对 Ix1 输入，`batch_dot` 返回 `Tensor0<A>`（0D 标量张量），可调用 `.into_scalar()` 获取裸值。
 
-### 11.3 归约
+---
 
-#### 11.3.1 归约类型
+## 14. 归约操作
+
+### 14.1 归约类型
 
 | 类型 | 操作 |
 |------|------|
@@ -800,13 +802,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 沿轴 | 以上所有运算均支持沿指定轴归约 |
 | 累积 | cumsum, cumprod（沿指定轴，返回同形状数组） |
 
-**var/std 统计定义**：默认有偏估计（除以 N，即 ddof=0），与 NumPy 默认行为一致。提供 `var_ddof(ddof: usize)` / `std_ddof(ddof: usize)` 变体以支持无偏估计（ddof=1，除以 N-1）等自定义自由度。ddof 须 < 元素数，否则 panic（单元素数组 ddof=1 无意义）。
-
-**mean/var/std 类型约束**：`mean()`、`var()`、`std()` 仅对浮点类型（`f32`/`f64`）实现。整数数组调用这些方法将产生编译错误。实现机制：这些方法的 `where A: RealScalar` 约束（见 §3.3）在编译时排除了整数类型（整数仅实现 `Numeric`，不实现 `RealScalar`）。用户需先手动转换类型，例如 `.mapv(|x| x as f64).mean()`。理由：Xenon 不做隐式类型提升，整数除法截断会产生误导性结果。
-
-**整数归约溢出行为**：`sum/prod` 作用于整数数组时，溢出将 panic（debug 和 release 模式均如此）。实现须使用 `checked_add`/`checked_mul` 显式检测溢出，因为 Rust release 模式默认为 wrapping 算术（不 panic），仅 debug 模式默认 panic。
-
-**沿轴归约输出维度规则：**
+### 14.2 沿轴归约输出维度规则
 
 | 属性 | 行为 |
 |------|------|
@@ -817,6 +813,14 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | argmin/argmax | 沿轴归约时，返回对应轴上的索引数组（usize 类型），输出维度规则同上 |
 | 全局归约 | 不指定轴时，所有轴归约为单个标量（返回 `A`，不是 Tensor） |
 
+### 14.3 约束
+
+**var/std 统计定义**：默认有偏估计（除以 N，即 ddof=0），与 NumPy 默认行为一致。提供 `var_ddof(ddof: usize)` / `std_ddof(ddof: usize)` 变体以支持无偏估计（ddof=1，除以 N-1）等自定义自由度。ddof 须 < 元素数，否则 panic（单元素数组 ddof=1 无意义）。
+
+**mean/var/std 类型约束**：`mean()`、`var()`、`std()` 仅对浮点类型（`f32`/`f64`）实现。整数数组调用这些方法将产生编译错误。实现机制：这些方法的 `where A: RealScalar` 约束（见 §3.3）在编译时排除了整数类型（整数仅实现 `Numeric`，不实现 `RealScalar`）。用户需先手动转换类型，例如 `.mapv(|x| x as f64).mean()`。理由：Xenon 不做隐式类型提升，整数除法截断会产生误导性结果。
+
+**整数归约溢出行为**：`sum/prod` 作用于整数数组时，溢出将 panic（debug 和 release 模式均如此）。实现须使用 `checked_add`/`checked_mul` 显式检测溢出，因为 Rust release 模式默认为 wrapping 算术（不 panic），仅 debug 模式默认 panic。
+
 **cumsum/cumprod 边界行为**：沿指定轴正方向（index 0 → N-1）累积，与 NumPy `np.cumsum(axis=...)` 行为一致。遇到 NaN 时传播 NaN（后续元素均为 NaN）；空数组返回同形状空数组。
 
 **cumsum/cumprod 整数溢出行为**：`cumsum`/`cumprod` 作用于整数数组时，每步累加/累乘均检测溢出，溢出时 panic（debug 和 release 模式均如此）。实现须使用 `checked_add`/`checked_mul` 显式检测（理由同 `sum/prod`：Rust release 默认 wrapping 算术不会 panic）。若需 wrapping 行为，用户应先 `cast` 为更大的整数类型再执行累积操作。
@@ -825,7 +829,11 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 
 **argmin/argmax 多值行为**：存在多个相同最小/最大值时，返回第一个出现的索引（按遍历顺序），与 NumPy/ndarray 行为一致。
 
-#### 11.3.2 集合操作
+---
+
+## 15. 集合操作
+
+### 15.1 集合操作类型
 
 | 操作 | 说明 | 输入类型约束 | 返回类型 |
 |------|------|--------------|----------|
@@ -836,7 +844,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | histogram | 统计落入各 bin 的元素数 | RealScalar | Tensor1<usize> |
 | histogram_bin_edges | 返回 bin 边界 | RealScalar | Tensor1<A> |
 
-**unique 语义**：
+### 15.2 unique 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -848,7 +856,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | NaN 处理 | 所有 NaN 视为相等，合并为一个，排在末尾（大于 +∞）。例：`[1.0, NaN, 2.0, NaN].unique()` → `[1.0, 2.0, NaN]` |
 | ±0.0 处理 | `+0.0` 与 `-0.0` 在 IEEE 754 下 `==` 为 true，在 `total_cmp` 排序时 `-0.0 < +0.0`。unique 使用 `total_cmp` 排序后通过 `!=` 去重：因 `-0.0 == +0.0`（`!=` 为 false），二者合并为一个值。合并结果为排序后的首个出现，即 `-0.0`。例：`[+0.0, -0.0, 1.0].unique()` → `[-0.0, 1.0]` |
 
-**unique_counts 语义**：
+### 15.3 unique_counts 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -856,7 +864,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 约束 | values.len() == counts.len() |
 | NaN 处理 | 同 unique：所有 NaN 合并为一个，计入同一 count |
 
-**unique_inverse 语义**：
+### 15.4 unique_inverse 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -865,7 +873,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 重建原数组 | values[inverse[i]] == input[i] |
 | NaN 处理 | 同 unique：所有 NaN 映射到同一索引 |
 
-**bincount 语义**：
+### 15.5 bincount 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -876,7 +884,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 返回值 | Tensor1<usize>，长度为 max(input) + 1（或 minlength），output[i] = count of i in input |
 | 权重参数 | 可选 weights: Tensor1<W> where W: Numeric，权重元素类型 W 独立于输入整数类型。带权重时返回 Tensor1<W>（而非 Tensor1<usize>），output[i] = sum of weights[j] where input[j] == i。weights 长度须与 input 长度相等，否则 panic |
 
-**histogram 语义**：
+### 15.6 histogram 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -887,15 +895,17 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | NaN 输入 | NaN 不计入任何 bin，且不触发 panic。行为分两种情况：(1) **range 已指定**（调用方提供 `(min, max)` 或 bins 为自定义边界数组时）：NaN 被静默跳过，返回的计数仅基于非 NaN 元素。(2) **range 未指定**（bins 为整数且未提供 range 参数）：需从数据推断范围，此时若输入含 NaN，`min()`/`max()` 将返回 NaN，无法确定有效的 bin 边界，函数返回 `InvalidInput` 错误（错误信息："autodetected range is not finite: input contains NaN and no explicit range provided"）。调用方若需在含 NaN 数据上使用 histogram，应显式提供 range 参数 |
 | bin 边界规则 | 设 bin 边界数组为 `[e0, e1, ..., ek]`（共 k+1 个边界，k 个 bin），则第 i 个 bin（0 ≤ i < k-1）的区间为 `[ei, ei+1)`（左闭右开），最后一个 bin（第 k-1 个）的区间为 `[ek-1, ek]`（左闭右闭）。与 NumPy `np.histogram` 行为一致 |
 
-### 11.4 广播
+---
 
-#### 11.4.1 基本规则
+## 16. 广播
+
+### 16.1 基本规则
 
 - 遵循 NumPy 广播规则（右对齐，size-1 维度拉伸）
 - 广播视图为只读
 - 算术运算符隐式支持广播
 
-#### 11.4.2 广播细节
+### 16.2 广播细节
 
 | 规则 | 说明 |
 |------|------|
@@ -908,9 +918,9 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 
 ---
 
-## 12. 形状操作
+## 17. 形状操作
 
-> **生命周期约定**：本节所有零拷贝操作返回的 `TensorView` / `TensorViewMut` 的生命周期绑定到 `&self`（不可变）或 `&mut self`（可变）。签名中省略生命周期标注 `'_` 以减少噪音，完整签名为 `TensorView<'a, A, D>` 其中 `'a` 与 `&'a self` 一致。
+**生命周期约定**：本节所有零拷贝操作返回的 `TensorView` / `TensorViewMut` 的生命周期绑定到 `&self`（不可变）或 `&mut self`（可变）。签名中省略生命周期标注 `'_` 以减少噪音，完整签名为 `TensorView<'a, A, D>` 其中 `'a` 与 `&'a self` 一致。
 
 ### 12.1 操作分类
 
