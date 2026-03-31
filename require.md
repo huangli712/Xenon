@@ -922,7 +922,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 
 **生命周期约定**：本节所有零拷贝操作返回的 `TensorView` / `TensorViewMut` 的生命周期绑定到 `&self`（不可变）或 `&mut self`（可变）。签名中省略生命周期标注 `'_` 以减少噪音，完整签名为 `TensorView<'a, A, D>` 其中 `'a` 与 `&'a self` 一致。
 
-### 12.1 操作分类
+### 17.1 操作分类
 
 | 类型 | 操作 |
 |------|------|
@@ -930,7 +930,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 需拷贝 | cat, stack, pad, repeat/tile |
 | 视情况 | flatten |
 
-### 12.2 reshape 语义
+### 17.2 reshape 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -949,7 +949,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 
 > **性能提示**：`reshape()` 对非连续输入会隐式执行完整数据拷贝。性能敏感场景下，调用方可通过 `is_contiguous()` 预检：若返回 `true`，后续 `reshape()` 保证零拷贝；若返回 `false`，调用方可决定是否先调用 `as_f_contiguous()` / `as_c_contiguous()`（见 §14.4）获取零拷贝视图再操作，或接受拷贝开销。
 
-### 12.3 transpose 语义
+### 17.3 transpose 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -969,7 +969,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 约束 | `axes` 须为 `[0, ndim)` 的排列（长度 == ndim，无重复，无遗漏），否则 panic |
 | 步长变换 | `strides_out[i] = strides_in[axes[i]]` |
 
-### 12.4 permute 语义
+### 17.4 permute 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -978,7 +978,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 与 transpose 关系 | `permute` 为 `transpose(axes)` 的别名，提供 NumPy/PyTorch 兼容命名 |
 | 推荐用法 | 推荐使用 `permute`，命名更直观（Permute axes to this order），`transpose(axes)` 为底层实现保留 |
 
-### 12.5 swapaxes 语义
+### 17.5 swapaxes 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -988,7 +988,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | a == b | no-op |
 | 连续性 | 交换 F-contiguous 的首尾轴 → 变为非连续（中间轴交换同理） |
 
-### 12.6 moveaxis 语义
+### 17.6 moveaxis 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -997,7 +997,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 约束 | source 和 destination 须在 `[0, ndim)` 范围内，否则 panic |
 | 与 swapaxes 区别 | moveaxis 仅移动一个轴，其余轴顺序保持不变；swapaxes 仅交换两个轴 |
 
-### 12.7 squeeze 语义
+### 17.7 squeeze 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -1009,7 +1009,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 0D/1D | Ix0 不可 squeeze；Ix1 squeeze 指定唯一轴后得到 Ix0 |
 | 动态维度 | IxDyn 支持 squeeze，输出仍为 IxDyn（ndim 减少） |
 
-### 12.8 unsqueeze 语义
+### 17.8 unsqueeze 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -1020,7 +1020,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | axis 范围 | `0 <= axis <= ndim`（可在最后一轴之后插入） |
 | 静态维度约束 | Ix6 不可 unsqueeze（已达最大静态维度）；IxDyn 无此限制 |
 
-### 12.9 cat 语义
+### 17.9 cat 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -1033,7 +1033,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 输出布局 | 默认 F-contiguous；可通过参数指定 C-contiguous |
 | 返回类型 | `Tensor<A, D>`（Owned） |
 
-### 12.10 stack 语义
+### 17.10 stack 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -1049,11 +1049,9 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | Ix6 上限 | 对 Ix6 数组调用 stack 时，结果维度为 7，超出静态维度上限（Ix6），编译错误。如需在 Ix6 上堆叠，须先转为 IxDyn |
 | 与 cat 的关系 | `stack(axis, arrays)` 等价于先对每个输入 `unsqueeze(axis)` 再 `cat(axis, ...)` |
 
-### 12.11 flatten 语义
+### 17.11 flatten 语义
 
-提供两个独立方法，避免单函数返回两种类型的歧义（与 §14.4 "避免 Cow 语义" 一致）：
-
-> **命名说明**：ndarray 的 `flatten` 返回 `CowArray`（可能借用或拥有），无独立的 `flatten_view` 方法。Xenon 拆分为 `flatten_view`（零拷贝视图，可能失败）+ `flatten`（始终成功，可能拷贝）两个方法，命名遵循库内 `*_view` / 非 `*_view` 的统一命名惯例（如 `as_*` 系列的零拷贝 vs `to_*` 系列的始终成功模式）。
+提供两个独立方法，避免单函数返回两种类型的歧义：
 
 **flatten_view — 零拷贝（可能失败）**
 
@@ -1074,7 +1072,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 可指定顺序 | 提供 `flatten_order(order)` 变体，可显式指定 F/C 展平顺序 |
 | 空数组 | 返回长度为 0 的 1D Owned 数组 |
 
-### 12.13 index_axis 语义
+### 17.12 index_axis 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -1086,7 +1084,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | BLAS 兼容性 | 从 3D batch tensor 中沿最外层 batch 轴索引取出的 2D 视图，若源数组 F-contiguous 则保持 F-contiguous 和原 LDA |
 | 连续性 | 沿最外层轴（F-order 下为最后一轴）索引时保持连续性；沿内层轴索引可能导致非连续 |
 
-### 12.13 unstack 语义
+### 17.13 unstack 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -1096,7 +1094,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 与 index_axis 关系 | `unstack(axis)[i]` 等价于 `index_axis(axis, i)` |
 | 空轴 | 轴长度为 0 时返回空 Vec |
 
-### 12.14 split/chunk 语义
+### 17.14 split/chunk 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -1107,7 +1105,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | n_chunks > 轴长度 | 返回轴长度个大小为 1 的块（多余的 chunk 数被忽略） |
 | 空轴 | 轴长度为 0 时返回 n_chunks 个空视图 |
 
-### 12.15 pad 语义
+### 17.15 pad 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -1119,9 +1117,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 零宽度填充 | 等价于拷贝，不改变形状 |
 | Reflect 边界约束 | 填充宽度不得超过该轴数据长度减 1（即 `pad_before < axis_len` 且 `pad_after < axis_len`），否则 panic。理由：Reflect 不含边缘元素，填充宽度 ≥ axis_len 时无有效源元素可反射 |
 
-> **扩展性**：当前版本仅支持 Constant、Edge、Reflect 三种模式。若需自定义填充逻辑（如 Wrap、Linear 插值），可通过 `from_fn` 构造填充后的数组，或使用 `pad` 的底层 API（按轴分配填充区域）手动填充。未来版本可能以 feature gate 形式添加更多模式。
-
-### 12.16 windows 语义
+### 17.16 windows 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -1136,7 +1132,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 迭代顺序 | 按 F-order（列优先，最右轴变化最快）产出窗口 |
 | 迭代器 trait | 实现 `Iterator`（Item = TensorView）、`ExactSizeIterator`、`FusedIterator` |
 
-### 12.17 repeat/tile 语义
+### 17.17 repeat/tile 语义
 
 提供两个独立方法，语义不同（与 NumPy `np.repeat` / `np.tile` 对应）：
 
@@ -1161,7 +1157,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 
 ---
 
-## 13. 索引操作
+## 18. 索引操作
 
 ### 13.1 索引类型
 
