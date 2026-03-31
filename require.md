@@ -1708,16 +1708,11 @@ Trans 枚举用于 FFI 与 BLAS 交互时描述矩阵的转置状态。`blas_tra
 
 # 第五部分：工程保障
 
-## 17. 错误处理
+## 27. 错误处理
 
-### 17.1 错误分类
+### 27.1 错误分类
 
 **所有公开错误枚举均标注 `#[non_exhaustive]`**，确保未来新增错误变体不构成 breaking change。
-
-**下游处理建议**：`#[non_exhaustive]` 强制下游 match 使用 `_ =>` 兜底分支。推荐下游 crate 按以下优先级处理未知变体：
-1. **显式处理所有已知变体**，对 `_ =>` 使用 `log::warn!("unhandled error variant: {:?}", err)` 记录日志（而非静默忽略），便于调试时发现新增变体
-2. **若无法合理处理未知变体**，使用 `Err(e) =>` 将错误向上传播，而非在 `_ =>` 中吞掉
-3. **避免空兜底**（`_ => {}`），因为这会静默吞掉新增变体，导致逻辑错误而非编译错误——这正是 `#[non_exhaustive]` 的已知代价
 
 **错误类型体系**（两级架构）：
 
@@ -1732,11 +1727,10 @@ Trans 枚举用于 FFI 与 BLAS 交互时描述矩阵的转置状态。`blas_tra
 | | EmptyArray | 对空数组执行 min/max/argmin/argmax | Result |
 | | AllocationError | 内存分配失败（超大数组、系统内存不足） | panic |
 | | IndexOutOfBounds | 索引越界（含多维索引、take/put 索引数组） | 多维索引：panic（checked）/ UB（unchecked）；take/put 索引数组：Result |
-| ~~复合错误~~ | ~~ShapeError~~ | ~~形状操作中可能遇到的聚合错误~~ | ~~已移除~~ |
 
-> **设计决策**：v19 定义了 `ShapeError` 复合枚举（聚合 `InvalidShape` + `LayoutMismatch`），但审查发现当前无任何 API 需要同时返回这两种错误——reshape 布局不匹配时自动拷贝仅返回 `InvalidShape`，flatten_view 返回独立 `LayoutMismatch`。因此移除 `ShapeError` 复合类型。若未来出现需要组合多种形状/布局错误的 API，可重新引入复合枚举。
+### 27.2 错误类型诊断字段
 
-**错误类型诊断字段**：所有返回 `Result` 的错误类型须携带以下诊断信息，以 `Display` 输出人类可读描述：
+所有返回 `Result` 的错误类型须携带以下诊断信息，以 `Display` 输出人类可读描述：
 
 | 错误类型 | 诊断字段 | 说明 |
 |----------|----------|------|
@@ -1751,7 +1745,7 @@ Trans 枚举用于 FFI 与 BLAS 交互时描述矩阵的转置状态。`blas_tra
 
 panic 类错误（`AllocationError`）通过 panic message 传递诊断信息，不使用结构化字段。`IndexOutOfBounds` 在 panic 场景（多维索引越界）通过 panic message 传递诊断信息，在 Result 场景（take/put 索引数组越界）使用结构化字段。
 
-**API → 错误类型映射**：
+### 27.3 API错误类型映射
 
 | API 类别 | 返回的错误类型 | 说明 |
 |----------|---------------|------|
@@ -1767,7 +1761,7 @@ panic 类错误（`AllocationError`）通过 panic message 传递诊断信息，
 | 索引访问 | `IndexOutOfBounds`（panic） / unchecked UB | 编程错误（多维索引硬编码或循环变量） |
 | take / put | `IndexOutOfBounds`（Result） | 索引来自运行时动态数据（索引数组），属数据驱动错误 |
 
-### 17.2 处理策略
+### 27.4 处理策略
 
 **判断原则**：panic 用于"调用方违反了 API 前置条件"（编程错误，合理使用无法触发），Result 用于"输入数据本身的属性导致操作无法完成"（合法调用路径，调用方应处理）。具体规则：
 
@@ -1779,14 +1773,12 @@ panic 类错误（`AllocationError`）通过 panic message 传递诊断信息，
 | 内存分配失败 | panic（与 Rust 标准库 `Vec::push` 等行为一致）。调用方若需 graceful 处理，可在调用前预检元素数和预估内存占用。未来版本可考虑提供 `try_*` 变体返回 `Result` | |
 | 错误信息 | 所有错误类型须实现 `Display` 和 `Error`，包含上下文信息（期望值 vs 实际值） | |
 
-### 17.3 Panic Safety
+### 27.5 Panic Safety
 
 **原则**：panic 发生后，Tensor 的内部状态须满足：(1) 可安全 drop（无未定义行为、无内存泄漏）；(2) 不保证数据一致性（已修改的部分元素可能留在中间状态）。
 
 | 操作场景 | Panic 时保证 | 说明 |
 |----------|-------------|------|
-| `mapv` / `zip` 中用户闭包 panic | 已遍历的元素可能已修改，未遍历的元素保持原值；Tensor 可安全 drop | 闭包 panic 导致部分写入，这是可接受的——调用方已失去控制流，Tensor 的值已不可用 |
-| `mapv_inplace` 中闭包 panic | 原地修改的部分元素处于中间状态；Tensor 可安全 drop | 同上，原地操作的中间状态不可避免 |
 | `make_mut()` 触发深拷贝时 panic（分配失败） | 原 ArcTensor 数据未被修改（引用计数不变）；已分配的新缓冲区被 drop 释放 | 深拷贝先分配新缓冲区再复制，分配失败时原数据完好 |
 | `empty_uninit` 构造后 `assume_init` 前 panic | Tensor 内含 `MaybeUninit` 元素，drop 时不会读取未初始化数据（`MaybeUninit<T>` 的 drop 是 no-op） | 必须保证 `Tensor<MaybeUninit<A>, D>` 的 drop impl 不触及元素内容 |
 | `checked_add` / `checked_mul` 累积运算 panic（如 `sum`、`cumsum`） | 中间结果被丢弃；Tensor 可安全 drop | 溢出检查在每步执行，panic 时无悬垂指针或未初始化内存 |
@@ -1800,9 +1792,9 @@ panic 类错误（`AllocationError`）通过 panic message 传递诊断信息，
 
 ---
 
-## 18. 质量要求
+## 28. 质量要求
 
-### 18.1 文档
+### 28.1 文档
 
 | 要求 | 范围 |
 |------|------|
@@ -1810,35 +1802,14 @@ panic 类错误（`AllocationError`）通过 panic message 传递诊断信息，
 | Safety 文档节 | 所有 unsafe 函数 |
 | 使用示例 | 关键 API |
 
-### 18.2 测试
+### 28.2 测试
 
 | 要求 | 指标 |
 |------|------|
 | 测试类型 | 单元测试 + 集成测试 + 边界测试 |
 | 行覆盖率 | ≥ 90%（数值基础设施对正确性要求极高，高覆盖率是必要的质量保障） |
 
-### 18.3 性能基准
-
-**基准要求**：
-
-| 基准类别 | 操作 | 参照 | 要求 |
-|----------|------|------|------|
-| 逐元素运算 | add/mul/sin/exp（1D, 1M 元素，F-contiguous） | ndarray 对应操作 | 不慢于 1.2× |
-| 归约 | sum/prod/min/max（1D, 1M 元素） | 手写标量循环 + SIMD | 不慢于 1.1× |
-| 形状操作 | reshape（连续）、transpose、slice（连续→视图） | 零拷贝路径 | O(1) 元数据操作，无数据拷贝 |
-| 内存分配 | zeros/full（1M 元素 f64） | Vec::with_capacity + fill | 不慢于 1.1× |
-| 广播 | 标量 + Tensor、size-1 广播 | 视图零拷贝路径 | 无额外分配 |
-
-**编译耗时基准**：
-
-| 指标 | 要求 |
-|------|------|
-| 单文件增量编译（修改一个 mapv 调用处） | ≤ 5 秒（debug 构建） |
-| 全量编译（clean build，默认 features） | ≤ 120 秒（debug 构建，8 核并行） |
-| 全量编译（`--all-features`） | ≤ 180 秒（debug 构建，8 核并行） |
-| 缓解策略 | 若编译耗时超标，考虑将 SIMD 分发、批量运算拆分为可选子模块（通过 feature gate 隔离） |
-
-### 18.4 数值精度
+### 28.3 数值精度
 
 | 运算类别 | f64 精度 | f32 精度 |
 |----------|----------|----------|
@@ -1857,7 +1828,7 @@ panic 类错误（`AllocationError`）通过 panic message 传递诊断信息，
 | 回归测试 | 使用已知正确结果的测试向量（golden test），固定随机种子确保可重复性 |
 | 跨平台一致性 | 同一输入在不同平台（x86_64 vs aarch64）上的结果须在精度容差内一致（SIMD 近似可能引入跨平台差异，须在容差范围内） |
 
-### 18.5 边界覆盖
+### 18.4 边界覆盖
 
 须覆盖以下边界情况：
 - 空张量
@@ -1867,7 +1838,7 @@ panic 类错误（`AllocationError`）通过 panic message 传递诊断信息，
 - 非连续布局
 - 高维（≥4维）
 
-### 18.6 并行与 SIMD 测试策略
+### 18.5 并行与 SIMD 测试策略
 
 | 测试类别 | 要求 | 说明 |
 |----------|------|------|
@@ -1893,4 +1864,4 @@ panic 类错误（`AllocationError`）通过 panic message 传递诊断信息，
 
 ---
 
-*Xenon v19 — 需求说明书*
+*Xenon v20 — 需求说明书*
