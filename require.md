@@ -529,7 +529,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 |--------|------|-----------|--------|
 | AVX-512 | x86_64 | 512 bit | 最高 |
 | AVX2 + FMA | x86_64 | 256 bit | 高 |
-| SSE4.1 | x86_64 | 128 bit | 中 |
+| SSE4.2（含 SSE4.1、SSSE3、POPCNT） | x86_64 | 128 bit | 中 |
 | NEON | aarch64 | 128 bit | 高（ARM 平台） |
 | 标量回退 | 所有 | - | 最低 |
 
@@ -632,9 +632,9 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 
 ---
 
-## 10. 迭代器
+## 11. 迭代器
 
-### 10.1 迭代类型
+### 11.1 迭代类型
 
 | 类型 | 说明 |
 |------|------|
@@ -646,7 +646,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 多数组同步迭代 | zip |
 | 遍历顺序 | 可指定 F/C |
 
-### 10.2 迭代器协议
+### 11.2 迭代器协议
 
 | 场景 | 行为 |
 |------|------|
@@ -659,7 +659,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 窗口迭代越界 | 不产出不完整窗口（窗口数 = shape - window_size + 1） |
 | 空数组迭代 | 立即结束，产出零个元素 |
 
-### 10.3 广播视图的可变迭代安全性
+### 11.3 广播视图的可变迭代安全性
 
 广播通过零步长（stride=0）模拟维度扩展。当对广播后的可变视图调用 `iter_mut()` / `par_iter_mut()` 时，多个逻辑迭代位置会映射到同一物理元素，构成别名写入。
 
@@ -679,7 +679,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 - 调用方可通过 `has_zero_stride()` 预检，避免运行时 panic
 - 此规则不适用于只读迭代（`iter()` / `par_iter()`），因为多个 `&T` 指向同一元素是安全的
 
-### 10.4 迭代器 Trait 覆盖
+### 11.4 迭代器 Trait 覆盖
 
 所有迭代器须实现以下标准库 trait：
 
@@ -701,7 +701,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 
 ### 11.1 逐元素运算
 
-> **约束**：逐元素算术运算（add, sub, mul, div, 三角函数, 指数/对数, 数值函数）仅适用于数值类型（整数、浮点、复数），不适用于 bool。bool 类型仅支持逻辑运算（`all/any`）和比较运算（eq, ne）。bool **不支持**位运算（`& | ^ !`）的运算符重载——需要位运算时，应先 `.map(|b| b as u8)` 转为整数类型后操作。
+#### 11.1.1 基本类型
 
 | 类别 | 操作 |
 |------|------|
@@ -711,7 +711,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 数值函数 | abs, sign, floor, ceil, round, square, reciprocal, pow |
 | 比较 | eq, ne, lt, le, gt, ge |
 
-**比较操作语义**：
+#### 11.1.2 比较操作语义
 
 | 操作 | 方法 | 返回类型 | 说明 |
 |------|------|----------|------|
@@ -722,17 +722,22 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 大于 | `gt(&self, other) -> Tensor<bool, D>` | bool Tensor | 逐元素比较，要求 `Element: PartialOrd` |
 | 大于等于 | `ge(&self, other) -> Tensor<bool, D>` | bool Tensor | 逐元素比较，要求 `Element: PartialOrd` |
 
-> **约束**：`eq`/`ne` 仅要求 `PartialEq`；`lt`/`le`/`gt`/`ge` 要求 `PartialOrd`（浮点类型因 NaN 为偏序）。所有比较方法仅通过方法调用提供，不提供 `< <= > >=` 运算符语法（见 §14.2 设计决策）。支持广播。返回的 bool Tensor 可用于 `select()`、`mask()`、`compress()` 等条件操作。
+#### 11.1.3 约束
+
+**约束 1**：逐元素算术运算（add, sub, mul, div, 三角函数, 指数/对数, 数值函数）仅适用于数值类型（整数、浮点、复数），不适用于 bool。bool 类型仅支持逻辑运算（`all/any`）和比较运算（eq, ne）。bool **不支持**位运算（`& | ^ !`）的运算符重载——需要位运算时，应先 `.map(|b| b as u8)` 转为整数类型后操作。
+
+**约束 2**：`eq`/`ne` 仅要求 `PartialEq`；`lt`/`le`/`gt`/`ge` 要求 `PartialOrd`（浮点类型因 NaN 为偏序）。所有比较方法仅通过方法调用提供，不提供 `< <= > >=` 运算符语法（见 §14.2 设计决策）。支持广播。返回的 bool Tensor 可用于 `select()`、`mask()`、`compress()` 等条件操作。
 
 ### 11.2 矩阵运算
 
 #### 11.2.1 支持的操作
 
-- matvec、dot/inner、outer
-- 批量：batch_matvec、batch_dot、batch_add、batch_scale
-- **不包含** GEMM
+| 类别 | 操作 |
+|------|------|
+| 基本运算 | matvec、dot/inner、outer |
+| 批量运算 | batch_matvec、batch_dot、batch_add、batch_scale |
 
-#### 11.2.2 逐个运算语义
+#### 11.2.2 矩阵运算语义
 
 **matvec 语义**：
 
@@ -757,7 +762,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 签名 | `fn outer(&self, other: &Tensor<A, Ix1>) -> Tensor<A, Ix2> where A: Numeric` |
 | 操作 | 向量外积：self(M) ⊗ other(N) → 结果(M, N)，其中 result[i, j] = self[i] * other[j] |
 | 约束 | self 和 other 均须为 1D，否则返回 `InvalidShape` |
-| 输出布局 | F-contiguous（默认布局，见 §6.1） |
+| 输出布局 | F-contiguous（默认布局，见 §7.1） |
 
 #### 11.2.3 批量运算维度约定
 
@@ -779,11 +784,11 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | batch_add | `fn batch_add(&self, other: &Tensor<A, D>) -> Tensor<A, D> where A: Numeric` | 输入形状须一致或可广播，逐元素加法 | 不可广播 → `BroadcastError` |
 | batch_scale | `fn batch_scale(&self, scalar: A) -> Tensor<A, D> where A: Numeric` | 任意形状，逐元素乘以标量 | 无错误 |
 
-> **非连续输入行为**：以上批量运算对非连续输入自动拷贝为 F-contiguous 后执行。不返回布局错误——调用方若需零拷贝，应先确保输入连续。
+**非连续输入行为**：以上批量运算对非连续输入自动拷贝为 F-contiguous 后执行。不返回布局错误——调用方若需零拷贝，应先确保输入连续。
 
-> **batch_dot 维度推导**：`batch_dot` 沿最后一轴做内积后消除该轴，输出 ndim = 输入 ndim - 1。签名使用 `D::Reduced` 关联类型表达降维后的维度（见 §2.1 Dimension trait）。静态维度推导规则：Ix1 → Ix0, Ix2 → Ix1, ..., IxDyn → IxDyn。Ix0 输入编译错误（无轴可归约）。
+**batch_dot 维度推导**：`batch_dot` 沿最后一轴做内积后消除该轴，输出 ndim = 输入 ndim - 1。签名使用 `D::Reduced` 关联类型表达降维后的维度（见 §3.2 Dimension trait）。静态维度推导规则：Ix1 → Ix0, Ix2 → Ix1, ..., IxDyn → IxDyn。Ix0 输入编译错误（无轴可归约）。
 
-> **与 `dot` 返回类型差异**：`dot` 返回 `A`（标量值），`batch_dot` 返回 `Tensor<A, D::Reduced>`（标量张量）。两者定位不同：`dot` 是 1D×1D → 标量的便捷方法；`batch_dot` 支持任意批次维度，统一返回 Tensor 以保持泛型一致性（`D::Reduced` 推导需 Tensor 包装）。对 Ix1 输入，`batch_dot` 返回 `Tensor0<A>`（0D 标量张量），可调用 `.into_scalar()` 获取裸值。
+**与 `dot` 返回类型差异**：`dot` 返回 `A`（标量值），`batch_dot` 返回 `Tensor<A, D::Reduced>`（标量张量）。两者定位不同：`dot` 是 1D×1D → 标量的便捷方法；`batch_dot` 支持任意批次维度，统一返回 Tensor 以保持泛型一致性（`D::Reduced` 推导需 Tensor 包装）。对 Ix1 输入，`batch_dot` 返回 `Tensor0<A>`（0D 标量张量），可调用 `.into_scalar()` 获取裸值。
 
 ### 11.3 归约
 
