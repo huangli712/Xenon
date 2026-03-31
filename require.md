@@ -1159,7 +1159,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 
 ## 18. 索引操作
 
-### 13.1 索引类型
+### 18.1 索引类型
 
 | 类型 | 说明 |
 |------|------|
@@ -1169,7 +1169,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 高级索引 | take, take_along_axis, mask, compress, put, argwhere/nonzero |
 | 条件选择 | select(condition, x, y) |
 
-### 13.2 take 语义
+### 18.2 take 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -1180,9 +1180,9 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 约束 | 索引值须 < 轴长度，否则返回 `IndexOutOfBounds` 错误 |
 | 拷贝 | 始终拷贝，返回 Owned |
 
-> **返回类型说明**：`take` 统一返回 `Tensor<A, IxDyn>`（动态维度），即使输入为静态维度。理由：(1) `axis=None` 时输出维度与输入不同（展平为 1D），若返回类型依赖输入维度参数 `D`，将导致泛型推断歧义；(2) 统一返回 IxDyn 简化 API 签名，消除 `axis` 参数对返回类型的影响（方法签名无法根据运行时参数值返回不同泛型类型）。若需静态维度，调用方可对结果调用 `.into_dimension::<Ix1>()`（axis=None）或 `.into_dimension::<D>()`（axis=Some）。**设计取舍**：此方案牺牲静态维度信息以换取 API 简洁性；替代方案（为 `axis=None` 和 `axis=Some` 提供两个独立方法）可保留静态维度但增加 API 面积，当前选择统一签名。
+**返回类型说明**：`take` 统一返回 `Tensor<A, IxDyn>`（动态维度），即使输入为静态维度。
 
-### 13.3 take_along_axis 语义
+### 18.3 take_along_axis 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -1192,7 +1192,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 典型用途 | `argmax` 结果的反向索引：`a.take_along_axis(&a.argmax(axis), axis)` |
 | 拷贝 | 始终拷贝，返回 Owned |
 
-### 13.4 mask 语义
+### 18.4 mask 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -1202,18 +1202,18 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 返回值 | Tensor1<A>，长度为 mask 中 true 的数量，元素按 F-order 遍历顺序收集 |
 | 拷贝 | 始终拷贝 |
 
-### 13.5 compress 语义
+### 18.5 compress 语义
 
 | 属性 | 行为 |
 |------|------|
 | 签名 | `fn compress(&self, mask: &Tensor1<bool>, axis: Axis) -> Tensor<A, D>` |
 | 操作 | 沿指定轴按布尔掩码提取，保留维度 |
 | 约束 | mask 长度须等于指定轴长度，否则返回 `ShapeMismatch` 错误 |
-| 返回值 | 维度类型与 self 相同（`D`），指定轴长度为 mask 中 true 的数量（运行时决定，静态维度 `D` 的 shape 本身就是运行时值，因此无矛盾）。其余轴长度不变 |
+| 返回值 | 维度类型与 self 相同（`D`），指定轴长度为 mask 中 true 的数量。其余轴长度不变 |
 | 与 mask 区别 | mask 展平为一维；compress 保留维度结构 |
 | 拷贝 | 始终拷贝 |
 
-### 13.6 put 语义
+### 18.6 put 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -1223,7 +1223,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 错误 | 索引越界返回 `IndexOutOfBounds`（含越界索引值、轴长度、轴号）；values 与 indices 长度不匹配返回 `ShapeMismatch` |
 | 与 take 对称 | `put` 为 `take` 的逆操作 |
 
-### 13.7 argwhere 语义
+### 18.7 argwhere 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -1232,21 +1232,18 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 返回值 | Tensor2<usize>，形状为 (n_nonzero, ndim) |
 | 空数组 | 若无非零元素，返回形状 (0, ndim) |
 
-### 13.8 nonzero 语义
+### 18.8 nonzero 语义
 
 | 属性 | 行为 |
 |------|------|
 | 签名 | `fn nonzero(&self) -> Vec<Tensor1<usize>> where A: PartialEq` |
 | 操作 | 返回各轴的非零索引，类似 NumPy `np.nonzero()` |
 | 返回值 | Vec 长度为 ndim，每个元素为该轴上非零位置的索引数组 |
-| 与 argwhere 关系 | argwhere 返回组合坐标；nonzero 按轴分离返回 |
-
-> **设计理由（argwhere vs nonzero 返回类型差异）**：两者提供同一数据的不同视角——`argwhere` 返回 `Tensor2<usize>`（行=坐标点，列=轴），适合逐点访问；`nonzero` 返回 `Vec<Tensor1<usize>>`（每轴一个索引数组），适合按轴花式索引（如 `a[nonzero_result]`）。这两种返回类型对应 NumPy 中 `np.argwhere` 和 `np.nonzero` 的设计，保持 API 兼容性。两者之间可通过转置互转：`argwhere` 的结果转置后按行拆分即得 `nonzero` 的结果。
 | 空数组 | 各轴均返回空 Tensor1 |
 
-> **性能提示**：返回 `Vec<Tensor1<usize>>` 需要 `ndim + 1` 次堆分配（1 个 Vec + ndim 个 Tensor1）。对高维数组（如 6D），分配开销为 7 次。若调用方需要连续的索引数组，推荐使用 `argwhere()`（返回单个 `Tensor2<usize>`，仅 1 次分配）。
+**argwhere vs nonzero 返回类型差异）**：两者提供同一数据的不同视角——`argwhere` 返回 `Tensor2<usize>`（行=坐标点，列=轴），适合逐点访问；`nonzero` 返回 `Vec<Tensor1<usize>>`（每轴一个索引数组），适合按轴花式索引（如 `a[nonzero_result]`）。这两种返回类型对应 NumPy 中 `np.argwhere` 和 `np.nonzero` 的设计，保持 API 兼容性。两者之间可通过转置互转：`argwhere` 的结果转置后按行拆分即得 `nonzero` 的结果。
 
-### 13.9 切片宏 s![]语义
+### 18.9 切片宏 s![]语义
 
 `s![]` 宏用于构造多维切片描述符，语法糖对应 `SliceInfo` 类型。
 
@@ -1294,7 +1291,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | step = 0 | 静态维度：宏展开时对**字面量** `0` 报编译错误（仅检测 `;0` 的 token 模式，无法检测变量值为 0 的情况）；动态维度：运行时 panic。注意：若 step 为非常量表达式（如 `s![0..6;n]`，运行时 `n == 0`），静态维度也会在运行时 panic |
 | 轴数与 ndim 不匹配 | 编译错误（静态维度）或 panic（动态维度） |
 
-### 13.10 select 语义
+### 18.10 select 语义
 
 > **命名说明**：使用 `select` 而非 `where`，避免与 Rust `where` 泛型约束关键字冲突，降低使用时的认知负担。
 
