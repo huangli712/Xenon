@@ -876,16 +876,16 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 
 | 属性 | 行为 |
 |------|------|
-| 操作 | `reshape(shape) -> Tensor<A, D>` 改变数组形状，元素总数须不变，始终成功 |
+| 操作 | `reshape(shape) -> Result<Tensor<A, D>>` 改变数组形状，元素总数须不变。形状合法时始终成功（连续零拷贝，非连续自动拷贝）；仅当 `-1` 推导失败时返回 `InvalidShape` |
 | 连续输入 | 仅修改 shape/strides 元数据，复用底层存储（零拷贝）。返回的新 Tensor **独占**该存储（Owned 语义），原 Tensor 在 reshape 后不再可用（移动语义）。"共享底层缓冲区"仅发生在视图层面（如原始数据被 ArcRepr 持有），Owned-to-Owned reshape 通过移动所有权实现零拷贝 |
 | 非连续输入 | 自动拷贝为 F-contiguous 布局后再 reshape，返回新分配的 Tensor |
 | 输出布局 | 连续路径：继承输入的连续性方向（F-contiguous → F-order strides；C-contiguous → C-order strides）；非连续路径：输出为 F-contiguous |
-| -1 自动推导 | shape 中至多一个维度可为 `-1`，由元素总数除以其余维度乘积自动推导；多个 `-1` 或推导结果非整数时返回 `InvalidShape`。**API 签名**：静态维度接受 `&[isize]` 切片（`-1isize` 表示自动推导，合法正值自动转为 `usize`）；IxDyn 接受 `&IxDyn` 或 `Vec<isize>`（内部同样用 `-1isize` 标记推导维度） |
+| -1 自动推导 | shape 中至多一个维度可为 `-1`，由元素总数除以其余维度乘积自动推导；多个 `-1`、推导结果非整数、或元素总数不匹配时返回 `Err(InvalidShape)`。**API 签名**：静态维度接受 `&[isize]` 切片（`-1isize` 表示自动推导，合法正值自动转为 `usize`）；IxDyn 接受 `&IxDyn` 或 `Vec<isize>`（内部同样用 `-1isize` 标记推导维度） |
 | 空数组 | 允许 reshape 为任意元素数为 0 的形状（如 `(0, 5)` → `(0, 3, 2)` 或 `(0,)`） |
 | 维度类型 | 不改变维度类型（静态保持静态，动态保持动态）；显式转换维度类型使用 `into_dimension::<D>()` |
 | 静态维度约束 | 静态维度（如 Ix3）reshape 后维度数须匹配类型（Ix3 reshape 后仍为 3 维） |
 
-> **设计决策**：统一为单一 `reshape()` 方法（始终成功），移除原 `reshape_owned()` 和返回 `Result` 的双 API 设计。理由：(1) 消除用户在运行时根据内存布局选择 API 的认知负担，与 §1.2 "清晰抽象，无隐式行为" 一致；(2) 连续输入自动零拷贝、非连续输入自动拷贝，行为符合最小惊讶原则。
+> **设计决策**：统一为单一 `reshape()` 方法，返回 `Result`：形状合法时始终成功（连续零拷贝、非连续自动拷贝），仅 `-1` 推导失败时返回错误。移除原 `reshape_owned()` 和双 API 设计。理由：(1) 消除用户在运行时根据内存布局选择 API 的认知负担，与 §1.2 "清晰抽象，无隐式行为" 一致；(2) 连续输入自动零拷贝、非连续输入自动拷贝，行为符合最小惊讶原则；(3) `-1` 推导失败是合法的运行时错误场景（shape 可能来自用户输入），用 Result 而非 panic 返回。
 
 > **性能提示**：`reshape()` 对非连续输入会隐式执行完整数据拷贝。性能敏感场景下，调用方可通过 `is_contiguous()` 预检：若返回 `true`，后续 `reshape()` 保证零拷贝；若返回 `false`，调用方可决定是否先调用 `as_f_contiguous()` / `as_c_contiguous()`（见 §14.4）获取零拷贝视图再操作，或接受拷贝开销。
 
@@ -1100,7 +1100,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 
 | 属性 | 行为 |
 |------|------|
-| 签名 | `fn take(&self, indices: &Tensor1<usize>, axis: Option<Axis>) -> Tensor<A, IxDyn>` |
+| 签名 | `fn take(&self, indices: &Tensor1<usize>, axis: Option<Axis>) -> Result<Tensor<A, IxDyn>>` |
 | 操作 | 沿指定轴按索引数组提取元素，返回新数组 |
 | axis=None | 将输入展平后按一维索引取值 |
 | axis=Some(i) | 沿第 i 轴取值，其余轴不变，指定轴长度变为 indices.len() |
@@ -1144,10 +1144,10 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 
 | 属性 | 行为 |
 |------|------|
-| 签名 | `fn put(&mut self, indices: &Tensor1<usize>, values: &Tensor1<A>, axis: Option<Axis>)` |
+| 签名 | `fn put(&mut self, indices: &Tensor1<usize>, values: &Tensor1<A>, axis: Option<Axis>) -> Result<()>` |
 | 操作 | 按索引数组将值写入指定位置，原地修改 |
-| 约束 | 索引值须 < 轴长度；values 长度须与 indices 长度相等 |
-| 错误 | 索引越界返回 `IndexOutOfBounds`；形状不匹配返回 `ShapeMismatch` |
+| 约束 | 索引值须 < 轴长度（axis=Some 时为指定轴长度，axis=None 时为元素总数）；values 长度须与 indices 长度相等 |
+| 错误 | 索引越界返回 `IndexOutOfBounds`（含越界索引值、轴长度、轴号）；values 与 indices 长度不匹配返回 `ShapeMismatch` |
 | 与 take 对称 | `put` 为 `take` 的逆操作 |
 
 ### 13.7 argwhere 语义
@@ -1167,6 +1167,8 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 操作 | 返回各轴的非零索引，类似 NumPy `np.nonzero()` |
 | 返回值 | Vec 长度为 ndim，每个元素为该轴上非零位置的索引数组 |
 | 与 argwhere 关系 | argwhere 返回组合坐标；nonzero 按轴分离返回 |
+
+> **设计理由（argwhere vs nonzero 返回类型差异）**：两者提供同一数据的不同视角——`argwhere` 返回 `Tensor2<usize>`（行=坐标点，列=轴），适合逐点访问；`nonzero` 返回 `Vec<Tensor1<usize>>`（每轴一个索引数组），适合按轴花式索引（如 `a[nonzero_result]`）。这两种返回类型对应 NumPy 中 `np.argwhere` 和 `np.nonzero` 的设计，保持 API 兼容性。两者之间可通过转置互转：`argwhere` 的结果转置后按行拆分即得 `nonzero` 的结果。
 | 空数组 | 各轴均返回空 Tensor1 |
 
 > **性能提示**：返回 `Vec<Tensor1<usize>>` 需要 `ndim + 1` 次堆分配（1 个 Vec + ndim 个 Tensor1）。对高维数组（如 6D），分配开销为 7 次。若调用方需要连续的索引数组，推荐使用 `argwhere()`（返回单个 `Tensor2<usize>`，仅 1 次分配）。
@@ -1382,6 +1384,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 >
 > - `< <= > >=` 运算符**不提供**（`PartialOrd` 返回 `bool`，与逐元素 Tensor 语义冲突）
 > - 逐元素比较**仅通过方法调用**：`.lt()`、`.le()`、`.gt()`、`.ge()`（见 §11.1 比较表），返回 `Tensor<bool, D>`
+> - **命名说明**：`.lt()` 等方法名与 `PartialOrd` trait 的固有方法同名，但 `TensorBase` **不实现 `PartialOrd`**，因此不存在 trait 方法冲突。此处选择 `.lt()` 而非 `.elem_lt()` 等替代命名，是因为：(1) 与 NumPy 的 `np.less()` / ndarray 的 `.lt()` 命名惯例一致；(2) 返回类型 `Tensor<bool, D>` 已明确区分于 `PartialOrd::lt() -> bool`；(3) IDE 自动补全不会提示 `PartialOrd::lt()`（因未实现该 trait）
 > - `==` / `!=`：`PartialEq` trait 返回 `bool`（标量语义，判断两个 Tensor 是否完全相等）；逐元素布尔掩码使用 `.eq()` / `.ne()` 方法
 
 | 方法 | 签名 | 返回类型 | 元素约束 |
@@ -1410,7 +1413,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 方法 | 签名 | 说明 |
 |------|------|------|
 | `flip` | `fn flip(&self, axes: &[usize]) -> TensorView<A, D>` | 沿指定轴翻转，零拷贝（步长取反）。axes 中的轴索引须在 `[0, ndim)` 范围内，否则返回 `InvalidAxis` |
-| `flipud` | `fn flipud(&self) -> TensorView<A, D>` | 沿轴 0 翻转（等价于 `flip(&[0])`）。1D 数组为 no-op |
+| `flipud` | `fn flipud(&self) -> TensorView<A, D>` | 沿轴 0 翻转（等价于 `flip(&[0])`）。ndim ≥ 1 时反转第 0 轴元素顺序；0D 数组为 no-op |
 | `fliplr` | `fn fliplr(&self) -> TensorView<A, D>` | 沿轴 1 翻转（等价于 `flip(&[1])`）。1D 数组返回 `InvalidAxis`（无轴 1） |
 
 **clip 语义**：
@@ -1601,6 +1604,16 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | blas_layout() | 返回 BLAS 布局标识（F/C/None），None 表示不兼容 |
 | blas_trans() | 返回 BLAS Trans 参数（N/T/C），基于当前布局与目标布局的关系 |
 
+**Trans 枚举定义**：
+
+| 变体 | 含义 | BLAS 字符 |
+|------|------|-----------|
+| `Trans::None` | 不转置（原始布局） | `'N'` |
+| `Trans::Transpose` | 转置（行列互换） | `'T'` |
+| `Trans::ConjTranspose` | 共轭转置（仅 Complex 类型有意义） | `'C'` |
+
+> Trans 枚举用于 FFI 与 BLAS 交互时描述矩阵的转置状态。`blas_trans()` 根据当前 Tensor 的内存布局（F-contiguous 或 C-contiguous）自动推断需要传递给 BLAS 的转置参数。对实数类型，`Trans::ConjTranspose` 等价于 `Trans::Transpose`。
+
 ### 15.4 索引转换
 
 | 方法 | 说明 |
@@ -1702,7 +1715,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | | DimensionMismatch | 静态维度与动态维度互转时维度数不匹配 | Result |
 | | EmptyArray | 对空数组执行 min/max/argmin/argmax | Result |
 | | AllocationError | 内存分配失败（超大数组、系统内存不足） | panic |
-| | IndexOutOfBounds | 多维索引越界 | panic（checked）/ UB（unchecked） |
+| | IndexOutOfBounds | 索引越界（含多维索引、take/put 索引数组） | 多维索引：panic（checked）/ UB（unchecked）；take/put 索引数组：Result |
 | **复合错误** | ShapeError | 形状操作中可能遇到的聚合错误（包含 InvalidShape 和 LayoutMismatch 两种情况），用于需要区分多种失败原因的 API | Result |
 
 **ShapeError 定义**：
@@ -1728,8 +1741,9 @@ enum ShapeError {
 | InvalidShape | `reason: &'static str` | 人类可读原因（如 "0 inputs" / "ndim mismatch: expected 3, got 2"） |
 | DimensionMismatch | `expected: usize`, `actual: usize` | 期望与实际维度数 |
 | EmptyArray | `operation: &'static str` | 触发操作名（如 "min"/"argmax"） |
+| IndexOutOfBounds | `index: usize`, `axis_len: usize`, `axis: usize` | 越界索引值、轴长度、轴编号（仅 take/put Result 场景） |
 
-panic 类错误（`AllocationError`、`IndexOutOfBounds`）通过 panic message 传递诊断信息，不使用结构化字段。
+panic 类错误（`AllocationError`）通过 panic message 传递诊断信息，不使用结构化字段。`IndexOutOfBounds` 在 panic 场景（多维索引越界）通过 panic message 传递诊断信息，在 Result 场景（take/put 索引数组越界）使用结构化字段。
 
 **API → 错误类型映射**：
 
@@ -1744,7 +1758,8 @@ panic 类错误（`AllocationError`、`IndexOutOfBounds`）通过 panic message 
 | 逐元素运算 / zip | `ShapeMismatch` 或 `BroadcastError` | 独立错误 |
 | min/max/argmin/argmax（空数组） | `EmptyArray` | 独立错误 |
 | 内存分配（构造器） | `AllocationError`（panic） | 不可恢复 |
-| 索引访问 | `IndexOutOfBounds`（panic） / unchecked UB | 编程错误 |
+| 索引访问 | `IndexOutOfBounds`（panic） / unchecked UB | 编程错误（多维索引硬编码或循环变量） |
+| take / put | `IndexOutOfBounds`（Result） | 索引来自运行时动态数据（索引数组），属数据驱动错误 |
 
 ### 17.2 处理策略
 
@@ -1752,8 +1767,8 @@ panic 类错误（`AllocationError`、`IndexOutOfBounds`）通过 panic message 
 
 | 策略 | 适用场景 | 典型例子 |
 |------|----------|----------|
-| 可恢复错误（形状、布局、轴） | 返回 Result | squeeze 非 size-1 轴 → `InvalidShape`；空数组 min/max → `EmptyArray` |
-| 编程错误（索引越界） | panic，同时提供 unsafe unchecked 变体 | 索引越界 → `IndexOutOfBounds` panic |
+| 可恢复错误（形状、布局、轴、数据驱动索引越界） | 返回 Result | squeeze 非 size-1 轴 → `InvalidShape`；空数组 min/max → `EmptyArray`；take/put 索引数组越界 → `IndexOutOfBounds` |
+| 编程错误（多维索引越界） | panic，同时提供 unsafe unchecked 变体 | `tensor[i,j]` 索引越界 → `IndexOutOfBounds` panic |
 | 前置条件违反 | panic | bincount 负值输入（文档要求 ≥ 0）；`Vec<Vec<A>>` 内层长度不一致（文档要求一致）；arange step=0（文档要求 ≠ 0） |
 | 内存分配失败 | panic（与 Rust 标准库 `Vec::push` 等行为一致）。调用方若需 graceful 处理，可在调用前预检元素数和预估内存占用。未来版本可考虑提供 `try_*` 变体返回 `Result` | |
 | 错误信息 | 所有错误类型须实现 `Display` 和 `Error`，包含上下文信息（期望值 vs 实际值） | |
