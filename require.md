@@ -1293,8 +1293,6 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 
 ### 18.10 select 语义
 
-> **命名说明**：使用 `select` 而非 `where`，避免与 Rust `where` 泛型约束关键字冲突，降低使用时的认知负担。
-
 | 属性 | 行为 |
 |------|------|
 | 操作 | `select(condition, x, y)` 按条件逐元素选择，condition 为 true 取 x，否则取 y |
