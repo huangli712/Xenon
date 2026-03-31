@@ -1627,7 +1627,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 
 ## 25. FFI 集成
 
-### 15.1 指针 API
+### 25.1 指针 API
 
 | 方法 | 说明 |
 |------|------|
@@ -1635,17 +1635,15 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | as_mut_ptr() | 返回数据起始位置的可变原始指针 `*mut A`（须可写存储） |
 | as_ptr_unchecked() | unsafe，不检查偏移量有效性 |
 
-### 15.2 形状与步长查询
+### 25.2 形状与步长查询
 
-以下方法的语义和签名定义见 §6.3（`shape()`、`strides()`、`offset()`），本节补充 FFI 场景专用的查询方法：
+`shape()` / `strides()` / `offset()` 在 §6.3 中定义，FFI 集成直接调用即可。此处仅补充 `strides_bytes()`，因为 `§6.3` 的 `strides()` 返回元素单位步长，而 C/BLAS 接口通常需要字节单位。
 
 | 方法 | 说明 |
 |------|------|
 | strides_bytes() | 返回各轴步长的切片（字节单位，有符号）。FFI 场景下外部库通常需要字节单位步长 |
 
-> `shape()` / `strides()` / `offset()` 在 §6.3 中定义，FFI 集成直接调用即可。此处仅补充 `strides_bytes()`，因为 `§6.3` 的 `strides()` 返回元素单位步长，而 C/BLAS 接口通常需要字节单位。
-
-### 15.3 BLAS 兼容性
+### 25.3 BLAS 兼容性
 
 | 方法 | 说明 |
 |------|------|
@@ -1654,7 +1652,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | blas_layout() | 返回 BLAS 布局标识（F/C/None），None 表示不兼容 |
 | blas_trans() | 返回 BLAS Trans 参数（N/T/C），基于当前布局与目标布局的关系 |
 
-**Trans 枚举定义**：
+### 25.4 Trans 枚举定义
 
 | 变体 | 含义 | BLAS 字符 |
 |------|------|-----------|
@@ -1662,70 +1660,30 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | `Trans::Transpose` | 转置（行列互换） | `'T'` |
 | `Trans::ConjTranspose` | 共轭转置（仅 Complex 类型有意义） | `'C'` |
 
-> Trans 枚举用于 FFI 与 BLAS 交互时描述矩阵的转置状态。`blas_trans()` 根据当前 Tensor 的内存布局（F-contiguous 或 C-contiguous）自动推断需要传递给 BLAS 的转置参数。对实数类型，`Trans::ConjTranspose` 等价于 `Trans::Transpose`。
+Trans 枚举用于 FFI 与 BLAS 交互时描述矩阵的转置状态。`blas_trans()` 根据当前 Tensor 的内存布局（F-contiguous 或 C-contiguous）自动推断需要传递给 BLAS 的转置参数。对实数类型，`Trans::ConjTranspose` 等价于 `Trans::Transpose`。
 
-### 15.4 索引转换
+### 25.5 索引转换
 
 | 方法 | 说明 |
 |------|------|
 | index_to_ptr(index) | 将多维索引转换为对应元素的原始指针 |
 | index_to_offset(index) | 将多维索引转换为相对于数据起始位置的元素偏移量 |
 
-### 15.5 原始部件构造与解构
-
-| 方法 | 签名 | 说明 |
-|------|------|------|
-| from_raw_parts | `unsafe fn from_raw_parts<'a>(ptr: *const A, shape: D, strides: D::Stride, offset: usize) -> TensorView<'a, A, D>` | 从原始部件构造 TensorView。`shape` 和 `strides` 接受维度类型对应的内部表示（静态维度为 `[usize; N]`/`[isize; N]`，IxDyn 为 `Vec<usize>`/`Vec<isize>`）。提供 `from_raw_parts_slice` 便捷变体，接受 `&[usize]`/`&[isize]` 切片并自动转为 `D` |
-| from_raw_parts_mut | `unsafe fn from_raw_parts_mut<'a>(ptr: *mut A, shape: D, strides: D::Stride, offset: usize) -> TensorViewMut<'a, A, D>` | 同上，构造可变视图 |
-
-> **生命周期 `'a` 的语义**：`'a` 表示"底层内存保持有效的时长"，由调用方通过类型标注指定。`'a` 的来源取决于内存所有权方式：(1) 从 `&[A]` 切片构造时，`'a` 绑定到切片的 lifetime；(2) 从 `Arc<[A]>` 构造时，调用方可选择 `'a = 'static`（若 Arc 永不释放）或手动管理 lifetime（如将 Arc 和 TensorView 放入同一结构体）；(3) 从 `Box<[A]>` 构造时，`'a` 绑定到 Box 所有权持有者的 lifetime。**调用方责任**：确保 `'a` 不超过底层内存的实际存活时间——若内存被释放后视图仍存在，则访问视图为 UB。
-| into_raw_parts | `fn into_raw_parts(self) -> RawParts<A, D>` | 消耗数组，返回原始部件。**内存释放责任**：调用方获得原始指针后须自行管理内存生命周期——通过 `from_raw_parts` 重新构造为 Tensor 交由 Drop 释放，或使用全局分配器的 `dealloc` 手动释放（须与返回的 `Layout` 一致）。忘记释放将导致内存泄漏 |
-
-**`RawParts<A, D>` 结构体**：
-
-```rust
-pub struct RawParts<A, D: Dimension> {
-    pub ptr: *mut A,
-    pub shape: D,
-    pub strides: D::Stride,
-    pub offset: usize,
-    pub layout: Layout,  // 分配时的 Layout，用于安全释放
-    pub len: usize,      // 分配的总元素数（≥ 实际使用的元素数，含 padding）
-}
-```
-
-> **`layout` 字段说明**：记录分配时的 `alloc::alloc::Layout`（含大小和对齐），使调用方可安全调用 `alloc::dealloc`。若数组通过 `zeros`/`full` 等构造函数分配，`layout` 完整记录分配信息；若数组由 `from_raw_parts` 构造（非 Xenon 分配的内存），`layout` 为 `None`，调用方须自行追踪分配信息。`len` 字段记录分配的总元素数（含 padding），与 `shape.size()` 可能不同（后者为逻辑元素数，不含 padding）。
-
-**Safety 前提条件（from_raw_parts / from_raw_parts_mut）：**
-
-调用方须保证以下条件，否则导致未定义行为：
-
-| 前提条件 | 说明 |
-|----------|------|
-| 指针有效性 | `ptr` 须非空、非悬垂，且对齐到 `align_of::<A>()` |
-| 内存范围 | `ptr` 起始的内存范围须足够大，能覆盖所有可访问元素（考虑 offset、shape、strides） |
-| 生命周期 | 内存须在返回的视图生命周期内保持有效 |
-| 别名规则 | `from_raw_parts`：内存可被共享读取，但不可被写入；`from_raw_parts_mut`：内存须无其他引用（独占访问） |
-| 布局一致性 | `shape` 与 `strides` 长度须一致；strides 须为合法的元素步长 |
-| 边界安全 | 任意合法索引计算出的偏移量不得越界访问内存 |
-| 元素初始化 | 所有可访问元素须已正确初始化（符合 `MaybeUninit` 语义） |
-| 线程安全 | 若视图跨线程使用，底层内存须满足 Send/Sync 要求 |
-
 ---
 
-## 16. 临时工作空间
+## 26. 临时工作空间
 
-### 16.1 工作空间属性
+### 26.1 工作空间属性
 
 | 属性 | 要求 |
 |------|------|
 | 对齐 | 默认 64 字节对齐，须支持调用方指定更大对齐（如 128 字节） |
 | 生命周期 | 借用语义：工作空间借出期间不可再次借出，归还后可复用 |
-| 增长策略 | 请求超出当前容量时自动扩容，不缩容；扩容后保持对齐。提供 `shrink_to(new_len)` 方法将未使用空间归还给分配器，调用方须保证 `new_len ≤ 当前已分配容量`，否则 panic。**设计理由**：长时间运行的算法可能反复使用不同大小的临时空间，若 workspace 只增不减，内存占用将持续增长至峰值。`shrink_to` 允许调用方在当前操作完成后释放多余空间，`shrink_to(0)` 可完全清空（保留最小容量和对齐元数据） |
+| 增长策略 | 请求超出当前容量时自动扩容，不缩容；扩容后保持对齐。提供 `shrink_to(new_len)` 方法将未使用空间归还给分配器，调用方须保证 `new_len ≤ 当前已分配容量`，否则 panic。 |
 | 线程亲和性 | 工作空间不绑定线程；线程安全由调用方通过借用规则保证 |
 | 零初始化 | 不保证零初始化（性能考虑），调用方须自行初始化 |
 
-### 16.2 分割与嵌套
+### 26.2 分割与嵌套
 
 | 属性 | 要求 |
 |------|------|
@@ -1733,11 +1691,11 @@ pub struct RawParts<A, D: Dimension> {
 | 并行分割 | 支持 `split_at(mid)` 将工作空间分割为两个不重叠的子工作空间，各自可独立借出，O(1)，不涉及内存分配 |
 | 递归分割 | 子工作空间可继续分割（支持递归二分），最小分割粒度为 16 字节（小于 16 字节的分割请求返回空子工作空间）。**设计理由**：防止无限递归分割产生零大小子空间导致的无限循环；16 字节下限覆盖所有常见 SIMD 类型的对齐需求 |
 
-> **Workspace 线程安全**：`Workspace` 实现 `Send` 但不实现 `Sync`——工作空间可在线程间移动（Send），但不可被多线程同时访问（非 Sync）。`split_at` 返回的两个子工作空间各自为 `Send`，可分别移动到不同线程使用，但每个子工作空间在同一时刻只能被一个线程访问（由 `&mut` 借用规则在编译时保证）。父工作空间在子工作空间活跃期间不可借出（借用检查器保证）。
+### 26.3 工作空间线程安全
 
+`Workspace` 实现 `Send` 但不实现 `Sync`——工作空间可在线程间移动（Send），但不可被多线程同时访问（非 Sync）。`split_at` 返回的两个子工作空间各自为 `Send`，可分别移动到不同线程使用，但每个子工作空间在同一时刻只能被一个线程访问（由 `&mut` 借用规则在编译时保证）。父工作空间在子工作空间活跃期间不可借出（借用检查器保证）。
 
-
-### 16.3 借出与归还 API
+### 26.4 借出与归还 API
 
 | 方法 | 签名 | 说明 |
 |------|------|------|
@@ -1745,19 +1703,6 @@ pub struct RawParts<A, D: Dimension> {
 | `borrow_aligned` | `fn borrow_aligned<A>(&mut self, len: usize) -> &mut [MaybeUninit<A>]` | 借出指定元素数的类型化缓冲区，按 `max(align_of::<A>(), 当前对齐)` 对齐。返回 `&mut [MaybeUninit<A>]` 而非 `&mut [A]`——工作空间不保证零初始化（见 §16.1），返回已初始化引用将构成 UB。调用方须自行初始化后通过 `MaybeUninit::assume_init` 转换。对齐不足时 panic |
 | `borrow_scratch` | `fn borrow_scratch(&mut self, req: ScratchRequirement) -> &mut [u8]` | 根据 `ScratchRequirement` 借出足够大小和指定对齐的缓冲区 |
 | 归还 | 借出的 `&mut` 引用生命周期绑定到 `&mut Workspace`，引用释放后自动归还，无需显式调用 | 借用检查器保证借出期间不存在二次借出 |
-
-### 16.4 Scratch 查询 API
-
-上游库（如线性代数库）须能在执行操作前查询所需临时内存大小，以便预分配或复用工作空间。
-
-| 属性 | 要求 |
-|------|------|
-| scratch_size 查询 | 提供静态方法，根据操作类型和矩阵尺寸返回所需字节数 |
-| 返回类型 | 返回 `ScratchRequirement` 结构体（大小 + 对齐），而非裸 usize。定义：`#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] pub struct ScratchRequirement { pub size: usize, pub alignment: usize }`，其中 `size` 为所需字节数，`alignment` 为最小对齐要求（须为 2 的幂，构造时通过 `debug_assert!` 验证） |
-| 可组合性 | 多个 scratch 需求可合并：`size` 字段顺序执行取 max、并行执行取 sum；`alignment` 字段始终取 max（对齐要求不可缩减） |
-| 与工作空间集成 | 工作空间可接受 scratch 需求描述，一次性分配足够空间 |
-| 零运行时开销 | scratch 查询为纯计算，不分配内存 |
-| 上游库用法 | 上游库定义自己的操作枚举并实现 scratch 查询；Xenon 仅提供基础设施（需求描述类型 + 合并逻辑 + 工作空间分配接口） |
 
 ---
 
