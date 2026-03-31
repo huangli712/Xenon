@@ -1469,10 +1469,8 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | clip | 裁剪 |
 | flip/flipud/fliplr | 翻转 |
 | to_owned/into_owned | 转换为拥有 |
-| map/mapv/mapv_into/mapv_inplace | 映射操作（语义见 §14.3 map 语义） |
-| cast | 显式类型转换（语义见 §14.5 cast 语义） |
 
-**flip / flipud / fliplr 语义**：
+### 21.2 flip / flipud / fliplr 语义
 
 | 方法 | 签名 | 说明 |
 |------|------|------|
@@ -1480,7 +1478,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | `flipud` | `fn flipud(&self) -> TensorView<A, D>` | 沿轴 0 翻转（等价于 `flip(&[0])`）。ndim ≥ 1 时反转第 0 轴元素顺序；0D 数组为 no-op |
 | `fliplr` | `fn fliplr(&self) -> TensorView<A, D>` | 沿轴 1 翻转（等价于 `flip(&[1])`）。1D 数组返回 `InvalidAxis`（无轴 1） |
 
-**clip 语义**：
+### 21.3 clip 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -1490,14 +1488,14 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 返回类型 | 新分配的 Owned 数组 |
 | NaN 处理 | NaN 比较为 false，clip 不修改 NaN（NaN 不满足 min/max 约束，保持不变） |
 
-**copy_to / fill 语义**：
+### 21.4 copy_to / fill 语义
 
 | 方法 | 签名 | 说明 |
 |------|------|------|
 | `copy_to` | `fn copy_to(&self, dst: &mut TensorViewMut<A, D>)` | 将 self 的数据拷贝到 dst。两者形状须完全一致，否则返回 `ShapeMismatch`。按物理内存顺序拷贝 |
 | `fill` | `fn fill(&mut self, value: A) where A: Clone` | 用指定值填充所有元素。要求可变引用（Owned 或 ViewMut） |
 
-**is_close / allclose 语义**：
+### 21.5 is_close / allclose 语义
 
 | 方法 | 签名 | 返回类型 |
 |------|------|----------|
@@ -1514,23 +1512,9 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | allclose 语义 | 等价于 `is_close().all()`，所有元素近似相等时返回 `true` |
 | 空数组 | `allclose` 对空数组返回 `true`（vacuous truth） |
 
-**map/mapv/mapv_inplace 语义**：
+---
 
-| 方法 | 签名 | 行为 |
-|------|------|------|
-| `map` | `fn map<B, F>(&self, f: F) -> Tensor<B, D> where F: FnMut(&A) -> B` | 对每个元素的引用应用 `f`，返回新数组（可变换元素类型） |
-| `mapv` | `fn mapv<F>(&self, f: F) -> Tensor<A, D> where F: FnMut(A) -> A, A: Clone` | 对每个元素的值（clone）应用 `f`，返回同类型新数组。**设计理由**：签名限制为 `A→A` 是因为 `mapv` 的语义定位为"同类型值变换"（与 `mapv_inplace` / `mapv_into` 的 `A→A` 签名一致），且与 `mapv_inplace` 共享同一闭包类型 `FnMut(A) -> A`，用户可在原地和非原地之间切换而无需修改闭包。**需要类型转换时使用 `map`**（`Fn(&A) -> B`，无 Clone 约束）或 `mapv_into`（`Fn(A) -> B`，消耗所有权避免 clone） |
-| `mapv_into` | `fn mapv_into<B, F>(self, f: F) -> Tensor<B, D> where F: FnMut(A) -> B` | 消耗 Owned 数组，对每个元素按值（无需 clone）应用 `f`，可变换元素类型。适用于 Owned 数据的场景：按值传递比 `map`（接受 `&A`）避免了一次 clone，同时允许输出类型不同于输入类型（如 `f64 → i64`）。**仅对 `Tensor<A, D>`（Owned）实现**，View/ViewMut 无自有存储不可消耗。View/ViewMut 用户的替代方案：先 `.to_owned()` 转为 Owned 再调用 `mapv_into`，或直接使用 `map()`（代价为一次额外 clone）。**存储复用优化**：当 `size_of::<A>() == size_of::<B>()` 且布局连续时，实现可原地写入复用输入存储（避免额外分配），但规范不保证此优化——调用方不应依赖此行为 |
-| `mapv_inplace` | `fn mapv_inplace<F>(&mut self, f: F) where F: FnMut(A) -> A` | 对每个元素原地应用 `f`，无返回值，要求可变引用 |
-
-| 属性 | 行为 |
-|------|------|
-| 遍历顺序 | 按物理内存顺序遍历（非逻辑索引顺序），以最大化缓存命中 |
-| 输出布局 | `map`/`mapv`/`mapv_into` 返回 F-contiguous 布局的 Owned 数组（与项目默认 F-order 一致）。**设计决策**：统一输出为 F-contiguous 简化实现（单一输出路径），与项目 BLAS 兼容目标一致。C-contiguous 输入经 `mapv` 后布局翻转为 F-order，若下游需保持 C-order 可使用 `mapv_inplace`（原地修改不改变布局）或先 `to_c_contiguous()` 转换 |
-| 空数组 | 返回同形状空数组，`f` 不被调用 |
-| 并行支持 | 启用 `parallel` feature 且元素数 ≥ 并行阈值时，自动使用 rayon 并行执行（要求 `F: Send + Sync`） |
-
-### 19.4 连续性保证方法
+## 22. 连续性保证
 
 返回类型始终为 `Tensor<A, D>`，保证连续布局。即使输入已连续，也返回新分配的 Owned 数组（数据拷贝）。
 
@@ -1543,15 +1527,11 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | as_c_contiguous() | 若输入已 C-contiguous，返回 `Some(TensorView)`（零拷贝视图）；否则返回 `None` |
 | as_contiguous() | 若输入已连续（F 或 C），返回 `Some(TensorView)`（零拷贝视图，保持原布局）；否则返回 `None` |
 
-**设计理由**：`to_*` 系列统一返回 Owned 类型，始终拷贝，简化 API——调用方无需处理条件分支即可获得拥有所有权的连续数组。**注意**：即使输入已是目标布局（如 `to_f_contiguous()` 对 F-contiguous 输入），也会执行 `to_owned()` 拷贝。若需避免此拷贝，应使用对应的 `as_*` 系列方法（见下方）。`as_*` 系列提供零拷贝查询路径——调用方可先尝试 `as_f_contiguous()`，若返回 `Some` 则直接使用视图（避免拷贝），若返回 `None` 再回退到 `to_f_contiguous()`。两套方法互补，覆盖"无条件获取连续数组"和"条件性零拷贝优化"两种使用场景。
-
-**典型用法模式**：`if let Some(view) = tensor.as_f_contiguous() { /* 零拷贝路径 */ } else { let owned = tensor.to_f_contiguous(); /* 带拷贝路径 */ }`
-
 ---
 
-## 20. 转换操作
+## 23. 转换操作
 
-### 19.5 cast 语义
+### 23.1 cast 语义
 
 **方法签名**：
 
@@ -1585,7 +1565,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 实数 → 复数 | 虚部为 0 |
 | 复数 → 实数 | 不允许隐式转换，须显式取 re() |
 
-### 19.6 标准类型转换
+### 23.2 标准类型转换
 
 **From/Into 转换**
 
@@ -1625,7 +1605,9 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | `From<Vec<A>>` | `Tensor1<A>` | 见 §14.6 From/Into 转换表 |
 | `From<[A; N]>` | `Tensor1<A>` | 见 §14.6 From/Into 转换表 |
 
-## 21. 格式化输出
+---
+
+## 24. 格式化输出
 
 **Debug / Display 格式规范**：
 
@@ -1643,7 +1625,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 
 ---
 
-## 15. FFI 集成
+## 25. FFI 集成
 
 ### 15.1 指针 API
 
