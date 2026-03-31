@@ -843,7 +843,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | unique | 返回唯一值（排序后） | Element + Ord（浮点使用 total_cmp；Complex 使用实部/虚部字典序 total_cmp） | Tensor1<A> |
 | unique_counts | 返回唯一值及出现次数 | Element + Ord（同 unique） | (Tensor1<A>, Tensor1<usize>) |
 | unique_inverse | 返回唯一值及原数组索引 | Element + Ord（同 unique） | (Tensor1<A>, Tensor1<usize>) |
-| bincount | 统计非负整数出现次数 | 整数类型（i32/i64/u8/u16/u32/u64，值须 ≥ 0；无符号类型天然满足非负约束，推荐优先使用） | Tensor1<usize> |
+| bincount | 统计非负整数出现次数 | 整数类型（i32/i64，值须 ≥ 0；无符号类型天然满足非负约束，推荐优先使用） | Tensor1<usize> |
 | histogram | 统计落入各 bin 的元素数 | RealScalar | Tensor1<usize> |
 | histogram_bin_edges | 返回 bin 边界 | RealScalar | Tensor1<A> |
 
