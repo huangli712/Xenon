@@ -1303,19 +1303,19 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 
 ---
 
-## 14. 构造与转换
+## 19. 构造操作
 
-### 14.1 构造方法
+### 19.1 构造方法
 
 | 方法 | 说明 |
 |------|------|
 | zeros/ones/full | 支持指定 Order |
 | eye/identity/diag | 单位矩阵和对角矩阵（见下方语义表） |
-| from_vec/from_slice/from_fn | 从数据源构造 |
+| from_vec/from_slice | 从数据源构造 |
 | arange/linspace/logspace | 序列生成 |
 | unsafe empty_uninit | 返回 `Tensor<MaybeUninit<A>, D>`，未初始化内存（见 §14.1 empty_uninit 语义） |
 
-**eye/identity/diag 语义**
+### 19.2 eye/identity/diag 语义
 
 | 方法 | 签名 | 说明 |
 |------|------|------|
@@ -1330,15 +1330,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 维度固定 | 返回类型固定为 `Tensor<A, Ix2>`（二维），不支持高维 |
 | 内存布局 | 默认 F-contiguous（列优先，与 §6.1 项目默认布局一致） |
 
-**from_fn 闭包调用顺序**：闭包按 F-order（列优先，最右轴变化最快）遍历所有索引。闭包签名 `Fn(D::Pattern) -> A`，参数为多维索引。调用顺序保证确定性——相同输入始终产出相同数组。闭包内不应依赖调用时序做副作用。**输出布局**：from_fn 构造的数组始终为 F-contiguous（与 §6.1 项目默认布局一致）。
-
-> **Ix0 场景**：对 Ix0 维度，`D::Pattern = ()`，闭包签名退化为 `Fn(()) -> A`，被调用恰好 1 次。可读性较差，推荐使用 `Tensor0::from(value)` 或 `Tensor0::zero()` 替代 `from_fn`。
-
-> **性能提示**：对 `IxDyn` 维度，`D::Pattern` 为 `Vec<usize>`，每次闭包调用会创建并销毁一个堆分配的 Vec。对大数组，此开销可能显著。若性能敏感，建议使用静态维度（`D::Pattern` 为 `[usize; N]` 或元组，栈分配零开销）替代 IxDyn。静态维度中 `Ix1` 的 Pattern 为 `usize`（非数组），性能最优。
-
-> **实现约束**：对 `IxDyn` 的 `from_fn`，实现须使用单个复用缓冲区（非每次分配新 Vec）传递索引——即在迭代循环外分配一个 `Vec<usize>`，每次迭代原地更新其内容后将 `&[usize]` 传入闭包。闭包签名仍为 `Fn(&Vec<usize>) -> A`（非 `Fn(Vec<usize>) -> A`），避免所有权转移导致的分配。此优化将 IxDyn from_fn 的额外开销从 O(n × heap_alloc) 降为 O(n × memcpy(N×usize))。
-
-**empty_uninit 语义**
+### 19.3 empty_uninit 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -1349,21 +1341,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 对齐 | 使用默认 64 字节对齐分配 |
 | 不提供 safe `empty` | 避免与 `zeros` 语义重复或引入隐式零初始化歧义 |
 
-**Tensor\<MaybeUninit\<A\>, D\> 可用操作集**：
-
-| 操作 | 可用 | 说明 |
-|------|------|------|
-| shape() / dim() / len() / is_empty() | ✓ | 纯元数据查询，不访问元素 |
-| strides() / offset() | ✓ | 纯元数据查询 |
-| assume_init() | ✓（unsafe） | 将 MaybeUninit 转为已初始化 Tensor |
-| 切片 (slice / slice_mut) | ✓ | `slice` 返回 `TensorView<MaybeUninit<A>, D>`，`slice_mut` 返回 `TensorViewMut<MaybeUninit<A>, D>`；切片本身不读元素 |
-| reshape | ✓ | 仅改变元数据，不读元素 |
-| iter / into_iter | ✗ | 迭代需要读取元素，未初始化时为 UB |
-| map / mapv / zip | ✗ | 均需读取元素值 |
-| 运算符 (+ - * /) | ✗ | 需要读取元素值 |
-| drop | ✓ | MaybeUninit 不执行 drop（不会对未初始化元素调用 destructor） |
-
-**arange 语义**
+### 19.4 arange 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -1377,7 +1355,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 浮点精度 | 浮点 step 的累积误差可能导致最后一个元素的值略偏离预期 end；与 NumPy `np.arange` 行为一致 |
 | 返回类型 | 始终 `Tensor1<A>`，布局为 F-contiguous（1D 即 C-contiguous）。设计理由：序列生成本质上是一维操作（单轴等差/等比序列），固定返回 Tensor1 语义最清晰。若需高维，可对结果调用 `reshape()`（如 `arange(0.0, 12.0, 1.0).reshape((3, 4))`） |
 
-**linspace 语义**
+### 19.5 linspace 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -1388,7 +1366,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | num ≥ 2 | 步长为 `(end - start) / (num - 1)`，浮点累积误差不可避免 |
 | 仅限 RealScalar | linspace 仅对浮点类型实现（整数等间距无意义） |
 
-**logspace 语义**
+### 19.6 logspace 语义
 
 | 属性 | 行为 |
 |------|------|
@@ -1398,19 +1376,24 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | base = 10 | 常见用法，`logspace(10.0, 0.0, 3.0, 5)` → `[1.0, 10.0, 100.0, 1000.0, 10000.0]` |
 | 仅限 RealScalar | 与 linspace 一致，仅对浮点类型实现 |
 
-### 14.2 运算符重载
+---
 
-- 四则运算（Add, Sub, Mul, Div）
-- 比较运算（仅方法调用 `.lt()`/`.le()`/`.gt()`/`.ge()`，不提供运算符语法，见 §14.2 比较运算符设计）
-- 标量相等（PartialEq `==`/`!=` 返回 `bool`）
-- 复合赋值（AddAssign, SubAssign, MulAssign, DivAssign）
-- 一元运算（Neg, Not）
-- PartialEq
-- 所有二元运算符隐式支持广播
+## 20. 运算符重载
 
-**二元运算符所有权矩阵**（以 Add 为例，Sub/Mul/Div 同理）：
+### 20.1 重载类型
 
-> **设计决策**：存储复用由操作数的**所有权语义**（值 vs 引用）显式决定——传入 `Tensor`（值，消耗所有权）表示允许复用存储，传入 `&Tensor`（引用，不消耗所有权）表示不复用。用户通过选择值或引用调用，可完全控制是否复用存储，不存在运行时隐式判断。具体规则见下表。
+| 类别 | 运算符/方法 | 说明 |
+|------|-------------|------|
+| 四则运算 | Add, Sub, Mul, Div | 标准算术运算符重载 |
+| 比较运算 | `.lt()`/`.le()`/`.gt()`/`.ge()` | 仅方法调用，不提供运算符语法（见 §20.6 比较运算符设计） |
+| 标量相等 | PartialEq `==`/`!=` | 返回 `bool` |
+| 复合赋值 | AddAssign, SubAssign, MulAssign, DivAssign | 原地运算 |
+| 一元运算 | Neg, Not | 取反、逻辑非 |
+| 广播 | 所有二元运算符 | 隐式支持广播 |
+
+### 20.2 二元运算符所有权矩阵
+
+**设计决策**：存储复用由操作数的**所有权语义**（值 vs 引用）显式决定——传入 `Tensor`（值，消耗所有权）表示允许复用存储，传入 `&Tensor`（引用，不消耗所有权）表示不复用。用户通过选择值或引用调用，可完全控制是否复用存储，不存在运行时隐式判断。具体规则见下表(以 Add 为例，Sub/Mul/Div 同理)。
 
 | 左操作数 | 右操作数 | 存储复用 | 返回类型 |
 |----------|----------|----------|----------|
@@ -1425,14 +1408,17 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 
 **规则总结**：值语义的操作数（`Tensor<A, D>`，非引用）允许复用存储；引用语义的操作数（`&Tensor<A, D>`）不参与复用，始终分配新数组。当两个操作数均为值时，优先复用左操作数。
 
-> **编译期约束（单态化控制）**：运算符重载的实现须采用以下策略控制泛型实例化爆炸：
->
-> 1. **统一 Storage 泛型**：每个运算符的 `impl` 块基于 `TensorBase<S, D>` 统一泛型编写（S: Storage），覆盖 Owned/View/ViewMut/Arc 四种存储模式，而非为每种存储模式编写独立 impl。编译器仅对用户实际调用的 `(S, D, A)` 组合生成代码，未使用的组合不产生编译开销。
-> 2. **内部 monomorphic kernel**：运算符 impl 体仅做类型转换和参数准备，核心计算逻辑委托给按 `(运算符, 元素类型)` 分派的 monomorphic 函数（如 `add_f64_raw(ptr, ptr, ptr, len)`）。泛型 impl 被内联后，编译器可识别不同实例共享同一 kernel，消除重复代码生成。
->
-> 此策略确保所有权矩阵的所有组合在 API 层面均可使用，但编译时间和二进制体积与实际使用量成正比，不会因矩阵组合数而爆炸。
+**存储复用前提**：被复用的操作数须为连续内存且形状与输出一致（含广播展开后）。若不满足，回退到分配新数组。
 
-**视图参与运算**：
+### 20.3 单态化控制
+
+运算符重载的实现须采用以下策略控制泛型实例化爆炸：
+
+1. **统一 Storage 泛型**：每个运算符的 `impl` 块基于 `TensorBase<S, D>` 统一泛型编写（S: Storage），覆盖 Owned/View/ViewMut/Arc 四种存储模式，而非为每种存储模式编写独立 impl。编译器仅对用户实际调用的 `(S, D, A)` 组合生成代码，未使用的组合不产生编译开销。
+
+2. **内部 monomorphic kernel**：运算符 impl 体仅做类型转换和参数准备，核心计算逻辑委托给按 `(运算符, 元素类型)` 分派的 monomorphic 函数（如 `add_f64_raw(ptr, ptr, ptr, len)`）。泛型 impl 被内联后，编译器可识别不同实例共享同一 kernel，消除重复代码生成。
+
+### 20.4 视图参与运算
 
 | 操作数类型 | 行为 |
 |------------|------|
@@ -1442,7 +1428,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | `&ArcTensor` | 等同于 `&Tensor`，始终分配新数组（不触发 make_mut） |
 | `ArcTensor`（消耗） | 通过 `Arc::try_unwrap()` 尝试获取独占所有权：成功则复用存储（等效 Owned）；失败（引用计数 > 1）则分配新数组 |
 
-**复合赋值约束**：
+### 20.5 复合赋值约束
 
 | 规则 | 说明 |
 |------|------|
@@ -1450,18 +1436,16 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 右操作数广播 | 右操作数可被广播到左操作数形状 |
 | 左操作数广播 | 禁止——左操作数须拥有完整存储，不可为广播视图 |
 
-**存储复用前提**：被复用的操作数须为连续内存且形状与输出一致（含广播展开后）。若不满足，回退到分配新数组。
-
-**比较运算符**（与四则运算分离，输出类型不同）：
+### 20.6 比较运算符
 
 比较运算符不参与上述所有权/存储复用矩阵，因为输出为 `Tensor<bool, D>`（类型不同于输入），始终分配新数组。
 
-> **设计决策**：逐元素比较返回 `Tensor<bool, D>`，但 `std::cmp::PartialOrd` trait 的方法签名返回 `bool`，无法覆盖为返回 Tensor。因此**不通过 `PartialOrd` 实现运算符重载**，而是采用以下方案：
->
-> - `< <= > >=` 运算符**不提供**（`PartialOrd` 返回 `bool`，与逐元素 Tensor 语义冲突）
-> - 逐元素比较**仅通过方法调用**：`.lt()`、`.le()`、`.gt()`、`.ge()`（见 §11.1 比较表），返回 `Tensor<bool, D>`
-> - **命名说明**：`.lt()` 等方法名与 `PartialOrd` trait 的固有方法同名，但 `TensorBase` **不实现 `PartialOrd`**，因此不存在 trait 方法冲突。此处选择 `.lt()` 而非 `.elem_lt()` 等替代命名，是因为：(1) 与 NumPy 的 `np.less()` / ndarray 的 `.lt()` 命名惯例一致；(2) 返回类型 `Tensor<bool, D>` 已明确区分于 `PartialOrd::lt() -> bool`；(3) IDE 自动补全不会提示 `PartialOrd::lt()`（因未实现该 trait）
-> - `==` / `!=`：`PartialEq` trait 返回 `bool`（标量语义，判断两个 Tensor 是否完全相等）；逐元素布尔掩码使用 `.eq()` / `.ne()` 方法
+**设计决策**：逐元素比较返回 `Tensor<bool, D>`，但 `std::cmp::PartialOrd` trait 的方法签名返回 `bool`，无法覆盖为返回 Tensor。因此**不通过 `PartialOrd` 实现运算符重载**，而是采用以下方案：
+
+- `< <= > >=` 运算符**不提供**（`PartialOrd` 返回 `bool`，与逐元素 Tensor 语义冲突）
+- 逐元素比较**仅通过方法调用**：`.lt()`、`.le()`、`.gt()`、`.ge()`（见 §11.1 比较表），返回 `Tensor<bool, D>`
+- **命名说明**：`.lt()` 等方法名与 `PartialOrd` trait 的固有方法同名，但 `TensorBase` **不实现 `PartialOrd`**，因此不存在 trait 方法冲突。此处选择 `.lt()` 而非 `.elem_lt()` 等替代命名，是因为：(1) 与 NumPy 的 `np.less()` / ndarray 的 `.lt()` 命名惯例一致；(2) 返回类型 `Tensor<bool, D>` 已明确区分于 `PartialOrd::lt() -> bool`；(3) IDE 自动补全不会提示 `PartialOrd::lt()`（因未实现该 trait）
+- `==` / `!=`：`PartialEq` trait 返回 `bool`（标量语义，判断两个 Tensor 是否完全相等）；逐元素布尔掩码使用 `.eq()` / `.ne()` 方法
 
 | 方法 | 签名 | 返回类型 | 元素约束 |
 |------|------|----------|----------|
@@ -1470,9 +1454,13 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | `.gt(&self, other) -> Tensor<bool, D>` | 逐元素 `>` | `Tensor<bool, D>` | `A: PartialOrd` |
 | `.ge(&self, other) -> Tensor<bool, D>` | 逐元素 `>=` | `Tensor<bool, D>` | `A: PartialOrd` |
 
-> 以上方法支持广播（与 §11.4 广播规则一致），始终分配新数组。`PartialEq` 的 `==`/`!=` 运算符保持标量语义（`Tensor<A, D> == Tensor<A, D> -> bool`，判断两个数组形状和所有元素是否完全相等）。**NaN 行为**：由于 `PartialEq` 遵循 IEEE 754（`NaN != NaN`），两个形状相同且在相同位置均为 NaN 的 Tensor，`==` 比较结果为 `false`（因为逐元素比较时 NaN != NaN）。若需 NaN 敏感的相等判断，使用 `allclose(rtol=0.0, atol=0.0)`（但注意 `allclose` 同样将 NaN 比较为 false，见 §14.3）。
+以上方法支持广播（与 §11.4 广播规则一致），始终分配新数组。`PartialEq` 的 `==`/`!=` 运算符保持标量语义（`Tensor<A, D> == Tensor<A, D> -> bool`，判断两个数组形状和所有元素是否完全相等）。**NaN 行为**：由于 `PartialEq` 遵循 IEEE 754（`NaN != NaN`），两个形状相同且在相同位置均为 NaN 的 Tensor，`==` 比较结果为 `false`（因为逐元素比较时 NaN != NaN）。若需 NaN 敏感的相等判断，使用 `allclose(rtol=0.0, atol=0.0)`（但注意 `allclose` 同样将 NaN 比较为 false，见 §14.3）。
 
-### 14.3 实用操作
+---
+
+## 21. 实用操作
+
+### 21.1 基本实用操作
 
 | 操作 | 说明 |
 |------|------|
@@ -1542,7 +1530,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 空数组 | 返回同形状空数组，`f` 不被调用 |
 | 并行支持 | 启用 `parallel` feature 且元素数 ≥ 并行阈值时，自动使用 rayon 并行执行（要求 `F: Send + Sync`） |
 
-### 14.4 连续性保证方法
+### 19.4 连续性保证方法
 
 返回类型始终为 `Tensor<A, D>`，保证连续布局。即使输入已连续，也返回新分配的 Owned 数组（数据拷贝）。
 
@@ -1559,7 +1547,11 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 
 **典型用法模式**：`if let Some(view) = tensor.as_f_contiguous() { /* 零拷贝路径 */ } else { let owned = tensor.to_f_contiguous(); /* 带拷贝路径 */ }`
 
-### 14.5 cast 语义
+---
+
+## 20. 转换操作
+
+### 19.5 cast 语义
 
 **方法签名**：
 
@@ -1593,7 +1585,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | 实数 → 复数 | 虚部为 0 |
 | 复数 → 实数 | 不允许隐式转换，须显式取 re() |
 
-### 14.6 标准类型转换
+### 19.6 标准类型转换
 
 **From/Into 转换**
 
@@ -1633,7 +1625,7 @@ Storage trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 | `From<Vec<A>>` | `Tensor1<A>` | 见 §14.6 From/Into 转换表 |
 | `From<[A; N]>` | `Tensor1<A>` | 见 §14.6 From/Into 转换表 |
 
-### 14.7 格式化输出
+## 21. 格式化输出
 
 **Debug / Display 格式规范**：
 
