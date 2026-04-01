@@ -2918,9 +2918,9 @@ impl_binary_op!(Div, div);
 | 方法 | 签名 | 说明 |
 |------|------|------|
 | `cast` | `fn cast<B>(self) -> Tensor<B, D> where B: Element` | 消耗 Owned 数组，逐元素类型转换。**仅对 `Tensor<A, D>`（Owned）实现**。View 须先 `to_owned()` 再 cast |
-| `cast_same` | `fn cast_same(&self) -> Tensor<A, D>` | 返回同类型拷贝（等价于 `to_owned()`），用于显式语义表达 |
+| `cast_same` | `fn cast_same(&self) -> Tensor<A, D>` | 返回同类型拷贝（等价于 `to_owned()`）。设计意图：在泛型管线中提供与 `cast::<B>()` 对称的 API，避免调用方在 `B == A` 分支中使用不同的方法名。与 `.clone()` 的区别：`clone` 要求 `Clone`（`Tensor<A, D>` 始终满足），`cast_same` 强调"类型转换管线中的同类型路径"语义 |
 
-**泛型约束**：`B: Element` 约束保证目标类型在本库的类型体系内（Sealed trait，见 §3）。转换规则为逐元素按值转换，始终成功（溢出使用饱和语义，见下方精度表）。不支持跨类别隐式转换（如 `Complex → 实数` 须显式取 `re()`）。
+**泛型约束**：`B: Element` 约束保证目标类型在本库的类型体系内（Sealed trait，见 §4.2）。转换规则为逐元素按值转换，始终成功（溢出使用饱和语义，见下方精度表）。不支持跨类别隐式转换（如 `Complex → 实数` 须显式取 `re()`）。当 `A == B` 时，`cast` 等价于深拷贝（消耗 self，分配新的 `Tensor<A, D>`），与 `to_owned()` 行为一致——语义上合法但无实际类型转换效果，调用方应优先使用 `to_owned()` 或 `clone()` 以避免歧义。
 
 **存储模式支持**：
 
@@ -2931,6 +2931,9 @@ impl_binary_op!(Div, div);
 | `ArcTensor<A, D>` | 不支持，须先 `.to_owned().cast::<B>()` |
 
 **精度行为**：
+
+> **类别定义**：表中"整数"指 `i32`、`i64`、`usize`；"浮点"指 `f32`、`f64`；"数值"指整数与浮点的并集（即所有 `Numeric` 实现者）加 `usize`；"复数"指 `Complex<f32>`、`Complex<f64>`。所有精度行为与 Rust 1.45+ 的 `as` 转换语义一致（实现可直接使用 `as` 或等效内在函数）。
+
 | 转换方向 | 行为 |
 |----------|------|
 | 浮点 → 浮点（高精度→低精度） | 按 IEEE 754 round-to-nearest-even 截断 |
@@ -2938,12 +2941,16 @@ impl_binary_op!(Div, div);
 | 浮点 → 整数 | 向零截断（truncate），溢出为饱和（saturating cast） |
 | 整数 → 浮点 | 最近偶数舍入（round-to-nearest-even） |
 | 整数 → 整数（窄化） | 饱和截断（saturating cast） |
+| 整数 → 整数（同宽/宽化） | 精确转换，无损失 |
 | NaN → 整数 | 结果为 0 |
 | Inf → 整数 | 饱和到目标类型的 MAX/MIN |
 | bool → 数值 | true = 1, false = 0 |
 | 数值 → bool | 非零 = true, 零 = false |
 | 实数 → 复数 | 虚部为 0 |
 | 复数 → 实数 | 不允许隐式转换，须显式取 re() |
+| 复数 → 复数（高精度→低精度） | 实部虚部分别按 IEEE 754 round-to-nearest-even 截断 |
+| 复数 → 复数（低精度→高精度） | 实部虚部分别精确转换，无精度损失 |
+| usize ↔ i32/i64/f32/f64 | 按对应的"整数"规则处理（见上方）。`usize` 仅实现 `Element`（见 §4.2），但 `cast` 的约束为 `B: Element`，因此 `usize` 可作为源或目标类型 |
 
 ### 23.2 标准类型转换
 
@@ -2961,7 +2968,7 @@ impl_binary_op!(Div, div);
 
 | 转换 | 行为 | 失败处理 |
 |------|------|----------|
-| 静态 → 动态（IxN → IxDyn） | 总是成功 | 无（见 §2.1） |
+| 静态 → 动态（IxN → IxDyn） | 总是成功 | 无（见 §3.2 `into_dyn()`） |
 | 动态 → 静态（IxDyn → IxN） | ndim 须匹配 | 返回 `DimensionMismatch` |
 
 **存储模式转换**
@@ -2980,8 +2987,8 @@ impl_binary_op!(Div, div);
 |-------|--------|------|
 | `AsRef<TensorView<A, D>>` | `Tensor<A, D>`, `ArcTensor<A, D>` | `&self` → `TensorView` 零开销借用 |
 | `AsMut<TensorViewMut<A, D>>` | `Tensor<A, D>` | `&mut self` → `TensorViewMut` 零开销借用（ArcRepr 不实现，因写时复制语义与 `AsMut` 冲突） |
-| `Borrow<TensorView<A, D>>` | `Tensor<A, D>` | 语义与 `AsRef` 一致，支持 `HashMap` 等集合场景 |
-| `Default` | `Tensor<A, D>` | 仅当 `A: Default + Element` 且 `D: Default`（即静态维度 Ix0，shape 为空）时实现，返回包含 `A::default()` 的 0D 标量张量。其他维度类型不实现 `Default`（无法确定 shape）。实际用途有限——创建数组推荐使用 `zeros(shape)` 或 `full(shape, value)` |
+| `Borrow<TensorView<A, D>>` | `Tensor<A, D>` | 语义与 `AsRef` 一致，支持 `HashMap` 等集合场景。`ArcTensor` 不实现 `Borrow`（与 `AsRef` 不对称）——`ArcTensor` 通常不作为 `HashMap` key 使用，且 `Borrow` 要求借出引用与 `Hash`/`Eq` 行为一致，`ArcTensor` 的 `PartialEq` 比较 Arc 指针而非张量内容，会导致语义混淆 |
+| `Default` | `Tensor<A, D>` | **仅为 `Tensor<A, Ix0>` 实现**（即 0D 标量张量）。实现条件形式化为 `A: Default + Element`，维度类型固定为 `Ix0`（而非泛化到 `D: Default`——虽然 `Ix1`~`Ix6` 和 `IxDyn` 在 §3 中均实现 `Default`，但对非零维度类型返回 `Default` 张量缺乏明确的 shape 语义，因此不予实现）。返回包含 `A::default()` 的 0D 标量张量。实际用途有限——创建数组推荐使用 `zeros(shape)` 或 `full(shape, value)` |
 | `From<Vec<A>>` | `Tensor1<A>` | 见 §23.2 标准类型转换 |
 | `From<[A; N]>` | `Tensor1<A>` | 见 §23.2 标准类型转换 |
 
@@ -3109,6 +3116,7 @@ Trans 枚举用于 FFI 与 BLAS 交互时描述矩阵的转置状态。`blas_tra
 | | EmptyArray | 对空数组执行 min/max/argmin/argmax 或 mean/var/std | Result |
 | | AllocationError | 内存分配失败（超大数组、系统内存不足） | panic |
 | | IndexOutOfBounds | 索引越界（含多维索引、take/put 索引数组） | 多维索引：panic（checked）/ UB（unchecked）；take/put 索引数组：Result |
+| | InconsistentLengths | `TryFrom<Vec<Vec<A>>>` 内层 Vec 长度不一致 | Result |
 
 ### 27.2 错误类型诊断字段
 
@@ -3124,6 +3132,7 @@ Trans 枚举用于 FFI 与 BLAS 交互时描述矩阵的转置状态。`blas_tra
 | DimensionMismatch | `expected: usize`, `actual: usize` | 期望与实际维度数 |
 | EmptyArray | `operation: &'static str` | 触发操作名（如 "min"/"argmax"/"mean"/"var"） |
 | IndexOutOfBounds | `index: usize`, `axis_len: usize`, `axis: usize` | 越界索引值、轴长度、轴编号（仅 take/put Result 场景） |
+| InconsistentLengths | `expected: usize`, `found: Vec<usize>` | 期望的行长度与各实际行长度 |
 
 panic 类错误（`AllocationError`）通过 panic message 传递诊断信息，不使用结构化字段。`IndexOutOfBounds` 在 panic 场景（多维索引越界）通过 panic message 传递诊断信息，在 Result 场景（take/put 索引数组越界）使用结构化字段。
 
@@ -3145,6 +3154,7 @@ panic 类错误（`AllocationError`）通过 panic message 传递诊断信息，
 | 内存分配（构造器） | `AllocationError`（panic） | 不可恢复 |
 | 索引访问 | `IndexOutOfBounds`（panic） / unchecked UB | 编程错误（多维索引硬编码或循环变量） |
 | take / put | `IndexOutOfBounds`（Result） | 索引来自运行时动态数据（索引数组），属数据驱动错误 |
+| `TryFrom<Vec<Vec<A>>>` | `InconsistentLengths`（Result） | `From` 实现使用 `expect(...)` 转为 panic；`TryFrom` 提供可恢复错误路径 |
 
 ### 27.4 处理策略
 
