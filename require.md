@@ -2589,7 +2589,60 @@ impl<A: Element, D: Dimension> UninitTensor<A, D> {
 
 **规则总结**：值语义的操作数（`Tensor<A, D>`，非引用）允许复用存储；引用语义的操作数（`&Tensor<A, D>`）不参与复用，始终分配新数组。当两个操作数均为值时，优先复用左操作数。
 
-**存储复用前提**：被复用的操作数须为连续内存且形状与输出一致（含广播展开后）。若不满足，回退到分配新数组。
+**存储复用前提**：被复用的操作数须为连续内存且形状与输出一致（含广播展开后）。若不满足，回退到分配新数组。此回退为静默行为——用户无法从返回类型区分是否发生了存储复用。设计理由：广播场景下操作数形状可能与输出不一致（如 `(3,4) + (4,)` 中右操作数形状不等于输出形状 `(3,4)`），强制运行时检查是不可避免的。
+
+**跨维度运算**：广播允许两个操作数的维度类型不同（`Tensor<A, D>` 与 `Tensor<A, E>`，`D ≠ E`）。此时 impl 签名为 `impl<A, S1, S2, D, E> Add<TensorBase<S2, E>> for TensorBase<S1, D>`，输出维度由广播规则确定（见 §16）。所有权矩阵中 `Tensor<A, D>` 的规则同样适用于 `Tensor<A, E>`——存储复用取决于值/引用语义及形状是否匹配输出，与维度类型参数无关。
+
+**标量运算符实现约束（孤儿规则）**：
+
+Rust 的孤儿规则（Orphan Rule）禁止为外部类型实现外部 trait。具体影响：
+
+| 方向 | impl 形式 | 合法性 | 原因 |
+|------|-----------|--------|------|
+| RHS 标量 | `impl<S, A, D> Add<A> for TensorBase<S, D> where A: Numeric` | ✅ 合法 | `TensorBase` 是本地类型，Self 位置被覆盖 |
+| LHS 标量（泛型） | `impl<S, A, D> Add<TensorBase<S, D>> for A where A: Numeric` | ❌ E0210 | `A` 是未覆盖的类型参数，不满足"至少一个覆盖类型参数"要求 |
+| LHS 标量（具体类型） | `impl<S, A, D> Add<TensorBase<S, D>> for f64` | ✅ 合法 | `f64` 虽为外部类型，但 `TensorBase<S, D>` 作为具体类型出现在 trait 参数中，满足覆盖要求 |
+
+因此 LHS 标量运算须通过宏为每种具体标量类型生成独立的 `impl` 块：
+
+```
+// 宏模式（以 Add 为例，Sub/Mul/Div 同理）
+macro_rules! impl_scalar_add_lhs {
+    ($scalar:ty) => {
+        impl<S, A, D> Add<TensorBase<S, D>> for $scalar
+        where
+            S: Storage<Elem = A>,
+            D: Dimension,
+            A: Numeric,
+        {
+            type Output = Tensor<A, D>;
+            fn add(self, rhs: TensorBase<S, D>) -> Self::Output { ... }
+        }
+
+        impl<S, A, D> Add<&TensorBase<S, D>> for $scalar
+        where
+            S: Storage<Elem = A>,
+            D: Dimension,
+            A: Numeric,
+        {
+            type Output = Tensor<A, D>;
+            fn add(self, rhs: &TensorBase<S, D>) -> Self::Output { ... }
+        }
+    };
+}
+
+// 为每种支持运算的标量类型展开（须实现 Numeric，见 §4.4）
+impl_scalar_add_lhs!(f32);
+impl_scalar_add_lhs!(f64);
+impl_scalar_add_lhs!(i32);
+impl_scalar_add_lhs!(i64);
+impl_scalar_add_lhs!(Complex<f32>);
+impl_scalar_add_lhs!(Complex<f64>);
+```
+
+**LHS 标量支持的类型清单**（须实现 `Numeric`，见 §4.4；`bool` 和 `usize` 不实现 `Numeric`，不支持运算符重载）：`f32, f64, i32, i64, Complex<f32>, Complex<f64>`。
+
+**不支持泛型 LHS 标量**：`impl<T: Numeric> Add<Tensor<A,D>> for T` 在 Rust 类型系统下不可能编译通过。用户无法为自定义类型添加 `Tensor + CustomType` 的运算符重载（与 §4.2 Sealed Trait 策略一致，类型体系封闭）。
 
 ### 20.3 单态化控制
 
@@ -2599,13 +2652,62 @@ impl<A: Element, D: Dimension> UninitTensor<A, D> {
 
 2. **内部 monomorphic kernel**：运算符 impl 体仅做类型转换和参数准备，核心计算逻辑委托给按 `(运算符, 元素类型)` 分派的 monomorphic 函数（如 `add_f64_raw(ptr, ptr, ptr, len)`）。泛型 impl 被内联后，编译器可识别不同实例共享同一 kernel，消除重复代码生成。
 
+**二元运算符 impl 展开模式**（以 Add 为例）：
+
+所有权矩阵中的 4 种 Tensor 组合通过宏 `impl_binary_op!` 生成。宏为 `(owned, owned)`、`(owned, &ref)`、`(&ref, owned)`、`(&ref, &ref)` 各生成一个 `impl` 块，RHS 标量同理。核心计算统一调用同一个 monomorphic kernel：
+
+```
+// 4 种所有权组合的 impl 展开（简化示意）
+macro_rules! impl_binary_op {
+    ($op:ident, $method:ident) => {
+        // (&Tensor, &Tensor) — 无复用，分配新数组
+        impl<'a, 'b, S1, S2, A, D> $op<&'b TensorBase<S2, D>> for &'a TensorBase<S1, D>
+        where
+            S1: Storage<Elem = A>,
+            S2: Storage<Elem = A>,
+            D: Dimension,
+            A: Numeric,
+        {
+            type Output = Tensor<A, D>;
+            fn $method(self, rhs: &'b TensorBase<S2, D>) -> Self::Output {
+                // 分配新数组，调用 monomorphic kernel
+            }
+        }
+
+        // (Tensor, &Tensor) — 复用左操作数存储
+        impl<S1, S2, A, D> $op<&'b TensorBase<S2, D>> for TensorBase<S1, D>
+        where
+            S1: StorageMut<Elem = A>,  // StorageMut: 可写入（Owned/ViewMut）
+            S2: Storage<Elem = A>,
+            D: Dimension,
+            A: Numeric,
+        {
+            type Output = Tensor<A, D>;
+            fn $method(self, rhs: &TensorBase<S2, D>) -> Self::Output {
+                // 若 self 连续且形状匹配 → 原地写入
+                // 否则 → 分配新数组（静默回退）
+            }
+        }
+
+        // (Tensor, Tensor) — 复用左操作数存储
+        // (&Tensor, Tensor) — 复用右操作数存储
+        // ... 同理展开
+    };
+}
+
+impl_binary_op!(Add, add);
+impl_binary_op!(Sub, sub);
+impl_binary_op!(Mul, mul);
+impl_binary_op!(Div, div);
+```
+
 ### 20.4 视图参与运算
 
 | 操作数类型 | 行为 |
 |------------|------|
 | `&TensorView` / `&TensorViewMut` | 等同于 `&Tensor`，始终分配新数组 |
 | `TensorViewMut`（消耗） | 复用其底层存储，结果为 Owned（前提：存储连续且形状匹配，否则分配新数组） |
-| `TensorView`（消耗） | 视图无自有存储，消耗后仍需分配新数组 |
+| `TensorView`（消耗） | 视图无自有存储，消耗后仍需分配新数组。**API 设计建议**：考虑不为 `TensorView`（值）实现二元运算符 trait（仅支持 `&TensorView`），避免用户误以为消耗视图能获得存储复用。若提供值传递 impl，文档须明确标注"消耗视图不获得存储复用" |
 | `&ArcTensor` | 等同于 `&Tensor`，始终分配新数组（不触发 make_mut） |
 | `ArcTensor`（消耗） | 通过 `Arc::try_unwrap()` 尝试获取独占所有权：成功则复用存储（等效 Owned）；失败（引用计数 > 1）则分配新数组 |
 
@@ -2616,6 +2718,10 @@ impl<A: Element, D: Dimension> UninitTensor<A, D> {
 | 左操作数 | 须为可写存储（Owned 或 ViewMut），View 和 ArcRepr 不支持复合赋值 |
 | 右操作数广播 | 右操作数可被广播到左操作数形状 |
 | 左操作数广播 | 禁止——左操作数须拥有完整存储，不可为广播视图 |
+
+**ArcRepr 复合赋值说明**：`ArcTensor` 不实现 `AddAssign` 等复合赋值 trait（编译期拒绝）。虽然 §20.4 中 `ArcTensor`（消耗）可通过 `Arc::try_unwrap()` 获取独占所有权参与二元运算，但复合赋值（如 `a += b`）要求左操作数为 `&mut Self`，而 `ArcTensor` 无法提供独占 `&mut` 保证（引用计数可能 > 1）。因此复合赋值的限制比二元运算更严格——ArcRepr 在编译期即被排除，不存在运行时回退。
+
+**View 复合赋值说明**：`TensorView`（不可变视图）不实现复合赋值 trait（编译期拒绝）。这与 §20.4 中 `TensorView`（消耗）无法复用存储的规则一致——不可变视图不提供写权限。
 
 ### 20.6 比较运算符
 
@@ -2635,7 +2741,7 @@ impl<A: Element, D: Dimension> UninitTensor<A, D> {
 | `.gt(&self, other) -> Tensor<bool, D>` | 逐元素 `>` | `Tensor<bool, D>` | `A: PartialOrd` |
 | `.ge(&self, other) -> Tensor<bool, D>` | 逐元素 `>=` | `Tensor<bool, D>` | `A: PartialOrd` |
 
-以上方法支持广播（与 §16.1 广播规则一致），始终分配新数组。`PartialEq` 的 `==`/`!=` 运算符保持标量语义（`Tensor<A, D> == Tensor<A, D> -> bool`，判断两个数组形状和所有元素是否完全相等）。**NaN 行为**：由于 `PartialEq` 遵循 IEEE 754（`NaN != NaN`），两个形状相同且在相同位置均为 NaN 的 Tensor，`==` 比较结果为 `false`（因为逐元素比较时 NaN != NaN）。若需 NaN 敏感的相等判断，使用 `allclose(rtol=0.0, atol=0.0)`（但注意 `allclose` 同样将 NaN 比较为 false，见 §21.5）。
+以上方法支持广播（与 §16.1 广播规则一致），始终分配新数组。`PartialEq` 的 `==`/`!=` 运算符保持标量语义（`Tensor<A, D> == Tensor<A, D> -> bool`，判断两个数组形状和所有元素是否完全相等）。**NaN 行为**：由于 `PartialEq` 遵循 IEEE 754（`NaN != NaN`），两个形状相同且在相同位置均为 NaN 的 Tensor，`==` 比较结果为 `false`（因为逐元素比较时 NaN != NaN）。此 NaN 语义与 §18.8 布尔归约中"NaN 视为非零"的处理一致——NaN 不等于任何值（包括自身）。若需 NaN 敏感的相等判断，使用 `allclose(rtol=0.0, atol=0.0)`（但注意 `allclose` 同样将 NaN 比较为 false，见 §21.5）。
 
 ---
 
