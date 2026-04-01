@@ -2835,16 +2835,77 @@ impl_binary_op!(Div, div);
 
 ## 22. 连续性保证
 
-返回类型始终为 `Tensor<A, D>`，保证连续布局。即使输入已连续，也返回新分配的 Owned 数组（数据拷贝）。
+连续性保证方法提供三组操作：
+- `to_*` 系列：接受 `&self`，始终返回新分配的 Owned Tensor（`Tensor<A, D>`），保证严格连续布局
+- `as_*` 系列：接受 `&self`，零拷贝视图路径，仅当已满足连续性时返回 `Some(TensorView)`，否则返回 `None`
+- `into_*` 系列：接受 `self`（仅 Owned），已连续时零拷贝返回 `self`，否则拷贝后返回新 Tensor
 
-| 方法 | 行为 |
-|------|------|
-| to_f_contiguous() | 若输入已 F-contiguous，返回 `to_owned()`（拷贝数据到新分配）；否则重新排列为 F-contiguous 布局并返回新 Tensor |
-| to_c_contiguous() | 若输入已 C-contiguous，返回 `to_owned()`（拷贝数据到新分配）；否则重新排列为 C-contiguous 布局并返回新 Tensor |
-| to_contiguous() | 若输入已连续（F 或 C），返回 `to_owned()`（拷贝数据到新分配）；否则输出 F-contiguous 布局的新 Tensor |
-| as_f_contiguous() | 若输入已 F-contiguous，返回 `Some(TensorView)`（零拷贝视图）；否则返回 `None` |
-| as_c_contiguous() | 若输入已 C-contiguous，返回 `Some(TensorView)`（零拷贝视图）；否则返回 `None` |
-| as_contiguous() | 若输入已连续（F 或 C），返回 `Some(TensorView)`（零拷贝视图，保持原布局）；否则返回 `None` |
+### 22.1 判定标准
+
+连续性判定使用**严格连续性**（`is_f_contiguous()` / `is_c_contiguous()`，见 §7.4），不使用宽松连续性（`is_f_padded_contiguous()` 等）。理由：输出保证严格连续步长（无填充），严格连续是零拷贝 reshape 判定的必要条件（见 §7.6.6），宽松连续不满足此条件。
+
+**填充数组行为**：填充数组（`PADDED = true`，`is_f_padded_contiguous() = true` 但 `is_f_contiguous() = false`）被视为非严格连续。`to_f_contiguous()` 会将其重排为严格 F-contiguous（移除填充），`as_f_contiguous()` 返回 `None`。需要保留填充优化的场景，调用方应直接检查 `is_f_padded_contiguous()` 并使用 `to_owned()` 而非连续性保证方法。
+
+**广播视图行为**：广播视图（`has_zero_stride() = true`）的零步长轴不满足严格连续性判定（`is_f_contiguous()` 要求步长严格等于 shape 乘积，stride=0 不满足），因此 `as_*_contiguous()` 返回 `None`，`to_*_contiguous()` 总是执行拷贝。这与 numpy 的 `ascontiguousarray` 行为一致。
+
+### 22.2 方法签名与行为
+
+**`to_*` 系列（引用输入，始终返回新 Owned）**
+
+| 方法 | 签名 | 行为 |
+|------|------|------|
+| `to_f_contiguous()` | `fn to_f_contiguous(&self) -> Tensor<A, D> where A: Clone, D: Clone` | 始终返回新的 Owned Tensor。若输入已严格 F-contiguous，等价于 `to_owned()`（拷贝数据到新分配）；否则重新排列为严格 F-contiguous 布局并返回新 Tensor |
+| `to_c_contiguous()` | `fn to_c_contiguous(&self) -> Tensor<A, D> where A: Clone, D: Clone` | 始终返回新的 Owned Tensor。若输入已严格 C-contiguous，等价于 `to_owned()`（拷贝数据到新分配）；否则重新排列为严格 C-contiguous 布局并返回新 Tensor |
+| `to_contiguous()` | `fn to_contiguous(&self) -> Tensor<A, D> where A: Clone, D: Clone` | 始终返回新的 Owned Tensor。若输入已严格 F-contiguous，输出 F-contiguous；若输入已严格 C-contiguous（但非 F-contiguous），输出 C-contiguous；否则输出 F-contiguous。**注意**：输出布局方向取决于输入的连续性方向——调用方若需确保固定布局方向，应使用 `to_f_contiguous()` 或 `to_c_contiguous()` 显式指定 |
+
+**`as_*` 系列（零拷贝视图路径）**
+
+| 方法 | 签名 | 行为 |
+|------|------|------|
+| `as_f_contiguous()` | `fn as_f_contiguous(&self) -> Option<TensorView<'_, A, D>>` | 若输入已严格 F-contiguous，返回 `Some(TensorView)`（零拷贝视图，生命周期绑定到 `&self`）；否则返回 `None` |
+| `as_c_contiguous()` | `fn as_c_contiguous(&self) -> Option<TensorView<'_, A, D>>` | 若输入已严格 C-contiguous，返回 `Some(TensorView)`（零拷贝视图，生命周期绑定到 `&self`）；否则返回 `None` |
+| `as_contiguous()` | `fn as_contiguous(&self) -> Option<TensorView<'_, A, D>>` | 若输入已严格连续（F 或 C），返回 `Some(TensorView)`（零拷贝视图，保持原布局方向）；否则返回 `None` |
+
+**`into_*` 系列（消耗 self，按需拷贝）**
+
+仅对 `Tensor<A, D>`（Owned 存储）实现。对 View / ViewMut / ArcRepr 等非 Owned 存储，须先转为 Owned（`to_owned()`）或使用 `to_*` 系列。
+
+| 方法 | 签名 | 行为 |
+|------|------|------|
+| `into_f_contiguous()` | `fn into_f_contiguous(self) -> Tensor<A, D> where A: Clone, D: Clone` | 消耗 `self`。若已严格 F-contiguous，零拷贝返回 `self`（无分配）；否则拷贝为严格 F-contiguous 布局的新 Tensor |
+| `into_c_contiguous()` | `fn into_c_contiguous(self) -> Tensor<A, D> where A: Clone, D: Clone` | 消耗 `self`。若已严格 C-contiguous，零拷贝返回 `self`（无分配）；否则拷贝为严格 C-contiguous 布局的新 Tensor |
+| `into_contiguous()` | `fn into_contiguous(self) -> Tensor<A, D> where A: Clone, D: Clone` | 消耗 `self`。若已严格 F-contiguous，零拷贝返回 `self`；若已严格 C-contiguous（但非 F-contiguous），零拷贝返回 `self`；否则拷贝为 F-contiguous 布局的新 Tensor。**注意**：输出布局方向取决于输入的连续性方向——与 `to_contiguous()` 行为一致 |
+
+### 22.3 输出布局属性
+
+所有 `to_*` 和 `into_*` 方法输出的 Tensor 满足：
+
+| 属性 | 值 | 说明 |
+|------|-----|------|
+| 步长 | 严格连续步长（无填充） | F-contiguous：`strides = [1, s₀, s₀×s₁, ...]`；C-contiguous：`strides = [..., s₂×s₃, s₃, 1]` |
+| PADDED 标志 | `false` | 输出不含填充 |
+| F/C_CONTIGUOUS 标志 | `F_CONTIGUOUS = true`（F 系列）或 `C_CONTIGUOUS = true`（C 系列） | 严格连续 |
+| 对齐 | 新分配路径：64 字节默认对齐；零拷贝路径（`into_*` 已连续时）：继承原对齐 | 见 §7.5 |
+
+### 22.4 适用存储模式
+
+| 方法系列 | 适用存储 | 说明 |
+|----------|---------|------|
+| `to_*` | 所有 `S: Storage` | View / ViewMut / ArcRepr 均可调用，返回新 Owned Tensor |
+| `as_*` | 所有 `S: Storage` | 返回的 `TensorView<'_, A, D>` 生命周期绑定到 `&self` 的借用。ArcTensor 的视图受限于 `&ArcTensor` 借用（见 §6.3），view 活跃期间 `make_mut()` 被编译器互斥（借用检查器保证） |
+| `into_*` | 仅 `Tensor<A, D>`（Owned） | 消耗 self。其他存储模式须先 `to_owned()` 转为 Owned 再调用，或直接使用 `to_*` 系列 |
+
+### 22.5 边界情况
+
+| 输入 | `to_f_contiguous()` | `as_f_contiguous()` | `into_f_contiguous()` |
+|------|---------------------|---------------------|----------------------|
+| 0D 标量（Ix0） | `to_owned()`（1 元素，无步长） | `Some(view)`（0D 始终连续） | 零拷贝返回 `self` |
+| 空张量（shape 含 0） | `to_owned()`（0 元素，F-contiguous 步长） | `Some(view)`（空数组同时 F/C-contiguous，见 §3.6） | 零拷贝返回 `self` |
+| 1D 数组 | `to_owned()`（步长 `[1]`，F/C 等价） | `Some(view)`（1D 始终连续） | 零拷贝返回 `self` |
+| 填充数组（PADDED=true） | 拷贝并重排为严格 F-contiguous（移除填充） | `None` | 拷贝并重排为严格 F-contiguous |
+| 广播视图（has_zero_stride） | 拷贝为 F-contiguous（移除零步长） | `None` | N/A（非 Owned，须先 `to_owned()`） |
+| 非连续视图（如转置） | 拷贝并重排为 F-contiguous | `None` | N/A（非 Owned，须先 `to_owned()`） |
+| 非连续 Owned（如转置后 `to_owned()`） | 拷贝并重排为 F-contiguous | `None` | 拷贝并重排为严格 F-contiguous |
 
 ---
 
