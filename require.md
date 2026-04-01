@@ -1426,8 +1426,10 @@ if let Some(it) = arr.iter_contiguous() {
 
 | 类别 | 操作 |
 |------|------|
-| 基本运算 | matvec、dot/inner、outer |
-| 批量运算 | batch_matvec、batch_dot、batch_add、batch_scale |
+| 基本运算 | matvec、dot（`inner` 为 `dot` 的别名，两者行为完全一致）、outer |
+| 批量运算 | batch_matvec、batch_dot |
+
+> **关于 `batch_add` 和 `batch_scale`**：这两个操作在功能上与逐元素运算完全等价（`batch_add` 等价于支持广播的逐元素加法 `&a + &b`，`batch_scale` 等价于标量乘法 `&a * scalar`，见 §20 运算符重载），不涉及维度归约或维度变化，因此不纳入矩阵运算章节。调用方应直接使用逐元素运算符。
 
 ### 13.2 矩阵运算语义
 
@@ -1436,16 +1438,25 @@ if let Some(it) = arr.iter_contiguous() {
 | 属性 | 行为 |
 |------|------|
 | 签名 | `fn matvec(&self, other: &Tensor<A, Ix1>) -> Tensor<A, Ix1> where A: Numeric` |
-| 操作 | 矩阵-向量乘法：self(M, N) × other(N) → 结果(M) |
-| 约束 | self 须为 2D，other 须为 1D 且长度等于 self 的第 1 轴（N），否则返回 `ShapeMismatch` |
+| 操作 | 矩阵-向量乘法：self(M, N) × other(N) → 结果(M)，其中 result[i] = Σ(self[i, k] * other[k]) |
+| 维度约束 | self 须为 2D 且 other 须为 1D，否则返回 `InvalidShape` |
+| 形状约束 | other 长度须等于 self 的第 1 轴（N），否则返回 `ShapeMismatch` |
+| 非连续输入 | 支持非连续输入，使用步长跳跃遍历（标量路径）。不自动拷贝——调用方若需最佳性能，应先确保输入连续（`is_padded_contiguous()`，见 §7.3）以触发 SIMD 路径 |
+| 填充输入 | 支持填充数组（见 §7.5），使用 stride 信息直接计算，填充区域的元素不参与运算 |
+| 输出布局 | F-contiguous（默认布局，见 §7.1） |
 
-**dot/inner 语义**：
+**dot 语义**（`inner` 为 `dot` 的别名，两者行为完全一致）：
 
 | 属性 | 行为 |
 |------|------|
 | 签名 | `fn dot(&self, other: &Tensor<A, Ix1>) -> A where A: Numeric` |
-| 操作 | 向量内积：self(N) · other(N) → 标量 |
-| 约束 | self 和 other 均须为 1D 且长度相等，否则返回 `ShapeMismatch` |
+| 操作（实数） | 向量内积：self(N) · other(N) → 标量，`result = Σ(self[k] * other[k])` |
+| 操作（复数） | Hermitian 内积：`result = Σ(self[k].conj() * other[k])`，与 BLAS `cdotc`/`zdotc` 及 NumPy `np.vdot` 一致。**注意**：非共轭内积 `Σ(self[k] * other[k])` 不满足正定性，不是数学意义上的"内积"，Xenon 不提供此操作的独立方法（调用方可通过 `(a.conj() * b).sum()` 或 `zip(a, b).map(|(a, b)| a * b).sum()` 手动计算） |
+| 维度约束 | self 和 other 均须为 1D，否则返回 `InvalidShape` |
+| 形状约束 | self 和 other 长度须相等，否则返回 `ShapeMismatch` |
+| 非连续输入 | 支持非连续输入，使用步长跳跃遍历（标量路径）。不自动拷贝——调用方若需最佳性能，应先确保输入连续以触发 SIMD 路径 |
+| 填充输入 | 支持填充数组，使用 stride 信息直接计算，填充区域的元素不参与运算 |
+| 浮点精度 | 并行或大数组场景下使用补偿求和算法（Neumaier，见 §9.2.2），保证精度上界可控 |
 
 **outer 语义**：
 
@@ -1454,6 +1465,7 @@ if let Some(it) = arr.iter_contiguous() {
 | 签名 | `fn outer(&self, other: &Tensor<A, Ix1>) -> Tensor<A, Ix2> where A: Numeric` |
 | 操作 | 向量外积：self(M) ⊗ other(N) → 结果(M, N)，其中 result[i, j] = self[i] * other[j] |
 | 约束 | self 和 other 均须为 1D，否则返回 `InvalidShape` |
+| 非连续输入 | 支持非连续输入，使用步长跳跃遍历读取 |
 | 输出布局 | F-contiguous（默认布局，见 §7.1） |
 
 ### 13.3 批量运算维度约定
@@ -1462,23 +1474,27 @@ if let Some(it) = arr.iter_contiguous() {
 |------|------|
 | batch 轴位置 | 最前面的轴为 batch 轴（轴 0, 1, ..., ndim-3 为 batch，最后 2 维为矩阵/向量） |
 | batch 形状约束 | 所有操作数的 batch 维度须形状一致或可广播 |
-| batch 广播 | batch 维度遵循 NumPy 广播规则，结果 batch 形状为广播后形状 |
-| batch_matvec | 输入：(..., M, N) × (..., N) → 输出：(..., M) |
-| batch_dot | 输入：(..., N) × (..., N) → 输出：(...) |
-| batch_add/scale | 输入形状须一致或可广播，逐元素操作 |
+| batch 广播 | batch 维度遵循 NumPy 广播规则（见 §16），结果 batch 形状为广播后形状 |
+| batch_matvec 维度关系 | self ndim ≥ 2；other ndim = self ndim - 1（即 other 比 self 少一维：other 的所有轴对应 self 除最后二维外的 batch 部分加上最后的 N 向量维度）。输入：self(..., M, N) × other(..., N) → 输出：(..., M)。示例：self shape `(2, 3, 4, 5)` → other shape 须为 `(2, 3, 5)`（batch 相同）或可广播形状（如 `(1, 3, 5)`）；不支持 other 为 `(5,)`（需先 unsqueeze 补齐 batch 维度再调用） |
+| batch_matvec 运算 | 对每个 batch 索引 b，执行 `self[b, ..., :, :] × other[b, ..., :] → output[b, ..., :]`。batch 维度的广播在运行时按 §16 NumPy 广播规则处理 |
+| batch_dot | 输入：self(..., N) × other(..., N) → 输出：(...)。两个输入 ndim 相同，batch 维度须一致或可广播 |
 
 ### 13.4 批量运算签名与错误处理
 
 | 运算 | 签名 | 输入约束 | 错误 |
 |------|------|----------|------|
-| batch_matvec | `fn batch_matvec(&self, other: &Tensor<A, D>) -> Tensor<A, D> where A: Numeric` | self(..., M, N) × other(..., N) → (..., M)；batch 维度须一致或可广播 | batch 维度不可广播 → `BroadcastError`；最后 2 维形状不匹配 → `ShapeMismatch` |
-| batch_dot | `fn batch_dot(&self, other: &Tensor<A, D>) -> Tensor<A, D::Smaller> where A: Numeric, D: Dimension + RemoveAxis` | self(..., N) × other(..., N) → (...)；batch 维度须一致或可广播 | batch 维度不可广播 → `BroadcastError`；向量长度不匹配 → `ShapeMismatch` |
-| batch_add | `fn batch_add(&self, other: &Tensor<A, D>) -> Tensor<A, D> where A: Numeric` | 输入形状须一致或可广播，逐元素加法 | 不可广播 → `BroadcastError` |
-| batch_scale | `fn batch_scale(&self, scalar: A) -> Tensor<A, D> where A: Numeric` | 任意形状，逐元素乘以标量 | 无错误 |
+| batch_matvec | `fn batch_matvec(&self, other: &Tensor<A, D::Smaller>) -> Tensor<A, D::Smaller> where A: Numeric, D: RemoveAxis` | self(D: ndim ≥ 2) × other(D::Smaller: ndim = self.ndim - 1) → output(D::Smaller)；self 最后 2 维为 (M, N)，other 最后 1 维为 N，其余 batch 维度须一致或可广播 | batch 维度不可广播 → `BroadcastError`；self.shape[ndim-1] ≠ other.shape[ndim-2]（即 N 不匹配）→ `ShapeMismatch` |
+| batch_dot | `fn batch_dot(&self, other: &Tensor<A, D>) -> Tensor<A, D::Smaller> where A: Numeric, D: Dimension + RemoveAxis` | self(..., N) × other(..., N) → (...)；两个输入 ndim 相同，batch 维度须一致或可广播 | batch 维度不可广播 → `BroadcastError`；向量长度不匹配 → `ShapeMismatch` |
+
+**batch_matvec 维度推导**：`batch_matvec` 的 self 维度类型为 `D`，other 和输出维度类型为 `D::Smaller`（self 降一维）。`D: RemoveAxis` 约束（见 §3.3）确保编译时维度推导正确。静态维度推导规则：self Ix2 × other Ix1 → output Ix1；self Ix3 × other Ix2 → output Ix2；self Ix4 × other Ix3 → output Ix3；...；IxDyn → IxDyn。self Ix1 × other Ix0 不适用（Ix1 的 matvec 无矩阵语义，至少需要 2D self——虽然类型系统允许，但运行时检查 self.ndim < 2 时返回 `InvalidShape`）。
+
+**batch_dot 维度推导**：`batch_dot` 沿最后一轴做内积后消除该轴，输出 ndim = 输入 ndim - 1。签名使用 `D::Smaller` 关联类型表达降维后的维度，并要求 `D: RemoveAxis`（见 §3.3 RemoveAxis trait）。静态维度推导规则：Ix1 → Ix0, Ix2 → Ix1, ..., IxDyn → IxDyn。Ix0 输入编译错误（Ix0 未实现 RemoveAxis，无轴可归约）。
+
+**复数 batch_dot 语义**：复数类型的 `batch_dot` 使用 Hermitian 内积：`result[b, ...] = Σ(self[b, ..., k].conj() * other[b, ..., k])`，与 `dot` 的复数语义一致（见 §13.2）。
 
 **非连续输入行为**：以上批量运算对非连续输入自动拷贝为 F-contiguous 后执行。不返回布局错误——调用方若需零拷贝，应先确保输入连续。
 
-**batch_dot 维度推导**：`batch_dot` 沿最后一轴做内积后消除该轴，输出 ndim = 输入 ndim - 1。签名使用 `D::Smaller` 关联类型表达降维后的维度，并要求 `D: RemoveAxis`（见 §3.3 RemoveAxis trait）。静态维度推导规则：Ix1 → Ix0, Ix2 → Ix1, ..., IxDyn → IxDyn。Ix0 输入编译错误（Ix0 未实现 RemoveAxis，无轴可归约）。
+**填充输入行为**：填充数组作为批量运算输入时，自动拷贝过程中移除填充（输出为标准 F-contiguous，PADDED = false）。若需保留填充优化以获得最佳性能，调用方应直接使用 BLAS FFI（见 §25.3，`is_blas_compatible()` 对填充数组返回 true，`lda()` 返回填充后的物理步长）。
 
 **与 `dot` 返回类型差异**：`dot` 返回 `A`（标量值），`batch_dot` 返回 `Tensor<A, D::Smaller>`（标量张量）。两者定位不同：`dot` 是 1D×1D → 标量的便捷方法；`batch_dot` 支持任意批次维度，统一返回 Tensor 以保持泛型一致性（`D::Smaller` 推导需 Tensor 包装）。对 Ix1 输入，`batch_dot` 返回 `Tensor0<A>`（0D 标量张量），可调用 `.into_scalar()` 获取裸值。
 
