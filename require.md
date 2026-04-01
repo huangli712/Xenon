@@ -3653,18 +3653,22 @@ if let Some(layout) = compat.blas_layout() {
 
 **错误类型体系**（两级架构）：
 
-| 层级 | 错误类型 | 触发场景 | 处理方式 |
-|------|----------|----------|----------|
-| **独立错误** | ShapeMismatch | 二元运算/zip 形状不兼容且无法广播 | Result |
-| | BroadcastError | 广播规则不满足（非 size-1 维度不等） | Result |
-| | LayoutMismatch | 要求连续布局但输入非连续（如 flatten_view 非连续数组） | Result |
-| | InvalidAxis | 轴索引超出维度数 | Result |
-| | InvalidShape | 构造参数形状无效（如 cat 输入 ndim 不一致） | Result |
-| | DimensionMismatch | 静态维度与动态维度互转时维度数不匹配 | Result |
-| | EmptyArray | 对空数组执行 min/max/argmin/argmax 或 mean/var/std | Result |
-| | AllocationError | 内存分配失败（超大数组、系统内存不足） | panic |
-| | IndexOutOfBounds | 索引越界（含多维索引、take/put 索引数组） | 多维索引：panic（checked）/ UB（unchecked）；take/put 索引数组：Result |
-| | InconsistentLengths | `TryFrom<Vec<Vec<A>>>` 内层 Vec 长度不一致 | Result |
+| 层级 | 错误类型 | 枚举变体名 | 触发场景 | 处理方式 |
+|------|----------|------------|----------|----------|
+| **独立错误** | ShapeMismatch | `XenonError::ShapeMismatch` | 二元运算/zip 形状不兼容且无法广播 | Result |
+| | BroadcastError | `XenonError::BroadcastError` | 广播规则不满足（非 size-1 维度不等） | Result |
+| | LayoutMismatch | `XenonError::LayoutMismatch` | 要求连续布局但输入非连续（如 flatten_view 非连续数组） | Result |
+| | InvalidAxis | `XenonError::InvalidAxis` | 轴索引超出维度数 | Result |
+| | InvalidShape | `XenonError::InvalidShape` | 构造参数形状无效（如 cat 输入 ndim 不一致） | Result |
+| | DimensionMismatch | `XenonError::DimensionMismatch` | 静态维度与动态维度互转时维度数不匹配 | Result |
+| | EmptyArray | `XenonError::EmptyArray` | 对空数组执行 min/max/argmin/argmax 或 mean/var/std | Result |
+| | InvalidInput | `XenonError::InvalidInput` | 参数语义不合法（非结构/索引类问题）：如 histogram bins 为负数/零、自定义边界数组不严格递增或含 NaN/Inf、同时提供 bins 数组和 range 参数、从空数据推断 range、bincount 输出长度溢出 | Result |
+| | InvalidLayout | `XenonError::InvalidLayout` | 布局/对齐验证失败：`from_raw_parts` 等 unsafe 构造器中 shape × strides 不一致（如 strides 导致越界偏移）、指针非空但未满足 `align_of::<A>()` 对齐要求、对齐值非 2 的幂或小于元素自然对齐（见 §4.3） | Result（safe 构造路径）/ panic（unsafe 构造路径的前置条件违反，见 §25.2） |
+| | AllocationError | `XenonError::AllocationError` | 内存分配失败（超大数组、系统内存不足） | panic |
+| | IndexOutOfBounds | `XenonError::IndexOutOfBounds` | 索引越界（含多维索引、take/put 索引数组） | 多维索引：panic（checked）/ UB（unchecked）；take/put 索引数组：Result |
+| | InconsistentLengths | `XenonError::InconsistentLengths` | `TryFrom<Vec<Vec<A>>>` 内层 Vec 长度不一致 | Result |
+
+**`InvalidInput` 与其他错误类型的边界**：`InvalidInput` 覆盖"参数语义不合法"（如负数 bins、NaN 边界），区别于 `InvalidShape`（结构不合法，如 ndim 不一致）和 `IndexOutOfBounds`（索引超范围）。当参数问题可归为更具体的错误类型时，优先使用更具体的类型。
 
 ### 27.2 错误类型诊断字段
 
@@ -3672,17 +3676,19 @@ if let Some(layout) = compat.blas_layout() {
 
 | 错误类型 | 诊断字段 | 说明 |
 |----------|----------|------|
-| ShapeMismatch | `expected: Vec<usize>`, `actual: Vec<usize>` | 期望与实际形状 |
-| BroadcastError | `left: Vec<usize>`, `right: Vec<usize>`, `conflicting_axis: usize` | 冲突的两个形状及冲突轴 |
+| ShapeMismatch | `expected: ShapeData`, `actual: ShapeData` | 期望与实际形状。`ShapeData` 使用 `SmallVec<[usize; 8]>` 实现，低维度（≤ 8）时栈分配避免堆开销，高维度时自动退化为堆分配 |
+| BroadcastError | `left: ShapeData`, `right: ShapeData`, `conflicting_axis: usize` | 冲突的两个形状及冲突轴。`ShapeData` 同上 |
 | LayoutMismatch | `requested: &'static str`, `actual_layout: &'static str` | 期望布局（如 "C-contiguous"/"F-contiguous"）与实际布局描述 |
 | InvalidAxis | `axis: usize`, `ndim: usize` | 请求轴与实际维度数 |
 | InvalidShape | `reason: &'static str` | 人类可读原因（如 "0 inputs" / "ndim mismatch: expected 3, got 2"） |
 | DimensionMismatch | `expected: usize`, `actual: usize` | 期望与实际维度数 |
 | EmptyArray | `operation: &'static str` | 触发操作名（如 "min"/"argmax"/"mean"/"var"） |
+| InvalidInput | `reason: Cow<'static, str>` | 人类可读原因描述（如 "bins must be >= 1, got 0" / "bin edges must be strictly monotonic" / "autodetected range is not finite: input contains NaN and no explicit range provided"）。使用 `Cow<'static, str>` 允许静态字符串和动态格式化消息零开销共存 |
+| InvalidLayout | `reason: &'static str` | 人类可读原因（如 "strides produce out-of-bounds offset" / "pointer alignment 4 does not meet required alignment 8" / "alignment must be a power of 2"） |
 | IndexOutOfBounds | `index: usize`, `axis_len: usize`, `axis: usize` | 越界索引值、轴长度、轴编号（仅 take/put Result 场景） |
 | InconsistentLengths | `expected: usize`, `found: Vec<usize>` | 期望的行长度与各实际行长度 |
 
-panic 类错误（`AllocationError`）通过 panic message 传递诊断信息，不使用结构化字段。`IndexOutOfBounds` 在 panic 场景（多维索引越界）通过 panic message 传递诊断信息，在 Result 场景（take/put 索引数组越界）使用结构化字段。
+panic 类错误（`AllocationError`）通过 panic message 传递诊断信息，不使用结构化字段。`IndexOutOfBounds` 在 panic 场景（多维索引越界）通过 panic message 传递诊断信息，在 Result 场景（take/put 索引数组越界）使用结构化字段。`InvalidLayout` 在 unsafe 构造路径（`from_raw_parts`，见 §25.2）中通过 panic message 传递诊断信息（调用方违反 Safety 前置条件），在 safe 构造路径中使用结构化字段返回 `Result`。
 
 ### 27.3 API错误类型映射
 
@@ -3703,6 +3709,10 @@ panic 类错误（`AllocationError`）通过 panic message 传递诊断信息，
 | 索引访问 | `IndexOutOfBounds`（panic） / unchecked UB | 编程错误（多维索引硬编码或循环变量） |
 | take / put | `IndexOutOfBounds`（Result） | 索引来自运行时动态数据（索引数组），属数据驱动错误 |
 | `TryFrom<Vec<Vec<A>>>` | `InconsistentLengths`（Result） | `From` 实现使用 `expect(...)` 转为 panic；`TryFrom` 提供可恢复错误路径 |
+| histogram / histogram_bin_edges（§15.6） | `InvalidInput`（Result） | bins 参数语义不合法（零/负数）、自定义边界数组不严格递增/含 NaN/Inf、bins 数组与 range 同时提供、从空数据推断 range、输入含 NaN 且未提供 range |
+| bincount（§15.6） | `InvalidInput`（Result） | 输出长度溢出（`max(input) + 1 > isize::MAX`） |
+| from_raw_parts（§25.2，unsafe） | `InvalidLayout`（panic） | unsafe 构造路径：调用方违反 Safety 前置条件（strides 导致越界偏移、指针未对齐）时 panic |
+| safe 布局/对齐验证（构造器） | `InvalidLayout`（Result） | safe 路径：对齐值非 2 的幂或小于元素自然对齐、shape × strides 不一致 |
 
 ### 27.4 处理策略
 
@@ -3711,10 +3721,33 @@ panic 类错误（`AllocationError`）通过 panic message 传递诊断信息，
 | 策略 | 适用场景 | 典型例子 |
 |------|----------|----------|
 | 可恢复错误（形状、布局、轴、数据驱动索引越界） | 返回 Result | squeeze 非 size-1 轴 → `InvalidShape`；空数组 min/max/mean/var → `EmptyArray`；take/put 索引数组越界 → `IndexOutOfBounds` |
+| 可恢复错误（参数语义不合法） | 返回 Result | histogram bins 为零/负数 → `InvalidInput`；自定义边界数组不严格递增 → `InvalidInput` |
 | 编程错误（多维索引越界） | panic，同时提供 unsafe unchecked 变体 | `tensor[i,j]` 索引越界 → `IndexOutOfBounds` panic |
 | 前置条件违反 | panic | bincount 负值输入（文档要求 ≥ 0）；`Vec<Vec<A>>` 内层长度不一致（文档要求一致）；arange step=0（文档要求 ≠ 0） |
 | 内存分配失败 | panic（与 Rust 标准库 `Vec::push` 等行为一致）。调用方若需 graceful 处理，可在调用前预检元素数和预估内存占用。未来版本可考虑提供 `try_*` 变体返回 `Result` | |
-| 错误信息 | 所有错误类型须实现 `Display` 和 `Error`，包含上下文信息（期望值 vs 实际值） | |
+| 错误信息 | 见下方「Error trait 条件编译」规则 | |
+
+**Error trait 条件编译**：
+
+本库支持 `no_std`（需 `alloc`，见 §1.3），所有错误类型须满足以下条件编译策略：
+
+| Feature | trait 实现 | 说明 |
+|---------|-----------|------|
+| `std`（默认启用） | `impl std::error::Error for XenonError` 及各子类型 | 完整的 `Error` trait 支持，可与 `anyhow`/`eyre` 等生态无缝集成 |
+| `no_std`（`default-features = false`） | 仅要求 `Display + Debug + Clone + Send + Sync` | `std::error::Error` 不可用；错误类型仍实现 `Display` 以提供人类可读描述，但**不实现** `Error` trait |
+
+实现方式：使用 `cfg(feature = "std")` 条件编译块，在 `std` feature 下 `impl std::error::Error`，`no_std` 下省略。不引入额外依赖（不使用 `thiserror` 或 `core-error`）。
+
+**AllocationError 与 no_std**：
+
+`AllocationError` 在 `std` 环境下 panic（`panic!`），在 `no_std` 环境下的行为取决于全局分配器配置：
+
+| 环境 | AllocationError 行为 | 说明 |
+|------|---------------------|------|
+| `std`（默认） | `panic!("allocation failed: requested {size} bytes")` | 与 `Vec::push` 等标准库行为一致 |
+| `no_std` + `alloc` | 由 `alloc::alloc::handle_alloc_error` 决定（默认 abort） | 行为由调用方配置的全局分配器决定，Xenon 不额外干预 |
+
+无论哪种环境，panic message 均包含请求的分配大小（字节），便于诊断。
 
 ### 27.5 Panic Safety
 
@@ -3732,6 +3765,23 @@ panic 类错误（`AllocationError`）通过 panic message 传递诊断信息，
 - 所有 `drop` 实现不得 panic（遵循 `Drop` trait 的惯用规则）
 - `Tensor<MaybeUninit<A>, D>` 的 drop 不得调用元素的 drop glue——仅释放缓冲区内存
 - 涉及资源分配的操作（如 `make_mut` 深拷贝）须确保分配失败时原有数据不受影响
+
+**并行操作 panic 安全**（feature `parallel`，需 `std`，见 §1.3）：
+
+并行操作使用 rayon 线程池（见 §9.2），当单个线程 panic 时的行为遵循以下规则：
+
+| 场景 | Panic 时保证 | 说明 |
+|------|-------------|------|
+| `par_iter()` / `par_iter_mut()` 逐元素操作 | 未 panic 的线程继续完成当前块；rayon `join` 在收集结果时 re-throw panic | rayon 的默认行为：单个任务 panic 不影响其他任务的内存安全性，`join` 返回时将 panic 传播到调用线程 |
+| 并行归约（sum / prod 等） | 中间结果被丢弃；输出 Tensor 可安全 drop | 归约的累加器为线程局部变量，panic 时被 drop，无共享状态污染 |
+| `make_mut()` 触发深拷贝时 panic（分配失败） | 原 ArcTensor 数据未被修改（引用计数不变）；已分配的新缓冲区被 drop 释放 | 深拷贝先分配新缓冲区再复制，分配失败时原数据完好 |
+| 并行写入（`par_iter_mut()`）部分完成后 panic | 已修改的元素保持在最终写入状态；未修改的元素保持原值；Tensor 可安全 drop | 不保证数据一致性（部分修改），但保证内存安全（可安全 drop，无 UB） |
+
+**实现约束**：
+
+- 不使用 `catch_unwind` 包裹并行任务——panic 应立即传播，不吞没
+- 共享缓冲区（如 ArcTensor 的引用计数）的修改须使用原子操作，确保 panic 时计数正确
+- 并行迭代器的任务分割须确保每个任务的数据范围互不重叠（rayon 按 chunk 分割，每个线程独占一段连续区间）
 
 ---
 
