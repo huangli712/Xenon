@@ -3800,28 +3800,48 @@ panic 类错误（`AllocationError`）通过 panic message 传递诊断信息，
 | 要求 | 指标 |
 |------|------|
 | 测试类型 | 单元测试 + 集成测试 + 边界测试 |
-| 行覆盖率 | ≥ 90%（数值基础设施对正确性要求极高，高覆盖率是必要的质量保障） |
+| 行覆盖率（整体） | ≥ 90%（使用 `cargo llvm-cov` 测量，数值基础设施对正确性要求极高，高覆盖率是必要的质量保障） |
+| unsafe 代码块覆盖率 | ≥ 95%（单独统计，覆盖指针运算、`get_unchecked`、`from_raw_parts` 等关键 unsafe 路径） |
+| 分支覆盖率（关键路径） | ≥ 85%（覆盖边界检查、溢出检测、SIMD 回退、布局标志判定等分支） |
 
 ### 28.3 数值精度
 
-| 运算类别 | f64 精度 | f32 精度 |
-|----------|----------|----------|
-| 加减乘 | 精确 | 精确 |
-| 归约 | 相对误差 ≤ 1e-14 | 相对误差 ≤ 1e-5 |
-| 超越函数 | 相对误差 ≤ 1e-14 | 相对误差 ≤ 1e-5 |
+**浮点与复数精度表**：
+
+| 运算类别 | f64 精度 | f32 精度 | Complex\<f64\> 精度 | Complex\<f32\> 精度 |
+|----------|----------|----------|---------------------|---------------------|
+| 加减乘 | ≤ 1 ULP | ≤ 1 ULP | re/im 各 ≤ 1 ULP | re/im 各 ≤ 1 ULP |
+| 除法 | ≤ 1 ULP | ≤ 1 ULP | re/im 各 ≤ 4 ULP | re/im 各 ≤ 4 ULP |
+| 归约（sum/prod） | 相对误差 ≤ 1e-14（N ≤ 10⁶） | 相对误差 ≤ 1e-5（N ≤ 10⁶） | 模相对误差 ≤ 1e-13（N ≤ 10⁶） | 模相对误差 ≤ 1e-4（N ≤ 10⁶） |
+| 超越函数 | 相对误差 ≤ 1e-14，ULP ≤ 4 | 相对误差 ≤ 1e-5，ULP ≤ 4 | 模相对误差 ≤ 1e-13 | 模相对误差 ≤ 1e-4 |
+
+**归约精度条件说明**：
+
+- 归约精度指标适用于元素数 N ≤ 10⁶ 的场景。对于 N > 10⁶ 的数组，`sum` 须使用补偿求和（如 Neumaier/Kahan summation）以达到表中精度要求；`prod` 的精度随 N 增长自然退化，不强制要求补偿精度
+- 并行浮点归约：各线程独立累加后合并，合并顺序与单线程不一致时允许精度容差内差异（见 §28.5"并行确定性"行）
+- 浮点 `sum` 在实现时须默认使用补偿求和算法（Neumaier 或 Kahan），以保证大数组场景下的数值稳定性
+
+**整数运算正确性要求**：
+
+| 测试类别 | 要求 |
+|----------|------|
+| 溢出检测 | `sum`/`prod`/`cumsum`/`cumprod` 作用于整数类型（i8/i16/i32/i64/u8/u16/u32/u64）时，须验证 debug 和 release 模式下溢出均正确 panic。使用 `checked_add`/`checked_mul` 实现（见 §14.3） |
+| release 防护 | 确保 release 模式下 checked 算术未退化为 wrapping（Rust release 默认 wrapping，须显式使用 checked 操作） |
+| 大整数归约 | 对大数组（≥ 10⁶ 元素）验证 i32/i64 归约不会在未溢出时误 panic |
+| 边界值 | 覆盖 `i8::MAX` 累加溢出、`i32::MAX * i32::MAX` 乘法溢出、`u64::MAX` 累加溢出、空数组归约返回单位元 |
 
 **数值精度验证方法论**：
 
 | 属性 | 要求 |
 |------|------|
-| 参考值来源 | 使用 `libm`（Rust 标准库 `f32::sin` / `f64::sin` 等）作为参考实现；测试中对比 Xenon 结果与参考值的偏差 |
-| 精度度量 | 超越函数使用相对误差 `\|computed - expected\| / \|expected\|`；归约使用混合误差：`\|computed - expected\| ≤ atol + rtol * \|expected\|`，其中 atol = 0，rtol = 精度表中归约行对应值；加减乘使用 ULP（Unit in the Last Place）验证（允许 ≤ 1 ULP） |
-| 容差 | 不超过 §18.4 精度表中规定的阈值；超越函数的 ULP 阈值：f64 ≤ 4 ULP，f32 ≤ 4 ULP |
-| 边界值测试 | 必须覆盖：0、±1、极大值（MAX）、极小正规数（MIN_POSITIVE）、subnormal、±Inf、NaN、π 的倍数（三角函数）、整数幂（pow） |
+| 参考值来源 | 浮点使用 Rust 标准库 `f32::sin` / `f64::sin` 等作为参考实现；复数使用 `num-complex`（仅测试依赖，非库依赖）或手写参考实现作为对照 |
+| 精度度量 | 超越函数使用相对误差 `\|computed - expected\| / \|expected\|`；归约使用混合误差：`\|computed - expected\| ≤ atol + rtol * \|expected\|`，其中 atol = 0，rtol = 精度表中归约行对应值；加减乘除使用 ULP（Unit in the Last Place）验证 |
+| 容差 | 不超过本节（§28.3）精度表中规定的阈值 |
+| 边界值测试 | 必须覆盖：0、±1、极大值（MAX）、极小正规数（MIN_POSITIVE）、subnormal、±Inf、NaN、π 的倍数（三角函数）、整数幂（pow）。复数额外覆盖：纯虚数（0+1i）、零虚部、零实部、极大模 |
 | 回归测试 | 使用已知正确结果的测试向量（golden test），固定随机种子确保可重复性 |
 | 跨平台一致性 | 同一输入在不同平台（x86_64 vs aarch64）上的结果须在精度容差内一致（SIMD 近似可能引入跨平台差异，须在容差范围内） |
 
-### 18.4 边界覆盖
+### 28.4 边界覆盖
 
 须覆盖以下边界情况：
 - 空张量
@@ -3830,24 +3850,30 @@ panic 类错误（`AllocationError`）通过 panic message 传递诊断信息，
 - 极端值（NaN/Inf/subnormal）
 - 非连续布局
 - 高维（≥4维）
+- 广播形状不兼容（返回错误）
+- ArcRepr 写时复制（引用计数 1/2/多时的行为差异）
+- 小数组对齐降级（ALIGNED 标志正确性）
+- 填充布局操作（reshape/slice/transpose 后的步长正确性）
+- IxDyn 与 IxN 互转（维度数匹配/不匹配）
+- no_std 构建验证（`cargo build --no-default-features` 通过）
 
-### 18.5 并行与 SIMD 测试策略
+### 28.5 并行与 SIMD 测试策略
 
 | 测试类别 | 要求 | 说明 |
 |----------|------|------|
-| ThreadSanitizer | CI 中运行 `cargo test --all-features --target x86_64-unknown-linux-gnu -Zsanitizer=thread` | 检测数据竞争 |
-| Miri | CI 中对 `--target x86_64-unknown-linux-gnu` 运行 `cargo miri test`（不含 SIMD 代码） | 检测未定义行为、越界访问 |
+| ThreadSanitizer | CI 中使用 nightly 工具链运行 `cargo +nightly test --all-features --target x86_64-unknown-linux-gnu -Zsanitizer=thread` | 检测数据竞争。`-Zsanitizer` 需要 nightly Rust（见 §28.6 CI 要求中的 nightly 行） |
+| Miri | CI 中运行 `cargo +nightly miri test --no-default-features --features std --target x86_64-unknown-linux-gnu`（禁用 `simd` 和 `parallel` feature，因 Miri 不支持 SIMD intrinsics 和 rayon 线程） | 检测未定义行为、越界访问。注意：Miri 性能较慢，建议仅对核心模块（存储、索引、广播、ArcRepr）运行 |
 | 跨平台 SIMD | 相同输入在 x86_64（AVX2）和 aarch64（NEON）上的逐元素运算结果须一致（精度容差内） | 检测指令集实现差异 |
 | 标量 vs SIMD 对照 | SIMD 路径结果须与标量路径结果在精度容差内一致（每个超越函数均须验证） | 确保 SIMD 优化不引入精度回归 |
-| 并行确定性 | 相同输入的并行归约结果须与单线程结果一致（浮点归约允许精度容差内差异） | 确保分块策略正确性 |
-| 并行边界 | 测试元素数略高于/低于并行阈值的边界情况 | 确保阈值切换无遗漏 |
+| 并行确定性 | 相同输入的并行归约结果须与单线程结果一致（浮点归约允许精度容差内差异，见 §28.3 归约行说明） | 确保分块策略正确性 |
+| 并行边界 | 测试元素数略高于/低于并行阈值（§9.2.2，默认 64K）的边界情况 | 确保阈值切换无遗漏 |
 
-### 18.7 CI 要求
+### 28.6 CI 要求
 
 | 要求 | 说明 |
 |------|------|
 | 平台矩阵 | Linux (x86_64, aarch64)、macOS (x86_64, aarch64)、Windows (x86_64) |
-| Rust 版本矩阵 | 当前 stable + MSRV 版本 |
+| Rust 版本矩阵 | 当前 stable + MSRV 版本 + nightly（用于 sanitizer/Miri 测试，见 §28.5） |
 | Feature 矩阵 | 默认 features、`--no-default-features`、`--all-features` |
 | 必须通过 | `cargo test`、`cargo test --all-features`、`cargo doc`（无 broken doc link） |
 | MSRV 验证 | 使用 `cargo msrv` 或 CI 脚本验证 MSRV 声明准确 |
