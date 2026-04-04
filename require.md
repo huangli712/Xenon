@@ -1151,252 +1151,89 @@ binary_dispatch(a, b, op):
 
 ### 11.1 迭代类型
 
+须支持以下迭代类型：
+
 | 类型 | 说明 |
 |------|------|
-| 元素迭代 | 按内存布局顺序 |
+| 元素迭代 | 按内存布局顺序遍历所有元素 |
 | 轴迭代 | 沿指定轴，每次产出降维子视图 |
 | 窗口迭代 | 滑动窗口 |
 | 索引迭代 | 带多维索引的元素迭代 |
-| 并行迭代 | rayon 支持 |
-| 多数组同步迭代 | zip |
-| 遍历顺序 | 可指定 F/C |
+| 并行迭代 | 数据并行迭代（feature `parallel`） |
+| 多数组同步迭代 | zip 多数组同步遍历 |
+| 有序迭代 | 可指定遍历顺序（F/C） |
 
 ### 11.2 迭代器协议
 
 | 场景 | 行为 |
 |------|------|
 | zip 形状完全一致 | 按指定遍历顺序同步产出元素 |
-| zip 形状不一致但可广播 | 自动广播后迭代，等价于先 broadcast 再 zip。广播视图使用零步长实现逻辑重复（无额外堆分配），步长为 0 的轴在迭代时重复产出同一位置的数据。**遍历顺序规则**：若未指定遍历顺序，使用库默认 F-order（广播视图本身无物理内存，"物理布局顺序"在此场景下无意义，统一使用 F-order 保证行为确定性）。若显式指定 F-order 遍历顺序，则按指定逻辑顺序迭代，可能产生非连续访问。**性能提示**：当所有非广播操作数均为 F-contiguous 且均为大数组时，使用 F-order 遍历可获得最优缓存性能 |
-| zip 形状不一致且不可广播 | 返回 BroadcastError |
-| 遍历顺序未指定 | 默认按物理内存布局顺序（连续数组最优）。对于广播视图等无明确物理布局的场景，使用 F-order |
+| zip 形状不一致但可广播 | 自动广播后迭代，无额外数据拷贝 |
+| zip 形状不一致且不可广播 | 返回错误 |
+| 遍历顺序未指定 | 默认按物理内存布局顺序（连续数组最优），广播视图等无明确物理布局的场景使用 F-order |
 | 遍历顺序指定为 F/C | 强制按指定逻辑顺序，可能非连续访问 |
-| 并行迭代 | 将元素按连续块分割给线程，块大小 ≥ 并行阈值 |
+| 并行迭代 | 将元素按连续块分割给线程 |
 | 窗口迭代越界 | 不产出不完整窗口（窗口数 = shape - window_size + 1） |
 | 空数组迭代 | 立即结束，产出零个元素 |
 
-**zip 广播迭代的内存分配行为**：广播迭代使用零步长模拟维度扩展，不产生实际数据拷贝。迭代器内部坐标计数器在静态维度下无堆分配，动态维度（IxDyn）下通常无堆分配（≤ 8 维栈分配，> 8 维回退堆分配）。
+广播迭代不产生实际数据拷贝。
 
 ### 11.3 广播视图的可变迭代安全性
 
-广播通过零步长（stride=0）模拟维度扩展。当对广播后的可变视图调用 `iter_mut()` / `par_iter_mut()` 时，多个逻辑迭代位置会映射到同一物理元素，构成别名写入。
+禁止对广播视图进行可变迭代。广播视图存在多个逻辑位置映射到同一物理元素的情况，可变迭代会导致别名写入，违反 Rust 别名规则。可变迭代入口处须检测此情况并在不安全时 panic。调用方可通过 `has_zero_stride()` 预检。此规则不适用于只读迭代，因为多个不可变引用指向同一元素是安全的。
 
-**设计决策：禁止对广播视图进行可变迭代**
-
-| 场景 | 行为 | 理由 |
-|------|------|------|
-| `TensorViewMut` 存在零步长轴时调用 `iter_mut()` | panic（运行时检查） | 多个 `&mut` 指向同一元素违反 Rust 别名规则，属于未定义行为 |
-| `TensorViewMut` 存在零步长轴时调用 `par_iter_mut()` | panic（运行时检查） | 同上，且并行场景构成数据竞争 |
-| `zip_mut` 等内部可变操作遇到广播目标 | panic（运行时检查） | 写入广播目标会导致同一位置被多次写入，结果依赖迭代顺序，语义不明确 |
-| `TensorViewMut` 无零步长轴（非广播视图） | 正常执行 | 无别名冲突 |
-
-**实现要求**：
-
-- `iter_mut()` / `par_iter_mut()` 入口处须检查 `has_zero_stride()`，若为 true 则 panic
-- panic 信息须明确标注原因：`"cannot iter_mut on broadcast view (zero-stride axis detected)"`
-- 调用方可通过 `has_zero_stride()` 预检，避免运行时 panic
-- 此规则不适用于只读迭代（`iter()` / `par_iter()`），因为多个 `&T` 指向同一元素是安全的
-
-### 11.4 迭代器 Trait 覆盖
-
-所有迭代器须实现以下标准库 trait：
+### 11.4 迭代器 Trait 要求
 
 | Trait | 适用范围 | 说明 |
 |-------|----------|------|
-| `Iterator` | 所有迭代器 | 必须实现 `Item`、`next()`。所有迭代器的 `size_hint()` 须返回精确值（即 `(len, Some(len))`，与 `ExactSizeIterator::len()` 一致），以确保并行迭代的工作分割均匀（见 §9.2 并行阈值与分块策略） |
-| `IntoIterator` | Tensor, TensorView, TensorViewMut, ArcTensor | 详见 §11.5 |
-| `ExactSizeIterator` | 元素迭代、轴迭代、索引迭代 | 提供 `len()`，长度在迭代前已知 |
-| `DoubleEndedIterator` | `ContiguousIter`（仅连续数组的迭代器） | 详见 §11.7 设计理由 |
+| `Iterator` | 所有迭代器 | `size_hint()` 须返回精确值，以确保并行迭代的任务分割正确性 |
+| `ExactSizeIterator` | 元素迭代、轴迭代、索引迭代 | 长度在迭代前已知 |
+| `DoubleEndedIterator` | 连续数组的元素迭代器 | 支持双向遍历 |
 | `FusedIterator` | 所有迭代器 | 迭代结束后 `next()` 永远返回 `None` |
-| `IntoParallelIterator` | Tensor, TensorView, TensorViewMut, ArcTensor（feature `parallel`） | 需要 `A: Send`；按连续块分割给线程。详见 §11.9 |
-| `ParallelIterator` | 并行迭代器（feature `parallel`） | rayon `ParallelIterator`，提供 `par_iter()`、`par_iter_mut()` |
+| `IntoIterator` | 所有张量类型 | 按值消费和借用迭代均须支持 |
+| `IntoParallelIterator` | 所有张量类型（feature `parallel`） | 元素类型须 `Send` |
 
-**`size_hint()` 精确性要求**：所有迭代器（包括窗口迭代器、zip 迭代器等）的 `size_hint()` 必须返回精确值（即 `(len, Some(len))`），以确保并行迭代的任务分割正确性。
+### 11.5 元素迭代
 
-### 11.5 IntoIterator 实现表
+须提供以下元素迭代方式，各方式均须提供不可变和可变变体：
 
-所有 TensorBase<S, D> 相关类型须实现 `IntoIterator`。各存储模式及引用方式的 `Item` 类型如下：
+| 方式 | 连续性要求 | 说明 |
+|------|-----------|------|
+| 通用迭代 | 无 | 支持所有数组，非连续数组按 strides 跳跃寻址 |
+| 严格连续迭代 | `is_contiguous()` | 仅严格连续数组可用，支持双向迭代 |
+| 宽松连续迭代 | `is_padded_contiguous()` | 含填充的连续数组可用，自动跳过 padding，仅遍历逻辑元素，支持双向迭代 |
+| 有序迭代 | 无 | 显式指定遍历顺序（F/C），强制按指定逻辑顺序遍历 |
 
-**按值消费（`into_iter()`）**：
-
-| 类型 | `IntoIterator::IntoIter` | `Item` | 行为 |
-|------|--------------------------|--------|------|
-| `Tensor<A, D>`（Owned） | `IntoIter<A, D>` | `A` | 消耗所有权，逐元素 move/copy 出来。连续数组按指针递增顺序产出；非连续数组按 strides 跳跃寻址产出 |
-| `TensorView<'a, A, D>` | `Iter<'a, A, D>` | `&'a A` | 视图本身是借用，无法 move 元素所有权。按值消费视图仅释放视图元数据（shape/strides），底层数据不受影响 |
-| `TensorViewMut<'a, A, D>` | `IterMut<'a, A, D>` | `&'a mut A` | 同上，可变视图按值消费后释放元数据 |
-| `ArcTensor<A, D>` | `IntoIter<A, D>` | `A` | 消耗 ArcTensor 所有权。若 Arc 引用计数 == 1，等效于 `Arc::try_unwrap()` 获取 Owned 后逐元素 move；若引用计数 > 1，先深拷贝获取独立 Owned 再逐元素 move |
-
-**借用迭代（`&Tensor` / `&mut Tensor` 等）**：
-
-| 类型 | `IntoIterator::IntoIter` | `Item` | 说明 |
-|------|--------------------------|--------|------|
-| `&Tensor<A, D>` | `Iter<'a, A, D>` | `&'a A` | 不可变借用迭代，不消耗所有权 |
-| `&mut Tensor<A, D>` | `IterMut<'a, A, D>` | `&'a mut A` | 可变借用迭代，不消耗所有权 |
-| `&TensorView<'a, A, D>` | `Iter<'a, A, D>` | `&'a A` | 再借用，等效于视图的不可变迭代 |
-| `&mut TensorViewMut<'a, A, D>` | `IterMut<'a, A, D>` | `&'a mut A` | 再借用，等效于视图的可变迭代 |
-| `&ArcTensor<A, D>` | `Iter<'a, A, D>` | `&'a A` | 不可变借用迭代，不增加 Arc 引用计数（借用 `&self` 即可读取数据） |
-| `&mut ArcTensor<A, D>` | `IterMut<'a, A, D>` | `&'a mut A` | 可变借用迭代，需要 `&mut self` 保证独占访问，不触发 `make_mut()`（借用检查器保证无其他引用） |
+可变迭代要求可写存储，广播视图的可变迭代须被禁止（见 §11.3）。
 
 ### 11.6 轴迭代器
 
-沿指定轴遍历，每次 `next()` 产出一个降维子视图（移除指定轴后维度减少 1）。
+须提供沿指定轴遍历的迭代器，每次产出降维子视图（维度减少 1）。须同时提供不可变和可变两种变体。可变变体要求可写存储。零维张量（Ix0）不支持轴迭代。轴索引超出范围时 panic。轴长度为 0 时迭代器立即结束。每个视图共享源数组底层存储（零拷贝）。
 
-**不可变轴迭代**：
+### 11.7 索引迭代器
 
-| 属性 | 说明 |
-|------|------|
-| 签名 | `fn axis_iter(&self, axis: usize) -> AxisIter<'_, A, D> where D: RemoveAxis` |
-| `Item` | `TensorView<'a, A, D::Smaller>` |
-| 长度 | `shape[axis]` |
-| 约束 | `axis` 须在 `[0, ndim)` 范围内，否则 panic（`"axis {axis} is out of bounds for array of dimension {ndim}"`） |
-| 空轴 | 轴长度为 0 时产出零个元素，迭代器立即结束 |
-| 内存布局 | 每个视图共享源数组底层存储（零拷贝） |
-| trait 实现 | `Iterator` + `ExactSizeIterator` + `FusedIterator` |
-| Ix0 | 不适用（Ix0 未实现 `RemoveAxis`，编译时拒绝） |
+须提供带多维索引的元素迭代，每次同时产出逻辑坐标和元素引用。索引类型使用各维度类型的 `Pattern` 关联类型（见 §3.2），与 `Index` trait 的索引模式一致。索引始终按 F-order 逻辑坐标递增。须提供不可变和可变变体。
 
-**可变轴迭代**：
+### 11.8 并行迭代
 
-| 属性 | 说明 |
-|------|------|
-| 签名 | `fn axis_iter_mut(&mut self, axis: usize) -> AxisIterMut<'_, A, D> where S: StorageMut<Elem = A>, D: RemoveAxis` |
-| `Item` | `TensorViewMut<'a, A, D::Smaller>` |
-| 长度 | `shape[axis]` |
-| 约束 | 同 `axis_iter`；额外要求 `S: StorageMut`（编译时排除只读存储） |
-| 空轴 | 同 `axis_iter` |
-| trait 实现 | `Iterator` + `ExactSizeIterator` + `FusedIterator` |
+须提供并行元素迭代方法，按连续块分割给线程。须支持所有存储模式。不可变迭代要求元素类型 `Send + Sync`，可变迭代要求 `Send`。ArcRepr 不支持可变并行迭代。
 
+### 11.9 窗口迭代器
 
-### 11.7 元素迭代器方法签名
-
-**核心方法**：
-
-| 方法 | 签名 | `Item` | 适用存储 | 说明 |
-|------|------|--------|----------|------|
-| `iter()` | `fn iter(&self) -> Iter<'_, A, D>` | `&A` | 所有存储模式 | 按物理内存布局顺序遍历所有元素。非连续数组按 strides 跳跃寻址 |
-| `iter_mut()` | `fn iter_mut(&mut self) -> IterMut<'_, A, D> where S: StorageMut` | `&mut A` | Owned, ViewMutRepr | 可变元素迭代。**入口处须检查 `has_zero_stride()`**，若为 true 则 panic（见 §11.3）。`S: StorageMut` 约束在编译时排除 ViewRepr 和 ArcRepr |
-| `iter_contiguous()` | `fn iter_contiguous(&self) -> Option<ContiguousIter<'_, A>>` | `&A` | 所有存储模式 | 仅**严格连续**数组（`is_contiguous()` = true，无 padding）返回 `Some`。实现 `DoubleEndedIterator` + `ExactSizeIterator` + `FusedIterator`。宽松连续（含 padding）的数组返回 `None`，须使用 `iter_padded_contiguous()` 或 `iter()` |
-| `iter_contiguous_mut()` | `fn iter_contiguous_mut(&mut self) -> Option<ContiguousIterMut<'_, A>> where S: StorageMut` | `&mut A` | Owned, ViewMutRepr | 可变连续迭代。同上要求严格连续（`is_contiguous()`），检查 `has_zero_stride()` 和 `S: StorageMut` |
-| `iter_padded_contiguous()` | `fn iter_padded_contiguous(&self) -> Option<PaddedContiguousIter<'_, A, D>>` | `&A` | 所有存储模式 | 宽松连续数组（`is_padded_contiguous()` = true）返回 `Some`，包括严格连续数组和含 padding 的填充连续数组。迭代器在每列末尾自动跳过 padding 字节（F-order 跳过 axis 0 尾部填充），对外表现为仅遍历逻辑元素。实现 `DoubleEndedIterator` + `ExactSizeIterator` + `FusedIterator` |
-| `iter_padded_contiguous_mut()` | `fn iter_padded_contiguous_mut(&mut self) -> Option<PaddedContiguousIterMut<'_, A, D>> where S: StorageMut` | `&mut A` | Owned, ViewMutRepr | 可变 padded 连续迭代。同上但提供可变引用。检查 `has_zero_stride()` 和 `S: StorageMut` |
-| `iter_ordered()` | `fn iter_ordered(&self, order: Order) -> OrderedIter<'_, A, D>` | `&A` | 所有存储模式 | 显式指定遍历顺序（`Order::F`，按列优先逻辑顺序）。强制按指定逻辑顺序遍历，即使与物理布局不一致（可能产生非连续访问） |
-| `iter_ordered_mut()` | `fn iter_ordered_mut(&mut self, order: Order) -> OrderedIterMut<'_, A, D> where S: StorageMut` | `&mut A` | Owned, ViewMutRepr | 可变有序迭代。同上检查 |
-
-**迭代器类型与 `DoubleEndedIterator`**：
-
-| 迭代器 | 连续性要求 | `DoubleEndedIterator` |
-|--------|-----------|----------------------|
-| `Iter` | 无（支持所有数组） | 不实现 |
-| `ContiguousIter` | 严格连续（`is_contiguous()` = true） | 实现 |
-| `PaddedContiguousIter` | 宽松连续（`is_padded_contiguous()` = true） | 实现（须正确跳过列尾 padding） |
-
-**严格连续 vs 宽松连续的迭代器选择**：
-
-| 连续类型 | `iter_contiguous()` | `iter_padded_contiguous()` | `iter()` |
-|----------|---------------------|---------------------------|----------|
-| 严格连续 | `Some(ContiguousIter)` | `Some(PaddedContiguousIter)` | `Iter` |
-| 宽松连续（有 padding） | `None` | `Some(PaddedContiguousIter)` | `Iter` |
-| 非连续 | `None` | `None` | `Iter` |
-
-**0 维张量（Ix0）的迭代行为**：
-
-| 场景 | 行为 | 说明 |
-|------|------|------|
-| `Tensor0<A>.iter()` | 产出恰好 1 个元素 `&A` | Ix0 元素数 = 1（§3.6），迭代一次后结束 |
-| `Tensor0<A>.iter_mut()` | 产出恰好 1 个元素 `&mut A` | 同上 |
-| `Tensor0<A>.iter_contiguous()` | 返回 `Some(ContiguousIter)`，产出 1 个元素 | 0D 数组始终连续（无步长，无维度） |
-| `Tensor0<A>.into_iter()`（Owned） | 产出恰好 1 个 `A` 值 | 消费所有权，返回唯一元素 |
-| `Tensor0<A>.axis_iter()` | 编译错误 | Ix0 未实现 `RemoveAxis`（§3.3），编译时拒绝 |
-| `Tensor0<A>.indexed_iter()` | 产出恰好 1 个 `((), &A)` | 索引模式为 `()`（Ix0::Pattern） |
-| `Tensor0<A>.windows()` | 编译错误或 panic | 0D 无轴可滑动，须在 `window_size.ndim() == 0` 时 panic（§17.16 要求 ndim 一致） |
-
-### 11.8 索引迭代器
-
-带多维索引的元素迭代，每次 `next()` 同时产出元素的多维坐标和元素引用。
-
-**不可变索引迭代**：
-
-| 属性 | 说明 |
-|------|------|
-| 签名 | `fn indexed_iter(&self) -> IndexedIter<'_, A, D>` |
-| `Item` | `(D::Pattern, &'a A)` |
-| 遍历顺序 | 始终按 F-order（最左轴变化最快）产出 `(index, element)` 对。索引按逻辑坐标 F-order 递增：`(0,0,0) → (1,0,0) → … → (shape[0]-1, shape[1]-1, shape[2]-1)`，元素按对应逻辑位置取出（与物理内存布局一致） |
-| 长度 | `self.len()` |
-| trait 实现 | `Iterator` + `ExactSizeIterator` + `FusedIterator` |
-
-**可变索引迭代**：
-
-| 属性 | 说明 |
-|------|------|
-| 签名 | `fn indexed_iter_mut(&mut self) -> IndexedIterMut<'_, A, D> where S: StorageMut` |
-| `Item` | `(D::Pattern, &'a mut A)` |
-| 约束 | 同 `iter_mut()`：须检查 `has_zero_stride()`，若为 true 则 panic（见 §11.3） |
-| trait 实现 | `Iterator` + `ExactSizeIterator` + `FusedIterator` |
-
-**各维度 `Item` 类型映射**：
-
-| 维度类型 D | `D::Pattern` | `Item`（不可变） |
-|------------|-------------|-----------------|
-| Ix0 | `()` | `((), &A)` |
-| Ix1 | `usize` | `(usize, &A)` |
-| Ix2 | `(usize, usize)` | `((usize, usize), &A)` |
-| Ix3 | `(usize, usize, usize)` | `((usize, usize, usize), &A)` |
-| Ix4~Ix6 | `(usize, ..., usize)` | `((usize, ..., usize), &A)` |
-| IxDyn | `InlineArray<usize, 8>` | `(InlineArray<usize, 8>, &A)` |
-
-索引使用 `D::Pattern`（§3.2），与 `Index` trait 的索引模式一致。索引始终按 F-order 逻辑坐标递增（最左轴变化最快），不受物理内存布局影响。
-
-### 11.9 并行迭代
-
-**适用存储模式**：
-
-| 方法 | 签名 | 适用类型 | 约束 |
-|------|------|----------|------|
-| `par_iter()` | `fn par_iter(&self) -> ParIter<'_, A, D>` | Tensor, TensorView, TensorViewMut, ArcTensor（不可变借用） | `A: Send + Sync`（多线程共享引用要求 Sync） |
-| `par_iter_mut()` | `fn par_iter_mut(&mut self) -> ParIterMut<'_, A, D> where S: StorageMut` | Tensor, TensorViewMut（可变借用） | `A: Send`（独占移动跨线程）。ArcRepr 不适用（未实现 StorageMut，见 §6.2） |
-
-**IntoParallelIterator 实现**：
-
-| 类型 | `Item` | 约束 | 说明 |
-|------|--------|------|------|
-| `Tensor<A, D>` | `A` | `A: Send` | 消费所有权，按连续块分割后逐线程 move 元素 |
-| `&Tensor<A, D>` | `&A` | `A: Send + Sync` | 借用迭代 |
-| `&mut Tensor<A, D>` | `&mut A` | `A: Send` | 可变借用迭代 |
-| `TensorView<'a, A, D>` | `&'a A` | `A: Send + Sync` | 视图的并行只读迭代 |
-| `TensorViewMut<'a, A, D>` | `&'a mut A` | `A: Send` | 视图的并行可变迭代。独占语义（`&mut self`）保证各线程写入不重叠 |
-| `ArcTensor<A, D>` | `&A` | `A: Send + Sync` | 共享引用的并行只读迭代 |
-| `&ArcTensor<A, D>` | `&A` | `A: Send + Sync` | 借用的并行只读迭代 |
-
-
-
-### 11.10 窗口迭代器补充
-
-窗口迭代器在 §17.16 定义了基本语义。以下补充非连续源数组的行为和边界情况：
-
-**非连续源数组的窗口迭代**：
-
-| 属性 | 说明 |
-|------|------|
-| 支持非连续源 | 窗口迭代器支持任意 strides 的源数组（包括转置视图、切片等） |
-| 窗口内步幅 | 继承源数组步幅（可能非连续） |
-| 窗口间步幅 | 等于源数组各轴步长（即窗口滑动 1 个逻辑位置），可能非连续 |
-| 缓存性能 | 非连续源数组（如转置视图）的窗口迭代产生非顺序内存访问，缓存命中率低于连续数组。性能敏感场景下，建议先 `as_f_contiguous()` 转为连续布局再迭代 |
+窗口迭代器须支持任意 strides 的源数组（窗口内步幅继承源数组步幅）。窗口视图的生命周期绑定到迭代器持有的源数组借用。
 
 **边界行为**：
 
-| 场景 | 行为 | 说明 |
-|------|------|------|
-| 窗口尺寸某轴 > 源数组对应轴 | 产出零个窗口（迭代器立即结束） | 窗口数 = `shape[axis] - window_size[axis] + 1`，当 `window_size[axis] > shape[axis]` 时结果 < 0 → 钳位为 0 |
-| 窗口尺寸某轴 == 源数组对应轴 | 产出恰好 1 个窗口（整个轴范围） | 窗口数 = 1 |
-| 窗口尺寸 == 源数组形状（所有轴） | 产出恰好 1 个窗口（等于整个数组） | 退化为单次全数组视图 |
-| 源数组某轴长度为 0 | 产出零个窗口 | 空数组无元素可迭代 |
-| 窗口尺寸 ndim != 源数组 ndim | panic（`"window size dimension {wnd_ndim} does not match array dimension {arr_ndim}"`） | 维度不匹配，编译时无法检查（窗口尺寸为运行时值），须运行时 panic |
-| 窗口视图的 `as_slice()` | 非连续窗口返回 `None`；仅当源数组严格连续且窗口为完整数组时返回 `Some` | 窗口视图可能继承源数组的非连续 strides |
-
-**窗口视图的生命周期**：
-
-| 属性 | 说明 |
+| 场景 | 行为 |
 |------|------|
-| 生命周期绑定 | 窗口视图 `TensorView` 的生命周期绑定到 `Windows` 迭代器持有的源数组借用 |
-| 不实现 `DoubleEndedIterator` | 仅实现 `Iterator` + `ExactSizeIterator` + `FusedIterator` |
+| 窗口尺寸某轴 > 源数组对应轴 | 产出零个窗口 |
+| 窗口尺寸 == 源数组形状（所有轴） | 产出恰好 1 个窗口 |
+| 源数组某轴长度为 0 | 产出零个窗口 |
+| 窗口尺寸 ndim != 源数组 ndim | panic |
+
+### 11.10 零维张量迭代
+
+零维张量（Ix0）元素数 = 1，元素迭代产出恰好 1 个元素。轴迭代不支持（Ix0 未实现 `RemoveAxis`）。窗口迭代不支持（无轴可滑动）
 
 ---
 
