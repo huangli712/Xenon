@@ -3029,235 +3029,32 @@ impl<A: Element, D: Dimension> UninitTensor<A, D> {
 
 ### 20.1 重载类型
 
-| 类别 | 运算符/方法 | 说明 |
-|------|-------------|------|
-| 四则运算 | Add, Sub, Mul, Div | 标准算术运算符重载 |
-| 比较运算 | `.lt()`/`.le()`/`.gt()`/`.ge()` | 仅方法调用，不提供运算符语法（见 §20.6 比较运算符设计） |
-| 标量相等 | PartialEq `==`/`!=` | 返回 `bool` |
-| 复合赋值 | AddAssign, SubAssign, MulAssign, DivAssign | 原地运算 |
-| 一元运算 | Neg, Not | 取反、逻辑非（v1 仅对 `bool` 实现 `Not`，为逻辑非。整数类型不提供 `Not` 运算符重载，见 §12.1） |
-| 广播 | 所有二元运算符 | 隐式支持广播 |
+| 类别 | 运算符 | 说明 |
+|------|--------|------|
+| 四则运算 | Add, Sub, Mul, Div | 标准算术运算符重载，隐式支持广播 |
 
-**不在当前版本范围内的运算符**：位运算符（`BitAnd` `&`、`BitOr` `|`、`BitXor` `^`、`Shl` `<<`、`Shr` `>>`）及对应复合赋值运算符（`BitAndAssign` 等）不在 v1.0 范围内。这些运算符可按 §20.2 所有权矩阵模式扩展，但需要额外的元素类型约束（`BitAnd` 要求 `A: BitAnd`），留给后续版本。`Not` 因同时作为 `bool` 的逻辑非运算符被包含在 v1.0 中。
+**不在当前版本范围内的运算符**：比较运算符、复合赋值运算符、一元运算符（Neg/Not）、位运算符。
 
 ### 20.2 二元运算符所有权矩阵
 
-**设计决策**：存储复用由操作数的**所有权语义**（值 vs 引用）显式决定——传入 `Tensor`（值，消耗所有权）表示允许复用存储，传入 `&Tensor`（引用，不消耗所有权）表示不复用。用户通过选择值或引用调用，可完全控制是否复用存储，不存在运行时隐式判断。具体规则见下表(以 Add 为例，Sub/Mul/Div 同理)。
+存储复用由操作数的**所有权语义**（值 vs 引用）显式决定——传入 `Tensor`（值，消耗所有权）表示允许复用存储，传入 `&Tensor`（引用，不消耗所有权）表示不复用。
 
 | 左操作数 | 右操作数 | 存储复用 | 返回类型 |
 |----------|----------|----------|----------|
 | `&Tensor<A, D>` | `&Tensor<A, D>` | 无，分配新数组 | `Tensor<A, D>` |
-| `Tensor<A, D>` | `&Tensor<A, D>` | 复用左操作数存储（原地写入） | `Tensor<A, D>` |
-| `&Tensor<A, D>` | `Tensor<A, D>` | 复用右操作数存储（原地写入） | `Tensor<A, D>` |
-| `Tensor<A, D>` | `Tensor<A, D>` | 复用左操作数存储（原地写入） | `Tensor<A, D>` |
+| `Tensor<A, D>` | `&Tensor<A, D>` | 复用左操作数存储 | `Tensor<A, D>` |
+| `&Tensor<A, D>` | `Tensor<A, D>` | 复用右操作数存储 | `Tensor<A, D>` |
+| `Tensor<A, D>` | `Tensor<A, D>` | 复用左操作数存储 | `Tensor<A, D>` |
 | `&Tensor<A, D>` | `A`（标量） | 无，分配新数组 | `Tensor<A, D>` |
-| `Tensor<A, D>` | `A`（标量） | 复用左操作数存储（原地写入） | `Tensor<A, D>` |
+| `Tensor<A, D>` | `A`（标量） | 复用左操作数存储 | `Tensor<A, D>` |
 | `A`（标量） | `&Tensor<A, D>` | 无，分配新数组 | `Tensor<A, D>` |
-| `A`（标量） | `Tensor<A, D>` | 复用右操作数存储（原地写入） | `Tensor<A, D>` |
+| `A`（标量） | `Tensor<A, D>` | 复用右操作数存储 | `Tensor<A, D>` |
 
-**规则总结**：值语义的操作数（`Tensor<A, D>`，非引用）允许复用存储；引用语义的操作数（`&Tensor<A, D>`）不参与复用，始终分配新数组。当两个操作数均为值时，优先复用左操作数。
+**存储复用前提**：被复用的操作数须为连续内存且形状与输出一致（含广播展开后）。若不满足，静默回退到分配新数组。
 
-**存储复用前提**：被复用的操作数须为连续内存且形状与输出一致（含广播展开后）。若不满足，回退到分配新数组。此回退为静默行为——用户无法从返回类型区分是否发生了存储复用。设计理由：广播场景下操作数形状可能与输出不一致（如 `(3,4) + (4,)` 中右操作数形状不等于输出形状 `(3,4)`），强制运行时检查是不可避免的。
+**跨维度运算**：二元运算符要求两操作数的维度类型 `D` 相同（见 §16.6）。不同维度类型的运算会产生编译错误，须先通过 `into_dyn()` 统一为 `IxDyn`。
 
-> **⚠️ 性能提示**：当操作数包含广播维度时（如 `(3,4) + (4,)`），即使传入值语义（`Tensor`），存储复用**不会发生**——因为操作数形状 `(4,)` ≠ 输出形状 `(3,4)`。此时 `Tensor`（值语义）的消耗是多余的，使用 `&Tensor`（引用语义）可避免不必要的所有权转移。建议：仅当确认操作数形状与期望输出形状一致时，才使用值语义以获取存储复用。
-
-**存储复用与填充**：当被复用的操作数为填充数组（`PADDED = true`，见 §7.6）时，存储复用仍可发生——填充区域不参与逻辑运算（见 §9.1.4）。但复用后的输出 Tensor 继承源数组的填充布局（`PADDED = true`），逻辑元素正确，填充字节值未定义。若需无填充的输出，调用方应在运算后调用 `to_f_contiguous()`（见 §22）移除填充。
-
-**跨维度运算**：二元运算符要求两操作数的维度类型 `D` 相同（见 §16.6）。不同维度类型（如 `Tensor<A, Ix2>` 与 `Tensor<A, Ix3>`）的运算会产生编译错误——调用方须先通过 `into_dyn()` 统一为 `IxDyn`。广播由内部迭代器（Zip，见 §11.2）在运行时按 §16.1 规则处理，不改变维度类型。所有权矩阵中所有规则均基于相同维度类型 `D` 的前提。
-
-**标量运算符实现约束（孤儿规则）**：
-
-Rust 的孤儿规则（Orphan Rule）禁止为外部类型实现外部 trait。具体影响：
-
-| 方向 | impl 形式 | 合法性 | 原因 |
-|------|-----------|--------|------|
-| RHS 标量 | `impl<S, A, D> Add<A> for TensorBase<S, D> where A: Numeric` | ✅ 合法 | `TensorBase` 是本地类型，Self 位置被覆盖 |
-| LHS 标量（泛型） | `impl<S, A, D> Add<TensorBase<S, D>> for A where A: Numeric` | ❌ E0210 | `A` 是未覆盖的类型参数，不满足"至少一个覆盖类型参数"要求 |
-| LHS 标量（具体类型） | `impl<S, A, D> Add<TensorBase<S, D>> for f64` | ✅ 合法 | `f64` 虽为外部类型，但 `TensorBase<S, D>` 作为具体类型出现在 trait 参数中，满足覆盖要求 |
-
-因此 LHS 标量运算须通过宏为每种具体标量类型生成独立的 `impl` 块：
-
-```
-// 宏模式（以 Add 为例，Sub/Mul/Div 同理）
-// 关键：将 $scalar 直接绑定到 Storage<Elem = $scalar>，确保标量类型与张量元素类型一致
-macro_rules! impl_scalar_add_lhs {
-    ($scalar:ty) => {
-        impl<S, D> Add<TensorBase<S, D>> for $scalar
-        where
-            S: Storage<Elem = $scalar>,
-            D: Dimension,
-            $scalar: Numeric,
-        {
-            type Output = Tensor<$scalar, D>;
-            fn add(self, rhs: TensorBase<S, D>) -> Self::Output { ... }
-        }
-
-        impl<S, D> Add<&TensorBase<S, D>> for $scalar
-        where
-            S: Storage<Elem = $scalar>,
-            D: Dimension,
-            $scalar: Numeric,
-        {
-            type Output = Tensor<$scalar, D>;
-            fn add(self, rhs: &TensorBase<S, D>) -> Self::Output { ... }
-        }
-    };
-}
-
-// 为每种支持运算的标量类型展开（须实现 Numeric，见 §4.4）
-impl_scalar_add_lhs!(f32);
-impl_scalar_add_lhs!(f64);
-impl_scalar_add_lhs!(i32);
-impl_scalar_add_lhs!(i64);
-impl_scalar_add_lhs!(Complex<f32>);
-impl_scalar_add_lhs!(Complex<f64>);
-```
-
-**LHS 标量支持的类型清单**（须实现 `Numeric`，见 §4.4；`bool` 和 `usize` 不实现 `Numeric`，不支持运算符重载）：`f32, f64, i32, i64, Complex<f32>, Complex<f64>`。
-
-**不支持泛型 LHS 标量**：`impl<T: Numeric> Add<Tensor<A,D>> for T` 在 Rust 类型系统下不可能编译通过。用户无法为自定义类型添加 `Tensor + CustomType` 的运算符重载（与 §4.2 Sealed Trait 策略一致，类型体系封闭）。
-
-### 20.3 单态化控制
-
-运算符重载的实现须采用以下策略控制泛型实例化爆炸：
-
-1. **统一 Storage 泛型**：每个运算符的 `impl` 块基于 `TensorBase<S, D>` 统一泛型编写（S: Storage），覆盖 Owned/View/ViewMut/Arc 四种存储模式，而非为每种存储模式编写独立 impl。编译器仅对用户实际调用的 `(S, D, A)` 组合生成代码，未使用的组合不产生编译开销。
-
-2. **内部 monomorphic kernel**：运算符 impl 体仅做类型转换和参数准备，核心计算逻辑委托给按 `(运算符, 元素类型)` 分派的 monomorphic 函数（如 `add_f64_raw(ptr, ptr, ptr, len)`）。泛型 impl 被内联后，编译器可识别不同实例共享同一 kernel，消除重复代码生成。
-
-**二元运算符 impl 展开模式**（以 Add 为例）：
-
-所有权矩阵中的 4 种 Tensor 组合通过宏 `impl_binary_op!` 生成。宏为 `(owned, owned)`、`(owned, &ref)`、`(&ref, owned)`、`(&ref, &ref)` 各生成一个 `impl` 块，RHS 标量同理。核心计算统一调用同一个 monomorphic kernel：
-
-```
-// 4 种所有权组合的 impl 展开（简化示意）
-macro_rules! impl_binary_op {
-    ($op:ident, $method:ident) => {
-        // (&Tensor, &Tensor) — 无复用，分配新数组
-        impl<'a, 'b, S1, S2, A, D> $op<&'b TensorBase<S2, D>> for &'a TensorBase<S1, D>
-        where
-            S1: Storage<Elem = A>,
-            S2: Storage<Elem = A>,
-            D: Dimension,
-            A: Numeric,
-        {
-            type Output = Tensor<A, D>;
-            fn $method(self, rhs: &'b TensorBase<S2, D>) -> Self::Output {
-                // 分配新数组，调用 monomorphic kernel
-            }
-        }
-
-        // (Tensor, &Tensor) — 复用左操作数存储
-        impl<'b, S1, S2, A, D> $op<&'b TensorBase<S2, D>> for TensorBase<S1, D>
-        where
-            S1: StorageMut<Elem = A>,  // StorageMut: 可写入（Owned/ViewMut）
-            S2: Storage<Elem = A>,
-            D: Dimension,
-            A: Numeric,
-        {
-            type Output = Tensor<A, D>;
-            fn $method(self, rhs: &TensorBase<S2, D>) -> Self::Output {
-                // 若 self 连续且形状匹配 → 原地写入
-                // 否则 → 分配新数组（静默回退）
-            }
-        }
-
-        // (Tensor, Tensor) — 复用左操作数存储
-        // (&Tensor, Tensor) — 复用右操作数存储
-        // ... 同理展开
-    };
-}
-
-impl_binary_op!(Add, add);
-impl_binary_op!(Sub, sub);
-impl_binary_op!(Mul, mul);
-impl_binary_op!(Div, div);
-```
-
-**存储复用回退的可观测性**：当消耗 Owned 操作数但存储复用条件不满足时（非连续或形状不匹配），运算符静默分配新数组。调用方无法从返回值区分"复用了存储"还是"分配了新数组"。以下场景尤其容易产生隐蔽的额外分配：
-
-- 操作数经过转置/切片后变为非连续，消耗时无法复用
-- 广播后形状不匹配（左操作数被广播扩展，消耗后形状与输出不同）
-
-若需确保存储复用（避免隐式分配），应显式使用 `zip_mut_with` 等原地方法（见 §11.2），或通过 `is_padded_contiguous()` 预检操作数连续性。**后续版本考虑**：提供 `try_into_op(self, rhs)` 方法，在无法复用时返回 `Err((self, rhs))` 将原始操作数还给调用方，而非静默分配。
-
-### 20.4 视图参与运算
-
-| 操作数类型 | 行为 |
-|------------|------|
-| `&TensorView` / `&TensorViewMut` | 等同于 `&Tensor`，始终分配新数组 |
-| `TensorViewMut`（消耗） | 始终分配新数组。`TensorViewMut` 是对其他 Tensor 存储的 `&mut` 借用，不拥有数据所有权，无法将底层 buffer 转移为 Owned tensor。消耗 ViewMut 仅表示运算完成后该可变借用失效（调用方不可再通过原 ViewMut 写入），不代表存储复用。若需存储复用，应对 Owned `Tensor` 调用 `.view_mut()` 获取 ViewMut 后原地写入（如 `zip_mut_with`），或直接消耗 Owned `Tensor` 参与运算 |
-| `TensorView`（消耗） | 视图无自有存储，消耗后仍需分配新数组。**API 设计建议**：考虑不为 `TensorView`（值）实现二元运算符 trait（仅支持 `&TensorView`），避免用户误以为消耗视图能获得存储复用。若提供值传递 impl，文档须明确标注"消耗视图不获得存储复用" |
-| `&ArcTensor` | 等同于 `&Tensor`，始终分配新数组（不触发 make_mut） |
-| `ArcTensor`（消耗） | 通过 `Arc::try_unwrap()` 尝试获取独占所有权：成功则复用存储（等效 Owned）；失败（引用计数 > 1）则分配新数组 |
-
-### 20.5 复合赋值约束
-
-| 规则 | 说明 |
-|------|------|
-| 左操作数 | 须为可写存储（Owned 或 ViewMut），View 和 ArcRepr 不支持复合赋值 |
-| 右操作数广播 | 右操作数可被广播到左操作数形状 |
-| 左操作数广播 | 禁止——左操作数须拥有完整存储，不可为广播视图 |
-
-**ArcRepr 复合赋值说明**：`ArcTensor` 不实现 `AddAssign` 等复合赋值 trait（编译期拒绝）。虽然 §20.4 中 `ArcTensor`（消耗）可通过 `Arc::try_unwrap()` 获取独占所有权参与二元运算，但复合赋值（如 `a += b`）要求左操作数为 `&mut Self`，而 `ArcTensor` 无法提供独占 `&mut` 保证（引用计数可能 > 1）。因此复合赋值的限制比二元运算更严格——ArcRepr 在编译期即被排除，不存在运行时回退。
-
-**ArcRepr 就地更新方法**：为弥补 ArcRepr 无法使用复合赋值的不便，提供 `update_inplace` 方法作为 ergonomics 改善：
-
-| 方法 | 签名 | 说明 |
-|------|------|------|
-| `update_inplace` | `fn update_inplace<F>(&mut self, f: F) where F: FnOnce(&mut Tensor<A, D>)` | 通过 `make_mut()` 获取独占 `&mut Tensor<A, D>`（引用计数 > 1 时深拷贝），对其应用闭包 `f`。闭包内可执行任意就地运算（含复合赋值） |
-| `modify` | `fn modify<F>(&mut self, f: F) -> &mut Self where F: FnOnce(&mut Tensor<A, D>)` | 与 `update_inplace` 行为一致，额外返回 `&mut Self` 支持链式调用 |
-
-**使用示例**：
-
-```
-let mut arc = ArcTensor::from(tensor);
-arc.update_inplace(|t| {
-    *t += &other;  // 在 make_mut 后的 Owned tensor 上执行复合赋值
-});
-// 链式风格：
-arc.modify(|t| *t *= 2.0).modify(|t| *t -= &bias);
-```
-
-> **性能提示**：`update_inplace` / `modify` 在引用计数 > 1 时触发深拷贝（`make_mut` 语义）。若只需单次运算，直接消耗 `ArcTensor` 参与二元运算（`arc + &other`）可能更优——`Arc::try_unwrap()` 成功时零拷贝，而 `update_inplace` 的 `make_mut` 在引用计数 = 1 时虽不拷贝，但引入额外间接层。
-
-**View 复合赋值说明**：`TensorView`（不可变视图）不实现复合赋值 trait（编译期拒绝）。这与 §20.4 中 `TensorView`（消耗）无法复用存储的规则一致——不可变视图不提供写权限。
-
-### 20.6 比较运算符
-
-比较运算符不参与上述所有权/存储复用矩阵，因为输出为 `Tensor<bool, D>`（类型不同于输入），始终分配新数组。
-
-**设计决策**：逐元素比较返回 `Tensor<bool, D>`，但 `std::cmp::PartialOrd` trait 的方法签名返回 `bool`，无法覆盖为返回 Tensor。因此**不通过 `PartialOrd` 实现运算符重载**，而是采用以下方案：
-
-- `< <= > >=` 运算符**不提供**（`PartialOrd` 返回 `bool`，与逐元素 Tensor 语义冲突）
-- 逐元素比较**仅通过方法调用**：`.lt()`、`.le()`、`.gt()`、`.ge()`（见 §12.2 比较操作语义），返回 `Tensor<bool, D>`
-- **命名说明**：`.lt()` 等方法名与 `PartialOrd` trait 的固有方法同名，但 `TensorBase` **不实现 `PartialOrd`**，因此不存在 trait 方法冲突。此处选择 `.lt()` 而非 `.elem_lt()` 等替代命名，是因为：(1) 与 NumPy 的 `np.less()` / ndarray 的 `.lt()` 命名惯例一致；(2) 返回类型 `Tensor<bool, D>` 已明确区分于 `PartialOrd::lt() -> bool`；(3) IDE 自动补全不会提示 `PartialOrd::lt()`（因未实现该 trait）
-- `==` / `!=`：`PartialEq` trait 返回 `bool`（标量语义，判断两个 Tensor 是否完全相等）；逐元素布尔掩码使用 `.eq()` / `.ne()` 方法
-
-> **⚠️ 重要：`==` 与 `.eq()` 的语义区分**
->
-> `PartialEq` 的 `==`/`!=` 运算符执行**整体相等判断**（返回 `bool`，判断两个 Tensor 形状和所有元素是否完全相等）。
->
-> `.eq()` / `.ne()` 方法执行**逐元素比较**（返回 `Tensor<bool, D>`，每个位置独立比较）。
->
-> 两者语义完全不同，**不可混用**。典型错误：`a == b` 期望逐元素布尔掩码，实际得到整体 `bool`。若需逐元素比较，使用 `.eq()` / `.ne()` 而非 `==` / `!=`。
-
-| 方法 | 签名 | 返回类型 | 元素约束 |
-|------|------|----------|----------|
-| `.lt(&self, other) -> Tensor<bool, D>` | 逐元素 `<` | `Tensor<bool, D>` | `A: PartialOrd` |
-| `.le(&self, other) -> Tensor<bool, D>` | 逐元素 `<=` | `Tensor<bool, D>` | `A: PartialOrd` |
-| `.gt(&self, other) -> Tensor<bool, D>` | 逐元素 `>` | `Tensor<bool, D>` | `A: PartialOrd` |
-| `.ge(&self, other) -> Tensor<bool, D>` | 逐元素 `>=` | `Tensor<bool, D>` | `A: PartialOrd` |
-
-以上方法支持广播（与 §16.1 广播规则一致），始终分配新数组。`PartialEq` 的 `==`/`!=` 运算符保持标量语义（`Tensor<A, D> == Tensor<A, D> -> bool`，判断两个数组形状和所有元素是否完全相等）。**NaN 行为**：由于 `PartialEq` 遵循 IEEE 754（`NaN != NaN`），两个形状相同且在相同位置均为 NaN 的 Tensor，`==` 比较结果为 `false`（因为逐元素比较时 NaN != NaN）。此 NaN 语义与 §18.8 布尔归约中"NaN 视为非零"的处理一致——NaN 不等于任何值（包括自身）。若需 NaN 敏感的相等判断，使用 `allclose(rtol=0.0, atol=0.0)`（但注意 `allclose` 同样将 NaN 比较为 false，见 §21.5）。
-
-**`PartialEq` 的局限性与 `exact_eq` 方法**：`PartialEq` 返回 `bool`，无法区分"形状不同"和"形状相同但元素不等"两种失败情况——两者均返回 `false`。为支持错误诊断，提供以下方法：
-
-| 方法 | 签名 | 返回类型 | 说明 |
-|------|------|----------|------|
-| `exact_eq` | `fn exact_eq(&self, other: &Tensor<A, D>) -> Result<bool, ShapeMismatch> where A: PartialEq` | `Result<bool, ShapeMismatch>` | 形状不同时返回 `Err(ShapeMismatch)`；形状相同时逐元素比较，所有元素相等返回 `Ok(true)`，否则返回 `Ok(false)`。NaN 语义与 `PartialEq` 一致（`NaN != NaN`） |
-
-`exact_eq` 适用于需要区分"形状不匹配"与"元素不等"的场景（如测试断言、数据校验）。若仅需要布尔结果，`PartialEq` 的 `==` 更简洁。
+**标量运算符约束**：受 Rust 孤儿规则限制，LHS 标量运算（如 `scalar + tensor`）须为每种具体标量类型（`f32, f64, i32, i64, Complex<f32>, Complex<f64>`）生成独立的 impl 块，不支持泛型 LHS 标量。
 
 ---
 
