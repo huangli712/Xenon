@@ -1179,16 +1179,7 @@ binary_dispatch(a, b, op):
 | 窗口迭代越界 | 不产出不完整窗口（窗口数 = shape - window_size + 1） |
 | 空数组迭代 | 立即结束，产出零个元素 |
 
-**zip 广播迭代的内存分配行为**：
-
-广播迭代器使用零步长（stride=0）模拟维度扩展，不产生实际的数据拷贝。但迭代器内部需要维护多维坐标计数器以跟踪遍历位置：
-
-| 维度类型 | 坐标计数器实现 | 堆分配 |
-|----------|---------------|--------|
-| 静态维度（Ix0~Ix6） | 固定大小数组 `[usize; N]`（栈分配） | 无 |
-| 动态维度（IxDyn） | `InlineArray<usize, 8>`（≤ 8 维栈分配，> 8 维回退堆分配），与 IxDyn 内部表示一致 | 通常无（6 维以内零堆分配） |
-
-此设计与 §1.2 "性能敏感 — 避免不必要的分配" 一致。`no_std` 环境下，IxDyn 迭代器使用 `alloc::vec::Vec` 作为坐标计数器（`no_std` 需 `alloc` feature，见 §1.3）。
+**zip 广播迭代的内存分配行为**：广播迭代使用零步长模拟维度扩展，不产生实际数据拷贝。迭代器内部坐标计数器在静态维度下无堆分配，动态维度（IxDyn）下通常无堆分配（≤ 8 维栈分配，> 8 维回退堆分配）。
 
 ### 11.3 广播视图的可变迭代安全性
 
@@ -1224,9 +1215,7 @@ binary_dispatch(a, b, op):
 | `IntoParallelIterator` | Tensor, TensorView, TensorViewMut, ArcTensor（feature `parallel`） | 需要 `A: Send`；按连续块分割给线程。详见 §11.9 |
 | `ParallelIterator` | 并行迭代器（feature `parallel`） | rayon `ParallelIterator`，提供 `par_iter()`、`par_iter_mut()` |
 
-**`size_hint()` 精确性要求**：
-
-所有迭代器（包括窗口迭代器、zip 迭代器等）的 `size_hint()` 必须返回精确值。理由：(1) 并行迭代的任务分割依赖精确的长度信息（§9.2 "每块不小于 4K 元素"），不精确的 `size_hint()` 会导致不均匀的工作负载或丢失尾部元素；(2) `ExactSizeIterator` trait 的语义要求 `size_hint()` 与 `len()` 一致；(3) 即使未实现 `ExactSizeIterator` 的迭代器（如不定长链式迭代），也应在每个独立迭代器层面保证精确性。
+**`size_hint()` 精确性要求**：所有迭代器（包括窗口迭代器、zip 迭代器等）的 `size_hint()` 必须返回精确值（即 `(len, Some(len))`），以确保并行迭代的任务分割正确性。
 
 ### 11.5 IntoIterator 实现表
 
@@ -1236,10 +1225,10 @@ binary_dispatch(a, b, op):
 
 | 类型 | `IntoIterator::IntoIter` | `Item` | 行为 |
 |------|--------------------------|--------|------|
-| `Tensor<A, D>`（Owned） | `IntoIter<A, D>` | `A` | 消耗所有权，逐元素 move/copy 出来。实现须保证：连续数组按指针递增顺序产出（可 SIMD 友好）；非连续数组按 strides 跳跃寻址产出。内部通过 `unsafe` 逐元素读出并 forget 原存储，避免 double drop |
+| `Tensor<A, D>`（Owned） | `IntoIter<A, D>` | `A` | 消耗所有权，逐元素 move/copy 出来。连续数组按指针递增顺序产出；非连续数组按 strides 跳跃寻址产出 |
 | `TensorView<'a, A, D>` | `Iter<'a, A, D>` | `&'a A` | 视图本身是借用，无法 move 元素所有权。按值消费视图仅释放视图元数据（shape/strides），底层数据不受影响 |
 | `TensorViewMut<'a, A, D>` | `IterMut<'a, A, D>` | `&'a mut A` | 同上，可变视图按值消费后释放元数据 |
-| `ArcTensor<A, D>` | `IntoIter<A, D>` | `A` | 消耗 ArcTensor 所有权。若 Arc 引用计数 == 1，等效于 `Arc::try_unwrap()` 获取 Owned 后逐元素 move；若引用计数 > 1，先 `make_mut()` 深拷贝获取独立 Owned 再逐元素 move。此语义保证每次 `next()` 返回的 `A` 拥有独立所有权，无需额外 clone |
+| `ArcTensor<A, D>` | `IntoIter<A, D>` | `A` | 消耗 ArcTensor 所有权。若 Arc 引用计数 == 1，等效于 `Arc::try_unwrap()` 获取 Owned 后逐元素 move；若引用计数 > 1，先深拷贝获取独立 Owned 再逐元素 move |
 
 **借用迭代（`&Tensor` / `&mut Tensor` 等）**：
 
@@ -1251,21 +1240,6 @@ binary_dispatch(a, b, op):
 | `&mut TensorViewMut<'a, A, D>` | `IterMut<'a, A, D>` | `&'a mut A` | 再借用，等效于视图的可变迭代 |
 | `&ArcTensor<A, D>` | `Iter<'a, A, D>` | `&'a A` | 不可变借用迭代，不增加 Arc 引用计数（借用 `&self` 即可读取数据） |
 | `&mut ArcTensor<A, D>` | `IterMut<'a, A, D>` | `&'a mut A` | 可变借用迭代，需要 `&mut self` 保证独占访问，不触发 `make_mut()`（借用检查器保证无其他引用） |
-
-**设计说明**：
-
-- `IntoIter<A, D>`（Owned 消费迭代器）与 `Iter<'a, A, D>`（借用迭代器）是不同类型。前者消费存储所有权，后者仅持有引用
-- ArcTensor 的 `into_iter()` 在引用计数 > 1 时触发深拷贝——这与 `Arc::try_unwrap()` 语义一致。性能敏感场景下，建议先 `Arc::try_unwrap()` 获取 Owned 再迭代，避免隐式拷贝
-- ViewRepr 和 ViewMutRepr 的 `into_iter()` 不消费底层数据（仅释放视图元数据），因此 `Item` 为引用类型
-
-**⚠ PITFALL — ArcTensor `into_iter()` 的隐式深拷贝**：
-
-`for elem in arc_tensor { ... }` 这个最自然的用法在 Arc 引用计数 > 1 时会**静默深拷贝整个数组**（调用 `make_mut()`），可能造成显著的性能意外。该行为无编译时警告或运行时日志。
-
-缓解措施：
-1. **API 文档中须标注** `# Performance` 说明此行为
-2. 建议提供 `try_into_iter() -> Result<IntoIter<A, D>, Self>` 方法，引用计数 > 1 时返回 `Err(self)` 而非隐式拷贝，让用户显式处理
-3. 用户可通过 `Arc::try_unwrap(arc_tensor).unwrap_or_else(|arc| arc.as_ref().clone())` 等方式手动控制行为
 
 ### 11.6 轴迭代器
 
@@ -1280,7 +1254,7 @@ binary_dispatch(a, b, op):
 | 长度 | `shape[axis]` |
 | 约束 | `axis` 须在 `[0, ndim)` 范围内，否则 panic（`"axis {axis} is out of bounds for array of dimension {ndim}"`） |
 | 空轴 | 轴长度为 0 时产出零个元素，迭代器立即结束 |
-| 内存布局 | 每个视图共享源数组底层存储（零拷贝）。第 i 个视图等价于 `self.index_axis(axis, i)`，但直接通过 strides 计算偏移，避免逐次索引计算开销 |
+| 内存布局 | 每个视图共享源数组底层存储（零拷贝） |
 | trait 实现 | `Iterator` + `ExactSizeIterator` + `FusedIterator` |
 | Ix0 | 不适用（Ix0 未实现 `RemoveAxis`，编译时拒绝） |
 
@@ -1295,9 +1269,6 @@ binary_dispatch(a, b, op):
 | 空轴 | 同 `axis_iter` |
 | trait 实现 | `Iterator` + `ExactSizeIterator` + `FusedIterator` |
 
-**与 `index_axis` 的关系**：`axis_iter(axis)` 的第 i 次迭代结果与 `index_axis(axis, i)` 语义等价，但实现上直接在迭代器内部维护偏移量递增（`offset += stride[axis]`），避免每次调用 `index_axis` 时重新计算索引映射。
-
-**与 `RemoveAxis` 的关系**：轴迭代沿指定轴遍历，每次产出 N-1 维子视图。返回类型的维度为 `<D as RemoveAxis>::Smaller`，因此需要 `D: RemoveAxis` 约束。Ix0 未实现 `RemoveAxis`（§3.3），从编译时保证零维张量无法调用轴迭代。
 
 ### 11.7 元素迭代器方法签名
 
@@ -1307,117 +1278,28 @@ binary_dispatch(a, b, op):
 |------|------|--------|----------|------|
 | `iter()` | `fn iter(&self) -> Iter<'_, A, D>` | `&A` | 所有存储模式 | 按物理内存布局顺序遍历所有元素。非连续数组按 strides 跳跃寻址 |
 | `iter_mut()` | `fn iter_mut(&mut self) -> IterMut<'_, A, D> where S: StorageMut` | `&mut A` | Owned, ViewMutRepr | 可变元素迭代。**入口处须检查 `has_zero_stride()`**，若为 true 则 panic（见 §11.3）。`S: StorageMut` 约束在编译时排除 ViewRepr 和 ArcRepr |
-| `iter_contiguous()` | `fn iter_contiguous(&self) -> Option<ContiguousIter<'_, A>>` | `&A` | 所有存储模式 | 仅**严格连续**数组（`is_contiguous()` = true，无 padding）返回 `Some`。底层为 slice 迭代器，实现 `DoubleEndedIterator` + `ExactSizeIterator` + `FusedIterator`。**注意**：宽松连续（`is_padded_contiguous()` 但非严格连续，即含 padding）的数组返回 `None`，须使用 `iter_padded_contiguous()` 或 `iter()` 代替。严格连续要求所有逻辑元素在内存中紧密排列，无 padding 字节穿插，这样 slice 迭代器才能正确遍历 |
+| `iter_contiguous()` | `fn iter_contiguous(&self) -> Option<ContiguousIter<'_, A>>` | `&A` | 所有存储模式 | 仅**严格连续**数组（`is_contiguous()` = true，无 padding）返回 `Some`。实现 `DoubleEndedIterator` + `ExactSizeIterator` + `FusedIterator`。宽松连续（含 padding）的数组返回 `None`，须使用 `iter_padded_contiguous()` 或 `iter()` |
 | `iter_contiguous_mut()` | `fn iter_contiguous_mut(&mut self) -> Option<ContiguousIterMut<'_, A>> where S: StorageMut` | `&mut A` | Owned, ViewMutRepr | 可变连续迭代。同上要求严格连续（`is_contiguous()`），检查 `has_zero_stride()` 和 `S: StorageMut` |
-| `iter_padded_contiguous()` | `fn iter_padded_contiguous(&self) -> Option<PaddedContiguousIter<'_, A, D>>` | `&A` | 所有存储模式 | 宽松连续数组（`is_padded_contiguous()` = true）返回 `Some`，包括严格连续数组和含 padding 的填充连续数组。迭代器在每列末尾自动跳过 padding 字节（F-order 跳过 axis 0 尾部填充），对外表现为仅遍历逻辑元素。**实现 `DoubleEndedIterator`**（反向遍历算法见下方 `PaddedContiguousIter` 算法说明）。用于 SIMD 优化的核心场景——padded 数组是最需要向量化遍历的场景。内部需记录 shape 和 padded strides 以正确跳跃 |
+| `iter_padded_contiguous()` | `fn iter_padded_contiguous(&self) -> Option<PaddedContiguousIter<'_, A, D>>` | `&A` | 所有存储模式 | 宽松连续数组（`is_padded_contiguous()` = true）返回 `Some`，包括严格连续数组和含 padding 的填充连续数组。迭代器在每列末尾自动跳过 padding 字节（F-order 跳过 axis 0 尾部填充），对外表现为仅遍历逻辑元素。实现 `DoubleEndedIterator` + `ExactSizeIterator` + `FusedIterator` |
 | `iter_padded_contiguous_mut()` | `fn iter_padded_contiguous_mut(&mut self) -> Option<PaddedContiguousIterMut<'_, A, D>> where S: StorageMut` | `&mut A` | Owned, ViewMutRepr | 可变 padded 连续迭代。同上但提供可变引用。检查 `has_zero_stride()` 和 `S: StorageMut` |
 | `iter_ordered()` | `fn iter_ordered(&self, order: Order) -> OrderedIter<'_, A, D>` | `&A` | 所有存储模式 | 显式指定遍历顺序（`Order::F`，按列优先逻辑顺序）。强制按指定逻辑顺序遍历，即使与物理布局不一致（可能产生非连续访问） |
 | `iter_ordered_mut()` | `fn iter_ordered_mut(&mut self, order: Order) -> OrderedIterMut<'_, A, D> where S: StorageMut` | `&mut A` | Owned, ViewMutRepr | 可变有序迭代。同上检查 |
 
-**`ContiguousIter` 与 `DoubleEndedIterator` 设计理由**：
+**迭代器类型与 `DoubleEndedIterator`**：
 
-Rust 的 trait 系统要求 trait 实现在编译时确定，无法基于运行时状态（如连续性）条件实现 `DoubleEndedIterator`。因此采用类型分层策略：
+| 迭代器 | 连续性要求 | `DoubleEndedIterator` |
+|--------|-----------|----------------------|
+| `Iter` | 无（支持所有数组） | 不实现 |
+| `ContiguousIter` | 严格连续（`is_contiguous()` = true） | 实现 |
+| `PaddedContiguousIter` | 宽松连续（`is_padded_contiguous()` = true） | 实现（须正确跳过列尾 padding） |
 
-- `iter()` → `Iter`：通用迭代器，支持所有数组（严格连续、宽松连续、非连续），**不实现 `DoubleEndedIterator`**
-- `iter_contiguous()` → `Option<ContiguousIter>`：仅严格连续数组（`is_contiguous()` = true）可用，**实现 `DoubleEndedIterator`**（底层为 slice 迭代，`next_back()` 零开销）
-- `iter_padded_contiguous()` → `Option<PaddedContiguousIter>`：宽松连续数组（`is_padded_contiguous()` = true，含严格连续）可用，**实现 `DoubleEndedIterator`**（内部跳过 padding 字节，反向遍历见下方算法说明）
+**严格连续 vs 宽松连续的迭代器选择**：
 
-**`PaddedContiguousIter` 的 `next_back()` 算法说明**：
-
-反向遍历 padded 数组须正确跳过列尾 padding，比"维护起止指针"复杂。以下是通用 N 维算法（以 F-order 为例）：
-
-**2D F-order 示例**：`shape=[M, N]`，padded stride `[1, M_padded]`（`M_padded ≥ M`）
-
-```
-状态：ptr（当前前向指针），back_ptr（当前反向指针），
-      col_start（当前列起始），col_end（当前列逻辑末尾），
-      remaining（剩余逻辑元素数）
-
-next_back():
-    if remaining == 0: return None
-    remaining -= 1
-    back_ptr -= size_of::<A>()     // 先后退一个元素
-
-    if back_ptr < col_start:
-        // 跨越到上一列：须跳过上一列尾部 padding
-        back_ptr = col_start - (M_padded - shape[0]) * size_of::<A>() - size_of::<A>()
-        col_start -= M_padded * size_of::<A>()
-        col_end = col_start + shape[0] * size_of::<A>()
-
-    return &*back_ptr
-
-终止条件：remaining == 0 时 next() 和 next_back() 均返回 None。
-          交汇检测通过 remaining 计数器保证，不依赖指针比较。
-```
-
-**3D F-order 示例**：`shape=[M, N, P]`，padded strides `[1, M_padded, N*M_padded]`
-
-3D 及更高维度引入**多层 padding 跳跃**：不仅需跳过最内层列尾 padding，还需跳过"平面间"padding（即每 N 个平面之间，由于最内层 padding 导致的额外字节）。算法扩展如下：
-
-```
-状态：ptr, back_ptr, remaining（同上）
-      inner_col_start, inner_col_end（最内层列边界）
-      plane_start（当前平面起始）
-
-next_back():
-    if remaining == 0: return None
-    remaining -= 1
-    back_ptr -= size_of::<A>()
-
-    // 第一层：检查是否跨越最内层列边界
-    if back_ptr < inner_col_start:
-        // 跳过上一列尾部 padding（同 2D 算法）
-        back_ptr = inner_col_start - (M_padded - M) * size_of::<A>() - size_of::<A>()
-        inner_col_start -= M_padded * size_of::<A>()
-        inner_col_end = inner_col_start + M * size_of::<A>()
-
-        // 第二层：检查是否跨越平面边界
-        // 当 inner_col_start 回退到上一平面范围外时触发
-        if inner_col_start < plane_start:
-            // 跳过上一平面的最后一列 padding
-            // 上一平面起始 = plane_start - N * R_padded * size_of::<A>()
-            plane_start -= N * M_padded * size_of::<A>()
-            inner_col_start = plane_start + (N - 1) * M_padded * size_of::<A>()
-            inner_col_end = inner_col_start + M * size_of::<A>()
-            back_ptr = inner_col_end - size_of::<A>()
-
-    return &*back_ptr
-```
-
-**N 维通用算法**：扩展为维护 `ndim - 1` 层边界计数器（`level_bounds[0..ndim-1]`），每层记录该层级的起始指针。`next_back()` 从最内层开始逐层检查回退，每触发一层回退，外层的计数器也相应更新。时间复杂度：`next_back()` 为 O(ndim) 最坏情况（跨层回退），摊销 O(1)（多数调用仅在最内层处理）。
-
-关键点：
-- 列边界计算须使用 `padded_stride[1]`（即 `M_padded`，而非 `shape[0] * size_of::<A>()`），因为 padded stride 包含 padding 字节
-- 严格连续数组退化为普通 slice 迭代器（无 padding 跳跃），`next_back()` 零额外开销
-
-**严格连续 vs 宽松连续的迭代器区分**：
-
-| 连续类型 | 判定方法 | `iter_contiguous()` | `iter_padded_contiguous()` | `iter()` | 说明 |
-|----------|---------|---------------------|---------------------------|----------|------|
-| 严格连续 | `is_contiguous()` = true | `Some(ContiguousIter)` | `Some(PaddedContiguousIter)` | `Iter` | 元素在内存中紧密排列，无 padding。三种迭代器均可用 |
-| 宽松连续（有 padding） | `is_padded_contiguous()` = true 且 `is_contiguous()` = false | `None` | `Some(PaddedContiguousIter)` | `Iter` | 列间有 padding 字节，slice 迭代器不适用。优先使用 `iter_padded_contiguous()`（支持 `DoubleEndedIterator`） |
-| 非连续 | `is_padded_contiguous()` = false | `None` | `None` | `Iter` | 步长跳跃，只能用 `iter()` |
-
-此设计的用户体验代价是调用方需要分支处理：
-
-```rust
-// 需要双向迭代时的推荐模式
-if let Some(it) = arr.iter_contiguous() {
-    // 可以使用 next_back()、rev() 等
-    let last = it.next_back();
-} else {
-    // 回退到单向迭代
-    for elem in arr.iter() { /* ... */ }
-}
-```
-
-**替代方案及取舍**：
-
-| 方案 | 优点 | 缺点 | 取舍 |
-|------|------|------|------|
-| 当前方案（类型分层 + Option） | 编译时安全，trait 实现正确 | 用户需分支处理 | ✅ 采用 |
-| `as_slice()` 返回 `Option<&[A]>` | 用户获得完整 slice 迭代能力 | 仅适用于连续数组，语义不统一 | 作为辅助方法提供（见 §8.3） |
-| 运行时 panicking `next_back()` | API 统一 | 运行时 panic 不可接受，且无法实现 trait | ❌ 拒绝 |
+| 连续类型 | `iter_contiguous()` | `iter_padded_contiguous()` | `iter()` |
+|----------|---------------------|---------------------------|----------|
+| 严格连续 | `Some(ContiguousIter)` | `Some(PaddedContiguousIter)` | `Iter` |
+| 宽松连续（有 padding） | `None` | `Some(PaddedContiguousIter)` | `Iter` |
+| 非连续 | `None` | `None` | `Iter` |
 
 **0 维张量（Ix0）的迭代行为**：
 
@@ -1456,20 +1338,16 @@ if let Some(it) = arr.iter_contiguous() {
 
 **各维度 `Item` 类型映射**：
 
-| 维度类型 D | `D::Pattern` | `Item`（不可变） | 示例 |
-|------------|-------------|-----------------|------|
-| Ix0 | `()` | `((), &A)` | `((), &42.0)` |
-| Ix1 | `usize` | `(usize, &A)` | `(3, &1.5)` |
-| Ix2 | `(usize, usize)` | `((usize, usize), &A)` | `((1, 2), &3.14)` |
-| Ix3 | `(usize, usize, usize)` | `((usize, usize, usize), &A)` | `((0, 1, 2), &2.71)` |
-| Ix4~Ix6 | `(usize, ..., usize)` | `((usize, ..., usize), &A)` | — |
-| IxDyn | `InlineArray<usize, 8>` | `(InlineArray<usize, 8>, &A)` | `(InlineArray::from([1, 2, 0]), &1.0)` |
+| 维度类型 D | `D::Pattern` | `Item`（不可变） |
+|------------|-------------|-----------------|
+| Ix0 | `()` | `((), &A)` |
+| Ix1 | `usize` | `(usize, &A)` |
+| Ix2 | `(usize, usize)` | `((usize, usize), &A)` |
+| Ix3 | `(usize, usize, usize)` | `((usize, usize, usize), &A)` |
+| Ix4~Ix6 | `(usize, ..., usize)` | `((usize, ..., usize), &A)` |
+| IxDyn | `InlineArray<usize, 8>` | `(InlineArray<usize, 8>, &A)` |
 
-**设计说明**：
-
-- 索引使用 `D::Pattern`（§3.2 Dimension 关联类型），与 `Index` trait 的索引模式一致，保持 API 统一
-- **IxDyn 索引分配**：`IndexedIter` 内部使用 `InlineArray<usize, 8>` 作为坐标计数器（与广播迭代器一致，见 §11.2）。由于 `IxDyn::Pattern` 已改为 `InlineArray<usize, 8>`（见 §3.2 关联类型映射），`next()` 输出的坐标类型也为 `InlineArray<usize, 8>`，每次 `next()` 无堆分配（内部计数器 clone 到输出，≤ 8 维为栈拷贝）。若需 `Vec<usize>` 输出，可调用 `.collect::<Vec<_>>()`。对于极少见的 > 8 维情况，`InlineArray` 自动退化为堆分配，行为与原 `Vec<usize>` 一致。
-- 索引始终按 F-order 逻辑坐标递增（最左轴变化最快），不受物理内存布局影响。这保证索引 `(0, 0, 0) → (1, 0, 0) → ... → (shape[0]-1, shape[1]-1, shape[2]-1)` 的确定性顺序。元素按对应逻辑坐标寻址取出，与物理内存布局一致（F-contiguous 数组）
+索引使用 `D::Pattern`（§3.2），与 `Index` trait 的索引模式一致。索引始终按 F-order 逻辑坐标递增（最左轴变化最快），不受物理内存布局影响。
 
 ### 11.9 并行迭代
 
@@ -1492,9 +1370,7 @@ if let Some(it) = arr.iter_contiguous() {
 | `ArcTensor<A, D>` | `&A` | `A: Send + Sync` | 共享引用的并行只读迭代 |
 | `&ArcTensor<A, D>` | `&A` | `A: Send + Sync` | 借用的并行只读迭代 |
 
-**TensorViewMut 的并行安全保证**：`TensorViewMut` 实现独占语义（同一时间只能有一个 `&mut` 引用）。`par_iter_mut()` 按连续块分割后，每个线程获得独立的 `&mut A` 引用区间，Rust 借用检查器在调用侧（`&mut self`）保证独占，rayon 在运行时保证区间不重叠。线程安全要求 `A: Send`（元素可跨线程移动），不需要 `A: Sync`（不存在共享引用）。
 
-**ArcRepr 不可并行可变迭代**：ArcRepr 未实现 `StorageMut`（§6.2），因此 `par_iter_mut()` 的 `where S: StorageMut` 约束在编译时排除 ArcRepr。ArcRepr 的可写访问须通过 `make_mut()` 获取 `&mut [A]`（§6.3），再构造临时 Tensor 进行并行可变迭代。
 
 ### 11.10 窗口迭代器补充
 
@@ -1524,10 +1400,8 @@ if let Some(it) = arr.iter_contiguous() {
 
 | 属性 | 说明 |
 |------|------|
-| 生命周期绑定 | 窗口视图 `TensorView` 的生命周期绑定到 `Windows` 迭代器持有的源数组借用 `&'a TensorBase<S, D>` |
-| 迭代中收集 | 迭代期间产出的 `TensorView` 与迭代器共享同一借用。调用 `collect::<Vec<_>>()` 收集所有窗口是安全的（所有视图共享同一借用源） |
-| 迭代后使用 | `Windows` 迭代器被消费（`for` 循环结束或 `collect` 完成后），借用的生命周期结束，产出的视图自动失效。这与 Rust 标准借用规则一致 |
-| 不实现 `DoubleEndedIterator` | 窗口视图为 N 维子数组，非连续内存布局不支持高效的反向遍历。仅实现 `Iterator` + `ExactSizeIterator` + `FusedIterator` |
+| 生命周期绑定 | 窗口视图 `TensorView` 的生命周期绑定到 `Windows` 迭代器持有的源数组借用 |
+| 不实现 `DoubleEndedIterator` | 仅实现 `Iterator` + `ExactSizeIterator` + `FusedIterator` |
 
 ---
 
