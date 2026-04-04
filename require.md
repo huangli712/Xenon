@@ -2722,134 +2722,63 @@ let (mut ws_a, mut ws_b) = ws.split_at(ws.capacity() / 2);
 
 ### 27.1 错误分类
 
-**所有公开错误枚举均标注 `#[non_exhaustive]`**，确保未来新增错误变体不构成 breaking change。
+所有公开错误枚举须标注 `#[non_exhaustive]`。库须定义覆盖以下场景的错误类型体系：
 
-**错误类型体系**（两级架构）：
+**可恢复错误**（返回 Result）：
 
-| 层级 | 错误类型 | 枚举变体名 | 触发场景 | 处理方式 |
-|------|----------|------------|----------|----------|
-| **独立错误** | ShapeMismatch | `XenonError::ShapeMismatch` | 二元运算/zip 形状不兼容且无法广播 | Result |
-| | BroadcastError | `XenonError::BroadcastError` | 广播规则不满足（非 size-1 维度不等） | Result |
-| | LayoutMismatch | `XenonError::LayoutMismatch` | 要求连续布局但输入非连续（如 flatten_view 非连续数组） | Result |
-| | InvalidAxis | `XenonError::InvalidAxis` | 轴索引超出维度数 | Result |
-| | InvalidShape | `XenonError::InvalidShape` | 构造参数形状无效（如 cat 输入 ndim 不一致） | Result |
-| | DimensionMismatch | `XenonError::DimensionMismatch` | 静态维度与动态维度互转时维度数不匹配 | Result |
-| | EmptyArray | `XenonError::EmptyArray` | 对空数组执行要求至少一个元素的归约操作 | Result |
-| | InvalidInput | `XenonError::InvalidInput` | 参数语义不合法（非结构/索引类问题） | Result |
-| | InvalidLayout | `XenonError::InvalidLayout` | 布局/对齐验证失败：`from_raw_parts` 等 unsafe 构造器中 shape × strides 不一致（如 strides 导致越界偏移）、指针非空但未满足 `align_of::<A>()` 对齐要求、对齐值非 2 的幂或小于元素自然对齐（见 §4.3） | Result（safe 构造路径）/ panic（unsafe 构造路径的前置条件违反，见 §25.2） |
-| | AllocationError | `XenonError::AllocationError` | 内存分配失败（超大数组、系统内存不足） | panic |
-| | IndexOutOfBounds | `XenonError::IndexOutOfBounds` | 索引越界（含多维索引） | 多维索引：panic（checked）/ UB（unchecked） |
-| | InconsistentLengths | `XenonError::InconsistentLengths` | `TryFrom<Vec<Vec<A>>>` 内层 Vec 长度不一致 | Result |
+| 错误场景 | 说明 |
+|----------|------|
+| 形状不兼容 | 二元运算/zip 形状不兼容且无法广播 |
+| 广播规则不满足 | 非兼容维度无法广播 |
+| 布局不满足要求 | 要求连续布局但输入非连续 |
+| 轴索引无效 | 轴索引超出维度数 |
+| 构造参数形状无效 | 如 cat 输入 ndim 不一致 |
+| 维度互转失败 | 静态/动态维度互转时维度数不匹配 |
+| 空数组归约 | 对空数组执行要求至少一个元素的归约操作 |
+| 参数语义不合法 | 参数值不合法（非结构/索引类问题） |
+| 布局/对齐验证失败 | shape × strides 不一致、指针未对齐、对齐值无效等（safe 路径返回 Result，unsafe 路径前置条件违反时 panic，见 §25.2） |
+| 嵌套容器长度不一致 | 如 Vec<Vec<A>> 内层长度不一致 |
 
-**`InvalidInput` 与其他错误类型的边界**：`InvalidInput` 覆盖"参数语义不合法"（如负数 bins、NaN 边界），区别于 `InvalidShape`（结构不合法，如 ndim 不一致）和 `IndexOutOfBounds`（索引超范围）。当参数问题可归为更具体的错误类型时，优先使用更具体的类型。
+**不可恢复错误**（panic）：
 
-### 27.2 错误类型诊断字段
+| 错误场景 | 说明 |
+|----------|------|
+| 内存分配失败 | 超大数组或系统内存不足 |
+| 索引越界 | 编程错误，同时提供 unsafe unchecked 变体 |
 
-所有返回 `Result` 的错误类型须携带以下诊断信息，以 `Display` 输出人类可读描述：
+错误类型之间须有清晰的边界：参数语义不合法、结构不合法、索引超范围等应归为不同错误类型；当问题可归为更具体的类型时，优先使用更具体的类型。
 
-| 错误类型 | 诊断字段 | 说明 |
-|----------|----------|------|
-| ShapeMismatch | `expected: ShapeData`, `actual: ShapeData` | 期望与实际形状。`ShapeData` 使用 `InlineArray<usize, 8>` 实现，低维度（≤ 8）时栈分配避免堆开销，高维度时自动退化为堆分配 |
-| BroadcastError | `left: ShapeData`, `right: ShapeData`, `conflicting_axis: usize` | 冲突的两个形状及冲突轴。`ShapeData` 同上 |
-| LayoutMismatch | `requested: &'static str`, `actual_layout: &'static str` | 期望布局（如 "F-contiguous"）与实际布局描述 |
-| InvalidAxis | `axis: usize`, `ndim: usize` | 请求轴与实际维度数 |
-| InvalidShape | `reason: &'static str` | 人类可读原因（如 "0 inputs" / "ndim mismatch: expected 3, got 2"） |
-| DimensionMismatch | `expected: usize`, `actual: usize` | 期望与实际维度数 |
-| EmptyArray | `operation: &'static str` | 触发操作名。完整列表：`"sum"` / `"median"` / `"percentile"`——即要求至少一个元素的归约操作。普通索引操作（如 `[[0, 0]]`）对空数组返回空切片，不触发此错误 |
-| InvalidInput | `reason: Cow<'static, str>` | 人类可读原因描述。使用 `Cow<'static, str>` 允许静态字符串和动态格式化消息零开销共存 |
-| InvalidLayout | `reason: &'static str` | 人类可读原因（如 "strides produce out-of-bounds offset" / "pointer alignment 4 does not meet required alignment 8" / "alignment must be a power of 2"） |
-| IndexOutOfBounds | `index: usize`, `axis_len: usize`, `axis: usize` | 越界索引值、轴长度、轴编号 |
-| InconsistentLengths | `expected: usize`, `found: Vec<usize>` | 期望的行长度与各实际行长度 |
+### 27.2 错误诊断信息
 
-panic 类错误（`AllocationError`）通过 panic message 传递诊断信息，不使用结构化字段。`IndexOutOfBounds` 在 panic 场景（多维索引越界）通过 panic message 传递诊断信息。`InvalidLayout` 在 unsafe 构造路径（`from_raw_parts`，见 §25.2）中通过 panic message 传递诊断信息（调用方违反 Safety 前置条件），在 safe 构造路径中使用结构化字段返回 `Result`。
+所有返回 Result 的错误类型须携带充分的诊断信息，使调用方能定位问题根因。诊断信息须包含人类可读描述（通过 `Display` 输出）。panic 类错误通过 panic message 传递诊断信息。
 
-### 27.3 API错误类型映射
+### 27.3 处理策略
 
-| API 类别 | 返回的错误类型 | 说明 |
-|----------|---------------|------|
-| reshape | `InvalidShape` | 仅形状不匹配时返回错误（布局不匹配时自动拷贝） |
-| flatten_view | `LayoutMismatch` | 独立错误，仅检查连续性 |
-| cat / stack | `InvalidShape`（0 个输入、ndim 不一致）/ `ShapeMismatch`（非拼接轴长度不等：cat 除拼接轴外各轴长度须一致，stack 所有输入形状须完全一致） | 独立错误；两者触发条件互斥，不重叠 |
-| squeeze | `InvalidShape` | 独立错误 |
-| broadcast（显式广播 API，§16.3） | `BroadcastError` | 广播形状不兼容，含冲突轴诊断信息（见 §27.2） |
-| 逐元素运算隐式广播 | **panic**（`BroadcastError`） | 通过运算符重载（`Add`/`Sub`/`Mul`/`Div`）触发的隐式广播：因运算符 trait 的 `type Output = Tensor<A, D>` 无法返回 `Result`，广播失败时 **panic**（panic message 包含 `BroadcastError` 诊断信息，含冲突轴细节）。通过方法调用（`.add()`/`.sub()` 等）的显式广播也遵循相同行为——这些方法与运算符共享实现，同样 panic。**可恢复错误路径**：使用 `try_add`/`try_sub`/`try_mul`/`try_div` 方法（见 §16.8）在广播失败时返回 `Err(BroadcastError)` 而非 panic。也可使用 `broadcast` API（§16.3）显式广播后再运算 |
-| 轴操作（sum_axis / slice / index_axis 等） | `InvalidAxis` | axis >= ndim 时返回 `InvalidAxis`（Result） |
-| 维度互转（into_dimension） | `DimensionMismatch` | 独立错误 |
-| 逐元素运算（形状不一致，非广播场景） | `ShapeMismatch` | 形状不同且不满足广播条件（不应发生——广播会先捕获不兼容形状）；独立错误 |
-| 内存分配（构造器） | `AllocationError`（panic） | 不可恢复 |
-| 索引访问 | `IndexOutOfBounds`（panic） / unchecked UB | 编程错误（多维索引硬编码或循环变量） |
-| `TryFrom<Vec<Vec<A>>>` | `InconsistentLengths`（Result） | `From` 实现使用 `expect(...)` 转为 panic；`TryFrom` 提供可恢复错误路径 |
-| 可恢复错误（参数语义不合法） | 返回 Result | 参数语义不合法 → `InvalidInput` |
-| from_raw_parts（§25.2，unsafe） | `InvalidLayout`（panic） | unsafe 构造路径：调用方违反 Safety 前置条件（strides 导致越界偏移、指针未对齐）时 panic |
-| safe 布局/对齐验证（构造器） | `InvalidLayout`（Result） | safe 路径：对齐值非 2 的幂或小于元素自然对齐、shape × strides 不一致 |
+**判断原则**：panic 用于"调用方违反 API 前置条件"（编程错误），Result 用于"输入数据属性导致操作无法完成"（合法调用路径，调用方应处理）。
 
-### 27.4 处理策略
+| 策略 | 适用场景 |
+|------|----------|
+| 返回 Result | 形状/布局/轴错误、参数语义不合法、维度互转失败等可恢复错误 |
+| panic | 索引越界（同时提供 unchecked 变体）、前置条件违反、内存分配失败 |
 
-**判断原则**：panic 用于"调用方违反了 API 前置条件"（编程错误，合理使用无法触发），Result 用于"输入数据本身的属性导致操作无法完成"（合法调用路径，调用方应处理）。具体规则：
+运算符重载触发的隐式广播失败时 panic（因运算符 trait 无法返回 Result）；须同时提供 `try_*` 系列方法（见 §16.8）返回 Result 作为可恢复路径。也可使用 `broadcast` API（§16.3）显式广播后再运算。
 
-| 策略 | 适用场景 | 典型例子 |
-|------|----------|----------|
-| 可恢复错误（形状、布局、轴） | 返回 Result | squeeze 非 size-1 轴 → `InvalidShape` |
-| 可恢复错误（参数语义不合法） | 返回 Result | 参数值不合法 → `InvalidInput` |
-| 编程错误（多维索引越界） | panic，同时提供 unsafe unchecked 变体 | `tensor[i,j]` 索引越界 → `IndexOutOfBounds` panic |
-| 前置条件违反 | panic | `Vec<Vec<A>>` 内层长度不一致（文档要求一致） |
-| 内存分配失败 | panic（与 Rust 标准库 `Vec::push` 等行为一致）。调用方若需 graceful 处理，可在调用前预检元素数和预估内存占用。未来版本可考虑提供 `try_*` 变体返回 `Result` | |
-| 错误信息 | 见下方「Error trait 条件编译」规则 | |
+### 27.4 no_std 兼容
 
-**Error trait 条件编译**：
-
-本库支持 `no_std`（需 `alloc`，见 §1.3），所有错误类型须满足以下条件编译策略：
-
-| Feature | trait 实现 | 说明 |
-|---------|-----------|------|
-| `std`（默认启用） | `impl std::error::Error for XenonError` 及各子类型 | 完整的 `Error` trait 支持，可与 `anyhow`/`eyre` 等生态无缝集成 |
-| `no_std`（`default-features = false`） | 仅要求 `Display + Debug + Clone + Send + Sync` | `std::error::Error` 不可用；错误类型仍实现 `Display` 以提供人类可读描述，但**不实现** `Error` trait |
-
-实现方式：使用 `cfg(feature = "std")` 条件编译块，在 `std` feature 下 `impl std::error::Error`，`no_std` 下省略。不引入额外依赖（不使用 `thiserror` 或 `core-error`）。
-
-**AllocationError 与 no_std**：
-
-`AllocationError` 在 `std` 环境下 panic（`panic!`），在 `no_std` 环境下的行为取决于全局分配器配置：
-
-| 环境 | AllocationError 行为 | 说明 |
-|------|---------------------|------|
-| `std`（默认） | `panic!("allocation failed: requested {size} bytes")` | 与 `Vec::push` 等标准库行为一致 |
-| `no_std` + `alloc` | 由 `alloc::alloc::handle_alloc_error` 决定（默认 abort） | 行为由调用方配置的全局分配器决定，Xenon 不额外干预 |
-
-无论哪种环境，panic message 均包含请求的分配大小（字节），便于诊断。
+错误类型在 `std` feature 下实现 `std::error::Error` trait，在 `no_std` 下仅要求 `Display + Debug + Clone + Send + Sync`，不引入额外依赖。内存分配失败在 `std` 环境下 panic，在 `no_std` 环境下由全局分配器决定行为。无论哪种环境，诊断信息均须包含请求的分配大小。
 
 ### 27.5 Panic Safety
 
-**原则**：panic 发生后，Tensor 的内部状态须满足：(1) 可安全 drop（无未定义行为、无内存泄漏）；(2) 不保证数据一致性（已修改的部分元素可能留在中间状态）。
+panic 发生后须保证：(1) 可安全 drop（无 UB、无内存泄漏）；(2) 不保证数据一致性。
 
-| 操作场景 | Panic 时保证 | 说明 |
-|----------|-------------|------|
-| `make_mut()` 触发深拷贝时 panic（分配失败） | 原 ArcTensor 数据未被修改（引用计数不变）；已分配的新缓冲区被 drop 释放 | 深拷贝先分配新缓冲区再复制，分配失败时原数据完好 |
-| `checked_add` / `checked_mul` 累积运算 panic（如 `sum`） | 中间结果被丢弃；Tensor 可安全 drop | 溢出检查在每步执行，panic 时无悬垂指针或未初始化内存 |
-| `iter_mut()` 对广播视图 panic（见 §10.3） | 未修改任何元素；Tensor 保持原状态 | panic 在写入前触发，数据完好 |
+| 操作场景 | Panic 时保证 |
+|----------|------------|
+| 深拷贝（如 make_mut 分配失败） | 原数据未修改 |
+| 溢出检查（如整数 sum） | Tensor 可安全 drop |
+| 广播视图 iter_mut | 数据保持原状态（panic 在写入前触发） |
+| 并行写入部分完成 | 已修改元素保持在最终写入状态，Tensor 可安全 drop |
 
-**实现要求**：
-
-- 所有 `drop` 实现不得 panic（遵循 `Drop` trait 的惯用规则）
-- `Tensor<MaybeUninit<A>, D>` 的 drop 不得调用元素的 drop glue——仅释放缓冲区内存
-- 涉及资源分配的操作（如 `make_mut` 深拷贝）须确保分配失败时原有数据不受影响
-
-**并行操作 panic 安全**（feature `parallel`，需 `std`，见 §1.3）：
-
-并行操作使用 rayon 线程池（见 §9.2），当单个线程 panic 时的行为遵循以下规则：
-
-| 场景 | Panic 时保证 | 说明 |
-|------|-------------|------|
-| `par_iter()` / `par_iter_mut()` 逐元素操作 | 未 panic 的线程继续完成当前块；rayon `join` 在收集结果时 re-throw panic | rayon 的默认行为：单个任务 panic 不影响其他任务的内存安全性，`join` 返回时将 panic 传播到调用线程 |
-| 并行归约（sum 等） | 中间结果被丢弃；输出 Tensor 可安全 drop | 归约的累加器为线程局部变量，panic 时被 drop，无共享状态污染 |
-| `make_mut()` 触发深拷贝时 panic（分配失败） | 原 ArcTensor 数据未被修改（引用计数不变）；已分配的新缓冲区被 drop 释放 | 深拷贝先分配新缓冲区再复制，分配失败时原数据完好 |
-| 并行写入（`par_iter_mut()`）部分完成后 panic | 已修改的元素保持在最终写入状态；未修改的元素保持原值；Tensor 可安全 drop | 不保证数据一致性（部分修改），但保证内存安全（可安全 drop，无 UB） |
-
-**实现约束**：
-
-- 不使用 `catch_unwind` 包裹并行任务——panic 应立即传播，不吞没
-- 共享缓冲区（如 ArcTensor 的引用计数）的修改须使用原子操作，确保 panic 时计数正确
-- 并行迭代器的任务分割须确保每个任务的数据范围互不重叠（rayon 按 chunk 分割，每个线程独占一段连续区间）
+并行操作 panic 时：单个线程 panic 不影响其他线程内存安全；panic 须立即传播，不得吞没。所有 drop 实现不得 panic。
 
 ---
 
@@ -2868,9 +2797,9 @@ panic 类错误（`AllocationError`）通过 panic message 传递诊断信息，
 | 要求 | 指标 |
 |------|------|
 | 测试类型 | 单元测试 + 集成测试 + 边界测试 |
-| 行覆盖率（整体） | ≥ 90%（使用 `cargo llvm-cov` 测量，数值基础设施对正确性要求极高，高覆盖率是必要的质量保障） |
-| unsafe 代码块覆盖率 | ≥ 95%（单独统计，覆盖指针运算、`get_unchecked`、`from_raw_parts` 等关键 unsafe 路径） |
-| 分支覆盖率（关键路径） | ≥ 85%（覆盖边界检查、溢出检测、SIMD 回退、布局标志判定等分支） |
+| 行覆盖率（整体） | ≥ 90% |
+| unsafe 代码块覆盖率 | ≥ 95%（单独统计） |
+| 分支覆盖率（关键路径） | ≥ 85% |
 
 ### 28.3 数值精度
 
@@ -2883,71 +2812,54 @@ panic 类错误（`AllocationError`）通过 panic message 传递诊断信息，
 | 归约（sum） | 相对误差 ≤ 1e-14（N ≤ 10⁶） | 相对误差 ≤ 1e-5（N ≤ 10⁶） | 模相对误差 ≤ 1e-13（N ≤ 10⁶） | 模相对误差 ≤ 1e-4（N ≤ 10⁶） |
 | 超越函数 | 相对误差 ≤ 1e-14，ULP ≤ 4 | 相对误差 ≤ 1e-5，ULP ≤ 4 | 模相对误差 ≤ 1e-13 | 模相对误差 ≤ 1e-4 |
 
-**归约精度条件说明**：
+归约精度指标适用于 N ≤ 10⁶；大数组归约须使用补偿求和以保证精度。并行浮点归约允许精度容差内差异（见 §28.5）。浮点 `sum` 须默认使用补偿求和算法以保证数值稳定性。
 
-- 归约精度指标适用于元素数 N ≤ 10⁶ 的场景。对于 N > 10⁶ 的数组，`sum` 须使用补偿求和（如 Neumaier/Kahan summation）以达到表中精度要求
-- 并行浮点归约：各线程独立累加后合并，合并顺序与单线程不一致时允许精度容差内差异（见 §28.5"并行确定性"行）
-- 浮点 `sum` 在实现时须默认使用补偿求和算法（Neumaier 或 Kahan），以保证大数组场景下的数值稳定性
+**整数运算正确性**：整数归约溢出时须 panic（debug 和 release 模式一致），不得静默 wrapping。
 
-**整数运算正确性要求**：
-
-| 测试类别 | 要求 |
-|----------|------|
-| 溢出检测 | `sum` 作用于整数类型（i8/i16/i32/i64/u8/u16/u32/u64）时，须验证 debug 和 release 模式下溢出均正确 panic。使用 `checked_add` 实现（见 §14.3） |
-| release 防护 | 确保 release 模式下 checked 算术未退化为 wrapping（Rust release 默认 wrapping，须显式使用 checked 操作） |
-| 大整数归约 | 对大数组（≥ 10⁶ 元素）验证 i32/i64 归约不会在未溢出时误 panic |
-| 边界值 | 覆盖 `i8::MAX` 累加溢出、`i32::MAX * i32::MAX` 乘法溢出、`u64::MAX` 累加溢出、空数组归约返回单位元 |
-
-**数值精度验证方法论**：
+**精度验证要求**：
 
 | 属性 | 要求 |
 |------|------|
-| 参考值来源 | 浮点使用 Rust 标准库 `f32::sin` / `f64::sin` 等作为参考实现；复数使用 `num-complex`（仅测试依赖，非库依赖）或手写参考实现作为对照 |
-| 精度度量 | 超越函数使用相对误差 `\|computed - expected\| / \|expected\|`；归约使用混合误差：`\|computed - expected\| ≤ atol + rtol * \|expected\|`，其中 atol = 0，rtol = 精度表中归约行对应值；加减乘除使用 ULP（Unit in the Last Place）验证 |
-| 容差 | 不超过本节（§28.3）精度表中规定的阈值 |
-| 边界值测试 | 必须覆盖：0、±1、极大值（MAX）、极小正规数（MIN_POSITIVE）、subnormal、±Inf、NaN、π 的倍数（三角函数）、整数幂（pow）。复数额外覆盖：纯虚数（0+1i）、零虚部、零实部、极大模 |
-| 回归测试 | 使用已知正确结果的测试向量（golden test），固定随机种子确保可重复性 |
-| 跨平台一致性 | 同一输入在不同平台（x86_64 vs aarch64）上的结果须在精度容差内一致（SIMD 近似可能引入跨平台差异，须在容差范围内） |
+| 边界值覆盖 | 0、±1、极大值、极小正规数、subnormal、±Inf、NaN、π 的倍数（三角函数）、整数幂（pow）；复数额外覆盖纯虚数、零虚部、零实部、极大模 |
+| 回归测试 | 使用固定随机种子的 golden test |
+| 跨平台一致性 | 同一输入在不同平台结果须在精度容差内一致 |
 
 ### 28.4 边界覆盖
 
 须覆盖以下边界情况：
-- 空张量
-- 单元素
-- 大张量
+- 空张量、单元素、大张量
 - 极端值（NaN/Inf/subnormal）
 - 非连续布局
 - 高维（≥4维）
 - 广播形状不兼容（返回错误）
-- ArcRepr 写时复制（引用计数 1/2/多时的行为差异）
-- 小数组对齐降级（ALIGNED 标志正确性）
-- 填充布局操作（reshape/slice/transpose 后的步长正确性）
-- IxDyn 与 IxN 互转（维度数匹配/不匹配）
-- no_std 构建验证（`cargo build --no-default-features` 通过）
+- ArcRepr 写时复制（引用计数不同时的行为差异）
+- 小数组对齐降级
+- 填充布局操作后的步长正确性
+- IxDyn 与 IxN 互转（匹配/不匹配）
+- no_std 构建验证
 
-### 28.5 并行与 SIMD 测试策略
+### 28.5 并行与 SIMD 测试
 
-| 测试类别 | 要求 | 说明 |
-|----------|------|------|
-| ThreadSanitizer | CI 中使用 nightly 工具链运行 `cargo +nightly test --all-features --target x86_64-unknown-linux-gnu -Zsanitizer=thread` | 检测数据竞争。`-Zsanitizer` 需要 nightly Rust（见 §28.6 CI 要求中的 nightly 行） |
-| Miri | CI 中运行 `cargo +nightly miri test --no-default-features --features std --target x86_64-unknown-linux-gnu`（禁用 `simd` 和 `parallel` feature，因 Miri 不支持 SIMD intrinsics 和 rayon 线程） | 检测未定义行为、越界访问。注意：Miri 性能较慢，建议仅对核心模块（存储、索引、广播、ArcRepr）运行 |
-| 跨平台 SIMD | 相同输入在 x86_64（AVX2）和 aarch64（NEON）上的逐元素运算结果须一致（精度容差内） | 检测指令集实现差异 |
-| 标量 vs SIMD 对照 | SIMD 路径结果须与标量路径结果在精度容差内一致（每个超越函数均须验证） | 确保 SIMD 优化不引入精度回归 |
-| 并行确定性 | 相同输入的并行归约结果须与单线程结果一致（浮点归约允许精度容差内差异，见 §28.3 归约行说明） | 确保分块策略正确性 |
-| 并行边界 | 测试元素数略高于/低于并行阈值（§9.2.2，默认 64K）的边界情况 | 确保阈值切换无遗漏 |
+| 测试类别 | 要求 |
+|----------|------|
+| 数据竞争检测 | CI 中使用 ThreadSanitizer |
+| 未定义行为检测 | CI 中使用 Miri 检测核心模块 |
+| SIMD 正确性 | SIMD 路径结果须与标量路径在精度容差内一致 |
+| 并行确定性 | 并行归约结果须与单线程一致（浮点允许精度容差内差异） |
+| 跨平台 SIMD | 不同 SIMD 指令集上结果须一致 |
+| 并行边界 | 元素数在并行阈值附近的边界情况 |
 
 ### 28.6 CI 要求
 
 | 要求 | 说明 |
 |------|------|
 | 平台矩阵 | Linux (x86_64, aarch64)、macOS (x86_64, aarch64)、Windows (x86_64) |
-| Rust 版本矩阵 | 当前 stable + MSRV 版本 + nightly（用于 sanitizer/Miri 测试，见 §28.5） |
-| Feature 矩阵 | 默认 features、`--no-default-features`、`--all-features` |
-| 必须通过 | `cargo test`、`cargo test --all-features`、`cargo doc`（无 broken doc link） |
-| MSRV 验证 | 使用 `cargo msrv` 或 CI 脚本验证 MSRV 声明准确 |
-| 格式检查 | `cargo fmt --check` |
-| Lint | `cargo clippy --all-features -- -D warnings` |
-| 性能回归 | 提供 `cargo bench` 基准，CI 中记录历史结果，人工审查异常波动（暂不自动门控） |
+| Rust 版本矩阵 | stable + MSRV + nightly |
+| Feature 矩阵 | 默认 features、no-default-features、all-features |
+| 必须通过 | cargo test（含 all-features）、cargo doc（无 broken link） |
+| MSRV 验证 | 验证声明的 MSRV 准确 |
+| 格式与 Lint | cargo fmt --check、cargo clippy 零 warning |
+| 性能回归 | 提供基准测试，记录历史结果，人工审查异常波动 |
 
 ---
 
