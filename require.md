@@ -1457,15 +1457,13 @@ binary_dispatch(a, b, op):
 | 等于 | `eq` | `Tensor<bool, D>` | `A: PartialEq` | NaN != NaN |
 | 不等于 | `ne` | `Tensor<bool, D>` | `A: PartialEq` | NaN != NaN 为 true |
 | 小于 | `lt` | `Tensor<bool, D>` | `A: PartialOrd` | NaN 比较返回 false |
-| 小于等于 | `le` | `Tensor<bool, D>` | `A: PartialOrd` | NaN 比较返回 false |
 | 大于 | `gt` | `Tensor<bool, D>` | `A: PartialOrd` | NaN 比较返回 false |
-| 大于等于 | `ge` | `Tensor<bool, D>` | `A: PartialOrd` | NaN 比较返回 false |
 
 ### 12.3 约束
 
 1. 逐元素算术运算和数值函数仅适用于数值类型（整数、浮点、复数），不适用于 bool。数学函数仅适用于 RealScalar（f32, f64），不适用于整数和复数。bool 仅支持逻辑非（`!`）和比较运算，不支持位运算的运算符重载。
 
-2. `eq`/`ne` 仅要求 `PartialEq`；`lt`/`le`/`gt`/`ge` 要求 `PartialOrd`。所有比较方法仅通过方法调用提供，不提供 `< <= > >=` 运算符语法。支持广播（见 §12.6）。
+2. `eq`/`ne` 仅要求 `PartialEq`；`lt`/`gt` 要求 `PartialOrd`。所有比较方法仅通过方法调用提供，不提供 `< >` 运算符语法。支持广播（见 §12.6）。
 
 ### 12.4 签名规范
 
@@ -1509,7 +1507,7 @@ binary_dispatch(a, b, op):
 
 - 所有浮点逐元素运算遵循 IEEE 754 标准
 - NaN 输入 → NaN 输出（传播语义）
-- NaN 比较运算：`lt`/`le`/`gt`/`ge` 返回 `false`；`eq` 对 NaN 返回 `false`，`ne` 返回 `true`
+- NaN 比较运算：`lt`/`gt` 返回 `false`；`eq` 对 NaN 返回 `false`，`ne` 返回 `true`
 
 **整数运算溢出策略**：
 
