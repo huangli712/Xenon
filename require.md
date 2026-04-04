@@ -3263,90 +3263,23 @@ arc.modify(|t| *t *= 2.0).modify(|t| *t -= &bias);
 
 ## 21. 实用操作
 
-### 21.1 基本实用操作
-
-| 操作 | 说明 |
-|------|------|
-| copy_to, fill | 复制和填充 |
-| is_close/allclose | 近似比较（语义见 §21.5 is_close/allclose 语义） |
-| clip | 裁剪 |
-| flip/flipud/fliplr | 翻转 |
-| to_owned/into_owned | 转换为拥有 |
-
-### 21.2 flip / flipud / fliplr 语义
-
-**方法签名**：
-
-| 方法 | 签名 | 说明 |
-|------|------|------|
-| `flip`（Owned/ArcRepr） | `fn flip(&self, axes: &[usize]) -> TensorView<'_, A, D>` | 沿指定轴翻转，零拷贝（步长取反）。返回视图的生命周期绑定到 `&self` 借用 |
-| `flip`（View 消耗） | `fn flip(self, axes: &[usize]) -> TensorView<'a, A, D>` | 消耗 `TensorView<'a, A, D>`，返回保留原始生命周期 `'a` 的新视图。避免视图链式操作时生命周期逐步缩短 |
-| `flip`（ViewMut 消耗） | `fn flip(self, axes: &[usize]) -> TensorViewMut<'a, A, D>` | 消耗 `TensorViewMut<'a, A, D>`，返回保留原始生命周期 `'a` 的新可变视图 |
-| `flipud` | 同 `flip`，等价于 `flip(&[0])` | 沿轴 0 翻转。ndim ≥ 1 时反转第 0 轴元素顺序；0D 数组为 no-op |
-| `fliplr` | 同 `flip`，等价于 `flip(&[1])` | 沿轴 1 翻转。1D 数组返回 `InvalidAxis`（无轴 1） |
-
-**边界行为**：
-
-| 场景 | 行为 | 说明 |
-|------|------|------|
-| 轴索引越界 | 返回 `InvalidAxis` | axes 中的轴索引须在 `[0, ndim)` 范围内 |
-| 重复轴 | 等价 no-op（步长取反两次恢复原值） | 不报错，与 NumPy `np.flip` 行为一致 |
-| 空 axes | 返回原视图的拷贝（无修改） | 不翻转任何轴 |
-| 空数组（shape 含 0 维度） | 正常返回视图，步长取反但无实际元素访问 | `HAS_NEG_STRIDE` 标志被设置；当 shape 含零维度时布局标志遵循 §7.2 约定（值未定义） |
-| 0D 数组 | `flipud` / `fliplr` 为 no-op（无轴可翻转） | `flip(&[])` 返回原视图拷贝 |
-
-### 21.3 clip 语义
+### 21.1 clip 语义
 
 | 属性 | 行为 |
 |------|------|
-| 签名 | `fn clip(&self, min: A, max: A) -> Tensor<A, D> where A: PartialOrd + Clone` |
-| 操作 | 逐元素裁剪到 `[min, max]` 范围内，小于 min 的值设为 min，大于 max 的值设为 max |
+| 操作 | 逐元素裁剪到 `[min, max]` 范围内 |
 | min > max | panic（调用方违反前置条件） |
 | 返回类型 | 新分配的 Owned 数组 |
-| 元素为 NaN（浮点类型） | NaN 比较为 false，clip 不修改 NaN（NaN 不满足 min/max 约束，保持不变） |
-| min 为 NaN（浮点类型） | panic（调用方违反前置条件）。理由：`x < NaN` 恒为 false，导致下限裁剪失效且行为依赖实现方式（使用 `f64::min` 则 NaN 传播使结果全为 NaN，使用 if-else 则下限失效）。显式 panic 比静默错误或平台相关行为更安全。与 "min > max → panic" 的前置条件检查一致 |
-| max 为 NaN（浮点类型） | panic（调用方违反前置条件）。理由同上：`x > NaN` 恒为 false，行为依赖实现且不可预测 |
-| min 和 max 均为 NaN（浮点类型） | panic（同上） |
-| 整数类型 | NaN 相关规则不适用（整数类型无 NaN）。clip 对整数类型仅执行 `min > max` 前置条件检查，无 NaN panic 风险 |
+| 元素为 NaN | NaN 不满足 min/max 约束，保持不变 |
+| min 为 NaN | panic（调用方违反前置条件） |
+| max 为 NaN | panic（调用方违反前置条件） |
+| 整数类型 | 仅执行 `min > max` 前置条件检查，无 NaN 相关行为 |
 
-### 21.4 copy_to / fill 语义
+### 21.2 fill 语义
 
-| 方法 | 签名 | 说明 |
-|------|------|------|
-| `copy_to` | `fn copy_to<S2>(&self, dst: &mut TensorBase<S2, D>) where S2: StorageMut<Elem = A>` | 将 self 的数据拷贝到 dst。两者形状须完全一致，否则返回 `ShapeMismatch`。按物理内存顺序拷贝。目标可为任意可写存储（Owned、ViewMut），使用泛型约束 `S2: StorageMut` 而非硬编码 `TensorViewMut`，避免用户在拷贝到 Owned Tensor 时需要额外的 `.view_mut()` 调用 |
-| `fill` | `fn fill(&mut self, value: A) where A: Clone, S: StorageMut` | 用指定值填充所有逻辑元素。要求可变存储（Owned 或 ViewMut，由 `S: StorageMut` 约束在编译时排除只读存储）。若 `self` 为广播视图（存在零步长，即 `has_zero_stride()` 为 true），则 panic，与 §11.3 `iter_mut()` 行为保持一致。理由：广播视图的同一物理位置映射到多个逻辑位置，`fill` 写入会通过零步长反复覆写同一内存，语义上等价于对共享引用的 `&mut`，因此必须在入口处拒绝 |
-
-### 21.5 is_close / allclose 语义
-
-#### 21.5.1 RealScalar 变体
-
-| 方法 | 签名 | 返回类型 |
-|------|------|----------|
-| `is_close` | `fn is_close<S2, D2>(&self, other: &TensorBase<S2, D2>, rtol: A, atol: A) -> Tensor<bool, D> where S2: Storage<Elem = A>, D2: Dimension, A: RealScalar` | `Tensor<bool, D>`（形状为广播后形状，见下方说明） |
-| `allclose` | `fn allclose<S2, D2>(&self, other: &TensorBase<S2, D2>, rtol: A, atol: A) -> bool where S2: Storage<Elem = A>, D2: Dimension, A: RealScalar` | `bool` |
-
-**返回维度说明**：`is_close` 返回 `Tensor<bool, D>`（与 self 同维度类型），输出形状为 self 与 other 广播后的形状（见下方广播规则）。**广播维度约束**：广播后结果的 ndim 须等于 `D::NDIM`（静态维度在运行时校验，不匹配则返回 `ShapeError`；IxDyn 无此约束）。这意味着 `other` 的 ndim 不得大于 `self` 的 ndim（否则广播结果 ndim 超出 `D` 的表达范围）。**Strides 重计算**：输出 Tensor 为新分配的 Owned 数组（非视图），其 strides 按 F-contiguous 顺序从广播后形状重新推导，不继承输入的零步长 |
-
-#### 21.5.2 ComplexScalar 变体
-
-| 方法 | 签名 | 返回类型 |
-|------|------|----------|
-| `is_close` | `fn is_close<S2, D2>(&self, other: &TensorBase<S2, D2>, rtol: A::Real, atol: A::Real) -> Tensor<bool, D> where S2: Storage<Elem = A>, D2: Dimension, A: ComplexScalar` | `Tensor<bool, D>` |
-| `allclose` | `fn allclose<S2, D2>(&self, other: &TensorBase<S2, D2>, rtol: A::Real, atol: A::Real) -> bool where S2: Storage<Elem = A>, D2: Dimension, A: ComplexScalar` | `bool` |
-
-**复数比较公式**：`|a - b| ≤ atol + rtol * |b|`，其中 `|·|` 为复数模（使用 `ComplexScalar::norm()`，底层为 hypot 避免溢出）。`rtol` / `atol` 类型为 `A::Real`（实数类型），与实数变体保持一致的接口设计。
-
-#### 21.5.3 通用语义（实数与复数共享）
-
-| 属性 | 行为 |
+| 方法 | 说明 |
 |------|------|
-| 比较公式 | `|a - b| ≤ atol + rtol * |b|`（与 NumPy `np.isclose` / `np.allclose` 一致；注意此公式非对称——交换 a/b 可能改变结果。这是 NumPy 的设计选择，Xenon 予以保留以保持兼容性） |
-| rtol / atol | 相对容差和绝对容差，均须 ≥ 0，否则 panic |
-| 广播 | `is_close` 支持广播（self 与 other 形状按 §16.1 规则广播），返回广播后形状的 bool Tensor |
-| NaN 处理 | 两个 NaN 比较为 `false`（与 NumPy `np.isclose` 一致）；若需 NaN 相等判定，须用户自行处理 |
-| Inf 处理 | `+Inf == +Inf` 为 `true`，`+Inf != -Inf`，遵循 IEEE 754 |
-| allclose 语义 | 等价于 `is_close().all()`，所有元素近似相等时返回 `true` |
-| 空数组 | `allclose` 对空数组返回 `true`（vacuous truth） |
+| `fill` | 用指定值填充所有逻辑元素。要求可写存储。广播视图（`has_zero_stride()` 为 true）时 panic |
 
 ---
 
