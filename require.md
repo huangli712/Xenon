@@ -2603,116 +2603,69 @@ if let Some(layout) = compat.blas_layout() {
 |------|------|
 | 对齐 | 默认 64 字节对齐，须支持调用方指定更大对齐（如 128 字节） |
 | 生命周期 | 借用语义：工作空间借出期间不可再次借出，归还后可复用 |
-| 增长策略 | 请求超出当前容量时自动扩容，不缩容；扩容后保持对齐。提供 `shrink_to(new_len)` 方法将未使用空间归还给分配器，调用方须保证 `new_len ≤ 当前已分配容量`，否则 panic |
+| 增长策略 | 请求超出当前容量时自动扩容，不缩容；扩容后保持对齐。提供将未使用空间归还给分配器的能力 |
 | 线程亲和性 | 工作空间不绑定线程；线程安全由调用方通过借用规则保证 |
 | 零初始化 | 不保证零初始化（性能考虑），调用方须自行初始化 |
-| 分配模型 | 采用 bump allocator 模型：内部维护一个递增指针，每次 `borrow_*` 推进指针（含对齐填充），`reset()` 将指针重置到缓冲区起始位置。归还（`&mut` 引用生命周期结束）后指针不回退——内存仅在调用 `reset()` 后可重用 |
-| no_std 兼容 | 支持 `no_std` + `alloc` 环境，使用 `alloc::alloc` 全局分配器进行堆分配 |
-**注意**：bump allocator 不支持单个分配的释放。调用者应确保 `reset()` 调用频率足够高以避免内存累积。对于嵌套并行操作，推荐使用 Scope 语义（`split_at` 返回的子 workspace 在父 scope 重置时一并回收）。
-
-**典型使用模式**：
-
-```rust
-// Allocate workspace once, reuse across operations
-let mut ws = Workspace::new(1024 * 1024, 64); // 1 MiB, 64-byte alignment
-
-// Use within an operation
-{
-    let buf: &mut [f64] = ws.borrow_slice::<f64>(128); // 128 elements
-    // ... perform computation using buf ...
-} // &mut reference dropped, pointer advanced but NOT reset
-
-// For a new independent phase, reset to reuse memory
-ws.reset(); // pointer back to start, previous allocations invalidated
-
-// Nested parallel: split workspace for child threads
-let (mut ws_a, mut ws_b) = ws.split_at(ws.capacity() / 2);
-// Each child thread uses its own sub-workspace independently
-// Parent reset() reclaims both sub-workspaces
-```
+| 分配模型 | 使用递增指针分配模型，借出时推进指针，`reset()` 后可重用已分配内存 |
+| no_std 兼容 | 支持 `no_std` + `alloc` 环境 |
 
 ### 26.2 对齐填充规则
 
-每次借出操作在返回缓冲区前须按以下规则处理对齐：
-
-1. 计算对齐后的起始偏移：`aligned_offset = align_up(current_ptr, requested_alignment)`
-2. 计算实际消耗的缓冲区空间：`consumed = aligned_offset - buffer_start + len_bytes`
-3. 检查 `consumed ≤ capacity`，若不足则按 §26.1 增长策略扩容
-4. 返回 `[aligned_offset, aligned_offset + len_bytes)` 区间
-5. 推进 `current_ptr = aligned_offset + len_bytes`
-
-**各借用方法的对齐请求值**：
-
-| 方法 | `requested_alignment` 取值 |
-|------|---------------------------|
-| `borrow_bytes` | 工作空间的当前对齐值（构造时指定，默认 64） |
-| `borrow_aligned::<A>` | `max(align_of::<A>(), 工作空间当前对齐)` |
-| `borrow_scratch` | `ScratchRequirement::align` |
-
-**示例**：工作空间 `alignment=64`，`current_ptr=72`，调用 `borrow_aligned::<f64>(3)`：
-- `requested_alignment = max(8, 64) = 64`
-- `aligned_offset = align_up(72, 64) = 128`
-- `len_bytes = 3 × 8 = 24`
-- 返回 `[128, 152)`，`current_ptr` 推进到 `152`
+每次借出操作须保证返回的缓冲区按请求的对齐值对齐，对齐填充消耗的空间计入工作空间使用量。
 
 ### 26.3 分割与嵌套
 
 | 属性 | 要求 |
 |------|------|
 | 嵌套借用 | 支持从同一工作空间分割多个不重叠的子缓冲区 |
-| 并行分割 | 支持 `split_at(mid)` 将工作空间分割为两个不重叠的子工作空间，各自可独立借出。`split_at` 按值获取 `self`（消费式分割），返回两个独立的 owned `Workspace`。**实现方式**：通过指针范围分割实现 O(1)——两个子 Workspace 分别持有原缓冲区 `[base, base+mid)` 和 `[base+mid, base+capacity)` 的指针范围，共享同一底层分配，不涉及新内存分配。子 Workspace drop 时不释放内存（仅父级管理分配生命周期）。**注意**：子工作空间的扩容（`grow`/`grow_to`）若超出当前子范围，会触发独立的 `realloc`，此时该子工作空间脱离共享缓冲区，产生独立分配 |
-| 递归分割 | 子工作空间可继续分割（支持递归二分），最小分割粒度为 16 字节（小于 16 字节的分割请求 panic）。**设计理由**：防止无限递归分割产生零大小子空间导致的无限循环；16 字节下限覆盖所有常见 SIMD 类型的对齐需求 |
-
-**`split_at` 签名与语义**：
-
-| 方法 | 签名 | 说明 |
-|------|------|------|
-| `split_at` | `fn split_at(self, mid: usize) -> (Workspace, Workspace)` | 消费 self，在 `mid` 字节处分割为两个独立工作空间。`mid` 须满足 `16 ≤ mid ≤ capacity - 16`，否则 panic（保证每个子工作空间至少 16 字节） |
+| 并行分割 | 支持 `split_at` 将工作空间分割为两个不重叠的子工作空间，各自可独立借出 |
+| 递归分割 | 子工作空间可继续递归分割，设有最小分割粒度下限 |
 
 ### 26.4 工作空间线程安全
 
-`Workspace` 实现 `Send` 但不实现 `Sync`——工作空间可在线程间移动（Send），但不可被多线程同时访问（非 Sync）。
-
-`split_at` 按值消费父工作空间，返回的两个子 `Workspace` 各自为 `Send`，可分别移动到不同线程使用。子 Workspace 共享同一底层缓冲区的不同范围（见 §26.3），但各自持有独立指针——`Send` 语义保证每个子 Workspace 同一时刻只有一个线程访问（由 `&mut self` 方法签名在编译时保证）。两个子 Workspace 的指针范围不重叠，因此多线程并行写入是安全的。父工作空间被消费后自然不存在。
+| 属性 | 要求 |
+|------|------|
+| Send | 工作空间可在线程间移动 |
+| Sync | 不实现 Sync，不可被多线程同时访问 |
+| 并行使用 | 通过 `split_at` 分割后的子工作空间可分别移动到不同线程独立使用 |
 
 ### 26.5 扩容安全性约束
 
 | 约束 | 说明 |
 |------|------|
-| 借用期间不可扩容 | `borrow_*` 方法接受 `&mut self`，返回的 `&mut [u8]` / `&mut [MaybeUninit<A>]` 生命周期绑定到 `&mut Workspace`。活跃借用期间无法再次调用任何 `&mut self` 方法，因此扩容不会在存在活跃借用时发生 |
-| 分割后不可扩容 | `split_at` 消费父工作空间，子工作空间共享原缓冲区的不同范围（见 §26.3）。子工作空间默认不可扩容（容量固定为分割范围大小）。若调用方需要扩容能力，应使用 `grow_to` 方法，此时子工作空间将脱离共享缓冲区，创建独立分配——此操作会涉及内存分配（非 O(1)），且不影响其他子工作空间 |
+| 借用期间不可扩容 | 活跃借用期间不允许扩容，由借用生命周期保证 |
+| 分割后扩容 | 子工作空间扩容时脱离共享缓冲区，创建独立分配，不影响其他子工作空间 |
 
 ### 26.6 ScratchRequirement 类型
 
-`ScratchRequirement` 描述操作所需的临时缓冲区大小和对齐要求，供 `borrow_scratch` 使用。
+描述操作所需的临时缓冲区大小和对齐要求。
 
-| 属性 | 定义 |
+| 属性 | 说明 |
 |------|------|
-| 类型 | `#[derive(Debug, Clone, Copy, PartialEq, Eq)] pub struct ScratchRequirement { pub size: usize, pub align: usize }` |
 | `size` | 所需字节数 |
 | `align` | 所需对齐（须为 2 的幂） |
-| 构造方式 | `ScratchRequirement::new(size: usize, align: usize)`；`align` 非 2 的幂时 panic |
-| 便捷方法 | `ScratchRequirement::for_elements::<A>(len: usize) -> Self`，等价于 `ScratchRequirement::new(len * size_of::<A>(), align_of::<A>())` |
+| 便捷构造 | 支持按元素类型和数量构造 |
 
 ### 26.7 借出与归还 API
 
-| 方法 | 签名 | 说明 |
-|------|------|------|
-| `borrow_bytes` | `fn borrow_bytes(&mut self, len: usize) -> &mut [u8]` | 借出指定字节数的缓冲区，按当前对齐对齐（对齐填充规则见 §26.2）。借出期间不可再次借出同一区间 |
-| `borrow_aligned` | `fn borrow_aligned<A>(&mut self, len: usize) -> &mut [MaybeUninit<A>]` | 借出指定元素数的类型化缓冲区，按 `max(align_of::<A>(), 当前对齐)` 对齐。返回 `&mut [MaybeUninit<A>]` 而非 `&mut [A]`——工作空间不保证零初始化（见 §26.1），返回已初始化引用将构成 UB。调用方须自行初始化后通过 `MaybeUninit::assume_init` 转换。对齐不足时 panic |
-| `borrow_aligned_init` | `fn borrow_aligned_init<A: Clone>(&mut self, len: usize, value: A) -> &mut [A]` | **safe 封装**：借出指定元素数的类型化缓冲区并**用 `value` 初始化所有元素**。返回 `&mut [A]`（已初始化，safe 引用）。内部实现：调用 `borrow_aligned` 后逐元素写入 `value`，再通过 `MaybeUninit::assume_init` 批量转换。适用于需要确定初始值的场景（如累加器初始为 0.0） |
-| `borrow_aligned_zeroed` | `fn borrow_aligned_zeroed<A>(&mut self, len: usize) -> &mut [A] where A: Copy` | **safe 封装**：借出指定元素数的类型化缓冲区并**零初始化**。返回 `&mut [A]`。内部使用 `ptr::write_bytes(ptr, 0, len)` 零填充。约束 `A: Copy` 确保零字节模式对所有 `Copy` 类型合法（整数、浮点、不含填充的结构体）。**注意**：浮点零字节模式为 `+0.0`（IEEE 754），非 `-0.0`。对 `bool` 零初始化为 `false` |
-| `borrow_aligned_write` | `fn borrow_aligned_write<A>(&mut self, data: &[A]) -> &mut [A] where A: Copy` | **safe 封装**：借出与 `data` 等长的缓冲区，**将 `data` 拷贝写入**后返回已初始化 `&mut [A]`。适用于从已有数据源向工作空间拷贝后进行中间计算。返回缓冲区长度等于 `data.len()` |
-| 归还 | 借出的 `&mut` 引用生命周期绑定到 `&mut Workspace`，引用释放后自动归还，无需显式调用 | 借用检查器保证借出期间不存在二次借出 |
+| 方法 | 说明 |
+|------|------|
+| `borrow_bytes` | 借出指定字节数的缓冲区，按工作空间当前对齐值对齐 |
+| `borrow_aligned` | 借出指定元素数的类型化缓冲区，按元素类型对齐和工作空间对齐的较大值对齐。返回未初始化缓冲区，调用方须自行初始化 |
+| `borrow_aligned_init` | 借出并初始化为指定值的类型化缓冲区，返回已初始化引用 |
+| `borrow_aligned_zeroed` | 借出并零初始化的类型化缓冲区，返回已初始化引用 |
+| `borrow_aligned_write` | 借出缓冲区并将源数据拷贝写入，返回已初始化引用 |
+| `borrow_scratch` | 按 `ScratchRequirement` 借出缓冲区 |
+| 归还 | 借出的引用生命周期结束后自动归还，无需显式调用 |
 
 ### 26.8 查询与管理 API
 
-| 方法 | 签名 | 说明 |
-|------|------|------|
-| `capacity` | `fn capacity(&self) -> usize` | 返回当前已分配的字节容量 |
-| `remaining` | `fn remaining(&self) -> usize` | 返回从当前内部指针到缓冲区末尾的剩余可用字节数（不含对齐填充开销） |
-| `reset` | `fn reset(&mut self)` | 将内部指针重置到缓冲区起始位置，使所有已借出空间可重用。要求无活跃借用（由 `&mut self` 保证）。已借出的内存在借用引用生命周期结束前仍有效 |
-| `shrink_to` | `fn shrink_to(&mut self, new_len: usize)` | 将未使用空间归还给分配器。调用方须保证 `new_len ≤ capacity()`，否则 panic。要求无活跃借用（由 `&mut self` 保证） |
+| 方法 | 说明 |
+|------|------|
+| `capacity` | 返回当前已分配的字节容量 |
+| `remaining` | 返回剩余可用字节数 |
+| `reset` | 重置分配指针，使已分配空间可重用 |
+| `shrink_to` | 将未使用空间归还给分配器 |
 
 ---
 
