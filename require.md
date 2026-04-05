@@ -252,19 +252,9 @@ const _: () = assert!(align_of::<usize>() == align_of::<isize>());
 
 ### 4.2 Sealed Trait 策略
 
-四层 trait 全部 sealed，下游 crate 不可为自定义类型实现。
-Element trait 为 sealed（防止外部实现），但提供 `unsafe impl Element` 的 escape hatch 供高级用户为自定义类型实现。**安全契约**（违反导致未定义行为）：(1) 类型的内存布局必须为 `#[repr(C)]` 或 `#[repr(transparent)]`，确保 FFI 兼容和按位复制安全；(2) 类型必须满足 `Copy + Clone + Send + Sync`，且 `clone()` 等价于按位复制（`memcpy`）；(3) `Default` 值必须为全零字节（与 `zeroed()` 分配兼容）；(4) 所有字节模式必须为合法值（无无效位模式，即 `from_bytes` 安全）；(5) **类型大小须为 2 的幂**（1/2/4/8/16/...字节）——非 2 幂大小（如 12 字节结构体）因无法满足 SIMD padding 的对齐要求（§7.6.2 要求 alignment 须同时为 `size_of::<A>()` 的整数倍和 2 的幂），导致 SIMD padding 不可用，只能使用自然对齐（性能降级但不影响正确性）。**性能降级预期**：非 2 的幂大小类型（如 12 字节结构体、24 字节复合类型）在使用 `unsafe impl Element` 时：(a) SIMD padding 不可用（§7.6），逐元素运算回退到标量路径，预期性能损失约 4-8x（对比 f32/f64 等标准类型的 SIMD 路径，以向量宽度 256-bit/512-bit 估算）；(b) 内存对齐退化为自然对齐（`align_of::<A>()`），无法使用 64 字节缓存行对齐，对缓存不友好的访问模式额外约 10-30% 降级；(c) 总体预期：相比标准数值类型，非 2 幂类型在大规模逐元素运算中性能约降低 5-10x。此降级仅影响计算吞吐量，不影响正确性——所有运算结果与标量路径等价。`unsafe impl Element` 通过 `unsafe trait private::Sealed` 实现——用户须同时 `unsafe impl private::Sealed`，明确承担上述安全契约的责任。详见§4.4。
+四层 trait（Element、Numeric、RealScalar、ComplexScalar）全部 sealed，下游 crate 不可为自定义类型实现。仅库内预定义类型可作为实现者：i32、i64、f32、f64、bool、usize、Complex\<f32\>、Complex\<f64\>。其中 bool 和 usize 仅实现 `Element`，不实现 `Numeric`。
 
-| 设计决策 | 说明 |
-|----------|------|
-| sealed 范围 | Element、Numeric、RealScalar、ComplexScalar 全部 sealed |
-| 实现方式 | 私有模块 `mod private { pub trait Sealed {} }` + 各 trait 继承 `private::Sealed` |
-| sealed 实现者 | 仅库内预定义类型：i32/i64/f32/f64/bool/usize/Complex<f32>/Complex<f64>。其中 `usize` 仅实现 `Element`（用于集合操作等需要索引类型的场景），不实现 `Numeric` |
-
-**v1 整数类型限制说明**：当前版本不支持 u8/u16/u32/u64/i8/i16 等整数类型。主要原因：(1) 图像处理（u8）、信号处理（i8/i16）、位运算（u64）等场景需额外设计整数运算语义（如整数除零 panic vs wrapping、整数溢出策略）；(2) 整数类型需要 `Numeric` trait 的 `zero()`/`one()` 但语义与浮点有微妙差异（如整数除法截断行为）。后续版本计划扩展支持，届时需明确整数除零行为（当前 `Numeric` 要求 `Div<Output=Self>`，整数除零会 panic，此为接受的行为）。
-
-**扩展性说明**：当前版本（v1）四层 trait 全部 sealed，下游 crate 不可为自定义类型（如定点数、对偶数、有理数等）实现。此限制确保数值语义的完整性和 trait 约束的一致性。未来版本计划提供以下扩展机制之一（具体方案待定）：(1) `Newtype` wrapper 允许包装已有数值类型；(2) `unsafe` 扩展 trait（类似 `unsafe trait TrustedLen`）允许高级用户承担正确性责任；(3) 公开 `Sealed` trait 配合文档化的一致性要求。
-bool 的 sum() 返回 usize（count of true 值），等价于 count_true()。usize 仅实现 `Element`（不实现 `Numeric`），但可作为 `sum()` 等归约操作的返回类型。
+v1 整数类型仅支持 i32 和 i64，不支持 u8/u16/u32/u64/i8/i16。
 
 ### 4.3 基础层（Element）
 
@@ -279,8 +269,6 @@ bool 的 sum() 返回 usize（count of true 值），等价于 count_true()。us
 ### 4.4 数值层（Numeric）
 
 继承Element，额外约束四则运算并提供单位元。仅数值类型（整数、浮点、复数）实现，bool不实现。
-
-**泛型约束说明**：`Complex<T>` 实现 `Numeric` 要求 `T: RealScalar`（而非仅 `T: Element`），因为复数除法（Smith 方法，见 §5.4）需要 `T::abs()` 计算中间结果，此方法仅在 `RealScalar` 层提供。因此 `Complex<T>: Numeric` 的完整约束链为 `T: RealScalar → Complex<T>: Numeric`。当前版本因 sealed trait 限制（Complex 仅用于 f32/f64），此约束不产生用户可见影响，但须在文档中明确标注，避免未来扩展 escape hatch 时产生困惑。
 
 | 约束 | 说明 |
 |------|------|
@@ -338,7 +326,7 @@ bool 的 sum() 返回 usize（count of true 值），等价于 count_true()。us
 | re() | `&self -> Self::Real` | 实部 |
 | im() | `&self -> Self::Real` | 虚部 |
 | conj() | `&self -> Self` | 共轭 |
-| norm() | `&self -> Self::Real` | 模（使用 hypot 避免溢出） |
+| norm() | `&self -> Self::Real` | 模 |
 | exp() | `&self -> Self` | 复数指数 |
 | ln() | `&self -> Self` | 复数对数 |
 | sqrt() | `&self -> Self` | 复数平方根（主值） |
