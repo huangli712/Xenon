@@ -1105,45 +1105,15 @@ binary_dispatch(a, b, op):
 
 ### 10.1 Send/Sync 保证
 
-| 存储模式 | Send | Sync | 条件 |
-|----------|------|------|------|
-| Owned | 是 | 是 | 元素类型为 Send+Sync |
-| ViewRepr | 是 | 是 | 元素类型为 Send+Sync |
-| ViewMutRepr | 是 | 否 | 元素类型为 Send |
-| ArcRepr | 是 | 是 | 元素类型为 Send+Sync |
-
-**Send/Sync 语义说明：**
-
-| 存储模式 | Send 条件解释 | Sync 条件解释 |
-|----------|---------------|---------------|
-| Owned | 元素可跨线程移动，要求 T: Send | 元素可跨线程共享引用，要求 T: Sync |
-| ViewRepr | `&T` 跨线程移动要求 T: Sync（View 内含 &T） | `&&T` 跨线程共享要求 T: Sync |
-| ViewMutRepr | `&mut T` 可跨线程移动（转移独占访问权），要求 T: Send | `&mut T` 不可共享（Rust 独占借用规则），故永远不是 Sync |
-| ArcRepr | Arc 内部使用原子计数，要求 T: Send+Sync 才能跨线程共享 | 多个 Arc 可同时持有 &T，要求 T: Sync |
-
-**ViewMutRepr: Send 的前提条件：**
-
-- 元素类型须实现 `Send`（可安全跨线程移动）
-- 视图转移后，原线程不再持有任何引用（独占语义保证）
-- 不存在其他指向同一内存的引用（Rust 借用检查器保证）
+所有存储模式须根据 Rust 的 `Send`/`Sync` 规则自动推导线程安全性。各存储模式须满足：Owned 和 ArcRepr 为 `Send + Sync`（元素类型为 `Send + Sync` 时）；ViewRepr 为 `Send + Sync`（元素类型为 `Send + Sync` 时）；ViewMutRepr 为 `Send` 但非 `Sync`（元素类型为 `Send` 时）。
 
 ### 10.2 并行迭代安全
 
-| 规则 | 要求 |
-|------|------|
-| 访问隔离 | 并行迭代须保证各线程访问不重叠的元素区间 |
-| 步长处理 | 非连续数组的并行迭代须正确处理步长跳跃，不得访问逻辑元素之外的内存 |
-| 独占保证 | 可变并行迭代须保证独占访问（无别名） |
+并行迭代须保证各线程访问不重叠的元素区间，非连续数组须正确处理步长跳跃，可变并行迭代须保证独占访问（无别名）。
 
 ### 10.3 Padding 字节并发规则
 
-| 规则 | 要求 |
-|------|------|
-| SIMD 访问许可 | SIMD 操作可读取 padding 字节（无副作用，值可能非零但安全）；SIMD 写操作可能覆写 padding 字节（值变为未定义）。这是填充支持 SIMD 的必要条件（见 §7.6.5） |
-| 禁止逻辑暴露 | Padding 字节不得作为逻辑元素暴露给用户：视图切片不得包含 padding 区域，迭代器不得产出 padding 元素，索引访问不得触及 padding 区域 |
-| Padding 初始化 | Padding bytes 在分配时必须已零初始化。同一 padding cache line 的并发写入安全由 Xenon 内部保证（见下方 "并行工作区间" 规则），用户无需关心 padding 区域的并发行为 |
-| 并行工作区间 | 并行迭代须按**逻辑元素边界**分割工作区间，不得将 padding 字节分配给任何线程。线程间不得同时写同一 cache line 的 padding 区域（避免 false sharing）。**Xenon 内部分块责任**：当数组 PADDED=true 时，Xenon 的并行分块策略（见 §9.2.2）必须在 **padded 边界**（而非仅逻辑元素边界）分割工作区间。即分割点须为 padded stride 的整数倍位置，确保 SIMD 写入尾部 padding 字节时不与其他线程的数据 cache line 交叉。由于 SIMD 写覆写 padding 是 Xenon 内部行为（非用户可控），Xenon 必须自行保证分割安全性，不得推给调用者 |
-| 写操作范围 | 逐元素写操作（fill, map_inplace, 复合赋值等）只写入逻辑元素范围，padding 值未定义（见 §7.6.5） |
+Padding 字节不得作为逻辑元素暴露给用户。并行迭代须按逻辑元素边界分割工作区间，确保 SIMD 写入 padding 字节时不产生数据竞争。逐元素写操作只写入逻辑元素范围。
 
 ---
 
