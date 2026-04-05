@@ -455,7 +455,7 @@ bool 的 sum() 返回 usize（count of true 值），等价于 count_true()。us
 
 ### 6.1 分层 Storage trait
 
-存储须区分三种访问级别：**只读**、**可写**、**拥有**（编译时保证）。采用分层 trait 设计：所有存储模式实现 `Storage`（只读），可写存储额外实现 `StorageMut`（可写）。Rust 编译器在泛型约束 `where S: StorageMut` 处自动拒绝只读存储（如 ViewRepr），实现编译时访问控制。
+存储须区分三种访问级别：**只读**、**可写**、**拥有**（编译时保证）。采用分层 trait 设计：所有存储模式实现 `Storage`（只读），可写存储额外实现 `StorageMut`（可写）。编译器须在泛型约束处自动拒绝只读存储的可写访问。
 
 **`Storage` trait**（所有存储模式实现 — 只读访问）：
 
@@ -463,129 +463,74 @@ bool 的 sum() 返回 usize（count of true 值），等价于 count_true()。us
 |--------------|------|------|
 | `type Elem` | 关联类型 | 元素类型 |
 | `type Device` | 关联类型：`Device` | 存储所在的计算设备（当前仅 `Cpu`） |
-| `capacity()` | `&self -> usize` | 返回存储的缓冲区容量（含 padding，即物理槽位数）。注意：此值 ≥ 逻辑元素数（`TensorBase::len()`），差异来自 SIMD 对齐填充。两方法语义不同：`Storage::capacity()` 反映物理缓冲区大小，`TensorBase::len()` 反映逻辑元素数 |
+| `capacity()` | `&self -> usize` | 返回存储的缓冲区容量（含 padding）。此值 ≥ 逻辑元素数（`TensorBase::len()`） |
 | `as_ptr()` | `&self -> *const Self::Elem` | 底层数据指针（只读） |
-| `manages_memory()` | `&self -> bool` | 存储是否管理内存生命周期（决定 drop 时是否释放内存）。Owned 和 ArcRepr 返回 true（drop 时触发内存回收：Owned 直接释放，ArcRepr 在引用计数归零时释放）；ViewRepr 和 ViewMutRepr 返回 false（不管理内存，drop 仅释放视图元数据）。注意：对 ArcRepr 返回 true 不意味着独占所有权，仅表示其参与内存管理（共享所有权） |
+| `manages_memory()` | `&self -> bool` | 存储是否管理内存生命周期 |
 
 **`StorageMut` trait**（仅可写存储实现 — 在 `Storage` 之上添加可写能力）：
 
 | 方法 | 签名 | 说明 |
 |------|------|------|
-| `as_mut_ptr()` | `&mut self -> *mut Self::Elem` | 底层数据指针（可写）。仅 Owned、ViewMutRepr 实现此 trait |
+| `as_mut_ptr()` | `&mut self -> *mut Self::Elem` | 底层数据指针（可写） |
 
-**设计说明**：
+**约束**：
 
-| 设计决策 | 理由 |
-|----------|------|
-| `Storage` 不包含 `as_mut_ptr()` | 确保只读存储（ViewRepr）在编译时无法获得可写指针，无需运行时检查 |
-| `StorageMut: Storage` | 可写存储必然可读，子 trait 约束反映这一语义 |
-| 泛型代码用 `where S: StorageMut` 要求可写 | 编译器在 monomorphization 阶段拒绝 ViewRepr 等只读存储 |
-| ArcRepr 不实现 `StorageMut` | ArcRepr 的可写访问必须通过 `make_mut()` 方法（见 §6.3），该方法包含写时复制逻辑；直接暴露 `as_mut_ptr()` 会绕过 CoW 保护，导致共享数据被意外修改 |
+- `Storage` 不包含可写指针方法，确保只读存储在编译时无法获得可写指针
+- `StorageMut: Storage`，子 trait 反映可写必然可读的语义
+- ArcRepr 不实现 `StorageMut`，可写访问须通过 `make_mut()` 方法（见 §6.3）
 
 ### 6.2 四种存储模式
 
-| 存储模式 | 拥有数据 | 可读 | 可写 | 克隆语义 | 分配方式 | 典型用途 |
-|----------|---------|------|------|----------|----------|----------|
-| Owned | 是 | 是 | 是 | 深拷贝 | 64 字节对齐堆分配 | 数组创建、运算结果 |
-| ViewRepr | 否（借用） | 是 | 否 | 拷贝视图元数据（O(1)） | 无分配 | 切片、子数组只读访问 |
-| ViewMutRepr | 否（独占借用） | 是 | 是 | 不可克隆（独占语义） | 无分配 | 原地修改子区域 |
-| ArcRepr | 共享（Arc） | 是 | 通过 make_mut() 写时复制 | 浅拷贝（引用计数+1） | 写时按需分配 | 跨线程共享、延迟复制、函数参数传递 |
+| 存储模式 | 拥有数据 | 可读 | 可写 | 克隆语义 | 典型用途 |
+|----------|---------|------|------|----------|----------|
+| Owned | 是 | 是 | 是 | 深拷贝 | 数组创建、运算结果 |
+| ViewRepr | 否（借用） | 是 | 否 | O(1) 拷贝视图元数据 | 切片、子数组只读访问 |
+| ViewMutRepr | 否（独占借用） | 是 | 是 | 不可克隆 | 原地修改子区域 |
+| ArcRepr | 共享（Arc） | 是 | 通过 make_mut() 写时复制 | 浅拷贝（引用计数+1） | 跨线程共享、延迟复制 |
 
-**Owned 分配机制**：
+**Owned 分配要求**：
 
-Owned 存储使用 `std::alloc` 系统调用保证 64 字节（或更大）对齐：
-
-```rust
-struct Owned<A> {
-    ptr: NonNull<A>,       // 64-byte aligned (或用户指定的更大对齐)
-    capacity: usize,       // 元素数（含 padding）
-    alignment: usize,      // 实际对齐值（≥ 64）
-    _marker: PhantomData<A>,
-}
-```
-
-- **分配**：使用 `Layout::from_size_align(capacity * size_of::<A>(), alignment)` + `alloc::alloc()`。`alignment` 至少为 `max(64, align_of::<A>())`。**空分配守卫**：当 `capacity == 0` 或 `size_of::<A>() == 0` 时，`ptr` 设为 `NonNull::dangling()`，不调用 `alloc::alloc()`（零大小分配和空分配均为未定义行为）。对 ZST（`size_of::<A>() == 0`），`capacity` 设为元素数（逻辑值）。对非 ZST 的空数组（如 `shape = [0]` 的 `Tensor<f64, Ix1>`，`capacity = 0`），`ptr` 同样设为 `NonNull::dangling()`。**Drop 守卫**：当 `capacity == 0` 或 `size_of::<A>() == 0` 时跳过 `dealloc`（仅释放过分配的缓冲区）。此路径不影响正常类型（`f32`/`f64`/`i32`/`i64`/`Complex` 均为非零大小），空数组是科学计算中常见场景（过滤结果、形状变换）
-- **释放**：使用相同 `Layout` 调用 `alloc::dealloc`（Drop 实现）
-- **重新分配**：不使用 `realloc`（因标准 `realloc` 不保证对齐保持），而是手动分配新缓冲区 + 拷贝 + 释放旧缓冲区
-- **容量计算**：`capacity` 为实际分配的元素槽位数（含 padding），与逻辑元素数 `size()` 不同
+- 须使用 64 字节（或更大）对齐的堆分配
+- 须正确处理零大小类型（ZST）和空数组的边界情况（不触发未定义行为）
+- 容量为实际分配的元素槽位数（含 padding），与逻辑元素数不同
 
 **各存储模式的 trait 实现关系**：
 
-| 存储模式 | `Storage` | `StorageMut` | `capacity()` | `as_ptr()` | `as_mut_ptr()`（via StorageMut） | `manages_memory()` | `Clone` |
-|----------|-----------|--------------|--------------|------------|----------------------------------|---------------------|---------|
-| Owned | ✅ | ✅ | buffer 元素数（含 padding） | buffer 起始指针 | 可用 | true（独占） | 深拷贝（新分配） |
-| ViewRepr | ✅ | ❌ 不实现 | 同源 Tensor 的 capacity | 指向源数据 | 不可用（编译拒绝 — ViewRepr 未实现 StorageMut） | false | O(1) 拷贝元数据 |
-| ViewMutRepr | ✅ | ✅ | 同源 Tensor 的 capacity | 指向源数据 | 可用 | false | 不可 Clone |
-| ArcRepr | ✅ | ❌ 不实现 | buffer 元素数（含 padding） | buffer 起始指针 | 不可用（编译拒绝 — 可写访问须通过 `make_mut()` 方法，见 §6.3） | true（共享） | 浅拷贝（Arc ref +1） |
+| 存储模式 | `Storage` | `StorageMut` | `manages_memory()` | `Clone` |
+|----------|-----------|--------------|---------------------|---------|
+| Owned | ✅ | ✅ | true（独占） | 深拷贝 |
+| ViewRepr | ✅ | ❌ | false | O(1) 拷贝元数据 |
+| ViewMutRepr | ✅ | ✅ | false | 不可 Clone |
+| ArcRepr | ✅ | ❌ | true（共享） | 浅拷贝（Arc ref +1） |
 
 ### 6.3 ArcRepr 语义
 
-**ArcRepr::make_mut() 语义：**
+**ArcRepr::make_mut() 需求**：
 
-| 属性 | 行为 |
+| 属性 | 要求 |
 |------|------|
-| 写时复制 | 若引用计数 > 1，深拷贝数据到新分配，原 Arc 引用计数减 1 |
-| 原子性保证 | 引用计数使用 `AtomicUsize`，所有引用计数操作使用 `Ordering::AcqRel`（fetch_sub）/ `Ordering::Acquire`（load）。make_mut() 先以 `Acquire` order 读取引用计数，若 > 1 则**先分配新缓冲区并深拷贝数据，再替换内部指针**（旧 Arc 引用计数在指针替换/drop 时自然递减）。整个过程中引用计数仅在指针赋值/drop 时递减，不在拷贝之前递减，避免其他线程在拷贝期间误判独占。多线程并发 make_mut() 由 `&mut self` 保证句柄级别串行化，不会导致数据竞争或重复拷贝 |
-| 返回值 | 返回 `&mut [A]`，独占访问保证无其他引用可读取数据 |
-| 分配对齐 | 新分配使用**与原缓冲区相同的对齐值**（至少 64 字节），确保新缓冲区 capacity ≥ 原始 capacity，strides 保持有效 |
-| 深拷贝 buffer 大小 | 新缓冲区容量（`capacity()`）须 ≥ 原 buffer 的 `capacity()`，确保 strides 仍然有效。具体而言：若原 buffer 含 padding（PADDED=true），深拷贝时复制原 buffer 的全部物理槽位（含 padding 区域），strides 和 PADDED 标志保持不变；若原 buffer 无 padding，深拷贝复制逻辑元素数对应的槽位，strides 和标志均保持不变。这意味着 make_mut() 不改变 TensorBase 层面的 shape/strides/flags，仅替换底层存储指针 |
-| 可见部分优化 | **v2+ 功能**，当前版本始终克隆整个缓冲区（容量 ≥ 原 capacity，strides 安全）。理论上当视图仅引用底层缓冲区的小部分（< 50%）时，可仅克隆可见部分以减少内存拷贝（与 ndarray 的 OwnedArcRepr 策略一致）。但此优化在 padded 数组场景下存在安全性风险：若仅克隆可见部分，新缓冲区 capacity 小于原 buffer，导致 strides 中包含 padding 的偏移量超出新缓冲区范围（越界访问）。v2 实现时须确保：(1) 非 padded 数组的简单场景可安全优化；(2) padded 数组须正确处理 strides 和 PADDED 标志 |
-| 性能提示 | 若引用计数为 1，make_mut() 直接返回 `&mut [A]`，无需拷贝（最优路径）；多线程场景下，建议使用 Arc::try_unwrap() 尝试获取独占所有权，或确保单写多读模式以减少写时复制开销 |
+| 写时复制 | 若引用计数 > 1，须深拷贝数据到新分配 |
+| 线程安全 | 引用计数操作须原子化，多线程并发 make_mut() 不得导致数据竞争 |
+| 返回值 | 须返回独占可变访问 |
+| 分配保持 | 新分配须保持与原缓冲区相同的对齐值（至少 64 字节），容量须 ≥ 原缓冲区容量，shape/strides/flags 不变 |
+| 独占快速路径 | 引用计数为 1 时须直接返回可变引用，无需拷贝 |
 
-**ArcRepr 性能陷阱提示**：
+**ArcRepr 与视图的安全边界**：
 
-| 场景 | 行为 | 建议 |
-|------|------|------|
-| 小 Tensor 频繁修改 | 每次修改触发 make_mut() 深拷贝，即使引用计数为 1（Arc 管理开销本身 > 数据拷贝） | 小 Tensor（<1KB）优先使用 `Owned`（`Tensor`），避免 ArcRepr |
-| clone 后立即修改 | `arc_tensor.clone()` 增加 Arc 引用计数至 2，后续 `make_mut()` 必触发深拷贝 | 使用 `Arc::try_unwrap(arc_tensor)` 尝试直接获取 Owned，避免不必要的 Arc 开销 |
-| 多线程并发写入 | 每个线程独立深拷贝，峰值内存 = 线程数 × buffer_size | 预先 `split_at()` 分割为独立 Owned Tensor 分发给各线程，避免运行时 CoW |
+ArcTensor 创建的视图生命周期须绑定到 `&ArcTensor` / `&mut ArcTensor` 自身（而非底层 Arc 数据），确保 make_mut() 与活跃视图之间的互斥由编译器静态保证。
 
-**ArcRepr 与视图的安全边界：**
-
-ArcTensor 创建的视图（TensorView / TensorViewMut）的生命周期绑定到 `&ArcTensor` / `&mut ArcTensor` 自身，而非底层 Arc 数据。这意味着：
-
-| 场景 | 行为 | 保证机制 |
-|------|------|----------|
-| 存在活跃 TensorView 时调用 make_mut() | 编译错误——view 持有 `&self` 借用，make_mut() 需要 `&mut self`，Rust 借用检查器拒绝 | 借用检查器（编译时） |
-| view 已释放后调用 make_mut() | 正常执行，无冲突 | 借用检查器（编译时） |
-| clone ArcTensor 后，原件调用 make_mut() | 正常执行——clone 仅增加 Arc 引用计数，不创建借用关系；make_mut() 触发深拷贝，两个 ArcTensor 各自独立 | Arc 写时复制语义 |
-| 多线程各持有 ArcTensor clone，同时 make_mut() | 各线程独立深拷贝，无数据竞争——原子引用计数保证 | Arc 原子操作 |
-| ArcTensor 的 view 传递到其他函数 | view 的生命周期不超过创建它的 `&ArcTensor` 借用；函数返回后 view 必须释放 | Rust 生命周期系统 |
-
-**设计要点**：不提供从 ArcTensor 创建"脱离生命周期"的独立视图（即视图不持有 Arc clone）。这确保 make_mut() 与视图之间的互斥完全由编译器静态保证，无需运行时检查。
-
-**ArcRepr 常见操作的成本模型**：
-
-| 操作链 | 内存操作 | 实际分配次数 |
-|--------|---------|-------------|
-| `arc.clone()` | Arc 引用计数 +1 | 0（仅原子 increment） |
-| `arc.clone(); arc.make_mut()` | 引用计数 +1 再深拷贝 buffer | 1（make_mut 触发） |
-| `arc.clone().mapv_into(f)` | clone 引用计数 +1，mapv_into 消耗所有权（若引用计数为 1 则直接复用 buffer，否则深拷贝后逐元素应用 f） | 0 或 1（取决于 clone 后引用计数） |
-| `Arc::try_unwrap(arc)` | 尝试获取独占所有权 | 0（成功时零拷贝，失败时返回 Err 原 Arc） |
-
-**建议**：需要从 ArcTensor 执行变换时，优先使用 `Arc::try_unwrap()` 尝试获取 Owned 再操作；若失败再接受 make_mut 深拷贝开销。
-
-**CowRepr<'a, A>** — Copy-on-Write 存储表示。**当前版本**：仅在 `ensure_blas_compatible()` 返回值中使用（见 §25.4.5），不实现 Storage/StorageMut trait。**v2+ 扩展**：实现完整 Storage/StorageMut trait，支持运算符重载，可持有 owned 数据或 borrowed 视图，首次修改时按需克隆。适用于需要统一接受 owned/borrowed 输入的 API。CowRepr 的开销比 ArcRepr 更小（无 Arc 引用计数），适合单线程场景。v2 实现时须补充：§6.2 存储模式表条目、Storage/StorageMut trait 实现、类型别名（CowTensor）、Send/Sync 语义。
+**CowRepr<'a, A>** — Copy-on-Write 存储表示。当前版本仅在 `ensure_blas_compatible()` 返回值中使用（见 §25.4.5），不实现 Storage/StorageMut trait。v2+ 计划实现完整 Storage/StorageMut trait。
 
 ### 6.4 设备扩展性
 
 Storage / StorageMut trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
 
-**`Device` trait 定义**：
+**`Device` trait**：标记 trait，标识存储所在的计算设备，须满足 `Debug + Clone + Eq + Send + Sync`。当前仅提供 `Cpu` 实现。
 
-| 项目 | 定义 | 说明 |
-|------|------|------|
-| Trait bound | `Device: Debug + Clone + Eq + Send + Sync` | 标记 trait，标识存储所在的计算设备 |
-| Cpu | `#[derive(Debug, Clone, Eq, PartialEq, Hash)]` `struct Cpu;` | CPU 设备（默认） |
-| 未来扩展 | — | 可扩展为 `Gpu<Cuda>` / `Gpu<Vulkan>` 等 |
+**当前版本约束**：
 
-**设计约束（当前版本须满足）**：
-
-| 约束 | 说明 |
-|------|------|
-| 存储层与设备解耦 | `TensorBase<S, D>` 的 `S` 参数承载设备信息（通过 `S::Device` 关联类型），而非在 `TensorBase` 层面增加独立泛型参数。这保证 `TensorBase<S, D>` 签名不变即可支持新设备 |
-| 迭代器与设备无关的接口分离 | 当前所有迭代器（`iter()` / `iter_mut()` 等）隐式假设数据在 Host 内存可解引用。GPU 存储不可在 Host 端直接解引用，因此 GPU 后端须提供独立的执行模型（如 kernel launch），不可复用现有迭代器 API |
-| Shape / Stride / Layout 可复用 | 形状、步长、布局标志为纯元数据，与存储位置无关。GPU 后端可直接复用 `Shape<D>` 和 `LayoutFlags`，无需重新定义 |
+- 设备信息通过 `S::Device` 关联类型承载，`TensorBase<S, D>` 不增加独立泛型参数
+- 形状、步长、布局标志为纯元数据，与存储位置无关，可跨设备复用
 
 ### 6.5 禁止事项
 
