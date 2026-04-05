@@ -185,13 +185,13 @@ Ix1~Ix6 和 IxDyn 实现 `RemoveAxis`。
 | 基础层 | 整数、浮点、复数、bool、usize | 值复制、默认值、相等比较、格式化输出、线程安全 |
 | 数值层 | 整数、浮点、复数（不含 bool、usize） | 在基础层之上支持四则运算、取负、加法/乘法单位元、符号函数 |
 | 实数层 | f32, f64 | 在数值层之上提供数学函数（绝对值、平方根、对数、指数、三角函数、取整）和特殊值检测 |
-| 复数层 | Complex\<f32\>, Complex\<f64\> | 在数值层之上提供复数运算（实虚部访问、共轭、模、指数、对数、平方根、极坐标构造） |
+| 复数层 | Complex<f32>, Complex<f64> | 在数值层之上提供复数运算（实虚部访问、共轭、模、指数、对数、平方根、极坐标构造） |
 
 **约束**：bool 和 usize 仅属于基础层，不支持四则运算。不支持自动类型提升，类型转换须显式。
 
 ### 4.2 封闭性要求
 
-四层 trait 须封闭，下游 crate 不可为自定义类型实现。仅库内预定义类型可作为实现者：i32、i64、f32、f64、bool、usize、Complex\<f32\>、Complex\<f64\>。其中 bool 和 usize 仅属于基础层。
+四层 trait 须封闭，下游 crate 不可为自定义类型实现。仅库内预定义类型可作为实现者：i32、i64、f32、f64、bool、usize、Complex<f32>、Complex<f64>。其中 bool 和 usize 仅属于基础层。
 
 ### 4.3 基础层（Element）
 
@@ -269,91 +269,40 @@ Ix1~Ix6 和 IxDyn 实现 `RemoveAxis`。
 
 ### 5.1 类型定义
 
-- 自定义 Complex<T> 类型，`#[repr(C)]` 布局，不依赖外部 crate
-- 实现 Copy + Clone（当 T: Copy 时），值语义
-- Default 值为 Complex { re: T::default(), im: T::default() }，即 Complex(0, 0)
-- Numeric trait的 zero() → Complex(0, 0)，one() → Complex(1, 0)
+- 自定义 Complex<T> 类型，不依赖外部 crate
+- 值语义，默认值为零（实部和虚部均为零）
+- 作为 Numeric trait 的实现者，提供加法/乘法单位元
 
 ### 5.2 格式化输出
 
-| trait | 格式 | 示例 |
-|-------|------|------|
-| Debug | 显示 re 和 im 字段 | `Complex { re: 1.0, im: 2.0 }` |
-| Display | 数学表示 `{re}+{im}i`，虚部为负时符号为 `-` | `"1+2i"`, `"1-2i"`, `"0+1i"`, `"3+0i"` |
+- 实现 Debug trait，显示实部和虚部
+- 实现 Display trait，输出数学表示形式（如 `1+2i`、`1-2i`）
 
 ### 5.3 类型转换
 
-| 转换 | 行为 |
-|------|------|
-| `From<T> for Complex<T>` | 其中 T: Element，构造 Complex(re, 0) |
-| `From<(T, T)> for Complex<T>` | 从元组构造 Complex(t.0, t.1) |
-| `From<Complex<T>> for (T, T)` | 反向转换，返回 (re, im) |
-| 实数 → 复数 | 须使用 `Complex::from(value)` 或 `Complex::new(value, 0)`（参见 §23.1） |
-| 复数 → 实数 | 不允许隐式转换，须使用 `.re` 显式取实部 |
+- 支持从实数构造复数（实部为该值，虚部为零）
+- 支持从元组构造及反向转换为元组
+- 复数到实数不允许隐式转换，须显式取实部
 
 ### 5.4 算术运算
 
-**复数与复数运算**
-
-| 操作 | 行为 |
-|------|------|
-| Complex + Complex | 逐分量加 |
-| Complex - Complex | 逐分量减 |
-| Complex * Complex | 标准复数乘法，遵循 IEEE 754 逐分量行为 |
-| Complex / Complex | 复数除法，须采用数值稳定的算法避免中间结果溢出。分母为零时返回 NaN + NaN\*i。需 `T: RealScalar` |
-
-**复数与实数互操作**
-
-| 操作 | 行为 |
-|------|------|
-| Complex + 实数 | 实数隐式提升为 Complex(r, 0.0)，结果为 Complex。仅限同精度（Complex\<f64\> + f64） |
-| 实数 + Complex | 同上，交换律成立 |
-| Complex * 实数 | 标量乘法。仅限同精度 |
-| Complex / 实数 | 标量除法。仅限同精度 |
-| 实数 / Complex | 实数除以复数。分母为零时遵循 IEEE 754。仅限同精度 |
-| Complex 与整数 | 不支持隐式互操作，须先将整数转为浮点 |
-| 跨精度（如 f32 + Complex\<f64\>） | 不支持隐式互操作，须先显式 cast 到同精度 |
-
-**复合赋值与一元运算**
-
-| 操作 | 行为 |
-|------|------|
-| Complex += Complex | 逐分量加后赋值 |
-| Complex += 实数 | 同精度实数加后赋值 |
-| Complex -= Complex | 逐分量减后赋值 |
-| Complex -= 实数 | 同精度实数减后赋值 |
-| Complex \*= Complex | 复数乘法后赋值 |
-| Complex \*= 实数 | 同精度标量乘后赋值 |
-| Complex /= Complex | 复数除法后赋值 |
-| Complex /= 实数 | 同精度标量除后赋值 |
-| -Complex | 一元取负 |
+- 支持复数与复数的四则运算
+- 支持复数与同精度实数的四则运算，跨精度须显式转换
+- 支持复合赋值运算和一元取负
+- 复数除法须数值稳定，分母为零时遵循 IEEE 754
+- 不支持复数与整数的隐式互操作
 
 ### 5.5 相等与比较
 
-| 属性 | 要求 |
-|------|------|
-| PartialEq | 逐分量比较（re == re && im == im），NaN != NaN |
-| Eq | 不实现（因 NaN 破坏自反性） |
-| PartialOrd | 不实现（复数无自然全序） |
-| Ord | 不实现 |
-| Hash | 不实现（因无 Eq，NaN 使 hash 语义不一致） |
-| 近似相等 | 提供 `approx_eq(&self, other: &Self, epsilon: T) -> bool` 方法，逐分量判断各分量差值的绝对值不超过 epsilon |
-| 全序比较（工具方法） | 提供 `total_cmp(&self, other: &Self) -> Ordering` 方法，**不作为数学序关系**，仅供集合操作（如 §15.2 unique）内部排序使用 |
+- 实现 PartialEq（逐分量比较），不实现 Eq、PartialOrd、Ord、Hash
+- 提供近似相等判断方法（基于误差容限）
+- 提供全序比较工具方法，仅供内部排序使用，不作为数学序关系
 
-**设计说明**：`total_cmp` 不实现为 `Ord` trait，因为字典序不反映复数的数学性质。
+### 5.6 FFI 兼容性
 
-### 5.6 内存布局
-
-| 属性 | 要求 |
-|------|------|
-| 内存布局 | `#[repr(C)]`，保证 [re, im] 连续排列 |
-| 大小 | size_of::<Complex<T>>() == 2 * size_of::<T>() |
-| 对齐 | align_of::<Complex<T>>() == align_of::<T>() |
-| 与 C 互操作 | 内存布局兼容 C99 `_Complex`。FFI 仅通过指针传递安全（`*const`/`*mut`），不保证按值传递的 ABI 兼容性 |
-| 数组布局 | Complex<f64> 数组与交错实虚 f64 数组内存等价 |
-| SIMD 对齐 | Complex<f64> 数组建议 16 字节对齐 |
-| no_std 注意 | `norm()`、`exp()`、`ln()`、`sqrt()`、`from_polar()` 依赖浮点数学函数。`no_std` 环境下需通过外部数学库提供这些函数。若目标平台无浮点单元，`Complex` 的运算不可用，须在文档中明确标注 |
-| Feature gate 分级（v2 路线图） | 将依赖外部数学函数的方法按 feature gate 分层，使 `no_std` 环境可按需启用。基础运算（构造、四则、共轭）不依赖外部库；数学函数方法（`norm()`/`exp()`/`ln()`/`sqrt()`）通过可选 feature 启用，`no_std` 用户可精确控制依赖。默认配置下所有方法可用，不影响现有用户 |
+- 内存布局须与 C99 `_Complex` 兼容，保证 FFI 互操作（通过指针传递）
+- 数组布局须与交错实虚数组内存等价
+- no_std 环境下数学函数相关方法依赖外部数学库，须明确标注
 
 ---
 
