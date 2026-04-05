@@ -405,94 +405,82 @@ TensorBase 须提供以下布局查询能力：
 
 ### 8.1 泛型设计
 
-核心数据结构为双参数泛型 `TensorBase<S, D>`：
-- S：存储模式（见 §6）
-- D：维度类型（见 §3）
+核心数据结构须为泛型张量类型，以存储模式（见 §6）和维度类型（见 §3）为泛型参数。
 
-**TensorBase 内部组成**：
+张量类型须维护以下元数据：各轴长度（shape）、各轴步长（strides，元素单位，有符号语义，见 §3.2）、数据起始偏移量（元素单位）、布局状态（见 §7.3）。
 
-| 组件 | 说明 |
-|------|------|
-| storage: S | 底层数据存储（决定所有权与访问权限） |
-| shape: D | 各轴长度 |
-| strides: D | 各轴步长（元素单位，有符号语义，见 §3.2） |
-| offset: usize | 数据起始偏移量（元素单位，非字节） |
-| flags: u16 | 布局标志位（见 §7.3） |
+须区分缓冲区起始位置与数据起始位置（含偏移量），元素地址须通过偏移量与各轴索引、步长的组合正确计算。
 
-**指针语义**：须区分缓冲区起始指针（`storage.as_ptr()`）与数据起始指针（含 offset 偏移）。元素地址通过数据起始指针加各轴索引与步长的加权和计算。
-
-**安全性要求**：所有构造路径须验证 shape、strides 和 offset 的合法性，确保：
+**安全性要求**：所有构造路径（包括从裸指针构造、视图构造等）须统一验证 shape、strides 和 offset 的合法性，确保：
 
 - shape 各轴不超过 `isize::MAX`
-- 步长累积乘积不溢出
+- 总元素数不溢出（`size_checked()` 返回 `Some`）
 - 元素地址计算始终落在物理缓冲区范围内（含负步长的下界检查）
-- `shape.size_checked()` 返回 `Some`（总元素数不溢出 usize）
 
-验证逻辑须统一，确保所有构造路径（包括 `from_raw_parts`、视图构造等）的验证规则一致。验证过程中涉及步长与 shape 乘积的计算须使用检查算术，防止溢出导致的越界访问。
+验证过程须使用检查算术防止溢出导致的越界访问。
 
 ### 8.2 类型别名体系
 
 **主类型别名**
 
-| 别名 | 展开 | 说明 |
-|------|------|------|
-| Tensor<A, D> | TensorBase<Owned<A>, D> | 拥有数据的数组 |
-| TensorView<'a, A, D> | TensorBase<ViewRepr<&'a A>, D> | 不可变视图 |
-| TensorViewMut<'a, A, D> | TensorBase<ViewMutRepr<&'a mut A>, D> | 可变视图 |
-| ArcTensor<A, D> | TensorBase<ArcRepr<A>, D> | 原子引用计数共享（内置写时复制） |
+| 别名 | 说明 |
+|------|------|
+| Tensor<A, D> | 拥有数据的数组 |
+| TensorView<'a, A, D> | 不可变视图 |
+| TensorViewMut<'a, A, D> | 可变视图 |
+| ArcTensor<A, D> | 原子引用计数共享（内置写时复制） |
 
 **维度便捷别名**（以 Tensor 为例，其他存储模式同理）
 
-| 别名 | 展开 | 说明 |
-|------|------|------|
-| Tensor0<A> | Tensor<A, Ix0> | 0 维标量 |
-| Tensor1<A> | Tensor<A, Ix1> | 1 维向量 |
-| Tensor2<A> | Tensor<A, Ix2> | 2 维矩阵 |
-| Tensor3<A> | Tensor<A, Ix3> | 3 维 |
-| Tensor4<A> | Tensor<A, Ix4> | 4 维 |
-| Tensor5<A> | Tensor<A, Ix5> | 5 维 |
-| Tensor6<A> | Tensor<A, Ix6> | 6 维 |
-| TensorD<A> | Tensor<A, IxDyn> | 动态维度 |
+| 别名 | 说明 |
+|------|------|
+| Tensor0<A> | 0 维标量 |
+| Tensor1<A> | 1 维向量 |
+| Tensor2<A> | 2 维矩阵 |
+| Tensor3<A> | 3 维 |
+| Tensor4<A> | 4 维 |
+| Tensor5<A> | 5 维 |
+| Tensor6<A> | 6 维 |
+| TensorD<A> | 动态维度 |
 
 ### 8.3 基础查询方法
 
-所有 TensorBase<S, D> 均提供以下查询方法（不区分存储模式）：
+所有张量类型均须提供以下查询能力（不区分存储模式）：
 
 **维度与形状查询**
 
-| 方法 | 签名 | 说明 |
-|------|------|------|
-| `len()` | `&self -> usize` | 总元素数（各轴长度乘积），溢出时 wrapping |
-| `len_checked()` | `&self -> Option<usize>` | 总元素数，溢出时返回 None |
-| `is_empty()` | `&self -> bool` | 是否为空数组 |
-| `ndim()` | `&self -> usize` | 维度数 |
-| `shape()` | `&self -> &[usize]` | 各轴长度 |
-| `strides()` | `&self -> &[isize]` | 各轴步长（有符号，元素单位） |
-| `stride_at()` | `&self, axis: usize -> isize` | 指定轴步长（有符号） |
-| `offset()` | `&self -> usize` | 数据起始偏移量（元素单位） |
+| 方法 | 说明 |
+|------|------|
+| len() | 总元素数（各轴长度乘积），溢出时 wrapping |
+| len_checked() | 总元素数，溢出时返回 None |
+| is_empty() | 是否为空数组 |
+| ndim() | 维度数 |
+| shape() | 各轴长度 |
+| strides() | 各轴步长（有符号，元素单位） |
+| stride_at(axis) | 指定轴步长（有符号） |
+| offset() | 数据起始偏移量（元素单位） |
 
 **指针查询**（亦用于 FFI，详见 §25.1）
 
-| 方法 | 签名 | 说明 |
-|------|------|------|
-| `as_ptr()` | `&self -> *const A` | 数据起始位置不可变指针 |
-| `as_mut_ptr()` | `&mut self -> *mut A` | 数据起始位置可变指针（须可写存储） |
-| `as_ptr_unchecked()` | `unsafe &self -> *const A` | 不检查偏移量的指针变体 |
-| `capacity()` | `&self -> usize` | 物理缓冲区容量（含 padding，元素单位） |
+| 方法 | 说明 |
+|------|------|
+| as_ptr() | 数据起始位置不可变指针 |
+| as_mut_ptr() | 数据起始位置可变指针（须可写存储） |
+| as_ptr_unchecked() | 不检查偏移量的指针变体（unsafe） |
+| capacity() | 物理缓冲区容量（含 padding，元素单位） |
 
-**布局查询**（基于 flags 字段的 O(1) 查询，标志定义见 §7.3）
+**布局查询**（基于缓存的布局状态，见 §7.3）
 
-| 方法 | 签名 | 说明 |
-|------|------|------|
-| `is_f_contiguous()` | `&self -> bool` | 是否 F-order 严格连续 |
-| `is_contiguous()` | `&self -> bool` | 等价 `is_f_contiguous()` |
-| `is_f_padded_contiguous()` | `&self -> bool` | 是否 F-order 宽松连续（允许填充） |
-| `is_padded_contiguous()` | `&self -> bool` | 等价 `is_f_padded_contiguous()` |
-| `is_aligned()` | `&self -> bool` | 是否 SIMD 对齐 |
-| `has_zero_stride()` | `&self -> bool` | 是否存在零步长 |
-| `has_neg_stride()` | `&self -> bool` | 是否存在负步长 |
-| `is_padded()` | `&self -> bool` | 是否存在主维度填充 |
-| `layout_flags()` | `&self -> u16` | 返回完整布局标志 |
+| 方法 | 说明 |
+|------|------|
+| is_f_contiguous() | 是否 F-order 严格连续 |
+| is_contiguous() | 等价 is_f_contiguous() |
+| is_f_padded_contiguous() | 是否 F-order 宽松连续（允许填充） |
+| is_padded_contiguous() | 等价 is_f_padded_contiguous() |
+| is_aligned() | 是否 SIMD 对齐 |
+| has_zero_stride() | 是否存在零步长 |
+| has_neg_stride() | 是否存在负步长 |
+| is_padded() | 是否存在主维度填充 |
 
 各布局查询方法的详细判定规则见 §7.4。
 
