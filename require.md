@@ -306,31 +306,9 @@ Ix1~Ix6 和 IxDyn 实现 `RemoveAxis`。
 
 ## 6. 存储系统
 
-### 6.1 分层 Storage trait
+### 6.1 访问级别
 
-存储须区分三种访问级别：**只读**、**可写**、**拥有**（编译时保证）。采用分层 trait 设计：所有存储模式实现 `Storage`（只读），可写存储额外实现 `StorageMut`（可写）。编译器须在泛型约束处自动拒绝只读存储的可写访问。
-
-**`Storage` trait**（所有存储模式实现 — 只读访问）：
-
-| 关联类型/方法 | 签名 | 说明 |
-|--------------|------|------|
-| `type Elem` | 关联类型 | 元素类型 |
-| `type Device` | 关联类型：`Device` | 存储所在的计算设备（当前仅 `Cpu`） |
-| `capacity()` | `&self -> usize` | 返回存储的缓冲区容量（含 padding）。此值 ≥ 逻辑元素数（`TensorBase::len()`） |
-| `as_ptr()` | `&self -> *const Self::Elem` | 底层数据指针（只读） |
-| `manages_memory()` | `&self -> bool` | 存储是否管理内存生命周期 |
-
-**`StorageMut` trait**（仅可写存储实现 — 在 `Storage` 之上添加可写能力）：
-
-| 方法 | 签名 | 说明 |
-|------|------|------|
-| `as_mut_ptr()` | `&mut self -> *mut Self::Elem` | 底层数据指针（可写） |
-
-**约束**：
-
-- `Storage` 不包含可写指针方法，确保只读存储在编译时无法获得可写指针
-- `StorageMut: Storage`，子 trait 反映可写必然可读的语义
-- ArcRepr 不实现 `StorageMut`，可写访问须通过 `make_mut()` 方法（见 §6.3）
+存储须在编译时区分三种访问级别：**只读**、**可写**、**拥有**。只读存储须在编译时拒绝可写访问。
 
 ### 6.2 四种存储模式
 
@@ -339,57 +317,33 @@ Ix1~Ix6 和 IxDyn 实现 `RemoveAxis`。
 | Owned | 是 | 是 | 是 | 深拷贝 | 数组创建、运算结果 |
 | ViewRepr | 否（借用） | 是 | 否 | O(1) 拷贝视图元数据 | 切片、子数组只读访问 |
 | ViewMutRepr | 否（独占借用） | 是 | 是 | 不可克隆 | 原地修改子区域 |
-| ArcRepr | 共享（Arc） | 是 | 通过 make_mut() 写时复制 | 浅拷贝（引用计数+1） | 跨线程共享、延迟复制 |
+| ArcRepr | 共享 | 是 | 写时复制 | 浅拷贝（引用计数+1） | 跨线程共享、延迟复制 |
 
 **Owned 分配要求**：
 
 - 须使用 64 字节（或更大）对齐的堆分配
 - 须正确处理零大小类型（ZST）和空数组的边界情况（不触发未定义行为）
-- 容量为实际分配的元素槽位数（含 padding），与逻辑元素数不同
-
-**各存储模式的 trait 实现关系**：
-
-| 存储模式 | `Storage` | `StorageMut` | `manages_memory()` | `Clone` |
-|----------|-----------|--------------|---------------------|---------|
-| Owned | ✅ | ✅ | true（独占） | 深拷贝 |
-| ViewRepr | ✅ | ❌ | false | O(1) 拷贝元数据 |
-| ViewMutRepr | ✅ | ✅ | false | 不可 Clone |
-| ArcRepr | ✅ | ❌ | true（共享） | 浅拷贝（Arc ref +1） |
+- 容量须区分物理缓冲区容量（含 padding）与逻辑元素数
 
 ### 6.3 ArcRepr 语义
 
-**ArcRepr::make_mut() 需求**：
+ArcRepr 须支持写时复制机制：
 
-| 属性 | 要求 |
-|------|------|
-| 写时复制 | 若引用计数 > 1，须深拷贝数据到新分配 |
-| 线程安全 | 引用计数操作须原子化，多线程并发 make_mut() 不得导致数据竞争 |
-| 返回值 | 须返回独占可变访问 |
-| 分配保持 | 新分配须保持与原缓冲区相同的对齐值（至少 64 字节），容量须 ≥ 原缓冲区容量，shape/strides/flags 不变 |
-| 独占快速路径 | 引用计数为 1 时须直接返回可变引用，无需拷贝 |
+- 多引用时须深拷贝数据到新分配，单引用时直接返回可变访问（无需拷贝）
+- 引用计数操作须线程安全，多线程并发写时复制不得导致数据竞争
+- 新分配须保持原缓冲区的对齐值（至少 64 字节），容量须 ≥ 原缓冲区容量
 
-**ArcRepr 与视图的安全边界**：
-
-ArcTensor 创建的视图生命周期须绑定到 `&ArcTensor` / `&mut ArcTensor` 自身（而非底层 Arc 数据），确保 make_mut() 与活跃视图之间的互斥由编译器静态保证。
-
-**CowRepr<'a, A>** — Copy-on-Write 存储表示。当前版本仅在 `ensure_blas_compatible()` 返回值中使用（见 §25.4.5），不实现 Storage/StorageMut trait。v2+ 计划实现完整 Storage/StorageMut trait。
+ArcRepr 的视图生命周期须与 ArcRepr 自身绑定，确保写时复制与活跃视图之间的互斥由编译器静态保证。
 
 ### 6.4 设备扩展性
 
-Storage / StorageMut trait 预留 `type Device` 关联类型，当前版本仅支持 `Cpu`。
-
-**`Device` trait**：标记 trait，标识存储所在的计算设备，须满足 `Debug + Clone + Eq + Send + Sync`。当前仅提供 `Cpu` 实现。
-
-**当前版本约束**：
-
-- 设备信息通过 `S::Device` 关联类型承载，`TensorBase<S, D>` 不增加独立泛型参数
-- 形状、步长、布局标志为纯元数据，与存储位置无关，可跨设备复用
+当前版本仅支持 CPU 设备。存储抽象须预留未来扩展到其他计算设备的能力。
 
 ### 6.5 禁止事项
 
-- 不可将任何 GPU 相关类型或 trait 引入公开 API
-- 不可在 `Storage` 或 `StorageMut` trait 中添加 `Gpu` 相关的关联类型或方法（除 `type Device` 占位外）
-- 不可在 `Element` trait 中添加 GPU 语义的约束
+- 不可将任何 GPU 相关类型或抽象引入公开 API
+- 不可在存储抽象中添加 GPU 相关的能力（设备扩展点除外）
+- 不可在元素类型约束中添加 GPU 语义
 
 ---
 
