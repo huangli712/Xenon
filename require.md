@@ -370,8 +370,8 @@ bool 的 sum() 返回 usize（count of true 值），等价于 count_true()。us
 
 | trait | 格式 | 示例 |
 |-------|------|------|
-| Debug | `Complex {{ re: {re:?}, im: {im:?} }}` | `Complex { re: 1.0, im: 2.0 }` |
-| Display | `{re}{sign}{im}i`，虚部为负时 sign 为 `-`，否则为 `+`。| `"1+2i"`, `"1-2i"`, `"0+1i"`, `"3+0i"` |
+| Debug | 显示 re 和 im 字段 | `Complex { re: 1.0, im: 2.0 }` |
+| Display | 数学表示 `{re}+{im}i`，虚部为负时符号为 `-` | `"1+2i"`, `"1-2i"`, `"0+1i"`, `"3+0i"` |
 
 ### 5.3 类型转换
 
@@ -389,12 +389,10 @@ bool 的 sum() 返回 usize（count of true 值），等价于 count_true()。us
 
 | 操作 | 行为 |
 |------|------|
-| Complex + Complex | 逐分量加：`(re1+re2, im1+im2)` |
-| Complex - Complex | 逐分量减：`(re1-re2, im1-im2)` |
-| Complex * Complex | `(re1*re2 - im1*im2, re1*im2 + im1*re2)`，遵循 IEEE 754 逐分量行为 |
-| Complex / Complex | `(a+bi)/(c+di)` 使用 Smith 方法避免中间结果溢出：若 `|d| ≤ |c|`，令 `r = d/c`，`denom = c + d*r`，结果为 `((a_re + a_im*r)/denom, (a_im - a_re*r)/denom)`；否则令 `r = c/d`，`denom = c*r + d`，结果为 `((a_re*r + a_im)/denom, (a_im*r - a_re)/denom)`。分母为零时返回 NaN + NaN\*i。此方法避免直接计算 `c²+d²` 导致的溢出（如 `c` 或 `d` 很大时 `c²` 超出浮点范围），同时保持数值精度。需 `T: RealScalar`（需要 `abs()`） |
-
-> **SIMD 性能提示**：Smith 方法的条件分支在 SIMD 场景下可能引入性能回退。实现时应 benchmark Smith 除法与标准复数除法在目标平台上的性能差异后再做选择。
+| Complex + Complex | 逐分量加 |
+| Complex - Complex | 逐分量减 |
+| Complex * Complex | 标准复数乘法，遵循 IEEE 754 逐分量行为 |
+| Complex / Complex | 复数除法，须采用数值稳定的算法避免中间结果溢出。分母为零时返回 NaN + NaN\*i。需 `T: RealScalar` |
 
 **复数与实数互操作**
 
@@ -402,9 +400,9 @@ bool 的 sum() 返回 usize（count of true 值），等价于 count_true()。us
 |------|------|
 | Complex + 实数 | 实数隐式提升为 Complex(r, 0.0)，结果为 Complex。仅限同精度（Complex\<f64\> + f64） |
 | 实数 + Complex | 同上，交换律成立 |
-| Complex * 实数 | 标量乘法，等价于 (re\*r, im\*r)。仅限同精度 |
-| Complex / 实数 | 标量除法，等价于 (re/r, im/r)。仅限同精度 |
-| 实数 / Complex | `a / (c+di) = a(c-di) / (c²+d²) = (ac/(c²+d²), -ad/(c²+d²))`。分母为零时遵循 IEEE 754。仅限同精度 |
+| Complex * 实数 | 标量乘法。仅限同精度 |
+| Complex / 实数 | 标量除法。仅限同精度 |
+| 实数 / Complex | 实数除以复数。分母为零时遵循 IEEE 754。仅限同精度 |
 | Complex 与整数 | 不支持隐式互操作，须先将整数转为浮点 |
 | 跨精度（如 f32 + Complex\<f64\>） | 不支持隐式互操作，须先显式 cast 到同精度 |
 
@@ -420,7 +418,7 @@ bool 的 sum() 返回 usize（count of true 值），等价于 count_true()。us
 | Complex \*= 实数 | 同精度标量乘后赋值 |
 | Complex /= Complex | 复数除法后赋值 |
 | Complex /= 实数 | 同精度标量除后赋值 |
-| -Complex | 一元取负，返回 Complex(-re, -im) |
+| -Complex | 一元取负 |
 
 ### 5.5 相等与比较
 
@@ -431,10 +429,10 @@ bool 的 sum() 返回 usize（count of true 值），等价于 count_true()。us
 | PartialOrd | 不实现（复数无自然全序） |
 | Ord | 不实现 |
 | Hash | 不实现（因无 Eq，NaN 使 hash 语义不一致） |
-| 近似相等 | 提供 `approx_eq(&self, other: &Self, epsilon: T) -> bool` 方法，逐分量判断：`|self.re - other.re| <= epsilon && |self.im - other.im| <= epsilon` |
-| 全序比较（工具方法） | 提供 `total_cmp(&self, other: &Self) -> Ordering` 方法，字典序：先比较 re（`total_cmp`），再比较 im（`total_cmp`）。**不作为数学序关系**，仅供集合操作（如 §15.2 unique）内部排序使用 |
+| 近似相等 | 提供 `approx_eq(&self, other: &Self, epsilon: T) -> bool` 方法，逐分量判断各分量差值的绝对值不超过 epsilon |
+| 全序比较（工具方法） | 提供 `total_cmp(&self, other: &Self) -> Ordering` 方法，**不作为数学序关系**，仅供集合操作（如 §15.2 unique）内部排序使用 |
 
-**设计说明**：`total_cmp` 不实现为 `Ord` trait，因为字典序不反映复数的数学性质。集合操作通过 `sort_by(\|a, b\| a.total_cmp(b))` 调用。
+**设计说明**：`total_cmp` 不实现为 `Ord` trait，因为字典序不反映复数的数学性质。
 
 ### 5.6 内存布局
 
@@ -445,9 +443,9 @@ bool 的 sum() 返回 usize（count of true 值），等价于 count_true()。us
 | 对齐 | align_of::<Complex<T>>() == align_of::<T>() |
 | 与 C 互操作 | 内存布局兼容 C99 `_Complex`。FFI 仅通过指针传递安全（`*const`/`*mut`），不保证按值传递的 ABI 兼容性 |
 | 数组布局 | Complex<f64> 数组与交错实虚 f64 数组内存等价 |
-| SIMD 对齐 | Complex<f64> 数组建议 16 字节对齐，以支持 SSE2/NEON 向量化加载 |
-| no_std 注意 | `norm()` 依赖 `hypot`（避免 `re²+im²` 溢出），`exp()`/`ln()`/`sqrt()`/`from_polar()` 依赖对应浮点数学函数。`no_std` 环境下这些函数需 `libm`（外部 C 库）或纯 Rust 实现的数学库（如 `libm` crate 的 Rust 实现版本，无 C 依赖，适合裸机环境）。**缓解策略**：(1) 可通过 feature gate 在 `no_std` 环境下提供受限的 `Complex` 子集（排除需要数学函数的方法），但当前版本不实现此分级；(2) 若目标平台无浮点单元（如某些嵌入式 MCU），`Complex` 的所有运算均不可用（依赖硬件浮点），须在文档中明确标注 |
-| Feature gate 分级（v2 路线图） | **复杂度数学方法分级方案**：将依赖外部数学函数的方法按 feature gate 分层，使 `no_std` 环境可按需启用：(1) **基础层**（`Complex<T>` 本身，无 feature gate）：构造、四则运算、共轭、`to_polar`/`from_polar`（仅赋值，不调用 `hypot`/`sin`）——仅需 `Mul + Add`，`no_std` 零依赖可用；(2) **libm 层**（feature gate `complex-libm`，默认启用）：启用 `norm()`/`exp()`/`ln()`/`sqrt()`/`from_polar()`（计算式）——需 `libm` crate 作为可选依赖（`[dependencies.libm] optional = true`）。`no_std` 用户可通过禁用默认 feature 并仅启用 `complex-libm` 来精确控制。**实现要求**：`Cargo.toml` 须声明 `libm` 为可选依赖；`Complex` impl 块使用 `#[cfg(feature = "complex-libm")]` 条件编译；`no_std` + 不启用 `complex-libm` 时，相关方法不存在（编译期报错而非运行时 panic）。**迁移兼容性**：默认 feature 包含 `complex-libm`，现有 `std` 用户无感迁移；仅 `no_std` + `default-features = false` 用户受影响 |
+| SIMD 对齐 | Complex<f64> 数组建议 16 字节对齐 |
+| no_std 注意 | `norm()`、`exp()`、`ln()`、`sqrt()`、`from_polar()` 依赖浮点数学函数。`no_std` 环境下需通过外部数学库提供这些函数。若目标平台无浮点单元，`Complex` 的运算不可用，须在文档中明确标注 |
+| Feature gate 分级（v2 路线图） | 将依赖外部数学函数的方法按 feature gate 分层，使 `no_std` 环境可按需启用。基础运算（构造、四则、共轭）不依赖外部库；数学函数方法（`norm()`/`exp()`/`ln()`/`sqrt()`）通过可选 feature 启用，`no_std` 用户可精确控制依赖。默认配置下所有方法可用，不影响现有用户 |
 
 ---
 
