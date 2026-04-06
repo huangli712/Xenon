@@ -11,7 +11,7 @@
 
 ### 1.1 设计哲学
 
-元素类型体系（Element Type System）是 Xenon 数值计算库的基础设施，采用**分层 trait 继承**设计模式。该体系通过四层 trait 逐级叠加能力约束，在编译时确保类型安全，同时为泛型算法提供精确的能力边界。
+元素类型体系（Element Type System）是 Senon 数值计算库的基础设施，采用**分层 trait 继承**设计模式。该体系通过四层 trait 逐级叠加能力约束，在编译时确保类型安全，同时为泛型算法提供精确的能力边界。
 
 **设计原则**:
 - **能力最小化**: 每层 trait 仅声明必要的约束，避免过度限制
@@ -538,7 +538,7 @@ RealScalar  ComplexScalar  (未来可扩展其他标量类型)
 
 ### 8.1 IEEE 754 兼容性
 
-Xenon 严格遵循 IEEE 754 浮点标准，确保与 Rust 标准库行为一致。
+Senon 严格遵循 IEEE 754 浮点标准，确保与 Rust 标准库行为一致。
 
 ### 8.2 场景行为规范
 
@@ -617,7 +617,7 @@ impl Element for f64 {
 
 ```rust
 // 外部 crate 尝试
-use xenon::element::Element;
+use Senon::element::Element;
 
 struct MyType;
 
@@ -807,7 +807,7 @@ pub fn min<A: RealScalar>(tensor: &TensorView<A>) -> A {
 
 **理由**:
 1. **API 稳定**: 添加新方法不会破坏外部实现
-2. **一致性**: 所有实现类型由 Xenon 团队验证
+2. **一致性**: 所有实现类型由 Senon 团队验证
 3. **未来扩展**: 可添加关联类型或常量而不影响下游
 
 **替代方案**: 开放实现（外部 crate 可为自定义类型实现）。

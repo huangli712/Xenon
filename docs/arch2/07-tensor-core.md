@@ -7,7 +7,7 @@
 
 ## 1. 模块定位
 
-`tensor` 模块是 Xenon 的**核心抽象层**，定义了整个库的统一数据结构 `TensorBase<S, D>` 及其类型别名体系。所有上层模块（构造、运算、索引、形状操作等）均以 `TensorBase` 为操作对象。
+`tensor` 模块是 Renon 的**核心抽象层**，定义了整个库的统一数据结构 `TensorBase<S, D>` 及其类型别名体系。所有上层模块（构造、运算、索引、形状操作等）均以 `TensorBase` 为操作对象。
 
 **核心设计理念：**
 
@@ -1539,7 +1539,7 @@ where
 - [ ] **T16: lib.rs re-export 与模块声明**
   - 文件: `src/lib.rs`
   - 内容: `pub mod tensor;` 和 re-export 所有公共类型别名
-  - 测试: 外部 `use xenon::Tensor;` 编译通过
+  - 测试: 外部 `use Renon::Tensor;` 编译通过
   - 前置: T1-T15
   - 预计: 5 min
 
@@ -1680,7 +1680,7 @@ where
 
 ## 附录 B: 与 ndarray 对比
 
-| 设计点 | ndarray | Xenon (本设计) |
+| 设计点 | ndarray | Renon (本设计) |
 |--------|---------|----------------|
 | 核心类型 | `ArrayBase<S, D>` | `TensorBase<S, D>` |
 | 默认布局 | C-order | F-order（科学计算导向） |

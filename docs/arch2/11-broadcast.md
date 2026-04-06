@@ -7,7 +7,7 @@
 
 ## 1. 模块定位
 
-广播模块实现了 NumPy 风格的多维数组广播机制，使形状不同但兼容的数组能进行逐元素运算。这是 Xenon 逐元素运算（`ops/element_wise.rs`）、矩阵批量运算（`ops/matrix.rs`）和 zip 迭代器（`iter/zip.rs`）的核心基础设施。
+广播模块实现了 NumPy 风格的多维数组广播机制，使形状不同但兼容的数组能进行逐元素运算。这是 Renon 逐元素运算（`ops/element_wise.rs`）、矩阵批量运算（`ops/matrix.rs`）和 zip 迭代器（`iter/zip.rs`）的核心基础设施。
 
 ### 核心设计决策
 
@@ -100,7 +100,7 @@ broadcast.rs
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::broadcast::broadcast_shape;
+/// use Renon::broadcast::broadcast_shape;
 ///
 /// let result = broadcast_shape(&[3, 1], &[1, 4])?;
 /// assert_eq!(result, vec![3, 4]);
@@ -131,7 +131,7 @@ pub fn broadcast_shape(lhs: &[usize], rhs: &[usize]) -> Result<Vec<usize>>;
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::broadcast::can_broadcast;
+/// use Renon::broadcast::can_broadcast;
 ///
 /// assert!(can_broadcast(&[3, 1], &[1, 4]));
 /// assert!(can_broadcast(&[5, 3, 1], &[3, 4]));
@@ -169,7 +169,7 @@ pub fn can_broadcast(lhs: &[usize], rhs: &[usize]) -> bool;
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::{Tensor, Ix2, broadcast};
+/// use Renon::{Tensor, Ix2, broadcast};
 ///
 /// let a: Tensor<f64, Ix2> = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], [1, 4]);
 /// let b = broadcast(&a, &[3, 4])?;  // shape [1, 4] -> [3, 4]
@@ -190,7 +190,7 @@ where
 此方法通过在 `TensorBase` 上添加扩展方法实现。由于 `broadcast.rs` 不能修改 `tensor.rs`，采用以下策略：
 
 - 在 `broadcast.rs` 中定义一个 `BroadcastExt` trait，为所有 `TensorBase<S, D>` 提供 `broadcast_to` 方法
-- 在 `lib.rs` 中 re-export 该 trait，用户只需 `use xenon::BroadcastExt`
+- 在 `lib.rs` 中 re-export 该 trait，用户只需 `use Renon::BroadcastExt`
 
 ```rust
 /// Extension trait providing broadcast methods on `TensorBase`.
@@ -199,7 +199,7 @@ where
 /// methods on any tensor type:
 ///
 /// ```ignore
-/// use xenon::{Tensor, Ix2, BroadcastExt};
+/// use Renon::{Tensor, Ix2, BroadcastExt};
 ///
 /// let a: Tensor<f64, Ix2> = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], [1, 4]);
 /// let b = a.broadcast_to(&[3, 4])?;
@@ -221,7 +221,7 @@ where
     /// # Examples
     ///
     /// ```ignore
-    /// use xenon::{Tensor, Ix2, BroadcastExt};
+    /// use Renon::{Tensor, Ix2, BroadcastExt};
     ///
     /// let a: Tensor<f64, Ix2> = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], [1, 4]);
     /// let b = a.broadcast_to(&[3, 4])?;
@@ -249,7 +249,7 @@ where
     /// # Examples
     ///
     /// ```ignore
-    /// use xenon::{Tensor, Ix2, BroadcastExt};
+    /// use Renon::{Tensor, Ix2, BroadcastExt};
     ///
     /// let a: Tensor<f64, Ix2> = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], [3, 1]);
     /// let b: Tensor<f64, Ix2> = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], [1, 4]);
@@ -326,7 +326,7 @@ where
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::{Tensor, Ix2, broadcast_with};
+/// use Renon::{Tensor, Ix2, broadcast_with};
 ///
 /// let a: Tensor<f64, Ix2> = Tensor::from_vec(vec![1.0, 2.0, 3.0], [3, 1]);
 /// let b: Tensor<f64, Ix2> = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], [1, 4]);
@@ -653,7 +653,7 @@ where
 - [ ] **T8: lib.rs 注册模块 + re-export**
   - 文件: `src/lib.rs`
   - 内容: `pub mod broadcast;`、`pub use broadcast::{broadcast, broadcast_shape, broadcast_with, can_broadcast, BroadcastExt};`
-  - 测试: 外部 `use xenon::BroadcastExt;` 编译通过
+  - 测试: 外部 `use Renon::BroadcastExt;` 编译通过
   - 前置: T7
   - 预计: 5 min
 

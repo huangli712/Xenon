@@ -1,12 +1,12 @@
 # 存储系统模块设计
 
-> Xenon 存储系统：定义张量数据的所有权模型、访问控制与内存管理策略。
+> Renon 存储系统：定义张量数据的所有权模型、访问控制与内存管理策略。
 
 ---
 
 ## 1. 模块定位
 
-存储系统是 Xenon 张量库的核心基础设施层，位于模块依赖链的中间位置：
+存储系统是 Renon 张量库的核心基础设施层，位于模块依赖链的中间位置：
 
 ```
 dimension ──┐
@@ -258,7 +258,7 @@ pub trait StorageMut: RawStorage {
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::storage::Owned;
+/// use Renon::storage::Owned;
 ///
 /// let s = Owned::from_vec(vec![1.0, 2.0, 3.0]);
 /// assert_eq!(s.len(), 3);
@@ -572,7 +572,7 @@ unsafe impl<'a, A: Sync> Sync for ViewMutRepr<'a, A> {}
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::storage::ArcRepr;
+/// use Renon::storage::ArcRepr;
 ///
 /// let s = ArcRepr::from_vec(vec![1.0, 2.0, 3.0]);
 /// let s2 = s.clone(); // O(1), refcount = 2

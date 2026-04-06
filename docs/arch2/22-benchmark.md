@@ -8,7 +8,7 @@
 
 ## 1. 模块定位
 
-基准测试模块是 Xenon 性能保障体系的核心，为持续迭代提供可量化的性能基线。其价值不仅在于"测多快"，更在于回答以下问题：
+基准测试模块是 Renon 性能保障体系的核心，为持续迭代提供可量化的性能基线。其价值不仅在于"测多快"，更在于回答以下问题：
 
 | 问题 | 基准测试的回答方式 |
 |------|-------------------|
@@ -17,7 +17,7 @@
 | 并行阈值（64K）是否合理？ | 参数扫描：不同元素规模下串行 vs 并行的 crossover 点 |
 | 某操作是否可安全用于热路径？ | 绝对延迟：μs 级 wall-clock 时间 + 元素吞吐量 |
 | 非连续布局的惩罚有多大？ | 布局对比：contiguous vs sliced vs transposed 的性能倍率 |
-| Xenon 与 ndarray 的差距在哪？ | 对比基准：相同操作的第三方库对照 |
+| Renon 与 ndarray 的差距在哪？ | 对比基准：相同操作的第三方库对照 |
 
 ### 核心设计目标
 
@@ -305,7 +305,7 @@ Benchmark 分类
 #### 设计要点
 
 - **测量策略**：wall-clock 时间 + throughput（elements/sec）
-- **关键对比**：Xenon zeros vs ndarray zeros — 验证分配+初始化开销
+- **关键对比**：Renon zeros vs ndarray zeros — 验证分配+初始化开销
 - **避坑**：构造函数可能被 LLVM 优化掉（dead code elimination），须使用 `black_box` 或 `criterion::BatchSize`
 - **代码示例**（仅展示模式，非实现）：
 
@@ -897,7 +897,7 @@ pub const SIZES_1D: &[usize] = &[SMALL_1D, MEDIUM_1D, LARGE_1D];
 ```rust
 // benches/common/inputs.rs
 
-use xenon::{Tensor, Ix2, Ix1, zeros};
+use Renon::{Tensor, Ix2, Ix1, zeros};
 use rand::Rng;
 
 /// Create a 2D tensor filled with random f64 values in [0.0, 1.0).
@@ -1084,6 +1084,6 @@ cargo bench -- --baseline main
 |--------|------|
 | 版本锁定 | ndarray 版本须锁定在 `Cargo.toml` dev-dependency 中，避免版本差异引入噪声 |
 | 相同输入 | 对比基准须使用相同的随机种子，确保输入数据一致 |
-| 相同规模 | 矩阵维度须完全一致（包括内存布局：ndarray 默认 C-order，Xenon 默认 F-order） |
+| 相同规模 | 矩阵维度须完全一致（包括内存布局：ndarray 默认 C-order，Renon 默认 F-order） |
 | 编译优化 | 两者须使用相同的 `RUSTFLAGS`（特别是 `target-cpu=native`） |
 | 结果验证 | 对比基准须验证结果近似相等（`approx::assert_relative_eq`），确保测量的是正确操作 |

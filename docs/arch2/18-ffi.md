@@ -7,7 +7,7 @@
 
 ## 1. 模块定位
 
-FFI 集成模块为 Xenon 张量库提供与外部 C/BLAS 库互操作的能力。它位于依赖图的上层，依赖核心模块（tensor、storage、layout）但不被核心模块依赖。
+FFI 集成模块为 Renon 张量库提供与外部 C/BLAS 库互操作的能力。它位于依赖图的上层，依赖核心模块（tensor、storage、layout）但不被核心模块依赖。
 
 **核心设计理念：**
 
@@ -1064,7 +1064,7 @@ with_contiguous_read(callback, user_data):
 - [ ] **T12: lib.rs 集成 + re-export**
   - 文件: `src/lib.rs`, `src/ffi.rs`
   - 内容: `pub mod ffi;` 声明、re-export `BlasLayout`, `BlasTrans`, `RawParts`, `FfiExt`, `FfiExtMut` 及独立函数
-  - 测试: 外部 `use xenon::ffi::*` 编译通过
+  - 测试: 外部 `use Renon::ffi::*` 编译通过
   - 前置: T1-T11
   - 预计: 5 min
 

@@ -11,11 +11,11 @@
 
 ### 1.1 职责定义
 
-`error.rs` 是 Xenon 张量库的错误处理基础设施，负责：
+`error.rs` 是 Senon 张量库的错误处理基础设施，负责：
 
 | 职责 | 说明 |
 |------|------|
-| 错误类型定义 | 定义统一的 `XenonError` 枚举，覆盖所有可恢复错误场景 |
+| 错误类型定义 | 定义统一的 `SenonError` 枚举，覆盖所有可恢复错误场景 |
 | 错误上下文 | 为每个错误提供期望值与实际值的对比信息 |
 | 类型别名 | 提供 `Result<T>` 类型别名，简化 API 签名 |
 | no_std 兼容 | 在无 `std` 环境下仅实现 `Display`，在 `std` 环境下实现 `std::error::Error` |
@@ -33,7 +33,7 @@
 
 ```
 错误处理策略
-├── 可恢复错误 (Result<XenonError>)
+├── 可恢复错误 (Result<SenonError>)
 │   ├── ShapeMismatch      — 二元运算形状不兼容
 │   ├── BroadcastError     — 广播规则不满足
 │   ├── LayoutMismatch     — 布局要求不满足
@@ -69,7 +69,7 @@ src/
 | **代码量** | 预估约 200-300 行，单文件足够管理 |
 | **内聚性** | 所有错误类型紧密相关，共同构成一个概念单元 |
 | **依赖关系** | 错误模块仅依赖 `core`/`alloc`，无复杂依赖图 |
-| **API 边界** | 对外暴露单一 `XenonError` 类型，无需细分子模块 |
+| **API 边界** | 对外暴露单一 `SenonError` 类型，无需细分子模块 |
 | **维护成本** | 单文件更易于查找和修改，避免过度工程化 |
 
 **设计决策**: 保持 `error.rs` 为单文件模块。若未来错误类型超过 15 个或代码超过 500 行，可考虑按错误类别拆分（如 `error/shape.rs`, `error/layout.rs`）。
@@ -78,19 +78,19 @@ src/
 
 ## 3. 错误枚举设计
 
-### 3.1 XenonError 定义
+### 3.1 SenonError 定义
 
 ```rust
 use core::fmt;
 use alloc::vec::Vec;
 use alloc::borrow::Cow;
 
-/// Xenon 张量库的统一错误类型。
+/// Senon 张量库的统一错误类型。
 /// 
 /// 所有可恢复错误均通过此枚举表示，提供丰富的上下文信息
 /// 以便于调试和错误处理。
 #[derive(Debug, Clone, PartialEq)]
-pub enum XenonError {
+pub enum SenonError {
     /// 二元运算或 zip 操作时，两个数组的形状不兼容且无法广播。
     ShapeMismatch {
         /// 期望的形状（通常是左侧操作数或目标形状）
@@ -283,7 +283,7 @@ a.argmax()?;  // Err(EmptyArray { operation: "argmax" })
 
 | 原因 | 说明 |
 |------|------|
-| **Rust 惯例** | 标准库 `slice` 索引越界触发 panic，Xenon 保持一致 |
+| **Rust 惯例** | 标准库 `slice` 索引越界触发 panic，Senon 保持一致 |
 | **性能** | 索引操作频繁，每次返回 `Result` 会增加匹配开销 |
 | **语义** | 索引越界属于编程错误（bug），而非可恢复的业务错误 |
 | **unchecked 变体** | 对性能敏感的场景提供 `get_unchecked` unsafe 变体 |
@@ -321,7 +321,7 @@ impl<A, D> Tensor<A, D> {
 ### 4.2 Display 实现
 
 ```rust
-impl fmt::Display for XenonError {
+impl fmt::Display for SenonError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ShapeMismatch { expected, found } => {
@@ -406,10 +406,10 @@ impl fmt::Display for XenonError {
 ### 5.1 定义
 
 ```rust
-/// Xenon 库的 Result 类型别名。
+/// Senon 库的 Result 类型别名。
 /// 
-/// 使用 XenonError 作为统一错误类型，简化函数签名。
-pub type Result<T> = core::result::Result<T, XenonError>;
+/// 使用 SenonError 作为统一错误类型，简化函数签名。
+pub type Result<T> = core::result::Result<T, SenonError>;
 ```
 
 ### 5.2 使用示例
@@ -421,7 +421,7 @@ pub fn reshape<D2: Dimension>(&self, shape: D2) -> Result<Tensor<A, D2>>;
 // 用户代码
 match tensor.reshape([3, 4]) {
     Ok(new_tensor) => { /* ... */ },
-    Err(XenonError::InvalidShape { expected_len, found_len, .. }) => {
+    Err(SenonError::InvalidShape { expected_len, found_len, .. }) => {
         eprintln!("Cannot reshape: {} elements != {}", expected_len, found_len);
     }
     Err(e) => return Err(e),
@@ -434,7 +434,7 @@ match tensor.reshape([3, 4]) {
 |------|------|
 | **与 `?` 运算符兼容** | 类型别名可直接使用 `?`，无需 `Into` 转换 |
 | **与 `std::result::Result` 方法兼容** | 保留所有内置方法（`map`, `and_then`, `unwrap_or` 等） |
-| **文档简洁** | `Result<T>` 比 `XenonResult<T>` 更符合 Rust 惯例 |
+| **文档简洁** | `Result<T>` 比 `SenonResult<T>` 更符合 Rust 惯例 |
 | **无额外抽象** | 类型别名零运行时开销 |
 
 ---
@@ -502,16 +502,16 @@ use core::fmt;
 use alloc::vec::Vec;
 use alloc::borrow::Cow;
 
-// XenonError 定义 (使用 core::fmt 和 alloc)
+// SenonError 定义 (使用 core::fmt 和 alloc)
 // ...
 
-impl fmt::Display for XenonError {
+impl fmt::Display for SenonError {
     // 使用 core::fmt，无需 std
 }
 
 // std feature 下额外实现 std::error::Error
 #[cfg(feature = "std")]
-impl std::error::Error for XenonError {}
+impl std::error::Error for SenonError {}
 ```
 
 ### 7.2 为什么 no_std 下不实现 Error trait
@@ -534,11 +534,11 @@ std = []
 
 ```rust
 // std 环境（默认）
-use xenon::{Tensor, XenonError, Result};
+use Senon::{Tensor, SenonError, Result};
 
 fn main() -> Result<()> {
     let a = Tensor::zeros([3, 4]);
-    let b = a.reshape([2, 6])?;  // XenonError impl std::error::Error
+    let b = a.reshape([2, 6])?;  // SenonError impl std::error::Error
     Ok(())
 }
 
@@ -547,11 +547,11 @@ fn main() -> Result<()> {
 
 extern crate alloc;
 
-use xenon::{Tensor, XenonError};
+use Senon::{Tensor, SenonError};
 
-fn process() -> Result<Tensor<f64, Ix2>, XenonError> {
+fn process() -> Result<Tensor<f64, Ix2>, SenonError> {
     let a = Tensor::zeros([3, 4]);
-    a.reshape([2, 6])  // XenonError 仅 impl Display
+    a.reshape([2, 6])  // SenonError 仅 impl Display
 }
 ```
 
@@ -583,7 +583,7 @@ fn process() -> Result<Tensor<f64, Ix2>, XenonError> {
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                     Xenon 公共 API                               │
+│                     Senon 公共 API                               │
 │  tensor.reshape() / tensor.sum_axis() / a + b / ...             │
 └────────────────────────────┬────────────────────────────────────┘
                              │
@@ -603,7 +603,7 @@ fn process() -> Result<Tensor<f64, Ix2>, XenonError> {
              └──────────────┼──────────────┘
                             ▼
                    ┌─────────────────┐
-                   │   XenonError    │
+                   │   SenonError    │
                    │   (error.rs)    │
                    └─────────────────┘
                             │
@@ -637,7 +637,7 @@ mod linalg;      // 依赖 error::LayoutMismatch
 
 | 任务 | 内容 | 预估时间 | 依赖 |
 |------|------|----------|------|
-| **Task 1** | 定义 `XenonError` 枚举及所有变体 | 15 min | 无 |
+| **Task 1** | 定义 `SenonError` 枚举及所有变体 | 15 min | 无 |
 | **Task 2** | 实现 `Display` trait | 10 min | Task 1 |
 | **Task 3** | 实现 `std::error::Error` (cfg-gated) | 5 min | Task 2 |
 | **Task 4** | 定义 `Result<T>` 类型别名 | 2 min | Task 1 |
@@ -650,11 +650,11 @@ mod linalg;      // 依赖 error::LayoutMismatch
 
 ### 9.2 任务详情
 
-#### Task 1: 定义 XenonError 枚举
+#### Task 1: 定义 SenonError 枚举
 
 ```rust
 // 预期产出
-pub enum XenonError {
+pub enum SenonError {
     ShapeMismatch { expected: Cow<'static, [usize]>, found: Cow<'static, [usize]> },
     BroadcastError { shape_a: Cow<'static, [usize]>, shape_b: Cow<'static, [usize]>, reason: Cow<'static, str> },
     LayoutMismatch { expected: &'static str, found: &'static str, operation: &'static str },
@@ -681,7 +681,7 @@ pub enum XenonError {
 
 ```rust
 #[cfg(feature = "std")]
-impl std::error::Error for XenonError {}
+impl std::error::Error for SenonError {}
 ```
 
 **验证点**:
@@ -692,13 +692,13 @@ impl std::error::Error for XenonError {}
 #### Task 4: Result 类型别名
 
 ```rust
-pub type Result<T> = core::result::Result<T, XenonError>;
+pub type Result<T> = core::result::Result<T, SenonError>;
 ```
 
 #### Task 5: From traits
 
 ```rust
-impl From<core::convert::Infallible> for XenonError {
+impl From<core::convert::Infallible> for SenonError {
     fn from(e: core::convert::Infallible) -> Self {
         match e {}
     }
@@ -710,7 +710,7 @@ impl From<core::convert::Infallible> for XenonError {
 ```rust
 #[test]
 fn test_shape_mismatch_display() {
-    let err = XenonError::ShapeMismatch {
+    let err = SenonError::ShapeMismatch {
         expected: Cow::Borrowed(&[3, 4]),
         found: Cow::Borrowed(&[2, 5]),
     };
@@ -729,7 +729,7 @@ fn test_shape_mismatch_display() {
 #[cfg(feature = "std")]
 #[test]
 fn test_error_trait() {
-    let err = XenonError::EmptyArray { operation: "argmax" };
+    let err = SenonError::EmptyArray { operation: "argmax" };
     let _: &dyn std::error::Error = &err;  // 确保实现 Error trait
 }
 ```
@@ -748,7 +748,7 @@ fn test_error_trait() {
 fn test_reshape_invalid_shape() {
     let a = Tensor::<f64, _>::zeros([3, 4]);
     let result = a.reshape([2, 5]);
-    assert!(matches!(result, Err(XenonError::InvalidShape { .. })));
+    assert!(matches!(result, Err(SenonError::InvalidShape { .. })));
 }
 ```
 
@@ -768,11 +768,11 @@ fn test_reshape_invalid_shape() {
 
 | 备选方案 | 优点 | 缺点 | 决策 |
 |----------|------|------|------|
-| **单一枚举 XenonError** | API 简单、模式匹配完整、无错误类型爆炸 | 枚举可能变大 | **采用** |
+| **单一枚举 SenonError** | API 简单、模式匹配完整、无错误类型爆炸 | 枚举可能变大 | **采用** |
 | 多个错误类型 (ShapeError, LayoutError...) | 语义分离更清晰 | 错误类型爆炸、`?` 需转换、API 复杂 | 不采用 |
 | 使用 `thiserror` 宏 | 减少样板代码 | 引入依赖、no_std 需额外处理 | 可选优化 |
 
-**理由**: Xenon 错误类型数量可控（7 个），单一枚举足以管理。用户可通过模式匹配精确处理特定错误，无需处理多个错误类型间的转换。
+**理由**: Senon 错误类型数量可控（7 个），单一枚举足以管理。用户可通过模式匹配精确处理特定错误，无需处理多个错误类型间的转换。
 
 ### 10.2 为什么 shape 信息使用 Cow<'static, [usize]>
 
@@ -806,4 +806,4 @@ fn test_reshape_invalid_shape() {
 
 ---
 
-*Xenon 错误处理模块设计 — v1.0*
+*Senon 错误处理模块设计 — v1.0*

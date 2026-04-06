@@ -11,7 +11,7 @@
 
 ### 1.1 设计哲学
 
-逐元素运算（Elementwise Operations）是 Xenon 数值计算的核心能力之一，设计遵循以下原则：
+逐元素运算（Elementwise Operations）是 Senon 数值计算的核心能力之一，设计遵循以下原则：
 
 - **类型安全边界**: 算术运算仅支持数值类型（`Numeric`），`bool` 被显式排除，编译时阻止无效操作
 - **广播透明集成**: 所有二元运算符自动支持广播，用户无需显式调用广播函数
@@ -232,14 +232,14 @@ where
 
 ### 3.4 ndarray 语义参考
 
-Xenon 的 `map`/`mapv`/`mapv_inplace` 语义与 ndarray crate 保持一致：
+Senon 的 `map`/`mapv`/`mapv_inplace` 语义与 ndarray crate 保持一致：
 
-| ndarray 方法 | Xenon 对应 | 说明 |
+| ndarray 方法 | Senon 对应 | 说明 |
 |-------------|-----------|------|
 | `map(|x| f(*x))` | `map(|x| f(x))` | 引用版本 |
 | `mapv(|x| f(x))` | `mapv(|x| f(x))` | 值版本 |
 | `mapv_inplace(|x| f(x))` | `mapv_inplace(|x| f(x))` | 原地版本 |
-| `map_into()` | N/A | ndarray 特有，Xenon 用所有权转移替代 |
+| `map_into()` | N/A | ndarray 特有，Senon 用所有权转移替代 |
 
 ---
 
@@ -406,7 +406,7 @@ let weighted_sum = apply(&[&a, &b, &c], |vals| {
 
 #### 5.2.1 NumPy 广播规则
 
-Xenon 遵循 NumPy 广播规则：
+Senon 遵循 NumPy 广播规则：
 
 1. **维度对齐**: 从最右维度开始对齐，维度数不足的在左侧补 1
 2. **兼容条件**: 对应维度相等，或其中一个为 1
@@ -773,7 +773,7 @@ where
 }
 ```
 
-**注意**: 复数不支持 `sin`/`cos`/`tan`（Xenon 当前版本），未来可扩展。
+**注意**: 复数不支持 `sin`/`cos`/`tan`（Senon 当前版本），未来可扩展。
 
 ---
 

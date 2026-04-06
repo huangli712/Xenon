@@ -1,4 +1,4 @@
-# Xenon 集成测试设计文档
+# Senon 集成测试设计文档
 
 > **文档版本**: v1.0  
 > **最后更新**: 2026-03-28  
@@ -11,7 +11,7 @@
 
 ### 1.1 职责定义
 
-集成测试模块负责验证 Xenon 库各组件协同工作的正确性。
+集成测试模块负责验证 Senon 库各组件协同工作的正确性。
 
 | 职责 | 说明 |
 |------|------|
@@ -125,7 +125,7 @@ pub fn assert_tensor_close<A, D>(
 }
 
 /// Assert a tensor operation returns the expected error variant.
-macro_rules! assert_xenon_error {
+macro_rules! assert_Senon_error {
     ($expr:expr, $variant:pat) => {
         match $expr {
             Err($variant) => {},
@@ -902,4 +902,4 @@ Wave 5 (依赖 Wave 4):
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Senon 项目维护。如有问题请提交 Issue 或 PR。*

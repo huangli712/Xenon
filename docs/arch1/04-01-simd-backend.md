@@ -1,4 +1,4 @@
-# Xenon SIMD 后端模块设计文档
+# Senon SIMD 后端模块设计文档
 
 > **模块路径**: `src/simd/`  
 > **版本**: v1.0  
@@ -12,7 +12,7 @@
 
 ### 1.1 核心角色
 
-SIMD 后端模块是 Xenon 张量库的性能加速层，负责通过向量化指令提升数值计算性能。核心职责包括：
+SIMD 后端模块是 Senon 张量库的性能加速层，负责通过向量化指令提升数值计算性能。核心职责包括：
 
 | 职责 | 说明 |
 |------|------|
@@ -336,7 +336,7 @@ pub fn get_arch() -> Arch {
 
 ### 4.1 设计目标
 
-`SimdKernel` trait 是 Xenon SIMD 后端的核心抽象，目标是：
+`SimdKernel` trait 是 Senon SIMD 后端的核心抽象，目标是：
 
 1. **统一接口**：标量和向量实现共用同一 trait
 2. **类型安全**：通过泛型参数约束元素类型
@@ -409,7 +409,7 @@ pub enum SimdOp {
 /// # Example
 /// 
 /// ```ignore
-/// use xenon::simd::{SimdKernel, ScalarKernel};
+/// use Senon::simd::{SimdKernel, ScalarKernel};
 /// 
 /// let kernel = ScalarKernel::<f64>::new();
 /// 
@@ -583,7 +583,7 @@ impl<A: SimdElement, K: SimdKernel<A>> TypedSimdKernel<A, K> {
 
 ### 4.3 与 pulp WithSimd 的集成
 
-Xenon 的 `SimdKernel` 与 pulp 的 `WithSimd` 通过适配器模式集成：
+Senon 的 `SimdKernel` 与 pulp 的 `WithSimd` 通过适配器模式集成：
 
 ```rust
 // src/simd/vector.rs
@@ -593,7 +593,7 @@ use pulp::{Arch, Simd, WithSimd};
 
 /// pulp WithSimd 适配器
 /// 
-/// 将 Xenon 的操作转换为 pulp 的 WithSimd 闭包。
+/// 将 Senon 的操作转换为 pulp 的 WithSimd 闭包。
 /// pulp 负责选择最优指令集，适配器负责具体操作实现。
 #[cfg(feature = "simd")]
 pub struct PulpAdapter<'a, A, F>
@@ -1446,7 +1446,7 @@ impl VectorKernel<f64> {
 | **掩码加载** | 无分支 | 需要掩码支持 | AVX-512 |
 | **过度加载** | 无分支 | 可能读取无效内存 | 需保证缓冲区足够 |
 
-**Xenon 采用标量循环策略**：
+**Senon 采用标量循环策略**：
 
 ```rust
 // 尾部处理：标量循环
@@ -2142,4 +2142,4 @@ simd.f64s_splat(0.0)  // 广播标量到向量
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Senon 项目维护。如有问题请提交 Issue 或 PR。*

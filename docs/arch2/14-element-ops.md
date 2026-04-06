@@ -7,7 +7,7 @@
 
 ## 1. 模块定位
 
-逐元素运算模块（Element-wise Operations）是 Xenon 运算体系的基础层，提供对所有数值类型张量的逐元素数学运算。该模块通过 trait 约束在编译时区分不同元素类型支持的操作集合：算术运算适用于 `Numeric`，三角/指数/对数/取整运算适用于 `RealScalar`，复数运算适用于 `ComplexScalar`。
+逐元素运算模块（Element-wise Operations）是 Renon 运算体系的基础层，提供对所有数值类型张量的逐元素数学运算。该模块通过 trait 约束在编译时区分不同元素类型支持的操作集合：算术运算适用于 `Numeric`，三角/指数/对数/取整运算适用于 `RealScalar`，复数运算适用于 `ComplexScalar`。
 
 ### 核心设计目标
 
@@ -209,7 +209,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, Ix2, add};
+/// use Renon::{Tensor, Ix2, add};
 /// let a = Tensor::<f64, Ix2>::zeros([3, 4]);
 /// let b = Tensor::<f64, Ix2>::ones([3, 4]);
 /// let c = add(&a, &b)?;
@@ -1776,7 +1776,7 @@ const PARALLEL_MIN_CHUNK: usize = 4 * 1024;   // 4K elements per thread
 - [ ] **T20: ops/mod.rs + lib.rs re-export**
   - 文件: `src/ops/mod.rs`, `src/lib.rs`
   - 内容: `pub mod element_wise;`、re-export 所有公共函数名
-  - 测试: `test_public_api_import`（`use xenon::{add, sin, exp, ...}` 编译通过）
+  - 测试: `test_public_api_import`（`use Renon::{add, sin, exp, ...}` 编译通过）
   - 前置: T1-T19
   - 预计: 5 min
 

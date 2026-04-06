@@ -7,7 +7,7 @@
 
 ## 1. 模块定位
 
-Xenon 文档体系由四个互补层级组成，覆盖从 API 参考到架构决策的完整知识谱：
+Renon 文档体系由四个互补层级组成，覆盖从 API 参考到架构决策的完整知识谱：
 
 | 层级 | 载体 | 目标读者 | 维护方式 |
 |------|------|----------|----------|
@@ -30,7 +30,7 @@ Xenon 文档体系由四个互补层级组成，覆盖从 API 参考到架构决
 ### 2.1 整体目录结构
 
 ```
-xenon/
+Renon/
 ├── src/                        # API 文档：doc comments 写在源码中
 │   ├── lib.rs                  # crate-level doc comment (//!)
 │   ├── dimension.rs
@@ -75,7 +75,7 @@ xenon/
 
 - **位置**：所有 `src/**/*.rs` 文件中的 `///` 和 `//!` 注释
 - **生成**：`cargo doc --all-features --no-deps`
-- **输出**：`target/doc/xenon/`
+- **输出**：`target/doc/Renon/`
 - **原则**：doc comment 与代码同生命周期，修改 API 时必须同步更新文档
 
 #### 用户指南（mdBook）
@@ -106,14 +106,14 @@ xenon/
 `src/lib.rs` 顶部使用 `//!` 撰写 crate 级文档：
 
 ```rust
-//! # Xenon
+//! # Renon
 //!
 //! A Rust multidimensional array (tensor) library for scientific computing.
 //!
 //! ## Quick Start
 //!
 //! ```
-//! use xenon::{Tensor, zeros, Ix2};
+//! use Renon::{Tensor, zeros, Ix2};
 //!
 //! let a: Tensor<f64, Ix2> = zeros([3, 4]);
 //! assert_eq!(a.shape(), &[3, 4]);
@@ -127,7 +127,7 @@ xenon/
 //!
 //! ## Memory Layout
 //!
-//! By default, Xenon uses **F-order (column-major)** layout for compatibility
+//! By default, Renon uses **F-order (column-major)** layout for compatibility
 //! with BLAS/LAPACK conventions. C-order (row-major) is opt-in via [`Order`].
 ```
 
@@ -170,7 +170,7 @@ xenon/
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, zeros, Ix2};
+/// use Renon::{Tensor, zeros, Ix2};
 ///
 /// let a: Tensor<f64, Ix2> = zeros([3, 4]);
 /// assert_eq!(a.shape(), &[3, 4]);
@@ -229,7 +229,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{TensorView, from_raw_parts, Ix2};
+/// use Renon::{TensorView, from_raw_parts, Ix2};
 ///
 /// let data: Vec<f64> = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
 /// let view: TensorView<f64, Ix2> = unsafe {
@@ -278,7 +278,7 @@ pub fn index(&self, index: &[usize]) -> &A {
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::{Tensor, zeros, Ix2};
+/// use Renon::{Tensor, zeros, Ix2};
 ///
 /// let a: Tensor<f64, Ix2> = zeros([1000, 1000]);
 /// let sum = a.par_sum();
@@ -303,7 +303,7 @@ where
 | `[`module::Type`]` | 引用其他模块类型 | `[`layout::Order`]` |
 | `[`Trait`]` | 引用 trait | `[`Element`]`, `[`Numeric`]` |
 
-**原则**：在 doc comment 中首次提及某个 Xenon 类型时，使用 intra-doc link；后续提及不需要重复链接。
+**原则**：在 doc comment 中首次提及某个 Renon 类型时，使用 intra-doc link；后续提及不需要重复链接。
 
 ### 3.7 Module-level 文档
 
@@ -323,7 +323,7 @@ where
 //! (`IxDyn`) use heap-allocated `Vec<usize>` for runtime-determined rank.
 //!
 //! ```
-//! use xenon::{Ix2, IxDyn, Dimension};
+//! use Renon::{Ix2, IxDyn, Dimension};
 //!
 //! let static_dim = Ix2([3, 4]);
 //! assert_eq!(static_dim.ndim(), 2);
@@ -342,8 +342,8 @@ where
 ```toml
 # book/book.toml
 [book]
-title = "Xenon Book"
-authors = ["Xenon Contributors"]
+title = "Renon Book"
+authors = ["Renon Contributors"]
 language = "en"
 multilingual = false
 src = "src"
@@ -353,8 +353,8 @@ build-dir = "book"
 
 [output.html]
 default-theme = "navy"
-git-repository-url = "https://github.com/user/xenon"
-edit-url-template = "https://github.com/user/xenon/edit/main/book/{path}"
+git-repository-url = "https://github.com/user/Renon"
+edit-url-template = "https://github.com/user/Renon/edit/main/book/{path}"
 
 [output.html.search]
 enable = true
@@ -400,7 +400,7 @@ limit-results = 30
 
 #### introduction.md
 
-- Xenon 的定位与设计哲学
+- Renon 的定位与设计哲学
 - 与 ndarray、nalgebra 的区别
 - 功能范围说明（范围内/范围外）
 
@@ -413,7 +413,7 @@ limit-results = 30
 
 ```rust
 // quickstart.md 示例代码
-use xenon::{Tensor, zeros, ones, Ix2, Ix1};
+use Renon::{Tensor, zeros, ones, Ix2, Ix1};
 
 // Create tensors
 let a: Tensor<f64, Ix2> = zeros([3, 4]);
@@ -518,13 +518,13 @@ println!("{}", a.shape());
 
 #### 基本模式（无额外 import）
 
-大多数 doc test 遵循以下模式：从 `xenon` crate 导入所需类型后操作：
+大多数 doc test 遵循以下模式：从 `Renon` crate 导入所需类型后操作：
 
 ```rust
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, zeros, Ix2};
+/// use Renon::{Tensor, zeros, Ix2};
 ///
 /// let a: Tensor<f64, Ix2> = zeros([3, 4]);
 /// assert_eq!(a.shape(), &[3, 4]);
@@ -539,7 +539,7 @@ println!("{}", a.shape());
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, ones, Ix1, Tensor1};
+/// use Renon::{Tensor, ones, Ix1, Tensor1};
 ///
 /// let v: Tensor1<f64> = ones(5);
 /// assert_eq!(v.shape(), &[5]);
@@ -554,12 +554,12 @@ println!("{}", a.shape());
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, zeros, Ix2};
+/// use Renon::{Tensor, zeros, Ix2};
 ///
 /// let a: Tensor<f64, Ix2> = zeros([3, 4]);
 /// let b: Tensor<f64, Ix2> = zeros([3, 4]);
 /// let c = a.add(&b)?;  // Result<Tensor, TensorError>
-/// # Ok::<(), xenon::TensorError>(())
+/// # Ok::<(), Renon::TensorError>(())
 /// ```
 ```
 
@@ -573,7 +573,7 @@ Feature-gated API 的 doc test 使用 ` ```ignore ` 标记，因为 `cargo test 
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::{Tensor, ones, Ix2};
+/// use Renon::{Tensor, ones, Ix2};
 ///
 /// let a: Tensor<f64, Ix2> = ones([1000, 1000]);
 /// let sum = a.par_sum();
@@ -593,7 +593,7 @@ unsafe 函数的 doc test 须使用 `unsafe` 块并解释安全性假设：
 /// # Examples
 ///
 /// ```
-/// use xenon::{from_raw_parts, Ix1};
+/// use Renon::{from_raw_parts, Ix1};
 ///
 /// let data = vec![1.0_f64, 2.0, 3.0];
 ///
@@ -620,15 +620,15 @@ unsafe 函数的 doc test 须使用 `unsafe` 块并解释安全性假设：
 
 ### 5.6 公共 import 模式
 
-所有 doc test 中的 import 应使用 crate 级 re-export 路径（`xenon::XXX`），不引用内部模块路径：
+所有 doc test 中的 import 应使用 crate 级 re-export 路径（`Renon::XXX`），不引用内部模块路径：
 
 ```rust
 // 正确
-use xenon::{Tensor, zeros, Ix2, Dimension};
+use Renon::{Tensor, zeros, Ix2, Dimension};
 
 // 错误（内部模块路径，不属于公共 API）
-use xenon::tensor::TensorBase;
-use xenon::dimension::Ix2;
+use Renon::tensor::TensorBase;
+use Renon::dimension::Ix2;
 ```
 
 ---
@@ -720,11 +720,11 @@ jobs:
 
 ```toml
 [package]
-name = "xenon"
+name = "Renon"
 version = "0.1.0"
 description = "A Rust multidimensional array library for scientific computing"
-documentation = "https://docs.rs/xenon"
-repository = "https://github.com/user/xenon"
+documentation = "https://docs.rs/Renon"
+repository = "https://github.com/user/Renon"
 license = "MIT"
 keywords = ["tensor", "array", "numpy", "scientific", "numerical"]
 categories = ["science", "mathematics", "no-std"]
@@ -811,7 +811,7 @@ mdbook build book
 
 - [ ] **Task 2**: 创建 `book/src/introduction.md`
   - 文件: `book/src/introduction.md`
-  - 产出: Xenon 简介、定位、功能范围
+  - 产出: Renon 简介、定位、功能范围
   - 前置: Task 1
   - 预计: 10 min
 
@@ -975,7 +975,7 @@ mdbook build book
 
 - [ ] **Task 28**: 撰写 `book/src/migration.md`
   - 文件: `book/src/migration.md`
-  - 产出: ndarray → Xenon 迁移对照表
+  - 产出: ndarray → Renon 迁移对照表
   - 前置: Task 1, 全部 API 文档完成
   - 预计: 10 min
 
@@ -1020,4 +1020,4 @@ mdbook build book
 
 ---
 
-*Xenon 文档方案设计 — docs/24-documentation.md*
+*Renon 文档方案设计 — docs/24-documentation.md*

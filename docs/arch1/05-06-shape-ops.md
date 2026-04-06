@@ -1,4 +1,4 @@
-# Xenon 形状操作模块设计文档
+# Senon 形状操作模块设计文档
 
 > **文档版本**: v1.0  
 > **最后更新**: 2026-03-28  
@@ -11,7 +11,7 @@
 
 ### 1.1 设计哲学
 
-形状操作（Shape Operations）是 Xenon 多维数组库的核心能力之一，用于在不复制数据的情况下改变数组的逻辑视图，或在必要时创建新数组。设计遵循以下原则：
+形状操作（Shape Operations）是 Senon 多维数组库的核心能力之一，用于在不复制数据的情况下改变数组的逻辑视图，或在必要时创建新数组。设计遵循以下原则：
 
 | 原则 | 说明 |
 |------|------|
@@ -176,7 +176,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::{Tensor, Ix2, Ix3};
+    /// use Senon::{Tensor, Ix2, Ix3};
     ///
     /// let a = Tensor::<f64, Ix3>::zeros([2, 3, 4]);
     /// let reshaped = a.reshape([6, 4]).unwrap();
@@ -242,7 +242,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::{Tensor, Ix2};
+    /// use Senon::{Tensor, Ix2};
     ///
     /// let a = Tensor::<f64, Ix2>::zeros([4, 6]);
     /// let reshaped = a.into_shape([2, 12]).unwrap();
@@ -322,7 +322,7 @@ C-contiguous 条件:
 #### 3.1.4 示例代码
 
 ```rust
-use xenon::{Tensor, TensorView, Ix2, Ix3, s};
+use Senon::{Tensor, TensorView, Ix2, Ix3, s};
 
 // 基本 reshape
 let a = Tensor::<f64, Ix3>::zeros([2, 3, 4]);  // 24 elements
@@ -380,7 +380,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::{Tensor2, Ix2};
+    /// use Senon::{Tensor2, Ix2};
     ///
     /// let a = Tensor2::<f64>::from_shape_vec([2, 3], vec![1,2,3,4,5,6]);
     /// let b = a.transpose();
@@ -438,7 +438,7 @@ where
 #### 3.2.3 示例代码
 
 ```rust
-use xenon::{Tensor2, Tensor3, Ix2, Ix3};
+use Senon::{Tensor2, Tensor3, Ix2, Ix3};
 
 // 2D 转置
 let a = Tensor2::<f64>::from_shape_vec([2, 3], vec![1,2,3,4,5,6]);
@@ -486,7 +486,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::{Tensor3, Ix3};
+    /// use Senon::{Tensor3, Ix3};
     ///
     /// let a = Tensor3::<f64>::zeros([2, 3, 4]);
     /// // 原轴顺序: (0, 1, 2) -> shape [2, 3, 4]
@@ -571,7 +571,7 @@ where
 #### 3.3.3 示例代码
 
 ```rust
-use xenon::{Tensor3, Tensor4, Ix3, Ix4};
+use Senon::{Tensor3, Tensor4, Ix3, Ix4};
 
 // 基本排列
 let a = Tensor3::<f64>::zeros([2, 3, 4]);
@@ -621,7 +621,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::{Tensor3, Ix3};
+    /// use Senon::{Tensor3, Ix3};
     ///
     /// let a = Tensor3::<f64>::zeros([2, 3, 4]);
     /// let b = a.swapaxes(0, 2).unwrap();
@@ -667,7 +667,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::{Tensor3, Ix3};
+    /// use Senon::{Tensor3, Ix3};
     ///
     /// let a = Tensor3::<f64>::zeros([2, 3, 4]);  // shape: [2, 3, 4]
     /// let b = a.moveaxis(0, 2).unwrap();          // shape: [3, 4, 2]
@@ -745,7 +745,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::{Tensor3, Ix2};
+    /// use Senon::{Tensor3, Ix2};
     ///
     /// let a = Tensor3::<f64>::zeros([2, 1, 4]);
     /// let b = a.squeeze(None).unwrap();  // shape: [2, 4]
@@ -835,7 +835,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::{Tensor1, Ix2};
+    /// use Senon::{Tensor1, Ix2};
     ///
     /// let a = Tensor1::<f64>::zeros([5]);  // shape: [5]
     /// let b = a.unsqueeze(0);  // shape: [1, 5]
@@ -936,7 +936,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::{Tensor2, Ix1};
+    /// use Senon::{Tensor2, Ix1};
     ///
     /// let a = Tensor2::<f64>::zeros([2, 3]);
     /// let b = a.flatten(None);  // shape: [6]
@@ -1015,7 +1015,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::{Tensor3, Ix2};
+    /// use Senon::{Tensor3, Ix2};
     ///
     /// let a = Tensor3::<f64>::zeros([2, 3, 4]);  // shape: [2, 3, 4]
     /// let b = a.flatten_axes(1, 2).unwrap();      // shape: [2, 12]
@@ -1121,7 +1121,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::{Tensor2, s};
+    /// use Senon::{Tensor2, s};
     ///
     /// let a = Tensor2::<f64>::zeros([6, 8]);
     ///
@@ -1208,7 +1208,7 @@ where
 /// # 示例
 ///
 /// ```
-/// use xenon::s;
+/// use Senon::s;
 ///
 /// let info = s![1..4, 2..6];       // 两维切片
 /// let info = s![.., 0..5;2];       // 混合切片
@@ -1289,7 +1289,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::{Tensor3, Ix2};
+    /// use Senon::{Tensor3, Ix2};
     ///
     /// let a = Tensor3::<f64>::zeros([3, 4, 5]);
     /// let b = a.index_axis(0, 1).unwrap();  // shape: [4, 5]
@@ -1453,7 +1453,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::{Tensor3, Ix2};
+    /// use Senon::{Tensor3, Ix2};
     ///
     /// let a = Tensor3::<f64>::zeros([3, 4, 5]);
     /// let views = a.unstack(0).unwrap();  // 3 个 [4, 5] 视图
@@ -1529,7 +1529,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::{Tensor2, Ix2};
+    /// use Senon::{Tensor2, Ix2};
     ///
     /// let a = Tensor2::<f64>::zeros([6, 4]);
     /// let parts = a.split(0, &[2, 4]).unwrap();
@@ -1595,7 +1595,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::{Tensor1, Ix1};
+    /// use Senon::{Tensor1, Ix1};
     ///
     /// let a = Tensor1::<f64>::from_vec(vec![1, 2, 3, 4, 5, 6, 7]);
     ///
@@ -1733,7 +1733,7 @@ where
 /// # 示例
 ///
 /// ```
-/// use xenon::{Tensor1, Tensor2, cat};
+/// use Senon::{Tensor1, Tensor2, cat};
 ///
 /// let a = Tensor1::from_vec(vec![1, 2, 3]);
 /// let b = Tensor1::from_vec(vec![4, 5, 6]);
@@ -1888,7 +1888,7 @@ where
 /// # 示例
 ///
 /// ```
-/// use xenon::{Tensor1, Tensor2, stack};
+/// use Senon::{Tensor1, Tensor2, stack};
 ///
 /// let a = Tensor1::from_vec(vec![1, 2, 3]);
 /// let b = Tensor1::from_vec(vec![4, 5, 6]);
@@ -2035,7 +2035,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::{Tensor1, PadMode, PadWidth};
+    /// use Senon::{Tensor1, PadMode, PadWidth};
     ///
     /// let a = Tensor1::from_vec(vec![1, 2, 3]);
     ///
@@ -2212,7 +2212,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::{Tensor1, Tensor2};
+    /// use Senon::{Tensor1, Tensor2};
     ///
     /// let a = Tensor1::from_vec(vec![1, 2, 3]);
     ///
@@ -2664,7 +2664,7 @@ let view = tensor.slice(s![1..10, 2..8]).transpose().slice(s![.., 0..3]);
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Senon 项目维护。如有问题请提交 Issue 或 PR。*
 
 ---
 
@@ -3361,4 +3361,4 @@ Wave 5 (依赖所有):
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Senon 项目维护。如有问题请提交 Issue 或 PR。*

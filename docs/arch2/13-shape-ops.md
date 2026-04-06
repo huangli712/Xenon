@@ -142,7 +142,7 @@ mod.rs
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, Ix2, reshape};
+/// use Renon::{Tensor, Ix2, reshape};
 /// let a = Tensor::<f64, _>::zeros([2, 3]);
 /// let b = reshape(&a, Ix2(3, 2))?;
 /// assert_eq!(b.shape(), &[3, 2]);
@@ -360,7 +360,7 @@ fn infer_dimension(shape: &[usize], total: usize) -> Vec<usize> {
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, Ix3, transpose};
+/// use Renon::{Tensor, Ix3, transpose};
 /// let a = Tensor::<f64, _>::zeros([2, 3, 4]);
 /// let b = transpose(&a, [2, 0, 1]);
 /// assert_eq!(b.shape(), &[4, 2, 3]);
@@ -442,7 +442,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, Ix3, swap_axes};
+/// use Renon::{Tensor, Ix3, swap_axes};
 /// let a = Tensor::<f64, _>::zeros([2, 3, 4]);
 /// let b = swap_axes(&a, 0, 2);
 /// assert_eq!(b.shape(), &[4, 3, 2]);
@@ -483,7 +483,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, Ix3, move_axis};
+/// use Renon::{Tensor, Ix3, move_axis};
 /// // shape [2, 3, 4], move axis 0 to position 2 → [3, 4, 2]
 /// let a = Tensor::<f64, _>::zeros([2, 3, 4]);
 /// let b = move_axis(&a, 0, 2);
@@ -650,7 +650,7 @@ impl SliceInfo {
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, Ix2, shape::slice, shape::SliceRange};
+/// use Renon::{Tensor, Ix2, shape::slice, shape::SliceRange};
 /// let a = Tensor::<f64, _>::zeros([4, 5]);
 /// let info = SliceInfo::new(vec![SliceRange::new(1, 3), SliceRange::FULL]);
 /// let v = slice(&a, &info)?;
@@ -844,7 +844,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, Ix3, squeeze};
+/// use Renon::{Tensor, Ix3, squeeze};
 /// let a = Tensor::<f64, _>::zeros([2, 1, 4]);
 /// let b = squeeze(&a, &[1])?;
 /// assert_eq!(b.shape(), &[2, 4]);
@@ -938,7 +938,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, Ix2, expand_dims};
+/// use Renon::{Tensor, Ix2, expand_dims};
 /// let a = Tensor::<f64, _>::zeros([3, 4]);
 /// let b = expand_dims(&a, 1)?;
 /// assert_eq!(b.shape(), &[3, 1, 4]);
@@ -1027,7 +1027,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, Ix2, flip};
+/// use Renon::{Tensor, Ix2, flip};
 /// let a = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], [2, 2]);
 /// let b = flip(&a, &[0]);
 /// // b reverses rows: [[3,4],[1,2]]
@@ -1145,7 +1145,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, Ix2, split};
+/// use Renon::{Tensor, Ix2, split};
 /// let a = Tensor::<f64, _>::zeros([4, 6]);
 /// let parts = split(&a, 1, &[2, 4])?;
 /// assert_eq!(parts.len(), 3);
@@ -1223,7 +1223,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, Ix2, chunk};
+/// use Renon::{Tensor, Ix2, chunk};
 /// let a = Tensor::<f64, _>::zeros([4, 7]);
 /// let chunks = chunk(&a, 1, 3)?;
 /// assert_eq!(chunks.len(), 3);
@@ -1296,7 +1296,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, Ix3, unstack};
+/// use Renon::{Tensor, Ix3, unstack};
 /// let a = Tensor::<f64, _>::zeros([3, 4, 5]);
 /// let parts = unstack(&a, 0)?;
 /// assert_eq!(parts.len(), 3);
@@ -1358,7 +1358,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, Ix2, concatenate};
+/// use Renon::{Tensor, Ix2, concatenate};
 /// let a = Tensor::<f64, _>::zeros([2, 3]);
 /// let b = Tensor::<f64, _>::zeros([2, 3]);
 /// let c = concatenate(&[&a, &b], 0)?;
@@ -1476,7 +1476,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, Ix2, stack};
+/// use Renon::{Tensor, Ix2, stack};
 /// let a = Tensor::<f64, _>::zeros([3, 4]);
 /// let b = Tensor::<f64, _>::zeros([3, 4]);
 /// let c = stack(&[&a, &b], 0)?;
@@ -1595,7 +1595,7 @@ impl PadWidth {
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, Ix2, pad, PadMode, shape::PadWidth};
+/// use Renon::{Tensor, Ix2, pad, PadMode, shape::PadWidth};
 /// let a = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], [2, 2]);
 /// let widths = vec![PadWidth::symmetric(1), PadWidth::symmetric(0)];
 /// let b = pad(&a, &widths, PadMode::Constant(0.0))?;
@@ -1767,7 +1767,7 @@ fn fill_reflect_padding<S, A, D>(
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, Ix2, repeat};
+/// use Renon::{Tensor, Ix2, repeat};
 /// let a = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], [2, 2]);
 /// let b = repeat(&a, &[2, 3])?;
 /// // shape: [4, 6] — each element repeated 2x along axis 0, 3x along axis 1
@@ -1897,7 +1897,7 @@ fn write_repeated<A>(
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, Ix2, tile};
+/// use Renon::{Tensor, Ix2, tile};
 /// let a = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], [2, 2]);
 /// let b = tile(&a, &[2, 3])?;
 /// // shape: [4, 6] — the full 2x2 array is tiled 2x3 times
@@ -2095,7 +2095,7 @@ new: shape=[3,1,4], strides=[1,3,3]
 - [ ] **T1: shape/mod.rs 模块骨架**
   - 文件: `src/shape/mod.rs`
   - 内容: 模块声明（`pub mod reshape;` 等）+ 所有公共 API 的 re-export
-  - 测试: `use xenon::shape::reshape;` 编译通过
+  - 测试: `use Renon::shape::reshape;` 编译通过
   - 前置: tensor, dimension, layout, error 模块完成
   - 预计: 5 min
 
@@ -2297,7 +2297,7 @@ new: shape=[3,1,4], strides=[1,3,3]
 - [ ] **T27: lib.rs re-export 集成**
   - 文件: `src/lib.rs`
   - 内容: `pub mod shape;` 和 `pub use shape::{...};`
-  - 测试: 外部 `use xenon::reshape;` 编译通过
+  - 测试: 外部 `use Renon::reshape;` 编译通过
   - 前置: T1–T26
   - 预计: 5 min
 

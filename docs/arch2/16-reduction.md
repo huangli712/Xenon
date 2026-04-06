@@ -8,7 +8,7 @@
 
 ## 1. 模块定位
 
-归约操作模块是 Xenon 运算体系的核心组件之一，负责将张量沿指定维度（或全局）聚合为标量或低维张量。涵盖三大类操作：
+归约操作模块是 Renon 运算体系的核心组件之一，负责将张量沿指定维度（或全局）聚合为标量或低维张量。涵盖三大类操作：
 
 | 类别 | 操作 | 典型用途 |
 |------|------|----------|
@@ -111,7 +111,7 @@ pub trait RemoveAxis: Dimension {
 
 ### 4.1 设计决策：扩展 trait 模式
 
-采用**扩展 trait** 模式（extension trait），在 `ops/reduction.rs` 中定义 `Reduce` trait 并为 `TensorBase<S, D>` 提供实现。通过 `pub use crate::ops::*` 在 crate 根 re-export，用户只需 `use xenon::Reduce;` 即可在任意 `TensorBase` 上调用归约方法。
+采用**扩展 trait** 模式（extension trait），在 `ops/reduction.rs` 中定义 `Reduce` trait 并为 `TensorBase<S, D>` 提供实现。通过 `pub use crate::ops::*` 在 crate 根 re-export，用户只需 `use Renon::Reduce;` 即可在任意 `TensorBase` 上调用归约方法。
 
 **选择 trait 而非直接 inherent impl 的理由：**
 
@@ -138,7 +138,7 @@ pub trait RemoveAxis: Dimension {
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, Reduce, zeros};
+/// use Renon::{Tensor, Reduce, zeros};
 /// let a: Tensor<f64, Ix2> = zeros([3, 4]);
 /// assert_eq!(a.sum(), 0.0);
 /// ```
@@ -162,7 +162,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use xenon::{Tensor, Reduce};
+    /// use Renon::{Tensor, Reduce};
     /// let a = Tensor::from_vec(vec![1.0_f64, 2.0, 3.0], [3]);
     /// assert_eq!(a.sum(), 6.0);
     /// ```
@@ -310,7 +310,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use xenon::{Tensor, Reduce};
+    /// use Renon::{Tensor, Reduce};
     /// // Input shape: [2, 3]
     /// let a = Tensor::from_vec(vec![1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0], [2, 3]);
     /// // sum_axis(0) -> shape [3]: [5.0, 7.0, 9.0]
@@ -896,7 +896,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use xenon::{Tensor, Accumulate};
+    /// use Renon::{Tensor, Accumulate};
     /// let a = Tensor::from_vec(vec![1.0_f64, 2.0, 3.0], [3]);
     /// let cs = a.cumsum(0);
     /// assert_eq!(cs.to_vec(), vec![1.0, 3.0, 6.0]);
@@ -1767,7 +1767,7 @@ fn flatten_output_index(
 - [ ] **T22: ops/mod.rs + lib.rs re-export**
   - 文件: `src/ops/mod.rs`, `src/lib.rs`
   - 内容: `pub mod reduction; pub mod accumulate;` 和 `pub use Reduce, Accumulate`
-  - 测试: `use xenon::{Reduce, Accumulate}` 编译通过
+  - 测试: `use Renon::{Reduce, Accumulate}` 编译通过
   - 前置: T1-T16
   - 预计: 5 min
 
@@ -1953,7 +1953,7 @@ fn flatten_output_index(
 
 ## 附录 C：与 NumPy 行为对比
 
-| 行为 | NumPy | Xenon | 说明 |
+| 行为 | NumPy | Renon | 说明 |
 |------|-------|-------|------|
 | 空数组 min/max | ValueError (raise) | `Err(EmptyArray)` | Result 替代异常 |
 | 空数组 sum | 0 (identity) | `A::zero()` | 一致 |
@@ -1961,7 +1961,7 @@ fn flatten_output_index(
 | 空数组 any | False | false | 一致 |
 | var 默认 ddof | 0 | 0 | 一致 |
 | argmin/argmax 平局 | 首个索引 | 首个索引 | 一致 |
-| 整数 sum 溢出 | 静默溢出（C 行为） | panic | Xenon 更安全 |
+| 整数 sum 溢出 | 静默溢出（C 行为） | panic | Renon 更安全 |
 | cumsum 遇 NaN | NaN 传播 | NaN 传播 | 一致 |
 | Complex min/max | 不支持 | 不支持 | 一致 |
-| bool sum | 转为 int | ❌ 不支持 | Xenon 需显式 cast |
+| bool sum | 转为 int | ❌ 不支持 | Renon 需显式 cast |

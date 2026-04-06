@@ -1,4 +1,4 @@
-# Xenon 维度系统设计文档
+# Senon 维度系统设计文档
 
 > 版本: 0.1.0 | 最后更新: 2026-03-28
 
@@ -1902,4 +1902,4 @@ pub struct DimensionMismatch {
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Senon 项目维护。如有问题请提交 Issue 或 PR。*

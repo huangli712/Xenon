@@ -12,7 +12,7 @@
 
 ### 1.1 线程安全在科学计算库中的重要性
 
-Xenon 作为科学计算多维数组库，需要在多线程环境下安全运行。线程安全设计直接影响以下关键场景：
+Senon 作为科学计算多维数组库，需要在多线程环境下安全运行。线程安全设计直接影响以下关键场景：
 
 | 场景 | 线程安全需求 |
 |------|--------------|
@@ -36,9 +36,9 @@ Rust 通过 `Send` 和 `Sync` trait 在类型系统层面保证线程安全：
 - `&mut T` 是 `Send` ⟺ `T: Send`
 - 裸指针 `*const T` 和 `*mut T` 既不是 `Send` 也不是 `Sync`
 
-### 1.3 Xenon 的线程安全挑战
+### 1.3 Senon 的线程安全挑战
 
-Xenon 的四种存储模式带来不同的线程安全考量：
+Senon 的四种存储模式带来不同的线程安全考量：
 
 ```
 存储模式           挑战
@@ -144,7 +144,7 @@ pub struct ArcRepr<A> {
 
 ### 2.3 与 ndarray 的对比
 
-| 方面 | ndarray | Xenon | 差异原因 |
+| 方面 | ndarray | Senon | 差异原因 |
 |------|---------|-------|----------|
 | Owned | 自动推导 | 显式 unsafe impl | 文档化意图 |
 | View | `ArrayView: Send+Sync` 当 `A: Sync` | 相同 | 语义一致 |
@@ -595,9 +595,9 @@ pub struct ParElementsMut<'a, A, D> {
 /// }
 /// ```
 ///
-/// # Xenon 的选择
+/// # Senon 的选择
 ///
-/// 对于非连续可变迭代，Xenon 采用 **沿轴分块** 策略：
+/// 对于非连续可变迭代，Senon 采用 **沿轴分块** 策略：
 ///
 /// - 如果可以沿某轴分割为不重叠的子数组，使用并行
 /// - 否则回退到串行
@@ -611,7 +611,7 @@ pub struct ParElementsMut<'a, A, D> {
 
 ### 5.1 Padding 的来源和目的
 
-Xenon 支持在主维度添加 padding 以保证 SIMD 对齐：
+Senon 支持在主维度添加 padding 以保证 SIMD 对齐：
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -1862,7 +1862,7 @@ mod padding_safety_tests {
 ```rust
 // tests/thread_safety.rs
 
-use xenon::{Tensor, TensorView, TensorViewMut, ArcTensor};
+use Senon::{Tensor, TensorView, TensorViewMut, ArcTensor};
 use std::thread;
 
 #[test]

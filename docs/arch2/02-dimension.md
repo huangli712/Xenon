@@ -1,12 +1,12 @@
 # 维度系统模块设计
 
-> 本文档定义 Xenon 的维度系统，包括静态维度类型 Ix0~Ix6、动态维度类型 IxDyn，以及统一的 Dimension trait。
+> 本文档定义 Renon 的维度系统，包括静态维度类型 Ix0~Ix6、动态维度类型 IxDyn，以及统一的 Dimension trait。
 
 ---
 
 ## 1. 模块定位
 
-维度系统是 Xenon 类型架构的核心支柱之一。每个张量的维度信息由类型参数 `D: Dimension` 承载，与存储参数 `S` 正交组合形成 `TensorBase<S, D>` 的双参数泛型体系。
+维度系统是 Renon 类型架构的核心支柱之一。每个张量的维度信息由类型参数 `D: Dimension` 承载，与存储参数 `S` 正交组合形成 `TensorBase<S, D>` 的双参数泛型体系。
 
 设计目标：
 
@@ -40,7 +40,7 @@ dimension.rs
   └── 被 tensor.rs, construction.rs, broadcast.rs, indexing.rs, shape/ 等使用
 ```
 
-维度模块是整个依赖图的叶子节点之一（与 `error.rs` 并列），不依赖任何其他 Xenon 模块。
+维度模块是整个依赖图的叶子节点之一（与 `error.rs` 并列），不依赖任何其他 Renon 模块。
 
 ---
 
@@ -186,7 +186,7 @@ pub trait Dimension: Clone + Eq + Debug + Send + Sync + 'static {
 /// Memory layout order for multi-dimensional arrays.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MemoryOrder {
-    /// Column-major order (Fortran-style). Default for Xenon.
+    /// Column-major order (Fortran-style). Default for Renon.
     F,
     /// Row-major order (C-style).
     C,

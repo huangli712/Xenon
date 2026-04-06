@@ -7,7 +7,7 @@
 
 ## 1. 模块定位
 
-`backend/parallel.rs` 是 Xenon 的并行执行基础设施层，基于 rayon 提供数据并行能力。该模块为上层模块（`ops/`、`iter/`）提供统一的并行执行原语，屏蔽 rayon 的使用细节。
+`backend/parallel.rs` 是 Renon 的并行执行基础设施层，基于 rayon 提供数据并行能力。该模块为上层模块（`ops/`、`iter/`）提供统一的并行执行原语，屏蔽 rayon 的使用细节。
 
 **核心职责：**
 
@@ -22,7 +22,7 @@
 
 **与 `iter/` 模块的关系：**
 
-本模块是并行基础设施的**唯一实现位置**。`src/iter/mod.rs` 中通过 `pub use crate::backend::parallel::*` re-export 并行迭代器类型，对用户暴露统一的 `xenon::iter::ParIter` 等类型名。`iter/` 模块不包含独立的并行实现文件。
+本模块是并行基础设施的**唯一实现位置**。`src/iter/mod.rs` 中通过 `pub use crate::backend::parallel::*` re-export 并行迭代器类型，对用户暴露统一的 `Renon::iter::ParIter` 等类型名。`iter/` 模块不包含独立的并行实现文件。
 
 **设计原则：**
 
@@ -168,7 +168,7 @@ pub const TARGET_CHUNK_BYTES: usize = 256 * 1024; // 256 KB
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::{Tensor, Ix2, zeros};
+/// use Renon::{Tensor, Ix2, zeros};
 /// let t: Tensor<f64, Ix2> = zeros([1000, 1000]);
 /// let sum: f64 = t.par_iter().cloned().sum();
 /// ```
@@ -302,7 +302,7 @@ where
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::{Tensor, Ix2, zeros};
+/// use Renon::{Tensor, Ix2, zeros};
 /// let mut t: Tensor<f64, Ix2> = zeros([1000, 1000]);
 /// t.par_iter_mut().for_each(|x| *x = 42.0);
 /// ```
@@ -442,7 +442,7 @@ where
     /// # Examples
     ///
     /// ```ignore
-    /// use xenon::{Tensor, Ix1, linspace};
+    /// use Renon::{Tensor, Ix1, linspace};
     /// let t: Tensor<f64, Ix1> = linspace(0.0, 1.0, 100_000);
     /// let sum: f64 = t.par_iter().cloned().sum();
     /// ```
@@ -479,7 +479,7 @@ where
     /// # Examples
     ///
     /// ```ignore
-    /// use xenon::{Tensor, Ix2, zeros};
+    /// use Renon::{Tensor, Ix2, zeros};
     /// let mut t: Tensor<f64, Ix2> = zeros([500, 500]);
     /// t.par_iter_mut().for_each(|x| *x = 1.0);
     /// ```
@@ -529,7 +529,7 @@ where
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::{Tensor, Ix1, par_map, linspace};
+/// use Renon::{Tensor, Ix1, par_map, linspace};
 /// let t: Tensor<f64, Ix1> = linspace(0.0, 1.0, 200_000);
 /// let squares: Tensor<f64, Ix1> = par_map(&t, |x| x * x);
 /// ```
@@ -564,7 +564,7 @@ where
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::{Tensor, Ix2, par_map2, zeros, ones};
+/// use Renon::{Tensor, Ix2, par_map2, zeros, ones};
 /// let a: Tensor<f64, Ix2> = ones([500, 500]);
 /// let b: Tensor<f64, Ix2> = ones([500, 500]);
 /// let sum: Tensor<f64, Ix2> = par_map2(&a, &b, |x, y| x + y)?;
@@ -607,7 +607,7 @@ where
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::{Tensor, Ix2, par_map_inplace, zeros};
+/// use Renon::{Tensor, Ix2, par_map_inplace, zeros};
 /// let mut t: Tensor<f64, Ix2> = zeros([500, 500]);
 /// par_map_inplace(&mut t, |x| x + 1.0);
 /// ```
@@ -660,7 +660,7 @@ where
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::{Tensor, Ix2, par_reduce, ones};
+/// use Renon::{Tensor, Ix2, par_reduce, ones};
 /// let t: Tensor<f64, Ix2> = ones([500, 500]);
 /// let sum = par_reduce(&t, || 0.0, |acc, &x| acc + x);
 /// assert_eq!(sum, 250_000.0);
@@ -703,7 +703,7 @@ where
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::{Tensor, Ix1, linspace};
+/// use Renon::{Tensor, Ix1, linspace};
 /// let t: Tensor<f64, Ix1> = linspace(0.0, 100.0, 200_000);
 /// let total = par_sum(&t);
 /// ```
@@ -824,7 +824,7 @@ where
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::{Tensor, Ix2, par_zip2, ones, zeros};
+/// use Renon::{Tensor, Ix2, par_zip2, ones, zeros};
 /// let a: Tensor<f64, Ix2> = ones([500, 500]);
 /// let b: Tensor<f64, Ix2> = zeros([500, 500]);
 /// par_zip2(&a, &b, |x, y| {
@@ -877,7 +877,7 @@ where
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::{Tensor, Ix2, par_zip3, ones, zeros};
+/// use Renon::{Tensor, Ix2, par_zip3, ones, zeros};
 /// let a: Tensor<f64, Ix2> = ones([500, 500]);
 /// let b: Tensor<f64, Ix2> = ones([500, 500]);
 /// let mut c: Tensor<f64, Ix2> = zeros([500, 500]);
@@ -925,7 +925,7 @@ where
 ```rust
 /// Configuration for a custom rayon thread pool.
 ///
-/// By default, Xenon uses rayon's global thread pool. For advanced use cases
+/// By default, Renon uses rayon's global thread pool. For advanced use cases
 /// (e.g., nested library usage where you need to isolate thread pools, or
 /// custom thread naming for profiling), you can create a custom pool and
 /// install it for the current scope.
@@ -933,7 +933,7 @@ where
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::backend::parallel::{ThreadPoolConfig, par_map};
+/// use Renon::backend::parallel::{ThreadPoolConfig, par_map};
 ///
 /// // Create a custom pool with 4 threads
 /// let pool = ThreadPoolConfig::new()
@@ -952,7 +952,7 @@ pub struct ThreadPoolConfig {
     /// Number of worker threads. Defaults to the number of available cores.
     num_threads: Option<usize>,
 
-    /// Prefix for thread names. Defaults to "xenon-wk".
+    /// Prefix for thread names. Defaults to "Renon-wk".
     thread_name: String,
 
     /// Stack size for worker threads in bytes. Defaults to rayon's default (typically 8 MB).
@@ -968,12 +968,12 @@ impl ThreadPoolConfig {
     /// | Setting | Default |
     /// |---------|---------|
     /// | `num_threads` | `None` (rayon auto-detects) |
-    /// | `thread_name` | `"xenon-wk"` |
+    /// | `thread_name` | `"Renon-wk"` |
     /// | `stack_size` | `None` (rayon default) |
     pub fn new() -> Self {
         Self {
             num_threads: None,
-            thread_name: "xenon-wk".into(),
+            thread_name: "Renon-wk".into(),
             stack_size: None,
         }
     }
@@ -1047,7 +1047,7 @@ impl Default for ThreadPoolConfig {
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::backend::parallel::should_parallelize;
+/// use Renon::backend::parallel::should_parallelize;
 ///
 /// assert!(!should_parallelize(100));
 /// assert!(should_parallelize(100_000));
@@ -1468,7 +1468,7 @@ Chunk Distribution:
 - [ ] **T22: `lib.rs` re-export + `iter/mod.rs` re-export**
   - 文件: `src/lib.rs`, `src/iter/mod.rs`
   - 内容: 公共类型 re-export（`ParIter`, `ParIterMut`, `par_map`, `par_reduce`, `par_zip`, `ThreadPoolConfig`）
-  - 测试: `use xenon::ParIter;` 编译通过
+  - 测试: `use Renon::ParIter;` 编译通过
   - 前置: T21
   - 预计: 5 min
 

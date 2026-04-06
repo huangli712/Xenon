@@ -1,4 +1,4 @@
-# Xenon Benchmark 设计文档
+# Senon Benchmark 设计文档
 
 > **文档版本**: v1.0  
 > **最后更新**: 2026-03-28  
@@ -11,7 +11,7 @@
 
 ### 1.1 职责定义
 
-Benchmark 模块负责 Xenon 库的性能基准测试，用于：
+Benchmark 模块负责 Senon 库的性能基准测试，用于：
 
 | 职责 | 说明 |
 |------|------|
@@ -116,7 +116,7 @@ pub const SIZES_3D: &[(usize, usize, usize)] = &[
 
 ```rust
 // benches/utils/data_gen.rs
-use xenon::prelude::*;
+use Senon::prelude::*;
 
 /// Generate a 1D tensor with sequential values for reproducible benchmarks.
 pub fn sequential_1d(n: usize) -> Tensor1<f64> {
@@ -596,4 +596,4 @@ Wave 5 (依赖 Wave 4):
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Senon 项目维护。如有问题请提交 Issue 或 PR。*

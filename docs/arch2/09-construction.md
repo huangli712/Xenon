@@ -7,7 +7,7 @@
 
 ## 1. 模块定位
 
-构造与转换模块是 Xenon 的 API 层核心入口之一，负责：
+构造与转换模块是 Renon 的 API 层核心入口之一，负责：
 
 1. **数组构造** — 通过自由函数（`zeros`, `ones`, `full`, `empty`, `eye`, `identity`, `diag`, `arange`, `linspace`, `logspace`, `from_vec`, `from_slice`, `from_raw_parts`）创建张量
 2. **类型转换** — 通过 `TensorBase` 上的方法（`cast`, `to_owned`, `to_arc`, `view`, `view_mut`, `into_owned`）实现存储模式和元素类型的转换
@@ -20,7 +20,7 @@
 | 张量构造函数 | `zeros`, `ones`, `full`, `empty`, `eye`, `identity`, `diag`, `arange`, `linspace`, `logspace` | 迭代器构造（由 `iter/` 模块提供） |
 | 数据导入 | `from_vec`, `from_slice`, `from_raw_parts` | 文件 I/O |
 | 存储类型转换 | `to_owned`, `to_arc`, `view`, `view_mut`, `into_owned` | 布局转换（由 `to_f_contiguous` 等，见 `shape/` 模块） |
-| 元素类型转换 | `cast`（`f64` → `f32` 等精度变换） | 自动类型提升（Xenon 不支持） |
+| 元素类型转换 | `cast`（`f64` → `f32` 等精度变换） | 自动类型提升（Renon 不支持） |
 | 逐元素运算符 | `Add/Sub/Mul/Div/Neg/Not/BitAnd/BitOr/BitXor/Shl/Shr` + Assign 变体 | 矩阵运算（由 `ops/matrix.rs` 提供）、归约（由 `ops/reduction.rs` 提供） |
 
 ---
@@ -125,7 +125,7 @@ construction.rs / conversion.rs
 /// # Examples
 ///
 /// ```
-/// use xenon::{zeros, Tensor, Ix2};
+/// use Renon::{zeros, Tensor, Ix2};
 /// let a: Tensor<f64, Ix2> = zeros([3, 4]);
 /// assert_eq!(a.shape(), &[3, 4]);
 /// assert_eq!(a[[0, 0]], 0.0);
@@ -164,7 +164,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{ones, Tensor, Ix2};
+/// use Renon::{ones, Tensor, Ix2};
 /// let a: Tensor<f64, Ix2> = ones([2, 3]);
 /// assert_eq!(a[[1, 2]], 1.0);
 /// ```
@@ -194,7 +194,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{full, Tensor, Ix1};
+/// use Renon::{full, Tensor, Ix1};
 /// let a: Tensor<f32, Ix1> = full(5, 3.14);
 /// assert_eq!(a[[2]], 3.14);
 /// ```
@@ -239,7 +239,7 @@ where
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::{empty, Tensor, Ix2};
+/// use Renon::{empty, Tensor, Ix2};
 /// let mut a: Tensor<f64, Ix2> = unsafe { empty([3, 4]) };
 /// // MUST write to all elements before reading!
 /// for idx in 0..3 {
@@ -281,7 +281,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{eye, Tensor, Ix2};
+/// use Renon::{eye, Tensor, Ix2};
 /// let a: Tensor<f64, Ix2> = eye(3, 3);
 /// assert_eq!(a[[0, 0]], 1.0);
 /// assert_eq!(a[[0, 1]], 0.0);
@@ -318,7 +318,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{identity, Tensor, Ix2};
+/// use Renon::{identity, Tensor, Ix2};
 /// let a: Tensor<f32, Ix2> = identity(3);
 /// assert_eq!(a[[2, 2]], 1.0);
 /// assert_eq!(a[[0, 1]], 0.0);
@@ -347,7 +347,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{diag, Tensor1, Tensor2, Ix1, Ix2};
+/// use Renon::{diag, Tensor1, Tensor2, Ix1, Ix2};
 /// let d: Tensor1<f64, Ix1> = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
 /// let a: Tensor2<f64, Ix2> = diag(&d);
 /// assert_eq!(a[[0, 0]], 1.0);
@@ -390,7 +390,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::arange;
+/// use Renon::arange;
 /// let a = arange(0.0, 1.0, 0.25);
 /// // a ≈ [0.0, 0.25, 0.5, 0.75]
 /// assert_eq!(a.len(), 4);
@@ -439,7 +439,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::linspace;
+/// use Renon::linspace;
 /// let a = linspace(0.0, 1.0, 5);
 /// // a = [0.0, 0.25, 0.5, 0.75, 1.0]
 /// assert_eq!(a.len(), 5);
@@ -487,7 +487,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::logspace;
+/// use Renon::logspace;
 /// let a = logspace(0.0, 3.0, 4, 10.0);
 /// // a = [1.0, 10.0, 100.0, 1000.0]
 /// assert_eq!(a.len(), 4);
@@ -530,7 +530,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::from_vec;
+/// use Renon::from_vec;
 /// let a = from_vec(vec![1.0, 2.0, 3.0, 4.0]);
 /// assert_eq!(a.shape(), &[4]);
 /// assert_eq!(a[[2]], 3.0);
@@ -562,7 +562,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::from_slice;
+/// use Renon::from_slice;
 /// let a = from_slice(&[1, 2, 3, 4, 5]);
 /// assert_eq!(a.shape(), &[5]);
 /// ```
@@ -606,7 +606,7 @@ where
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::from_raw_parts;
+/// use Renon::from_raw_parts;
 /// let data: Vec<f64> = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
 /// let view = unsafe {
 ///     from_raw_parts(data.as_ptr(), [2, 3], [1, 2], 0)
@@ -664,7 +664,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{from_vec, Tensor};
+/// use Renon::{from_vec, Tensor};
 /// let a: Tensor<f64, _> = from_vec(vec![1.5, 2.7, 3.9]);
 /// let b: Tensor<i32, _> = a.cast::<i32>();
 /// assert_eq!(b[[0]], 1);  // truncated toward zero
@@ -696,7 +696,7 @@ where
 }
 ```
 
-**`Cast` trait 设计：** 为避免要求所有类型对实现 `From`/`Into`，定义内部 `Cast` trait 处理 Xenon 特有的转换规则（NaN→0, Inf→饱和等）：
+**`Cast` trait 设计：** 为避免要求所有类型对实现 `From`/`Into`，定义内部 `Cast` trait 处理 Renon 特有的转换规则（NaN→0, Inf→饱和等）：
 
 ```rust
 /// Internal trait for safe element-wise type casting.
@@ -874,7 +874,7 @@ impl<A: Element + Clone, D: Dimension> From<ArcTensor<A, D>> for Tensor<A, D> {
 /// # Examples
 ///
 /// ```
-/// use xenon::{zeros, from_vec};
+/// use Renon::{zeros, from_vec};
 /// let a = from_vec(vec![1.0, 2.0, 3.0]);
 /// let b = from_vec(vec![4.0, 5.0, 6.0]);
 /// let c = a + b;
@@ -1396,7 +1396,7 @@ where
 - [ ] **T8: lib.rs 注册 + re-export**
   - 文件: `src/lib.rs`
   - 内容: `pub mod construction;` + 所有构造函数 re-export
-  - 测试: `cargo check`，验证 `use xenon::zeros` 编译通过
+  - 测试: `cargo check`，验证 `use Renon::zeros` 编译通过
   - 前置: T1-T7
   - 预计: 5 min
 

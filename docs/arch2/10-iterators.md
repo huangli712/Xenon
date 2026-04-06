@@ -7,7 +7,7 @@
 
 ## 1. 模块定位
 
-`iter` 模块为 Xenon 张量提供统一的遍历基础设施，是所有逐元素运算（加减乘除、归约、map）的核心驱动层。
+`iter` 模块为 Renon 张量提供统一的遍历基础设施，是所有逐元素运算（加减乘除、归约、map）的核心驱动层。
 
 **核心职责：**
 
@@ -596,7 +596,7 @@ where
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::iter::Axis;
+/// use Renon::iter::Axis;
 /// let t: Tensor2<f64> = zeros([3, 4]);
 /// for row in t.axis_iter(Axis(0)) { /* rows */ }
 /// for col in t.axis_iter(Axis(1)) { /* columns */ }
@@ -656,7 +656,7 @@ where
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::iter::Windows;
+/// use Renon::iter::Windows;
 /// let t: Tensor1<f64> = Tensor1::from_vec(vec![1.0, 2.0, 3.0, 4.0]);
 /// let mut wins = t.windows([2]);
 /// assert_eq!(wins.next().unwrap().as_slice(), &[1.0, 2.0]);
@@ -882,7 +882,7 @@ where
 /// # Examples
 ///
 /// ```ignore
-/// use xenon::iter::zip;
+/// use Renon::iter::zip;
 ///
 /// let a: Tensor1<f64> = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
 /// let b: Tensor1<f64> = Tensor1::from_vec(vec![4.0, 5.0, 6.0]);
@@ -1547,7 +1547,7 @@ par_iter partitioning:
 - [ ] **T25: `lib.rs` re-export 与集成**
   - 文件: `src/lib.rs`
   - 内容: `pub mod iter;`、re-export 公共类型（`Iter`, `IterMut`, `Axis`, `Windows` 等）
-  - 测试: `use xenon::iter::*;` 编译通过
+  - 测试: `use Renon::iter::*;` 编译通过
   - 前置: T1-T24
   - 预计: 5 min
 

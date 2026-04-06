@@ -11,7 +11,7 @@
 
 ### 1.1 设计哲学
 
-归约运算（Reduction Operations）是 Xenon 数值计算的核心能力之一，用于将多维数组聚合为标量或低维数组。设计遵循以下原则：
+归约运算（Reduction Operations）是 Senon 数值计算的核心能力之一，用于将多维数组聚合为标量或低维数组。设计遵循以下原则：
 
 - **类型安全边界**: 数值归约仅支持 `Numeric` 类型，布尔归约仅支持 `bool`
 - **空数组安全**: 明确定义空数组行为，`min/max/argmin/argmax` 返回错误，其他返回单位元
@@ -129,7 +129,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::Tensor1;
+    /// use Senon::Tensor1;
     ///
     /// let a = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
     /// assert_eq!(a.sum(), 6.0);
@@ -221,7 +221,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::Tensor1;
+    /// use Senon::Tensor1;
     ///
     /// let a = Tensor1::from_vec(vec![2.0, 3.0, 4.0]);
     /// assert_eq!(a.prod(), 24.0);
@@ -272,7 +272,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::Tensor1;
+    /// use Senon::Tensor1;
     ///
     /// let a = Tensor1::from_vec(vec![1.0, 2.0, 3.0, 4.0]);
     /// assert_eq!(a.mean(), 2.5);
@@ -341,7 +341,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::Tensor1;
+    /// use Senon::Tensor1;
     ///
     /// let a = Tensor1::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0]);
     /// 
@@ -381,7 +381,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::Tensor1;
+    /// use Senon::Tensor1;
     ///
     /// let a = Tensor1::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0]);
     /// assert_eq!(a.std(0), 2.0_f64.sqrt());
@@ -435,7 +435,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::Tensor1;
+    /// use Senon::Tensor1;
     ///
     /// let a = Tensor1::from_vec(vec![3.0, 1.0, 2.0, 1.0]);
     /// assert_eq!(a.min().unwrap(), 1.0);  // 第一个 1.0
@@ -487,7 +487,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::Tensor1;
+    /// use Senon::Tensor1;
     ///
     /// let a = Tensor1::from_vec(vec![1.0, 3.0, 2.0, 3.0]);
     /// assert_eq!(a.max().unwrap(), 3.0);  // 第一个 3.0
@@ -552,7 +552,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::Tensor1;
+    /// use Senon::Tensor1;
     ///
     /// let a = Tensor1::from_vec(vec![3.0, 1.0, 2.0, 1.0]);
     /// assert_eq!(a.argmin().unwrap(), 1);  // 第一个 1.0 的索引
@@ -600,7 +600,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::Tensor1;
+    /// use Senon::Tensor1;
     ///
     /// let a = Tensor1::from_vec(vec![1.0, 3.0, 2.0, 3.0]);
     /// assert_eq!(a.argmax().unwrap(), 1);  // 第一个 3.0 的索引
@@ -641,7 +641,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::Tensor1;
+    /// use Senon::Tensor1;
     ///
     /// let a = Tensor1::from_vec(vec![true, true, true]);
     /// assert_eq!(a.all(), true);
@@ -672,7 +672,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::Tensor1;
+    /// use Senon::Tensor1;
     ///
     /// let a = Tensor1::from_vec(vec![false, true, false]);
     /// assert_eq!(a.any(), true);
@@ -744,7 +744,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::Tensor2;
+    /// use Senon::Tensor2;
     ///
     /// let a = Tensor2::from_shape_vec([2, 3], vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
     /// 
@@ -918,7 +918,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::Tensor1;
+    /// use Senon::Tensor1;
     ///
     /// let a = Tensor1::from_vec(vec![1.0, 2.0, 3.0, 4.0]);
     /// let cum = a.cumsum(0);
@@ -991,7 +991,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::Tensor1;
+    /// use Senon::Tensor1;
     ///
     /// let a = Tensor1::from_vec(vec![1.0, 2.0, 3.0, 4.0]);
     /// let cum = a.cumprod(0);
@@ -1086,7 +1086,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::Tensor1;
+    /// use Senon::Tensor1;
     ///
     /// let a = Tensor1::from_vec(vec![3, 1, 2, 1, 3, 2]);
     /// let unique = a.unique();
@@ -1142,7 +1142,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::Tensor1;
+    /// use Senon::Tensor1;
     ///
     /// let a = Tensor1::from_vec(vec![1, 2, 1, 3, 2, 1]);
     /// let (values, counts) = a.unique_counts();
@@ -1223,7 +1223,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::Tensor1;
+    /// use Senon::Tensor1;
     ///
     /// let a = Tensor1::from_vec(vec![1, 2, 1, 3, 2, 1]);
     /// let (values, inverse) = a.unique_inverse();
@@ -1302,7 +1302,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::Tensor1;
+    /// use Senon::Tensor1;
     ///
     /// let a = Tensor1::from_vec(vec![0, 1, 1, 2, 2, 2]);
     /// let counts = a.bincount(0);
@@ -1368,7 +1368,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::Tensor1;
+    /// use Senon::Tensor1;
     ///
     /// let a = Tensor1::from_vec(vec![0, 1, 1, 2]);
     /// let weights = Tensor1::from_vec(vec![1.0, 2.0, 3.0, 4.0]);
@@ -1472,7 +1472,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::Tensor1;
+    /// use Senon::Tensor1;
     ///
     /// let a = Tensor1::from_vec(vec![0.5, 1.5, 2.5, 1.0, 2.0, 3.0]);
     ///
@@ -1617,7 +1617,7 @@ where
     /// # 示例
     ///
     /// ```
-    /// use xenon::Tensor1;
+    /// use Senon::Tensor1;
     ///
     /// let a = Tensor1::from_vec(vec![0.0, 1.0, 2.0, 3.0, 4.0]);
     /// let edges = a.histogram_bin_edges(4, Some((0.0, 4.0)));
@@ -2231,11 +2231,11 @@ impl Display for InvalidAxis {
 ## 附录 C: 性能建议
 
 1. **优先使用连续数组**: 非连续数组回退到标量路径
-2. **对齐内存**: 使用 Xenon 默认的 64 字节对齐以启用 SIMD
+2. **对齐内存**: 使用 Senon 默认的 64 字节对齐以启用 SIMD
 3. **沿轴归约选择**: 对于 F-order 数组，沿轴 0 归约更高效
 4. **大数组并行**: 元素数 ≥ 64K 时启用并行（需 `parallel` feature）
 5. **预分配输出**: 批量操作时预分配输出数组
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Senon 项目维护。如有问题请提交 Issue 或 PR。*

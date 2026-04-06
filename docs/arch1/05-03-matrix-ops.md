@@ -11,7 +11,7 @@
 
 ### 1.1 定位
 
-矩阵运算模块 (`src/ops/matrix.rs`) 提供 Xenon 张量库的基础线性代数运算。本模块专注于**矩阵-向量乘法**和**向量运算**，不包含完整的矩阵-矩阵乘法（GEMM）。
+矩阵运算模块 (`src/ops/matrix.rs`) 提供 Senon 张量库的基础线性代数运算。本模块专注于**矩阵-向量乘法**和**向量运算**，不包含完整的矩阵-矩阵乘法（GEMM）。
 
 ### 1.2 支持的操作
 
@@ -107,7 +107,7 @@ mod simd {
 /// # 示例
 ///
 /// ```
-/// use xenon::{Tensor2, Tensor1, matvec};
+/// use Senon::{Tensor2, Tensor1, matvec};
 ///
 /// let a = Tensor2::<f64>::zeros([3, 4]);
 /// let x = Tensor1::<f64>::zeros([4]);
@@ -309,7 +309,7 @@ fn simd_dot<A: RealScalar>(a: *const A, b: *const A, n: usize) -> A {
 /// # 示例
 ///
 /// ```
-/// use xenon::{Tensor1, dot};
+/// use Senon::{Tensor1, dot};
 ///
 /// let a = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
 /// let b = Tensor1::from_vec(vec![4.0, 5.0, 6.0]);
@@ -453,7 +453,7 @@ mod simd {
 /// # 示例
 ///
 /// ```
-/// use xenon::{Tensor1, outer};
+/// use Senon::{Tensor1, outer};
 ///
 /// let a = Tensor1::from_vec(vec![1.0, 2.0]);      // [2]
 /// let b = Tensor1::from_vec(vec![3.0, 4.0, 5.0]); // [3]
@@ -546,7 +546,7 @@ where
 /// # 示例
 ///
 /// ```
-/// use xenon::{Tensor3, Tensor2, batch_matvec};
+/// use Senon::{Tensor3, Tensor2, batch_matvec};
 ///
 /// // 单 batch
 /// let a = Tensor3::<f64>::zeros([2, 3, 4]);  // 2 个 (3, 4) 矩阵
@@ -726,7 +726,7 @@ fn batch_matvec_contiguous<A>(
 /// # 示例
 ///
 /// ```
-/// use xenon::{Tensor2, batch_dot};
+/// use Senon::{Tensor2, batch_dot};
 ///
 /// let a = Tensor2::<f64>::zeros([3, 4]);  // 3 个长度为 4 的向量
 /// let b = Tensor2::<f64>::zeros([3, 4]);
@@ -815,7 +815,7 @@ function infer_batch_dot_dims(a_shape, b_shape):
 /// # 示例
 ///
 /// ```
-/// use xenon::{Tensor2, batch_add};
+/// use Senon::{Tensor2, batch_add};
 ///
 /// let a = Tensor2::<f64>::zeros([3, 4]);
 /// let b = Tensor2::<f64>::zeros([3, 4]);
@@ -872,7 +872,7 @@ where
 /// # 示例
 ///
 /// ```
-/// use xenon::{Tensor2, batch_scale};
+/// use Senon::{Tensor2, batch_scale};
 ///
 /// let a = Tensor2::<f64>::zeros([3, 4]);
 /// let scaled = batch_scale(&a, 2.0);  // 形状 [3, 4]
@@ -930,7 +930,7 @@ where
 
 ### 9.1 FFI 指针 API 集成
 
-Xenon 提供 FFI 指针 API，允许上游库直接调用 BLAS：
+Senon 提供 FFI 指针 API，允许上游库直接调用 BLAS：
 
 ```rust
 // 上游库使用示例
@@ -944,8 +944,8 @@ fn blas_matvec<A: RealScalar>(
     
     // 检查 BLAS 兼容性
     if !matrix.is_blas_compatible() || !vec.is_contiguous() {
-        // 回退到 Xenon 内部实现
-        return xenon::matvec(matrix, vec);
+        // 回退到 Senon 内部实现
+        return Senon::matvec(matrix, vec);
     }
     
     unsafe {
@@ -1038,7 +1038,7 @@ impl<S, D> TensorBase<S, D> {
 | **维护成本** | GEMM 优化需要针对不同架构持续调优 |
 
 **推荐做法**：
-- 使用 Xenon 进行张量管理和基础运算
+- 使用 Senon 进行张量管理和基础运算
 - 需要矩阵乘法时，通过 FFI 调用 BLAS
 
 ---
@@ -1403,14 +1403,14 @@ fn simd_path<A: RealScalar>() -> bool { false }
 
 2. **BLAS 已足够成熟**: OpenBLAS、Intel MKL、BLIS 等库已提供高度优化的 GEMM 实现，其性能难以超越。
 
-3. **FFI 集成更灵活**: 通过 Xenon 的 FFI 指针 API，上游库可以：
-   - 使用 Xenon 进行张量管理
+3. **FFI 集成更灵活**: 通过 Senon 的 FFI 指针 API，上游库可以：
+   - 使用 Senon 进行张量管理
    - 需要矩阵乘法时直接调用 BLAS
    - 选择最适合的 BLAS 实现
 
 4. **维护成本**: 维护高性能 GEMM 需要持续投入，超出本库资源范围。
 
-**替代方案**: 用户需要 GEMM 时，使用 BLAS 绑定库（如 `blas-src`）配合 Xenon 的 FFI API。
+**替代方案**: 用户需要 GEMM 时，使用 BLAS 绑定库（如 `blas-src`）配合 Senon 的 FFI API。
 
 ---
 
@@ -1421,7 +1421,7 @@ fn simd_path<A: RealScalar>() -> bool { false }
 **理由**:
 1. **BLAS 兼容**: BLAS/LAPACK 使用列优先布局
 2. **后续操作高效**: 生成的矩阵可用于后续 matvec 等 BLAS 操作
-3. **项目惯例**: Xenon 默认 F-order，保持一致性
+3. **项目惯例**: Senon 默认 F-order，保持一致性
 
 ---
 
@@ -1534,10 +1534,10 @@ where A: Numeric + Copy, S: Storage<Elem = A>, D: Dimension;
 ## 附录 C: 性能建议
 
 1. **优先使用连续数组**: 非连续数组回退到标量路径
-2. **对齐内存**: 使用 Xenon 默认的 64 字节对齐以启用 SIMD
+2. **对齐内存**: 使用 Senon 默认的 64 字节对齐以启用 SIMD
 3. **批量操作**: 对于多个小矩阵，使用 batch 操作减少函数调用开销
 4. **BLAS 集成**: 对于大型矩阵乘法，通过 FFI 调用 BLAS
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Senon 项目维护。如有问题请提交 Issue 或 PR。*

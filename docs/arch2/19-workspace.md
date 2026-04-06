@@ -8,7 +8,7 @@
 
 ## 1. 模块定位
 
-`workspace` 模块是 Xenon 的**临时缓冲区管理基础设施**，为需要中间存储的运算（矩阵乘法转置缓冲区、排序临时空间、einsum 中间张量等）提供统一的内存分配与复用机制。
+`workspace` 模块是 Renon 的**临时缓冲区管理基础设施**，为需要中间存储的运算（矩阵乘法转置缓冲区、排序临时空间、einsum 中间张量等）提供统一的内存分配与复用机制。
 
 **核心问题：** 许多数值运算在执行过程中需要临时缓冲区（scratch space），例如：
 - `tensordot` / `batch_matmul` 需要转置缓冲区
@@ -81,7 +81,7 @@ pub use crate::workspace::{Workspace, ScratchReq, ScratchNeed};
 | 上游 BLAS 库 | 通过 FFI 指针 API 从 Workspace 获取对齐工作缓冲区 |
 | 用户代码 | 预分配 Workspace 后传入运算函数，避免重复分配 |
 
-### 3.3 不依赖任何 Xenon 核心模块
+### 3.3 不依赖任何 Renon 核心模块
 
 ```
 workspace.rs 不依赖:
@@ -121,7 +121,7 @@ workspace.rs 不依赖:
 /// # Examples
 ///
 /// ```
-/// use xenon::workspace::ScratchReq;
+/// use Renon::workspace::ScratchReq;
 ///
 /// let a = ScratchReq::new(1024, 64);
 /// let b = ScratchReq::new(2048, 64);
@@ -235,7 +235,7 @@ impl core::ops::AddAssign for ScratchReq {
 /// Trait for operations that can declare their scratch memory requirements.
 ///
 /// Upstream libraries (e.g., linear algebra libraries) implement this trait
-/// for their operation types. Xenon provides the infrastructure; the upstream
+/// for their operation types. Renon provides the infrastructure; the upstream
 /// library defines the specific queries.
 ///
 /// # Design Rationale
@@ -249,7 +249,7 @@ impl core::ops::AddAssign for ScratchReq {
 /// # Examples
 ///
 /// ```
-/// use xenon::workspace::{ScratchNeed, ScratchReq};
+/// use Renon::workspace::{ScratchNeed, ScratchReq};
 ///
 /// struct MatMulOp { m: usize, n: usize, k: usize }
 ///
@@ -303,7 +303,7 @@ pub trait ScratchNeed {
 /// # Examples
 ///
 /// ```
-/// use xenon::workspace::{Workspace, ScratchReq};
+/// use Renon::workspace::{Workspace, ScratchReq};
 ///
 /// // Create a workspace with 1 KB capacity
 /// let mut ws = Workspace::new(1024);
@@ -471,7 +471,7 @@ impl Workspace {
     /// # Examples
     ///
     /// ```
-    /// use xenon::workspace::Workspace;
+    /// use Renon::workspace::Workspace;
     ///
     /// let mut ws = Workspace::new(1024);
     /// let buf: &mut [f64] = ws.borrow_mut(100);
@@ -551,7 +551,7 @@ impl Workspace {
     /// # Examples
     ///
     /// ```
-    /// use xenon::workspace::Workspace;
+    /// use Renon::workspace::Workspace;
     ///
     /// let mut ws = Workspace::new(4096);
     /// let (mut left, mut right) = ws.split_at(2048);
@@ -1002,7 +1002,7 @@ unsafe fn borrow_mut_assume_init<A>(&mut self, count: usize) -> &mut [A] {
 - [ ] **T9: lib.rs 模块声明 + re-export**
   - 文件: `src/lib.rs`
   - 内容: `pub mod workspace;` 和 `pub use crate::workspace::{Workspace, ScratchReq, ScratchNeed};`
-  - 测试: 外部 `use xenon::workspace::Workspace;` 编译通过
+  - 测试: 外部 `use Renon::workspace::Workspace;` 编译通过
   - 前置: T1-T8
   - 预计: 5 min
 
@@ -1120,7 +1120,7 @@ Workspace 状态转换:
 
 ## 附录 B: 与 ndarray / NumPy 的设计对比
 
-| 特性 | NumPy | ndarray (Rust) | Xenon |
+| 特性 | NumPy | ndarray (Rust) | Renon |
 |------|-------|----------------|-------|
 | 临时缓冲区 | 内部分配，无用户控制 | 无专门 workspace 模块 | 显式 Workspace 参数 |
 | Scratch 查询 | 无公共 API | 无 | ScratchNeed trait |
@@ -1129,7 +1129,7 @@ Workspace 状态转换:
 | 对齐 | 编译时常量 | 无保证 | 可配置（默认 64 字节） |
 | 零初始化 | 默认零初始化 | 无保证 | 显式选择（borrow_mut vs borrow_mut_zeroed） |
 
-**设计决策理由：** Xenon 选择显式 Workspace 参数而非隐式内部分配，因为：
+**设计决策理由：** Renon 选择显式 Workspace 参数而非隐式内部分配，因为：
 1. 库开发者可跨多次运算复用同一缓冲区，避免重复 `malloc`
 2. ScratchNeed 允许上游库在执行前查询需求，预分配一次
 3. 与 BLAS 集成场景中，上游库需要控制工作内存的分配策略

@@ -7,7 +7,7 @@
 
 ## 1. 模块定位
 
-`ops::matrix` 模块是 Xenon 的线性代数原语层，提供矩阵-向量乘法、向量内积/外积、矩阵乘法、张量缩并、Kronecker 积、Einstein 求和及其批量变体。所有函数均为**自由函数**（free functions），操作对象为 `TensorBase<S, D>` 的引用（通过 `RawStorage` trait bound 同时接受 Owned / View / ArcRepr），返回新分配的 `Tensor<A, D>` 类型结果。
+`ops::matrix` 模块是 Renon 的线性代数原语层，提供矩阵-向量乘法、向量内积/外积、矩阵乘法、张量缩并、Kronecker 积、Einstein 求和及其批量变体。所有函数均为**自由函数**（free functions），操作对象为 `TensorBase<S, D>` 的引用（通过 `RawStorage` trait bound 同时接受 Owned / View / ArcRepr），返回新分配的 `Tensor<A, D>` 类型结果。
 
 **核心设计目标：**
 
@@ -33,7 +33,7 @@
 **重要约束（需求 §10.2）：**
 
 - **不包含 GEMM**（全功能 `C = α·op(A)·op(B) + β·C`）。本模块的 `matmul` 仅为 `C = A·B` 的简化接口。完整 GEMM 由上游 BLAS 库通过 FFI 指针 API 实现。
-- 矩阵乘法的并行不由 Xenon 管理（需求 §7.2.2：矩阵乘法由 BLAS 内部管理线程）。
+- 矩阵乘法的并行不由 Renon 管理（需求 §7.2.2：矩阵乘法由 BLAS 内部管理线程）。
 
 ---
 
@@ -128,13 +128,13 @@ matrix.rs → backend::simd（feature-gated，SIMD 加速）
 ///
 /// Contract last 1 axis of `a` with first 1 axis of `b` (matrix multiply):
 /// ```
-/// use xenon::ops::AxesArg;
+/// use Renon::ops::AxesArg;
 /// let axes = AxesArg::Count(1);
 /// ```
 ///
 /// Contract specific axes:
 /// ```
-/// use xenon::ops::AxesArg;
+/// use Renon::ops::AxesArg;
 /// let axes = AxesArg::Pair(vec![0, 2], vec![1, 3]);
 /// ```
 #[derive(Debug, Clone)]
@@ -238,8 +238,8 @@ pub enum EinsumError {
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor1, Tensor2, Ix1, Ix2};
-/// use xenon::ops::dot;
+/// use Renon::{Tensor1, Tensor2, Ix1, Ix2};
+/// use Renon::ops::dot;
 ///
 /// // Inner product of two vectors
 /// let a: Tensor1<f64> = /* ... */;
@@ -297,9 +297,9 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::ops::inner;
-/// let a = xenon::array(&[1.0_f64, 2.0, 3.0]);
-/// let b = xenon::array(&[4.0, 5.0, 6.0]);
+/// use Renon::ops::inner;
+/// let a = Renon::array(&[1.0_f64, 2.0, 3.0]);
+/// let b = Renon::array(&[4.0, 5.0, 6.0]);
 /// let result = inner(&a, &b)?; // 1*4 + 2*5 + 3*6 = 32.0
 /// ```
 pub fn inner<A, S1, S2>(
@@ -351,17 +351,17 @@ where
 ///
 /// # Performance
 ///
-/// For F-contiguous matrices (the Xenon default), the inner loop iterates
+/// For F-contiguous matrices (the Renon default), the inner loop iterates
 /// over the rows of `mat` for each element of `vec`, which is cache-friendly.
 /// For non-contiguous inputs, a scalar fallback is used.
 ///
 /// # Examples
 ///
 /// ```
-/// use xenon::ops::matvec;
+/// use Renon::ops::matvec;
 /// // A: 2×3, x: 3 → y: 2
-/// let a = xenon::array(&[[1.0_f64, 2.0, 3.0], [4.0, 5.0, 6.0]]);
-/// let x = xenon::array(&[1.0, 1.0, 1.0]);
+/// let a = Renon::array(&[[1.0_f64, 2.0, 3.0], [4.0, 5.0, 6.0]]);
+/// let x = Renon::array(&[1.0, 1.0, 1.0]);
 /// let y = matvec(&a, &x)?;
 /// assert_eq!(y.shape(), &[2]);
 /// ```
@@ -419,9 +419,9 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::ops::matmul;
-/// let a = xenon::array(&[[1.0_f64, 2.0], [3.0, 4.0]]);
-/// let b = xenon::array(&[[5.0, 6.0], [7.0, 8.0]]);
+/// use Renon::ops::matmul;
+/// let a = Renon::array(&[[1.0_f64, 2.0], [3.0, 4.0]]);
+/// let b = Renon::array(&[[5.0, 6.0], [7.0, 8.0]]);
 /// let c = matmul(&a, &b)?;
 /// ```
 pub fn matmul<A, S1, S2>(
@@ -464,9 +464,9 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::ops::outer;
-/// let a = xenon::array(&[1.0_f64, 2.0, 3.0]);
-/// let b = xenon::array(&[4.0, 5.0]);
+/// use Renon::ops::outer;
+/// let a = Renon::array(&[1.0_f64, 2.0, 3.0]);
+/// let b = Renon::array(&[4.0, 5.0]);
 /// let c = outer(&a, &b)?;
 /// // c.shape() == [3, 2]
 /// // c == [[4, 5], [8, 10], [12, 15]]
@@ -527,7 +527,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::ops::{tensordot, AxesArg};
+/// use Renon::ops::{tensordot, AxesArg};
 ///
 /// // Matrix multiply: contract last axis of a with first axis of b
 /// let a = /* shape [3, 4] */;
@@ -594,7 +594,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::ops::einsum;
+/// use Renon::ops::einsum;
 ///
 /// // Matrix multiply
 /// let a = /* shape [3, 4] */;
@@ -665,11 +665,11 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::ops::kron;
+/// use Renon::ops::kron;
 ///
 /// // 2×2 Kronecker product
-/// let a = xenon::array(&[[1.0_f64, 2.0], [3.0, 4.0]]);
-/// let b = xenon::array(&[[0.0, 5.0], [6.0, 7.0]]);
+/// let a = Renon::array(&[[1.0_f64, 2.0], [3.0, 4.0]]);
+/// let b = Renon::array(&[[0.0, 5.0], [6.0, 7.0]]);
 /// let k = kron(&a, &b)?;
 /// // k.shape() == [4, 4]
 /// ```
@@ -729,7 +729,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::ops::batch_matmul;
+/// use Renon::ops::batch_matmul;
 ///
 /// // Batch of 4 matrices, each 3×4 × 4×5 → 4×3×5
 /// let a = /* shape [4, 3, 4] */;
@@ -803,7 +803,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::ops::batch_matvec;
+/// use Renon::ops::batch_matvec;
 ///
 /// // Batch of 8 matrices, each 3×4, and 8 vectors of length 4
 /// let mat = /* shape [8, 3, 4] */;
@@ -947,8 +947,8 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::ops::batch_scale;
-/// let a = xenon::array(&[1.0_f64, 2.0, 3.0]);
+/// use Renon::ops::batch_scale;
+/// let a = Renon::array(&[1.0_f64, 2.0, 3.0]);
 /// let result = batch_scale(&a, 2.0)?;
 /// // result == [2.0, 4.0, 6.0]
 /// ```
@@ -1348,7 +1348,7 @@ fn broadcast_batch_shape(
 
 ### 5.7 F-order (列优先) 优化策略
 
-Xenon 默认使用 F-order（列优先），所有矩阵运算的内层循环都针对此布局优化：
+Renon 默认使用 F-order（列优先），所有矩阵运算的内层循环都针对此布局优化：
 
 | 操作 | F-order 最优循环顺序 | 内存访问模式 |
 |------|---------------------|-------------|
@@ -1357,7 +1357,7 @@ Xenon 默认使用 F-order（列优先），所有矩阵运算的内层循环都
 | `matmul(A, B)` | j → k → i | `A[:, k]` 连续、`C[:, j]` 连续 |
 | `tensordot` | 转置后降级为 matmul | 同 matmul |
 
-**结果张量布局：** 所有运算结果默认分配为 F-contiguous（列优先），与 Xenon 的默认布局一致。
+**结果张量布局：** 所有运算结果默认分配为 F-contiguous（列优先），与 Renon 的默认布局一致。
 
 ### 5.8 tensordot 实现策略
 

@@ -12,7 +12,7 @@
 
 ### 1.1 定位
 
-`parallel` 模块是 Xenon 的可选性能后端，通过 feature gate `parallel` 启用，为大规模数组操作提供数据并行能力。该模块基于 rayon crate 实现，在保持 API 一致性的前提下，自动将适合的运算分发到多线程执行。
+`parallel` 模块是 Senon 的可选性能后端，通过 feature gate `parallel` 启用，为大规模数组操作提供数据并行能力。该模块基于 rayon crate 实现，在保持 API 一致性的前提下，自动将适合的运算分发到多线程执行。
 
 ### 1.2 在性能分层中的角色
 
@@ -157,7 +157,7 @@ static GLOBAL_PARALLEL_THRESHOLD: AtomicUsize = AtomicUsize::new(DEFAULT_PARALLE
 /// # 示例
 ///
 /// ```
-/// let threshold = xenon::parallel::get_parallel_threshold();
+/// let threshold = Senon::parallel::get_parallel_threshold();
 /// println!("Current threshold: {}", threshold);
 /// ```
 pub fn get_parallel_threshold() -> usize {
@@ -174,7 +174,7 @@ pub fn get_parallel_threshold() -> usize {
 /// # 示例
 ///
 /// ```
-/// xenon::parallel::set_parallel_threshold(128_000);
+/// Senon::parallel::set_parallel_threshold(128_000);
 /// ```
 pub fn set_parallel_threshold(threshold: usize) {
     GLOBAL_PARALLEL_THRESHOLD.store(threshold, Ordering::Relaxed);
@@ -222,11 +222,11 @@ pub fn get_local_threshold() -> Option<usize> {
 ///
 /// ```
 /// // 临时提高阈值
-/// xenon::parallel::set_local_threshold(Some(1_000_000));
+/// Senon::parallel::set_local_threshold(Some(1_000_000));
 /// // 执行操作
 /// let result = tensor.par_map(|x| x * 2);
 /// // 恢复默认
-/// xenon::parallel::set_local_threshold(None);
+/// Senon::parallel::set_local_threshold(None);
 /// ```
 pub fn set_local_threshold(threshold: Option<usize>) {
     LOCAL_PARALLEL_THRESHOLD.with(|cell| cell.set(threshold));
@@ -1480,7 +1480,7 @@ tensor.par_axis_iter(Axis(0)).for_each(|slice| {
 
 ### 7.2 防护机制设计
 
-Xenon 采用 **线程局部标记** 检测和禁止嵌套并行。
+Senon 采用 **线程局部标记** 检测和禁止嵌套并行。
 
 ```rust
 // src/parallel/mod.rs
@@ -1819,7 +1819,7 @@ impl ParallelPool {
 ///
 /// ```
 /// // 在 main 函数开始时
-/// xenon::parallel::configure_global_pool(8)?;
+/// Senon::parallel::configure_global_pool(8)?;
 /// ```
 pub fn configure_global_pool(num_threads: usize) -> Result<(), PoolInitError> {
     rayon::ThreadPoolBuilder::new()
@@ -1835,7 +1835,7 @@ pub fn configure_global_pool(num_threads: usize) -> Result<(), PoolInitError> {
 
 ### 9.1 问题背景
 
-Xenon 支持在主维度添加 padding 以保证 SIMD 对齐。Padding 字节不属于任何逻辑元素，必须确保：
+Senon 支持在主维度添加 padding 以保证 SIMD 对齐。Padding 字节不属于任何逻辑元素，必须确保：
 
 1. **禁止访问**：并行迭代时不能访问 padding 字节
 2. **禁止分配**：并行分块时不能将 padding 字节分配给任何线程
@@ -2586,41 +2586,41 @@ where
 
 ```rust
 // 获取/设置全局阈值
-xenon::parallel::get_parallel_threshold() -> usize
-xenon::parallel::set_parallel_threshold(usize)
-xenon::parallel::reset_parallel_threshold()
+Senon::parallel::get_parallel_threshold() -> usize
+Senon::parallel::set_parallel_threshold(usize)
+Senon::parallel::reset_parallel_threshold()
 
 // 线程局部配置
-xenon::parallel::get_local_threshold() -> Option<usize>
-xenon::parallel::set_local_threshold(Option<usize>)
-xenon::parallel::effective_threshold() -> usize
+Senon::parallel::get_local_threshold() -> Option<usize>
+Senon::parallel::set_local_threshold(Option<usize>)
+Senon::parallel::effective_threshold() -> usize
 
 // 并行决策
-xenon::parallel::should_parallelize(len, override, is_contiguous) -> bool
+Senon::parallel::should_parallelize(len, override, is_contiguous) -> bool
 ```
 
 ### 嵌套并行
 
 ```rust
 // 检测
-xenon::parallel::is_in_parallel_context() -> bool
-xenon::parallel::parallel_depth() -> usize
+Senon::parallel::is_in_parallel_context() -> bool
+Senon::parallel::parallel_depth() -> usize
 
 // 策略
-xenon::parallel::NestedParallelismPolicy::Panic
-xenon::parallel::NestedParallelismPolicy::FallbackToSequential
-xenon::parallel::set_nested_parallelism_policy(policy)
+Senon::parallel::NestedParallelismPolicy::Panic
+Senon::parallel::NestedParallelismPolicy::FallbackToSequential
+Senon::parallel::set_nested_parallelism_policy(policy)
 ```
 
 ### 线程池
 
 ```rust
 // 自定义线程池
-let pool = xenon::parallel::ParallelPool::new(4)?;
+let pool = Senon::parallel::ParallelPool::new(4)?;
 pool.install(|| { /* 并行操作 */ });
 
 // 全局配置
-xenon::parallel::configure_global_pool(8)?;
+Senon::parallel::configure_global_pool(8)?;
 ```
 
 ### 并行迭代

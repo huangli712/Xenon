@@ -1,6 +1,6 @@
-# Xenon Rust 编程规范
+# Renon Rust 编程规范
 
-> 本文档定义 Xenon 项目通用的 Rust 编程规范，所有模块设计与实现均须遵守。
+> 本文档定义 Renon 项目通用的 Rust 编程规范，所有模块设计与实现均须遵守。
 
 ---
 
@@ -14,7 +14,7 @@
 
 ### 1.2 Crate 结构
 
-- 单 crate（`xenon`），遵循 [SemVer](https://semver.org)
+- 单 crate（`Renon`），遵循 [SemVer](https://semver.org)
 - 公共 API 仅通过 `lib.rs` 和各模块的公开项暴露
 - 内部实现细节放在 `private` 模块或标记 `#[doc(hidden)]`
 
@@ -223,7 +223,7 @@ assert_close!(result, expected, 1e-10);
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, zeros, Ix2};
+/// use Renon::{Tensor, zeros, Ix2};
 /// let a: Tensor<f64, Ix2> = zeros([3, 4]);
 /// assert_eq!(a.shape(), &[3, 4]);
 /// ```

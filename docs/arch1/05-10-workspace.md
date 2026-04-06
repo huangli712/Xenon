@@ -1364,7 +1364,7 @@ pub trait Error: core::fmt::Debug + core::fmt::Display {}
 ```rust
 // 假设的上游 BLAS 包装库
 mod blas_wrapper {
-    use xenon::workspace::{Workspace, ScratchRequirement};
+    use Senon::workspace::{Workspace, ScratchRequirement};
     
     /// SGEMM 操作。
     pub struct Sgemm {
@@ -1648,4 +1648,4 @@ impl std::error::Error for WorkspaceError {}
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Senon 项目维护。如有问题请提交 Issue 或 PR。*

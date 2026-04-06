@@ -8,7 +8,7 @@
 
 ## 1. 模块定位
 
-元素类型体系（Element Type System）是 Xenon 的类型基础设施层，定义多维数组中可存储的元素类型及其能力边界。该模块通过四层 trait 继承体系，在编译时区分不同元素类型支持的操作集合，为上层运算模块（逐元素运算、归约、矩阵运算等）提供泛型约束。
+元素类型体系（Element Type System）是 Renon 的类型基础设施层，定义多维数组中可存储的元素类型及其能力边界。该模块通过四层 trait 继承体系，在编译时区分不同元素类型支持的操作集合，为上层运算模块（逐元素运算、归约、矩阵运算等）提供泛型约束。
 
 核心设计目标：
 
@@ -1004,7 +1004,7 @@ NaN 处理策略在本模块中的体现：
 /// Uncommenting the following would fail to compile:
 ///
 /// ```compile_fail
-/// fn requires_numeric<T: xenon::Numeric>() {}
+/// fn requires_numeric<T: Renon::Numeric>() {}
 /// requires_numeric::<bool>();
 /// ```
 ```

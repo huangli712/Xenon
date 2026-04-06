@@ -1,6 +1,6 @@
-# Xenon 编码规范
+# Senon 编码规范
 
-本文档定义了 Xenon 项目的 Rust 编码约定。Xenon 是一个 N 维数组（张量）库，类似于 Python 的 NumPy。
+本文档定义了 Senon 项目的 Rust 编码约定。Senon 是一个 N 维数组（张量）库，类似于 Python 的 NumPy。
 
 **项目概述**
 
@@ -317,7 +317,7 @@ use std::error::Error;
 use rayon::prelude::*;
 
 use crate::dimension::Dimension;
-use crate::error::XenonError;
+use crate::error::SenonError;
 use crate::layout::Layout;
 use crate::storage::Storage;
 
@@ -567,7 +567,7 @@ unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 // Good - 可恢复错误
 pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>> {
     if self.len() != shape.size() {
-        return Err(XenonError::InvalidShape {
+        return Err(SenonError::InvalidShape {
             from: self.len(),
             to: shape.size(),
         });
@@ -607,9 +607,9 @@ use alloc::borrow::Cow;
 #[cfg(feature = "std")]
 use std::error::Error;
 
-/// Unified error type for all Xenon operations.
+/// Unified error type for all Senon operations.
 #[derive(Debug, Clone)]
-pub enum XenonError {
+pub enum SenonError {
     /// Binary operation / zip shapes are incompatible and cannot broadcast.
     ShapeMismatch {
         expected: Cow<'static, [usize]>,
@@ -645,9 +645,9 @@ pub enum XenonError {
 }
 
 /// Convenience type alias.
-pub type Result<T> = core::result::Result<T, XenonError>;
+pub type Result<T> = core::result::Result<T, SenonError>;
 
-impl fmt::Display for XenonError {
+impl fmt::Display for SenonError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ShapeMismatch { expected, actual } => {
@@ -687,10 +687,10 @@ fn fmt_shape(s: &[usize]) -> alloc::string::String {
 }
 
 #[cfg(feature = "std")]
-impl Error for XenonError {}
+impl Error for SenonError {}
 ```
 
-> **注意**：`IndexOutOfBounds` 使用 panic（checked）/ UB（unchecked），不纳入 `XenonError`。
+> **注意**：`IndexOutOfBounds` 使用 panic（checked）/ UB（unchecked），不纳入 `SenonError`。
 
 ### 4.3 错误信息包含上下文
 
@@ -700,7 +700,7 @@ impl Error for XenonError {}
 // Good - 错误信息包含期望值和实际值
 pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>> {
     if self.len() != shape.size() {
-        return Err(XenonError::InvalidShape {
+        return Err(SenonError::InvalidShape {
             from: self.len(),
             to: shape.size(),
         });
@@ -727,7 +727,7 @@ pub fn index(&self, index: &[Ix]) -> &A {
 // Bad - 缺少上下文
 pub fn reshape_bad<D2>(self, shape: D2) -> Result<Tensor<A, D2>> {
     if self.len() != shape.size() {
-        return Err(XenonError::InvalidShape { from: 0, to: 0 });  // 缺少具体值
+        return Err(SenonError::InvalidShape { from: 0, to: 0 });  // 缺少具体值
     }
     // ...
 }
@@ -741,7 +741,7 @@ pub fn reshape_bad<D2>(self, shape: D2) -> Result<Tensor<A, D2>> {
 // Good - 使用 ? 和 Result
 pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>> {
     if self.len() != shape.size() {
-        return Err(XenonError::InvalidShape { from: self.len(), to: shape.size() });
+        return Err(SenonError::InvalidShape { from: self.len(), to: shape.size() });
     }
     // ...
 }
@@ -1072,20 +1072,20 @@ pub fn ndim(&self) -> usize {
 /// A new tensor with the given shape, or an error if the shapes are incompatible.
 ///
 /// # Errors
-/// Returns [`XenonError::InvalidShape`] if `shape.size() != self.len()`.
+/// Returns [`SenonError::InvalidShape`] if `shape.size() != self.len()`.
 ///
 /// # Examples
 /// ```rust
-/// use xenon::{Tensor, Ix2};
+/// use Senon::{Tensor, Ix2};
 ///
 /// let arr = Tensor::<i32, _>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6])?;
 /// let reshaped = arr.reshape(Ix2(3, 2))?;
 /// assert_eq!(reshaped.shape(), &[3, 2]);
-/// # Ok::<(), xenon::XenonError>(())
+/// # Ok::<(), Senon::SenonError>(())
 /// ```
 ///
 /// [`reorder`]: Self::reorder
-/// [`XenonError::InvalidShape`]: XenonError::InvalidShape
+/// [`SenonError::InvalidShape`]: SenonError::InvalidShape
 pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>>
 where
     D2: Dimension,
@@ -1102,18 +1102,18 @@ where
 // Good
 /// # Examples
 /// ```rust
-/// use xenon::Tensor;
+/// use Senon::Tensor;
 ///
 /// let arr = Tensor::from_vec(vec![1, 2, 3, 4])?;
 /// let sum: i32 = arr.iter().sum();
 /// assert_eq!(sum, 10);
-/// # Ok::<(), xenon::Error>(())
+/// # Ok::<(), Senon::Error>(())
 /// ```
 
 // Bad
 /// # Examples
 /// ```rust
-/// use xenon::Tensor;
+/// use Senon::Tensor;
 ///
 /// let arr = Tensor::from_vec(vec![1, 2, 3, 4]).unwrap();  // 不要这样做
 /// ```
@@ -1124,7 +1124,7 @@ where
 ```rust
 /// # Examples
 /// ```
-/// use xenon::Tensor;
+/// use Senon::Tensor;
 ///
 /// let arr = Tensor::<f64, _>::zeros([3, 4]);
 /// assert_eq!(arr.shape(), &[3, 4]);
@@ -1146,7 +1146,7 @@ where
 ///
 /// # Examples
 /// ```rust
-/// use xenon::Tensor;
+/// use Senon::Tensor;
 ///
 /// let mut arr = Tensor::<i32, _>::zeros([2, 3]);
 ///
@@ -1168,9 +1168,9 @@ pub unsafe fn write_unchecked(&mut self, offset: usize, value: A) {
 ```rust
 // src/lib.rs
 
-//! Xenon: N-dimensional array library for Rust.
+//! Senon: N-dimensional array library for Rust.
 //!
-//! Xenon provides efficient N-dimensional arrays (tensors) with support
+//! Senon provides efficient N-dimensional arrays (tensors) with support
 //! for various storage backends, views, and parallel operations.
 
 #![warn(missing_docs)]
@@ -1240,7 +1240,7 @@ tests/
 ```rust
 // tests/tensor_ops.rs
 
-use xenon::{Tensor, Ix2, Ix3};
+use Senon::{Tensor, Ix2, Ix3};
 
 mod common;
 
@@ -1273,7 +1273,7 @@ fn test_matmul_2d() {
 // tests/property_tests.rs
 
 use quickcheck_macros::quickcheck;
-use xenon::{Tensor, Ix1, Ix2};
+use Senon::{Tensor, Ix1, Ix2};
 
 #[quickcheck]
 fn test_reshape_preserves_elements(data: Vec<i32>) -> bool {
@@ -1668,7 +1668,7 @@ pub fn sum_fast(&self) -> A {
 // benches/tensor_ops.rs
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use xenon::{Tensor, Ix2};
+use Senon::{Tensor, Ix2};
 
 fn bench_matmul(c: &mut Criterion) {
     let a = Tensor::<f64, _>::zeros([128, 256]);
@@ -1824,7 +1824,7 @@ use core::fmt;
 use alloc::borrow::Cow;
 
 #[derive(Debug, Clone)]
-pub enum XenonError {
+pub enum SenonError {
     ShapeMismatch {
         expected: Cow<'static, [usize]>,
         actual: Cow<'static, [usize]>,
@@ -1832,7 +1832,7 @@ pub enum XenonError {
     // ... other variants (see §4.2)
 }
 
-impl fmt::Display for XenonError {
+impl fmt::Display for SenonError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ShapeMismatch { expected, actual } => {
@@ -1845,7 +1845,7 @@ impl fmt::Display for XenonError {
 
 // Only implement std::error::Error when std is available
 #[cfg(feature = "std")]
-impl std::error::Error for XenonError {}
+impl std::error::Error for SenonError {}
 ```
 
 ---
@@ -1921,7 +1921,7 @@ rust-version = "1.85"  # MSRV
 ///
 /// # Examples
 /// ```rust
-/// use xenon::Tensor;
+/// use Senon::Tensor;
 ///
 /// let arr = Tensor::<f32, _>::zeros([3, 4]);
 /// ```
@@ -1941,7 +1941,7 @@ where
 /// # Migration from `zero()`
 /// ```rust
 /// // Old (deprecated)
-/// # use xenon::Tensor;
+/// # use Senon::Tensor;
 /// # #[allow(deprecated)]
 /// let arr = Tensor::<f32, _>::zero([3, 4]);
 ///

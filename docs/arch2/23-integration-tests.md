@@ -1,6 +1,6 @@
 # 集成测试方案设计
 
-> 本文档定义 Xenon 的集成测试策略、测试套件设计、属性测试方案及 CI 集成方案。
+> 本文档定义 Renon 的集成测试策略、测试套件设计、属性测试方案及 CI 集成方案。
 > 文档编号: 23 | 状态: 草案 | 依赖: `00-rust-standards.md`, `01-architecture-overview.md`, `require-v18.md`
 
 ---
@@ -316,8 +316,8 @@ strategy:
 
 extern crate alloc;
 
-use xenon::{Tensor, TensorView, Ix2, zeros, ones};
-use xenon::{Element, Numeric};
+use Renon::{Tensor, TensorView, Ix2, zeros, ones};
+use Renon::{Element, Numeric};
 
 // 验证公共 API 在 no_std 下可引用
 fn _verify_api_availability() {
@@ -545,7 +545,7 @@ fn test_complex_tensor_sum_matches_numpy() {
 ```rust
 // 每个 large tensor test 都需要显式 opt-in
 fn should_run_large_tests() -> bool {
-    std::env::var("XENON_LARGE_TESTS")
+    std::env::var("Renon_LARGE_TESTS")
         .map(|v| v == "1" || v == "true")
         .unwrap_or(false)
 }
@@ -586,7 +586,7 @@ fn test_large_tensor_parallel_sum_correctness() {
 
 ### 4.7 `numpy_compat.rs` — NumPy 行为对比验证
 
-以 NumPy 为参考实现，验证 Xenon 运算结果在精度范围内一致。
+以 NumPy 为参考实现，验证 Renon 运算结果在精度范围内一致。
 
 #### 参考值覆盖范围
 
@@ -959,7 +959,7 @@ test_matrix:
     features: ""
 
   - name: "large tensor tests"
-    command: "XENON_LARGE_TESTS=1 cargo test --test large_tensors --features full"
+    command: "Renon_LARGE_TESTS=1 cargo test --test large_tensors --features full"
     features: "full"
 ```
 
@@ -1056,7 +1056,7 @@ retry:
 │                    │                         │
 │  ┌─── Stage 4: Extended Tests ───────────┐  │
 │  │  cargo test --test large_tensors      │  │
-│  │    (XENON_LARGE_TESTS=1, full)        │  │
+│  │    (Renon_LARGE_TESTS=1, full)        │  │
 │  │  cargo test --test property/          │  │
 │  └───────────────────────────────────────┘  │
 │                    │                         │
@@ -1342,7 +1342,7 @@ macro_rules! assert_tensor_close {
 
 ```python
 #!/usr/bin/env python3
-"""Generate NumPy reference values for Xenon integration tests."""
+"""Generate NumPy reference values for Renon integration tests."""
 
 import numpy as np
 import json
@@ -1512,7 +1512,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: XENON_LARGE_TESTS=1 cargo test --test large_tensors --features full
+      - run: Renon_LARGE_TESTS=1 cargo test --test large_tensors --features full
         timeout-minutes: 15
 
   coverage:
@@ -1527,4 +1527,4 @@ jobs:
 
 ---
 
-*Xenon 集成测试方案设计 — 文档 23*
+*Renon 集成测试方案设计 — 文档 23*

@@ -96,7 +96,7 @@ impl Axis {
     /// # Examples
     ///
     /// ```
-    /// use xenon::indexing::Axis;
+    /// use Renon::indexing::Axis;
     /// let axis = Axis(1);
     /// assert_eq!(axis.0, 1);
     /// ```
@@ -306,7 +306,7 @@ impl<D: Dimension> SliceInfo<D> {
 /// # Examples
 ///
 /// ```
-/// use xenon::{s, Tensor, Ix3};
+/// use Renon::{s, Tensor, Ix3};
 ///
 /// let t: Tensor<f64, Ix3> = Tensor::zeros([4, 5, 6]);
 ///
@@ -460,7 +460,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use xenon::{Tensor, s, Ix3};
+    /// use Renon::{Tensor, s, Ix3};
     ///
     /// let t: Tensor<f64, Ix3> = Tensor::zeros([4, 5, 6]);
     /// let view = t.slice(s![0..2, .., 3]);
@@ -546,7 +546,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use xenon::{Tensor, Axis, Ix3};
+    /// use Renon::{Tensor, Axis, Ix3};
     ///
     /// let t: Tensor<f64, Ix3> = Tensor::zeros([4, 5, 6]);
     /// let slice = t.index_axis(Axis(1), 2);
@@ -665,7 +665,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use xenon::{Tensor, Axis, Ix2};
+    /// use Renon::{Tensor, Axis, Ix2};
     ///
     /// let t = Tensor::from_vec(vec![1, 2, 3, 4, 5, 6], [2, 3]);
     /// let indices = Tensor::from_vec(vec![0usize, 2], [2]);
@@ -734,7 +734,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, Axis, Ix2};
+/// use Renon::{Tensor, Axis, Ix2};
 ///
 /// let t = Tensor::from_vec(vec![10, 20, 30, 40, 50, 60], [2, 3]);
 /// let indices = Tensor::from_vec(vec![2usize, 0, 1, 1], [2, 2]);
@@ -779,7 +779,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use xenon::{Tensor, Ix2};
+    /// use Renon::{Tensor, Ix2};
     ///
     /// let t = Tensor::from_vec(vec![1, 2, 3, 4, 5, 6], [2, 3]);
     /// let mask = Tensor::from_vec(vec![true, false, true, false, true, false], [2, 3]);
@@ -853,7 +853,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use xenon::{Tensor, Axis, Ix2};
+    /// use Renon::{Tensor, Axis, Ix2};
     ///
     /// let mut t = Tensor::zeros::<f64, Ix2>([3, 4]);
     /// let indices = Tensor::from_vec(vec![0usize, 2], [2]);
@@ -921,7 +921,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, where_, Ix2};
+/// use Renon::{Tensor, where_, Ix2};
 ///
 /// let a = Tensor::from_vec(vec![1, 2, 3, 4], [2, 2]);
 /// let b = Tensor::from_vec(vec![10, 20, 30, 40], [2, 2]);
@@ -959,7 +959,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, nonzero, Ix2};
+/// use Renon::{Tensor, nonzero, Ix2};
 ///
 /// let t = Tensor::from_vec(vec![true, false, true, false, false, true], [2, 3]);
 /// let indices = nonzero(&t);
@@ -981,7 +981,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor, argwhere, Ix2};
+/// use Renon::{Tensor, argwhere, Ix2};
 ///
 /// let t = Tensor::from_vec(vec![true, false, true, false, false, true], [2, 3]);
 /// let indices = argwhere(&t);
@@ -1339,7 +1339,7 @@ fn compute_slice_layout_flags<A>(
 - [ ] **T20: `lib.rs` 注册与 re-export**
   - 文件: `src/lib.rs`
   - 内容: `pub mod indexing;`, re-export `s`, `Axis`, `SliceInfo`, `SliceInfoItem`, `where_`, `nonzero`, `argwhere`
-  - 测试: `use xenon::{s, Axis, Tensor};` 编译通过
+  - 测试: `use Renon::{s, Axis, Tensor};` 编译通过
   - 前置: T1-T19
   - 预计: 5 min
 
@@ -1442,7 +1442,7 @@ fn compute_slice_layout_flags<A>(
 
 ## 附录 A: 与 ndarray 对比
 
-| 设计点 | ndarray | Xenon (本设计) |
+| 设计点 | ndarray | Renon (本设计) |
 |--------|---------|----------------|
 | 切片宏 | `s![]` 使用 `Si` / `S` 类型 | `s![]` 使用 `SliceInfoItem` + `SliceItemKind` |
 | Index trait | `Index<Ix>` for single elem | `Index<usize>` for 1D, `Index<[usize; N]>` for multi-dim |

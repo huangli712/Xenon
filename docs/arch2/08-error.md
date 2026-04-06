@@ -8,7 +8,7 @@
 
 ## 1. 模块定位
 
-错误处理模块是 Xenon 的全局基础设施层，定义统一的错误类型 `TensorError` 和结果别名 `Result<T>`。该模块在架构图中位于最顶层（参见 [01-architecture-overview.md](01-architecture-overview.md) §3 依赖图），被所有核心模块和 API 模块直接依赖。
+错误处理模块是 Renon 的全局基础设施层，定义统一的错误类型 `TensorError` 和结果别名 `Result<T>`。该模块在架构图中位于最顶层（参见 [01-architecture-overview.md](01-architecture-overview.md) §3 依赖图），被所有核心模块和 API 模块直接依赖。
 
 核心设计目标：
 
@@ -70,7 +70,7 @@ pub use crate::error::{TensorError, Result};
 thiserror = "2"
 ```
 
-> **说明**：`thiserror` v2 支持 no_std，与 Xenon 的 MSRV 1.85+ 和 no_std 目标兼容。`thiserror` 是唯一的外部依赖（rayon 和 pulp 为可选依赖），符合最小依赖原则。
+> **说明**：`thiserror` v2 支持 no_std，与 Renon 的 MSRV 1.85+ 和 no_std 目标兼容。`thiserror` 是唯一的外部依赖（rayon 和 pulp 为可选依赖），符合最小依赖原则。
 
 ---
 
@@ -79,9 +79,9 @@ thiserror = "2"
 ### 4.1 Result 类型别名
 
 ```rust
-/// Result alias for all Xenon operations that can fail.
+/// Result alias for all Renon operations that can fail.
 ///
-/// All fallible Xenon APIs return `Result<T>` rather than
+/// All fallible Renon APIs return `Result<T>` rather than
 /// `std::result::Result<T, TensorError>`.
 pub type Result<T> = core::result::Result<T, TensorError>;
 ```
@@ -91,7 +91,7 @@ pub type Result<T> = core::result::Result<T, TensorError>;
 ```rust
 use alloc::vec::Vec;
 
-/// Unified error type for all Xenon tensor operations.
+/// Unified error type for all Renon tensor operations.
 ///
 /// # Error handling strategy
 ///
@@ -444,7 +444,7 @@ Ix3::try_from(dyn)        Result<Ix3>            DimensionMismatch
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│                    Xenon API Surface                  │
+│                    Renon API Surface                  │
 ├──────────────────────────────────────────────────────┤
 │                                                      │
 │  ┌─────────────────────┐  ┌───────────────────────┐ │

@@ -8,7 +8,7 @@
 
 ### 1.1 为什么自定义 Complex 类型
 
-Xenon 选择实现自定义 `Complex<T>` 类型，而非使用 `num-complex` crate，原因如下：
+Senon 选择实现自定义 `Complex<T>` 类型，而非使用 `num-complex` crate，原因如下：
 
 | 考量 | 自定义实现 | num-complex |
 |------|-----------|-------------|
@@ -16,7 +16,7 @@ Xenon 选择实现自定义 `Complex<T>` 类型，而非使用 `num-complex` cra
 | **依赖控制** | 零额外依赖，符合最小依赖原则 | 引入 num-traits 等传递依赖 |
 | **API 精确控制** | 可精确控制 trait 实现（如禁止 Eq/Ord） | 实现了 Eq，与需求不符 |
 | **精度约束** | 严格限制同精度互操作 | 支持更宽松的混合精度 |
-| **与 Element trait 集成** | 无缝集成到 Xenon 元素类型体系 | 需要额外适配层 |
+| **与 Element trait 集成** | 无缝集成到 Senon 元素类型体系 | 需要额外适配层 |
 
 ### 1.2 设计目标
 
@@ -99,7 +99,7 @@ pub use Complex;
 /// # 示例
 ///
 /// ```
-/// use xenon::complex::Complex;
+/// use Senon::complex::Complex;
 ///
 /// let z = Complex::new(3.0, 4.0);  // 3 + 4i
 /// assert_eq!(z.re(), 3.0);
@@ -129,7 +129,7 @@ pub struct Complex<T> {
 ```rust
 use num_traits::Float;  // 实际实现中使用 std 库 trait
 
-// Xenon 内部定义的 Float trait（简化版）
+// Senon 内部定义的 Float trait（简化版）
 pub trait Float:
     Copy
     + Clone
@@ -1283,7 +1283,7 @@ Phase 4:                              [C10]
 **状态**: 已采纳
 
 **背景**:
-Xenon 需要一个复数类型来支持科学计算。`num-complex` 是 Rust 生态中最成熟的复数库。
+Senon 需要一个复数类型来支持科学计算。`num-complex` 是 Rust 生态中最成熟的复数库。
 
 **决策**:
 自定义 `Complex<T>` 类型，不依赖 `num-complex`。
@@ -1293,7 +1293,7 @@ Xenon 需要一个复数类型来支持科学计算。`num-complex` 是 Rust 生
 2. **trait 实现控制**: `num-complex` 实现了 `Eq`，但复数包含 NaN 时不满足 Eq 语义
 3. **精度约束**: 需求要求严格限制同精度互操作，`num-complex` 更宽松
 4. **FFI 兼容性验证**: 自定义类型可以精确控制并验证与 C99 `_Complex` 的兼容性
-5. **与 Element 体系集成**: 自定义类型可以无缝集成到 Xenon 的 trait 层次
+5. **与 Element 体系集成**: 自定义类型可以无缝集成到 Senon 的 trait 层次
 
 **后果**:
 - 需要自己实现所有数学方法
@@ -1550,7 +1550,7 @@ Complex::one()                 // 1 + 0i
 
 ## 附录 C: 与 num-complex 的对比
 
-| 特性 | Xenon Complex | num-complex |
+| 特性 | Senon Complex | num-complex |
 |------|---------------|-------------|
 | `#[repr(C)]` | ✅ | ✅ |
 | `Eq` 实现 | ❌（NaN 安全） | ✅（有隐患） |
@@ -1563,4 +1563,4 @@ Complex::one()                 // 1 + 0i
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Senon 项目维护。如有问题请提交 Issue 或 PR。*

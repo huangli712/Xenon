@@ -129,7 +129,7 @@ pub enum SortOrder {
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor1, unique};
+/// use Renon::{Tensor1, unique};
 /// let a = Tensor1::from_vec(vec![3, 1, 2, 1, 3]);
 /// let u = unique(&a);
 /// assert_eq!(u.as_slice(), &[1, 2, 3]);
@@ -175,7 +175,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor1, unique_counts};
+/// use Renon::{Tensor1, unique_counts};
 /// let a = Tensor1::from_vec(vec![3, 1, 2, 1, 3]);
 /// let (values, counts) = unique_counts(&a);
 /// assert_eq!(values.as_slice(), &[1, 2, 3]);
@@ -222,7 +222,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor1, unique_inverse};
+/// use Renon::{Tensor1, unique_inverse};
 /// let a = Tensor1::from_vec(vec![3, 1, 2, 1, 3]);
 /// let (values, inverse) = unique_inverse(&a);
 /// assert_eq!(values.as_slice(), &[1, 2, 3]);
@@ -275,7 +275,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor1, bincount};
+/// use Renon::{Tensor1, bincount};
 /// let a = Tensor1::from_vec(vec![0u32, 1, 1, 3, 2, 1]);
 /// let counts = bincount(&a, 0);
 /// assert_eq!(counts.as_slice(), &[1, 3, 1, 1]);
@@ -368,7 +368,7 @@ pub trait Integer: Numeric + Ord + Hash {}
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor1, histogram};
+/// use Renon::{Tensor1, histogram};
 /// let data = Tensor1::from_vec(vec![1.0, 2.0, 2.5, 3.0, 4.0]);
 /// let counts = histogram(&data, 3, (1.0, 4.0));
 /// assert_eq!(counts.as_slice(), &[2, 1, 2]); // [1,2), [2,3), [3,4]
@@ -451,7 +451,7 @@ pub enum HistogramBins<A> {
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor1, sort, SortOrder};
+/// use Renon::{Tensor1, sort, SortOrder};
 /// let a = Tensor1::from_vec(vec![3.0, 1.0, 4.0, 1.0, 5.0]);
 /// let sorted = sort(&a, SortOrder::Ascending);
 /// assert_eq!(sorted.as_slice(), &[1.0, 1.0, 3.0, 4.0, 5.0]);
@@ -514,7 +514,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor1, argsort, SortOrder};
+/// use Renon::{Tensor1, argsort, SortOrder};
 /// let a = Tensor1::from_vec(vec![30, 10, 20]);
 /// let indices = argsort(&a, SortOrder::Ascending);
 /// assert_eq!(indices.as_slice(), &[1, 2, 0]); // 10@1, 20@2, 30@0
@@ -556,7 +556,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor2, argwhere};
+/// use Renon::{Tensor2, argwhere};
 /// let a = Tensor2::from_vec(vec![0, 1, 0, 0, 0, 1], [2, 3]);
 /// let indices = argwhere(&a);
 /// // indices shape: (2, 2)
@@ -603,7 +603,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor2, nonzero};
+/// use Renon::{Tensor2, nonzero};
 /// let a = Tensor2::from_vec(vec![0, 1, 0, 0, 0, 1], [2, 3]);
 /// let indices = nonzero(&a);
 /// assert_eq!(indices.len(), 2); // 2 dimensions
@@ -654,7 +654,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use xenon::{Tensor1, clip};
+/// use Renon::{Tensor1, clip};
 /// let a = Tensor1::from_vec(vec![1.0, 5.0, 3.0, -1.0, 10.0]);
 /// let b = clip(&a, 0.0, 5.0);
 /// assert_eq!(b.as_slice(), &[1.0, 5.0, 3.0, 0.0, 5.0]);
@@ -989,7 +989,7 @@ where
 - [ ] **T14: mod.rs re-export + lib.rs 集成**
   - 文件: `src/ops/mod.rs`, `src/lib.rs`
   - 内容: 模块声明 + re-export 所有公共 API
-  - 测试: `use xenon::{unique, sort, histogram, ...}` 编译通过
+  - 测试: `use Renon::{unique, sort, histogram, ...}` 编译通过
   - 前置: T1–T13
   - 预计: 5 min
 
@@ -1151,7 +1151,7 @@ where
 
 ## 附录 C：与 NumPy 行为对照
 
-| 操作 | NumPy | Xenon | 差异 |
+| 操作 | NumPy | Renon | 差异 |
 |------|-------|-------|------|
 | `np.unique` | `return_index`, `return_inverse`, `return_counts` 参数 | 三个独立函数 | 功能等价，API 风格不同 |
 | `np.bincount` | `weights`, `minlength` 参数 | 两个函数（有无权重） | 功能等价 |
