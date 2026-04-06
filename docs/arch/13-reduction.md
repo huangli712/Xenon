@@ -1,0 +1,401 @@
+# 归约运算模块设计
+
+> 文档编号: 13 | 模块: `src/ops/reduction.rs` | 阶段: Phase 4
+> 前置文档: `10-iterator.md`
+> 需求参考: 需求说明书 §14
+
+---
+
+## 1. 模块定位
+
+### 1.1 职责边界
+
+| 职责 | 包含 | 不包含 |
+|------|------|--------|
+| sum 归约 | 全局归约 / 沿轴归约 / keepdims 选项 | mean/var/prod/min/max/argmin/argmax |
+| 整数溢出处理 | checked_add，overflow 视为不可恢复错误 | wrapping/saturating 算术 |
+| 浮点语义 | IEEE 754 NaN 传播 | 整数除法归约 |
+| 空数组处理 | sum 返回加法单位元（零） | 篮选/排序操作 |
+| SIMD 加速 | 连续内存的 SIMD 归约路径 | 并行归约（见 09-parallel-backend.md） |
+| 并行加速 | 并行归约结果须与单线程一致 | 篮选/排序操作 |
+
+> **注意**：当前版本仅支持 sum 归约！不包含 mean/var/prod/min/max/argmin/argmax 等。
+
+### 1.2 设计原则
+
+| 原则 | 体现 |
+|------|------|
+| 整数溢出安全 | 使用 checked_add，overflow 时 panic |
+| NaN 传播 | 浮点 sum 中任一元素为 NaN 则返回 NaN |
+| 空数组安全 | 空数组 sum 返回加法单位元（零） |
+| SIMD 友好 | 连续数组自动走 SIMD 归约路径 |
+
+---
+
+## 2. 文件位置
+
+```
+src/ops/
+├── mod.rs              # 模块入口
+└── reduction.rs        # 归约运算（本模块）
+```
+
+单文件设计理由：当前仅实现 sum 归约，未来扩展其他归约操作时再拆分。
+
+---
+
+## 3. 依赖关系
+
+### 3.1 依赖图
+
+```
+src/ops/reduction.rs
+├── crate::tensor        # TensorBase<S, D>, TensorView
+├── crate::iter          # Elements, AxisIter
+├── crate::element       # Numeric, RealScalar
+├── crate::error         # XenonError
+└── crate::simd (可选)   # pulp::Arch（SIMD 归约路径）
+```
+
+### 3.2 类型级依赖
+
+| 来源模块 | 使用的类型/trait |
+|----------|-----------------|
+| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `Owned<A>`, `.shape()`, `.len()`, `.iter()` |
+| `iter` | `Elements`, `AxisIter`, `ExactSizeIterator` |
+| `element` | `Numeric`, `RealScalar` |
+| `dimension` | `Dimension`, `RemoveAxis`, `D::Smaller` |
+| `error` | `XenonError` |
+| `simd`（可选） | `pulp::Arch`（参见 08-simd-backend.md） |
+| `parallel`（可选） | 并行归约路径（参见 09-parallel-backend.md） |
+
+### 3.3 依赖方向
+
+> **依赖方向：单向向上。** `ops/reduction` 消费 `iter`、`tensor`、`element` 模块，不被它们依赖。
+
+---
+
+## 4. 公共 API 设计
+
+### 4.1 全局 sum 归约
+
+```rust
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Numeric,
+{
+    /// 全局求和。
+    ///
+    /// # 空数组行为
+    ///
+    /// 空数组返回 `A::zero()`（加法单位元）。
+    ///
+    /// # 整数溢出
+    ///
+    /// 整数类型在溢出时 panic（使用 checked_add）。
+    ///
+    /// # NaN 行为
+    ///
+    /// 浮点类型：任一元素为 NaN 则返回 NaN。
+    ///
+    /// # 示例
+    ///
+    /// ```
+    /// let a = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
+    /// assert_eq!(a.sum(), 6.0);
+    ///
+    /// // 空数组
+    /// let empty: Tensor1<f64> = Tensor1::zeros([0]);
+    /// assert_eq!(empty.sum(), 0.0);
+    /// ```
+    pub fn sum(&self) -> A;
+}
+```
+
+### 4.2 沿轴 sum 归约
+
+```rust
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Numeric,
+{
+    /// 沿轴求和。
+    ///
+    /// # 参数
+    ///
+    /// - `axis`: 归约轴
+    /// - `keepdims`: 保留被归约轴为长度 1
+    ///
+    /// # 返回
+    ///
+    /// 当 `keepdims=false` 时返回 `Tensor<A, D::Smaller>`。
+    /// 当 `keepdims=true` 时返回 `Tensor<A, D>`（被归约轴长度为 1）。
+    ///
+    /// # 示例
+    ///
+    /// ```
+    /// let a = Tensor2::from_shape_vec([2, 3], vec![1,2,3,4,5,6]);
+    /// let row_sum = a.sum_axis(Axis(0), false);  // shape: [3]
+    /// // [1+4, 2+5, 3+6] = [5, 7, 9]
+    /// let col_sum = a.sum_axis(Axis(1), false);  // shape: [2]
+    /// // [1+2+3, 4+5+6] = [6, 15]
+    /// ```
+    pub fn sum_axis(&self, axis: Axis, keepdims: bool) -> TensorBase<Owned<A>, DOut>
+    where
+        D: RemoveAxis;
+}
+```
+
+### 4.3 Good / Bad 对比示例
+
+```rust
+// Good - 使用 sum() 安全求和
+let a = tensor!([1, 2, 3, 4]);
+assert_eq!(a.sum(), 10);
+
+// Good - 空数组安全
+let empty: Tensor1<i32> = Tensor1::zeros([0]);
+assert_eq!(empty.sum(), 0);
+
+// Good - 沿轴归约
+let m = Tensor2::from_shape_vec([2, 3], vec![1,2,3,4,5,6]);
+let row_sum = m.sum_axis(Axis(0), false);
+
+// Bad - 手动实现 sum（可能遗漏溢出检查）
+let mut total = 0i32;
+for &x in tensor.iter() {
+    total += x;  // 不推荐：整数溢出时行为不确定
+}
+
+// Bad - 使用 unwrap() 忄略错误
+let first = tensor.iter().next().unwrap();  // 空数组会 panic
+```
+
+---
+
+## 5. 内部实现设计
+
+### 5.1 整数溢出处理
+
+```rust
+// 整数 sum 实现
+fn sum_int<I: Numeric>(iter: impl Iterator<Item = &I>) -> I {
+    iter.fold(I::zero(), |acc, &x| {
+        acc.checked_add(x).expect("integer overflow in sum")
+    })
+}
+```
+
+### 5.2 浮点 NaN 传播
+
+```rust
+// 浮点 sum 实现
+fn sum_float<F: RealScalar>(iter: impl Iterator<Item = &F>) -> F {
+    iter.fold(F::zero(), |acc, &x| acc + *x)
+    // NaN + 任何值 = NaN，自动传播
+}
+```
+
+### 5.3 空数组处理
+
+```rust
+// 空数组：fold 的初始值为 zero()，空迭代直接返回 zero()
+// sum of [] = 0  （加法单位元）
+```
+
+---
+
+## 6. 实现任务拆分
+
+### Wave 1: 全局归约
+
+- [ ] **T1**: 创建 `src/ops/reduction.rs` 骨架
+  - 文件: `src/ops/reduction.rs`
+  - 内容: 模块声明、全局 `sum` 函数签名
+  - 测试: 编译通过
+  - 前置: tensor, element, iter 模块完成
+  - 预计: 5 min
+
+- [ ] **T2**: 实现整数类型全局 `sum`
+  - 文件: `src/ops/reduction.rs`
+  - 内容: checked_add 累加，overflow 时 panic
+  - 测试: `test_sum_i32`, `test_sum_i64`, `test_sum_overflow_panic`
+  - 前置: T1
+  - 预计: 10 min
+
+- [ ] **T3**: 实现浮点类型全局 `sum`
+  - 文件: `src/ops/reduction.rs`
+  - 内容: 浮点累加，NaN 传播
+  - 测试: `test_sum_f32`, `test_sum_f64`, `test_sum_nan`
+  - 前置: T1
+  - 预计: 10 min
+
+- [ ] **T4**: 实现复数类型全局 `sum`
+  - 文件: `src/ops/reduction.rs`
+  - 内容: 复数累加
+  - 测试: `test_sum_complex`
+  - 前置: T1
+  - 预计: 10 min
+
+### Wave 2: 沿轴归约
+
+- [ ] **T5**: 实现沿轴 `sum_axis`
+  - 文件: `src/ops/reduction.rs`
+  - 内容: 使用 AxisIter 遍历，保持 keepdims 选项
+  - 测试: `test_sum_axis_2d`, `test_sum_axis_3d`, `test_sum_axis_keepdims`
+  - 前置: T2, T3, T4
+  - 预计: 15 min
+
+### Wave 3: SIMD 加速
+
+- [ ] **T6**: 实现 SIMD 归约路径
+  - 文件: `src/ops/reduction.rs`（cfg feature = "simd"）
+  - 内容: SIMD 水平求和，尾部标量处理
+  - 测试: `test_sum_simd_consistency`
+  - 前置: T2, T3, simd 模块
+  - 预计: 15 min
+
+### Wave 4: 并行加速
+
+- [ ] **T7**: 实现并行归约路径
+  - 文件: `src/ops/reduction.rs`（cfg feature = "parallel"）
+  - 内容: 分块并行归约，合并结果须与单线程一致
+  - 测试: `test_sum_parallel_consistency`
+  - 前置: T5, parallel 模块
+  - 预计: 10 min
+
+### 并行执行分组图
+
+```
+Wave 1: [T1] [T2] [T3] [T4]
+           │     │     │     │
+           └─────┴─────┴─────┘
+                       │
+Wave 2:              [T5]
+                       │
+Wave 3:           [T6]
+                     │
+Wave 4:           [T7]
+```
+
+---
+
+## 7. 测试计划
+
+### 7.1 单元测试清单
+
+| 测试函数 | 测试内容 | 优先级 |
+|----------|----------|--------|
+| `test_sum_i32` | i32 向量求和正确 | 高 |
+| `test_sum_i64` | i64 向量求和正确 | 高 |
+| `test_sum_f32` | f32 向量求和正确 | 高 |
+| `test_sum_f64` | f64 向量求和正确 | 高 |
+| `test_sum_complex_f32` | Complex<f32> 求和正确 | 中 |
+| `test_sum_complex_f64` | Complex<f64> 求和正确 | 中 |
+| `test_sum_overflow_panic` | 整数溢出 panic | 高 |
+| `test_sum_nan` | NaN 传播：含 NaN 的数组 sum 返回 NaN | 高 |
+| `test_sum_empty` | 空数组 sum 返回零 | 高 |
+| `test_sum_single_element` | 单元素 sum 正确 | 中 |
+| `test_sum_axis_2d` | 2D 沿轴 0/1 sum 正确 | 高 |
+| `test_sum_axis_3d` | 3D 沿各轴 sum 正确 | 中 |
+| `test_sum_axis_keepdims` | keepdims=true 保留轴长度 1 | 高 |
+| `test_sum_axis_empty` | 沿轴长度为 0 时结果正确 | 中 |
+| `test_sum_simd_consistency` | SIMD 路径结果与标量一致 | 高 |
+| `test_sum_parallel_consistency` | 并行路径结果与单线程一致 | 高 |
+
+### 7.2 边界测试场景
+
+| 场景 | 预期行为 |
+|------|----------|
+| 空数组 `shape=[0, 3]` | 全局 sum 返回 0，沿轴 0 sum 返回 `[0, 0, 0]` |
+| 单元素 `[1]` | sum 返回元素值本身 |
+| 大数组（1M 元素） | sum 结果正确，无溢出 |
+| i32 最大值附近 | checked_add 正确检测溢出并 panic |
+| f64 含 NaN | sum 返回 NaN |
+| f64 含 +Inf/-Inf | sum 返回 +Inf/-Inf |
+| 非连续数组（切片后） | sum 结果与连续数组一致 |
+
+---
+
+## 8. 与其他模块的交互
+
+| 交互模块 | 接口约定 |
+|----------|----------|
+| `iter` | 使用 `Elements` 迭代器遍历元素，`AxisIter` 遍历轴 |
+| `tensor` | 消费 `TensorBase<S, D>`，返回 `Tensor<A, D>` |
+| `element` | 泛型约束 `Numeric`（全局 sum），`RealScalar`（浮点特化） |
+| `simd`（可选） | 连续数组自动走 SIMD 归约路径 |
+| `parallel`（可选） | 大数组自动走并行归约路径 |
+
+---
+
+## 9. 设计决策记录（ADR）
+
+### 决策 1：overflow 处理策略
+
+| 属性 | 值 |
+|------|-----|
+| 决策 | 整数 sum 使用 checked_add，overflow 时 panic |
+| 理由 | 整数溢出通常是编程错误（选择了过小的类型），静默 wrap-around 可能导致严重 bug；与需求说明书 §14 "整数归约溢出视为不可恢复错误" 一致 |
+| 替代方案 | 使用 wrapping_add（静默溢出） |
+| 替代方案 | 使用 saturating_add（饱和溢出） |
+| 拒绝原因 | 需求明确要求 overflow 为不可恢复错误；wrap/saturate 隐藏问题 |
+
+### 决策 2：并行归约一致性保证
+
+| 属性 | 值 |
+|------|-----|
+| 决策 | 并行归约结果须与单线程一致 |
+| 理由 | 用户不应因并行化而得到不同结果；浮点加法不满足结合律，分块顺序不同可能产生不同结果；保证一致性消除不确定性 |
+| 替代方案 | 允许并行结果与串行有微小差异 |
+| 拒绝原因 | 科学计算要求确定性结果；测试困难 |
+
+### 决策 3：Kahan 补偿求和
+
+| 属性 | 值 |
+|------|-----|
+| 决策 | 当前版本使用普通求和，不实现 Kahan 补偿 |
+| 理由 | SIMD 实现更简单；大多数场景精度足够；可未来扩展 |
+| 替代方案 | 默认使用 Kahan 补偿求和 |
+| 拒绝原因 | 增加实现复杂度，降低 SIMD 效率；精度问题仅在极端场景出现 |
+
+---
+
+## 10. 性能考量
+
+### 10.1 Kahan 补偿求和 vs 普通求和
+
+| 方法 | 精度 | SIMD 友好 | 实现复杂度 |
+|------|------|-----------|-----------|
+| 普通求和 | 足够（大多数场景） | 高（向量化累加） | 低 |
+| Kahan 补偿 | 高（补偿精度损失） | 低（4x 操作/元素） | 高 |
+
+### 10.2 SIMD 归约策略
+
+| 步骤 | 操作 |
+|------|------|
+| 1 | 加载 SIMD 向量（8x f32 / 4x f64） |
+| 2 | 乘法/累加（向量化） |
+| 3 | 水平求和（reduce_add） |
+| 4 | 尾部标量处理 |
+
+### 10.3 性能数据（参考）
+
+| 操作 | 标量路径 | SIMD 路径（AVX2） | 加速比 |
+|------|----------|-------------------|--------|
+| sum f32 (1M) | ~1.5ms | ~0.4ms | 3.7x |
+| sum f64 (1M) | ~2ms | ~0.7ms | 2.9x |
+| sum i32 (1M) | ~1ms | ~0.3ms | 3.3x |
+
+### 10.4 复杂度标注
+
+- 全局 sum: O(n) 时间，O(1) 额外空间
+- 沿轴 sum: O(n) 时间，O(n/axis_len) 额外空间（结果数组）
+
+---
+
+*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*

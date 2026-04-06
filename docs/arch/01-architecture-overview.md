@@ -1,0 +1,657 @@
+# 项目总体架构
+
+> 文档编号: 01 | 模块: 全局 | 阶段: Phase 0
+> 前置文档: `00-coding-standards.md`
+> 需求参考: 需求说明书 §1-§2
+
+---
+
+## 1. 项目概览
+
+### 1.1 定位
+
+Xenon 是一个纯 Rust 实现的 N 维数组（张量）库，定位为科学计算的数值基础设施。设计理念与 NumPy ndarray 层相似，但针对 Rust 生态系统进行了深度优化：类型安全、内存高效、零成本抽象、F-order 单一布局。
+
+### 1.2 目标用户
+
+| 用户类型 | 核心诉求 |
+|----------|----------|
+| 库开发者 | 稳定 API、高性能互操作 |
+| 系统开发者 | no_std 支持、底层内存控制、确定性数值行为、最小依赖 |
+| 间接用户 | 性能、正确性、与 Python 经验的直觉一致性 |
+
+### 1.3 核心设计原则
+
+| 原则 | 描述 |
+|------|------|
+| **正确性优先** | 类型安全、内存安全、数值精度满足 IEEE 754 |
+| **零成本抽象** | 所有高级操作在编译后内联为基础指针运算 |
+| **内存可控** | 支持 `no_std`，显式控制分配和对齐 |
+| **渐进增强** | 核心功能无依赖，并行/SIMD 通过 feature gate 按需启用 |
+| **FFI 友好** | 提供 C 兼容的 F-order 内存布局，便于与 BLAS/LAPACK 互操作 |
+
+### 1.4 工程约束
+
+| 约束 | 要求 |
+|------|------|
+| Crate 结构 | 单 crate，遵循 SemVer |
+| MSRV | Rust 1.85+ |
+| License | MIT |
+| no_std | 支持 `no_std`（依赖 alloc），`std` 为默认 feature |
+| 默认内存序 | Fortran-order（列优先），不支持 C-order |
+| 内存对齐 | 64 字节（缓存行对齐，AVX-512 友好） |
+| 外部依赖 | 仅 rayon（可选并行）+ pulp（可选 SIMD） |
+
+---
+
+## 2. 范围
+
+### 2.1 范围内
+
+- N 维数组的存储、构造
+- N 维数组的索引操作（多维整数索引、范围切片）、形状操作（转置、reshape）
+- 归约操作（仅 sum）、集合操作（仅 unique）
+- 广播操作、逐元素运算
+- 显式类型转换
+- 向量内积（dot）
+- 原始指针 API（FFI）
+- 自定义复数类型（Complex\<T\>）
+- 临时工作空间
+
+### 2.2 范围外
+
+- 矩阵-矩阵乘法、矩阵分解、对角化等高级线性代数
+- 快速傅里叶变换、稀疏矩阵、自动微分、随机数
+- BLAS/LAPACK 绑定（由上游库通过指针 API 集成）
+- GPU 后端
+- serde 序列化
+- arena 分配器
+- 栈分配小数组
+
+---
+
+## 3. 目录结构
+
+```
+xenon/
+├── Cargo.toml                 # 包配置和 feature 定义
+├── rustfmt.toml               # 代码格式配置
+├── README.md
+├── LICENSE                    # MIT
+├── CHANGELOG.md
+│
+├── src/
+│   ├── lib.rs                 # crate root: feature gates, re-exports, 文档
+│   ├── prelude.rs             # 常用类型的 pub use 集合
+│   ├── private.rs             # sealed trait 基础设施（防止外部实现）
+│   ├── error.rs               # XenonError 枚举、Result 类型别名
+│   │
+│   ├── dimension/             # 维度类型系统
+│   │   ├── mod.rs             # Dimension trait 定义
+│   │   ├── static_dims.rs     # Ix0, Ix1, ..., Ix6 静态维度
+│   │   ├── dynamic.rs         # IxDyn 动态维度
+│   │   ├── into_dimension.rs  # IntoDimension trait
+│   │   └── axes.rs            # Axis 标记和轴操作
+│   │
+│   ├── element/               # 元素类型体系
+│   │   ├── mod.rs             # Element trait 定义
+│   │   ├── numeric.rs         # Numeric trait（数值运算）
+│   │   ├── real.rs            # RealScalar trait（实数）
+│   │   ├── complex_scalar.rs  # ComplexScalar trait（复数）
+│   │   └── primitives.rs      # 基础类型 impl（f32, f64, i32, i64, bool, usize）
+│   │
+│   ├── complex/               # 自定义复数类型
+│   │   ├── mod.rs             # Complex<T> 定义，#[repr(C)]
+│   │   ├── ops.rs             # 算术运算实现
+│   │   └── cast.rs            # 类型转换
+│   │
+│   ├── storage/               # 存储系统
+│   │   ├── mod.rs             # Storage trait 和 RawStorage trait
+│   │   ├── owned.rs           # OwnedRepr<A> 拥有型存储
+│   │   ├── view.rs            # ViewRepr<&'a A> 不可变视图
+│   │   ├── view_mut.rs        # ViewMutRepr<&'a mut A> 可变视图
+│   │   ├── arc.rs             # ArcRepr<A> 原子引用计数存储
+│   │   ├── alloc.rs           # 64 字节对齐分配器
+│   │   └── traits.rs          # IsOwned, IsView 等 marker traits
+│   │
+│   ├── layout/                # 内存布局（仅 F-order）
+│   │   ├── mod.rs             # Layout 类型定义
+│   │   ├── flags.rs           # 布局标志位（F_CONTIGUOUS, ALIGNED 等）
+│   │   ├── strides.rs         # F-order 步长计算和验证
+│   │   └── contiguous.rs      # 连续性检查
+│   │
+│   ├── tensor/                # TensorBase 核心
+│   │   ├── mod.rs             # TensorBase<S, D> 结构体
+│   │   ├── impls.rs           # 核心方法（shape, strides, data_ptr）
+│   │   ├── aliases.rs         # 类型别名（Tensor, TensorView, TensorViewMut, ArcTensor）
+│   │   └── construct.rs       # 内部构造方法
+│   │
+│   ├── iter/                  # 迭代器系统
+│   │   ├── mod.rs             # 迭代器 trait 定义
+│   │   ├── elements.rs        # Elements 迭代器（扁平遍历）
+│   │   ├── axis.rs            # AxisIter 沿轴迭代
+│   │   ├── windows.rs         # Windows 窗口迭代
+│   │   ├── indexed.rs         # IndexedIter 带索引迭代
+│   │   ├── zip.rs             # Zip 多张量同步迭代
+│   │   └── lanes.rs           # LaneIter 行/列迭代
+│   │
+│   ├── ops/                   # 数学运算
+│   │   ├── mod.rs             # 运算 trait 导出
+│   │   ├── elementwise.rs     # 逐元素运算（map, zip_with, apply）
+│   │   ├── arithmetic.rs      # 运算符重载（Add, Sub, Mul, Div）
+│   │   ├── matrix.rs          # 向量内积（dot）
+│   │   ├── reduction.rs       # 归约（仅 sum）
+│   │   └── comparison.rs      # 比较运算（equal, not_equal, less, greater）
+│   │
+│   ├── broadcast.rs           # 广播规则实现
+│   │
+│   ├── shape_ops/             # 形状操作
+│   │   ├── mod.rs             # 形状操作 trait
+│   │   ├── reshape.rs         # reshape
+│   │   └── transpose.rs       # transpose
+│   │
+│   ├── index/                 # 索引系统
+│   │   ├── mod.rs             # 索引 trait 定义
+│   │   ├── multi_dim.rs       # 多维整数索引 [i, j, k]
+│   │   └── slice_index.rs     # 范围切片索引
+│   │
+│   ├── construct.rs           # 张量构造（zeros, ones, eye, from_vec, from_fn）
+│   ├── convert.rs             # 类型转换（cast, to_owned, to_contiguous）
+│   ├── format.rs              # Display/Debug 格式化（NumPy 风格）
+│   ├── ffi.rs                 # FFI API（as_ptr, as_mut_ptr, BLAS 兼容布局检查）
+│   └── workspace.rs           # 临时工作空间（对齐分配、分割、扩容）
+│
+├── tests/                     # 集成测试
+│   ├── common/
+│   │   └── mod.rs             # 共享测试工具
+│   ├── test_tensor.rs         # 张量基础测试
+│   ├── test_ops.rs            # 运算测试
+│   ├── test_broadcast.rs      # 广播测试
+│   ├── test_index.rs          # 索引测试
+│   └── test_no_std.rs         # no_std 兼容性测试
+│
+├── benches/                   # 性能基准测试
+│   ├── bench_reduction.rs     # 归约操作
+│   └── bench_elementwise.rs   # 逐元素操作
+│
+└── examples/                  # 使用示例
+    ├── basic.rs               # 基础用法
+    └── no_std.rs              # 嵌入式示例
+```
+
+### 模块职责速览
+
+| 模块 | 职责 |
+|------|------|
+| `error.rs` | `XenonError` 统一错误枚举，`Result<T>` 类型别名 |
+| `dimension/` | `Dimension` trait 和静态/动态维度类型（Ix0-Ix6, IxDyn） |
+| `element/` | 元素类型 trait 层次（Element → Numeric → RealScalar/ComplexScalar） |
+| `complex/` | 自定义 `Complex<T>` 类型，`#[repr(C)]` 兼容 C FFI |
+| `storage/` | 四种存储模式（OwnedRepr/ViewRepr/ViewMutRepr/ArcRepr） |
+| `layout/` | F-order 布局标志位、步长计算、连续性检查 |
+| `tensor/` | 核心 `TensorBase<S, D>` 结构体及类型别名 |
+| `iter/` | 元素/轴/窗口/索引/Zip/Lane 迭代器 |
+| `ops/` | 逐元素运算、算术运算符、内积、sum 归约、比较运算 |
+| `broadcast.rs` | NumPy 广播规则 |
+| `shape_ops/` | reshape、transpose |
+| `index/` | 多维整数索引、范围切片索引 |
+| `construct.rs` | zeros, ones, eye, from_vec, from_fn |
+| `convert.rs` | 类型转换、存储模式转换 |
+| `format.rs` | NumPy 风格格式化输出 |
+| `ffi.rs` | 原始指针 API、BLAS 兼容性 |
+| `workspace.rs` | 临时工作空间 |
+
+---
+
+## 4. Cargo.toml 设计
+
+```toml
+[package]
+name = "xenon"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+description = "A Rust N-dimensional array library for scientific computing"
+keywords = ["tensor", "array", "numpy", "scientific", "ndarray"]
+categories = ["science", "mathematics", "no-std", "data-structures"]
+
+[features]
+default = ["std"]
+
+# Standard library support
+std = []
+
+# Parallel computing (depends on rayon + std)
+parallel = ["dep:rayon", "std"]
+
+# SIMD acceleration (depends on pulp)
+simd = ["dep:pulp"]
+
+[dependencies]
+rayon = { version = "1.10", optional = true }
+pulp = { version = "0.18", optional = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1.4"
+approx = "0.5"
+
+[[bench]]
+name = "reduction"
+harness = false
+
+[[bench]]
+name = "elementwise"
+harness = false
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+opt-level = 3
+
+[profile.bench]
+lto = "thin"
+codegen-units = 1
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+```
+
+### Feature 组合说明
+
+| 组合 | 命令 | 适用场景 |
+|------|------|----------|
+| 最小化 | `--no-default-features` | 嵌入式、WASM、内核模块 |
+| 标准 | （默认） | 桌面应用、CLI 工具 |
+| 高性能 | `--features parallel,simd` | 数据科学、机器学习 |
+| 仅 SIMD | `--features simd` | 需 SIMD 但无需并行的场景 |
+
+---
+
+## 5. 模块依赖关系
+
+### 5.1 依赖层级
+
+| 层级 | 模块 | 依赖 |
+|------|------|------|
+| **L0** | error, private | 无 |
+| **L1** | dimension, element, complex | error |
+| **L2** | layout | error, dimension |
+| **L3** | storage | error, layout, element |
+| **L4** | tensor | storage, dimension, layout, element |
+| **L5** | iter, broadcast, ffi, workspace | tensor |
+| **L6** | ops, shape_ops, index | tensor, iter, broadcast |
+| **L7** | construct, convert, format | tensor, shape_ops |
+
+### 5.2 依赖图（ASCII）
+
+```
+                      ┌─────────────┐
+                      │   lib.rs    │
+                      │  prelude    │
+                      └──────┬──────┘
+                             │
+          ┌──────────────────┼──────────────────┐
+          │                  │                  │
+          ▼                  ▼                  ▼
+    ┌─────────┐        ┌─────────┐        ┌─────────┐
+    │  error  │        │ private │        │ format  │
+    └────┬────┘        └────┬────┘        └────┬────┘
+         │                  │                  │
+    ┌────┴────┐             │           ┌──────┴──────┐
+    │         │             │           │             │
+    ▼         ▼             │           ▼             ▼
+┌─────────┐ ┌─────────┐    │     ┌──────────┐  ┌──────────┐
+│dimension│ │ element │    │     │construct │  │ convert  │
+└────┬────┘ └────┬────┘    │     └────┬─────┘  └────┬─────┘
+     │           │         │          │              │
+     │      ┌────┴────┐    │          │              │
+     │      │ complex │    │          │              │
+     │      └────┬────┘    │          │              │
+     │           │         │          │              │
+     ▼           ▼         │          │              │
+┌─────────┐ ┌─────────┐    │          │              │
+│  layout │ │ storage │◄───┘          │              │
+└────┬────┘ └────┬────┘               │              │
+     │           │                    │              │
+     └─────┬─────┘                    │              │
+           │                          │              │
+           ▼                          │              │
+      ╔═════════╗                     │              │
+      ║ tensor  ║◄────────────────────┴──────────────┘
+      ╚════╤════╝
+           │
+     ┌─────┼──────┬──────────┬──────────┐
+     │     │      │          │          │
+     ▼     ▼      ▼          ▼          ▼
+┌────────┐┌──────────┐┌─────┐┌─────────┐┌──────────┐
+│  iter  ││broadcast ││ ffi ││workspace││  index   │
+└───┬────┘└────┬─────┘└─────┘└─────────┘└────┬─────┘
+    │          │                                │
+    ▼          │                                ▼
+┌────────┐     │                          ┌──────────┐
+│  ops   │◄────┘                          │shape_ops │
+└───┬────┘                                └────┬─────┘
+    │                                          │
+    └──────────────────┬───────────────────────┘
+                       │
+                       ▼
+              ┌─────────────────┐
+              │  construct /    │
+              │  convert / fmt  │
+              └─────────────────┘
+```
+
+---
+
+## 6. Feature Gate 矩阵
+
+| 功能 | 默认 (std) | no_std | +parallel | +simd | +parallel+simd |
+|------|:----------:|:------:|:---------:|:-----:|:--------------:|
+| 基础张量操作 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 视图/视图可变 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Arc 存储 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 迭代器 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 逐元素运算 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| sum 归约 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 内积 (dot) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| reshape / transpose | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 整数索引 / 切片 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Display 格式化 | ✅ | ❌ | ✅ | ✅ | ✅ |
+| Vec 分配 | ✅ | ❌ | ✅ | ✅ | ✅ |
+| 并行迭代器 | ❌ | ❌ | ✅ | ❌ | ✅ |
+| 并行归约 | ❌ | ❌ | ✅ | ❌ | ✅ |
+| SIMD 向量化 | ❌ | ❌ | ❌ | ✅ | ✅ |
+| BLAS 兼容 API | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+---
+
+## 7. prelude.rs 导出清单
+
+```rust
+// src/prelude.rs
+
+// Core tensor types
+pub use crate::tensor::{
+    TensorBase,
+    Tensor,           // TensorBase<OwnedRepr<A>, D>
+    TensorView,       // TensorBase<ViewRepr<&'a A>, D>
+    TensorViewMut,    // TensorBase<ViewMutRepr<&'a mut A>, D>
+    ArcTensor,        // TensorBase<ArcRepr<A>, D>
+};
+
+// Dimension types
+pub use crate::dimension::{
+    Dimension,
+    IntoDimension,
+    Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6,
+    IxDyn,
+    Axis,
+};
+
+// Layout
+pub use crate::layout::{Layout, LayoutFlags};
+
+// Element traits
+pub use crate::element::{
+    Element,
+    Numeric,
+    RealScalar,
+    ComplexScalar,
+};
+pub use crate::complex::Complex;
+
+// Error types
+pub use crate::error::{XenonError, Result};
+
+// Slice macro
+pub use crate::index::s;
+
+// Construction helpers
+pub use crate::construct::{
+    zeros, ones, eye,
+    from_vec, from_fn,
+};
+```
+
+---
+
+## 8. lib.rs 模块结构
+
+```rust
+// src/lib.rs
+
+//! # Xenon
+//!
+//! A Rust N-dimensional array library for scientific computing.
+
+#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![warn(missing_docs)]
+#![warn(missing_debug_implementations)]
+#![warn(rust_2024_compatibility)]
+#![warn(unsafe_op_in_unsafe_fn)]
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+// Internal modules
+mod private;
+
+// Public modules
+pub mod error;
+pub mod dimension;
+pub mod element;
+pub mod complex;
+pub mod storage;
+pub mod layout;
+pub mod tensor;
+pub mod iter;
+pub mod ops;
+pub mod broadcast;
+pub mod shape_ops;
+pub mod index;
+pub mod construct;
+pub mod convert;
+pub mod format;
+pub mod ffi;
+pub mod workspace;
+
+// Conditional modules
+#[cfg(feature = "parallel")]
+#[cfg_attr(docsrs, doc(cfg(feature = "parallel")))]
+pub mod parallel;
+
+#[cfg(feature = "simd")]
+#[cfg_attr(docsrs, doc(cfg(feature = "simd")))]
+pub mod simd;
+
+// Prelude
+pub mod prelude;
+
+// Convenience re-exports
+pub use prelude::*;
+pub use error::XenonError;
+```
+
+---
+
+## 9. API 稳定性说明
+
+| 层级 | 稳定性 | 说明 |
+|------|--------|------|
+| `prelude::*` | **稳定** | 主版本号内保持兼容 |
+| 公开 trait 方法 | **稳定** | 只增不减 |
+| 内部模块 (`mod private`) | **不稳定** | 随时可能变更 |
+| `#[doc(hidden)]` | **不稳定** | 仅供内部使用 |
+| `simd`/`parallel` 模块 | **实验性** | 可能有破坏性变更 |
+
+---
+
+## 10. 核心类型速查
+
+```rust
+// Tensor core types
+TensorBase<S, D>              // Generic base type
+Tensor<A, D>                  // = TensorBase<OwnedRepr<A>, D>
+TensorView<'a, A, D>          // = TensorBase<ViewRepr<&'a A>, D>
+TensorViewMut<'a, A, D>       // = TensorBase<ViewMutRepr<&'a mut A>, D>
+ArcTensor<A, D>               // = TensorBase<ArcRepr<A>, D>
+
+// Dimension types
+Ix0, Ix1, Ix2, ..., Ix6       // Static dimensions (0-6 dimensions)
+IxDyn                         // Dynamic dimension
+
+// Layout flags (F-order only)
+LayoutFlags: u8
+├── F_CONTIGUOUS    (0b00001) // Fortran contiguous
+├── ALIGNED         (0b00010) // 64-byte aligned
+├── HAS_ZERO_STRIDE (0b00100) // Contains zero stride (broadcast)
+└── HAS_NEG_STRIDE  (0b01000) // Contains negative stride (flip view)
+
+// Element trait hierarchy
+Element                        // Base: Copy + PartialEq + Debug + Display + Send + Sync
+└── Numeric                    // Numeric: Add + Sub + Mul + Div + Neg
+    ├── RealScalar             // Real: sqrt, sin, cos, etc.
+    └── ComplexScalar          // Complex: conjugate, modulus, etc.
+```
+
+---
+
+## 11. 实现任务分解
+
+### Wave 1: 基础设施（可完全并行）
+
+| 任务 | 依赖 | 预估复杂度 | 产出 |
+|------|------|------------|------|
+| W1.1 error types | 无 | 低 | `XenonError`, `Result<T>` |
+| W1.2 private module | 无 | 低 | `Sealed` trait |
+| W1.3 dimension traits | W1.1 | 中 | `Dimension`, `IntoDimension` |
+| W1.4 static dimensions | W1.3 | 中 | `Ix0`-`Ix6` |
+| W1.5 dynamic dimension | W1.3 | 中 | `IxDyn` |
+| W1.6 element traits | W1.1 | 中 | `Element`, `Numeric`, `RealScalar` |
+| W1.7 Complex\<T\> | W1.6 | 高 | 自定义复数类型 |
+| W1.8 layout flags | W1.1 | 低 | `LayoutFlags` |
+| W1.9 F-order strides | W1.1, W1.3 | 中 | F-order 步长计算 |
+
+### Wave 2: 核心（依赖 Wave 1）
+
+| 任务 | 依赖 | 预估复杂度 | 产出 |
+|------|------|------------|------|
+| W2.1 Storage trait | W1.6, W1.8, W1.9 | 高 | `Storage`, `RawStorage` |
+| W2.2 Owned storage | W2.1 | 中 | `OwnedRepr<A>` + 64 字节对齐分配 |
+| W2.3 View storage | W2.1 | 中 | `ViewRepr<&'a A>` |
+| W2.4 ViewMut storage | W2.1 | 中 | `ViewMutRepr<&'a mut A>` |
+| W2.5 Arc storage | W2.1 | 高 | `ArcRepr<A>` |
+| W2.6 TensorBase | W2.1-W2.5, W1.3-W1.5 | 高 | 核心结构体 |
+| W2.7 Type aliases | W2.6 | 低 | `Tensor`, `TensorView` 等 |
+
+### Wave 3: 操作（依赖 Wave 2）
+
+| 任务 | 依赖 | 预估复杂度 | 产出 |
+|------|------|------------|------|
+| W3.1 Elements iterator | W2.6 | 中 | 扁平元素迭代 |
+| W3.2 Axis iterator | W2.6 | 中 | 沿轴迭代 |
+| W3.3 Window iterator | W2.6 | 高 | 窗口迭代 |
+| W3.4 Zip iterator | W2.6, W3.1 | 高 | 多张量同步迭代 |
+| W3.5 Elementwise ops | W3.1 | 中 | map, zip_with |
+| W3.6 Arithmetic ops | W3.5 | 中 | Add, Sub, Mul, Div |
+| W3.7 Reduction (sum) | W3.1 | 中 | sum, sum_axis |
+| W3.8 Dot (inner product) | W2.6 | 中 | 向量内积 |
+| W3.9 Broadcast | W2.6 | 高 | 广播规则 |
+| W3.10 Reshape | W2.6 | 中 | reshape |
+| W3.11 Transpose | W2.6 | 中 | transpose |
+| W3.12 Multi-dim index | W2.6 | 中 | [i, j, k] 索引 |
+| W3.13 Slice index | W2.6 | 高 | 范围切片 |
+
+### Wave 4: 集成（依赖 Wave 3）
+
+| 任务 | 依赖 | 预估复杂度 | 产出 |
+|------|------|------------|------|
+| W4.1 construct | W2.6, W3.10 | 中 | zeros, ones, eye, from_vec |
+| W4.2 convert | W2.6 | 中 | cast, to_owned |
+| W4.3 format | W2.6 | 低 | Display/Debug |
+| W4.4 ffi | W2.6 | 中 | 原始指针 API |
+| W4.5 workspace | W2.6 | 中 | 临时缓冲区 |
+| W4.6 comparison | W3.5 | 低 | equal, not_equal, less, greater |
+
+### Wave 5: 性能（依赖 Wave 4）
+
+| 任务 | 依赖 | 预估复杂度 | 产出 |
+|------|------|------------|------|
+| W5.1 par_iter | W3.1-W3.4 | 高 | 并行迭代器 |
+| W5.2 par_reduction | W3.7, W5.1 | 高 | 并行 sum |
+| W5.3 simd elementwise | W3.5 | 高 | SIMD 逐元素 |
+| W5.4 simd reduction | W3.7 | 高 | SIMD sum |
+
+### 并行执行分组图
+
+```
+Wave 1: [W1.1] [W1.2] [W1.3] [W1.6] [W1.8]
+           │       │       │       │       │
+           └───────┴───────┴───────┴───────┘
+                           │
+                           ▼
+Wave 2: [W2.1] [W2.2] [W2.3] [W2.4] [W2.5]
+           │       │       │       │       │
+           └───────┴───────┴───────┴───────┘
+                           │
+                           ▼
+        [W2.6] ──▶ [W2.7]
+                           │
+                           ▼
+Wave 3: [W3.1] [W3.2] [W3.3] [W3.9] [W3.10] [W3.11] [W3.12] [W3.13]
+           │       │       │       │       │       │       │       │
+           └───────┴───────┴───────┴───────┴───────┴───────┴───────┘
+                           │
+                           ▼
+        [W3.4] [W3.5] [W3.7] [W3.8] [W3.6]
+                           │
+                           ▼
+Wave 4: [W4.1] [W4.2] [W4.3] [W4.4] [W4.5] [W4.6]
+                           │
+                           ▼
+Wave 5: [W5.1] [W5.2] [W5.3] [W5.4]
+```
+
+---
+
+## 12. 设计决策记录
+
+### 决策 1：单 Crate 设计
+
+| 属性 | 值 |
+|------|-----|
+| 决策 | 使用单 crate（`xenon`）而非多 crate workspace |
+| 理由 | 降低发布复杂度；避免版本协调问题；简化依赖管理 |
+| 替代方案 | workspace 多 crate（xenon-core, xenon-ops, ...） — 放弃，对当前规模过度工程化 |
+
+### 决策 2：F-order 单一布局
+
+| 属性 | 值 |
+|------|-----|
+| 决策 | 仅支持列优先（F-order）布局 |
+| 理由 | 与 BLAS/LAPACK 兼容；减少布局组合爆炸；简化步长计算 |
+| 替代方案 | 同时支持 F-order 和 C-order — 放弃，超出范围且增加复杂度 |
+
+### 决策 3：功能最小化原则
+
+| 属性 | 值 |
+|------|-----|
+| 决策 | 归约仅 sum、集合仅 unique、形状仅 transpose+reshape、索引仅整数+切片、矩阵仅内积 |
+| 理由 | 先做精再做广；每个功能确保正确性和性能后再扩展 |
+| 替代方案 | 一开始支持所有 ndarray 功能 — 放弃，范围失控风险高 |
+
+### 决策 4：依赖层级严格单向
+
+| 属性 | 值 |
+|------|-----|
+| 决策 | 模块依赖严格按 L0→L7 层级单向，禁止循环依赖 |
+| 理由 | 确保编译时间可预测；依赖关系清晰可维护 |
+| 替代方案 | 允许跨层引用 — 放弃，维护成本高 |
+
+---
+
+*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*

@@ -1,0 +1,515 @@
+# 逐元素运算模块设计
+
+> 文档编号: 11 | 模块: `src/ops/elementwise.rs` | 阶段: Phase 4
+> 前置文档: `10-iterator.md`, `15-broadcast.md`
+> 需求参考: 需求说明书 §12
+
+---
+
+## 1. 模块定位
+
+### 1.1 职责边界
+
+| 职责 | 包含 | 不包含 |
+|------|------|--------|
+| 算术运算 | add/sub/mul/div，数值类型：i32/i64/f32/f64/Complex | 归约运算（sum/prod/min/max，见 13-reduction.md） |
+| 一元运算 | abs/neg/signum/square | 篮选/排序 |
+| 数学函数 | sin/sqrt/exp/ln/floor/ceil，仅 f32/f64 | 运算符重载（见 19-operator-overload.md） |
+| 复数运算 | norm（返回实数类型）/conj，仅 Complex | 比较运算（eq/ne/lt/gt） |
+| 逻辑非 | `!`，仅 bool | 位运算 |
+| 比较运算 | eq/ne/lt/gt，返回 bool 张量，NaN 遵循 IEEE 754 | 搜索/排序 |
+| 标量运算 | 标量与张量的逐元素运算 | 矩阵运算（dot/matmul） |
+| 广播支持 | 所有二元运算和比较运算支持广播 | 批量运算 |
+
+### 1.2 设计原则
+
+| 原则 | 体现 |
+|------|------|
+| 类型安全边界 | 算术运算仅支持 `Numeric`，bool 编译时排除 |
+| 广播透明集成 | 所有二元运算自动支持广播 |
+| 存储模式无关 | 对 Tensor、TensorView、TensorViewMut 统一工作 |
+| NaN 语义明确 | IEEE 754 NaN 传播规则 |
+
+---
+
+## 2. 文件位置
+
+```
+src/ops/
+├── mod.rs              # 模块入口，re-export 公开 API
+└── elementwise.rs     # 逐元素运算核心（map, zip_with, 数学函数）
+```
+
+单文件设计理由：逐元素运算聚焦于 map/zip_with/apply 及数学函数，运算符重载在独立模块实现。
+
+---
+
+## 3. 依赖关系
+
+### 3.1 依赖图
+
+```
+src/ops/elementwise.rs
+├── crate::tensor        # TensorBase<S, D>, TensorView
+├── crate::iter          # Elements, ElementsMut, Zip
+├── crate::element       # Element, Numeric, RealScalar, ComplexScalar
+├── crate::broadcast     # broadcast_shape()（二元运算广播）
+└── crate::simd (可选)   # pulp::Arch（SIMD 加速路径）
+```
+
+### 3.2 类型级依赖
+
+| 来源模块 | 使用的类型/trait |
+|----------|-----------------|
+| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.shape()` |
+| `iter` | `Elements`, `ElementsMut`, `Zip` |
+| `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar` |
+| `broadcast` | `broadcast_shape()`, `BroadcastView` |
+| `simd`（可选） | `pulp::Arch`（参见 08-simd-backend.md） |
+| `error` | `XenonError`, `BroadcastError` |
+
+### 3.3 依赖方向
+
+> **依赖方向：单向向上。** `ops/elementwise` 消费 `iter`、`tensor`、`element`、`broadcast` 模块，不被它们依赖。
+
+---
+
+## 4. 公共 API 设计
+
+### 4.1 核心映射操作
+
+```rust
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Element,
+{
+    /// 逐元素映射（通过引用），返回新分配的 Tensor。
+    pub fn map<B, F>(&self, f: F) -> Tensor<B, D>
+    where
+        B: Element,
+        F: FnMut(&A) -> B;
+
+    /// 逐元素映射（通过值），返回新分配的 Tensor。
+    pub fn mapv<B, F>(&self, f: F) -> Tensor<B, D>
+    where
+        B: Element,
+        F: FnMut(A) -> B;
+}
+
+impl<S, D, A> TensorBase<S, D>
+where
+    S: StorageMut<Elem = A>,
+    D: Dimension,
+    A: Element,
+{
+    /// 原地逐元素映射。
+    pub fn mapv_inplace<F>(&mut self, f: F)
+    where
+        F: FnMut(A) -> A;
+}
+```
+
+### 4.2 二元 zip 操作
+
+```rust
+/// 二元逐元素操作，支持广播。
+pub fn zip_with<A, B, C, D, E, F>(
+    a: &TensorBase<impl Storage<Elem = A>, D>,
+    b: &TensorBase<impl Storage<Elem = B>, E>,
+    f: F,
+) -> Result<Tensor<C, <D as BroadcastDim<E>>::Output>, XenonError>
+where
+    A: Element,
+    B: Element,
+    C: Element,
+    D: Dimension,
+    E: Dimension,
+    F: FnMut(A, B) -> C;
+```
+
+### 4.3 算术运算（Numeric 约束）
+
+```rust
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Numeric,
+{
+    /// 逐元素加法（支持广播）。
+    pub fn add(&self, other: &TensorBase<impl Storage<Elem = A>, impl Dimension>)
+        -> Result<Tensor<A, D>, XenonError>;
+
+    /// 逐元素减法。
+    pub fn sub(&self, other: &TensorBase<impl Storage<Elem = A>, impl Dimension>)
+        -> Result<Tensor<A, D>, XenonError>;
+
+    /// 逐元素乘法。
+    pub fn mul(&self, other: &TensorBase<impl Storage<Elem = A>, impl Dimension>)
+        -> Result<Tensor<A, D>, XenonError>;
+
+    /// 逐元素除法。
+    pub fn div(&self, other: &TensorBase<impl Storage<Elem = A>, impl Dimension>)
+        -> Result<Tensor<A, D>, XenonError>;
+}
+```
+
+支持的类型：i32, i64, f32, f64, Complex\<f32\>, Complex\<f64\>。
+
+### 4.4 一元运算（Numeric 约束）
+
+```rust
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Numeric,
+{
+    pub fn abs(&self) -> Tensor<A, D>;
+    pub fn neg(&self) -> Tensor<A, D>;
+    pub fn signum(&self) -> Tensor<A, D>;
+    pub fn square(&self) -> Tensor<A, D>;
+}
+```
+
+### 4.5 数学函数（RealScalar 约束：仅 f32/f64）
+
+```rust
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: RealScalar,
+{
+    pub fn sin(&self) -> Tensor<A, D>;
+    pub fn sqrt(&self) -> Tensor<A, D>;
+    pub fn exp(&self) -> Tensor<A, D>;
+    pub fn ln(&self) -> Tensor<A, D>;
+    pub fn floor(&self) -> Tensor<A, D>;
+    pub fn ceil(&self) -> Tensor<A, D>;
+}
+```
+
+### 4.6 复数运算（ComplexScalar 约束）
+
+```rust
+impl<S, D, T> TensorBase<S, D>
+where
+    S: Storage<Elem = Complex<T>>,
+    D: Dimension,
+    T: RealScalar,
+{
+    /// 模运算，返回实数类型张量。
+    pub fn norm(&self) -> Tensor<T, D>;
+
+    /// 共轭运算。
+    pub fn conj(&self) -> Tensor<Complex<T>, D>;
+}
+```
+
+### 4.7 逻辑非（仅 bool）
+
+```rust
+impl<S, D> TensorBase<S, D>
+where
+    S: Storage<Elem = bool>,
+    D: Dimension,
+{
+    /// 逻辑取反。
+    pub fn not(&self) -> Tensor<bool, D>;
+}
+```
+
+### 4.8 比较运算
+
+```rust
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Element + PartialEq,
+{
+    /// 逐元素相等比较，返回 bool 张量。NaN 比较遵循 IEEE 754。
+    pub fn eq(&self, other: &TensorBase<impl Storage<Elem = A>, impl Dimension>)
+        -> Result<Tensor<bool, D>, XenonError>;
+
+    pub fn ne(&self, other: ...) -> Result<Tensor<bool, D>, XenonError>;
+    pub fn lt(&self, other: ...) -> Result<Tensor<bool, D>, XenonError>;
+    pub fn gt(&self, other: ...) -> Result<Tensor<bool, D>, XenonError>;
+}
+```
+
+> **NaN 语义：** `eq(NaN, NaN)` 返回 `false`，`ne(NaN, NaN)` 返回 `true`，遵循 IEEE 754。
+
+### 4.9 标量与张量运算
+
+```rust
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Numeric,
+{
+    /// 张量与标量逐元素加法。
+    pub fn add_scalar(&self, scalar: A) -> Tensor<A, D>;
+
+    /// 张量与标量逐元素乘法。
+    pub fn mul_scalar(&self, scalar: A) -> Tensor<A, D>;
+}
+```
+
+### 4.10 Good / Bad 对比示例
+
+```rust
+// Good - 使用 map 进行类型转换
+let a: Tensor<i32, Ix1> = Tensor::from_slice(&[1, 2, 3]);
+let b: Tensor<f64, Ix1> = a.map(|&x| x as f64);
+
+// Good - 使用 zip_with 广播加法
+let a = Tensor::<f64, Ix2>::zeros([3, 1]);
+let b = Tensor::<f64, Ix2>::zeros([1, 4]);
+let c = zip_with(&a, &b, |x, y| x + y)?;  // shape [3, 4]
+
+// Bad - 手动循环遍历（性能差，不支持广播）
+let mut result = Tensor::<f64, Ix2>::zeros([3, 4]);
+for i in 0..3 {
+    for j in 0..4 {
+        result[[i, j]] = a[[i, 0]] + b[[0, j]];  // 不推荐
+    }
+}
+
+// Bad - 对 bool 使用算术运算
+// let b: Tensor<bool, _> = ...;
+// b.add(&other);  // 编译错误：bool 不满足 Numeric
+```
+
+---
+
+## 5. 内部实现设计
+
+### 5.1 map 实现
+
+```
+map(view, f):
+    result = Tensor::zeros(view.shape())
+    for (src, dst) in view.iter().zip(result.iter_mut()):
+        *dst = f(src)
+    return result
+```
+
+### 5.2 zip_with 实现（含广播）
+
+```
+zip_with(a, b, f):
+    broadcast_shape = broadcast_shape(a.shape(), b.shape())?
+    a_broadcast = a.broadcast(broadcast_shape)
+    b_broadcast = b.broadcast(broadcast_shape)
+    result = Tensor::zeros(broadcast_shape)
+    Zip::from(result.view_mut())
+        .and(a_broadcast)
+        .and(b_broadcast)
+        .for_each(|r, a_val, b_val| *r = f(a_val, b_val))
+    return result
+```
+
+### 5.3 SIMD 加速路径
+
+```
+add_impl(a, b):
+    if cfg!(feature = "simd") && a.is_contiguous() && b.is_contiguous():
+        return simd::add_vectorized(a, b)
+    else:
+        return zip_with(a, b, |x, y| x + y)
+```
+
+参见 `08-simd-backend.md` 了解 SIMD 后端详情。
+
+---
+
+## 6. 实现任务拆分
+
+### Wave 1: 核心映射
+
+- [ ] **T1**: 实现 `map` / `mapv` / `mapv_inplace`
+  - 文件: `src/ops/elementwise.rs`
+  - 内容: 基于 `Elements` 迭代器的映射操作
+  - 测试: `test_map`, `test_mapv`, `test_mapv_inplace`
+  - 前置: 10-iterator.md 完成
+  - 预计: 10 min
+
+- [ ] **T2**: 实现 `zip_with`（含广播支持）
+  - 文件: `src/ops/elementwise.rs`
+  - 内容: 基于 `Zip` 迭代器的二元操作
+  - 测试: `test_zip_with_same_shape`, `test_zip_with_broadcast`
+  - 前置: T1, broadcast 模块
+  - 预计: 10 min
+
+### Wave 2: 运算实现
+
+- [ ] **T3**: 实现算术运算（add/sub/mul/div）
+  - 文件: `src/ops/elementwise.rs`
+  - 内容: 基于 `zip_with` 的算术运算，标量版本
+  - 测试: `test_add_i32`, `test_add_f64`, `test_add_complex`, `test_mul_scalar`
+  - 前置: T2
+  - 预计: 10 min
+
+- [ ] **T4**: 实现一元运算（abs/neg/signum/square）
+  - 文件: `src/ops/elementwise.rs`
+  - 内容: 基于 `mapv` 的一元运算
+  - 测试: `test_abs`, `test_neg`, `test_signum`, `test_square`
+  - 前置: T1
+  - 预计: 10 min
+
+- [ ] **T5**: 实现数学函数（sin/sqrt/exp/ln/floor/ceil）
+  - 文件: `src/ops/elementwise.rs`
+  - 内容: RealScalar 约束的数学方法
+  - 测试: `test_sin`, `test_sqrt`, `test_exp`, `test_floor_ceil`
+  - 前置: T1
+  - 预计: 10 min
+
+- [ ] **T6**: 实现复数运算（norm/conj）
+  - 文件: `src/ops/elementwise.rs`
+  - 内容: ComplexScalar 约束的复数方法
+  - 测试: `test_norm`, `test_conj`
+  - 前置: T1
+  - 预计: 10 min
+
+### Wave 3: 比较与布尔
+
+- [ ] **T7**: 实现逻辑非（not）和比较运算（eq/ne/lt/gt）
+  - 文件: `src/ops/elementwise.rs`
+  - 内容: bool 取反、比较运算返回 bool 张量
+  - 测试: `test_not_bool`, `test_eq_f64`, `test_lt_i32`, `test_nan_comparison`
+  - 前置: T2
+  - 预计: 10 min
+
+### Wave 4: SIMD 集成
+
+- [ ] **T8**: 添加 SIMD 加速路径
+  - 文件: `src/ops/elementwise.rs`（#[cfg(feature = "simd")] 块）
+  - 内容: 算术运算的 SIMD 路径，连续数组检测
+  - 测试: `test_add_simd_vs_scalar`, `test_mul_simd_vs_scalar`
+  - 前置: T3, 08-simd-backend.md
+  - 预计: 15 min
+
+### 并行执行分组图
+
+```
+Wave 1: [T1] [T2]
+           │     │
+Wave 2: [T3] [T4] [T5] [T6]
+           │     │     │     │
+Wave 3: [T7] ────────────────
+           │
+Wave 4: [T8]
+```
+
+---
+
+## 7. 测试计划
+
+### 7.1 单元测试清单
+
+| 测试函数 | 测试内容 | 优先级 |
+|----------|----------|--------|
+| `test_map_type_conversion` | `map` 从 i32 到 f64 转换正确 | 高 |
+| `test_mapv_square` | `mapv(\|x\| x * x)` 正确 | 高 |
+| `test_mapv_inplace` | 原地修改后数据正确 | 高 |
+| `test_add_i32` | i32 加法正确 | 高 |
+| `test_add_f64` | f64 加法正确 | 高 |
+| `test_add_complex` | Complex\<f64\> 加法正确 | 高 |
+| `test_add_broadcast` | 广播加法 shape [3,1]+[1,4]=[3,4] | 高 |
+| `test_mul_scalar` | 标量乘法正确 | 中 |
+| `test_abs` | abs(-3) = 3, abs(f64) 正确 | 高 |
+| `test_neg` | neg 正确，含复数 | 中 |
+| `test_signum` | signum 正/零/负 | 中 |
+| `test_sin` | sin(0) = 0, sin(pi/2) ≈ 1 | 高 |
+| `test_sqrt` | sqrt(4) = 2, sqrt(-1) = NaN | 高 |
+| `test_exp_ln_roundtrip` | exp(ln(x)) ≈ x | 中 |
+| `test_floor_ceil` | floor(1.7)=1, ceil(1.3)=2 | 中 |
+| `test_norm` | Complex{3,4}.norm() = 5.0 | 高 |
+| `test_conj` | Complex{1,2}.conj() = Complex{1,-2} | 中 |
+| `test_not_bool` | !true = false, !false = true | 中 |
+| `test_eq_f64` | 逐元素相等比较 | 高 |
+| `test_lt_i32` | 逐元素小于比较 | 高 |
+| `test_nan_comparison` | NaN 比较遵循 IEEE 754 | 高 |
+| `test_empty_tensor` | 空张量运算返回空张量 | 中 |
+| `test_add_simd_vs_scalar` | SIMD 路径结果与标量一致 | 中 |
+
+### 7.2 边界测试场景
+
+| 场景 | 预期行为 |
+|------|----------|
+| 空张量 `shape=[0, 3]` | add 返回空张量 |
+| 单元素张量 | 所有运算正确 |
+| NaN 输入（f32/f64） | NaN 传播（sin(NaN)=NaN, 0*NaN=NaN） |
+| Inf 输入 | exp(Inf)=Inf, ln(0)=-Inf |
+| 广播形状不兼容 | zip_with 返回 BroadcastError |
+| 非连续输入（切片后） | 运算结果与连续输入一致 |
+
+---
+
+## 8. 与其他模块的交互
+
+| 交互模块 | 接口约定 |
+|----------|----------|
+| `iter` | map 内部使用 `Elements`，zip_with 内部使用 `Zip` |
+| `broadcast` | 二元运算调用 `broadcast_shape()` |
+| `element` | 泛型约束 `Numeric`/`RealScalar`/`ComplexScalar` |
+| `simd`（可选） | 连续数组时自动走 SIMD 路径 |
+
+---
+
+## 9. 设计决策记录（ADR）
+
+### 决策 1：map 返回新张量 vs 原地修改
+
+| 属性 | 值 |
+|------|-----|
+| 决策 | `map`/`mapv` 返回新分配的 `Tensor<B, D>`，`mapv_inplace` 原地修改 |
+| 理由 | 不可变视图无法写入；返回新张量的生命周期与输入解耦，避免悬垂引用；原地修改作为显式 opt-in |
+| 替代方案 | 全部原地修改 |
+| 拒绝原因 | 类型转换（i32→f64）无法原地修改，破坏 API 一致性 |
+
+### 决策 2：NaN 比较遵循 IEEE 754
+
+| 属性 | 值 |
+|------|-----|
+| 决策 | 比较运算（eq/ne/lt/gt）遵循 IEEE 754 语义：NaN != NaN |
+| 理由 | 与 Rust 标准库 `f64::partial_cmp` 行为一致；与 NumPy/ndarray 行为一致 |
+| 替代方案 | 提供总排序比较（total_cmp） |
+| 拒绝原因 | 当前版本不需要总排序，可未来扩展 |
+
+### 决策 3：SIMD 优化路径
+
+| 属性 | 值 |
+|------|-----|
+| 决策 | 连续 + 对齐内存时自动使用 SIMD 路径，非连续时回退到标量 |
+| 理由 | SIMD 路径只在连续内存上有意义；非连续时标量路径更简单正确 |
+| 替代方案 | 所有路径都用标量 |
+| 拒绝原因 | 性能差距显著（2-4x），科学计算用户期望高性能 |
+
+---
+
+## 10. 性能考量
+
+### 10.1 SIMD 加速预期
+
+| 操作 | 标量路径 | SIMD 路径（AVX2） | 加速比 |
+|------|----------|-------------------|--------|
+| add f32 (1M) | ~2ms | ~0.5ms | 4x |
+| mul f64 (1M) | ~3ms | ~1ms | 3x |
+| sin f64 (1M) | ~20ms | ~12ms（部分 SIMD） | 1.7x |
+
+### 10.2 复杂度标注
+
+- `map`/`mapv`: O(n) 时间，O(n) 空间
+- `zip_with`: O(n) 时间，O(n) 空间
+- `mapv_inplace`: O(n) 时间，O(1) 额外空间
+- 广播操作: O(n) 时间，O(n) 空间（结果），广播本身零拷贝
+
+---
+
+*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*

@@ -1,0 +1,583 @@
+# 索引操作模块设计
+
+> 文档编号: 17 | 模块: `src/index/` | 阶段: Phase 3
+> 前置文档: `07-tensor.md`, `02-dimension.md`
+> 需求参考: 需求说明书 §18
+
+---
+
+## 1. 模块定位
+
+### 1.1 职责边界
+
+| 职责 | 包含 | 不包含 |
+|------|------|--------|
+| 多维整数索引 | `[i, j, k]` 形式的元素访问， | 高级索引（布尔掩码/整数数组/where 条件选择） |
+| 范围索引（切片） | `s![.., 0..3, ..;2]` 黑动切片宏 | 高级索引（布尔掩码、整数数组高级索引） |
+| Index trait 实现 | `std::ops::Index` for `TensorBase` | 比较运算符（在逐元素运算模块） |
+| 偏移量计算 | F-order 公式：`offset = sum(index[i] * strides[i])` | 其他内存序的偏移量计算 |
+| get/get_unchecked | `get()` 返回 `Option<&A>` / `get_unchecked()` unsafe 变体 | 可变迭代器（在 iter 模块） |
+| 切片宏 | `s![]` 宏的语法解析和展开 | 切片宏设计在 ndarray 之外的库中 |
+| 切片返回视图 | 切片返回 `ViewRepr`（零拷贝） | 勒贝操作（在逐元素运算模块） |
+| 负步长支持 | 步长可为负（`HAS_NEG_STRIDE` 标志位） | 反向迭代（在 iter 模块） |
+| 边界检查 | checked 版本 panic + unsafe `unchecked` 版本 | 越界 panic 消息（在 error 模块） |
+
+### 1.2 设计原则
+
+| 原则 | 体现 |
+|------|------|
+| 零拷贝视图 | 切片返回视图（`TensorView`），不复制数据 |
+| 编译期类型安全 | 静态维度通过 `Dimension` trait 保证索引正确性 |
+| 边界检查可选 | 提供 checked（panic）和 unchecked（unsafe）两种变体 |
+| F-order 偏移量 | 偏移量按 F-order 公式计算 |
+
+---
+
+## 2. 文件位置
+
+```
+src/index/
+├── mod.rs             # 模块入口，Index/IndexMut trait 实现、公开导出
+├── multi_dim.rs       # 多维整数索引 [i, j, k]
+└── slice_index.rs     # 切片索引、SliceInfo 设计、 s![] 宏
+```
+
+文件划分理由：整数索引和切片索引逻辑差异大，独立文件便于单独维护和测试。
+
+---
+
+## 3. 依赖关系
+
+### 3.1 依赖图（ASCII）
+
+```
+                    ┌──────────────┐
+                    │   tensor      │
+                    │ TensorBase   │
+                    └──────┬───────┘
+                           │ 使用
+              ┌────────────┼──────────────────┐
+              │  index                       │
+              │  multi_dim.rs │ slice_index.rs │
+              └──┬───────────┬───────────────┘
+                 │ 使用       │ 使用
+          ┌──────▼───┐ ┌──────▼──────────────┐
+          │ dimension │ │  memory-layout   │
+          │ Dimension │ │  LayoutFlags     │
+          │ Ix0~IxDyn │ │  HAS_NEG_STRIDE │
+          └───────────┘ └────────────────────┘
+```
+
+### 3.2 类型级依赖
+
+| 来源模块 | 使用的类型/trait |
+|----------|-----------------|
+| `tensor` | `TensorBase<S, D>`, `TensorView`, `TensorViewMut`, `.shape()`, `.strides()`, `.as_ptr()`, `.as_mut_ptr()` |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.ndim()` |
+| `memory_layout` | `LayoutFlags`, `HAS_NEG_STRIDE`, `HAS_ZERO_STRIDE` |
+| `error` | `XenonError::IndexOutOfBounds` |
+
+### 3.3 依赖方向声明
+
+> **依赖方向：单向向上。** `index/` 消费 `tensor`、`dimension`、`memory_layout` 的 trait 和类型，不被它们依赖。
+
+---
+
+## 4. 公共 API 设计
+
+### 4.1 多维整数索引
+
+```rust
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+{
+    /// 多维索引访问元素（只读，越界 panic）。
+    ///
+    /// # Examples
+    /// ```
+    /// let tensor = Tensor2::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6])?;
+    /// assert_eq!(tensor[[0, 0]], 1);
+    /// assert_eq!(tensor[[1, 2]], 6);
+    /// ```
+    ///
+    /// # Panics
+    /// 若索引越界，panic。
+    fn index<I: NdIndex>(&self, index: I) -> &A
+    where
+        I: NdIndex;
+
+    /// 获取元素引用，越界返回 None。
+    ///
+    /// # Examples
+    /// ```
+    /// assert_eq!(tensor.get(&[0, 0]), Some(&1));
+    /// assert_eq!(tensor.get(&[2, 0]), None);  // out of bounds
+    /// ```
+    pub fn get(&self, index: &[usize]) -> Option<&A>;
+
+    /// 获取元素引用，不进行边界检查。
+    ///
+    /// # Safety
+    /// 调用者须保证 `index[i] < shape[i]` 对所有维度成立。
+    ///
+    /// # Examples
+    /// ```
+    /// // SAFETY: [0, 0] is within bounds [2, 3]
+    /// unsafe {
+    ///     assert_eq!(*tensor.get_unchecked(&[0, 0]), 1);
+    /// }
+    /// ```
+    pub unsafe fn get_unchecked(&self, index: &[usize]) -> &A;
+}
+
+    /// 获取元素可变引用，越界返回 None。
+    pub fn get_mut(&mut self, index: &[usize]) -> Option<&mut A>
+    where
+        S: StorageMut<Elem = A>;
+
+    /// 获取元素可变引用，不进行边界检查。
+    ///
+    /// # Safety
+    /// 调用者须保证 `index[i] < shape[i]` 对所有维度成立。
+    pub unsafe fn get_unchecked_mut(&mut self, index: &[usize]) -> &mut A
+    where
+        S: StorageMut<Elem = A>;
+}
+```
+
+```
+
+> **设计决策：** `get()`/`get_mut()` 返回 `Option<&A>` / `Option<&mut A>`，
+> 越界时返回 `None` 而非 panic，便于安全地组合多重索引操作。
+
+> `Index` trait 越界时 panic，因为 Rust 惯例要求 `Index::index` 返回引用。
+
+> `get_unchecked()` 提供 unsafe 快速路径。
+
+### 4.1.1 偏移量计算（F-order）
+
+多维索引到线性偏移量的计算公式：
+
+```
+offset = sum(index[i] * strides[i])  for i in 0..ndim
+```
+
+F-order 中 `strides[i] = product(shape[0..i])`，因此：
+
+```
+offset = sum(index[i] * product(shape[0..i]))
+     = index[0] * 1 + index[1] * shape[0] + index[2] * shape[0] * shape[1] + ...
+```
+
+示例（F-order `shape=[2, 3, 4]`, `strides=[1, 2, 6]`）：
+```
+index=[1, 2, 1] → offset = 1*1 + 2*2 + 1*6 = 11
+```
+
+### 4.1.2 边界检查 API 对称性
+
+| 方法 | 返回类型 | 边界检查 | 越界行为 |
+|------|----------|----------|----------|
+| `[[i, j]]` | `&A` | panic | panic |
+| `get(&[i, j])` | `Option<&A>` | 返回 None | 返回 None |
+| `get_unchecked(&[i, j])` | `&A` | 无 (unsafe) | UB |
+| `[[i, j]] = v` (mut) | `&mut A` | panic | panic |
+| `get_mut(&[i, j])` | `Option<&mut A>` | 返回 None | 返回 None |
+| `get_unchecked_mut(&[i, j])` | `&mut A` | 无 (unsafe) | UB |
+
+### 4.2 范围索引（切片）
+
+#### 4.2.1 SliceInfo 设计
+
+```rust
+/// 切片元素类型，表示单个轴的切片描述。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SliceInfoElem {
+    /// 单个索引。该轴将被移除，结果维度减少 1。
+    Index(isize),
+
+    /// 范围切片。该轴保留，长度为范围长度。
+    Range {
+        /// 起始索引（包含），None 表示 0
+        start: Option<isize>,
+        /// 结束索引（不包含），None 表示轴长度
+        end: Option<isize>,
+        /// 步长，None 表示 1
+        step: Option<isize>,
+    },
+}
+
+/// 切片信息，包含所有轴的切片描述。
+#[derive(Debug, Clone)]
+pub struct SliceInfo<I, D>
+where
+    I: Dimension,
+    D: Dimension,
+{
+    /// 各轴的切片描述。
+    indices: Vec<SliceInfoElem>,
+
+    _out_dim: PhantomData<I>,
+    _in_dim: PhantomData<D>,
+}
+
+```
+
+```
+
+> **设计决策：** `SliceInfoElem` 使用 `isize` 表示步长和起始/结束索引，
+> 支持负步长（步长 < 0 表示反向遍历）。`step` 为 `Option<isize>` 而非 `usize`。
+> 这是负步长的关键：`step = -1` 产生反转视图。
+
+### 4.2.2 s![] 切片宏设计
+
+```rust
+/// 切片宏，用于创建类型安全的切片描述。
+///
+/// # 语法
+///
+/// | 语法 | 含义 | SliceInfoElem 变体 |
+/// |------|------|-------------------|
+/// | `..` | 全范围 | `Range { start: None, end: None, step: None }` |
+/// | `a..b` | 范围 [a, b) | `Range { start: Some(a), end: Some(b), step: None }` |
+/// | `a..b;c` | 带步长范围 | `Range { start: Some(a), end: Some(b), step: Some(c) }` |
+/// | `..;c` | 全范围带步长 | `Range { start: None, end: None, step: Some(c) }` |
+///
+/// # Examples
+/// ```
+/// let view = tensor.slice(s![1..3, ..;2, ..]);
+/// assert_eq!(view.shape(), &[2, 3, 4]);  // step=2 on axis 1
+/// ```
+#[macro_export]
+macro_rules! s {
+    ($($elem:tt),* $(,)?) => {
+        // macro expansion logic
+    };
+}
+```
+```
+
+> **设计决策：** `s![]` 宏设计参考 ndarray 的 `s![]` 宏，
+> 提供 Rust 像的声明式宏语法，编译期类型安全。
+> 相比过程式构造（`SliceInfo::new(vec![...]).unwrap()`），宏在编译期展开为正确的 `SliceInfoElem` 枚举值。
+### 4.2.3 切片方法
+
+```rust
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+{
+    /// 创建切片视图（零拷贝）。
+    ///
+    /// # Arguments
+    /// * `info` - 切片信息，由 `s![]` 宏创建
+    ///
+    /// # Returns
+    /// 切片后的 `TensorView`，零拷贝。
+    ///
+    /// # Panics
+    /// 切片维度与张量维度不匹配，或索引越界时 panic。
+    ///
+    /// # Examples
+    /// ```
+    /// let view = tensor.slice(s![1..3, 2..5, ..]);
+    /// assert_eq!(view.shape(), &[2, 3, 6]);
+    /// ```
+    pub fn slice<I>(&self, info: SliceInfo<I, D>) -> TensorView<'_, A, I>
+    where
+        I: Dimension,
+    {
+        // ...
+    }
+
+    /// 创建可变切片视图。
+    pub fn slice_mut<I>(&mut self, info: SliceInfo<I, D>) -> TensorViewMut<'_, A, I>
+    where
+        I: Dimension,
+        S: StorageMut<Elem = A>,
+    {
+        // ...
+    }
+}
+```
+
+### 4.2.4 Good / Bad 对比
+
+```rust
+// Good - 使用 get() 安全地处理可能越界的索引
+fn safe_index(tensor: &Tensor<f64, Ix2>, idx: &[usize]) -> Option<&f64> {
+    tensor.get(idx)
+}
+
+assert!(result.is_none());
+
+let val = result.unwrap_or_else(|v| v + *v);
+
+```
+
+```
+// Bad - 直接使用 [] 越界 panic
+fn unsafe_index(tensor: &Tensor<f64, Ix2>, idx: &[usize]) -> f64 {
+    tensor[idx]  // panic if out of bounds!
+}
+```
+```
+
+### 4.2.5 切片后元数据更新
+
+切片操作需要更新视图的元数据：
+
+| 元数据 | 更新规则 |
+|--------|----------|
+| `shape[i]` | 切片范围长度 |
+| `strides[i]` | 原步长 × 切片步长 |
+| `offset` | 原偏移 + start × 原步长 |
+| `LayoutFlags` | 有步长时设置 `HAS_NEG_STRIDE`；非原始步长时设置 `HAS_ZERO_STRIDE` |
+
+---
+
+## 5. 内部实现设计
+
+### 5.1 偏移量计算（F-order）
+
+```
+function compute_offset_f(shape: [usize; N], strides: [isize; N], index: [usize; N]) -> isize:
+    offset = 0
+    for i in 0..N:
+        offset += index[i] * strides[i]
+    return offset
+```
+
+### 5.2 切片步长/形状/偏移量计算
+
+```
+function compute_slice(shape, strides, offset, slices: [SliceInfoElem; N])
+    -> (new_shape, new_strides, new_offset, new_layout):
+    new_shape = []
+    new_strides = []
+    new_offset = offset
+    new_layout = layout
+
+    for i in 0..N:
+        match slices[i]:
+            Index(idx):
+                // 单索引：降维
+                new_offset += idx * strides[i]
+                // shape 和 strides 不包含此维度
+            Range { start, end, step }:
+                // 范围切片
+                s = start.unwrap_or(0)
+                e = end.unwrap_or(shape[i])
+                st = step.unwrap_or(1)
+
+                // 处理负值
+                s = normalize(s, shape[i])
+                e = normalize(e, shape[i])
+
+                dim_len = if st > 0:
+                    (e - s + st - 1) / st
+                else:
+                    (s - e + (-st) - 1) / (-st)
+                new_shape.push(dim_len)
+                new_strides.push(strides[i] * st)
+                new_offset += s * strides[i]
+
+                // 更新 flags
+                if st < 0:
+                    new_layout.set_has_neg_stride(true)
+                if st != 1 and st != -1:
+                    new_layout.set_has_zero_stride(true)  // 实际是非1步长
+
+    return (new_shape, new_strides, new_offset, new_layout)
+```
+
+### 5.3 安全性论证
+
+- `get_unchecked`: 调用者保证索引在合法范围内；偏移量计算与 checked 版本相同
+- `slice_unchecked`: 调用者保证切片范围在合法范围内
+- 负步长: `HAS_NEG_STRIDE` 标志正确标记，迭代器根据标志处理反向遍历
+
+- 非连续切片: `HAS_ZERO_STRIDE` 标志标记非1步长维度
+
+---
+
+## 6. 实现任务拆分
+
+### Wave 1: 基础设施
+
+- [ ] **T1**: 创建 `src/index/mod.rs` 骨架
+  - 文件: `src/index/mod.rs`
+  - 内容: 模块声明、子模块文件占位、公开导出声明
+  - 测试: 编译通过
+  - 前置: `07-tensor.md` 完成
+  - 预计: 5 min
+
+- [ ] **T2**: 定义 `SliceInfoElem` 和 `SliceInfo` 类型
+  - 文件: `src/index/slice_index.rs`
+  - 内容: 枚举定义、`SliceInfo` 结构体、基本方法
+  - 测试: `test_slice_info_elem_basic`
+  - 前置: T1
+  - 预计: 10 min
+
+### Wave 2: 多维整数索引
+
+- [ ] **T3**: 实现 `Index` trait for `TensorBase`
+  - 文件: `src/index/multi_dim.rs`
+  - 内容: `index()`/`get()`/`get_unchecked()` 实现
+  - 测试: `test_index_2d`, `test_index_3d`, `test_index_out_of_bounds`
+  - 前置: T1
+  - 预计: 10 min
+
+- [ ] **T4**: 实现 `IndexMut` 和 `get_mut`/`get_unchecked_mut`
+  - 文件: `src/index/multi_dim.rs`
+  - 内容: 可变索引方法实现
+  - 测试: `test_index_mut_2d`, `test_get_mut_out_of_bounds`
+  - 前置: T3
+  - 预计: 10 min
+
+### Wave 3: 切片索引
+
+- [ ] **T5**: 实现 `slice()` 和 `slice_mut()` 方法
+  - 文件: `src/index/slice_index.rs`
+  - 内容: 切片视图创建、元数据计算
+  - 测试: `test_slice_basic`, `test_slice_with_step`, `test_slice_empty`
+  - 前置: T2, T3
+  - 预计: 15 min
+
+- [ ] **T6**: 实现 `s![]` 宏
+  - 文件: `src/index/slice_index.rs`
+  - 内容: 宏定义、语法解析
+  - 测试: `test_slice_macro_basic`, `test_slice_macro_step`
+  - 前置: T5
+  - 预计: 15 min
+
+### Wave 4: 集成与测试
+
+- [ ] **T7**: 编写综合测试
+  - 文件: `tests/index.rs`
+  - 内容: 链式切片、视图的视图、负步长验证
+  - 测试: 覆盖所有公共 API
+  - 前置: T1-T6
+  - 预计: 15 min
+
+### 并行执行图
+
+```
+Wave 1: [T1] → [T2]
+                  │
+Wave 2:      [T3] → [T4]
+                      │
+Wave 3:      [T5] → [T6]
+                      │
+Wave 4:           [T7]
+```
+
+---
+
+## 7. 测试计划
+
+### 7.1 单元测试
+
+| 测试函数 | 测试内容 | 优先级 |
+|----------|----------|--------|
+| `test_index_2d` | 2D 张量 `[[0, 0]]`, `[[1, 2]]` | 高 |
+| `test_index_3d` | 3D 张量 `[[0, 1, 2]]` | 高 |
+| `test_index_out_of_bounds` | 越界 panic 验证 | 高 |
+| `test_get_returns_none` | `get()` 越界返回 None | 高 |
+| `test_get_unchecked` | unsafe 路径正确读取 | 中 |
+| `test_index_mut_2d` | 可变索引写入 | 高 |
+| `test_get_mut_out_of_bounds` | `get_mut()` 越界返回 None | 高 |
+| `test_slice_basic` | `s![1..3, ..]` 基本切片 | 高 |
+| `test_slice_with_step` | `s![..;2, ..]` 步长切片 | 高 |
+| `test_slice_negative_step` | `s![..;-1]` 负步长切片 | 高 |
+| `test_slice_empty_range` | 空范围切片 | 中 |
+| `test_slice_chain` | 切片的切片（视图的视图） | 高 |
+| `test_slice_macro_basic` | `s![]` 宏基本使用 | 高 |
+
+### 7.2 边界测试
+
+| 场景 | 预期行为 |
+|------|----------|
+| 0 维张量索引 | `tensor[[]]` 返回唯一元素 |
+| 空数组索引 | panic（无有效索引） |
+| 大张量索引 | 正确偏移量计算 |
+| 非连续切片后索引 | 正确处理步长跳转 |
+
+### 7.3 属性测试不变量
+
+| 不变量 | 测试方法 |
+|--------|----------|
+| 切片后 `view.len() == expected_len` | 随机切片参数 |
+| `view.shape()` 正确 | 每个维度验证 |
+| 视图的视图链式后数据一致 | 链式切片对比原数据 |
+
+---
+
+## 8. 与其他模块的交互
+
+| 交互模块 | 方向 | 说明 |
+|----------|------|------|
+| `tensor` | index → tensor | 使用 `TensorBase` 的 `as_ptr()`/`as_mut_ptr()` |
+| `storage` | index → storage | 通过 `Storage`/`StorageMut` 访问元素 |
+| `dimension` | index → dimension | 使用 `Dimension::slice()` 获取形状切片 |
+| `memory_layout` | index → memory_layout | 更新 `LayoutFlags` |
+| `iter` | iter → index | 迭代器使用 `get_unchecked()` 快速访问 |
+| `shape_ops` | shape_ops → index | reshape 等操作可能触发拷贝 |
+
+---
+
+## 9. 设计决策记录
+
+### 决策 1: 切片宏 s![] 设计
+
+| 属性 | 值 |
+|------|-----|
+| 决策 | 使用声明式宏（`macro_rules!`）实现 `s![]` 切片宏 |
+| 理由 | 编译期类型安全；语法简洁类似 ndarray；展开为 `SliceInfoElem` 枚举值 |
+| 替代方案 | 过程式构造 — 放弃，运行时解析复杂、类型不安全 |
+| 替代方案 | `macro` 过程宏 — 放弃，语法不自然 |
+
+### 决策 2: 负步长支持
+
+| 属性 | 值 |
+|------|-----|
+| 决策 | 切片步长支持负值，`step` 为 `isize` 类型 |
+| 理由 | 支持反转视图（如 `flip` 操作）；与 NumPy 兼容；步长为负时产生反向遍历 |
+| 替代方案 | 仅支持正步长 — 放弃，无法实现反转操作 |
+
+---
+
+## 10. 性能考量
+
+### 10.1 复杂度
+
+| 操作 | 时间复杂度 | 空间复杂度 |
+|------|-----------|-----------|
+| 多维索引 `[[i, j, k]]` | O(ndim) | O(1) |
+| `get()` | O(ndim) | O(1) |
+| `get_unchecked()` | O(ndim) | O(1) |
+| 切片 `slice()` | O(ndim) | O(ndim)（新视图元数据） |
+| 视图创建 | O(1) | O(ndim) |
+
+### 10.2 索引计算开销
+
+| 场景 | 每元素开销 |
+|------|----------|
+| F-contiguous 连续数组 | 1 次指针加法（步长=1时退化为指针递增） |
+| 非连续数组（切片后） | 多次乘加运算 |
+| 非连续 + 广播 | 乘加 + 鷳步长处理 |
+
+### 10.3 缓存行为
+
+| 场景 | 缓存友好性 | 说明 |
+|------|-----------|------|
+| 连续数组顺序索引 | 最优 | 顺序访问 |
+| 步长切片 | 较差 | 跳跃访问 |
+| 负步长切片 | 最差 | 反向访问 |
+
+---
+
+*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
