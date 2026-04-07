@@ -89,10 +89,10 @@ where
     S: Storage<Elem = A>,
     D: Dimension,
 {
-    /// 转置数组（轴顺序反转）。
+    /// Transpose the array (reverse axis order).
     ///
-    /// 返回轴顺序反转的视图，零拷贝操作（O(1)）。
-    /// 对于 2D 数组等价于矩阵转置。
+    /// Returns a view with reversed axis order, zero-copy operation (O(1)).
+    /// Equivalent to matrix transpose for 2D arrays.
     ///
     /// # Examples
     /// ```
@@ -116,9 +116,9 @@ where
         }
     }
 
-    /// 2D 矬阵转置简写。
+    /// Shorthand for 2D matrix transpose.
     ///
-    /// 等价于 `.transpose()`，提供类似 ndarray 的简洁语法。
+    /// Equivalent to `.transpose()`, provides concise syntax similar to ndarray.
     ///
     /// # Examples
     /// ```
@@ -162,7 +162,7 @@ F-contiguous 数组转置后变为 C-contiguous，反之亦然：
 ```rust
 fn update_flags_for_transpose(source_flags: LayoutFlags) -> LayoutFlags {
     let mut flags = source_flags;
-    // 转置交换 F-contiguous 和 C-contiguous
+    // Transpose swaps F-contiguous and C-contiguous
     let was_f = flags.is_f_contiguous();
     let was_c = flags.is_c_contiguous();
     flags.set_f_contiguous(was_c);
@@ -174,17 +174,17 @@ fn update_flags_for_transpose(source_flags: LayoutFlags) -> LayoutFlags {
 ### 4.1.4 Good / Bad 对比
 
 ```rust
-// Good - 使用 t() 进行零拷贝转置
+// Good - use t() for zero-copy transpose
 let a = Tensor::<f64, _>::zeros([1000, 1000]);
-let b = a.t();  // O(1)，零拷贝
+let b = a.t();  // O(1), zero-copy
 assert_eq!(b.shape(), &[1000, 1000]);
 
-// Bad - 手动复制数据进行转置（浪费内存和时间）
+// Bad - manually copy data for transpose (wastes memory and time)
 let a = Tensor::<f64, _>::zeros([1000, 1000]);
 let mut b = Tensor::<f64, _>::zeros([1000, 1000]);
 for i in 0..1000 {
     for j in 0..1000 {
-        b[[j, i]] = a[[i, j]];  // O(n^2) 拷贝，禁止
+        b[[j, i]] = a[[i, j]];  // O(n^2) copy, forbidden
     }
 }
 ```
@@ -199,10 +199,10 @@ where
     S: Storage<Elem = A>,
     D: Dimension,
 {
-    /// 重塑数组形状（零拷贝版本）。
+    /// Reshape the array (zero-copy version).
     ///
-    /// 仅当数据连续时可零拷贝执行，否则返回错误。
-    /// 总元素数须保持不变。
+    /// Only performs zero-copy when data is contiguous, otherwise returns an error.
+    /// Total element count must remain unchanged.
     ///
     /// # Arguments
     /// * `shape` - 目标形状
@@ -251,9 +251,9 @@ where
         })
     }
 
-    /// 消费数组并重塑形状。
+    /// Consume the array and reshape it.
     ///
-    /// 如果数据连续则零拷贝，非连续时自动拷贝后重塑。
+    /// Zero-copy if data is contiguous; automatically copies then reshapes if non-contiguous.
     ///
     /// # Arguments
     /// * `shape` - 目标形状
@@ -337,15 +337,15 @@ Non-contiguous example (reshape fails):
 ### 4.2.3 Good / Bad 对比
 
 ```rust
-// Good - 连续数组直接 reshape（O(1)）
+// Good - reshape contiguous array directly (O(1))
 let a = Tensor::<f64, _>::zeros([2, 3, 4]);
 let b = a.reshape([6, 4])?;  // O(1) zero-copy
 
-// Good - 非连续数组使用 into_shape（自动处理）
+// Good - use into_shape for non-contiguous array (auto-handled)
 let slice = tensor.slice(s![1..3, ..]);
 let b = slice.into_shape([12])?;  // O(n) copy if needed
 
-// Bad - 对非连续数组直接 reshape（会失败）
+// Bad - calling reshape on non-contiguous array (will fail)
 let slice = tensor.slice(s![1..3, ..]);
 slice.reshape([12])?;  // Returns Err(LayoutMismatch), should use into_shape()
 ```
@@ -522,6 +522,7 @@ Wave 3:              [T5]
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-07 |
 
 ---
 

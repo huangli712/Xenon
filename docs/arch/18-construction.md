@@ -94,7 +94,7 @@ where
     A: Element,
     D: Dimension,
 {
-    /// 创建全零张量（F-order）。
+    /// Create a zero-initialized tensor (F-order).
     ///
     /// # Examples
     /// ```
@@ -114,7 +114,7 @@ where
         TensorBase { storage, shape: dim, strides, offset: 0 }
     }
 
-    /// 创建全一张量（F-order）。
+    /// Create a tensor filled with ones (F-order).
     ///
     /// # Examples
     /// ```
@@ -129,7 +129,7 @@ where
         Self::full(shape, A::one())
     }
 
-    /// 创建填充指定值的张量。
+    /// Create a tensor filled with the specified value.
     ///
     /// # Examples
     /// ```
@@ -157,9 +157,9 @@ impl<A> Tensor<A, Ix2>
 where
     A: Element,
 {
-    /// 创建 n×n 单位矩阵。
+    /// Create an n×n identity matrix.
     ///
-    /// 对角线元素为 1，其他为 0。F-order 布局。
+    /// Diagonal elements are 1, all others are 0. F-order layout.
     ///
     /// # Examples
     /// ```
@@ -189,12 +189,12 @@ where
     A: Element,
     D: Dimension,
 {
-    /// 从 Vec 构造张量（指定形状，F-order）。
+    /// Construct a tensor from a Vec (with specified shape, F-order).
     ///
-    /// 验证 Vec 长度与形状元素总数匹配。
+    /// Validates that the Vec length matches the total number of elements in the shape.
     ///
     /// # Errors
-    /// 如果 `data.len() != shape.size()`，返回 `InvalidShape`。
+    /// Returns `InvalidShape` if `data.len() != shape.size()`.
     ///
     /// # Examples
     /// ```
@@ -219,10 +219,10 @@ where
         Ok(TensorBase { storage, shape: dim, strides, offset: 0 })
     }
 
-    /// 从切片构造张量（拷贝数据）。
+    /// Construct a tensor from a slice (copies data).
     ///
     /// # Errors
-    /// 如果 `slice.len() != shape.size()`，返回 `InvalidShape`。
+    /// Returns `InvalidShape` if `slice.len() != shape.size()`.
     ///
     /// # Examples
     /// ```
@@ -246,7 +246,7 @@ where
         Self::from_shape_vec(dim, slice.to_vec())
     }
 
-    /// 从固定大小数组构造张量。
+    /// Construct a tensor from a fixed-size array.
     ///
     /// # Examples
     /// ```
@@ -272,7 +272,7 @@ impl<A> Tensor<A, Ix0>
 where
     A: Element,
 {
-    /// 从标量构造零维张量。
+    /// Construct a zero-dimensional tensor from a scalar.
     ///
     /// # Examples
     /// ```
@@ -294,10 +294,10 @@ where
     A: Element,
     D: Dimension,
 {
-    /// 从闭包构造张量。
+    /// Construct a tensor from a closure.
     ///
-    /// 闭包接收每个元素的多维索引，返回元素值。
-    /// 按 F-order 顺序填充数据。
+    /// The closure receives the multi-dimensional index of each element and returns its value.
+    /// Data is filled in F-order.
     ///
     /// # Examples
     /// ```
@@ -315,11 +315,11 @@ where
         let len = dim.size();
         let strides = dim.strides_for_f_order();
         let mut data = Vec::with_capacity(len);
-        // 按 F-order 遍历索引
+        // Iterate indices in F-order
         let mut idx = vec![0usize; dim.ndim()];
         for _ in 0..len {
             data.push(f(&idx));
-            // F-order 索引递增
+            // F-order index increment
             increment_index_f(&dim, &mut idx);
         }
         let storage = Owned::from_vec_aligned(data);
@@ -331,7 +331,7 @@ where
 ### 4.5 Good / Bad 对比
 
 ```rust
-// Good - 使用 Result 处理可能的形状不匹配
+// Good - use Result to handle potential shape mismatch
 fn create_matrix(data: Vec<f64>) -> Result<Tensor<f64, Ix2>, XenonError> {
     let n = (data.len() as f64).sqrt() as usize;
     if n * n != data.len() {
@@ -344,10 +344,10 @@ fn create_matrix(data: Vec<f64>) -> Result<Tensor<f64, Ix2>, XenonError> {
     Tensor::from_shape_vec([n, n], data)
 }
 
-// Bad - 库代码中使用 unwrap 处理形状错误
+// Bad - using unwrap for shape errors in library code
 fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
     let n = (data.len() as f64).sqrt() as usize;
-    Tensor::from_shape_vec([n, n], data).unwrap()  // 禁止：可能 panic
+    Tensor::from_shape_vec([n, n], data).unwrap()  // Forbidden: may panic
 }
 ```
 
@@ -372,7 +372,7 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 
 `from_fn` 中数据按 F-order 顺序填充：
 
-```
+```rust
 function increment_index_f(shape, index):
     for i in 0..ndim:
         index[i] += 1
@@ -584,6 +584,7 @@ Wave 4:           [T6]
 
 | 版本 | 日期 |
 |------|------|
+| 1.0.1 | 2026-04-07 |
 | 1.0.0 | 2026-04-07 |
 
 ---

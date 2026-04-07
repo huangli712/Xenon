@@ -84,18 +84,18 @@ src/
 ### 4.1 广播形状计算
 
 ```rust
-/// 计算两个形状广播后的结果形状。
+/// Compute the broadcasted result shape of two shapes.
 ///
-/// 遵循 NumPy 广播规则：从右向左对齐维度，大小为 1 的维度可扩展，
-/// 不兼容时返回错误。
+/// Follows NumPy broadcasting rules: align dimensions from right to left,
+/// dimensions of size 1 can be expanded, returns an error if incompatible.
 ///
 /// # Arguments
-/// * `shape_a` - 第一个形状
-/// * `shape_b` - 第二个形状
+/// * `shape_a` - The first shape
+/// * `shape_b` - The second shape
 ///
 /// # Returns
-/// * `Ok(SmallVec<[usize; 6]>)` - 广播后的形状
-/// * `Err(BroadcastError)` - 形状不兼容
+/// * `Ok(SmallVec<[usize; 6]>)` - The broadcasted shape
+/// * `Err(BroadcastError)` - Shapes are incompatible
 ///
 /// # Examples
 /// ```
@@ -111,7 +111,7 @@ pub fn broadcast_shape(
 ### 4.2 兼容性检查
 
 ```rust
-/// 检查两个形状是否可以通过广播兼容。
+/// Check whether two shapes are broadcast-compatible.
 ///
 /// # Examples
 /// ```
@@ -124,15 +124,15 @@ pub fn can_broadcast(shape_a: &[usize], shape_b: &[usize]) -> bool;
 ### 4.3 广播步长计算
 
 ```rust
-/// 计算广播后的步长（含零步长）。
+/// Compute strides after broadcasting (including zero strides).
 ///
-/// 当原始维度大小为 1 且目标维度大小 > 1 时，步长设为 0。
-/// 新增维度（左侧补位）步长也为 0。
+/// When the original dimension size is 1 and the target dimension size > 1,
+/// the stride is set to 0. New dimensions (left-padded) also have stride 0.
 ///
 /// # Arguments
-/// * `orig_shape` - 原始形状
-/// * `orig_strides` - 原始步长
-/// * `target_shape` - 广播目标形状
+/// * `orig_shape` - The original shape
+/// * `orig_strides` - The original strides
+/// * `target_shape` - The target broadcast shape
 pub fn broadcast_strides(
     orig_shape: &[usize],
     orig_strides: &[isize],
@@ -147,17 +147,17 @@ impl<'a, A, D> TensorView<'a, A, D>
 where
     D: Dimension,
 {
-    /// 将视图广播到目标形状。
+    /// Broadcast the view to the target shape.
     ///
-    /// 返回新的只读视图，通过零步长实现逻辑扩展。
-    /// 不复制数据，O(ndim) 操作。
+    /// Returns a new read-only view with logical expansion via zero strides.
+    /// Does not copy data; O(ndim) operation.
     ///
     /// # Arguments
-    /// * `shape` - 目标形状
+    /// * `shape` - The target shape
     ///
     /// # Returns
-    /// * `Ok(TensorView)` - 广播后的视图
-    /// * `Err(BroadcastError)` - 形状不兼容
+    /// * `Ok(TensorView)` - The broadcasted view
+    /// * `Err(BroadcastError)` - Shapes are incompatible
     ///
     /// # Examples
     /// ```
@@ -174,9 +174,9 @@ where
     }
 }
 
-/// 同时广播两个张量视图到公共形状。
+/// Simultaneously broadcast two tensor views to a common shape.
 ///
-/// 便捷方法，内部调用 `broadcast_shape` + 两次 `broadcast_to`。
+/// Convenience method that internally calls `broadcast_shape` + two `broadcast_to`.
 pub fn broadcast_with<'a, A, D, E>(
     a: &TensorView<'a, A, D>,
     b: &TensorView<'a, A, E>,
@@ -196,15 +196,15 @@ where
 ### 4.5 Good / Bad 对比
 
 ```rust
-// Good - 使用 ? 和 Result 处理广播错误
+// Good - Use ? and Result for broadcast error handling
 fn process(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix1>) -> Result<Tensor<f64, Ix2>, BroadcastError> {
     let (a_bc, b_bc) = broadcast_with(&a.view(), &b.view())?;
     Ok(zip_with(&a_bc, &b_bc, |x, y| x + y))
 }
 
-// Bad - 直接 unwrap 广播结果
+// Bad - Directly unwrap broadcast result
 fn process_bad(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix1>) -> Tensor<f64, Ix2> {
-    let (a_bc, b_bc) = broadcast_with(&a.view(), &b.view()).unwrap(); // 禁止：可能 panic
+    let (a_bc, b_bc) = broadcast_with(&a.view(), &b.view()).unwrap(); // Forbidden: may panic
     zip_with(&a_bc, &b_bc, |x, y| x + y)
 }
 ```
@@ -305,7 +305,7 @@ fn update_flags_for_broadcast(source_flags: LayoutFlags, new_strides: &[isize]) 
     flags.set_has_zero_stride(new_strides.iter().any(|&s| s == 0));
 
     if flags.has_zero_stride() {
-        // 广播视图不连续
+        // Broadcast view is not contiguous
         flags.set_f_contiguous(false);
         flags.set_c_contiguous(false);
     }
@@ -518,6 +518,7 @@ Wave 4:           [T7]
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-07 |
 
 ---
 

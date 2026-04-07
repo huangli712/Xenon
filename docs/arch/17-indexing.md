@@ -52,7 +52,7 @@ src/index/
 
 ```
                     ┌──────────────┐
-                    │   tensor      │
+                    │   tensor     │
                     │ TensorBase   │
                     └──────┬───────┘
                            │ 使用
@@ -93,7 +93,7 @@ where
     S: Storage<Elem = A>,
     D: Dimension,
 {
-    /// 多维索引访问元素（只读，越界 panic）。
+    /// Multi-dimensional index access (read-only, panics on out-of-bounds).
     ///
     /// # Examples
     /// ```
@@ -103,12 +103,12 @@ where
     /// ```
     ///
     /// # Panics
-    /// 若索引越界，panic。
+    /// Panics if the index is out of bounds.
     fn index<I: NdIndex>(&self, index: I) -> &A
     where
         I: NdIndex;
 
-    /// 获取元素引用，越界返回 None。
+    /// Gets a reference to the element, returns None if out of bounds.
     ///
     /// # Examples
     /// ```
@@ -117,10 +117,10 @@ where
     /// ```
     pub fn get(&self, index: &[usize]) -> Option<&A>;
 
-    /// 获取元素引用，不进行边界检查。
+    /// Gets a reference to the element without bounds checking.
     ///
     /// # Safety
-    /// 调用者须保证 `index[i] < shape[i]` 对所有维度成立。
+    /// The caller must ensure that `index[i] < shape[i]` for all dimensions.
     ///
     /// # Examples
     /// ```
@@ -130,23 +130,20 @@ where
     /// }
     /// ```
     pub unsafe fn get_unchecked(&self, index: &[usize]) -> &A;
-}
 
-    /// 获取元素可变引用，越界返回 None。
+    /// Gets a mutable reference to the element, returns None if out of bounds.
     pub fn get_mut(&mut self, index: &[usize]) -> Option<&mut A>
     where
         S: StorageMut<Elem = A>;
 
-    /// 获取元素可变引用，不进行边界检查。
+    /// Gets a mutable reference to the element without bounds checking.
     ///
     /// # Safety
-    /// 调用者须保证 `index[i] < shape[i]` 对所有维度成立。
+    /// The caller must ensure that `index[i] < shape[i]` for all dimensions.
     pub unsafe fn get_unchecked_mut(&mut self, index: &[usize]) -> &mut A
     where
         S: StorageMut<Elem = A>;
 }
-```
-
 ```
 
 > **设计决策：** `get()`/`get_mut()` 返回 `Option<&A>` / `Option<&mut A>`，
@@ -160,19 +157,20 @@ where
 
 多维索引到线性偏移量的计算公式：
 
-```
+```rust
 offset = sum(index[i] * strides[i])  for i in 0..ndim
 ```
 
 F-order 中 `strides[i] = product(shape[0..i])`，因此：
 
-```
+```rust
 offset = sum(index[i] * product(shape[0..i]))
      = index[0] * 1 + index[1] * shape[0] + index[2] * shape[0] * shape[1] + ...
 ```
 
 示例（F-order `shape=[2, 3, 4]`, `strides=[1, 2, 6]`）：
-```
+
+```rust
 index=[1, 2, 1] → offset = 1*1 + 2*2 + 1*6 = 11
 ```
 
@@ -192,39 +190,36 @@ index=[1, 2, 1] → offset = 1*1 + 2*2 + 1*6 = 11
 #### 4.2.1 SliceInfo 设计
 
 ```rust
-/// 切片元素类型，表示单个轴的切片描述。
+/// Slice element type, describing a single axis slice.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SliceInfoElem {
-    /// 单个索引。该轴将被移除，结果维度减少 1。
+    /// Single index. This axis will be removed, reducing the result dimension by 1.
     Index(isize),
 
-    /// 范围切片。该轴保留，长度为范围长度。
+    /// Range slice. This axis is preserved with the length of the range.
     Range {
-        /// 起始索引（包含），None 表示 0
+        /// Start index (inclusive), None means 0
         start: Option<isize>,
-        /// 结束索引（不包含），None 表示轴长度
+        /// End index (exclusive), None means axis length
         end: Option<isize>,
-        /// 步长，None 表示 1
+        /// Step size, None means 1
         step: Option<isize>,
     },
 }
 
-/// 切片信息，包含所有轴的切片描述。
+/// Slice information, containing slice descriptions for all axes.
 #[derive(Debug, Clone)]
 pub struct SliceInfo<I, D>
 where
     I: Dimension,
     D: Dimension,
 {
-    /// 各轴的切片描述。
+    /// Slice descriptions for each axis.
     indices: Vec<SliceInfoElem>,
 
     _out_dim: PhantomData<I>,
     _in_dim: PhantomData<D>,
 }
-
-```
-
 ```
 
 > **设计决策：** `SliceInfoElem` 使用 `isize` 表示步长和起始/结束索引，
@@ -234,16 +229,16 @@ where
 ### 4.2.2 s![] 切片宏设计
 
 ```rust
-/// 切片宏，用于创建类型安全的切片描述。
+/// Slice macro for creating type-safe slice descriptions.
 ///
-/// # 语法
+/// # Syntax
 ///
-/// | 语法 | 含义 | SliceInfoElem 变体 |
-/// |------|------|-------------------|
-/// | `..` | 全范围 | `Range { start: None, end: None, step: None }` |
-/// | `a..b` | 范围 [a, b) | `Range { start: Some(a), end: Some(b), step: None }` |
-/// | `a..b;c` | 带步长范围 | `Range { start: Some(a), end: Some(b), step: Some(c) }` |
-/// | `..;c` | 全范围带步长 | `Range { start: None, end: None, step: Some(c) }` |
+/// | Syntax | Meaning | SliceInfoElem variant |
+/// |--------|---------|----------------------|
+/// | `..` | Full range | `Range { start: None, end: None, step: None }` |
+/// | `a..b` | Range [a, b) | `Range { start: Some(a), end: Some(b), step: None }` |
+/// | `a..b;c` | Range with step | `Range { start: Some(a), end: Some(b), step: Some(c) }` |
+/// | `..;c` | Full range with step | `Range { start: None, end: None, step: Some(c) }` |
 ///
 /// # Examples
 /// ```
@@ -257,11 +252,11 @@ macro_rules! s {
     };
 }
 ```
-```
 
 > **设计决策：** `s![]` 宏设计参考 ndarray 的 `s![]` 宏，
 > 提供 Rust 像的声明式宏语法，编译期类型安全。
 > 相比过程式构造（`SliceInfo::new(vec![...]).unwrap()`），宏在编译期展开为正确的 `SliceInfoElem` 枚举值。
+
 ### 4.2.3 切片方法
 
 ```rust
@@ -270,16 +265,16 @@ where
     S: Storage<Elem = A>,
     D: Dimension,
 {
-    /// 创建切片视图（零拷贝）。
+    /// Creates a sliced view (zero-copy).
     ///
     /// # Arguments
-    /// * `info` - 切片信息，由 `s![]` 宏创建
+    /// * `info` - Slice information created by the `s![]` macro
     ///
     /// # Returns
-    /// 切片后的 `TensorView`，零拷贝。
+    /// The sliced `TensorView`, zero-copy.
     ///
     /// # Panics
-    /// 切片维度与张量维度不匹配，或索引越界时 panic。
+    /// Panics if slice dimensions don't match tensor dimensions, or if index is out of bounds.
     ///
     /// # Examples
     /// ```
@@ -293,7 +288,7 @@ where
         // ...
     }
 
-    /// 创建可变切片视图。
+    /// Creates a mutable sliced view.
     pub fn slice_mut<I>(&mut self, info: SliceInfo<I, D>) -> TensorViewMut<'_, A, I>
     where
         I: Dimension,
@@ -307,7 +302,7 @@ where
 ### 4.2.4 Good / Bad 对比
 
 ```rust
-// Good - 使用 get() 安全地处理可能越界的索引
+// Good - use get() to safely handle potentially out-of-bounds indices
 fn safe_index(tensor: &Tensor<f64, Ix2>, idx: &[usize]) -> Option<&f64> {
     tensor.get(idx)
 }
@@ -315,15 +310,13 @@ fn safe_index(tensor: &Tensor<f64, Ix2>, idx: &[usize]) -> Option<&f64> {
 assert!(result.is_none());
 
 let val = result.unwrap_or_else(|v| v + *v);
-
 ```
 
-```
-// Bad - 直接使用 [] 越界 panic
+```rust
+// Bad - direct [] access panics on out-of-bounds
 fn unsafe_index(tensor: &Tensor<f64, Ix2>, idx: &[usize]) -> f64 {
     tensor[idx]  // panic if out of bounds!
 }
-```
 ```
 
 ### 4.2.5 切片后元数据更新
@@ -343,7 +336,7 @@ fn unsafe_index(tensor: &Tensor<f64, Ix2>, idx: &[usize]) -> f64 {
 
 ### 5.1 偏移量计算（F-order）
 
-```
+```rust
 function compute_offset_f(shape: [usize; N], strides: [isize; N], index: [usize; N]) -> isize:
     offset = 0
     for i in 0..N:
@@ -353,7 +346,7 @@ function compute_offset_f(shape: [usize; N], strides: [isize; N], index: [usize;
 
 ### 5.2 切片步长/形状/偏移量计算
 
-```
+```rust
 function compute_slice(shape, strides, offset, slices: [SliceInfoElem; N])
     -> (new_shape, new_strides, new_offset, new_layout):
     new_shape = []
@@ -364,16 +357,16 @@ function compute_slice(shape, strides, offset, slices: [SliceInfoElem; N])
     for i in 0..N:
         match slices[i]:
             Index(idx):
-                // 单索引：降维
+                // Single index: reduce dimension
                 new_offset += idx * strides[i]
-                // shape 和 strides 不包含此维度
+                // shape and strides do not include this dimension
             Range { start, end, step }:
-                // 范围切片
+                // Range slice
                 s = start.unwrap_or(0)
                 e = end.unwrap_or(shape[i])
                 st = step.unwrap_or(1)
 
-                // 处理负值
+                // Handle negative values
                 s = normalize(s, shape[i])
                 e = normalize(e, shape[i])
 
@@ -385,11 +378,11 @@ function compute_slice(shape, strides, offset, slices: [SliceInfoElem; N])
                 new_strides.push(strides[i] * st)
                 new_offset += s * strides[i]
 
-                // 更新 flags
+                // Update flags
                 if st < 0:
                     new_layout.set_has_neg_stride(true)
                 if st != 1 and st != -1:
-                    new_layout.set_has_zero_stride(true)  // 实际是非1步长
+                    new_layout.set_has_zero_stride(true)  // actually non-unit stride
 
     return (new_shape, new_strides, new_offset, new_layout)
 ```
@@ -585,6 +578,9 @@ Wave 4:           [T7]
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-07 |
+| 1.0.2 | 2026-04-07 |
+| 1.0.3 | 2026-04-07 |
 
 ---
 

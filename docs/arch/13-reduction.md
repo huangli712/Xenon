@@ -86,27 +86,27 @@ where
     D: Dimension,
     A: Numeric,
 {
-    /// 全局求和。
+    /// Global sum.
     ///
-    /// # 空数组行为
+    /// # Empty array behavior
     ///
-    /// 空数组返回 `A::zero()`（加法单位元）。
+    /// Returns `A::zero()` (additive identity).
     ///
-    /// # 整数溢出
+    /// # Integer overflow
     ///
-    /// 整数类型在溢出时 panic（使用 checked_add）。
+    /// Panics on overflow (uses checked_add).
     ///
-    /// # NaN 行为
+    /// # NaN behavior
     ///
-    /// 浮点类型：任一元素为 NaN 则返回 NaN。
+    /// Returns NaN if any element is NaN.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let a = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
     /// assert_eq!(a.sum(), 6.0);
     ///
-    /// // 空数组
+    /// // Empty array
     /// let empty: Tensor1<f64> = Tensor1::zeros([0]);
     /// assert_eq!(empty.sum(), 0.0);
     /// ```
@@ -123,19 +123,19 @@ where
     D: Dimension,
     A: Numeric,
 {
-    /// 沿轴求和。
+    /// Sum along an axis.
     ///
-    /// # 参数
+    /// # Arguments
     ///
-    /// - `axis`: 归约轴
-    /// - `keepdims`: 保留被归约轴为长度 1
+    /// - `axis`: reduction axis
+    /// - `keepdims`: keep the reduced axis as length 1
     ///
-    /// # 返回
+    /// # Returns
     ///
-    /// 当 `keepdims=false` 时返回 `Tensor<A, D::Smaller>`。
-    /// 当 `keepdims=true` 时返回 `Tensor<A, D>`（被归约轴长度为 1）。
+    /// When `keepdims=false`, returns `Tensor<A, D::Smaller>`.
+    /// When `keepdims=true`, returns `Tensor<A, D>` (reduced axis has length 1).
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let a = Tensor2::from_shape_vec([2, 3], vec![1,2,3,4,5,6]);
@@ -153,26 +153,26 @@ where
 ### 4.3 Good / Bad 对比示例
 
 ```rust
-// Good - 使用 sum() 安全求和
+// Good - safely sum using sum()
 let a = tensor!([1, 2, 3, 4]);
 assert_eq!(a.sum(), 10);
 
-// Good - 空数组安全
+// Good - empty array safe
 let empty: Tensor1<i32> = Tensor1::zeros([0]);
 assert_eq!(empty.sum(), 0);
 
-// Good - 沿轴归约
+// Good - axis reduction
 let m = Tensor2::from_shape_vec([2, 3], vec![1,2,3,4,5,6]);
 let row_sum = m.sum_axis(Axis(0), false);
 
-// Bad - 手动实现 sum（可能遗漏溢出检查）
+// Bad - manual sum implementation (may miss overflow checks)
 let mut total = 0i32;
 for &x in tensor.iter() {
-    total += x;  // 不推荐：整数溢出时行为不确定
+    total += x;  // Not recommended: undefined behavior on integer overflow
 }
 
-// Bad - 使用 unwrap() 忄略错误
-let first = tensor.iter().next().unwrap();  // 空数组会 panic
+// Bad - using unwrap() ignoring errors
+let first = tensor.iter().next().unwrap();  // panics on empty array
 ```
 
 ---
@@ -182,7 +182,7 @@ let first = tensor.iter().next().unwrap();  // 空数组会 panic
 ### 5.1 整数溢出处理
 
 ```rust
-// 整数 sum 实现
+// Integer sum implementation
 fn sum_int<I: Numeric>(iter: impl Iterator<Item = &I>) -> I {
     iter.fold(I::zero(), |acc, &x| {
         acc.checked_add(x).expect("integer overflow in sum")
@@ -193,18 +193,18 @@ fn sum_int<I: Numeric>(iter: impl Iterator<Item = &I>) -> I {
 ### 5.2 浮点 NaN 传播
 
 ```rust
-// 浮点 sum 实现
+// Float sum implementation
 fn sum_float<F: RealScalar>(iter: impl Iterator<Item = &F>) -> F {
     iter.fold(F::zero(), |acc, &x| acc + *x)
-    // NaN + 任何值 = NaN，自动传播
+    // NaN + anything = NaN, auto-propagation
 }
 ```
 
 ### 5.3 空数组处理
 
 ```rust
-// 空数组：fold 的初始值为 zero()，空迭代直接返回 zero()
-// sum of [] = 0  （加法单位元）
+// Empty array: fold initial value is zero(), empty iteration returns zero() directly
+// sum of [] = 0 (additive identity)
 ```
 
 ---
@@ -403,6 +403,8 @@ Wave 4:           [T7]
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-07 |
+| 1.0.2 | 2026-04-07 |
 
 ---
 

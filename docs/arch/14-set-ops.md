@@ -77,34 +77,34 @@ where
     D: Dimension,
     A: Element,
 {
-    /// 返回排序后的不重复元素作为新 1D 张量。
+    /// Returns sorted unique elements as a new 1D tensor.
     ///
-    /// # 支持的类型
+    /// # Supported types
     ///
     /// i32, i64, f32, f64, Complex<f32>, Complex<f64>
     ///
-    /// # 不支持的类型
+    /// # Unsupported types
     ///
-    /// - bool：仅 2 种值（true/false），unique 对 bool 无意义
-    /// - usize：仅用于索引，无集合操作语义
+    /// - bool: only 2 values (true/false), unique is meaningless for bool
+    /// - usize: used only for indexing, no set operation semantics
     ///
-    /// # 浮点排序处理
+    /// # Float sorting behavior
     ///
-    /// NaN 排在最后（NaN > 任何实数）。
+    /// NaN is placed last (NaN > any real number).
     ///
-    /// # 复数排序规则
+    /// # Complex sorting rule
     ///
-    /// 先按实部排序，实部相同再按虚部排序。
+    /// Sort by real part first, then by imaginary part if real parts are equal.
     ///
-    /// # 空数组行为
+    /// # Empty array behavior
     ///
-    /// 空数组返回空 Tensor1。
+    /// Empty array returns an empty Tensor1.
     ///
-    /// # 复杂度
+    /// # Complexity
     ///
     /// O(N log N)
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let a = Tensor1::from_vec(vec![3, 1, 2, 1, 3, 2]);
@@ -122,22 +122,22 @@ where
 ### 4.2 Good / Bad 对比示例
 
 ```rust
-// Good - 使用 unique 获取排序后的不重复元素
+// Good - use unique to get sorted unique elements
 let a = Tensor1::from_vec(vec![3, 1, 2, 1, 3]);
 let u = a.unique();
 assert_eq!(u.as_slice(), &[1, 2, 3]);
 
-// Good - 空数组返回空 Tensor1
+// Good - empty array returns empty Tensor1
 let empty: Tensor1<i32> = Tensor1::zeros([0]);
 assert_eq!(empty.unique().len(), 0);
 
-// Bad - 对 bool 张量调用 unique（编译错误）
+// Bad - calling unique on a bool tensor (compile error)
 // let b = Tensor1::from_vec(vec![true, false, true]);
-// b.unique();  // 编译错误： bool 不实现 UniqueElement trait
+// b.unique();  // compile error: bool does not implement UniqueElement trait
 
-// Bad - 对 usize 张量调用 unique（编译错误）
+// Bad - calling unique on a usize tensor (compile error)
 // let idx = Tensor1::from_vec(vec![3usize, 1, 2]);
-// idx.unique();  // 编译错误: usize 不实现 UniqueElement trait
+// idx.unique();  // compile error: usize does not implement UniqueElement trait
 ```
 
 ---
@@ -176,8 +176,8 @@ unique(self):
 ### 5.4 类型排除实现
 
 ```rust
-/// 标记支持 unique 操作的类型。
-/// bool 和 usize 不实现此 trait。
+/// Marker trait for types that support the unique operation.
+/// bool and usize do not implement this trait.
 pub trait UniqueElement: Element + Ord {}
 
 impl UniqueElement for i32 {}
@@ -186,7 +186,7 @@ impl UniqueElement for f32 {}
 impl UniqueElement for f64 {}
 impl UniqueElement for Complex<f32> {}
 impl UniqueElement for Complex<f64> {}
-// bool 和 usize 不实现
+// bool and usize do not implement this
 ```
 
 ---
@@ -352,6 +352,7 @@ Wave 3: [T5]
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-07 |
 
 ---
 
