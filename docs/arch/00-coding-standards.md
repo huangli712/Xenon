@@ -161,8 +161,8 @@ impl<A, D> TensorBase<OwnedRepr<A>, D> {
 }
 
 // Bad
-pub fn get_slice(&self) -> &[A] { /* ... */ }  // 不需要 get_ 前缀
-pub fn to_view(&self) -> View<'_, A, D> { /* ... */ }  // 视图转换应该是 as_
+pub fn get_slice(&self) -> &[A] { /* ... */ }  // no need for get_ prefix
+pub fn to_view(&self) -> View<'_, A, D> { /* ... */ }  // view conversion should use as_
 ```
 
 ### 1.9 Getter 不加 `get_` 前缀
@@ -182,10 +182,10 @@ pub fn get_strides(&self) -> &[Ix] { /* ... */ }
 **例外**：当方法可能失败或需要参数时，可使用 `get_` 前缀：
 
 ```rust
-// Good - 需要 index 参数，可能失败
+// Good - requires index parameter, may fail
 pub fn get(&self, index: &[Ix]) -> Option<&A> { /* ... */ }
 
-// Good - 可能失败
+// Good - may fail
 pub fn get_mut(&mut self, index: &[Ix]) -> Option<&mut A> { /* ... */ }
 ```
 
@@ -282,24 +282,24 @@ let x: i32 = value.try_into().map_err(|_| ConversionError)?;
 let y: f64 = value.into();  // From<i32> for f64
 
 // Bad — in public API or general code
-let x: i32 = value as i32;  // 危险：可能截断、改变符号
-let y: f64 = value as f64;  // 危险：精度丢失
+let x: i32 = value as i32;  // dangerous: may truncate or change sign
+let y: f64 = value as f64;  // dangerous: precision loss
 ```
 
 **例外**：以下情况允许 `as`：
 
 ```rust
-// 1. 与 C FFI 交互
+// 1. Interacting with C FFI
 let ptr = slice.as_ptr() as *mut c_void;
 
-// 2. 已验证的索引转换（配合注释）
+// 2. Validated index conversion (with comment)
 // SAFETY: len is guaranteed to be < isize::MAX by the allocator
 let len = slice.len() as isize;
 
-// 3. 原始指针操作
+// 3. Raw pointer operations
 let offset = ptr as usize;
 
-// 4. 内部 cast 实现（须注释说明安全性）
+// 4. Internal cast implementation (must document safety)
 // CAST-SAFETY: saturating semantics per IEEE 754
 let truncated = float_val as i32;
 ```
@@ -311,7 +311,7 @@ let truncated = float_val as i32;
 **`where` 子句**用于：复杂约束（3+ trait），约束涉及关联类型，约束较长影响可读性，impl 块。
 
 ```rust
-// Good - 复杂约束，where 子句
+// Good - complex constraint, where clause
 pub fn dot<A, D1, D2>(
     lhs: &Tensor<A, D1>,
     rhs: &Tensor<A, D2>,
@@ -324,7 +324,7 @@ where
     // ...
 }
 
-// Good - impl 块使用 where
+// Good - impl block uses where
 impl<S, D> TensorBase<S, D>
 where
     S: Storage,
@@ -335,7 +335,7 @@ where
     }
 }
 
-// Bad - 过于复杂的内联约束
+// Bad - overly complex inline constraint
 pub fn bad<A: Numeric + Add<Output = A> + Sub<Output = A> + Mul<Output = A> + Clone>(&self) -> A {
     // ...
 }
@@ -357,17 +357,17 @@ pub fn bad<A: Numeric + Add<Output = A> + Sub<Output = A> + Mul<Output = A> + Cl
 | `PhantomData<fn(T) -> ()>` | 仅消费 T | 逆变 |
 
 ```rust
-// Good - 表示对元素类型的协变借用
+// Good - covariant borrow of element type
 pub struct ViewRepr<'a, A> {
     _marker: PhantomData<&'a [A]>,
 }
 
-// Good - 表示对 A 的所有权
+// Good - ownership of A
 pub struct OwnedRepr<A> {
     _marker: PhantomData<A>,
 }
 
-// Bad - 冗余：Vec<A> 已经包含了 A
+// Bad - redundant: Vec<A> already owns A
 pub struct Bad<A> {
     data: Vec<A>,
     _marker: PhantomData<A>,
@@ -421,7 +421,7 @@ unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 - 契约违反
 
 ```rust
-// Good - 可恢复错误
+// Good - recoverable error
 pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>> {
     if self.len() != shape.size() {
         return Err(XenonError::InvalidShape {
@@ -432,7 +432,7 @@ pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>> {
     // ...
 }
 
-// Good - 编程错误（不变量）
+// Good - programming error (invariant)
 fn compute_offset(&self, index: &[Ix]) -> usize {
     assert_eq!(
         index.len(), self.ndim(),
@@ -442,10 +442,10 @@ fn compute_offset(&self, index: &[Ix]) -> usize {
     // ...
 }
 
-// Bad - 用 panic 处理可恢复错误
+// Bad - using panic for recoverable error
 pub fn reshape_bad<D2>(self, shape: D2) -> Tensor<A, D2> {
     if self.len() != shape.size() {
-        panic!("size mismatch");  // 应该返回 Result
+        panic!("size mismatch");  // should return Result
     }
     // ...
 }
@@ -476,7 +476,7 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 库代码中禁止使用 `unwrap()`。`expect()` 仅允许用于断言已证明的不变量或前置条件，且消息必须说明为何此处不会失败。测试代码不受此限制。
 
 ```rust
-// Good - 使用 ? 和 Result
+// Good - use ? and Result
 pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>> {
     if self.len() != shape.size() {
         return Err(XenonError::InvalidShape { from: self.len(), to: shape.size() });
@@ -484,20 +484,20 @@ pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>> {
     // ...
 }
 
-// Good - expect() 断言已证明的不变量
+// Good - expect() asserts proven invariant
 let left = self.slice_axis(axis, ..index)
     .expect("split_at: left slice cannot fail after validation");
 
-// Bad - 库代码中使用 unwrap
-let first = self.first().unwrap();  // 禁止
+// Bad - using unwrap in library code
+let first = self.first().unwrap();  // forbidden
 
-// Allowed - 测试代码
+// Allowed - test code
 #[cfg(test)]
 mod tests {
     #[test]
     fn test_reshape() {
         let arr = Tensor::from_vec(vec![1, 2, 3, 4, 5, 6]);
-        let reshaped = arr.reshape([2, 3]).unwrap();  // 测试中允许
+        let reshaped = arr.reshape([2, 3]).unwrap();  // allowed in tests
     }
 }
 ```
@@ -539,16 +539,16 @@ where
 ### 5.1 最小化 unsafe 块范围
 
 ```rust
-// Good - 最小范围
+// Good - minimal scope
 pub fn get_unchecked(&self, index: usize) -> &A {
     // SAFETY: caller guarantees index < self.len()
     unsafe { &*self.ptr.add(index) }
 }
 
-// Bad - 过大范围
+// Bad - scope too large
 pub fn get_unchecked_bad(&self, index: usize) -> &A {
     unsafe {
-        let offset = index * 2;  // 不需要 unsafe
+        let offset = index * 2;  // no unsafe needed
         &*self.ptr.add(offset)
     }
 }
@@ -688,7 +688,7 @@ where
 // Bad
 /// # Examples
 /// ```rust
-/// let arr = Tensor::from_vec(vec![1, 2, 3, 4]).unwrap();  // 不要这样做
+/// let arr = Tensor::from_vec(vec![1, 2, 3, 4]).unwrap();  // do not do this
 /// ```
 ```
 
@@ -754,15 +754,15 @@ mod tests {
 **浮点比较**：使用相对误差容限（rtol），禁止直接 `==` 比较浮点结果。
 
 ```rust
-// Good - 相对误差容限
+// Good - relative error tolerance
 fn assert_close(a: f64, b: f64, rtol: f64) {
     let diff = (a - b).abs();
     let max_abs = a.abs().max(b.abs()).max(1e-15);
     assert!(diff / max_abs < rtol, "expected {a} ≈ {b}, rtol={rtol}");
 }
 
-// Bad - 直接比较浮点
-assert_eq!(result[[0, 0]], 58.0);  // 可能因舍入误差失败
+// Bad - direct float comparison
+assert_eq!(result[[0, 0]], 58.0);  // may fail due to rounding errors
 ```
 
 ### 7.5 归约操作溢出行为
@@ -790,7 +790,7 @@ assert_eq!(result[[0, 0]], 58.0);  // 可能因舍入误差失败
 **`#[inline(always)]`** 仅用于经性能分析确认的关键热路径。
 
 ```rust
-// Good - 小函数
+// Good - small function
 #[inline]
 pub fn len(&self) -> usize {
     self.dim.size()
@@ -801,7 +801,7 @@ pub fn is_empty(&self) -> bool {
     self.len() == 0
 }
 
-// Good - 泛型函数
+// Good - generic function
 #[inline]
 pub fn map<B, F>(self, f: F) -> Tensor<B, D>
 where
@@ -978,6 +978,7 @@ Wave 2: [T4]
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-07 |
 
 ---
 
