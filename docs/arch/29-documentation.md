@@ -512,19 +512,19 @@ pub fn sum(&self) -> A { ... }
 ### 13.2 Bad — 不完整的函数文档
 
 ```rust
-// Bad: 无文档、无示例、无说明
+// Bad: no documentation, no examples, no description
 pub fn sum(&self) -> A { ... }
 
-// Bad: 文档过于简略，缺少关键信息
+// Bad: documentation too brief, missing key information
 /// Sums the tensor.
 pub fn sum(&self) -> A { ... }
 
-// Bad: 示例使用 unwrap 而非 ?
+// Bad: example uses unwrap instead of ?
 /// ```
 /// use xenon::prelude::*;
 /// let t = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
-/// assert_eq!(t.sum(), 6.0);  // unwrap 会 panic
-/// # Ok::<(), xenon::XenonError>(())  // 缺少这一行
+/// assert_eq!(t.sum(), 6.0);  // unwrap will panic
+/// # Ok::<(), xenon::XenonError>(())  // missing this line
 /// ```
 pub fn sum(&self) -> A { ... }
 ```
@@ -570,7 +570,7 @@ pub unsafe fn from_raw_parts<'a, A, D>(...) -> TensorView<'a, A, D>
 ### 13.4 Bad — 缺少 Safety 节
 
 ```rust
-// Bad: unsafe 函数无 Safety 文档
+// Bad: unsafe function has no Safety documentation
 /// Create a tensor view from raw parts.
 pub unsafe fn from_raw_parts<'a, A, D>(...) -> TensorView<'a, A, D>
 ```
@@ -775,6 +775,7 @@ Wave 6: [T17]
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-08 |
 
 ---
 
