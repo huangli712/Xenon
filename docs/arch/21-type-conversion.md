@@ -87,12 +87,12 @@ src/convert.rs
 ### 4.1 CastTo trait
 
 ```rust
-/// 逐元素类型转换 trait。
+/// Element-wise type conversion trait.
 ///
-/// 定义从 `Self` 到 `T` 的显式类型转换规则。
-/// 溢出行为由各实现明确约定（参见 §4.3）。
+/// Defines explicit type conversion rules from `Self` to `T`.
+/// Overflow behavior is explicitly defined per implementation (see §4.3).
 pub trait CastTo<T> {
-    /// 执行类型转换。
+    /// Performs the type conversion.
     fn cast_to(self) -> T;
 }
 ```
@@ -106,14 +106,14 @@ where
     D: Dimension,
     A: Element,
 {
-    /// 逐元素类型转换。
+    /// Element-wise type conversion.
     ///
-    /// 仅适用于持有数据的存储模式（Owned/Arc）。
-    /// View 类型须先调用 `to_owned()` 再 `cast()`。
+    /// Only applicable to data-owning storage modes (Owned/Arc).
+    /// View types must call `to_owned()` before `cast()`.
     ///
     /// # Type Parameters
     ///
-    /// * `B` - 目标元素类型
+    /// * `B` - Target element type
     ///
     /// # Examples
     ///
@@ -155,19 +155,19 @@ where
 ### 4.4 Good / Bad 对比
 
 ```rust
-// Good - 显式 cast，意图清晰
+// Good - explicit cast, intent is clear
 let a: Tensor<f64, Ix1> = Tensor::from_vec(vec![1.5, 2.7]);
 let b: Tensor<i32, Ix1> = a.cast();
 
-// Bad - 隐式类型提升（Xenon 不支持）
-let c: Tensor<i32, Ix1> = a + 1;  // 编译错误：类型不匹配
+// Bad - implicit type promotion (Xenon does not support this)
+let c: Tensor<i32, Ix1> = a + 1;  // Compile error: type mismatch
 
-// Good - 复数到实数显式处理
+// Good - explicit handling of complex to real
 let complex_t: Tensor<Complex<f64>, Ix1> = /* ... */;
 let re_parts: Tensor<f64, Ix1> = complex_t.mapv(|c| c.re);
 
-// Bad - 试图直接 cast 复数到实数
-let real_t: Tensor<f64, Ix1> = complex_t.cast();  // 编译错误：未实现 CastTo
+// Bad - attempting to directly cast complex to real
+let real_t: Tensor<f64, Ix1> = complex_t.cast();  // Compile error: CastTo not implemented
 ```
 
 ### 4.5 to_owned / into_owned
@@ -179,9 +179,9 @@ where
     D: Dimension,
     A: Element + Clone,
 {
-    /// 克隆数据到新的拥有型张量。
+    /// Clones data into a new owned tensor.
     ///
-    /// 总是分配新内存并复制数据，即使输入已是 Owned。
+    /// Always allocates new memory and copies data, even if input is already Owned.
     ///
     /// # Examples
     ///
@@ -202,11 +202,11 @@ where
     D: Dimension,
     A: Element,
 {
-    /// 消费张量，转换为拥有型。
+    /// Consumes the tensor, converting to owned.
     ///
-    /// - `Tensor`：直接返回，O(1)
-    /// - `TensorView`/`TensorViewMut`：复制数据，O(n)
-    /// - `ArcTensor`：若引用计数为 1 则直接返回，否则复制
+    /// - `Tensor`: returned directly, O(1)
+    /// - `TensorView`/`TensorViewMut`: copies data, O(n)
+    /// - `ArcTensor`: returned directly if ref count is 1, otherwise copied
     pub fn into_owned(self) -> Tensor<A, D>;
 }
 ```
@@ -258,7 +258,7 @@ impl<'a, A: Element, D: Dimension> From<&'a mut Tensor<A, D>> for TensorViewMut<
 ### 5.1 CastTo 实现（核心转换路径）
 
 ```rust
-// === 浮点 → 浮点 ===
+// === Float → Float ===
 impl CastTo<f32> for f64 {
     #[inline]
     fn cast_to(self) -> f32 { self as f32 }  // IEEE 754 round-to-nearest-even
@@ -266,10 +266,10 @@ impl CastTo<f32> for f64 {
 
 impl CastTo<f64> for f32 {
     #[inline]
-    fn cast_to(self) -> f64 { self as f64 }  // 精确转换
+    fn cast_to(self) -> f64 { self as f64 }  // Exact conversion
 }
 
-// === 浮点 → 整数（truncate + saturating）===
+// === Float → Integer (truncate + saturating) ===
 impl CastTo<i32> for f64 {
     #[inline]
     fn cast_to(self) -> i32 {
@@ -280,20 +280,20 @@ impl CastTo<i32> for f64 {
     }
 }
 
-// === 整数 → 整数（saturating）===
+// === Integer → Integer (saturating) ===
 impl CastTo<i32> for i64 {
     #[inline]
     fn cast_to(self) -> i32 { self.clamp(i32::MIN as i64, i32::MAX as i64) as i32 }
 }
 
-// === 实数 → 复数 ===
+// === Real → Complex ===
 impl CastTo<Complex<f64>> for f64 {
     #[inline]
     fn cast_to(self) -> Complex<f64> { Complex { re: self, im: 0.0 } }
 }
 
-// 注意：不实现 CastTo<f64> for Complex<f64>
-// 用户必须显式使用 .re() 或 .im()
+// Note: CastTo<f64> for Complex<f64> is intentionally not implemented
+// Users must explicitly use .re() or .im()
 ```
 
 ### 5.2 溢出行为汇总
@@ -472,6 +472,7 @@ Wave 3: [T5] [T6]
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-08 |
 
 ---
 
