@@ -830,4 +830,12 @@ compile_error!("The 'parallel' feature requires the 'std' feature");
 
 ---
 
+## 版本历史
+
+| 版本 | 日期 |
+|------|------|
+| 1.0.0 | 2026-04-07 |
+
+---
+
 *本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
