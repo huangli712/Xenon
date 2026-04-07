@@ -265,7 +265,7 @@ impl Dimension for Ix3 {
         Ix3(slice[0], slice[1], slice[2])
     }
 
-    // zeros(), ones() 省略，模式相同
+    // zeros(), ones() omitted — same pattern
 }
 ```
 
@@ -423,7 +423,7 @@ impl Sealed for IxDyn {}
 ### 4.7 Good / Bad 对比示例
 
 ```rust
-// Good - 使用 IntoDimension 统一接口，类型推断清晰
+// Good - unified interface via IntoDimension, clear type inference
 fn create_tensor<A, Sh>(shape: Sh) -> Tensor<A, Sh::Dim>
 where
     Sh: IntoDimension,
@@ -434,17 +434,17 @@ where
 let t = create_tensor::<f64, _>((3, 4));     // Ix2
 let t = create_tensor::<f64, _>(&[2, 3, 4]); // IxDyn
 
-// Bad - 硬编码维度类型，无法复用
+// Bad - hardcoded dimension types, not reusable
 fn create_tensor_2d<A>(rows: usize, cols: usize) -> Tensor<A, Ix2> { /* ... */ }
 fn create_tensor_3d<A>(d1: usize, d2: usize, d3: usize) -> Tensor<A, Ix3> { /* ... */ }
-// 每种维度都需要一个新函数
+// Every dimension count requires a new function
 ```
 
 ```rust
-// Good - 使用 Result 处理维度转换
+// Good - use Result for dimension conversion
 let dim: Ix3 = Ix3::try_from_dyn(dyn_dim)?;
 
-// Bad - 使用 unwrap，可能 panic
+// Bad - using unwrap, may panic
 let dim: Ix3 = Ix3::try_from_dyn(dyn_dim).unwrap();
 ```
 
@@ -761,6 +761,7 @@ Wave 5:  [T10] → [T11] → [T12]
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-07 |
 
 ---
 
