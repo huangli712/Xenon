@@ -85,13 +85,13 @@ where
     D: Dimension,
     A: Element,
 {
-    /// 逐元素映射（通过引用），返回新分配的 Tensor。
+    /// Element-wise mapping (by reference), returns a newly allocated Tensor.
     pub fn map<B, F>(&self, f: F) -> Tensor<B, D>
     where
         B: Element,
         F: FnMut(&A) -> B;
 
-    /// 逐元素映射（通过值），返回新分配的 Tensor。
+    /// Element-wise mapping (by value), returns a newly allocated Tensor.
     pub fn mapv<B, F>(&self, f: F) -> Tensor<B, D>
     where
         B: Element,
@@ -104,7 +104,7 @@ where
     D: Dimension,
     A: Element,
 {
-    /// 原地逐元素映射。
+    /// In-place element-wise mapping.
     pub fn mapv_inplace<F>(&mut self, f: F)
     where
         F: FnMut(A) -> A;
@@ -114,7 +114,7 @@ where
 ### 4.2 二元 zip 操作
 
 ```rust
-/// 二元逐元素操作，支持广播。
+/// Binary element-wise operation with broadcast support.
 pub fn zip_with<A, B, C, D, E, F>(
     a: &TensorBase<impl Storage<Elem = A>, D>,
     b: &TensorBase<impl Storage<Elem = B>, E>,
@@ -138,19 +138,19 @@ where
     D: Dimension,
     A: Numeric,
 {
-    /// 逐元素加法（支持广播）。
+    /// Element-wise addition (with broadcast support).
     pub fn add(&self, other: &TensorBase<impl Storage<Elem = A>, impl Dimension>)
         -> Result<Tensor<A, D>, XenonError>;
 
-    /// 逐元素减法。
+    /// Element-wise subtraction.
     pub fn sub(&self, other: &TensorBase<impl Storage<Elem = A>, impl Dimension>)
         -> Result<Tensor<A, D>, XenonError>;
 
-    /// 逐元素乘法。
+    /// Element-wise multiplication.
     pub fn mul(&self, other: &TensorBase<impl Storage<Elem = A>, impl Dimension>)
         -> Result<Tensor<A, D>, XenonError>;
 
-    /// 逐元素除法。
+    /// Element-wise division.
     pub fn div(&self, other: &TensorBase<impl Storage<Elem = A>, impl Dimension>)
         -> Result<Tensor<A, D>, XenonError>;
 }
@@ -201,10 +201,10 @@ where
     D: Dimension,
     T: RealScalar,
 {
-    /// 模运算，返回实数类型张量。
+    /// Norm operation, returns a real-typed tensor.
     pub fn norm(&self) -> Tensor<T, D>;
 
-    /// 共轭运算。
+    /// Conjugate operation.
     pub fn conj(&self) -> Tensor<Complex<T>, D>;
 }
 ```
@@ -217,7 +217,7 @@ where
     S: Storage<Elem = bool>,
     D: Dimension,
 {
-    /// 逻辑取反。
+    /// Logical NOT.
     pub fn not(&self) -> Tensor<bool, D>;
 }
 ```
@@ -231,7 +231,7 @@ where
     D: Dimension,
     A: Element + PartialEq,
 {
-    /// 逐元素相等比较，返回 bool 张量。NaN 比较遵循 IEEE 754。
+    /// Element-wise equality comparison, returns a bool tensor. NaN comparison follows IEEE 754.
     pub fn eq(&self, other: &TensorBase<impl Storage<Elem = A>, impl Dimension>)
         -> Result<Tensor<bool, D>, XenonError>;
 
@@ -252,10 +252,10 @@ where
     D: Dimension,
     A: Numeric,
 {
-    /// 张量与标量逐元素加法。
+    /// Element-wise tensor-scalar addition.
     pub fn add_scalar(&self, scalar: A) -> Tensor<A, D>;
 
-    /// 张量与标量逐元素乘法。
+    /// Element-wise tensor-scalar multiplication.
     pub fn mul_scalar(&self, scalar: A) -> Tensor<A, D>;
 }
 ```
@@ -263,26 +263,26 @@ where
 ### 4.10 Good / Bad 对比示例
 
 ```rust
-// Good - 使用 map 进行类型转换
+// Good - use map for type conversion
 let a: Tensor<i32, Ix1> = Tensor::from_slice(&[1, 2, 3]);
 let b: Tensor<f64, Ix1> = a.map(|&x| x as f64);
 
-// Good - 使用 zip_with 广播加法
+// Good - use zip_with for broadcast addition
 let a = Tensor::<f64, Ix2>::zeros([3, 1]);
 let b = Tensor::<f64, Ix2>::zeros([1, 4]);
 let c = zip_with(&a, &b, |x, y| x + y)?;  // shape [3, 4]
 
-// Bad - 手动循环遍历（性能差，不支持广播）
+// Bad - manual loop iteration (poor performance, no broadcast support)
 let mut result = Tensor::<f64, Ix2>::zeros([3, 4]);
 for i in 0..3 {
     for j in 0..4 {
-        result[[i, j]] = a[[i, 0]] + b[[0, j]];  // 不推荐
+        result[[i, j]] = a[[i, 0]] + b[[0, j]];  // not recommended
     }
 }
 
-// Bad - 对 bool 使用算术运算
+// Bad - using arithmetic operations on bool
 // let b: Tensor<bool, _> = ...;
-// b.add(&other);  // 编译错误：bool 不满足 Numeric
+// b.add(&other);  // compile error: bool does not satisfy Numeric
 ```
 
 ---
@@ -517,6 +517,7 @@ Wave 4: [T8]
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-07 |
 
 ---
 

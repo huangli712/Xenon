@@ -74,24 +74,25 @@ src/ops/matrix.rs
 ### 4.1 向量内积
 
 ```rust
-/// 向量内积：result = sum(a[i] * b[i])
+/// Vector dot product: result = sum(a[i] * b[i])
 ///
-/// 复数内积满足共轭线性：result = sum(conj(a[i]) * b[i])
+/// For complex numbers, the conjugate-linear definition is used:
+/// result = sum(conj(a[i]) * b[i])
 ///
-/// # 参数
+/// # Arguments
 ///
-/// * `a` - 形状为 (N,) 的向量
-/// * `b` - 形状为 (N,) 的向量
+/// * `a` - vector of shape (N,)
+/// * `b` - vector of shape (N,)
 ///
-/// # 返回
+/// # Returns
 ///
-/// `Result<A, XenonError>` - 内积值或形状不匹配错误
+/// `Result<A, XenonError>` - the dot product value or a shape mismatch error
 ///
-/// # 错误
+/// # Errors
 ///
-/// 维度不匹配时返回 `XenonError::ShapeMismatch`
+/// Returns `XenonError::ShapeMismatch` when dimensions do not match
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// let a = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
@@ -112,7 +113,7 @@ where
 ### 4.2 复数内积语义
 
 ```rust
-// 复数内积实现共轭线性
+// Complex dot product implements conjugate-linearity
 // dot(Complex{re: 1, im: 2}, Complex{re: 3, im: 4})
 // = conj(Complex{1,2}) * Complex{3,4}
 // = Complex{1,-2} * Complex{3,4}
@@ -124,22 +125,22 @@ where
 ### 4.3 Good / Bad 对比示例
 
 ```rust
-// Good - 使用 dot() 并处理错误
+// Good - use dot() and handle errors
 let a = Tensor1::<f64>::from_vec(vec![1.0, 2.0, 3.0]);
 let b = Tensor1::<f64>::from_vec(vec![4.0, 5.0, 6.0]);
 let result = dot(&a.view(), &b.view())?;
 assert_eq!(result, 32.0);
 
-// Good - 复数内积
+// Good - complex dot product
 let ca = Tensor1::<Complex<f64>>::from_vec(vec![Complex{re: 1.0, im: 2.0}]);
 let cb = Tensor1::<Complex<f64>>::from_vec(vec![Complex{re: 3.0, im: 4.0}]);
 let cresult = dot(&ca.view(), &cb.view())?;
 // conj(1+2i) * (3+4i) = (1-2i)(3+4i) = 3+4i-6i-8i^2 = 3+4i-6i+8 = 11-2i
 
-// Bad - 维度不匹配时未处理错误
+// Bad - unhandled error on dimension mismatch
 let a = Tensor1::<f64>::from_vec(vec![1.0, 2.0]);
 let b = Tensor1::<f64>::from_vec(vec![1.0, 2.0, 3.0]);
-// dot(&a.view(), &b.view()).unwrap();  // panic! 应该用 ?
+// dot(&a.view(), &b.view()).unwrap();  // panic! should use ? instead
 ```
 
 ---
@@ -315,6 +316,7 @@ Wave 2: [T2] [T3]
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-07 |
 
 ---
 
