@@ -265,27 +265,27 @@ impl Element for MyType { /* error[E0277]: Sealed not satisfied */ }
 ### 4.7 Good / Bad 对比示例
 
 ```rust
-// Good - 使用 Numeric 约束，bool 自动被排除
+// Good - Numeric constraint automatically excludes bool
 fn sum<A: Numeric>(tensor: &TensorView<A>) -> A {
     tensor.iter().fold(A::zero(), |acc, &x| acc + x)
 }
-// sum(&bool_tensor);  // 编译错误：bool 不满足 Numeric ✓
+// sum(&bool_tensor);  // Compile error: bool does not satisfy Numeric ✓
 
-// Bad - 使用 Element 约束，无法排除 bool
+// Bad - Element constraint cannot exclude bool
 fn sum_bad<A: Element>(tensor: &TensorView<A>) -> A {
-    // 无法使用 + 运算符，Element 没有 Add 约束
+    // Cannot use + operator, Element has no Add bound
     todo!()
 }
 ```
 
 ```rust
-// Good - 显式类型转换，不依赖自动提升
+// Good - explicit type conversion, no automatic promotion
 let a: Tensor<f64, Ix2> = Tensor::zeros((3, 4));
 let b: Tensor<i32, Ix2> = Tensor::zeros((3, 4));
-let c = &a + &b.cast::<f64>();  // 显式转换
+let c = &a + &b.cast::<f64>();  // explicit conversion
 
-// Bad - 期望自动类型提升（Xenon 不支持）
-// let c = &a + &b;  // 编译错误：f64 + i32 无匹配实现
+// Bad - expecting automatic type promotion (not supported in Xenon)
+// let c = &a + &b;  // Compile error: no matching impl for f64 + i32
 ```
 
 ---
@@ -302,7 +302,7 @@ impl Element for bool {
     fn zero() -> Self { false }
     fn one() -> Self { true }
 }
-// No `impl Numeric for bool` — bool 四则运算无数学意义
+// No `impl Numeric for bool` — bool arithmetic has no mathematical meaning
 ```
 
 编译时阻止无效泛型实例化：`fn sum<A: Numeric>` 无法接受 `bool` 张量。
@@ -316,12 +316,12 @@ impl Element for bool {
 **Xenon 不支持自动类型提升。** 所有跨类型运算须显式转换：
 
 ```rust
-// 不支持隐式转换
+// Implicit conversion not supported
 // let a: f64 = 1.0;
 // let b: i32 = 2;
-// let c = a + b;  // 编译错误
+// let c = a + b;  // Compile error
 
-// 必须显式转换
+// Must convert explicitly
 let c = a + b as f64;
 ```
 
@@ -638,6 +638,7 @@ Wave 3: [T6]      [T9] ← ────┘
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-07 |
 
 ---
 
