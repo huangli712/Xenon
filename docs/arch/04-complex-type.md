@@ -506,28 +506,28 @@ pub extern "C" fn process_complex(z: *const Complex<f64>) -> Complex<f64> {
 ### 4.13 Good / Bad 对比示例
 
 ```rust
-// Good - 同精度运算，类型安全
+// Good - same precision arithmetic, type safe
 let z = Complex::new(1.0_f64, 2.0);
 let w = Complex::new(3.0, 4.0);
 let sum = z + w;          // Complex<f64>
 let scaled = z * 2.0_f64; // Complex<f64>, same precision
 
-// Bad - 跨精度混合运算（编译错误）
+// Bad - cross-precision mixed arithmetic (compile error)
 let z = Complex::new(1.0_f64, 2.0);
 // let bad = z + 3.0_f32;  // Compile error: type mismatch
 
-// Good - 显式跨精度转换
+// Good - explicit cross-precision conversion
 let z32 = Complex::new(1.0_f32, 2.0);
 let z64: Complex<f64> = z32.into(); // Explicit upcast
 let result = z64 + 3.0_f64;         // Now same precision
 ```
 
 ```rust
-// Good - 使用 norm() 获取模长（hypot 防溢出）
+// Good - use norm() for modulus (hypot prevents overflow)
 let big = Complex::new(1e200_f64, 1e200);
 let n = big.norm(); // 1.414...e200, safe
 
-// Bad - 手动计算可能溢出
+// Bad - manual calculation may overflow
 let overflow = (big.re * big.re + big.im * big.im).sqrt(); // Inf!
 ```
 
@@ -848,6 +848,7 @@ Wave 5: [T11] → [T12]
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-07 |
 
 ---
 
