@@ -115,38 +115,38 @@ src/parallel/
 
 /// # Safety
 ///
-/// `Owned<A>` 实现 `Send`，因为：
+/// `Owned<A>` implements `Send` because:
 ///
-/// 1. **独占所有权**：`Owned` 拥有数据的完全所有权，
-///    转移 `Owned` 会转移所有数据到新线程。
+/// 1. **Exclusive ownership**: `Owned` has full ownership of the data.
+///    Transferring `Owned` transfers all data to the new thread.
 ///
-/// 2. **元素类型约束**：`A: Send` 确保元素可以安全地跨线程移动。
+/// 2. **Element type constraint**: `A: Send` ensures elements can be safely moved across threads.
 ///
-/// 3. **Vec 安全性**：`Vec<A>` 本身是 `Send` 当 `A: Send`，
-///    我们只是将此属性显式声明。
+/// 3. **Vec safety**: `Vec<A>` is `Send` when `A: Send`,
+///    we are just making this property explicit.
 ///
-/// 4. **无共享状态**：转移后，原线程不再持有任何引用。
+/// 4. **No shared state**: After transfer, the original thread holds no references.
 ///
-/// **反例：如果 `A` 不是 `Send`**
+/// **Counter-example: if `A` is not `Send`**
 ///
-/// 假设 `A = Rc<i32>`（不是 `Send`），将 `Owned<Rc<i32>>`
-/// 移动到另一个线程会导致两个线程可能同时访问同一个 `Rc`，
-/// 而 `Rc` 的引用计数不是原子的，会导致数据竞争。
+/// Suppose `A = Rc<i32>` (not `Send`), moving `Owned<Rc<i32>>`
+/// to another thread could cause two threads to access the same `Rc`
+/// simultaneously, and `Rc`'s reference count is not atomic, leading to data races.
 unsafe impl<A: Send> Send for Owned<A> {}
 
 /// # Safety
 ///
-/// `Owned<A>` 实现 `Sync`，因为：
+/// `Owned<A>` implements `Sync` because:
 ///
-/// 1. **共享只读访问**：多个线程可以同时持有 `&Owned<A>`，
-///    通过它只能进行只读操作（如 `get()`）。
+/// 1. **Shared read-only access**: Multiple threads can hold `&Owned<A>` simultaneously,
+///    through which only read-only operations (e.g. `get()`) are possible.
 ///
-/// 2. **元素类型约束**：`A: Sync` 确保元素可以安全地跨线程共享引用。
+/// 2. **Element type constraint**: `A: Sync` ensures elements can be safely shared by reference across threads.
 ///
-/// 3. **内部不可变性**：通过 `&Owned` 不能修改内部数据
-///    （需要 `&mut Owned` 才能调用 `get_mut()`）。
+/// 3. **Interior immutability**: Through `&Owned` the internal data cannot be modified
+///    (`&mut Owned` is required to call `get_mut()`).
 ///
-/// 4. **Vec 安全性**：`Vec<A>` 本身是 `Sync` 当 `A: Sync`。
+/// 4. **Vec safety**: `Vec<A>` is `Sync` when `A: Sync`.
 unsafe impl<A: Sync> Sync for Owned<A> {}
 ```
 
@@ -157,38 +157,38 @@ unsafe impl<A: Sync> Sync for Owned<A> {}
 
 /// # Safety
 ///
-/// `ViewRepr<&'a A>` 实现了 `Send`，因为：
+/// `ViewRepr<&'a A>` implements `Send` because:
 ///
-/// 1. **所有权转移语义**：移动 `ViewRepr` 不会移动底层数据，
-///    只是将视图的元数据（指针 + 长度）转移到新线程。
+/// 1. **Ownership transfer semantics**: Moving `ViewRepr` does not move the underlying data,
+///    it only transfers the view's metadata (pointer + length) to the new thread.
 ///
-/// 2. **共享引用约束**：`&'a A` 可以跨线程移动当且仅当 `A: Sync`。
-///    这确保了即使多个线程持有 `&A`，它们也只能进行只读访问。
+/// 2. **Shared reference constraint**: `&'a A` can be moved across threads if and only if `A: Sync`.
+///    This ensures that even when multiple threads hold `&A`, they can only perform read-only access.
 ///
-/// 3. **生命周期保证**：`'a` 生命周期确保视图不会比源数据存活更久，
-///    防止悬垂指针。
+/// 3. **Lifetime guarantee**: The `'a` lifetime ensures the view does not outlive the source data,
+///    preventing dangling pointers.
 ///
-/// 4. **无内部可变性**：视图本身不拥有数据，也没有内部可变性，
-///    跨线程移动不会导致数据竞争。
+/// 4. **No interior mutability**: The view itself does not own data and has no interior mutability,
+///    so moving it across threads does not cause data races.
 ///
-/// **反例：如果 `A` 不是 `Sync`**
+/// **Counter-example: if `A` is not `Sync`**
 ///
-/// 假设 `A = Cell<i32>`（不是 `Sync`），两个线程可以同时持有
-/// `&Cell<i32>` 并通过 `Cell::set` 修改数据，导致数据竞争。
+/// Suppose `A = Cell<i32>` (not `Sync`), two threads could both hold
+/// `&Cell<i32>` and modify data via `Cell::set`, leading to data races.
 unsafe impl<'a, A: Sync> Send for ViewRepr<&'a A> {}
 
 /// # Safety
 ///
-/// `ViewRepr<&'a A>` 实现了 `Sync`，因为：
+/// `ViewRepr<&'a A>` implements `Sync` because:
 ///
-/// 1. **共享访问安全**：多个线程可以同时持有 `&ViewRepr<&'a A>`，
-///    这等价于多个线程持有 `&&A`（指向共享引用的共享引用）。
+/// 1. **Shared access safety**: Multiple threads can hold `&ViewRepr<&'a A>` simultaneously,
+///    which is equivalent to multiple threads holding `&&A` (a shared reference to a shared reference).
 ///
-/// 2. **只读访问**：通过共享引用访问视图只能进行只读操作，
-///    不会修改视图本身或底层数据。
+/// 2. **Read-only access**: Accessing the view through a shared reference only permits read-only operations,
+///    without modifying the view itself or the underlying data.
 ///
-/// 3. **无状态**：视图的 `ptr` 和 `len` 在创建后不可变，
-///    多线程读取这些字段是安全的。
+/// 3. **Stateless**: The view's `ptr` and `len` are immutable after creation,
+///    so reading these fields from multiple threads is safe.
 unsafe impl<'a, A: Sync> Sync for ViewRepr<&'a A> {}
 ```
 
@@ -199,41 +199,42 @@ unsafe impl<'a, A: Sync> Sync for ViewRepr<&'a A> {}
 
 /// # Safety
 ///
-/// `ViewMutRepr<&'a mut A>` 实现了 `Send`，因为：
+/// `ViewMutRepr<&'a mut A>` implements `Send` because:
 ///
-/// 1. **独占所有权转移**：移动 `ViewMutRepr` 会转移独占访问权到新线程。
-///    Rust 借用检查器保证原线程不再持有任何引用。
+/// 1. **Exclusive ownership transfer**: Moving `ViewMutRepr` transfers exclusive access to the new thread.
+///    Rust's borrow checker guarantees the original thread holds no more references.
 ///
-/// 2. **无别名保证**：由于 `&mut A` 是独占引用，在任意时刻只有一个
-///    `ViewMutRepr` 可以访问数据。跨线程移动后，新线程成为唯一访问者。
+/// 2. **No aliasing guarantee**: Since `&mut A` is an exclusive reference, at any given moment only one
+///    `ViewMutRepr` can access the data. After cross-thread movement, the new thread becomes the sole accessor.
 ///
-/// 3. **元素类型约束**：`&mut T` 是 `Send` 当且仅当 `T: Send`。
-///    这确保了元素可以安全地在新线程中被读写。
+/// 3. **Element type constraint**: `&mut T` is `Send` if and only if `T: Send`.
+///    This ensures elements can be safely read and written in the new thread.
 ///
-/// 4. **生命周期不变性**：`'a` 生命周期确保视图不会比源数据存活更久。
+/// 4. **Lifetime invariance**: The `'a` lifetime ensures the view does not outlive the source data.
 ///
-/// **反例：如果 `A` 不是 `Send`**
+/// **Counter-example: if `A` is not `Send`**
 ///
-/// 假设 `A = Rc<i32>`（不是 `Send`），将 `ViewMutRepr<&mut Rc<i32>>`
-/// 移动到另一个线程会导致两个线程可能同时访问同一个 `Rc`，
-/// 而 `Rc` 的引用计数不是原子的，会导致数据竞争。
+/// Suppose `A = Rc<i32>` (not `Send`), moving `ViewMutRepr<&mut Rc<i32>>`
+/// to another thread could cause two threads to access the same `Rc`
+/// simultaneously, and `Rc`'s reference count is not atomic, leading to data races.
 ///
-/// **注意：ViewMutRepr 不实现 Clone**
+/// **Note: ViewMutRepr does not implement Clone**
 ///
-/// `ViewMutRepr` 刻意不实现 `Clone`，因为复制会产生别名，违反独占语义。
-/// 这是 `ViewMutRepr` 线程安全的关键保障。
+/// `ViewMutRepr` deliberately does not implement `Clone`, because copying would create aliases,
+/// violating exclusive semantics. This is a key guarantee for `ViewMutRepr` thread safety.
 unsafe impl<'a, A: Send> Send for ViewMutRepr<&'a mut A> {}
 
-// ViewMutRepr 不实现 Sync
+// ViewMutRepr does not implement Sync
 //
-// 原因：&mut T 不能共享，Rust 借用规则禁止。
+// Reason: &mut T cannot be shared; Rust's borrowing rules forbid it.
 //
-// 如果 ViewMutRepr 是 Sync，那么 &ViewMutRepr 可以跨线程共享，
-// 这意味着多个线程可以同时获取 &mut [A]，导致别名和潜在的数据竞争。
+// If ViewMutRepr were Sync, then &ViewMutRepr could be shared across threads,
+// meaning multiple threads could simultaneously obtain &mut [A], causing aliasing
+// and potential data races.
 //
-// Rust 的负面 trait impl（!Sync）在 stable Rust 中不能显式写，
-// 但由于 ViewMutRepr 包含 *mut A（不是 Sync），编译器不会
-// 自动实现 Sync，这正是我们想要的行为。
+// Rust's negative trait impls (!Sync) cannot be explicitly written in stable Rust,
+// but since ViewMutRepr contains *mut A (which is not Sync), the compiler will not
+// auto-derive Sync, which is exactly the behavior we want.
 ```
 
 ### 4.5 ArcRepr<A> 的 Send/Sync
@@ -243,42 +244,42 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<&'a mut A> {}
 
 /// # Safety
 ///
-/// `ArcRepr<A>` 实现 `Send`，因为：
+/// `ArcRepr<A>` implements `Send` because:
 ///
-/// 1. **Arc 原子性**：`Arc<Vec<A>>` 使用原子引用计数，
-///    多线程增加/减少引用计数是安全的。
+/// 1. **Arc atomicity**: `Arc<Vec<A>>` uses atomic reference counting,
+///    incrementing/decrementing the count across threads is safe.
 ///
-/// 2. **元素约束**：`A: Send + Sync` 确保：
-///    - `Send`：数据可以在线程间移动（当 Arc 唯一时）
-///    - `Sync`：多个线程可以同时持有 `&A`
+/// 2. **Element constraint**: `A: Send + Sync` ensures:
+///    - `Send`: data can be moved between threads (when the Arc is unique)
+///    - `Sync`: multiple threads can hold `&A` simultaneously
 ///
-/// 3. **只读共享**：多个 `ArcRepr` 共享同一数据时，只能读取。
-///    写入需要通过 `make_mut()` 获取独占访问。
+/// 3. **Read-only sharing**: When multiple `ArcRepr`s share the same data, they can only read.
+///    Writing requires obtaining exclusive access via `make_mut()`.
 ///
-/// 4. **make_mut 原子性**：`Arc::make_mut` 保证：
-///    - 原子地检查引用计数
-///    - 如果 >1，复制数据并原子递减原引用计数
-///    - 无数据竞争
+/// 4. **make_mut atomicity**: `Arc::make_mut` guarantees:
+///    - Atomically check the reference count
+///    - If >1, copy the data and atomically decrement the original reference count
+///    - No data races
 ///
-/// **反例：如果 `A` 不是 `Send + Sync`**
+/// **Counter-example: if `A` is not `Send + Sync`**
 ///
-/// 假设 `A = Cell<i32>`（不是 `Sync`），多个线程可以同时通过
-/// 不同的 `ArcRepr` 访问同一个 `Cell`，导致数据竞争。
+/// Suppose `A = Cell<i32>` (not `Sync`), multiple threads could simultaneously
+/// access the same `Cell` through different `ArcRepr`s, leading to data races.
 unsafe impl<A: Send + Sync> Send for ArcRepr<A> {}
 
 /// # Safety
 ///
-/// `ArcRepr<A>` 实现 `Sync`，因为：
+/// `ArcRepr<A>` implements `Sync` because:
 ///
-/// 1. **共享引用安全**：多个线程可以同时持有 `&ArcRepr<A>`，
-///    这允许它们读取数据（通过 `get()`）。
+/// 1. **Shared reference safety**: Multiple threads can hold `&ArcRepr<A>` simultaneously,
+///    allowing them to read data (via `get()`).
 ///
-/// 2. **Arc 同步保证**：`Arc<Vec<A>>` 是 `Sync` 当 `A: Send + Sync`，
-///    因为内部数据可以被多个线程安全地共享引用。
+/// 2. **Arc synchronization guarantee**: `Arc<Vec<A>>` is `Sync` when `A: Send + Sync`,
+///    because the internal data can be safely shared by reference across multiple threads.
 ///
-/// 3. **无内部可变性**：通过 `&ArcRepr` 不能修改数据。
-///    `make_mut(&mut self)` 需要 `&mut ArcRepr`，借用检查器
-///    保证同一时刻只有一个可变引用。
+/// 3. **No interior mutability**: Data cannot be modified through `&ArcRepr`.
+///    `make_mut(&mut self)` requires `&mut ArcRepr`, and the borrow checker
+///    guarantees only one mutable reference exists at any given time.
 unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 ```
 
@@ -314,16 +315,16 @@ unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 ### 4.7 广播结果不可可变迭代的原因
 
 ```rust
-// 广播结果使用 ViewRepr（只读视图），不提供可变迭代器
+// Broadcast results use ViewRepr (read-only view), no mutable iterator provided
 
-// Good - 广播结果只能只读访问
+// Good - broadcast results are read-only
 let a = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
 let b = a.broadcast(&[3, 3]);  // broadcast result: ViewRepr
 let sum: f64 = b.iter().sum();  // OK: read-only iteration
 
-// Bad - 编译错误：广播结果不能可变迭代
+// Bad - compilation error: broadcast results cannot be mutably iterated
 // let mut b_mut = a.broadcast(&[3, 3]);
-// b_mut.iter_mut()  // 编译失败！ViewRepr 不实现 StorageMut
+// b_mut.iter_mut()  // Compile error! ViewRepr does not implement StorageMut
 ```
 
 > **设计决策：** 广播结果使用 `ViewRepr`（只读视图），因为广播不拷贝数据，语义上仅为只读。如果允许可变迭代，修改广播结果会意外修改原数据的多个位置，这既不符合广播语义，也容易引入 bug。
@@ -331,49 +332,49 @@ let sum: f64 = b.iter().sum();  // OK: read-only iteration
 ### 4.8 Good/Bad 对比示例
 
 ```rust
-// Good - ViewMutRepr 跨线程移动（转移独占访问权）
+// Good - ViewMutRepr cross-thread movement (transfers exclusive access)
 fn send_view_mut() {
     let mut owned = Owned::from_vec(vec![1.0, 2.0, 3.0]);
     let view_mut = owned.view_mut();
 
-    // 正确：移动 view_mut 到新线程
+    // Correct: move view_mut to a new thread
     std::thread::spawn(move || {
-        // view_mut 在此线程独占访问
+        // view_mut has exclusive access in this thread
         let data = view_mut.as_mut_slice();
         data[0] = 10.0;
     });
 }
 
-// Bad - 尝试共享 ViewMutRepr（编译失败）
+// Bad - attempting to share ViewMutRepr (compilation error)
 fn cannot_share_view_mut() {
     let mut owned = Owned::from_vec(vec![1.0, 2.0, 3.0]);
     let view_mut = owned.view_mut();
     let view_ref = &view_mut;
 
-    // 编译错误：&ViewMutRepr 不是 Send
-    // 因为 ViewMutRepr 不是 Sync
+    // Compilation error: &ViewMutRepr is not Send
+    // because ViewMutRepr is not Sync
     // std::thread::spawn(move || {
     //     println!("{:?}", view_ref);
     // });
 }
 
-// Good - ArcRepr 跨线程共享
+// Good - ArcRepr cross-thread sharing
 fn share_arc_tensor() {
     let arc = ArcTensor1::from_vec(vec![1.0, 2.0, 3.0]);
     let arc_clone = arc.clone();  // strong_count = 2
 
     std::thread::spawn(move || {
-        // arc_clone 在此线程安全读取
+        // arc_clone is safely read in this thread
         assert_eq!(arc_clone[0], 1.0);
     });
 
-    // arc 在主线程仍安全
+    // arc is still safe in the main thread
     assert_eq!(arc[1], 2.0);
 }
 
-// Good - 并行迭代元素约束
+// Good - parallel iteration element constraint
 fn parallel_iteration(tensor: &Tensor2<f64>) {
-    // f64: Send + Sync，满足 rayon 约束
+    // f64: Send + Sync, satisfies rayon constraint
     let sum = tensor.par_iter().sum::<f64>();
 }
 ```
@@ -538,7 +539,7 @@ Wave 2:            [T5]
 ### 7.3 编译期静态检查模板
 
 ```rust
-// 编译期 Send/Sync 验证工具函数
+// Compile-time Send/Sync verification utility functions
 fn assert_send<T: Send>() {}
 fn assert_sync<T: Sync>() {}
 fn assert_not_sync<T>() where T: ?Sized {}
@@ -560,7 +561,7 @@ fn view_send_sync() {
 #[test]
 fn view_mut_send_only() {
     assert_send::<ViewMutRepr<&mut f64>>();
-    // assert_sync::<ViewMutRepr<&mut f64>>(); // 编译失败，符合预期
+    // assert_sync::<ViewMutRepr<&mut f64>>(); // Compile error, as expected
 }
 
 #[test]
@@ -577,7 +578,7 @@ fn arc_send_sync() {
 fn test_owned_cross_thread() {
     let tensor = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
     let handle = std::thread::spawn(move || {
-        // tensor 在新线程中可用
+        // tensor is available in the new thread
         assert_eq!(tensor[0], 1.0);
         assert_eq!(tensor.len(), 3);
     });
@@ -721,6 +722,7 @@ rayon 的 `ParallelIterator` 要求 `Item: Send`：
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-08 |
 
 ---
 
