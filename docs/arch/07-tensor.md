@@ -88,42 +88,42 @@ src/tensor/
 ### 4.1 TensorBase\<S, D\> 核心结构体
 
 ```rust
-/// 多维数组的核心抽象。
+/// Core abstraction for multi-dimensional arrays.
 ///
-/// # 类型参数
+/// # Type Parameters
 ///
-/// * `S` - 存储模式，决定所有权和访问权限
-/// * `D` - 维度类型，决定维度数和形状表示
+/// * `S` - Storage mode, determining ownership and access rights
+/// * `D` - Dimension type, determining rank and shape representation
 ///
-/// # 内存布局
+/// # Memory Layout
 ///
-/// 结构体大小取决于 S 和 D 的具体实例化。对于静态维度（Ix0-Ix6），
-/// D 为栈分配的固定大小数组；对于动态维度（IxDyn），D 包含堆分配的 Vec。
+/// Struct size depends on the concrete instantiation of S and D. For static dimensions (Ix0-Ix6),
+/// D is a stack-allocated fixed-size array; for dynamic dimensions (IxDyn), D contains a heap-allocated Vec.
 #[repr(C)]
 pub struct TensorBase<S, D> {
-    /// 底层数据存储。
+    /// Underlying data storage.
     storage: S,
 
-    /// 各轴长度。
+    /// Length of each axis.
     shape: D,
 
-    /// 各轴步长（元素单位）。
+    /// Stride of each axis (in element units).
     ///
-    /// > **设计决策：** 步长在 D 类型中存储，但实际值需要支持负数。
-    /// D 类型内部存储 `usize`，layout 层维护 `isize` 步长。
-    /// 对于需要负步长的场景（切片反转），步长通过 layout 模块的
-    /// `isize` 接口访问，D 中的值存储绝对值，符号由 `LayoutFlags::HAS_NEG_STRIDE` 标记。
-    /// 详见 §9 ADR-2。
+    /// > **Design Decision:** Strides are stored in the D type, but actual values need to support negatives.
+    /// D internally stores `usize`, while the layout layer maintains `isize` strides.
+    /// For scenarios requiring negative strides (slice reversal), strides are accessed via the layout
+    /// module's `isize` interface. D stores absolute values, with signs tracked by `LayoutFlags::HAS_NEG_STRIDE`.
+    /// See §9 ADR-2 for details.
     strides: D,
 
-    /// 数据起始偏移量（元素单位）。
+    /// Data start offset (in element units).
     ///
-    /// 支持切片视图的零拷贝实现。
+    /// Supports zero-copy implementation of slice views.
     offset: usize,
 
-    /// 布局标志位（u8 bitflags）。
+    /// Layout flags (u8 bitflags).
     ///
-    /// 缓存连续性、对齐、零/负步长等信息，O(1) 查询。
+    /// Caches contiguity, alignment, zero/negative stride info for O(1) queries.
     flags: LayoutFlags,
 }
 ```
@@ -131,18 +131,18 @@ pub struct TensorBase<S, D> {
 ### 4.2 类型别名（完整列表）
 
 ```rust
-// === 主类型别名 ===
+// === Primary type aliases ===
 
-/// 拥有数据的多维数组。
+/// Owning multi-dimensional array.
 pub type Tensor<A, D> = TensorBase<Owned<A>, D>;
 
-/// 不可变视图。
+/// Immutable view.
 pub type TensorView<'a, A, D> = TensorBase<ViewRepr<&'a A>, D>;
 
-/// 可变视图。
+/// Mutable view.
 pub type TensorViewMut<'a, A, D> = TensorBase<ViewMutRepr<&'a mut A>, D>;
 
-/// 原子引用计数共享数组。
+/// Atomically reference-counted shared array.
 pub type ArcTensor<A, D> = TensorBase<ArcRepr<A>, D>;
 
 // === Owned 维度便捷别名 ===
@@ -197,54 +197,54 @@ impl<S, D> TensorBase<S, D>
 where
     D: Dimension,
 {
-    /// 返回各轴长度的切片。
+    /// Returns a slice of axis lengths.
     pub fn shape(&self) -> &[usize];
 
-    /// 返回各轴步长的切片（isize，元素单位）。
+    /// Returns a slice of strides (isize, in element units).
     ///
-    /// 步长可能为负（反转维度）或零（广播维度）。
+    /// Strides may be negative (reversed dimensions) or zero (broadcast dimensions).
     pub fn strides(&self) -> &[isize];
 
-    /// 返回维度数。
+    /// Returns the number of dimensions.
     ///
-    /// 对于静态维度（Ix0-Ix6），此值为编译期常量。
-    /// 对于动态维度（IxDyn），此值为运行时值。
+    /// For static dimensions (Ix0-Ix6), this is a compile-time constant.
+    /// For dynamic dimensions (IxDyn), this is a runtime value.
     pub fn ndim(&self) -> usize;
 
-    /// 返回元素总数（所有维度长度的乘积）。
+    /// Returns the total number of elements (product of all dimension lengths).
     pub fn len(&self) -> usize;
 
-    /// 返回数组是否为空（任一维度长度为 0）。
+    /// Returns whether the array is empty (any dimension length is 0).
     pub fn is_empty(&self) -> bool;
 
-    /// 返回数据起始偏移量（元素单位）。
+    /// Returns the data start offset (in element units).
     pub fn offset(&self) -> usize;
 
-    /// 返回维度类型的克隆。
+    /// Returns a clone of the dimension type.
     pub fn raw_dim(&self) -> D;
 
-    /// 返回完整布局标志。
+    /// Returns the complete layout flags.
     pub fn flags(&self) -> LayoutFlags;
 
-    /// 是否 F-order 连续。
+    /// Whether the data is F-order contiguous.
     #[inline]
     pub fn is_f_contiguous(&self) -> bool {
         self.flags.is_f_contiguous()
     }
 
-    /// 是否 64 字节对齐。
+    /// Whether the data is 64-byte aligned.
     #[inline]
     pub fn is_aligned(&self) -> bool {
         self.flags.is_aligned()
     }
 
-    /// 是否存在零步长（广播维度）。
+    /// Whether there is a zero stride (broadcast dimension).
     #[inline]
     pub fn has_zero_stride(&self) -> bool {
         self.flags.has_zero_stride()
     }
 
-    /// 是否存在负步长（反转维度）。
+    /// Whether there is a negative stride (reversed dimension).
     #[inline]
     pub fn has_neg_stride(&self) -> bool {
         self.flags.has_neg_stride()
@@ -260,14 +260,14 @@ where
     S: Storage<Elem = A>,
     D: Dimension,
 {
-    /// 返回数据起始位置的不可变原始指针。
+    /// Returns a raw pointer to the data start.
     pub fn as_ptr(&self) -> *const A;
 
-    /// 不检查偏移量有效性的指针访问。
+    /// Pointer access without offset validity check.
     ///
     /// # Safety
     ///
-    /// 调用方须保证 offset 有效且数据已初始化。
+    /// Caller must ensure offset is valid and data is initialized.
     pub unsafe fn as_ptr_unchecked(&self) -> *const A;
 }
 
@@ -276,7 +276,7 @@ where
     S: StorageMut<Elem = A>,
     D: Dimension,
 {
-    /// 返回数据起始位置的可变原始指针。
+    /// Returns a mutable raw pointer to the data start.
     pub fn as_mut_ptr(&mut self) -> *mut A;
 }
 ```
@@ -288,16 +288,16 @@ impl<A, D> TensorBase<Owned<A>, D>
 where
     D: Dimension,
 {
-    /// 从形状和数据构造拥有型张量，验证合法性。
+    /// Constructs an owning tensor from shape and data, validating correctness.
     ///
     /// # Arguments
     ///
-    /// * `shape` - 各轴长度
-    /// * `data` - 元素数据（Vec）
+    /// * `shape` - Length of each axis
+    /// * `data` - Element data (Vec)
     ///
     /// # Errors
     ///
-    /// 返回 `Err` 当：
+    /// Returns `Err` when:
     /// - `data.len() != shape.size()`
     ///
     /// # Example
@@ -316,17 +316,17 @@ impl<'a, A, D> TensorBase<ViewRepr<&'a A>, D>
 where
     D: Dimension,
 {
-    /// 从原始部件构造不可变视图。
+    /// Constructs an immutable view from raw parts.
     ///
     /// # Safety
     ///
-    /// 调用方须保证：
-    /// - `ptr` 非空、非悬垂，且对齐到 `align_of::<A>()`
-    /// - `ptr` 起始的内存范围能覆盖所有可访问元素
-    /// - 内存在返回视图的生命周期 `'a` 内保持有效
-    /// - 所有可访问元素已正确初始化
-    /// - `shape` 与 `strides` 长度一致
-    /// - 任意合法索引计算出的偏移量不越界
+    /// Caller must ensure:
+    /// - `ptr` is non-null, non-dangling, and aligned to `align_of::<A>()`
+    /// - The memory range starting at `ptr` covers all accessible elements
+    /// - Memory remains valid for the lifetime `'a` of the returned view
+    /// - All accessible elements are properly initialized
+    /// - `shape` and `strides` have consistent lengths
+    /// - Offsets computed from any valid index are within bounds
     pub unsafe fn from_raw_parts(
         ptr: *const A,
         shape: D,
@@ -339,11 +339,11 @@ impl<'a, A, D> TensorBase<ViewMutRepr<&'a mut A>, D>
 where
     D: Dimension,
 {
-    /// 从原始部件构造可变视图。
+    /// Constructs a mutable view from raw parts.
     ///
     /// # Safety
     ///
-    /// 与 `from_raw_parts` 相同，额外要求独占访问。
+    /// Same as `from_raw_parts`, with the additional requirement of exclusive access.
     pub unsafe fn from_raw_parts_mut(
         ptr: *mut A,
         shape: D,
@@ -361,7 +361,7 @@ where
     S: Storage<Elem = A>,
     D: Dimension,
 {
-    /// 创建不可变视图（零拷贝）。
+    /// Creates an immutable view (zero-copy).
     pub fn view(&self) -> TensorView<'_, A, D>;
 }
 
@@ -370,7 +370,7 @@ where
     S: StorageMut<Elem = A>,
     D: Dimension,
 {
-    /// 创建可变视图（零拷贝，独占访问）。
+    /// Creates a mutable view (zero-copy, exclusive access).
     pub fn view_mut(&mut self) -> TensorViewMut<'_, A, D>;
 }
 
@@ -378,9 +378,9 @@ impl<S, D> TensorBase<S, D>
 where
     D: Dimension,
 {
-    /// 消费数组，转换为不可变视图。
+    /// Consumes the array, converting to an immutable view.
     ///
-    /// 适用于将 Owned/ArcRepr 转换为 View 且不涉及生命周期绑定。
+    /// Suitable for converting Owned/ArcRepr to View without lifetime binding.
     pub fn into_view<S2>(self) -> TensorBase<S2, D>
     where
         S: Into<S2>;
@@ -390,7 +390,7 @@ where
 ### 4.8 Good/Bad 对比
 
 ```rust
-// Good - 使用泛型约束接受任何可读张量
+// Good - Use generic constraints to accept any readable tensor
 fn process<S, D, A>(tensor: &TensorBase<S, D>)
 where
     S: Storage<Elem = A>,
@@ -400,7 +400,7 @@ where
     // ...
 }
 
-// Bad - 硬编码 Owned 类型
+// Bad - Hardcoded Owned type
 fn process_bad<A, D>(tensor: &Tensor<A, D>)
 where
     D: Dimension,
@@ -411,10 +411,10 @@ where
 ```
 
 ```rust
-// Good - 使用 from_shape_vec 验证合法性
+// Good - Use from_shape_vec to validate correctness
 let t = Tensor2::<f64>::from_shape_vec([3, 4], vec![1.0; 12])?;
 
-// Bad - 使用 unsafe from_raw_parts 跳过验证
+// Bad - Use unsafe from_raw_parts to skip validation
 let t = unsafe {
     TensorView2::from_raw_parts(data.as_ptr(), Ix2([3, 4]), Ix2([1, 3]), 0)
 };
@@ -484,7 +484,7 @@ Tensor2<f64> = TensorBase<Owned<f64>, Ix2>
 ### 6.1 与 storage 模块的接口
 
 ```rust
-// TensorBase 通过 Storage trait 的关联类型获取元素类型
+// TensorBase obtains element type via Storage trait's associated type
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -499,7 +499,7 @@ where
 ### 6.2 与 dimension 模块的接口
 
 ```rust
-// Dimension trait 提供形状和步长操作
+// Dimension trait provides shape and stride operations
 impl<S, D> TensorBase<S, D>
 where
     D: Dimension,
@@ -517,8 +517,8 @@ where
 ### 6.3 与 layout 模块的接口
 
 ```rust
-// Layout 模块提供步长计算和连续性检查
-// TensorBase 在构造时计算 LayoutFlags
+// Layout module provides stride computation and contiguity checks
+// TensorBase computes LayoutFlags during construction
 impl<A, D> TensorBase<Owned<A>, D>
 where
     D: Dimension,
@@ -533,7 +533,7 @@ where
         Ok(Self {
             storage: Owned::from_vec(data),
             shape,
-            strides,  // isize → D 转换
+            strides,  // isize → D conversion
             offset: 0,
             flags,
         })
@@ -814,6 +814,7 @@ Wave 4:       [T10]
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-07 |
 
 ---
 
