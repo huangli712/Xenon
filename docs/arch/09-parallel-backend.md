@@ -129,33 +129,35 @@ rayon = { version = "1.10", optional = true }
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// 默认并行阈值：1024 元素。
+/// Default parallel threshold: 1024 elements.
 ///
-/// 当数组元素数达到或超过此值时，启用并行执行。
-/// 此值经过经验调优，在小数组上并行开销大于收益。
+/// When the number of array elements reaches or exceeds this value,
+/// parallel execution is enabled. This value is empirically tuned;
+/// on small arrays, parallelization overhead outweighs the benefit.
 const DEFAULT_PARALLEL_THRESHOLD: usize = 1024;
 
-/// 全局并行阈值。
+/// Global parallel threshold.
 static GLOBAL_PARALLEL_THRESHOLD: AtomicUsize =
     AtomicUsize::new(DEFAULT_PARALLEL_THRESHOLD);
 
-/// 获取当前全局并行阈值
+/// Get the current global parallel threshold
 #[inline]
 pub fn get_parallel_threshold() -> usize {
     GLOBAL_PARALLEL_THRESHOLD.load(Ordering::Relaxed)
 }
 
-/// 设置全局并行阈值
+/// Set the global parallel threshold
 ///
-/// # 注意
+/// # Note
 ///
-/// 此设置影响所有后续并行操作。
-/// 建议在程序启动时设置，避免运行时频繁修改。
+/// This setting affects all subsequent parallel operations.
+/// It is recommended to set this at program startup to avoid
+/// frequent runtime modifications.
 pub fn set_parallel_threshold(threshold: usize) {
     GLOBAL_PARALLEL_THRESHOLD.store(threshold, Ordering::Relaxed);
 }
 
-/// 重置全局并行阈值为默认值
+/// Reset the global parallel threshold to the default value
 pub fn reset_parallel_threshold() {
     GLOBAL_PARALLEL_THRESHOLD.store(DEFAULT_PARALLEL_THRESHOLD, Ordering::Relaxed);
 }
@@ -168,22 +170,22 @@ pub fn reset_parallel_threshold() {
 ```rust
 // src/parallel/mod.rs
 
-/// 判断是否应该启用并行执行
+/// Determine whether parallel execution should be enabled
 ///
-/// # 决策逻辑
+/// # Decision logic
 ///
-/// 1. 检查 `parallel` feature 是否启用
-/// 2. 检查元素数是否达到阈值
-/// 3. 考虑数据布局（非连续数组需更高阈值）
+/// 1. Check if the `parallel` feature is enabled
+/// 2. Check if the element count meets the threshold
+/// 3. Consider data layout (non-contiguous arrays need a higher threshold)
 ///
-/// # 参数
+/// # Arguments
 ///
-/// * `len` - 元素数量
-/// * `is_contiguous` - 数据是否连续
+/// * `len` - Number of elements
+/// * `is_contiguous` - Whether the data is contiguous
 ///
-/// # 返回
+/// # Returns
 ///
-/// `true` 表示应该启用并行执行。
+/// `true` if parallel execution should be enabled.
 #[cfg(feature = "parallel")]
 pub fn should_parallelize(len: usize, is_contiguous: bool) -> bool {
     let threshold = get_parallel_threshold();
@@ -209,17 +211,17 @@ pub fn should_parallelize(_len: usize, _is_contiguous: bool) -> bool {
 
 use rayon::prelude::*;
 
-/// 并行映射运算
+/// Parallel map operation
 ///
-/// # 约束
+/// # Constraints
 ///
-/// * `F: Fn(&A) -> B + Sync` - 函数必须可跨线程共享
-/// * `A: Send + Sync` - 输入元素必须线程安全
-/// * `B: Send` - 输出元素必须可跨线程发送
+/// * `F: Fn(&A) -> B + Sync` - Function must be shareable across threads
+/// * `A: Send + Sync` - Input elements must be thread-safe
+/// * `B: Send` - Output elements must be sendable across threads
 ///
-/// # 自动决策
+/// # Automatic decision
 ///
-/// 如果元素数低于并行阈值，自动回退到串行 `map`。
+/// If the element count is below the parallel threshold, falls back to serial `map`.
 #[cfg(feature = "parallel")]
 pub fn par_map<A, B, D, F>(tensor: &Tensor<A, D>, f: F) -> Tensor<B, D>
 where
@@ -240,12 +242,12 @@ where
     unsafe { Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()) }
 }
 
-/// 并行归约
+/// Parallel reduction
 ///
-/// # 约束
+/// # Constraints
 ///
-/// * 归约函数必须是关联的
-/// * 初始值函数必须返回单位元
+/// * The reduction function must be associative
+/// * The identity function must return the identity element
 #[cfg(feature = "parallel")]
 pub fn par_reduce<A, D, F, ID>(tensor: &Tensor<A, D>, identity: ID, op: F) -> A
 where
@@ -264,7 +266,7 @@ where
     tensor.par_iter().cloned().reduce(identity, op)
 }
 
-/// 并行求和
+/// Parallel sum
 #[cfg(feature = "parallel")]
 pub fn par_sum<A, D>(tensor: &Tensor<A, D>) -> A
 where
@@ -274,12 +276,12 @@ where
     par_reduce(tensor, || A::zero(), |a, b| a + b)
 }
 
-/// 并行 zip 运算
+/// Parallel zip operation
 ///
-/// # 约束
+/// # Constraints
 ///
-/// * 形状必须兼容（相同或可广播）
-/// * 支持广播
+/// * Shapes must be compatible (identical or broadcastable)
+/// * Supports broadcasting
 #[cfg(feature = "parallel")]
 pub fn par_zip_with<A, B, C, DA, DB, F>(
     a: &Tensor<A, DA>,
@@ -319,9 +321,9 @@ where
 
 use rayon::iter::{ParallelIterator, IndexedParallelIterator};
 
-/// 并行元素迭代器
+/// Parallel element iterator
 ///
-/// 按内存布局顺序并行迭代所有元素。
+/// Iterates all elements in parallel following memory layout order.
 pub struct ParElements<'a, A, D>
 where
     A: Element + Sync,
@@ -335,22 +337,22 @@ where
     A: Element + Sync,
     D: Dimension,
 {
-    /// 创建并行元素迭代器
+    /// Create a parallel element iterator
     pub fn new(base: TensorView<'a, A, D>) -> Self {
         ParElements { base }
     }
 
-    /// 获取元素总数
+    /// Get total element count
     pub fn len(&self) -> usize { self.base.len() }
 
-    /// 检查是否为空
+    /// Check if empty
     pub fn is_empty(&self) -> bool { self.base.is_empty() }
 }
 
-/// 并行多数组同步迭代器
+/// Parallel multi-array synchronized iterator
 ///
-/// 同时迭代两个数组，按元素产出元组。
-/// 支持广播。
+/// Iterates two arrays simultaneously, yielding tuples element-wise.
+/// Supports broadcasting.
 pub struct ParZip<'a, A, B, DA, DB>
 where
     A: Element + Sync,
@@ -370,7 +372,7 @@ where
     DA: Dimension,
     DB: Dimension,
 {
-    /// 创建并行 zip 迭代器
+    /// Create a parallel zip iterator
     pub fn new(
         a: TensorView<'a, A, DA>,
         b: TensorView<'a, B, DB>,
@@ -393,28 +395,28 @@ where
 use std::cell::Cell;
 
 thread_local! {
-    /// 并行执行深度计数器
+    /// Parallel execution depth counter
     ///
-    /// 0: 未在并行上下文中
-    /// 1: 在外层并行上下文中
-    /// >1: 嵌套并行（应禁止）
+    /// 0: Not in a parallel context
+    /// 1: In an outer parallel context
+    /// >1: Nested parallelism (should be prevented)
     static PARALLEL_DEPTH: Cell<usize> = Cell::new(0);
 }
 
-/// 检查是否在并行上下文中
+/// Check if currently in a parallel context
 #[inline]
 pub fn is_in_parallel_context() -> bool {
     PARALLEL_DEPTH.with(|cell| cell.get() > 0)
 }
 
-/// 并行上下文守卫（RAII）
+/// Parallel context guard (RAII)
 ///
-/// 进入时增加深度，离开时自动减少。
-/// 检测到嵌套时自动回退到串行。
+/// Increments depth on entry, automatically decrements on exit.
+/// Automatically falls back to serial when nesting is detected.
 pub struct ParallelGuard(());
 
 impl ParallelGuard {
-    /// 进入并行上下文
+    /// Enter a parallel context
     pub fn enter() -> Self {
         PARALLEL_DEPTH.with(|cell| {
             let depth = cell.get();
@@ -437,26 +439,26 @@ impl Drop for ParallelGuard {
 ### 4.7 Good/Bad 对比示例
 
 ```rust
-// Good - 使用自动路径选择
+// Good - Use automatic path selection
 let result = tensor.par_map(|x| x * 2.0);
-// 小数组自动串行，大数组自动并行
+// Small arrays automatically serial, large arrays automatically parallel
 
-// Good - 使用自定义阈值
+// Good - Use a custom threshold
 let result = tensor.par_map_with_threshold(|x| x * 2.0, 8192);
 
-// Good - 在并行上下文中使用串行操作避免嵌套
+// Good - Use serial operations inside a parallel context to avoid nesting
 tensor.par_axis_iter(Axis(0)).for_each(|slice| {
-    // 内层使用串行操作
+    // Inner layer uses serial operations
     let sum: f64 = slice.iter().sum();
 });
 
-// Bad - 嵌套并行
+// Bad - Nested parallelism
 tensor.par_axis_iter(Axis(0)).for_each(|slice| {
-    let sum = slice.par_sum(); // 禁止！线程池饥饿
+    let sum = slice.par_sum(); // Forbidden! Thread pool starvation
 });
 
-// Bad - 忽略并行错误
-let result = par_zip_with(&a, &b, |x, y| x + y).unwrap(); // 禁止静默忽略
+// Bad - Ignoring parallel errors
+let result = par_zip_with(&a, &b, |x, y| x + y).unwrap(); // Forbidden silent ignore
 ```
 
 ---
@@ -491,13 +493,13 @@ let result = par_zip_with(&a, &b, |x, y| x + y).unwrap(); // 禁止静默忽略
 ```rust
 // src/parallel/mod.rs
 
-/// 自定义线程池包装
+/// Custom thread pool wrapper
 pub struct ParallelPool {
     inner: rayon::ThreadPool,
 }
 
 impl ParallelPool {
-    /// 创建新的线程池
+    /// Create a new thread pool
     pub fn new(num_threads: usize) -> Result<Self, PoolInitError> {
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(num_threads)
@@ -506,7 +508,7 @@ impl ParallelPool {
         Ok(ParallelPool { inner: pool })
     }
 
-    /// 在此线程池上执行闭包
+    /// Execute a closure on this thread pool
     pub fn install<OP, R>(&self, op: OP) -> R
     where
         OP: FnOnce() -> R + Send,
@@ -515,7 +517,7 @@ impl ParallelPool {
         self.inner.install(op)
     }
 
-    /// 获取线程数
+    /// Get the number of threads
     pub fn num_threads(&self) -> usize {
         self.inner.current_num_threads()
     }
@@ -525,7 +527,7 @@ impl ParallelPool {
 ### 5.3 并行错误传播
 
 ```rust
-// Good - 并行操作中不可恢复错误立即传播
+// Good - Unrecoverable errors in parallel operations are propagated immediately
 pub fn par_map_checked<A, B, D, F>(
     tensor: &Tensor<A, D>,
     f: F,
@@ -559,17 +561,17 @@ where
     Ok(Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()))
 }
 
-// Bad - 静默忽略并行操作中的错误
+// Bad - Silently ignoring errors in parallel operations
 pub fn par_map_silent<A, B, D, F>(tensor: &Tensor<A, D>, f: F) -> Tensor<B, D>
 where
     F: Fn(&A) -> Option<B> + Sync,
 {
-    // 禁止：错误被静默吞掉
+    // Forbidden: errors are silently swallowed
     let output: Vec<B> = tensor
         .par_iter()
-        .filter_map(|x| f(x))  // 静默丢弃 None
+        .filter_map(|x| f(x))  // Silently discards None
         .collect();
-    // output 长度可能与预期不符！
+    // output length may not match the expected length!
     Tensor::from_raw_vec_unchecked(output, tensor.raw_dim())
 }
 ```
@@ -823,7 +825,7 @@ Wave 3:  [T8]
 `parallel` 模块**不兼容 `no_std`**。rayon 依赖标准库的线程原语。在 `no_std` 环境下，`parallel` feature 不可用。
 
 ```rust
-// 条件编译：parallel 需要 std
+// Conditional compilation: parallel requires std
 #[cfg(all(feature = "parallel", not(feature = "std")))]
 compile_error!("The 'parallel' feature requires the 'std' feature");
 ```
@@ -835,6 +837,7 @@ compile_error!("The 'parallel' feature requires the 'std' feature");
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-07 |
 
 ---
 

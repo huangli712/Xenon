@@ -85,14 +85,14 @@ src/iter/
 ### 4.1 Elements 迭代器
 
 ```rust
-/// 扁平元素迭代器，按 F-order 内存顺序遍历所有元素。
+/// Flat element iterator, traverses all elements in F-order memory layout.
 pub struct Elements<'a, A, D: Dimension> {
-    // 内部字段：视图、指针/索引状态、剩余计数
+    // Internal fields: view, pointer/index state, remaining count
 }
 
-/// 可变扁平元素迭代器。
+/// Mutable flat element iterator.
 pub struct ElementsMut<'a, A, D: Dimension> {
-    // 内部字段：可变视图、指针/索引状态、剩余计数
+    // Internal fields: mutable view, pointer/index state, remaining count
 }
 
 impl<'a, A, D: Dimension> Iterator for Elements<'a, A, D> {
@@ -115,14 +115,14 @@ impl<'a, A, D: Dimension> ExactSizeIterator for ElementsMut<'a, A, D> {}
 ### 4.2 AxisIter 沿轴迭代器
 
 ```rust
-/// 沿轴迭代器，每次产出降维后的子张量视图。
+/// Axis iterator, yields a sub-tensor view with reduced dimension each step.
 ///
-/// 输入维度 N，产出维度 N-1 的视图。
+/// Input dimension N, output dimension N-1 views.
 pub struct AxisIter<'a, A, D: Dimension> {
-    // 内部字段：视图、轴、当前位置、长度
+    // Internal fields: view, axis, current position, length
 }
 
-/// 可变沿轴迭代器。
+/// Mutable axis iterator.
 pub struct AxisIterMut<'a, A, D: Dimension> {}
 
 impl<'a, A, D: Dimension> Iterator for AxisIter<'a, A, D> {
@@ -139,12 +139,13 @@ impl<'a, A, D: Dimension> ExactSizeIterator for AxisIter<'a, A, D> {}
 ### 4.3 Windows 滑动窗口迭代器
 
 ```rust
-/// 滑动窗口迭代器，在张量上滑动指定大小的窗口，产出每个窗口的视图。
+/// Sliding window iterator, slides a window of specified size across the tensor,
+/// yielding a view for each window position.
 ///
-/// 窗口数 = product(shape[i] - window_size[i] + 1)。
-/// 窗口大于数组或空数组时产出零个窗口。
+/// Window count = product(shape[i] - window_size[i] + 1).
+/// Yields zero windows when the window is larger than the array or the array is empty.
 pub struct Windows<'a, A, D: Dimension> {
-    // 内部字段：视图、窗口大小、当前索引、剩余计数
+    // Internal fields: view, window size, current index, remaining count
 }
 
 pub struct WindowsMut<'a, A, D: Dimension> {}
@@ -161,11 +162,11 @@ impl<'a, A, D: Dimension> ExactSizeIterator for Windows<'a, A, D> {}
 ### 4.4 IndexedIter 带索引迭代器
 
 ```rust
-/// 带多维索引的元素迭代器。
+/// Element iterator with multi-dimensional indices.
 ///
-/// 产出 (D::Slice, &'a A) 元组，索引按 F-order 递增。
+/// Yields (D::Slice, &'a A) tuples, indices increment in F-order.
 pub struct IndexedIter<'a, A, D: Dimension> {
-    // 内部字段：Elements 迭代器、当前索引、步长状态机
+    // Internal fields: Elements iterator, current index, stride state machine
 }
 
 pub struct IndexedIterMut<'a, A, D: Dimension> {}
@@ -182,30 +183,30 @@ impl<'a, A, D: Dimension> ExactSizeIterator for IndexedIter<'a, A, D> {}
 ### 4.5 Zip 多张量同步迭代器
 
 ```rust
-/// 多张量同步迭代器，用于 zip_with 等运算。
+/// Multi-tensor synchronized iterator, used for zip_with and similar operations.
 ///
-/// 支持广播：形状可广播时自动扩展后迭代。
-/// 广播结果为只读，不支持可变迭代。
+/// Supports broadcasting: automatically expands when shapes are broadcastable.
+/// Broadcast results are read-only; mutable iteration is not supported.
 pub struct Zip<Parts, D: Dimension> {
-    // 内部字段：生产者元组、广播后形状、步长信息
+    // Internal fields: producer tuple, broadcasted shape, stride info
 }
 
 impl<D: Dimension> Zip<(), D> {
-    /// 从第一个张量创建 Zip。
+    /// Create a Zip from the first tensor.
     pub fn from<P: NdProducer<Dim = D>>(producer: P) -> Zip<(P,), D>;
 }
 
 impl<Parts, D: Dimension> Zip<Parts, D> {
-    /// 添加另一个张量到 Zip，自动处理广播。
+    /// Add another tensor to the Zip, handling broadcast automatically.
     pub fn and<P: NdProducer<Dim = D>>(self, producer: P)
         -> Result<Zip<(Parts, P), D>, BroadcastError>;
 
-    /// 对每个元素执行闭包。
+    /// Execute a closure for each element.
     pub fn for_each<F>(self, f: F)
     where
         F: FnMut(Parts::Item);
 
-    /// 应用函数并收集为新张量。
+    /// Apply a function and collect the results into a new tensor.
     pub fn map_collect<F, A>(self, f: F) -> Tensor<A, D>
     where
         F: FnMut(Parts::Item) -> A,

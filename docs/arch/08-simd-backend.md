@@ -129,15 +129,15 @@ pulp = { version = "0.18", optional = true }
 ```rust
 // src/simd/mod.rs
 
-/// SIMD 内核元素类型标记
+/// Marker trait for SIMD kernel element types.
 ///
-/// 用于在编译期区分不同元素类型的 SIMD 实现。
-/// 仅对支持 SIMD 操作的数值类型实现。
+/// Distinguishes different element types at compile time for SIMD dispatch.
+/// Only implemented for numeric types that support SIMD operations.
 pub trait SimdElement: Copy + Clone + Send + Sync + 'static {
-    /// 元素大小（字节）
+    /// Element size in bytes.
     const SIZE: usize;
 
-    /// 元素自然对齐
+    /// Natural alignment of the element.
     const ALIGN: usize;
 }
 
@@ -167,83 +167,83 @@ impl SimdElement for i64 {
 ```rust
 // src/simd/mod.rs
 
-/// SIMD 内核 trait
+/// SIMD kernel trait.
 ///
-/// 定义所有 SIMD 操作的统一接口。标量回退和向量化实现
-/// 都实现此 trait，调用方通过泛型使用。
+/// Defines the unified interface for all SIMD operations. Both scalar fallback
+/// and vectorized implementations implement this trait; callers use it generically.
 ///
 /// # Type Parameters
 ///
-/// * `A` - 元素类型，须实现 `SimdElement`
+/// * `A` - Element type, must implement `SimdElement`
 pub trait SimdKernel<A: SimdElement>: Send + Sync {
     // ========================================
-    // 元信息
+    // Metadata
     // ========================================
 
-    /// 内核名称（用于调试和日志）
+    /// Kernel name (for debugging and logging).
     fn name() -> &'static str where Self: Sized;
 
-    /// 返回此内核的 SIMD 宽度（元素数）
+    /// Returns the SIMD width (number of elements) for this kernel.
     ///
-    /// 标量内核返回 1，向量化内核返回实际 SIMD 宽度。
+    /// Scalar kernels return 1; vectorized kernels return the actual SIMD width.
     fn width() -> usize where Self: Sized;
 
     // ========================================
-    // 逐元素二元操作
+    // Element-wise binary operations
     // ========================================
 
-    /// 逐元素加法
+    /// Element-wise addition.
     ///
     /// # Panics
     ///
-    /// 如果三者长度不相等，将 panic。
+    /// Panics if the three slices have different lengths.
     fn add(&self, lhs: &[A], rhs: &[A], dst: &mut [A]);
 
-    /// 逐元素减法
+    /// Element-wise subtraction.
     fn sub(&self, lhs: &[A], rhs: &[A], dst: &mut [A]);
 
-    /// 逐元素乘法
+    /// Element-wise multiplication.
     fn mul(&self, lhs: &[A], rhs: &[A], dst: &mut [A]);
 
-    /// 逐元素除法
+    /// Element-wise division.
     fn div(&self, lhs: &[A], rhs: &[A], dst: &mut [A]);
 
     // ========================================
-    // 逐元素一元操作
+    // Element-wise unary operations
     // ========================================
 
-    /// 逐元素取负
+    /// Element-wise negation.
     fn neg(&self, src: &[A], dst: &mut [A]);
 
-    /// 逐元素绝对值
+    /// Element-wise absolute value.
     fn abs(&self, src: &[A], dst: &mut [A]);
 
     // ========================================
-    // 归约操作
+    // Reduction operations
     // ========================================
 
-    /// 求和归约
+    /// Sum reduction.
     fn sum(&self, data: &[A]) -> A;
 
     // ========================================
-    // 内积操作
+    // Dot product operations
     // ========================================
 
-    /// 向量内积
+    /// Vector dot product.
     ///
     /// # Panics
     ///
-    /// 如果两者长度不相等，将 panic。
+    /// Panics if the two slices have different lengths.
     fn dot(&self, lhs: &[A], rhs: &[A]) -> A;
 
     // ========================================
-    // 填充操作
+    // Fill operations
     // ========================================
 
-    /// 用指定值填充
+    /// Fill with the specified value.
     fn fill(&self, dst: &mut [A], value: A);
 
-    /// 用零填充
+    /// Fill with zero.
     fn fill_zero(&self, dst: &mut [A]) where A: Default;
 }
 ```
@@ -256,21 +256,21 @@ pub trait SimdKernel<A: SimdElement>: Send + Sync {
 #[cfg(feature = "simd")]
 use pulp::Arch;
 
-/// 全局缓存的 Arch 实例
+/// Globally cached `Arch` instance.
 ///
-/// Arch 为 Copy 类型，缓存后可零成本复用。
-/// 使用 OnceLock 保证线程安全的延迟初始化。
+/// `Arch` is `Copy`; caching it enables zero-cost reuse.
+/// Uses `OnceLock` for thread-safe lazy initialization.
 #[cfg(feature = "simd")]
 static ARCH: std::sync::OnceLock<Arch> = std::sync::OnceLock::new();
 
-/// 获取全局缓存的 Arch 实例
+/// Returns the globally cached `Arch` instance.
 #[cfg(feature = "simd")]
 #[inline]
 pub fn get_arch() -> Arch {
     *ARCH.get_or_init(Arch::new)
 }
 
-/// 无 SIMD 时的占位
+/// Placeholder when SIMD is disabled.
 #[cfg(not(feature = "simd"))]
 pub fn get_arch() -> () {
     ()
@@ -374,28 +374,29 @@ SIMD dot product 流程
 ```rust
 // src/simd/mod.rs
 
-/// 检查指针是否对齐到指定字节
+/// Checks whether a pointer is aligned to the specified number of bytes.
 #[inline]
 pub fn is_aligned(ptr: *const u8, align: usize) -> bool {
     (ptr as usize) % align == 0
 }
 
-/// 检查指针是否 64 字节对齐（SIMD 友好）
+/// Checks whether a pointer is 64-byte aligned (SIMD-friendly).
 #[inline]
 pub fn is_simd_aligned(ptr: *const u8) -> bool {
     is_aligned(ptr, 64)
 }
 
-/// 检查是否满足 SIMD 条件
+/// Checks whether SIMD conditions are met.
 ///
-/// 满足条件时返回 true，否则自动回退到标量路径。
+/// Returns `true` when conditions are satisfied; otherwise automatically
+/// falls back to the scalar path.
 ///
-/// # SIMD 条件
+/// # SIMD Conditions
 ///
-/// 1. `simd` feature 已启用
-/// 2. 内存连续（F-order）
-/// 3. 元素类型支持 SIMD（f32/f64/i32/i64）
-/// 4. 数据 64 字节对齐
+/// 1. `simd` feature is enabled
+/// 2. Memory is contiguous (F-order)
+/// 3. Element type supports SIMD (f32/f64/i32/i64)
+/// 4. Data is 64-byte aligned
 #[cfg(feature = "simd")]
 pub fn can_use_simd<A: SimdElement>(
     ptr: *const A,
@@ -414,14 +415,14 @@ pub fn can_use_simd<A: SimdElement>(
     _len: usize,
     _is_contiguous: bool,
 ) -> bool {
-    false  // 未启用 simd feature，始终回退
+    false  // simd feature not enabled, always fall back
 }
 ```
 
 ### 4.7 Good/Bad 对比示例
 
 ```rust
-// Good - 自动回退，用户无需感知 SIMD
+// Good - automatic fallback, user does not need to be aware of SIMD
 use xenon::simd::SimdKernel;
 
 fn add_arrays<A: SimdElement>(
@@ -436,15 +437,15 @@ fn add_arrays<A: SimdElement>(
             return;
         }
     }
-    // 自动回退到标量
+    // Fallback to scalar automatically
     let kernel = ScalarKernel::<A>::new();
     kernel.add(lhs, rhs, dst);
 }
 
-// Bad - 硬编码 SIMD 路径，无法回退
+// Bad - hardcoded SIMD path with no fallback
 fn add_arrays_bad<A: SimdElement>(lhs: &[A], rhs: &[A], dst: &mut [A]) {
-    // 禁止：不检查条件直接使用 SIMD
-    // 在非连续或未对齐数据上可能产生错误结果
+    // FORBIDDEN: using SIMD without checking conditions
+    // May produce incorrect results on non-contiguous or unaligned data
     let arch = get_arch();
     arch.dispatch(AddKernel { lhs, rhs, dst });
 }
@@ -464,7 +465,7 @@ fn add_arrays_bad<A: SimdElement>(lhs: &[A], rhs: &[A], dst: &mut [A]) {
 #[cfg(feature = "simd")]
 use pulp::{Simd, WithSimd};
 
-/// f32 加法 SIMD 内核
+/// f32 addition SIMD kernel.
 #[cfg(feature = "simd")]
 pub struct AddF32Kernel<'a> {
     pub lhs: &'a [f32],
@@ -481,11 +482,11 @@ impl WithSimd for AddF32Kernel<'_> {
         debug_assert_eq!(self.rhs.len(), len);
         debug_assert_eq!(self.dst.len(), len);
 
-        // 获取当前指令集的 SIMD 宽度
+        // Get the SIMD width for the current instruction set
         let width = S::f32s_len();
         let chunks = len / width;
 
-        // SIMD 主循环
+        // SIMD main loop
         for i in 0..chunks {
             let offset = i * width;
             unsafe {
@@ -504,14 +505,14 @@ impl WithSimd for AddF32Kernel<'_> {
             }
         }
 
-        // 尾部标量处理
+        // Scalar tail handling
         for i in (chunks * width)..len {
             self.dst[i] = self.lhs[i] + self.rhs[i];
         }
     }
 }
 
-/// 分发 f32 加法到最优 SIMD 路径
+/// Dispatches f32 addition to the optimal SIMD path.
 #[cfg(feature = "simd")]
 pub fn add_f32_simd(lhs: &[f32], rhs: &[f32], dst: &mut [f32]) {
     let arch = crate::simd::get_arch();
@@ -526,10 +527,10 @@ pub fn add_f32_simd(lhs: &[f32], rhs: &[f32], dst: &mut [f32]) {
 
 use crate::simd::{SimdElement, SimdKernel};
 
-/// 标量内核实现
+/// Scalar kernel implementation.
 ///
-/// 所有操作使用纯标量循环，不依赖 SIMD 指令。
-/// 作为基准实现和回退路径。
+/// All operations use pure scalar loops without SIMD instructions.
+/// Serves as the reference implementation and fallback path.
 pub struct ScalarKernel<A: SimdElement> {
     _marker: core::marker::PhantomData<A>,
 }
@@ -625,11 +626,11 @@ impl SimdKernel<f64> for ScalarKernel<f64> {
     }
 }
 
-// f32, i32, i64 实现类似，此处省略
+// f32, i32, i64 implementations are similar, omitted here
 impl SimdKernel<f32> for ScalarKernel<f32> {
     fn name() -> &'static str { "scalar_f32" }
     fn width() -> usize { 1 }
-    // ... 其他方法同 f64 实现
+    // ... other methods follow the same pattern as f64
 }
 ```
 
@@ -902,7 +903,7 @@ pulp crate 支持 `no_std` 环境。在 `no_std` 环境下：
 
 ```rust
 #[cfg(all(feature = "simd", not(feature = "std")))]
-// no_std 环境下 pulp 内部会使用 libm 处理数学函数
+// In no_std environments, pulp internally uses libm for math functions
 ```
 
 ---
@@ -912,6 +913,7 @@ pulp crate 支持 `no_std` 环境。在 `no_std` 环境下：
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-07 |
 
 ---
 
