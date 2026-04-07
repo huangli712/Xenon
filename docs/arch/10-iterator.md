@@ -222,18 +222,18 @@ where
     S: Storage<Elem = A>,
     D: Dimension,
 {
-    /// 元素迭代器（不可变）。
+    /// Element iterator (immutable).
     pub fn iter(&self) -> Elements<'_, A, D>;
 
-    /// 索引迭代器（不可变）。
+    /// Indexed iterator (immutable).
     pub fn indexed_iter(&self) -> IndexedIter<'_, A, D>;
 
-    /// 沿轴迭代。
+    /// Iterate along an axis.
     pub fn axis_iter(&self, axis: Axis) -> AxisIter<'_, A, D::Smaller>
     where
         D: RemoveAxis;
 
-    /// 滑动窗口迭代。
+    /// Sliding window iterator.
     pub fn windows(&self, size: impl IntoDimension<D>) -> Option<Windows<'_, A, D>>;
 }
 
@@ -242,13 +242,13 @@ where
     S: StorageMut<Elem = A>,
     D: Dimension,
 {
-    /// 可变元素迭代器。
+    /// Mutable element iterator.
     pub fn iter_mut(&mut self) -> ElementsMut<'_, A, D>;
 
-    /// 可变索引迭代器。
+    /// Mutable indexed iterator.
     pub fn indexed_iter_mut(&mut self) -> IndexedIterMut<'_, A, D>;
 
-    /// 可变沿轴迭代。
+    /// Mutable axis iteration.
     pub fn axis_iter_mut(&mut self, axis: Axis) -> AxisIterMut<'_, A, D::Smaller>
     where
         D: RemoveAxis;
