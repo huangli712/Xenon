@@ -106,7 +106,7 @@ src/ops/
 ### 4.2 张量×张量运算符
 
 ```rust
-// 张量 + 张量（所有权 + 所有权）
+// Tensor + Tensor (owned + owned)
 impl<A, D, E> Add<Tensor<A, E>> for Tensor<A, D>
 where
     A: Numeric,
@@ -123,7 +123,7 @@ where
     }
 }
 
-// &张量 + &张量（最常用形式）
+// &Tensor + &Tensor (most common form)
 impl<'a, 'b, A, D, E> Add<&'b Tensor<A, E>> for &'a Tensor<A, D>
 where
     A: Numeric,
@@ -148,7 +148,7 @@ where
 ### 4.3 张量×标量运算符
 
 ```rust
-// 张量 + 标量
+// Tensor + scalar
 impl<A, D> Add<A> for Tensor<A, D>
 where
     A: Numeric,
@@ -161,7 +161,7 @@ where
     }
 }
 
-// &张量 + 标量
+// &Tensor + scalar
 impl<'a, A, D> Add<A> for &'a Tensor<A, D>
 where
     A: Numeric,
@@ -174,7 +174,7 @@ where
     }
 }
 
-// 标量 + 张量
+// scalar + Tensor
 impl<A, D> Add<Tensor<A, D>> for A
 where
     A: Numeric,
@@ -187,7 +187,7 @@ where
     }
 }
 
-// 标量 + &张量
+// scalar + &Tensor
 impl<'a, A, D> Add<&'a Tensor<A, D>> for A
 where
     A: Numeric,
@@ -211,26 +211,26 @@ where
 ```rust
 // Sub: |a, b| a - b
 // Mul: |a, b| a * b
-// Div: |a, b| a / b   (约束 A: Numeric + Div<Output = A>)
+// Div: |a, b| a / b   (constraint A: Numeric + Div<Output = A>)
 ```
 
 ### 4.5 Good / Bad 对比
 
 ```rust
-// Good - 使用借用形式避免所有权转移
+// Good - use borrowed form to avoid ownership transfer
 fn compute(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix2>) -> Tensor<f64, Ix2> {
-    a + b  // &Tensor + &Tensor → 新 Tensor
+    a + b  // &Tensor + &Tensor -> new Tensor
 }
 
-// Good - 需要广播安全时使用显式 API
+// Good - use explicit API for broadcast safety
 fn compute_safe(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix1>) -> Result<Tensor<f64, Ix2>, BroadcastError> {
     let (a_bc, b_bc) = broadcast_with(&a.view(), &b.view())?;
     Ok(zip_with(&a_bc, &b_bc, |x, y| x + y))
 }
 
-// Bad - 混用所有权和借用（不必要地消费 a）
+// Bad - mixing owned and borrowed (unnecessarily consumes a)
 fn compute_bad(a: Tensor<f64, Ix2>, b: &Tensor<f64, Ix2>) -> Tensor<f64, Ix2> {
-    a + b  // a 被消费，后续无法使用
+    a + b  // a is consumed, cannot be used afterwards
 }
 ```
 
@@ -469,13 +469,13 @@ Wave 5:      [T6]
 ### 10.4 借用引用优化
 
 ```rust
-// &a + &b: 无所有权转移，仅借用
-// 运算符内部: self.view() 创建轻量视图（O(1)）
-// 结果: 新 Tensor 分配（O(n)）
+// &a + &b: no ownership transfer, borrow only
+// Internally: self.view() creates a lightweight view (O(1))
+// Result: new Tensor allocation (O(n))
 
-// a + b: a 和 b 被消费
-// 如果 a/b 后续不再使用，所有权形式避免显式借用开销
-// 但推荐使用 & 形式避免意外消费
+// a + b: a and b are consumed
+// If a/b are not used afterwards, the owned form avoids explicit borrow overhead
+// However, the & form is recommended to avoid accidental consumption
 ```
 
 ---
@@ -485,6 +485,7 @@ Wave 5:      [T6]
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-08 |
 
 ---
 
