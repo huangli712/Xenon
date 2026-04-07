@@ -230,21 +230,21 @@ L3: 示例 (examples/)
 
 ```rust
 // lib.rs
-#![deny(missing_docs)]                        // 所有 pub 项必须有文档
-#![deny(rustdoc::broken_intra_doc_links)]     // 文档内链接必须有效
-#![deny(rustdoc::private_intra_doc_links)]    // 私有项链接无效
-#![warn(rustdoc::missing_crate_level_docs)]   // crate 级文档必须存在
-#![deny(unsafe_op_in_unsafe_fn)]              // unsafe fn 内 unsafe 操作须注释
-#![cfg_attr(docsrs, feature(doc_cfg))]        // docs.rs feature 标注
+#![deny(missing_docs)]                        // all pub items must have documentation
+#![deny(rustdoc::broken_intra_doc_links)]     // doc links must be valid
+#![deny(rustdoc::private_intra_doc_links)]    // private item links are invalid
+#![warn(rustdoc::missing_crate_level_docs)]   // crate-level docs must exist
+#![deny(unsafe_op_in_unsafe_fn)]              // unsafe ops in unsafe fn must be documented
+#![cfg_attr(docsrs, feature(doc_cfg))]        // docs.rs feature annotation
 ```
 
 ### 6.2 Clippy 文档 lint
 
 ```rust
-// CI 中启用
-#![warn(clippy::missing_errors_doc)]      // Result 函数需 Errors 节
-#![warn(clippy::missing_panics_doc)]      // panic 函数需 Panics 节
-#![warn(clippy::missing_safety_doc)]      // unsafe 函数需 Safety 节
+// Enabled in CI
+#![warn(clippy::missing_errors_doc)]      // Result functions need Errors section
+#![warn(clippy::missing_panics_doc)]      // Panicking functions need Panics section
+#![warn(clippy::missing_safety_doc)]      // Unsafe functions need Safety section
 ```
 
 ---
@@ -439,7 +439,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 // lib.rs
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-// 每个 feature-gated pub 项
+// Each feature-gated pub item
 #[cfg(feature = "parallel")]
 #[cfg_attr(docsrs, doc(cfg(feature = "parallel")))]
 pub fn par_sum(&self) -> A { ... }
@@ -776,6 +776,7 @@ Wave 6: [T17]
 |------|------|
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-08 |
+| 1.0.2 | 2026-04-08 |
 
 ---
 

@@ -145,7 +145,7 @@ pub type TensorViewMut<'a, A, D> = TensorBase<ViewMutRepr<&'a mut A>, D>;
 /// Atomically reference-counted shared array.
 pub type ArcTensor<A, D> = TensorBase<ArcRepr<A>, D>;
 
-// === Owned 维度便捷别名 ===
+// === Owned dimension convenience aliases ===
 
 pub type Tensor0<A> = Tensor<A, Ix0>;
 pub type Tensor1<A> = Tensor<A, Ix1>;
@@ -156,7 +156,7 @@ pub type Tensor5<A> = Tensor<A, Ix5>;
 pub type Tensor6<A> = Tensor<A, Ix6>;
 pub type TensorD<A> = Tensor<A, IxDyn>;
 
-// === View 维度便捷别名 ===
+// === View dimension convenience aliases ===
 
 pub type TensorView0<'a, A> = TensorView<'a, A, Ix0>;
 pub type TensorView1<'a, A> = TensorView<'a, A, Ix1>;
@@ -167,7 +167,7 @@ pub type TensorView5<'a, A> = TensorView<'a, A, Ix5>;
 pub type TensorView6<'a, A> = TensorView<'a, A, Ix6>;
 pub type TensorViewD<'a, A> = TensorView<'a, A, IxDyn>;
 
-// === ViewMut 维度便捷别名 ===
+// === ViewMut dimension convenience aliases ===
 
 pub type TensorViewMut0<'a, A> = TensorViewMut<'a, A, Ix0>;
 pub type TensorViewMut1<'a, A> = TensorViewMut<'a, A, Ix1>;
@@ -178,7 +178,7 @@ pub type TensorViewMut5<'a, A> = TensorViewMut<'a, A, Ix5>;
 pub type TensorViewMut6<'a, A> = TensorViewMut<'a, A, Ix6>;
 pub type TensorViewMutD<'a, A> = TensorViewMut<'a, A, IxDyn>;
 
-// === Arc 维度便捷别名 ===
+// === Arc dimension convenience aliases ===
 
 pub type ArcTensor0<A> = ArcTensor<A, Ix0>;
 pub type ArcTensor1<A> = ArcTensor<A, Ix1>;
@@ -815,6 +815,7 @@ Wave 4:       [T10]
 |------|------|
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
+| 1.0.2 | 2026-04-08 |
 
 ---
 

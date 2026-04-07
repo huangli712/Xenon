@@ -205,12 +205,12 @@ where
     /// Total element count must remain unchanged.
     ///
     /// # Arguments
-    /// * `shape` - 目标形状
+    /// * `shape` - Target shape
     ///
     /// # Returns
-    /// * `Ok(TensorView)` - 重塑后的视图（零拷贝）
-    /// * `Err(InvalidShape)` - 总元素数不匹配
-    /// * `Err(LayoutMismatch)` - 源数组非连续
+    /// * `Ok(TensorView)` - Reshaped view (zero-copy)
+    /// * `Err(InvalidShape)` - Total element count mismatch
+    /// * `Err(LayoutMismatch)` - Source array is non-contiguous
     ///
     /// # Examples
     /// ```
@@ -256,11 +256,11 @@ where
     /// Zero-copy if data is contiguous; automatically copies then reshapes if non-contiguous.
     ///
     /// # Arguments
-    /// * `shape` - 目标形状
+    /// * `shape` - Target shape
     ///
     /// # Returns
-    /// * `Ok(Tensor<A, E>)` - 重塑后的拥有型张量
-    /// * `Err(InvalidShape)` - 总元素数不匹配
+    /// * `Ok(Tensor<A, E>)` - Reshaped owning tensor
+    /// * `Err(InvalidShape)` - Total element count mismatch
     ///
     /// # Examples
     /// ```
@@ -523,6 +523,7 @@ Wave 3:              [T5]
 |------|------|
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
+| 1.0.2 | 2026-04-08 |
 
 ---
 

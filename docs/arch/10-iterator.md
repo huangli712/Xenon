@@ -456,22 +456,22 @@ Wave 4:          [T8]
 ### 8.1 与 tensor 模块
 
 ```rust
-// tensor 模块提供迭代器入口方法
-// iter 模块消费 TensorView / TensorViewMut
+// tensor module provides iterator entry methods
+// iter module consumes TensorView / TensorViewMut
 ```
 
 ### 8.2 与 storage / dimension 模块
 
 ```rust
-// 迭代器通过 Storage trait 读取数据
-// 通过 Dimension trait 管理索引状态
+// Iterators read data via the Storage trait
+// Index state is managed via the Dimension trait
 ```
 
 ### 8.3 与 broadcast 模块
 
 ```rust
-// Zip 在构造时调用 broadcast_shape() 验证形状兼容性
-// 广播视图的零步长由 iter 模块正确处理
+// Zip calls broadcast_shape() at construction to verify shape compatibility
+// Zero strides in broadcast views are handled correctly by the iter module
 ```
 
 ---
@@ -550,7 +550,8 @@ Wave 4:          [T8]
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 | |
+| 1.0.1 | 2026-04-07 |
+| 1.0.2 | 2026-04-08 |
 
 ---
 

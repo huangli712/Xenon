@@ -258,7 +258,7 @@ pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>> {
     // ...
 }
 
-// Bad - 库代码中使用 unwrap
+// Bad - using unwrap in library code
 pub fn sum_bad(&self) -> A {
     let first = self.first().unwrap();  // forbidden
     self.iter().fold(*first, |acc, x| acc + x)
@@ -631,6 +631,7 @@ Wave 3: ┌──[T6]────┤
 |------|------|
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-08 |
+| 1.0.2 | 2026-04-08 |
 
 ---
 

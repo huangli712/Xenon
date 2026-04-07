@@ -163,7 +163,7 @@ where
     ///
     /// Includes metadata such as shape, strides, and type.
     ///
-    /// # 输出格式
+    /// # Output Format
     ///
     /// ```text
     /// Tensor(shape=[3, 4], strides=[1, 3], dtype=f64, f-contiguous)
@@ -265,7 +265,7 @@ println!("{}", tensor);  // NumPy style output
 let tensor = Tensor2::<f64>::zeros([3, 4]);
 for i in 0..3 {
     for j in 0..4 {
-        print!("{} ", tensor[[i, j]]);  // 不可读，无截断
+        print!("{} ", tensor[[i, j]]);  // unreadable, no truncation
     }
     println!();
 }
@@ -283,7 +283,7 @@ println!("{:?}", tensor);
 // Bad - Print each field manually
 println!("shape: {:?}", tensor.shape());
 println!("strides: {:?}", tensor.strides());
-// ... 冗余且不完整
+// ... verbose and incomplete
 ```
 
 ---
@@ -522,6 +522,7 @@ Wave 3: [T5] → [T6]
 |------|------|
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-08 |
+| 1.0.2 | 2026-04-08 |
 
 ---
 
