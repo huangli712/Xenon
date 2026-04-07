@@ -258,27 +258,27 @@ where
 ### 4.7 Good / Bad 对比示例
 
 ```rust
-// Good - 使用 iter() 安全遍历元素
+// Good - safely iterate elements using iter()
 let tensor = Tensor::<f64, Ix2>::zeros([3, 4]);
 for &elem in tensor.iter() {
     println!("{}", elem);
 }
 assert_eq!(tensor.iter().count(), 12);
 
-// Good - 使用 ExactSizeIterator 获取精确长度
+// Good - use ExactSizeIterator to get precise length
 let iter = tensor.iter();
 assert_eq!(iter.len(), 12);
 
-// Bad - 手动索引遍历（性能差，非连续时可能越界）
+// Bad - manual index traversal (poor performance, may go out of bounds on non-contiguous data)
 for i in 0..tensor.shape()[0] {
     for j in 0..tensor.shape()[1] {
-        let _ = tensor[[i, j]];  // 不推荐
+        let _ = tensor[[i, j]];  // not recommended
     }
 }
 
-// Bad - 对广播结果调用 iter_mut()
+// Bad - calling iter_mut() on a broadcast result
 let broadcast_view = tensor.broadcast([3, 4]).unwrap();
-// broadcast_view.iter_mut();  // 编译错误：广播视图不可变
+// broadcast_view.iter_mut();  // compile error: broadcast view is immutable
 ```
 
 ---
@@ -313,9 +313,10 @@ increment_index_f(shape, index):
 ### 5.3 广播可变迭代禁止
 
 ```rust
-// SAFETY: broadcast() 返回的 TensorView 具有零步长维度，
-// 多个逻辑索引映射到同一物理地址，可变写入会导致数据竞争。
-// 因此 broadcast() 仅返回不可变视图。
+// SAFETY: broadcast() returns a TensorView with zero-stride dimensions,
+// multiple logical indices map to the same physical address; mutable writes
+// would cause data races.
+// Therefore broadcast() only returns an immutable view.
 ```
 
 ### 5.4 填充数组迭代
@@ -549,6 +550,7 @@ Wave 4:          [T8]
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-07 | |
 
 ---
 
