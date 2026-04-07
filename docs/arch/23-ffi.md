@@ -85,25 +85,25 @@ src/ffi.rs
 ### 4.1 辅助类型
 
 ```rust
-/// BLAS 矩阵布局标识。
+/// BLAS matrix layout identifier.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BlasLayout {
-    /// 列优先（Fortran order）。
-    /// 对应 BLAS `CblasColMajor`（102）。
+    /// Column-major (Fortran order).
+    /// Corresponds to BLAS `CblasColMajor` (102).
     ColumnMajor,
-    /// 行优先（C order）。
-    /// 对应 BLAS `CblasRowMajor`（101）。
+    /// Row-major (C order).
+    /// Corresponds to BLAS `CblasRowMajor` (101).
     RowMajor,
 }
 
-/// BLAS 转置标识。
+/// BLAS transpose identifier.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BlasTrans {
-    /// 不转置。
+    /// No transpose.
     NoTrans,
-    /// 转置。
+    /// Transpose.
     Trans,
-    /// 共轭转置（仅复数）。
+    /// Conjugate transpose (complex only).
     ConjTrans,
 }
 ```
@@ -116,17 +116,17 @@ where
     S: Storage<Elem = A>,
     D: Dimension,
 {
-    /// 返回数据起始位置的只读原始指针。
+    /// Returns a read-only raw pointer to the data start.
     ///
-    /// 指针指向第一个逻辑元素（考虑 offset）。
-    /// 返回的指针在 `self` 被修改或释放后无效。
+    /// The pointer points to the first logical element (considering offset).
+    /// The returned pointer is invalid after `self` is modified or dropped.
     ///
     /// # Example
     ///
     /// ```
     /// let tensor = Tensor2::<f64>::zeros([3, 4]);
     /// let ptr = tensor.as_ptr();
-    /// // 可传递给只读 C 函数
+    /// // Can be passed to read-only C functions
     /// ```
     pub fn as_ptr(&self) -> *const A {
         unsafe {
@@ -140,16 +140,16 @@ where
     S: StorageMut<Elem = A>,
     D: Dimension,
 {
-    /// 返回数据起始位置的可变原始指针。
+    /// Returns a mutable raw pointer to the data start.
     ///
-    /// 仅对可写存储（Owned、ViewMut、ArcRepr）可用。
+    /// Only available for writable storage (Owned, ViewMut, ArcRepr).
     ///
     /// # Example
     ///
     /// ```
     /// let mut tensor = Tensor2::<f64>::zeros([3, 4]);
     /// let ptr = tensor.as_mut_ptr();
-    /// // 可传递给需要可变指针的 C 函数
+    /// // Can be passed to C functions requiring a mutable pointer
     /// ```
     pub fn as_mut_ptr(&mut self) -> *mut A {
         unsafe {
@@ -166,31 +166,31 @@ impl<'a, A, D> TensorBase<ViewRepr<&'a A>, D>
 where
     D: Dimension,
 {
-    /// 从裸指针构造不可变视图。
+    /// Constructs an immutable view from raw pointer.
     ///
     /// # Arguments
     ///
-    /// * `ptr` - 数据起始指针（不可变）
-    /// * `shape` - 各轴长度
-    /// * `strides` - 各轴步长（元素单位，有符号）
-    /// * `offset` - 数据起始偏移量（元素单位）
+    /// * `ptr` - Data start pointer (immutable)
+    /// * `shape` - Length of each axis
+    /// * `strides` - Strides per axis (element units, signed)
+    /// * `offset` - Data start offset (element units)
     ///
     /// # Returns
     ///
-    /// 新的 `TensorView<'a, A, D>` 实例。
+    /// A new `TensorView<'a, A, D>` instance.
     ///
     /// # Safety
     ///
-    /// 调用方须保证以下所有条件：
+    /// The caller must ensure all of the following:
     ///
-    /// | 前提条件 | 说明 |
+    /// | Prerequisite | Description |
     /// |----------|------|
-    /// | 指针有效性 | `ptr` 须非空、非悬垂，且对齐到 `align_of::<A>()` |
-    /// | 内存范围 | `ptr` 起始的内存须覆盖所有可访问元素（考虑 offset、shape、strides）） |
-    /// | 生命周期 | 内存须在生命周期 `'a` 内保持有效 |
-    /// | 别名规则 | 内存可被共享读取，但不可被写入 |
-    /// | 布局一致性 | `shape` 与 `strides` 长度须一致 |
-    /// | 元素初始化 | 所有可访问元素须已正确初始化 |
+    /// | Pointer validity | `ptr` must be non-null, non-dangling, and aligned to `align_of::<A>()` |
+    /// | Memory range | Memory starting from `ptr` must cover all accessible elements (considering offset, shape, strides) |
+    /// | Lifetime | Memory must remain valid for lifetime `'a` |
+    /// | Aliasing rules | Memory can be read-shared but must not be written to |
+    /// | Layout consistency | `shape` and `strides` lengths must match |
+    /// | Element initialization | All accessible elements must be properly initialized |
     ///
     /// # Example
     ///
@@ -211,7 +211,7 @@ where
         strides: D,
         offset: usize,
     ) -> Self {
-        // 实现...
+        // implementation...
     }
 }
 
@@ -219,13 +219,13 @@ impl<'a, A, D> TensorBase<ViewMutRepr<&'a mut A>, D>
 where
     D: Dimension,
 {
-    /// 从裸指针构造可变视图。
+    /// Constructs a mutable view from raw pointer.
     ///
-    /// 与 `from_raw_parts` 相同，但要求独占访问（无其他引用）。
+    /// Same as `from_raw_parts`, but requires exclusive access (no other references).
     ///
     /// # Safety
     ///
-    /// 与 `from_raw_parts` 相同,但额外要求：内存无其他引用。
+    /// Same as `from_raw_parts`, with additional requirement: no other references to the memory.
     ///
     /// # Example
     ///
@@ -246,7 +246,7 @@ where
         strides: D,
         offset: usize,
     ) -> Self {
-        // 实现...
+        // implementation...
     }
 }
 ```
@@ -258,20 +258,20 @@ impl<A, D> TensorBase<Owned<A>, D>
 where
     D: Dimension,
 {
-    /// 消费张量，返回原始部件。
+    /// Consumes the tensor, returning raw parts.
     ///
-    /// 调用方负责释放返回的内存。
+    /// The caller is responsible for freeing the returned memory.
     ///
     /// # Returns
     ///
-    /// 元组 `(ptr, shape, strides, offset)`。
+    /// A tuple `(ptr, shape, strides, offset)`.
     ///
     /// # Example
     ///
     /// ```
     /// let tensor = Tensor2::<f64>::zeros([3, 4]);
     /// let (ptr, shape, strides, offset) = tensor.into_raw_parts();
-    /// // 调用方现在拥有 ptr，负责释放
+    /// // Caller now owns ptr, responsible for freeing
     /// ```
     pub fn into_raw_parts(self) -> (*mut A, D, D, usize) {
         let ptr = self.storage.into_raw();
@@ -279,7 +279,7 @@ where
         let strides = self.strides;
         let offset = self.offset;
 
-        // 防止 Drop 释放内存
+        // Prevent Drop from freeing memory
         core::mem::forget(self);
 
         (ptr, shape, strides, offset)
@@ -297,19 +297,19 @@ where
     S: Storage,
     D: Dimension,
 {
-    /// 检查内存布局是否可直接传递给 BLAS。
+    /// Checks whether the memory layout can be directly passed to BLAS.
     ///
-    /// # BLAS 兼容性条件
+    /// # BLAS Compatibility Conditions
     ///
-    /// | 条件 | 说明 |
+    /// | Condition | Description |
     /// |------|------|
-    /// | 连续性 | F-contiguous 或 C-contiguous |
-    /// | 正步长 | 所有步长 > 0（无反转维度） |
-    /// | 无零步长 | 无广播维度 |
+    /// | Contiguity | F-contiguous or C-contiguous |
+    /// | Positive strides | All strides > 0 (no reversed dimensions) |
+    /// | No zero strides | No broadcast dimensions |
     ///
     /// # Returns
     ///
-    /// `true` 表示可直接传递给 BLAS；`false` 表示需先复制。
+    /// `true` if directly passable to BLAS; `false` if a copy is needed first.
     ///
     /// # Example
     ///
@@ -331,17 +331,17 @@ where
 ### 4.6 blas_layout 和 BlasLayout 结构体
 
 ```rust
-/// BLAS 矩阵信息。
+/// BLAS matrix information.
 ///
-/// 包含传递给 BLAS 函数所需的全部参数。
+/// Contains all parameters needed for BLAS function calls.
 pub struct BlasInfo {
-    /// 数据指针。
+    /// Data pointer.
     pub data_ptr: *const u8,
-    /// Leading dimension（元素单位）。
+    /// Leading dimension (element units).
     pub leading_dim: i32,
-    /// 行数。
+    /// Number of rows.
     pub rows: i32,
-    /// 列数。
+    /// Number of columns.
     pub cols: i32,
 }
 
@@ -350,12 +350,12 @@ where
     S: Storage,
     D: Dimension,
 {
-    /// 返回 BLAS 布局标识及参数信息。
+    /// Returns BLAS layout identifier and parameter information.
     ///
     /// # Returns
     ///
-    /// - `Some(BlasInfo)`：兼容条件满足
-    /// - `None`：不兼容 BLAS
+    /// - `Some(BlasInfo)`: compatibility conditions met
+    /// - `None`: not BLAS compatible
     ///
     /// # Example
     ///
@@ -393,14 +393,14 @@ where
     S: Storage,
     D: Dimension,
 {
-    /// 返回 leading dimension（仅 2D 数组有意义）。
+    /// Returns the leading dimension (only meaningful for 2D arrays).
     ///
-    /// 对于 F-order 矩阵 `A[M, N]`，`LDA = stride[1]`。
+    /// For F-order matrix `A[M, N]`, `LDA = stride[1]`.
     ///
     /// # Returns
     ///
-    /// - `Some(isize)`: 2D 数组的 LDA
-    /// - `None`: 非 2D 数组
+    /// - `Some(isize)`: LDA of a 2D array
+    /// - `None`: not a 2D array
     ///
     /// # Example
     ///
@@ -426,14 +426,14 @@ where
     S: Storage<Elem = A>,
     D: Dimension,
 {
-    /// 将多维索引转换为元素偏移量。
+    /// Converts a multi-dimensional index to an element offset.
     ///
-    /// 偏移量 = Σ(stride[i] * index[i]) for all i in [0, ndim)
+    /// Offset = Σ(stride[i] * index[i]) for all i in [0, ndim)
     ///
     /// # Panics
     ///
-    /// - 索引长度与维度数不匹配
-    /// - 索引越界
+    /// - Index length does not match number of dimensions
+    /// - Index out of bounds
     ///
     /// # Example
     ///
@@ -456,12 +456,12 @@ where
         offset
     }
 
-    /// 将多维索引转换为对应元素的原始指针。
+    /// Converts a multi-dimensional index to a raw pointer to the corresponding element.
     ///
     /// # Panics
     ///
-    /// - 索引长度与维度数不匹配
-    /// - 索引越界
+    /// - Index length does not match number of dimensions
+    /// - Index out of bounds
     ///
     /// # Example
     ///
@@ -481,7 +481,7 @@ where
 ### 4.9 Good/Bad 对比
 
 ```rust
-// Good - 使用 BLAS 兼容性检查后再传递
+// Good - Check BLAS compatibility before passing
 if tensor.is_blas_compatible() {
     let info = tensor.blas_info().unwrap();
     unsafe {
@@ -495,7 +495,7 @@ if tensor.is_blas_compatible() {
     }
 }
 
-// Bad - 不检查 BLAS 兼容性，直接传递
+// Bad - Pass directly without checking BLAS compatibility
 unsafe {
     call_blas_dgemm(CblasColMajor, CblasNoTrans, ...,
         tensor.as_ptr(), tensor.lda().unwrap(),
@@ -711,6 +711,7 @@ Wave 4: [T5] [T6]
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-08 |
 
 ---
 

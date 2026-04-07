@@ -247,7 +247,7 @@ impl std::error::Error for XenonError {}
 ### 4.6 Good / Bad 对比示例
 
 ```rust
-// Good - 使用 ? 和 XenonError
+// Good - using ? with XenonError
 pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>> {
     if self.len() != shape.size() {
         return Err(XenonError::InvalidShape {
@@ -260,13 +260,13 @@ pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>> {
 
 // Bad - 库代码中使用 unwrap
 pub fn sum_bad(&self) -> A {
-    let first = self.first().unwrap();  // 禁止
+    let first = self.first().unwrap();  // forbidden
     self.iter().fold(*first, |acc, x| acc + x)
 }
 ```
 
 ```rust
-// Good - 整数溢出使用 checked 算术
+// Good - integer overflow using checked arithmetic
 pub fn sum_checked(&self) -> Result<A> {
     let mut total = A::zero();
     for &x in self.iter() {
@@ -275,9 +275,9 @@ pub fn sum_checked(&self) -> Result<A> {
     Ok(total)
 }
 
-// Bad - 整数溢出静默 wrapping
+// Bad - integer overflow with silent wrapping
 pub fn sum_bad(&self) -> A {
-    self.iter().fold(A::zero(), |acc, &x| acc + x)  // release 下静默 wrapping
+    self.iter().fold(A::zero(), |acc, &x| acc + x)  // silent wrapping in release
 }
 ```
 
@@ -333,7 +333,7 @@ pub fn sum_bad(&self) -> A {
 并行操作中发生不可恢复错误时须立即传播，不得静默忽略：
 
 ```rust
-// Good - 并行归约中 panic 立即传播
+// Good - panic propagates immediately in parallel reduction
 #[cfg(feature = "parallel")]
 pub fn par_sum(&self) -> A
 where
@@ -349,7 +349,7 @@ where
 所有 `Drop` 实现不得 panic，确保即使在其他 panic 过程中也能安全清理：
 
 ```rust
-// Good - Drop 不 panic
+// Good - Drop does not panic
 impl<A> Drop for OwnedRepr<A> {
     fn drop(&mut self) {
         // SAFETY: ptr and len are valid by construction
@@ -378,14 +378,14 @@ impl<A> Drop for OwnedRepr<A> {
 use core::fmt;
 use alloc::borrow::Cow;
 
-// XenonError 定义（使用 core::fmt 和 alloc）
+// XenonError definition (using core::fmt and alloc)
 // ...
 
 impl fmt::Display for XenonError {
-    // 使用 core::fmt，无需 std
+    // Uses core::fmt, no std needed
 }
 
-// 仅在 std feature 下实现 std::error::Error
+// Only implement std::error::Error under std feature
 #[cfg(feature = "std")]
 impl std::error::Error for XenonError {}
 ```
@@ -630,6 +630,7 @@ Wave 3: ┌──[T6]────┤
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-08 |
 
 ---
 

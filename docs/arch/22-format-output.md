@@ -83,28 +83,28 @@ src/format.rs
 ### 4.1 FormatConfig 配置结构体
 
 ```rust
-/// 格式化输出配置。
+/// Formatting output configuration.
 ///
-/// 控制大数组截断行为和显示参数。
+/// Controls truncation behavior and display parameters for large arrays.
 pub struct FormatConfig {
-    /// 边缘元素数量（每边显示的元素/行数）。
+    /// Number of edge items (elements/rows shown on each side).
     ///
-    /// 默认 3，即显示前 3 个和后 3 个元素。
+    /// Defaults to 3, showing the first 3 and last 3 elements.
     pub edge_items: usize,
 
-    /// 触发截断的最小元素总数。
+    /// Minimum total elements to trigger truncation.
     ///
-    /// 元素数超过此值时启用截断。默认 1000。
+    /// Truncation is enabled when element count exceeds this value. Defaults to 1000.
     pub threshold: usize,
 
-    /// 浮点精度（小数位数）。
+    /// Floating point precision (decimal places).
     ///
-    /// 默认 None（使用类型的默认格式化）。
+    /// Defaults to None (uses the type's default formatting).
     pub precision: Option<usize>,
 
-    /// 行宽（字符数），用于换行决策。
+    /// Line width (characters), used for line-break decisions.
     ///
-    /// 默认 80。
+    /// Defaults to 80.
     pub line_width: usize,
 }
 
@@ -129,17 +129,17 @@ where
     D: Dimension,
     A: core::fmt::Display + Element,
 {
-    /// 面向用户的简洁可读输出。
+    /// User-facing concise readable output.
     ///
-    /// 遵循 NumPy 风格：
+    /// Follows NumPy style:
     /// - 1D: `[1, 2, 3, 4]`
-    /// - 2D: 矩阵形式，F-order 排列
-    /// - ND: 嵌套括号
+    /// - 2D: matrix form, F-order layout
+    /// - ND: nested brackets
     ///
-    /// 大数组自动截断（参见 §4.4）。
+    /// Large arrays are automatically truncated (see §4.4).
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if self.ndim() == 0 {
-            // 零维张量：直接输出标量值
+            // 0-dim tensor: output scalar value directly
             write!(f, "{}", self[&[]])
         } else if self.ndim() == 1 {
             fmt_1d_display(f, self)
@@ -159,9 +159,9 @@ where
     D: Dimension,
     A: core::fmt::Debug + Element,
 {
-    /// 面向开发的调试输出。
+    /// Developer-facing debug output.
     ///
-    /// 包含形状、步长、类型等元信息。
+    /// Includes metadata such as shape, strides, and type.
     ///
     /// # 输出格式
     ///
@@ -179,7 +179,7 @@ where
             self.strides(),
             core::any::type_name::<A>()
         )?;
-        // 布局信息
+        // Layout information
         if self.is_f_contiguous() {
             write!(f, "f-contiguous")?;
         } else if self.is_c_contiguous() {
@@ -188,7 +188,7 @@ where
             write!(f, "non-contiguous")?;
         }
         write!(f, ")\n")?;
-        // 数据部分（复用 Display 的格式化逻辑）
+        // Data section (reuses Display formatting logic)
         core::fmt::Display::fmt(self, f)
     }
 }
@@ -257,11 +257,11 @@ truncation_rule(tensor, config):
 ### 4.6 Good/Bad 对比
 
 ```rust
-// Good - 使用 Display 获取可读输出
+// Good - Use Display for readable output
 let tensor = Tensor2::<f64>::zeros([3, 4]);
 println!("{}", tensor);  // NumPy style output
 
-// Bad - 手动拼接输出
+// Bad - Manual string concatenation
 let tensor = Tensor2::<f64>::zeros([3, 4]);
 for i in 0..3 {
     for j in 0..4 {
@@ -272,7 +272,7 @@ for i in 0..3 {
 ```
 
 ```rust
-// Good - 使用 Debug 获取调试信息
+// Good - Use Debug for debug information
 let tensor = Tensor2::<f64>::zeros([3, 4]);
 println!("{:?}", tensor);
 // Tensor(shape=[3, 4], strides=[1, 3], dtype=f64, f-contiguous)
@@ -280,7 +280,7 @@ println!("{:?}", tensor);
 //  [0.0, 0.0, 0.0, 0.0],
 //  [0.0, 0.0, 0.0, 0.0]]
 
-// Bad - 逐个字段手动打印
+// Bad - Print each field manually
 println!("shape: {:?}", tensor.shape());
 println!("strides: {:?}", tensor.strides());
 // ... 冗余且不完整
@@ -329,8 +329,8 @@ fmt_nd(tensor, f, depth):
 ### 5.2 no_std 兼容性
 
 ```rust
-// Display 需要 std（core::fmt::Display 可用，但格式化浮点精度需要 std）
-// 在 no_std 环境下只实现 Debug
+// Display requires std (core::fmt::Display is available, but float precision formatting requires std)
+// Only implement Debug in no_std environments
 
 #[cfg(feature = "std")]
 impl<S, D, A> core::fmt::Display for TensorBase<S, D>
@@ -342,7 +342,7 @@ where
     // ...
 }
 
-// Debug 在 no_std 下也可用
+// Debug is also available under no_std
 impl<S, D, A> core::fmt::Debug for TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -521,6 +521,7 @@ Wave 3: [T5] → [T6]
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-08 |
 
 ---
 

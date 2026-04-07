@@ -90,50 +90,51 @@ use core::ptr::NonNull;
 use core::sync::atomic::{AtomicU8, Ordering};
 use alloc::alloc::{alloc, dealloc, Layout};
 
-/// 临时工作空间。
+/// Temporary workspace.
 ///
-/// 用于存储数值计算中的临时缓冲区，支持对齐分配和复用。
+/// Used for storing temporary buffers in numerical computation,
+/// supporting aligned allocation and reuse.
 ///
-/// # 生命周期规则
+/// # Lifetime Rules
 ///
-/// - 借用期间不可再次借出（由借用守卫保证）
-/// - 归还后可复用
-/// - 不绑定线程，线程安全由调用方保证
+/// - Cannot be re-borrowed while borrowed (enforced by borrow guards)
+/// - Can be reused after returning
+/// - Not thread-bound; thread safety is the caller's responsibility
 ///
-/// # 初始化保证
+/// # Initialization Guarantee
 ///
-/// 不保证零初始化。调用方须自行初始化使用的数据。
+/// No zero-initialization guarantee. The caller must initialize used data.
 ///
 /// # Example
 ///
 /// ```
 /// let mut ws = Workspace::new(1024, 64)?;
 ///
-/// // 可变借用
+/// // Mutable borrow
 /// let mut buf = ws.borrow_mut()?;
-/// // 使用缓冲区...
+/// // Use buffer...
 ///
-/// // 归还（RAII 自动）
+/// // Return (RAII automatic)
 /// drop(buf);
 ///
-/// // 可再次借用
+/// // Can borrow again
 /// let buf2 = ws.borrow_mut()?;
 /// ```
 pub struct Workspace {
-    /// 数据指针（非空，已对齐）。
+    /// Data pointer (non-null, aligned).
     ptr: NonNull<u8>,
 
-    /// 当前容量（字节）。
+    /// Current capacity in bytes.
     capacity: usize,
 
-    /// 分配时的对齐值（字节）。
+    /// Alignment in bytes at allocation time.
     alignment: usize,
 
-    /// 借用状态（原子）。
+    /// Borrow state (atomic).
     ///
-    /// - 0: 未借用
-    /// - 1: 共享借用
-    /// - 2: 独占借用
+    /// - 0: not borrowed
+    /// - 1: shared borrow
+    /// - 2: exclusive borrow
     borrow_state: AtomicU8,
 }
 ```
@@ -144,21 +145,21 @@ pub struct Workspace {
 
 ```rust
 impl Workspace {
-    /// 默认对齐值：64 字节（AVX-512 缓存行）。
+    /// Default alignment: 64 bytes (AVX-512 cache line).
     pub const DEFAULT_ALIGNMENT: usize = 64;
 
-    /// 最小对齐值。
+    /// Minimum alignment.
     pub const MIN_ALIGNMENT: usize = 8;
 
-    /// 默认初始容量：4 KB。
+    /// Default initial capacity: 4 KB.
     pub const DEFAULT_CAPACITY: usize = 4096;
 
-    /// 借用状态常量。
+    /// Borrow state constants.
     const BORROW_NONE: u8 = 0;
     const BORROW_SHARED: u8 = 1;
     const BORROW_EXCLUSIVE: u8 = 2;
 
-    /// 增长因子分子（1.5 倍）。
+    /// Growth factor numerator (1.5x).
     const GROWTH_FACTOR_NUMERATOR: usize = 3;
     const GROWTH_FACTOR_DENOMINATOR: usize = 2;
 }
@@ -168,21 +169,21 @@ impl Workspace {
 
 ```rust
 impl Workspace {
-    /// 创建新的工作空间。
+    /// Create a new workspace.
     ///
     /// # Arguments
     ///
-    /// * `capacity` - 初始容量（字节）
-    /// * `alignment` - 对齐值（字节），须为 2 的幂且 ≥ 8
+    /// * `capacity` - Initial capacity in bytes
+    /// * `alignment` - Alignment in bytes, must be a power of 2 and >= 8
     ///
     /// # Errors
     ///
-    /// - `WorkspaceError::AllocFailed`: 内存分配失败
-    /// - `WorkspaceError::InvalidLayout`: 布局参数无效
+    /// - `WorkspaceError::AllocFailed`: Memory allocation failed
+    /// - `WorkspaceError::InvalidLayout`: Invalid layout parameters
     ///
     /// # Panics
     ///
-    /// `alignment` 不是 2 的幂或小于 `MIN_ALIGNMENT` 时 panic。
+    /// Panics if `alignment` is not a power of 2 or is less than `MIN_ALIGNMENT`.
     ///
     /// # Example
     ///
@@ -209,7 +210,7 @@ impl Workspace {
         })
     }
 
-    /// 使用默认参数创建工作空间。
+    /// Create a workspace with default parameters.
     pub fn with_default_capacity() -> Result<Self, WorkspaceError> {
         Self::new(Self::DEFAULT_CAPACITY, Self::DEFAULT_ALIGNMENT)
     }
@@ -232,24 +233,24 @@ impl Drop for Workspace {
     }
 }
 
-// 禁止 Clone（语义上唯一）
+// Clone forbidden (semantically unique)
 ```
 
 ### 4.5 借用 API
 
 ```rust
-/// 不可变借用守卫。
+/// Immutable borrow guard.
 ///
-/// RAII 守卫， drop 时自动归还工作空间。
+/// RAII guard that automatically returns the workspace on drop.
 pub struct WorkspaceBorrow<'a> {
     ptr: NonNull<u8>,
     len: usize,
     workspace: &'a Workspace,
 }
 
-/// 可变借用守卫。
+/// Mutable borrow guard.
 ///
-/// RAII 守卫, drop 时自动归还工作空间。
+/// RAII guard that automatically returns the workspace on drop.
 pub struct WorkspaceBorrowMut<'a> {
     ptr: NonNull<u8>,
     len: usize,
@@ -257,11 +258,11 @@ pub struct WorkspaceBorrowMut<'a> {
 }
 
 impl Workspace {
-    /// 不可变借用工作空间。
+    /// Immutably borrow the workspace.
     ///
     /// # Errors
     ///
-    /// `WorkspaceError::AlreadyBorrowed`: 工作空间已被借用。
+    /// `WorkspaceError::AlreadyBorrowed`: Workspace is already borrowed.
     pub fn borrow(&self) -> Result<WorkspaceBorrow<'_>, WorkspaceError> {
         let prev = self.borrow_state.compare_exchange(
             Self::BORROW_NONE,
@@ -281,11 +282,11 @@ impl Workspace {
         })
     }
 
-    /// 可变借用工作空间。
+    /// Mutably borrow the workspace.
     ///
     /// # Errors
     ///
-    /// `WorkspaceError::AlreadyBorrowed`: 工作空间已被借用。
+    /// `WorkspaceError::AlreadyBorrowed`: Workspace is already borrowed.
     pub fn borrow_mut(&self) -> Result<WorkspaceBorrowMut<'_>, WorkspaceError> {
         let prev = self.borrow_state.compare_exchange(
             Self::BORROW_NONE,
@@ -311,43 +312,43 @@ impl Workspace {
 
 ```rust
 impl<'a> WorkspaceBorrow<'a> {
-    /// 返回数据指针。
+    /// Returns the data pointer.
     pub fn as_ptr(&self) -> *const u8 {
         self.ptr.as_ptr()
     }
 
-    /// 返回数据切片。
+    /// Returns the data slice.
     pub fn as_slice(&self) -> &[u8] {
         // SAFETY: ptr valid for 'a, len matches capacity
  unsafe { core::slice::from_raw_parts(self.ptr.as_ptr(), self.len) }
     }
 
-    /// 返回借用长度。
+    /// Returns the borrow length.
     pub fn len(&self) -> usize { self.len }
 
-    /// 检查是否为空。
+    /// Returns whether the borrow is empty.
     pub fn is_empty(&self) -> bool { self.len == 0 }
 }
 
 impl<'a> WorkspaceBorrowMut<'a> {
-    /// 返回可变数据指针。
+    /// Returns the mutable data pointer.
     pub fn as_mut_ptr(&mut self) -> *mut u8 {
         self.ptr.as_ptr()
     }
 
-    /// 返回可变数据切片。
+    /// Returns the mutable data slice.
     pub fn as_mut_slice(&mut self) -> &mut [u8] {
         // SAFETY: ptr valid for 'a, len matches capacity, unique access
  unsafe { core::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len) }
     }
 
-    /// 类型化访问。
+    /// Typed access.
     ///
     /// # Safety
     ///
-    /// 调用方须保证：
-    /// - 对齐满足类型要求
-    /// - 容量足够容纳 `count` 个元素
+    /// The caller must ensure:
+    /// - Alignment satisfies the type's requirements
+    /// - Capacity is sufficient to hold `count` elements
     pub unsafe fn as_typed_slice<T>(&mut self, count: usize) -> &mut [T] {
         assert!(count * core::mem::size_of::<T>() <= self.len);
         assert!(self.ptr.as_ptr() as usize % core::mem::align_of::<T>() == 0);
@@ -355,7 +356,7 @@ impl<'a> WorkspaceBorrowMut<'a> {
     }
 }
 
-// RAII 归还
+// RAII return
 impl<'a> Drop for WorkspaceBorrow<'a> {
     fn drop(&mut self) {
         self.workspace.borrow_state.store(
@@ -378,10 +379,10 @@ impl<'a> Drop for WorkspaceBorrowMut<'a> {
 ### 4.7 分割 API
 
 ```rust
-/// 分割后的子空间借用守卫。
+/// Borrow guard for a split sub-space.
 ///
-/// 与 `WorkspaceBorrowMut` 类似，但允许多个分割守卫同时存在
-/// （指向不重叠的内存区域）。
+/// Similar to `WorkspaceBorrowMut`, but allows multiple split guards
+/// to coexist (pointing to non-overlapping memory regions).
 pub struct SplitBorrowMut<'a> {
     ptr: NonNull<u8>,
     len: usize,
@@ -389,24 +390,24 @@ pub struct SplitBorrowMut<'a> {
 }
 
 impl Workspace {
-    /// 在指定位置分割工作空间为两个子空间。
+    /// Split the workspace at the specified position into two sub-spaces.
     ///
     /// # Arguments
     ///
-    /// * `mid` - 分割点（字节偏移）
+    /// * `mid` - Split point (byte offset)
     ///
     /// # Returns
     ///
-    /// 两个子空间的可变借用守卫 `(left, right)`。
+    /// Two mutable borrow guards for the sub-spaces `(left, right)`.
     ///
     /// # Complexity
     ///
-    /// O(1) — 仅指针算术，无内存分配。
+    /// O(1) — pointer arithmetic only, no memory allocation.
     ///
     /// # Errors
     ///
     /// - `WorkspaceError::SplitOutOfBounds`: `mid > capacity`
-    /// - `WorkspaceError::AlreadyBorrowed`: 已被借用
+    /// - `WorkspaceError::AlreadyBorrowed`: Already borrowed
     ///
     /// # Example
     ///
@@ -448,15 +449,15 @@ impl Workspace {
 }
 
 impl<'a> SplitBorrowMut<'a> {
-    /// 返回可变切片。
+    /// Returns the mutable slice.
     pub fn as_mut_slice(&mut self) -> &mut [u8] {
         // SAFETY: ptr valid, len matches allocation
         unsafe { core::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len) }
     }
 
-    /// 继续分割（递归二分）。
+    /// Continue splitting (recursive binary split).
     ///
-    /// O(1) — 仅指针算术。
+    /// O(1) — pointer arithmetic only.
     pub fn split_at_mut(
         &mut self,
         mid: usize,
@@ -476,14 +477,14 @@ impl<'a> SplitBorrowMut<'a> {
         ))
     }
 
-    /// 返回子空间长度。
+    /// Returns the sub-space length.
     pub fn len(&self) -> usize { self.len }
 }
 
-// Drop 不修改 borrow_state（由最外层 WorkspaceBorrowMut 负责）
+// Drop does not modify borrow_state (managed by the outermost WorkspaceBorrowMut)
 impl<'a> Drop for SplitBorrowMut<'a> {
     fn drop(&mut self) {
-        // 无操作：借用状态由原始 split_at 调用产生的守卫管理
+        // No-op: borrow state is managed by the guard produced by the original split_at call
     }
 }
 ```
@@ -492,21 +493,21 @@ impl<'a> Drop for SplitBorrowMut<'a> {
 
 ```rust
 impl Workspace {
-    /// 确保容量至少为 `min_capacity`。
+    /// Ensure capacity is at least `min_capacity`.
     ///
-    /// 如果当前容量不足，将重新分配更大的内存。
-    /// 新容量 = max(请求容量, 当前容量 × 1.5)。
+    /// If current capacity is insufficient, a larger memory region will be allocated.
+    /// New capacity = max(requested capacity, current capacity × 1.5).
     ///
     /// # Errors
     ///
-    /// - `WorkspaceError::AlreadyBorrowed`: 工作空间已被借用
-    /// - `WorkspaceError::AllocFailed`: 内存分配失败
+    /// - `WorkspaceError::AlreadyBorrowed`: Workspace is already borrowed
+    /// - `WorkspaceError::AllocFailed`: Memory allocation failed
     ///
     /// # Example
     ///
     /// ```
     /// let mut ws = Workspace::new(1024, 64)?;
-    /// ws.ensure_capacity(2048)?;  // 扩容到至少 2048
+    /// ws.ensure_capacity(2048)?;  // Grow to at least 2048
     /// ```
     pub fn ensure_capacity(
         &mut self,
@@ -516,13 +517,13 @@ impl Workspace {
             return Ok(());
         }
 
-        // 检查借用状态
+        // Check borrow state
         let state = self.borrow_state.load(Ordering::Acquire);
         if state != Self::BORROW_NONE {
             return Err(WorkspaceError::AlreadyBorrowed);
         }
 
-        // 1.5 倍增长
+        // 1.5x growth
         let grown = self.capacity * Self::GROWTH_FACTOR_NUMERATOR
             / Self::GROWTH_FACTOR_DENOMINATOR;
         let new_capacity = grown.max(min_capacity);
@@ -530,7 +531,7 @@ impl Workspace {
         self.reallocate(new_capacity)
     }
 
-    /// 内部重新分配。
+    /// Internal reallocation.
     fn reallocate(&mut self, new_capacity: usize) -> Result<(), WorkspaceError> {
         let new_layout = Layout::from_size_align(new_capacity, self.alignment)
             .map_err(|_| WorkspaceError::InvalidLayout)?;
@@ -539,7 +540,7 @@ impl Workspace {
         let new_ptr = NonNull::new(new_ptr)
             .ok_or(WorkspaceError::AllocFailed)?;
 
-        // 复制旧数据
+        // Copy old data
         // SAFETY: src and dst do not overlap, copy min(old, new) bytes
         unsafe {
             core::ptr::copy_nonoverlapping(
@@ -549,7 +550,7 @@ impl Workspace {
             );
         }
 
-        // 释放旧内存
+        // Free old memory
         // SAFETY: old layout was valid at allocation time
         unsafe {
             let old_layout = Layout::from_size_align_unchecked(
@@ -570,27 +571,27 @@ impl Workspace {
 ### 4.9 Good/Bad 对比
 
 ```rust
-// Good - 使用 split_at 分割工作空间
+// Good - Split workspace using split_at
 let mut ws = Workspace::new(1024, 64)?;
 let (mut left, mut right) = ws.split_at(512)?;
-// left 和 right 指向不重叠的内存区域
-// 可安全并行使用
+// left and right point to non-overlapping memory regions
+// Safe for parallel use
 
-// Bad - 直接操作裸指针绕过借用检查
+// Bad - Directly manipulating raw pointers to bypass borrow checking
 let mut ws = Workspace::new(1024, 64)?;
-let ptr = ws.ptr.as_ptr();  // ptr 字段是私有的!
-// 绕过了借用检查，可能导致数据竞争
+let ptr = ws.ptr.as_ptr();  // ptr field is private!
+// Bypasses borrow checking, may cause data races
 
-// Good - 确保容量后使用
+// Good - Ensure capacity before use
 let mut ws = Workspace::new(256, 64)?;
-ws.ensure_capacity(1024)?;  // 先扩容
+ws.ensure_capacity(1024)?;  // Grow first
 let mut buf = ws.borrow_mut()?;
-// 安全使用更大的缓冲区
+// Safe to use the larger buffer
 
-// Bad - 借用期间扩容
+// Bad - Resize during borrow
 let mut ws = Workspace::new(256, 64)?;
 let buf = ws.borrow_mut()?;
-ws.ensure_capacity(1024);  // 编译错误！ borrow_mut 需要 &mut self
+ws.ensure_capacity(1024);  // Compile error! borrow_mut requires &mut self
 ```
 
 ---
@@ -873,7 +874,7 @@ std = []
 ```
 
 ```rust
-// 条件导出
+// Conditional export
 #[cfg(feature = "std")]
 impl std::error::Error for WorkspaceError {}
 ```
@@ -885,6 +886,7 @@ impl std::error::Error for WorkspaceError {}
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-08 |
 
 ---
 

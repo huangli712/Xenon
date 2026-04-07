@@ -346,7 +346,7 @@ criterion_main!(benches);
 ### 11.1 Good — 正确的 benchmark 模式
 
 ```rust
-// Good: 使用 black_box 防止编译器消除死代码
+// Good: Use black_box to prevent the compiler from eliminating dead code
 fn bench_sum(c: &mut Criterion) {
     let data = data_gen::sequential_1d(65_536);
     c.bench_function("sum_f64_65k", |b| {
@@ -358,19 +358,19 @@ fn bench_sum(c: &mut Criterion) {
 ### 11.2 Bad — 错误的 benchmark 模式
 
 ```rust
-// Bad: 未使用 black_box，编译器可能消除运算
+// Bad: Not using black_box, compiler may eliminate the operation
 fn bench_sum_bad(c: &mut Criterion) {
     let data = data_gen::sequential_1d(65_536);
     c.bench_function("sum_f64_65k", |b| {
-        b.iter(|| data.sum());  // 编译器可能优化掉
+        b.iter(|| data.sum());  // Compiler may optimize this away
     });
 }
 
-// Bad: 在 iter 回调中构造数据，混入构造开销
+// Bad: Constructing data inside iter callback, mixing in construction overhead
 fn bench_sum_bad2(c: &mut Criterion) {
     c.bench_function("sum_f64_65k", |b| {
         b.iter(|| {
-            let data = data_gen::sequential_1d(65_536);  // 构造开销混入
+            let data = data_gen::sequential_1d(65_536);  // Construction overhead mixed in
             data.sum()
         });
     });
@@ -553,6 +553,7 @@ Wave 5:       [T12]
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-08 |
 
 ---
 
