@@ -102,78 +102,78 @@ NEG = HAS_NEG_STRIDE  (0b10000)  包含负步长（切片/翻转）
 > **注意**：Xenon 不需要 `C_CONTIGUOUS` 标志位（不支持 C-order）。1D 和 0D 数组天然 F-连续。
 
 ```rust
-/// 布局标志位集合。
+/// A set of layout flags.
 ///
-/// 使用位域存储多个布局属性，支持 O(1) 查询。
+/// Uses a bitfield to store multiple layout properties with O(1) queries.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LayoutFlags(u8);
 
 impl LayoutFlags {
-    /// 空标志
+    /// Empty flags
     pub const EMPTY: Self = Self(0b0000_0000);
 
-    /// F-order 连续性标志
+    /// F-order contiguity flag
     pub const F_CONTIGUOUS: u8 = 0b0000_0001;  // 0x01
 
-    /// SIMD 对齐标志（64 字节）
+    /// SIMD alignment flag (64-byte)
     pub const ALIGNED: u8 = 0b0000_0100;        // 0x04
 
-    /// 零步长标志（广播维度）
+    /// Zero stride flag (broadcast dimension)
     pub const HAS_ZERO_STRIDE: u8 = 0b0000_1000; // 0x08
 
-    /// 负步长标志（反转维度）
+    /// Negative stride flag (reversed dimension)
     pub const HAS_NEG_STRIDE: u8 = 0b0001_0000;  // 0x10
 
-    // === 查询方法 ===
+    // === Query methods ===
 
-    /// 是否 F-order 连续。
+    /// Returns true if F-order contiguous.
     #[inline]
     pub const fn is_f_contiguous(self) -> bool {
         (self.0 & Self::F_CONTIGUOUS) != 0
     }
 
-    /// 是否 64 字节对齐。
+    /// Returns true if 64-byte aligned.
     #[inline]
     pub const fn is_aligned(self) -> bool {
         (self.0 & Self::ALIGNED) != 0
     }
 
-    /// 是否存在零步长。
+    /// Returns true if any zero stride exists.
     #[inline]
     pub const fn has_zero_stride(self) -> bool {
         (self.0 & Self::HAS_ZERO_STRIDE) != 0
     }
 
-    /// 是否存在负步长。
+    /// Returns true if any negative stride exists.
     #[inline]
     pub const fn has_neg_stride(self) -> bool {
         (self.0 & Self::HAS_NEG_STRIDE) != 0
     }
 
-    // === 设置方法 ===
+    // === Setter methods ===
 
-    /// 设置 F-order 连续标志。
+    /// Sets the F-order contiguity flag.
     #[inline]
     pub const fn set_f_contiguous(self, val: bool) -> Self {
         if val { Self(self.0 | Self::F_CONTIGUOUS) }
         else { Self(self.0 & !Self::F_CONTIGUOUS) }
     }
 
-    /// 设置对齐标志。
+    /// Sets the alignment flag.
     #[inline]
     pub const fn set_aligned(self, val: bool) -> Self {
         if val { Self(self.0 | Self::ALIGNED) }
         else { Self(self.0 & !Self::ALIGNED) }
     }
 
-    /// 设置零步长标志。
+    /// Sets the zero stride flag.
     #[inline]
     pub const fn set_has_zero_stride(self, val: bool) -> Self {
         if val { Self(self.0 | Self::HAS_ZERO_STRIDE) }
         else { Self(self.0 & !Self::HAS_ZERO_STRIDE) }
     }
 
-    /// 设置负步长标志。
+    /// Sets the negative stride flag.
     #[inline]
     pub const fn set_has_neg_stride(self, val: bool) -> Self {
         if val { Self(self.0 | Self::HAS_NEG_STRIDE) }
@@ -187,11 +187,12 @@ impl LayoutFlags {
 步长使用有符号整数 `isize` 存储：
 
 ```rust
-/// 步长数组中每个元素表示沿该轴移动一个索引时，内存偏移量的变化（元素单位）。
+/// Each element in the stride array represents the memory offset change
+/// (in elements) when moving one index along that axis.
 ///
-/// - 正步长：正向遍历
-/// - 负步长：反向遍历（如 flip 操作）
-/// - 零步长：广播维度（重复同一元素）
+/// - Positive stride: forward traversal
+/// - Negative stride: reverse traversal (e.g. flip operation)
+/// - Zero stride: broadcast dimension (repeats the same element)
 ```
 
 ### 4.3 F-order 步长计算
@@ -224,13 +225,13 @@ i=2: stride[2] = 12,   cumulative = 12 * 5 = 60
 **API**：
 
 ```rust
-/// 根据形状计算 F-order 连续布局的步长。
+/// Computes strides for an F-order contiguous layout from the given shape.
 ///
 /// # Arguments
-/// * `shape` - 各轴长度
+/// * `shape` - Length of each axis
 ///
 /// # Returns
-/// 步长数组（isize），长度与 shape 相同
+/// Stride array (isize) with the same length as shape
 pub fn compute_f_strides<D: Dimension>(shape: &D) -> D;
 ```
 
@@ -270,13 +271,13 @@ i=0: shape[0]=2, stride[0]=3, expected=1 ✗
 ### 4.5 对齐检查
 
 ```rust
-/// 检查指针是否满足对齐要求。
+/// Checks whether the pointer satisfies the alignment requirement.
 #[inline]
 pub fn is_aligned_to(ptr: *const u8, align: usize) -> bool {
     (ptr as usize) % align == 0
 }
 
-/// 检查指针是否 64 字节对齐。
+/// Checks whether the pointer is 64-byte aligned.
 #[inline]
 pub fn is_aligned(ptr: *const u8) -> bool {
     is_aligned_to(ptr, 64)
@@ -316,61 +317,61 @@ shape = [3, 4], strides = [1, 0]  // 第二维广播
 ### 4.8 Layout 结构体
 
 ```rust
-/// 内存布局描述。
+/// Memory layout descriptor.
 ///
-/// 包含布局标志位和数据偏移量。
+/// Contains layout flags and data offset.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Layout {
-    /// 布局标志位
+    /// Layout flags
     flags: LayoutFlags,
-    /// 数据起始偏移量（元素单位）
+    /// Data start offset (in elements)
     offset: usize,
 }
 
 impl Layout {
-    /// 创建新布局。
+    /// Creates a new layout.
     pub fn new(flags: LayoutFlags, offset: usize) -> Self {
         Self { flags, offset }
     }
 
-    /// 从形状、步长和指针计算完整布局。
+    /// Computes the full layout from shape, strides, and pointer.
     pub fn compute<D: Dimension>(
         shape: &D,
         strides: &D,
         ptr: *const u8,
     ) -> Self;
 
-    /// 是否 F-order 连续。
+    /// Returns true if F-order contiguous.
     #[inline]
     pub fn is_f_contiguous(&self) -> bool {
         self.flags.is_f_contiguous()
     }
 
-    /// 是否 64 字节对齐。
+    /// Returns true if 64-byte aligned.
     #[inline]
     pub fn is_aligned(&self) -> bool {
         self.flags.is_aligned()
     }
 
-    /// 是否存在零步长。
+    /// Returns true if any zero stride exists.
     #[inline]
     pub fn has_zero_stride(&self) -> bool {
         self.flags.has_zero_stride()
     }
 
-    /// 是否存在负步长。
+    /// Returns true if any negative stride exists.
     #[inline]
     pub fn has_neg_stride(&self) -> bool {
         self.flags.has_neg_stride()
     }
 
-    /// 返回完整布局标志。
+    /// Returns the full layout flags.
     #[inline]
     pub fn flags(&self) -> LayoutFlags {
         self.flags
     }
 
-    /// 返回数据偏移量。
+    /// Returns the data offset.
     #[inline]
     pub fn offset(&self) -> usize {
         self.offset
@@ -381,21 +382,21 @@ impl Layout {
 ### 4.9 Good/Bad 对比
 
 ```rust
-// Good - F-order 步长计算
+// Good - F-order stride computation
 let strides = compute_f_strides(&shape);  // [1, 3, 12] for [3,4,5]
 
-// Bad - 硬编码步长（不通用、易错）
-let strides = [1, 3, 12];  // 仅对 [3,4,5] 有效
+// Bad - hardcoded strides (not general-purpose, error-prone)
+let strides = [1, 3, 12];  // only valid for [3,4,5]
 ```
 
 ```rust
-// Good - 使用 LayoutFlags 查询
+// Good - Query using LayoutFlags
 if tensor.is_f_contiguous() && tensor.is_aligned() {
-    // 使用 SIMD 加速路径
+    // Use SIMD accelerated path
 }
 
-// Bad - 每次重新计算连续性
-let contig = check_contiguity(tensor.shape(), tensor.strides());  // O(n) 重复计算
+// Bad - Recomputing contiguity every time
+let contig = check_contiguity(tensor.shape(), tensor.strides());  // O(n) repeated computation
 ```
 
 ---
@@ -453,10 +454,10 @@ Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的
 
 ```rust
 trait Dimension {
-    /// 返回步长切片（isize 类型）。
+    /// Returns the stride slice (isize type).
     fn strides_isize(&self) -> &[isize];
 
-    /// 从 isize 切片构造步长。
+    /// Constructs strides from an isize slice.
     fn from_isize_strides(strides: &[isize]) -> Self;
 }
 ```
@@ -695,6 +696,7 @@ Wave 4:       [T8]
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-07 |
 
 ---
 

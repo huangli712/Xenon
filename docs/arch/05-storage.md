@@ -153,39 +153,39 @@ RawStorage                    (最底层，提供原始指针访问)
 ```rust
 use core::ptr::NonNull;
 
-/// 底层存储的原始指针访问。
+/// Raw pointer access to underlying storage.
 ///
-/// 这是最基础的存储 trait，不提供任何安全保证。
-/// 所有存储类型都必须实现此 trait。
+/// This is the most fundamental storage trait, providing no safety guarantees.
+/// All storage types must implement this trait.
 ///
 /// # Safety
 ///
-/// 实现者必须保证：
-/// - `as_ptr()` 返回的指针在存储生命周期内有效
-/// - 对于同一存储实例，多次调用 `as_ptr()` 返回相同地址
+/// Implementors must ensure:
+/// - The pointer returned by `as_ptr()` remains valid for the storage's lifetime
+/// - Multiple calls to `as_ptr()` on the same storage instance return the same address
 pub unsafe trait RawStorage {
-    /// 存储的元素类型
+    /// The element type of the storage.
     type Elem;
 
-    /// 返回数据起始位置的原始指针。
+    /// Returns a raw pointer to the start of the data.
     fn as_ptr(&self) -> *const Self::Elem;
 
-    /// 返回存储的元素数量。
+    /// Returns the number of elements in storage.
     fn len(&self) -> usize;
 
-    /// 检查存储是否为空。
+    /// Checks if the storage is empty.
     #[inline]
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    /// 检查指针是否满足指定对齐要求。
+    /// Checks if the pointer satisfies the specified alignment requirement.
     #[inline]
     fn is_aligned_to(&self, align: usize) -> bool {
         (self.as_ptr() as usize) % align == 0
     }
 
-    /// 检查是否为 64 字节对齐（AVX-512 优化要求）。
+    /// Checks if the storage is 64-byte aligned (required for AVX-512 optimizations).
     #[inline]
     fn is_aligned(&self) -> bool {
         self.is_aligned_to(64)
@@ -196,22 +196,22 @@ pub unsafe trait RawStorage {
 ### 4.4 RawStorageMut Trait
 
 ```rust
-/// 可变存储的原始指针访问。
+/// Raw pointer access for mutable storage.
 ///
 /// # Safety
 ///
-/// 实现者必须保证：
-/// - `as_mut_ptr()` 返回的指针在存储生命周期内有效
-/// - 不存在其他指向同一数据的可变引用（别名规则）
+/// Implementors must ensure:
+/// - The pointer returned by `as_mut_ptr()` remains valid for the storage's lifetime
+/// - No other mutable references to the same data exist (aliasing rules)
 pub unsafe trait RawStorageMut: RawStorage {
-    /// 返回数据起始位置的可变原始指针。
+    /// Returns a raw mutable pointer to the start of the data.
     fn as_mut_ptr(&mut self) -> *mut Self::Elem;
 
-    /// 将存储转换为 NonNull 指针（用于 FFI）。
+    /// Converts the storage to a NonNull pointer (for FFI).
     ///
     /// # Safety
     ///
-    /// 存储必须非空。
+    /// The storage must be non-empty.
     #[inline]
     unsafe fn as_non_null(&mut self) -> NonNull<Self::Elem> {
         NonNull::new_unchecked(self.as_mut_ptr())
@@ -222,7 +222,7 @@ pub unsafe trait RawStorageMut: RawStorage {
 ### 4.5 Storage Trait
 
 ```rust
-/// 安全的存储读取访问。
+/// Safe read access to storage.
 ///
 /// # Example
 ///
@@ -231,31 +231,31 @@ pub unsafe trait RawStorageMut: RawStorage {
 /// assert_eq!(storage.get(0), Some(&1.0));
 /// ```
 pub unsafe trait Storage: RawStorage {
-    /// 获取指定索引处元素的不可变引用。
+    /// Returns an immutable reference to the element at the given index.
     #[inline]
     fn get(&self, index: usize) -> Option<&Self::Elem> {
         if index < self.len() {
-            // SAFETY: index 已检查边界
+            // SAFETY: index is bounds-checked
             Some(unsafe { &*self.as_ptr().add(index) })
         } else {
             None
         }
     }
 
-    /// 获取指定索引处元素的不可变引用（不检查边界）。
+    /// Returns an immutable reference to the element at the given index without bounds checking.
     ///
     /// # Safety
     ///
-    /// 调用者必须保证 `index < self.len()`。
+    /// The caller must ensure `index < self.len()`.
     #[inline]
     unsafe fn get_unchecked(&self, index: usize) -> &Self::Elem {
         &*self.as_ptr().add(index)
     }
 
-    /// 返回整个存储的切片视图。
+    /// Returns a slice view of the entire storage.
     #[inline]
     fn as_slice(&self) -> &[Self::Elem] {
-        // SAFETY: Storage 保证所有元素已初始化
+        // SAFETY: Storage guarantees all elements are initialized
         unsafe { core::slice::from_raw_parts(self.as_ptr(), self.len()) }
     }
 }
@@ -264,7 +264,7 @@ pub unsafe trait Storage: RawStorage {
 ### 4.6 StorageMut Trait
 
 ```rust
-/// 安全的存储读写访问。
+/// Safe read-write access to storage.
 ///
 /// # Example
 ///
@@ -274,35 +274,35 @@ pub unsafe trait Storage: RawStorage {
 /// assert_eq!(storage.get(0), Some(&10.0));
 /// ```
 pub unsafe trait StorageMut: Storage + RawStorageMut {
-    /// 获取指定索引处元素的可变引用。
+    /// Returns a mutable reference to the element at the given index.
     #[inline]
     fn get_mut(&mut self, index: usize) -> Option<&mut Self::Elem> {
         if index < self.len() {
-            // SAFETY: index 已检查边界
+            // SAFETY: index is bounds-checked
             Some(unsafe { &mut *self.as_mut_ptr().add(index) })
         } else {
             None
         }
     }
 
-    /// 获取指定索引处元素的可变引用（不检查边界）。
+    /// Returns a mutable reference to the element at the given index without bounds checking.
     ///
     /// # Safety
     ///
-    /// 调用者必须保证 `index < self.len()`。
+    /// The caller must ensure `index < self.len()`.
     #[inline]
     unsafe fn get_unchecked_mut(&mut self, index: usize) -> &mut Self::Elem {
         &mut *self.as_mut_ptr().add(index)
     }
 
-    /// 返回整个存储的可变切片视图。
+    /// Returns a mutable slice view of the entire storage.
     #[inline]
     fn as_mut_slice(&mut self) -> &mut [Self::Elem] {
-        // SAFETY: StorageMut 保证所有元素已初始化且独占访问
+        // SAFETY: StorageMut guarantees all elements are initialized and exclusive access
         unsafe { core::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
     }
 
-    /// 用指定值填充整个存储。
+    /// Fills the entire storage with the given value.
     #[inline]
     fn fill(&mut self, value: Self::Elem)
     where
@@ -320,7 +320,7 @@ pub unsafe trait StorageMut: Storage + RawStorageMut {
 ### 4.7 StorageOwned Trait
 
 ```rust
-/// 拥有数据所有权的存储。
+/// Storage that owns data.
 ///
 /// # Example
 ///
@@ -329,33 +329,33 @@ pub unsafe trait StorageMut: Storage + RawStorageMut {
 /// let cloned = storage.to_owned();
 /// ```
 pub unsafe trait StorageOwned: StorageMut + Clone {
-    /// 元素类型
+    /// Element type.
     type Elem: Clone;
 
-    /// 分配指定大小的存储，用零填充。
+    /// Allocates storage of the given size, zero-filled.
     fn zeros(len: usize) -> Self
     where
         Self::Elem: Default;
 
-    /// 分配指定大小的存储，用指定值填充。
+    /// Allocates storage of the given size, filled with the given value.
     fn from_elem(len: usize, value: Self::Elem) -> Self;
 
-    /// 从 Vec 构造存储。
+    /// Constructs storage from a Vec.
     fn from_vec(vec: Vec<Self::Elem>) -> Self;
 
-    /// 从迭代器构造存储。
+    /// Constructs storage from an iterator.
     fn from_iter<I: IntoIterator<Item = Self::Elem>>(iter: I) -> Self;
 
-    /// 将存储转换为 Vec。
+    /// Converts storage into a Vec.
     fn into_vec(self) -> Vec<Self::Elem>;
 
-    /// 创建存储的深拷贝。
+    /// Creates a deep copy of the storage.
     fn to_owned(&self) -> Self;
 
-    /// 返回存储的容量。
+    /// Returns the capacity of the storage.
     fn capacity(&self) -> usize;
 
-    /// 尝试调整存储容量。
+    /// Attempts to resize the storage capacity.
     fn try_reserve(&mut self, new_capacity: usize) -> Result<(), ()>;
 }
 ```
@@ -363,26 +363,26 @@ pub unsafe trait StorageOwned: StorageMut + Clone {
 ### 4.8 StorageShared Trait
 
 ```rust
-/// 共享存储的特殊操作。
+/// Special operations for shared storage.
 ///
-/// 实现 `StorageShared` 的类型允许多个所有者共享同一数据，
-/// 通常通过引用计数实现。
+/// Types implementing `StorageShared` allow multiple owners to share the same data,
+/// typically through reference counting.
 pub unsafe trait StorageShared: Storage + Clone {
-    /// 元素类型
+    /// Element type.
     type Elem: Clone;
 
-    /// 检查是否为唯一所有者。
+    /// Checks if this is the sole owner.
     fn is_unique(&self) -> bool;
 
-    /// 获取数据的独占可变访问（写时复制）。
+    /// Obtains exclusive mutable access to the data (copy-on-write).
     fn make_mut(&mut self) -> &mut [Self::Elem];
 
-    /// 尝试获取独占所有权，不复制数据。
+    /// Attempts to obtain exclusive ownership without copying data.
     fn try_into_owned(self) -> Result<Owned<Self::Elem>, Self>
     where
         Self: Sized;
 
-    /// 获取当前引用计数。
+    /// Returns the current reference count.
     fn ref_count(&self) -> usize;
 }
 ```
@@ -399,13 +399,13 @@ pub unsafe trait StorageShared: Storage + Clone {
 ### 4.10 Good/Bad 对比
 
 ```rust
-// Good - 使用 Storage trait 约束接受任何可读存储
+// Good - Use Storage trait bound to accept any readable storage
 fn process<S: Storage<Elem = f64>>(storage: &S) {
     let slice = storage.as_slice();
     // ...
 }
 
-// Bad - 硬编码 Owned 类型，拒绝视图
+// Bad - Hardcoded Owned type, rejects views
 fn process_bad(storage: &Owned<f64>) {
     let slice = storage.as_slice();
     // ...
@@ -413,14 +413,14 @@ fn process_bad(storage: &Owned<f64>) {
 ```
 
 ```rust
-// Good - ArcRepr 通过 make_mut 显式获取写访问
+// Good - ArcRepr explicitly obtains write access via make_mut
 fn modify_arc(arc: &mut ArcRepr<f64>) {
-    let data = arc.make_mut();  // 显式 CoW
+    let data = arc.make_mut();  // Explicit CoW
     data[0] = 10.0;
 }
 
-// Bad - 直接尝试通过 Arc 写入（编译错误）
-// arc.as_mut_ptr();  // ArcRepr 不实现 StorageMut
+// Bad - Attempting to write through Arc directly (compile error)
+// arc.as_mut_ptr();  // ArcRepr does not implement StorageMut
 ```
 
 ---
@@ -430,18 +430,18 @@ fn modify_arc(arc: &mut ArcRepr<f64>) {
 ### 5.1 Owned\<A\> 结构体
 
 ```rust
-/// 拥有型存储。
+/// Owned storage.
 ///
-/// `Owned<A>` 拥有数据的完全所有权，数据存储在堆上，
-/// 使用 64 字节对齐分配以优化 SIMD 操作。
+/// `Owned<A>` has full ownership of the data, stored on the heap,
+/// with 64-byte aligned allocation for SIMD optimizations.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Owned<A> {
-    /// 内部数据存储（64 字节对齐堆分配）
+    /// Internal data storage (64-byte aligned heap allocation).
     data: Vec<A>,
 }
 
 impl<A> Owned<A> {
-    /// 默认对齐值：64 字节（AVX-512 缓存行）
+    /// Default alignment: 64 bytes (AVX-512 cache line).
     pub const DEFAULT_ALIGNMENT: usize = 64;
 }
 ```
@@ -449,34 +449,34 @@ impl<A> Owned<A> {
 ### 5.2 64 字节对齐分配器
 
 ```rust
-/// 64 字节对齐的内存分配器。
+/// 64-byte aligned memory allocator.
 pub struct AlignedAlloc;
 
 impl AlignedAlloc {
-    /// 默认对齐值：64 字节
+    /// Default alignment: 64 bytes.
     pub const DEFAULT_ALIGNMENT: usize = 64;
 
-    /// 分配指定大小和对齐的内存块，不初始化。
+    /// Allocates a memory block of the given size and alignment, without initialization.
     ///
     /// # Panics
     ///
-    /// - `align` 不是 2 的幂
-    /// - `size` 为 0
-    /// - 内存分配失败
+    /// - `align` is not a power of two
+    /// - `size` is 0
+    /// - Memory allocation fails
     pub fn alloc(size: usize, align: usize) -> NonNull<u8>;
 
-    /// 分配并零初始化。
+    /// Allocates and zero-initializes.
     pub fn alloc_zeroed(size: usize, align: usize) -> NonNull<u8>;
 
-    /// 释放内存。
+    /// Deallocates memory.
     ///
     /// # Safety
     ///
-    /// - `ptr` 必须是由 `alloc` 或 `alloc_zeroed` 返回的
-    /// - `size` 和 `align` 必须与分配时相同
+    /// - `ptr` must have been returned by `alloc` or `alloc_zeroed`
+    /// - `size` and `align` must be the same as during allocation
     pub unsafe fn dealloc(ptr: NonNull<u8>, size: usize, align: usize);
 
-    /// 检查是否应该使用对齐分配（小数组降级）。
+    /// Checks whether aligned allocation should be used (small array degradation).
     #[inline]
     pub fn should_use_aligned_alloc(elem_size: usize, count: usize, align: usize) -> bool {
         let total = elem_size * count;
@@ -490,7 +490,7 @@ impl AlignedAlloc {
 ### 5.3 ViewRepr\<&'a A\> 结构体
 
 ```rust
-/// 不可变视图存储。
+/// Immutable view storage.
 #[derive(Debug)]
 pub struct ViewRepr<A> {
     ptr: *const A,
@@ -498,10 +498,10 @@ pub struct ViewRepr<A> {
     _marker: PhantomData<A>,
 }
 
-/// 类型别名
+/// Type alias.
 pub type View<'a, A> = ViewRepr<&'a A>;
 
-// Clone 仅复制指针和长度，不复制数据（O(1)）
+// Clone only copies the pointer and length, not the data (O(1)).
 impl<'a, A> Clone for ViewRepr<&'a A> {
     #[inline]
     fn clone(&self) -> Self {
@@ -515,9 +515,9 @@ impl<'a, A> Copy for ViewRepr<&'a A> {}
 ### 5.4 ViewMutRepr\<&'a mut A\> 结构体
 
 ```rust
-/// 可变视图存储。
+/// Mutable view storage.
 ///
-/// **不可克隆**：独占语义意味着同一时刻只能存在一个可变引用。
+/// **Not cloneable**: exclusive semantics mean only one mutable reference can exist at a time.
 #[derive(Debug)]
 pub struct ViewMutRepr<A> {
     ptr: *mut A,
@@ -525,18 +525,18 @@ pub struct ViewMutRepr<A> {
     _marker: PhantomData<A>,
 }
 
-/// 类型别名
+/// Type alias.
 pub type ViewMut<'a, A> = ViewMutRepr<&'a mut A>;
 
-// 刻意不实现 Clone — Rust 借用规则要求可变引用独占
+// Intentionally no Clone impl — Rust borrowing rules require mutable references to be exclusive
 ```
 
 ### 5.5 ArcRepr\<A\> 结构体
 
 ```rust
-/// 原子引用计数存储。
+/// Atomic reference counted storage.
 ///
-/// 使用 `Arc` 共享数据所有权，通过 `make_mut()` 实现写时复制 (CoW)。
+/// Uses `Arc` to share data ownership, implementing copy-on-write (CoW) via `make_mut()`.
 #[derive(Debug)]
 pub struct ArcRepr<A> {
     inner: Arc<Vec<A>>,
@@ -568,16 +568,16 @@ make_mut() 执行流程
 ### 5.6 Marker Traits
 
 ```rust
-/// 标记存储类型拥有数据。
+/// Marker trait for storage types that own data.
 pub unsafe trait IsOwned: RawStorage {}
 
-/// 标记存储类型是视图（借用）。
+/// Marker trait for storage types that are views (borrowed).
 pub unsafe trait IsView: RawStorage {}
 
-/// 标记存储类型是可变视图。
+/// Marker trait for storage types that are mutable views.
 pub unsafe trait IsViewMut: RawStorage {}
 
-/// 标记存储类型使用 Arc 共享。
+/// Marker trait for storage types that use Arc sharing.
 pub unsafe trait IsArc: RawStorage {}
 ```
 
@@ -882,6 +882,7 @@ Storage 提供对齐信息（`is_aligned()`），Layout 模块查询对齐状态
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-07 |
 
 ---
 
