@@ -94,18 +94,18 @@ where
     D: Dimension,
     A: Element + PartialOrd,
 {
-    /// 将每个元素限制在 [min, max] 范围内。
+    /// Clamp each element to the [min, max] range.
     ///
-    /// 返回新张量，原张量不变。
+    /// Returns a new tensor; the original tensor is unchanged.
     ///
     /// # Arguments
     ///
-    /// * `min` - 下界
-    /// * `max` - 上界
+    /// * `min` - lower bound
+    /// * `max` - upper bound
     ///
     /// # Panics
     ///
-    /// 如果 `min > max`，debug 模式下 panic。
+    /// Panics in debug mode if `min > max`.
     ///
     /// # Examples
     ///
@@ -122,7 +122,7 @@ where
         self.mapv(|x| if x < min { min.clone() } else if x > max { max.clone() } else { x })
     }
 
-    /// 原地裁剪。
+    /// Clip in place.
     ///
     /// # Examples
     ///
@@ -157,10 +157,10 @@ where
     D: Dimension,
     A: Element + Clone,
 {
-    /// 用指定值填充所有逻辑元素（原地操作）。
+    /// Fill all logical elements with the specified value (in-place).
     ///
-    /// 正确处理非连续布局：通过迭代器遍历所有逻辑元素。
-    /// 不拷贝数据，直接在原存储上修改。
+    /// Correctly handles non-contiguous layouts: iterates over all logical
+    /// elements via the iterator. Modifies storage directly without copying.
     ///
     /// # Examples
     ///
@@ -186,15 +186,15 @@ where
     D: Dimension,
     A: Element + Clone,
 {
-    /// 确保数据在内存中连续存储。
+    /// Ensure data is stored contiguously in memory.
     ///
-    /// - 如果已 F-contiguous，返回 `to_owned()`（拷贝）
-    /// - 如果已 C-contiguous，返回 C-contiguous 版本
-    /// - 如果非连续，拷贝为 F-contiguous 布局
+    /// - If already F-contiguous, returns `to_owned()` (copy)
+    /// - If already C-contiguous, returns a C-contiguous version
+    /// - If non-contiguous, copies into F-contiguous layout
     ///
     /// # Returns
     ///
-    /// 始终返回拥有型 `Tensor<A, D>`。
+    /// Always returns an owned `Tensor<A, D>`.
     ///
     /// # Examples
     ///
@@ -218,17 +218,17 @@ where
 ### 4.4 Good / Bad 对比
 
 ```rust
-// Good - 使用 fill 进行原地填充，零额外分配
+// Good - use fill for in-place filling, zero extra allocation
 let mut t = Tensor1::<f64>::zeros([1000]);
 t.fill(42.0);
 
-// Bad - 创建临时 Vec 再构造新张量，双重分配
+// Bad - create a temporary Vec then construct a new tensor, double allocation
 let data = vec![42.0; 1000];
 let t = Tensor1::from_vec(data);
 ```
 
 ```rust
-// Good - 先检查连续性再决定是否转换
+// Good - check contiguity first before deciding whether to convert
 if tensor.is_f_contiguous() {
     process(&tensor);
 } else {
@@ -236,8 +236,8 @@ if tensor.is_f_contiguous() {
     process(&contiguous);
 }
 
-// Bad - 无条件调用 to_contiguous，已连续时浪费拷贝
-let contiguous = tensor.to_contiguous();  // 可能不必要的 O(n) 拷贝
+// Bad - unconditionally call to_contiguous, wastes a copy when already contiguous
+let contiguous = tensor.to_contiguous();  // potentially unnecessary O(n) copy
 process(&contiguous);
 ```
 
@@ -270,11 +270,11 @@ fill(tensor, value):
 ```
 to_contiguous(tensor):
     if is_f_contiguous(tensor):
-        return to_owned(tensor)       // O(n) 拷贝，但布局不变
+        return to_owned(tensor)        // O(n) copy, layout unchanged
     else if is_c_contiguous(tensor):
-        return to_c_contiguous(tensor) // O(n) 拷贝，保持 C-order
+        return to_c_contiguous(tensor) // O(n) copy, preserve C-order
     else:
-        return to_f_contiguous(tensor) // O(n) 拷贝，转 F-order
+        return to_f_contiguous(tensor) // O(n) copy, convert to F-order
 ```
 
 ### 5.4 NaN 处理语义
@@ -432,6 +432,7 @@ Wave 2: [T3] [T4]
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-08 |
 
 ---
 
