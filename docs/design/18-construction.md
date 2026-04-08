@@ -50,10 +50,15 @@ L5: construct  ← 当前模块
 
 ```
 src/
-└── construct.rs       # 张量构造方法（单文件）
+└── construct/               # 张量构造模块（多文件设计）
+    ├── mod.rs               # 模块根，re-exports 所有公共 API
+    ├── fill.rs              # zeros, ones, fill（填充构造）
+    ├── eye.rs               # eye（单位矩阵）
+    ├── from_data.rs         # from_vec, from_slice, from_array（从数据源构造）
+    └── from_fn.rs           # from_fn, from_scalar（从闭包/标量构造）
 ```
 
-单文件设计：构造方法逻辑高度内聚，不依赖复杂子模块拆分。包含所有构造方法的实现。
+多文件设计：每个子文件对应一类构造方式，便于后期扩展（如新增 `from_diag.rs`、`linspace.rs` 等）。`mod.rs` 负责统一 re-exports，对外保持单一模块接口。
 
 ---
 
@@ -68,8 +73,8 @@ src/
                     └──────┬───────┘
                            │ 使用
               ┌────────────▼───────────┐
-              │  construct             │
-              │  construct.rs          │
+              │  construct/            │
+              │  mod.rs (re-exports)   │
               └──┬───────────┬─────────┘
                  │ 使用       │ 使用
           ┌──────▼───┐ ┌──────▼────────┐
@@ -412,15 +417,15 @@ function increment_index_f(shape, index):
 
 ### Wave 1: 基础构造
 
-- [ ] **T1**: 创建 `src/construct.rs` 骨架 + `zeros`/`ones`/`fill`
-  - 文件: `src/construct.rs`
+- [ ] **T1**: 创建 `src/construct/` 模块骨架 + `zeros`/`ones`/`fill`
+  - 文件: `src/construct/mod.rs`, `src/construct/fill.rs`
   - 内容: 模块声明、`zeros`/`ones`/`fill` 实现
   - 测试: `test_zeros`, `test_ones`, `test_fill`
   - 前置: `tensor` 模块完成
   - 预计: 10 min
 
 - [ ] **T2**: 实现 `eye` 单位矩阵
-  - 文件: `src/construct.rs`
+  - 文件: `src/construct/eye.rs`
   - 内容: 单位矩阵构造
   - 测试: `test_eye`, `test_eye_zero_size`
   - 前置: T1
@@ -429,14 +434,14 @@ function increment_index_f(shape, index):
 ### Wave 2: 从数据源构造
 
 - [ ] **T3**: 实现 `from_vec` 和 `from_slice`
-  - 文件: `src/construct.rs`
+  - 文件: `src/construct/from_data.rs`
   - 内容: 从 Vec 转移所有权、从切片拷贝
   - 测试: `test_from_vec`, `test_from_vec_mismatch`, `test_from_slice`
   - 前置: T1
   - 预计: 10 min
 
 - [ ] **T4**: 实现 `from_array` 和 `from_scalar`
-  - 文件: `src/construct.rs`
+  - 文件: `src/construct/from_data.rs`, `src/construct/from_fn.rs`
   - 内容: 从固定数组构造、零维张量
   - 测试: `test_from_array`, `test_from_scalar`
   - 前置: T3
@@ -445,7 +450,7 @@ function increment_index_f(shape, index):
 ### Wave 3: 高级构造
 
 - [ ] **T5**: 实现 `from_fn`
-  - 文件: `src/construct.rs`
+  - 文件: `src/construct/from_fn.rs`
   - 内容: 从闭包构造、F-order 索引递增
   - 测试: `test_from_fn`, `test_from_fn_rect`
   - 前置: T3

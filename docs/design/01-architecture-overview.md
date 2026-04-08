@@ -155,7 +155,12 @@ xenon/
 │   │   ├── multi_dim.rs       # 多维整数索引 [i, j, k]
 │   │   └── slice_index.rs     # 范围切片索引
 │   │
-│   ├── construct.rs           # 张量构造（zeros, ones, eye, from_vec, from_fn）
+│   ├── construct/             # 张量构造
+│   │   ├── mod.rs             # 模块根，re-exports
+│   │   ├── fill.rs            # zeros, ones, fill（填充构造）
+│   │   ├── eye.rs             # eye（单位矩阵）
+│   │   ├── from_data.rs       # from_vec, from_slice, from_array（从数据源构造）
+│   │   └── from_fn.rs         # from_fn, from_scalar（从闭包/标量构造）
 │   ├── convert.rs             # 类型转换（cast, to_owned, to_contiguous）
 │   ├── format.rs              # Display/Debug 格式化（NumPy 风格）
 │   ├── ffi.rs                 # FFI API（as_ptr, as_mut_ptr, BLAS 兼容布局检查）
@@ -195,7 +200,7 @@ xenon/
 | `broadcast.rs` | NumPy 广播规则 |
 | `shape_ops/` | reshape、transpose |
 | `index/` | 多维整数索引、范围切片索引 |
-| `construct.rs` | zeros, ones, eye, from_vec, from_fn |
+| `construct/` | 张量构造 |
 | `convert.rs` | 类型转换、存储模式转换 |
 | `format.rs` | NumPy 风格格式化输出 |
 | `ffi.rs` | 原始指针 API、BLAS 兼容性 |

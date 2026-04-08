@@ -308,20 +308,7 @@ impl CastTo<Complex<f64>> for f64 {
 
 ---
 
-## 6. no_std 兼容性
-
-| 依赖 | 来源 | no_std |
-|------|------|:------:|
-| `CastTo` trait | 自定义 | ✅ |
-| `From`/`Into` | `core::convert` | ✅ |
-| `TensorBase` | 本 crate | ✅ |
-| `alloc::vec::Vec` | alloc crate | ✅ |
-
-所有转换逻辑仅依赖 `core` 和 `alloc`，不依赖 `std`。存储模式的 `no_std` 兼容性参见 `05-storage.md` §11。
-
----
-
-## 7. 实现任务拆分
+## 6. 实现任务拆分
 
 ### Wave 1: 基础设施
 
@@ -383,9 +370,9 @@ Wave 3: [T5] [T6]
 
 ---
 
-## 8. 测试计划
+## 7. 测试计划
 
-### 8.1 单元测试清单
+### 7.1 单元测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
@@ -404,7 +391,7 @@ Wave 3: [T5] [T6]
 | `test_from_slice` | &[A] → Tensor1 | 中 |
 | `test_from_tensor_view` | &Tensor → TensorView | 高 |
 
-### 8.2 边界测试场景
+### 7.2 边界测试场景
 
 | 场景 | 预期行为 |
 |------|----------|
@@ -415,7 +402,7 @@ Wave 3: [T5] [T6]
 | f64::NAN → f32 | 传播 NaN |
 | `0.0 → bool` | `false` |
 
-### 8.3 属性测试不变量
+### 7.3 属性测试不变量
 
 | 不变量 | 测试方法 |
 |--------|----------|
@@ -425,7 +412,7 @@ Wave 3: [T5] [T6]
 
 ---
 
-## 9. 设计决策记录(ADR)
+## 9. 设计决策记录
 
 ### 决策 1：溢出语义选择
 
@@ -464,6 +451,19 @@ Wave 3: [T5] [T6]
 | `into_owned`（View） | O(n) | O(n) | 拷贝 |
 | `view()` | O(1) | O(1) | 仅元数据 |
 | `into_shared()` | O(1) | O(1) | Arc 包装 |
+
+---
+
+## 11. no_std 兼容性
+
+| 依赖 | 来源 | no_std |
+|------|------|:------:|
+| `CastTo` trait | 自定义 | ✅ |
+| `From`/`Into` | `core::convert` | ✅ |
+| `TensorBase` | 本 crate | ✅ |
+| `alloc::vec::Vec` | alloc crate | ✅ |
+
+所有转换逻辑仅依赖 `core` 和 `alloc`，不依赖 `std`。存储模式的 `no_std` 兼容性参见 `05-storage.md` §11。
 
 ---
 
