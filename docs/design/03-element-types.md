@@ -15,7 +15,7 @@
 | Element trait | 基础约束（Copy+Clone+PartialEq+Debug+Display+Send+Sync+Sealed）+ zero()/one() | — |
 | Numeric trait | Element + Add+Sub+Mul+Div+Neg（四则运算能力标记） | 运算实现本身（委托给 core::ops） |
 | RealScalar trait | Numeric + PartialOrd + abs/sqrt/sin/cos/exp/ln/floor/ceil + NaN 检测 | 复数运算 |
-| ComplexScalar trait | Numeric + norm/conj/from_polar/arg/exp/ln/sqrt（复数运算接口） | 复数类型定义（在 `src/complex/` 模块） |
+| ComplexScalar trait | Numeric + norm/conj/from_polar/arg/exp/ln/sqrt（复数运算接口） | 复数类型定义（在 `src/complex/` 模块，参见 `04-complex-type.md` §4） |
 | 基础类型实现 | 为 i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool/usize 实现上述 trait | 类型转换逻辑（在 `src/convert/` 模块） |
 | Sealed trait | 封闭集合，禁止外部 crate 实现 | 开放扩展 |
 
@@ -32,21 +32,13 @@
 ### 1.3 在架构中的位置
 
 ```
-┌───────────────────────────────────────────────────────────────┐
-│                      用户层 API                                │
-│         Tensor<A, D>, TensorView, TensorViewMut               │
-└──────────────────────┬────────────────────────────────────────┘
-                       │ 泛型约束 A: Element / Numeric / RealScalar
-┌──────────────────────▼────────────────────────────────────────┐
-│                元素类型体系 (本模块)                             │
-│  Element ← Numeric ← RealScalar                               │
-│          ← Numeric ← ComplexScalar                            │
-└──────────────────────┬────────────────────────────────────────┘
-                       │ 为基础类型实现 trait
-┌──────────────────────▼────────────────────────────────────────┐
-│              基础类型 (primitives.rs)                           │
-│  i32, i64, f32, f64, Complex<f32>, Complex<f64>, bool, usize  │
-└───────────────────────────────────────────────────────────────┘
+依赖层级：
+L0: error, private
+L1: element  ← 当前模块
+L2: layout (依赖 dimension)
+L3: storage (依赖 layout)
+L4: tensor (依赖 storage, dimension)
+L5: ops/, iter/, index/, shape_ops/, broadcast/, construct/, ffi/, convert/, format/
 ```
 
 ---
@@ -90,7 +82,7 @@ src/element/
 ### 3.3 依赖方向声明
 
 > **依赖方向：单向向下。** `element/` 仅消费 `complex` 的类型定义，不被 `complex` 反向依赖。
-> 被下游消费：`ops`、`reduction`、`tensor` 等模块使用 Element/Numeric/RealScalar/ComplexScalar 作为泛型约束。
+> 被下游消费：`ops`（参见 `11-elementwise-ops.md` §4）、`reduction`（参见 `13-reduction.md` §4）、`tensor`（参见 `07-tensor.md` §4）等模块使用 Element/Numeric/RealScalar/ComplexScalar 作为泛型约束。
 
 ---
 
@@ -378,6 +370,8 @@ impl RealScalar for f64 {
 | `tensor` | `Element` | Tensor<A, D> 的 A 约束 |
 | `linalg` | `Numeric` | 内积运算 |
 | `cast/convert` | `Element` | 类型转换 |
+
+> 各模块的详细接口约定参见对应设计文档（`11-elementwise-ops.md` §4、`13-reduction.md` §4、`21-type-conversion.md` §4）。
 
 ### 6.2 接口边界
 

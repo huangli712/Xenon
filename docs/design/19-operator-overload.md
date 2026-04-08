@@ -28,6 +28,18 @@
 | 广播透明 | 运算符语法内建支持广播，用户无需手动处理 |
 | 借用优先 | 鼓励使用 `&a + &b` 形式，避免不必要的所有权转移 |
 
+### 1.3 在架构中的位置
+
+```
+依赖层级：
+L0: error, private
+L1: dimension, element, complex
+L2: layout (依赖 dimension)
+L3: storage (依赖 layout)
+L4: tensor (依赖 storage, dimension)
+L5: ops/arithmetic  ← 当前模块
+```
+
 ---
 
 ## 2. 文件位置
@@ -72,11 +84,11 @@ src/ops/
 
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
-| `elementwise_ops` | `zip_with()`, `mapv()`, 二元逐元素运算 |
-| `broadcast` | `broadcast_shape()`, `broadcast_with()`, `can_broadcast()` |
-| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.view()` |
-| `element` | `Numeric` trait 约束（排除 `bool`） |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn` |
+| `elementwise_ops` | `zip_with()`, `mapv()`, 二元逐元素运算（参见 `11-elementwise-ops.md` §4） |
+| `broadcast` | `broadcast_shape()`, `broadcast_with()`, `can_broadcast()`（参见 `15-broadcast.md` §4） |
+| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.view()`（参见 `07-tensor.md` §4） |
+| `element` | `Numeric` trait 约束（排除 `bool`）（参见 `03-element-types.md` §3） |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §4） |
 
 ### 3.3 依赖方向声明
 
@@ -398,11 +410,11 @@ Wave 5:      [T6]
 
 | 交互模块 | 方向 | 说明 |
 |----------|------|------|
-| `elementwise_ops` | arithmetic → elementwise | `zip_with()` 执行逐元素运算，`mapv()` 执行标量运算 |
-| `broadcast` | arithmetic → broadcast | `broadcast_with()` 广播两个张量到公共形状 |
-| `tensor` | arithmetic → tensor | 构造结果 `Tensor<A, D>`，使用 `.view()` 创建视图 |
-| `element` | arithmetic → element | `Numeric` trait 约束排除 `bool` 类型 |
-| `dimension` | arithmetic → dimension | `BroadcastDim<E>::Output` 关联类型 |
+| `elementwise_ops` | arithmetic → elementwise | `zip_with()` 执行逐元素运算，`mapv()` 执行标量运算（参见 `11-elementwise-ops.md` §4） |
+| `broadcast` | arithmetic → broadcast | `broadcast_with()` 广播两个张量到公共形状（参见 `15-broadcast.md` §4） |
+| `tensor` | arithmetic → tensor | 构造结果 `Tensor<A, D>`，使用 `.view()` 创建视图（参见 `07-tensor.md` §4） |
+| `element` | arithmetic → element | `Numeric` trait 约束排除 `bool` 类型（参见 `03-element-types.md` §3） |
+| `dimension` | arithmetic → dimension | `BroadcastDim<E>::Output` 关联类型（参见 `02-dimension.md` §4） |
 
 ---
 
@@ -421,7 +433,7 @@ Wave 5:      [T6]
 | 属性 | 值 |
 |------|-----|
 | 决策 | 运算符重载中形状不兼容时 panic（使用 `expect`） |
-| 理由 | 与 Rust 标准库 `Index` trait 惯例一致；运算符返回类型固定，无法返回 Result；用户需要安全路径可直接使用 `broadcast_with` + `zip_with` |
+| 理由 | 与 Rust 标准库 `Index` trait 惯例一致；运算符返回类型固定，无法返回 Result；用户需要安全路径可直接使用 `broadcast_with` + `zip_with`（参见 `15-broadcast.md` §4.1、`11-elementwise-ops.md` §4.1） |
 | 替代方案 | 返回 `Result<Tensor, BroadcastError>` — 放弃，Rust 运算符 trait 不支持 Result 返回类型 |
 | 替代方案 | 使用 `PartialEq` 运算符返回 `Result` — 放弃，不自然 |
 
@@ -457,7 +469,7 @@ Wave 5:      [T6]
 
 ### 10.3 SIMD 路径
 
-当 SIMD feature 启用时，`zip_with` 和 `mapv` 自动选择 SIMD 路径：
+当 SIMD feature 启用时，`zip_with` 和 `mapv` 自动选择 SIMD 路径（参见 `08-simd-backend.md` §4）：
 
 | 运算符 | SIMD 指令 | 加速比 |
 |--------|----------|--------|
@@ -511,7 +523,8 @@ use alloc::vec::Vec;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-// See also: 11-elementwise-ops.md §11, 15-broadcast.md §11
+// 参见 `11-elementwise-ops.md` §11
+// 参见 `15-broadcast.md` §11
 ```
 
 ---

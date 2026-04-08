@@ -27,6 +27,18 @@
 | BLAS 友好 | 保持 F-order 布局的连续性，确保与 BLAS 互操作 |
 | 维度安全 | reshape 须保持总元素数不变，编译期/运行时检查 |
 
+### 1.3 在架构中的位置
+
+```
+依赖层级：
+L0: error, private
+L1: dimension, element, complex
+L2: layout (依赖 dimension)
+L3: storage (依赖 layout)
+L4: tensor (依赖 storage, dimension)
+L5: shape_ops  ← 当前模块
+```
+
 ---
 
 ## 2. 文件位置
@@ -68,10 +80,10 @@ src/shape_ops/
 
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
-| `tensor` | `TensorBase<S, D>`, `TensorView`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.offset()` |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `RemoveAxis`, `IntoDimension` |
-| `memory_layout` | `LayoutFlags`, `Order`, `is_f_contiguous()`, `is_c_contiguous()` |
-| `error` | `XenonError::InvalidShape`, `XenonError::LayoutMismatch` |
+| `tensor` | `TensorBase<S, D>`, `TensorView`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.offset()`，参见 `07-tensor.md` §4 |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `RemoveAxis`, `IntoDimension`，参见 `02-dimension.md` §3 |
+| `memory_layout` | `LayoutFlags`, `Order`, `is_f_contiguous()`, `is_c_contiguous()`，参见 `06-memory-layout.md` §3 |
+| `error` | `XenonError::InvalidShape`, `XenonError::LayoutMismatch`，参见 `26-error-handling.md` §4 |
 
 ### 3.3 依赖方向声明
 
@@ -451,11 +463,11 @@ Wave 3:              [T5]
 
 | 交互模块 | 方向 | 说明 |
 |----------|------|------|
-| `tensor` | shape_ops → tensor | 使用 `TensorBase` 结构和 `TensorView` 创建方法 |
-| `dimension` | shape_ops → dimension | 使用 `Dimension` trait 的形状操作方法 |
-| `memory_layout` | shape_ops → memory_layout | 检查连续性、计算步长 |
-| `broadcast` | shape_ops ← broadcast | 广播视图不可 reshape（非连续） |
-| `index` | index → shape_ops | 切片后可 reshape（如连续） |
+| `tensor` | shape_ops → tensor | 使用 `TensorBase` 结构和 `TensorView` 创建方法，参见 `07-tensor.md` §4 |
+| `dimension` | shape_ops → dimension | 使用 `Dimension` trait 的形状操作方法，参见 `02-dimension.md` §3 |
+| `memory_layout` | shape_ops → memory_layout | 检查连续性、计算步长，参见 `06-memory-layout.md` §3 |
+| `broadcast` | shape_ops ← broadcast | 广播视图不可 reshape（非连续），参见 `15-broadcast.md` §5 |
+| `index` | index → shape_ops | 切片后可 reshape（如连续），参见 `17-indexing.md` §4 |
 
 ---
 
@@ -535,8 +547,8 @@ use alloc::vec::Vec;
 | `permute_axes()` | ✅ | 纯元数据操作，无堆分配 |
 | `swap_axes()` / `moveaxis()` | ✅ | 纯元数据操作，无堆分配 |
 | `reshape()`（连续路径） | ✅ | 仅更新元数据，无堆分配 |
-| `into_shape()`（非连续路径） | ✅ | 需 `no_std + alloc`，调用 `to_contiguous()` 拷贝数据 |
-| `LayoutFlags` 更新 | ✅ | 位标志操作，无依赖 |
+| `into_shape()`（非连续路径） | ✅ | 需 `no_std + alloc`，调用 `to_contiguous()` 拷贝数据，参见 `05-storage.md` §5 |
+| `LayoutFlags` 更新 | ✅ | 位标志操作，无依赖，参见 `06-memory-layout.md` §3 |
 
 条件编译处理：
 

@@ -27,6 +27,18 @@
 | NaN 处理明确 | 浮点 NaN 掂与排序有明确定义行为 |
 | 复数排序明确 | 先按实部再按虚部 |
 
+### 1.3 在架构中的位置
+
+```
+依赖层级：
+L0: error, private
+L1: dimension, element, complex
+L2: layout (依赖 dimension)
+L3: storage (依赖 layout)
+L4: tensor (依赖 storage, dimension)
+L5: ops/set_ops  ← 当前模块
+```
+
 ---
 
 ## 2. 文件位置
@@ -56,9 +68,9 @@ src/ops/set_ops.rs
 
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
-| `tensor` | `TensorBase<S, D>`, `Tensor<A, Ix1>`, `.iter()`, `.len()` |
-| `element` | `Element`, `ComplexScalar` |
-| `iter` | `Elements`（遍历收集元素） |
+| `tensor` | `TensorBase<S, D>`, `Tensor<A, Ix1>`, `.iter()`, `.len()`，参见 `07-tensor.md` §4 |
+| `element` | `Element`, `ComplexScalar`，参见 `03-element-types.md` §3 |
+| `iter` | `Elements`（遍历收集元素），参见 `10-iterator.md` §3 |
 
 ### 3.3 依赖方向
 
@@ -285,13 +297,13 @@ Wave 3: [T5]
 
 | 交互模块 | 接口约定 |
 |----------|----------|
-| `tensor` | 消费 `TensorBase<S, D>`，返回 `Tensor<A, Ix1>` |
-| `iter` | 使用 `Elements` 迭代器收集元素 |
-| `element` | 泛型约束 `UniqueElement`（排除 bool/usize） |
+| `tensor` | 消费 `TensorBase<S, D>`，返回 `Tensor<A, Ix1>`，参见 `07-tensor.md` §4 |
+| `iter` | 使用 `Elements` 迭代器收集元素，参见 `10-iterator.md` §3 |
+| `element` | 泛型约束 `UniqueElement`（排除 bool/usize），参见 `03-element-types.md` §3 |
 
 ---
 
-## 9. 设计决策记录（ADR）
+## 9. 设计决策记录
 
 ### 决策 1：bool 排除理由
 
@@ -361,10 +373,10 @@ use alloc::vec::Vec;
 
 | 组件 | no_std 支持 | 说明 |
 |------|:----------:|------|
-| `unique()` | ✅ | 需 `no_std + alloc`，收集元素到 `Vec` + 排序 + 去重 |
+| `unique()` | ✅ | 需 `no_std + alloc`，收集元素到 `Vec` + 排序 + 去重，参见 `05-storage.md` §11 |
 | `UniqueElement` trait | ✅ | 纯 trait 定义，无依赖 |
 | 浮点 NaN 排序 | ✅ | `PartialOrd` 语义，`core` 内建 |
-| 复数排序 | ✅ | lexicographic `Ord` 实现，`core` 内建 |
+| 复数排序 | ✅ | lexicographic `Ord` 实现，参见 `04-complex-type.md` §3 |
 
 条件编译处理：
 

@@ -16,8 +16,8 @@
 | 步长计算 | F-order 步长公式、合法性验证 | 元素访问（由 `tensor/` 提供） |
 | 连续性检查 | F-连续检测算法 | 运算逻辑（由 `ops/` 提供） |
 | 对齐检查 | 指针对齐状态查询 | 实际对齐分配（由 `storage/alloc.rs` 提供） |
-| 负步长语义 | 切片/翻转时的负步长处理 | SIMD 路径选择（由 `simd/` 提供） |
-| 零步长语义 | 广播维度的零步长标记 | 广播规则实现（由 `broadcast/` 提供） |
+| 负步长语义 | 切片/翻转时的负步长处理 | SIMD 路径选择（由 `simd/` 提供，参见 `08-simd-backend.md §4.6`） |
+| 零步长语义 | 广播维度的零步长标记 | 广播规则实现（由 `broadcast/` 提供，参见 `15-broadcast.md §3`） |
 
 ### 1.2 设计原则
 
@@ -28,7 +28,19 @@
 | 有符号步长 | `isize` 类型支持负步长（反转）和零步长（广播） |
 | 零成本抽象 | 布局信息为纯元数据，不引入运行时开销 |
 
-### 1.3 F-order 设计决策
+### 1.3 在架构中的位置
+
+```
+依赖层级：
+L0: error, private
+L1: dimension, element, complex
+L2: layout (依赖 dimension)  ← 当前模块
+L3: storage (依赖 layout)
+L4: tensor (依赖 storage, dimension)
+L5: ops/, iter/, index/, shape_ops/, broadcast/, construct/, ffi/, convert/, format/
+```
+
+### 1.4 F-order 设计决策
 
 > **重要**：Xenon 仅支持 F-order（列优先），不支持 C-order。
 >
@@ -68,8 +80,8 @@ src/layout/
 
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn` |
-| `storage` | `RawStorage::as_ptr()` (对齐检查) |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md §4`） |
+| `storage` | `RawStorage::as_ptr()` (对齐检查)（参见 `05-storage.md §4`） |
 | `core` | `isize`, `usize` |
 
 ### 3.3 依赖方向声明
@@ -450,7 +462,7 @@ Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的
 
 ## 6. 与 Dimension 模块的接口
 
-步长存储在 `D` 类型（与 shape 同类型）中，但实际步长值为 `isize`。Dimension trait 需提供：
+步长存储在 `D` 类型（与 shape 同类型）中，但实际步长值为 `isize`。Dimension trait 需提供（参见 `02-dimension.md §4`）：
 
 ```rust
 trait Dimension {
@@ -604,22 +616,22 @@ Wave 4:       [T8]
 
 | 交互点 | 方向 | 说明 |
 |--------|------|------|
-| `TensorBase` 组成 | tensor 持有 layout | `Layout` 作为 `TensorBase` 的计算字段 |
-| 切片操作 | tensor → layout | 切片时调用 layout 更新连续性/对齐标志 |
-| Reshape | tensor → layout | reshape 时重新计算步长和 layout |
+| `TensorBase` 组成 | tensor 持有 layout | `Layout` 作为 `TensorBase` 的计算字段（参见 `07-tensor.md §4.1`） |
+| 切片操作 | tensor → layout | 切片时调用 layout 更新连续性/对齐标志（参见 `17-indexing.md §5`） |
+| Reshape | tensor → layout | reshape 时重新计算步长和 layout（参见 `16-shape-ops.md §4`） |
 
 ### 9.3 与 SIMD 模块
 
 | 交互点 | 方向 | 说明 |
 |--------|------|------|
-| 路径选择 | simd ← layout | simd 查询 `is_aligned()` 和 `is_f_contiguous()` |
+| 路径选择 | simd ← layout | simd 查询 `is_aligned()` 和 `is_f_contiguous()`（参见 `08-simd-backend.md §4.6`） |
 | 步长检查 | simd ← layout | simd 检查步长是否为 1（连续） |
 
 ### 9.4 与 FFI 模块
 
 | 交互点 | 方向 | 说明 |
 |--------|------|------|
-| BLAS 兼容检查 | ffi ← layout | 连续 + 正步长 + 无零步长 |
+| BLAS 兼容检查 | ffi ← layout | 连续 + 正步长 + 无零步长（参见 `23-ffi.md §4`） |
 | LDA 计算 | ffi ← layout | 从步长计算 leading dimension |
 
 ---

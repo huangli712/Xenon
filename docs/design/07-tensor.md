@@ -12,12 +12,12 @@
 
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
-| 核心结构体 | `TensorBase<S, D>` 双参数泛型结构体定义 | 运算逻辑（由 `ops/` 提供） |
-| 类型别名 | `Tensor`/`TensorView`/`TensorViewMut`/`ArcTensor` 及维度便捷别名 | 广播规则（由 `broadcast/` 提供） |
-| 基础查询 | shape/ndim/len/strides/is_empty/is_f_contiguous/is_aligned 等方法 | 形状操作（reshape/transpose，由 `ops/` 提供） |
-| 安全构造 | 从形状和数据构造，验证合法性 | 索引操作（由 `indexing/` 提供） |
-| unsafe 构造 | `from_raw_parts`，用于 FFI | 切片操作（由 `slicing/` 提供） |
-| 视图方法 | view/view_mut/into_view | 集合操作（由 `ops/` 提供） |
+| 核心结构体 | `TensorBase<S, D>` 双参数泛型结构体定义 | 运算逻辑（参见 `11-elementwise-ops.md §1`） |
+| 类型别名 | `Tensor`/`TensorView`/`TensorViewMut`/`ArcTensor` 及维度便捷别名 | 广播规则（参见 `15-broadcast.md §3`） |
+| 基础查询 | shape/ndim/len/strides/is_empty/is_f_contiguous/is_aligned 等方法 | 形状操作（reshape/transpose，参见 `16-shape-ops.md §1`） |
+| 安全构造 | 从形状和数据构造，验证合法性 | 索引操作（参见 `17-indexing.md §1`） |
+| unsafe 构造 | `from_raw_parts`，用于 FFI | 切片操作（参见 `17-indexing.md §5`） |
+| 视图方法 | view/view_mut/into_view | 集合操作（参见 `11-elementwise-ops.md §1`） |
 
 ### 1.2 设计原则
 
@@ -28,6 +28,18 @@
 | 统一接口 | 所有张量类型共享相同的核心 API |
 | 最小核心 | 核心结构仅包含必要字段，功能通过扩展方法提供 |
 | 栈上元数据 | 静态维度的 TensorBase 元数据完全在栈上 |
+
+### 1.3 在架构中的位置
+
+```
+依赖层级：
+L0: error, private
+L1: dimension, element, complex
+L2: layout (依赖 dimension)
+L3: storage (依赖 layout)
+L4: tensor (依赖 storage, dimension)  ← 当前模块
+L5: ops/, iter/, index/, shape_ops/, broadcast/, construct/, ffi/, convert/, format/
+```
 
 ---
 
@@ -51,8 +63,8 @@ src/tensor/
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     TensorBase<S, D>                         │
-│                   (src/tensor/mod.rs)                        │
+│                     TensorBase<S, D>                        │
+│                   (src/tensor/mod.rs)                       │
 └────────────────────────┬────────────────────────────────────┘
                          │ 使用
          ┌───────────────┼───────────────┐
@@ -73,9 +85,9 @@ src/tensor/
 
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
-| `storage` | `Owned<A>`, `ViewRepr<&'a A>`, `ViewMutRepr<&'a mut A>`, `ArcRepr<A>`, `Storage`, `StorageMut`, `StorageOwned`, `StorageShared` |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.size()`, `.ndim()` |
-| `layout` | `LayoutFlags`, `compute_f_strides()`, `is_f_contiguous()`, `is_aligned()` |
+| `storage` | `Owned<A>`, `ViewRepr<&'a A>`, `ViewMutRepr<&'a mut A>`, `ArcRepr<A>`, `Storage`, `StorageMut`, `StorageOwned`, `StorageShared`（参见 `05-storage.md §4`） |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.size()`, `.ndim()`（参见 `02-dimension.md §4`） |
+| `layout` | `LayoutFlags`, `compute_f_strides()`, `is_f_contiguous()`, `is_aligned()`（参见 `06-memory-layout.md §4`） |
 
 ### 3.3 依赖方向声明
 
@@ -433,8 +445,8 @@ let t = unsafe {
 > | 层次 | 类型 | 说明 |
 > |------|------|------|
 > | `TensorBase.strides` | `D`（存储 `usize`） | 与 shape 同类型，编译期保证维度数一致 |
-> | `strides()` 返回值 | `&[isize]` | 通过 Dimension trait 的 `strides_isize()` 方法转换 |
-> | layout 模块计算 | `isize` | 负步长和零步长在 layout 层计算 |
+> | `strides()` 返回值 | `&[isize]` | 通过 Dimension trait 的 `strides_isize()` 方法转换（参见 `02-dimension.md §6`） |
+> | layout 模块计算 | `isize` | 负步长和零步长在 layout 层计算（参见 `06-memory-layout.md §4.2`） |
 >
 > **权衡：**
 > - D 类型保证 strides 与 shape 维度数相同（编译期）
@@ -463,11 +475,11 @@ Tensor2<f64> = TensorBase<Owned<f64>, Ix2>
 ┌─────────────────────────────────────────┐
 │ storage: Owned<f64>                     │
 │   ┌───────────────────────────────────┐ │
-│   │ data: Vec<f64> (64B 对齐)         │ │
-│   │ [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]  │ │
+│   │ data: Vec<f64> (64B 对齐)          │ │
+│   │ [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]    │ │
 │   └───────────────────────────────────┘ │
 │ shape: Ix2([2, 3])                      │
-│ strides: Ix2([1, 2])  // F-order       │
+│ strides: Ix2([1, 2])  // F-order        │
 │ offset: 0                               │
 │ flags: F_CONTIGUOUS | ALIGNED           │
 └─────────────────────────────────────────┘
@@ -782,7 +794,7 @@ use alloc::vec::Vec;
 | 静态维度 `Ix0`~`Ix6` | ✅ | 栈分配，无堆依赖 |
 | 动态维度 `IxDyn` | ✅ | 使用 `alloc::vec::Vec`，需 `no_std + alloc` |
 | `from_raw_parts` / `from_raw_parts_mut` | ✅ | 仅使用 `core`，裸指针操作 |
-| `LayoutFlags` | ✅ | 裸 `u8` 位标志，无依赖 |
+| `LayoutFlags` | ✅ | 裸 `u8` 位标志，无依赖（参见 `06-memory-layout.md §11`） |
 
 条件编译处理：
 

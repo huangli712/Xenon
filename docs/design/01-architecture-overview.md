@@ -274,16 +274,18 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 ### 5.1 依赖层级
 
-| 层级 | 模块 | 依赖 |
-|------|------|------|
-| **L0** | error, private | 无 |
-| **L1** | dimension, element, complex | error |
-| **L2** | layout | error, dimension |
-| **L3** | storage | error, layout, element |
-| **L4** | tensor | storage, dimension, layout, element |
-| **L5** | iter, broadcast, ffi, workspace | tensor |
-| **L6** | ops, shape_ops, index | tensor, iter, broadcast |
-| **L7** | construct, convert, format | tensor, shape_ops |
+各模块的详细设计参见对应编号文档。层级关系如下：
+
+| 层级 | 模块 | 依赖 | 参见 |
+|------|------|------|------|
+| **L0** | error, private | 无 | `26-error-handling.md` |
+| **L1** | dimension, element, complex | error | `02-dimension.md`、`03-element-types.md`、`04-complex-type.md` |
+| **L2** | layout | error, dimension | `06-memory-layout.md` |
+| **L3** | storage | error, layout, element | `05-storage.md` |
+| **L4** | tensor | storage, dimension, layout, element | `07-tensor.md` |
+| **L5** | iter, broadcast, ffi, workspace | tensor | `10-iterator.md`、`15-broadcast.md`、`23-ffi.md`、`24-workspace.md` |
+| **L6** | ops, shape_ops, index | tensor, iter, broadcast | `11-elementwise-ops.md`、`16-shape-ops.md`、`17-indexing.md` |
+| **L7** | construct, convert, format | tensor, shape_ops | `18-construction.md`、`21-type-conversion.md`、`22-format-output.md` |
 
 ### 5.2 依赖图（ASCII）
 
@@ -492,6 +494,8 @@ pub use error::XenonError;
 
 ## 10. 核心类型速查
 
+各类型的详细设计参见对应模块文档（`02-dimension.md`、`03-element-types.md`、`05-storage.md`、`06-memory-layout.md`）。
+
 ```rust
 // Tensor core types
 TensorBase<S, D>              // Generic base type
@@ -633,7 +637,7 @@ Wave 5: [W5.1] [W5.2] [W5.3] [W5.4]
 | 属性 | 值 |
 |------|-----|
 | 决策 | 仅支持列优先（F-order）布局 |
-| 理由 | 与 BLAS/LAPACK 兼容；减少布局组合爆炸；简化步长计算 |
+| 理由 | 与 BLAS/LAPACK 兼容；减少布局组合爆炸；简化步长计算（参见 `06-memory-layout.md` §1） |
 | 替代方案 | 同时支持 F-order 和 C-order — 放弃，超出范围且增加复杂度 |
 
 ### 决策 3：功能最小化原则

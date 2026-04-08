@@ -12,9 +12,9 @@
 
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
-| 算术运算 | add/sub/mul/div，数值类型：i32/i64/f32/f64/Complex | 归约运算（sum/prod/min/max，见 13-reduction.md） |
+| 算术运算 | add/sub/mul/div，数值类型：i32/i64/f32/f64/Complex | 归约运算（sum/prod/min/max，参见 `13-reduction.md §1`） |
 | 一元运算 | abs/neg/signum/square | 篮选/排序 |
-| 数学函数 | sin/sqrt/exp/ln/floor/ceil，仅 f32/f64 | 运算符重载（见 19-operator-overload.md） |
+| 数学函数 | sin/sqrt/exp/ln/floor/ceil，仅 f32/f64 | 运算符重载（参见 `19-operator-overload.md §1`） |
 | 复数运算 | norm（返回实数类型）/conj，仅 Complex | 比较运算（eq/ne/lt/gt） |
 | 逻辑非 | `!`，仅 bool | 位运算 |
 | 比较运算 | eq/ne/lt/gt，返回 bool 张量，NaN 遵循 IEEE 754 | 搜索/排序 |
@@ -29,6 +29,18 @@
 | 广播透明集成 | 所有二元运算自动支持广播 |
 | 存储模式无关 | 对 Tensor、TensorView、TensorViewMut 统一工作 |
 | NaN 语义明确 | IEEE 754 NaN 传播规则 |
+
+### 1.3 在架构中的位置
+
+```
+依赖层级：
+L0: error, private
+L1: dimension, element, complex
+L2: layout (依赖 dimension)
+L3: storage (依赖 layout)
+L4: tensor (依赖 storage, dimension)
+L5: ops/elementwise  ← 当前模块
+```
 
 ---
 
@@ -61,12 +73,12 @@ src/ops/elementwise.rs
 
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
-| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.shape()` |
-| `iter` | `Elements`, `ElementsMut`, `Zip` |
-| `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar` |
-| `broadcast` | `broadcast_shape()`, `BroadcastView` |
-| `simd`（可选） | `pulp::Arch`（参见 08-simd-backend.md） |
-| `error` | `XenonError`, `BroadcastError` |
+| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.shape()`（参见 `07-tensor.md §4`） |
+| `iter` | `Elements`, `ElementsMut`, `Zip`（参见 `10-iterator.md §4`） |
+| `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element-types.md §4`） |
+| `broadcast` | `broadcast_shape()`, `BroadcastView`（参见 `15-broadcast.md §4`） |
+| `simd`（可选） | `pulp::Arch`（参见 `08-simd-backend.md §4`） |
+| `error` | `XenonError`, `BroadcastError`（参见 `26-error-handling.md §4`） |
 
 ### 3.3 依赖方向
 
@@ -324,7 +336,7 @@ add_impl(a, b):
         return zip_with(a, b, |x, y| x + y)
 ```
 
-参见 `08-simd-backend.md` 了解 SIMD 后端详情。
+参见 `08-simd-backend.md §4.5` 了解 SIMD 后端详情。
 
 ---
 
@@ -462,10 +474,10 @@ Wave 4: [T8]
 
 | 交互模块 | 接口约定 |
 |----------|----------|
-| `iter` | map 内部使用 `Elements`，zip_with 内部使用 `Zip` |
-| `broadcast` | 二元运算调用 `broadcast_shape()` |
-| `element` | 泛型约束 `Numeric`/`RealScalar`/`ComplexScalar` |
-| `simd`（可选） | 连续数组时自动走 SIMD 路径 |
+| `iter` | map 内部使用 `Elements`，zip_with 内部使用 `Zip`（参见 `10-iterator.md §4`） |
+| `broadcast` | 二元运算调用 `broadcast_shape()`（参见 `15-broadcast.md §4`） |
+| `element` | 泛型约束 `Numeric`/`RealScalar`/`ComplexScalar`（参见 `03-element-types.md §4`） |
+| `simd`（可选） | 连续数组时自动走 SIMD 路径（参见 `08-simd-backend.md §4.5`） |
 
 ---
 
@@ -541,7 +553,7 @@ use alloc::vec::Vec;
 | 比较运算 (eq/ne/lt/gt) | ✅ | 无特殊依赖 |
 | 复数运算 (norm/conj) | ✅ | 基于 `map`，需 `no_std + alloc` |
 | 逻辑非 (not) | ✅ | 基于 `map`，需 `no_std + alloc` |
-| SIMD 加速路径 | ✅ | pulp crate 支持 `no_std`，参见 `08-simd-backend.md §11` |
+| SIMD 加速路径 | ✅ | pulp crate 支持 `no_std`（参见 `08-simd-backend.md §11`） |
 
 条件编译处理：
 

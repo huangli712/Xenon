@@ -31,6 +31,18 @@
 | 边界检查可选 | 提供 checked（panic）和 unchecked（unsafe）两种变体 |
 | F-order 偏移量 | 偏移量按 F-order 公式计算 |
 
+### 1.3 在架构中的位置
+
+```
+依赖层级：
+L0: error, private
+L1: dimension, element, complex
+L2: layout (依赖 dimension)
+L3: storage (依赖 layout)
+L4: tensor (依赖 storage, dimension)
+L5: index  ← 当前模块
+```
+
 ---
 
 ## 2. 文件位置
@@ -72,10 +84,10 @@ src/index/
 
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
-| `tensor` | `TensorBase<S, D>`, `TensorView`, `TensorViewMut`, `.shape()`, `.strides()`, `.as_ptr()`, `.as_mut_ptr()` |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.ndim()` |
-| `memory_layout` | `LayoutFlags`, `HAS_NEG_STRIDE`, `HAS_ZERO_STRIDE` |
-| `error` | `XenonError::IndexOutOfBounds` |
+| `tensor` | `TensorBase<S, D>`, `TensorView`, `TensorViewMut`, `.shape()`, `.strides()`, `.as_ptr()`, `.as_mut_ptr()`，参见 `07-tensor.md` §4 |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.ndim()`，参见 `02-dimension.md` §3 |
+| `memory_layout` | `LayoutFlags`, `HAS_NEG_STRIDE`, `HAS_ZERO_STRIDE`，参见 `06-memory-layout.md` §3 |
+| `error` | `XenonError::IndexOutOfBounds`，参见 `26-error-handling.md` §4 |
 
 ### 3.3 依赖方向声明
 
@@ -513,12 +525,12 @@ Wave 4:           [T7]
 
 | 交互模块 | 方向 | 说明 |
 |----------|------|------|
-| `tensor` | index → tensor | 使用 `TensorBase` 的 `as_ptr()`/`as_mut_ptr()` |
-| `storage` | index → storage | 通过 `Storage`/`StorageMut` 访问元素 |
-| `dimension` | index → dimension | 使用 `Dimension::slice()` 获取形状切片 |
-| `memory_layout` | index → memory_layout | 更新 `LayoutFlags` |
-| `iter` | iter → index | 迭代器使用 `get_unchecked()` 快速访问 |
-| `shape_ops` | shape_ops → index | reshape 等操作可能触发拷贝 |
+| `tensor` | index → tensor | 使用 `TensorBase` 的 `as_ptr()`/`as_mut_ptr()`，参见 `07-tensor.md` §4 |
+| `storage` | index → storage | 通过 `Storage`/`StorageMut` 访问元素，参见 `05-storage.md` §3 |
+| `dimension` | index → dimension | 使用 `Dimension::slice()` 获取形状切片，参见 `02-dimension.md` §3 |
+| `memory_layout` | index → memory_layout | 更新 `LayoutFlags`，参见 `06-memory-layout.md` §3 |
+| `iter` | iter → index | 迭代器使用 `get_unchecked()` 快速访问，参见 `10-iterator.md` §4 |
+| `shape_ops` | shape_ops → index | reshape 等操作可能触发拷贝，参见 `16-shape-ops.md` §4 |
 
 ---
 
@@ -587,9 +599,9 @@ extern crate alloc;
 | 多维整数索引 `[[i, j, k]]` | ✅ | 纯指针偏移计算，无堆分配 |
 | `get()` / `get_unchecked()` | ✅ | 纯指针偏移计算，无堆分配 |
 | `get_mut()` / `get_unchecked_mut()` | ✅ | 纯指针偏移计算，无堆分配 |
-| `slice()` / `slice_mut()` | ✅ | 创建 `TensorView`（零拷贝），无堆分配 |
+| `slice()` / `slice_mut()` | ✅ | 创建 `TensorView`（零拷贝），无堆分配，参见 `07-tensor.md` §4 |
 | `s![]` 宏 | ✅ | 编译期展开为 `SliceInfoElem` 枚举值，无堆分配 |
-| `SliceInfo` | ✅ | 内部 `Vec` 需 `no_std + alloc`（动态维度场景） |
+| `SliceInfo` | ✅ | 内部 `Vec` 需 `no_std + alloc`（动态维度场景），参见 `02-dimension.md` §3 |
 | `SliceInfoElem` | ✅ | 枚举类型，栈分配，无堆依赖 |
 | 负步长支持 | ✅ | `HAS_NEG_STRIDE` 标志位操作，无堆依赖 |
 

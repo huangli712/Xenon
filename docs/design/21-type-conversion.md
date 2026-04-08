@@ -69,12 +69,12 @@ src/convert.rs
 
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
-| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.memory_order()` |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn` |
-| `storage` | `Storage<Elem=A>`, `StorageMut`, `Owned<A>`, `ViewRepr`, `ViewMutRepr`, `ArcRepr` |
-| `element` | `Element`, `CastTo<B>` |
-| `layout` | `MemoryOrder`, `is_f_contiguous()`, `is_c_contiguous()` |
-| `error` | `ShapeError` |
+| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.memory_order()`（参见 `07-tensor.md` §4） |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §4） |
+| `storage` | `Storage<Elem=A>`, `StorageMut`, `Owned<A>`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`（参见 `05-storage.md` §4） |
+| `element` | `Element`, `CastTo<B>`（参见 `03-element-types.md` §3） |
+| `layout` | `MemoryOrder`, `is_f_contiguous()`, `is_c_contiguous()`（参见 `06-memory-layout.md` §4） |
+| `error` | `ShapeError`（参见 `26-error-handling.md` §4） |
 
 ### 3.3 依赖方向声明
 
@@ -127,7 +127,7 @@ where
         B: Element,
         A: CastTo<B>,
     {
-        self.mapv(|x| x.cast_to())
+        self.mapv(|x| x.cast_to())  // mapv 参见 `11-elementwise-ops.md` §4.1
     }
 }
 ```
@@ -290,7 +290,7 @@ impl CastTo<i32> for i64 {
 impl CastTo<Complex<f64>> for f64 {
     #[inline]
     fn cast_to(self) -> Complex<f64> { Complex { re: self, im: 0.0 } }
-}
+}  // Complex 结构体定义参见 `04-complex-type.md` §4
 
 // Note: CastTo<f64> for Complex<f64> is intentionally not implemented
 // Users must explicitly use .re() or .im()
@@ -317,7 +317,7 @@ impl CastTo<Complex<f64>> for f64 {
 | `TensorBase` | 本 crate | ✅ |
 | `alloc::vec::Vec` | alloc crate | ✅ |
 
-所有转换逻辑仅依赖 `core` 和 `alloc`，不依赖 `std`。
+所有转换逻辑仅依赖 `core` 和 `alloc`，不依赖 `std`。存储模式的 `no_std` 兼容性参见 `05-storage.md` §11。
 
 ---
 

@@ -30,6 +30,18 @@
 | O(1) 创建 | 广播视图创建仅需调整元数据，O(ndim) 时间 |
 | 锶步长安全 | 零步长访问永远不会越界，安全性由不变式保证 |
 
+### 1.3 在架构中的位置
+
+```
+依赖层级：
+L0: error, private
+L1: dimension, element, complex
+L2: layout (依赖 dimension)
+L3: storage (依赖 layout)
+L4: tensor (依赖 storage, dimension)
+L5: broadcast  ← 当前模块
+```
+
 ---
 
 ## 2. 文件位置
@@ -49,29 +61,29 @@ src/
 
 ```
                     ┌──────────────┐
-                    │   error       │
+                    │   error      │
                     │ XenonError   │
                     └──────┬───────┘
                            │ 使用
                     ┌──────▼───────┐
-                    │  broadcast    │
+                    │  broadcast   │
                     │ broadcast.rs │
                     └──┬───────┬───┘
-               使用 │       │ 使用
-          ┌──────▼───┐ ┌──▼──────────┐
-          │ dimension │ │   tensor    │
-          │ Dimension │ │ TensorBase  │
-          │ Ix0~IxDyn │ │ TensorView  │
-          └───────────┘ └─────────────┘
+                   使用 │       │ 使用
+              ┌────────▼──┐ ┌──▼──────────┐
+              │ dimension │ │   tensor    │
+              │ Dimension │ │ TensorBase  │
+              │ Ix0~IxDyn │ │ TensorView  │
+              └───────────┘ └─────────────┘
 ```
 
 ### 3.2 类型级依赖
 
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
-| `error` | `XenonError::BroadcastError` |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.size()` |
-| `tensor` | `TensorBase<S, D>`, `TensorView`, `.shape()`, `.strides()` |
+| `error` | `XenonError::BroadcastError`，参见 `26-error-handling.md` §4 |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.size()`，参见 `02-dimension.md` §3 |
+| `tensor` | `TensorBase<S, D>`, `TensorView`, `.shape()`, `.strides()`，参见 `07-tensor.md` §4 |
 
 ### 3.3 依赖方向声明
 
@@ -441,10 +453,10 @@ Wave 4:           [T7]
 | 交互模块 | 方向 | 说明 |
 |----------|------|------|
 | `ops/arithmetic` | ops → broadcast | 运算符重载中调用 `broadcast_shape()` 和 `broadcast_with()` |
-| `iter/zip` | iter → broadcast | `Zip::and()` 支持广播视图，检查兼容性 |
-| `shape_ops` | shape_ops → broadcast | `broadcast_to` 方法调用广播模块 |
-| `layout` | broadcast → layout | 广播后设置 `HAS_ZERO_STRIDE` 标志、更新连续性 |
-| `elementwise` | elementwise → broadcast | 二元运算前广播两个操作数 |
+| `iter/zip` | iter → broadcast | `Zip::and()` 支持广播视图，检查兼容性，参见 `10-iterator.md` §5 |
+| `shape_ops` | shape_ops → broadcast | `broadcast_to` 方法调用广播模块，参见 `16-shape-ops.md` §4 |
+| `layout` | broadcast → layout | 广播后设置 `HAS_ZERO_STRIDE` 标志、更新连续性，参见 `06-memory-layout.md` §3 |
+| `elementwise` | elementwise → broadcast | 二元运算前广播两个操作数，参见 `11-elementwise-ops.md` §4 |
 
 ---
 
@@ -531,8 +543,8 @@ use alloc::vec::Vec;
 | `broadcast_shape()` | ✅ | 返回 `SmallVec`（栈分配 ≤ 6 维），需 `alloc` 保底 |
 | `broadcast_strides()` | ✅ | 返回 `SmallVec`（栈分配 ≤ 6 维），需 `alloc` 保底 |
 | `broadcast_to()` | ✅ | 创建 `TensorView`（零拷贝），无堆分配 |
-| `broadcast_with()` | ✅ | 创建两个 `TensorView`，需 `no_std + alloc`（SmallVec） |
-| `BroadcastError` | ✅ | 使用 `core::fmt::Display`，无堆依赖 |
+| `broadcast_with()` | ✅ | 创建两个 `TensorView`，需 `no_std + alloc`（SmallVec），参见 `02-dimension.md` §3 |
+| `BroadcastError` | ✅ | 使用 `core::fmt::Display`，无堆依赖，参见 `26-error-handling.md` §4 |
 
 条件编译处理：
 

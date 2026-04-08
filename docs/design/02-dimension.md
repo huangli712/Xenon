@@ -32,6 +32,18 @@
 | 最小依赖 | 仅依赖 `error` 模块和 `private::Sealed` |
 | no_std 兼容 | `IxDyn` 使用 `alloc::vec::Vec` |
 
+### 1.3 在架构中的位置
+
+```
+依赖层级：
+L0: error, private
+L1: dimension  ← 当前模块
+L2: layout (依赖 dimension)
+L3: storage (依赖 layout)
+L4: tensor (依赖 storage, dimension)
+L5: ops/, iter/, index/, shape_ops/, broadcast/, construct/, ffi/, convert/, format/
+```
+
 ---
 
 ## 2. 文件位置
@@ -69,7 +81,7 @@ src/dimension/
 ### 3.3 依赖方向声明
 
 > **依赖方向：单向向上。** `dimension/` 仅消费 `error` 和 `private`，不被它们反向依赖。
-> 被下游模块消费：`layout`、`storage`、`tensor`、`shape_ops`、`iter`、`ops`、`index`。
+> 被下游模块消费：`layout`（参见 `06-memory-layout.md` §3）、`storage`（参见 `05-storage.md` §3）、`tensor`（参见 `07-tensor.md` §4）、`shape_ops`（参见 `16-shape-ops.md` §4）、`iter`（参见 `10-iterator.md` §4）、`ops`（参见 `11-elementwise-ops.md` §4）、`index`（参见 `17-indexing.md` §4）。
 
 ---
 
@@ -470,7 +482,7 @@ let dim: Ix3 = Ix3::try_from_dyn(dyn_dim).unwrap();
 
 ### 5.2 负步长支持说明
 
-维度层保存无符号形状（`usize`），步长计算结果也为无符号。负步长由 `layout` 模块处理：
+维度层保存无符号形状（`usize`），步长计算结果也为无符号。负步长由 `layout` 模块处理（参见 `06-memory-layout.md` §4）：
 
 ```
 Dimension 层：shape = [3, 4], strides_for_f_order() = Ix2(1, 3)
@@ -512,6 +524,8 @@ strides_for_f_order(shape):
 | `iter` | `Dimension` | 迭代器泛型参数 |
 | `ops` | `Dimension` | 运算泛型参数 |
 | `index` | `Dimension`, `Axis` | 索引操作 |
+
+> 各模块的详细接口约定参见对应设计文档（`05-storage.md` §3、`07-tensor.md` §4、`16-shape-ops.md` §4、`17-indexing.md` §4）。
 
 ---
 

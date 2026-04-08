@@ -376,7 +376,7 @@ pub struct Bad<A> {
 
 ### 3.4 Send/Sync 实现规范
 
-按存储模式声明 `unsafe impl Send/Sync`，须严格遵循以下规则：
+按存储模式声明 `unsafe impl Send/Sync`，须严格遵循以下规则（参见 `05-storage.md` §5.7）：
 
 | 存储模式 | Send | Sync | 条件 |
 |----------|------|------|------|
@@ -453,7 +453,7 @@ pub fn reshape_bad<D2>(self, shape: D2) -> Tensor<A, D2> {
 
 ### 4.2 XenonError 设计
 
-统一错误类型 `XenonError`，覆盖所有可恢复错误场景（参见 `26-error-handling.md`）：
+统一错误类型 `XenonError`，覆盖所有可恢复错误场景（参见 `26-error-handling.md` §4.2）：
 
 ```rust
 #[derive(Debug, Clone)]
@@ -858,7 +858,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 ### 9.4 no_std 兼容
 
-使用 `core` 和 `alloc` 替代 `std`，确保 `no_std` 兼容：
+使用 `core` 和 `alloc` 替代 `std`，确保 `no_std` 兼容（参见 `01-architecture-overview.md` §6）：
 
 ```rust
 // src/lib.rs

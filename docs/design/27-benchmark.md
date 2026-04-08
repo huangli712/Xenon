@@ -26,6 +26,21 @@
 | 低噪声 | 使用 criterion 统计分析，过滤测量噪声 |
 | 分级执行 | CI 三级工作流：Smoke / Regression / Full |
 
+### 1.3 在架构中的位置
+
+```
+依赖层级：
+L0: error, private
+L1: dimension, element, complex
+L2: layout (依赖 dimension)
+L3: storage (依赖 layout)
+L4: tensor (依赖 storage, dimension)
+L5: ops/, iter/, index/, shape_ops/, broadcast/, construct/, ffi/, convert/, format/
+
+外部（非 crate 模块）：
+benches/  ← 当前模块（dev-dependency，仅消费 crate 公共 API）
+```
+
 ---
 
 ## 2. 文件位置
@@ -71,14 +86,14 @@ benches/
 
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
-| `tensor` | `Tensor<A, D>`, `TensorView`, `TensorViewMut`, `.shape()`, `.sum()` |
-| `dimension` | `Ix1`, `Ix2`, `Ix3`, `IxDyn`, `Dimension` |
-| `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar` |
-| `ops` | `add`, `sub`, `mul`, `div`, `sin`, `exp`, `abs`, `sum_axis` |
-| `shape_ops` | `reshape`, `transpose` |
-| `set_ops` | `unique` |
-| `construct` | `zeros`, `ones`, `from_vec`, `from_fn` |
-| `broadcast` | `broadcast_shape`, 广播运算符 |
+| `tensor` | `Tensor<A, D>`, `TensorView`, `TensorViewMut`, `.shape()`, `.sum()`（参见 `07-tensor.md §4`） |
+| `dimension` | `Ix1`, `Ix2`, `Ix3`, `IxDyn`, `Dimension`（参见 `02-dimension.md §4`） |
+| `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element-types.md §4`） |
+| `ops` | `add`, `sub`, `mul`, `div`, `sin`, `exp`, `abs`, `sum_axis`（参见 `11-elementwise-ops.md §4`） |
+| `shape_ops` | `reshape`, `transpose`（参见 `16-shape-ops.md §4`） |
+| `set_ops` | `unique`（参见 `14-set-ops.md §4`） |
+| `construct` | `zeros`, `ones`, `from_vec`, `from_fn`（参见 `18-construction.md §4`） |
+| `broadcast` | `broadcast_shape`, 广播运算符（参见 `15-broadcast.md §4`） |
 
 ### 3.3 依赖方向声明
 
@@ -218,7 +233,7 @@ Benchmark 分类
 | F-contiguous | `zeros(shape)` | 默认路径性能基线 |
 | Non-contiguous | `tensor.slice(s![.., 0..n-1])` | 非连续路径标量回退惩罚 |
 
-> **注意**：Xenon 仅支持 F-order 布局，不存在 C-order 路径。非连续布局通过切片/转置视图产生。
+> **注意**：Xenon 仅支持 F-order 布局，不存在 C-order 路径。非连续布局通过切片/转置视图产生（参见 `06-memory-layout.md §4`）。
 
 ---
 
@@ -245,9 +260,9 @@ Benchmark 分类
 | `transpose_2d` | 2D 转置（零拷贝） | S/M/L | f64 | F-contiguous | 转置视图创建 |
 | `reshape_contiguous` | 连续 reshape（零拷贝） | S/M/L | f64 | F-contiguous | reshape 元数据操作 |
 | `reshape_noncontiguous` | 非连续 reshape（需拷贝） | M | f64 | Non-contiguous | reshape 数据拷贝 |
-| `simd_add_compare` | `a + b` (SIMD vs 标量) | M | f32/f64 | F-contiguous | SIMD 加速比 |
+| `simd_add_compare` | `a + b` (SIMD vs 标量) | M | f32/f64 | F-contiguous | SIMD 加速比（参见 `08-simd-backend.md §10`） |
 | `simd_sum_compare` | sum (SIMD vs 标量) | M | f32/f64 | F-contiguous | SIMD 归约加速 |
-| `par_sum_compare` | sum (并行 vs 串行) | L | f64 | F-contiguous | 并行加速比 |
+| `par_sum_compare` | sum (并行 vs 串行) | L | f64 | F-contiguous | 并行加速比（参见 `09-parallel-backend.md §10`） |
 | `par_add_compare` | `a + b` (并行 vs 串行) | L | f64 | F-contiguous | 并行逐元素加速 |
 | `zeros_1d` | zeros 构造 | S/M/L | f64 | F-contiguous | 构造开销 |
 | `from_fn_2d` | from_fn 构造 | S/M/L | f64 | F-contiguous | 函数构造开销 |
@@ -454,14 +469,14 @@ fn bench_sum_bad2(c: &mut Criterion) {
 
 - [ ] **T10**: 实现 `benches/simd_comparison.rs`
   - 文件: `benches/simd_comparison.rs`
-  - 内容: add/sum 在 `--features simd` 开/关时的对比
+  - 内容: add/sum 在 `--features simd` 开/关时的对比（参见 `08-simd-backend.md §5`）
   - 测试: 分别以两种 feature 配置运行，对比结果
   - 前置: T3, T4
   - 预计: 10 min
 
 - [ ] **T11**: 实现 `benches/parallel_comparison.rs`
   - 文件: `benches/parallel_comparison.rs`
-  - 内容: sum/add 在 `--features parallel` 开/关时的对比
+  - 内容: sum/add 在 `--features parallel` 开/关时的对比（参见 `09-parallel-backend.md §5`）
   - 测试: 分别以两种 feature 配置运行，对比结果
   - 前置: T3, T4
   - 预计: 10 min
@@ -510,7 +525,7 @@ Wave 5:       [T12]
 | 属性 | 值 |
 |------|-----|
 | 决策 | 使用 criterion.rs 0.5 作为 benchmark 框架 |
-| 理由 | 统计分析（置信区间、异常值检测）；HTML 报告；与 CI 集成成熟；stable Rust 可用 |
+| 理由 | 统计分析（置信区间、异常值检测）；HTML 报告；与 CI 集成成熟；stable Rust 可用（参见 `00-coding-standards.md §7`） |
 | 替代方案 | `#[bench]` nightly — 放弃，需要 nightly 编译器 |
 | 替代方案 | divan — 放弃，生态不如 criterion 成熟 |
 

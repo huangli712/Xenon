@@ -67,10 +67,10 @@ src/format.rs
 
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
-| `tensor` | `TensorBase<S, D>`, `.shape()`, `.ndim()`, `.len()` |
-| `dimension` | `Dimension` |
-| `storage` | `Storage<Elem=A>` |
-| `element` | `Element`, `type_name::<A>()` |
+| `tensor` | `TensorBase<S, D>`, `.shape()`, `.ndim()`, `.len()`（参见 `07-tensor.md` §4） |
+| `dimension` | `Dimension`（参见 `02-dimension.md` §4） |
+| `storage` | `Storage<Elem=A>`（参见 `05-storage.md` §4） |
+| `element` | `Element`, `type_name::<A>()`（参见 `03-element-types.md` §3） |
 
 ### 3.3 依赖方向声明
 
@@ -468,10 +468,10 @@ Wave 3: [T5] → [T6]
 
 | 交互点 | 方向 | 说明 |
 |--------|------|------|
-| `Display` → `tensor` | format → tensor | 读取 `.shape()`, `.ndim()`, `.len()` |
-| `Debug` → `tensor` | format → tensor | 额外读取 `.strides()`, `is_f_contiguous()` |
-| `Display` → `storage` | format → storage | 通过 `iter()` 遍历元素 |
-| `Display` → `element` | format → element | 使用 `core::any::type_name::<A>()` |
+| `Display` → `tensor` | format → tensor | 读取 `.shape()`, `.ndim()`, `.len()`（参见 `07-tensor.md` §4） |
+| `Debug` → `tensor` | format → tensor | 额外读取 `.strides()`, `is_f_contiguous()`（参见 `06-memory-layout.md` §4） |
+| `Display` → `storage` | format → storage | 通过 `iter()` 遍历元素（参见 `05-storage.md` §4） |
+| `Display` → `element` | format → element | 使用 `core::any::type_name::<A>()`（参见 `03-element-types.md` §3） |
 
 ---
 

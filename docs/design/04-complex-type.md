@@ -32,7 +32,19 @@
 | 数值稳定 | `norm()` 使用 hypot 算法避免中间溢出 |
 | NaN 语义正确 | `NaN != NaN`，不实现 Eq/Ord |
 
-### 1.3 自定义实现 vs num-complex
+### 1.3 在架构中的位置
+
+```
+依赖层级：
+L0: error, private
+L1: complex  ← 当前模块
+L2: layout (依赖 dimension)
+L3: storage (依赖 layout)
+L4: tensor (依赖 storage, dimension)
+L5: ops/, iter/, index/, shape_ops/, broadcast/, construct/, ffi/, convert/, format/
+```
+
+### 1.4 自定义实现 vs num-complex
 
 | 考量 | 自定义实现 | num-complex |
 |------|-----------|-------------|
@@ -81,7 +93,7 @@ src/complex/
 ### 3.3 依赖方向声明
 
 > **依赖方向：单向向下。** `complex/` 不依赖项目中任何其他模块。
-> 被下游消费：`element/` 模块为 `Complex<f32>`/`Complex<f64>` 实现 Element/Numeric/ComplexScalar trait。
+> 被下游消费：`element/` 模块为 `Complex<f32>`/`Complex<f64>` 实现 Element/Numeric/ComplexScalar trait（参见 `03-element-types.md` §5.3）。
 
 ---
 
@@ -586,7 +598,7 @@ hypot(a, b):
 | 交互点 | 说明 |
 |--------|------|
 | 类型定义 | `Complex<T>` 定义在 `crate::complex` |
-| Trait 实现 | `Element`/`Numeric`/`ComplexScalar` 在 `element` 模块定义，在 `primitives.rs` 为 `Complex<T>` 实现 |
+| Trait 实现 | `Element`/`Numeric`/`ComplexScalar` 在 `element` 模块定义（参见 `03-element-types.md` §4.4），在 `primitives.rs` 为 `Complex<T>` 实现 |
 | 依赖方向 | `element` 依赖 `complex`（类型定义）；`complex` 不依赖 `element` |
 
 ### 6.2 接口边界

@@ -28,6 +28,18 @@
 | 统一 trait 层次 | `RawStorage → Storage → StorageMut → StorageOwned`，逐级增强能力 |
 | 最小依赖 | 仅依赖 `core`/`alloc`，`std` 通过 feature gate 可选 |
 
+### 1.3 在架构中的位置
+
+```
+依赖层级：
+L0: error, private
+L1: dimension, element, complex
+L2: layout (依赖 dimension)
+L3: storage (依赖 layout)  ← 当前模块
+L4: tensor (依赖 storage, dimension)
+L5: ops/, iter/, index/, shape_ops/, broadcast/, construct/, ffi/, convert/, format/
+```
+
 ---
 
 ## 2. 文件位置
@@ -90,7 +102,7 @@ src/storage/
 
 ### 3.3 依赖方向声明
 
-> **依赖方向：单向向下。** `storage/` 仅依赖 `core`/`alloc` 和 `element` 的类型约束，不被 `dimension`/`layout` 等模块依赖。`tensor/` 和 `iter/` 模块消费 storage 的 trait 和类型。
+> **依赖方向：单向向下。** `storage/` 仅依赖 `core`/`alloc` 和 `element` 的类型约束，不被 `dimension`/`layout` 等模块依赖。`tensor/`（参见 `07-tensor.md` §4）和 `iter/`（参见 `10-iterator.md` §4）模块消费 storage 的 trait 和类型。
 
 ---
 
@@ -800,7 +812,7 @@ Wave 4:              [T12] → [T13]
 
 ### 10.1 与 Tensor 模块
 
-`TensorBase<S, D>` 的 `S` 参数约束为 `Storage` 或 `StorageMut`，通过关联类型 `Elem` 获取元素类型。
+`TensorBase<S, D>` 的 `S` 参数约束为 `Storage` 或 `StorageMut`，通过关联类型 `Elem` 获取元素类型（参见 `07-tensor.md` §4）：
 
 ```rust
 impl<S, D, A> TensorBase<S, D>
@@ -816,11 +828,11 @@ where
 
 ### 10.2 与 Layout 模块
 
-Storage 提供对齐信息（`is_aligned()`），Layout 模块查询对齐状态更新 `LayoutFlags::ALIGNED`。
+Storage 提供对齐信息（`is_aligned()`），Layout 模块查询对齐状态更新 `LayoutFlags::ALIGNED`（参见 `06-memory-layout.md` §4）。
 
 ### 10.3 与 Parallel 模块
 
-并行迭代要求 `S: Storage + Sync`（读）或 `S: StorageMut + Send`（写），由 storage 的 Send/Sync 实现保证。
+并行迭代要求 `S: Storage + Sync`（读）或 `S: StorageMut + Send`（写），由 storage 的 Send/Sync 实现保证（参见 `09-parallel-backend.md` §4）。
 
 ---
 

@@ -27,7 +27,19 @@
 | 信息丰富 | 每个变体携带上下文（期望 vs 实际） |
 | 零堆分配 | shape 使用 `Cow<'static, [usize]>`，静态形状零分配 |
 | no_std 友好 | 仅依赖 `core` + `alloc` |
-| Rust 惯例一致 | 索引越界使用 panic，与标准库 slice 行为一致 |
+| Rust 惯例一致 | 索引越界使用 panic，与标准库 slice 行为一致（参见 `00-coding-standards.md §4`） |
+
+### 1.3 在架构中的位置
+
+```
+依赖层级：
+L0: error  ← 当前模块
+L1: dimension, element, complex
+L2: layout (依赖 dimension)
+L3: storage (依赖 layout)
+L4: tensor (依赖 storage, dimension)
+L5: ops/, iter/, index/, shape_ops/, broadcast/, construct/, ffi/, convert/, format/
+```
 
 ---
 
@@ -73,7 +85,7 @@ src/error.rs
 ### 3.3 依赖方向声明
 
 > **依赖方向：无内部依赖。** `error.rs` 是整个项目的 L0 层，不依赖 crate 内任何其他模块。
-> 被所有下游模块消费：`dimension`、`element`、`layout`、`storage`、`tensor`、`ops`、`shape_ops`、`index` 等。
+> 被所有下游模块消费：`dimension`（参见 `02-dimension.md §3`）、`element`（参见 `03-element-types.md §3`）、`layout`（参见 `06-memory-layout.md §3`）、`storage`（参见 `05-storage.md §3`）、`tensor`（参见 `07-tensor.md §3`）、`ops`（参见 `11-elementwise-ops.md §3`）、`shape_ops`（参见 `16-shape-ops.md §3`）、`index`（参见 `17-indexing.md §3`） 等。
 
 ---
 
@@ -330,7 +342,7 @@ pub fn sum_bad(&self) -> A {
 
 ### 5.4 并行操作中错误立即传播
 
-并行操作中发生不可恢复错误时须立即传播，不得静默忽略：
+并行操作中发生不可恢复错误时须立即传播，不得静默忽略（参见 `09-parallel-backend.md §5`）：
 
 ```rust
 // Good - panic propagates immediately in parallel reduction
@@ -346,7 +358,7 @@ where
 
 ### 5.5 资源释放不得 panic（Drop 安全）
 
-所有 `Drop` 实现不得 panic，确保即使在其他 panic 过程中也能安全清理：
+所有 `Drop` 实现不得 panic，确保即使在其他 panic 过程中也能安全清理（参见 `05-storage.md §5`）：
 
 ```rust
 // Good - Drop does not panic
@@ -398,16 +410,16 @@ impl std::error::Error for XenonError {}
 
 | 模块 | 产生的错误类型 | 触发场景 |
 |------|----------------|----------|
-| `dimension/` | `DimensionMismatch` | IxN ↔ IxDyn 转换 |
-| `tensor/` | `InvalidShape` | reshape 操作 |
+| `dimension/` | `DimensionMismatch` | IxN ↔ IxDyn 转换（参见 `02-dimension.md §4`） |
+| `tensor/` | `InvalidShape` | reshape 操作（参见 `07-tensor.md §4`） |
 | `tensor/` | `LayoutMismatch` | reshape 非连续数组 |
 | `tensor/` | `EmptyArray` | dot 等操作对空数组 |
-| `ops/` | `ShapeMismatch` | 二元运算形状不兼容 |
-| `ops/` | `BroadcastError` | 广播失败 |
-| `ops/` | `InvalidAxis` | sum_axis 轴索引错误 |
+| `ops/` | `ShapeMismatch` | 二元运算形状不兼容（参见 `11-elementwise-ops.md §4`） |
+| `ops/` | `BroadcastError` | 广播失败（参见 `15-broadcast.md §5`） |
+| `ops/` | `InvalidAxis` | sum_axis 轴索引错误（参见 `13-reduction.md §4`） |
 | `ops/` | `OverflowError` | 整数 sum 归约溢出 |
-| `layout/` | `LayoutMismatch` | 连续性检查失败 |
-| `index/` | (panic) IndexOutOfBounds | 索引越界 |
+| `layout/` | `LayoutMismatch` | 连续性检查失败（参见 `06-memory-layout.md §4`） |
+| `index/` | (panic) IndexOutOfBounds | 索引越界（参见 `17-indexing.md §4`） |
 
 ### 6.2 错误流向图
 
@@ -582,7 +594,7 @@ Wave 3: ┌──[T6]────┤
 | 属性 | 值 |
 |------|-----|
 | 决策 | 使用单一 `XenonError` 枚举 |
-| 理由 | API 简单、模式匹配完整、无错误类型爆炸、`?` 无需转换 |
+| 理由 | API 简单、模式匹配完整、无错误类型爆炸、`?` 无需转换（参见 `00-coding-standards.md §4`） |
 | 替代方案 | 多个错误类型（ShapeError, LayoutError, ...） — 放弃，增加 API 复杂度 |
 | 替代方案 | 使用 thiserror 宏 — 放弃，引入外部依赖，与最小依赖原则冲突 |
 

@@ -8,11 +8,9 @@
 
 ## 1. 模块定位
 
-### 1.1 概述
-
 SIMD 后端模块是 Xenon 张量库的可选性能加速层，通过 `pulp` crate 提供跨平台 SIMD 抽象，为逐元素运算、归约和内积操作提供硬件向量化加速。该模块默认关闭，通过 `features = ["simd"]` 启用。
 
-### 1.2 职责边界
+### 1.1 职责边界
 
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
@@ -23,7 +21,7 @@ SIMD 后端模块是 Xenon 张量库的可选性能加速层，通过 `pulp` cra
 | 标量回退 | 所有操作的纯标量基准实现 | — |
 | 运行时分发 | Arch 检测缓存、自动最优路径选择 | 编译期静态分发 |
 
-### 1.3 设计原则
+### 1.2 设计原则
 
 | 原则 | 体现 |
 |------|------|
@@ -32,31 +30,44 @@ SIMD 后端模块是 Xenon 张量库的可选性能加速层，通过 `pulp` cra
 | 零成本抽象 | 未启用 `simd` feature 时无任何运行时开销 |
 | 跨平台 | pulp 统一 x86_64 (AVX/AVX2/AVX512) 和 ARM (Neon/SVE) |
 
+### 1.3 在架构中的位置
+
+```
+依赖层级：
+L0: error, private
+L1: dimension, element, complex
+L2: layout (依赖 dimension)
+L3: storage (依赖 layout)
+L4: tensor (依赖 storage, dimension)
+L5: simd  ← 当前模块（可选，feature = "simd"）
+```
+
 ### 1.4 性能分层中的角色
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                       调用层 (ops/iter)                          │
-│            elementwise, reduction, dot product                    │
+│            elementwise, reduction, dot product                  │
+│            参见 11-elementwise-ops.md §5, 13-reduction.md §4     │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                  性能分层决策 (dispatch)                          │
-│    根据 元素数/连续性/对齐/feature 决定执行路径                    │
+│    根据 元素数/连续性/对齐/feature 决定执行路径                      │
 └──────────┬──────────────┬──────────────┬────────────────────────┘
            │              │              │
            ▼              ▼              ▼
     ┌──────────┐   ┌──────────┐   ┌──────────┐
-    │ SIMD路径 │   │ 并行路径 │   │ 标量路径 │
-    │(本模块)  │   │ (rayon)  │   │  (回退)  │
+    │ SIMD路径  │   │ 并行路径  │   │ 标量路径   │
+    │(本模块)   │   │ (rayon)  │   │  (回退)   │
     └────┬─────┘   └────┬─────┘   └────┬─────┘
          │              │              │
          └──────────────┴──────────────┘
                         │
                         ▼
               ┌─────────────────┐
-              │   硬件执行      │
+              │   硬件执行       │
               │ AVX-512/AVX2/   │
               │ SSE4.1/NEON     │
               └─────────────────┘
@@ -95,10 +106,10 @@ src/simd/
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
 | `pulp` | `Arch`, `Simd`, `WithSimd` |
-| `tensor` | `TensorBase<S, D>`, `.as_ptr()`, `.as_slice()` |
-| `storage` | `RawStorage`, `Storage`, `.len()` |
-| `layout` | `LayoutFlags`, `is_f_contiguous()`, 对齐查询 |
-| `element` | `SimdElement`, `Element` |
+| `tensor` | `TensorBase<S, D>`, `.as_ptr()`, `.as_slice()`（参见 `07-tensor.md §4`） |
+| `storage` | `RawStorage`, `Storage`, `.len()`（参见 `05-storage.md §4`） |
+| `layout` | `LayoutFlags`, `is_f_contiguous()`, 对齐查询（参见 `06-memory-layout.md §4`） |
+| `element` | `SimdElement`, `Element`（参见 `03-element-types.md §4`） |
 
 ### 3.3 依赖方向声明
 
@@ -815,15 +826,15 @@ Wave 4:   [T6]
 
 ### 8.1 与 ops 模块
 
-`ops/` 模块在执行逐元素运算时，调用 `simd::can_use_simd()` 检查条件，满足时使用 `VectorKernel`，否则使用 `ScalarKernel`。
+`ops/` 模块在执行逐元素运算时，调用 `simd::can_use_simd()` 检查条件，满足时使用 `VectorKernel`，否则使用 `ScalarKernel`（参见 `11-elementwise-ops.md §5.3`）。
 
 ### 8.2 与 parallel 模块
 
-并行路径的每个工作线程内部可以使用 SIMD。组合使用时：先按并行阈值分块到各线程，线程内部再检查 SIMD 条件执行向量化。
+并行路径的每个工作线程内部可以使用 SIMD。组合使用时：先按并行阈值分块到各线程，线程内部再检查 SIMD 条件执行向量化（参见 `09-parallel-backend.md §8.1`）。
 
 ### 8.3 与 storage/layout 模块
 
-SIMD 模块依赖 layout 提供的连续性和对齐信息来判断是否可以使用 SIMD 路径。
+SIMD 模块依赖 layout 提供的连续性和对齐信息来判断是否可以使用 SIMD 路径（参见 `06-memory-layout.md §4.5`）。
 
 ---
 

@@ -16,14 +16,26 @@
 
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
-| 元素遍历 | 按元素遍历（F-order 内存顺序） | 具体运算逻辑（由 `ops/` 提供） |
+| 元素遍历 | 按元素遍历（F-order 内存顺序） | 具体运算逻辑（参见 `11-elementwise-ops.md §1`） |
 | 轴遍历 | 沿指定轴产生子张量视图 | 子视图的具体操作 |
 | 窗口遍历 | 滑动窗口产生子视图 | 卷积运算 |
 | 索引遍历 | 带多维索引的元素遍历 | 索引赋值操作 |
-| 同步遍历 | 多张量同步遍历（Zip） | 广播规则计算（由 `broadcast` 模块提供） |
-| 并行迭代 | — | 并行迭代（由 `parallel` 模块提供） |
+| 同步遍历 | 多张量同步遍历（Zip） | 广播规则计算（参见 `15-broadcast.md §3`） |
+| 并行迭代 | — | 并行迭代（参见 `09-parallel-backend.md §4.5`） |
 
-### 1.3 设计原则
+### 1.3 在架构中的位置
+
+```
+依赖层级：
+L0: error, private
+L1: dimension, element, complex
+L2: layout (依赖 dimension)
+L3: storage (依赖 layout)
+L4: tensor (依赖 storage, dimension)
+L5: iter  ← 当前模块
+```
+
+### 1.4 设计原则
 
 | 原则 | 体现 |
 |------|------|
@@ -68,11 +80,11 @@ src/iter/
 
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
-| `tensor` | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `TensorViewMut<'a, A, D>`, `.shape()`, `.strides()`, `.as_ptr()`, `.len()` |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `RemoveAxis`, `D::Smaller` |
-| `storage` | `Storage<Elem = A>`, `StorageMut<Elem = A>`, `Owned<A>` |
-| `layout` | `LayoutFlags`, `is_f_contiguous()`, `is_c_contiguous()` |
-| `broadcast` | `broadcast_shape()`（Zip 构造时验证形状兼容性） |
+| `tensor` | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `TensorViewMut<'a, A, D>`, `.shape()`, `.strides()`, `.as_ptr()`, `.len()`（参见 `07-tensor.md §4`） |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `RemoveAxis`, `D::Smaller`（参见 `02-dimension.md §4`） |
+| `storage` | `Storage<Elem = A>`, `StorageMut<Elem = A>`, `Owned<A>`（参见 `05-storage.md §4`） |
+| `layout` | `LayoutFlags`, `is_f_contiguous()`, `is_c_contiguous()`（参见 `06-memory-layout.md §4`） |
+| `broadcast` | `broadcast_shape()`（Zip 构造时验证形状兼容性，参见 `15-broadcast.md §4`） |
 
 ### 3.3 依赖方向
 
@@ -456,21 +468,21 @@ Wave 4:          [T8]
 ### 8.1 与 tensor 模块
 
 ```rust
-// tensor module provides iterator entry methods
+// tensor module provides iterator entry methods（参见 07-tensor.md §4.6）
 // iter module consumes TensorView / TensorViewMut
 ```
 
 ### 8.2 与 storage / dimension 模块
 
 ```rust
-// Iterators read data via the Storage trait
-// Index state is managed via the Dimension trait
+// Iterators read data via the Storage trait（参见 05-storage.md §4）
+// Index state is managed via the Dimension trait（参见 02-dimension.md §4）
 ```
 
 ### 8.3 与 broadcast 模块
 
 ```rust
-// Zip calls broadcast_shape() at construction to verify shape compatibility
+// Zip calls broadcast_shape() at construction to verify shape compatibility（参见 15-broadcast.md §4）
 // Zero strides in broadcast views are handled correctly by the iter module
 ```
 

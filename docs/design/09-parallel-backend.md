@@ -8,11 +8,9 @@
 
 ## 1. 模块定位
 
-### 1.1 概述
-
 并行后端模块是 Xenon 张量库的可选性能加速层，通过 `rayon` crate 提供数据并行能力，为大规模数组操作提供多线程加速。该模块默认关闭，通过 `features = ["parallel"]` 启用。
 
-### 1.2 职责边界
+### 1.1 职责边界
 
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
@@ -23,7 +21,7 @@
 | 多数组同步 | zip 多数组并行迭代 | 自动 DAG 调度 |
 | 自动路径选择 | 根据数据规模自动串行/并行切换 | 编译期静态并行分发 |
 
-### 1.3 设计原则
+### 1.2 设计原则
 
 | 原则 | 体现 |
 |------|------|
@@ -31,31 +29,43 @@
 | 自动决策 | 运行时根据数据规模和布局自动选择并行/串行 |
 | 可配置性 | 支持全局配置和单次调用覆盖阈值 |
 | 安全性 | 禁止嵌套并行，保证无数据竞争 |
-| 兼容性 | 与 SIMD 模块协同工作，每线程内部使用 SIMD |
+| 兼容性 | 与 SIMD 模块协同工作，每线程内部使用 SIMD（参见 `08-simd-backend.md §8.2`） |
+
+### 1.3 在架构中的位置
+
+```
+依赖层级：
+L0: error, private
+L1: dimension, element, complex
+L2: layout (依赖 dimension)
+L3: storage (依赖 layout)
+L4: tensor (依赖 storage, dimension)
+L5: parallel  ← 当前模块（可选，feature = "parallel"）
+```
 
 ### 1.4 性能分层中的角色
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      性能分层决策树                              │
+│                      性能分层决策树                               │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  元素数 < SIMD_WIDTH (如 16)                                    │
-│  └─→ 标量路径 (scalar)                                          │
+│  元素数 < SIMD_WIDTH (如 16)                                     │
+│  └─→ 标量路径 (scalar)                                           │
 │                                                                 │
-│  元素数 ≥ SIMD_WIDTH 且 连续内存 且 simd 启用                    │
+│  元素数 ≥ SIMD_WIDTH 且 连续内存 且 simd 启用                      │
 │  └─→ SIMD 路径 (vectorized)                                     │
-│                                                                 │
+│                                                                │
 │  元素数 ≥ PARALLEL_THRESHOLD (默认 1024) 且 parallel 启用        │
 │  └─→ 并行路径                                                   │
-│      ├─ 连续内存 + simd 启用: 分块后各块 SIMD                    │
-│      ├─ 连续内存 + simd 禁用: 分块后各块标量                     │
-│      └─ 非连续内存: 分块后各块标量                               │
-│                                                                 │
+│      ├─ 连续内存 + simd 启用: 分块后各块 SIMD                     │
+│      ├─ 连续内存 + simd 禁用: 分块后各块标量                       │
+│      └─ 非连续内存: 分块后各块标量                                 │
+│                                                                │
 │  默认情况                                                       │
 │  └─→ 标量路径 (scalar)                                          │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -93,10 +103,10 @@ src/parallel/
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
 | `rayon` | `ThreadPool`, `ThreadPoolBuilder`, `ParallelIterator`, `IndexedParallelIterator` |
-| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `.view()`, `.len()` |
-| `storage` | `RawStorage`, `Storage`, `StorageMut`, `.as_slice()` |
-| `layout` | `LayoutFlags`, `is_f_contiguous()` |
-| `broadcast` | `broadcast_shape()` |
+| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `.view()`, `.len()`（参见 `07-tensor.md §4`） |
+| `storage` | `RawStorage`, `Storage`, `StorageMut`, `.as_slice()`（参见 `05-storage.md §4`） |
+| `layout` | `LayoutFlags`, `is_f_contiguous()`（参见 `06-memory-layout.md §4`） |
+| `broadcast` | `broadcast_shape()`（参见 `15-broadcast.md §4`） |
 
 ### 3.3 依赖方向声明
 
@@ -471,18 +481,18 @@ let result = par_zip_with(&a, &b, |x, y| x + y).unwrap(); // Forbidden silent ig
 分块决策流程
 
 ┌─────────────────────────────────────────────────────────────────┐
-│  输入: tensor (TensorBase<S, D>)                                │
+│  输入: tensor (TensorBase<S, D>)                                 │
 │                                                                 │
-│  1. 检查连续性                                                   │
+│  1. 检查连续性                                                    │
 │     ├─ is_f_contiguous() ?                                      │
-│     │   └─ 使用连续分块策略                                      │
-│     │       compute_contiguous_chunks(len, config)               │
+│     │   └─ 使用连续分块策略（参见 `06-memory-layout.md §4.4`）      │
+│     │       compute_contiguous_chunks(len, config)              │
 │     │                                                           │
-│     └─ 非连续                                                   │
-│         └─ 沿第一轴分块                                          │
-│             compute_strided_chunks(shape, strides, config)       │
+│     └─ 非连续                                                    │
+│         └─ 沿第一轴分块                                           │
+│             compute_strided_chunks(shape, strides, config)      │
 │                                                                 │
-│  2. 返回分块迭代器                                               │
+│  2. 返回分块迭代器                                                │
 │     └─ chunks.into_par_iter()                                   │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
@@ -717,7 +727,7 @@ Wave 4:        [T8]
 
 ### 8.1 与 simd 模块
 
-并行路径的每个工作线程内部可以使用 SIMD。组合使用时：
+并行路径的每个工作线程内部可以使用 SIMD（参见 `08-simd-backend.md §8.2`）。组合使用时：
 
 ```
 并行 + SIMD 组合执行
@@ -738,11 +748,11 @@ Wave 4:        [T8]
 
 ### 8.2 与 storage 模块
 
-并行迭代器通过 `RawStorage` trait 获取原始指针和长度信息。
+并行迭代器通过 `RawStorage` trait 获取原始指针和长度信息（参见 `05-storage.md §4`）。
 
 ### 8.3 与 tensor 模块
 
-并行操作消费 `Tensor<A, D>` 的视图，产出新的 `Tensor<A, D>`。
+并行操作消费 `Tensor<A, D>` 的视图，产出新的 `Tensor<A, D>`（参见 `07-tensor.md §4.5`）。
 
 ---
 

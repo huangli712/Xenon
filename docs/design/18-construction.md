@@ -28,9 +28,21 @@
 |------|------|
 | 合法性验证 | 所有构造路径须验证合法性，防止越界访问（需求说明书 §8） |
 | F-order 默认 | 构造时数据按 F-order 存放，默认列优先布局 |
-| 对齐分配 | `zeros`/`ones` 使用对齐分配器，满足 BLAS 兼容性 |
+| 对齐分配 | `zeros`/`ones` 使用对齐分配器，满足 BLAS 兼容性（参见 `23-ffi.md` §4.5） |
 | 零拷贝优先 | `from_vec` 转移所有权，不拷贝数据 |
 | 类型安全 | 彣状和元素类型通过泛型约束在编译期检查 |
+
+### 1.3 在架构中的位置
+
+```
+依赖层级：
+L0: error, private
+L1: dimension, element, complex
+L2: layout (依赖 dimension)
+L3: storage (依赖 layout)
+L4: tensor (依赖 storage, dimension)
+L5: construct  ← 当前模块
+```
 
 ---
 
@@ -51,32 +63,32 @@ src/
 
 ```
                     ┌──────────────┐
-                    │   tensor      │
+                    │   tensor     │
                     │ TensorBase   │
                     └──────┬───────┘
                            │ 使用
-              ┌──────────────▼──────────────────┐
-              │  construct                      │
-              │  construct.rs                  │
-              └──┬───────────┬───────────────┘
-                 │ 使用      │ 使用
-          ┌──────▼───┐ ┌──────▼──────────────┐
-          │ storage   │ │ memory-layout │
+              ┌────────────▼───────────┐
+              │  construct             │
+              │  construct.rs          │
+              └──┬───────────┬─────────┘
+                 │ 使用       │ 使用
+          ┌──────▼───┐ ┌──────▼────────┐
+          │ storage  │ │ memory-layout │
           │ Owned<A> │ │ LayoutFlags   │
           │ Storage  │ │ Order         │
-          └───────────┘ └──────────────────────┘
+          └──────────┘ └───────────────┘
 ```
 
 ### 3.2 类型级依赖
 
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
-| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, 类型别名 `Tensor0`~`Tensor6` |
-| `storage` | `Owned<A>`, `Storage<Elem = A>`, `from_vec_aligned()` |
-| `memory_layout` | `LayoutFlags`, `Order::F`, F-order 步长计算 |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension` |
-| `element` | `Element`, `Zero`, `One` |
-| `error` | `XenonError::InvalidShape` |
+| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, 类型别名 `Tensor0`~`Tensor6`（参见 `07-tensor.md` §4） |
+| `storage` | `Owned<A>`, `Storage<Elem = A>`, `from_vec_aligned()`（参见 `05-storage.md` §4） |
+| `memory_layout` | `LayoutFlags`, `Order::F`, F-order 步长计算（参见 `06-memory-layout.md` §3） |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`（参见 `02-dimension.md` §4） |
+| `element` | `Element`, `Zero`, `One`（参见 `03-element-types.md` §3） |
+| `error` | `XenonError::InvalidShape`（参见 `26-error-handling.md` §4） |
 
 ### 3.3 依赖方向声明
 
@@ -510,13 +522,13 @@ Wave 4:           [T6]
 
 | 交互模块 | 方向 | 说明 |
 |----------|------|------|
-| `tensor` | construct → tensor | 构造 `TensorBase` 实例 |
-| `storage` | construct → storage | 使用 `Owned::zeros()`/`from_vec_aligned()` |
-| `memory_layout` | construct → memory_layout | 计算 F-order 步长 |
-| `dimension` | construct → dimension | 使用 `IntoDimension` 接受灵活形状参数 |
-| `element` | construct → element | 使用 `Element`/`Zero`/`One` trait 约束 |
-| `error` | construct → error | 返回 `XenonError::InvalidShape` |
-| `index` | index ← construct | 构造后可通过索引访问元素 |
+| `tensor` | construct → tensor | 构造 `TensorBase` 实例（参见 `07-tensor.md` §4.1） |
+| `storage` | construct → storage | 使用 `Owned::zeros()`/`from_vec_aligned()`（参见 `05-storage.md` §4.2） |
+| `memory_layout` | construct → memory_layout | 计算 F-order 步长（参见 `06-memory-layout.md` §4） |
+| `dimension` | construct → dimension | 使用 `IntoDimension` 接受灵活形状参数（参见 `02-dimension.md` §4.3） |
+| `element` | construct → element | 使用 `Element`/`Zero`/`One` trait 约束（参见 `03-element-types.md` §3） |
+| `error` | construct → error | 返回 `XenonError::InvalidShape`（参见 `26-error-handling.md` §4.2） |
+| `index` | index ← construct | 构造后可通过索引访问元素（参见 `17-indexing.md` §4） |
 
 ---
 
@@ -527,7 +539,7 @@ Wave 4:           [T6]
 | 属性 | 值 |
 |------|-----|
 | 决策 | `from_fn` 接收 `FnMut(&[usize]) -> A` 闭包，按 F-order 遍历 |
-| 理由 | 灵活性高（任意初始化逻辑）；F-order 遍历保证数据布局一致性 |
+| 理由 | 灵活性高（任意初始化逻辑）；F-order 遍历保证数据布局一致性（参见 `06-memory-layout.md` §3.2） |
 | 替代方案 | 接收 `Iterator<Item=A>` — 放弃，不提供多维索引信息 |
 | 替代方案 | 接收 `FnMut(usize) -> A`（线性索引） — 放弃，用户需要自行计算多维索引 |
 
@@ -582,7 +594,7 @@ Wave 4:           [T6]
 
 ## 11. no_std 兼容性
 
-构造操作模块在 `no_std` 环境下可用，但需 `alloc` 支持以进行内存分配。所有构造方法均需要堆分配来存储张量数据。
+构造操作模块在 `no_std` 环境下可用，但需 `alloc` 支持以进行内存分配。所有构造方法均需要堆分配来存储张量数据。存储层的 `no_std` 兼容性参见 `05-storage.md` §11。
 
 ```rust
 #[cfg(not(feature = "std"))]

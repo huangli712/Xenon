@@ -41,7 +41,7 @@ L2: workspace  ← 当前模块（独立于 tensor）
   tensor (可选) ──→ workspace
 ```
 
-工作空间模块是独立的，不依赖张量类型，可被上游库直接使用。
+工作空间模块是独立的，不依赖张量类型，可被上游库直接使用（参见 `01-architecture-overview.md §5`）。
 
 ---
 
@@ -73,11 +73,11 @@ src/workspace.rs
 |----------|-----------------|
 | `core` | `NonNull<u8>`, `PhantomData`, `AtomicU8`, `fmt::Debug`, `fmt::Display` |
 | `alloc` | `alloc()`, `dealloc()`, `Layout` |
-| `error` | `WorkspaceError`（或本模块内定义） |
+| `error` | `WorkspaceError`（或本模块内定义，参见 `26-error-handling.md §4`） |
 
 ### 3.3 依赖方向声明
 
-> **依赖方向：单向。** `workspace` 仅依赖 `core` 和 `alloc`，不依赖 `tensor`。上游库和 `tensor` 可消费 `workspace`。
+> **依赖方向：单向。** `workspace` 仅依赖 `core` 和 `alloc`，不依赖 `tensor`（参见 `07-tensor.md §3`）。上游库和 `tensor` 可消费 `workspace`。
 
 ---
 
@@ -139,7 +139,7 @@ pub struct Workspace {
 }
 ```
 
-> **设计决策：** 使用 `AtomicU8` 管理借用状态而非 `Mutex`，原因：无锁（`no_std` 兼容）、状态简单（仅需 3 个值）。
+> **设计决策：** 使用 `AtomicU8` 管理借用状态而非 `Mutex`，原因：无锁（`no_std` 兼容）、状态简单（仅需 3 个值）（参见 `25-thread-safety.md §4.1`）。
 
 ### 4.2 常量
 
@@ -649,7 +649,7 @@ Workspace 内存布局（64 字节对齐）
 
 ### 5.3 扩容安全性论证
 
-**扩容期间保证不违反已有引用安全性**：
+**扩容期间保证不违反已有引用安全性**（参见 `05-storage.md §5`）：
 
 1. `ensure_capacity` 需要 `&mut self`，编译器保证无其他引用
 2. 方法内部显式检查 `borrow_state` 是否为 NONE
@@ -790,9 +790,9 @@ Wave 4: [T7]
 
 | 交互点 | 方向 | 说明 |
 |--------|------|------|
-| 上游库 → workspace | 上游 BLAS 库通过 `borrow_mut()` 获取缓冲区 |
+| 上游库 → workspace | 上游 BLAS 库通过 `borrow_mut()` 获取缓冲区（参见 `23-ffi.md §4`） |
 | 上游库 → workspace | 上游 FFT 库通过 `split_at()` 分割工作空间 |
-| tensor -> workspace | Tensor 操作通过 workspace 分配临时空间（可选） |
+| tensor -> workspace | Tensor 操作通过 workspace 分配临时空间（参见 `07-tensor.md §4`，可选） |
 
 ---
 
@@ -864,7 +864,7 @@ Wave 4: [T7]
 | `alloc::alloc::dealloc` | alloc | ✅ |
 | `alloc::alloc::Layout` | alloc | ✅ |
 
-所有依赖均在 `core` 或 `alloc` 中，完全兼容 `no_std`。
+所有依赖均在 `core` 或 `alloc` 中，完全兼容 `no_std`（参见 `01-architecture-overview.md §6`）。
 
 ```toml
 # Cargo.toml

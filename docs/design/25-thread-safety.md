@@ -8,11 +8,9 @@
 
 ## 1. 模块定位
 
-### 1.1 概述
+线程安全是 Xenon 的横切关注点，贯穿所有存储模式和计算后端。本文档定义各存储模式（参见 `05-storage.md §4`）的 `Send`/`Sync` 实现规则，确保 Xenon 张量（参见 `07-tensor.md §4`）可在多线程环境下安全使用。
 
-线程安全是 Xenon 的横切关注点，贯穿所有存储模式和计算后端。本文档定义各存储模式的 `Send`/`Sync` 实现规则，确保 Xenon 张量可在多线程环境下安全使用。
-
-### 1.2 职责边界
+### 1.1 职责边界
 
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
@@ -22,7 +20,7 @@
 | 编译期保证 | 通过 Rust 类型系统在编译期排除数据竞争 | 运行时锁或同步原语 |
 | 广播安全 | 广播结果不可可变迭代的约束 | — |
 
-### 1.3 设计原则
+### 1.2 设计原则
 
 | 原则 | 体现 |
 |------|------|
@@ -30,6 +28,24 @@
 | 最小约束 | 每种存储模式仅实现其语义允许的最小 Send/Sync 约束 |
 | unsafe 安全论证 | 每个 unsafe impl 附带完整 SAFETY 注释 |
 | 所有权协同 | 充分利用 Rust 所有权系统与线程安全的天然协同 |
+
+### 1.3 在架构中的位置
+
+```
+依赖层级：
+L0: error, private
+L1: dimension, element, complex
+L2: layout (依赖 dimension)
+L3: storage (依赖 layout)
+L4: tensor (依赖 storage, dimension)
+L5: ops/, iter/, index/, shape_ops/, broadcast/, construct/, ffi/, convert/, format/
+
+横切关注点：
+┌─────────────────────────────────────────────────────────────────┐
+│  线程安全 (Send/Sync)  ← 当前文档（横跨 L3-L5 各模块）               │
+│  ─ 横贯 storage (L3)、tensor (L4)、parallel/simd (L5)            │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ### 1.4 线程安全在 Xenon 中的重要性
 
@@ -87,11 +103,11 @@ src/parallel/
 | `core::marker` | `PhantomData<A>`, `Send`, `Sync` |
 | `std::sync` | `Arc<Vec<A>>`, `AtomicUsize` |
 | `std::cell` | `Cell<usize>`, `Cell<Option<usize>>` |
-| `rayon::iter` | `ParallelIterator` (要求 `Item: Send`) |
+| `rayon::iter` | `ParallelIterator` (要求 `Item: Send`，参见 `09-parallel-backend.md §4`) |
 
 ### 3.3 依赖方向声明
 
-> **依赖方向：线程安全是横切关注点。** 各存储模块自行声明 Send/Sync，parallel 模块消费这些约束。无循环依赖。
+> **依赖方向：线程安全是横切关注点。** 各存储模块自行声明 Send/Sync（参见 `05-storage.md §5`），parallel 模块消费这些约束（参见 `09-parallel-backend.md §4`）。无循环依赖。
 
 ---
 
@@ -107,6 +123,8 @@ src/parallel/
 | `ViewRepr<&'a A>` | ✅ | ✅ | `A: Sync` | 共享引用跨线程共享要求 `T: Sync` |
 | `ViewMutRepr<&'a mut A>` | ✅ | ✗ | `A: Send` | 独占借用不可共享，但可转移 |
 | `ArcRepr<A>` | ✅ | ✅ | `A: Send + Sync` | Arc 原子计数，要求元素线程安全 |
+
+各存储模式的完整 API 定义参见 `05-storage.md §4`。
 
 ### 4.2 Owned<A> 的 Send/Sync
 
@@ -327,7 +345,7 @@ let sum: f64 = b.iter().sum();  // OK: read-only iteration
 // b_mut.iter_mut()  // Compile error! ViewRepr does not implement StorageMut
 ```
 
-> **设计决策：** 广播结果使用 `ViewRepr`（只读视图），因为广播不拷贝数据，语义上仅为只读。如果允许可变迭代，修改广播结果会意外修改原数据的多个位置，这既不符合广播语义，也容易引入 bug。
+> **设计决策：** 广播结果使用 `ViewRepr`（只读视图），因为广播不拷贝数据，语义上仅为只读（参见 `15-broadcast.md §4`）。如果允许可变迭代，修改广播结果会意外修改原数据的多个位置，这既不符合广播语义，也容易引入 bug。
 
 ### 4.8 Good/Bad 对比示例
 
@@ -404,6 +422,8 @@ fn parallel_iteration(tensor: &Tensor2<f64>) {
 
 ### 5.2 并行操作安全约束
 
+并行迭代的安全保证基于分块访问隔离（参见 `09-parallel-backend.md §5`）：
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                并行迭代访问隔离示意                               │
@@ -421,6 +441,8 @@ fn parallel_iteration(tensor: &Tensor2<f64>) {
 ```
 
 ### 5.3 SIMD 与并行组合安全
+
+SIMD 操作与并行操作的组合安全性保证（参见 `08-simd-backend.md §5`）：
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -670,7 +692,7 @@ fn test_arc_concurrent_access() {
 
 ### 8.3 与 rayon 的集成
 
-rayon 的 `ParallelIterator` 要求 `Item: Send`：
+rayon 的 `ParallelIterator` 要求 `Item: Send`（参见 `09-parallel-backend.md §8`）：
 
 | 存储模式 | `par_iter()` | `par_iter_mut()` | 约束 |
 |----------|:----------:|:--------------:|------|
@@ -688,7 +710,7 @@ rayon 的 `ParallelIterator` 要求 `Item: Send`：
 | 属性 | 值 |
 |------|-----|
 | 决策 | 使用显式 `unsafe impl Send/Sync`，而非依赖编译器自动推导 |
-| 理由 | 文档化意图，每个 impl 附带完整 SAFETY 注释，便于审查和维护 |
+| 理由 | 文档化意图，每个 impl 附带完整 SAFETY 注释（参见 `00-coding-standards.md §5`），便于审查和维护 |
 | 替代方案 | 依赖自动推导 — 放弃，缺少安全性论证文档，修改内部字段时可能意外改变线程安全语义 |
 
 ### 决策 2：ViewMutRepr 不实现 Sync

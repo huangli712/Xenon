@@ -12,7 +12,7 @@
 
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
-| 跨模块验证 | 维度、存储、布局、运算等模块的协同行为 | 单函数测试（由 `#[cfg(test)] mod tests` 覆盖） |
+| 跨模块验证 | 维度、存储、布局、运算等模块的协同行为（参见 `01-architecture-overview.md §5`） | 单函数测试（由 `#[cfg(test)] mod tests` 覆盖） |
 | 边界覆盖 | 空张量、单元素、大张量、极端值、非连续、高维 | 性能测量（由 benchmark 覆盖） |
 | 数值精度 | IEEE 754 精度验证 | 微观 benchmark |
 | 属性测试 | 代数不变量验证 | 内存泄漏检测 |
@@ -26,6 +26,21 @@
 | 独立性 | 每个测试文件可独立运行，无跨文件依赖 |
 | 可读性 | 测试名称描述预期行为，失败信息包含上下文 |
 | 快速反馈 | 完整集成测试 < 5min |
+
+### 1.3 在架构中的位置
+
+```
+依赖层级：
+L0: error, private
+L1: dimension, element, complex
+L2: layout (依赖 dimension)
+L3: storage (依赖 layout)
+L4: tensor (依赖 storage, dimension)
+L5: ops/, iter/, index/, shape_ops/, broadcast/, construct/, ffi/, convert/, format/
+
+外部（非 crate 模块）：
+tests/  ← 当前模块（仅消费 crate 公共 API）
+```
 
 ---
 
@@ -95,17 +110,17 @@ tests/
 
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
-| `tensor` | `Tensor<A, D>`, `TensorView`, `TensorViewMut`, `ArcTensor`, `.shape()`, `.strides()` |
-| `dimension` | `Ix0`~`Ix6`, `IxDyn`, `Dimension`, `DimensionMismatch` |
-| `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar` |
-| `complex` | `Complex<f32>`, `Complex<f64>` |
-| `storage` | `Owned`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`, `Storage` |
-| `layout` | `LayoutFlags`, `Order` |
-| `error` | `XenonError`, `Result<T>` |
+| `tensor` | `Tensor<A, D>`, `TensorView`, `TensorViewMut`, `ArcTensor`, `.shape()`, `.strides()`（参见 `07-tensor.md §4`） |
+| `dimension` | `Ix0`~`Ix6`, `IxDyn`, `Dimension`, `DimensionMismatch`（参见 `02-dimension.md §4`） |
+| `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element-types.md §4`） |
+| `complex` | `Complex<f32>`, `Complex<f64>`（参见 `04-complex-type.md §4`） |
+| `storage` | `Owned`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`, `Storage`（参见 `05-storage.md §4`） |
+| `layout` | `LayoutFlags`, `Order`（参见 `06-memory-layout.md §4`） |
+| `error` | `XenonError`, `Result<T>`（参见 `26-error-handling.md §4`） |
 
 ### 3.3 依赖方向声明
 
-> **依赖方向：单向消费。** `tests/` 仅消费 crate 公共 API，不被任何模块依赖。
+> **依赖方向：单向消费。** `tests/` 仅消费 crate 公共 API（参见 `01-architecture-overview.md §10`），不被任何模块依赖。
 
 ---
 
@@ -301,16 +316,16 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
-| `test_par_sum_consistency` | 并行 sum 与串行 sum 结果一致 | 高 |
+| `test_par_sum_consistency` | 并行 sum 与串行 sum 结果一致（参见 `09-parallel-backend.md §7`） | 高 |
 | `test_par_add_consistency` | 并行 add 与串行 add 结果一致 | 高 |
-| `test_parallel_read` | 多线程并发只读访问安全 | 高 |
+| `test_parallel_read` | 多线程并发只读访问安全（参见 `25-thread-safety.md §4.5`） | 高 |
 | `test_no_nested_parallel` | 嵌套并行被拒绝 | 中 |
 
 ### 5.11 test_simd.rs
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
-| `test_simd_add_consistency` | SIMD add 与标量 add 结果一致 | 高 |
+| `test_simd_add_consistency` | SIMD add 与标量 add 结果一致（参见 `08-simd-backend.md §7`） | 高 |
 | `test_simd_sum_consistency` | SIMD sum 与标量 sum 结果一致 | 高 |
 | `test_simd_fallback_small` | 小数组 SIMD 回退到标量 | 中 |
 
@@ -318,13 +333,13 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
-| `test_no_std_compile` | `--no-default-features --features alloc` 编译通过 | 高 |
+| `test_no_std_compile` | `--no-default-features --features alloc` 编译通过（参见 `01-architecture-overview.md §6`） | 高 |
 
 ### 5.13 test_error.rs
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
-| `test_shape_mismatch_error` | 不兼容形状运算返回 ShapeMismatch | 高 |
+| `test_shape_mismatch_error` | 不兼容形状运算返回 ShapeMismatch（参见 `26-error-handling.md §4.1`） | 高 |
 | `test_broadcast_error` | 不可广播返回 BroadcastError | 高 |
 | `test_invalid_shape_error` | reshape 元素数不匹配返回 InvalidShape | 高 |
 | `test_invalid_axis_error` | 轴越界返回 InvalidAxis | 高 |
@@ -426,6 +441,8 @@ pub fn rtol_eq(actual: f64, expected: f64, rtol: f64) -> bool {
 
 ### 8.1 并行无数据竞争
 
+线程安全测试方案（参见 `25-thread-safety.md §7`）：
+
 | 方式 | 说明 |
 |------|------|
 | `thread::scope` | 使用 scoped thread 并发访问 TensorView（只读） |
@@ -479,14 +496,14 @@ fn test_simd_add_consistency() {
 | 不变量 | 测试方法 | 优先级 |
 |--------|----------|--------|
 | `reshape` 保元素数 | 随机形状 → reshape → `len()` 不变 | 高 |
-| `reshape` + `reshape` 回到原形状 | 连续数组 reshape 再 reshape 回原形状 | 高 |
-| `sum` 保加法单位元 | 空数组 sum == 0 | 高 |
-| `transpose` 自反性 | `t.t().t()` == `t` | 高 |
+| `reshape` + `reshape` 回到原形状 | 连续数组 reshape 再 reshape 回原形状（参见 `16-shape-ops.md §4`） | 高 |
+| `sum` 保加法单位元 | 空数组 sum == 0（参见 `13-reduction.md §4`） | 高 |
+| `transpose` 自反性 | `t.t().t()` == `t`（参见 `16-shape-ops.md §4`） | 高 |
 | 加法交换律 | `a + b` == `b + a`（近似） | 中 |
 | 加法结合律 | `(a + b) + c` == `a + (b + c)`（近似） | 中 |
 | `unique` 保元素数 | `unique(a).len()` ≤ `a.len()` | 中 |
 | `unique` 不含重复 | unique 结果无相邻相等元素 | 中 |
-| 广播形状一致性 | 广播后形状 = max 对应维度 | 高 |
+| 广播形状一致性 | 广播后形状 = max 对应维度（参见 `15-broadcast.md §5`） | 高 |
 
 ### 9.2 属性测试框架
 

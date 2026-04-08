@@ -70,12 +70,12 @@ src/ops/utility.rs
 
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
-| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()` |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn` |
-| `storage` | `Storage<Elem=A>`, `StorageMut<Elem=A>` |
-| `element` | `Element`, `RealScalar`（clip 约束） |
-| `layout` | `is_f_contiguous()`, `is_c_contiguous()` |
-| `iter` | `iter()`, `iter_mut()` |
+| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`（参见 `07-tensor.md` §4） |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §4） |
+| `storage` | `Storage<Elem=A>`, `StorageMut<Elem=A>`（参见 `05-storage.md` §4） |
+| `element` | `Element`, `RealScalar`（clip 约束）（参见 `03-element-types.md` §3） |
+| `layout` | `is_f_contiguous()`, `is_c_contiguous()`（参见 `06-memory-layout.md` §4） |
+| `iter` | `iter()`, `iter_mut()`（参见 `10-iterator.md` §4） |
 
 ### 3.3 依赖方向声明
 
@@ -381,14 +381,14 @@ Wave 2: [T3] [T4]
 
 | 交互点 | 方向 | 说明 |
 |--------|------|------|
-| `fill` → `iter` | 依赖 | 通过 `iter_mut()` 遍历元素 |
-| `clip` → `iter` | 依赖 | 通过 `iter()` 读取、写入新张量 |
-| `to_contiguous` → `layout` | 依赖 | 查询连续性状态 |
-| `to_contiguous` → `convert` | 依赖 | 调用 `to_owned()`/`to_f_contiguous()`/`to_c_contiguous()` |
+| `fill` → `iter` | 依赖 | 通过 `iter_mut()` 遍历元素（参见 `10-iterator.md` §4.1） |
+| `clip` → `iter` | 依赖 | 通过 `iter()` 读取、写入新张量（参见 `10-iterator.md` §4.1） |
+| `to_contiguous` → `layout` | 依赖 | 查询连续性状态（参见 `06-memory-layout.md` §4） |
+| `to_contiguous` → `convert` | 依赖 | 调用 `to_owned()`/`to_f_contiguous()`/`to_c_contiguous()`（参见 `21-type-conversion.md` §4.5） |
 
 ---
 
-## 9. 设计决策记录（ADR）
+## 9. 设计决策记录
 
 ### 决策 1：NaN 的 clip 行为
 
@@ -423,13 +423,13 @@ Wave 2: [T3] [T4]
 **优化提示**：
 
 - 连续布局的 `fill` 可用 `ptr::write_bytes` 优化（仅限 `Copy` 类型）
-- `clip` 的热点路径可考虑 SIMD 加速（参见 `08-simd-backend.md`）
+- `clip` 的热点路径可考虑 SIMD 加速（参见 `08-simd-backend.md` §4）
 
 ---
 
 ## 11. no_std 兼容性
 
-实用操作模块在 `no_std` 环境下可用。原地操作（`fill`、`clip_inplace`）无堆分配；`clip` 和 `to_contiguous` 返回新张量需 `alloc`。
+实用操作模块在 `no_std` 环境下可用。原地操作（`fill`、`clip_inplace`）无堆分配；`clip` 和 `to_contiguous` 返回新张量需 `alloc`。迭代器的 `no_std` 兼容性参见 `10-iterator.md` §11。
 
 ```rust
 #[cfg(not(feature = "std"))]

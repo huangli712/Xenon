@@ -14,7 +14,7 @@
 |------|------|--------|
 | API 文档 | 所有 pub 类型和函数的 doc comment | 内部实现注释（非 pub） |
 | 使用示例 | 关键 API 的可运行代码示例（doctest） | 完整教程、视频教程 |
-| Safety 说明 | 所有 unsafe 函数的 `# Safety` 文档节 | 安全函数的 Safety 节 |
+| Safety 说明 | 所有 unsafe 函数的 `# Safety` 文档节（参见 `00-coding-standards.md §5`） | 安全函数的 Safety 节 |
 | Crate 级文档 | lib.rs 顶层文档、README、CHANGELOG | 第三方博客文章 |
 | 模块级文档 | 各 mod.rs 的 `//!` 模块概述 | 内部实现文档 |
 | examples/ | 独立可运行示例程序 | 交互式 notebook |
@@ -24,11 +24,29 @@
 
 | 原则 | 体现 |
 |------|------|
-| 全覆盖 | 所有 pub API 必须有 doc comment |
+| 全覆盖 | 所有 pub API 必须有 doc comment（参见 `00-coding-standards.md §6`） |
 | 可测试 | 关键 API 的示例通过 `cargo test --doc` 验证 |
 | 安全性透明 | 所有 unsafe 函数有 `# Safety` 节 |
 | 惯用法 | 遵循 Rust API Guidelines |
 | 英文文档 | 所有 doc comment 使用英文 |
+
+### 1.3 在架构中的位置
+
+```
+依赖层级：
+L0: error, private
+L1: dimension, element, complex
+L2: layout (依赖 dimension)
+L3: storage (依赖 layout)
+L4: tensor (依赖 storage, dimension)
+L5: ops/, iter/, index/, shape_ops/, broadcast/, construct/, ffi/, convert/, format/
+
+横切关注点（全局）：
+┌─────────────────────────────────────────────────────────────────┐
+│  文档 (doc comments, README, examples/)  ← 当前文档（全局）      │
+│  ─ 横贯所有 L0-L5 模块的 pub API 文档                           │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -102,11 +120,11 @@ CHANGELOG.md                  # 版本变更记录
 ├── 依赖所有模块设计文档（00-28）
 │   └── 每个模块的文档内容基于其设计文档
 ├── 依赖 00-coding-standards
-│   └── 文档风格遵循编码规范
+│   └── 文档风格遵循编码规范（参见 `00-coding-standards.md §6`）
 ├── 被 28-integration-tests 依赖
-│   └── doctest 也是测试的一部分
+│   └── doctest 也是测试的一部分（参见 `28-integration-tests.md §11`）
 └── 被 27-benchmark 依赖
-    └── benchmark 文档引用性能相关 API 文档
+    └── benchmark 文档引用性能相关 API 文档（参见 `27-benchmark.md §14`）
 ```
 
 ### 3.2 依赖精确到类型级
@@ -147,7 +165,7 @@ L3: 示例 (examples/)
 |------|-----------|----------|
 | L0 | 必须存在 | CI 检查 |
 | L1 | 每个 pub mod 必须有模块文档 | `#![warn(missing_docs)]` |
-| L2 | 每个 pub 项必须有 doc comment | `#![warn(missing_docs)]` |
+| L2 | 每个 pub 项必须有 doc comment | `#![warn(missing_docs)]`（参见 `00-coding-standards.md §6`） |
 | L3 | 关键 API 至少一个示例 | `cargo test --doc` |
 
 ---
@@ -255,7 +273,7 @@ L3: 示例 (examples/)
 
 | 规范 | 说明 |
 |------|------|
-| 可编译运行 | 所有 doctest 通过 `cargo test --doc` |
+| 可编译运行 | 所有 doctest 通过 `cargo test --doc`（参见 `28-integration-tests.md §11`） |
 | 使用 `?` | 使用 `?` 而非 `unwrap()`（C-QUESTION-MARK） |
 | 隐藏样板 | 用 `# ` 隐藏 use 语句 |
 | 最小化 | 只展示当前 API 用法 |
@@ -309,8 +327,8 @@ pub fn par_sum(&self) -> A { ... }
 | `basic.rs` | 创建、运算、归约、打印 | 默认 | 新用户 |
 | `complex_numbers.rs` | 复数构造、运算、混合运算 | 默认 | 科学计算 |
 | `broadcasting.rs` | 广播规则、行/列/标量广播 | 默认 | 日常使用 |
-| `parallel.rs` | 并行计算、阈值配置 | `parallel` | 性能优化 |
-| `simd.rs` | SIMD 加速、回退策略 | `simd` | 性能优化 |
+| `parallel.rs` | 并行计算、阈值配置 | `parallel` | 性能优化（参见 `09-parallel-backend.md §4`） |
+| `simd.rs` | SIMD 加速、回退策略 | `simd` | 性能优化（参见 `08-simd-backend.md §4`） |
 | `no_std.rs` | no_std 环境使用 | `alloc` | 嵌入式 |
 | `ffi.rs` | 与 C/BLAS 交互 | 默认 | 库开发者 |
 
@@ -613,21 +631,21 @@ pub unsafe fn from_raw_parts<'a, A, D>(...) -> TensorView<'a, A, D>
 
 - [ ] **T5**: 编写核心模块文档（dimension, element, complex, storage, layout）
   - 文件: 各 `mod.rs`
-  - 内容: 模块职责、核心概念、使用示例、依赖图、设计决策
+  - 内容: 模块职责、核心概念、使用示例、依赖图、设计决策（参见 `02-dimension.md §1`、`03-element-types.md §1`、`04-complex-type.md §1`、`05-storage.md §1`、`06-memory-layout.md §1`）
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T2
   - 预计: 10 min
 
 - [ ] **T6**: 编写张量与运算模块文档（tensor, ops, broadcast, shape_ops, index, construct, set_ops）
   - 文件: 各 `mod.rs`
-  - 内容: 模块职责、核心类型、运算分类、类型约束速查
+  - 内容: 模块职责、核心类型、运算分类、类型约束速查（参见 `07-tensor.md §1`、`11-elementwise-ops.md §1`、`15-broadcast.md §1`、`16-shape-ops.md §1`）
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T2
   - 预计: 10 min
 
 - [ ] **T7**: 编写基础设施模块文档（ffi, workspace, simd, parallel, error, prelude）
   - 文件: 各 `mod.rs`
-  - 内容: 模块职责、Safety 约定、feature gate 说明
+  - 内容: 模块职责、Safety 约定、feature gate 说明（参见 `23-ffi.md §1`、`24-workspace.md §1`、`08-simd-backend.md §1`、`09-parallel-backend.md §1`、`26-error-handling.md §1`）
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T2
   - 预计: 10 min
@@ -733,10 +751,10 @@ Wave 6: [T17]
 | 属性 | 值 |
 |------|-----|
 | 决策 | 所有 doc comment 和 README 使用英文 |
-| 理由 | Rust 生态惯例；docs.rs 面向全球开发者 |
+| 理由 | Rust 生态惯例；docs.rs 面向全球开发者（参见 `00-coding-standards.md §6`） |
 | 替代方案 | 中文文档 — 放弃，不符合 Rust 社区惯例 |
 
-### 决策 2：criterion benchmark 框架
+### 决策 2：doctest 使用 `?` 而非 `unwrap()`
 
 | 属性 | 值 |
 |------|-----|
