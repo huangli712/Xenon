@@ -573,6 +573,39 @@ Wave 4:           [T7]
 
 ---
 
+## 11. no_std 兼容性
+
+索引操作模块在 `no_std` 环境下可用。整数索引和切片视图创建均为纯元数据操作，不涉及堆分配。
+
+```rust
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+```
+
+| 组件 | no_std 支持 | 说明 |
+|------|:----------:|------|
+| 多维整数索引 `[[i, j, k]]` | ✅ | 纯指针偏移计算，无堆分配 |
+| `get()` / `get_unchecked()` | ✅ | 纯指针偏移计算，无堆分配 |
+| `get_mut()` / `get_unchecked_mut()` | ✅ | 纯指针偏移计算，无堆分配 |
+| `slice()` / `slice_mut()` | ✅ | 创建 `TensorView`（零拷贝），无堆分配 |
+| `s![]` 宏 | ✅ | 编译期展开为 `SliceInfoElem` 枚举值，无堆分配 |
+| `SliceInfo` | ✅ | 内部 `Vec` 需 `no_std + alloc`（动态维度场景） |
+| `SliceInfoElem` | ✅ | 枚举类型，栈分配，无堆依赖 |
+| 负步长支持 | ✅ | `HAS_NEG_STRIDE` 标志位操作，无堆依赖 |
+
+条件编译处理：
+
+```rust
+// Integer indexing: pure pointer arithmetic — works in pure no_std
+// Slice views: zero-copy metadata creation — works in pure no_std
+// SliceInfo: uses Vec internally — needs alloc for dynamic dimensions
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+```
+
+---
+
 ## 版本历史
 
 | 版本 | 日期 |
@@ -581,6 +614,7 @@ Wave 4:           [T7]
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-07 |
 | 1.0.3 | 2026-04-07 |
+| 1.0.4 | 2026-04-08 |
 
 ---
 

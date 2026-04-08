@@ -480,12 +480,49 @@ Wave 5:      [T6]
 
 ---
 
+## 11. no_std 兼容性
+
+运算符重载模块在 `no_std` 环境下可用，但需 `alloc` 支持以分配结果张量。运算符重载委托给逐元素运算和广播模块，其 `no_std` 兼容性参见对应文档。
+
+```rust
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+```
+
+| 组件 | no_std 支持 | 说明 |
+|------|:----------:|------|
+| `Add` / `Sub` / `Mul` / `Div`（张量×张量） | ✅ | 委托 `zip_with` + `broadcast_with`，需 `no_std + alloc` |
+| `Add` / `Sub` / `Mul` / `Div`（张量×标量） | ✅ | 委托 `mapv`，需 `no_std + alloc` |
+| `Add` / `Sub` / `Mul` / `Div`（标量×张量） | ✅ | 委托 `mapv`，需 `no_std + alloc` |
+| 借用形式（`&Tensor op &Tensor`） | ✅ | 创建视图（O(1)）+ 新 `Tensor`，需 `no_std + alloc` |
+| 广播错误 panic | ✅ | `expect()` 使用 `core::panic`，无堆依赖 |
+
+条件编译处理：
+
+```rust
+// Operator overloading delegates to:
+//   - elementwise_ops::zip_with() → alloc (result Tensor)
+//   - elementwise_ops::mapv()     → alloc (result Tensor)
+//   - broadcast::broadcast_with() → alloc (SmallVec)
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+// See also: 11-elementwise-ops.md §11, 15-broadcast.md §11
+```
+
+---
+
 ## 版本历史
 
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-08 |
+| 1.0.2 | 2026-04-08 |
 
 ---
 

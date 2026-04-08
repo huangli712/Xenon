@@ -513,12 +513,48 @@ Wave 4:           [T7]
 
 ---
 
+## 11. no_std 兼容性
+
+广播模块在 `no_std` 环境下可用，但需注意动态维度和错误类型的堆分配依赖。
+
+```rust
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+```
+
+| 组件 | no_std 支持 | 说明 |
+|------|:----------:|------|
+| `can_broadcast()` | ✅ | 纯计算函数，无堆分配 |
+| `broadcast_shape()` | ✅ | 返回 `SmallVec`（栈分配 ≤ 6 维），需 `alloc` 保底 |
+| `broadcast_strides()` | ✅ | 返回 `SmallVec`（栈分配 ≤ 6 维），需 `alloc` 保底 |
+| `broadcast_to()` | ✅ | 创建 `TensorView`（零拷贝），无堆分配 |
+| `broadcast_with()` | ✅ | 创建两个 `TensorView`，需 `no_std + alloc`（SmallVec） |
+| `BroadcastError` | ✅ | 使用 `core::fmt::Display`，无堆依赖 |
+
+条件编译处理：
+
+```rust
+// SmallVec<[usize; 6]>: stack-allocated for ≤6 dimensions
+// Falls back to alloc::vec::Vec for >6 dimensions
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+// BroadcastError uses core::fmt::Display, no std::error::Error needed
+```
+
+---
+
 ## 版本历史
 
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
+| 1.0.2 | 2026-04-08 |
 
 ---
 

@@ -517,6 +517,40 @@ Wave 3:              [T5]
 
 ---
 
+## 10. no_std 兼容性
+
+形状操作模块在 `no_std` 环境下可用，但需注意非连续 reshape 路径的堆分配依赖。
+
+```rust
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+```
+
+| 组件 | no_std 支持 | 说明 |
+|------|:----------:|------|
+| `transpose()` / `t()` | ✅ | 纯元数据操作（交换步长和形状），无堆分配 |
+| `permute_axes()` | ✅ | 纯元数据操作，无堆分配 |
+| `swap_axes()` / `moveaxis()` | ✅ | 纯元数据操作，无堆分配 |
+| `reshape()`（连续路径） | ✅ | 仅更新元数据，无堆分配 |
+| `into_shape()`（非连续路径） | ✅ | 需 `no_std + alloc`，调用 `to_contiguous()` 拷贝数据 |
+| `LayoutFlags` 更新 | ✅ | 位标志操作，无依赖 |
+
+条件编译处理：
+
+```rust
+// transpose: zero-copy, pure metadata swap — works in pure no_std
+// reshape (contiguous): zero-copy, pure metadata — works in pure no_std
+// into_shape (non-contiguous): calls to_contiguous() → alloc::vec::Vec
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+```
+
+---
+
 ## 版本历史
 
 | 版本 | 日期 |
@@ -524,6 +558,7 @@ Wave 3:              [T5]
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
+| 1.0.3 | 2026-04-08 |
 
 ---
 

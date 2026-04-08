@@ -580,12 +580,52 @@ Wave 4:           [T6]
 
 ---
 
+## 11. no_std 兼容性
+
+构造操作模块在 `no_std` 环境下可用，但需 `alloc` 支持以进行内存分配。所有构造方法均需要堆分配来存储张量数据。
+
+```rust
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+```
+
+| 组件 | no_std 支持 | 说明 |
+|------|:----------:|------|
+| `zeros()` | ✅ | 需 `no_std + alloc`，对齐分配 + 零初始化 |
+| `ones()` | ✅ | 需 `no_std + alloc`，对齐分配 + 批量填充 |
+| `fill()` | ✅ | 需 `no_std + alloc`，对齐分配 + 批量克隆 |
+| `eye()` | ✅ | 需 `no_std + alloc`，先 `zeros` 再写入对角线 |
+| `from_shape_vec()` | ✅ | 需 `no_std + alloc`，转移 `Vec` 所有权 |
+| `from_shape_slice()` | ✅ | 需 `no_std + alloc`，拷贝到新 `Vec` |
+| `from_array()` | ✅ | 需 `no_std + alloc`，转换为 `Vec` |
+| `from_scalar()` | ✅ | 需 `no_std + alloc`，单元素 `Vec` |
+| `from_fn()` | ✅ | 需 `no_std + alloc`，闭包填充 `Vec` |
+
+条件编译处理：
+
+```rust
+// All constructors allocate via Owned storage → alloc::vec::Vec
+// Alignment uses core::alloc::Layout + alloc::alloc::alloc_zeroed
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+```
+
+---
+
 ## 版本历史
 
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
+| 1.0.2 | 2026-04-08 |
 
 ---
 
