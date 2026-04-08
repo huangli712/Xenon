@@ -545,6 +545,34 @@ Wave 4:          [T8]
 
 ---
 
+## 11. no_std 兼容性
+
+迭代器模块完全兼容 `no_std` 环境。所有迭代器仅依赖 `core` 中的 `Iterator` / `ExactSizeIterator` trait，不进行堆分配。
+
+| 组件 | no_std 支持 | 说明 |
+|------|:----------:|------|
+| `Elements` / `ElementsMut` | ✅ | 指针递增或步长状态机，无堆分配 |
+| `AxisIter` / `AxisIterMut` | ✅ | 产生子视图（零拷贝），无堆分配 |
+| `Windows` / `WindowsMut` | ✅ | 产生子视图（零拷贝），无堆分配 |
+| `IndexedIter` / `IndexedIterMut` | ✅ | 索引状态在栈上维护，无堆分配 |
+| `Zip` | ✅ | 组合已有迭代器，调用 `broadcast_shape()` 纯计算 |
+| `StrideState` | ✅ | 栈上索引数组，无堆分配 |
+
+迭代器内部不使用 `Vec`、`Box`、`Arc` 等堆类型。唯一的外部依赖为 `broadcast_shape()`，该函数为纯计算函数，不涉及堆分配。
+
+条件编译处理：
+
+```rust
+// Iterators depend only on core traits
+// StrideState manages indices on the stack
+// Zip calls broadcast_shape() which is a pure function
+
+#[cfg(not(feature = "std"))]
+// No conditional compilation needed — iterators work in pure no_std
+```
+
+---
+
 ## 版本历史
 
 | 版本 | 日期 |
@@ -552,6 +580,7 @@ Wave 4:          [T8]
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
+| 1.0.3 | 2026-04-08 |
 
 ---
 

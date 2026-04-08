@@ -761,6 +761,43 @@ Wave 4:       [T10]
 
 ---
 
+## 11. no_std 兼容性
+
+张量模块在 `no_std` 环境下的支持情况取决于存储模式和维度类型。
+
+```rust
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+```
+
+| 组件 | no_std 支持 | 说明 |
+|------|:----------:|------|
+| `Tensor<A, D>`（Owned） | ✅ | 使用 `alloc::vec::Vec`，需 `no_std + alloc` |
+| `TensorView<'a, A, D>` | ✅ | 仅使用 `core`（裸指针 + 生命周期） |
+| `TensorViewMut<'a, A, D>` | ✅ | 仅使用 `core`（裸指针 + 生命周期） |
+| `ArcTensor<A, D>` | ✅ | 使用 `alloc::sync::Arc`，需 `no_std + alloc` |
+| 静态维度 `Ix0`~`Ix6` | ✅ | 栈分配，无堆依赖 |
+| 动态维度 `IxDyn` | ✅ | 使用 `alloc::vec::Vec`，需 `no_std + alloc` |
+| `from_raw_parts` / `from_raw_parts_mut` | ✅ | 仅使用 `core`，裸指针操作 |
+| `LayoutFlags` | ✅ | 裸 `u8` 位标志，无依赖 |
+
+条件编译处理：
+
+```rust
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+// Owned::from_vec uses alloc::vec::Vec
+// ArcRepr uses alloc::sync::Arc
+// IxDyn uses alloc::vec::Vec for dynamic dimensions
+// ViewRepr/ViewMutRepr are pure core — no alloc needed
+```
+
+---
+
 ## 附录 A：完整类型关系图
 
 ```

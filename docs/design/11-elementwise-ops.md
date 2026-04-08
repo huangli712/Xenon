@@ -512,12 +512,51 @@ Wave 4: [T8]
 
 ---
 
+## 11. no_std 兼容性
+
+逐元素运算模块在 `no_std` 环境下可用，但需注意结果分配和数学函数依赖。
+
+```rust
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+```
+
+| 组件 | no_std 支持 | 说明 |
+|------|:----------:|------|
+| `map` / `mapv` | ✅ | 返回新 `Tensor`，需 `no_std + alloc` |
+| `mapv_inplace` | ✅ | 原地修改，无额外分配 |
+| `zip_with` | ✅ | 返回新 `Tensor`，需 `no_std + alloc` |
+| 算术运算 (add/sub/mul/div) | ✅ | 基于 `zip_with`，需 `no_std + alloc` |
+| 数学函数 (sin/sqrt/exp/ln/...) | ✅ | 需启用 `libm` feature 提供数学实现 |
+| 比较运算 (eq/ne/lt/gt) | ✅ | 无特殊依赖 |
+| 复数运算 (norm/conj) | ✅ | 基于 `map`，需 `no_std + alloc` |
+| 逻辑非 (not) | ✅ | 基于 `map`，需 `no_std + alloc` |
+| SIMD 加速路径 | ✅ | pulp crate 支持 `no_std`，参见 `08-simd-backend.md §11` |
+
+条件编译处理：
+
+```rust
+// map/zip_with return new Tensor — needs alloc::vec::Vec
+// Math functions need libm in no_std:
+#[cfg(all(not(feature = "std"), feature = "libm"))]
+// libm provides sin, sqrt, exp, ln, floor, ceil in no_std
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+```
+
+---
+
 ## 版本历史
 
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
+| 1.0.2 | 2026-04-08 |
 
 ---
 
