@@ -190,18 +190,6 @@ impl<T: Copy + PartialEq + Default + core::ops::Neg<Output = T>> Complex<T> {
     pub fn from_imag(im: T) -> Self {
         Self::new(T::default(), im)
     }
-
-    /// Imaginary unit i.
-    #[inline]
-    pub fn i() -> Self
-    where
-        T: core::ops::Add<Output = T>,
-    {
-        // zero + one*i
-        // NOTE: This requires T to have a "one" value; for f32/f64
-        // this is handled via the concrete impl below.
-        unimplemented!("Use Complex::new(T::default(), <T as One>::one()) via concrete impl")
-    }
 }
 
 // Concrete implementations for f32 — public API, no pub(crate) dependency
@@ -417,6 +405,8 @@ impl Complex<f64> {
     }
 }
 ```
+
+> **精度说明：** 对于实部为负的复数，标准 sqrt 算法可能在分支割线附近产生灾难性消去（catastrophic cancellation）。这是已知的精度限制。对精度要求极高的场景，可考虑使用更稳定的数值算法。
 
 ### 4.6 算术运算实现
 
@@ -839,7 +829,7 @@ hypot(a, b):
 
 - [ ] **T10**: 实现类型转换
   - 文件: `src/complex/cast.rs`
-  - 内容: `From<Complex<f32>> for Complex<f64>`, `From<Complex<f64>> for Complex<f32>`, `From<f32/f64> for Complex<_>`
+  - 内容: `From<Complex<f32>> for Complex<f64>`, `From<f32> for Complex<f32>`, `From<f64> for Complex<f64>`, `Complex<f64>::to_f32()` 方法
   - 测试: `test_f32_to_f64_lossless`, `test_f64_to_f32_precision_loss`, `test_real_to_complex`
   - 前置: T1
   - 预计: 10 min
@@ -997,11 +987,12 @@ Wave 5: [T11] → [T12]
 | `Complex<T>` 结构体 | 纯 `#[repr(C)]`，天然 no_std |
 | 基础方法（`re()`, `im()`, `conj()`, `from_real()`, `from_imag()`, `is_real()`, `is_imaginary()`） | 不依赖 `Float` trait，**no_std 可用** |
 | 算术运算（`+`, `-`, `*`, `/`, 一元负号） | 仅依赖 `core::ops`，天然 no_std |
-| 数学方法（`norm()`, `norm_sqr()`, `arg()`, `exp()`, `ln()`, `sqrt()`, `to_polar()`, `from_polar()`） | 具体类型 `impl Complex<f32>` / `impl Complex<f64>` 内部调用 `f32`/`f64` 的 inherent 方法。**在 no_std 环境下，这些方法可用**（`f32::hypot`, `f32::atan2`, `f32::exp` 等为 `core` 内建方法，不依赖 `std`） |
-| `is_nan()`, `is_finite()` | 具体类型实现，依赖 `core` 内建方法，**no_std 可用** |
+| 数学方法（`norm()`, `arg()`, `exp()`, `ln()`, `sqrt()`, `to_polar()`, `from_polar()`） | 具体类型 `impl Complex<f32>` / `impl Complex<f64>` 内部调用 `f32::hypot`、`f32::atan2`、`f32::exp`、`f32::sin` 等方法。**这些浮点数学函数在 Rust 1.85 中仍在 `std` 中，不在 `core`**。因此 Complex 的数学方法在 no_std 下不可用，**需要启用 `std` feature** |
+| 数学方法（`norm_sqr()`） | 仅使用 `+` 和 `*`，不依赖浮点函数，**no_std 可用** |
+| `is_nan()`, `is_finite()` | 具体类型实现，`f32::is_nan()`/`f32::is_finite()` 在 `core` 中提供，**no_std 可用** |
 | 类型转换 | `From` trait 实现和 `to_f32()` 方法，天然 no_std |
 
-> **与 `00-coding-standards.md` §9.1 保持一致**：libm **不是** Xenon 的依赖。`Complex<f32>`/`Complex<f64>` 的数学方法（`norm`, `exp`, `ln`, `sqrt` 等）使用 `f32`/`f64` 的 inherent 方法，这些方法在 `core` 中提供（编译器内建），无需 `std`。因此 `Complex<T>` 的全部方法在 `no_std` 下均可用。
+> **与 `00-coding-standards.md` §9.1 保持一致**：libm **不是** Xenon 的依赖。`Complex<f32>`/`Complex<f64>` 的数学方法（`norm`, `exp`, `ln`, `sqrt`, `arg`, `to_polar`, `from_polar`）使用 `f32`/`f64` 的 inherent 方法（`hypot`, `atan2`, `exp`, `sin`, `cos`, `ln`, `sqrt` 等）。**这些浮点数学函数在 Rust 1.85 中仍在 `std` 中，不在 `core`**。因此在 `no_std` 环境下，这些数学方法不可用，需要启用 `std` feature。`norm_sqr()`、基础方法、算术运算、类型转换等不依赖浮点数学函数，在 `no_std` 下均可使用。
 
 ---
 

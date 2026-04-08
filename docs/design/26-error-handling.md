@@ -361,7 +361,11 @@ where
 }
 ```
 
-### 5.5 资源释放不得 panic（Drop 安全）
+### 5.5 并行操作中的 Result 错误传播
+
+在并行操作（如 `par_map`、`par_zip_with`）中，如果需要传播 `Result` 错误，应使用 collect-and-check 模式：各并行任务返回 `Result<B, XenonError>`，collect 为 `Vec<Result<B, _>>`，然后取第一个 `Err`。Rayon 的 `try_for_each` 等方法也可用于提前终止。
+
+### 5.6 资源释放不得 panic（Drop 安全）
 
 所有 `Drop` 实现不得 panic，确保即使在其他 panic 过程中也能安全清理（参见 `05-storage.md §5`）：
 

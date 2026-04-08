@@ -132,12 +132,25 @@ pub trait NdIndex<D: Dimension>: Sealed {
 }
 
 // Static array index (e.g. tensor[[0, 1, 2]])
+impl Sealed for [usize; 0] {}
 impl Sealed for [usize; 1] {}
 impl Sealed for [usize; 2] {}
 impl Sealed for [usize; 3] {}
 impl Sealed for [usize; 4] {}
 impl Sealed for [usize; 5] {}
 impl Sealed for [usize; 6] {}
+
+// Zero-dimensional tensor indexing: tensor[[]] accesses the sole element
+impl NdIndex<Ix0> for [usize; 0] {
+    fn index_checked(&self, dim: &Ix0, _strides: &Ix0) -> Option<usize> {
+        if self.len() != dim.ndim() { return None; }
+        Some(0)
+    }
+
+    unsafe fn index_unchecked(&self, _strides: &Ix0) -> usize {
+        0
+    }
+}
 
 impl<D: Dimension, const N: usize> NdIndex<D> for [usize; N] {
     fn index_checked(&self, dim: &D, strides: &D) -> Option<usize> {
@@ -294,6 +307,10 @@ index=[1, 2, 1] → offset = 1*1 + 2*2 + 1*6 = 11
 
 ```rust
 /// Slice element type, describing a single axis slice.
+///
+/// **Note:** `step = 0` is illegal and will cause a panic with the message
+/// "slice step cannot be zero". This is checked at runtime in the `slice()`
+/// method (see Panics section).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SliceInfoElem {
     /// Single index. This axis will be removed, reducing the result dimension by 1.
@@ -305,7 +322,7 @@ pub enum SliceInfoElem {
         start: Option<isize>,
         /// End index (exclusive), None means axis length
         end: Option<isize>,
-        /// Step size, None means 1
+        /// Step size, None means 1. Must not be 0 (panics if zero).
         step: Option<isize>,
     },
 }
@@ -378,6 +395,7 @@ where
     ///
     /// # Panics
     /// Panics if slice dimensions don't match tensor dimensions, or if index is out of bounds.
+    /// Also panics if any slice step is zero: "slice step cannot be zero".
     ///
     /// # Examples
     /// ```
@@ -464,6 +482,20 @@ function compute_offset_f(shape: [usize; N], strides: [isize; N], index: [usize;
 ### 5.2 切片步长/形状/偏移量计算
 
 ```rust
+// normalize(idx, dim_len): convert possibly-negative index to valid usize
+// if idx < 0: return dim_len + idx (Python-style negative indexing)
+// if idx >= 0: return idx as usize
+// Panics if result is out of bounds [0, dim_len)
+fn normalize(idx: isize, dim_len: usize) -> usize {
+    if idx < 0 {
+        let normalized = dim_len as isize + idx;
+        assert!(normalized >= 0, "index out of bounds");
+        normalized as usize
+    } else {
+        idx as usize
+    }
+}
+
 function compute_slice(shape, strides, offset, slices: [SliceInfoElem; N])
     -> (new_shape, new_strides, new_offset, new_layout):
     new_shape = []
@@ -475,7 +507,9 @@ function compute_slice(shape, strides, offset, slices: [SliceInfoElem; N])
         match slices[i]:
             Index(idx):
                 // Single index: reduce dimension
-                new_offset += idx * strides[i]
+                // Normalize negative index (Python-style: -1 means last element)
+                let normalized_idx = normalize(idx, shape[i])
+                new_offset += normalized_idx * strides[i]
                 // shape and strides do not include this dimension
             Range { start, end, step }:
                 // Range slice

@@ -368,11 +368,18 @@ shape = [3, 4], strides = [1, 0]  // 第二维广播
 
 ### 4.8 Layout 结构体
 
+> **注意**：`Layout` 结构体目前为"供未来扩展预留"（reserved for future use）。
+> 当前 `TensorBase` 实现直接内联 `LayoutFlags`（见 `07-tensor.md §4.1`）。
+
 ```rust
 /// Memory layout descriptor.
 ///
 /// Layout describes memory access pattern flags only.
 /// The byte offset is stored directly in TensorBase (see `07-tensor.md §4.1`).
+///
+// NOTE: Layout struct is defined here for potential future use.
+// Current TensorBase implementation inlines LayoutFlags directly.
+// See 07-tensor.md §4.1 for the actual implementation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Layout {
     /// Layout flags
@@ -671,7 +678,7 @@ Wave 4:       [T8]
 
 | 交互点 | 方向 | 说明 |
 |--------|------|------|
-| `TensorBase` 组成 | tensor 持有 layout | `Layout` 作为 `TensorBase` 的计算字段（参见 `07-tensor.md §4.1`） |
+| `TensorBase` 组成 | tensor 持有 layout | `TensorBase` 直接内联 `LayoutFlags` 作为计算字段（参见 `07-tensor.md §4.1`）。`Layout` 结构体为预留定义。 |
 | 切片操作 | tensor → layout | 切片时调用 layout 更新连续性/对齐标志（参见 `17-indexing.md §5`） |
 | Reshape | tensor → layout | reshape 时重新计算步长和 layout（参见 `16-shape-ops.md §4`） |
 
@@ -791,6 +798,7 @@ Wave 4:       [T8]
 | 1.0.4 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
 | 1.2.0 | 2026-04-08 |
+| 1.2.1 | 2026-04-09 |
 
 ---
 

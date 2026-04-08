@@ -88,6 +88,8 @@ src/ops/
 | `broadcast` | `broadcast_shape()`, `broadcast_with()`, `can_broadcast()`（参见 `15-broadcast.md` §4） |
 | `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.view()`（参见 `07-tensor.md` §4） |
 | `element` | `Numeric` trait 约束（排除 `bool`）（参见 `03-element-types.md` §3） |
+
+> **Numeric 隐含 Copy：** `Numeric` trait 继承自 `Element`，而 `Element: Copy`（见 `03-element-types.md` §4.1）。因此所有 `Numeric` 类型均满足 `Copy`，可以在标量运算中安全地按值传递而无需额外约束。
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<E>`（该 trait 定义于 `02-dimension.md §4.9`，计算广播后的维度类型） |
 
 ### 3.3 依赖方向声明

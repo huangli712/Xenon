@@ -543,6 +543,11 @@ Wave 2:            [T5]
 | 并发访问测试 | `tests/thread_safety.rs` | 多线程并发场景验证 |
 | 模型检测 | `loom` 或 `miri` | 数据竞争和内存安全检测 |
 
+> **注意：** `static_assertions` crate 用于编译期断言 Send/Sync 实现。需在 `Cargo.toml` 的 `[dev-dependencies]` 中添加：
+> ```toml
+> static_assertions = "1.1"
+> ```
+
 > **dev-dependency 说明**：编译期负向测试（如 `assert_not_impl_any!`）需要 `static_assertions` crate。需在 `Cargo.toml` 的 `[dev-dependencies]` 中添加 `static_assertions = "1.1"`。
 
 ### 7.2 单元测试清单

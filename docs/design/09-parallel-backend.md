@@ -253,8 +253,34 @@ where
     }
 
     let len = tensor.len();
-    let mut output: Vec<B> = Vec::with_capacity(len);
-    output.par_extend(tensor.par_iter().map(|x| f(x)));
+    let output: Vec<B> = tensor.par_iter().map(|x| f(x)).collect();
+
+    // SAFETY: output length == tensor.len()
+    unsafe { Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()) }
+}
+
+/// Parallel map with a custom parallelization threshold.
+/// Only parallelizes if the tensor has more than `threshold` elements.
+pub fn par_map_with_threshold<A, B, D, F>(
+    tensor: &TensorBase<impl Storage<Elem = A>, D>,
+    f: F,
+    threshold: usize,
+) -> Tensor<B, D>
+where
+    A: Element + Send + Sync,
+    B: Element + Send,
+    D: Dimension,
+    F: Fn(A) -> B + Send + Sync,
+{
+    let len = tensor.len();
+    if len < threshold {
+        // Below threshold: serial execution
+        let output: Vec<B> = tensor.iter().map(|x| f(*x)).collect();
+        // SAFETY: output length == tensor.len()
+        return unsafe { Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()) };
+    }
+
+    let output: Vec<B> = tensor.par_iter().map(|x| f(*x)).collect();
 
     // SAFETY: output length == tensor.len()
     unsafe { Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()) }
@@ -270,7 +296,7 @@ where
 pub fn par_reduce<A, D, F, ID>(tensor: &Tensor<A, D>, identity: ID, op: F) -> A
 where
     D: Dimension,
-    A: Element + Send + Sync,
+    A: Element + Send + Sync + Clone,
     F: Fn(A, A) -> A + Sync,
     ID: Fn() -> A + Sync + Clone,
 {
@@ -289,7 +315,7 @@ where
 pub fn par_sum<A, D>(tensor: &Tensor<A, D>) -> A
 where
     D: Dimension,
-    A: Element + Numeric + Send + Sync,
+    A: Element + Numeric + Send + Sync + Clone,
 {
     par_reduce(tensor, || A::zero(), |a, b| a + b)
 }
@@ -323,9 +349,7 @@ where
         return Ok(a.zip_with(b, f)?);
     }
 
-    let mut output: Vec<C> = Vec::with_capacity(len);
-    let zip = ParZip::new(a.view(), b.view())?;
-    output.par_extend(zip.map(|(x, y)| f(&x, &y)));
+    let output: Vec<C> = ParZip::new(a.view(), b.view())?.map(|(x, y)| f(&x, &y)).collect();
 
     let output_dim = <DA as BroadcastDim<DB>>::Output::from_slice(&broadcast_shape);
     // SAFETY: output length matches dim
@@ -434,11 +458,13 @@ where
     type IntoIter = crate::iter::Elements<'a, A, D>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.base.into_iter()
+        // Elements::new constructs the iterator from a TensorView
+        crate::iter::Elements::new(self.base)
     }
 
     fn split_at(self, index: usize) -> (Self, Self) {
         // Split the view at the flat index boundary
+        // split_elements_at is defined in src/iter/mod.rs (see 10-iterator.md §5.x)
         let (left, right) = crate::iter::split_elements_at(self.base, index);
         (
             ElementsProducer { base: left },

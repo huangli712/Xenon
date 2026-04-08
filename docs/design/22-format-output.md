@@ -23,7 +23,7 @@
 |------|------|
 | NumPy 对齐 | 输出格式与 NumPy `np.array_repr` 尽可能一致 |
 | 可配置截断 | 阈值/边缘元素数通过常量或 `FormatConfig` 配置 |
-| std feature 依赖 | `Display` 需要 `std`，`no_std` 环境可只实现 `Debug`（`core::fmt`） |
+| no_std 兼容 | `Display` 和 `Debug` 均通过 `core::fmt` 在 `no_std` 下可用 | — |
 | 零拷贝 | 格式化过程不修改原始数据 |
 
 ### 1.3 在架构中的位置
@@ -204,10 +204,10 @@ where
 
 ### 4.2 Display 实现
 
-> **注意**：此实现需要 `std` feature（浮点精度格式化依赖 `std`）。
+> **注意**：`core::fmt::Display` 在 Rust 1.85 中对 f32/f64 无需 `std` 即可使用，因此此实现不加 `#[cfg(feature = "std")]` 门控。
 
 ```rust
-#[cfg(feature = "std")]
+// Display is available in no_std via core::fmt
 impl<S, D, A> core::fmt::Display for TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -225,8 +225,8 @@ where
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if self.ndim() == 0 {
             // 0-dim tensor: output scalar value directly
-            // Zero-dimensional tensor element access uses *tensor.get([]).unwrap()
-            // or tensor[[]] (requires Index<[usize; 0]> impl).
+            // Zero-dimensional tensor element access via NdIndex<Ix0>,
+            // tensor[&[]] corresponds to Index<[usize; 0]> trait (see 17-indexing.md §4.0).
             write!(f, "{}", self[&[]])
         } else if self.ndim() == 1 {
             fmt_1d_display(f, self)
@@ -240,14 +240,14 @@ where
 ### 4.3 Debug 实现
 
 ```rust
-#[cfg(feature = "std")]
+// Debug is available in no_std via core::fmt; unified constraint A: Debug + Element
 impl<S, D, A> core::fmt::Debug for TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: core::fmt::Display + Element,
+    A: core::fmt::Debug + Element,
 {
-    /// Developer-facing debug output (std build).
+    /// Developer-facing debug output.
     ///
     /// Includes metadata such as shape, strides, and type, then delegates
     /// data formatting to Display.
@@ -279,24 +279,9 @@ where
         core::fmt::Display::fmt(self, f)
     }
 }
-
-#[cfg(not(feature = "std"))]
-impl<S, D, A> core::fmt::Debug for TensorBase<S, D>
-where
-    S: Storage<Elem = A>,
-    D: Dimension,
-    A: core::fmt::Debug + Element,
-{
-    /// Developer-facing debug output (no_std build).
-    ///
-    /// Only shows shape metadata; no data formatting since Display is unavailable.
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Tensor(shape={:?})", self.shape().slice())
-    }
-}
 ```
 
-> **设计决策：** Debug 输出包含完整的元信息（形状/步长/类型/布局），方便开发调试。Display 只输出数据，面向最终用户。
+> **设计决策：** Debug 输出包含完整的元信息（形状/步长/类型/布局），方便开发调试。Display 只输出数据，面向最终用户。Debug 和 Display 统一使用 `core::fmt`，均在 `no_std` 下可用。
 
 ### 4.4 NumPy 风格输出示例
 
@@ -440,10 +425,8 @@ fmt_nd(tensor, f, depth):
 ### 5.2 no_std 兼容性
 
 ```rust
-// Display requires std (core::fmt::Display is available, but float precision formatting requires std)
-// Only implement Debug in no_std environments
-
-#[cfg(feature = "std")]
+// Display is available in no_std via core::fmt (Rust 1.85+)
+// f32/f64 Display is in core, not gated by std
 impl<S, D, A> core::fmt::Display for TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -453,7 +436,7 @@ where
     // ...
 }
 
-// Debug is also available under no_std
+// Debug is also available under no_std via core::fmt
 impl<S, D, A> core::fmt::Debug for TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -466,14 +449,14 @@ where
 
 | 特性 | std | no_std |
 |------|-----|--------|
-| `Display` | ✅ | ❌（依赖 `std` 的浮点格式化） |
+| `Display` | ✅ | ✅（通过 `core::fmt`，Rust 1.85+） |
 | `Debug` | ✅ | ✅（通过 `core::fmt`） |
-| 浮点精度控制 | ✅ | ❌ |
-| 截断规则 | ✅ | ✅（`Debug` 输出中） |
+| 浮点精度控制 | ✅ | ✅（`core::fmt` 支持） |
+| 截断规则 | ✅ | ✅ |
 
-> **与 Feature 矩阵一致**：`01-architecture-overview.md §6` Feature 矩阵中，no_std 列下 `Display 格式化` 标为 ❌，与此处定义对齐。
+> **与 Feature 矩阵一致**：`01-architecture-overview.md §6` Feature 矩阵中，no_std 列下 `Display 格式化` 应更新为 ✅，与此处定义对齐。
 >
-> **Note on Rust 1.85 float formatting:** As of Rust 1.85, float formatting (f32/f64 Display) IS available in `core` without `std`. The `#[cfg(feature = "std")]` gate on Display is conservative and may be relaxed in a future version once this is confirmed stable across all no_std targets.
+> **Note on Rust 1.85 float formatting:** As of Rust 1.85, float formatting (f32/f64 Display) IS available in `core` without `std`. The `#[cfg(feature = "std")]` gate on Display has been removed accordingly.
 
 ---
 
@@ -513,9 +496,9 @@ where
 
 ### Wave 3: 收尾
 
-- [ ] **T5**: 添加 `#[cfg(feature = "std")]` 门控和文档
+- [ ] **T5**: 添加模块文档和 re-exports 完善
   - 文件: `src/format/mod.rs`, `src/format/display.rs`
-  - 内容: Display 的 std 门控、模块文档、re-exports 完善
+  - 内容: 模块文档、re-exports 完善（Display/Debug 均无需 std 门控）
   - 测试: `test_no_std_compile`
   - 前置: T3, T4
   - 预计: 5 min
@@ -607,13 +590,13 @@ Wave 3:        [T5]
 | 替代方案 | 100% 复制 NumPy 格式 — 放弃，Rust 类型信息有价值，不应完全省略 |
 | 替代方案 | 完全自定义格式 — 放弃，与用户 Python 经验的直觉一致性是目标 |
 
-### 决策 3：Display 依赖 std
+### 决策 3：Display 和 Debug 在 no_std 下均可使用
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | `Display` 实现加 `#[cfg(feature = "std")]`，`Debug` 无条件可用 |
-| 理由 | `no_std` 环境下浮点格式化受限；`Debug` 通过 `core::fmt` 可用 |
-| 替代方案 | 全部无条件实现 — 放弃，`no_std` 浮点 `Display` 可能不可用 |
+| 决策 | `Display` 和 `Debug` 均无条件实现，不加 `#[cfg(feature = "std")]` 门控 |
+| 理由 | Rust 1.85+ 中 f32/f64 的 `Display` 在 `core::fmt` 中可用，无需 `std`；`Debug` 始终在 `core::fmt` 中可用 |
+| 替代方案 | Display 加 std 门控 — 放弃，Rust 1.85 已支持 no_std 浮点 Display |
 
 ---
 

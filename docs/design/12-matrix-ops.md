@@ -124,6 +124,10 @@ pub fn dot<A>(
 ) -> Result<A, XenonError>
 where
     A: Numeric + Copy;
+// Note: Numeric (defined in 03-element-types.md) already implies
+// Mul<Output=Self> + Add<Output=Self>, so the public constraint
+// `Numeric + Copy` is sufficient. The internal implementation
+// (dot_impl) repeats these bounds explicitly for clarity.
 ```
 
 ### 4.2 复数内积语义
@@ -133,7 +137,7 @@ where
 // dot(Complex{re: 1, im: 2}, Complex{re: 3, im: 4})
 // = conj(Complex{1,2}) * Complex{3,4}
 // = Complex{1,-2} * Complex{3,4}
-// = Complex{1*3-(-2)*4, 1*4+(-2)*3)
+// = Complex{1*3-(-2)*4, 1*4+(-2)*3}
 // = Complex{3+8, 4-6}
 // = Complex{11, -2}
 ```
@@ -225,7 +229,7 @@ fn dot_impl<A: Numeric + Copy + Mul<Output=A> + Add<Output=A>>(
   - 前置: tensor 模块完成
   - 预计: 5 min
 
-### Wave 2: 实现
+### Wave 2: 标量实现
 
 - [ ] **T2**: 实现标量 dot
   - 文件: `src/ops/matrix.rs`
@@ -234,12 +238,16 @@ fn dot_impl<A: Numeric + Copy + Mul<Output=A> + Add<Output=A>>(
   - 前置: T1
   - 预计: 10 min
 
+### Wave 3: SIMD 加速
+
 - [ ] **T3**: 审查 SIMD dot 路径
   - 文件: `src/ops/matrix.rs`
   - 内容: SIMD 加速的内积实现
   - 测试: `test_dot_simd_consistency`
   - 前置: T2, simd 模块
   - 预计: 10 min
+
+### Wave 4: 测试
 
 - [ ] **T4**: 编写测试
   - 文件: `tests/matrix.rs`

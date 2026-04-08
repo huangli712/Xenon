@@ -23,7 +23,7 @@
 |------|------|
 | 步长感知 | `fill`/`clip` 通过迭代器正确处理非连续内存布局 |
 | 原地优先 | `fill` 为原地操作（`&mut self`），避免额外分配 |
-| 类型安全 | `clip` 限制为数值类型（`RealScalar`/`PartialOrd`），编译期拒绝 `bool` |
+| 类型安全 | `clip` 限制为有序数值类型（`Numeric + PartialOrd`），编译期拒绝 `bool` 和 `Complex` |
 | 语义清晰 | `to_contiguous` 返回 `Tensor<A, D>`，调用方可预测生命周期 |
 
 ### 1.3 在架构中的位置
@@ -197,6 +197,8 @@ where
 ```
 
 ### 4.3 连续性保证（to_contiguous）
+
+> `to_contiguous()` 是本模块（20-utility-ops.md §4）定义的公共 API。内部实现委托给 `src/convert/contiguous.rs` 中的 `to_f_contiguous()` 辅助函数（见 21-type-conversion.md §2.1 文件结构）。
 
 ```rust
 impl<S, D, A> TensorBase<S, D>

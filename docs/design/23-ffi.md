@@ -382,6 +382,28 @@ where
 | ❌ 忽略返回值 | 内存泄漏 |
 
 ```rust
+/// Reconstructs an owned tensor from raw parts obtained via `into_raw_parts`.
+/// Takes ownership of memory allocated by Xenon's aligned allocator.
+///
+/// # Safety
+///
+/// - `ptr` must point to memory allocated by Xenon's `AlignedAlloc` (64-byte aligned)
+/// - `shape` and `strides` must describe a valid, non-overlapping layout
+/// - The caller transfers ownership; do NOT free `ptr` separately
+/// - Total elements accessible via shape/strides must not exceed allocated size
+pub unsafe fn from_raw_parts_owned(
+    ptr: *mut A,
+    shape: D,
+    strides: D,
+    offset: usize,
+) -> TensorBase<Owned<A>, D> {
+    let len = shape.size();
+    let storage = Owned::from_raw(ptr, len);
+    TensorBase { storage, shape, strides, offset, flags: LayoutFlags::compute(&shape, &strides) }
+}
+```
+
+```rust
 // Correct round-trip: into_raw_parts → use pointer → from_raw_parts_owned → drop
 let tensor = Tensor2::<f64>::zeros([3, 4]);
 let (ptr, shape, strides, offset) = tensor.into_raw_parts();
@@ -507,6 +529,9 @@ where
     ///
     /// For F-order matrix `A[M, N]`, `LDA = stride[1]`.
     ///
+    /// **Note:** `lda()` 仅对 F-contiguous 的 2D 张量有效。对非连续张量（如切片后的视图），
+    /// 返回的步长无法直接用于 BLAS 调用。建议在调用前先检查 `is_f_contiguous()`。
+    ///
     /// # Returns
     ///
     /// - `Some(isize)`: LDA of a 2D array
@@ -565,10 +590,9 @@ where
             assert!(index[i] < shape[i], "index out of bounds");
             offset += strides[i] * index[i] as isize;
         }
-        debug_assert!(offset >= 0, "offset_of: negative offset indicates out-of-bounds access");
-        // Note: In release builds, a negative offset will wrap to a large usize
-        // value causing UB when used for pointer arithmetic. Consider using
-        // offset.try_into::<usize>() and returning an error for production use.
+        assert!(offset >= 0, 
+            "offset_of: computed negative offset {} — out-of-bounds access with negative strides",
+            offset);
         offset as usize
     }
 
@@ -610,8 +634,15 @@ where
     /// Returns `BlasTrans::NoTrans` for standard F-order views,
     /// `BlasTrans::Trans` for transposed views.
     pub fn blas_trans(&self) -> BlasTrans {
-        // Default: NoTrans. Trans detection depends on stride analysis.
-        BlasTrans::NoTrans
+        if self.ndim() != 2 { return BlasTrans::NoTrans; }
+        let strides = self.strides();
+        // Standard F-order: strides[0]=1, strides[1]=nrows
+        // Transposed F-order view: strides[0]=ncols, strides[1]=1
+        if strides[0].abs() > strides[1].abs() {
+            BlasTrans::Trans
+        } else {
+            BlasTrans::NoTrans
+        }
     }
 }
 
@@ -813,7 +844,7 @@ Wave 3: ┌────┴────┐
 | `offset_of()` | O(ndim) | 逐轴计算 |
 | `ptr_at()` | O(ndim) | `offset_of()` + 指针加法 |
 | `from_raw_parts()` | O(1) | 仅构造视图 |
-| `into_raw_parts()` | O(1) | 提取字段 + `forget` |
+| `into_raw_parts()` | O(1) | 提取字段 + `ManuallyDrop` |
 
 **性能提示**:
 
@@ -836,7 +867,7 @@ FFI 模块完全兼容 `no_std` 环境。所有操作均为指针运算和结构
 | `BlasLayout` / `BlasTrans` / `BlasInfo` | ✅ | 纯枚举/结构体，无分配 |
 | `as_ptr()` / `as_mut_ptr()` | ✅ | 指针加法，O(1) |
 | `from_raw_parts` / `from_raw_parts_mut` | ✅ | 构造视图，O(1)，无分配 |
-| `into_raw_parts` | ✅ | 字段提取 + `core::mem::forget`，无分配 |
+| `into_raw_parts` | ✅ | 字段提取 + `core::mem::ManuallyDrop`，无分配 |
 | `is_blas_compatible()` | ✅ | 布局标志检查，无分配 |
 | `blas_info()` / `lda()` | ✅ | 布局查询，无分配 |
 | `offset_of()` / `ptr_at()` | ✅ | 算术运算，O(ndim)，无分配 |
@@ -846,7 +877,7 @@ FFI 模块完全兼容 `no_std` 环境。所有操作均为指针运算和结构
 ```rust
 // All FFI methods use only core::mem, core::ptr, core::ops
 // No alloc::vec::Vec or std::ffi required
-// into_raw_parts uses core::mem::forget (available in no_std)
+// into_raw_parts uses core::mem::ManuallyDrop (available in no_std)
 ```
 
 ---

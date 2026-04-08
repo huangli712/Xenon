@@ -126,6 +126,8 @@ where
 }
 ```
 
+> **分派策略说明：** `sum()` 内部通过在 `Numeric` trait 上提供 `safe_add(self, rhs: Self) -> Self` 方法实现类型分派：整数类型使用 `checked_add` 溢出时 panic，浮点/复数类型使用 IEEE 754 加法。这避免了在公共 API 中暴露 `CheckedAdd` 约束，同时保持了正确的溢出行为。
+
 ### 4.2 沿轴 sum 归约
 
 ```rust
@@ -159,7 +161,10 @@ where
     /// ```
     pub fn sum_axis(&self, axis: Axis) -> Result<Tensor<A, D::Smaller>, XenonError>
     where
-        A: Numeric + CheckedAdd + Zero,
+        // Note: CheckedAdd is not exposed in the public constraint.
+        // Integer overflow detection is handled internally via
+        // Numeric::safe_add (see §5.1 dispatch strategy).
+        A: Numeric + Zero,
         D: RemoveAxis;
 
     /// Sum along an axis, keeping the reduced axis with length 1.
@@ -186,7 +191,10 @@ where
     /// ```
     pub fn sum_axis_keepdims(&self, axis: Axis) -> Result<Tensor<A, D>, XenonError>
     where
-        A: Numeric + CheckedAdd + Zero,
+        // Note: CheckedAdd is not exposed in the public constraint.
+        // Integer overflow detection is handled internally via
+        // Numeric::safe_add (see §5.1 dispatch strategy).
+        A: Numeric + Zero,
         D: RemoveAxis;
 }
 ```
@@ -334,15 +342,17 @@ sum_axis_keepdims(tensor, axis):
 ### 并行执行分组图
 
 ```
-Wave 1: [T1] [T2] [T3] [T4]
-           │     │     │     │
-           └─────┴─────┴─────┘
-                       │
-Wave 2:              [T5]
-                       │
-Wave 3:           [T6]
-                     │
-Wave 4:           [T7]
+Wave 1: [T1]
+           │
+Wave 2: [T2] [T3] [T4]
+           │     │     │
+           └─────┴─────┘
+                  │
+Wave 3:         [T5]
+                  │
+Wave 4:         [T6]
+                  │
+Wave 5:         [T7]
 ```
 
 ---

@@ -470,7 +470,7 @@ pub enum XenonError {
     InvalidAxis { axis: usize, ndim: usize },
     InvalidShape { from: usize, to: usize },
     DimensionMismatch { expected: usize, actual: usize },
-    EmptyArray,
+    EmptyArray { operation: &'static str },
 }
 
 pub type Result<T> = core::result::Result<T, XenonError>;
@@ -629,6 +629,8 @@ src/
 ### 6.1 #![warn(missing_docs)]
 
 `lib.rs` 必须包含 `missing_docs` lint 警告：
+
+> **CI 强制执行**：开发期间使用 `warn` 级别，CI 通过 `RUSTDOCFLAGS="-D warnings"` 将所有 lint 警告提升为错误，确保文档和代码质量。
 
 ```rust
 // src/lib.rs

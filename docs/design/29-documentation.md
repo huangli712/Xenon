@@ -221,8 +221,10 @@ L3: 示例 (examples/)
 //!
 //! Xenon supports `no_std` environments (requires `alloc` crate).
 
-#![deny(missing_docs)]
-#![deny(unsafe_op_in_unsafe_fn)]
+// During development: warn level allows gradual documentation
+// In CI: RUSTDOCFLAGS="-D warnings" enforces deny-level documentation
+#![warn(missing_docs)]
+#![warn(unsafe_op_in_unsafe_fn)]
 #![warn(rustdoc::missing_crate_level_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 ```
@@ -249,11 +251,13 @@ L3: 示例 (examples/)
 
 ```rust
 // lib.rs
-#![deny(missing_docs)]                        // all pub items must have documentation
+// During development: warn level allows gradual documentation
+// In CI: RUSTDOCFLAGS="-D warnings" cargo doc enforces deny-level
+#![warn(missing_docs)]                        // all pub items should have documentation
 #![deny(rustdoc::broken_intra_doc_links)]     // doc links must be valid
 #![deny(rustdoc::private_intra_doc_links)]    // private item links are invalid
 #![warn(rustdoc::missing_crate_level_docs)]   // crate-level docs must exist
-#![deny(unsafe_op_in_unsafe_fn)]              // unsafe ops in unsafe fn must be documented
+#![warn(unsafe_op_in_unsafe_fn)]              // unsafe ops in unsafe fn should be documented
 #![cfg_attr(docsrs, feature(doc_cfg))]        // docs.rs feature annotation
 ```
 
@@ -720,7 +724,7 @@ docs:
   - 前置: 无
   - 预计: 10 min
 
-- [ ] **T2**: 配置 `#![deny(missing_docs)]` 和 docs.rs metadata
+- [ ] **T2**: 配置 `#![warn(missing_docs)]` 和 docs.rs metadata
   - 文件: `src/lib.rs`, `Cargo.toml`
   - 内容: lint 规则、`[package.metadata.docs.rs]`、`cfg_attr(docsrs, ...)`
   - 测试: 编译通过
@@ -932,13 +936,13 @@ Wave 6: [T17]
 | 理由 | 遵循 Rust API Guidelines C-QUESTION-MARK；展示惯用错误处理 |
 | 替代方案 | unwrap — 放弃，给用户错误示范 |
 
-### 决策 3：`#![deny(missing_docs)]` 而非 `#![warn]`
+### 决策 3：开发期间 `#![warn(missing_docs)]`，CI 中 deny
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | 使用 `deny` 级别强制所有 pub 项有文档 |
-| 理由 | 需求说明书 §28.1 要求所有公开 API 有文档；deny 级别阻止无文档代码合入 |
-| 替代方案 | warn 级别 — 放弃，CI 中警告易被忽略 |
+| 决策 | 开发期间使用 `warn` 级别，CI 中通过 `RUSTDOCFLAGS="-D warnings"` 强制 deny 级别 |
+| 理由 | 需求说明书 §28.1 要求所有公开 API 有文档；开发期间 warn 允许渐进式补全文档，CI 中 deny 阻止无文档代码合入 |
+| 替代方案 | 始终 deny 级别 — 放弃，开发期间过于严格，阻碍快速迭代 |
 
 ### 决策 4：按模块组织模块级文档
 

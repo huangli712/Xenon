@@ -132,24 +132,22 @@ where
 
 ### 4.2 二元 zip 操作
 
-> **维度推导说明：** 此函数使用 `BroadcastDim<E>` 进行编译期维度推导，该 trait 定义于 `02-dimension.md §4.9`，详见该文档。
+> **维度推导说明：** 此函数使用 `BroadcastDim<DB>` 进行编译期维度推导，该 trait 定义于 `02-dimension.md §4.9`，详见该文档。
 
 ```rust
 /// Binary element-wise operation with broadcast support.
-pub fn zip_with<A, B, C, D, E, F>(
-    a: &TensorBase<impl Storage<Elem = A>, D>,
-    b: &TensorBase<impl Storage<Elem = B>, E>,
+pub fn zip_with<A, B, C, DA, DB, F>(
+    a: &TensorBase<impl Storage<Elem = A>, DA>,
+    b: &TensorBase<impl Storage<Elem = B>, DB>,
     f: F,
-) -> Result<Tensor<C, <D as BroadcastDim<E>>::Output>, XenonError>
+) -> Result<Tensor<C, <DA as BroadcastDim<DB>>::Output>, XenonError>
 where
-    A: Element,
-    B: Element,
-    C: Element,
-    D: Dimension,
-    E: Dimension,
+    DA: BroadcastDim<DB>,
+    DB: Dimension,
     F: FnMut(A, B) -> C,
-    A: Copy,
-    B: Copy;
+    A: Element + Copy,
+    B: Element + Copy,
+    C: Element;
 ```
 
 ### 4.3 算术运算（Numeric 约束）
@@ -280,12 +278,29 @@ where
     A: Element + PartialEq,
 {
     /// Element-wise equality comparison, returns a bool tensor. NaN comparison follows IEEE 754.
-    pub fn eq(&self, other: &TensorBase<impl Storage<Elem = A>, impl Dimension>)
-        -> Result<Tensor<bool, D>, XenonError>;
+    pub fn eq<DB>(&self, other: &TensorBase<impl Storage<Elem = A>, DB>)
+        -> Result<Tensor<bool, <D as BroadcastDim<DB>>::Output>, XenonError>
+    where
+        D: BroadcastDim<DB>,
+        DB: Dimension;
 
-    pub fn ne(&self, other: ...) -> Result<Tensor<bool, D>, XenonError>;
-    pub fn lt(&self, other: ...) -> Result<Tensor<bool, D>, XenonError>;
-    pub fn gt(&self, other: ...) -> Result<Tensor<bool, D>, XenonError>;
+    pub fn ne<DB>(&self, other: &TensorBase<impl Storage<Elem = A>, DB>)
+        -> Result<Tensor<bool, <D as BroadcastDim<DB>>::Output>, XenonError>
+    where
+        D: BroadcastDim<DB>,
+        DB: Dimension;
+
+    pub fn lt<DB>(&self, other: &TensorBase<impl Storage<Elem = A>, DB>)
+        -> Result<Tensor<bool, <D as BroadcastDim<DB>>::Output>, XenonError>
+    where
+        D: BroadcastDim<DB>,
+        DB: Dimension;
+
+    pub fn gt<DB>(&self, other: &TensorBase<impl Storage<Elem = A>, DB>)
+        -> Result<Tensor<bool, <D as BroadcastDim<DB>>::Output>, XenonError>
+    where
+        D: BroadcastDim<DB>,
+        DB: Dimension;
 }
 ```
 

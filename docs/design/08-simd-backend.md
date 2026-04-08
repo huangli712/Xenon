@@ -15,7 +15,7 @@ SIMD 后端模块是 Xenon 张量库的可选性能加速层，通过 `pulp` cra
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
 | SIMD 抽象 | 通过 pulp 统一抽象 x86/ARM 指令集 | GPU 加速 (CUDA/OpenCL) |
-| 逐元素运算 | 加减乘除、abs、neg、sqrt 等向量化 | 复杂线性代数 (矩阵分解) |
+| 逐元素运算 | 加减乘除、abs、neg 等向量化 | sqrt（通过 pulp 内置方法直接提供，不通过 SimdKernel trait 暴露）、复杂线性代数 (矩阵分解) |
 | 归约运算 | sum 的 SIMD 求和与合并 | BLAS 绑定 |
 | 内积运算 | dot product 分块 SIMD 计算 | 外积、矩阵乘法 |
 | 标量回退 | 所有操作的纯标量基准实现 | — |
@@ -503,7 +503,8 @@ impl WithSimd for AddF32Kernel<'_> {
         debug_assert_eq!(self.rhs.len(), len);
         debug_assert_eq!(self.dst.len(), len);
 
-        // Get the SIMD width for the current instruction set
+        // NOTE: The following method names have been verified against pulp 0.18.x API.
+        // If upgrading pulp, verify these names remain stable.
         let width = S::f32s_len();
         let chunks = len / width;
 

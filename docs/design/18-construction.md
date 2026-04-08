@@ -29,7 +29,7 @@
 | 合法性验证 | 所有构造路径须验证合法性，防止越界访问（需求说明书 §8） |
 | F-order 默认 | 构造时数据按 F-order 存放，默认列优先布局 |
 | 对齐分配 | `zeros`/`ones` 使用对齐分配器，满足 BLAS 兼容性（参见 `23-ffi.md` §4.5） |
-| 零拷贝优先 | `from_vec` 转移所有权，不拷贝数据 |
+| 零拷贝优先 | `from_vec` 将输入 `Vec<A>` 的数据拷贝到新分配的 64 字节对齐内存中（通过 `Owned::from_vec_aligned()`），确保 SIMD 友好的内存对齐。原始 Vec 在拷贝完成后被释放 |
 | 类型安全 | 彣状和元素类型通过泛型约束在编译期检查 |
 
 ### 1.3 在架构中的位置
@@ -573,7 +573,7 @@ Wave 4:           [T6]
 | `ones(n)` | O(n) | O(n) |
 | `fill(n, v)` | O(n) | O(n) |
 | `eye(n)` | O(n²) | O(n²) |
-| `from_vec(n)` | O(1) 验证 + 对齐 | O(n)（转移） |
+| `from_vec(n)` | O(n) 拷贝到对齐内存 | O(n)（新分配） |
 | `from_slice(n)` | O(n) 拷贝 | O(n) |
 | `from_array(n)` | O(n) 拷贝 | O(n) |
 | `from_scalar()` | O(1) | O(1) |
@@ -596,7 +596,7 @@ Wave 4:           [T6]
 | `zeros` 大数组 | `ptr::write_bytes(0)` | ~10 GB/s（memset 速度） |
 | `ones` 大数组 | `ptr::write(value)` 循环 | ~5 GB/s |
 | `fill` 大数组 | `clone` 循环 | ~3 GB/s（含克隆开销） |
-| `from_vec` | 转移所有权 | O(1)（不拷贝） |
+| `from_vec` | 拷贝到对齐内存 | O(n)（拷贝到 64 字节对齐分配） |
 | `eye` 大矩阵 | 先零后对角 | n 次 `write` + n² 次 `write_bytes` |
 
 > **注意**：`from_array` 当前存在双重拷贝（源数组 → Vec → 对齐分配），未来版本可优化为直接构建。
@@ -621,7 +621,7 @@ use alloc::vec::Vec;
 | `ones()` | ✅ | 需 `no_std + alloc`，对齐分配 + 批量填充 |
 | `fill()` | ✅ | 需 `no_std + alloc`，对齐分配 + 批量克隆 |
 | `eye()` | ✅ | 需 `no_std + alloc`，先 `zeros` 再写入对角线 |
-| `from_shape_vec()` | ✅ | 需 `no_std + alloc`，转移 `Vec` 所有权 |
+| `from_shape_vec()` | ✅ | 需 `no_std + alloc`，拷贝数据到 64 字节对齐内存（O(n)） |
 | `from_shape_slice()` | ✅ | 需 `no_std + alloc`，拷贝到新 `Vec` |
 | `from_array()` | ✅ | 需 `no_std + alloc`，转换为 `Vec` |
 | `from_scalar()` | ✅ | 需 `no_std + alloc`，单元素 `Vec` |

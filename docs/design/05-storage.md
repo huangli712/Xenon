@@ -35,7 +35,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
-L3: storage (依赖 core/alloc)  ← 当前模块
+L3: storage (仅依赖 core/alloc，不依赖 layout)  ← 当前模块
 L4: tensor (依赖 storage, dimension)
 L5: ops/, iter/, index/, shape_ops/, broadcast/, construct/, ffi/, convert/, format/
 ```
@@ -101,7 +101,7 @@ src/storage/
 
 ### 3.3 依赖方向声明
 
-> **依赖方向：单向向下。** `storage/` 仅依赖 `core`/`alloc`，不直接依赖 `element` 模块；元素类型约束通过 `TensorBase` 的泛型参数间接体现（`Storage::Elem` 关联类型）。`tensor/`（参见 `07-tensor.md` §4）和 `iter/`（参见 `10-iterator.md` §4）模块消费 storage 的 trait 和类型。
+> **依赖方向：单向向下。** storage 模块仅依赖 core 和 alloc（无 std、无 layout 依赖）。`storage/` 不直接依赖 `element` 模块；元素类型约束通过 `TensorBase` 的泛型参数间接体现（`Storage::Elem` 关联类型）。`tensor/`（参见 `07-tensor.md` §4）和 `iter/`（参见 `10-iterator.md` §4）模块消费 storage 的 trait 和类型。
 
 ---
 
@@ -590,6 +590,8 @@ impl AlignedAlloc {
     /// - `align` is not a power of two
     /// - `size` is 0
     /// - Memory allocation fails
+    ///
+    /// 对于零大小类型（ZST，`size_of::<A>() == 0`），不应调用此分配器，直接使用 `NonNull::dangling()` 返回悬挂指针即可。调用者（如 `Owned::new`）有责任在 size==0 时跳过分配。
     pub fn alloc(size: usize, align: usize) -> NonNull<u8>;
 
     /// Allocates and zero-initializes.
@@ -672,6 +674,8 @@ pub struct ArcRepr<A> {
 }
 ```
 
+> **设计决策：** `ArcRepr<A>` 不存储独立的 `offset` 字段。数据访问的偏移量完全由外层 `TensorBase::offset` 字段管理（见 07-tensor.md §4.1）。`ArcRepr` 仅持有 `Arc<Vec<A>>` 作为共享所有权句柄，不参与偏移计算。`make_mut()` 操作时需要使用 TensorBase 提供的 offset/shape/strides 信息来确定拷贝范围。
+
 **写时复制流程**：
 
 ```
@@ -718,6 +722,19 @@ pub unsafe trait IsArc: RawStorage {}
 | `ViewRepr<&'a A>` | A: Sync | A: Sync | 共享借用需要 Sync 才能跨线程共享 |
 | `ViewMutRepr<&'a mut A>` | A: Send | ❌ 永远不 | 独占借用可转移但不可共享 |
 | `ArcRepr<A>` | A: Send + Sync | A: Send + Sync | Arc 内部原子操作保证线程安全 |
+
+```rust
+// SAFETY: ViewRepr<&'a A> only allows shared (read-only) access.
+// It is safe to send between threads if A: Sync (shared refs are Send when T: Sync).
+unsafe impl<'a, A: Sync> Send for ViewRepr<&'a A> {}
+// SAFETY: Multiple threads can hold &ViewRepr simultaneously if A: Sync.
+unsafe impl<'a, A: Sync> Sync for ViewRepr<&'a A> {}
+
+// SAFETY: ViewMutRepr<&'a mut A> allows exclusive access via &mut self.
+// It is safe to send between threads if A: Send.
+// Sync is NOT implemented: &mut T is not Sync (exclusive access must not be shared).
+unsafe impl<'a, A: Send> Send for ViewMutRepr<&'a mut A> {}
+```
 
 ---
 

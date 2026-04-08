@@ -121,6 +121,21 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
 
     /// Returns the total number of elements.
     /// For `Ix0`, returns 1 (scalar has one element).
+    ///
+    /// # Overflow behavior
+    ///
+    /// Static implementations use `wrapping_mul` to compute the product of
+    /// all axis lengths. This is intentional: in debug builds, Rust's default
+    /// integer arithmetic panics on overflow, which would cause `size()` to
+    /// panic on large dimensions even though the caller may not expect it.
+    /// By using `wrapping_mul`, `size()` behaves consistently in both debug
+    /// and release builds.
+    ///
+    /// **Caveat:** this means that for dimensions whose true element count
+    /// exceeds `usize::MAX`, `size()` will silently wrap around and return
+    /// an incorrect result. Callers that need overflow safety should perform
+    /// an explicit checked multiplication (e.g., via `checked_mul`) in debug
+    /// builds, or validate dimensions before calling `size()`.
     fn size(&self) -> usize;
 
     /// Creates a dimension with all axes set to zero.
@@ -183,6 +198,10 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
     ///
     /// `usize` and `isize` have the same size and alignment on all
     /// Rust targets (`core::mem::size_of::<usize>() == core::mem::size_of::<isize>()`).
+    /// Both types use two's complement representation, so the bit-pattern
+    /// reinterpretation (`usize` → `isize`) is well-defined: every valid `usize`
+    /// value maps to a unique `isize` bit-pattern, and vice versa. The conversion
+    /// is purely a type-level reinterpretation with no data loss.
     ///
     /// For static dimensions (`Ix1`-`Ix6`): `#[repr(C)]` guarantees the underlying
     /// memory layout is a contiguous sequence of `usize` fields, which can be safely
@@ -191,11 +210,23 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
     /// For dynamic dimension (`IxDyn`): `Vec<usize>` guarantees contiguous memory
     /// layout (elements are stored in a single heap allocation). Reinterpreting
     /// `&[usize]` as `&[isize]` is safe since both types have the same size and
-    /// alignment. Additionally, F-order strides are always non-negative, ensuring
-    /// the reinterpreted `isize` values are in the valid positive range.
+    /// alignment.
     ///
-    /// Stride values stored in the `D` type are always within the valid
-    /// `isize` range (guaranteed by construction in the layout module).
+    /// Negative strides are always tracked through the `LayoutFlags::HAS_NEG_STRIDE`
+    /// flag in the layout module (see `06-memory-layout.md` §4). The layout module
+    /// sets this flag whenever any stride is negative, and all downstream consumers
+    /// check this flag before interpreting stride values. This ensures that negative
+    /// strides are never silently mishandled.
+    ///
+    /// All stride values are guaranteed to be within the valid `isize` range at
+    /// construction time: the layout module's constructors clamp stride calculations
+    /// to `isize::MIN..=isize::MAX` and reject dimensions that would produce
+    /// out-of-range strides. This invariant is maintained by every code path that
+    /// creates a layout, so `strides_isize()` never encounters an out-of-range value.
+    ///
+    /// Stride access via this method is always paired with the layout module's flag
+    /// checks — callers consult `LayoutFlags` before relying on stride sign or
+    /// magnitude, providing a two-layer safety net.
     fn strides_isize(&self) -> &[isize] {
         let slice = self.slice();
         // SAFETY: usize and isize have identical size/alignment.
@@ -636,7 +667,7 @@ let dim: Ix3 = Ix3::try_from_dyn(dyn_dim).unwrap();
 `BroadcastDim<Other>` 用于编译期计算两个维度类型广播后的输出维度类型。  
 被 `19-operator-overload.md` 中的运算符重载使用。
 
-> **实现建议：** 跨静态维度的 `BroadcastDim` 实现共计约 57 个（含自身广播 7 个 + 跨静态维度 42 个 + 与 IxDyn 混合 14 个）。
+> **实现建议：** 跨静态维度的 `BroadcastDim` 实现共计约 57 个（含自身广播 7 个 + 跨静态维度 42 个 + 与 IxDyn 混合 7 个（静态维度→IxDyn）+ 1 个（IxDyn→D 泛型 impl））。
 > 建议使用声明宏（`macro_rules!`）生成这些实现，避免手工编写导致的遗漏和错误。
 
 ```rust
@@ -1057,6 +1088,16 @@ Wave 5:  [T10] → [T11] → [T12]
 | 决策 | `strides_for_f_order()` 返回 `Self`（无符号），负步长由 layout 层处理 |
 | 理由 | 关注点分离：Dimension 关注形状，Layout 关注数据排列 |
 | 替代方案 | Dimension 直接返回 `isize` 步长 — 放弃，维度层不应感知负步长 |
+
+### 决策 7：`size()` 使用 `wrapping_mul` 而非普通乘法
+
+| 属性 | 值 |
+|------|-----|
+| 决策 | `size()` 使用 `wrapping_mul` 计算元素总数 |
+| 理由 | 避免 debug 模式下整数溢出 panic，保持 debug/release 行为一致；与 ndarray 的做法一致 |
+| 风险 | 大维度时可能静默返回错误结果（wrap around）；建议在 debug 构建中通过 `debug_assert!` 或 `checked_mul` 额外验证 |
+| 替代方案 | 普通乘法（`*`）— 放弃，debug 模式会在合法大维度上 panic |
+| 替代方案 | `checked_mul` 返回 `Option<usize>` — 放弃，改变返回类型，增加调用复杂度 |
 
 ---
 

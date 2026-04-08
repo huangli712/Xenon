@@ -286,6 +286,8 @@ impl UniqueElement for Complex<f64> {
   - 前置: T1
   - 预计: 10 min
 
+### Wave 3: 浮点与复数扩展
+
 - [ ] **T3**: 实现浮点 NaN 排序处理
   - 文件: `src/ops/set_ops.rs`
   - 内容: NaN 比任何实数大，排序后 NaN 在末尾
@@ -300,7 +302,7 @@ impl UniqueElement for Complex<f64> {
   - 前置: T2
   - 预计: 10 min
 
-### Wave 3: TensorBase 入口集成
+### Wave 4: TensorBase 入口集成
 
 - [ ] **T5**: 在 TensorBase 上添加 `unique()` 入口方法
   - 文件: `src/ops/set_ops.rs`（或 trait extension）
@@ -314,9 +316,11 @@ impl UniqueElement for Complex<f64> {
 ```
 Wave 1: [T1]
            │
-Wave 2: [T2] [T3] [T4]
-           │     │     │
-Wave 3: [T5]
+Wave 2: [T2]
+         │ │
+Wave 3: [T3] [T4]
+           │
+Wave 4: [T5]
 ```
 
 ---

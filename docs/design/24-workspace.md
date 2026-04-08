@@ -41,7 +41,7 @@ L2: workspace  ← 当前模块（独立于 tensor）
   tensor (可选) ──→ workspace
 ```
 
-工作空间模块是独立的，不依赖张量类型，可被上游库直接使用（参见 `01-architecture-overview.md §5`）。
+Workspace 模块位于 L2，独立于核心张量类型系统，可被上游库直接使用而无需引入 tensor 依赖（参见 `01-architecture-overview.md §5`）。
 
 ---
 
@@ -527,10 +527,16 @@ impl<'a> SplitBorrowMut<'a> {
     /// Continue splitting (recursive binary split).
     ///
     /// O(1) — pointer arithmetic only.
+    ///
+    /// **Safety design:** `split_at_mut` consumes `self` rather than borrowing.
+    /// This ensures each `SplitBorrowMut` instance has an independent lifetime,
+    /// preventing counter inconsistency. The original `SplitBorrowMut` is consumed
+    /// and no longer valid; the two sub-splits independently manage their Drop
+    /// behavior.
     pub fn split_at_mut(
-        &mut self,
+        self,
         mid: usize,
-    ) -> Result<(SplitBorrowMut<'_>, SplitBorrowMut<'_>), WorkspaceError> {
+    ) -> Result<(SplitBorrowMut<'a>, SplitBorrowMut<'a>), WorkspaceError> {
         if mid > self.len {
             return Err(WorkspaceError::SplitOutOfBounds { split: mid, len: self.len });
         }
@@ -736,7 +742,17 @@ Workspace 内存布局（64 字节对齐）
          O(1) ✓
 ```
 
-### 5.3 扩容安全性论证
+### 5.3 split_at_mut 安全设计
+
+> **安全设计决策：** `split_at_mut` 采用消费式设计（consuming self）而非借用：调用 `split_at_mut(self, mid)` 消耗原 `SplitBorrowMut`，返回两个新的子 `SplitBorrowMut`。这确保每个 `SplitBorrowMut` 实例有独立的生命周期，避免计数器不一致问题。原始 `SplitBorrowMut` 被消耗后不再有效，两个子分割各自独立管理其 Drop 行为。
+
+```rust
+// Consumes self, returns two non-overlapping sub-borrows.
+// The original SplitBorrowMut is consumed to prevent double-use.
+pub fn split_at_mut(self, mid: usize) -> Result<(SplitBorrowMut<'a>, SplitBorrowMut<'a>), WorkspaceError>
+```
+
+### 5.4 扩容安全性论证
 
 **扩容期间保证不违反已有引用安全性**（参见 `05-storage.md §5`）：
 

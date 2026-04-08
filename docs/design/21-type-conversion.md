@@ -15,7 +15,7 @@
 | 逐元素类型转换 | `cast<B>(&self) -> Tensor<B, D>` | 隐式类型提升（需显式调用） |
 | 同类型拷贝 | `to_owned`、`into_owned` | 跨模块转换逻辑（如 reshape） |
 | 存储模式互转 | Owned ↔ ViewRepr ↔ ArcRepr | 隐式 Deref 转换 |
-| 标准库接口 | `From`/`Into`/`TryFrom`/`TryInto` 实现 | 非标准转换（如序列化） |
+| 标准库接口 | `From`/`Into`（标准库类型转换） | 非标准转换（如序列化） |
 
 ### 1.2 设计原则
 
@@ -49,7 +49,7 @@ src/
     ├── cast.rs              # CastTo trait、cast() 方法、类型转换路径
     ├── owned.rs             # to_owned、into_owned、存储模式互转
     ├── from_impl.rs         # From/TryFrom trait 实现
-    └── contiguous.rs        # to_f_contiguous 辅助函数（公共 API to_contiguous 定义于 20-utility-ops.md）
+    └── contiguous.rs        # to_f_contiguous() 辅助函数（内部实现）。公共 API to_contiguous() 定义于 20-utility-ops.md §4，委托给此辅助函数
 ```
 
 多文件设计：按转换职责拆分，便于后续扩展（如新增转换路径、存储模式等）。
@@ -62,7 +62,7 @@ src/
 | `cast.rs` | `CastTo<T>` trait 定义、所有类型转换 impl、`cast()` 方法 | ~200 |
 | `owned.rs` | `to_owned()`、`into_owned()`、存储模式互转（view/view_mut/into_shared） | ~100 |
 | `from_impl.rs` | `From<Vec<A>>`、`From<&[A]>`、`From<[A; N]>`、`From<&Tensor> for View` 等 | ~80 |
-| `contiguous.rs` | `to_contiguous()` 连续化转换 | ~50 |
+| `contiguous.rs` | `to_f_contiguous()` 辅助函数（内部实现，公共 API 见 20-utility-ops.md §4） | ~50 |
 
 ---
 
@@ -108,16 +108,7 @@ src/convert/
 
 ### 4.1 CastTo trait
 
-```rust
-/// Element-wise type conversion trait.
-///
-/// Defines explicit type conversion rules from `Self` to `T`.
-/// Overflow behavior is explicitly defined per implementation (see §4.3).
-pub trait CastTo<T> {
-    /// Performs the type conversion.
-    fn cast_to(self) -> T;
-}
-```
+> `CastTo<T>` trait 定义于 `03-element-types.md §4.8`，在此模块中仅用于 `cast()` 的实现约束，不重新定义。参见 `03-element-types.md §4.8` 了解完整定义。
 
 ### 4.2 cast 方法
 
@@ -268,7 +259,7 @@ where
 
 ### 4.6 from_vec_aligned — 对齐构造辅助
 
-`from_vec_aligned` 是 `Owned<A>` 的内部辅助方法，将 `Vec<A>` 的数据复制到 64 字节对齐的新分配中（参见 `05-storage.md §5.1`）。
+`from_vec_aligned` 是 `Owned<A>` 的内部辅助方法，将 `Vec<A>` 的数据**拷贝**到 64 字节对齐的新分配中（O(n) 操作，参见 `05-storage.md §5.1`）。用户原始的 `Vec` 分配被丢弃，不会复用。
 
 ```rust
 // Defined in src/storage/owned.rs (see 05-storage.md §5.1)
@@ -296,6 +287,24 @@ impl<A, D> TensorBase<Owned<A>, D> where A: Element, D: Dimension {
     /// shape.size() (e.g., via iter().collect() or to_owned() where self.len()
     /// is known to be correct).
     pub(crate) fn from_shape_vec_aligned(shape: D, data: Vec<A>) -> Self {
+        let strides = shape.strides_for_f_order();
+        let storage = Owned::from_vec_aligned(data);
+        TensorBase { storage, shape, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) }
+    }
+
+    /// Constructs a Tensor from pre-validated data without length checking.
+    ///
+    /// This is the `unsafe` counterpart of `from_shape_vec_aligned`, used
+    /// when the caller has already validated the length (e.g., via `iter().collect()`).
+    ///
+    /// # Safety
+    ///
+    /// 调用者必须保证：
+    /// - `data.len()` 等于 `shape.size()`（元素总数匹配）
+    /// - `shape` 和 `strides` 描述合法的内存布局
+    /// - `data` 中所有元素已正确初始化
+    /// - 内存已通过 Xenon 的 64 字节对齐分配器分配（使用 `from_vec_aligned` 保证）
+    pub(crate) unsafe fn from_shape_vec_aligned_unchecked(shape: D, data: Vec<A>) -> Self {
         let strides = shape.strides_for_f_order();
         let storage = Owned::from_vec_aligned(data);
         TensorBase { storage, shape, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) }

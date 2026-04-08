@@ -89,6 +89,8 @@ src/tensor/
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.size()`, `.ndim()`（参见 `02-dimension.md §4`） |
 | `layout` | `LayoutFlags`, `compute_f_strides()`, `is_f_contiguous()`, `is_aligned()`（参见 `06-memory-layout.md §4`） |
 
+> 注意：`Layout` 结构体定义于 `06-memory-layout.md`，目前为"供未来扩展预留"。`TensorBase` 当前直接内联 `LayoutFlags` 字段而非嵌套 `Layout`。
+
 ### 3.3 依赖方向声明
 
 > **依赖方向：单向向上。** `tensor/` 消费 `storage`、`dimension`、`layout` 的 trait 和类型，不被它们依赖。`ops/`、`iter/` 等上层模块消费 `tensor`。
@@ -344,6 +346,9 @@ where
     /// let t = Tensor2::<f64>::from_shape_vec([3, 4], vec![1.0; 12])?;
     /// ```
     pub fn from_shape_vec(shape: D, data: Vec<A>) -> Result<Self, XenonError>;
+    // NOTE: from_shape_vec internally copies data into new 64-byte aligned memory
+    // via `Owned::from_vec_aligned(data)`. Time complexity is O(n).
+    // This ensures the tensor always satisfies SIMD alignment requirements.
 
     /// Construct a tensor from a Vec without validating shape/stride consistency.
     ///
@@ -507,6 +512,8 @@ shape: [3], strides: [1], offset: 2  // 仅调整元数据
 ```
 
 **安全性论证**：`offset` 始终 ≤ `storage.len()`，由构造方法验证。`as_ptr()` 返回 `storage.as_ptr().add(offset)`，由 `Storage` trait 保证指针有效。
+
+> **重要设计约定：** `TensorBase::offset` 是所有存储模式（Owned、ViewRepr、ViewMutRepr、ArcRepr）共用的唯一偏移字段。`ArcRepr` 不存储独立的 offset — 数据访问的起始位置完全由 `TensorBase::offset` 决定。这避免了双重偏移计算的 bug，并使偏移逻辑集中在一处。
 
 ### 5.3 内存布局示意
 
@@ -849,7 +856,7 @@ where
         let ptr = data.as_ptr();
         let flags = layout::compute_flags(&shape, &strides, ptr);
         Ok(Self {
-            storage: Owned::from_vec(data),
+            storage: Owned::from_vec_aligned(data),  // Copies data into 64-byte aligned memory (O(n))
             shape,
             strides,  // isize → D conversion
             offset: 0,

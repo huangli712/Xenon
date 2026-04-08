@@ -180,6 +180,15 @@ pub trait Numeric:
 ```
 
 > **设计决策：** `Numeric` 定义 `conj()` 方法，为实数类型返回 `self`，为复数类型返回共轭。这使得统一的内积（dot product）实现可以泛化处理实数和复数情况（实数内积 `∑ aᵢ*bᵢ`，复数内积 `∑ aᵢ·conj(bᵢ)`）。其余四则运算由 `Add/Sub/Mul/Div/Neg` trait 提供。
+>
+> **`Numeric::conj()` 与 `ComplexScalar::conj()` 的关系和使用说明：**
+>
+> - `Numeric::conj()` 对实数类型（i32, i64, f32, f64）是恒等操作（返回自身），对复数类型（Complex<f32>, Complex<f64>）委托给复数共轭实现
+> - 对于泛型代码中仅约束 `Numeric` 时，调用 `x.conj()` 会解析到 `Numeric::conj()`
+> - 对于同时实现 `Numeric` 和 `ComplexScalar` 的类型（如 `Complex<f64>`），两个 `conj()` 方法语义相同但编译器无法自动消歧义。需要消歧义时使用完全限定语法：
+>   - `Numeric::conj(&x)` — 通过 Numeric trait 调用
+>   - `ComplexScalar::conj(&x)` — 通过 ComplexScalar trait 调用
+> - **设计决策注释：** 两个方法语义相同（对复数类型均返回 `re - im*i`），`Numeric::conj` 的存在是为了让纯 `Numeric` 约束的泛型代码也能调用 `conj`，无需额外约束 `ComplexScalar`
 
 ### 4.3 RealScalar trait
 
@@ -239,6 +248,13 @@ pub trait ComplexScalar: Numeric + Sealed {
 
     fn re(self) -> Self::Real;
     fn im(self) -> Self::Real;
+    /// Returns the complex conjugate (re - im*i).
+    ///
+    /// Note: `Numeric` also defines a `conj()` method with identical semantics.
+    /// For types that implement both `Numeric` and `ComplexScalar` (e.g., `Complex<f64>`),
+    /// use fully-qualified syntax to disambiguate:
+    /// - `ComplexScalar::conj(x)` — via ComplexScalar trait
+    /// - `Numeric::conj(x)` — via Numeric trait
     fn conj(self) -> Self;
     fn norm(self) -> Self::Real;
     fn arg(self) -> Self::Real;
@@ -726,13 +742,14 @@ Wave 3: [T6]      [T9] ← ────┘
 
 ## 11. no_std 兼容性
 
-> **⚠️ 警告**：在 `no_std` 环境下，`RealScalar` trait **没有任何实现者**。`f32`/`f64` 的 `RealScalar` impl 需要 `std` feature（因为 `sin()`、`cos()`、`sqrt()` 等数学方法依赖 `libm`，而 Xenon 不引入 `libm` 依赖）。因此 `no_std` 环境中 `sin`/`cos`/`sqrt`/`exp`/`ln` 等数学函数**完全不可用**。需要这些函数的代码必须以 `#[cfg(feature = "std")]` 门控。仅使用 `Element`/`Numeric` trait 的代码在 `no_std` 下正常工作。
+> **⚠️ 警告**：在 `no_std` 环境下，`RealScalar` trait **没有任何实现者**。`f32`/`f64` 的 `RealScalar` impl 需要 `std` feature，因为 `sin()`、`cos()`、`sqrt()`、`exp()`、`ln()`、`hypot()`、`atan2()` 等浮点数学方法在 Rust 1.85 中仍通过 `std` 提供（位于 `std` 而非 `core`），而非因为 Xenon 引入了 `libm` 依赖。因此 `no_std` 环境中这些数学函数**需要 std feature**（浮点数学函数在 Rust 1.85 中仍通过 std 提供）。需要这些函数的代码必须以 `#[cfg(feature = "std")]` 门控。仅使用 `Element`/`Numeric` trait 的代码在 `no_std` 下正常工作。
 
 | 组件 | 兼容方案 |
 |------|----------|
 | `Element` / `Numeric` / `ComplexScalar` | 纯 trait，天然 no_std |
-| `RealScalar` 数学函数 | 仅在 `#[cfg(feature = "std")]` 下实现；**no_std 环境中不可用**。需要数学函数的代码须以 `#[cfg(feature = "std")]` 门控，或仅使用 `Element`/`Numeric` trait |
-| Feature gate | `Cargo.toml`: `default = ["std"]`；no_std 环境下 `RealScalar` 数学函数不可用（无 libm 依赖） |
+| `RealScalar` 数学函数 | 仅在 `#[cfg(feature = "std")]` 下实现；**需要 std feature**（浮点数学函数 `sin`/`cos`/`sqrt`/`exp`/`ln`/`floor`/`ceil`/`abs` 在 Rust 1.85 中仍通过 `std` 提供）。no_std 环境中不可用，需要数学函数的代码须以 `#[cfg(feature = "std")]` 门控 |
+| `RealScalar` 常量与 NaN 检测 | `epsilon()`/`min_positive()`/`max_value()`/`infinity()`/`neg_infinity()`/`nan()`/`is_nan()`/`is_infinite()`/`is_finite()`/`min()`/`max()` 不依赖 `std` 数学函数，理论上可在 no_std 下实现；但当前 `RealScalar` 整体以 `#[cfg(feature = "std")]` 门控，保持 impl 一致性 |
+| Feature gate | `Cargo.toml`: `default = ["std"]`；`RealScalar` 数学函数需要 std feature（浮点数学函数在 Rust 1.85 中仍通过 `std` 提供，Xenon 不引入额外 libm 依赖） |
 
 ---
 

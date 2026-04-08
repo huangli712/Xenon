@@ -144,6 +144,10 @@ xenon/
 │   │   ├── reduction.rs       # 归约（仅 sum）
 │   │   └── comparison.rs      # 比较运算（equal, not_equal, less, greater）
 │   │
+│   ├── set_ops/               # 集合操作
+│   │   ├── mod.rs             # 集合操作 trait 导出
+│   │   └── unique.rs          # unique（去重）
+│   │
 │   ├── broadcast.rs           # 广播规则实现
 │   │
 │   ├── shape_ops/             # 形状操作
@@ -202,8 +206,15 @@ xenon/
 │   └── test_no_std.rs         # no_std 兼容性测试
 │
 ├── benches/                   # 性能基准测试
+│   ├── bench_elementwise.rs   # 逐元素操作
 │   ├── bench_reduction.rs     # 归约操作
-│   └── bench_elementwise.rs   # 逐元素操作
+│   ├── bench_dot_product.rs   # 向量内积
+│   ├── bench_set_ops.rs       # 集合操作
+│   ├── bench_broadcast.rs     # 广播操作
+│   ├── bench_shape_ops.rs     # 形状操作
+│   ├── bench_simd_comparison.rs   # SIMD 比较
+│   ├── bench_parallel_comparison.rs # 并行比较
+│   └── bench_construction.rs  # 张量构造
 │
 └── examples/                  # 使用示例
     ├── basic.rs               # 基础用法
@@ -223,6 +234,7 @@ xenon/
 | `tensor/` | 核心 `TensorBase<S, D>` 结构体及类型别名 |
 | `iter/` | 元素/轴/窗口/索引/Zip/Lane 迭代器 |
 | `ops/` | 逐元素运算、算术运算符、内积、sum 归约、比较运算 |
+| `set_ops/` | 集合操作（unique 去重） |
 | `broadcast.rs` | NumPy 广播规则 |
 | `shape_ops/` | reshape、transpose |
 | `index/` | 多维整数索引、范围切片索引 |
@@ -269,11 +281,39 @@ proptest = "1.4"
 approx = "0.5"
 
 [[bench]]
+name = "elementwise"
+harness = false
+
+[[bench]]
 name = "reduction"
 harness = false
 
 [[bench]]
-name = "elementwise"
+name = "dot_product"
+harness = false
+
+[[bench]]
+name = "set_ops"
+harness = false
+
+[[bench]]
+name = "broadcast"
+harness = false
+
+[[bench]]
+name = "shape_ops"
+harness = false
+
+[[bench]]
+name = "simd_comparison"
+harness = false
+
+[[bench]]
+name = "parallel_comparison"
+harness = false
+
+[[bench]]
+name = "construction"
 harness = false
 
 [profile.release]
@@ -311,10 +351,10 @@ rustdoc-args = ["--cfg", "docsrs"]
 |------|------|------|------|
 | **L0** | error, private | 无 | `26-error-handling.md` |
 | **L1** | dimension, element, complex | error（element 额外依赖 complex） | `02-dimension.md`、`03-element-types.md`、`04-complex-type.md` |
-| **L2** | layout | error, dimension | `06-memory-layout.md` |
+| **L2** | layout, workspace | error, dimension（workspace 独立于核心类型系统，仅依赖 core/alloc，可被上游库直接使用） | `06-memory-layout.md`、`24-workspace.md` |
 | **L3** | storage | core/alloc | `05-storage.md` |
 | **L4** | tensor | storage, dimension, layout, element | `07-tensor.md` |
-| **L5** | iter, broadcast, ffi, workspace | tensor | `10-iterator.md`、`15-broadcast.md`、`23-ffi.md`、`24-workspace.md` |
+| **L5** | iter, broadcast, ffi | tensor | `10-iterator.md`、`15-broadcast.md`、`23-ffi.md` |
 | **L6** | ops, shape_ops, index | tensor, iter, broadcast | `11-elementwise-ops.md`、`16-shape-ops.md`、`17-indexing.md` |
 | **L7** | construct, convert, format | tensor, shape_ops | `18-construction.md`、`21-type-conversion.md`、`22-format-output.md` |
 
@@ -343,10 +383,10 @@ rustdoc-args = ["--cfg", "docsrs"]
      │      │ complex │    │          │              │
      │      └────┬────┘    │          │              │
      │           │         │          │              │
-     ▼           ▼         │          │              │
-┌─────────┐                │          │              │
-│  layout │                │          │              │
-└────┬────┘                │          │              │
+      ▼           ▼         │          │              │
+┌─────────┐ ┌──────────┐   │          │              │
+│  layout │ │workspace │   │          │              │
+└────┬────┘ └──────────┘   │          │              │
      │                     │          │              │
      ▼                     │          │              │
 ┌─────────┐                │          │              │
@@ -360,12 +400,12 @@ rustdoc-args = ["--cfg", "docsrs"]
       ║ tensor  ║◄──────────────────────────────────┘
       ╚════╤════╝
            │
-     ┌─────┼──────┬──────────┬──────────┐
-     │     │      │          │          │
-     ▼     ▼      ▼          ▼          ▼
-┌────────┐┌──────────┐┌─────┐┌─────────┐┌──────────┐
-│  iter  ││broadcast ││ ffi ││workspace││  index   │
-└───┬────┘└────┬─────┘└─────┘└─────────┘└────┬─────┘
+      ┌─────┼──────┬──────────┐
+      │     │      │          │
+      ▼     ▼      ▼          ▼
+┌────────┐┌──────────┐┌─────┐┌─────────┐
+│  iter  ││broadcast ││ ffi ││  index  │
+└───┬────┘└────┬─────┘└─────┘└────┬─────┘
     │          │                                │
     ▼          │                                ▼
 ┌────────┐     │                          ┌──────────┐
@@ -584,7 +624,7 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 
 | 任务 | 依赖 | 预估复杂度 | 产出 |
 |------|------|------------|------|
-| W2.1 Storage trait | W1.6, W1.8, W1.9 | 高 | `Storage`, `RawStorage` |
+| W2.1 Storage trait | 无 | 高 | `Storage`, `RawStorage`（仅依赖 core/alloc） |
 | W2.2 Owned storage | W2.1 | 中 | `Owned<A>` + 64 字节对齐分配 |
 | W2.3 View storage | W2.1 | 中 | `ViewRepr<&'a A>` |
 | W2.4 ViewMut storage | W2.1 | 中 | `ViewMutRepr<&'a mut A>` |

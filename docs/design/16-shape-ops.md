@@ -333,7 +333,7 @@ slice.reshape([12])?;  // Returns Err(LayoutMismatch), should use into_shape()
 
 ### 5.1 转置布局变化
 
-转置交换步长和形状的顺序，使数组不再是 F-contiguous：
+转置通过直接修改视图的 shape 和 strides 元数据实现，不拷贝数据。具体：交换对应轴的 shape 和 strides 值（即全反转），更新 LayoutFlags（转置后通常不再 F-contiguous）。内部通过创建新的 `TensorView`（共享原始存储的只读引用）实现。
 
 ```
 原始: shape=[2, 3], strides=[1, 2]  (F-order, F-contiguous)

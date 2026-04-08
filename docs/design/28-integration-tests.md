@@ -583,6 +583,8 @@ fn prop_approx_equal(x: f64, y: f64) -> bool {
 
 ### 10.1 assert_tensor_close 实现细节
 
+> `assert_tensor_close` 要求 `A: RealScalar`，其中 `RealScalar` trait 提供 `to_f64() -> f64` 方法（定义于 03-element-types.md §4.4）。确认该方法存在于 RealScalar trait 定义中。如尚未定义，需在 03 文档中补充。
+
 `assert_tensor_close` 的核心逻辑：
 
 1. **形状检查**：先比较 shape，不匹配立即 panic 并附上下文

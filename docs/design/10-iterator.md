@@ -133,20 +133,20 @@ impl<'a, A, D: Dimension> ExactSizeIterator for ElementsMut<'a, A, D> {}
 /// Axis iterator, yields a sub-tensor view with reduced dimension each step.
 ///
 /// Input dimension N, output dimension N-1 views.
-pub struct AxisIter<'a, A, D: Dimension> {
+pub struct AxisIter<'a, A, D: Dimension + RemoveAxis> {
     // Internal fields: view, axis, current position, length
 }
 
 /// Mutable axis iterator.
-pub struct AxisIterMut<'a, A, D: Dimension> {}
+pub struct AxisIterMut<'a, A, D: Dimension + RemoveAxis> {}
 
-impl<'a, A, D: Dimension> Iterator for AxisIter<'a, A, D> {
+impl<'a, A, D: Dimension + RemoveAxis> Iterator for AxisIter<'a, A, D> {
     type Item = TensorView<'a, A, D::Smaller>;
     fn next(&mut self) -> Option<Self::Item>;
     fn size_hint(&self) -> (usize, Option<usize>);
 }
 
-impl<'a, A, D: Dimension> ExactSizeIterator for AxisIter<'a, A, D> {}
+impl<'a, A, D: Dimension + RemoveAxis> ExactSizeIterator for AxisIter<'a, A, D> {}
 ```
 
 > **设计决策：** `AxisIter` 的 `Item` 类型为 `TensorView<'a, A, D::Smaller>`。这要求 `Dimension` trait 提供 `type Smaller: Dimension` 关联类型。零维张量（Ix0）不支持按轴遍历，因为 `Ix0` 无 `Smaller` 类型。
@@ -228,6 +228,11 @@ impl<D: Dimension> Zip<(), D> {
 
 impl<Parts, D: Dimension> Zip<Parts, D> {
     /// Add another tensor to the Zip, handling broadcast automatically.
+    ///
+    /// **注意:** `Zip::and` 要求两个 producer 的维度类型 `D` 必须相同。
+    /// 对于不同维度类型的广播场景（如 Ix2 与 Ix3 组合），应使用
+    /// `11-elementwise-ops.md` 中的 `zip_with` 函数，后者通过
+    /// `BroadcastDim` 约束处理维度不同的情况。
     pub fn and<P: NdProducer<Dim = D>>(self, producer: P)
         -> Result<Zip<(Parts, P), D>, BroadcastError>;
 
@@ -330,9 +335,15 @@ where
         D: RemoveAxis;
 
     /// Sliding window iterator.
+    ///
+    /// **注意：** 零维张量（`Ix0`）不支持 `windows()` 操作，因为该方法要求
+    /// `D: RemoveAxis`，而 `Ix0` 未实现该 trait。
     pub fn windows(&self, size: impl IntoDimension<Dim = D>) -> Option<Windows<'_, A, D>>;
 
     /// Iterate 1D lanes along an axis (yields 1D views along the axis direction).
+    ///
+    /// **注意：** 零维张量（`Ix0`）不支持 `lanes()` 操作，因为该方法要求
+    /// `D: RemoveAxis`，而 `Ix0` 未实现该 trait。
     ///
     /// # Panics
     ///
@@ -430,6 +441,17 @@ increment_index_f(shape, index):
 ```
 
 > **负步长偏移量计算：** 对于负步长，元素偏移量计算为有符号加法：`offset = base_offset + Σ(stride[i] * index[i])`，其中 `stride[i]` 为 `isize`（可为负）。当元素地址 = `base_ptr + offset` 时，负步长意味着向低地址方向遍历。
+>
+> **负步长下的索引递增：** 当 `stride[i] < 0`（负步长，来源于带负步长的切片操作）时，逻辑索引从 `0..n` 递增的方式不变，但物理偏移量的变化方向相反。具体而言：
+> ```
+> // When stride < 0 (negative stride, from slicing with negative step):
+> // To iterate from logical index 0..n, physical offset goes from
+> // (dim_len-1)*|stride| down to 0.
+> // Therefore, the first logical element maps to the highest physical offset
+> // in that dimension, and advancing the logical index decrements the physical offset.
+> // increment_index_f should account for sign of stride when computing the
+> // pointer to dereference, but the index increment logic itself remains the same.
+> ```
 
 ### 5.3 广播可变迭代禁止
 
@@ -443,6 +465,39 @@ increment_index_f(shape, index):
 ### 5.4 填充数组迭代
 
 填充数组的迭代仅遍历逻辑元素。迭代器通过 shape 中的逻辑维度计数，跳过填充区域。
+
+### 5.5 `split_elements_at` — 并行分块内部函数
+
+> **用途：** 本函数供并行后端（`09-parallel-backend.md §4.5`）中的 `ElementsProducer::split_at` 调用，用于将扁平元素视图在指定逻辑索引处一分为二，以支持并行迭代的数据分块。
+
+```rust
+/// Split a flat Elements view at a flat index boundary for parallel iteration.
+///
+/// Returns (left_view, right_view) where left covers [0..index) and right covers [index..len).
+///
+/// # Panics
+/// Panics if index > base.len().
+pub(crate) fn split_elements_at<'a, A, D>(
+    base: TensorView<'a, A, D>,
+    index: usize,
+) -> (TensorView<'a, A, D>, TensorView<'a, A, D>)
+where
+    A: Element,
+    D: Dimension,
+{
+    assert!(index <= base.len(), "split index out of bounds");
+    // Implementation: compute new shapes/strides/offsets for each half
+    // Left: covers the first `index` logical elements
+    // Right: covers the remaining elements starting at logical index `index`
+}
+```
+
+**设计要点：**
+
+- 返回的两个 `TensorView` 共享同一底层数据，但各自的偏移量和长度不同。
+- 对于连续 F-order 视图，分块可直接按指针偏移实现（O(1)）。
+- 对于非连续视图（含转置、切片等），需重新计算步长状态机的起始偏移，仍为 O(ndim)。
+- 该函数标记为 `pub(crate)`，不对外暴露，仅供 `09-parallel-backend.md` 中的 Producer 体系使用。
 
 ---
 
