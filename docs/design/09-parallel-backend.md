@@ -998,13 +998,13 @@ compile_error!("The 'parallel' feature requires the 'std' feature");
 
 ## 版本历史
 
-| 版本 | 日期 | 变更说明 |
-|------|------|----------|
-| 1.0.0 | 2026-04-07 | 初始版本：ParElements/ParZip 迭代器、par_map/par_reduce/par_zip_with |
-| 1.0.1 | 2026-04-07 | 补充嵌套并行防护和线程池管理 |
-| 1.0.2 | 2026-04-08 | 增加分块策略设计 |
-| 1.0.3 | 2026-04-08 | 补充并行错误传播模式 |
-| 1.1.0 | 2026-04-08 | 增加 IndexedParallelIterator 实现和 ElementsProducer；替换 thread_local 为全局 AtomicUsize 并行深度计数；修复 par_zip_with 返回类型使用 BroadcastDim；增加 par_iter() 方法定义；增加 CPU 核心数检查；增加属性测试分类 |
+| 版本 | 日期 |
+|------|------|
+| 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-07 |
+| 1.0.2 | 2026-04-08 |
+| 1.0.3 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 

@@ -63,7 +63,7 @@ src/
 ### 2.1 文件职责
 
 | 文件 | 职责 | 预估行数 |
-|------|------|----------|
+|------|------|
 | `mod.rs` | 模块根，re-exports 所有公共类型 | ~20 |
 | `error.rs` | `WorkspaceError` 枚举及 Display/Error impl | ~40 |
 | `workspace.rs` | `Workspace` 结构体、常量、`new()`、`with_default_capacity()`、`Drop` | ~100 |
@@ -982,15 +982,15 @@ impl std::error::Error for WorkspaceError {}
 
 ## 版本历史
 
-| 版本 | 日期 | 变更说明 |
-|------|------|----------|
-| 1.0.0 | 2026-04-07 | 初始版本 |
-| 1.0.1 | 2026-04-08 | 补充 WorkspaceError 枚举 |
-| 1.0.2 | 2026-04-08 | 添加 WorkspaceBorrow/WorkspaceBorrowMut |
-| 1.1.0 | 2026-04-08 | 添加 SplitBorrowMut 及递归分割 |
-| 1.1.1 | 2026-04-08 | 添加扩容 API |
-| 1.2.0 | 2026-04-08 | 修复 SplitBorrowMut Drop 安全性：使用引用计数防止提前重置 borrow_state |
-| 1.2.1 | 2026-04-08 | 添加 WorkspaceError 完整枚举定义，修复无效交叉引用，移除 XenonError::Other 引用 |
+| 版本 | 日期 |
+|------|------|
+| 1.0.0 | 2026-04-07 |
+| 1.0.1 | 2026-04-08 |
+| 1.0.2 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
+| 1.1.1 | 2026-04-08 |
+| 1.2.0 | 2026-04-08 |
+| 1.2.1 | 2026-04-08 |
 
 ---
 
