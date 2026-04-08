@@ -287,6 +287,10 @@ pub fn sum_bad(&self) -> A {
 }
 ```
 
+### 4.7 WorkspaceError 的独立性
+
+workspace 模块定义了独立的 `WorkspaceError`，不属于 `XenonError` 枚举。这是为了保持 workspace 模块的独立性（workspace 不依赖核心错误类型），同时允许上游通过 `From<WorkspaceError>` 适配到自定义错误类型。
+
 ---
 
 ## 5. 内部实现设计
@@ -306,7 +310,7 @@ pub fn sum_bad(&self) -> A {
 │
 └── 不可恢复错误 (panic)
     ├── IndexOutOfBounds   — 索引越界（与 std slice 行为一致）
-    └── OverflowError      — 整数归约溢出（需求 §14：不可恢复）
+    └── 整数归约溢出       — panic via checked_add（需求 §14：不可恢复）
 ```
 
 ### 5.2 panic vs Result 决策矩阵
@@ -356,22 +360,26 @@ where
 
 ```rust
 // Good - Drop does not panic
+// We store the Layout at construction time (as cap + align) to avoid
+// recomputing in Drop. Using Layout::from_size_align_unchecked is safe
+// because the layout was valid when used for allocation.
 impl<A> Drop for OwnedRepr<A> {
     fn drop(&mut self) {
         // SAFETY: ptr and len are valid by construction
         unsafe {
             let slice = core::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len);
-            self.ptr.drop_in_place(slice);
+            core::ptr::drop_in_place(slice);
         }
-        // deallocation may panic in OOM, but we catch_unwind in Drop context
         if self.cap > 0 {
-            alloc::alloc::dealloc(
-                self.ptr.as_ptr() as *mut u8,
-                alloc::alloc::Layout::array::<A>(self.cap).unwrap_or_else(|_| {
-                    // Layout overflow — memory was never allocated
-                    alloc::alloc::Layout::new::<A>()
-                }),
-            );
+            // SAFETY: layout was valid at allocation time (cap > 0, align is valid),
+            // so from_size_align_unchecked is safe here.
+            unsafe {
+                let layout = alloc::alloc::Layout::from_size_align_unchecked(
+                    self.cap * core::mem::size_of::<A>(),
+                    core::mem::align_of::<A>(),
+                );
+                alloc::alloc::dealloc(self.ptr.as_ptr() as *mut u8, layout);
+            }
         }
     }
 }
@@ -398,66 +406,7 @@ impl std::error::Error for XenonError {}
 
 ---
 
-## 6. 与其他模块的交互
-
-### 6.1 错误产生模块映射
-
-| 模块 | 产生的错误类型 | 触发场景 |
-|------|----------------|----------|
-| `dimension/` | `DimensionMismatch` | IxN ↔ IxDyn 转换（参见 `02-dimension.md §4`） |
-| `tensor/` | `InvalidShape` | reshape 操作（参见 `07-tensor.md §4`） |
-| `tensor/` | `LayoutMismatch` | reshape 非连续数组 |
-| `tensor/` | `EmptyArray` | dot 等操作对空数组 |
-| `ops/` | `ShapeMismatch` | 二元运算形状不兼容（参见 `11-elementwise-ops.md §4`） |
-| `ops/` | `BroadcastError` | 广播失败（参见 `15-broadcast.md §5`） |
-| `ops/` | `InvalidAxis` | sum_axis 轴索引错误（参见 `13-reduction.md §4`） |
-| `ops/` | `OverflowError` | 整数 sum 归约溢出 |
-| `layout/` | `LayoutMismatch` | 连续性检查失败（参见 `06-memory-layout.md §4`） |
-| `index/` | (panic) IndexOutOfBounds | 索引越界（参见 `17-indexing.md §4`） |
-
-### 6.2 错误流向图
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        用户代码                                  │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     Xenon 公共 API                               │
-│  tensor.reshape() / tensor.sum_axis() / a + b / dot()          │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-              ┌──────────────┼──────────────┐
-              ▼              ▼              ▼
-        ┌──────────┐   ┌──────────┐   ┌──────────┐
-        │dimension │   │  ops/    │   │ tensor/  │
-        └────┬─────┘   └────┬─────┘   └────┬─────┘
-             │              │              │
-             │ DimensionMismatch           │ InvalidShape
-             │              │ LayoutMismatch
-             │              │ EmptyArray
-             │ BroadcastError
-             │ ShapeMismatch
-             │ InvalidAxis
-             │ OverflowError
-             │
-             └──────────────┼──────────────┘
-                            ▼
-                   ┌─────────────────┐
-                   │   XenonError    │
-                   │   (error.rs)    │
-                   └─────────────────┘
-                            │
-                            ▼
-                   ┌─────────────────┐
-                   │   Result<T>     │
-                   └─────────────────┘
-```
-
----
-
-## 7. 实现任务拆分
+## 6. 实现任务拆分
 
 ### Wave 1: XenonError 核心
 
@@ -477,7 +426,7 @@ impl std::error::Error for XenonError {}
 
 - [ ] **T3**: 实现 `Display` trait
   - 文件: `src/error.rs`
-  - 内容: 所有 8 个变体的 Display 实现 + `fmt_shape` 辅助函数
+  - 内容: 所有 7 个变体的 Display 实现 + `fmt_shape` 辅助函数
   - 测试: 各变体 to_string() 输出正确
   - 前置: T1
   - 预计: 10 min
@@ -543,9 +492,9 @@ Wave 3: ┌──[T6]────┤
 
 ---
 
-## 8. 测试计划
+## 7. 测试计划
 
-### 8.1 单元测试清单
+### 7.1 单元测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
@@ -556,13 +505,12 @@ Wave 3: ┌──[T6]────┤
 | `test_invalid_shape_display` | InvalidShape 格式化输出 | 高 |
 | `test_dimension_mismatch_display` | DimensionMismatch 格式化输出 | 高 |
 | `test_empty_array_display` | EmptyArray 格式化输出 | 高 |
-
 | `test_error_trait_std` | std feature 下 Error trait 实现 | 中 |
 | `test_result_type_alias` | Result<T> 类型别名可用性 | 中 |
 | `test_partial_eq` | PartialEq 可正确比较相同/不同变体 | 中 |
 | `test_clone` | Clone 产生相等副本 | 低 |
 
-### 8.2 边界测试场景
+### 7.2 边界测试场景
 
 | 场景 | 预期行为 |
 |------|----------|
@@ -570,7 +518,7 @@ Wave 3: ┌──[T6]────┤
 | 大形状 `Cow::Owned(vec![1000000, 1000000])` | Display 正确格式化 |
 | 多次 Display 格式化 | 结果一致（无内部状态变化） |
 
-### 8.3 集成测试场景
+### 7.3 集成测试场景
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
@@ -578,6 +526,65 @@ Wave 3: ┌──[T6]────┤
 | `test_sum_axis_invalid_axis_returns_error` | sum_axis 轴越界返回 InvalidAxis | 高 |
 | `test_dot_empty_array_returns_error` | dot 空数组返回 EmptyArray | 高 |
 | `test_broadcast_incompatible_returns_error` | 不兼容广播返回 BroadcastError | 高 |
+
+---
+
+## 8. 与其他模块的交互
+
+### 8.1 错误产生模块映射
+
+| 模块 | 产生的错误类型 | 触发场景 |
+|------|----------------|----------|
+| `dimension/` | `DimensionMismatch` | IxN ↔ IxDyn 转换（参见 `02-dimension.md §4`） |
+| `tensor/` | `InvalidShape` | reshape 操作（参见 `07-tensor.md §4`） |
+| `tensor/` | `LayoutMismatch` | reshape 非连续数组 |
+| `tensor/` | `EmptyArray` | dot 等操作对空数组 |
+| `ops/` | `ShapeMismatch` | 二元运算形状不兼容（参见 `11-elementwise-ops.md §4`） |
+| `ops/` | `BroadcastError` | 广播失败（参见 `15-broadcast.md §5`） |
+| `ops/` | `InvalidAxis` | sum_axis 轴索引错误（参见 `13-reduction.md §4`） |
+| `ops/` | 整数 sum 归约溢出 → panic（非 XenonError，使用 checked_add().expect()） | 整数归约溢出 |
+| `layout/` | `LayoutMismatch` | 连续性检查失败（参见 `06-memory-layout.md §4`） |
+| `index/` | (panic) IndexOutOfBounds | 索引越界（参见 `17-indexing.md §4`） |
+
+### 8.2 错误流向图
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        用户代码                                  │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     Xenon 公共 API                               │
+│  tensor.reshape() / tensor.sum_axis() / a + b / dot()          │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              ▼              ▼              ▼
+        ┌──────────┐   ┌──────────┐   ┌──────────┐
+        │dimension │   │  ops/    │   │ tensor/  │
+        └────┬─────┘   └────┬─────┘   └────┬─────┘
+             │              │              │
+             │ DimensionMismatch           │ InvalidShape
+             │              │ LayoutMismatch
+             │              │ EmptyArray
+             │ BroadcastError
+             │ ShapeMismatch
+             │ InvalidAxis
+             │ 整数归约溢出(panic)
+             │
+             └──────────────┼──────────────┘
+                            ▼
+                   ┌─────────────────┐
+                   │   XenonError    │
+                   │   (error.rs)    │
+                   └─────────────────┘
+                            │
+                            ▼
+                   ┌─────────────────┐
+                   │   Result<T>     │
+                   └─────────────────┘
+```
 
 ---
 
@@ -639,6 +646,8 @@ Wave 3: ┌──[T6]────┤
 | 1.0.1 | 2026-04-08 |
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
+| 1.0.4 | 2026-04-08 |
+| 1.0.5 | 2026-04-08 |
 
 ---
 

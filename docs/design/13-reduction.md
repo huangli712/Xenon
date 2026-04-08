@@ -145,6 +145,11 @@ where
     ///
     /// `Tensor<A, D::Smaller>` — result has one fewer dimension.
     ///
+    /// # Errors
+    ///
+    /// Returns `Err(XenonError::InvalidAxis { axis: axis.index(), ndim: self.ndim() })`
+    /// if `axis` is out of bounds.
+    ///
     /// # Examples
     ///
     /// ```
@@ -165,6 +170,11 @@ where
     /// # Returns
     ///
     /// `Tensor<A, D>` — result has the same number of dimensions; reduced axis has length 1.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(XenonError::InvalidAxis { axis: axis.index(), ndim: self.ndim() })`
+    /// if `axis` is out of bounds.
     ///
     /// # Examples
     ///
@@ -192,12 +202,12 @@ assert_eq!(empty.sum(), 0);
 
 // Good - axis reduction
 let m = Tensor2::from_shape_vec([2, 3], vec![1,2,3,4,5,6]);
-    let row_sum = m.sum_axis(Axis(0));
+let row_sum = m.sum_axis(Axis(0));
 
 // Bad - manual sum implementation (may miss overflow checks)
 let mut total = 0i32;
 for &x in tensor.iter() {
-    total += x;  // Not recommended: undefined behavior on integer overflow
+    total += x;  // Not recommended: silently wraps around in release mode (Rust integer overflow behavior)
 }
 
 // Bad - using unwrap() ignoring errors
@@ -502,6 +512,7 @@ use alloc::vec::Vec;
 | 1.0.4 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-08 |
+| 1.1.2 | 2026-04-08 |
 
 ---
 

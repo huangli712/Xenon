@@ -106,7 +106,7 @@ src/
 ### 4.1 zeros / ones / fill
 
 ```rust
-impl<A, D> Tensor<A, D>
+impl<A, D> TensorBase<Owned<A>, D>
 where
     A: Element,
     D: Dimension,
@@ -170,7 +170,7 @@ where
 ### 4.2 eye（单位矩阵）
 
 ```rust
-impl<A> Tensor<A, Ix2>
+impl<A> TensorBase<Owned<A>, Ix2>
 where
     A: Element,
 {
@@ -201,7 +201,7 @@ where
 ### 4.3 from_vec / from_slice / from_array
 
 ```rust
-impl<A, D> Tensor<A, D>
+impl<A, D> TensorBase<Owned<A>, D>
 where
     A: Element,
     D: Dimension,
@@ -209,6 +209,10 @@ where
     /// Construct a tensor from a Vec (with specified shape, F-order).
     ///
     /// Validates that the Vec length matches the total number of elements in the shape.
+    ///
+    /// # Data Layout
+    /// The elements in `data` must be laid out in **column-major (F-order)** order.
+    /// That is, the first dimension varies fastest.
     ///
     /// # Errors
     /// Returns `InvalidShape` if `data.len() != shape.size()`.
@@ -285,7 +289,7 @@ where
 ### 4.4 from_scalar / from_fn
 
 ```rust
-impl<A> Tensor<A, Ix0>
+impl<A> TensorBase<Owned<A>, Ix0>
 where
     A: Element,
 {
@@ -306,7 +310,7 @@ where
     }
 }
 
-impl<A, D> Tensor<A, D>
+impl<A, D> TensorBase<Owned<A>, D>
 where
     A: Element,
     D: Dimension,
@@ -594,6 +598,8 @@ Wave 4:           [T6]
 | `from_vec` | 转移所有权 | O(1)（不拷贝） |
 | `eye` 大矩阵 | 先零后对角 | n 次 `write` + n² 次 `write_bytes` |
 
+> **注意**：`from_array` 当前存在双重拷贝（源数组 → Vec → 对齐分配），未来版本可优化为直接构建。
+
 ---
 
 ## 11. no_std 兼容性
@@ -645,6 +651,7 @@ use alloc::vec::Vec;
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.1.1 | 2026-04-08 |
 
 ---
 

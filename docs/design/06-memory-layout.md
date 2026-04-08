@@ -431,7 +431,32 @@ impl Layout {
 }
 ```
 
-### 4.9 Good/Bad 对比
+### 4.9 compute_flags 内部函数
+
+```rust
+/// Computes layout flags from shape, strides, and data pointer.
+///
+/// This is the central function that determines all layout properties
+/// at tensor construction time. The result is cached in TensorBase.flags
+/// for O(1) queries thereafter.
+///
+/// # Arguments
+///
+/// * `shape` - Dimension lengths
+/// * `strides` - Strides in element units (isize stored as usize in D)
+/// * `ptr` - Raw pointer to the data start
+///
+/// # Returns
+///
+/// A `LayoutFlags` instance with all relevant flags set.
+pub(crate) fn compute_flags<A, D: Dimension>(
+    shape: &D,
+    strides: &D,
+    ptr: *const A,
+) -> LayoutFlags
+```
+
+### 4.10 Good/Bad 对比
 
 ```rust
 // Good - F-order stride computation
@@ -489,7 +514,7 @@ function compute_flags(shape, strides, ptr):
 |------|----------------|
 | 创建 | 全部重新计算 |
 | 切片 | 继承 + 重新计算连续性/对齐 |
-| 转置 | 继承 + 重新计算连续性（F/C 交换） |
+| 转置 | 继承 + F 连续性标志重置（转置后通常变为非 F-连续） |
 | Reshape | 重新计算全部 |
 | 视图创建 | 继承全部 |
 | 广播 | 继承 + 设置零步长标志 |
@@ -498,9 +523,7 @@ function compute_flags(shape, strides, ptr):
 
 Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的只读查询，结果缓存在 `LayoutFlags` 中。
 
----
-
-## 6. 与 Dimension 模块的接口
+### 5.5 与 Dimension 模块的接口
 
 步长存储在 `D` 类型（与 shape 同类型）中，但实际步长值为 `isize`。Dimension trait 提供以下方法进行 usize/isize 转换（定义参见 `02-dimension.md §4`）：
 
@@ -512,7 +535,7 @@ Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的
 
 ---
 
-## 7. 实现任务拆分
+## 6. 实现任务拆分
 
 ### Wave 1: 基础设施
 
@@ -592,9 +615,9 @@ Wave 4:       [T8]
 
 ---
 
-## 8. 测试计划
+## 7. 测试计划
 
-### 8.1 测试分类
+### 7.1 测试分类
 
 | 类型 | 位置 | 目的 |
 |------|------|------|
@@ -602,7 +625,7 @@ Wave 4:       [T8]
 | 集成测试 | `tests/` | 验证跨维度类型交互 |
 | 边界测试 | 集成测试中标注 | 空数组、标量、高维 |
 
-### 8.2 单元测试清单
+### 7.2 单元测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
@@ -621,7 +644,7 @@ Wave 4:       [T8]
 | `test_flags_all_set` | 所有标志位同时设置 | 中 |
 | `test_flags_default_empty` | 默认值为空 | 高 |
 
-### 8.3 边界测试场景
+### 7.3 边界测试场景
 
 | 场景 | 预期行为 |
 |------|----------|
@@ -630,25 +653,25 @@ Wave 4:       [T8]
 | 1D 数组 `shape=[5]` | F-连续为 true |
 | 高维 `shape=[2,2,2,2,2,2]` | F-连续，步长 `[1,2,4,8,16,32]` |
 
-### 8.4 属性测试不变量
+### 7.4 属性测试不变量
 
 | 不变量 | 测试方法 |
 |--------|----------|
-| F-步长乘积 == 总元素数 | `product(strides[i] * shape[i]) == total` |
+| F-步长乘积 == 总元素数 | `product(shape[i]) == total` |
 | 空数组/标量始终 F-连续 | 随机 0D/空 shape |
 | `compute_f_strides` 后 `is_f_contiguous` 返回 true | 随机 shape |
 
 ---
 
-## 9. 与其他模块的交互
+## 8. 与其他模块的交互
 
-### 9.1 与 Storage 模块
+### 8.1 与 Storage 模块
 
 | 交互点 | 方向 | 说明 |
 |--------|------|------|
 | 对齐检查 | tensor/storage → layout | `TensorBase` 构造时将数据指针传入 `layout::is_aligned()` 计算对齐标志。layout 不依赖 Storage trait，仅操作原始指针。 |
 
-### 9.2 与 Tensor 模块
+### 8.2 与 Tensor 模块
 
 | 交互点 | 方向 | 说明 |
 |--------|------|------|
@@ -656,14 +679,14 @@ Wave 4:       [T8]
 | 切片操作 | tensor → layout | 切片时调用 layout 更新连续性/对齐标志（参见 `17-indexing.md §5`） |
 | Reshape | tensor → layout | reshape 时重新计算步长和 layout（参见 `16-shape-ops.md §4`） |
 
-### 9.3 与 SIMD 模块
+### 8.3 与 SIMD 模块
 
 | 交互点 | 方向 | 说明 |
 |--------|------|------|
 | 路径选择 | simd ← layout | simd 查询 `is_aligned()` 和 `is_f_contiguous()`（参见 `08-simd-backend.md §4.6`） |
 | 步长检查 | simd ← layout | simd 检查步长是否为 1（连续） |
 
-### 9.4 与 FFI 模块
+### 8.4 与 FFI 模块
 
 | 交互点 | 方向 | 说明 |
 |--------|------|------|
@@ -672,7 +695,7 @@ Wave 4:       [T8]
 
 ---
 
-## 10. 设计决策记录
+## 9. 设计决策记录
 
 ### 决策 1：F-order only
 
@@ -711,7 +734,7 @@ Wave 4:       [T8]
 
 ---
 
-## 11. 性能考量
+## 10. 性能考量
 
 | 方面 | 设计决策 |
 |------|----------|
@@ -739,9 +762,9 @@ Wave 4:       [T8]
 
 ---
 
-## 12. no_std 兼容性
+## 11. no_std 兼容性
 
-### 12.1 兼容性状态
+### 11.1 兼容性状态
 
 | 组件 | no_std 兼容 | 说明 |
 |------|:-----------:|------|
@@ -752,7 +775,7 @@ Wave 4:       [T8]
 | `has_zero_stride` / `has_neg_stride` | ✅ | 纯遍历比较 |
 | `Layout` | ✅ | 仅含 `LayoutFlags` 和 `usize` |
 
-### 12.2 条件编译
+### 11.2 条件编译
 
 本模块无需条件编译，所有代码在 `no_std` 环境下均可直接使用。
 
@@ -771,6 +794,7 @@ Wave 4:       [T8]
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.2.0 | 2026-04-08 |
 
 ---
 

@@ -121,11 +121,14 @@ pub struct TensorBase<S, D> {
 
     /// Stride of each axis (in element units).
     ///
-    /// > **Design Decision:** Strides are stored in the D type, but actual values need to support negatives.
-    /// D internally stores `usize`, while the layout layer maintains `isize` strides.
-    /// For scenarios requiring negative strides (slice reversal), strides are accessed via the layout
-    /// module's `isize` interface. D stores absolute values, with signs tracked by `LayoutFlags::HAS_NEG_STRIDE`.
-    /// See §9 ADR-2 for details.
+    /// > **Design Decision:** Strides are stored as `usize` values in the D type
+    /// > (same type as shape, guaranteeing matching dimension count at compile time).
+    /// > Negative strides are represented as large `usize` values (two's complement
+    /// > representation), and can be zero-cost reinterpret-cast to `isize` via
+    /// > `strides_isize()` on the Dimension trait. `LayoutFlags::HAS_NEG_STRIDE` is
+    /// > a cached flag for fast query optimization only—it does not affect the stored
+    /// > stride values themselves.
+    /// > See §9 ADR-2 for details.
     strides: D,
 
     /// Data start offset (in element units).
@@ -261,6 +264,13 @@ where
     pub fn has_neg_stride(&self) -> bool {
         self.flags.has_neg_stride()
     }
+
+    /// Returns true if the tensor is contiguous in memory.
+    ///
+    /// For Xenon (F-order only library), this is equivalent to `is_f_contiguous()`.
+    pub fn is_contiguous(&self) -> bool {
+        self.is_f_contiguous()
+    }
 }
 ```
 
@@ -318,6 +328,16 @@ where
     /// let t = Tensor2::<f64>::from_shape_vec([3, 4], vec![1.0; 12])?;
     /// ```
     pub fn from_shape_vec(shape: D, data: Vec<A>) -> Result<Self, XenonError>;
+
+    /// Construct a tensor from a Vec without validating shape/stride consistency.
+    ///
+    /// # Safety
+    /// - `data.len()` must equal the product of all shape dimensions
+    /// - `shape` and `strides` must be consistent with the data layout
+    pub(crate) unsafe fn from_raw_vec_unchecked(data: Vec<A>, shape: D) -> Self {
+        // computes F-order strides internally
+        // ...
+    }
 }
 ```
 
@@ -491,71 +511,7 @@ Tensor2<f64> = TensorBase<Owned<f64>, Ix2>
 
 ---
 
-## 6. 与其他模块的接口约定
-
-### 6.1 与 storage 模块的接口
-
-```rust
-// TensorBase obtains element type via Storage trait's associated type
-impl<S, D, A> TensorBase<S, D>
-where
-    S: Storage<Elem = A>,
-    D: Dimension,
-{
-    pub fn as_ptr(&self) -> *const A {
-        unsafe { self.storage.as_ptr().add(self.offset) }
-    }
-}
-```
-
-### 6.2 与 dimension 模块的接口
-
-```rust
-// Dimension trait provides shape and stride operations
-impl<S, D> TensorBase<S, D>
-where
-    D: Dimension,
-{
-    pub fn shape(&self) -> &[usize] {
-        self.shape.slice()
-    }
-
-    pub fn len(&self) -> usize {
-        self.shape.size()
-    }
-}
-```
-
-### 6.3 与 layout 模块的接口
-
-```rust
-// Layout module provides stride computation and contiguity checks
-// TensorBase computes LayoutFlags during construction
-impl<A, D> TensorBase<Owned<A>, D>
-where
-    D: Dimension,
-{
-    pub fn from_shape_vec(shape: D, data: Vec<A>) -> Result<Self, XenonError> {
-        if data.len() != shape.size() {
-            return Err(ShapeError);
-        }
-        let strides = layout::compute_f_strides(&shape);
-        let ptr = data.as_ptr();
-        let flags = layout::compute_flags(&shape, &strides, ptr);
-        Ok(Self {
-            storage: Owned::from_vec(data),
-            shape,
-            strides,  // isize → D conversion
-            offset: 0,
-            flags,
-        })
-    }
-}
-```
-
----
-
-## 7. 实现任务拆分
+## 6. 实现任务拆分
 
 ### Wave 1: 结构体定义和基础
 
@@ -651,9 +607,9 @@ Wave 4:       [T10]
 
 ---
 
-## 8. 测试计划
+## 7. 测试计划
 
-### 8.1 测试分类
+### 7.1 测试分类
 
 | 类型 | 位置 | 目的 |
 |------|------|------|
@@ -662,7 +618,7 @@ Wave 4:       [T10]
 | 边界测试 | 集成测试中标注 | 空数组、单元素、高维 |
 | 编译测试 | `tests compile_fail` | 验证类型约束 |
 
-### 8.2 单元测试清单
+### 7.2 单元测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
@@ -684,7 +640,7 @@ Wave 4:       [T10]
 | `test_tensor0_scalar` | 0D 标量张量 `len()==1` | 中 |
 | `test_tensor_empty_dim` | 含 0 维度的张量 `is_empty()` | 中 |
 
-### 8.3 边界测试场景
+### 7.3 边界测试场景
 
 | 场景 | 预期行为 |
 |------|----------|
@@ -694,7 +650,7 @@ Wave 4:       [T10]
 | 高维 `Tensor6` | `ndim()==6`, 步长正确 |
 | 动态维度 `TensorD` | `ndim()` 运行时值正确 |
 
-### 8.4 属性测试不变量
+### 7.4 属性测试不变量
 
 | 不变量 | 测试方法 |
 |--------|----------|
@@ -704,7 +660,7 @@ Wave 4:       [T10]
 
 ---
 
-## 9. 设计决策记录
+## 8. 设计决策记录
 
 ### 决策 1：TensorBase\<S, D\> 双参数泛型设计
 
@@ -744,7 +700,7 @@ Wave 4:       [T10]
 
 ---
 
-## 10. 性能考量
+## 9. 性能考量
 
 | 方面 | 设计决策 |
 |------|----------|
@@ -759,7 +715,7 @@ Wave 4:       [T10]
 | 实例化 | 大小（估算） | 说明 |
 |--------|-------------|------|
 | `Tensor2<f64>` | ~56 bytes | Owned(24) + Ix2(16) + Ix2(16) + usize(8) + u8(1) + padding |
-| `TensorView2<f64>` | ~41 bytes | ViewRepr(16) + Ix2(16) + Ix2(16) + usize(8) + u8(1) + padding |
+| `TensorView2<f64>` | ~56 bytes | ViewRepr<&'a f64>(≈ 8 bytes: 裸指针+PhantomData) + Ix2(16) + Ix2(16) + usize(8) + u8(1) + padding ≈ 56 bytes |
 | `TensorD<f64>` | ~96 bytes | Owned(24) + IxDyn(24×2) + usize(8) + u8(1) + padding |
 
 **性能数据（参考）**：
@@ -773,7 +729,7 @@ Wave 4:       [T10]
 
 ---
 
-## 11. no_std 兼容性
+## 10. no_std 兼容性
 
 张量模块在 `no_std` 环境下的支持情况取决于存储模式和维度类型。
 
@@ -806,6 +762,70 @@ extern crate alloc;
 // ArcRepr uses alloc::sync::Arc
 // IxDyn uses alloc::vec::Vec for dynamic dimensions
 // ViewRepr/ViewMutRepr are pure core — no alloc needed
+```
+
+---
+
+## 11. 与其他模块的交互
+
+### 11.1 与 storage 模块的接口
+
+```rust
+// TensorBase obtains element type via Storage trait's associated type
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+{
+    pub fn as_ptr(&self) -> *const A {
+        unsafe { self.storage.as_ptr().add(self.offset) }
+    }
+}
+```
+
+### 11.2 与 dimension 模块的接口
+
+```rust
+// Dimension trait provides shape and stride operations
+impl<S, D> TensorBase<S, D>
+where
+    D: Dimension,
+{
+    pub fn shape(&self) -> &[usize] {
+        self.shape.slice()
+    }
+
+    pub fn len(&self) -> usize {
+        self.shape.size()
+    }
+}
+```
+
+### 11.3 与 layout 模块的接口
+
+```rust
+// Layout module provides stride computation and contiguity checks
+// TensorBase computes LayoutFlags during construction
+impl<A, D> TensorBase<Owned<A>, D>
+where
+    D: Dimension,
+{
+    pub fn from_shape_vec(shape: D, data: Vec<A>) -> Result<Self, XenonError> {
+        if data.len() != shape.size() {
+            return Err(ShapeError);
+        }
+        let strides = layout::compute_f_strides(&shape);
+        let ptr = data.as_ptr();
+        let flags = layout::compute_flags(&shape, &strides, ptr);
+        Ok(Self {
+            storage: Owned::from_vec(data),
+            shape,
+            strides,  // isize → D conversion
+            offset: 0,
+            flags,
+        })
+    }
+}
 ```
 
 ---
@@ -867,6 +887,7 @@ extern crate alloc;
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 

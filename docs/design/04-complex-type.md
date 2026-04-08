@@ -154,8 +154,8 @@ pub(crate) trait Float:
     fn is_finite(self) -> bool;
 }
 
-impl Float for f32 { /* delegates to std/libm */ }
-impl Float for f64 { /* delegates to std/libm */ }
+impl Float for f32 { /* delegates to inherent methods */ }
+impl Float for f64 { /* delegates to inherent methods */ }
 ```
 
 ### 4.3 构造方法
@@ -224,6 +224,18 @@ impl<T: Float> Complex<T> {
     #[inline]
     pub fn is_imaginary(self) -> bool {
         self.re == T::zero()
+    }
+
+    /// Returns true if either part is NaN.
+    #[inline]
+    pub fn is_nan(self) -> bool {
+        self.re.is_nan() || self.im.is_nan()
+    }
+
+    /// Returns true if both parts are finite (not NaN and not infinite).
+    #[inline]
+    pub fn is_finite(self) -> bool {
+        self.re.is_finite() && self.im.is_finite()
     }
 }
 ```
@@ -431,7 +443,14 @@ impl<T: Float> PartialEq for Complex<T> {
 ```rust
 impl<T: Float + core::fmt::Display> core::fmt::Display for Complex<T> {
     /// Formats as "a+bi", "a-bi", "a", "bi", or "0".
+    ///
+    /// NaN handling: when the imaginary part is NaN, explicitly display
+    /// as "re+NaNi" (or "re-NaNi") to avoid the ambiguity of NaN comparison
+    /// in the `im > T::zero()` branch.
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if self.im.is_nan() {
+            return write!(f, "{}+NaNi", self.re);
+        }
         if self.im == T::zero() {
             write!(f, "{}", self.re)
         } else if self.re == T::zero() {
@@ -459,13 +478,20 @@ impl<T: Float + core::fmt::Display> core::fmt::Display for Complex<T> {
 // Precision promotion: f32 -> f64 (lossless)
 impl From<Complex<f32>> for Complex<f64> {
     #[inline]
-    fn from(z: Complex<f32>) -> Self { Self::new(z.re as f64, z.im as f64) }
+    fn from(z: Complex<f32>) -> Self {
+        // Lossless: f32 → f64 preserves all bits
+        Self::new(f64::from(z.re), f64::from(z.im))
+    }
 }
 
 // Precision reduction: f64 -> f32 (may lose precision)
 impl From<Complex<f64>> for Complex<f32> {
     #[inline]
-    fn from(z: Complex<f64>) -> Self { Self::new(z.re as f32, z.im as f32) }
+    fn from(z: Complex<f64>) -> Self {
+        // CAST: lossy f64→f32 truncation, follows IEEE 754 round-to-nearest-even.
+        // This is the only permitted `as` cast for numeric conversion (lossy by design).
+        Self::new(z.re as f32, z.im as f32)
+    }
 }
 
 // Real -> Complex (same precision)
@@ -850,8 +876,10 @@ Wave 5: [T11] → [T12]
 | `Complex<T>` 结构体 | 纯 `#[repr(C)]`，天然 no_std |
 | 基础方法 | 仅依赖 `core`，天然 no_std |
 | 算术运算 | 仅依赖 `core::ops`，天然 no_std |
-| 数学方法 | `#[cfg(feature = "std")]` 使用 `std` 数学；`#[cfg(not(feature = "std"))]` 使用 `libm` crate |
-| 类型转换 | `as` 转换，天然 no_std |
+| 数学方法（exp/ln/sqrt/arg/from_polar 等） | `#[cfg(feature = "std")]` 下通过 `Float` trait 的 std 实现提供。no_std 环境下这些数学方法不可用（`Float` trait 无实现者），仅基础算术运算（+/-/*/共轭/模平方等）可用 |
+| 类型转换 | `From` trait 实现，天然 no_std |
+
+> **与 `00-coding-standards.md` §9.1 保持一致**：libm **不是** Xenon 的依赖。`RealScalar` 和 `Complex<T>` 的数学方法仅在 `std` feature 下可用。
 
 ---
 
@@ -862,6 +890,7 @@ Wave 5: [T11] → [T12]
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 

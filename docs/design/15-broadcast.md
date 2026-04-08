@@ -28,7 +28,7 @@
 | 只读约束 | 广播视图只允许只读访问，禁止可变迭代 |
 | NumPy 兼容 | 严格遵循 NumPy 广播规则，降低迁移成本 |
 | O(1) 创建 | 广播视图创建仅需调整元数据，O(ndim) 时间 |
-| 锶步长安全 | 零步长访问永远不会越界，安全性由不变式保证 |
+| 零步长安全 | 零步长访问永远不会越界，安全性由不变式保证 |
 
 ### 1.3 在架构中的位置
 
@@ -82,7 +82,7 @@ src/
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
 | `error` | `XenonError::BroadcastError`，参见 `26-error-handling.md` §4 |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.size()`，参见 `02-dimension.md` §3 |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<E>` trait, `.slice()`, `.size()`，参见 `02-dimension.md` §3, §4.9 |
 | `tensor` | `TensorBase<S, D>`, `TensorView`, `.shape()`, `.strides()`，参见 `07-tensor.md` §4 |
 
 ### 3.3 依赖方向声明
@@ -136,20 +136,24 @@ pub fn can_broadcast(shape_a: &[usize], shape_b: &[usize]) -> bool;
 ### 4.3 广播步长计算
 
 ```rust
-/// Compute strides after broadcasting (including zero strides).
+/// Compute broadcast strides. Zero strides are inserted for broadcasted dimensions.
+/// Returns strides as isize (negative strides from source are preserved).
 ///
-/// When the original dimension size is 1 and the target dimension size > 1,
-/// the stride is set to 0. New dimensions (left-padded) also have stride 0.
+/// Broadcast dimensions have stride 0; non-broadcast dimensions preserve the
+/// original stride (including sign).
 ///
 /// # Arguments
 /// * `orig_shape` - The original shape
 /// * `orig_strides` - The original strides
 /// * `target_shape` - The target broadcast shape
+///
+/// # Returns
+/// `Vec<isize>` — strides for the broadcasted view, with 0 for broadcast dims.
 pub fn broadcast_strides(
     orig_shape: &[usize],
     orig_strides: &[isize],
     target_shape: &[usize],
-) -> IxDyn;
+) -> Vec<isize>;
 ```
 
 ### 4.4 显式广播方法
@@ -189,6 +193,11 @@ where
 /// Simultaneously broadcast two tensor views to a common shape.
 ///
 /// Convenience method that internally calls `broadcast_shape` + two `broadcast_to`.
+///
+/// The return type uses the `BroadcastDim<E>` trait (defined in `02-dimension.md §4.9`)
+/// to determine the broadcasted dimension type. For example:
+/// - `Ix2::broadcast_dim(Ix1)` returns `Ix2`
+/// - `IxDyn::broadcast_dim(any)` returns `IxDyn`
 pub fn broadcast_with<'a, A, D, E>(
     a: &TensorView<'a, A, D>,
     b: &TensorView<'a, A, E>,
@@ -540,7 +549,7 @@ use alloc::vec::Vec;
 |------|:----------:|------|
 | `can_broadcast()` | ✅ | 纯计算函数，无堆分配 |
 | `broadcast_shape()` | ✅ | 返回 `IxDyn`（内部 `Vec<usize>`），需 `alloc` |
-| `broadcast_strides()` | ✅ | 返回 `IxDyn`（内部 `Vec<usize>`），需 `alloc` |
+| `broadcast_strides()` | ✅ | 返回 `Vec<isize>`，需 `alloc` |
 | `broadcast_to()` | ✅ | 创建 `TensorView`（零拷贝），无堆分配 |
 | `broadcast_with()` | ✅ | 创建两个 `TensorView`，需 `no_std + alloc`（IxDyn），参见 `02-dimension.md` §3 |
 | `BroadcastError` | ✅ | 使用 `core::fmt::Display`，无堆依赖，参见 `26-error-handling.md` §4 |
@@ -568,6 +577,7 @@ extern crate alloc;
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.1.1 | 2026-04-08 |
 
 ---
 

@@ -104,6 +104,10 @@ src/workspace/
 
 > **依赖方向：单向。** `workspace` 仅依赖 `core` 和 `alloc`，不依赖 `tensor`（参见 `07-tensor.md §3`）。上游库和 `tensor` 可消费 `workspace`。
 
+### 3.4 WorkspaceError 的独立性
+
+`WorkspaceError` 是 workspace 模块的独立错误类型，不属于 `XenonError` 枚举。上游代码可将 `WorkspaceError` 通过 `From`/`into()` 转换为 `XenonError::Other` 或自定义错误类型处理。
+
 ---
 
 ## 4. 公共 API 设计
@@ -187,6 +191,12 @@ impl Workspace {
     /// Growth factor numerator (1.5x).
     const GROWTH_FACTOR_NUMERATOR: usize = 3;
     const GROWTH_FACTOR_DENOMINATOR: usize = 2;
+
+    /// Returns the current capacity in bytes.
+    pub fn capacity(&self) -> usize { self.capacity }
+
+    /// Returns the alignment in bytes at allocation time.
+    pub fn alignment(&self) -> usize { self.alignment }
 }
 ```
 
@@ -518,6 +528,10 @@ impl<'a> SplitBorrowMut<'a> {
 /// Since both sub-spaces share the same non-overlapping memory, releasing either one
 /// makes the entire workspace available again.
 ///
+/// **注意：drop 任一子空间会重置 borrow_state，若另一个子空间仍在使用中，
+/// 调用方必须确保两个子空间在同一词法作用域内，并在访问完成前都保持存活。
+/// 这是一个需要调用方谨慎使用的 API。**
+///
 /// # Safety Invariant
 ///
 /// After `drop`, the caller must not use any existing references into the workspace
@@ -771,8 +785,6 @@ ensure_capacity(&mut self, 2048)
   - 内容: 完善公共导出、完整文档注释、使用示例
   - 测试: `cargo doc` 通过
   - 前置: T4, T5, T6
-  - 测试: `cargo doc` 通过
-  - 前置: T5, T6
   - 预计: 10 min
 
 ### 并行执行图
@@ -880,6 +892,14 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 | 理由 | 性能: 零初始化是 O(n) 操作;不必要: 大多数场景下调用方会覆盖全部数据;与 C 一致: 与 malloc 行为一致 |
 | 替代方案 | 构造时零初始化 — 放弃，性能损失 |
 
+### 决策 5：Workspace 不实现 Send/Sync
+
+| 属性 | 值 |
+|------|-----|
+| 决策 | Workspace 不实现 Send 或 Sync |
+| 理由 | Workspace 包含 NonNull<u8>，默认 !Send !Sync。跨线程共享工作空间需要外部同步机制（如 Mutex）。若需要线程间传递，调用方应使用 Arc<Mutex<Workspace>> 包装。 |
+| 替代方案 | 使用 AtomicU8 实现 Send + Sync — 放弃，仅有运行时检查不够，多线程场景下需要完整同步 |
+
 ---
 
 ## 10. 性能考量
@@ -939,6 +959,8 @@ impl std::error::Error for WorkspaceError {}
 | 1.0.2 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-08 |
+| 1.2.0 | 2026-04-08 |
+| 1.2.1 | 2026-04-08 |
 
 ---
 

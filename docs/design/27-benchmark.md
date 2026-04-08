@@ -156,13 +156,13 @@ pub mod data_gen;
 pub const SIZES_1D: &[usize] = &[64, 65_536, 16_777_216];
 
 /// Standard benchmark sizes: Small / Medium / Large (2D square).
-pub const SIZES_2D: &[[(usize, usize); 3]] = &[
-    [(8, 8), (256, 256), (4096, 4096)],
+pub const SIZES_2D: &[(usize, usize)] = &[
+    (8, 8), (256, 256), (4096, 4096),
 ];
 
 /// Standard benchmark sizes: Small / Medium / Large (3D).
-pub const SIZES_3D: &[[(usize, usize, usize); 3]] = &[
-    [(4, 4, 4), (64, 32, 32), (256, 256, 256)],
+pub const SIZES_3D: &[(usize, usize, usize)] = &[
+    (4, 4, 4), (64, 32, 32), (256, 256, 256),
 ];
 ```
 
@@ -273,7 +273,7 @@ Benchmark 分类
 
 | 工作流 | 基准数量 | 预计时间 | 频率 |
 |--------|----------|----------|------|
-| **Smoke Test** | 3 个核心文件 × `--quick` | ~5 min | 每次 PR |
+| **Smoke Test** | 3 个核心文件 × `--sample-size 10` | ~5 min | 每次 PR |
 | **Regression Check** | 1-2 个热点基准 | ~10 min | 每次 PR |
 | **Full Benchmark** | 全部文件 × 4 feature 组合 | ~60 min | 每周/合并到 main |
 
@@ -296,9 +296,9 @@ benchmark-smoke:
 
         - name: Smoke benchmarks
           run: |
-            cargo bench --bench elementwise -- "elem_add_f64" --quick
-            cargo bench --bench reduction -- "sum_1d" --quick
-            cargo bench --bench construction -- "zeros_1d" --quick
+            cargo bench --bench elementwise -- "elem_add_f64" --sample-size 10
+            cargo bench --bench reduction -- "sum_1d" --sample-size 10
+            cargo bench --bench construction -- "zeros_1d" --sample-size 10
 
         - name: Store results
           uses: benchmark-action/github-action-benchmark@v1
@@ -394,7 +394,77 @@ fn bench_sum_bad2(c: &mut Criterion) {
 
 ---
 
-## 12. 实现任务拆分
+## 12. 内部实现
+
+### 12.1 测量方法论
+
+使用 criterion 的默认测量策略：迭代式计时 + 统计分析。
+
+| 阶段 | 说明 |
+|------|------|
+| 预热 (warm-up) | 每个基准先运行 3 秒预热，消除冷启动效应 |
+| 采样 (sampling) | 默认 100 次采样，Smoke Test 使用 `--sample-size 10` |
+| 统计 | 剔除异常值（outlier removal），计算 95% 置信区间 |
+| 报告 | HTML 报告（含趋势图） + CLI 文本摘要 |
+
+### 12.2 数据生成策略
+
+| 策略 | 实现 | 说明 |
+|------|------|------|
+| 顺序填充 | `from_fn([n], \|idx\| idx[0] as f64)` | 可重复，无随机性 |
+| 预分配 + 复用 | 数据在 `bench_with_input` 闭包外生成 | 避免测量中混入构造开销 |
+| 非连续视图 | `slice(s![..;2])` 或 `slice(s![.., 0..n-1])` | 模拟真实切片场景 |
+
+> **设计决策**：所有数据在迭代回调外预生成（参见 §11.2 Bad 示例），确保仅测量目标操作本身的性能。
+
+### 12.3 black_box 使用规范
+
+```rust
+// Good: black_box wraps the entire expression to prevent dead code elimination
+b.iter(|| black_box(&a + &b));
+
+// Good: black_box wraps input to prevent constant folding
+b.iter(|| black_box(a) + black_box(b));
+
+// Bad: forgetting black_box allows compiler to optimize away
+b.iter(|| &a + &b);
+```
+
+`black_box` 的作用是告诉编译器"此值可能被以任何方式使用"，防止编译器将结果视为死代码而消除整个计算。
+
+---
+
+## 13. 与其他模块的交互
+
+### 13.1 Benchmark 文件到被测模块映射
+
+| Benchmark 文件 | 被测模块 | 对应设计文档 |
+|----------------|----------|-------------|
+| `elementwise.rs` | `ops/` (逐元素运算) | `11-elementwise-ops.md` |
+| `reduction.rs` | `ops/` (归约运算) | `12-reduction.md` |
+| `dot_product.rs` | `ops/` (内积运算) | `12-reduction.md` |
+| `set_ops.rs` | `set_ops` | `14-set-ops.md` |
+| `broadcast.rs` | `broadcast` | `15-broadcast.md` |
+| `shape_ops.rs` | `shape_ops` | `16-shape-ops.md` |
+| `simd_comparison.rs` | `simd` + `ops/` | `08-simd-backend.md` |
+| `parallel_comparison.rs` | `parallel` + `ops/` | `09-parallel-backend.md` |
+| `construction.rs` | `construct` | `18-construction.md` |
+
+### 13.2 数据流
+
+```
+benchmark 文件
+    │
+    ├── 调用 crate 公共 API（Tensor::from_fn, zeros, +, sum, ...）
+    │       │
+    │       └── 内部经过: storage → tensor → ops → simd/parallel
+    │
+    └── criterion 测量端到端耗时
+```
+
+---
+
+## 14. 实现任务拆分
 
 ### Wave 1: 基础设施
 
@@ -493,22 +563,26 @@ fn bench_sum_bad2(c: &mut Criterion) {
 ### 并行执行分组图
 
 ```
-Wave 1: [T1]
-           │
-Wave 2: [T2]
-           │
-Wave 3: [T3] [T4] [T5] [T6] [T7] [T8] [T9]
-           │    │              │    │
-           └────┴──────────────┴────┘
-                       │
-Wave 4:       [T10] [T11]
-                 │
-Wave 5:       [T12]
+Wave 1: [T1] → [T2]
+                    │
+         ┌──────┬───┴───┬──────┬──────┐
+Wave 2: [T3]   [T4]   [T5]   [T6]   [T7]
+         └──────┴───┬───┴──────┴──────┘
+                    │
+         ┌──────┬───┴───┐
+Wave 3: [T8]   [T9]    │
+         └──────┴───┬───┘
+                    │
+         ┌──────┬───┴───┐
+Wave 4: [T10]  [T11]   │
+         └──────┴───┬───┘
+                    │
+Wave 5:           [T12]
 ```
 
 ---
 
-## 13. 测试计划
+## 15. 测试计划
 
 | 类型 | 位置 | 目的 |
 |------|------|------|
@@ -518,7 +592,7 @@ Wave 5:       [T12]
 
 ---
 
-## 14. ADR 决策记录
+## 16. ADR 决策记录
 
 ### 决策 1：使用 criterion.rs
 
@@ -571,6 +645,8 @@ Wave 5:       [T12]
 | 1.0.1 | 2026-04-08 |
 | 1.0.2 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.1.1 | 2026-04-08 |
+| 1.2.0 | 2026-04-08 |
 
 ---
 

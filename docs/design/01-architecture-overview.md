@@ -108,7 +108,7 @@ xenon/
 │   │
 │   ├── storage/               # 存储系统
 │   │   ├── mod.rs             # Storage trait 和 RawStorage trait
-│   │   ├── owned.rs           # OwnedRepr<A> 拥有型存储
+│   │   ├── owned.rs           # Owned<A> 拥有型存储
 │   │   ├── view.rs            # ViewRepr<&'a A> 不可变视图
 │   │   ├── view_mut.rs        # ViewMutRepr<&'a mut A> 可变视图
 │   │   ├── arc.rs             # ArcRepr<A> 原子引用计数存储
@@ -162,28 +162,28 @@ xenon/
 │   │   ├── eye.rs             # eye（单位矩阵）
 │   │   ├── from_data.rs       # from_vec, from_slice, from_array（从数据源构造）
 │   │   └── from_fn.rs         # from_fn, from_scalar（从闭包/标量构造）
-|   |
+│   │
 │   ├── convert/               # 类型转换
 │   │   ├── mod.rs             # 模块根，re-exports
 │   │   ├── cast.rs            # CastTo trait、cast() 方法、类型转换路径
 │   │   ├── owned.rs           # to_owned、into_owned、存储模式互转
 │   │   ├── from_impl.rs       # From/TryFrom trait 实现
 │   │   └── contiguous.rs      # to_contiguous 连续化转换
-|   |
+│   │
 │   ├── format/                # 格式化输出
 │   │   ├── mod.rs             # 模块根，re-exports，cfg gates
 │   │   ├── config.rs          # FormatConfig 配置结构体
 │   │   ├── display.rs         # Display trait 实现
 │   │   ├── debug.rs           # Debug trait 实现
 │   │   └── pretty.rs          # NumPy 风格格式化辅助函数（fmt_1d, fmt_nd, 截断）
-|   |
+│   │
 │   ├── ffi/                   # FFI 接口
 │   │   ├── mod.rs             # 模块根，re-exports
 │   │   ├── types.rs           # BlasLayout, BlasTrans, BlasInfo 类型定义
 │   │   ├── ptr.rs             # 原始指针 API（as_ptr, as_mut_ptr, from_raw_parts, into_raw_parts）
 │   │   ├── blas.rs            # BLAS 兼容性检查（is_blas_compatible, blas_info, lda）
 │   │   └── offset.rs          # 多维索引到指针偏移（offset_of, ptr_at）
-|   |
+│   │
 │   ├── workspace/             # 临时工作空间
 │       ├── mod.rs             # 模块根，re-exports
 │       ├── error.rs           # WorkspaceError 枚举
@@ -218,7 +218,7 @@ xenon/
 | `dimension/` | `Dimension` trait 和静态/动态维度类型（Ix0-Ix6, IxDyn） |
 | `element/` | 元素类型 trait 层次（Element → Numeric → RealScalar/ComplexScalar） |
 | `complex/` | 自定义 `Complex<T>` 类型，`#[repr(C)]` 兼容 C FFI |
-| `storage/` | 四种存储模式（OwnedRepr/ViewRepr/ViewMutRepr/ArcRepr） |
+| `storage/` | 四种存储模式（Owned/ViewRepr/ViewMutRepr/ArcRepr） |
 | `layout/` | F-order 布局标志位、步长计算、连续性检查 |
 | `tensor/` | 核心 `TensorBase<S, D>` 结构体及类型别名 |
 | `iter/` | 元素/轴/窗口/索引/Zip/Lane 迭代器 |
@@ -392,12 +392,15 @@ rustdoc-args = ["--cfg", "docsrs"]
 | 内积 (dot) | ✅ | ✅ | ✅ | ✅ | ✅ |
 | reshape / transpose | ✅ | ✅ | ✅ | ✅ | ✅ |
 | 整数索引 / 切片 | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Display 格式化 | ✅ | ❌ | ✅ | ✅ | ✅ |
-| Vec 分配 | ✅ | ❌ | ✅ | ✅ | ✅ |
+| Display 格式化 | ✅ | ✅¹ | ✅ | ✅ | ✅ |
+| Vec 分配 | ✅ | ✅² | ✅ | ✅ | ✅ |
 | 并行迭代器 | ❌ | ❌ | ✅ | ❌ | ✅ |
 | 并行归约 | ❌ | ❌ | ✅ | ❌ | ✅ |
 | SIMD 向量化 | ❌ | ❌ | ❌ | ✅ | ✅ |
 | BLAS 兼容 API | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+> ¹ Display 格式化仅使用 `core::fmt`，不依赖 `std`。
+> ² Vec 分配需要 `alloc` crate（`no_std` 环境下通过 `extern crate alloc` 提供）。
 
 ---
 
@@ -409,7 +412,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 // Core tensor types
 pub use crate::tensor::{
     TensorBase,
-    Tensor,           // TensorBase<OwnedRepr<A>, D>
+    Tensor,           // TensorBase<Owned<A>, D>
     TensorView,       // TensorBase<ViewRepr<&'a A>, D>
     TensorViewMut,    // TensorBase<ViewMutRepr<&'a mut A>, D>
     ArcTensor,        // TensorBase<ArcRepr<A>, D>
@@ -530,7 +533,7 @@ pub use error::XenonError;
 ```rust
 // Tensor core types
 TensorBase<S, D>              // Generic base type
-Tensor<A, D>                  // = TensorBase<OwnedRepr<A>, D>
+Tensor<A, D>                  // = TensorBase<Owned<A>, D>
 TensorView<'a, A, D>          // = TensorBase<ViewRepr<&'a A>, D>
 TensorViewMut<'a, A, D>       // = TensorBase<ViewMutRepr<&'a mut A>, D>
 ArcTensor<A, D>               // = TensorBase<ArcRepr<A>, D>
@@ -576,7 +579,7 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 | 任务 | 依赖 | 预估复杂度 | 产出 |
 |------|------|------------|------|
 | W2.1 Storage trait | W1.6, W1.8, W1.9 | 高 | `Storage`, `RawStorage` |
-| W2.2 Owned storage | W2.1 | 中 | `OwnedRepr<A>` + 64 字节对齐分配 |
+| W2.2 Owned storage | W2.1 | 中 | `Owned<A>` + 64 字节对齐分配 |
 | W2.3 View storage | W2.1 | 中 | `ViewRepr<&'a A>` |
 | W2.4 ViewMut storage | W2.1 | 中 | `ViewMutRepr<&'a mut A>` |
 | W2.5 Arc storage | W2.1 | 高 | `ArcRepr<A>` |
@@ -697,6 +700,7 @@ Wave 5: [W5.1] [W5.2] [W5.3] [W5.4]
 | 1.0.1 | 2026-04-08 |
 | 1.0.2 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.2.0 | 2026-04-08 |
 
 ---
 

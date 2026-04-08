@@ -88,7 +88,7 @@ src/ops/
 | `broadcast` | `broadcast_shape()`, `broadcast_with()`, `can_broadcast()`（参见 `15-broadcast.md` §4） |
 | `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.view()`（参见 `07-tensor.md` §4） |
 | `element` | `Numeric` trait 约束（排除 `bool`）（参见 `03-element-types.md` §3） |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<E>`（参见 `02-dimension.md` §4） |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<E>`（该 trait 定义于 `02-dimension.md §4.9`，计算广播后的维度类型） |
 
 ### 3.3 依赖方向声明
 
@@ -104,14 +104,14 @@ src/ops/
 
 | Lhs | Rhs | Output | 广播 | impl 签名 |
 |-----|-----|--------|------|-----------|
-| `Tensor<A, D>` | `Tensor<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<Tensor<A,E>> for Tensor<A,D>` |
-| `&Tensor<A, D>` | `&Tensor<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<&Tensor<A,E>> for &Tensor<A,D>` |
-| `Tensor<A, D>` | `&Tensor<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<&Tensor<A,E>> for Tensor<A,D>` |
-| `&Tensor<A, D>` | `Tensor<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<Tensor<A,E>> for &Tensor<A,D>` |
-| `Tensor<A, D>` | `A` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for Tensor<A,D>` |
-| `&Tensor<A, D>` | `&A` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&A> for &Tensor<A,D>` |
-| `A` | `Tensor<A, D>` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<Tensor<A,D>> for A` |
-| `A` | `&Tensor<A, D>` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&Tensor<A,D>> for A` |
+| `Tensor<A, D>` | `Tensor<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>` |
+| `&Tensor<A, D>` | `&Tensor<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<Owned<A>,D>` |
+| `Tensor<A, D>` | `&Tensor<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<&TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>` |
+| `&Tensor<A, D>` | `Tensor<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<TensorBase<Owned<A>,E>> for &TensorBase<Owned<A>,D>` |
+| `Tensor<A, D>` | `A` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for TensorBase<Owned<A>,D>` |
+| `&Tensor<A, D>` | `&A` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&A> for &TensorBase<Owned<A>,D>` |
+| `A` | `Tensor<A, D>` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<TensorBase<Owned<A>,D>> for A` |
+| `A` | `&Tensor<A, D>` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&TensorBase<Owned<A>,D>> for A` |
 
 > **说明**：`F` 为广播后的维度类型，由 `D::BroadcastDim<E>::Output` 关联类型计算。
 > `BroadcastDim` 定义于 `02-dimension.md §4.9`。
@@ -120,7 +120,7 @@ src/ops/
 
 ```rust
 // Tensor + Tensor (owned + owned)
-impl<A, D, E> Add<Tensor<A, E>> for Tensor<A, D>
+impl<A, D, E> Add<TensorBase<Owned<A>, E>> for TensorBase<Owned<A>, D>
 where
     A: Numeric,
     D: Dimension,
@@ -129,7 +129,7 @@ where
 {
     type Output = Tensor<A, <D as BroadcastDim<E>>::Output>;
 
-    fn add(self, rhs: Tensor<A, E>) -> Self::Output {
+    fn add(self, rhs: TensorBase<Owned<A>, E>) -> Self::Output {
         let (a_bc, b_bc) = broadcast_with(&self.view(), &rhs.view())
             .expect("broadcast: incompatible shapes");
         zip_with(&a_bc, &b_bc, |a, b| a + b)
@@ -137,7 +137,7 @@ where
 }
 
 // &Tensor + &Tensor (most common form)
-impl<'a, 'b, A, D, E> Add<&'b Tensor<A, E>> for &'a Tensor<A, D>
+impl<'a, 'b, A, D, E> Add<&'b TensorBase<Owned<A>, E>> for &'a TensorBase<Owned<A>, D>
 where
     A: Numeric,
     D: Dimension,
@@ -146,7 +146,7 @@ where
 {
     type Output = Tensor<A, <D as BroadcastDim<E>>::Output>;
 
-    fn add(self, rhs: &'b Tensor<A, E>) -> Self::Output {
+    fn add(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
         let (a_bc, b_bc) = broadcast_with(&self.view(), &rhs.view())
             .expect("broadcast: incompatible shapes");
         zip_with(&a_bc, &b_bc, |a, b| a + b)
@@ -162,7 +162,7 @@ where
 
 ```rust
 // Tensor + scalar
-impl<A, D> Add<A> for Tensor<A, D>
+impl<A, D> Add<A> for TensorBase<Owned<A>, D>
 where
     A: Numeric,
     D: Dimension,
@@ -175,7 +175,7 @@ where
 }
 
 // &Tensor + scalar
-impl<'a, A, D> Add<A> for &'a Tensor<A, D>
+impl<'a, A, D> Add<A> for &'a TensorBase<Owned<A>, D>
 where
     A: Numeric,
     D: Dimension,
@@ -188,31 +188,33 @@ where
 }
 
 // scalar + Tensor
-impl<A, D> Add<Tensor<A, D>> for A
+impl<A, D> Add<TensorBase<Owned<A>, D>> for A
 where
     A: Numeric,
     D: Dimension,
 {
     type Output = Tensor<A, D>;
 
-    fn add(self, rhs: Tensor<A, D>) -> Self::Output {
+    fn add(self, rhs: TensorBase<Owned<A>, D>) -> Self::Output {
         rhs.mapv(|x| self + x)
     }
 }
 
 // scalar + &Tensor
-impl<'a, A, D> Add<&'a Tensor<A, D>> for A
+impl<'a, A, D> Add<&'a TensorBase<Owned<A>, D>> for A
 where
     A: Numeric,
     D: Dimension,
 {
     type Output = Tensor<A, D>;
 
-    fn add(self, rhs: &'a Tensor<A, D>) -> Self::Output {
+    fn add(self, rhs: &'a TensorBase<Owned<A>, D>) -> Self::Output {
         rhs.mapv(|x| self + x)
     }
 }
 ```
+
+> **说明**：由于 `A: Numeric` 要求 `A: Copy`，上表中涉及 `&A` 的组合（第 6 行）通过隐式解引用自动处理，无需单独 impl。实际实现共 4 种主要形式（owned/标量 × owned/标量），其余组合由 Rust 的 `Deref` 隐式解引用覆盖。
 
 > **设计决策：** 标量运算使用 `mapv` 而非创建广播视图。
 > 原因：`mapv` 直接迭代更高效，避免广播视图的间接寻址开销。
@@ -539,6 +541,7 @@ extern crate alloc;
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 

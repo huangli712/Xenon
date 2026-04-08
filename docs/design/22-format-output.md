@@ -155,9 +155,59 @@ impl Default for FormatConfig {
 }
 ```
 
-### 4.2 Display 实现
+### 4.1b TensorDisplay 包装结构
 
 ```rust
+/// A wrapper for formatting a tensor with a specific config.
+pub struct TensorDisplay<'a, S, D, A>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+{
+    tensor: &'a TensorBase<S, D>,
+    config: FormatConfig,
+}
+
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Element,
+{
+    /// Returns a display wrapper that formats this tensor with the given config.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let tensor = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
+    /// let config = FormatConfig { precision: Some(2), ..Default::default() };
+    /// println!("{}", tensor.display_with(config));
+    /// ```
+    pub fn display_with(&self, config: FormatConfig) -> TensorDisplay<'_, S, D, A> {
+        TensorDisplay { tensor: self, config }
+    }
+}
+
+impl<S, D, A> core::fmt::Display for TensorDisplay<'_, S, D, A>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: core::fmt::Display + Element,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        // Delegate to the same formatting logic, passing self.config
+        // for precision/edge_items/threshold configuration.
+        fmt_with_config(f, self.tensor, &self.config)
+    }
+}
+```
+
+### 4.2 Display 实现
+
+> **注意**：此实现需要 `std` feature（浮点精度格式化依赖 `std`）。
+
+```rust
+#[cfg(feature = "std")]
 impl<S, D, A> core::fmt::Display for TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -266,6 +316,13 @@ where
  [9901, 9902, 9903, ..., 9998, 9999, 10000]]
 ```
 
+**Complex<f64> 类型**:
+
+```
+[[1.0+2.0j, 3.0+4.0j],
+ [5.0+6.0j, 7.0+8.0j]]
+```
+
 ### 4.5 截断规则
 
 ```
@@ -324,6 +381,8 @@ println!("strides: {:?}", tensor.strides());
 ## 5. 内部实现设计
 
 ### 5.1 格式化算法
+
+**精度控制**：如果 `FormatConfig::precision` 为 `Some(p)`，浮点数格式化使用 `write!(f, "{:.prec$}", value, prec = p)`；为 `None` 时使用默认精度（即 `write!(f, "{}", value)`）。
 
 ```
 fmt_1d(tensor, f):
@@ -558,6 +617,7 @@ Wave 3:        [T5]
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.1.1 | 2026-04-08 |
 
 ---
 

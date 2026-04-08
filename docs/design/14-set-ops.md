@@ -87,7 +87,7 @@ impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: Element,
+    A: UniqueElement,  // UniqueElement: Element, correct constraint
 {
     /// Returns sorted unique elements as a new 1D tensor.
     ///
@@ -327,6 +327,7 @@ Wave 3: [T5]
 | `test_unique_nan_f32` | f32 NaN 排在末尾 | 高 |
 | `test_unique_nan_f64` | f64 NaN 排在末尾 | 高 |
 | `test_unique_nan_mixed` | NaN + 正常数混合排序正确 | 高 |
+| `test_unique_nan_dedup` | 含 NaN 和 -NaN 的浮点数组：NaN 与 -NaN 被视为相等，去重后只保留一个 NaN | 高 |
 | `test_unique_complex_order` | 复数先实部再虚部排序 | 高 |
 | `test_unique_2d` | 2D 张量 unique 返回 1D | 中 |
 | `test_unique_preserves_order` | 去重后排序正确 | 中 |
@@ -458,6 +459,7 @@ use alloc::vec::Vec;
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.1.1 | 2026-04-08 |
 
 ---
 

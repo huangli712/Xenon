@@ -98,11 +98,10 @@ src/storage/
 |----------|-----------------|
 | `core` | `*const T`, `*mut T`, `NonNull<T>`, `PhantomData<T>` |
 | `alloc` | `Vec<A>`, `Arc<A>`, `alloc`/`dealloc` |
-| `element` | 元素类型约束（通过 trait bound 间接使用） |
 
 ### 3.3 依赖方向声明
 
-> **依赖方向：单向向下。** `storage/` 仅依赖 `core`/`alloc` 和 `element` 的类型约束，不被 `dimension`/`layout` 等模块依赖。`tensor/`（参见 `07-tensor.md` §4）和 `iter/`（参见 `10-iterator.md` §4）模块消费 storage 的 trait 和类型。
+> **依赖方向：单向向下。** `storage/` 仅依赖 `core`/`alloc`，不直接依赖 `element` 模块；元素类型约束通过 `TensorBase` 的泛型参数间接体现（`Storage::Elem` 关联类型）。`tensor/`（参见 `07-tensor.md` §4）和 `iter/`（参见 `10-iterator.md` §4）模块消费 storage 的 trait 和类型。
 
 ---
 
@@ -387,6 +386,11 @@ pub unsafe trait StorageShared: Storage + Clone {
     fn is_unique(&self) -> bool;
 
     /// Obtains exclusive mutable access to the data (copy-on-write).
+    ///
+    /// For `ArcRepr<A>`, the returned slice covers the logical element range
+    /// `[offset..offset+len]`, not the entire underlying `Vec`.
+    /// When the `ArcRepr` represents a sub-view (offset > 0 or len < vec.len()),
+    /// `make_mut()` copies only the logical range into a fresh allocation.
     fn make_mut(&mut self) -> &mut [Self::Elem];
 
     /// Attempts to obtain exclusive ownership without copying data.
@@ -541,10 +545,10 @@ impl<A> Owned<A> {
             Self::DEFAULT_ALIGNMENT,
         );
         let typed_ptr = ptr.as_ptr() as *mut A;
-        for (i, elem) in data.iter().enumerate() {
-            // SAFETY: typed_ptr is valid for `len` elements; i < len.
-            unsafe { typed_ptr.add(i).write(elem.clone()); }
-        }
+        // For Copy types (all Xenon element types), use bulk copy for efficiency.
+        // SAFETY: typed_ptr is valid for `len` elements; data.as_ptr() is valid for `len` elements;
+        // the two ranges are non-overlapping (typed_ptr is freshly allocated).
+        unsafe { core::ptr::copy_nonoverlapping(data.as_ptr(), typed_ptr, len); }
         // SAFETY: ptr was allocated by AlignedAlloc with len elements.
         Self { data: unsafe { Vec::from_raw_parts(typed_ptr, len, len) } }
     }
@@ -1010,6 +1014,7 @@ Storage 提供对齐信息（`is_aligned()`），Layout 模块查询对齐状态
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.2.0 | 2026-04-08 |
 
 ---
 

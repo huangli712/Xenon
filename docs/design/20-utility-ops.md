@@ -50,6 +50,8 @@ src/
 
 单文件设计：实用操作之间无强依赖，代码量适中（~200 行），无需拆分。
 
+> **注意**：`to_contiguous()` 的公共 API 定义在 `src/ops/utility.rs`（本模块），内部委托给 `src/convert/contiguous.rs` 中的 `to_f_contiguous()` 辅助函数（参见 `21-type-conversion.md §4.5c`）。
+
 ---
 
 ## 3. 依赖关系
@@ -76,6 +78,7 @@ src/ops/utility.rs
 | `element` | `Element`, `RealScalar`（clip 约束）（参见 `03-element-types.md` §3） |
 | `layout` | `is_f_contiguous()`（参见 `06-memory-layout.md` §4） |
 | `iter` | `iter()`, `iter_mut()`（参见 `10-iterator.md` §4） |
+| `elementwise_ops` | `mapv()`（clip 内部调用，参见 `11-elementwise-ops.md` §4） |
 
 ### 3.3 依赖方向声明
 
@@ -343,10 +346,9 @@ to_contiguous(tensor):
 ### 并行执行分组图
 
 ```
-Wave 1: [T1] [T2]
-           │
-           ▼
-Wave 2: [T3] [T4]
+Wave 1: [T1] → [T2]
+                  │
+Wave 2:      [T3] → [T4]
 ```
 
 ---
@@ -484,6 +486,7 @@ use alloc::vec::Vec;
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.1.1 | 2026-04-08 |
 
 ---
 

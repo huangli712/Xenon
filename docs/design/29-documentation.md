@@ -186,15 +186,14 @@ L3: 示例 (examples/)
 //! use xenon::prelude::*;
 //!
 //! // Create tensors
-//! let a: Tensor1<f64> = Tensor::zeros(5);
-//! let b: Tensor2<f64> = Tensor::zeros([3, 4]);
+//! let a = Tensor1::<f64>::zeros([5]);
+//! let b = Tensor2::<f64>::zeros([3, 4]);
 //!
 //! // Element-wise operations with broadcasting
 //! let sum = &a + &a;
 //!
 //! // Reduction
 //! let total = b.sum();
-//! # Ok::<(), xenon::XenonError>(())
 //! ```
 //!
 //! ## Features
@@ -537,12 +536,14 @@ pub fn sum(&self) -> A { ... }
 /// Sums the tensor.
 pub fn sum(&self) -> A { ... }
 
-// Bad: example uses unwrap instead of ?
+// Bad: example includes unnecessary Ok::<(), xenon::XenonError>(()) return type annotation,
+// which is only needed when the doctest uses the ? operator.
+// Since sum() does not return Result, the annotation is misleading.
 /// ```
 /// use xenon::prelude::*;
 /// let t = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
-/// assert_eq!(t.sum(), 6.0);  // unwrap will panic
-/// # Ok::<(), xenon::XenonError>(())  // missing this line
+/// assert_eq!(t.sum(), 6.0);
+/// # Ok::<(), xenon::XenonError>(())  // Unnecessary: no ? operator used
 /// ```
 pub fn sum(&self) -> A { ... }
 ```
@@ -595,7 +596,118 @@ pub unsafe fn from_raw_parts<'a, A, D>(...) -> TensorView<'a, A, D>
 
 ---
 
-## 14. 实现任务拆分
+## 14. 内部实现
+
+### 14.1 文档生成流程
+
+```
+源码中的 doc comments
+    │
+    ├── cargo doc → rustdoc → HTML 文档
+    │       ├── 解析 markdown
+    │       ├── 验证 intra-doc links
+    │       └── 生成 docs.rs 兼容输出
+    │
+    └── cargo test --doc → rustdoc --test
+            ├── 提取 ```rust ``` 代码块
+            ├── 编译为独立可执行文件
+            └── 运行并验证断言
+```
+
+### 14.2 文档覆盖率计算
+
+```bash
+# Check for missing docs at deny level
+RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
+
+# Count undocumented pub items (manual audit)
+# 1. cargo doc --no-deps 2>&1 | grep "missing documentation"
+# 2. Ensure zero warnings
+```
+
+### 14.3 doc comment 编写工作流
+
+| 步骤 | 操作 | 验证 |
+|------|------|------|
+| 1. 编写 API | 实现函数/类型 | `cargo check` |
+| 2. 添加 doc comment | 描述、参数、返回值、示例 | `cargo doc` 无 warning |
+| 3. 添加 doctest | `# Examples` 节 | `cargo test --doc` 通过 |
+| 4. Safety 文档 | unsafe 函数的 `# Safety` 节 | `clippy::missing_safety_doc` 通过 |
+
+---
+
+## 15. 测试计划
+
+### 15.1 测试分类
+
+| 类型 | 命令 | 目的 |
+|------|------|------|
+| Doctest | `cargo test --doc --all-features` | 验证文档中的代码示例可编译运行 |
+| 缺失文档检查 | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps` | 确保所有 pub API 有文档 |
+| 示例编译 | `cargo build --examples --all-features` | 验证 examples/ 下程序可编译运行 |
+| 链接检查 | `cargo doc` 无 broken links 警告 | 确保文档内交叉引用有效 |
+| CI 门禁 | `missing_docs` lint deny 级别 | 阻止无文档代码合入 |
+
+### 15.2 Doctest 覆盖率目标
+
+| 模块 | 目标覆盖率 | 说明 |
+|------|-----------|------|
+| 核心类型（tensor, dimension, storage） | 100% | 所有 pub 方法有 doctest |
+| 运算模块（ops, broadcast, reduction） | 100% | 所有 pub 方法有 doctest |
+| 工具模块（ffi, workspace, simd, parallel） | ≥80% | 关键 API 有 doctest |
+| 辅助模块（convert, format, error） | ≥60% | 至少构造和基本使用有 doctest |
+
+### 15.3 CI 配置
+
+```yaml
+# .github/workflows/docs.yml
+docs:
+    steps:
+        - name: Check missing docs
+          run: RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
+
+        - name: Run doctests
+          run: cargo test --doc --all-features
+
+        - name: Build examples
+          run: cargo build --examples --all-features
+```
+
+---
+
+## 16. 与其他模块的交互
+
+### 16.1 文档对被文档模块的依赖
+
+| 文档任务 | 依赖的模块 | 说明 |
+|----------|-----------|------|
+| T1 (lib.rs 文档) | 全部 | 需要了解所有模块的概览 |
+| T5 (核心模块文档) | dimension, element, complex, storage, layout | 基于 §1 章节编写 |
+| T6 (张量与运算文档) | tensor, ops, broadcast, shape_ops, index, construct, set_ops | 基于 §1 章节编写 |
+| T7 (基础设施文档) | ffi, workspace, simd, parallel, error, prelude | 基于 §1 章节编写 |
+| T8 (类型级文档) | 全部 | 逐类型添加 doc comment |
+| T9 (函数级文档) | 全部 | 逐函数添加 doc comment |
+
+### 16.2 数据流
+
+```
+设计文档 (00-28)
+    │
+    ├── 提取模块职责、核心概念、API 签名
+    │       │
+    │       └── 写入各 mod.rs 的 //! 模块文档
+    │
+    └── 提取类型定义、方法签名
+            │
+            ├── 写入 doc comment (///)
+            └── 写入 doctest (```rust ```)
+                    │
+                    └── cargo test --doc 验证
+```
+
+---
+
+## 17. 实现任务拆分
 
 ### Wave 1: Crate 级文档
 
@@ -657,14 +769,14 @@ pub unsafe fn from_raw_parts<'a, A, D>(...) -> TensorView<'a, A, D>
   - 内容: 类型说明、泛型参数、类型别名表、示例
   - 测试: `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`
   - 前置: T5, T6, T7
-  - 预计: 10 min
+  - 预计: 120-240 min（视 crate 规模而定）
 
 - [ ] **T9**: 为所有 pub fn/method 添加 doc comment 和 doctest
   - 文件: 所有 `src/` 文件
   - 内容: 参数说明、返回值、错误条件、示例、Safety 节（unsafe）
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
-  - 预计: 10 min
+  - 预计: 120-240 min（视 crate 规模而定）
 
 ### Wave 4: 示例程序（可并行）
 
@@ -730,21 +842,21 @@ pub unsafe fn from_raw_parts<'a, A, D>(...) -> TensorView<'a, A, D>
 
 ```
 Wave 1: [T1] [T4]
-           │
+            │
 Wave 2: [T2] [T3]
-           │
+            │
 Wave 3: [T5] [T6] [T7]
-           │
+            │
 Wave 4: [T8] [T9]
-           │
+            │
 Wave 5: [T10] [T11] [T12] [T13] [T14] [T15] [T16]
-           │
+            │
 Wave 6: [T17]
 ```
 
 ---
 
-## 15. ADR 决策记录
+## 18. ADR 决策记录
 
 ### 决策 1：英文文档
 
@@ -796,6 +908,8 @@ Wave 6: [T17]
 | 1.0.1 | 2026-04-08 |
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
+| 1.1.1 | 2026-04-08 |
 
 ---
 

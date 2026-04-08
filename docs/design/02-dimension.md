@@ -350,14 +350,36 @@ pub struct IxDyn {
     dims: Vec<usize>,
 }
 
+// All IxDyn constructors enforce the MAX_DIMENSION limit:
+//
+// fn assert_max_dim(dims_len: usize) {
+//     assert!(
+//         dims_len <= MAX_DIMENSION,
+//         "dimension count {} exceeds MAX_DIMENSION ({})",
+//         dims_len,
+//         MAX_DIMENSION,
+//     );
+// }
+//
+// Each constructor (from_slice, from_vec, from_element, ones, zeros)
+// calls assert_max_dim(dims.len()) before constructing the IxDyn.
+
 impl IxDyn {
     /// Creates an empty (0-dimensional) dynamic dimension.
     pub fn new() -> Self;
 
     /// Creates from a slice.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `slice.len() > MAX_DIMENSION`.
     pub fn from_slice(slice: &[usize]) -> Self;
 
     /// Creates from a Vec.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `dims.len() > MAX_DIMENSION`.
     pub fn from_vec(dims: Vec<usize>) -> Self;
 
     /// Creates with all axes set to a given value.
@@ -365,9 +387,17 @@ impl IxDyn {
     pub fn from_element(value: usize, ndim: usize) -> Self;
 
     /// Creates filled with ones.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `ndim > MAX_DIMENSION`.
     pub fn ones(ndim: usize) -> Self;
 
     /// Creates filled with zeros.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `ndim > MAX_DIMENSION`.
     pub fn zeros(ndim: usize) -> Self;
 
     /// Consumes and returns the inner Vec.
@@ -598,6 +628,9 @@ let dim: Ix3 = Ix3::try_from_dyn(dyn_dim).unwrap();
 
 `BroadcastDim<Other>` 用于编译期计算两个维度类型广播后的输出维度类型。  
 被 `19-operator-overload.md` 中的运算符重载使用。
+
+> **实现建议：** 跨静态维度的 `BroadcastDim` 实现共计约 57 个（含自身广播 7 个 + 跨静态维度 42 个 + 与 IxDyn 混合 14 个）。
+> 建议使用声明宏（`macro_rules!`）生成这些实现，避免手工编写导致的遗漏和错误。
 
 ```rust
 /// Trait for computing the output dimension type when broadcasting two arrays.
@@ -1053,6 +1086,7 @@ Wave 5:  [T10] → [T11] → [T12]
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.2.0 | 2026-04-08 |
 
 ---
 

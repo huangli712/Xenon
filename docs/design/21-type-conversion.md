@@ -49,7 +49,7 @@ src/
     ├── cast.rs              # CastTo trait、cast() 方法、类型转换路径
     ├── owned.rs             # to_owned、into_owned、存储模式互转
     ├── from_impl.rs         # From/TryFrom trait 实现
-    └── contiguous.rs        # to_contiguous 连续化转换
+    └── contiguous.rs        # to_f_contiguous 辅助函数（公共 API to_contiguous 定义于 20-utility-ops.md）
 ```
 
 多文件设计：按转换职责拆分，便于后续扩展（如新增转换路径、存储模式等）。
@@ -154,10 +154,31 @@ where
 ```
 
 > **设计决策（修订）**：根据需求说明书 §23，`cast()` 仅适用于持有数据的存储模式。
-> 因此 `cast()` 分别在 `Owned<A>` 和 `ArcRepr<A>` 存储模式上实现，
+> 因此 `cast()` 分别在 `Owned<A>` 和 `ArcRepr<A>` 存储储模式上实现，
 > `ViewRepr`/`ViewMutRepr` 须先调用 `to_owned()`。
 
-> **设计决策：** `cast` 定义在 `Storage` 约束（而非仅 `StorageOwned`）上，这是因为 View 上的 cast 在语义上合理（只读操作）。调用方可通过类型约束限制为 Owned。
+```rust
+impl<A, D> TensorBase<ArcRepr<A>, D>
+where
+    D: Dimension,
+    A: Element,
+{
+    /// Element-wise type conversion for Arc-backed tensors.
+    ///
+    /// Makes a private copy of the Arc data, then casts elements.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `B` - Target element type
+    pub fn cast<B>(&self) -> Tensor<B, D>
+    where
+        B: Element,
+        A: CastTo<B>,
+    {
+        self.to_owned().cast()
+    }
+}
+```
 
 ### 4.3 类型转换路径表
 
@@ -175,6 +196,8 @@ where
 | `bool` | 数值 | `true → 1`, `false → 0` | `true → 1i32` |
 | 数值 | `bool` | 非零 → `true`，零 → `false` | `0 → false`, `1 → true` |
 | `f32/f64` | `Complex<f32/f64>` | 虚部为 0 | `1.5 → Complex { re: 1.5, im: 0.0 }` |
+| `Complex<f32>` | `Complex<f64>` | 实部/虚部各自提升精度 | `Complex { re: 1.0_f32, im: 2.0_f32 } → Complex { re: 1.0_f64, im: 2.0_f64 }` |
+| `Complex<f64>` | `Complex<f32>` | 实部/虚部各自 round-to-nearest-even | `Complex { re: 1.23456789, im: 2.0 } → Complex { re: 1.234568, im: 2.0 }` |
 | `Complex<T>` | `T` | **编译错误** | 须显式取 `.re()` |
 
 ### 4.4 Good / Bad 对比
@@ -264,7 +287,7 @@ impl<A> Owned<A> {
 `from_shape_vec_aligned` 是 `Tensor` 上的对应便捷方法（无需验证长度，调用方已保证）：
 
 ```rust
-impl<A, D> Tensor<A, D> where A: Element, D: Dimension {
+impl<A, D> TensorBase<Owned<A>, D> where A: Element, D: Dimension {
     /// Constructs a Tensor from pre-validated data with aligned allocation.
     /// Called internally after size validation is complete.
     pub(crate) fn from_shape_vec_aligned(shape: D, data: Vec<A>) -> Self {
@@ -535,13 +558,14 @@ Wave 3: [T6] [T7]  (并行)
 | 替代方案 | wrapping（Rust `as` 默认） — 放弃，科学计算中 wrapping 语义不直观 |
 | 替代方案 | panic on overflow — 放弃，性能不可预测 |
 
-### 决策 2：cast 定义在 Storage 而非 StorageOwned 上
+### 决策 2：cast() 仅在持有数据的存储模式上实现
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | `cast()` 的约束为 `S: Storage`（只读即可） |
-| 理由 | View 上的 cast 在语义上合理（只读操作）；调用方可通过类型约束限制 |
-| 替代方案 | 限制为 `StorageOwned` — 放弃，强制调用方先 `to_owned()` 增加样板代码 |
+| 决策 | `cast()` 在 `Owned<A>` 和 `ArcRepr<A>` 上实现 |
+| 理由 | 需求 §23 明确要求"类型转换仅适用于持有数据的存储模式"。View 和 ViewMut 需要先调用 `to_owned()` 获得拥有所有权的张量，再进行类型转换。 |
+| 替代方案 | 在 `Storage` 约束上实现（允许 View 直接 cast） — 放弃，与需求 §23 冲突 |
+| 替代方案 | 仅在 `Owned` 上实现 — 放弃，`ArcRepr` 也是持有数据的存储模式，应同样支持 |
 
 ### 决策 3：存储模式转换策略
 
@@ -589,6 +613,7 @@ Wave 3: [T6] [T7]  (并行)
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-08 |
 | 1.2.0 | 2026-04-08 |
+| 1.2.1 | 2026-04-08 |
 
 ---
 

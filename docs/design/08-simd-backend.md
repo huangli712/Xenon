@@ -1,7 +1,7 @@
 # SIMD 后端模块设计
 
 > 文档编号: 08 | 模块: `src/simd/` | 阶段: Phase 5
-> 前置文档: `07-tensor.md`, `10-iterator.md`
+> 前置文档: `03-element-types.md`, `06-memory-layout.md`, `07-tensor.md`
 > 需求参考: 需求说明书 §9.1
 
 ---
@@ -172,6 +172,14 @@ impl SimdElement for i64 {
     const ALIGN: usize = 8;
 }
 ```
+
+> **不实现 SimdElement 的类型**：以下元素类型不支持 SIMD 加速，始终回退到标量路径：
+>
+> | 类型 | 原因 |
+> |------|------|
+> | `bool` | 逻辑运算无 SIMD 意义 |
+> | `usize` | 指针宽度依赖平台，SIMD 语义不稳定 |
+> | `Complex<T>` | 实虚部交叉操作需要特殊排列，当前版本不支持 |
 
 ### 4.3 SimdKernel Trait
 
@@ -508,14 +516,15 @@ impl WithSimd for AddF32Kernel<'_> {
             let offset = i * width;
             unsafe {
                 // SAFETY: offset + width <= chunks * width <= len
-                let lhs_vec = simd.f32s_load_unaligned(
+                // Aligned load: already verified 64-byte alignment via can_use_simd()
+                let lhs_vec = simd.f32s_load(
                     self.lhs.as_ptr().add(offset)
                 );
-                let rhs_vec = simd.f32s_load_unaligned(
+                let rhs_vec = simd.f32s_load(
                     self.rhs.as_ptr().add(offset)
                 );
                 let result = simd.f32s_add(lhs_vec, rhs_vec);
-                simd.f32s_store_unaligned(
+                simd.f32s_store(
                     self.dst.as_mut_ptr().add(offset),
                     result,
                 );
@@ -913,7 +922,7 @@ pulp crate 支持 `no_std` 环境。在 `no_std` 环境下：
 | 环境 | pulp 支持 | 说明 |
 |------|----------|------|
 | `std` | ✅ 完整支持 | 默认 |
-| `no_std` + `alloc` | ✅ 支持 | 需启用 `libm` feature 处理数学函数 |
+| `no_std` + `alloc` | ✅ 支持 | pulp 在 no_std 下自动适配，Xenon 不引入额外依赖 |
 | `no_std` 无 `alloc` | ⚠️ 部分支持 | Arch 检测可能受限 |
 
 条件编译处理：
@@ -921,7 +930,7 @@ pulp crate 支持 `no_std` 环境。在 `no_std` 环境下：
 ```rust
 #[cfg(all(feature = "simd", not(feature = "std")))]
 // In no_std environments:
-// - pulp internally uses libm for math functions
+// - pulp handles math functions internally without Xenon adding libm as a dependency
 // - Arch is not cached (OnceLock unavailable in core),
 //   Arch::new() is called per-use (Arch is Copy, negligible cost)
 ```
@@ -935,6 +944,7 @@ pulp crate 支持 `no_std` 环境。在 `no_std` 环境下：
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 

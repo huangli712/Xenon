@@ -95,6 +95,8 @@ src/iter/
 
 ## 4. 公共 API 设计
 
+> **DoubleEndedIterator 说明：** 当前版本所有迭代器不实现 `DoubleEndedIterator`，因为 F-order 遍历的反向语义在高维情况下不明确，且需求未要求此功能。
+
 ### 4.1 Elements 迭代器
 
 ```rust
@@ -196,6 +198,21 @@ impl<'a, A, D: Dimension> ExactSizeIterator for IndexedIter<'a, A, D> {}
 ### 4.5 Zip 多张量同步迭代器
 
 ```rust
+/// Trait for types that can be iterated in parallel with Zip.
+pub trait NdProducer {
+    type Dim: Dimension;
+    type Item;
+
+    /// Returns the shape of this producer.
+    fn shape(&self) -> &Self::Dim;
+
+    /// Returns the strides of this producer.
+    fn strides(&self) -> &[isize];
+
+    /// Split at the given index along the first axis.
+    fn split_at(self, index: usize) -> (Self, Self);
+}
+
 /// Multi-tensor synchronized iterator, used for zip_with and similar operations.
 ///
 /// Supports broadcasting: automatically expands when shapes are broadcastable.
@@ -320,6 +337,8 @@ where
     /// # Panics
     ///
     /// Panics if `axis.index() >= self.ndim()`.
+    /// Panics if called on a zero-dimensional tensor (Ix0), as there is no axis to iterate along.
+    /// This behavior is consistent with `axis_iter()`.
     pub fn lanes(&self, axis: Axis) -> LaneIter<'_, A, D>;
 }
 
@@ -348,7 +367,7 @@ where
 }
 ```
 
-### 4.7 Good / Bad 对比示例
+### 4.8 Good / Bad 对比示例
 
 ```rust
 // Good - safely iterate elements using iter()
@@ -402,6 +421,8 @@ increment_index_f(shape, index):
             return  // no carry
         index[i] = 0  // carry to next dimension
 ```
+
+> **负步长偏移量计算：** 对于负步长，元素偏移量计算为有符号加法：`offset = base_offset + Σ(stride[i] * index[i])`，其中 `stride[i]` 为 `isize`（可为负）。当元素地址 = `base_ptr + offset` 时，负步长意味着向低地址方向遍历。
 
 ### 5.3 广播可变迭代禁止
 
@@ -694,6 +715,7 @@ Wave 4:             [T9]
 | 1.0.4 | 2026-04-08 |
 | 1.0.5 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.2.0 | 2026-04-08 |
 
 ---
 

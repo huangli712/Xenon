@@ -156,6 +156,8 @@ where
     /// // Can be passed to read-only C functions
     /// ```
     pub fn as_ptr(&self) -> *const A {
+        // SAFETY: self.storage.as_ptr() returns a valid non-null pointer.
+        // self.offset is guaranteed to be within bounds by TensorBase construction invariants.
         unsafe {
             self.storage.as_ptr().add(self.offset)
         }
@@ -179,6 +181,9 @@ where
     /// // Can be passed to C functions requiring a mutable pointer
     /// ```
     pub fn as_mut_ptr(&mut self) -> *mut A {
+        // SAFETY: self.storage.as_mut_ptr() returns a valid non-null mutable pointer.
+        // self.offset is guaranteed to be within bounds by TensorBase construction invariants.
+        // The &mut self reference ensures exclusive access.
         unsafe {
             self.storage.as_mut_ptr().add(self.offset)
         }
@@ -238,7 +243,17 @@ where
         strides: D,
         offset: usize,
     ) -> Self {
-        // implementation...
+        // SAFETY: Caller guarantees ptr is valid, aligned, and points to
+        // properly initialized data for the lifetime 'a. Shape and strides
+        // are consistent and describe a valid memory region.
+        TensorBase {
+            storage: ViewRepr::new(ptr),
+            shape,
+            strides,
+            offset,
+            // Compute layout flags from provided strides
+            flags: LayoutFlags::from_strides(&strides, &shape),
+        }
     }
 }
 
@@ -273,7 +288,15 @@ where
         strides: D,
         offset: usize,
     ) -> Self {
-        // implementation...
+        // SAFETY: Caller guarantees exclusive mutable access to the memory
+        // for lifetime 'a. Same validity requirements as from_raw_parts.
+        TensorBase {
+            storage: ViewMutRepr::new(ptr),
+            shape,
+            strides,
+            offset,
+            flags: LayoutFlags::from_strides(&strides, &shape),
+        }
     }
 }
 ```
@@ -301,13 +324,14 @@ where
     /// // Caller now owns ptr, responsible for freeing
     /// ```
     pub fn into_raw_parts(self) -> (*mut A, D, D, usize) {
-        let ptr = self.storage.into_raw();
-        let shape = self.shape;
-        let strides = self.strides;
-        let offset = self.offset;
-
-        // Prevent Drop from freeing memory
-        core::mem::forget(self);
+        // Use ManuallyDrop to prevent Drop from running while we extract fields.
+        // This is safer than the "extract fields first, then mem::forget" pattern
+        // because it eliminates the risk of Double Drop on panic during field access.
+        let this = core::mem::ManuallyDrop::new(self);
+        let ptr = unsafe { this.storage.as_mut_ptr() };
+        let shape = this.shape.clone();
+        let strides = this.strides.clone();
+        let offset = this.offset;
 
         (ptr, shape, strides, offset)
     }
@@ -362,7 +386,11 @@ where
 ///
 /// Contains all parameters needed for BLAS function calls.
 pub struct BlasInfo {
-    /// Data pointer.
+    /// Data pointer (generic byte pointer).
+    ///
+    /// Note: `data_ptr` is typed as `*const u8` for generality.
+    /// When calling BLAS functions, cast to the concrete type:
+    /// `blas_info.data_ptr as *const f64`.
     pub data_ptr: *const u8,
     /// Leading dimension (element units).
     pub leading_dim: i32,
@@ -457,10 +485,13 @@ where
     ///
     /// Offset = Σ(stride[i] * index[i]) for all i in [0, ndim)
     ///
+    /// For tensors with negative strides, the computed offset is relative
+    /// to the base pointer. It is the caller's responsibility to ensure
+    /// the index is valid (does not produce a negative offset).
+    ///
     /// # Panics
     ///
     /// - Index length does not match number of dimensions
-    /// - Index out of bounds
     ///
     /// # Example
     ///
@@ -471,16 +502,16 @@ where
     /// assert_eq!(tensor.offset_of(&[1, 2]), 7);
     /// ```
     pub fn offset_of(&self, index: &[usize]) -> usize {
-        assert!(index.len() == self.ndim(), "index dimension mismatch");
-
+        assert_eq!(index.len(), self.ndim(), "index length must match ndim");
+        let strides = self.strides();  // returns &[isize]
         let shape = self.shape();
-        let strides = self.strides();
-        let mut offset: usize = 0;
+        let mut offset: isize = 0;
         for i in 0..self.ndim() {
             assert!(index[i] < shape[i], "index out of bounds");
-            offset += index[i] * (strides[i] as usize);
+            offset += strides[i] * index[i] as isize;
         }
-        offset
+        debug_assert!(offset >= 0, "computed negative offset: index is out of bounds");
+        offset as usize
     }
 
     /// Converts a multi-dimensional index to a raw pointer to the corresponding element.
@@ -754,6 +785,7 @@ FFI 模块完全兼容 `no_std` 环境。所有操作均为指针运算和结构
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.1.1 | 2026-04-08 |
 
 ---
 

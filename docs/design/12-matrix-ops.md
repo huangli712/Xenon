@@ -179,13 +179,27 @@ fn scalar_dot<A: Numeric + Copy>(a: &TensorView<A, Ix1>, b: &TensorView<A, Ix1>)
 }
 ```
 
-### 5.3 复数内积实现
+### 5.3 统一内积实现（实数与复数分派）
+
+`dot()` 内部统一使用 `acc + x.conj() * y` 模式。这通过 `Numeric` trait 中的 `fn conj(self) -> Self` 方法实现：
+- 实数类型（`f32`、`f64`、`i32`、`i64`）：`conj(x) == x`（恒等实现，直接返回 `self`）
+- 复数类型（`Complex<f32>`、`Complex<f64>`）：`conj(x)` 返回共轭复数
 
 ```rust
-fn complex_dot<T: RealScalar>(a: &TensorView<Complex<T>, Ix1>, b: &TensorView<Complex<T>, Ix1>) -> Complex<T> {
-    a.iter().zip(b.iter()).fold(Complex::zero(), |acc, (&x, &y)| acc + x.conj() * y)
+// Numeric trait 中的 conj 方法（定义于 03-element-types.md §4.x）
+// Real types: fn conj(self) -> Self { self }
+// Complex types: fn conj(self) -> Self { Complex::conj(self) }
+
+/// Unified dot implementation for both real and complex types.
+/// Uses `x.conj() * y` — for real types conj() is identity, for complex
+/// types it returns the conjugate.
+fn dot_impl<A: Numeric + Copy>(a: &TensorView<A, Ix1>, b: &TensorView<A, Ix1>) -> A {
+    a.iter().zip(b.iter()).fold(A::zero(), |acc, (&x, &y)| acc + x.conj() * y)
 }
 ```
+
+> **设计决策：** 通过 `Numeric::conj()` 方法实现实数与复数的统一分派，避免为复数类型单独实现 `complex_dot` 函数。
+> 实数类型的 `conj()` 为零开销（内联后等价于直接使用 `x * y`），不引入额外运行时成本。
 
 ---
 
@@ -228,11 +242,11 @@ fn complex_dot<T: RealScalar>(a: &TensorView<Complex<T>, Ix1>, b: &TensorView<Co
 ```
 Wave 1: [T1]
             │
-Wave 2: [T2] [T3]
-            │     │
-            └─────┘
-                │
-            [T4]
+Wave 2: [T2]
+            │
+Wave 3: [T3]
+            │
+Wave 4: [T4]
 ```
 
 ---
@@ -360,6 +374,7 @@ extern crate alloc;
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
+| 1.0.5 | 2026-04-08 |
 
 ---
 

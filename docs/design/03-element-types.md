@@ -35,11 +35,14 @@
 依赖层级：
 L0: error, private
 L1: element  ← 当前模块
+L1: complex（element 依赖 complex 的类型定义，complex 不反向依赖 element）
 L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
 L5: ops/, iter/, index/, shape_ops/, broadcast/, construct/, ffi/, convert/, format/
 ```
+
+> **说明**：`element` 模块位于 L1 层级，但内部依赖同级的 `complex` 模块（`complex` 不依赖 `element`）。这是 L1 内部的单向依赖，`element` 使用 `Complex<T>` 类型作为 trait 实现目标，`complex` 仅提供类型定义和基础运算，不涉及 `Element`/`Numeric` 等 trait。这种单向依赖是合理的。
 
 ---
 
@@ -47,11 +50,11 @@ L5: ops/, iter/, index/, shape_ops/, broadcast/, construct/, ffi/, convert/, for
 
 ```
 src/element/
-├── mod.rs         # Element trait 定义、Sealed trait、模块 re-export
-├── numeric.rs     # Numeric trait 定义（四则运算约束）
-├── real.rs        # RealScalar trait 定义（实数数学函数）
-├── complex.rs     # ComplexScalar trait 定义（复数运算接口）
-└── primitives.rs  # 为基础类型实现各层 trait
+├── mod.rs             # Element trait 定义、Sealed trait、模块 re-export
+├── numeric.rs         # Numeric trait 定义（四则运算约束）
+├── real.rs            # RealScalar trait 定义（实数数学函数）
+├── complex_scalar.rs  # ComplexScalar trait 定义（复数运算接口）
+└── primitives.rs      # 为基础类型实现各层 trait
 ```
 
 模块内聚设计：四层 trait 按文件分离，基础类型实现集中在 `primitives.rs`。
@@ -132,6 +135,9 @@ pub trait Element:
 /// Adds arithmetic operations on top of Element.
 /// Only numeric types (integers, floats, complex) implement this.
 /// `bool` does NOT implement Numeric.
+///
+/// Note: `Sealed` is not listed as a separate supertrait here because
+/// `Element` already inherits `Sealed`.
 pub trait Numeric:
     Element
     + core::ops::Add<Output = Self>
@@ -139,7 +145,6 @@ pub trait Numeric:
     + core::ops::Mul<Output = Self>
     + core::ops::Div<Output = Self>
     + core::ops::Neg<Output = Self>
-    + Sealed
 {
     // Marker trait: all constraints via supertraits
 }
@@ -379,8 +384,8 @@ impl Element for bool {
 // let b: i32 = 2;
 // let c = a + b;  // Compile error
 
-// Must convert explicitly
-let c = a + b as f64;
+// Must convert explicitly (no `as` — use From/TryFrom)
+let c = a + f64::from(b);
 ```
 
 ### 5.4 NaN/Inf 处理语义
@@ -480,8 +485,8 @@ impl RealScalar for f64 {
   - 前置: T2
   - 预计: 10 min
 
-- [ ] **T4**: 创建 `complex.rs`，定义 ComplexScalar trait
-  - 文件: `src/element/complex.rs`
+- [ ] **T4**: 创建 `complex_scalar.rs`，定义 ComplexScalar trait
+  - 文件: `src/element/complex_scalar.rs`
   - 内容: `ComplexScalar` trait 定义（关联类型 Real + 复数方法）
   - 测试: 编译通过
   - 前置: T2
@@ -528,9 +533,9 @@ impl RealScalar for f64 {
 
 ### Wave 5: 集成完善
 
-- [ ] **T10**: 添加 no_std 兼容性（条件编译 libm vs std）
+- [ ] **T10**: 添加 no_std 兼容性（条件编译 std）
   - 文件: `src/element/real.rs`
-  - 内容: `#[cfg(feature = "std")]` vs `#[cfg(not(feature = "std"))]` 分支
+  - 内容: `#[cfg(feature = "std")]` 下实现 `RealScalar`；`#[cfg(not(feature = "std"))]` 下不实现（数学方法不可用）
   - 测试: 两种 feature 组合编译通过
   - 前置: T6
   - 预计: 10 min
@@ -698,6 +703,7 @@ Wave 3: [T6]      [T9] ← ────┘
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.2.0 | 2026-04-08 |
 
 ---
 

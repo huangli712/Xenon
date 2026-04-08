@@ -103,7 +103,7 @@ src/parallel/
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
 | `rayon` | `ThreadPool`, `ThreadPoolBuilder`, `ParallelIterator`, `IndexedParallelIterator` |
-| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `.view()`, `.len()`（参见 `07-tensor.md §4`） |
+| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `.view()`, `.len()`, `Tensor::from_raw_vec_unchecked`（参见 `07-tensor.md §4.5`，pub(crate) 方法）（参见 `07-tensor.md §4`） |
 | `storage` | `RawStorage`, `Storage`, `StorageMut`, `.as_slice()`（参见 `05-storage.md §4`） |
 | `layout` | `LayoutFlags`, `is_f_contiguous()`（参见 `06-memory-layout.md §4`） |
 | `broadcast` | `broadcast_shape()`（参见 `15-broadcast.md §4`） |
@@ -241,7 +241,7 @@ where
     F: Fn(&A) -> B + Sync,
 {
     if !should_parallelize(tensor.len(), tensor.is_contiguous()) {
-        return tensor.map(&f);
+        return tensor.map(f);
     }
 
     let len = tensor.len();
@@ -311,7 +311,7 @@ where
     let is_contiguous = a.is_contiguous() && b.is_contiguous();
 
     if !should_parallelize(len, is_contiguous) {
-        return Ok(a.zip_with(b, &f)?);
+        return Ok(a.zip_with(b, f)?);
     }
 
     let mut output: Vec<C> = Vec::with_capacity(len);
@@ -334,9 +334,15 @@ use rayon::iter::{ParallelIterator, IndexedParallelIterator};
 /// Parallel element iterator
 ///
 /// Iterates all elements in parallel following memory layout order.
+///
+/// # Thread Safety
+///
+/// `A: Send + Sync` is required because elements are accessed from multiple threads:
+/// - `Send`: elements can be transferred across thread boundaries
+/// - `Sync`: shared references can be safely accessed from multiple threads
 pub struct ParElements<'a, A, D>
 where
-    A: Element + Sync,
+    A: Element + Send + Sync,
     D: Dimension,
 {
     base: TensorView<'a, A, D>,
@@ -344,7 +350,7 @@ where
 
 impl<'a, A, D> ParElements<'a, A, D>
 where
-    A: Element + Sync,
+    A: Element + Send + Sync,
     D: Dimension,
 {
     /// Create a parallel element iterator
@@ -359,14 +365,36 @@ where
     pub fn is_empty(&self) -> bool { self.base.is_empty() }
 }
 
+#[cfg(feature = "parallel")]
+impl<'a, A, D> ParallelIterator for ParElements<'a, A, D>
+where
+    A: Element + Send + Sync,
+    D: Dimension + Send,
+{
+    type Item = &'a A;
+
+    fn drive_unindexed<C>(self, consumer: C) -> C::Result
+    where
+        C: rayon::iter::plumbing::UnindexedConsumer<Self::Item>,
+    {
+        // Splits data into chunks and drives parallel execution
+        rayon::iter::plumbing::bridge(self, consumer)
+    }
+}
+
 /// Parallel multi-array synchronized iterator
 ///
-/// Iterates two arrays simultaneously, yielding tuples element-wise.
+/// Iterates two arrays simultaneously, yielding tuples element wise.
 /// Supports broadcasting.
+///
+/// # Thread Safety
+///
+/// `A: Send + Sync` and `B: Send + Sync` are required because elements from both
+/// arrays are accessed from multiple threads concurrently.
 pub struct ParZip<'a, A, B, DA, DB>
 where
-    A: Element + Sync,
-    B: Element + Sync,
+    A: Element + Send + Sync,
+    B: Element + Send + Sync,
     DA: Dimension,
     DB: Dimension,
 {
@@ -377,8 +405,8 @@ where
 
 impl<'a, A, B, DA, DB> ParZip<'a, A, B, DA, DB>
 where
-    A: Element + Sync,
-    B: Element + Sync,
+    A: Element + Send + Sync,
+    B: Element + Send + Sync,
     DA: Dimension,
     DB: Dimension,
 {
@@ -394,6 +422,25 @@ where
 
     pub fn len(&self) -> usize { self.len }
     pub fn is_empty(&self) -> bool { self.len == 0 }
+}
+
+#[cfg(feature = "parallel")]
+impl<'a, A, B, DA, DB> ParallelIterator for ParZip<'a, A, B, DA, DB>
+where
+    A: Element + Send + Sync,
+    B: Element + Send + Sync,
+    DA: Dimension + Send,
+    DB: Dimension + Send,
+{
+    type Item = (&'a A, &'a B);
+
+    fn drive_unindexed<C>(self, consumer: C) -> C::Result
+    where
+        C: rayon::iter::plumbing::UnindexedConsumer<Self::Item>,
+    {
+        // Splits data into chunks and drives parallel execution
+        rayon::iter::plumbing::bridge(self, consumer)
+    }
 }
 ```
 
@@ -862,6 +909,7 @@ compile_error!("The 'parallel' feature requires the 'std' feature");
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.2.0 | 2026-04-08 |
 
 ---
 

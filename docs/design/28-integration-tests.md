@@ -235,7 +235,6 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 | `test_broadcast_left_pad` | 维度不足左侧补 1 | 高 |
 | `test_broadcast_incompatible` | 不兼容形状返回错误 | 高 |
 | `test_broadcast_view_readonly` | 广播视图为只读 | 高 |
-
 | `test_broadcast_zero_stride` | 广播后步长为 0 | 中 |
 
 ### 5.4 test_index.rs
@@ -256,7 +255,6 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 | `test_eye_identity` | 单位矩阵 | 高 |
 | `test_from_vec_slice` | from_vec, from_slice 构造 | 高 |
 | `test_from_fn` | from_fn 函数构造 | 中 |
-
 | `test_from_fixed_array` | 从固定数组构造 | 中 |
 
 ### 5.6 test_reduction.rs
@@ -295,7 +293,6 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 | `test_cast_nan_to_int` | NaN→整数行为 | 中 |
 | `test_cast_bool_numeric` | bool↔数值转换 | 中 |
 | `test_copy_to_fill` | copy_to, fill | 中 |
-
 | `test_clip` | 裁剪操作 | 中 |
 
 ### 5.9 test_ffi.rs
@@ -304,7 +301,6 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 |----------|----------|--------|
 | `test_as_ptr` | as_ptr 返回正确指针 | 高 |
 | `test_as_mut_ptr` | as_mut_ptr 返回可变指针 | 高 |
-
 | `test_lda` | lda 返回 leading dimension | 中 |
 | `test_is_blas_compatible` | BLAS 兼容性检查 | 高 |
 | `test_from_raw_parts_roundtrip` | into_raw_parts → from_raw_parts 往返 | 高 |
@@ -329,9 +325,22 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 
 ### 5.12 test_no_std.rs
 
-| 测试函数 | 测试内容 | 优先级 |
-|----------|----------|--------|
-| `test_no_std_compile` | `--no-default-features --features alloc` 编译通过（参见 `01-architecture-overview.md §6`） | 高 |
+> **注意**：no_std 兼容性验证不能通过 `#[test]` 宏实现（测试框架本身依赖 `std`），应通过 CI 脚本验证编译通过。
+
+| 验证方式 | 命令 | 说明 |
+|----------|------|------|
+| CI 脚本 | `cargo check --no-default-features --features alloc` | 验证 no_std + alloc 编译通过（参见 `01-architecture-overview.md §6`） |
+| CI 脚本 | `cargo check --no-default-features` | 验证纯 no_std（无 alloc）编译通过 |
+
+```yaml
+# .github/workflows/test.yml
+no_std_check:
+    steps:
+        - name: Check no_std + alloc
+          run: cargo check --no-default-features --features alloc
+        - name: Check no_std (no alloc)
+          run: cargo check --no-default-features
+```
 
 ### 5.13 test_error.rs
 
@@ -413,7 +422,7 @@ fn test_high_dim_operations() {
 
 | 运算类别 | f64 容差 | f32 容差 | 参考实现 |
 |----------|----------|----------|----------|
-| 加减乘 | 精确 (0 ULP) | 精确 (0 ULP) | 直接计算 |
+| 加减乘 | 精确 (≤0.5 ULP) | 精确 (≤0.5 ULP) | 直接计算 |
 | 归约 (sum) | rtol < 1e-15 | rtol < 1e-6 | Kahan 求和 |
 | 超越函数 (sin/cos) | rtol < 1e-14 | rtol < 1e-5 | `std::f64::sin` |
 | 超越函数 (exp/ln) | rtol < 1e-14 | rtol < 1e-5 | `std::f64::exp` |
@@ -424,7 +433,16 @@ fn test_high_dim_operations() {
 
 ```rust
 /// Compare two floats with relative tolerance.
+///
+/// NaN handling: NaN is considered equal to NaN, and NaN is not
+/// close to any non-NaN value.
 pub fn rtol_eq(actual: f64, expected: f64, rtol: f64) -> bool {
+    if actual.is_nan() && expected.is_nan() {
+        return true;
+    }
+    if actual.is_nan() || expected.is_nan() {
+        return false;
+    }
     if expected == 0.0 {
         actual.abs() < rtol
     } else {
@@ -547,7 +565,150 @@ proptest! {
 
 ---
 
-## 10. 实现任务拆分
+## 10. 内部实现
+
+### 10.1 assert_tensor_close 实现细节
+
+`assert_tensor_close` 的核心逻辑：
+
+1. **形状检查**：先比较 shape，不匹配立即 panic 并附上下文
+2. **逐元素比较**：使用绝对容差（atol），避免相对容差在 expected=0 时的除零问题
+3. **错误信息**：包含测试名称、元素索引、实际值、期望值、差值
+
+```rust
+// Internal implementation detail of assert_tensor_close
+//
+// 1. shape comparison: O(1) early exit if shapes differ
+// 2. element-wise iteration: uses iter() which respects memory layout
+// 3. atol comparison: (actual - expected).abs() <= atol
+// 4. error message includes: msg, index, actual, expected, diff
+```
+
+### 10.2 proptest 策略设计
+
+| 不变量类型 | proptest 策略 | 说明 |
+|-----------|-------------|------|
+| 形状参数 | `1..64usize` | 避免零/过大形状 |
+| 浮点数据 | `any::<f64>()` | 包含 NaN/Inf/Subnormal |
+| 浮点数据（过滤） | `any::<f64>().prop_filter("non-special", \|x\| x.is_normal())` | 排除 NaN/Inf |
+| 整数数据 | `any::<i32>()` | 含负数和边界值 |
+| 1D 向量 | `proptest::collection::vec(strategy, 1..256)` | 含边界长度 |
+
+### 10.3 测试数据生成策略
+
+| 数据类型 | 生成方法 | 用途 |
+|----------|----------|------|
+| 顺序填充 | `from_fn([n], \|idx\| idx[0] as f64)` | 可重复、确定性 |
+| 三角函数值 | `from_fn([n], \|idx\| (idx[0] as f64).sin())` | 非平凡浮点值 |
+| 非连续视图 | `t.t()` 或 `t.slice(s![..;2])` | 测试步长处理 |
+| 空/单元素 | `zeros([0])` / `from_scalar(42.0)` | 边界测试 |
+| 随机数据 | proptest `any::<f64>()` | 属性测试 |
+
+---
+
+## 11. Good/Bad 对比示例
+
+### 11.1 Good — 正确的集成测试模式
+
+```rust
+// Good: Use assert_tensor_close for floating point comparison
+#[test]
+fn test_add_result() {
+    let a = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
+    let b = Tensor1::from_vec(vec![4.0, 5.0, 6.0]);
+    let result = &a + &b;
+    let expected = Tensor1::from_vec(vec![5.0, 7.0, 9.0]);
+    assert_tensor_close(&result, &expected, 1e-10, "add");
+}
+
+// Good: Test error path with assert_xenon_error
+#[test]
+fn test_incompatible_shapes() {
+    let a = Tensor1::from_vec(vec![1.0, 2.0]);
+    let b = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
+    assert_xenon_error!(a + b, XenonError::ShapeMismatch { .. });
+}
+
+// Good: Parameterized test with standard shapes
+#[test]
+fn test_transpose_shapes() {
+    for (r, c) in standard_shapes_2d() {
+        let t = Tensor2::<f64>::zeros([r, c]);
+        let tt = t.t();
+        assert_eq!(tt.shape(), &[c, r]);
+    }
+}
+```
+
+### 11.2 Bad — 错误的集成测试模式
+
+```rust
+// Bad: Using exact equality for floating point
+#[test]
+fn test_add_bad() {
+    let a = Tensor1::from_vec(vec![0.1, 0.2]);
+    let b = Tensor1::from_vec(vec![0.3, 0.4]);
+    let result = &a + &b;
+    assert_eq!(result[[0]], 0.4);  // Floating point exact comparison may fail
+}
+
+// Bad: Ignoring error paths
+#[test]
+fn test_add_bad2() {
+    let a = Tensor1::from_vec(vec![1.0, 2.0]);
+    let b = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
+    let _ = a + b;  // Silently ignoring the error
+}
+
+// Bad: Hardcoded magic numbers without context
+#[test]
+fn test_bad_magic() {
+    let t = Tensor1::<f64>::zeros([100]);
+    assert_eq!(t.sum(), 0.0);  // What is 100? Why zeros?
+}
+```
+
+---
+
+## 12. 与其他模块的交互
+
+### 12.1 测试文件到被测模块映射
+
+| 测试文件 | 被测模块 | 对应设计文档 |
+|----------|----------|-------------|
+| `test_tensor.rs` | `tensor`, `storage` | `07-tensor.md`, `05-storage.md` |
+| `test_ops.rs` | `ops/` (逐元素运算) | `11-elementwise-ops.md` |
+| `test_broadcast.rs` | `broadcast` | `15-broadcast.md` |
+| `test_index.rs` | `index` | `17-indexing.md` |
+| `test_construction.rs` | `construct` | `18-construction.md` |
+| `test_reduction.rs` | `ops/` (归约), `set_ops` | `12-reduction.md`, `14-set-ops.md` |
+| `test_shape_ops.rs` | `shape_ops` | `16-shape-ops.md` |
+| `test_conversion.rs` | `convert` | `22-conversion.md` |
+| `test_ffi.rs` | `ffi`, `workspace` | `23-ffi.md`, `24-workspace.md` |
+| `test_parallel.rs` | `parallel` | `09-parallel-backend.md` |
+| `test_simd.rs` | `simd` | `08-simd-backend.md` |
+| `test_error.rs` | `error` | `26-error-handling.md` |
+
+### 12.2 数据流
+
+```
+测试文件
+    │
+    ├── 调用 crate 公共 API（Tensor::zeros, +, sum, reshape, ...）
+    │       │
+    │       └── 内部经过: storage → tensor → ops → simd/parallel
+    │
+    ├── 使用 common/ 工具
+    │       ├── assert_tensor_close() 进行浮点比较
+    │       └── generators 生成测试数据
+    │
+    └── proptest 框架
+            └── 随机生成输入 → 验证不变量 → shrinking 失败案例
+```
+
+---
+
+## 13. 实现任务拆分
 
 ### Wave 1: 基础设施
 
@@ -689,9 +850,9 @@ Wave 5:       [T16]
 
 ---
 
-## 11. 测试计划
+## 14. 测试计划
 
-### 11.1 测试分类表
+### 14.1 测试分类表
 
 | 类型 | 位置 | 目的 |
 |------|------|------|
@@ -700,7 +861,7 @@ Wave 5:       [T16]
 | 边界测试 | 集成测试中标注 | 空张量、单元素、NaN/Inf、非连续、高维 |
 | 属性测试 | `tests/property/` | 随机生成验证不变量 |
 
-### 11.2 CI 测试矩阵
+### 14.2 CI 测试矩阵
 
 ```yaml
 # .github/workflows/test.yml
@@ -725,7 +886,7 @@ test:
 
 ---
 
-## 12. ADR 决策记录
+## 15. ADR 决策记录
 
 ### 决策 1：按测试领域分文件
 
@@ -776,6 +937,8 @@ test:
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.2.0 | 2026-04-08 |
+| 1.2.1 | 2026-04-08 |
 
 ---
 

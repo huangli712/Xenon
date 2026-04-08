@@ -87,7 +87,7 @@ src/
 ```
 src/storage/
 ├── core::marker         # PhantomData, Send, Sync
-├── std::sync::Arc       # ArcRepr 使用的原子引用计数
+├── alloc::sync::Arc     # ArcRepr 使用的原子引用计数（no_std 兼容；std feature 下 alloc::sync::Arc 等价于 std::sync::Arc）
 └── std::cell::Cell      # thread_local (parallel 模块)
 
 src/parallel/
@@ -541,6 +541,8 @@ Wave 2:            [T5]
 | 并发访问测试 | `tests/thread_safety.rs` | 多线程并发场景验证 |
 | 模型检测 | `loom` 或 `miri` | 数据竞争和内存安全检测 |
 
+> **dev-dependency 说明**：编译期负向测试（如 `assert_not_impl_any!`）需要 `static_assertions` crate。需在 `Cargo.toml` 的 `[dev-dependencies]` 中添加 `static_assertions = "1.1"`。
+
 ### 7.2 单元测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
@@ -560,36 +562,40 @@ Wave 2:            [T5]
 
 ### 7.3 编译期静态检查模板
 
+使用 `static_assertions` crate 的 `assert_impl_all!` 和 `assert_not_impl_any!` 宏进行编译期验证：
+
 ```rust
-// Compile-time Send/Sync verification utility functions
-fn assert_send<T: Send>() {}
-fn assert_sync<T: Sync>() {}
-fn assert_not_sync<T>() where T: ?Sized {}
+use static_assertions::{assert_impl_all, assert_not_impl_any};
+
+// Positive: verify traits are implemented
+assert_impl_all!(Owned<f64>: Send, Sync);
+assert_impl_all!(ViewRepr<&f64>: Send, Sync);
+assert_impl_all!(ViewMutRepr<&mut f64>: Send);
+assert_impl_all!(ArcRepr<f64>: Send, Sync);
+
+// Negative: verify traits are NOT implemented
+assert_not_impl_any!(ViewMutRepr<&mut f64>: Sync);
+assert_not_impl_any!(Owned<Rc<i32>>: Send);
 
 #[test]
 fn owned_send_sync() {
-    assert_send::<Owned<f64>>();
-    assert_sync::<Owned<f64>>();
-    assert_send::<Owned<i32>>();
-    assert_sync::<Owned<i32>>();
+    // Compile-time check via static_assertions above
 }
 
 #[test]
 fn view_send_sync() {
-    assert_send::<ViewRepr<&f64>>();
-    assert_sync::<ViewRepr<&f64>>();
+    assert_impl_all!(ViewRepr<&f64>: Send, Sync);
 }
 
 #[test]
 fn view_mut_send_only() {
-    assert_send::<ViewMutRepr<&mut f64>>();
-    // assert_sync::<ViewMutRepr<&mut f64>>(); // Compile error, as expected
+    assert_impl_all!(ViewMutRepr<&mut f64>: Send);
+    assert_not_impl_any!(ViewMutRepr<&mut f64>: Sync);
 }
 
 #[test]
 fn arc_send_sync() {
-    assert_send::<ArcRepr<f64>>();
-    assert_sync::<ArcRepr<f64>>();
+    assert_impl_all!(ArcRepr<f64>: Send, Sync);
 }
 ```
 
@@ -701,6 +707,26 @@ rayon 的 `ParallelIterator` 要求 `Item: Send`（参见 `09-parallel-backend.m
 | `TensorViewMut<'a, A, D>` | ✅ | ✅ | `A: Send + Sync` |
 | `ArcTensor<A, D>` | ✅ | ❌ (需 make_mut) | `A: Send + Sync` |
 
+#### TensorViewMut 的 par_iter_mut() 安全性论证
+
+`TensorViewMut` 支持 `par_iter_mut()` 的安全性基于以下保证：
+
+1. **独占语义**：`TensorViewMut` 持有 `&mut [A]`，Rust 借用规则保证在任意时刻只有唯一的可变访问者
+2. **分块不重叠**：`par_iter_mut()` 将数据按块分割，每个线程获得独占的 `&mut [A]` 切片，块之间无重叠
+3. **Send 约束**：`A: Send` 确保元素类型可跨线程传递
+4. **Sync 约束**：`A: Sync` 确保在 `par_iter()` 只读路径中，多线程可安全共享 `&A`
+5. **生命周期**：`TensorViewMut` 的 `'a` 生命周期确保视图不会比源数据存活更久
+
+```rust
+// Safety argument for par_iter_mut() on TensorViewMut:
+//
+// TensorViewMut<'a, A, D> holds &mut [A] exclusively.
+// par_iter_mut() splits the slice into non-overlapping chunks,
+// each chunk is sent to a different thread as &mut [A].
+// Since chunks don't overlap, no two threads can access the same element,
+// satisfying the aliasing rule. A: Send + Sync ensures element-level safety.
+```
+
 ---
 
 ## 9. 设计决策记录（ADR）
@@ -786,6 +812,7 @@ mod parallel { ... }
 | 1.0.1 | 2026-04-08 |
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
+| 1.0.4 | 2026-04-08 |
 
 ---
 

@@ -31,8 +31,8 @@ mod tensor-base;
 ```rust
 // Good
 pub struct TensorBase<S, D> { /* ... */ }
-pub struct ViewRepr<'a, A> { /* ... */ }
-pub struct ViewMutRepr<'a, A> { /* ... */ }
+pub struct ViewRepr<A> { /* ... */ }
+pub struct ViewMutRepr<A> { /* ... */ }
 pub struct ArcRepr<A> { /* ... */ }
 pub struct IxDyn { /* ... */ }
 
@@ -100,13 +100,13 @@ pub fn computeStrides(shape: &[Ix]) -> Vec<Ix>;
 
 ```rust
 // Good
-pub const MAX_DIMENSION: usize = 12;
+pub const MAX_DIMENSION: usize = 6;
 pub const DEFAULT_ALIGNMENT: usize = 64;
 const INTERNAL_BUFFER_SIZE: usize = 1024;
 
 // Bad
-pub const maxDimension: usize = 12;
-pub const Max_Dimension: usize = 12;
+pub const maxDimension: usize = 6;
+pub const Max_Dimension: usize = 6;
 ```
 
 ### 1.6 类型参数
@@ -152,7 +152,7 @@ pub struct View<'DATA, A, D> { /* ... */ }
 
 ```rust
 // Good
-impl<A, D> TensorBase<OwnedRepr<A>, D> {
+impl<A, D> TensorBase<Owned<A>, D> {
     pub fn as_slice(&self) -> &[A] { /* ... */ }
     pub fn to_vec(&self) -> Vec<A> { /* ... */ }
     pub fn into_raw_vec(self) -> Vec<A> { /* ... */ }
@@ -358,12 +358,14 @@ pub fn bad<A: Numeric + Add<Output = A> + Sub<Output = A> + Mul<Output = A> + Cl
 
 ```rust
 // Good - covariant borrow of element type
-pub struct ViewRepr<'a, A> {
-    _marker: PhantomData<&'a [A]>,
+pub struct ViewRepr<A> {
+    _marker: PhantomData<A>,
 }
+// Note: ViewRepr<&'a A> is a type alias; the actual struct is ViewRepr<A>
+// with lifetime carried via the generic parameter.
 
 // Good - ownership of A
-pub struct OwnedRepr<A> {
+pub struct Owned<A> {
     _marker: PhantomData<A>,
 }
 
@@ -455,6 +457,9 @@ pub fn reshape_bad<D2>(self, shape: D2) -> Tensor<A, D2> {
 
 统一错误类型 `XenonError`，覆盖所有可恢复错误场景（参见 `26-error-handling.md` §4.2）：
 
+> **注意**：索引越界（IndexOutOfBounds）使用 `panic` 而非 `XenonError`，与标准库 `slice` 行为一致。
+> 步长相关错误由 `LayoutMismatch` 变体覆盖。参见 `26-error-handling.md` §1.2。
+
 ```rust
 #[derive(Debug, Clone)]
 pub enum XenonError {
@@ -506,7 +511,7 @@ mod tests {
 对于性能关键的边界检查操作，提供 checked 和 unchecked 两个版本：
 
 ```rust
-impl<A, D> TensorBase<OwnedRepr<A>, D>
+impl<A, D> TensorBase<Owned<A>, D>
 where
     D: Dimension,
 {
@@ -621,7 +626,7 @@ src/
 
 //! Xenon: N-dimensional array library for Rust.
 
-#![deny(missing_docs)]
+#![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
 #![warn(rust_2024_compatibility)]
 #![warn(unsafe_op_in_unsafe_fn)]
@@ -983,6 +988,7 @@ Wave 2: [T4]
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.2.0 | 2026-04-08 |
 
 ---
 

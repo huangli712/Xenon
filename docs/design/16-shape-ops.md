@@ -13,10 +13,9 @@
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
 | 转置操作 | `transpose()` / `t()` 交换步长和形状返回视图（O(1)） | squeeze / expand_dims（当前版本不提供） |
-| N 维转置 | `permute_axes()` 任意轴排列 | stack / concatenate（当前版本不提供） |
-| reshape 操作 | `reshape()` / `into_shape()` 改变形状 | pad / repeat / split（当前版本不提供） |
-| 连续性检查 | reshape 壍检查数据连续性决定零拷贝或需拷贝路径 | flatten（由 reshape 实现） |
-| 转置便捷方法 | `swap_axes()` / `moveaxis()` | arange / linspace / logspace（当前版本不提供） |
+| reshape 操作 | `reshape()` / `into_shape()` 改变形状 | `permute_axes` / `swap_axes` / `moveaxis`（当前版本仅提供 transpose 和 reshape，见需求 §17，留待后续版本） |
+| 连续性检查 | reshape 须检查数据连续性决定零拷贝或需拷贝路径 | pad / repeat / split（当前版本不提供） |
+| 转置便捷方法 | — | `permute_axes()` / `swap_axes()` / `moveaxis()` 留待后续版本 |
 
 ### 1.2 设计原则
 
@@ -46,7 +45,7 @@ L5: shape_ops  ← 当前模块
 ```
 src/shape_ops/
 ├── mod.rs             # 模块入口，re-export 公开 trait 和函数
-├── transpose.rs       # transpose, t, permute_axes, swap_axes, moveaxis
+├── transpose.rs       # transpose, t
 └── reshape.rs         # reshape, into_shape
 ```
 
@@ -82,7 +81,7 @@ src/shape_ops/
 |----------|-----------------|
 | `tensor` | `TensorBase<S, D>`, `TensorView`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.offset()`，参见 `07-tensor.md` §4 |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `RemoveAxis`, `IntoDimension`，参见 `02-dimension.md` §3 |
-| `memory_layout` | `LayoutFlags`, `is_f_contiguous()`，参见 `06-memory-layout.md` §3 |
+| `memory_layout` | `LayoutFlags`, `is_f_contiguous()`, `compute_strides()`, `Order`，参见 `06-memory-layout.md` §3, §4.x |
 | `error` | `XenonError::InvalidShape`, `XenonError::LayoutMismatch`，参见 `26-error-handling.md` §4 |
 
 ### 3.3 依赖方向声明
@@ -158,33 +157,7 @@ where
 | 偏移量 | 保持不变 |
 | 1D 数组 | 转置后形状不变（1D 无轴顺序概念） |
 
-### 4.1.2 转置布局变化
-
-转置交换步长和形状的顺序，使数组不再是 F-contiguous：
-
-```
-原始: shape=[2, 3], strides=[1, 2]  (F-order, F-contiguous)
-转置: shape=[3, 2], strides=[2, 1]  (步长反转，非 F-contiguous)
-```
-
-> **注意**：Xenon 只支持 F-order 布局，不使用 C-order 标志位。转置后调用
-> `is_f_contiguous()` 返回 `false`；若需恢复连续内存，使用 `to_contiguous()`。
-
-### 4.1.3 HAS_NEG_STRIDE 栄志处理
-
-转置操作不引入负步长（仅交换步长值），因此无需设置 `HAS_NEG_STRIDE` 标志。但如果原始视图已有负步长，转置后保留。
-
-```rust
-fn update_flags_for_transpose(source_flags: LayoutFlags) -> LayoutFlags {
-    let mut flags = source_flags;
-    // Transpose reverses stride order; F-contiguous becomes non-F-contiguous.
-    // Xenon does not track C-contiguous (not supported).
-    flags.set_f_contiguous(false);
-    flags
-}
-```
-
-### 4.1.4 Good / Bad 对比
+#### 4.1.2 Good / Bad 对比
 
 ```rust
 // Good - use t() for zero-copy transpose
@@ -253,6 +226,7 @@ where
         }
         
         // 3. Compute new strides (always F-order)
+        // See 06-memory-layout.md §4.x compute_flags and related stride computation
         let new_strides = compute_strides(&shape, Order::F);
         
         // 4. Create view
@@ -297,6 +271,7 @@ where
         
         // F-contiguous: reshape in-place (zero-copy)
         if self.is_f_contiguous() {
+            // See 06-memory-layout.md §4.x compute_flags and related stride computation
             let new_strides = compute_strides(&shape, Order::F);
             return Ok(Tensor {
                 storage: self.storage.into_owned(),
@@ -309,6 +284,7 @@ where
         
         // Non-contiguous: copy to contiguous then reshape
         let owned = self.to_contiguous();
+        // See 06-memory-layout.md §4.x compute_flags and related stride computation
         let new_strides = compute_strides(&shape, Order::F);
         Ok(Tensor {
             storage: owned.storage,
@@ -331,21 +307,7 @@ where
 | 布局保持 | F-contiguous 输入默认输出 F-contiguous |
 | 空数组 | 允许 reshape 到任意元素总数为 0 的形状 |
 
-### 4.2.2 连续性检查逻辑
-
-```
-is_contiguous() = is_f_contiguous()
-
-F-contiguous: strides[i] = product(shape[0..i])  (column-major, F-order)
-  e.g. shape=[2,3,4], strides=[1,2,6]
-
-Non-contiguous example (reshape fails):
-  original: shape=[4,6], strides=[1,4]  (F-contiguous)
-  after transpose: shape=[6,4], strides=[4,1]  (non-F-contiguous)
-  → reshape([24]) via reshape() fails; use into_shape() for auto-copy
-```
-
-### 4.2.3 Good / Bad 对比
+### 4.2.2 Good / Bad 对比
 
 ```rust
 // Good - reshape contiguous array directly (O(1))
@@ -363,7 +325,51 @@ slice.reshape([12])?;  // Returns Err(LayoutMismatch), should use into_shape()
 
 ---
 
-## 5. 实现任务拆分
+## 5. 内部实现设计
+
+### 5.1 转置布局变化
+
+转置交换步长和形状的顺序，使数组不再是 F-contiguous：
+
+```
+原始: shape=[2, 3], strides=[1, 2]  (F-order, F-contiguous)
+转置: shape=[3, 2], strides=[2, 1]  (步长反转，非 F-contiguous)
+```
+
+> **注意**：Xenon 只支持 F-order 布局，不使用 C-order 标志位。转置后调用
+> `is_f_contiguous()` 返回 `false`；若需恢复连续内存，使用 `to_contiguous()`。
+
+### 5.2 HAS_NEG_STRIDE 标志处理
+
+转置操作不引入负步长（仅交换步长值），因此无需设置 `HAS_NEG_STRIDE` 标志。但如果原始视图已有负步长，转置后保留。
+
+```rust
+fn update_flags_for_transpose(source_flags: LayoutFlags) -> LayoutFlags {
+    let mut flags = source_flags;
+    // Transpose reverses stride order; F-contiguous becomes non-F-contiguous.
+    // Xenon does not track C-contiguous (not supported).
+    flags.set_f_contiguous(false);
+    flags
+}
+```
+
+### 5.3 连续性检查逻辑
+
+```
+is_contiguous() = is_f_contiguous()
+
+F-contiguous: strides[i] = product(shape[0..i])  (column-major, F-order)
+  e.g. shape=[2,3,4], strides=[1,2,6]
+
+Non-contiguous example (reshape fails):
+  original: shape=[4,6], strides=[1,4]  (F-contiguous)
+  after transpose: shape=[6,4], strides=[4,1]  (non-F-contiguous)
+  → reshape([24]) via reshape() fails; use into_shape() for auto-copy
+```
+
+---
+
+## 6. 实现任务拆分
 
 ### Wave 1: 基础设施
 
@@ -413,16 +419,18 @@ slice.reshape([12])?;  // Returns Err(LayoutMismatch), should use into_shape()
 ```
 Wave 1: [T1]
             │
-Wave 2: [T2] ─── [T3] ─── [T4]
-                          │
-Wave 3:              [T5]
+Wave 2: [T2] ─── [T3]
+                    │
+Wave 3:         [T4]
+                    │
+Wave 4:         [T5]
 ```
 
 ---
 
-## 6. 测试计划
+## 7. 测试计划
 
-### 6.1 单元测试
+### 7.1 单元测试
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
@@ -438,7 +446,7 @@ Wave 3:              [T5]
 | `test_into_shape_non_contiguous` | 非连续数组 `into_shape` 自动拷贝 | 高 |
 | `test_reshape_empty` | 空数组 reshape | 中 |
 
-### 6.2 边界测试
+### 7.2 边界测试
 
 | 场景 | 预期行为 |
 |------|----------|
@@ -447,7 +455,7 @@ Wave 3:              [T5]
 | 大数组 `[1000, 1000]` 转置 | O(1)，不拷贝 |
 | 高维数组 `[2,3,4,5]` reshape | 到 `[6, 20]` 成功 |
 
-### 6.3 属性测试不变量
+### 7.3 属性测试不变量
 
 | 不变量 | 测试方法 |
 |--------|----------|
@@ -458,7 +466,7 @@ Wave 3:              [T5]
 
 ---
 
-## 7. 与其他模块的交互
+## 8. 与其他模块的交互
 
 | 交互模块 | 方向 | 说明 |
 |----------|------|------|
@@ -470,7 +478,7 @@ Wave 3:              [T5]
 
 ---
 
-## 8. 设计决策记录
+## 9. 设计决策记录
 
 ### 决策 1：转置不拷贝数据
 
@@ -498,9 +506,9 @@ Wave 3:              [T5]
 
 ---
 
-## 9. 性能考量
+## 10. 性能考量
 
-### 9.1 复杂度
+### 10.1 复杂度
 
 | 操作 | 连续输入 | 非连续输入 |
 |------|----------|-----------|
@@ -509,7 +517,7 @@ Wave 3:              [T5]
 | `reshape()` | O(1) | 返回 Err |
 | `into_shape()` | O(1) | O(n)（拷贝） |
 
-### 9.2 内存
+### 10.2 内存
 
 | 操作 | 内存分配 | 数据拷贝 |
 |------|----------|----------|
@@ -518,7 +526,7 @@ Wave 3:              [T5]
 | `reshape()` (连续) | 无 | 无 |
 | `into_shape()` (非连续) | O(n) | O(n) |
 
-### 9.3 缓存行为
+### 10.3 缓存行为
 
 | 场景 | 缓存友好性 | 说明 |
 |------|-----------|------|
@@ -528,7 +536,7 @@ Wave 3:              [T5]
 
 ---
 
-## 10. no_std 兼容性
+## 11. no_std 兼容性
 
 形状操作模块在 `no_std` 环境下可用，但需注意非连续 reshape 路径的堆分配依赖。
 
@@ -543,8 +551,6 @@ use alloc::vec::Vec;
 | 组件 | no_std 支持 | 说明 |
 |------|:----------:|------|
 | `transpose()` / `t()` | ✅ | 纯元数据操作（交换步长和形状），无堆分配 |
-| `permute_axes()` | ✅ | 纯元数据操作，无堆分配 |
-| `swap_axes()` / `moveaxis()` | ✅ | 纯元数据操作，无堆分配 |
 | `reshape()`（连续路径） | ✅ | 仅更新元数据，无堆分配 |
 | `into_shape()`（非连续路径） | ✅ | 需 `no_std + alloc`，调用 `to_contiguous()` 拷贝数据，参见 `05-storage.md` §5 |
 | `LayoutFlags` 更新 | ✅ | 位标志操作，无依赖，参见 `06-memory-layout.md` §3 |
@@ -573,6 +579,7 @@ extern crate alloc;
 | 1.0.4 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-08 |
+| 1.2.0 | 2026-04-08 |
 
 ---
 

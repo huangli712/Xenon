@@ -77,6 +77,7 @@ src/ops/elementwise.rs
 | `iter` | `Elements`, `ElementsMut`, `Zip`（参见 `10-iterator.md §4`） |
 | `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element-types.md §4`） |
 | `broadcast` | `broadcast_shape()`, `BroadcastView`（参见 `15-broadcast.md §4`） |
+| `dimension` | `BroadcastDim<E>` trait（编译期维度推导，参见 `02-dimension.md §4.9`） |
 | `simd`（可选） | `pulp::Arch`（参见 `08-simd-backend.md §4`） |
 | `error` | `XenonError`, `BroadcastError`（参见 `26-error-handling.md §4`） |
 
@@ -104,9 +105,12 @@ where
         F: FnMut(&A) -> B;
 
     /// Element-wise mapping (by value), returns a newly allocated Tensor.
+    ///
+    /// All Xenon element types are `Copy`, so value semantics is safe and zero-cost.
     pub fn mapv<B, F>(&self, f: F) -> Tensor<B, D>
     where
         B: Element,
+        A: Copy,
         F: FnMut(A) -> B;
 }
 
@@ -117,13 +121,18 @@ where
     A: Element,
 {
     /// In-place element-wise mapping.
+    ///
+    /// All Xenon element types are `Copy`, so value semantics is safe and zero-cost.
     pub fn mapv_inplace<F>(&mut self, f: F)
     where
+        A: Copy,
         F: FnMut(A) -> A;
 }
 ```
 
 ### 4.2 二元 zip 操作
+
+> **维度推导说明：** 此函数使用 `BroadcastDim<E>` 进行编译期维度推导，该 trait 定义于 `02-dimension.md §4.9`，详见该文档。
 
 ```rust
 /// Binary element-wise operation with broadcast support.
@@ -138,7 +147,9 @@ where
     C: Element,
     D: Dimension,
     E: Dimension,
-    F: FnMut(A, B) -> C;
+    F: FnMut(A, B) -> C,
+    A: Copy,
+    B: Copy;
 ```
 
 ### 4.3 算术运算（Numeric 约束）
@@ -375,21 +386,21 @@ add_impl(a, b):
   - 前置: T1, broadcast 模块
   - 预计: 10 min
 
-- [ ] **T4**: 实现一元运算（abs/neg/signum/square）
+- [ ] **T3**: 实现一元运算（abs/neg/signum/square）
   - 文件: `src/ops/elementwise.rs`
   - 内容: 基于 `mapv` 的一元运算
   - 测试: `test_abs`, `test_neg`, `test_signum`, `test_square`
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T5**: 实现数学函数（sin/sqrt/exp/ln/floor/ceil）
+- [ ] **T4**: 实现数学函数（sin/sqrt/exp/ln/floor/ceil）
   - 文件: `src/ops/elementwise.rs`
   - 内容: RealScalar 约束的数学方法
   - 测试: `test_sin`, `test_sqrt`, `test_exp`, `test_floor_ceil`
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T6**: 实现复数运算（norm/conj）
+- [ ] **T5**: 实现复数运算（norm/conj）
   - 文件: `src/ops/elementwise.rs`
   - 内容: ComplexScalar 约束的复数方法
   - 测试: `test_norm`, `test_conj`
@@ -398,7 +409,7 @@ add_impl(a, b):
 
 ### Wave 3: 算术与比较运算
 
-- [ ] **T3**: 实现算术运算（add/sub/mul/div）
+- [ ] **T6**: 实现算术运算（add/sub/mul/div）
   - 文件: `src/ops/elementwise.rs`
   - 内容: 基于 `zip_with` 的算术运算，标量版本
   - 测试: `test_add_i32`, `test_add_f64`, `test_add_complex`, `test_mul_scalar`
@@ -429,12 +440,12 @@ Wave 1:                    [T1]
             ┌───────┬───────┴───────┬───────┐
             |       |               |       |
             v       v               v       v
-Wave 2:    [T2]    [T4]            [T5]    [T6]
+Wave 2:    [T2]    [T3]            [T4]    [T5]
             |
          ┌──┴─────┐
          |        |
          v        v
-Wave 3: [T3]    [T7]
+Wave 3: [T6]    [T7]
          |
          v
 Wave 4: [T8]
@@ -564,7 +575,7 @@ use alloc::vec::Vec;
 | `mapv_inplace` | ✅ | 原地修改，无额外分配 |
 | `zip_with` | ✅ | 返回新 `Tensor`，需 `no_std + alloc` |
 | 算术运算 (add/sub/mul/div) | ✅ | 基于 `zip_with`，需 `no_std + alloc` |
-| 数学函数 (sin/sqrt/exp/ln/...) | ✅ | 需启用 `libm` feature 提供数学实现 |
+| 数学函数 (sin/sqrt/exp/ln/...) | ✅ | 数学函数（sin/exp/ln/sqrt 等）需要 `std` feature，no_std 环境下不可用（RealScalar 数学方法在 no_std 下无实现者） |
 | 比较运算 (eq/ne/lt/gt) | ✅ | 无特殊依赖 |
 | 复数运算 (norm/conj) | ✅ | 基于 `map`，需 `no_std + alloc` |
 | 逻辑非 (not) | ✅ | 基于 `map`，需 `no_std + alloc` |
@@ -574,9 +585,8 @@ use alloc::vec::Vec;
 
 ```rust
 // map/zip_with return new Tensor — needs alloc::vec::Vec
-// Math functions need libm in no_std:
-#[cfg(all(not(feature = "std"), feature = "libm"))]
-// libm provides sin, sqrt, exp, ln, floor, ceil in no_std
+// Math functions (sin/exp/ln/sqrt etc.) require `std` feature;
+// in no_std environments, RealScalar math methods have no implementors.
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;
@@ -594,6 +604,7 @@ extern crate alloc;
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.2.0 | 2026-04-08 |
 
 ---
 

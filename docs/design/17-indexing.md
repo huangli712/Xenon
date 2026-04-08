@@ -87,7 +87,8 @@ src/index/
 | `tensor` | `TensorBase<S, D>`, `TensorView`, `TensorViewMut`, `.shape()`, `.strides()`, `.as_ptr()`, `.as_mut_ptr()`，参见 `07-tensor.md` §4 |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.ndim()`，参见 `02-dimension.md` §3 |
 | `memory_layout` | `LayoutFlags`, `HAS_NEG_STRIDE`, `HAS_ZERO_STRIDE`，参见 `06-memory-layout.md` §3 |
-| `error` | `XenonError::IndexOutOfBounds`，参见 `26-error-handling.md` §4 |
+
+> **注意**：索引越界使用 panic 处理（而非 XenonError 变体），参见 `26-error-handling.md §5.3`。`get()` 方法返回 `Option<&A>` 提供可恢复的越界检查路径。
 
 ### 3.3 依赖方向声明
 
@@ -131,12 +132,12 @@ pub trait NdIndex<D: Dimension>: Sealed {
 }
 
 // Static array index (e.g. tensor[[0, 1, 2]])
-impl<D: Dimension> Sealed for [usize; 1] {}
-impl<D: Dimension> Sealed for [usize; 2] {}
-impl<D: Dimension> Sealed for [usize; 3] {}
-impl<D: Dimension> Sealed for [usize; 4] {}
-impl<D: Dimension> Sealed for [usize; 5] {}
-impl<D: Dimension> Sealed for [usize; 6] {}
+impl Sealed for [usize; 1] {}
+impl Sealed for [usize; 2] {}
+impl Sealed for [usize; 3] {}
+impl Sealed for [usize; 4] {}
+impl Sealed for [usize; 5] {}
+impl Sealed for [usize; 6] {}
 
 impl<D: Dimension, const N: usize> NdIndex<D> for [usize; N] {
     fn index_checked(&self, dim: &D, strides: &D) -> Option<usize> {
@@ -150,8 +151,13 @@ impl<D: Dimension, const N: usize> NdIndex<D> for [usize; N] {
     }
 
     unsafe fn index_unchecked(&self, strides: &D) -> usize {
-        let s = strides.strides_isize();
-        self.iter().zip(s.iter()).map(|(&idx, &stride)| idx * stride as usize).sum()
+        // Use signed arithmetic to handle negative strides
+        let mut offset: isize = 0;
+        for (&idx, &stride) in self.iter().zip(strides.strides_isize().iter()) {
+            offset += stride * idx as isize;
+        }
+        debug_assert!(offset >= 0, "negative offset indicates invalid index");
+        offset as usize
     }
 }
 
@@ -168,8 +174,13 @@ impl<D: Dimension> NdIndex<D> for [usize] {
     }
 
     unsafe fn index_unchecked(&self, strides: &D) -> usize {
-        let s = strides.strides_isize();
-        self.iter().zip(s.iter()).map(|(&idx, &stride)| idx * stride as usize).sum()
+        // Use signed arithmetic to handle negative strides
+        let mut offset: isize = 0;
+        for (&idx, &stride) in self.iter().zip(strides.strides_isize().iter()) {
+            offset += stride * idx as isize;
+        }
+        debug_assert!(offset >= 0, "negative offset indicates invalid index");
+        offset as usize
     }
 }
 ```
@@ -381,6 +392,12 @@ where
     }
 
     /// Creates a mutable sliced view.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the tensor contains zero strides (`LayoutFlags::HAS_ZERO_STRIDE`),
+    /// because zero strides mean multiple logical indices map to the same physical
+    /// address, and mutable access would cause data races.
     pub fn slice_mut<I>(&mut self, info: SliceInfo<I, D>) -> TensorViewMut<'_, A, I>
     where
         I: Dimension,
@@ -389,6 +406,8 @@ where
         // ...
     }
 }
+
+> **注意**：对广播视图（含零步长）不得调用 `slice_mut`，因为零步长意味着多个逻辑索引映射到同一物理地址，可变访问会引起数据竞争。如果原张量包含零步长（`LayoutFlags::HAS_ZERO_STRIDE`），此方法应 panic 或返回错误。
 ```
 
 #### 4.2.4 Good / Bad 对比
@@ -426,7 +445,7 @@ fn unsafe_index(tensor: &Tensor<f64, Ix2>, idx: &[usize]) -> f64 {
 | `shape[i]` | 切片范围长度 |
 | `strides[i]` | 原步长 × 切片步长 |
 | `offset` | 原偏移 + start × 原步长 |
-| `LayoutFlags` | 有步长时设置 `HAS_NEG_STRIDE`；非原始步长时设置 `HAS_ZERO_STRIDE` |
+| `LayoutFlags` | 有负步长时设置 `HAS_NEG_STRIDE`；步长恰好为 0 时设置 `HAS_ZERO_STRIDE`（广播视图的广播维度） |
 
 ---
 
@@ -726,6 +745,7 @@ extern crate alloc;
 | 1.0.4 | 2026-04-08 |
 | 1.0.5 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.1.1 | 2026-04-08 |
 
 ---
 
