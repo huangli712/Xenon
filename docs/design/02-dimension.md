@@ -183,9 +183,16 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
     ///
     /// `usize` and `isize` have the same size and alignment on all
     /// Rust targets (`core::mem::size_of::<usize>() == core::mem::size_of::<isize>()`).
-    /// `#[repr(transparent)]` or `#[repr(C)]` on the dimension types ensures
-    /// the underlying memory layout is a contiguous `[usize]`, which can be
-    /// safely viewed as `[isize]` via pointer cast.
+    ///
+    /// For static dimensions (`Ix1`-`Ix6`): `#[repr(C)]` guarantees the underlying
+    /// memory layout is a contiguous sequence of `usize` fields, which can be safely
+    /// viewed as `[isize]` via pointer cast.
+    ///
+    /// For dynamic dimension (`IxDyn`): `Vec<usize>` guarantees contiguous memory
+    /// layout (elements are stored in a single heap allocation). Reinterpreting
+    /// `&[usize]` as `&[isize]` is safe since both types have the same size and
+    /// alignment. Additionally, F-order strides are always non-negative, ensuring
+    /// the reinterpreted `isize` values are in the valid positive range.
     ///
     /// Stride values stored in the `D` type are always within the valid
     /// `isize` range (guaranteed by construction in the layout module).
@@ -1079,14 +1086,14 @@ Wave 5:  [T10] → [T11] → [T12]
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.2.0 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本：Dimension trait、Ix0-Ix6、IxDyn、IntoDimension、Axis |
+| 1.0.1 | 2026-04-07 | 添加 BroadcastDim trait、Reverse trait |
+| 1.0.2 | 2026-04-08 | 补充 strides_isize() 安全性论证（含 IxDyn Vec<usize> 说明） |
+| 1.0.3 | 2026-04-08 | 添加 RemoveAxis trait 设计 |
+| 1.1.0 | 2026-04-08 | 添加维度互转规则、F-order 步长算法 |
+| 1.2.0 | 2026-04-08 | 补充版本变更描述 |
 
 ---
 

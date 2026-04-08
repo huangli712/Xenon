@@ -95,7 +95,7 @@ impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: Element + PartialOrd,
+    A: Numeric + PartialOrd,
 {
     /// Clamp each element to the [min, max] range.
     ///
@@ -103,10 +103,12 @@ where
     ///
     /// # Supported Types
     ///
-    /// Available for types implementing `PartialOrd`: i32, i64, f32, f64, bool, usize.
+    /// Available for types implementing `Numeric + PartialOrd`: i32, i64, f32, f64, usize.
     /// **Not available for `Complex<f32>`/`Complex<f64>`** because complex numbers
     /// have no natural total ordering (`Complex` does not implement `PartialOrd`,
     /// see `04-complex-type.md §4`).
+    /// **Not available for `bool`** because `bool` does not implement `Numeric`
+    /// (see `03-element-types.md §3`).
     ///
     /// # Arguments
     ///
@@ -171,6 +173,13 @@ where
     ///
     /// Correctly handles non-contiguous layouts: iterates over all logical
     /// elements via the iterator. Modifies storage directly without copying.
+    ///
+    /// **Note**: Calling `fill()` on a broadcast view (a tensor with zero strides
+    /// from broadcasting) will only write to the underlying physical element(s),
+    /// not to all logical positions. This is by design — `fill` on a view modifies
+    /// the underlying data. If broadcast-view fill semantics (writing to all
+    /// logical positions) are needed, call `.to_contiguous()` first to materialize
+    /// the view.
     ///
     /// # Examples
     ///
@@ -404,7 +413,7 @@ Wave 2:      [T3] → [T4]
 
 ## 9. 设计决策记录
 
-### 决策 1：NaN 的 clip 行为
+### ADR-1：NaN 的 clip 行为
 
 | 属性 | 值 |
 |------|-----|
@@ -413,7 +422,7 @@ Wave 2:      [T3] → [T4]
 | 替代方案 | NaN 裁剪到 min — 放弃，与 IEEE 754 和 NumPy 不一致 |
 | 替代方案 | NaN 裁剪到 max — 放弃，同上 |
 
-### 决策 2：to_contiguous 返回类型
+### ADR-2：to_contiguous 返回类型
 
 | 属性 | 值 |
 |------|-----|
@@ -478,15 +487,15 @@ use alloc::vec::Vec;
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-08 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.0.4 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.1.1 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本 |
+| 1.0.1 | 2026-04-08 | 补充 NaN 处理语义 |
+| 1.0.2 | 2026-04-08 | 补充性能考量 |
+| 1.0.3 | 2026-04-08 | 补充 no_std 兼容性 |
+| 1.0.4 | 2026-04-08 | 补充测试计划 |
+| 1.1.0 | 2026-04-08 | 修正 clip 约束为 Numeric + PartialOrd；补充 fill 广播视图行为说明；添加 ADR 编号 |
+| 1.1.1 | 2026-04-08 | 小幅修订 |
 
 ---
 

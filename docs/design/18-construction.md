@@ -128,7 +128,7 @@ where
         let len = dim.size();
         let strides = dim.strides_for_f_order();
         let storage = Owned::zeros(len);
-        TensorBase { storage, shape: dim, strides, offset: 0 }
+        TensorBase { storage, shape: dim, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) }
     }
 
     /// Create a tensor filled with ones (F-order).
@@ -162,7 +162,7 @@ where
         let len = dim.size();
         let strides = dim.strides_for_f_order();
         let storage = Owned::from_elem(len, value);
-        TensorBase { storage, shape: dim, strides, offset: 0 }
+        TensorBase { storage, shape: dim, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) }
     }
 }
 ```
@@ -238,7 +238,7 @@ where
         // from_vec_aligned: defined in 05-storage.md §5.1 and 21-type-conversion.md §5.1;
         // copies data into a 64-byte aligned allocation for SIMD compatibility.
         let storage = Owned::from_vec_aligned(data);
-        Ok(TensorBase { storage, shape: dim, strides, offset: 0 })
+        Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) })
     }
 
     /// Construct a tensor from a slice (copies data).
@@ -306,6 +306,7 @@ where
             shape: Ix0(),
             strides: Ix0(),
             offset: 0,
+            flags: LayoutFlags::from_order(Order::F),
         }
     }
 }
@@ -344,7 +345,7 @@ where
             increment_index_f(&dim, &mut idx);
         }
         let storage = Owned::from_vec_aligned(data);
-        TensorBase { storage, shape: dim, strides, offset: 0 }
+        TensorBase { storage, shape: dim, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) }
     }
 }
 ```
@@ -382,7 +383,7 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 | `zeros` | 对齐分配 + 零初始化 | `ptr::write_bytes(0)` |
 | `ones` | 对齐分配 + 批量填充 | `ptr::write(One::one())` |
 | `fill` | 对齐分配 + 批量克隆 | `clone` 填充 |
-| `from_vec` | 对齐转移（不拷贝） | 用户提供数据 |
+| `from_vec` | 复制到对齐分配（会拷贝数据到新的64字节对齐内存） | 用户提供数据 |
 | `from_slice` | 对齐分配 + 拷贝 | `copy_from_slice` |
 | `from_fn` | 对齐分配 + 闭包填充 | 闭包逐元素调用 |
 | `from_scalar` | 对齐分配（1 元素） | 单元素写入 |
@@ -542,7 +543,7 @@ Wave 4:           [T6]
 
 ## 9. 设计决策记录
 
-### 决策 1: from_fn 使用闭包而非迭代器
+### ADR-1: from_fn 使用闭包而非迭代器
 
 | 属性 | 值 |
 |------|-----|
@@ -551,7 +552,7 @@ Wave 4:           [T6]
 | 替代方案 | 接收 `Iterator<Item=A>` — 放弃，不提供多维索引信息 |
 | 替代方案 | 接收 `FnMut(usize) -> A`（线性索引） — 放弃，用户需要自行计算多维索引 |
 
-### 决策 2: eye 实现方式
+### ADR-2: eye 实现方式
 
 | 属性 | 值 |
 |------|-----|
@@ -643,15 +644,15 @@ use alloc::vec::Vec;
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.0.4 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.1.1 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本 |
+| 1.0.1 | 2026-04-07 | 补充依赖关系图 |
+| 1.0.2 | 2026-04-08 | 补充 no_std 兼容性 |
+| 1.0.3 | 2026-04-08 | 补充性能考量 |
+| 1.0.4 | 2026-04-08 | 补充测试计划 |
+| 1.1.0 | 2026-04-08 | 新增 from_fn / from_scalar 方法 |
+| 1.1.1 | 2026-04-08 | 补充 flags 字段初始化；修正 from_vec_aligned 描述为"复制到对齐分配"；添加 ADR 编号 |
 
 ---
 

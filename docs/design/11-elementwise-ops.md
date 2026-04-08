@@ -162,20 +162,36 @@ where
     A: Numeric,
 {
     /// Element-wise addition (with broadcast support).
-    pub fn add(&self, other: &TensorBase<impl Storage<Elem = A>, impl Dimension>)
-        -> Result<Tensor<A, D>, XenonError>;
+    pub fn add<E>(&self, other: &TensorBase<impl Storage<Elem = A>, E>)
+        -> Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>
+    where
+        D: BroadcastDim<E>,
+        E: Dimension,
+        A: Numeric + Copy + Add<Output = A>;
 
     /// Element-wise subtraction.
-    pub fn sub(&self, other: &TensorBase<impl Storage<Elem = A>, impl Dimension>)
-        -> Result<Tensor<A, D>, XenonError>;
+    pub fn sub<E>(&self, other: &TensorBase<impl Storage<Elem = A>, E>)
+        -> Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>
+    where
+        D: BroadcastDim<E>,
+        E: Dimension,
+        A: Numeric + Copy + Sub<Output = A>;
 
     /// Element-wise multiplication.
-    pub fn mul(&self, other: &TensorBase<impl Storage<Elem = A>, impl Dimension>)
-        -> Result<Tensor<A, D>, XenonError>;
+    pub fn mul<E>(&self, other: &TensorBase<impl Storage<Elem = A>, E>)
+        -> Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>
+    where
+        D: BroadcastDim<E>,
+        E: Dimension,
+        A: Numeric + Copy + Mul<Output = A>;
 
     /// Element-wise division.
-    pub fn div(&self, other: &TensorBase<impl Storage<Elem = A>, impl Dimension>)
-        -> Result<Tensor<A, D>, XenonError>;
+    pub fn div<E>(&self, other: &TensorBase<impl Storage<Elem = A>, E>)
+        -> Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>
+    where
+        D: BroadcastDim<E>,
+        E: Dimension,
+        A: Numeric + Copy + Div<Output = A>;
 }
 ```
 
@@ -354,12 +370,29 @@ zip_with(a, b, f):
 
 ### 5.3 SIMD 加速路径
 
-```
-add_impl(a, b):
-    if cfg!(feature = "simd") && a.is_contiguous() && b.is_contiguous():
-        return simd::add_vectorized(a, b)
-    else:
-        return zip_with(a, b, |x, y| x + y)
+```rust
+// Use #[cfg] attribute for conditional compilation instead of runtime cfg!()
+// This ensures the SIMD path is fully eliminated at compile time when the
+// feature is not enabled.
+
+#[cfg(feature = "simd")]
+fn add_impl_simd<A>(a: &TensorView<A, D>, b: &TensorView<A, D>) -> Tensor<A, D>
+where
+    A: Numeric + Copy,
+{
+    if a.is_contiguous() && b.is_contiguous() {
+        return simd::add_vectorized(a, b);
+    }
+    zip_with_scalar(a, b, |x, y| x + y)
+}
+
+#[cfg(not(feature = "simd"))]
+fn add_impl_simd<A>(a: &TensorView<A, D>, b: &TensorView<A, D>) -> Tensor<A, D>
+where
+    A: Numeric + Copy,
+{
+    zip_with_scalar(a, b, |x, y| x + y)
+}
 ```
 
 参见 `08-simd-backend.md §4.5` 了解 SIMD 后端详情。
@@ -454,6 +487,25 @@ Wave 4: [T8]
 ---
 
 ## 7. 测试计划
+
+### 7.0 测试分类总表
+
+| 测试分类 | 说明 | 包含的测试 |
+|----------|------|-----------|
+| 单元测试 | 验证单个运算函数的基本正确性 | `test_map_type_conversion`, `test_mapv_square`, `test_mapv_inplace`, `test_add_i32`, `test_add_f64`, `test_add_complex`, `test_add_broadcast`, `test_mul_scalar`, `test_abs`, `test_neg`, `test_signum`, `test_sin`, `test_sqrt`, `test_exp_ln_roundtrip`, `test_floor_ceil`, `test_norm`, `test_conj`, `test_not_bool`, `test_eq_f64`, `test_lt_i32`, `test_nan_comparison`, `test_empty_tensor`, `test_add_simd_vs_scalar` |
+| 集成测试 | 验证运算模块与迭代器/广播模块的端到端集成 | `test_zip_with_same_shape`, `test_zip_with_broadcast`（参见 §6 T2） |
+| 边界测试 | 空张量、NaN、Inf、非连续输入等边界条件 | `test_empty_tensor`, `test_nan_comparison`, `test_add_simd_vs_scalar`（详见 §7.2） |
+| 属性测试 | 通过随机输入验证数学不变量 | 详见下方属性测试不变量表 |
+
+#### 属性测试不变量
+
+| 不变量 | 测试方法 |
+|--------|----------|
+| 加法交换律（实数类型） | 对随机 f32/f64/i32/i64 张量：`a.add(&b) == b.add(&a)` |
+| NaN 传播：所有运算遇到 NaN 输入时输出包含 NaN | 构造含 NaN 的张量，验证 sin/sqrt/add/mul 等运算结果含 NaN |
+| map 恒等：`a.map(\|&x\| x) == a` | 随机形状和类型的张量 |
+| 标量运算逆元：`a.add_scalar(k).sub_scalar(k) == a` | 随机张量和标量值 |
+| zip_with 结合性（实数加法）：`(a.add(&b)).add(&c) == a.add(&b.add(&c))` | 随机同形状 f64 张量，容差比较 |
 
 ### 7.1 单元测试清单
 
@@ -596,15 +648,15 @@ extern crate alloc;
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.0.4 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.2.0 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本 |
+| 1.0.1 | 2026-04-07 | 补充标量运算 API |
+| 1.0.2 | 2026-04-08 | 补充 NaN 语义说明 |
+| 1.0.3 | 2026-04-08 | 补充 no_std 兼容性 |
+| 1.0.4 | 2026-04-08 | 补充数学函数依赖说明 |
+| 1.1.0 | 2026-04-08 | 添加 signum 方法 |
+| 1.2.0 | 2026-04-08 | 修正算术运算返回类型为 BroadcastDim；替换 cfg!() 为 #[cfg]；添加属性测试不变量 |
 
 ---
 

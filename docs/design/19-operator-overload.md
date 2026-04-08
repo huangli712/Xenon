@@ -110,8 +110,8 @@ src/ops/
 | `&Tensor<A, D>` | `Tensor<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<TensorBase<Owned<A>,E>> for &TensorBase<Owned<A>,D>` |
 | `Tensor<A, D>` | `A` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for TensorBase<Owned<A>,D>` |
 | `&Tensor<A, D>` | `&A` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&A> for &TensorBase<Owned<A>,D>` |
-| `A` | `Tensor<A, D>` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<TensorBase<Owned<A>,D>> for A` |
-| `A` | `&Tensor<A, D>` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&TensorBase<Owned<A>,D>> for A` |
+| `Scalar<A>` | `Tensor<A, D>` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<TensorBase<Owned<A>,D>> for Scalar<A>` |
+| `Scalar<A>` | `&Tensor<A, D>` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&TensorBase<Owned<A>,D>> for Scalar<A>` |
 
 > **说明**：`F` 为广播后的维度类型，由 `D::BroadcastDim<E>::Output` 关联类型计算。
 > `BroadcastDim` 定义于 `02-dimension.md §4.9`。
@@ -161,6 +161,13 @@ where
 ### 4.3 张量×标量运算符
 
 ```rust
+/// Newtype wrapper for scalar values, enabling `scalar + tensor` syntax.
+///
+/// Required by Rust's orphan rules: we cannot impl `Add<TensorBase<...>> for A`
+/// because both `Add` (external trait) and `A` (unconstrained type param) are
+/// foreign to our crate. `Scalar<A>` is a local type, satisfying the orphan rule.
+pub struct Scalar<A>(pub A);
+
 // Tensor + scalar
 impl<A, D> Add<A> for TensorBase<Owned<A>, D>
 where
@@ -187,8 +194,8 @@ where
     }
 }
 
-// scalar + Tensor
-impl<A, D> Add<TensorBase<Owned<A>, D>> for A
+// Scalar<A> + Tensor (scalar on the left)
+impl<A, D> Add<TensorBase<Owned<A>, D>> for Scalar<A>
 where
     A: Numeric,
     D: Dimension,
@@ -196,12 +203,12 @@ where
     type Output = Tensor<A, D>;
 
     fn add(self, rhs: TensorBase<Owned<A>, D>) -> Self::Output {
-        rhs.mapv(|x| self + x)
+        rhs.mapv(|x| self.0 + x)
     }
 }
 
-// scalar + &Tensor
-impl<'a, A, D> Add<&'a TensorBase<Owned<A>, D>> for A
+// Scalar<A> + &Tensor
+impl<'a, A, D> Add<&'a TensorBase<Owned<A>, D>> for Scalar<A>
 where
     A: Numeric,
     D: Dimension,
@@ -209,12 +216,14 @@ where
     type Output = Tensor<A, D>;
 
     fn add(self, rhs: &'a TensorBase<Owned<A>, D>) -> Self::Output {
-        rhs.mapv(|x| self + x)
+        rhs.mapv(|x| self.0 + x)
     }
 }
 ```
 
-> **说明**：由于 `A: Numeric` 要求 `A: Copy`，上表中涉及 `&A` 的组合（第 6 行）通过隐式解引用自动处理，无需单独 impl。实际实现共 4 种主要形式（owned/标量 × owned/标量），其余组合由 Rust 的 `Deref` 隐式解引用覆盖。
+> **说明**：`Scalar<A>` 包装器是 Rust 孤儿规则所必需的。由于 `Add` 是外部 trait，`A` 是无约束泛型，直接 `impl Add<TensorBase<...>> for A` 违反孤儿规则。使用 `Scalar<A>` 作为本地类型解决此问题。用户需要写 `Scalar(5.0) + tensor` 而非 `5.0 + tensor`。
+
+> **说明**：对于涉及 `&A` 的组合（上表第 2 行），由于 `A: Numeric` 要求 `A: Copy`，`tensor + &scalar` 通过 Rust 的 auto-deref 隐式解引用为值形式，自动调用基于值的 `Add` impl，无需单独实现。
 
 > **设计决策：** 标量运算使用 `mapv` 而非创建广播视图。
 > 原因：`mapv` 直接迭代更高效，避免广播视图的间接寻址开销。
@@ -534,14 +543,14 @@ extern crate alloc;
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-08 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.0.4 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本 |
+| 1.0.1 | 2026-04-08 | 补充 impl 矩阵 |
+| 1.0.2 | 2026-04-08 | 补充依赖关系 |
+| 1.0.3 | 2026-04-08 | 补充 no_std 兼容性 |
+| 1.0.4 | 2026-04-08 | 补充性能数据 |
+| 1.1.0 | 2026-04-08 | 引入 Scalar<A> newtype 解决孤儿规则；补充 Deref 行为说明 |
 
 ---
 

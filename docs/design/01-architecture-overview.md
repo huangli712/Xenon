@@ -310,9 +310,9 @@ rustdoc-args = ["--cfg", "docsrs"]
 | 层级 | 模块 | 依赖 | 参见 |
 |------|------|------|------|
 | **L0** | error, private | 无 | `26-error-handling.md` |
-| **L1** | dimension, element, complex | error | `02-dimension.md`、`03-element-types.md`、`04-complex-type.md` |
+| **L1** | dimension, element, complex | error（element 额外依赖 complex） | `02-dimension.md`、`03-element-types.md`、`04-complex-type.md` |
 | **L2** | layout | error, dimension | `06-memory-layout.md` |
-| **L3** | storage | error, layout, element | `05-storage.md` |
+| **L3** | storage | core/alloc | `05-storage.md` |
 | **L4** | tensor | storage, dimension, layout, element | `07-tensor.md` |
 | **L5** | iter, broadcast, ffi, workspace | tensor | `10-iterator.md`、`15-broadcast.md`、`23-ffi.md`、`24-workspace.md` |
 | **L6** | ops, shape_ops, index | tensor, iter, broadcast | `11-elementwise-ops.md`、`16-shape-ops.md`、`17-indexing.md` |
@@ -339,21 +339,25 @@ rustdoc-args = ["--cfg", "docsrs"]
 ┌─────────┐ ┌─────────┐    │     ┌──────────┐  ┌──────────┐
 │dimension│ │ element │    │     │construct │  │ convert  │
 └────┬────┘ └────┬────┘    │     └────┬─────┘  └────┬─────┘
-     │           │         │          │              │
      │      ┌────┴────┐    │          │              │
      │      │ complex │    │          │              │
      │      └────┬────┘    │          │              │
      │           │         │          │              │
      ▼           ▼         │          │              │
-┌─────────┐ ┌─────────┐    │          │              │
-│  layout │ │ storage │◄───┘          │              │
-└────┬────┘ └────┬────┘               │              │
-     │           │                    │              │
-     └─────┬─────┘                    │              │
-           │                          │              │
-           ▼                          │              │
-      ╔═════════╗                     │              │
-      ║ tensor  ║◄────────────────────┴──────────────┘
+┌─────────┐                │          │              │
+│  layout │                │          │              │
+└────┬────┘                │          │              │
+     │                     │          │              │
+     ▼                     │          │              │
+┌─────────┐                │          │              │
+│ storage │◄───────────────┘          │              │
+└────┬────┘                           │              │
+     │                                │              │
+     └─────┬──────────────────────────┘              │
+           │                                        │
+           ▼                                        │
+      ╔═════════╗                                   │
+      ║ tensor  ║◄──────────────────────────────────┘
       ╚════╤════╝
            │
      ┌─────┼──────┬──────────┬──────────┐
@@ -376,6 +380,8 @@ rustdoc-args = ["--cfg", "docsrs"]
               │  convert / fmt  │
               └─────────────────┘
 ```
+
+> **L1 内部依赖说明**：`element` 依赖同级的 `complex` 模块（使用 `Complex<T>` 类型作为 trait 实现目标），`complex` 不反向依赖 `element`。此依赖在图中以 element 下方指向 complex 表示。
 
 ---
 
@@ -694,13 +700,13 @@ Wave 5: [W5.1] [W5.2] [W5.3] [W5.4]
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-08 |
-| 1.0.2 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.2.0 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本：项目概览、目录结构、Cargo.toml、模块依赖图 |
+| 1.0.1 | 2026-04-08 | 修正 storage 依赖为 core/alloc（移除 error/layout/element） |
+| 1.0.2 | 2026-04-08 | 依赖图补充 element→complex 的 L1 内部依赖说明 |
+| 1.1.0 | 2026-04-08 | 添加 Feature Gate 矩阵、prelude 导出清单 |
+| 1.2.0 | 2026-04-08 | 补充版本变更描述 |
 
 ---
 

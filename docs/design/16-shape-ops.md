@@ -16,6 +16,7 @@
 | reshape 操作 | `reshape()` / `into_shape()` 改变形状 | `permute_axes` / `swap_axes` / `moveaxis`（当前版本仅提供 transpose 和 reshape，见需求 §17，留待后续版本） |
 | 连续性检查 | reshape 须检查数据连续性决定零拷贝或需拷贝路径 | pad / repeat / split（当前版本不提供） |
 | 转置便捷方法 | — | `permute_axes()` / `swap_axes()` / `moveaxis()` 留待后续版本 |
+| reshape 通配符 | — | reshape 不支持 -1 通配符维度（当前版本不支持 NumPy 风格的自动推断维度） |
 
 ### 1.2 设计原则
 
@@ -81,7 +82,7 @@ src/shape_ops/
 |----------|-----------------|
 | `tensor` | `TensorBase<S, D>`, `TensorView`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.offset()`，参见 `07-tensor.md` §4 |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `RemoveAxis`, `IntoDimension`，参见 `02-dimension.md` §3 |
-| `memory_layout` | `LayoutFlags`, `is_f_contiguous()`, `compute_strides()`, `Order`，参见 `06-memory-layout.md` §3, §4.x |
+| `memory_layout` | `LayoutFlags`, `is_f_contiguous()`, `compute_f_strides()`, `Order`，参见 `06-memory-layout.md` §3, §4.x |
 | `error` | `XenonError::InvalidShape`, `XenonError::LayoutMismatch`，参见 `26-error-handling.md` §4 |
 
 ### 3.3 依赖方向声明
@@ -118,6 +119,8 @@ where
         let new_shape = self.shape().reverse();
         let new_strides = self.strides().reverse();
         
+        // actual construction uses TensorView::new_unchecked() or similar
+        // internal constructor, see 07-tensor.md
         TensorView {
             storage: ViewRepr::from(&self.storage),
             shape: new_shape,
@@ -211,8 +214,8 @@ where
         let new_len: usize = shape.slice().iter().product();
         if new_len != self.len() {
             return Err(XenonError::InvalidShape {
-                expected: self.len(),
-                actual: new_len,
+                from: self.len(),
+                to: new_len,
             });
         }
         
@@ -221,13 +224,14 @@ where
         //    zero-copy reshape because Xenon always outputs F-order.
         if !self.is_f_contiguous() {
             return Err(XenonError::LayoutMismatch {
-                reason: "source array is not F-contiguous, use into_shape() instead",
+                expected: "F-contiguous",
+                actual: "non-contiguous",
             });
         }
         
         // 3. Compute new strides (always F-order)
         // See 06-memory-layout.md §4.x compute_flags and related stride computation
-        let new_strides = compute_strides(&shape, Order::F);
+        let new_strides = compute_f_strides(&shape);
         
         // 4. Create view
         Ok(TensorView {
@@ -264,15 +268,15 @@ where
         let new_len: usize = shape.slice().iter().product();
         if new_len != self.len() {
             return Err(XenonError::InvalidShape {
-                expected: self.len(),
-                actual: new_len,
+                from: self.len(),
+                to: new_len,
             });
         }
         
         // F-contiguous: reshape in-place (zero-copy)
         if self.is_f_contiguous() {
             // See 06-memory-layout.md §4.x compute_flags and related stride computation
-            let new_strides = compute_strides(&shape, Order::F);
+            let new_strides = compute_f_strides(&shape);
             return Ok(Tensor {
                 storage: self.storage.into_owned(),
                 shape,
@@ -285,7 +289,7 @@ where
         // Non-contiguous: copy to contiguous then reshape
         let owned = self.to_contiguous();
         // See 06-memory-layout.md §4.x compute_flags and related stride computation
-        let new_strides = compute_strides(&shape, Order::F);
+        let new_strides = compute_f_strides(&shape);
         Ok(Tensor {
             storage: owned.storage,
             shape,
@@ -570,16 +574,15 @@ extern crate alloc;
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.0.4 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.1.1 | 2026-04-08 |
-| 1.2.0 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本 |
+| 1.0.1 | 2026-04-07 | 补充 reshape 语义说明 |
+| 1.0.2 | 2026-04-08 | 补充依赖关系图 |
+| 1.0.3 | 2026-04-08 | 补充 no_std 兼容性 |
+| 1.0.4 | 2026-04-08 | 补充测试计划 |
+| 1.1.0 | 2026-04-08 | 新增 into_shape 方法 |
+| 1.1.1 | 2026-04-08 | 修正 compute_strides → compute_f_strides；修正 InvalidShape/LayoutMismatch 字段名；添加 TensorView 构造说明；补充 reshape -1 通配符说明 |
 
 ---
 

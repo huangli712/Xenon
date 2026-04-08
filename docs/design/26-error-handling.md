@@ -120,6 +120,8 @@ pub enum XenonError {
     },
 
     /// Contiguous layout required but input is non-contiguous.
+    /// Use descriptive static strings like "F-contiguous" and
+    /// "non-contiguous (has strides)" to provide meaningful diagnostics.
     LayoutMismatch {
         /// Expected layout description (e.g., "F-contiguous", "contiguous").
         expected: &'static str,
@@ -152,7 +154,10 @@ pub enum XenonError {
     },
 
     /// Operation requires a non-empty array (e.g., dot on empty).
-    EmptyArray,
+    /// The operation that triggered this error (e.g., "sum", "dot").
+    EmptyArray {
+        operation: &'static str,
+    },
 }
 ```
 
@@ -213,8 +218,8 @@ impl fmt::Display for XenonError {
                     expected, actual
                 )
             }
-            Self::EmptyArray => {
-                write!(f, "operation requires a non-empty array")
+            Self::EmptyArray { operation } => {
+                write!(f, "{} requires a non-empty array", operation)
             }
         }
     }
@@ -247,7 +252,7 @@ impl std::error::Error for XenonError {}
 | `InvalidAxis` | `axis 5 out of bounds for 2-dimensional array` |
 | `InvalidShape` | `cannot reshape 12 elements into 15` |
 | `DimensionMismatch` | `dimension mismatch: expected 2, got 3` |
-| `EmptyArray` | `operation requires a non-empty array` |
+| `EmptyArray` | `dot requires a non-empty array` |
 
 ### 4.6 Good / Bad 对比示例
 
@@ -342,6 +347,8 @@ workspace 模块定义了独立的 `WorkspaceError`，不属于 `XenonError` 枚
 
 并行操作中发生不可恢复错误时须立即传播，不得静默忽略（参见 `09-parallel-backend.md §5`）：
 
+> **Rayon panic 传播机制：** Rayon 通过 `JoinHandle` 机制从工作线程传播 panic。当工作线程 panic 时，`rayon::join` 或 `par_iter.for_each` 会在所有工作线程完成后在调用线程上重新 panic。这满足了"即时传播"的要求——panic 不会被静默忽略，而是会在并行操作完成后传播给调用者。
+
 ```rust
 // Good - panic propagates immediately in parallel reduction
 #[cfg(feature = "parallel")]
@@ -357,6 +364,17 @@ where
 ### 5.5 资源释放不得 panic（Drop 安全）
 
 所有 `Drop` 实现不得 panic，确保即使在其他 panic 过程中也能安全清理（参见 `05-storage.md §5`）：
+
+### 5.5a Drop 安全与 panic-in-drop 问题
+
+`Drop` 实现调用 `core::ptr::drop_in_place(slice)`，该函数会调用元素类型 `A` 的 `Drop` 实现。如果在 panic unwind 期间 `A` 的 `Drop` 再次 panic，Rust 将中止进程（double panic = abort）。
+
+这在 Xenon 中是可接受的行为，原因如下：
+
+1. Xenon 支持的元素类型（i32、i64、f32、f64、Complex、bool、usize）均为平凡类型，具有永远不会 panic 的 trivial `Drop` 实现。
+2. `Element` trait 的 sealed 特性确保只有这些类型可以被使用。
+
+因此，实际上 `drop_in_place` 在 Xenon 张量中永远不会 panic。
 
 ```rust
 // Good - Drop does not panic
@@ -527,6 +545,12 @@ Wave 3: ┌──[T6]────┤
 | `test_dot_empty_array_returns_error` | dot 空数组返回 EmptyArray | 高 |
 | `test_broadcast_incompatible_returns_error` | 不兼容广播返回 BroadcastError | 高 |
 
+### 7.4 属性测试
+
+| 测试函数 | 测试内容 | 优先级 |
+|----------|----------|--------|
+| `property_error_display_contains_diagnostics` | 随机形状验证错误消息包含正确的诊断信息 | 中 |
+
 ---
 
 ## 8. 与其他模块的交互
@@ -640,14 +664,14 @@ Wave 3: ┌──[T6]────┤
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-08 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.0.4 | 2026-04-08 |
-| 1.0.5 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本 |
+| 1.0.1 | 2026-04-08 | 补充 Display 实现和输出示例 |
+| 1.0.2 | 2026-04-08 | 添加 panic vs Result 决策矩阵 |
+| 1.0.3 | 2026-04-08 | 完善 Good/Bad 对比示例 |
+| 1.0.4 | 2026-04-08 | 添加 WorkspaceError 独立性说明 |
+| 1.0.5 | 2026-04-08 | 添加 Drop 安全与 panic-in-drop 问题分析、Rayon panic 传播说明、EmptyArray 添加 operation 字段、LayoutMismatch 添加诊断指导、属性测试 |
 
 ---
 

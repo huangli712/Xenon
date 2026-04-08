@@ -274,10 +274,12 @@ Benchmark 分类
 | 工作流 | 基准数量 | 预计时间 | 频率 |
 |--------|----------|----------|------|
 | **Smoke Test** | 3 个核心文件 × `--sample-size 10` | ~5 min | 每次 PR |
-| **Regression Check** | 1-2 个热点基准 | ~10 min | 每次 PR |
-| **Full Benchmark** | 全部文件 × 4 feature 组合 | ~60 min | 每周/合并到 main |
+| **Regression Check** | `elem_add_f64` 和 `sum_1d_f64` | ~10 min | 每次 PR |
+| **Full Benchmark** | 全部文件 × 4 feature 组合（`default`、`simd`、`parallel`、`simd+parallel`） | ~60 min | 每周/合并到 main |
 
 ### 8.1 Smoke Test 覆盖范围
+
+> **注意**：Smoke Test 仅验证 benchmark 代码可以正常编译和运行（"不崩溃"），不用于性能判断。10次采样足够验证基本可运行性。性能回归检测由 Regression Check（§8.2）负责。
 
 | 文件 | 组 | 说明 |
 |------|-----|------|
@@ -285,7 +287,11 @@ Benchmark 分类
 | `reduction.rs` | `sum_1d` (Medium) | 核心归约路径 |
 | `construction.rs` | `zeros_1d` (Medium) | 基础构造路径 |
 
-### 8.2 CI 配置示例
+### 8.2 Regression Check 覆盖范围
+
+Regression Check 监测以下核心基准：`elem_add_f64`（逐元素加法，f64，100×100）和 `sum_1d_f64`（一维归约，f64，65536元素）。
+
+### 8.3 CI 配置示例
 
 ```yaml
 # .github/workflows/bench.yml
@@ -296,18 +302,20 @@ benchmark-smoke:
 
         - name: Smoke benchmarks
           run: |
-            cargo bench --bench elementwise -- "elem_add_f64" --sample-size 10
-            cargo bench --bench reduction -- "sum_1d" --sample-size 10
-            cargo bench --bench construction -- "zeros_1d" --sample-size 10
+            cargo bench --bench elementwise -- "elem_add_f64" --sample-size 10 --message-format=json > target/criterion-output.json
+            cargo bench --bench reduction -- "sum_1d" --sample-size 10 --message-format=json >> target/criterion-output.json
+            cargo bench --bench construction -- "zeros_1d" --sample-size 10 --message-format=json >> target/criterion-output.json
 
         - name: Store results
           uses: benchmark-action/github-action-benchmark@v1
           with:
             tool: cargo
-            output-file-path: target/criterion/output.txt
+            output-file-path: target/criterion-output.json
             alert-threshold: "120%"
             fail-on-alert: true
 ```
+
+> **注意**：criterion 的标准 HTML/JSON 输出位于 `target/criterion/<benchmark_name>/` 目录下。CI 回归对比使用的 JSON 摘要通过 `--message-format=json` 标志生成，写入 `target/criterion-output.json`。如需 `bencher` 格式输出，可使用 `--output-format=bencher` 或自定义提取脚本。
 
 ---
 
@@ -639,14 +647,14 @@ Wave 5:           [T12]
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-08 |
-| 1.0.2 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.1.1 | 2026-04-08 |
-| 1.2.0 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本 |
+| 1.0.1 | 2026-04-08 | 修正依赖列表 |
+| 1.0.2 | 2026-04-08 | 补充内部实现细节 |
+| 1.1.0 | 2026-04-08 | 新增 ADR 决策记录 |
+| 1.1.1 | 2026-04-08 | 修正回归阈值描述 |
+| 1.2.0 | 2026-04-08 | 修正 CI 配置：添加 --message-format=json 标志，更新 output-file-path；明确 Regression Check 具体基准名称；列出 Full Benchmark 4 个 feature 组合；补充 Smoke Test 设计说明 |
 
 ---
 

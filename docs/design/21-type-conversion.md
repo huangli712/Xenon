@@ -143,12 +143,13 @@ where
     /// let b: Tensor1<i32> = a.cast();
     /// // [1, 2, 3]  — truncate toward zero
     /// ```
-    pub fn cast<B>(&self) -> Tensor<B, D>
+    pub fn cast<B: Element>(&self) -> Tensor<B, D>
     where
-        B: Element,
         A: CastTo<B>,
     {
-        self.mapv(|x| x.cast_to())  // mapv 参见 `11-elementwise-ops.md` §4.1
+        let data: Vec<B> = self.iter().map(|x| x.cast_to()).collect();
+        // SAFETY: data.len() == self.len(), shape is valid
+        unsafe { Tensor::from_shape_vec_aligned_unchecked(self.shape().clone(), data) }
     }
 }
 ```
@@ -191,7 +192,7 @@ where
 | `f32/f64` (+Inf) | 整数 | 饱和到 MAX | `f64::INFINITY → i32::MAX` |
 | `f32/f64` (-Inf) | 整数 | 饱和到 MIN | `f64::NEG_INFINITY → i32::MIN` |
 | 整数 | `f32/f64` | round-to-nearest-even | `123456789i32 → f32 可能不精确` |
-| 整数 → 整数（窄化） | 整数 | saturating | `300u16 → u8::MAX (255)` |
+| 整数 → 整数（窄化） | 整数 | saturating | `i64::MAX → i32::MAX (2147483647)` |
 | 整数 → 整数（扩展） | 整数 | 零扩展/符号扩展 | `u8 → u16` 零扩展 |
 | `bool` | 数值 | `true → 1`, `false → 0` | `true → 1i32` |
 | 数值 | `bool` | 非零 → `true`，零 → `false` | `0 → false`, `1 → true` |
@@ -265,7 +266,7 @@ where
 }
 ```
 
-### 4.5b from_vec_aligned — 对齐构造辅助
+### 4.6 from_vec_aligned — 对齐构造辅助
 
 `from_vec_aligned` 是 `Owned<A>` 的内部辅助方法，将 `Vec<A>` 的数据复制到 64 字节对齐的新分配中（参见 `05-storage.md §5.1`）。
 
@@ -290,6 +291,10 @@ impl<A> Owned<A> {
 impl<A, D> TensorBase<Owned<A>, D> where A: Element, D: Dimension {
     /// Constructs a Tensor from pre-validated data with aligned allocation.
     /// Called internally after size validation is complete.
+    ///
+    /// Skips length validation because the caller guarantees data.len() matches
+    /// shape.size() (e.g., via iter().collect() or to_owned() where self.len()
+    /// is known to be correct).
     pub(crate) fn from_shape_vec_aligned(shape: D, data: Vec<A>) -> Self {
         let strides = shape.strides_for_f_order();
         let storage = Owned::from_vec_aligned(data);
@@ -298,7 +303,7 @@ impl<A, D> TensorBase<Owned<A>, D> where A: Element, D: Dimension {
 }
 ```
 
-### 4.5c to_f_contiguous — 非连续数据重排
+### 4.7 to_f_contiguous — 非连续数据重排
 
 `to_f_contiguous()` 将任意布局的张量重排为 F-order 连续拷贝，供 `to_contiguous()` 在非连续情况下调用（参见 `20-utility-ops.md §4.3`）：
 
@@ -315,6 +320,10 @@ where
     /// Always returns an F-contiguous `Tensor<A, D>`.
     ///
     /// This method is called by `to_contiguous()` when the source is non-contiguous.
+    ///
+    /// **Note:** iter() traverses elements in memory order (F-order for F-contiguous
+    /// arrays, column-major). For non-contiguous arrays, iter() handles stride-based
+    /// access correctly, and the new allocation will be F-contiguous.
     pub fn to_f_contiguous(&self) -> Tensor<A, D> {
         let mut data = Vec::with_capacity(self.len());
         // iter() traverses in F-order (see 10-iterator.md §5.1 fast/slow paths)
@@ -326,7 +335,7 @@ where
 }
 ```
 
-### 4.6 存储模式互转
+### 4.8 存储模式互转
 
 | 源 → 目标 | 操作 | 复杂度 |
 |------------|------|--------|
@@ -337,7 +346,7 @@ where
 | ViewRepr → Owned | `to_owned()`（拷贝） | O(n) |
 | ViewMutRepr → Owned | `to_owned()`（拷贝） | O(n) |
 
-### 4.7 标准库类型转换接口
+### 4.9 标准库类型转换接口
 
 ```rust
 // Vec<A> → Tensor<A, Ix1>
@@ -419,7 +428,7 @@ impl CastTo<Complex<f64>> for f64 {
 | `f64::NAN` | `f32` | `f32::NAN` | NaN 在浮点间传播 |
 | `f64::INFINITY` | `i32` | `i32::MAX` | +Inf 饱和到 MAX |
 | `f64::NEG_INFINITY` | `i32` | `i32::MIN` | -Inf 饱和到 MIN |
-| `300i32` | `u8` | `255` | 窄化整数饱和 |
+| `i64::MAX` | `i32` | `i32::MAX` | 窄化整数饱和 |
 
 ---
 
@@ -540,7 +549,7 @@ Wave 3: [T6] [T7]  (并行)
 |----------|------|------|
 | `tensor` | convert → tensor | `cast()` 定义在 `TensorBase<S, D>` 的 impl 块上，消费 `.shape()`、`.memory_order()`；`to_owned()`/`into_owned()` 消费 `Storage`/`StorageIntoOwned`（参见 `07-tensor.md` §4） |
 | `element` | convert → element | 泛型约束 `A: CastTo<B>` 驱动逐元素转换；`CastTo` trait 定义在 element 模块（参见 `03-element-types.md` §4） |
-| `elementwise_ops` | convert → elementwise_ops | `cast()` 内部调用 `mapv()` 执行逐元素映射（参见 `11-elementwise-ops.md` §4.1） |
+| `elementwise_ops` | convert → elementwise_ops | `cast()` 内部通过 `iter().map().collect()` 执行逐元素转换，不使用 `mapv()`（因为 `mapv` 返回 `Tensor<A, D>` 而非 `Tensor<B, D>`） |
 | `storage` | convert → storage | `into_owned()` 消费 `StorageIntoOwned` trait；存储模式互转依赖 `Owned`/`ViewRepr`/`ArcRepr`（参见 `05-storage.md` §4） |
 | `layout` | convert → layout | `to_owned()` 调用 `is_f_contiguous()` 判断是否需要重排（参见 `06-memory-layout.md` §4） |
 | `complex` | convert → complex | `CastTo<Complex<T>>` 实现依赖 `Complex` 结构体定义；反向转换（Complex → T）故意不提供（参见 `04-complex-type.md` §4） |
@@ -605,15 +614,15 @@ Wave 3: [T6] [T7]  (并行)
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-08 |
-| 1.0.2 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.1.1 | 2026-04-08 |
-| 1.2.0 | 2026-04-08 |
-| 1.2.1 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本 |
+| 1.0.1 | 2026-04-08 | 补充 from_vec_aligned 辅助说明 |
+| 1.0.2 | 2026-04-08 | 补充 to_f_contiguous 辅助说明 |
+| 1.1.0 | 2026-04-08 | 添加 ArcRepr cast 支持 |
+| 1.1.1 | 2026-04-08 | 补充存储模式互转表 |
+| 1.2.0 | 2026-04-08 | 重构 cast() 为 iter-based 实现（替代 mapv），更新类型转换示例为 Xenon 支持类型 |
+| 1.2.1 | 2026-04-08 | 修复子节编号（4.5b→4.6, 4.5c→4.7），补充 iter() 内存遍历顺序说明 |
 
 ---
 

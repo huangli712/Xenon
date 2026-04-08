@@ -1,7 +1,7 @@
 # 广播模块设计
 
 > 文档编号: 15 | 模块: `src/broadcast.rs` | 阶段: Phase 3
-> 前置文档: `02-dimension.md`, `07-tensor.md`
+> 前置文档: `02-dimension.md`, `07-tensor.md`, `06-memory-layout.md`, `26-error-handling.md`
 > 需求参考: 需求说明书 §16
 
 ---
@@ -107,7 +107,7 @@ src/
 ///
 /// # Returns
 /// * `Ok(IxDyn)` - The broadcasted shape as a dynamic dimension
-/// * `Err(BroadcastError)` - Shapes are incompatible
+/// * `Err(XenonError::BroadcastError)` - Shapes are incompatible
 ///
 /// # Examples
 /// ```
@@ -117,7 +117,7 @@ src/
 pub fn broadcast_shape(
     shape_a: &[usize],
     shape_b: &[usize],
-) -> Result<IxDyn, BroadcastError>;
+) -> Result<IxDyn, XenonError>;
 ```
 
 ### 4.2 兼容性检查
@@ -149,6 +149,11 @@ pub fn can_broadcast(shape_a: &[usize], shape_b: &[usize]) -> bool;
 ///
 /// # Returns
 /// `Vec<isize>` — strides for the broadcasted view, with 0 for broadcast dims.
+///
+/// # Note
+/// This function returns `Vec<isize>` which requires heap allocation.
+/// Requires `alloc` feature in `no_std` environments (see §11).
+#[cfg(feature = "alloc")]
 pub fn broadcast_strides(
     orig_shape: &[usize],
     orig_strides: &[isize],
@@ -173,7 +178,7 @@ where
     ///
     /// # Returns
     /// * `Ok(TensorView)` - The broadcasted view
-    /// * `Err(BroadcastError)` - Shapes are incompatible
+    /// * `Err(XenonError::BroadcastError)` - Shapes are incompatible
     ///
     /// # Examples
     /// ```
@@ -182,7 +187,7 @@ where
     /// assert_eq!(broadcasted.shape(), &[3, 4]);
     /// assert_eq!(broadcasted.strides(), &[0, 1]);
     /// ```
-    pub fn broadcast_to<E>(&self, shape: E) -> Result<TensorView<'a, A, E>, BroadcastError>
+    pub fn broadcast_to<E>(&self, shape: E) -> Result<TensorView<'a, A, E>, XenonError>
     where
         E: Dimension,
     {
@@ -204,7 +209,7 @@ pub fn broadcast_with<'a, A, D, E>(
 ) -> Result<
     (TensorView<'a, A, <D as BroadcastDim<E>>::Output>,
      TensorView<'a, A, <E as BroadcastDim<D>>::Output>),
-    BroadcastError,
+    XenonError,
 >
 where
     D: Dimension,
@@ -218,7 +223,7 @@ where
 
 ```rust
 // Good - Use ? and Result for broadcast error handling
-fn process(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix1>) -> Result<Tensor<f64, Ix2>, BroadcastError> {
+fn process(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix1>) -> Result<Tensor<f64, Ix2>, XenonError> {
     let (a_bc, b_bc) = broadcast_with(&a.view(), &b.view())?;
     Ok(zip_with(&a_bc, &b_bc, |x, y| x + y))
 }
@@ -549,7 +554,7 @@ use alloc::vec::Vec;
 |------|:----------:|------|
 | `can_broadcast()` | ✅ | 纯计算函数，无堆分配 |
 | `broadcast_shape()` | ✅ | 返回 `IxDyn`（内部 `Vec<usize>`），需 `alloc` |
-| `broadcast_strides()` | ✅ | 返回 `Vec<isize>`，需 `alloc` |
+| `broadcast_strides()` | ✅ | 返回 `Vec<isize>`，**需 `alloc` feature**；此函数涉及堆分配，在 `no_std` 环境下必须启用 `alloc` feature |
 | `broadcast_to()` | ✅ | 创建 `TensorView`（零拷贝），无堆分配 |
 | `broadcast_with()` | ✅ | 创建两个 `TensorView`，需 `no_std + alloc`（IxDyn），参见 `02-dimension.md` §3 |
 | `BroadcastError` | ✅ | 使用 `core::fmt::Display`，无堆依赖，参见 `26-error-handling.md` §4 |
@@ -570,14 +575,14 @@ extern crate alloc;
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.1.1 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本 |
+| 1.0.1 | 2026-04-07 | 补充依赖关系图 |
+| 1.0.2 | 2026-04-08 | 补充 no_std 兼容性说明 |
+| 1.0.3 | 2026-04-08 | 修正 ADR-4 错误处理描述 |
+| 1.1.0 | 2026-04-08 | 新增 broadcast_with 便捷方法 |
+| 1.1.1 | 2026-04-08 | 统一公共 API 返回类型为 XenonError；补充 alloc 依赖说明；补充前置文档引用 |
 
 ---
 

@@ -185,9 +185,9 @@ L3: 示例 (examples/)
 //! ```rust
 //! use xenon::prelude::*;
 //!
-//! // Create tensors
-//! let a = Tensor1::<f64>::zeros([5]);
-//! let b = Tensor2::<f64>::zeros([3, 4]);
+//! // Create tensors (see 18-construction.md §4.1 for constructor signatures)
+//! let a = Tensor1::<f64>::zeros(5.into());
+//! let b = Tensor2::<f64>::zeros([3, 4].into());
 //!
 //! // Element-wise operations with broadcasting
 //! let sum = &a + &a;
@@ -244,6 +244,8 @@ L3: 示例 (examples/)
 ## 6. #![warn(missing_docs)] 配置
 
 ### 6.1 Lint 规则
+
+> **开发提示**：在开发期间可将 deny 改为 warn（`#![warn(missing_docs)]`），CI 中通过 `RUSTDOCFLAGS="-D warnings" cargo doc` 来强制执行文档完整性检查（参见 §12.1 CI checks）。
 
 ```rust
 // lib.rs
@@ -764,19 +766,75 @@ docs:
 
 ### Wave 3: 类型/函数级文档（可并行）
 
-- [ ] **T8**: 为所有 pub struct/trait 添加 doc comment
-  - 文件: 所有 `src/` 文件
-  - 内容: 类型说明、泛型参数、类型别名表、示例
-  - 测试: `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`
+- [ ] **T8a**: tensor 模块公共 API 文档
+  - 文件: `src/tensor/mod.rs` 及相关文件
+  - 内容: TensorBase, Tensor, TensorView, TensorViewMut, ArcTensor 类型文档
+  - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T5, T6, T7
-  - 预计: 120-240 min（视 crate 规模而定）
+  - 预计: 15 min
 
-- [ ] **T9**: 为所有 pub fn/method 添加 doc comment 和 doctest
-  - 文件: 所有 `src/` 文件
-  - 内容: 参数说明、返回值、错误条件、示例、Safety 节（unsafe）
+- [ ] **T8b**: dimension 模块文档
+  - 文件: `src/dimension/mod.rs`
+  - 内容: Ix0~Ix6, IxDyn, Dimension trait 文档
+  - 测试: `cargo doc --no-deps` 无 warning
+  - 前置: T5, T6, T7
+  - 预计: 10 min
+
+- [ ] **T8c**: element 模块文档
+  - 文件: `src/element/mod.rs`
+  - 内容: Element, Numeric, RealScalar, ComplexScalar trait 文档
+  - 测试: `cargo doc --no-deps` 无 warning
+  - 前置: T5, T6, T7
+  - 预计: 10 min
+
+- [ ] **T8d**: storage 模块文档
+  - 文件: `src/storage/mod.rs`
+  - 内容: Owned, ViewRepr, StorageMut trait 文档
+  - 测试: `cargo doc --no-deps` 无 warning
+  - 前置: T5, T6, T7
+  - 预计: 10 min
+
+- [ ] **T8e**: layout 模块文档
+  - 文件: `src/layout/mod.rs`
+  - 内容: LayoutFlags, compute_f_strides 文档
+  - 测试: `cargo doc --no-deps` 无 warning
+  - 前置: T5, T6, T7
+  - 预计: 10 min
+
+- [ ] **T9a**: ops 模块逐元素运算文档
+  - 文件: `src/ops/` 下相关文件
+  - 内容: add, sub, mul, div, sin, cos, exp, abs 等逐元素运算函数文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
-  - 预计: 120-240 min（视 crate 规模而定）
+  - 预计: 15 min
+
+- [ ] **T9b**: ops 模块归约运算文档
+  - 文件: `src/ops/` 下相关文件
+  - 内容: sum, sum_axis, dot 等归约函数文档和 doctest
+  - 测试: `cargo test --doc --all-features`
+  - 前置: T5, T6, T7
+  - 预计: 10 min
+
+- [ ] **T9c**: broadcast 和 shape_ops 模块文档
+  - 文件: `src/broadcast/mod.rs`, `src/shape_ops/mod.rs`
+  - 内容: broadcast_shape, transpose, reshape 函数文档和 doctest
+  - 测试: `cargo test --doc --all-features`
+  - 前置: T5, T6, T7
+  - 预计: 10 min
+
+- [ ] **T9d**: construct 和 set_ops 模块文档
+  - 文件: `src/construct/mod.rs`, `src/set_ops/mod.rs`
+  - 内容: zeros, ones, eye, from_vec, from_fn, unique 函数文档和 doctest
+  - 测试: `cargo test --doc --all-features`
+  - 前置: T5, T6, T7
+  - 预计: 10 min
+
+- [ ] **T9e**: ffi, workspace, error 模块文档
+  - 文件: `src/ffi/mod.rs`, `src/workspace/mod.rs`, `src/error.rs`
+  - 内容: FFI 函数（含 Safety 节）、Workspace、XenonError 文档和 doctest
+  - 测试: `cargo test --doc --all-features`
+  - 前置: T5, T6, T7
+  - 预计: 15 min
 
 ### Wave 4: 示例程序（可并行）
 
@@ -847,7 +905,7 @@ Wave 2: [T2] [T3]
             │
 Wave 3: [T5] [T6] [T7]
             │
-Wave 4: [T8] [T9]
+Wave 4: [T8a] [T8b] [T8c] [T8d] [T8e] [T9a] [T9b] [T9c] [T9d] [T9e]
             │
 Wave 5: [T10] [T11] [T12] [T13] [T14] [T15] [T16]
             │
@@ -902,14 +960,14 @@ Wave 6: [T17]
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-08 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.1.1 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本 |
+| 1.0.1 | 2026-04-08 | 补充 doctest 规范 |
+| 1.0.2 | 2026-04-08 | 新增 Good/Bad 对比示例 |
+| 1.0.3 | 2026-04-08 | 补充 docs.rs 配置 |
+| 1.1.0 | 2026-04-08 | 新增 ADR 决策记录 |
+| 1.1.1 | 2026-04-08 | 拆分 T8/T9 为模块级子任务（T8a~T8e, T9a~T9e）；修正 Quick Start 构造 API 语法；补充 deny/warn 开发提示 |
 
 ---
 

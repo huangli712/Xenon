@@ -225,6 +225,8 @@ where
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if self.ndim() == 0 {
             // 0-dim tensor: output scalar value directly
+            // Zero-dimensional tensor element access uses *tensor.get([]).unwrap()
+            // or tensor[[]] (requires Index<[usize; 0]> impl).
             write!(f, "{}", self[&[]])
         } else if self.ndim() == 1 {
             fmt_1d_display(f, self)
@@ -238,15 +240,17 @@ where
 ### 4.3 Debug 实现
 
 ```rust
+#[cfg(feature = "std")]
 impl<S, D, A> core::fmt::Debug for TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: core::fmt::Debug + Element,
+    A: core::fmt::Display + Element,
 {
-    /// Developer-facing debug output.
+    /// Developer-facing debug output (std build).
     ///
-    /// Includes metadata such as shape, strides, and type.
+    /// Includes metadata such as shape, strides, and type, then delegates
+    /// data formatting to Display.
     ///
     /// # Output Format
     ///
@@ -273,6 +277,21 @@ where
         write!(f, ")\n")?;
         // Data section (reuses Display formatting logic)
         core::fmt::Display::fmt(self, f)
+    }
+}
+
+#[cfg(not(feature = "std"))]
+impl<S, D, A> core::fmt::Debug for TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: core::fmt::Debug + Element,
+{
+    /// Developer-facing debug output (no_std build).
+    ///
+    /// Only shows shape metadata; no data formatting since Display is unavailable.
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Tensor(shape={:?})", self.shape().slice())
     }
 }
 ```
@@ -453,6 +472,8 @@ where
 | 截断规则 | ✅ | ✅（`Debug` 输出中） |
 
 > **与 Feature 矩阵一致**：`01-architecture-overview.md §6` Feature 矩阵中，no_std 列下 `Display 格式化` 标为 ❌，与此处定义对齐。
+>
+> **Note on Rust 1.85 float formatting:** As of Rust 1.85, float formatting (f32/f64 Display) IS available in `core` without `std`. The `#[cfg(feature = "std")]` gate on Display is conservative and may be relaxed in a future version once this is confirmed stable across all no_std targets.
 
 ---
 
@@ -609,15 +630,15 @@ Wave 3:        [T5]
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-08 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.0.4 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.1.1 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本 |
+| 1.0.1 | 2026-04-08 | 添加 FormatConfig 配置结构体 |
+| 1.0.2 | 2026-04-08 | 补充 TensorDisplay 包装结构体 |
+| 1.0.3 | 2026-04-08 | 完善 Display/Debug trait 实现 |
+| 1.0.4 | 2026-04-08 | 添加 Good/Bad 对比示例 |
+| 1.1.0 | 2026-04-08 | 修复 Debug impl 条件编译（no_std 下不委托 Display） |
+| 1.1.1 | 2026-04-08 | 添加 Rust 1.85 float Display 可用性说明、零维张量索引说明 |
 
 ---
 

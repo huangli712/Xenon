@@ -123,41 +123,41 @@ impl LayoutFlags {
     pub const EMPTY: Self = Self(0b0000_0000);
 
     /// F-order contiguity flag
-    pub const F_CONTIGUOUS: u8 = 0b0000_0001;  // 0x01
+    pub const F_CONTIGUOUS: Self = Self(0b0000_0001);  // 0x01
 
     /// SIMD alignment flag (64-byte)
-    pub const ALIGNED: u8 = 0b0000_0100;        // 0x04
+    pub const ALIGNED: Self = Self(0b0000_0100);        // 0x04
 
     /// Zero stride flag (broadcast dimension)
-    pub const HAS_ZERO_STRIDE: u8 = 0b0000_1000; // 0x08
+    pub const HAS_ZERO_STRIDE: Self = Self(0b0000_1000); // 0x08
 
     /// Negative stride flag (reversed dimension)
-    pub const HAS_NEG_STRIDE: u8 = 0b0001_0000;  // 0x10
+    pub const HAS_NEG_STRIDE: Self = Self(0b0001_0000);  // 0x10
 
     // === Query methods ===
 
     /// Returns true if F-order contiguous.
     #[inline]
     pub const fn is_f_contiguous(self) -> bool {
-        (self.0 & Self::F_CONTIGUOUS) != 0
+        (self.0 & Self::F_CONTIGUOUS.0) != 0
     }
 
     /// Returns true if 64-byte aligned.
     #[inline]
     pub const fn is_aligned(self) -> bool {
-        (self.0 & Self::ALIGNED) != 0
+        (self.0 & Self::ALIGNED.0) != 0
     }
 
     /// Returns true if any zero stride exists.
     #[inline]
     pub const fn has_zero_stride(self) -> bool {
-        (self.0 & Self::HAS_ZERO_STRIDE) != 0
+        (self.0 & Self::HAS_ZERO_STRIDE.0) != 0
     }
 
     /// Returns true if any negative stride exists.
     #[inline]
     pub const fn has_neg_stride(self) -> bool {
-        (self.0 & Self::HAS_NEG_STRIDE) != 0
+        (self.0 & Self::HAS_NEG_STRIDE.0) != 0
     }
 
     // === Setter methods ===
@@ -165,29 +165,29 @@ impl LayoutFlags {
     /// Sets the F-order contiguity flag.
     #[inline]
     pub const fn set_f_contiguous(self, val: bool) -> Self {
-        if val { Self(self.0 | Self::F_CONTIGUOUS) }
-        else { Self(self.0 & !Self::F_CONTIGUOUS) }
+        if val { Self(self.0 | Self::F_CONTIGUOUS.0) }
+        else { Self(self.0 & !Self::F_CONTIGUOUS.0) }
     }
 
     /// Sets the alignment flag.
     #[inline]
     pub const fn set_aligned(self, val: bool) -> Self {
-        if val { Self(self.0 | Self::ALIGNED) }
-        else { Self(self.0 & !Self::ALIGNED) }
+        if val { Self(self.0 | Self::ALIGNED.0) }
+        else { Self(self.0 & !Self::ALIGNED.0) }
     }
 
     /// Sets the zero stride flag.
     #[inline]
     pub const fn set_has_zero_stride(self, val: bool) -> Self {
-        if val { Self(self.0 | Self::HAS_ZERO_STRIDE) }
-        else { Self(self.0 & !Self::HAS_ZERO_STRIDE) }
+        if val { Self(self.0 | Self::HAS_ZERO_STRIDE.0) }
+        else { Self(self.0 & !Self::HAS_ZERO_STRIDE.0) }
     }
 
     /// Sets the negative stride flag.
     #[inline]
     pub const fn set_has_neg_stride(self, val: bool) -> Self {
-        if val { Self(self.0 | Self::HAS_NEG_STRIDE) }
-        else { Self(self.0 & !Self::HAS_NEG_STRIDE) }
+        if val { Self(self.0 | Self::HAS_NEG_STRIDE.0) }
+        else { Self(self.0 & !Self::HAS_NEG_STRIDE.0) }
     }
 }
 ```
@@ -228,7 +228,7 @@ impl LayoutFlags {
     #[inline]
     pub const fn from_order(order: Order) -> Self {
         match order {
-            Order::F => Self(Self::F_CONTIGUOUS),
+            Order::F => Self(Self::F_CONTIGUOUS.0),
         }
     }
 }
@@ -371,27 +371,29 @@ shape = [3, 4], strides = [1, 0]  // 第二维广播
 ```rust
 /// Memory layout descriptor.
 ///
-/// Contains layout flags and data offset.
+/// Layout describes memory access pattern flags only.
+/// The byte offset is stored directly in TensorBase (see `07-tensor.md §4.1`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Layout {
     /// Layout flags
     flags: LayoutFlags,
-    /// Data start offset (in elements)
-    offset: usize,
 }
 
 impl Layout {
-    /// Creates a new layout.
-    pub fn new(flags: LayoutFlags, offset: usize) -> Self {
-        Self { flags, offset }
+    /// Creates a new layout from flags.
+    pub fn new(flags: LayoutFlags) -> Self {
+        Self { flags }
     }
 
-    /// Computes the full layout from shape, strides, and pointer.
+    /// Computes the layout flags from shape, strides, and pointer.
     pub fn compute<D: Dimension>(
         shape: &D,
         strides: &D,
         ptr: *const u8,
-    ) -> Self;
+    ) -> Self {
+        let flags = compute_flags_inner(shape, strides, ptr);
+        Self { flags }
+    }
 
     /// Returns true if F-order contiguous.
     #[inline]
@@ -421,12 +423,6 @@ impl Layout {
     #[inline]
     pub fn flags(&self) -> LayoutFlags {
         self.flags
-    }
-
-    /// Returns the data offset.
-    #[inline]
-    pub fn offset(&self) -> usize {
-        self.offset
     }
 }
 ```
@@ -623,7 +619,7 @@ Wave 4:       [T8]
 |------|------|------|
 | 单元测试 | `#[cfg(test)] mod tests` | 验证单个算法 |
 | 集成测试 | `tests/` | 验证跨维度类型交互 |
-| 边界测试 | 集成测试中标注 | 空数组、标量、高维 |
+| 边界测试 | `tests/layout_boundary.rs` | 空数组、标量、高维等边界情况 |
 
 ### 7.2 单元测试清单
 
@@ -773,7 +769,7 @@ Wave 4:       [T8]
 | `is_f_contiguous` | ✅ | 纯比较逻辑 |
 | `is_aligned` / `is_aligned_to` | ✅ | 指针算术 |
 | `has_zero_stride` / `has_neg_stride` | ✅ | 纯遍历比较 |
-| `Layout` | ✅ | 仅含 `LayoutFlags` 和 `usize` |
+| `Layout` | ✅ | 仅含 `LayoutFlags`，纯元数据 |
 
 ### 11.2 条件编译
 
@@ -786,15 +782,15 @@ Wave 4:       [T8]
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.0.4 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.2.0 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本：LayoutFlags 定义、步长计算、连续性检测 |
+| 1.0.1 | 2026-04-07 | 补充 Layout 结构体定义和 compute 方法 |
+| 1.0.2 | 2026-04-08 | 增加负步长和零步长语义说明 |
+| 1.0.3 | 2026-04-08 | 补充对齐检查 API（is_aligned_to/is_aligned） |
+| 1.0.4 | 2026-04-08 | 增加 Order 枚举和 from_order 方法 |
+| 1.1.0 | 2026-04-08 | 增加 no_std 兼容性章节 |
+| 1.2.0 | 2026-04-08 | 修复 LayoutFlags 常量类型一致性（统一为 Self 类型）；移除 Layout 结构体的 offset 字段（offset 由 TensorBase 直接持有）；边界测试提升为独立分类 |
 
 ---
 

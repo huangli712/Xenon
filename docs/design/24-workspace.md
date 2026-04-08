@@ -106,7 +106,22 @@ src/workspace/
 
 ### 3.4 WorkspaceError 的独立性
 
-`WorkspaceError` 是 workspace 模块的独立错误类型，不属于 `XenonError` 枚举。上游代码可将 `WorkspaceError` 通过 `From`/`into()` 转换为 `XenonError::Other` 或自定义错误类型处理。
+`WorkspaceError` 是 workspace 模块的独立错误类型，不属于 `XenonError` 枚举。调用方如需将其转换为其他错误类型，可自行实现 `From<WorkspaceError>` 用于其自定义错误类型。
+
+```rust
+/// Error type for workspace operations.
+#[derive(Debug, Clone, PartialEq)]
+pub enum WorkspaceError {
+    /// Allocation failed (out of memory or invalid layout).
+    AllocFailed,
+    /// The requested alignment is not a power of 2.
+    InvalidLayout { align: usize },
+    /// Cannot borrow: workspace is already mutably borrowed.
+    AlreadyBorrowed,
+    /// Split point is out of bounds.
+    SplitOutOfBounds { split: usize, len: usize },
+}
+```
 
 ---
 
@@ -165,6 +180,10 @@ pub struct Workspace {
     /// - 1: shared borrow
     /// - 2: exclusive borrow
     borrow_state: AtomicU8,
+
+    /// Active split count. Incremented by split_at(), decremented by SplitBorrowMut::drop().
+    /// Only when this reaches 0 is borrow_state reset to BORROW_NONE.
+    split_count: core::sync::atomic::AtomicUsize,
 }
 ```
 
@@ -242,6 +261,7 @@ impl Workspace {
             capacity: size,
             alignment,
             borrow_state: AtomicU8::new(Self::BORROW_NONE),
+            split_count: core::sync::atomic::AtomicUsize::new(0),
         })
     }
 
@@ -422,6 +442,11 @@ pub struct SplitBorrowMut<'a> {
     ptr: NonNull<u8>,
     len: usize,
     workspace: &'a Workspace,
+    /// Reference to the split count. The split() operation atomically
+    /// increments the SPLIT_COUNT counter. Each SplitBorrowMut holds a
+    /// reference to this counter. Drop decrements the counter; only when
+    /// the counter reaches 0 is borrow_state reset to BORROW_NONE.
+    split_count: &'a core::sync::atomic::AtomicUsize,
 }
 
 impl Workspace {
@@ -462,7 +487,7 @@ impl Workspace {
         mid: usize,
     ) -> Result<(SplitBorrowMut<'_>, SplitBorrowMut<'_>), WorkspaceError> {
         if mid > self.capacity {
-            return Err(WorkspaceError::SplitOutOfBounds);
+            return Err(WorkspaceError::SplitOutOfBounds { split: mid, len: self.capacity });
         }
 
         let prev = self.borrow_state.compare_exchange(
@@ -476,6 +501,9 @@ impl Workspace {
             return Err(WorkspaceError::AlreadyBorrowed);
         }
 
+        // Set split_count to 2 (two sub-spaces will be created)
+        self.split_count.store(2, Ordering::Release);
+
         let left_ptr = self.ptr;
         // SAFETY: mid <= capacity, so ptr + mid is within allocation
         let right_ptr = unsafe {
@@ -483,8 +511,8 @@ impl Workspace {
         };
 
         Ok((
-            SplitBorrowMut { ptr: left_ptr, len: mid, workspace: self },
-            SplitBorrowMut { ptr: right_ptr, len: self.capacity - mid, workspace: self },
+            SplitBorrowMut { ptr: left_ptr, len: mid, workspace: self, split_count: &self.split_count },
+            SplitBorrowMut { ptr: right_ptr, len: self.capacity - mid, workspace: self, split_count: &self.split_count },
         ))
     }
 }
@@ -504,7 +532,7 @@ impl<'a> SplitBorrowMut<'a> {
         mid: usize,
     ) -> Result<(SplitBorrowMut<'_>, SplitBorrowMut<'_>), WorkspaceError> {
         if mid > self.len {
-            return Err(WorkspaceError::SplitOutOfBounds);
+            return Err(WorkspaceError::SplitOutOfBounds { split: mid, len: self.len });
         }
 
         let left_ptr = self.ptr;
@@ -513,8 +541,8 @@ impl<'a> SplitBorrowMut<'a> {
         };
 
         Ok((
-            SplitBorrowMut { ptr: left_ptr, len: mid, workspace: self.workspace },
-            SplitBorrowMut { ptr: right_ptr, len: self.len - mid, workspace: self.workspace },
+            SplitBorrowMut { ptr: left_ptr, len: mid, workspace: self.workspace, split_count: self.split_count },
+            SplitBorrowMut { ptr: right_ptr, len: self.len - mid, workspace: self.workspace, split_count: self.split_count },
         ))
     }
 
@@ -524,13 +552,12 @@ impl<'a> SplitBorrowMut<'a> {
 
 /// Drop releases the exclusive borrow on the workspace.
 ///
-/// The first `SplitBorrowMut` to be dropped resets `borrow_state` to `BORROW_NONE`.
-/// Since both sub-spaces share the same non-overlapping memory, releasing either one
-/// makes the entire workspace available again.
-///
-/// **注意：drop 任一子空间会重置 borrow_state，若另一个子空间仍在使用中，
-/// 调用方必须确保两个子空间在同一词法作用域内，并在访问完成前都保持存活。
-/// 这是一个需要调用方谨慎使用的 API。**
+/// Uses reference counting: each split_at() sets split_count to the number
+/// of sub-spaces (2 for binary split). Each SplitBorrowMut::drop() atomically
+/// decrements split_count. Only when split_count reaches 0 is borrow_state
+/// reset to BORROW_NONE. This prevents the safety hazard where dropping one
+/// sub-space prematurely resets borrow_state while the other sub-space is
+/// still in use.
 ///
 /// # Safety Invariant
 ///
@@ -538,12 +565,15 @@ impl<'a> SplitBorrowMut<'a> {
 /// memory. The Rust borrow checker enforces this via the `'a` lifetime.
 impl<'a> Drop for SplitBorrowMut<'a> {
     fn drop(&mut self) {
-        // Reset borrow state so the workspace can be borrowed again.
-        // Using Release ordering to ensure all writes are visible before the state reset.
-        self.workspace.borrow_state.store(
-            Workspace::BORROW_NONE,
-            core::sync::atomic::Ordering::Release,
-        );
+        // Atomically decrement the split count.
+        let prev = self.split_count.fetch_sub(1, core::sync::atomic::Ordering::AcqRel);
+        // Only reset borrow_state when this is the last active split.
+        if prev == 1 {
+            self.workspace.borrow_state.store(
+                Workspace::BORROW_NONE,
+                core::sync::atomic::Ordering::Release,
+            );
+        }
     }
 }
 ```
@@ -851,7 +881,7 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 
 | 交互点 | 方向 | 说明 |
 |--------|------|------|
-| 上游库 → workspace | 上游 BLAS 库通过 `borrow_mut()` 获取缓冲区（参见 `23-ffi.md §4`） |
+| 上游库 → workspace | BLAS 库通常需要临时缓冲区，此 workspace 类型在 Rust FFI 场景中充当该缓冲区 |
 | 上游库 → workspace | 上游 FFT 库通过 `split_at()` 分割工作空间 |
 | tensor -> workspace | Tensor 操作通过 workspace 分配临时空间（参见 `07-tensor.md §4`，可选） |
 
@@ -952,15 +982,15 @@ impl std::error::Error for WorkspaceError {}
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-08 |
-| 1.0.2 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.1.1 | 2026-04-08 |
-| 1.2.0 | 2026-04-08 |
-| 1.2.1 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本 |
+| 1.0.1 | 2026-04-08 | 补充 WorkspaceError 枚举 |
+| 1.0.2 | 2026-04-08 | 添加 WorkspaceBorrow/WorkspaceBorrowMut |
+| 1.1.0 | 2026-04-08 | 添加 SplitBorrowMut 及递归分割 |
+| 1.1.1 | 2026-04-08 | 添加扩容 API |
+| 1.2.0 | 2026-04-08 | 修复 SplitBorrowMut Drop 安全性：使用引用计数防止提前重置 borrow_state |
+| 1.2.1 | 2026-04-08 | 添加 WorkspaceError 完整枚举定义，修复无效交叉引用，移除 XenonError::Other 引用 |
 
 ---
 

@@ -180,6 +180,10 @@ impl SimdElement for i64 {
 > | `bool` | 逻辑运算无 SIMD 意义 |
 > | `usize` | 指针宽度依赖平台，SIMD 语义不稳定 |
 > | `Complex<T>` | 实虚部交叉操作需要特殊排列，当前版本不支持 |
+>
+> **复数 SIMD 策略：** `Complex<f32>` 和 `Complex<f64>` 当前使用标量回退路径。
+> 未来优化可考虑将实部和虚部分离为独立数组进行 SIMD 处理（structure-of-arrays），
+> 或使用专门的复数乘法/加法指令序列。这需要额外的布局转换开销评估。
 
 ### 4.3 SimdKernel Trait
 
@@ -399,17 +403,9 @@ SIMD dot product 流程
 ```rust
 // src/simd/mod.rs
 
-/// Checks whether a pointer is aligned to the specified number of bytes.
-#[inline]
-pub fn is_aligned(ptr: *const u8, align: usize) -> bool {
-    (ptr as usize) % align == 0
-}
-
-/// Checks whether a pointer is 64-byte aligned (SIMD-friendly).
-#[inline]
-pub fn is_simd_aligned(ptr: *const u8) -> bool {
-    is_aligned(ptr, 64)
-}
+/// Alignment checking functions are defined in `06-memory-layout.md §4.5`.
+/// SIMD paths use `layout::is_aligned()` from the `layout` module.
+use crate::layout::is_aligned;
 
 /// Checks whether SIMD conditions are met.
 ///
@@ -431,7 +427,7 @@ pub fn can_use_simd<A: SimdElement>(
     if !is_contiguous || len < 4 {
         return false;
     }
-    is_simd_aligned(ptr as *const u8)
+    is_aligned(ptr as *const u8)
 }
 
 #[cfg(not(feature = "simd"))]
@@ -660,6 +656,12 @@ impl SimdKernel<f32> for ScalarKernel<f32> {
 }
 ```
 
+> **整数标量内核差异：** `i32`/`i64` 的标量内核与 `f64` 的关键差异在于：
+> (1) 不提供 `hypot` 等浮点专用运算；(2) 除法使用整数除法（截断向零），
+> 溢出语义不同（如 `i32::MIN / -1` 会 panic）；(3) 归约操作对整数类型保证
+> 逐位一致（无不结合律问题）。
+```
+
 ### 5.3 dispatch 流程
 
 ```
@@ -713,6 +715,11 @@ dispatch 调用流程
 ```
 
 > **设计决策：** 对于逐元素运算，SIMD 与标量结果须**逐位一致**。对于归约和内积，由于浮点累加顺序不同，允许 **1-2 ULP** 差异，但必须通过属性测试验证偏差在可接受范围内。
+>
+> **一致性说明：** 对于逐元素操作（add、mul 等），SIMD 和标量路径产生逐位一致的结果。
+> 对于归约/内积操作，浮点结合律不成立，不同求和顺序允许 ≤2 ULP 差异。
+> 这是对需求 §28.5"SIMD 结果须与标量路径一致"的公认解释——对于非结合操作，
+> "一致"意味着数值误差在可接受的 ULP 范围内。
 
 ---
 
@@ -939,12 +946,12 @@ pulp crate 支持 `no_std` 环境。在 `no_std` 环境下：
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本：SimdElement/SimdKernel trait、标量回退、pulp 集成 |
+| 1.0.1 | 2026-04-07 | 增加 SIMD 加速路径设计和条件检查 |
+| 1.0.2 | 2026-04-08 | 补充归约和内积的 SIMD 流程图 |
+| 1.1.0 | 2026-04-08 | 移除与 doc 06 重复的对齐检查函数，改为引用 layout 模块；补充一致性保证说明（逐元素 vs 归约）；增加复数 SIMD 策略文档；补充整数标量内核差异说明 |
 
 ---
 

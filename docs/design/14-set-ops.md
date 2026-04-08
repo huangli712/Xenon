@@ -1,7 +1,7 @@
 # 集合操作模块设计
 
 > 文档编号: 14 | 模块: `src/ops/set_ops.rs` | 阶段: Phase 4
-> 前置文档: `07-tensor.md`
+> 前置文档: `03-element-types.md`, `07-tensor.md`
 > 需求参考: 需求说明书 §15
 
 ---
@@ -15,8 +15,11 @@
 | unique 操作 | 返回排序后的不重复元素作为新 1D 张量 | intersection/union/difference |
 | 支持类型 | i32, i64, f32, f64, Complex<f32>, Complex<f64> | bincount/histogram |
 | 不支持类型 | bool（仅 2 种值，unique 无意义）、usize（仅用于索引） | argmin/argmax |
+| — | — | usize 类型的 unique 操作（usize 仅用于索引，对应需求§4中"整数"特指 i32/i64） |
 
 > **注意**：当前版本仅支持 unique 操作！不包含 intersection/union/difference/bincount/histogram 等。
+
+> **usize 排除说明**：需求说明书 §4 中提到的"整数"特指 i32/i64，usize 仅用于索引，不参与集合操作。
 
 ### 1.2 设计原则
 
@@ -197,12 +200,20 @@ unique(self):
 /// Note: `Ord` is NOT used as a supertrait because `f32`/`f64`
 /// do not implement `Ord`, and `Complex` does not implement `PartialOrd`.
 /// Instead, each type defines its own `total_cmp` method.
-/// Note: Although `UniqueElement` does not explicitly extend `Sealed`,
-/// it does require `Element` as a supertrait, and `Element: Sealed`.
-/// Therefore, only the types already implementing `Element` (i.e., the 8 types
-/// in the closed set) can implement `UniqueElement`. External crates cannot add
-/// new implementations because `Sealed` is not publicly implementable.
-pub trait UniqueElement: Element {
+///
+/// # Why in set_ops.rs, not element module?
+///
+/// UniqueElement is defined here rather than in the element module because
+/// its semantic (total ordering for deduplication) is operation-specific,
+/// not a fundamental element property. This avoids making the element module
+/// depend on ordering semantics.
+///
+/// # Sealing
+///
+/// Directly inherits Sealed for defensive sealing, even though Element
+/// already provides it. This makes the sealing intent explicit at the
+/// trait definition site.
+pub trait UniqueElement: Element + Sealed {
     /// Total ordering comparison for sorting and deduplication.
     ///
     /// Must satisfy: reflexivity, antisymmetry, transitivity, totality.
@@ -451,15 +462,14 @@ use alloc::vec::Vec;
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.0.4 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.1.1 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本 |
+| 1.0.1 | 2026-04-07 | 补充浮点 NaN 排序说明 |
+| 1.0.2 | 2026-04-08 | 补充复数排序规则 |
+| 1.0.3 | 2026-04-08 | 添加类型排除实现 |
+| 1.0.4 | 2026-04-08 | 补充 Good/Bad 示例 |
+| 1.1.0 | 2026-04-08 | 添加 UniqueElement 设计位置说明；添加 Sealed 超级 trait；补充 usize 排除说明；补充前置文档 |
 
 ---
 

@@ -146,11 +146,40 @@ pub trait Numeric:
     + core::ops::Div<Output = Self>
     + core::ops::Neg<Output = Self>
 {
-    // Marker trait: all constraints via supertraits
+    /// Returns the conjugate of this value.
+    ///
+    /// For real numeric types (i32, i64, f32, f64), this returns `self` unchanged.
+    /// For `ComplexScalar` types, this returns the complex conjugate (re - im*i).
+    ///
+    /// This method is needed by `12-matrix-ops` for unified dot product implementation,
+    /// allowing a single generic algorithm to handle both real and complex inner products.
+    fn conj(self) -> Self;
 }
+
+// Real type implementations return self (identity):
+//
+// impl Numeric for i32 {
+//     fn conj(self) -> Self { self }
+// }
+// impl Numeric for i64 {
+//     fn conj(self) -> Self { self }
+// }
+// impl Numeric for f32 {
+//     fn conj(self) -> Self { self }
+// }
+// impl Numeric for f64 {
+//     fn conj(self) -> Self { self }
+// }
+// Complex type implementations return the complex conjugate:
+// impl Numeric for Complex<f32> {
+//     fn conj(self) -> Self { Complex::new(self.re, -self.im) }
+// }
+// impl Numeric for Complex<f64> {
+//     fn conj(self) -> Self { Complex::new(self.re, -self.im) }
+// }
 ```
 
-> **设计决策：** `Numeric` 不定义任何新方法。四则运算已由 `Add/Sub/Mul/Div/Neg` trait 提供。作为标记 trait 表达能力组合更符合 Rust 惯例。
+> **设计决策：** `Numeric` 定义 `conj()` 方法，为实数类型返回 `self`，为复数类型返回共轭。这使得统一的内积（dot product）实现可以泛化处理实数和复数情况（实数内积 `∑ aᵢ*bᵢ`，复数内积 `∑ aᵢ·conj(bᵢ)`）。其余四则运算由 `Add/Sub/Mul/Div/Neg` trait 提供。
 
 ### 4.3 RealScalar trait
 
@@ -160,6 +189,9 @@ pub trait Numeric:
 /// Provides math functions, constants, and NaN detection.
 /// Only f32 and f64 implement this trait.
 pub trait RealScalar: Numeric + PartialOrd + Sealed {
+    // Sealed is already inherited via Element (which Numeric extends),
+    // but listed here for defensive clarity — makes the sealed intent explicit
+    // at each trait level.
     // ========== Math functions ==========
     fn abs(self) -> Self;
     fn sqrt(self) -> Self;
@@ -199,6 +231,9 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
 /// Provides complex-specific operations on top of Numeric.
 /// Only Complex<f32> and Complex<f64> implement this.
 pub trait ComplexScalar: Numeric + Sealed {
+    // Sealed is already inherited via Element (which Numeric extends),
+    // but listed here for defensive clarity — makes the sealed intent explicit
+    // at each trait level.
     /// Real part type (must be RealScalar).
     type Real: RealScalar;
 
@@ -350,6 +385,11 @@ impl CheckedAdd for i64 {
 // f32, f64, Complex: NOT implemented — overflow is handled by IEEE 754 semantics.
 // bool, usize: NOT implemented — not Numeric.
 ```
+
+> **设计决策：** `CheckedAdd` 仅覆盖整数加法（`i32`/`i64`）。整数**乘法**溢出不在 `CheckedAdd` 范围内——逐元素乘法（elementwise multiply）对整数使用 **wrapping 语义**（`wrapping_mul`）。此设计决策的理由：
+> - 加法溢出检测主要用于 `sum()` 归约操作（参见 `13-reduction.md §5.1`），归约结果应精确
+> - 乘法溢出在逐元素运算中按 wrapping 处理，与 Rust release 模式默认行为一致，避免性能退化
+> - 如需 checked 乘法，用户应在调用前手动检查参数范围
 
 ---
 
@@ -686,6 +726,8 @@ Wave 3: [T6]      [T9] ← ────┘
 
 ## 11. no_std 兼容性
 
+> **⚠️ 警告**：在 `no_std` 环境下，`RealScalar` trait **没有任何实现者**。`f32`/`f64` 的 `RealScalar` impl 需要 `std` feature（因为 `sin()`、`cos()`、`sqrt()` 等数学方法依赖 `libm`，而 Xenon 不引入 `libm` 依赖）。因此 `no_std` 环境中 `sin`/`cos`/`sqrt`/`exp`/`ln` 等数学函数**完全不可用**。需要这些函数的代码必须以 `#[cfg(feature = "std")]` 门控。仅使用 `Element`/`Numeric` trait 的代码在 `no_std` 下正常工作。
+
 | 组件 | 兼容方案 |
 |------|----------|
 | `Element` / `Numeric` / `ComplexScalar` | 纯 trait，天然 no_std |
@@ -696,14 +738,14 @@ Wave 3: [T6]      [T9] ← ────┘
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.2.0 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本：Element/Numeric/RealScalar/ComplexScalar trait 层次 |
+| 1.0.1 | 2026-04-07 | 添加 Sealed 冗余继承注释；补充 no_std RealScalar 无实现者警告 |
+| 1.0.2 | 2026-04-08 | 添加 CheckedAdd 整数乘法 wrapping 语义设计说明 |
+| 1.0.3 | 2026-04-08 | 添加 Numeric::conj() 方法（实数返回 self，复数返回共轭） |
+| 1.1.0 | 2026-04-08 | 补充 CastTo trait 设计 |
+| 1.2.0 | 2026-04-08 | 补充版本变更描述 |
 
 ---
 

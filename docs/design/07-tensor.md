@@ -143,6 +143,13 @@ pub struct TensorBase<S, D> {
 }
 ```
 
+> **设计说明：** TensorBase 直接嵌入 `offset` 和 `flags` 字段，而非使用 doc 06 的 `Layout` 结构体。
+> 这是因为 `offset` 与存储指针配合进行偏移计算，属于张量实例的固有属性，将二者分离避免了
+> 额外的间接层。`Layout` 结构体仅作为纯标志位容器，其 `flags` 字段在需要时可通过
+> `TensorBase::flags()` 获取。
+
+```
+
 ### 4.2 类型别名（完整列表）
 
 ```rust
@@ -285,11 +292,20 @@ where
     /// Returns a raw pointer to the data start.
     pub fn as_ptr(&self) -> *const A;
 
-    /// Pointer access without offset validity check.
+    /// Returns the raw base pointer WITHOUT adding the offset.
+    ///
+    /// Unlike `as_ptr()` which returns `storage.as_ptr().add(offset)`,
+    /// this method returns `storage.as_ptr()` directly — the raw base
+    /// pointer of the storage buffer. The caller is responsible for
+    /// manually accounting for `self.offset` when computing element
+    /// addresses.
     ///
     /// # Safety
     ///
     /// Caller must ensure offset is valid and data is initialized.
+    /// The returned pointer does NOT point to the first logical element;
+    /// use `as_ptr()` for that. Any pointer arithmetic based on this
+    /// pointer must include `self.offset` to access the correct data.
     pub unsafe fn as_ptr_unchecked(&self) -> *const A;
 }
 
@@ -413,6 +429,11 @@ where
     /// Consumes the array, converting to an immutable view.
     ///
     /// Suitable for converting Owned/ArcRepr to View without lifetime binding.
+    ///
+    /// > **注意：** 此方法的泛型约束 `S: Into<S2>` 对涉及生命周期的存储类型
+    /// > 适用性有限。对于常见场景（Owned → View、ArcRepr → View），
+    /// > 推荐使用具体的 `view()` 和 `view_mut()` 方法，它们直接返回
+    /// > 正确的视图类型，避免了泛型转换的限制。
     pub fn into_view<S2>(self) -> TensorBase<S2, D>
     where
         S: Into<S2>;
@@ -618,6 +639,16 @@ Wave 4:       [T10]
 | 边界测试 | 集成测试中标注 | 空数组、单元素、高维 |
 | 编译测试 | `tests compile_fail` | 验证类型约束 |
 
+### 7.1b 集成测试函数列表
+
+以下集成测试函数验证 TensorBase 跨模块边界的正确性：
+
+| 测试函数 | 测试内容 |
+|----------|----------|
+| `test_tensor_cross_dim_interop` | TensorBase 与 Dimension 模块交互：验证 Ix0~Ix6 和 IxDyn 的 shape/strides 查询 |
+| `test_tensor_storage_layout_integration` | TensorBase 与 Storage/Layout 模块交互：验证 from_shape_vec 后的标志位计算和指针正确性 |
+| `test_tensor_view_roundtrip` | 验证 view() → view_mut() → 原始数据的零拷贝往返一致性 |
+
 ### 7.2 单元测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
@@ -714,7 +745,7 @@ Wave 4:       [T10]
 
 | 实例化 | 大小（估算） | 说明 |
 |--------|-------------|------|
-| `Tensor2<f64>` | ~56 bytes | Owned(24) + Ix2(16) + Ix2(16) + usize(8) + u8(1) + padding |
+| `Tensor2<f64>` | ~72 bytes | Owned(24) + Ix2(16) + Ix2(16) + usize(8) + u8(1) + padding(7) = 72 bytes |
 | `TensorView2<f64>` | ~56 bytes | ViewRepr<&'a f64>(≈ 8 bytes: 裸指针+PhantomData) + Ix2(16) + Ix2(16) + usize(8) + u8(1) + padding ≈ 56 bytes |
 | `TensorD<f64>` | ~96 bytes | Owned(24) + IxDyn(24×2) + usize(8) + u8(1) + padding |
 
@@ -880,14 +911,14 @@ where
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.0.4 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本：TensorBase 结构体定义、类型别名、基础查询方法 |
+| 1.0.1 | 2026-04-07 | 补充 unsafe 构造方法和视图方法 |
+| 1.0.2 | 2026-04-08 | 增加 Good/Bad 对比示例 |
+| 1.0.3 | 2026-04-08 | 补充步长存储策略设计决策 |
+| 1.0.4 | 2026-04-08 | 增加 no_std 兼容性分析 |
+| 1.1.0 | 2026-04-08 | 修正 Tensor2<f64> 大小估算为 72 字节；补充 as_ptr_unchecked 文档说明；增加 into_view 生命周期限制说明；补充集成测试函数列表；增加 TensorBase 直接嵌入 offset/flags 的设计说明 |
 
 ---
 

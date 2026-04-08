@@ -1,7 +1,7 @@
 # 存储系统模块设计
 
 > 文档编号: 05 | 模块: `src/storage/` | 阶段: Phase 2
-> 前置文档: `02-dimension.md`, `03-element-types.md`, `04-complex-type.md`, `06-memory-layout.md`
+> 前置文档: `02-dimension.md`, `03-element-types.md`, `04-complex-type.md`
 > 需求参考: 需求说明书 §6
 
 ---
@@ -35,7 +35,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
-L3: storage (依赖 layout)  ← 当前模块
+L3: storage (依赖 core/alloc)  ← 当前模块
 L4: tensor (依赖 storage, dimension)
 L5: ops/, iter/, index/, shape_ops/, broadcast/, construct/, ffi/, convert/, format/
 ```
@@ -714,7 +714,7 @@ pub unsafe trait IsArc: RawStorage {}
 
 | 存储类型 | Send | Sync | 原因 |
 |----------|:----:|:----:|------|
-| `Owned<A>` | A: Send + Sync | A: Send + Sync | 拥有数据，等价于 `Vec<A>` |
+| `Owned<A>` | A: Send | A: Sync | 拥有数据，Send/Sync 条件与 `Vec<A>` 一致（分别要求 A:Send 和 A:Sync） |
 | `ViewRepr<&'a A>` | A: Sync | A: Sync | 共享借用需要 Sync 才能跨线程共享 |
 | `ViewMutRepr<&'a mut A>` | A: Send | ❌ 永远不 | 独占借用可转移但不可共享 |
 | `ArcRepr<A>` | A: Send + Sync | A: Send + Sync | Arc 内部原子操作保证线程安全 |
@@ -1007,14 +1007,14 @@ Storage 提供对齐信息（`is_aligned()`），Layout 模块查询对齐状态
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.2.0 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本：Storage trait 层次、Owned/View/ViewMut/ArcRepr 设计 |
+| 1.0.1 | 2026-04-07 | 修正 Owned Send/Sync 条件为独立的 A:Send 和 A:Sync |
+| 1.0.2 | 2026-04-08 | 修正前置文档（移除 06-memory-layout 依赖）；修正依赖层级描述 |
+| 1.0.3 | 2026-04-08 | 添加 StorageIntoOwned、StorageIntoRaw trait |
+| 1.1.0 | 2026-04-08 | 添加 AlignedAlloc 对齐分配器设计 |
+| 1.2.0 | 2026-04-08 | 补充版本变更描述 |
 
 ---
 

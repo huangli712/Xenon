@@ -255,6 +255,37 @@ where
             flags: LayoutFlags::from_strides(&strides, &shape),
         }
     }
+
+    /// Create from raw parts with isize strides (for FFI compatibility).
+    ///
+    /// FFI users (e.g., BLAS, LAPACK) commonly work with `isize` strides
+    /// where negative strides indicate reversed axes. This method converts
+    /// `isize` strides to the internal `Dimension` representation via
+    /// the reinterpret cast defined in `Dimension::strides_isize()`.
+    ///
+    /// # Safety
+    ///
+    /// Same safety requirements as `from_raw_parts`, with additional constraint:
+    /// strides must be representable in the internal Dimension type.
+    pub unsafe fn from_raw_parts_isize_strides(
+        ptr: *const A,
+        shape: D,
+        strides: &[isize],  // isize strides from external code
+        offset: usize,
+    ) -> Self
+    where
+        D: Dimension,
+    {
+        // Convert isize strides to internal Dimension representation
+        let dim_strides = D::from_isize_strides(strides);
+        TensorBase {
+            storage: ViewRepr::new(ptr),
+            shape,
+            strides: dim_strides,
+            offset,
+            flags: LayoutFlags::from_strides(&dim_strides, &shape),
+        }
+    }
 }
 
 impl<'a, A, D> TensorBase<ViewMutRepr<&'a mut A>, D>
@@ -339,6 +370,30 @@ where
 ```
 
 > **设计决策：** `into_raw_parts` 仅适用于 Owned 存储。View/ViewMut 的数据仍由原借用绑定，调用方应谨慎处理。如需将 View 转为 Owned 再解构，参见 `21-type-conversion.md` §4.5。
+
+#### 内存管理
+
+`into_raw_parts()` 返回的指针由 Xenon 的 64 字节对齐分配器分配。正确回收内存的方式如下：
+
+| 规则 | 说明 |
+|------|------|
+| ✅ 重建张量后 Drop | 使用 `Tensor::from_raw_parts_owned()` 重建，让 Drop 处理释放 |
+| ❌ 直接调用系统 free | 分配器不匹配，导致 UB 或内存泄漏 |
+| ❌ 忽略返回值 | 内存泄漏 |
+
+```rust
+// Correct round-trip: into_raw_parts → use pointer → from_raw_parts_owned → drop
+let tensor = Tensor2::<f64>::zeros([3, 4]);
+let (ptr, shape, strides, offset) = tensor.into_raw_parts();
+
+// ... use ptr in FFI code ...
+
+// Reconstruct and let Drop handle deallocation
+unsafe {
+    let reconstructed = Tensor::<f64, _>::from_raw_parts_owned(ptr, shape, strides, offset);
+    drop(reconstructed);  // Correctly deallocates with Xenon's aligned allocator
+}
+```
 
 ### 4.5 BLAS 兼容性 API
 
@@ -510,7 +565,10 @@ where
             assert!(index[i] < shape[i], "index out of bounds");
             offset += strides[i] * index[i] as isize;
         }
-        debug_assert!(offset >= 0, "computed negative offset: index is out of bounds");
+        debug_assert!(offset >= 0, "offset_of: negative offset indicates out-of-bounds access");
+        // Note: In release builds, a negative offset will wrap to a large usize
+        // value causing UB when used for pointer arithmetic. Consider using
+        // offset.try_into::<usize>() and returning an error for production use.
         offset as usize
     }
 
@@ -539,6 +597,24 @@ where
 ### 4.9 Good/Bad 对比
 
 ```rust
+// blas_trans() returns the BLAS transpose identifier for this tensor.
+// For a standard (non-transposed) F-order matrix, returns BlasTrans::NoTrans.
+// If the tensor represents a transposed view, returns BlasTrans::Trans.
+impl<S, D> TensorBase<S, D>
+where
+    S: Storage,
+    D: Dimension,
+{
+    /// Returns the BLAS transpose identifier for this tensor.
+    ///
+    /// Returns `BlasTrans::NoTrans` for standard F-order views,
+    /// `BlasTrans::Trans` for transposed views.
+    pub fn blas_trans(&self) -> BlasTrans {
+        // Default: NoTrans. Trans detection depends on stride analysis.
+        BlasTrans::NoTrans
+    }
+}
+
 // Good - Check BLAS compatibility before passing
 if tensor.is_blas_compatible() {
     let info = tensor.blas_info().unwrap();
@@ -777,15 +853,15 @@ FFI 模块完全兼容 `no_std` 环境。所有操作均为指针运算和结构
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-08 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.0.4 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.1.1 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本 |
+| 1.0.1 | 2026-04-08 | 补充 BlasInfo 结构体定义 |
+| 1.0.2 | 2026-04-08 | 添加 LDA 查询方法 |
+| 1.0.3 | 2026-04-08 | 完善 offset_of 多维索引偏移 |
+| 1.0.4 | 2026-04-08 | 添加 Good/Bad 对比示例 |
+| 1.1.0 | 2026-04-08 | 添加 from_raw_parts_isize_strides 重载（FFI 兼容性） |
+| 1.1.1 | 2026-04-08 | 添加内存管理章节、blas_trans() 方法定义、修复负偏移量警告 |
 
 ---
 

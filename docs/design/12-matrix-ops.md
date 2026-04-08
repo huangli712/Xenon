@@ -1,7 +1,7 @@
 # 矩阵运算模块设计
 
 > 文档编号: 12 | 模块: `src/ops/matrix.rs` | 阶段: Phase 4
-> 前置文档: `07-tensor.md`, `10-iterator.md`
+> 前置文档: `03-element-types.md`, `07-tensor.md`, `10-iterator.md`, `26-error-handling.md`
 > 需求参考: 需求说明书 §13
 
 ---
@@ -61,8 +61,8 @@ src/ops/
 ```
 src/ops/matrix.rs
 ├── crate::tensor        # TensorView<A, Ix1>
-├── crate::element       # Numeric, ComplexScalar
-├── crate::error         # XenonError
+├── crate::element       # Numeric, ComplexScalar（参见 03-element-types.md）
+├── crate::error         # XenonError（参见 26-error-handling.md）
 └── crate::simd (可选)   # pulp::Arch
 ```
 
@@ -90,6 +90,12 @@ src/ops/matrix.rs
 ///
 /// For complex numbers, the conjugate-linear definition is used:
 /// result = sum(conj(a[i]) * b[i])
+///
+/// For real types, `A::conj()` is a no-op identity (returns `self`),
+/// so this naturally handles both real and complex dot products.
+///
+/// Supported types: i32, i64, f32, f64, Complex<f32>, Complex<f64>.
+/// Not supported: bool, usize (they do not implement Numeric).
 ///
 /// # Arguments
 ///
@@ -175,7 +181,7 @@ dot_impl(a, b):
 
 ```rust
 fn scalar_dot<A: Numeric + Copy>(a: &TensorView<A, Ix1>, b: &TensorView<A, Ix1>) -> A {
-    a.iter().zip(b.iter()).fold(A::zero(), |acc, (&x, &y)| acc + x * y)
+    a.iter().zip(b.iter()).fold(A::zero(), |acc, (&x, &y)| acc + x.conj() * y)
 }
 ```
 
@@ -193,8 +199,13 @@ fn scalar_dot<A: Numeric + Copy>(a: &TensorView<A, Ix1>, b: &TensorView<A, Ix1>)
 /// Unified dot implementation for both real and complex types.
 /// Uses `x.conj() * y` — for real types conj() is identity, for complex
 /// types it returns the conjugate.
-fn dot_impl<A: Numeric + Copy>(a: &TensorView<A, Ix1>, b: &TensorView<A, Ix1>) -> A {
-    a.iter().zip(b.iter()).fold(A::zero(), |acc, (&x, &y)| acc + x.conj() * y)
+fn dot_impl<A: Numeric + Copy + Mul<Output=A> + Add<Output=A>>(
+    a: &TensorView<'_, A, Ix1>,
+    b: &TensorView<'_, A, Ix1>,
+) -> A {
+    a.iter().zip(b.iter())
+     .map(|(&x, &y)| x.conj() * y)  // conj() is now on Numeric
+     .fold(A::zero(), |acc, v| acc + v)
 }
 ```
 
@@ -367,14 +378,15 @@ extern crate alloc;
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.0.4 | 2026-04-08 |
-| 1.0.5 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本 |
+| 1.0.1 | 2026-04-07 | 补充复数内积语义说明 |
+| 1.0.2 | 2026-04-08 | 补充 SIMD 路径说明 |
+| 1.0.3 | 2026-04-08 | 补充标量实现与统一分派 |
+| 1.0.4 | 2026-04-08 | 添加 Good/Bad 示例 |
+| 1.0.5 | 2026-04-08 | 补充前置文档和类型支持说明 |
+| 1.1.0 | 2026-04-08 | 更新 dot_impl 使用 Numeric::conj() 统一实数/复数路径 |
 
 ---
 

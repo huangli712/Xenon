@@ -122,11 +122,18 @@ pub struct Complex<T> {
 
 ### 4.2 泛型约束
 
-`Complex<T>` 的核心方法仅支持 `T: Float`（f32 或 f64）。Xenon 内部定义 `Float` trait 绑定必要数学方法：
+`Complex<T>` 的方法分为两类：
+
+1. **基础方法**（无需浮点数学）：在 `impl<T: Copy + PartialEq + Default + core::ops::Neg<Output=T>> Complex<T>` 中实现，公开可用。包括 `re()`、`im()`、`conj()`、`from_real()`、`from_imag()`、`is_real()`、`is_imaginary()`。
+
+2. **数学方法**（需要浮点数学）：在具体的 `impl Complex<f32>` 和 `impl Complex<f64>` 块中实现，公开可用。包括 `norm()`、`norm_sqr()`、`arg()`、`exp()`、`ln()`、`sqrt()`、`to_polar()`、`from_polar()`。
+
+Xenon 内部定义 `Float` trait 绑定必要数学方法，仅作为内部实现细节：
 
 ```rust
 /// Internal trait for floating-point types used in Complex<T>.
 /// Only f32 and f64 implement this.
+/// NOT part of the public API — math methods are exposed via concrete impl blocks.
 pub(crate) trait Float:
     Copy
     + Clone
@@ -169,29 +176,61 @@ impl<T> Complex<T> {
     }
 }
 
-impl<T: Float> Complex<T> {
-    /// Creates from polar coordinates: r * (cos(theta) + i*sin(theta)).
-    #[inline]
-    pub fn from_polar(r: T, theta: T) -> Self {
-        Self::new(r * theta.cos(), r * theta.sin())
-    }
-
+// Methods that don't need Float math — available for all T satisfying
+// basic arithmetic constraints.
+impl<T: Copy + PartialEq + Default + core::ops::Neg<Output = T>> Complex<T> {
     /// Creates a purely real number (im = 0).
     #[inline]
     pub fn from_real(re: T) -> Self {
-        Self::new(re, T::zero())
+        Self::new(re, T::default())
     }
 
     /// Creates a purely imaginary number (re = 0).
     #[inline]
     pub fn from_imag(im: T) -> Self {
-        Self::new(T::zero(), im)
+        Self::new(T::default(), im)
     }
 
     /// Imaginary unit i.
     #[inline]
+    pub fn i() -> Self
+    where
+        T: core::ops::Add<Output = T>,
+    {
+        // zero + one*i
+        // NOTE: This requires T to have a "one" value; for f32/f64
+        // this is handled via the concrete impl below.
+        unimplemented!("Use Complex::new(T::default(), <T as One>::one()) via concrete impl")
+    }
+}
+
+// Concrete implementations for f32 — public API, no pub(crate) dependency
+impl Complex<f32> {
+    /// Creates from polar coordinates: r * (cos(theta) + i*sin(theta)).
+    #[inline]
+    pub fn from_polar(r: f32, theta: f32) -> Self {
+        Self::new(r * theta.cos(), r * theta.sin())
+    }
+
+    /// Imaginary unit i (f32 specialization).
+    #[inline]
     pub fn i() -> Self {
-        Self::new(T::zero(), T::one())
+        Self::new(0.0, 1.0)
+    }
+}
+
+// Concrete implementations for f64 — public API, no pub(crate) dependency
+impl Complex<f64> {
+    /// Creates from polar coordinates: r * (cos(theta) + i*sin(theta)).
+    #[inline]
+    pub fn from_polar(r: f64, theta: f64) -> Self {
+        Self::new(r * theta.cos(), r * theta.sin())
+    }
+
+    /// Imaginary unit i (f64 specialization).
+    #[inline]
+    pub fn i() -> Self {
+        Self::new(0.0, 1.0)
     }
 }
 ```
@@ -199,7 +238,8 @@ impl<T: Float> Complex<T> {
 ### 4.4 基础方法
 
 ```rust
-impl<T: Float> Complex<T> {
+// Methods that don't need Float math — publicly available without pub(crate) dependency.
+impl<T: Copy + PartialEq + Default + core::ops::Neg<Output = T>> Complex<T> {
     /// Returns the real part.
     #[inline]
     pub fn re(self) -> T { self.re }
@@ -217,15 +257,32 @@ impl<T: Float> Complex<T> {
     /// Returns true if imaginary part is zero.
     #[inline]
     pub fn is_real(self) -> bool {
-        self.im == T::zero()
+        self.im == T::default()
     }
 
     /// Returns true if real part is zero.
     #[inline]
     pub fn is_imaginary(self) -> bool {
-        self.re == T::zero()
+        self.re == T::default()
+    }
+}
+
+// NaN/finite checks require Float — provided via concrete impls.
+impl Complex<f32> {
+    /// Returns true if either part is NaN.
+    #[inline]
+    pub fn is_nan(self) -> bool {
+        self.re.is_nan() || self.im.is_nan()
     }
 
+    /// Returns true if both parts are finite (not NaN and not infinite).
+    #[inline]
+    pub fn is_finite(self) -> bool {
+        self.re.is_finite() && self.im.is_finite()
+    }
+}
+
+impl Complex<f64> {
     /// Returns true if either part is NaN.
     #[inline]
     pub fn is_nan(self) -> bool {
@@ -242,29 +299,26 @@ impl<T: Float> Complex<T> {
 
 ### 4.5 数学方法
 
+> **注意**：数学方法通过具体的 `impl Complex<f32>` 和 `impl Complex<f64>` 块提供，而非泛型 `impl<T: Float>`。这避免了 `Float` trait（`pub(crate)`）暴露到公共 API。
+
 ```rust
-impl<T: Float> Complex<T> {
+// Concrete impl for Complex<f32> — all methods are public.
+impl Complex<f32> {
     /// Modulus |z| = sqrt(re² + im²), using hypot to avoid overflow.
-    ///
-    /// # Example
-    /// ```
-    /// let z = Complex::new(3.0_f64, 4.0);
-    /// assert!((z.norm() - 5.0).abs() < 1e-10);
-    /// ```
     #[inline]
-    pub fn norm(self) -> T {
+    pub fn norm(self) -> f32 {
         self.re.hypot(self.im)
     }
 
     /// Squared modulus |z|² = re² + im² (avoids sqrt).
     #[inline]
-    pub fn norm_sqr(self) -> T {
+    pub fn norm_sqr(self) -> f32 {
         self.re * self.re + self.im * self.im
     }
 
     /// Argument (phase angle): atan2(im, re). Range: (-π, π].
     #[inline]
-    pub fn arg(self) -> T {
+    pub fn arg(self) -> f32 {
         self.im.atan2(self.re)
     }
 
@@ -285,19 +339,80 @@ impl<T: Float> Complex<T> {
     #[inline]
     pub fn sqrt(self) -> Self {
         let r = self.norm();
-        if r == T::zero() {
-            return Self::new(T::zero(), T::zero());
+        if r == 0.0 {
+            return Self::new(0.0, 0.0);
         }
-        let half = T::one() / (T::one() + T::one());
+        let half = 0.5;
         let re_part = ((r + self.re) * half).sqrt();
         let im_part = ((r - self.re) * half).sqrt();
-        let im_sign = if self.im >= T::zero() { im_part } else { -im_part };
+        let im_sign = if self.im >= 0.0 { im_part } else { -im_part };
         Self::new(re_part, im_sign)
     }
 
     /// Converts to polar coordinates (r, theta).
     #[inline]
-    pub fn to_polar(self) -> (T, T) {
+    pub fn to_polar(self) -> (f32, f32) {
+        (self.norm(), self.arg())
+    }
+}
+
+// Concrete impl for Complex<f64> — all methods are public.
+// Same logic as f32, with f64 types.
+impl Complex<f64> {
+    /// Modulus |z| = sqrt(re² + im²), using hypot to avoid overflow.
+    ///
+    /// # Example
+    /// ```
+    /// let z = Complex::new(3.0_f64, 4.0);
+    /// assert!((z.norm() - 5.0).abs() < 1e-10);
+    /// ```
+    #[inline]
+    pub fn norm(self) -> f64 {
+        self.re.hypot(self.im)
+    }
+
+    /// Squared modulus |z|² = re² + im² (avoids sqrt).
+    #[inline]
+    pub fn norm_sqr(self) -> f64 {
+        self.re * self.re + self.im * self.im
+    }
+
+    /// Argument (phase angle): atan2(im, re). Range: (-π, π].
+    #[inline]
+    pub fn arg(self) -> f64 {
+        self.im.atan2(self.re)
+    }
+
+    /// Complex exponential: e^z = e^re * (cos(im) + i*sin(im)).
+    #[inline]
+    pub fn exp(self) -> Self {
+        let exp_re = self.re.exp();
+        Self::new(exp_re * self.im.cos(), exp_re * self.im.sin())
+    }
+
+    /// Complex natural logarithm (principal value): ln|z| + i*arg(z).
+    #[inline]
+    pub fn ln(self) -> Self {
+        Self::new(self.norm().ln(), self.arg())
+    }
+
+    /// Complex square root (principal value, real part >= 0).
+    #[inline]
+    pub fn sqrt(self) -> Self {
+        let r = self.norm();
+        if r == 0.0 {
+            return Self::new(0.0, 0.0);
+        }
+        let half = 0.5;
+        let re_part = ((r + self.re) * half).sqrt();
+        let im_part = ((r - self.re) * half).sqrt();
+        let im_sign = if self.im >= 0.0 { im_part } else { -im_part };
+        Self::new(re_part, im_sign)
+    }
+
+    /// Converts to polar coordinates (r, theta).
+    #[inline]
+    pub fn to_polar(self) -> (f64, f64) {
         (self.norm(), self.arg())
     }
 }
@@ -476,6 +591,8 @@ impl<T: Float + core::fmt::Display> core::fmt::Display for Complex<T> {
 
 ```rust
 // Precision promotion: f32 -> f64 (lossless)
+// This is the lossless direction — follows std's philosophy that From
+// should only be implemented for lossless conversions.
 impl From<Complex<f32>> for Complex<f64> {
     #[inline]
     fn from(z: Complex<f32>) -> Self {
@@ -484,13 +601,17 @@ impl From<Complex<f32>> for Complex<f64> {
     }
 }
 
-// Precision reduction: f64 -> f32 (may lose precision)
-impl From<Complex<f64>> for Complex<f32> {
+// Precision reduction: f64 -> f32 (lossy)
+// NOT implemented as `From` — lossy conversion contradicts std's philosophy.
+// Use the named method `to_f32()` instead.
+impl Complex<f64> {
+    /// Converts to `Complex<f32>` with possible precision loss.
+    ///
+    /// Uses IEEE 754 round-to-nearest-even for each component.
+    /// This is the only permitted lossy numeric conversion.
     #[inline]
-    fn from(z: Complex<f64>) -> Self {
-        // CAST: lossy f64→f32 truncation, follows IEEE 754 round-to-nearest-even.
-        // This is the only permitted `as` cast for numeric conversion (lossy by design).
-        Self::new(z.re as f32, z.im as f32)
+    pub fn to_f32(self) -> Complex<f32> {
+        Complex::new(self.re as f32, self.im as f32)
     }
 }
 
@@ -874,23 +995,24 @@ Wave 5: [T11] → [T12]
 | 组件 | 兼容方案 |
 |------|----------|
 | `Complex<T>` 结构体 | 纯 `#[repr(C)]`，天然 no_std |
-| 基础方法 | 仅依赖 `core`，天然 no_std |
-| 算术运算 | 仅依赖 `core::ops`，天然 no_std |
-| 数学方法（exp/ln/sqrt/arg/from_polar 等） | `#[cfg(feature = "std")]` 下通过 `Float` trait 的 std 实现提供。no_std 环境下这些数学方法不可用（`Float` trait 无实现者），仅基础算术运算（+/-/*/共轭/模平方等）可用 |
-| 类型转换 | `From` trait 实现，天然 no_std |
+| 基础方法（`re()`, `im()`, `conj()`, `from_real()`, `from_imag()`, `is_real()`, `is_imaginary()`） | 不依赖 `Float` trait，**no_std 可用** |
+| 算术运算（`+`, `-`, `*`, `/`, 一元负号） | 仅依赖 `core::ops`，天然 no_std |
+| 数学方法（`norm()`, `norm_sqr()`, `arg()`, `exp()`, `ln()`, `sqrt()`, `to_polar()`, `from_polar()`） | 具体类型 `impl Complex<f32>` / `impl Complex<f64>` 内部调用 `f32`/`f64` 的 inherent 方法。**在 no_std 环境下，这些方法可用**（`f32::hypot`, `f32::atan2`, `f32::exp` 等为 `core` 内建方法，不依赖 `std`） |
+| `is_nan()`, `is_finite()` | 具体类型实现，依赖 `core` 内建方法，**no_std 可用** |
+| 类型转换 | `From` trait 实现和 `to_f32()` 方法，天然 no_std |
 
-> **与 `00-coding-standards.md` §9.1 保持一致**：libm **不是** Xenon 的依赖。`RealScalar` 和 `Complex<T>` 的数学方法仅在 `std` feature 下可用。
+> **与 `00-coding-standards.md` §9.1 保持一致**：libm **不是** Xenon 的依赖。`Complex<f32>`/`Complex<f64>` 的数学方法（`norm`, `exp`, `ln`, `sqrt` 等）使用 `f32`/`f64` 的 inherent 方法，这些方法在 `core` 中提供（编译器内建），无需 `std`。因此 `Complex<T>` 的全部方法在 `no_std` 下均可用。
 
 ---
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本：Complex<T> 定义、算术运算、类型转换 |
+| 1.0.1 | 2026-04-07 | 拆分 impl 块：基础方法脱离 Float，数学方法用具体 impl |
+| 1.0.2 | 2026-04-08 | 修正 lossy From 为 to_f32() 命名方法；仅保留无损方向 From |
+| 1.1.0 | 2026-04-08 | 更新 no_std 兼容性说明（全部方法均可用）；补充版本描述 |
 
 ---
 

@@ -198,6 +198,14 @@ pub fn reset_parallel_threshold() {
 /// `true` if parallel execution should be enabled.
 #[cfg(feature = "parallel")]
 pub fn should_parallelize(len: usize, is_contiguous: bool) -> bool {
+    // If only one thread is available, parallelism adds overhead with no benefit
+    if rayon::current_num_threads() <= 1 {
+        return false;
+    }
+    // If already in a parallel context, do not spawn nested parallelism
+    if is_in_parallel_context() {
+        return false;
+    }
     let threshold = get_parallel_threshold();
     let meets_threshold = if is_contiguous {
         len >= threshold
@@ -297,10 +305,11 @@ pub fn par_zip_with<A, B, C, DA, DB, F>(
     a: &Tensor<A, DA>,
     b: &Tensor<B, DB>,
     f: F,
-) -> Result<Tensor<C, DA>, BroadcastError>
+) -> Result<Tensor<C, <DA as BroadcastDim<DB>>::Output>, BroadcastError>
 where
-    DA: Dimension,
+    DA: Dimension + BroadcastDim<DB>,
     DB: Dimension,
+    <DA as BroadcastDim<DB>>::Output: Dimension,
     A: Element + Send + Sync,
     B: Element + Send + Sync,
     C: Element + Send,
@@ -318,9 +327,9 @@ where
     let zip = ParZip::new(a.view(), b.view())?;
     output.par_extend(zip.map(|(x, y)| f(&x, &y)));
 
-    let dim = DA::from_slice(&broadcast_shape);
+    let output_dim = <DA as BroadcastDim<DB>>::Output::from_slice(&broadcast_shape);
     // SAFETY: output length matches dim
-    unsafe { Ok(Tensor::from_raw_vec_unchecked(output, dim)) }
+    unsafe { Ok(Tensor::from_raw_vec_unchecked(output, output_dim)) }
 }
 ```
 
@@ -379,6 +388,62 @@ where
     {
         // Splits data into chunks and drives parallel execution
         rayon::iter::plumbing::bridge(self, consumer)
+    }
+}
+
+#[cfg(feature = "parallel")]
+impl<'a, A, D> IndexedParallelIterator for ParElements<'a, A, D>
+where
+    A: Element + Send + Sync,
+    D: Dimension + Send,
+{
+    fn len(&self) -> usize { self.base.len() }
+
+    fn drive<C: rayon::iter::plumbing::Consumer<Self::Item>>(self, consumer: C) -> C::Result {
+        rayon::iter::plumbing::bridge(self, consumer)
+    }
+
+    fn with_producer<CB: rayon::iter::plumbing::ProducerCallback<Self::Item>>(
+        self,
+        callback: CB,
+    ) -> CB::Output {
+        // Split the flat index range and map to elements
+        callback.callback(ElementsProducer { base: self.base })
+    }
+}
+
+/// Producer for ordered parallel element iteration.
+///
+/// Splits the flat index range into sub-ranges for parallel processing,
+/// guaranteeing element order is preserved across parallel execution.
+pub struct ElementsProducer<'a, A, D>
+where
+    A: Element + Send + Sync,
+    D: Dimension,
+{
+    base: TensorView<'a, A, D>,
+}
+
+#[cfg(feature = "parallel")]
+impl<'a, A, D> rayon::iter::plumbing::Producer for ElementsProducer<'a, A, D>
+where
+    A: Element + Send + Sync,
+    D: Dimension + Send,
+{
+    type Item = &'a A;
+    type IntoIter = crate::iter::Elements<'a, A, D>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.base.into_iter()
+    }
+
+    fn split_at(self, index: usize) -> (Self, Self) {
+        // Split the view at the flat index boundary
+        let (left, right) = crate::iter::split_elements_at(self.base, index);
+        (
+            ElementsProducer { base: left },
+            ElementsProducer { base: right },
+        )
     }
 }
 
@@ -447,53 +512,83 @@ where
 ### 4.6 嵌套并行防护
 
 ```rust
+// src/parallel/par_iter.rs (or src/tensor/impls.rs)
+
+/// Parallel element iterator method on TensorBase.
+///
+/// This method is feature-gated and only available when the
+/// `parallel` feature is enabled.
+#[cfg(feature = "parallel")]
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Element + Send + Sync,
+{
+    /// Returns a parallel element iterator.
+    ///
+    /// # Feature Gate
+    ///
+    /// Only available with `features = ["parallel"]`.
+    pub fn par_iter(&self) -> ParElements<'_, A, D> {
+        ParElements::new(self.view())
+    }
+}
+```
+
+### 4.7 嵌套并行防护（实现）
+
+```rust
 // src/parallel/mod.rs
 
-use std::cell::Cell;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-thread_local! {
-    /// Parallel execution depth counter
-    ///
-    /// 0: Not in a parallel context
-    /// 1: In an outer parallel context
-    /// >1: Nested parallelism (should be prevented)
-    static PARALLEL_DEPTH: Cell<usize> = Cell::new(0);
-}
+/// Global parallel depth counter.
+///
+/// Uses a global `AtomicUsize` instead of `thread_local!` because
+/// rayon worker threads do not inherit thread-local state from the
+/// spawning thread. A global counter ensures all threads share the
+/// same depth state.
+static PARALLEL_DEPTH: AtomicUsize = AtomicUsize::new(0);
 
 /// Check if currently in a parallel context
 #[inline]
 pub fn is_in_parallel_context() -> bool {
-    PARALLEL_DEPTH.with(|cell| cell.get() > 0)
+    PARALLEL_DEPTH.load(Ordering::SeqCst) > 0
 }
 
 /// Parallel context guard (RAII)
 ///
-/// Increments depth on entry, automatically decrements on exit.
-/// Automatically falls back to serial when nesting is detected.
-pub struct ParallelGuard(());
+/// Attempts to enter a parallel context. Returns `None` if already
+/// in a parallel context, signaling that the caller should fall back
+/// to serial execution. Automatically resets the depth on drop.
+pub struct ParallelGuard;
 
 impl ParallelGuard {
-    /// Enter a parallel context
-    pub fn enter() -> Self {
-        PARALLEL_DEPTH.with(|cell| {
-            let depth = cell.get();
-            cell.set(depth + 1);
-        });
-        ParallelGuard(())
+    /// Enter a parallel context.
+    ///
+    /// Returns `None` if already in a parallel context (prevents nesting).
+    pub fn enter() -> Option<Self> {
+        if PARALLEL_DEPTH.compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+            Some(ParallelGuard)
+        } else {
+            None // Already in parallel context
+        }
     }
 }
 
 impl Drop for ParallelGuard {
     fn drop(&mut self) {
-        PARALLEL_DEPTH.with(|cell| {
-            let depth = cell.get();
-            cell.set(depth.saturating_sub(1));
-        });
+        PARALLEL_DEPTH.store(0, Ordering::SeqCst);
     }
 }
 ```
 
-### 4.7 Good/Bad 对比示例
+> **设计说明：** 使用全局 `AtomicUsize` 而非 `thread_local!` 的原因：rayon 的 worker 线程
+> 不会继承调用线程的 thread-local 状态，因此 `thread_local!` 无法正确检测嵌套并行。
+> 全局原子变量确保所有线程共享同一个并行深度状态。
+
+### 4.8 Good/Bad 对比示例
 
 ```rust
 // Good - Use automatic path selection
@@ -729,6 +824,7 @@ Wave 4:        [T8]
 | 一致性测试 | `tests/parallel_consistency.rs` | 并行结果与串行一致 |
 | 边界测试 | 集成测试中标注 | 阈值边界、空数组、单元素 |
 | 并发测试 | `tests/concurrent/` | 竞态条件检测 |
+| 属性测试 | `tests/property/` | 随机数据验证一致性不变量（参见 §7.4） |
 
 ### 7.2 单元测试清单
 
@@ -902,14 +998,13 @@ compile_error!("The 'parallel' feature requires the 'std' feature");
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.2.0 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本：ParElements/ParZip 迭代器、par_map/par_reduce/par_zip_with |
+| 1.0.1 | 2026-04-07 | 补充嵌套并行防护和线程池管理 |
+| 1.0.2 | 2026-04-08 | 增加分块策略设计 |
+| 1.0.3 | 2026-04-08 | 补充并行错误传播模式 |
+| 1.1.0 | 2026-04-08 | 增加 IndexedParallelIterator 实现和 ElementsProducer；替换 thread_local 为全局 AtomicUsize 并行深度计数；修复 par_zip_with 返回类型使用 BroadcastDim；增加 par_iter() 方法定义；增加 CPU 核心数检查；增加属性测试分类 |
 
 ---
 

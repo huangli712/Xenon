@@ -349,12 +349,13 @@ pub fn bad<A: Numeric + Add<Output = A> + Sub<Output = A> + Mul<Output = A> + Cl
 
 | 模式 | 含义 | 协变性 |
 |------|------|--------|
-| `PhantomData<T>` | 拥有 T | 不变 |
+| `PhantomData<T>` | 拥有 T | 协变（covariant） |
 | `PhantomData<&'a T>` | 借用 T | 协变（对 T） |
-| `PhantomData<&'a mut T>` | 可变借用 T | 不变 |
-| `PhantomData<fn(T) -> T>` | 函数参数/返回 | 协变 |
-| `PhantomData<fn() -> T>` | 仅返回 T | 协变 |
-| `PhantomData<fn(T) -> ()>` | 仅消费 T | 逆变 |
+| `PhantomData<&'a mut T>` | 可变借用 T | 不变（invariant） |
+| `PhantomData<fn(T) -> T>` | 函数参数/返回 | 不变 |
+| `PhantomData<fn() -> T>` | 仅返回 T | 协变（covariant） |
+| `PhantomData<fn(T) -> ()>` | 仅消费 T | 逆变（contravariant） |
+| `PhantomData<Cell<T>>` | 如需不变 | 不变（invariant） |
 
 ```rust
 // Good - covariant borrow of element type
@@ -382,7 +383,7 @@ pub struct Bad<A> {
 
 | 存储模式 | Send | Sync | 条件 |
 |----------|------|------|------|
-| `Owned<A>` | 是 | 是 | `A: Send + Sync` |
+| `Owned<A>` | 是 | 是 | Send: `A: Send`，Sync: `A: Sync`（与 `Vec<A>` 一致） |
 | `ViewRepr<&'a A>` | 是 | 是 | `A: Sync` |
 | `ViewMutRepr<&'a mut A>` | 是 | **否** | `A: Send`（独占借用不可共享） |
 | `ArcRepr<A>` | 是 | 是 | `A: Send + Sync` |
@@ -475,6 +476,8 @@ pub enum XenonError {
 pub type Result<T> = core::result::Result<T, XenonError>;
 ```
 
+> **关于 `DimensionMismatch` 的说明**：`XenonError::DimensionMismatch` 是统一错误枚举中的变体，包含 `expected` 和 `actual` 两个 `usize` 字段。全项目统一使用 `XenonError::DimensionMismatch` 作为维度不匹配错误，不使用独立 `DimensionMismatch` 结构体。维度转换（`try_from_dyn`）返回 `Result<Self, XenonError>` 而非独立的 `DimensionMismatch` 类型。
+
 ### 4.3 unwrap 限制
 
 库代码中禁止使用 `unwrap()`。`expect()` 仅允许用于断言已证明的不变量或前置条件，且消息必须说明为何此处不会失败。测试代码不受此限制。
@@ -515,12 +518,18 @@ impl<A, D> TensorBase<Owned<A>, D>
 where
     D: Dimension,
 {
-    /// Checked indexing — panics on out of bounds.
-    pub fn get(&self, index: &[Ix]) -> &A {
-        self.check_index(index);
-        // SAFETY: index is validated by check_index
-        unsafe { self.get_unchecked(index) }
+    /// Checked indexing — returns `None` on out of bounds.
+    pub fn get(&self, index: &[Ix]) -> Option<&A> {
+        if !self.is_index_valid(index) {
+            return None;
+        }
+        // SAFETY: index is validated above
+        Some(unsafe { self.get_unchecked(index) })
     }
+
+    /// Indexing via `[]` operator — panics on out of bounds.
+    /// Use `get()` for fallible access returning `Option<&A>`.
+    // Note: Index trait implementation delegates to get().expect("index out of bounds")
 
     /// Unchecked indexing — UB on out of bounds.
     ///
@@ -981,14 +990,14 @@ Wave 2: [T4]
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.2.0 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本：命名规范、代码格式、类型系统、错误处理、unsafe 规范 |
+| 1.0.1 | 2026-04-07 | 修正 PhantomData 协变性表；统一 get() 返回类型为 Option<&A> |
+| 1.0.2 | 2026-04-08 | 修正 Send/Sync 条件表（Owned 解耦为 A:Send/A:Sync） |
+| 1.0.3 | 2026-04-08 | 添加 DimensionMismatch 统一说明；补充版本变更描述 |
+| 1.1.0 | 2026-04-08 | 添加 fn(T)→T 不变性说明；补充 Cell<T> 不变行 |
+| 1.2.0 | 2026-04-08 | 补充 CheckedAdd 仅覆盖整数乘法的说明 |
 
 ---
 

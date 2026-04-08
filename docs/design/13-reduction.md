@@ -1,7 +1,7 @@
 # 归约运算模块设计
 
 > 文档编号: 13 | 模块: `src/ops/reduction.rs` | 阶段: Phase 4
-> 前置文档: `10-iterator.md`
+> 前置文档: `02-dimension.md`, `03-element-types.md`, `07-tensor.md`, `10-iterator.md`
 > 需求参考: 需求说明书 §14
 
 ---
@@ -73,7 +73,7 @@ src/ops/reduction.rs
 
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
-| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `Owned<A>`, `.shape()`, `.len()`, `.iter()` |
+| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.len()`, `.iter()` |
 | `iter` | `Elements`, `AxisIter`, `ExactSizeIterator` |
 | `element` | `Numeric`, `RealScalar` |
 | `dimension` | `Dimension`, `RemoveAxis`, `D::Smaller` |
@@ -143,7 +143,7 @@ where
     ///
     /// # Returns
     ///
-    /// `Tensor<A, D::Smaller>` — result has one fewer dimension.
+    /// `Result<Tensor<A, D::Smaller>, XenonError>` — result has one fewer dimension.
     ///
     /// # Errors
     ///
@@ -154,11 +154,12 @@ where
     ///
     /// ```
     /// let a = Tensor2::from_shape_vec([2, 3], vec![1,2,3,4,5,6]);
-    /// let row_sum = a.sum_axis(Axis(0));  // shape: [3], values: [5, 7, 9]
-    /// let col_sum = a.sum_axis(Axis(1));  // shape: [2], values: [6, 15]
+    /// let row_sum = a.sum_axis(Axis(0))?;  // shape: [3], values: [5, 7, 9]
+    /// let col_sum = a.sum_axis(Axis(1))?;  // shape: [2], values: [6, 15]
     /// ```
-    pub fn sum_axis(&self, axis: Axis) -> Tensor<A, D::Smaller>
+    pub fn sum_axis(&self, axis: Axis) -> Result<Tensor<A, D::Smaller>, XenonError>
     where
+        A: Numeric + CheckedAdd + Zero,
         D: RemoveAxis;
 
     /// Sum along an axis, keeping the reduced axis with length 1.
@@ -169,7 +170,7 @@ where
     ///
     /// # Returns
     ///
-    /// `Tensor<A, D>` — result has the same number of dimensions; reduced axis has length 1.
+    /// `Result<Tensor<A, D>, XenonError>` — result has the same number of dimensions; reduced axis has length 1.
     ///
     /// # Errors
     ///
@@ -180,11 +181,12 @@ where
     ///
     /// ```
     /// let a = Tensor2::from_shape_vec([2, 3], vec![1,2,3,4,5,6]);
-    /// let row_sum = a.sum_axis_keepdims(Axis(0));  // shape: [1, 3]
-    /// let col_sum = a.sum_axis_keepdims(Axis(1));  // shape: [2, 1]
+    /// let row_sum = a.sum_axis_keepdims(Axis(0))?;  // shape: [1, 3]
+    /// let col_sum = a.sum_axis_keepdims(Axis(1))?;  // shape: [2, 1]
     /// ```
-    pub fn sum_axis_keepdims(&self, axis: Axis) -> Tensor<A, D>
+    pub fn sum_axis_keepdims(&self, axis: Axis) -> Result<Tensor<A, D>, XenonError>
     where
+        A: Numeric + CheckedAdd + Zero,
         D: RemoveAxis;
 }
 ```
@@ -415,6 +417,7 @@ Wave 4:           [T7]
 | 实现约定 | 浮点并行 sum 的测试使用相对容差 (`rtol < 1e-14` for f64, `rtol < 1e-6` for f32) 而非精确相等比较 |
 | 替代方案 | 要求所有类型精确一致 — 放弃，浮点在不使用 Kahan 的情况下无法实现 |
 | 参见 | `09-parallel-backend.md §9 ADR-2`（协调一致） |
+| **一致性解释** | 对于浮点类型，"一致"解释为：逐元素运算逐位一致，归约运算允许 ≤2 ULP 差异（因浮点加法不满足结合律）。此解释与 NumPy 行为一致，并在文档中明确记录。 |
 
 ### 决策 3：Kahan 补偿求和
 
@@ -503,16 +506,16 @@ use alloc::vec::Vec;
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-07 |
-| 1.0.3 | 2026-04-08 |
-| 1.0.4 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.1.1 | 2026-04-08 |
-| 1.1.2 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本 |
+| 1.0.1 | 2026-04-07 | 补充整数溢出处理说明 |
+| 1.0.2 | 2026-04-07 | 补充 NaN 传播说明 |
+| 1.0.3 | 2026-04-08 | 补充 sum_axis_keepdims 实现 |
+| 1.0.4 | 2026-04-08 | 添加并行归约路径 |
+| 1.1.0 | 2026-04-08 | 添加 SIMD 归约路径 |
+| 1.1.1 | 2026-04-08 | 补充 Kahan 补偿决策 |
+| 1.1.2 | 2026-04-08 | 修正 sum_axis/sum_axis_keepdims 返回类型为 Result；补充前置文档；修正类型级依赖表；添加并行浮点一致性解释 |
 
 ---
 

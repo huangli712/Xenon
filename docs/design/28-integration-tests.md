@@ -66,7 +66,6 @@ tests/
 ├── test_ffi.rs                 # FFI 集成（原始指针/BLAS 兼容）
 ├── test_parallel.rs            # 并行计算（一致性/数据竞争）
 ├── test_simd.rs                # SIMD 计算（结果一致性）
-├── test_no_std.rs              # no_std 兼容性（编译验证）
 ├── test_error.rs               # 错误处理（所有错误类型）
 │
 └── property/
@@ -139,11 +138,16 @@ pub mod generators;
 ```rust
 // tests/common/assertions.rs
 
-/// Assert two tensors are element-wise approximately equal (absolute tolerance).
+/// Assert two tensors are element-wise approximately equal.
+///
+/// Uses NumPy-style combined tolerance: passes if
+/// `|actual - expected| <= atol + rtol * |expected|`.
+/// `atol` covers the near-zero case, `rtol` covers the relative scale case.
 pub fn assert_tensor_close<A, D>(
     actual: &TensorBase<impl Storage<Elem = A>, D>,
     expected: &TensorBase<impl Storage<Elem = A>, D>,
-    atol: A,
+    rtol: f64,
+    atol: f64,
     msg: &str,
 ) where
     A: RealScalar,
@@ -153,10 +157,13 @@ pub fn assert_tensor_close<A, D>(
         "{}: shape mismatch: {:?} vs {:?}", msg, actual.shape(), expected.shape());
 
     for (idx, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
-        let diff = (*a - *e).abs();
-        assert!(diff <= atol,
-            "{}: element {} differs: actual={}, expected={}, diff={}",
-            msg, idx, a, e, diff);
+        let a_f = (*a).to_f64().unwrap();
+        let e_f = (*e).to_f64().unwrap();
+        let diff = (a_f - e_f).abs();
+        let tolerance = atol + rtol * e_f.abs();
+        assert!(diff <= tolerance,
+            "{}: element {} differs: actual={}, expected={}, diff={}, tol={}",
+            msg, idx, a, e, diff, tolerance);
     }
 }
 
@@ -351,6 +358,7 @@ no_std_check:
 | `test_invalid_shape_error` | reshape 元素数不匹配返回 InvalidShape | 高 |
 | `test_invalid_axis_error` | 轴越界返回 InvalidAxis | 高 |
 | `test_dimension_mismatch_error` | 维度互转失败返回 DimensionMismatch | 高 |
+| `test_layout_mismatch_error` | 布局不兼容操作返回 LayoutMismatch | 高 |
 | `test_error_display` | 所有错误类型的 Display 包含上下文 | 中 |
 
 ---
@@ -556,10 +564,16 @@ proptest! {
         let ab = &a + &b;
         let ba = &b + &a;
         for (x, y) in ab.iter().zip(ba.iter()) {
-            let diff = (x - y).abs();
-            prop_assert!(diff < 1e-10 || (x.is_nan() && y.is_nan()));
+            prop_assert!(prop_approx_equal(*x, *y));
         }
     }
+}
+
+/// Approximate equality that handles special float values (NaN, Inf).
+fn prop_approx_equal(x: f64, y: f64) -> bool {
+    if x.is_nan() && y.is_nan() { return true; }
+    if x.is_infinite() && y.is_infinite() && x.signum() == y.signum() { return true; }
+    (x - y).abs() < 1e-10
 }
 ```
 
@@ -572,16 +586,18 @@ proptest! {
 `assert_tensor_close` 的核心逻辑：
 
 1. **形状检查**：先比较 shape，不匹配立即 panic 并附上下文
-2. **逐元素比较**：使用绝对容差（atol），避免相对容差在 expected=0 时的除零问题
-3. **错误信息**：包含测试名称、元素索引、实际值、期望值、差值
+2. **逐元素比较**：使用 NumPy 风格组合容差（atol + rtol），判断条件为 `|actual - expected| <= atol + rtol * |expected|`。atol 覆盖 expected 接近零的情况，rtol 覆盖相对尺度情况
+3. **错误信息**：包含测试名称、元素索引、实际值、期望值、差值、容差
 
 ```rust
 // Internal implementation detail of assert_tensor_close
 //
 // 1. shape comparison: O(1) early exit if shapes differ
 // 2. element-wise iteration: uses iter() which respects memory layout
-// 3. atol comparison: (actual - expected).abs() <= atol
-// 4. error message includes: msg, index, actual, expected, diff
+// 3. combined tolerance: |actual - expected| <= atol + rtol * |expected|
+//    - atol: absolute tolerance, covers the near-zero case
+//    - rtol: relative tolerance, covers the relative scale case
+// 4. error message includes: msg, index, actual, expected, diff, tolerance
 ```
 
 ### 10.2 proptest 策略设计
@@ -618,7 +634,7 @@ fn test_add_result() {
     let b = Tensor1::from_vec(vec![4.0, 5.0, 6.0]);
     let result = &a + &b;
     let expected = Tensor1::from_vec(vec![5.0, 7.0, 9.0]);
-    assert_tensor_close(&result, &expected, 1e-10, "add");
+    assert_tensor_close(&result, &expected, 1e-10, 1e-10, "add");
 }
 
 // Good: Test error path with assert_xenon_error
@@ -807,10 +823,10 @@ fn test_bad_magic() {
   - 前置: T3, T7
   - 预计: 10 min
 
-- [ ] **T14**: 实现 `tests/test_no_std.rs`
-  - 文件: `tests/test_no_std.rs`
-  - 内容: no_std 编译验证
-  - 测试: `cargo test --test test_no_std --no-default-features --features alloc`
+- [ ] **T14**: no_std 编译验证 — 通过 CI 脚本（而非 test 框架）验证 no_std 编译通过
+  - 文件: `.github/workflows/test.yml`（CI 配置，不创建 `tests/test_no_std.rs` 文件）
+  - 内容: 使用 `cargo check --no-default-features` 和 `cargo check --no-default-features --features alloc` 验证 no_std 编译
+  - 测试: CI 中运行上述两个检查命令
   - 前置: T2
   - 预计: 5 min
 
@@ -904,13 +920,14 @@ test:
 | 理由 | 比 quickcheck 更好的失败案例缩小（shrinking）；Rust 生态成熟 |
 | 替代方案 | quickcheck — 可接受，但 shrinking 能力较弱 |
 
-### 决策 3：浮点比较使用相对容差
+### 决策 3：浮点比较使用 NumPy 风格组合容差
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | 浮点测试使用 rtol（相对容差）而非 atol（绝对容差） |
-| 理由 | 不同数量级的值需要不同精度基准；rtol 更符合科学计算习惯 |
+| 决策 | 浮点测试使用 NumPy 风格组合 atol+rtol 容差，即 `|actual - expected| <= atol + rtol * |expected|` |
+| 理由 | 单纯 rtol 在 expected 接近零时失效（除零）；单纯 atol 对大数值过严对小数值过松。NumPy 的 allclose() 组合方案兼顾两种情况 |
 | 替代方案 | 仅用 atol — 放弃，大数值时精度要求过严，小数值时过松 |
+| 替代方案 | 仅用 rtol — 放弃，expected 接近零时除零或精度不足 |
 
 ### 决策 4：并行一致性测试为必须项
 
@@ -932,13 +949,13 @@ test:
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.2.0 | 2026-04-08 |
-| 1.2.1 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本 |
+| 1.0.1 | 2026-04-08 | 补充测试函数清单 |
+| 1.1.0 | 2026-04-08 | 新增属性测试和边界测试 |
+| 1.2.0 | 2026-04-08 | 新增 ADR 决策记录 |
+| 1.2.1 | 2026-04-08 | 修正 assert_tensor_close 为 NumPy 风格组合 atol+rtol 容差；T14 改为 CI 脚本验证 no_std 编译；移除 test_no_std.rs 文件；修复 prop_add_commutative 特殊浮点值处理；补充 test_layout_mismatch_error 条目 |
 
 ---
 

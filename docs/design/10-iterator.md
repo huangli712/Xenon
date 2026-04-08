@@ -358,6 +358,13 @@ where
     where
         D: RemoveAxis;
 
+    /// Returns a mutable sliding window iterator, or None if any window dimension
+    /// exceeds the corresponding array dimension.
+    /// Panics if called on a zero-dimensional tensor (Ix0).
+    pub fn windows_mut(&mut self, size: impl IntoDimension<Dim = D>) -> Option<WindowsMut<'_, A, D>>
+    where
+        S: StorageMut<Elem = A>;
+
     /// Mutable 1D lane iterator along an axis.
     ///
     /// # Panics
@@ -527,6 +534,15 @@ Wave 4:             [T9]
 ---
 
 ## 7. 测试计划
+
+### 7.0 测试分类总表
+
+| 测试分类 | 说明 | 包含的测试 |
+|----------|------|-----------|
+| 单元测试 | 验证单个迭代器类型的基本功能 | `test_elements_f_contig`, `test_elements_non_contiguous`, `test_elements_empty`, `test_elements_ix0`, `test_elements_mut_write`, `test_axis_iter_count`, `test_axis_iter_shape`, `test_axis_iter_ix0_panic`, `test_windows_count`, `test_windows_too_large`, `test_windows_empty`, `test_indexed_iter_order`, `test_indexed_iter_ix0`, `test_zip_two_tensors`, `test_zip_broadcast`, `test_zip_broadcast_readonly`, `test_lanes_count_2d_axis0`, `test_lanes_count_2d_axis1`, `test_lanes_item_shape`, `test_lanes_values_col`, `test_lanes_values_row`, `test_lanes_3d`, `test_lanes_mut_write`, `test_lanes_ix1`, `test_lanes_empty` |
+| 集成测试 | 验证迭代器与 TensorBase 入口方法的集成 | `test_tensor_iter_integration` |
+| 边界测试 | 空数组、零维张量、非连续内存等边界条件 | `test_elements_empty`, `test_elements_ix0`, `test_windows_too_large`, `test_windows_empty`, `test_lanes_ix1`, `test_lanes_empty`（详见 §7.2） |
+| 属性测试 | 通过随机输入验证不变量 | `iter().count() == tensor.len()`, `axis_iter(Axis(i)).count() == shape[i]`, `ExactSizeIterator` 递减不变量（详见 §7.3） |
 
 ### 7.1 单元测试清单
 
@@ -706,16 +722,16 @@ Wave 4:             [T9]
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.0.4 | 2026-04-08 |
-| 1.0.5 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.2.0 | 2026-04-08 |
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0 | 2026-04-07 | 初始版本 |
+| 1.0.1 | 2026-04-07 | 修正依赖方向说明 |
+| 1.0.2 | 2026-04-08 | 补充 LaneIter 设计 |
+| 1.0.3 | 2026-04-08 | 补充 StrideState 负步长说明 |
+| 1.0.4 | 2026-04-08 | 补充填充数组迭代说明 |
+| 1.0.5 | 2026-04-08 | 修正 no_std 兼容性表 |
+| 1.1.0 | 2026-04-08 | 添加 LaneIter/LaneIterMut 及 lanes() 入口 |
+| 1.2.0 | 2026-04-08 | 添加 windows_mut() 入口方法及测试分类表 |
 
 ---
 
