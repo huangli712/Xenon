@@ -412,6 +412,19 @@ Wave 3: [T5] [T6]
 
 ---
 
+## 8. 与其他模块的交互
+
+| 交互模块 | 方向 | 说明 |
+|----------|------|------|
+| `tensor` | convert → tensor | `cast()` 定义在 `TensorBase<S, D>` 的 impl 块上，消费 `.shape()`、`.memory_order()`；`to_owned()`/`into_owned()` 消费 `Storage`/`StorageIntoOwned`（参见 `07-tensor.md` §4） |
+| `element` | convert → element | 泛型约束 `A: CastTo<B>` 驱动逐元素转换；`CastTo` trait 定义在 element 模块（参见 `03-element-types.md` §4） |
+| `elementwise_ops` | convert → elementwise_ops | `cast()` 内部调用 `mapv()` 执行逐元素映射（参见 `11-elementwise-ops.md` §4.1） |
+| `storage` | convert → storage | `into_owned()` 消费 `StorageIntoOwned` trait；存储模式互转依赖 `Owned`/`ViewRepr`/`ArcRepr`（参见 `05-storage.md` §4） |
+| `layout` | convert → layout | `to_owned()` 调用 `is_f_contiguous()`/`is_c_contiguous()` 保持内存布局一致性（参见 `06-memory-layout.md` §4） |
+| `complex` | convert → complex | `CastTo<Complex<T>>` 实现依赖 `Complex` 结构体定义；反向转换（Complex → T）故意不提供（参见 `04-complex-type.md` §4） |
+
+---
+
 ## 9. 设计决策记录
 
 ### 决策 1：溢出语义选择
