@@ -1,6 +1,6 @@
 # 临时工作空间模块设计
 
-> 文档编号: 24 | 模块: `src/workspace.rs` | 阶段: Phase 4
+> 文档编号: 24 | 模块: `src/workspace/` | 阶段: Phase 4
 > 前置文档: `05-storage.md`
 > 需求参考: 需求说明书 §26
 
@@ -49,10 +49,27 @@ L2: workspace  ← 当前模块（独立于 tensor）
 
 ```
 src/
-└── workspace.rs    # 临时工作空间（独立模块）
+└── workspace/               # 临时工作空间（目录模块）
+    ├── mod.rs               # 模块根，re-exports
+    ├── error.rs             # WorkspaceError 枚举
+    ├── workspace.rs         # Workspace 结构体、常量、构造、析构
+    ├── borrow.rs            # WorkspaceBorrow、WorkspaceBorrowMut 借用守卫
+    ├── split.rs             # SplitBorrowMut 分割守卫
+    └── expand.rs            # ensure_capacity、reallocate 扩容
 ```
 
-单文件设计：工作空间功能内聚性高，代码量 ~400 行，无需拆分。
+多文件设计：按职责拆分，便于后续扩展（如新增借用策略、分配策略等）。
+
+### 2.1 文件职责
+
+| 文件 | 职责 | 预估行数 |
+|------|------|----------|
+| `mod.rs` | 模块根，re-exports 所有公共类型 | ~20 |
+| `error.rs` | `WorkspaceError` 枚举及 Display/Error impl | ~40 |
+| `workspace.rs` | `Workspace` 结构体、常量、`new()`、`with_default_capacity()`、`Drop` | ~100 |
+| `borrow.rs` | `WorkspaceBorrow`、`WorkspaceBorrowMut` 及其方法和 Drop | ~120 |
+| `split.rs` | `SplitBorrowMut` 及其方法（`split_at`、`split_at_mut`、Drop） | ~100 |
+| `expand.rs` | `ensure_capacity()`、`reallocate()` 扩容逻辑 | ~60 |
 
 ---
 
@@ -61,10 +78,18 @@ src/
 ### 3.1 依赖图
 
 ```
-src/workspace.rs
-├── core                # ptr::NonNull, marker, sync::atomic, fmt
-├── alloc               # alloc::alloc, alloc::dealloc, alloc::Layout
-└── crate::error        # WorkspaceError（可选，也可在本模块定义）
+src/workspace/
+├── mod.rs          # re-exports: Workspace, WorkspaceBorrow, WorkspaceBorrowMut, SplitBorrowMut, WorkspaceError
+├── error.rs        # 独立，无内部依赖
+├── workspace.rs    # 依赖 error
+├── borrow.rs       # 依赖 workspace（通过引用）
+├── split.rs        # 依赖 workspace（通过引用）、error
+└── expand.rs       # 依赖 workspace（通过 &mut self）、error
+
+外部依赖:
+├── core            # ptr::NonNull, marker, sync::atomic, fmt
+├── alloc           # alloc::alloc, alloc::dealloc, alloc::Layout
+└── crate::error    # WorkspaceError（可选，也可在本模块定义）
 ```
 
 ### 3.2 类型级依赖
@@ -673,47 +698,47 @@ ensure_capacity(&mut self, 2048)
 
 ### Wave 1: 基础结构
 
-- [ ] **T1**: 定义 `WorkspaceError` 枚举和 `Workspace` 结构体
-  - 文件: `src/workspace.rs`
-  - 内容: `WorkspaceError` 枚举、`Workspace` 结构体、常量定义
-  - 测试: `test_workspace_error_display`, `test_workspace_constants`
+- [ ] **T1**: 定义 `WorkspaceError` 枚举
+  - 文件: `src/workspace/error.rs`
+  - 内容: `WorkspaceError` 枚举及 Display/Error impl
+  - 测试: `test_workspace_error_display`
   - 前置: 无
   - 预计: 10 min
 
-- [ ] **T2**: 实现构造方法 `new`、`with_default_capacity`
-  - 文件: `src/workspace.rs`
-  - 内容: `new()`、`with_default_capacity()`、`allocate()` 内部方法
-  - 测试: `test_workspace_new`, `test_workspace_new_default`
+- [ ] **T2**: 定义 `Workspace` 结构体和构造方法
+  - 文件: `src/workspace/workspace.rs`
+  - 内容: `Workspace` 结构体、常量定义、`new()`、`with_default_capacity()`、`Drop`
+  - 测试: `test_workspace_new`, `test_workspace_new_default`, `test_workspace_constants`, `test_workspace_drop_no_leak`
   - 前置: T1
   - 预计: 10 min
 
+- [ ] **T3**: 编写模块根 `mod.rs`
+  - 文件: `src/workspace/mod.rs`
+  - 内容: 子模块声明、re-exports
+  - 测试: 编译通过
+  - 前置: T1
+  - 预计: 5 min
+
 ### Wave 2: 借用机制
 
-- [ ] **T3**: 实现 `Drop` 和借用守卫类型
-  - 文件: `src/workspace.rs`
-  - 内容: `WorkspaceBorrow`、`WorkspaceBorrowMut` 结构体和 `Drop` 实现
-  - 测试: `test_workspace_drop_no_leak`, `test_workspace_borrow_drop_return`
+- [ ] **T4**: 实现借用守卫类型和方法
+  - 文件: `src/workspace/borrow.rs`
+  - 内容: `WorkspaceBorrow`、`WorkspaceBorrowMut` 结构体、`borrow()`、`borrow_mut()`、`as_slice()`、`as_mut_slice()`、`as_typed_slice()`、`Drop` 实现
+  - 测试: `test_borrow_basic`, `test_borrow_mut_basic`, `test_borrow_double_fails`, `test_borrow_after_drop`
   - 前置: T2
   - 预计: 15 min
-
-- [ ] **T4**: 实现 `borrow`/`borrow_mut` 方法和守卫方法
-  - 文件: `src/workspace.rs`
-  - 内容: `borrow()`、`borrow_mut()`、`as_slice()`、`as_mut_slice()`、`as_typed_slice()`
-  - 测试: `test_borrow_basic`, `test_borrow_mut_basic`, `test_borrow_double_fails`
-  - 前置: T3
-  - 预计: 10 min
 
 ### Wave 3: 分割和扩容
 
 - [ ] **T5**: 实现 `split_at` 和 `SplitBorrowMut`
-  - 文件: `src/workspace.rs`
-  - 内容: `split_at()`、`SplitBorrowMut` 结构体及 `split_at_mut()` 递归
+  - 文件: `src/workspace/split.rs`
+  - 内容: `SplitBorrowMut` 结构体、`split_at()`、`split_at_mut()` 递归、`Drop` 实现
   - 测试: `test_split_at_basic`, `test_split_at_recursive`, `test_split_at_oob`
-  - 前置: T4
+  - 前置: T2
   - 预计: 15 min
 
 - [ ] **T6**: 实现扩容策略 `ensure_capacity`/`reallocate`
-  - 文件: `src/workspace.rs`
+  - 文件: `src/workspace/expand.rs`
   - 内容: `ensure_capacity()`、`reallocate()`
   - 测试: `test_ensure_capacity_no_grow`, `test_ensure_capacity_grow`, `test_ensure_capacity_while_borrowed_fails`
   - 前置: T2
@@ -721,9 +746,11 @@ ensure_capacity(&mut self, 2048)
 
 ### Wave 4: 集成和文档
 
-- [ ] **T7**: 编写模块导出和文档注释
-  - 文件: `src/workspace.rs`
-  - 内容: 公共导出、完整文档注释、使用示例
+- [ ] **T7**: 完善模块导出和文档注释
+  - 文件: `src/workspace/mod.rs` 及各子模块
+  - 内容: 完善公共导出、完整文档注释、使用示例
+  - 测试: `cargo doc` 通过
+  - 前置: T4, T5, T6
   - 测试: `cargo doc` 通过
   - 前置: T5, T6
   - 预计: 10 min
@@ -731,14 +758,16 @@ ensure_capacity(&mut self, 2048)
 ### 并行执行图
 
 ```
-Wave 1: [T1] [T2]
-            │
-Wave 2: [T3] [T4]
-            │
-Wave 3: [T5] [T6]
-            │
-Wave 4: [T7]
+Wave 1:          [T1]
+                ╱    ╲
+Wave 2:      [T3]    [T2]             ← T2、T3 并行（均依赖 T1）
+                     ╱  |  ╲
+Wave 3:           [T4] [T5] [T6]      ← T4、T5、T6 并行（均依赖 T2）
+                     ╲  |  ╱
+Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 ```
+
+> **关键路径**: T1 → T2 → T4/T5/T6（最长） → T7。T3 不在关键路径上，可在任何时间完成。
 
 ---
 
@@ -888,6 +917,7 @@ impl std::error::Error for WorkspaceError {}
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-08 |
 | 1.0.2 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 

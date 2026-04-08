@@ -161,10 +161,35 @@ xenon/
 │   │   ├── eye.rs             # eye（单位矩阵）
 │   │   ├── from_data.rs       # from_vec, from_slice, from_array（从数据源构造）
 │   │   └── from_fn.rs         # from_fn, from_scalar（从闭包/标量构造）
-│   ├── convert.rs             # 类型转换（cast, to_owned, to_contiguous）
-│   ├── format.rs              # Display/Debug 格式化（NumPy 风格）
-│   ├── ffi.rs                 # FFI API（as_ptr, as_mut_ptr, BLAS 兼容布局检查）
-│   └── workspace.rs           # 临时工作空间（对齐分配、分割、扩容）
+|   |
+│   ├── convert/               # 类型转换
+│   │   ├── mod.rs             # 模块根，re-exports
+│   │   ├── cast.rs            # CastTo trait、cast() 方法、类型转换路径
+│   │   ├── owned.rs           # to_owned、into_owned、存储模式互转
+│   │   ├── from_impl.rs       # From/TryFrom trait 实现
+│   │   └── contiguous.rs      # to_contiguous 连续化转换
+|   |
+│   ├── format/                # 格式化输出
+│   │   ├── mod.rs             # 模块根，re-exports，cfg gates
+│   │   ├── config.rs          # FormatConfig 配置结构体
+│   │   ├── display.rs         # Display trait 实现
+│   │   ├── debug.rs           # Debug trait 实现
+│   │   └── pretty.rs          # NumPy 风格格式化辅助函数（fmt_1d, fmt_nd, 截断）
+|   |
+│   ├── ffi/                   # FFI 接口
+│   │   ├── mod.rs             # 模块根，re-exports
+│   │   ├── types.rs           # BlasLayout, BlasTrans, BlasInfo 类型定义
+│   │   ├── ptr.rs             # 原始指针 API（as_ptr, as_mut_ptr, from_raw_parts, into_raw_parts）
+│   │   ├── blas.rs            # BLAS 兼容性检查（is_blas_compatible, blas_info, lda）
+│   │   └── offset.rs          # 多维索引到指针偏移（offset_of, ptr_at）
+|   |
+│   ├── workspace/             # 临时工作空间
+│       ├── mod.rs             # 模块根，re-exports
+│       ├── error.rs           # WorkspaceError 枚举
+│       ├── workspace.rs       # Workspace 结构体、常量、构造、析构
+│       ├── borrow.rs          # WorkspaceBorrow、WorkspaceBorrowMut 借用守卫
+│       ├── split.rs           # SplitBorrowMut 分割守卫
+│       └── expand.rs          # ensure_capacity、reallocate 扩容
 │
 ├── tests/                     # 集成测试
 │   ├── common/
@@ -201,10 +226,10 @@ xenon/
 | `shape_ops/` | reshape、transpose |
 | `index/` | 多维整数索引、范围切片索引 |
 | `construct/` | 张量构造 |
-| `convert.rs` | 类型转换、存储模式转换 |
-| `format.rs` | NumPy 风格格式化输出 |
-| `ffi.rs` | 原始指针 API、BLAS 兼容性 |
-| `workspace.rs` | 临时工作空间 |
+| `convert/` | 类型转换（cast、存储模式互转、From trait、连续化） |
+| `format/` | NumPy 风格格式化输出 |
+| `ffi/` | 原始指针 API、BLAS 兼容性检查、多维索引偏移（types/ptr/blas/offset） |
+| `workspace/` | 临时工作空间（对齐分配、借用守卫、分割、扩容） |
 
 ---
 

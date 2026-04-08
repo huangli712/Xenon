@@ -1,6 +1,6 @@
 # FFI 接口模块设计
 
-> 文档编号: 23 | 模块: `src/ffi.rs` | 阶段: Phase 4
+> 文档编号: 23 | 模块: `src/ffi/` | 阶段: Phase 4
 > 前置文档: `07-tensor.md`, `06-memory-layout.md`
 > 需求参考: 需求说明书 §25
 
@@ -45,10 +45,23 @@ L5: ffi  ← 当前模块
 
 ```
 src/
-└── ffi.rs    # FFI API 实现（单文件模块）
+└── ffi/
+    ├── mod.rs         # 模块根，re-exports
+    ├── types.rs       # BlasLayout, BlasTrans, BlasInfo 类型定义
+    ├── ptr.rs         # 原始指针 API（as_ptr, as_mut_ptr, from_raw_parts, from_raw_parts_mut, into_raw_parts）
+    ├── blas.rs        # BLAS 兼容性检查（is_blas_compatible, blas_info, lda）
+    └── offset.rs      # 多维索引到指针偏移（offset_of, ptr_at）
 ```
 
-单文件设计：FFI 功能紧密相关，代码量 ~300 行，无需拆分。
+多文件设计：将 FFI 按职责拆分为多个文件，便于后期拓展和维护。
+
+| 文件 | 职责 |
+|------|------|
+| `mod.rs` | 模块入口，导出公共 API |
+| `types.rs` | `BlasLayout`/`BlasTrans` 枚举、`BlasInfo` 结构体 |
+| `ptr.rs` | 原始指针访问（`as_ptr`/`as_mut_ptr`）和裸指针构造/解构（`from_raw_parts`/`into_raw_parts`） |
+| `blas.rs` | BLAS 兼容性检查和参数查询（`is_blas_compatible`/`blas_info`/`lda`） |
+| `offset.rs` | 多维索引到偏移量和指针转换（`offset_of`/`ptr_at`） |
 
 ---
 
@@ -57,22 +70,36 @@ src/
 ### 3.1 依赖图
 
 ```
-src/ffi.rs
-├── crate::tensor        # TensorBase<S, D>, as_ptr(), offset()
-├── crate::dimension     # Dimension trait
-├── crate::storage       # Storage, StorageMut, StorageIntoRaw
-├── crate::layout        # is_f_contiguous, is_c_contiguous
-└── crate::error         # WorkspaceError (仅内存分配失败)
+src/ffi/
+├── mod.rs
+│   └── re-exports from types, ptr, blas, offset
+├── types.rs
+│   └── (无外部依赖，仅 core)
+├── ptr.rs
+│   ├── crate::tensor        # TensorBase<S, D>, offset
+│   ├── crate::dimension     # Dimension trait
+│   ├── crate::storage       # Storage, StorageMut, StorageIntoRaw
+│   └── crate::layout        # is_f_contiguous, is_c_contiguous
+├── blas.rs
+│   ├── crate::tensor        # TensorBase<S, D>
+│   ├── crate::storage       # Storage
+│   ├── crate::layout        # is_contiguous, has_zero_stride, has_neg_stride
+│   └── super::types         # BlasInfo, BlasLayout
+│   └── super::ptr           # as_ptr
+└── offset.rs
+    ├── crate::tensor        # TensorBase<S, D>
+    ├── crate::dimension     # Dimension trait
+    └── crate::storage       # Storage<Elem=A>
 ```
 
 ### 3.2 类型级依赖
 
-| 来源模块 | 使用的类型/trait | 参考 |
-|----------|-----------------|------|
-| `tensor` | `TensorBase<S, D>`, `.shape()`, `.strides()`, `.as_ptr()`, `.as_mut_ptr()`, `.offset()` | `07-tensor.md` §4 |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn` | `02-dimension.md` §4 |
-| `storage` | `Storage<Elem=A>`, `StorageMut<Elem=A>`, `StorageIntoRaw` | `05-storage.md` §4 |
-| `layout` | `is_f_contiguous()`, `is_c_contiguous()`, `has_zero_stride()`, `has_neg_stride()` | `06-memory-layout.md` §4 |
+| 来源模块 | 使用的类型/trait | 参考 | 使用者 |
+|----------|-----------------|------|--------|
+| `tensor` | `TensorBase<S, D>`, `.shape()`, `.strides()`, `.as_ptr()`, `.as_mut_ptr()`, `.offset()` | `07-tensor.md` §4 | `ptr.rs`, `blas.rs`, `offset.rs` |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn` | `02-dimension.md` §4 | `ptr.rs`, `offset.rs` |
+| `storage` | `Storage<Elem=A>`, `StorageMut<Elem=A>`, `StorageIntoRaw` | `05-storage.md` §4 | `ptr.rs`, `blas.rs`, `offset.rs` |
+| `layout` | `is_f_contiguous()`, `is_c_contiguous()`, `has_zero_stride()`, `has_neg_stride()` | `06-memory-layout.md` §4 | `ptr.rs`, `blas.rs` |
 
 ### 3.3 依赖方向声明
 
@@ -536,64 +563,48 @@ is_blas_compatible():
 
 ### Wave 1: 基础设施
 
-- [ ] **T1**: 定义 `BlasLayout`/`BlasTrans` 枚举和 `BlasInfo` 结构体
-  - 文件: `src/ffi.rs`
-  - 内容: 枚举定义、常量映射
+- [ ] **T1**: 创建 `src/ffi/` 模块骨架和辅助类型
+  - 文件: `src/ffi/mod.rs`, `src/ffi/types.rs`
+  - 内容: 模块声明、re-exports、`BlasLayout`/`BlasTrans` 枚举、`BlasInfo` 结构体
   - 测试: `test_blas_layout_column_major`, `test_blas_trans_variants`
   - 前置: 无
   - 预计: 10 min
 
 ### Wave 2: 指针 API
 
-- [ ] **T2**: 实现 `as_ptr()` 和 `as_mut_ptr()`
-  - 文件: `src/ffi.rs`
-  - 内容: 指针访问方法（含 offset 计算）
-  - 测试: `test_as_ptr_basic`, `test_as_mut_ptr_basic`
+- [ ] **T2**: 实现原始指针访问和裸指针构造/解构
+  - 文件: `src/ffi/ptr.rs`
+  - 内容: `as_ptr()`, `as_mut_ptr()`, `from_raw_parts`, `from_raw_parts_mut`, `into_raw_parts` 及 Safety 文档
+  - 测试: `test_as_ptr_basic`, `test_as_mut_ptr_basic`, `test_from_raw_parts_roundtrip`, `test_into_raw_parts`
   - 前置: T1
-  - 预计: 10 min
+  - 预计: 25 min
 
-### Wave 3: 构造/解构
+### Wave 3: BLAS 和索引（可并行）
 
-- [ ] **T3**: 实现 `from_raw_parts` 和 `from_raw_parts_mut` 及 Safety 文档
-  - 文件: `src/ffi.rs`
-  - 内容: 从裸指针构造视图
-  - 测试: `test_from_raw_parts_roundtrip`, `test_from_raw_parts_mut_roundtrip`
-  - 前置: T2
-  - 预计: 15 min
-
-- [ ] **T4**: 实现 `into_raw_parts`
-  - 文件: `src/ffi.rs`
-  - 内容: 张量解构（Owned only）+ `mem::forget`
-  - 测试: `test_into_raw_parts`, `test_into_raw_parts_memory_leak`
-  - 前置: T2
-  - 预计: 10 min
-
-### Wave 4: BLAS 和索引
-
-- [ ] **T5**: 实现 BLAS 兼容性 API（`is_blas_compatible`/`blas_info`/`lda`）
-  - 文件: `src/ffi.rs`
-  - 内容: BLAS 检查和参数查询
+- [ ] **T3**: 实现 BLAS 兼容性 API
+  - 文件: `src/ffi/blas.rs`
+  - 内容: `is_blas_compatible()`, `blas_info()`, `lda()`
   - 测试: `test_is_blas_compatible_f_order`, `test_is_blas_compatible_non_contiguous`, `test_lda_f_order`
   - 前置: T1
   - 预计: 15 min
 
-- [ ] **T6**: 实现 `offset_of()` 和 `ptr_at()`
-  - 文件: `src/ffi.rs`
-  - 内容: 多维索引到偏移量和指针转换
+- [ ] **T4**: 实现多维索引到指针偏移
+  - 文件: `src/ffi/offset.rs`
+  - 内容: `offset_of()`, `ptr_at()`
   - 测试: `test_offset_of_various`, `test_ptr_at_various`
-  - 前置: T2
+  - 前置: T1
   - 预计: 10 min
 
 ### 并行执行图
 
 ```
-Wave 1: [T1]
-            │
-Wave 2: [T2]
-            │
-Wave 3: [T3] [T4]
-            │
-Wave 4: [T5] [T6]
+Wave 1:    [T1]
+             │
+Wave 2:    [T2]
+             │
+Wave 3: ┌────┴────┐
+        │         │
+       [T3]      [T4]   (可并行)
 ```
 
 ---

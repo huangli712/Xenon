@@ -1,6 +1,6 @@
 # 类型转换模块设计
 
-> 文档编号: 21 | 模块: `src/convert.rs` | 阶段: Phase 4
+> 文档编号: 21 | 模块: `src/convert/` | 阶段: Phase 4
 > 前置文档: `07-tensor.md`, `03-element-types.md`
 > 需求参考: 需求说明书 §23
 
@@ -44,10 +44,25 @@ L5: convert  ← 当前模块
 
 ```
 src/
-└── convert.rs    # 类型转换（cast/to_owned/存储模式互转/From trait）
+└── convert/                 # 类型转换（目录模块）
+    ├── mod.rs               # 模块根，re-exports
+    ├── cast.rs              # CastTo trait、cast() 方法、类型转换路径
+    ├── owned.rs             # to_owned、into_owned、存储模式互转
+    ├── from_impl.rs         # From/TryFrom trait 实现
+    └── contiguous.rs        # to_contiguous 连续化转换
 ```
 
-单文件设计：类型转换功能内聚性高，代码量适中（~400 行），无需拆分。
+多文件设计：按转换职责拆分，便于后续扩展（如新增转换路径、存储模式等）。
+
+### 2.1 文件职责
+
+| 文件 | 职责 | 预估行数 |
+|------|------|----------|
+| `mod.rs` | 模块根，re-exports 所有公共类型 | ~20 |
+| `cast.rs` | `CastTo<T>` trait 定义、所有类型转换 impl、`cast()` 方法 | ~200 |
+| `owned.rs` | `to_owned()`、`into_owned()`、存储模式互转（view/view_mut/into_shared） | ~100 |
+| `from_impl.rs` | `From<Vec<A>>`、`From<&[A]>`、`From<[A; N]>`、`From<&Tensor> for View` 等 | ~80 |
+| `contiguous.rs` | `to_contiguous()` 连续化转换 | ~50 |
 
 ---
 
@@ -56,7 +71,14 @@ src/
 ### 3.1 依赖图
 
 ```
-src/convert.rs
+src/convert/
+├── mod.rs          # re-exports: CastTo, cast, to_owned, into_owned, From impls
+├── cast.rs         # 依赖 element (CastTo), tensor (TensorBase)
+├── owned.rs        # 依赖 tensor (TensorBase), storage, layout
+├── from_impl.rs    # 依赖 tensor (Tensor/TensorView), construct (from_vec)
+└── contiguous.rs   # 依赖 tensor (TensorBase), layout
+
+外部依赖:
 ├── crate::tensor        # TensorBase<S, D>, Tensor, TensorView
 ├── crate::dimension     # Dimension trait
 ├── crate::storage       # Storage, StorageMut, StorageOwned trait
@@ -313,46 +335,53 @@ impl CastTo<Complex<f64>> for f64 {
 ### Wave 1: 基础设施
 
 - [ ] **T1**: 定义 `CastTo` trait 及核心转换实现
-  - 文件: `src/convert.rs`
+  - 文件: `src/convert/cast.rs`
   - 内容: `CastTo<T>` trait 定义，f64↔f32、f64→i32、i32→f64 等基础 impl
   - 测试: `test_cast_f64_to_i32`, `test_cast_f32_to_f64`, `test_cast_nan_to_int`
   - 前置: element 模块完成
   - 预计: 15 min
 
-- [ ] **T2**: 创建 `convert.rs` 模块骨架
-  - 文件: `src/convert.rs`, `src/lib.rs`
-  - 内容: 模块声明、`pub use` 导出、`cast()` 方法骨架
+- [ ] **T2**: 创建 `convert/` 模块骨架
+  - 文件: `src/convert/mod.rs`, `src/lib.rs`
+  - 内容: 子模块声明、`pub use` 导出
   - 测试: 编译通过
-  - 前置: T1, tensor 模块完成
+  - 前置: T1
   - 预计: 5 min
 
 ### Wave 2: 核心方法
 
-- [ ] **T3**: 实现 `to_owned` / `into_owned`
-  - 文件: `src/convert.rs`
-  - 内容: `to_owned()` 克隆方法、`into_owned()` 消费方法
+- [ ] **T3**: 实现 `to_owned` / `into_owned` 及存储模式互转
+  - 文件: `src/convert/owned.rs`
+  - 内容: `to_owned()` 克隆方法、`into_owned()` 消费方法、view/view_mut/into_shared
   - 测试: `test_to_owned_from_view`, `test_into_owned_from_tensor`, `test_into_owned_from_arc`
-  - 前置: T2
-  - 预计: 10 min
+  - 前置: T2, tensor 模块完成
+  - 预计: 15 min
 
 - [ ] **T4**: 实现 `cast` 方法
-  - 文件: `src/convert.rs`
+  - 文件: `src/convert/cast.rs`
   - 内容: `cast<B>(&self) -> Tensor<B, D>` 方法实现
   - 测试: `test_cast_f64_to_f32`, `test_cast_i32_to_f64`, `test_cast_overflow`
-  - 前置: T2
+  - 前置: T2, tensor 模块完成
+  - 预计: 10 min
+
+- [ ] **T5**: 实现 `to_contiguous` 连续化转换
+  - 文件: `src/convert/contiguous.rs`
+  - 内容: `to_contiguous()` 方法实现
+  - 测试: `test_to_contiguous_from_view`, `test_to_contiguous_already_contiguous`
+  - 前置: T2, tensor 模块完成
   - 预计: 10 min
 
 ### Wave 3: From trait 实现
 
-- [ ] **T5**: 实现标准库 `From` trait
-  - 文件: `src/convert.rs`
+- [ ] **T6**: 实现标准库 `From` trait
+  - 文件: `src/convert/from_impl.rs`
   - 内容: `From<Vec<A>>`, `From<&[A]>`, `From<[A; N]>`, `From<&Tensor> for View` 等
   - 测试: `test_from_vec`, `test_from_slice`, `test_from_array`, `test_from_tensor_view`
   - 前置: T3
   - 预计: 10 min
 
-- [ ] **T6**: 扩展 CastTo 实现（整数↔整数、bool↔数值、实数→复数）
-  - 文件: `src/convert.rs`
+- [ ] **T7**: 扩展 CastTo 实现（整数↔整数、bool↔数值、实数→复数）
+  - 文件: `src/convert/cast.rs`
   - 内容: 窄化整数饱和、bool↔数值、实数→复数转换
   - 测试: `test_cast_int_narrowing`, `test_cast_bool_to_int`, `test_cast_real_to_complex`
   - 前置: T1
@@ -361,11 +390,11 @@ impl CastTo<Complex<f64>> for f64 {
 ### 并行执行图
 
 ```
-Wave 1: [T1] [T2]
-            │
-Wave 2: [T3] [T4]
-            │
-Wave 3: [T5] [T6]
+Wave 1: [T1] ──▶ [T2]
+                    │
+Wave 2: [T3] [T4] [T5]  (并行)
+             │
+Wave 3: [T6] [T7]  (并行)
 ```
 
 ---
@@ -487,6 +516,7 @@ Wave 3: [T5] [T6]
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-08 |
 | 1.0.2 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 

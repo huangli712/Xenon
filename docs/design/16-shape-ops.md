@@ -60,7 +60,7 @@ src/shape_ops/
 
 ```
                     ┌──────────────┐
-                    │   tensor      │
+                    │   tensor     │
                     │ TensorBase   │
                     └──────┬───────┘
                            │ 使用

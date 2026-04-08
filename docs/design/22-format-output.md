@@ -1,6 +1,6 @@
 # 格式化输出模块设计
 
-> 文档编号: 22 | 模块: `src/format.rs` | 阶段: Phase 4
+> 文档编号: 22 | 模块: `src/format/` | 阶段: Phase 4
 > 前置文档: `07-tensor.md`
 > 需求参考: 需求说明书 §24
 
@@ -44,10 +44,23 @@ L5: format  ← 当前模块
 
 ```
 src/
-└── format.rs    # Display/Debug 实现、NumPy 风格输出、截断规则
+└── format/
+    ├── mod.rs         # 模块根，re-exports，cfg gates
+    ├── config.rs      # FormatConfig 配置结构体及 Default 实现
+    ├── display.rs     # Display trait 实现（#[cfg(feature = "std")]）
+    ├── debug.rs       # Debug trait 实现
+    └── pretty.rs      # NumPy 风格格式化辅助函数（fmt_1d, fmt_nd, 截断规则）
 ```
 
-单文件设计：格式化输出逻辑内聚性高，代码量适中（~300 行），无需拆分。
+多文件设计：将格式化输出按职责拆分为多个文件，便于后期拓展和维护。
+
+| 文件 | 职责 |
+|------|------|
+| `mod.rs` | 模块入口，导出公共 API，cfg 门控 |
+| `config.rs` | `FormatConfig` 结构体及 `Default` 实现 |
+| `display.rs` | `Display` trait 实现（1D/ND 格式化入口） |
+| `debug.rs` | `Debug` trait 实现（含元信息） |
+| `pretty.rs` | NumPy 风格格式化辅助函数（`fmt_1d_display`, `fmt_nd_display`, 截断逻辑） |
 
 ---
 
@@ -56,21 +69,43 @@ src/
 ### 3.1 依赖图
 
 ```
-src/format.rs
-├── crate::tensor        # TensorBase<S, D>, shape(), ndim()
-├── crate::dimension     # Dimension trait, ndim()
-├── crate::storage       # Storage trait
-└── crate::element       # Element trait, type_name()
+src/format/
+|
+├── mod.rs
+│   └── re-exports from config, display, debug, pretty
+|
+├── config.rs
+│   └── (无外部依赖，仅 core/alloc)
+|
+├── display.rs
+│   ├── crate::tensor        # TensorBase<S, D>, shape(), ndim()
+│   ├── crate::dimension     # Dimension trait, ndim()
+│   ├── crate::storage       # Storage trait
+│   ├── crate::element       # Element trait
+│   └── super::pretty        # fmt_1d_display, fmt_nd_display
+|
+├── debug.rs
+│   ├── crate::tensor        # TensorBase<S, D>, shape(), strides()
+│   ├── crate::storage       # Storage trait
+│   ├── crate::element       # Element trait, type_name()
+│   └── super::pretty        # fmt_1d_display, fmt_nd_display
+|
+└── pretty.rs
+    ├── crate::tensor        # TensorBase<S, D>
+    ├── crate::dimension     # Dimension trait
+    ├── crate::storage       # Storage trait
+    ├── crate::element       # Element trait
+    └── super::config        # FormatConfig
 ```
 
 ### 3.2 类型级依赖
 
-| 来源模块 | 使用的类型/trait |
-|----------|-----------------|
-| `tensor` | `TensorBase<S, D>`, `.shape()`, `.ndim()`, `.len()`（参见 `07-tensor.md` §4） |
-| `dimension` | `Dimension`（参见 `02-dimension.md` §4） |
-| `storage` | `Storage<Elem=A>`（参见 `05-storage.md` §4） |
-| `element` | `Element`, `type_name::<A>()`（参见 `03-element-types.md` §3） |
+| 来源模块 | 使用的类型/trait | 使用者 |
+|----------|-----------------|--------|
+| `tensor` | `TensorBase<S, D>`, `.shape()`, `.ndim()`, `.len()`（参见 `07-tensor.md` §4） | `display.rs`, `debug.rs`, `pretty.rs` |
+| `dimension` | `Dimension`（参见 `02-dimension.md` §4） | `display.rs`, `pretty.rs` |
+| `storage` | `Storage<Elem=A>`（参见 `05-storage.md` §4） | `display.rs`, `debug.rs`, `pretty.rs` |
+| `element` | `Element`, `type_name::<A>()`（参见 `03-element-types.md` §3） | `display.rs`, `debug.rs` |
 
 ### 3.3 依赖方向声明
 
@@ -366,60 +401,57 @@ where
 
 ### Wave 1: 基础设施
 
-- [ ] **T1**: 创建 `src/format.rs` 骨架和 `FormatConfig`
-  - 文件: `src/format.rs`
-  - 内容: `FormatConfig` 结构体及 Default 实现
+- [ ] **T1**: 创建 `src/format/` 模块骨架
+  - 文件: `src/format/mod.rs`, `src/format/config.rs`
+  - 内容: 模块声明、re-exports、`FormatConfig` 结构体及 Default 实现
   - 测试: 编译通过
   - 前置: tensor 模块完成
   - 预计: 5 min
 
-- [ ] **T2**: 实现 1D 格式化（`fmt_1d_display`, `fmt_1d_debug`）
-  - 文件: `src/format.rs`
-  - 内容: 一维数组完整输出和截断输出
+- [ ] **T2**: 实现 NumPy 风格格式化辅助函数
+  - 文件: `src/format/pretty.rs`
+  - 内容: `fmt_1d_display`, `fmt_1d_debug`, `fmt_nd_display`, `fmt_nd_debug`，一维/多维完整输出和截断输出
   - 测试: `test_fmt_1d_full`, `test_fmt_1d_truncated`
   - 前置: T1
-  - 预计: 10 min
-
-### Wave 2: 多维格式化
-
-- [ ] **T3**: 实现 ND 格式化（`fmt_nd_display`, `fmt_nd_debug`）
-  - 文件: `src/format.rs`
-  - 内容: 多维递归格式化，嵌套括号
-  - 测试: `test_fmt_2d`, `test_fmt_3d`
-  - 前置: T2
   - 预计: 15 min
 
-- [ ] **T4**: 实现 `Display` trait
-  - 文件: `src/format.rs`
-  - 内容: `core::fmt::Display` for `TensorBase<S, D>`
+### Wave 2: trait 实现
+
+- [ ] **T3**: 实现 `Display` trait
+  - 文件: `src/format/display.rs`
+  - 内容: `core::fmt::Display` for `TensorBase<S, D>`，委托调用 `pretty.rs`
   - 测试: `test_display_tensor`
-  - 前置: T3
+  - 前置: T2
   - 预计: 5 min
 
-### Wave 3: Debug 和收尾
-
-- [ ] **T5**: 实现 `Debug` trait（含元信息）
-  - 文件: `src/format.rs`
-  - 内容: `core::fmt::Debug` for `TensorBase<S, D>`，包含形状/步长/类型
+- [ ] **T4**: 实现 `Debug` trait（含元信息）
+  - 文件: `src/format/debug.rs`
+  - 内容: `core::fmt::Debug` for `TensorBase<S, D>`，包含形状/步长/类型，委托调用 `pretty.rs`
   - 测试: `test_debug_tensor`
-  - 前置: T4
+  - 前置: T2
   - 预计: 10 min
 
-- [ ] **T6**: 添加 `#[cfg(feature = "std")]` 门控和文档
-  - 文件: `src/format.rs`
-  - 内容: Display 的 std 门控、模块文档
+### Wave 3: 收尾
+
+- [ ] **T5**: 添加 `#[cfg(feature = "std")]` 门控和文档
+  - 文件: `src/format/mod.rs`, `src/format/display.rs`
+  - 内容: Display 的 std 门控、模块文档、re-exports 完善
   - 测试: `test_no_std_compile`
-  - 前置: T5
+  - 前置: T3, T4
   - 预计: 5 min
 
 ### 并行执行图
 
 ```
 Wave 1: [T1] → [T2]
-                │
-Wave 2: [T3] → [T4]
-                │
-Wave 3: [T5] → [T6]
+                 │
+Wave 2:    ┌─────┴─────┐
+           │           │
+          [T3]        [T4]   (可并行)
+           │           │
+           └─────┬─────┘
+                 │
+Wave 3:        [T5]
 ```
 
 ---
