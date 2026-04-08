@@ -65,14 +65,14 @@ src/shape_ops/
                     └──────┬───────┘
                            │ 使用
               ┌────────────┼────────────────┐
-              │  shape_ops                    │
+              │  shape_ops                  │
               │  transpose.rs │ reshape.rs  │
               └──┬───────────┬──────────────┘
                  │ 使用       │ 使用
-          ┌──────▼───┐ ┌────▼──────────────┐
-          │ dimension │ │ memory-layout │
-          │ Dimension │ │ LayoutFlags  │
-          │ Ix0~IxDyn │ │ Order      │
+          ┌──────▼───┐ ┌────▼────────────┐
+          │ dimension │ │ memory-layout  │
+          │ Dimension │ │ LayoutFlags    │
+          │ Ix0~IxDyn │ │ Order          │
           └───────────┘ └────────────────┘
 ```
 

@@ -156,7 +156,7 @@ assert_eq!(empty.unique().len(), 0);
 
 ## 5. 内部实现设计
 
-### 5.1 unique 知道步骤
+### 5.1 unique 实现步骤
 
 ```
 unique(self):
