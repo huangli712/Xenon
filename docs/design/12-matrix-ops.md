@@ -12,10 +12,10 @@
 
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
-| 向量内积 | dot product（实数内积：sum(a[i] * b[i])） | 篮选/排序 |
-| 复数内积 | 共轭线性定义（sum(conj(a[i]) * b[i])） | 琜索/排序 |
-| SIMD 加速 | 连续内存的 SIMD 路径 | 琜索/排序 |
-| 错误处理 | 形状不匹配返回 XenonError::ShapeMismatch | 搜索/排序 |
+| 向量内积 | dot product（实数内积：sum(a[i] * b[i])） | 矩阵乘法、外积 |
+| 复数内积 | 共轭线性定义（sum(conj(a[i]) * b[i])） | 批量矩阵乘法 |
+| SIMD 加速 | 连续内存的 SIMD 路径 | BLAS 绑定 |
+| 错误处理 | 形状不匹配返回 XenonError::ShapeMismatch | — |
 
 > **注意**：当前版本仅支持向量内积（dot）。不包含：矩阵乘法、外积、批量矩阵乘法、BLAS 绑定。
 
