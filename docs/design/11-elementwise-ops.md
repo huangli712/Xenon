@@ -13,7 +13,7 @@
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
 | 算术运算 | add/sub/mul/div，数值类型：i32/i64/f32/f64/Complex | 归约运算（sum/prod/min/max，参见 `13-reduction.md §1`） |
-| 一元运算 | abs/neg/signum/square | 篮选/排序 |
+| 一元运算 | abs/neg/square（Numeric）、signum（RealScalar） | 篮选/排序 |
 | 数学函数 | sin/sqrt/exp/ln/floor/ceil，仅 f32/f64 | 运算符重载（参见 `19-operator-overload.md §1`） |
 | 复数运算 | norm（返回实数类型）/conj，仅 Complex | 比较运算（eq/ne/lt/gt） |
 | 逻辑非 | `!`，仅 bool | 位运算 |
@@ -181,12 +181,14 @@ where
 {
     pub fn abs(&self) -> Tensor<A, D>;
     pub fn neg(&self) -> Tensor<A, D>;
-    pub fn signum(&self) -> Tensor<A, D>;
     pub fn square(&self) -> Tensor<A, D>;
 }
 ```
 
-### 4.5 数学函数（RealScalar 约束：仅 f32/f64）
+> **注意：** `signum` 不在 Numeric 约束下，因为复数没有自然的符号函数定义。
+> `signum` 仅对实数类型可用，定义在 §4.5 的 RealScalar 约束中。
+
+### 4.5 数学函数与符号函数（RealScalar 约束：仅 f32/f64）
 
 ```rust
 impl<S, D, A> TensorBase<S, D>
@@ -195,6 +197,7 @@ where
     D: Dimension,
     A: RealScalar,
 {
+    pub fn signum(&self) -> Tensor<A, D>;
     pub fn sin(&self) -> Tensor<A, D>;
     pub fn sqrt(&self) -> Tensor<A, D>;
     pub fn exp(&self) -> Tensor<A, D>;

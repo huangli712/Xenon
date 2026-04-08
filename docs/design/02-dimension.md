@@ -17,9 +17,10 @@
 | Dimension trait | 完整的维度操作接口（ndim/slice/size/strides_for_f_order/zeros/ones/into_dyn/try_from_dyn） | — |
 | IntoDimension trait | 从元组、数组、切片、Vec 构造维度 | 用户自定义维度源 |
 | Axis 类型 | 轴标记新类型（index/next/prev/is_first/is_last） | 轴上的切片/迭代操作（由 tensor 方法提供） |
+| RemoveAxis trait | 移除指定轴降维（Ix1→Ix0, ..., Ix6→Ix5, IxDyn→IxDyn） | Ix0 不实现（标量无轴可移除） |
 | 维度互转 | 静态→动态（总是成功）、动态→静态（需维度匹配） | 隐式维度转换 |
 | F-order 步长计算 | `strides_for_f_order()` 返回无符号步长 | C-order 步长（不在范围内） |
-| 步长类型 | 维度层保存无符号形状，步长结果为 `Self`（无符号） | 负步长处理（由 layout 模块负责） |
+| 步长类型 | 维度层保存无符号形状，步长结果为 `Self`（无符号）；提供 `strides_isize()` / `from_isize_strides()` 在 usize/isize 间安全转换 | 负步长语义（由 layout 模块负责） |
 | 内存分配 | — | 不负责任何内存分配 |
 
 ### 1.2 设计原则
@@ -171,6 +172,53 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
     /// Returns an iterator over axis lengths.
     fn iter(&self) -> core::slice::Iter<'_, usize> {
         self.slice().iter()
+    }
+
+    /// Returns the shape slice reinterpreted as `isize`.
+    ///
+    /// Used by the layout module to store strides (which may be negative)
+    /// in the same `D` type as the shape.
+    ///
+    /// # Safety argument
+    ///
+    /// `usize` and `isize` have the same size and alignment on all
+    /// Rust targets (`core::mem::size_of::<usize>() == core::mem::size_of::<isize>()`).
+    /// `#[repr(transparent)]` or `#[repr(C)]` on the dimension types ensures
+    /// the underlying memory layout is a contiguous `[usize]`, which can be
+    /// safely viewed as `[isize]` via pointer cast.
+    ///
+    /// Stride values stored in the `D` type are always within the valid
+    /// `isize` range (guaranteed by construction in the layout module).
+    fn strides_isize(&self) -> &[isize] {
+        let slice = self.slice();
+        // SAFETY: usize and isize have identical size/alignment.
+        // Stride values are guaranteed to be in valid isize range.
+        unsafe { core::slice::from_raw_parts(slice.as_ptr() as *const isize, slice.len()) }
+    }
+
+    /// Returns a mutable reference to the shape slice reinterpreted as `isize`.
+    fn strides_isize_mut(&mut self) -> &mut [isize] {
+        let slice = self.slice_mut();
+        // SAFETY: same as strides_isize.
+        unsafe { core::slice::from_raw_parts_mut(slice.as_mut_ptr() as *mut isize, slice.len()) }
+    }
+
+    /// Constructs a dimension instance from an `isize` slice.
+    ///
+    /// Used to build strides from signed values computed by the layout module.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the slice length does not match the dimension count.
+    fn from_isize_strides(strides: &[isize]) -> Self
+    where
+        Self: Sized,
+    {
+        // SAFETY: isize and usize have identical size/alignment.
+        let as_usize = unsafe {
+            core::slice::from_raw_parts(strides.as_ptr() as *const usize, strides.len())
+        };
+        Self::from_slice(as_usize)
     }
 }
 ```
@@ -416,7 +464,80 @@ impl Axis {
 }
 ```
 
-### 4.6 Sealed trait 策略
+### 4.6 RemoveAxis trait
+
+```rust
+/// Trait for dimension types that support removing an axis.
+///
+/// Implemented for `Ix1`-`Ix6` and `IxDyn`.
+/// `Ix0` does NOT implement this trait: a scalar has no axes to remove.
+///
+/// Used by:
+/// - `AxisIter` (see `10-iterator.md §4`): `Item = TensorView<'a, A, D::Smaller>`
+/// - `sum_axis` (see `13-reduction.md §4`): result dimension is `D::Smaller`
+pub trait RemoveAxis: Dimension {
+    /// The dimension type with one fewer axis.
+    type Smaller: Dimension;
+
+    /// Remove the specified axis, returning a dimension with one fewer axis.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `axis.index() >= self.ndim()`.
+    fn remove_axis(&self, axis: Axis) -> Self::Smaller;
+}
+
+// Static dimension implementations:
+//
+// Ix1 -> Ix0
+// Ix2 -> Ix1
+// Ix3 -> Ix2
+// Ix4 -> Ix3
+// Ix5 -> Ix4
+// Ix6 -> Ix5
+// IxDyn -> IxDyn
+
+impl RemoveAxis for Ix1 {
+    type Smaller = Ix0;
+
+    fn remove_axis(&self, axis: Axis) -> Ix0 {
+        assert!(axis.index() < 1, "axis out of bounds");
+        Ix0
+    }
+}
+
+impl RemoveAxis for Ix2 {
+    type Smaller = Ix1;
+
+    fn remove_axis(&self, axis: Axis) -> Ix1 {
+        assert!(axis.index() < 2, "axis out of bounds");
+        match axis.index() {
+            0 => Ix1(self.1),
+            _ => Ix1(self.0),
+        }
+    }
+}
+
+// Ix3-Ix6: same pattern — remove the axis, shift remaining fields.
+// IxDyn: remove the element at `axis.index()` from the Vec.
+
+impl RemoveAxis for IxDyn {
+    type Smaller = IxDyn;
+
+    fn remove_axis(&self, axis: Axis) -> IxDyn {
+        assert!(axis.index() < self.ndim(), "axis out of bounds");
+        let mut v = self.0.clone();
+        v.remove(axis.index());
+        IxDyn(v)
+    }
+}
+```
+
+> **设计决策：** `RemoveAxis` 作为独立 trait 而非 Dimension 的关联类型。
+> 这样 `Ix0` 天然不满足 `RemoveAxis` 约束，编译器自动拒绝对标量的轴操作，
+> 无需运行时检查。
+
+### 4.7 Sealed trait 策略
 
 ```rust
 // src/private.rs
@@ -432,7 +553,7 @@ impl Sealed for Ix6 {}
 impl Sealed for IxDyn {}
 ```
 
-### 4.7 Good / Bad 对比示例
+### 4.8 Good / Bad 对比示例
 
 ```rust
 // Good - unified interface via IntoDimension, clear type inference

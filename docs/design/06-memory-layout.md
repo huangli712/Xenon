@@ -1,7 +1,7 @@
 # 内存布局模块设计
 
 > 文档编号: 06 | 模块: `src/layout/` | 阶段: Phase 2
-> 前置文档: `02-dimension.md`, `05-storage.md`
+> 前置文档: `02-dimension.md`
 > 需求参考: 需求说明书 §7
 
 ---
@@ -462,17 +462,13 @@ Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的
 
 ## 6. 与 Dimension 模块的接口
 
-步长存储在 `D` 类型（与 shape 同类型）中，但实际步长值为 `isize`。Dimension trait 需提供（参见 `02-dimension.md §4`）：
+步长存储在 `D` 类型（与 shape 同类型）中，但实际步长值为 `isize`。Dimension trait 提供以下方法进行 usize/isize 转换（定义参见 `02-dimension.md §4`）：
 
-```rust
-trait Dimension {
-    /// Returns the stride slice (isize type).
-    fn strides_isize(&self) -> &[isize];
+- `strides_isize(&self) -> &[isize]`：将内部 usize 切片重解释为 isize 切片（零开销指针转换）
+- `strides_isize_mut(&mut self) -> &mut [isize]`：可变版本
+- `from_isize_strides(strides: &[isize]) -> Self`：从 isize 切片构造维度实例
 
-    /// Constructs strides from an isize slice.
-    fn from_isize_strides(strides: &[isize]) -> Self;
-}
-```
+安全性由 usize/isize 的大小和对齐一致性保证，步长值始终在合法 isize 范围内（由 layout 模块的构造逻辑保证）。
 
 ---
 

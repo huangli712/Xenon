@@ -242,16 +242,17 @@ where
             });
         }
         
-        // 2. Check contiguity
-        if !self.is_contiguous() {
+        // 2. Check F-contiguity (only F-contiguous arrays can be reshaped zero-copy)
+        //    C-contiguous arrays (e.g. transposed views) are NOT eligible for
+        //    zero-copy reshape because Xenon always outputs F-order.
+        if !self.is_f_contiguous() {
             return Err(XenonError::LayoutMismatch {
-                reason: "source array is not contiguous, use into_shape() instead",
+                reason: "source array is not F-contiguous, use into_shape() instead",
             });
         }
         
-        // 3. Compute new strides (preserve order)
-        let order = if self.is_f_contiguous() { Order::F } else { Order::C };
-        let new_strides = compute_strides(&shape, order);
+        // 3. Compute new strides (always F-order)
+        let new_strides = compute_strides(&shape, Order::F);
         
         // 4. Create view
         Ok(TensorView {
@@ -259,7 +260,7 @@ where
             shape,
             strides: new_strides,
             offset: self.offset,
-            layout: LayoutFlags::from_order(order),
+            layout: LayoutFlags::from_order(Order::F),
         })
     }
 
@@ -292,16 +293,15 @@ where
             });
         }
         
-        // Continuous: reshape in-place
-        if self.is_contiguous() {
-            let order = if self.is_f_contiguous() { Order::F } else { Order::C };
-            let new_strides = compute_strides(&shape, order);
+        // F-contiguous: reshape in-place (zero-copy)
+        if self.is_f_contiguous() {
+            let new_strides = compute_strides(&shape, Order::F);
             return Ok(Tensor {
                 storage: self.storage.into_owned(),
                 shape,
                 strides: new_strides,
                 offset: 0,
-                layout: LayoutFlags::from_order(order),
+                layout: LayoutFlags::from_order(Order::F),
             });
         }
         

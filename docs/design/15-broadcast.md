@@ -106,18 +106,18 @@ src/
 /// * `shape_b` - The second shape
 ///
 /// # Returns
-/// * `Ok(SmallVec<[usize; 6]>)` - The broadcasted shape
+/// * `Ok(IxDyn)` - The broadcasted shape as a dynamic dimension
 /// * `Err(BroadcastError)` - Shapes are incompatible
 ///
 /// # Examples
 /// ```
 /// let result = broadcast_shape(&[3, 1, 4], &[4, 1])?;
-/// assert_eq!(&*result, &[3, 4, 4]);
+/// assert_eq!(result.slice(), &[3, 4, 4]);
 /// ```
 pub fn broadcast_shape(
     shape_a: &[usize],
     shape_b: &[usize],
-) -> Result<SmallVec<[usize; 6]>, BroadcastError>;
+) -> Result<IxDyn, BroadcastError>;
 ```
 
 ### 4.2 兼容性检查
@@ -149,7 +149,7 @@ pub fn broadcast_strides(
     orig_shape: &[usize],
     orig_strides: &[isize],
     target_shape: &[usize],
-) -> SmallVec<[isize; 6]>;
+) -> IxDyn;
 ```
 
 ### 4.4 显式广播方法
@@ -540,17 +540,17 @@ use alloc::vec::Vec;
 | 组件 | no_std 支持 | 说明 |
 |------|:----------:|------|
 | `can_broadcast()` | ✅ | 纯计算函数，无堆分配 |
-| `broadcast_shape()` | ✅ | 返回 `SmallVec`（栈分配 ≤ 6 维），需 `alloc` 保底 |
-| `broadcast_strides()` | ✅ | 返回 `SmallVec`（栈分配 ≤ 6 维），需 `alloc` 保底 |
+| `broadcast_shape()` | ✅ | 返回 `IxDyn`（内部 `Vec<usize>`），需 `alloc` |
+| `broadcast_strides()` | ✅ | 返回 `IxDyn`（内部 `Vec<usize>`），需 `alloc` |
 | `broadcast_to()` | ✅ | 创建 `TensorView`（零拷贝），无堆分配 |
-| `broadcast_with()` | ✅ | 创建两个 `TensorView`，需 `no_std + alloc`（SmallVec），参见 `02-dimension.md` §3 |
+| `broadcast_with()` | ✅ | 创建两个 `TensorView`，需 `no_std + alloc`（IxDyn），参见 `02-dimension.md` §3 |
 | `BroadcastError` | ✅ | 使用 `core::fmt::Display`，无堆依赖，参见 `26-error-handling.md` §4 |
 
 条件编译处理：
 
 ```rust
-// SmallVec<[usize; 6]>: stack-allocated for ≤6 dimensions
-// Falls back to alloc::vec::Vec for >6 dimensions
+// IxDyn uses alloc::vec::Vec internally (see 02-dimension.md §4.3)
+// No external dependency needed — reuses existing dimension type.
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;

@@ -267,18 +267,24 @@ pub trait SimdKernel<A: SimdElement>: Send + Sync {
 #[cfg(feature = "simd")]
 use pulp::Arch;
 
-/// Globally cached `Arch` instance.
+/// Returns the `Arch` instance for SIMD dispatch.
 ///
-/// `Arch` is `Copy`; caching it enables zero-cost reuse.
-/// Uses `OnceLock` for thread-safe lazy initialization.
-#[cfg(feature = "simd")]
-static ARCH: std::sync::OnceLock<Arch> = std::sync::OnceLock::new();
-
-/// Returns the globally cached `Arch` instance.
-#[cfg(feature = "simd")]
+/// - With `std`: cached via `OnceLock` for zero-cost reuse after first call.
+/// - Without `std` (no_std): calls `Arch::new()` each time.
+///   `Arch` is `Copy` and lightweight, so no caching is needed.
+///   `OnceLock` is unavailable in `core` (Rust 1.85).
+#[cfg(all(feature = "simd", feature = "std"))]
 #[inline]
 pub fn get_arch() -> Arch {
+    static ARCH: std::sync::OnceLock<Arch> = std::sync::OnceLock::new();
     *ARCH.get_or_init(Arch::new)
+}
+
+/// Returns the `Arch` instance (no_std path, no caching).
+#[cfg(all(feature = "simd", not(feature = "std")))]
+#[inline]
+pub fn get_arch() -> Arch {
+    Arch::new()
 }
 
 /// Placeholder when SIMD is disabled.
@@ -914,7 +920,10 @@ pulp crate 支持 `no_std` 环境。在 `no_std` 环境下：
 
 ```rust
 #[cfg(all(feature = "simd", not(feature = "std")))]
-// In no_std environments, pulp internally uses libm for math functions
+// In no_std environments:
+// - pulp internally uses libm for math functions
+// - Arch is not cached (OnceLock unavailable in core),
+//   Arch::new() is called per-use (Arch is Copy, negligible cost)
 ```
 
 ---

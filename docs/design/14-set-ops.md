@@ -161,18 +161,19 @@ assert_eq!(empty.unique().len(), 0);
 ```
 unique(self):
     1. 收集所有元素到 Vec<A>
-    2. 排序（sort）
-    3. 去重（dedup）
+    2. 排序: vec.sort_by(|a, b| a.total_cmp(b))
+    3. 去重: vec.dedup_by(|a, b| a.total_eq(b))
     4. 从 Vec 构造 Tensor<A, Ix1>
 ```
 
 ### 5.2 浮点排序处理
 
 ```
-浮点比较策略：
+浮点比较策略（基于 f64::total_cmp / f32::total_cmp）：
 - NaN 被视为大于任何实数（NaN > f64::MAX）
 - 排序后 NaN 出现在数组末尾
-- -NaN 和 NaN 视为相等（PartialOrd 语义）
+- -NaN 和 NaN 视为相等（通过 total_eq 去重）
+- 与 IEEE 754 totalOrder 一致
 ```
 
 ### 5.3 复数排序规则
@@ -188,16 +189,62 @@ unique(self):
 ### 5.4 类型排除实现
 
 ```rust
-/// Marker trait for types that support the unique operation.
-/// bool and usize do not implement this trait.
-pub trait UniqueElement: Element + Ord {}
+/// Trait for types that support the unique operation.
+///
+/// Provides a total ordering for sorting and deduplication.
+/// `bool` and `usize` do not implement this trait.
+///
+/// Note: `Ord` is NOT used as a supertrait because `f32`/`f64`
+/// do not implement `Ord`, and `Complex` does not implement `PartialOrd`.
+/// Instead, each type defines its own `total_cmp` method.
+pub trait UniqueElement: Element {
+    /// Total ordering comparison for sorting and deduplication.
+    ///
+    /// Must satisfy: reflexivity, antisymmetry, transitivity, totality.
+    fn total_cmp(&self, other: &Self) -> core::cmp::Ordering;
 
-impl UniqueElement for i32 {}
-impl UniqueElement for i64 {}
-impl UniqueElement for f32 {}
-impl UniqueElement for f64 {}
-impl UniqueElement for Complex<f32> {}
-impl UniqueElement for Complex<f64> {}
+    /// Equality check consistent with `total_cmp`.
+    fn total_eq(&self, other: &Self) -> bool {
+        self.total_cmp(other) == core::cmp::Ordering::Equal
+    }
+}
+
+impl UniqueElement for i32 {
+    fn total_cmp(&self, other: &Self) -> core::cmp::Ordering { Ord::cmp(self, other) }
+}
+
+impl UniqueElement for i64 {
+    fn total_cmp(&self, other: &Self) -> core::cmp::Ordering { Ord::cmp(self, other) }
+}
+
+impl UniqueElement for f32 {
+    fn total_cmp(&self, other: &Self) -> core::cmp::Ordering {
+        // Uses f32::total_cmp (stable since Rust 1.62).
+        // NaN is sorted to the end; -NaN and NaN are considered equal.
+        f32::total_cmp(self, other)
+    }
+}
+
+impl UniqueElement for f64 {
+    fn total_cmp(&self, other: &Self) -> core::cmp::Ordering {
+        f64::total_cmp(self, other)
+    }
+}
+
+impl UniqueElement for Complex<f32> {
+    fn total_cmp(&self, other: &Self) -> core::cmp::Ordering {
+        // Lexicographic order: compare real part first, then imaginary part.
+        f32::total_cmp(&self.re, &other.re)
+            .then_with(|| f32::total_cmp(&self.im, &other.im))
+    }
+}
+
+impl UniqueElement for Complex<f64> {
+    fn total_cmp(&self, other: &Self) -> core::cmp::Ordering {
+        f64::total_cmp(&self.re, &other.re)
+            .then_with(|| f64::total_cmp(&self.im, &other.im))
+    }
+}
 // bool and usize do not implement this
 ```
 
@@ -299,7 +346,7 @@ Wave 3: [T5]
 |----------|----------|
 | `tensor` | 消费 `TensorBase<S, D>`，返回 `Tensor<A, Ix1>`，参见 `07-tensor.md` §4 |
 | `iter` | 使用 `Elements` 迭代器收集元素，参见 `10-iterator.md` §3 |
-| `element` | 泛型约束 `UniqueElement`（排除 bool/usize），参见 `03-element-types.md` §3 |
+| `element` | 泛型约束 `UniqueElement: Element`（排除 bool/usize，提供 `total_cmp`），参见 `03-element-types.md` §3 |
 
 ---
 
@@ -375,8 +422,8 @@ use alloc::vec::Vec;
 |------|:----------:|------|
 | `unique()` | ✅ | 需 `no_std + alloc`，收集元素到 `Vec` + 排序 + 去重，参见 `05-storage.md` §11 |
 | `UniqueElement` trait | ✅ | 纯 trait 定义，无依赖 |
-| 浮点 NaN 排序 | ✅ | `PartialOrd` 语义，`core` 内建 |
-| 复数排序 | ✅ | lexicographic `Ord` 实现，参见 `04-complex-type.md` §3 |
+| 浮点 NaN 排序 | ✅ | `f32::total_cmp` / `f64::total_cmp`，`core` 内建（Rust 1.62+） |
+| 复数排序 | ✅ | lexicographic `total_cmp` 实现，参见 `04-complex-type.md` §3 |
 
 条件编译处理：
 

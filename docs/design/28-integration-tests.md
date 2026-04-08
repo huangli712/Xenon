@@ -59,7 +59,7 @@ tests/
 ├── test_ops.rs                 # 逐元素运算（算术/数学/比较/逻辑）
 ├── test_broadcast.rs           # 广播机制（标量/向量/矩阵广播）
 ├── test_index.rs               # 索引操作（多维索引/范围切片）
-├── test_construction.rs        # 构造方法（zeros/ones/eye/from_vec/arange/linspace）
+├── test_construction.rs        # 构造方法（zeros/ones/eye/from_vec/from_fn/from_scalar）
 ├── test_reduction.rs           # 归约运算（sum/沿轴sum/unique）
 ├── test_shape_ops.rs           # 形状操作（transpose/reshape）
 ├── test_conversion.rs          # 类型转换（cast/存储模式转换）
@@ -98,7 +98,7 @@ tests/
 ├── crate::broadcast        # broadcast_shape
 ├── crate::shape_ops        # transpose, reshape
 ├── crate::index            # 多维索引、范围切片
-├── crate::construct        # zeros, ones, eye, from_vec, arange, linspace
+├── crate::construct        # zeros, ones, eye, from_vec, from_fn, from_scalar
 ├── crate::set_ops          # unique
 ├── crate::ffi              # as_ptr, as_mut_ptr, from_raw_parts
 ├── crate::workspace        # Workspace
@@ -224,8 +224,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 | `test_bool_not` | bool 逻辑非 | 中 |
 | `test_compare_eq_ne` | 等于/不等于比较 | 高 |
 | `test_compare_lt_gt` | 小于/大于比较 | 中 |
-| `test_compound_assign` | +=, -=, *=, /= 原地运算 | 高 |
-| `test_square_reciprocal` | square, reciprocal | 中 |
+| `test_square` | square 逐元素平方 | 中 |
 
 ### 5.3 test_broadcast.rs
 
@@ -236,7 +235,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 | `test_broadcast_left_pad` | 维度不足左侧补 1 | 高 |
 | `test_broadcast_incompatible` | 不兼容形状返回错误 | 高 |
 | `test_broadcast_view_readonly` | 广播视图为只读 | 高 |
-| `test_broadcast_inplace` | a += b 中 b 可广播 | 中 |
+
 | `test_broadcast_zero_stride` | 广播后步长为 0 | 中 |
 
 ### 5.4 test_index.rs
@@ -257,8 +256,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 | `test_eye_identity` | 单位矩阵 | 高 |
 | `test_from_vec_slice` | from_vec, from_slice 构造 | 高 |
 | `test_from_fn` | from_fn 函数构造 | 中 |
-| `test_arange` | arange 序列 | 中 |
-| `test_linspace` | linspace 序列 | 中 |
+
 | `test_from_fixed_array` | 从固定数组构造 | 中 |
 
 ### 5.6 test_reduction.rs
@@ -297,7 +295,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 | `test_cast_nan_to_int` | NaN→整数行为 | 中 |
 | `test_cast_bool_numeric` | bool↔数值转换 | 中 |
 | `test_copy_to_fill` | copy_to, fill | 中 |
-| `test_is_close_allclose` | 近似比较 | 中 |
+
 | `test_clip` | 裁剪操作 | 中 |
 
 ### 5.9 test_ffi.rs
@@ -306,7 +304,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 |----------|----------|--------|
 | `test_as_ptr` | as_ptr 返回正确指针 | 高 |
 | `test_as_mut_ptr` | as_mut_ptr 返回可变指针 | 高 |
-| `test_strides_bytes` | strides_bytes 正确转换 | 高 |
+
 | `test_lda` | lda 返回 leading dimension | 中 |
 | `test_is_blas_compatible` | BLAS 兼容性检查 | 高 |
 | `test_from_raw_parts_roundtrip` | into_raw_parts → from_raw_parts 往返 | 高 |
@@ -592,7 +590,7 @@ proptest! {
 
 - [ ] **T6**: 实现 `tests/test_construction.rs`
   - 文件: `tests/test_construction.rs`
-  - 内容: 构造方法（zeros/ones/eye/from_vec/from_fn/arange/linspace）
+  - 内容: 构造方法（zeros/ones/eye/from_vec/from_fn/from_scalar/from_array）
   - 测试: `cargo test --test test_construction`
   - 前置: T1
   - 预计: 10 min
@@ -613,7 +611,7 @@ proptest! {
 
 - [ ] **T9**: 实现 `tests/test_conversion.rs`
   - 文件: `tests/test_conversion.rs`
-  - 内容: 类型转换（cast/存储模式转换/clip/is_close）
+  - 内容: 类型转换（cast/存储模式转换/clip）
   - 测试: `cargo test --test test_conversion`
   - 前置: T1
   - 预计: 10 min

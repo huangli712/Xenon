@@ -153,9 +153,6 @@ pub enum XenonError {
 
     /// Operation requires a non-empty array (e.g., dot on empty).
     EmptyArray,
-
-    /// Integer reduction overflow.
-    OverflowError,
 }
 ```
 
@@ -219,9 +216,6 @@ impl fmt::Display for XenonError {
             Self::EmptyArray => {
                 write!(f, "operation requires a non-empty array")
             }
-            Self::OverflowError => {
-                write!(f, "integer overflow in reduction")
-            }
         }
     }
 }
@@ -254,7 +248,6 @@ impl std::error::Error for XenonError {}
 | `InvalidShape` | `cannot reshape 12 elements into 15` |
 | `DimensionMismatch` | `dimension mismatch: expected 2, got 3` |
 | `EmptyArray` | `operation requires a non-empty array` |
-| `OverflowError` | `integer overflow in reduction` |
 
 ### 4.6 Good / Bad 对比示例
 
@@ -278,13 +271,14 @@ pub fn sum_bad(&self) -> A {
 ```
 
 ```rust
-// Good - integer overflow using checked arithmetic
-pub fn sum_checked(&self) -> Result<A> {
+// Good - integer overflow using checked arithmetic + panic (unrecoverable)
+pub fn sum(&self) -> A {
     let mut total = A::zero();
     for &x in self.iter() {
-        total = total.checked_add(&x).ok_or(XenonError::OverflowError)?;
+        total = total.checked_add(&x)
+            .expect("integer overflow in reduction");
     }
-    Ok(total)
+    total
 }
 
 // Bad - integer overflow with silent wrapping
@@ -308,11 +302,11 @@ pub fn sum_bad(&self) -> A {
 │   ├── InvalidAxis        — 轴索引无效
 │   ├── InvalidShape       — reshape 目标形状无效
 │   ├── DimensionMismatch  — 维度类型转换失败
-│   ├── EmptyArray         — 空数组上的非法操作
-│   └── OverflowError      — 整数归约溢出
+│   └── EmptyArray         — 空数组上的非法操作
 │
-└── 编程错误 (panic / unchecked)
-    └── IndexOutOfBounds   — 索引越界（与 std slice 行为一致）
+└── 不可恢复错误 (panic)
+    ├── IndexOutOfBounds   — 索引越界（与 std slice 行为一致）
+    └── OverflowError      — 整数归约溢出（需求 §14：不可恢复）
 ```
 
 ### 5.2 panic vs Result 决策矩阵
@@ -326,8 +320,8 @@ pub fn sum_bad(&self) -> A {
 | InvalidShape | Result | 可能来自用户输入，可恢复 |
 | DimensionMismatch | Result | 类型转换失败，可恢复 |
 | EmptyArray | Result | 运行时状态决定，可恢复 |
-| OverflowError | Result | 整数归约溢出，可恢复 |
 | **IndexOutOfBounds** | **panic** | **编程错误，与 Rust slice 一致** |
+| **IntegerOverflow** | **panic** | **需求 §14：整数归约溢出视为不可恢复错误** |
 
 ### 5.3 IndexOutOfBounds 为何使用 panic
 
@@ -469,7 +463,7 @@ impl std::error::Error for XenonError {}
 
 - [ ] **T1**: 定义 `XenonError` 枚举及所有变体
   - 文件: `src/error.rs`
-  - 内容: 8 个变体（ShapeMismatch, BroadcastError, LayoutMismatch, InvalidAxis, InvalidShape, DimensionMismatch, EmptyArray, OverflowError），derive Debug/Clone/PartialEq
+  - 内容: 7 个变体（ShapeMismatch, BroadcastError, LayoutMismatch, InvalidAxis, InvalidShape, DimensionMismatch, EmptyArray），derive Debug/Clone/PartialEq
   - 测试: 编译通过
   - 前置: 无
   - 预计: 10 min
@@ -509,7 +503,7 @@ impl std::error::Error for XenonError {}
 - [ ] **T6**: 单元测试 — Display 输出格式
   - 文件: `src/error.rs` (`#[cfg(test)] mod tests`)
   - 内容: 每个变体的 `to_string()` 断言
-  - 测试: 8 个测试函数
+  - 测试: 7 个测试函数
   - 前置: T3
   - 预计: 10 min
 
@@ -562,7 +556,7 @@ Wave 3: ┌──[T6]────┤
 | `test_invalid_shape_display` | InvalidShape 格式化输出 | 高 |
 | `test_dimension_mismatch_display` | DimensionMismatch 格式化输出 | 高 |
 | `test_empty_array_display` | EmptyArray 格式化输出 | 高 |
-| `test_overflow_error_display` | OverflowError 格式化输出 | 高 |
+
 | `test_error_trait_std` | std feature 下 Error trait 实现 | 中 |
 | `test_result_type_alias` | Result<T> 类型别名可用性 | 中 |
 | `test_partial_eq` | PartialEq 可正确比较相同/不同变体 | 中 |
@@ -617,13 +611,13 @@ Wave 3: ┌──[T6]────┤
 | 替代方案 | Result — 放弃，与 slice 行为不一致 |
 | 配套措施 | 提供 `get()` → `Option` 和 `get_unchecked()` → unsafe 变体 |
 
-### 决策 4：整数溢出使用 Result
+### 决策 4：整数溢出使用 panic
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | 整数归约溢出返回 `XenonError::OverflowError`，而非 panic 或静默 wrapping |
-| 理由 | 需求说明书 §14 规定整数归约溢出视为不可恢复错误，但使用 Result 更安全；debug 和 release 行为一致 |
-| 替代方案 | panic — 放弃，可在 drop 过程中引发 double panic |
+| 决策 | 整数归约溢出使用 `checked_add` + `expect` 触发 panic，不纳入 `XenonError` |
+| 理由 | 需求说明书 §14 明确规定整数归约溢出视为不可恢复错误；`checked_add` + `expect` 保证 debug 和 release 行为一致；panic 语义与"不可恢复"匹配 |
+| 替代方案 | `Result<XenonError::OverflowError>` — 放弃，需求明确为"不可恢复"，Result 暗示可恢复 |
 | 替代方案 | wrapping — 放弃，静默错误违背正确性优先原则 |
 
 ### 决策 5：LayoutMismatch 字段使用 &'static str

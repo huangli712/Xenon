@@ -98,6 +98,13 @@ where
     ///
     /// Returns a new tensor; the original tensor is unchanged.
     ///
+    /// # Supported Types
+    ///
+    /// Available for types implementing `PartialOrd`: i32, i64, f32, f64, bool, usize.
+    /// **Not available for `Complex<f32>`/`Complex<f64>`** because complex numbers
+    /// have no natural total ordering (`Complex` does not implement `PartialOrd`,
+    /// see `04-complex-type.md §4`).
+    ///
     /// # Arguments
     ///
     /// * `min` - lower bound
@@ -186,15 +193,18 @@ where
     D: Dimension,
     A: Element + Clone,
 {
-    /// Ensure data is stored contiguously in memory.
+    /// Ensure data is stored contiguously in memory (always F-order).
     ///
-    /// - If already F-contiguous, returns `to_owned()` (copy)
-    /// - If already C-contiguous, returns a C-contiguous version
-    /// - If non-contiguous, copies into F-contiguous layout
+    /// - If already F-contiguous, returns `to_owned()` (copy, layout preserved)
+    /// - Otherwise (C-contiguous or non-contiguous), copies into F-contiguous layout
+    ///
+    /// Xenon always outputs F-order (see requirement §7).
+    /// C-contiguous detection (`is_c_contiguous()`) is available for query purposes
+    /// (e.g. transposed views), but `to_contiguous()` always produces F-order output.
     ///
     /// # Returns
     ///
-    /// Always returns an owned `Tensor<A, D>`.
+    /// Always returns an owned `Tensor<A, D>` with F-contiguous layout.
     ///
     /// # Examples
     ///
@@ -202,12 +212,15 @@ where
     /// let t = Tensor2::<f64>::zeros([3, 4]);
     /// let contig = t.to_contiguous();
     /// assert!(contig.is_f_contiguous());
+    ///
+    /// // Even transposed (C-contiguous) views become F-contiguous
+    /// let transposed = t.t();
+    /// let contig2 = transposed.to_contiguous();
+    /// assert!(contig2.is_f_contiguous());
     /// ```
     pub fn to_contiguous(&self) -> Tensor<A, D> {
         if self.is_f_contiguous() {
             self.to_owned()
-        } else if self.is_c_contiguous() {
-            self.to_c_contiguous()
         } else {
             self.to_f_contiguous()
         }
@@ -270,11 +283,11 @@ fill(tensor, value):
 ```
 to_contiguous(tensor):
     if is_f_contiguous(tensor):
-        return to_owned(tensor)        // O(n) copy, layout unchanged
-    else if is_c_contiguous(tensor):
-        return to_c_contiguous(tensor) // O(n) copy, preserve C-order
+        return to_owned(tensor)        // O(n) copy, layout unchanged (already F-order)
     else:
-        return to_f_contiguous(tensor) // O(n) copy, convert to F-order
+        return to_f_contiguous(tensor) // O(n) copy, always convert to F-order
+        // Note: C-contiguous inputs (e.g. transposed views) are also
+        // converted to F-order, because Xenon only outputs F-order.
 ```
 
 ### 5.4 NaN 处理语义
@@ -316,9 +329,9 @@ to_contiguous(tensor):
 
 - [ ] **T3**: 实现 `to_contiguous` 方法
   - 文件: `src/ops/utility.rs`
-  - 内容: 基于 `is_f_contiguous()`/`is_c_contiguous()` 检查，调用对应的连续性转换方法
-  - 测试: `test_to_contiguous_f_order`, `test_to_contiguous_c_order`, `test_to_contiguous_non_contiguous`
-  - 前置: T2, layout 模块的 `is_f_contiguous`/`is_c_contiguous` 完成
+  - 内容: 基于 `is_f_contiguous()` 检查，非 F-contiguous 输入始终转为 F-order
+  - 测试: `test_to_contiguous_f_order`, `test_to_contiguous_c_input_becomes_f`, `test_to_contiguous_non_contiguous`
+  - 前置: T2, layout 模块的 `is_f_contiguous` 完成
   - 预计: 10 min
 
 - [ ] **T4**: 编写综合测试
@@ -354,7 +367,7 @@ Wave 2: [T3] [T4]
 | `test_fill_non_contiguous` | 非连续布局正确填充所有逻辑元素 | 高 |
 | `test_fill_empty` | 空数组 fill 不 panic | 中 |
 | `test_to_contiguous_f_order` | F-order 连续输入返回 owned 拷贝 | 高 |
-| `test_to_contiguous_c_order` | C-order 连续输入返回 C-order owned | 高 |
+| `test_to_contiguous_c_input_becomes_f` | C-order 连续输入（如转置）转为 F-order owned | 高 |
 | `test_to_contiguous_non_contiguous` | 非连续输入返回 F-order owned | 高 |
 
 ### 7.2 边界测试场景
@@ -373,7 +386,7 @@ Wave 2: [T3] [T4]
 |--------|----------|
 | `clip(min, max)` 结果的每个元素 ∈ [min, max] | 随机张量 + 随机 min/max |
 | `fill(v)` 后 `iter().all(|x| *x == v)` | 随机形状 + 随机值 |
-| `to_contiguous()` 返回的张量 `is_f_contiguous() ∨ is_c_contiguous()` | 随机非连续布局 |
+| `to_contiguous()` 返回的张量 `is_f_contiguous() == true` | 随机非连续布局 |
 
 ---
 
@@ -384,7 +397,7 @@ Wave 2: [T3] [T4]
 | `fill` → `iter` | 依赖 | 通过 `iter_mut()` 遍历元素（参见 `10-iterator.md` §4.1） |
 | `clip` → `iter` | 依赖 | 通过 `iter()` 读取、写入新张量（参见 `10-iterator.md` §4.1） |
 | `to_contiguous` → `layout` | 依赖 | 查询连续性状态（参见 `06-memory-layout.md` §4） |
-| `to_contiguous` → `convert` | 依赖 | 调用 `to_owned()`/`to_f_contiguous()`/`to_c_contiguous()`（参见 `21-type-conversion.md` §4.5） |
+| `to_contiguous` → `convert` | 依赖 | 调用 `to_owned()`/`to_f_contiguous()`（参见 `21-type-conversion.md` §4.5），始终输出 F-order |
 
 ---
 

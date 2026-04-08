@@ -1,7 +1,7 @@
 # 存储系统模块设计
 
 > 文档编号: 05 | 模块: `src/storage/` | 阶段: Phase 2
-> 前置文档: `02-dimension.md`, `03-element-types.md`, `04-complex-type.md`
+> 前置文档: `02-dimension.md`, `03-element-types.md`, `04-complex-type.md`, `06-memory-layout.md`
 > 需求参考: 需求说明书 §6
 
 ---
@@ -444,17 +444,61 @@ fn modify_arc(arc: &mut ArcRepr<f64>) {
 ```rust
 /// Owned storage.
 ///
-/// `Owned<A>` has full ownership of the data, stored on the heap,
-/// with 64-byte aligned allocation for SIMD optimizations.
+/// `Owned<A>` has full ownership of the data, stored on the heap.
+/// Internally wraps `Vec<A>`.
+///
+/// # Alignment Strategy
+///
+/// Xenon construction paths (`zeros`, `ones`, `from_fn`, etc.) use
+/// `AlignedAlloc` to allocate 64-byte aligned memory, then transfer
+/// ownership to `Vec<A>` via `Vec::from_raw_parts`. This guarantees
+/// 64-byte alignment for SIMD optimizations on tensors created by Xenon.
+///
+/// `from_vec` accepts a user-provided `Vec<A>` WITHOUT alignment
+/// guarantees. The user's data pointer is used as-is.
+///
+/// Use `is_aligned()` at runtime to query whether the data satisfies
+/// the 64-byte alignment requirement. SIMD paths check this flag
+/// and fall back to scalar code for unaligned data.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Owned<A> {
-    /// Internal data storage (64-byte aligned heap allocation).
+    /// Internal data storage.
+    ///
+    /// When constructed by Xenon (zeros/ones/from_fn), the underlying
+    /// allocation is 64-byte aligned via `AlignedAlloc` + `Vec::from_raw_parts`.
+    /// When constructed via `from_vec`, alignment depends on the user's Vec.
     data: Vec<A>,
 }
 
 impl<A> Owned<A> {
     /// Default alignment: 64 bytes (AVX-512 cache line).
     pub const DEFAULT_ALIGNMENT: usize = 64;
+
+    /// Creates Owned from a user-provided Vec.
+    ///
+    /// No alignment guarantee — the Vec's existing allocation is used as-is.
+    /// `is_aligned()` will return `false` if the pointer is not 64-byte aligned.
+    pub fn from_vec(data: Vec<A>) -> Self {
+        Self { data }
+    }
+
+    /// Creates Owned with 64-byte aligned allocation.
+    ///
+    /// Used internally by Xenon construction methods (zeros, ones, from_fn).
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must have been allocated by `AlignedAlloc::alloc` with the
+    /// specified capacity and alignment.
+    pub(crate) unsafe fn from_aligned_raw_parts(
+        ptr: *mut A,
+        len: usize,
+        capacity: usize,
+    ) -> Self {
+        // SAFETY: caller guarantees ptr was allocated by AlignedAlloc
+        // with the given len and capacity.
+        Self { data: Vec::from_raw_parts(ptr, len, capacity) }
+    }
 }
 ```
 
@@ -775,7 +819,8 @@ Wave 4:              [T12] → [T13]
 | `test_owned_new_empty` | `Owned::new()` 创建空存储 | 高 |
 | `test_owned_zeros` | `Owned::zeros(100)` 全零 | 高 |
 | `test_owned_from_vec` | 从 Vec 构造并验证内容 | 高 |
-| `test_owned_alignment` | 验证 64 字节对齐 | 高 |
+| `test_owned_alignment_from_zeros` | Xenon 构造路径（zeros）的 64 字节对齐验证 | 高 |
+| `test_owned_alignment_from_vec` | 用户 from_vec 路径不保证对齐，is_aligned() 正确反映 | 高 |
 | `test_owned_clone_deep` | 克隆后修改不影响原数据 | 高 |
 | `test_view_from_slice` | 从切片创建视图 | 高 |
 | `test_view_clone_o1` | 克隆仅复制元数据 | 中 |

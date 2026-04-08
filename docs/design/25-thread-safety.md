@@ -741,13 +741,13 @@ rayon 的 `ParallelIterator` 要求 `Item: Send`（参见 `09-parallel-backend.m
 
 ## 10. no_std 兼容性
 
-线程安全的 Send/Sync 标记 trait 位于 `core::marker`，可在 `no_std` 下使用。但 `ArcRepr` 和并行功能依赖 `std`。
+线程安全的 Send/Sync 标记 trait 位于 `core::marker`，可在 `no_std` 下使用。`ArcRepr` 使用 `alloc::sync::Arc`，在 `no_std + alloc` 下可用。并行功能依赖 `std`。
 
 ```rust
 // Send/Sync traits are in core::marker — no_std available
 use core::marker::{Send, Sync};
 
-// ArcRepr uses std::sync::Arc — requires std
+// ArcRepr uses alloc::sync::Arc — available in no_std + alloc
 // Parallel/rayon uses std::thread — requires std
 ```
 
@@ -756,7 +756,7 @@ use core::marker::{Send, Sync};
 | `Owned<A>` Send/Sync | ✅ | 仅 `unsafe impl`，无运行时依赖 |
 | `ViewRepr<&'a A>` Send/Sync | ✅ | 仅 `unsafe impl`，无运行时依赖 |
 | `ViewMutRepr<&'a mut A>` Send | ✅ | 仅 `unsafe impl`，无运行时依赖 |
-| `ArcRepr<A>` Send/Sync | ❌ | 依赖 `std::sync::Arc`，需 `std` |
+| `ArcRepr<A>` Send/Sync | ✅ | 使用 `alloc::sync::Arc`，`no_std + alloc` 可用 |
 | 并行迭代（rayon） | ❌ | rayon 依赖 `std` 线程原语，参见 `09-parallel-backend.md §11` |
 | 嵌套并行防护（`thread_local!`） | ❌ | `std::cell::Cell` + `thread_local!` 需要 `std` |
 | SIMD Arch 缓存线程安全初始化 | ❌ | 依赖 `std::sync::OnceLock` 或等效机制 |
@@ -767,8 +767,8 @@ use core::marker::{Send, Sync};
 // Owned/ViewRepr/ViewMutRepr: unsafe impl Send/Sync
 // Uses only core::marker::{Send, Sync} — pure no_std
 
-// ArcRepr: gated behind "std" feature
-#[cfg(feature = "std")]
+// ArcRepr: available in no_std + alloc (uses alloc::sync::Arc)
+// No feature gate needed — alloc::sync::Arc is always available when alloc is.
 unsafe impl<A: Send + Sync> Send for ArcRepr<A> {}
 
 // Parallel/rayon: gated behind "parallel" feature (implies "std")
