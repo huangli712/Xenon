@@ -121,7 +121,7 @@ where
     /// ```
     pub fn zeros<Sh>(shape: Sh) -> Self
     where
-        A: Zero,
+        A: Element,  // A::zero() is provided by the Element trait (see 03-element-types.md §4.1)
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();
@@ -140,10 +140,10 @@ where
     /// ```
     pub fn ones<Sh>(shape: Sh) -> Self
     where
-        A: Zero + One,
+        A: Element,  // A::one() is provided by the Element trait (see 03-element-types.md §4.1)
         Sh: IntoDimension<Dim = D>,
     {
-        Self::full(shape, A::one())
+        Self::fill(shape, A::one())
     }
 
     /// Create a tensor filled with the specified value.
@@ -231,6 +231,8 @@ where
             });
         }
         let strides = dim.strides_for_f_order();
+        // from_vec_aligned: defined in 05-storage.md §5.1 and 21-type-conversion.md §5.1;
+        // copies data into a 64-byte aligned allocation for SIMD compatibility.
         let storage = Owned::from_vec_aligned(data);
         Ok(TensorBase { storage, shape: dim, strides, offset: 0 })
     }
@@ -642,6 +644,7 @@ use alloc::vec::Vec;
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 

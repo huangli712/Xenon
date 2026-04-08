@@ -276,8 +276,14 @@ where
     /// Element-wise tensor-scalar addition.
     pub fn add_scalar(&self, scalar: A) -> Tensor<A, D>;
 
+    /// Element-wise tensor-scalar subtraction.
+    pub fn sub_scalar(&self, scalar: A) -> Tensor<A, D>;
+
     /// Element-wise tensor-scalar multiplication.
     pub fn mul_scalar(&self, scalar: A) -> Tensor<A, D>;
+
+    /// Element-wise tensor-scalar division.
+    pub fn div_scalar(&self, scalar: A) -> Tensor<A, D>;
 }
 ```
 
@@ -587,6 +593,7 @@ extern crate alloc;
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 

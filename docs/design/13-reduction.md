@@ -210,14 +210,18 @@ let first = tensor.iter().next().unwrap();  // panics on empty array
 
 ### 5.1 整数溢出处理
 
+整数 `sum` 使用 `CheckedAdd` trait（定义于 `03-element-types.md §4.9`）进行安全累加：
+
 ```rust
-// Integer sum implementation
-fn sum_int<I: Numeric>(iter: impl Iterator<Item = &I>) -> I {
+// Integer sum implementation — uses CheckedAdd trait (see 03-element-types.md §4.9)
+fn sum_int<I: Numeric + CheckedAdd>(iter: impl Iterator<Item = &I>) -> I {
     iter.fold(I::zero(), |acc, &x| {
-        acc.checked_add(x).expect("integer overflow in sum")
+        acc.checked_add(x).expect("integer overflow in reduction (sum)")
     })
 }
 ```
+
+`sum` 的泛型约束中，整数类型（`i32`/`i64`）满足 `Numeric + CheckedAdd`，浮点和复数类型则走 §5.2 的 IEEE 754 路径（不使用 `CheckedAdd`）。
 
 ### 5.2 浮点 NaN 传播
 
@@ -235,6 +239,24 @@ fn sum_float<F: RealScalar>(iter: impl Iterator<Item = &F>) -> F {
 // Empty array: fold initial value is zero(), empty iteration returns zero() directly
 // sum of [] = 0 (additive identity)
 ```
+
+### 5.4 sum_axis_keepdims 实现步骤
+
+`sum_axis_keepdims` 与 `sum_axis` 的区别仅在于输出形状构造：
+
+```
+sum_axis_keepdims(tensor, axis):
+    1. 计算 result_shape = tensor.shape().to_owned()
+    2. result_shape[axis] = 1       // 将被归约的轴长度设为 1
+    3. 分配 result = Tensor::zeros(result_shape)
+    4. 对每个沿 axis 的切片 s in tensor.axis_iter(axis):
+           result.slice_mut(对应外层坐标) += s.sum()
+    5. 返回 result
+
+输出类型：Tensor<A, D>（维度数与输入相同，被归约轴长度为 1）
+```
+
+对静态维度（如 `Ix2`），通过 `Dimension::set_axis(axis, 1)` 将对应轴设为 1，得到新的 shape 实例，再构造输出张量。这要求 `D: RemoveAxis`（用于 axis 边界检查），但输出仍为 `Tensor<A, D>` 而非降维类型。
 
 ---
 
@@ -378,10 +400,11 @@ Wave 4:           [T7]
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | 并行归约结果须与单线程一致 |
-| 理由 | 用户不应因并行化而得到不同结果；浮点加法不满足结合律，分块顺序不同可能产生不同结果；保证一致性消除不确定性 |
-| 替代方案 | 允许并行结果与串行有微小差异 |
-| 拒绝原因 | 科学计算要求确定性结果；测试困难 |
+| 决策 | **整数归约**并行结果与串行完全一致（checked 加法保证）；**浮点归约**并行结果与串行允许 ≤ 2 ULP 差异 |
+| 理由 | 浮点加法不满足结合律（IEEE 754），分块并行时累加顺序不同必然引入舍入差异，无法在不使用 Kahan 补偿的情况下保证浮点精确一致性。整数因不存在舍入，仍可保证精确一致。 |
+| 实现约定 | 浮点并行 sum 的测试使用相对容差 (`rtol < 1e-14` for f64, `rtol < 1e-6` for f32) 而非精确相等比较 |
+| 替代方案 | 要求所有类型精确一致 — 放弃，浮点在不使用 Kahan 的情况下无法实现 |
+| 参见 | `09-parallel-backend.md §9 ADR-2`（协调一致） |
 
 ### 决策 3：Kahan 补偿求和
 
@@ -478,6 +501,7 @@ use alloc::vec::Vec;
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.1.1 | 2026-04-08 |
 
 ---
 

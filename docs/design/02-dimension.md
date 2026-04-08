@@ -237,26 +237,35 @@ pub const MAX_DIMENSION: usize = 6;
 pub struct Ix0;
 
 /// One-dimensional dimension.
+///
+/// `#[repr(C)]` guarantees that the single `usize` field is laid out at offset 0,
+/// enabling `slice()` to safely reinterpret `&Ix1` as `&[usize; 1]` via pointer cast.
+#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix1(pub usize);
 
 /// Two-dimensional dimension.
+#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix2(pub usize, pub usize);
 
 /// Three-dimensional dimension.
+#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix3(pub usize, pub usize, pub usize);
 
 /// Four-dimensional dimension.
+#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix4(pub usize, pub usize, pub usize, pub usize);
 
 /// Five-dimensional dimension.
+#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix5(pub usize, pub usize, pub usize, pub usize, pub usize);
 
 /// Six-dimensional dimension.
+#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix6(pub usize, pub usize, pub usize, pub usize, pub usize, pub usize);
 ```
@@ -282,7 +291,9 @@ impl Dimension for Ix3 {
 
     #[inline]
     fn slice(&self) -> &[usize] {
-        // SAFETY: Ix3 has 3 consecutive usize fields
+        // SAFETY: Ix3 is #[repr(C)], so its 3 usize fields are laid out consecutively
+        // at offsets 0, size_of::<usize>(), 2*size_of::<usize>() with no padding.
+        // Reinterpreting &Ix3 as &[usize; 3] via pointer cast is therefore safe.
         unsafe {
             core::slice::from_raw_parts(self as *const Self as *const usize, 3)
         }
@@ -290,7 +301,7 @@ impl Dimension for Ix3 {
 
     #[inline]
     fn slice_mut(&mut self) -> &mut [usize] {
-        // SAFETY: Ix3 has 3 consecutive usize fields
+        // SAFETY: Same as slice() — #[repr(C)] guarantees consecutive layout.
         unsafe {
             core::slice::from_raw_parts_mut(self as *mut Self as *mut usize, 3)
         }
@@ -609,6 +620,59 @@ impl BroadcastDim<Ix4> for Ix4 { type Output = Ix4; }
 impl BroadcastDim<Ix5> for Ix5 { type Output = Ix5; }
 impl BroadcastDim<Ix6> for Ix6 { type Output = Ix6; }
 
+// Cross-static-dimension broadcast: higher-dimensional type wins.
+// NumPy rule: prepend 1s to the shorter shape, then broadcast element-wise.
+// The output ndim = max(ndim_a, ndim_b), so the larger static type is Output.
+// Runtime compatibility is verified by broadcast_shape() at the call site.
+impl BroadcastDim<Ix0> for Ix1 { type Output = Ix1; }
+impl BroadcastDim<Ix0> for Ix2 { type Output = Ix2; }
+impl BroadcastDim<Ix0> for Ix3 { type Output = Ix3; }
+impl BroadcastDim<Ix0> for Ix4 { type Output = Ix4; }
+impl BroadcastDim<Ix0> for Ix5 { type Output = Ix5; }
+impl BroadcastDim<Ix0> for Ix6 { type Output = Ix6; }
+
+impl BroadcastDim<Ix1> for Ix0 { type Output = Ix1; }
+impl BroadcastDim<Ix1> for Ix2 { type Output = Ix2; }
+impl BroadcastDim<Ix1> for Ix3 { type Output = Ix3; }
+impl BroadcastDim<Ix1> for Ix4 { type Output = Ix4; }
+impl BroadcastDim<Ix1> for Ix5 { type Output = Ix5; }
+impl BroadcastDim<Ix1> for Ix6 { type Output = Ix6; }
+
+impl BroadcastDim<Ix2> for Ix0 { type Output = Ix2; }
+impl BroadcastDim<Ix2> for Ix1 { type Output = Ix2; }
+impl BroadcastDim<Ix2> for Ix3 { type Output = Ix3; }
+impl BroadcastDim<Ix2> for Ix4 { type Output = Ix4; }
+impl BroadcastDim<Ix2> for Ix5 { type Output = Ix5; }
+impl BroadcastDim<Ix2> for Ix6 { type Output = Ix6; }
+
+impl BroadcastDim<Ix3> for Ix0 { type Output = Ix3; }
+impl BroadcastDim<Ix3> for Ix1 { type Output = Ix3; }
+impl BroadcastDim<Ix3> for Ix2 { type Output = Ix3; }
+impl BroadcastDim<Ix3> for Ix4 { type Output = Ix4; }
+impl BroadcastDim<Ix3> for Ix5 { type Output = Ix5; }
+impl BroadcastDim<Ix3> for Ix6 { type Output = Ix6; }
+
+impl BroadcastDim<Ix4> for Ix0 { type Output = Ix4; }
+impl BroadcastDim<Ix4> for Ix1 { type Output = Ix4; }
+impl BroadcastDim<Ix4> for Ix2 { type Output = Ix4; }
+impl BroadcastDim<Ix4> for Ix3 { type Output = Ix4; }
+impl BroadcastDim<Ix4> for Ix5 { type Output = Ix5; }
+impl BroadcastDim<Ix4> for Ix6 { type Output = Ix6; }
+
+impl BroadcastDim<Ix5> for Ix0 { type Output = Ix5; }
+impl BroadcastDim<Ix5> for Ix1 { type Output = Ix5; }
+impl BroadcastDim<Ix5> for Ix2 { type Output = Ix5; }
+impl BroadcastDim<Ix5> for Ix3 { type Output = Ix5; }
+impl BroadcastDim<Ix5> for Ix4 { type Output = Ix5; }
+impl BroadcastDim<Ix5> for Ix6 { type Output = Ix6; }
+
+impl BroadcastDim<Ix6> for Ix0 { type Output = Ix6; }
+impl BroadcastDim<Ix6> for Ix1 { type Output = Ix6; }
+impl BroadcastDim<Ix6> for Ix2 { type Output = Ix6; }
+impl BroadcastDim<Ix6> for Ix3 { type Output = Ix6; }
+impl BroadcastDim<Ix6> for Ix4 { type Output = Ix6; }
+impl BroadcastDim<Ix6> for Ix5 { type Output = Ix6; }
+
 // Any static dimension + IxDyn → IxDyn
 impl BroadcastDim<IxDyn> for Ix0 { type Output = IxDyn; }
 impl BroadcastDim<IxDyn> for Ix1 { type Output = IxDyn; }
@@ -622,8 +686,10 @@ impl BroadcastDim<IxDyn> for Ix6 { type Output = IxDyn; }
 impl<D: Dimension> BroadcastDim<D> for IxDyn { type Output = IxDyn; }
 ```
 
-> **设计决策：** 当两个操作数维度不同（如 Ix2 + Ix1）时，输出类型为各自的静态类型（Ix2），
-> 由广播规则在运行时验证兼容性。跨静态维度广播返回 `IxDyn` 以保证类型安全。
+> **设计决策：** 跨静态维度广播（如 `Ix2 + Ix1`）时，输出类型为维度数较大的静态类型（`Ix2`）。
+> 这遵循 NumPy 广播规则：低维数组在左侧补 1，结果维度数 = max(ndim_a, ndim_b)。
+> 运行时兼容性由 `broadcast_shape()` 在调用处验证。  
+> 与 `IxDyn` 混合时始终返回 `IxDyn` 以保证类型安全。
 
 ### 4.10 Reverse trait
 
@@ -986,6 +1052,7 @@ Wave 5:  [T10] → [T11] → [T12]
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 

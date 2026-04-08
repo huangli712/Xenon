@@ -97,6 +97,86 @@ src/index/
 
 ## 4. 公共 API 设计
 
+### 4.0 NdIndex trait — 多维索引类型约束
+
+`NdIndex<D>` 是多维索引类型的 sealed trait，用于 `std::ops::Index` 实现中约束合法的索引参数类型。
+
+```rust
+use crate::private::Sealed;
+
+/// Trait for types that can be used as multi-dimensional indices into a tensor.
+///
+/// Sealed: cannot be implemented outside this crate.
+///
+/// # Implementations
+///
+/// | Type | Usage |
+/// |------|-------|
+/// | `[usize; N]` | Static N-dimensional index (e.g. `tensor[[0, 1]]`) |
+/// | `&[usize]`   | Dynamic slice index (runtime length, checked at runtime) |
+///
+/// Note: The constraint `D: Dimension` on the implementation ensures that the
+/// number of index components matches the tensor's dimensionality at runtime.
+pub trait NdIndex<D: Dimension>: Sealed {
+    /// Converts the index to a linear memory offset, given the tensor's strides.
+    ///
+    /// Returns `None` if any index component is out of bounds for its dimension.
+    fn index_checked(&self, dim: &D, strides: &D) -> Option<usize>;
+
+    /// Converts the index to a linear memory offset without bounds checking.
+    ///
+    /// # Safety
+    /// The caller must ensure every index component `i` satisfies `i < shape[k]`.
+    unsafe fn index_unchecked(&self, strides: &D) -> usize;
+}
+
+// Static array index (e.g. tensor[[0, 1, 2]])
+impl<D: Dimension> Sealed for [usize; 1] {}
+impl<D: Dimension> Sealed for [usize; 2] {}
+impl<D: Dimension> Sealed for [usize; 3] {}
+impl<D: Dimension> Sealed for [usize; 4] {}
+impl<D: Dimension> Sealed for [usize; 5] {}
+impl<D: Dimension> Sealed for [usize; 6] {}
+
+impl<D: Dimension, const N: usize> NdIndex<D> for [usize; N] {
+    fn index_checked(&self, dim: &D, strides: &D) -> Option<usize> {
+        if self.len() != dim.ndim() { return None; }
+        let shape = dim.slice();
+        for (i, &idx) in self.iter().enumerate() {
+            if idx >= shape[i] { return None; }
+        }
+        // SAFETY: bounds checked above
+        Some(unsafe { self.index_unchecked(strides) })
+    }
+
+    unsafe fn index_unchecked(&self, strides: &D) -> usize {
+        let s = strides.strides_isize();
+        self.iter().zip(s.iter()).map(|(&idx, &stride)| idx * stride as usize).sum()
+    }
+}
+
+// Dynamic slice index (e.g. tensor[&[0, 1, 2][..]])
+impl Sealed for [usize] {}
+impl<D: Dimension> NdIndex<D> for [usize] {
+    fn index_checked(&self, dim: &D, strides: &D) -> Option<usize> {
+        if self.len() != dim.ndim() { return None; }
+        let shape = dim.slice();
+        for (i, &idx) in self.iter().enumerate() {
+            if idx >= shape[i] { return None; }
+        }
+        Some(unsafe { self.index_unchecked(strides) })
+    }
+
+    unsafe fn index_unchecked(&self, strides: &D) -> usize {
+        let s = strides.strides_isize();
+        self.iter().zip(s.iter()).map(|(&idx, &stride)| idx * stride as usize).sum()
+    }
+}
+```
+
+> **设计决策：** `NdIndex` 使用 `Sealed` trait 防止外部实现，同时通过编译期常量泛型 `[usize; N]`
+> 支持静态数组索引语法 `tensor[[0, 1]]`（编译期长度已知），以及 `&[usize]` 支持运行时动态索引。
+
 ### 4.1 多维整数索引
 
 ```rust
@@ -116,9 +196,9 @@ where
     ///
     /// # Panics
     /// Panics if the index is out of bounds.
-    fn index<I: NdIndex>(&self, index: I) -> &A
+    fn index<I>(&self, index: I) -> &A
     where
-        I: NdIndex;
+        I: NdIndex<D>;
 
     /// Gets a reference to the element, returns None if out of bounds.
     ///
@@ -645,6 +725,7 @@ extern crate alloc;
 | 1.0.3 | 2026-04-07 |
 | 1.0.4 | 2026-04-08 |
 | 1.0.5 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 

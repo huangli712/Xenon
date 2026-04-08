@@ -94,7 +94,7 @@ src/convert/
 | `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.memory_order()`（参见 `07-tensor.md` §4） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §4） |
 | `storage` | `Storage<Elem=A>`, `StorageMut`, `Owned<A>`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`（参见 `05-storage.md` §4） |
-| `element` | `Element`, `CastTo<B>`（参见 `03-element-types.md` §3） |
+| `element` | `Element`, `CastTo<B>`（参见 `03-element-types.md` §4.8） |
 | `layout` | `is_f_contiguous()`（参见 `06-memory-layout.md` §4） |
 | `error` | `XenonError`, `Result<T>`（参见 `26-error-handling.md` §4） |
 
@@ -215,10 +215,15 @@ where
     /// let owned: Tensor<f64, Ix1> = view.to_owned();
     /// ```
     pub fn to_owned(&self) -> Tensor<A, D> {
-        // Always produce F-order (Xenon only supports F-order, see requirement §7)
-        let mut result = Tensor::zeros(self.shape().clone());
-        self.copy_to(&mut result);
-        result
+        // Always produce F-order (Xenon only supports F-order, see requirement §7).
+        // Iterate in F-order and collect into a new aligned allocation.
+        let shape = self.shape();
+        let mut data: Vec<A> = Vec::with_capacity(self.len());
+        for &elem in self.iter() {
+            data.push(elem);
+        }
+        // from_vec_aligned: copies into a 64-byte aligned allocation (see 05-storage.md §5.1)
+        Tensor::from_shape_vec_aligned(self.raw_dim(), data)
     }
 }
 
@@ -234,6 +239,67 @@ where
     /// - `TensorView`/`TensorViewMut`: copies data, O(n)
     /// - `ArcTensor`: returned directly if ref count is 1, otherwise copied
     pub fn into_owned(self) -> Tensor<A, D>;
+}
+```
+
+### 4.5b from_vec_aligned — 对齐构造辅助
+
+`from_vec_aligned` 是 `Owned<A>` 的内部辅助方法，将 `Vec<A>` 的数据复制到 64 字节对齐的新分配中（参见 `05-storage.md §5.1`）。
+
+```rust
+// Defined in src/storage/owned.rs (see 05-storage.md §5.1)
+impl<A> Owned<A> {
+    /// Creates Owned by copying data into a 64-byte aligned allocation.
+    ///
+    /// The user's original Vec allocation is discarded; a fresh aligned allocation
+    /// is made and data is copied over.
+    pub fn from_vec_aligned(data: Vec<A>) -> Self where A: Clone {
+        let len = data.len();
+        // Allocate aligned memory, copy elements, return
+        // ... (implementation detail: uses AlignedAlloc + Vec::from_raw_parts)
+    }
+}
+```
+
+`from_shape_vec_aligned` 是 `Tensor` 上的对应便捷方法（无需验证长度，调用方已保证）：
+
+```rust
+impl<A, D> Tensor<A, D> where A: Element, D: Dimension {
+    /// Constructs a Tensor from pre-validated data with aligned allocation.
+    /// Called internally after size validation is complete.
+    pub(crate) fn from_shape_vec_aligned(shape: D, data: Vec<A>) -> Self {
+        let strides = shape.strides_for_f_order();
+        let storage = Owned::from_vec_aligned(data);
+        TensorBase { storage, shape, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) }
+    }
+}
+```
+
+### 4.5c to_f_contiguous — 非连续数据重排
+
+`to_f_contiguous()` 将任意布局的张量重排为 F-order 连续拷贝，供 `to_contiguous()` 在非连续情况下调用（参见 `20-utility-ops.md §4.3`）：
+
+```rust
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Element + Clone,
+{
+    /// Copies data into a new F-contiguous owned tensor.
+    ///
+    /// Iterates elements in F-order and re-packs them into a fresh aligned allocation.
+    /// Always returns an F-contiguous `Tensor<A, D>`.
+    ///
+    /// This method is called by `to_contiguous()` when the source is non-contiguous.
+    pub fn to_f_contiguous(&self) -> Tensor<A, D> {
+        let mut data = Vec::with_capacity(self.len());
+        // iter() traverses in F-order (see 10-iterator.md §5.1 fast/slow paths)
+        for &elem in self.iter() {
+            data.push(elem);
+        }
+        Tensor::from_shape_vec_aligned(self.raw_dim(), data)
+    }
 }
 ```
 
@@ -522,6 +588,7 @@ Wave 3: [T6] [T7]  (并行)
 | 1.0.2 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-08 |
+| 1.2.0 | 2026-04-08 |
 
 ---
 

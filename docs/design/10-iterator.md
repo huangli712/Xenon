@@ -56,7 +56,8 @@ src/iter/
 ├── axis.rs        # AxisIter / AxisIterMut 沿轴迭代
 ├── windows.rs     # Windows / WindowsMut 滑动窗口迭代
 ├── indexed.rs     # IndexedIter / IndexedIterMut 带索引遍历
-└── zip.rs         # Zip 多张量同步迭代
+├── zip.rs         # Zip 多张量同步迭代
+└── lanes.rs       # LaneIter / LaneIterMut 沿轴方向的 1D 切片序列迭代
 ```
 
 单文件划分理由：各迭代器类型之间独立，拆分文件降低单文件复杂度，便于并行开发。
@@ -226,7 +227,73 @@ impl<Parts, D: Dimension> Zip<Parts, D> {
 }
 ```
 
-### 4.6 TensorBase 上的迭代器入口方法
+### 4.6 LaneIter 沿轴方向的一维切片序列迭代器
+
+`LaneIter` 产出沿指定轴方向的所有 **1D 视图**（称为"lane"），每个 lane 是穿越整个轴长度的切片。  
+与 `AxisIter` 的区别：`AxisIter` 产出与轴**正交**的子张量（降维），`LaneIter` 产出沿轴**方向**的 1D 切片（不降维，但视图始终是 1D）。
+
+例如对 shape `[rows, cols]` 的矩阵：
+- `axis_iter(Axis(0))`：产出每一**行**视图，类型 `TensorView<'a, A, Ix1>`，共 `rows` 个
+- `lanes(Axis(0))`：产出每一**列**（沿 axis 0 方向），类型 `TensorView1<'a, A>`，共 `cols` 个
+- `lanes(Axis(1))`：产出每一**行**（沿 axis 1 方向），类型 `TensorView1<'a, A>`，共 `rows` 个
+
+```rust
+/// Iterator over 1D lanes along a given axis.
+///
+/// Each lane is a 1D view (`TensorView1`) spanning the full length of the specified axis.
+/// The iterator yields one lane for each index combination in all _other_ axes.
+///
+/// # Relationship to AxisIter
+///
+/// - `axis_iter(Axis(k))`: yields sub-tensors orthogonal to axis k (D → D::Smaller).
+/// - `lanes(Axis(k))`:     yields 1D slices *along* axis k (always Ix1 output).
+///
+/// # Zero-copy
+///
+/// Each lane is a view into the original data with no copying.
+pub struct LaneIter<'a, A, D: Dimension> {
+    // Internal fields: multi-dim index state for the "outer" axes,
+    // base view, target axis.
+}
+
+/// Mutable variant.
+pub struct LaneIterMut<'a, A, D: Dimension> {}
+
+impl<'a, A, D: Dimension> Iterator for LaneIter<'a, A, D> {
+    /// A 1D immutable view along the target axis.
+    type Item = TensorView1<'a, A>;
+
+    fn next(&mut self) -> Option<Self::Item>;
+    fn size_hint(&self) -> (usize, Option<usize>);
+}
+
+impl<'a, A, D: Dimension> ExactSizeIterator for LaneIter<'a, A, D> {}
+
+impl<'a, A, D: Dimension> Iterator for LaneIterMut<'a, A, D> {
+    /// A 1D mutable view along the target axis.
+    type Item = TensorViewMut1<'a, A>;
+
+    fn next(&mut self) -> Option<Self::Item>;
+    fn size_hint(&self) -> (usize, Option<usize>);
+}
+
+impl<'a, A, D: Dimension> ExactSizeIterator for LaneIterMut<'a, A, D> {}
+```
+
+#### LaneIter 产出数量
+
+`LaneIter` 产出的 lane 数 = `tensor.len() / tensor.shape()[axis]`，即除目标轴以外所有轴的元素总数。
+
+| shape | axis | lane 数 | 每 lane 长度 |
+|-------|------|---------|-------------|
+| `[3, 4]` | `Axis(0)` | 4（每列） | 3 |
+| `[3, 4]` | `Axis(1)` | 3（每行） | 4 |
+| `[2, 3, 4]` | `Axis(1)` | 8（= 2×4） | 3 |
+
+> **设计决策：** `LaneIter::Item` 固定为 `TensorView1`（1D 视图），而非泛型降维视图。
+> 这样无需 `RemoveAxis` 约束，且 API 语义（"给我沿某轴的所有 1D 切片"）更清晰。
+
+### 4.7 TensorBase 上的迭代器入口方法
 
 ```rust
 impl<S, D, A> TensorBase<S, D>
@@ -240,13 +307,20 @@ where
     /// Indexed iterator (immutable).
     pub fn indexed_iter(&self) -> IndexedIter<'_, A, D>;
 
-    /// Iterate along an axis.
+    /// Iterate along an axis (yields sub-tensors orthogonal to the axis).
     pub fn axis_iter(&self, axis: Axis) -> AxisIter<'_, A, D::Smaller>
     where
         D: RemoveAxis;
 
     /// Sliding window iterator.
-    pub fn windows(&self, size: impl IntoDimension<D>) -> Option<Windows<'_, A, D>>;
+    pub fn windows(&self, size: impl IntoDimension<Dim = D>) -> Option<Windows<'_, A, D>>;
+
+    /// Iterate 1D lanes along an axis (yields 1D views along the axis direction).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `axis.index() >= self.ndim()`.
+    pub fn lanes(&self, axis: Axis) -> LaneIter<'_, A, D>;
 }
 
 impl<S, D, A> TensorBase<S, D>
@@ -264,6 +338,13 @@ where
     pub fn axis_iter_mut(&mut self, axis: Axis) -> AxisIterMut<'_, A, D::Smaller>
     where
         D: RemoveAxis;
+
+    /// Mutable 1D lane iterator along an axis.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `axis.index() >= self.ndim()`.
+    pub fn lanes_mut(&mut self, axis: Axis) -> LaneIterMut<'_, A, D>;
 }
 ```
 
@@ -394,13 +475,20 @@ increment_index_f(shape, index):
   - 前置: T3, T4, broadcast 模块
   - 预计: 15 min
 
+- [ ] **T8**: 实现 `LaneIter` / `LaneIterMut`
+  - 文件: `src/iter/lanes.rs`
+  - 内容: 沿轴方向的 1D 切片序列迭代；内部维护"外部轴"的多维索引状态机；每次 `next()` 计算偏移量产出 `TensorView1` 视图
+  - 测试: `test_lanes_count`, `test_lanes_shape`, `test_lanes_axis0_axis1`, `test_lanes_empty`, `test_lanes_ix1`
+  - 前置: T3（步长状态机复用）
+  - 预计: 15 min
+
 ### Wave 4: TensorBase 入口集成
 
-- [ ] **T8**: 在 TensorBase 上添加迭代器入口方法
+- [ ] **T9**: 在 TensorBase 上添加迭代器入口方法
   - 文件: `src/tensor/`（或 `src/iter/mod.rs` 通过 trait extension）
-  - 内容: `iter()`, `iter_mut()`, `axis_iter()`, `windows()`, `indexed_iter()` 等
+  - 内容: `iter()`, `iter_mut()`, `axis_iter()`, `windows()`, `indexed_iter()`, `lanes()`, `lanes_mut()` 等
   - 测试: `test_tensor_iter_integration`
-  - 前置: T3, T4, T5, T6, T7
+  - 前置: T3, T4, T5, T6, T7, T8
   - 预计: 10 min
 
 ### 并行执行分组图
@@ -410,9 +498,9 @@ Wave 1: [T1] [T2]
            │     │
 Wave 2: [T3] [T4] [T5]
            │     │     │
-Wave 3: [T6] ──────── [T7]
-                     │
-Wave 4:          [T8]
+Wave 3: [T6] ──── [T7] [T8]
+                        │
+Wave 4:             [T9]
 ```
 
 ---
@@ -440,6 +528,15 @@ Wave 4:          [T8]
 | `test_zip_broadcast` | Zip 广播形状兼容 | 高 |
 | `test_zip_broadcast_readonly` | 广播结果不可变迭代 | 中 |
 | `test_padded_iter` | 填充数组仅遍历逻辑元素 | 低 |
+| `test_lanes_count_2d_axis0` | `lanes(Axis(0)).count() == shape[1]`（每列一个 lane） | 高 |
+| `test_lanes_count_2d_axis1` | `lanes(Axis(1)).count() == shape[0]`（每行一个 lane） | 高 |
+| `test_lanes_item_shape` | 每个 lane 的 shape 为 `[shape[axis]]` | 高 |
+| `test_lanes_values_col` | `lanes(Axis(0))` 产出的第一个 lane 等于第 0 列数据 | 高 |
+| `test_lanes_values_row` | `lanes(Axis(1))` 产出的第一个 lane 等于第 0 行数据 | 高 |
+| `test_lanes_3d` | 3D 张量 `lanes(Axis(1))` 产出数量 = shape[0] * shape[2] | 中 |
+| `test_lanes_mut_write` | `lanes_mut()` 写入后数据正确 | 高 |
+| `test_lanes_ix1` | 1D 张量 `lanes(Axis(0))` 产出 1 个长度 n 的 lane | 中 |
+| `test_lanes_empty` | 含 0 轴的张量 `lanes()` 立即结束 | 中 |
 
 ### 7.2 边界测试场景
 
@@ -452,6 +549,7 @@ Wave 4:          [T8]
 | 负步长（反转切片） | `iter()` 正确处理负步长 |
 | 广播视图 `shape=[1, 4]` | `iter()` 遍历逻辑元素，`iter_mut()` 编译拒绝 |
 | 填充数组 | 仅遍历逻辑元素 |
+| `lanes(Axis(0))` 空张量 `shape=[0, 4]` | `count() == 4`（外轴非空），每 lane `len() == 0` |
 
 ### 7.3 属性测试不变量
 
@@ -595,6 +693,7 @@ Wave 4:          [T8]
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
 | 1.0.5 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 

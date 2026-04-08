@@ -348,7 +348,7 @@ where
     /// assert!(!b.is_blas_compatible());
     /// ```
     pub fn is_blas_compatible(&self) -> bool {
-        self.is_contiguous()
+        self.is_f_contiguous()      // method name: see 07-tensor.md §4.3
             && !self.has_zero_stride()
             && !self.has_neg_stride()
     }
@@ -439,8 +439,8 @@ where
         if self.ndim() != 2 {
             return None;
         }
-        let strides = self.strides();
-        Some(strides[1] as isize)
+        let strides = self.strides();  // returns &[isize] (see 07-tensor.md §4.3)
+        Some(strides[1])               // already isize, no cast needed
     }
 }
 ```
@@ -753,6 +753,7 @@ FFI 模块完全兼容 `no_std` 环境。所有操作均为指针运算和结构
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 

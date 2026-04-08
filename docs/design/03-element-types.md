@@ -81,7 +81,7 @@ src/element/
 
 ### 3.3 依赖方向声明
 
-> **依赖方向：单向向下。** `element/` 仅消费 `complex` 的类型定义，不被 `complex` 反向依赖。
+> **依赖方向：单向向上。** `element/` 消费 `complex` 的类型定义（即 `element` 依赖 `complex`），`complex` 不反向依赖 `element`。
 > 被下游消费：`ops`（参见 `11-elementwise-ops.md` §4）、`reduction`（参见 `13-reduction.md` §4）、`tensor`（参见 `07-tensor.md` §4）等模块使用 Element/Numeric/RealScalar/ComplexScalar 作为泛型约束。
 
 ---
@@ -278,6 +278,74 @@ let c = &a + &b.cast::<f64>();  // explicit conversion
 // let c = &a + &b;  // Compile error: no matching impl for f64 + i32
 ```
 
+### 4.8 CastTo\<T\> trait（类型转换）
+
+`CastTo<T>` 定义逐元素类型转换规则，由 `convert/cast.rs` 模块使用（参见 `21-type-conversion.md §4`）。
+
+```rust
+// src/element/mod.rs (or element/cast.rs)
+
+/// Element-wise type conversion trait.
+///
+/// Defines explicit conversion from `Self` to `T`.
+/// Overflow behavior is explicitly defined per implementation (see `21-type-conversion.md §4.3`).
+///
+/// This trait is NOT sealed — it is implemented for all supported type pairs.
+/// External crates cannot add new element types (due to `Sealed`), but they do not
+/// need to implement `CastTo` either, as all supported conversions are provided internally.
+pub trait CastTo<T>: Element {
+    /// Performs the type conversion.
+    fn cast_to(self) -> T;
+}
+
+// Implemented for all supported source → target type pairs.
+// See 21-type-conversion.md §5.1 for full implementation table.
+// Examples:
+//   impl CastTo<f64> for f32  -- lossless upcast
+//   impl CastTo<f32> for f64  -- round-to-nearest-even
+//   impl CastTo<i32> for f64  -- truncate + saturating (NaN→0)
+//   impl CastTo<i32> for i64  -- saturating narrowing
+//   impl CastTo<Complex<f64>> for f64  -- real part, im = 0.0
+// Note: CastTo<f64> for Complex<f64> is intentionally NOT implemented.
+```
+
+### 4.9 CheckedAdd trait（整数溢出检测）
+
+`CheckedAdd` 为整数类型提供 checked 加法，供 `sum` 归约操作在整数溢出时 panic（参见 `13-reduction.md §5.1`）。
+
+```rust
+// src/element/mod.rs
+
+/// Checked addition for types that support it.
+///
+/// Returns `None` on overflow instead of wrapping.
+/// Only implemented for integer types (`i32`, `i64`).
+/// Float types use ordinary `+` (NaN propagation handles the semantics).
+///
+/// Used by integer `sum()` reduction to guarantee overflow is detected
+/// in both debug and release builds (per requirement §14).
+pub trait CheckedAdd: Numeric {
+    /// Returns `Some(self + rhs)` if no overflow, `None` otherwise.
+    fn checked_add(self, rhs: Self) -> Option<Self>;
+}
+
+impl CheckedAdd for i32 {
+    #[inline]
+    fn checked_add(self, rhs: Self) -> Option<Self> {
+        i32::checked_add(self, rhs)
+    }
+}
+
+impl CheckedAdd for i64 {
+    #[inline]
+    fn checked_add(self, rhs: Self) -> Option<Self> {
+        i64::checked_add(self, rhs)
+    }
+}
+// f32, f64, Complex: NOT implemented — overflow is handled by IEEE 754 semantics.
+// bool, usize: NOT implemented — not Numeric.
+```
+
 ---
 
 ## 5. 内部实现设计
@@ -329,6 +397,9 @@ let c = a + b as f64;
 ### 5.5 RealScalar 实现（以 f64 为例）
 
 ```rust
+// RealScalar is only implemented when std is available.
+// In no_std environments, RealScalar math functions (sin/cos/exp/ln/etc.) are NOT available.
+// Callers that need these functions in no_std should gate their code with #[cfg(feature = "std")].
 #[cfg(feature = "std")]
 impl RealScalar for f64 {
     fn abs(self) -> Self { self.abs() }
@@ -345,14 +416,7 @@ impl RealScalar for f64 {
     fn max(self, other: Self) -> Self { self.max(other) }
     // ...
 }
-
-#[cfg(not(feature = "std"))]
-impl RealScalar for f64 {
-    fn abs(self) -> Self { libm::fabs(self) }
-    fn sqrt(self) -> Self { libm::sqrt(self) }
-    fn sin(self) -> Self { libm::sin(self) }
-    // ...
-}
+// Same pattern applies to f32.
 ```
 
 ---
@@ -620,8 +684,8 @@ Wave 3: [T6]      [T9] ← ────┘
 | 组件 | 兼容方案 |
 |------|----------|
 | `Element` / `Numeric` / `ComplexScalar` | 纯 trait，天然 no_std |
-| `RealScalar` 数学函数 | `#[cfg(feature = "std")]` 使用 `std` 数学；`#[cfg(not(feature = "std"))]` 使用 `libm` crate |
-| Feature gate | `Cargo.toml`: `default = ["std"]`，no_std 时需启用 `libm` 依赖 |
+| `RealScalar` 数学函数 | 仅在 `#[cfg(feature = "std")]` 下实现；**no_std 环境中不可用**。需要数学函数的代码须以 `#[cfg(feature = "std")]` 门控，或仅使用 `Element`/`Numeric` trait |
+| Feature gate | `Cargo.toml`: `default = ["std"]`；no_std 环境下 `RealScalar` 数学函数不可用（无 libm 依赖） |
 
 ---
 
@@ -633,6 +697,7 @@ Wave 3: [T6]      [T9] ← ────┘
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 

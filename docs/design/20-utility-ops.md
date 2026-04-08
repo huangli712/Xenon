@@ -396,7 +396,7 @@ Wave 2: [T3] [T4]
 | `fill` → `iter` | 依赖 | 通过 `iter_mut()` 遍历元素（参见 `10-iterator.md` §4.1） |
 | `clip` → `iter` | 依赖 | 通过 `iter()` 读取、写入新张量（参见 `10-iterator.md` §4.1） |
 | `to_contiguous` → `layout` | 依赖 | 查询连续性状态（参见 `06-memory-layout.md` §4） |
-| `to_contiguous` → `convert` | 依赖 | 调用 `to_owned()`/`to_f_contiguous()`（参见 `21-type-conversion.md` §4.5），始终输出 F-order |
+| `to_contiguous` → `convert` | 依赖 | 调用 `to_owned()`/`to_f_contiguous()`（参见 `21-type-conversion.md` §4.5 和 §4.6），始终输出 F-order；`to_f_contiguous()` 在 21 中定义，负责将非连续内存重排为 F-order 连续布局 |
 
 ---
 
@@ -483,6 +483,7 @@ use alloc::vec::Vec;
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 

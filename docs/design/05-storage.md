@@ -399,7 +399,7 @@ pub unsafe trait StorageShared: Storage + Clone {
 }
 ```
 
-### 4.8b StorageIntoOwned Trait
+### 4.9 StorageIntoOwned Trait
 
 消耗式转为 Owned 存储，用于 `into_owned()` 和 `into_shape()`（参见 `21-type-conversion.md §4.5`）。
 
@@ -417,7 +417,7 @@ pub unsafe trait StorageIntoOwned: Storage {
 }
 ```
 
-### 4.8c StorageIntoRaw Trait
+### 4.10 StorageIntoRaw Trait
 
 消耗式解构为裸指针，用于 `into_raw_parts()`（参见 `23-ffi.md §4.4`）。
 
@@ -436,7 +436,7 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
 }
 ```
 
-### 4.9 Trait 实现矩阵
+### 4.11 Trait 实现矩阵
 
 | 存储类型 | RawStorage | Storage | RawStorageMut | StorageMut | StorageOwned | StorageShared | StorageIntoOwned | StorageIntoRaw |
 |----------|:----------:|:-------:|:-------------:|:----------:|:------------:|:-------------:|:----------------:|:--------------:|
@@ -445,7 +445,7 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
 | `ViewMutRepr<&mut A>` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
 | `ArcRepr<A>` | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
 
-### 4.10 Good/Bad 对比
+### 4.12 Good/Bad 对比
 
 ```rust
 // Good - Use Storage trait bound to accept any readable storage
@@ -517,6 +517,36 @@ impl<A> Owned<A> {
     /// `is_aligned()` will return `false` if the pointer is not 64-byte aligned.
     pub fn from_vec(data: Vec<A>) -> Self {
         Self { data }
+    }
+
+    /// Creates Owned by copying data into a fresh 64-byte aligned allocation.
+    ///
+    /// Unlike `from_vec`, this method always allocates new aligned memory and copies
+    /// the data, ensuring `is_aligned()` returns `true`.
+    ///
+    /// Called by Xenon construction paths (`from_shape_vec`, `from_fn`, etc.) to
+    /// guarantee SIMD-compatible alignment for user-provided data.
+    pub fn from_vec_aligned(data: Vec<A>) -> Self
+    where
+        A: Clone,
+    {
+        let len = data.len();
+        if len == 0 {
+            return Self { data: Vec::new() };
+        }
+        // Allocate aligned memory and copy elements
+        // SAFETY: AlignedAlloc returns a valid, aligned allocation of the requested size.
+        let ptr = AlignedAlloc::alloc(
+            len * core::mem::size_of::<A>(),
+            Self::DEFAULT_ALIGNMENT,
+        );
+        let typed_ptr = ptr.as_ptr() as *mut A;
+        for (i, elem) in data.iter().enumerate() {
+            // SAFETY: typed_ptr is valid for `len` elements; i < len.
+            unsafe { typed_ptr.add(i).write(elem.clone()); }
+        }
+        // SAFETY: ptr was allocated by AlignedAlloc with len elements.
+        Self { data: unsafe { Vec::from_raw_parts(typed_ptr, len, len) } }
     }
 
     /// Creates Owned with 64-byte aligned allocation.
@@ -979,6 +1009,7 @@ Storage 提供对齐信息（`is_aligned()`），Layout 模块查询对齐状态
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 

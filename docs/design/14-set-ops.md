@@ -197,6 +197,11 @@ unique(self):
 /// Note: `Ord` is NOT used as a supertrait because `f32`/`f64`
 /// do not implement `Ord`, and `Complex` does not implement `PartialOrd`.
 /// Instead, each type defines its own `total_cmp` method.
+/// Note: Although `UniqueElement` does not explicitly extend `Sealed`,
+/// it does require `Element` as a supertrait, and `Element: Sealed`.
+/// Therefore, only the types already implementing `Element` (i.e., the 8 types
+/// in the closed set) can implement `UniqueElement`. External crates cannot add
+/// new implementations because `Sealed` is not publicly implementable.
 pub trait UniqueElement: Element {
     /// Total ordering comparison for sorting and deduplication.
     ///
@@ -452,6 +457,7 @@ use alloc::vec::Vec;
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 

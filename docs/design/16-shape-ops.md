@@ -284,7 +284,8 @@ where
     pub fn into_shape<E>(self, shape: E) -> Result<Tensor<A, E>, XenonError>
     where
         E: Dimension,
-        S: IntoOwned<A>,
+        S: StorageIntoOwned,  // see 05-storage.md §4.8b
+        A: Clone,
     {
         let new_len: usize = shape.slice().iter().product();
         if new_len != self.len() {
@@ -571,6 +572,7 @@ extern crate alloc;
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.1.1 | 2026-04-08 |
 
 ---
 

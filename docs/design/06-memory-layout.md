@@ -192,6 +192,48 @@ impl LayoutFlags {
 }
 ```
 
+### 4.1b 内存顺序枚举 Order
+
+`Order` 枚举表示内存排列顺序，供形状操作模块（参见 `16-shape-ops.md §4`）在 reshape 时指定目标布局。
+
+```rust
+/// Memory layout order.
+///
+/// Xenon only supports F-order (column-major) as its native layout.
+/// This enum is provided so that reshape and related operations can
+/// reference the target order explicitly in their APIs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Order {
+    /// Fortran-order (column-major): first index varies fastest.
+    ///
+    /// Strides satisfy `strides[i] = product(shape[0..i])`.
+    /// This is the only order natively supported by Xenon.
+    F,
+}
+```
+
+`LayoutFlags` 提供从 `Order` 构造标志的便捷方法：
+
+```rust
+impl LayoutFlags {
+    /// Creates a LayoutFlags with F_CONTIGUOUS set (and no other flags).
+    ///
+    /// Used by reshape/into_shape to stamp the layout flags of newly created tensors.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// let flags = LayoutFlags::from_order(Order::F);
+    /// assert!(flags.is_f_contiguous());
+    /// ```
+    #[inline]
+    pub const fn from_order(order: Order) -> Self {
+        match order {
+            Order::F => Self(Self::F_CONTIGUOUS),
+        }
+    }
+}
+```
+
 ### 4.2 步长类型：isize
 
 步长使用有符号整数 `isize` 存储：
@@ -728,6 +770,7 @@ Wave 4:       [T8]
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 

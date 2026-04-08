@@ -187,7 +187,7 @@ pub fn standard_shapes_2d() -> Vec<(usize, usize)> {
 
 /// Generate a non-contiguous 2D tensor (transposed view).
 pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
-    let t = Tensor2::<f64>::from_fn([cols, rows], |[i, j]| (i * rows + j) as f64);
+    let t = Tensor2::<f64>::from_fn([cols, rows], |idx| (idx[0] * rows + idx[1]) as f64);
     t.t().to_owned()
 }
 ```
@@ -382,7 +382,7 @@ fn test_empty_tensor_sum() {
 
 #[test]
 fn test_single_element() {
-    let t = Tensor0::from(42.0f64);
+    let t = Tensor::<f64, Ix0>::from_scalar(42.0f64);  // see 18-construction.md §4.4
     assert_eq!(t.len(), 1);
     assert_eq!(t.sum(), 42.0);
 }
@@ -453,7 +453,7 @@ pub fn rtol_eq(actual: f64, expected: f64, rtol: f64) -> bool {
 #[test]
 fn test_par_sum_consistency() {
     let n = 1_000_000;
-    let t = Tensor1::<f64>::from_fn([n], |[i]| (i as f64).sin());
+    let t = Tensor1::<f64>::from_fn([n], |idx| (idx[0] as f64).sin());
 
     let serial_sum = t.sum();
 
@@ -471,8 +471,8 @@ fn test_par_sum_consistency() {
 ```rust
 #[test]
 fn test_simd_add_consistency() {
-    let a = Tensor1::<f64>::from_fn([1024], |[i]| (i as f64).sin());
-    let b = Tensor1::<f64>::from_fn([1024], |[i]| (i as f64).cos());
+    let a = Tensor1::<f64>::from_fn([1024], |idx| (idx[0] as f64).sin());
+    let b = Tensor1::<f64>::from_fn([1024], |idx| (idx[0] as f64).cos());
 
     let result = &a + &b;
 
@@ -775,6 +775,7 @@ test:
 |------|------|
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 

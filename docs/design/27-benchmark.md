@@ -172,12 +172,12 @@ use xenon::prelude::*;
 
 /// Generate a 1D tensor with sequential f64 values.
 pub fn sequential_1d(n: usize) -> Tensor1<f64> {
-    Tensor1::from_fn([n], |[i]| i as f64)
+    Tensor1::from_fn([n], |idx| idx[0] as f64)
 }
 
 /// Generate a 2D F-order tensor with sequential f64 values.
 pub fn sequential_2d(rows: usize, cols: usize) -> Tensor2<f64> {
-    Tensor2::from_fn([rows, cols], |[i, j]| (i + j * rows) as f64)
+    Tensor2::from_fn([rows, cols], |idx| (idx[0] + idx[1] * rows) as f64)
 }
 
 /// Generate a non-contiguous view by slicing every other element.
@@ -570,6 +570,7 @@ Wave 5:       [T12]
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-08 |
 | 1.0.2 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 

@@ -621,7 +621,7 @@ src/
 
 //! Xenon: N-dimensional array library for Rust.
 
-#![warn(missing_docs)]
+#![deny(missing_docs)]
 #![warn(missing_debug_implementations)]
 #![warn(rust_2024_compatibility)]
 #![warn(unsafe_op_in_unsafe_fn)]
@@ -822,9 +822,11 @@ where
 ```toml
 [features]
 default = ["std"]
-std = []                       # Additive: enables std library
+std = []                        # Additive: enables std library
 parallel = ["dep:rayon", "std"] # Additive: enables parallel iterators
-simd = ["dep:pulp"]            # Additive: enables SIMD
+simd = ["dep:pulp"]             # Additive: enables SIMD
+# Note: libm is NOT a dependency (see 01-architecture-overview.md §1.4).
+# RealScalar math functions (sin/cos/exp/ln) are only available with "std" feature.
 ```
 
 ### 9.2 使用 `dep:` 语法声明可选依赖
@@ -980,6 +982,7 @@ Wave 2: [T4]
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 
