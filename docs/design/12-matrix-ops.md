@@ -311,12 +311,43 @@ Wave 2: [T2] [T3]
 
 ---
 
+## 11. no_std 兼容性
+
+矩阵运算模块在 `no_std` 环境下可用。标量路径仅依赖 `core` trait，SIMD 路径依赖 pulp crate（支持 `no_std`）。
+
+```rust
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+```
+
+| 组件 | no_std 支持 | 说明 |
+|------|:----------:|------|
+| `dot()`（标量路径） | ✅ | 使用 `Iterator::fold`，无堆分配 |
+| `dot()`（复数路径） | ✅ | 使用 `conj()` + `fold`，无堆分配 |
+| `dot()`（SIMD 路径） | ✅ | pulp crate 支持 `no_std`，参见 `08-simd-backend.md §11` |
+| `XenonError::ShapeMismatch` | ✅ | 使用 `core::fmt::Display`，无堆依赖 |
+
+条件编译处理：
+
+```rust
+// Scalar dot: pure Iterator::fold — works in pure no_std
+// SIMD dot: pulp crate supports no_std via core::arch intrinsics
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+// No Vec/Box/Arc needed — dot() returns a scalar value
+```
+
+---
+
 ## 版本历史
 
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
+| 1.0.2 | 2026-04-08 |
 
 ---
 

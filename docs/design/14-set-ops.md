@@ -347,12 +347,50 @@ Wave 3: [T5]
 
 ---
 
+## 11. no_std 兼容性
+
+集合操作模块在 `no_std` 环境下可用，但需 `alloc` 支持以分配临时 `Vec` 和结果张量。排序使用 `alloc::vec::Vec::sort`。
+
+```rust
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+```
+
+| 组件 | no_std 支持 | 说明 |
+|------|:----------:|------|
+| `unique()` | ✅ | 需 `no_std + alloc`，收集元素到 `Vec` + 排序 + 去重 |
+| `UniqueElement` trait | ✅ | 纯 trait 定义，无依赖 |
+| 浮点 NaN 排序 | ✅ | `PartialOrd` 语义，`core` 内建 |
+| 复数排序 | ✅ | lexicographic `Ord` 实现，`core` 内建 |
+
+条件编译处理：
+
+```rust
+// unique() requires:
+//   1. Collect elements into Vec → alloc::vec::Vec
+//   2. Sort in-place → Vec::sort (available in alloc)
+//   3. Dedup → Vec::dedup (available in alloc)
+//   4. Construct result Tensor → alloc::vec::Vec
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+```
+
+---
+
 ## 版本历史
 
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
+| 1.0.2 | 2026-04-08 |
 
 ---
 

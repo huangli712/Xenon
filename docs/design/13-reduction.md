@@ -398,6 +398,47 @@ Wave 4:           [T7]
 
 ---
 
+## 11. no_std 兼容性
+
+归约运算模块在 `no_std` 环境下可用。全局归约返回标量值无堆分配；沿轴归约需 `alloc` 分配结果张量。
+
+```rust
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+```
+
+| 组件 | no_std 支持 | 说明 |
+|------|:----------:|------|
+| 全局 `sum()` | ✅ | 使用 `Iterator::fold`，返回标量值，无堆分配 |
+| 沿轴 `sum_axis()` | ✅ | 需 `no_std + alloc`，分配结果 `Tensor` |
+| 整数 `checked_add` | ✅ | `core` 内建，无额外依赖 |
+| NaN 传播 | ✅ | IEEE 754 浮点语义，`core` 内建 |
+| SIMD 归约路径 | ✅ | pulp crate 支持 `no_std`，参见 `08-simd-backend.md §11` |
+| 并行归约路径 | ❌ | rayon 依赖 `std` 线程原语，参见 `09-parallel-backend.md §11` |
+
+条件编译处理：
+
+```rust
+// Global sum: pure Iterator::fold — works in pure no_std
+// sum_axis: allocates result Tensor → needs alloc::vec::Vec
+// SIMD path: pulp supports no_std
+// Parallel path: requires std (rayon dependency)
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
+// Parallel reduction disabled under no_std automatically
+// (rayon is gated behind "parallel" feature which requires "std")
+```
+
+---
+
 ## 版本历史
 
 | 版本 | 日期 |
@@ -405,6 +446,7 @@ Wave 4:           [T7]
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-07 |
+| 1.0.3 | 2026-04-08 |
 
 ---
 
