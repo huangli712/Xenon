@@ -589,6 +589,8 @@ where
   - 前置: tensor 模块完成
   - 预计: 10 min
 
+### Wave 2: 迭代器与基础设施扩展
+
 - [ ] **T2**: 创建 `src/parallel/par_iter.rs` 并行迭代器
   - 文件: `src/parallel/par_iter.rs`
   - 内容: `ParElements` 结构体和 `ParallelIterator` 实现、`ParZip` 结构体和 `ParallelIterator` 实现
@@ -596,7 +598,21 @@ where
   - 前置: T1
   - 预计: 10 min
 
-### Wave 2: 并行运算
+- [ ] **T6**: 实现嵌套并行防护
+  - 文件: `src/parallel/mod.rs`
+  - 内容: `PARALLEL_DEPTH` thread_local、`ParallelGuard` RAII 守卫、`is_in_parallel_context()`
+  - 测试: `test_nested_parallel_guard`、`test_parallel_depth_tracking`
+  - 前置: T1
+  - 预计: 10 min
+
+- [ ] **T7**: 线程池管理与配置
+  - 文件: `src/parallel/mod.rs`
+  - 内容: `ParallelPool` 封装、`configure_global_pool()`
+  - 测试: `test_custom_pool`
+  - 前置: T1
+  - 预计: 10 min
+
+### Wave 3: 并行运算
 
 - [ ] **T3**: 实现 `par_map` 和 `par_map_inplace`
   - 文件: `src/parallel/par_ops.rs`
@@ -619,21 +635,7 @@ where
   - 前置: T2
   - 预计: 10 min
 
-### Wave 3: 集成与测试
-
-- [ ] **T6**: 实现嵌套并行防护
-  - 文件: `src/parallel/mod.rs`
-  - 内容: `PARALLEL_DEPTH` thread_local、`ParallelGuard` RAII 守卫、`is_in_parallel_context()`
-  - 测试: `test_nested_parallel_guard`、`test_parallel_depth_tracking`
-  - 前置: T1
-  - 预计: 10 min
-
-- [ ] **T7**: 线程池管理与配置
-  - 文件: `src/parallel/mod.rs`
-  - 内容: `ParallelPool` 封装、`configure_global_pool()`
-  - 测试: `test_custom_pool`
-  - 前置: T1
-  - 预计: 10 min
+### Wave 4: 集成与测试
 
 - [ ] **T8**: 集成测试与一致性验证
   - 文件: `tests/parallel_consistency.rs`
@@ -643,19 +645,19 @@ where
   - 预计: 10 min
 
 ```
-Wave 1: [T1]
-           │
-           ▼
+Wave 1:        [T1]
+                  │
+                  ▼
 Wave 2: [T2] [T6] [T7]
            │
      ┌─────┼─────┐
      ▼     ▼     ▼
-   [T3]  [T4]  [T5]
-     │     │     │
-     └─────┼─────┘
-           │
-           ▼
-Wave 3:  [T8]
+Wave 3: [T3]  [T4]  [T5]
+           │     │     │
+           └─────┼─────┘
+                 │
+                 ▼
+Wave 4:        [T8]
 ```
 
 ---

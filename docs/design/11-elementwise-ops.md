@@ -339,20 +339,13 @@ add_impl(a, b):
   - 前置: 10-iterator.md 完成
   - 预计: 10 min
 
+### Wave 2: 二元操作与一元运算
+
 - [ ] **T2**: 实现 `zip_with`（含广播支持）
   - 文件: `src/ops/elementwise.rs`
   - 内容: 基于 `Zip` 迭代器的二元操作
   - 测试: `test_zip_with_same_shape`, `test_zip_with_broadcast`
   - 前置: T1, broadcast 模块
-  - 预计: 10 min
-
-### Wave 2: 运算实现
-
-- [ ] **T3**: 实现算术运算（add/sub/mul/div）
-  - 文件: `src/ops/elementwise.rs`
-  - 内容: 基于 `zip_with` 的算术运算，标量版本
-  - 测试: `test_add_i32`, `test_add_f64`, `test_add_complex`, `test_mul_scalar`
-  - 前置: T2
   - 预计: 10 min
 
 - [ ] **T4**: 实现一元运算（abs/neg/signum/square）
@@ -376,7 +369,14 @@ add_impl(a, b):
   - 前置: T1
   - 预计: 10 min
 
-### Wave 3: 比较与布尔
+### Wave 3: 算术与比较运算
+
+- [ ] **T3**: 实现算术运算（add/sub/mul/div）
+  - 文件: `src/ops/elementwise.rs`
+  - 内容: 基于 `zip_with` 的算术运算，标量版本
+  - 测试: `test_add_i32`, `test_add_f64`, `test_add_complex`, `test_mul_scalar`
+  - 前置: T2
+  - 预计: 10 min
 
 - [ ] **T7**: 实现逻辑非（not）和比较运算（eq/ne/lt/gt）
   - 文件: `src/ops/elementwise.rs`
@@ -397,12 +397,19 @@ add_impl(a, b):
 ### 并行执行分组图
 
 ```
-Wave 1: [T1] [T2]
-           │     │
-Wave 2: [T3] [T4] [T5] [T6]
-           │     │     │     │
-Wave 3: [T7] ────────────────
-           │
+Wave 1:                    [T1]
+                            |
+            ┌───────┬───────┴───────┬───────┐
+            |       |               |       |
+            v       v               v       v
+Wave 2:    [T2]    [T4]            [T5]    [T6]
+            |
+         ┌──┴─────┐
+         |        |
+         v        v
+Wave 3: [T3]    [T7]
+         |
+         v
 Wave 4: [T8]
 ```
 
