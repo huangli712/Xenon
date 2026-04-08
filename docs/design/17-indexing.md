@@ -226,7 +226,7 @@ where
 > 支持负步长（步长 < 0 表示反向遍历）。`step` 为 `Option<isize>` 而非 `usize`。
 > 这是负步长的关键：`step = -1` 产生反转视图。
 
-### 4.2.2 s![] 切片宏设计
+#### 4.2.2 s![] 切片宏设计
 
 ```rust
 /// Slice macro for creating type-safe slice descriptions.
@@ -257,7 +257,7 @@ macro_rules! s {
 > 提供 Rust 像的声明式宏语法，编译期类型安全。
 > 相比过程式构造（`SliceInfo::new(vec![...]).unwrap()`），宏在编译期展开为正确的 `SliceInfoElem` 枚举值。
 
-### 4.2.3 切片方法
+#### 4.2.3 切片方法
 
 ```rust
 impl<S, D, A> TensorBase<S, D>
@@ -299,7 +299,7 @@ where
 }
 ```
 
-### 4.2.4 Good / Bad 对比
+#### 4.2.4 Good / Bad 对比
 
 ```rust
 // Good - use get() to safely handle potentially out-of-bounds indices
@@ -319,7 +319,7 @@ fn unsafe_index(tensor: &Tensor<f64, Ix2>, idx: &[usize]) -> f64 {
 }
 ```
 
-### 4.2.5 切片后元数据更新
+#### 4.2.5 切片后元数据更新
 
 切片操作需要更新视图的元数据：
 

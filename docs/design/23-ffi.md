@@ -706,12 +706,41 @@ Wave 4: [T5] [T6]
 
 ---
 
+## 11. no_std 兼容性
+
+FFI 模块完全兼容 `no_std` 环境。所有操作均为指针运算和结构体构造，无堆分配。
+
+```rust
+// No extern crate alloc needed — FFI module uses no heap allocation
+```
+
+| 组件 | no_std 支持 | 说明 |
+|------|:----------:|------|
+| `BlasLayout` / `BlasTrans` / `BlasInfo` | ✅ | 纯枚举/结构体，无分配 |
+| `as_ptr()` / `as_mut_ptr()` | ✅ | 指针加法，O(1) |
+| `from_raw_parts` / `from_raw_parts_mut` | ✅ | 构造视图，O(1)，无分配 |
+| `into_raw_parts` | ✅ | 字段提取 + `core::mem::forget`，无分配 |
+| `is_blas_compatible()` | ✅ | 布局标志检查，无分配 |
+| `blas_info()` / `lda()` | ✅ | 布局查询，无分配 |
+| `offset_of()` / `ptr_at()` | ✅ | 算术运算，O(ndim)，无分配 |
+
+条件编译处理：
+
+```rust
+// All FFI methods use only core::mem, core::ptr, core::ops
+// No alloc::vec::Vec or std::ffi required
+// into_raw_parts uses core::mem::forget (available in no_std)
+```
+
+---
+
 ## 版本历史
 
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-08 |
+| 1.0.2 | 2026-04-08 |
 
 ---
 

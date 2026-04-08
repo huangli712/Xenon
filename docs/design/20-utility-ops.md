@@ -427,12 +427,48 @@ Wave 2: [T3] [T4]
 
 ---
 
+## 11. no_std 兼容性
+
+实用操作模块在 `no_std` 环境下可用。原地操作（`fill`、`clip_inplace`）无堆分配；`clip` 和 `to_contiguous` 返回新张量需 `alloc`。
+
+```rust
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+```
+
+| 组件 | no_std 支持 | 说明 |
+|------|:----------:|------|
+| `fill` | ✅ | 原地操作，通过 `iter_mut()` 遍历，无堆分配 |
+| `clip` | ✅ | 返回新 `Tensor`，需 `no_std + alloc` |
+| `clip_inplace` | ✅ | 原地修改，无额外分配 |
+| `to_contiguous` | ✅ | 返回新 `Tensor`，需 `no_std + alloc` |
+
+条件编译处理：
+
+```rust
+// fill / clip_inplace: in-place via iter_mut — pure no_std
+// clip: returns new Tensor → needs alloc::vec::Vec
+// to_contiguous: returns owned Tensor → needs alloc::vec::Vec
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+```
+
+---
+
 ## 版本历史
 
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-08 |
+| 1.0.2 | 2026-04-08 |
 
 ---
 

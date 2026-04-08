@@ -624,11 +624,11 @@ fn test_arc_concurrent_access() {
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    storage 模块的线程安全接口                     │
+│                    storage 模块的线程安全接口                      │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  trait RawStorage {                                             │
-│      type Elem;  // 无 Send/Sync 约束                           │
+│      type Elem;  // 无 Send/Sync 约束                            │
 │  }                                                              │
 │                                                                 │
 │  trait Storage: RawStorage {                                    │
@@ -640,7 +640,7 @@ fn test_arc_concurrent_access() {
 │      fn as_mut_ptr(&mut self) -> *mut Self::Elem;               │
 │  }                                                              │
 │                                                                 │
-│  各实现的 Send/Sync 由具体类型（Owned/ViewRepr/...）决定         │
+│  各实现的 Send/Sync 由具体类型（Owned/ViewRepr/...）决定            │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -649,21 +649,21 @@ fn test_arc_concurrent_access() {
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    parallel 模块的线程安全要求                    │
+│                    parallel 模块的线程安全要求                     │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  impl<'a, S, D, A> IntoParallelRefIterator for TensorBase<S, D> │
 │  where                                                          │
 │      S: Storage<Elem = A>,                                      │
 │      D: Dimension,                                              │
-│      A: Element + Send + Sync,  // 关键约束                     │
+│      A: Element + Send + Sync,  // 关键约束                      │
 │  {                                                              │
 │      type Iter = ParElements<'a, A, D>;                         │
 │  }                                                              │
 │                                                                 │
-│  分块安全保证：                                                  │
-│  • compute_safe_chunks() 保证不重叠                             │
-│  • 生命周期确保视图有效                                          │
+│  分块安全保证：                                                   │
+│  • compute_safe_chunks() 保证不重叠                              │
+│  • 生命周期确保视图有效                                            │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -717,12 +717,52 @@ rayon 的 `ParallelIterator` 要求 `Item: Send`：
 
 ---
 
+## 10. no_std 兼容性
+
+线程安全的 Send/Sync 标记 trait 位于 `core::marker`，可在 `no_std` 下使用。但 `ArcRepr` 和并行功能依赖 `std`。
+
+```rust
+// Send/Sync traits are in core::marker — no_std available
+use core::marker::{Send, Sync};
+
+// ArcRepr uses std::sync::Arc — requires std
+// Parallel/rayon uses std::thread — requires std
+```
+
+| 组件 | no_std 支持 | 说明 |
+|------|:----------:|------|
+| `Owned<A>` Send/Sync | ✅ | 仅 `unsafe impl`，无运行时依赖 |
+| `ViewRepr<&'a A>` Send/Sync | ✅ | 仅 `unsafe impl`，无运行时依赖 |
+| `ViewMutRepr<&'a mut A>` Send | ✅ | 仅 `unsafe impl`，无运行时依赖 |
+| `ArcRepr<A>` Send/Sync | ❌ | 依赖 `std::sync::Arc`，需 `std` |
+| 并行迭代（rayon） | ❌ | rayon 依赖 `std` 线程原语，参见 `09-parallel-backend.md §11` |
+| 嵌套并行防护（`thread_local!`） | ❌ | `std::cell::Cell` + `thread_local!` 需要 `std` |
+| SIMD Arch 缓存线程安全初始化 | ❌ | 依赖 `std::sync::OnceLock` 或等效机制 |
+
+条件编译处理：
+
+```rust
+// Owned/ViewRepr/ViewMutRepr: unsafe impl Send/Sync
+// Uses only core::marker::{Send, Sync} — pure no_std
+
+// ArcRepr: gated behind "std" feature
+#[cfg(feature = "std")]
+unsafe impl<A: Send + Sync> Send for ArcRepr<A> {}
+
+// Parallel/rayon: gated behind "parallel" feature (implies "std")
+#[cfg(feature = "parallel")]
+mod parallel { ... }
+```
+
+---
+
 ## 版本历史
 
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-08 |
+| 1.0.2 | 2026-04-08 |
 
 ---
 
