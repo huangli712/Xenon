@@ -317,7 +317,7 @@ where
     /// ```ignore
     /// let t = Tensor2::<f64>::from_shape_vec([3, 4], vec![1.0; 12])?;
     /// ```
-    pub fn from_shape_vec(shape: D, data: Vec<A>) -> Result<Self, ShapeError>;
+    pub fn from_shape_vec(shape: D, data: Vec<A>) -> Result<Self, XenonError>;
 }
 ```
 
@@ -535,7 +535,7 @@ impl<A, D> TensorBase<Owned<A>, D>
 where
     D: Dimension,
 {
-    pub fn from_shape_vec(shape: D, data: Vec<A>) -> Result<Self, ShapeError> {
+    pub fn from_shape_vec(shape: D, data: Vec<A>) -> Result<Self, XenonError> {
         if data.len() != shape.size() {
             return Err(ShapeError);
         }
@@ -866,6 +866,7 @@ extern crate alloc;
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
+| 1.0.4 | 2026-04-08 |
 
 ---
 

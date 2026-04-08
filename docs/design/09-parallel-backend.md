@@ -318,7 +318,7 @@ where
     let zip = ParZip::new(a.view(), b.view())?;
     output.par_extend(zip.map(|(x, y)| f(&x, &y)));
 
-    let dim = DA::from_slice(&broadcast_shape)?;
+    let dim = DA::from_slice(&broadcast_shape);
     // SAFETY: output length matches dim
     unsafe { Ok(Tensor::from_raw_vec_unchecked(output, dim)) }
 }
@@ -851,6 +851,7 @@ compile_error!("The 'parallel' feature requires the 'std' feature");
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
+| 1.0.3 | 2026-04-08 |
 
 ---
 

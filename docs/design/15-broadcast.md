@@ -317,9 +317,8 @@ fn update_flags_for_broadcast(source_flags: LayoutFlags, new_strides: &[isize]) 
     flags.set_has_zero_stride(new_strides.iter().any(|&s| s == 0));
 
     if flags.has_zero_stride() {
-        // Broadcast view is not contiguous
+        // Broadcast view is not F-contiguous (zero-stride dimensions break contiguity)
         flags.set_f_contiguous(false);
-        flags.set_c_contiguous(false);
     }
     flags
 }
@@ -568,6 +567,7 @@ extern crate alloc;
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 

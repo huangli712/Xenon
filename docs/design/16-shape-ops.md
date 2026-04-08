@@ -82,7 +82,7 @@ src/shape_ops/
 |----------|-----------------|
 | `tensor` | `TensorBase<S, D>`, `TensorView`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.offset()`，参见 `07-tensor.md` §4 |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `RemoveAxis`, `IntoDimension`，参见 `02-dimension.md` §3 |
-| `memory_layout` | `LayoutFlags`, `Order`, `is_f_contiguous()`, `is_c_contiguous()`，参见 `06-memory-layout.md` §3 |
+| `memory_layout` | `LayoutFlags`, `is_f_contiguous()`，参见 `06-memory-layout.md` §3 |
 | `error` | `XenonError::InvalidShape`, `XenonError::LayoutMismatch`，参见 `26-error-handling.md` §4 |
 
 ### 3.3 依赖方向声明
@@ -154,18 +154,21 @@ where
 | 零拷贝 | 始终零拷贝（O(1)），仅调整步长和形状 |
 | 形状变化 | `shape[i]` → `shape[ndim-1-i]`（全反转） |
 | 步长变化 | `strides[i]` → `strides[ndim-1-i]`（全反转） |
-| 连续性 | F-contiguous ↔ C-contiguous 互换 |
+| 连续性 | 转置后不再 F-contiguous（步长反转，非列优先顺序） |
 | 偏移量 | 保持不变 |
 | 1D 数组 | 转置后形状不变（1D 无轴顺序概念） |
 
 ### 4.1.2 转置布局变化
 
-F-contiguous 数组转置后变为 C-contiguous，反之亦然：
+转置交换步长和形状的顺序，使数组不再是 F-contiguous：
 
 ```
 原始: shape=[2, 3], strides=[1, 2]  (F-order, F-contiguous)
-转置: shape=[3, 2], strides=[2, 1]  (C-order, C-contiguous)
+转置: shape=[3, 2], strides=[2, 1]  (步长反转，非 F-contiguous)
 ```
+
+> **注意**：Xenon 只支持 F-order 布局，不使用 C-order 标志位。转置后调用
+> `is_f_contiguous()` 返回 `false`；若需恢复连续内存，使用 `to_contiguous()`。
 
 ### 4.1.3 HAS_NEG_STRIDE 栄志处理
 
@@ -174,11 +177,9 @@ F-contiguous 数组转置后变为 C-contiguous，反之亦然：
 ```rust
 fn update_flags_for_transpose(source_flags: LayoutFlags) -> LayoutFlags {
     let mut flags = source_flags;
-    // Transpose swaps F-contiguous and C-contiguous
-    let was_f = flags.is_f_contiguous();
-    let was_c = flags.is_c_contiguous();
-    flags.set_f_contiguous(was_c);
-    flags.set_c_contiguous(was_f);
+    // Transpose reverses stride order; F-contiguous becomes non-F-contiguous.
+    // Xenon does not track C-contiguous (not supported).
+    flags.set_f_contiguous(false);
     flags
 }
 ```
@@ -332,18 +333,15 @@ where
 ### 4.2.2 连续性检查逻辑
 
 ```
-is_contiguous() = is_f_contiguous() || is_c_contiguous()
+is_contiguous() = is_f_contiguous()
 
-F-contiguous: strides[i] = product(shape[0..i])  (column-major)
+F-contiguous: strides[i] = product(shape[0..i])  (column-major, F-order)
   e.g. shape=[2,3,4], strides=[1,2,6]
 
-C-contiguous: strides[i] = product(shape[i+1..ndim])  (row-major)
-  e.g. shape=[2,3,4], strides=[12,4,1]
-
 Non-contiguous example (reshape fails):
-  original: shape=[4,6], strides=[6,1]
-  after slice: shape=[2,6], strides=[12,1]  (non-contiguous)
-  → reshape([12]) fails because strides[0]=12 ≠ 6
+  original: shape=[4,6], strides=[1,4]  (F-contiguous)
+  after transpose: shape=[6,4], strides=[4,1]  (non-F-contiguous)
+  → reshape([24]) via reshape() fails; use into_shape() for auto-copy
 ```
 
 ### 4.2.3 Good / Bad 对比
@@ -429,7 +427,7 @@ Wave 3:              [T5]
 |----------|----------|--------|
 | `test_transpose_2d` | `[2,3]` → `[3,2]`，验证 shape 和数据 | 高 |
 | `test_transpose_3d` | `[2,3,4]` → `[4,3,2]`，验证轴反转 | 高 |
-| `test_transpose_contiguity_swap` | F-contiguous 转置后 C-contiguous | 高 |
+| `test_transpose_not_f_contiguous` | F-contiguous 转置后 `is_f_contiguous()` 返回 false | 高 |
 | `test_transpose_1d_noop` | 1D 数组转置后形状不变 | 中 |
 | `test_transpose_0d_noop` | 0D 标量转置后不变 | 中 |
 | `test_reshape_success` | `[2,3,4]` → `[6,4]`，O(1) 零拷贝 | 高 |
@@ -523,7 +521,7 @@ Wave 3:              [T5]
 
 | 场景 | 缓存友好性 | 说明 |
 |------|-----------|------|
-| F-contiguous 转置后遍历 | 较差 | 变为 C-contiguous，跳跃访问 |
+| F-contiguous 转置后遍历 | 较差 | 步长反转，内存跳跃访问（非 F-contiguous） |
 | 连续 reshape | 最优 | 步长与内存布局匹配 |
 | 非连续 reshape（拷贝后） | 最优 | 拷贝后变为 F-contiguous |
 
@@ -572,6 +570,7 @@ extern crate alloc;
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 

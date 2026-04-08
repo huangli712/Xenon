@@ -226,9 +226,8 @@ where
         let expected = dim.size();
         if data.len() != expected {
             return Err(XenonError::InvalidShape {
-                expected,
-                actual: data.len(),
-                reason: "element count mismatch",
+                from: data.len(),
+                to: expected,
             });
         }
         let strides = dim.strides_for_f_order();
@@ -255,9 +254,8 @@ where
         let expected = dim.size();
         if slice.len() != expected {
             return Err(XenonError::InvalidShape {
-                expected,
-                actual: slice.len(),
-                reason: "element count mismatch",
+                from: slice.len(),
+                to: expected,
             });
         }
         Self::from_shape_vec(dim, slice.to_vec())
@@ -353,9 +351,8 @@ fn create_matrix(data: Vec<f64>) -> Result<Tensor<f64, Ix2>, XenonError> {
     let n = (data.len() as f64).sqrt() as usize;
     if n * n != data.len() {
         return Err(XenonError::InvalidShape {
-            expected: n * n,
-            actual: data.len(),
-            reason: "not a perfect square",
+            from: data.len(),
+            to: n * n,
         });
     }
     Tensor::from_shape_vec([n, n], data)
@@ -644,6 +641,7 @@ use alloc::vec::Vec;
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
+| 1.0.4 | 2026-04-08 |
 
 ---
 

@@ -88,7 +88,7 @@ src/ops/
 | `broadcast` | `broadcast_shape()`, `broadcast_with()`, `can_broadcast()`（参见 `15-broadcast.md` §4） |
 | `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.view()`（参见 `07-tensor.md` §4） |
 | `element` | `Numeric` trait 约束（排除 `bool`）（参见 `03-element-types.md` §3） |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §4） |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<E>`（参见 `02-dimension.md` §4） |
 
 ### 3.3 依赖方向声明
 
@@ -114,6 +114,7 @@ src/ops/
 | `A` | `&Tensor<A, D>` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&Tensor<A,D>> for A` |
 
 > **说明**：`F` 为广播后的维度类型，由 `D::BroadcastDim<E>::Output` 关联类型计算。
+> `BroadcastDim` 定义于 `02-dimension.md §4.9`。
 
 ### 4.2 张量×张量运算符
 
@@ -537,6 +538,7 @@ extern crate alloc;
 | 1.0.1 | 2026-04-08 |
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
+| 1.0.4 | 2026-04-08 |
 
 ---
 

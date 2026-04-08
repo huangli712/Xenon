@@ -135,28 +135,45 @@ where
     D: Dimension,
     A: Numeric,
 {
-    /// Sum along an axis.
+    /// Sum along an axis, removing the reduced axis from the output shape.
     ///
     /// # Arguments
     ///
     /// - `axis`: reduction axis
-    /// - `keepdims`: keep the reduced axis as length 1
     ///
     /// # Returns
     ///
-    /// When `keepdims=false`, returns `Tensor<A, D::Smaller>`.
-    /// When `keepdims=true`, returns `Tensor<A, D>` (reduced axis has length 1).
+    /// `Tensor<A, D::Smaller>` — result has one fewer dimension.
     ///
     /// # Examples
     ///
     /// ```
     /// let a = Tensor2::from_shape_vec([2, 3], vec![1,2,3,4,5,6]);
-    /// let row_sum = a.sum_axis(Axis(0), false);  // shape: [3]
-    /// // [1+4, 2+5, 3+6] = [5, 7, 9]
-    /// let col_sum = a.sum_axis(Axis(1), false);  // shape: [2]
-    /// // [1+2+3, 4+5+6] = [6, 15]
+    /// let row_sum = a.sum_axis(Axis(0));  // shape: [3], values: [5, 7, 9]
+    /// let col_sum = a.sum_axis(Axis(1));  // shape: [2], values: [6, 15]
     /// ```
-    pub fn sum_axis(&self, axis: Axis, keepdims: bool) -> TensorBase<Owned<A>, DOut>
+    pub fn sum_axis(&self, axis: Axis) -> Tensor<A, D::Smaller>
+    where
+        D: RemoveAxis;
+
+    /// Sum along an axis, keeping the reduced axis with length 1.
+    ///
+    /// # Arguments
+    ///
+    /// - `axis`: reduction axis
+    ///
+    /// # Returns
+    ///
+    /// `Tensor<A, D>` — result has the same number of dimensions; reduced axis has length 1.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let a = Tensor2::from_shape_vec([2, 3], vec![1,2,3,4,5,6]);
+    /// let row_sum = a.sum_axis_keepdims(Axis(0));  // shape: [1, 3]
+    /// let col_sum = a.sum_axis_keepdims(Axis(1));  // shape: [2, 1]
+    /// ```
+    pub fn sum_axis_keepdims(&self, axis: Axis) -> Tensor<A, D>
     where
         D: RemoveAxis;
 }
@@ -175,7 +192,7 @@ assert_eq!(empty.sum(), 0);
 
 // Good - axis reduction
 let m = Tensor2::from_shape_vec([2, 3], vec![1,2,3,4,5,6]);
-let row_sum = m.sum_axis(Axis(0), false);
+    let row_sum = m.sum_axis(Axis(0));
 
 // Bad - manual sum implementation (may miss overflow checks)
 let mut total = 0i32;
@@ -314,7 +331,7 @@ Wave 4:           [T7]
 | `test_sum_single_element` | 单元素 sum 正确 | 中 |
 | `test_sum_axis_2d` | 2D 沿轴 0/1 sum 正确 | 高 |
 | `test_sum_axis_3d` | 3D 沿各轴 sum 正确 | 中 |
-| `test_sum_axis_keepdims` | keepdims=true 保留轴长度 1 | 高 |
+| `test_sum_axis_keepdims` | `sum_axis_keepdims` 保留轴长度 1 | 高 |
 | `test_sum_axis_empty` | 沿轴长度为 0 时结果正确 | 中 |
 | `test_sum_simd_consistency` | SIMD 路径结果与标量一致 | 高 |
 | `test_sum_parallel_consistency` | 并行路径结果与单线程一致 | 高 |
@@ -323,7 +340,7 @@ Wave 4:           [T7]
 
 | 场景 | 预期行为 |
 |------|----------|
-| 空数组 `shape=[0, 3]` | 全局 sum 返回 0，沿轴 0 sum 返回 `[0, 0, 0]` |
+| 空数组 `shape=[0, 3]` | 全局 sum 返回 0，`sum_axis(Axis(0))` 返回 `[0, 0, 0]` |
 | 单元素 `[1]` | sum 返回元素值本身 |
 | 大数组（1M 元素） | sum 结果正确，无溢出 |
 | i32 最大值附近 | checked_add 正确检测溢出并 panic |
@@ -460,6 +477,7 @@ use alloc::vec::Vec;
 | 1.0.2 | 2026-04-07 |
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
+| 1.1.0 | 2026-04-08 |
 
 ---
 

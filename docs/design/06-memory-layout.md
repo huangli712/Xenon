@@ -72,8 +72,7 @@ src/layout/
 
 ```
 src/layout/
-├── crate::dimension     # Dimension trait, Ix0~Ix6, IxDyn
-└── crate::storage       # RawStorage (仅 is_aligned 查询)
+└── crate::dimension     # Dimension trait, Ix0~Ix6, IxDyn
 ```
 
 ### 3.2 类型级依赖
@@ -81,12 +80,11 @@ src/layout/
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md §4`） |
-| `storage` | `RawStorage::as_ptr()` (对齐检查)（参见 `05-storage.md §4`） |
 | `core` | `isize`, `usize` |
 
 ### 3.3 依赖方向声明
 
-> **依赖方向：单向向上。** `layout/` 仅消费 `dimension` 和 `storage` 的查询接口，不被它们依赖。`tensor/`、`ops/`、`simd/` 等上层模块消费 layout 的类型和函数。
+> **依赖方向：单向向上。** `layout/` 仅消费 `dimension` 的 trait 和类型，不被其依赖。`tensor/`、`ops/`、`simd/` 等上层模块消费 layout 的类型和函数。对齐检查（`is_aligned`）接受原始指针 `*const u8`，无需依赖 `storage` 模块。
 
 ---
 
@@ -606,7 +604,7 @@ Wave 4:       [T8]
 
 | 交互点 | 方向 | 说明 |
 |--------|------|------|
-| 对齐信息 | storage → layout | storage 提供指针地址，layout 计算对齐标志 |
+| 对齐检查 | tensor/storage → layout | `TensorBase` 构造时将数据指针传入 `layout::is_aligned()` 计算对齐标志。layout 不依赖 Storage trait，仅操作原始指针。 |
 
 ### 9.2 与 Tensor 模块
 
@@ -729,6 +727,7 @@ Wave 4:       [T8]
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
+| 1.0.4 | 2026-04-08 |
 
 ---
 

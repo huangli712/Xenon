@@ -229,11 +229,9 @@ pub trait ComplexScalar: Numeric + Sealed {
 
 ```rust
 // src/element/mod.rs
-mod private {
-    pub trait Sealed {}
-}
-
-pub(crate) use private::Sealed;
+// Uses the shared Sealed trait from crate::private
+// (see src/private.rs, referenced in 01-architecture-overview.md §3)
+use crate::private::Sealed;
 
 // Sealed implementations in primitives.rs
 impl Sealed for i32 {}
@@ -634,6 +632,7 @@ Wave 3: [T6]      [T9] ← ────┘
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
+| 1.0.3 | 2026-04-08 |
 
 ---
 

@@ -112,14 +112,12 @@ src/ops/matrix.rs
 /// let result = dot(&a.view(), &b.view())?;
 /// assert_eq!(result, 32.0);  // 1*4 + 2*5 + 3*6
 /// ```
-pub fn dot<A, S1, S2>(
-    a: &TensorView<A, Ix1>,
-    b: &TensorView<A, Ix1>,
+pub fn dot<A>(
+    a: &TensorView<'_, A, Ix1>,
+    b: &TensorView<'_, A, Ix1>,
 ) -> Result<A, XenonError>
 where
-    A: Numeric + Copy,
-    S1: Storage<Elem = A>,
-    S2: Storage<Elem = A>;
+    A: Numeric + Copy;
 ```
 
 ### 4.2 复数内积语义
@@ -361,6 +359,7 @@ extern crate alloc;
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
+| 1.0.4 | 2026-04-08 |
 
 ---
 

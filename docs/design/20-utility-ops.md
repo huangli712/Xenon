@@ -62,7 +62,7 @@ src/ops/utility.rs
 ├── crate::dimension     # Dimension trait
 ├── crate::storage       # Storage, StorageMut trait
 ├── crate::element       # Element, RealScalar trait
-├── crate::layout        # is_f_contiguous / is_c_contiguous 查询
+├── crate::layout        # is_f_contiguous 查询
 └── crate::iter          # Elements 迭代器（fill/clip 内部使用）
 ```
 
@@ -74,7 +74,7 @@ src/ops/utility.rs
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §4） |
 | `storage` | `Storage<Elem=A>`, `StorageMut<Elem=A>`（参见 `05-storage.md` §4） |
 | `element` | `Element`, `RealScalar`（clip 约束）（参见 `03-element-types.md` §3） |
-| `layout` | `is_f_contiguous()`, `is_c_contiguous()`（参见 `06-memory-layout.md` §4） |
+| `layout` | `is_f_contiguous()`（参见 `06-memory-layout.md` §4） |
 | `iter` | `iter()`, `iter_mut()`（参见 `10-iterator.md` §4） |
 
 ### 3.3 依赖方向声明
@@ -196,11 +196,10 @@ where
     /// Ensure data is stored contiguously in memory (always F-order).
     ///
     /// - If already F-contiguous, returns `to_owned()` (copy, layout preserved)
-    /// - Otherwise (C-contiguous or non-contiguous), copies into F-contiguous layout
+    /// - Otherwise (non-contiguous, e.g. transposed views), copies into F-contiguous layout
     ///
-    /// Xenon always outputs F-order (see requirement §7).
-    /// C-contiguous detection (`is_c_contiguous()`) is available for query purposes
-    /// (e.g. transposed views), but `to_contiguous()` always produces F-order output.
+    /// Xenon only supports F-order (see requirement §7).
+    /// `to_contiguous()` always produces F-order output.
     ///
     /// # Returns
     ///
@@ -286,8 +285,8 @@ to_contiguous(tensor):
         return to_owned(tensor)        // O(n) copy, layout unchanged (already F-order)
     else:
         return to_f_contiguous(tensor) // O(n) copy, always convert to F-order
-        // Note: C-contiguous inputs (e.g. transposed views) are also
-        // converted to F-order, because Xenon only outputs F-order.
+        // Non-contiguous inputs (e.g. transposed or sliced views) are
+        // converted to F-order. Xenon only supports F-order.
 ```
 
 ### 5.4 NaN 处理语义
@@ -483,6 +482,7 @@ use alloc::vec::Vec;
 | 1.0.1 | 2026-04-08 |
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
+| 1.0.4 | 2026-04-08 |
 
 ---
 

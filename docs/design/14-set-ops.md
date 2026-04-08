@@ -270,9 +270,9 @@ impl UniqueElement for Complex<f64> {
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T3**: 宆现浮点 NaN 排序处理
+- [ ] **T3**: 实现浮点 NaN 排序处理
   - 文件: `src/ops/set_ops.rs`
-  - 内容: NaN 毟任何实数大，排序后 NaN 在末尾
+  - 内容: NaN 比任何实数大，排序后 NaN 在末尾
   - 测试: `test_unique_nan_f32`, `test_unique_nan_f64`
   - 前置: T2
   - 预计: 10 min
@@ -451,6 +451,7 @@ use alloc::vec::Vec;
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
+| 1.0.4 | 2026-04-08 |
 
 ---
 

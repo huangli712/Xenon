@@ -83,8 +83,8 @@ src/convert/
 ├── crate::dimension     # Dimension trait
 ├── crate::storage       # Storage, StorageMut, StorageOwned trait
 ├── crate::element       # Element, CastTo trait
-├── crate::layout        # MemoryOrder, 连续性查询
-└── crate::error         # ShapeError
+├── crate::layout        # is_f_contiguous 查询
+└── crate::error         # XenonError, Result<T>
 ```
 
 ### 3.2 类型级依赖
@@ -95,8 +95,8 @@ src/convert/
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §4） |
 | `storage` | `Storage<Elem=A>`, `StorageMut`, `Owned<A>`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`（参见 `05-storage.md` §4） |
 | `element` | `Element`, `CastTo<B>`（参见 `03-element-types.md` §3） |
-| `layout` | `MemoryOrder`, `is_f_contiguous()`, `is_c_contiguous()`（参见 `06-memory-layout.md` §4） |
-| `error` | `ShapeError`（参见 `26-error-handling.md` §4） |
+| `layout` | `is_f_contiguous()`（参见 `06-memory-layout.md` §4） |
+| `error` | `XenonError`, `Result<T>`（参见 `26-error-handling.md` §4） |
 
 ### 3.3 依赖方向声明
 
@@ -122,16 +122,15 @@ pub trait CastTo<T> {
 ### 4.2 cast 方法
 
 ```rust
-impl<S, D, A> TensorBase<S, D>
+impl<A, D> TensorBase<Owned<A>, D>
 where
-    S: Storage<Elem = A>,
     D: Dimension,
     A: Element,
 {
     /// Element-wise type conversion.
     ///
-    /// Only applicable to data-owning storage modes (Owned/Arc).
-    /// View types must call `to_owned()` before `cast()`.
+    /// Only applicable to the `Owned` storage mode (per requirement §23).
+    /// For other storage modes, call `to_owned()` first: `view.to_owned().cast::<B>()`.
     ///
     /// # Type Parameters
     ///
@@ -153,6 +152,10 @@ where
     }
 }
 ```
+
+> **设计决策（修订）**：根据需求说明书 §23，`cast()` 仅适用于持有数据的存储模式。
+> 因此 `cast()` 分别在 `Owned<A>` 和 `ArcRepr<A>` 存储模式上实现，
+> `ViewRepr`/`ViewMutRepr` 须先调用 `to_owned()`。
 
 > **设计决策：** `cast` 定义在 `Storage` 约束（而非仅 `StorageOwned`）上，这是因为 View 上的 cast 在语义上合理（只读操作）。调用方可通过类型约束限制为 Owned。
 
@@ -212,7 +215,8 @@ where
     /// let owned: Tensor<f64, Ix1> = view.to_owned();
     /// ```
     pub fn to_owned(&self) -> Tensor<A, D> {
-        let mut result = Tensor::zeros_order(self.shape().clone(), self.memory_order());
+        // Always produce F-order (Xenon only supports F-order, see requirement §7)
+        let mut result = Tensor::zeros(self.shape().clone());
         self.copy_to(&mut result);
         result
     }
@@ -449,7 +453,7 @@ Wave 3: [T6] [T7]  (并行)
 | `element` | convert → element | 泛型约束 `A: CastTo<B>` 驱动逐元素转换；`CastTo` trait 定义在 element 模块（参见 `03-element-types.md` §4） |
 | `elementwise_ops` | convert → elementwise_ops | `cast()` 内部调用 `mapv()` 执行逐元素映射（参见 `11-elementwise-ops.md` §4.1） |
 | `storage` | convert → storage | `into_owned()` 消费 `StorageIntoOwned` trait；存储模式互转依赖 `Owned`/`ViewRepr`/`ArcRepr`（参见 `05-storage.md` §4） |
-| `layout` | convert → layout | `to_owned()` 调用 `is_f_contiguous()`/`is_c_contiguous()` 保持内存布局一致性（参见 `06-memory-layout.md` §4） |
+| `layout` | convert → layout | `to_owned()` 调用 `is_f_contiguous()` 判断是否需要重排（参见 `06-memory-layout.md` §4） |
 | `complex` | convert → complex | `CastTo<Complex<T>>` 实现依赖 `Complex` 结构体定义；反向转换（Complex → T）故意不提供（参见 `04-complex-type.md` §4） |
 
 ---
@@ -517,6 +521,7 @@ Wave 3: [T6] [T7]  (并行)
 | 1.0.1 | 2026-04-08 |
 | 1.0.2 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.1.1 | 2026-04-08 |
 
 ---
 

@@ -399,14 +399,51 @@ pub unsafe trait StorageShared: Storage + Clone {
 }
 ```
 
+### 4.8b StorageIntoOwned Trait
+
+消耗式转为 Owned 存储，用于 `into_owned()` 和 `into_shape()`（参见 `21-type-conversion.md §4.5`）。
+
+```rust
+/// Storage types that can be converted into an owned tensor by consuming self.
+///
+/// - `Owned<A>` → O(1), returns self directly
+/// - `ViewRepr`/`ViewMutRepr` → O(n), copies data
+/// - `ArcRepr` → O(1) if unique, O(n) if shared
+pub unsafe trait StorageIntoOwned: Storage {
+    /// Consume this storage, returning an `Owned<A>` storage.
+    fn into_owned_storage(self) -> Owned<Self::Elem>
+    where
+        Self::Elem: Clone;
+}
+```
+
+### 4.8c StorageIntoRaw Trait
+
+消耗式解构为裸指针，用于 `into_raw_parts()`（参见 `23-ffi.md §4.4`）。
+
+```rust
+/// Storage types that can be destructured into raw parts.
+///
+/// Only `Owned<A>` implements this trait (other storage modes cannot transfer ownership of raw memory).
+pub unsafe trait StorageIntoRaw: StorageOwned {
+    /// Consume the storage, returning a raw pointer.
+    ///
+    /// # Safety
+    ///
+    /// The caller is responsible for deallocating the returned pointer
+    /// using the same allocator that was used to allocate it.
+    unsafe fn into_raw(self) -> *mut Self::Elem;
+}
+```
+
 ### 4.9 Trait 实现矩阵
 
-| 存储类型 | RawStorage | Storage | RawStorageMut | StorageMut | StorageOwned | StorageShared |
-|----------|:----------:|:-------:|:-------------:|:----------:|:------------:|:-------------:|
-| `Owned<A>` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| `ViewRepr<&A>` | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| `ViewMutRepr<&mut A>` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| `ArcRepr<A>` | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| 存储类型 | RawStorage | Storage | RawStorageMut | StorageMut | StorageOwned | StorageShared | StorageIntoOwned | StorageIntoRaw |
+|----------|:----------:|:-------:|:-------------:|:----------:|:------------:|:-------------:|:----------------:|:--------------:|
+| `Owned<A>` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| `ViewRepr<&A>` | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| `ViewMutRepr<&mut A>` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
+| `ArcRepr<A>` | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
 
 ### 4.10 Good/Bad 对比
 
@@ -941,6 +978,7 @@ Storage 提供对齐信息（`is_aligned()`），Layout 模块查询对齐状态
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
+| 1.0.3 | 2026-04-08 |
 
 ---
 

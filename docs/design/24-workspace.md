@@ -429,6 +429,12 @@ impl Workspace {
     ///
     /// O(1) — pointer arithmetic only, no memory allocation.
     ///
+    /// # RAII Behavior
+    ///
+    /// Dropping **either** `SplitBorrowMut` releases the workspace for re-use.
+    /// This means the workspace should not be re-borrowed until both sub-spaces
+    /// are no longer in use. To enforce this, hold both sub-spaces until done.
+    ///
     /// # Errors
     ///
     /// - `WorkspaceError::SplitOutOfBounds`: `mid > capacity`
@@ -506,10 +512,24 @@ impl<'a> SplitBorrowMut<'a> {
     pub fn len(&self) -> usize { self.len }
 }
 
-// Drop does not modify borrow_state (managed by the outermost WorkspaceBorrowMut)
+/// Drop releases the exclusive borrow on the workspace.
+///
+/// The first `SplitBorrowMut` to be dropped resets `borrow_state` to `BORROW_NONE`.
+/// Since both sub-spaces share the same non-overlapping memory, releasing either one
+/// makes the entire workspace available again.
+///
+/// # Safety Invariant
+///
+/// After `drop`, the caller must not use any existing references into the workspace
+/// memory. The Rust borrow checker enforces this via the `'a` lifetime.
 impl<'a> Drop for SplitBorrowMut<'a> {
     fn drop(&mut self) {
-        // No-op: borrow state is managed by the guard produced by the original split_at call
+        // Reset borrow state so the workspace can be borrowed again.
+        // Using Release ordering to ensure all writes are visible before the state reset.
+        self.workspace.borrow_state.store(
+            Workspace::BORROW_NONE,
+            core::sync::atomic::Ordering::Release,
+        );
     }
 }
 ```
@@ -841,7 +861,7 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 | 属性 | 值 |
 |------|-----|
 | 决策 | 借出期间禁止再次借出（由 AtomicU8 CAS 保证） |
-| 理由 | 安全性：避免同一缓冲区被多次借出导致数据竞争；简单性: 单一借用模型更易理解 |
+| 理由 | 安全性：避免同一缓冲区被多次借出导致数据竞争；简单性: 单一借用模型更易理解；split_at() 生成的子空间中，Drop 任一子空间即释放父工作空间，调用方须自行保证逻辑正确性。 |
 | 替代方案 | 允许共享借用（多个 reader） — 未来可扩展，当前版本简化 |
 
 ### 决策 3:扩容安全性保证
@@ -918,6 +938,7 @@ impl std::error::Error for WorkspaceError {}
 | 1.0.1 | 2026-04-08 |
 | 1.0.2 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.1.1 | 2026-04-08 |
 
 ---
 

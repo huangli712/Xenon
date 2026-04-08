@@ -79,7 +79,7 @@ src/ffi/
 │   ├── crate::tensor        # TensorBase<S, D>, offset
 │   ├── crate::dimension     # Dimension trait
 │   ├── crate::storage       # Storage, StorageMut, StorageIntoRaw
-│   └── crate::layout        # is_f_contiguous, is_c_contiguous
+│   └── crate::layout        # is_f_contiguous
 ├── blas.rs
 │   ├── crate::tensor        # TensorBase<S, D>
 │   ├── crate::storage       # Storage
@@ -99,7 +99,7 @@ src/ffi/
 | `tensor` | `TensorBase<S, D>`, `.shape()`, `.strides()`, `.as_ptr()`, `.as_mut_ptr()`, `.offset()` | `07-tensor.md` §4 | `ptr.rs`, `blas.rs`, `offset.rs` |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn` | `02-dimension.md` §4 | `ptr.rs`, `offset.rs` |
 | `storage` | `Storage<Elem=A>`, `StorageMut<Elem=A>`, `StorageIntoRaw` | `05-storage.md` §4 | `ptr.rs`, `blas.rs`, `offset.rs` |
-| `layout` | `is_f_contiguous()`, `is_c_contiguous()`, `has_zero_stride()`, `has_neg_stride()` | `06-memory-layout.md` §4 | `ptr.rs`, `blas.rs` |
+| `layout` | `is_f_contiguous()`, `has_zero_stride()`, `has_neg_stride()` | `06-memory-layout.md` §4 | `ptr.rs`, `blas.rs` |
 
 ### 3.3 依赖方向声明
 
@@ -330,7 +330,7 @@ where
     ///
     /// | Condition | Description |
     /// |------|------|
-    /// | Contiguity | F-contiguous or C-contiguous |
+    /// | Contiguity | F-contiguous (Xenon only supports F-order) |
     /// | Positive strides | All strides > 0 (no reversed dimensions) |
     /// | No zero strides | No broadcast dimensions |
     ///
@@ -619,13 +619,12 @@ Wave 3: ┌────┴────┐
 | `test_as_mut_ptr_basic` | `as_mut_ptr()` 返回有效可写指针 | 高 |
 | `test_as_ptr_offset` | 指针考虑 offset 后指向正确元素 | 高 |
 | `test_is_blas_compatible_f_order` | F-order 连续数组兼容 | 高 |
-| `test_is_blas_compatible_c_order` | C-order 连续数组兼容 | 高 |
 | `test_is_blas_compatible_non_contiguous` | 非连续切片不兼容 | 高 |
 | `test_is_blas_compatible_broadcast` | 广播维度（零步长）不兼容 | 高 |
 | `test_is_blas_compatible_flipped` | 负步长（翻转）不兼容 | 高 |
 | `test_blas_info_f_order` | F-order 返回正确 BlasInfo | 高 |
 | `test_lda_f_order` | F-order [3,4] 返回 3 | 高 |
-| `test_lda_c_order` | C-order [3,4] 返回 4 | 中 |
+| `test_lda_non_contiguous` | 非连续（切片）数组 lda() 返回 None | 中 |
 | `test_from_raw_parts_roundtrip` | 构造 → 读取一致性 | 高 |
 | `test_from_raw_parts_mut_roundtrip` | 可变构造 → 修改 → 读取 | 高 |
 | `test_into_raw_parts` | Owned 张量解构后指针有效 | 高 |
@@ -753,6 +752,7 @@ FFI 模块完全兼容 `no_std` 环境。所有操作均为指针运算和结构
 | 1.0.1 | 2026-04-08 |
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
+| 1.0.4 | 2026-04-08 |
 
 ---
 

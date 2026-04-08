@@ -526,9 +526,9 @@ impl RemoveAxis for IxDyn {
 
     fn remove_axis(&self, axis: Axis) -> IxDyn {
         assert!(axis.index() < self.ndim(), "axis out of bounds");
-        let mut v = self.0.clone();
+        let mut v = self.dims.clone();
         v.remove(axis.index());
-        IxDyn(v)
+        IxDyn { dims: v }
     }
 }
 ```
@@ -579,6 +579,93 @@ let dim: Ix3 = Ix3::try_from_dyn(dyn_dim)?;
 
 // Bad - using unwrap, may panic
 let dim: Ix3 = Ix3::try_from_dyn(dyn_dim).unwrap();
+```
+
+---
+
+### 4.9 BroadcastDim trait
+
+`BroadcastDim<Other>` 用于编译期计算两个维度类型广播后的输出维度类型。  
+被 `19-operator-overload.md` 中的运算符重载使用。
+
+```rust
+/// Trait for computing the output dimension type when broadcasting two arrays.
+///
+/// - `IxN BroadcastDim IxN` → `IxN` (same static dimension)
+/// - `IxN BroadcastDim IxDyn` → `IxDyn`
+/// - `IxDyn BroadcastDim IxN` → `IxDyn`
+/// - `IxDyn BroadcastDim IxDyn` → `IxDyn`
+pub trait BroadcastDim<Other: Dimension>: Dimension {
+    /// The output dimension type after broadcasting.
+    type Output: Dimension;
+}
+
+// Same static dimension broadcasts to itself
+impl BroadcastDim<Ix0> for Ix0 { type Output = Ix0; }
+impl BroadcastDim<Ix1> for Ix1 { type Output = Ix1; }
+impl BroadcastDim<Ix2> for Ix2 { type Output = Ix2; }
+impl BroadcastDim<Ix3> for Ix3 { type Output = Ix3; }
+impl BroadcastDim<Ix4> for Ix4 { type Output = Ix4; }
+impl BroadcastDim<Ix5> for Ix5 { type Output = Ix5; }
+impl BroadcastDim<Ix6> for Ix6 { type Output = Ix6; }
+
+// Any static dimension + IxDyn → IxDyn
+impl BroadcastDim<IxDyn> for Ix0 { type Output = IxDyn; }
+impl BroadcastDim<IxDyn> for Ix1 { type Output = IxDyn; }
+impl BroadcastDim<IxDyn> for Ix2 { type Output = IxDyn; }
+impl BroadcastDim<IxDyn> for Ix3 { type Output = IxDyn; }
+impl BroadcastDim<IxDyn> for Ix4 { type Output = IxDyn; }
+impl BroadcastDim<IxDyn> for Ix5 { type Output = IxDyn; }
+impl BroadcastDim<IxDyn> for Ix6 { type Output = IxDyn; }
+
+// IxDyn + any → IxDyn
+impl<D: Dimension> BroadcastDim<D> for IxDyn { type Output = IxDyn; }
+```
+
+> **设计决策：** 当两个操作数维度不同（如 Ix2 + Ix1）时，输出类型为各自的静态类型（Ix2），
+> 由广播规则在运行时验证兼容性。跨静态维度广播返回 `IxDyn` 以保证类型安全。
+
+### 4.10 Reverse trait
+
+`Reverse` 用于转置操作，对维度序列进行反转：
+
+```rust
+/// Trait for reversing the axis order of a dimension.
+///
+/// Used by `transpose()` in `shape_ops` (see `16-shape-ops.md §4`).
+pub trait Reverse: Dimension {
+    /// Reverse the axis order of this dimension.
+    fn reverse(self) -> Self;
+}
+
+impl Reverse for Ix0 {
+    #[inline]
+    fn reverse(self) -> Self { self }  // 0D: no-op
+}
+
+impl Reverse for Ix1 {
+    #[inline]
+    fn reverse(self) -> Self { self }  // 1D: no-op
+}
+
+impl Reverse for Ix2 {
+    #[inline]
+    fn reverse(self) -> Self { Ix2(self.1, self.0) }
+}
+
+impl Reverse for Ix3 {
+    #[inline]
+    fn reverse(self) -> Self { Ix3(self.2, self.1, self.0) }
+}
+
+// Ix4-Ix6: same pattern
+impl Reverse for IxDyn {
+    fn reverse(self) -> Self {
+        let mut dims = self.into_vec();
+        dims.reverse();
+        IxDyn::from_vec(dims)
+    }
+}
 ```
 
 ---
@@ -898,6 +985,7 @@ Wave 5:  [T10] → [T11] → [T12]
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
+| 1.0.3 | 2026-04-08 |
 
 ---
 

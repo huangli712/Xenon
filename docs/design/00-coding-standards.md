@@ -37,7 +37,7 @@ pub struct ArcRepr<A> { /* ... */ }
 pub struct IxDyn { /* ... */ }
 
 // Primary type aliases
-pub type Tensor<A, D> = TensorBase<OwnedRepr<A>, D>;
+pub type Tensor<A, D> = TensorBase<Owned<A>, D>;
 pub type TensorView<'a, A, D> = TensorBase<ViewRepr<&'a A>, D>;
 pub type TensorViewMut<'a, A, D> = TensorBase<ViewMutRepr<&'a mut A>, D>;
 pub type ArcTensor<A, D> = TensorBase<ArcRepr<A>, D>;
@@ -380,7 +380,7 @@ pub struct Bad<A> {
 
 | 存储模式 | Send | Sync | 条件 |
 |----------|------|------|------|
-| `OwnedRepr<A>` | 是 | 是 | `A: Send + Sync` |
+| `Owned<A>` | 是 | 是 | `A: Send + Sync` |
 | `ViewRepr<&'a A>` | 是 | 是 | `A: Sync` |
 | `ViewMutRepr<&'a mut A>` | 是 | **否** | `A: Send`（独占借用不可共享） |
 | `ArcRepr<A>` | 是 | 是 | `A: Send + Sync` |
@@ -388,9 +388,9 @@ pub struct Bad<A> {
 > **关键约束**：`ViewMutRepr` 永远不实现 `Sync`——独占借用语义要求同一时刻只有一个线程可访问。
 
 ```rust
-// OwnedRepr: Send+Sync when A: Send+Sync
-unsafe impl<A: Send> Send for OwnedRepr<A> {}
-unsafe impl<A: Sync> Sync for OwnedRepr<A> {}
+// Owned: Send+Sync when A: Send+Sync
+unsafe impl<A: Send> Send for Owned<A> {}
+unsafe impl<A: Sync> Sync for Owned<A> {}
 
 // ViewRepr: Send+Sync when A: Sync
 unsafe impl<'a, A: Sync> Send for ViewRepr<&'a A> {}
@@ -465,7 +465,6 @@ pub enum XenonError {
     InvalidShape { from: usize, to: usize },
     DimensionMismatch { expected: usize, actual: usize },
     EmptyArray,
-    OverflowError,
 }
 
 pub type Result<T> = core::result::Result<T, XenonError>;
@@ -980,6 +979,7 @@ Wave 2: [T4]
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
+| 1.0.3 | 2026-04-08 |
 
 ---
 

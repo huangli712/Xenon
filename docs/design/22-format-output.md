@@ -217,8 +217,6 @@ where
         // Layout information
         if self.is_f_contiguous() {
             write!(f, "f-contiguous")?;
-        } else if self.is_c_contiguous() {
-            write!(f, "c-contiguous")?;
         } else {
             write!(f, "non-contiguous")?;
         }
@@ -556,6 +554,7 @@ Wave 3:        [T5]
 | 1.0.1 | 2026-04-08 |
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
+| 1.0.4 | 2026-04-08 |
 
 ---
 
