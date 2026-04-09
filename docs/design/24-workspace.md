@@ -187,7 +187,7 @@ pub struct Workspace {
 }
 ```
 
-> **设计决策：** 使用 `AtomicU8` 管理借用状态而非 `Mutex`，原因：无锁（`no_std` 兼容）、状态简单（仅需 3 个值）（参见 `25-thread-safety.md §4.1`）。
+> **设计决策：** 使用 `AtomicU8` 管理借用状态而非 `Mutex`，原因：无锁（`no_std` 兼容）、状态简单（仅需 3 个值）（参见 `25-safety.md §4.1`）。
 
 ### 4.2 常量
 

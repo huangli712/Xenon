@@ -319,7 +319,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 |----------|----------|--------|
 | `test_par_sum_consistency` | 并行 sum 与串行 sum 结果一致（参见 `09-parallel.md §7`） | 高 |
 | `test_par_add_consistency` | 并行 add 与串行 add 结果一致 | 高 |
-| `test_parallel_read` | 多线程并发只读访问安全（参见 `25-thread-safety.md §4.5`） | 高 |
+| `test_parallel_read` | 多线程并发只读访问安全（参见 `25-safety.md §4.5`） | 高 |
 | `test_no_nested_parallel` | 嵌套并行被拒绝 | 中 |
 
 ### 5.11 test_simd.rs
@@ -465,7 +465,7 @@ pub fn rtol_eq(actual: f64, expected: f64, rtol: f64) -> bool {
 
 ### 8.1 并行无数据竞争
 
-线程安全测试方案（参见 `25-thread-safety.md §7`）：
+线程安全测试方案（参见 `25-safety.md §7`）：
 
 | 方式 | 说明 |
 |------|------|

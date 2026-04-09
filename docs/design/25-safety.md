@@ -113,7 +113,7 @@ src/parallel/
 
 ## 4. 公共 API 设计
 
-> **注意：** `05-storage.md §5.7` 包含一个较早的、不正确的 Send/Sync 条件表，已被更正。本文档（25-thread-safety.md）是 Send/Sync 条件的权威参考。
+> **注意：** `05-storage.md §5.7` 包含一个较早的、不正确的 Send/Sync 条件表，已被更正。本文档（25-safety.md）是 Send/Sync 条件的权威参考。
 
 ### 4.1 Send/Sync 实现规则表
 
