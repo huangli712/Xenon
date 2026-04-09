@@ -41,7 +41,7 @@ L2: workspace  ← 当前模块（独立于 tensor）
   tensor (可选) ──→ workspace
 ```
 
-Workspace 模块位于 L2，独立于核心张量类型系统，可被上游库直接使用而无需引入 tensor 依赖（参见 `01-architecture-overview.md §5`）。
+Workspace 模块位于 L2，独立于核心张量类型系统，可被上游库直接使用而无需引入 tensor 依赖（参见 `01-architecture.md §5`）。
 
 ---
 
@@ -979,7 +979,7 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 | `alloc::alloc::dealloc` | alloc | ✅ |
 | `alloc::alloc::Layout` | alloc | ✅ |
 
-所有依赖均在 `core` 或 `alloc` 中，完全兼容 `no_std`（参见 `01-architecture-overview.md §6`）。
+所有依赖均在 `core` 或 `alloc` 中，完全兼容 `no_std`（参见 `01-architecture.md §6`）。
 
 ```toml
 # Cargo.toml

@@ -454,7 +454,7 @@ where
 | 浮点精度控制 | ✅ | ✅（`core::fmt` 支持） |
 | 截断规则 | ✅ | ✅ |
 
-> **与 Feature 矩阵一致**：`01-architecture-overview.md §6` Feature 矩阵中，no_std 列下 `Display 格式化` 应更新为 ✅，与此处定义对齐。
+> **与 Feature 矩阵一致**：`01-architecturew.md §6` Feature 矩阵中，no_std 列下 `Display 格式化` 应更新为 ✅，与此处定义对齐。
 >
 > **Note on Rust 1.85 float formatting:** As of Rust 1.85, float formatting (f32/f64 Display) IS available in `core` without `std`. The `#[cfg(feature = "std")]` gate on Display has been removed accordingly.
 

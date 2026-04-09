@@ -12,7 +12,7 @@
 
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
-| 跨模块验证 | 维度、存储、布局、运算等模块的协同行为（参见 `01-architecture-overview.md §5`） | 单函数测试（由 `#[cfg(test)] mod tests` 覆盖） |
+| 跨模块验证 | 维度、存储、布局、运算等模块的协同行为（参见 `01-architecture.md §5`） | 单函数测试（由 `#[cfg(test)] mod tests` 覆盖） |
 | 边界覆盖 | 空张量、单元素、大张量、极端值、非连续、高维 | 性能测量（由 benchmark 覆盖） |
 | 数值精度 | IEEE 754 精度验证 | 微观 benchmark |
 | 属性测试 | 代数不变量验证 | 内存泄漏检测 |
@@ -119,7 +119,7 @@ tests/
 
 ### 3.3 依赖方向声明
 
-> **依赖方向：单向消费。** `tests/` 仅消费 crate 公共 API（参见 `01-architecture-overview.md §10`），不被任何模块依赖。
+> **依赖方向：单向消费。** `tests/` 仅消费 crate 公共 API（参见 `01-architecture.md §10`），不被任何模块依赖。
 
 ---
 
@@ -336,7 +336,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 
 | 验证方式 | 命令 | 说明 |
 |----------|------|------|
-| CI 脚本 | `cargo check --no-default-features --features alloc` | 验证 no_std + alloc 编译通过（参见 `01-architecture-overview.md §6`） |
+| CI 脚本 | `cargo check --no-default-features --features alloc` | 验证 no_std + alloc 编译通过（参见 `01-architecture.md §6`） |
 | CI 脚本 | `cargo check --no-default-features` | 验证纯 no_std（无 alloc）编译通过 |
 
 ```yaml

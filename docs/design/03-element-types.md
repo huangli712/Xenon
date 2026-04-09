@@ -1,7 +1,7 @@
 # 元素类型体系模块设计
 
 > 文档编号: 03 | 模块: `src/element/` | 阶段: Phase 1
-> 前置文档: `00-coding-standards.md`, `01-architecture-overview.md`
+> 前置文档: `00-coding-standards.md`, `01-architecture.md`
 > 需求参考: 需求说明书 §4
 
 ---
@@ -286,7 +286,7 @@ pub trait ComplexScalar: Numeric + Sealed {
 ```rust
 // src/element/mod.rs
 // Uses the shared Sealed trait from crate::private
-// (see src/private.rs, referenced in 01-architecture-overview.md §3)
+// (see src/private.rs, referenced in 01-architecture.md §3)
 use crate::private::Sealed;
 
 // Sealed implementations in primitives.rs

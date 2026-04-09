@@ -841,7 +841,7 @@ default = ["std"]
 std = []                        # Additive: enables std library
 parallel = ["dep:rayon", "std"] # Additive: enables parallel iterators
 simd = ["dep:pulp"]             # Additive: enables SIMD
-# Note: libm is NOT a dependency (see 01-architecture-overview.md §1.4).
+# Note: libm is NOT a dependency (see 01-architecture.md §1.4).
 # RealScalar math functions (sin/cos/exp/ln) are only available with "std" feature.
 ```
 
@@ -875,7 +875,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 ### 9.4 no_std 兼容
 
-使用 `core` 和 `alloc` 替代 `std`，确保 `no_std` 兼容（参见 `01-architecture-overview.md` §6）：
+使用 `core` 和 `alloc` 替代 `std`，确保 `no_std` 兼容（参见 `01-architecture.md` §6）：
 
 ```rust
 // src/lib.rs

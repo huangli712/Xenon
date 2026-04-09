@@ -13,7 +13,7 @@
 
 ```
 00-rust-standards.md
-01-architecture-overview.md
+01-architecture.md
 02-dimension.md
 03-element-types.md
 ...
@@ -60,7 +60,7 @@ src/
 # <模块名>模块设计
 
 > 文档编号: NN | 模块: `src/<module>/` | 阶段: Phase X
-> 前置文档: `00-rust-standards.md`, `01-architecture-overview.md`, ...
+> 前置文档: `00-rust-standards.md`, `01-architecture.md`, ...
 > 需求参考: 需求说明书 §X
 ```
 
@@ -72,7 +72,7 @@ src/
 
 每个**模块**实施方案文档必须包含以下章节（按需增删）。
 
-> **豁免**：全局规范文档（如 `00-coding-standards.md`、`01-architecture-overview.md`）不是模块文档，可不遵循以下标准章节结构，采用适合其内容的自定义结构。
+> **豁免**：全局规范文档（如 `00-coding-standards.md`、`01-architecture.md`）不是模块文档，可不遵循以下标准章节结构，采用适合其内容的自定义结构。
 
 | 章节 | 必须 | 说明 | 规范章节 |
 |------|------|------|---------|
@@ -568,7 +568,7 @@ Benchmark 分类
 
 ### 15.4 交叉引用
 
-- 引用其他文档时用反引号标注：`参见 01-architecture-overview.md §3`
+- 引用其他文档时用反引号标注：`参见 01-architecture.md §3`
 - 引用需求文档时用章节号：`需求说明书 §7.1`
 
 ### 15.5 版本历史
