@@ -35,7 +35,7 @@ L1: dimension, element, complex
 L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
-L5: ops/, iter/, index/, shape_ops/, broadcast/, construct/, ffi/, convert/, format/
+L5: ops/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 
 外部（非 crate 模块）：
 benches/  ← 当前模块（dev-dependency，仅消费 crate 公共 API）
@@ -55,7 +55,7 @@ benches/
 ├── dot_product.rs          # 向量内积 benchmark
 ├── set.rs                  # 集合操作 benchmark（unique）
 ├── broadcast.rs            # 广播运算 benchmark
-├── shape_ops.rs            # 形状操作 benchmark（transpose/reshape）
+├── shape.rs                # 形状操作 benchmark（transpose/reshape）
 ├── simd_comparison.rs      # SIMD 对比 benchmark
 ├── parallel_comparison.rs  # 并行对比 benchmark
 └── construction.rs         # 构造方法 benchmark
@@ -75,7 +75,7 @@ benches/
 ├── crate::dimension        # Ix0~Ix6, IxDyn, Dimension trait
 ├── crate::element          # Element, Numeric, RealScalar, ComplexScalar
 ├── crate::ops              # 逐元素运算、归约、内积
-├── crate::shape_ops        # transpose, reshape
+├── crate::shape            # transpose, reshape
 ├── crate::broadcast        # broadcast_shape
 ├── crate::set              # unique
 ├── crate::construct        # zeros, ones, from_vec
@@ -90,7 +90,7 @@ benches/
 | `dimension` | `Ix1`, `Ix2`, `Ix3`, `IxDyn`, `Dimension`（参见 `02-dimension.md §4`） |
 | `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element-types.md §4`） |
 | `ops` | `add`, `sub`, `mul`, `div`, `sin`, `exp`, `abs`, `sum_axis`（参见 `11-elementwise-ops.md §4`） |
-| `shape_ops` | `reshape`, `transpose`（参见 `16-shape-ops.md §4`） |
+| `shape` | `reshape`, `transpose`（参见 `16-shape.md §4`） |
 | `set` | `unique`（参见 `14-set.md §4`） |
 | `construct` | `zeros`, `ones`, `from_vec`, `from_fn`（参见 `18-construction.md §4`） |
 | `broadcast` | `broadcast_shape`, 广播运算符（参见 `15-broadcast.md §4`） |
@@ -130,7 +130,7 @@ name = "broadcast"
 harness = false
 
 [[bench]]
-name = "shape_ops"
+name = "shape"
 harness = false
 
 [[bench]]
@@ -453,7 +453,7 @@ b.iter(|| &a + &b);
 | `dot_product.rs` | `ops/` (内积运算) | `12-reduction.md` |
 | `set.rs` | `set` | `14-set.md` |
 | `broadcast.rs` | `broadcast` | `15-broadcast.md` |
-| `shape_ops.rs` | `shape_ops` | `16-shape-ops.md` |
+| `shape.rs` | `shape` | `16-shape.md` |
 | `simd_comparison.rs` | `simd` + `ops/` | `08-simd-backend.md` |
 | `parallel_comparison.rs` | `parallel` + `ops/` | `09-parallel-backend.md` |
 | `construction.rs` | `construct` | `18-construction.md` |
@@ -529,10 +529,10 @@ benchmark 文件
 
 ### Wave 3: 形状与构造
 
-- [ ] **T8**: 实现 `benches/shape_ops.rs`
-  - 文件: `benches/shape_ops.rs`
+- [ ] **T8**: 实现 `benches/shape.rs`
+  - 文件: `benches/shape.rs`
   - 内容: transpose_2d/reshape_contiguous/reshape_noncontiguous
-  - 测试: `cargo bench --bench shape_ops -- --quick`
+  - 测试: `cargo bench --bench shape -- --quick`
   - 前置: T2
   - 预计: 10 min
 

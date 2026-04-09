@@ -41,7 +41,7 @@ L1: complex  ← 当前模块
 L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
-L5: ops/, iter/, index/, shape_ops/, broadcast/, construct/, ffi/, convert/, format/
+L5: ops/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 ```
 
 ### 1.4 自定义实现 vs num-complex

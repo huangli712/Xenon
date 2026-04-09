@@ -36,7 +36,7 @@ L1: dimension, element, complex
 L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
-L5: ops/, iter/, index/, shape_ops/, broadcast/, construct/, ffi/, convert/, format/
+L5: ops/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 
 外部（非 crate 模块）：
 tests/  ← 当前模块（仅消费 crate 公共 API）
@@ -61,7 +61,7 @@ tests/
 ├── test_index.rs               # 索引操作（多维索引/范围切片）
 ├── test_construction.rs        # 构造方法（zeros/ones/eye/from_vec/from_fn/from_scalar）
 ├── test_reduction.rs           # 归约运算（sum/沿轴sum/unique）
-├── test_shape_ops.rs           # 形状操作（transpose/reshape）
+├── test_shape.rs               # 形状操作（transpose/reshape）
 ├── test_conversion.rs          # 类型转换（cast/存储模式转换）
 ├── test_ffi.rs                 # FFI 集成（原始指针/BLAS 兼容）
 ├── test_parallel.rs            # 并行计算（一致性/数据竞争）
@@ -95,7 +95,7 @@ tests/
 ├── crate::layout           # LayoutFlags, Order
 ├── crate::ops              # 逐元素运算、归约、内积
 ├── crate::broadcast        # broadcast_shape
-├── crate::shape_ops        # transpose, reshape
+├── crate::shape            # transpose, reshape
 ├── crate::index            # 多维索引、范围切片
 ├── crate::construct        # zeros, ones, eye, from_vec, from_fn, from_scalar
 ├── crate::set              # unique
@@ -281,7 +281,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 | `test_dot_shape_mismatch` | 内积维度不匹配返回错误 | 高 |
 | `test_integer_sum_overflow` | 整数 sum 溢出视为不可恢复错误 | 中 |
 
-### 5.7 test_shape_ops.rs
+### 5.7 test_shape.rs
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
@@ -520,9 +520,9 @@ fn test_simd_add_consistency() {
 | 不变量 | 测试方法 | 优先级 |
 |--------|----------|--------|
 | `reshape` 保元素数 | 随机形状 → reshape → `len()` 不变 | 高 |
-| `reshape` + `reshape` 回到原形状 | 连续数组 reshape 再 reshape 回原形状（参见 `16-shape-ops.md §4`） | 高 |
+| `reshape` + `reshape` 回到原形状 | 连续数组 reshape 再 reshape 回原形状（参见 `16-shape.md §4`） | 高 |
 | `sum` 保加法单位元 | 空数组 sum == 0（参见 `13-reduction.md §4`） | 高 |
-| `transpose` 自反性 | `t.t().t()` == `t`（参见 `16-shape-ops.md §4`） | 高 |
+| `transpose` 自反性 | `t.t().t()` == `t`（参见 `16-shape.md §4`） | 高 |
 | 加法交换律 | `a + b` == `b + a`（近似） | 中 |
 | 加法结合律 | `(a + b) + c` == `a + (b + c)`（近似） | 中 |
 | `unique` 保元素数 | `unique(a).len()` ≤ `a.len()` | 中 |
@@ -700,7 +700,7 @@ fn test_bad_magic() {
 | `test_index.rs` | `index` | `17-indexing.md` |
 | `test_construction.rs` | `construct` | `18-construction.md` |
 | `test_reduction.rs` | `reduction` , `set` | `12-reduction.md`, `14-set.md` |
-| `test_shape_ops.rs` | `shape_ops` | `16-shape-ops.md` |
+| `test_shape.rs` | `shape` | `16-shape.md` |
 | `test_conversion.rs` | `convert` | `22-conversion.md` |
 | `test_ffi.rs` | `ffi`, `workspace` | `23-ffi.md`, `24-workspace.md` |
 | `test_parallel.rs` | `parallel` | `09-parallel-backend.md` |
@@ -781,10 +781,10 @@ fn test_bad_magic() {
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T8**: 实现 `tests/test_shape_ops.rs`
-  - 文件: `tests/test_shape_ops.rs`
+- [ ] **T8**: 实现 `tests/test_shape.rs`
+  - 文件: `tests/test_shape.rs`
   - 内容: 形状操作（transpose/reshape/高维）
-  - 测试: `cargo test --test test_shape_ops`
+  - 测试: `cargo test --test test_shape`
   - 前置: T1
   - 预计: 10 min
 

@@ -669,7 +669,7 @@ Wave 4:           [T7]
 | `dimension` | index → dimension | 使用 `Dimension::slice()` 获取形状切片，参见 `02-dimension.md` §3 |
 | `memory_layout` | index → memory_layout | 更新 `LayoutFlags`，参见 `06-memory-layout.md` §3 |
 | `iter` | iter → index | 迭代器使用 `get_unchecked()` 快速访问，参见 `10-iterator.md` §4 |
-| `shape_ops` | shape_ops → index | reshape 等操作可能触发拷贝，参见 `16-shape-ops.md` §4 |
+| `shape` | shape → index | reshape 等操作可能触发拷贝，参见 `16-shape.md` §4 |
 
 ---
 

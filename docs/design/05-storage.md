@@ -37,7 +37,7 @@ L1: dimension, element, complex
 L2: layout (依赖 dimension)
 L3: storage (仅依赖 core/alloc，不依赖 layout)  ← 当前模块
 L4: tensor (依赖 storage, dimension)
-L5: ops/, iter/, index/, shape_ops/, broadcast/, construct/, ffi/, convert/, format/
+L5: ops/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 ```
 
 ---

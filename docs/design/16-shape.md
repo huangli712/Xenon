@@ -1,6 +1,6 @@
 # 形状操作模块设计
 
-> 文档编号: 16 | 模块: `src/shape_ops/` | 阶段: Phase 4
+> 文档编号: 16 | 模块: `src/shape/` | 阶段: Phase 4
 > 前置文档: `07-tensor.md`, `06-memory-layout.md`
 > 需求参考: 需求说明书 §17
 
@@ -37,7 +37,7 @@ L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
 L5: broadcast (依赖 tensor, dimension)
-L6: shape_ops  ← 当前模块
+L6: shape  ← 当前模块
 ```
 
 ---
@@ -45,7 +45,7 @@ L6: shape_ops  ← 当前模块
 ## 2. 文件位置
 
 ```
-src/shape_ops/
+src/shape/
 ├── mod.rs             # 模块入口，re-export 公开 trait 和函数
 ├── transpose.rs       # transpose, t
 └── reshape.rs         # reshape, into_shape
@@ -66,7 +66,7 @@ src/shape_ops/
                     └──────┬───────┘
                            │ 使用
               ┌────────────┼────────────────┐
-              │  shape_ops                  │
+              │  shape                      │
               │  transpose.rs │ reshape.rs  │
               └──┬───────────┬──────────────┘
                  │ 使用       │ 使用
@@ -88,7 +88,7 @@ src/shape_ops/
 
 ### 3.3 依赖方向声明
 
-> **依赖方向：单向向上。** `shape_ops/` 消费 `tensor`、`dimension`、`memory_layout` 的 trait 和类型，不被它们依赖。
+> **依赖方向：单向向上。** `shape/` 消费 `tensor`、`dimension`、`memory_layout` 的 trait 和类型，不被它们依赖。
 
 ---
 
@@ -378,8 +378,8 @@ Non-contiguous example (reshape fails):
 
 ### Wave 1: 基础设施
 
-- [ ] **T1**: 创建 `src/shape_ops/mod.rs` 骨架
-  - 文件: `src/shape_ops/mod.rs`, `src/shape_ops/transpose.rs`, `src/shape_ops/reshape.rs`
+- [ ] **T1**: 创建 `src/shape/mod.rs` 骨架
+  - 文件: `src/shape/mod.rs`, `src/shape/transpose.rs`, `src/shape/reshape.rs`
   - 内容: 模块声明、子模块文件占位、公共导出声明
   - 测试: 编译通过
   - 前置: tensor、dimension、layout 模块完成
@@ -388,7 +388,7 @@ Non-contiguous example (reshape fails):
 ### Wave 2: 转置实现
 
 - [ ] **T2**: 实现 `transpose()` / `t()` 方法
-  - 文件: `src/shape_ops/transpose.rs`
+  - 文件: `src/shape/transpose.rs`
   - 内容: `TensorBase::transpose()`, `TensorBase::t()`, `LayoutFlags::update_for_transpose()`
   - 测试: `test_transpose_2d`, `test_transpose_3d`, `test_transpose_contiguity_swap`
   - 前置: T1
@@ -397,14 +397,14 @@ Non-contiguous example (reshape fails):
 ### Wave 3: Reshape 实现
 
 - [ ] **T3**: 实现 `reshape()` 方法
-  - 文件: `src/shape_ops/reshape.rs`
+  - 文件: `src/shape/reshape.rs`
   - 内容: `TensorBase::reshape()` — 连续性检查 + 零拷贝路径
   - 测试: `test_reshape_success`, `test_reshape_invalid_shape`, `test_reshape_non_contiguous`
   - 前置: T1
   - 预计: 10 min
 
 - [ ] **T4**: 实现 `into_shape()` 方法
-  - 文件: `src/shape_ops/reshape.rs`
+  - 文件: `src/shape/reshape.rs`
   - 内容: `TensorBase::into_shape()` — 连续零拷贝 + 非连续拷贝路径
   - 测试: `test_into_shape_contiguous`, `test_into_shape_non_contiguous`
   - 前置: T3
@@ -413,7 +413,7 @@ Non-contiguous example (reshape fails):
 ### Wave 4: 测试
 
 - [ ] **T5**: 编写综合测试
-  - 文件: `tests/shape_ops.rs`
+  - 文件: `tests/shape.rs`
   - 内容: 转置正确性、reshape 成功/失败、非连续 reshape、大数组性能、reshape 各种路径、大数组测试
   - 测试: 覆盖所有公共 API
   - 前置: T2, T3, T4
@@ -475,11 +475,11 @@ Wave 4:         [T5]
 
 | 交互模块 | 方向 | 说明 |
 |----------|------|------|
-| `tensor` | shape_ops → tensor | 使用 `TensorBase` 结构和 `TensorView` 创建方法，参见 `07-tensor.md` §4 |
-| `dimension` | shape_ops → dimension | 使用 `Dimension` trait 的形状操作方法，参见 `02-dimension.md` §3 |
-| `memory_layout` | shape_ops → memory_layout | 检查连续性、计算步长，参见 `06-memory-layout.md` §3 |
-| `broadcast` | shape_ops ← broadcast | 广播视图不可 reshape（非连续），参见 `15-broadcast.md` §5 |
-| `index` | index → shape_ops | 切片后可 reshape（如连续），参见 `17-indexing.md` §4 |
+| `tensor` | shape → tensor | 使用 `TensorBase` 结构和 `TensorView` 创建方法，参见 `07-tensor.md` §4 |
+| `dimension` | shape → dimension | 使用 `Dimension` trait 的形状操作方法，参见 `02-dimension.md` §3 |
+| `memory_layout` | shape → memory_layout | 检查连续性、计算步长，参见 `06-memory-layout.md` §3 |
+| `broadcast` | shape ← broadcast | 广播视图不可 reshape（非连续），参见 `15-broadcast.md` §5 |
+| `index` | index → shape | 切片后可 reshape（如连续），参见 `17-indexing.md` §4 |
 
 ---
 

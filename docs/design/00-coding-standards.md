@@ -16,7 +16,7 @@
 // Good
 mod tensor_base;
 mod layout;
-mod shape_ops;
+mod shape;
 
 // Bad
 mod tensorBase;

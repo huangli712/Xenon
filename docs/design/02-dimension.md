@@ -42,7 +42,7 @@ L1: dimension  ← 当前模块
 L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
-L5: ops/, iter/, index/, shape_ops/, broadcast/, construct/, ffi/, convert/, format/
+L5: ops/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 ```
 
 ---
@@ -82,7 +82,7 @@ src/dimension/
 ### 3.3 依赖方向声明
 
 > **依赖方向：单向向上。** `dimension/` 仅消费 `error` 和 `private`，不被它们反向依赖。
-> 被下游模块消费：`layout`（参见 `06-memory-layout.md` §3）、`storage`（参见 `05-storage.md` §3）、`tensor`（参见 `07-tensor.md` §4）、`shape_ops`（参见 `16-shape-ops.md` §4）、`iter`（参见 `10-iterator.md` §4）、`ops`（参见 `11-elementwise-ops.md` §4）、`index`（参见 `17-indexing.md` §4）。
+> 被下游模块消费：`layout`（参见 `06-memory-layout.md` §3）、`storage`（参见 `05-storage.md` §3）、`tensor`（参见 `07-tensor.md` §4）、`shape`（参见 `16-shape.md` §4）、`iter`（参见 `10-iterator.md` §4）、`ops`（参见 `11-elementwise-ops.md` §4）、`index`（参见 `17-indexing.md` §4）。
 
 ---
 
@@ -769,7 +769,7 @@ impl<D: Dimension> BroadcastDim<D> for IxDyn { type Output = IxDyn; }
 ```rust
 /// Trait for reversing the axis order of a dimension.
 ///
-/// Used by `transpose()` in `shape_ops` (see `16-shape-ops.md §4`).
+/// Used by `transpose()` in `shape` (see `16-shape.md §4`).
 pub trait Reverse: Dimension {
     /// Reverse the axis order of this dimension.
     fn reverse(self) -> Self;
@@ -865,12 +865,12 @@ strides_for_f_order(shape):
 | `layout` | `Dimension` | 计算步长、检查连续性 |
 | `storage` | `Dimension` | 关联类型、形状表示 |
 | `tensor` | `Dimension` | 泛型参数、形状访问 |
-| `shape_ops` | `Dimension`, `IntoDimension` | reshape、transpose |
+| `shape` | `Dimension`, `IntoDimension` | reshape、transpose |
 | `iter` | `Dimension` | 迭代器泛型参数 |
 | `ops` | `Dimension` | 运算泛型参数 |
 | `index` | `Dimension`, `Axis` | 索引操作 |
 
-> 各模块的详细接口约定参见对应设计文档（`05-storage.md` §3、`07-tensor.md` §4、`16-shape-ops.md` §4、`17-indexing.md` §4）。
+> 各模块的详细接口约定参见对应设计文档（`05-storage.md` §3、`07-tensor.md` §4、`16-shape.md` §4、`17-indexing.md` §4）。
 
 ---
 

@@ -37,7 +37,7 @@ L1: dimension, element, complex
 L2: layout (依赖 dimension)  ← 当前模块
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
-L5: ops/, iter/, index/, shape_ops/, broadcast/, construct/, ffi/, convert/, format/
+L5: ops/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 ```
 
 ### 1.4 F-order 设计决策
@@ -194,7 +194,7 @@ impl LayoutFlags {
 
 ### 4.1b 内存顺序枚举 Order
 
-`Order` 枚举表示内存排列顺序，供形状操作模块（参见 `16-shape-ops.md §4`）在 reshape 时指定目标布局。
+`Order` 枚举表示内存排列顺序，供形状操作模块（参见 `16-shape.md §4`）在 reshape 时指定目标布局。
 
 ```rust
 /// Memory layout order.
@@ -680,7 +680,7 @@ Wave 4:       [T8]
 |--------|------|------|
 | `TensorBase` 组成 | tensor 持有 layout | `TensorBase` 直接内联 `LayoutFlags` 作为计算字段（参见 `07-tensor.md §4.1`）。`Layout` 结构体为预留定义。 |
 | 切片操作 | tensor → layout | 切片时调用 layout 更新连续性/对齐标志（参见 `17-indexing.md §5`） |
-| Reshape | tensor → layout | reshape 时重新计算步长和 layout（参见 `16-shape-ops.md §4`） |
+| Reshape | tensor → layout | reshape 时重新计算步长和 layout（参见 `16-shape.md §4`） |
 
 ### 8.3 与 SIMD 模块
 

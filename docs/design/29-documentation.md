@@ -39,7 +39,7 @@ L1: dimension, element, complex
 L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
-L5: ops/, iter/, index/, shape_ops/, broadcast/, construct/, ffi/, convert/, format/
+L5: ops/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 
 横切关注点（全局）：
 ┌─────────────────────────────────────────────────────────────────┐
@@ -73,7 +73,7 @@ src/
 │   └── mod.rs                # 运算模块文档（L1）
 ├── broadcast/
 │   └── mod.rs                # 广播模块文档（L1）
-├── shape_ops/
+├── shape/
 │   └── mod.rs                # 形状操作模块文档（L1）
 ├── index/
 │   └── mod.rs                # 索引模块文档（L1）
@@ -689,7 +689,7 @@ docs:
 |----------|-----------|------|
 | T1 (lib.rs 文档) | 全部 | 需要了解所有模块的概览 |
 | T5 (核心模块文档) | dimension, element, complex, storage, layout | 基于 §1 章节编写 |
-| T6 (张量与运算文档) | tensor, ops, broadcast, shape_ops, index, construct, set | 基于 §1 章节编写 |
+| T6 (张量与运算文档) | tensor, ops, broadcast, shape, index, construct, set | 基于 §1 章节编写 |
 | T7 (基础设施文档) | ffi, workspace, simd, parallel, error, prelude | 基于 §1 章节编写 |
 | T8 (类型级文档) | 全部 | 逐类型添加 doc comment |
 | T9 (函数级文档) | 全部 | 逐函数添加 doc comment |
@@ -754,9 +754,9 @@ docs:
   - 前置: T2
   - 预计: 10 min
 
-- [ ] **T6**: 编写张量与运算模块文档（tensor, ops, broadcast, shape_ops, index, construct, set）
+- [ ] **T6**: 编写张量与运算模块文档（tensor, ops, broadcast, shape, index, construct, set）
   - 文件: 各 `mod.rs`
-  - 内容: 模块职责、核心类型、运算分类、类型约束速查（参见 `07-tensor.md §1`、`11-elementwise-ops.md §1`、`15-broadcast.md §1`、`16-shape-ops.md §1`）
+  - 内容: 模块职责、核心类型、运算分类、类型约束速查（参见 `07-tensor.md §1`、`11-elementwise-ops.md §1`、`15-broadcast.md §1`、`16-shape.md §1`）
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T2
   - 预计: 10 min
@@ -819,8 +819,8 @@ docs:
   - 前置: T5, T6, T7
   - 预计: 10 min
 
-- [ ] **T9c**: broadcast 和 shape_ops 模块文档
-  - 文件: `src/broadcast/mod.rs`, `src/shape_ops/mod.rs`
+- [ ] **T9c**: broadcast 和 shape 模块文档
+  - 文件: `src/broadcast/mod.rs`, `src/shape/mod.rs`
   - 内容: broadcast_shape, transpose, reshape 函数文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7

@@ -172,7 +172,7 @@ xenon/
 │   │   ├── simd.rs            # SIMD 加速归约路径（cfg feature = "simd"）
 │   │   └── parallel.rs        # 并行归约路径（cfg feature = "parallel"）
 │   │
-│   ├── shape_ops/             # 形状操作
+│   ├── shape/                 # 形状操作
 │   │   ├── mod.rs             # 形状操作 trait
 │   │   ├── reshape.rs         # reshape
 │   │   └── transpose.rs       # transpose
@@ -233,7 +233,7 @@ xenon/
 │   ├── bench_dot_product.rs   # 向量内积
 │   ├── bench_set.rs           # 集合操作
 │   ├── bench_broadcast.rs     # 广播操作
-│   ├── bench_shape_ops.rs     # 形状操作
+│   ├── bench_shape.rs         # 形状操作
 │   ├── bench_simd_comparison.rs   # SIMD 比较
 │   ├── bench_parallel_comparison.rs # 并行比较
 │   └── bench_construction.rs  # 张量构造
@@ -262,7 +262,7 @@ xenon/
 | `broadcast.rs` | NumPy 广播规则 |
 | `matrix/` | 向量内积 dot（标量路径 + SIMD 加速路径） |
 | `reduction/` | 归约操作（sum，含 SIMD/并行加速路径） |
-| `shape_ops/` | reshape、transpose |
+| `shape/` | reshape、transpose |
 | `index/` | 多维整数索引、范围切片索引 |
 | `construct/` | 张量构造 |
 | `convert/` | 类型转换（cast、存储模式互转、From trait、连续化） |
@@ -327,7 +327,7 @@ name = "broadcast"
 harness = false
 
 [[bench]]
-name = "shape_ops"
+name = "shape"
 harness = false
 
 [[bench]]
@@ -381,8 +381,8 @@ rustdoc-args = ["--cfg", "docsrs"]
 | **L3** | storage | core/alloc | `05-storage.md` |
 | **L4** | tensor | storage, dimension, layout, element | `07-tensor.md` |
 | **L5** | broadcast, iter, ffi | tensor | `15-broadcast.md`、`10-iterator.md`、`23-ffi.md` |
-| **L6** | math, matrix, reduction, shape_ops, index, util | tensor, broadcast（部分模块还需 iter） | `11-elementwise-ops.md`、`12-matrix.md`、`13-reduction.md`、`14-set.md`、`16-shape-ops.md`、`17-indexing.md`、`20-utility.md` |
-| **L7** | construct, convert, format | tensor, shape_ops | `18-construction.md`、`21-type-conversion.md`、`22-format-output.md` |
+| **L6** | math, matrix, reduction, shape, index, util | tensor, broadcast（部分模块还需 iter） | `11-elementwise-ops.md`、`12-matrix.md`、`13-reduction.md`、`14-set.md`、`16-shape.md`、`17-indexing.md`、`20-utility.md` |
+| **L7** | construct, convert, format | tensor, shape | `18-construction.md`、`21-type-conversion.md`、`22-format-output.md` |
 
 ### 5.2 依赖图（ASCII）
 
@@ -441,7 +441,7 @@ rustdoc-args = ["--cfg", "docsrs"]
     │          │                 │
     │          ▼                 ▼
     │     ┌────────┐      ┌──────────┐
-    │     │  math  │◄─────│shape_ops │
+    │     │  math  │◄─────│shape     │
     │     └────┬───┘      └────┬─────┘
     │          │               │
     │     ┌────┴────┐          │
@@ -583,7 +583,7 @@ pub mod matrix;
 pub mod util;
 pub mod broadcast;
 pub mod reduction;
-pub mod shape_ops;
+pub mod shape;
 pub mod index;
 pub mod construct;
 pub mod convert;

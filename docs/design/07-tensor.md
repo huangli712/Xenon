@@ -14,7 +14,7 @@
 |------|------|--------|
 | 核心结构体 | `TensorBase<S, D>` 双参数泛型结构体定义 | 运算逻辑（参见 `11-elementwise-ops.md §1`） |
 | 类型别名 | `Tensor`/`TensorView`/`TensorViewMut`/`ArcTensor` 及维度便捷别名 | 广播规则（参见 `15-broadcast.md §3`） |
-| 基础查询 | shape/ndim/len/strides/is_empty/is_f_contiguous/is_aligned 等方法 | 形状操作（reshape/transpose，参见 `16-shape-ops.md §1`） |
+| 基础查询 | shape/ndim/len/strides/is_empty/is_f_contiguous/is_aligned 等方法 | 形状操作（reshape/transpose，参见 `16-shape.md §1`） |
 | 安全构造 | 从形状和数据构造，验证合法性 | 索引操作（参见 `17-indexing.md §1`） |
 | unsafe 构造 | `from_raw_parts`，用于 FFI | 切片操作（参见 `17-indexing.md §5`） |
 | 视图方法 | view/view_mut/into_view | 集合操作（参见 `11-elementwise-ops.md §1`） |
@@ -38,7 +38,7 @@ L1: dimension, element, complex
 L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)  ← 当前模块
-L5: ops/, iter/, index/, shape_ops/, broadcast/, construct/, ffi/, convert/, format/
+L5: ops/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 ```
 
 ---
