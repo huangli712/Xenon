@@ -151,7 +151,7 @@ pub trait Numeric:
     /// For real numeric types (i32, i64, f32, f64), this returns `self` unchanged.
     /// For `ComplexScalar` types, this returns the complex conjugate (re - im*i).
     ///
-    /// This method is needed by `12-matrix-ops` for unified dot product implementation,
+    /// This method is needed by `12-matrix` for unified dot product implementation,
     /// allowing a single generic algorithm to handle both real and complex inner products.
     fn conj(self) -> Self;
 }
