@@ -14,7 +14,7 @@
 |------|------|--------|
 | 算术运算 | add/sub/mul/div，数值类型：i32/i64/f32/f64/Complex | 归约运算（sum/prod/min/max，参见 `13-reduction.md §1`） |
 | 一元运算 | abs/neg/square/signum（Numeric + PartialOrd），数学函数（RealScalar） | 篮选/排序 |
-| 数学函数 | sin/sqrt/exp/ln/floor/ceil，仅 f32/f64 | 运算符重载（参见 `19-operator-overload.md §1`） |
+| 数学函数 | sin/sqrt/exp/ln/floor/ceil，仅 f32/f64 | 运算符重载（参见 `19-overload.md §1`） |
 | 复数运算 | norm（返回实数类型）/conj，仅 Complex | 比较运算（eq/ne/lt/gt） |
 | 逻辑非 | `!`，仅 bool | 位运算 |
 | 比较运算 | eq/ne/lt/gt，返回 bool 张量，NaN 遵循 IEEE 754 | 搜索/排序 |
