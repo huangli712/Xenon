@@ -756,7 +756,7 @@ docs:
 
 - [ ] **T6**: 编写张量与运算模块文档（tensor, ops, broadcast, shape, index, construct, set）
   - 文件: 各 `mod.rs`
-  - 内容: 模块职责、核心类型、运算分类、类型约束速查（参见 `07-tensor.md §1`、`11-elementwise-ops.md §1`、`15-broadcast.md §1`、`16-shape.md §1`）
+  - 内容: 模块职责、核心类型、运算分类、类型约束速查（参见 `07-tensor.md §1`、`11-math.md §1`、`15-broadcast.md §1`、`16-shape.md §1`）
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T2
   - 预计: 10 min

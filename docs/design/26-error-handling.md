@@ -85,7 +85,7 @@ src/error.rs
 ### 3.3 依赖方向声明
 
 > **依赖方向：无内部依赖。** `error.rs` 是整个项目的 L0 层，不依赖 crate 内任何其他模块。
-> 被所有下游模块消费：`dimension`（参见 `02-dimension.md §3`）、`element`（参见 `03-element-types.md §3`）、`layout`（参见 `06-memory-layout.md §3`）、`storage`（参见 `05-storage.md §3`）、`tensor`（参见 `07-tensor.md §3`）、`ops`（参见 `11-elementwise-ops.md §3`）、`shape`（参见 `16-shape.md §3`）、`index`（参见 `17-indexing.md §3`） 等。
+> 被所有下游模块消费：`dimension`（参见 `02-dimension.md §3`）、`element`（参见 `03-element-types.md §3`）、`layout`（参见 `06-memory-layout.md §3`）、`storage`（参见 `05-storage.md §3`）、`tensor`（参见 `07-tensor.md §3`）、`ops`（参见 `11-math.md §3`）、`shape`（参见 `16-shape.md §3`）、`index`（参见 `17-indexing.md §3`） 等。
 
 ---
 
@@ -567,7 +567,7 @@ Wave 3: ┌──[T6]────┤
 | `tensor/` | `InvalidShape` | reshape 操作（参见 `07-tensor.md §4`） |
 | `tensor/` | `LayoutMismatch` | reshape 非连续数组 |
 | `tensor/` | `EmptyArray` | dot 等操作对空数组 |
-| `ops/` | `ShapeMismatch` | 二元运算形状不兼容（参见 `11-elementwise-ops.md §4`） |
+| `ops/` | `ShapeMismatch` | 二元运算形状不兼容（参见 `11-math.md §4`） |
 | `ops/` | `BroadcastError` | 广播失败（参见 `15-broadcast.md §5`） |
 | `ops/` | `InvalidAxis` | sum_axis 轴索引错误（参见 `13-reduction.md §4`） |
 | `ops/` | 整数 sum 归约溢出 → panic（非 XenonError，使用 checked_add().expect()） | 整数归约溢出 |

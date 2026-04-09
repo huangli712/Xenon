@@ -16,7 +16,7 @@
 
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
-| 元素遍历 | 按元素遍历（F-order 内存顺序） | 具体运算逻辑（参见 `11-elementwise-ops.md §1`） |
+| 元素遍历 | 按元素遍历（F-order 内存顺序） | 具体运算逻辑（参见 `11-math.md §1`） |
 | 轴遍历 | 沿指定轴产生子张量视图 | 子视图的具体操作 |
 | 窗口遍历 | 滑动窗口产生子视图 | 卷积运算 |
 | 索引遍历 | 带多维索引的元素遍历 | 索引赋值操作 |
@@ -231,7 +231,7 @@ impl<Parts, D: Dimension> Zip<Parts, D> {
     ///
     /// **注意:** `Zip::and` 要求两个 producer 的维度类型 `D` 必须相同。
     /// 对于不同维度类型的广播场景（如 Ix2 与 Ix3 组合），应使用
-    /// `11-elementwise-ops.md` 中的 `zip_with` 函数，后者通过
+    /// `11-math.md` 中的 `zip_with` 函数，后者通过
     /// `BroadcastDim` 约束处理维度不同的情况。
     pub fn and<P: NdProducer<Dim = D>>(self, producer: P)
         -> Result<Zip<(Parts, P), D>, BroadcastError>;

@@ -89,7 +89,7 @@ benches/
 | `tensor` | `Tensor<A, D>`, `TensorView`, `TensorViewMut`, `.shape()`, `.sum()`（参见 `07-tensor.md §4`） |
 | `dimension` | `Ix1`, `Ix2`, `Ix3`, `IxDyn`, `Dimension`（参见 `02-dimension.md §4`） |
 | `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element-types.md §4`） |
-| `ops` | `add`, `sub`, `mul`, `div`, `sin`, `exp`, `abs`, `sum_axis`（参见 `11-elementwise-ops.md §4`） |
+| `ops` | `add`, `sub`, `mul`, `div`, `sin`, `exp`, `abs`, `sum_axis`（参见 `11-math.md §4`） |
 | `shape` | `reshape`, `transpose`（参见 `16-shape.md §4`） |
 | `set` | `unique`（参见 `14-set.md §4`） |
 | `construct` | `zeros`, `ones`, `from_vec`, `from_fn`（参见 `18-construction.md §4`） |
@@ -448,7 +448,7 @@ b.iter(|| &a + &b);
 
 | Benchmark 文件 | 被测模块 | 对应设计文档 |
 |----------------|----------|-------------|
-| `elementwise.rs` | `ops/` (逐元素运算) | `11-elementwise-ops.md` |
+| `elementwise.rs` | `ops/` (逐元素运算) | `11-math.md` |
 | `reduction.rs` | `ops/` (归约运算) | `12-reduction.md` |
 | `dot_product.rs` | `ops/` (内积运算) | `12-reduction.md` |
 | `set.rs` | `set` | `14-set.md` |

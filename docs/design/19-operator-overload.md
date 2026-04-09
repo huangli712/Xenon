@@ -1,7 +1,7 @@
 # 运算符重载模块设计
 
 > 文档编号: 19 | 模块: `src/ops/arithmetic.rs` | 阶段: Phase 4
-> 前置文档: `11-elementwise-ops.md`, `15-broadcast.md`
+> 前置文档: `11-math.md`, `15-broadcast.md`
 > 需求参考: 需求说明书 §20
 
 ---
@@ -85,7 +85,7 @@ src/ops/
 
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
-| `elementwise_ops` | `zip_with()`, `mapv()`, 二元逐元素运算（参见 `11-elementwise-ops.md` §4） |
+| `elementwise_ops` | `zip_with()`, `mapv()`, 二元逐元素运算（参见 `11-math.md` §4） |
 | `broadcast` | `broadcast_shape()`, `broadcast_with()`, `can_broadcast()`（参见 `15-broadcast.md` §4） |
 | `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.view()`（参见 `07-tensor.md` §4） |
 | `element` | `Numeric` trait 约束（排除 `bool`）（参见 `03-element-types.md` §3） |
@@ -425,7 +425,7 @@ Wave 5:      [T6]
 
 | 交互模块 | 方向 | 说明 |
 |----------|------|------|
-| `elementwise_ops` | arithmetic → elementwise | `zip_with()` 执行逐元素运算，`mapv()` 执行标量运算（参见 `11-elementwise-ops.md` §4） |
+| `elementwise_ops` | arithmetic → elementwise | `zip_with()` 执行逐元素运算，`mapv()` 执行标量运算（参见 `11-math.md` §4） |
 | `broadcast` | arithmetic → broadcast | `broadcast_with()` 广播两个张量到公共形状（参见 `15-broadcast.md` §4） |
 | `tensor` | arithmetic → tensor | 构造结果 `Tensor<A, D>`，使用 `.view()` 创建视图（参见 `07-tensor.md` §4） |
 | `element` | arithmetic → element | `Numeric` trait 约束排除 `bool` 类型（参见 `03-element-types.md` §3） |
@@ -448,7 +448,7 @@ Wave 5:      [T6]
 | 属性 | 值 |
 |------|-----|
 | 决策 | 运算符重载中形状不兼容时 panic（使用 `expect`） |
-| 理由 | 与 Rust 标准库 `Index` trait 惯例一致；运算符返回类型固定，无法返回 Result；用户需要安全路径可直接使用 `broadcast_with` + `zip_with`（参见 `15-broadcast.md` §4.1、`11-elementwise-ops.md` §4.1） |
+| 理由 | 与 Rust 标准库 `Index` trait 惯例一致；运算符返回类型固定，无法返回 Result；用户需要安全路径可直接使用 `broadcast_with` + `zip_with`（参见 `15-broadcast.md` §4.1、`11-math.md` §4.1） |
 | 替代方案 | 返回 `Result<Tensor, BroadcastError>` — 放弃，Rust 运算符 trait 不支持 Result 返回类型 |
 | 替代方案 | 使用 `PartialEq` 运算符返回 `Result` — 放弃，不自然 |
 
@@ -538,7 +538,7 @@ use alloc::vec::Vec;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-// 参见 `11-elementwise-ops.md` §11
+// 参见 `11-math.md` §11
 // 参见 `15-broadcast.md` §11
 ```
 

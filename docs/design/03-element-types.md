@@ -85,7 +85,7 @@ src/element/
 ### 3.3 依赖方向声明
 
 > **依赖方向：单向向上。** `element/` 消费 `complex` 的类型定义（即 `element` 依赖 `complex`），`complex` 不反向依赖 `element`。
-> 被下游消费：`ops`（参见 `11-elementwise-ops.md` §4）、`reduction`（参见 `13-reduction.md` §4）、`tensor`（参见 `07-tensor.md` §4）等模块使用 Element/Numeric/RealScalar/ComplexScalar 作为泛型约束。
+> 被下游消费：`ops`（参见 `11-math.md` §4）、`reduction`（参见 `13-reduction.md` §4）、`tensor`（参见 `07-tensor.md` §4）等模块使用 Element/Numeric/RealScalar/ComplexScalar 作为泛型约束。
 
 ---
 
@@ -494,7 +494,7 @@ impl RealScalar for f64 {
 | `linalg` | `Numeric` | 内积运算 |
 | `cast/convert` | `Element` | 类型转换 |
 
-> 各模块的详细接口约定参见对应设计文档（`11-elementwise-ops.md` §4、`13-reduction.md` §4、`21-type-conversion.md` §4）。
+> 各模块的详细接口约定参见对应设计文档（`11-math.md` §4、`13-reduction.md` §4、`21-type-conversion.md` §4）。
 
 ### 6.2 接口边界
 

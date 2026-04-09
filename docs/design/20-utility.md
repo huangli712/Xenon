@@ -81,7 +81,7 @@ src/util/
 | `element` | `Element`, `RealScalar`（clip 约束）（参见 `03-element-types.md` §3） |
 | `layout` | `is_f_contiguous()`（参见 `06-memory-layout.md` §4） |
 | `iter` | `iter()`, `iter_mut()`（参见 `10-iterator.md` §4） |
-| `elementwise_ops` | `mapv()`（clip 内部调用，参见 `11-elementwise-ops.md` §4） |
+| `elementwise_ops` | `mapv()`（clip 内部调用，参见 `11-math.md` §4） |
 
 ### 3.3 依赖方向声明
 

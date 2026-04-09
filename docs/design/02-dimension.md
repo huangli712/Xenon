@@ -82,7 +82,7 @@ src/dimension/
 ### 3.3 依赖方向声明
 
 > **依赖方向：单向向上。** `dimension/` 仅消费 `error` 和 `private`，不被它们反向依赖。
-> 被下游模块消费：`layout`（参见 `06-memory-layout.md` §3）、`storage`（参见 `05-storage.md` §3）、`tensor`（参见 `07-tensor.md` §4）、`shape`（参见 `16-shape.md` §4）、`iter`（参见 `10-iterator.md` §4）、`ops`（参见 `11-elementwise-ops.md` §4）、`index`（参见 `17-indexing.md` §4）。
+> 被下游模块消费：`layout`（参见 `06-memory-layout.md` §3）、`storage`（参见 `05-storage.md` §3）、`tensor`（参见 `07-tensor.md` §4）、`shape`（参见 `16-shape.md` §4）、`iter`（参见 `10-iterator.md` §4）、`ops`（参见 `11-math.md` §4）、`index`（参见 `17-indexing.md` §4）。
 
 ---
 

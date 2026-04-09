@@ -695,7 +695,7 @@ fn test_bad_magic() {
 | 测试文件 | 被测模块 | 对应设计文档 |
 |----------|----------|-------------|
 | `test_tensor.rs` | `tensor`, `storage` | `07-tensor.md`, `05-storage.md` |
-| `test_ops.rs` | `ops/` (逐元素运算) | `11-elementwise-ops.md` |
+| `test_ops.rs` | `ops/` (逐元素运算) | `11-math.md` |
 | `test_broadcast.rs` | `broadcast` | `15-broadcast.md` |
 | `test_index.rs` | `index` | `17-indexing.md` |
 | `test_construction.rs` | `construct` | `18-construction.md` |

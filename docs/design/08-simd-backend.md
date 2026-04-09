@@ -48,7 +48,7 @@ L5: simd  ← 当前模块（可选，feature = "simd"）
 ┌─────────────────────────────────────────────────────────────────┐
 │                       调用层 (ops/iter)                          │
 │            elementwise, reduction, dot product                  │
-│            参见 11-elementwise-ops.md §5, 13-reduction.md §4     │
+│            参见 11-math.md §5, 13-reduction.md §4     │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
                           ▼
@@ -849,7 +849,7 @@ Wave 4:   [T6]
 
 ### 8.1 与 ops 模块
 
-`ops/` 模块在执行逐元素运算时，调用 `simd::can_use_simd()` 检查条件，满足时使用 `VectorKernel`，否则使用 `ScalarKernel`（参见 `11-elementwise-ops.md §5.3`）。
+`ops/` 模块在执行逐元素运算时，调用 `simd::can_use_simd()` 检查条件，满足时使用 `VectorKernel`，否则使用 `ScalarKernel`（参见 `11-math.md §5.3`）。
 
 ### 8.2 与 parallel 模块
 
