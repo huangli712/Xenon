@@ -48,11 +48,10 @@ L6: overload  ← 当前模块（依赖 broadcast, math）
 ```
 src/overload/
 ├── arithmetic.rs       # 四则运算运算符重载
-├── elementwise.rs      # 逐元素运算（运算符重载委托目标）
 └── mod.rs              # 模块入口
 ```
 
-运算符重载文件 `arithmetic.rs` 独立于逐元素运算 `elementwise.rs`，职责清晰：前者提供语法糖，后者提供计算能力。
+运算符重载文件 `arithmetic.rs` 独立于逐元素运算 `math`，职责清晰：前者提供语法糖，后者提供计算能力。
 
 ---
 
