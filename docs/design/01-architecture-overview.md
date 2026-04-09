@@ -140,7 +140,6 @@ xenon/
 │   │   ├── mod.rs             # 运算 trait 导出
 │   │   ├── elementwise.rs     # 逐元素运算（map, zip_with, apply）
 │   │   ├── arithmetic.rs      # 运算符重载（Add, Sub, Mul, Div）
-│   │   ├── matrix.rs          # 向量内积（dot）
 │   │   └── comparison.rs      # 比较运算（equal, not_equal, less, greater）
 │   │
 │   ├── util/                   # 实用操作
@@ -152,6 +151,11 @@ xenon/
 │   ├── set_ops/               # 集合操作
 │   │   ├── mod.rs             # 集合操作 trait 导出
 │   │   └── unique.rs          # unique（去重）
+│   │
+│   ├── matrix/                # 矩阵运算
+│   │   ├── mod.rs             # 模块入口，re-exports，dot() 公共 API
+│   │   ├── dot.rs             # 标量向量内积实现
+│   │   └── simd.rs            # SIMD 加速内积路径（cfg feature = "simd"）
 │   │
 │   ├── broadcast.rs           # 广播规则实现
 │   │
@@ -244,10 +248,11 @@ xenon/
 | `layout/` | F-order 布局标志位、步长计算、连续性检查 |
 | `tensor/` | 核心 `TensorBase<S, D>` 结构体及类型别名 |
 | `iter/` | 元素/轴/窗口/索引/Zip/Lane 迭代器 |
-| `ops/` | 逐元素运算、算术运算符、内积、比较运算 |
+| `ops/` | 逐元素运算、算术运算符、比较运算 |
 | `util/` | 实用操作（clip 裁剪、fill 填充、to_contiguous 连续化） |
 | `set_ops/` | 集合操作（unique 去重） |
 | `broadcast.rs` | NumPy 广播规则 |
+| `matrix/` | 向量内积 dot（标量路径 + SIMD 加速路径） |
 | `reduction/` | 归约操作（sum，含 SIMD/并行加速路径） |
 | `shape_ops/` | reshape、transpose |
 | `index/` | 多维整数索引、范围切片索引 |
@@ -368,7 +373,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 | **L3** | storage | core/alloc | `05-storage.md` |
 | **L4** | tensor | storage, dimension, layout, element | `07-tensor.md` |
 | **L5** | broadcast, iter, ffi | tensor | `15-broadcast.md`、`10-iterator.md`、`23-ffi.md` |
-| **L6** | ops/elementwise, ops/matrix, reduction, ops/comparison, shape_ops, index, util | tensor, broadcast（部分模块还需 iter） | `11-elementwise-ops.md`、`12-matrix-ops.md`、`13-reduction.md`、`14-set-ops.md`、`16-shape-ops.md`、`17-indexing.md`、`20-utility-ops.md` |
+| **L6** | ops/elementwise, matrix, reduction, ops/comparison, shape_ops, index, util | tensor, broadcast（部分模块还需 iter） | `11-elementwise-ops.md`、`12-matrix-ops.md`、`13-reduction.md`、`14-set-ops.md`、`16-shape-ops.md`、`17-indexing.md`、`20-utility-ops.md` |
 | **L7** | construct, convert, format | tensor, shape_ops | `18-construction.md`、`21-type-conversion.md`、`22-format-output.md` |
 
 ### 5.2 依赖图（ASCII）
@@ -434,23 +439,27 @@ rustdoc-args = ["--cfg", "docsrs"]
     │     ┌────┴────┐          │
     │     │reduction│          │
     │     └────┬────┘          │
-     └─────┬────┘               │
-           │                    │
-           ▼                    ▼
-      ┌────────┐          ┌──────────┐
-      │  util  │          │construct │
-      └────┬───┘          │convert  │
-           │               │format   │
-           └──────┬────────┘
-                 │
-                 ▼
-        ┌─────────────────┐
-        │  construct /    │
-        │  convert / fmt  │
-        └─────────────────┘
+    │          │               │
+    │     ┌────┴────┐          │
+    │     │ matrix  │          │
+    │     └────┬────┘          │
+    └─────┬────┘               │
+          │                    │
+          ▼                    ▼
+     ┌────────┐          ┌──────────┐
+     │  util  │          │construct │
+     └────┬───┘          │convert  │
+          │               │format   │
+          └──────┬────────┘
+                │
+                ▼
+       ┌─────────────────┐
+       │  construct /    │
+       │  convert / fmt  │
+       └─────────────────┘
 ```
 
-> **L1 内部依赖说明**：`element` 依赖同级的 `complex` 模块（使用 `Complex<T>` 类型作为 trait 实现目标），`complex` 不反向依赖 `element`。此依赖在图中以 element 下方指向 complex 表示。
+> **L6 模块说明**：`matrix` 从 `ops` 中独立为顶级模块，与 `reduction` 同级。`ops` 保留逐元素运算、算术运算符和比较运算。
 
 ---
 
@@ -561,6 +570,7 @@ pub mod layout;
 pub mod tensor;
 pub mod iter;
 pub mod ops;
+pub mod matrix;
 pub mod util;
 pub mod broadcast;
 pub mod reduction;

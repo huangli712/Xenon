@@ -1,6 +1,6 @@
 # 矩阵运算模块设计
 
-> 文档编号: 12 | 模块: `src/ops/matrix.rs` | 阶段: Phase 4
+> 文档编号: 12 | 模块: `src/matrix/` | 阶段: Phase 4
 > 前置文档: `03-element-types.md`, `07-tensor.md`, `10-iterator.md`, `26-error-handling.md`
 > 需求参考: 需求说明书 §13
 
@@ -37,7 +37,7 @@ L1: dimension, element, complex
 L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
-L5: ops/matrix  ← 当前模块
+L5: matrix  ← 当前模块
 ```
 
 ---
@@ -45,12 +45,13 @@ L5: ops/matrix  ← 当前模块
 ## 2. 文件位置
 
 ```
-src/ops/
-├── mod.rs              # 模块入口
-└── matrix.rs           # 矩阵运算（本模块）
+src/matrix/
+├── mod.rs              # 模块入口，re-exports，dot() 公共 API
+├── dot.rs              # 标量向量内积实现
+└── simd.rs             # SIMD 加速内积路径（cfg feature = "simd"）
 ```
 
-单文件设计理由：当前仅包含 dot 函数，未来扩展时再拆分。
+多文件设计理由：将标量路径与 SIMD 路径分离至独立文件，保持各实现路径的职责清晰，便于后续扩展（如并行路径）。
 
 ---
 
@@ -59,11 +60,18 @@ src/ops/
 ### 3.1 依赖图
 
 ```
-src/ops/matrix.rs
-├── crate::tensor        # TensorView<A, Ix1>
-├── crate::element       # Numeric, ComplexScalar（参见 03-element-types.md）
-├── crate::error         # XenonError（参见 26-error-handling.md）
-└── crate::simd (可选)   # pulp::Arch
+src/matrix/
+├── mod.rs
+│   ├── crate::tensor        # TensorView<A, Ix1>
+│   ├── crate::element       # Numeric, ComplexScalar（参见 03-element-types.md）
+│   └── crate::error         # XenonError（参见 26-error-handling.md）
+├── dot.rs
+│   ├── crate::tensor        # TensorView<A, Ix1>
+│   └── crate::element       # Numeric
+└── simd.rs（可选）
+    ├── crate::tensor        # TensorView<A, Ix1>
+    ├── crate::element       # Numeric
+    └── pulp::Arch
 ```
 
 ### 3.2 类型级依赖
@@ -77,7 +85,7 @@ src/ops/matrix.rs
 
 ### 3.3 依赖方向
 
-> **依赖方向：单向向上。** `ops/matrix` 仅消费 `tensor`、`element`、`error`、`simd` 模块。
+> **依赖方向：单向向上。** `matrix` 模块仅消费 `tensor`、`element`、`error`、`simd` 模块。
 
 ---
 
@@ -222,8 +230,8 @@ fn dot_impl<A: Numeric + Copy + Mul<Output=A> + Add<Output=A>>(
 
 ### Wave 1: 基础
 
-- [ ] **T1**: 创建 `src/ops/matrix.rs` 骨架
-  - 文件: `src/ops/matrix.rs`
+- [ ] **T1**: 创建 `src/matrix/` 模块骨架
+  - 文件: `src/matrix/mod.rs`, `src/matrix/dot.rs`, `src/matrix/simd.rs`
   - 内容: 模块声明、dot 函数签名
   - 测试: 编译通过
   - 前置: tensor 模块完成
@@ -232,7 +240,7 @@ fn dot_impl<A: Numeric + Copy + Mul<Output=A> + Add<Output=A>>(
 ### Wave 2: 标量实现
 
 - [ ] **T2**: 实现标量 dot
-  - 文件: `src/ops/matrix.rs`
+  - 文件: `src/matrix/dot.rs`
   - 内容: 标量内积实现，实数和复数
   - 测试: `test_dot_basic`, `test_dot_complex`
   - 前置: T1
@@ -241,7 +249,7 @@ fn dot_impl<A: Numeric + Copy + Mul<Output=A> + Add<Output=A>>(
 ### Wave 3: SIMD 加速
 
 - [ ] **T3**: 审查 SIMD dot 路径
-  - 文件: `src/ops/matrix.rs`
+  - 文件: `src/matrix/simd.rs`
   - 内容: SIMD 加速的内积实现
   - 测试: `test_dot_simd_consistency`
   - 前置: T2, simd 模块
