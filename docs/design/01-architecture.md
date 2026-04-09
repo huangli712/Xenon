@@ -145,7 +145,7 @@ xenon/
 │   │   ├── comparison.rs      # 比较运算（eq, ne, lt, gt）
 │   │   └── simd.rs            # SIMD 加速路径（cfg feature = "simd"）
 │   │
-│   ├── ops/                   # 运算符重载
+│   ├── overload/              # 运算符重载
 │   │   ├── mod.rs             # 运算 trait 导出
 │   │   └── arithmetic.rs      # 运算符重载（Add, Sub, Mul, Div）
 │   │
@@ -222,7 +222,7 @@ xenon/
 │   ├── common/
 │   │   └── mod.rs             # 共享测试工具
 │   ├── test_tensor.rs         # 张量基础测试
-│   ├── test_ops.rs            # 运算测试
+│   ├── test_math.rs            # 运算测试
 │   ├── test_broadcast.rs      # 广播测试
 │   ├── test_index.rs          # 索引测试
 │   └── test_no_std.rs         # no_std 兼容性测试
@@ -256,7 +256,7 @@ xenon/
 | `tensor/` | 核心 `TensorBase<S, D>` 结构体及类型别名 |
 | `iter/` | 元素/轴/窗口/索引/Zip/Lane 迭代器 |
 | `math/` | 逐元素数学运算（映射、一元、二元算术、比较、SIMD 加速） |
-| `ops/` | 运算符重载（Add, Sub, Mul, Div trait 实现） |
+| `overload` | 运算符重载（Add, Sub, Mul, Div trait 实现） |
 | `util/` | 实用操作（clip 裁剪、fill 填充、to_contiguous 连续化） |
 | `set/` | 集合操作（unique 去重） |
 | `broadcast.rs` | NumPy 广播规则 |
@@ -467,7 +467,7 @@ rustdoc-args = ["--cfg", "docsrs"]
        └─────────────────┘
 ```
 
-> **L6 模块说明**：`matrix` 独立为顶级模块，与 `reduction` 同级。`math` 负责逐元素数学运算（映射、一元、二元算术、比较）和 SIMD 加速；`ops` 仅保留运算符重载（Add/Sub/Mul/Div trait 实现）。
+> **L6 模块说明**：`matrix` 独立为顶级模块，与 `reduction` 同级。`math` 负责逐元素数学运算（映射、一元、二元算术、比较）和 SIMD 加速；`overload` 仅保留运算符重载（Add/Sub/Mul/Div trait 实现）。
 
 ---
 
@@ -578,7 +578,7 @@ pub mod layout;
 pub mod tensor;
 pub mod iter;
 pub mod math;
-pub mod ops;
+pub mod overload;
 pub mod matrix;
 pub mod util;
 pub mod broadcast;
@@ -691,7 +691,7 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 | W3.3 Window iterator | W2.6 | 高 | 窗口迭代 |
 | W3.4 Zip iterator | W2.6, W3.1 | 高 | 多张量同步迭代 |
 | W3.5 Math | W3.1 | 中 | map, zip_with |
-| W3.6 Arithmetic ops | W3.5 | 中 | Add, Sub, Mul, Div |
+| W3.6 Arithmetic | W3.5 | 中 | Add, Sub, Mul, Div |
 | W3.7 Reduction (sum) | W3.1 | 中 | sum, sum_axis |
 | W3.8 Dot (inner product) | W2.6 | 中 | 向量内积 |
 | W3.9 Broadcast | W2.6 | 高 | 广播规则 |
@@ -760,7 +760,7 @@ Wave 5: [W5.1] [W5.2] [W5.3] [W5.4]
 |------|-----|
 | 决策 | 使用单 crate（`xenon`）而非多 crate workspace |
 | 理由 | 降低发布复杂度；避免版本协调问题；简化依赖管理 |
-| 替代方案 | workspace 多 crate（xenon-core, xenon-ops, ...） — 放弃，对当前规模过度工程化 |
+| 替代方案 | workspace 多 crate（xenon-core, xenon-math, ...） — 放弃，对当前规模过度工程化 |
 
 ### 决策 2：F-order 单一布局
 

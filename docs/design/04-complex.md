@@ -41,7 +41,7 @@ L1: complex  ← 当前模块
 L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
-L5: ops/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
+L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 ```
 
 ### 1.4 自定义实现 vs num-complex
@@ -86,7 +86,7 @@ src/complex/
 
 | 来源 | 使用的类型/trait |
 |------|-----------------|
-| `core::ops` | `Add`, `Sub`, `Mul`, `Div`, `Neg`（算术运算） |
+| `core::overload` | `Add`, `Sub`, `Mul`, `Div`, `Neg`（算术运算） |
 | `core::fmt` | `Debug`, `Display`（格式化输出） |
 | `core::cmp` | `PartialEq`（相等比较） |
 
@@ -124,7 +124,7 @@ pub struct Complex<T> {
 
 `Complex<T>` 的方法分为两类：
 
-1. **基础方法**（无需浮点数学）：在 `impl<T: Copy + PartialEq + Default + core::ops::Neg<Output=T>> Complex<T>` 中实现，公开可用。包括 `re()`、`im()`、`conj()`、`from_real()`、`from_imag()`、`is_real()`、`is_imaginary()`。
+1. **基础方法**（无需浮点数学）：在 `impl<T: Copy + PartialEq + Default + core::overload::Neg<Output=T>> Complex<T>` 中实现，公开可用。包括 `re()`、`im()`、`conj()`、`from_real()`、`from_imag()`、`is_real()`、`is_imaginary()`。
 
 2. **数学方法**（需要浮点数学）：在具体的 `impl Complex<f32>` 和 `impl Complex<f64>` 块中实现，公开可用。包括 `norm()`、`norm_sqr()`、`arg()`、`exp()`、`ln()`、`sqrt()`、`to_polar()`、`from_polar()`。
 
@@ -141,11 +141,11 @@ pub(crate) trait Float:
     + Debug
     + PartialEq
     + PartialOrd
-    + core::ops::Add<Output = Self>
-    + core::ops::Sub<Output = Self>
-    + core::ops::Mul<Output = Self>
-    + core::ops::Div<Output = Self>
-    + core::ops::Neg<Output = Self>
+    + core::overload::Add<Output = Self>
+    + core::overload::Sub<Output = Self>
+    + core::overload::Mul<Output = Self>
+    + core::overload::Div<Output = Self>
+    + core::overload::Neg<Output = Self>
 {
     fn zero() -> Self;
     fn one() -> Self;
@@ -178,7 +178,7 @@ impl<T> Complex<T> {
 
 // Methods that don't need Float math — available for all T satisfying
 // basic arithmetic constraints.
-impl<T: Copy + PartialEq + Default + core::ops::Neg<Output = T>> Complex<T> {
+impl<T: Copy + PartialEq + Default + core::overload::Neg<Output = T>> Complex<T> {
     /// Creates a purely real number (im = 0).
     #[inline]
     pub fn from_real(re: T) -> Self {
@@ -227,7 +227,7 @@ impl Complex<f64> {
 
 ```rust
 // Methods that don't need Float math — publicly available without pub(crate) dependency.
-impl<T: Copy + PartialEq + Default + core::ops::Neg<Output = T>> Complex<T> {
+impl<T: Copy + PartialEq + Default + core::overload::Neg<Output = T>> Complex<T> {
     /// Returns the real part.
     #[inline]
     pub fn re(self) -> T { self.re }
@@ -412,7 +412,7 @@ impl Complex<f64> {
 
 ```rust
 // Complex + Complex: (a+bi) + (c+di) = (a+c) + (b+d)i
-impl<T: Float> core::ops::Add for Complex<T> {
+impl<T: Float> core::overload::Add for Complex<T> {
     type Output = Self;
     #[inline]
     fn add(self, rhs: Self) -> Self {
@@ -421,7 +421,7 @@ impl<T: Float> core::ops::Add for Complex<T> {
 }
 
 // Complex - Complex: (a+bi) - (c+di) = (a-c) + (b-d)i
-impl<T: Float> core::ops::Sub for Complex<T> {
+impl<T: Float> core::overload::Sub for Complex<T> {
     type Output = Self;
     #[inline]
     fn sub(self, rhs: Self) -> Self {
@@ -430,7 +430,7 @@ impl<T: Float> core::ops::Sub for Complex<T> {
 }
 
 // Complex * Complex: (a+bi) * (c+di) = (ac-bd) + (ad+bc)i
-impl<T: Float> core::ops::Mul for Complex<T> {
+impl<T: Float> core::overload::Mul for Complex<T> {
     type Output = Self;
     #[inline]
     fn mul(self, rhs: Self) -> Self {
@@ -443,7 +443,7 @@ impl<T: Float> core::ops::Mul for Complex<T> {
 
 // Complex / Complex: multiply by conjugate of denominator
 // (a+bi) / (c+di) = [(ac+bd) + (bc-ad)i] / (c²+d²)
-impl<T: Float> core::ops::Div for Complex<T> {
+impl<T: Float> core::overload::Div for Complex<T> {
     type Output = Self;
     #[inline]
     fn div(self, rhs: Self) -> Self {
@@ -456,7 +456,7 @@ impl<T: Float> core::ops::Div for Complex<T> {
 }
 
 // -Complex: -(a+bi) = -a - bi
-impl<T: Float> core::ops::Neg for Complex<T> {
+impl<T: Float> core::overload::Neg for Complex<T> {
     type Output = Self;
     #[inline]
     fn neg(self) -> Self {
@@ -469,42 +469,42 @@ impl<T: Float> core::ops::Neg for Complex<T> {
 
 ```rust
 // Complex + T: (a+bi) + r = (a+r) + bi
-impl<T: Float> core::ops::Add<T> for Complex<T> {
+impl<T: Float> core::overload::Add<T> for Complex<T> {
     type Output = Self;
     #[inline]
     fn add(self, rhs: T) -> Self { Self::new(self.re + rhs, self.im) }
 }
 
 // T + Complex: r + (a+bi) = (r+a) + bi
-impl<T: Float> core::ops::Add<Complex<T>> for T {
+impl<T: Float> core::overload::Add<Complex<T>> for T {
     type Output = Complex<T>;
     #[inline]
     fn add(self, rhs: Complex<T>) -> Self::Output { Complex::new(self + rhs.re, rhs.im) }
 }
 
 // Complex * T: (a+bi) * r = ar + bri
-impl<T: Float> core::ops::Mul<T> for Complex<T> {
+impl<T: Float> core::overload::Mul<T> for Complex<T> {
     type Output = Self;
     #[inline]
     fn mul(self, rhs: T) -> Self { Self::new(self.re * rhs, self.im * rhs) }
 }
 
 // T * Complex: r * (a+bi) = ar + bri
-impl<T: Float> core::ops::Mul<Complex<T>> for T {
+impl<T: Float> core::overload::Mul<Complex<T>> for T {
     type Output = Complex<T>;
     #[inline]
     fn mul(self, rhs: Complex<T>) -> Self::Output { Complex::new(self * rhs.re, self * rhs.im) }
 }
 
 // Complex / T: (a+bi) / r = (a/r) + (b/r)i
-impl<T: Float> core::ops::Div<T> for Complex<T> {
+impl<T: Float> core::overload::Div<T> for Complex<T> {
     type Output = Self;
     #[inline]
     fn div(self, rhs: T) -> Self { Self::new(self.re / rhs, self.im / rhs) }
 }
 
 // T / Complex: r / (a+bi) = r(a-bi) / (a²+b²)
-impl<T: Float> core::ops::Div<Complex<T>> for T {
+impl<T: Float> core::overload::Div<Complex<T>> for T {
     type Output = Complex<T>;
     #[inline]
     fn div(self, rhs: Complex<T>) -> Self::Output {
@@ -514,13 +514,13 @@ impl<T: Float> core::ops::Div<Complex<T>> for T {
 }
 
 // Complex - T and T - Complex (similar pattern)
-impl<T: Float> core::ops::Sub<T> for Complex<T> {
+impl<T: Float> core::overload::Sub<T> for Complex<T> {
     type Output = Self;
     #[inline]
     fn sub(self, rhs: T) -> Self { Self::new(self.re - rhs, self.im) }
 }
 
-impl<T: Float> core::ops::Sub<Complex<T>> for T {
+impl<T: Float> core::overload::Sub<Complex<T>> for T {
     type Output = Complex<T>;
     #[inline]
     fn sub(self, rhs: Complex<T>) -> Self::Output { Complex::new(self - rhs.re, -rhs.im) }

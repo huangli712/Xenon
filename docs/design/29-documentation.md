@@ -39,7 +39,7 @@ L1: dimension, element, complex
 L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
-L5: ops/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
+L5: overload/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 
 横切关注点（全局）：
 ┌─────────────────────────────────────────────────────────────────┐
@@ -69,8 +69,8 @@ src/
 │   └── mod.rs                # 布局模块文档（L1）
 ├── tensor/
 │   └── mod.rs                # 张量模块文档（L1）
-├── ops/
-│   └── mod.rs                # 运算模块文档（L1）
+├── overload/
+│   └── mod.rs                # 运算符重载模块文档（L1）
 ├── broadcast/
 │   └── mod.rs                # 广播模块文档（L1）
 ├── shape/
@@ -659,7 +659,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | 模块 | 目标覆盖率 | 说明 |
 |------|-----------|------|
 | 核心类型（tensor, dimension, storage） | 100% | 所有 pub 方法有 doctest |
-| 运算模块（ops, broadcast, reduction） | 100% | 所有 pub 方法有 doctest |
+| 运算模块（overload, math, broadcast, reduction） | 100% | 所有 pub 方法有 doctest |
 | 工具模块（ffi, workspace, simd, parallel） | ≥80% | 关键 API 有 doctest |
 | 辅助模块（convert, format, error） | ≥60% | 至少构造和基本使用有 doctest |
 
@@ -689,7 +689,7 @@ docs:
 |----------|-----------|------|
 | T1 (lib.rs 文档) | 全部 | 需要了解所有模块的概览 |
 | T5 (核心模块文档) | dimension, element, complex, storage, layout | 基于 §1 章节编写 |
-| T6 (张量与运算文档) | tensor, ops, broadcast, shape, index, construct, set | 基于 §1 章节编写 |
+| T6 (张量与运算文档) | tensor, overload, broadcast, shape, index, construct, set | 基于 §1 章节编写 |
 | T7 (基础设施文档) | ffi, workspace, simd, parallel, error, prelude | 基于 §1 章节编写 |
 | T8 (类型级文档) | 全部 | 逐类型添加 doc comment |
 | T9 (函数级文档) | 全部 | 逐函数添加 doc comment |
@@ -754,7 +754,7 @@ docs:
   - 前置: T2
   - 预计: 10 min
 
-- [ ] **T6**: 编写张量与运算模块文档（tensor, ops, broadcast, shape, index, construct, set）
+- [ ] **T6**: 编写张量与运算模块文档（tensor, overload, broadcast, shape, index, construct, set）
   - 文件: 各 `mod.rs`
   - 内容: 模块职责、核心类型、运算分类、类型约束速查（参见 `07-tensor.md §1`、`11-math.md §1`、`15-broadcast.md §1`、`16-shape.md §1`）
   - 测试: `cargo doc --no-deps` 无 warning
@@ -805,15 +805,15 @@ docs:
   - 前置: T5, T6, T7
   - 预计: 10 min
 
-- [ ] **T9a**: ops 模块逐元素运算文档
-  - 文件: `src/ops/` 下相关文件
+- [ ] **T9a**: overload 模块逐元素运算文档
+  - 文件: `src/overload/` 下相关文件
   - 内容: add, sub, mul, div, sin, cos, exp, abs 等逐元素运算函数文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 15 min
 
-- [ ] **T9b**: ops 模块归约运算文档
-  - 文件: `src/ops/` 下相关文件
+- [ ] **T9b**: overload 模块归约运算文档
+  - 文件: `src/overload/` 下相关文件
   - 内容: sum, sum_axis, dot 等归约函数文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7

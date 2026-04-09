@@ -35,7 +35,7 @@ L1: dimension, element, complex
 L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
-L5: ops/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
+L5: overload/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 
 外部（非 crate 模块）：
 benches/  ← 当前模块（dev-dependency，仅消费 crate 公共 API）
@@ -74,7 +74,7 @@ benches/
 ├── crate::tensor           # TensorBase, Tensor, TensorView 等
 ├── crate::dimension        # Ix0~Ix6, IxDyn, Dimension trait
 ├── crate::element          # Element, Numeric, RealScalar, ComplexScalar
-├── crate::ops              # 逐元素运算、归约、内积
+├── crate::math             # 逐元素运算、归约、内积
 ├── crate::shape            # transpose, reshape
 ├── crate::broadcast        # broadcast_shape
 ├── crate::set              # unique
@@ -89,7 +89,7 @@ benches/
 | `tensor` | `Tensor<A, D>`, `TensorView`, `TensorViewMut`, `.shape()`, `.sum()`（参见 `07-tensor.md §4`） |
 | `dimension` | `Ix1`, `Ix2`, `Ix3`, `IxDyn`, `Dimension`（参见 `02-dimension.md §4`） |
 | `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element.md §4`） |
-| `ops` | `add`, `sub`, `mul`, `div`, `sin`, `exp`, `abs`, `sum_axis`（参见 `11-math.md §4`） |
+| `overload` | `add`, `sub`, `mul`, `div`, `sin`, `exp`, `abs`, `sum_axis`（参见 `11-math.md §4`） |
 | `shape` | `reshape`, `transpose`（参见 `16-shape.md §4`） |
 | `set` | `unique`（参见 `14-set.md §4`） |
 | `construct` | `zeros`, `ones`, `from_vec`, `from_fn`（参见 `18-construction.md §4`） |
@@ -454,8 +454,8 @@ b.iter(|| &a + &b);
 | `set.rs` | `set` | `14-set.md` |
 | `broadcast.rs` | `broadcast` | `15-broadcast.md` |
 | `shape.rs` | `shape` | `16-shape.md` |
-| `simd_comparison.rs` | `simd` + `ops/` | `08-simd.md` |
-| `parallel_comparison.rs` | `parallel` + `ops/` | `09-parallel.md` |
+| `simd_comparison.rs` | `simd` + `math` | `08-simd.md` |
+| `parallel_comparison.rs` | `parallel` + `math` | `09-parallel.md` |
 | `construction.rs` | `construct` | `18-construction.md` |
 
 ### 13.2 数据流
@@ -465,7 +465,7 @@ benchmark 文件
     │
     ├── 调用 crate 公共 API（Tensor::from_fn, zeros, +, sum, ...）
     │       │
-    │       └── 内部经过: storage → tensor → ops → simd/parallel
+    │       └── 内部经过: storage → tensor → overload → simd/parallel
     │
     └── criterion 测量端到端耗时
 ```

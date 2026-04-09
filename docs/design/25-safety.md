@@ -38,7 +38,7 @@ L1: dimension, element, complex
 L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
-L5: ops/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
+L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 
 横切关注点：
 ┌─────────────────────────────────────────────────────────────────┐

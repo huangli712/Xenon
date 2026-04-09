@@ -12,11 +12,11 @@
 
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
-| 存储抽象 | 定义统一的 `Storage` trait 层次，支持多种存储模式 | 具体运算逻辑（由 `ops/` 提供） |
+| 存储抽象 | 定义统一的 `Storage` trait 层次，支持多种存储模式 | 具体运算逻辑（由 `overload` 提供） |
 | 内存管理 | 拥有、借用、共享三种所有权语义 | 并行调度（由 `parallel` 模块提供） |
 | 对齐分配 | 64 字节对齐的内存分配器，优化 SIMD 性能 | 高级线性代数（矩阵分解等） |
 | 类型安全 | 通过 trait 约束在编译期保证访问权限正确性 | GPU 存储后端（当前仅 CPU） |
-| 多级访问 | 只读、可写、拥有三种访问控制级别 | 迭代器实现（由 `iter/` 提供） |
+| 多级访问 | 只读、可写、拥有三种访问控制级别 | 迭代器实现（由 `iter`模块 提供） |
 | ZST 安全 | 零大小类型和空数组操作不引发未定义行为 | — |
 
 ### 1.2 设计原则
@@ -37,7 +37,7 @@ L1: dimension, element, complex
 L2: layout (依赖 dimension)
 L3: storage (仅依赖 core/alloc，不依赖 layout)  ← 当前模块
 L4: tensor (依赖 storage, dimension)
-L5: ops/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
+L5: overload/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 ```
 
 ---

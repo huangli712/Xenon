@@ -1,6 +1,6 @@
 # 运算符重载模块设计
 
-> 文档编号: 19 | 模块: `src/ops/arithmetic.rs` | 阶段: Phase 4
+> 文档编号: 19 | 模块: `src/overload/arithmetic.rs` | 阶段: Phase 4
 > 前置文档: `11-math.md`, `15-broadcast.md`
 > 需求参考: 需求说明书 §20
 
@@ -38,7 +38,7 @@ L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
 L5: broadcast (依赖 tensor, dimension)
-L6: ops/arithmetic  ← 当前模块（依赖 broadcast, math）
+L6: overload  ← 当前模块（依赖 broadcast, math）
 ```
 
 ---
@@ -46,7 +46,7 @@ L6: ops/arithmetic  ← 当前模块（依赖 broadcast, math）
 ## 2. 文件位置
 
 ```
-src/ops/
+src/overload/
 ├── arithmetic.rs       # 四则运算运算符重载
 ├── elementwise.rs      # 逐元素运算（运算符重载委托目标）
 └── mod.rs              # 模块入口
@@ -313,15 +313,15 @@ tensor + scalar:
 
 ### Wave 1: 基础运算符
 
-- [ ] **T1**: 创建 `src/ops/arithmetic.rs` 骨架
-  - 文件: `src/ops/arithmetic.rs`
+- [ ] **T1**: 创建 `src/overload/arithmetic.rs` 骨架
+  - 文件: `src/overload/arithmetic.rs`
   - 内容: 模块声明、导入
   - 测试: 编译通过
   - 前置: `math` 完成、`broadcast` 完成
   - 预计: 5 min
 
 - [ ] **T2**: 实现 `Add` trait（张量×张量，所有权形式）
-  - 文件: `src/ops/arithmetic.rs`
+  - 文件: `src/overload/arithmetic.rs`
   - 内容: `Tensor + Tensor` impl
   - 测试: `test_add_same_shape`, `test_add_broadcast`
   - 前置: T1
@@ -330,7 +330,7 @@ tensor + scalar:
 ### Wave 2: 借用形式
 
 - [ ] **T3**: 实现 `Add` trait（&张量×&张量、混合形式）
-  - 文件: `src/ops/arithmetic.rs`
+  - 文件: `src/overload/arithmetic.rs`
   - 内容: 4 种借用组合
   - 测试: `test_add_ref_ref`, `test_add_owned_ref`, `test_add_ref_owned`
   - 前置: T2
@@ -339,7 +339,7 @@ tensor + scalar:
 ### Wave 3: 标量运算符
 
 - [ ] **T4**: 实现 `Add` trait（张量×标量、标量×张量）
-  - 文件: `src/ops/arithmetic.rs`
+  - 文件: `src/overload/arithmetic.rs`
   - 内容: 标量组合 impl
   - 测试: `test_add_scalar`, `test_scalar_add_tensor`
   - 前置: T2
@@ -348,7 +348,7 @@ tensor + scalar:
 ### Wave 4: 其他运算符
 
 - [ ] **T5**: 实现 `Sub`/`Mul`/`Div`（复制 `Add` 模式）
-  - 文件: `src/ops/arithmetic.rs`
+  - 文件: `src/overload/arithmetic.rs`
   - 内容: Sub/Mul/Div 所有组合
   - 测试: `test_sub`, `test_mul`, `test_div`
   - 前置: T3, T4

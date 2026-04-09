@@ -38,7 +38,7 @@ L1: dimension, element, complex
 L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)  ← 当前模块
-L5: ops/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
+L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 ```
 
 ---
@@ -93,7 +93,7 @@ src/tensor/
 
 ### 3.3 依赖方向声明
 
-> **依赖方向：单向向上。** `tensor/` 消费 `storage`、`dimension`、`layout` 的 trait 和类型，不被它们依赖。`ops/`、`iter/` 等上层模块消费 `tensor`。
+> **依赖方向：单向向上。** `tensor/` 消费 `storage`、`dimension`、`layout` 的 trait 和类型，不被它们依赖。`math/`、`iter/` 等上层模块消费 `tensor`。
 
 ---
 

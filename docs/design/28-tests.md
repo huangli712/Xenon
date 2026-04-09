@@ -36,7 +36,7 @@ L1: dimension, element, complex
 L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
-L5: ops/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
+L5: overload/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 
 外部（非 crate 模块）：
 tests/  ← 当前模块（仅消费 crate 公共 API）
@@ -56,7 +56,7 @@ tests/
 │   └── generators.rs           # 测试数据生成器
 │
 ├── test_tensor.rs              # 张量核心功能（创建/查询/类型别名）
-├── test_ops.rs                 # 逐元素运算（算术/数学/比较/逻辑）
+├── test_math.rs                # 逐元素运算（算术/数学/比较/逻辑）
 ├── test_broadcast.rs           # 广播机制（标量/向量/矩阵广播）
 ├── test_index.rs               # 索引操作（多维索引/范围切片）
 ├── test_construction.rs        # 构造方法（zeros/ones/eye/from_vec/from_fn/from_scalar）
@@ -93,7 +93,7 @@ tests/
 ├── crate::complex          # Complex<f32>, Complex<f64>
 ├── crate::storage          # Owned, ViewRepr, ViewMutRepr, ArcRepr
 ├── crate::layout           # LayoutFlags, Order
-├── crate::ops              # 逐元素运算、归约、内积
+├── crate::math             # 逐元素运算、归约、内积
 ├── crate::broadcast        # broadcast_shape
 ├── crate::shape            # transpose, reshape
 ├── crate::index            # 多维索引、范围切片
@@ -217,7 +217,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 | `test_arc_tensor_clone` | ArcTensor clone 为浅拷贝 | 中 |
 | `test_arc_tensor_make_mut` | make_mut CoW 行为 | 中 |
 
-### 5.2 test_ops.rs
+### 5.2 test_math.rs
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
@@ -695,7 +695,7 @@ fn test_bad_magic() {
 | 测试文件 | 被测模块 | 对应设计文档 |
 |----------|----------|-------------|
 | `test_tensor.rs` | `tensor`, `storage` | `07-tensor.md`, `05-storage.md` |
-| `test_ops.rs` | `ops/` (逐元素运算) | `11-math.md` |
+| `test_math.rs` | `math` | `11-math.md` |
 | `test_broadcast.rs` | `broadcast` | `15-broadcast.md` |
 | `test_index.rs` | `index` | `17-indexing.md` |
 | `test_construction.rs` | `construct` | `18-construction.md` |
@@ -714,7 +714,7 @@ fn test_bad_magic() {
     │
     ├── 调用 crate 公共 API（Tensor::zeros, +, sum, reshape, ...）
     │       │
-    │       └── 内部经过: storage → tensor → ops → simd/parallel
+    │       └── 内部经过: storage → tensor → overload → simd/parallel
     │
     ├── 使用 common/ 工具
     │       ├── assert_tensor_close() 进行浮点比较
@@ -746,10 +746,10 @@ fn test_bad_magic() {
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T3**: 实现 `tests/test_ops.rs`
-  - 文件: `tests/test_ops.rs`
+- [ ] **T3**: 实现 `tests/test_math.rs`
+  - 文件: `tests/test_math.rs`
   - 内容: 逐元素运算（算术/数学/比较/逻辑/原地）
-  - 测试: `cargo test --test test_ops`
+  - 测试: `cargo test --test test_math`
   - 前置: T1
   - 预计: 10 min
 
@@ -910,7 +910,7 @@ test:
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | 按测试领域（ops/broadcast/reduction 等）而非按源码模块分文件 |
+| 决策 | 按测试领域（overload/broadcast/reduction 等）而非按源码模块分文件 |
 | 理由 | 集成测试关注跨模块行为；独立运行；编译并行化；失败定位清晰 |
 | 替代方案 | 按源码模块分（test_dimension.rs, test_storage.rs）— 放弃，跨模块边界模糊 |
 

@@ -39,7 +39,7 @@ L1: complex（element 依赖 complex 的类型定义，complex 不反向依赖 e
 L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
-L5: ops/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
+L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 ```
 
 > **说明**：`element` 模块位于 L1 层级，但内部依赖同级的 `complex` 模块（`complex` 不依赖 `element`）。这是 L1 内部的单向依赖，`element` 使用 `Complex<T>` 类型作为 trait 实现目标，`complex` 仅提供类型定义和基础运算，不涉及 `Element`/`Numeric` 等 trait。这种单向依赖是合理的。
@@ -85,7 +85,7 @@ src/element/
 ### 3.3 依赖方向声明
 
 > **依赖方向：单向向上。** `element/` 消费 `complex` 的类型定义（即 `element` 依赖 `complex`），`complex` 不反向依赖 `element`。
-> 被下游消费：`ops`（参见 `11-math.md` §4）、`reduction`（参见 `13-reduction.md` §4）、`tensor`（参见 `07-tensor.md` §4）等模块使用 Element/Numeric/RealScalar/ComplexScalar 作为泛型约束。
+> 被下游消费：`math`（参见 `11-math.md` §4）、`reduction`（参见 `13-reduction.md` §4）、`tensor`（参见 `07-tensor.md` §4）等模块使用 Element/Numeric/RealScalar/ComplexScalar 作为泛型约束。
 
 ---
 
@@ -140,11 +140,11 @@ pub trait Element:
 /// `Element` already inherits `Sealed`.
 pub trait Numeric:
     Element
-    + core::ops::Add<Output = Self>
-    + core::ops::Sub<Output = Self>
-    + core::ops::Mul<Output = Self>
-    + core::ops::Div<Output = Self>
-    + core::ops::Neg<Output = Self>
+    + core::overload::Add<Output = Self>
+    + core::overload::Sub<Output = Self>
+    + core::overload::Mul<Output = Self>
+    + core::overload::Div<Output = Self>
+    + core::overload::Neg<Output = Self>
 {
     /// Returns the conjugate of this value.
     ///
@@ -488,7 +488,7 @@ impl RealScalar for f64 {
 
 | 模块 | 使用的 trait | 用途 |
 |------|-------------|------|
-| `ops` | `Numeric` | 逐元素运算泛型约束 |
+| `overload` | `Numeric` | 逐元素运算泛型约束 |
 | `reduction` | `Numeric`（sum）、`RealScalar`（min/max） | 归约运算泛型约束 |
 | `tensor` | `Element` | Tensor<A, D> 的 A 约束 |
 | `linalg` | `Numeric` | 内积运算 |
@@ -500,7 +500,7 @@ impl RealScalar for f64 {
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│  ops / reduction / linalg (使用 Element/Numeric 约束)          │
+│  math / reduction / linalg (使用 Element/Numeric 约束)         │
 └──────────────────────┬────────────────────────────────────────┘
                        │ 泛型约束
 ┌──────────────────────▼────────────────────────────────────────┐

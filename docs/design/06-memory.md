@@ -14,7 +14,7 @@
 |------|------|--------|
 | 布局标志位 | `LayoutFlags: u8` 位域定义和操作 | 数据分配（由 `storage/` 提供） |
 | 步长计算 | F-order 步长公式、合法性验证 | 元素访问（由 `tensor/` 提供） |
-| 连续性检查 | F-连续检测算法 | 运算逻辑（由 `ops/` 提供） |
+| 连续性检查 | F-连续检测算法 | 运算逻辑（由 `math/` 提供） |
 | 对齐检查 | 指针对齐状态查询 | 实际对齐分配（由 `storage/alloc.rs` 提供） |
 | 负步长语义 | 切片/翻转时的负步长处理 | SIMD 路径选择（由 `simd/` 提供，参见 `08-simd.md §4.6`） |
 | 零步长语义 | 广播维度的零步长标记 | 广播规则实现（由 `broadcast/` 提供，参见 `15-broadcast.md §3`） |
@@ -37,7 +37,7 @@ L1: dimension, element, complex
 L2: layout (依赖 dimension)  ← 当前模块
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
-L5: ops/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
+L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 ```
 
 ### 1.4 F-order 设计决策
@@ -84,7 +84,7 @@ src/layout/
 
 ### 3.3 依赖方向声明
 
-> **依赖方向：单向向上。** `layout/` 仅消费 `dimension` 的 trait 和类型，不被其依赖。`tensor/`、`ops/`、`simd/` 等上层模块消费 layout 的类型和函数。对齐检查（`is_aligned`）接受原始指针 `*const u8`，无需依赖 `storage` 模块。
+> **依赖方向：单向向上。** `layout/` 仅消费 `dimension` 的 trait 和类型，不被其依赖。`tensor/`、`math/`、`simd/` 等上层模块消费 layout 的类型和函数。对齐检查（`is_aligned`）接受原始指针 `*const u8`，无需依赖 `storage` 模块。
 
 ---
 

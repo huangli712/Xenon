@@ -15,9 +15,9 @@
 | 广播规则实现 | NumPy 广播规则（从右向左对齐、维度兼容检查） | 广播运算本身的调度（由 `math` 负责） |
 | 形状推导 | `broadcast_shape()` 计算两个形状广播后的结果形状 | 数据复制（广播不拷贝数据，通过零步长实现） |
 | 步长推导 | `broadcast_strides()` 计算广播后步长（含零步长） | 可变迭代（广播视图禁止可变迭代） |
-| 兼容性检查 | `can_broadcast()` 检查两个形状是否兼容 | 逐元素运算（由 `ops/` 负责） |
+| 兼容性检查 | `can_broadcast()` 检查两个形状是否兼容 | 逐元素运算（由 `math` 负责） |
 | 广播视图创建 | `broadcast_to()` 返回零拷贝广播视图 | 多操作数调度（由调用方自行逐对广播） |
-| 显式广播方法 | `broadcast_with()` 同时广播两个张量 | 算术运算符重载（由 `ops/arithmetic` 负责） |
+| 显式广播方法 | `broadcast_with()` 同时广播两个张量 | 算术运算符重载（由 `overload` 负责） |
 | 错误报告 | 维度不兼容返回 `XenonError::BroadcastError` | |
 
 ### 1.2 设计原则
@@ -87,7 +87,7 @@ src/
 
 ### 3.3 依赖方向声明
 
-> **依赖方向：单向向上。** `broadcast` 仅消费 `dimension` 和 `tensor` 的 trait 和类型，不被它们依赖。`ops/`、`iter/` 等上层模块消费 `broadcast`。
+> **依赖方向：单向向上。** `broadcast` 仅消费 `dimension` 和 `tensor` 的 trait 和类型，不被它们依赖。`math/`、`iter/` 等上层模块消费 `broadcast`。
 
 ---
 
@@ -470,7 +470,7 @@ Wave 4:           [T7]
 
 | 交互模块 | 方向 | 说明 |
 |----------|------|------|
-| `ops/arithmetic` | ops → broadcast | 运算符重载中调用 `broadcast_shape()` 和 `broadcast_with()` |
+| `overload` | overload → broadcast | 运算符重载中调用 `broadcast_shape()` 和 `broadcast_with()` |
 | `iter/zip` | iter → broadcast | `Zip::and()` 支持广播视图，检查兼容性，参见 `10-iterator.md` §5 |
 | `shape` | shape → broadcast | `broadcast_to` 方法调用广播模块，参见 `16-shape.md` §4 |
 | `layout` | broadcast → layout | 广播后设置 `HAS_ZERO_STRIDE` 标志、更新连续性，参见 `06-memory.md` §3 |

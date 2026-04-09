@@ -58,7 +58,7 @@ src/math/
 └── simd.rs             # SIMD 加速路径（cfg feature = "simd"）
 ```
 
-多文件设计理由：按操作元数分组（一元 vs 二元 vs 映射基础设施），每个文件对应独立的 trait 约束边界，降低单文件复杂度。运算符重载（Add/Sub/Mul/Div trait 实现）保留在 `src/ops/arithmetic.rs`。
+多文件设计理由：按操作元数分组（一元 vs 二元 vs 映射基础设施），每个文件对应独立的 trait 约束边界，降低单文件复杂度。运算符重载（Add/Sub/Mul/Div trait 实现）保留在 `src/overload/arithmetic.rs`。
 
 ---
 
