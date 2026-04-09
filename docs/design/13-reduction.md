@@ -1,6 +1,6 @@
 # 归约运算模块设计
 
-> 文档编号: 13 | 模块: `src/ops/reduction.rs` | 阶段: Phase 4
+> 文档编号: 13 | 模块: `src/reduction/` | 阶段: Phase 4
 > 前置文档: `02-dimension.md`, `03-element-types.md`, `07-tensor.md`, `10-iterator.md`
 > 需求参考: 需求说明书 §14
 
@@ -47,12 +47,17 @@ L5: ops/reduction  ← 当前模块
 ## 2. 文件位置
 
 ```
-src/ops/
-├── mod.rs              # 模块入口
-└── reduction.rs        # 归约运算（本模块）
+src/reduction/
+├── mod.rs              # 模块根，re-exports，公共 API 入口
+├── sum.rs              # 全局 sum 和沿轴 sum_axis 实现
+├── simd.rs             # SIMD 加速归约路径（cfg feature = "simd"）
+└── parallel.rs         # 并行归约路径（cfg feature = "parallel"）
 ```
 
-单文件设计理由：当前仅实现 sum 归约，未来扩展其他归约操作时再拆分。
+多文件设计理由：虽然当前仅实现 sum 归约，但归约模块涉及多条实现路径（标量、SIMD、并行），拆分为独立目录有助于：
+- 各实现路径独立维护和条件编译
+- 未来扩展其他归约操作时结构清晰
+- 与项目中 `set_ops/`、`shape_ops/` 等模块保持一致的多文件组织风格
 
 ---
 
@@ -61,12 +66,13 @@ src/ops/
 ### 3.1 依赖图
 
 ```
-src/ops/reduction.rs
-├── crate::tensor        # TensorBase<S, D>, TensorView
-├── crate::iter          # Elements, AxisIter
-├── crate::element       # Numeric, RealScalar
-├── crate::error         # XenonError
-└── crate::simd (可选)   # pulp::Arch（SIMD 归约路径）
+src/reduction/
+├── mod.rs          # crate::tensor        # TensorBase<S, D>, TensorView
+├── sum.rs          # crate::iter          # Elements, AxisIter
+├── simd.rs         # crate::element       # Numeric, RealScalar
+└── parallel.rs     # crate::error         # XenonError
+                    # crate::simd (可选)   # pulp::Arch（SIMD 归约路径）
+                    # crate::parallel (可选) # 并行归约路径
 ```
 
 ### 3.2 类型级依赖
@@ -83,7 +89,7 @@ src/ops/reduction.rs
 
 ### 3.3 依赖方向
 
-> **依赖方向：单向向上。** `ops/reduction` 消费 `iter`、`tensor`、`element` 模块，不被它们依赖。
+> **依赖方向：单向向上。** `reduction` 消费 `iter`、`tensor`、`element` 模块，不被它们依赖。
 
 ---
 
@@ -284,29 +290,29 @@ sum_axis_keepdims(tensor, axis):
 
 ### Wave 1: 全局归约
 
-- [ ] **T1**: 创建 `src/ops/reduction.rs` 骨架
-  - 文件: `src/ops/reduction.rs`
+- [ ] **T1**: 创建 `src/reduction/` 模块骨架
+  - 文件: `src/reduction/mod.rs`, `src/reduction/sum.rs`
   - 内容: 模块声明、全局 `sum` 函数签名
   - 测试: 编译通过
   - 前置: tensor, element, iter 模块完成
   - 预计: 5 min
 
 - [ ] **T2**: 实现整数类型全局 `sum`
-  - 文件: `src/ops/reduction.rs`
+  - 文件: `src/reduction/sum.rs`
   - 内容: checked_add 累加，overflow 时 panic
   - 测试: `test_sum_i32`, `test_sum_i64`, `test_sum_overflow_panic`
   - 前置: T1
   - 预计: 10 min
 
 - [ ] **T3**: 实现浮点类型全局 `sum`
-  - 文件: `src/ops/reduction.rs`
+  - 文件: `src/reduction/sum.rs`
   - 内容: 浮点累加，NaN 传播
   - 测试: `test_sum_f32`, `test_sum_f64`, `test_sum_nan`
   - 前置: T1
   - 预计: 10 min
 
 - [ ] **T4**: 实现复数类型全局 `sum`
-  - 文件: `src/ops/reduction.rs`
+  - 文件: `src/reduction/sum.rs`
   - 内容: 复数累加
   - 测试: `test_sum_complex`
   - 前置: T1
@@ -315,7 +321,7 @@ sum_axis_keepdims(tensor, axis):
 ### Wave 2: 沿轴归约
 
 - [ ] **T5**: 实现沿轴 `sum_axis`
-  - 文件: `src/ops/reduction.rs`
+  - 文件: `src/reduction/sum.rs`
   - 内容: 使用 AxisIter 遍历，保持 keepdims 选项
   - 测试: `test_sum_axis_2d`, `test_sum_axis_3d`, `test_sum_axis_keepdims`
   - 前置: T2, T3, T4
@@ -324,7 +330,7 @@ sum_axis_keepdims(tensor, axis):
 ### Wave 3: SIMD 加速
 
 - [ ] **T6**: 实现 SIMD 归约路径
-  - 文件: `src/ops/reduction.rs`（cfg feature = "simd"）
+  - 文件: `src/reduction/simd.rs`（cfg feature = "simd"）
   - 内容: SIMD 水平求和，尾部标量处理
   - 测试: `test_sum_simd_consistency`
   - 前置: T2, T3, simd 模块
@@ -333,7 +339,7 @@ sum_axis_keepdims(tensor, axis):
 ### Wave 4: 并行加速
 
 - [ ] **T7**: 实现并行归约路径
-  - 文件: `src/ops/reduction.rs`（cfg feature = "parallel"）
+  - 文件: `src/reduction/parallel.rs`（cfg feature = "parallel"）
   - 内容: 分块并行归约，合并结果须与单线程一致
   - 测试: `test_sum_parallel_consistency`
   - 前置: T5, parallel 模块
