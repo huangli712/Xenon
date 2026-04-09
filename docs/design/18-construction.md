@@ -30,7 +30,7 @@
 | F-order 默认 | 构造时数据按 F-order 存放，默认列优先布局 |
 | 对齐分配 | `zeros`/`ones` 使用对齐分配器，满足 BLAS 兼容性（参见 `23-ffi.md` §4.5） |
 | 零拷贝优先 | `from_vec` 将输入 `Vec<A>` 的数据拷贝到新分配的 64 字节对齐内存中（通过 `Owned::from_vec_aligned()`），确保 SIMD 友好的内存对齐。原始 Vec 在拷贝完成后被释放 |
-| 类型安全 | 彣状和元素类型通过泛型约束在编译期检查 |
+| 类型安全 | 形状和元素类型通过泛型约束在编译期检查 |
 
 ### 1.3 在架构中的位置
 
@@ -41,7 +41,7 @@ L1: dimension, element, complex
 L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
-L5: construct  ← 当前模块
+L5: construct  ← 当前模块（依赖 storage, memory_layout, dimension, element）
 ```
 
 ---

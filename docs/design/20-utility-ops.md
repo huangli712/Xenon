@@ -1,6 +1,6 @@
 # 实用操作模块设计
 
-> 文档编号: 20 | 模块: `src/ops/utility.rs` | 阶段: Phase 4
+> 文档编号: 20 | 模块: `src/util/` | 阶段: Phase 4
 > 前置文档: `07-tensor.md`, `10-iterator.md`
 > 需求参考: 需求说明书 §21, §22
 
@@ -35,7 +35,7 @@ L1: dimension, element, complex
 L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
-L5: ops/utility  ← 当前模块
+L5: util  ← 当前模块（依赖 tensor, dimension, storage, layout, iter）
 ```
 
 ---
@@ -44,13 +44,16 @@ L5: ops/utility  ← 当前模块
 
 ```
 src/
-└── ops/
-    └── utility.rs    # clip / fill / to_contiguous
+└── util/
+    ├── mod.rs           # 模块根，re-exports
+    ├── clip.rs          # clip / clip_inplace（范围裁剪）
+    ├── fill.rs          # fill（原地填充）
+    └── contiguous.rs    # to_contiguous（连续性保证）
 ```
 
-单文件设计：实用操作之间无强依赖，代码量适中（~200 行），无需拆分。
+多文件设计：三个操作（clip、fill、to_contiguous）按职责分离，通过 `mod.rs` 统一 re-export。
 
-> **注意**：`to_contiguous()` 的公共 API 定义在 `src/ops/utility.rs`（本模块），内部委托给 `src/convert/contiguous.rs` 中的 `to_f_contiguous()` 辅助函数（参见 `21-type-conversion.md §4.5c`）。
+> **注意**：`to_contiguous()` 的公共 API 定义在 `src/util/contiguous.rs`（本模块），内部委托给 `src/convert/contiguous.rs` 中的 `to_f_contiguous()` 辅助函数（参见 `21-type-conversion.md §4.5c`）。
 
 ---
 
@@ -59,7 +62,7 @@ src/
 ### 3.1 依赖图
 
 ```
-src/ops/utility.rs
+src/util/
 ├── crate::tensor        # TensorBase<S, D>, Tensor, 类型别名
 ├── crate::dimension     # Dimension trait
 ├── crate::storage       # Storage, StorageMut trait
@@ -82,7 +85,7 @@ src/ops/utility.rs
 
 ### 3.3 依赖方向声明
 
-> **依赖方向：单向向上。** `ops/utility` 仅消费 `tensor`、`iter` 等核心模块，不被它们依赖。
+> **依赖方向：单向向上。** `util` 仅消费 `tensor`、`iter` 等核心模块，不被它们依赖。
 
 ---
 
@@ -325,14 +328,14 @@ to_contiguous(tensor):
 ### Wave 1: 基础操作
 
 - [ ] **T1**: 实现 `fill` 方法
-  - 文件: `src/ops/utility.rs`
+  - 文件: `src/util/fill.rs`
   - 内容: `fill(&mut self, value: A)` 方法，通过 `iter_mut()` 原地填充
   - 测试: `test_fill_basic`, `test_fill_non_contiguous`
   - 前置: tensor 模块、iter 模块完成
   - 预计: 10 min
 
 - [ ] **T2**: 实现 `clip` 方法
-  - 文件: `src/ops/utility.rs`
+  - 文件: `src/util/clip.rs`
   - 内容: `clip(&self, min: A, max: A) -> Tensor<A, D>` 和 `clip_inplace` 方法
   - 测试: `test_clip_basic`, `test_clip_nan`, `test_clip_integers`
   - 前置: T1
@@ -341,7 +344,7 @@ to_contiguous(tensor):
 ### Wave 2: 连续性保证
 
 - [ ] **T3**: 实现 `to_contiguous` 方法
-  - 文件: `src/ops/utility.rs`
+  - 文件: `src/util/contiguous.rs`
   - 内容: 基于 `is_f_contiguous()` 检查，非 F-contiguous 输入始终转为 F-order
   - 测试: `test_to_contiguous_f_order`, `test_to_contiguous_c_input_becomes_f`, `test_to_contiguous_non_contiguous`
   - 前置: T2, layout 模块的 `is_f_contiguous` 完成

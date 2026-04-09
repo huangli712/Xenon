@@ -39,7 +39,8 @@ L1: dimension, element, complex
 L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
-L5: ops/elementwise  ← 当前模块
+L5: broadcast (依赖 tensor, dimension)
+L6: ops/elementwise  ← 当前模块（依赖 broadcast, iter, element）
 ```
 
 ---

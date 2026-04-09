@@ -144,6 +144,12 @@ xenon/
 │   │   ├── reduction.rs       # 归约（仅 sum）
 │   │   └── comparison.rs      # 比较运算（equal, not_equal, less, greater）
 │   │
+│   ├── util/                   # 实用操作
+│   │   ├── mod.rs             # 模块根，re-exports
+│   │   ├── clip.rs            # clip / clip_inplace（范围裁剪）
+│   │   ├── fill.rs            # fill（原地填充）
+│   │   └── contiguous.rs      # to_contiguous（连续性保证）
+│   │
 │   ├── set_ops/               # 集合操作
 │   │   ├── mod.rs             # 集合操作 trait 导出
 │   │   └── unique.rs          # unique（去重）
@@ -234,6 +240,7 @@ xenon/
 | `tensor/` | 核心 `TensorBase<S, D>` 结构体及类型别名 |
 | `iter/` | 元素/轴/窗口/索引/Zip/Lane 迭代器 |
 | `ops/` | 逐元素运算、算术运算符、内积、sum 归约、比较运算 |
+| `util/` | 实用操作（clip 裁剪、fill 填充、to_contiguous 连续化） |
 | `set_ops/` | 集合操作（unique 去重） |
 | `broadcast.rs` | NumPy 广播规则 |
 | `shape_ops/` | reshape、transpose |
@@ -354,8 +361,8 @@ rustdoc-args = ["--cfg", "docsrs"]
 | **L2** | layout, workspace | error, dimension（workspace 独立于核心类型系统，仅依赖 core/alloc，可被上游库直接使用） | `06-memory-layout.md`、`24-workspace.md` |
 | **L3** | storage | core/alloc | `05-storage.md` |
 | **L4** | tensor | storage, dimension, layout, element | `07-tensor.md` |
-| **L5** | iter, broadcast, ffi | tensor | `10-iterator.md`、`15-broadcast.md`、`23-ffi.md` |
-| **L6** | ops, shape_ops, index | tensor, iter, broadcast | `11-elementwise-ops.md`、`16-shape-ops.md`、`17-indexing.md` |
+| **L5** | broadcast, iter, ffi | tensor | `15-broadcast.md`、`10-iterator.md`、`23-ffi.md` |
+| **L6** | ops/elementwise, ops/matrix, ops/reduction, ops/set_ops, ops/comparison, shape_ops, index, util | tensor, broadcast（部分模块还需 iter） | `11-elementwise-ops.md`、`12-matrix-ops.md`、`13-reduction.md`、`14-set-ops.md`、`16-shape-ops.md`、`17-indexing.md`、`20-utility-ops.md` |
 | **L7** | construct, convert, format | tensor, shape_ops | `18-construction.md`、`21-type-conversion.md`、`22-format-output.md` |
 
 ### 5.2 依赖图（ASCII）
@@ -406,19 +413,32 @@ rustdoc-args = ["--cfg", "docsrs"]
 ┌────────┐┌──────────┐┌─────┐┌─────────┐
 │  iter  ││broadcast ││ ffi ││  index  │
 └───┬────┘└────┬─────┘└─────┘└────┬─────┘
-    │          │                                │
-    ▼          │                                ▼
-┌────────┐     │                          ┌──────────┐
-│  ops   │◄────┘                          │shape_ops │
-└───┬────┘                                └────┬─────┘
-    │                                          │
-    └──────────────────┬───────────────────────┘
-                       │
-                       ▼
-              ┌─────────────────┐
-              │  construct /    │
-              │  convert / fmt  │
-              └─────────────────┘
+    │          │                    │
+    │          │ (broadcast → ops) │
+    │          │                    │
+    │          └────────┬──────────┘
+    │                   │
+    │          ┌────────┴────────┐
+    │          │                 │
+    │          ▼                 ▼
+    │     ┌────────┐      ┌──────────┐
+    │     │  ops   │◄─────│shape_ops │
+    │     └────┬───┘      └────┬─────┘
+    │          │               │
+    └─────┬────┘               │
+          │                   │
+          ▼                   ▼
+     ┌────────┐         ┌──────────┐
+     │  util  │         │construct │
+     └────┬───┘         │convert  │
+          │              │format   │
+          └──────┬───────┘
+                 │
+                 ▼
+        ┌─────────────────┐
+        │  construct /    │
+        │  convert / fmt  │
+        └─────────────────┘
 ```
 
 > **L1 内部依赖说明**：`element` 依赖同级的 `complex` 模块（使用 `Complex<T>` 类型作为 trait 实现目标），`complex` 不反向依赖 `element`。此依赖在图中以 element 下方指向 complex 表示。
@@ -532,6 +552,7 @@ pub mod layout;
 pub mod tensor;
 pub mod iter;
 pub mod ops;
+pub mod util;
 pub mod broadcast;
 pub mod shape_ops;
 pub mod index;
