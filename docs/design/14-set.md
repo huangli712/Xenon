@@ -1,6 +1,6 @@
 # 集合操作模块设计
 
-> 文档编号: 14 | 模块: `src/set_ops/` | 阶段: Phase 4
+> 文档编号: 14 | 模块: `src/set/` | 阶段: Phase 4
 > 前置文档: `03-element-types.md`, `07-tensor.md`
 > 需求参考: 需求说明书 §15
 
@@ -39,7 +39,7 @@ L1: dimension, element, complex
 L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
-L5: set_ops  ← 当前模块
+L5: set  ← 当前模块
 ```
 
 ---
@@ -47,7 +47,7 @@ L5: set_ops  ← 当前模块
 ## 2. 文件位置
 
 ```
-src/set_ops/
+src/set/
 ├── mod.rs              # 模块入口
 └── unique.rs           # 集合操作（本模块）
 ```
@@ -61,7 +61,7 @@ src/set_ops/
 ### 3.1 依赖图
 
 ```
-src/set_ops/unique.rs
+src/set/unique.rs
 ├── crate::tensor        # TensorBase<S, D>, Tensor<A, Ix1>
 ├── crate::element       # Element, Numeric, ComplexScalar
 └── crate::iter          # Elements（收集元素）
@@ -77,7 +77,7 @@ src/set_ops/unique.rs
 
 ### 3.3 依赖方向
 
-> **依赖方向：单向向上。** `ops/set_ops` 仅消费 `tensor`、`element`、`iter` 模块。
+> **依赖方向：单向向上。** `set` 仅消费 `tensor`、`element`、`iter` 模块。
 
 ---
 
@@ -201,7 +201,7 @@ unique(self):
 /// do not implement `Ord`, and `Complex` does not implement `PartialOrd`.
 /// Instead, each type defines its own `total_cmp` method.
 ///
-/// # Why in set_ops.rs, not element module?
+/// # Why in set/unique.rs, not element module?
 ///
 /// UniqueElement is defined here rather than in the element module because
 /// its semantic (total ordering for deduplication) is operation-specific,
@@ -270,8 +270,8 @@ impl UniqueElement for Complex<f64> {
 
 ### Wave 1: 基础设施
 
-- [ ] **T1**: 创建 `src/set_ops/unique.rs` 骨架
-  - 文件: `src/set_ops/unique.rs`
+- [ ] **T1**: 创建 `src/set/unique.rs` 骨架
+  - 文件: `src/set/unique.rs`
   - 内容: 模块声明、UniqueElement trait 定义
   - 测试: 编译通过
   - 前置: `07-tensor.md` 完成
@@ -280,7 +280,7 @@ impl UniqueElement for Complex<f64> {
 ### Wave 2: 核心实现
 
 - [ ] **T2**: 实现 `unique` 方法
-  - 文件: `src/set_ops/unique.rs`
+  - 文件: `src/set/unique.rs`
   - 内容: 元素收集、排序、去重、Tensor 构造
   - 测试: `test_unique_basic`, `test_unique_empty`, `test_unique_single`, `test_unique_duplicates`
   - 前置: T1
@@ -289,14 +289,14 @@ impl UniqueElement for Complex<f64> {
 ### Wave 3: 浮点与复数扩展
 
 - [ ] **T3**: 实现浮点 NaN 排序处理
-  - 文件: `src/set_ops/unique.rs`
+  - 文件: `src/set/unique.rs`
   - 内容: NaN 比任何实数大，排序后 NaN 在末尾
   - 测试: `test_unique_nan_f32`, `test_unique_nan_f64`
   - 前置: T2
   - 预计: 10 min
 
 - [ ] **T4**: 实现复数排序规则
-  - 文件: `src/set_ops/unique.rs`
+  - 文件: `src/set/unique.rs`
   - 内容: 先按实部再按虚部的 lexicographic order
   - 测试: `test_unique_complex_order`
   - 前置: T2
@@ -305,7 +305,7 @@ impl UniqueElement for Complex<f64> {
 ### Wave 4: TensorBase 入口集成
 
 - [ ] **T5**: 在 TensorBase 上添加 `unique()` 入口方法
-  - 文件: `src/set_ops/unique.rs`（或 trait extension）
+  - 文件: `src/set/unique.rs`（或 trait extension）
   - 内容: `unique()` 方法绑定到 TensorBase
   - 测试: `test_unique_integration`
   - 前置: T2, T3, T4

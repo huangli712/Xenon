@@ -53,7 +53,7 @@ benches/
 ├── elementwise.rs          # 逐元素运算 benchmark
 ├── reduction.rs            # 归约运算 benchmark（sum）
 ├── dot_product.rs          # 向量内积 benchmark
-├── set_ops.rs              # 集合操作 benchmark（unique）
+├── set.rs                  # 集合操作 benchmark（unique）
 ├── broadcast.rs            # 广播运算 benchmark
 ├── shape_ops.rs            # 形状操作 benchmark（transpose/reshape）
 ├── simd_comparison.rs      # SIMD 对比 benchmark
@@ -77,7 +77,7 @@ benches/
 ├── crate::ops              # 逐元素运算、归约、内积
 ├── crate::shape_ops        # transpose, reshape
 ├── crate::broadcast        # broadcast_shape
-├── crate::set_ops          # unique
+├── crate::set              # unique
 ├── crate::construct        # zeros, ones, from_vec
 └── criterion (dev-dep)     # benchmark 框架
 ```
@@ -91,7 +91,7 @@ benches/
 | `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element-types.md §4`） |
 | `ops` | `add`, `sub`, `mul`, `div`, `sin`, `exp`, `abs`, `sum_axis`（参见 `11-elementwise-ops.md §4`） |
 | `shape_ops` | `reshape`, `transpose`（参见 `16-shape-ops.md §4`） |
-| `set_ops` | `unique`（参见 `14-set-ops.md §4`） |
+| `set` | `unique`（参见 `14-set.md §4`） |
 | `construct` | `zeros`, `ones`, `from_vec`, `from_fn`（参见 `18-construction.md §4`） |
 | `broadcast` | `broadcast_shape`, 广播运算符（参见 `15-broadcast.md §4`） |
 
@@ -122,7 +122,7 @@ name = "dot_product"
 harness = false
 
 [[bench]]
-name = "set_ops"
+name = "set"
 harness = false
 
 [[bench]]
@@ -451,7 +451,7 @@ b.iter(|| &a + &b);
 | `elementwise.rs` | `ops/` (逐元素运算) | `11-elementwise-ops.md` |
 | `reduction.rs` | `ops/` (归约运算) | `12-reduction.md` |
 | `dot_product.rs` | `ops/` (内积运算) | `12-reduction.md` |
-| `set_ops.rs` | `set_ops` | `14-set-ops.md` |
+| `set.rs` | `set` | `14-set.md` |
 | `broadcast.rs` | `broadcast` | `15-broadcast.md` |
 | `shape_ops.rs` | `shape_ops` | `16-shape-ops.md` |
 | `simd_comparison.rs` | `simd` + `ops/` | `08-simd-backend.md` |
@@ -513,10 +513,10 @@ benchmark 文件
   - 前置: T2
   - 预计: 10 min
 
-- [ ] **T6**: 实现 `benches/set_ops.rs`
-  - 文件: `benches/set_ops.rs`
+- [ ] **T6**: 实现 `benches/set.rs`
+  - 文件: `benches/set.rs`
   - 内容: unique_1d（不同规模、不同唯一值比例）
-  - 测试: `cargo bench --bench set_ops -- --quick`
+  - 测试: `cargo bench --bench set -- --quick`
   - 前置: T2
   - 预计: 10 min
 

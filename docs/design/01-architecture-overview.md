@@ -136,26 +136,26 @@ xenon/
 │   │   ├── zip.rs             # Zip 多张量同步迭代
 │   │   └── lanes.rs           # LaneIter 行/列迭代
 │   │
-│   ├── math/                   # 逐元素数学运算
-│   │   ├── mod.rs              # 模块入口，re-exports
-│   │   ├── map.rs              # 逐元素映射（map, mapv, mapv_inplace）
-│   │   ├── zip.rs              # 二元逐元素（zip_with，含广播）
-│   │   ├── unary.rs            # 一元运算（abs, neg, signum, square, sin, sqrt, exp, ln, floor, ceil, norm, conj, not）
-│   │   ├── binary.rs           # 二元算术方法（add, sub, mul, div, add_scalar, sub_scalar, mul_scalar, div_scalar）
-│   │   ├── comparison.rs       # 比较运算（eq, ne, lt, gt）
-│   │   └── simd.rs             # SIMD 加速路径（cfg feature = "simd"）
+│   ├── math/                  # 逐元素数学运算
+│   │   ├── mod.rs             # 模块入口，re-exports
+│   │   ├── map.rs             # 逐元素映射（map, mapv, mapv_inplace）
+│   │   ├── zip.rs             # 二元逐元素（zip_with，含广播）
+│   │   ├── unary.rs           # 一元运算（abs, neg, signum, square, sin, sqrt, exp, ln, floor, ceil, norm, conj, not）
+│   │   ├── binary.rs          # 二元算术方法（add, sub, mul, div, add_scalar, sub_scalar, mul_scalar, div_scalar）
+│   │   ├── comparison.rs      # 比较运算（eq, ne, lt, gt）
+│   │   └── simd.rs            # SIMD 加速路径（cfg feature = "simd"）
 │   │
-│   ├── ops/                    # 运算符重载
-│   │   ├── mod.rs              # 运算 trait 导出
-│   │   └── arithmetic.rs       # 运算符重载（Add, Sub, Mul, Div）
+│   ├── ops/                   # 运算符重载
+│   │   ├── mod.rs             # 运算 trait 导出
+│   │   └── arithmetic.rs      # 运算符重载（Add, Sub, Mul, Div）
 │   │
-│   ├── util/                   # 实用操作
+│   ├── util/                  # 实用操作
 │   │   ├── mod.rs             # 模块根，re-exports
 │   │   ├── clip.rs            # clip / clip_inplace（范围裁剪）
 │   │   ├── fill.rs            # fill（原地填充）
 │   │   └── contiguous.rs      # to_contiguous（连续性保证）
 │   │
-│   ├── set_ops/               # 集合操作
+│   ├── set/                   # 集合操作
 │   │   ├── mod.rs             # 集合操作 trait 导出
 │   │   └── unique.rs          # unique（去重）
 │   │
@@ -231,7 +231,7 @@ xenon/
 │   ├── bench_elementwise.rs   # 逐元素操作
 │   ├── bench_reduction.rs     # 归约操作
 │   ├── bench_dot_product.rs   # 向量内积
-│   ├── bench_set_ops.rs       # 集合操作
+│   ├── bench_set.rs           # 集合操作
 │   ├── bench_broadcast.rs     # 广播操作
 │   ├── bench_shape_ops.rs     # 形状操作
 │   ├── bench_simd_comparison.rs   # SIMD 比较
@@ -258,7 +258,7 @@ xenon/
 | `math/` | 逐元素数学运算（映射、一元、二元算术、比较、SIMD 加速） |
 | `ops/` | 运算符重载（Add, Sub, Mul, Div trait 实现） |
 | `util/` | 实用操作（clip 裁剪、fill 填充、to_contiguous 连续化） |
-| `set_ops/` | 集合操作（unique 去重） |
+| `set/` | 集合操作（unique 去重） |
 | `broadcast.rs` | NumPy 广播规则 |
 | `matrix/` | 向量内积 dot（标量路径 + SIMD 加速路径） |
 | `reduction/` | 归约操作（sum，含 SIMD/并行加速路径） |
@@ -319,7 +319,7 @@ name = "dot_product"
 harness = false
 
 [[bench]]
-name = "set_ops"
+name = "set"
 harness = false
 
 [[bench]]
@@ -381,7 +381,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 | **L3** | storage | core/alloc | `05-storage.md` |
 | **L4** | tensor | storage, dimension, layout, element | `07-tensor.md` |
 | **L5** | broadcast, iter, ffi | tensor | `15-broadcast.md`、`10-iterator.md`、`23-ffi.md` |
-| **L6** | math（逐元素/比较）, matrix, reduction, shape_ops, index, util | tensor, broadcast（部分模块还需 iter） | `11-elementwise-ops.md`、`12-matrix-ops.md`、`13-reduction.md`、`14-set-ops.md`、`16-shape-ops.md`、`17-indexing.md`、`20-utility.md` |
+| **L6** | math（逐元素/比较）, matrix, reduction, shape_ops, index, util | tensor, broadcast（部分模块还需 iter） | `11-elementwise-ops.md`、`12-matrix-ops.md`、`13-reduction.md`、`14-set.md`、`16-shape-ops.md`、`17-indexing.md`、`20-utility.md` |
 | **L7** | construct, convert, format | tensor, shape_ops | `18-construction.md`、`21-type-conversion.md`、`22-format-output.md` |
 
 ### 5.2 依赖图（ASCII）

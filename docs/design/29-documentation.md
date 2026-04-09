@@ -79,7 +79,7 @@ src/
 │   └── mod.rs                # 索引模块文档（L1）
 ├── construct/
 │   └── mod.rs                # 构造模块文档（L1）
-├── set_ops/
+├── set/
 │   └── mod.rs                # 集合操作模块文档（L1）
 ├── ffi/
 │   └── mod.rs                # FFI 模块文档（L1）
@@ -689,7 +689,7 @@ docs:
 |----------|-----------|------|
 | T1 (lib.rs 文档) | 全部 | 需要了解所有模块的概览 |
 | T5 (核心模块文档) | dimension, element, complex, storage, layout | 基于 §1 章节编写 |
-| T6 (张量与运算文档) | tensor, ops, broadcast, shape_ops, index, construct, set_ops | 基于 §1 章节编写 |
+| T6 (张量与运算文档) | tensor, ops, broadcast, shape_ops, index, construct, set | 基于 §1 章节编写 |
 | T7 (基础设施文档) | ffi, workspace, simd, parallel, error, prelude | 基于 §1 章节编写 |
 | T8 (类型级文档) | 全部 | 逐类型添加 doc comment |
 | T9 (函数级文档) | 全部 | 逐函数添加 doc comment |
@@ -754,7 +754,7 @@ docs:
   - 前置: T2
   - 预计: 10 min
 
-- [ ] **T6**: 编写张量与运算模块文档（tensor, ops, broadcast, shape_ops, index, construct, set_ops）
+- [ ] **T6**: 编写张量与运算模块文档（tensor, ops, broadcast, shape_ops, index, construct, set）
   - 文件: 各 `mod.rs`
   - 内容: 模块职责、核心类型、运算分类、类型约束速查（参见 `07-tensor.md §1`、`11-elementwise-ops.md §1`、`15-broadcast.md §1`、`16-shape-ops.md §1`）
   - 测试: `cargo doc --no-deps` 无 warning
@@ -826,8 +826,8 @@ docs:
   - 前置: T5, T6, T7
   - 预计: 10 min
 
-- [ ] **T9d**: construct 和 set_ops 模块文档
-  - 文件: `src/construct/mod.rs`, `src/set_ops/mod.rs`
+- [ ] **T9d**: construct 和 set 模块文档
+  - 文件: `src/construct/mod.rs`, `src/set/mod.rs`
   - 内容: zeros, ones, eye, from_vec, from_fn, unique 函数文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7

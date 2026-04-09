@@ -98,7 +98,7 @@ tests/
 ├── crate::shape_ops        # transpose, reshape
 ├── crate::index            # 多维索引、范围切片
 ├── crate::construct        # zeros, ones, eye, from_vec, from_fn, from_scalar
-├── crate::set_ops          # unique
+├── crate::set              # unique
 ├── crate::ffi              # as_ptr, as_mut_ptr, from_raw_parts
 ├── crate::workspace        # Workspace
 ├── crate::error            # XenonError
@@ -699,7 +699,7 @@ fn test_bad_magic() {
 | `test_broadcast.rs` | `broadcast` | `15-broadcast.md` |
 | `test_index.rs` | `index` | `17-indexing.md` |
 | `test_construction.rs` | `construct` | `18-construction.md` |
-| `test_reduction.rs` | `ops/` (归约), `set_ops` | `12-reduction.md`, `14-set-ops.md` |
+| `test_reduction.rs` | `reduction` , `set` | `12-reduction.md`, `14-set.md` |
 | `test_shape_ops.rs` | `shape_ops` | `16-shape-ops.md` |
 | `test_conversion.rs` | `convert` | `22-conversion.md` |
 | `test_ffi.rs` | `ffi`, `workspace` | `23-ffi.md`, `24-workspace.md` |
