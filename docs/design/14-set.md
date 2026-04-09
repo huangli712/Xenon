@@ -444,7 +444,7 @@ use alloc::vec::Vec;
 | `unique()` | ✅ | 需 `no_std + alloc`，收集元素到 `Vec` + 排序 + 去重，参见 `05-storage.md` §11 |
 | `UniqueElement` trait | ✅ | 纯 trait 定义，无依赖 |
 | 浮点 NaN 排序 | ✅ | `f32::total_cmp` / `f64::total_cmp`，`core` 内建（Rust 1.62+） |
-| 复数排序 | ✅ | lexicographic `total_cmp` 实现，参见 `04-complex-type.md` §3 |
+| 复数排序 | ✅ | lexicographic `total_cmp` 实现，参见 `04-complex.md` §3 |
 
 条件编译处理：
 

@@ -109,7 +109,7 @@ where
     /// Available for types implementing `Numeric + PartialOrd`: i32, i64, f32, f64, usize.
     /// **Not available for `Complex<f32>`/`Complex<f64>`** because complex numbers
     /// have no natural total ordering (`Complex` does not implement `PartialOrd`,
-    /// see `04-complex-type.md §4`).
+    /// see `04-complex.md §4`).
     /// **Not available for `bool`** because `bool` does not implement `Numeric`
     /// (see `03-element-types.md §3`).
     ///

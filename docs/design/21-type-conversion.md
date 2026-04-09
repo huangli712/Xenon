@@ -423,7 +423,7 @@ impl CastTo<i32> for i64 {
 impl CastTo<Complex<f64>> for f64 {
     #[inline]
     fn cast_to(self) -> Complex<f64> { Complex { re: self, im: 0.0 } }
-}  // Complex 结构体定义参见 `04-complex-type.md` §4
+}  // Complex 结构体定义参见 `04-complex.md` §4
 
 // Note: CastTo<f64> for Complex<f64> is intentionally not implemented
 // Users must explicitly use .re() or .im()
@@ -561,7 +561,7 @@ Wave 3: [T6] [T7]  (并行)
 | `math` | convert → math | `cast()` 内部通过 `iter().map().collect()` 执行逐元素转换，不使用 `mapv()`（因为 `mapv` 返回 `Tensor<A, D>` 而非 `Tensor<B, D>`） |
 | `storage` | convert → storage | `into_owned()` 消费 `StorageIntoOwned` trait；存储模式互转依赖 `Owned`/`ViewRepr`/`ArcRepr`（参见 `05-storage.md` §4） |
 | `layout` | convert → layout | `to_owned()` 调用 `is_f_contiguous()` 判断是否需要重排（参见 `06-memory.md` §4） |
-| `complex` | convert → complex | `CastTo<Complex<T>>` 实现依赖 `Complex` 结构体定义；反向转换（Complex → T）故意不提供（参见 `04-complex-type.md` §4） |
+| `complex` | convert → complex | `CastTo<Complex<T>>` 实现依赖 `Complex` 结构体定义；反向转换（Complex → T）故意不提供（参见 `04-complex.md` §4） |
 
 ---
 
