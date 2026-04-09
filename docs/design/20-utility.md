@@ -201,7 +201,7 @@ where
 
 ### 4.3 连续性保证（to_contiguous）
 
-> `to_contiguous()` 是本模块（20-utility-ops.md §4）定义的公共 API。内部实现委托给 `src/convert/contiguous.rs` 中的 `to_f_contiguous()` 辅助函数（见 21-type-conversion.md §2.1 文件结构）。
+> `to_contiguous()` 是本模块（20-utility.md §4）定义的公共 API。内部实现委托给 `src/convert/contiguous.rs` 中的 `to_f_contiguous()` 辅助函数（见 21-type-conversion.md §2.1 文件结构）。
 
 ```rust
 impl<S, D, A> TensorBase<S, D>

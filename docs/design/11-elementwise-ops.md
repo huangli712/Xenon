@@ -1,6 +1,6 @@
 # 逐元素运算模块设计
 
-> 文档编号: 11 | 模块: `src/ops/elementwise.rs` | 阶段: Phase 4
+> 文档编号: 11 | 模块: `src/math/` | 阶段: Phase 4
 > 前置文档: `10-iterator.md`, `15-broadcast.md`
 > 需求参考: 需求说明书 §12
 
@@ -40,7 +40,7 @@ L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
 L5: broadcast (依赖 tensor, dimension)
-L6: ops/elementwise  ← 当前模块（依赖 broadcast, iter, element）
+L6: math（逐元素运算） ← 当前模块（依赖 broadcast, iter, element）
 ```
 
 ---
@@ -48,12 +48,17 @@ L6: ops/elementwise  ← 当前模块（依赖 broadcast, iter, element）
 ## 2. 文件位置
 
 ```
-src/ops/
+src/math/
 ├── mod.rs              # 模块入口，re-export 公开 API
-└── elementwise.rs     # 逐元素运算核心（map, zip_with, 数学函数）
+├── map.rs              # 逐元素映射（map, mapv, mapv_inplace）
+├── zip.rs              # 二元逐元素（zip_with，含广播）
+├── unary.rs            # 一元运算（abs, neg, signum, square, sin, sqrt, exp, ln, floor, ceil, norm, conj, not）
+├── binary.rs           # 二元算术方法（add, sub, mul, div, add_scalar, sub_scalar, mul_scalar, div_scalar）
+├── comparison.rs       # 比较运算（eq, ne, lt, gt）
+└── simd.rs             # SIMD 加速路径（cfg feature = "simd"）
 ```
 
-单文件设计理由：逐元素运算聚焦于 map/zip_with/apply 及数学函数，运算符重载在独立模块实现。
+多文件设计理由：按操作元数分组（一元 vs 二元 vs 映射基础设施），每个文件对应独立的 trait 约束边界，降低单文件复杂度。运算符重载（Add/Sub/Mul/Div trait 实现）保留在 `src/ops/arithmetic.rs`。
 
 ---
 
@@ -62,7 +67,7 @@ src/ops/
 ### 3.1 依赖图
 
 ```
-src/ops/elementwise.rs
+src/math/（整体模块依赖）
 ├── crate::tensor        # TensorBase<S, D>, TensorView
 ├── crate::iter          # Elements, ElementsMut, Zip
 ├── crate::element       # Element, Numeric, RealScalar, ComplexScalar
@@ -84,7 +89,7 @@ src/ops/elementwise.rs
 
 ### 3.3 依赖方向
 
-> **依赖方向：单向向上。** `ops/elementwise` 消费 `iter`、`tensor`、`element`、`broadcast` 模块，不被它们依赖。
+> **依赖方向：单向向上。** `math` 模块消费 `iter`、`tensor`、`element`、`broadcast` 模块，不被它们依赖。
 
 ---
 
@@ -420,7 +425,7 @@ where
 ### Wave 1: 核心映射
 
 - [ ] **T1**: 实现 `map` / `mapv` / `mapv_inplace`
-  - 文件: `src/ops/elementwise.rs`
+  - 文件: `src/math/map.rs`
   - 内容: 基于 `Elements` 迭代器的映射操作
   - 测试: `test_map`, `test_mapv`, `test_mapv_inplace`
   - 前置: 10-iterator.md 完成
@@ -429,28 +434,28 @@ where
 ### Wave 2: 二元操作与一元运算
 
 - [ ] **T2**: 实现 `zip_with`（含广播支持）
-  - 文件: `src/ops/elementwise.rs`
+  - 文件: `src/math/zip.rs`
   - 内容: 基于 `Zip` 迭代器的二元操作
   - 测试: `test_zip_with_same_shape`, `test_zip_with_broadcast`
   - 前置: T1, broadcast 模块
   - 预计: 10 min
 
 - [ ] **T3**: 实现一元运算（abs/neg/signum/square）
-  - 文件: `src/ops/elementwise.rs`
+  - 文件: `src/math/unary.rs`
   - 内容: 基于 `mapv` 的一元运算
   - 测试: `test_abs`, `test_neg`, `test_signum`, `test_square`
   - 前置: T1
   - 预计: 10 min
 
 - [ ] **T4**: 实现数学函数（sin/sqrt/exp/ln/floor/ceil）
-  - 文件: `src/ops/elementwise.rs`
+  - 文件: `src/math/unary.rs`
   - 内容: RealScalar 约束的数学方法
   - 测试: `test_sin`, `test_sqrt`, `test_exp`, `test_floor_ceil`
   - 前置: T1
   - 预计: 10 min
 
 - [ ] **T5**: 实现复数运算（norm/conj）
-  - 文件: `src/ops/elementwise.rs`
+  - 文件: `src/math/unary.rs`
   - 内容: ComplexScalar 约束的复数方法
   - 测试: `test_norm`, `test_conj`
   - 前置: T1
@@ -459,14 +464,14 @@ where
 ### Wave 3: 算术与比较运算
 
 - [ ] **T6**: 实现算术运算（add/sub/mul/div）
-  - 文件: `src/ops/elementwise.rs`
+  - 文件: `src/math/binary.rs`
   - 内容: 基于 `zip_with` 的算术运算，标量版本
   - 测试: `test_add_i32`, `test_add_f64`, `test_add_complex`, `test_mul_scalar`
   - 前置: T2
   - 预计: 10 min
 
 - [ ] **T7**: 实现逻辑非（not）和比较运算（eq/ne/lt/gt）
-  - 文件: `src/ops/elementwise.rs`
+  - 文件: `src/math/unary.rs`（not）, `src/math/comparison.rs`（eq/ne/lt/gt）
   - 内容: bool 取反、比较运算返回 bool 张量
   - 测试: `test_not_bool`, `test_eq_f64`, `test_lt_i32`, `test_nan_comparison`
   - 前置: T2
@@ -475,7 +480,7 @@ where
 ### Wave 4: SIMD 集成
 
 - [ ] **T8**: 添加 SIMD 加速路径
-  - 文件: `src/ops/elementwise.rs`（#[cfg(feature = "simd")] 块）
+  - 文件: `src/math/simd.rs`（#[cfg(feature = "simd")] 块）
   - 内容: 算术运算的 SIMD 路径，连续数组检测
   - 测试: `test_add_simd_vs_scalar`, `test_mul_simd_vs_scalar`
   - 前置: T3, 08-simd-backend.md

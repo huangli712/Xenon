@@ -49,7 +49,7 @@ src/
     ├── cast.rs              # CastTo trait、cast() 方法、类型转换路径
     ├── owned.rs             # to_owned、into_owned、存储模式互转
     ├── from_impl.rs         # From/TryFrom trait 实现
-    └── contiguous.rs        # to_f_contiguous() 辅助函数（内部实现）。公共 API to_contiguous() 定义于 20-utility-ops.md §4，委托给此辅助函数
+    └── contiguous.rs        # to_f_contiguous() 辅助函数（内部实现）。公共 API to_contiguous() 定义于 20-utility.md §4，委托给此辅助函数
 ```
 
 多文件设计：按转换职责拆分，便于后续扩展（如新增转换路径、存储模式等）。
@@ -62,7 +62,7 @@ src/
 | `cast.rs` | `CastTo<T>` trait 定义、所有类型转换 impl、`cast()` 方法 | ~200 |
 | `owned.rs` | `to_owned()`、`into_owned()`、存储模式互转（view/view_mut/into_shared） | ~100 |
 | `from_impl.rs` | `From<Vec<A>>`、`From<&[A]>`、`From<[A; N]>`、`From<&Tensor> for View` 等 | ~80 |
-| `contiguous.rs` | `to_f_contiguous()` 辅助函数（内部实现，公共 API 见 20-utility-ops.md §4） | ~50 |
+| `contiguous.rs` | `to_f_contiguous()` 辅助函数（内部实现，公共 API 见 20-utility.md §4） | ~50 |
 
 ---
 
@@ -314,7 +314,7 @@ impl<A, D> TensorBase<Owned<A>, D> where A: Element, D: Dimension {
 
 ### 4.7 to_f_contiguous — 非连续数据重排
 
-`to_f_contiguous()` 将任意布局的张量重排为 F-order 连续拷贝，供 `to_contiguous()` 在非连续情况下调用（参见 `20-utility-ops.md §4.3`）：
+`to_f_contiguous()` 将任意布局的张量重排为 F-order 连续拷贝，供 `to_contiguous()` 在非连续情况下调用（参见 `20-utility.md §4.3`）：
 
 ```rust
 impl<S, D, A> TensorBase<S, D>

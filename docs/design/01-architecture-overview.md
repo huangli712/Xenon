@@ -136,11 +136,18 @@ xenon/
 │   │   ├── zip.rs             # Zip 多张量同步迭代
 │   │   └── lanes.rs           # LaneIter 行/列迭代
 │   │
-│   ├── ops/                   # 数学运算
-│   │   ├── mod.rs             # 运算 trait 导出
-│   │   ├── elementwise.rs     # 逐元素运算（map, zip_with, apply）
-│   │   ├── arithmetic.rs      # 运算符重载（Add, Sub, Mul, Div）
-│   │   └── comparison.rs      # 比较运算（equal, not_equal, less, greater）
+│   ├── math/                   # 逐元素数学运算
+│   │   ├── mod.rs              # 模块入口，re-exports
+│   │   ├── map.rs              # 逐元素映射（map, mapv, mapv_inplace）
+│   │   ├── zip.rs              # 二元逐元素（zip_with，含广播）
+│   │   ├── unary.rs            # 一元运算（abs, neg, signum, square, sin, sqrt, exp, ln, floor, ceil, norm, conj, not）
+│   │   ├── binary.rs           # 二元算术方法（add, sub, mul, div, add_scalar, sub_scalar, mul_scalar, div_scalar）
+│   │   ├── comparison.rs       # 比较运算（eq, ne, lt, gt）
+│   │   └── simd.rs             # SIMD 加速路径（cfg feature = "simd"）
+│   │
+│   ├── ops/                    # 运算符重载
+│   │   ├── mod.rs              # 运算 trait 导出
+│   │   └── arithmetic.rs       # 运算符重载（Add, Sub, Mul, Div）
 │   │
 │   ├── util/                   # 实用操作
 │   │   ├── mod.rs             # 模块根，re-exports
@@ -248,7 +255,8 @@ xenon/
 | `layout/` | F-order 布局标志位、步长计算、连续性检查 |
 | `tensor/` | 核心 `TensorBase<S, D>` 结构体及类型别名 |
 | `iter/` | 元素/轴/窗口/索引/Zip/Lane 迭代器 |
-| `ops/` | 逐元素运算、算术运算符、比较运算 |
+| `math/` | 逐元素数学运算（映射、一元、二元算术、比较、SIMD 加速） |
+| `ops/` | 运算符重载（Add, Sub, Mul, Div trait 实现） |
 | `util/` | 实用操作（clip 裁剪、fill 填充、to_contiguous 连续化） |
 | `set_ops/` | 集合操作（unique 去重） |
 | `broadcast.rs` | NumPy 广播规则 |
@@ -373,7 +381,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 | **L3** | storage | core/alloc | `05-storage.md` |
 | **L4** | tensor | storage, dimension, layout, element | `07-tensor.md` |
 | **L5** | broadcast, iter, ffi | tensor | `15-broadcast.md`、`10-iterator.md`、`23-ffi.md` |
-| **L6** | ops/elementwise, matrix, reduction, ops/comparison, shape_ops, index, util | tensor, broadcast（部分模块还需 iter） | `11-elementwise-ops.md`、`12-matrix-ops.md`、`13-reduction.md`、`14-set-ops.md`、`16-shape-ops.md`、`17-indexing.md`、`20-utility-ops.md` |
+| **L6** | math（逐元素/比较）, matrix, reduction, shape_ops, index, util | tensor, broadcast（部分模块还需 iter） | `11-elementwise-ops.md`、`12-matrix-ops.md`、`13-reduction.md`、`14-set-ops.md`、`16-shape-ops.md`、`17-indexing.md`、`20-utility.md` |
 | **L7** | construct, convert, format | tensor, shape_ops | `18-construction.md`、`21-type-conversion.md`、`22-format-output.md` |
 
 ### 5.2 依赖图（ASCII）
@@ -425,7 +433,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 │  iter  ││broadcast ││ ffi ││  index  │
 └───┬────┘└────┬─────┘└─────┘└────┬─────┘
     │          │                    │
-    │          │ (broadcast → ops) │
+    │          │ (broadcast → math)│
     │          │                    │
     │          └────────┬──────────┘
     │                   │
@@ -433,7 +441,7 @@ rustdoc-args = ["--cfg", "docsrs"]
     │          │                 │
     │          ▼                 ▼
     │     ┌────────┐      ┌──────────┐
-    │     │  ops   │◄─────│shape_ops │
+    │     │  math  │◄─────│shape_ops │
     │     └────┬───┘      └────┬─────┘
     │          │               │
     │     ┌────┴────┐          │
@@ -459,7 +467,7 @@ rustdoc-args = ["--cfg", "docsrs"]
        └─────────────────┘
 ```
 
-> **L6 模块说明**：`matrix` 从 `ops` 中独立为顶级模块，与 `reduction` 同级。`ops` 保留逐元素运算、算术运算符和比较运算。
+> **L6 模块说明**：`matrix` 独立为顶级模块，与 `reduction` 同级。`math` 负责逐元素数学运算（映射、一元、二元算术、比较）和 SIMD 加速；`ops` 仅保留运算符重载（Add/Sub/Mul/Div trait 实现）。
 
 ---
 
@@ -569,6 +577,7 @@ pub mod storage;
 pub mod layout;
 pub mod tensor;
 pub mod iter;
+pub mod math;
 pub mod ops;
 pub mod matrix;
 pub mod util;
