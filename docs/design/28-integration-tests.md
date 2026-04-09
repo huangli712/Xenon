@@ -227,7 +227,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 | `test_neg` | 一元负号 | 中 |
 | `test_abs_sign` | abs, sign 行为 | 中 |
 | `test_sin_cos_exp_ln` | 三角/指数/对数精度 | 高 |
-| `test_complex_elementwise` | 复数逐元素运算 | 中 |
+| `test_complex_math` | 复数逐元素运算 | 中 |
 | `test_bool_not` | bool 逻辑非 | 中 |
 | `test_compare_eq_ne` | 等于/不等于比较 | 高 |
 | `test_compare_lt_gt` | 小于/大于比较 | 中 |

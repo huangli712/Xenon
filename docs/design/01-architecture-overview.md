@@ -228,7 +228,7 @@ xenon/
 │   └── test_no_std.rs         # no_std 兼容性测试
 │
 ├── benches/                   # 性能基准测试
-│   ├── bench_elementwise.rs   # 逐元素操作
+│   ├── bench_math.rs          # 逐元素操作
 │   ├── bench_reduction.rs     # 归约操作
 │   ├── bench_dot_product.rs   # 向量内积
 │   ├── bench_set.rs           # 集合操作
@@ -307,7 +307,7 @@ proptest = "1.4"
 approx = "0.5"
 
 [[bench]]
-name = "elementwise"
+name = "math"
 harness = false
 
 [[bench]]
@@ -690,7 +690,7 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 | W3.2 Axis iterator | W2.6 | 中 | 沿轴迭代 |
 | W3.3 Window iterator | W2.6 | 高 | 窗口迭代 |
 | W3.4 Zip iterator | W2.6, W3.1 | 高 | 多张量同步迭代 |
-| W3.5 Elementwise ops | W3.1 | 中 | map, zip_with |
+| W3.5 Math | W3.1 | 中 | map, zip_with |
 | W3.6 Arithmetic ops | W3.5 | 中 | Add, Sub, Mul, Div |
 | W3.7 Reduction (sum) | W3.1 | 中 | sum, sum_axis |
 | W3.8 Dot (inner product) | W2.6 | 中 | 向量内积 |
@@ -717,7 +717,7 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 |------|------|------------|------|
 | W5.1 par_iter | W3.1-W3.4 | 高 | 并行迭代器 |
 | W5.2 par_reduction | W3.7, W5.1 | 高 | 并行 sum |
-| W5.3 simd elementwise | W3.5 | 高 | SIMD 逐元素 |
+| W5.3 simd math | W3.5 | 高 | SIMD 逐元素 |
 | W5.4 simd reduction | W3.7 | 高 | SIMD sum |
 
 ### 并行执行分组图

@@ -47,8 +47,8 @@ L5: simd  ← 当前模块（可选，feature = "simd"）
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                       调用层 (ops/iter)                          │
-│            elementwise, reduction, dot product                  │
-│            参见 11-math.md §5, 13-reduction.md §4     │
+│            math, reduction, dot product                         │
+│            参见 11-math.md §5, 13-reduction.md §4                │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
                           ▼

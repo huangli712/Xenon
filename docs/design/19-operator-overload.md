@@ -14,8 +14,8 @@
 |------|------|--------|
 | 四则运算运算符语法 | `+`/`-`/`*`/`÷` 运算符重载 | 原地运算符 `+=`/`-=`/`*=`/`/=`（当前版本不提供） |
 | 张量×张量运算 | 同形状运算、广播运算 | 矩阵乘法（由 `matrix` 提供） |
-| 张量×标量运算 | 标量广播到张量形状 | 负数运算符 `-`（在 `elementwise-ops` 提供） |
-| 广播支持 | 运算符语法内建支持广播 | 比较运算符（在 `elementwise-ops` 提供） |
+| 张量×标量运算 | 标量广播到张量形状 | 负数运算符 `-`（在 `math` 提供） |
+| 广播支持 | 运算符语法内建支持广播 | 比较运算符（在 `math` 提供） |
 | 新张量产生 | 所有组合产生新的独立张量 | 原地修改运算 |
 | 借用形式 | `&Tensor op &Tensor`/`&Tensor op Tensor` 等组合 | 索引运算符 `[]`（在 `index` 提供） |
 
@@ -62,7 +62,7 @@ src/ops/
 
 ```
                     ┌───────────────────┐
-                    │ elementwise-ops    │
+                    │ math               │
                     │ zip_with / mapv    │
                     └─────────┬─────────┘
                               │ 使用
@@ -89,9 +89,9 @@ src/ops/
 | `broadcast` | `broadcast_shape()`, `broadcast_with()`, `can_broadcast()`（参见 `15-broadcast.md` §4） |
 | `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.view()`（参见 `07-tensor.md` §4） |
 | `element` | `Numeric` trait 约束（排除 `bool`）（参见 `03-element-types.md` §3） |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<E>`（该 trait 定义于 `02-dimension.md §4.9`，计算广播后的维度类型） |
 
 > **Numeric 隐含 Copy：** `Numeric` trait 继承自 `Element`，而 `Element: Copy`（见 `03-element-types.md` §4.1）。因此所有 `Numeric` 类型均满足 `Copy`，可以在标量运算中安全地按值传递而无需额外约束。
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<E>`（该 trait 定义于 `02-dimension.md §4.9`，计算广播后的维度类型） |
 
 ### 3.3 依赖方向声明
 
@@ -317,7 +317,7 @@ tensor + scalar:
   - 文件: `src/ops/arithmetic.rs`
   - 内容: 模块声明、导入
   - 测试: 编译通过
-  - 前置: `elementwise-ops` 完成、`broadcast` 完成
+  - 前置: `math` 完成、`broadcast` 完成
   - 预计: 5 min
 
 - [ ] **T2**: 实现 `Add` trait（张量×张量，所有权形式）
@@ -425,7 +425,7 @@ Wave 5:      [T6]
 
 | 交互模块 | 方向 | 说明 |
 |----------|------|------|
-| `math` | arithmetic → elementwise | `zip_with()` 执行逐元素运算，`mapv()` 执行标量运算（参见 `11-math.md` §4） |
+| `math` | arithmetic → math | `zip_with()` 执行逐元素运算，`mapv()` 执行标量运算（参见 `11-math.md` §4） |
 | `broadcast` | arithmetic → broadcast | `broadcast_with()` 广播两个张量到公共形状（参见 `15-broadcast.md` §4） |
 | `tensor` | arithmetic → tensor | 构造结果 `Tensor<A, D>`，使用 `.view()` 创建视图（参见 `07-tensor.md` §4） |
 | `element` | arithmetic → element | `Numeric` trait 约束排除 `bool` 类型（参见 `03-element-types.md` §3） |

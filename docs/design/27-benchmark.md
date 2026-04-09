@@ -50,7 +50,7 @@ benches/
 ├── utils/
 │   ├── mod.rs              # 共享常量与工具导出
 │   └── data_gen.rs         # 测试数据生成器
-├── elementwise.rs          # 逐元素运算 benchmark
+├── math.rs                 # 逐元素运算 benchmark
 ├── reduction.rs            # 归约运算 benchmark（sum）
 ├── dot_product.rs          # 向量内积 benchmark
 ├── set.rs                  # 集合操作 benchmark（unique）
@@ -61,7 +61,7 @@ benches/
 └── construction.rs         # 构造方法 benchmark
 ```
 
-按操作类别分文件：可独立运行（`cargo bench --bench elementwise`），编译时间可控。
+按操作类别分文件：可独立运行（`cargo bench --bench math`），编译时间可控。
 
 ---
 
@@ -110,7 +110,7 @@ benches/
 criterion = { version = "0.5", features = ["html_reports"] }
 
 [[bench]]
-name = "elementwise"
+name = "math"
 harness = false
 
 [[bench]]
@@ -283,7 +283,7 @@ Benchmark 分类
 
 | 文件 | 组 | 说明 |
 |------|-----|------|
-| `elementwise.rs` | `elem_add_f64` (Medium) | 核心逐元素路径 |
+| `math.rs` | `elem_add_f64` (Medium) | 核心逐元素路径 |
 | `reduction.rs` | `sum_1d` (Medium) | 核心归约路径 |
 | `construction.rs` | `zeros_1d` (Medium) | 基础构造路径 |
 
@@ -302,7 +302,7 @@ benchmark-smoke:
 
         - name: Smoke benchmarks
           run: |
-            cargo bench --bench elementwise -- "elem_add_f64" --sample-size 10 --message-format=json > target/criterion-output.json
+            cargo bench --bench math -- "elem_add_f64" --sample-size 10 --message-format=json > target/criterion-output.json
             cargo bench --bench reduction -- "sum_1d" --sample-size 10 --message-format=json >> target/criterion-output.json
             cargo bench --bench construction -- "zeros_1d" --sample-size 10 --message-format=json >> target/criterion-output.json
 
@@ -334,7 +334,7 @@ benchmark-smoke:
 ## 10. Benchmark 模板
 
 ```rust
-// benches/elementwise.rs
+// benches/mathrs
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 mod utils;
 use utils::{SIZES_1D, data_gen};
@@ -448,9 +448,9 @@ b.iter(|| &a + &b);
 
 | Benchmark 文件 | 被测模块 | 对应设计文档 |
 |----------------|----------|-------------|
-| `elementwise.rs` | `ops/` (逐元素运算) | `11-math.md` |
-| `reduction.rs` | `ops/` (归约运算) | `12-reduction.md` |
-| `dot_product.rs` | `ops/` (内积运算) | `12-reduction.md` |
+| `math.rs` | `math` | `11-math.md` |
+| `reduction.rs` | `reduction` | `13-reduction.md` |
+| `dot_product.rs` | `matrix` | `12-matrix.md` |
 | `set.rs` | `set` | `14-set.md` |
 | `broadcast.rs` | `broadcast` | `15-broadcast.md` |
 | `shape.rs` | `shape` | `16-shape.md` |
@@ -479,7 +479,7 @@ benchmark 文件
 - [ ] **T1**: 配置 `Cargo.toml` bench 入口和 criterion 依赖
   - 文件: `Cargo.toml`
   - 内容: 添加 `criterion` dev-dependency，9 个 `[[bench]]` 入口
-  - 测试: `cargo bench --bench elementwise -- --list` 输出正常
+  - 测试: `cargo bench --bench math -- --list` 输出正常
   - 前置: 无
   - 预计: 5 min
 
@@ -492,10 +492,10 @@ benchmark 文件
 
 ### Wave 2: 核心基准
 
-- [ ] **T3**: 实现 `benches/elementwise.rs`
-  - 文件: `benches/elementwise.rs`
+- [ ] **T3**: 实现 `benches/math.rs`
+  - 文件: `benches/math.rs`
   - 内容: add/sub/mul/div/sin/exp/abs，覆盖 f32/f64/Complex\<f64\> + 非连续
-  - 测试: `cargo bench --bench elementwise -- "elem_add" --quick`
+  - 测试: `cargo bench --bench math -- "elem_add" --quick`
   - 前置: T2
   - 预计: 10 min
 
@@ -616,7 +616,7 @@ Wave 5:           [T12]
 | 属性 | 值 |
 |------|-----|
 | 决策 | 每个操作类别一个 benchmark 文件 |
-| 理由 | 可独立运行（`cargo bench --bench elementwise`）；编译时间可控；编译并行化 |
+| 理由 | 可独立运行（`cargo bench --bench math`）；编译时间可控；编译并行化 |
 | 替代方案 | 单文件 — 放弃，编译慢、难以选择性运行 |
 
 ### 决策 3：参数矩阵使用 2 的幂次序列

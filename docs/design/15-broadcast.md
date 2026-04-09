@@ -12,7 +12,7 @@
 
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
-| 广播规则实现 | NumPy 广播规则（从右向左对齐、维度兼容检查） | 广播运算本身的调度（由 `ops/elementwise` 负责） |
+| 广播规则实现 | NumPy 广播规则（从右向左对齐、维度兼容检查） | 广播运算本身的调度（由 `math` 负责） |
 | 形状推导 | `broadcast_shape()` 计算两个形状广播后的结果形状 | 数据复制（广播不拷贝数据，通过零步长实现） |
 | 步长推导 | `broadcast_strides()` 计算广播后步长（含零步长） | 可变迭代（广播视图禁止可变迭代） |
 | 兼容性检查 | `can_broadcast()` 检查两个形状是否兼容 | 逐元素运算（由 `ops/` 负责） |
@@ -474,7 +474,7 @@ Wave 4:           [T7]
 | `iter/zip` | iter → broadcast | `Zip::and()` 支持广播视图，检查兼容性，参见 `10-iterator.md` §5 |
 | `shape` | shape → broadcast | `broadcast_to` 方法调用广播模块，参见 `16-shape.md` §4 |
 | `layout` | broadcast → layout | 广播后设置 `HAS_ZERO_STRIDE` 标志、更新连续性，参见 `06-memory-layout.md` §3 |
-| `elementwise` | elementwise → broadcast | 二元运算前广播两个操作数，参见 `11-math.md` §4 |
+| `math` | math → broadcast | 二元运算前广播两个操作数，参见 `11-math.md` §4 |
 
 ---
 
