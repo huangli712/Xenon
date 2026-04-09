@@ -375,7 +375,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 | 层级 | 模块 | 依赖 | 参见 |
 |------|------|------|------|
-| **L0** | error, private | 无 | `26-error-handling.md` |
+| **L0** | error, private | 无 | `26-error.md` |
 | **L1** | dimension, element, complex | error（element 额外依赖 complex） | `02-dimension.md`、`03-element.md`、`04-complex.md` |
 | **L2** | layout, workspace | error, dimension（workspace 独立于核心类型系统，仅依赖 core/alloc，可被上游库直接使用） | `06-memory.md`、`24-workspace.md` |
 | **L3** | storage | core/alloc | `05-storage.md` |

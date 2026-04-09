@@ -1,7 +1,7 @@
 # 索引操作模块设计
 
 > 文档编号: 17 | 模块: `src/index/` | 阶段: Phase 3
-> 前置文档: `07-tensor.md`, `02-dimension.md`, `06-memory.md`, `26-error-handling.md`
+> 前置文档: `07-tensor.md`, `02-dimension.md`, `06-memory.md`, `26-error.md`
 > 需求参考: 需求说明书 §18
 
 ---
@@ -88,7 +88,7 @@ src/index/
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.ndim()`，参见 `02-dimension.md` §3 |
 | `memory_layout` | `LayoutFlags`, `HAS_NEG_STRIDE`, `HAS_ZERO_STRIDE`，参见 `06-memory.md` §3 |
 
-> **注意**：索引越界使用 panic 处理（而非 XenonError 变体），参见 `26-error-handling.md §5.3`。`get()` 方法返回 `Option<&A>` 提供可恢复的越界检查路径。
+> **注意**：索引越界使用 panic 处理（而非 XenonError 变体），参见 `26-error.md §5.3`。`get()` 方法返回 `Option<&A>` 提供可恢复的越界检查路径。
 
 ### 3.3 依赖方向声明
 

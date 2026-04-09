@@ -93,7 +93,7 @@ src/
 | `memory_layout` | `LayoutFlags`, `Order::F`, F-order 步长计算（参见 `06-memory.md` §3） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`（参见 `02-dimension.md` §4） |
 | `element` | `Element`, `Zero`, `One`（参见 `03-element.md` §3） |
-| `error` | `XenonError::InvalidShape`（参见 `26-error-handling.md` §4） |
+| `error` | `XenonError::InvalidShape`（参见 `26-error.md` §4） |
 
 ### 3.3 依赖方向声明
 
@@ -536,7 +536,7 @@ Wave 4:           [T6]
 | `memory_layout` | construct → memory_layout | 计算 F-order 步长（参见 `06-memory.md` §4） |
 | `dimension` | construct → dimension | 使用 `IntoDimension` 接受灵活形状参数（参见 `02-dimension.md` §4.3） |
 | `element` | construct → element | 使用 `Element`/`Zero`/`One` trait 约束（参见 `03-element.md` §3） |
-| `error` | construct → error | 返回 `XenonError::InvalidShape`（参见 `26-error-handling.md` §4.2） |
+| `error` | construct → error | 返回 `XenonError::InvalidShape`（参见 `26-error.md` §4.2） |
 | `index` | index ← construct | 构造后可通过索引访问元素（参见 `17-indexing.md` §4） |
 
 ---

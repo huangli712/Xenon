@@ -98,7 +98,7 @@ src/workspace/
 |----------|-----------------|
 | `core` | `NonNull<u8>`, `PhantomData`, `AtomicU8`, `fmt::Debug`, `fmt::Display` |
 | `alloc` | `alloc()`, `dealloc()`, `Layout` |
-| `error` | `WorkspaceError`（或本模块内定义，参见 `26-error-handling.md §4`） |
+| `error` | `WorkspaceError`（或本模块内定义，参见 `26-error.md §4`） |
 
 ### 3.3 依赖方向声明
 

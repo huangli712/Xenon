@@ -456,10 +456,10 @@ pub fn reshape_bad<D2>(self, shape: D2) -> Tensor<A, D2> {
 
 ### 4.2 XenonError 设计
 
-统一错误类型 `XenonError`，覆盖所有可恢复错误场景（参见 `26-error-handling.md` §4.2）：
+统一错误类型 `XenonError`，覆盖所有可恢复错误场景（参见 `26-error.md` §4.2）：
 
 > **注意**：索引越界（IndexOutOfBounds）使用 `panic` 而非 `XenonError`，与标准库 `slice` 行为一致。
-> 步长相关错误由 `LayoutMismatch` 变体覆盖。参见 `26-error-handling.md` §1.2。
+> 步长相关错误由 `LayoutMismatch` 变体覆盖。参见 `26-error.md` §1.2。
 
 ```rust
 #[derive(Debug, Clone)]

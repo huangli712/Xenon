@@ -85,7 +85,7 @@ src/math/（整体模块依赖）
 | `broadcast` | `broadcast_shape()`, `BroadcastView`（参见 `15-broadcast.md §4`） |
 | `dimension` | `BroadcastDim<E>` trait（编译期维度推导，参见 `02-dimension.md §4.9`） |
 | `simd`（可选） | `pulp::Arch`（参见 `08-simd.md §4`） |
-| `error` | `XenonError`, `BroadcastError`（参见 `26-error-handling.md §4`） |
+| `error` | `XenonError`, `BroadcastError`（参见 `26-error.md
 
 ### 3.3 依赖方向
 

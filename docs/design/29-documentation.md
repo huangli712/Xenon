@@ -763,7 +763,7 @@ docs:
 
 - [ ] **T7**: 编写基础设施模块文档（ffi, workspace, simd, parallel, error, prelude）
   - 文件: 各 `mod.rs`
-  - 内容: 模块职责、Safety 约定、feature gate 说明（参见 `23-ffi.md §1`、`24-workspace.md §1`、`08-simd.md §1`、`09-parallel.md §1`、`26-error-handling.md §1`）
+  - 内容: 模块职责、Safety 约定、feature gate 说明（参见 `23-ffi.md §1`、`24-workspace.md §1`、`08-simd.md §1`、`09-parallel.md §1`、`26-error.md §1`）
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T2
   - 预计: 10 min

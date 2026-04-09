@@ -1,7 +1,7 @@
 # 广播模块设计
 
 > 文档编号: 15 | 模块: `src/broadcast.rs` | 阶段: Phase 3
-> 前置文档: `02-dimension.md`, `07-tensor.md`, `06-memory.md`, `26-error-handling.md`
+> 前置文档: `02-dimension.md`, `07-tensor.md`, `06-memory.md`, `26-error.md`
 > 需求参考: 需求说明书 §16
 
 ---
@@ -81,7 +81,7 @@ src/
 
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
-| `error` | `XenonError::BroadcastError`，参见 `26-error-handling.md` §4 |
+| `error` | `XenonError::BroadcastError`，参见 `26-error.md` §4 |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<E>` trait, `.slice()`, `.size()`，参见 `02-dimension.md` §3, §4.9 |
 | `tensor` | `TensorBase<S, D>`, `TensorView`, `.shape()`, `.strides()`，参见 `07-tensor.md` §4 |
 
@@ -562,7 +562,7 @@ use alloc::vec::Vec;
 | `broadcast_strides()` | ✅ | 返回 `Vec<isize>`，**需 `alloc` feature**；此函数涉及堆分配，在 `no_std` 环境下必须启用 `alloc` feature |
 | `broadcast_to()` | ✅ | 创建 `TensorView`（零拷贝），无堆分配 |
 | `broadcast_with()` | ✅ | 创建两个 `TensorView`，需 `no_std + alloc`（IxDyn），参见 `02-dimension.md` §3 |
-| `BroadcastError` | ✅ | 使用 `core::fmt::Display`，无堆依赖，参见 `26-error-handling.md` §4 |
+| `BroadcastError` | ✅ | 使用 `core::fmt::Display`，无堆依赖，参见 `26-error.md` §4 |
 
 条件编译处理：
 

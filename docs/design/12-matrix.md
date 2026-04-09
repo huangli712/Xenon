@@ -1,7 +1,7 @@
 # 矩阵运算模块设计
 
 > 文档编号: 12 | 模块: `src/matrix/` | 阶段: Phase 4
-> 前置文档: `03-element.md`, `07-tensor.md`, `10-iterator.md`, `26-error-handling.md`
+> 前置文档: `03-element.md`, `07-tensor.md`, `10-iterator.md`, `26-error.md`
 > 需求参考: 需求说明书 §13
 
 ---
@@ -64,7 +64,7 @@ src/matrix/
 ├── mod.rs
 │   ├── crate::tensor        # TensorView<A, Ix1>
 │   ├── crate::element       # Numeric, ComplexScalar（参见 03-element.md）
-│   └── crate::error         # XenonError（参见 26-error-handling.md）
+│   └── crate::error         # XenonError（参见 26-error.md）
 ├── dot.rs
 │   ├── crate::tensor        # TensorView<A, Ix1>
 │   └── crate::element       # Numeric

@@ -96,7 +96,7 @@ src/convert/
 | `storage` | `Storage<Elem=A>`, `StorageMut`, `Owned<A>`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`（参见 `05-storage.md` §4） |
 | `element` | `Element`, `CastTo<B>`（参见 `03-element.md` §4.8） |
 | `layout` | `is_f_contiguous()`（参见 `06-memory.md` §4） |
-| `error` | `XenonError`, `Result<T>`（参见 `26-error-handling.md` §4） |
+| `error` | `XenonError`, `Result<T>`（参见 `26-error.md` §4） |
 
 ### 3.3 依赖方向声明
 

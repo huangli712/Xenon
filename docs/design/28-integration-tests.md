@@ -115,7 +115,7 @@ tests/
 | `complex` | `Complex<f32>`, `Complex<f64>`（参见 `04-complex.md §4`） |
 | `storage` | `Owned`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`, `Storage`（参见 `05-storage.md §4`） |
 | `layout` | `LayoutFlags`, `Order`（参见 `06-memory.md §4`） |
-| `error` | `XenonError`, `Result<T>`（参见 `26-error-handling.md §4`） |
+| `error` | `XenonError`, `Result<T>`（参见 `26-error.md §4`） |
 
 ### 3.3 依赖方向声明
 
@@ -353,7 +353,7 @@ no_std_check:
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
-| `test_shape_mismatch_error` | 不兼容形状运算返回 ShapeMismatch（参见 `26-error-handling.md §4.1`） | 高 |
+| `test_shape_mismatch_error` | 不兼容形状运算返回 ShapeMismatch（参见 `26-error.md §4.1`） | 高 |
 | `test_broadcast_error` | 不可广播返回 BroadcastError | 高 |
 | `test_invalid_shape_error` | reshape 元素数不匹配返回 InvalidShape | 高 |
 | `test_invalid_axis_error` | 轴越界返回 InvalidAxis | 高 |
@@ -705,7 +705,7 @@ fn test_bad_magic() {
 | `test_ffi.rs` | `ffi`, `workspace` | `23-ffi.md`, `24-workspace.md` |
 | `test_parallel.rs` | `parallel` | `09-parallel.md` |
 | `test_simd.rs` | `simd` | `08-simd.md` |
-| `test_error.rs` | `error` | `26-error-handling.md` |
+| `test_error.rs` | `error` | `26-error.md` |
 
 ### 12.2 数据流
 

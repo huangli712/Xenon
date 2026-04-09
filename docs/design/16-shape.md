@@ -84,7 +84,7 @@ src/shape/
 | `tensor` | `TensorBase<S, D>`, `TensorView`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.offset()`，参见 `07-tensor.md` §4 |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `RemoveAxis`, `IntoDimension`，参见 `02-dimension.md` §3 |
 | `memory_layout` | `LayoutFlags`, `is_f_contiguous()`, `compute_f_strides()`, `Order`，参见 `06-memory.md` §3, §4.x |
-| `error` | `XenonError::InvalidShape`, `XenonError::LayoutMismatch`，参见 `26-error-handling.md` §4 |
+| `error` | `XenonError::InvalidShape`, `XenonError::LayoutMismatch`，参见 `26-error.md` §4 |
 
 ### 3.3 依赖方向声明
 
