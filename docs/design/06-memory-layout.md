@@ -28,6 +28,8 @@
 | 有符号步长 | `isize` 类型支持负步长（反转）和零步长（广播） |
 | 零成本抽象 | 布局信息为纯元数据，不引入运行时开销 |
 
+> **对齐不变量**: ALIGNED 标志仅为性能优化标记。无论对齐状态如何，所有数据访问操作返回完全相同的结果。对齐不影响数据的逻辑内容。
+
 ### 1.3 在架构中的位置
 
 ```
@@ -434,7 +436,7 @@ impl Layout {
 }
 ```
 
-### 4.9 compute_flags 内部函数
+### 4.10 compute_flags_inner 内部函数
 
 ```rust
 /// Computes layout flags from shape, strides, and data pointer.
@@ -452,7 +454,7 @@ impl Layout {
 /// # Returns
 ///
 /// A `LayoutFlags` instance with all relevant flags set.
-pub(crate) fn compute_flags<A, D: Dimension>(
+pub(crate) fn compute_flags_inner<A, D: Dimension>(
     shape: &D,
     strides: &D,
     ptr: *const A,

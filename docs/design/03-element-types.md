@@ -156,6 +156,13 @@ pub trait Numeric:
     fn conj(self) -> Self;
 }
 
+/// # Note on `conj()` Duplication
+///
+/// `conj()` is defined in both `Numeric` and `ComplexScalar` traits.
+/// For concrete types (e.g., `Complex<f64>`), inherent methods take priority.
+/// In generic code requiring both traits, use fully qualified syntax:
+/// `<T as Numeric>::conj(x)` or `<T as ComplexScalar>::conj(x)`.
+
 // Real type implementations return self (identity):
 //
 // impl Numeric for i32 {
@@ -255,14 +262,22 @@ pub trait ComplexScalar: Numeric + Sealed {
     /// use fully-qualified syntax to disambiguate:
     /// - `ComplexScalar::conj(x)` — via ComplexScalar trait
     /// - `Numeric::conj(x)` — via Numeric trait
-    fn conj(self) -> Self;
+    fn conj(self) -> Self;  // Note: conj() also defined in Numeric trait; see §4.2 note
     fn norm(self) -> Self::Real;
+    /// Returns the squared magnitude (re² + im²), avoids sqrt for performance.
+    fn norm_sqr(self) -> Self::Real;
     fn arg(self) -> Self::Real;
     fn exp(self) -> Self;
     fn ln(self) -> Self;
     fn sqrt(self) -> Self;
     fn from_polar(r: Self::Real, theta: Self::Real) -> Self;
     fn i() -> Self;
+
+    /// Returns true if either real or imaginary component is NaN.
+    fn is_nan(self) -> bool;
+
+    /// Returns true if neither component is NaN or infinity.
+    fn is_finite(self) -> bool;
 }
 ```
 
