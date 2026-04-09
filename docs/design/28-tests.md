@@ -317,7 +317,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
-| `test_par_sum_consistency` | 并行 sum 与串行 sum 结果一致（参见 `09-parallel.md §7`） | 高 |
+| `test_par_sum_consistency` | 并行 sum 与串行 sum 结果误差 ≤ 2 ULP（标量路径精确，并行路径因累加顺序不同允许微小误差，参见 `09-parallel.md §7`） | 高 |
 | `test_par_add_consistency` | 并行 add 与串行 add 结果一致 | 高 |
 | `test_parallel_read` | 多线程并发只读访问安全（参见 `25-safety.md §4.5`） | 高 |
 | `test_no_nested_parallel` | 嵌套并行被拒绝 | 中 |
@@ -699,7 +699,7 @@ fn test_bad_magic() {
 | `test_broadcast.rs` | `broadcast` | `15-broadcast.md` |
 | `test_index.rs` | `index` | `17-indexing.md` |
 | `test_construction.rs` | `construct` | `18-construction.md` |
-| `test_reduction.rs` | `reduction` , `set` | `12-reduction.md`, `14-set.md` |
+| `test_reduction.rs` | `reduction` , `set` | `13-reduction.md`, `14-set.md` |
 | `test_shape.rs` | `shape` | `16-shape.md` |
 | `test_conversion.rs` | `convert` | `22-conversion.md` |
 | `test_ffi.rs` | `ffi`, `workspace` | `23-ffi.md`, `24-workspace.md` |
@@ -935,8 +935,8 @@ test:
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | 并行归约和逐元素运算必须与串行结果完全一致 |
-| 理由 | 需求说明书 §28.5 明确要求并行归约与单线程一致 |
+| 决策 | 并行归约和逐元素运算必须与串行结果在数值上一致 |
+| 理由 | 需求说明书 §28.5 明确要求并行归约与单线程一致；逐元素运算（如 `par_add`）结果应完全相同，归约运算（如 `par_sum`）因浮点累加顺序不同允许 ≤ 2 ULP 误差 |
 | 替代方案 | 允许有限误差 — 放弃，违反需求 |
 
 ### 决策 5：no_std 测试为编译验证

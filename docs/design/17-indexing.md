@@ -496,9 +496,13 @@ function compute_slice(shape, strides, offset, slices: [SliceInfoElem; N])
                 // shape and strides do not include this dimension
             Range { start, end, step }:
                 // Range slice
-                s = start.unwrap_or(0)
-                e = end.unwrap_or(shape[i])
                 st = step.unwrap_or(1)
+
+                // Default start/end depend on step direction:
+                // - Positive step: start=0, end=shape[i]
+                // - Negative step: start=shape[i]-1, end=-1 (before first element)
+                s = start.unwrap_or(if st > 0 { 0 } else { shape[i] as isize - 1 })
+                e = end.unwrap_or(if st > 0 { shape[i] as isize } else { -(shape[i] as isize) })
 
                 // Handle negative values
                 s = normalize(s, shape[i])
@@ -510,7 +514,16 @@ function compute_slice(shape, strides, offset, slices: [SliceInfoElem; N])
                     (s - e + (-st) - 1) / (-st)
                 new_shape.push(dim_len)
                 new_strides.push(strides[i] * st)
-                new_offset += s * strides[i]
+
+                // Offset calculation for negative strides:
+                // When the original stride is negative, index 0 maps to the
+                // highest physical address in that dimension. The offset for
+                // index s with negative original stride is adjusted by starting
+                // from the dimension's end:
+                if strides[i] < 0:
+                    new_offset += (shape[i] - 1 - s) * strides[i].abs()
+                else:
+                    new_offset += s * strides[i]
 
                 // Update flags
                 if st < 0:

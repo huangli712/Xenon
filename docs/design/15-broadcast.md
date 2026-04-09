@@ -111,8 +111,8 @@ src/
 ///
 /// # no_std Compatibility
 /// `broadcast_shape()` returns `IxDyn` (internally containing `Vec<usize>`),
-/// which requires heap allocation. In `no_std` environments, the `alloc`
-/// feature is required. See §11 for details.
+/// which requires heap allocation. The project uses `extern crate alloc`
+/// which is always available (no separate feature). See §11 for details.
 ///
 /// # Examples
 /// ```
@@ -157,8 +157,7 @@ pub fn can_broadcast(shape_a: &[usize], shape_b: &[usize]) -> bool;
 ///
 /// # Note
 /// This function returns `Vec<isize>` which requires heap allocation.
-/// Requires `alloc` feature in `no_std` environments (see §11).
-#[cfg(feature = "alloc")]
+/// The project uses `extern crate alloc` which is always available (no separate feature).
 pub fn broadcast_strides(
     orig_shape: &[usize],
     orig_strides: &[isize],
@@ -558,8 +557,8 @@ use alloc::vec::Vec;
 | 组件 | no_std 支持 | 说明 |
 |------|:----------:|------|
 | `can_broadcast()` | ✅ | 纯计算函数，无堆分配 |
-| `broadcast_shape()` | ✅ | 返回 `IxDyn`（内部 `Vec<usize>`），需 `alloc` feature；在 `no_std` 环境下必须启用 `alloc` feature |
-| `broadcast_strides()` | ✅ | 返回 `Vec<isize>`，**需 `alloc` feature**；此函数涉及堆分配，在 `no_std` 环境下必须启用 `alloc` feature |
+| `broadcast_shape()` | ✅ | 返回 `IxDyn`（内部 `Vec<usize>`），`extern crate alloc` 始终可用 |
+| `broadcast_strides()` | ✅ | 返回 `Vec<isize>`，`extern crate alloc` 始终可用 |
 | `broadcast_to()` | ✅ | 创建 `TensorView`（零拷贝），无堆分配 |
 | `broadcast_with()` | ✅ | 创建两个 `TensorView`，需 `no_std + alloc`（IxDyn），参见 `02-dimension.md` §3 |
 | `BroadcastError` | ✅ | 使用 `core::fmt::Display`，无堆依赖，参见 `26-error.md` §4 |

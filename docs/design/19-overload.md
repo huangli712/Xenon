@@ -115,9 +115,15 @@ src/overload/
 | `&Tensor<A, D>` | `&A` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&A> for &TensorBase<Owned<A>,D>` |
 | `Scalar<A>` | `Tensor<A, D>` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<TensorBase<Owned<A>,D>> for Scalar<A>` |
 | `Scalar<A>` | `&Tensor<A, D>` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&TensorBase<Owned<A>,D>> for Scalar<A>` |
+| `&TensorView<A, D>` | `&TensorView<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<&TensorBase<ViewRepr<&A>,E>> for &TensorBase<ViewRepr<&A>,D>` |
+| `&TensorView<A, D>` | `&Tensor<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<ViewRepr<&A>,D>` |
+| `&Tensor<A, D>` | `&TensorView<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<&TensorBase<ViewRepr<&A>,E>> for &TensorBase<Owned<A>,D>` |
 
 > **说明**：`F` 为广播后的维度类型，由 `D::BroadcastDim<E>::Output` 关联类型计算。
 > `BroadcastDim` 定义于 `02-dimension.md §4.9`。
+
+> **说明**：`TensorView` 和 `TensorViewMut` 通过引用模式参与运算符重载（如 `&view + &tensor`）。
+> 运算结果始终为 `Tensor<A, F>`（Owned 存储），因为视图本身不拥有数据，无法作为运算结果的存储。
 
 ### 4.2 张量×张量运算符
 
@@ -160,6 +166,50 @@ where
 > **设计决策：** 形状不兼容时使用 `expect` panic。
 > 这与 Rust 标准库 `Index` trait 的惯例一致：运算符重载 panic 而非返回 Result。
 > 用户需要广播安全时可直接使用 `broadcast_with` + `zip_with`。
+
+### 4.2b 视图×视图/张量运算符
+
+```rust
+// &TensorView + &TensorView (reference + reference)
+impl<'a, 'b, A, D, E> Add<&'b TensorBase<ViewRepr<&'b A>, E>>
+    for &'a TensorBase<ViewRepr<&'a A>, D>
+where
+    A: Numeric,
+    D: Dimension,
+    E: Dimension,
+    D: BroadcastDim<E>,
+{
+    type Output = Tensor<A, <D as BroadcastDim<E>>::Output>;
+
+    fn add(self, rhs: &'b TensorBase<ViewRepr<&'b A>, E>) -> Self::Output {
+        // delegates to math::add with broadcast
+        let (a_bc, b_bc) = broadcast_with(&self.view(), &rhs.view())
+            .expect("broadcast: incompatible shapes");
+        zip_with(&a_bc, &b_bc, |a, b| a + b)
+    }
+}
+
+// &TensorView + &Tensor (view + owned reference)
+impl<'a, 'b, A, D, E> Add<&'b TensorBase<Owned<A>, E>>
+    for &'a TensorBase<ViewRepr<&'a A>, D>
+where
+    A: Numeric,
+    D: Dimension,
+    E: Dimension,
+    D: BroadcastDim<E>,
+{
+    type Output = Tensor<A, <D as BroadcastDim<E>>::Output>;
+
+    fn add(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
+        // delegates to math::add with broadcast
+        let (a_bc, b_bc) = broadcast_with(&self.view(), &rhs.view())
+            .expect("broadcast: incompatible shapes");
+        zip_with(&a_bc, &b_bc, |a, b| a + b)
+    }
+}
+```
+
+> **说明**：`Sub`/`Mul`/`Div` 的视图组合模式与 `Add` 相同，仅替换运算符和闭包。`ViewMutRepr` 通过 `&*view_mut` 隐式转为 `&TensorBase<ViewRepr<...>>` 后参与运算。
 
 ### 4.3 张量×标量运算符
 
@@ -227,6 +277,8 @@ where
 > **说明**：`Scalar<A>` 包装器是 Rust 孤儿规则所必需的。由于 `Add` 是外部 trait，`A` 是无约束泛型，直接 `impl Add<TensorBase<...>> for A` 违反孤儿规则。使用 `Scalar<A>` 作为本地类型解决此问题。用户需要写 `Scalar(5.0) + tensor` 而非 `5.0 + tensor`。
 
 > **说明**：对于涉及 `&A` 的组合（上表第 2 行），由于 `A: Numeric` 要求 `A: Copy`，`tensor + &scalar` 通过 Rust 的 auto-deref 隐式解引用为值形式，自动调用基于值的 `Add` impl，无需单独实现。
+
+> **说明**：`Scalar<A>` 同样适用于 `TensorView` 和 `TensorViewMut` 的标量运算。
 
 > **设计决策：** 标量运算使用 `mapv` 而非创建广播视图。
 > 原因：`mapv` 直接迭代更高效，避免广播视图的间接寻址开销。

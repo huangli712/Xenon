@@ -150,6 +150,8 @@ pub struct TensorBase<S, D> {
 > 额外的间接层。`Layout` 结构体仅作为纯标志位容器，其 `flags` 字段在需要时可通过
 > `TensorBase::flags()` 获取。
 
+> **线程安全推导**: `TensorBase<S, D>` 的 `Send`/`Sync` 自动由存储模式 `S` 决定。具体规则参见 `25-safety.md §4`。
+
 ```
 
 ### 4.2 类型别名（完整列表）

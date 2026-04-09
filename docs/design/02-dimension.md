@@ -68,7 +68,7 @@ src/dimension/
 
 ```
 src/dimension/
-├── crate::error       # DimensionMismatch 错误类型
+├── crate::error       # XenonError::DimensionMismatch 错误变体
 └── crate::private     # Sealed trait（防止外部实现 Dimension）
 ```
 
@@ -76,7 +76,7 @@ src/dimension/
 
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
-| `error` | `DimensionMismatch`（维度转换失败时返回） |
+| `error` | `XenonError::DimensionMismatch`（维度转换失败时返回） |
 | `private` | `Sealed`（`Dimension` trait 的 supertrait） |
 
 ### 3.3 依赖方向声明
@@ -93,6 +93,7 @@ src/dimension/
 ```rust
 use core::fmt::Debug;
 use crate::private::Sealed;
+use crate::error::XenonError;
 
 /// Trait for array dimension types.
 ///
@@ -148,8 +149,8 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
     fn into_dyn(self) -> IxDyn;
 
     /// Attempts to convert from dynamic dimension.
-    /// Returns `DimensionMismatch` if ndim doesn't match.
-    fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, DimensionMismatch>
+    /// Returns `XenonError::DimensionMismatch` if ndim doesn't match.
+    fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError>
     where
         Self: Sized;
 
@@ -360,12 +361,12 @@ impl Dimension for Ix3 {
         IxDyn::from_slice(&[self.0, self.1, self.2])
     }
 
-    fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, DimensionMismatch> {
+    fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
         if dyn_dim.ndim() == 3 {
             let s = dyn_dim.slice();
             Ok(Ix3(s[0], s[1], s[2]))
         } else {
-            Err(DimensionMismatch { expected: 3, actual: dyn_dim.ndim() })
+            Err(XenonError::DimensionMismatch { expected: 3, actual: dyn_dim.ndim() })
         }
     }
 
@@ -462,7 +463,7 @@ impl Dimension for IxDyn {
 
     fn into_dyn(self) -> IxDyn { self }
 
-    fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, DimensionMismatch> {
+    fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
         Ok(dyn_dim) // IxDyn always accepts IxDyn
     }
 
@@ -823,7 +824,7 @@ impl Reverse for IxDyn {
 
 | 源类型 | 条件 | 成功 | 失败 |
 |--------|------|------|------|
-| `IxDyn` | `ndim == N` | `IxN(...)` | `Err(DimensionMismatch)` |
+| `IxDyn` | `ndim == N` | `IxN(...)` | `Err(XenonError::DimensionMismatch)` |
 
 ### 5.2 负步长支持说明
 
@@ -926,7 +927,7 @@ strides_for_f_order(shape):
 
 - [ ] **T7**: 实现维度互转 + 错误类型
   - 文件: `src/dimension/static_dims.rs`, `dynamic.rs`, `src/error.rs`
-  - 内容: `into_dyn()`, `try_from_dyn()` + `DimensionMismatch` 错误
+  - 内容: `into_dyn()`, `try_from_dyn()` + `XenonError::DimensionMismatch` 错误
   - 测试: `test_static_to_dyn`, `test_dyn_to_static_success`, `test_dyn_to_static_failure`
   - 前置: T5, T6
   - 预计: 10 min

@@ -336,7 +336,11 @@ pub fn is_aligned(ptr: *const u8) -> bool {
 }
 ```
 
-### 4.6 负步长语义
+### 4.6 对齐与数据一致性
+
+> **数据一致性保证：** 对齐布局（64 字节对齐）与非对齐布局必须产生相同的元素值。对齐仅影响 SIMD 访问性能，不改变数据语义。`Owned::from_vec_aligned(data)` 和 `Owned::from_vec(data)` 构造的张量在逻辑上完全等价——`is_aligned()` 标志仅用于指导 SIMD 路径选择。
+
+### 4.7 负步长语义
 
 负步长表示沿该轴反向遍历。对于索引 `[i0, i1, ..., i_{n-1}]`，内存偏移量为：
 
@@ -356,7 +360,7 @@ shape = [3, 4], strides = [4, -1]  // 行反转
 
 带负步长的视图，其数据指针指向原数组的中间位置（非起始），需要通过 `offset` 字段调整。
 
-### 4.7 零步长语义
+### 4.8 零步长语义
 
 零步长表示广播维度——该维度被扩展，但所有索引访问同一元素：
 
@@ -366,7 +370,7 @@ shape = [3, 4], strides = [1, 0]  // 第二维广播
 索引 [0, 0] 和 [0, 1] 和 [0, 2] 和 [0, 3] 访问同一物理元素
 ```
 
-### 4.8 Layout 结构体
+### 4.9 Layout 结构体
 
 > **注意**：`Layout` 结构体目前为"供未来扩展预留"（reserved for future use）。
 > 当前 `TensorBase` 实现直接内联 `LayoutFlags`（见 `07-tensor.md §4.1`）。
@@ -434,7 +438,7 @@ impl Layout {
 }
 ```
 
-### 4.9 compute_flags 内部函数
+### 4.10 compute_flags 内部函数
 
 ```rust
 /// Computes layout flags from shape, strides, and data pointer.
@@ -459,7 +463,7 @@ pub(crate) fn compute_flags<A, D: Dimension>(
 ) -> LayoutFlags
 ```
 
-### 4.10 Good/Bad 对比
+### 4.11 Good/Bad 对比
 
 ```rust
 // Good - F-order stride computation
@@ -663,6 +667,7 @@ Wave 4:       [T8]
 | F-步长乘积 == 总元素数 | `product(shape[i]) == total` |
 | 空数组/标量始终 F-连续 | 随机 0D/空 shape |
 | `compute_f_strides` 后 `is_f_contiguous` 返回 true | 随机 shape |
+| 对齐与非对齐数据元素值一致 | `from_vec_aligned(v)` 与 `from_vec(v)` 逐元素比较 |
 
 ---
 

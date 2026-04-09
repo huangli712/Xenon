@@ -159,6 +159,20 @@ pub enum XenonError {
         operation: &'static str,
     },
 }
+
+// NOTE: Future extension point for type conversion errors.
+// Current type conversion uses saturating semantics without producing errors
+// (see `21-type.md`). If an error path is needed in the future, add:
+//
+// /// Type conversion overflow (e.g., casting a large f64 to i32).
+// TypeConversionOverflow {
+//     /// Source type name (e.g., "f64").
+//     from_type: &'static str,
+//     /// Target type name (e.g., "i32").
+//     to_type: &'static str,
+//     /// String representation of the value that caused the overflow.
+//     value: alloc::string::String,
+// },
 ```
 
 ### 4.2 Result 类型别名

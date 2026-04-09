@@ -153,42 +153,52 @@ pub trait Numeric:
     ///
     /// This method is needed by `12-matrix` for unified dot product implementation,
     /// allowing a single generic algorithm to handle both real and complex inner products.
-    fn conj(self) -> Self;
+    fn conjugate(self) -> Self;
+
+    /// Performs addition with overflow checking for integers.
+    /// - Integer types: uses checked_add, panics on overflow
+    /// - Float types: standard IEEE 754 addition
+    /// - Complex types: component-wise addition
+    fn safe_add(self, rhs: Self) -> Self;
 }
 
 // Real type implementations return self (identity):
 //
 // impl Numeric for i32 {
-//     fn conj(self) -> Self { self }
+//     fn conjugate(self) -> Self { self }
+//     fn safe_add(self, rhs: Self) -> Self { self.checked_add(rhs).expect("integer overflow in reduction") }
 // }
 // impl Numeric for i64 {
-//     fn conj(self) -> Self { self }
+//     fn conjugate(self) -> Self { self }
+//     fn safe_add(self, rhs: Self) -> Self { self.checked_add(rhs).expect("integer overflow in reduction") }
 // }
 // impl Numeric for f32 {
-//     fn conj(self) -> Self { self }
+//     fn conjugate(self) -> Self { self }
+//     fn safe_add(self, rhs: Self) -> Self { self + rhs }
 // }
 // impl Numeric for f64 {
-//     fn conj(self) -> Self { self }
+//     fn conjugate(self) -> Self { self }
+//     fn safe_add(self, rhs: Self) -> Self { self + rhs }
 // }
 // Complex type implementations return the complex conjugate:
 // impl Numeric for Complex<f32> {
-//     fn conj(self) -> Self { Complex::new(self.re, -self.im) }
+//     fn conjugate(self) -> Self { Complex::new(self.re, -self.im) }
+//     fn safe_add(self, rhs: Self) -> Self { Complex::new(self.re + rhs.re, self.im + rhs.im) }
 // }
 // impl Numeric for Complex<f64> {
-//     fn conj(self) -> Self { Complex::new(self.re, -self.im) }
+//     fn conjugate(self) -> Self { Complex::new(self.re, -self.im) }
+//     fn safe_add(self, rhs: Self) -> Self { Complex::new(self.re + rhs.re, self.im + rhs.im) }
 // }
 ```
 
-> **设计决策：** `Numeric` 定义 `conj()` 方法，为实数类型返回 `self`，为复数类型返回共轭。这使得统一的内积（dot product）实现可以泛化处理实数和复数情况（实数内积 `∑ aᵢ*bᵢ`，复数内积 `∑ aᵢ·conj(bᵢ)`）。其余四则运算由 `Add/Sub/Mul/Div/Neg` trait 提供。
+> **设计决策：** `Numeric` 定义 `conjugate()` 方法，为实数类型返回 `self`，为复数类型返回共轭。这使得统一的内积（dot product）实现可以泛化处理实数和复数情况（实数内积 `∑ aᵢ*bᵢ`，复数内积 `∑ aᵢ·conjugate(bᵢ)`）。其余四则运算由 `Add/Sub/Mul/Div/Neg` trait 提供。
 >
-> **`Numeric::conj()` 与 `ComplexScalar::conj()` 的关系和使用说明：**
+> **`Numeric::conjugate()` 与 `ComplexScalar::conj()` 的关系和使用说明：**
 >
-> - `Numeric::conj()` 对实数类型（i32, i64, f32, f64）是恒等操作（返回自身），对复数类型（Complex<f32>, Complex<f64>）委托给复数共轭实现
-> - 对于泛型代码中仅约束 `Numeric` 时，调用 `x.conj()` 会解析到 `Numeric::conj()`
-> - 对于同时实现 `Numeric` 和 `ComplexScalar` 的类型（如 `Complex<f64>`），两个 `conj()` 方法语义相同但编译器无法自动消歧义。需要消歧义时使用完全限定语法：
->   - `Numeric::conj(&x)` — 通过 Numeric trait 调用
->   - `ComplexScalar::conj(&x)` — 通过 ComplexScalar trait 调用
-> - **设计决策注释：** 两个方法语义相同（对复数类型均返回 `re - im*i`），`Numeric::conj` 的存在是为了让纯 `Numeric` 约束的泛型代码也能调用 `conj`，无需额外约束 `ComplexScalar`
+> - `Numeric::conjugate()` 对实数类型（i32, i64, f32, f64）是恒等操作（返回自身），对复数类型（Complex<f32>, Complex<f64>）委托给复数共轭实现
+> - 对于泛型代码中仅约束 `Numeric` 时，调用 `x.conjugate()` 会解析到 `Numeric::conjugate()`
+> - `ComplexScalar::conj()` 返回实数类型结果（模运算），与 `Numeric::conjugate()` 返回同类型共轭的语义不同。方法名已区分以避免混淆
+> - **设计决策注释：** 两个方法语义不同（`Numeric::conjugate` 返回 `Self` 的共轭，`ComplexScalar::conj` 返回实数模），`Numeric::conjugate` 的存在是为了让纯 `Numeric` 约束的泛型代码也能调用共轭，无需额外约束 `ComplexScalar`
 
 ### 4.3 RealScalar trait
 
@@ -250,11 +260,11 @@ pub trait ComplexScalar: Numeric + Sealed {
     fn im(self) -> Self::Real;
     /// Returns the complex conjugate (re - im*i).
     ///
-    /// Note: `Numeric` also defines a `conj()` method with identical semantics.
+    /// Note: `Numeric` also defines a `conjugate()` method with identical semantics.
     /// For types that implement both `Numeric` and `ComplexScalar` (e.g., `Complex<f64>`),
     /// use fully-qualified syntax to disambiguate:
     /// - `ComplexScalar::conj(x)` — via ComplexScalar trait
-    /// - `Numeric::conj(x)` — via Numeric trait
+    /// - `Numeric::conjugate(x)` — via Numeric trait
     fn conj(self) -> Self;
     fn norm(self) -> Self::Real;
     fn arg(self) -> Self::Real;

@@ -295,7 +295,14 @@ where
     where
         D: BroadcastDim<DB>,
         DB: Dimension;
+}
 
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Element + PartialOrd,
+{
     pub fn lt<DB>(&self, other: &TensorBase<impl Storage<Elem = A>, DB>)
         -> Result<Tensor<bool, <D as BroadcastDim<DB>>::Output>, XenonError>
     where

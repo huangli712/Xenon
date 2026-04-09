@@ -237,6 +237,13 @@ impl<T: Copy + PartialEq + Default + core::ops::Neg<Output = T>> Complex<T> {
     pub fn im(self) -> T { self.im }
 
     /// Returns the complex conjugate: conj(a + bi) = a - bi.
+    ///
+    /// **Design note:** `Complex::conj()` is an inherent method returning `Self`
+    /// (the same complex type with negated imaginary part). It differs from
+    /// `Numeric::conjugate()` which is a trait method on the `Numeric` trait.
+    /// Both produce the same mathematical result for complex types, but
+    /// `Numeric::conjugate()` is the intended API for generic code constrained
+    /// only on `Numeric`. See `03-element.md` §4.2 for details.
     #[inline]
     pub fn conj(self) -> Self {
         Self::new(self.re, -self.im)

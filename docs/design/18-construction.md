@@ -1,6 +1,6 @@
 # 构造操作模块设计
 
-> 文档编号: 18 | 模块: `src/construct.rs` | 阶段: Phase 4
+> 文档编号: 18 | 模块: `src/construct/` | 阶段: Phase 4
 > 前置文档: `07-tensor.md`, `05-storage.md`
 > 需求参考: 需求说明书 §19
 

@@ -561,17 +561,19 @@ where
     S: Storage<Elem = A>,
     D: Dimension,
 {
-    /// Converts a multi-dimensional index to an element offset.
+    /// Converts a multi-dimensional index to a byte offset (may be negative
+    /// for negative strides).
     ///
     /// Offset = Σ(stride[i] * index[i]) for all i in [0, ndim)
     ///
-    /// For tensors with negative strides, the computed offset is relative
-    /// to the base pointer. It is the caller's responsibility to ensure
-    /// the index is valid (does not produce a negative offset).
+    /// Returns an `isize` offset relative to the base pointer. Negative
+    /// offsets are valid for tensors with negative strides (e.g., reversed
+    /// axes). The caller must ensure the index is within bounds.
     ///
     /// # Panics
     ///
     /// - Index length does not match number of dimensions
+    /// - Index out of bounds (any index[i] >= shape[i])
     ///
     /// # Example
     ///
@@ -581,19 +583,17 @@ where
     /// // index [1, 2] → offset = 1*1 + 2*3 = 7
     /// assert_eq!(tensor.offset_of(&[1, 2]), 7);
     /// ```
-    pub fn offset_of(&self, index: &[usize]) -> usize {
+    pub fn offset_of(&self, index: &[isize]) -> isize {
         assert_eq!(index.len(), self.ndim(), "index length must match ndim");
         let strides = self.strides();  // returns &[isize]
         let shape = self.shape();
         let mut offset: isize = 0;
         for i in 0..self.ndim() {
-            assert!(index[i] < shape[i], "index out of bounds");
-            offset += strides[i] * index[i] as isize;
+            assert!(index[i] >= 0, "index must be non-negative");
+            assert!(index[i] as usize < shape[i], "index out of bounds");
+            offset += strides[i] * index[i];
         }
-        assert!(offset >= 0, 
-            "offset_of: computed negative offset {} — out-of-bounds access with negative strides",
-            offset);
-        offset as usize
+        offset
     }
 
     /// Converts a multi-dimensional index to a raw pointer to the corresponding element.
@@ -610,10 +610,10 @@ where
     /// let ptr = tensor.ptr_at(&[2]);
     /// assert_eq!(unsafe { *ptr }, 30);
     /// ```
-    pub fn ptr_at(&self, index: &[usize]) -> *const A {
+    pub fn ptr_at(&self, index: &[isize]) -> *const A {
         let offset = self.offset_of(index);
-        // SAFETY: offset_of guarantees valid access within storage bounds
-        unsafe { self.as_ptr().add(offset) }
+        // SAFETY: offset is within storage bounds as validated by dimension checks
+        unsafe { self.as_ptr().offset(offset) }
     }
 }
 ```

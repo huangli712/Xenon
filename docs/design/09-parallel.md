@@ -112,6 +112,8 @@ src/parallel/
 
 > **依赖方向：单向向上。** `parallel/` 仅消费 `tensor`、`storage`、`layout` 等核心模块，不被它们依赖。`parallel/` 模块在未启用 feature 时完全不存在。
 
+> **说明**: `parallel` 依赖 `broadcast::broadcast_shape()` 用于 zip 场景。虽然两者同属 L5，但 broadcast 仅消费 L1-L4 的类型，不存在循环依赖。
+
 ---
 
 ## 4. 公共 API 设计
@@ -202,10 +204,6 @@ pub fn should_parallelize(len: usize, is_contiguous: bool) -> bool {
     if rayon::current_num_threads() <= 1 {
         return false;
     }
-    // If already in a parallel context, do not spawn nested parallelism
-    if is_in_parallel_context() {
-        return false;
-    }
     let threshold = get_parallel_threshold();
     let meets_threshold = if is_contiguous {
         len >= threshold
@@ -248,6 +246,13 @@ where
     B: Element + Send,
     F: Fn(&A) -> B + Sync,
 {
+    let _guard = match ParallelGuard::enter() {
+        Some(g) => g,
+        None => {
+            // Already in parallel context, fall back to serial
+            return tensor.map(f);
+        }
+    };
     if !should_parallelize(tensor.len(), tensor.is_contiguous()) {
         return tensor.map(f);
     }
@@ -273,6 +278,15 @@ where
     D: Dimension,
     F: Fn(A) -> B + Send + Sync,
 {
+    let _guard = match ParallelGuard::enter() {
+        Some(g) => g,
+        None => {
+            // Already in parallel context, fall back to serial
+            let output: Vec<B> = tensor.iter().map(|x| f(*x)).collect();
+            // SAFETY: output length == tensor.len()
+            return unsafe { Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()) };
+        }
+    };
     let len = tensor.len();
     if len < threshold {
         // Below threshold: serial execution
@@ -301,6 +315,13 @@ where
     F: Fn(A, A) -> A + Sync,
     ID: Fn() -> A + Sync + Clone,
 {
+    let _guard = match ParallelGuard::enter() {
+        Some(g) => g,
+        None => {
+            // Already in parallel context, fall back to serial
+            return tensor.iter().fold(identity(), |acc, x| op(acc, *x));
+        }
+    };
     if tensor.is_empty() {
         return identity();
     }
@@ -342,6 +363,13 @@ where
     C: Element + Send,
     F: Fn(&A, &B) -> C + Sync,
 {
+    let _guard = match ParallelGuard::enter() {
+        Some(g) => g,
+        None => {
+            // Already in parallel context, fall back to serial
+            return a.zip_with(b, f);
+        }
+    };
     let broadcast_shape = broadcast::broadcast_shape(&a.shape(), &b.shape())?;
     let len: usize = broadcast_shape.iter().product();
     let is_contiguous = a.is_contiguous() && b.is_contiguous();
@@ -568,20 +596,22 @@ where
 ```rust
 // src/parallel/mod.rs
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use core::cell::Cell;
 
-/// Global parallel depth counter.
+/// Per-thread parallel depth counter.
 ///
-/// Uses a global `AtomicUsize` instead of `thread_local!` because
-/// rayon worker threads do not inherit thread-local state from the
-/// spawning thread. A global counter ensures all threads share the
-/// same depth state.
-static PARALLEL_DEPTH: AtomicUsize = AtomicUsize::new(0);
+/// Uses `thread_local!` to track whether the current thread is already
+/// executing a parallel operation. Each thread maintains its own depth
+/// state independently, preventing nested parallelism within the same
+/// thread without affecting other threads.
+thread_local! {
+    static PARALLEL_DEPTH: Cell<usize> = const { Cell::new(0) };
+}
 
 /// Check if currently in a parallel context
 #[inline]
 pub fn is_in_parallel_context() -> bool {
-    PARALLEL_DEPTH.load(Ordering::SeqCst) > 0
+    PARALLEL_DEPTH.with(|d| d.get() > 0)
 }
 
 /// Parallel context guard (RAII)
@@ -596,24 +626,27 @@ impl ParallelGuard {
     ///
     /// Returns `None` if already in a parallel context (prevents nesting).
     pub fn enter() -> Option<Self> {
-        if PARALLEL_DEPTH.compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
-            Some(ParallelGuard)
-        } else {
-            None // Already in parallel context
-        }
+        PARALLEL_DEPTH.with(|d| {
+            if d.get() > 0 {
+                None
+            } else {
+                d.set(1);
+                Some(ParallelGuard)
+            }
+        })
     }
 }
 
 impl Drop for ParallelGuard {
     fn drop(&mut self) {
-        PARALLEL_DEPTH.store(0, Ordering::SeqCst);
+        PARALLEL_DEPTH.with(|d| d.set(0));
     }
 }
 ```
 
-> **设计说明：** 使用全局 `AtomicUsize` 而非 `thread_local!` 的原因：rayon 的 worker 线程
-> 不会继承调用线程的 thread-local 状态，因此 `thread_local!` 无法正确检测嵌套并行。
-> 全局原子变量确保所有线程共享同一个并行深度状态。
+> **设计说明：** 使用 `thread_local!` 而非全局 `AtomicUsize` 的原因：并行深度是线程局部状态，
+> 仅需检测当前线程是否已在并行上下文中。`thread_local!` 避免了跨线程原子操作的开销，
+> 且语义更准确——每个线程独立维护自己的并行深度状态。
 
 ### 4.8 Good/Bad 对比示例
 

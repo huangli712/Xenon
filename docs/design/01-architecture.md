@@ -4,6 +4,8 @@
 > 前置文档: `00-coding.md`
 > 需求参考: 需求说明书 §1-§2
 
+> **格式豁免声明**：本文档为全局架构规范，按 `format.md` §3 豁免标准章节结构。
+
 ---
 
 ## 1. 项目概览
@@ -378,7 +380,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 | **L0** | error, private | 无 | `26-error.md` |
 | **L1** | dimension, element, complex | error（element 额外依赖 complex） | `02-dimension.md`、`03-element.md`、`04-complex.md` |
 | **L2** | layout, workspace | error, dimension（workspace 独立于核心类型系统，仅依赖 core/alloc，可被上游库直接使用） | `06-memory.md`、`24-workspace.md` |
-| **L3** | storage | core/alloc | `05-storage.md` |
+| **L3** | storage | layout | `05-storage.md` |
 | **L4** | tensor | storage, dimension, layout, element | `07-tensor.md` |
 | **L5** | broadcast, iter, ffi | tensor | `15-broadcast.md`、`10-iterator.md`、`23-ffi.md` |
 | **L6** | math, overload, set, matrix, reduction, shape, index, util | tensor, broadcast（部分模块还需 iter） | `11-math.md`、`12-matrix.md`、`13-reduction.md`、`14-set.md`、`16-shape.md`、`17-indexing.md`、`19-overload.md`、`20-utility.md` |
@@ -596,9 +598,9 @@ pub mod workspace;
 #[cfg_attr(docsrs, doc(cfg(feature = "parallel")))]
 pub mod parallel;
 
-#[cfg(feature = "simd")]
-#[cfg_attr(docsrs, doc(cfg(feature = "simd")))]
-pub mod simd;
+// Note: SIMD is integrated into math/, reduction/, and matrix/ modules
+// via cfg(feature = "simd") gates, not as a standalone top-level module.
+// See math/simd.rs, reduction/simd.rs, matrix/simd.rs.
 
 // Prelude
 pub mod prelude;

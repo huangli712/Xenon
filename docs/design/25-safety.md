@@ -128,7 +128,20 @@ src/parallel/
 
 各存储模式的完整 API 定义参见 `05-storage.md §4`。
 
-### 4.2 Owned<A> 的 Send/Sync
+### 4.2 TensorBase<S, D> 自动推导规则
+
+`TensorBase<S, D>` 的 `Send`/`Sync` 由 Rust 自动推导，规则如下：
+
+| 存储模式 S | TensorBase\<S, D\> 的 Send | TensorBase\<S, D\> 的 Sync |
+|------------|--------------------------|--------------------------|
+| `Owned<A>` where A: Send/Sync | ✅ Send | ✅ Sync |
+| `ViewRepr<&'a A>` where A: Sync | ✅ Send | ✅ Sync |
+| `ViewRepr<&'a mut A>` where A: Send | ✅ Send | ❌ (exclusive borrow) |
+| `ArcRepr<A>` where A: Send + Sync | ✅ Send | ✅ Sync |
+
+> **说明**: `D: Dimension` 要求 `Dimension: Send + Sync`，因此维度类型始终线程安全。
+
+### 4.3 Owned<A> 的 Send/Sync
 
 ```rust
 // src/storage/owned.rs
@@ -170,7 +183,7 @@ unsafe impl<A: Send> Send for Owned<A> {}
 unsafe impl<A: Sync> Sync for Owned<A> {}
 ```
 
-### 4.3 ViewRepr<&'a A> 的 Send/Sync
+### 4.4 ViewRepr<&'a A> 的 Send/Sync
 
 ```rust
 // src/storage/view.rs
@@ -212,7 +225,7 @@ unsafe impl<'a, A: Sync> Send for ViewRepr<&'a A> {}
 unsafe impl<'a, A: Sync> Sync for ViewRepr<&'a A> {}
 ```
 
-### 4.4 ViewMutRepr<&'a mut A> 的 Send（不实现 Sync）
+### 4.5 ViewMutRepr<&'a mut A> 的 Send（不实现 Sync）
 
 ```rust
 // src/storage/view_mut.rs
@@ -257,7 +270,7 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<&'a mut A> {}
 // auto-derive Sync, which is exactly the behavior we want.
 ```
 
-### 4.5 ArcRepr<A> 的 Send/Sync
+### 4.6 ArcRepr<A> 的 Send/Sync
 
 ```rust
 // src/storage/arc.rs
@@ -303,7 +316,7 @@ unsafe impl<A: Send + Sync> Send for ArcRepr<A> {}
 unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 ```
 
-### 4.6 ViewMutRepr 不实现 Sync 的证明
+### 4.7 ViewMutRepr 不实现 Sync 的证明
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -332,7 +345,7 @@ unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 4.7 广播结果不可变迭代的原因
+### 4.8 广播结果不可变迭代的原因
 
 ```rust
 // Broadcast results use ViewRepr (read-only view), no mutable iterator provided
@@ -349,7 +362,7 @@ let sum: f64 = b.iter().sum();  // OK: read-only iteration
 
 > **设计决策：** 广播结果使用 `ViewRepr`（只读视图），因为广播不拷贝数据，语义上仅为只读（参见 `15-broadcast.md §4`）。如果允许可变迭代，修改广播结果会意外修改原数据的多个位置，这既不符合广播语义，也容易引入 bug。
 
-### 4.8 Good/Bad 对比示例
+### 4.9 Good/Bad 对比示例
 
 ```rust
 // Good - ViewMutRepr cross-thread movement (transfers exclusive access)

@@ -873,6 +873,8 @@ Wave 4:   [T6]
 
 `math/` 模块在执行逐元素运算时，调用 `simd::can_use_simd()` 检查条件，满足时使用 `VectorKernel`，否则使用 `ScalarKernel`（参见 `11-math.md §5.3`）。
 
+> **分派策略**: `math` 模块提供公共 `sqrt()` API（标量路径），`simd` 模块提供加速路径。编译时通过 `cfg(feature = "simd")` 自动选择。用户仅调用 `math::sqrt()`，无需关心底层分派。
+
 ### 8.2 与 parallel 模块
 
 并行路径的每个工作线程内部可以使用 SIMD。组合使用时：先按并行阈值分块到各线程，线程内部再检查 SIMD 条件执行向量化（参见 `09-parallel.md §8.1`）。

@@ -25,7 +25,7 @@
 | 单向增长 | 只扩容不缩容，避免内存抖动 |
 | 不保证初始化 | 性能优先，调用方自行初始化使用的数据 |
 | O(1) 分割 | 仅指针算术，无内存分配 |
-| 显式生命周期 | 不绑定线程，调用方负责线程安全 |
+| 显式生命周期 | 不可跨线程传递（`!Send + !Sync`），仅限创建它的线程使用 | 调用方负责线程安全 |
 
 ### 1.3 在架构中的位置
 
@@ -108,6 +108,8 @@ src/workspace/
 
 `WorkspaceError` 是 workspace 模块的独立错误类型，不属于 `XenonError` 枚举。调用方如需将其转换为其他错误类型，可自行实现 `From<WorkspaceError>` 用于其自定义错误类型。
 
+> **与 XenonError 的关系**: `WorkspaceError` 是独立于 `XenonError` 的错误类型。Workspace 的错误场景（分配失败、空间不足）与张量操作的错误场景不同，使用独立类型避免 XenonError 膨胀。参见 `26-error.md`。
+
 ```rust
 /// Error type for workspace operations.
 #[derive(Debug, Clone, PartialEq)]
@@ -143,7 +145,9 @@ use alloc::alloc::{alloc, dealloc, Layout};
 ///
 /// - Cannot be re-borrowed while borrowed (enforced by borrow guards)
 /// - Can be reused after returning
-/// - Not thread-bound; thread safety is the caller's responsibility
+/// - Not transferable across threads (`!Send + !Sync`); only usable on the
+///   creating thread. This ensures memory safety — Workspace holds raw
+///   pointers, and cross-thread transfer could cause data races.
 ///
 /// # Initialization Guarantee
 ///
