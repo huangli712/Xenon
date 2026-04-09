@@ -88,7 +88,7 @@ benches/
 |----------|-----------------|
 | `tensor` | `Tensor<A, D>`, `TensorView`, `TensorViewMut`, `.shape()`, `.sum()`（参见 `07-tensor.md §4`） |
 | `dimension` | `Ix1`, `Ix2`, `Ix3`, `IxDyn`, `Dimension`（参见 `02-dimension.md §4`） |
-| `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element-types.md §4`） |
+| `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element.md §4`） |
 | `ops` | `add`, `sub`, `mul`, `div`, `sin`, `exp`, `abs`, `sum_axis`（参见 `11-math.md §4`） |
 | `shape` | `reshape`, `transpose`（参见 `16-shape.md §4`） |
 | `set` | `unique`（参见 `14-set.md §4`） |

@@ -92,7 +92,7 @@ src/
 | `storage` | `Owned<A>`, `Storage<Elem = A>`, `from_vec_aligned()`（参见 `05-storage.md` §4） |
 | `memory_layout` | `LayoutFlags`, `Order::F`, F-order 步长计算（参见 `06-memory.md` §3） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`（参见 `02-dimension.md` §4） |
-| `element` | `Element`, `Zero`, `One`（参见 `03-element-types.md` §3） |
+| `element` | `Element`, `Zero`, `One`（参见 `03-element.md` §3） |
 | `error` | `XenonError::InvalidShape`（参见 `26-error-handling.md` §4） |
 
 ### 3.3 依赖方向声明
@@ -121,7 +121,7 @@ where
     /// ```
     pub fn zeros<Sh>(shape: Sh) -> Self
     where
-        A: Element,  // A::zero() is provided by the Element trait (see 03-element-types.md §4.1)
+        A: Element,  // A::zero() is provided by the Element trait (see 03-element.md §4.1)
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();
@@ -140,7 +140,7 @@ where
     /// ```
     pub fn ones<Sh>(shape: Sh) -> Self
     where
-        A: Element,  // A::one() is provided by the Element trait (see 03-element-types.md §4.1)
+        A: Element,  // A::one() is provided by the Element trait (see 03-element.md §4.1)
         Sh: IntoDimension<Dim = D>,
     {
         Self::fill(shape, A::one())
@@ -535,7 +535,7 @@ Wave 4:           [T6]
 | `storage` | construct → storage | 使用 `Owned::zeros()`/`from_vec_aligned()`（参见 `05-storage.md` §4.2） |
 | `memory_layout` | construct → memory_layout | 计算 F-order 步长（参见 `06-memory.md` §4） |
 | `dimension` | construct → dimension | 使用 `IntoDimension` 接受灵活形状参数（参见 `02-dimension.md` §4.3） |
-| `element` | construct → element | 使用 `Element`/`Zero`/`One` trait 约束（参见 `03-element-types.md` §3） |
+| `element` | construct → element | 使用 `Element`/`Zero`/`One` trait 约束（参见 `03-element.md` §3） |
 | `error` | construct → error | 返回 `XenonError::InvalidShape`（参见 `26-error-handling.md` §4.2） |
 | `index` | index ← construct | 构造后可通过索引访问元素（参见 `17-indexing.md` §4） |
 

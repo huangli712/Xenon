@@ -1,7 +1,7 @@
 # 矩阵运算模块设计
 
 > 文档编号: 12 | 模块: `src/matrix/` | 阶段: Phase 4
-> 前置文档: `03-element-types.md`, `07-tensor.md`, `10-iterator.md`, `26-error-handling.md`
+> 前置文档: `03-element.md`, `07-tensor.md`, `10-iterator.md`, `26-error-handling.md`
 > 需求参考: 需求说明书 §13
 
 ---
@@ -63,7 +63,7 @@ src/matrix/
 src/matrix/
 ├── mod.rs
 │   ├── crate::tensor        # TensorView<A, Ix1>
-│   ├── crate::element       # Numeric, ComplexScalar（参见 03-element-types.md）
+│   ├── crate::element       # Numeric, ComplexScalar（参见 03-element.md）
 │   └── crate::error         # XenonError（参见 26-error-handling.md）
 ├── dot.rs
 │   ├── crate::tensor        # TensorView<A, Ix1>
@@ -132,7 +132,7 @@ pub fn dot<A>(
 ) -> Result<A, XenonError>
 where
     A: Numeric + Copy;
-// Note: Numeric (defined in 03-element-types.md) already implies
+// Note: Numeric (defined in 03-element.md) already implies
 // Mul<Output=Self> + Add<Output=Self>, so the public constraint
 // `Numeric + Copy` is sufficient. The internal implementation
 // (dot_impl) repeats these bounds explicitly for clarity.
@@ -204,7 +204,7 @@ fn scalar_dot<A: Numeric + Copy>(a: &TensorView<A, Ix1>, b: &TensorView<A, Ix1>)
 - 复数类型（`Complex<f32>`、`Complex<f64>`）：`conj(x)` 返回共轭复数
 
 ```rust
-// Numeric trait 中的 conj 方法（定义于 03-element-types.md §4.x）
+// Numeric trait 中的 conj 方法（定义于 03-element.md §4.x）
 // Real types: fn conj(self) -> Self { self }
 // Complex types: fn conj(self) -> Self { Complex::conj(self) }
 
@@ -308,7 +308,7 @@ Wave 4: [T4]
 |----------|----------|
 | `tensor` | 消费 `TensorView<A, Ix1>`，参见 `07-tensor.md` §4 |
 | `iter` | 使用 `Elements` 迭代器遍历元素，参见 `10-iterator.md` §3 |
-| `element` | 泛型约束 `Numeric` / `ComplexScalar`，参见 `03-element-types.md` §3 |
+| `element` | 泛型约束 `Numeric` / `ComplexScalar`，参见 `03-element.md` §3 |
 | `simd`（可选） | 连续内存时自动走 SIMD 路径，参见 `08-simd.md` §3 |
 | `error` | 形状不匹配返回 `XenonError::ShapeMismatch` |
 

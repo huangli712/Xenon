@@ -93,7 +93,7 @@ src/complex/
 ### 3.3 依赖方向声明
 
 > **依赖方向：单向向下。** `complex/` 不依赖项目中任何其他模块。
-> 被下游消费：`element/` 模块为 `Complex<f32>`/`Complex<f64>` 实现 Element/Numeric/ComplexScalar trait（参见 `03-element-types.md` §5.3）。
+> 被下游消费：`element/` 模块为 `Complex<f32>`/`Complex<f64>` 实现 Element/Numeric/ComplexScalar trait（参见 `03-element.md` §5.3）。
 
 ---
 
@@ -735,7 +735,7 @@ hypot(a, b):
 | 交互点 | 说明 |
 |--------|------|
 | 类型定义 | `Complex<T>` 定义在 `crate::complex` |
-| Trait 实现 | `Element`/`Numeric`/`ComplexScalar` 在 `element` 模块定义（参见 `03-element-types.md` §4.4），在 `primitives.rs` 为 `Complex<T>` 实现 |
+| Trait 实现 | `Element`/`Numeric`/`ComplexScalar` 在 `element` 模块定义（参见 `03-element.md` §4.4），在 `primitives.rs` 为 `Complex<T>` 实现 |
 | 依赖方向 | `element` 依赖 `complex`（类型定义）；`complex` 不依赖 `element` |
 
 ### 6.2 接口边界

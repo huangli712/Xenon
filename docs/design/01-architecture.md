@@ -376,7 +376,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 | 层级 | 模块 | 依赖 | 参见 |
 |------|------|------|------|
 | **L0** | error, private | 无 | `26-error-handling.md` |
-| **L1** | dimension, element, complex | error（element 额外依赖 complex） | `02-dimension.md`、`03-element-types.md`、`04-complex.md` |
+| **L1** | dimension, element, complex | error（element 额外依赖 complex） | `02-dimension.md`、`03-element.md`、`04-complex.md` |
 | **L2** | layout, workspace | error, dimension（workspace 独立于核心类型系统，仅依赖 core/alloc，可被上游库直接使用） | `06-memory.md`、`24-workspace.md` |
 | **L3** | storage | core/alloc | `05-storage.md` |
 | **L4** | tensor | storage, dimension, layout, element | `07-tensor.md` |
@@ -624,7 +624,7 @@ pub use error::XenonError;
 
 ## 10. 核心类型速查
 
-各类型的详细设计参见对应模块文档（`02-dimension.md`、`03-element-types.md`、`05-storage.md`、`06-memory.md`）。
+各类型的详细设计参见对应模块文档（`02-dimension.md`、`03-element.md`、`05-storage.md`、`06-memory.md`）。
 
 ```rust
 // Tensor core types

@@ -15,7 +15,7 @@
 00-rust-standards.md
 01-architecture.md
 02-dimension.md
-03-element-types.md
+03-element.md
 ...
 ```
 

@@ -1,7 +1,7 @@
 # 存储系统模块设计
 
 > 文档编号: 05 | 模块: `src/storage/` | 阶段: Phase 2
-> 前置文档: `02-dimension.md`, `03-element-types.md`, `04-complex.md`
+> 前置文档: `02-dimension.md`, `03-element.md`, `04-complex.md`
 > 需求参考: 需求说明书 §6
 
 ---

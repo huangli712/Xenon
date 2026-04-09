@@ -85,7 +85,7 @@ src/error.rs
 ### 3.3 依赖方向声明
 
 > **依赖方向：无内部依赖。** `error.rs` 是整个项目的 L0 层，不依赖 crate 内任何其他模块。
-> 被所有下游模块消费：`dimension`（参见 `02-dimension.md §3`）、`element`（参见 `03-element-types.md §3`）、`layout`（参见 `06-memory.md §3`）、`storage`（参见 `05-storage.md §3`）、`tensor`（参见 `07-tensor.md §3`）、`ops`（参见 `11-math.md §3`）、`shape`（参见 `16-shape.md §3`）、`index`（参见 `17-indexing.md §3`） 等。
+> 被所有下游模块消费：`dimension`（参见 `02-dimension.md §3`）、`element`（参见 `03-element.md §3`）、`layout`（参见 `06-memory.md §3`）、`storage`（参见 `05-storage.md §3`）、`tensor`（参见 `07-tensor.md §3`）、`ops`（参见 `11-math.md §3`）、`shape`（参见 `16-shape.md §3`）、`index`（参见 `17-indexing.md §3`） 等。
 
 ---
 

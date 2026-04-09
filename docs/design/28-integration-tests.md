@@ -111,7 +111,7 @@ tests/
 |----------|-----------------|
 | `tensor` | `Tensor<A, D>`, `TensorView`, `TensorViewMut`, `ArcTensor`, `.shape()`, `.strides()`（参见 `07-tensor.md §4`） |
 | `dimension` | `Ix0`~`Ix6`, `IxDyn`, `Dimension`, `DimensionMismatch`（参见 `02-dimension.md §4`） |
-| `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element-types.md §4`） |
+| `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element.md §4`） |
 | `complex` | `Complex<f32>`, `Complex<f64>`（参见 `04-complex.md §4`） |
 | `storage` | `Owned`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`, `Storage`（参见 `05-storage.md §4`） |
 | `layout` | `LayoutFlags`, `Order`（参见 `06-memory.md §4`） |
@@ -583,7 +583,7 @@ fn prop_approx_equal(x: f64, y: f64) -> bool {
 
 ### 10.1 assert_tensor_close 实现细节
 
-> `assert_tensor_close` 要求 `A: RealScalar`，其中 `RealScalar` trait 提供 `to_f64() -> f64` 方法（定义于 03-element-types.md §4.4）。确认该方法存在于 RealScalar trait 定义中。如尚未定义，需在 03 文档中补充。
+> `assert_tensor_close` 要求 `A: RealScalar`，其中 `RealScalar` trait 提供 `to_f64() -> f64` 方法（定义于 03-element.md §4.4）。确认该方法存在于 RealScalar trait 定义中。如尚未定义，需在 03 文档中补充。
 
 `assert_tensor_close` 的核心逻辑：
 

@@ -78,7 +78,7 @@ src/util/
 | `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`（参见 `07-tensor.md` §4） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §4） |
 | `storage` | `Storage<Elem=A>`, `StorageMut<Elem=A>`（参见 `05-storage.md` §4） |
-| `element` | `Element`, `RealScalar`（clip 约束）（参见 `03-element-types.md` §3） |
+| `element` | `Element`, `RealScalar`（clip 约束）（参见 `03-element.md` §3） |
 | `layout` | `is_f_contiguous()`（参见 `06-memory.md` §4） |
 | `iter` | `iter()`, `iter_mut()`（参见 `10-iterator.md` §4） |
 | `math` | `mapv()`（clip 内部调用，参见 `11-math.md` §4） |
@@ -111,7 +111,7 @@ where
     /// have no natural total ordering (`Complex` does not implement `PartialOrd`,
     /// see `04-complex.md §4`).
     /// **Not available for `bool`** because `bool` does not implement `Numeric`
-    /// (see `03-element-types.md §3`).
+    /// (see `03-element.md §3`).
     ///
     /// # Arguments
     ///

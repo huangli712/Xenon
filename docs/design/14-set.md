@@ -1,7 +1,7 @@
 # 集合操作模块设计
 
 > 文档编号: 14 | 模块: `src/set/` | 阶段: Phase 4
-> 前置文档: `03-element-types.md`, `07-tensor.md`
+> 前置文档: `03-element.md`, `07-tensor.md`
 > 需求参考: 需求说明书 §15
 
 ---
@@ -72,7 +72,7 @@ src/set/unique.rs
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
 | `tensor` | `TensorBase<S, D>`, `Tensor<A, Ix1>`, `.iter()`, `.len()`，参见 `07-tensor.md` §4 |
-| `element` | `Element`, `ComplexScalar`，参见 `03-element-types.md` §3 |
+| `element` | `Element`, `ComplexScalar`，参见 `03-element.md` §3 |
 | `iter` | `Elements`（遍历收集元素），参见 `10-iterator.md` §3 |
 
 ### 3.3 依赖方向
@@ -367,7 +367,7 @@ Wave 4: [T5]
 |----------|----------|
 | `tensor` | 消费 `TensorBase<S, D>`，返回 `Tensor<A, Ix1>`，参见 `07-tensor.md` §4 |
 | `iter` | 使用 `Elements` 迭代器收集元素，参见 `10-iterator.md` §3 |
-| `element` | 泛型约束 `UniqueElement: Element`（排除 bool/usize，提供 `total_cmp`），参见 `03-element-types.md` §3 |
+| `element` | 泛型约束 `UniqueElement: Element`（排除 bool/usize，提供 `total_cmp`），参见 `03-element.md` §3 |
 
 ---
 

@@ -1,7 +1,7 @@
 # 归约运算模块设计
 
 > 文档编号: 13 | 模块: `src/reduction/` | 阶段: Phase 4
-> 前置文档: `02-dimension.md`, `03-element-types.md`, `07-tensor.md`, `10-iterator.md`
+> 前置文档: `02-dimension.md`, `03-element.md`, `07-tensor.md`, `10-iterator.md`
 > 需求参考: 需求说明书 §14
 
 ---
@@ -236,10 +236,10 @@ let first = tensor.iter().next().unwrap();  // panics on empty array
 
 ### 5.1 整数溢出处理
 
-整数 `sum` 使用 `CheckedAdd` trait（定义于 `03-element-types.md §4.9`）进行安全累加：
+整数 `sum` 使用 `CheckedAdd` trait（定义于 `03-element.md §4.9`）进行安全累加：
 
 ```rust
-// Integer sum implementation — uses CheckedAdd trait (see 03-element-types.md §4.9)
+// Integer sum implementation — uses CheckedAdd trait (see 03-element.md §4.9)
 fn sum_int<I: Numeric + CheckedAdd>(iter: impl Iterator<Item = &I>) -> I {
     iter.fold(I::zero(), |acc, &x| {
         acc.checked_add(x).expect("integer overflow in reduction (sum)")
@@ -406,7 +406,7 @@ Wave 5:         [T7]
 |----------|----------|
 | `iter` | 使用 `Elements` 迭代器遍历元素，`AxisIter` 遍历轴，参见 `10-iterator.md` §4 |
 | `tensor` | 消费 `TensorBase<S, D>`，返回 `Tensor<A, D>`，参见 `07-tensor.md` §4 |
-| `element` | 泛型约束 `Numeric`（全局 sum），`RealScalar`（浮点特化），参见 `03-element-types.md` §3 |
+| `element` | 泛型约束 `Numeric`（全局 sum），`RealScalar`（浮点特化），参见 `03-element.md` §3 |
 | `simd`（可选） | 连续数组自动走 SIMD 归约路径，参见 `08-simd.md` §3 |
 | `parallel`（可选） | 大数组自动走并行归约路径，参见 `09-parallel.md` §4 |
 

@@ -88,10 +88,10 @@ src/ops/
 | `math` | `zip_with()`, `mapv()`, 二元逐元素运算（参见 `11-math.md` §4） |
 | `broadcast` | `broadcast_shape()`, `broadcast_with()`, `can_broadcast()`（参见 `15-broadcast.md` §4） |
 | `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.view()`（参见 `07-tensor.md` §4） |
-| `element` | `Numeric` trait 约束（排除 `bool`）（参见 `03-element-types.md` §3） |
+| `element` | `Numeric` trait 约束（排除 `bool`）（参见 `03-element.md` §3） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<E>`（该 trait 定义于 `02-dimension.md §4.9`，计算广播后的维度类型） |
 
-> **Numeric 隐含 Copy：** `Numeric` trait 继承自 `Element`，而 `Element: Copy`（见 `03-element-types.md` §4.1）。因此所有 `Numeric` 类型均满足 `Copy`，可以在标量运算中安全地按值传递而无需额外约束。
+> **Numeric 隐含 Copy：** `Numeric` trait 继承自 `Element`，而 `Element: Copy`（见 `03-element.md` §4.1）。因此所有 `Numeric` 类型均满足 `Copy`，可以在标量运算中安全地按值传递而无需额外约束。
 
 ### 3.3 依赖方向声明
 
@@ -428,7 +428,7 @@ Wave 5:      [T6]
 | `math` | arithmetic → math | `zip_with()` 执行逐元素运算，`mapv()` 执行标量运算（参见 `11-math.md` §4） |
 | `broadcast` | arithmetic → broadcast | `broadcast_with()` 广播两个张量到公共形状（参见 `15-broadcast.md` §4） |
 | `tensor` | arithmetic → tensor | 构造结果 `Tensor<A, D>`，使用 `.view()` 创建视图（参见 `07-tensor.md` §4） |
-| `element` | arithmetic → element | `Numeric` trait 约束排除 `bool` 类型（参见 `03-element-types.md` §3） |
+| `element` | arithmetic → element | `Numeric` trait 约束排除 `bool` 类型（参见 `03-element.md` §3） |
 | `dimension` | arithmetic → dimension | `BroadcastDim<E>::Output` 关联类型（参见 `02-dimension.md` §4） |
 
 ---

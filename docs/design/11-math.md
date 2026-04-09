@@ -81,7 +81,7 @@ src/math/（整体模块依赖）
 |----------|-----------------|
 | `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.shape()`（参见 `07-tensor.md §4`） |
 | `iter` | `Elements`, `ElementsMut`, `Zip`（参见 `10-iterator.md §4`） |
-| `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element-types.md §4`） |
+| `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element.md §4`） |
 | `broadcast` | `broadcast_shape()`, `BroadcastView`（参见 `15-broadcast.md §4`） |
 | `dimension` | `BroadcastDim<E>` trait（编译期维度推导，参见 `02-dimension.md §4.9`） |
 | `simd`（可选） | `pulp::Arch`（参见 `08-simd.md §4`） |
@@ -575,7 +575,7 @@ Wave 4: [T8]
 |----------|----------|
 | `iter` | map 内部使用 `Elements`，zip_with 内部使用 `Zip`（参见 `10-iterator.md §4`） |
 | `broadcast` | 二元运算调用 `broadcast_shape()`（参见 `15-broadcast.md §4`） |
-| `element` | 泛型约束 `Numeric`/`RealScalar`/`ComplexScalar`（参见 `03-element-types.md §4`） |
+| `element` | 泛型约束 `Numeric`/`RealScalar`/`ComplexScalar`（参见 `03-element.md §4`） |
 | `simd`（可选） | 连续数组时自动走 SIMD 路径（参见 `08-simd.md §4.5`） |
 
 ---

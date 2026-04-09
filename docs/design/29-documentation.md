@@ -749,7 +749,7 @@ docs:
 
 - [ ] **T5**: 编写核心模块文档（dimension, element, complex, storage, layout）
   - 文件: 各 `mod.rs`
-  - 内容: 模块职责、核心概念、使用示例、依赖图、设计决策（参见 `02-dimension.md §1`、`03-element-types.md §1`、`04-complex.md §1`、`05-storage.md §1`、`06-memory.md §1`）
+  - 内容: 模块职责、核心概念、使用示例、依赖图、设计决策（参见 `02-dimension.md §1`、`03-element.md §1`、`04-complex.md §1`、`05-storage.md §1`、`06-memory.md §1`）
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T2
   - 预计: 10 min

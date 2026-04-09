@@ -1,7 +1,7 @@
 # 类型转换模块设计
 
 > 文档编号: 21 | 模块: `src/convert/` | 阶段: Phase 4
-> 前置文档: `07-tensor.md`, `03-element-types.md`
+> 前置文档: `07-tensor.md`, `03-element.md`
 > 需求参考: 需求说明书 §23
 
 ---
@@ -94,7 +94,7 @@ src/convert/
 | `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.memory_order()`（参见 `07-tensor.md` §4） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §4） |
 | `storage` | `Storage<Elem=A>`, `StorageMut`, `Owned<A>`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`（参见 `05-storage.md` §4） |
-| `element` | `Element`, `CastTo<B>`（参见 `03-element-types.md` §4.8） |
+| `element` | `Element`, `CastTo<B>`（参见 `03-element.md` §4.8） |
 | `layout` | `is_f_contiguous()`（参见 `06-memory.md` §4） |
 | `error` | `XenonError`, `Result<T>`（参见 `26-error-handling.md` §4） |
 
@@ -108,7 +108,7 @@ src/convert/
 
 ### 4.1 CastTo trait
 
-> `CastTo<T>` trait 定义于 `03-element-types.md §4.8`，在此模块中仅用于 `cast()` 的实现约束，不重新定义。参见 `03-element-types.md §4.8` 了解完整定义。
+> `CastTo<T>` trait 定义于 `03-element.md §4.8`，在此模块中仅用于 `cast()` 的实现约束，不重新定义。参见 `03-element.md §4.8` 了解完整定义。
 
 ### 4.2 cast 方法
 
@@ -557,7 +557,7 @@ Wave 3: [T6] [T7]  (并行)
 | 交互模块 | 方向 | 说明 |
 |----------|------|------|
 | `tensor` | convert → tensor | `cast()` 定义在 `TensorBase<S, D>` 的 impl 块上，消费 `.shape()`、`.memory_order()`；`to_owned()`/`into_owned()` 消费 `Storage`/`StorageIntoOwned`（参见 `07-tensor.md` §4） |
-| `element` | convert → element | 泛型约束 `A: CastTo<B>` 驱动逐元素转换；`CastTo` trait 定义在 element 模块（参见 `03-element-types.md` §4） |
+| `element` | convert → element | 泛型约束 `A: CastTo<B>` 驱动逐元素转换；`CastTo` trait 定义在 element 模块（参见 `03-element.md` §4） |
 | `math` | convert → math | `cast()` 内部通过 `iter().map().collect()` 执行逐元素转换，不使用 `mapv()`（因为 `mapv` 返回 `Tensor<A, D>` 而非 `Tensor<B, D>`） |
 | `storage` | convert → storage | `into_owned()` 消费 `StorageIntoOwned` trait；存储模式互转依赖 `Owned`/`ViewRepr`/`ArcRepr`（参见 `05-storage.md` §4） |
 | `layout` | convert → layout | `to_owned()` 调用 `is_f_contiguous()` 判断是否需要重排（参见 `06-memory.md` §4） |

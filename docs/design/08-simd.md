@@ -1,7 +1,7 @@
 # SIMD 后端模块设计
 
 > 文档编号: 08 | 模块: `src/simd/` | 阶段: Phase 5
-> 前置文档: `03-element-types.md`, `06-memory.md`, `07-tensor.md`
+> 前置文档: `03-element.md`, `06-memory.md`, `07-tensor.md`
 > 需求参考: 需求说明书 §9.1
 
 ---
@@ -109,7 +109,7 @@ src/simd/
 | `tensor` | `TensorBase<S, D>`, `.as_ptr()`, `.as_slice()`（参见 `07-tensor.md §4`） |
 | `storage` | `RawStorage`, `Storage`, `.len()`（参见 `05-storage.md §4`） |
 | `layout` | `LayoutFlags`, `is_f_contiguous()`, 对齐查询（参见 `06-memory.md §4`） |
-| `element` | `SimdElement`, `Element`（参见 `03-element-types.md §4`） |
+| `element` | `SimdElement`, `Element`（参见 `03-element.md §4`） |
 
 ### 3.3 依赖方向声明
 
