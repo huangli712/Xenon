@@ -1,7 +1,7 @@
 # FFI 接口模块设计
 
 > 文档编号: 23 | 模块: `src/ffi/` | 阶段: Phase 4
-> 前置文档: `07-tensor.md`, `06-memory-layout.md`
+> 前置文档: `07-tensor.md`, `06-memory.md`
 > 需求参考: 需求说明书 §25
 
 ---
@@ -99,7 +99,7 @@ src/ffi/
 | `tensor` | `TensorBase<S, D>`, `.shape()`, `.strides()`, `.as_ptr()`, `.as_mut_ptr()`, `.offset()` | `07-tensor.md` §4 | `ptr.rs`, `blas.rs`, `offset.rs` |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn` | `02-dimension.md` §4 | `ptr.rs`, `offset.rs` |
 | `storage` | `Storage<Elem=A>`, `StorageMut<Elem=A>`, `StorageIntoRaw` | `05-storage.md` §4 | `ptr.rs`, `blas.rs`, `offset.rs` |
-| `layout` | `is_f_contiguous()`, `has_zero_stride()`, `has_neg_stride()` | `06-memory-layout.md` §4 | `ptr.rs`, `blas.rs` |
+| `layout` | `is_f_contiguous()`, `has_zero_stride()`, `has_neg_stride()` | `06-memory.md` §4 | `ptr.rs`, `blas.rs` |
 
 ### 3.3 依赖方向声明
 
@@ -797,7 +797,7 @@ Wave 3: ┌────┴────┐
 | 交互点 | 方向 | 说明 |
 |--------|------|------|
 | 指针访问 | ffi → tensor | 通过 `TensorBase` 的 storage 获取指针（参见 `07-tensor.md` §4） |
-| BLAS 检查 | ffi ← layout | 使用 `is_contiguous()`、`has_zero_stride()`、`has_neg_stride()`（参见 `06-memory-layout.md` §4） |
+| BLAS 检查 | ffi ← layout | 使用 `is_contiguous()`、`has_zero_stride()`、`has_neg_stride()`（参见 `06-memory.md` §4） |
 | 解构 | ffi → storage | `into_raw_parts` 使用 `StorageIntoRaw` trait（参见 `05-storage.md` §4） |
 | BLAS 参数 | 上游库 ← ffi | 上游 BLAS 库调用 `blas_info()`、`lda()` 等获取参数 |
 
@@ -856,7 +856,7 @@ Wave 3: ┌────┴────┐
 
 ## 11. no_std 兼容性
 
-FFI 模块完全兼容 `no_std` 环境。所有操作均为指针运算和结构体构造，无堆分配。存储层的 `no_std` 兼容性参见 `05-storage.md` §11，布局层的 `no_std` 兼容性参见 `06-memory-layout.md` §11。
+FFI 模块完全兼容 `no_std` 环境。所有操作均为指针运算和结构体构造，无堆分配。存储层的 `no_std` 兼容性参见 `05-storage.md` §11，布局层的 `no_std` 兼容性参见 `06-memory.md` §11。
 
 ```rust
 // No extern crate alloc needed — FFI module uses no heap allocation

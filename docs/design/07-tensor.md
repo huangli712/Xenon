@@ -1,7 +1,7 @@
 # 张量类型模块设计
 
 > 文档编号: 07 | 模块: `src/tensor/` | 阶段: Phase 3
-> 前置文档: `02-dimension.md`, `05-storage.md`, `06-memory-layout.md`
+> 前置文档: `02-dimension.md`, `05-storage.md`, `06-memory.md`
 > 需求参考: 需求说明书 §8
 
 ---
@@ -87,9 +87,9 @@ src/tensor/
 |----------|-----------------|
 | `storage` | `Owned<A>`, `ViewRepr<&'a A>`, `ViewMutRepr<&'a mut A>`, `ArcRepr<A>`, `Storage`, `StorageMut`, `StorageOwned`, `StorageShared`（参见 `05-storage.md §4`） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.size()`, `.ndim()`（参见 `02-dimension.md §4`） |
-| `layout` | `LayoutFlags`, `compute_f_strides()`, `is_f_contiguous()`, `is_aligned()`（参见 `06-memory-layout.md §4`） |
+| `layout` | `LayoutFlags`, `compute_f_strides()`, `is_f_contiguous()`, `is_aligned()`（参见 `06-memory.md §4`） |
 
-> 注意：`Layout` 结构体定义于 `06-memory-layout.md`，目前为"供未来扩展预留"。`TensorBase` 当前直接内联 `LayoutFlags` 字段而非嵌套 `Layout`。
+> 注意：`Layout` 结构体定义于 `06-memory.md`，目前为"供未来扩展预留"。`TensorBase` 当前直接内联 `LayoutFlags` 字段而非嵌套 `Layout`。
 
 ### 3.3 依赖方向声明
 
@@ -492,7 +492,7 @@ let t = unsafe {
 > |------|------|------|
 > | `TensorBase.strides` | `D`（存储 `usize`） | 与 shape 同类型，编译期保证维度数一致 |
 > | `strides()` 返回值 | `&[isize]` | 通过 Dimension trait 的 `strides_isize()` 方法转换（参见 `02-dimension.md §6`） |
-> | layout 模块计算 | `isize` | 负步长和零步长在 layout 层计算（参见 `06-memory-layout.md §4.2`） |
+> | layout 模块计算 | `isize` | 负步长和零步长在 layout 层计算（参见 `06-memory.md §4.2`） |
 >
 > **权衡：**
 > - D 类型保证 strides 与 shape 维度数相同（编译期）
@@ -788,7 +788,7 @@ use alloc::vec::Vec;
 | 静态维度 `Ix0`~`Ix6` | ✅ | 栈分配，无堆依赖 |
 | 动态维度 `IxDyn` | ✅ | 使用 `alloc::vec::Vec`，需 `no_std + alloc` |
 | `from_raw_parts` / `from_raw_parts_mut` | ✅ | 仅使用 `core`，裸指针操作 |
-| `LayoutFlags` | ✅ | 裸 `u8` 位标志，无依赖（参见 `06-memory-layout.md §11`） |
+| `LayoutFlags` | ✅ | 裸 `u8` 位标志，无依赖（参见 `06-memory.md §11`） |
 
 条件编译处理：
 

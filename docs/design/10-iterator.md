@@ -84,7 +84,7 @@ src/iter/
 | `tensor` | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `TensorViewMut<'a, A, D>`, `.shape()`, `.strides()`, `.as_ptr()`, `.len()`（参见 `07-tensor.md §4`） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `RemoveAxis`, `D::Smaller`（参见 `02-dimension.md §4`） |
 | `storage` | `Storage<Elem = A>`, `StorageMut<Elem = A>`, `Owned<A>`（参见 `05-storage.md §4`） |
-| `layout` | `LayoutFlags`, `is_f_contiguous()`（参见 `06-memory-layout.md §4`） |
+| `layout` | `LayoutFlags`, `is_f_contiguous()`（参见 `06-memory.md §4`） |
 | `broadcast` | `broadcast_shape()`（Zip 构造时验证形状兼容性，参见 `15-broadcast.md §4`） |
 
 ### 3.3 依赖方向

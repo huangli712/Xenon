@@ -95,7 +95,7 @@ src/convert/
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §4） |
 | `storage` | `Storage<Elem=A>`, `StorageMut`, `Owned<A>`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`（参见 `05-storage.md` §4） |
 | `element` | `Element`, `CastTo<B>`（参见 `03-element-types.md` §4.8） |
-| `layout` | `is_f_contiguous()`（参见 `06-memory-layout.md` §4） |
+| `layout` | `is_f_contiguous()`（参见 `06-memory.md` §4） |
 | `error` | `XenonError`, `Result<T>`（参见 `26-error-handling.md` §4） |
 
 ### 3.3 依赖方向声明
@@ -560,7 +560,7 @@ Wave 3: [T6] [T7]  (并行)
 | `element` | convert → element | 泛型约束 `A: CastTo<B>` 驱动逐元素转换；`CastTo` trait 定义在 element 模块（参见 `03-element-types.md` §4） |
 | `math` | convert → math | `cast()` 内部通过 `iter().map().collect()` 执行逐元素转换，不使用 `mapv()`（因为 `mapv` 返回 `Tensor<A, D>` 而非 `Tensor<B, D>`） |
 | `storage` | convert → storage | `into_owned()` 消费 `StorageIntoOwned` trait；存储模式互转依赖 `Owned`/`ViewRepr`/`ArcRepr`（参见 `05-storage.md` §4） |
-| `layout` | convert → layout | `to_owned()` 调用 `is_f_contiguous()` 判断是否需要重排（参见 `06-memory-layout.md` §4） |
+| `layout` | convert → layout | `to_owned()` 调用 `is_f_contiguous()` 判断是否需要重排（参见 `06-memory.md` §4） |
 | `complex` | convert → complex | `CastTo<Complex<T>>` 实现依赖 `Complex` 结构体定义；反向转换（Complex → T）故意不提供（参见 `04-complex-type.md` §4） |
 
 ---

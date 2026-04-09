@@ -82,7 +82,7 @@ src/dimension/
 ### 3.3 依赖方向声明
 
 > **依赖方向：单向向上。** `dimension/` 仅消费 `error` 和 `private`，不被它们反向依赖。
-> 被下游模块消费：`layout`（参见 `06-memory-layout.md` §3）、`storage`（参见 `05-storage.md` §3）、`tensor`（参见 `07-tensor.md` §4）、`shape`（参见 `16-shape.md` §4）、`iter`（参见 `10-iterator.md` §4）、`ops`（参见 `11-math.md` §4）、`index`（参见 `17-indexing.md` §4）。
+> 被下游模块消费：`layout`（参见 `06-memory.md` §3）、`storage`（参见 `05-storage.md` §3）、`tensor`（参见 `07-tensor.md` §4）、`shape`（参见 `16-shape.md` §4）、`iter`（参见 `10-iterator.md` §4）、`ops`（参见 `11-math.md` §4）、`index`（参见 `17-indexing.md` §4）。
 
 ---
 
@@ -213,7 +213,7 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
     /// alignment.
     ///
     /// Negative strides are always tracked through the `LayoutFlags::HAS_NEG_STRIDE`
-    /// flag in the layout module (see `06-memory-layout.md` §4). The layout module
+    /// flag in the layout module (see `06-memory.md` §4). The layout module
     /// sets this flag whenever any stride is negative, and all downstream consumers
     /// check this flag before interpreting stride values. This ensures that negative
     /// strides are never silently mishandled.
@@ -827,7 +827,7 @@ impl Reverse for IxDyn {
 
 ### 5.2 负步长支持说明
 
-维度层保存无符号形状（`usize`），步长计算结果也为无符号。负步长由 `layout` 模块处理（参见 `06-memory-layout.md` §4）：
+维度层保存无符号形状（`usize`），步长计算结果也为无符号。负步长由 `layout` 模块处理（参见 `06-memory.md` §4）：
 
 ```
 Dimension 层：shape = [3, 4], strides_for_f_order() = Ix2(1, 3)

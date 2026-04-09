@@ -961,7 +961,7 @@ where
 
 ### 10.2 与 Layout 模块
 
-Storage 提供对齐信息（`is_aligned()`），Layout 模块查询对齐状态更新 `LayoutFlags::ALIGNED`（参见 `06-memory-layout.md` §4）。
+Storage 提供对齐信息（`is_aligned()`），Layout 模块查询对齐状态更新 `LayoutFlags::ALIGNED`（参见 `06-memory.md` §4）。
 
 ### 10.3 与 Parallel 模块
 

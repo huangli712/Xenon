@@ -90,7 +90,7 @@ src/
 |----------|-----------------|
 | `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, 类型别名 `Tensor0`~`Tensor6`（参见 `07-tensor.md` §4） |
 | `storage` | `Owned<A>`, `Storage<Elem = A>`, `from_vec_aligned()`（参见 `05-storage.md` §4） |
-| `memory_layout` | `LayoutFlags`, `Order::F`, F-order 步长计算（参见 `06-memory-layout.md` §3） |
+| `memory_layout` | `LayoutFlags`, `Order::F`, F-order 步长计算（参见 `06-memory.md` §3） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`（参见 `02-dimension.md` §4） |
 | `element` | `Element`, `Zero`, `One`（参见 `03-element-types.md` §3） |
 | `error` | `XenonError::InvalidShape`（参见 `26-error-handling.md` §4） |
@@ -533,7 +533,7 @@ Wave 4:           [T6]
 |----------|------|------|
 | `tensor` | construct → tensor | 构造 `TensorBase` 实例（参见 `07-tensor.md` §4.1） |
 | `storage` | construct → storage | 使用 `Owned::zeros()`/`from_vec_aligned()`（参见 `05-storage.md` §4.2） |
-| `memory_layout` | construct → memory_layout | 计算 F-order 步长（参见 `06-memory-layout.md` §4） |
+| `memory_layout` | construct → memory_layout | 计算 F-order 步长（参见 `06-memory.md` §4） |
 | `dimension` | construct → dimension | 使用 `IntoDimension` 接受灵活形状参数（参见 `02-dimension.md` §4.3） |
 | `element` | construct → element | 使用 `Element`/`Zero`/`One` trait 约束（参见 `03-element-types.md` §3） |
 | `error` | construct → error | 返回 `XenonError::InvalidShape`（参见 `26-error-handling.md` §4.2） |
@@ -548,7 +548,7 @@ Wave 4:           [T6]
 | 属性 | 值 |
 |------|-----|
 | 决策 | `from_fn` 接收 `FnMut(&[usize]) -> A` 闭包，按 F-order 遍历 |
-| 理由 | 灵活性高（任意初始化逻辑）；F-order 遍历保证数据布局一致性（参见 `06-memory-layout.md` §3.2） |
+| 理由 | 灵活性高（任意初始化逻辑）；F-order 遍历保证数据布局一致性（参见 `06-memory.md` §3.2） |
 | 替代方案 | 接收 `Iterator<Item=A>` — 放弃，不提供多维索引信息 |
 | 替代方案 | 接收 `FnMut(usize) -> A`（线性索引） — 放弃，用户需要自行计算多维索引 |
 

@@ -233,7 +233,7 @@ Benchmark 分类
 | F-contiguous | `zeros(shape)` | 默认路径性能基线 |
 | Non-contiguous | `tensor.slice(s![.., 0..n-1])` | 非连续路径标量回退惩罚 |
 
-> **注意**：Xenon 仅支持 F-order 布局，不存在 C-order 路径。非连续布局通过切片/转置视图产生（参见 `06-memory-layout.md §4`）。
+> **注意**：Xenon 仅支持 F-order 布局，不存在 C-order 路径。非连续布局通过切片/转置视图产生（参见 `06-memory.md §4`）。
 
 ---
 

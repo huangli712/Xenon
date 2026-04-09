@@ -1,7 +1,7 @@
 # 形状操作模块设计
 
 > 文档编号: 16 | 模块: `src/shape/` | 阶段: Phase 4
-> 前置文档: `07-tensor.md`, `06-memory-layout.md`
+> 前置文档: `07-tensor.md`, `06-memory.md`
 > 需求参考: 需求说明书 §17
 
 ---
@@ -83,7 +83,7 @@ src/shape/
 |----------|-----------------|
 | `tensor` | `TensorBase<S, D>`, `TensorView`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.offset()`，参见 `07-tensor.md` §4 |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `RemoveAxis`, `IntoDimension`，参见 `02-dimension.md` §3 |
-| `memory_layout` | `LayoutFlags`, `is_f_contiguous()`, `compute_f_strides()`, `Order`，参见 `06-memory-layout.md` §3, §4.x |
+| `memory_layout` | `LayoutFlags`, `is_f_contiguous()`, `compute_f_strides()`, `Order`，参见 `06-memory.md` §3, §4.x |
 | `error` | `XenonError::InvalidShape`, `XenonError::LayoutMismatch`，参见 `26-error-handling.md` §4 |
 
 ### 3.3 依赖方向声明
@@ -231,7 +231,7 @@ where
         }
         
         // 3. Compute new strides (always F-order)
-        // See 06-memory-layout.md §4.x compute_flags and related stride computation
+        // See 06-memory.md §4.x compute_flags and related stride computation
         let new_strides = compute_f_strides(&shape);
         
         // 4. Create view
@@ -276,7 +276,7 @@ where
         
         // F-contiguous: reshape in-place (zero-copy)
         if self.is_f_contiguous() {
-            // See 06-memory-layout.md §4.x compute_flags and related stride computation
+            // See 06-memory.md §4.x compute_flags and related stride computation
             let new_strides = compute_f_strides(&shape);
             return Ok(Tensor {
                 storage: self.storage.into_owned(),
@@ -289,7 +289,7 @@ where
         
         // Non-contiguous: copy to contiguous then reshape
         let owned = self.to_contiguous();
-        // See 06-memory-layout.md §4.x compute_flags and related stride computation
+        // See 06-memory.md §4.x compute_flags and related stride computation
         let new_strides = compute_f_strides(&shape);
         Ok(Tensor {
             storage: owned.storage,
@@ -477,7 +477,7 @@ Wave 4:         [T5]
 |----------|------|------|
 | `tensor` | shape → tensor | 使用 `TensorBase` 结构和 `TensorView` 创建方法，参见 `07-tensor.md` §4 |
 | `dimension` | shape → dimension | 使用 `Dimension` trait 的形状操作方法，参见 `02-dimension.md` §3 |
-| `memory_layout` | shape → memory_layout | 检查连续性、计算步长，参见 `06-memory-layout.md` §3 |
+| `memory_layout` | shape → memory_layout | 检查连续性、计算步长，参见 `06-memory.md` §3 |
 | `broadcast` | shape ← broadcast | 广播视图不可 reshape（非连续），参见 `15-broadcast.md` §5 |
 | `index` | index → shape | 切片后可 reshape（如连续），参见 `17-indexing.md` §4 |
 
@@ -558,7 +558,7 @@ use alloc::vec::Vec;
 | `transpose()` / `t()` | ✅ | 纯元数据操作（交换步长和形状），无堆分配 |
 | `reshape()`（连续路径） | ✅ | 仅更新元数据，无堆分配 |
 | `into_shape()`（非连续路径） | ✅ | 需 `no_std + alloc`，调用 `to_contiguous()` 拷贝数据，参见 `05-storage.md` §5 |
-| `LayoutFlags` 更新 | ✅ | 位标志操作，无依赖，参见 `06-memory-layout.md` §3 |
+| `LayoutFlags` 更新 | ✅ | 位标志操作，无依赖，参见 `06-memory.md` §3 |
 
 条件编译处理：
 

@@ -114,7 +114,7 @@ tests/
 | `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element-types.md §4`） |
 | `complex` | `Complex<f32>`, `Complex<f64>`（参见 `04-complex-type.md §4`） |
 | `storage` | `Owned`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`, `Storage`（参见 `05-storage.md §4`） |
-| `layout` | `LayoutFlags`, `Order`（参见 `06-memory-layout.md §4`） |
+| `layout` | `LayoutFlags`, `Order`（参见 `06-memory.md §4`） |
 | `error` | `XenonError`, `Result<T>`（参见 `26-error-handling.md §4`） |
 
 ### 3.3 依赖方向声明

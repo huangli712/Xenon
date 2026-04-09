@@ -377,7 +377,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 |------|------|------|------|
 | **L0** | error, private | 无 | `26-error-handling.md` |
 | **L1** | dimension, element, complex | error（element 额外依赖 complex） | `02-dimension.md`、`03-element-types.md`、`04-complex-type.md` |
-| **L2** | layout, workspace | error, dimension（workspace 独立于核心类型系统，仅依赖 core/alloc，可被上游库直接使用） | `06-memory-layout.md`、`24-workspace.md` |
+| **L2** | layout, workspace | error, dimension（workspace 独立于核心类型系统，仅依赖 core/alloc，可被上游库直接使用） | `06-memory.md`、`24-workspace.md` |
 | **L3** | storage | core/alloc | `05-storage.md` |
 | **L4** | tensor | storage, dimension, layout, element | `07-tensor.md` |
 | **L5** | broadcast, iter, ffi | tensor | `15-broadcast.md`、`10-iterator.md`、`23-ffi.md` |
@@ -624,7 +624,7 @@ pub use error::XenonError;
 
 ## 10. 核心类型速查
 
-各类型的详细设计参见对应模块文档（`02-dimension.md`、`03-element-types.md`、`05-storage.md`、`06-memory-layout.md`）。
+各类型的详细设计参见对应模块文档（`02-dimension.md`、`03-element-types.md`、`05-storage.md`、`06-memory.md`）。
 
 ```rust
 // Tensor core types
@@ -767,7 +767,7 @@ Wave 5: [W5.1] [W5.2] [W5.3] [W5.4]
 | 属性 | 值 |
 |------|-----|
 | 决策 | 仅支持列优先（F-order）布局 |
-| 理由 | 与 BLAS/LAPACK 兼容；减少布局组合爆炸；简化步长计算（参见 `06-memory-layout.md` §1） |
+| 理由 | 与 BLAS/LAPACK 兼容；减少布局组合爆炸；简化步长计算（参见 `06-memory.md` §1） |
 | 替代方案 | 同时支持 F-order 和 C-order — 放弃，超出范围且增加复杂度 |
 
 ### 决策 3：功能最小化原则

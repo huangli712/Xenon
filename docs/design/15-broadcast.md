@@ -1,7 +1,7 @@
 # 广播模块设计
 
 > 文档编号: 15 | 模块: `src/broadcast.rs` | 阶段: Phase 3
-> 前置文档: `02-dimension.md`, `07-tensor.md`, `06-memory-layout.md`, `26-error-handling.md`
+> 前置文档: `02-dimension.md`, `07-tensor.md`, `06-memory.md`, `26-error-handling.md`
 > 需求参考: 需求说明书 §16
 
 ---
@@ -473,7 +473,7 @@ Wave 4:           [T7]
 | `ops/arithmetic` | ops → broadcast | 运算符重载中调用 `broadcast_shape()` 和 `broadcast_with()` |
 | `iter/zip` | iter → broadcast | `Zip::and()` 支持广播视图，检查兼容性，参见 `10-iterator.md` §5 |
 | `shape` | shape → broadcast | `broadcast_to` 方法调用广播模块，参见 `16-shape.md` §4 |
-| `layout` | broadcast → layout | 广播后设置 `HAS_ZERO_STRIDE` 标志、更新连续性，参见 `06-memory-layout.md` §3 |
+| `layout` | broadcast → layout | 广播后设置 `HAS_ZERO_STRIDE` 标志、更新连续性，参见 `06-memory.md` §3 |
 | `math` | math → broadcast | 二元运算前广播两个操作数，参见 `11-math.md` §4 |
 
 ---

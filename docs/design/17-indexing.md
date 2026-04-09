@@ -1,7 +1,7 @@
 # 索引操作模块设计
 
 > 文档编号: 17 | 模块: `src/index/` | 阶段: Phase 3
-> 前置文档: `07-tensor.md`, `02-dimension.md`, `06-memory-layout.md`, `26-error-handling.md`
+> 前置文档: `07-tensor.md`, `02-dimension.md`, `06-memory.md`, `26-error-handling.md`
 > 需求参考: 需求说明书 §18
 
 ---
@@ -86,7 +86,7 @@ src/index/
 |----------|-----------------|
 | `tensor` | `TensorBase<S, D>`, `TensorView`, `TensorViewMut`, `.shape()`, `.strides()`, `.as_ptr()`, `.as_mut_ptr()`，参见 `07-tensor.md` §4 |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.ndim()`，参见 `02-dimension.md` §3 |
-| `memory_layout` | `LayoutFlags`, `HAS_NEG_STRIDE`, `HAS_ZERO_STRIDE`，参见 `06-memory-layout.md` §3 |
+| `memory_layout` | `LayoutFlags`, `HAS_NEG_STRIDE`, `HAS_ZERO_STRIDE`，参见 `06-memory.md` §3 |
 
 > **注意**：索引越界使用 panic 处理（而非 XenonError 变体），参见 `26-error-handling.md §5.3`。`get()` 方法返回 `Option<&A>` 提供可恢复的越界检查路径。
 
@@ -667,7 +667,7 @@ Wave 4:           [T7]
 | `tensor` | index → tensor | 使用 `TensorBase` 的 `as_ptr()`/`as_mut_ptr()`，参见 `07-tensor.md` §4 |
 | `storage` | index → storage | 通过 `Storage`/`StorageMut` 访问元素，参见 `05-storage.md` §3 |
 | `dimension` | index → dimension | 使用 `Dimension::slice()` 获取形状切片，参见 `02-dimension.md` §3 |
-| `memory_layout` | index → memory_layout | 更新 `LayoutFlags`，参见 `06-memory-layout.md` §3 |
+| `memory_layout` | index → memory_layout | 更新 `LayoutFlags`，参见 `06-memory.md` §3 |
 | `iter` | iter → index | 迭代器使用 `get_unchecked()` 快速访问，参见 `10-iterator.md` §4 |
 | `shape` | shape → index | reshape 等操作可能触发拷贝，参见 `16-shape.md` §4 |
 

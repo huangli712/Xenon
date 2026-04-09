@@ -105,7 +105,7 @@ src/parallel/
 | `rayon` | `ThreadPool`, `ThreadPoolBuilder`, `ParallelIterator`, `IndexedParallelIterator` |
 | `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `.view()`, `.len()`, `Tensor::from_raw_vec_unchecked`（参见 `07-tensor.md §4.5`，pub(crate) 方法）（参见 `07-tensor.md §4`） |
 | `storage` | `RawStorage`, `Storage`, `StorageMut`, `.as_slice()`（参见 `05-storage.md §4`） |
-| `layout` | `LayoutFlags`, `is_f_contiguous()`（参见 `06-memory-layout.md §4`） |
+| `layout` | `LayoutFlags`, `is_f_contiguous()`（参见 `06-memory.md §4`） |
 | `broadcast` | `broadcast_shape()`（参见 `15-broadcast.md §4`） |
 
 ### 3.3 依赖方向声明
@@ -653,7 +653,7 @@ let result = par_zip_with(&a, &b, |x, y| x + y).unwrap(); // Forbidden silent ig
 │                                                                 │
 │  1. 检查连续性                                                    │
 │     ├─ is_f_contiguous() ?                                      │
-│     │   └─ 使用连续分块策略（参见 `06-memory-layout.md §4.4`）      │
+│     │   └─ 使用连续分块策略（参见 `06-memory.md §4.4`）      │
 │     │       compute_contiguous_chunks(len, config)              │
 │     │                                                           │
 │     └─ 非连续                                                    │
