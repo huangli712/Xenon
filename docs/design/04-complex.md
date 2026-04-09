@@ -1,7 +1,7 @@
 # 复数类型模块设计
 
 > 文档编号: 04 | 模块: `src/complex/` | 阶段: Phase 1
-> 前置文档: `00-coding-standards.md`, `01-architecture.md`
+> 前置文档: `00-coding.md`, `01-architecture.md`
 > 需求参考: 需求说明书 §5
 
 ---
@@ -992,7 +992,7 @@ Wave 5: [T11] → [T12]
 | `is_nan()`, `is_finite()` | 具体类型实现，`f32::is_nan()`/`f32::is_finite()` 在 `core` 中提供，**no_std 可用** |
 | 类型转换 | `From` trait 实现和 `to_f32()` 方法，天然 no_std |
 
-> **与 `00-coding-standards.md` §9.1 保持一致**：libm **不是** Xenon 的依赖。`Complex<f32>`/`Complex<f64>` 的数学方法（`norm`, `exp`, `ln`, `sqrt`, `arg`, `to_polar`, `from_polar`）使用 `f32`/`f64` 的 inherent 方法（`hypot`, `atan2`, `exp`, `sin`, `cos`, `ln`, `sqrt` 等）。**这些浮点数学函数在 Rust 1.85 中仍在 `std` 中，不在 `core`**。因此在 `no_std` 环境下，这些数学方法不可用，需要启用 `std` feature。`norm_sqr()`、基础方法、算术运算、类型转换等不依赖浮点数学函数，在 `no_std` 下均可使用。
+> **与 `00-coding.md` §9.1 保持一致**：libm **不是** Xenon 的依赖。`Complex<f32>`/`Complex<f64>` 的数学方法（`norm`, `exp`, `ln`, `sqrt`, `arg`, `to_polar`, `from_polar`）使用 `f32`/`f64` 的 inherent 方法（`hypot`, `atan2`, `exp`, `sin`, `cos`, `ln`, `sqrt` 等）。**这些浮点数学函数在 Rust 1.85 中仍在 `std` 中，不在 `core`**。因此在 `no_std` 环境下，这些数学方法不可用，需要启用 `std` feature。`norm_sqr()`、基础方法、算术运算、类型转换等不依赖浮点数学函数，在 `no_std` 下均可使用。
 
 ---
 

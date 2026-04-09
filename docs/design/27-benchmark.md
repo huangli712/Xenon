@@ -1,7 +1,7 @@
 # 基准测试模块设计
 
 > 文档编号: 27 | 模块: `benches/` | 阶段: Phase 6
-> 前置文档: 所有前置文档（`00-coding-standards.md` ~ `26-error.md`）
+> 前置文档: 所有前置文档（`00-coding.md` ~ `26-error.md`）
 > 需求参考: 需求说明书 §28.2
 
 ---
@@ -607,7 +607,7 @@ Wave 5:           [T12]
 | 属性 | 值 |
 |------|-----|
 | 决策 | 使用 criterion.rs 0.5 作为 benchmark 框架 |
-| 理由 | 统计分析（置信区间、异常值检测）；HTML 报告；与 CI 集成成熟；stable Rust 可用（参见 `00-coding-standards.md §7`） |
+| 理由 | 统计分析（置信区间、异常值检测）；HTML 报告；与 CI 集成成熟；stable Rust 可用（参见 `00-coding.md §7`） |
 | 替代方案 | `#[bench]` nightly — 放弃，需要 nightly 编译器 |
 | 替代方案 | divan — 放弃，生态不如 criterion 成熟 |
 

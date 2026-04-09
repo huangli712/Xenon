@@ -1,7 +1,7 @@
 # 错误处理模块设计
 
 > 文档编号: 26 | 模块: `src/error.rs` | 阶段: Phase 1
-> 前置文档: `00-coding-standards.md`
+> 前置文档: `00-coding.md`
 > 需求参考: 需求说明书 §27
 
 ---
@@ -27,7 +27,7 @@
 | 信息丰富 | 每个变体携带上下文（期望 vs 实际） |
 | 零堆分配 | shape 使用 `Cow<'static, [usize]>`，静态形状零分配 |
 | no_std 友好 | 仅依赖 `core` + `alloc` |
-| Rust 惯例一致 | 索引越界使用 panic，与标准库 slice 行为一致（参见 `00-coding-standards.md §4`） |
+| Rust 惯例一致 | 索引越界使用 panic，与标准库 slice 行为一致（参见 `00-coding.md §4`） |
 
 ### 1.3 在架构中的位置
 
@@ -623,7 +623,7 @@ Wave 3: ┌──[T6]────┤
 | 属性 | 值 |
 |------|-----|
 | 决策 | 使用单一 `XenonError` 枚举 |
-| 理由 | API 简单、模式匹配完整、无错误类型爆炸、`?` 无需转换（参见 `00-coding-standards.md §4`） |
+| 理由 | API 简单、模式匹配完整、无错误类型爆炸、`?` 无需转换（参见 `00-coding.md §4`） |
 | 替代方案 | 多个错误类型（ShapeError, LayoutError, ...） — 放弃，增加 API 复杂度 |
 | 替代方案 | 使用 thiserror 宏 — 放弃，引入外部依赖，与最小依赖原则冲突 |
 

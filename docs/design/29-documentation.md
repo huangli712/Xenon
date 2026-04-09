@@ -1,7 +1,7 @@
 # 文档模块设计
 
 > 文档编号: 29 | 模块: 全局 | 阶段: Phase 6
-> 前置文档: 所有前置文档（`00-coding-standards.md` ~ `28-tests.md`）
+> 前置文档: 所有前置文档（`00-coding.md` ~ `28-tests.md`）
 > 需求参考: 需求说明书 §28.1
 
 ---
@@ -14,7 +14,7 @@
 |------|------|--------|
 | API 文档 | 所有 pub 类型和函数的 doc comment | 内部实现注释（非 pub） |
 | 使用示例 | 关键 API 的可运行代码示例（doctest） | 完整教程、视频教程 |
-| Safety 说明 | 所有 unsafe 函数的 `# Safety` 文档节（参见 `00-coding-standards.md §5`） | 安全函数的 Safety 节 |
+| Safety 说明 | 所有 unsafe 函数的 `# Safety` 文档节（参见 `00-coding.md §5`） | 安全函数的 Safety 节 |
 | Crate 级文档 | lib.rs 顶层文档、README、CHANGELOG | 第三方博客文章 |
 | 模块级文档 | 各 mod.rs 的 `//!` 模块概述 | 内部实现文档 |
 | examples/ | 独立可运行示例程序 | 交互式 notebook |
@@ -24,7 +24,7 @@
 
 | 原则 | 体现 |
 |------|------|
-| 全覆盖 | 所有 pub API 必须有 doc comment（参见 `00-coding-standards.md §6`） |
+| 全覆盖 | 所有 pub API 必须有 doc comment（参见 `00-coding.md §6`） |
 | 可测试 | 关键 API 的示例通过 `cargo test --doc` 验证 |
 | 安全性透明 | 所有 unsafe 函数有 `# Safety` 节 |
 | 惯用法 | 遵循 Rust API Guidelines |
@@ -120,7 +120,7 @@ CHANGELOG.md                  # 版本变更记录
 ├── 依赖所有模块设计文档（00-28）
 │   └── 每个模块的文档内容基于其设计文档
 ├── 依赖 00-coding-standards
-│   └── 文档风格遵循编码规范（参见 `00-coding-standards.md §6`）
+│   └── 文档风格遵循编码规范（参见 `00-coding.md §6`）
 ├── 被 28-integration-tests 依赖
 │   └── doctest 也是测试的一部分（参见 `28-tests.md §11`）
 └── 被 27-benchmark 依赖
@@ -165,7 +165,7 @@ L3: 示例 (examples/)
 |------|-----------|----------|
 | L0 | 必须存在 | CI 检查 |
 | L1 | 每个 pub mod 必须有模块文档 | `#![warn(missing_docs)]` |
-| L2 | 每个 pub 项必须有 doc comment | `#![warn(missing_docs)]`（参见 `00-coding-standards.md §6`） |
+| L2 | 每个 pub 项必须有 doc comment | `#![warn(missing_docs)]`（参见 `00-coding.md §6`） |
 | L3 | 关键 API 至少一个示例 | `cargo test --doc` |
 
 ---
@@ -925,7 +925,7 @@ Wave 6: [T17]
 | 属性 | 值 |
 |------|-----|
 | 决策 | 所有 doc comment 和 README 使用英文 |
-| 理由 | Rust 生态惯例；docs.rs 面向全球开发者（参见 `00-coding-standards.md §6`） |
+| 理由 | Rust 生态惯例；docs.rs 面向全球开发者（参见 `00-coding.md §6`） |
 | 替代方案 | 中文文档 — 放弃，不符合 Rust 社区惯例 |
 
 ### 决策 2：doctest 使用 `?` 而非 `unwrap()`

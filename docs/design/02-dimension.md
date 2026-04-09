@@ -1,7 +1,7 @@
 # 维度系统模块设计
 
 > 文档编号: 02 | 模块: `src/dimension/` | 阶段: Phase 1
-> 前置文档: `00-coding-standards.md`, `01-architecture.md`
+> 前置文档: `00-coding.md`, `01-architecture.md`
 > 需求参考: 需求说明书 §3
 
 ---

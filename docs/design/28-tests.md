@@ -1,7 +1,7 @@
 # 集成测试模块设计
 
 > 文档编号: 28 | 模块: `tests/` | 阶段: Phase 6
-> 前置文档: 所有前置文档（`00-coding-standards.md` ~ `27-benchmark.md`）
+> 前置文档: 所有前置文档（`00-coding.md` ~ `27-benchmark.md`）
 > 需求参考: 需求说明书 §28.2, §28.4
 
 ---
