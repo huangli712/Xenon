@@ -235,7 +235,7 @@ where
             });
         }
         let strides = dim.strides_for_f_order();
-        // from_vec_aligned: defined in 05-storage.md §5.1 and 21-type-conversion.md §5.1;
+        // from_vec_aligned: defined in 05-storage.md §5.1 and 21-type.md §5.1;
         // copies data into a 64-byte aligned allocation for SIMD compatibility.
         let storage = Owned::from_vec_aligned(data);
         Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) })

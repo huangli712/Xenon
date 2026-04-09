@@ -53,7 +53,7 @@ src/
 
 多文件设计：三个操作（clip、fill、to_contiguous）按职责分离，通过 `mod.rs` 统一 re-export。
 
-> **注意**：`to_contiguous()` 的公共 API 定义在 `src/util/contiguous.rs`（本模块），内部委托给 `src/convert/contiguous.rs` 中的 `to_f_contiguous()` 辅助函数（参见 `21-type-conversion.md §4.5c`）。
+> **注意**：`to_contiguous()` 的公共 API 定义在 `src/util/contiguous.rs`（本模块），内部委托给 `src/convert/contiguous.rs` 中的 `to_f_contiguous()` 辅助函数（参见 `21-type.md §4.5c`）。
 
 ---
 
@@ -201,7 +201,7 @@ where
 
 ### 4.3 连续性保证（to_contiguous）
 
-> `to_contiguous()` 是本模块（20-utility.md §4）定义的公共 API。内部实现委托给 `src/convert/contiguous.rs` 中的 `to_f_contiguous()` 辅助函数（见 21-type-conversion.md §2.1 文件结构）。
+> `to_contiguous()` 是本模块（20-utility.md §4）定义的公共 API。内部实现委托给 `src/convert/contiguous.rs` 中的 `to_f_contiguous()` 辅助函数（见 21-type.md §2.1 文件结构）。
 
 ```rust
 impl<S, D, A> TensorBase<S, D>
@@ -412,7 +412,7 @@ Wave 2:      [T3] → [T4]
 | `fill` → `iter` | 依赖 | 通过 `iter_mut()` 遍历元素（参见 `10-iterator.md` §4.1） |
 | `clip` → `iter` | 依赖 | 通过 `iter()` 读取、写入新张量（参见 `10-iterator.md` §4.1） |
 | `to_contiguous` → `layout` | 依赖 | 查询连续性状态（参见 `06-memory.md` §4） |
-| `to_contiguous` → `convert` | 依赖 | 调用 `to_owned()`/`to_f_contiguous()`（参见 `21-type-conversion.md` §4.5 和 §4.6），始终输出 F-order；`to_f_contiguous()` 在 21 中定义，负责将非连续内存重排为 F-order 连续布局 |
+| `to_contiguous` → `convert` | 依赖 | 调用 `to_owned()`/`to_f_contiguous()`（参见 `21-type.md` §4.5 和 §4.6），始终输出 F-order；`to_f_contiguous()` 在 21 中定义，负责将非连续内存重排为 F-order 连续布局 |
 
 ---
 

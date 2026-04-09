@@ -382,7 +382,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 | **L4** | tensor | storage, dimension, layout, element | `07-tensor.md` |
 | **L5** | broadcast, iter, ffi | tensor | `15-broadcast.md`、`10-iterator.md`、`23-ffi.md` |
 | **L6** | math, matrix, reduction, shape, index, util | tensor, broadcast（部分模块还需 iter） | `11-math.md`、`12-matrix.md`、`13-reduction.md`、`14-set.md`、`16-shape.md`、`17-indexing.md`、`20-utility.md` |
-| **L7** | construct, convert, format | tensor, shape | `18-construction.md`、`21-type-conversion.md`、`22-format-output.md` |
+| **L7** | construct, convert, format | tensor, shape | `18-construction.md`、`21-type.md`、`22-format-output.md` |
 
 ### 5.2 依赖图（ASCII）
 

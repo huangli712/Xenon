@@ -405,7 +405,7 @@ pub unsafe trait StorageShared: Storage + Clone {
 
 ### 4.9 StorageIntoOwned Trait
 
-消耗式转为 Owned 存储，用于 `into_owned()` 和 `into_shape()`（参见 `21-type-conversion.md §4.5`）。
+消耗式转为 Owned 存储，用于 `into_owned()` 和 `into_shape()`（参见 `21-type.md §4.5`）。
 
 ```rust
 /// Storage types that can be converted into an owned tensor by consuming self.

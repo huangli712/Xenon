@@ -336,7 +336,7 @@ let c = &a + &b.cast::<f64>();  // explicit conversion
 
 ### 4.8 CastTo\<T\> trait（类型转换）
 
-`CastTo<T>` 定义逐元素类型转换规则，由 `convert/cast.rs` 模块使用（参见 `21-type-conversion.md §4`）。
+`CastTo<T>` 定义逐元素类型转换规则，由 `convert/cast.rs` 模块使用（参见 `21-type.md §4`）。
 
 ```rust
 // src/element/mod.rs (or element/cast.rs)
@@ -344,7 +344,7 @@ let c = &a + &b.cast::<f64>();  // explicit conversion
 /// Element-wise type conversion trait.
 ///
 /// Defines explicit conversion from `Self` to `T`.
-/// Overflow behavior is explicitly defined per implementation (see `21-type-conversion.md §4.3`).
+/// Overflow behavior is explicitly defined per implementation (see `21-type.md §4.3`).
 ///
 /// This trait is NOT sealed — it is implemented for all supported type pairs.
 /// External crates cannot add new element types (due to `Sealed`), but they do not
@@ -355,7 +355,7 @@ pub trait CastTo<T>: Element {
 }
 
 // Implemented for all supported source → target type pairs.
-// See 21-type-conversion.md §5.1 for full implementation table.
+// See 21-type.md §5.1 for full implementation table.
 // Examples:
 //   impl CastTo<f64> for f32  -- lossless upcast
 //   impl CastTo<f32> for f64  -- round-to-nearest-even
@@ -494,7 +494,7 @@ impl RealScalar for f64 {
 | `linalg` | `Numeric` | 内积运算 |
 | `cast/convert` | `Element` | 类型转换 |
 
-> 各模块的详细接口约定参见对应设计文档（`11-math.md` §4、`13-reduction.md` §4、`21-type-conversion.md` §4）。
+> 各模块的详细接口约定参见对应设计文档（`11-math.md` §4、`13-reduction.md` §4、`21-type.md` §4）。
 
 ### 6.2 接口边界
 

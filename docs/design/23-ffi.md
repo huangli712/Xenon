@@ -369,7 +369,7 @@ where
 }
 ```
 
-> **设计决策：** `into_raw_parts` 仅适用于 Owned 存储。View/ViewMut 的数据仍由原借用绑定，调用方应谨慎处理。如需将 View 转为 Owned 再解构，参见 `21-type-conversion.md` §4.5。
+> **设计决策：** `into_raw_parts` 仅适用于 Owned 存储。View/ViewMut 的数据仍由原借用绑定，调用方应谨慎处理。如需将 View 转为 Owned 再解构，参见 `21-type.md` §4.5。
 
 #### 内存管理
 
