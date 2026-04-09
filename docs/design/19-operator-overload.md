@@ -38,7 +38,7 @@ L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
 L5: broadcast (依赖 tensor, dimension)
-L6: ops/arithmetic  ← 当前模块（依赖 broadcast, elementwise_ops）
+L6: ops/arithmetic  ← 当前模块（依赖 broadcast, math）
 ```
 
 ---
@@ -85,7 +85,7 @@ src/ops/
 
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
-| `elementwise_ops` | `zip_with()`, `mapv()`, 二元逐元素运算（参见 `11-math.md` §4） |
+| `math` | `zip_with()`, `mapv()`, 二元逐元素运算（参见 `11-math.md` §4） |
 | `broadcast` | `broadcast_shape()`, `broadcast_with()`, `can_broadcast()`（参见 `15-broadcast.md` §4） |
 | `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.view()`（参见 `07-tensor.md` §4） |
 | `element` | `Numeric` trait 约束（排除 `bool`）（参见 `03-element-types.md` §3） |
@@ -95,7 +95,7 @@ src/ops/
 
 ### 3.3 依赖方向声明
 
-> **依赖方向：单向向上。** `arithmetic` 仅消费 `elementwise_ops`、`broadcast`、`tensor`、`element` 的 trait 和类型，不被它们依赖。`arithmetic` 是最上层的用户 API 模块。
+> **依赖方向：单向向上。** `arithmetic` 仅消费 `math`、`broadcast`、`tensor`、`element` 的 trait 和类型，不被它们依赖。`arithmetic` 是最上层的用户 API 模块。
 
 ---
 
@@ -425,7 +425,7 @@ Wave 5:      [T6]
 
 | 交互模块 | 方向 | 说明 |
 |----------|------|------|
-| `elementwise_ops` | arithmetic → elementwise | `zip_with()` 执行逐元素运算，`mapv()` 执行标量运算（参见 `11-math.md` §4） |
+| `math` | arithmetic → elementwise | `zip_with()` 执行逐元素运算，`mapv()` 执行标量运算（参见 `11-math.md` §4） |
 | `broadcast` | arithmetic → broadcast | `broadcast_with()` 广播两个张量到公共形状（参见 `15-broadcast.md` §4） |
 | `tensor` | arithmetic → tensor | 构造结果 `Tensor<A, D>`，使用 `.view()` 创建视图（参见 `07-tensor.md` §4） |
 | `element` | arithmetic → element | `Numeric` trait 约束排除 `bool` 类型（参见 `03-element-types.md` §3） |
@@ -531,8 +531,8 @@ use alloc::vec::Vec;
 
 ```rust
 // Operator overloading delegates to:
-//   - elementwise_ops::zip_with() → alloc (result Tensor)
-//   - elementwise_ops::mapv()     → alloc (result Tensor)
+//   - math::zip_with() → alloc (result Tensor)
+//   - math::mapv()     → alloc (result Tensor)
 //   - broadcast::broadcast_with() → alloc (SmallVec)
 
 #[cfg(not(feature = "std"))]

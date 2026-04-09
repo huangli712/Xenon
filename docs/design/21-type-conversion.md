@@ -558,7 +558,7 @@ Wave 3: [T6] [T7]  (并行)
 |----------|------|------|
 | `tensor` | convert → tensor | `cast()` 定义在 `TensorBase<S, D>` 的 impl 块上，消费 `.shape()`、`.memory_order()`；`to_owned()`/`into_owned()` 消费 `Storage`/`StorageIntoOwned`（参见 `07-tensor.md` §4） |
 | `element` | convert → element | 泛型约束 `A: CastTo<B>` 驱动逐元素转换；`CastTo` trait 定义在 element 模块（参见 `03-element-types.md` §4） |
-| `elementwise_ops` | convert → elementwise_ops | `cast()` 内部通过 `iter().map().collect()` 执行逐元素转换，不使用 `mapv()`（因为 `mapv` 返回 `Tensor<A, D>` 而非 `Tensor<B, D>`） |
+| `math` | convert → math | `cast()` 内部通过 `iter().map().collect()` 执行逐元素转换，不使用 `mapv()`（因为 `mapv` 返回 `Tensor<A, D>` 而非 `Tensor<B, D>`） |
 | `storage` | convert → storage | `into_owned()` 消费 `StorageIntoOwned` trait；存储模式互转依赖 `Owned`/`ViewRepr`/`ArcRepr`（参见 `05-storage.md` §4） |
 | `layout` | convert → layout | `to_owned()` 调用 `is_f_contiguous()` 判断是否需要重排（参见 `06-memory-layout.md` §4） |
 | `complex` | convert → complex | `CastTo<Complex<T>>` 实现依赖 `Complex` 结构体定义；反向转换（Complex → T）故意不提供（参见 `04-complex-type.md` §4） |
