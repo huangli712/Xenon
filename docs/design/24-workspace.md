@@ -855,7 +855,7 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
-| `test_workspace_new_basic` | 匇定容量和对齐创建工作空间 | 高 |
+| `test_workspace_new_basic` | 指定容量和对齐创建工作空间 | 高 |
 | `test_workspace_new_default` | 默认参数创建 | 高 |
 | `test_workspace_new_invalid_alignment` | 非法对齐值 panic | 高 |
 | `test_workspace_drop_no_leak` | Drop 后内存正确释放 | 中 |
@@ -866,7 +866,7 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 | `test_split_at_basic` | 匇定位置分割 | 高 |
 | `test_split_at_recursive` | 递归分割（多级） | 中 |
 | `test_split_at_oob` | 越界分割返回错误 | 高 |
-| `test_ensure_capacity_no_grow` | 宎量足够时不扩容 | 高 |
+| `test_ensure_capacity_no_grow` | 容量足够时不扩容 | 高 |
 | `test_ensure_capacity_grow` | 容量不足时扩容到 1.5 倍 | 高 |
 | `test_ensure_capacity_while_borrowed_fails` | 借用期间扩容失败 | 高 |
 | `test_alignment_verification` | 对齐值验证 | 中 |
@@ -910,7 +910,7 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 | 属性 | 值 |
 |------|-----|
 | 决策 | 使用简单的 workspace 类型而非 arena 或 pool 分配器 |
-| 理由 | 实现简单（~400 行）、语义清晰（借用/归还）、满足需求（对齐/分割/扩容）；arena 分配器更复杂，pool 颸附加管理生命周期困难 |
+| 理由 | 实现简单（~400 行）、语义清晰（借用/归还）、满足需求（对齐/分割/扩容）；arena 分配器更复杂，pool 附加管理生命周期困难 |
 | 替代方案 | arena 分配器（bump 分配） — 放弃，需求不复杂，无需 zone/reset |
 | 替代方案 | pool 分配（对象池） — 放弃，工作空间操作原始字节，无需对象语义 |
 

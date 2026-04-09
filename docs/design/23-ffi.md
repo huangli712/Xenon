@@ -675,7 +675,7 @@ unsafe {
 
 ### 5.1 指针有效性论证
 
-`as_ptr()` 和 `as_mut_ptr()` 的返回值有效性由 Rust 借用检查器保证（`NonNull` 指针在 `Owned` 枃持下）。
+`as_ptr()` 和 `as_mut_ptr()` 的返回值有效性由 Rust 借用检查器保证（`NonNull` 指针在 `Owned` 支持下）。
 
 对于 View 类型，`offset` 在 storage 范围内则结果合法。数据来自原始 Tensor 的 storage，生命周期由原始引用保证。
 

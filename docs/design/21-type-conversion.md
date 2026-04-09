@@ -146,7 +146,7 @@ where
 ```
 
 > **设计决策（修订）**：根据需求说明书 §23，`cast()` 仅适用于持有数据的存储模式。
-> 因此 `cast()` 分别在 `Owned<A>` 和 `ArcRepr<A>` 存储储模式上实现，
+> 因此 `cast()` 分别在 `Owned<A>` 和 `ArcRepr<A>` 存储模式上实现，
 > `ViewRepr`/`ViewMutRepr` 须先调用 `to_owned()`。
 
 ```rust

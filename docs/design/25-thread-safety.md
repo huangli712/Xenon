@@ -18,7 +18,7 @@
 | 正确性保证 | unsafe impl 的安全性论证和证明 | 通道 (mpsc/crossbeam) |
 | 并行安全约束 | SIMD 与并行组合的安全约束 | 异步运行时 (tokio/async-std) |
 | 编译期保证 | 通过 Rust 类型系统在编译期排除数据竞争 | 运行时锁或同步原语 |
-| 广播安全 | 广播结果不可可变迭代的约束 | — |
+| 广播安全 | 广播结果不可变迭代的约束 | — |
 
 ### 1.2 设计原则
 
@@ -312,10 +312,10 @@ unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 │                                                                 │
 │  定义：T: Sync ⟺ &T: Send                                      │
 │                                                                 │
-│  假设 ViewMutRepr<&mut A> 是 Sync：                             │
-│  • 则 &ViewMutRepr 可以跨线程移动                                │
+│  假设 ViewMutRepr<&mut A> 是 Sync：                              │
+│  • 则 &ViewMutRepr 可以跨线程移动                                  │
 │                                                                 │
-│  线程 1                          线程 2                         │
+│  线程 1                          线程 2                          │
 │  ─────────────────────────       ─────────────────────────      │
 │  let mut view: ViewMut<...> = ...                               │
 │  let view_ref = &view                                           │
@@ -323,8 +323,8 @@ unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 │  let slice1 = view_ref.data()   let slice2 = view_ref.data()    │
 │  // slice1: &mut [A]            // slice2: &mut [A]             │
 │                                                                 │
-│  问题：两个线程同时持有同一数据的 &mut [A]！                      │
-│  • 违反 Rust 借用规则                                           │
+│  问题：两个线程同时持有同一数据的 &mut [A]！                         │
+│  • 违反 Rust 借用规则                                            │
 │  • 可能导致数据竞争                                              │
 │                                                                 │
 │  结论：ViewMutRepr 不能是 Sync                                  │
@@ -332,7 +332,7 @@ unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 4.7 广播结果不可可变迭代的原因
+### 4.7 广播结果不可变迭代的原因
 
 ```rust
 // Broadcast results use ViewRepr (read-only view), no mutable iterator provided
