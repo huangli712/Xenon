@@ -84,7 +84,7 @@ src/reduction/
 | `element` | `Numeric`, `RealScalar` |
 | `dimension` | `Dimension`, `RemoveAxis`, `D::Smaller` |
 | `error` | `XenonError` |
-| `simd`（可选） | `pulp::Arch`（参见 `08-simd-backend.md` §3） |
+| `simd`（可选） | `pulp::Arch`（参见 `08-simd.md` §3） |
 | `parallel`（可选） | 并行归约路径（参见 `09-parallel.md` §3） |
 
 ### 3.3 依赖方向
@@ -407,7 +407,7 @@ Wave 5:         [T7]
 | `iter` | 使用 `Elements` 迭代器遍历元素，`AxisIter` 遍历轴，参见 `10-iterator.md` §4 |
 | `tensor` | 消费 `TensorBase<S, D>`，返回 `Tensor<A, D>`，参见 `07-tensor.md` §4 |
 | `element` | 泛型约束 `Numeric`（全局 sum），`RealScalar`（浮点特化），参见 `03-element-types.md` §3 |
-| `simd`（可选） | 连续数组自动走 SIMD 归约路径，参见 `08-simd-backend.md` §3 |
+| `simd`（可选） | 连续数组自动走 SIMD 归约路径，参见 `08-simd.md` §3 |
 | `parallel`（可选） | 大数组自动走并行归约路径，参见 `09-parallel.md` §4 |
 
 ---
@@ -497,7 +497,7 @@ use alloc::vec::Vec;
 | 沿轴 `sum_axis()` | ✅ | 需 `no_std + alloc`，分配结果 `Tensor` |
 | 整数 `checked_add` | ✅ | `core` 内建，无额外依赖 |
 | NaN 传播 | ✅ | IEEE 754 浮点语义，`core` 内建 |
-| SIMD 归约路径 | ✅ | pulp crate 支持 `no_std`，参见 `08-simd-backend.md` §11 |
+| SIMD 归约路径 | ✅ | pulp crate 支持 `no_std`，参见 `08-simd.md` §11 |
 | 并行归约路径 | ❌ | rayon 依赖 `std` 线程原语，参见 `09-parallel.md` §11 |
 
 条件编译处理：

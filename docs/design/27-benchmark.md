@@ -260,7 +260,7 @@ Benchmark 分类
 | `transpose_2d` | 2D 转置（零拷贝） | S/M/L | f64 | F-contiguous | 转置视图创建 |
 | `reshape_contiguous` | 连续 reshape（零拷贝） | S/M/L | f64 | F-contiguous | reshape 元数据操作 |
 | `reshape_noncontiguous` | 非连续 reshape（需拷贝） | M | f64 | Non-contiguous | reshape 数据拷贝 |
-| `simd_add_compare` | `a + b` (SIMD vs 标量) | M | f32/f64 | F-contiguous | SIMD 加速比（参见 `08-simd-backend.md §10`） |
+| `simd_add_compare` | `a + b` (SIMD vs 标量) | M | f32/f64 | F-contiguous | SIMD 加速比（参见 `08-simd.md §10`） |
 | `simd_sum_compare` | sum (SIMD vs 标量) | M | f32/f64 | F-contiguous | SIMD 归约加速 |
 | `par_sum_compare` | sum (并行 vs 串行) | L | f64 | F-contiguous | 并行加速比（参见 `09-parallel.md §10`） |
 | `par_add_compare` | `a + b` (并行 vs 串行) | L | f64 | F-contiguous | 并行逐元素加速 |
@@ -454,7 +454,7 @@ b.iter(|| &a + &b);
 | `set.rs` | `set` | `14-set.md` |
 | `broadcast.rs` | `broadcast` | `15-broadcast.md` |
 | `shape.rs` | `shape` | `16-shape.md` |
-| `simd_comparison.rs` | `simd` + `ops/` | `08-simd-backend.md` |
+| `simd_comparison.rs` | `simd` + `ops/` | `08-simd.md` |
 | `parallel_comparison.rs` | `parallel` + `ops/` | `09-parallel.md` |
 | `construction.rs` | `construct` | `18-construction.md` |
 
@@ -547,7 +547,7 @@ benchmark 文件
 
 - [ ] **T10**: 实现 `benches/simd_comparison.rs`
   - 文件: `benches/simd_comparison.rs`
-  - 内容: add/sum 在 `--features simd` 开/关时的对比（参见 `08-simd-backend.md §5`）
+  - 内容: add/sum 在 `--features simd` 开/关时的对比（参见 `08-simd.md §5`）
   - 测试: 分别以两种 feature 配置运行，对比结果
   - 前置: T3, T4
   - 预计: 10 min

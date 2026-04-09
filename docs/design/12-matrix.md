@@ -81,7 +81,7 @@ src/matrix/
 | `tensor` | `TensorView<'a, A, Ix1>`, `.shape()`, `.len()`, `.as_ptr()`, `.is_contiguous()` |
 | `element` | `Numeric`, `ComplexScalar` |
 | `error` | `XenonError::ShapeMismatch` |
-| `simd`（可选） | `pulp::Arch`（参见 `08-simd-backend.md` §3） |
+| `simd`（可选） | `pulp::Arch`（参见 `08-simd.md` §3） |
 
 ### 3.3 依赖方向
 
@@ -309,7 +309,7 @@ Wave 4: [T4]
 | `tensor` | 消费 `TensorView<A, Ix1>`，参见 `07-tensor.md` §4 |
 | `iter` | 使用 `Elements` 迭代器遍历元素，参见 `10-iterator.md` §3 |
 | `element` | 泛型约束 `Numeric` / `ComplexScalar`，参见 `03-element-types.md` §3 |
-| `simd`（可选） | 连续内存时自动走 SIMD 路径，参见 `08-simd-backend.md` §3 |
+| `simd`（可选） | 连续内存时自动走 SIMD 路径，参见 `08-simd.md` §3 |
 | `error` | 形状不匹配返回 `XenonError::ShapeMismatch` |
 
 ---
@@ -375,7 +375,7 @@ extern crate alloc;
 |------|:----------:|------|
 | `dot()`（标量路径） | ✅ | 使用 `Iterator::fold`，无堆分配 |
 | `dot()`（复数路径） | ✅ | 使用 `conj()` + `fold`，无堆分配 |
-| `dot()`（SIMD 路径） | ✅ | pulp crate 支持 `no_std`，参见 `08-simd-backend.md` §11 |
+| `dot()`（SIMD 路径） | ✅ | pulp crate 支持 `no_std`，参见 `08-simd.md` §11 |
 | `XenonError::ShapeMismatch` | ✅ | 使用 `core::fmt::Display`，无堆依赖 |
 
 条件编译处理：

@@ -326,7 +326,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
-| `test_simd_add_consistency` | SIMD add 与标量 add 结果一致（参见 `08-simd-backend.md §7`） | 高 |
+| `test_simd_add_consistency` | SIMD add 与标量 add 结果一致（参见 `08-simd.md §7`） | 高 |
 | `test_simd_sum_consistency` | SIMD sum 与标量 sum 结果一致 | 高 |
 | `test_simd_fallback_small` | 小数组 SIMD 回退到标量 | 中 |
 
@@ -704,7 +704,7 @@ fn test_bad_magic() {
 | `test_conversion.rs` | `convert` | `22-conversion.md` |
 | `test_ffi.rs` | `ffi`, `workspace` | `23-ffi.md`, `24-workspace.md` |
 | `test_parallel.rs` | `parallel` | `09-parallel.md` |
-| `test_simd.rs` | `simd` | `08-simd-backend.md` |
+| `test_simd.rs` | `simd` | `08-simd.md` |
 | `test_error.rs` | `error` | `26-error-handling.md` |
 
 ### 12.2 数据流

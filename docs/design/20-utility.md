@@ -451,7 +451,7 @@ Wave 2:      [T3] → [T4]
 **优化提示**：
 
 - 连续布局的 `fill` 可用 `ptr::write_bytes` 优化（仅限 `Copy` 类型）
-- `clip` 的热点路径可考虑 SIMD 加速（参见 `08-simd-backend.md` §4）
+- `clip` 的热点路径可考虑 SIMD 加速（参见 `08-simd.md` §4）
 
 ---
 

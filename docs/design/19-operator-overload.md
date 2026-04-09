@@ -484,7 +484,7 @@ Wave 5:      [T6]
 
 ### 10.3 SIMD 路径
 
-当 SIMD feature 启用时，`zip_with` 和 `mapv` 自动选择 SIMD 路径（参见 `08-simd-backend.md` §4）：
+当 SIMD feature 启用时，`zip_with` 和 `mapv` 自动选择 SIMD 路径（参见 `08-simd.md` §4）：
 
 | 运算符 | SIMD 指令 | 加速比 |
 |--------|----------|--------|

@@ -84,7 +84,7 @@ src/math/（整体模块依赖）
 | `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element-types.md §4`） |
 | `broadcast` | `broadcast_shape()`, `BroadcastView`（参见 `15-broadcast.md §4`） |
 | `dimension` | `BroadcastDim<E>` trait（编译期维度推导，参见 `02-dimension.md §4.9`） |
-| `simd`（可选） | `pulp::Arch`（参见 `08-simd-backend.md §4`） |
+| `simd`（可选） | `pulp::Arch`（参见 `08-simd.md §4`） |
 | `error` | `XenonError`, `BroadcastError`（参见 `26-error-handling.md §4`） |
 
 ### 3.3 依赖方向
@@ -416,7 +416,7 @@ where
 }
 ```
 
-参见 `08-simd-backend.md §4.5` 了解 SIMD 后端详情。
+参见 `08-simd.md §4.5` 了解 SIMD 后端详情。
 
 ---
 
@@ -483,7 +483,7 @@ where
   - 文件: `src/math/simd.rs`（#[cfg(feature = "simd")] 块）
   - 内容: 算术运算的 SIMD 路径，连续数组检测
   - 测试: `test_add_simd_vs_scalar`, `test_mul_simd_vs_scalar`
-  - 前置: T3, 08-simd-backend.md
+  - 前置: T3, 08-simd.md
   - 预计: 15 min
 
 ### 并行执行分组图
@@ -576,7 +576,7 @@ Wave 4: [T8]
 | `iter` | map 内部使用 `Elements`，zip_with 内部使用 `Zip`（参见 `10-iterator.md §4`） |
 | `broadcast` | 二元运算调用 `broadcast_shape()`（参见 `15-broadcast.md §4`） |
 | `element` | 泛型约束 `Numeric`/`RealScalar`/`ComplexScalar`（参见 `03-element-types.md §4`） |
-| `simd`（可选） | 连续数组时自动走 SIMD 路径（参见 `08-simd-backend.md §4.5`） |
+| `simd`（可选） | 连续数组时自动走 SIMD 路径（参见 `08-simd.md §4.5`） |
 
 ---
 
@@ -652,7 +652,7 @@ use alloc::vec::Vec;
 | 比较运算 (eq/ne/lt/gt) | ✅ | 无特殊依赖 |
 | 复数运算 (norm/conj) | ✅ | 基于 `map`，需 `no_std + alloc` |
 | 逻辑非 (not) | ✅ | 基于 `map`，需 `no_std + alloc` |
-| SIMD 加速路径 | ✅ | pulp crate 支持 `no_std`（参见 `08-simd-backend.md §11`） |
+| SIMD 加速路径 | ✅ | pulp crate 支持 `no_std`（参见 `08-simd.md §11`） |
 
 条件编译处理：
 

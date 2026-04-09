@@ -16,7 +16,7 @@
 | 步长计算 | F-order 步长公式、合法性验证 | 元素访问（由 `tensor/` 提供） |
 | 连续性检查 | F-连续检测算法 | 运算逻辑（由 `ops/` 提供） |
 | 对齐检查 | 指针对齐状态查询 | 实际对齐分配（由 `storage/alloc.rs` 提供） |
-| 负步长语义 | 切片/翻转时的负步长处理 | SIMD 路径选择（由 `simd/` 提供，参见 `08-simd-backend.md §4.6`） |
+| 负步长语义 | 切片/翻转时的负步长处理 | SIMD 路径选择（由 `simd/` 提供，参见 `08-simd.md §4.6`） |
 | 零步长语义 | 广播维度的零步长标记 | 广播规则实现（由 `broadcast/` 提供，参见 `15-broadcast.md §3`） |
 
 ### 1.2 设计原则
@@ -686,7 +686,7 @@ Wave 4:       [T8]
 
 | 交互点 | 方向 | 说明 |
 |--------|------|------|
-| 路径选择 | simd ← layout | simd 查询 `is_aligned()` 和 `is_f_contiguous()`（参见 `08-simd-backend.md §4.6`） |
+| 路径选择 | simd ← layout | simd 查询 `is_aligned()` 和 `is_f_contiguous()`（参见 `08-simd.md §4.6`） |
 | 步长检查 | simd ← layout | simd 检查步长是否为 1（连续） |
 
 ### 8.4 与 FFI 模块
