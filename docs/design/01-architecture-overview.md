@@ -98,7 +98,7 @@ xenon/
 │   │   ├── mod.rs             # Element trait 定义
 │   │   ├── numeric.rs         # Numeric trait（数值运算）
 │   │   ├── real.rs            # RealScalar trait（实数）
-│   │   ├── complex_scalar.rs  # ComplexScalar trait（复数）
+│   │   ├── complex.rs         # ComplexScalar trait（复数）
 │   │   └── primitives.rs      # 基础类型 impl（f32, f64, i32, i64, bool, usize）
 │   │
 │   ├── complex/               # 自定义复数类型

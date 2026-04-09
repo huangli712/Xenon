@@ -53,7 +53,7 @@ src/element/
 ├── mod.rs             # Element trait 定义、Sealed trait、模块 re-export
 ├── numeric.rs         # Numeric trait 定义（四则运算约束）
 ├── real.rs            # RealScalar trait 定义（实数数学函数）
-├── complex_scalar.rs  # ComplexScalar trait 定义（复数运算接口）
+├── complex.rs         # ComplexScalar trait 定义（复数运算接口）
 └── primitives.rs      # 为基础类型实现各层 trait
 ```
 
@@ -541,8 +541,8 @@ impl RealScalar for f64 {
   - 前置: T2
   - 预计: 10 min
 
-- [ ] **T4**: 创建 `complex_scalar.rs`，定义 ComplexScalar trait
-  - 文件: `src/element/complex_scalar.rs`
+- [ ] **T4**: 创建 `complex.rs`，定义 ComplexScalar trait
+  - 文件: `src/element/complex.rs`
   - 内容: `ComplexScalar` trait 定义（关联类型 Real + 复数方法）
   - 测试: 编译通过
   - 前置: T2
