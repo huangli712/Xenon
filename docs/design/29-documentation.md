@@ -1,7 +1,7 @@
 # 文档模块设计
 
 > 文档编号: 29 | 模块: 全局 | 阶段: Phase 6
-> 前置文档: 所有前置文档（`00-coding-standards.md` ~ `28-integration-tests.md`）
+> 前置文档: 所有前置文档（`00-coding-standards.md` ~ `28-tests.md`）
 > 需求参考: 需求说明书 §28.1
 
 ---
@@ -122,7 +122,7 @@ CHANGELOG.md                  # 版本变更记录
 ├── 依赖 00-coding-standards
 │   └── 文档风格遵循编码规范（参见 `00-coding-standards.md §6`）
 ├── 被 28-integration-tests 依赖
-│   └── doctest 也是测试的一部分（参见 `28-integration-tests.md §11`）
+│   └── doctest 也是测试的一部分（参见 `28-tests.md §11`）
 └── 被 27-benchmark 依赖
     └── benchmark 文档引用性能相关 API 文档（参见 `27-benchmark.md §14`）
 ```
@@ -278,7 +278,7 @@ L3: 示例 (examples/)
 
 | 规范 | 说明 |
 |------|------|
-| 可编译运行 | 所有 doctest 通过 `cargo test --doc`（参见 `28-integration-tests.md §11`） |
+| 可编译运行 | 所有 doctest 通过 `cargo test --doc`（参见 `28-tests.md §11`） |
 | 使用 `?` | 使用 `?` 而非 `unwrap()`（C-QUESTION-MARK） |
 | 隐藏样板 | 用 `# ` 隐藏 use 语句 |
 | 最小化 | 只展示当前 API 用法 |
