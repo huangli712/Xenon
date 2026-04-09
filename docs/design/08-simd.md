@@ -661,7 +661,29 @@ impl SimdKernel<f32> for ScalarKernel<f32> {
 > (1) 不提供 `hypot` 等浮点专用运算；(2) 除法使用整数除法（截断向零），
 > 溢出语义不同（如 `i32::MIN / -1` 会 panic）；(3) 归约操作对整数类型保证
 > 逐位一致（无不结合律问题）。
-```
+>
+> **整数归约溢出处理：** 需求说明书 §14 明确规定"整数归约溢出时视为不可恢复错误"。
+> 整数 `sum` 归约使用 `checked_add` 逐元素累加，溢出时立即 panic（不可恢复错误）。
+> 这与 Rust 的 debug 模式行为一致，但即使在 release 模式下也保证检测。
+>
+> ```rust
+> // Integer sum with overflow detection (scalar path)
+> impl SimdKernel<i32> for ScalarKernel<i32> {
+>     // ... other methods follow the same pattern as f64 ...
+>
+>     fn sum(&self, data: &[i32]) -> i32 {
+>         data.iter().copied().try_fold(0i32, |acc, x| {
+>             acc.checked_add(x)
+>         }).expect("integer overflow in sum reduction")
+>     }
+> }
+> ```
+>
+> **SIMD 路径的整数归约溢出：** 向量化路径中，整数元素在 SIMD 寄存器中并行累加，
+> 无法在每次加法后检查溢出。采用以下策略：对 `i32` 类型使用 `i64` 宽寄存器累加
+> （`i64` 对 `i32` 求和有 2^32 倍的安全余量），水平求和后再检查是否溢出 `i32` 范围；
+> `i64` 类型使用 `i128` 累加。若最终结果溢出目标类型范围，panic。尾部标量处理仍使用
+> `checked_add`。这一策略在大多数实际场景下足够安全，同时保持 SIMD 性能优势。
 
 ### 5.3 dispatch 流程
 

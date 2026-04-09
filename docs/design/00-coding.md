@@ -643,6 +643,7 @@ src/
 #![warn(unsafe_op_in_unsafe_fn)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(not(feature = "std"))]
 extern crate alloc;
 ```
 
@@ -880,6 +881,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 ```rust
 // src/lib.rs
 #![cfg_attr(not(feature = "std"), no_std)]
+#[cfg(not(feature = "std"))]
 extern crate alloc;
 
 // src/error.rs

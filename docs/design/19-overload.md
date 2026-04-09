@@ -37,8 +37,9 @@ L1: dimension, element, complex
 L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
-L5: broadcast (依赖 tensor, dimension)
-L6: overload  ← 当前模块（依赖 broadcast, math）
+L5: broadcast, iter
+L6: math（逐元素运算）
+L7: overload  ← 当前模块（依赖 broadcast, math）
 ```
 
 ---

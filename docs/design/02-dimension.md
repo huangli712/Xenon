@@ -40,7 +40,7 @@
 L0: error, private
 L1: dimension  ← 当前模块
 L2: layout (依赖 dimension)
-L3: storage (依赖 layout)
+L3: storage (仅依赖 core/alloc)
 L4: tensor (依赖 storage, dimension)
 L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 ```

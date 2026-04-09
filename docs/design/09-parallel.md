@@ -261,6 +261,7 @@ where
 
 /// Parallel map with a custom parallelization threshold.
 /// Only parallelizes if the tensor has more than `threshold` elements.
+#[cfg(feature = "parallel")]
 pub fn par_map_with_threshold<A, B, D, F>(
     tensor: &TensorBase<impl Storage<Elem = A>, D>,
     f: F,
@@ -672,10 +673,12 @@ let result = par_zip_with(&a, &b, |x, y| x + y).unwrap(); // Forbidden silent ig
 // src/parallel/mod.rs
 
 /// Custom thread pool wrapper
+#[cfg(feature = "parallel")]
 pub struct ParallelPool {
     inner: rayon::ThreadPool,
 }
 
+#[cfg(feature = "parallel")]
 impl ParallelPool {
     /// Create a new thread pool
     pub fn new(num_threads: usize) -> Result<Self, PoolInitError> {
@@ -722,7 +725,8 @@ where
         for elem in tensor.iter() {
             output.push(f(elem)?);
         }
-        return Ok(Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()));
+        // SAFETY: output length == tensor.len() (each element maps to exactly one output)
+        return Ok(unsafe { Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()) });
     }
 
     // Parallel path: collect results, fail fast on first error
@@ -736,7 +740,8 @@ where
     for result in results {
         output.push(result?);
     }
-    Ok(Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()))
+    // SAFETY: output length == tensor.len() (each successful result produces one output)
+    Ok(unsafe { Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()) })
 }
 
 // Bad - Silently ignoring errors in parallel operations
@@ -750,7 +755,8 @@ where
         .filter_map(|x| f(x))  // Silently discards None
         .collect();
     // output length may not match the expected length!
-    Tensor::from_raw_vec_unchecked(output, tensor.raw_dim())
+    // SAFETY: BUG — length invariant is NOT upheld due to filter_map discarding elements
+    unsafe { Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()) }
 }
 ```
 

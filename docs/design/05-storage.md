@@ -37,7 +37,7 @@ L1: dimension, element, complex
 L2: layout (依赖 dimension)
 L3: storage (仅依赖 core/alloc，不依赖 layout)  ← 当前模块
 L4: tensor (依赖 storage, dimension)
-L5: overload/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
+L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 ```
 
 ---
@@ -387,10 +387,13 @@ pub unsafe trait StorageShared: Storage + Clone {
 
     /// Obtains exclusive mutable access to the data (copy-on-write).
     ///
-    /// For `ArcRepr<A>`, the returned slice covers the logical element range
-    /// `[offset..offset+len]`, not the entire underlying `Vec`.
-    /// When the `ArcRepr` represents a sub-view (offset > 0 or len < vec.len()),
-    /// `make_mut()` copies only the logical range into a fresh allocation.
+    /// For `ArcRepr<A>`, if the reference count is 1, returns a mutable
+    /// reference to the entire underlying `Vec` data (O(1)). If the reference
+    /// count is greater than 1, clones the data into a fresh allocation and
+    /// returns a mutable reference to the new data (O(n)).
+    ///
+    /// Note: sub-view offset and length are managed by `TensorBase`, not by
+    /// `ArcRepr` (see design decision in §5.5).
     fn make_mut(&mut self) -> &mut [Self::Elem];
 
     /// Attempts to obtain exclusive ownership without copying data.
@@ -669,8 +672,6 @@ pub type ViewMut<'a, A> = ViewMutRepr<&'a mut A>;
 #[derive(Debug)]
 pub struct ArcRepr<A> {
     inner: Arc<Vec<A>>,
-    len: usize,
-    offset: usize,
 }
 ```
 

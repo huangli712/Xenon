@@ -35,7 +35,8 @@ L1: dimension, element, complex
 L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
-L5: util  ← 当前模块（依赖 tensor, dimension, storage, layout, iter）
+L5: broadcast, iter, ffi
+L6: util  ← 当前模块（依赖 tensor, dimension, storage, layout, iter）
 ```
 
 ---

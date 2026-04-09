@@ -466,9 +466,10 @@ impl Workspace {
     ///
     /// # RAII Behavior
     ///
-    /// Dropping **either** `SplitBorrowMut` releases the workspace for re-use.
-    /// This means the workspace should not be re-borrowed until both sub-spaces
-    /// are no longer in use. To enforce this, hold both sub-spaces until done.
+    /// Dropping **the last** `SplitBorrowMut` releases the workspace for re-use.
+    /// Reference counting ensures the workspace is not re-borrowable until ALL
+    /// sub-spaces (including those from recursive `split_at_mut` calls) are dropped.
+    /// Hold all sub-spaces until done to maintain safety.
     ///
     /// # Errors
     ///
@@ -533,6 +534,15 @@ impl<'a> SplitBorrowMut<'a> {
     /// preventing counter inconsistency. The original `SplitBorrowMut` is consumed
     /// and no longer valid; the two sub-splits independently manage their Drop
     /// behavior.
+    ///
+    /// **Reference count invariant:** This method atomically increments
+    /// `split_count` by 1 before creating the two sub-splits. Rationale:
+    /// consuming `self` prevents its Drop from running (net −1 decrement avoided),
+    /// but two new guards are created (net +2 decrements expected). The net
+    /// change in active guards is +1, so `split_count` must increase by 1
+    /// to remain consistent. Without this increment, the last sub-split's
+    /// Drop would observe `prev == 1` prematurely and reset `borrow_state`
+    /// while other sub-splits are still active — a safety hazard.
     pub fn split_at_mut(
         self,
         mid: usize,
@@ -540,6 +550,14 @@ impl<'a> SplitBorrowMut<'a> {
         if mid > self.len {
             return Err(WorkspaceError::SplitOutOfBounds { split: mid, len: self.len });
         }
+
+        // SAFETY: Increment split_count to account for the additional
+        // sub-space created by this recursive split. `self` is consumed
+        // (not dropped), so its implicit "slot" in the count is released.
+        // But we create 2 new guards, so the net active guard count
+        // increases by 1. This ensures Drop correctly waits for ALL
+        // active sub-splits before resetting borrow_state.
+        self.split_count.fetch_add(1, core::sync::atomic::Ordering::Release);
 
         let left_ptr = self.ptr;
         let right_ptr = unsafe {
@@ -559,11 +577,13 @@ impl<'a> SplitBorrowMut<'a> {
 /// Drop releases the exclusive borrow on the workspace.
 ///
 /// Uses reference counting: each split_at() sets split_count to the number
-/// of sub-spaces (2 for binary split). Each SplitBorrowMut::drop() atomically
-/// decrements split_count. Only when split_count reaches 0 is borrow_state
-/// reset to BORROW_NONE. This prevents the safety hazard where dropping one
-/// sub-space prematurely resets borrow_state while the other sub-space is
-/// still in use.
+/// of sub-spaces (2 for binary split); each split_at_mut() atomically
+/// increments split_count by 1 (net +1 active guard). Each
+/// SplitBorrowMut::drop() atomically decrements split_count. Only when
+/// split_count reaches 0 is borrow_state reset to BORROW_NONE. This
+/// prevents the safety hazard where dropping one sub-space prematurely
+/// resets borrow_state while other sub-spaces are still in use (including
+/// sub-spaces from recursive split_at_mut calls).
 ///
 /// # Safety Invariant
 ///
@@ -745,12 +765,20 @@ Workspace 内存布局（64 字节对齐）
 ### 5.3 split_at_mut 安全设计
 
 > **安全设计决策：** `split_at_mut` 采用消费式设计（consuming self）而非借用：调用 `split_at_mut(self, mid)` 消耗原 `SplitBorrowMut`，返回两个新的子 `SplitBorrowMut`。这确保每个 `SplitBorrowMut` 实例有独立的生命周期，避免计数器不一致问题。原始 `SplitBorrowMut` 被消耗后不再有效，两个子分割各自独立管理其 Drop 行为。
-
-```rust
-// Consumes self, returns two non-overlapping sub-borrows.
-// The original SplitBorrowMut is consumed to prevent double-use.
-pub fn split_at_mut(self, mid: usize) -> Result<(SplitBorrowMut<'a>, SplitBorrowMut<'a>), WorkspaceError>
-```
+>
+> **引用计数安全性：** `split_at_mut` 在创建两个子分割之前，通过 `fetch_add(1)` 原子递增 `split_count`。这是因为：
+>
+> - 消耗 `self` 意味着原 `SplitBorrowMut` 的 `Drop` 不会执行（避免了隐含的 −1 递减）
+> - 但两个新的 `SplitBorrowMut` 被创建（产生 +2 递减）
+> - 净变化为 +1 个活跃守卫，因此 `split_count` 需要增加 1 以保持一致
+> - 如果不加 1，最后一个子分割的 `Drop` 会过早观察到 `prev == 1`，在其他子分割仍然活跃时重置 `borrow_state`，造成安全隐患
+>
+> **示例（3 个活跃子空间）**：
+> 1. `split_at(512)` → `split_count = 2`，创建 `left` 和 `right`
+> 2. `right.split_at_mut(128)` → `fetch_add(1)`，`split_count = 3`，创建 `right_a` 和 `right_b`
+> 3. `left` drop → `split_count: 3→2`，`prev=3 ≠ 1`，不重置 ✅
+> 4. `right_a` drop → `split_count: 2→1`，`prev=2 ≠ 1`，不重置 ✅
+> 5. `right_b` drop → `split_count: 1→0`，`prev=1`，重置 `borrow_state` ✅
 
 ### 5.4 扩容安全性论证
 

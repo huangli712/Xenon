@@ -37,7 +37,7 @@ L0: error, private
 L1: element  ← 当前模块
 L1: complex（element 依赖 complex 的类型定义，complex 不反向依赖 element）
 L2: layout (依赖 dimension)
-L3: storage (依赖 layout)
+L3: storage (仅依赖 core/alloc)
 L4: tensor (依赖 storage, dimension)
 L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 ```
@@ -140,11 +140,11 @@ pub trait Element:
 /// `Element` already inherits `Sealed`.
 pub trait Numeric:
     Element
-    + core::overload::Add<Output = Self>
-    + core::overload::Sub<Output = Self>
-    + core::overload::Mul<Output = Self>
-    + core::overload::Div<Output = Self>
-    + core::overload::Neg<Output = Self>
+    + core::ops::Add<Output = Self>
+    + core::ops::Sub<Output = Self>
+    + core::ops::Mul<Output = Self>
+    + core::ops::Div<Output = Self>
+    + core::ops::Neg<Output = Self>
 {
     /// Returns the conjugate of this value.
     ///

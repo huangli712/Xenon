@@ -132,25 +132,8 @@ pub trait NdIndex<D: Dimension>: Sealed {
 }
 
 // Static array index (e.g. tensor[[0, 1, 2]])
-impl Sealed for [usize; 0] {}
-impl Sealed for [usize; 1] {}
-impl Sealed for [usize; 2] {}
-impl Sealed for [usize; 3] {}
-impl Sealed for [usize; 4] {}
-impl Sealed for [usize; 5] {}
-impl Sealed for [usize; 6] {}
-
-// Zero-dimensional tensor indexing: tensor[[]] accesses the sole element
-impl NdIndex<Ix0> for [usize; 0] {
-    fn index_checked(&self, dim: &Ix0, _strides: &Ix0) -> Option<usize> {
-        if self.len() != dim.ndim() { return None; }
-        Some(0)
-    }
-
-    unsafe fn index_unchecked(&self, _strides: &Ix0) -> usize {
-        0
-    }
-}
+// Blanket Sealed impl for all array sizes — required by the generic NdIndex impl below.
+impl<const N: usize> Sealed for [usize; N] {}
 
 impl<D: Dimension, const N: usize> NdIndex<D> for [usize; N] {
     fn index_checked(&self, dim: &D, strides: &D) -> Option<usize> {
