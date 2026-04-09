@@ -21,7 +21,7 @@
 | 窗口遍历 | 滑动窗口产生子视图 | 卷积运算 |
 | 索引遍历 | 带多维索引的元素遍历 | 索引赋值操作 |
 | 同步遍历 | 多张量同步遍历（Zip） | 广播规则计算（参见 `15-broadcast.md §3`） |
-| 并行迭代 | — | 并行迭代（参见 `09-parallel-backend.md §4.5`） |
+| 并行迭代 | — | 并行迭代（参见 `09-parallel.md §4.5`） |
 
 ### 1.3 在架构中的位置
 
@@ -468,7 +468,7 @@ increment_index_f(shape, index):
 
 ### 5.5 `split_elements_at` — 并行分块内部函数
 
-> **用途：** 本函数供并行后端（`09-parallel-backend.md §4.5`）中的 `ElementsProducer::split_at` 调用，用于将扁平元素视图在指定逻辑索引处一分为二，以支持并行迭代的数据分块。
+> **用途：** 本函数供并行后端（`09-parallel.md §4.5`）中的 `ElementsProducer::split_at` 调用，用于将扁平元素视图在指定逻辑索引处一分为二，以支持并行迭代的数据分块。
 
 ```rust
 /// Split a flat Elements view at a flat index boundary for parallel iteration.
@@ -497,7 +497,7 @@ where
 - 返回的两个 `TensorView` 共享同一底层数据，但各自的偏移量和长度不同。
 - 对于连续 F-order 视图，分块可直接按指针偏移实现（O(1)）。
 - 对于非连续视图（含转置、切片等），需重新计算步长状态机的起始偏移，仍为 O(ndim)。
-- 该函数标记为 `pub(crate)`，不对外暴露，仅供 `09-parallel-backend.md` 中的 Producer 体系使用。
+- 该函数标记为 `pub(crate)`，不对外暴露，仅供 `09-parallel.md` 中的 Producer 体系使用。
 
 ---
 

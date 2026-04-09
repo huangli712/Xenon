@@ -332,7 +332,7 @@ pub fn par_sum(&self) -> A { ... }
 | `basic.rs` | 创建、运算、归约、打印 | 默认 | 新用户 |
 | `complex_numbers.rs` | 复数构造、运算、混合运算 | 默认 | 科学计算 |
 | `broadcasting.rs` | 广播规则、行/列/标量广播 | 默认 | 日常使用 |
-| `parallel.rs` | 并行计算、阈值配置 | `parallel` | 性能优化（参见 `09-parallel-backend.md §4`） |
+| `parallel.rs` | 并行计算、阈值配置 | `parallel` | 性能优化（参见 `09-parallel.md §4`） |
 | `simd.rs` | SIMD 加速、回退策略 | `simd` | 性能优化（参见 `08-simd-backend.md §4`） |
 | `no_std.rs` | no_std 环境使用 | `alloc` | 嵌入式 |
 | `ffi.rs` | 与 C/BLAS 交互 | 默认 | 库开发者 |
@@ -763,7 +763,7 @@ docs:
 
 - [ ] **T7**: 编写基础设施模块文档（ffi, workspace, simd, parallel, error, prelude）
   - 文件: 各 `mod.rs`
-  - 内容: 模块职责、Safety 约定、feature gate 说明（参见 `23-ffi.md §1`、`24-workspace.md §1`、`08-simd-backend.md §1`、`09-parallel-backend.md §1`、`26-error-handling.md §1`）
+  - 内容: 模块职责、Safety 约定、feature gate 说明（参见 `23-ffi.md §1`、`24-workspace.md §1`、`08-simd-backend.md §1`、`09-parallel.md §1`、`26-error-handling.md §1`）
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T2
   - 预计: 10 min

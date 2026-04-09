@@ -345,7 +345,7 @@ workspace 模块定义了独立的 `WorkspaceError`，不属于 `XenonError` 枚
 
 ### 5.4 并行操作中错误立即传播
 
-并行操作中发生不可恢复错误时须立即传播，不得静默忽略（参见 `09-parallel-backend.md §5`）：
+并行操作中发生不可恢复错误时须立即传播，不得静默忽略（参见 `09-parallel.md §5`）：
 
 > **Rayon panic 传播机制：** Rayon 通过 `JoinHandle` 机制从工作线程传播 panic。当工作线程 panic 时，`rayon::join` 或 `par_iter.for_each` 会在所有工作线程完成后在调用线程上重新 panic。这满足了"即时传播"的要求——panic 不会被静默忽略，而是会在并行操作完成后传播给调用者。
 

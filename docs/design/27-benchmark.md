@@ -262,7 +262,7 @@ Benchmark 分类
 | `reshape_noncontiguous` | 非连续 reshape（需拷贝） | M | f64 | Non-contiguous | reshape 数据拷贝 |
 | `simd_add_compare` | `a + b` (SIMD vs 标量) | M | f32/f64 | F-contiguous | SIMD 加速比（参见 `08-simd-backend.md §10`） |
 | `simd_sum_compare` | sum (SIMD vs 标量) | M | f32/f64 | F-contiguous | SIMD 归约加速 |
-| `par_sum_compare` | sum (并行 vs 串行) | L | f64 | F-contiguous | 并行加速比（参见 `09-parallel-backend.md §10`） |
+| `par_sum_compare` | sum (并行 vs 串行) | L | f64 | F-contiguous | 并行加速比（参见 `09-parallel.md §10`） |
 | `par_add_compare` | `a + b` (并行 vs 串行) | L | f64 | F-contiguous | 并行逐元素加速 |
 | `zeros_1d` | zeros 构造 | S/M/L | f64 | F-contiguous | 构造开销 |
 | `from_fn_2d` | from_fn 构造 | S/M/L | f64 | F-contiguous | 函数构造开销 |
@@ -455,7 +455,7 @@ b.iter(|| &a + &b);
 | `broadcast.rs` | `broadcast` | `15-broadcast.md` |
 | `shape.rs` | `shape` | `16-shape.md` |
 | `simd_comparison.rs` | `simd` + `ops/` | `08-simd-backend.md` |
-| `parallel_comparison.rs` | `parallel` + `ops/` | `09-parallel-backend.md` |
+| `parallel_comparison.rs` | `parallel` + `ops/` | `09-parallel.md` |
 | `construction.rs` | `construct` | `18-construction.md` |
 
 ### 13.2 数据流
@@ -554,7 +554,7 @@ benchmark 文件
 
 - [ ] **T11**: 实现 `benches/parallel_comparison.rs`
   - 文件: `benches/parallel_comparison.rs`
-  - 内容: sum/add 在 `--features parallel` 开/关时的对比（参见 `09-parallel-backend.md §5`）
+  - 内容: sum/add 在 `--features parallel` 开/关时的对比（参见 `09-parallel.md §5`）
   - 测试: 分别以两种 feature 配置运行，对比结果
   - 前置: T3, T4
   - 预计: 10 min

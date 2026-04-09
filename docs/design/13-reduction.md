@@ -16,7 +16,7 @@
 | 整数溢出处理 | checked_add，overflow 视为不可恢复错误 | wrapping/saturating 算术 |
 | 浮点语义 | IEEE 754 NaN 传播 | 整数除法归约 |
 | 空数组处理 | sum 返回加法单位元（零） | 篮选/排序操作 |
-| SIMD 加速 | 连续内存的 SIMD 归约路径 | 并行归约（见 09-parallel-backend.md） |
+| SIMD 加速 | 连续内存的 SIMD 归约路径 | 并行归约（见 09-parallel.md） |
 | 并行加速 | 并行归约结果须与单线程一致 | 篮选/排序操作 |
 
 > **注意**：当前版本仅支持 sum 归约！不包含 mean/var/prod/min/max/argmin/argmax 等。
@@ -85,7 +85,7 @@ src/reduction/
 | `dimension` | `Dimension`, `RemoveAxis`, `D::Smaller` |
 | `error` | `XenonError` |
 | `simd`（可选） | `pulp::Arch`（参见 `08-simd-backend.md` §3） |
-| `parallel`（可选） | 并行归约路径（参见 `09-parallel-backend.md` §3） |
+| `parallel`（可选） | 并行归约路径（参见 `09-parallel.md` §3） |
 
 ### 3.3 依赖方向
 
@@ -408,7 +408,7 @@ Wave 5:         [T7]
 | `tensor` | 消费 `TensorBase<S, D>`，返回 `Tensor<A, D>`，参见 `07-tensor.md` §4 |
 | `element` | 泛型约束 `Numeric`（全局 sum），`RealScalar`（浮点特化），参见 `03-element-types.md` §3 |
 | `simd`（可选） | 连续数组自动走 SIMD 归约路径，参见 `08-simd-backend.md` §3 |
-| `parallel`（可选） | 大数组自动走并行归约路径，参见 `09-parallel-backend.md` §4 |
+| `parallel`（可选） | 大数组自动走并行归约路径，参见 `09-parallel.md` §4 |
 
 ---
 
@@ -432,7 +432,7 @@ Wave 5:         [T7]
 | 理由 | 浮点加法不满足结合律（IEEE 754），分块并行时累加顺序不同必然引入舍入差异，无法在不使用 Kahan 补偿的情况下保证浮点精确一致性。整数因不存在舍入，仍可保证精确一致。 |
 | 实现约定 | 浮点并行 sum 的测试使用相对容差 (`rtol < 1e-14` for f64, `rtol < 1e-6` for f32) 而非精确相等比较 |
 | 替代方案 | 要求所有类型精确一致 — 放弃，浮点在不使用 Kahan 的情况下无法实现 |
-| 参见 | `09-parallel-backend.md §9 ADR-2`（协调一致） |
+| 参见 | `09-parallel.md §9 ADR-2`（协调一致） |
 | **一致性解释** | 对于浮点类型，"一致"解释为：逐元素运算逐位一致，归约运算允许 ≤2 ULP 差异（因浮点加法不满足结合律）。此解释与 NumPy 行为一致，并在文档中明确记录。 |
 
 ### 决策 3：Kahan 补偿求和
@@ -498,7 +498,7 @@ use alloc::vec::Vec;
 | 整数 `checked_add` | ✅ | `core` 内建，无额外依赖 |
 | NaN 传播 | ✅ | IEEE 754 浮点语义，`core` 内建 |
 | SIMD 归约路径 | ✅ | pulp crate 支持 `no_std`，参见 `08-simd-backend.md` §11 |
-| 并行归约路径 | ❌ | rayon 依赖 `std` 线程原语，参见 `09-parallel-backend.md` §11 |
+| 并行归约路径 | ❌ | rayon 依赖 `std` 线程原语，参见 `09-parallel.md` §11 |
 
 条件编译处理：
 

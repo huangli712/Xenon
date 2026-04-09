@@ -317,7 +317,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
-| `test_par_sum_consistency` | 并行 sum 与串行 sum 结果一致（参见 `09-parallel-backend.md §7`） | 高 |
+| `test_par_sum_consistency` | 并行 sum 与串行 sum 结果一致（参见 `09-parallel.md §7`） | 高 |
 | `test_par_add_consistency` | 并行 add 与串行 add 结果一致 | 高 |
 | `test_parallel_read` | 多线程并发只读访问安全（参见 `25-thread-safety.md §4.5`） | 高 |
 | `test_no_nested_parallel` | 嵌套并行被拒绝 | 中 |
@@ -703,7 +703,7 @@ fn test_bad_magic() {
 | `test_shape.rs` | `shape` | `16-shape.md` |
 | `test_conversion.rs` | `convert` | `22-conversion.md` |
 | `test_ffi.rs` | `ffi`, `workspace` | `23-ffi.md`, `24-workspace.md` |
-| `test_parallel.rs` | `parallel` | `09-parallel-backend.md` |
+| `test_parallel.rs` | `parallel` | `09-parallel.md` |
 | `test_simd.rs` | `simd` | `08-simd-backend.md` |
 | `test_error.rs` | `error` | `26-error-handling.md` |
 

@@ -965,7 +965,7 @@ Storage 提供对齐信息（`is_aligned()`），Layout 模块查询对齐状态
 
 ### 10.3 与 Parallel 模块
 
-并行迭代要求 `S: Storage + Sync`（读）或 `S: StorageMut + Send`（写），由 storage 的 Send/Sync 实现保证（参见 `09-parallel-backend.md` §4）。
+并行迭代要求 `S: Storage + Sync`（读）或 `S: StorageMut + Send`（写），由 storage 的 Send/Sync 实现保证（参见 `09-parallel.md` §4）。
 
 ---
 

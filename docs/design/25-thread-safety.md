@@ -103,11 +103,11 @@ src/parallel/
 | `core::marker` | `PhantomData<A>`, `Send`, `Sync` |
 | `std::sync` | `Arc<Vec<A>>`, `AtomicUsize` |
 | `std::cell` | `Cell<usize>`, `Cell<Option<usize>>` |
-| `rayon::iter` | `ParallelIterator` (要求 `Item: Send`，参见 `09-parallel-backend.md §4`) |
+| `rayon::iter` | `ParallelIterator` (要求 `Item: Send`，参见 `09-parallel.md §4`) |
 
 ### 3.3 依赖方向声明
 
-> **依赖方向：线程安全是横切关注点。** 各存储模块自行声明 Send/Sync（参见 `05-storage.md §5`），parallel 模块消费这些约束（参见 `09-parallel-backend.md §4`）。无循环依赖。
+> **依赖方向：线程安全是横切关注点。** 各存储模块自行声明 Send/Sync（参见 `05-storage.md §5`），parallel 模块消费这些约束（参见 `09-parallel.md §4`）。无循环依赖。
 
 ---
 
@@ -424,7 +424,7 @@ fn parallel_iteration(tensor: &Tensor2<f64>) {
 
 ### 5.2 并行操作安全约束
 
-并行迭代的安全保证基于分块访问隔离（参见 `09-parallel-backend.md §5`）：
+并行迭代的安全保证基于分块访问隔离（参见 `09-parallel.md §5`）：
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -705,7 +705,7 @@ fn test_arc_concurrent_access() {
 
 ### 8.3 与 rayon 的集成
 
-rayon 的 `ParallelIterator` 要求 `Item: Send`（参见 `09-parallel-backend.md §8`）：
+rayon 的 `ParallelIterator` 要求 `Item: Send`（参见 `09-parallel.md §8`）：
 
 | 存储模式 | `par_iter()` | `par_iter_mut()` | 约束 |
 |----------|:----------:|:--------------:|------|
@@ -790,7 +790,7 @@ use core::marker::{Send, Sync};
 | `ViewRepr<&'a A>` Send/Sync | ✅ | 仅 `unsafe impl`，无运行时依赖 |
 | `ViewMutRepr<&'a mut A>` Send | ✅ | 仅 `unsafe impl`，无运行时依赖 |
 | `ArcRepr<A>` Send/Sync | ✅ | 使用 `alloc::sync::Arc`，`no_std + alloc` 可用 |
-| 并行迭代（rayon） | ❌ | rayon 依赖 `std` 线程原语，参见 `09-parallel-backend.md §11` |
+| 并行迭代（rayon） | ❌ | rayon 依赖 `std` 线程原语，参见 `09-parallel.md §11` |
 | 嵌套并行防护（`thread_local!`） | ❌ | `std::cell::Cell` + `thread_local!` 需要 `std` |
 | SIMD Arch 缓存线程安全初始化 | ❌ | 依赖 `std::sync::OnceLock` 或等效机制 |
 
