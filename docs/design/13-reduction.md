@@ -387,7 +387,7 @@ Wave 5:         [T7]
 | `test_sum_simd_consistency` | SIMD 路径结果与标量一致 | 高 |
 | `test_sum_parallel_consistency` | 并行路径结果与单线程一致 | 高 |
 
-### 7.2 边界测试场景
+### 7.3 边界测试场景
 
 | 场景 | 预期行为 |
 |------|----------|
