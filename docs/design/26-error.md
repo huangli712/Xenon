@@ -506,10 +506,10 @@ impl std::error::Error for XenonError {}
   - 前置: T4
   - 预计: 5 min
 
-- [ ] **T8**: 单元测试 — no_std 编译检查
-  - 文件: `src/error.rs`
-  - 内容: `--no-default-features` 编译通过
-  - 测试: `cargo build --no-default-features`
+- [ ] **T8**: CI no_std 编译验证
+  - 文件: `.github/workflows/test.yml`
+  - 内容: 使用 `cargo check --no-default-features` 验证 `no_std + alloc` 编译通过
+  - 测试: CI 中运行该检查命令
   - 前置: T1-T5
   - 预计: 5 min
 

@@ -518,7 +518,6 @@ Benchmark 分类
 | 布局 | 构造方式 | 验证目标 |
 |------|----------|----------|
 | F-contiguous | `zeros(shape, Order::F)` | 默认路径性能基线 |
-| C-contiguous | `zeros(shape, Order::C)` | C-order 兼容性 |
 | Non-contiguous | `tensor.slice(s![.., 0..n-1])` | 非连续路径标量回退惩罚 |
 
 ### 14.3 Benchmark 清单表
@@ -636,4 +635,3 @@ Benchmark 分类
 ---
 
 *本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
-

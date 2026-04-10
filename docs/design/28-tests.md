@@ -226,7 +226,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> TensorView2<'static, f64> 
 | `test_sub_mul_div` | 减法、乘法、除法正确性 | 高 |
 | `test_neg` | 一元负号 | 中 |
 | `test_abs_sign` | abs, sign 行为 | 中 |
-| `test_sin_cos_exp_ln` | 三角/指数/对数精度 | 高 |
+| `test_sin_sqrt_exp_ln_floor_ceil` | 三角/开方/指数/对数/取整精度 | 高 |
 | `test_complex_math` | 复数逐元素运算 | 中 |
 | `test_bool_not` | bool 逻辑非 | 中 |
 | `test_compare_eq_ne` | 等于/不等于比较 | 高 |
@@ -251,14 +251,14 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> TensorView2<'static, f64> 
 | `test_multi_dim_index` | [i, j, k] 多维索引 | 高 |
 | `test_index_out_of_bounds` | 越界 panic | 高 |
 | `test_slice_range` | 范围切片 | 高 |
-| `test_slice_negative_index` | 负索引 | 中 |
+| `test_slice_negative_step` | 负步长切片 | 中 |
 | `test_slice_step` | 步长切片 | 中 |
 
 ### 5.5 test_construction.rs
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
-| `test_zeros_ones_full` | zeros, ones, full 构造 | 高 |
+| `test_zeros_ones_from_scalar` | zeros, ones, from_scalar 构造 | 高 |
 | `test_eye_identity` | 单位矩阵 | 高 |
 | `test_from_vec_slice` | from_vec, from_slice 构造 | 高 |
 | `test_from_fn` | from_fn 函数构造 | 中 |
@@ -330,7 +330,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> TensorView2<'static, f64> 
 | `test_simd_sum_consistency` | SIMD sum 与标量 sum 结果一致 | 高 |
 | `test_simd_fallback_small` | 小数组 SIMD 回退到标量 | 中 |
 
-### 5.12 test_no_std.rs
+### 5.12 no_std 编译验证
 
 > **注意**：no_std 兼容性验证不能通过 `#[test]` 宏实现（测试框架本身依赖 `std`），应通过 CI 脚本验证编译通过。
 
@@ -435,7 +435,7 @@ fn test_high_dim_operations() {
 
 ### 7.2 浮点比较方式
 
-所有浮点测试使用 **相对容差**（rtol）比较：
+浮点测试默认使用 **相对容差**（rtol）比较；但后端一致性测试（SIMD / parallel）遵循对应模块的更强契约：若 backend 路径被启用，则结果必须与标量/串行基线路径一致；若无法保证，则应验证其自动回退行为。
 
 ```rust
 /// Compare two floats with relative tolerance.
@@ -502,8 +502,7 @@ fn test_simd_add_consistency() {
     // Verify against scalar loop
     for i in 0..1024 {
         let expected = a[[i]] + b[[i]];
-        let diff = (result[[i]] - expected).abs();
-        assert!(diff < 1e-15, "SIMD add mismatch at {}: diff={}", i, diff);
+        assert_eq!(result[[i]], expected, "SIMD add mismatch at {}", i);
     }
 }
 ```
@@ -642,12 +641,12 @@ fn test_add_result() {
     assert_tensor_close(&result, &expected, 1e-10, 1e-10, "add");
 }
 
-// Good: Test error path with assert_xenon_error
+// Good: Test error path with method-style API that returns Result
 #[test]
 fn test_incompatible_shapes() {
     let a = Tensor1::from_vec(vec![1.0, 2.0]);
     let b = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
-    assert_xenon_error!(a + b, XenonError::ShapeMismatch { .. });
+    assert_xenon_error!(a.zip_with(&b, |x, y| x + y), XenonError::ShapeMismatch { .. });
 }
 
 // Good: Parameterized test with standard shapes
@@ -673,12 +672,12 @@ fn test_add_bad() {
     assert_eq!(result[[0]], 0.4);  // Floating point exact comparison may fail
 }
 
-// Bad: Ignoring error paths
+// Bad: Ignoring the method-style error path
 #[test]
 fn test_add_bad2() {
     let a = Tensor1::from_vec(vec![1.0, 2.0]);
     let b = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
-    let _ = a + b;  // Silently ignoring the error
+    let _ = a.zip_with(&b, |x, y| x + y);  // Silently ignoring the Result
 }
 
 // Bad: Hardcoded magic numbers without context
@@ -767,7 +766,7 @@ fn test_bad_magic() {
 
 - [ ] **T5**: 实现 `tests/test_index.rs`
   - 文件: `tests/test_index.rs`
-  - 内容: 索引操作（多维索引/越界/切片/负索引/步长）
+  - 内容: 索引操作（多维索引/越界/切片/负步长/步长）
   - 测试: `cargo test --test test_index`
   - 前置: T1
   - 预计: 10 min
@@ -831,7 +830,7 @@ fn test_bad_magic() {
   - 预计: 10 min
 
 - [ ] **T14**: no_std 编译验证 — 通过 CI 脚本（而非 test 框架）验证 no_std 编译通过
-  - 文件: `.github/workflows/test.yml`（CI 配置，不创建 `tests/test_no_std.rs` 文件）
+  - 文件: `.github/workflows/test.yml`（集中维护 no_std 编译检查）
   - 内容: 使用 `cargo check --no-default-features` 验证 `no_std + alloc` 编译
   - 测试: CI 中运行该检查命令
   - 前置: T2

@@ -233,8 +233,7 @@ xenon/
 │   ├── test_tensor.rs         # 张量基础测试
 │   ├── test_math.rs            # 运算测试
 │   ├── test_broadcast.rs      # 广播测试
-│   ├── test_index.rs          # 索引测试
-│   └── test_no_std.rs         # no_std 兼容性测试
+│   └── test_index.rs          # 索引测试
 │
 ├── benches/                   # 性能基准测试
 │   ├── bench_math.rs          # 逐元素操作
@@ -387,7 +386,8 @@ rustdoc-args = ["--cfg", "docsrs"]
 |------|------|------|------|
 | **L0** | error, private | 无 | `26-error.md` |
 | **L1** | dimension, element, complex | error（element 额外依赖 complex） | `02-dimension.md`、`03-element.md`、`04-complex.md` |
-| **L2** | layout, workspace | error, dimension（workspace 独立于核心类型系统，仅依赖 core/alloc，可被上游库直接使用） | `06-memory.md`、`24-workspace.md` |
+| **L2** | layout | error, dimension | `06-memory.md` |
+| **L2** | workspace | core, alloc（独立于核心类型系统，可被上游库直接使用） | `24-workspace.md` |
 | **L3** | storage | core, alloc（布局信息由 `tensor` 持有并消费 `layout` 结果） | `05-storage.md` |
 | **L4** | tensor | storage, dimension, layout, element | `07-tensor.md` |
 | **L5** | broadcast, iter, ffi, simd, parallel | tensor（parallel 额外依赖 iter/broadcast；simd 额外依赖 layout/element） | `15-broadcast.md`、`10-iterator.md`、`23-ffi.md`、`08-simd.md`、`09-parallel.md` |
@@ -657,7 +657,7 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 | W4.2 convert | W2.6 | 中 | cast, to_owned |
 | W4.3 format | W2.6 | 低 | Display/Debug |
 | W4.4 ffi | W2.6 | 中 | 原始指针 API |
-| W4.5 workspace | W2.6 | 中 | 临时缓冲区 |
+| W4.5 workspace | 无 | 中 | 临时缓冲区 |
 | W4.6 comparison | W3.5 | 低 | equal, not_equal, less, greater |
 
 ### Wave 5: 性能（依赖 Wave 4）

@@ -98,7 +98,7 @@ src/workspace/
 |----------|-----------------|
 | `core` | `NonNull<u8>`, `PhantomData`, `AtomicU8`, `fmt::Debug`, `fmt::Display` |
 | `alloc` | `alloc()`, `dealloc()`, `Layout` |
-| `error` | `WorkspaceError`（或本模块内定义，参见 `26-error.md §4`） |
+| `workspace/error.rs` | `WorkspaceError`（模块内独立错误类型，参见 `26-error.md §4.7`） |
 
 ### 3.3 依赖方向声明
 
@@ -691,7 +691,7 @@ impl Workspace {
 let mut ws = Workspace::new(1024, 64)?;
 let (mut left, mut right) = ws.split_at(512)?;
 // left and right point to non-overlapping memory regions
-// Safe for parallel use
+// Safe for independent sub-space processing on the same owning thread
 
 // Bad - Directly manipulating raw pointers to bypass borrow checking
 let mut ws = Workspace::new(1024, 64)?;
@@ -930,6 +930,22 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 | 上游库 → workspace | 上游 FFT 库通过 `split_at()` 分割工作空间 |
 | tensor -> workspace | Tensor 操作通过 workspace 分配临时空间（参见 `07-tensor.md §4`，可选） |
 
+### 8.1 数据流描述
+
+```
+上层模块请求临时工作空间
+    │
+    ├── Workspace::new(capacity, alignment)
+    │       └── 分配 64-byte 对齐原始缓冲区
+    │
+    ├── borrow() / borrow_mut() / split_at()
+    │       └── 生成线程内有效的借用守卫或子空间视图
+    │
+    ├── 调用方在守卫生命周期内写入/读取临时数据
+    │
+    └── Drop 守卫后恢复 borrow_state，可供后续操作复用
+```
+
 ---
 
 ## 9. 设计决策记录(ADR)
@@ -972,7 +988,7 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 | 属性 | 值 |
 |------|-----|
 | 决策 | Workspace 不实现 Send 或 Sync |
-| 理由 | Workspace 包含 NonNull<u8>，默认 !Send !Sync。跨线程共享工作空间需要外部同步机制（如 Mutex）。若需要线程间传递，调用方应使用 Arc<Mutex<Workspace>> 包装。 |
+| 理由 | Workspace 设计为线程内临时缓冲区，文档约束为 `!Send + !Sync`。即使存在运行时借用状态检查，也不将其建模为可跨线程传递或共享的基础类型；若调用方需要多线程临时缓冲区，应在线程边界外自行分配和管理独立工作空间。 |
 | 替代方案 | 使用 AtomicU8 实现 Send + Sync — 放弃，仅有运行时检查不够，多线程场景下需要完整同步 |
 
 ---

@@ -17,16 +17,16 @@
 | 基础方法 | `re()`, `im()`, `conj()`, `is_real()`, `is_imaginary()` | — |
 | 数学方法 | `norm()`（hypot）, `arg()`, `exp()`, `ln()`, `sqrt()` | 复数 FFT、高阶复数运算 |
 | 算术运算 | Complex±Complex, Complex×Complex, Complex÷Complex, 一元负号 | 跨精度混合运算 |
-| 实数混合运算 | 同精度：`f32±Complex<f32>`, `f64±Complex<f64>` | 跨精度：`f32+Complex<f64>`（须显式转换） |
+| 实数混合运算 | 同精度：`Complex<f32> op f32`、`Complex<f64> op f64`；左侧实数通过 `Complex::from(real)` 显式转换 | 跨精度：`f32+Complex<f64>`（须显式转换） |
 | 格式化输出 | Display（`"a+bi"` / `"a-bi"`）, Debug | — |
-| C99 兼容布局 | `#[repr(C)]` + 编译期静态断言 | 跨精度混合运算 |
+| 双字段 C 布局基础 | `#[repr(C)]` + 编译期静态断言 | 跨精度混合运算 |
 | 类型转换 | `Complex<f32>↔Complex<f64>`, `f32/f64→Complex` | 整数→复数（须显式先转浮点） |
 
 ### 1.2 设计原则
 
 | 原则 | 体现 |
 |------|------|
-| FFI 友好 | `#[repr(C)]` 保证字段顺序稳定，并为与 C ABI 的两字段复数表示互操作提供布局基础 |
+| FFI 友好 | `#[repr(C)]` 保证字段顺序稳定，并为与两字段 C 结构体互操作提供布局基础 |
 | 零依赖 | 不引入任何外部 crate（不使用 num-complex） |
 | 同精度互操作 | 仅支持 `f32↔Complex<f32>` 和 `f64↔Complex<f64>` |
 | 数值稳定 | `norm()` 使用 hypot 算法避免中间溢出 |
@@ -48,7 +48,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 | 考量 | 自定义实现 | num-complex |
 |------|-----------|-------------|
-| FFI 兼容性 | `#[repr(C)]` 保证 C99 `_Complex` 兼容 | 同样支持，但需验证 |
+| FFI 布局基础 | `#[repr(C)]` 为双字段 C 结构体互操作提供布局基础 | 同样支持，但需验证 |
 | 依赖控制 | 零额外依赖，符合最小依赖原则 | 引入 num-traits 等传递依赖 |
 | API 精确控制 | 可精确控制 trait 实现（禁止 Eq/Ord） | 实现了 Eq，与需求不符 |
 | 精度约束 | 严格限制同精度互操作 | 支持更宽松的混合精度 |
@@ -482,25 +482,11 @@ impl<T: Float> core::ops::Add<T> for Complex<T> {
     fn add(self, rhs: T) -> Self { Self::new(self.re + rhs, self.im) }
 }
 
-// T + Complex: r + (a+bi) = (r+a) + bi
-impl<T: Float> core::ops::Add<Complex<T>> for T {
-    type Output = Complex<T>;
-    #[inline]
-    fn add(self, rhs: Complex<T>) -> Self::Output { Complex::new(self + rhs.re, rhs.im) }
-}
-
 // Complex * T: (a+bi) * r = ar + bri
 impl<T: Float> core::ops::Mul<T> for Complex<T> {
     type Output = Self;
     #[inline]
     fn mul(self, rhs: T) -> Self { Self::new(self.re * rhs, self.im * rhs) }
-}
-
-// T * Complex: r * (a+bi) = ar + bri
-impl<T: Float> core::ops::Mul<Complex<T>> for T {
-    type Output = Complex<T>;
-    #[inline]
-    fn mul(self, rhs: Complex<T>) -> Self::Output { Complex::new(self * rhs.re, self * rhs.im) }
 }
 
 // Complex / T: (a+bi) / r = (a/r) + (b/r)i
@@ -510,31 +496,15 @@ impl<T: Float> core::ops::Div<T> for Complex<T> {
     fn div(self, rhs: T) -> Self { Self::new(self.re / rhs, self.im / rhs) }
 }
 
-// T / Complex: r / (a+bi) = r(a-bi) / (a²+b²)
-impl<T: Float> core::ops::Div<Complex<T>> for T {
-    type Output = Complex<T>;
-    #[inline]
-    fn div(self, rhs: Complex<T>) -> Self::Output {
-        let denom = rhs.re * rhs.re + rhs.im * rhs.im;
-        Complex::new(self * rhs.re / denom, -self * rhs.im / denom)
-    }
-}
-
-// Complex - T and T - Complex (similar pattern)
+// Complex - T
 impl<T: Float> core::ops::Sub<T> for Complex<T> {
     type Output = Self;
     #[inline]
     fn sub(self, rhs: T) -> Self { Self::new(self.re - rhs, self.im) }
 }
-
-impl<T: Float> core::ops::Sub<Complex<T>> for T {
-    type Output = Complex<T>;
-    #[inline]
-    fn sub(self, rhs: Complex<T>) -> Self::Output { Complex::new(self - rhs.re, -rhs.im) }
-}
 ```
 
-> **设计决策：** 仅支持同精度混合运算。`Complex<f64> + f32` 编译错误。跨精度须显式转换。
+> **设计决策：** 仅支持同精度混合运算。由于 Rust 孤儿规则，当前版本只直接实现 `Complex<T> op T`；需要左侧实数语法时，调用方应写成 `Complex::from(real) op complex`。`Complex<f64> + f32` 这类跨精度混合运算仍然编译错误，须显式转换。
 
 ### 4.8 PartialEq 实现
 
@@ -638,12 +608,12 @@ const _: () = {
 
 **安全性论证**: `#[repr(C)]` 确保 `re` 和 `im` 字段连续排列且无 padding。从首字段地址读取 2 个 T 值是安全的。
 
-### 4.12 C99 兼容性验证
+### 4.12 FFI 布局兼容性说明
 
-| C 类型 | 内存布局 | Rust 等价 |
+| C 表示 | 内存布局 | Rust 等价 |
 |--------|----------|-----------|
-| `_Complex float` | `[float, float]` | `Complex<f32>` |
-| `_Complex double` | `[double, double]` | `Complex<f64>` |
+| `struct { float re; float im; }` | `[float, float]` | `Complex<f32>` |
+| `struct { double re; double im; }` | `[double, double]` | `Complex<f64>` |
 
 FFI 示例：
 
@@ -655,8 +625,8 @@ pub extern "C" fn process_complex(z: *const Complex<f64>) -> Complex<f64> {
 }
 
 // C side
-// #include <complex.h>
-// double _Complex process_complex(const double _Complex* z);
+// typedef struct { double re; double im; } complex64_t;
+// complex64_t process_complex(const complex64_t* z);
 ```
 
 ### 4.13 Good / Bad 对比示例
@@ -757,6 +727,20 @@ hypot(a, b):
 └───────────────────────────────────────────────────────────────┘
 ```
 
+### 6.3 数据流描述
+
+```
+用户构造 Complex<f64>::new(re, im)
+    │
+    ├── complex/ 提供基础方法、算术运算与类型转换
+    │
+    ├── element/ 为 Complex<f64> 实现 Element/Numeric/ComplexScalar
+    │
+    ├── math / matrix / format 等上层模块消费这些 trait 与 inherent methods
+    │
+    └── FFI 场景下按双字段 C struct 布局进行边界验证后传递给外部接口
+```
+
 ---
 
 ## 7. 实现任务拆分
@@ -809,9 +793,9 @@ hypot(a, b):
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T7**: 实现 Complex 与实数混合运算（8 种组合）
+- [ ] **T7**: 实现 Complex 与同精度实数混合运算
   - 文件: `src/complex/ops.rs`
-  - 内容: `Complex±T`, `T±Complex`, `Complex*T`, `T*Complex`, `Complex/T`, `T/Complex`, `Complex-T`, `T-Complex`
+  - 内容: `Complex±T`, `Complex*T`, `Complex/T`，并补充 `Complex::from(real)` 的显式转换用法示例
   - 测试: `test_add_real`, `test_mul_real`, `test_div_real`
   - 前置: T5, T6
   - 预计: 10 min
@@ -923,7 +907,7 @@ Wave 5: [T11] → [T12]
 | Inf 参与 | `Complex::new(Inf, 0.0).exp()` 正确处理 |
 | 极大值 norm | `Complex::new(1e200, 1e200).norm()` 不溢出（≈1.414e200） |
 | 极小值 norm | `Complex::new(1e-200, 1e-200).norm()` 正确 |
-| 数组 transmute | `&[Complex<f64>; N]` 可安全转为 `&[f64; 2N]` |
+| 连续字段布局 | `Complex<f64>` 的 `re/im` 字段顺序稳定，可逐元素读取 |
 
 ### 8.3 属性测试不变量
 
@@ -979,7 +963,7 @@ Wave 5: [T11] → [T12]
 
 | 方面 | 设计决策 |
 |------|----------|
-| `#[repr(C)]` | 保证 FFI 兼容且无 padding，内存紧凑 |
+| `#[repr(C)]` | 保证字段顺序稳定，便于与双字段 C 结构体做布局验证 |
 | 内联 | 所有运算方法标注 `#[inline]`，编译器可内联 |
 | 零堆分配 | `Complex<T>` 为 `Copy` 类型，全部栈分配 |
 | 单态化 | `Complex<f32>` 和 `Complex<f64>` 各自单态化，无虚调用 |

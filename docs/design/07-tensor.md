@@ -17,7 +17,7 @@
 | 基础查询 | shape/ndim/len/strides/is_empty/is_f_contiguous/is_aligned 等方法 | 形状操作（reshape/transpose，参见 `16-shape.md §1`） |
 | 安全构造 | 从形状和数据构造，验证合法性 | 索引操作（参见 `17-indexing.md §1`） |
 | unsafe 构造 | `from_raw_parts`，用于 FFI | 切片操作（参见 `17-indexing.md §5`） |
-| 视图方法 | view/view_mut/into_view | 集合操作（参见 `11-math.md §1`） |
+| 视图方法 | view/view_mut | 集合操作（参见 `11-math.md §1`） |
 
 ### 1.2 设计原则
 
@@ -85,7 +85,7 @@ src/tensor/
 
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
-| `storage` | `Owned<A>`, `ViewRepr<&'a A>`, `ViewMutRepr<&'a mut A>`, `ArcRepr<A>`, `Storage`, `StorageMut`, `StorageOwned`, `StorageShared`（参见 `05-storage.md §4`） |
+| `storage` | `Owned<A>`, `ViewRepr<'a, A>`, `ViewMutRepr<'a, A>`, `ArcRepr<A>`, `Storage`, `StorageMut`, `StorageOwned`, `StorageShared`（参见 `05-storage.md §4`） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.size()`, `.ndim()`（参见 `02-dimension.md §4`） |
 | `layout` | `LayoutFlags`, `compute_f_strides()`, `is_f_contiguous()`, `is_aligned()`（参见 `06-memory.md §4`） |
 
@@ -157,10 +157,10 @@ pub struct TensorBase<S, D> {
 pub type Tensor<A, D> = TensorBase<Owned<A>, D>;
 
 /// Immutable view.
-pub type TensorView<'a, A, D> = TensorBase<ViewRepr<&'a A>, D>;
+pub type TensorView<'a, A, D> = TensorBase<ViewRepr<'a, A>, D>;
 
 /// Mutable view.
-pub type TensorViewMut<'a, A, D> = TensorBase<ViewMutRepr<&'a mut A>, D>;
+pub type TensorViewMut<'a, A, D> = TensorBase<ViewMutRepr<'a, A>, D>;
 
 /// Atomically reference-counted shared array.
 pub type ArcTensor<A, D> = TensorBase<ArcRepr<A>, D>;
@@ -355,7 +355,7 @@ where
 ### 4.6 unsafe 构造方法
 
 ```rust
-impl<'a, A, D> TensorBase<ViewRepr<&'a A>, D>
+impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D>
 where
     D: Dimension,
 {
@@ -378,7 +378,7 @@ where
     ) -> Self;
 }
 
-impl<'a, A, D> TensorBase<ViewMutRepr<&'a mut A>, D>
+impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D>
 where
     D: Dimension,
 {
@@ -415,23 +415,6 @@ where
 {
     /// Creates a mutable view (zero-copy, exclusive access).
     pub fn view_mut(&mut self) -> TensorViewMut<'_, A, D>;
-}
-
-impl<S, D> TensorBase<S, D>
-where
-    D: Dimension,
-{
-    /// Consumes the array, converting to an immutable view.
-    ///
-    /// Suitable for converting Owned/ArcRepr to View without lifetime binding.
-    ///
-    /// > **注意：** 此方法的泛型约束 `S: Into<S2>` 对涉及生命周期的存储类型
-    /// > 适用性有限。对于常见场景（Owned → View、ArcRepr → View），
-    /// > 推荐使用具体的 `view()` 和 `view_mut()` 方法，它们直接返回
-    /// > 正确的视图类型，避免了泛型转换的限制。
-    pub fn into_view<S2>(self) -> TensorBase<S2, D>
-    where
-        S: Into<S2>;
 }
 ```
 
@@ -595,7 +578,7 @@ Tensor2<f64> = TensorBase<Owned<f64>, Ix2>
 
 - [ ] **T9**: 实现视图创建方法
   - 文件: `src/tensor/impls.rs`
-  - 内容: `view()`/`view_mut()`/`into_view()`
+  - 内容: `view()`/`view_mut()`
   - 测试: `test_view_create`, `test_view_mut_create`
   - 前置: T6
   - 预计: 10 min

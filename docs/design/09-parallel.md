@@ -28,7 +28,7 @@
 | 透明集成 | 用户代码无需修改，仅通过 feature gate 启用 |
 | 自动决策 | 运行时根据数据规模和布局自动选择并行/串行 |
 | 可配置性 | 支持全局配置和单次调用覆盖阈值 |
-| 安全性 | 禁止嵌套并行，保证无数据竞争；通过显式并行上下文令牌而非线程局部状态检测 |
+| 安全性 | 禁止嵌套并行，保证无数据竞争；通过 `ParallelGuard` 运行时守卫检测并回退串行 |
 | 兼容性 | 可被上层语义模块与 SIMD 组合使用，但 `parallel/` 本身不直接依赖 `simd/` |
 
 ### 1.3 在架构中的位置
@@ -50,20 +50,13 @@ L5: parallel  ← 当前模块（可选，feature = "parallel"）
 │                      性能分层决策树                               │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  元素数 < SIMD_WIDTH (如 16)                                     │
-│  └─→ 标量路径 (scalar)                                           │
-│                                                                 │
-│  元素数 ≥ SIMD_WIDTH 且 连续内存 且 simd 启用                      │
-│  └─→ SIMD 路径 (vectorized)                                     │
-│                                                                │
 │  元素数 ≥ PARALLEL_THRESHOLD (默认 1024) 且 parallel 启用        │
 │  └─→ 并行路径                                                   │
-│      ├─ 连续内存 + simd 启用: 分块后各块 SIMD                     │
-│      ├─ 连续内存 + simd 禁用: 分块后各块标量                       │
-│      └─ 非连续内存: 分块后各块标量                                 │
-│                                                                │
+│      └─ 每个分块内部使用的具体执行内核（SIMD 或标量）由上层语义模块 │
+│         或共享 dispatch 辅助层决定；`parallel/` 本身不直接裁决 SIMD │
+│                                                                 │
 │  默认情况                                                       │
-│  └─→ 标量路径 (scalar)                                          │
+│  └─→ 串行路径                                                   │
 │                                                                │
 └────────────────────────────────────────────────────────────────┘
 ```
@@ -596,17 +589,18 @@ where
 ```rust
 // src/parallel/mod.rs
 
-/// Explicit parallel context token.
+/// Runtime guard for parallel execution.
 ///
-/// Parallel entry points receive or create a token representing
-/// “already inside a parallel region”. Nested parallel APIs must
-/// detect this token and fall back to serial execution.
+/// Parallel entry points call `ParallelGuard::enter()` before spawning work.
+/// If a guard is already active in the current execution context, nested
+/// parallel APIs fall back to serial execution.
 pub struct ParallelGuard;
 
 impl ParallelGuard {
     /// Enter a parallel context.
     ///
-    /// Returns `None` if the caller already carries an active parallel token.
+    /// Returns `None` if the current execution context is already inside
+    /// a parallel region.
     pub fn enter() -> Option<Self>;
 }
 
@@ -617,8 +611,7 @@ impl Drop for ParallelGuard {
 }
 ```
 
-> **设计说明：** 不使用线程局部深度计数。并行上下文必须通过显式令牌在调用链中传播，
-> 这样 rayon worker 间也能正确感知“已经在并行区域中”，避免嵌套并行检测失效。
+> **设计说明：** 不在公共 API 中显式暴露并行令牌参数。并行入口统一通过 `ParallelGuard::enter()` 建立运行时守卫；若检测到已处于并行区域，则内层操作自动回退串行，避免嵌套并行失效。
 
 ### 4.8 Good/Bad 对比示例
 
@@ -907,7 +900,7 @@ Wave 4:        [T8]
 
 ### 8.1 与 simd 模块
 
-并行路径的每个工作线程内部可以使用 SIMD（参见 `08-simd.md §8.2`）。组合使用时：
+并行路径的每个工作线程可以调用上层提供的分块执行器；若上层在该分块上启用 SIMD，则形成“并行 + SIMD”组合路径（参见 `08-simd.md §8.2`）。
 
 ```
 并行 + SIMD 组合执行
@@ -916,11 +909,11 @@ Wave 4:        [T8]
 │ par_map(tensor, f)                                              │
 │   ├─ 分块: [0..N/4), [N/4..N/2), [N/2..3N/4), [3N/4..N)       │
 │   │                                                             │
-│   ├─ 线程 0: f(chunk_0)                                         │
-│   │   └─ 内部使用 VectorKernel::add (SIMD)                      │
+│   ├─ 线程 0: execute_chunk(chunk_0)                             │
+│   │   └─ 具体使用 SIMD 还是标量，由上层 dispatch 决定             │
 │   │                                                             │
-│   ├─ 线程 1: f(chunk_1)                                         │
-│   │   └─ 内部使用 VectorKernel::add (SIMD)                      │
+│   ├─ 线程 1: execute_chunk(chunk_1)                             │
+│   │   └─ 具体使用 SIMD 还是标量，由上层 dispatch 决定             │
 │   │                                                             │
 │   └─ ...                                                        │
 └─────────────────────────────────────────────────────────────────┘
@@ -933,6 +926,23 @@ Wave 4:        [T8]
 ### 8.3 与 tensor 模块
 
 并行操作消费 `Tensor<A, D>` 的视图，产出新的 `Tensor<A, D>`（参见 `07-tensor.md §4.5`）。
+
+### 8.4 数据流描述
+
+```
+上层语义模块调用 par_map / par_sum / par_zip_with
+    │
+    ├── ParallelGuard::enter()
+    │       └── 若已在并行区域 → 自动回退串行
+    │
+    ├── should_parallelize(len, is_f_contiguous)
+    │       ├── 低于阈值 → 串行
+    │       └── 达到阈值 → 并行分块
+    │
+    ├── rayon 对分块并行执行
+    │
+    └── 每个分块内部的具体执行内核（SIMD / 标量）由上层 dispatch 决定
+```
 
 ---
 
@@ -972,7 +982,7 @@ Wave 4:        [T8]
 | 属性 | 值 |
 |------|-----|
 | 决策 | 检测到嵌套并行时自动回退到串行执行 |
-| 理由 | 更宽容，不会中断用户程序；通过显式并行上下文令牌允许调用链在检测到嵌套时回退串行 |
+| 理由 | 更宽容，不会中断用户程序；通过 `ParallelGuard` 运行时守卫允许调用链在检测到嵌套时回退串行 |
 | 替代方案 | panic — 放弃，虽然能暴露问题，但可能破坏生产环境 |
 | 替代方案 | 编译期禁止 — 放弃，Rust 类型系统难以在编译期检测嵌套并行 |
 

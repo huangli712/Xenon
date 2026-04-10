@@ -948,7 +948,7 @@ Wave 2: [T4]
 |----------|----------|--------|
 | `test_rustfmt_check` | `cargo fmt --check` 通过 | 高 |
 | `test_clippy_check` | `cargo clippy` 无警告 | 高 |
-| `test_compile_no_std` | `--no-default-features` 编译通过 | 高 |
+| `ci_no_std_check` | `cargo check --no-default-features` 编译通过 | 高 |
 | `test_compile_all_features` | `--all-features` 编译通过 | 高 |
 
 ---
