@@ -379,7 +379,7 @@ fn main() -> xenon::Result<()> {
 
 ### 9.1 结构
 
-```markdown
+````markdown
 # Xenon
 
 Rust N-dimensional tensor library for scientific computing.
@@ -405,7 +405,7 @@ xenon = "0.1"
 
 ## License
 MIT
-```
+````
 
 ---
 
@@ -676,7 +676,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | 辅助模块（convert, format, error） | ≥60% | 至少构造和基本使用有 doctest |
 | 迭代与归约模块（iter, reduction, matrix） | ≥80% | 核心入口、边界行为和错误路径有 doctest |
 
-### 15.2a 边界测试场景表
+### 15.3 边界测试场景表
 
 | 场景 | 预期行为 |
 |------|----------|
@@ -685,7 +685,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | unsafe API 文档 | 必须包含 `# Safety` 且示例不省略关键前置条件 |
 | 大型数组输出示例 | 截断格式与 `22-output.md` 保持一致 |
 
-### 15.2b 属性测试不变量
+### 15.4 属性测试不变量
 
 | 不变量 | 验证方式 |
 |--------|----------|
@@ -693,7 +693,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | 所有关键模块都有至少一个可运行示例 | doctest / examples 构建联合验证 |
 | 文档中的路径与模块名和架构文档一致 | broken links 检查 + 人工审阅 |
 
-### 15.3 CI 配置
+### 15.5 CI 配置
 
 ```yaml
 # .github/workflows/docs.yml

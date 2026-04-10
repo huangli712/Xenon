@@ -291,7 +291,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_sum_nan` | sum 含 NaN 结果为 NaN | 中 |
 | `test_integer_sum_overflow` | 整数 sum 溢出视为不可恢复错误 | 中 |
 
-### 5.6a test_iterator.rs
+### 5.7 test_iterator.rs
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
@@ -301,7 +301,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_indexed_iter` | 按索引遍历返回 F-order 逻辑索引 | 中 |
 | `test_zip_iter` | 多数组同步遍历与广播只读约束 | 高 |
 
-### 5.6b test_matrix.rs
+### 5.8 test_matrix.rs
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
@@ -310,7 +310,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_dot_shape_mismatch` | 内积维度不匹配返回错误 | 高 |
 | `test_dot_empty` | 空向量 dot 返回加法单位元 | 中 |
 
-### 5.6c test_set.rs
+### 5.9 test_set.rs
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
@@ -318,7 +318,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_unique_integers` | 整数 unique | 中 |
 | `test_unique_complex` | 复数 unique | 中 |
 
-### 5.7 test_shape.rs
+### 5.10 test_shape.rs
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
@@ -327,7 +327,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_transpose_2d` | 2D 转置 | 高 |
 | `test_transpose_high_dim` | 高维转置 | 中 |
 
-### 5.8 test_conversion.rs
+### 5.11 test_conversion.rs
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
@@ -337,7 +337,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_cast_nan_to_int` | NaN→整数行为 | 中 |
 | `test_cast_bool_numeric` | bool↔数值转换 | 中 |
 
-### 5.8a test_utility.rs
+### 5.12 test_utility.rs
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
@@ -346,7 +346,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_clip_usize` | usize 裁剪 | 中 |
 | `test_to_contiguous` | 连续化保持逻辑元素顺序 | 高 |
 
-### 5.8b test_output.rs
+### 5.13 test_output.rs
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
@@ -355,7 +355,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_debug_includes_metadata` | Debug 包含 shape/stride/type 信息 | 中 |
 | `test_output_complex` | 复数格式化输出 | 中 |
 
-### 5.9 test_ffi.rs
+### 5.14 test_ffi.rs
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
@@ -366,7 +366,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_from_raw_parts_roundtrip` | into_raw_parts → from_raw_parts 往返 | 高 |
 | `test_index_to_offset` | index_to_offset 正确计算 | 高 |
 
-### 5.9a test_workspace.rs
+### 5.15 test_workspace.rs
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
@@ -375,7 +375,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_workspace_split` | split 后子工作空间边界正确 | 中 |
 | `test_workspace_ensure_capacity` | 扩容不破坏已借用安全性 | 高 |
 
-### 5.10 test_parallel.rs
+### 5.16 test_parallel.rs
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
@@ -384,7 +384,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_parallel_read` | 多线程并发只读访问安全（参见 `25-safety.md §4.4`） | 高 |
 | `test_nested_parallel_falls_back_to_serial` | 嵌套并行检测后自动回退串行 | 中 |
 
-### 5.11 test_simd.rs
+### 5.17 test_simd.rs
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
@@ -392,7 +392,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_simd_sum_consistency` | SIMD sum 与标量 sum 结果一致 | 高 |
 | `test_simd_fallback_small` | 小数组 SIMD 回退到标量 | 中 |
 
-### 5.12 no_std 编译验证
+### 5.18 no_std 编译验证
 
 > **注意**：no_std 兼容性验证不能通过 `#[test]` 宏实现（测试框架本身依赖 `std`），应通过 CI 脚本验证编译通过。
 
@@ -408,7 +408,7 @@ no_std_check:
           run: cargo check --no-default-features
 ```
 
-### 5.13 test_error.rs
+### 5.19 test_error.rs
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
