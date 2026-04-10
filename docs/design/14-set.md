@@ -382,15 +382,34 @@ Wave 4: [T5]
 | 已排序输入 `[1, 2, 3]` | 返回 `[1, 2, 3]`（无拷贝优化） |
 | 逆序输入 `[3, 2, 1]` | 返回 `[1, 2, 3]` |
 
+### 7.4 集成测试
+
+| 测试文件 | 测试内容 |
+|----------|----------|
+| `tests/set.rs` | `unique()` 与 `tensor`、`iter`、`element`、`complex`、`alloc` 路径的端到端协同验证 |
+
 ---
 
 ## 8. 与其他模块的交互
+
+### 8.1 接口约定
 
 | 交互模块 | 接口约定 |
 |----------|----------|
 | `tensor` | 消费 `TensorBase<S, D>`，返回 `Tensor<A, Ix1>`，参见 `07-tensor.md` §4 |
 | `iter` | 使用 `Elements` 迭代器收集元素，参见 `10-iterator.md` §3 |
 | `element` | 泛型约束 `UniqueElement: Element`（排除 bool/usize，提供 `total_cmp`），参见 `03-element.md` §3 |
+
+### 8.2 数据流描述
+
+```text
+用户调用 unique()
+    │
+    ├── set 模块先通过 iter 收集逻辑元素到临时 Vec
+    ├── 再按 UniqueElement::total_cmp / total_eq 排序并去重
+    ├── 若元素为复数，则复用 complex 的字段级排序规则
+    └── 最终构造新的 1D owned tensor 返回给调用方
+```
 
 ---
 

@@ -842,7 +842,7 @@ Wave 4:   [T6]
 | `test_single_element` | 单元素数组正确处理 | 中 |
 | `test_misaligned_ptr` | 非对齐数据回退到标量 | 中 |
 
-### 7.3 边界测试场景表
+### 7.3 边界测试场景
 
 | 场景 | 预期行为 |
 |------|----------|
@@ -863,25 +863,23 @@ Wave 4:   [T6]
 | SIMD dot(a, b) == scalar dot(a, b)（若无法保证则 dispatch 回退标量） | 随机 `[f64; 1..8192]` |
 | tail 处理正确 | `len = n * width + k`, k ∈ [0, width) |
 
+### 7.5 集成测试
+
+| 测试文件 | 测试内容 |
+|----------|----------|
+| `tests/simd.rs` | SIMD dispatch 与 `math`、`reduction`、`matrix`、`layout`、`parallel` 组合路径的端到端验证 |
+
 ---
 
 ## 8. 与其他模块的交互
 
-### 8.1 与 math 模块
+### 8.1 接口约定
 
 `math/` 模块在执行逐元素运算时，调用 `simd::can_use_simd()` 检查条件，满足时使用 `VectorKernel`，否则使用 `ScalarKernel`（参见 `11-math.md §5.3`）。
 
 > **分派策略**: `math` 模块提供公共 `sqrt()` API（标量路径），`simd` 模块提供加速路径。编译时通过 `cfg(feature = "simd")` 自动选择。用户仅调用 `math::sqrt()`，无需关心底层分派。
 
-### 8.2 与 parallel 模块
-
-并行路径的每个工作线程内部可以使用 SIMD。组合使用时：先按并行阈值分块到各线程，线程内部再检查 SIMD 条件执行向量化（参见 `09-parallel.md §8.1`）。
-
-### 8.3 与 storage/layout 模块
-
-SIMD 模块依赖 layout 提供的连续性和对齐信息来判断是否可以使用 SIMD 路径（参见 `06-memory.md §4.5`）。
-
-### 8.4 数据流描述
+### 8.2 数据流描述
 
 ```
 math/reduction/matrix 调用加速入口
@@ -896,6 +894,14 @@ math/reduction/matrix 调用加速入口
     │
     └── NO  → ScalarKernel 逐元素/归约/内积回退路径
 ```
+
+### 8.3 与 parallel 模块
+
+并行路径的每个工作线程内部可以使用 SIMD。组合使用时：先按并行阈值分块到各线程，线程内部再检查 SIMD 条件执行向量化（参见 `09-parallel.md §8.1`）。
+
+### 8.4 与 storage/layout 模块
+
+SIMD 模块依赖 layout 提供的连续性和对齐信息来判断是否可以使用 SIMD 路径（参见 `06-memory.md §4.5`）。
 
 ---
 

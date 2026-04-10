@@ -663,28 +663,14 @@ Wave 4:             [T9]
 
 ## 8. 与其他模块的交互
 
-### 8.1 与 tensor 模块
+### 8.1 接口约定
 
 ```rust
 // tensor module provides iterator entry methods（参见 07-tensor.md §4.6）
 // iter module consumes TensorView / TensorViewMut
 ```
 
-### 8.2 与 storage / dimension 模块
-
-```rust
-// Iterators read data via the Storage trait（参见 05-storage.md §4）
-// Index state is managed via the Dimension trait（参见 02-dimension.md §4）
-```
-
-### 8.3 与 broadcast 模块
-
-```rust
-// Zip calls broadcast_shape() at construction to verify shape compatibility（参见 15-broadcast.md §4）
-// Zero strides in broadcast views are handled correctly by the iter module
-```
-
-### 8.4 数据流描述
+### 8.2 数据流描述
 
 ```text
 用户调用 tensor.iter() / axis_iter() / zip()
@@ -693,6 +679,20 @@ Wave 4:             [T9]
     ├── iter 模块根据 shape + strides 构造迭代器状态
     ├── 若是 zip/broadcast 路径，则先由 broadcast 校验公共形状
     └── 逐步产出元素 / 子视图，供 math / reduction / overload 消费
+```
+
+### 8.3 与 storage / dimension 模块
+
+```rust
+// Iterators read data via the Storage trait（参见 05-storage.md §4）
+// Index state is managed via the Dimension trait（参见 02-dimension.md §4）
+```
+
+### 8.4 与 broadcast 模块
+
+```rust
+// Zip calls broadcast_shape() at construction to verify shape compatibility（参见 15-broadcast.md §4）
+// Zero strides in broadcast views are handled correctly by the iter module
 ```
 
 ---

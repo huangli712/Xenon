@@ -296,9 +296,17 @@ Wave 4: [T4]
 | 大向量（1M 元素） | SIMD 路径启用，结果正确 |
 | 非连续向量（切片后） | 回退到标量路径，结果正确 |
 
+### 7.4 集成测试
+
+| 测试文件 | 测试内容 |
+|----------|----------|
+| `tests/matrix.rs` | `dot()` 与 `tensor`、`iter`、`element`、`simd`、`error` 路径的端到端协同验证 |
+
 ---
 
 ## 8. 与其他模块的交互
+
+### 8.1 接口约定
 
 | 交互模块 | 接口约定 |
 |----------|----------|
@@ -307,6 +315,17 @@ Wave 4: [T4]
 | `element` | 泛型约束 `Numeric` / `ComplexScalar`，参见 `03-element.md` §3 |
 | `simd`（可选） | 连续内存时自动走 SIMD 路径，参见 `08-simd.md` §3 |
 | `error` | 形状不匹配返回 `XenonError::ShapeMismatch` |
+
+### 8.2 数据流描述
+
+```text
+用户调用 dot(a, b)
+    │
+    ├── matrix 模块先检查两侧是否为 1D、长度是否匹配、是否为空
+    ├── 复数路径通过 Numeric/ComplexScalar 决定是否先做共轭
+    ├── 连续内存时可委托 simd backend，否则通过 iter 标量遍历
+    └── 返回标量结果或可恢复错误 `XenonError`
+```
 
 ---
 

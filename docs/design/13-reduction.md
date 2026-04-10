@@ -391,9 +391,17 @@ Wave 5:         [T7]
 | f64 含 +Inf/-Inf | sum 返回 +Inf/-Inf |
 | 非连续数组（切片后） | sum 结果与连续数组一致 |
 
+### 7.4 集成测试
+
+| 测试文件 | 测试内容 |
+|----------|----------|
+| `tests/reduction.rs` | `sum` / `sum_axis` / `keepdims` 与 `iter`、`tensor`、`element`、`simd`、`parallel` 的端到端协同路径 |
+
 ---
 
 ## 8. 与其他模块的交互
+
+### 8.1 接口约定
 
 | 交互模块 | 接口约定 |
 |----------|----------|
@@ -402,6 +410,18 @@ Wave 5:         [T7]
 | `element` | 泛型约束 `Numeric`（全局 sum），`RealScalar`（浮点特化），参见 `03-element.md` §3 |
 | `simd`（可选） | 连续数组自动走 SIMD 归约路径，参见 `08-simd.md` §3 |
 | `parallel`（可选） | 大数组自动走并行归约路径，参见 `09-parallel.md` §4 |
+
+### 8.2 数据流描述
+
+```text
+用户调用 sum() / sum_axis() / sum_axis_keepdims()
+    │
+    ├── reduction 模块先验证 axis / keepdims / 空数组等前提
+    ├── iter 模块提供元素流或按轴子视图
+    ├── element trait 决定普通求和、NaN 传播与整数 checked_add 策略
+    ├── 连续且 feature 允许时可委托 simd / parallel backend，否则走串行基线
+    └── 最终返回标量或新的 reduced tensor
+```
 
 ---
 

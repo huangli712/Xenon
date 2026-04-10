@@ -929,9 +929,17 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 | 借用后 `borrow_state != NONE` | 篡借检查 |
 | 扩容后对齐不变 | `alignment()` 一致 |
 
+### 7.4 集成测试
+
+| 测试文件 | 测试内容 |
+|----------|----------|
+| `tests/workspace.rs` | `new` / `borrow` / `split_at_mut` / `ensure_capacity` 与 `ffi`、上游 scratch-buffer 场景的端到端协同验证 |
+
 ---
 
 ## 8. 与其他模块的交互
+
+### 8.1 接口约定
 
 | 交互点 | 方向 | 说明 |
 |--------|------|------|
@@ -939,7 +947,7 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 | 上游库 → workspace | 上游 FFT 库通过 `split_at()` 分割工作空间 |
 | tensor -> workspace | Tensor 操作通过 workspace 分配临时空间（参见 `07-tensor.md §4`，可选） |
 
-### 8.1 数据流描述
+### 8.2 数据流描述
 
 ```
 上层模块请求临时工作空间

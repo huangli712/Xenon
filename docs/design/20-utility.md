@@ -413,12 +413,25 @@ Wave 2:      [T3] → [T4]
 
 ## 8. 与其他模块的交互
 
+### 8.1 接口约定
+
 | 交互点 | 方向 | 说明 |
 |--------|------|------|
 | `fill` → `iter` | 依赖 | 通过 `iter_mut()` 遍历元素（参见 `10-iterator.md` §4.1） |
 | `clip` → `iter` | 依赖 | 通过 `iter()` 读取、写入新张量（参见 `10-iterator.md` §4.1） |
 | `to_contiguous` → `layout` | 依赖 | 查询连续性状态（参见 `06-memory.md` §4） |
 | `to_contiguous` → `convert` | 依赖 | 调用 `to_owned()`/`to_f_contiguous()`（参见 `21-type.md` §4.5 和 §4.7），始终输出 F-order；`to_f_contiguous()` 在 21 中定义，负责将非连续内存重排为 F-order 连续布局 |
+
+### 8.2 数据流描述
+
+```text
+用户调用 fill() / clip() / to_contiguous()
+    │
+    ├── utility 模块先判断是原地修改、生成新 tensor，还是仅做连续化
+    ├── fill / clip 通过 iter / iter_mut 访问逻辑元素
+    ├── to_contiguous 先查询 layout 连续性，再按需委托 convert::to_f_contiguous()
+    └── 最终返回修改后的原张量或新的 owned F-order 张量
+```
 
 ---
 

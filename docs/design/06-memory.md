@@ -620,7 +620,7 @@ Wave 4:       [T8]
 
 ## 7. 测试计划
 
-### 7.1 测试分类
+### 7.1 测试分类表
 
 | 类型 | 位置 | 目的 |
 |------|------|------|
@@ -665,17 +665,34 @@ Wave 4:       [T8]
 | `compute_f_strides` 后 `is_f_contiguous` 返回 true | 随机 shape |
 | 对齐与非对齐数据元素值一致 | `from_vec_aligned(v)` 与 `from_vec(v)` 逐元素比较 |
 
+### 7.5 集成测试
+
+| 测试文件 | 测试内容 |
+|----------|----------|
+| `tests/layout.rs` | `compute_f_strides` / `compute_flags` / `is_aligned` 与 `tensor`、`storage`、`simd`、`ffi` 的端到端协同路径 |
+
 ---
 
 ## 8. 与其他模块的交互
 
-### 8.1 与 Storage 模块
+### 8.1 接口约定
 
 | 交互点 | 方向 | 说明 |
 |--------|------|------|
 | 对齐检查 | tensor/storage → layout | `TensorBase` 构造时将逻辑首元素指针（`as_ptr()` 语义）传入 `layout::is_aligned()` 计算对齐标志。layout 不依赖 Storage trait，仅操作原始指针。 |
 
-### 8.2 与 Tensor 模块
+### 8.2 数据流描述
+
+```text
+上层模块创建或变换张量元数据
+    │
+    ├── layout 模块根据 shape + strides + logical-first pointer 计算 flags
+    ├── tensor 模块缓存 F-contiguous / aligned / zero-stride / neg-stride 结果
+    ├── simd / ffi / shape / index 再消费这些 flags 做路径选择
+    └── 最终避免在热路径重复计算连续性和对齐状态
+```
+
+### 8.3 与 Tensor 模块
 
 | 交互点 | 方向 | 说明 |
 |--------|------|------|
@@ -683,14 +700,14 @@ Wave 4:       [T8]
 | 切片操作 | tensor → layout | 切片时调用 layout 更新连续性/对齐标志（参见 `17-indexing.md §5`） |
 | Reshape | tensor → layout | reshape 时重新计算步长和 layout（参见 `16-shape.md §4`） |
 
-### 8.3 与 SIMD 模块
+### 8.4 与 SIMD 模块
 
 | 交互点 | 方向 | 说明 |
 |--------|------|------|
 | 路径选择 | simd ← layout | simd 查询 `is_aligned()` 和 `is_f_contiguous()`（参见 `08-simd.md §4.6`） |
 | 步长检查 | simd ← layout | simd 检查步长是否为 1（连续） |
 
-### 8.4 与 FFI 模块
+### 8.5 与 FFI 模块
 
 | 交互点 | 方向 | 说明 |
 |--------|------|------|

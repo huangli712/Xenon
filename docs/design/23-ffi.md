@@ -782,9 +782,17 @@ Wave 3: ┌────┴────┐
 | `into_raw_parts` + 手动释放 | 正确释放（通过 allocator API） |
 | `from_raw_parts` 野指针 | AddressSanitizer 检测 |
 
+### 7.4 集成测试
+
+| 测试文件 | 测试内容 |
+|----------|----------|
+| `tests/ffi.rs` | 指针 API / BLAS 兼容检查 / raw-parts roundtrip 与 `tensor`、`layout`、`storage` 的端到端协同路径 |
+
 ---
 
 ## 8. 与其他模块的交互
+
+### 8.1 接口约定
 
 | 交互点 | 方向 | 说明 |
 |--------|------|------|
@@ -792,6 +800,17 @@ Wave 3: ┌────┴────┐
 | BLAS 检查 | ffi ← layout | 使用 `is_f_contiguous()`、`has_zero_stride()`、`has_neg_stride()`（参见 `06-memory.md` §4） |
 | 解构 | ffi → storage | `into_raw_parts` 使用 `StorageIntoRaw` trait（参见 `05-storage.md` §4） |
 | BLAS 参数 | 上游库 ← ffi | 上游 BLAS 库调用 `blas_info()`、`lda()` 等获取参数 |
+
+### 8.2 数据流描述
+
+```text
+上游库调用 as_ptr() / blas_info() / into_raw_parts()
+    │
+    ├── ffi 模块从 tensor/storage 读取原始指针、shape、strides、offset
+    ├── layout 模块负责判断 BLAS 兼容性与 leading-dimension 前提
+    ├── raw-parts 路径在 owned roundtrip 时把所有权移交给调用方或重建回 tensor
+    └── 最终向外部 C / BLAS 边界暴露零拷贝参数
+```
 
 ---
 

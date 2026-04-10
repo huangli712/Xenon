@@ -552,9 +552,17 @@ Wave 3: [T6] [T7]  (并行)
 | `cast::<f32>().cast::<f64>()` 对 f64 输入保持近似相等 | 随机数据 |
 | `to_owned().shape() == view.shape()` | 随机形状 |
 
+### 7.4 集成测试
+
+| 测试文件 | 测试内容 |
+|----------|----------|
+| `tests/convert.rs` | `cast` / `to_owned` / `into_owned` / `to_f_contiguous` 与 `tensor`、`element`、`storage`、`layout`、`complex` 的端到端协同路径 |
+
 ---
 
 ## 8. 与其他模块的交互
+
+### 8.1 接口约定
 
 | 交互模块 | 方向 | 说明 |
 |----------|------|------|
@@ -564,6 +572,18 @@ Wave 3: [T6] [T7]  (并行)
 | `storage` | convert → storage | `into_owned()` 消费 `StorageIntoOwned` trait；存储模式互转依赖 `Owned`/`ViewRepr`/`ArcRepr`（参见 `05-storage.md` §4） |
 | `layout` | convert → layout | `to_owned()` 调用 `is_f_contiguous()` 判断是否需要重排（参见 `06-memory.md` §4） |
 | `complex` | convert → complex | `CastTo<Complex<T>>` 实现依赖 `Complex` 结构体定义；反向转换（Complex → T）故意不提供（参见 `04-complex.md` §4） |
+
+### 8.2 数据流描述
+
+```text
+用户调用 cast() / to_owned() / into_owned() / to_f_contiguous()
+    │
+    ├── convert 模块先读取 tensor 的 shape / strides / storage 模式
+    ├── cast 路径通过 iter 收集并按 CastTo 规则逐元素重编码
+    ├── to_owned / into_owned 路径按 storage 语义决定 O(1) 转移或 O(n) 拷贝
+    ├── 非连续路径委托 to_f_contiguous() 重排为 F-order owned 数据
+    └── 最终返回新的 owned tensor 或视图转换结果，供 math / ffi / output 继续消费
+```
 
 ---
 
