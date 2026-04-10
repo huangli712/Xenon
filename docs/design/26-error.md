@@ -392,7 +392,7 @@ where
 
 所有 `Drop` 实现不得 panic，确保即使在其他 panic 过程中也能安全清理（参见 `05-storage.md §5`）：
 
-### 5.5a Drop 安全与 panic-in-drop 问题
+### 5.7 Drop 安全与 panic-in-drop 问题
 
 `Drop` 实现调用 `core::ptr::drop_in_place(slice)`，该函数会调用元素类型 `A` 的 `Drop` 实现。如果在 panic unwind 期间 `A` 的 `Drop` 再次 panic，Rust 将中止进程（double panic = abort）。
 
@@ -430,7 +430,7 @@ impl<A> Drop for OwnedRepr<A> {
 }
 ```
 
-### 5.6 no_std 兼容性
+### 5.8 no_std 兼容性
 
 ```rust
 // src/error.rs
@@ -539,7 +539,7 @@ Wave 3: ┌──[T6]────┤
 
 ## 7. 测试计划
 
-### 7.0 测试分类表
+### 7.1 测试分类表
 
 | 测试分类 | 位置 | 说明 |
 |----------|------|------|
@@ -547,7 +547,7 @@ Wave 3: ┌──[T6]────┤
 | 集成测试 | `tests/` | 验证公共 API 将底层失败映射为 `XenonError` 的路径 |
 | 边界/属性测试 | 同模块测试与属性测试 | 覆盖空形状、大形状和错误诊断信息不变量 |
 
-### 7.1 单元测试清单
+### 7.2 单元测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
@@ -563,7 +563,7 @@ Wave 3: ┌──[T6]────┤
 | `test_partial_eq` | PartialEq 可正确比较相同/不同变体 | 中 |
 | `test_clone` | Clone 产生相等副本 | 低 |
 
-### 7.2 边界测试场景
+### 7.3 边界测试场景
 
 | 场景 | 预期行为 |
 |------|----------|
@@ -571,7 +571,7 @@ Wave 3: ┌──[T6]────┤
 | 大形状 `Cow::Owned(vec![1000000, 1000000])` | Display 正确格式化 |
 | 多次 Display 格式化 | 结果一致（无内部状态变化） |
 
-### 7.3 集成测试清单
+### 7.4 集成测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
@@ -580,13 +580,13 @@ Wave 3: ┌──[T6]────┤
 | `test_empty_array_operation_name` | EmptyArray 包含操作名 | 高 |
 | `test_broadcast_incompatible_returns_error` | 不兼容广播返回 BroadcastError | 高 |
 
-### 7.4 集成测试
+### 7.5 集成测试
 
 | 测试文件 | 测试内容 |
 |----------|----------|
 | `tests/error.rs` | `reshape` / `sum_axis` / `broadcast` / `dot` 等公共 API 将底层失败映射为 `XenonError` 的端到端路径 |
 
-### 7.5 属性测试不变量
+### 7.6 属性测试不变量
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
