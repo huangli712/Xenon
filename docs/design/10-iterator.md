@@ -327,7 +327,7 @@ for i in 0..tensor.shape()[0] {
 }
 
 // Bad - calling iter_mut() on a broadcast result
-let broadcast_view = tensor.broadcast([3, 4]).unwrap();
+let broadcast_view = tensor.view().broadcast_to([3, 4]).unwrap();
 // broadcast_view.iter_mut();  // compile error: broadcast view is immutable
 ```
 
@@ -376,10 +376,10 @@ increment_index_f(shape, index):
 ### 5.3 广播可变迭代禁止
 
 ```rust
-// SAFETY: broadcast() returns a TensorView with zero-stride dimensions,
+// SAFETY: broadcast_to() returns a TensorView with zero-stride dimensions,
 // multiple logical indices map to the same physical address; mutable writes
 // would cause data races.
-// Therefore broadcast() only returns an immutable view.
+// Therefore broadcast_to() only returns an immutable view.
 ```
 
 > **编译期防护机制：** 广播结果返回 `TensorView`（不可变视图），而非 `TensorViewMut`。由于 `TensorView` 不提供 `iter_mut()` 方法（`iter_mut()` 要求 `StorageMut` 约束，仅 `TensorViewMut` 和 `Tensor` 满足），对广播结果调用 `iter_mut()` 会在编译期被类型系统拒绝，无需运行时检查。参见 `07-tensor.md §4.7` 中视图方法的约束差异。
@@ -510,7 +510,7 @@ Wave 4:         [T9]
 
 | 测试分类 | 说明 | 包含的测试 |
 |----------|------|-----------|
-| 单元测试 | 验证单个迭代器类型的基本功能 | `test_elements_f_contig`, `test_elements_non_contiguous`, `test_elements_empty`, `test_elements_ix0`, `test_elements_mut_write`, `test_axis_iter_count`, `test_axis_iter_shape`, `test_axis_iter_ix0_panic`, `test_windows_count`, `test_windows_too_large`, `test_windows_empty`, `test_indexed_iter_order`, `test_indexed_iter_ix0`, `test_zip_two_tensors`, `test_zip_broadcast`, `test_zip_broadcast_readonly` |
+| 单元测试 | 验证单个迭代器类型的基本功能 | `test_elements_f_contig`, `test_elements_non_contiguous`, `test_elements_empty`, `test_elements_ix0`, `test_elements_mut_write`, `test_axis_iter_count`, `test_axis_iter_shape`, `test_windows_count`, `test_windows_too_large`, `test_windows_empty`, `test_indexed_iter_order`, `test_indexed_iter_ix0`, `test_zip_two_tensors`, `test_zip_broadcast`, `test_zip_broadcast_readonly` |
 | 集成测试 | 验证迭代器与 TensorBase 入口方法的集成 | `test_tensor_iter_integration` |
 | 边界测试 | 空数组、零维张量、非连续内存等边界条件 | `test_elements_empty`, `test_elements_ix0`, `test_windows_too_large`, `test_windows_empty`（详见 §7.2） |
 | 属性测试 | 通过随机输入验证不变量 | `iter().count() == tensor.len()`, `axis_iter(Axis(i)).count() == shape[i]`, `ExactSizeIterator` 递减不变量（详见 §7.3） |
@@ -526,7 +526,6 @@ Wave 4:         [T9]
 | `test_elements_mut_write` | `iter_mut()` 写入后数据正确 | 中 |
 | `test_axis_iter_count` | `axis_iter(Axis(0)).count() == shape[0]` | 高 |
 | `test_axis_iter_shape` | 沿轴迭代产出的子视图形状正确 | 高 |
-| `test_axis_iter_ix0_panic` | 零维张量调用 `axis_iter` 运行时 panic | 中 |
 | `test_windows_count` | 窗口数 = `product(shape - window + 1)` | 高 |
 | `test_windows_too_large` | 窗口大于数组返回 `None` | 中 |
 | `test_windows_empty` | 空数组返回 `None` | 中 |
@@ -543,7 +542,7 @@ Wave 4:         [T9]
 |------|----------|
 | 空数组 `shape=[0, 3]` | `iter()` 立即结束，`count() == 0` |
 | 单元素 `shape=[1, 1]` | `iter()` 产出 1 项 |
-| 零维张量 Ix0 | `iter()` 产出 1 项，`axis_iter()` 不可用 |
+| 零维张量 Ix0 | `iter()` 产出 1 项，`axis_iter()` 在类型层面不可调用 |
 | 非连续切片 `s![.., 0..3]` | `iter()` 正确处理步长跳转 |
 | 负步长（反转切片） | `iter()` 正确处理负步长 |
 | 广播视图 `shape=[1, 4]` | `iter()` 遍历逻辑元素，`iter_mut()` 编译拒绝 |

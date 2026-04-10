@@ -377,7 +377,7 @@ where
 }
 ```
 
-> **设计决策：** `into_raw_parts` 仅适用于 Owned 存储，且导出的内存布局必须满足 Xenon 的 owned 不变量：F-order contiguous、`offset == 0`。View/ViewMut 的数据仍由原借用绑定，调用方应谨慎处理。如需将 View 转为 Owned 再解构，参见 `21-type.md` §4.5。
+> **设计决策：** `into_raw_parts` 仅适用于 Owned 存储，且导出的内存布局必须满足 Xenon 的 owned 不变量：F-order contiguous。`offset` 会被原样导出并在 `from_raw_parts_owned()` 中原样恢复；若外部 FFI 边界只接受 `offset == 0` 的平坦 owned 缓冲区，调用方应在跨边界前显式校验或重新物化。如需将 View 转为 Owned 再解构，参见 `21-type.md` §4.5。
 
 #### 内存管理
 
@@ -399,7 +399,8 @@ where
 /// - `raw.len`, `raw.cap`, and `raw.align` must be the original allocator metadata
 /// - `raw.shape` and `raw.strides` must describe a valid, non-overlapping F-order layout
 /// - The caller transfers ownership; do NOT free `raw.ptr` separately
-/// - `raw.offset` must be 0 for owned round-trips; non-zero offset requires re-materializing first
+/// - `raw.offset` is restored verbatim in the reconstructed tensor; callers that require
+///   `offset == 0` must validate that precondition before crossing the FFI boundary
 pub unsafe fn from_raw_parts_owned(
     raw: OwnedRawParts<A, D>,
 ) -> TensorBase<Owned<A>, D> {
@@ -757,6 +758,7 @@ Wave 3: ┌────┴────┐
 | 单元测试 | `#[cfg(test)] mod tests` | 验证指针访问、BLAS 兼容检查与 raw-parts 语义 |
 | 集成测试 | `tests/` | 验证 `ffi` 与 `tensor`、`layout`、`storage` 的协同路径 |
 | 边界测试 | 同模块测试中标注 | 覆盖空张量、广播维度、负步长和未对齐指针等边界 |
+| 属性测试 | `tests/ffi.rs` 或 `tests/property.rs` | 验证 offset / ptr_at / raw-parts roundtrip 不变量 |
 
 ### 7.1 单元测试清单
 
@@ -793,13 +795,23 @@ Wave 3: ┌────┴────┐
 
 ### 7.3 内存安全测试
 
+### 7.3 属性测试不变量
+
+| 不变量 | 测试方法 |
+|--------|----------|
+| `ptr_at(idx) == as_ptr().offset(offset_of(idx))` | 在合法索引集合上逐点比对 |
+| `into_raw_parts → from_raw_parts_owned` roundtrip 保持 shape/strides/offset | 对 F-contiguous owned 张量做往返验证 |
+| `is_blas_compatible() == true` ⟹ `blas_info()` 成功 | 以连续二维张量为样本验证 |
+
+### 7.4 内存安全测试
+
 | 场景 | 验证方式 |
 |------|----------|
 | `from_raw_parts` + Drop | 无内存泄漏（借用语义） |
 | `into_raw_parts` + `from_raw_parts_owned(raw)` | 重建后由 Drop 正确释放 |
 | `from_raw_parts` 野指针 | AddressSanitizer 检测 |
 
-### 7.4 集成测试
+### 7.5 集成测试
 
 | 测试文件 | 测试内容 |
 |----------|----------|

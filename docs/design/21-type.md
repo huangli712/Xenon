@@ -332,12 +332,14 @@ where
     ///
     /// Internal path used by `util::to_contiguous()` when the source is non-contiguous.
     ///
-    /// **Note:** iter() traverses elements in memory order (F-order for F-contiguous
-    /// arrays, column-major). For non-contiguous arrays, iter() handles stride-based
-    /// access correctly, and the new allocation will be F-contiguous.
+    /// **Note:** iter() traverses logical elements using Xenon's iterator semantics.
+    /// For F-contiguous arrays this matches memory order; for non-contiguous arrays
+    /// it follows the iterator contract defined in `10-iterator.md` while re-packing
+    /// the result into a fresh F-contiguous allocation.
 pub(crate) fn util_internal_to_f_contiguous(&self) -> Tensor<A, D> {
         let mut data = Vec::with_capacity(self.len());
-        // iter() traverses in F-order (see 10-iterator.md §5.1 fast/slow paths)
+        // iter() follows the iterator contract from 10-iterator.md and yields
+        // logical elements in the order expected by to_contiguous().
         for elem in self.iter().cloned() {
             data.push(elem);
         }

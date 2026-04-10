@@ -469,7 +469,7 @@ pub use crate::dimension::{
 };
 
 // Layout
-pub use crate::layout::{Layout, LayoutFlags};
+pub use crate::layout::LayoutFlags;
 
 // Element traits
 pub use crate::element::{
@@ -530,6 +530,7 @@ pub mod math;
 pub mod overload;
 pub mod matrix;
 pub mod util;
+pub mod set;
 pub mod broadcast;
 pub mod reduction;
 pub mod shape;

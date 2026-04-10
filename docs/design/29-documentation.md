@@ -280,7 +280,7 @@ L3: 示例 (examples/)
 | 规范 | 说明 |
 |------|------|
 | 可编译运行 | 所有 doctest 通过 `cargo test --doc`；独立 examples 通过 `cargo build --examples` |
-| 使用 `?` | 使用 `?` 而非 `unwrap()`（C-QUESTION-MARK） |
+| 使用 `?` | doctest 天然返回 `Result` 时优先使用 `?`；仅在最小示例不引入额外样板时允许 `unwrap()` |
 | 隐藏样板 | 用 `# ` 隐藏 use 语句 |
 | 最小化 | 只展示当前 API 用法 |
 | 有断言 | 用 `assert_eq!` 验证结果 |
@@ -295,8 +295,11 @@ L3: 示例 (examples/)
 /// ```
 /// use xenon::prelude::*;
 ///
-/// let t = Tensor1::from_shape_vec([3], vec![1.0, 2.0, 3.0]).unwrap();
+/// # fn demo() -> xenon::Result<()> {
+/// let t = Tensor1::from_shape_vec([3], vec![1.0, 2.0, 3.0])?;
 /// assert_eq!(t.sum(), 6.0);
+/// # Ok(())
+/// # }
 /// ```
 pub fn sum(&self) -> A { ... }
 ```
@@ -515,11 +518,14 @@ docs:
 /// ```
 /// use xenon::prelude::*;
 ///
-/// let t = Tensor1::from_shape_vec([3], vec![1.0, 2.0, 3.0]).unwrap();
+/// # fn demo() -> xenon::Result<()> {
+/// let t = Tensor1::from_shape_vec([3], vec![1.0, 2.0, 3.0])?;
 /// assert_eq!(t.sum(), 6.0);
 ///
 /// let empty = Tensor1::<f64>::zeros([0]);
 /// assert_eq!(empty.sum(), 0.0);
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// # Performance
@@ -543,14 +549,15 @@ pub fn sum(&self) -> A { ... }
 /// Sums the tensor.
 pub fn sum(&self) -> A { ... }
 
-// Bad: example includes unnecessary Ok::<(), xenon::XenonError>(()) return type annotation,
-// which is only needed when the doctest uses the ? operator.
-// Since sum() does not return Result, the annotation is misleading.
+// Bad: example still uses unwrap while the surrounding project style prefers
+// a doctest-local Result context with `?` when the constructor is fallible.
 /// ```
 /// use xenon::prelude::*;
-/// let t = Tensor1::from_shape_vec([3], vec![1.0, 2.0, 3.0]).unwrap();
+/// # fn demo() -> xenon::Result<()> {
+/// let t = Tensor1::from_shape_vec([3], vec![1.0, 2.0, 3.0])?;
 /// assert_eq!(t.sum(), 6.0);
-/// # Ok::<(), xenon::XenonError>(())  // Unnecessary: no ? operator used
+/// # Ok(())
+/// # }
 /// ```
 pub fn sum(&self) -> A { ... }
 ```
@@ -649,6 +656,10 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 | 类型 | 命令 | 目的 |
 |------|------|------|
+| 单元检查 | `cargo test --doc --all-features` | 验证单个 API 文档示例可编译运行 |
+| 集成检查 | `cargo doc --all-features --no-deps` + examples 构建 | 验证模块文档、README、examples 与源码接口协同一致 |
+| 边界检查 | feature-gated/no_std/unsafe doctest 逐项编译 | 验证条件编译、unsafe 说明和最小环境边界 |
+| 属性检查 | 文档覆盖率目标 + broken links / missing docs 不变量 | 验证“公开 API 均有文档、关键入口均可追踪” |
 | Doctest | `cargo test --doc --all-features` | 验证文档中的代码示例可编译运行 |
 | 缺失文档检查 | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps` | 确保所有 pub API 有文档 |
 | 示例编译 | `cargo build --examples --all-features` | 验证 examples/ 下程序可编译运行 |
@@ -664,6 +675,23 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | 工具模块（ffi, workspace, simd, parallel） | ≥80% | 关键 API 有 doctest |
 | 辅助模块（convert, format, error） | ≥60% | 至少构造和基本使用有 doctest |
 | 迭代与归约模块（iter, reduction, matrix） | ≥80% | 核心入口、边界行为和错误路径有 doctest |
+
+### 15.2a 边界测试场景表
+
+| 场景 | 预期行为 |
+|------|----------|
+| feature-gated API | 在未启用 feature 时不会出现在文档中，启用后 doctest 通过 |
+| `no_std` 文档示例 | 通过模板工程或 `--no-default-features` 编译验证 |
+| unsafe API 文档 | 必须包含 `# Safety` 且示例不省略关键前置条件 |
+| 大型数组输出示例 | 截断格式与 `22-output.md` 保持一致 |
+
+### 15.2b 属性测试不变量
+
+| 不变量 | 验证方式 |
+|--------|----------|
+| 所有公开 API 都能在 docs.rs 中被发现 | `missing_docs` + docs.rs 构建检查 |
+| 所有关键模块都有至少一个可运行示例 | doctest / examples 构建联合验证 |
+| 文档中的路径与模块名和架构文档一致 | broken links 检查 + 人工审阅 |
 
 ### 15.3 CI 配置
 
@@ -930,13 +958,13 @@ Wave 6: [T17]
 | 理由 | Rust 生态惯例；docs.rs 面向全球开发者（参见 `00-coding.md §6`） |
 | 替代方案 | 中文文档 — 放弃，不符合 Rust 社区惯例 |
 
-### 决策 2：doctest 使用 `?` 而非 `unwrap()`
+### 决策 2：doctest 优先使用 `?`，最小示例可例外使用 `unwrap()`
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | doctest 使用 `?` 而非 `unwrap()` |
-| 理由 | 遵循 Rust API Guidelines C-QUESTION-MARK；展示惯用错误处理 |
-| 替代方案 | unwrap — 放弃，给用户错误示范 |
+| 决策 | doctest 在示例天然返回 `Result` 时优先使用 `?`；最小非 Result 示例允许 `unwrap()` |
+| 理由 | 同时遵循 Rust API Guidelines C-QUESTION-MARK，并避免为纯展示型示例引入多余样板 |
+| 替代方案 | 完全禁止 unwrap — 放弃，对最小示例过于僵硬 |
 
 ### 决策 3：开发期间 `#![warn(missing_docs)]`，CI 中 deny
 

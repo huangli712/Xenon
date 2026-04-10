@@ -548,7 +548,7 @@ Wave 3:        [T5]
 |------|----------|-----------|------|
 | `format → tensor` | `tensor` | `.shape()` / `.ndim()` / `.len()` | `Display` 路径读取基础张量元数据，参见 `07-tensor.md` §4 |
 | `format → tensor` | `tensor` | `.strides()` / `is_f_contiguous()` | `Debug` 额外输出布局相关元数据，参见 `06-memory.md` §4 |
-| `format → storage` | `storage` | `iter()` | 通过迭代器按逻辑顺序遍历元素，参见 `05-storage.md` §4 |
+| `format → tensor/index` | `tensor`, `index` | `shape()`, 多维索引访问 | 按逻辑行/列结构读取元素；不依赖 `iter()` 的 F-order 内存顺序 |
 | `format → element` | `element` | `core::any::type_name::<A>()` | 输出 dtype 与元素类型信息，参见 `03-element.md` §3 |
 
 ### 8.2 数据流描述

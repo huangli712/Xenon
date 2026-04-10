@@ -818,6 +818,17 @@ strides_for_f_order(shape):
 
 > 各模块的详细接口约定参见对应设计文档（`05-storage.md` §3、`07-tensor.md` §4、`16-shape.md` §4、`17-indexing.md` §4）。
 
+### 6.2 数据流描述
+
+```text
+用户传入 shape / axis / 维度类型
+    │
+    ├── dimension 模块先规范化为 `Ix0`~`Ix6` 或 `IxDyn`
+    ├── tensor / layout 继续消费 `ndim()`、`slice()`、`checked_size()` 与 F-order stride 信息
+    ├── shape / iter / index 再基于 `Axis`、`RemoveAxis`、`Reverse` 等辅助 trait 做高层操作
+    └── 若发生静态/动态维度互转失败，则通过 `XenonError::DimensionMismatch` 向上游传播
+```
+
 ---
 
 ## 7. 实现任务拆分
@@ -940,6 +951,15 @@ Wave 5:  [T10] → [T11] → [T12]
 
 ## 8. 测试计划
 
+### 8.0 测试分类表
+
+| 测试分类 | 位置 | 说明 |
+|----------|------|------|
+| 单元测试 | `#[cfg(test)] mod tests` | 验证各维度类型、步长计算和辅助 trait |
+| 集成测试 | `tests/dimension_tests.rs` | 验证 `dimension` 与 `tensor`、`layout`、`shape`、`index` 的协同路径 |
+| 边界测试 | 同模块测试中标注 | 覆盖 Ix0、零长度轴、大维度与溢出路径 |
+| 属性测试 | `tests/dimension_tests.rs` 或 `tests/property.rs` | 验证 stride/size/维度互转不变量 |
+
 ### 8.1 单元测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
@@ -980,6 +1000,12 @@ Wave 5:  [T10] → [T11] → [T12]
 | `dim.strides_for_f_order().ndim() == dim.ndim()` | 所有维度类型 |
 | `dim.into_dyn().try_from_dyn()` 往返一致 | 静态维度 |
 | `dim.size() == dim.slice().iter().product()` | 随机形状 |
+
+### 8.4 集成测试
+
+| 测试文件 | 测试内容 |
+|----------|----------|
+| `tests/dimension_tests.rs` | `IntoDimension`、`Axis`、`BroadcastDim` 与 `tensor`、`shape`、`index` 的端到端协同验证 |
 
 ---
 

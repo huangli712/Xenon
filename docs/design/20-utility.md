@@ -127,23 +127,25 @@ where
     /// * `min` - lower bound
     /// * `max` - upper bound
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if `min > max`.
+    /// Returns `Err(XenonError::InvalidShape)` when `min > max`.
     ///
     /// # Examples
     ///
     /// ```
-    /// let t = Tensor1::from_shape_vec([5], vec![-1.0, 0.5, 1.0, 2.0, 3.0]).unwrap();
-    /// let clipped = t.clip(0.0, 2.0);
+    /// let t = Tensor1::from_shape_vec([5], vec![-1.0, 0.5, 1.0, 2.0, 3.0])?;
+    /// let clipped = t.clip(0.0, 2.0)?;
     /// assert_eq!(clipped.to_vec(), vec![0.0, 0.5, 1.0, 2.0, 2.0]);
     /// ```
-    pub fn clip(&self, min: A, max: A) -> Tensor<A, D>
+    pub fn clip(&self, min: A, max: A) -> Result<Tensor<A, D>, XenonError>
     where
         A: Clone,
     {
-        assert!(min <= max, "clip: min must be <= max");
-        self.mapv(|x| if x < min { min.clone() } else if x > max { max.clone() } else { x })
+        if min > max {
+            return Err(XenonError::InvalidShape { from: 1, to: 0 });
+        }
+        Ok(self.mapv(|x| if x < min { min.clone() } else if x > max { max.clone() } else { x }))
     }
 
     /// Clip in place.
@@ -151,16 +153,18 @@ where
     /// # Examples
     ///
     /// ```
-    /// let mut t = Tensor1::from_shape_vec([3], vec![-1.0, 0.5, 3.0]).unwrap();
-    /// t.clip_inplace(0.0, 2.0);
+    /// let mut t = Tensor1::from_shape_vec([3], vec![-1.0, 0.5, 3.0])?;
+    /// t.clip_inplace(0.0, 2.0)?;
     /// assert_eq!(t.to_vec(), vec![0.0, 0.5, 2.0]);
     /// ```
-    pub fn clip_inplace(&mut self, min: A, max: A)
+    pub fn clip_inplace(&mut self, min: A, max: A) -> Result<(), XenonError>
     where
         S: StorageMut<Elem = A>,
         A: Clone,
     {
-        assert!(min <= max, "clip_inplace: min must be <= max");
+        if min > max {
+            return Err(XenonError::InvalidShape { from: 1, to: 0 });
+        }
         for elem in self.iter_mut() {
             if *elem < min {
                 *elem = min.clone();
@@ -168,6 +172,7 @@ where
                 *elem = max.clone();
             }
         }
+        Ok(())
     }
 }
 ```

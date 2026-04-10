@@ -212,12 +212,12 @@ pub fn broadcast_with<'a, A, D, E>(
     b: &TensorView<'a, A, E>,
 ) -> Result<
     (TensorView<'a, A, <D as BroadcastDim<E>>::Output>,
-     TensorView<'a, A, <E as BroadcastDim<D>>::Output>),
+     TensorView<'a, A, <D as BroadcastDim<E>>::Output>),
     XenonError,
 >
 where
-    D: Dimension,
-    E: Dimension,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
 {
     // ...
 }

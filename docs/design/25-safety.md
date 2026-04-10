@@ -371,7 +371,7 @@ fn send_view_mut() {
     // Correct: move view_mut to a new thread
     std::thread::spawn(move || {
         // view_mut has exclusive access in this thread
-        let data = view_mut.as_mut_slice();
+        let data = view_mut.as_mut_slice().unwrap();
         data[0] = 10.0;
     });
 }
@@ -553,6 +553,8 @@ Wave 2:            [T5]
 | 跨线程测试 | `#[test]` with `std::thread` | 验证跨线程使用安全性 |
 | 并发访问测试 | `tests/thread_safety.rs` | 多线程并发场景验证 |
 | 模型检测 | `loom` 或 `miri` | 数据竞争和内存安全检测 |
+| 边界测试 | 同模块测试中标注 | 验证广播只读、非 `Send` / `Sync` 元素、嵌套并行回退等边界 |
+| 属性测试 | 编译期断言 + 参数化并发用例 | 验证 trait 约束传播与分块不重叠不变量 |
 
 > **注意：** `static_assertions` crate 用于编译期断言 Send/Sync 实现。需在 `Cargo.toml` 的 `[dev-dependencies]` 中添加：
 > ```toml
@@ -616,6 +618,23 @@ fn arc_send_sync() {
     assert_impl_all!(ArcRepr<f64>: Send, Sync);
 }
 ```
+
+### 7.3a 边界测试场景
+
+| 场景 | 预期行为 |
+|------|----------|
+| `Owned<Rc<i32>>` | 编译期不满足 `Send` |
+| `ViewMutRepr` 被共享引用跨线程共享 | 编译期不满足 `Sync` |
+| 广播结果调用 `iter_mut()` | 在类型层面不可调用 |
+| 嵌套并行进入 `par_iter()` | 检测后回退串行，不得共享可变状态 |
+
+### 7.3b 属性测试不变量
+
+| 不变量 | 测试方法 |
+|--------|----------|
+| `Owned<A>: Send + Sync` 当且仅当 `A: Send + Sync` | 用 `static_assertions` 对正/反样例断言 |
+| `ViewMutRepr` 永不实现 `Sync` | 编译期负向断言 |
+| 并行分块覆盖全部元素且互不重叠 | 参数化 shape / chunk 大小验证 |
 
 ### 7.4 集成测试
 

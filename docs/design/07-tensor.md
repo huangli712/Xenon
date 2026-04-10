@@ -319,6 +319,38 @@ where
 }
 ```
 
+### 4.4a 连续切片访问方法
+
+```rust
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+{
+    /// Returns a shared slice when the logical tensor is F-contiguous and the
+    /// logical first element coincides with the storage base pointer.
+    ///
+    /// This is the zero-copy fast path consumed by `simd/`, `parallel/`, and
+    /// convenience APIs such as `set::unique()` examples. Non-contiguous views,
+    /// broadcast views, negative-stride views, or tensors with non-zero logical
+    /// offsets return `None` and must fall back to iterator-based access.
+    pub fn as_slice(&self) -> Option<&[A]>;
+}
+
+impl<S, D, A> TensorBase<S, D>
+where
+    S: StorageMut<Elem = A>,
+    D: Dimension,
+{
+    /// Returns a mutable slice when the logical tensor is F-contiguous, has no
+    /// offset, and contains no zero/negative strides.
+    ///
+    /// Broadcast results are immutable by construction and therefore can never
+    /// satisfy this method's preconditions.
+    pub fn as_mut_slice(&mut self) -> Option<&mut [A]>;
+}
+```
+
 ### 4.5 安全构造方法
 
 ```rust

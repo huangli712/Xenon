@@ -413,7 +413,7 @@ function increment_index_f(shape, index):
 - `from_shape_vec`: 验证 `data.len() == dim.size()`，不匹配返回错误；通过后 `Owned::from_vec_aligned` 消费输入 Vec 并复制到对齐存储
 - `from_shape_slice`: 验证长度后拷贝，原始切片不再被引用
 - `from_fn`: 闭包接收合法索引（`0 <= idx[i] < shape[i]`），无越界风险
-- `dim.size()` 溢出或分配失败：构造路径须在实现中转为 `XenonError` 或 panic-by-policy，不得产生未定义行为；ZST 与空张量路径须与 `05-storage.md` 的约束保持一致
+- `dim.size()` / 步长计算溢出：构造路径须在共享的 checked helper 中统一转为 `XenonError::InvalidShape`，再决定是否由上层便捷构造包装；不得产生未定义行为。ZST 与空张量路径须与 `05-storage.md` 的约束保持一致
 - `eye`: 内部使用已验证的 `zeros` 和合法索引 `[[i, i]]`（`0 <= i < n`），无越界风险
 
 ---

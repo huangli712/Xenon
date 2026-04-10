@@ -106,10 +106,11 @@ src/simd/
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
 | `pulp` | `Arch`, `Simd`, `WithSimd` |
-| `tensor` | `TensorBase<S, D>`, `.as_ptr()`, `.as_slice()`（参见 `07-tensor.md §4`） |
+| `tensor` | `TensorBase<S, D>`, `.as_ptr()`, `.as_slice()`（参见 `07-tensor.md §4.4` / §4.4a） |
 | `storage` | `RawStorage`, `Storage`, `.len()`（参见 `05-storage.md §4`） |
 | `tensor` | `.is_f_contiguous()`, 布局标志查询（参见 `07-tensor.md §4`） |
-| `element` | `SimdElement`, `Element`（参见 `03-element.md §4`） |
+| `element` | `Element`（参见 `03-element.md §4`） |
+| `simd` | `SimdElement`（本模块定义，见 §4.2） |
 
 ### 3.3 依赖方向声明
 

@@ -531,6 +531,17 @@ fn max(self, other: Self) -> Self {
 └───────────────────────────────────────────────────────────────┘
 ```
 
+### 6.3 数据流描述
+
+```text
+上游模块声明元素约束
+    │
+    ├── tensor 通过 `Element` 接受封闭元素集合
+    ├── math / matrix / reduction 根据 `Numeric`、`RealScalar`、`ComplexScalar` 选择可用运算面
+    ├── convert / set / format 继续消费类型层能力或格式化语义
+    └── 若元素类型不满足约束，则由编译期 trait bound 直接拒绝
+```
+
 ---
 
 ## 7. 实现任务拆分
@@ -650,6 +661,15 @@ Wave 3: [T6]      [T9] ← ────┘
 
 ## 8. 测试计划
 
+### 8.0 测试分类表
+
+| 测试分类 | 位置 | 说明 |
+|----------|------|------|
+| 单元测试 | `#[cfg(test)] mod tests` | 验证各 trait 和基础类型实现 |
+| 集成测试 | `tests/element_tests.rs` | 验证 `element` 与 `tensor`、`math`、`reduction`、`convert` 的协同路径 |
+| 边界测试 | 同模块测试中标注 | 覆盖 NaN/Inf、bool/usize 限制与 sealed 行为 |
+| 属性测试 | `tests/element_tests.rs` 或 `tests/property.rs` | 验证零元、单位元与数学函数不变量 |
+
 ### 8.1 单元测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
@@ -693,6 +713,12 @@ Wave 3: [T6]      [T9] ← ────┘
 | `A::one() * a == a` | 所有 Numeric 类型，随机 a |
 | `a.sqrt().sqrt() == a.powf(0.25)` | f32/f64，随机正数 a |
 | `a.exp().ln() ≈ a` | f32/f64，随机有限 a |
+
+### 8.4 集成测试
+
+| 测试文件 | 测试内容 |
+|----------|----------|
+| `tests/element_tests.rs` | 各元素类型在 `tensor`、`math`、`reduction`、`convert` 中的 trait 约束与端到端行为验证 |
 
 ---
 

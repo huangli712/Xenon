@@ -13,19 +13,19 @@
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
 | unique 操作 | 返回排序后的不重复元素作为新 1D 张量 | intersection/union/difference |
-| 支持类型 | i32, i64, f32, f64, Complex<f32>, Complex<f64> | bincount/histogram |
+| 支持类型 | i32, i64, usize, f32, f64, Complex<f32>, Complex<f64> | bincount/histogram |
 | 不支持类型 | bool（仅 2 种值，unique 无意义） | argmin/argmax |
 
 > **注意**：当前版本仅支持 unique 操作！不包含 intersection/union/difference/bincount/histogram 等。
 
-> **usize 说明**：`usize` 仍可作为 Xenon 元素类型存在，但不参与 `unique`；集合操作层面将其视为索引/大小语义类型而非集合元素类型。
+> **usize 说明**：`usize` 作为需求说明书 §15 中的整数类型之一参与 `unique`。其排序语义采用标准无符号整数升序。
 
 ### 1.2 设计原则
 
 | 原则 | 体现 |
 |------|------|
 | 最小范围 | 当前仅实现 unique，其他集合操作留待未来扩展 |
-| 类型安全 | bool 和 usize 显式排除 |
+| 类型安全 | bool 显式排除；usize 采用标准整数排序 |
 | NaN 处理明确 | 浮点 NaN 的排序行为有明确定义 |
 | 复数排序明确 | 先按实部再按虚部 |
 
@@ -95,12 +95,11 @@ where
     ///
     /// # Supported types
     ///
-    /// i32, i64, f32, f64, Complex<f32>, Complex<f64>
+/// i32, i64, usize, f32, f64, Complex<f32>, Complex<f64>
     ///
-    /// # Unsupported types
-    ///
-    /// - bool: only 2 values (true/false), unique is meaningless for bool
-    /// - usize: used only for indexing, no set operation semantics
+/// # Unsupported types
+///
+/// - bool: only 2 values (true/false), unique is meaningless for bool
     ///
     /// # Float sorting behavior
     ///
@@ -139,7 +138,7 @@ where
 // Good - use unique to get sorted unique elements
 let a = Tensor1::from_vec(vec![3, 1, 2, 1, 3]);
 let u = a.unique();
-assert_eq!(u.as_slice(), &[1, 2, 3]);
+assert_eq!(u.as_slice().unwrap(), &[1, 2, 3]);
 
 // Good - empty array returns empty Tensor1
 let empty: Tensor1<i32> = Tensor1::zeros([0]);
@@ -149,9 +148,10 @@ assert_eq!(empty.unique().len(), 0);
 // let b = Tensor1::from_vec(vec![true, false, true]);
 // b.unique();  // compile error: bool does not implement UniqueElement trait
 
-// Bad - calling unique on a usize tensor (compile error)
-// let idx = Tensor1::from_vec(vec![3usize, 1, 2]);
-// idx.unique();  // compile error: usize does not implement UniqueElement trait
+// Good - usize follows integer sorting rules as well
+let idx = Tensor1::from_vec(vec![3usize, 1, 2, 1]);
+let uniq = idx.unique();
+assert_eq!(uniq.as_slice().unwrap(), &[1usize, 2, 3]);
 ```
 
 ---
@@ -195,7 +195,7 @@ unique(self):
 /// Trait for types that support the unique operation.
 ///
 /// Provides a total ordering for sorting and deduplication.
-/// `bool` and `usize` do not implement this trait.
+/// `bool` does not implement this trait.
 ///
 /// Note: `Ord` is NOT used as a supertrait because `f32`/`f64`
 /// do not implement `Ord`, and `Complex` does not implement `PartialOrd`.
@@ -230,6 +230,10 @@ impl UniqueElement for i32 {
 }
 
 impl UniqueElement for i64 {
+    fn total_cmp(&self, other: &Self) -> core::cmp::Ordering { Ord::cmp(self, other) }
+}
+
+impl UniqueElement for usize {
     fn total_cmp(&self, other: &Self) -> core::cmp::Ordering { Ord::cmp(self, other) }
 }
 
@@ -284,7 +288,7 @@ impl UniqueElement for Complex<f64> {
         self.re.total_eq(&other.re) && self.im.total_eq(&other.im)
     }
 }
-// bool and usize do not implement this
+// bool does not implement this
 ```
 
 ---

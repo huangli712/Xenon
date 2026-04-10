@@ -874,6 +874,15 @@ Wave 5: [T11] → [T12]
 
 ## 8. 测试计划
 
+### 8.0 测试分类表
+
+| 测试分类 | 位置 | 说明 |
+|----------|------|------|
+| 单元测试 | `#[cfg(test)] mod tests` | 验证复数结构、运算、格式化与布局 |
+| 集成测试 | `tests/complex_tests.rs` | 验证 `complex` 与 `element`、`math`、`matrix`、`ffi` 的协同路径 |
+| 边界测试 | 同模块测试中标注 | 覆盖 NaN/Inf、极大/极小值与 FFI 布局前提 |
+| 属性测试 | `tests/complex_tests.rs` 或 `tests/property.rs` | 验证共轭、模长、指数对数与极坐标不变量 |
+
 ### 8.1 单元测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
@@ -928,6 +937,12 @@ Wave 5: [T11] → [T12]
 | `z.sqrt() * z.sqrt() ≈ z` | 随机 z |
 | `(z / w) * w ≈ z` | 随机 z, w（w ≠ 0） |
 | `z.from_polar(z.norm(), z.arg()) ≈ z` | 随机 z |
+
+### 8.4 集成测试
+
+| 测试文件 | 测试内容 |
+|----------|----------|
+| `tests/complex_tests.rs` | 复数类型与 `element` trait 体系、`math` 逐元素运算、`matrix` 共轭内积以及 `ffi` 布局约束的端到端验证 |
 
 ---
 

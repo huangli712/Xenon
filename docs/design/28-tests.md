@@ -73,8 +73,8 @@ tests/
 ├── test_simd.rs                # SIMD 计算（结果一致性）
 ├── test_error.rs               # 错误处理（所有错误类型）
 │
+├── property.rs                # 属性测试入口（integration test target）
 └── property/
-    ├── mod.rs                  # 属性测试入口
     ├── tensor_props.rs         # 张量不变量（reshape 保元素数等）
     ├── ops_props.rs            # 运算不变量（交换律/结合律等）
     └── shape_props.rs          # 形状不变量（transpose 自反等）
@@ -658,7 +658,9 @@ fn prop_approx_equal(x: f64, y: f64) -> bool {
 // Internal implementation detail of assert_tensor_close
 //
 // 1. shape comparison: O(1) early exit if shapes differ
-// 2. element-wise iteration: uses iter() which respects memory layout
+// 2. element-wise iteration: uses iter() according to the iterator contract
+//    from 10-iterator.md; tests compare logical element sequences, not raw
+//    storage order assumptions
 // 3. combined tolerance: |actual - expected| <= atol + rtol * |expected|
 //    - atol: absolute tolerance, covers the near-zero case
 //    - rtol: relative tolerance, covers the relative scale case
@@ -762,10 +764,14 @@ fn test_bad_magic() {
 | `test_broadcast.rs` | `broadcast` | `15-broadcast.md` |
 | `test_index.rs` | `index` | `17-indexing.md` |
 | `test_construction.rs` | `construct` | `18-construction.md` |
-| `test_reduction.rs` | `reduction` , `set` | `13-reduction.md`, `14-set.md` |
+| `test_reduction.rs` | `reduction` | `13-reduction.md` |
+| `test_iterator.rs` | `iter` | `10-iterator.md` |
+| `test_matrix.rs` | `matrix` | `12-matrix.md` |
+| `test_set.rs` | `set` | `14-set.md` |
 | `test_shape.rs` | `shape` | `16-shape.md` |
 | `test_conversion.rs` | `convert` | `21-type.md` |
 | `test_utility.rs` | `utility` | `20-utility.md` |
+| `test_output.rs` | `format` | `22-output.md` |
 | `test_ffi.rs` | `ffi`, `workspace` | `23-ffi.md`, `24-workspace.md` |
 | `test_parallel.rs` | `parallel` | `09-parallel.md` |
 | `test_simd.rs` | `simd` | `08-simd.md` |
@@ -842,8 +848,29 @@ fn test_bad_magic() {
 
 - [ ] **T7**: 实现 `tests/test_reduction.rs`
   - 文件: `tests/test_reduction.rs`
-  - 内容: 归约运算（sum/sum_axis/keepdims/empty/NaN/unique/dot/overflow）
+  - 内容: 归约运算（sum/sum_axis/keepdims/empty/NaN/overflow）
   - 测试: `cargo test --test test_reduction`
+  - 前置: T1
+  - 预计: 10 min
+
+- [ ] **T7a**: 实现 `tests/test_iterator.rs`
+  - 文件: `tests/test_iterator.rs`
+  - 内容: 迭代器（elements/axis/windows/indexed/zip）
+  - 测试: `cargo test --test test_iterator`
+  - 前置: T1
+  - 预计: 10 min
+
+- [ ] **T7b**: 实现 `tests/test_matrix.rs`
+  - 文件: `tests/test_matrix.rs`
+  - 内容: 向量内积（dot/complex/shape mismatch）
+  - 测试: `cargo test --test test_matrix`
+  - 前置: T1
+  - 预计: 10 min
+
+- [ ] **T7c**: 实现 `tests/test_set.rs`
+  - 文件: `tests/test_set.rs`
+  - 内容: 集合操作（unique 排序/整数/复数）
+  - 测试: `cargo test --test test_set`
   - 前置: T1
   - 预计: 10 min
 
@@ -865,6 +892,13 @@ fn test_bad_magic() {
   - 文件: `tests/test_utility.rs`
   - 内容: 实用操作（fill/clip/to_contiguous）
   - 测试: `cargo test --test test_utility`
+  - 前置: T1
+  - 预计: 10 min
+
+- [ ] **T9b**: 实现 `tests/test_output.rs`
+  - 文件: `tests/test_output.rs`
+  - 内容: NumPy 风格输出（Display/Debug/截断/复数）
+  - 测试: `cargo test --test test_output`
   - 前置: T1
   - 预计: 10 min
 
@@ -907,8 +941,8 @@ fn test_bad_magic() {
 
 ### Wave 4: 属性测试
 
-- [ ] **T15**: 实现 `tests/property/` 属性测试模块
-  - 文件: `tests/property/mod.rs`, `tests/property/tensor_props.rs`, `tests/property/ops_props.rs`, `tests/property/shape_props.rs`
+- [ ] **T15**: 实现 `tests/property` 属性测试模块
+  - 文件: `tests/property.rs`, `tests/property/tensor_props.rs`, `tests/property/ops_props.rs`, `tests/property/shape_props.rs`
   - 内容: reshape 保元素数/transpose 自反/加法交换律/unique 不含重复
   - 测试: `cargo test --test property`
   - 前置: T3, T7, T8

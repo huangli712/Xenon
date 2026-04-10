@@ -398,7 +398,8 @@ use rayon::iter::{ParallelIterator, IndexedParallelIterator};
 
 /// Parallel element iterator
 ///
-/// Iterates all elements in parallel following memory layout order.
+/// Iterates all logical elements in parallel following the same element order
+/// contract as `iter::Elements`.
 ///
 /// # Thread Safety
 ///
@@ -470,8 +471,8 @@ where
 
 /// Producer for ordered parallel element iteration.
 ///
-/// Splits the flat index range into sub-ranges for parallel processing,
-/// guaranteeing element order is preserved across parallel execution.
+/// Splits the logical flat index range into sub-ranges for parallel processing,
+/// preserving the same observable element order as the serial iterator.
 pub struct ElementsProducer<'a, A, D>
 where
     A: Element + Send + Sync,
