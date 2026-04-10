@@ -673,6 +673,24 @@ Wave 4:       [T10]
 | `tensor.view().shape() == tensor.shape()` | 随机形状和存储模式 |
 | `from_shape_vec` 后 `is_f_contiguous() == true` | 随机合法形状 |
 
+### 7.5 数据流验证型集成测试
+
+| 测试文件 | 测试内容 |
+|----------|----------|
+| `tests/tensor.rs` | `from_shape_vec` / `view` / `view_mut` / `as_ptr` 与 `dimension`、`storage`、`layout`、`index` 的端到端协同路径 |
+
+### 7.6 数据流描述
+
+```text
+用户调用构造器 / view() / view_mut() / 查询接口
+    │
+    ├── dimension 模块提供 shape 元数据
+    ├── storage 模块提供底层 buffer 与所有权模型
+    ├── tensor 模块组合 shape + strides + offset + flags
+    ├── layout 模块负责连续性/对齐/零步长/负步长标志计算
+    └── index / iter / math / ffi 等上层模块继续消费 TensorBase 这一统一载体
+```
+
 ---
 
 ## 8. 设计决策记录

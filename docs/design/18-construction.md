@@ -526,6 +526,12 @@ Wave 4:           [T6]
 | `from_vec(v, s).len() == s.size()` | 随机形状和匹配数据 |
 | `from_fn(s, f).shape() == s` | 随机形状 |
 
+### 7.4 集成测试
+
+| 测试文件 | 测试内容 |
+|----------|----------|
+| `tests/construction.rs` | 构造 API 与 `dimension`、`storage`、`layout`、`tensor`、`index` 的端到端集成 |
+
 ---
 
 ## 8. 与其他模块的交互
@@ -539,6 +545,17 @@ Wave 4:           [T6]
 | `element` | construct → element | 使用 `Element`/`Zero`/`One` trait 约束（参见 `03-element.md` §3） |
 | `error` | construct → error | 返回 `XenonError::InvalidShape`（用于构造时的 shape/length 基数不匹配，参见 `26-error.md` §4） |
 | `index` | index ← construct | 构造后可通过索引访问元素（参见 `17-indexing.md` §4） |
+
+### 8.2 数据流描述
+
+```text
+用户调用 zeros / from_vec / from_fn / eye
+    │
+    ├── dimension 模块先规范化输入 shape
+    ├── layout 计算 F-order strides 与初始 flags
+    ├── storage 分配 aligned owned buffer 并写入数据
+    └── tensor 模块封装成 TensorBase<Owned<_>, D>，随后可被 index / iter / math 使用
+```
 
 ---
 

@@ -573,6 +573,12 @@ Wave 4: [T8]
 | 广播形状不兼容 | zip_with 返回 `XenonError::BroadcastError` |
 | 非连续输入（切片后） | 运算结果与连续输入一致 |
 
+### 7.4 集成测试
+
+| 测试文件 | 测试内容 |
+|----------|----------|
+| `tests/math.rs` | `zip_with` / `mapv` / 标量路径与 `iter`、`broadcast`、`tensor`、`simd` backend 的端到端集成 |
+
 ---
 
 ## 8. 与其他模块的交互
@@ -583,6 +589,17 @@ Wave 4: [T8]
 | `broadcast` | 二元运算调用 `broadcast_shape()`（参见 `15-broadcast.md §4`） |
 | `element` | 泛型约束 `Numeric`/`RealScalar`/`ComplexScalar`（参见 `03-element.md §4`） |
 | `simd`（可选） | 连续数组时自动走 SIMD 路径（参见 `08-simd.md §4.5`） |
+
+### 8.2 数据流描述
+
+```text
+用户调用 add / mapv / zip_with
+    │
+    ├── math 模块根据操作类型选择一元/二元/标量路径
+    ├── 二元路径先调用 broadcast 校验并生成兼容视图
+    ├── iter / zip 负责按 shape + strides 产出元素流
+    └── 连续且 feature 允许时再委托 simd backend，否则走标量实现并返回 owned Tensor
+```
 
 ---
 

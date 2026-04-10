@@ -471,6 +471,12 @@ Wave 4:         [T5]
 | 转置后数据不变 | 转置前后逐元素对比 |
 | 连续 reshape 后数据不变 | reshape 前后逐元素对比 |
 
+### 7.4 集成测试
+
+| 测试文件 | 测试内容 |
+|----------|----------|
+| `tests/shape.rs` | `transpose` / `reshape` / `into_shape` 与 `tensor`、`layout`、`index`、`broadcast` 的协同路径 |
+
 ---
 
 ## 8. 与其他模块的交互
@@ -482,6 +488,17 @@ Wave 4:         [T5]
 | `layout` | shape → layout | 检查连续性、计算步长，参见 `06-memory.md` §3 |
 | `broadcast` | shape ← broadcast | 广播视图不可 reshape（非连续），参见 `15-broadcast.md` §5 |
 | `index` | index → shape | 切片后可 reshape（如连续），参见 `17-indexing.md` §4 |
+
+### 8.2 数据流描述
+
+```text
+用户调用 transpose() / reshape() / into_shape()
+    │
+    ├── shape 模块先验证元素总数与连续性前提
+    ├── 连续路径只重写 shape + strides + flags 元数据
+    ├── 非连续 into_shape() 路径先委托 to_contiguous() 物化为 owned F-order
+    └── 返回新的 view 或 owned tensor，供后续 index / iter / math 路径继续使用
+```
 
 ---
 

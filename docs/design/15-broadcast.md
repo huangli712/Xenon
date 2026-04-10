@@ -462,6 +462,12 @@ Wave 4:           [T7]
 | 广播后原始数据不变 | 广播前后对比 |
 | `can_broadcast(a, b) == true` ⟹ `broadcast_shape(a, b)` 成功 | 随机形状 |
 
+### 7.4 集成测试
+
+| 测试文件 | 测试内容 |
+|----------|----------|
+| `tests/broadcast.rs` | `broadcast_with()` 与 `math`、`overload`、`iter::Zip`、`layout` 标志位更新的协同路径 |
+
 ---
 
 ## 8. 与其他模块的交互
@@ -473,6 +479,17 @@ Wave 4:           [T7]
 | `shape` | shape → broadcast | `broadcast_to` 方法调用广播模块，参见 `16-shape.md` §4 |
 | `layout` | broadcast → layout | 广播后设置 `HAS_ZERO_STRIDE` 标志、更新连续性，参见 `06-memory.md` §3 |
 | `math` | math → broadcast | 二元运算前广播两个操作数，参见 `11-math.md` §4 |
+
+### 8.2 数据流描述
+
+```text
+用户发起二元运算 / 显式 broadcast_to()
+    │
+    ├── broadcast 先比较两个输入 shape，生成公共输出 shape
+    ├── 对被扩展的轴写入 zero stride 元数据
+    ├── layout 更新 HAS_ZERO_STRIDE / contiguity 标志
+    └── 返回只读 TensorView，供 iter::Zip / math / overload 继续消费
+```
 
 ---
 

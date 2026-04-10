@@ -524,6 +524,12 @@ Wave 3:        [T5]
 | `debug(tensor)` 包含 shape / strides / dtype 元信息 | 随机形状 |
 | 截断输出包含 `...` | 大数组 |
 
+### 7.4 集成测试
+
+| 测试文件 | 测试内容 |
+|----------|----------|
+| `tests/output.rs` | `Display` / `Debug` 与 `tensor` 元数据查询、`iter` 遍历、复数与浮点格式化路径的端到端集成 |
+
 ---
 
 ## 8. 与其他模块的交互
@@ -534,6 +540,17 @@ Wave 3:        [T5]
 | `Debug` → `tensor` | format → tensor | 额外读取 `.strides()`, `is_f_contiguous()`（参见 `06-memory.md` §4） |
 | `Display` → `storage` | format → storage | 通过 `iter()` 遍历元素（参见 `05-storage.md` §4） |
 | `Display` → `element` | format → element | 使用 `core::any::type_name::<A>()`（参见 `03-element.md` §3） |
+
+### 8.2 数据流描述
+
+```text
+用户调用 `format!("{}", tensor)` / `format!("{:?}", tensor)`
+    │
+    ├── output 模块先查询 tensor 的 shape / strides / flags / dtype
+    ├── 再通过 iter 路径按逻辑顺序读取需要展示的元素
+    ├── 若元素总数超过 threshold，则按截断规则挑选 edge items
+    └── 最终直接写入 Formatter，不分配额外堆内存
+```
 
 ---
 

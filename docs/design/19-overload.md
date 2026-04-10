@@ -476,6 +476,12 @@ Wave 5:      [T6]
 | `(a + scalar) == a.mapv(\|x\| x + scalar)` | 标量路径等价 |
 | 结果张量与输入张量不共享内存（`ptr` 不同） | 指针比较 |
 
+### 7.4 集成测试
+
+| 测试文件 | 测试内容 |
+|----------|----------|
+| `tests/overload.rs` | 运算符语法与 `broadcast`、`math`、`tensor` 返回所有权语义的端到端集成 |
+
 ---
 
 ## 8. 与其他模块的交互
@@ -487,6 +493,17 @@ Wave 5:      [T6]
 | `tensor` | arithmetic → tensor | 构造结果 `Tensor<A, D>`，使用 `.view()` 创建视图（参见 `07-tensor.md` §4） |
 | `element` | arithmetic → element | `Numeric` trait 约束排除 `bool` 与 `usize` 类型（参见 `03-element.md` §3） |
 | `dimension` | arithmetic → dimension | `BroadcastDim<E>::Output` 关联类型（参见 `02-dimension.md` §4） |
+
+### 8.2 数据流描述
+
+```text
+用户写下 `a + b` / `tensor + scalar` / `Scalar(x) + tensor`
+    │
+    ├── overload 模块匹配对应 trait impl
+    ├── 张量×张量路径委托给 broadcast_with() + zip_with()
+    ├── 张量×标量路径委托给 mapv()
+    └── 最终由 tensor/storage 分配新的 owned 结果张量并返回
+```
 
 ---
 

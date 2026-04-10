@@ -653,6 +653,12 @@ Wave 4:             [T9]
 | `axis_iter(Axis(i)).count() == shape[i]` | 随机形状 |
 | `iter().len()` 每次调用后递减 | 迭代过程中检查 `ExactSizeIterator` |
 
+### 7.4 集成测试
+
+| 测试文件 | 测试内容 |
+|----------|----------|
+| `tests/iterator.rs` | `tensor.iter()` / `axis_iter()` / `windows()` / `zip()` 与 `tensor`、`broadcast`、`shape` 模块的协同路径 |
+
 ---
 
 ## 8. 与其他模块的交互
@@ -676,6 +682,17 @@ Wave 4:             [T9]
 ```rust
 // Zip calls broadcast_shape() at construction to verify shape compatibility（参见 15-broadcast.md §4）
 // Zero strides in broadcast views are handled correctly by the iter module
+```
+
+### 8.4 数据流描述
+
+```text
+用户调用 tensor.iter() / axis_iter() / zip()
+    │
+    ├── tensor 模块提供 TensorView / TensorViewMut 入口
+    ├── iter 模块根据 shape + strides 构造迭代器状态
+    ├── 若是 zip/broadcast 路径，则先由 broadcast 校验公共形状
+    └── 逐步产出元素 / 子视图，供 math / reduction / overload 消费
 ```
 
 ---
