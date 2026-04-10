@@ -279,7 +279,7 @@ where
 }
 ```
 
-> **说明**：`Scalar<A>` 包装器是 Rust 孤儿规则所必需的。由于 `Add` 是外部 trait，`A` 是无约束泛型，直接 `impl Add<TensorBase<...>> for A` 违反孤儿规则。使用 `Scalar<A>` 作为本地类型解决此问题。用户需要写 `Scalar(5.0) + tensor` 而非 `5.0 + tensor`。
+> **说明**：`Scalar<A>` 包装器是当前版本对“左标量 + 张量”语法的工程性折中。由于 `Add` 是外部 trait，`A` 是无约束泛型，直接 `impl Add<TensorBase<...>> for A` 违反孤儿规则。用户需要写 `Scalar(5.0) + tensor` 而非 `5.0 + tensor`；该限制必须在文档中明确标注为当前版本的已知语法边界，而不是宣称完全支持原生左标量语法。
 
 > **说明**：对于涉及 `&A` 的组合（上表第 2 行），不要依赖 Rust 的隐式 auto-deref 作为公开 API 契约。若库希望稳定支持 `tensor + &scalar`，应显式提供 `Add<&A>` 方向的实现；否则文档只保证值形式 `tensor + scalar` 与 `Scalar(scalar) + tensor`。
 
@@ -290,7 +290,7 @@ where
 
 ### 4.4 Sub / Mul / Div
 
-`Sub`、`Mul`、`Div` 的实现模式与 `Add` 完全相同，仅替换运算符和对应闭包：
+`Sub`、`Mul`、`Div` 的实现模式与 `Add` 完全相同，需覆盖与 `Add` 对称的张量/引用/标量/`Scalar<A>` 组合，仅替换运算符和对应闭包：
 
 ```rust
 // Sub: |a, b| a - b

@@ -424,7 +424,7 @@ pub fn can_use_simd<A: SimdElement>(
     len: usize,
     is_contiguous: bool,
 ) -> bool {
-    if !is_contiguous || len < 4 {
+    if !is_contiguous || len < simd_width() {
         return false;
     }
     is_aligned(ptr as *const u8)
@@ -737,7 +737,7 @@ dispatch 调用流程
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-> **设计决策：** 对于逐元素运算，SIMD 与标量结果须**逐位一致**。对于归约和内积，只有当 SIMD 路径能与标量路径保持一致时才可启用；否则必须自动回退到标量路径。
+> **设计决策：** 对于逐元素运算，SIMD 与标量结果须**逐位一致**。对于归约和内积，只有当某个具体 SIMD kernel 能证明与标量路径一致时才可启用；否则必须自动回退到标量路径。当前版本对 `Complex<f32>` / `Complex<f64>` 统一回退标量，对浮点 `sum` / `dot` 也默认保守回退，直到对应内核具备可验证的一致性证明。
 >
 > **一致性说明：** 对于逐元素操作（add、mul 等），SIMD 和标量路径产生逐位一致的结果。
 > 对于归约/内积操作，Xenon 不接受“近似一致”作为默认语义；若某个 SIMD 内核无法证明与标量路径一致，则不走 SIMD 路径。

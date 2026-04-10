@@ -336,10 +336,17 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_cast_real_to_complex` | 实数→复数（虚部为 0） | 中 |
 | `test_cast_nan_to_int` | NaN→整数行为 | 中 |
 | `test_cast_bool_numeric` | bool↔数值转换 | 中 |
-| `test_copy_to_fill` | copy_to, fill | 中 |
-| `test_clip` | 裁剪操作 | 中 |
 
-### 5.8a test_output.rs
+### 5.8a test_utility.rs
+
+| 测试函数 | 测试内容 | 优先级 |
+|----------|----------|--------|
+| `test_fill_inplace` | 原地 fill / 非连续 fill | 中 |
+| `test_clip` | 裁剪操作 | 中 |
+| `test_clip_usize` | usize 裁剪 | 中 |
+| `test_to_contiguous` | 连续化保持逻辑元素顺序 | 高 |
+
+### 5.8b test_output.rs
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
@@ -758,6 +765,7 @@ fn test_bad_magic() {
 | `test_reduction.rs` | `reduction` , `set` | `13-reduction.md`, `14-set.md` |
 | `test_shape.rs` | `shape` | `16-shape.md` |
 | `test_conversion.rs` | `convert` | `21-type.md` |
+| `test_utility.rs` | `utility` | `20-utility.md` |
 | `test_ffi.rs` | `ffi`, `workspace` | `23-ffi.md`, `24-workspace.md` |
 | `test_parallel.rs` | `parallel` | `09-parallel.md` |
 | `test_simd.rs` | `simd` | `08-simd.md` |
@@ -848,8 +856,15 @@ fn test_bad_magic() {
 
 - [ ] **T9**: 实现 `tests/test_conversion.rs`
   - 文件: `tests/test_conversion.rs`
-  - 内容: 类型转换（cast/存储模式转换/clip）
+  - 内容: 类型转换（cast/存储模式转换）
   - 测试: `cargo test --test test_conversion`
+  - 前置: T1
+  - 预计: 10 min
+
+- [ ] **T9a**: 实现 `tests/test_utility.rs`
+  - 文件: `tests/test_utility.rs`
+  - 内容: 实用操作（fill/clip/to_contiguous）
+  - 测试: `cargo test --test test_utility`
   - 前置: T1
   - 预计: 10 min
 
@@ -951,13 +966,17 @@ test:
                 - "--features parallel"
                 - "--features simd"
                 - "--all-features"
-                - "--no-default-features"
     steps:
         - name: Unit + Integration tests
           run: cargo test --lib --tests ${{ matrix.features }}
 
         - name: Doc tests
           run: cargo test --doc ${{ matrix.features }}
+
+no_std_check:
+    steps:
+        - name: Check no_std + alloc
+          run: cargo check --no-default-features
 ```
 
 ---

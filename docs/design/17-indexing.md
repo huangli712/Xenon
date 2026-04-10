@@ -201,7 +201,13 @@ where
     ///
     /// # Panics
     /// Panics if the index is out of bounds.
-    fn index<I>(&self, index: I) -> &A
+impl<I> core::ops::Index<I> for TensorBase<S, D>
+where
+    I: TensorIndex<D>,
+{
+    type Output = A;
+
+    fn index(&self, index: I) -> &Self::Output
     where
         I: NdIndex<D>;
 
@@ -424,7 +430,7 @@ where
 }
 ```
 
-> **注意**：对广播视图（含零步长）不得调用 `slice_mut`。如果原张量包含零步长（`LayoutFlags::HAS_ZERO_STRIDE`），`slice_mut()` 将 panic，提示信息为 "mutable slicing is not allowed on broadcast views (tensors with zero strides)"。这是因为零步长意味着多个逻辑索引映射到同一物理地址，可变访问会引起数据竞争。此为 panic 而非错误返回，因为这是一个编程错误。
+> **注意**：对广播视图（含零步长）不得调用 `slice_mut`。如果原张量包含零步长（`LayoutFlags::HAS_ZERO_STRIDE`），`slice_mut()` 将 panic，提示信息为 "mutable slicing is not allowed on broadcast views (tensors with zero strides)"。这是因为零步长意味着多个逻辑索引映射到同一物理地址，可变访问会引起**可变别名**。此为 panic 而非错误返回，因为这是一个编程错误。
 
 #### 4.2.4 Good / Bad 对比
 
@@ -787,7 +793,7 @@ Wave 4:           [T7]
 
 ## 11. no_std 兼容性
 
-索引操作模块在 `no_std` 环境下可用。整数索引和切片视图创建均为纯元数据操作，不涉及堆分配。
+索引操作模块在 `no_std` 环境下可用。整数索引始终是纯元数据/指针算术；切片视图创建在静态维度场景下不涉及堆分配，动态维度 `SliceInfo` 需要 `alloc` 支持其内部 `Vec`。
 
 ```rust
 #[cfg(not(feature = "std"))]

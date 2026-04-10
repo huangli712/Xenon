@@ -563,22 +563,24 @@ impl<'a> SplitBorrowMut<'a> {
             return Err(WorkspaceError::SplitOutOfBounds { split: mid, len: self.len });
         }
 
+        let this = core::mem::ManuallyDrop::new(self);
+
         // SAFETY: Increment split_count to account for the additional
         // sub-space created by this recursive split. `self` is consumed
         // (not dropped), so its implicit "slot" in the count is released.
         // But we create 2 new guards, so the net active guard count
         // increases by 1. This ensures Drop correctly waits for ALL
         // active sub-splits before resetting borrow_state.
-        self.split_count.fetch_add(1, core::sync::atomic::Ordering::Release);
+        this.split_count.fetch_add(1, core::sync::atomic::Ordering::Release);
 
-        let left_ptr = self.ptr;
+        let left_ptr = this.ptr;
         let right_ptr = unsafe {
-            NonNull::new_unchecked(self.ptr.as_ptr().add(mid))
+            NonNull::new_unchecked(this.ptr.as_ptr().add(mid))
         };
 
         Ok((
-            SplitBorrowMut { ptr: left_ptr, len: mid, workspace: self.workspace, split_count: self.split_count },
-            SplitBorrowMut { ptr: right_ptr, len: self.len - mid, workspace: self.workspace, split_count: self.split_count },
+            SplitBorrowMut { ptr: left_ptr, len: mid, workspace: this.workspace, split_count: this.split_count },
+            SplitBorrowMut { ptr: right_ptr, len: this.len - mid, workspace: this.workspace, split_count: this.split_count },
         ))
     }
 

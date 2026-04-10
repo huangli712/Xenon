@@ -663,6 +663,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | 运算模块（overload, math, broadcast, reduction） | 100% | 所有 pub 方法有 doctest |
 | 工具模块（ffi, workspace, simd, parallel） | ≥80% | 关键 API 有 doctest |
 | 辅助模块（convert, format, error） | ≥60% | 至少构造和基本使用有 doctest |
+| 迭代与归约模块（iter, reduction, matrix） | ≥80% | 核心入口、边界行为和错误路径有 doctest |
 
 ### 15.3 CI 配置
 
@@ -821,7 +822,7 @@ docs:
   - 预计: 10 min
 
 - [ ] **T9c**: broadcast 和 shape 模块文档
-  - 文件: `src/broadcast/mod.rs`, `src/shape/mod.rs`
+  - 文件: `src/broadcast.rs`, `src/shape/mod.rs`
   - 内容: broadcast_shape, transpose, reshape 函数文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
@@ -829,7 +830,7 @@ docs:
 
 - [ ] **T9d**: construct 和 set 模块文档
   - 文件: `src/construct/mod.rs`, `src/set/mod.rs`
-  - 内容: zeros, ones, eye, from_vec, from_fn, unique 函数文档和 doctest
+  - 内容: zeros, ones, full, eye, from_shape_vec, from_fn, unique 函数文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min

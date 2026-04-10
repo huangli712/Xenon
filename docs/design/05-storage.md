@@ -431,9 +431,10 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
     ///
     /// # Safety
     ///
-    /// The caller is responsible for deallocating the returned pointer
-    /// using the same allocator that was used to allocate it.
-    unsafe fn into_raw(self) -> *mut Self::Elem;
+/// The caller must preserve the allocator metadata required to reconstruct
+/// the owned buffer. In Xenon's tensor-level FFI API, this metadata is carried
+/// by `OwnedRawParts` (see `23-ffi.md §4.4`).
+unsafe fn into_raw(self) -> *mut Self::Elem;
 }
 ```
 
@@ -492,6 +493,8 @@ fn modify_arc(arc: &mut ArcRepr<f64>) {
 /// deallocates with the same layout it allocated with. This avoids the undefined
 /// behavior risk of handing a 64-byte aligned allocation to a plain `Vec<A>`.
 ///
+/// `from_vec` is a storage-layer constructor. Public tensor construction keeps
+/// using `from_shape_vec` / `from_shape_slice` at the construct layer.
 /// `from_vec` accepts a user-provided `Vec<A>` and copies its contents
 /// into Xenon's internal aligned buffer representation.
 ///

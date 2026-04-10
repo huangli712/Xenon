@@ -193,9 +193,9 @@ xenon/
 │   │
 │   ├── construct/             # 张量构造
 │   │   ├── mod.rs             # 模块根，re-exports
-│   │   ├── fill.rs            # zeros, ones, fill（填充构造）
+│   │   ├── fill.rs            # zeros, ones, full（填充构造）
 │   │   ├── eye.rs             # eye（单位矩阵）
-│   │   ├── from_data.rs       # from_vec, from_slice, from_array（从数据源构造）
+│   │   ├── from_data.rs       # from_shape_vec, from_shape_slice, from_array（从数据源构造）
 │   │   └── from_fn.rs         # from_fn, from_scalar（从闭包/标量构造）
 │   │
 │   ├── convert/               # 类型转换
@@ -236,15 +236,15 @@ xenon/
 │   └── test_index.rs          # 索引测试
 │
 ├── benches/                   # 性能基准测试
-│   ├── bench_math.rs          # 逐元素操作
-│   ├── bench_reduction.rs     # 归约操作
-│   ├── bench_dot_product.rs   # 向量内积
-│   ├── bench_set.rs           # 集合操作
-│   ├── bench_broadcast.rs     # 广播操作
-│   ├── bench_shape.rs         # 形状操作
-│   ├── bench_simd_comparison.rs   # SIMD 比较
-│   ├── bench_parallel_comparison.rs # 并行比较
-│   └── bench_construction.rs  # 张量构造
+│   ├── math.rs                # 逐元素操作
+│   ├── reduction.rs           # 归约操作
+│   ├── dot_product.rs         # 向量内积
+│   ├── set.rs                 # 集合操作
+│   ├── broadcast.rs           # 广播操作
+│   ├── shape.rs               # 形状操作
+│   ├── simd_comparison.rs     # SIMD 比较
+│   ├── parallel_comparison.rs # 并行比较
+│   └── construction.rs        # 张量构造
 │
 └── examples/                  # 使用示例
     ├── basic.rs               # 基础用法
@@ -262,7 +262,7 @@ xenon/
 | `storage/` | 四种存储模式（Owned/ViewRepr/ViewMutRepr/ArcRepr） |
 | `layout/` | F-order 布局标志位、步长计算、连续性检查 |
 | `tensor/` | 核心 `TensorBase<S, D>` 结构体及类型别名 |
-| `iter/` | 元素/轴/窗口/索引/Zip/Lane 迭代器 |
+| `iter/` | 元素/轴/窗口/索引/Zip 迭代器 |
 | `simd/` | SIMD 后端：向量化 kernel、标量回退、运行时分发 |
 | `parallel/` | 并行后端：并行迭代器、并行 map/reduce/zip、阈值与 guard |
 | `math/` | 逐元素数学运算（映射、一元、二元算术、比较），按需委托 `simd/` / `parallel/` |
@@ -368,7 +368,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 ### Feature 组合说明
 
 | 组合 | 命令 | 适用场景 |
-|------|------|
+|------|------|------|
 | 最小化 | `--no-default-features` | 嵌入式、WASM、内核模块 |
 | 标准 | （默认） | 桌面应用、CLI 工具 |
 | 高性能 | `--features parallel,simd` | 数据科学、机器学习 |

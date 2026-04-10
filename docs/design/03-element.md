@@ -236,7 +236,7 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
 }
 ```
 
-> **设计决策：** `min`/`max` 采用 NaN 传播语义（任一参数为 NaN → 返回 NaN）。Xenon 通过 `RealScalar` 自身的契约固定这一行为，而不直接把标准库某个具体方法的全部细节当作语义来源。
+> **设计决策：** `min`/`max` 采用 NaN 传播语义（任一参数为 NaN → 返回 NaN）。Xenon 通过 `RealScalar` 自身的契约固定这一行为，不直接复用标准库 `f32::min` / `f64::min` 的全部语义细节。
 
 ### 4.4 ComplexScalar trait
 
@@ -476,8 +476,24 @@ impl RealScalar for f64 {
     fn ceil(self) -> Self { self.ceil() }
     fn is_nan(self) -> bool { self.is_nan() }
     fn is_finite(self) -> bool { self.is_finite() }
-    fn min(self, other: Self) -> Self { self.min(other) }
-    fn max(self, other: Self) -> Self { self.max(other) }
+fn min(self, other: Self) -> Self {
+    if self.is_nan() || other.is_nan() {
+        Self::nan()
+    } else if self <= other {
+        self
+    } else {
+        other
+    }
+}
+fn max(self, other: Self) -> Self {
+    if self.is_nan() || other.is_nan() {
+        Self::nan()
+    } else if self >= other {
+        self
+    } else {
+        other
+    }
+}
     // ...
 }
 // Same pattern applies to f32.
@@ -745,13 +761,13 @@ Wave 3: [T6]      [T9] ← ────┘
 
 ## 11. no_std 兼容性
 
-> **⚠️ 警告**：在 `no_std` 环境下，`RealScalar` trait **没有任何实现者**。`f32`/`f64` 的 `RealScalar` impl 需要 `std` feature，因为 `sin()`、`cos()`、`sqrt()`、`exp()`、`ln()`、`hypot()`、`atan2()` 等浮点数学方法在 Rust 1.85 中仍通过 `std` 提供（位于 `std` 而非 `core`），而非因为 Xenon 引入了 `libm` 依赖。因此 `no_std` 环境中这些数学函数**需要 std feature**（浮点数学函数在 Rust 1.85 中仍通过 std 提供）。需要这些函数的代码必须以 `#[cfg(feature = "std")]` 门控。仅使用 `Element`/`Numeric` trait 的代码在 `no_std` 下正常工作。
+> **⚠️ 兼容性说明**：在 `no_std` 环境下，`RealScalar` 的**数学函数扩展**（`sin/cos/sqrt/exp/ln/floor/ceil`）不可用，因为 Rust 1.85 中这些浮点数学函数仍通过 `std` 提供。Xenon 不引入 `libm`。因此依赖这些数学函数的代码必须以 `#[cfg(feature = "std")]` 门控；仅依赖 `Element` / `Numeric` / `RealScalar` 常量与特殊值检测语义的文档说明在 no_std 下仍成立。
 
 | 组件 | 兼容方案 |
 |------|----------|
 | `Element` / `Numeric` / `ComplexScalar` | 纯 trait，天然 no_std |
-| `RealScalar` 数学函数 | 仅在 `#[cfg(feature = "std")]` 下实现；**需要 std feature**（浮点数学函数 `sin`/`cos`/`sqrt`/`exp`/`ln`/`floor`/`ceil`/`abs` 在 Rust 1.85 中仍通过 `std` 提供）。no_std 环境中不可用，需要数学函数的代码须以 `#[cfg(feature = "std")]` 门控 |
-| `RealScalar` 常量与 NaN 检测 | `epsilon()`/`min_positive()`/`max_value()`/`infinity()`/`neg_infinity()`/`nan()`/`is_nan()`/`is_infinite()`/`is_finite()`/`min()`/`max()` 不依赖 `std` 数学函数，理论上可在 no_std 下实现；但当前 `RealScalar` 整体以 `#[cfg(feature = "std")]` 门控，保持 impl 一致性 |
+| `RealScalar` 数学函数 | 仅在 `#[cfg(feature = "std")]` 下实现；**需要 std feature**（浮点数学函数 `sin`/`cos`/`sqrt`/`exp`/`ln`/`floor`/`ceil`/`abs` 在 Rust 1.85 中仍通过 `std` 提供） |
+| `RealScalar` 常量与 NaN 检测 | 语义上不依赖 `std` 数学函数；若未来拆分为基础 trait + std 扩展 trait，这些能力可直接留在 no_std 基础层 |
 | Feature gate | `Cargo.toml`: `default = ["std"]`；`RealScalar` 数学函数需要 std feature（浮点数学函数在 Rust 1.85 中仍通过 `std` 提供，Xenon 不引入额外 libm 依赖） |
 
 ---

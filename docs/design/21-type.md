@@ -122,8 +122,8 @@ where
 {
     /// Element-wise type conversion.
     ///
-    /// Only applicable to the `Owned` storage mode (per requirement §23).
-    /// For other storage modes, call `to_owned()` first: `view.to_owned().cast::<B>()`.
+/// Only applicable to the `Owned` storage mode (per requirement §23).
+/// For other storage modes, call `to_owned()` first: `view.to_owned().cast::<B>()`.
     ///
     /// # Type Parameters
     ///
@@ -147,8 +147,8 @@ where
 ```
 
 > **设计决策（修订）**：根据需求说明书 §23，`cast()` 仅适用于持有数据的存储模式。
-> 因此 `cast()` 分别在 `Owned<A>` 和 `ArcRepr<A>` 存储模式上实现，
-> `ViewRepr`/`ViewMutRepr` 须先调用 `to_owned()`。
+> 因此 `cast()` 分别在 `Owned<A>` 和 `ArcRepr<A>` 存储模式上实现；
+> `ViewRepr` / `ViewMutRepr` 须先调用 `to_owned()`，而 `ArcRepr` 路径通过 `to_owned().cast()` 显式完成私有化与重编码。
 
 ```rust
 impl<A, D> TensorBase<ArcRepr<A>, D>
@@ -316,7 +316,7 @@ impl<A, D> TensorBase<Owned<A>, D> where A: Element, D: Dimension {
 
 ### 4.7 连续化内部实现
 
-本节描述的连续化实现仅作为 `20-utility.md §4.3` 中 `to_contiguous()` 的内部实现细节。连续性保证的公共语义仍然归 `util` 模块，而不是 `convert` 模块。
+本节描述的连续化实现仅作为 `20-utility.md §4.3` 中 `to_contiguous()` 的内部实现细节。`convert` 模块可以持有 `contiguous.rs` 这一内部 helper 文件，但连续性保证的**公共语义、命名和用户入口**始终归 `util` 模块，而不是 `convert` 模块。
 
 ```rust
 impl<S, D, A> TensorBase<S, D>

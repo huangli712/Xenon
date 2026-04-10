@@ -154,8 +154,8 @@ pub enum XenonError {
         actual: usize,
     },
 
-    /// Operation requires a non-empty array (e.g., dot on empty).
-    /// The operation that triggered this error (e.g., "sum", "dot").
+    /// Operation requires a non-empty array.
+    /// The operation that triggered this error.
     EmptyArray {
         operation: &'static str,
     },
@@ -267,7 +267,7 @@ impl std::error::Error for XenonError {}
 | `InvalidAxis` | `axis 5 out of bounds for 2-dimensional array` |
 | `InvalidShape` | `cannot reshape 12 elements into 15` |
 | `DimensionMismatch` | `dimension mismatch: expected 2, got 3` |
-| `EmptyArray` | `dot requires a non-empty array` |
+| `EmptyArray` | `operation requires a non-empty array` |
 
 ### 4.6 Good / Bad 对比示例
 
@@ -352,7 +352,7 @@ workspace 模块定义了独立的 `WorkspaceError`，不属于 `XenonError` 枚
 | DimensionMismatch | Result | 类型转换失败，可恢复 |
 | EmptyArray | Result | 运行时状态决定，可恢复 |
 | **IndexOutOfBounds** | **panic** | **编程错误，与 Rust slice 一致** |
-| **Operator syntax failure** | **panic** | **`Add/Sub/Mul/Div` trait 必须返回值类型，不能编码 `Result`；对应方法型 API 继续返回 `Result`** |
+| **Operator syntax failure** | **panic** | **语言级运算符 trait 必须返回值类型；Xenon 同时提供等价的方法型 API 作为可恢复路径** |
 | **IntegerOverflow** | **panic** | **需求 §14：整数归约溢出视为不可恢复错误** |
 
 ### 5.3 IndexOutOfBounds 为何使用 panic
@@ -577,7 +577,7 @@ Wave 3: ┌──[T6]────┤
 |----------|----------|--------|
 | `test_reshape_invalid_shape_returns_error` | reshape 元素数不匹配返回 InvalidShape | 高 |
 | `test_sum_axis_invalid_axis_returns_error` | sum_axis 轴越界返回 InvalidAxis | 高 |
-| `test_dot_empty_array_returns_error` | dot 空数组返回 EmptyArray | 高 |
+| `test_empty_array_operation_name` | EmptyArray 包含操作名 | 高 |
 | `test_broadcast_incompatible_returns_error` | 不兼容广播返回 BroadcastError | 高 |
 
 ### 7.4 集成测试
@@ -603,7 +603,7 @@ Wave 3: ┌──[T6]────┤
 | `dimension/` | `DimensionMismatch` | IxN ↔ IxDyn 转换（参见 `02-dimension.md §4`） |
 | `tensor/` | `InvalidShape` | reshape 操作（参见 `07-tensor.md §4`） |
 | `tensor/` / `shape/` | `LayoutMismatch` | 调用方在消费 `layout/` 的布尔/flags 查询结果后，发现不满足连续性前提（如 reshape 非连续数组） |
-| `tensor/` | `EmptyArray` | dot 等操作对空数组 |
+| `tensor/` | `EmptyArray` | 未来需要非空输入的方法型 API |
 | `math/` | `ShapeMismatch` | 二元运算形状不兼容（参见 `11-math.md §4`） |
 | `math/` | `BroadcastError` | 广播失败（参见 `15-broadcast.md §5`） |
 | `reduction/` | `InvalidAxis` | sum_axis 轴索引错误（参见 `13-reduction.md §4`） |

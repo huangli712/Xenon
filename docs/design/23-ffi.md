@@ -78,7 +78,7 @@ src/ffi/
 ├── ptr.rs
 │   ├── crate::tensor        # TensorBase<S, D>, offset
 │   ├── crate::dimension     # Dimension trait
-│   ├── crate::storage       # Storage, StorageMut, StorageIntoRaw
+│   ├── crate::storage       # Storage, StorageMut, owned allocator metadata
 │   └── crate::layout        # is_f_contiguous
 ├── blas.rs
 │   ├── crate::tensor        # TensorBase<S, D>
@@ -98,7 +98,7 @@ src/ffi/
 |----------|-----------------|------|--------|
 | `tensor` | `TensorBase<S, D>`, `.shape()`, `.strides()`, `.as_ptr()`, `.as_mut_ptr()`, `.offset()` | `07-tensor.md` §4 | `ptr.rs`, `blas.rs`, `offset.rs` |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn` | `02-dimension.md` §4 | `ptr.rs`, `offset.rs` |
-| `storage` | `Storage<Elem=A>`, `StorageMut<Elem=A>`, `StorageIntoRaw` | `05-storage.md` §4 | `ptr.rs`, `blas.rs`, `offset.rs` |
+| `storage` | `Storage<Elem=A>`, `StorageMut<Elem=A>`, owned allocator metadata（供 `OwnedRawParts<A, D>` 导出/重建） | `05-storage.md` §4 | `ptr.rs`, `blas.rs`, `offset.rs` |
 | `layout` | `is_f_contiguous()`, `has_zero_stride()`, `has_neg_stride()` | `06-memory.md` §4 | `ptr.rs`, `blas.rs` |
 
 ### 3.3 依赖方向声明
@@ -334,36 +334,45 @@ where
 ### 4.4 将张量解构为裸指针
 
 ```rust
+pub struct OwnedRawParts<A, D> {
+    pub ptr: *mut A,
+    pub len: usize,
+    pub cap: usize,
+    pub align: usize,
+    pub shape: D,
+    pub strides: Strides<D>,
+    pub offset: usize,
+}
+
 impl<A, D> TensorBase<Owned<A>, D>
 where
     D: Dimension,
 {
-    /// Consumes the tensor, returning raw parts.
-    ///
-    /// The caller is responsible for freeing the returned memory.
+    /// Consumes the tensor, returning owned raw parts.
     ///
     /// # Returns
     ///
-    /// A tuple `(ptr, shape, strides, offset)` where `strides` uses `Strides<D>`.
+    /// An `OwnedRawParts<A, D>` snapshot containing the pointer plus the allocator
+    /// metadata required to reconstruct Xenon's aligned owned storage.
     ///
     /// # Example
     ///
     /// ```
     /// let tensor = Tensor2::<f64>::zeros([3, 4]);
-    /// let (ptr, shape, strides, offset) = tensor.into_raw_parts();
-    /// // Caller now owns ptr, responsible for freeing
+    /// let raw = tensor.into_raw_parts();
+    /// // Reconstruct with Tensor::from_raw_parts_owned(raw) and let Drop free it.
     /// ```
-    pub fn into_raw_parts(self) -> (*mut A, D, Strides<D>, usize) {
-        // Use ManuallyDrop to prevent Drop from running while we extract fields.
-        // This is safer than the "extract fields first, then mem::forget" pattern
-        // because it eliminates the risk of Double Drop on panic during field access.
+    pub fn into_raw_parts(self) -> OwnedRawParts<A, D> {
         let this = core::mem::ManuallyDrop::new(self);
-        let ptr = unsafe { this.storage.as_mut_ptr() };
-        let shape = this.shape.clone();
-        let strides = this.strides.clone();
-        let offset = this.offset;
-
-        (ptr, shape, strides, offset)
+        OwnedRawParts {
+            ptr: unsafe { this.storage.as_mut_ptr() },
+            len: this.storage.len(),
+            cap: this.storage.capacity(),
+            align: this.storage.alignment(),
+            shape: this.shape.clone(),
+            strides: this.strides.clone(),
+            offset: this.offset,
+        }
     }
 }
 ```
@@ -372,11 +381,11 @@ where
 
 #### 内存管理
 
-`into_raw_parts()` 返回的指针由 Xenon 的 64 字节对齐分配器分配。正确回收内存的方式如下：
+`into_raw_parts()` 返回的是 Xenon 分配器元信息的完整快照。正确回收内存的方式如下：
 
 | 规则 | 说明 |
 |------|------|
-| ✅ 重建张量后 Drop | 使用 `Tensor::from_raw_parts_owned()` 重建，让 Drop 处理释放 |
+| ✅ 重建张量后 Drop | 使用 `Tensor::from_raw_parts_owned(raw)` 重建，让 Drop 处理释放 |
 | ❌ 直接调用系统 free | 分配器不匹配，导致 UB 或内存泄漏 |
 | ❌ 忽略返回值 | 内存泄漏 |
 
@@ -386,34 +395,30 @@ where
 ///
 /// # Safety
 ///
-/// - `ptr` must point to memory allocated by Xenon's `AlignedAlloc` (64-byte aligned)
-/// - `shape` and `strides` must describe a valid, non-overlapping F-order layout
-/// - The caller transfers ownership; do NOT free `ptr` separately
-/// - Total elements accessible via shape/strides must not exceed allocated size
-/// - `offset` must be 0 for owned round-trips; non-zero offset requires re-materializing first
+/// - `raw.ptr` must point to memory allocated by Xenon's aligned allocator
+/// - `raw.len`, `raw.cap`, and `raw.align` must be the original allocator metadata
+/// - `raw.shape` and `raw.strides` must describe a valid, non-overlapping F-order layout
+/// - The caller transfers ownership; do NOT free `raw.ptr` separately
+/// - `raw.offset` must be 0 for owned round-trips; non-zero offset requires re-materializing first
 pub unsafe fn from_raw_parts_owned(
-    ptr: *mut A,
-    shape: D,
-    strides: Strides<D>,
-    offset: usize,
+    raw: OwnedRawParts<A, D>,
 ) -> TensorBase<Owned<A>, D> {
-    let len = shape.size();
-    let storage = Owned::from_raw(ptr, len);
-    let flags = layout::compute_flags(&shape, &strides, ptr);
-    TensorBase { storage, shape, strides, offset, flags }
+    let storage = Owned::from_raw_parts(raw.ptr, raw.len, raw.cap, raw.align);
+    let flags = layout::compute_flags(&raw.shape, &raw.strides, raw.ptr);
+    TensorBase { storage, shape: raw.shape, strides: raw.strides, offset: raw.offset, flags }
 }
 ```
 
 ```rust
 // Correct round-trip: into_raw_parts → use pointer → from_raw_parts_owned → drop
 let tensor = Tensor2::<f64>::zeros([3, 4]);
-let (ptr, shape, strides, offset) = tensor.into_raw_parts();
+let raw = tensor.into_raw_parts();
 
 // ... use ptr in FFI code ...
 
 // Reconstruct and let Drop handle deallocation
 unsafe {
-    let reconstructed = Tensor::<f64, _>::from_raw_parts_owned(ptr, shape, strides, offset);
+    let reconstructed = Tensor::<f64, _>::from_raw_parts_owned(raw);
     drop(reconstructed);  // Correctly deallocates with Xenon's aligned allocator
 }
 ```
@@ -487,8 +492,9 @@ where
     ///
     /// # Returns
     ///
-    /// - `Some(BlasInfo)`: compatibility conditions met
-    /// - `None`: not BLAS compatible
+    /// - `Some(BlasInfo)`: compatibility conditions met and all BLAS integer
+    ///   parameters fit in `i32`
+    /// - `None`: not BLAS compatible, not 2D, or any BLAS parameter exceeds `i32::MAX`
     ///
     /// # Example
     ///
@@ -504,9 +510,9 @@ where
         }
 
         let data_ptr = self.as_ptr() as *const u8;
-        let lda = self.lda()? as i32;
-        let rows = self.shape()[0] as i32;
-        let cols = self.shape()[1] as i32;
+        let lda = i32::try_from(self.lda()?).ok()?;
+        let rows = i32::try_from(self.shape()[0]).ok()?;
+        let cols = i32::try_from(self.shape()[1]).ok()?;
 
         Some(BlasInfo {
             data_ptr,
@@ -790,7 +796,7 @@ Wave 3: ┌────┴────┐
 | 场景 | 验证方式 |
 |------|----------|
 | `from_raw_parts` + Drop | 无内存泄漏（借用语义） |
-| `into_raw_parts` + 手动释放 | 正确释放（通过 allocator API） |
+| `into_raw_parts` + `from_raw_parts_owned(raw)` | 重建后由 Drop 正确释放 |
 | `from_raw_parts` 野指针 | AddressSanitizer 检测 |
 
 ### 7.4 集成测试
@@ -809,7 +815,7 @@ Wave 3: ┌────┴────┐
 |------|----------|-----------|------|
 | `ffi → tensor` | `tensor` | 原始指针访问 | 通过 `TensorBase` 的 storage 获取底层指针，参见 `07-tensor.md` §4 |
 | `ffi ← layout` | `layout` | `is_f_contiguous()` / stride 标志 | BLAS 兼容性检查依赖布局查询结果，参见 `06-memory.md` §4 |
-| `ffi → storage` | `storage` | `StorageIntoRaw` | `into_raw_parts` 通过原始存储接口转移 owned 数据，参见 `05-storage.md` §4 |
+| `ffi → storage` | `storage` | `OwnedRawParts` / allocator metadata | `into_raw_parts` 导出 owned 存储的完整重建信息，参见 `05-storage.md` §4 |
 | `ffi → 上游库` | `上游库` | `blas_info()` / `lda()` | 向外部 BLAS/FFI 调用方暴露零拷贝参数 |
 
 ### 8.2 数据流描述
@@ -819,7 +825,7 @@ Wave 3: ┌────┴────┐
     │
     ├── ffi 模块从 tensor/storage 读取原始指针、shape、strides、offset
     ├── layout 模块负责判断 BLAS 兼容性与 leading-dimension 前提
-    ├── raw-parts 路径在 owned roundtrip 时把所有权移交给调用方或重建回 tensor
+    ├── raw-parts 路径在 owned roundtrip 时导出完整 allocator metadata，并可重建回 tensor
     └── 最终向外部 C / BLAS 边界暴露零拷贝参数
 ```
 

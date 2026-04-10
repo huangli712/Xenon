@@ -447,8 +447,16 @@ impl IntoDimension for (usize, usize, usize, usize, usize, usize) { type Dim = I
 impl IntoDimension for &[usize] { type Dim = IxDyn; /* ... */ }
 impl IntoDimension for Vec<usize> { type Dim = IxDyn; /* ... */ }
 
-// Arrays -> IxDyn (flexibility)
-impl<const N: usize> IntoDimension for [usize; N] { type Dim = IxDyn; /* ... */ }
+// Arrays of rank 0..6 preserve static dimensionality.
+impl IntoDimension for [usize; 0] { type Dim = Ix0; /* ... */ }
+impl IntoDimension for [usize; 1] { type Dim = Ix1; /* ... */ }
+impl IntoDimension for [usize; 2] { type Dim = Ix2; /* ... */ }
+impl IntoDimension for [usize; 3] { type Dim = Ix3; /* ... */ }
+impl IntoDimension for [usize; 4] { type Dim = Ix4; /* ... */ }
+impl IntoDimension for [usize; 5] { type Dim = Ix5; /* ... */ }
+impl IntoDimension for [usize; 6] { type Dim = Ix6; /* ... */ }
+
+// Dynamic arrays remain explicitly dynamic via slices/Vec/IxDyn.
 ```
 
 ### 4.5 Axis 新类型
@@ -599,10 +607,11 @@ let dim: Ix3 = Ix3::try_from_dyn(dyn_dim).unwrap();
 
 ---
 
-### 4.9 BroadcastDim trait
+### 4.9 BroadcastDim trait（广播层消费）
 
 `BroadcastDim<Other>` 用于编译期计算两个维度类型广播后的输出维度类型。  
-被 `19-overload.md` 中的运算符重载使用。
+该 trait 由广播/运算符重载层消费（参见 `15-broadcast.md` 与 `19-overload.md`），
+不属于维度系统的核心职责；`dimension` 模块仅在此记录它依赖静态/动态维度类型这一事实。
 
 > **实现建议：** 跨静态维度的 `BroadcastDim` 实现共计约 57 个（含自身广播 7 个 + 跨静态维度 42 个 + 与 IxDyn 混合 7 个（静态维度→IxDyn）+ 1 个（IxDyn→D 泛型 impl））。
 > 建议使用声明宏（`macro_rules!`）生成这些实现，避免手工编写导致的遗漏和错误。

@@ -112,7 +112,10 @@ src/matrix/
 ///
 /// # Errors
 ///
-/// Returns `XenonError::ShapeMismatch` when dimensions do not match
+/// Returns `XenonError::ShapeMismatch` when dimensions do not match.
+/// Empty vectors are valid inputs and return the additive identity `A::zero()`.
+/// Integer overflow during accumulation is unrecoverable and must panic via
+/// checked arithmetic, matching `13-reduction.md`.
 ///
 /// # Examples
 ///
@@ -189,7 +192,9 @@ dot_impl(a, b):
 
 ```rust
 fn scalar_dot<A: Numeric + Copy>(a: &TensorView<A, Ix1>, b: &TensorView<A, Ix1>) -> A {
-    a.iter().zip(b.iter()).fold(A::zero(), |acc, (&x, &y)| acc + x.conjugate() * y)
+    a.iter()
+        .zip(b.iter())
+        .fold(A::zero(), |acc, (&x, &y)| acc.checked_add(x.conjugate() * y).expect("dot overflow"))
 }
 ```
 
@@ -303,6 +308,14 @@ Wave 4: [T4]
 | 单元素向量 | 返回 a[0] * b[0] |
 | 大向量（1M 元素） | SIMD 路径启用，结果正确 |
 | 非连续向量（切片后） | 回退到标量路径，结果正确 |
+
+### 7.3 属性测试不变量
+
+| 不变量 | 测试方法 |
+|--------|----------|
+| `dot([], []) == A::zero()` | 空向量对所有受支持类型成立 |
+| `dot(a, b)` 与标量实现一致 | 随机 1D 连续/非连续输入 |
+| 复数 `dot(a, b) == sum(conj(a[i]) * b[i])` | 随机复数向量 |
 
 ### 7.4 集成测试
 

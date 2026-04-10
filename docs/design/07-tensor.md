@@ -372,10 +372,10 @@ where
     /// # Safety
     ///
     /// Caller must ensure:
-    /// - `ptr` points to the logical first element of the view; for empty arrays or
+    /// - `ptr` points to the storage base pointer of the view; for empty arrays or
     ///   ZST elements, a well-formed dangling sentinel is permitted because it is never dereferenced
-    /// - The memory range reachable from `ptr`, together with `shape`, `strides`, and `offset`,
-    ///   covers all accessible logical elements
+    /// - The memory range reachable from the storage base pointer `ptr`, together with `shape`,
+    ///   `strides`, and `offset`, covers all accessible logical elements
     /// - Memory remains valid for the lifetime `'a` of the returned view
     /// - All accessible elements are properly initialized
     /// - `shape` and `strides` have consistent lengths

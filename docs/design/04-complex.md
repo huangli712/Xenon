@@ -80,7 +80,7 @@ src/complex/
 └── core::cmp        # PartialEq
 ```
 
-> **零外部依赖。** `Complex<T>` 的全部实现仅依赖 `core`，天然 no_std 兼容。
+> **零外部依赖。** `Complex<T>` 的基础结构、基础方法、算术运算和类型转换仅依赖 `core`，因此这些能力天然 no_std 兼容；涉及浮点数学的复数方法（如 `norm`、`arg`、`exp`、`ln`、`sqrt`、`to_polar`、`from_polar`）在 Rust 1.85 中仍需要 `std`。
 
 ### 3.2 依赖精确到类型级
 

@@ -341,7 +341,7 @@ where
 par_reduce(tensor, || A::zero(), |a, b| {
     // For integer reductions, dispatch to CheckedAdd in the scalar fallback path
     // or disable parallelization when exact serial equivalence cannot be proven.
-    a + b
+    a.checked_add(b).expect("parallel integer reduction overflow")
 })
 }
 
@@ -978,7 +978,7 @@ Wave 4:        [T8]
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | 所有类型的并行结果都必须与串行实现保持一致；若某条并行路径无法证明该性质，则自动回退串行 |
+| 决策 | 所有类型的并行结果都必须与串行实现保持一致；若某条并行路径无法证明该性质，则自动回退串行。当前版本默认仅对可逐块证明一致的整数/逐元素路径启用并行归约，浮点归约保守回退串行。 |
 | 理由 | 需求说明书 §28.5 已固定“并行归约结果须与单线程一致”；性能优化不能改变语义结果 |
 | 测试约定 | 并行 sum / zip / map 的一致性测试使用与串行结果一致的断言，而非近似比较；参见 `28-tests.md §8.2` |
 | 参见 | `13-reduction.md §9 ADR-2`（协调定义） |

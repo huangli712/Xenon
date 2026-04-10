@@ -261,13 +261,11 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<&'a mut A> {}
 //
 // Reason: &mut T cannot be shared; Rust's borrowing rules forbid it.
 //
-// If ViewMutRepr were Sync, then &ViewMutRepr could be shared across threads,
-// meaning multiple threads could simultaneously obtain &mut [A], causing aliasing
-// and potential data races.
-//
-// Rust's negative trait impls (!Sync) cannot be explicitly written in stable Rust,
-// but since ViewMutRepr contains *mut A (which is not Sync), the compiler will not
-// auto-derive Sync, which is exactly the behavior we want.
+// ViewMutRepr deliberately models exclusive access via `&'a mut A` semantics.
+// Its representation carries mutable provenance (`*mut A` plus mutable borrow marker),
+// so shared references to ViewMutRepr must not become a back door to aliasing mutable access.
+// Rust's negative trait impls (!Sync) cannot be written on stable, therefore the design
+// relies on the underlying mutable-pointer / PhantomData shape to prevent Sync auto-derivation.
 ```
 
 ### 4.6 ArcRepr<A> 的 Send/Sync

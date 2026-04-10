@@ -13,10 +13,10 @@
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
 | 零初始化构造 | `zeros<A, D>(shape)` 全零张量 | arange / linspace / logspace 序列生成（当前版本不提供） |
-| 常量填充构造 | `ones<A, D>(shape)` / `fill<A, D>(scalar, shape)` 全一/填充张量 | 随机数构造（当前版本不提供） |
+| 常量填充构造 | `ones<A, D>(shape)` / `full<A, D>(shape, scalar)` 全一/填充张量 | 随机数构造（当前版本不提供） |
 | 单位矩阵 | `eye<A>(n)` 单位矩阵 | 从文件加载（当前版本不提供） |
-| 从 Vec 构造 | `from_vec<A>(vec, shape)` 消费输入 Vec 并构造张量 | 从迭代器/生成器构造（由 `from_fn` 提供） |
-| 从切片构造 | `from_slice<A>(slice, shape)` 从切片拷贝数据 | 从文件/网络加载（当前版本不提供） |
+| 从 Vec 构造 | `from_shape_vec(shape, vec)` 消费输入 Vec 并构造张量 | 从迭代器/生成器构造（由 `from_fn` 提供） |
+| 从切片构造 | `from_shape_slice(shape, slice)` 从切片拷贝数据 | 从文件/网络加载（当前版本不提供） |
 | 从固定数组构造 | `from_array<A, N>(arr, shape)` 从固定大小数组构造 | 从文件加载（当前版本不提供） |
 | 从标量构造 | `from_scalar<A>(scalar)` 零维张量 | — |
 | 从函数构造 | `from_fn<A, D, F>(shape, f)` 从闭包构造 | 从迭代器/生成器构造（由 `from_fn` 提供） |
@@ -29,7 +29,7 @@
 | 合法性验证 | 所有构造路径须验证合法性，防止越界访问（需求说明书 §8） |
 | F-order 默认 | 构造时数据按 F-order 存放，默认列优先布局 |
 | 对齐分配 | `zeros`/`ones` 使用对齐分配器，满足 BLAS 兼容性（参见 `23-ffi.md` §4.5） |
-| 对齐优先 | `from_vec` 将输入 `Vec<A>` 的数据复制到新分配的 64 字节对齐内存中（通过 `Owned::from_vec_aligned()`），确保 SIMD 友好的内存对齐；不承诺复用原始 Vec 的分配 |
+| 对齐优先 | `from_shape_vec` 将输入 `Vec<A>` 的数据复制到新分配的 64 字节对齐内存中（通过 `Owned::from_vec_aligned()`），确保 SIMD 友好的内存对齐；不承诺复用原始 Vec 的分配 |
 | 类型安全 | 形状和元素类型通过泛型约束在编译期检查 |
 
 ### 1.3 在架构中的位置
@@ -54,7 +54,7 @@ src/
     ├── mod.rs               # 模块根，re-exports 所有公共 API
     ├── fill.rs              # zeros, ones, fill（填充构造）
     ├── eye.rs               # eye（单位矩阵）
-    ├── from_data.rs         # from_vec, from_slice, from_array（从数据源构造）
+├── from_data.rs         # from_shape_vec, from_shape_slice, from_array（从数据源构造）
     └── from_fn.rs           # from_fn, from_scalar（从闭包/标量构造）
 ```
 
@@ -92,7 +92,7 @@ src/
 | `storage` | `Owned<A>`, `Storage<Elem = A>`, `from_vec_aligned()`（参见 `05-storage.md` §4） |
 | `layout` | `LayoutFlags`, `Strides<D>`, F-order 步长计算（参见 `06-memory.md` §3） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`（参见 `02-dimension.md` §4） |
-| `element` | `Element`, `Zero`, `One`（参见 `03-element.md` §3） |
+| `element` | `Element`（`zero()` / `one()` 由 `Element` 提供，参见 `03-element.md` §3） |
 | `error` | `XenonError::InvalidShape`（用于构造时的 shape/length 基数不匹配，参见 `26-error.md` §4） |
 
 ### 3.3 依赖方向声明
@@ -103,7 +103,7 @@ src/
 
 ## 4. 公共 API 设计
 
-### 4.1 zeros / ones / fill
+### 4.1 zeros / ones / full
 
 ```rust
 impl<A, D> TensorBase<Owned<A>, D>
@@ -143,17 +143,17 @@ where
         A: Element,  // A::one() is provided by the Element trait (see 03-element.md §4.1)
         Sh: IntoDimension<Dim = D>,
     {
-        Self::fill(shape, A::one())
+        Self::full(shape, A::one())
     }
 
     /// Create a tensor filled with the specified value.
     ///
     /// # Examples
     /// ```
-    /// let t = Tensor::<f64, _>::fill(3.14, [2, 2]);
+    /// let t = Tensor::<f64, _>::full([2, 2], 3.14);
     /// assert!(t.iter().all(|&x| x == 3.14));
     /// ```
-    pub fn fill<Sh>(value: A, shape: Sh) -> Self
+    pub fn full<Sh>(shape: Sh, value: A) -> Self
     where
         A: Clone,
         Sh: IntoDimension<Dim = D>,
@@ -187,7 +187,7 @@ where
     /// ```
     pub fn eye(n: usize) -> Self
     where
-        A: Zero + One,
+        A: Element,
     {
         let mut result = Self::zeros([n, n]);
         for i in 0..n {
@@ -198,7 +198,7 @@ where
 }
 ```
 
-### 4.3 from_vec / from_slice / from_array
+### 4.3 from_shape_vec / from_shape_slice / from_array
 
 ```rust
 impl<A, D> TensorBase<Owned<A>, D>
@@ -381,10 +381,10 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 | 构造方法 | 分配策略 | 初始化 |
 |----------|----------|--------|
 | `zeros` | 对齐分配 + 零初始化 | `ptr::write_bytes(0)` |
-| `ones` | 对齐分配 + 批量填充 | `ptr::write(One::one())` |
-| `fill` | 对齐分配 + 批量克隆 | `clone` 填充 |
-| `from_vec` | 复制到对齐分配（按元素类型选择 Xenon 的标准对齐） | 用户提供数据 |
-| `from_slice` | 先复制到临时 Vec，再复制到对齐分配 | 两次数据搬运（保持 API 简洁） |
+| `ones` | 对齐分配 + 批量填充 | `ptr::write(A::one())` |
+| `full` | 对齐分配 + 批量克隆 | `clone` 填充 |
+| `from_shape_vec` | 复制到对齐分配（按元素类型选择 Xenon 的标准对齐） | 用户提供数据 |
+| `from_shape_slice` | 先复制到临时 Vec，再复制到对齐分配 | 两次数据搬运（保持 API 简洁） |
 | `from_fn` | 先写入临时 Vec，再复制到对齐分配 | 闭包逐元素调用 + 一次最终复制 |
 | `from_scalar` | 对齐分配（1 元素） | 单元素写入 |
 | `eye` | 先 `zeros` 再对角线写入 | 两步：零初始化 + 对角线 |
@@ -410,8 +410,8 @@ function increment_index_f(shape, index):
 
 ### 5.3 安全性论证
 
-- `from_vec`: 验证 `data.len() == dim.size()`，不匹配返回错误；通过后 `Owned::from_vec_aligned` 消费输入 Vec 并复制到对齐存储
-- `from_slice`: 验证长度后拷贝，原始切片不再被引用
+- `from_shape_vec`: 验证 `data.len() == dim.size()`，不匹配返回错误；通过后 `Owned::from_vec_aligned` 消费输入 Vec 并复制到对齐存储
+- `from_shape_slice`: 验证长度后拷贝，原始切片不再被引用
 - `from_fn`: 闭包接收合法索引（`0 <= idx[i] < shape[i]`），无越界风险
 - `dim.size()` 溢出或分配失败：构造路径须在实现中转为 `XenonError` 或 panic-by-policy，不得产生未定义行为；ZST 与空张量路径须与 `05-storage.md` 的约束保持一致
 - `eye`: 内部使用已验证的 `zeros` 和合法索引 `[[i, i]]`（`0 <= i < n`），无越界风险
@@ -422,10 +422,10 @@ function increment_index_f(shape, index):
 
 ### Wave 1: 基础构造
 
-- [ ] **T1**: 创建 `src/construct/` 模块骨架 + `zeros`/`ones`/`fill`
+- [ ] **T1**: 创建 `src/construct/` 模块骨架 + `zeros`/`ones`/`full`
   - 文件: `src/construct/mod.rs`, `src/construct/fill.rs`
-  - 内容: 模块声明、`zeros`/`ones`/`fill` 实现
-  - 测试: `test_zeros`, `test_ones`, `test_fill`
+  - 内容: 模块声明、`zeros`/`ones`/`full` 实现
+  - 测试: `test_zeros`, `test_ones`, `test_full`
   - 前置: `tensor` 模块完成
   - 预计: 10 min
 
@@ -438,10 +438,10 @@ function increment_index_f(shape, index):
 
 ### Wave 2: 从数据源构造
 
-- [ ] **T3**: 实现 `from_vec` 和 `from_slice`
+- [ ] **T3**: 实现 `from_shape_vec` 和 `from_shape_slice`
   - 文件: `src/construct/from_data.rs`
   - 内容: 消费输入 Vec 并复制到对齐存储、从切片拷贝
-  - 测试: `test_from_vec`, `test_from_vec_mismatch`, `test_from_slice`
+  - 测试: `test_from_shape_vec`, `test_from_shape_vec_mismatch`, `test_from_shape_slice`
   - 前置: T1
   - 预计: 10 min
 
@@ -501,13 +501,13 @@ Wave 4:           [T6]
 | `test_zeros_shape` | `zeros([3, 4])` 形状正确 | 高 |
 | `test_zeros_values` | 所有元素为零 | 高 |
 | `test_ones_values` | 所有元素为一 | 高 |
-| `test_fill_custom` | 自定义值填充 | 高 |
+| `test_full_custom` | 自定义值填充 | 高 |
 | `test_eye_3x3` | 3×3 单位矩阵对角线为 1 | 高 |
 | `test_eye_zero` | `eye(0)` 空矩阵 | 中 |
-| `test_from_vec_success` | 合法 Vec 构造成功 | 高 |
-| `test_from_vec_mismatch` | Vec 长度不匹配返回错误 | 高 |
-| `test_from_slice_success` | 从切片构造 | 高 |
-| `test_from_slice_mismatch` | 切片长度不匹配 | 高 |
+| `test_from_shape_vec_success` | 合法 Vec 构造成功 | 高 |
+| `test_from_shape_vec_mismatch` | Vec 长度不匹配返回错误 | 高 |
+| `test_from_shape_slice_success` | 从切片构造 | 高 |
+| `test_from_shape_slice_mismatch` | 切片长度不匹配 | 高 |
 | `test_from_array_success` | 从固定数组构造 | 中 |
 | `test_from_scalar` | 零维张量 | 高 |
 | `test_from_fn_identity` | `from_fn([3,3], |i| i[0]*3+i[1])` | 高 |
@@ -521,7 +521,7 @@ Wave 4:           [T6]
 | `zeros([0, 3])` | 空张量，`len() == 0` |
 | `eye(0)` | 空 0×0 矩阵 |
 | `from_scalar(42)` | 零维张量，`ndim() == 0` |
-| `from_vec(vec![], [0])` | 空 1D 张量 |
+| `from_shape_vec([0], vec![])` | 空 1D 张量 |
 | `from_fn([0, 5], \|\_)` | 空 2D 张量 |
 | 大张量 `zeros([1000, 1000])` | 分配成功，F-order 连续 |
 
@@ -529,9 +529,9 @@ Wave 4:           [T6]
 
 | 不变量 | 测试方法 |
 |--------|----------|
-| `zeros(s).iter().all(\|x\| x == Zero::zero())` | 随机形状 |
-| `ones(s).iter().all(\|x\| x == One::one())` | 随机形状 |
-| `from_vec(v, s).len() == s.size()` | 随机形状和匹配数据 |
+| `zeros(s).iter().all(\|x\| x == Element::zero())` | 随机形状 |
+| `ones(s).iter().all(\|x\| x == Element::one())` | 随机形状 |
+| `from_shape_vec(s, v).len() == s.size()` | 随机形状和匹配数据 |
 | `from_fn(s, f).shape() == s` | 随机形状 |
 
 ### 7.4 集成测试
@@ -552,14 +552,14 @@ Wave 4:           [T6]
 | `construct → storage` | `storage` | `Owned::zeros()` / `from_vec_aligned()` | 使用对齐存储完成底层分配，参见 `05-storage.md` §4.2 |
 | `construct → layout` | `layout` | F-order 步长 | 构造阶段计算 F-order 步长，参见 `06-memory.md` §4 |
 | `construct → dimension` | `dimension` | `IntoDimension` | 接受灵活形状参数并归一化，参见 `02-dimension.md` §4.3 |
-| `construct → element` | `element` | `Element` / `Zero` / `One` | 通过元素 trait 约束构造 API，参见 `03-element.md` §3 |
+| `construct → element` | `element` | `Element` | 通过 `Element::zero()` / `Element::one()` 约束构造 API，参见 `03-element.md` §3 |
 | `construct → error` | `error` | `XenonError::InvalidShape` | shape 与长度基数不匹配时返回错误，参见 `26-error.md` §4 |
 | `construct → index` | `index` | 索引访问语义 | 构造后的张量继续复用索引路径，参见 `17-indexing.md` §4 |
 
 ### 8.2 数据流描述
 
 ```text
-用户调用 zeros / from_vec / from_fn / eye
+用户调用 zeros / from_shape_vec / from_fn / eye
     │
     ├── dimension 模块先规范化输入 shape
     ├── layout 计算 F-order strides 与初始 flags
@@ -599,10 +599,10 @@ Wave 4:           [T6]
 |------|-----------|-----------|
 | `zeros(n)` | O(n) | O(n) |
 | `ones(n)` | O(n) | O(n) |
-| `fill(n, v)` | O(n) | O(n) |
+| `full(n, v)` | O(n) | O(n) |
 | `eye(n)` | O(n²) | O(n²) |
-| `from_vec(n)` | O(n) 拷贝到对齐内存 | O(n)（新分配） |
-| `from_slice(n)` | O(n) 拷贝 | O(n) |
+| `from_shape_vec(n)` | O(n) 拷贝到对齐内存 | O(n)（新分配） |
+| `from_shape_slice(n)` | O(n) 拷贝 | O(n) |
 | `from_array(n)` | O(n) 拷贝 | O(n) |
 | `from_scalar()` | O(1) | O(1) |
 | `from_fn(n, f)` | O(n × f_cost) | O(n) |
@@ -623,8 +623,8 @@ Wave 4:           [T6]
 |------|----------|----------|
 | `zeros` 大数组 | `ptr::write_bytes(0)` | ~10 GB/s（memset 速度） |
 | `ones` 大数组 | `ptr::write(value)` 循环 | ~5 GB/s |
-| `fill` 大数组 | `clone` 循环 | ~3 GB/s（含克隆开销） |
-| `from_vec` | 拷贝到对齐内存 | O(n)（拷贝到 64 字节对齐分配） |
+| `full` 大数组 | `clone` 循环 | ~3 GB/s（含克隆开销） |
+| `from_shape_vec` | 拷贝到对齐内存 | O(n)（拷贝到 64 字节对齐分配） |
 | `eye` 大矩阵 | 先零后对角 | n 次 `write` + n² 次 `write_bytes` |
 
 > **注意**：`from_array` 当前存在双重拷贝（源数组 → Vec → 对齐分配），未来版本可优化为直接构建。
@@ -647,7 +647,7 @@ use alloc::vec::Vec;
 |------|:----------:|------|
 | `zeros()` | ✅ | 需 `no_std + alloc`，对齐分配 + 零初始化 |
 | `ones()` | ✅ | 需 `no_std + alloc`，对齐分配 + 批量填充 |
-| `fill()` | ✅ | 需 `no_std + alloc`，对齐分配 + 批量克隆 |
+| `full()` | ✅ | 需 `no_std + alloc`，对齐分配 + 批量克隆 |
 | `eye()` | ✅ | 需 `no_std + alloc`，先 `zeros` 再写入对角线 |
 | `from_shape_vec()` | ✅ | 需 `no_std + alloc`，拷贝数据到 64 字节对齐内存（O(n)） |
 | `from_shape_slice()` | ✅ | 需 `no_std + alloc`，拷贝到新 `Vec` |

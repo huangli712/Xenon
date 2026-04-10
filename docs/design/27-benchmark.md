@@ -282,13 +282,13 @@ Benchmark 分类
 
 | 工作流 | 基准数量 | 预计时间 | 频率 |
 |--------|----------|----------|------|
-| **Smoke Test** | 3 个核心文件 × `--sample-size 10` | ~5 min | 每次 PR |
+| **Smoke Test** | 3 个核心文件 × `--quick` | ~5 min | 每次 PR |
 | **Regression Check** | `elem_add_f64` 和 `sum_1d_f64` | ~10 min | 每次 PR |
 | **Full Benchmark** | 全部文件 × 4 feature 组合（`default`、`simd`、`parallel`、`simd+parallel`） | ~60 min | 每周/合并到 main |
 
 ### 8.1 Smoke Test 覆盖范围
 
-> **注意**：Smoke Test 仅验证 benchmark 代码可以正常编译和运行（"不崩溃"），不用于性能判断，也不执行回归阈值门禁。10次采样足够验证基本可运行性。性能回归检测由 Regression Check（§8.2）负责。
+> **注意**：Smoke Test 仅验证 benchmark 代码可以正常编译和运行（"不崩溃"），不用于性能判断，也不执行回归阈值门禁。其调用约定统一使用 `--quick`，性能回归检测由 Regression Check（§8.2）负责。
 
 | 文件 | 组 | 说明 |
 |------|-----|------|
@@ -311,9 +311,9 @@ benchmark-smoke:
 
         - name: Smoke benchmarks
           run: |
-            cargo bench --bench math -- "elem_add_f64" --sample-size 10
-            cargo bench --bench reduction -- "sum_1d_f64" --sample-size 10
-            cargo bench --bench construction -- "zeros_1d" --sample-size 10
+cargo bench --bench math -- "elem_add_f64" --quick
+cargo bench --bench reduction -- "sum_1d_f64" --quick
+cargo bench --bench construction -- "zeros_1d" --quick
 
         - name: Store results
           uses: benchmark-action/github-action-benchmark@v1
@@ -422,7 +422,7 @@ fn bench_sum_bad2(c: &mut Criterion) {
 | 阶段 | 说明 |
 |------|------|
 | 预热 (warm-up) | 每个基准先运行 3 秒预热，消除冷启动效应 |
-| 采样 (sampling) | 默认 100 次采样，Smoke Test 使用 `--sample-size 10` |
+| 采样 (sampling) | 默认 100 次采样，Smoke Test 使用 `--quick` |
 | 统计 | 剔除异常值（outlier removal），计算 95% 置信区间 |
 | 报告 | HTML 报告（含趋势图） + CLI 文本摘要 |
 

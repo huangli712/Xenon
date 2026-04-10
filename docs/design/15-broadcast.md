@@ -153,7 +153,7 @@ pub fn can_broadcast(shape_a: &[usize], shape_b: &[usize]) -> bool;
 /// * `target_shape` - The target broadcast shape
 ///
 /// # Returns
-/// `Vec<isize>` — strides for the broadcasted view, with 0 for broadcast dims.
+/// `Result<Vec<isize>, XenonError>` — strides for the broadcasted view, with 0 for broadcast dims.
 ///
 /// # Note
 /// This function returns `Vec<isize>` which requires heap allocation.
@@ -162,7 +162,7 @@ pub fn broadcast_strides(
     orig_shape: &[usize],
     orig_strides: &[isize],
     target_shape: &[usize],
-) -> Vec<isize>;
+) -> Result<Vec<isize>, XenonError>;
 ```
 
 ### 4.4 显式广播方法
@@ -259,6 +259,7 @@ function can_broadcast(shape_a: [usize; N], shape_b: [usize; M]) -> bool:
     i = N - 1  // shape_a 的最右索引
     j = M - 1  // shape_b 的最右索引
 
+    // pseudo-code over signed indices; Rust implementation should use checked decrements
     while i >= 0 or j >= 0:
         dim_a = if i >= 0 then shape_a[i] else 1
         dim_b = if j >= 0 then shape_b[j] else 1

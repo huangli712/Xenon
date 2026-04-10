@@ -23,7 +23,7 @@
 |------|------|
 | 步长感知 | `fill`/`clip` 通过迭代器正确处理非连续内存布局 |
 | 原地优先 | `fill` 为原地操作（`&mut self`），避免额外分配 |
-| 类型安全 | `clip` 限制为有序数值标量类型（`i32`、`i64`、`f32`、`f64`），编译期拒绝 `bool`、`usize` 和 `Complex` |
+| 类型安全 | `clip` 限制为有序标量类型（`i32`、`i64`、`usize`、`f32`、`f64`），编译期拒绝 `bool` 和 `Complex` |
 | 语义清晰 | `to_contiguous` 返回 `Tensor<A, D>`，调用方可预测生命周期 |
 
 ### 1.3 在架构中的位置
@@ -95,11 +95,19 @@ src/util/
 ### 4.1 clip 操作
 
 ```rust
+pub trait ClipElement: Element + PartialOrd {}
+
+impl ClipElement for i32 {}
+impl ClipElement for i64 {}
+impl ClipElement for usize {}
+impl ClipElement for f32 {}
+impl ClipElement for f64 {}
+
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: Numeric + PartialOrd,
+    A: ClipElement,
 {
     /// Clamp each element to the [min, max] range.
     ///
@@ -107,7 +115,7 @@ where
     ///
     /// # Supported Types
     ///
-    /// Available for types implementing `Numeric + PartialOrd`: i32, i64, f32, f64.
+    /// Available for types implementing `ClipElement`: i32, i64, usize, f32, f64.
     /// **Not available for `Complex<f32>`/`Complex<f64>`** because complex numbers
     /// have no natural total ordering (`Complex` does not implement `PartialOrd`,
     /// see `04-complex.md §4`).
@@ -121,12 +129,12 @@ where
     ///
     /// # Panics
     ///
-    /// Panics in debug mode if `min > max`.
+    /// Panics if `min > max`.
     ///
     /// # Examples
     ///
     /// ```
-    /// let t = Tensor1::from_vec(vec![-1.0, 0.5, 1.0, 2.0, 3.0]);
+    /// let t = Tensor1::from_shape_vec([5], vec![-1.0, 0.5, 1.0, 2.0, 3.0]).unwrap();
     /// let clipped = t.clip(0.0, 2.0);
     /// assert_eq!(clipped.to_vec(), vec![0.0, 0.5, 1.0, 2.0, 2.0]);
     /// ```
@@ -134,7 +142,7 @@ where
     where
         A: Clone,
     {
-        debug_assert!(min <= max, "clip: min must be <= max");
+        assert!(min <= max, "clip: min must be <= max");
         self.mapv(|x| if x < min { min.clone() } else if x > max { max.clone() } else { x })
     }
 
@@ -143,7 +151,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// let mut t = Tensor1::from_vec(vec![-1.0, 0.5, 3.0]);
+    /// let mut t = Tensor1::from_shape_vec([3], vec![-1.0, 0.5, 3.0]).unwrap();
     /// t.clip_inplace(0.0, 2.0);
     /// assert_eq!(t.to_vec(), vec![0.0, 0.5, 2.0]);
     /// ```
@@ -152,7 +160,7 @@ where
         S: StorageMut<Elem = A>,
         A: Clone,
     {
-        debug_assert!(min <= max, "clip_inplace: min must be <= max");
+        assert!(min <= max, "clip_inplace: min must be <= max");
         for elem in self.iter_mut() {
             if *elem < min {
                 *elem = min.clone();
@@ -253,7 +261,7 @@ t.fill(42.0);
 
 // Bad - create a temporary Vec then construct a new tensor, double allocation
 let data = vec![42.0; 1000];
-let t = Tensor1::from_vec(data);
+let t = Tensor1::from_shape_vec([1000], data).unwrap();
 ```
 
 ```rust
@@ -318,7 +326,9 @@ return util_internal_to_f_contiguous(tensor) // O(n) copy, always convert to F-o
 | NaN 上界 | `0.5` | `0.0` | `NaN` | `0.5` | `0.5 > NaN` 为 false，不触发 |
 | NaN 双界 | `0.5` | `NaN` | `NaN` | `0.5` | 均不触发 |
 
-> **设计决策：** NaN 的 clip 行为遵循 IEEE 754 比较语义：`NaN < x` 和 `NaN > x` 均为 false，
+> **设计决策：** `clip` 支持 `usize`，因为它满足有序标量域且需求说明书 §21 未排除无符号整数。
+>
+> 对浮点数，NaN 的 clip 行为遵循 IEEE 754 比较语义：`NaN < x` 和 `NaN > x` 均为 false，
 > 因此 NaN 值在 clip 中保持不变。这与 NumPy 的 `np.clip` 行为一致。
 
 ---

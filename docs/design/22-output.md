@@ -14,7 +14,7 @@
 |------|------|--------|
 | Display 实现 | 面向用户的简洁可读输出 | serde 序列化 |
 | Debug 实现 | 面向开发的形状/步长/类型信息 | 文件 I/O（读写文件） |
-| NumPy 风格输出 | 嵌套括号、矩阵形式、F-order 排列 | HTML 渲染 |
+| NumPy 风格输出 | 嵌套括号、矩阵形式、按逻辑索引顺序展示 | HTML 渲染 |
 | 截断规则 | 超过阈值触发 `...` 省略 | 自定义格式化器注册 |
 
 ### 1.2 设计原则
@@ -220,7 +220,7 @@ where
     ///
     /// Follows NumPy style:
     /// - 1D: `[1, 2, 3, 4]`
-    /// - 2D: matrix form, F-order layout
+/// - 2D: matrix form, displayed by logical row/column structure while preserving Xenon's F-order storage model internally
     /// - ND: nested brackets
     ///
     /// Large arrays are automatically truncated (see §4.4).
