@@ -496,7 +496,7 @@ where
 
     fn split_at(self, index: usize) -> (Self, Self) {
         // Split the view at the flat index boundary
-        // split_elements_at is defined in src/iter/mod.rs (see 10-iterator.md §5.x)
+// split_elements_at is defined in src/iter/mod.rs (see 10-iterator.md §5.5)
         let (left, right) = crate::iter::split_elements_at(self.base, index);
         (
             ElementsProducer { base: left },
@@ -634,13 +634,13 @@ let result = tensor.par_map(|x| x * 2.0);
 let result = tensor.par_map_with_threshold(|x| x * 2.0, 8192);
 
 // Good - Use serial operations inside a parallel context to avoid nesting
-tensor.par_axis_iter(Axis(0)).for_each(|slice| {
+tensor.axis_iter(Axis(0)).for_each(|slice| {
     // Inner layer uses serial operations
     let sum: f64 = slice.iter().sum();
 });
 
 // Bad - Nested parallelism
-tensor.par_axis_iter(Axis(0)).for_each(|slice| {
+tensor.axis_iter(Axis(0)).for_each(|slice| {
     let sum = slice.par_sum(); // Forbidden! Thread pool starvation
 });
 

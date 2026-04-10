@@ -33,7 +33,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
- L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
+L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: broadcast, iter, ffi
 L6: util  ← 当前模块（依赖 tensor, dimension, storage, layout, iter）
@@ -246,7 +246,7 @@ where
         if self.is_f_contiguous() {
             self.to_owned()
         } else {
-            self.to_f_contiguous()
+            util_internal_to_f_contiguous(self)
         }
     }
 }
@@ -309,7 +309,7 @@ to_contiguous(tensor):
     if is_f_contiguous(tensor):
         return to_owned(tensor)        // O(n) copy, layout unchanged (already F-order)
     else:
-return util_internal_to_f_contiguous(tensor) // O(n) copy, always convert to F-order
+        return util_internal_to_f_contiguous(tensor)  // O(n) copy, always convert to F-order
         // Non-contiguous inputs (e.g. transposed or sliced views) are
         // converted to F-order. Xenon only supports F-order.
 ```
@@ -322,9 +322,6 @@ return util_internal_to_f_contiguous(tensor) // O(n) copy, always convert to F-o
 | 低于下界 | `-1.0` | `0.0` | `1.0` | `0.0` | 钳位到 min |
 | 高于上界 | `2.0` | `0.0` | `1.0` | `1.0` | 钳位到 max |
 | NaN 输入 | `NaN` | `0.0` | `1.0` | `NaN` | NaN 不满足 `< min` 也不满足 `> max`，保持 NaN |
-| NaN 下界 | `0.5` | `NaN` | `1.0` | `0.5` | `NaN < 0.5` 为 false，不触发 |
-| NaN 上界 | `0.5` | `0.0` | `NaN` | `0.5` | `0.5 > NaN` 为 false，不触发 |
-| NaN 双界 | `0.5` | `NaN` | `NaN` | `0.5` | 均不触发 |
 
 > **设计决策：** `clip` 支持 `usize`，因为它满足有序标量域且需求说明书 §21 未排除无符号整数。
 >

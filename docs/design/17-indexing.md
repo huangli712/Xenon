@@ -38,7 +38,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
- L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
+L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: index  ← 当前模块（依赖 tensor, dimension, layout）
 ```
@@ -203,7 +203,7 @@ where
     /// Panics if the index is out of bounds.
 impl<I> core::ops::Index<I> for TensorBase<S, D>
 where
-    I: TensorIndex<D>,
+    I: NdIndex<D>,
 {
     type Output = A;
 
@@ -296,7 +296,7 @@ index=[1, 2, 1] → offset = 1*1 + 2*2 + 1*6 = 11
 /// Slice element type, describing a single axis slice.
 ///
 /// **Note:** `step = 0` is illegal and will cause a panic with the message
-/// "slice step cannot be zero". This is checked at runtime in the `slice()`
+/// "slice step must not be zero". This is checked at runtime in the `slice()`
 /// method (see Panics section).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SliceInfoElem {
@@ -382,7 +382,7 @@ where
     ///
     /// # Panics
     /// Panics if slice dimensions don't match tensor dimensions, or if index is out of bounds.
-    /// Also panics if any slice step is zero: "slice step cannot be zero".
+/// Also panics if any slice step is zero: "slice step must not be zero".
     ///
     /// # Examples
     /// ```

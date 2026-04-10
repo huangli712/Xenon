@@ -148,7 +148,7 @@ impl<'a, A, D: Dimension + RemoveAxis> Iterator for AxisIter<'a, A, D> {
 impl<'a, A, D: Dimension + RemoveAxis> ExactSizeIterator for AxisIter<'a, A, D> {}
 ```
 
-> **设计决策：** `AxisIter` 的 `Item` 类型为 `TensorView<'a, A, D::Smaller>`。这要求 `Dimension` trait 提供 `type Smaller: Dimension` 关联类型。零维张量（Ix0）不支持按轴遍历，因为 `Ix0` 无 `Smaller` 类型。
+> **设计决策：** `AxisIter` 的 `Item` 类型为 `TensorView<'a, A, D::Smaller>`。这要求 `D` 满足 `RemoveAxis`，并由 `RemoveAxis` trait 提供 `type Smaller: Dimension` 关联类型。零维张量（Ix0）不支持按轴遍历，因为 `Ix0` 不实现 `RemoveAxis`。
 
 ### 4.3 Windows 滑动窗口迭代器
 
@@ -487,7 +487,7 @@ where
   - 文件: `src/tensor/`（或 `src/iter/mod.rs` 通过 trait extension）
   - 内容: `iter()`, `iter_mut()`, `axis_iter()`, `windows()`, `indexed_iter()` 等
   - 测试: `test_tensor_iter_integration`
-  - 前置: T3, T4, T5, T6, T7, T8
+  - 前置: T3, T4, T5, T6, T7
   - 预计: 10 min
 
 ### 并行执行分组图
@@ -635,7 +635,7 @@ Wave 4:         [T9]
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | 广播视图（BroadcastView）不提供 `iter_mut()` |
+| 决策 | 广播得到的只读 `TensorView` 不提供 `iter_mut()` |
 | 理由 | 广播通过零步长实现，多个逻辑索引映射同一物理地址；可变写入会导致数据竞争和未定义行为 |
 | 替代方案 | 允许可变迭代但写入同一地址 |
 | 拒绝原因 | 语义不明确，容易引入 bug |

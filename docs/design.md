@@ -189,7 +189,7 @@ pub fn sum_bad(&self) -> A {
 
 ```markdown
 > **设计决策：** `AxisIter` 的 `Item` 类型为 `TensorView<'a, A, D::Smaller>`。
-> 这要求 `Dimension` trait 提供 `type Smaller: Dimension` 关联类型。
+> 这要求 `D` 满足 `RemoveAxis`，并由 `RemoveAxis` trait 提供 `type Smaller: Dimension` 关联类型。
 ```
 
 ---

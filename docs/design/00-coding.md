@@ -38,8 +38,8 @@ pub struct IxDyn { /* ... */ }
 
 // Primary type aliases
 pub type Tensor<A, D> = TensorBase<Owned<A>, D>;
-pub type TensorView<'a, A, D> = TensorBase<ViewRepr<&'a A>, D>;
-pub type TensorViewMut<'a, A, D> = TensorBase<ViewMutRepr<&'a mut A>, D>;
+pub type TensorView<'a, A, D> = TensorBase<ViewRepr<'a, A>, D>;
+pub type TensorViewMut<'a, A, D> = TensorBase<ViewMutRepr<'a, A>, D>;
 pub type ArcTensor<A, D> = TensorBase<ArcRepr<A>, D>;
 
 // Dimension convenience aliases (Tensor shown; same pattern for View/ViewMut/Arc)
@@ -362,7 +362,7 @@ pub fn bad<A: Numeric + Add<Output = A> + Sub<Output = A> + Mul<Output = A> + Cl
 pub struct ViewRepr<A> {
     _marker: PhantomData<A>,
 }
-// Note: ViewRepr<&'a A> is a type alias; the actual struct is ViewRepr<A>
+// Note: ViewRepr carries `'a` as a dedicated lifetime parameter; the storage type itself is ViewRepr<'a, A>
 // with lifetime carried via the generic parameter.
 
 // Good - ownership of A
@@ -384,8 +384,8 @@ pub struct Bad<A> {
 | 存储模式 | Send | Sync | 条件 |
 |----------|------|------|------|
 | `Owned<A>` | 是 | 是 | Send: `A: Send`，Sync: `A: Sync`（与 `Vec<A>` 一致） |
-| `ViewRepr<&'a A>` | 是 | 是 | `A: Sync` |
-| `ViewMutRepr<&'a mut A>` | 是 | **否** | `A: Send`（独占借用不可共享） |
+| `ViewRepr<'a, A>` | 是 | 是 | `A: Sync` |
+| `ViewMutRepr<'a, A>` | 是 | **否** | `A: Send`（独占借用不可共享） |
 | `ArcRepr<A>` | 是 | 是 | `A: Send + Sync` |
 
 > **关键约束**：`ViewMutRepr` 永远不实现 `Sync`——独占借用语义要求同一时刻只有一个线程可访问。
@@ -396,11 +396,11 @@ unsafe impl<A: Send> Send for Owned<A> {}
 unsafe impl<A: Sync> Sync for Owned<A> {}
 
 // ViewRepr: Send+Sync when A: Sync
-unsafe impl<'a, A: Sync> Send for ViewRepr<&'a A> {}
-unsafe impl<'a, A: Sync> Sync for ViewRepr<&'a A> {}
+unsafe impl<'a, A: Sync> Send for ViewRepr<'a, A> {}
+unsafe impl<'a, A: Sync> Sync for ViewRepr<'a, A> {}
 
 // ViewMutRepr: Send only, NEVER Sync
-unsafe impl<'a, A: Send> Send for ViewMutRepr<&'a mut A> {}
+unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 // No Sync impl — intentionally omitted
 
 // ArcRepr: Send+Sync when A: Send+Sync

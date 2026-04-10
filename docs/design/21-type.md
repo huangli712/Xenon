@@ -33,7 +33,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
- L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
+L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: broadcast, iter, ffi
 L6: math, matrix, reduction, shape, index, util
@@ -335,7 +335,7 @@ where
     /// **Note:** iter() traverses elements in memory order (F-order for F-contiguous
     /// arrays, column-major). For non-contiguous arrays, iter() handles stride-based
     /// access correctly, and the new allocation will be F-contiguous.
-    pub fn to_f_contiguous(&self) -> Tensor<A, D> {
+pub(crate) fn util_internal_to_f_contiguous(&self) -> Tensor<A, D> {
         let mut data = Vec::with_capacity(self.len());
         // iter() traverses in F-order (see 10-iterator.md §5.1 fast/slow paths)
         for elem in self.iter().cloned() {
@@ -479,7 +479,7 @@ impl CastTo<Complex<f64>> for f64 {
 
 - [ ] **T5**: 实现连续化内部 helper（供 util::to_contiguous 复用）
   - 文件: `src/convert/contiguous.rs`
-- 内容: 连续化内部 helper，实现非连续输入到 F-order owned 的重排，供 util::to_contiguous 复用
+  - 内容: 连续化内部 helper `util_internal_to_f_contiguous()`，实现非连续输入到 F-order owned 的重排，供 util::to_contiguous 复用
   - 测试: `test_to_contiguous_from_view`, `test_to_contiguous_already_contiguous`
   - 前置: T2, tensor 模块完成
   - 预计: 10 min

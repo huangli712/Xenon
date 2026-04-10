@@ -35,7 +35,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
- L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
+L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: matrix  ← 当前模块
 ```
@@ -200,25 +200,25 @@ fn scalar_dot<A: Numeric + Copy>(a: &TensorView<A, Ix1>, b: &TensorView<A, Ix1>)
 
 ### 5.3 统一内积实现（实数与复数分派）
 
-`dot()` 内部统一使用 `acc + x.conjugate() * y` 模式。这通过 `Numeric` trait 中的 `fn conjugate(self) -> Self` 方法实现：
+`dot()` 内部统一使用 `x.conjugate() * y` 的乘积生成规则，再按元素类型分派累加策略：整数路径使用 `CheckedAdd` 做 checked accumulation，浮点/复数路径使用普通加法。这通过 `Numeric` trait 中的 `fn conjugate(self) -> Self` 方法实现：
 - 实数类型（`f32`、`f64`、`i32`、`i64`）：`conjugate(x) == x`（恒等实现，直接返回 `self`）
 - 复数类型（`Complex<f32>`、`Complex<f64>`）：`conjugate(x)` 返回共轭复数
 
 ```rust
-// Numeric trait 中的 conjugate 方法（定义于 03-element.md §4.x）
+// Numeric trait 中的 conjugate 方法（定义于 03-element.md §4.3）
 // Real types: fn conjugate(self) -> Self { self }
 // Complex types: fn conjugate(self) -> Self { Complex::conj(self) }
 
-/// Unified dot implementation for both real and complex types.
-/// Uses `x.conjugate() * y` — for real types conjugate() is identity, for complex
-/// types it returns the conjugate.
-fn dot_impl<A: Numeric + Copy + Mul<Output=A> + Add<Output=A>>(
+/// Unified dot dispatch for both real and complex types.
+/// Uses `x.conjugate() * y` to generate products. Integer accumulation is routed
+/// through CheckedAdd; floating-point and complex accumulation use ordinary `+`.
+fn dot_impl<A: Numeric + Copy>(
     a: &TensorView<'_, A, Ix1>,
     b: &TensorView<'_, A, Ix1>,
 ) -> A {
-    a.iter().zip(b.iter())
-     .map(|(&x, &y)| x.conjugate() * y)  // conjugate() is now on Numeric
-     .fold(A::zero(), |acc, v| acc + v)
+    // dispatches to integer checked path or float/complex path
+    // after generating x.conjugate() * y products
+    unimplemented!("see scalar_dot and CheckedAdd-dispatched accumulation strategy")
 }
 ```
 

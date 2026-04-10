@@ -34,7 +34,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
- L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
+L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: ffi  ← 当前模块
 ```

@@ -34,7 +34,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
- L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
+L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: broadcast (依赖 tensor, dimension)
 L6: shape  ← 当前模块
@@ -233,7 +233,7 @@ where
         }
         
         // 3. Compute new strides (always F-order)
-        // See 06-memory.md §4.x compute_flags and related stride computation
+// See 06-memory.md §4.2 and §4.3 for layout flag computation and stride semantics
         let new_strides = compute_f_strides(&shape);
         
         // 4. Create view
@@ -278,7 +278,7 @@ where
         
         // F-contiguous: reshape in-place (zero-copy)
         if self.is_f_contiguous() {
-            // See 06-memory.md §4.x compute_flags and related stride computation
+// See 06-memory.md §4.2 and §4.3 for layout flag computation and stride semantics
             let new_strides = compute_f_strides(&shape);
             return Ok(Tensor {
                 storage: self.storage.into_owned(),
@@ -291,7 +291,7 @@ where
         
         // Non-contiguous: copy to contiguous then reshape
         let owned = self.to_contiguous();
-        // See 06-memory.md §4.x compute_flags and related stride computation
+// See 06-memory.md §4.2 and §4.3 for layout flag computation and stride semantics
         let new_strides = compute_f_strides(&shape);
         Ok(Tensor {
             storage: owned.storage,

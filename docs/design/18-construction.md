@@ -39,7 +39,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
- L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
+L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: construct  ← 当前模块（依赖 storage, layout, dimension, element）
 ```
@@ -235,7 +235,7 @@ where
             });
         }
         let strides = dim.strides_for_f_order();
-        // from_vec_aligned: defined in 05-storage.md §5.1 and 21-type.md §5.1;
+// from_vec_aligned: defined in 05-storage.md §5.1;
         // copies data into Xenon's aligned allocation for SIMD compatibility.
         let storage = Owned::from_vec_aligned(data);
         Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) })

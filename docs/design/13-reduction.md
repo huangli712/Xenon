@@ -37,7 +37,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
- L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
+L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: reduction  ← 当前模块
 ```
@@ -162,8 +162,8 @@ where
     where
         // Note: CheckedAdd is not exposed in the public constraint.
         // Integer overflow detection is handled internally via
-        // Numeric::safe_add (see §5.1 dispatch strategy).
-        A: Numeric + Zero,
+        // the CheckedAdd-dispatched reduction path (see §5.1 dispatch strategy).
+        A: Numeric,
         D: RemoveAxis;
 
     /// Sum along an axis, keeping the reduced axis with length 1.
@@ -192,8 +192,8 @@ where
     where
         // Note: CheckedAdd is not exposed in the public constraint.
         // Integer overflow detection is handled internally via
-        // Numeric::safe_add (see §5.1 dispatch strategy).
-        A: Numeric + Zero,
+        // the CheckedAdd-dispatched reduction path (see §5.1 dispatch strategy).
+        A: Numeric,
         D: RemoveAxis;
 }
 ```

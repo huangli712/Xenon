@@ -112,8 +112,8 @@ xenon/
 │   ├── storage/               # 存储系统（独立于 layout，仅管理底层 buffer 与所有权）
 │   │   ├── mod.rs             # Storage trait 和 RawStorage trait
 │   │   ├── owned.rs           # Owned<A> 拥有型存储
-│   │   ├── view.rs            # ViewRepr<&'a A> 不可变视图
-│   │   ├── view_mut.rs        # ViewMutRepr<&'a mut A> 可变视图
+│   │   ├── view.rs            # ViewRepr<'a, A> 不可变视图
+│   │   ├── view_mut.rs        # ViewMutRepr<'a, A> 可变视图
 │   │   ├── arc.rs             # ArcRepr<A> 原子引用计数存储
 │   │   ├── alloc.rs           # 64 字节对齐分配器
 │   │   └── traits.rs          # IsOwned, IsView 等 marker traits
@@ -137,7 +137,6 @@ xenon/
 │   │   ├── windows.rs         # Windows 窗口迭代
 │   │   ├── indexed.rs         # IndexedIter 带索引迭代
 │   │   ├── zip.rs             # Zip 多张量同步迭代
-│   │   └── lanes.rs           # LaneIter 行/列迭代
 │   │
 │   ├── simd/                  # SIMD 后端（独立性能层，feature = "simd"）
 │   │   ├── mod.rs             # pulp 集成、公开 API、SimdKernel trait
@@ -490,7 +489,7 @@ pub use crate::index::s;
 // Construction helpers
 pub use crate::construct::{
     zeros, ones, eye,
-    from_vec, from_fn,
+    full, from_shape_vec, from_fn,
 };
 ```
 
@@ -580,8 +579,8 @@ pub use error::XenonError;
 // Tensor core types
 TensorBase<S, D>              // Generic base type
 Tensor<A, D>                  // = TensorBase<Owned<A>, D>
-TensorView<'a, A, D>          // = TensorBase<ViewRepr<&'a A>, D>
-TensorViewMut<'a, A, D>       // = TensorBase<ViewMutRepr<&'a mut A>, D>
+TensorView<'a, A, D>          // = TensorBase<ViewRepr<'a, A>, D>
+TensorViewMut<'a, A, D>       // = TensorBase<ViewMutRepr<'a, A>, D>
 ArcTensor<A, D>               // = TensorBase<ArcRepr<A>, D>
 
 // Dimension types
@@ -626,8 +625,8 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 |------|------|------------|------|
 | W2.1 Storage trait | 无 | 高 | `Storage`, `RawStorage`（仅依赖 core/alloc） |
 | W2.2 Owned storage | W2.1 | 中 | `Owned<A>` + 64 字节对齐分配 |
-| W2.3 View storage | W2.1 | 中 | `ViewRepr<&'a A>` |
-| W2.4 ViewMut storage | W2.1 | 中 | `ViewMutRepr<&'a mut A>` |
+| W2.3 View storage | W2.1 | 中 | `ViewRepr<'a, A>` |
+| W2.4 ViewMut storage | W2.1 | 中 | `ViewMutRepr<'a, A>` |
 | W2.5 Arc storage | W2.1 | 高 | `ArcRepr<A>` |
 | W2.6 TensorBase | W2.1-W2.5, W1.3-W1.5 | 高 | 核心结构体 |
 | W2.7 Type aliases | W2.6 | 低 | `Tensor`, `TensorView` 等 |

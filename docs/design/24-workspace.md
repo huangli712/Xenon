@@ -913,7 +913,7 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 | `test_borrow_mut_basic` | 可变借用和类型化访问 | 高 |
 | `test_borrow_double_fails` | 重复借用返回错误 | 高 |
 | `test_borrow_after_drop` | 归还后可再次借用 | 高 |
-| `test_split_at_basic` | 匇定位置分割 | 高 |
+| `test_split_at_basic` | 固定位置分割 | 高 |
 | `test_split_at_recursive` | 递归分割（多级） | 中 |
 | `test_split_at_oob` | 越界分割返回错误 | 高 |
 | `test_ensure_capacity_no_grow` | 容量足够时不扩容 | 高 |
@@ -938,7 +938,7 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 |--------|----------|
 | `capacity() >= new()` 请求的容量 | 随机容量 |
 | `split_at` 后 `left.len + right.len == capacity` | 随机分割点 |
-| 借用后 `borrow_state != NONE` | 篡借检查 |
+| 借用后 `borrow_state != NONE` | 借用状态检查 |
 | 扩容后对齐不变 | `alignment()` 一致 |
 
 ### 7.4 集成测试

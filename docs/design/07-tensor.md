@@ -12,12 +12,12 @@
 
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
-| 核心结构体 | `TensorBase<S, D>` 双参数泛型结构体定义 | 运算逻辑（参见 `11-math.md §1`） |
+| 核心结构体 | `TensorBase<S, D>` 双参数泛型结构体定义 | 逐元素与归约逻辑（参见 `11-math.md`、`13-reduction.md`） |
 | 类型别名 | `Tensor`/`TensorView`/`TensorViewMut`/`ArcTensor` 及维度便捷别名 | 广播规则（参见 `15-broadcast.md §3`） |
 | 基础查询 | shape/ndim/len/strides/is_empty/is_f_contiguous/is_aligned 等方法 | 形状操作（reshape/transpose，参见 `16-shape.md §1`） |
 | 安全构造 | 从形状和数据构造，验证合法性 | 索引操作（参见 `17-indexing.md §1`） |
 | unsafe 构造 | `from_raw_parts`，用于 FFI | 切片操作（参见 `17-indexing.md §5`） |
-| 视图方法 | view/view_mut | 集合操作（参见 `11-math.md §1`） |
+| 视图方法 | view/view_mut | 集合操作（参见 `14-set.md §1`） |
 
 ### 1.2 设计原则
 
@@ -457,7 +457,7 @@ let t = Tensor2::<f64>::from_shape_vec([3, 4], vec![1.0; 12])?;
 
 // Bad - Use unsafe from_raw_parts to skip validation
 let t = unsafe {
-    TensorView2::from_raw_parts(data.as_ptr(), Ix2([3, 4]), Strides::from_slice(&[1, 3]), 0)
+TensorView2::from_raw_parts(data.as_ptr(), Ix2(3, 4), Strides::from_slice(&[1, 3]), 0)
 };
 ```
 
@@ -509,8 +509,8 @@ Tensor2<f64> = TensorBase<Owned<f64>, Ix2>
 │   │ data: Vec<f64> (64B 对齐)          │ │
 │   │ [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]    │ │
 │   └───────────────────────────────────┘ │
-│ shape: Ix2([2, 3])                      │
-│ strides: Ix2([1, 2])  // F-order        │
+│ shape: Ix2(2, 3)                        │
+│ strides: Strides::from_slice(&[1, 2])   │
 │ offset: 0                               │
 │ flags: F_CONTIGUOUS | ALIGNED           │
 └─────────────────────────────────────────┘
@@ -754,7 +754,7 @@ Wave 4:       [T10]
 | 实例化 | 大小（估算） | 说明 |
 |--------|-------------|------|
 | `Tensor2<f64>` | ~72 bytes | Owned(24) + Ix2(16) + Strides<Ix2>(16) + usize(8) + u8(1) + padding(7) = 72 bytes |
-| `TensorView2<f64>` | ~56 bytes | ViewRepr<&'a f64>(≈ 8 bytes: 裸指针+PhantomData) + Ix2(16) + Strides<Ix2>(16) + usize(8) + u8(1) + padding ≈ 56 bytes |
+| `TensorView2<f64>` | ~56 bytes | ViewRepr<'a, f64>(metadata + pointer) + Ix2(16) + Strides<Ix2>(16) + usize(8) + u8(1) + padding ≈ 56 bytes |
 | `TensorD<f64>` | ~96 bytes | Owned(24) + IxDyn(24×2) + usize(8) + u8(1) + padding |
 
 **性能数据（参考）**：

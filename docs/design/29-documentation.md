@@ -37,14 +37,14 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
- L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
+L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
-L5: overload/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
+L5: overload/, iter/, index/, shape/, broadcast.rs, construct/, ffi/, convert/, format/
 
 横切关注点（全局）：
 ┌─────────────────────────────────────────────────────────────────┐
-│  文档 (doc comments, README, examples/)  ← 当前文档（全局）      │
-│  ─ 横贯所有 L0-L5 模块的 pub API 文档                           │
+│  文档 (doc comments, README, examples/)  ← 当前文档（全局）         │
+│  ─ 横贯所有 L0-L5 模块的 pub API 文档                              │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -71,7 +71,7 @@ src/
 │   └── mod.rs                # 张量模块文档（L1）
 ├── overload/
 │   └── mod.rs                # 运算符重载模块文档（L1）
-├── broadcast/
+├── broadcast.rs
 │   └── mod.rs                # 广播模块文档（L1）
 ├── shape/
 │   └── mod.rs                # 形状操作模块文档（L1）
@@ -295,7 +295,7 @@ L3: 示例 (examples/)
 /// ```
 /// use xenon::prelude::*;
 ///
-/// let t = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
+/// let t = Tensor1::from_shape_vec([3], vec![1.0, 2.0, 3.0]).unwrap();
 /// assert_eq!(t.sum(), 6.0);
 /// ```
 pub fn sum(&self) -> A { ... }
@@ -515,7 +515,7 @@ docs:
 /// ```
 /// use xenon::prelude::*;
 ///
-/// let t = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
+/// let t = Tensor1::from_shape_vec([3], vec![1.0, 2.0, 3.0]).unwrap();
 /// assert_eq!(t.sum(), 6.0);
 ///
 /// let empty = Tensor1::<f64>::zeros([0]);
@@ -548,7 +548,7 @@ pub fn sum(&self) -> A { ... }
 // Since sum() does not return Result, the annotation is misleading.
 /// ```
 /// use xenon::prelude::*;
-/// let t = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
+/// let t = Tensor1::from_shape_vec([3], vec![1.0, 2.0, 3.0]).unwrap();
 /// assert_eq!(t.sum(), 6.0);
 /// # Ok::<(), xenon::XenonError>(())  // Unnecessary: no ? operator used
 /// ```

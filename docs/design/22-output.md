@@ -33,7 +33,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
- L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
+L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: broadcast, iter, ffi
 L6: math, matrix, reduction, shape, index, util
@@ -624,7 +624,7 @@ impl<S, D, A> core::fmt::Debug for TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: core::fmt::Debug + Element,
+A: core::fmt::Debug + core::fmt::Display + Element,
 {
     // ...
 }
@@ -639,7 +639,7 @@ where
 
 > **与 Feature 矩阵一致**：`01-architecture.md §6` Feature 矩阵中，no_std 列下 `Display 格式化` 应更新为 ✅，与此处定义对齐。
 >
-> **Note on Rust 1.85 float formatting:** As of Rust 1.85, float formatting (f32/f64 Display) IS available in `core` without `std`. The `#[cfg(feature = "std")]` gate on Display has been removed accordingly.
+> **关于 Rust 1.85 浮点格式化的说明：** 自 Rust 1.85 起，`f32` / `f64` 的 `Display` 已可通过 `core::fmt` 在无 `std` 情况下使用，因此这里不再为 `Display` 添加 `#[cfg(feature = "std")]` 门控。
 
 ---
 

@@ -37,7 +37,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
- L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
+L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: broadcast (依赖 tensor, dimension)
 L6: math（逐元素运算） ← 当前模块（依赖 broadcast, iter, element）
@@ -81,7 +81,7 @@ src/math/（整体模块依赖）
 | `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.shape()`（参见 `07-tensor.md §4`） |
 | `iter` | `Elements`, `ElementsMut`, `Zip`（参见 `10-iterator.md §4`） |
 | `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element.md §4`） |
-| `broadcast` | `broadcast_shape()`, `BroadcastView`（参见 `15-broadcast.md §4`） |
+| `broadcast` | `broadcast_shape()`, `broadcast_to()` 返回的 `TensorView`（参见 `15-broadcast.md §4`） |
 | `dimension` | `BroadcastDim<E>` trait（编译期维度推导，参见 `02-dimension.md §4.9`） |
 | `simd`（可选） | `pulp::Arch`（参见 `08-simd.md §4`） |
 | `error` | `XenonError`（含 `BroadcastError` 变体，参见 `26-error.md §4`） |
@@ -385,8 +385,8 @@ map(view, f):
 ```
 zip_with(a, b, f):
     broadcast_shape = broadcast_shape(a.shape(), b.shape())?
-    a_broadcast = a.broadcast(broadcast_shape)
-    b_broadcast = b.broadcast(broadcast_shape)
+a_broadcast = a.broadcast_to(broadcast_shape)
+b_broadcast = b.broadcast_to(broadcast_shape)
     result = Tensor::zeros(broadcast_shape)
     Zip::from(result.view_mut())
         .and(a_broadcast)

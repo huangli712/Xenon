@@ -35,7 +35,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
- L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
+L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: broadcast, iter
 L6: math（逐元素运算）
@@ -115,9 +115,9 @@ src/overload/
 | `&Tensor<A, D>` | `&A` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&A> for &TensorBase<Owned<A>,D>` |
 | `Scalar<A>` | `Tensor<A, D>` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<TensorBase<Owned<A>,D>> for Scalar<A>` |
 | `Scalar<A>` | `&Tensor<A, D>` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&TensorBase<Owned<A>,D>> for Scalar<A>` |
-| `&TensorView<A, D>` | `&TensorView<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<&TensorBase<ViewRepr<&A>,E>> for &TensorBase<ViewRepr<&A>,D>` |
-| `&TensorView<A, D>` | `&Tensor<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<ViewRepr<&A>,D>` |
-| `&Tensor<A, D>` | `&TensorView<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<&TensorBase<ViewRepr<&A>,E>> for &TensorBase<Owned<A>,D>` |
+| `&TensorView<A, D>` | `&TensorView<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<ViewRepr<'a, A>,D>` |
+| `&TensorView<A, D>` | `&Tensor<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<ViewRepr<'a, A>,D>` |
+| `&Tensor<A, D>` | `&TensorView<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<Owned<A>,D>` |
 
 > **说明**：`F` 为广播后的维度类型，由 `D::BroadcastDim<E>::Output` 关联类型计算。
 > `BroadcastDim` 定义于 `02-dimension.md §4.9`。
@@ -174,8 +174,8 @@ where
 
 ```rust
 // &TensorView + &TensorView (reference + reference)
-impl<'a, 'b, A, D, E> Add<&'b TensorBase<ViewRepr<&'b A>, E>>
-    for &'a TensorBase<ViewRepr<&'a A>, D>
+impl<'a, 'b, A, D, E> Add<&'b TensorBase<ViewRepr<'b, A>, E>>
+    for &'a TensorBase<ViewRepr<'a, A>, D>
 where
     A: Numeric,
     D: Dimension,
@@ -184,7 +184,7 @@ where
 {
     type Output = Tensor<A, <D as BroadcastDim<E>>::Output>;
 
-    fn add(self, rhs: &'b TensorBase<ViewRepr<&'b A>, E>) -> Self::Output {
+    fn add(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
         // delegates to math::add with broadcast
         let (a_bc, b_bc) = broadcast_with(&self.view(), &rhs.view())
             .expect("broadcast: incompatible shapes");
@@ -195,7 +195,7 @@ where
 
 // &TensorView + &Tensor (view + owned reference)
 impl<'a, 'b, A, D, E> Add<&'b TensorBase<Owned<A>, E>>
-    for &'a TensorBase<ViewRepr<&'a A>, D>
+    for &'a TensorBase<ViewRepr<'a, A>, D>
 where
     A: Numeric,
     D: Dimension,
@@ -214,7 +214,7 @@ where
 }
 ```
 
-> **说明**：`Sub`/`Mul`/`Div` 的视图组合模式与 `Add` 相同，仅替换运算符和闭包。`ViewMutRepr` 通过 `&*view_mut` 隐式转为 `&TensorBase<ViewRepr<...>>` 后参与运算。
+> **说明**：`Sub`/`Mul`/`Div` 的视图组合模式与 `Add` 相同，仅替换运算符和闭包。`ViewMutRepr<'a, A>` 通过只读重借用参与这些组合，其共享视图类型记作 `TensorBase<ViewRepr<'a, A>, ...>`。
 
 ### 4.3 张量×标量运算符
 
