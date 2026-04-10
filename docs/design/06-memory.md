@@ -677,9 +677,9 @@ Wave 4:       [T8]
 
 ### 8.1 接口约定
 
-| 交互点 | 方向 | 说明 |
-|--------|------|------|
-| 对齐检查 | tensor/storage → layout | `TensorBase` 构造时将逻辑首元素指针（`as_ptr()` 语义）传入 `layout::is_aligned()` 计算对齐标志。layout 不依赖 Storage trait，仅操作原始指针。 |
+| 方向 | 对方模块 | 接口/类型 | 约定 |
+|------|----------|-----------|------|
+| `tensor/storage → layout` | `tensor` / `storage` | `layout::is_aligned()` | `TensorBase` 构造时将逻辑首元素指针传入 layout 计算对齐标志；layout 只操作原始指针，不依赖 Storage trait。 |
 
 ### 8.2 数据流描述
 
@@ -694,25 +694,25 @@ Wave 4:       [T8]
 
 ### 8.3 与 Tensor 模块
 
-| 交互点 | 方向 | 说明 |
-|--------|------|------|
-| `TensorBase` 组成 | tensor 持有 layout | `TensorBase` 直接内联 `LayoutFlags` 作为计算字段（参见 `07-tensor.md §4.1`）。`Layout` 结构体为预留定义。 |
-| 切片操作 | tensor → layout | 切片时调用 layout 更新连续性/对齐标志（参见 `17-indexing.md §5`） |
-| Reshape | tensor → layout | reshape 时重新计算步长和 layout（参见 `16-shape.md §4`） |
+| 方向 | 对方模块 | 接口/类型 | 约定 |
+|------|----------|-----------|------|
+| `layout ← tensor` | `tensor` | `LayoutFlags` | `TensorBase` 直接内联 `LayoutFlags` 作为计算字段，`Layout` 结构体仅为预留定义（参见 `07-tensor.md` §4.1）。 |
+| `tensor → layout` | `tensor` | 切片后的 flags 更新 | 切片时调用 layout 更新连续性与对齐标志（参见 `17-indexing.md` §5） |
+| `tensor → layout` | `tensor` | reshape 步长重算 | reshape 时重新计算步长和 layout（参见 `16-shape.md` §4） |
 
 ### 8.4 与 SIMD 模块
 
-| 交互点 | 方向 | 说明 |
-|--------|------|------|
-| 路径选择 | simd ← layout | simd 查询 `is_aligned()` 和 `is_f_contiguous()`（参见 `08-simd.md §4.6`） |
-| 步长检查 | simd ← layout | simd 检查步长是否为 1（连续） |
+| 方向 | 对方模块 | 接口/类型 | 约定 |
+|------|----------|-----------|------|
+| `simd ← layout` | `simd` | `is_aligned()` / `is_f_contiguous()` | simd 用这些查询结果做路径选择（参见 `08-simd.md` §4.6） |
+| `simd ← layout` | `simd` | 步长检查 | simd 继续检查步长是否为 1，以确认连续访问路径 |
 
 ### 8.5 与 FFI 模块
 
-| 交互点 | 方向 | 说明 |
-|--------|------|------|
-| BLAS 兼容检查 | ffi ← layout | 连续 + 正步长 + 无零步长（参见 `23-ffi.md §4`） |
-| LDA 计算 | ffi ← layout | 从步长计算 leading dimension |
+| 方向 | 对方模块 | 接口/类型 | 约定 |
+|------|----------|-----------|------|
+| `ffi ← layout` | `ffi` | BLAS 兼容检查 | FFI 路径依赖连续、正步长、无零步长等布局前提（参见 `23-ffi.md` §4） |
+| `ffi ← layout` | `ffi` | `lda()` 相关步长信息 | FFI 从 layout 步长推导 leading dimension |
 
 ---
 

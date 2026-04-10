@@ -33,7 +33,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
-L3: storage (依赖 layout)
+ L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: broadcast, iter, ffi
 L6: math, matrix, reduction, shape, index, util
@@ -48,10 +48,10 @@ L7: convert  ← 当前模块
 src/
 └── convert/                 # 类型转换（目录模块）
     ├── mod.rs               # 模块根，re-exports
-    ├── cast.rs              # CastTo trait、cast() 方法、类型转换路径
+    ├── cast.rs              # cast() 方法、类型转换路径（消费 element 中定义的 CastTo）
     ├── owned.rs             # to_owned、into_owned、存储模式互转
     ├── from_impl.rs         # From/TryFrom trait 实现
-    └── contiguous.rs        # to_f_contiguous() 辅助函数（内部实现）。公共 API to_contiguous() 定义于 20-utility.md §4，委托给此辅助函数
+    └── contiguous.rs        # 连续化内部 helper（若保留，仅服务 util::to_contiguous 的实现）
 ```
 
 多文件设计：按转换职责拆分，便于后续扩展（如新增转换路径、存储模式等）。
@@ -61,10 +61,10 @@ src/
 | 文件 | 职责 | 预估行数 |
 |------|------|
 | `mod.rs` | 模块根，re-exports 所有公共类型 | ~20 |
-| `cast.rs` | `CastTo<T>` trait 定义、所有类型转换 impl、`cast()` 方法 | ~200 |
+| `cast.rs` | 消费 `CastTo<T>` trait，提供所有类型转换 impl 与 `cast()` 方法 | ~200 |
 | `owned.rs` | `to_owned()`、`into_owned()`、存储模式互转（view/view_mut/into_shared） | ~100 |
 | `from_impl.rs` | `From<Vec<A>>`、`From<&[A]>`、`From<[A; N]>`、`From<&Tensor> for View` 等 | ~80 |
-| `contiguous.rs` | `to_f_contiguous()` 辅助函数（内部实现，公共 API 见 20-utility.md §4） | ~50 |
+| `contiguous.rs` | 连续化内部 helper（公共语义由 util::to_contiguous 持有） | ~50 |
 
 ---
 
@@ -93,7 +93,7 @@ src/convert/
 
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
-| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.memory_order()`（参见 `07-tensor.md` §4） |
+| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.is_f_contiguous()`（参见 `07-tensor.md` §4） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §4） |
 | `storage` | `Storage<Elem=A>`, `StorageMut`, `Owned<A>`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`（参见 `05-storage.md` §4） |
 | `element` | `Element`, `CastTo<B>`（参见 `03-element.md` §4.8；convert 只消费该 trait，不重新定义） |
@@ -110,7 +110,7 @@ src/convert/
 
 ### 4.1 CastTo trait
 
-> `CastTo<T>` trait 定义于 `03-element.md §4.8`，在此模块中仅用于 `cast()` 的实现约束，不重新定义。参见 `03-element.md §4.8` 了解完整定义。
+> `CastTo<T>` trait 的唯一 owner 是 `03-element.md §4.8`。`convert` 模块只消费该 trait，并在受支持的源/目标类型矩阵上提供 `cast()` 路径，不重新定义 trait。
 
 ### 4.2 cast 方法
 
@@ -314,9 +314,9 @@ impl<A, D> TensorBase<Owned<A>, D> where A: Element, D: Dimension {
 }
 ```
 
-### 4.7 to_f_contiguous — 非连续数据重排
+### 4.7 连续化内部实现
 
-`to_f_contiguous()` 将任意布局的张量重排为 F-order 连续拷贝，供 `to_contiguous()` 在非连续情况下调用（参见 `20-utility.md §4.3`）：
+本节描述的连续化实现仅作为 `20-utility.md §4.3` 中 `to_contiguous()` 的内部实现细节。连续性保证的公共语义仍然归 `util` 模块，而不是 `convert` 模块。
 
 ```rust
 impl<S, D, A> TensorBase<S, D>
@@ -330,7 +330,7 @@ where
     /// Iterates elements in F-order and re-packs them into a fresh aligned allocation.
     /// Always returns an F-contiguous `Tensor<A, D>`.
     ///
-    /// This method is called by `to_contiguous()` when the source is non-contiguous.
+    /// Internal path used by `util::to_contiguous()` when the source is non-contiguous.
     ///
     /// **Note:** iter() traverses elements in memory order (F-order for F-contiguous
     /// arrays, column-major). For non-contiguous arrays, iter() handles stride-based
@@ -477,9 +477,9 @@ impl CastTo<Complex<f64>> for f64 {
   - 前置: T2, tensor 模块完成
   - 预计: 10 min
 
-- [ ] **T5**: 实现 `to_f_contiguous` 连续化 helper
+- [ ] **T5**: 实现连续化内部 helper（供 util::to_contiguous 复用）
   - 文件: `src/convert/contiguous.rs`
-  - 内容: `to_f_contiguous()` helper，实现非连续输入到 F-order owned 的重排
+- 内容: 连续化内部 helper，实现非连续输入到 F-order owned 的重排，供 util::to_contiguous 复用
   - 测试: `test_to_contiguous_from_view`, `test_to_contiguous_already_contiguous`
   - 前置: T2, tensor 模块完成
   - 预计: 10 min
@@ -513,6 +513,14 @@ Wave 3: [T6] [T7]  (并行)
 ---
 
 ## 7. 测试计划
+
+### 7.0 测试分类表
+
+| 测试分类 | 位置 | 说明 |
+|----------|------|------|
+| 单元测试 | `#[cfg(test)] mod tests` | 验证类型转换、owned 化与借用转换语义 |
+| 集成测试 | `tests/` | 验证 `convert` 与 `tensor`、`element`、`storage`、`layout`、`complex` 的协同路径 |
+| 边界测试 | 同模块测试中标注 | 覆盖空张量、NaN/Inf、整数窄化和非连续视图等边界 |
 
 ### 7.1 单元测试清单
 
@@ -556,7 +564,7 @@ Wave 3: [T6] [T7]  (并行)
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/convert.rs` | `cast` / `to_owned` / `into_owned` / `to_f_contiguous` 与 `tensor`、`element`、`storage`、`layout`、`complex` 的端到端协同路径 |
+| `tests/convert.rs` | `cast` / `to_owned` / `into_owned` 与 `tensor`、`element`、`storage`、`layout`、`complex` 的端到端协同路径 |
 
 ---
 
@@ -564,24 +572,24 @@ Wave 3: [T6] [T7]  (并行)
 
 ### 8.1 接口约定
 
-| 交互模块 | 方向 | 说明 |
-|----------|------|------|
-| `tensor` | convert → tensor | `cast()` 定义在 `TensorBase<S, D>` 的 impl 块上，消费 `.shape()`、`.memory_order()`；`to_owned()`/`into_owned()` 消费 `Storage`/`StorageIntoOwned`（参见 `07-tensor.md` §4） |
-| `element` | convert → element | 泛型约束 `A: CastTo<B>` 驱动逐元素转换；`CastTo` trait 定义在 element 模块（参见 `03-element.md` §4） |
-| `math` | convert → math | `cast()` 内部通过 `iter().map().collect()` 执行逐元素转换，不使用 `mapv()`（因为 `mapv` 返回 `Tensor<A, D>` 而非 `Tensor<B, D>`） |
-| `storage` | convert → storage | `into_owned()` 消费 `StorageIntoOwned` trait；存储模式互转依赖 `Owned`/`ViewRepr`/`ArcRepr`（参见 `05-storage.md` §4） |
-| `layout` | convert → layout | `to_owned()` 调用 `is_f_contiguous()` 判断是否需要重排（参见 `06-memory.md` §4） |
-| `complex` | convert → complex | `CastTo<Complex<T>>` 实现依赖 `Complex` 结构体定义；反向转换（Complex → T）故意不提供（参见 `04-complex.md` §4） |
+| 方向 | 对方模块 | 接口/类型 | 约定 |
+|------|----------|-----------|------|
+| `convert → tensor` | `tensor` | `TensorBase<S, D>` / `StorageIntoOwned` | `cast()`、`to_owned()`、`into_owned()` 都定义在张量抽象之上，参见 `07-tensor.md` §4 |
+| `convert → element` | `element` | `CastTo` | 逐元素类型转换通过 `CastTo` trait 驱动，参见 `03-element.md` §4 |
+| `convert → math` | `math` | 逐元素转换语义 | `cast()` 采用迭代收集路径，不复用 `mapv()` 的同类型返回语义 |
+| `convert → storage` | `storage` | `Owned` / `ViewRepr` / `ArcRepr` | 存储模式互转依赖 owned 化与借用语义，参见 `05-storage.md` §4 |
+| `convert → layout` | `layout` | `is_f_contiguous()` | `to_owned()` 先检查布局是否需要重排，参见 `06-memory.md` §4 |
+| `convert → complex` | `complex` | `Complex<T>` | 复数目标类型转换依赖 `Complex` 定义，故意不提供 Complex → 实数的逆向隐式转换，参见 `04-complex.md` §4 |
 
 ### 8.2 数据流描述
 
 ```text
-用户调用 cast() / to_owned() / into_owned() / to_f_contiguous()
+用户调用 cast() / to_owned() / into_owned()
     │
     ├── convert 模块先读取 tensor 的 shape / strides / storage 模式
     ├── cast 路径通过 iter 收集并按 CastTo 规则逐元素重编码
     ├── to_owned / into_owned 路径按 storage 语义决定 O(1) 转移或 O(n) 拷贝
-    ├── 非连续路径委托 to_f_contiguous() 重排为 F-order owned 数据
+    ├── 若需要连续化，由 util::to_contiguous() 触发内部连续化路径将数据重排为 F-order owned 数据
     └── 最终返回新的 owned tensor 或视图转换结果，供 math / ffi / output 继续消费
 ```
 

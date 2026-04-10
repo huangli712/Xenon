@@ -311,6 +311,8 @@ pub fn sum_bad(&self) -> A {
 
 workspace 模块定义了独立的 `WorkspaceError`，不属于 `XenonError` 枚举。这是为了保持 workspace 模块的独立性（workspace 不依赖核心错误类型），同时允许上游通过 `From<WorkspaceError>` 适配到自定义错误类型。
 
+相应测试也保持同样边界：`tests/error.rs` 仅覆盖 `XenonError` 及其方法型 API 失败映射，`WorkspaceError` 继续在 `tests/workspace.rs` 中单独验证。
+
 > **集中裁决补充：** Xenon 的错误语义按“方法型 API 优先返回 `Result`”统一收敛。只有两类语法糖接口保留 panic：
 > 1. `tensor[[...]]` 这类 `Index` trait 语法，受 Rust trait 签名约束，越界时与 slice 保持一致。
 > 2. `+ - * /` 这类运算符 trait 语法，若操作数形状不兼容或广播失败，作为语法层快捷接口允许 panic；对应的方法型 API（如 `zip_with`、`broadcast_to`、`reshape`、`sum_axis`、`cast`）仍必须返回 `Result`。
@@ -536,6 +538,14 @@ Wave 3: ┌──[T6]────┤
 ---
 
 ## 7. 测试计划
+
+### 7.0 测试分类表
+
+| 测试分类 | 位置 | 说明 |
+|----------|------|------|
+| 单元测试 | `#[cfg(test)] mod tests` | 验证错误类型的格式化、比较与 trait 行为 |
+| 集成测试 | `tests/` | 验证公共 API 将底层失败映射为 `XenonError` 的路径 |
+| 边界/属性测试 | 同模块测试与属性测试 | 覆盖空形状、大形状和错误诊断信息不变量 |
 
 ### 7.1 单元测试清单
 

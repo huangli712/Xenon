@@ -33,7 +33,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
-L3: storage (依赖 layout)
+ L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: overload/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 
@@ -181,9 +181,18 @@ pub fn sequential_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 }
 
 /// Generate a non-contiguous view by slicing every other element.
-pub fn strided_view_1d(n: usize) -> TensorView1<'static, f64> {
-    let full = sequential_1d(n * 2);
-    Box::leak(Box::new(full)).slice(s![..;2])
+pub struct StridedFixture1D {
+    pub owner: Tensor1<f64>,
+}
+
+impl StridedFixture1D {
+    pub fn view(&self) -> TensorView1<'_, f64> {
+        self.owner.slice(s![..;2])
+    }
+}
+
+pub fn strided_view_1d(n: usize) -> StridedFixture1D {
+    StridedFixture1D { owner: sequential_1d(n * 2) }
 }
 ```
 
@@ -302,9 +311,9 @@ benchmark-smoke:
 
         - name: Smoke benchmarks
           run: |
-            cargo bench --bench math -- "elem_add_f64" --sample-size 10 --message-format=json > target/criterion-output.json
-            cargo bench --bench reduction -- "sum_1d_f64" --sample-size 10 --message-format=json >> target/criterion-output.json
-            cargo bench --bench construction -- "zeros_1d" --sample-size 10 --message-format=json >> target/criterion-output.json
+            cargo bench --bench math -- "elem_add_f64" --sample-size 10
+            cargo bench --bench reduction -- "sum_1d_f64" --sample-size 10
+            cargo bench --bench construction -- "zeros_1d" --sample-size 10
 
         - name: Store results
           uses: benchmark-action/github-action-benchmark@v1
@@ -315,7 +324,7 @@ benchmark-smoke:
             fail-on-alert: false
 ```
 
-> **注意**：criterion 的标准 HTML/JSON 输出位于 `target/criterion/<benchmark_name>/` 目录下。CI 回归对比使用的 JSON 摘要通过 `--message-format=json` 标志生成，写入 `target/criterion-output.json`。如需 `bencher` 格式输出，可使用 `--output-format=bencher` 或自定义提取脚本。
+> **注意**：criterion 的标准 HTML/JSON 输出位于 `target/criterion/<benchmark_name>/` 目录下。CI 若需要机器可读摘要，应通过单独的提取脚本或 bencher 兼容输出生成汇总文件，而不是把 Cargo 的 `--message-format=json` 误传给 benchmark binary。
 
 > **baseline 管理**：Regression Check 以上一轮 main 分支通过的结果作为 baseline；当性能改善或已知噪声需要更新基线时，应在专门的 benchmark PR 中更新并记录原因。
 

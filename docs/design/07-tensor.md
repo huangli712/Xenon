@@ -127,11 +127,13 @@ pub struct TensorBase<S, D> {
     /// negative and zero strides remain explicit signed metadata.
     strides: Strides<D>,
 
-    /// Non-negative displacement from the storage base to the logical first element
-    /// (in element units).
+    /// Non-negative displacement from the storage base pointer to the logical first
+    /// element (in element units).
     ///
-    /// View constructors normalize the storage pointer and signed strides so that
-    /// `offset` remains non-negative even when some axes use negative strides.
+    /// `storage.as_ptr()` / `storage.as_mut_ptr()` always return the storage base pointer.
+    /// Public raw-pointer APIs such as `TensorBase::as_ptr()` apply `offset` exactly once.
+    /// View constructors normalize signed strides so that `offset` remains non-negative
+    /// even when some axes use negative strides.
     offset: usize,
 
     /// Layout flags (u8 bitflags).
@@ -145,6 +147,10 @@ pub struct TensorBase<S, D> {
 > 这是因为 `offset` 与存储指针配合进行偏移计算，属于张量实例的固有属性，将二者分离避免了
 > 额外的间接层。`Layout` 结构体仅作为纯标志位容器，其 `flags` 字段在需要时可通过
 > `TensorBase::flags()` 获取。
+
+> **raw-parts 契约：** `from_raw_parts*()` 系列中的 `ptr` 一律表示 storage base pointer，
+> `offset` 一律表示从 storage base 到逻辑首元素的非负位移；`TensorBase::as_ptr()` /
+> `TensorBase::as_mut_ptr()` 负责应用这一次偏移。`ffi` 文档中的示例与 Safety 说明必须遵循同一语义。
 
 > **线程安全推导**: `TensorBase<S, D>` 的 `Send`/`Sync` 自动由存储模式 `S` 决定。具体规则参见 `25-safety.md §4`。
 

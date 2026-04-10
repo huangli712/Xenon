@@ -34,7 +34,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
-L3: storage (依赖 layout)
+ L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: overload/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 
@@ -60,10 +60,15 @@ tests/
 ├── test_broadcast.rs           # 广播机制（标量/向量/矩阵广播）
 ├── test_index.rs               # 索引操作（多维索引/范围切片）
 ├── test_construction.rs        # 构造方法（zeros/ones/eye/from_vec/from_fn/from_scalar）
-├── test_reduction.rs           # 归约运算（sum/沿轴sum/unique）
+├── test_iterator.rs            # 迭代器（元素/按轴/按窗口/按索引/zip）
+├── test_reduction.rs           # 归约运算（sum/沿轴sum）
+├── test_matrix.rs              # 向量内积（dot）
+├── test_set.rs                 # 集合操作（unique）
 ├── test_shape.rs               # 形状操作（transpose/reshape）
 ├── test_conversion.rs          # 类型转换（cast/存储模式转换）
+├── test_output.rs              # NumPy 风格格式化输出（Display/Debug/截断）
 ├── test_ffi.rs                 # FFI 集成（原始指针/BLAS 兼容）
+├── test_workspace.rs           # Workspace 独立错误与借用/分割/扩容
 ├── test_parallel.rs            # 并行计算（一致性/数据竞争）
 ├── test_simd.rs                # SIMD 计算（结果一致性）
 ├── test_error.rs               # 错误处理（所有错误类型）
@@ -93,7 +98,7 @@ tests/
 ├── crate::complex          # Complex<f32>, Complex<f64>
 ├── crate::storage          # Owned, ViewRepr, ViewMutRepr, ArcRepr
 ├── crate::layout           # LayoutFlags, Order
-├── crate::math             # 逐元素运算、归约、内积
+├── crate::math             # 逐元素运算
 ├── crate::broadcast        # broadcast_shape
 ├── crate::shape            # transpose, reshape
 ├── crate::index            # 多维索引、范围切片
@@ -193,9 +198,20 @@ pub fn standard_shapes_2d() -> Vec<(usize, usize)> {
 }
 
 /// Generate a non-contiguous 2D tensor (transposed view).
-pub fn non_contiguous_2d(rows: usize, cols: usize) -> TensorView2<'static, f64> {
-    let t = Tensor2::<f64>::from_fn([cols, rows], |idx| (idx[0] * rows + idx[1]) as f64);
-    Box::leak(Box::new(t)).t()
+pub struct NonContiguous2D {
+    pub owner: Tensor2<f64>,
+}
+
+impl NonContiguous2D {
+    pub fn view(&self) -> TensorView2<'_, f64> {
+        self.owner.t()
+    }
+}
+
+pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
+    NonContiguous2D {
+        owner: Tensor2::<f64>::from_fn([cols, rows], |idx| (idx[0] * rows + idx[1]) as f64),
+    }
 }
 ```
 
@@ -273,13 +289,34 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> TensorView2<'static, f64> 
 | `test_sum_keepdims` | sum 保留被归约轴为长度 1 | 中 |
 | `test_sum_empty` | 空数组 sum 返回加法单位元 | 高 |
 | `test_sum_nan` | sum 含 NaN 结果为 NaN | 中 |
-| `test_unique_sorted` | unique 返回排序后不重复元素 | 高 |
-| `test_unique_integers` | 整数 unique | 中 |
-| `test_unique_complex` | 复数 unique | 中 |
+| `test_integer_sum_overflow` | 整数 sum 溢出视为不可恢复错误 | 中 |
+
+### 5.6a test_iterator.rs
+
+| 测试函数 | 测试内容 | 优先级 |
+|----------|----------|--------|
+| `test_iter_elements` | 按元素遍历与 `len()` 一致 | 高 |
+| `test_axis_iter` | 按轴遍历产出数量与形状一致 | 高 |
+| `test_windows` | 按窗口遍历正确处理边界 | 中 |
+| `test_indexed_iter` | 按索引遍历返回 F-order 逻辑索引 | 中 |
+| `test_zip_iter` | 多数组同步遍历与广播只读约束 | 高 |
+
+### 5.6b test_matrix.rs
+
+| 测试函数 | 测试内容 | 优先级 |
+|----------|----------|--------|
 | `test_dot_product` | 向量内积 | 高 |
 | `test_dot_complex` | 复数内积共轭线性 | 高 |
 | `test_dot_shape_mismatch` | 内积维度不匹配返回错误 | 高 |
-| `test_integer_sum_overflow` | 整数 sum 溢出视为不可恢复错误 | 中 |
+| `test_dot_empty` | 空向量 dot 返回加法单位元 | 中 |
+
+### 5.6c test_set.rs
+
+| 测试函数 | 测试内容 | 优先级 |
+|----------|----------|--------|
+| `test_unique_sorted` | unique 返回排序后不重复元素 | 高 |
+| `test_unique_integers` | 整数 unique | 中 |
+| `test_unique_complex` | 复数 unique | 中 |
 
 ### 5.7 test_shape.rs
 
@@ -302,6 +339,15 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> TensorView2<'static, f64> 
 | `test_copy_to_fill` | copy_to, fill | 中 |
 | `test_clip` | 裁剪操作 | 中 |
 
+### 5.8a test_output.rs
+
+| 测试函数 | 测试内容 | 优先级 |
+|----------|----------|--------|
+| `test_display_small_tensor` | 小张量 NumPy 风格输出 | 高 |
+| `test_display_truncated` | 超阈值触发截断 | 高 |
+| `test_debug_includes_metadata` | Debug 包含 shape/stride/type 信息 | 中 |
+| `test_output_complex` | 复数格式化输出 | 中 |
+
 ### 5.9 test_ffi.rs
 
 | 测试函数 | 测试内容 | 优先级 |
@@ -312,6 +358,15 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> TensorView2<'static, f64> 
 | `test_is_blas_compatible` | BLAS 兼容性检查 | 高 |
 | `test_from_raw_parts_roundtrip` | into_raw_parts → from_raw_parts 往返 | 高 |
 | `test_index_to_offset` | index_to_offset 正确计算 | 高 |
+
+### 5.9a test_workspace.rs
+
+| 测试函数 | 测试内容 | 优先级 |
+|----------|----------|--------|
+| `test_workspace_new_invalid_alignment` | 非法对齐返回 `WorkspaceError::InvalidLayout` | 高 |
+| `test_workspace_borrow_rules` | 借用守卫与复借用约束 | 高 |
+| `test_workspace_split` | split 后子工作空间边界正确 | 中 |
+| `test_workspace_ensure_capacity` | 扩容不破坏已借用安全性 | 高 |
 
 ### 5.10 test_parallel.rs
 
@@ -356,7 +411,6 @@ no_std_check:
 | `test_invalid_axis_error` | 轴越界返回 InvalidAxis | 高 |
 | `test_dimension_mismatch_error` | 维度互转失败返回 DimensionMismatch | 高 |
 | `test_layout_mismatch_error` | 布局不兼容操作返回 LayoutMismatch | 高 |
-| `test_workspace_invalid_layout_error` | 非法对齐工作空间返回 `WorkspaceError::InvalidLayout` | 高 |
 | `test_error_display` | 所有错误类型的 Display 包含上下文 | 中 |
 
 ---

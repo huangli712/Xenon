@@ -39,7 +39,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
-L3: storage (依赖 layout)
+ L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: construct  ← 当前模块（依赖 storage, layout, dimension, element）
 ```
@@ -486,6 +486,14 @@ Wave 4:           [T6]
 
 ## 7. 测试计划
 
+### 7.0 测试分类表
+
+| 测试分类 | 位置 | 说明 |
+|----------|------|------|
+| 单元测试 | `#[cfg(test)] mod tests` | 验证各类构造 API 的核心正确性 |
+| 集成测试 | `tests/` | 验证 `construction` 与 `dimension`、`storage`、`layout`、`tensor`、`index` 的协同路径 |
+| 边界测试 | 同模块测试中标注 | 覆盖空张量、零维张量和大张量分配等边界 |
+
 ### 7.1 单元测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
@@ -538,15 +546,15 @@ Wave 4:           [T6]
 
 ### 8.1 接口约定
 
-| 交互模块 | 方向 | 说明 |
-|----------|------|------|
-| `tensor` | construct → tensor | 构造 `TensorBase` 实例（参见 `07-tensor.md` §4.1） |
-| `storage` | construct → storage | 使用 `Owned::zeros()`/`from_vec_aligned()`（参见 `05-storage.md` §4.2） |
-| `layout` | construct → layout | 计算 F-order 步长（参见 `06-memory.md` §4） |
-| `dimension` | construct → dimension | 使用 `IntoDimension` 接受灵活形状参数（参见 `02-dimension.md` §4.3） |
-| `element` | construct → element | 使用 `Element`/`Zero`/`One` trait 约束（参见 `03-element.md` §3） |
-| `error` | construct → error | 返回 `XenonError::InvalidShape`（用于构造时的 shape/length 基数不匹配，参见 `26-error.md` §4） |
-| `index` | index ← construct | 构造后可通过索引访问元素（参见 `17-indexing.md` §4） |
+| 方向 | 对方模块 | 接口/类型 | 约定 |
+|------|----------|-----------|------|
+| `construct → tensor` | `tensor` | `TensorBase` | 构造张量实例，参见 `07-tensor.md` §4.1 |
+| `construct → storage` | `storage` | `Owned::zeros()` / `from_vec_aligned()` | 使用对齐存储完成底层分配，参见 `05-storage.md` §4.2 |
+| `construct → layout` | `layout` | F-order 步长 | 构造阶段计算 F-order 步长，参见 `06-memory.md` §4 |
+| `construct → dimension` | `dimension` | `IntoDimension` | 接受灵活形状参数并归一化，参见 `02-dimension.md` §4.3 |
+| `construct → element` | `element` | `Element` / `Zero` / `One` | 通过元素 trait 约束构造 API，参见 `03-element.md` §3 |
+| `construct → error` | `error` | `XenonError::InvalidShape` | shape 与长度基数不匹配时返回错误，参见 `26-error.md` §4 |
+| `construct → index` | `index` | 索引访问语义 | 构造后的张量继续复用索引路径，参见 `17-indexing.md` §4 |
 
 ### 8.2 数据流描述
 

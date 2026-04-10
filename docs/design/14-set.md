@@ -350,6 +350,14 @@ Wave 4: [T5]
 
 ## 7. 测试计划
 
+### 7.0 测试分类表
+
+| 测试分类 | 位置 | 说明 |
+|----------|------|------|
+| 单元测试 | `#[cfg(test)] mod tests` | 验证 `unique()` 的排序、去重与类型特例 |
+| 集成测试 | `tests/` | 验证 `set` 与 `tensor`、`iter`、`element`、`complex` 的协同路径 |
+| 边界测试 | 同模块测试中标注 | 覆盖空张量、单元素、NaN 和复数排序等边界 |
+
 ### 7.1 单元测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
@@ -394,11 +402,11 @@ Wave 4: [T5]
 
 ### 8.1 接口约定
 
-| 交互模块 | 接口约定 |
-|----------|----------|
-| `tensor` | 消费 `TensorBase<S, D>`，返回 `Tensor<A, Ix1>`，参见 `07-tensor.md` §4 |
-| `iter` | 使用 `Elements` 迭代器收集元素，参见 `10-iterator.md` §3 |
-| `element` | 泛型约束 `UniqueElement: Element`（排除 bool/usize，提供 `total_cmp`），参见 `03-element.md` §3 |
+| 方向 | 对方模块 | 接口/类型 | 约定 |
+|------|----------|-----------|------|
+| `set → tensor` | `tensor` | `TensorBase<S, D>` / `Tensor<A, Ix1>` | 消费输入张量并返回 1D owned 结果，参见 `07-tensor.md` §4 |
+| `set → iter` | `iter` | `Elements` | 使用元素迭代器收集逻辑元素，参见 `10-iterator.md` §3 |
+| `set → element` | `element` | `UniqueElement` | 通过 `total_cmp` / `total_eq` 约束排序与去重语义，参见 `03-element.md` §3 |
 
 ### 8.2 数据流描述
 

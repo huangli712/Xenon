@@ -37,7 +37,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
-L3: storage (依赖 layout)
+ L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: broadcast  ← 当前模块
 ```
@@ -249,7 +249,7 @@ fn process_bad(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix1>) -> Tensor<f64, Ix2> {
 
 1. **维度对齐**: 从最右维度开始对齐，维度数不足的数组在左侧补 1
 2. **兼容条件**: 对应维度相等，或其中一个为 1（或不存在）
-3. **结果形状**: 每个维度按 NumPy 规则推导；若一侧为 0 且另一侧为 1，则结果为 0；仅在两侧相等或一侧为 1 时兼容
+3. **结果形状**: 每个维度按 NumPy 规则推导；若一侧为 0 且另一侧为 1，则结果为 0；若两侧相等则保持该值；否则由非 1 一侧决定结果维度
 
 ### 5.2 形状兼容性检查算法（伪代码）
 
@@ -294,7 +294,12 @@ function broadcast_shape(shape_a: [usize; N], shape_b: [usize; M])
                 shape_b,
             })
 
-        result_shape[k] = max(dim_a, dim_b)
+        if dim_a == 0 and dim_b == 1:
+            result_shape[k] = 0
+        else if dim_b == 0 and dim_a == 1:
+            result_shape[k] = 0
+        else:
+            result_shape[k] = max(dim_a, dim_b)
         i = i - 1; j = j - 1; k = k - 1
 
     return Ok(result_shape)
@@ -428,6 +433,14 @@ Wave 4:           [T7]
 
 ## 7. 测试计划
 
+### 7.0 测试分类表
+
+| 测试分类 | 位置 | 说明 |
+|----------|------|------|
+| 单元测试 | `#[cfg(test)] mod tests` | 验证广播规则、zero-stride 元数据与只读约束 |
+| 集成测试 | `tests/` | 验证 `broadcast` 与 `math`、`overload`、`iter`、`layout` 的协同路径 |
+| 边界测试 | 同模块测试中标注 | 覆盖标量广播、空数组和高维广播等边界 |
+
 ### 7.1 单元测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
@@ -474,13 +487,13 @@ Wave 4:           [T7]
 
 ### 8.1 接口约定
 
-| 交互模块 | 方向 | 说明 |
-|----------|------|------|
-| `overload` | overload → broadcast | 运算符重载中调用 `broadcast_shape()` 和 `broadcast_with()` |
-| `iter/zip` | iter → broadcast | `Zip::and()` 支持广播视图，检查兼容性，参见 `10-iterator.md` §5 |
-| `shape` | shape → broadcast | `broadcast_to` 方法调用广播模块，参见 `16-shape.md` §4 |
-| `layout` | broadcast → layout | 广播后设置 `HAS_ZERO_STRIDE` 标志、更新连续性，参见 `06-memory.md` §3 |
-| `math` | math → broadcast | 二元运算前广播两个操作数，参见 `11-math.md` §4 |
+| 方向 | 对方模块 | 接口/类型 | 约定 |
+|------|----------|-----------|------|
+| `broadcast ← overload` | `overload` | `broadcast_shape()` / `broadcast_with()` | 运算符重载路径调用广播模块完成公共形状推导 |
+| `broadcast ← iter/zip` | `iter/zip` | `Zip::and()` | `Zip` 组合路径支持广播视图并检查兼容性，参见 `10-iterator.md` §5 |
+| `broadcast ← shape` | `shape` | `broadcast_to()` | `shape` 模块通过该入口创建广播视图，参见 `16-shape.md` §4 |
+| `broadcast → layout` | `layout` | `LayoutFlags` | 广播后设置 `HAS_ZERO_STRIDE` 并更新连续性，参见 `06-memory.md` §3 |
+| `broadcast ← math` | `math` | 二元运算前置广播 | 二元运算在逐元素计算前先广播两个操作数，参见 `11-math.md` §4 |
 
 ### 8.2 数据流描述
 

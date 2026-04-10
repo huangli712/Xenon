@@ -37,7 +37,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
-L3: storage (依赖 layout)
+ L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: broadcast (依赖 tensor, dimension)
 L6: math（逐元素运算） ← 当前模块（依赖 broadcast, iter, element）
@@ -585,12 +585,12 @@ Wave 4: [T8]
 
 ### 8.1 接口约定
 
-| 交互模块 | 接口约定 |
-|----------|----------|
-| `iter` | map 内部使用 `Elements`，zip_with 内部使用 `Zip`（参见 `10-iterator.md §4`） |
-| `broadcast` | 二元运算调用 `broadcast_shape()`（参见 `15-broadcast.md §4`） |
-| `element` | 泛型约束 `Numeric`/`RealScalar`/`ComplexScalar`（参见 `03-element.md §4`） |
-| `simd`（可选） | 连续数组时自动走 SIMD 路径（参见 `08-simd.md §4.5`） |
+| 方向 | 对方模块 | 接口/类型 | 约定 |
+|------|----------|-----------|------|
+| `math → iter` | `iter` | `Elements` / `Zip` | `map` 路径复用 `Elements`，`zip_with` 路径复用 `Zip`（参见 `10-iterator.md` §4） |
+| `math → broadcast` | `broadcast` | `broadcast_shape()` | 二元运算先调用广播模块推导兼容视图（参见 `15-broadcast.md` §4） |
+| `math → element` | `element` | `Numeric` / `RealScalar` / `ComplexScalar` | 通过元素约束区分数值与复数运算语义（参见 `03-element.md` §4） |
+| `math → simd` | `simd` | SIMD backend | 连续数组且 feature 开启时可自动走 SIMD 路径（参见 `08-simd.md` §4.5） |
 
 ### 8.2 数据流描述
 

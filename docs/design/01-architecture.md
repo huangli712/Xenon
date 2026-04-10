@@ -455,8 +455,8 @@ L7:                 construct   convert   format
 pub use crate::tensor::{
     TensorBase,
     Tensor,           // TensorBase<Owned<A>, D>
-    TensorView,       // TensorBase<ViewRepr<&'a A>, D>
-    TensorViewMut,    // TensorBase<ViewMutRepr<&'a mut A>, D>
+    TensorView,       // TensorBase<ViewRepr<'a, A>, D>
+    TensorViewMut,    // TensorBase<ViewMutRepr<'a, A>, D>
     ArcTensor,        // TensorBase<ArcRepr<A>, D>
 };
 

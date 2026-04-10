@@ -21,7 +21,7 @@
 
 | 原则 | 体现 |
 |------|------|
-| 借用语义 | 借出期间不可再次借出，归还后可复用 |
+| 借用语义 | 借出期间不可再次借出；只读借用当前版本同一时刻最多一个活跃 guard，归还后可复用 |
 | 单向增长 | 只扩容不缩容，避免内存抖动 |
 | 不保证初始化 | 性能优先，调用方自行初始化使用的数据 |
 | O(1) 分割 | 仅指针算术，无内存分配 |
@@ -109,6 +109,8 @@ src/workspace/
 `WorkspaceError` 是 workspace 模块的独立错误类型，不属于 `XenonError` 枚举。调用方如需将其转换为其他错误类型，可自行实现 `From<WorkspaceError>` 用于其自定义错误类型。
 
 > **与 XenonError 的关系**: `WorkspaceError` 是独立于 `XenonError` 的错误类型。Workspace 的错误场景（分配失败、空间不足）与张量操作的错误场景不同，使用独立类型避免 XenonError 膨胀。参见 `26-error.md`。
+
+> **与线程安全需求的边界**: workspace 不是 `require.md §10` 中张量 storage mode 的一部分，而是独立的上游缓冲区工具。其 `!Send + !Sync` 设计不与张量存储模式的线程安全承诺冲突。
 
 ```rust
 /// Error type for workspace operations.
@@ -889,6 +891,14 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 
 ## 7. 测试计划
 
+### 7.0 测试分类表
+
+| 测试分类 | 位置 | 说明 |
+|----------|------|------|
+| 单元测试 | `#[cfg(test)] mod tests` | 验证工作空间分配、借用、分割与扩容语义 |
+| 集成测试 | `tests/` | 验证 `workspace` 与 `ffi`、上游 scratch-buffer 场景的协同路径 |
+| 边界测试 | 同模块测试中标注 | 覆盖零容量、最小对齐、大容量和递归分割等边界 |
+
 ### 7.1 单元测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
@@ -941,11 +951,11 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 
 ### 8.1 接口约定
 
-| 交互点 | 方向 | 说明 |
-|--------|------|------|
-| 上游库 → workspace | BLAS 库通常需要临时缓冲区，此 workspace 类型在 Rust FFI 场景中充当该缓冲区 |
-| 上游库 → workspace | 上游 FFT 库通过 `split_at()` 分割工作空间 |
-| tensor -> workspace | Tensor 操作通过 workspace 分配临时空间（参见 `07-tensor.md §4`，可选） |
+| 方向 | 对方模块 | 接口/类型 | 约定 |
+|------|----------|-----------|------|
+| `workspace ← 上游库` | `上游库` | 临时缓冲区请求 | BLAS 等上游库可把 workspace 作为临时缓冲区使用 |
+| `workspace ← 上游库` | `上游库` | `split_at()` | FFT 等场景可通过分割接口拆分工作空间 |
+| `workspace ← tensor` | `tensor` | 临时 scratch 空间 | 张量运算在需要时可借用 workspace 提供临时空间，参见 `07-tensor.md` §4 |
 
 ### 8.2 数据流描述
 

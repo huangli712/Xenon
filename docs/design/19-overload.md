@@ -12,7 +12,7 @@
 
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
-| 四则运算运算符语法 | `+`/`-`/`*`/`÷` 运算符重载 | 原地运算符 `+=`/`-=`/`*=`/`/=`（当前版本不提供） |
+| 四则运算运算符语法 | `+`/`-`/`*`/`/` 运算符重载 | 原地运算符 `+=`/`-=`/`*=`/`/=`（当前版本不提供） |
 | 张量×张量运算 | 同形状运算、广播运算 | 矩阵乘法（由 `matrix` 提供） |
 | 张量×标量运算 | 标量广播到张量形状 | 负数运算符 `-`（在 `math` 提供） |
 | 广播支持 | 运算符语法内建支持广播 | 比较运算符（在 `math` 提供） |
@@ -35,7 +35,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
-L3: storage (依赖 layout)
+ L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: broadcast, iter
 L6: math（逐元素运算）
@@ -438,6 +438,14 @@ Wave 5:      [T6]
 
 ## 7. 测试计划
 
+### 7.0 测试分类表
+
+| 测试分类 | 位置 | 说明 |
+|----------|------|------|
+| 单元测试 | `#[cfg(test)] mod tests` | 验证运算符语法、广播分派与结果所有权语义 |
+| 集成测试 | `tests/` | 验证 `overload` 与 `broadcast`、`math`、`tensor` 的协同路径 |
+| 边界测试 | 同模块测试中标注 | 覆盖标量、空张量和广播不兼容等边界 |
+
 ### 7.1 单元测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
@@ -488,13 +496,13 @@ Wave 5:      [T6]
 
 ### 8.1 接口约定
 
-| 交互模块 | 方向 | 说明 |
-|----------|------|------|
-| `math` | arithmetic → math | `zip_with()` 执行逐元素运算，`mapv()` 执行标量运算（参见 `11-math.md` §4） |
-| `broadcast` | arithmetic → broadcast | `broadcast_with()` 广播两个张量到公共形状（参见 `15-broadcast.md` §4） |
-| `tensor` | arithmetic → tensor | 构造结果 `Tensor<A, D>`，使用 `.view()` 创建视图（参见 `07-tensor.md` §4） |
-| `element` | arithmetic → element | `Numeric` trait 约束排除 `bool` 与 `usize` 类型（参见 `03-element.md` §3） |
-| `dimension` | arithmetic → dimension | `BroadcastDim<E>::Output` 关联类型（参见 `02-dimension.md` §4） |
+| 方向 | 对方模块 | 接口/类型 | 约定 |
+|------|----------|-----------|------|
+| `arithmetic → math` | `math` | `zip_with()` / `mapv()` | 张量路径走逐元素运算，标量路径走 `mapv()`，参见 `11-math.md` §4 |
+| `arithmetic → broadcast` | `broadcast` | `broadcast_with()` | 先把两个操作数广播到公共形状，参见 `15-broadcast.md` §4 |
+| `arithmetic → tensor` | `tensor` | `Tensor<A, D>` / `.view()` | 构造 owned 结果并在需要时创建视图，参见 `07-tensor.md` §4 |
+| `arithmetic → element` | `element` | `Numeric` | 通过元素约束排除不支持的类型，参见 `03-element.md` §3 |
+| `arithmetic → dimension` | `dimension` | `BroadcastDim<E>::Output` | 通过维度级关联类型推导广播输出形状，参见 `02-dimension.md` §4 |
 
 ### 8.2 数据流描述
 

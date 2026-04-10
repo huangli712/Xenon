@@ -33,7 +33,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
-L3: storage (依赖 layout)
+ L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: broadcast, iter, ffi
 L6: math, matrix, reduction, shape, index, util
@@ -488,6 +488,14 @@ Wave 3:        [T5]
 
 ## 7. 测试计划
 
+### 7.0 测试分类表
+
+| 测试分类 | 位置 | 说明 |
+|----------|------|------|
+| 单元测试 | `#[cfg(test)] mod tests` | 验证 `Display`、`Debug` 与截断格式化语义 |
+| 集成测试 | `tests/` | 验证 `output` 与 `tensor`、`iter`、`element` 的协同路径 |
+| 边界测试 | 同模块测试中标注 | 覆盖空数组、零维张量、阈值截断和 NaN/Inf 输出 |
+
 ### 7.1 单元测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
@@ -536,12 +544,12 @@ Wave 3:        [T5]
 
 ### 8.1 接口约定
 
-| 交互点 | 方向 | 说明 |
-|--------|------|------|
-| `Display` → `tensor` | format → tensor | 读取 `.shape()`, `.ndim()`, `.len()`（参见 `07-tensor.md` §4） |
-| `Debug` → `tensor` | format → tensor | 额外读取 `.strides()`, `is_f_contiguous()`（参见 `06-memory.md` §4） |
-| `Display` → `storage` | format → storage | 通过 `iter()` 遍历元素（参见 `05-storage.md` §4） |
-| `Display` → `element` | format → element | 使用 `core::any::type_name::<A>()`（参见 `03-element.md` §3） |
+| 方向 | 对方模块 | 接口/类型 | 约定 |
+|------|----------|-----------|------|
+| `format → tensor` | `tensor` | `.shape()` / `.ndim()` / `.len()` | `Display` 路径读取基础张量元数据，参见 `07-tensor.md` §4 |
+| `format → tensor` | `tensor` | `.strides()` / `is_f_contiguous()` | `Debug` 额外输出布局相关元数据，参见 `06-memory.md` §4 |
+| `format → storage` | `storage` | `iter()` | 通过迭代器按逻辑顺序遍历元素，参见 `05-storage.md` §4 |
+| `format → element` | `element` | `core::any::type_name::<A>()` | 输出 dtype 与元素类型信息，参见 `03-element.md` §3 |
 
 ### 8.2 数据流描述
 

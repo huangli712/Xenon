@@ -118,14 +118,16 @@ src/parallel/
 [features]
 default = ["std"]
 std = []
-parallel = ["dep:rayon"]
+parallel = ["dep:rayon", "std"]
 
 [dependencies]
 rayon = { version = "1.10", optional = true }
 ```
 
 - 默认关闭，通过 `features = ["parallel"]` 显式启用
-- 启用后 rayon 自动引入，提供数据并行能力
+- 启用后 rayon 与 `std` 同时引入，提供线程池、原子变量和数据并行能力
+
+> **约束说明：** `parallel` 不是纯 `no_std` feature。并行后端依赖 `std::sync::atomic`、rayon 线程池与线程本地上下文，因此文档、CI 和 feature 矩阵都必须把 `parallel` 视为 `std` 扩展能力。
 
 ### 4.2 并行阈值系统
 
@@ -336,7 +338,11 @@ where
     // and panic on overflow (see 13-reduction.md §5.1 / 26-error.md §5.2).
     // For floating-point reductions, if exact serial equivalence cannot be proven,
     // this entry must transparently fall back to the serial baseline.
-    par_reduce(tensor, || A::zero(), |a, b| a.safe_add(b))
+par_reduce(tensor, || A::zero(), |a, b| {
+    // For integer reductions, dispatch to CheckedAdd in the scalar fallback path
+    // or disable parallelization when exact serial equivalence cannot be proven.
+    a + b
+})
 }
 
 /// Parallel zip operation

@@ -34,7 +34,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
-L3: storage (依赖 layout)
+ L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: ffi  ← 当前模块
 ```
@@ -142,7 +142,9 @@ where
 {
     /// Returns a read-only raw pointer to the data start.
     ///
-    /// The pointer points to the first logical element (considering offset).
+    /// The pointer returned here points to the first logical element.
+    /// Internally, storage keeps the storage base pointer and TensorBase applies
+    /// `offset` exactly once when exposing the raw logical pointer.
     /// The returned pointer is invalid after `self` is modified or dropped.
     ///
     /// # Example
@@ -191,7 +193,7 @@ where
 ### 4.3 从裸指针构造张量
 
 ```rust
-impl<'a, A, D> TensorBase<ViewRepr<&'a A>, D>
+impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D>
 where
     D: Dimension,
 {
@@ -199,7 +201,7 @@ where
     ///
     /// # Arguments
     ///
-    /// * `ptr` - Data start pointer (immutable)
+    /// * `ptr` - Storage base pointer (immutable)
     /// * `shape` - Length of each axis
     /// * `strides` - Strides per axis (element units, signed)
     /// * `offset` - Data start offset (element units)
@@ -215,7 +217,7 @@ where
     /// | Prerequisite | Description |
     /// |----------|------|
     /// | Pointer validity | `ptr` must be non-null, non-dangling, and aligned to `align_of::<A>()` |
-    /// | Memory range | Memory starting from `ptr` must cover all accessible elements (considering offset, shape, strides) |
+    /// | Memory range | Memory starting from the storage base pointer `ptr` must cover all accessible elements (considering offset, shape, strides) |
     /// | Lifetime | Memory must remain valid for lifetime `'a` |
     /// | Aliasing rules | Memory can be read-shared but must not be written to |
     /// | Layout consistency | `shape` and `strides` lengths must match |
@@ -240,9 +242,9 @@ where
         strides: Strides<D>,
         offset: usize,
     ) -> Self {
-        // SAFETY: Caller guarantees ptr is valid, aligned, and points to
-        // properly initialized data for the lifetime 'a. Shape and strides
-        // are consistent and describe a valid memory region.
+        // SAFETY: Caller guarantees ptr is a valid storage base pointer,
+        // aligned and pointing to properly initialized data for the lifetime 'a.
+        // Shape, strides, and offset are consistent and describe a valid region.
         TensorBase {
             storage: ViewRepr::new(ptr),
             shape,
@@ -283,13 +285,14 @@ where
     }
 }
 
-impl<'a, A, D> TensorBase<ViewMutRepr<&'a mut A>, D>
+impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D>
 where
     D: Dimension,
 {
     /// Constructs a mutable view from raw pointer.
     ///
     /// Same as `from_raw_parts`, but requires exclusive access (no other references).
+    /// `ptr` is still the storage base pointer rather than the logical-first pointer.
     ///
     /// # Safety
     ///
@@ -741,6 +744,14 @@ Wave 3: ┌────┴────┐
 
 ## 7. 测试计划
 
+### 7.0 测试分类表
+
+| 测试分类 | 位置 | 说明 |
+|----------|------|------|
+| 单元测试 | `#[cfg(test)] mod tests` | 验证指针访问、BLAS 兼容检查与 raw-parts 语义 |
+| 集成测试 | `tests/` | 验证 `ffi` 与 `tensor`、`layout`、`storage` 的协同路径 |
+| 边界测试 | 同模块测试中标注 | 覆盖空张量、广播维度、负步长和未对齐指针等边界 |
+
 ### 7.1 单元测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
@@ -794,12 +805,12 @@ Wave 3: ┌────┴────┐
 
 ### 8.1 接口约定
 
-| 交互点 | 方向 | 说明 |
-|--------|------|------|
-| 指针访问 | ffi → tensor | 通过 `TensorBase` 的 storage 获取指针（参见 `07-tensor.md` §4） |
-| BLAS 检查 | ffi ← layout | 使用 `is_f_contiguous()`、`has_zero_stride()`、`has_neg_stride()`（参见 `06-memory.md` §4） |
-| 解构 | ffi → storage | `into_raw_parts` 使用 `StorageIntoRaw` trait（参见 `05-storage.md` §4） |
-| BLAS 参数 | 上游库 ← ffi | 上游 BLAS 库调用 `blas_info()`、`lda()` 等获取参数 |
+| 方向 | 对方模块 | 接口/类型 | 约定 |
+|------|----------|-----------|------|
+| `ffi → tensor` | `tensor` | 原始指针访问 | 通过 `TensorBase` 的 storage 获取底层指针，参见 `07-tensor.md` §4 |
+| `ffi ← layout` | `layout` | `is_f_contiguous()` / stride 标志 | BLAS 兼容性检查依赖布局查询结果，参见 `06-memory.md` §4 |
+| `ffi → storage` | `storage` | `StorageIntoRaw` | `into_raw_parts` 通过原始存储接口转移 owned 数据，参见 `05-storage.md` §4 |
+| `ffi → 上游库` | `上游库` | `blas_info()` / `lda()` | 向外部 BLAS/FFI 调用方暴露零拷贝参数 |
 
 ### 8.2 数据流描述
 

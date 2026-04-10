@@ -34,7 +34,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
-L3: storage (依赖 layout)
+ L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: broadcast (依赖 tensor, dimension)
 L6: shape  ← 当前模块
@@ -437,6 +437,14 @@ Wave 4:         [T5]
 
 ## 7. 测试计划
 
+### 7.0 测试分类表
+
+| 测试分类 | 位置 | 说明 |
+|----------|------|------|
+| 单元测试 | `#[cfg(test)] mod tests` | 验证转置、reshape 与 `into_shape` 的核心语义 |
+| 集成测试 | `tests/` | 验证 `shape` 与 `tensor`、`layout`、`index`、`broadcast` 的协同路径 |
+| 边界测试 | 同模块测试中标注 | 覆盖空数组、单元素、大数组和高维重塑等边界 |
+
 ### 7.1 单元测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
@@ -483,13 +491,13 @@ Wave 4:         [T5]
 
 ### 8.1 接口约定
 
-| 交互模块 | 方向 | 说明 |
-|----------|------|------|
-| `tensor` | shape → tensor | 使用 `TensorBase` 结构和 `TensorView` 创建方法，参见 `07-tensor.md` §4 |
-| `dimension` | shape → dimension | 使用 `Dimension` trait 的形状操作方法，参见 `02-dimension.md` §3 |
-| `layout` | shape → layout | 检查连续性、计算步长，参见 `06-memory.md` §3 |
-| `broadcast` | shape ← broadcast | 广播视图不可 reshape（非连续），参见 `15-broadcast.md` §5 |
-| `index` | index → shape | 切片后可 reshape（如连续），参见 `17-indexing.md` §4 |
+| 方向 | 对方模块 | 接口/类型 | 约定 |
+|------|----------|-----------|------|
+| `shape → tensor` | `tensor` | `TensorBase` / `TensorView` | 依赖张量结构与视图创建入口，参见 `07-tensor.md` §4 |
+| `shape → dimension` | `dimension` | `Dimension` trait | 使用维度 trait 完成形状变换与校验，参见 `02-dimension.md` §3 |
+| `shape → layout` | `layout` | 连续性与步长查询 | reshape 前检查连续性并按需重写步长，参见 `06-memory.md` §3 |
+| `shape ← broadcast` | `broadcast` | 广播视图语义 | 广播视图因非连续而不可直接 reshape，参见 `15-broadcast.md` §5 |
+| `shape ← index` | `index` | 切片结果视图 | 切片后的连续视图可继续参与 reshape，参见 `17-indexing.md` §4 |
 
 ### 8.2 数据流描述
 

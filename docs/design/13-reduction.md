@@ -37,7 +37,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
-L3: storage (依赖 layout)
+ L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: reduction  ← 当前模块
 ```
@@ -125,7 +125,7 @@ where
 }
 ```
 
-> **分派策略说明：** `sum()` 内部通过在 `Numeric` trait 上提供 `safe_add(self, rhs: Self) -> Self` 方法实现类型分派：整数类型使用 `checked_add` 溢出时 panic，浮点/复数类型使用 IEEE 754 加法。这避免了在公共 API 中暴露 `CheckedAdd` 约束，同时保持了正确的溢出行为。
+> **分派策略说明：** `sum()` 的公共 API 仍只约束 `Numeric`，但整数溢出检测由 `CheckedAdd`（参见 `03-element.md §4.9`）在内部路径承担；浮点与复数类型继续使用普通加法语义。这样可以避免把整数专用约束暴露到所有数值类型的公共签名上。
 
 ### 4.2 沿轴 sum 归约
 
@@ -358,6 +358,14 @@ Wave 5:         [T7]
 
 ## 7. 测试计划
 
+### 7.0 测试分类表
+
+| 测试分类 | 位置 | 说明 |
+|----------|------|------|
+| 单元测试 | `#[cfg(test)] mod tests` | 验证归约语义、溢出行为与轴向变体 |
+| 集成测试 | `tests/` | 验证 `reduction` 与 `iter`、`tensor`、`simd`、`parallel` 的协同路径 |
+| 边界测试 | 同模块测试中标注 | 覆盖空数组、NaN/Inf、非连续输入等边界 |
+
 ### 7.1 单元测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
@@ -403,13 +411,13 @@ Wave 5:         [T7]
 
 ### 8.1 接口约定
 
-| 交互模块 | 接口约定 |
-|----------|----------|
-| `iter` | 使用 `Elements` 迭代器遍历元素，`AxisIter` 遍历轴，参见 `10-iterator.md` §4 |
-| `tensor` | 消费 `TensorBase<S, D>`，返回 `Tensor<A, D>`，参见 `07-tensor.md` §4 |
-| `element` | 泛型约束 `Numeric`（全局 sum），`RealScalar`（浮点特化），参见 `03-element.md` §3 |
-| `simd`（可选） | 连续数组自动走 SIMD 归约路径，参见 `08-simd.md` §3 |
-| `parallel`（可选） | 大数组自动走并行归约路径，参见 `09-parallel.md` §4 |
+| 方向 | 对方模块 | 接口/类型 | 约定 |
+|------|----------|-----------|------|
+| `reduction → iter` | `iter` | `Elements` / `AxisIter` | 使用元素与轴迭代器完成全局归约和按轴归约，参见 `10-iterator.md` §4 |
+| `reduction → tensor` | `tensor` | `TensorBase<S, D>` / `Tensor<A, D>` | 消费输入张量并返回归约结果，参见 `07-tensor.md` §4 |
+| `reduction → element` | `element` | `Numeric` / `RealScalar` | 通过泛型约束区分整数、浮点和复数路径，参见 `03-element.md` §3 |
+| `reduction → simd` | `simd` | SIMD 归约路径 | 连续数组可自动走 SIMD backend，参见 `08-simd.md` §3 |
+| `reduction → parallel` | `parallel` | 并行归约路径 | 大数组可自动走并行归约，参见 `09-parallel.md` §4 |
 
 ### 8.2 数据流描述
 

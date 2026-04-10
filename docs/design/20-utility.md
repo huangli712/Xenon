@@ -23,7 +23,7 @@
 |------|------|
 | 步长感知 | `fill`/`clip` 通过迭代器正确处理非连续内存布局 |
 | 原地优先 | `fill` 为原地操作（`&mut self`），避免额外分配 |
-| 类型安全 | `clip` 限制为有序标量类型（`i32`、`i64`、`usize`、`f32`、`f64`），编译期拒绝 `bool` 和 `Complex` |
+| 类型安全 | `clip` 限制为有序数值标量类型（`i32`、`i64`、`f32`、`f64`），编译期拒绝 `bool`、`usize` 和 `Complex` |
 | 语义清晰 | `to_contiguous` 返回 `Tensor<A, D>`，调用方可预测生命周期 |
 
 ### 1.3 在架构中的位置
@@ -33,7 +33,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
-L3: storage (依赖 layout)
+ L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: broadcast, iter, ffi
 L6: util  ← 当前模块（依赖 tensor, dimension, storage, layout, iter）
@@ -54,7 +54,7 @@ src/
 
 多文件设计：三个操作（clip、fill、to_contiguous）按职责分离，通过 `mod.rs` 统一 re-export。
 
-> **注意**：`to_contiguous()` 的公共 API 定义在 `src/util/contiguous.rs`（本模块），内部委托给 `src/convert/contiguous.rs` 中的 `to_f_contiguous()` 辅助函数（参见 `21-type.md §4.7`）。
+> **注意**：`to_contiguous()` 的公共 API 与语义边界都属于 `util` 模块。若实现上复用内部连续化路径，也只把它视为 `util` 的内部实现细节，不再把连续性保证语义归到 `convert`。
 
 ---
 
@@ -199,9 +199,9 @@ where
 
 ### 4.3 连续性保证（to_contiguous）
 
-> `to_contiguous()` 是本模块（20-utility.md §4）定义的公共 API。内部实现委托给 `src/convert/contiguous.rs` 中的 `to_f_contiguous()` 辅助函数（见 21-type.md §2.1 文件结构）。
+> `to_contiguous()` 是本模块（20-utility.md §4）定义的公共 API。内部可复用连续化实现，但这不构成 `convert` 模块的独立公共能力。
 >
-> **依赖说明**: `to_contiguous()` 是 utility 模块暴露的公共 API；其非连续路径内部调用 convert 模块中的 `to_f_contiguous()` helper。类型转换语义仍归 convert，连续性保证语义归 utility。
+> **依赖说明**: `to_contiguous()` 由 utility 模块暴露；若非连续路径需要额外实现步骤，也仅属于 utility 的内部细节。类型转换语义仍归 convert，连续性保证语义仍归 utility。
 
 ```rust
 impl<S, D, A> TensorBase<S, D>
@@ -301,7 +301,7 @@ to_contiguous(tensor):
     if is_f_contiguous(tensor):
         return to_owned(tensor)        // O(n) copy, layout unchanged (already F-order)
     else:
-        return to_f_contiguous(tensor) // O(n) copy, always convert to F-order
+return util_internal_to_f_contiguous(tensor) // O(n) copy, always convert to F-order
         // Non-contiguous inputs (e.g. transposed or sliced views) are
         // converted to F-order. Xenon only supports F-order.
 ```
@@ -369,6 +369,14 @@ Wave 2:      [T3] → [T4]
 
 ## 7. 测试计划
 
+### 7.0 测试分类表
+
+| 测试分类 | 位置 | 说明 |
+|----------|------|------|
+| 单元测试 | `#[cfg(test)] mod tests` | 验证 `clip`、`fill` 和 `to_contiguous` 的核心语义 |
+| 集成测试 | `tests/` | 验证 `utility` 与 `tensor`、`iter`、`layout`、`convert` 的协同路径 |
+| 边界测试 | 同模块测试中标注 | 覆盖空数组、零维张量、NaN 和非连续布局等边界 |
+
 ### 7.1 单元测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
@@ -415,12 +423,12 @@ Wave 2:      [T3] → [T4]
 
 ### 8.1 接口约定
 
-| 交互点 | 方向 | 说明 |
-|--------|------|------|
-| `fill` → `iter` | 依赖 | 通过 `iter_mut()` 遍历元素（参见 `10-iterator.md` §4.1） |
-| `clip` → `iter` | 依赖 | 通过 `iter()` 读取、写入新张量（参见 `10-iterator.md` §4.1） |
-| `to_contiguous` → `layout` | 依赖 | 查询连续性状态（参见 `06-memory.md` §4） |
-| `to_contiguous` → `convert` | 依赖 | 调用 `to_owned()`/`to_f_contiguous()`（参见 `21-type.md` §4.5 和 §4.7），始终输出 F-order；`to_f_contiguous()` 在 21 中定义，负责将非连续内存重排为 F-order 连续布局 |
+| 方向 | 对方模块 | 接口/类型 | 约定 |
+|------|----------|-----------|------|
+| `utility → iter` | `iter` | `iter_mut()` | `fill` 通过可变迭代器遍历逻辑元素，参见 `10-iterator.md` §4.1 |
+| `utility → iter` | `iter` | `iter()` | `clip` 通过只读迭代器读取并写入新张量，参见 `10-iterator.md` §4.1 |
+| `utility → layout` | `layout` | 连续性查询 | `to_contiguous` 先查询当前布局是否已经连续，参见 `06-memory.md` §4 |
+| `utility → tensor` | `tensor` | `to_owned()` / 连续化路径 | `to_contiguous` 复用张量 owned 化与连续化路径，始终输出 F-order |
 
 ### 8.2 数据流描述
 
@@ -429,7 +437,7 @@ Wave 2:      [T3] → [T4]
     │
     ├── utility 模块先判断是原地修改、生成新 tensor，还是仅做连续化
     ├── fill / clip 通过 iter / iter_mut 访问逻辑元素
-    ├── to_contiguous 先查询 layout 连续性，再按需委托 convert::to_f_contiguous()
+    ├── to_contiguous 先查询 layout 连续性，再按需走 utility 内部连续化路径
     └── 最终返回修改后的原张量或新的 owned F-order 张量
 ```
 

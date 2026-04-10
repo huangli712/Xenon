@@ -468,38 +468,39 @@ increment_index_f(shape, index):
 
 填充数组的迭代仅遍历逻辑元素。迭代器通过 shape 中的逻辑维度计数，跳过填充区域。
 
-### 5.5 `split_elements_at` — 并行分块内部函数
+### 5.5 `ElementsProducerRange` — 并行分块内部状态
 
-> **用途：** 本函数供并行后端（`09-parallel.md §4.5`）中的 `ElementsProducer::split_at` 调用，用于将扁平元素视图在指定逻辑索引处一分为二，以支持并行迭代的数据分块。
+> **用途：** 供并行后端（`09-parallel.md §4.5`）中的 `ElementsProducer::split_at` 调用。它不再尝试把任意逻辑前缀/后缀表示成两个 `TensorView`，而是保留原始 view，并以扁平逻辑区间 `[start, end)` 描述生产范围。
 
 ```rust
-/// Split a flat Elements view at a flat index boundary for parallel iteration.
-///
-/// Returns (left_view, right_view) where left covers [0..index) and right covers [index..len).
-///
-/// # Panics
-/// Panics if index > base.len().
-pub(crate) fn split_elements_at<'a, A, D>(
+pub(crate) struct ElementsProducerRange<'a, A, D> {
     base: TensorView<'a, A, D>,
-    index: usize,
-) -> (TensorView<'a, A, D>, TensorView<'a, A, D>)
+    start: usize,
+    end: usize,
+}
+
+impl<'a, A, D> ElementsProducerRange<'a, A, D>
 where
     A: Element,
     D: Dimension,
 {
-    assert!(index <= base.len(), "split index out of bounds");
-    // Implementation: compute new shapes/strides/offsets for each half
-    // Left: covers the first `index` logical elements
-    // Right: covers the remaining elements starting at logical index `index`
+    pub(crate) fn split_at(self, index: usize) -> (Self, Self) {
+        assert!(index <= self.end - self.start, "split index out of bounds");
+        let mid = self.start + index;
+        (
+            Self { base: self.base.clone(), start: self.start, end: mid },
+            Self { base: self.base, start: mid, end: self.end },
+        )
+    }
 }
 ```
 
 **设计要点：**
 
-- 返回的两个 `TensorView` 共享同一底层数据，但各自的偏移量和长度不同。
-- 对于连续 F-order 视图，分块可直接按指针偏移实现（O(1)）。
-- 对于非连续视图（含转置、切片等），需重新计算步长状态机的起始偏移，仍为 O(ndim)。
-- 该函数标记为 `pub(crate)`，不对外暴露，仅供 `09-parallel.md` 中的 Producer 体系使用。
+- 不再要求任意逻辑区间可被表达成单个规则 shape/stride 的 `TensorView`。
+- 连续与非连续视图统一通过“原 view + 逻辑区间”建模。
+- 连续 F-order 视图仍可在 producer 内走更快的指针递增路径；非连续视图则通过逻辑索引到物理偏移的映射按需求址。
+- 该内部状态仅供 `09-parallel.md` 中的 Producer 体系使用，不对外暴露。
 
 ---
 
@@ -612,7 +613,7 @@ Wave 4:             [T9]
 | `test_elements_mut_write` | `iter_mut()` 写入后数据正确 | 中 |
 | `test_axis_iter_count` | `axis_iter(Axis(0)).count() == shape[0]` | 高 |
 | `test_axis_iter_shape` | 沿轴迭代产出的子视图形状正确 | 高 |
-| `test_axis_iter_ix0_panic` | 零维张量调用 `axis_iter` 编译失败或 panic | 中 |
+| `test_axis_iter_ix0_panic` | 零维张量调用 `axis_iter` 运行时 panic | 中 |
 | `test_windows_count` | 窗口数 = `product(shape - window + 1)` | 高 |
 | `test_windows_too_large` | 窗口大于数组返回 `None` | 中 |
 | `test_windows_empty` | 空数组返回 `None` | 中 |

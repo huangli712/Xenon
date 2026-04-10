@@ -38,7 +38,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
-L3: storage (依赖 layout)
+ L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: index  ← 当前模块（依赖 tensor, dimension, layout）
 ```
@@ -390,6 +390,14 @@ where
         // ...
     }
 
+    /// Checked sliced view creation.
+    pub fn try_slice<I>(&self, info: SliceInfo<I, D>) -> Result<TensorView<'_, A, I>, XenonError>
+    where
+        I: Dimension,
+    {
+        // ...
+    }
+
     /// Creates a mutable sliced view.
     ///
     /// # Panics
@@ -398,6 +406,15 @@ where
     /// because zero strides mean multiple logical indices map to the same physical
     /// address, and mutable access would cause data races.
     pub fn slice_mut<I>(&mut self, info: SliceInfo<I, D>) -> TensorViewMut<'_, A, I>
+    where
+        I: Dimension,
+        S: StorageMut<Elem = A>,
+    {
+        // ...
+    }
+
+    /// Checked mutable sliced view creation.
+    pub fn try_slice_mut<I>(&mut self, info: SliceInfo<I, D>) -> Result<TensorViewMut<'_, A, I>, XenonError>
     where
         I: Dimension,
         S: StorageMut<Elem = A>,
@@ -522,7 +539,7 @@ function compute_slice(shape, strides, offset, slices: [SliceInfoElem; N])
                 e = if st > 0 {
                     normalize_bound(e, shape[i])
                 } else if end.is_some() {
-                    normalize_index(e, shape[i])
+                    normalize_bound(e, shape[i])
                 } else {
                     e
                 }
@@ -629,6 +646,14 @@ Wave 4:           [T7]
 
 ## 7. 测试计划
 
+### 7.0 测试分类表
+
+| 测试分类 | 位置 | 说明 |
+|----------|------|------|
+| 单元测试 | `#[cfg(test)] mod tests` | 验证整数索引、切片和 `s![]` 宏的核心语义 |
+| 集成测试 | `tests/` | 验证 `index` 与 `tensor`、`layout`、`iter`、`shape` 的协同路径 |
+| 边界测试 | 同模块测试中标注 | 覆盖零维、空数组、负步长和链式切片等边界 |
+
 ### 7.1 单元测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
@@ -676,14 +701,14 @@ Wave 4:           [T7]
 
 ### 8.1 接口约定
 
-| 交互模块 | 方向 | 说明 |
-|----------|------|------|
-| `tensor` | index → tensor | 使用 `TensorBase` 的 `as_ptr()`/`as_mut_ptr()`，参见 `07-tensor.md` §4 |
-| `storage` | index → storage | 通过 `Storage`/`StorageMut` 访问元素，参见 `05-storage.md` §3 |
-| `dimension` | index → dimension | 使用 `Dimension::slice()` 获取形状切片，参见 `02-dimension.md` §3 |
-| `layout` | index → layout | 更新 `LayoutFlags`，参见 `06-memory.md` §3 |
-| `iter` | iter → index | 迭代器使用 `get_unchecked()` 快速访问，参见 `10-iterator.md` §4 |
-| `shape` | shape → index | reshape 等操作可能触发拷贝，参见 `16-shape.md` §4 |
+| 方向 | 对方模块 | 接口/类型 | 约定 |
+|------|----------|-----------|------|
+| `index → tensor` | `tensor` | `as_ptr()` / `as_mut_ptr()` | 通过张量基础指针入口完成元素访问，参见 `07-tensor.md` §4 |
+| `index → storage` | `storage` | `Storage` / `StorageMut` | 通过存储抽象读取或写入元素，参见 `05-storage.md` §3 |
+| `index → dimension` | `dimension` | `Dimension::slice()` | 使用维度切片能力推导结果形状，参见 `02-dimension.md` §3 |
+| `index → layout` | `layout` | `LayoutFlags` | 切片后更新布局标志与步长语义，参见 `06-memory.md` §3 |
+| `index ← iter` | `iter` | `get_unchecked()` | 迭代器路径复用快速索引入口，参见 `10-iterator.md` §4 |
+| `index ← shape` | `shape` | reshape 后视图语义 | reshape 等上游操作产生的视图继续复用索引路径，参见 `16-shape.md` §4 |
 
 ### 8.2 数据流描述
 

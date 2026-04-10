@@ -35,7 +35,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
-L3: storage (依赖 layout)
+ L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: matrix  ← 当前模块
 ```
@@ -276,6 +276,14 @@ Wave 4: [T4]
 
 ## 7. 测试计划
 
+### 7.0 测试分类表
+
+| 测试分类 | 位置 | 说明 |
+|----------|------|------|
+| 单元测试 | `#[cfg(test)] mod tests` | 验证 `dot()` 的核心正确性与错误分支 |
+| 集成测试 | `tests/` | 验证 `dot()` 与 `tensor`、`iter`、`simd`、`error` 的协同路径 |
+| 边界测试 | 同模块测试中标注 | 覆盖空向量、单元素、非连续输入等边界 |
+
 ### 7.1 单元测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
@@ -283,7 +291,7 @@ Wave 4: [T4]
 | `test_dot_basic` | 两个长度为 3 的向量内积正确 | 高 |
 | `test_dot_complex` | 复数内积满足共轭线性 | 高 |
 | `test_dot_shape_mismatch` | 长度不匹配返回 ShapeMismatch 错误 | 高 |
-| `test_dot_empty` | 两个空向量内积返回 `XenonError::EmptyArray` | 中 |
+| `test_dot_empty` | 两个空向量内积返回加法单位元 | 中 |
 | `test_dot_single_element` | 单元素向量内积 | 中 |
 | `test_dot_simd_consistency` | SIMD 路径结果与标量一致 | 高 |
 
@@ -291,7 +299,7 @@ Wave 4: [T4]
 
 | 场景 | 预期行为 |
 |------|----------|
-| 空向量 `shape=[0]` | 返回 `Err(XenonError::EmptyArray)` |
+| 空向量 `shape=[0]` | 返回加法单位元（零） |
 | 单元素向量 | 返回 a[0] * b[0] |
 | 大向量（1M 元素） | SIMD 路径启用，结果正确 |
 | 非连续向量（切片后） | 回退到标量路径，结果正确 |
@@ -308,13 +316,13 @@ Wave 4: [T4]
 
 ### 8.1 接口约定
 
-| 交互模块 | 接口约定 |
-|----------|----------|
-| `tensor` | 消费 `TensorView<A, Ix1>`，参见 `07-tensor.md` §4 |
-| `iter` | 使用 `Elements` 迭代器遍历元素，参见 `10-iterator.md` §3 |
-| `element` | 泛型约束 `Numeric` / `ComplexScalar`，参见 `03-element.md` §3 |
-| `simd`（可选） | 连续内存时自动走 SIMD 路径，参见 `08-simd.md` §3 |
-| `error` | 形状不匹配返回 `XenonError::ShapeMismatch` |
+| 方向 | 对方模块 | 接口/类型 | 约定 |
+|------|----------|-----------|------|
+| `matrix → tensor` | `tensor` | `TensorView<A, Ix1>` | 消费 1D 张量视图，参见 `07-tensor.md` §4 |
+| `matrix → iter` | `iter` | `Elements` | 使用元素迭代器遍历输入，参见 `10-iterator.md` §3 |
+| `matrix → element` | `element` | `Numeric` / `ComplexScalar` | 通过泛型约束区分实数与复数路径，参见 `03-element.md` §3 |
+| `matrix → simd` | `simd` | SIMD backend | 连续内存时可自动走 SIMD 路径，参见 `08-simd.md` §3 |
+| `matrix → error` | `error` | `XenonError::ShapeMismatch` | 形状不匹配时返回可恢复错误 |
 
 ### 8.2 数据流描述
 

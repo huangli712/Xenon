@@ -615,6 +615,16 @@ const _: () = {
 | `struct { float re; float im; }` | `[float, float]` | `Complex<f32>` |
 | `struct { double re; double im; }` | `[double, double]` | `Complex<f64>` |
 
+Xenon 对需求说明书 §5 的裁决是：**公开 FFI 契约必须与 C99 `_Complex` 兼容**。
+实现上采用两阶段保证：
+
+1. `Complex<T>` 在 Rust 侧始终保持双字段 `#[repr(C)]` 布局，作为最低层内存表示；
+2. 当且仅当构建探针确认当前目标平台上 `float _Complex` / `double _Complex` 与相邻两字段 `T` 的 ABI 等价时，
+   Xenon 才声明对应目标满足 `_Complex` ABI 兼容；若探针失败，则与 `_Complex` 相关的 FFI 接口和测试必须在该目标上编译失败，
+   而不是静默退回另一种 ABI 解释。
+
+因此，Xenon 不再把 `_Complex` 兼容描述为“尽力而为”的运行时降级能力，而是把它定义成**构建期验证通过后的目标平台前提**。
+
 FFI 示例：
 
 ```rust
@@ -738,7 +748,7 @@ hypot(a, b):
     │
     ├── math / matrix / format 等上层模块消费这些 trait 与 inherent methods
     │
-    └── FFI 场景下先按双字段 C struct 布局验证；若目标平台经构建探针确认 `_Complex T` 与相邻两字段 `T` 的 ABI 一致，则可直接启用 `_Complex` 互操作，否则退回 pair-struct 边界
+    └── FFI 场景下先验证双字段 C struct 布局；若构建探针确认 `_Complex T` ABI 一致，则该目标启用 `_Complex` 互操作；若探针失败，则相关 `_Complex` FFI 接口在该目标上不可用并应编译失败
 ```
 
 ---

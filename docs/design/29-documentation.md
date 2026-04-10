@@ -4,8 +4,6 @@
 > 前置文档: 所有前置文档（`00-coding.md` ~ `28-tests.md`）
 > 需求参考: 需求说明书 §28.1
 
-> **格式豁免声明**：本文档为全局质量规范，按 `design.md` §3 豁免标准模块章节顺序。
-
 ---
 
 ## 1. 模块定位
@@ -39,7 +37,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
-L3: storage (依赖 layout)
+ L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
 L4: tensor (依赖 storage, dimension)
 L5: overload/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 
@@ -100,7 +98,8 @@ examples/
 ├── broadcasting.rs           # 广播机制示例
 ├── parallel.rs               # 并行计算示例（需 parallel feature）
 ├── simd.rs                   # SIMD 加速示例（需 simd feature）
-├── no_std.rs                 # no_std 环境示例
+├── templates/
+│   └── no_std-app/           # no_std + alloc 示例模板工程
 └── ffi.rs                    # FFI 集成示例
 
 README.md                     # 项目 README
@@ -336,7 +335,7 @@ pub fn par_sum(&self) -> A { ... }
 | `broadcasting.rs` | 广播规则、行/列/标量广播 | 默认 | 日常使用 |
 | `parallel.rs` | 并行计算、阈值配置 | `parallel` | 性能优化（参见 `09-parallel.md §4`） |
 | `simd.rs` | SIMD 加速、回退策略 | `simd` | 性能优化（参见 `08-simd.md §4`） |
-| `no_std.rs` | `no_std + alloc` 使用模式 | 默认关闭 `std` | 系统/嵌入式开发者 |
+| `templates/no_std-app/` | `no_std + alloc` 使用模式模板工程 | 默认关闭 `std` | 系统/嵌入式开发者 |
 | `ffi.rs` | 与 C/BLAS 交互 | 默认 | 库开发者 |
 
 ### 8.2 示例模板

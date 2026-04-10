@@ -156,39 +156,34 @@ pub trait Numeric:
     /// allowing a single generic algorithm to handle both real and complex inner products.
     fn conjugate(self) -> Self;
 
-    /// Performs addition with overflow checking for integers.
-    /// - Integer types: uses checked_add, panics on overflow
-    /// - Float types: standard IEEE 754 addition
-    /// - Complex types: component-wise addition
-    fn safe_add(self, rhs: Self) -> Self;
 }
 
 // Real type implementations return self (identity):
 //
 // impl Numeric for i32 {
 //     fn conjugate(self) -> Self { self }
-//     fn safe_add(self, rhs: Self) -> Self { self.checked_add(rhs).expect("integer overflow in reduction") }
+//     // integer overflow handling is provided separately by CheckedAdd when needed
 // }
 // impl Numeric for i64 {
 //     fn conjugate(self) -> Self { self }
-//     fn safe_add(self, rhs: Self) -> Self { self.checked_add(rhs).expect("integer overflow in reduction") }
+//     // integer overflow handling is provided separately by CheckedAdd when needed
 // }
 // impl Numeric for f32 {
 //     fn conjugate(self) -> Self { self }
-//     fn safe_add(self, rhs: Self) -> Self { self + rhs }
+//     // ordinary IEEE 754 addition uses the Add supertrait implementation
 // }
 // impl Numeric for f64 {
 //     fn conjugate(self) -> Self { self }
-//     fn safe_add(self, rhs: Self) -> Self { self + rhs }
+//     // ordinary IEEE 754 addition uses the Add supertrait implementation
 // }
 // Complex type implementations return the complex conjugate:
 // impl Numeric for Complex<f32> {
 //     fn conjugate(self) -> Self { Complex::new(self.re, -self.im) }
-//     fn safe_add(self, rhs: Self) -> Self { Complex::new(self.re + rhs.re, self.im + rhs.im) }
+//     // ordinary complex addition uses the Add supertrait implementation
 // }
 // impl Numeric for Complex<f64> {
 //     fn conjugate(self) -> Self { Complex::new(self.re, -self.im) }
-//     fn safe_add(self, rhs: Self) -> Self { Complex::new(self.re + rhs.re, self.im + rhs.im) }
+//     // ordinary complex addition uses the Add supertrait implementation
 // }
 ```
 
@@ -348,7 +343,7 @@ let c = &a + &b.cast::<f64>();  // explicit conversion
 
 ### 4.8 CastTo\<T\> trait（类型转换）
 
-`CastTo<T>` 定义逐元素类型转换规则，由 `convert/cast.rs` 模块使用（参见 `21-type.md §4`）。
+`CastTo<T>` 是 Xenon 逐元素类型转换规则的唯一 owner，由 `convert/cast.rs` 模块消费（参见 `21-type.md §4`），不在其他模块重复定义。
 
 ```rust
 // src/element/mod.rs (or element/cast.rs)
@@ -535,7 +530,7 @@ impl RealScalar for f64 {
 
 - [ ] **T2**: 创建 `numeric.rs`，定义 Numeric trait 及其核心方法契约
   - 文件: `src/element/numeric.rs`
-  - 内容: `Numeric` trait 定义（四则运算 supertrait + `conjugate()` / `safe_add()` 契约）
+- 内容: `Numeric` trait 定义（四则运算 supertrait + `conjugate()` 契约）
   - 测试: 编译通过
   - 前置: T1
   - 预计: 5 min
