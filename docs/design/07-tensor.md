@@ -127,9 +127,11 @@ pub struct TensorBase<S, D> {
     /// negative and zero strides remain explicit signed metadata.
     strides: Strides<D>,
 
-    /// Data start offset (in element units).
+    /// Non-negative displacement from the storage base to the logical first element
+    /// (in element units).
     ///
-    /// Supports zero-copy implementation of slice views.
+    /// View constructors normalize the storage pointer and signed strides so that
+    /// `offset` remains non-negative even when some axes use negative strides.
     offset: usize,
 
     /// Layout flags (u8 bitflags).
@@ -281,7 +283,7 @@ where
     S: Storage<Elem = A>,
     D: Dimension,
 {
-    /// Returns a raw pointer to the data start.
+    /// Returns a raw pointer to the logical first element.
     pub fn as_ptr(&self) -> *const A;
 
     /// Returns the raw base pointer WITHOUT adding the offset.
@@ -364,8 +366,10 @@ where
     /// # Safety
     ///
     /// Caller must ensure:
-    /// - `ptr` is non-null, non-dangling, and aligned to `align_of::<A>()`
-    /// - The memory range starting at `ptr` covers all accessible elements
+    /// - `ptr` points to the logical first element of the view; for empty arrays or
+    ///   ZST elements, a well-formed dangling sentinel is permitted because it is never dereferenced
+    /// - The memory range reachable from `ptr`, together with `shape`, `strides`, and `offset`,
+    ///   covers all accessible logical elements
     /// - Memory remains valid for the lifetime `'a` of the returned view
     /// - All accessible elements are properly initialized
     /// - `shape` and `strides` have consistent lengths
@@ -687,11 +691,11 @@ Wave 4:       [T10]
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | `strides` 字段使用 `D` 类型存储，layout 层维护 `isize` 步长 |
-| 理由 | 编译期保证 strides 与 shape 维度数相同；静态维度使用栈分配（性能）；类型一致性 |
+| 决策 | `strides` 字段使用 `Strides<D>` 独立类型存储 |
+| 理由 | 显式保留 signed stride 元数据；与 `shape: D` 职责分离；静态维度仍可栈分配，动态维度仍可保持维度数一致 |
 | 替代方案 | `strides: Vec<isize>` — 放弃，静态维度也要堆分配 |
 | 替代方案 | `strides: [isize; N]` — 放弃，不支持动态维度 |
-| 替代方案 | `Strides<D>` 独立类型 — 放弃，增加类型复杂度 |
+| 替代方案 | `strides` 复用 `D` 类型 — 放弃，无法显式表达 signed stride，且会混淆 shape 与 layout 的职责 |
 
 ### 决策 3：offset 字段必要性
 

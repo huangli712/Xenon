@@ -126,7 +126,7 @@ CHANGELOG.md                  # 版本变更记录
 ├── 被 28-integration-tests 依赖
 │   └── doctest 也是测试的一部分（参见 `28-tests.md §11`）
 └── 被 27-benchmark 依赖
-    └── benchmark 文档引用性能相关 API 文档（参见 `27-benchmark.md §14`）
+    └── benchmark 文档引用性能相关 API 文档（参见 `27-benchmark.md §10` 与 `§12`）
 ```
 
 ### 3.2 依赖精确到类型级
@@ -886,10 +886,10 @@ docs:
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T16**: 编写 examples/no_std.rs
-  - 文件: `examples/no_std.rs`
-  - 内容: `no_std + alloc` 环境下的最小用法示例
-  - 测试: `cargo check --example no_std --no-default-features`
+- [ ] **T16**: 编写 `templates/no_std-app/` 最小工程模板
+  - 文件: `templates/no_std-app/`
+  - 内容: `no_std + alloc` 环境下的最小依赖工程（不是普通 `examples/` 可执行程序）
+  - 测试: `cargo check --manifest-path templates/no_std-app/Cargo.toml --no-default-features`
   - 前置: T1
   - 预计: 10 min
 

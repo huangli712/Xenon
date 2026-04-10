@@ -684,7 +684,7 @@ let overflow = (big.re * big.re + big.im * big.im).sqrt(); // Inf!
 ```
 hypot(a, b):
     a = |a|, b = |b|
-    if a > b: swap(a, b)
+    if a < b: swap(a, b)
     if a == 0: return b
     ratio = b / a
     return a * sqrt(1 + ratio²)
@@ -738,7 +738,7 @@ hypot(a, b):
     │
     ├── math / matrix / format 等上层模块消费这些 trait 与 inherent methods
     │
-    └── FFI 场景下按双字段 C struct 布局进行边界验证后传递给外部接口
+    └── FFI 场景下先按双字段 C struct 布局验证；若目标平台经构建探针确认 `_Complex T` 与相邻两字段 `T` 的 ABI 一致，则可直接启用 `_Complex` 互操作，否则退回 pair-struct 边界
 ```
 
 ---
@@ -880,10 +880,10 @@ Wave 5: [T11] → [T12]
 | `test_div_complex` | `(6+8i) / (3+4i) == (2+0i)` | 高 |
 | `test_neg_complex` | `-(1+2i) == (-1-2i)` | 高 |
 | `test_add_real` | `(1+2i) + 3.0 == (4+2i)` | 高 |
-| `test_real_add_complex` | `3.0 + (1+2i) == (4+2i)` | 高 |
+| `test_real_to_complex_add` | `Complex::from(3.0) + (1+2i) == (4+2i)` | 高 |
 | `test_mul_real` | `(1+2i) * 3.0 == (3+6i)` | 高 |
 | `test_div_by_real` | `(6+4i) / 2.0 == (3+2i)` | 高 |
-| `test_real_div_complex` | `5.0 / (3+4i)` 正确 | 中 |
+| `test_real_to_complex_div` | `Complex::from(5.0) / (3+4i)` 正确 | 中 |
 | `test_norm_3_4_5` | `Complex::new(3.0, 4.0).norm() == 5.0` | 高 |
 | `test_norm_no_overflow` | `Complex::new(1e200, 1e200).norm()` 不溢出 | 高 |
 | `test_norm_sqr` | `norm_sqr() == re² + im²` | 中 |

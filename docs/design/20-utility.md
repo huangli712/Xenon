@@ -23,7 +23,7 @@
 |------|------|
 | 步长感知 | `fill`/`clip` 通过迭代器正确处理非连续内存布局 |
 | 原地优先 | `fill` 为原地操作（`&mut self`），避免额外分配 |
-| 类型安全 | `clip` 限制为有序数值类型（`Numeric + PartialOrd`），编译期拒绝 `bool`、`Complex` 和 `usize` |
+| 类型安全 | `clip` 限制为有序标量类型（`i32`、`i64`、`usize`、`f32`、`f64`），编译期拒绝 `bool` 和 `Complex` |
 | 语义清晰 | `to_contiguous` 返回 `Tensor<A, D>`，调用方可预测生命周期 |
 
 ### 1.3 在架构中的位置
@@ -79,7 +79,7 @@ src/util/
 | `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`（参见 `07-tensor.md` §4） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §4） |
 | `storage` | `Storage<Elem=A>`, `StorageMut<Elem=A>`（参见 `05-storage.md` §4） |
-| `element` | `Element`, `RealScalar`（clip 约束）（参见 `03-element.md` §3） |
+| `element` | `Element`, `RealScalar`，以及 utility 层定义的 operation-specific `ClipElement` 约束 |
 | `layout` | `is_f_contiguous()`（参见 `06-memory.md` §4） |
 | `iter` | `iter()`, `iter_mut()`（参见 `10-iterator.md` §4） |
 | `math` | `mapv()`（clip 内部调用，参见 `11-math.md` §4） |
@@ -111,7 +111,7 @@ where
     /// **Not available for `Complex<f32>`/`Complex<f64>`** because complex numbers
     /// have no natural total ordering (`Complex` does not implement `PartialOrd`,
     /// see `04-complex.md §4`).
-    /// **Not available for `bool` / `usize`** because neither type implements `Numeric`
+/// **Not available for `bool` / `Complex<_>`** because clip requires an ordered scalar domain.
     /// (see `03-element.md §3`).
     ///
     /// # Arguments
@@ -201,7 +201,7 @@ where
 
 > `to_contiguous()` 是本模块（20-utility.md §4）定义的公共 API。内部实现委托给 `src/convert/contiguous.rs` 中的 `to_f_contiguous()` 辅助函数（见 21-type.md §2.1 文件结构）。
 >
-> **依赖说明**: `to_contiguous()` 仅涉及内存拷贝和布局重构，不依赖 `convert` 模块的类型转换功能。两者无实际依赖关系。`contiguous.rs` 位于 `convert/` 目录仅出于代码组织考虑（`to_f_contiguous()` 与 `to_owned()` 等存储转换函数关联更紧密）。
+> **依赖说明**: `to_contiguous()` 是 utility 模块暴露的公共 API；其非连续路径内部调用 convert 模块中的 `to_f_contiguous()` helper。类型转换语义仍归 convert，连续性保证语义归 utility。
 
 ```rust
 impl<S, D, A> TensorBase<S, D>
@@ -403,6 +403,12 @@ Wave 2:      [T3] → [T4]
 | `fill(v)` 后 `iter().all(|x| *x == v)` | 随机形状 + 随机值 |
 | `to_contiguous()` 返回的张量 `is_f_contiguous() == true` | 随机非连续布局 |
 
+### 7.4 集成测试
+
+| 测试文件 | 测试内容 |
+|----------|----------|
+| `tests/utility.rs` | `clip`/`fill`/`to_contiguous` 与 `tensor`、`iter`、`layout`、`convert` 的协同路径 |
+
 ---
 
 ## 8. 与其他模块的交互
@@ -412,7 +418,7 @@ Wave 2:      [T3] → [T4]
 | `fill` → `iter` | 依赖 | 通过 `iter_mut()` 遍历元素（参见 `10-iterator.md` §4.1） |
 | `clip` → `iter` | 依赖 | 通过 `iter()` 读取、写入新张量（参见 `10-iterator.md` §4.1） |
 | `to_contiguous` → `layout` | 依赖 | 查询连续性状态（参见 `06-memory.md` §4） |
-| `to_contiguous` → `convert` | 依赖 | 调用 `to_owned()`/`to_f_contiguous()`（参见 `21-type.md` §4.5 和 §4.6），始终输出 F-order；`to_f_contiguous()` 在 21 中定义，负责将非连续内存重排为 F-order 连续布局 |
+| `to_contiguous` → `convert` | 依赖 | 调用 `to_owned()`/`to_f_contiguous()`（参见 `21-type.md` §4.5 和 §4.7），始终输出 F-order；`to_f_contiguous()` 在 21 中定义，负责将非连续内存重排为 F-order 连续布局 |
 
 ---
 

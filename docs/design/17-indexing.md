@@ -14,7 +14,7 @@
 |------|------|--------|
 | 多维整数索引 | `[i, j, k]` 形式的元素访问， | 高级索引（布尔掩码/整数数组/where 条件选择） |
 | 范围索引（切片） | `s![.., 0..3, ..;2]` 宏驱动切片 | 高级索引（布尔掩码、整数数组高级索引） |
-| Index trait 实现 | `std::ops::Index` for `TensorBase` | 比较运算符（在逐元素运算模块） |
+| Index trait 实现 | `core::ops::Index` for `TensorBase` | 比较运算符（在逐元素运算模块） |
 | 偏移量计算 | F-order 公式：`offset = sum(index[i] * strides[i])` | 其他内存序的偏移量计算 |
 | get/get_unchecked | `get()` 返回 `Option<&A>` / `get_unchecked()` unsafe 变体 | 可变迭代器（在 iter 模块） |
 | 切片宏 | `s![]` 宏的语法解析和展开 | 切片宏设计在 ndarray 之外的库中 |
@@ -100,7 +100,7 @@ src/index/
 
 ### 4.0 NdIndex trait — 多维索引类型约束
 
-`NdIndex<D>` 是多维索引类型的 sealed trait，用于 `std::ops::Index` 实现中约束合法的索引参数类型。
+`NdIndex<D>` 是多维索引类型的 sealed trait，用于 `core::ops::Index` 实现中约束合法的索引参数类型。
 
 ```rust
 use crate::private::Sealed;
@@ -463,18 +463,30 @@ function compute_offset_f(shape: [usize; N], strides: [isize; N], index: [usize;
 ### 5.2 切片步长/形状/偏移量计算
 
 ```rust
-// normalize(idx, dim_len): convert possibly-negative index to valid usize
-// if idx < 0: return dim_len + idx (Python-style negative indexing)
-// if idx >= 0: return idx as usize
+// normalize_index(idx, dim_len): convert possibly-negative point index to valid usize
 // Panics if result is out of bounds [0, dim_len)
-fn normalize(idx: isize, dim_len: usize) -> usize {
+fn normalize_index(idx: isize, dim_len: usize) -> usize {
     if idx < 0 {
         let normalized = dim_len as isize + idx;
         assert!(normalized >= 0, "index out of bounds");
         normalized as usize
     } else {
-        idx as usize
+        let normalized = idx as usize;
+        assert!(normalized < dim_len, "index out of bounds");
+        normalized
     }
+}
+
+// normalize_bound(idx, dim_len): convert slice bound to [0, dim_len]
+// Negative values are interpreted Python-style; positive end bound may equal dim_len.
+fn normalize_bound(idx: isize, dim_len: usize) -> usize {
+    let normalized = if idx < 0 {
+        dim_len as isize + idx
+    } else {
+        idx
+    };
+    assert!((0..=dim_len as isize).contains(&normalized), "slice bound out of bounds");
+    normalized as usize
 }
 
 function compute_slice(shape, strides, offset, slices: [SliceInfoElem; N])
@@ -489,12 +501,13 @@ function compute_slice(shape, strides, offset, slices: [SliceInfoElem; N])
             Index(idx):
                 // Single index: reduce dimension
                 // Normalize negative index (Python-style: -1 means last element)
-                let normalized_idx = normalize(idx, shape[i])
+                let normalized_idx = normalize_index(idx, shape[i])
                 new_offset += normalized_idx * strides[i]
                 // shape and strides do not include this dimension
             Range { start, end, step }:
                 // Range slice
                 st = step.unwrap_or(1)
+                assert!(st != 0, "slice step must not be zero")
 
                 // Default start/end depend on step direction:
                 // - Positive step: start=0, end=shape[i]
@@ -505,8 +518,14 @@ function compute_slice(shape, strides, offset, slices: [SliceInfoElem; N])
                 // Handle negative values. For negative-step full slices, the default
                 // end = -1 is an exclusive sentinel and must not be normalized into
                 // a concrete in-bounds index.
-                s = normalize(s, shape[i])
-                e = if st > 0 || end.is_some() { normalize(e, shape[i]) } else { e }
+                s = normalize_index(s, shape[i])
+                e = if st > 0 {
+                    normalize_bound(e, shape[i])
+                } else if end.is_some() {
+                    normalize_index(e, shape[i])
+                } else {
+                    e
+                }
 
                 dim_len = if st > 0:
                     (e - s + st - 1) / st
@@ -515,22 +534,13 @@ function compute_slice(shape, strides, offset, slices: [SliceInfoElem; N])
                 new_shape.push(dim_len)
                 new_strides.push(strides[i] * st)
 
-                // Offset calculation for negative strides:
-                // When the original stride is negative, index 0 maps to the
-                // highest physical address in that dimension. The offset for
-                // index s with negative original stride is adjusted by starting
-                // from the dimension's end:
-                if strides[i] < 0:
-                    new_offset += (shape[i] - 1 - s) * strides[i].abs()
-                else:
-                    new_offset += s * strides[i]
+                // Offset is always computed from the logical first element.
+                // Negative traversal direction is already encoded in signed strides.
+                new_offset += s * strides[i]
 
                 // Update flags
                 if st < 0:
                     new_layout.set_has_neg_stride(true)
-                if st == 0:
-                    new_layout.set_has_zero_stride(true)
-
     return (new_shape, new_strides, new_offset, new_layout)
 ```
 

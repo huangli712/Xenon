@@ -247,7 +247,7 @@ Benchmark 分类
 | `elem_mul_f64` | `a * b` | S/M/L | f64 | F-contiguous | 逐元素乘法 |
 | `elem_sin_f64` | `sin(a)` | S/M/L | f64 | F-contiguous | 超越函数逐元素 |
 | `elem_add_sliced` | `a + b`（b 为切片视图） | M | f64 | Non-contiguous | 非连续惩罚 |
-| `sum_1d` | 全局 sum | S/M/L | f64 | F-contiguous | 1D 归约 |
+| `sum_1d_f64` | 全局 sum | S/M/L | f64 | F-contiguous | 1D 归约 |
 | `sum_2d_axis0` | 沿轴 0 sum | S/M/L | f64 | F-contiguous | 2D 沿轴归约 |
 | `sum_2d_axis1` | 沿轴 1 sum | S/M/L | f64 | F-contiguous | 2D 沿轴归约 |
 | `sum_sliced` | 非连续 sum | M | f64 | Non-contiguous | 非连续归约惩罚 |
@@ -284,12 +284,12 @@ Benchmark 分类
 | 文件 | 组 | 说明 |
 |------|-----|------|
 | `math.rs` | `elem_add_f64` (Medium) | 核心逐元素路径 |
-| `reduction.rs` | `sum_1d` (Medium) | 核心归约路径 |
+| `reduction.rs` | `sum_1d_f64` (Medium) | 核心归约路径 |
 | `construction.rs` | `zeros_1d` (Medium) | 基础构造路径 |
 
 ### 8.2 Regression Check 覆盖范围
 
-Regression Check 监测以下核心基准：`elem_add_f64`（逐元素加法，f64，100×100）和 `sum_1d_f64`（一维归约，f64，65536元素）。
+Regression Check 监测以下核心基准：`elem_add_f64`（逐元素加法，f64，256×256）和 `sum_1d_f64`（一维归约，f64，65536 元素）。其中 `256×256` 与 §6 的 Medium 规模保持一致。
 
 ### 8.3 CI 配置示例
 
@@ -303,7 +303,7 @@ benchmark-smoke:
         - name: Smoke benchmarks
           run: |
             cargo bench --bench math -- "elem_add_f64" --sample-size 10 --message-format=json > target/criterion-output.json
-            cargo bench --bench reduction -- "sum_1d" --sample-size 10 --message-format=json >> target/criterion-output.json
+            cargo bench --bench reduction -- "sum_1d_f64" --sample-size 10 --message-format=json >> target/criterion-output.json
             cargo bench --bench construction -- "zeros_1d" --sample-size 10 --message-format=json >> target/criterion-output.json
 
         - name: Store results
@@ -316,6 +316,8 @@ benchmark-smoke:
 ```
 
 > **注意**：criterion 的标准 HTML/JSON 输出位于 `target/criterion/<benchmark_name>/` 目录下。CI 回归对比使用的 JSON 摘要通过 `--message-format=json` 标志生成，写入 `target/criterion-output.json`。如需 `bencher` 格式输出，可使用 `--output-format=bencher` 或自定义提取脚本。
+
+> **baseline 管理**：Regression Check 以上一轮 main 分支通过的结果作为 baseline；当性能改善或已知噪声需要更新基线时，应在专门的 benchmark PR 中更新并记录原因。
 
 ---
 
@@ -334,7 +336,7 @@ benchmark-smoke:
 ## 10. Benchmark 模板
 
 ```rust
-// benches/mathrs
+// benches/math.rs
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 mod utils;
 use utils::{SIZES_1D, data_gen};
@@ -501,7 +503,7 @@ benchmark 文件
 
 - [ ] **T4**: 实现 `benches/reduction.rs`
   - 文件: `benches/reduction.rs`
-  - 内容: sum_1d/sum_2d_axis0/sum_2d_axis1/sum_sliced
+- 内容: sum_1d_f64/sum_2d_axis0/sum_2d_axis1/sum_sliced
   - 测试: `cargo bench --bench reduction -- "sum" --quick`
   - 前置: T2
   - 预计: 10 min

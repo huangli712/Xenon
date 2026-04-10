@@ -133,6 +133,7 @@ pub enum WorkspaceError {
 
 ```rust
 use core::ptr::NonNull;
+use core::marker::PhantomData;
 use core::sync::atomic::{AtomicU8, Ordering};
 use alloc::alloc::{alloc, dealloc, Layout};
 
@@ -188,6 +189,9 @@ pub struct Workspace {
     /// Active split count. Incremented by split_at(), decremented by SplitBorrowMut::drop().
     /// Only when this reaches 0 is borrow_state reset to BORROW_NONE.
     split_count: core::sync::atomic::AtomicUsize,
+
+    /// Marker that intentionally prevents auto-deriving `Send`/`Sync`.
+    _not_send_sync: PhantomData<*mut ()>,
 }
 ```
 
@@ -263,6 +267,7 @@ impl Workspace {
             alignment,
             borrow_state: AtomicU8::new(Self::BORROW_NONE),
             split_count: core::sync::atomic::AtomicUsize::new(0),
+            _not_send_sync: PhantomData,
         })
     }
 
@@ -314,11 +319,15 @@ pub struct WorkspaceBorrowMut<'a> {
 }
 
 impl Workspace {
-    /// Immutably borrow the workspace.
+    /// Acquire the workspace for shared read-only access.
     ///
     /// # Errors
     ///
     /// `WorkspaceError::AlreadyBorrowed`: Workspace is already borrowed.
+    ///
+    /// Note: the current design allows at most one active shared guard at a time.
+    /// This keeps the runtime state machine simple and matches the workspace's
+    /// temporary-scratch-buffer positioning.
     pub fn borrow(&self) -> Result<WorkspaceBorrow<'_>, WorkspaceError> {
         let prev = self.borrow_state.compare_exchange(
             Self::BORROW_NONE,

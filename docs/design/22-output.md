@@ -242,12 +242,13 @@ where
 ### 4.3 Debug 实现
 
 ```rust
-// Debug is available in no_std via core::fmt; unified constraint A: Debug + Element
+// Debug is available in no_std via core::fmt; Debug reuses Display for the data section,
+// so A must satisfy both Debug and Display.
 impl<S, D, A> core::fmt::Debug for TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: core::fmt::Debug + Element,
+    A: core::fmt::Debug + core::fmt::Display + Element,
 {
     /// Developer-facing debug output.
     ///

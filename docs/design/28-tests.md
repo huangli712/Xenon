@@ -319,8 +319,8 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> TensorView2<'static, f64> 
 |----------|----------|--------|
 | `test_par_sum_consistency` | 并行 sum 与串行 sum 结果一致（参见 `09-parallel.md §7`） | 高 |
 | `test_par_add_consistency` | 并行 add 与串行 add 结果一致 | 高 |
-| `test_parallel_read` | 多线程并发只读访问安全（参见 `25-safety.md §4.5`） | 高 |
-| `test_no_nested_parallel` | 嵌套并行被拒绝 | 中 |
+| `test_parallel_read` | 多线程并发只读访问安全（参见 `25-safety.md §4.4`） | 高 |
+| `test_nested_parallel_falls_back_to_serial` | 嵌套并行检测后自动回退串行 | 中 |
 
 ### 5.11 test_simd.rs
 
@@ -435,14 +435,14 @@ fn test_high_dim_operations() {
 
 ### 7.2 浮点比较方式
 
-浮点测试默认使用 **相对容差**（rtol）比较；但后端一致性测试（SIMD / parallel）遵循对应模块的更强契约：若 backend 路径被启用，则结果必须与标量/串行基线路径一致；若无法保证，则应验证其自动回退行为。
+浮点测试默认使用 **NumPy 风格组合容差**（`atol + rtol`）比较；但后端一致性测试（SIMD / parallel）遵循对应模块的更强契约：若 backend 路径被启用，则结果必须与标量/串行基线路径一致；若无法保证，则应验证其自动回退行为。
 
 ```rust
-/// Compare two floats with relative tolerance.
+/// Compare two floats with combined absolute/relative tolerance.
 ///
 /// NaN handling: NaN is considered equal to NaN, and NaN is not
 /// close to any non-NaN value.
-pub fn rtol_eq(actual: f64, expected: f64, rtol: f64) -> bool {
+pub fn allclose_eq(actual: f64, expected: f64, atol: f64, rtol: f64) -> bool {
     if actual.is_nan() && expected.is_nan() {
         return true;
     }
@@ -450,9 +450,9 @@ pub fn rtol_eq(actual: f64, expected: f64, rtol: f64) -> bool {
         return false;
     }
     if expected == 0.0 {
-        actual.abs() < rtol
+        actual.abs() <= atol
     } else {
-        (actual - expected).abs() / expected.abs() < rtol
+        (actual - expected).abs() <= atol + rtol * expected.abs()
     }
 }
 ```
@@ -709,7 +709,7 @@ fn test_bad_magic() {
 | `test_simd.rs` | `simd` | `08-simd.md` |
 | `test_error.rs` | `error` | `26-error.md` |
 
-> **说明**：`WorkspaceError` 是独立于 `XenonError` 的错误类型，因此 workspace 相关错误既在 `test_ffi.rs` 中覆盖 FFI/Workspace 交互，也在错误测试中单独验证其返回值与显示信息。
+> **说明**：`WorkspaceError` 是独立于 `XenonError` 的错误类型。其返回值与显示信息在 `test_workspace.rs` 中单独验证；`test_error.rs` 只覆盖 `XenonError` 及其模块边界。
 
 ### 12.2 数据流
 

@@ -241,7 +241,7 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
 }
 ```
 
-> **设计决策：** `min`/`max` 采用 NaN 传播语义（任一参数为 NaN → 返回 NaN），与 `f32::min`/`f64::min` 一致。
+> **设计决策：** `min`/`max` 采用 NaN 传播语义（任一参数为 NaN → 返回 NaN）。Xenon 通过 `RealScalar` 自身的契约固定这一行为，而不直接把标准库某个具体方法的全部细节当作语义来源。
 
 ### 4.4 ComplexScalar trait
 
@@ -499,7 +499,7 @@ impl RealScalar for f64 {
 | `overload` | `Numeric` | 逐元素运算泛型约束 |
 | `reduction` | `Numeric`（sum）、`RealScalar`（min/max） | 归约运算泛型约束 |
 | `tensor` | `Element` | Tensor<A, D> 的 A 约束 |
-| `linalg` | `Numeric` | 内积运算 |
+| `matrix` | `Numeric` | 内积运算 |
 | `cast/convert` | `Element` | 类型转换 |
 
 > 各模块的详细接口约定参见对应设计文档（`11-math.md` §4、`13-reduction.md` §4、`21-type.md` §4）。
@@ -508,7 +508,7 @@ impl RealScalar for f64 {
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│  math / reduction / linalg (使用 Element/Numeric 约束)         │
+│  math / reduction / matrix (使用 Element/Numeric 约束)         │
 └──────────────────────┬────────────────────────────────────────┘
                        │ 泛型约束
 ┌──────────────────────▼────────────────────────────────────────┐
@@ -533,9 +533,9 @@ impl RealScalar for f64 {
   - 前置: 无
   - 预计: 10 min
 
-- [ ] **T2**: 创建 `numeric.rs`，定义 Numeric trait
+- [ ] **T2**: 创建 `numeric.rs`，定义 Numeric trait 及其核心方法契约
   - 文件: `src/element/numeric.rs`
-  - 内容: `Numeric` trait 定义（marker trait，所有约束通过 supertrait）
+  - 内容: `Numeric` trait 定义（四则运算 supertrait + `conjugate()` / `safe_add()` 契约）
   - 测试: 编译通过
   - 前置: T1
   - 预计: 5 min

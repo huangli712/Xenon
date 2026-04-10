@@ -96,7 +96,7 @@ src/convert/
 | `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.memory_order()`（参见 `07-tensor.md` §4） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §4） |
 | `storage` | `Storage<Elem=A>`, `StorageMut`, `Owned<A>`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`（参见 `05-storage.md` §4） |
-| `element` | `Element`, `CastTo<B>`（参见 `03-element.md` §4.8） |
+| `element` | `Element`, `CastTo<B>`（参见 `03-element.md` §4.8；convert 只消费该 trait，不重新定义） |
 | `layout` | `is_f_contiguous()`（参见 `06-memory.md` §4） |
 | `error` | `XenonError`, `Result<T>`（参见 `26-error.md` §4） |
 
@@ -192,6 +192,8 @@ where
 | `Complex<f32>` | `Complex<f64>` | 实部/虚部各自提升精度 | `Complex { re: 1.0_f32, im: 2.0_f32 } → Complex { re: 1.0_f64, im: 2.0_f64 }` |
 | `Complex<f64>` | `Complex<f32>` | 实部/虚部各自 round-to-nearest-even | `Complex { re: 1.23456789, im: 2.0 } → Complex { re: 1.234568, im: 2.0 }` |
 | `Complex<T>` | `T` | **编译错误** | 须显式取 `.re()` |
+| `usize` | `i32/i64` | saturating narrowing | `usize::MAX → i64::MAX`（当目标更窄时饱和） |
+| `i32/i64` | `usize` | 负数 → 0，正数按范围饱和 | `-1i32 → 0usize` |
 
 ### 4.4 Good / Bad 对比
 
@@ -233,9 +235,8 @@ where
     pub fn to_owned(&self) -> Tensor<A, D> {
         // Always produce F-order (Xenon only supports F-order, see requirement §7).
         // Iterate in F-order and collect into a new aligned allocation.
-        let shape = self.shape();
         let mut data: Vec<A> = Vec::with_capacity(self.len());
-        for &elem in self.iter() {
+        for elem in self.iter().cloned() {
             data.push(elem);
         }
         // from_vec_aligned: copies into a 64-byte aligned allocation (see 05-storage.md §5.1)
@@ -337,7 +338,7 @@ where
     pub fn to_f_contiguous(&self) -> Tensor<A, D> {
         let mut data = Vec::with_capacity(self.len());
         // iter() traverses in F-order (see 10-iterator.md §5.1 fast/slow paths)
-        for &elem in self.iter() {
+        for elem in self.iter().cloned() {
             data.push(elem);
         }
         Tensor::from_shape_vec_aligned(self.raw_dim(), data)
@@ -446,9 +447,9 @@ impl CastTo<Complex<f64>> for f64 {
 
 ### Wave 1: 基础设施
 
-- [ ] **T1**: 定义 `CastTo` trait 及核心转换实现
+- [ ] **T1**: 实现 `CastTo` trait 的核心转换路径
   - 文件: `src/convert/cast.rs`
-  - 内容: `CastTo<T>` trait 定义，f64↔f32、f64→i32、i32→f64 等基础 impl
+  - 内容: 复用 `element` 模块中定义的 `CastTo<T>` trait，补齐 f64↔f32、f64→i32、i32→f64 等基础 impl
   - 测试: `test_cast_f64_to_i32`, `test_cast_f32_to_f64`, `test_cast_nan_to_int`
   - 前置: element 模块完成
   - 预计: 15 min
@@ -476,9 +477,9 @@ impl CastTo<Complex<f64>> for f64 {
   - 前置: T2, tensor 模块完成
   - 预计: 10 min
 
-- [ ] **T5**: 实现 `to_contiguous` 连续化转换
+- [ ] **T5**: 实现 `to_f_contiguous` 连续化 helper
   - 文件: `src/convert/contiguous.rs`
-  - 内容: `to_contiguous()` 方法实现
+  - 内容: `to_f_contiguous()` helper，实现非连续输入到 F-order owned 的重排
   - 测试: `test_to_contiguous_from_view`, `test_to_contiguous_already_contiguous`
   - 前置: T2, tensor 模块完成
   - 预计: 10 min

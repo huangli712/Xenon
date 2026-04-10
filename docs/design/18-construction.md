@@ -236,7 +236,7 @@ where
         }
         let strides = dim.strides_for_f_order();
         // from_vec_aligned: defined in 05-storage.md §5.1 and 21-type.md §5.1;
-        // copies data into a 64-byte aligned allocation for SIMD compatibility.
+        // copies data into Xenon's aligned allocation for SIMD compatibility.
         let storage = Owned::from_vec_aligned(data);
         Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) })
     }
@@ -383,9 +383,9 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 | `zeros` | 对齐分配 + 零初始化 | `ptr::write_bytes(0)` |
 | `ones` | 对齐分配 + 批量填充 | `ptr::write(One::one())` |
 | `fill` | 对齐分配 + 批量克隆 | `clone` 填充 |
-| `from_vec` | 复制到对齐分配（会拷贝数据到新的64字节对齐内存） | 用户提供数据 |
-| `from_slice` | 对齐分配 + 拷贝 | `copy_from_slice` |
-| `from_fn` | 对齐分配 + 闭包填充 | 闭包逐元素调用 |
+| `from_vec` | 复制到对齐分配（按元素类型选择 Xenon 的标准对齐） | 用户提供数据 |
+| `from_slice` | 先复制到临时 Vec，再复制到对齐分配 | 两次数据搬运（保持 API 简洁） |
+| `from_fn` | 先写入临时 Vec，再复制到对齐分配 | 闭包逐元素调用 + 一次最终复制 |
 | `from_scalar` | 对齐分配（1 元素） | 单元素写入 |
 | `eye` | 先 `zeros` 再对角线写入 | 两步：零初始化 + 对角线 |
 
@@ -413,6 +413,7 @@ function increment_index_f(shape, index):
 - `from_vec`: 验证 `data.len() == dim.size()`，不匹配返回错误；通过后 `Owned::from_vec_aligned` 消费输入 Vec 并复制到对齐存储
 - `from_slice`: 验证长度后拷贝，原始切片不再被引用
 - `from_fn`: 闭包接收合法索引（`0 <= idx[i] < shape[i]`），无越界风险
+- `dim.size()` 溢出或分配失败：构造路径须在实现中转为 `XenonError` 或 panic-by-policy，不得产生未定义行为；ZST 与空张量路径须与 `05-storage.md` 的约束保持一致
 - `eye`: 内部使用已验证的 `zeros` 和合法索引 `[[i, i]]`（`0 <= i < n`），无越界风险
 
 ---

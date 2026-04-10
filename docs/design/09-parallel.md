@@ -269,13 +269,13 @@ where
     A: Element + Send + Sync,
     B: Element + Send,
     D: Dimension,
-    F: Fn(A) -> B + Send + Sync,
+    F: Fn(&A) -> B + Send + Sync,
 {
     let _guard = match ParallelGuard::enter() {
         Some(g) => g,
         None => {
             // Already in parallel context, fall back to serial
-            let output: Vec<B> = tensor.iter().map(|x| f(*x)).collect();
+            let output: Vec<B> = tensor.iter().map(|x| f(x)).collect();
             // SAFETY: output length == tensor.len()
             return unsafe { Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()) };
         }
@@ -283,12 +283,12 @@ where
     let len = tensor.len();
     if len < threshold {
         // Below threshold: serial execution
-        let output: Vec<B> = tensor.iter().map(|x| f(*x)).collect();
+        let output: Vec<B> = tensor.iter().map(|x| f(x)).collect();
         // SAFETY: output length == tensor.len()
         return unsafe { Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()) };
     }
 
-    let output: Vec<B> = tensor.par_iter().map(|x| f(*x)).collect();
+    let output: Vec<B> = tensor.par_iter().map(|x| f(x)).collect();
 
     // SAFETY: output length == tensor.len()
     unsafe { Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()) }
@@ -332,7 +332,11 @@ where
     D: Dimension,
     A: Element + Numeric + Send + Sync + Clone,
 {
-    par_reduce(tensor, || A::zero(), |a, b| a + b)
+    // For integer reductions, the implementation must use checked accumulation
+    // and panic on overflow (see 13-reduction.md §5.1 / 26-error.md §5.2).
+    // For floating-point reductions, if exact serial equivalence cannot be proven,
+    // this entry must transparently fall back to the serial baseline.
+    par_reduce(tensor, || A::zero(), |a, b| a.safe_add(b))
 }
 
 /// Parallel zip operation

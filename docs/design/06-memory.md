@@ -323,13 +323,13 @@ i=0: shape[0]=2, stride[0]=3, expected=1 ✗
 ### 4.5 对齐检查
 
 ```rust
-/// Checks whether the pointer satisfies the alignment requirement.
+/// Checks whether the logical first-element pointer satisfies the alignment requirement.
 #[inline]
 pub fn is_aligned_to(ptr: *const u8, align: usize) -> bool {
     (ptr as usize) % align == 0
 }
 
-/// Checks whether the pointer is 64-byte aligned.
+/// Checks whether the logical first-element pointer is 64-byte aligned.
 #[inline]
 pub fn is_aligned(ptr: *const u8) -> bool {
     is_aligned_to(ptr, 64)
@@ -358,7 +358,7 @@ shape = [3, 4], strides = [4, -1]  // 行反转
 索引 [2, 0]: offset = 2*4 + 0*(-1) = 8   ← 最大偏移
 ```
 
-带负步长的视图，其数据指针指向原数组的中间位置（非起始），需要通过 `offset` 字段调整。
+带负步长的视图仍以**逻辑首元素**为指针基准。Xenon 约定：视图构造阶段先把原始指针规范化到逻辑首元素，再通过带符号的 `strides` 表达反向遍历；`TensorBase.offset` 只表示从底层 storage 基址到该逻辑首元素的**非负**位移（参见 `07-tensor.md §4.1` 与 `§5.2`）。
 
 ### 4.8 零步长语义
 
@@ -451,7 +451,7 @@ impl Layout {
 ///
 /// * `shape` - Dimension lengths
 /// * `strides` - Strides in element units (`Strides<D>` with explicit `isize` storage)
-/// * `ptr` - Raw pointer to the data start
+/// * `ptr` - Raw pointer to the logical first element (`TensorBase::as_ptr()`)
 ///
 /// # Returns
 ///
@@ -496,7 +496,7 @@ function compute_flags(shape, strides, ptr):
     // 1. 连续性
     flags = flags.set_f_contiguous(is_f_contiguous(shape, strides))
 
-    // 2. 对齐
+    // 2. 对齐（按逻辑首元素指针，而非底层分配基址）
     flags = flags.set_aligned(is_aligned(ptr))
 
     // 3. 步长特性
@@ -520,7 +520,7 @@ function compute_flags(shape, strides, ptr):
 | 操作 | 标志位更新方式 |
 |------|----------------|
 | 创建 | 全部重新计算 |
-| 切片 | 继承 + 重新计算连续性/对齐 |
+| 切片 | 继承 + 重新计算连续性/对齐（对齐基于切片后逻辑首元素） |
 | 转置 | 继承 + F 连续性标志重置（转置后通常变为非 F-连续） |
 | Reshape | 重新计算全部 |
 | 视图创建 | 继承全部 |
@@ -673,7 +673,7 @@ Wave 4:       [T8]
 
 | 交互点 | 方向 | 说明 |
 |--------|------|------|
-| 对齐检查 | tensor/storage → layout | `TensorBase` 构造时将数据指针传入 `layout::is_aligned()` 计算对齐标志。layout 不依赖 Storage trait，仅操作原始指针。 |
+| 对齐检查 | tensor/storage → layout | `TensorBase` 构造时将逻辑首元素指针（`as_ptr()` 语义）传入 `layout::is_aligned()` 计算对齐标志。layout 不依赖 Storage trait，仅操作原始指针。 |
 
 ### 8.2 与 Tensor 模块
 

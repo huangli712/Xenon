@@ -171,19 +171,20 @@ unique(self):
 ### 5.2 浮点排序处理
 
 ```
-浮点比较策略（基于 f64::total_cmp / f32::total_cmp）：
-- NaN 被视为大于任何实数（NaN > f64::MAX）
-- 排序后 NaN 出现在数组末尾
-- -NaN 和 NaN 视为相等（通过 total_eq 去重）
-- 与 IEEE 754 totalOrder 一致
+浮点比较策略（基于 Xenon 自定义 canonical-NaN 规则，而非直接复用 `f64::total_cmp` / `f32::total_cmp` 的全部语义）：
+- 所有非 NaN 值按 `total_cmp` 排序
+- 所有 NaN 值统一归并到排序结果末尾
+- `total_eq` 将所有 NaN 视为同一值，因此去重后只保留一个 canonical NaN
+- 该规则是“面向 unique 的稳定全序”，并不声称与 IEEE 754 `totalOrder` 的 payload/sign-bit 细节完全相同
 ```
 
 ### 5.3 复数排序规则
 
 ```
-复数比较策略（lexicographic order）：
+复数比较策略（lexicographic order + canonical NaN）：
 - 先比较实部（re）
 - 实部相同再比较虚部（im）
+- 实部或虚部中的 NaN 先按“非 NaN < NaN”归一化，再比较
 - Complex { re: 1.0, im: 2.0 } < Complex { re: 1.0, im: 3.0 }
 - Complex { re: 1.0, im: 2.0 } < Complex { re: 2.0, im: 0.0 }
 ```
@@ -198,7 +199,7 @@ unique(self):
 ///
 /// Note: `Ord` is NOT used as a supertrait because `f32`/`f64`
 /// do not implement `Ord`, and `Complex` does not implement `PartialOrd`.
-/// Instead, each type defines its own `total_cmp` method.
+/// Instead, each type defines an operation-specific total order for `unique`.
 ///
 /// # Why in set/unique.rs, not element module?
 ///
@@ -218,7 +219,7 @@ pub trait UniqueElement: Element + Sealed {
     /// Must satisfy: reflexivity, antisymmetry, transitivity, totality.
     fn total_cmp(&self, other: &Self) -> core::cmp::Ordering;
 
-    /// Equality check consistent with `total_cmp`.
+    /// Equality check consistent with `total_cmp` and Xenon's canonical-NaN rule.
     fn total_eq(&self, other: &Self) -> bool {
         self.total_cmp(other) == core::cmp::Ordering::Equal
     }
@@ -234,30 +235,53 @@ impl UniqueElement for i64 {
 
 impl UniqueElement for f32 {
     fn total_cmp(&self, other: &Self) -> core::cmp::Ordering {
-        // Uses f32::total_cmp (stable since Rust 1.62).
-        // NaN is sorted to the end; -NaN and NaN are considered equal.
-        f32::total_cmp(self, other)
+        match (self.is_nan(), other.is_nan()) {
+            (false, false) => f32::total_cmp(self, other),
+            (false, true) => core::cmp::Ordering::Less,
+            (true, false) => core::cmp::Ordering::Greater,
+            (true, true) => core::cmp::Ordering::Equal,
+        }
+    }
+
+    fn total_eq(&self, other: &Self) -> bool {
+        (self.is_nan() && other.is_nan()) || self.to_bits() == other.to_bits()
     }
 }
 
 impl UniqueElement for f64 {
     fn total_cmp(&self, other: &Self) -> core::cmp::Ordering {
-        f64::total_cmp(self, other)
+        match (self.is_nan(), other.is_nan()) {
+            (false, false) => f64::total_cmp(self, other),
+            (false, true) => core::cmp::Ordering::Less,
+            (true, false) => core::cmp::Ordering::Greater,
+            (true, true) => core::cmp::Ordering::Equal,
+        }
+    }
+
+    fn total_eq(&self, other: &Self) -> bool {
+        (self.is_nan() && other.is_nan()) || self.to_bits() == other.to_bits()
     }
 }
 
 impl UniqueElement for Complex<f32> {
     fn total_cmp(&self, other: &Self) -> core::cmp::Ordering {
-        // Lexicographic order: compare real part first, then imaginary part.
-        f32::total_cmp(&self.re, &other.re)
-            .then_with(|| f32::total_cmp(&self.im, &other.im))
+        self.re.total_cmp(&other.re)
+            .then_with(|| self.im.total_cmp(&other.im))
+    }
+
+    fn total_eq(&self, other: &Self) -> bool {
+        self.re.total_eq(&other.re) && self.im.total_eq(&other.im)
     }
 }
 
 impl UniqueElement for Complex<f64> {
     fn total_cmp(&self, other: &Self) -> core::cmp::Ordering {
-        f64::total_cmp(&self.re, &other.re)
-            .then_with(|| f64::total_cmp(&self.im, &other.im))
+        self.re.total_cmp(&other.re)
+            .then_with(|| self.im.total_cmp(&other.im))
+    }
+
+    fn total_eq(&self, other: &Self) -> bool {
+        self.re.total_eq(&other.re) && self.im.total_eq(&other.im)
     }
 }
 // bool and usize do not implement this
@@ -289,7 +313,7 @@ impl UniqueElement for Complex<f64> {
 
 - [ ] **T3**: 实现浮点 NaN 排序处理
   - 文件: `src/set/unique.rs`
-  - 内容: NaN 比任何实数大，排序后 NaN 在末尾
+  - 内容: 使用 canonical-NaN 规则：所有 NaN 排在末尾，去重时合并为单个 NaN
   - 测试: `test_unique_nan_f32`, `test_unique_nan_f64`
   - 前置: T2
   - 预计: 10 min
@@ -341,7 +365,7 @@ Wave 4: [T5]
 | `test_unique_nan_f32` | f32 NaN 排在末尾 | 高 |
 | `test_unique_nan_f64` | f64 NaN 排在末尾 | 高 |
 | `test_unique_nan_mixed` | NaN + 正常数混合排序正确 | 高 |
-| `test_unique_nan_dedup` | 含 NaN 和 -NaN 的浮点数组：NaN 与 -NaN 被视为相等，去重后只保留一个 NaN | 高 |
+| `test_unique_nan_dedup` | 含多个 NaN（含不同 bit-pattern）的浮点数组：去重后只保留一个 canonical NaN | 高 |
 | `test_unique_complex_order` | 复数先实部再虚部排序 | 高 |
 | `test_unique_2d` | 2D 张量 unique 返回 1D | 中 |
 | `test_unique_preserves_order` | 去重后排序正确 | 中 |
@@ -385,8 +409,8 @@ Wave 4: [T5]
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | NaN 排在排序结果的末尾（NaN > 任何实数） |
-| 理由 | 与 IEEE 754 的 `totalOrder` 比较一致（NaN 被视为大于所有值）；与 NumPy `np.unique` 行为一致；多个 NaN 视为相同值（去重后只保留一个 NaN） |
+| 决策 | unique 使用 canonical-NaN 规则：所有 NaN 排在末尾，并视为相同值去重 |
+| 理由 | 满足用户直觉与测试稳定性；与 NumPy `np.unique(equal_nan=True)` 的目标一致；避免直接暴露 payload/sign-bit 差异 |
 | 替代方案 | NaN 排在最前 |
 | 替代方案 | 抛弃所有 NaN |
 | 拒绝原因 | 与 IEEE 754 不一致；可能丢失数据信息 |
@@ -396,7 +420,7 @@ Wave 4: [T5]
 | 属性 | 值 |
 |------|-----|
 | 决策 | 复数按 lexicographic order 排序：先实部再虚部 |
-| 理由 | 这是数学中最常见的复数全序关系；与 C++ `std::complex` 的 `<` 运算符一致；实现简单直观 |
+| 理由 | 这是简单、稳定、可实现的全序扩展；便于排序后去重；无需引入按模排序的额外歧义 |
 | 替代方案 | 按模排序 |
 | 拒绝原因 | 模（绝对值）排序不是全序关系（模相等的复数无法排序）；与标准库不一致 |
 
@@ -413,7 +437,7 @@ Wave 4: [T5]
 ### 10.2 内存开销
 
 - 收集元素: O(N) 临时 Vec
-- 排序: O(log N) 栈空间（快排）
+- 排序辅助空间: O(log N) 到 O(N)，取决于标准库稳定排序实现
 - 结果: O(U) 其中 U 为唯一值数量
 
 ### 10.3 大数组性能（参考）

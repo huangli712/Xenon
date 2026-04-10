@@ -281,7 +281,7 @@ where
 
 > **说明**：`Scalar<A>` 包装器是 Rust 孤儿规则所必需的。由于 `Add` 是外部 trait，`A` 是无约束泛型，直接 `impl Add<TensorBase<...>> for A` 违反孤儿规则。使用 `Scalar<A>` 作为本地类型解决此问题。用户需要写 `Scalar(5.0) + tensor` 而非 `5.0 + tensor`。
 
-> **说明**：对于涉及 `&A` 的组合（上表第 2 行），由于 `A: Numeric` 要求 `A: Copy`，`tensor + &scalar` 通过 Rust 的 auto-deref 隐式解引用为值形式，自动调用基于值的 `Add` impl，无需单独实现。
+> **说明**：对于涉及 `&A` 的组合（上表第 2 行），不要依赖 Rust 的隐式 auto-deref 作为公开 API 契约。若库希望稳定支持 `tensor + &scalar`，应显式提供 `Add<&A>` 方向的实现；否则文档只保证值形式 `tensor + scalar` 与 `Scalar(scalar) + tensor`。
 
 > **说明**：`Scalar<A>` 同样适用于 `TensorView` 和 `TensorViewMut` 的标量运算。
 
@@ -592,7 +592,7 @@ use alloc::vec::Vec;
 // Operator overloading delegates to:
 //   - math::zip_with() → alloc (result Tensor)
 //   - math::mapv()     → alloc (result Tensor)
-//   - broadcast::broadcast_with() → alloc (SmallVec)
+//   - broadcast::broadcast_with() → alloc-backed dynamic dimension buffer (see 15-broadcast.md)
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;

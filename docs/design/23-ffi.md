@@ -365,7 +365,7 @@ where
 }
 ```
 
-> **设计决策：** `into_raw_parts` 仅适用于 Owned 存储。View/ViewMut 的数据仍由原借用绑定，调用方应谨慎处理。如需将 View 转为 Owned 再解构，参见 `21-type.md` §4.5。
+> **设计决策：** `into_raw_parts` 仅适用于 Owned 存储，且导出的内存布局必须满足 Xenon 的 owned 不变量：F-order contiguous、`offset == 0`。View/ViewMut 的数据仍由原借用绑定，调用方应谨慎处理。如需将 View 转为 Owned 再解构，参见 `21-type.md` §4.5。
 
 #### 内存管理
 
@@ -384,9 +384,10 @@ where
 /// # Safety
 ///
 /// - `ptr` must point to memory allocated by Xenon's `AlignedAlloc` (64-byte aligned)
-/// - `shape` and `strides` must describe a valid, non-overlapping layout
+/// - `shape` and `strides` must describe a valid, non-overlapping F-order layout
 /// - The caller transfers ownership; do NOT free `ptr` separately
 /// - Total elements accessible via shape/strides must not exceed allocated size
+/// - `offset` must be 0 for owned round-trips; non-zero offset requires re-materializing first
 pub unsafe fn from_raw_parts_owned(
     ptr: *mut A,
     shape: D,
@@ -453,7 +454,7 @@ where
 }
 ```
 
-### 4.6 blas_layout 和 BlasLayout 结构体
+### 4.6 blas_info 和 BlasInfo 结构体
 
 ```rust
 /// BLAS matrix information.
@@ -558,14 +559,15 @@ where
     S: Storage<Elem = A>,
     D: Dimension,
 {
-    /// Converts a multi-dimensional index to an element offset (may be negative
-    /// for negative strides).
+    /// Converts a multi-dimensional index to an element offset relative to the
+    /// logical first element pointer.
     ///
     /// Offset = Σ(stride[i] * index[i]) for all i in [0, ndim)
     ///
-    /// Returns an `isize` offset relative to the base pointer. Negative
-    /// offsets are valid for tensors with negative strides (e.g., reversed
-    /// axes). The caller must ensure the index is within bounds.
+    /// Returns an `isize` offset relative to the logical first element pointer.
+    /// Negative strides are already encoded in the signed stride metadata; the
+    /// resulting offset for any in-bounds logical index is therefore measured
+    /// from `as_ptr()` and does not require a second base adjustment.
     ///
     /// # Panics
     ///

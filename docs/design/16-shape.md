@@ -131,9 +131,11 @@ where
         }
     }
 
-    /// Shorthand for 2D matrix transpose.
+    /// Shorthand for transpose.
     ///
     /// Equivalent to `.transpose()`, provides concise syntax similar to ndarray.
+    /// For 2D inputs this matches the usual matrix-transpose intuition; for
+    /// higher-rank tensors it is still a full axis reversal.
     ///
     /// # Examples
     /// ```
