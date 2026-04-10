@@ -29,7 +29,7 @@
 | 自动决策 | 运行时根据数据规模和布局自动选择并行/串行 |
 | 可配置性 | 支持全局配置和单次调用覆盖阈值 |
 | 安全性 | 禁止嵌套并行，保证无数据竞争；通过显式并行上下文令牌而非线程局部状态检测 |
-| 兼容性 | 与 SIMD 模块协同工作，每线程内部使用 SIMD（参见 `08-simd.md §8.2`） |
+| 兼容性 | 可被上层语义模块与 SIMD 组合使用，但 `parallel/` 本身不直接依赖 `simd/` |
 
 ### 1.3 在架构中的位置
 
@@ -38,7 +38,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
-L3: storage (依赖 layout)
+L3: storage (仅依赖 core/alloc，不依赖 layout)
 L4: tensor (依赖 storage, dimension)
 L5: parallel  ← 当前模块（可选，feature = "parallel"）
 ```
@@ -92,10 +92,10 @@ src/parallel/
 ├── rayon (可选)               # 外部依赖，feature = "parallel"
 ├── crate::tensor             # TensorBase<S, D>, 类型别名
 ├── crate::storage            # Storage, RawStorage trait
-├── crate::layout             # LayoutFlags, Order
+├── crate::layout             # LayoutFlags, is_f_contiguous()
 ├── crate::element            # Element trait
 ├── crate::broadcast          # broadcast_shape() (zip 场景)
-└── crate::simd               # 每线程内部 SIMD 加速（可选）
+└── （无 direct backend 依赖；SIMD 组合由上层调度层决定）
 ```
 
 ### 3.2 依赖精确到类型级
@@ -110,7 +110,7 @@ src/parallel/
 
 ### 3.3 依赖方向声明
 
-> **依赖方向：单向向上。** `parallel/` 仅消费 `tensor`、`storage`、`layout` 等核心模块，不被它们依赖。`parallel/` 模块在未启用 feature 时完全不存在。
+> **依赖方向：单向向上。** `parallel/` 仅消费 `tensor`、`storage`、`layout` 等核心模块，不被它们依赖。与 `simd/` 的组合由上层语义模块协调，而不是 `parallel/` 直接依赖 `simd/`；`parallel/` 模块在未启用 feature 时完全不存在。
 
 > **说明**: `parallel` 依赖 `broadcast::broadcast_shape()` 用于 zip 场景。虽然两者同属 L5，但 broadcast 仅消费 L1-L4 的类型，不存在循环依赖。
 
@@ -789,8 +789,8 @@ where
 
 - [ ] **T6**: 实现嵌套并行防护
   - 文件: `src/parallel/mod.rs`
-  - 内容: `PARALLEL_DEPTH` thread_local、`ParallelGuard` RAII 守卫、`is_in_parallel_context()`
-  - 测试: `test_nested_parallel_guard`、`test_parallel_depth_tracking`
+  - 内容: `ParallelGuard` 显式令牌、串行回退检查、上下文传播辅助函数
+  - 测试: `test_nested_parallel_guard`、`test_parallel_token_propagation`
   - 前置: T1
   - 预计: 10 min
 
@@ -877,7 +877,7 @@ Wave 4:        [T8]
 | `test_par_zip_with_add` | 并行 zip 加法正确 | 高 |
 | `test_par_zip_broadcast` | 广播并行正确 | 中 |
 | `test_nested_parallel_guard` | 嵌套并行被检测 | 中 |
-| `test_parallel_depth_tracking` | 深度计数正确 | 中 |
+| `test_parallel_token_propagation` | 并行上下文令牌传播正确 | 中 |
 | `test_custom_pool` | 自定义线程池工作正常 | 低 |
 
 ### 7.3 边界测试场景表
@@ -952,9 +952,9 @@ Wave 4:        [T8]
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | **整数归约**并行与串行完全一致；**浮点归约**允许 ≤ 2 ULP 差异 |
-| 理由 | 浮点加法不满足结合律，分块并行因累加顺序不同必然引入舍入差异。不使用 Kahan 补偿（参见 `13-reduction.md §9 ADR-3`）时无法保证精确一致。整数有 `CheckedAdd` 保证，始终完全一致。 |
-| 测试约定 | 浮点并行 sum 测试使用 rtol（相对容差）而非 `==`；参见 `28-tests.md §8.2` |
+| 决策 | 所有类型的并行结果都必须与串行实现保持一致；若某条并行路径无法证明该性质，则自动回退串行 |
+| 理由 | 需求说明书 §28.5 已固定“并行归约结果须与单线程一致”；性能优化不能改变语义结果 |
+| 测试约定 | 并行 sum / zip / map 的一致性测试使用与串行结果一致的断言，而非近似比较；参见 `28-tests.md §8.2` |
 | 参见 | `13-reduction.md §9 ADR-2`（协调定义） |
 
 ### 决策 3：并行阈值默认 1024 元素
@@ -972,7 +972,7 @@ Wave 4:        [T8]
 | 属性 | 值 |
 |------|-----|
 | 决策 | 检测到嵌套并行时自动回退到串行执行 |
-| 理由 | 更宽容，不会中断用户程序；通过 `is_in_parallel_context()` 允许用户自行优化 |
+| 理由 | 更宽容，不会中断用户程序；通过显式并行上下文令牌允许调用链在检测到嵌套时回退串行 |
 | 替代方案 | panic — 放弃，虽然能暴露问题，但可能破坏生产环境 |
 | 替代方案 | 编译期禁止 — 放弃，Rust 类型系统难以在编译期检测嵌套并行 |
 
@@ -1037,6 +1037,7 @@ compile_error!("The 'parallel' feature requires the 'std' feature");
 
 | 版本 | 日期 |
 |------|------|
+| 1.1.0 | 2026-04-10 |
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |

@@ -514,10 +514,15 @@ impl<A> Owned<A> {
 
     /// Creates Owned from a user-provided Vec.
     ///
-    /// No alignment guarantee — the Vec's existing allocation is used as-is.
-    /// `is_aligned()` will return `false` if the pointer is not 64-byte aligned.
-    pub fn from_vec(data: Vec<A>) -> Self {
-        Self { data }
+    /// Consumes the input Vec and copies its contents into Xenon's internal
+    /// alignment-aware buffer representation. This keeps `Owned<A>` consistent
+    /// with the rest of the storage model, where owned construction paths are
+    /// free to require fresh aligned storage.
+    pub fn from_vec(data: Vec<A>) -> Self
+    where
+        A: Clone,
+    {
+        Self::from_vec_aligned(data)
     }
 
     /// Creates Owned by copying data into a fresh 64-byte aligned allocation.
@@ -533,7 +538,7 @@ impl<A> Owned<A> {
     {
         let len = data.len();
         if len == 0 {
-            return Self { data: Vec::new() };
+            return Self { data: AlignedBuf::empty() };
         }
         // Allocate aligned memory and copy elements
         // SAFETY: AlignedAlloc returns a valid, aligned allocation of the requested size.
@@ -547,7 +552,7 @@ impl<A> Owned<A> {
         // the two ranges are non-overlapping (typed_ptr is freshly allocated).
         unsafe { core::ptr::copy_nonoverlapping(data.as_ptr(), typed_ptr, len); }
         // SAFETY: ptr was allocated by AlignedAlloc with len elements.
-        Self { data: unsafe { Vec::from_raw_parts(typed_ptr, len, len) } }
+        Self { data: unsafe { AlignedBuf::from_raw_parts(typed_ptr, len, len, Self::DEFAULT_ALIGNMENT) } }
     }
 
     /// Creates Owned with 64-byte aligned allocation.
@@ -565,7 +570,7 @@ impl<A> Owned<A> {
     ) -> Self {
         // SAFETY: caller guarantees ptr was allocated by AlignedAlloc
         // with the given len and capacity.
-        Self { data: Vec::from_raw_parts(ptr, len, capacity) }
+        Self { data: AlignedBuf::from_raw_parts(ptr, len, capacity, Self::DEFAULT_ALIGNMENT) }
     }
 }
 ```
@@ -1027,6 +1032,7 @@ Storage 提供对齐信息（`is_aligned()`），Layout 模块查询对齐状态
 | 1.0.3 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
 | 1.2.0 | 2026-04-08 |
+| 1.2.1 | 2026-04-10 |
 
 ---
 

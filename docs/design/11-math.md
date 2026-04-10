@@ -54,11 +54,10 @@ src/math/
 ├── zip.rs              # 二元逐元素（zip_with，含广播）
 ├── unary.rs            # 一元运算（abs, neg, signum, square, sin, sqrt, exp, ln, floor, ceil, norm, conj, not）
 ├── binary.rs           # 二元算术方法（add, sub, mul, div, add_scalar, sub_scalar, mul_scalar, div_scalar）
-├── comparison.rs       # 比较运算（eq, ne, lt, gt）
-└── simd.rs             # SIMD 加速路径（cfg feature = "simd"）
+└── comparison.rs       # 比较运算（eq, ne, lt, gt）
 ```
 
-多文件设计理由：按操作元数分组（一元 vs 二元 vs 映射基础设施），每个文件对应独立的 trait 约束边界，降低单文件复杂度。运算符重载（Add/Sub/Mul/Div trait 实现）保留在 `src/overload/arithmetic.rs`。
+多文件设计理由：按操作元数分组（一元 vs 二元 vs 映射基础设施），每个文件对应独立的 trait 约束边界，降低单文件复杂度。运算符重载（Add/Sub/Mul/Div trait 实现）保留在 `src/overload/arithmetic.rs`。SIMD 加速由独立 backend 模块 `src/simd/` 承载，`math/` 仅负责语义 API 与分发入口。
 
 ---
 
@@ -487,8 +486,8 @@ where
 ### Wave 4: SIMD 集成
 
 - [ ] **T8**: 添加 SIMD 加速路径
-  - 文件: `src/math/simd.rs`（#[cfg(feature = "simd")] 块）
-  - 内容: 算术运算的 SIMD 路径，连续数组检测
+  - 文件: `src/math/binary.rs`, `src/simd/vector.rs`
+  - 内容: 在 `math` 中接入独立 `simd/` backend，为连续数组提供 SIMD 路径并保留标量回退
   - 测试: `test_add_simd_vs_scalar`, `test_mul_simd_vs_scalar`
   - 前置: T3, 08-simd.md
   - 预计: 15 min
@@ -616,6 +615,8 @@ Wave 4: [T8]
 | 替代方案 | 所有路径都用标量 |
 | 拒绝原因 | 性能差距显著（2-4x），科学计算用户期望高性能 |
 
+> **补充**：SIMD 实现位于独立 backend 模块 `src/simd/`，`math/` 仅按连续性和 feature gate 决定是否委托该 backend。
+
 ---
 
 ## 10. 性能考量
@@ -685,6 +686,7 @@ extern crate alloc;
 | 1.0.4 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
 | 1.2.0 | 2026-04-08 |
+| 1.2.1 | 2026-04-10 |
 
 ---
 

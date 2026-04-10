@@ -122,13 +122,13 @@ pub trait NdIndex<D: Dimension>: Sealed {
     /// Converts the index to a linear memory offset, given the tensor's strides.
     ///
     /// Returns `None` if any index component is out of bounds for its dimension.
-    fn index_checked(&self, dim: &D, strides: &D) -> Option<usize>;
+    fn index_checked(&self, dim: &D, strides: &Strides<D>) -> Option<isize>;
 
     /// Converts the index to a linear memory offset without bounds checking.
     ///
     /// # Safety
     /// The caller must ensure every index component `i` satisfies `i < shape[k]`.
-    unsafe fn index_unchecked(&self, strides: &D) -> usize;
+    unsafe fn index_unchecked(&self, strides: &Strides<D>) -> isize;
 }
 
 // Static array index (e.g. tensor[[0, 1, 2]])
@@ -136,7 +136,7 @@ pub trait NdIndex<D: Dimension>: Sealed {
 impl<const N: usize> Sealed for [usize; N] {}
 
 impl<D: Dimension, const N: usize> NdIndex<D> for [usize; N] {
-    fn index_checked(&self, dim: &D, strides: &D) -> Option<usize> {
+    fn index_checked(&self, dim: &D, strides: &Strides<D>) -> Option<isize> {
         if self.len() != dim.ndim() { return None; }
         let shape = dim.slice();
         for (i, &idx) in self.iter().enumerate() {
@@ -146,21 +146,20 @@ impl<D: Dimension, const N: usize> NdIndex<D> for [usize; N] {
         Some(unsafe { self.index_unchecked(strides) })
     }
 
-    unsafe fn index_unchecked(&self, strides: &D) -> usize {
+    unsafe fn index_unchecked(&self, strides: &Strides<D>) -> isize {
         // Use signed arithmetic to handle negative strides
         let mut offset: isize = 0;
         for (&idx, &stride) in self.iter().zip(strides.iter()) {
             offset += stride * idx as isize;
         }
-        debug_assert!(offset >= 0, "negative offset indicates invalid index");
-        offset as usize
+        offset
     }
 }
 
 // Dynamic slice index (e.g. tensor[&[0, 1, 2][..]])
 impl Sealed for [usize] {}
 impl<D: Dimension> NdIndex<D> for [usize] {
-    fn index_checked(&self, dim: &D, strides: &D) -> Option<usize> {
+    fn index_checked(&self, dim: &D, strides: &Strides<D>) -> Option<isize> {
         if self.len() != dim.ndim() { return None; }
         let shape = dim.slice();
         for (i, &idx) in self.iter().enumerate() {
@@ -169,14 +168,13 @@ impl<D: Dimension> NdIndex<D> for [usize] {
         Some(unsafe { self.index_unchecked(strides) })
     }
 
-    unsafe fn index_unchecked(&self, strides: &D) -> usize {
+    unsafe fn index_unchecked(&self, strides: &Strides<D>) -> isize {
         // Use signed arithmetic to handle negative strides
         let mut offset: isize = 0;
         for (&idx, &stride) in self.iter().zip(strides.iter()) {
             offset += stride * idx as isize;
         }
-        debug_assert!(offset >= 0, "negative offset indicates invalid index");
-        offset as usize
+        offset
     }
 }
 ```
@@ -445,7 +443,7 @@ fn unsafe_index(tensor: &Tensor<f64, Ix2>, idx: &[usize]) -> f64 {
 |--------|----------|
 | `shape[i]` | 切片范围长度 |
 | `strides[i]` | 原步长 × 切片步长 |
-| `offset` | 原偏移 + start × 原步长 |
+| `offset` | 原偏移 + start × 原步长（内部用 `isize` 计算，再与基指针组合） |
 | `LayoutFlags` | 有负步长时设置 `HAS_NEG_STRIDE`；步长恰好为 0 时设置 `HAS_ZERO_STRIDE`（广播视图的广播维度） |
 
 ---
@@ -500,13 +498,15 @@ function compute_slice(shape, strides, offset, slices: [SliceInfoElem; N])
 
                 // Default start/end depend on step direction:
                 // - Positive step: start=0, end=shape[i]
-                // - Negative step: start=shape[i]-1, end=-1 (before first element)
+                // - Negative step: start=shape[i]-1, end=-1 (exclusive sentinel before first element)
                 s = start.unwrap_or(if st > 0 { 0 } else { shape[i] as isize - 1 })
-                e = end.unwrap_or(if st > 0 { shape[i] as isize } else { -(shape[i] as isize) })
+                e = end.unwrap_or(if st > 0 { shape[i] as isize } else { -1 })
 
-                // Handle negative values
+                // Handle negative values. For negative-step full slices, the default
+                // end = -1 is an exclusive sentinel and must not be normalized into
+                // a concrete in-bounds index.
                 s = normalize(s, shape[i])
-                e = normalize(e, shape[i])
+                e = if st > 0 || end.is_some() { normalize(e, shape[i]) } else { e }
 
                 dim_len = if st > 0:
                     (e - s + st - 1) / st
@@ -663,7 +663,7 @@ Wave 4:           [T7]
 | `tensor` | index → tensor | 使用 `TensorBase` 的 `as_ptr()`/`as_mut_ptr()`，参见 `07-tensor.md` §4 |
 | `storage` | index → storage | 通过 `Storage`/`StorageMut` 访问元素，参见 `05-storage.md` §3 |
 | `dimension` | index → dimension | 使用 `Dimension::slice()` 获取形状切片，参见 `02-dimension.md` §3 |
-| `memory_layout` | index → memory_layout | 更新 `LayoutFlags`，参见 `06-memory.md` §3 |
+| `layout` | index → layout | 更新 `LayoutFlags`，参见 `06-memory.md` §3 |
 | `iter` | iter → index | 迭代器使用 `get_unchecked()` 快速访问，参见 `10-iterator.md` §4 |
 | `shape` | shape → index | reshape 等操作可能触发拷贝，参见 `16-shape.md` §4 |
 
@@ -774,6 +774,7 @@ extern crate alloc;
 | 1.0.3 | 2026-04-07 |
 | 1.0.4 | 2026-04-08 |
 | 1.0.5 | 2026-04-08 |
+| 1.0.6 | 2026-04-10 |
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-08 |
 

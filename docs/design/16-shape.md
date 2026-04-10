@@ -221,7 +221,7 @@ where
         }
         
         // 2. Check F-contiguity (only F-contiguous arrays can be reshaped zero-copy)
-        //    C-contiguous arrays (e.g. transposed views) are NOT eligible for
+        //    Transposed or otherwise non-F-contiguous views are NOT eligible for
         //    zero-copy reshape because Xenon always outputs F-order.
         if !self.is_f_contiguous() {
             return Err(XenonError::LayoutMismatch {
@@ -240,7 +240,7 @@ where
             shape,
             strides: new_strides,
             offset: self.offset,
-            layout: LayoutFlags::from_order(Order::F),
+            flags: LayoutFlags::from_order(Order::F),
         })
     }
 
@@ -283,7 +283,7 @@ where
                 shape,
                 strides: new_strides,
                 offset: 0,
-                layout: LayoutFlags::from_order(Order::F),
+                flags: LayoutFlags::from_order(Order::F),
             });
         }
         
@@ -296,7 +296,7 @@ where
             shape,
             strides: new_strides,
             offset: 0,
-            layout: LayoutFlags::from_order(Order::F),
+            flags: LayoutFlags::from_order(Order::F),
         })
     }
 }
@@ -341,7 +341,7 @@ slice.reshape([12])?;  // Returns Err(LayoutMismatch), should use into_shape()
 转置: shape=[3, 2], strides=[2, 1]  (步长反转，非 F-contiguous)
 ```
 
-> **注意**：Xenon 只支持 F-order 布局，不使用 C-order 标志位。转置后调用
+> **注意**：Xenon 只支持 F-order 布局，不维护单独的行优先连续性状态。转置后调用
 > `is_f_contiguous()` 返回 `false`；若需恢复连续内存，使用 `to_contiguous()`。
 
 ### 5.2 HAS_NEG_STRIDE 标志处理
@@ -352,7 +352,7 @@ slice.reshape([12])?;  // Returns Err(LayoutMismatch), should use into_shape()
 fn update_flags_for_transpose(source_flags: LayoutFlags) -> LayoutFlags {
     let mut flags = source_flags;
     // Transpose reverses stride order; F-contiguous becomes non-F-contiguous.
-    // Xenon does not track C-contiguous (not supported).
+    // Xenon does not track any separate row-major contiguous state.
     flags.set_f_contiguous(false);
     flags
 }
@@ -477,7 +477,7 @@ Wave 4:         [T5]
 |----------|------|------|
 | `tensor` | shape → tensor | 使用 `TensorBase` 结构和 `TensorView` 创建方法，参见 `07-tensor.md` §4 |
 | `dimension` | shape → dimension | 使用 `Dimension` trait 的形状操作方法，参见 `02-dimension.md` §3 |
-| `memory_layout` | shape → memory_layout | 检查连续性、计算步长，参见 `06-memory.md` §3 |
+| `layout` | shape → layout | 检查连续性、计算步长，参见 `06-memory.md` §3 |
 | `broadcast` | shape ← broadcast | 广播视图不可 reshape（非连续），参见 `15-broadcast.md` §5 |
 | `index` | index → shape | 切片后可 reshape（如连续），参见 `17-indexing.md` §4 |
 
@@ -583,6 +583,7 @@ extern crate alloc;
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.1.1 | 2026-04-10 |
 | 1.1.1 | 2026-04-08 |
 
 ---

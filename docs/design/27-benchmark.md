@@ -181,9 +181,9 @@ pub fn sequential_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 }
 
 /// Generate a non-contiguous view by slicing every other element.
-pub fn strided_view_1d(n: usize) -> Tensor1<f64> {
+pub fn strided_view_1d(n: usize) -> TensorView1<'static, f64> {
     let full = sequential_1d(n * 2);
-    full.slice(s![..;2]).to_owned()
+    Box::leak(Box::new(full)).slice(s![..;2])
 }
 ```
 
@@ -231,7 +231,7 @@ Benchmark 分类
 | 布局 | 构造方式 | 验证目标 |
 |------|----------|----------|
 | F-contiguous | `zeros(shape)` | 默认路径性能基线 |
-| Non-contiguous | `tensor.slice(s![.., 0..n-1])` | 非连续路径标量回退惩罚 |
+| Non-contiguous | `tensor.slice(s![..;2])` 或转置视图 | 非连续路径标量回退惩罚 |
 
 > **注意**：Xenon 仅支持 F-order 布局，不存在 C-order 路径。非连续布局通过切片/转置视图产生（参见 `06-memory.md §4`）。
 
@@ -279,7 +279,7 @@ Benchmark 分类
 
 ### 8.1 Smoke Test 覆盖范围
 
-> **注意**：Smoke Test 仅验证 benchmark 代码可以正常编译和运行（"不崩溃"），不用于性能判断。10次采样足够验证基本可运行性。性能回归检测由 Regression Check（§8.2）负责。
+> **注意**：Smoke Test 仅验证 benchmark 代码可以正常编译和运行（"不崩溃"），不用于性能判断，也不执行回归阈值门禁。10次采样足够验证基本可运行性。性能回归检测由 Regression Check（§8.2）负责。
 
 | 文件 | 组 | 说明 |
 |------|-----|------|
@@ -311,8 +311,8 @@ benchmark-smoke:
           with:
             tool: cargo
             output-file-path: target/criterion-output.json
-            alert-threshold: "120%"
-            fail-on-alert: true
+            alert-threshold: "200%"
+            fail-on-alert: false
 ```
 
 > **注意**：criterion 的标准 HTML/JSON 输出位于 `target/criterion/<benchmark_name>/` 目录下。CI 回归对比使用的 JSON 摘要通过 `--message-format=json` 标志生成，写入 `target/criterion-output.json`。如需 `bencher` 格式输出，可使用 `--output-format=bencher` 或自定义提取脚本。
@@ -635,6 +635,8 @@ Wave 5:           [T12]
 | 理由 | 5% 以内可能是测量噪声；20% 以上几乎确定是真实回归；改善记录供优化参考 |
 | 替代方案 | 5% fail — 放弃，CI 环境噪声可能导致误报 |
 
+> **补充**：Regression Check 才应用 5% warning / 20% fail 的性能门限；Smoke Test 只验证 benchmark 可运行性，不应阻塞合并。
+
 ### 决策 5：仅 F-order 布局测试
 
 | 属性 | 值 |
@@ -655,6 +657,7 @@ Wave 5:           [T12]
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-08 |
 | 1.2.0 | 2026-04-08 |
+| 1.2.1 | 2026-04-10 |
 
 ---
 

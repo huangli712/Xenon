@@ -23,7 +23,7 @@
 |------|------|
 | 步长感知 | `fill`/`clip` 通过迭代器正确处理非连续内存布局 |
 | 原地优先 | `fill` 为原地操作（`&mut self`），避免额外分配 |
-| 类型安全 | `clip` 限制为有序数值类型（`Numeric + PartialOrd`），编译期拒绝 `bool` 和 `Complex` |
+| 类型安全 | `clip` 限制为有序数值类型（`Numeric + PartialOrd`），编译期拒绝 `bool`、`Complex` 和 `usize` |
 | 语义清晰 | `to_contiguous` 返回 `Tensor<A, D>`，调用方可预测生命周期 |
 
 ### 1.3 在架构中的位置
@@ -54,7 +54,7 @@ src/
 
 多文件设计：三个操作（clip、fill、to_contiguous）按职责分离，通过 `mod.rs` 统一 re-export。
 
-> **注意**：`to_contiguous()` 的公共 API 定义在 `src/util/contiguous.rs`（本模块），内部委托给 `src/convert/contiguous.rs` 中的 `to_f_contiguous()` 辅助函数（参见 `21-type.md §4.5c`）。
+> **注意**：`to_contiguous()` 的公共 API 定义在 `src/util/contiguous.rs`（本模块），内部委托给 `src/convert/contiguous.rs` 中的 `to_f_contiguous()` 辅助函数（参见 `21-type.md §4.7`）。
 
 ---
 
@@ -107,11 +107,11 @@ where
     ///
     /// # Supported Types
     ///
-    /// Available for types implementing `Numeric + PartialOrd`: i32, i64, f32, f64, usize.
+    /// Available for types implementing `Numeric + PartialOrd`: i32, i64, f32, f64.
     /// **Not available for `Complex<f32>`/`Complex<f64>`** because complex numbers
     /// have no natural total ordering (`Complex` does not implement `PartialOrd`,
     /// see `04-complex.md §4`).
-    /// **Not available for `bool`** because `bool` does not implement `Numeric`
+    /// **Not available for `bool` / `usize`** because neither type implements `Numeric`
     /// (see `03-element.md §3`).
     ///
     /// # Arguments
@@ -229,7 +229,7 @@ where
     /// let contig = t.to_contiguous();
     /// assert!(contig.is_f_contiguous());
     ///
-    /// // Even transposed (C-contiguous) views become F-contiguous
+    /// // Even transposed views become F-contiguous
     /// let transposed = t.t();
     /// let contig2 = transposed.to_contiguous();
     /// assert!(contig2.is_f_contiguous());
@@ -346,7 +346,7 @@ to_contiguous(tensor):
 - [ ] **T3**: 实现 `to_contiguous` 方法
   - 文件: `src/util/contiguous.rs`
   - 内容: 基于 `is_f_contiguous()` 检查，非 F-contiguous 输入始终转为 F-order
-  - 测试: `test_to_contiguous_f_order`, `test_to_contiguous_c_input_becomes_f`, `test_to_contiguous_non_contiguous`
+  - 测试: `test_to_contiguous_f_order`, `test_to_contiguous_transposed_becomes_f`, `test_to_contiguous_non_contiguous`
   - 前置: T2, layout 模块的 `is_f_contiguous` 完成
   - 预计: 10 min
 
@@ -382,7 +382,7 @@ Wave 2:      [T3] → [T4]
 | `test_fill_non_contiguous` | 非连续布局正确填充所有逻辑元素 | 高 |
 | `test_fill_empty` | 空数组 fill 不 panic | 中 |
 | `test_to_contiguous_f_order` | F-order 连续输入返回 owned 拷贝 | 高 |
-| `test_to_contiguous_c_input_becomes_f` | C-order 连续输入（如转置）转为 F-order owned | 高 |
+| `test_to_contiguous_transposed_becomes_f` | 转置视图转为 F-order owned | 高 |
 | `test_to_contiguous_non_contiguous` | 非连续输入返回 F-order owned | 高 |
 
 ### 7.2 边界测试场景
@@ -501,6 +501,7 @@ use alloc::vec::Vec;
 | 1.0.4 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-08 |
+| 1.1.2 | 2026-04-10 |
 
 ---
 

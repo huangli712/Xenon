@@ -118,9 +118,6 @@ pub enum BlasLayout {
     /// Column-major (Fortran order).
     /// Corresponds to BLAS `CblasColMajor` (102).
     ColumnMajor,
-    /// Row-major (C order).
-    /// Corresponds to BLAS `CblasRowMajor` (101).
-    RowMajor,
 }
 
 /// BLAS transpose identifier.
@@ -171,7 +168,7 @@ where
 {
     /// Returns a mutable raw pointer to the data start.
     ///
-    /// Only available for writable storage (Owned, ViewMut, ArcRepr).
+    /// Only available for writable storage (Owned, ViewMut).
     ///
     /// # Example
     ///
@@ -232,7 +229,7 @@ where
     ///     TensorView2::from_raw_parts(
     ///         data.as_ptr(),
     ///         [3, 4],
-    ///         [1, 3],
+    ///         Strides::from_slice(&[1, 3]),
     ///         0,
     ///     )
     /// };
@@ -240,7 +237,7 @@ where
     pub unsafe fn from_raw_parts(
         ptr: *const A,
         shape: D,
-        strides: D,
+        strides: Strides<D>,
         offset: usize,
     ) -> Self {
         // SAFETY: Caller guarantees ptr is valid, aligned, and points to
@@ -251,8 +248,7 @@ where
             shape,
             strides,
             offset,
-            // Compute layout flags from provided strides
-            flags: LayoutFlags::from_strides(&strides, &shape),
+            flags: layout::compute_flags(&shape, &strides, ptr),
         }
     }
 
@@ -282,7 +278,7 @@ where
             shape,
             strides: dim_strides,
             offset,
-            flags: LayoutFlags::from_strides(&dim_strides, &shape),
+            flags: layout::compute_flags(&shape, &dim_strides, ptr),
         }
     }
 }
@@ -308,7 +304,7 @@ where
     ///     TensorViewMut2::from_raw_parts_mut(
     ///         data.as_mut_ptr(),
     ///         [3, 4],
-    ///         [1, 3],
+    ///         Strides::from_slice(&[1, 3]),
     ///         0,
     ///     )
     /// };
@@ -316,7 +312,7 @@ where
     pub unsafe fn from_raw_parts_mut(
         ptr: *mut A,
         shape: D,
-        strides: D,
+        strides: Strides<D>,
         offset: usize,
     ) -> Self {
         // SAFETY: Caller guarantees exclusive mutable access to the memory
@@ -326,7 +322,7 @@ where
             shape,
             strides,
             offset,
-            flags: LayoutFlags::from_strides(&strides, &shape),
+            flags: layout::compute_flags(&shape, &strides, ptr),
         }
     }
 }
@@ -345,7 +341,7 @@ where
     ///
     /// # Returns
     ///
-    /// A tuple `(ptr, shape, strides, offset)`.
+    /// A tuple `(ptr, shape, strides, offset)` where `strides` uses `Strides<D>`.
     ///
     /// # Example
     ///
@@ -354,7 +350,7 @@ where
     /// let (ptr, shape, strides, offset) = tensor.into_raw_parts();
     /// // Caller now owns ptr, responsible for freeing
     /// ```
-    pub fn into_raw_parts(self) -> (*mut A, D, D, usize) {
+    pub fn into_raw_parts(self) -> (*mut A, D, Strides<D>, usize) {
         // Use ManuallyDrop to prevent Drop from running while we extract fields.
         // This is safer than the "extract fields first, then mem::forget" pattern
         // because it eliminates the risk of Double Drop on panic during field access.
@@ -394,12 +390,13 @@ where
 pub unsafe fn from_raw_parts_owned(
     ptr: *mut A,
     shape: D,
-    strides: D,
+    strides: Strides<D>,
     offset: usize,
 ) -> TensorBase<Owned<A>, D> {
     let len = shape.size();
     let storage = Owned::from_raw(ptr, len);
-    TensorBase { storage, shape, strides, offset, flags: LayoutFlags::compute(&shape, &strides) }
+    let flags = layout::compute_flags(&shape, &strides, ptr);
+    TensorBase { storage, shape, strides, offset, flags }
 }
 ```
 
@@ -529,13 +526,13 @@ where
     ///
     /// For F-order matrix `A[M, N]`, `LDA = stride[1]`.
     ///
-    /// **Note:** `lda()` 仅对 F-contiguous 的 2D 张量有效。对非连续张量（如切片后的视图），
+    /// **Note:** `lda()` 仅对 BLAS-compatible 的 2D 张量有效。对非连续张量（如切片后的视图），
     /// 返回的步长无法直接用于 BLAS 调用。建议在调用前先检查 `is_f_contiguous()`。
     ///
     /// # Returns
     ///
-    /// - `Some(isize)`: LDA of a 2D array
-    /// - `None`: not a 2D array
+    /// - `Some(isize)`: LDA of a BLAS-compatible 2D array
+    /// - `None`: not a BLAS-compatible 2D array
     ///
     /// # Example
     ///
@@ -544,7 +541,7 @@ where
     /// assert_eq!(a.lda(), Some(3));  // F-order, LDA = M = 3
     /// ```
     pub fn lda(&self) -> Option<isize> {
-        if self.ndim() != 2 {
+        if self.ndim() != 2 || !self.is_blas_compatible() {
             return None;
         }
         let strides = self.strides();  // returns &[isize] (see 07-tensor.md §4.3)
@@ -561,7 +558,7 @@ where
     S: Storage<Elem = A>,
     D: Dimension,
 {
-    /// Converts a multi-dimensional index to a byte offset (may be negative
+    /// Converts a multi-dimensional index to an element offset (may be negative
     /// for negative strides).
     ///
     /// Offset = Σ(stride[i] * index[i]) for all i in [0, ndim)
@@ -621,9 +618,9 @@ where
 ### 4.9 Good/Bad 对比
 
 ```rust
-// blas_trans() returns the BLAS transpose identifier for this tensor.
-// For a standard (non-transposed) F-order matrix, returns BlasTrans::NoTrans.
-// If the tensor represents a transposed view, returns BlasTrans::Trans.
+// blas_trans() is only queried after obtaining a BLAS-compatible representation.
+// For Xenon's direct BLAS path, this is always a standard F-order matrix and
+// therefore returns BlasTrans::NoTrans.
 impl<S, D> TensorBase<S, D>
 where
     S: Storage,
@@ -631,18 +628,11 @@ where
 {
     /// Returns the BLAS transpose identifier for this tensor.
     ///
-    /// Returns `BlasTrans::NoTrans` for standard F-order views,
-    /// `BlasTrans::Trans` for transposed views.
+    /// Returns `BlasTrans::NoTrans` for BLAS-compatible F-order matrices.
+    /// Transposed or otherwise non-BLAS-compatible views must first be converted
+    /// into an owned F-order tensor before calling BLAS.
     pub fn blas_trans(&self) -> BlasTrans {
-        if self.ndim() != 2 { return BlasTrans::NoTrans; }
-        let strides = self.strides();
-        // Standard F-order: strides[0]=1, strides[1]=nrows
-        // Transposed F-order view: strides[0]=ncols, strides[1]=1
-        if strides[0].abs() > strides[1].abs() {
-            BlasTrans::Trans
-        } else {
-            BlasTrans::NoTrans
-        }
+        BlasTrans::NoTrans
     }
 }
 
@@ -653,7 +643,7 @@ if tensor.is_blas_compatible() {
         call_blas_dgemm(info, tensor.blas_trans(), ...);
     }
 } else {
-    let contiguous = tensor.to_f_contiguous();
+    let contiguous = tensor.to_contiguous();
     let info = contiguous.blas_info().unwrap();
     unsafe {
         call_blas_dgemm(info, contiguous.blas_trans(), ...);
@@ -814,6 +804,8 @@ Wave 3: ┌────┴────┐
 | 替代方案 | 仅返回 `bool is_blas_compatible()` — 放弃，上游库需要重复获取多个参数 |
 | 替代方案 | 返回 raw C 常量 — 放弃，不符合 Rust 惯例 |
 
+> **补充**：Xenon 的直接 BLAS 路径只接受 BLAS-compatible 的 F-order 2D 张量。转置或非连续视图必须先显式 materialize 为 `to_contiguous()` 结果，再以 `BlasTrans::NoTrans` 传给上游 BLAS。
+
 ### 决策 2: Safety 独立边界
 
 | 属性 | 值 |
@@ -893,6 +885,8 @@ FFI 模块完全兼容 `no_std` 环境。所有操作均为指针运算和结构
 | 1.0.4 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-08 |
+| 1.1.2 | 2026-04-10 |
+| 1.1.3 | 2026-04-10 |
 
 ---
 

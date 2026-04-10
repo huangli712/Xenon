@@ -150,15 +150,15 @@ pub fn assert_tensor_close<A, D>(
     atol: f64,
     msg: &str,
 ) where
-    A: RealScalar,
+    A: RealScalar + CastTo<f64>,
     D: Dimension,
 {
     assert_eq!(actual.shape(), expected.shape(),
         "{}: shape mismatch: {:?} vs {:?}", msg, actual.shape(), expected.shape());
 
     for (idx, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
-        let a_f = (*a).to_f64().unwrap();
-        let e_f = (*e).to_f64().unwrap();
+        let a_f: f64 = (*a).cast_to();
+        let e_f: f64 = (*e).cast_to();
         let diff = (a_f - e_f).abs();
         let tolerance = atol + rtol * e_f.abs();
         assert!(diff <= tolerance,
@@ -193,9 +193,9 @@ pub fn standard_shapes_2d() -> Vec<(usize, usize)> {
 }
 
 /// Generate a non-contiguous 2D tensor (transposed view).
-pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
+pub fn non_contiguous_2d(rows: usize, cols: usize) -> TensorView2<'static, f64> {
     let t = Tensor2::<f64>::from_fn([cols, rows], |idx| (idx[0] * rows + idx[1]) as f64);
-    t.t().to_owned()
+    Box::leak(Box::new(t)).t()
 }
 ```
 
@@ -356,6 +356,7 @@ no_std_check:
 | `test_invalid_axis_error` | 轴越界返回 InvalidAxis | 高 |
 | `test_dimension_mismatch_error` | 维度互转失败返回 DimensionMismatch | 高 |
 | `test_layout_mismatch_error` | 布局不兼容操作返回 LayoutMismatch | 高 |
+| `test_workspace_invalid_layout_error` | 非法对齐工作空间返回 `WorkspaceError::InvalidLayout` | 高 |
 | `test_error_display` | 所有错误类型的 Display 包含上下文 | 中 |
 
 ---
@@ -428,7 +429,7 @@ fn test_high_dim_operations() {
 | 运算类别 | f64 容差 | f32 容差 | 参考实现 |
 |----------|----------|----------|----------|
 | 加减乘 | 精确 (≤0.5 ULP) | 精确 (≤0.5 ULP) | 直接计算 |
-| 归约 (sum) | rtol < 1e-15 | rtol < 1e-6 | Kahan 求和 |
+| 归约 (sum) | 与单线程结果一致 | 与单线程结果一致 | 单线程基线路径 |
 | 超越函数 (sin/cos) | rtol < 1e-14 | rtol < 1e-5 | `std::f64::sin` |
 | 超越函数 (exp/ln) | rtol < 1e-14 | rtol < 1e-5 | `std::f64::exp` |
 
@@ -483,8 +484,7 @@ fn test_par_sum_consistency() {
     #[cfg(feature = "parallel")]
     {
         let par_sum = t.par_sum();
-        let rtol = (serial_sum - par_sum).abs() / serial_sum.abs();
-        assert!(rtol < 1e-14, "parallel sum rtol: {}", rtol);
+        assert_eq!(par_sum, serial_sum, "parallel sum must match serial result exactly");
     }
 }
 ```
@@ -521,7 +521,7 @@ fn test_simd_add_consistency() {
 | `sum` 保加法单位元 | 空数组 sum == 0（参见 `13-reduction.md §4`） | 高 |
 | `transpose` 自反性 | `t.t().t()` == `t`（参见 `16-shape.md §4`） | 高 |
 | 加法交换律 | `a + b` == `b + a`（近似） | 中 |
-| 加法结合律 | `(a + b) + c` == `a + (b + c)`（近似） | 中 |
+| 连续 reshape 保元素数 | 连续数组 reshape 前后 `len()` 不变且数据顺序一致 | 中 |
 | `unique` 保元素数 | `unique(a).len()` ≤ `a.len()` | 中 |
 | `unique` 不含重复 | unique 结果无相邻相等元素 | 中 |
 | 广播形状一致性 | 广播后形状 = max 对应维度（参见 `15-broadcast.md §5`） | 高 |
@@ -586,11 +586,11 @@ fn prop_approx_equal(x: f64, y: f64) -> bool {
 
 ### 10.1 assert_tensor_close 实现细节
 
-> `assert_tensor_close` 要求 `A: RealScalar`，其中 `RealScalar` trait 提供 `to_f64() -> f64` 方法（定义于 03-element.md §4.4）。确认该方法存在于 RealScalar trait 定义中。如尚未定义，需在 03 文档中补充。
+> `assert_tensor_close` 应基于已冻结的元素转换接口实现（如 `CastTo<f64>` 或等价内部辅助），避免依赖未在 `03-element.md` 中正式冻结的附加转换约定。
 
 `assert_tensor_close` 的核心逻辑：
 
-1. **形状检查**：先比较 shape，不匹配立即 panic 并附上下文
+1. **形状检查**：先比较 shape，不匹配立即断言失败并附上下文
 2. **逐元素比较**：使用 NumPy 风格组合容差（atol + rtol），判断条件为 `|actual - expected| <= atol + rtol * |expected|`。atol 覆盖 expected 接近零的情况，rtol 覆盖相对尺度情况
 3. **错误信息**：包含测试名称、元素索引、实际值、期望值、差值、容差
 
@@ -709,6 +709,8 @@ fn test_bad_magic() {
 | `test_parallel.rs` | `parallel` | `09-parallel.md` |
 | `test_simd.rs` | `simd` | `08-simd.md` |
 | `test_error.rs` | `error` | `26-error.md` |
+
+> **说明**：`WorkspaceError` 是独立于 `XenonError` 的错误类型，因此 workspace 相关错误既在 `test_ffi.rs` 中覆盖 FFI/Workspace 交互，也在错误测试中单独验证其返回值与显示信息。
 
 ### 12.2 数据流
 
@@ -961,6 +963,7 @@ test:
 | 1.1.0 | 2026-04-08 |
 | 1.2.0 | 2026-04-08 |
 | 1.2.1 | 2026-04-08 |
+| 1.2.2 | 2026-04-10 |
 
 ---
 

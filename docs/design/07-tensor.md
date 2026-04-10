@@ -373,7 +373,7 @@ where
     pub unsafe fn from_raw_parts(
         ptr: *const A,
         shape: D,
-        strides: D,
+        strides: Strides<D>,
         offset: usize,
     ) -> Self;
 }
@@ -390,7 +390,7 @@ where
     pub unsafe fn from_raw_parts_mut(
         ptr: *mut A,
         shape: D,
-        strides: D,
+        strides: Strides<D>,
         offset: usize,
     ) -> Self;
 }
@@ -464,7 +464,7 @@ let t = Tensor2::<f64>::from_shape_vec([3, 4], vec![1.0; 12])?;
 
 // Bad - Use unsafe from_raw_parts to skip validation
 let t = unsafe {
-    TensorView2::from_raw_parts(data.as_ptr(), Ix2([3, 4]), Ix2([1, 3]), 0)
+    TensorView2::from_raw_parts(data.as_ptr(), Ix2([3, 4]), Strides::from_slice(&[1, 3]), 0)
 };
 ```
 
@@ -474,7 +474,7 @@ let t = unsafe {
 
 ### 5.1 步长存储策略
 
-> **设计决策：** `strides` 字段类型为 `D`（与 `shape` 同类型），但步长值需要支持负数。
+> **设计决策：** `shape` 与 `strides` 分离建模：`shape` 字段类型为 `D`，`strides` 字段类型为 `Strides<D>`。
 >
 > **实现方案：**
 >
@@ -485,7 +485,7 @@ let t = unsafe {
 > | layout 模块计算 | `isize` | 负步长和零步长在 layout 层计算（参见 `06-memory.md §4.2`） |
 >
 > **权衡：**
-> - D 类型保证 strides 与 shape 维度数相同（编译期）
+> - `Strides<D>` 保证 strides 与 shape 维度数相同（编译期）
 > - 静态维度使用栈分配数组（性能）
 > - 负步长符号通过 `LayoutFlags::HAS_NEG_STRIDE` 标记辅助处理
 
@@ -742,8 +742,8 @@ Wave 4:       [T10]
 
 | 实例化 | 大小（估算） | 说明 |
 |--------|-------------|------|
-| `Tensor2<f64>` | ~72 bytes | Owned(24) + Ix2(16) + Ix2(16) + usize(8) + u8(1) + padding(7) = 72 bytes |
-| `TensorView2<f64>` | ~56 bytes | ViewRepr<&'a f64>(≈ 8 bytes: 裸指针+PhantomData) + Ix2(16) + Ix2(16) + usize(8) + u8(1) + padding ≈ 56 bytes |
+| `Tensor2<f64>` | ~72 bytes | Owned(24) + Ix2(16) + Strides<Ix2>(16) + usize(8) + u8(1) + padding(7) = 72 bytes |
+| `TensorView2<f64>` | ~56 bytes | ViewRepr<&'a f64>(≈ 8 bytes: 裸指针+PhantomData) + Ix2(16) + Strides<Ix2>(16) + usize(8) + u8(1) + padding ≈ 56 bytes |
 | `TensorD<f64>` | ~96 bytes | Owned(24) + IxDyn(24×2) + usize(8) + u8(1) + padding |
 
 **性能数据（参考）**：
@@ -814,7 +814,7 @@ where
 ### 11.2 与 dimension 模块的接口
 
 ```rust
-// Dimension trait provides shape and stride operations
+// Dimension trait provides shape operations
 impl<S, D> TensorBase<S, D>
 where
     D: Dimension,
@@ -840,15 +840,19 @@ where
 {
     pub fn from_shape_vec(shape: D, data: Vec<A>) -> Result<Self, XenonError> {
         if data.len() != shape.size() {
-            return Err(ShapeError);
+            return Err(XenonError::InvalidShape {
+                from: data.len(),
+                to: shape.size(),
+            });
         }
         let strides = layout::compute_f_strides(&shape);
-        let ptr = data.as_ptr();
+        let storage = Owned::from_vec_aligned(data);
+        let ptr = storage.as_ptr();
         let flags = layout::compute_flags(&shape, &strides, ptr);
         Ok(Self {
-            storage: Owned::from_vec_aligned(data),  // Copies data into 64-byte aligned memory (O(n))
+            storage,
             shape,
-            strides,  // isize → D conversion
+            strides,
             offset: 0,
             flags,
         })
@@ -916,6 +920,8 @@ where
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.1.1 | 2026-04-10 |
+| 1.1.2 | 2026-04-10 |
 
 ---
 

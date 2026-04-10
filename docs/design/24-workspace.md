@@ -89,7 +89,7 @@ src/workspace/
 外部依赖:
 ├── core            # ptr::NonNull, marker, sync::atomic, fmt
 ├── alloc           # alloc::alloc, alloc::dealloc, alloc::Layout
-└── crate::error    # WorkspaceError（可选，也可在本模块定义）
+└── 无 crate 内部错误模块依赖；`WorkspaceError` 定义在 `workspace/error.rs`
 ```
 
 ### 3.2 类型级依赖
@@ -252,7 +252,7 @@ impl Workspace {
 
         let size = capacity.max(1);
         let layout = Layout::from_size_align(size, alignment)
-            .map_err(|_| WorkspaceError::InvalidLayout)?;
+            .map_err(|_| WorkspaceError::InvalidLayout { align: alignment })?;
 
         let ptr = unsafe { alloc(layout) };
         let ptr = NonNull::new(ptr).ok_or(WorkspaceError::AllocFailed)?;
@@ -650,7 +650,7 @@ impl Workspace {
     /// Internal reallocation.
     fn reallocate(&mut self, new_capacity: usize) -> Result<(), WorkspaceError> {
         let new_layout = Layout::from_size_align(new_capacity, self.alignment)
-            .map_err(|_| WorkspaceError::InvalidLayout)?;
+            .map_err(|_| WorkspaceError::InvalidLayout { align: self.alignment })?;
 
         let new_ptr = unsafe { alloc(new_layout) };
         let new_ptr = NonNull::new(new_ptr)
@@ -886,7 +886,7 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 |----------|----------|--------|
 | `test_workspace_new_basic` | 指定容量和对齐创建工作空间 | 高 |
 | `test_workspace_new_default` | 默认参数创建 | 高 |
-| `test_workspace_new_invalid_alignment` | 非法对齐值 panic | 高 |
+| `test_workspace_new_invalid_alignment` | 非法对齐值返回 `WorkspaceError::InvalidLayout` | 高 |
 | `test_workspace_drop_no_leak` | Drop 后内存正确释放 | 中 |
 | `test_borrow_basic` | 不可变借用和切片访问 | 高 |
 | `test_borrow_mut_basic` | 可变借用和类型化访问 | 高 |
@@ -948,7 +948,7 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 | 属性 | 值 |
 |------|-----|
 | 决策 | 借出期间禁止再次借出（由 AtomicU8 CAS 保证） |
-| 理由 | 安全性：避免同一缓冲区被多次借出导致数据竞争；简单性: 单一借用模型更易理解；split_at() 生成的子空间中，Drop 任一子空间即释放父工作空间，调用方须自行保证逻辑正确性。 |
+| 理由 | 安全性：避免同一缓冲区被多次借出导致数据竞争；简单性: 单一借用模型更易理解；split_at() 生成的子空间全部释放后，父工作空间才恢复可借用状态。 |
 | 替代方案 | 允许共享借用（多个 reader） — 未来可扩展，当前版本简化 |
 
 ### 决策 3:扩容安全性保证
@@ -1036,6 +1036,7 @@ impl std::error::Error for WorkspaceError {}
 | 1.1.1 | 2026-04-08 |
 | 1.2.0 | 2026-04-08 |
 | 1.2.1 | 2026-04-08 |
+| 1.2.2 | 2026-04-10 |
 
 ---
 

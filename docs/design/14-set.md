@@ -13,12 +13,12 @@
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
 | unique 操作 | 返回排序后的不重复元素作为新 1D 张量 | intersection/union/difference |
-| 支持类型 | i32, i64, f32, f64, Complex<f32>, Complex<f64>, usize | bincount/histogram |
+| 支持类型 | i32, i64, f32, f64, Complex<f32>, Complex<f64> | bincount/histogram |
 | 不支持类型 | bool（仅 2 种值，unique 无意义） | argmin/argmax |
 
 > **注意**：当前版本仅支持 unique 操作！不包含 intersection/union/difference/bincount/histogram 等。
 
-> **usize 说明**：`usize` 仍可作为元素类型参与 `unique`；其排序规则与其他整数类型一致。
+> **usize 说明**：`usize` 仍可作为 Xenon 元素类型存在，但不参与 `unique`；集合操作层面将其视为索引/大小语义类型而非集合元素类型。
 
 ### 1.2 设计原则
 
@@ -36,7 +36,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
-L3: storage (依赖 layout)
+L3: storage (仅依赖 core/alloc，不依赖 layout)
 L4: tensor (依赖 storage, dimension)
 L5: set  ← 当前模块
 ```
@@ -62,7 +62,7 @@ src/set/
 ```
 src/set/unique.rs
 ├── crate::tensor        # TensorBase<S, D>, Tensor<A, Ix1>
-├── crate::element       # Element, Numeric, ComplexScalar
+├── crate::element       # Element, ComplexScalar
 └── crate::iter          # Elements（收集元素）
 ```
 
@@ -473,6 +473,7 @@ use alloc::vec::Vec;
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.1.1 | 2026-04-10 |
 
 ---
 

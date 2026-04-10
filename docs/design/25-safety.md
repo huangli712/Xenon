@@ -113,7 +113,7 @@ src/parallel/
 
 ## 4. 公共 API 设计
 
-> **注意：** `05-storage.md §5.7` 包含一个较早的、不正确的 Send/Sync 条件表，已被更正。本文档（25-safety.md）是 Send/Sync 条件的权威参考。
+> **注意：** 本文档与 `05-storage.md §5.7` 采用同一组 Send/Sync 规则。若后续出现冲突，以本文档作为线程安全裁决源，并同步回写到存储文档。
 
 ### 4.1 Send/Sync 实现规则表
 
@@ -121,10 +121,10 @@ src/parallel/
 
 | 存储模式 | Send | Sync | 条件 | 理由 |
 |----------|:----:|:----:|------|------|
-| `Owned<A>` | ✅ | ✅ | `A: Send + Sync` | Vec 内部线程安全，元素约束传播 |
+| `Owned<A>` | ✅ | ✅ | Send: `A: Send`; Sync: `A: Sync` | 独占拥有型存储分别按移动安全和共享安全传播元素约束 |
 | `ViewRepr<&'a A>` | ✅ | ✅ | `A: Sync` | 共享引用跨线程共享要求 `T: Sync` |
 | `ViewMutRepr<&'a mut A>` | ✅ | ✗ | `A: Send` | 独占借用不可共享，但可转移 |
-| `ArcRepr<A>` | ✅ | ✅ | `A: Send + Sync` | Arc 原子计数，要求元素线程安全 |
+| `ArcRepr<A>` | ✅ | ✅ | `A: Send + Sync` | Arc 原子计数，读共享安全，写入需 `make_mut()` 独占 |
 
 各存储模式的完整 API 定义参见 `05-storage.md §4`。
 
@@ -134,7 +134,7 @@ src/parallel/
 
 | 存储模式 S | TensorBase\<S, D\> 的 Send | TensorBase\<S, D\> 的 Sync |
 |------------|--------------------------|--------------------------|
-| `Owned<A>` where A: Send/Sync | ✅ Send | ✅ Sync |
+| `Owned<A>` where `A: Send` / `A: Sync` | ✅ Send | ✅ Sync |
 | `ViewRepr<&'a A>` where A: Sync | ✅ Send | ✅ Sync |
 | `ViewRepr<&'a mut A>` where A: Send | ✅ Send | ❌ (exclusive borrow) |
 | `ArcRepr<A>` where A: Send + Sync | ✅ Send | ✅ Sync |
@@ -852,6 +852,7 @@ mod parallel { ... }
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
+| 1.0.5 | 2026-04-10 |
 
 ---
 

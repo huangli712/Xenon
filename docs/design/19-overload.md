@@ -88,7 +88,7 @@ src/overload/
 | `math` | `zip_with()`, `mapv()`, 二元逐元素运算（参见 `11-math.md` §4） |
 | `broadcast` | `broadcast_shape()`, `broadcast_with()`, `can_broadcast()`（参见 `15-broadcast.md` §4） |
 | `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.view()`（参见 `07-tensor.md` §4） |
-| `element` | `Numeric` trait 约束（排除 `bool`）（参见 `03-element.md` §3） |
+| `element` | `Numeric` trait 约束（排除 `bool` 与 `usize`）（参见 `03-element.md` §3） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<E>`（该 trait 定义于 `02-dimension.md §4.9`，计算广播后的维度类型） |
 
 > **Numeric 隐含 Copy：** `Numeric` trait 继承自 `Element`，而 `Element: Copy`（见 `03-element.md` §4.1）。因此所有 `Numeric` 类型均满足 `Copy`，可以在标量运算中安全地按值传递而无需额外约束。
@@ -142,6 +142,7 @@ where
         let (a_bc, b_bc) = broadcast_with(&self.view(), &rhs.view())
             .expect("broadcast: incompatible shapes");
         zip_with(&a_bc, &b_bc, |a, b| a + b)
+            .expect("internal invariant: zip_with should succeed after successful broadcast")
     }
 }
 
@@ -159,12 +160,14 @@ where
         let (a_bc, b_bc) = broadcast_with(&self.view(), &rhs.view())
             .expect("broadcast: incompatible shapes");
         zip_with(&a_bc, &b_bc, |a, b| a + b)
+            .expect("internal invariant: zip_with should succeed after successful broadcast")
     }
 }
 ```
 
 > **设计决策：** 形状不兼容时使用 `expect` panic。
-> 这与 Rust 标准库 `Index` trait 的惯例一致：运算符重载 panic 而非返回 Result。
+> 这与集中错误语义中的语法糖例外一致：运算符重载 panic 而非返回 Result（参见 `26-error.md` §4.7, §5.2）。
+> 在运算符实现内部，`zip_with` 的 `Result` 通过 `expect` 收束为内部不变量：若广播已经成功，则逐元素 zip 不应再失败。
 > 用户需要广播安全时可直接使用 `broadcast_with` + `zip_with`。
 
 ### 4.2b 视图×视图/张量运算符
@@ -186,6 +189,7 @@ where
         let (a_bc, b_bc) = broadcast_with(&self.view(), &rhs.view())
             .expect("broadcast: incompatible shapes");
         zip_with(&a_bc, &b_bc, |a, b| a + b)
+            .expect("internal invariant: zip_with should succeed after successful broadcast")
     }
 }
 
@@ -205,6 +209,7 @@ where
         let (a_bc, b_bc) = broadcast_with(&self.view(), &rhs.view())
             .expect("broadcast: incompatible shapes");
         zip_with(&a_bc, &b_bc, |a, b| a + b)
+            .expect("internal invariant: zip_with should succeed after successful broadcast")
     }
 }
 ```
@@ -304,7 +309,7 @@ fn compute(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix2>) -> Tensor<f64, Ix2> {
 // Good - use explicit API for broadcast safety
 fn compute_safe(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix1>) -> Result<Tensor<f64, Ix2>, XenonError> {
     let (a_bc, b_bc) = broadcast_with(&a.view(), &b.view())?;
-    Ok(zip_with(&a_bc, &b_bc, |x, y| x + y))
+    zip_with(&a_bc, &b_bc, |x, y| x + y)
 }
 
 // Bad - mixing owned and borrowed (unnecessarily consumes a)
@@ -480,7 +485,7 @@ Wave 5:      [T6]
 | `math` | arithmetic → math | `zip_with()` 执行逐元素运算，`mapv()` 执行标量运算（参见 `11-math.md` §4） |
 | `broadcast` | arithmetic → broadcast | `broadcast_with()` 广播两个张量到公共形状（参见 `15-broadcast.md` §4） |
 | `tensor` | arithmetic → tensor | 构造结果 `Tensor<A, D>`，使用 `.view()` 创建视图（参见 `07-tensor.md` §4） |
-| `element` | arithmetic → element | `Numeric` trait 约束排除 `bool` 类型（参见 `03-element.md` §3） |
+| `element` | arithmetic → element | `Numeric` trait 约束排除 `bool` 与 `usize` 类型（参见 `03-element.md` §3） |
 | `dimension` | arithmetic → dimension | `BroadcastDim<E>::Output` 关联类型（参见 `02-dimension.md` §4） |
 
 ---
@@ -500,9 +505,11 @@ Wave 5:      [T6]
 | 属性 | 值 |
 |------|-----|
 | 决策 | 运算符重载中形状不兼容时 panic（使用 `expect`） |
-| 理由 | 与 Rust 标准库 `Index` trait 惯例一致；运算符返回类型固定，无法返回 Result；用户需要安全路径可直接使用 `broadcast_with` + `zip_with`（参见 `15-broadcast.md` §4.1、`11-math.md` §4.1） |
+| 理由 | 这是 Xenon 集中错误语义中的显式语法糖例外；运算符返回类型固定，无法返回 Result；用户需要安全路径可直接使用 `broadcast_with` + `zip_with`（参见 `15-broadcast.md` §4.1、`11-math.md` §4.1、`26-error.md` §4.7） |
 | 替代方案 | 返回 `Result<Tensor, XenonError>` — 放弃，Rust 运算符 trait 不支持 Result 返回类型 |
 | 替代方案 | 使用 `PartialEq` 运算符返回 `Result` — 放弃，不自然 |
+
+> **补充**：方法型 API 仍然是错误恢复的主路径；运算符重载只是语法糖快捷入口，不改变 `math` 模块中 `Result` 风格接口的地位。
 
 ### 决策 3：标量路径使用 mapv 而非广播视图
 
@@ -606,6 +613,9 @@ extern crate alloc;
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.1.1 | 2026-04-10 |
+| 1.1.2 | 2026-04-10 |
+| 1.1.3 | 2026-04-10 |
 
 ---
 

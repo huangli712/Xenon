@@ -15,7 +15,7 @@
 | 零初始化构造 | `zeros<A, D>(shape)` 全零张量 | arange / linspace / logspace 序列生成（当前版本不提供） |
 | 常量填充构造 | `ones<A, D>(shape)` / `fill<A, D>(scalar, shape)` 全一/填充张量 | 随机数构造（当前版本不提供） |
 | 单位矩阵 | `eye<A>(n)` 单位矩阵 | 从文件加载（当前版本不提供） |
-| 从 Vec 构造 | `from_vec<A>(vec, shape)` 从 Vec 转移所有权 | 从迭代器/生成器构造（由 `from_fn` 提供） |
+| 从 Vec 构造 | `from_vec<A>(vec, shape)` 消费输入 Vec 并构造张量 | 从迭代器/生成器构造（由 `from_fn` 提供） |
 | 从切片构造 | `from_slice<A>(slice, shape)` 从切片拷贝数据 | 从文件/网络加载（当前版本不提供） |
 | 从固定数组构造 | `from_array<A, N>(arr, shape)` 从固定大小数组构造 | 从文件加载（当前版本不提供） |
 | 从标量构造 | `from_scalar<A>(scalar)` 零维张量 | — |
@@ -29,7 +29,7 @@
 | 合法性验证 | 所有构造路径须验证合法性，防止越界访问（需求说明书 §8） |
 | F-order 默认 | 构造时数据按 F-order 存放，默认列优先布局 |
 | 对齐分配 | `zeros`/`ones` 使用对齐分配器，满足 BLAS 兼容性（参见 `23-ffi.md` §4.5） |
-| 零拷贝优先 | `from_vec` 将输入 `Vec<A>` 的数据拷贝到新分配的 64 字节对齐内存中（通过 `Owned::from_vec_aligned()`），确保 SIMD 友好的内存对齐。原始 Vec 在拷贝完成后被释放 |
+| 对齐优先 | `from_vec` 将输入 `Vec<A>` 的数据复制到新分配的 64 字节对齐内存中（通过 `Owned::from_vec_aligned()`），确保 SIMD 友好的内存对齐；不承诺复用原始 Vec 的分配 |
 | 类型安全 | 形状和元素类型通过泛型约束在编译期检查 |
 
 ### 1.3 在架构中的位置
@@ -93,7 +93,7 @@ src/
 | `layout` | `LayoutFlags`, `Strides<D>`, F-order 步长计算（参见 `06-memory.md` §3） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`（参见 `02-dimension.md` §4） |
 | `element` | `Element`, `Zero`, `One`（参见 `03-element.md` §3） |
-| `error` | `XenonError::InvalidShape`（参见 `26-error.md` §4） |
+| `error` | `XenonError::InvalidShape`（用于构造时的 shape/length 基数不匹配，参见 `26-error.md` §4） |
 
 ### 3.3 依赖方向声明
 
@@ -215,7 +215,7 @@ where
     /// That is, the first dimension varies fastest.
     ///
     /// # Errors
-    /// Returns `InvalidShape` if `data.len() != shape.size()`.
+    /// Returns `XenonError::InvalidShape` if `data.len() != shape.size()`.
     ///
     /// # Examples
     /// ```
@@ -244,7 +244,7 @@ where
     /// Construct a tensor from a slice (copies data).
     ///
     /// # Errors
-    /// Returns `InvalidShape` if `slice.len() != shape.size()`.
+    /// Returns `XenonError::InvalidShape` if `slice.len() != shape.size()`.
     ///
     /// # Examples
     /// ```
@@ -304,7 +304,7 @@ where
         TensorBase {
             storage: Owned::from_vec_aligned(vec![scalar]),
             shape: Ix0(),
-            strides: Ix0(),
+            strides: Strides::<Ix0>::from_slice(&[]),
             offset: 0,
             flags: LayoutFlags::from_order(Order::F),
         }
@@ -410,7 +410,7 @@ function increment_index_f(shape, index):
 
 ### 5.3 安全性论证
 
-- `from_vec`: 验证 `data.len() == dim.size()`，不匹配返回错误；通过后 `Owned::from_vec_aligned` 转移所有权
+- `from_vec`: 验证 `data.len() == dim.size()`，不匹配返回错误；通过后 `Owned::from_vec_aligned` 消费输入 Vec 并复制到对齐存储
 - `from_slice`: 验证长度后拷贝，原始切片不再被引用
 - `from_fn`: 闭包接收合法索引（`0 <= idx[i] < shape[i]`），无越界风险
 - `eye`: 内部使用已验证的 `zeros` 和合法索引 `[[i, i]]`（`0 <= i < n`），无越界风险
@@ -439,7 +439,7 @@ function increment_index_f(shape, index):
 
 - [ ] **T3**: 实现 `from_vec` 和 `from_slice`
   - 文件: `src/construct/from_data.rs`
-  - 内容: 从 Vec 转移所有权、从切片拷贝
+  - 内容: 消费输入 Vec 并复制到对齐存储、从切片拷贝
   - 测试: `test_from_vec`, `test_from_vec_mismatch`, `test_from_slice`
   - 前置: T1
   - 预计: 10 min
@@ -536,7 +536,7 @@ Wave 4:           [T6]
 | `layout` | construct → layout | 计算 F-order 步长（参见 `06-memory.md` §4） |
 | `dimension` | construct → dimension | 使用 `IntoDimension` 接受灵活形状参数（参见 `02-dimension.md` §4.3） |
 | `element` | construct → element | 使用 `Element`/`Zero`/`One` trait 约束（参见 `03-element.md` §3） |
-| `error` | construct → error | 返回 `XenonError::InvalidShape`（参见 `26-error.md` §4.2） |
+| `error` | construct → error | 返回 `XenonError::InvalidShape`（用于构造时的 shape/length 基数不匹配，参见 `26-error.md` §4） |
 | `index` | index ← construct | 构造后可通过索引访问元素（参见 `17-indexing.md` §4） |
 
 ---
@@ -653,6 +653,7 @@ use alloc::vec::Vec;
 | 1.0.4 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-08 |
+| 1.1.2 | 2026-04-10 |
 
 ---
 

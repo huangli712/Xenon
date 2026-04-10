@@ -283,8 +283,8 @@ i=2: stride[2] = 12,   cumulative = 12 * 5 = 60
 /// * `shape` - Length of each axis
 ///
 /// # Returns
-/// Stride array (isize) with the same length as shape
-pub fn compute_f_strides<D: Dimension>(shape: &D) -> D;
+/// `Strides<D>` with the same rank as `shape`, storing signed strides explicitly.
+pub fn compute_f_strides<D: Dimension>(shape: &D) -> Strides<D>;
 ```
 
 ### 4.4 连续性检查算法
@@ -399,7 +399,7 @@ impl Layout {
     /// Computes the layout flags from shape, strides, and pointer.
     pub fn compute<D: Dimension>(
         shape: &D,
-        strides: &D,
+        strides: &Strides<D>,
         ptr: *const u8,
     ) -> Self {
         let flags = compute_flags_inner(shape, strides, ptr);
@@ -450,7 +450,7 @@ impl Layout {
 /// # Arguments
 ///
 /// * `shape` - Dimension lengths
-/// * `strides` - Strides in element units (isize stored as usize in D)
+/// * `strides` - Strides in element units (`Strides<D>` with explicit `isize` storage)
 /// * `ptr` - Raw pointer to the data start
 ///
 /// # Returns
@@ -458,7 +458,7 @@ impl Layout {
 /// A `LayoutFlags` instance with all relevant flags set.
 pub(crate) fn compute_flags<A, D: Dimension>(
     shape: &D,
-    strides: &D,
+    strides: &Strides<D>,
     ptr: *const A,
 ) -> LayoutFlags
 ```
@@ -560,21 +560,21 @@ Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的
 
 - [ ] **T3**: 实现 F-order 步长计算算法
   - 文件: `src/layout/strides.rs`
-  - 内容: `compute_f_strides<D: Dimension>(shape: &D) -> D`
+  - 内容: `compute_f_strides<D: Dimension>(shape: &D) -> Strides<D>`
   - 测试: `test_f_strides_2d`, `test_f_strides_3d`, `test_f_strides_scalar`
   - 前置: T1
   - 预计: 10 min
 
 - [ ] **T4**: 实现 F-连续性检测算法
   - 文件: `src/layout/contiguous.rs`
-  - 内容: `is_f_contiguous<D: Dimension>(shape: &D, strides: &D) -> bool`
+  - 内容: `is_f_contiguous<D: Dimension>(shape: &D, strides: &Strides<D>) -> bool`
   - 测试: `test_f_contig_true`, `test_f_contig_false`, `test_f_contig_empty`, `test_f_contig_scalar`
   - 前置: T1
   - 预计: 10 min
 
 - [ ] **T5**: 实现步长特性检测
   - 文件: `src/layout/strides.rs`
-  - 内容: `has_zero_stride<D: Dimension>(strides: &D) -> bool`, `has_neg_stride<D: Dimension>(strides: &D) -> bool`
+  - 内容: `has_zero_stride<D: Dimension>(strides: &Strides<D>) -> bool`, `has_neg_stride<D: Dimension>(strides: &Strides<D>) -> bool`
   - 测试: `test_zero_stride_detect`, `test_neg_stride_detect`
   - 前置: T1
   - 预计: 10 min
@@ -797,6 +797,7 @@ Wave 4:       [T8]
 | 1.0.2 | 2026-04-08 |
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
+| 1.0.5 | 2026-04-10 |
 | 1.1.0 | 2026-04-08 |
 | 1.2.0 | 2026-04-08 |
 | 1.2.1 | 2026-04-09 |

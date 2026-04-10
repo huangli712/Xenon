@@ -229,13 +229,13 @@ where
 // Good - Use ? and Result for broadcast error handling
 fn process(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix1>) -> Result<Tensor<f64, Ix2>, XenonError> {
     let (a_bc, b_bc) = broadcast_with(&a.view(), &b.view())?;
-    Ok(zip_with(&a_bc, &b_bc, |x, y| x + y))
+    zip_with(&a_bc, &b_bc, |x, y| x + y)
 }
 
 // Bad - Directly unwrap broadcast result
 fn process_bad(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix1>) -> Tensor<f64, Ix2> {
     let (a_bc, b_bc) = broadcast_with(&a.view(), &b.view()).unwrap(); // Forbidden: may panic
-    zip_with(&a_bc, &b_bc, |x, y| x + y)
+    zip_with(&a_bc, &b_bc, |x, y| x + y).unwrap()
 }
 ```
 
@@ -289,10 +289,9 @@ function broadcast_shape(shape_a: [usize; N], shape_b: [usize; M])
         dim_b = if j >= 0 then shape_b[j] else 1
 
         if dim_a != dim_b and dim_a != 1 and dim_b != 1:
-return Error(XenonError::BroadcastError {
-                shape_a, shape_b,
-                incompatible_dim: k,
-                dim_a, dim_b,
+            return Error(XenonError::BroadcastError {
+                shape_a,
+                shape_b,
             })
 
         result_shape[k] = max(dim_a, dim_b)
@@ -360,7 +359,7 @@ fn update_flags_for_broadcast(source_flags: LayoutFlags, new_strides: &[isize]) 
 
 - [ ] **T1**: 创建 `src/broadcast.rs` 骨架与错误类型
   - 文件: `src/broadcast.rs`
-  - 内容: 模块声明、`BroadcastError` 定义、`Display`/`Error` 实现
+  - 内容: 模块声明，以及对 `XenonError::BroadcastError` 的使用与文档接线
   - 测试: 编译通过
   - 前置: error 模块完成
   - 预计: 10 min
@@ -507,8 +506,8 @@ Wave 4:           [T7]
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | 维度不兼容返回 `XenonError::BroadcastError`，包含详细维度信息 |
-| 理由 | 调试友好（快速定位不兼容维度）；错误信息自动生成"dimension 1: 2 != 4" |
+| 决策 | 维度不兼容返回 `XenonError::BroadcastError`，错误载荷保持与 `26-error.md` 中央定义一致 |
+| 理由 | 广播模块只负责报告 shape 级不兼容；统一错误结构由 `26-error.md` 集中裁决，避免下游依赖未冻结的维度级字段 |
 | 替代方案 | 简单 panic — 放弃，不可恢复，诊断信息不足 |
 
 ---
@@ -561,7 +560,7 @@ use alloc::vec::Vec;
 | `broadcast_strides()` | ✅ | 返回 `Vec<isize>`，`extern crate alloc` 始终可用 |
 | `broadcast_to()` | ✅ | 创建 `TensorView`（零拷贝），无堆分配 |
 | `broadcast_with()` | ✅ | 创建两个 `TensorView`，需 `no_std + alloc`（IxDyn），参见 `02-dimension.md` §3 |
-| `BroadcastError` | ✅ | 使用 `core::fmt::Display`，无堆依赖，参见 `26-error.md` §4 |
+| `XenonError::BroadcastError` | ✅ | 使用 `core::fmt::Display`，无堆依赖，参见 `26-error.md` §4 |
 
 条件编译处理：
 
@@ -572,7 +571,7 @@ use alloc::vec::Vec;
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-// BroadcastError uses core::fmt::Display, no std::error::Error needed
+// XenonError::BroadcastError uses core::fmt::Display, no std::error::Error needed
 ```
 
 ---
@@ -587,6 +586,7 @@ extern crate alloc;
 | 1.0.3 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-08 |
+| 1.1.2 | 2026-04-10 |
 
 ---
 

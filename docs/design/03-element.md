@@ -133,8 +133,9 @@ pub trait Element:
 /// Numeric element trait.
 ///
 /// Adds arithmetic operations on top of Element.
-/// Only numeric types (integers, floats, complex) implement this.
-/// `bool` does NOT implement Numeric.
+/// Only Xenon's computational numeric types implement this trait:
+/// `i32`, `i64`, `f32`, `f64`, `Complex<f32>`, `Complex<f64>`.
+/// `bool` and `usize` do NOT implement Numeric.
 ///
 /// Note: `Sealed` is not listed as a separate supertrait here because
 /// `Element` already inherits `Sealed`.
@@ -287,7 +288,7 @@ pub trait ComplexScalar: Numeric + Sealed {
 | `Complex<f32>` | ✓ | ✓ | ✗ | ✓ |
 | `Complex<f64>` | ✓ | ✓ | ✗ | ✓ |
 | `bool` | ✓ | ✗ | ✗ | ✗ |
-| `usize` | ✓ | ✓（仅基础数值运算，不参与负号与符号函数） | ✗ | ✗ |
+| `usize` | ✓ | ✗ | ✗ | ✗ |
 
 > **Xenon 特定约束：** 仅支持上表列出的 8 种类型。不支持 u8/u16/u32/i8/i16 等其他整数类型。
 
@@ -321,11 +322,12 @@ impl Element for MyType { /* error[E0277]: Sealed not satisfied */ }
 ### 4.7 Good / Bad 对比示例
 
 ```rust
-// Good - Numeric constraint automatically excludes bool
+// Good - Numeric constraint automatically excludes bool and usize
 fn sum<A: Numeric>(tensor: &TensorView<A>) -> A {
     tensor.iter().fold(A::zero(), |acc, &x| acc + x)
 }
-// sum(&bool_tensor);  // Compile error: bool does not satisfy Numeric ✓
+// sum(&bool_tensor);   // Compile error: bool does not satisfy Numeric
+// sum(&usize_tensor);  // Compile error: usize does not satisfy Numeric
 
 // Bad - Element constraint cannot exclude bool
 fn sum_bad<A: Element>(tensor: &TensorView<A>) -> A {
@@ -434,7 +436,7 @@ impl Element for bool {
 
 ### 5.2 usize 包含策略
 
-`usize` 实现 `Element` 与受限的 `Numeric` 能力，可参与基础逐元素数值运算，但不支持负号、符号函数等依赖有符号语义的操作。
+`usize` 仅实现 `Element`，不实现 `Numeric`。它在 Xenon 中主要承担索引、形状和大小相关语义，不参与张量算术运算。
 
 ### 5.3 类型提升规则
 
@@ -769,6 +771,7 @@ Wave 3: [T6]      [T9] ← ────┘
 | 1.0.3 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
 | 1.2.0 | 2026-04-08 |
+| 1.2.1 | 2026-04-10 |
 
 ---
 

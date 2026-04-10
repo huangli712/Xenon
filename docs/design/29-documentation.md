@@ -336,6 +336,7 @@ pub fn par_sum(&self) -> A { ... }
 | `broadcasting.rs` | 广播规则、行/列/标量广播 | 默认 | 日常使用 |
 | `parallel.rs` | 并行计算、阈值配置 | `parallel` | 性能优化（参见 `09-parallel.md §4`） |
 | `simd.rs` | SIMD 加速、回退策略 | `simd` | 性能优化（参见 `08-simd.md §4`） |
+| `no_std.rs` | `no_std + alloc` 使用模式 | 默认关闭 `std` | 系统/嵌入式开发者 |
 | `ffi.rs` | 与 C/BLAS 交互 | 默认 | 库开发者 |
 
 ### 8.2 示例模板
@@ -885,9 +886,16 @@ docs:
   - 前置: T1
   - 预计: 10 min
 
+- [ ] **T16**: 编写 examples/no_std.rs
+  - 文件: `examples/no_std.rs`
+  - 内容: `no_std + alloc` 环境下的最小用法示例
+  - 测试: `cargo check --example no_std --no-default-features`
+  - 前置: T1
+  - 预计: 10 min
+
 ### Wave 5: CI 集成
 
-- [ ] **T16**: 配置 CI 文档验证工作流
+- [ ] **T17**: 配置 CI 文档验证工作流
   - 文件: `.github/workflows/docs.yml`
   - 内容: missing docs 检查、doctest、示例编译
   - 测试: CI 触发运行
@@ -966,6 +974,8 @@ Wave 6: [T17]
 | 1.0.3 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-08 |
+| 1.1.2 | 2026-04-10 |
+| 1.1.3 | 2026-04-10 |
 
 ---
 

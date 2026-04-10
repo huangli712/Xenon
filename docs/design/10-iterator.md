@@ -30,7 +30,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
-L3: storage (依赖 layout)
+L3: storage (仅依赖 core/alloc，不依赖 layout)
 L4: tensor (依赖 storage, dimension)
 L5: iter  ← 当前模块
 ```
@@ -73,7 +73,7 @@ src/iter/
 ├── crate::tensor        # TensorBase<S, D>, TensorView, TensorViewMut
 ├── crate::dimension     # Dimension trait, Ix0~Ix6, IxDyn
 ├── crate::storage       # Storage, StorageMut trait
-├── crate::layout        # LayoutFlags, Order
+├── crate::tensor        # 通过 TensorBase 暴露布局/连续性查询
 └── crate::broadcast     # broadcast_shape()（仅 Zip 使用）
 ```
 
@@ -84,12 +84,12 @@ src/iter/
 | `tensor` | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `TensorViewMut<'a, A, D>`, `.shape()`, `.strides()`, `.as_ptr()`, `.len()`（参见 `07-tensor.md §4`） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `RemoveAxis`, `D::Smaller`（参见 `02-dimension.md §4`） |
 | `storage` | `Storage<Elem = A>`, `StorageMut<Elem = A>`, `Owned<A>`（参见 `05-storage.md §4`） |
-| `layout` | `LayoutFlags`, `is_f_contiguous()`（参见 `06-memory.md §4`） |
+| `tensor` | `.is_f_contiguous()`, 布局标志查询（参见 `07-tensor.md §4`） |
 | `broadcast` | `broadcast_shape()`（Zip 构造时验证形状兼容性，参见 `15-broadcast.md §4`） |
 
 ### 3.3 依赖方向
 
-> **依赖方向：单向向上。** `iter/` 仅消费 `tensor`、`dimension`、`storage`、`layout` 等核心模块，不被它们依赖。
+> **依赖方向：单向向上。** `iter/` 仅消费 `tensor`、`dimension`、`storage` 等核心模块，不被它们依赖。布局/连续性判断通过 `TensorBase` 暴露的查询接口完成。
 
 ---
 
@@ -207,7 +207,7 @@ pub trait NdProducer {
     fn shape(&self) -> &Self::Dim;
 
     /// Returns the strides of this producer.
-    fn strides(&self) -> &[isize];
+    fn strides(&self) -> &Strides<Self::Dim>;
 
     /// Split at the given index along the first axis.
     fn split_at(self, index: usize) -> (Self, Self);

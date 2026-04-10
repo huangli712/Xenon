@@ -49,7 +49,7 @@ src/
 └── format/
     ├── mod.rs         # 模块根，re-exports，cfg gates
     ├── config.rs      # FormatConfig 配置结构体及 Default 实现
-    ├── display.rs     # Display trait 实现（#[cfg(feature = "std")]）
+    ├── display.rs     # Display trait 实现（基于 core::fmt，无 std gate）
     ├── debug.rs       # Debug trait 实现
     └── pretty.rs      # NumPy 风格格式化辅助函数（fmt_1d, fmt_nd, 截断规则）
 ```
@@ -520,7 +520,7 @@ Wave 3:        [T5]
 
 | 不变量 | 测试方法 |
 |--------|----------|
-| `format(tensor).contains(shape)` | 随机形状 |
+| `debug(tensor)` 包含 shape / strides / dtype 元信息 | 随机形状 |
 | 截断输出包含 `...` | 大数组 |
 
 ---
@@ -626,6 +626,7 @@ where
 | 1.0.4 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-08 |
+| 1.1.2 | 2026-04-10 |
 
 ---
 

@@ -49,15 +49,10 @@ L5: reduction  ← 当前模块
 ```
 src/reduction/
 ├── mod.rs              # 模块根，re-exports，公共 API 入口
-├── sum.rs              # 全局 sum 和沿轴 sum_axis 实现
-├── simd.rs             # SIMD 加速归约路径（cfg feature = "simd"）
-└── parallel.rs         # 并行归约路径（cfg feature = "parallel"）
+└── sum.rs              # 全局 sum 和沿轴 sum_axis 实现，必要时委托 `src/simd/` / `src/parallel/`
 ```
 
-多文件设计理由：虽然当前仅实现 sum 归约，但归约模块涉及多条实现路径（标量、SIMD、并行），拆分为独立目录有助于：
-- 各实现路径独立维护和条件编译
-- 未来扩展其他归约操作时结构清晰
-- 与项目中 `set/`、`shape/` 等模块保持一致的多文件组织风格
+多文件设计理由：当前版本仅实现 sum 归约，因此 `reduction/` 保持最小语义层即可。SIMD 与并行路径由独立 backend 模块 `src/simd/`、`src/parallel/` 承载，`reduction/` 只负责在正确性前提下选择或委托执行路径。
 
 ---
 
@@ -67,12 +62,10 @@ src/reduction/
 
 ```
 src/reduction/
-├── mod.rs          # crate::tensor        # TensorBase<S, D>, TensorView
-├── sum.rs          # crate::iter          # Elements, AxisIter
-├── simd.rs         # crate::element       # Numeric, RealScalar
-└── parallel.rs     # crate::error         # XenonError
-                    # crate::simd (可选)   # pulp::Arch（SIMD 归约路径）
-                    # crate::parallel (可选) # 并行归约路径
+├── mod.rs          # re-exports from sum
+└── sum.rs          # crate::tensor / iter / element / error
+                   # crate::simd (可选 backend)
+                   # crate::parallel (可选 backend)
 ```
 
 ### 3.2 类型级依赖
@@ -330,8 +323,8 @@ sum_axis_keepdims(tensor, axis):
 ### Wave 3: SIMD 加速
 
 - [ ] **T6**: 实现 SIMD 归约路径
-  - 文件: `src/reduction/simd.rs`（cfg feature = "simd"）
-  - 内容: SIMD 水平求和，尾部标量处理
+  - 文件: `src/reduction/sum.rs`, `src/simd/vector.rs`
+  - 内容: `reduction::sum` 接入独立 `simd/` backend，执行 SIMD 水平求和与尾部标量处理
   - 测试: `test_sum_simd_consistency`
   - 前置: T2, T3, simd 模块
   - 预计: 15 min
@@ -339,8 +332,8 @@ sum_axis_keepdims(tensor, axis):
 ### Wave 4: 并行加速
 
 - [ ] **T7**: 实现并行归约路径
-  - 文件: `src/reduction/parallel.rs`（cfg feature = "parallel"）
-  - 内容: 分块并行归约，合并结果须与单线程一致
+  - 文件: `src/reduction/sum.rs`, `src/parallel/par_ops.rs`
+  - 内容: `reduction::sum` 接入独立 `parallel/` backend，仅在可证明与单线程结果一致时启用，否则自动回退串行
   - 测试: `test_sum_parallel_consistency`
   - 前置: T5, parallel 模块
   - 预计: 10 min
@@ -428,12 +421,12 @@ Wave 5:         [T7]
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | **整数归约**并行结果与串行完全一致（checked 加法保证）；**浮点归约**标量路径精确（0 ULP），并行路径允许 ≤2 ULP 误差 |
-| 理由 | 浮点加法不满足结合律（IEEE 754），分块并行时累加顺序不同必然引入舍入差异，无法在不使用 Kahan 补偿的情况下保证浮点精确一致性。整数因不存在舍入，仍可保证精确一致。 |
-| 实现约定 | 浮点并行 sum 的测试使用相对容差 (`rtol < 1e-14` for f64, `rtol < 1e-6` for f32) 而非精确相等比较 |
-| 替代方案 | 要求所有类型精确一致 — 放弃，浮点在不使用 Kahan 的情况下无法实现 |
+| 决策 | 所有类型的并行归约结果都必须与单线程实现一致；若某条并行路径无法证明该性质，则自动回退到串行 |
+| 理由 | 需求说明书 §28.5 明确要求并行归约结果与单线程一致；性能优化不能改变语义结果 |
+| 实现约定 | 并行归约测试对所有支持类型使用与单线程结果一致的断言；任何仅能满足近似相等的实现都不得作为默认并行路径 |
+| 替代方案 | 浮点并行路径允许 ≤2 ULP 误差 — 放弃，与需求不一致 |
 | 参见 | `09-parallel.md §9 ADR-2`（协调一致） |
-| **一致性解释** | 对于浮点类型，"一致"解释为：标量路径精确（0 ULP），逐元素运算逐位一致，归约运算并行路径允许 ≤2 ULP 误差（因浮点加法不满足结合律）。此解释与 NumPy 行为一致，并在文档中明确记录。 |
+| **一致性解释** | 对 Xenon 而言，“一致”按语义要求解释为与单线程实现结果相同，而不是近似相等 |
 
 ### 决策 3：Kahan 补偿求和
 
@@ -532,6 +525,7 @@ use alloc::vec::Vec;
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-08 |
 | 1.1.2 | 2026-04-08 |
+| 1.1.3 | 2026-04-10 |
 
 ---
 

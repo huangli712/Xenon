@@ -47,11 +47,10 @@ L5: matrix  ← 当前模块
 ```
 src/matrix/
 ├── mod.rs              # 模块入口，re-exports，dot() 公共 API
-├── dot.rs              # 标量向量内积实现
-└── simd.rs             # SIMD 加速内积路径（cfg feature = "simd"）
+└── dot.rs              # 向量内积实现，必要时委托 `src/simd/`
 ```
 
-多文件设计理由：将标量路径与 SIMD 路径分离至独立文件，保持各实现路径的职责清晰，便于后续扩展（如并行路径）。
+多文件设计理由：`matrix/` 保持最小语义层，只暴露 dot API 与标量逻辑；SIMD 加速由独立 backend 模块 `src/simd/` 提供，便于与 `math/`、`reduction/` 共享实现和测试策略。
 
 ---
 
@@ -68,10 +67,7 @@ src/matrix/
 ├── dot.rs
 │   ├── crate::tensor        # TensorView<A, Ix1>
 │   └── crate::element       # Numeric
-└── simd.rs（可选）
-    ├── crate::tensor        # TensorView<A, Ix1>
-    ├── crate::element       # Numeric
-    └── pulp::Arch
+└── crate::simd（可选）      # 独立 backend，提供 dot 所需 SIMD kernel
 ```
 
 ### 3.2 类型级依赖
@@ -231,7 +227,7 @@ fn dot_impl<A: Numeric + Copy + Mul<Output=A> + Add<Output=A>>(
 ### Wave 1: 基础
 
 - [ ] **T1**: 创建 `src/matrix/` 模块骨架
-  - 文件: `src/matrix/mod.rs`, `src/matrix/dot.rs`, `src/matrix/simd.rs`
+  - 文件: `src/matrix/mod.rs`, `src/matrix/dot.rs`
   - 内容: 模块声明、dot 函数签名
   - 测试: 编译通过
   - 前置: tensor 模块完成
@@ -249,8 +245,8 @@ fn dot_impl<A: Numeric + Copy + Mul<Output=A> + Add<Output=A>>(
 ### Wave 3: SIMD 加速
 
 - [ ] **T3**: 审查 SIMD dot 路径
-  - 文件: `src/matrix/simd.rs`
-  - 内容: SIMD 加速的内积实现
+  - 文件: `src/matrix/dot.rs`, `src/simd/vector.rs`
+  - 内容: `matrix::dot` 接入独立 `simd/` backend 的内积实现
   - 测试: `test_dot_simd_consistency`
   - 前置: T2, simd 模块
   - 预计: 10 min
@@ -287,7 +283,7 @@ Wave 4: [T4]
 | `test_dot_basic` | 两个长度为 3 的向量内积正确 | 高 |
 | `test_dot_complex` | 复数内积满足共轭线性 | 高 |
 | `test_dot_shape_mismatch` | 长度不匹配返回 ShapeMismatch 错误 | 高 |
-| `test_dot_empty` | 两个空向量内积返回 0（加法单位元） | 中 |
+| `test_dot_empty` | 两个空向量内积返回 `XenonError::EmptyArray` | 中 |
 | `test_dot_single_element` | 单元素向量内积 | 中 |
 | `test_dot_simd_consistency` | SIMD 路径结果与标量一致 | 高 |
 
@@ -295,7 +291,7 @@ Wave 4: [T4]
 
 | 场景 | 预期行为 |
 |------|----------|
-| 空向量 `shape=[0]` | 返回 Ok(0)（加法单位元） |
+| 空向量 `shape=[0]` | 返回 `Err(XenonError::EmptyArray)` |
 | 单元素向量 | 返回 a[0] * b[0] |
 | 大向量（1M 元素） | SIMD 路径启用，结果正确 |
 | 非连续向量（切片后） | 回退到标量路径，结果正确 |
@@ -403,6 +399,8 @@ extern crate alloc;
 | 1.0.4 | 2026-04-08 |
 | 1.0.5 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.1.1 | 2026-04-10 |
+| 1.1.2 | 2026-04-10 |
 
 ---
 

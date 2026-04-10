@@ -17,7 +17,7 @@
 | Result 类型别名 | `type Result<T> = core::result::Result<T, XenonError>` | 自定义 Result 扩展方法 |
 | Display 实现 | 所有变体的人类可读错误消息 | 结构化错误序列化 |
 | std::error::Error 实现 | `#[cfg(feature = "std")]` 条件编译 | no_std 下的 Error trait（core 中不可用） |
-| 错误分类规则 | 可恢复→Result、不可恢复→panic 的决策矩阵 | 运行时错误恢复策略 |
+| 错误分类规则 | 方法型 API 统一 `Result`，不可恢复错误与语法糖例外使用 panic 的集中裁决矩阵 | 运行时错误恢复策略 |
 
 ### 1.2 设计原则
 
@@ -27,7 +27,8 @@
 | 信息丰富 | 每个变体携带上下文（期望 vs 实际） |
 | 零堆分配 | 错误对象本身避免额外堆分配；少量格式化辅助路径允许临时分配 |
 | no_std 友好 | 仅依赖 `core` + `alloc` |
-| Rust 惯例一致 | 索引越界使用 panic，与标准库 slice 行为一致（参见 `00-coding.md §4`） |
+| Rust 惯例一致 | 索引语法和运算符语法的 panic 例外与标准库 trait 约定保持一致 |
+| 语义集中裁决 | 方法型 API 返回 `Result`；索引语法 `tensor[[...]]` 与四则运算符语法 panic 作为显式例外统一记录 |
 
 ### 1.3 在架构中的位置
 
@@ -36,7 +37,7 @@
 L0: error  ← 当前模块
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
-L3: storage (依赖 layout)
+L3: storage (仅依赖 core/alloc，不依赖 layout)
 L4: tensor (依赖 storage, dimension)
 L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 ```
@@ -310,6 +311,10 @@ pub fn sum_bad(&self) -> A {
 
 workspace 模块定义了独立的 `WorkspaceError`，不属于 `XenonError` 枚举。这是为了保持 workspace 模块的独立性（workspace 不依赖核心错误类型），同时允许上游通过 `From<WorkspaceError>` 适配到自定义错误类型。
 
+> **集中裁决补充：** Xenon 的错误语义按“方法型 API 优先返回 `Result`”统一收敛。只有两类语法糖接口保留 panic：
+> 1. `tensor[[...]]` 这类 `Index` trait 语法，受 Rust trait 签名约束，越界时与 slice 保持一致。
+> 2. `+ - * /` 这类运算符 trait 语法，若操作数形状不兼容或广播失败，作为语法层快捷接口允许 panic；对应的方法型 API（如 `zip_with`、`broadcast_to`、`reshape`、`sum_axis`、`cast`）仍必须返回 `Result`。
+
 ---
 
 ## 5. 内部实现设计
@@ -327,9 +332,10 @@ workspace 模块定义了独立的 `WorkspaceError`，不属于 `XenonError` 枚
 │   ├── DimensionMismatch  — 维度类型转换失败
 │   └── EmptyArray         — 空数组上的非法操作
 │
-└── 不可恢复错误 (panic)
+└── 不可恢复错误 / 语法糖例外 (panic)
     ├── IndexOutOfBounds   — 索引越界（与 std slice 行为一致）
-    └── 整数归约溢出       — panic via checked_add（需求 §14：不可恢复）
+    ├── OperatorSyntaxError — `Add/Sub/Mul/Div` 语法层失败（方法型 API 仍返回 Result）
+    └── IntegerOverflow   — 整数归约溢出（需求 §14：不可恢复）
 ```
 
 ### 5.2 panic vs Result 决策矩阵
@@ -344,6 +350,7 @@ workspace 模块定义了独立的 `WorkspaceError`，不属于 `XenonError` 枚
 | DimensionMismatch | Result | 类型转换失败，可恢复 |
 | EmptyArray | Result | 运行时状态决定，可恢复 |
 | **IndexOutOfBounds** | **panic** | **编程错误，与 Rust slice 一致** |
+| **Operator syntax failure** | **panic** | **`Add/Sub/Mul/Div` trait 必须返回值类型，不能编码 `Result`；对应方法型 API 继续返回 `Result`** |
 | **IntegerOverflow** | **panic** | **需求 §14：整数归约溢出视为不可恢复错误** |
 
 ### 5.3 IndexOutOfBounds 为何使用 panic
@@ -359,9 +366,9 @@ workspace 模块定义了独立的 `WorkspaceError`，不属于 `XenonError` 枚
 
 ### 5.4 并行操作中错误立即传播
 
-并行操作中发生不可恢复错误时须立即传播，不得静默忽略（参见 `09-parallel.md §5`）：
+并行操作中发生不可恢复错误时须立即向调用方传播，不得静默忽略（参见 `09-parallel.md §5`）：
 
-> **Rayon panic 传播机制：** Rayon 通过 `JoinHandle` 机制从工作线程传播 panic。当工作线程 panic 时，`rayon::join` 或 `par_iter.for_each` 会在所有工作线程完成后在调用线程上重新 panic。这满足了"即时传播"的要求——panic 不会被静默忽略，而是会在并行操作完成后传播给调用者。
+> **集中裁决：** “立即传播”在 Xenon 中的含义是“并行框架不得吞掉 panic，也不得把失败伪装成成功结果”。实现上可依赖 Rayon 的 panic 传播机制或 `try_*` 族 API 尽快中止剩余工作，但设计文档层不再把“所有 worker 结束后再 re-panic”表述成强语义上的“即时”。对调用方而言，本次并行操作必须失败并把 panic/Err 传播出来。
 
 ```rust
 // Good - panic propagates immediately in parallel reduction
@@ -579,13 +586,12 @@ Wave 3: ┌──[T6]────┤
 |------|----------------|----------|
 | `dimension/` | `DimensionMismatch` | IxN ↔ IxDyn 转换（参见 `02-dimension.md §4`） |
 | `tensor/` | `InvalidShape` | reshape 操作（参见 `07-tensor.md §4`） |
-| `tensor/` | `LayoutMismatch` | reshape 非连续数组 |
+| `tensor/` / `shape/` | `LayoutMismatch` | 调用方在消费 `layout/` 的布尔/flags 查询结果后，发现不满足连续性前提（如 reshape 非连续数组） |
 | `tensor/` | `EmptyArray` | dot 等操作对空数组 |
 | `math/` | `ShapeMismatch` | 二元运算形状不兼容（参见 `11-math.md §4`） |
 | `math/` | `BroadcastError` | 广播失败（参见 `15-broadcast.md §5`） |
 | `reduction/` | `InvalidAxis` | sum_axis 轴索引错误（参见 `13-reduction.md §4`） |
 | `reduction/` | 整数 sum 归约溢出 → panic（非 XenonError，使用 checked_add().expect()） | 整数归约溢出 |
-| `layout/` | `LayoutMismatch` | 连续性检查失败（参见 `06-memory.md §4`） |
 | `index/` | (panic) IndexOutOfBounds | 索引越界（参见 `17-indexing.md §4`） |
 
 ### 8.2 错误流向图
@@ -607,9 +613,7 @@ Wave 3: ┌──[T6]────┤
         │dimension │   │  math/   │   │ tensor/  │
         └────┬─────┘   └────┬─────┘   └────┬─────┘
              │              │              │
-             │ DimensionMismatch           │ InvalidShape
-             │              │ LayoutMismatch
-             │              │ EmptyArray
+              │ DimensionMismatch           │ InvalidShape / LayoutMismatch / EmptyArray
              │ BroadcastError
              │ ShapeMismatch
              │ InvalidAxis
@@ -678,6 +682,15 @@ Wave 3: ┌──[T6]────┤
 | 替代方案 | `Cow<'static, str>` — 放弃，布局描述无需动态生成 |
 | 替代方案 | 自定义 Layout 枚举 — 放弃，过度工程化 |
 
+### 决策 6：方法型 API 与语法糖 API 分离错误语义
+
+| 属性 | 值 |
+|------|-----|
+| 决策 | 方法型 API 统一返回 `Result<XenonError>`；索引语法与四则运算符语法保留 panic，作为显式例外 |
+| 理由 | 保持可恢复错误的一致出口，同时尊重 Rust `Index` / `Add` 等标准 trait 的签名限制 |
+| 替代方案 | 所有接口统一 panic — 放弃，不利于库集成与诊断 |
+| 替代方案 | 所有语法糖接口也返回 `Result` — 放弃，无法匹配 Rust 标准 trait 设计 |
+
 ---
 
 ## 版本历史
@@ -690,6 +703,7 @@ Wave 3: ┌──[T6]────┤
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
 | 1.0.5 | 2026-04-08 |
+| 1.0.6 | 2026-04-10 |
 
 ---
 
