@@ -661,7 +661,7 @@ Wave 4:       [T10]
 | 边界测试 | 集成测试中标注 | 空数组、单元素、高维 |
 | 编译测试 | `tests compile_fail` | 验证类型约束 |
 
-### 7.1b 集成测试函数列表
+### 7.2 集成测试函数列表
 
 以下集成测试函数验证 TensorBase 跨模块边界的正确性：
 
@@ -671,7 +671,7 @@ Wave 4:       [T10]
 | `test_tensor_storage_layout_integration` | TensorBase 与 Storage/Layout 模块交互：验证 from_shape_vec 后的标志位计算和指针正确性 |
 | `test_tensor_view_roundtrip` | 验证 view() → view_mut() → 原始数据的零拷贝往返一致性 |
 
-### 7.2 单元测试清单
+### 7.3 单元测试清单
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
@@ -693,7 +693,7 @@ Wave 4:       [T10]
 | `test_tensor0_scalar` | 0D 标量张量 `len()==1` | 中 |
 | `test_tensor_empty_dim` | 含 0 维度的张量 `is_empty()` | 中 |
 
-### 7.3 边界测试场景
+### 7.4 边界测试场景
 
 | 场景 | 预期行为 |
 |------|----------|
@@ -703,7 +703,7 @@ Wave 4:       [T10]
 | 高维 `Tensor6` | `ndim()==6`, 步长正确 |
 | 动态维度 `TensorD` | `ndim()` 运行时值正确 |
 
-### 7.4 属性测试不变量
+### 7.5 属性测试不变量
 
 | 不变量 | 测试方法 |
 |--------|----------|
@@ -711,13 +711,13 @@ Wave 4:       [T10]
 | `tensor.view().shape() == tensor.shape()` | 随机形状和存储模式 |
 | `from_shape_vec` 后 `is_f_contiguous() == true` | 随机合法形状 |
 
-### 7.5 集成测试
+### 7.6 集成测试
 
 | 测试文件 | 测试内容 |
 |----------|----------|
 | `tests/tensor.rs` | `from_shape_vec` / `view` / `view_mut` / `as_ptr` 与 `dimension`、`storage`、`layout`、`index` 的端到端协同路径 |
 
-### 7.6 数据流描述
+### 7.7 数据流描述
 
 ```text
 用户调用构造器 / view() / view_mut() / 查询接口
