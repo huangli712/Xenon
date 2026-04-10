@@ -815,7 +815,7 @@ use core::marker::{Send, Sync};
 | `ViewMutRepr<&'a mut A>` Send | ✅ | 仅 `unsafe impl`，无运行时依赖 |
 | `ArcRepr<A>` Send/Sync | ✅ | 使用 `alloc::sync::Arc`，`no_std + alloc` 可用 |
 | 并行迭代（rayon） | ❌ | rayon 依赖 `std` 线程原语，参见 `09-parallel.md §11` |
-| 嵌套并行防护（`thread_local!`） | ❌ | `std::cell::Cell` + `thread_local!` 需要 `std` |
+| 嵌套并行防护（显式上下文令牌） | ❌ | 并行防护依赖 `parallel` feature；`no_std` 路径不提供并行执行 |
 | SIMD Arch 缓存线程安全初始化 | ❌ | 依赖 `std::sync::OnceLock` 或等效机制 |
 
 **no_std 下 SIMD Arch 缓存的替代方案：**
@@ -855,4 +855,4 @@ mod parallel { ... }
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

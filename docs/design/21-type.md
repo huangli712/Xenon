@@ -141,8 +141,7 @@ where
         A: CastTo<B>,
     {
         let data: Vec<B> = self.iter().map(|x| x.cast_to()).collect();
-        // SAFETY: data.len() == self.len(), shape is valid
-        unsafe { Tensor::from_shape_vec_aligned_unchecked(self.shape().clone(), data) }
+        Tensor::from_shape_vec_aligned(self.shape().clone(), data)
     }
 }
 ```
@@ -637,4 +636,4 @@ Wave 3: [T6] [T7]  (并行)
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

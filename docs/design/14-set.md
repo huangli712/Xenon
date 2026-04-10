@@ -13,13 +13,12 @@
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
 | unique 操作 | 返回排序后的不重复元素作为新 1D 张量 | intersection/union/difference |
-| 支持类型 | i32, i64, f32, f64, Complex<f32>, Complex<f64> | bincount/histogram |
-| 不支持类型 | bool（仅 2 种值，unique 无意义）、usize（仅用于索引） | argmin/argmax |
-| — | — | usize 类型的 unique 操作（usize 仅用于索引，对应需求§4中"整数"特指 i32/i64） |
+| 支持类型 | i32, i64, f32, f64, Complex<f32>, Complex<f64>, usize | bincount/histogram |
+| 不支持类型 | bool（仅 2 种值，unique 无意义） | argmin/argmax |
 
 > **注意**：当前版本仅支持 unique 操作！不包含 intersection/union/difference/bincount/histogram 等。
 
-> **usize 排除说明**：需求说明书 §4 中提到的"整数"特指 i32/i64，usize 仅用于索引，不参与集合操作。
+> **usize 说明**：`usize` 仍可作为元素类型参与 `unique`；其排序规则与其他整数类型一致。
 
 ### 1.2 设计原则
 
@@ -477,4 +476,4 @@ use alloc::vec::Vec;
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

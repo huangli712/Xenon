@@ -239,10 +239,6 @@ impl Workspace {
     /// - `WorkspaceError::AllocFailed`: Memory allocation failed
     /// - `WorkspaceError::InvalidLayout`: Invalid layout parameters
     ///
-    /// # Panics
-    ///
-    /// Panics if `alignment` is not a power of 2 or is less than `MIN_ALIGNMENT`.
-    ///
     /// # Example
     ///
     /// ```
@@ -250,8 +246,9 @@ impl Workspace {
     /// assert!(ws.capacity() >= 1024);
     /// ```
     pub fn new(capacity: usize, alignment: usize) -> Result<Self, WorkspaceError> {
-        assert!(alignment.is_power_of_two(), "alignment must be power of 2");
-        assert!(alignment >= Self::MIN_ALIGNMENT, "alignment too small");
+        if !alignment.is_power_of_two() || alignment < Self::MIN_ALIGNMENT {
+            return Err(WorkspaceError::InvalidLayout { align: alignment });
+        }
 
         let size = capacity.max(1);
         let layout = Layout::from_size_align(size, alignment)
@@ -1042,4 +1039,4 @@ impl std::error::Error for WorkspaceError {}
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

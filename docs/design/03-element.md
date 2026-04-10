@@ -191,14 +191,14 @@ pub trait Numeric:
 // }
 ```
 
-> **设计决策：** `Numeric` 定义 `conjugate()` 方法，为实数类型返回 `self`，为复数类型返回共轭。这使得统一的内积（dot product）实现可以泛化处理实数和复数情况（实数内积 `∑ aᵢ*bᵢ`，复数内积 `∑ aᵢ·conjugate(bᵢ)`）。其余四则运算由 `Add/Sub/Mul/Div/Neg` trait 提供。
+> **设计决策：** `Numeric` 定义 `conjugate()` 方法，为实数类型返回 `self`，为复数类型返回共轭。这使得统一的内积（dot product）实现可以泛化处理实数和复数情况。Xenon 采用 `sum(conjugate(a[i]) * b[i])` 的约定，并在 `12-matrix.md` 中保持一致。其余四则运算由 `Add/Sub/Mul/Div/Neg` trait 提供。
 >
 > **`Numeric::conjugate()` 与 `ComplexScalar::conj()` 的关系和使用说明：**
 >
 > - `Numeric::conjugate()` 对实数类型（i32, i64, f32, f64）是恒等操作（返回自身），对复数类型（Complex<f32>, Complex<f64>）委托给复数共轭实现
 > - 对于泛型代码中仅约束 `Numeric` 时，调用 `x.conjugate()` 会解析到 `Numeric::conjugate()`
-> - `ComplexScalar::conj()` 返回实数类型结果（模运算），与 `Numeric::conjugate()` 返回同类型共轭的语义不同。方法名已区分以避免混淆
-> - **设计决策注释：** 两个方法语义不同（`Numeric::conjugate` 返回 `Self` 的共轭，`ComplexScalar::conj` 返回实数模），`Numeric::conjugate` 的存在是为了让纯 `Numeric` 约束的泛型代码也能调用共轭，无需额外约束 `ComplexScalar`
+> - `ComplexScalar::conj()` 返回同类型复数共轭，与 `Numeric::conjugate()` 语义一致；前者面向复数专用 API，后者面向泛型 `Numeric` 代码
+> - **设计决策注释：** `Numeric::conjugate` 的存在是为了让纯 `Numeric` 约束的泛型代码也能调用共轭，无需额外约束 `ComplexScalar`
 
 ### 4.3 RealScalar trait
 
@@ -287,7 +287,7 @@ pub trait ComplexScalar: Numeric + Sealed {
 | `Complex<f32>` | ✓ | ✓ | ✗ | ✓ |
 | `Complex<f64>` | ✓ | ✓ | ✗ | ✓ |
 | `bool` | ✓ | ✗ | ✗ | ✗ |
-| `usize` | ✓ | ✗ | ✗ | ✗ |
+| `usize` | ✓ | ✓（仅基础数值运算，不参与负号与符号函数） | ✗ | ✗ |
 
 > **Xenon 特定约束：** 仅支持上表列出的 8 种类型。不支持 u8/u16/u32/i8/i16 等其他整数类型。
 
@@ -356,9 +356,8 @@ let c = &a + &b.cast::<f64>();  // explicit conversion
 /// Defines explicit conversion from `Self` to `T`.
 /// Overflow behavior is explicitly defined per implementation (see `21-type.md §4.3`).
 ///
-/// This trait is NOT sealed — it is implemented for all supported type pairs.
-/// External crates cannot add new element types (due to `Sealed`), but they do not
-/// need to implement `CastTo` either, as all supported conversions are provided internally.
+/// This trait is implemented only inside Xenon for the supported source/target pairs.
+/// External crates cannot extend the conversion matrix.
 pub trait CastTo<T>: Element {
     /// Performs the type conversion.
     fn cast_to(self) -> T;
@@ -409,13 +408,10 @@ impl CheckedAdd for i64 {
     }
 }
 // f32, f64, Complex: NOT implemented — overflow is handled by IEEE 754 semantics.
-// bool, usize: NOT implemented — not Numeric.
+// bool: NOT implemented — not Numeric.
 ```
 
-> **设计决策：** `CheckedAdd` 仅覆盖整数加法（`i32`/`i64`）。整数**乘法**溢出不在 `CheckedAdd` 范围内——逐元素乘法（elementwise multiply）对整数使用 **wrapping 语义**（`wrapping_mul`）。此设计决策的理由：
-> - 加法溢出检测主要用于 `sum()` 归约操作（参见 `13-reduction.md §5.1`），归约结果应精确
-> - 乘法溢出在逐元素运算中按 wrapping 处理，与 Rust release 模式默认行为一致，避免性能退化
-> - 如需 checked 乘法，用户应在调用前手动检查参数范围
+> **设计决策：** `CheckedAdd` 仅覆盖整数加法（`i32`/`i64`），用于归约等必须精确检测溢出的路径。逐元素整数乘法不通过 `CheckedAdd` 约束暴露，具体溢出策略由对应运算模块单独规定。
 
 ---
 
@@ -438,7 +434,7 @@ impl Element for bool {
 
 ### 5.2 usize 包含策略
 
-`usize` 仅实现 `Element`，用于索引操作场景。不实现 `Numeric`（`usize` 主要作为形状/索引类型使用，而非计算类型）。
+`usize` 实现 `Element` 与受限的 `Numeric` 能力，可参与基础逐元素数值运算，但不支持负号、符号函数等依赖有符号语义的操作。
 
 ### 5.3 类型提升规则
 
@@ -776,4 +772,4 @@ Wave 3: [T6]      [T9] ← ────┘
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

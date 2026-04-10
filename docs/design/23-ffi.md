@@ -260,8 +260,7 @@ where
     ///
     /// FFI users (e.g., BLAS, LAPACK) commonly work with `isize` strides
     /// where negative strides indicate reversed axes. This method converts
-    /// `isize` strides to the internal `Dimension` representation via
-    /// the reinterpret cast defined in `Dimension::strides_isize()`.
+    /// `isize` strides to the internal `Strides<D>` representation.
     ///
     /// # Safety
     ///
@@ -277,7 +276,7 @@ where
         D: Dimension,
     {
         // Convert isize strides to internal Dimension representation
-        let dim_strides = D::from_isize_strides(strides);
+        let dim_strides = Strides::<D>::from_slice(strides);
         TensorBase {
             storage: ViewRepr::new(ptr),
             shape,
@@ -298,7 +297,8 @@ where
     ///
     /// # Safety
     ///
-    /// Same as `from_raw_parts`, with additional requirement: no other references to the memory.
+    /// Same as `from_raw_parts`, with additional requirement: no other references to the memory,
+    /// and the logical element set described by `(shape, strides, offset)` must not alias itself.
     ///
     /// # Example
     ///
@@ -686,7 +686,7 @@ unsafe {
 ```
 is_blas_compatible():
     │
-    ├── is_contiguous()? ─── No ──→ false
+├── is_f_contiguous()? ─── No ──→ false
     │
     ├── has_zero_stride()? ── Yes ──→ false
     │
@@ -797,7 +797,7 @@ Wave 3: ┌────┴────┐
 | 交互点 | 方向 | 说明 |
 |--------|------|------|
 | 指针访问 | ffi → tensor | 通过 `TensorBase` 的 storage 获取指针（参见 `07-tensor.md` §4） |
-| BLAS 检查 | ffi ← layout | 使用 `is_contiguous()`、`has_zero_stride()`、`has_neg_stride()`（参见 `06-memory.md` §4） |
+| BLAS 检查 | ffi ← layout | 使用 `is_f_contiguous()`、`has_zero_stride()`、`has_neg_stride()`（参见 `06-memory.md` §4） |
 | 解构 | ffi → storage | `into_raw_parts` 使用 `StorageIntoRaw` trait（参见 `05-storage.md` §4） |
 | BLAS 参数 | 上游库 ← ffi | 上游 BLAS 库调用 `blas_info()`、`lda()` 等获取参数 |
 
@@ -896,4 +896,4 @@ FFI 模块完全兼容 `no_std` 环境。所有操作均为指针运算和结构
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

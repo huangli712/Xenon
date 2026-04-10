@@ -28,7 +28,7 @@
 | 透明集成 | 用户代码无需修改，仅通过 feature gate 启用 |
 | 自动决策 | 运行时根据数据规模和布局自动选择并行/串行 |
 | 可配置性 | 支持全局配置和单次调用覆盖阈值 |
-| 安全性 | 禁止嵌套并行，保证无数据竞争 |
+| 安全性 | 禁止嵌套并行，保证无数据竞争；通过显式并行上下文令牌而非线程局部状态检测 |
 | 兼容性 | 与 SIMD 模块协同工作，每线程内部使用 SIMD（参见 `08-simd.md §8.2`） |
 
 ### 1.3 在架构中的位置
@@ -193,19 +193,19 @@ pub fn reset_parallel_threshold() {
 /// # Arguments
 ///
 /// * `len` - Number of elements
-/// * `is_contiguous` - Whether the data is contiguous
+/// * `is_f_contiguous` - Whether the data is F-order contiguous
 ///
 /// # Returns
 ///
 /// `true` if parallel execution should be enabled.
 #[cfg(feature = "parallel")]
-pub fn should_parallelize(len: usize, is_contiguous: bool) -> bool {
+pub fn should_parallelize(len: usize, is_f_contiguous: bool) -> bool {
     // If only one thread is available, parallelism adds overhead with no benefit
     if rayon::current_num_threads() <= 1 {
         return false;
     }
     let threshold = get_parallel_threshold();
-    let meets_threshold = if is_contiguous {
+    let meets_threshold = if is_f_contiguous {
         len >= threshold
     } else {
         // Non-contiguous: double the threshold to account for overhead
@@ -253,7 +253,7 @@ where
             return tensor.map(f);
         }
     };
-    if !should_parallelize(tensor.len(), tensor.is_contiguous()) {
+    if !should_parallelize(tensor.len(), tensor.is_f_contiguous()) {
         return tensor.map(f);
     }
 
@@ -325,7 +325,7 @@ where
     if tensor.is_empty() {
         return identity();
     }
-    if !should_parallelize(tensor.len(), tensor.is_contiguous()) {
+    if !should_parallelize(tensor.len(), tensor.is_f_contiguous()) {
         return tensor.iter().fold(identity(), |acc, x| op(acc, *x));
     }
 
@@ -353,7 +353,7 @@ pub fn par_zip_with<A, B, C, DA, DB, F>(
     a: &Tensor<A, DA>,
     b: &Tensor<B, DB>,
     f: F,
-) -> Result<Tensor<C, <DA as BroadcastDim<DB>>::Output>, BroadcastError>
+) -> Result<Tensor<C, <DA as BroadcastDim<DB>>::Output>, XenonError>
 where
     DA: Dimension + BroadcastDim<DB>,
     DB: Dimension,
@@ -372,9 +372,9 @@ where
     };
     let broadcast_shape = broadcast::broadcast_shape(&a.shape(), &b.shape())?;
     let len: usize = broadcast_shape.iter().product();
-    let is_contiguous = a.is_contiguous() && b.is_contiguous();
+    let is_f_contiguous = a.is_f_contiguous() && b.is_f_contiguous();
 
-    if !should_parallelize(len, is_contiguous) {
+    if !should_parallelize(len, is_f_contiguous) {
         return Ok(a.zip_with(b, f)?);
     }
 
@@ -534,7 +534,7 @@ where
     pub fn new(
         a: TensorView<'a, A, DA>,
         b: TensorView<'a, B, DB>,
-    ) -> Result<Self, BroadcastError> {
+    ) -> Result<Self, XenonError> {
         let broadcast_shape = broadcast::broadcast_shape(&a.shape(), &b.shape())?;
         let len = broadcast_shape.iter().product();
         Ok(ParZip { a, b, len })
@@ -596,57 +596,29 @@ where
 ```rust
 // src/parallel/mod.rs
 
-use core::cell::Cell;
-
-/// Per-thread parallel depth counter.
+/// Explicit parallel context token.
 ///
-/// Uses `thread_local!` to track whether the current thread is already
-/// executing a parallel operation. Each thread maintains its own depth
-/// state independently, preventing nested parallelism within the same
-/// thread without affecting other threads.
-thread_local! {
-    static PARALLEL_DEPTH: Cell<usize> = const { Cell::new(0) };
-}
-
-/// Check if currently in a parallel context
-#[inline]
-pub fn is_in_parallel_context() -> bool {
-    PARALLEL_DEPTH.with(|d| d.get() > 0)
-}
-
-/// Parallel context guard (RAII)
-///
-/// Attempts to enter a parallel context. Returns `None` if already
-/// in a parallel context, signaling that the caller should fall back
-/// to serial execution. Automatically resets the depth on drop.
+/// Parallel entry points receive or create a token representing
+/// “already inside a parallel region”. Nested parallel APIs must
+/// detect this token and fall back to serial execution.
 pub struct ParallelGuard;
 
 impl ParallelGuard {
     /// Enter a parallel context.
     ///
-    /// Returns `None` if already in a parallel context (prevents nesting).
-    pub fn enter() -> Option<Self> {
-        PARALLEL_DEPTH.with(|d| {
-            if d.get() > 0 {
-                None
-            } else {
-                d.set(1);
-                Some(ParallelGuard)
-            }
-        })
-    }
+    /// Returns `None` if the caller already carries an active parallel token.
+    pub fn enter() -> Option<Self>;
 }
 
 impl Drop for ParallelGuard {
     fn drop(&mut self) {
-        PARALLEL_DEPTH.with(|d| d.set(0));
+        // Releases the explicit parallel token.
     }
 }
 ```
 
-> **设计说明：** 使用 `thread_local!` 而非全局 `AtomicUsize` 的原因：并行深度是线程局部状态，
-> 仅需检测当前线程是否已在并行上下文中。`thread_local!` 避免了跨线程原子操作的开销，
-> 且语义更准确——每个线程独立维护自己的并行深度状态。
+> **设计说明：** 不使用线程局部深度计数。并行上下文必须通过显式令牌在调用链中传播，
+> 这样 rayon worker 间也能正确感知“已经在并行区域中”，避免嵌套并行检测失效。
 
 ### 4.8 Good/Bad 对比示例
 
@@ -752,7 +724,7 @@ where
     B: Element + Send,
     F: Fn(&A) -> Result<B, XenonError> + Sync,
 {
-    if !should_parallelize(tensor.len(), tensor.is_contiguous()) {
+    if !should_parallelize(tensor.len(), tensor.is_f_contiguous()) {
         // Serial path: propagate errors naturally
         let mut output = Vec::with_capacity(tensor.len());
         for elem in tensor.iter() {
@@ -1073,4 +1045,4 @@ compile_error!("The 'parallel' feature requires the 'std' feature");
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

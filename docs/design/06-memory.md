@@ -25,7 +25,7 @@
 |------|------|
 | F-order only | Xenon 仅支持列优先布局，不支持 C-order |
 | O(1) 布局查询 | 通过缓存布局标志位，将高频查询优化为常数时间 |
-| 有符号步长 | `isize` 类型支持负步长（反转）和零步长（广播） |
+| 有符号步长 | `Strides<D>` 使用显式 `isize` 存储，支持负步长（反转）和零步长（广播） |
 | 零成本抽象 | 布局信息为纯元数据，不引入运行时开销 |
 
 ### 1.3 在架构中的位置
@@ -35,7 +35,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)  ← 当前模块
-L3: storage (依赖 layout)
+L3: storage (独立于 layout，仅提供底层 buffer 与所有权)
 L4: tensor (依赖 storage, dimension)
 L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 ```
@@ -56,7 +56,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 ```
 src/layout/
-├── mod.rs             # Layout 结构体定义，公开 API
+├── mod.rs             # LayoutFlags、Strides<D> 和公开 API
 ├── flags.rs           # LayoutFlags: u8 位域定义和操作
 ├── strides.rs         # 步长计算、验证、负/零步长处理
 └── contiguous.rs      # F-连续性检测算法
@@ -212,7 +212,7 @@ pub enum Order {
 }
 ```
 
-`LayoutFlags` 提供从 `Order` 构造标志的便捷方法：
+`LayoutFlags` 提供从 `Order` 构造标志的便捷方法。`Order` 仅用于显式表达“目标布局仍为 F-order”，不是在当前版本开放多布局支持：
 
 ```rust
 impl LayoutFlags {
@@ -532,13 +532,9 @@ Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的
 
 ### 5.5 与 Dimension 模块的接口
 
-步长存储在 `D` 类型（与 shape 同类型）中，但实际步长值为 `isize`。Dimension trait 提供以下方法进行 usize/isize 转换（定义参见 `02-dimension.md §4`）：
+步长不再存储在 `D` 中。`layout` 模块通过 `Strides<D>` 保持与 shape 同维度数量的显式 `isize` 元数据，避免任何 `usize`/`isize` 重解释。
 
-- `strides_isize(&self) -> &[isize]`：将内部 usize 切片重解释为 isize 切片（零开销指针转换）
-- `strides_isize_mut(&mut self) -> &mut [isize]`：可变版本
-- `from_isize_strides(strides: &[isize]) -> Self`：从 isize 切片构造维度实例
-
-安全性由 usize/isize 的大小和对齐一致性保证，步长值始终在合法 isize 范围内（由 layout 模块的构造逻辑保证）。
+安全性来自单独的 signed stride 表示：shape 只描述轴长度，stride 只描述遍历方向与步幅，两者的职责边界清晰且可独立验证。
 
 ---
 
@@ -807,4 +803,4 @@ Wave 4:       [T8]
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

@@ -424,7 +424,7 @@ fmt_nd(tensor, f, depth):
         write "]" * (ndim - depth)
 ```
 
-### 5.2 no_std 兼容性
+## 11. no_std 兼容性
 
 ```rust
 // Display is available in no_std via core::fmt (Rust 1.85+)
@@ -627,4 +627,4 @@ Wave 3:        [T5]
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

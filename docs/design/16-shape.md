@@ -83,12 +83,12 @@ src/shape/
 |----------|-----------------|
 | `tensor` | `TensorBase<S, D>`, `TensorView`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.offset()`，参见 `07-tensor.md` §4 |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `RemoveAxis`, `IntoDimension`，参见 `02-dimension.md` §3 |
-| `memory_layout` | `LayoutFlags`, `is_f_contiguous()`, `compute_f_strides()`, `Order`，参见 `06-memory.md` §3, §4.x |
+| `layout` | `LayoutFlags`, `Strides<D>`, `is_f_contiguous()`, `compute_f_strides()`，参见 `06-memory.md` §3, §4 |
 | `error` | `XenonError::InvalidShape`, `XenonError::LayoutMismatch`，参见 `26-error.md` §4 |
 
 ### 3.3 依赖方向声明
 
-> **依赖方向：单向向上。** `shape/` 消费 `tensor`、`dimension`、`memory_layout` 的 trait 和类型，不被它们依赖。
+> **依赖方向：单向向上。** `shape/` 消费 `tensor`、`dimension`、`layout` 的 trait 和类型，不被它们依赖。
 
 ---
 
@@ -127,7 +127,7 @@ where
             shape: new_shape,
             strides: new_strides,
             offset: self.offset,
-            layout: self.layout.update_for_transpose(),
+            flags: self.flags().set_f_contiguous(false),
         }
     }
 
@@ -361,7 +361,7 @@ fn update_flags_for_transpose(source_flags: LayoutFlags) -> LayoutFlags {
 ### 5.3 连续性检查逻辑
 
 ```
-is_contiguous() = is_f_contiguous()
+连续性查询统一使用 is_f_contiguous()
 
 F-contiguous: strides[i] = product(shape[0..i])  (column-major, F-order)
   e.g. shape=[2,3,4], strides=[1,2,6]
@@ -587,4 +587,4 @@ extern crate alloc;
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

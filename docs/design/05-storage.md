@@ -340,9 +340,6 @@ pub unsafe trait StorageMut: Storage + RawStorageMut {
 /// let cloned = storage.to_owned();
 /// ```
 pub unsafe trait StorageOwned: StorageMut + Clone {
-    /// Element type.
-    type Elem: Clone;
-
     /// Allocates storage of the given size, zero-filled.
     fn zeros(len: usize) -> Self
     where
@@ -379,9 +376,6 @@ pub unsafe trait StorageOwned: StorageMut + Clone {
 /// Types implementing `StorageShared` allow multiple owners to share the same data,
 /// typically through reference counting.
 pub unsafe trait StorageShared: Storage + Clone {
-    /// Element type.
-    type Elem: Clone;
-
     /// Checks if this is the sole owner.
     fn is_unique(&self) -> bool;
 
@@ -489,14 +483,14 @@ fn modify_arc(arc: &mut ArcRepr<f64>) {
 /// Owned storage.
 ///
 /// `Owned<A>` has full ownership of the data, stored on the heap.
-/// Internally wraps `Vec<A>`.
+/// Internally wraps an alignment-aware buffer rather than a plain `Vec<A>`.
 ///
 /// # Alignment Strategy
 ///
 /// Xenon construction paths (`zeros`, `ones`, `from_fn`, etc.) use
-/// `AlignedAlloc` to allocate 64-byte aligned memory, then transfer
-/// ownership to `Vec<A>` via `Vec::from_raw_parts`. This guarantees
-/// 64-byte alignment for SIMD optimizations on tensors created by Xenon.
+/// an internal `AlignedBuf<A>` wrapper that stores `(ptr, len, cap, align)` and
+/// deallocates with the same layout it allocated with. This avoids the undefined
+/// behavior risk of handing a 64-byte aligned allocation to a plain `Vec<A>`.
 ///
 /// `from_vec` accepts a user-provided `Vec<A>` WITHOUT alignment
 /// guarantees. The user's data pointer is used as-is.
@@ -508,10 +502,10 @@ fn modify_arc(arc: &mut ArcRepr<f64>) {
 pub struct Owned<A> {
     /// Internal data storage.
     ///
-    /// When constructed by Xenon (zeros/ones/from_fn), the underlying
-    /// allocation is 64-byte aligned via `AlignedAlloc` + `Vec::from_raw_parts`.
-    /// When constructed via `from_vec`, alignment depends on the user's Vec.
-    data: Vec<A>,
+    /// When constructed by Xenon (zeros/ones/from_fn), the underlying allocation
+    /// is managed by `AlignedBuf<A>` and deallocated with the exact original layout.
+    /// When constructed via `from_vec`, data is copied into a fresh aligned buffer.
+    data: AlignedBuf<A>,
 }
 
 impl<A> Owned<A> {
@@ -1036,4 +1030,4 @@ Storage 提供对齐信息（`is_aligned()`），Layout 模块查询对齐状态
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

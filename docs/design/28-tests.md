@@ -317,7 +317,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
-| `test_par_sum_consistency` | 并行 sum 与串行 sum 结果误差 ≤ 2 ULP（标量路径精确，并行路径因累加顺序不同允许微小误差，参见 `09-parallel.md §7`） | 高 |
+| `test_par_sum_consistency` | 并行 sum 与串行 sum 结果一致（参见 `09-parallel.md §7`） | 高 |
 | `test_par_add_consistency` | 并行 add 与串行 add 结果一致 | 高 |
 | `test_parallel_read` | 多线程并发只读访问安全（参见 `25-safety.md §4.5`） | 高 |
 | `test_no_nested_parallel` | 嵌套并行被拒绝 | 中 |
@@ -336,16 +336,13 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 
 | 验证方式 | 命令 | 说明 |
 |----------|------|------|
-| CI 脚本 | `cargo check --no-default-features --features alloc` | 验证 no_std + alloc 编译通过（参见 `01-architecture.md §6`） |
-| CI 脚本 | `cargo check --no-default-features` | 验证纯 no_std（无 alloc）编译通过 |
+| CI 脚本 | `cargo check --no-default-features` | 验证 `no_std + alloc` 编译通过（参见 `01-architecture.md §6`） |
 
 ```yaml
 # .github/workflows/test.yml
 no_std_check:
     steps:
         - name: Check no_std + alloc
-          run: cargo check --no-default-features --features alloc
-        - name: Check no_std (no alloc)
           run: cargo check --no-default-features
 ```
 
@@ -354,7 +351,7 @@ no_std_check:
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
 | `test_shape_mismatch_error` | 不兼容形状运算返回 ShapeMismatch（参见 `26-error.md §4.1`） | 高 |
-| `test_broadcast_error` | 不可广播返回 BroadcastError | 高 |
+| `test_broadcast_error` | 不可广播返回 `XenonError::BroadcastError` | 高 |
 | `test_invalid_shape_error` | reshape 元素数不匹配返回 InvalidShape | 高 |
 | `test_invalid_axis_error` | 轴越界返回 InvalidAxis | 高 |
 | `test_dimension_mismatch_error` | 维度互转失败返回 DimensionMismatch | 高 |
@@ -372,7 +369,7 @@ no_std_check:
 | 空张量 | shape 含 0 的数组（如 `[0, 3]`） | 构造、迭代、归约、形状操作、索引 |
 | 单元素 | shape 全为 1（如 `[1, 1]`） | 所有运算、归约、广播 |
 | 大张量 | 元素数 > 1M | 归约精度、并行正确性 |
-| 极端值（NaN） | 含 NaN 的浮点数组 | 归约、比较、cumsum |
+| 极端值（NaN） | 含 NaN 的浮点数组 | 归约、比较 |
 | 极端值（Inf） | 含 Inf 的浮点数组 | 算术、归约、cast |
 | 极端值（Subnormal） | 含次正规数 | 算术精度 |
 | 非连续布局 | 转置/切片后的视图 | 所有运算、迭代、归约 |
@@ -471,7 +468,7 @@ pub fn rtol_eq(actual: f64, expected: f64, rtol: f64) -> bool {
 |------|------|
 | `thread::scope` | 使用 scoped thread 并发访问 TensorView（只读） |
 | ArcTensor | 多线程共享 ArcTensor 并发读取 |
-| `loom` 模型检查 | 对 ArcRepr make_mut 的并发安全性进行模型检查（可选） |
+| 类型系统验证 | 通过 `Send`/`Sync` 约束和并发只读/独占写测试验证线程安全 |
 
 ### 8.2 并行归约一致性
 
@@ -531,40 +528,46 @@ fn test_simd_add_consistency() {
 
 ### 9.2 属性测试框架
 
-使用 `proptest` 进行随机测试：
+使用受控参数化数据生成进行随机化覆盖：
 
 ```rust
 // tests/property/tensor_props.rs
-use proptest::prelude::*;
-
-proptest! {
-    #[test]
-    fn prop_reshape_preserves_len(r in 1..64usize, c in 1..64usize) {
-        let t = Tensor2::<f64>::zeros([r, c]);
-        let flat = t.reshape([r * c]);
-        match flat {
-            Ok(f) => prop_assert_eq!(f.len(), t.len()),
-            Err(_) => prop_assert!(false, "contiguous reshape should succeed"),
+#[test]
+fn prop_reshape_preserves_len() {
+    for r in 1..64usize {
+        for c in 1..64usize {
+            let t = Tensor2::<f64>::zeros([r, c]);
+            let flat = t.reshape([r * c]);
+            match flat {
+                Ok(f) => assert_eq!(f.len(), t.len()),
+                Err(_) => panic!("contiguous reshape should succeed"),
+            }
         }
     }
+}
 
-    #[test]
-    fn prop_transpose_involution(r in 1..32usize, c in 1..32usize) {
-        let t = Tensor2::from_fn([r, c], |[i, j]| (i * c + j) as f64);
-        let tt = t.t().t().to_owned();
-        for (a, b) in t.iter().zip(tt.iter()) {
-            prop_assert_eq!(a, b);
+#[test]
+fn prop_transpose_involution() {
+    for r in 1..32usize {
+        for c in 1..32usize {
+            let t = Tensor2::from_fn([r, c], |[i, j]| (i * c + j) as f64);
+            let tt = t.t().t().to_owned();
+            for (a, b) in t.iter().zip(tt.iter()) {
+                assert_eq!(a, b);
+            }
         }
     }
+}
 
-    #[test]
-    fn prop_add_commutative(data in proptest::collection::vec(any::<f64>(), 1..256)) {
-        let a = Tensor1::from_vec(data.clone());
-        let b = Tensor1::from_vec(data.iter().map(|x| x + 1.0).collect());
+#[test]
+fn prop_add_commutative() {
+    for len in 1..256usize {
+        let a = Tensor1::from_fn([len], |idx| idx[0] as f64);
+        let b = Tensor1::from_fn([len], |idx| idx[0] as f64 + 1.0);
         let ab = &a + &b;
         let ba = &b + &a;
         for (x, y) in ab.iter().zip(ba.iter()) {
-            prop_assert!(prop_approx_equal(*x, *y));
+            assert!(prop_approx_equal(*x, *y));
         }
     }
 }
@@ -602,15 +605,15 @@ fn prop_approx_equal(x: f64, y: f64) -> bool {
 // 4. error message includes: msg, index, actual, expected, diff, tolerance
 ```
 
-### 10.2 proptest 策略设计
+### 10.2 参数化策略设计
 
-| 不变量类型 | proptest 策略 | 说明 |
+| 不变量类型 | 参数化策略 | 说明 |
 |-----------|-------------|------|
 | 形状参数 | `1..64usize` | 避免零/过大形状 |
-| 浮点数据 | `any::<f64>()` | 包含 NaN/Inf/Subnormal |
-| 浮点数据（过滤） | `any::<f64>().prop_filter("non-special", \|x\| x.is_normal())` | 排除 NaN/Inf |
+| 浮点数据 | `from_fn` + 固定变换 | 覆盖正常值、NaN、Inf、Subnormal |
+| 浮点数据（过滤） | 手写筛选后的确定性样本 | 排除 NaN/Inf |
 | 整数数据 | `any::<i32>()` | 含负数和边界值 |
-| 1D 向量 | `proptest::collection::vec(strategy, 1..256)` | 含边界长度 |
+| 1D 向量 | `for len in 1..256` | 含边界长度 |
 
 ### 10.3 测试数据生成策略
 
@@ -620,7 +623,7 @@ fn prop_approx_equal(x: f64, y: f64) -> bool {
 | 三角函数值 | `from_fn([n], \|idx\| (idx[0] as f64).sin())` | 非平凡浮点值 |
 | 非连续视图 | `t.t()` 或 `t.slice(s![..;2])` | 测试步长处理 |
 | 空/单元素 | `zeros([0])` / `from_scalar(42.0)` | 边界测试 |
-| 随机数据 | proptest `any::<f64>()` | 属性测试 |
+| 受控数据 | `from_fn` / 顺序生成 | 属性测试 |
 
 ---
 
@@ -701,7 +704,7 @@ fn test_bad_magic() {
 | `test_construction.rs` | `construct` | `18-construction.md` |
 | `test_reduction.rs` | `reduction` , `set` | `13-reduction.md`, `14-set.md` |
 | `test_shape.rs` | `shape` | `16-shape.md` |
-| `test_conversion.rs` | `convert` | `22-conversion.md` |
+| `test_conversion.rs` | `convert` | `21-type.md` |
 | `test_ffi.rs` | `ffi`, `workspace` | `23-ffi.md`, `24-workspace.md` |
 | `test_parallel.rs` | `parallel` | `09-parallel.md` |
 | `test_simd.rs` | `simd` | `08-simd.md` |
@@ -720,8 +723,8 @@ fn test_bad_magic() {
     │       ├── assert_tensor_close() 进行浮点比较
     │       └── generators 生成测试数据
     │
-    └── proptest 框架
-            └── 随机生成输入 → 验证不变量 → shrinking 失败案例
+    └── 参数化数据生成
+            └── 枚举标准输入 → 验证不变量
 ```
 
 ---
@@ -827,8 +830,8 @@ fn test_bad_magic() {
 
 - [ ] **T14**: no_std 编译验证 — 通过 CI 脚本（而非 test 框架）验证 no_std 编译通过
   - 文件: `.github/workflows/test.yml`（CI 配置，不创建 `tests/test_no_std.rs` 文件）
-  - 内容: 使用 `cargo check --no-default-features` 和 `cargo check --no-default-features --features alloc` 验证 no_std 编译
-  - 测试: CI 中运行上述两个检查命令
+  - 内容: 使用 `cargo check --no-default-features` 验证 `no_std + alloc` 编译
+  - 测试: CI 中运行该检查命令
   - 前置: T2
   - 预计: 5 min
 
@@ -877,7 +880,7 @@ Wave 5:       [T16]
 | 单元测试 | `#[cfg(test)] mod tests` | 验证单个函数/方法 |
 | 集成测试 | `tests/` | 验证跨模块交互 |
 | 边界测试 | 集成测试中标注 | 空张量、单元素、NaN/Inf、非连续、高维 |
-| 属性测试 | `tests/property/` | 随机生成验证不变量 |
+| 属性测试 | `tests/property/` | 参数化输入验证不变量 |
 
 ### 14.2 CI 测试矩阵
 
@@ -893,7 +896,7 @@ test:
                 - "--features parallel"
                 - "--features simd"
                 - "--all-features"
-                - "--no-default-features --features alloc"
+                - "--no-default-features"
     steps:
         - name: Unit + Integration tests
           run: cargo test --lib --tests ${{ matrix.features }}
@@ -914,13 +917,13 @@ test:
 | 理由 | 集成测试关注跨模块行为；独立运行；编译并行化；失败定位清晰 |
 | 替代方案 | 按源码模块分（test_dimension.rs, test_storage.rs）— 放弃，跨模块边界模糊 |
 
-### 决策 2：使用 proptest 进行属性测试
+### 决策 2：使用参数化属性测试
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | 使用 proptest 进行属性测试 |
-| 理由 | 比 quickcheck 更好的失败案例缩小（shrinking）；Rust 生态成熟 |
-| 替代方案 | quickcheck — 可接受，但 shrinking 能力较弱 |
+| 决策 | 使用标准形状集合 + 参数化循环验证属性不变量 |
+| 理由 | 不引入额外依赖，仍能稳定覆盖 reshape/transpose/交换律等关键不变量 |
+| 替代方案 | 外部属性测试框架 — 放弃，与最小依赖原则冲突 |
 
 ### 决策 3：浮点比较使用 NumPy 风格组合容差
 
@@ -936,7 +939,7 @@ test:
 | 属性 | 值 |
 |------|-----|
 | 决策 | 并行归约和逐元素运算必须与串行结果在数值上一致 |
-| 理由 | 需求说明书 §28.5 明确要求并行归约与单线程一致；逐元素运算（如 `par_add`）结果应完全相同，归约运算（如 `par_sum`）因浮点累加顺序不同允许 ≤ 2 ULP 误差 |
+| 理由 | 需求说明书 §28.5 明确要求并行归约与单线程一致；逐元素运算和归约运算都必须与串行结果保持一致 |
 | 替代方案 | 允许有限误差 — 放弃，违反需求 |
 
 ### 决策 5：no_std 测试为编译验证
@@ -961,4 +964,4 @@ test:
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

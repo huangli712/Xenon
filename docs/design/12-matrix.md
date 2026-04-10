@@ -78,7 +78,7 @@ src/matrix/
 
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
-| `tensor` | `TensorView<'a, A, Ix1>`, `.shape()`, `.len()`, `.as_ptr()`, `.is_contiguous()` |
+| `tensor` | `TensorView<'a, A, Ix1>`, `.shape()`, `.len()`, `.as_ptr()`, `.is_f_contiguous()` |
 | `element` | `Numeric`, `ComplexScalar` |
 | `error` | `XenonError::ShapeMismatch` |
 | `simd`（可选） | `pulp::Arch`（参见 `08-simd.md` §3） |
@@ -97,9 +97,9 @@ src/matrix/
 /// Vector dot product: result = sum(a[i] * b[i])
 ///
 /// For complex numbers, the conjugate-linear definition is used:
-/// result = sum(conj(a[i]) * b[i])
+/// result = sum(conjugate(a[i]) * b[i])
 ///
-/// For real types, `A::conj()` is a no-op identity (returns `self`),
+/// For real types, `A::conjugate()` is a no-op identity (returns `self`),
 /// so this naturally handles both real and complex dot products.
 ///
 /// Supported types: i32, i64, f32, f64, Complex<f32>, Complex<f64>.
@@ -183,7 +183,7 @@ dot_impl(a, b):
         return Err(ShapeMismatch)
     
     #[cfg(feature = "simd")]
-    if a.is_contiguous() && b.is_contiguous():
+    if a.is_f_contiguous() && b.is_f_contiguous():
         return simd::dot_impl(a, b)
     
     return scalar::dot_impl(a, b)
@@ -193,36 +193,36 @@ dot_impl(a, b):
 
 ```rust
 fn scalar_dot<A: Numeric + Copy>(a: &TensorView<A, Ix1>, b: &TensorView<A, Ix1>) -> A {
-    a.iter().zip(b.iter()).fold(A::zero(), |acc, (&x, &y)| acc + x.conj() * y)
+    a.iter().zip(b.iter()).fold(A::zero(), |acc, (&x, &y)| acc + x.conjugate() * y)
 }
 ```
 
 ### 5.3 统一内积实现（实数与复数分派）
 
-`dot()` 内部统一使用 `acc + x.conj() * y` 模式。这通过 `Numeric` trait 中的 `fn conj(self) -> Self` 方法实现：
-- 实数类型（`f32`、`f64`、`i32`、`i64`）：`conj(x) == x`（恒等实现，直接返回 `self`）
-- 复数类型（`Complex<f32>`、`Complex<f64>`）：`conj(x)` 返回共轭复数
+`dot()` 内部统一使用 `acc + x.conjugate() * y` 模式。这通过 `Numeric` trait 中的 `fn conjugate(self) -> Self` 方法实现：
+- 实数类型（`f32`、`f64`、`i32`、`i64`）：`conjugate(x) == x`（恒等实现，直接返回 `self`）
+- 复数类型（`Complex<f32>`、`Complex<f64>`）：`conjugate(x)` 返回共轭复数
 
 ```rust
-// Numeric trait 中的 conj 方法（定义于 03-element.md §4.x）
-// Real types: fn conj(self) -> Self { self }
-// Complex types: fn conj(self) -> Self { Complex::conj(self) }
+// Numeric trait 中的 conjugate 方法（定义于 03-element.md §4.x）
+// Real types: fn conjugate(self) -> Self { self }
+// Complex types: fn conjugate(self) -> Self { Complex::conj(self) }
 
 /// Unified dot implementation for both real and complex types.
-/// Uses `x.conj() * y` — for real types conj() is identity, for complex
+/// Uses `x.conjugate() * y` — for real types conjugate() is identity, for complex
 /// types it returns the conjugate.
 fn dot_impl<A: Numeric + Copy + Mul<Output=A> + Add<Output=A>>(
     a: &TensorView<'_, A, Ix1>,
     b: &TensorView<'_, A, Ix1>,
 ) -> A {
     a.iter().zip(b.iter())
-     .map(|(&x, &y)| x.conj() * y)  // conj() is now on Numeric
+     .map(|(&x, &y)| x.conjugate() * y)  // conjugate() is now on Numeric
      .fold(A::zero(), |acc, v| acc + v)
 }
 ```
 
-> **设计决策：** 通过 `Numeric::conj()` 方法实现实数与复数的统一分派，避免为复数类型单独实现 `complex_dot` 函数。
-> 实数类型的 `conj()` 为零开销（内联后等价于直接使用 `x * y`），不引入额外运行时成本。
+> **设计决策：** 通过 `Numeric::conjugate()` 方法实现实数与复数的统一分派，避免为复数类型单独实现 `complex_dot` 函数。
+> 实数类型的 `conjugate()` 为零开销（内联后等价于直接使用 `x * y`），不引入额外运行时成本。
 
 ---
 
@@ -406,4 +406,4 @@ extern crate alloc;
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

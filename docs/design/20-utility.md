@@ -178,12 +178,9 @@ where
     /// Correctly handles non-contiguous layouts: iterates over all logical
     /// elements via the iterator. Modifies storage directly without copying.
     ///
-    /// **Note**: Calling `fill()` on a broadcast view (a tensor with zero strides
-    /// from broadcasting) will only write to the underlying physical element(s),
-    /// not to all logical positions. This is by design — `fill` on a view modifies
-    /// the underlying data. If broadcast-view fill semantics (writing to all
-    /// logical positions) are needed, call `.to_contiguous()` first to materialize
-    /// the view.
+    /// **Note**: broadcast views are read-only in Xenon. A tensor with zero strides
+    /// produced by broadcasting cannot satisfy `StorageMut`, so `fill()` is not
+    /// available on broadcast results.
     ///
     /// # Examples
     ///
@@ -507,4 +504,4 @@ use alloc::vec::Vec;
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

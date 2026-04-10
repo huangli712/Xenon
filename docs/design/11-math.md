@@ -85,7 +85,7 @@ src/math/（整体模块依赖）
 | `broadcast` | `broadcast_shape()`, `BroadcastView`（参见 `15-broadcast.md §4`） |
 | `dimension` | `BroadcastDim<E>` trait（编译期维度推导，参见 `02-dimension.md §4.9`） |
 | `simd`（可选） | `pulp::Arch`（参见 `08-simd.md §4`） |
-| `error` | `XenonError`, `BroadcastError`（参见 `26-error.md §4`） |
+| `error` | `XenonError`（含 `BroadcastError` 变体，参见 `26-error.md §4`） |
 
 ### 3.3 依赖方向
 
@@ -257,7 +257,7 @@ where
     pub fn norm(&self) -> Tensor<T, D>;
 
     /// Conjugate operation.
-    pub fn conj(&self) -> Tensor<Complex<T>, D>;
+    pub fn conjugate(&self) -> Tensor<Complex<T>, D>;
 }
 ```
 
@@ -408,7 +408,7 @@ fn add_impl_simd<A>(a: &TensorView<A, D>, b: &TensorView<A, D>) -> Tensor<A, D>
 where
     A: Numeric + Copy,
 {
-    if a.is_contiguous() && b.is_contiguous() {
+    if a.is_f_contiguous() && b.is_f_contiguous() {
         return simd::add_vectorized(a, b);
     }
     zip_with_scalar(a, b, |x, y| x + y)
@@ -571,7 +571,7 @@ Wave 4: [T8]
 | 单元素张量 | 所有运算正确 |
 | NaN 输入（f32/f64） | NaN 传播（sin(NaN)=NaN, 0*NaN=NaN） |
 | Inf 输入 | exp(Inf)=Inf, ln(0)=-Inf |
-| 广播形状不兼容 | zip_with 返回 BroadcastError |
+| 广播形状不兼容 | zip_with 返回 `XenonError::BroadcastError` |
 | 非连续输入（切片后） | 运算结果与连续输入一致 |
 
 ---
@@ -688,4 +688,4 @@ extern crate alloc;
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

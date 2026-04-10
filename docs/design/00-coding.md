@@ -2,7 +2,7 @@
 
 > 文档编号: 00 | 模块: 全局规范 | 阶段: Phase 0
 > 前置文档: 无
-> 需求参考: 需求说明书 §1-§2
+> 需求参考: 需求说明书 §1, §4, §7, §10, §27, §28
 
 ---
 
@@ -147,7 +147,7 @@ pub struct View<'DATA, A, D> { /* ... */ }
 | `as_` | 借用转换，O(1)，无分配 | 廉价 | `as_slice()`、`as_ptr()` |
 | `to_` | 克隆转换，可能分配 | 可能昂贵 | `to_vec()`、`to_owned()` |
 | `into_` | 消耗 self，转换所有权 | 变化 | `into_raw_vec()`、`into_shape()` |
-| `is_` | 布尔查询，无副作用 | 廉价 | `is_empty()`、`is_contiguous()` |
+| `is_` | 布尔查询，无副作用 | 廉价 | `is_empty()`、`is_f_contiguous()` |
 | `with_` | 构建器模式，返回 Self | 变化 | `with_strides()`、`with_offset()` |
 
 ```rust
@@ -157,7 +157,7 @@ impl<A, D> TensorBase<Owned<A>, D> {
     pub fn to_vec(&self) -> Vec<A> { /* ... */ }
     pub fn into_raw_vec(self) -> Vec<A> { /* ... */ }
     pub fn is_empty(&self) -> bool { /* ... */ }
-    pub fn is_contiguous(&self) -> bool { /* ... */ }
+    pub fn is_f_contiguous(&self) -> bool { /* ... */ }
 }
 
 // Bad
@@ -1005,4 +1005,4 @@ Wave 2: [T4]
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

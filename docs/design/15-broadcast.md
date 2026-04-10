@@ -249,7 +249,7 @@ fn process_bad(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix1>) -> Tensor<f64, Ix2> {
 
 1. **维度对齐**: 从最右维度开始对齐，维度数不足的数组在左侧补 1
 2. **兼容条件**: 对应维度相等，或其中一个为 1（或不存在）
-3. **结果形状**: 每个维度取两者的最大值
+3. **结果形状**: 每个维度按 NumPy 规则推导；若一侧为 0 且另一侧为 1，则结果为 0；仅在两侧相等或一侧为 1 时兼容
 
 ### 5.2 形状兼容性检查算法（伪代码）
 
@@ -276,7 +276,7 @@ function can_broadcast(shape_a: [usize; N], shape_b: [usize; M]) -> bool:
 
 ```
 function broadcast_shape(shape_a: [usize; N], shape_b: [usize; M])
-    -> Result<[usize; max(N,M)], BroadcastError>:
+-> Result<[usize; max(N,M)], XenonError>:
     result_ndim = max(N, M)
     result_shape = array of size result_ndim
 
@@ -289,7 +289,7 @@ function broadcast_shape(shape_a: [usize; N], shape_b: [usize; M])
         dim_b = if j >= 0 then shape_b[j] else 1
 
         if dim_a != dim_b and dim_a != 1 and dim_b != 1:
-            return Error(BroadcastError {
+return Error(XenonError::BroadcastError {
                 shape_a, shape_b,
                 incompatible_dim: k,
                 dim_a, dim_b,
@@ -590,4 +590,4 @@ extern crate alloc;
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

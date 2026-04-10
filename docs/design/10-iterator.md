@@ -234,7 +234,7 @@ impl<Parts, D: Dimension> Zip<Parts, D> {
     /// `11-math.md` 中的 `zip_with` 函数，后者通过
     /// `BroadcastDim` 约束处理维度不同的情况。
     pub fn and<P: NdProducer<Dim = D>>(self, producer: P)
-        -> Result<Zip<(Parts, P), D>, BroadcastError>;
+        -> Result<Zip<(Parts, P), D>, XenonError>;
 
     /// Execute a closure for each element.
     pub fn for_each<F>(self, f: F)
@@ -330,7 +330,7 @@ where
     pub fn indexed_iter(&self) -> IndexedIter<'_, A, D>;
 
     /// Iterate along an axis (yields sub-tensors orthogonal to the axis).
-    pub fn axis_iter(&self, axis: Axis) -> AxisIter<'_, A, D::Smaller>
+    pub fn axis_iter(&self, axis: Axis) -> AxisIter<'_, A, D>
     where
         D: RemoveAxis;
 
@@ -365,7 +365,7 @@ where
     pub fn indexed_iter_mut(&mut self) -> IndexedIterMut<'_, A, D>;
 
     /// Mutable axis iteration.
-    pub fn axis_iter_mut(&mut self, axis: Axis) -> AxisIterMut<'_, A, D::Smaller>
+    pub fn axis_iter_mut(&mut self, axis: Axis) -> AxisIterMut<'_, A, D>
     where
         D: RemoveAxis;
 
@@ -792,4 +792,4 @@ Wave 4:             [T9]
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

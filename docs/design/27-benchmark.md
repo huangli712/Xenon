@@ -2,7 +2,7 @@
 
 > 文档编号: 27 | 模块: `benches/` | 阶段: Phase 6
 > 前置文档: 所有前置文档（`00-coding.md` ~ `26-error.md`）
-> 需求参考: 需求说明书 §28.2
+> 需求参考: 工程补充（无直接强制需求条款）
 
 ---
 
@@ -23,7 +23,7 @@
 |------|------|
 | 可重复性 | 固定数据规模、固定随机种子、预热后测量 |
 | 全面覆盖 | 覆盖所有性能关键路径（逐元素、归约、内积、形状操作） |
-| 低噪声 | 使用 criterion 统计分析，过滤测量噪声 |
+| 低噪声 | 使用固定输入与稳定运行环境收集趋势；benchmark 结果不作为 crate 合约的一部分 |
 | 分级执行 | CI 三级工作流：Smoke / Regression / Full |
 
 ### 1.3 在架构中的位置
@@ -79,7 +79,7 @@ benches/
 ├── crate::broadcast        # broadcast_shape
 ├── crate::set              # unique
 ├── crate::construct        # zeros, ones, from_vec
-└── criterion (dev-dep)     # benchmark 框架
+└── 可选本地 benchmark 工具     # 仅用于维护阶段的性能观察
 ```
 
 ### 3.2 依赖精确到类型级
@@ -97,7 +97,7 @@ benches/
 
 ### 3.3 依赖方向声明
 
-> **依赖方向：单向消费。** `benches/` 仅消费 crate 公共 API 和 criterion，不被任何模块依赖。
+> **依赖方向：单向消费。** `benches/` 仅消费 crate 公共 API；benchmark 工具链属于可选维护设施，不被任何模块依赖。
 
 ---
 
@@ -107,7 +107,7 @@ benches/
 
 ```toml
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
+# Optional local tooling only; not part of the base crate contract.
 
 [[bench]]
 name = "math"
@@ -658,4 +658,4 @@ Wave 5:           [T12]
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

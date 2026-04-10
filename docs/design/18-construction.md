@@ -41,7 +41,7 @@ L1: dimension, element, complex
 L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
-L5: construct  ← 当前模块（依赖 storage, memory_layout, dimension, element）
+L5: construct  ← 当前模块（依赖 storage, layout, dimension, element）
 ```
 
 ---
@@ -78,7 +78,7 @@ src/
               └──┬───────────┬─────────┘
                  │ 使用       │ 使用
           ┌──────▼───┐ ┌──────▼────────┐
-          │ storage  │ │ memory-layout │
+           │ storage  │ │ layout        │
           │ Owned<A> │ │ LayoutFlags   │
           │ Storage  │ │ Order         │
           └──────────┘ └───────────────┘
@@ -90,14 +90,14 @@ src/
 |----------|-----------------|
 | `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, 类型别名 `Tensor0`~`Tensor6`（参见 `07-tensor.md` §4） |
 | `storage` | `Owned<A>`, `Storage<Elem = A>`, `from_vec_aligned()`（参见 `05-storage.md` §4） |
-| `memory_layout` | `LayoutFlags`, `Order::F`, F-order 步长计算（参见 `06-memory.md` §3） |
+| `layout` | `LayoutFlags`, `Strides<D>`, F-order 步长计算（参见 `06-memory.md` §3） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`（参见 `02-dimension.md` §4） |
 | `element` | `Element`, `Zero`, `One`（参见 `03-element.md` §3） |
 | `error` | `XenonError::InvalidShape`（参见 `26-error.md` §4） |
 
 ### 3.3 依赖方向声明
 
-> **依赖方向：单向向上。** `construct` 消费 `tensor`、`storage`、`memory_layout`、`dimension`、`element` 的 trait 和类型，不被它们依赖。
+> **依赖方向：单向向上。** `construct` 消费 `tensor`、`storage`、`layout`、`dimension`、`element` 的 trait 和类型，不被它们依赖。
 
 ---
 
@@ -117,7 +117,7 @@ where
     /// ```
     /// let t = Tensor::<f64, _>::zeros([3, 4]);
     /// assert_eq!(t.shape(), &[3, 4]);
-    /// assert!(t.iter().all(|&x| x == &0.0));
+    /// assert!(t.iter().all(|&x| x == 0.0));
     /// ```
     pub fn zeros<Sh>(shape: Sh) -> Self
     where
@@ -136,7 +136,7 @@ where
     /// # Examples
     /// ```
     /// let t = Tensor::<f64, _>::ones([2, 3]);
-    /// assert!(t.iter().all(|&x| x == &1.0));
+    /// assert!(t.iter().all(|&x| x == 1.0));
     /// ```
     pub fn ones<Sh>(shape: Sh) -> Self
     where
@@ -151,7 +151,7 @@ where
     /// # Examples
     /// ```
     /// let t = Tensor::<f64, _>::fill(3.14, [2, 2]);
-    /// assert!(t.iter().all(|&x| x == &3.14));
+    /// assert!(t.iter().all(|&x| x == 3.14));
     /// ```
     pub fn fill<Sh>(value: A, shape: Sh) -> Self
     where
@@ -533,7 +533,7 @@ Wave 4:           [T6]
 |----------|------|------|
 | `tensor` | construct → tensor | 构造 `TensorBase` 实例（参见 `07-tensor.md` §4.1） |
 | `storage` | construct → storage | 使用 `Owned::zeros()`/`from_vec_aligned()`（参见 `05-storage.md` §4.2） |
-| `memory_layout` | construct → memory_layout | 计算 F-order 步长（参见 `06-memory.md` §4） |
+| `layout` | construct → layout | 计算 F-order 步长（参见 `06-memory.md` §4） |
 | `dimension` | construct → dimension | 使用 `IntoDimension` 接受灵活形状参数（参见 `02-dimension.md` §4.3） |
 | `element` | construct → element | 使用 `Element`/`Zero`/`One` trait 约束（参见 `03-element.md` §3） |
 | `error` | construct → error | 返回 `XenonError::InvalidShape`（参见 `26-error.md` §4.2） |
@@ -656,4 +656,4 @@ use alloc::vec::Vec;
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

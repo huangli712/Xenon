@@ -4,6 +4,8 @@
 > 前置文档: 所有前置文档（`00-coding.md` ~ `28-tests.md`）
 > 需求参考: 需求说明书 §28.1
 
+> **格式豁免声明**：本文档为全局质量规范，按 `design.md` §3 豁免标准模块章节顺序。
+
 ---
 
 ## 1. 模块定位
@@ -25,7 +27,7 @@
 | 原则 | 体现 |
 |------|------|
 | 全覆盖 | 所有 pub API 必须有 doc comment（参见 `00-coding.md §6`） |
-| 可测试 | 关键 API 的示例通过 `cargo test --doc` 验证 |
+| 可测试 | 关键 API 的示例通过 doctest 或独立 examples 验证 |
 | 安全性透明 | 所有 unsafe 函数有 `# Safety` 节 |
 | 惯用法 | 遵循 Rust API Guidelines |
 | 英文文档 | 所有 doc comment 使用英文 |
@@ -119,7 +121,7 @@ CHANGELOG.md                  # 版本变更记录
 29-documentation
 ├── 依赖所有模块设计文档（00-28）
 │   └── 每个模块的文档内容基于其设计文档
-├── 依赖 00-coding-standards
+├── 依赖 `00-coding.md`
 │   └── 文档风格遵循编码规范（参见 `00-coding.md §6`）
 ├── 被 28-integration-tests 依赖
 │   └── doctest 也是测试的一部分（参见 `28-tests.md §11`）
@@ -166,7 +168,7 @@ L3: 示例 (examples/)
 | L0 | 必须存在 | CI 检查 |
 | L1 | 每个 pub mod 必须有模块文档 | `#![warn(missing_docs)]` |
 | L2 | 每个 pub 项必须有 doc comment | `#![warn(missing_docs)]`（参见 `00-coding.md §6`） |
-| L3 | 关键 API 至少一个示例 | `cargo test --doc` |
+| L3 | 关键 API 至少一个示例 | `cargo build --examples` / `cargo run --example ...` |
 
 ---
 
@@ -278,7 +280,7 @@ L3: 示例 (examples/)
 
 | 规范 | 说明 |
 |------|------|
-| 可编译运行 | 所有 doctest 通过 `cargo test --doc`（参见 `28-tests.md §11`） |
+| 可编译运行 | 所有 doctest 通过 `cargo test --doc`；独立 examples 通过 `cargo build --examples` |
 | 使用 `?` | 使用 `?` 而非 `unwrap()`（C-QUESTION-MARK） |
 | 隐藏样板 | 用 `# ` 隐藏 use 语句 |
 | 最小化 | 只展示当前 API 用法 |
@@ -334,7 +336,6 @@ pub fn par_sum(&self) -> A { ... }
 | `broadcasting.rs` | 广播规则、行/列/标量广播 | 默认 | 日常使用 |
 | `parallel.rs` | 并行计算、阈值配置 | `parallel` | 性能优化（参见 `09-parallel.md §4`） |
 | `simd.rs` | SIMD 加速、回退策略 | `simd` | 性能优化（参见 `08-simd.md §4`） |
-| `no_std.rs` | no_std 环境使用 | `alloc` | 嵌入式 |
 | `ffi.rs` | 与 C/BLAS 交互 | 默认 | 库开发者 |
 
 ### 8.2 示例模板
@@ -877,14 +878,7 @@ docs:
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T15**: 编写 examples/no_std.rs
-  - 文件: `examples/no_std.rs`
-  - 内容: no_std 环境使用
-  - 测试: `cargo build --example no_std --no-default-features --features alloc`
-  - 前置: T1
-  - 预计: 5 min
-
-- [ ] **T16**: 编写 examples/ffi.rs
+- [ ] **T15**: 编写 examples/ffi.rs
   - 文件: `examples/ffi.rs`
   - 内容: 与 C/BLAS 交互
   - 测试: `cargo run --example ffi`
@@ -893,7 +887,7 @@ docs:
 
 ### Wave 5: CI 集成
 
-- [ ] **T17**: 配置 CI 文档验证工作流
+- [ ] **T16**: 配置 CI 文档验证工作流
   - 文件: `.github/workflows/docs.yml`
   - 内容: missing docs 检查、doctest、示例编译
   - 测试: CI 触发运行
@@ -975,4 +969,4 @@ Wave 6: [T17]
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

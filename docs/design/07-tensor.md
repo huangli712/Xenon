@@ -36,7 +36,7 @@
 L0: error, private
 L1: dimension, element, complex
 L2: layout (依赖 dimension)
-L3: storage (依赖 layout)
+L3: storage (独立于 layout)
 L4: tensor (依赖 storage, dimension)  ← 当前模块
 L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 ```
@@ -123,15 +123,9 @@ pub struct TensorBase<S, D> {
 
     /// Stride of each axis (in element units).
     ///
-    /// > **Design Decision:** Strides are stored as `usize` values in the D type
-    /// > (same type as shape, guaranteeing matching dimension count at compile time).
-    /// > Negative strides are represented as large `usize` values (two's complement
-    /// > representation), and can be zero-cost reinterpret-cast to `isize` via
-    /// > `strides_isize()` on the Dimension trait. `LayoutFlags::HAS_NEG_STRIDE` is
-    /// > a cached flag for fast query optimization only—it does not affect the stored
-    /// > stride values themselves.
-    /// > See §9 ADR-2 for details.
-    strides: D,
+    /// Strides are modeled separately from shape via `Strides<D>` so that
+    /// negative and zero strides remain explicit signed metadata.
+    strides: Strides<D>,
 
     /// Data start offset (in element units).
     ///
@@ -276,12 +270,6 @@ where
         self.flags.has_neg_stride()
     }
 
-    /// Returns true if the tensor is contiguous in memory.
-    ///
-    /// For Xenon (F-order only library), this is equivalent to `is_f_contiguous()`.
-    pub fn is_contiguous(&self) -> bool {
-        self.is_f_contiguous()
-    }
 }
 ```
 
@@ -492,8 +480,8 @@ let t = unsafe {
 >
 > | 层次 | 类型 | 说明 |
 > |------|------|------|
-> | `TensorBase.strides` | `D`（存储 `usize`） | 与 shape 同类型，编译期保证维度数一致 |
-> | `strides()` 返回值 | `&[isize]` | 通过 Dimension trait 的 `strides_isize()` 方法转换（参见 `02-dimension.md §6`） |
+> | `TensorBase.strides` | `Strides<D>` | 与 shape 维度数一致，显式保存 signed stride |
+> | `strides()` 返回值 | `&[isize]` | 直接来自 `Strides<D>`（参见 `06-memory.md §4`） |
 > | layout 模块计算 | `isize` | 负步长和零步长在 layout 层计算（参见 `06-memory.md §4.2`） |
 >
 > **权衡：**
@@ -931,4 +919,4 @@ where
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

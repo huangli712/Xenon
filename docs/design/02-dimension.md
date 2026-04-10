@@ -14,13 +14,13 @@
 |------|------|--------|
 | 静态维度类型 | `Ix0`-`Ix6` 元组结构体，编译期确定维度数 | 运行时动态维度选择 |
 | 动态维度类型 | `IxDyn`（`Vec<usize>`），运行时维度数 | — |
-| Dimension trait | 完整的维度操作接口（ndim/slice/size/strides_for_f_order/zeros/ones/into_dyn/try_from_dyn） | — |
+| Dimension trait | 完整的维度操作接口（ndim/slice/size/checked_size/strides_for_f_order/zeros/ones/into_dyn/try_from_dyn） | — |
 | IntoDimension trait | 从元组、数组、切片、Vec 构造维度 | 用户自定义维度源 |
 | Axis 类型 | 轴标记新类型（index/next/prev/is_first/is_last） | 轴上的切片/迭代操作（由 tensor 方法提供） |
 | RemoveAxis trait | 移除指定轴降维（Ix1→Ix0, ..., Ix6→Ix5, IxDyn→IxDyn） | Ix0 不实现（标量无轴可移除） |
 | 维度互转 | 静态→动态（总是成功）、动态→静态（需维度匹配） | 隐式维度转换 |
 | F-order 步长计算 | `strides_for_f_order()` 返回无符号步长 | C-order 步长（不在范围内） |
-| 步长类型 | 维度层保存无符号形状，步长结果为 `Self`（无符号）；提供 `strides_isize()` / `from_isize_strides()` 在 usize/isize 间安全转换 | 负步长语义（由 layout 模块负责） |
+| 步长类型 | 维度层仅保存无符号形状；有符号步长由 `layout::Strides<D>` 单独建模 | 负步长语义（由 layout 模块负责） |
 | 内存分配 | — | 不负责任何内存分配 |
 
 ### 1.2 设计原则
@@ -125,19 +125,13 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
     ///
     /// # Overflow behavior
     ///
-    /// Static implementations use `wrapping_mul` to compute the product of
-    /// all axis lengths. This is intentional: in debug builds, Rust's default
-    /// integer arithmetic panics on overflow, which would cause `size()` to
-    /// panic on large dimensions even though the caller may not expect it.
-    /// By using `wrapping_mul`, `size()` behaves consistently in both debug
-    /// and release builds.
-    ///
-    /// **Caveat:** this means that for dimensions whose true element count
-    /// exceeds `usize::MAX`, `size()` will silently wrap around and return
-    /// an incorrect result. Callers that need overflow safety should perform
-    /// an explicit checked multiplication (e.g., via `checked_mul`) in debug
-    /// builds, or validate dimensions before calling `size()`.
+    /// Implementations must not silently wrap on overflow.
+    /// Construction paths and layout validation must use `checked_size()` before
+    /// allocating memory or computing accessible address ranges.
     fn size(&self) -> usize;
+
+    /// Returns the total number of elements, or `None` if the product overflows.
+    fn checked_size(&self) -> Option<usize>;
 
     /// Creates a dimension with all axes set to zero.
     fn zeros() -> Self;
@@ -190,75 +184,8 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
         self.slice().iter()
     }
 
-    /// Returns the shape slice reinterpreted as `isize`.
-    ///
-    /// Used by the layout module to store strides (which may be negative)
-    /// in the same `D` type as the shape.
-    ///
-    /// # Safety argument
-    ///
-    /// `usize` and `isize` have the same size and alignment on all
-    /// Rust targets (`core::mem::size_of::<usize>() == core::mem::size_of::<isize>()`).
-    /// Both types use two's complement representation, so the bit-pattern
-    /// reinterpretation (`usize` → `isize`) is well-defined: every valid `usize`
-    /// value maps to a unique `isize` bit-pattern, and vice versa. The conversion
-    /// is purely a type-level reinterpretation with no data loss.
-    ///
-    /// For static dimensions (`Ix1`-`Ix6`): `#[repr(C)]` guarantees the underlying
-    /// memory layout is a contiguous sequence of `usize` fields, which can be safely
-    /// viewed as `[isize]` via pointer cast.
-    ///
-    /// For dynamic dimension (`IxDyn`): `Vec<usize>` guarantees contiguous memory
-    /// layout (elements are stored in a single heap allocation). Reinterpreting
-    /// `&[usize]` as `&[isize]` is safe since both types have the same size and
-    /// alignment.
-    ///
-    /// Negative strides are always tracked through the `LayoutFlags::HAS_NEG_STRIDE`
-    /// flag in the layout module (see `06-memory.md` §4). The layout module
-    /// sets this flag whenever any stride is negative, and all downstream consumers
-    /// check this flag before interpreting stride values. This ensures that negative
-    /// strides are never silently mishandled.
-    ///
-    /// All stride values are guaranteed to be within the valid `isize` range at
-    /// construction time: the layout module's constructors clamp stride calculations
-    /// to `isize::MIN..=isize::MAX` and reject dimensions that would produce
-    /// out-of-range strides. This invariant is maintained by every code path that
-    /// creates a layout, so `strides_isize()` never encounters an out-of-range value.
-    ///
-    /// Stride access via this method is always paired with the layout module's flag
-    /// checks — callers consult `LayoutFlags` before relying on stride sign or
-    /// magnitude, providing a two-layer safety net.
-    fn strides_isize(&self) -> &[isize] {
-        let slice = self.slice();
-        // SAFETY: usize and isize have identical size/alignment.
-        // Stride values are guaranteed to be in valid isize range.
-        unsafe { core::slice::from_raw_parts(slice.as_ptr() as *const isize, slice.len()) }
-    }
-
-    /// Returns a mutable reference to the shape slice reinterpreted as `isize`.
-    fn strides_isize_mut(&mut self) -> &mut [isize] {
-        let slice = self.slice_mut();
-        // SAFETY: same as strides_isize.
-        unsafe { core::slice::from_raw_parts_mut(slice.as_mut_ptr() as *mut isize, slice.len()) }
-    }
-
-    /// Constructs a dimension instance from an `isize` slice.
-    ///
-    /// Used to build strides from signed values computed by the layout module.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the slice length does not match the dimension count.
-    fn from_isize_strides(strides: &[isize]) -> Self
-    where
-        Self: Sized,
-    {
-        // SAFETY: isize and usize have identical size/alignment.
-        let as_usize = unsafe {
-            core::slice::from_raw_parts(strides.as_ptr() as *const usize, strides.len())
-        };
-        Self::from_slice(as_usize)
-    }
+    /// Signed strides are modeled separately by `layout::Strides<D>`.
+    /// `Dimension` only describes axis lengths and rank, never traversal sign.
 }
 ```
 
@@ -348,7 +275,12 @@ impl Dimension for Ix3 {
 
     #[inline]
     fn size(&self) -> usize {
-        self.0.wrapping_mul(self.1).wrapping_mul(self.2)
+        self.checked_size().expect("dimension size overflow")
+    }
+
+    #[inline]
+    fn checked_size(&self) -> Option<usize> {
+        self.0.checked_mul(self.1)?.checked_mul(self.2)
     }
 
     #[inline]
@@ -449,14 +381,18 @@ impl Dimension for IxDyn {
     fn ndim(&self) -> usize { self.dims.len() }
     fn slice(&self) -> &[usize] { &self.dims }
     fn slice_mut(&mut self) -> &mut [usize] { &mut self.dims }
-    fn size(&self) -> usize { self.dims.iter().product() }
+    fn size(&self) -> usize { self.checked_size().expect("dimension size overflow") }
+
+    fn checked_size(&self) -> Option<usize> {
+        self.dims.iter().try_fold(1usize, |acc, &dim| acc.checked_mul(dim))
+    }
 
     fn strides_for_f_order(&self) -> Self {
         let mut strides = Vec::with_capacity(self.dims.len());
         let mut stride = 1usize;
         for &dim in &self.dims {
             strides.push(stride);
-            stride = stride.wrapping_mul(dim);
+            stride = stride.checked_mul(dim).expect("f-order stride overflow");
         }
         IxDyn { dims: strides }
     }
@@ -845,7 +781,7 @@ strides_for_f_order(shape):
     stride = 1
     for dim in shape:
         strides.append(stride)
-        stride = stride * dim  (wrapping_mul 防止 panic)
+        stride = checked_mul(stride, dim)  // overflow -> None / panic in validated paths
     return strides
 ```
 
@@ -1016,7 +952,7 @@ Wave 5:  [T10] → [T11] → [T12]
 | `test_slice_to_ixdyn` | `(&[2,3,4][..]).into_dimension()` → `IxDyn` | 中 |
 | `test_axis_next_prev` | `Axis(2).next() == Axis(3)`, `Axis(0).prev() == None` | 中 |
 | `test_axis_is_first_last` | `Axis(0).is_first()`, `Axis(2).is_last(3)` | 中 |
-| `test_size_overflow` | 大值维度 `size()` 使用 wrapping_mul | 低 |
+| `test_size_overflow` | 大值维度 `checked_size()` 返回 `None` | 低 |
 
 ### 8.2 边界测试场景
 
@@ -1025,7 +961,7 @@ Wave 5:  [T10] → [T11] → [T12]
 | 空维度 `Ix0` | `size()=1`, `ndim()=0`, `slice()=&[]` |
 | 单元素 `Ix1(1)` | `size()=1` |
 | 零长度轴 `Ix2(0, 3)` | `size()=0`, `contains_zero()=true` |
-| 大维度 `Ix6(100,100,100,100,100,100)` | `size()` 正确（overflow → wrapping） |
+| 大维度 `Ix6(100,100,100,100,100,100)` | `checked_size()` 在溢出时返回 `None` |
 | `IxDyn::ones(0)` | 零维动态维度 |
 
 ### 8.3 属性测试不变量
@@ -1090,15 +1026,15 @@ Wave 5:  [T10] → [T11] → [T12]
 | 理由 | 关注点分离：Dimension 关注形状，Layout 关注数据排列 |
 | 替代方案 | Dimension 直接返回 `isize` 步长 — 放弃，维度层不应感知负步长 |
 
-### 决策 7：`size()` 使用 `wrapping_mul` 而非普通乘法
+### 决策 7：`size()` 与 `checked_size()` 双接口
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | `size()` 使用 `wrapping_mul` 计算元素总数 |
-| 理由 | 避免 debug 模式下整数溢出 panic，保持 debug/release 行为一致；与 ndarray 的做法一致 |
-| 风险 | 大维度时可能静默返回错误结果（wrap around）；建议在 debug 构建中通过 `debug_assert!` 或 `checked_mul` 额外验证 |
-| 替代方案 | 普通乘法（`*`）— 放弃，debug 模式会在合法大维度上 panic |
-| 替代方案 | `checked_mul` 返回 `Option<usize>` — 放弃，改变返回类型，增加调用复杂度 |
+| 决策 | 保留 `size()` 作为已验证维度的快捷路径，同时提供 `checked_size()` 供构造与布局验证使用 |
+| 理由 | 既保留日常查询便利性，又避免在关键安全路径上静默回绕 |
+| 风险 | 如果调用方跳过 `checked_size()` 直接在未验证输入上调用 `size()`，仍可能触发 panic |
+| 替代方案 | 仅保留 `checked_size()` — 放弃，普通只读查询会变得冗长 |
+| 替代方案 | 继续使用静默回绕乘法 — 放弃，安全路径不能接受静默回绕 |
 
 ---
 
@@ -1110,7 +1046,7 @@ Wave 5:  [T10] → [T11] → [T12]
 | ZST 优化 | `Ix0` 是零大小类型，编译器完全消除 |
 | 内联 | 所有 `ndim()`, `slice()`, `size()` 标注 `#[inline]` |
 | 单态化 | `Dimension` trait 在泛型上下文中单态化，无虚调用开销 |
-| wrapping_mul | `size()` 使用 `wrapping_mul` 避免 panic，溢出时 wrapping |
+| checked overflow | 构造与布局验证统一走 `checked_size()`，避免静默回绕 |
 | 编译期常量 | `NDIM: Option<usize>` 编译期已知，可优化分支 |
 
 ---
@@ -1139,4 +1075,4 @@ Wave 5:  [T10] → [T11] → [T12]
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

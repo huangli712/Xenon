@@ -26,7 +26,7 @@
 
 | 原则 | 体现 |
 |------|------|
-| FFI 友好 | `#[repr(C)]` 保证与 C99 `_Complex` 布局兼容 |
+| FFI 友好 | `#[repr(C)]` 保证字段顺序稳定，并为与 C ABI 的两字段复数表示互操作提供布局基础 |
 | 零依赖 | 不引入任何外部 crate（不使用 num-complex） |
 | 同精度互操作 | 仅支持 `f32↔Complex<f32>` 和 `f64↔Complex<f64>` |
 | 数值稳定 | `norm()` 使用 hypot 算法避免中间溢出 |
@@ -109,7 +109,7 @@ src/complex/
 /// - `#[repr(C)]` guarantees fields are laid out in declaration order
 /// - Size: `2 * size_of::<T>()`
 /// - Alignment: `align_of::<T>()`
-/// - Compatible with C99 `_Complex T`
+/// - Layout-compatible with a two-field C struct `{ T re; T im; }`
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Complex<T> {
@@ -1014,4 +1014,4 @@ Wave 5: [T11] → [T12]
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

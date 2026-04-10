@@ -40,7 +40,7 @@ L1: dimension, element, complex
 L2: layout (依赖 dimension)
 L3: storage (依赖 layout)
 L4: tensor (依赖 storage, dimension)
-L5: index  ← 当前模块（依赖 tensor, dimension, memory_layout）
+L5: index  ← 当前模块（依赖 tensor, dimension, layout）
 ```
 
 ---
@@ -86,13 +86,13 @@ src/index/
 |----------|-----------------|
 | `tensor` | `TensorBase<S, D>`, `TensorView`, `TensorViewMut`, `.shape()`, `.strides()`, `.as_ptr()`, `.as_mut_ptr()`，参见 `07-tensor.md` §4 |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.ndim()`，参见 `02-dimension.md` §3 |
-| `memory_layout` | `LayoutFlags`, `HAS_NEG_STRIDE`, `HAS_ZERO_STRIDE`，参见 `06-memory.md` §3 |
+| `layout` | `LayoutFlags`, `Strides<D>`, `HAS_NEG_STRIDE`, `HAS_ZERO_STRIDE`，参见 `06-memory.md` §3 |
 
 > **注意**：索引越界使用 panic 处理（而非 XenonError 变体），参见 `26-error.md §5.3`。`get()` 方法返回 `Option<&A>` 提供可恢复的越界检查路径。
 
 ### 3.3 依赖方向声明
 
-> **依赖方向：单向向上。** `index/` 消费 `tensor`、`dimension`、`memory_layout` 的 trait 和类型，不被它们依赖。
+> **依赖方向：单向向上。** `index/` 消费 `tensor`、`dimension`、`layout` 的 trait 和类型，不被它们依赖。
 
 ---
 
@@ -149,7 +149,7 @@ impl<D: Dimension, const N: usize> NdIndex<D> for [usize; N] {
     unsafe fn index_unchecked(&self, strides: &D) -> usize {
         // Use signed arithmetic to handle negative strides
         let mut offset: isize = 0;
-        for (&idx, &stride) in self.iter().zip(strides.strides_isize().iter()) {
+        for (&idx, &stride) in self.iter().zip(strides.iter()) {
             offset += stride * idx as isize;
         }
         debug_assert!(offset >= 0, "negative offset indicates invalid index");
@@ -172,7 +172,7 @@ impl<D: Dimension> NdIndex<D> for [usize] {
     unsafe fn index_unchecked(&self, strides: &D) -> usize {
         // Use signed arithmetic to handle negative strides
         let mut offset: isize = 0;
-        for (&idx, &stride) in self.iter().zip(strides.strides_isize().iter()) {
+        for (&idx, &stride) in self.iter().zip(strides.iter()) {
             offset += stride * idx as isize;
         }
         debug_assert!(offset >= 0, "negative offset indicates invalid index");
@@ -779,4 +779,4 @@ extern crate alloc;
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*

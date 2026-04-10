@@ -302,7 +302,7 @@ fn compute(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix2>) -> Tensor<f64, Ix2> {
 }
 
 // Good - use explicit API for broadcast safety
-fn compute_safe(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix1>) -> Result<Tensor<f64, Ix2>, BroadcastError> {
+fn compute_safe(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix1>) -> Result<Tensor<f64, Ix2>, XenonError> {
     let (a_bc, b_bc) = broadcast_with(&a.view(), &b.view())?;
     Ok(zip_with(&a_bc, &b_bc, |x, y| x + y))
 }
@@ -443,7 +443,7 @@ Wave 5:      [T6]
 | `test_add_owned_ref` | `a + &b`，a 被消费 | 中 |
 | `test_add_ref_owned` | `&a + b`，b 被消费 | 中 |
 | `test_add_scalar` | `tensor + 5.0` | 高 |
-| `test_scalar_add_tensor` | `5.0 + tensor` | 高 |
+| `test_scalar_add_tensor` | `Scalar(5.0) + tensor` | 高 |
 | `test_sub_basic` | `a - b` 正确性 | 高 |
 | `test_mul_basic` | `a * b` 正确性 | 高 |
 | `test_div_basic` | `a / b` 正确性 | 高 |
@@ -501,7 +501,7 @@ Wave 5:      [T6]
 |------|-----|
 | 决策 | 运算符重载中形状不兼容时 panic（使用 `expect`） |
 | 理由 | 与 Rust 标准库 `Index` trait 惯例一致；运算符返回类型固定，无法返回 Result；用户需要安全路径可直接使用 `broadcast_with` + `zip_with`（参见 `15-broadcast.md` §4.1、`11-math.md` §4.1） |
-| 替代方案 | 返回 `Result<Tensor, BroadcastError>` — 放弃，Rust 运算符 trait 不支持 Result 返回类型 |
+| 替代方案 | 返回 `Result<Tensor, XenonError>` — 放弃，Rust 运算符 trait 不支持 Result 返回类型 |
 | 替代方案 | 使用 `PartialEq` 运算符返回 `Result` — 放弃，不自然 |
 
 ### 决策 3：标量路径使用 mapv 而非广播视图
@@ -609,4 +609,4 @@ extern crate alloc;
 
 ---
 
-*本文档由 Xenon 维护。如有问题请提交 Issue 或 PR。*
+*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
