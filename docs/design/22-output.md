@@ -424,42 +424,6 @@ fmt_nd(tensor, f, depth):
         write "]" * (ndim - depth)
 ```
 
-## 11. no_std 兼容性
-
-```rust
-// Display is available in no_std via core::fmt (Rust 1.85+)
-// f32/f64 Display is in core, not gated by std
-impl<S, D, A> core::fmt::Display for TensorBase<S, D>
-where
-    S: Storage<Elem = A>,
-    D: Dimension,
-    A: core::fmt::Display + Element,
-{
-    // ...
-}
-
-// Debug is also available under no_std via core::fmt
-impl<S, D, A> core::fmt::Debug for TensorBase<S, D>
-where
-    S: Storage<Elem = A>,
-    D: Dimension,
-    A: core::fmt::Debug + Element,
-{
-    // ...
-}
-```
-
-| 特性 | std | no_std |
-|------|-----|--------|
-| `Display` | ✅ | ✅（通过 `core::fmt`，Rust 1.85+） |
-| `Debug` | ✅ | ✅（通过 `core::fmt`） |
-| 浮点精度控制 | ✅ | ✅（`core::fmt` 支持） |
-| 截断规则 | ✅ | ✅ |
-
-> **与 Feature 矩阵一致**：`01-architecture.md §6` Feature 矩阵中，no_std 列下 `Display 格式化` 应更新为 ✅，与此处定义对齐。
->
-> **Note on Rust 1.85 float formatting:** As of Rust 1.85, float formatting (f32/f64 Display) IS available in `core` without `std`. The `#[cfg(feature = "std")]` gate on Display has been removed accordingly.
-
 ---
 
 ## 6. 实现任务拆分
@@ -610,6 +574,44 @@ Wave 3:        [T5]
 | 大数组截断 | 截断后仅格式化 O(edge_items * 2 * ndim) 个元素，非 O(n) |
 | 零拷贝 | 格式化过程不修改原始数据 |
 | 临时分配 | 格式化过程无堆分配（直接写入 `Formatter`） |
+
+---
+
+## 11. no_std 兼容性
+
+```rust
+// Display is available in no_std via core::fmt (Rust 1.85+)
+// f32/f64 Display is in core, not gated by std
+impl<S, D, A> core::fmt::Display for TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: core::fmt::Display + Element,
+{
+    // ...
+}
+
+// Debug is also available under no_std via core::fmt
+impl<S, D, A> core::fmt::Debug for TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: core::fmt::Debug + Element,
+{
+    // ...
+}
+```
+
+| 特性 | std | no_std |
+|------|-----|--------|
+| `Display` | ✅ | ✅（通过 `core::fmt`，Rust 1.85+） |
+| `Debug` | ✅ | ✅（通过 `core::fmt`） |
+| 浮点精度控制 | ✅ | ✅（`core::fmt` 支持） |
+| 截断规则 | ✅ | ✅ |
+
+> **与 Feature 矩阵一致**：`01-architecture.md §6` Feature 矩阵中，no_std 列下 `Display 格式化` 应更新为 ✅，与此处定义对齐。
+>
+> **Note on Rust 1.85 float formatting:** As of Rust 1.85, float formatting (f32/f64 Display) IS available in `core` without `std`. The `#[cfg(feature = "std")]` gate on Display has been removed accordingly.
 
 ---
 
