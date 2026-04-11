@@ -247,7 +247,7 @@ unsafe impl<'a, A: Sync> Sync for ViewRepr<'a, A> {}
 ///
 /// **Counter-example: if `A` is not `Send`**
 ///
-/// Suppose `A = Rc<i32>` (not `Send`), moving `ViewMutRepr<&mut Rc<i32>>`
+/// Suppose `A = Rc<i32>` (not `Send`), moving `ViewMutRepr<'_, Rc<i32>>`
 /// to another thread could cause two threads to access the same `Rc`
 /// simultaneously, and `Rc`'s reference count is not atomic, leading to data races.
 ///
@@ -371,10 +371,9 @@ fn send_view_mut() {
     // Correct: move view_mut to a new thread
     std::thread::spawn(move || {
         // view_mut has exclusive access in this thread
-        let data = view_mut.iter_mut();
-        // mutate through the iterator / view-mut APIs rather than assuming
-        // a direct contiguous mutable slice fast path
-        data[0] = 10.0;
+        for x in view_mut.iter_mut() {
+            *x *= 10.0;
+        }
     });
 }
 
@@ -571,9 +570,9 @@ Wave 2:            [T5]
 |----------|----------|--------|
 | `test_owned_send_sync` | `Owned<f64>: Send + Sync` 编译通过 | 高 |
 | `test_owned_negative_rc` | `Owned<Rc<i32>>` 不满足 Send | 高 |
-| `test_view_send_sync` | `ViewRepr<&f64>: Send + Sync` 编译通过 | 高 |
+| `test_view_send_sync` | `ViewRepr<'_, f64>: Send + Sync` 编译通过 | 高 |
 | `test_view_cross_thread` | 视图跨线程传递正确 | 高 |
-| `test_view_mut_send` | `ViewMutRepr<&mut f64>: Send` 编译通过 | 高 |
+| `test_view_mut_send` | `ViewMutRepr<'_, f64>: Send` 编译通过 | 高 |
 | `test_view_mut_not_sync` | `ViewMutRepr` 不是 Sync（编译失败检查） | 高 |
 | `test_arc_send_sync` | `ArcRepr<f64>: Send + Sync` 编译通过 | 高 |
 | `test_arc_concurrent_read` | 多线程并发读取 ArcRepr | 中 |
@@ -591,12 +590,12 @@ use static_assertions::{assert_impl_all, assert_not_impl_any};
 
 // Positive: verify traits are implemented
 assert_impl_all!(Owned<f64>: Send, Sync);
-assert_impl_all!(ViewRepr<&f64>: Send, Sync);
-assert_impl_all!(ViewMutRepr<&mut f64>: Send);
+assert_impl_all!(ViewRepr<'_, f64>: Send, Sync);
+assert_impl_all!(ViewMutRepr<'_, f64>: Send);
 assert_impl_all!(ArcRepr<f64>: Send, Sync);
 
 // Negative: verify traits are NOT implemented
-assert_not_impl_any!(ViewMutRepr<&mut f64>: Sync);
+assert_not_impl_any!(ViewMutRepr<'_, f64>: Sync);
 assert_not_impl_any!(Owned<Rc<i32>>: Send);
 
 #[test]
@@ -606,13 +605,13 @@ fn owned_send_sync() {
 
 #[test]
 fn view_send_sync() {
-    assert_impl_all!(ViewRepr<&f64>: Send, Sync);
+    assert_impl_all!(ViewRepr<'_, f64>: Send, Sync);
 }
 
 #[test]
 fn view_mut_send_only() {
-    assert_impl_all!(ViewMutRepr<&mut f64>: Send);
-    assert_not_impl_any!(ViewMutRepr<&mut f64>: Sync);
+    assert_impl_all!(ViewMutRepr<'_, f64>: Send);
+    assert_not_impl_any!(ViewMutRepr<'_, f64>: Sync);
 }
 
 #[test]

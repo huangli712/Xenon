@@ -17,7 +17,7 @@
 | Result 类型别名 | `type Result<T> = core::result::Result<T, XenonError>` | 自定义 Result 扩展方法 |
 | Display 实现 | 所有变体的人类可读错误消息 | 结构化错误序列化 |
 | std::error::Error 实现 | `#[cfg(feature = "std")]` 条件编译 | no_std 下的 Error trait（core 中不可用） |
-| 错误分类规则 | 方法型 API 统一 `Result`，不可恢复错误与语法糖例外使用 panic 的集中裁决矩阵 | 运行时错误恢复策略 |
+| 错误分类规则 | 所有可恢复错误统一通过 `Result` 暴露；仅语言级索引语法保留 panic 例外 | 运行时错误恢复策略 |
 
 ### 1.2 设计原则
 
@@ -27,8 +27,8 @@
 | 信息丰富 | 每个变体携带上下文（期望 vs 实际） |
 | 零堆分配 | 错误对象本身避免额外堆分配；少量格式化辅助路径允许临时分配 |
 | no_std 友好 | 仅依赖 `core` + `alloc` |
-| Rust 惯例一致 | 索引语法和运算符语法的 panic 例外与标准库 trait 约定保持一致 |
-| 语义集中裁决 | 方法型 API 返回 `Result`；索引语法 `tensor[[...]]` 与四则运算符语法 panic 作为显式例外统一记录 |
+| Rust 惯例一致 | 索引语法越界沿用标准库 slice 的 panic 行为；其余可恢复失败使用返回值报告 |
+| 语义集中裁决 | 方法型 API 与运算符相关语义共享同一可恢复错误模型；仅 `tensor[[...]]` 这类语言级索引语法保留 panic 例外 |
 
 ### 1.3 在架构中的位置
 
@@ -334,9 +334,9 @@ workspace 模块定义了独立的 `WorkspaceError`，不属于 `XenonError` 枚
 
 相应测试也保持同样边界：`tests/error.rs` 仅覆盖 `XenonError` 及其方法型 API 失败映射，`WorkspaceError` 继续在 `tests/workspace.rs` 中单独验证。
 
-> **集中裁决补充：** Xenon 的错误语义按“方法型 API 优先返回 `Result`”统一收敛。只有两类语法糖接口保留 panic：
-> 1. `tensor[[...]]` 这类 `Index` trait 语法，受 Rust trait 签名约束，越界时与 slice 保持一致。
-> 2. `+ - * /` 这类运算符 trait 语法，若操作数形状不兼容或广播失败，作为语法层快捷接口允许 panic；对应的方法型 API（如 `zip_with`、`broadcast_to`、`reshape`、`sum_axis`）仍必须返回 `Result`。
+> **集中裁决补充：** Xenon 的错误语义统一按“可恢复错误走 `Result`，不可恢复不变量破坏才 panic”收敛。
+> 当前仅保留一类语法级 panic 例外：`tensor[[...]]` 这类 `Index` trait 语法，越界时与标准库 slice 行为保持一致。
+> `+ - * /` 等运算符文档不再把形状不兼容或广播失败裁定为 panic 的稳定契约；它们应与底层广播/逐元素运算保持同一可恢复错误模型。
 
 > **类型转换例外：** `cast()` 当前采用 `21-type.md` 中定义的 saturating / truncating 语义，因此保持 infallible，不进入 `XenonError` 通道。只有当项目未来切换到 fallible cast 时，才新增专门错误变体并把 `cast()` 改成 `Result`。
 
@@ -359,9 +359,8 @@ workspace 模块定义了独立的 `WorkspaceError`，不属于 `XenonError` 枚
 │   ├── InvalidArgument    — 一般参数错误（如 clip 范围非法）
 │   └── FfiError           — FFI / BLAS 前置条件不满足
 │
-└── 不可恢复错误 / 语法糖例外 (panic)
+└── 不可恢复错误 / panic 例外
     ├── IndexOutOfBounds   — 索引越界（与 std slice 行为一致）
-    ├── OperatorSyntaxError — `Add/Sub/Mul/Div` 语法层失败（方法型 API 仍返回 Result）
     └── IntegerOverflow   — 整数归约溢出（需求 §14：不可恢复）
 ```
 
@@ -379,7 +378,6 @@ workspace 模块定义了独立的 `WorkspaceError`，不属于 `XenonError` 枚
 | InvalidArgument | Result | 参数非法，可恢复 |
 | FfiError | Result | FFI / BLAS 前置条件不满足，可恢复 |
 | **IndexOutOfBounds** | **panic** | **编程错误，与 Rust slice 一致** |
-| **Operator syntax failure** | **panic** | **语言级运算符 trait 必须返回值类型；Xenon 同时提供等价的方法型 API 作为可恢复路径** |
 | **IntegerOverflow** | **panic** | **需求 §14：整数归约溢出视为不可恢复错误** |
 
 ### 5.3 IndexOutOfBounds 为何使用 panic
@@ -572,7 +570,8 @@ Wave 3: ┌──[T6]────┤
 |----------|------|------|
 | 单元测试 | `#[cfg(test)] mod tests` | 验证错误类型的格式化、比较与 trait 行为 |
 | 集成测试 | `tests/` | 验证公共 API 将底层失败映射为 `XenonError` 的路径 |
-| 边界/属性测试 | 同模块测试与属性测试 | 覆盖空形状、大形状和错误诊断信息不变量 |
+| 边界测试 | 同模块测试中标注 | 覆盖空形状、大形状与极端诊断场景 |
+| 属性测试 | `tests/property/` | 验证错误诊断信息与 Display/Result 不变量 |
 
 ### 7.2 单元测试清单
 

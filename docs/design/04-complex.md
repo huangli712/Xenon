@@ -112,7 +112,7 @@ src/complex/
 /// - Layout-compatible with a two-field C struct `{ T re; T im; }`
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
-pub struct Complex<T> {
+pub struct Complex<T: ComplexFloat> {
     /// Real part.
     pub re: T,
     /// Imaginary part.
@@ -120,15 +120,34 @@ pub struct Complex<T> {
 }
 ```
 
+> **公开边界约束：** `Complex<T>` 的公开实例化范围被封闭在 `T = f32 | f64`。为避免打穿
+> Xenon 的封闭元素集合，文档中的 `Complex<T>` 应理解为语法层记号；真正的公开约束应通过
+> 一个 sealed 的 `ComplexFloat` trait 固定到 `f32` / `f64`。
+
 ### 4.2 泛型约束
 
 `Complex<T>` 的方法分为两类：
 
-1. **基础方法**（无需浮点数学）：在 `impl<T: Copy + PartialEq + Default + core::ops::Neg<Output=T>> Complex<T>` 中实现，公开可用。包括 `re()`、`im()`、`conj()`、`from_real()`、`from_imag()`、`is_real()`、`is_imaginary()`。
+1. **基础方法**（无需浮点数学）：在 `impl<T: ComplexFloat> Complex<T>` 中实现，公开可用。包括 `re()`、`im()`、`conj()`、`from_real()`、`from_imag()`、`is_real()`、`is_imaginary()`。
 
 2. **数学方法**（需要浮点数学）：在具体的 `impl Complex<f32>` 和 `impl Complex<f64>` 块中实现，公开可用。包括 `norm()`、`norm_sqr()`、`arg()`、`exp()`、`ln()`、`sqrt()`、`to_polar()`、`from_polar()`。
 
-Xenon 内部定义 `Float` trait 绑定必要数学方法，仅作为内部实现细节：
+Xenon 公开使用 sealed 的 `ComplexFloat` 约束把 `Complex<T>` 封闭到 `f32` / `f64`；内部仍可定义 `Float` trait 绑定必要数学方法，作为实现细节：
+
+```rust
+pub trait ComplexFloat: private::Sealed + Copy + Default + Debug + PartialEq + PartialOrd
+    + core::ops::Add<Output = Self>
+    + core::ops::Sub<Output = Self>
+    + core::ops::Mul<Output = Self>
+    + core::ops::Div<Output = Self>
+    + core::ops::Neg<Output = Self>
+{}
+
+impl ComplexFloat for f32 {}
+impl ComplexFloat for f64 {}
+```
+
+内部实现细节：
 
 ```rust
 /// Internal trait for floating-point types used in Complex<T>.
@@ -168,7 +187,7 @@ impl Float for f64 { /* delegates to inherent methods */ }
 ### 4.3 构造方法
 
 ```rust
-impl<T> Complex<T> {
+impl<T: ComplexFloat> Complex<T> {
     /// Creates a new complex number.
     #[inline]
     pub const fn new(re: T, im: T) -> Self {
@@ -178,7 +197,7 @@ impl<T> Complex<T> {
 
 // Methods that don't need Float math — available for all T satisfying
 // basic arithmetic constraints.
-impl<T: Copy + PartialEq + Default + core::ops::Neg<Output = T>> Complex<T> {
+impl<T: ComplexFloat> Complex<T> {
     /// Creates a purely real number (im = 0).
     #[inline]
     pub fn from_real(re: T) -> Self {
@@ -227,7 +246,7 @@ impl Complex<f64> {
 
 ```rust
 // Methods that don't need Float math — publicly available without pub(crate) dependency.
-impl<T: Copy + PartialEq + Default + core::ops::Neg<Output = T>> Complex<T> {
+impl<T: ComplexFloat> Complex<T> {
     /// Returns the real part.
     #[inline]
     pub fn re(self) -> T { self.re }
@@ -504,7 +523,7 @@ impl<T: Float> core::ops::Sub<T> for Complex<T> {
 }
 ```
 
-> **设计决策：** 仅支持同精度混合运算。由于 Rust 孤儿规则，当前版本只直接实现 `Complex<T> op T`；需要左侧实数语法时，调用方应写成 `Complex::from(real) op complex`。`Complex<f64> + f32` 这类跨精度混合运算仍然编译错误，须显式转换。
+> **设计决策：** 仅支持同精度混合运算。`Complex<T> op T` 与 `T op Complex<T>` 的语义都应被视为稳定目标；若直接暴露左侧实数语法成本过高，文档至少必须明确它是“待补齐的具体 impl”，而不是数学上不支持。`Complex<f64> + f32` 这类跨精度混合运算仍然编译错误，须显式转换。
 
 ### 4.8 PartialEq 实现
 

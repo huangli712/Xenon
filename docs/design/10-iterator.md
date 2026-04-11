@@ -54,7 +54,7 @@ src/iter/
 ├── mod.rs         # 模块入口、公开导出、迭代器 trait 声明
 ├── elements.rs    # Elements / ElementsMut 扁平元素遍历
 ├── axis.rs        # AxisIter / AxisIterMut 沿轴迭代
-├── windows.rs     # Windows / WindowsMut 滑动窗口迭代
+├── windows.rs     # Windows 滑动窗口迭代
 ├── indexed.rs     # IndexedIter / IndexedIterMut 带索引遍历
 ├── zip.rs         # Zip 多张量同步迭代
 ```
@@ -170,14 +170,6 @@ pub struct Windows<'a, A, D: Dimension> {
     // Internal fields: view, window size, current index, remaining count
 }
 
-/// Mutable sliding window iterator.
-///
-/// Only produced for non-overlapping logical window traversals. If a requested
-/// window schedule would make two yielded windows alias the same physical element,
-/// construction must fail and return `None` rather than synthesizing overlapping
-/// mutable views.
-pub struct WindowsMut<'a, A, D: Dimension> {}
-
 impl<'a, A, D: Dimension> Iterator for Windows<'a, A, D> {
     type Item = TensorView<'a, A, D>;
     fn next(&mut self) -> Option<Self::Item>;
@@ -185,14 +177,6 @@ impl<'a, A, D: Dimension> Iterator for Windows<'a, A, D> {
 }
 
 impl<'a, A, D: Dimension> ExactSizeIterator for Windows<'a, A, D> {}
-
-impl<'a, A, D: Dimension> Iterator for WindowsMut<'a, A, D> {
-    type Item = TensorViewMut<'a, A, D>;
-    fn next(&mut self) -> Option<Self::Item>;
-    fn size_hint(&self) -> (usize, Option<usize>);
-}
-
-impl<'a, A, D: Dimension> ExactSizeIterator for WindowsMut<'a, A, D> {}
 ```
 
 ### 4.4 IndexedIter 带索引迭代器
@@ -238,7 +222,7 @@ pub trait NdProducer {
     /// Returns the strides of this producer.
     fn strides(&self) -> &Strides<Self::Dim>;
 
-    /// Split at the given index along the first axis.
+    /// Split at the given logical flat index.
     fn split_at(self, index: usize) -> (Self, Self);
 }
 
@@ -328,16 +312,6 @@ where
     pub fn axis_iter_mut(&mut self, axis: Axis) -> AxisIterMut<'_, A, D>
     where
         D: RemoveAxis;
-
-    /// Returns a mutable sliding window iterator, or None if any window dimension
-    /// exceeds the corresponding array dimension or if the requested windows would
-    /// alias the same physical element.
-    /// Returns `None` for zero-dimensional tensors and for any shape that cannot
-    /// produce at least one logical window. For empty arrays, returns
-    /// `Some(WindowsMut)` whose `len() == 0` and iteration ends immediately.
-    pub fn windows_mut(&mut self, size: impl IntoDimension<Dim = D>) -> Option<WindowsMut<'_, A, D>>
-    where
-        S: StorageMut<Elem = A>;
 
 }
 ```
@@ -441,6 +415,11 @@ where
     A: Element,
     D: Dimension,
 {
+    pub(crate) fn from_view(base: TensorView<'a, A, D>) -> Self {
+        let len = base.len();
+        Self { base, start: 0, end: len }
+    }
+
     pub(crate) fn split_at(self, index: usize) -> (Self, Self) {
         assert!(index <= self.end - self.start, "split index out of bounds");
         let mid = self.start + index;
@@ -486,7 +465,7 @@ where
   - 内容: `Iterator` + `ExactSizeIterator` 实现，含快速/慢速路径
   - 测试: `test_elements_contig`, `test_elements_non_contiguous`, `test_elements_empty`, `test_elements_ix0`
   - 前置: T2
-  - 预计: 15 min
+  - 预计: 10 min
 
 - [ ] **T4**: 实现 `AxisIter` / `AxisIterMut`
   - 文件: `src/iter/axis.rs`
@@ -495,9 +474,9 @@ where
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T5**: 实现 `Windows` / `WindowsMut`
+- [ ] **T5**: 实现 `Windows`
   - 文件: `src/iter/windows.rs`
-  - 内容: 滑动窗口迭代，窗口大小验证
+  - 内容: 只读滑动窗口迭代，窗口大小验证
   - 测试: `test_windows_count`, `test_windows_too_large`, `test_windows_empty`
   - 前置: T2
   - 预计: 10 min
@@ -516,7 +495,7 @@ where
   - 内容: NdProducer trait、Zip 构造与组合、`for_each` / `map_collect`
   - 测试: `test_zip_two_tensors`, `test_zip_broadcast`, `test_zip_for_each`
   - 前置: T3, T4, broadcast 模块
-  - 预计: 15 min
+  - 预计: 10 min
 
 ### Wave 4: TensorBase 入口集成
 
@@ -631,7 +610,7 @@ Wave 4:         [T9]
 ### 8.4 与 broadcast 模块
 
 ```rust
-// Zip calls broadcast_shape() at construction to verify shape compatibility（参见 15-broadcast.md §4）
+// Upper layers normalize broadcast compatibility before constructing Zip（参见 15-broadcast.md §4）
 // Zero strides in broadcast views are handled correctly by the iter module
 ```
 
@@ -714,7 +693,7 @@ Wave 4:         [T9]
 |------|:----------:|------|
 | `Elements` / `ElementsMut` | ✅ | 指针递增或步长状态机，无堆分配 |
 | `AxisIter` / `AxisIterMut` | ✅ | 产生子视图（零拷贝），无堆分配 |
-| `Windows` / `WindowsMut` | ✅ | 产生子视图（零拷贝），无堆分配 |
+| `Windows` | ✅ | 产生子视图（零拷贝），无堆分配 |
 | `IndexedIter` / `IndexedIterMut` | ✅ | 索引状态在栈上维护，无堆分配 |
 | `Zip` | ✅ | 组合已有迭代器，调用 `broadcast_shape()` 纯计算 |
 | `StrideState` | ✅ | 栈上索引数组，无堆分配 |
@@ -726,7 +705,7 @@ Wave 4:         [T9]
 ```rust
 // Iterators depend only on core traits
 // StrideState manages indices on the stack
-// Zip calls broadcast_shape() which is a pure function
+// Zip itself only combines already-normalized producers; broadcast normalization lives above Zip
 
 #[cfg(not(feature = "std"))]
 // No conditional compilation needed — iterators work in pure no_std

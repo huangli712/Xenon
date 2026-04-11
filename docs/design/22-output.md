@@ -206,7 +206,7 @@ where
 
 ### 4.2 Display 实现
 
-> **读取顺序约定**：格式化输出按**逻辑多维索引顺序**读取元素，而不是按底层物理内存顺序线性扫描。若内部复用 `iter()`，则要求 `iter()` 对外暴露的顺序与该逻辑顺序保持一致；格式化层不额外依赖 F-order 物理地址顺序。
+> **读取顺序约定**：格式化输出按**逻辑多维索引顺序**读取元素，而不是按底层物理内存顺序线性扫描。格式化层不得把 `iter()` 的顺序当作公共契约前提；若内部复用 `iter()`，那只应视为私有实现细节，必要时应改为显式逻辑索引或递归子视图遍历。
 
 > **注意**：`core::fmt::Display` 在 Rust 1.85 中对 f32/f64 无需 `std` 即可使用，因此此实现不加 `#[cfg(feature = "std")]` 门控。
 
@@ -443,7 +443,7 @@ fmt_nd(tensor, f, depth):
   - 内容: `fmt_1d_display`, `fmt_1d_debug`, `fmt_nd_display`, `fmt_nd_debug`，一维/多维完整输出和截断输出
   - 测试: `test_fmt_1d_full`, `test_fmt_1d_truncated`
   - 前置: T1
-  - 预计: 15 min
+  - 预计: 10 min
 
 ### Wave 2: trait 实现
 
@@ -495,6 +495,7 @@ Wave 3:        [T5]
 | 单元测试 | `#[cfg(test)] mod tests` | 验证 `Display`、`Debug` 与截断格式化语义 |
 | 集成测试 | `tests/` | 验证 `output` 与 `tensor`、`iter`、`element` 的协同路径 |
 | 边界测试 | 同模块测试中标注 | 覆盖空数组、零维张量、阈值截断和 NaN/Inf 输出 |
+| 属性测试 | `tests/property/` | 验证截断阈值、逻辑顺序与格式配置不变量 |
 
 ### 7.2 单元测试清单
 

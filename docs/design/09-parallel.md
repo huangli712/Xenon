@@ -469,7 +469,7 @@ where
     ) -> CB::Output {
         // Split the flat index range and map to elements
         callback.callback(ElementsProducer {
-            range: crate::iter::ElementsProducerRange::new(self.base),
+            range: crate::iter::ElementsProducerRange::from_view(self.base),
         })
     }
 }
@@ -571,7 +571,7 @@ where
 }
 ```
 
-### 4.6 嵌套并行防护
+### 4.6 `par_iter()` 入口
 
 ```rust
 // src/parallel/par_iter.rs (or src/tensor/impls.rs)

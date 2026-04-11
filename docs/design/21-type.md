@@ -355,9 +355,13 @@ pub(crate) fn util_internal_to_f_contiguous(&self) -> Tensor<A, D> {
 | Owned → ViewRepr | 借用（`view()`） | O(1) |
 | Owned → ViewMutRepr | 可变借用（`view_mut()`） | O(1) |
 | Owned → ArcRepr | Arc 包装（`into_shared()`） | O(1) |
-| ArcRepr → Owned | `make_mut()` 或 clone | O(1) 或 O(n) |
 | ViewRepr → Owned | `to_owned()`（拷贝） | O(n) |
+| ViewMutRepr → ViewRepr | 只读重借用（`view()` / `into()`） | O(1) |
 | ViewMutRepr → Owned | `to_owned()`（拷贝） | O(n) |
+| ArcRepr → ViewRepr | 共享只读借用（`view()`） | O(1) |
+| ArcRepr → Owned | `make_mut()` 或 clone | O(1) 或 O(n) |
+
+> **完整性说明：** Xenon 当前不提供 `ViewRepr/ViewMutRepr/ArcRepr → ViewMutRepr` 这类可能引入别名写入的新公开路径；若调用方需要可写 owned 结果，统一经 `to_owned()` / `into_owned()` 收敛。
 
 ### 4.9 标准库类型转换接口
 
@@ -456,7 +460,7 @@ impl CastTo<Complex<f64>> for f64 {
   - 内容: 复用 `element` 模块中定义的 `CastTo<T>` trait，补齐 f64↔f32、f64→i32、i32→f64 等基础 impl
   - 测试: `test_cast_f64_to_i32`, `test_cast_f32_to_f64`, `test_cast_nan_to_int`
   - 前置: element 模块完成
-  - 预计: 15 min
+  - 预计: 10 min
 
 - [ ] **T2**: 创建 `convert/` 模块骨架
   - 文件: `src/convert/mod.rs`, `src/lib.rs`
@@ -472,7 +476,7 @@ impl CastTo<Complex<f64>> for f64 {
   - 内容: `to_owned()` 克隆方法、`into_owned()` 消费方法、view/view_mut/into_shared
   - 测试: `test_to_owned_from_view`, `test_into_owned_from_tensor`, `test_into_owned_from_arc`
   - 前置: T2, tensor 模块完成
-  - 预计: 15 min
+  - 预计: 10 min
 
 - [ ] **T4**: 实现 `cast` 方法
   - 文件: `src/convert/cast.rs`
@@ -502,7 +506,7 @@ impl CastTo<Complex<f64>> for f64 {
   - 内容: 窄化整数饱和、bool↔数值、实数→复数转换
   - 测试: `test_cast_int_narrowing`, `test_cast_bool_to_int`, `test_cast_real_to_complex`
   - 前置: T1
-  - 预计: 15 min
+  - 预计: 10 min
 
 ### 并行执行图
 
@@ -525,6 +529,7 @@ Wave 3: [T6] [T7]  (并行)
 | 单元测试 | `#[cfg(test)] mod tests` | 验证类型转换、owned 化与借用转换语义 |
 | 集成测试 | `tests/` | 验证 `convert` 与 `tensor`、`element`、`storage`、`layout`、`complex` 的协同路径 |
 | 边界测试 | 同模块测试中标注 | 覆盖空张量、NaN/Inf、整数窄化和非连续视图等边界 |
+| 属性测试 | `tests/property/` | 验证 cast/to_owned 保持 shape 与转换规则不变量 |
 
 ### 7.2 单元测试清单
 

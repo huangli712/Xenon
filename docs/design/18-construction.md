@@ -504,6 +504,7 @@ Wave 4:           [T6]
 | 单元测试 | `#[cfg(test)] mod tests` | 验证各类构造 API 的核心正确性 |
 | 集成测试 | `tests/` | 验证 `construction` 与 `dimension`、`storage`、`layout`、`tensor`、`index` 的协同路径 |
 | 边界测试 | 同模块测试中标注 | 覆盖空张量、零维张量和大张量分配等边界 |
+| 属性测试 | `tests/property/` | 验证 zeros/ones/from_fn/from_shape_vec 的形状与元素不变量 |
 
 ### 7.2 单元测试清单
 

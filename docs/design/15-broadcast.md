@@ -314,10 +314,10 @@ function broadcast_shape(shape_a: [usize; N], shape_b: [usize; M])
 - 逻辑上"重复"该元素 N 次，物理上只有 1 个副本
 
 ```
-原始: shape=[1, 4], strides=[4, 1], data=[a, b, c, d]
+原始: shape=[1, 4], strides=[1, 1], data=[a, b, c, d]
 广播到 [3, 4]: strides=[0, 1]
   [0,j] → data[j]
-  [1,j] → data[j]  (重复! 步长=0 导致偏移不变)
+  [1,j] → data[j]  (重复! 第 0 轴步长=0 导致偏移不变)
   [2,j] → data[j]  (重复!)
 ```
 
@@ -400,7 +400,7 @@ fn update_flags_for_broadcast(source_flags: LayoutFlags, new_strides: &[isize]) 
   - 内容: 广播视图创建，步长/形状/offset/LayoutFlags 更新
   - 测试: `test_broadcast_to_basic`, `test_broadcast_to_error`
   - 前置: T4
-  - 预计: 15 min
+  - 预计: 10 min
 
 - [ ] **T6**: 实现 `broadcast_with()` 便捷方法
   - 文件: `src/broadcast.rs`
@@ -416,7 +416,7 @@ fn update_flags_for_broadcast(source_flags: LayoutFlags, new_strides: &[isize]) 
   - 内容: 各种广播组合、不兼容报错、禁止可变迭代验证
   - 测试: 覆盖所有公共 API
   - 前置: T1-T6
-  - 预计: 15 min
+  - 预计: 10 min
 
 ### 并行执行图
 
@@ -441,6 +441,7 @@ Wave 4:           [T7]
 | 单元测试 | `#[cfg(test)] mod tests` | 验证广播规则、zero-stride 元数据与只读约束 |
 | 集成测试 | `tests/` | 验证 `broadcast` 与 `math`、`overload`、`iter`、`layout` 的协同路径 |
 | 边界测试 | 同模块测试中标注 | 覆盖标量广播、空数组和高维广播等边界 |
+| 属性测试 | `tests/property/` | 验证广播规则、zero-stride 与 shape 推导不变量 |
 
 ### 7.2 单元测试清单
 
@@ -493,7 +494,7 @@ Wave 4:           [T7]
 |------|----------|-----------|------|
 | `broadcast ← overload` | `overload` | `broadcast_shape()` / `broadcast_with()` | 运算符重载路径调用广播模块完成公共形状推导 |
 | `broadcast ← iter/zip` | `iter/zip` | `Zip::and()` | `Zip` 组合路径支持广播视图并检查兼容性，参见 `10-iterator.md` §5 |
-| `broadcast ← shape` | `shape` | `broadcast_to()` | `shape` 模块通过该入口创建广播视图，参见 `16-shape.md` §4 |
+| `broadcast ← shape` | `shape` | 广播视图语义 | 广播结果因零步长而只读且非连续，`shape` 模块只消费该语义，不拥有 `broadcast_to()` 入口 |
 | `broadcast → layout` | `layout` | `LayoutFlags` | 广播后设置 `HAS_ZERO_STRIDE` 并更新连续性，参见 `06-memory.md` §3 |
 | `broadcast ← math` | `math` | 二元运算前置广播 | 二元运算在逐元素计算前先广播两个操作数，参见 `11-math.md` §4 |
 

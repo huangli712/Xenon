@@ -269,6 +269,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_slice_range` | 范围切片 | 高 |
 | `test_slice_negative_step` | 负步长切片 | 中 |
 | `test_slice_step` | 步长切片 | 中 |
+| `test_slice_mut_broadcast_rejected` | 广播视图上的可变切片返回错误 | 高 |
 
 ### 5.5 test_construction.rs
 
@@ -323,6 +324,8 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | 测试函数 | 测试内容 | 优先级 |
 |----------|----------|--------|
 | `test_reshape_contiguous` | 连续数组 reshape 零拷贝 | 高 |
+| `test_reshape_non_contiguous_error` | 非连续视图 reshape 返回 LayoutMismatch | 高 |
+| `test_into_shape_non_contiguous_copy` | 非连续视图 into_shape 自动复制后成功 | 高 |
 | `test_reshape_element_count` | 元素总数不匹配返回错误 | 高 |
 | `test_transpose_2d` | 2D 转置 | 高 |
 | `test_transpose_high_dim` | 高维转置 | 中 |
@@ -590,7 +593,7 @@ fn test_simd_add_consistency() {
 | 连续 reshape 保元素数 | 连续数组 reshape 前后 `len()` 不变且数据顺序一致 | 中 |
 | `unique` 保元素数 | `unique(a).len()` ≤ `a.len()` | 中 |
 | `unique` 不含重复 | unique 结果无相邻相等元素 | 中 |
-| 广播形状一致性 | 广播后形状 = max 对应维度（参见 `15-broadcast.md §5`） | 高 |
+| 广播形状一致性 | 广播结果形状遵循 NumPy 规则：相等取该值，一方为 1 取另一方，否则报错（参见 `15-broadcast.md §5`） | 高 |
 
 ### 9.2 属性测试框架
 

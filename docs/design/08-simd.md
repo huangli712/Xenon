@@ -319,9 +319,10 @@ pub enum BinaryOp {
     Div,
 }
 
-pub fn dispatch_binary_op<A>(op: BinaryOp, lhs: &TensorView<A, D>, rhs: &TensorView<A, D>) -> Tensor<A, D>
+pub fn dispatch_binary_op<A, D>(op: BinaryOp, lhs: &TensorView<A, D>, rhs: &TensorView<A, D>) -> Tensor<A, D>
 where
-    A: SimdElement + Numeric + Copy;
+    A: SimdElement + Numeric + Copy,
+    D: Dimension;
 ```
 
 ### 4.5 SIMD 加速路径设计
@@ -785,7 +786,7 @@ dispatch 调用流程
   - 内容: `VectorKernel<A>` 结构体、f32/f64 的 `AddKernel`/`SubKernel`/`MulKernel`/`DivKernel` WithSimd 实现
   - 测试: `test_vector_add_f32`、`test_vector_add_f64`
   - 前置: T1
-  - 预计: 15 min
+  - 预计: 10 min
 
 - [ ] **T4**: 实现受限的归约与内积 SIMD 路径
   - 文件: `src/simd/vector.rs`

@@ -96,7 +96,7 @@ src/ffi/
 
 | 来源模块 | 使用的类型/trait | 参考 | 使用者 |
 |----------|-----------------|------|--------|
-| `tensor` | `TensorBase<S, D>`, `.shape()`, `.strides()`, `.as_ptr()`, `.as_mut_ptr()`, `.offset()` | `07-tensor.md` §4 | `ptr.rs`, `blas.rs`, `offset.rs` |
+| `tensor` | `TensorBase<S, D>`, `.shape()`, `.strides()`, `.offset()` | `07-tensor.md` §4 | `ptr.rs`, `blas.rs`, `offset.rs` |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn` | `02-dimension.md` §4 | `ptr.rs`, `offset.rs` |
 | `storage` | `Storage<Elem=A>`, `StorageMut<Elem=A>`, owned allocator metadata（供 `OwnedRawParts<A, D>` 导出/重建） | `05-storage.md` §4 | `ptr.rs`, `blas.rs`, `offset.rs` |
 | `layout` | `is_f_contiguous()`, `has_zero_stride()`, `has_neg_stride()` | `06-memory.md` §4 | `ptr.rs`, `blas.rs` |
@@ -104,6 +104,8 @@ src/ffi/
 ### 3.3 依赖方向声明
 
 > **依赖方向：单向向上。** `ffi` 仅消费 `tensor`、`storage` 等核心模块，为上游库提供接口。
+
+> **owner 约定：** `as_ptr()` / `as_mut_ptr()` / `into_raw_parts()` / `from_raw_parts_owned()` 是 ffi 模块暴露的公开 FFI API。它们消费 `tensor`/`storage` 的元数据，但不应在依赖表中反向写成“来自 tensor 模块的方法”。
 
 ---
 
@@ -384,7 +386,7 @@ where
 }
 ```
 
-> **设计决策：** `into_raw_parts` 仅适用于 Owned 存储，且导出的内存布局必须满足 Xenon 的 owned 不变量：F-order contiguous。`offset` 会被原样导出并在 `from_raw_parts_owned()` 中原样恢复；若外部 FFI 边界只接受 `offset == 0` 的平坦 owned 缓冲区，调用方应在跨边界前显式校验或重新物化。如需将 View 转为 Owned 再解构，参见 `21-type.md` §4.5。
+> **设计决策：** `into_raw_parts` 仅适用于 Owned 存储，且导出的内存布局必须满足 Xenon 的 owned 不变量：F-order contiguous、`offset == 0`、canonical F-order strides。若调用方持有的是 view 或带 offset 的逻辑子视图，必须先显式物化为新的 owned contiguous tensor，再跨越 FFI 边界导出裸指针。如需将 View 转为 Owned 再解构，参见 `21-type.md` §4.5。
 
 #### 内存管理
 
@@ -404,10 +406,9 @@ where
 ///
 /// - `raw.ptr` must point to memory allocated by Xenon's aligned allocator
 /// - `raw.len`, `raw.cap`, and `raw.align` must be the original allocator metadata
-/// - `raw.shape` and `raw.strides` must describe a valid, non-overlapping F-order layout
+/// - `raw.shape` and `raw.strides` must describe a valid, non-overlapping canonical F-order layout
+/// - `raw.offset` must be 0 for owned raw parts
 /// - The caller transfers ownership; do NOT free `raw.ptr` separately
-/// - `raw.offset` is restored verbatim in the reconstructed tensor; callers that require
-///   `offset == 0` must validate that precondition before crossing the FFI boundary
 pub unsafe fn from_raw_parts_owned(
     raw: OwnedRawParts<A, D>,
 ) -> TensorBase<Owned<A>, D> {
@@ -736,7 +737,7 @@ is_blas_compatible():
   - 内容: `as_ptr()`, `as_mut_ptr()`, `from_raw_parts`, `from_raw_parts_mut`, `into_raw_parts` 及 Safety 文档
   - 测试: `test_as_ptr_basic`, `test_as_mut_ptr_basic`, `test_from_raw_parts_roundtrip`, `test_into_raw_parts`
   - 前置: T1
-  - 预计: 25 min
+  - 预计: 10 min
 
 ### Wave 3: BLAS 和索引（可并行）
 
@@ -745,7 +746,7 @@ is_blas_compatible():
   - 内容: `is_blas_compatible()`, `blas_info()`, `lda()`
   - 测试: `test_is_blas_compatible_f_order`, `test_is_blas_compatible_non_contiguous`, `test_lda_f_order`
   - 前置: T1
-  - 预计: 15 min
+  - 预计: 10 min
 
 - [ ] **T4**: 实现多维索引到指针偏移
   - 文件: `src/ffi/offset.rs`

@@ -338,7 +338,7 @@ pub fn is_aligned(ptr: *const u8) -> bool {
 
 ### 4.6 对齐与数据一致性
 
-> **数据一致性保证：** 对齐布局（64 字节对齐）与非对齐布局必须产生相同的元素值。对齐仅影响 SIMD 访问性能，不改变数据语义。`Owned::from_vec_aligned(data)` 和 `Owned::from_vec(data)` 构造的张量在逻辑上完全等价——`is_aligned()` 标志仅用于指导 SIMD 路径选择。
+> **数据一致性保证：** 对齐布局（64 字节对齐）与非对齐布局必须产生相同的元素值。对齐仅影响 SIMD 访问性能，不改变数据语义。当前设计中 `Owned::from_vec(data)` 统一委托到对齐分配路径，因此与 `Owned::from_vec_aligned(data)` 在逻辑语义上完全等价；`is_aligned()` 标志仅用于指导 SIMD 路径选择，而不是区分两套用户可见的构造语义。
 
 > **Strides 归属约定：** `Strides<D>` 由 layout 模块定义并拥有；`dimension` 只提供 `checked_size()` 和无符号 F-order 形状推导，绝不保存 signed stride 或 logical-first pointer 语义。`tensor` 持有 `Strides<D>` 实例并把它交给 layout 计算标志位。
 
@@ -588,7 +588,7 @@ Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的
   - 内容: `Layout` 结构体，`new`/`compute` 方法，查询方法委托
   - 测试: `test_layout_new`, `test_layout_compute`
   - 前置: T2, T3, T4, T5
-  - 预计: 15 min
+  - 预计: 10 min
 
 - [ ] **T7**: 实现对齐检查
   - 文件: `src/layout/strides.rs`
@@ -604,7 +604,7 @@ Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的
   - 内容: 综合测试套件：步长计算、连续性检查、负步长、零步长、对齐检查
   - 测试: 完整集成测试
   - 前置: T6, T7
-  - 预计: 15 min
+  - 预计: 10 min
 
 ### 并行执行图
 
@@ -629,6 +629,7 @@ Wave 4:       [T8]
 | 单元测试 | `#[cfg(test)] mod tests` | 验证单个算法 |
 | 集成测试 | `tests/` | 验证跨维度类型交互 |
 | 边界测试 | `tests/layout_boundary.rs` | 空数组、标量、高维等边界情况 |
+| 属性测试 | `tests/property/` | 验证步长、连续性与对齐相关不变量 |
 
 ### 7.2 单元测试清单
 

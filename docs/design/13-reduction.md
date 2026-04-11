@@ -242,13 +242,18 @@ fn sum_int<I: Numeric + CheckedAdd>(iter: impl Iterator<Item = &I>) -> I {
 
 `sum` 的泛型约束中，整数类型（`i32`/`i64`）满足 `Numeric + CheckedAdd`，浮点和复数类型则走 §5.2 的 IEEE 754 路径（不使用 `CheckedAdd`）。
 
-### 5.2 浮点 NaN 传播
+### 5.2 浮点/复数累加路径
 
 ```rust
 // Float sum implementation
 fn sum_float<F: RealScalar>(iter: impl Iterator<Item = &F>) -> F {
     iter.fold(F::zero(), |acc, &x| acc + x)
     // NaN + anything = NaN, auto-propagation
+}
+
+// Complex sum implementation
+fn sum_complex<C: ComplexScalar>(iter: impl Iterator<Item = &C>) -> C {
+    iter.fold(C::zero(), |acc, &x| acc + x)
 }
 ```
 
@@ -316,10 +321,17 @@ sum_axis_keepdims(tensor, axis):
 
 - [ ] **T5**: 实现沿轴 `sum_axis`
   - 文件: `src/reduction/sum.rs`
-  - 内容: 使用 AxisIter 遍历，保持 keepdims 选项
-  - 测试: `test_sum_axis_2d`, `test_sum_axis_3d`, `test_sum_axis_keepdims`
+  - 内容: 使用 AxisIter 遍历实现 `sum_axis`
+  - 测试: `test_sum_axis_2d`, `test_sum_axis_3d`
   - 前置: T2, T3, T4
-  - 预计: 15 min
+  - 预计: 10 min
+
+- [ ] **T5b**: 实现 `sum_axis_keepdims`
+  - 文件: `src/reduction/sum.rs`
+  - 内容: 保留被归约轴长度 1 的输出形状构造
+  - 测试: `test_sum_axis_keepdims`, `test_sum_axis_invalid_axis`
+  - 前置: T5
+  - 预计: 10 min
 
 ### Wave 3: SIMD 加速
 
@@ -328,7 +340,7 @@ sum_axis_keepdims(tensor, axis):
   - 内容: `reduction::sum` 接入独立 `simd/` backend，执行 SIMD 水平求和与尾部标量处理
   - 测试: `test_sum_simd_consistency`
   - 前置: T2, T3, simd 模块
-  - 预计: 15 min
+  - 预计: 10 min
 
 ### Wave 4: 并行加速
 

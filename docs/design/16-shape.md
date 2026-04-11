@@ -331,11 +331,11 @@ let a = Tensor::<f64, _>::zeros([2, 3, 4]);
 let b = a.reshape([6, 4])?;  // O(1) zero-copy
 
 // Good - use into_shape for non-contiguous array (auto-handled)
-let slice = tensor.slice(s![1..3, ..]);
+let slice = tensor.slice(s![1..3, ..])?;
 let b = slice.into_shape([12])?;  // O(n) copy if needed
 
 // Bad - calling reshape on non-contiguous array (will fail)
-let slice = tensor.slice(s![1..3, ..]);
+let slice = tensor.slice(s![1..3, ..])?;
 slice.reshape([12])?;  // Returns Err(LayoutMismatch), should use into_shape()
 ```
 
@@ -428,7 +428,7 @@ Non-contiguous example (reshape fails):
   - 内容: 转置正确性、reshape 成功/失败、非连续 reshape、大数组性能、reshape 各种路径、大数组测试
   - 测试: 覆盖所有公共 API
   - 前置: T2, T3, T4
-  - 预计: 15 min
+  - 预计: 10 min
 
 ### 并行执行图
 
@@ -453,6 +453,7 @@ Wave 4:         [T5]
 | 单元测试 | `#[cfg(test)] mod tests` | 验证转置、reshape 与 `into_shape` 的核心语义 |
 | 集成测试 | `tests/` | 验证 `shape` 与 `tensor`、`layout`、`index`、`broadcast` 的协同路径 |
 | 边界测试 | 同模块测试中标注 | 覆盖空数组、单元素、大数组和高维重塑等边界 |
+| 属性测试 | `tests/property/` | 验证转置/reshape 长度保持、zero-copy 前提与数据一致性不变量 |
 
 ### 7.2 单元测试清单
 
@@ -505,8 +506,8 @@ Wave 4:         [T5]
 | `shape → tensor` | `tensor` | `TensorBase` / `TensorView` | 依赖张量结构与视图创建入口，参见 `07-tensor.md` §4 |
 | `shape → dimension` | `dimension` | `Dimension` trait | 使用维度 trait 完成形状变换与校验，参见 `02-dimension.md` §3 |
 | `shape → layout` | `layout` | 连续性与步长查询 | reshape 前检查连续性并按需重写步长，参见 `06-memory.md` §3 |
-| `shape ← broadcast` | `broadcast` | 广播视图语义 | 广播视图因非连续而不可直接 reshape，参见 `15-broadcast.md` §5 |
-| `shape ← index` | `index` | 切片结果视图 | 切片后的连续视图可继续参与 reshape，参见 `17-indexing.md` §4 |
+| `shape ← broadcast` | `broadcast` | 广播视图语义 | 广播视图因零步长而只读且非连续，不可直接 zero-copy reshape，参见 `15-broadcast.md` §5 |
+| `shape ← index` | `index` | 切片结果视图 | 切片后的连续视图可继续参与 reshape，连续性规则以 `17-indexing.md §4.2.6` 为准 |
 
 ### 8.2 数据流描述
 

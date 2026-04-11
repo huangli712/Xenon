@@ -14,7 +14,7 @@
 |------|------|--------|
 | 四则运算运算符语法 | `+`/`-`/`*`/`/` 运算符重载 | 原地运算符 `+=`/`-=`/`*=`/`/=`（当前版本不提供） |
 | 张量×张量运算 | 同形状运算、广播运算 | 矩阵乘法（由 `matrix` 提供） |
-| 张量×标量运算 | `tensor op scalar` 与 `Scalar(scalar) op tensor` | 原生 `scalar op tensor`（受 Rust 孤儿规则限制，当前不作为稳定承诺） |
+| 张量×标量运算 | `tensor op scalar`、常用原生 `scalar op tensor` 与 `Scalar(scalar) op tensor` | 完全泛型的 `T op Tensor<T>` blanket impl |
 | 广播支持 | 运算符语法内建支持广播 | 比较运算符（在 `math` 提供） |
 | 新张量产生 | 所有组合产生新的独立张量 | 原地修改运算 |
 | 借用形式 | `&Tensor op &Tensor`/`&Tensor op Tensor` 等组合 | 索引运算符 `[]`（在 `index` 提供） |
@@ -165,10 +165,9 @@ where
 }
 ```
 
-> **设计决策：** 形状不兼容时使用 `expect` panic。
-> 这与集中错误语义中的语法糖例外一致：运算符重载 panic 而非返回 Result（参见 `26-error.md` §4.7, §5.2）。
-> 在运算符实现内部，`zip_with` 的 `Result` 通过 `expect` 收束为内部不变量：若广播已经成功，则逐元素 zip 不应再失败。
-> 用户需要广播安全时可直接使用 `broadcast_with` + `zip_with`。
+> **设计说明：** 这里的 `expect(...)` 只能被视为当前草案中的过渡实现细节，不能上升为稳定语义。
+> 对用户暴露的契约应保持为：广播失败和形状不兼容属于可恢复错误，底层仍由 `broadcast_with` / `zip_with`
+> 的错误模型定义；运算符文档不得单方面把它们改写成 panic 契约。
 
 ### 4.2b 视图×视图/张量运算符
 
@@ -219,11 +218,13 @@ where
 ### 4.3 张量×标量运算符
 
 ```rust
-/// Newtype wrapper for scalar values, enabling `scalar + tensor` syntax.
+/// Newtype wrapper for scalar values, enabling a generic left-scalar path.
 ///
-/// Required by Rust's orphan rules: we cannot impl `Add<TensorBase<...>> for A`
-/// because both `Add` (external trait) and `A` (unconstrained type param) are
-/// foreign to our crate. `Scalar<A>` is a local type, satisfying the orphan rule.
+/// Rust orphan rules forbid blanket impls such as
+/// `impl<T> Add<TensorBase<...>> for T`, because the foreign `Self = T`
+/// appears before the first local type. However, concrete primitive left-hand
+/// sides like `impl Add<Tensor<f32, D>> for f32` remain legal and should be
+/// provided for Xenon's supported scalar set when stable syntax requires it.
 pub struct Scalar<A>(pub A);
 
 // Tensor + scalar
@@ -279,7 +280,11 @@ where
 }
 ```
 
-> **说明**：`Scalar<A>` 包装器是当前版本对“左标量 + 张量”语法的工程性折中。对于 Rust 原生标量类型，`impl Add<TensorBase<...>> for f32/f64/i32/...` 仍然属于 foreign trait + foreign self type 组合，不能通过“逐类型生成 impl”绕过孤儿规则。Xenon 当前**稳定承诺**的语法边界只有：`tensor + scalar` 与 `Scalar(scalar) + tensor`；原生 `scalar + tensor` 明确不支持。
+> **说明**：`Scalar<A>` 包装器是实现“泛型左标量 + 张量”时的工程性折中，而不是原生
+> `scalar + tensor` 整体不可行的证明。对 Xenon 支持的具体标量类型（如 `i32`、`i64`、`f32`、`f64`、
+> `Complex<f32>`、`Complex<f64>`），可以逐类型生成 `impl Add<TensorBase<...>> for T`；真正不可行的是
+> `impl<T> Add<TensorBase<...>> for T` 这种 blanket impl。当前文档应把稳定承诺调整为：
+> `tensor + scalar` 必须支持；常用原生 `scalar + tensor` 建议按具体类型提供；`Scalar<A>` 保留为统一的泛型左标量补充接口。
 
 > **说明**：对于涉及 `&A` 的组合，不要依赖 Rust 的隐式 auto-deref 作为公开 API 契约。若库希望稳定支持 `tensor + &scalar`，应显式提供 `Add<&A>` 方向的实现；否则文档只保证值形式 `tensor + scalar` 与 `Scalar(scalar) + tensor`。
 
@@ -398,7 +403,7 @@ tensor + scalar:
 - [ ] **T4**: 实现 `Add` trait（张量×标量、标量×张量）
   - 文件: `src/overload/arithmetic.rs`
   - 内容: 标量组合 impl
-  - 测试: `test_add_scalar`, `test_scalar_wrapper_add_tensor`, `test_native_scalar_add_tensor_compile_fail`
+  - 测试: `test_add_scalar`, `test_scalar_wrapper_add_tensor`, `test_native_scalar_add_tensor_f64`, `test_native_scalar_add_tensor_i32`
   - 前置: T2
   - 预计: 10 min
 
@@ -409,7 +414,7 @@ tensor + scalar:
   - 内容: Sub/Mul/Div 所有组合
   - 测试: `test_sub`, `test_mul`, `test_div`
   - 前置: T3, T4
-  - 预计: 15 min
+  - 预计: 10 min
 
 ### Wave 5: 测试
 
@@ -445,6 +450,7 @@ Wave 5:      [T6]
 | 单元测试 | `#[cfg(test)] mod tests` | 验证运算符语法、广播分派与结果所有权语义 |
 | 集成测试 | `tests/` | 验证 `overload` 与 `broadcast`、`math`、`tensor` 的协同路径 |
 | 边界测试 | 同模块测试中标注 | 覆盖标量、空张量和广播不兼容等边界 |
+| 属性测试 | `tests/property/` | 验证广播后输出形状、借用/所有权等价性与标量路径不变量 |
 
 ### 7.2 单元测试清单
 
@@ -457,11 +463,12 @@ Wave 5:      [T6]
 | `test_add_ref_owned` | `&a + b`，b 被消费 | 中 |
 | `test_add_scalar` | `tensor + 5.0` | 高 |
 | `test_scalar_wrapper_add_tensor` | `Scalar(5.0) + tensor` | 高 |
-| `test_native_scalar_add_tensor_compile_fail` | 原生 `5.0 + tensor` 编译失败，验证语法边界 | 高 |
+| `test_native_scalar_add_tensor_f64` | 原生 `5.0 + tensor`（具体类型 impl） | 高 |
+| `test_native_scalar_add_tensor_i32` | 原生 `5i32 + tensor`（具体类型 impl） | 中 |
 | `test_sub_basic` | `a - b` 正确性 | 高 |
 | `test_mul_basic` | `a * b` 正确性 | 高 |
 | `test_div_basic` | `a / b` 正确性 | 高 |
-| `test_broadcast_incompatible` | 不兼容形状 panic | 中 |
+| `test_broadcast_incompatible` | 不兼容形状返回 `Result` 错误（方法路径）或由包装 helper 显式处理 | 中 |
 | `test_result_ownership` | 结果张量与输入不共享内存 | 高 |
 | `test_i32_tensor` | `i32` 类型张量运算 | 中 |
 | `test_complex_tensor` | `Complex<f64>` 类型张量运算 | 中 |
@@ -533,12 +540,12 @@ Wave 5:      [T6]
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | 运算符重载中形状不兼容时 panic（使用 `expect`） |
-| 理由 | 这是 Xenon 集中错误语义中的显式语法糖例外；运算符返回类型固定，无法返回 Result；用户需要安全路径可直接使用 `broadcast_with` + `zip_with`（参见 `15-broadcast.md` §4.1、`11-math.md` §4.1、`26-error.md` §4.7） |
-| 替代方案 | 返回 `Result<Tensor, XenonError>` — 放弃，Rust 运算符 trait 不支持 Result 返回类型 |
-| 替代方案 | 使用 `PartialEq` 运算符返回 `Result` — 放弃，不自然 |
+| 决策 | 运算符重载与方法型 API 共享同一错误语义；文档不再把广播失败裁定为 panic 的稳定承诺 |
+| 理由 | `Add` 等 trait 的 `Output` 可以是库自定义类型或包装结果，文档不应把 panic 视为唯一可行方案；同一失败条件保持一致的诊断路径更利于库集成 |
+| 替代方案 | 继续把运算符失败定义为 panic — 放弃，会与方法型 API 的 `Result` 模型割裂 |
+| 替代方案 | 仅支持 `Scalar<A>` 左标量包装器 — 放弃作为唯一稳定边界，因具体原生标量 lhs impl 可行 |
 
-> **补充**：方法型 API 仍然是错误恢复的主路径；运算符重载只是语法糖快捷入口，不改变 `math` 模块中 `Result` 风格接口的地位。
+> **补充**：方法型 API 仍然是最直接的错误恢复主路径；运算符语法不得单方面篡改底层广播/逐元素运算的错误语义。
 
 ### 决策 3：标量路径使用 mapv 而非广播视图
 
@@ -613,7 +620,7 @@ use alloc::vec::Vec;
 | `Add` / `Sub` / `Mul` / `Div`（张量×标量） | ✅ | 委托 `mapv`，需 `no_std + alloc` |
 | `Add` / `Sub` / `Mul` / `Div`（标量×张量） | ✅ | 委托 `mapv`，需 `no_std + alloc` |
 | 借用形式（`&Tensor op &Tensor`） | ✅ | 创建视图（O(1)）+ 新 `Tensor`，需 `no_std + alloc` |
-| 广播错误 panic | ✅ | `expect()` 使用 `core::panic`，无堆依赖 |
+| 广播失败沿统一错误模型处理 | ✅ | no_std 下仍可通过返回值或包装结果保留诊断信息 |
 
 条件编译处理：
 

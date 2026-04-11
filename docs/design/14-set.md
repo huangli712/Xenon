@@ -174,6 +174,7 @@ unique(self):
 浮点比较策略（基于 Xenon 为 `unique()` 定义的 NaN 归并规则，而非直接复用 `f64::total_cmp` / `f32::total_cmp` 的全部语义）：
 - 所有非 NaN 值按 `total_cmp` 排序
 - 所有 NaN 值统一归并到排序结果末尾
+- `+0.0` 与 `-0.0` 视为不同位模式值，按 `total_cmp` 的顺序稳定排序，不做额外归并
 - `total_eq` 将所有 NaN 视为同一值，因此去重后只保留一个 NaN 等价类代表值（不额外承诺 payload canonicalization）
 - 该规则是“面向 unique 的稳定全序”，并不声称与 IEEE 754 `totalOrder` 的 payload/sign-bit 细节完全相同
 ```

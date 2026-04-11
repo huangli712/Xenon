@@ -272,11 +272,12 @@ Benchmark 分类
 | `broadcast_col` | 列向量广播到矩阵 | S/M/L | f64 | F-contiguous | 列广播 |
 | `transpose_2d` | 2D 转置（零拷贝） | S/M/L | f64 | F-contiguous | 转置视图创建 |
 | `reshape_contiguous` | 连续 reshape（零拷贝） | S/M/L | f64 | F-contiguous | reshape 元数据操作 |
-| `reshape_noncontiguous` | 非连续 reshape（需拷贝） | M | f64 | Non-contiguous | reshape 数据拷贝 |
+| `reshape_error_path` | 非连续 reshape（返回错误） | M | f64 | Non-contiguous | 验证 zero-copy reshape 的失败路径 |
+| `into_shape_noncontiguous` | 非连续 into_shape（需拷贝） | M | f64 | Non-contiguous | 连续化后重塑的数据拷贝成本 |
 | `simd_add_compare` | `a + b` (SIMD vs 标量) | M | f32/f64 | F-contiguous | SIMD 加速比（参见 `08-simd.md §10`） |
 | `simd_sum_compare` | sum (SIMD vs 标量) | M | f32/f64 | F-contiguous | SIMD 归约加速 |
 | `simd_dot_compare` | dot (SIMD vs 标量) | M | f32/f64 | F-contiguous | SIMD 内积加速与一致性 |
-| `par_sum_compare` | sum (并行 vs 串行) | L | f64 | F-contiguous | 并行加速比（参见 `09-parallel.md §10`） |
+| `par_sum_compare` | sum (并行 vs 串行) | L | i64 | F-contiguous | 并行加速比（参见 `09-parallel.md §10`） |
 | `par_add_compare` | `a + b` (并行 vs 串行) | L | f64 | F-contiguous | 并行逐元素加速 |
 | `par_map_compare` | `mapv` (并行 vs 串行) | L | f64 | F-contiguous | 并行函数映射加速 |
 | `par_zip_compare` | zip_with (并行 vs 串行) | L | f64 | F-contiguous | 多数组同步操作加速 |
@@ -555,7 +556,7 @@ benchmark 文件
 
 - [ ] **T8**: 实现 `benches/shape.rs`
   - 文件: `benches/shape.rs`
-  - 内容: transpose_2d/reshape_contiguous/reshape_noncontiguous
+- 内容: transpose_2d/reshape_contiguous/reshape_error_path/into_shape_noncontiguous
   - 测试: `cargo bench --bench shape -- --quick`
   - 前置: T2
   - 预计: 10 min

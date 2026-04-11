@@ -374,7 +374,7 @@ pub unsafe trait StorageOwned: StorageMut + Clone {
     fn capacity(&self) -> usize;
 
     /// Attempts to resize the storage capacity.
-    fn try_reserve(&mut self, new_capacity: usize) -> Result<(), ()>;
+    fn try_reserve(&mut self, new_capacity: usize) -> Result<(), XenonError>;
 }
 ```
 
@@ -470,7 +470,7 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
 | `ArcRepr<A>` | `Owned<A>` | O(1) / O(n) | 唯一拥有时 O(1) 转移，否则写时复制 |
 | `ArcRepr<A>` | `ViewRepr<'_, A>` | O(1) | 共享只读借用 |
 
-> **约束：** Xenon 当前元素类型集合是封闭且按值语义处理的集合；`Owned::from_vec` 保持 `Elem: Copy` 约束，以保证从外部 `Vec` 复制到内部对齐缓冲时语义简单且与现有元素类型集合一致。其它从迭代器或构造器进入 `Owned` 的路径由上层构造模块统一收敛。
+> **约束：** Xenon 当前元素类型集合是封闭且按值语义处理的集合；`Owned::from_vec` 保持 `Elem: Copy` 约束，并统一复制到内部 64B 对齐缓冲（参见 `06-memory.md §4.6`）。其它从迭代器或构造器进入 `Owned` 的路径由上层构造模块统一收敛。
 
 ### 4.12 Good/Bad 对比
 
@@ -849,21 +849,21 @@ use alloc::alloc::{alloc, dealloc, alloc_zeroed, Layout};
   - 内容: `AlignedAlloc` 结构体，`alloc`/`alloc_zeroed`/`dealloc`/`should_use_aligned_alloc`
   - 测试: `test_aligned_alloc_64`, `test_aligned_alloc_zeroed`
   - 前置: T1
-  - 预计: 15 min
+  - 预计: 10 min
 
 - [ ] **T7**: 实现 `Owned<A>` 结构体和构造方法
   - 文件: `src/storage/owned.rs`
   - 内容: `Owned<A>` 定义，`new`/`with_capacity`/`from_vec`/`from_vec_aligned`/`zeros`/`from_elem`
   - 测试: `test_owned_new`, `test_owned_from_vec`
   - 前置: T6
-  - 预计: 15 min
+  - 预计: 10 min
 
 - [ ] **T8**: 实现 `Owned<A>` 所有 trait 实现
   - 文件: `src/storage/owned.rs`
   - 内容: `RawStorage`/`Storage`/`StorageMut`/`StorageOwned` 实现，`Send`/`Sync`/`From`/`Default`
   - 测试: `test_owned_storage_trait`, `test_owned_send_sync`
   - 前置: T5, T7
-  - 预计: 15 min
+  - 预计: 10 min
 
 ### Wave 3: 视图和 Arc 实现
 
@@ -872,14 +872,14 @@ use alloc::alloc::{alloc, dealloc, alloc_zeroed, Layout};
   - 内容: 结构定义、`from_raw_parts`/`from_slice`/`from_owned`/`slice`、Clone/Copy、`RawStorage`/`Storage` 实现
   - 测试: `test_view_clone_o1`, `test_view_lifetime`
   - 前置: T5
-  - 预计: 15 min
+  - 预计: 10 min
 
 - [ ] **T10**: 实现 `ViewMutRepr<'a, A>`
   - 文件: `src/storage/view_mut.rs`
   - 内容: 结构定义、`from_raw_parts_mut`/`from_mut_slice`/`from_owned`/`as_view`、不实现 Clone、`RawStorage`/`RawStorageMut`/`Storage`/`StorageMut` 实现
   - 测试: `test_view_mut_no_clone`, `test_view_mut_exclusive`
   - 前置: T5
-  - 预计: 15 min
+  - 预计: 10 min
 
 - [ ] **T11**: 实现 `ArcRepr<A>` 及 `make_mut()`
   - 文件: `src/storage/arc.rs`

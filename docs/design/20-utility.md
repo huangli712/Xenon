@@ -82,7 +82,7 @@ src/util/
 | `element` | `Element`, `RealScalar`，以及 utility 层定义的 operation-specific `ClipElement` 约束 |
 | `layout` | `is_f_contiguous()`（参见 `06-memory.md` §4） |
 | `iter` | `iter()`, `iter_mut()`（参见 `10-iterator.md` §4） |
-| `math` | `mapv()`（clip 内部调用，参见 `11-math.md` §4） |
+| `tensor` | `Tensor<A, D>` 的结果构造路径 | `clip` 分配新的 owned 结果张量并通过 `iter()` / `iter_mut()` 写入 |
 
 ### 3.3 依赖方向声明
 
@@ -145,7 +145,17 @@ where
         if min > max {
             return Err(XenonError::InvalidArgument { message: "clip requires min <= max" });
         }
-        Ok(self.mapv(|x| if x < min { min.clone() } else if x > max { max.clone() } else { x }))
+        let mut out = Tensor::zeros(self.raw_dim());
+        for (src, dst) in self.iter().zip(out.iter_mut()) {
+            *dst = if *src < min {
+                min.clone()
+            } else if *src > max {
+                max.clone()
+            } else {
+                src.clone()
+            };
+        }
+        Ok(out)
     }
 
     /// Clip in place.
@@ -292,8 +302,8 @@ process(&contiguous);
 ```
 clip(tensor, min, max):
     allocate result tensor with same shape
-    for each element x in tensor (via iterator):
-        result[i] = clamp(x, min, max)
+    for each (src, dst) pair via iter()/iter_mut():
+        *dst = clamp(*src, min, max)
     return result
 ```
 
@@ -367,7 +377,7 @@ to_contiguous(tensor):
   - 内容: 边界测试（空数组、单元素、大数组、非连续布局）
   - 测试: `test_clip_empty`, `test_clip_single_element`, `test_fill_zero_dim`
   - 前置: T1, T2, T3
-  - 预计: 15 min
+  - 预计: 10 min
 
 ### 并行执行分组图
 
@@ -440,7 +450,7 @@ Wave 2:      [T3] → [T4]
 | `utility → iter` | `iter` | `iter_mut()` | `fill` 通过可变迭代器遍历逻辑元素，参见 `10-iterator.md` §4.1 |
 | `utility → iter` | `iter` | `iter()` | `clip` 通过只读迭代器读取并写入新张量，参见 `10-iterator.md` §4.1 |
 | `utility → layout` | `layout` | 连续性查询 | `to_contiguous` 先查询当前布局是否已经连续，参见 `06-memory.md` §4 |
-| `utility → tensor` | `tensor` | `to_owned()` / 连续化路径 | `to_contiguous` 复用张量 owned 化与连续化路径，始终输出 F-order |
+| `utility → tensor` | `tensor` | `to_owned()` / owned 构造路径 | `to_contiguous` 复用张量 owned 化与连续化路径；`clip` 通过 owned 结果张量构造返回新值 |
 
 ### 8.2 数据流描述
 

@@ -119,9 +119,9 @@ src/workspace/
 #[derive(Debug, Clone, PartialEq)]
 pub enum WorkspaceError {
     /// Allocation failed (out of memory or invalid layout).
-    AllocFailed,
+    AllocFailed { size: usize, align: usize },
     /// The requested alignment is not a power of 2.
-    InvalidLayout { align: usize },
+    InvalidLayout { size: usize, align: usize },
     /// Cannot borrow: workspace is already mutably borrowed.
     AlreadyBorrowed,
     /// Split point is out of bounds.
@@ -259,15 +259,24 @@ impl Workspace {
     /// ```
     pub fn new(capacity: usize, alignment: usize) -> Result<Self, WorkspaceError> {
         if !alignment.is_power_of_two() || alignment < Self::MIN_ALIGNMENT {
-            return Err(WorkspaceError::InvalidLayout { align: alignment });
+            return Err(WorkspaceError::InvalidLayout {
+                size: capacity,
+                align: alignment,
+            });
         }
 
         let size = capacity.max(1);
         let layout = Layout::from_size_align(size, alignment)
-            .map_err(|_| WorkspaceError::InvalidLayout { align: alignment })?;
+            .map_err(|_| WorkspaceError::InvalidLayout {
+                size,
+                align: alignment,
+            })?;
 
         let ptr = unsafe { alloc(layout) };
-        let ptr = NonNull::new(ptr).ok_or(WorkspaceError::AllocFailed)?;
+        let ptr = NonNull::new(ptr).ok_or(WorkspaceError::AllocFailed {
+            size,
+            align: alignment,
+        })?;
 
         Ok(Self {
             ptr,
@@ -445,11 +454,15 @@ impl<'a> WorkspaceBorrowMut<'a> {
     /// The caller must ensure:
     /// - Alignment satisfies the type's requirements
     /// - Capacity is sufficient to hold `count` elements
-    pub unsafe fn as_maybe_uninit_typed_slice<T>(
+pub unsafe fn as_maybe_uninit_typed_slice<T>(
         &mut self,
         count: usize,
     ) -> &mut [core::mem::MaybeUninit<T>] {
-        assert!(count * core::mem::size_of::<T>() <= self.len);
+        assert!(core::mem::size_of::<T>() != 0, "ZST typed borrows are not supported");
+        let byte_len = count
+            .checked_mul(core::mem::size_of::<T>())
+            .expect("typed workspace borrow byte length overflow");
+        assert!(byte_len <= self.len);
         assert!(self.ptr.as_ptr() as usize % core::mem::align_of::<T>() == 0);
         core::slice::from_raw_parts_mut(
             self.ptr.as_ptr() as *mut core::mem::MaybeUninit<T>,
@@ -464,7 +477,11 @@ impl<'a> WorkspaceBorrowMut<'a> {
     /// The caller must guarantee that the first `count` typed elements have been
     /// fully initialized before calling this method.
     pub unsafe fn assume_init_typed_slice<T>(&mut self, count: usize) -> &mut [T] {
-        assert!(count * core::mem::size_of::<T>() <= self.len);
+        assert!(core::mem::size_of::<T>() != 0, "ZST typed borrows are not supported");
+        let byte_len = count
+            .checked_mul(core::mem::size_of::<T>())
+            .expect("typed workspace borrow byte length overflow");
+        assert!(byte_len <= self.len);
         assert!(self.ptr.as_ptr() as usize % core::mem::align_of::<T>() == 0);
         core::slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut T, count)
     }
@@ -715,11 +732,17 @@ impl Workspace {
     /// Internal reallocation.
     fn reallocate(&mut self, new_capacity: usize) -> Result<(), WorkspaceError> {
         let new_layout = Layout::from_size_align(new_capacity, self.alignment)
-            .map_err(|_| WorkspaceError::InvalidLayout { align: self.alignment })?;
+            .map_err(|_| WorkspaceError::InvalidLayout {
+                size: new_capacity,
+                align: self.alignment,
+            })?;
 
         let new_ptr = unsafe { alloc(new_layout) };
         let new_ptr = NonNull::new(new_ptr)
-            .ok_or(WorkspaceError::AllocFailed)?;
+            .ok_or(WorkspaceError::AllocFailed {
+                size: new_capacity,
+                align: self.alignment,
+            })?;
 
         // Copy old data
         // SAFETY: src and dst do not overlap, copy min(old, new) bytes
@@ -913,7 +936,7 @@ ensure_capacity(&mut self, 2048)
   - 内容: `WorkspaceBorrow`、`WorkspaceBorrowMut` 结构体、`borrow()`、`borrow_mut()`、`as_maybe_uninit_slice()`、`assume_init_slice()`、`as_maybe_uninit_typed_slice()`、`assume_init_typed_slice()`、`Drop` 实现
   - 测试: `test_borrow_basic`, `test_borrow_mut_basic`, `test_borrow_double_fails`, `test_borrow_after_drop`, `test_assume_init_requires_initialized_prefix`
   - 前置: T2
-  - 预计: 15 min
+  - 预计: 10 min
 
 ### Wave 3: 分割和扩容
 
@@ -922,7 +945,7 @@ ensure_capacity(&mut self, 2048)
   - 内容: `SplitBorrowMut` 结构体、`split_at()`、`split_at_mut()` 递归、`Drop` 实现
   - 测试: `test_split_at_basic`, `test_split_at_recursive`, `test_split_at_oob`
   - 前置: T2
-  - 预计: 15 min
+  - 预计: 10 min
 
 - [ ] **T6**: 实现扩容策略 `ensure_capacity`/`reallocate`
   - 文件: `src/workspace/expand.rs`
@@ -965,6 +988,7 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 | 单元测试 | `#[cfg(test)] mod tests` | 验证工作空间分配、借用、分割与扩容语义 |
 | 集成测试 | `tests/` | 验证 `workspace` 与 `ffi`、上游 scratch-buffer 场景的协同路径 |
 | 边界测试 | 同模块测试中标注 | 覆盖零容量、最小对齐、大容量和递归分割等边界 |
+| 属性测试 | `tests/property/` | 验证借用状态机、typed borrow 字节长度与分割不变量 |
 
 ### 7.2 单元测试清单
 

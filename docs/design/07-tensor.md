@@ -339,12 +339,15 @@ where
     D: Dimension,
 {
     /// Returns a shared slice when the logical tensor is F-contiguous and the
-    /// logical first element coincides with the logical-first pointer contract.
+    /// logical-first pointer contract is satisfied.
     ///
     /// This is the zero-copy fast path consumed by `simd/`, `parallel/`, and
     /// convenience APIs such as `set::unique()` examples. Non-contiguous views,
-    /// broadcast views, negative-stride views, or tensors with non-zero logical
-    /// offsets return `None` and must fall back to iterator-based access.
+    /// broadcast views, and negative-stride views return `None` and must fall
+    /// back to iterator-based access. A non-zero logical offset alone does not
+    /// disqualify the fast path: if `as_ptr()` already points at the logical
+    /// first element and the layout is contiguous, `as_slice()` may still be
+    /// returned zero-copy.
     pub fn as_slice(&self) -> Option<&[A]>;
 }
 
@@ -357,7 +360,9 @@ where
     /// zero/negative strides, and the logical-first element is uniquely writable.
     ///
     /// Broadcast results are immutable by construction and therefore can never
-    /// satisfy this method's preconditions.
+    /// satisfy this method's preconditions. As with `as_slice()`, a non-zero
+    /// logical offset is acceptable as long as `as_mut_ptr()` points at the
+    /// logical first element and the logical layout remains contiguous.
     pub fn as_mut_slice(&mut self) -> Option<&mut [A]>;
 }
 ```
@@ -680,7 +685,7 @@ Tensor2<f64> = TensorBase<Owned<f64>, Ix2>
   - 内容: 跨模块交互测试、边界测试、类型别名编译验证
   - 测试: 完整集成测试套件
   - 前置: T3, T9
-  - 预计: 15 min
+  - 预计: 10 min
 
 ### 并行执行图
 
@@ -708,6 +713,7 @@ Wave 4:       [T10]
 | 集成测试 | `tests/` | 验证跨模块交互 |
 | 边界测试 | 集成测试中标注 | 空数组、单元素、高维 |
 | 编译测试 | `tests compile_fail` | 验证类型约束 |
+| 属性测试 | `tests/property/` | 验证长度、shape/stride 与 view/raw-parts 不变量 |
 
 ### 7.2 集成测试函数列表
 

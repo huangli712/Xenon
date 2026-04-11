@@ -88,7 +88,8 @@ src/index/
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.ndim()`，参见 `02-dimension.md` §3 |
 | `layout` | `LayoutFlags`, `Strides<D>`, `HAS_NEG_STRIDE`, `HAS_ZERO_STRIDE`，参见 `06-memory.md` §3 |
 
-> **注意**：索引越界使用 panic 处理（而非 XenonError 变体），参见 `26-error.md §5.3`。`get()` 方法返回 `Option<&A>` 提供可恢复的越界检查路径。
+> **注意**：仅 `tensor[[...]]` 这类 `Index` 语法在越界时使用 panic（参见 `26-error.md §5.3`）。
+> `get()` 方法返回 `Option<&A>` 提供轻量探测路径，而 `slice()` / `slice_mut()` / `try_slice()` / `try_slice_mut()` 统一提供显式错误返回。
 
 ### 3.3 依赖方向声明
 
@@ -157,8 +158,8 @@ impl<D: Dimension, const N: usize> NdIndex<D> for [usize; N] {
 }
 
 // Dynamic slice index (e.g. tensor[&[0, 1, 2][..]])
-impl Sealed for [usize] {}
-impl<D: Dimension> NdIndex<D> for [usize] {
+impl Sealed for &[usize] {}
+impl<D: Dimension> NdIndex<D> for &[usize] {
     fn index_checked(&self, dim: &D, strides: &Strides<D>) -> Option<isize> {
         if self.len() != dim.ndim() { return None; }
         let shape = dim.slice();
@@ -201,8 +202,12 @@ where
     ///
     /// # Panics
     /// Panics if the index is out of bounds.
-impl<I> core::ops::Index<I> for TensorBase<S, D>
+}
+
+impl<S, D, A, I> core::ops::Index<I> for TensorBase<S, D>
 where
+    S: Storage<Elem = A>,
+    D: Dimension,
     I: NdIndex<D>,
 {
     type Output = A;
@@ -409,16 +414,16 @@ where
     /// # Returns
     /// The sliced `TensorView`, zero-copy.
     ///
-    /// # Panics
-    /// Panics if slice dimensions don't match tensor dimensions, or if index is out of bounds.
-/// Also panics if any slice step is zero: "slice step must not be zero".
+    /// # Errors
+    /// Returns `Err` if slice dimensions don't match tensor dimensions, if any
+    /// index is out of bounds, or if any slice step is zero.
     ///
     /// # Examples
     /// ```
     /// let view = tensor.slice(s![1..3, 2..5, ..]);
     /// assert_eq!(view.shape(), &[2, 3, 6]);
     /// ```
-    pub fn slice<I>(&self, info: SliceInfo<I, D>) -> TensorView<'_, A, I>
+    pub fn slice<I>(&self, info: SliceInfo<I, D>) -> Result<TensorView<'_, A, I>, XenonError>
     where
         I: Dimension,
     {
@@ -435,12 +440,12 @@ where
 
     /// Creates a mutable sliced view.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the tensor contains zero strides (`LayoutFlags::HAS_ZERO_STRIDE`),
+    /// Returns `Err` if the tensor contains zero strides (`LayoutFlags::HAS_ZERO_STRIDE`),
     /// because zero strides mean multiple logical indices map to the same physical
-    /// address, and mutable access would create immediate mutable aliasing.
-    pub fn slice_mut<I>(&mut self, info: SliceInfo<I, D>) -> TensorViewMut<'_, A, I>
+    /// address and mutable access would create immediate mutable aliasing.
+    pub fn slice_mut<I>(&mut self, info: SliceInfo<I, D>) -> Result<TensorViewMut<'_, A, I>, XenonError>
     where
         I: Dimension,
         S: StorageMut<Elem = A>,
@@ -459,12 +464,12 @@ where
 }
 ```
 
-> **注意**：对广播视图（含零步长）不得调用 `slice_mut`。如果原张量包含零步长（`LayoutFlags::HAS_ZERO_STRIDE`），`slice_mut()` 将 panic，提示信息为 "mutable slicing is not allowed on broadcast views (tensors with zero strides)"。这是因为零步长意味着多个逻辑索引映射到同一物理地址，可变访问会引起**可变别名**。此为 panic 而非错误返回，因为这是一个编程错误。
+> **注意**：对广播视图（含零步长）不得调用 `slice_mut`。如果原张量包含零步长（`LayoutFlags::HAS_ZERO_STRIDE`），`slice_mut()` / `try_slice_mut()` 都必须返回错误，提示信息可沿用 "mutable slicing is not allowed on broadcast views (tensors with zero strides)"。这是可诊断的运行时失败。
 
 > **错误语义分层：**
-> - `tensor[[...]]` / `slice(...)` / `slice_mut(...)`：面向惯用语法，非法输入视为调用方错误，使用 panic。
+> - `tensor[[...]]`：语言级索引语法，越界 panic。
 > - `get()` / `get_mut()`：越界返回 `None`。
-> - `try_slice()` / `try_slice_mut()`：维度不匹配、越界、`step == 0`、广播视图可变切片等情况返回 `XenonError`。
+> - `slice()` / `slice_mut()` / `try_slice()` / `try_slice_mut()`：维度不匹配、越界、`step == 0`、广播视图可变切片等情况统一返回 `XenonError`。
 > - `get_unchecked*()`：完全由调用者保证前置条件，违反即 UB。
 
 #### 4.2.4 Good / Bad 对比
@@ -664,14 +669,14 @@ function compute_slice(shape, strides, offset, slices: [SliceInfoElem; N])
   - 内容: 切片视图创建、元数据计算
   - 测试: `test_slice_basic`, `test_slice_with_step`, `test_slice_empty`
   - 前置: T2, T3
-  - 预计: 15 min
+  - 预计: 10 min
 
 - [ ] **T6**: 实现 `s![]` 宏
   - 文件: `src/index/slice_index.rs`
   - 内容: 宏定义、语法解析
   - 测试: `test_slice_macro_basic`, `test_slice_macro_step`
   - 前置: T5
-  - 预计: 15 min
+  - 预计: 10 min
 
 ### Wave 4: 集成与测试
 
@@ -680,7 +685,7 @@ function compute_slice(shape, strides, offset, slices: [SliceInfoElem; N])
   - 内容: 链式切片、视图的视图、负步长验证
   - 测试: 覆盖所有公共 API
   - 前置: T1-T6
-  - 预计: 15 min
+  - 预计: 10 min
 
 ### 并行执行图
 
@@ -713,7 +718,7 @@ Wave 4:           [T7]
 |----------|----------|--------|
 | `test_index_2d` | 2D 张量 `[[0, 0]]`, `[[1, 2]]` | 高 |
 | `test_index_3d` | 3D 张量 `[[0, 1, 2]]` | 高 |
-| `test_index_out_of_bounds` | 越界 panic 验证 | 高 |
+| `test_index_out_of_bounds` | `tensor[[...]]` 越界 panic 验证 | 高 |
 | `test_get_returns_none` | `get()` 越界返回 None | 高 |
 | `test_get_unchecked` | unsafe 路径正确读取 | 中 |
 | `test_index_mut_2d` | 可变索引写入 | 高 |
@@ -737,8 +742,8 @@ Wave 4:           [T7]
 | 空数组索引 | panic（无有效索引） |
 | 大张量索引 | 正确偏移量计算 |
 | 非连续切片后索引 | 正确处理步长跳转 |
-| `step == 0` | `slice()` panic，`try_slice()` 返回错误 |
-| 广播视图 `slice_mut` | `slice_mut()` panic，`try_slice_mut()` 返回错误 |
+| `step == 0` | `slice()` / `try_slice()` 均返回错误 |
+| 广播视图 `slice_mut` | `slice_mut()` / `try_slice_mut()` 均返回错误 |
 
 ### 7.4 属性测试不变量
 

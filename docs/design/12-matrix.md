@@ -198,7 +198,9 @@ fn scalar_dot_int<I: Numeric + CheckedAdd + Copy>(
     a.iter()
         .zip(b.iter())
         .fold(I::zero(), |acc, (&x, &y)| {
-            acc.checked_add(x.conjugate() * y).expect("dot overflow")
+            let product = x.checked_mul(y)
+                .expect("dot overflow during multiplication");
+            acc.checked_add(product).expect("dot overflow during accumulation")
         })
 }
 
@@ -214,7 +216,7 @@ fn scalar_dot_float_or_complex<A: Numeric + Copy>(
 
 ### 5.3 统一内积实现（实数与复数分派）
 
-`dot()` 内部统一使用 `x.conjugate() * y` 的乘积生成规则，再按元素类型分派累加策略：整数路径使用 `CheckedAdd` 做 checked accumulation，浮点/复数路径使用普通加法。这通过 `Numeric` trait 中的 `fn conjugate(self) -> Self` 方法实现：
+`dot()` 内部统一使用 `x.conjugate() * y` 的乘积生成规则，再按元素类型分派累加策略：整数路径需要同时对**乘法**和**累加**做 checked arithmetic，浮点/复数路径使用普通加法。这通过 `Numeric` trait 中的 `fn conjugate(self) -> Self` 方法实现：
 - 实数类型（`f32`、`f64`、`i32`、`i64`）：`conjugate(x) == x`（恒等实现，直接返回 `self`）
 - 复数类型（`Complex<f32>`、`Complex<f64>`）：`conjugate(x)` 返回共轭复数
 
@@ -225,7 +227,7 @@ fn scalar_dot_float_or_complex<A: Numeric + Copy>(
 
 /// Unified dot dispatch for both real and complex types.
 /// Uses `x.conjugate() * y` to generate products. Integer accumulation is routed
-/// through CheckedAdd; floating-point and complex accumulation use ordinary `+`.
+/// through checked integer arithmetic; floating-point and complex accumulation use ordinary `+`.
 fn dot_impl<A: Numeric + Copy>(
     a: &TensorView<'_, A, Ix1>,
     b: &TensorView<'_, A, Ix1>,
@@ -240,6 +242,8 @@ fn dot_impl<A: Numeric + Copy>(
 
 > **设计决策：** 通过 `Numeric::conjugate()` 方法实现实数与复数的统一分派，避免为复数类型单独实现 `complex_dot` 函数。
 > 实数类型的 `conjugate()` 为零开销（内联后等价于直接使用 `x * y`），不引入额外运行时成本。
+
+> **整数溢出补充：** 对整数 dot，乘法和累加都属于需求层面的不可恢复溢出路径；文档不得只对累加做 checked 处理而把乘法留给 release wrapping 语义。
 
 ---
 
@@ -304,6 +308,7 @@ Wave 4: [T4]
 | 单元测试 | `#[cfg(test)] mod tests` | 验证 `dot()` 的核心正确性与错误分支 |
 | 集成测试 | `tests/` | 验证 `dot()` 与 `tensor`、`iter`、`simd`、`error` 的协同路径 |
 | 边界测试 | 同模块测试中标注 | 覆盖空向量、单元素、非连续输入等边界 |
+| 属性测试 | `tests/property/` 或 `tests/matrix.rs` | 验证空向量单位元、复数共轭线性与标量/非连续路径一致性不变量 |
 
 ### 7.2 单元测试清单
 
@@ -312,6 +317,8 @@ Wave 4: [T4]
 | `test_dot_basic` | 两个长度为 3 的向量内积正确 | 高 |
 | `test_dot_complex` | 复数内积满足共轭线性 | 高 |
 | `test_dot_shape_mismatch` | 长度不匹配返回 ShapeMismatch 错误 | 高 |
+| `test_dot_int_overflow_mul` | 整数乘法溢出触发 panic | 高 |
+| `test_dot_int_overflow_add` | 整数累加溢出触发 panic | 高 |
 | `test_dot_empty` | 两个空向量内积返回加法单位元 | 中 |
 | `test_dot_single_element` | 单元素向量内积 | 中 |
 | `test_dot_simd_consistency` | SIMD 路径结果与标量一致 | 高 |

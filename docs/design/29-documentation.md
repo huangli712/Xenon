@@ -560,8 +560,8 @@ pub fn sum(&self) -> A { ... }
 /// Sums the tensor.
 pub fn sum(&self) -> A { ... }
 
-// Bad: example still uses unwrap while the surrounding project style prefers
-// a doctest-local Result context with `?` when the constructor is fallible.
+// Bad: the example is incomplete — it omits the surrounding API description,
+// return-value semantics, and edge-case notes even though the doctest itself compiles.
 /// ```
 /// use xenon::prelude::*;
 /// # fn demo() -> xenon::Result<()> {
@@ -681,8 +681,8 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 | 模块 | 目标覆盖率 | 说明 |
 |------|-----------|------|
-| 核心类型（tensor, dimension, storage） | 100% | 所有 pub 方法有 doctest |
-| 运算模块（overload, math, broadcast, reduction） | 100% | 所有 pub 方法有 doctest |
+| 核心类型（tensor, dimension, storage） | ≥80% | 核心入口和高频查询方法必须有 doctest，其余 pub 方法至少有文档说明 |
+| 运算模块（overload, math, broadcast, reduction） | ≥80% | 核心入口、广播/错误路径和代表性运算必须有 doctest |
 | 工具模块（ffi, workspace, simd, parallel） | ≥80% | 关键 API 有 doctest |
 | 辅助模块（convert, format, error） | ≥60% | 至少构造和基本使用有 doctest |
 | 迭代与归约模块（iter, reduction, matrix） | ≥80% | 核心入口、边界行为和错误路径有 doctest |
@@ -816,7 +816,7 @@ docs:
   - 内容: TensorBase, Tensor, TensorView, TensorViewMut, ArcTensor 类型文档
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T5, T6, T7
-  - 预计: 15 min
+  - 预计: 10 min
 
 - [ ] **T8b**: dimension 模块文档
   - 文件: `src/dimension/mod.rs`
@@ -851,7 +851,7 @@ docs:
   - 内容: add, sub, mul, div, sin, sqrt, exp, ln, abs 等逐元素运算函数文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
-  - 预计: 15 min
+  - 预计: 10 min
 
 - [ ] **T9b**: reduction 与 matrix 模块文档
   - 文件: `src/reduction/`, `src/matrix/` 下相关文件
@@ -879,14 +879,14 @@ docs:
   - 内容: FFI 函数（含 Safety 节）、Workspace、XenonError 文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
-  - 预计: 15 min
+  - 预计: 10 min
 
 - [ ] **T9f**: iter, convert, format, overload 模块文档
   - 文件: `src/iter/mod.rs`, `src/convert/mod.rs`, `src/format/mod.rs`, `src/overload/mod.rs`
   - 内容: 迭代器入口、类型转换、输出格式化、运算符语法边界的模块文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
-  - 预计: 15 min
+  - 预计: 10 min
 
 ### Wave 4: 示例程序（可并行）
 

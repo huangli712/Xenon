@@ -257,8 +257,18 @@ where
 
     /// Conjugate operation.
     pub fn conjugate(&self) -> Tensor<Complex<T>, D>;
+
+    /// Add a same-precision real scalar to each complex element.
+    pub fn add_real_scalar(&self, scalar: T) -> Tensor<Complex<T>, D>;
+
+    /// Multiply each complex element by a same-precision real scalar.
+    pub fn mul_real_scalar(&self, scalar: T) -> Tensor<Complex<T>, D>;
 }
 ```
+
+> **同精度实复混合运算约束：** `Complex<f32>` 仅与 `f32` 混合，`Complex<f64>` 仅与 `f64` 混合；
+> 跨精度（如 `Complex<f64>` 与 `f32`）必须先显式转换。面向张量 API 时，这些能力通过
+> `ComplexScalar<Real = T>` 路径暴露，而不是自动类型提升。
 
 ### 4.7 逻辑非（仅 bool）
 
@@ -405,6 +415,7 @@ b_broadcast = b.broadcast_to(broadcast_shape)
 #[cfg(feature = "simd")]
 fn add_impl_simd<A>(a: &TensorView<A, D>, b: &TensorView<A, D>) -> Tensor<A, D>
 where
+    D: Dimension,
     A: Numeric + Copy,
 {
     if a.is_f_contiguous() && b.is_f_contiguous() {
@@ -416,6 +427,7 @@ where
 #[cfg(not(feature = "simd"))]
 fn add_impl_simd<A>(a: &TensorView<A, D>, b: &TensorView<A, D>) -> Tensor<A, D>
 where
+    D: Dimension,
     A: Numeric + Copy,
 {
     zip_with_scalar(a, b, |x, y| x + y)
@@ -490,7 +502,7 @@ where
   - 内容: 在 `math` 中接入独立 `simd/` backend，为连续数组提供 SIMD 路径并保留标量回退
   - 测试: `test_add_simd_vs_scalar`, `test_mul_simd_vs_scalar`
   - 前置: T3, 08-simd.md
-  - 预计: 15 min
+  - 预计: 10 min
 
 ### 并行执行分组图
 
@@ -546,6 +558,7 @@ Wave 4: [T8]
 | `test_add_complex` | Complex\<f64\> 加法正确 | 高 |
 | `test_add_broadcast` | 广播加法 shape [3,1]+[1,4]=[3,4] | 高 |
 | `test_mul_scalar` | 标量乘法正确 | 中 |
+| `test_add_real_scalar_to_complex` | `Complex<f64>` 张量与 `f64` 标量同精度混合加法正确 | 高 |
 | `test_abs` | abs(-3) = 3, abs(f64) 正确 | 高 |
 | `test_neg` | neg 正确，含复数 | 中 |
 | `test_signum` | signum 正/零/负 | 中 |

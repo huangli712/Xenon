@@ -359,11 +359,14 @@ pub fn bad<A: Numeric + Add<Output = A> + Sub<Output = A> + Mul<Output = A> + Cl
 
 ```rust
 // Good - covariant borrow of element type
-pub struct ViewRepr<A> {
-    _marker: PhantomData<A>,
+pub struct ViewRepr<'a, A> {
+    _marker: PhantomData<&'a A>,
 }
-// Note: ViewRepr carries `'a` as a dedicated lifetime parameter; the storage type itself is ViewRepr<'a, A>
-// with lifetime carried via the generic parameter.
+
+// Good - invariant mutable borrow of element type
+pub struct ViewMutRepr<'a, A> {
+    _marker: PhantomData<&'a mut A>,
+}
 
 // Good - ownership of A
 pub struct Owned<A> {
@@ -376,6 +379,10 @@ pub struct Bad<A> {
     _marker: PhantomData<A>,
 }
 ```
+
+> **约定**：只读视图使用 `PhantomData<&'a A>` 表达借用语义；可变视图使用
+> `PhantomData<&'a mut A>` 表达独占借用与不变性；只有真实拥有元素所有权的类型才使用
+> `PhantomData<A>`。不要在视图类型上用 `PhantomData<A>` 冒充借用关系。
 
 ### 3.4 Send/Sync 实现规范
 

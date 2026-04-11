@@ -803,7 +803,7 @@ strides_for_f_order(shape):
 | 模块 | 使用的 trait/类型 | 用途 |
 |------|-------------------|------|
 | `layout` | `Dimension` | 计算步长、检查连续性 |
-| `storage` | `Dimension` | 关联类型、形状表示 |
+| `storage` | — | 不直接消费 `Dimension`；仅管理底层连续缓冲区 |
 | `tensor` | `Dimension` | 泛型参数、形状访问 |
 | `shape` | `Dimension`, `IntoDimension` | reshape、transpose |
 | `iter` | `Dimension` | 迭代器泛型参数 |

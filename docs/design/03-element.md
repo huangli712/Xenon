@@ -135,9 +135,11 @@ pub trait Element:
 /// Numeric element trait.
 ///
 /// Adds arithmetic operations on top of Element.
-/// Only Xenon's computational numeric types implement this trait:
-/// `i32`, `i64`, `f32`, `f64`, `Complex<f32>`, `Complex<f64>`.
-/// `bool` and `usize` do NOT implement Numeric.
+/// Xenon's generic numeric core currently covers signed integers, real scalars,
+/// and complex scalars: `i32`, `i64`, `f32`, `f64`, `Complex<f32>`, `Complex<f64>`.
+/// `bool` is explicitly excluded. `usize` remains part of the closed element set,
+/// but arithmetic support for it must be modeled by dedicated APIs/impls rather than
+/// by this `Numeric` trait because `Numeric` currently includes `Neg`.
 ///
 /// Note: `Sealed` is not listed as a separate supertrait here because
 /// `Element` already inherits `Sealed`.
@@ -189,7 +191,7 @@ pub trait Numeric:
 // }
 ```
 
-> **设计决策：** `Numeric` 定义 `conjugate()` 方法，为实数类型返回 `self`，为复数类型返回共轭。这使得统一的内积（dot product）实现可以泛化处理实数和复数情况。Xenon 采用 `sum(conjugate(a[i]) * b[i])` 的约定，并在 `12-matrix.md` 中保持一致。其余四则运算由 `Add/Sub/Mul/Div/Neg` trait 提供。
+> **设计决策：** `Numeric` 定义 `conjugate()` 方法，为实数类型返回 `self`，为复数类型返回共轭。这使得统一的内积（dot product）实现可以泛化处理实数和复数情况。Xenon 采用 `sum(conjugate(a[i]) * b[i])` 的约定，并在 `12-matrix.md` 中保持一致。其余四则运算由 `Add/Sub/Mul/Div/Neg` trait 提供。对于 `usize`，若后续补齐需求中的算术支持，应通过专门的二元运算/重载路径设计，而不是直接塞进当前带 `Neg` 的 `Numeric` 层次。
 >
 > **`Numeric::conjugate()` 与 `ComplexScalar::conj()` 的关系和使用说明：**
 >
@@ -285,7 +287,7 @@ pub trait ComplexScalar: Numeric + Sealed {
 | `Complex<f32>` | ✓ | ✓ | ✗ | ✓ |
 | `Complex<f64>` | ✓ | ✓ | ✗ | ✓ |
 | `bool` | ✓ | ✗ | ✗ | ✗ |
-| `usize` | ✓ | ✗ | ✗ | ✗ |
+| `usize` | ✓ | ✗（当前 generic core） | ✗ | ✗ |
 
 > **Xenon 特定约束：** 仅支持上表列出的 8 种类型。不支持 u8/u16/u32/i8/i16 等其他整数类型。
 
@@ -319,15 +321,23 @@ impl Element for MyType { /* error[E0277]: Sealed not satisfied */ }
 ### 4.7 Good / Bad 对比示例
 
 ```rust
-// Good - Numeric constraint automatically excludes bool and usize
-fn sum<A: Numeric>(tensor: &TensorView<A>) -> A {
+// Good - Numeric constraint automatically excludes bool and non-Numeric types
+fn sum<'a, A, D>(tensor: &TensorView<'a, A, D>) -> A
+where
+    A: Numeric,
+    D: Dimension,
+{
     tensor.iter().fold(A::zero(), |acc, &x| acc + x)
 }
 // sum(&bool_tensor);   // Compile error: bool does not satisfy Numeric
-// sum(&usize_tensor);  // Compile error: usize does not satisfy Numeric
+// sum(&usize_tensor);  // Compile error under the current Numeric layering
 
-// Bad - Element constraint cannot exclude bool
-fn sum_bad<A: Element>(tensor: &TensorView<A>) -> A {
+// Bad - Element constraint cannot exclude non-arithmetic element types
+fn sum_bad<'a, A, D>(tensor: &TensorView<'a, A, D>) -> A
+where
+    A: Element,
+    D: Dimension,
+{
     // Cannot use + operator, Element has no Add bound
     todo!()
 }
@@ -345,10 +355,10 @@ let c = &a + &b.cast::<f64>();  // explicit conversion
 
 ### 4.8 CastTo\<T\> trait（类型转换）
 
-`CastTo<T>` 是 Xenon 逐元素类型转换规则的唯一 owner，由 `convert/cast.rs` 模块消费（参见 `21-type.md §4`），不在其他模块重复定义。
+`CastTo<T>` 是 Xenon 逐元素类型转换规则的唯一 owner，trait 定义放在 `src/element/` 层，由 `convert/cast.rs` 统一消费（参见 `21-type.md §4`），不在其他模块重复定义。
 
 ```rust
-// src/element/mod.rs (or element/cast.rs)
+// src/element/mod.rs
 
 /// Element-wise type conversion trait.
 ///
@@ -433,7 +443,7 @@ impl Element for bool {
 
 ### 5.2 usize 包含策略
 
-`usize` 仅实现 `Element`，不实现 `Numeric`。它在 Xenon 中主要承担索引、形状和大小相关语义，不参与张量算术运算。
+`usize` 仍是 Xenon 封闭元素集合的一部分，但当前不进入带 `Neg` 约束的 `Numeric` 泛型层。若要补齐需求中的整数算术支持，应在后续文档中为 `usize` 单独补 dedicated binary arithmetic / overload 路径，而不是继续把它与 `bool` 一并视作“完全不参与算术”。
 
 ### 5.3 类型提升规则
 
@@ -602,10 +612,10 @@ fn max(self, other: Self) -> Self {
   - 前置: T1
   - 预计: 5 min
 
-- [ ] **T8**: 为 usize 实现 Element（仅此）
+- [ ] **T8**: 为 usize 实现 Element，并为后续专用算术扩展预留边界说明
   - 文件: `src/element/primitives.rs`
-  - 内容: `Element` impl（`zero()=0`, `one()=1`），不实现 Numeric
-  - 测试: `test_usize_element_only`
+  - 内容: `Element` impl（`zero()=0`, `one()=1`），并在文档中明确其与专用算术路径的边界
+  - 测试: `test_usize_element_basics`
   - 前置: T1
   - 预计: 5 min
 
