@@ -475,7 +475,7 @@ function increment_index_f(shape, index):
 ### Wave 4: 集成与测试
 
 - [ ] **T6**: 编写综合测试
-  - 文件: `tests/construct.rs`
+  - 文件: `tests/construction.rs`
   - 内容: 各构造方法的集成测试、边界情况
   - 测试: 覆盖所有公共 API
   - 前置: T1-T5

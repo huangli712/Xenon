@@ -1,6 +1,6 @@
 # 文档模块设计
 
-> 文档编号: 29 | 模块: 全局 | 阶段: Phase 6
+> 文档编号: 29 | 模块: `docs/` | 阶段: Phase 6
 > 前置文档: 所有前置文档（`00-coding.md` ~ `28-tests.md`）
 > 需求参考: 需求说明书 §28.1
 
@@ -69,8 +69,16 @@ src/
 │   └── mod.rs                # 布局模块文档（L1）
 ├── tensor/
 │   └── mod.rs                # 张量模块文档（L1）
+├── iter/
+│   └── mod.rs                # 迭代器模块文档（L1）
+├── math/
+│   └── mod.rs                # 逐元素运算模块文档（L1）
 ├── overload/
 │   └── mod.rs                # 运算符重载模块文档（L1）
+├── matrix/
+│   └── mod.rs                # 向量内积模块文档（L1）
+├── reduction/
+│   └── mod.rs                # 归约模块文档（L1）
 ├── broadcast.rs              # 广播模块文档（L1，单文件模块）
 ├── shape/
 │   └── mod.rs                # 形状操作模块文档（L1）
@@ -78,8 +86,12 @@ src/
 │   └── mod.rs                # 索引模块文档（L1）
 ├── construct/
 │   └── mod.rs                # 构造模块文档（L1）
+├── convert/
+│   └── mod.rs                # 类型转换模块文档（L1）
 ├── set/
 │   └── mod.rs                # 集合操作模块文档（L1）
+├── format/
+│   └── mod.rs                # 输出格式化模块文档（L1）
 ├── ffi/
 │   └── mod.rs                # FFI 模块文档（L1）
 ├── workspace/
@@ -121,10 +133,10 @@ CHANGELOG.md                  # 版本变更记录
 │   └── 每个模块的文档内容基于其设计文档
 ├── 依赖 `00-coding.md`
 │   └── 文档风格遵循编码规范（参见 `00-coding.md §6`）
-├── 被 28-integration-tests 依赖
-│   └── doctest 也是测试的一部分（参见 `28-tests.md §5` 与 `§7`）
-└── 被 27-benchmark 依赖
-    └── benchmark 文档引用性能相关 API 文档（参见 `27-benchmark.md §10` 与 `§12`）
+├── 依赖 `28-tests.md`
+│   └── doctest / examples / docs CI 的验证策略与测试口径需保持一致
+└── 依赖 `27-benchmark.md`
+    └── 性能相关示例、feature gate 和 benchmark 文档引用路径需保持一致
 ```
 
 ### 3.2 依赖精确到类型级
@@ -337,7 +349,7 @@ pub fn par_sum(&self) -> A { ... }
 | `broadcasting.rs` | 广播规则、行/列/标量广播 | 默认 | 日常使用 |
 | `parallel.rs` | 并行计算、阈值配置 | `parallel` | 性能优化（参见 `09-parallel.md §4`） |
 | `simd.rs` | SIMD 加速、回退策略 | `simd` | 性能优化（参见 `08-simd.md §4`） |
-| `templates/no_std-app/` | `no_std + alloc` 使用模式模板工程 | 默认关闭 `std` | 系统/嵌入式开发者 |
+| `examples/templates/no_std-app/` | `no_std + alloc` 使用模式模板工程 | 默认关闭 `std` | 系统/嵌入式开发者 |
 | `ffi.rs` | 与 C/BLAS 交互 | 默认 | 库开发者 |
 
 ### 8.2 示例模板
@@ -609,7 +621,7 @@ pub unsafe fn from_raw_parts<'a, A, D>(...) -> TensorView<'a, A, D>
 
 ---
 
-## 14. 内部实现
+## 14. 内部实现设计
 
 ### 14.1 文档生成流程
 
@@ -651,7 +663,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 ## 15. 测试计划
 
-### 15.1 测试分类
+### 15.1 测试分类表
 
 | 类型 | 命令 | 目的 |
 |------|------|------|
@@ -783,16 +795,16 @@ docs:
   - 前置: T2
   - 预计: 10 min
 
-- [ ] **T6**: 编写张量与运算模块文档（tensor, overload, broadcast, shape, index, construct, set）
+- [ ] **T6**: 编写张量与运算模块文档（tensor, iter, math, overload, broadcast, reduction, matrix, shape, index, construct, set）
   - 文件: 各 `mod.rs`
-  - 内容: 模块职责、核心类型、运算分类、类型约束速查（参见 `07-tensor.md §1`、`11-math.md §1`、`15-broadcast.md §1`、`16-shape.md §1`）
+  - 内容: 模块职责、核心类型、运算分类、类型约束速查（参见 `07-tensor.md §1`、`10-iterator.md §1`、`11-math.md §1`、`12-matrix.md §1`、`13-reduction.md §1`、`15-broadcast.md §1`、`16-shape.md §1`）
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T2
   - 预计: 10 min
 
-- [ ] **T7**: 编写基础设施模块文档（ffi, workspace, simd, parallel, error, prelude）
+- [ ] **T7**: 编写基础设施模块文档（ffi, workspace, simd, parallel, error, prelude, convert, format）
   - 文件: 各 `mod.rs`
-  - 内容: 模块职责、Safety 约定、feature gate 说明（参见 `23-ffi.md §1`、`24-workspace.md §1`、`08-simd.md §1`、`09-parallel.md §1`、`26-error.md §1`）
+  - 内容: 模块职责、Safety 约定、feature gate 说明、转换与输出语义（参见 `23-ffi.md §1`、`24-workspace.md §1`、`08-simd.md §1`、`09-parallel.md §1`、`21-type.md §1`、`22-output.md §1`、`26-error.md §1`）
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T2
   - 预计: 10 min
@@ -834,16 +846,16 @@ docs:
   - 前置: T5, T6, T7
   - 预计: 10 min
 
-- [ ] **T9a**: overload 模块逐元素运算文档
-  - 文件: `src/overload/` 下相关文件
-  - 内容: add, sub, mul, div, sin, cos, exp, abs 等逐元素运算函数文档和 doctest
+- [ ] **T9a**: math 模块逐元素运算文档
+  - 文件: `src/math/` 下相关文件
+  - 内容: add, sub, mul, div, sin, sqrt, exp, ln, abs 等逐元素运算函数文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 15 min
 
-- [ ] **T9b**: overload 模块归约运算文档
-  - 文件: `src/overload/` 下相关文件
-  - 内容: sum, sum_axis, dot 等归约函数文档和 doctest
+- [ ] **T9b**: reduction 与 matrix 模块文档
+  - 文件: `src/reduction/`, `src/matrix/` 下相关文件
+  - 内容: sum, sum_axis, dot 等归约/内积函数文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
@@ -865,6 +877,13 @@ docs:
 - [ ] **T9e**: ffi, workspace, error 模块文档
   - 文件: `src/ffi/mod.rs`, `src/workspace/mod.rs`, `src/error.rs`
   - 内容: FFI 函数（含 Safety 节）、Workspace、XenonError 文档和 doctest
+  - 测试: `cargo test --doc --all-features`
+  - 前置: T5, T6, T7
+  - 预计: 15 min
+
+- [ ] **T9f**: iter, convert, format, overload 模块文档
+  - 文件: `src/iter/mod.rs`, `src/convert/mod.rs`, `src/format/mod.rs`, `src/overload/mod.rs`
+  - 内容: 迭代器入口、类型转换、输出格式化、运算符语法边界的模块文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 15 min
@@ -913,10 +932,10 @@ docs:
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T16**: 编写 `templates/no_std-app/` 最小工程模板
-  - 文件: `templates/no_std-app/`
+- [ ] **T16**: 编写 `examples/templates/no_std-app/` 最小工程模板
+  - 文件: `examples/templates/no_std-app/`
   - 内容: `no_std + alloc` 环境下的最小依赖工程（不是普通 `examples/` 可执行程序）
-  - 测试: `cargo check --manifest-path templates/no_std-app/Cargo.toml --no-default-features`
+  - 测试: `cargo check --manifest-path examples/templates/no_std-app/Cargo.toml --no-default-features`
   - 前置: T1
   - 预计: 10 min
 
@@ -938,7 +957,7 @@ Wave 2: [T2] [T3]
             │
 Wave 3: [T5] [T6] [T7]
             │
-Wave 4: [T8a] [T8b] [T8c] [T8d] [T8e] [T9a] [T9b] [T9c] [T9d] [T9e]
+Wave 4: [T8a] [T8b] [T8c] [T8d] [T8e] [T9a] [T9b] [T9c] [T9d] [T9e] [T9f]
             │
 Wave 5: [T10] [T11] [T12] [T13] [T14] [T15] [T16]
             │
@@ -947,7 +966,7 @@ Wave 6: [T17]
 
 ---
 
-## 18. ADR 决策记录
+## 18. 设计决策记录
 
 ### 决策 1：英文文档
 

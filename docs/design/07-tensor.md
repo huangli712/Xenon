@@ -14,7 +14,7 @@
 |------|------|--------|
 | 核心结构体 | `TensorBase<S, D>` 双参数泛型结构体定义 | 逐元素与归约逻辑（参见 `11-math.md`、`13-reduction.md`） |
 | 类型别名 | `Tensor`/`TensorView`/`TensorViewMut`/`ArcTensor` 及维度便捷别名 | 广播规则（参见 `15-broadcast.md §3`） |
-| 基础查询 | shape/ndim/len/strides/is_empty/is_f_contiguous/is_aligned 等方法 | 形状操作（reshape/transpose，参见 `16-shape.md §1`） |
+| 基础查询 | shape/ndim/len/strides/is_empty/is_f_contiguous/is_aligned/存储位置查询等方法 | 形状操作（reshape/transpose，参见 `16-shape.md §1`） |
 | 安全构造 | 从形状和数据构造，验证合法性 | 索引操作（参见 `17-indexing.md §1`） |
 | unsafe 构造 | `from_raw_parts`，用于 FFI | 切片操作（参见 `17-indexing.md §5`） |
 | 视图方法 | view/view_mut | 集合操作（参见 `14-set.md §1`） |
@@ -254,6 +254,9 @@ where
     /// Returns the complete layout flags.
     pub fn flags(&self) -> LayoutFlags;
 
+    /// Returns the storage-location classification of the tensor payload.
+    pub fn storage_kind(&self) -> StorageKind;
+
     /// Whether the data is F-order contiguous.
     #[inline]
     pub fn is_f_contiguous(&self) -> bool {
@@ -278,6 +281,14 @@ where
         self.flags.has_neg_stride()
     }
 
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StorageKind {
+    Owned,
+    View,
+    ViewMut,
+    Shared,
 }
 ```
 
@@ -415,6 +426,7 @@ where
     /// - `validate_access_range(shape, strides, offset, storage_len)` succeeds
     pub unsafe fn from_raw_parts(
         ptr: *const A,
+        storage_len: usize,
         shape: D,
         strides: Strides<D>,
         offset: usize,
@@ -432,6 +444,7 @@ where
     /// Same as `from_raw_parts`, with the additional requirement of exclusive access.
     pub unsafe fn from_raw_parts_mut(
         ptr: *mut A,
+        storage_len: usize,
         shape: D,
         strides: Strides<D>,
         offset: usize,
@@ -490,7 +503,13 @@ let t = Tensor2::<f64>::from_shape_vec([3, 4], vec![1.0; 12])?;
 
 // Bad - Use unsafe from_raw_parts to skip validation
 let t = unsafe {
-TensorView2::from_raw_parts(data.as_ptr(), Ix2(3, 4), Strides::from_slice(&[1, 3]), 0)
+    TensorView2::from_raw_parts(
+        data.as_ptr(),
+        data.len(),
+        Ix2(3, 4),
+        Strides::from_slice(&[1, 3]),
+        0,
+    )
 };
 ```
 
@@ -532,6 +551,8 @@ shape: [3], strides: [1], offset: 2  // 仅调整元数据
 > **重要设计约定：** `TensorBase::offset` 是所有存储模式（Owned、ViewRepr、ViewMutRepr、ArcRepr）共用的唯一偏移字段。`ArcRepr` 不存储独立的 offset — 数据访问的起始位置完全由 `TensorBase::offset` 决定。这避免了双重偏移计算的 bug，并使偏移逻辑集中在一处。
 
 > **logical-first pointer 契约：** `TensorBase::as_ptr()` / `as_mut_ptr()` 返回的是逻辑首元素指针，而不是 storage base pointer。layout 标志计算、连续切片快路径和 FFI raw-parts safety 文档都必须使用这一同一约定；若需要 storage base pointer，只能通过 storage 层 API 或 raw-parts 输入显式提供。
+
+> **raw-parts 设计补充：** `storage_len` 是 raw-parts 视图构造的必填输入。`ViewRepr` / `ViewMutRepr` 需要保存 backing storage 的可访问元素数，`validate_access_range(...)` 也必须基于该长度执行边界校验；仅有 `ptr + shape + strides + offset` 不足以安全重建视图。
 
 ```text
 validate_access_range(shape, strides, offset, storage_len):
@@ -610,7 +631,7 @@ Tensor2<f64> = TensorBase<Owned<f64>, Ix2>
 
 - [ ] **T4**: 实现形状与步长查询方法
   - 文件: `src/tensor/impls.rs`
-  - 内容: `shape()`/`strides()`/`ndim()`/`len()`/`is_empty()`/`offset()`/`raw_dim()`/`flags()`
+  - 内容: `shape()`/`strides()`/`ndim()`/`len()`/`is_empty()`/`offset()`/`raw_dim()`/`flags()`/`storage_kind()`
   - 测试: `test_shape_query`, `test_len_empty`
   - 前置: T2
   - 预计: 10 min
@@ -633,8 +654,8 @@ Tensor2<f64> = TensorBase<Owned<f64>, Ix2>
 
 - [ ] **T7**: 实现 `from_raw_parts` 系列 (construct.rs)
   - 文件: `src/tensor/construct.rs`
-  - 内容: `from_raw_parts`(不可变)/`from_raw_parts_mut`(可变)，完整 Safety 文档
-  - 测试: `test_from_raw_parts_view`, `test_from_raw_parts_mut`
+  - 内容: `from_raw_parts`(不可变)/`from_raw_parts_mut`(可变)，显式接收 `storage_len` 并统一走 `validate_access_range`
+  - 测试: `test_from_raw_parts_view`, `test_from_raw_parts_mut`, `test_from_raw_parts_invalid_range`
   - 前置: T2
   - 预计: 10 min
 
@@ -712,10 +733,12 @@ Wave 4:       [T10]
 | `test_tensor_flags_aligned` | 新构造张量对齐 | 高 |
 | `test_tensor_as_ptr` | 指针指向正确位置 | 高 |
 | `test_tensor_as_mut_ptr` | 可变指针指向正确位置 | 高 |
+| `test_tensor_storage_kind` | `Owned`/`View`/`ViewMut`/`Arc` 的存储位置查询正确 | 高 |
 | `test_tensor_view` | `view()` 创建正确视图 | 高 |
 | `test_tensor_view_mut` | `view_mut()` 创建正确可变视图 | 高 |
 | `test_from_shape_vec_valid` | 合法构造成功 | 高 |
 | `test_from_shape_vec_len_mismatch` | 长度不匹配返回错误 | 高 |
+| `test_from_raw_parts_invalid_range` | raw-parts 越界访问范围被拒绝 | 高 |
 | `test_type_aliases_compile` | 所有类型别名编译通过 | 高 |
 | `test_tensor0_scalar` | 0D 标量张量 `len()==1` | 中 |
 | `test_tensor_empty_dim` | 含 0 维度的张量 `is_empty()` | 中 |
@@ -737,6 +760,7 @@ Wave 4:       [T10]
 | `tensor.len() == tensor.shape().iter().product()` | 随机形状 |
 | `tensor.view().shape() == tensor.shape()` | 随机形状和存储模式 |
 | `from_shape_vec` 后 `is_f_contiguous() == true` | 随机合法形状 |
+| `from_raw_parts` 仅在 `validate_access_range` 通过时成功 | 随机 shape/stride/offset/storage_len 组合 |
 
 ### 7.6 集成测试
 

@@ -146,6 +146,14 @@ impl<'a, A, D: Dimension + RemoveAxis> Iterator for AxisIter<'a, A, D> {
 }
 
 impl<'a, A, D: Dimension + RemoveAxis> ExactSizeIterator for AxisIter<'a, A, D> {}
+
+impl<'a, A, D: Dimension + RemoveAxis> Iterator for AxisIterMut<'a, A, D> {
+    type Item = TensorViewMut<'a, A, D::Smaller>;
+    fn next(&mut self) -> Option<Self::Item>;
+    fn size_hint(&self) -> (usize, Option<usize>);
+}
+
+impl<'a, A, D: Dimension + RemoveAxis> ExactSizeIterator for AxisIterMut<'a, A, D> {}
 ```
 
 > **设计决策：** `AxisIter` 的 `Item` 类型为 `TensorView<'a, A, D::Smaller>`。这要求 `D` 满足 `RemoveAxis`，并由 `RemoveAxis` trait 提供 `type Smaller: Dimension` 关联类型。零维张量（Ix0）不支持按轴遍历，因为 `Ix0` 不实现 `RemoveAxis`。
@@ -177,6 +185,14 @@ impl<'a, A, D: Dimension> Iterator for Windows<'a, A, D> {
 }
 
 impl<'a, A, D: Dimension> ExactSizeIterator for Windows<'a, A, D> {}
+
+impl<'a, A, D: Dimension> Iterator for WindowsMut<'a, A, D> {
+    type Item = TensorViewMut<'a, A, D>;
+    fn next(&mut self) -> Option<Self::Item>;
+    fn size_hint(&self) -> (usize, Option<usize>);
+}
+
+impl<'a, A, D: Dimension> ExactSizeIterator for WindowsMut<'a, A, D> {}
 ```
 
 ### 4.4 IndexedIter 带索引迭代器
@@ -198,6 +214,14 @@ impl<'a, A, D: Dimension> Iterator for IndexedIter<'a, A, D> {
 }
 
 impl<'a, A, D: Dimension> ExactSizeIterator for IndexedIter<'a, A, D> {}
+
+impl<'a, A, D: Dimension> Iterator for IndexedIterMut<'a, A, D> {
+    type Item = (D::Slice, &'a mut A);
+    fn next(&mut self) -> Option<Self::Item>;
+    fn size_hint(&self) -> (usize, Option<usize>);
+}
+
+impl<'a, A, D: Dimension> ExactSizeIterator for IndexedIterMut<'a, A, D> {}
 ```
 
 ### 4.5 Zip 多张量同步迭代器
@@ -220,8 +244,11 @@ pub trait NdProducer {
 
 /// Multi-tensor synchronized iterator, used for zip_with and similar operations.
 ///
-/// Supports broadcasting: automatically expands when shapes are broadcastable.
-/// Broadcast results are read-only; mutable iteration is not supported.
+/// `Zip` itself only combines producers that already share the same dimension
+/// type `D`. For cross-dimension broadcasting (for example `Ix2` with `Ix3`),
+/// upper layers must first normalize both inputs to the common broadcasted
+/// dimension and then construct `Zip`. Broadcast results are read-only; mutable
+/// iteration is not supported.
 pub struct Zip<Parts, D: Dimension> {
     // Internal fields: producer tuple, broadcasted shape, stride info
 }
@@ -232,7 +259,8 @@ impl<D: Dimension> Zip<(), D> {
 }
 
 impl<Parts, D: Dimension> Zip<Parts, D> {
-    /// Add another tensor to the Zip, handling broadcast automatically.
+    /// Add another tensor to the Zip after shape compatibility has already been
+    /// normalized to the same dimension type.
     ///
     /// **注意:** `Zip::and` 要求两个 producer 的维度类型 `D` 必须相同。
     /// 对于不同维度类型的广播场景（如 Ix2 与 Ix3 组合），应使用

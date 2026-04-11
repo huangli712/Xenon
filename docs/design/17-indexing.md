@@ -20,7 +20,7 @@
 | 切片宏 | `s![]` 宏的语法解析和展开 | 切片宏设计在 ndarray 之外的库中 |
 | 切片返回视图 | 切片返回 `ViewRepr`（零拷贝） | 勒贝操作（在逐元素运算模块） |
 | 负步长支持 | 步长可为负（`HAS_NEG_STRIDE` 标志位） | 反向迭代（在 iter 模块） |
-| 边界检查 | checked 版本 panic + unsafe `unchecked` 版本 | 越界 panic 消息（在 error 模块） |
+| 边界检查 | `Index` panic、`get*` 返回 `Option`、`try_slice*` 返回 `Result`、`unchecked` 为 unsafe | 越界 panic 消息模板（在 error 模块） |
 
 ### 1.2 设计原则
 
@@ -28,7 +28,7 @@
 |------|------|
 | 零拷贝视图 | 切片返回视图（`TensorView`），不复制数据 |
 | 编译期类型安全 | 静态维度通过 `Dimension` trait 保证索引正确性 |
-| 边界检查可选 | 提供 checked（panic）和 unchecked（unsafe）两种变体 |
+| 边界检查分层 | `Index` panic、`get*` 返回 `Option`、`try_slice*` 返回 `Result`、`unchecked` 为 unsafe |
 | F-order 偏移量 | 偏移量按 F-order 公式计算 |
 
 ### 1.3 在架构中的位置
@@ -319,6 +319,23 @@ pub enum SliceInfoElem {
     },
 }
 
+/// Storage strategy for slice descriptors.
+///
+/// Xenon supports up to 6 static dimensions. Common `s![]` call sites therefore
+/// use the inline representation and avoid heap allocation. Only dynamically
+/// constructed slice descriptions fall back to `Vec`.
+#[derive(Debug, Clone)]
+pub enum SliceInfoIndices {
+    /// Inline storage for the common static-dimension path.
+    Inline {
+        len: u8,
+        elems: [SliceInfoElem; 6],
+    },
+
+    /// Dynamic storage for runtime-constructed slice descriptions.
+    Dynamic(Vec<SliceInfoElem>),
+}
+
 /// Slice information, containing slice descriptions for all axes.
 #[derive(Debug, Clone)]
 pub struct SliceInfo<I, D>
@@ -327,7 +344,7 @@ where
     D: Dimension,
 {
     /// Slice descriptions for each axis.
-    indices: Vec<SliceInfoElem>,
+    indices: SliceInfoIndices,
 
     _out_dim: PhantomData<I>,
     _in_dim: PhantomData<D>,
@@ -337,6 +354,11 @@ where
 > **设计决策：** `SliceInfoElem` 使用 `isize` 表示步长和起始/结束索引，
 > 支持负步长（步长 < 0 表示反向遍历）。`step` 为 `Option<isize>` 而非 `usize`。
 > 这是负步长的关键：`step = -1` 产生反转视图。
+
+> **存储策略：** `SliceInfo` 采用双路径表示。`s![]` 宏和绝大多数静态维度调用点使用
+> `SliceInfoIndices::Inline`，在栈上保存最多 6 个 `SliceInfoElem`；只有运行时动态拼装的
+> 切片描述才使用 `SliceInfoIndices::Dynamic(Vec<...>)`，因此“切片操作零拷贝”与
+> “动态 SliceInfo 需要 alloc” 可以同时成立而不再自相矛盾。
 
 #### 4.2.2 s![] 切片宏设计
 
@@ -367,7 +389,9 @@ macro_rules! s {
 
 > **设计决策：** `s![]` 宏设计参考 ndarray 的 `s![]` 宏，
 > 提供 Rust 像的声明式宏语法，编译期类型安全。
-> 相比过程式构造（`SliceInfo::new(vec![...]).unwrap()`），宏在编译期展开为正确的 `SliceInfoElem` 枚举值。
+> 相比过程式构造（`SliceInfo::from_vec(vec![...]).unwrap()`），宏优先展开为
+> `SliceInfoIndices::Inline` 表示，从而在静态维度场景下不引入堆分配；仅运行时动态切片构造
+> 才进入 `Vec` 路径。
 
 #### 4.2.3 切片方法
 
@@ -437,6 +461,12 @@ where
 
 > **注意**：对广播视图（含零步长）不得调用 `slice_mut`。如果原张量包含零步长（`LayoutFlags::HAS_ZERO_STRIDE`），`slice_mut()` 将 panic，提示信息为 "mutable slicing is not allowed on broadcast views (tensors with zero strides)"。这是因为零步长意味着多个逻辑索引映射到同一物理地址，可变访问会引起**可变别名**。此为 panic 而非错误返回，因为这是一个编程错误。
 
+> **错误语义分层：**
+> - `tensor[[...]]` / `slice(...)` / `slice_mut(...)`：面向惯用语法，非法输入视为调用方错误，使用 panic。
+> - `get()` / `get_mut()`：越界返回 `None`。
+> - `try_slice()` / `try_slice_mut()`：维度不匹配、越界、`step == 0`、广播视图可变切片等情况返回 `XenonError`。
+> - `get_unchecked*()`：完全由调用者保证前置条件，违反即 UB。
+
 #### 4.2.4 Good / Bad 对比
 
 ```rust
@@ -473,6 +503,17 @@ fn unsafe_index(tensor: &Tensor<f64, Ix2>, idx: &[usize]) -> f64 {
 | `strides[i]` | 原步长 × 切片步长 |
 | `offset` | 原偏移 + start × 原步长（内部用 `isize` 计算，再与基指针组合） |
 | `LayoutFlags` | 有负步长时设置 `HAS_NEG_STRIDE`；步长恰好为 0 时设置 `HAS_ZERO_STRIDE`（广播视图的广播维度） |
+
+#### 4.2.6 切片后的连续性规则
+
+| 切片模式 | `is_f_contiguous()` 结果 | 说明 |
+|----------|--------------------------|------|
+| 每个保留轴都是完整范围 `..` 且步长为 `1` | 保持原 contiguity | 纯视图收缩，不改变剩余轴的物理顺序 |
+| 仅移除长度为 1 或被单点索引掉的轴，剩余轴仍保持规范 F-order 步长 | 仍可保持 F-contiguous | 结果继续满足 `16-shape.md` 的 zero-copy reshape 前提 |
+| 任一轴使用非 `1` 步长 | 变为非连续 | 包括 `..;2`、`..;-1` 等 |
+| 任一轴产生负步长或零步长 | 变为非连续 | 同时设置 `HAS_NEG_STRIDE` / `HAS_ZERO_STRIDE` |
+
+> **实现约束：** 切片后不得仅凭旧 flags 盲目继承连续性，必须基于新 `shape` / `strides` / logical-first pointer 重新计算 flags。`16-shape.md` 中 `reshape()` / `into_shape()` 的连续性判定以这一结果为准。
 
 ---
 
@@ -595,8 +636,8 @@ function compute_slice(shape, strides, offset, slices: [SliceInfoElem; N])
 
 - [ ] **T2**: 定义 `SliceInfoElem` 和 `SliceInfo` 类型
   - 文件: `src/index/slice_index.rs`
-  - 内容: 枚举定义、`SliceInfo` 结构体、基本方法
-  - 测试: `test_slice_info_elem_basic`
+  - 内容: 枚举定义、`SliceInfoIndices` 双路径存储、`SliceInfo` 结构体、`from_inline` / `from_vec` 基本方法
+  - 测试: `test_slice_info_elem_basic`, `test_slice_info_inline`, `test_slice_info_dynamic`
   - 前置: T1
   - 预计: 10 min
 
@@ -664,6 +705,7 @@ Wave 4:           [T7]
 | 单元测试 | `#[cfg(test)] mod tests` | 验证整数索引、切片和 `s![]` 宏的核心语义 |
 | 集成测试 | `tests/` | 验证 `index` 与 `tensor`、`layout`、`iter`、`shape` 的协同路径 |
 | 边界测试 | 同模块测试中标注 | 覆盖零维、空数组、负步长和链式切片等边界 |
+| 属性测试 | `tests/property/` | 验证切片长度、结果 shape、连续性与链式切片不变量 |
 
 ### 7.2 单元测试清单
 
@@ -681,6 +723,10 @@ Wave 4:           [T7]
 | `test_slice_negative_step` | `s![..;-1]` 负步长切片 | 高 |
 | `test_slice_empty_range` | 空范围切片 | 中 |
 | `test_slice_chain` | 切片的切片（视图的视图） | 高 |
+| `test_try_slice_step_zero` | `try_slice()` 对 `step == 0` 返回错误 | 高 |
+| `test_slice_mut_broadcast_rejected` | 广播视图上的 `try_slice_mut()` 返回错误 | 高 |
+| `test_slice_info_inline` | `s![]` 走 inline slice info 表示 | 高 |
+| `test_slice_info_dynamic` | 运行时构造走动态 slice info 表示 | 中 |
 | `test_slice_macro_basic` | `s![]` 宏基本使用 | 高 |
 
 ### 7.3 边界测试场景
@@ -691,6 +737,8 @@ Wave 4:           [T7]
 | 空数组索引 | panic（无有效索引） |
 | 大张量索引 | 正确偏移量计算 |
 | 非连续切片后索引 | 正确处理步长跳转 |
+| `step == 0` | `slice()` panic，`try_slice()` 返回错误 |
+| 广播视图 `slice_mut` | `slice_mut()` panic，`try_slice_mut()` 返回错误 |
 
 ### 7.4 属性测试不变量
 
@@ -699,6 +747,7 @@ Wave 4:           [T7]
 | 切片后 `view.len() == expected_len` | 随机切片参数 |
 | `view.shape()` 正确 | 每个维度验证 |
 | 视图的视图链式后数据一致 | 链式切片对比原数据 |
+| 连续切片仅在规范 F-order 条件下保持 `is_f_contiguous()` | 随机完整范围/步长/单点索引组合 |
 
 ### 7.5 集成测试
 
@@ -798,7 +847,7 @@ Wave 4:           [T7]
 
 ## 11. no_std 兼容性
 
-索引操作模块在 `no_std` 环境下可用。整数索引始终是纯元数据/指针算术；切片视图创建在静态维度场景下不涉及堆分配，动态维度 `SliceInfo` 需要 `alloc` 支持其内部 `Vec`。
+索引操作模块在 `no_std` 环境下可用。整数索引始终是纯元数据/指针算术；切片视图创建本身始终是零拷贝。`s![]` 宏和静态维度常见路径使用 inline `SliceInfo` 表示，不涉及堆分配；仅运行时动态构造的 `SliceInfo::from_vec(...)` 需要 `alloc`。
 
 ```rust
 #[cfg(not(feature = "std"))]
@@ -810,9 +859,9 @@ extern crate alloc;
 | 多维整数索引 `[[i, j, k]]` | ✅ | 纯指针偏移计算，无堆分配 |
 | `get()` / `get_unchecked()` | ✅ | 纯指针偏移计算，无堆分配 |
 | `get_mut()` / `get_unchecked_mut()` | ✅ | 纯指针偏移计算，无堆分配 |
-| `slice()` / `slice_mut()` | ✅ | 创建 `TensorView`（零拷贝），无堆分配，参见 `07-tensor.md` §4 |
-| `s![]` 宏 | ✅ | 编译期展开为 `SliceInfoElem` 枚举值，无堆分配 |
-| `SliceInfo` | ✅ | 内部 `Vec` 需 `no_std + alloc`（动态维度场景），参见 `02-dimension.md` §3 |
+| `slice()` / `slice_mut()` | ✅ | 创建 `TensorView`（零拷贝）；若输入 `SliceInfo` 为 inline 表示则无堆分配 |
+| `s![]` 宏 | ✅ | 优先展开为 inline `SliceInfoIndices::Inline`，静态维度场景无堆分配 |
+| `SliceInfo` | ✅ | `Inline` 路径纯 `core`；仅 `Dynamic(Vec<...>)` 需 `no_std + alloc` |
 | `SliceInfoElem` | ✅ | 枚举类型，栈分配，无堆依赖 |
 | 负步长支持 | ✅ | `HAS_NEG_STRIDE` 标志位操作，无堆依赖 |
 
@@ -821,7 +870,8 @@ extern crate alloc;
 ```rust
 // Integer indexing: pure pointer arithmetic — works in pure no_std
 // Slice views: zero-copy metadata creation — works in pure no_std
-// SliceInfo: uses Vec internally — needs alloc for dynamic dimensions
+// SliceInfo inline path: pure core
+// SliceInfo dynamic path: needs alloc for runtime-constructed descriptors
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;

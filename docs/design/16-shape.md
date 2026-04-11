@@ -209,10 +209,11 @@ where
     /// let a = Tensor::<f64, _>::zeros([2, 3, 4]);  // 24 elements
     /// let b = a.reshape([6, 4]).unwrap();          // shape: [6, 4]
     /// ```
-    pub fn reshape<E>(&self, shape: E) -> Result<TensorView<'_, A, E>, XenonError>
+    pub fn reshape<E>(&self, shape: E) -> Result<TensorView<'_, A, E::Dim>, XenonError>
     where
-        E: Dimension,
+        E: IntoDimension,
     {
+        let shape = shape.into_dimension();
         // 1. Check element count
         let new_len = shape.checked_size().ok_or(XenonError::InvalidShape {
             from: self.len(),
@@ -265,12 +266,13 @@ where
     /// let a = Tensor::<f64, _>::zeros([4, 6]);
     /// let b = a.into_shape([2, 12]).unwrap();  // shape: [2, 12]
     /// ```
-    pub fn into_shape<E>(self, shape: E) -> Result<Tensor<A, E>, XenonError>
+    pub fn into_shape<E>(self, shape: E) -> Result<Tensor<A, E::Dim>, XenonError>
     where
-        E: Dimension,
+        E: IntoDimension,
         S: StorageIntoOwned,  // see 05-storage.md §4.8b
         A: Clone,
     {
+        let shape = shape.into_dimension();
         let new_len = shape.checked_size().ok_or(XenonError::InvalidShape {
             from: self.len(),
             to: usize::MAX,
@@ -319,6 +321,7 @@ where
 | 非连续数组 | `reshape()` 返回 `LayoutMismatch`；`into_shape()` O(n) 自动拷贝 |
 | 布局保持 | F-contiguous 输入默认输出 F-contiguous |
 | 空数组 | 允许 reshape 到任意元素总数为 0 的形状 |
+| 形状参数 | 通过 `IntoDimension` 接受数组、元组和维度类型 |
 
 ### 4.2.2 Good / Bad 对比
 

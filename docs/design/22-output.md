@@ -536,7 +536,7 @@ Wave 3:        [T5]
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/output.rs` | `Display` / `Debug` 与 `tensor` 元数据查询、`iter` 遍历、复数与浮点格式化路径的端到端集成 |
+| `tests/format.rs` | `Display` / `Debug` 与 `tensor` 元数据查询、`iter` 遍历、复数与浮点格式化路径的端到端集成 |
 
 ---
 
@@ -556,7 +556,7 @@ Wave 3:        [T5]
 ```text
 用户调用 `format!("{}", tensor)` / `format!("{:?}", tensor)`
     │
-    ├── output 模块先查询 tensor 的 shape / strides / flags / dtype
+    ├── format 模块先查询 tensor 的 shape / strides / flags / dtype
     ├── 再通过 pretty 层递归子视图/逻辑索引读取需要展示的元素
     ├── 若元素总数超过 threshold，则按截断规则挑选 edge items
     └── 最终直接写入 Formatter，不分配额外堆内存

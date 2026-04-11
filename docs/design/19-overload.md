@@ -1,6 +1,6 @@
 # 运算符重载模块设计
 
-> 文档编号: 19 | 模块: `src/overload/arithmetic.rs` | 阶段: Phase 4
+> 文档编号: 19 | 模块: `src/overload/` | 阶段: Phase 4
 > 前置文档: `11-math.md`, `15-broadcast.md`
 > 需求参考: 需求说明书 §20
 
@@ -14,7 +14,7 @@
 |------|------|--------|
 | 四则运算运算符语法 | `+`/`-`/`*`/`/` 运算符重载 | 原地运算符 `+=`/`-=`/`*=`/`/=`（当前版本不提供） |
 | 张量×张量运算 | 同形状运算、广播运算 | 矩阵乘法（由 `matrix` 提供） |
-| 张量×标量运算 | 标量广播到张量形状 | 负数运算符 `-`（在 `math` 提供） |
+| 张量×标量运算 | `tensor op scalar` 与 `Scalar(scalar) op tensor` | 原生 `scalar op tensor`（受 Rust 孤儿规则限制，当前不作为稳定承诺） |
 | 广播支持 | 运算符语法内建支持广播 | 比较运算符（在 `math` 提供） |
 | 新张量产生 | 所有组合产生新的独立张量 | 原地修改运算 |
 | 借用形式 | `&Tensor op &Tensor`/`&Tensor op Tensor` 等组合 | 索引运算符 `[]`（在 `index` 提供） |
@@ -279,9 +279,9 @@ where
 }
 ```
 
-> **说明**：`Scalar<A>` 包装器是当前版本对“左标量 + 张量”语法的工程性折中。对于泛型 `A`，直接 `impl Add<TensorBase<...>> for A` 确实违反孤儿规则；但对于 Xenon 封闭元素集合中的具体标量类型，未来仍可通过逐类型生成 impl 的方式扩展原生 `scalar + tensor` 支持。Xenon 当前稳定承诺的语法边界是：支持 `tensor + scalar` 与 `Scalar(scalar) + tensor`，**暂不承诺原生 `scalar + tensor`**。
+> **说明**：`Scalar<A>` 包装器是当前版本对“左标量 + 张量”语法的工程性折中。对于 Rust 原生标量类型，`impl Add<TensorBase<...>> for f32/f64/i32/...` 仍然属于 foreign trait + foreign self type 组合，不能通过“逐类型生成 impl”绕过孤儿规则。Xenon 当前**稳定承诺**的语法边界只有：`tensor + scalar` 与 `Scalar(scalar) + tensor`；原生 `scalar + tensor` 明确不支持。
 
-> **说明**：对于涉及 `&A` 的组合（上表第 2 行），不要依赖 Rust 的隐式 auto-deref 作为公开 API 契约。若库希望稳定支持 `tensor + &scalar`，应显式提供 `Add<&A>` 方向的实现；否则文档只保证值形式 `tensor + scalar` 与 `Scalar(scalar) + tensor`。
+> **说明**：对于涉及 `&A` 的组合，不要依赖 Rust 的隐式 auto-deref 作为公开 API 契约。若库希望稳定支持 `tensor + &scalar`，应显式提供 `Add<&A>` 方向的实现；否则文档只保证值形式 `tensor + scalar` 与 `Scalar(scalar) + tensor`。
 
 > **说明**：`Scalar<A>` 同样适用于 `TensorView` 和 `TensorViewMut` 的标量运算。
 
@@ -398,7 +398,7 @@ tensor + scalar:
 - [ ] **T4**: 实现 `Add` trait（张量×标量、标量×张量）
   - 文件: `src/overload/arithmetic.rs`
   - 内容: 标量组合 impl
-  - 测试: `test_add_scalar`, `test_scalar_add_tensor`
+  - 测试: `test_add_scalar`, `test_scalar_wrapper_add_tensor`, `test_native_scalar_add_tensor_compile_fail`
   - 前置: T2
   - 预计: 10 min
 
@@ -414,7 +414,7 @@ tensor + scalar:
 ### Wave 5: 测试
 
 - [ ] **T6**: 编写综合测试
-  - 文件: `tests/arithmetic.rs`
+  - 文件: `tests/overload.rs`
   - 内容: 广播组合、标量组合、类型组合、深拷贝验证
   - 测试: 覆盖所有公共 API
   - 前置: T1-T5
@@ -456,7 +456,8 @@ Wave 5:      [T6]
 | `test_add_owned_ref` | `a + &b`，a 被消费 | 中 |
 | `test_add_ref_owned` | `&a + b`，b 被消费 | 中 |
 | `test_add_scalar` | `tensor + 5.0` | 高 |
-| `test_scalar_add_tensor` | `Scalar(5.0) + tensor` | 高 |
+| `test_scalar_wrapper_add_tensor` | `Scalar(5.0) + tensor` | 高 |
+| `test_native_scalar_add_tensor_compile_fail` | 原生 `5.0 + tensor` 编译失败，验证语法边界 | 高 |
 | `test_sub_basic` | `a - b` 正确性 | 高 |
 | `test_mul_basic` | `a * b` 正确性 | 高 |
 | `test_div_basic` | `a / b` 正确性 | 高 |
@@ -482,6 +483,7 @@ Wave 5:      [T6]
 | `(a + b).shape() == broadcast_shape(a.shape(), b.shape())` | 随机形状对 |
 | `(&a + &b) == (a.clone() + b.clone())` | 借用与所有权结果一致 |
 | `(a + scalar) == a.mapv(\|x\| x + scalar)` | 标量路径等价 |
+| `Scalar(s) + tensor == tensor + s` | 包装器左标量与右标量路径等价 |
 | 结果张量与输入张量不共享内存（`ptr` 不同） | 指针比较 |
 
 ### 7.5 集成测试

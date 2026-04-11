@@ -50,7 +50,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 ```
 src/element/
-├── mod.rs             # Element trait 定义、Sealed trait、模块 re-export
+├── mod.rs             # Element trait 定义、模块 re-export
 ├── numeric.rs         # Numeric trait 定义（四则运算约束）
 ├── real.rs            # RealScalar trait 定义（实数数学函数）
 ├── complex.rs         # ComplexScalar trait 定义（复数运算接口）
@@ -68,6 +68,7 @@ src/element/
 ```
 src/element/
 ├── crate::complex    # Complex<T> 类型定义
+├── crate::private    # Sealed trait 基础设施
 ├── core::ops         # Add/Sub/Mul/Div/Neg 运算符 trait
 ├── core::fmt         # Debug/Display 格式化
 └── core::cmp         # PartialEq/PartialOrd 比较
@@ -78,6 +79,7 @@ src/element/
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
 | `crate::complex` | `Complex<f32>`, `Complex<f64>`（元素类型实现目标） |
+| `crate::private` | `Sealed`（封闭 trait 实现边界） |
 | `core::ops` | `Add`, `Sub`, `Mul`, `Div`, `Neg`（Numeric supertrait） |
 | `core::fmt` | `Debug`, `Display`（Element supertrait） |
 | `core::cmp` | `PartialEq`, `PartialOrd`（Element/RealScalar supertrait） |
@@ -461,9 +463,9 @@ let c = a + f64::from(b);
 ### 5.5 RealScalar 实现（以 f64 为例）
 
 ```rust
-// RealScalar is implemented for both std and no_std builds.
-// In no_std environments Xenon provides portable internal math backends so the
-// public RealScalar API surface remains identical.
+// RealScalar math functions are implemented only when the `std` feature is enabled.
+// In `no_std + alloc` builds, the trait remains part of the type hierarchy but
+// f32/f64 do not provide the transcendental/math method implementations.
 impl RealScalar for f64 {
     fn abs(self) -> Self { self.abs() }
     fn sqrt(self) -> Self { self.sqrt() }
@@ -547,9 +549,9 @@ fn max(self, other: Self) -> Self {
 
 ### Wave 1: 基础 trait 定义
 
-- [ ] **T1**: 创建 `mod.rs`，定义 Sealed trait 和 Element trait
+- [ ] **T1**: 创建 `mod.rs`，导入共享 Sealed trait 并定义 Element trait
   - 文件: `src/element/mod.rs`
-  - 内容: `Sealed` trait（private module）、`Element` trait 定义、模块 re-export
+  - 内容: 从 `crate::private` 导入 `Sealed`，定义 `Element` trait、模块 re-export
   - 测试: 编译通过
   - 前置: 无
   - 预计: 10 min
@@ -618,10 +620,10 @@ fn max(self, other: Self) -> Self {
 
 ### Wave 5: 集成完善
 
-- [ ] **T10**: 添加 no_std 数学后端兼容层
+- [ ] **T10**: 添加 std/no_std 数学能力边界验证
   - 文件: `src/element/real.rs`
-  - 内容: 为 `f32`/`f64` 的数学函数接入 crate 内部可移植实现，保证 `std` 与 `no_std + alloc` 下的 `RealScalar` API 完整一致
-  - 测试: 两种 feature 组合编译通过
+  - 内容: 在 `std` 下实现 `f32`/`f64` 数学函数；在 `no_std + alloc` 下仅保留类型层级与非数学能力，并通过文档/条件编译明确边界
+  - 测试: `std` 与 `no_std` 两种 feature 组合编译通过
   - 前置: T6
   - 预计: 10 min
 
@@ -786,14 +788,14 @@ Wave 3: [T6]      [T9] ← ────┘
 
 ## 11. no_std 兼容性
 
-> **兼容性说明**：在 `no_std + alloc` 环境下，`RealScalar` 的数学函数扩展（`sin/cos/sqrt/exp/ln/floor/ceil/abs`）仍然可用。Xenon 通过 crate 内部可移植数学实现保持 `std` 与 `no_std` 的公共 trait 面一致，因此调用方无需因为 `no_std` 而丢失 `RealScalar` 能力。
+> **兼容性说明**：在 `no_std + alloc` 环境下，`Element` / `Numeric` / `ComplexScalar` 的类型层级与非数学能力保持可用；`RealScalar` 的数学函数扩展（`sin/cos/sqrt/exp/ln/floor/ceil/abs`）仅在 `std` feature 下提供实现。
 
 | 组件 | 兼容方案 |
 |------|----------|
 | `Element` / `Numeric` / `ComplexScalar` | 纯 trait，天然 no_std |
-| `RealScalar` 数学函数 | 通过 Xenon 内部可移植数学实现提供，`std` 与 `no_std + alloc` 下 API 保持一致 |
+| `RealScalar` 数学函数 | 仅在 `std` feature 下提供实现；`no_std + alloc` 下不承诺这些数学方法的可用性 |
 | `RealScalar` 常量与 NaN 检测 | 语义上不依赖 `std`，在所有构建模式下保持一致 |
-| Feature gate | `Cargo.toml`: `default = ["std"]`；`std` 仅扩展错误集成、线程/IO 能力，不缩减 `RealScalar` 的数学函数集合 |
+| Feature gate | `Cargo.toml`: `default = ["std"]`；`std` 负责启用 `RealScalar` 数学函数实现与扩展集成能力 |
 
 ---
 

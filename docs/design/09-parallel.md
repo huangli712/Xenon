@@ -381,9 +381,12 @@ where
         return Ok(a.zip_with(b, f)?);
     }
 
-    let output: Vec<C> = ParZip::new(a.view(), b.view())?.map(|(x, y)| f(&x, &y)).collect();
-
     let output_dim = <DA as BroadcastDim<DB>>::Output::from_slice(&broadcast_shape);
+    let a_view = a.broadcast_to(output_dim.clone())?;
+    let b_view = b.broadcast_to(output_dim.clone())?;
+
+    let output: Vec<C> = ParZip::new(a_view, b_view)?.map(|(x, y)| f(x, y)).collect();
+
     // SAFETY: output length matches dim
     unsafe { Ok(Tensor::from_raw_vec_unchecked(output, output_dim)) }
 }
@@ -465,7 +468,9 @@ where
         callback: CB,
     ) -> CB::Output {
         // Split the flat index range and map to elements
-        callback.callback(ElementsProducer { base: self.base })
+        callback.callback(ElementsProducer {
+            range: crate::iter::ElementsProducerRange::new(self.base),
+        })
     }
 }
 
@@ -478,7 +483,7 @@ where
     A: Element + Send + Sync,
     D: Dimension,
 {
-    base: TensorView<'a, A, D>,
+    range: crate::iter::ElementsProducerRange<'a, A, D>,
 }
 
 #[cfg(feature = "parallel")]
@@ -491,18 +496,17 @@ where
     type IntoIter = crate::iter::Elements<'a, A, D>;
 
     fn into_iter(self) -> Self::IntoIter {
-        // Elements::new constructs the iterator from a TensorView
-        crate::iter::Elements::new(self.base)
+        crate::iter::Elements::from_producer_range(self.range)
     }
 
     fn split_at(self, index: usize) -> (Self, Self) {
         // Split the producer range at the flat logical index boundary.
-        // `ElementsProducerRange` is the iterator-side helper that preserves
-        // serial element order without pretending the two halves are standalone TensorViews.
-        let (left, right) = crate::iter::ElementsProducerRange::new(self.base).split_at(index);
+        // `ElementsProducerRange` preserves `[start, end)` state instead of
+        // pretending the two halves are standalone TensorViews.
+        let (left, right) = self.range.split_at(index);
         (
-            ElementsProducer { base: left.base },
-            ElementsProducer { base: right.base },
+            ElementsProducer { range: left },
+            ElementsProducer { range: right },
         )
     }
 }
@@ -510,41 +514,37 @@ where
 /// Parallel multi-array synchronized iterator
 ///
 /// Iterates two arrays simultaneously, yielding tuples element wise.
-/// Supports broadcasting.
+/// Inputs must already be normalized to the same broadcasted dimension by the
+/// caller (`par_zip_with` performs this step before constructing `ParZip`).
 ///
 /// # Thread Safety
 ///
 /// `A: Send + Sync` and `B: Send + Sync` are required because elements from both
 /// arrays are accessed from multiple threads concurrently.
-pub struct ParZip<'a, A, B, DA, DB>
+pub struct ParZip<'a, A, B, D>
 where
     A: Element + Send + Sync,
     B: Element + Send + Sync,
-    DA: Dimension,
-    DB: Dimension,
+    D: Dimension,
 {
-    a: TensorView<'a, A, DA>,
-    b: TensorView<'a, B, DB>,
+    a: TensorView<'a, A, D>,
+    b: TensorView<'a, B, D>,
     len: usize,
 }
 
-impl<'a, A, B, DA, DB> ParZip<'a, A, B, DA, DB>
+impl<'a, A, B, D> ParZip<'a, A, B, D>
 where
     A: Element + Send + Sync,
     B: Element + Send + Sync,
-    DA: Dimension,
-    DB: Dimension,
+    D: Dimension,
 {
     /// Create a parallel zip iterator
     pub fn new(
-        a: TensorView<'a, A, DA>,
-        b: TensorView<'a, B, DB>,
+        a: TensorView<'a, A, D>,
+        b: TensorView<'a, B, D>,
     ) -> Result<Self, XenonError> {
-        let broadcast_shape = broadcast::broadcast_shape(&a.shape(), &b.shape())?;
-        let len = broadcast_shape.checked_size().ok_or(XenonError::InvalidShape {
-            from: 0,
-            to: usize::MAX,
-        })?;
+        debug_assert_eq!(a.shape(), b.shape());
+        let len = a.len();
         Ok(ParZip { a, b, len })
     }
 
@@ -553,12 +553,11 @@ where
 }
 
 #[cfg(feature = "parallel")]
-impl<'a, A, B, DA, DB> ParallelIterator for ParZip<'a, A, B, DA, DB>
+impl<'a, A, B, D> ParallelIterator for ParZip<'a, A, B, D>
 where
     A: Element + Send + Sync,
     B: Element + Send + Sync,
-    DA: Dimension + Send,
-    DB: Dimension + Send,
+    D: Dimension + Send,
 {
     type Item = (&'a A, &'a B);
 

@@ -366,6 +366,7 @@ Wave 5:         [T7]
 | 单元测试 | `#[cfg(test)] mod tests` | 验证归约语义、溢出行为与轴向变体 |
 | 集成测试 | `tests/` | 验证 `reduction` 与 `iter`、`tensor`、`simd`、`parallel` 的协同路径 |
 | 边界测试 | 同模块测试中标注 | 覆盖空数组、NaN/Inf、非连续输入等边界 |
+| 属性测试 | `tests/property/` | 验证 keepdims、结果 shape 与串并一致性等不变量 |
 
 ### 7.2 单元测试清单
 
@@ -400,7 +401,15 @@ Wave 5:         [T7]
 | f64 含 +Inf/-Inf | sum 返回 +Inf/-Inf |
 | 非连续数组（切片后） | sum 结果与连续数组一致 |
 
-### 7.4 集成测试
+### 7.4 属性测试不变量
+
+| 不变量 | 测试方法 |
+|--------|----------|
+| `sum_axis_keepdims(axis).shape()[axis] == 1` | 随机形状与随机 axis |
+| `sum_axis(axis).len() == input.len() / input.shape()[axis].max(1)` | 随机合法形状 |
+| `sum()` 在串行/并行/非连续路径下结果一致 | 随机 contiguous / non-contiguous 输入 |
+
+### 7.5 集成测试
 
 | 测试文件 | 测试内容 |
 |----------|----------|

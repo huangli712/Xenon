@@ -594,7 +594,7 @@ Wave 3: [T6] [T7]  (并行)
     ├── cast 路径通过 iter 收集并按 CastTo 规则逐元素重编码
     ├── to_owned / into_owned 路径按 storage 语义决定 O(1) 转移或 O(n) 拷贝
     ├── 若需要连续化，由 util::to_contiguous() 触发内部连续化路径将数据重排为 F-order owned 数据
-    └── 最终返回新的 owned tensor 或视图转换结果，供 math / ffi / output 继续消费
+    └── 最终返回新的 owned tensor 或视图转换结果，供 math / ffi / format 继续消费
 ```
 
 ---

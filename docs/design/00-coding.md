@@ -415,13 +415,15 @@ unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 ### 4.1 Result vs panic
 
 **使用 `Result`**（可恢复错误）：
-- 运行时约束违反（形状不匹配、索引越界、广播失败）
+- 运行时约束违反（形状不匹配、广播失败）
 - 用户输入无效
+- 方法型 API 中可恢复的边界检查失败（例如 `reshape()` / `broadcast_with()` / `try_slice()`）
 
 **使用 `panic!`**（编程错误）：
 - 前置条件违反（不变量被破坏）
 - 逻辑错误（不可能的状态）
 - 契约违反
+- 索引语法 `[]` 的越界访问（与标准库 `slice` 行为一致）
 
 ```rust
 // Good - recoverable error
