@@ -173,9 +173,10 @@ pub enum XenonError {
     },
 }
 
-// NOTE: Future extension point for type conversion errors.
-// Current type conversion uses saturating semantics without producing errors
-// (see `21-type.md`). If an error path is needed in the future, add:
+// NOTE: Current type conversion is intentionally infallible.
+// `cast()` follows the saturating / truncating semantics defined in `21-type.md`
+// and therefore does not allocate a dedicated XenonError variant today.
+// If the project later adopts fallible conversion, add:
 //
 // /// Type conversion overflow (e.g., casting a large f64 to i32).
 // TypeConversionOverflow {
@@ -290,10 +291,14 @@ impl std::error::Error for XenonError {}
 ```rust
 // Good - using ? with XenonError
 pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>> {
-    if self.len() != shape.size() {
+    let target = shape.checked_size().ok_or(XenonError::InvalidShape {
+        from: self.len(),
+        to: usize::MAX,
+    })?;
+    if self.len() != target {
         return Err(XenonError::InvalidShape {
             from: self.len(),
-            to: shape.size(),
+            to: target,
         });
     }
     // ...
@@ -331,7 +336,9 @@ workspace 模块定义了独立的 `WorkspaceError`，不属于 `XenonError` 枚
 
 > **集中裁决补充：** Xenon 的错误语义按“方法型 API 优先返回 `Result`”统一收敛。只有两类语法糖接口保留 panic：
 > 1. `tensor[[...]]` 这类 `Index` trait 语法，受 Rust trait 签名约束，越界时与 slice 保持一致。
-> 2. `+ - * /` 这类运算符 trait 语法，若操作数形状不兼容或广播失败，作为语法层快捷接口允许 panic；对应的方法型 API（如 `zip_with`、`broadcast_to`、`reshape`、`sum_axis`、`cast`）仍必须返回 `Result`。
+> 2. `+ - * /` 这类运算符 trait 语法，若操作数形状不兼容或广播失败，作为语法层快捷接口允许 panic；对应的方法型 API（如 `zip_with`、`broadcast_to`、`reshape`、`sum_axis`）仍必须返回 `Result`。
+
+> **类型转换例外：** `cast()` 当前采用 `21-type.md` 中定义的 saturating / truncating 语义，因此保持 infallible，不进入 `XenonError` 通道。只有当项目未来切换到 fallible cast 时，才新增专门错误变体并把 `cast()` 改成 `Result`。
 
 ---
 
@@ -406,7 +413,7 @@ where
 
 ### 5.5 并行操作中的 Result 错误传播
 
-在并行操作（如 `par_map`、`par_zip_with`）中，如果需要传播 `Result` 错误，应使用 collect-and-check 模式：各并行任务返回 `Result<B, XenonError>`，collect 为 `Vec<Result<B, _>>`，然后取第一个 `Err`。Rayon 的 `try_for_each` 等方法也可用于提前终止。
+在并行操作（如 `par_map`、`par_zip_with`）中，如果需要传播 `Result` 错误，应优先使用 try-based 传播模式：各并行任务返回 `Result<B, XenonError>`，由并行框架通过 `collect::<Result<Vec<_>, _>>()`、`try_for_each`、`try_fold` 等机制尽快中止后续工作并把首个错误向上传播，而不是把失败拖到所有 worker 完成之后再统一检查。
 
 ### 5.6 资源释放不得 panic（Drop 安全）
 
@@ -477,7 +484,7 @@ impl std::error::Error for XenonError {}
 
 - [ ] **T1**: 定义 `XenonError` 枚举及所有变体
   - 文件: `src/error.rs`
-  - 内容: 7 个变体（ShapeMismatch, BroadcastError, LayoutMismatch, InvalidAxis, InvalidShape, DimensionMismatch, EmptyArray），derive Debug/Clone/PartialEq
+  - 内容: 9 个变体（ShapeMismatch, BroadcastError, LayoutMismatch, InvalidAxis, InvalidShape, DimensionMismatch, EmptyArray, InvalidArgument, FfiError），derive Debug/Clone/PartialEq
   - 测试: 编译通过
   - 前置: 无
   - 预计: 10 min
@@ -491,7 +498,7 @@ impl std::error::Error for XenonError {}
 
 - [ ] **T3**: 实现 `Display` trait
   - 文件: `src/error.rs`
-  - 内容: 所有 7 个变体的 Display 实现 + `fmt_shape` 辅助函数
+  - 内容: 所有 9 个变体的 Display 实现 + `fmt_shape` 辅助函数
   - 测试: 各变体 to_string() 输出正确
   - 前置: T1
   - 预计: 10 min
@@ -517,7 +524,7 @@ impl std::error::Error for XenonError {}
 - [ ] **T6**: 单元测试 — Display 输出格式
   - 文件: `src/error.rs` (`#[cfg(test)] mod tests`)
   - 内容: 每个变体的 `to_string()` 断言
-  - 测试: 7 个测试函数
+  - 测试: 9 个测试函数
   - 前置: T3
   - 预计: 10 min
 

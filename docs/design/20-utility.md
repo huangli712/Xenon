@@ -489,7 +489,7 @@ Wave 2:      [T3] → [T4]
 
 **优化提示**：
 
-- 连续布局的 `fill` 可用 `ptr::write_bytes` 优化（仅限 `Copy` 类型）
+- 连续布局的 `fill` 仅在填充值是全零 bit-pattern 时才可使用 `ptr::write_bytes(0)` 优化；一般情况仍应逐元素写入，避免把任意 `Copy` 值错误地按字节复制
 - `clip` 的热点路径可考虑 SIMD 加速（参见 `08-simd.md` §4）
 
 ---

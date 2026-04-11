@@ -233,7 +233,7 @@ pub unsafe trait RawStorageMut: RawStorage {
 ### 4.5 Storage Trait
 
 ```rust
-/// Safe read access to storage.
+/// Safe read access to the entire backing storage.
 ///
 /// # Example
 ///
@@ -263,7 +263,12 @@ pub unsafe trait Storage: RawStorage {
         &*self.as_ptr().add(index)
     }
 
-    /// Returns a slice view of the entire storage.
+    /// Returns a slice view of the entire backing storage.
+    ///
+    /// This is a storage-level API. It does **not** account for tensor-level
+    /// `shape` / `strides` / `offset` metadata, so callers must not treat it as a
+    /// logical tensor slice. The tensor-level zero-copy fast path lives in
+    /// `TensorBase::as_slice()` (see `07-tensor.md §4.4a`).
     #[inline]
     fn as_slice(&self) -> &[Self::Elem] {
         // SAFETY: Storage guarantees all elements are initialized
@@ -306,7 +311,10 @@ pub unsafe trait StorageMut: Storage + RawStorageMut {
         &mut *self.as_mut_ptr().add(index)
     }
 
-    /// Returns a mutable slice view of the entire storage.
+    /// Returns a mutable slice view of the entire backing storage.
+    ///
+    /// Like `Storage::as_slice()`, this is a storage-level API and ignores
+    /// tensor-level `shape` / `strides` / `offset` metadata.
     #[inline]
     fn as_mut_slice(&mut self) -> &mut [Self::Elem] {
         // SAFETY: StorageMut guarantees all elements are initialized and exclusive access
@@ -522,7 +530,7 @@ impl<A> Owned<A> {
     /// free to require fresh aligned storage.
     pub fn from_vec(data: Vec<A>) -> Self
     where
-        A: Clone,
+        A: Copy,
     {
         Self::from_vec_aligned(data)
     }
@@ -533,7 +541,7 @@ impl<A> Owned<A> {
     /// (`from_shape_vec`, `from_fn`, etc.) to guarantee SIMD-compatible alignment.
     pub fn from_vec_aligned(data: Vec<A>) -> Self
     where
-        A: Clone,
+        A: Copy,
     {
         let len = data.len();
         if len == 0 {
@@ -953,6 +961,8 @@ where
     D: Dimension,
 {
     pub fn as_ptr(&self) -> *const A {
+        // storage.as_ptr() is the storage base pointer. TensorBase is responsible
+        // for applying offset and exposing the logical-first pointer to upper layers.
         unsafe { self.storage.as_ptr().add(self.offset) }
     }
 }
@@ -973,9 +983,9 @@ Storage 提供对齐信息（`is_aligned()`），Layout 模块查询对齐状态
     │
     ├── tensor/ 读取 `storage: S` 与 `offset`
     │
-    ├── storage.as_ptr() 返回底层缓冲区起始地址
+    ├── storage.as_ptr() 返回 storage base pointer
     │
-    ├── tensor/ 执行 `.add(offset)` 得到逻辑起始元素地址
+    ├── tensor/ 执行 `.add(offset)` 得到 logical-first pointer
     │
     └── 上层模块（iter / ffi / parallel）继续消费该指针或切片视图
 ```

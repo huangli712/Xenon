@@ -162,6 +162,12 @@ pub struct Windows<'a, A, D: Dimension> {
     // Internal fields: view, window size, current index, remaining count
 }
 
+/// Mutable sliding window iterator.
+///
+/// Only produced for non-overlapping logical window traversals. If a requested
+/// window schedule would make two yielded windows alias the same physical element,
+/// construction must fail and return `None` rather than synthesizing overlapping
+/// mutable views.
 pub struct WindowsMut<'a, A, D: Dimension> {}
 
 impl<'a, A, D: Dimension> Iterator for Windows<'a, A, D> {
@@ -296,7 +302,8 @@ where
         D: RemoveAxis;
 
     /// Returns a mutable sliding window iterator, or None if any window dimension
-    /// exceeds the corresponding array dimension.
+    /// exceeds the corresponding array dimension or if the requested windows would
+    /// alias the same physical element.
     /// Returns `None` for zero-dimensional tensors and for any shape that cannot
     /// produce at least one logical window. For empty arrays, returns
     /// `Some(WindowsMut)` whose `len() == 0` and iteration ends immediately.
@@ -380,7 +387,7 @@ increment_index_f(shape, index):
 ```rust
 // SAFETY: broadcast_to() returns a TensorView with zero-stride dimensions,
 // multiple logical indices map to the same physical address; mutable writes
-// would cause data races.
+// would create immediate mutable aliasing.
 // Therefore broadcast_to() only returns an immutable view.
 ```
 

@@ -371,7 +371,9 @@ fn send_view_mut() {
     // Correct: move view_mut to a new thread
     std::thread::spawn(move || {
         // view_mut has exclusive access in this thread
-        let data = view_mut.as_mut_slice().unwrap();
+        let data = view_mut.iter_mut();
+        // mutate through the iterator / view-mut APIs rather than assuming
+        // a direct contiguous mutable slice fast path
         data[0] = 10.0;
     });
 }

@@ -171,17 +171,17 @@ unique(self):
 ### 5.2 浮点排序处理
 
 ```
-浮点比较策略（基于 Xenon 自定义 canonical-NaN 规则，而非直接复用 `f64::total_cmp` / `f32::total_cmp` 的全部语义）：
+浮点比较策略（基于 Xenon 为 `unique()` 定义的 NaN 归并规则，而非直接复用 `f64::total_cmp` / `f32::total_cmp` 的全部语义）：
 - 所有非 NaN 值按 `total_cmp` 排序
 - 所有 NaN 值统一归并到排序结果末尾
-- `total_eq` 将所有 NaN 视为同一值，因此去重后只保留一个 canonical NaN
+- `total_eq` 将所有 NaN 视为同一值，因此去重后只保留一个 NaN 等价类代表值（不额外承诺 payload canonicalization）
 - 该规则是“面向 unique 的稳定全序”，并不声称与 IEEE 754 `totalOrder` 的 payload/sign-bit 细节完全相同
 ```
 
 ### 5.3 复数排序规则
 
 ```
-复数比较策略（lexicographic order + canonical NaN）：
+复数比较策略（lexicographic order + NaN 归并）：
 - 先比较实部（re）
 - 实部相同再比较虚部（im）
 - 实部或虚部中的 NaN 先按“非 NaN < NaN”归一化，再比较
@@ -317,7 +317,7 @@ impl UniqueElement for Complex<f64> {
 
 - [ ] **T3**: 实现浮点 NaN 排序处理
   - 文件: `src/set/unique.rs`
-  - 内容: 使用 canonical-NaN 规则：所有 NaN 排在末尾，去重时合并为单个 NaN
+  - 内容: 使用 NaN 归并规则：所有 NaN 排在末尾，去重时合并为单个 NaN 等价类代表值
   - 测试: `test_unique_nan_f32`, `test_unique_nan_f64`
   - 前置: T2
   - 预计: 10 min
@@ -377,7 +377,7 @@ Wave 4: [T5]
 | `test_unique_nan_f32` | f32 NaN 排在末尾 | 高 |
 | `test_unique_nan_f64` | f64 NaN 排在末尾 | 高 |
 | `test_unique_nan_mixed` | NaN + 正常数混合排序正确 | 高 |
-| `test_unique_nan_dedup` | 含多个 NaN（含不同 bit-pattern）的浮点数组：去重后只保留一个 canonical NaN | 高 |
+| `test_unique_nan_dedup` | 含多个 NaN（含不同 bit-pattern）的浮点数组：去重后只保留一个 NaN 等价类代表值 | 高 |
 | `test_unique_complex_order` | 复数先实部再虚部排序 | 高 |
 | `test_unique_2d` | 2D 张量 unique 返回 1D | 中 |
 | `test_unique_preserves_order` | 去重后排序正确 | 中 |

@@ -328,7 +328,7 @@ where
     D: Dimension,
 {
     /// Returns a shared slice when the logical tensor is F-contiguous and the
-    /// logical first element coincides with the storage base pointer.
+    /// logical first element coincides with the logical-first pointer contract.
     ///
     /// This is the zero-copy fast path consumed by `simd/`, `parallel/`, and
     /// convenience APIs such as `set::unique()` examples. Non-contiguous views,
@@ -343,7 +343,7 @@ where
     D: Dimension,
 {
     /// Returns a mutable slice when the logical tensor is F-contiguous, has no
-    /// offset, and contains no zero/negative strides.
+    /// zero/negative strides, and the logical-first element is uniquely writable.
     ///
     /// Broadcast results are immutable by construction and therefore can never
     /// satisfy this method's preconditions.
@@ -368,7 +368,8 @@ where
     /// # Errors
     ///
     /// Returns `Err` when:
-    /// - `data.len() != shape.size()`
+    /// - `shape.checked_size()` overflows
+    /// - `data.len() != shape.checked_size()`
     ///
     /// # Example
     ///
@@ -411,7 +412,7 @@ where
     /// - Memory remains valid for the lifetime `'a` of the returned view
     /// - All accessible elements are properly initialized
     /// - `shape` and `strides` have consistent lengths
-    /// - Offsets computed from any valid index are within bounds
+    /// - `validate_access_range(shape, strides, offset, storage_len)` succeeds
     pub unsafe fn from_raw_parts(
         ptr: *const A,
         shape: D,
@@ -526,9 +527,35 @@ shape: [3], strides: [1], offset: 2  // 仅调整元数据
 逻辑视图: [c, d, e]
 ```
 
-**安全性论证**：`offset` 始终 ≤ `storage.len()`，由构造方法验证。`as_ptr()` 返回 `storage.as_ptr().add(offset)`，由 `Storage` trait 保证指针有效。
+**安全性论证**：`offset <= storage.len()` 只是必要条件，不是充分条件。构造路径必须统一调用 `validate_access_range(shape, strides, offset, storage_len)` 来计算所有逻辑索引可达的最小/最大物理偏移，并验证它们都落在底层 storage 范围内。只有验证通过后，`as_ptr()` 才能把“logical-first pointer”定义为逻辑首元素地址。
 
 > **重要设计约定：** `TensorBase::offset` 是所有存储模式（Owned、ViewRepr、ViewMutRepr、ArcRepr）共用的唯一偏移字段。`ArcRepr` 不存储独立的 offset — 数据访问的起始位置完全由 `TensorBase::offset` 决定。这避免了双重偏移计算的 bug，并使偏移逻辑集中在一处。
+
+> **logical-first pointer 契约：** `TensorBase::as_ptr()` / `as_mut_ptr()` 返回的是逻辑首元素指针，而不是 storage base pointer。layout 标志计算、连续切片快路径和 FFI raw-parts safety 文档都必须使用这一同一约定；若需要 storage base pointer，只能通过 storage 层 API 或 raw-parts 输入显式提供。
+
+```text
+validate_access_range(shape, strides, offset, storage_len):
+    if shape.checked_size() overflows:
+        return Err(XenonError::InvalidShape { ... })
+
+    min_offset = offset as isize
+    max_offset = offset as isize
+
+    for axis in 0..ndim:
+        if shape[axis] == 0:
+            return Ok(())
+
+        span = (shape[axis] as isize - 1) * strides[axis]
+        if span < 0:
+            min_offset += span
+        else:
+            max_offset += span
+
+    if min_offset < 0 or max_offset >= storage_len as isize:
+        return Err(XenonError::LayoutMismatch { ... })
+
+    return Ok(())
+```
 
 ### 5.3 内存布局示意
 
@@ -849,6 +876,8 @@ where
     D: Dimension,
 {
     pub fn as_ptr(&self) -> *const A {
+        // storage.as_ptr() returns the storage base pointer; TensorBase converts it
+        // to the logical-first pointer after construction invariants have been validated.
         unsafe { self.storage.as_ptr().add(self.offset) }
     }
 }
@@ -867,6 +896,8 @@ where
     }
 
     pub fn len(&self) -> usize {
+        // `size()` is the infallible query form here; constructor / reshape paths
+        // must use checked_size() before allocating or validating layouts.
         self.shape.size()
     }
 }
@@ -882,16 +913,20 @@ where
     D: Dimension,
 {
     pub fn from_shape_vec(shape: D, data: Vec<A>) -> Result<Self, XenonError> {
-        if data.len() != shape.size() {
+        let expected = shape.checked_size().ok_or(XenonError::InvalidShape {
+            from: data.len(),
+            to: usize::MAX,
+        })?;
+        if data.len() != expected {
             return Err(XenonError::InvalidShape {
                 from: data.len(),
-                to: shape.size(),
+                to: expected,
             });
         }
         let strides = layout::compute_f_strides(&shape);
         let storage = Owned::from_vec_aligned(data);
-        let ptr = storage.as_ptr();
-        let flags = layout::compute_flags(&shape, &strides, ptr);
+        let logical_ptr = storage.as_ptr();
+        let flags = layout::compute_flags(&shape, &strides, logical_ptr);
         Ok(Self {
             storage,
             shape,

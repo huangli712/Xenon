@@ -415,7 +415,7 @@ where
     ///
     /// Panics if the tensor contains zero strides (`LayoutFlags::HAS_ZERO_STRIDE`),
     /// because zero strides mean multiple logical indices map to the same physical
-    /// address, and mutable access would cause data races.
+    /// address, and mutable access would create immediate mutable aliasing.
     pub fn slice_mut<I>(&mut self, info: SliceInfo<I, D>) -> TensorViewMut<'_, A, I>
     where
         I: Dimension,

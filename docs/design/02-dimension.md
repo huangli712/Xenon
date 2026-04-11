@@ -14,7 +14,7 @@
 |------|------|--------|
 | 静态维度类型 | `Ix0`-`Ix6` 元组结构体，编译期确定维度数 | 运行时动态维度选择 |
 | 动态维度类型 | `IxDyn`（`Vec<usize>`），运行时维度数 | — |
-| Dimension trait | 完整的维度操作接口（ndim/slice/size/checked_size/strides_for_f_order/zeros/ones/into_dyn/try_from_dyn） | — |
+| Dimension trait | 完整的维度操作接口（ndim/slice/size/checked_size/strides_for_f_order/into_dyn/try_from_dyn） | 已签名 stride、logical-first pointer、布局标志计算 |
 | IntoDimension trait | 从元组、数组、切片、Vec 构造维度 | 用户自定义维度源 |
 | Axis 类型 | 轴标记新类型（index/next/prev/is_first/is_last） | 轴上的切片/迭代操作（由 tensor 方法提供） |
 | RemoveAxis trait | 移除指定轴降维（Ix1→Ix0, ..., Ix6→Ix5, IxDyn→IxDyn） | Ix0 不实现（标量无轴可移除） |
@@ -82,7 +82,7 @@ src/dimension/
 ### 3.3 依赖方向声明
 
 > **依赖方向：单向向上。** `dimension/` 仅消费 `error` 和 `private`，不被它们反向依赖。
-> 被下游模块消费：`layout`（参见 `06-memory.md` §3）、`storage`（参见 `05-storage.md` §3）、`tensor`（参见 `07-tensor.md` §4）、`shape`（参见 `16-shape.md` §4）、`iter`（参见 `10-iterator.md` §4）、`math`（参见 `11-math.md` §4）、`index`（参见 `17-indexing.md` §4）。
+> 被下游模块消费：`layout`（参见 `06-memory.md` §3）、`tensor`（参见 `07-tensor.md` §4）、`shape`（参见 `16-shape.md` §4）、`iter`（参见 `10-iterator.md` §4）、`math`（参见 `11-math.md` §4）、`index`（参见 `17-indexing.md` §4）。`storage` 不消费 `Dimension`；它只持有底层连续缓冲区。
 
 ---
 
@@ -132,12 +132,6 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
 
     /// Returns the total number of elements, or `None` if the product overflows.
     fn checked_size(&self) -> Option<usize>;
-
-    /// Creates a dimension with all axes set to zero.
-    fn zeros() -> Self;
-
-    /// Creates a dimension with all axes set to one.
-    fn ones() -> Self;
 
     /// Converts to dynamic dimension. Always succeeds.
     fn into_dyn(self) -> IxDyn;
@@ -307,7 +301,7 @@ impl Dimension for Ix3 {
         Ix3(slice[0], slice[1], slice[2])
     }
 
-    // zeros(), ones() omitted — same pattern
+    // Remaining helper methods follow the same pattern.
 }
 ```
 

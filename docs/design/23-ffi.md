@@ -50,7 +50,7 @@ src/
     ├── types.rs       # BlasLayout, BlasTrans, BlasInfo 类型定义
     ├── ptr.rs         # 原始指针 API（as_ptr, as_mut_ptr, from_raw_parts, from_raw_parts_mut, into_raw_parts）
     ├── blas.rs        # BLAS 兼容性检查（is_blas_compatible, blas_info, lda）
-    └── offset.rs      # 多维索引到指针偏移（offset_of, ptr_at）
+    └── offset.rs      # 多维索引到指针偏移（try_offset_of/offset_of, try_ptr_at/ptr_at）
 ```
 
 多文件设计：将 FFI 按职责拆分为多个文件，便于后期拓展和维护。
@@ -61,7 +61,7 @@ src/
 | `types.rs` | `BlasLayout`/`BlasTrans` 枚举、`BlasInfo` 结构体 |
 | `ptr.rs` | 原始指针访问（`as_ptr`/`as_mut_ptr`）和裸指针构造/解构（`from_raw_parts`/`into_raw_parts`） |
 | `blas.rs` | BLAS 兼容性检查和参数查询（`is_blas_compatible`/`blas_info`/`lda`） |
-| `offset.rs` | 多维索引到偏移量和指针转换（`offset_of`/`ptr_at`） |
+| `offset.rs` | 多维索引到偏移量和指针转换（`try_offset_of`/`offset_of`、`try_ptr_at`/`ptr_at`） |
 
 ---
 
@@ -151,7 +151,7 @@ where
     ///
     /// The pointer returned here points to the first logical element.
     /// Internally, storage keeps the storage base pointer and TensorBase applies
-    /// `offset` exactly once when exposing the raw logical pointer.
+    /// `offset` exactly once when exposing the logical-first pointer.
     /// The returned pointer is invalid after `self` is modified or dropped.
     ///
     /// # Example
@@ -586,10 +586,7 @@ where
     /// resulting offset for any in-bounds logical index is therefore measured
     /// from `as_ptr()` and does not require a second base adjustment.
     ///
-    /// # Panics
-    ///
-    /// - Index length does not match number of dimensions
-    /// - Index out of bounds (any index[i] >= shape[i])
+    /// Prefer `try_offset_of()` when the caller needs a recoverable error path.
     ///
     /// # Example
     ///
@@ -599,25 +596,35 @@ where
     /// // index [1, 2] → offset = 1*1 + 2*3 = 7
     /// assert_eq!(tensor.offset_of(&[1, 2]), 7);
     /// ```
-    pub fn offset_of(&self, index: &[isize]) -> isize {
-        assert_eq!(index.len(), self.ndim(), "index length must match ndim");
-        let strides = self.strides();  // returns &[isize]
+    pub fn try_offset_of(&self, index: &[isize]) -> Result<isize, XenonError> {
+        if index.len() != self.ndim() {
+            return Err(XenonError::DimensionMismatch {
+                expected: self.ndim(),
+                actual: index.len(),
+            });
+        }
+        let strides = self.strides();
         let shape = self.shape();
         let mut offset: isize = 0;
         for i in 0..self.ndim() {
-            assert!(index[i] >= 0, "index must be non-negative");
-            assert!(index[i] as usize < shape[i], "index out of bounds");
+            if index[i] < 0 || index[i] as usize >= shape[i] {
+                return Err(XenonError::InvalidArgument {
+                    message: "ffi index out of bounds",
+                });
+            }
             offset += strides[i] * index[i];
         }
-        offset
+        Ok(offset)
+    }
+
+    /// Panic-sugar variant of `try_offset_of()` for callers that prefer indexing-style behavior.
+    pub fn offset_of(&self, index: &[isize]) -> isize {
+        self.try_offset_of(index).expect("ffi index conversion failed")
     }
 
     /// Converts a multi-dimensional index to a raw pointer to the corresponding element.
     ///
-    /// # Panics
-    ///
-    /// - Index length does not match number of dimensions
-    /// - Index out of bounds
+    /// Prefer `try_ptr_at()` when the caller needs a recoverable error path.
     ///
     /// # Example
     ///
@@ -626,10 +633,15 @@ where
     /// let ptr = tensor.ptr_at(&[2]);
     /// assert_eq!(unsafe { *ptr }, 30);
     /// ```
-    pub fn ptr_at(&self, index: &[isize]) -> *const A {
-        let offset = self.offset_of(index);
+    pub fn try_ptr_at(&self, index: &[isize]) -> Result<*const A, XenonError> {
+        let offset = self.try_offset_of(index)?;
         // SAFETY: offset is within storage bounds as validated by dimension checks
-        unsafe { self.as_ptr().offset(offset) }
+        Ok(unsafe { self.as_ptr().offset(offset) })
+    }
+
+    /// Panic-sugar variant of `try_ptr_at()`.
+    pub fn ptr_at(&self, index: &[isize]) -> *const A {
+        self.try_ptr_at(index).expect("ffi pointer conversion failed")
     }
 }
 ```
@@ -737,8 +749,8 @@ is_blas_compatible():
 
 - [ ] **T4**: 实现多维索引到指针偏移
   - 文件: `src/ffi/offset.rs`
-  - 内容: `offset_of()`, `ptr_at()`
-  - 测试: `test_offset_of_various`, `test_ptr_at_various`
+  - 内容: `try_offset_of()` / `offset_of()` 与 `try_ptr_at()` / `ptr_at()` panic-sugar 分层
+  - 测试: `test_try_offset_of_various`, `test_offset_of_various`, `test_try_ptr_at_various`, `test_ptr_at_various`
   - 前置: T1
   - 预计: 10 min
 
@@ -765,7 +777,7 @@ Wave 3: ┌────┴────┐
 | 单元测试 | `#[cfg(test)] mod tests` | 验证指针访问、BLAS 兼容检查与 raw-parts 语义 |
 | 集成测试 | `tests/` | 验证 `ffi` 与 `tensor`、`layout`、`storage` 的协同路径 |
 | 边界测试 | 同模块测试中标注 | 覆盖空张量、广播维度、负步长和未对齐指针等边界 |
-| 属性测试 | `tests/ffi.rs` 或 `tests/property.rs` | 验证 offset / ptr_at / raw-parts roundtrip 不变量 |
+| 属性测试 | `tests/ffi.rs` 或 `tests/property.rs` | 验证 `try_offset_of` / `try_ptr_at` / raw-parts roundtrip 不变量 |
 
 ### 7.2 单元测试清单
 
@@ -785,8 +797,10 @@ Wave 3: ┌────┴────┐
 | `test_from_raw_parts_mut_roundtrip` | 可变构造 → 修改 → 读取 | 高 |
 | `test_into_raw_parts` | Owned 张量解构后指针有效 | 高 |
 | `test_into_raw_parts_memory_leak` | 解构后正确释放 | 中 |
-| `test_offset_of_various` | 各种索引的偏移量正确性 | 高 |
-| `test_ptr_at_various` | 各种索引的指针正确性 | 高 |
+| `test_try_offset_of_various` | recoverable 索引转换返回正确偏移或错误 | 高 |
+| `test_offset_of_various` | panic-sugar 偏移量接口在合法索引上正确 | 高 |
+| `test_try_ptr_at_various` | recoverable 指针转换返回正确指针或错误 | 高 |
+| `test_ptr_at_various` | panic-sugar 指针接口在合法索引上正确 | 高 |
 
 ### 7.3 边界测试场景
 
@@ -797,14 +811,14 @@ Wave 3: ┌────┴────┐
 | 非连续切片 | `is_blas_compatible()` 返回 `false` |
 | 广播维度 | `is_blas_compatible()` 返回 `false` |
 | 1D 张量 | `lda()` 返回 `None` |
-| 零维张量 | `offset_of(&[])` 返回 0 |
+| 零维张量 | `try_offset_of(&[])` 返回 `Ok(0)` |
 | 未对齐指针 | `from_raw_parts` 的 Safety 文档需说明对齐要求 |
 
 ### 7.4 属性测试不变量
 
 | 不变量 | 测试方法 |
 |--------|----------|
-| `ptr_at(idx) == as_ptr().offset(offset_of(idx))` | 在合法索引集合上逐点比对 |
+| `try_ptr_at(idx).unwrap() == as_ptr().offset(try_offset_of(idx).unwrap())` | 在合法索引集合上逐点比对 |
 | `into_raw_parts → from_raw_parts_owned` roundtrip 保持 shape/strides/offset | 对 F-contiguous owned 张量做往返验证 |
 | `is_blas_compatible() == true` ⟹ `blas_info()` 成功 | 以连续二维张量为样本验证 |
 
@@ -888,15 +902,17 @@ Wave 3: ┌────┴────┐
 | `is_blas_compatible()` | O(1) | 检查布局标志 |
 | `blas_info()` | O(1) | 包含 `is_blas_compatible()` + 构造 |
 | `lda()` | O(1) | 步长查询 |
-| `offset_of()` | O(ndim) | 逐轴计算 |
-| `ptr_at()` | O(ndim) | `offset_of()` + 指针加法 |
+| `try_offset_of()` | O(ndim) | 逐轴计算 + 可恢复错误分支 |
+| `offset_of()` | O(ndim) | `try_offset_of()` + panic-sugar |
+| `try_ptr_at()` | O(ndim) | `try_offset_of()` + 指针加法 |
+| `ptr_at()` | O(ndim) | `try_ptr_at()` + panic-sugar |
 | `from_raw_parts()` | O(1) | 仅构造视图 |
 | `into_raw_parts()` | O(1) | 提取字段 + `ManuallyDrop` |
 
 **性能提示**:
 
 - `as_ptr()` 和 `as_mut_ptr()` 应标注 `#[inline]`
-- `offset_of()` 在热路径中可能需要内联
+- `try_offset_of()` / `offset_of()` 在热路径中可能需要内联
 - `is_blas_compatible()` 检查现有 `LayoutFlags`，无需重新计算
 
 ---
@@ -917,7 +933,7 @@ FFI 模块完全兼容 `no_std` 环境。所有操作均为指针运算和结构
 | `into_raw_parts` | ✅ | 字段提取 + `core::mem::ManuallyDrop`，无分配 |
 | `is_blas_compatible()` | ✅ | 布局标志检查，无分配 |
 | `blas_info()` / `lda()` | ✅ | 布局查询，无分配 |
-| `offset_of()` / `ptr_at()` | ✅ | 算术运算，O(ndim)，无分配 |
+| `try_offset_of()` / `offset_of()` / `try_ptr_at()` / `ptr_at()` | ✅ | 算术运算，O(ndim)，无分配 |
 
 条件编译处理：
 

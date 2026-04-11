@@ -215,7 +215,8 @@ where
     /// That is, the first dimension varies fastest.
     ///
     /// # Errors
-    /// Returns `XenonError::InvalidShape` if `data.len() != shape.size()`.
+    /// Returns `XenonError::InvalidShape` if `checked_size(shape)` overflows or
+    /// `data.len() != checked_size(shape)`.
     ///
     /// # Examples
     /// ```
@@ -227,7 +228,10 @@ where
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();
-        let expected = dim.size();
+        let expected = dim.checked_size().ok_or(XenonError::InvalidShape {
+            from: data.len(),
+            to: usize::MAX,
+        })?;
         if data.len() != expected {
             return Err(XenonError::InvalidShape {
                 from: data.len(),
@@ -244,7 +248,8 @@ where
     /// Construct a tensor from a slice (copies data).
     ///
     /// # Errors
-    /// Returns `XenonError::InvalidShape` if `slice.len() != shape.size()`.
+    /// Returns `XenonError::InvalidShape` if `checked_size(shape)` overflows or
+    /// `slice.len() != checked_size(shape)`.
     ///
     /// # Examples
     /// ```
@@ -257,7 +262,10 @@ where
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();
-        let expected = dim.size();
+        let expected = dim.checked_size().ok_or(XenonError::InvalidShape {
+            from: slice.len(),
+            to: usize::MAX,
+        })?;
         if slice.len() != expected {
             return Err(XenonError::InvalidShape {
                 from: slice.len(),
@@ -328,13 +336,16 @@ where
     /// });
     /// assert_eq!(t[[1, 2]], 5);
     /// ```
-    pub fn from_fn<Sh, F>(shape: Sh, mut f: F) -> Self
+    pub fn from_fn<Sh, F>(shape: Sh, mut f: F) -> Result<Self, XenonError>
     where
         Sh: IntoDimension<Dim = D>,
         F: FnMut(&[usize]) -> A,
     {
         let dim = shape.into_dimension();
-        let len = dim.size();
+        let len = dim.checked_size().ok_or(XenonError::InvalidShape {
+            from: 0,
+            to: usize::MAX,
+        })?;
         let strides = dim.strides_for_f_order();
         let mut data = Vec::with_capacity(len);
         // Iterate indices in F-order
@@ -345,7 +356,7 @@ where
             increment_index_f(&dim, &mut idx);
         }
         let storage = Owned::from_vec_aligned(data);
-        TensorBase { storage, shape: dim, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) }
+        Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) })
     }
 }
 ```
@@ -410,9 +421,9 @@ function increment_index_f(shape, index):
 
 ### 5.3 安全性论证
 
-- `from_shape_vec`: 验证 `data.len() == dim.size()`，不匹配返回错误；通过后 `Owned::from_vec_aligned` 消费输入 Vec 并复制到对齐存储
-- `from_shape_slice`: 验证长度后拷贝，原始切片不再被引用
-- `from_fn`: 闭包接收合法索引（`0 <= idx[i] < shape[i]`），无越界风险
+- `from_shape_vec`: 先通过共享 checked helper 验证 `dim.checked_size()`，再验证 `data.len() == expected`；通过后 `Owned::from_vec_aligned` 消费输入 Vec 并复制到对齐存储
+- `from_shape_slice`: 先通过共享 checked helper 验证 `dim.checked_size()`，长度匹配后再拷贝，原始切片不再被引用
+- `from_fn`: 先通过共享 checked helper 验证 `dim.checked_size()`；闭包接收合法索引（`0 <= idx[i] < shape[i]`），无越界风险
 - `dim.size()` / 步长计算溢出：构造路径须在共享的 checked helper 中统一转为 `XenonError::InvalidShape`，再决定是否由上层便捷构造包装；不得产生未定义行为。ZST 与空张量路径须与 `05-storage.md` 的约束保持一致
 - `eye`: 内部使用已验证的 `zeros` 和合法索引 `[[i, i]]`（`0 <= i < n`），无越界风险
 
@@ -531,7 +542,7 @@ Wave 4:           [T6]
 |--------|----------|
 | `zeros(s).iter().all(\|x\| x == Element::zero())` | 随机形状 |
 | `ones(s).iter().all(\|x\| x == Element::one())` | 随机形状 |
-| `from_shape_vec(s, v).len() == s.size()` | 随机形状和匹配数据 |
+| `from_shape_vec(s, v).len() == s.checked_size().unwrap()` | 随机形状和匹配数据 |
 | `from_fn(s, f).shape() == s` | 随机形状 |
 
 ### 7.5 集成测试
@@ -549,7 +560,7 @@ Wave 4:           [T6]
 | 方向 | 对方模块 | 接口/类型 | 约定 |
 |------|----------|-----------|------|
 | `construct → tensor` | `tensor` | `TensorBase` | 构造张量实例，参见 `07-tensor.md` §4.1 |
-| `construct → storage` | `storage` | `Owned::zeros()` / `from_vec_aligned()` | 使用对齐存储完成底层分配，参见 `05-storage.md` §4.2 |
+| `construct → storage` | `storage` | `Owned::zeros()` / `from_vec_aligned()` | 使用对齐存储完成底层分配；`from_vec_aligned()` 当前仅用于 Xenon 封闭元素集合中的 `Copy` 元素快路径，参见 `05-storage.md` §4.2 |
 | `construct → layout` | `layout` | F-order 步长 | 构造阶段计算 F-order 步长，参见 `06-memory.md` §4 |
 | `construct → dimension` | `dimension` | `IntoDimension` | 接受灵活形状参数并归一化，参见 `02-dimension.md` §4.3 |
 | `construct → element` | `element` | `Element` | 通过 `Element::zero()` / `Element::one()` 约束构造 API，参见 `03-element.md` §3 |
@@ -561,7 +572,7 @@ Wave 4:           [T6]
 ```text
 用户调用 zeros / from_shape_vec / from_fn / eye
     │
-    ├── dimension 模块先规范化输入 shape
+    ├── dimension 模块先规范化输入 shape，并通过 checked helper 计算元素总数
     ├── layout 计算 F-order strides 与初始 flags
     ├── storage 分配 aligned owned buffer 并写入数据
     └── tensor 模块封装成 TensorBase<Owned<_>, D>，随后可被 index / iter / math 使用
@@ -649,11 +660,11 @@ use alloc::vec::Vec;
 | `ones()` | ✅ | 需 `no_std + alloc`，对齐分配 + 批量填充 |
 | `full()` | ✅ | 需 `no_std + alloc`，对齐分配 + 批量克隆 |
 | `eye()` | ✅ | 需 `no_std + alloc`，先 `zeros` 再写入对角线 |
-| `from_shape_vec()` | ✅ | 需 `no_std + alloc`，拷贝数据到 64 字节对齐内存（O(n)） |
+| `from_shape_vec()` | ✅ | 需 `no_std + alloc`，先经 checked helper 验证，再拷贝数据到 64 字节对齐内存（O(n)） |
 | `from_shape_slice()` | ✅ | 需 `no_std + alloc`，拷贝到新 `Vec` |
 | `from_array()` | ✅ | 需 `no_std + alloc`，转换为 `Vec` |
 | `from_scalar()` | ✅ | 需 `no_std + alloc`，单元素 `Vec` |
-| `from_fn()` | ✅ | 需 `no_std + alloc`，闭包填充 `Vec` |
+| `from_fn()` | ✅ | 需 `no_std + alloc`，先经 checked helper 验证，再由闭包填充 `Vec` |
 
 条件编译处理：
 

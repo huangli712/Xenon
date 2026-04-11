@@ -13,7 +13,7 @@
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
 | 向量内积 | dot product（实数内积：sum(a[i] * b[i])） | 矩阵乘法、外积 |
-| 复数内积 | 共轭线性定义（sum(conj(a[i]) * b[i])） | 批量矩阵乘法 |
+| 复数内积 | 共轭线性定义（sum(conjugate(a[i]) * b[i])） | 批量矩阵乘法 |
 | SIMD 加速 | 连续内存的 SIMD 路径 | BLAS 绑定 |
 | 错误处理 | 形状不匹配返回 XenonError::ShapeMismatch | — |
 
@@ -142,7 +142,7 @@ where
 ```rust
 // Complex dot product implements conjugate-linearity
 // dot(Complex{re: 1, im: 2}, Complex{re: 3, im: 4})
-// = conj(Complex{1,2}) * Complex{3,4}
+// = conjugate(Complex{1,2}) * Complex{3,4}
 // = Complex{1,-2} * Complex{3,4}
 // = Complex{1*3-(-2)*4, 1*4+(-2)*3}
 // = Complex{3+8, 4-6}
@@ -162,7 +162,7 @@ assert_eq!(result, 32.0);
 let ca = Tensor1::<Complex<f64>>::from_vec(vec![Complex{re: 1.0, im: 2.0}]);
 let cb = Tensor1::<Complex<f64>>::from_vec(vec![Complex{re: 3.0, im: 4.0}]);
 let cresult = dot(&ca.view(), &cb.view())?;
-// conj(1+2i) * (3+4i) = (1-2i)(3+4i) = 3+4i-6i-8i^2 = 3+4i-6i+8 = 11-2i
+// conjugate(1+2i) * (3+4i) = (1-2i)(3+4i) = 3+4i-6i-8i^2 = 3+4i-6i+8 = 11-2i
 
 // Bad - unhandled error on dimension mismatch
 let a = Tensor1::<f64>::from_vec(vec![1.0, 2.0]);
@@ -221,7 +221,7 @@ fn scalar_dot_float_or_complex<A: Numeric + Copy>(
 ```rust
 // Numeric trait 中的 conjugate 方法（定义于 03-element.md §4.3）
 // Real types: fn conjugate(self) -> Self { self }
-// Complex types: fn conjugate(self) -> Self { Complex::conj(self) }
+// Complex types: fn conjugate(self) -> Self { Complex::conjugate(self) }
 
 /// Unified dot dispatch for both real and complex types.
 /// Uses `x.conjugate() * y` to generate products. Integer accumulation is routed
@@ -331,7 +331,7 @@ Wave 4: [T4]
 |--------|----------|
 | `dot([], []) == A::zero()` | 空向量对所有受支持类型成立 |
 | `dot(a, b)` 与标量实现一致 | 随机 1D 连续/非连续输入 |
-| 复数 `dot(a, b) == sum(conj(a[i]) * b[i])` | 随机复数向量 |
+| 复数 `dot(a, b) == sum(conjugate(a[i]) * b[i])` | 随机复数向量 |
 
 ### 7.5 集成测试
 
@@ -372,7 +372,7 @@ Wave 4: [T4]
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | 复数内积采用共轭线性定义：sum(conj(a[i]) * b[i]) |
+| 决策 | 复数内积采用共轭线性定义：sum(conjugate(a[i]) * b[i]) |
 | 理由 | 这是数学和物理学中的标准定义；与 NumPy（np.vdot）、BLAS（zdotc）一致 |
 | 替代方案 | 简单内积：sum(a[i] * b[i])（不共轭） |
 | 拒绝原因 | 不符合共轭线性空间的数学定义，与主流库行为不一致 |
@@ -426,7 +426,7 @@ extern crate alloc;
 | 组件 | no_std 支持 | 说明 |
 |------|:----------:|------|
 | `dot()`（标量路径） | ✅ | 使用 `Iterator::fold`，无堆分配 |
-| `dot()`（复数路径） | ✅ | 使用 `conj()` + `fold`，无堆分配 |
+| `dot()`（复数路径） | ✅ | 使用 `conjugate()` + `fold`，无堆分配 |
 | `dot()`（SIMD 路径） | ✅ | pulp crate 支持 `no_std`，参见 `08-simd.md` §11 |
 | `XenonError::ShapeMismatch` | ✅ | 使用 `core::fmt::Display`，无堆依赖 |
 

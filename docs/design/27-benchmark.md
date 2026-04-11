@@ -2,7 +2,7 @@
 
 > 文档编号: 27 | 模块: `benches/` | 阶段: Phase 6
 > 前置文档: 所有前置文档（`00-coding.md` ~ `26-error.md`）
-> 需求参考: 工程补充（无直接强制需求条款）
+> 需求参考: 需求说明书 §9.1, §9.2, §9.3, §28.3, §28.5
 
 ---
 
@@ -319,10 +319,12 @@ cargo bench --bench construction -- "zeros_1d" --quick
           uses: benchmark-action/github-action-benchmark@v1
           with:
             tool: cargo
-            output-file-path: target/criterion-output.json
+            report-json-path: target/benchmark-results/regression.json
             alert-threshold: "200%"
             fail-on-alert: false
 ```
+
+> **说明**：benchmark CI 不应依赖 Criterion 默认不存在的固定输出文件名。若需要机器可读结果，应通过仓库内脚本显式导出到约定路径（如 `target/benchmark-results/regression.json`），并在 CI 中消费该脚本产物。
 
 > **注意**：criterion 的标准 HTML/JSON 输出位于 `target/criterion/<benchmark_name>/` 目录下。CI 若需要机器可读摘要，应通过单独的提取脚本或 bencher 兼容输出生成汇总文件，而不是把 Cargo 的 `--message-format=json` 误传给 benchmark binary。
 

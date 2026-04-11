@@ -23,7 +23,7 @@
 |------|------|
 | 借用语义 | 借出期间不可再次借出；只读借用当前版本同一时刻最多一个活跃 guard，归还后可复用 |
 | 单向增长 | 只扩容不缩容，避免内存抖动 |
-| 不保证初始化 | 性能优先，调用方自行初始化使用的数据 |
+| 未初始化感知 | 底层字节视为 `MaybeUninit<u8>`；只有调用方显式声明初始化完成后，才能获取已初始化视图 |
 | O(1) 分割 | 仅指针算术，无内存分配 |
 | 显式生命周期 | 不可跨线程传递（`!Send + !Sync`），仅限创建它的线程使用 | 调用方负责线程安全 |
 
@@ -112,6 +112,8 @@ src/workspace/
 
 > **与线程安全需求的边界**: workspace 不是 `require.md §10` 中张量 storage mode 的一部分，而是独立的上游缓冲区工具。其 `!Send + !Sync` 设计不与张量存储模式的线程安全承诺冲突。
 
+> **初始化语义约定**: Workspace 的底层缓冲区始终按“可能未初始化”建模。公共 API 默认只暴露 `MaybeUninit` 视图；只有调用方能够证明某一前缀或某一 typed region 已被完整写入时，才允许通过 `assume_init_*` 系列 unsafe API 将其解释为已初始化视图。
+
 ```rust
 /// Error type for workspace operations.
 #[derive(Debug, Clone, PartialEq)]
@@ -152,9 +154,12 @@ use alloc::alloc::{alloc, dealloc, Layout};
 ///   creating thread. This ensures memory safety — Workspace holds raw
 ///   pointers, and cross-thread transfer could cause data races.
 ///
-/// # Initialization Guarantee
+/// # Initialization Model
 ///
-/// No zero-initialization guarantee. The caller must initialize used data.
+/// The backing allocation is modeled as uninitialized scratch memory.
+/// Borrow APIs therefore expose `MaybeUninit<u8>` / `MaybeUninit<T>` views by default.
+/// Converting to initialized `&[u8]` or `&mut [T]` is an explicit unsafe step that
+/// requires the caller to prove the corresponding region has been fully initialized.
 ///
 /// # Example
 ///
@@ -163,7 +168,8 @@ use alloc::alloc::{alloc, dealloc, Layout};
 ///
 /// // Mutable borrow
 /// let mut buf = ws.borrow_mut()?;
-/// // Use buffer...
+/// let bytes = buf.as_maybe_uninit_slice();
+/// // Initialize or reinterpret the scratch region...
 ///
 /// // Return (RAII automatic)
 /// drop(buf);
@@ -321,7 +327,7 @@ pub struct WorkspaceBorrowMut<'a> {
 }
 
 impl Workspace {
-    /// Acquire the workspace for shared read-only access.
+    /// Acquire the workspace for shared inspection of the scratch region.
     ///
     /// # Errors
     ///
@@ -329,7 +335,9 @@ impl Workspace {
     ///
     /// Note: the current design allows at most one active shared guard at a time.
     /// This keeps the runtime state machine simple and matches the workspace's
-    /// temporary-scratch-buffer positioning.
+    /// temporary-scratch-buffer positioning. The returned guard still models the
+    /// bytes as potentially uninitialized; use `assume_init_slice` only when the
+    /// caller can prove the inspected prefix has been written.
     pub fn borrow(&self) -> Result<WorkspaceBorrow<'_>, WorkspaceError> {
         let prev = self.borrow_state.compare_exchange(
             Self::BORROW_NONE,
@@ -384,10 +392,26 @@ impl<'a> WorkspaceBorrow<'a> {
         self.ptr.as_ptr()
     }
 
-    /// Returns the data slice.
-    pub fn as_slice(&self) -> &[u8] {
-        // SAFETY: ptr valid for 'a, len matches capacity
- unsafe { core::slice::from_raw_parts(self.ptr.as_ptr(), self.len) }
+    /// Returns the scratch region as possibly-uninitialized bytes.
+    pub fn as_maybe_uninit_slice(&self) -> &[core::mem::MaybeUninit<u8>] {
+        // SAFETY: `MaybeUninit<u8>` may represent uninitialized bytes.
+        unsafe {
+            core::slice::from_raw_parts(
+                self.ptr.as_ptr() as *const core::mem::MaybeUninit<u8>,
+                self.len,
+            )
+        }
+    }
+
+    /// Interprets an initialized prefix as `&[u8]`.
+    ///
+    /// # Safety
+    ///
+    /// The caller must guarantee that the first `initialized_len` bytes have been
+    /// fully initialized before calling this method.
+    pub unsafe fn assume_init_slice(&self, initialized_len: usize) -> &[u8] {
+        assert!(initialized_len <= self.len);
+        core::slice::from_raw_parts(self.ptr.as_ptr(), initialized_len)
     }
 
     /// Returns the borrow length.
@@ -403,20 +427,43 @@ impl<'a> WorkspaceBorrowMut<'a> {
         self.ptr.as_ptr()
     }
 
-    /// Returns the mutable data slice.
-    pub fn as_mut_slice(&mut self) -> &mut [u8] {
-        // SAFETY: ptr valid for 'a, len matches capacity, unique access
- unsafe { core::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len) }
+    /// Returns the mutable scratch region as possibly-uninitialized bytes.
+    pub fn as_maybe_uninit_slice(&mut self) -> &mut [core::mem::MaybeUninit<u8>] {
+        // SAFETY: `MaybeUninit<u8>` may represent uninitialized bytes.
+        unsafe {
+            core::slice::from_raw_parts_mut(
+                self.ptr.as_ptr() as *mut core::mem::MaybeUninit<u8>,
+                self.len,
+            )
+        }
     }
 
-    /// Typed access.
+    /// Typed access to possibly-uninitialized scratch memory.
     ///
     /// # Safety
     ///
     /// The caller must ensure:
     /// - Alignment satisfies the type's requirements
     /// - Capacity is sufficient to hold `count` elements
-    pub unsafe fn as_typed_slice<T>(&mut self, count: usize) -> &mut [T] {
+    pub unsafe fn as_maybe_uninit_typed_slice<T>(
+        &mut self,
+        count: usize,
+    ) -> &mut [core::mem::MaybeUninit<T>] {
+        assert!(count * core::mem::size_of::<T>() <= self.len);
+        assert!(self.ptr.as_ptr() as usize % core::mem::align_of::<T>() == 0);
+        core::slice::from_raw_parts_mut(
+            self.ptr.as_ptr() as *mut core::mem::MaybeUninit<T>,
+            count,
+        )
+    }
+
+    /// Interprets the first `count` elements as initialized `T` values.
+    ///
+    /// # Safety
+    ///
+    /// The caller must guarantee that the first `count` typed elements have been
+    /// fully initialized before calling this method.
+    pub unsafe fn assume_init_typed_slice<T>(&mut self, count: usize) -> &mut [T] {
         assert!(count * core::mem::size_of::<T>() <= self.len);
         assert!(self.ptr.as_ptr() as usize % core::mem::align_of::<T>() == 0);
         core::slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut T, count)
@@ -531,10 +578,15 @@ impl Workspace {
 }
 
 impl<'a> SplitBorrowMut<'a> {
-    /// Returns the mutable slice.
-    pub fn as_mut_slice(&mut self) -> &mut [u8] {
-        // SAFETY: ptr valid, len matches allocation
-        unsafe { core::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len) }
+    /// Returns the split sub-space as possibly-uninitialized bytes.
+    pub fn as_maybe_uninit_slice(&mut self) -> &mut [core::mem::MaybeUninit<u8>] {
+        // SAFETY: split guards still expose scratch memory as possibly uninitialized.
+        unsafe {
+            core::slice::from_raw_parts_mut(
+                self.ptr.as_ptr() as *mut core::mem::MaybeUninit<u8>,
+                self.len,
+            )
+        }
     }
 
     /// Continue splitting (recursive binary split).
@@ -706,6 +758,18 @@ let (mut left, mut right) = ws.split_at(512)?;
 // left and right point to non-overlapping memory regions
 // Safe for independent sub-space processing on the same owning thread
 
+// Good - Expose scratch memory as MaybeUninit first
+let mut ws = Workspace::new(1024, 64)?;
+let mut buf = ws.borrow_mut()?;
+let scratch = buf.as_maybe_uninit_slice();
+// Initialize scratch before reinterpretation
+
+// Bad - Treating scratch memory as initialized bytes without proof
+let mut ws = Workspace::new(1024, 64)?;
+let mut buf = ws.borrow_mut()?;
+let bytes: &mut [u8] = unsafe { buf.assume_init_typed_slice::<u8>(1024) };
+// UB risk if the region has not been fully initialized first
+
 // Bad - Directly manipulating raw pointers to bypass borrow checking
 let mut ws = Workspace::new(1024, 64)?;
 let ptr = ws.ptr.as_ptr();  // ptr field is private!
@@ -802,6 +866,7 @@ Workspace 内存布局（64 字节对齐）
 2. 方法内部显式检查 `borrow_state` 是否为 NONE
 3. 扩容后旧指针失效（`dealloc`），新指针更新
 4. 由于 `&mut self` 保证独占，无悬挂引用
+5. 任何 `MaybeUninit` / `assume_init_*` 视图都不得跨越 `ensure_capacity` 保留
 
 ```
 扩容流程：
@@ -843,10 +908,10 @@ ensure_capacity(&mut self, 2048)
 
 ### Wave 2: 借用机制
 
-- [ ] **T4**: 实现借用守卫类型和方法
+- [ ] **T4**: 实现借用守卫类型和 MaybeUninit 访问方法
   - 文件: `src/workspace/borrow.rs`
-  - 内容: `WorkspaceBorrow`、`WorkspaceBorrowMut` 结构体、`borrow()`、`borrow_mut()`、`as_slice()`、`as_mut_slice()`、`as_typed_slice()`、`Drop` 实现
-  - 测试: `test_borrow_basic`, `test_borrow_mut_basic`, `test_borrow_double_fails`, `test_borrow_after_drop`
+  - 内容: `WorkspaceBorrow`、`WorkspaceBorrowMut` 结构体、`borrow()`、`borrow_mut()`、`as_maybe_uninit_slice()`、`assume_init_slice()`、`as_maybe_uninit_typed_slice()`、`assume_init_typed_slice()`、`Drop` 实现
+  - 测试: `test_borrow_basic`, `test_borrow_mut_basic`, `test_borrow_double_fails`, `test_borrow_after_drop`, `test_assume_init_requires_initialized_prefix`
   - 前置: T2
   - 预计: 15 min
 
@@ -909,10 +974,11 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 | `test_workspace_new_default` | 默认参数创建 | 高 |
 | `test_workspace_new_invalid_alignment` | 非法对齐值返回 `WorkspaceError::InvalidLayout` | 高 |
 | `test_workspace_drop_no_leak` | Drop 后内存正确释放 | 中 |
-| `test_borrow_basic` | 不可变借用和切片访问 | 高 |
-| `test_borrow_mut_basic` | 可变借用和类型化访问 | 高 |
+| `test_borrow_basic` | 不可变借用和 `MaybeUninit` 切片访问 | 高 |
+| `test_borrow_mut_basic` | 可变借用和 `MaybeUninit` 类型化访问 | 高 |
 | `test_borrow_double_fails` | 重复借用返回错误 | 高 |
 | `test_borrow_after_drop` | 归还后可再次借用 | 高 |
+| `test_assume_init_requires_initialized_prefix` | 已初始化视图只覆盖调用方证明已初始化的前缀 | 高 |
 | `test_split_at_basic` | 固定位置分割 | 高 |
 | `test_split_at_recursive` | 递归分割（多级） | 中 |
 | `test_split_at_oob` | 越界分割返回错误 | 高 |
@@ -931,6 +997,7 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 | 大容量（1MB+） | 正常分配和释放 |
 | 递归分割到空子空间 | `split_at(0)` 返回空左半 |
 | `ensure_capacity(0)` | 无操作（容量已足够） |
+| 未初始化区域只读访问 | 仅允许 `MaybeUninit` 视图，不暴露 `&[u8]` |
 
 ### 7.4 属性测试不变量
 
@@ -940,12 +1007,13 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 | `split_at` 后 `left.len + right.len == capacity` | 随机分割点 |
 | 借用后 `borrow_state != NONE` | 借用状态检查 |
 | 扩容后对齐不变 | `alignment()` 一致 |
+| 未初始化区域只能通过 `MaybeUninit` 视图暴露 | 随机借用 + API 形状检查 |
 
 ### 7.5 集成测试
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/workspace.rs` | `new` / `borrow` / `split_at_mut` / `ensure_capacity` 与 `ffi`、上游 scratch-buffer 场景的端到端协同验证 |
+| `tests/workspace.rs` | `new` / `borrow` / `split_at_mut` / `ensure_capacity` 与 `ffi`、上游 scratch-buffer 场景的端到端协同验证，并验证 `MaybeUninit` 视图与 `assume_init_*` 前缀约束 |
 
 ---
 
@@ -955,9 +1023,10 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 
 | 方向 | 对方模块 | 接口/类型 | 约定 |
 |------|----------|-----------|------|
-| `workspace ← 上游库` | `上游库` | 临时缓冲区请求 | BLAS 等上游库可把 workspace 作为临时缓冲区使用 |
-| `workspace ← 上游库` | `上游库` | `split_at()` | FFT 等场景可通过分割接口拆分工作空间 |
-| `workspace ← tensor` | `tensor` | 临时 scratch 空间 | 张量运算在需要时可借用 workspace 提供临时空间，参见 `07-tensor.md` §4 |
+| `workspace ← 上游库` | `上游库` | 临时缓冲区请求 | BLAS 等上游库可把 workspace 作为临时缓冲区使用；默认只获得 `MaybeUninit` 视图 |
+| `workspace ← 上游库` | `上游库` | `split_at()` | FFT 等场景可通过分割接口拆分工作空间；子空间同样只暴露 `MaybeUninit` 视图 |
+| `workspace ← 上游库` | `上游库` | `assume_init_*` | 调用方必须先完成写入并证明对应前缀/typed region 已初始化，才能重解释为已初始化视图 |
+| `workspace ← tensor` | `tensor` | 临时 scratch 空间 | 张量运算在需要时可借用 workspace 提供临时空间；任何借出的 scratch 视图都不得跨越 `ensure_capacity` 或持久化到 tensor 元数据中 |
 
 ### 8.2 数据流描述
 
@@ -968,9 +1037,10 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
     │       └── 分配 64-byte 对齐原始缓冲区
     │
     ├── borrow() / borrow_mut() / split_at()
-    │       └── 生成线程内有效的借用守卫或子空间视图
+    │       └── 生成线程内有效的 `MaybeUninit` 借用守卫或子空间视图
     │
-    ├── 调用方在守卫生命周期内写入/读取临时数据
+    ├── 调用方在守卫生命周期内写入临时数据
+    │       └── 如需读取已初始化前缀，显式调用 `assume_init_*`
     │
     └── Drop 守卫后恢复 borrow_state，可供后续操作复用
 ```
@@ -1032,7 +1102,8 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 | `split_at()` | O(1) | O(1) | 仅指针算术 |
 | `split_at_mut()` | O(1) | O(1) | 仅指针算术 |
 | `ensure_capacity()` | O(n) | O(new_capacity) | 分配 + 拷贝 + 释放 |
-| `as_typed_slice()` | O(1) | O(1) | 仅指针转换 |
+| `as_maybe_uninit_typed_slice()` | O(1) | O(1) | 仅指针转换 |
+| `assume_init_typed_slice()` | O(1) | O(1) | 仅在调用方已证明初始化后重解释 |
 
 **性能提示**:
 

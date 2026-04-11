@@ -261,7 +261,7 @@ where
 
 ### 4.6 from_vec_aligned — 对齐构造辅助
 
-`from_vec_aligned` 是 `Owned<A>` 的内部辅助方法，将 `Vec<A>` 的数据**拷贝**到 64 字节对齐的新分配中（O(n) 操作，参见 `05-storage.md §5.1`）。用户原始的 `Vec` 分配被丢弃，不会复用。
+`from_vec_aligned` 是 `Owned<A>` 的内部辅助方法，将 `Vec<A>` 的数据**拷贝**到 64 字节对齐的新分配中（O(n) 操作，参见 `05-storage.md §5.1`）。这条快速路径仅适用于 Xenon 当前封闭元素集合中的 `Copy` 元素；用户原始的 `Vec` 分配被丢弃，不会复用。
 
 ```rust
 // Defined in src/storage/owned.rs (see 05-storage.md §5.1)
@@ -270,7 +270,7 @@ impl<A> Owned<A> {
     ///
     /// The user's original Vec allocation is discarded; a fresh aligned allocation
     /// is made and data is copied over.
-    pub fn from_vec_aligned(data: Vec<A>) -> Self where A: Clone {
+    pub fn from_vec_aligned(data: Vec<A>) -> Self where A: Copy {
         let len = data.len();
         // Allocate aligned memory, copy elements, return
         // ... (implementation detail: uses AlignedAlloc + Vec::from_raw_parts)
@@ -286,7 +286,7 @@ impl<A, D> TensorBase<Owned<A>, D> where A: Element, D: Dimension {
     /// Called internally after size validation is complete.
     ///
     /// Skips length validation because the caller guarantees data.len() matches
-    /// shape.size() (e.g., via iter().collect() or to_owned() where self.len()
+    /// shape.checked_size().unwrap() (e.g., via iter().collect() or to_owned() where self.len()
     /// is known to be correct).
     pub(crate) fn from_shape_vec_aligned(shape: D, data: Vec<A>) -> Self {
         let strides = shape.strides_for_f_order();
@@ -302,7 +302,7 @@ impl<A, D> TensorBase<Owned<A>, D> where A: Element, D: Dimension {
     /// # Safety
     ///
     /// 调用者必须保证：
-    /// - `data.len()` 等于 `shape.size()`（元素总数匹配）
+    /// - `data.len()` 等于 `shape.checked_size().unwrap()`（元素总数匹配）
     /// - `shape` 和 `strides` 描述合法的内存布局
     /// - `data` 中所有元素已正确初始化
     /// - 内存已通过 Xenon 的 64 字节对齐分配器分配（使用 `from_vec_aligned` 保证）
@@ -434,6 +434,8 @@ impl CastTo<Complex<f64>> for f64 {
 ```
 
 ### 5.2 溢出行为汇总
+
+> **错误语义约定：** `cast()` 当前是 infallible API。所有 overflow / narrowing / NaN / Inf 行为都按本节的 saturating / truncating 规则确定，不进入 `XenonError`；这与 `26-error.md §4.1` 和 `§4.7` 保持一致。
 
 | 输入值 | 目标类型 | 输出值 | 说明 |
 |--------|----------|--------|------|

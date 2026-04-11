@@ -371,7 +371,10 @@ where
         }
     };
     let broadcast_shape = broadcast::broadcast_shape(&a.shape(), &b.shape())?;
-    let len: usize = broadcast_shape.iter().product();
+    let len = broadcast_shape.checked_size().ok_or(XenonError::InvalidShape {
+        from: 0,
+        to: usize::MAX,
+    })?;
     let is_f_contiguous = a.is_f_contiguous() && b.is_f_contiguous();
 
     if !should_parallelize(len, is_f_contiguous) {
@@ -493,12 +496,13 @@ where
     }
 
     fn split_at(self, index: usize) -> (Self, Self) {
-        // Split the view at the flat index boundary
-// split_elements_at is defined in src/iter/mod.rs (see 10-iterator.md §5.5)
-        let (left, right) = crate::iter::split_elements_at(self.base, index);
+        // Split the producer range at the flat logical index boundary.
+        // `ElementsProducerRange` is the iterator-side helper that preserves
+        // serial element order without pretending the two halves are standalone TensorViews.
+        let (left, right) = crate::iter::ElementsProducerRange::new(self.base).split_at(index);
         (
-            ElementsProducer { base: left },
-            ElementsProducer { base: right },
+            ElementsProducer { base: left.base },
+            ElementsProducer { base: right.base },
         )
     }
 }
@@ -537,7 +541,10 @@ where
         b: TensorView<'a, B, DB>,
     ) -> Result<Self, XenonError> {
         let broadcast_shape = broadcast::broadcast_shape(&a.shape(), &b.shape())?;
-        let len = broadcast_shape.iter().product();
+        let len = broadcast_shape.checked_size().ok_or(XenonError::InvalidShape {
+            from: 0,
+            to: usize::MAX,
+        })?;
         Ok(ParZip { a, b, len })
     }
 
@@ -735,17 +742,14 @@ where
         return Ok(unsafe { Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()) });
     }
 
-    // Parallel path: collect results, fail fast on first error
-    let results: Vec<Result<B, XenonError>> = tensor
+    // Parallel path: prefer try-based propagation so worker failures surface as
+    // soon as the parallel framework can stop scheduling more work.
+    let output: Result<Vec<B>, XenonError> = tensor
         .par_iter()
         .map(|x| f(x))
         .collect();
 
-    // Check for errors
-    let mut output = Vec::with_capacity(tensor.len());
-    for result in results {
-        output.push(result?);
-    }
+    let output = output?;
     // SAFETY: output length == tensor.len() (each successful result produces one output)
     Ok(unsafe { Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()) })
 }

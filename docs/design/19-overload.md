@@ -279,7 +279,7 @@ where
 }
 ```
 
-> **说明**：`Scalar<A>` 包装器是当前版本对“左标量 + 张量”语法的工程性折中。由于 `Add` 是外部 trait，`A` 是无约束泛型，直接 `impl Add<TensorBase<...>> for A` 违反孤儿规则。Xenon 当前稳定承诺的语法边界是：支持 `tensor + scalar` 与 `Scalar(scalar) + tensor`，**不承诺原生 `scalar + tensor`**。
+> **说明**：`Scalar<A>` 包装器是当前版本对“左标量 + 张量”语法的工程性折中。对于泛型 `A`，直接 `impl Add<TensorBase<...>> for A` 确实违反孤儿规则；但对于 Xenon 封闭元素集合中的具体标量类型，未来仍可通过逐类型生成 impl 的方式扩展原生 `scalar + tensor` 支持。Xenon 当前稳定承诺的语法边界是：支持 `tensor + scalar` 与 `Scalar(scalar) + tensor`，**暂不承诺原生 `scalar + tensor`**。
 
 > **说明**：对于涉及 `&A` 的组合（上表第 2 行），不要依赖 Rust 的隐式 auto-deref 作为公开 API 契约。若库希望稳定支持 `tensor + &scalar`，应显式提供 `Add<&A>` 方向的实现；否则文档只保证值形式 `tensor + scalar` 与 `Scalar(scalar) + tensor`。
 

@@ -323,7 +323,7 @@ i=0: shape[0]=2, stride[0]=3, expected=1 ✗
 ### 4.5 对齐检查
 
 ```rust
-/// Checks whether the logical first-element pointer satisfies the alignment requirement.
+/// Checks whether the logical-first pointer satisfies the alignment requirement.
 #[inline]
 pub fn is_aligned_to(ptr: *const u8, align: usize) -> bool {
     (ptr as usize) % align == 0
@@ -339,6 +339,8 @@ pub fn is_aligned(ptr: *const u8) -> bool {
 ### 4.6 对齐与数据一致性
 
 > **数据一致性保证：** 对齐布局（64 字节对齐）与非对齐布局必须产生相同的元素值。对齐仅影响 SIMD 访问性能，不改变数据语义。`Owned::from_vec_aligned(data)` 和 `Owned::from_vec(data)` 构造的张量在逻辑上完全等价——`is_aligned()` 标志仅用于指导 SIMD 路径选择。
+
+> **Strides 归属约定：** `Strides<D>` 由 layout 模块定义并拥有；`dimension` 只提供 `checked_size()` 和无符号 F-order 形状推导，绝不保存 signed stride 或 logical-first pointer 语义。`tensor` 持有 `Strides<D>` 实例并把它交给 layout 计算标志位。
 
 ### 4.7 负步长语义
 

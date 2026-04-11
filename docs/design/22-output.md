@@ -557,7 +557,7 @@ Wave 3:        [T5]
 用户调用 `format!("{}", tensor)` / `format!("{:?}", tensor)`
     │
     ├── output 模块先查询 tensor 的 shape / strides / flags / dtype
-    ├── 再通过 iter 路径按逻辑顺序读取需要展示的元素
+    ├── 再通过 pretty 层递归子视图/逻辑索引读取需要展示的元素
     ├── 若元素总数超过 threshold，则按截断规则挑选 edge items
     └── 最终直接写入 Formatter，不分配额外堆内存
 ```

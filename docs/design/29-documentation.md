@@ -71,8 +71,7 @@ src/
 │   └── mod.rs                # 张量模块文档（L1）
 ├── overload/
 │   └── mod.rs                # 运算符重载模块文档（L1）
-├── broadcast.rs
-│   └── mod.rs                # 广播模块文档（L1）
+├── broadcast.rs              # 广播模块文档（L1，单文件模块）
 ├── shape/
 │   └── mod.rs                # 形状操作模块文档（L1）
 ├── index/
@@ -123,7 +122,7 @@ CHANGELOG.md                  # 版本变更记录
 ├── 依赖 `00-coding.md`
 │   └── 文档风格遵循编码规范（参见 `00-coding.md §6`）
 ├── 被 28-integration-tests 依赖
-│   └── doctest 也是测试的一部分（参见 `28-tests.md §11`）
+│   └── doctest 也是测试的一部分（参见 `28-tests.md §5` 与 `§7`）
 └── 被 27-benchmark 依赖
     └── benchmark 文档引用性能相关 API 文档（参见 `27-benchmark.md §10` 与 `§12`）
 ```
@@ -338,7 +337,7 @@ pub fn par_sum(&self) -> A { ... }
 | `broadcasting.rs` | 广播规则、行/列/标量广播 | 默认 | 日常使用 |
 | `parallel.rs` | 并行计算、阈值配置 | `parallel` | 性能优化（参见 `09-parallel.md §4`） |
 | `simd.rs` | SIMD 加速、回退策略 | `simd` | 性能优化（参见 `08-simd.md §4`） |
-| `examples/templates/no_std-app/` | `no_std + alloc` 使用模式模板工程 | 默认关闭 `std` | 系统/嵌入式开发者 |
+| `templates/no_std-app/` | `no_std + alloc` 使用模式模板工程 | 默认关闭 `std` | 系统/嵌入式开发者 |
 | `ffi.rs` | 与 C/BLAS 交互 | 默认 | 库开发者 |
 
 ### 8.2 示例模板
@@ -385,7 +384,7 @@ fn main() -> xenon::Result<()> {
 Rust N-dimensional tensor library for scientific computing.
 
 ## Features
-- N-dimensional arrays with static (0-6D) and dynamic dimensions (IxDyn up to 100 axes)
+- N-dimensional arrays with static (0-6D) and dynamic dimensions (`IxDyn` for runtime-rank tensors)
 - Column-major (F-order) default, BLAS-compatible memory layout
 - Custom FFI-friendly complex number type
 - Optional SIMD (pulp) and parallel (rayon) acceleration

@@ -374,6 +374,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_workspace_borrow_rules` | 借用守卫与复借用约束 | 高 |
 | `test_workspace_split` | split 后子工作空间边界正确 | 中 |
 | `test_workspace_ensure_capacity` | 扩容不破坏已借用安全性 | 高 |
+| `test_workspace_assume_init_prefix` | `assume_init_*` 只允许访问调用方已证明初始化的前缀 | 高 |
 
 ### 5.16 test_parallel.rs
 
@@ -391,6 +392,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_simd_add_consistency` | SIMD add 与标量 add 结果一致（参见 `08-simd.md §7`） | 高 |
 | `test_simd_sum_consistency` | SIMD sum 与标量 sum 结果一致 | 高 |
 | `test_simd_fallback_small` | 小数组 SIMD 回退到标量 | 中 |
+| `test_simd_complex_fallback` | Complex 输入自动回退标量路径 | 中 |
 
 ### 5.18 no_std 编译验证
 
@@ -419,6 +421,10 @@ no_std_check:
 | `test_dimension_mismatch_error` | 维度互转失败返回 `XenonError::DimensionMismatch` | 高 |
 | `test_layout_mismatch_error` | 布局不兼容操作返回 LayoutMismatch | 高 |
 | `test_error_display` | 所有错误类型的 Display 包含上下文 | 中 |
+| `test_send_sync_contracts` | 各 storage mode 的 Send/Sync 边界与 `25-safety.md` 一致 | 高 |
+| `test_complex_c99_layout` | `Complex<T>` 的 C-compatible 布局与 FFI 约定一致 | 高 |
+| `test_ix0_iter_single` | 零维张量元素迭代恰好产出 1 个元素 | 高 |
+| `test_zst_storage_no_ub` | ZST 存储与张量操作不触发 UB | 高 |
 
 ---
 

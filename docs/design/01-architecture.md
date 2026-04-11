@@ -216,7 +216,7 @@ xenon/
 │   │   ├── types.rs           # BlasLayout, BlasTrans, BlasInfo 类型定义
 │   │   ├── ptr.rs             # 原始指针 API（as_ptr, as_mut_ptr, from_raw_parts, into_raw_parts）
 │   │   ├── blas.rs            # BLAS 兼容性检查（is_blas_compatible, blas_info, lda）
-│   │   └── offset.rs          # 多维索引到指针偏移（offset_of, ptr_at）
+│   │   └── offset.rs          # 多维索引到指针偏移（try_offset_of/offset_of, try_ptr_at/ptr_at）
 │   │
 │   ├── workspace/             # 临时工作空间
 │       ├── mod.rs             # 模块根，re-exports
@@ -230,7 +230,7 @@ xenon/
 │   ├── common/
 │   │   └── mod.rs             # 共享测试工具
 │   ├── test_tensor.rs         # 张量基础测试
-│   ├── test_math.rs            # 运算测试
+│   ├── test_math.rs           # 运算测试
 │   ├── test_broadcast.rs      # 广播测试
 │   └── test_index.rs          # 索引测试
 │
@@ -387,7 +387,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 | **L1** | dimension, element, complex | error（element 额外依赖 complex） | `02-dimension.md`、`03-element.md`、`04-complex.md` |
 | **L2** | layout | error, dimension | `06-memory.md` |
 | **L2** | workspace | core, alloc（独立于核心类型系统，可被上游库直接使用） | `24-workspace.md` |
-| **L3** | storage | core, alloc（布局信息由 `tensor` 持有并消费 `layout` 结果） | `05-storage.md` |
+| **L3** | storage | core, alloc（只持有底层连续缓冲区，不消费 `dimension` 或 `layout`） | `05-storage.md` |
 | **L4** | tensor | storage, dimension, layout, element | `07-tensor.md` |
 | **L5** | broadcast, iter, ffi, simd, parallel | tensor（parallel 额外依赖 iter/broadcast；simd 额外依赖 layout/element） | `15-broadcast.md`、`10-iterator.md`、`23-ffi.md`、`08-simd.md`、`09-parallel.md` |
 | **L6** | math, overload, set, matrix, reduction, shape, index, util | tensor, broadcast，以及按需调用独立 backend 模块 | `11-math.md`、`12-matrix.md`、`13-reduction.md`、`14-set.md`、`16-shape.md`、`17-indexing.md`、`19-overload.md`、`20-utility.md` |

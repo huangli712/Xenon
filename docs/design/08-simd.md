@@ -305,6 +305,23 @@ pub fn get_arch() -> Arch {
 pub fn get_arch() -> () {
     ()
 }
+
+/// Stable dispatch facade used by upper semantic modules.
+///
+/// `math/`, `matrix/`, and `reduction/` must call this facade instead of naming
+/// concrete vector kernel types directly. The facade may choose a vector kernel
+/// or fall back to `ScalarKernel` based on contiguity, alignment, and the
+/// operation-specific consistency contract.
+pub enum BinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
+
+pub fn dispatch_binary_op<A>(op: BinaryOp, lhs: &TensorView<A, D>, rhs: &TensorView<A, D>) -> Tensor<A, D>
+where
+    A: SimdElement + Numeric + Copy;
 ```
 
 ### 4.5 SIMD 加速路径设计
@@ -454,8 +471,7 @@ fn add_arrays<A: SimdElement>(
     if can_use_simd(lhs.as_ptr(), lhs.len(), is_contiguous) {
         #[cfg(feature = "simd")]
         {
-            let arch = get_arch();
-            arch.dispatch(AddKernel { lhs, rhs, dst });
+            dispatch_binary_op(BinaryOp::Add, lhs, rhs, dst);
             return;
         }
     }
@@ -468,8 +484,7 @@ fn add_arrays<A: SimdElement>(
 fn add_arrays_bad<A: SimdElement>(lhs: &[A], rhs: &[A], dst: &mut [A]) {
     // FORBIDDEN: using SIMD without checking conditions
     // May produce incorrect results on non-contiguous or unaligned data
-    let arch = get_arch();
-    arch.dispatch(AddKernel { lhs, rhs, dst });
+    dispatch_binary_op(BinaryOp::Add, lhs, rhs, dst);
 }
 ```
 

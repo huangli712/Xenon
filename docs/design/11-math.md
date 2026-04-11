@@ -408,7 +408,7 @@ where
     A: Numeric + Copy,
 {
     if a.is_f_contiguous() && b.is_f_contiguous() {
-        return simd::add_vectorized(a, b);
+        return simd::dispatch_binary_op(simd::BinaryOp::Add, a, b);
     }
     zip_with_scalar(a, b, |x, y| x + y)
 }
@@ -554,7 +554,7 @@ Wave 4: [T8]
 | `test_exp_ln_roundtrip` | exp(ln(x)) ≈ x | 中 |
 | `test_floor_ceil` | floor(1.7)=1, ceil(1.3)=2 | 中 |
 | `test_norm` | Complex{3,4}.norm() = 5.0 | 高 |
-| `test_conj` | Complex{1,2}.conj() = Complex{1,-2} | 中 |
+| `test_conjugate` | Complex{1,2}.conjugate() = Complex{1,-2} | 中 |
 | `test_not_bool` | !true = false, !false = true | 中 |
 | `test_eq_f64` | 逐元素相等比较 | 高 |
 | `test_lt_i32` | 逐元素小于比较 | 高 |
@@ -590,7 +590,7 @@ Wave 4: [T8]
 | `math → iter` | `iter` | `Elements` / `Zip` | `map` 路径复用 `Elements`，`zip_with` 路径复用 `Zip`（参见 `10-iterator.md` §4） |
 | `math → broadcast` | `broadcast` | `broadcast_shape()` | 二元运算先调用广播模块推导兼容视图（参见 `15-broadcast.md` §4） |
 | `math → element` | `element` | `Numeric` / `RealScalar` / `ComplexScalar` | 通过元素约束区分数值与复数运算语义（参见 `03-element.md` §4） |
-| `math → simd` | `simd` | SIMD backend | 连续数组且 feature 开启时可自动走 SIMD 路径（参见 `08-simd.md` §4.5） |
+| `math → simd` | `simd` | SIMD backend dispatch facade | 连续数组且 feature 开启时通过稳定的 backend facade 分发到 SIMD 或标量路径，`math` 不直接依赖具体 vector kernel 名称（参见 `08-simd.md` §4.5） |
 
 ### 8.2 数据流描述
 

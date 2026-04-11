@@ -214,7 +214,10 @@ where
         E: Dimension,
     {
         // 1. Check element count
-        let new_len: usize = shape.slice().iter().product();
+        let new_len = shape.checked_size().ok_or(XenonError::InvalidShape {
+            from: self.len(),
+            to: usize::MAX,
+        })?;
         if new_len != self.len() {
             return Err(XenonError::InvalidShape {
                 from: self.len(),
@@ -268,7 +271,10 @@ where
         S: StorageIntoOwned,  // see 05-storage.md §4.8b
         A: Clone,
     {
-        let new_len: usize = shape.slice().iter().product();
+        let new_len = shape.checked_size().ok_or(XenonError::InvalidShape {
+            from: self.len(),
+            to: usize::MAX,
+        })?;
         if new_len != self.len() {
             return Err(XenonError::InvalidShape {
                 from: self.len(),

@@ -426,10 +426,14 @@ unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 ```rust
 // Good - recoverable error
 pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>> {
-    if self.len() != shape.size() {
+    let target = shape.checked_size().ok_or(XenonError::InvalidShape {
+        from: self.len(),
+        to: usize::MAX,
+    })?;
+    if self.len() != target {
         return Err(XenonError::InvalidShape {
             from: self.len(),
-            to: shape.size(),
+            to: target,
         });
     }
     // ...
@@ -447,7 +451,8 @@ fn compute_offset(&self, index: &[Ix]) -> usize {
 
 // Bad - using panic for recoverable error
 pub fn reshape_bad<D2>(self, shape: D2) -> Tensor<A, D2> {
-    if self.len() != shape.size() {
+    let target = shape.checked_size().expect("reshape_bad: target element count overflow");
+    if self.len() != target {
         panic!("size mismatch");  // should return Result
     }
     // ...
@@ -485,8 +490,12 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 ```rust
 // Good - use ? and Result
 pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>> {
-    if self.len() != shape.size() {
-        return Err(XenonError::InvalidShape { from: self.len(), to: shape.size() });
+    let target = shape.checked_size().ok_or(XenonError::InvalidShape {
+        from: self.len(),
+        to: usize::MAX,
+    })?;
+    if self.len() != target {
+        return Err(XenonError::InvalidShape { from: self.len(), to: target });
     }
     // ...
 }
@@ -668,7 +677,8 @@ extern crate alloc;
 /// This operation preserves the total number of elements.
 ///
 /// # Errors
-/// Returns [`XenonError::InvalidShape`] if `shape.size() != self.len()`.
+/// Returns [`XenonError::InvalidShape`] if `shape.checked_size()` overflows or
+/// if the target element count differs from `self.len()`.
 ///
 /// # Examples
 /// ```rust
