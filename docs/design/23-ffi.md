@@ -16,7 +16,7 @@
 | 裸指针构造张量 | `from_raw_parts`/`from_raw_parts_mut` | GPU 内存操作 |
 | 裸指针解构张量 | `into_raw_parts` | 跨进程共享内存 |
 | BLAS 兼容性 API | `blas_layout()`/`is_blas_compatible()` | 自动调用 BLAS（由上游库负责） |
-| 多维索引转换 | `offset_of()`/`ptr_at()` | 序列化/反序列化 |
+| 多维索引转换 | `try_offset_of()`/`try_ptr_at()` + panic 语法糖 | 序列化/反序列化 |
 
 ### 1.2 设计原则
 
@@ -129,6 +129,13 @@ pub enum BlasTrans {
     Trans,
     /// Conjugate transpose (complex only).
     ConjTrans,
+}
+
+impl BlasLayout {
+    /// Xenon exposes BLAS-compatible tensors as column-major only.
+    pub const fn blas_layout() -> Self {
+        BlasLayout::ColumnMajor
+    }
 }
 ```
 

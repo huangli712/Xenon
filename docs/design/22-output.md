@@ -206,6 +206,8 @@ where
 
 ### 4.2 Display 实现
 
+> **读取顺序约定**：格式化输出按**逻辑多维索引顺序**读取元素，而不是按底层物理内存顺序线性扫描。若内部复用 `iter()`，则要求 `iter()` 对外暴露的顺序与该逻辑顺序保持一致；格式化层不额外依赖 F-order 物理地址顺序。
+
 > **注意**：`core::fmt::Display` 在 Rust 1.85 中对 f32/f64 无需 `std` 即可使用，因此此实现不加 `#[cfg(feature = "std")]` 门控。
 
 ```rust
@@ -411,18 +413,16 @@ fmt_1d(tensor, f):
         write "]"
 
 fmt_nd(tensor, f, depth):
-    if depth == ndim - 1:
-        fmt_1d(current_row, f)
-    else:
-        write "[" * (ndim - depth)
-        for each row in tensor:
-            if should_truncate:
-                show first edge_items rows
-                write "..."
-                show last edge_items rows
-            else:
-                fmt_nd(sub_tensor, f, depth + 1)
-        write "]" * (ndim - depth)
+    write "["
+    iterate logical slices along axis = ndim - depth - 1:
+        if current axis should truncate:
+            format first edge_items slices
+            write ", ..."
+            format last edge_items slices
+        else:
+            recursively format each child slice with fmt_nd(child, f, depth + 1)
+        insert commas/newlines between sibling slices
+    write "]"
 ```
 
 ---

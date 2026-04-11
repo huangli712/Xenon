@@ -197,7 +197,7 @@ pub struct Workspace {
 }
 ```
 
-> **设计决策：** 使用 `AtomicU8` 管理借用状态而非 `Mutex`，原因：无锁（`no_std` 兼容）、状态简单（仅需 3 个值）（参见 `25-safety.md §4.1`）。
+> **设计决策：** 使用 `AtomicU8` 管理借用状态而非 `Mutex`，原因：无锁、状态简单（仅需 3 个值）。但这要求目标平台提供原子能力，因此本文档中的 `no_std` 兼容性语义应解读为 **`no_std + alloc + atomics`**（参见 `25-safety.md §4.1`）。
 
 ### 4.2 常量
 
@@ -1053,7 +1053,7 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 | `alloc::alloc::dealloc` | alloc | ✅ |
 | `alloc::alloc::Layout` | alloc | ✅ |
 
-所有依赖均在 `core` 或 `alloc` 中，完全兼容 `no_std`（参见 `01-architecture.md §6`）。
+所有依赖均在 `core` 或 `alloc` 中；若目标平台提供原子操作，则兼容 `no_std + alloc + atomics`（参见 `01-architecture.md §6`）。若无原子支持，需改用更窄的借用模型或目标专用实现。
 
 ```toml
 # Cargo.toml

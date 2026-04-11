@@ -100,12 +100,12 @@ pub fn computeStrides(shape: &[Ix]) -> Vec<Ix>;
 
 ```rust
 // Good
-pub const MAX_DIMENSION: usize = 6;
+pub const MAX_DIMENSION: usize = 100;
 pub const DEFAULT_ALIGNMENT: usize = 64;
 const INTERNAL_BUFFER_SIZE: usize = 1024;
 
 // Bad
-pub const maxDimension: usize = 6;
+pub const maxDimension: usize = 100;
 pub const Max_Dimension: usize = 6;
 ```
 

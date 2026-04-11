@@ -191,10 +191,24 @@ dot_impl(a, b):
 ### 5.2 标量实现
 
 ```rust
-fn scalar_dot<A: Numeric + Copy>(a: &TensorView<A, Ix1>, b: &TensorView<A, Ix1>) -> A {
+fn scalar_dot_int<I: Numeric + CheckedAdd + Copy>(
+    a: &TensorView<I, Ix1>,
+    b: &TensorView<I, Ix1>,
+) -> I {
     a.iter()
         .zip(b.iter())
-        .fold(A::zero(), |acc, (&x, &y)| acc.checked_add(x.conjugate() * y).expect("dot overflow"))
+        .fold(I::zero(), |acc, (&x, &y)| {
+            acc.checked_add(x.conjugate() * y).expect("dot overflow")
+        })
+}
+
+fn scalar_dot_float_or_complex<A: Numeric + Copy>(
+    a: &TensorView<A, Ix1>,
+    b: &TensorView<A, Ix1>,
+) -> A {
+    a.iter()
+        .zip(b.iter())
+        .fold(A::zero(), |acc, (&x, &y)| acc + x.conjugate() * y)
 }
 ```
 
@@ -215,10 +229,12 @@ fn scalar_dot<A: Numeric + Copy>(a: &TensorView<A, Ix1>, b: &TensorView<A, Ix1>)
 fn dot_impl<A: Numeric + Copy>(
     a: &TensorView<'_, A, Ix1>,
     b: &TensorView<'_, A, Ix1>,
-) -> A {
-    // dispatches to integer checked path or float/complex path
-    // after generating x.conjugate() * y products
-    unimplemented!("see scalar_dot and CheckedAdd-dispatched accumulation strategy")
+) -> Result<A, XenonError> {
+    // 1. validate shape
+    // 2. dispatch to integer checked path or float/complex path
+    // 3. optionally delegate to simd backend only when the selected kernel
+    //    preserves Xenon's exact-result contract
+    unimplemented!("dispatches to scalar_dot_int or scalar_dot_float_or_complex")
 }
 ```
 
@@ -389,7 +405,7 @@ Wave 4: [T4]
 |------|----------|-------------------|--------|
 | dot f32 (1M) | ~1.5ms | ~0.4ms | 3.7x |
 | dot f64 (1M) | ~2ms | ~0.7ms | 2.9x |
-| dot complex f64 (1M) | ~6ms | ~2.5ms | 2.4x |
+| dot complex f64 (1M) | ~6ms | 标量回退 | 1.0x |
 
 ### 10.2 复杂度标注
 

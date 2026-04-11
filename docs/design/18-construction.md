@@ -119,16 +119,16 @@ where
     /// assert_eq!(t.shape(), &[3, 4]);
     /// assert!(t.iter().all(|&x| x == 0.0));
     /// ```
-    pub fn zeros<Sh>(shape: Sh) -> Self
+    pub fn zeros<Sh>(shape: Sh) -> Result<Self, XenonError>
     where
         A: Element,  // A::zero() is provided by the Element trait (see 03-element.md §4.1)
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();
-        let len = dim.size();
+        let len = dim.checked_size().ok_or(XenonError::InvalidShape { from: usize::MAX, to: 0 })?;
         let strides = dim.strides_for_f_order();
         let storage = Owned::zeros(len);
-        TensorBase { storage, shape: dim, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) }
+        Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) })
     }
 
     /// Create a tensor filled with ones (F-order).
@@ -138,7 +138,7 @@ where
     /// let t = Tensor::<f64, _>::ones([2, 3]);
     /// assert!(t.iter().all(|&x| x == 1.0));
     /// ```
-    pub fn ones<Sh>(shape: Sh) -> Self
+    pub fn ones<Sh>(shape: Sh) -> Result<Self, XenonError>
     where
         A: Element,  // A::one() is provided by the Element trait (see 03-element.md §4.1)
         Sh: IntoDimension<Dim = D>,
@@ -153,16 +153,16 @@ where
     /// let t = Tensor::<f64, _>::full([2, 2], 3.14);
     /// assert!(t.iter().all(|&x| x == 3.14));
     /// ```
-    pub fn full<Sh>(shape: Sh, value: A) -> Self
+    pub fn full<Sh>(shape: Sh, value: A) -> Result<Self, XenonError>
     where
         A: Clone,
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();
-        let len = dim.size();
+        let len = dim.checked_size().ok_or(XenonError::InvalidShape { from: usize::MAX, to: 0 })?;
         let strides = dim.strides_for_f_order();
         let storage = Owned::from_elem(len, value);
-        TensorBase { storage, shape: dim, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) }
+        Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) })
     }
 }
 ```
@@ -185,15 +185,15 @@ where
     /// assert_eq!(e[[0, 1]], 0.0);
     /// assert_eq!(e[[1, 1]], 1.0);
     /// ```
-    pub fn eye(n: usize) -> Self
+    pub fn eye(n: usize) -> Result<Self, XenonError>
     where
         A: Element,
     {
-        let mut result = Self::zeros([n, n]);
+        let mut result = Self::zeros([n, n])?;
         for i in 0..n {
             result[[i, i]] = A::one();
         }
-        result
+        Ok(result)
     }
 }
 ```

@@ -199,7 +199,7 @@ impl SimdElement for i64 {
 /// # Type Parameters
 ///
 /// * `A` - Element type, must implement `SimdElement`
-pub trait SimdKernel<A: SimdElement>: Send + Sync {
+pub trait SimdKernel<A: Copy + Send + Sync + 'static>: Send + Sync {
     // ========================================
     // Metadata
     // ========================================
@@ -549,24 +549,24 @@ pub fn add_f32_simd(lhs: &[f32], rhs: &[f32], dst: &mut [f32]) {
 ```rust
 // src/simd/scalar.rs
 
-use crate::simd::{SimdElement, SimdKernel};
+use crate::simd::SimdKernel;
 
 /// Scalar kernel implementation.
 ///
 /// All operations use pure scalar loops without SIMD instructions.
 /// Serves as the reference implementation and fallback path.
-pub struct ScalarKernel<A: SimdElement> {
+pub struct ScalarKernel<A: Copy + Send + Sync + 'static> {
     _marker: core::marker::PhantomData<A>,
 }
 
-impl<A: SimdElement> ScalarKernel<A> {
+impl<A: Copy + Send + Sync + 'static> ScalarKernel<A> {
     #[inline]
     pub const fn new() -> Self {
         Self { _marker: core::marker::PhantomData }
     }
 }
 
-impl<A: SimdElement> Default for ScalarKernel<A> {
+impl<A: Copy + Send + Sync + 'static> Default for ScalarKernel<A> {
     fn default() -> Self { Self::new() }
 }
 
@@ -772,10 +772,10 @@ dispatch 调用流程
   - 前置: T1
   - 预计: 15 min
 
-- [ ] **T4**: 实现归约与内积 SIMD 路径
+- [ ] **T4**: 实现受限的归约与内积 SIMD 路径
   - 文件: `src/simd/vector.rs`
-  - 内容: `SumKernel`/`DotKernel` WithSimd 实现（含水平求和）
-  - 测试: `test_vector_sum_f64`、`test_vector_dot_f64`
+  - 内容: 仅为已具备一致性证明的类型/内核启用 `SumKernel`/`DotKernel`；其余情况统一 dispatch 到 `ScalarKernel`
+  - 测试: `test_sum_dispatch_fallback`、`test_dot_dispatch_fallback`
   - 前置: T3
   - 预计: 10 min
 
@@ -835,8 +835,8 @@ Wave 4:   [T6]
 | `test_scalar_dot_f64` | 标量内积基本正确性 | 高 |
 | `test_vector_add_f32` | SIMD f32 加法正确性 | 高 |
 | `test_vector_add_f64` | SIMD f64 加法正确性 | 高 |
-| `test_vector_sum_f64` | SIMD 归约求和正确性 | 高 |
-| `test_vector_dot_f64` | SIMD 内积正确性 | 高 |
+| `test_sum_dispatch_fallback` | 浮点 sum 在未证明一致性时自动回退标量 | 高 |
+| `test_dot_dispatch_fallback` | 浮点 dot 在未证明一致性时自动回退标量 | 高 |
 | `test_simd_scalar_consistency` | SIMD 与标量结果一致 | 高 |
 | `test_tail_handling` | 非宽度整数倍数组尾部处理 | 中 |
 | `test_empty_array` | 空数组不 panic | 中 |

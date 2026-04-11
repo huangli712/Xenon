@@ -461,10 +461,9 @@ let c = a + f64::from(b);
 ### 5.5 RealScalar 实现（以 f64 为例）
 
 ```rust
-// RealScalar is only implemented when std is available.
-// In no_std environments, RealScalar math functions (sin/cos/exp/ln/etc.) are NOT available.
-// Callers that need these functions in no_std should gate their code with #[cfg(feature = "std")].
-#[cfg(feature = "std")]
+// RealScalar is implemented for both std and no_std builds.
+// In no_std environments Xenon provides portable internal math backends so the
+// public RealScalar API surface remains identical.
 impl RealScalar for f64 {
     fn abs(self) -> Self { self.abs() }
     fn sqrt(self) -> Self { self.sqrt() }
@@ -619,9 +618,9 @@ fn max(self, other: Self) -> Self {
 
 ### Wave 5: 集成完善
 
-- [ ] **T10**: 添加 no_std 兼容性（条件编译 std）
+- [ ] **T10**: 添加 no_std 数学后端兼容层
   - 文件: `src/element/real.rs`
-  - 内容: `#[cfg(feature = "std")]` 下实现 `RealScalar`；`#[cfg(not(feature = "std"))]` 下不实现（数学方法不可用）
+  - 内容: 为 `f32`/`f64` 的数学函数接入 crate 内部可移植实现，保证 `std` 与 `no_std + alloc` 下的 `RealScalar` API 完整一致
   - 测试: 两种 feature 组合编译通过
   - 前置: T6
   - 预计: 10 min
@@ -787,14 +786,14 @@ Wave 3: [T6]      [T9] ← ────┘
 
 ## 11. no_std 兼容性
 
-> **⚠️ 兼容性说明**：在 `no_std` 环境下，`RealScalar` 的**数学函数扩展**（`sin/cos/sqrt/exp/ln/floor/ceil`）不可用，因为 Rust 1.85 中这些浮点数学函数仍通过 `std` 提供。Xenon 不引入 `libm`。因此依赖这些数学函数的代码必须以 `#[cfg(feature = "std")]` 门控；仅依赖 `Element` / `Numeric` / `RealScalar` 常量与特殊值检测语义的文档说明在 no_std 下仍成立。
+> **兼容性说明**：在 `no_std + alloc` 环境下，`RealScalar` 的数学函数扩展（`sin/cos/sqrt/exp/ln/floor/ceil/abs`）仍然可用。Xenon 通过 crate 内部可移植数学实现保持 `std` 与 `no_std` 的公共 trait 面一致，因此调用方无需因为 `no_std` 而丢失 `RealScalar` 能力。
 
 | 组件 | 兼容方案 |
 |------|----------|
 | `Element` / `Numeric` / `ComplexScalar` | 纯 trait，天然 no_std |
-| `RealScalar` 数学函数 | 仅在 `#[cfg(feature = "std")]` 下实现；**需要 std feature**（浮点数学函数 `sin`/`cos`/`sqrt`/`exp`/`ln`/`floor`/`ceil`/`abs` 在 Rust 1.85 中仍通过 `std` 提供） |
-| `RealScalar` 常量与 NaN 检测 | 语义上不依赖 `std` 数学函数；若未来拆分为基础 trait + std 扩展 trait，这些能力可直接留在 no_std 基础层 |
-| Feature gate | `Cargo.toml`: `default = ["std"]`；`RealScalar` 数学函数需要 std feature（浮点数学函数在 Rust 1.85 中仍通过 `std` 提供，Xenon 不引入额外 libm 依赖） |
+| `RealScalar` 数学函数 | 通过 Xenon 内部可移植数学实现提供，`std` 与 `no_std + alloc` 下 API 保持一致 |
+| `RealScalar` 常量与 NaN 检测 | 语义上不依赖 `std`，在所有构建模式下保持一致 |
+| Feature gate | `Cargo.toml`: `default = ["std"]`；`std` 仅扩展错误集成、线程/IO 能力，不缩减 `RealScalar` 的数学函数集合 |
 
 ---
 

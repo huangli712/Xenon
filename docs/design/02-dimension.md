@@ -196,7 +196,7 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
 
 ```rust
 /// Maximum supported dimensionality.
-pub const MAX_DIMENSION: usize = 6;
+pub const MAX_DIMENSION: usize = 100;
 
 /// Zero-dimensional (scalar) dimension. ZST.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
@@ -285,7 +285,7 @@ impl Dimension for Ix3 {
 
     #[inline]
     fn strides_for_f_order(&self) -> Self {
-        Ix3(1, self.0, self.0 * self.1)
+        Ix3(1, self.0, self.0.checked_mul(self.1).expect("f-order stride overflow"))
     }
 
     #[inline]
@@ -315,7 +315,7 @@ impl Dimension for Ix3 {
 
 ```rust
 /// Dynamic dimension type. Dimension count determined at runtime.
-/// Supports 0 to `MAX_DIMENSION` (6) dimensions.
+/// Supports 0 to `MAX_DIMENSION` (100) dimensions.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub struct IxDyn {
     dims: Vec<usize>,

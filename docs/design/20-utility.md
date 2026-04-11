@@ -129,7 +129,7 @@ where
     ///
     /// # Errors
     ///
-    /// Returns `Err(XenonError::InvalidShape)` when `min > max`.
+    /// Returns `Err(XenonError::InvalidArgument)` when `min > max`.
     ///
     /// # Examples
     ///
@@ -143,7 +143,7 @@ where
         A: Clone,
     {
         if min > max {
-            return Err(XenonError::InvalidShape { from: 1, to: 0 });
+            return Err(XenonError::InvalidArgument { message: "clip requires min <= max" });
         }
         Ok(self.mapv(|x| if x < min { min.clone() } else if x > max { max.clone() } else { x }))
     }
@@ -163,7 +163,7 @@ where
         A: Clone,
     {
         if min > max {
-            return Err(XenonError::InvalidShape { from: 1, to: 0 });
+            return Err(XenonError::InvalidArgument { message: "clip requires min <= max" });
         }
         for elem in self.iter_mut() {
             if *elem < min {
@@ -348,7 +348,7 @@ to_contiguous(tensor):
 
 - [ ] **T2**: 实现 `clip` 方法
   - 文件: `src/util/clip.rs`
-  - 内容: `clip(&self, min: A, max: A) -> Tensor<A, D>` 和 `clip_inplace` 方法
+  - 内容: `clip(&self, min: A, max: A) -> Result<Tensor<A, D>, XenonError>` 和 `clip_inplace` 方法
   - 测试: `test_clip_basic`, `test_clip_nan`, `test_clip_integers`
   - 前置: T1
   - 预计: 10 min

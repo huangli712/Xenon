@@ -297,7 +297,9 @@ where
 
     /// Returns a mutable sliding window iterator, or None if any window dimension
     /// exceeds the corresponding array dimension.
-    /// Panics if called on a zero-dimensional tensor (Ix0).
+    /// Returns `None` for zero-dimensional tensors and for any shape that cannot
+    /// produce at least one logical window. For empty arrays, returns
+    /// `Some(WindowsMut)` whose `len() == 0` and iteration ends immediately.
     pub fn windows_mut(&mut self, size: impl IntoDimension<Dim = D>) -> Option<WindowsMut<'_, A, D>>
     where
         S: StorageMut<Elem = A>;
@@ -528,7 +530,7 @@ Wave 4:         [T9]
 | `test_axis_iter_shape` | 沿轴迭代产出的子视图形状正确 | 高 |
 | `test_windows_count` | 窗口数 = `product(shape - window + 1)` | 高 |
 | `test_windows_too_large` | 窗口大于数组返回 `None` | 中 |
-| `test_windows_empty` | 空数组返回 `None` | 中 |
+| `test_windows_empty` | 空数组返回长度为 0 的窗口迭代器 | 中 |
 | `test_indexed_iter_order` | 索引按 F-order 递增 | 高 |
 | `test_indexed_iter_ix0` | 零维张量索引为空切片 | 中 |
 | `test_zip_two_tensors` | Zip 同步遍历两个同形状张量 | 高 |

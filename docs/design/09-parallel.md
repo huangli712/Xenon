@@ -334,15 +334,12 @@ where
     D: Dimension,
     A: Element + Numeric + Send + Sync + Clone,
 {
-    // For integer reductions, the implementation must use checked accumulation
-    // and panic on overflow (see 13-reduction.md §5.1 / 26-error.md §5.2).
-    // For floating-point reductions, if exact serial equivalence cannot be proven,
-    // this entry must transparently fall back to the serial baseline.
-par_reduce(tensor, || A::zero(), |a, b| {
-    // For integer reductions, dispatch to CheckedAdd in the scalar fallback path
-    // or disable parallelization when exact serial equivalence cannot be proven.
-    a.checked_add(b).expect("parallel integer reduction overflow")
-})
+    // Dispatch policy:
+    // - integers: may use parallel checked accumulation when the reduction tree
+    //   preserves Xenon's exact result contract;
+    // - floats / complex: default to serial baseline unless a specific kernel has
+    //   a documented proof of exact equivalence.
+    dispatch_par_sum(tensor)
 }
 
 /// Parallel zip operation
@@ -1043,7 +1040,7 @@ Wave 4:        [T8]
 | 操作 | 元素数 | 4 核加速比 | 8 核加速比 |
 |------|--------|-----------|-----------|
 | par_map (f64) | 1M | ~3.5x | ~6x |
-| par_sum (f64) | 1M | ~3x | ~5x |
+| par_sum (f64) | 1M | 串行回退 | 串行回退 |
 | par_zip_with (f64) | 1M | ~3x | ~5.5x |
 
 ---

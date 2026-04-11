@@ -115,7 +115,7 @@ tests/
 | 来源模块 | 使用的类型/trait |
 |----------|-----------------|
 | `tensor` | `Tensor<A, D>`, `TensorView`, `TensorViewMut`, `ArcTensor`, `.shape()`, `.strides()`（参见 `07-tensor.md §4`） |
-| `dimension` | `Ix0`~`Ix6`, `IxDyn`, `Dimension`, `DimensionMismatch`（参见 `02-dimension.md §4`） |
+| `dimension` | `Ix0`~`Ix6`, `IxDyn`, `Dimension`, `XenonError::DimensionMismatch`（参见 `02-dimension.md §4`） |
 | `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element.md §4`） |
 | `complex` | `Complex<f32>`, `Complex<f64>`（参见 `04-complex.md §4`） |
 | `storage` | `Owned`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`, `Storage`（参见 `05-storage.md §4`） |
@@ -128,7 +128,7 @@ tests/
 
 ---
 
-## 4. 公共工具设计
+## 4. 公共 API 设计
 
 ### 4.1 tests/common/mod.rs
 
@@ -416,7 +416,7 @@ no_std_check:
 | `test_broadcast_error` | 不可广播返回 `XenonError::BroadcastError` | 高 |
 | `test_invalid_shape_error` | reshape 元素数不匹配返回 InvalidShape | 高 |
 | `test_invalid_axis_error` | 轴越界返回 InvalidAxis | 高 |
-| `test_dimension_mismatch_error` | 维度互转失败返回 DimensionMismatch | 高 |
+| `test_dimension_mismatch_error` | 维度互转失败返回 `XenonError::DimensionMismatch` | 高 |
 | `test_layout_mismatch_error` | 布局不兼容操作返回 LayoutMismatch | 高 |
 | `test_error_display` | 所有错误类型的 Display 包含上下文 | 中 |
 

@@ -247,7 +247,7 @@ fn sum_int<I: Numeric + CheckedAdd>(iter: impl Iterator<Item = &I>) -> I {
 ```rust
 // Float sum implementation
 fn sum_float<F: RealScalar>(iter: impl Iterator<Item = &F>) -> F {
-    iter.fold(F::zero(), |acc, &x| acc + *x)
+    iter.fold(F::zero(), |acc, &x| acc + x)
     // NaN + anything = NaN, auto-propagation
 }
 ```
@@ -268,14 +268,15 @@ sum_axis_keepdims(tensor, axis):
     1. 计算 result_shape = tensor.shape().to_owned()
     2. result_shape[axis] = 1       // 将被归约的轴长度设为 1
     3. 分配 result = Tensor::zeros(result_shape)
-    4. 对每个沿 axis 的切片 s in tensor.axis_iter(axis):
-           result.slice_mut(对应外层坐标) += s.sum()
+    4. 遍历输入张量的每个逻辑坐标 idx：
+           out_idx = idx.clone(); out_idx[axis] = 0
+           result[out_idx] = checked_or_regular_add(result[out_idx], tensor[idx])
     5. 返回 result
 
 输出类型：Tensor<A, D>（维度数与输入相同，被归约轴长度为 1）
 ```
 
-对静态维度（如 `Ix2`），通过 `Dimension::set_axis(axis, 1)` 将对应轴设为 1，得到新的 shape 实例，再构造输出张量。这要求 `D: RemoveAxis`（用于 axis 边界检查），但输出仍为 `Tensor<A, D>` 而非降维类型。
+对静态维度（如 `Ix2`），通过 `Dimension::set_axis(axis, 1)` 将对应轴设为 1，得到新的 shape 实例，再构造输出张量。输出保持 `Tensor<A, D>`，仅被归约轴的长度变为 1；axis 边界检查仍通过显式 `axis.index() < ndim` 完成。
 
 ---
 

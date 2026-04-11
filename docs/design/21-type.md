@@ -364,17 +364,17 @@ pub(crate) fn util_internal_to_f_contiguous(&self) -> Tensor<A, D> {
 ```rust
 // Vec<A> → Tensor<A, Ix1>
 impl<A: Element> From<Vec<A>> for Tensor<A, Ix1> {
-    fn from(vec: Vec<A>) -> Self { Self::from_vec(vec) }
+    fn from(vec: Vec<A>) -> Self { Self::from_shape_vec([vec.len()], vec).expect("Vec -> Tensor1 shape is always valid") }
 }
 
 // &[A] → Tensor<A, Ix1>
 impl<A: Element + Clone> From<&[A]> for Tensor<A, Ix1> {
-    fn from(slice: &[A]) -> Self { Self::from_slice(slice) }
+    fn from(slice: &[A]) -> Self { Self::from_shape_slice([slice.len()], slice).expect("slice -> Tensor1 shape is always valid") }
 }
 
 // [A; N] → Tensor<A, Ix1>
 impl<A: Element, const N: usize> From<[A; N]> for Tensor<A, Ix1> {
-    fn from(arr: [A; N]) -> Self { Self::from_vec(arr.into_iter().collect()) }
+    fn from(arr: [A; N]) -> Self { Self::from_shape_vec([N], arr.into_iter().collect()).expect("array -> Tensor1 shape is always valid") }
 }
 
 // &Tensor → TensorView
@@ -580,7 +580,7 @@ Wave 3: [T6] [T7]  (并行)
 | `convert → element` | `element` | `CastTo` | 逐元素类型转换通过 `CastTo` trait 驱动，参见 `03-element.md` §4 |
 | `convert → math` | `math` | 逐元素转换语义 | `cast()` 采用迭代收集路径，不复用 `mapv()` 的同类型返回语义 |
 | `convert → storage` | `storage` | `Owned` / `ViewRepr` / `ArcRepr` | 存储模式互转依赖 owned 化与借用语义，参见 `05-storage.md` §4 |
-| `convert → layout` | `layout` | `is_f_contiguous()` | `to_owned()` 先检查布局是否需要重排，参见 `06-memory.md` §4 |
+| `convert → layout` | `layout` | `is_f_contiguous()` | `to_owned()` 始终复制到 owned；若调用方需要连续性保证，则由 `util::to_contiguous()` 显式触发重排 |
 | `convert → complex` | `complex` | `Complex<T>` | 复数目标类型转换依赖 `Complex` 定义，故意不提供 Complex → 实数的逆向隐式转换，参见 `04-complex.md` §4 |
 
 ### 8.2 数据流描述

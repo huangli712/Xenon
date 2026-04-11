@@ -280,7 +280,7 @@ L3: 示例 (examples/)
 | 规范 | 说明 |
 |------|------|
 | 可编译运行 | 所有 doctest 通过 `cargo test --doc`；独立 examples 通过 `cargo build --examples` |
-| 使用 `?` | doctest 天然返回 `Result` 时优先使用 `?`；仅在最小示例不引入额外样板时允许 `unwrap()` |
+| 使用 `?` | doctest 天然返回 `Result` 时必须优先使用 `?`；避免在文档示例中使用 `unwrap()` |
 | 隐藏样板 | 用 `# ` 隐藏 use 语句 |
 | 最小化 | 只展示当前 API 用法 |
 | 有断言 | 用 `assert_eq!` 验证结果 |
@@ -338,7 +338,7 @@ pub fn par_sum(&self) -> A { ... }
 | `broadcasting.rs` | 广播规则、行/列/标量广播 | 默认 | 日常使用 |
 | `parallel.rs` | 并行计算、阈值配置 | `parallel` | 性能优化（参见 `09-parallel.md §4`） |
 | `simd.rs` | SIMD 加速、回退策略 | `simd` | 性能优化（参见 `08-simd.md §4`） |
-| `templates/no_std-app/` | `no_std + alloc` 使用模式模板工程 | 默认关闭 `std` | 系统/嵌入式开发者 |
+| `examples/templates/no_std-app/` | `no_std + alloc` 使用模式模板工程 | 默认关闭 `std` | 系统/嵌入式开发者 |
 | `ffi.rs` | 与 C/BLAS 交互 | 默认 | 库开发者 |
 
 ### 8.2 示例模板
@@ -385,7 +385,7 @@ fn main() -> xenon::Result<()> {
 Rust N-dimensional tensor library for scientific computing.
 
 ## Features
-- N-dimensional arrays with static (0-6D) and dynamic dimensions
+- N-dimensional arrays with static (0-6D) and dynamic dimensions (IxDyn up to 100 axes)
 - Column-major (F-order) default, BLAS-compatible memory layout
 - Custom FFI-friendly complex number type
 - Optional SIMD (pulp) and parallel (rayon) acceleration
@@ -958,11 +958,11 @@ Wave 6: [T17]
 | 理由 | Rust 生态惯例；docs.rs 面向全球开发者（参见 `00-coding.md §6`） |
 | 替代方案 | 中文文档 — 放弃，不符合 Rust 社区惯例 |
 
-### 决策 2：doctest 优先使用 `?`，最小示例可例外使用 `unwrap()`
+### 决策 2：doctest 统一使用 `?`
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | doctest 在示例天然返回 `Result` 时优先使用 `?`；最小非 Result 示例允许 `unwrap()` |
+| 决策 | doctest 在示例天然返回 `Result` 时统一使用 `?`；不再为最小示例保留 `unwrap()` 例外 |
 | 理由 | 同时遵循 Rust API Guidelines C-QUESTION-MARK，并避免为纯展示型示例引入多余样板 |
 | 替代方案 | 完全禁止 unwrap — 放弃，对最小示例过于僵硬 |
 

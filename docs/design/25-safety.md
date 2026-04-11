@@ -1,6 +1,6 @@
 # 线程安全设计
 
-> 文档编号: 25 | 模块: 横切关注点 | 阶段: Phase 2
+> 文档编号: 25 | 模块: `src/storage/`, `src/parallel/`, `src/simd/`, `src/ffi/` | 阶段: Phase 2
 > 前置文档: `05-storage.md`, `07-tensor.md`
 > 需求参考: 需求说明书 §10
 
@@ -789,7 +789,8 @@ Workspace 模块的 `split_at`/`split_at_mut` 使用原子引用计数（`Atomic
 // par_iter_mut() splits the slice into non-overlapping chunks,
 // each chunk is sent to a different thread as &mut [A].
 // Since chunks don't overlap, no two threads can access the same element,
-// satisfying the aliasing rule. A: Send + Sync ensures element-level safety.
+// satisfying the aliasing rule. A: Send ensures element ownership may cross threads;
+// shared read requirements remain on the borrowed source type, not on mutable chunks.
 ```
 
 ---

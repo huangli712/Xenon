@@ -159,6 +159,18 @@ pub enum XenonError {
     EmptyArray {
         operation: &'static str,
     },
+
+    /// Invalid non-shape argument.
+    InvalidArgument {
+        /// Human-readable diagnostic.
+        message: &'static str,
+    },
+
+    /// FFI / BLAS integration precondition failed.
+    FfiError {
+        /// Human-readable diagnostic.
+        message: &'static str,
+    },
 }
 
 // NOTE: Future extension point for type conversion errors.
@@ -236,6 +248,8 @@ impl fmt::Display for XenonError {
             Self::EmptyArray { operation } => {
                 write!(f, "{} requires a non-empty array", operation)
             }
+            Self::InvalidArgument { message } => write!(f, "invalid argument: {}", message),
+            Self::FfiError { message } => write!(f, "ffi error: {}", message),
         }
     }
 }
@@ -268,6 +282,8 @@ impl std::error::Error for XenonError {}
 | `InvalidShape` | `cannot reshape 12 elements into 15` |
 | `DimensionMismatch` | `dimension mismatch: expected 2, got 3` |
 | `EmptyArray` | `operation requires a non-empty array` |
+| `InvalidArgument` | `invalid argument: clip requires min <= max` |
+| `FfiError` | `ffi error: BLAS lda exceeds i32 range` |
 
 ### 4.6 Good / Bad 对比示例
 
@@ -330,9 +346,11 @@ workspace 模块定义了独立的 `WorkspaceError`，不属于 `XenonError` 枚
 │   ├── BroadcastError     — 广播规则不满足
 │   ├── LayoutMismatch     — 布局要求不满足
 │   ├── InvalidAxis        — 轴索引无效
-│   ├── InvalidShape       — reshape 目标形状无效
+│   ├── InvalidShape       — reshape / 构造目标形状无效
 │   ├── DimensionMismatch  — 维度类型转换失败
-│   └── EmptyArray         — 空数组上的非法操作
+│   ├── EmptyArray         — 空数组上的非法操作
+│   ├── InvalidArgument    — 一般参数错误（如 clip 范围非法）
+│   └── FfiError           — FFI / BLAS 前置条件不满足
 │
 └── 不可恢复错误 / 语法糖例外 (panic)
     ├── IndexOutOfBounds   — 索引越界（与 std slice 行为一致）
@@ -351,6 +369,8 @@ workspace 模块定义了独立的 `WorkspaceError`，不属于 `XenonError` 枚
 | InvalidShape | Result | 可能来自用户输入，可恢复 |
 | DimensionMismatch | Result | 类型转换失败，可恢复 |
 | EmptyArray | Result | 运行时状态决定，可恢复 |
+| InvalidArgument | Result | 参数非法，可恢复 |
+| FfiError | Result | FFI / BLAS 前置条件不满足，可恢复 |
 | **IndexOutOfBounds** | **panic** | **编程错误，与 Rust slice 一致** |
 | **Operator syntax failure** | **panic** | **语言级运算符 trait 必须返回值类型；Xenon 同时提供等价的方法型 API 作为可恢复路径** |
 | **IntegerOverflow** | **panic** | **需求 §14：整数归约溢出视为不可恢复错误** |

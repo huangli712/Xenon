@@ -207,9 +207,14 @@ where
 {
     type Output = A;
 
-    fn index(&self, index: I) -> &Self::Output
-    where
-        I: NdIndex<D>;
+    fn index(&self, index: I) -> &Self::Output;
+}
+
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+{
 
     /// Gets a reference to the element, returns None if out of bounds.
     ///
@@ -243,9 +248,9 @@ where
     ///
     /// # Safety
     /// The caller must ensure that `index[i] < shape[i]` for all dimensions.
-    pub unsafe fn get_unchecked_mut(&mut self, index: &[usize]) -> &mut A
-    where
-        S: StorageMut<Elem = A>;
+     pub unsafe fn get_unchecked_mut(&mut self, index: &[usize]) -> &mut A
+     where
+         S: StorageMut<Elem = A>;
 }
 ```
 
