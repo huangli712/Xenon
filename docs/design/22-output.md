@@ -537,7 +537,7 @@ Wave 3:        [T5]
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/format.rs` | `Display` / `Debug` 与 `tensor` 元数据查询、`iter` 遍历、复数与浮点格式化路径的端到端集成 |
+| `tests/test_output.rs` | `Display` / `Debug` 与 `tensor` 元数据查询、`iter` 遍历、复数与浮点格式化路径的端到端集成 |
 
 ---
 

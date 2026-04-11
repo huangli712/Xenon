@@ -1,7 +1,7 @@
 # 集合操作模块设计
 
 > 文档编号: 14 | 模块: `src/set/` | 阶段: Phase 4
-> 前置文档: `03-element.md`, `07-tensor.md`
+> 前置文档: `03-element.md`, `04-complex.md`, `07-tensor.md`, `10-iterator.md`
 > 需求参考: 需求说明书 §15
 
 ---
@@ -13,19 +13,17 @@
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
 | unique 操作 | 返回排序后的不重复元素作为新 1D 张量 | intersection/union/difference |
-| 支持类型 | i32, i64, usize, f32, f64, Complex<f32>, Complex<f64> | bincount/histogram |
+| 支持类型 | i32, i64, f32, f64, Complex<f32>, Complex<f64> | bincount/histogram |
 | 不支持类型 | bool（仅 2 种值，unique 无意义） | argmin/argmax |
 
 > **注意**：当前版本仅支持 unique 操作！不包含 intersection/union/difference/bincount/histogram 等。
-
-> **usize 说明**：`usize` 作为需求说明书 §15 中的整数类型之一参与 `unique`。其排序语义采用标准无符号整数升序。
 
 ### 1.2 设计原则
 
 | 原则 | 体现 |
 |------|------|
 | 最小范围 | 当前仅实现 unique，其他集合操作留待未来扩展 |
-| 类型安全 | bool 显式排除；usize 采用标准整数排序 |
+| 类型安全 | bool 显式排除；仅对受支持的元素类型开放 |
 | NaN 处理明确 | 浮点 NaN 的排序行为有明确定义 |
 | 复数排序明确 | 先按实部再按虚部 |
 
@@ -95,7 +93,7 @@ where
     ///
     /// # Supported types
     ///
-/// i32, i64, usize, f32, f64, Complex<f32>, Complex<f64>
+/// i32, i64, f32, f64, Complex<f32>, Complex<f64>
     ///
 /// # Unsupported types
 ///
@@ -138,7 +136,7 @@ where
 // Good - use unique to get sorted unique elements
 let a = Tensor1::from_vec(vec![3, 1, 2, 1, 3]);
 let u = a.unique();
-assert_eq!(u.as_slice().unwrap(), &[1, 2, 3]);
+assert_eq!(u, Tensor1::from_vec(vec![1, 2, 3]));
 
 // Good - empty array returns empty Tensor1
 let empty: Tensor1<i32> = Tensor1::zeros([0]);
@@ -148,10 +146,6 @@ assert_eq!(empty.unique().len(), 0);
 // let b = Tensor1::from_vec(vec![true, false, true]);
 // b.unique();  // compile error: bool does not implement UniqueElement trait
 
-// Good - usize follows integer sorting rules as well
-let idx = Tensor1::from_vec(vec![3usize, 1, 2, 1]);
-let uniq = idx.unique();
-assert_eq!(uniq.as_slice().unwrap(), &[1usize, 2, 3]);
 ```
 
 ---
@@ -231,10 +225,6 @@ impl UniqueElement for i32 {
 }
 
 impl UniqueElement for i64 {
-    fn total_cmp(&self, other: &Self) -> core::cmp::Ordering { Ord::cmp(self, other) }
-}
-
-impl UniqueElement for usize {
     fn total_cmp(&self, other: &Self) -> core::cmp::Ordering { Ord::cmp(self, other) }
 }
 
@@ -409,7 +399,7 @@ Wave 4: [T5]
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/set.rs` | `unique()` 与 `tensor`、`iter`、`element`、`complex`、`alloc` 路径的端到端协同验证 |
+| `tests/test_set.rs` | `unique()` 与 `tensor`、`iter`、`element`、`complex`、`alloc` 路径的端到端协同验证 |
 
 ---
 
@@ -507,7 +497,7 @@ use alloc::vec::Vec;
 | 组件 | no_std 支持 | 说明 |
 |------|:----------:|------|
 | `unique()` | ✅ | 需 `no_std + alloc`，收集元素到 `Vec` + 排序 + 去重，参见 `05-storage.md` §11 |
-| `UniqueElement` trait | ✅ | 纯 trait 定义，无依赖 |
+| `UniqueElement` trait | ✅ | 纯 trait 定义；仅为受支持元素类型提供实现 |
 | 浮点 NaN 排序 | ✅ | `f32::total_cmp` / `f64::total_cmp`，`core` 内建（Rust 1.62+） |
 | 复数排序 | ✅ | lexicographic `total_cmp` 实现，参见 `04-complex.md` §3 |
 

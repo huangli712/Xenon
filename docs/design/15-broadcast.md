@@ -234,8 +234,8 @@ fn process(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix1>) -> Result<Tensor<f64, Ix2
 
 // Bad - Directly unwrap broadcast result
 fn process_bad(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix1>) -> Tensor<f64, Ix2> {
-    let (a_bc, b_bc) = broadcast_with(&a.view(), &b.view()).unwrap(); // Forbidden: may panic
-    zip_with(&a_bc, &b_bc, |x, y| x + y).unwrap()
+    let (a_bc, b_bc) = broadcast_with(&a.view(), &b.view())?; // do not discard the recoverable error
+    zip_with(&a_bc, &b_bc, |x, y| x + y)?
 }
 ```
 
@@ -412,7 +412,7 @@ fn update_flags_for_broadcast(source_flags: LayoutFlags, new_strides: &[isize]) 
 ### Wave 4: 测试与文档
 
 - [ ] **T7**: 编写综合测试
-  - 文件: `tests/broadcast.rs`
+  - 文件: `tests/test_broadcast.rs`
   - 内容: 各种广播组合、不兼容报错、禁止可变迭代验证
   - 测试: 覆盖所有公共 API
   - 前置: T1-T6
@@ -474,7 +474,7 @@ Wave 4:           [T7]
 
 | 不变量 | 测试方法 |
 |--------|----------|
-| `broadcast_to(X, S)` 后 `view.len() == S.checked_size().unwrap()` | 随机形状对 |
+| `broadcast_to(X, S)` 后 `view.len()` 等于 `S` 对应的已验证元素总数 | 随机形状对 |
 | 广播后原始数据不变 | 广播前后对比 |
 | `can_broadcast(a, b) == true` ⟹ `broadcast_shape(a, b)` 成功 | 随机形状 |
 
@@ -482,7 +482,7 @@ Wave 4:           [T7]
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/broadcast.rs` | `broadcast_with()` 与 `math`、`overload`、`iter::Zip`、`layout` 标志位更新的协同路径 |
+| `tests/test_broadcast.rs` | `broadcast_with()` 与 `math`、`overload`、`iter::Zip`、`layout` 标志位更新的协同路径 |
 
 ---
 

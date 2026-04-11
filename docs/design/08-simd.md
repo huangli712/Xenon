@@ -884,7 +884,7 @@ Wave 4:   [T6]
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/simd.rs` | SIMD dispatch 与 `math`、`reduction`、`matrix`、`layout`、`parallel` 组合路径的端到端验证 |
+| `tests/test_simd.rs` | SIMD dispatch 与 `math`、`reduction`、`matrix`、`layout`、`parallel` 组合路径的端到端验证 |
 
 ---
 
@@ -999,7 +999,8 @@ pulp crate 支持 `no_std` 环境。在 `no_std` 环境下：
 ```rust
 #[cfg(all(feature = "simd", not(feature = "std")))]
 // In no_std environments:
-// - pulp handles math functions internally without Xenon adding libm as a dependency
+// - pulp remains available as a SIMD backend where the target supports it
+// - this does NOT imply Xenon's std-only math APIs are exposed under no_std
 // - Arch is not cached (OnceLock unavailable in core),
 //   Arch::new() is called per-use (Arch is Copy, negligible cost)
 ```

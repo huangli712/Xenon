@@ -332,7 +332,7 @@ pub fn sum_bad(&self) -> A {
 
 workspace 模块定义了独立的 `WorkspaceError`，不属于 `XenonError` 枚举。这是为了保持 workspace 模块的独立性（workspace 不依赖核心错误类型），同时允许上游通过 `From<WorkspaceError>` 适配到自定义错误类型。
 
-相应测试也保持同样边界：`tests/error.rs` 仅覆盖 `XenonError` 及其方法型 API 失败映射，`WorkspaceError` 继续在 `tests/workspace.rs` 中单独验证。
+相应测试也保持同样边界：`tests/test_error.rs` 仅覆盖 `XenonError` 及其方法型 API 失败映射，`WorkspaceError` 继续在 `tests/test_workspace.rs` 中单独验证。
 
 > **集中裁决补充：** Xenon 的错误语义统一按“可恢复错误走 `Result`，不可恢复不变量破坏才 panic”收敛。
 > 当前仅保留一类语法级 panic 例外：`tensor[[...]]` 这类 `Index` trait 语法，越界时与标准库 slice 行为保持一致。
@@ -423,8 +423,8 @@ where
 
 这在 Xenon 中是可接受的行为，原因如下：
 
-1. Xenon 支持的元素类型（i32、i64、f32、f64、Complex、bool、usize）均为平凡类型，具有永远不会 panic 的 trivial `Drop` 实现。
-2. `Element` trait 的 sealed 特性确保只有这些类型可以被使用。
+1. Xenon 支持的元素类型（i32、i64、f32、f64、Complex、bool）均为平凡类型，具有永远不会 panic 的 trivial `Drop` 实现。
+2. `Element` trait 的 sealed 特性确保只有这些类型可以被使用；`usize` 仅作为 shape/index 元数据存在，不属于张量元素类型。
 
 因此，实际上 `drop_in_place` 在 Xenon 张量中永远不会 panic。
 
@@ -610,7 +610,7 @@ Wave 3: ┌──[T6]────┤
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/error.rs` | `reshape` / `sum_axis` / `broadcast` / `dot` 等公共 API 将底层失败映射为 `XenonError` 的端到端路径 |
+| `tests/test_error.rs` | `reshape` / `sum_axis` / `broadcast` / `dot` 等公共 API 将底层失败映射为 `XenonError` 的端到端路径 |
 
 ### 7.6 属性测试清单
 
@@ -728,7 +728,7 @@ Wave 3: ┌──[T6]────┤
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | 方法型 API 统一返回 `Result<XenonError>`；索引语法与四则运算符语法保留 panic，作为显式例外 |
+| 决策 | 方法型 API 统一返回 `Result<XenonError>`；仅索引语法保留 panic，四则运算符沿用底层广播/逐元素运算的可恢复错误模型 |
 | 理由 | 保持可恢复错误的一致出口，同时尊重 Rust `Index` / `Add` 等标准 trait 的签名限制 |
 | 替代方案 | 所有接口统一 panic — 放弃，不利于库集成与诊断 |
 | 替代方案 | 所有语法糖接口也返回 `Result` — 放弃，无法匹配 Rust 标准 trait 设计 |

@@ -338,7 +338,7 @@ for i in 0..tensor.shape()[0] {
 }
 
 // Bad - calling iter_mut() on a broadcast result
-let broadcast_view = tensor.view().broadcast_to([3, 4]).unwrap();
+let broadcast_view = tensor.view().broadcast_to([3, 4])?;
 // broadcast_view.iter_mut();  // compile error: broadcast view is immutable
 ```
 
@@ -576,7 +576,7 @@ Wave 4:         [T9]
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/iterator.rs` | `tensor.iter()` / `axis_iter()` / `windows()` / `zip()` 与 `tensor`、`broadcast`、`shape` 模块的协同路径 |
+| `tests/test_iterator.rs` | `tensor.iter()` / `axis_iter()` / `windows()` / `zip()` 与 `tensor`、`broadcast`、`shape` 模块的协同路径 |
 
 ---
 

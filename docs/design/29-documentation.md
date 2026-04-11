@@ -220,10 +220,12 @@ L3: 示例 (examples/)
 //!
 //! | Level | Types | Trait Bound |
 //! |-------|-------|-------------|
-//! | Base | i32, i64, f32, f64, Complex, bool, usize | `Element` |
+//! | Base | i32, i64, f32, f64, Complex, bool | `Element` |
 //! | Numeric | i32, i64, f32, f64, Complex | `Numeric: Element` |
 //! | Real | f32, f64 | `RealScalar: Numeric` |
 //! | Complex | Complex<f32>, Complex<f64> | `ComplexScalar: Numeric` |
+//!
+//! `usize` is reserved for shape and index metadata, not as a tensor element type.
 //!
 //! ## Memory Layout
 //!
@@ -231,7 +233,7 @@ L3: 示例 (examples/)
 //!
 //! ## no_std Support
 //!
-//! Xenon supports `no_std` environments (requires `alloc` crate).
+//! Xenon supports `no_std` + `alloc` for core tensor/storage/view operations; math functions are available only with the `std` feature.
 
 // During development: warn level allows gradual documentation
 // In CI: RUSTDOCFLAGS="-D warnings" enforces deny-level documentation
@@ -349,7 +351,7 @@ pub fn par_sum(&self) -> A { ... }
 | `broadcasting.rs` | 广播规则、行/列/标量广播 | 默认 | 日常使用 |
 | `parallel.rs` | 并行计算、阈值配置 | `parallel` | 性能优化（参见 `09-parallel.md §4`） |
 | `simd.rs` | SIMD 加速、回退策略 | `simd` | 性能优化（参见 `08-simd.md §4`） |
-| `examples/templates/no_std-app/` | `no_std + alloc` 使用模式模板工程 | 默认关闭 `std` | 系统/嵌入式开发者 |
+| `examples/templates/no_std-app/` | `no_std + alloc` 下的核心张量/存储/视图使用模板（不包含 std-only 数学 API） | 默认关闭 `std` | 系统/嵌入式开发者 |
 | `ffi.rs` | 与 C/BLAS 交互 | 默认 | 库开发者 |
 
 ### 8.2 示例模板
@@ -400,7 +402,8 @@ Rust N-dimensional tensor library for scientific computing.
 - Column-major (F-order) default, BLAS-compatible memory layout
 - Custom FFI-friendly complex number type
 - Optional SIMD (pulp) and parallel (rayon) acceleration
-- no_std support (requires alloc)
+- no_std + alloc support for core tensor/storage/view operations
+- math functions are available only with the std feature
 
 ## Quick Start
 [代码示例]
@@ -692,7 +695,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | 场景 | 预期行为 |
 |------|----------|
 | feature-gated API | 在未启用 feature 时不会出现在文档中，启用后 doctest 通过 |
-| `no_std` 文档示例 | 通过模板工程或 `--no-default-features` 编译验证 |
+| `no_std` 文档示例 | 通过模板工程或 `--no-default-features` 编译验证 std-independent 示例；数学 API 需显式 std gate |
 | unsafe API 文档 | 必须包含 `# Safety` 且示例不省略关键前置条件 |
 | 大型数组输出示例 | 截断格式与 `22-output.md` 保持一致 |
 
@@ -718,6 +721,9 @@ docs:
 
         - name: Build examples
           run: cargo build --examples --all-features
+
+        - name: Check no_std template
+          run: cargo check --manifest-path examples/templates/no_std-app/Cargo.toml --no-default-features
 ```
 
 ---
@@ -934,7 +940,7 @@ docs:
 
 - [ ] **T16**: 编写 `examples/templates/no_std-app/` 最小工程模板
   - 文件: `examples/templates/no_std-app/`
-  - 内容: `no_std + alloc` 环境下的最小依赖工程（不是普通 `examples/` 可执行程序）
+  - 内容: `no_std + alloc` 环境下仅覆盖核心 API 的最小依赖工程（不是普通 `examples/` 可执行程序，不包含 std-only 数学函数）
   - 测试: `cargo check --manifest-path examples/templates/no_std-app/Cargo.toml --no-default-features`
   - 前置: T1
   - 预计: 10 min

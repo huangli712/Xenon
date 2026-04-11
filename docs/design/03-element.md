@@ -15,8 +15,8 @@
 | Element trait | 基础约束（Copy+Clone+PartialEq+Debug+Display+Send+Sync+Sealed）+ zero()/one() | — |
 | Numeric trait | Element + Add+Sub+Mul+Div+Neg（四则运算能力标记） | 运算实现本身（委托给 core::ops） |
 | RealScalar trait | Numeric + PartialOrd + abs/sqrt/sin/cos/exp/ln/floor/ceil + NaN 检测 | 复数运算 |
-| ComplexScalar trait | Numeric + norm/conj/from_polar/arg/exp/ln/sqrt（复数运算接口） | 复数类型定义（在 `src/complex/` 模块，参见 `04-complex.md` §4） |
-| 基础类型实现 | 为 i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool/usize 实现上述 trait | 类型转换逻辑（在 `src/convert/` 模块） |
+| ComplexScalar trait | Numeric + conj（核心复数操作）+ std-only 复数数学接口（norm/from_polar/arg/exp/ln/sqrt） | 复数类型定义（在 `src/complex/` 模块，参见 `04-complex.md` §4） |
+| 基础类型实现 | 为 i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool 实现上述 trait；`usize` 仅用于索引/形状元数据 | 类型转换逻辑（在 `src/convert/` 模块） |
 | Sealed trait | 封闭集合，禁止外部 crate 实现 | 开放扩展 |
 
 ### 1.2 设计原则
@@ -137,9 +137,8 @@ pub trait Element:
 /// Adds arithmetic operations on top of Element.
 /// Xenon's generic numeric core currently covers signed integers, real scalars,
 /// and complex scalars: `i32`, `i64`, `f32`, `f64`, `Complex<f32>`, `Complex<f64>`.
-/// `bool` is explicitly excluded. `usize` remains part of the closed element set,
-/// but arithmetic support for it must be modeled by dedicated APIs/impls rather than
-/// by this `Numeric` trait because `Numeric` currently includes `Neg`.
+/// `bool` is explicitly excluded. `usize` is reserved for index/shape metadata
+/// and is not part of the tensor element set.
 ///
 /// Note: `Sealed` is not listed as a separate supertrait here because
 /// `Element` already inherits `Sealed`.
@@ -191,7 +190,7 @@ pub trait Numeric:
 // }
 ```
 
-> **设计决策：** `Numeric` 定义 `conjugate()` 方法，为实数类型返回 `self`，为复数类型返回共轭。这使得统一的内积（dot product）实现可以泛化处理实数和复数情况。Xenon 采用 `sum(conjugate(a[i]) * b[i])` 的约定，并在 `12-matrix.md` 中保持一致。其余四则运算由 `Add/Sub/Mul/Div/Neg` trait 提供。对于 `usize`，若后续补齐需求中的算术支持，应通过专门的二元运算/重载路径设计，而不是直接塞进当前带 `Neg` 的 `Numeric` 层次。
+> **设计决策：** `Numeric` 定义 `conjugate()` 方法，为实数类型返回 `self`，为复数类型返回共轭。这使得统一的内积（dot product）实现可以泛化处理实数和复数情况。Xenon 采用 `sum(conjugate(a[i]) * b[i])` 的约定，并在 `12-matrix.md` 中保持一致。其余四则运算由 `Add/Sub/Mul/Div/Neg` trait 提供。`usize` 明确保留给索引/形状元数据，不进入元素算术层次。
 >
 > **`Numeric::conjugate()` 与 `ComplexScalar::conj()` 的关系和使用说明：**
 >
@@ -287,9 +286,8 @@ pub trait ComplexScalar: Numeric + Sealed {
 | `Complex<f32>` | ✓ | ✓ | ✗ | ✓ |
 | `Complex<f64>` | ✓ | ✓ | ✗ | ✓ |
 | `bool` | ✓ | ✗ | ✗ | ✗ |
-| `usize` | ✓ | ✗（当前 generic core） | ✗ | ✗ |
 
-> **Xenon 特定约束：** 仅支持上表列出的 8 种类型。不支持 u8/u16/u32/i8/i16 等其他整数类型。
+> **Xenon 特定约束：** 仅支持上表列出的 7 种元素类型。不支持 `usize`、u8/u16/u32/i8/i16 等其他整数类型；`usize` 仅作为索引和形状元数据使用。
 
 ### 4.6 Sealed trait 策略
 
@@ -307,7 +305,6 @@ impl Sealed for f64 {}
 impl Sealed for Complex<f32> {}
 impl Sealed for Complex<f64> {}
 impl Sealed for bool {}
-impl Sealed for usize {}
 ```
 
 外部 crate 尝试实现时编译错误：
@@ -330,7 +327,6 @@ where
     tensor.iter().fold(A::zero(), |acc, &x| acc + x)
 }
 // sum(&bool_tensor);   // Compile error: bool does not satisfy Numeric
-// sum(&usize_tensor);  // Compile error under the current Numeric layering
 
 // Bad - Element constraint cannot exclude non-arithmetic element types
 fn sum_bad<'a, A, D>(tensor: &TensorView<'a, A, D>) -> A
@@ -441,9 +437,9 @@ impl Element for bool {
 
 编译时阻止无效泛型实例化：`fn sum<A: Numeric>` 无法接受 `bool` 张量。
 
-### 5.2 usize 包含策略
+### 5.2 usize 语义边界
 
-`usize` 仍是 Xenon 封闭元素集合的一部分，但当前不进入带 `Neg` 约束的 `Numeric` 泛型层。若要补齐需求中的整数算术支持，应在后续文档中为 `usize` 单独补 dedicated binary arithmetic / overload 路径，而不是继续把它与 `bool` 一并视作“完全不参与算术”。
+`usize` 不属于 Xenon 的张量元素集合，仅作为索引、轴和形状元数据类型使用。所有元素 trait（`Element`/`Numeric`/`RealScalar`/`ComplexScalar`）都不为 `usize` 提供实现，也不再为其预留算术扩展路径。
 
 ### 5.3 类型提升规则
 
@@ -547,7 +543,7 @@ fn max(self, other: Self) -> Self {
 ```text
 上游模块声明元素约束
     │
-    ├── tensor 通过 `Element` 接受封闭元素集合
+├── tensor 通过 `Element` 接受封闭元素集合（不含 `usize`）
     ├── math / matrix / reduction 根据 `Numeric`、`RealScalar`、`ComplexScalar` 选择可用运算面
     ├── convert / set / format 继续消费类型层能力或格式化语义
     └── 若元素类型不满足约束，则由编译期 trait bound 直接拒绝
@@ -612,10 +608,10 @@ fn max(self, other: Self) -> Self {
   - 前置: T1
   - 预计: 5 min
 
-- [ ] **T8**: 为 usize 实现 Element，并为后续专用算术扩展预留边界说明
-  - 文件: `src/element/primitives.rs`
-  - 内容: `Element` impl（`zero()=0`, `one()=1`），并在文档中明确其与专用算术路径的边界
-  - 测试: `test_usize_element_basics`
+- [ ] **T8**: 补充索引/形状侧对 `usize` 的边界说明
+  - 文件: `src/element/mod.rs`
+  - 内容: 文档中明确 `usize` 仅作为索引和形状元数据使用，不属于元素 trait 实现集合
+  - 测试: 编译通过
   - 前置: T1
   - 预计: 5 min
 
@@ -645,7 +641,7 @@ fn max(self, other: Self) -> Self {
   - 预计: 10 min
 
 - [ ] **T12**: 集成测试（跨模块交互验证）
-  - 文件: `tests/element_tests.rs`
+  - 文件: `tests/test_element.rs`
   - 内容: 各类型各层 trait 的完整性验证
   - 测试: 见测试计划 §8
   - 前置: T10, T11
@@ -677,9 +673,9 @@ Wave 3: [T6]      [T9] ← ────┘
 | 测试分类 | 位置 | 说明 |
 |----------|------|------|
 | 单元测试 | `#[cfg(test)] mod tests` | 验证各 trait 和基础类型实现 |
-| 集成测试 | `tests/element_tests.rs` | 验证 `element` 与 `tensor`、`math`、`reduction`、`convert` 的协同路径 |
-| 边界测试 | 同模块测试中标注 | 覆盖 NaN/Inf、bool/usize 限制与 sealed 行为 |
-| 属性测试 | `tests/element_tests.rs` 或 `tests/property.rs` | 验证零元、单位元与数学函数不变量 |
+| 集成测试 | `tests/test_element.rs` | 验证 `element` 与 `tensor`、`math`、`reduction`、`convert` 的协同路径 |
+| 边界测试 | 同模块测试中标注 | 覆盖 NaN/Inf、bool 限制与 sealed 行为 |
+| 属性测试 | `tests/test_element.rs` 或 `tests/property.rs` | 验证零元、单位元与数学函数不变量 |
 
 ### 8.2 单元测试清单
 
@@ -697,8 +693,7 @@ Wave 3: [T6]      [T9] ← ────┘
 | `test_f64_nan_propagating_min` | `min(NaN, 1.0).is_nan()` | 高 |
 | `test_bool_element_only` | `bool::zero()==false`, `bool::one()==true` | 高 |
 | `test_bool_not_numeric` | bool 不满足 Numeric（编译测试） | 高 |
-| `test_usize_element_only` | `usize::zero()==0`, `usize::one()==1` | 中 |
-| `test_usize_not_numeric` | usize 不满足 Numeric（编译测试） | 中 |
+| `test_usize_not_element` | `usize` 不属于 Element（编译测试） | 中 |
 | `test_complex_f64_zero_one` | `Complex<f64>::zero()`, `Complex<f64>::one()` | 高 |
 | `test_complex_f64_conj` | `Complex::new(3.0, 4.0).conj() == Complex::new(3.0, -4.0)` | 高 |
 | `test_complex_f32_norm` | `Complex::new(3.0f32, 4.0f32).norm() == 5.0` | 高 |
@@ -729,7 +724,7 @@ Wave 3: [T6]      [T9] ← ────┘
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/element_tests.rs` | 各元素类型在 `tensor`、`math`、`reduction`、`convert` 中的 trait 约束与端到端行为验证 |
+| `tests/test_element.rs` | 各元素类型在 `tensor`、`math`、`reduction`、`convert` 中的 trait 约束与端到端行为验证 |
 
 ---
 
@@ -743,12 +738,12 @@ Wave 3: [T6]      [T9] ← ────┘
 | 理由 | API 稳定性（可添加新方法不破坏外部）；所有实现类型行为经过验证；版本控制能力 |
 | 替代方案 | 开放实现 — 放弃，失去版本控制能力，可能导致不一致行为 |
 
-### 决策 2：仅支持 8 种类型
+### 决策 2：仅支持 7 种元素类型
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | 仅支持 i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool/usize |
-| 理由 | 需求说明书 §4 明确列出；减少维护负担；覆盖科学计算核心场景 |
+| 决策 | 仅支持 i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool 作为张量元素类型；`usize` 仅作为索引/形状元数据 |
+| 理由 | 科学计算元素类型需要稳定且平台无关的数值语义；`usize` 作为平台相关的无符号宽度，不适合作为数值元素 |
 | 替代方案 | 支持全部整数类型（u8/u16/u32/i8/i16）— 放弃，增加矩阵复杂度 |
 
 ### 决策 3：bool 排除 Numeric
@@ -759,13 +754,13 @@ Wave 3: [T6]      [T9] ← ────┘
 | 理由 | 布尔四则运算无数学意义；防止 `sum([true, false])` 等无意义操作；编译时阻止 |
 | 替代方案 | bool 实现 Numeric（true=1, false=0）— 放弃，语义不清晰 |
 
-### 决策 4：usize 仅实现 Element
+### 决策 4：usize 不属于元素 trait 集合
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | `usize` 仅实现 `Element`，不实现 `Numeric`，不参与张量算术运算 |
-| 理由 | usize 在 Xenon 中作为索引和形状类型使用，不作为计算类型。需求 §4 中的"整数"指 i32/i64（有符号、定宽），usize 是平台相关的无符号类型，跨平台行为不一致（32/64 位），不适合科学计算中的数值运算。允许 usize 参与算术会导致与索引语义混淆 |
-| 替代方案 | usize 实现 Numeric — 放弃，语义不合适，跨平台宽度不一致 |
+| 决策 | `usize` 不实现 `Element`/`Numeric`/`RealScalar`/`ComplexScalar`，仅用于索引和形状 |
+| 理由 | `usize` 在 Xenon 中承担索引和形状元数据语义，而不是数值计算语义；其平台相关位宽会引入跨平台差异，不适合作为科学计算元素类型 |
+| 替代方案 | 让 `usize` 作为元素类型存在但排除在 `Numeric` 之外 — 放弃，仍会混淆元素集合与索引语义 |
 
 ### 决策 5：不支持自动类型提升
 
@@ -798,12 +793,12 @@ Wave 3: [T6]      [T9] ← ────┘
 
 ## 11. no_std 兼容性
 
-> **兼容性说明**：在 `no_std + alloc` 环境下，`Element` / `Numeric` / `ComplexScalar` 的类型层级与非数学能力保持可用；`RealScalar` 的数学函数扩展（`sin/cos/sqrt/exp/ln/floor/ceil/abs`）仅在 `std` feature 下提供实现。
+> **兼容性说明**：在 `no_std + alloc` 环境下，`Element` / `Numeric` 的类型层级与非数学能力保持可用；`RealScalar` 的数学函数扩展和 `ComplexScalar` 的复数数学函数仅在 `std` feature 下提供实现。
 
 | 组件 | 兼容方案 |
 |------|----------|
-| `Element` / `Numeric` / `ComplexScalar` | 纯 trait，天然 no_std |
-| `RealScalar` 数学函数 | 仅在 `std` feature 下提供实现；`no_std + alloc` 下不承诺这些数学方法的可用性 |
+| `Element` / `Numeric` | 纯 trait，天然 no_std |
+| `RealScalar` / `ComplexScalar` 数学函数 | 仅在 `std` feature 下提供实现；`no_std + alloc` 下不承诺这些数学方法的可用性 |
 | `RealScalar` 常量与 NaN 检测 | 语义上不依赖 `std`，在所有构建模式下保持一致 |
 | Feature gate | `Cargo.toml`: `default = ["std"]`；`std` 负责启用 `RealScalar` 数学函数实现与扩展集成能力 |
 

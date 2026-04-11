@@ -146,32 +146,7 @@ where
 }
 ```
 
-> **设计决策（修订）**：根据需求说明书 §23，`cast()` 仅适用于持有数据的存储模式。
-> 因此 `cast()` 分别在 `Owned<A>` 和 `ArcRepr<A>` 存储模式上实现；
-> `ViewRepr` / `ViewMutRepr` 须先调用 `to_owned()`，而 `ArcRepr` 路径通过 `to_owned().cast()` 显式完成私有化与重编码。
-
-```rust
-impl<A, D> TensorBase<ArcRepr<A>, D>
-where
-    D: Dimension,
-    A: Element,
-{
-    /// Element-wise type conversion for Arc-backed tensors.
-    ///
-    /// Makes a private copy of the Arc data, then casts elements.
-    ///
-    /// # Type Parameters
-    ///
-    /// * `B` - Target element type
-    pub fn cast<B>(&self) -> Tensor<B, D>
-    where
-        B: Element,
-        A: CastTo<B>,
-    {
-        self.to_owned().cast()
-    }
-}
-```
+> **设计决策（修订）**：根据需求说明书 §23，`cast()` 仅适用于持有数据的存储模式。当前设计将这一范围收窄为 `Owned<A>`；`ViewRepr` / `ViewMutRepr` / `ArcRepr` 均须先调用 `to_owned()`，再进行显式类型转换。
 
 ### 4.3 类型转换路径表
 
@@ -192,8 +167,6 @@ where
 | `Complex<f32>` | `Complex<f64>` | 实部/虚部各自提升精度 | `Complex { re: 1.0_f32, im: 2.0_f32 } → Complex { re: 1.0_f64, im: 2.0_f64 }` |
 | `Complex<f64>` | `Complex<f32>` | 实部/虚部各自 round-to-nearest-even | `Complex { re: 1.23456789, im: 2.0 } → Complex { re: 1.234568, im: 2.0 }` |
 | `Complex<T>` | `T` | **编译错误** | 须显式取 `.re()` |
-| `usize` | `i32/i64` | saturating narrowing | `usize::MAX → i64::MAX`（当目标更窄时饱和） |
-| `i32/i64` | `usize` | 负数 → 0，正数按范围饱和 | `-1i32 → 0usize` |
 
 ### 4.4 Good / Bad 对比
 
@@ -286,8 +259,8 @@ impl<A, D> TensorBase<Owned<A>, D> where A: Element, D: Dimension {
     /// Called internally after size validation is complete.
     ///
     /// Skips length validation because the caller guarantees data.len() matches
-    /// shape.checked_size().unwrap() (e.g., via iter().collect() or to_owned() where self.len()
-    /// is known to be correct).
+    /// the validated element count for `shape` (e.g., via `iter().collect()` or `to_owned()`
+    /// where `self.len()` is already known to be correct).
     pub(crate) fn from_shape_vec_aligned(shape: D, data: Vec<A>) -> Self {
         let strides = shape.strides_for_f_order();
         let storage = Owned::from_vec_aligned(data);
@@ -302,7 +275,7 @@ impl<A, D> TensorBase<Owned<A>, D> where A: Element, D: Dimension {
     /// # Safety
     ///
     /// 调用者必须保证：
-    /// - `data.len()` 等于 `shape.checked_size().unwrap()`（元素总数匹配）
+    /// - `data.len()` 等于 `shape` 对应的已验证元素总数（元素总数匹配）
     /// - `shape` 和 `strides` 描述合法的内存布局
     /// - `data` 中所有元素已正确初始化
     /// - 内存已通过 Xenon 的 64 字节对齐分配器分配（使用 `from_vec_aligned` 保证）
@@ -573,7 +546,7 @@ Wave 3: [T6] [T7]  (并行)
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/convert.rs` | `cast` / `to_owned` / `into_owned` 与 `tensor`、`element`、`storage`、`layout`、`complex` 的端到端协同路径 |
+| `tests/test_conversion.rs` | `cast` / `to_owned` / `into_owned` 与 `tensor`、`element`、`storage`、`layout`、`complex` 的端到端协同路径 |
 
 ---
 
@@ -619,10 +592,10 @@ Wave 3: [T6] [T7]  (并行)
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | `cast()` 在 `Owned<A>` 和 `ArcRepr<A>` 上实现 |
-| 理由 | 需求 §23 明确要求"类型转换仅适用于持有数据的存储模式"。View 和 ViewMut 需要先调用 `to_owned()` 获得拥有所有权的张量，再进行类型转换。 |
+| 决策 | `cast()` 仅在 `Owned<A>` 上实现 |
+| 理由 | 需求 §23 明确要求"类型转换仅适用于持有数据的存储模式"。为避免 `ArcRepr` 是否算作“持有数据”产生歧义，统一要求 View / ViewMut / Arc 都先 `to_owned()` 再转换。 |
 | 替代方案 | 在 `Storage` 约束上实现（允许 View 直接 cast） — 放弃，与需求 §23 冲突 |
-| 替代方案 | 仅在 `Owned` 上实现 — 放弃，`ArcRepr` 也是持有数据的存储模式，应同样支持 |
+| 替代方案 | 在 `Owned` 和 `ArcRepr` 上同时实现 — 放弃，会把共享存储重新定义成持有型存储，增加语义歧义 |
 
 ### 决策 3：存储模式转换策略
 

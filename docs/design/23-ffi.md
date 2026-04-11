@@ -254,12 +254,14 @@ where
         // SAFETY: Caller guarantees ptr is a valid storage base pointer,
         // aligned and pointing to properly initialized data for the lifetime 'a.
         // Shape, strides, and offset are consistent and describe a valid region.
+        // The logical-first pointer exposed by `as_ptr()` is derived by applying
+        // `offset` exactly once on top of this storage base pointer.
         TensorBase {
             storage: ViewRepr::new(ptr),
             shape,
             strides,
             offset,
-            flags: layout::compute_flags(&shape, &strides, ptr),
+            flags: layout::compute_flags(&shape, &strides, unsafe { ptr.add(offset) }),
         }
     }
 
@@ -289,7 +291,7 @@ where
             shape,
             strides: dim_strides,
             offset,
-            flags: layout::compute_flags(&shape, &dim_strides, ptr),
+            flags: layout::compute_flags(&shape, &dim_strides, unsafe { ptr.add(offset) }),
         }
     }
 }
@@ -334,7 +336,7 @@ where
             shape,
             strides,
             offset,
-            flags: layout::compute_flags(&shape, &strides, ptr),
+            flags: layout::compute_flags(&shape, &strides, unsafe { ptr.add(offset) }),
         }
     }
 }
@@ -509,7 +511,7 @@ where
     ///
     /// ```
     /// let a = Tensor2::<f64>::zeros([3, 4]);
-    /// let info = a.blas_info().unwrap();
+    /// let info = a.blas_info().expect("F-order 2D tensor should be BLAS-compatible");
     /// assert_eq!(info.rows, 3);
     /// assert_eq!(info.cols, 4);
     /// ```
@@ -670,13 +672,13 @@ where
 
 // Good - Check BLAS compatibility before passing
 if tensor.is_blas_compatible() {
-    let info = tensor.blas_info().unwrap();
+    let info = tensor.blas_info().expect("BLAS-compatible tensor should yield BlasInfo");
     unsafe {
         call_blas_dgemm(info, tensor.blas_trans(), ...);
     }
 } else {
     let contiguous = tensor.to_contiguous();
-    let info = contiguous.blas_info().unwrap();
+    let info = contiguous.blas_info().expect("contiguous tensor should yield BlasInfo");
     unsafe {
         call_blas_dgemm(info, contiguous.blas_trans(), ...);
     }
@@ -685,7 +687,7 @@ if tensor.is_blas_compatible() {
 // Bad - Pass directly without checking BLAS compatibility
 unsafe {
     call_blas_dgemm(CblasColMajor, CblasNoTrans, ...,
-        tensor.as_ptr(), tensor.lda().unwrap(),
+        tensor.as_ptr(), tensor.lda().expect("caller must prove BLAS compatibility first"),
         ...,
     );  // UB if tensor is non-contiguous!
 }
@@ -778,7 +780,7 @@ Wave 3: ┌────┴────┐
 | 单元测试 | `#[cfg(test)] mod tests` | 验证指针访问、BLAS 兼容检查与 raw-parts 语义 |
 | 集成测试 | `tests/` | 验证 `ffi` 与 `tensor`、`layout`、`storage` 的协同路径 |
 | 边界测试 | 同模块测试中标注 | 覆盖空张量、广播维度、负步长和未对齐指针等边界 |
-| 属性测试 | `tests/ffi.rs` 或 `tests/property.rs` | 验证 `try_offset_of` / `try_ptr_at` / raw-parts roundtrip 不变量 |
+| 属性测试 | `tests/test_ffi.rs` 或 `tests/property.rs` | 验证 `try_offset_of` / `try_ptr_at` / raw-parts roundtrip 不变量 |
 
 ### 7.2 单元测试清单
 
@@ -794,7 +796,7 @@ Wave 3: ┌────┴────┐
 | `test_blas_info_f_order` | F-order 返回正确 BlasInfo | 高 |
 | `test_lda_f_order` | F-order [3,4] 返回 3 | 高 |
 | `test_lda_non_contiguous` | 非连续（切片）数组 lda() 返回 None | 中 |
-| `test_from_raw_parts_roundtrip` | 构造 → 读取一致性 | 高 |
+| `test_from_raw_parts_roundtrip` | `into_raw_parts → from_raw_parts_owned` 往返一致性 | 高 |
 | `test_from_raw_parts_mut_roundtrip` | 可变构造 → 修改 → 读取 | 高 |
 | `test_into_raw_parts` | Owned 张量解构后指针有效 | 高 |
 | `test_into_raw_parts_memory_leak` | 解构后正确释放 | 中 |
@@ -819,7 +821,7 @@ Wave 3: ┌────┴────┐
 
 | 不变量 | 测试方法 |
 |--------|----------|
-| `try_ptr_at(idx).unwrap() == as_ptr().offset(try_offset_of(idx).unwrap())` | 在合法索引集合上逐点比对 |
+| `try_ptr_at(idx)` 返回的指针等于基于 `as_ptr()` 和 `try_offset_of(idx)` 计算的期望地址 | 在合法索引集合上逐点比对 |
 | `into_raw_parts → from_raw_parts_owned` roundtrip 保持 shape/strides/offset | 对 F-contiguous owned 张量做往返验证 |
 | `is_blas_compatible() == true` ⟹ `blas_info()` 成功 | 以连续二维张量为样本验证 |
 
@@ -835,7 +837,7 @@ Wave 3: ┌────┴────┐
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/ffi.rs` | 指针 API / BLAS 兼容检查 / raw-parts roundtrip 与 `tensor`、`layout`、`storage` 的端到端协同路径 |
+| `tests/test_ffi.rs` | 指针 API / BLAS 兼容检查 / raw-parts roundtrip 与 `tensor`、`layout`、`storage` 的端到端协同路径 |
 
 ---
 

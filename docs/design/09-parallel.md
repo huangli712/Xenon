@@ -367,7 +367,7 @@ where
         Some(g) => g,
         None => {
             // Already in parallel context, fall back to serial
-            return a.zip_with(b, f);
+            return zip_with(a, b, f);
         }
     };
     let broadcast_shape = broadcast::broadcast_shape(&a.shape(), &b.shape())?;
@@ -378,7 +378,7 @@ where
     let is_f_contiguous = a.is_f_contiguous() && b.is_f_contiguous();
 
     if !should_parallelize(len, is_f_contiguous) {
-        return Ok(a.zip_with(b, f)?);
+        return zip_with(a, b, f);
     }
 
     let output_dim = <DA as BroadcastDim<DB>>::Output::from_slice(&broadcast_shape);
@@ -648,8 +648,8 @@ tensor.axis_iter(Axis(0)).for_each(|slice| {
     let sum = slice.par_sum(); // Forbidden! Thread pool starvation
 });
 
-// Bad - Ignoring parallel errors
-let result = par_zip_with(&a, &b, |x, y| x + y).unwrap(); // Forbidden silent ignore
+// Bad - ignoring parallel errors
+let result = par_zip_with(&a, &b, |x, y| x + y)?;
 ```
 
 ---
@@ -831,7 +831,7 @@ where
 ### Wave 4: 集成与测试
 
 - [ ] **T8**: 集成测试与一致性验证
-  - 文件: `tests/parallel_consistency.rs`
+  - 文件: `tests/test_parallel.rs`
   - 内容: 并行与串行结果一致性测试、阈值行为测试、竞态条件检测
   - 测试: `test_par_sum_matches_serial`、`test_threshold_boundary`
   - 前置: T3, T4, T5
@@ -862,7 +862,7 @@ Wave 4:        [T8]
 | 类型 | 位置 | 目的 |
 |------|------|------|
 | 单元测试 | `#[cfg(test)] mod tests` | 验证单个并行操作 |
-| 一致性测试 | `tests/parallel_consistency.rs` | 并行结果与串行一致 |
+| 一致性测试 | `tests/test_parallel.rs` | 并行结果与串行一致 |
 | 边界测试 | 集成测试中标注 | 阈值边界、空数组、单元素 |
 | 并发测试 | `tests/concurrent/` | 竞态条件检测 |
 | 属性测试 | `tests/property/` | 随机数据验证一致性不变量（参见 §7.4） |
@@ -909,7 +909,7 @@ Wave 4:        [T8]
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/parallel.rs` | `par_map` / `par_sum` / `par_zip_with` 与 `tensor`、`storage`、`simd`、`rayon` guard 的端到端协同路径 |
+| `tests/test_parallel.rs` | `par_map` / `par_sum` / `par_zip_with` 与 `tensor`、`storage`、`simd`、`rayon` guard 的端到端协同路径 |
 
 ---
 
@@ -917,7 +917,7 @@ Wave 4:        [T8]
 
 ### 8.1 接口约定
 
-并行路径的每个工作线程可以调用上层提供的分块执行器；若上层在该分块上启用 SIMD，则形成“并行 + SIMD”组合路径（参见 `08-simd.md §8.2`）。
+并行路径的每个工作线程可以调用上层提供的分块执行器；若上层在该分块上启用 SIMD，则形成“并行 + SIMD”组合路径（参见 `08-simd.md §8`）。
 
 ```
 并行 + SIMD 组合执行
@@ -981,7 +981,7 @@ Wave 4:        [T8]
 |------|-----|
 | 决策 | 所有类型的并行结果都必须与串行实现保持一致；若某条并行路径无法证明该性质，则自动回退串行。当前版本默认仅对可逐块证明一致的整数/逐元素路径启用并行归约，浮点归约保守回退串行。 |
 | 理由 | 需求说明书 §28.5 已固定“并行归约结果须与单线程一致”；性能优化不能改变语义结果 |
-| 测试约定 | 并行 sum / zip / map 的一致性测试使用与串行结果一致的断言，而非近似比较；参见 `28-tests.md §8.2` |
+| 测试约定 | 并行 sum / zip / map 的一致性测试使用与串行结果一致的断言，而非近似比较；参见 `28-tests.md §14.2` |
 | 参见 | `13-reduction.md §9 ADR-2`（协调定义） |
 
 ### 决策 3：并行阈值默认 1024 元素

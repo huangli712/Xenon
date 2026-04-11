@@ -253,8 +253,16 @@ where
     T: RealScalar,
 {
     /// Norm operation, returns a real-typed tensor.
+    /// Available only when the `std` feature is enabled.
     pub fn norm(&self) -> Tensor<T, D>;
+}
 
+impl<S, D, T> TensorBase<S, D>
+where
+    S: Storage<Elem = Complex<T>>,
+    D: Dimension,
+    T: Element + Copy,
+{
     /// Conjugate operation.
     pub fn conjugate(&self) -> Tensor<Complex<T>, D>;
 
@@ -355,7 +363,7 @@ where
 
 ```rust
 // Good - use map for type conversion
-let a: Tensor<i32, Ix1> = Tensor::from_slice(&[1, 2, 3]);
+let a: Tensor<i32, Ix1> = Tensor::from_shape_slice([3], &[1, 2, 3])?;
 let b: Tensor<f64, Ix1> = a.map(|&x| x as f64);
 
 // Good - use zip_with for broadcast addition
@@ -472,9 +480,9 @@ where
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T5**: 实现复数运算（norm/conj）
+- [ ] **T5**: 实现复数操作（`conjugate`）与 std-only 复数数学函数（`norm`）
   - 文件: `src/math/unary.rs`
-  - 内容: ComplexScalar 约束的复数方法
+  - 内容: `conjugate` 的 no_std 基础路径 + `norm` 的 std-only 数学路径
   - 测试: `test_norm`, `test_conj`
   - 前置: T1
   - 预计: 10 min
@@ -590,7 +598,7 @@ Wave 4: [T8]
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/math.rs` | `zip_with` / `mapv` / 标量路径与 `iter`、`broadcast`、`tensor`、`simd` backend 的端到端集成 |
+| `tests/test_math.rs` | `zip_with` / `mapv` / 标量路径与 `iter`、`broadcast`、`tensor`、`simd` backend 的端到端集成 |
 
 ---
 
@@ -672,7 +680,7 @@ Wave 4: [T8]
 
 ## 11. no_std 兼容性
 
-逐元素运算模块在 `no_std` 环境下可用，但需注意结果分配和数学函数依赖。
+逐元素运算模块中的非数学运算在 `no_std` 环境下可用，但需注意结果分配；数学函数仅在 `std` feature 下提供。
 
 ```rust
 #[cfg(not(feature = "std"))]
@@ -688,9 +696,10 @@ use alloc::vec::Vec;
 | `mapv_inplace` | ✅ | 原地修改，无额外分配 |
 | `zip_with` | ✅ | 返回新 `Tensor`，需 `no_std + alloc` |
 | 算术运算 (add/sub/mul/div) | ✅ | 基于 `zip_with`，需 `no_std + alloc` |
-| 数学函数 (sin/sqrt/exp/ln/...) | ✅ | 数学函数（sin/exp/ln/sqrt 等）需要 `std` feature，no_std 环境下不可用（RealScalar 数学方法在 no_std 下无实现者） |
+| 数学函数 (sin/sqrt/exp/ln/...) | ❌ | 数学函数（sin/exp/ln/sqrt 等）需要 `std` feature，no_std 环境下不可用（RealScalar 数学方法在 no_std 下无实现者） |
 | 比较运算 (eq/ne/lt/gt) | ✅ | 无特殊依赖 |
-| 复数运算 (norm/conj) | ✅ | 基于 `map`，需 `no_std + alloc` |
+| 复数运算 (`conjugate`) | ✅ | 基于 `map`，需 `no_std + alloc` |
+| 复数数学函数 (`norm`) | ❌ | 仅在 `std` feature 下可用，依赖 `RealScalar` 数学能力 |
 | 逻辑非 (not) | ✅ | 基于 `map`，需 `no_std + alloc` |
 | SIMD 加速路径 | ✅ | pulp crate 支持 `no_std`（参见 `08-simd.md §11`） |
 

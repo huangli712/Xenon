@@ -80,7 +80,7 @@ src/complex/
 └── core::cmp        # PartialEq
 ```
 
-> **零外部依赖。** `Complex<T>` 的基础结构、基础方法、算术运算和类型转换仅依赖 `core`；涉及浮点数学的复数方法在 `no_std + alloc` 下由 Xenon 内部可移植数学实现支撑，因此整个 `Complex<f32>` / `Complex<f64>` 公共 API 在 `std` 与 `no_std` 下保持一致。
+> **零外部依赖。** `Complex<T>` 的基础结构、基础方法、算术运算和类型转换仅依赖 `core`；涉及浮点数学的复数方法仅在 `std` feature 下提供，因此 `Complex<f32>` / `Complex<f64>` 在 no_std 下只保留不依赖数学函数的核心能力。
 
 ### 3.2 依赖精确到类型级
 
@@ -862,7 +862,7 @@ hypot(a, b):
   - 预计: 10 min
 
 - [ ] **T12**: 集成测试与边界测试
-  - 文件: `tests/complex_tests.rs`
+  - 文件: `tests/test_complex.rs`
   - 内容: 完整测试计划（见 §8）
   - 测试: 见测试计划
   - 前置: T11
@@ -898,9 +898,9 @@ Wave 5: [T11] → [T12]
 | 测试分类 | 位置 | 说明 |
 |----------|------|------|
 | 单元测试 | `#[cfg(test)] mod tests` | 验证复数结构、运算、格式化与布局 |
-| 集成测试 | `tests/complex_tests.rs` | 验证 `complex` 与 `element`、`math`、`matrix`、`ffi` 的协同路径 |
+| 集成测试 | `tests/test_complex.rs` | 验证 `complex` 与 `element`、`math`、`matrix`、`ffi` 的协同路径 |
 | 边界测试 | 同模块测试中标注 | 覆盖 NaN/Inf、极大/极小值与 FFI 布局前提 |
-| 属性测试 | `tests/complex_tests.rs` 或 `tests/property.rs` | 验证共轭、模长、指数对数与极坐标不变量 |
+| 属性测试 | `tests/test_complex.rs` 或 `tests/property.rs` | 验证共轭、模长、指数对数与极坐标不变量 |
 
 ### 8.2 单元测试清单
 
@@ -961,7 +961,7 @@ Wave 5: [T11] → [T12]
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/complex_tests.rs` | 复数类型与 `element` trait 体系、`math` 逐元素运算、`matrix` 共轭内积以及 `ffi` 布局约束的端到端验证 |
+| `tests/test_complex.rs` | 复数类型与 `element` trait 体系、`math` 逐元素运算、`matrix` 共轭内积以及 `ffi` 布局约束的端到端验证 |
 
 ---
 
@@ -1022,12 +1022,12 @@ Wave 5: [T11] → [T12]
 | `Complex<T>` 结构体 | 纯 `#[repr(C)]`，天然 no_std |
 | 基础方法（`re()`, `im()`, `conj()`, `from_real()`, `from_imag()`, `is_real()`, `is_imaginary()`） | 不依赖 `Float` trait，**no_std 可用** |
 | 算术运算（`+`, `-`, `*`, `/`, 一元负号） | 仅依赖 `core::ops`，天然 no_std |
-| 数学方法（`norm()`, `arg()`, `exp()`, `ln()`, `sqrt()`, `to_polar()`, `from_polar()`） | 由 Xenon 内部可移植数学层提供；`std` 构建可直接委托标准库，`no_std + alloc` 构建使用等价实现，保证 API 与语义一致 |
+| 数学方法（`norm()`, `arg()`, `exp()`, `ln()`, `sqrt()`, `to_polar()`, `from_polar()`） | 仅在 `std` feature 下提供；`no_std + alloc` 下不承诺这些 API 可用 |
 | 数学方法（`norm_sqr()`） | 仅使用 `+` 和 `*`，不依赖浮点函数，**no_std 可用** |
 | `is_nan()`, `is_finite()` | 具体类型实现，`f32::is_nan()`/`f32::is_finite()` 在 `core` 中提供，**no_std 可用** |
 | 类型转换 | `From` trait 实现和 `to_f32()` 方法，天然 no_std |
 
-> **与 `01-architecture.md` §1.4 保持一致**：Xenon 不以外部数学 crate 作为公开依赖面，但会在 crate 内部维护一套可移植数学实现，使 `Complex<f32>` / `Complex<f64>` 的数学方法（`norm`, `exp`, `ln`, `sqrt`, `arg`, `to_polar`, `from_polar`）在 `std` 与 `no_std + alloc` 下都可用。`norm_sqr()`、基础方法、算术运算、类型转换等仍保持纯 `core` 路径。
+> **与 `01-architecture.md` §1.4 保持一致**：Xenon 不以外部数学 crate 作为公开依赖面，也不在 `no_std + alloc` 下承诺复数数学函数。`norm_sqr()`、基础方法、算术运算、类型转换等仍保持纯 `core` 路径；`norm`、`exp`、`ln`、`sqrt`、`arg`、`to_polar`、`from_polar` 仅在 `std` feature 下提供。
 
 ---
 

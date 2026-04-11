@@ -13,7 +13,7 @@
 | 职责 | 包含 | 不包含 |
 |------|------|--------|
 | 对齐分配 | 使用 `alloc::alloc` 进行指定对齐的内存分配 | arena 分配器（更复杂的分配策略） |
-| no_std 支持 | 仅依赖 `core` 和 `alloc`，不依赖 `std` | 池分配（pooled allocation） |
+| no_std 支持 | 依赖 `core`、`alloc` 和原子能力（`no_std + alloc + atomics`），不依赖 `std` | 池分配（pooled allocation） |
 | 分割 | `split_at` 将工作空间 O(1) 分割为两个子空间 | 栈分配（stack allocation，由调用方自行管理） |
 | 动态扩容 | `ensure_capacity` 支持单向增长（不缩容） | 自动缩容策略 |
 
@@ -68,7 +68,7 @@ src/
 | `error.rs` | `WorkspaceError` 枚举及 Display/Error impl | ~40 |
 | `workspace.rs` | `Workspace` 结构体、常量、`new()`、`with_default_capacity()`、`Drop` | ~100 |
 | `borrow.rs` | `WorkspaceBorrow`、`WorkspaceBorrowMut` 及其方法和 Drop | ~120 |
-| `split.rs` | `SplitBorrowMut` 及其方法（`split_at`、`split_at_mut`、Drop） | ~100 |
+| `split.rs` | `SplitBorrowMut` 及其方法（`as_maybe_uninit_slice`、`len`、`split_at`、`split_at_mut`、Drop） | ~100 |
 | `expand.rs` | `ensure_capacity()`、`reallocate()` 扩容逻辑 | ~60 |
 
 ---
@@ -102,7 +102,7 @@ src/workspace/
 
 ### 3.3 依赖方向声明
 
-> **依赖方向：单向。** `workspace` 仅依赖 `core` 和 `alloc`，不依赖 `tensor`（参见 `07-tensor.md §3`）。上游库和 `tensor` 可消费 `workspace`。
+> **依赖方向：单向。** `workspace` 仅依赖 `core`、`alloc` 和原子能力，不依赖 `tensor`（参见 `07-tensor.md §3`）。上游库和 `tensor` 可消费 `workspace`。
 
 ### 3.4 WorkspaceError 的独立性
 
@@ -321,8 +321,11 @@ impl Drop for Workspace {
 ///
 /// RAII guard that automatically returns the workspace on drop.
 pub struct WorkspaceBorrow<'a> {
+    /// Start pointer of the borrowed scratch region.
     ptr: NonNull<u8>,
+    /// Length of the borrowed region in bytes.
     len: usize,
+    /// Parent workspace whose borrow state is released on drop.
     workspace: &'a Workspace,
 }
 
@@ -330,8 +333,11 @@ pub struct WorkspaceBorrow<'a> {
 ///
 /// RAII guard that automatically returns the workspace on drop.
 pub struct WorkspaceBorrowMut<'a> {
+    /// Start pointer of the borrowed scratch region.
     ptr: NonNull<u8>,
+    /// Length of the borrowed region in bytes.
     len: usize,
+    /// Parent workspace whose borrow state is released on drop.
     workspace: &'a Workspace,
 }
 
@@ -474,8 +480,11 @@ pub unsafe fn as_maybe_uninit_typed_slice<T>(
     ///
     /// # Safety
     ///
-    /// The caller must guarantee that the first `count` typed elements have been
-    /// fully initialized before calling this method.
+    /// The caller must guarantee that:
+    /// - the first `count` typed elements have been fully initialized,
+    /// - those values are valid instances of `T`,
+    /// - the requested region fits in this borrow (`count * size_of::<T>() <= self.len()`),
+    /// - and the scratch region satisfies `T` alignment requirements.
     pub unsafe fn assume_init_typed_slice<T>(&mut self, count: usize) -> &mut [T] {
         assert!(core::mem::size_of::<T>() != 0, "ZST typed borrows are not supported");
         let byte_len = count
@@ -514,9 +523,16 @@ impl<'a> Drop for WorkspaceBorrowMut<'a> {
 ///
 /// Similar to `WorkspaceBorrowMut`, but allows multiple split guards
 /// to coexist (pointing to non-overlapping memory regions).
+/// Public surface intentionally matches the minimal split use case:
+/// `as_maybe_uninit_slice()`, `len()`, `split_at_mut()`, and `Drop`. This type deliberately does not
+/// expose `as_mut_ptr()`, `is_empty()`, or typed `assume_init_*` helpers until
+/// their aliasing and initialization contracts are separately frozen.
 pub struct SplitBorrowMut<'a> {
+    /// Start pointer of this split sub-space.
     ptr: NonNull<u8>,
+    /// Length of this split sub-space in bytes.
     len: usize,
+    /// Parent workspace whose borrow state is restored when all splits drop.
     workspace: &'a Workspace,
     /// Reference to the split count. The split() operation atomically
     /// increments the SPLIT_COUNT counter. Each SplitBorrowMut holds a
@@ -1037,7 +1053,7 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/workspace.rs` | `new` / `borrow` / `split_at_mut` / `ensure_capacity` 与 `ffi`、上游 scratch-buffer 场景的端到端协同验证，并验证 `MaybeUninit` 视图与 `assume_init_*` 前缀约束 |
+| `tests/test_workspace.rs` | `new` / `borrow` / `split_at_mut` / `ensure_capacity` 与 `ffi`、上游 scratch-buffer 场景的端到端协同验证，并验证 `MaybeUninit` 视图与 `assume_init_*` 前缀约束 |
 
 ---
 
@@ -1082,7 +1098,7 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 | 替代方案 | arena 分配器（bump 分配） — 放弃，需求不复杂，无需 zone/reset |
 | 替代方案 | pool 分配（对象池） — 放弃，工作空间操作原始字节，无需对象语义 |
 
-### 决策 2:借用期间不可再次借出
+### 决策 2：借用期间不可再次借出
 
 | 属性 | 值 |
 |------|-----|
@@ -1090,7 +1106,7 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 | 理由 | 安全性：避免同一缓冲区被多次借出导致数据竞争；简单性: 单一借用模型更易理解；split_at() 生成的子空间全部释放后，父工作空间才恢复可借用状态。 |
 | 替代方案 | 允许共享借用（多个 reader） — 未来可扩展，当前版本简化 |
 
-### 决策 3:扩容安全性保证
+### 决策 3：扩容安全性保证
 
 | 属性 | 值 |
 |------|-----|
@@ -1098,7 +1114,7 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 | 理由 | `&mut self` 由编译器保证独占访问；显式检查原子状态作为双重保障；防止扩容导致已有引用失效 |
 | 替代方案 | 不检查直接扩容 — 放弃，UB 风险太高 |
 
-### 决策 4:不保证零初始化
+### 决策 4：不保证零初始化
 
 | 属性 | 值 |
 |------|-----|

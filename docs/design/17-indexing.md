@@ -394,7 +394,7 @@ macro_rules! s {
 
 > **设计决策：** `s![]` 宏设计参考 ndarray 的 `s![]` 宏，
 > 提供 Rust 像的声明式宏语法，编译期类型安全。
-> 相比过程式构造（`SliceInfo::from_vec(vec![...]).unwrap()`），宏优先展开为
+> 相比过程式构造（`SliceInfo::from_vec(vec![...])?`），宏优先展开为
 > `SliceInfoIndices::Inline` 表示，从而在静态维度场景下不引入堆分配；仅运行时动态切片构造
 > 才进入 `Vec` 路径。
 
@@ -681,7 +681,7 @@ function compute_slice(shape, strides, offset, slices: [SliceInfoElem; N])
 ### Wave 4: 集成与测试
 
 - [ ] **T7**: 编写综合测试
-  - 文件: `tests/index.rs`
+  - 文件: `tests/test_index.rs`
   - 内容: 链式切片、视图的视图、负步长验证
   - 测试: 覆盖所有公共 API
   - 前置: T1-T6
@@ -758,7 +758,7 @@ Wave 4:           [T7]
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/index.rs` | 整数索引 / 切片 / `s![]` 宏 与 `tensor`、`layout`、`iter`、`shape` 的端到端协同路径 |
+| `tests/test_index.rs` | 整数索引 / 切片 / `s![]` 宏 与 `tensor`、`layout`、`iter`、`shape` 的端到端协同路径 |
 
 ---
 

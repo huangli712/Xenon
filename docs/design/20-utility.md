@@ -23,7 +23,7 @@
 |------|------|
 | 步长感知 | `fill`/`clip` 通过迭代器正确处理非连续内存布局 |
 | 原地优先 | `fill` 为原地操作（`&mut self`），避免额外分配 |
-| 类型安全 | `clip` 限制为有序标量类型（`i32`、`i64`、`usize`、`f32`、`f64`），编译期拒绝 `bool` 和 `Complex` |
+| 类型安全 | `clip` 限制为有序标量类型（`i32`、`i64`、`f32`、`f64`），编译期拒绝 `bool`、`Complex` 和 `usize` |
 | 语义清晰 | `to_contiguous` 返回 `Tensor<A, D>`，调用方可预测生命周期 |
 
 ### 1.3 在架构中的位置
@@ -79,7 +79,7 @@ src/util/
 | `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`（参见 `07-tensor.md` §4） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §4） |
 | `storage` | `Storage<Elem=A>`, `StorageMut<Elem=A>`（参见 `05-storage.md` §4） |
-| `element` | `Element`, `RealScalar`，以及 utility 层定义的 operation-specific `ClipElement` 约束 |
+| `element` | `Element`，以及 utility 层定义的 operation-specific `ClipElement` 约束 |
 | `layout` | `is_f_contiguous()`（参见 `06-memory.md` §4） |
 | `iter` | `iter()`, `iter_mut()`（参见 `10-iterator.md` §4） |
 | `tensor` | `Tensor<A, D>` 的结果构造路径 | `clip` 分配新的 owned 结果张量并通过 `iter()` / `iter_mut()` 写入 |
@@ -99,7 +99,6 @@ pub trait ClipElement: Element + PartialOrd {}
 
 impl ClipElement for i32 {}
 impl ClipElement for i64 {}
-impl ClipElement for usize {}
 impl ClipElement for f32 {}
 impl ClipElement for f64 {}
 
@@ -115,7 +114,7 @@ where
     ///
     /// # Supported Types
     ///
-    /// Available for types implementing `ClipElement`: i32, i64, usize, f32, f64.
+    /// Available for types implementing `ClipElement`: i32, i64, f32, f64.
     /// **Not available for `Complex<f32>`/`Complex<f64>`** because complex numbers
     /// have no natural total ordering (`Complex` does not implement `PartialOrd`,
     /// see `04-complex.md §4`).
@@ -130,6 +129,7 @@ where
     /// # Errors
     ///
     /// Returns `Err(XenonError::InvalidArgument)` when `min > max`.
+    /// For floating-point tensors, `min`/`max` must not be `NaN`.
     ///
     /// # Examples
     ///
@@ -276,7 +276,7 @@ t.fill(42.0);
 
 // Bad - create a temporary Vec then construct a new tensor, double allocation
 let data = vec![42.0; 1000];
-let t = Tensor1::from_shape_vec([1000], data).unwrap();
+let t = Tensor1::from_shape_vec([1000], data)?;
 ```
 
 ```rust
@@ -338,10 +338,9 @@ to_contiguous(tensor):
 | 高于上界 | `2.0` | `0.0` | `1.0` | `1.0` | 钳位到 max |
 | NaN 输入 | `NaN` | `0.0` | `1.0` | `NaN` | NaN 不满足 `< min` 也不满足 `> max`，保持 NaN |
 
-> **设计决策：** `clip` 支持 `usize`，因为它满足有序标量域且需求说明书 §21 未排除无符号整数。
->
 > 对浮点数，NaN 的 clip 行为遵循 IEEE 754 比较语义：`NaN < x` 和 `NaN > x` 均为 false，
 > 因此 NaN 值在 clip 中保持不变。这与 NumPy 的 `np.clip` 行为一致。
+> 另一方面，`min`/`max` 作为边界参数必须是已定义的可比较标量值；若任一边界为 `NaN`，则返回 `InvalidArgument`，避免把无效边界静默当成合法区间。
 
 ---
 
@@ -359,7 +358,7 @@ to_contiguous(tensor):
 - [ ] **T2**: 实现 `clip` 方法
   - 文件: `src/util/clip.rs`
   - 内容: `clip(&self, min: A, max: A) -> Result<Tensor<A, D>, XenonError>` 和 `clip_inplace` 方法
-  - 测试: `test_clip_basic`, `test_clip_nan`, `test_clip_integers`
+  - 测试: `test_clip_basic`, `test_clip_nan`, `test_clip_nan_bound`, `test_clip_integers`
   - 前置: T1
   - 预计: 10 min
 
@@ -373,9 +372,9 @@ to_contiguous(tensor):
   - 预计: 10 min
 
 - [ ] **T4**: 编写综合测试
-  - 文件: `tests/utility.rs`
+  - 文件: `tests/test_utility.rs`
   - 内容: 边界测试（空数组、单元素、大数组、非连续布局）
-  - 测试: `test_clip_empty`, `test_clip_single_element`, `test_fill_zero_dim`
+  - 测试: `test_clip_empty`, `test_clip_single_element`, `test_clip_non_contiguous`, `test_clip_inplace_non_contiguous`, `test_fill_zero_dim`
   - 前置: T1, T2, T3
   - 预计: 10 min
 
@@ -406,8 +405,11 @@ Wave 2:      [T3] → [T4]
 | `test_clip_basic` | 基本裁剪：元素限制在 [0, 2] 范围 | 高 |
 | `test_clip_no_change` | 所有元素在范围内，无变化 | 高 |
 | `test_clip_nan` | NaN 输入保持 NaN | 高 |
+| `test_clip_nan_bound` | NaN 作为 min/max 返回 `InvalidArgument` | 高 |
 | `test_clip_inplace` | 原地裁剪正确性 | 高 |
 | `test_clip_integers` | i32/i64 整数裁剪 | 中 |
+| `test_clip_non_contiguous` | 非连续布局返回正确裁剪结果 | 高 |
+| `test_clip_inplace_non_contiguous` | 非连续布局原地裁剪所有逻辑元素 | 高 |
 | `test_fill_basic` | 基本填充所有元素为指定值 | 高 |
 | `test_fill_non_contiguous` | 非连续布局正确填充所有逻辑元素 | 高 |
 | `test_fill_empty` | 空数组 fill 不 panic | 中 |
@@ -422,8 +424,8 @@ Wave 2:      [T3] → [T4]
 | 空数组 `shape=[0, 3]` | `clip`/`fill`/`to_contiguous` 均正常处理，无 panic |
 | 单元素 `shape=[1]` | `clip` 正确裁剪单个元素 |
 | 零维张量 | `clip` 返回标量裁剪结果 |
-| 非连续切片 | `fill` 通过迭代器正确填充所有逻辑元素 |
-| NaN 边界 | `clip(NaN, 0.0, 1.0)` 保持 NaN |
+| 非连续切片 | `fill`/`clip` 通过迭代器正确处理所有逻辑元素 |
+| NaN 边界 | `clip(x, NaN, 1.0)` 或 `clip(x, 0.0, NaN)` 返回 `InvalidArgument` |
 
 ### 7.4 属性测试不变量
 
@@ -437,7 +439,7 @@ Wave 2:      [T3] → [T4]
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/utility.rs` | `clip`/`fill`/`to_contiguous` 与 `tensor`、`iter`、`layout`、`convert` 的协同路径 |
+| `tests/test_utility.rs` | `clip`/`fill`/`to_contiguous` 与 `tensor`、`iter`、`layout`、`convert` 的协同路径 |
 
 ---
 

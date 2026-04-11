@@ -286,7 +286,9 @@ pub unsafe trait Storage: RawStorage {
 ///
 /// ```ignore
 /// let mut storage: Owned<f64> = Owned::from_vec(vec![1.0, 2.0, 3.0]);
-/// *storage.get_mut(0).unwrap() = 10.0;
+/// if let Some(slot) = storage.get_mut(0) {
+///     *slot = 10.0;
+/// }
 /// assert_eq!(storage.get(0), Some(&10.0));
 /// ```
 pub unsafe trait StorageMut: Storage + RawStorageMut {
@@ -898,7 +900,7 @@ use alloc::alloc::{alloc, dealloc, alloc_zeroed, Layout};
   - 预计: 10 min
 
 - [ ] **T13**: 集成测试和文档
-  - 文件: `tests/storage.rs`
+  - 文件: `tests/test_storage.rs`
   - 内容: 跨存储类型交互测试、ZST 测试、空数组测试
   - 测试: 完整集成测试套件
   - 前置: T12

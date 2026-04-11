@@ -245,8 +245,8 @@ fn sum_int<I: Numeric + CheckedAdd>(iter: impl Iterator<Item = &I>) -> I {
 ### 5.2 浮点/复数累加路径
 
 ```rust
-// Float sum implementation
-fn sum_float<F: RealScalar>(iter: impl Iterator<Item = &F>) -> F {
+// Float sum implementation — relies only on additive semantics, not std-only math functions
+fn sum_float<F: Numeric + Copy>(iter: impl Iterator<Item = &F>) -> F {
     iter.fold(F::zero(), |acc, &x| acc + x)
     // NaN + anything = NaN, auto-propagation
 }
@@ -425,7 +425,7 @@ Wave 5:         [T7]
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/reduction.rs` | `sum` / `sum_axis` / `keepdims` 与 `iter`、`tensor`、`element`、`simd`、`parallel` 的端到端协同路径 |
+| `tests/test_reduction.rs` | `sum` / `sum_axis` / `keepdims` 与 `iter`、`tensor`、`element`、`simd`、`parallel` 的端到端协同路径 |
 
 ---
 
@@ -437,7 +437,7 @@ Wave 5:         [T7]
 |------|----------|-----------|------|
 | `reduction → iter` | `iter` | `Elements` / `AxisIter` | 使用元素与轴迭代器完成全局归约和按轴归约，参见 `10-iterator.md` §4 |
 | `reduction → tensor` | `tensor` | `TensorBase<S, D>` / `Tensor<A, D>` | 消费输入张量并返回归约结果，参见 `07-tensor.md` §4 |
-| `reduction → element` | `element` | `Numeric` / `RealScalar` | 通过泛型约束区分整数、浮点和复数路径，参见 `03-element.md` §3 |
+| `reduction → element` | `element` | `Numeric` / `CheckedAdd` / `ComplexScalar` | 通过泛型约束区分整数、浮点和复数路径，参见 `03-element.md` §3 |
 | `reduction → simd` | `simd` | SIMD 归约路径 | 连续数组可自动走 SIMD backend，参见 `08-simd.md` §3 |
 | `reduction → parallel` | `parallel` | 并行归约路径 | 大数组可自动走并行归约，参见 `09-parallel.md` §4 |
 

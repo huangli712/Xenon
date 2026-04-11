@@ -207,7 +207,7 @@ where
     /// # Examples
     /// ```
     /// let a = Tensor::<f64, _>::zeros([2, 3, 4]);  // 24 elements
-    /// let b = a.reshape([6, 4]).unwrap();          // shape: [6, 4]
+    /// let b = a.reshape([6, 4])?;          // shape: [6, 4]
     /// ```
     pub fn reshape<E>(&self, shape: E) -> Result<TensorView<'_, A, E::Dim>, XenonError>
     where
@@ -264,7 +264,7 @@ where
     /// # Examples
     /// ```
     /// let a = Tensor::<f64, _>::zeros([4, 6]);
-    /// let b = a.into_shape([2, 12]).unwrap();  // shape: [2, 12]
+    /// let b = a.into_shape([2, 12])?;  // shape: [2, 12]
     /// ```
     pub fn into_shape<E>(self, shape: E) -> Result<Tensor<A, E::Dim>, XenonError>
     where
@@ -424,7 +424,7 @@ Non-contiguous example (reshape fails):
 ### Wave 4: 测试
 
 - [ ] **T5**: 编写综合测试
-  - 文件: `tests/shape.rs`
+  - 文件: `tests/test_shape.rs`
   - 内容: 转置正确性、reshape 成功/失败、非连续 reshape、大数组性能、reshape 各种路径、大数组测试
   - 测试: 覆盖所有公共 API
   - 前置: T2, T3, T4
@@ -493,7 +493,7 @@ Wave 4:         [T5]
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/shape.rs` | `transpose` / `reshape` / `into_shape` 与 `tensor`、`layout`、`index`、`broadcast` 的协同路径 |
+| `tests/test_shape.rs` | `transpose` / `reshape` / `into_shape` 与 `tensor`、`layout`、`index`、`broadcast` 的协同路径 |
 
 ---
 

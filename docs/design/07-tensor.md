@@ -681,7 +681,7 @@ Tensor2<f64> = TensorBase<Owned<f64>, Ix2>
 ### Wave 4: 测试和收尾
 
 - [ ] **T10**: 集成测试和文档
-  - 文件: `tests/tensor.rs`
+  - 文件: `tests/test_tensor.rs`
   - 内容: 跨模块交互测试、边界测试、类型别名编译验证
   - 测试: 完整集成测试套件
   - 前置: T3, T9
@@ -772,7 +772,7 @@ Wave 4:       [T10]
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/tensor.rs` | `from_shape_vec` / `view` / `view_mut` / `as_ptr` 与 `dimension`、`storage`、`layout`、`index` 的端到端协同路径 |
+| `tests/test_tensor.rs` | `from_shape_vec` / `view` / `view_mut` / `as_ptr` 与 `dimension`、`storage`、`layout`、`index` 的端到端协同路径 |
 
 ### 7.7 数据流描述
 

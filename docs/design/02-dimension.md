@@ -595,8 +595,8 @@ fn create_tensor_3d<A>(d1: usize, d2: usize, d3: usize) -> Tensor<A, Ix3> { /* .
 // Good - use Result for dimension conversion
 let dim: Ix3 = Ix3::try_from_dyn(dyn_dim)?;
 
-// Bad - using unwrap, may panic
-let dim: Ix3 = Ix3::try_from_dyn(dyn_dim).unwrap();
+// Bad - discarding the recoverable conversion error path
+let dim: Ix3 = Ix3::try_from_dyn(dyn_dim)?;
 ```
 
 ---
@@ -915,7 +915,7 @@ strides_for_f_order(shape):
   - 预计: 10 min
 
 - [ ] **T12**: 集成测试与边界测试
-  - 文件: `tests/dimension_tests.rs`
+  - 文件: `tests/test_dimension.rs`
   - 内容: 空维度、单元素、大维度、size 溢出、no_std 兼容性
   - 测试: 见测试计划 §8
   - 前置: T11
@@ -950,9 +950,9 @@ Wave 5:  [T10] → [T11] → [T12]
 | 测试分类 | 位置 | 说明 |
 |----------|------|------|
 | 单元测试 | `#[cfg(test)] mod tests` | 验证各维度类型、步长计算和辅助 trait |
-| 集成测试 | `tests/dimension_tests.rs` | 验证 `dimension` 与 `tensor`、`layout`、`shape`、`index` 的协同路径 |
+| 集成测试 | `tests/test_dimension.rs` | 验证 `dimension` 与 `tensor`、`layout`、`shape`、`index` 的协同路径 |
 | 边界测试 | 同模块测试中标注 | 覆盖 Ix0、零长度轴、大维度与溢出路径 |
-| 属性测试 | `tests/dimension_tests.rs` 或 `tests/property.rs` | 验证 stride/size/维度互转不变量 |
+| 属性测试 | `tests/test_dimension.rs` 或 `tests/property.rs` | 验证 stride/size/维度互转不变量 |
 
 ### 8.2 单元测试清单
 
@@ -999,7 +999,7 @@ Wave 5:  [T10] → [T11] → [T12]
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/dimension_tests.rs` | `IntoDimension`、`Axis`、`BroadcastDim` 与 `tensor`、`shape`、`index` 的端到端协同验证 |
+| `tests/test_dimension.rs` | `IntoDimension`、`Axis`、`BroadcastDim` 与 `tensor`、`shape`、`index` 的端到端协同验证 |
 
 ---
 

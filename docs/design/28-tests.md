@@ -346,7 +346,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 |----------|----------|--------|
 | `test_fill_inplace` | 原地 fill / 非连续 fill | 中 |
 | `test_clip` | 裁剪操作 | 中 |
-| `test_clip_usize` | usize 裁剪 | 中 |
+| `test_clip_non_contiguous` | 非连续布局裁剪 | 中 |
 | `test_to_contiguous` | 连续化保持逻辑元素顺序 | 高 |
 
 ### 5.13 test_output.rs
@@ -366,7 +366,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_as_mut_ptr` | as_mut_ptr 返回可变指针 | 高 |
 | `test_lda` | lda 返回 leading dimension | 中 |
 | `test_is_blas_compatible` | BLAS 兼容性检查 | 高 |
-| `test_from_raw_parts_roundtrip` | into_raw_parts → from_raw_parts 往返 | 高 |
+| `test_from_raw_parts_roundtrip` | into_raw_parts → from_raw_parts_owned 往返 | 高 |
 | `test_index_to_offset` | index_to_offset 正确计算 | 高 |
 
 ### 5.15 test_workspace.rs
@@ -403,13 +403,13 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 
 | 验证方式 | 命令 | 说明 |
 |----------|------|------|
-| CI 脚本 | `cargo check --no-default-features` | 验证 `no_std + alloc` 编译通过（参见 `01-architecture.md §6`） |
+| CI 脚本 | `cargo check --no-default-features` | 验证 `no_std + alloc` 下的 std-independent API 编译通过；workspace/Arc 相关路径要求目标平台具备原子能力（参见 `01-architecture.md §6`） |
 
 ```yaml
 # .github/workflows/test.yml
 no_std_check:
     steps:
-        - name: Check no_std + alloc
+        - name: Check no_std + alloc core surface
           run: cargo check --no-default-features
 ```
 
@@ -718,7 +718,7 @@ fn test_add_result() {
 fn test_incompatible_shapes() {
     let a = Tensor1::from_vec(vec![1.0, 2.0]);
     let b = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
-    assert_xenon_error!(a.zip_with(&b, |x, y| x + y), XenonError::ShapeMismatch { .. });
+    assert_xenon_error!(zip_with(&a, &b, |x, y| x + y), XenonError::ShapeMismatch { .. });
 }
 
 // Good: Parameterized test with standard shapes
@@ -744,12 +744,12 @@ fn test_add_bad() {
     assert_eq!(result[[0]], 0.4);  // Floating point exact comparison may fail
 }
 
-// Bad: Ignoring the method-style error path
+// Bad: Ignoring the free-function error path
 #[test]
 fn test_add_bad2() {
     let a = Tensor1::from_vec(vec![1.0, 2.0]);
     let b = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
-    let _ = a.zip_with(&b, |x, y| x + y);  // Silently ignoring the Result
+    let _ = zip_with(&a, &b, |x, y| x + y);  // Silently ignoring the Result
 }
 
 // Bad: Hardcoded magic numbers without context
@@ -913,7 +913,7 @@ fn test_bad_magic() {
 
 - [ ] **T10**: 实现 `tests/test_error.rs`
   - 文件: `tests/test_error.rs`
-  - 内容: 错误处理（所有错误类型验证/display 输出）
+  - 内容: `XenonError` 边界与 display 输出验证（`WorkspaceError` 继续在 `tests/test_workspace.rs` 中单独覆盖）
   - 测试: `cargo test --test test_error`
   - 前置: T1
   - 预计: 10 min
@@ -943,7 +943,7 @@ fn test_bad_magic() {
 
 - [ ] **T14**: no_std 编译验证 — 通过 CI 脚本（而非 test 框架）验证 no_std 编译通过
   - 文件: `.github/workflows/test.yml`（集中维护 no_std 编译检查）
-  - 内容: 使用 `cargo check --no-default-features` 验证 `no_std + alloc` 编译
+  - 内容: 使用 `cargo check --no-default-features` 验证 `no_std + alloc` 下的 std-independent API 编译；workspace/Arc 路径需目标平台具备原子能力
   - 测试: CI 中运行该检查命令
   - 前置: T2
   - 预计: 5 min
@@ -1018,7 +1018,7 @@ test:
 
 no_std_check:
     steps:
-        - name: Check no_std + alloc
+        - name: Check no_std + alloc core surface
           run: cargo check --no-default-features
 ```
 
@@ -1063,7 +1063,7 @@ no_std_check:
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | no_std 测试仅验证编译通过，不运行完整测试 |
+| 决策 | no_std 测试仅验证 std-independent API 编译通过，不运行完整测试；数学函数相关 API 仅在 std 下验证 |
 | 理由 | 集成测试依赖 std（println/assert 格式化），完整运行需单独环境 |
 | 替代方案 | 运行完整测试 — 放弃，CI 复杂度过高 |
 

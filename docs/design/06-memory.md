@@ -600,7 +600,7 @@ Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的
 ### Wave 4: 测试和文档
 
 - [ ] **T8**: 集成测试和文档完善
-  - 文件: `tests/layout.rs`
+  - 文件: `tests/test_layout.rs`
   - 内容: 综合测试套件：步长计算、连续性检查、负步长、零步长、对齐检查
   - 测试: 完整集成测试
   - 前置: T6, T7
@@ -628,7 +628,7 @@ Wave 4:       [T8]
 |------|------|------|
 | 单元测试 | `#[cfg(test)] mod tests` | 验证单个算法 |
 | 集成测试 | `tests/` | 验证跨维度类型交互 |
-| 边界测试 | `tests/layout_boundary.rs` | 空数组、标量、高维等边界情况 |
+| 边界测试 | `tests/test_layout_boundary.rs` | 空数组、标量、高维等边界情况 |
 | 属性测试 | `tests/property/` | 验证步长、连续性与对齐相关不变量 |
 
 ### 7.2 单元测试清单
@@ -672,7 +672,7 @@ Wave 4:       [T8]
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/layout.rs` | `compute_f_strides` / `compute_flags` / `is_aligned` 与 `tensor`、`storage`、`simd`、`ffi` 的端到端协同路径 |
+| `tests/test_layout.rs` | `compute_f_strides` / `compute_flags` / `is_aligned` 与 `tensor`、`storage`、`simd`、`ffi` 的端到端协同路径 |
 
 ---
 

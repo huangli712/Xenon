@@ -379,7 +379,7 @@ fn create_matrix(data: Vec<f64>) -> Result<Tensor<f64, Ix2>, XenonError> {
 // Bad - using unwrap for shape errors in library code
 fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
     let n = (data.len() as f64).sqrt() as usize;
-    Tensor::from_shape_vec([n, n], data).unwrap()  // Forbidden: may panic
+    Tensor::from_shape_vec([n, n], data)?  // do not discard the recoverable shape error
 }
 ```
 
@@ -475,7 +475,7 @@ function increment_index_f(shape, index):
 ### Wave 4: 集成与测试
 
 - [ ] **T6**: 编写综合测试
-  - 文件: `tests/construction.rs`
+  - 文件: `tests/test_construction.rs`
   - 内容: 各构造方法的集成测试、边界情况
   - 测试: 覆盖所有公共 API
   - 前置: T1-T5
@@ -543,14 +543,14 @@ Wave 4:           [T6]
 |--------|----------|
 | `zeros(s).iter().all(\|x\| x == Element::zero())` | 随机形状 |
 | `ones(s).iter().all(\|x\| x == Element::one())` | 随机形状 |
-| `from_shape_vec(s, v).len() == s.checked_size().unwrap()` | 随机形状和匹配数据 |
+| `from_shape_vec(s, v).len()` 等于 `s` 对应的已验证元素总数 | 随机形状和匹配数据 |
 | `from_fn(s, f).shape() == s` | 随机形状 |
 
 ### 7.5 集成测试
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/construction.rs` | 构造 API 与 `dimension`、`storage`、`layout`、`tensor`、`index` 的端到端集成 |
+| `tests/test_construction.rs` | 构造 API 与 `dimension`、`storage`、`layout`、`tensor`、`index` 的端到端集成 |
 
 ---
 

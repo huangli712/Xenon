@@ -167,7 +167,7 @@ let cresult = dot(&ca.view(), &cb.view())?;
 // Bad - unhandled error on dimension mismatch
 let a = Tensor1::<f64>::from_vec(vec![1.0, 2.0]);
 let b = Tensor1::<f64>::from_vec(vec![1.0, 2.0, 3.0]);
-// dot(&a.view(), &b.view()).unwrap();  // panic! should use ? instead
+// let _ = dot(&a.view(), &b.view())?;  // do not discard the recoverable error path
 ```
 
 ---
@@ -279,7 +279,7 @@ fn dot_impl<A: Numeric + Copy>(
 ### Wave 4: 测试
 
 - [ ] **T4**: 编写测试
-  - 文件: `tests/matrix.rs`
+  - 文件: `tests/test_matrix.rs`
   - 内容: 正确性/维度不匹配/复数/SIMD 一致性测试
   - 测试: 所有矩阵测试
   - 前置: T2, T3
@@ -308,7 +308,7 @@ Wave 4: [T4]
 | 单元测试 | `#[cfg(test)] mod tests` | 验证 `dot()` 的核心正确性与错误分支 |
 | 集成测试 | `tests/` | 验证 `dot()` 与 `tensor`、`iter`、`simd`、`error` 的协同路径 |
 | 边界测试 | 同模块测试中标注 | 覆盖空向量、单元素、非连续输入等边界 |
-| 属性测试 | `tests/property/` 或 `tests/matrix.rs` | 验证空向量单位元、复数共轭线性与标量/非连续路径一致性不变量 |
+| 属性测试 | `tests/property/` 或 `tests/test_matrix.rs` | 验证空向量单位元、复数共轭线性与标量/非连续路径一致性不变量 |
 
 ### 7.2 单元测试清单
 
@@ -344,7 +344,7 @@ Wave 4: [T4]
 
 | 测试文件 | 测试内容 |
 |----------|----------|
-| `tests/matrix.rs` | `dot()` 与 `tensor`、`iter`、`element`、`simd`、`error` 路径的端到端协同验证 |
+| `tests/test_matrix.rs` | `dot()` 与 `tensor`、`iter`、`element`、`simd`、`error` 路径的端到端协同验证 |
 
 ---
 
