@@ -203,17 +203,17 @@ API 定义须包含：
 
 ```rust
 // Good - 使用 ? 和 Result
-pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>> {
-    if self.len() != shape.size() {
-        return Err(SenonError::InvalidShape { from: self.len(), to: shape.size() });
+pub fn broadcast_to<D2>(&self, shape: D2) -> Result<TensorView<'_, A, D2>> {
+    if !is_broadcast_compatible(self.shape(), shape.as_ref()) {
+        return Err(XenonError::IncompatibleShape);
     }
     // ...
 }
 
-// Bad - 库代码中使用 unwrap
-pub fn sum_bad(&self) -> A {
-    let first = self.first().unwrap();  // 禁止
-    self.iter().fold(*first, |acc, x| acc + x)
+// Bad - 将形状不兼容隐藏为 panic
+pub fn broadcast_to_bad<D2>(&self, shape: D2) -> TensorView<'_, A, D2> {
+    assert!(is_broadcast_compatible(self.shape(), shape.as_ref()));
+    // ...
 }
 ```
 
@@ -448,10 +448,10 @@ Wave 2: [W2.1] [W2.2] [W2.3] [W2.4] [W2.5]
 
 | 属性 | 值 |
 |------|-----|
-| 决策 | 使用 criterion.rs 作为 benchmark 框架 |
-| 理由 | 统计分析（置信区间、异常值检测）；HTML 报告；与 CI 集成成熟 |
-| 替代方案 | `#[bench]` nightly — 放弃，需要 nightly 编译器 |
-| 替代方案 | divan — 放弃，生态不如 criterion 成熟 |
+| 决策 | 性能测量采用仓库既有 benchmark 规范 |
+| 理由 | 保持测量口径、输入规模和回归阈值一致 |
+| 替代方案 | 在模块文档中自定义 benchmark 结构 — 放弃，难以横向比较 |
+| 替代方案 | 仅保留定性性能描述 — 放弃，无法支撑回归判断 |
 ```
 
 或展开式：
@@ -503,8 +503,8 @@ Wave 2: [W2.1] [W2.2] [W2.3] [W2.4] [W2.5]
 
 ```markdown
 - 视图创建：O(1)，不分配内存
-- reshape（连续）：O(1)，仅元数据操作
-- reshape（非连续）：O(n)，需拷贝数据
+- transpose：O(1)，仅更新 shape 与 stride 元数据
+- contiguous：对已连续 F-order 输入可为 O(1) 复用；对合法非连续输入为 O(n) 复制
 ```
 
 ---
@@ -578,6 +578,8 @@ Wave 2: [W2.1] [W2.2] [W2.3] [W2.4] [W2.5]
 ## 16. 性能与 Benchmark 附加规范（按需）
 
 > 仅当模块涉及性能关键路径、SIMD、并行或需要量化性能目标时，才需要应用本节要求。
+> 具体 benchmark 组织方式、参数矩阵、执行频率和回归阈值，应遵循仓库内专门的 benchmark 规范文档。
+> 本文档不在此重复规定具体 benchmark 框架、外部对比对象或 CI 阈值。
 
 ### 16.1 四级分类体系
 
@@ -594,7 +596,6 @@ Benchmark 分类
 每个 benchmark 须覆盖以下参数组合的**有意义子集**：
 
 #### 输入规模
-
 | 级别 | 1D | 2D | 3D |
 |------|-----|-----|-----|
 | **Small** | 64 | 8×8 | 4×4×4 |
@@ -602,7 +603,6 @@ Benchmark 分类
 | **Large** | 16,777,216 | 4096×4096 | 256×256×256 |
 
 #### 数据类型
-
 | 类型 | 优先级 | 说明 |
 |------|--------|------|
 | `f64` | **必测** | 科学计算默认精度 |
@@ -610,14 +610,12 @@ Benchmark 分类
 | `Complex<f64>` | **必测** | 复数运算开销验证 |
 
 #### 内存布局
-
 | 布局 | 构造方式 | 验证目标 |
 |------|----------|----------|
 | F-contiguous | `zeros(shape, Order::F)` | 默认路径性能基线 |
 | Non-contiguous | `tensor.slice(s![.., 0..n-1])` | 非连续路径标量回退惩罚 |
 
 ### 16.3 Benchmark 清单表
-
 ```markdown
 | 组 ID | 操作 | 规模 | 类型 | 布局 | 说明 |
 |-------|------|------|------|------|------|
@@ -626,7 +624,6 @@ Benchmark 分类
 ```
 
 ### 16.4 CI 三级工作流
-
 | 工作流 | 基准数量 | 预计时间 | 频率 |
 |--------|----------|----------|------|
 | Smoke Test | 3 个核心文件 × `--quick` | ~5 min | 每次 PR |
@@ -634,7 +631,6 @@ Benchmark 分类
 | Full Benchmark | 全部文件 × 4 feature 组合 | ~60 min | 每周 |
 
 ### 16.5 回归阈值
-
 | 级别 | 阈值 | 动作 |
 |------|------|------|
 | **警告** | > 5% 变慢 | CI warning（不阻塞合并） |
