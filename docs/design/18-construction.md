@@ -16,7 +16,7 @@
 | 零初始化构造   | `zeros<A, D>(shape)` 全零张量                        | arange / linspace / logspace 序列生成（当前版本不提供）        |
 | 常量构造       | `ones<A, D>(shape)` 全一张量                         | `full<A, D>(shape, scalar)` 与随机数构造（当前版本不提供）     |
 | 单位矩阵       | `eye<A>(n)` 单位矩阵                                 | 从文件加载（当前版本不提供）                                   |
-| 从 Vec 构造    | `from_shape_vec(shape, vec)` 消费输入 Vec 并构造张量 | 从迭代器/生成器构造（由 `from_fn` 提供）                       |
+| 从 Vec 构造    | `from_shape_vec(shape, vec)` 消费输入 Vec 并构造张量 | 从迭代器/生成器构造（当前版本不提供）                         |
 | 从切片构造     | `from_shape_slice(shape, slice)` 从切片拷贝数据      | 从文件/网络加载（当前版本不提供）                              |
 | 从固定数组构造 | `from_array<A, N>(arr, shape)` 从固定大小数组构造    | 从文件加载（当前版本不提供）                                   |
 | 从标量构造     | `from_scalar<A>(scalar)` 零维张量                    | —                                                              |
@@ -47,45 +47,58 @@ L5: construct  ← 当前模块（依赖 storage, layout, dimension, element）
 
 ---
 
-## 2. 文件位置
+## 2. 需求映射与范围约束
+
+| 类型     | 内容 |
+| -------- | ---- |
+| 需求映射 | 需求说明书 §19 |
+| 范围内   | `zeros` / `ones` / `eye` / `from_shape_vec` / `from_shape_slice` / `from_array` / `from_scalar`。 |
+| 范围外   | arange、linspace、from_fn、随机构造器与其他序列生成 API。 |
+| 非目标   | 不新增新的构造器家族，不改变 F-order / 对齐分配基线，也不引入第三方随机或数据加载依赖。 |
+
+---
+
+## 3. 文件位置
 
 ```
 src/
 └── construct/               # 张量构造模块（多文件设计）
     ├── mod.rs               # 模块根，re-exports 所有公共 API
-    ├── fill.rs              # zeros, ones, fill（填充构造）
+    ├── init.rs              # zeros, ones（基础初始化构造）
     ├── eye.rs               # eye（单位矩阵）
-├── from_data.rs         # from_shape_vec, from_shape_slice, from_array（从数据源构造）
-    └── from_fn.rs           # from_fn, from_scalar（从闭包/标量构造）
+    ├── from_data.rs         # from_shape_vec, from_shape_slice, from_array（从数据源构造）
+    └── scalar.rs            # from_scalar（标量构造）
 ```
 
-多文件设计：每个子文件对应一类构造方式，便于后期扩展（如新增 `from_diag.rs`、`linspace.rs` 等）。`mod.rs` 负责统一 re-exports，对外保持单一模块接口。
+多文件设计：每个子文件对应一类构造方式，便于后期扩展（如新增 `from_diag.rs` 等）。`mod.rs` 负责统一 re-exports，对外保持单一模块接口。
+
+> 注：`fill()` 不属于 construction 模块；该能力由 `20-utility.md` 定义，对应 `src/util/fill.rs`。
 
 ---
 
-## 3. 依赖关系
+## 4. 依赖关系
 
-### 3.1 依赖图（ASCII）
+### 4.1 依赖图（ASCII）
 
 ```
                     ┌──────────────┐
-                    │   tensor     │
+                    │    tensor    │
                     │ TensorBase   │
                     └──────┬───────┘
-                           │ 使用
+                           │ uses
               ┌────────────▼───────────┐
-              │  construct/            │
-              │  mod.rs (re-exports)   │
+              │   construct/           │
+              │   mod.rs (re-exports)  │
               └──┬───────────┬─────────┘
-                 │ 使用       │ 使用
+                 │ uses      │ uses
           ┌──────▼───┐ ┌──────▼────────┐
-           │ storage  │ │ layout        │
+          │ storage  │ │ layout        │
           │ Owned<A> │ │ LayoutFlags   │
           │ Storage  │ │ Order         │
           └──────────┘ └───────────────┘
 ```
 
-### 3.2 类型级依赖
+### 4.2 类型级依赖
 
 | 来源模块    | 使用的类型/trait                                                                           |
 | ----------- | ------------------------------------------------------------------------------------------ |
@@ -96,17 +109,31 @@ src/
 | `element`   | `Element`（`zero()` / `one()` 由 `Element` 提供，参见 `03-element.md` §3）                 |
 | `error`     | `XenonError::InvalidShape`（用于构造时的 shape/length 基数不匹配，参见 `26-error.md` §4）  |
 
-### 3.3 依赖方向声明
+### 4.3 依赖方向声明
 
 > **依赖方向：单向向上。** `construct` 消费 `tensor`、`storage`、`layout`、`dimension`、`element` 的 trait 和类型，不被它们依赖。
 
+### 4.4 依赖合法性与替代方案
+
+| 项目           | 说明 |
+| -------------- | ---- |
+| 新增第三方依赖 | 无 |
+| 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
+| 替代方案       | 不适用；当前范围内无需额外第三方依赖。 |
+
 ---
 
-## 4. 公共 API 设计
+## 5. 公共 API 设计
 
-### 4.1 zeros / ones
+### 5.1 zeros / ones
 
 ````rust
+# use crate::dimension::{Dimension, IntoDimension};
+# use crate::element::Element;
+# use crate::error::XenonError;
+# use crate::layout::{LayoutFlags, Order};
+# use crate::storage::Owned;
+# use crate::tensor::{Tensor, TensorBase};
 impl<A, D> TensorBase<Owned<A>, D>
 where
     A: Element,
@@ -116,7 +143,7 @@ where
     ///
     /// # Examples
     /// ```
-    /// let t = Tensor::<f64, _>::zeros([3, 4]);
+    /// let t = Tensor::<f64, _>::zeros([3, 4]).unwrap();
     /// assert_eq!(t.shape(), &[3, 4]);
     /// assert!(t.iter().all(|&x| x == 0.0));
     /// ```
@@ -136,7 +163,7 @@ where
     ///
     /// # Examples
     /// ```
-    /// let t = Tensor::<f64, _>::ones([2, 3]);
+    /// let t = Tensor::<f64, _>::ones([2, 3]).unwrap();
     /// assert!(t.iter().all(|&x| x == 1.0));
     /// ```
     pub fn ones<Sh>(shape: Sh) -> Result<Self, XenonError>
@@ -157,9 +184,23 @@ where
 > 本文仅承诺 `zeros()`、`ones()`、`eye()`、`from_shape_vec()`、`from_shape_slice()`、`from_array()` 与 `from_scalar()`；
 > `full()` 留待后续版本单独设计。
 
-### 4.2 eye（单位矩阵）
+### 5.2 eye（单位矩阵）
 
 ````rust
+# use crate::complex::Complex;
+# use crate::element::Element;
+# use crate::error::XenonError;
+# use crate::layout::{LayoutFlags, Order};
+# use crate::storage::Owned;
+# use crate::tensor::{Tensor, TensorBase};
+# use crate::dimension::Ix2;
+# pub trait EyeElement: Element {}
+# impl EyeElement for i32 {}
+# impl EyeElement for i64 {}
+# impl EyeElement for f32 {}
+# impl EyeElement for f64 {}
+# impl EyeElement for Complex<f32> {}
+# impl EyeElement for Complex<f64> {}
 impl<A> TensorBase<Owned<A>, Ix2>
 where
     A: EyeElement,
@@ -170,7 +211,7 @@ where
     ///
     /// # Examples
     /// ```
-    /// let e = Tensor::<f64, Ix2>::eye(3);
+    /// let e = Tensor::<f64, Ix2>::eye(3).unwrap();
     /// assert_eq!(e[[0, 0]], 1.0);
     /// assert_eq!(e[[0, 1]], 0.0);
     /// assert_eq!(e[[1, 1]], 1.0);
@@ -201,9 +242,15 @@ impl EyeElement for Complex<f64> {}
 
 > **类型约束说明：** `eye()` 不对 `bool` 开放；其适用类型严格限定为 `i32`、`i64`、`f32`、`f64`、`Complex<f32>` 与 `Complex<f64>`，以符合 `require.md` §19。
 
-### 4.3 from_shape_vec / from_shape_slice / from_array
+### 5.3 from_shape_vec / from_shape_slice / from_array
 
 ````rust
+# use crate::dimension::{Dimension, IntoDimension};
+# use crate::element::Element;
+# use crate::error::XenonError;
+# use crate::layout::{LayoutFlags, Order};
+# use crate::storage::Owned;
+# use crate::tensor::{Tensor, TensorBase};
 impl<A, D> TensorBase<Owned<A>, D>
 where
     A: Element,
@@ -223,7 +270,7 @@ where
     ///
     /// # Examples
     /// ```
-    /// let t = Tensor::<f64, _>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6])?;
+    /// let t = Tensor::<f64, _>::from_shape_vec([2, 3], vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
     /// assert_eq!(t.shape(), &[2, 3]);
     /// ```
     pub fn from_shape_vec<Sh>(shape: Sh, data: Vec<A>) -> Result<Self, XenonError>
@@ -242,7 +289,7 @@ where
             });
         }
         let strides = dim.strides_for_f_order();
-// from_vec_aligned: defined in 05-storage.md §5.1;
+        // from_vec_aligned: defined in 05-storage.md §5.1;
         // copies data into Xenon's aligned allocation for SIMD compatibility.
         let storage = Owned::from_vec_aligned(data);
         Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) })
@@ -257,7 +304,7 @@ where
     /// # Examples
     /// ```
     /// let data = [1.0, 2.0, 3.0, 4.0];
-    /// let t = Tensor::<f64, _>::from_shape_slice([2, 2], &data)?;
+    /// let t = Tensor::<f64, _>::from_shape_slice([2, 2], &data).unwrap();
     /// ```
     pub fn from_shape_slice<Sh>(shape: Sh, slice: &[A]) -> Result<Self, XenonError>
     where
@@ -283,7 +330,7 @@ where
     /// # Examples
     /// ```
     /// let arr = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-    /// let t = Tensor::<f64, _>::from_array([2, 3], arr)?;
+    /// let t = Tensor::<f64, _>::from_array([2, 3], arr).unwrap();
     /// ```
     pub fn from_array<Sh, const N: usize>(
         shape: Sh,
@@ -297,9 +344,14 @@ where
 }
 ````
 
-### 4.4 from_scalar
+### 5.4 from_scalar
 
 ````rust
+# use crate::dimension::Ix0;
+# use crate::element::Element;
+# use crate::layout::{LayoutFlags, Order, Strides};
+# use crate::storage::Owned;
+# use crate::tensor::{Tensor, TensorBase};
 impl<A> TensorBase<Owned<A>, Ix0>
 where
     A: Element,
@@ -314,7 +366,7 @@ where
     pub fn from_scalar(scalar: A) -> Self {
         TensorBase {
             storage: Owned::from_vec_aligned(vec![scalar]),
-            shape: Ix0(),
+            shape: Ix0,
             strides: Strides::<Ix0>::from_slice(&[]),
             offset: 0,
             flags: LayoutFlags::from_order(Order::F),
@@ -327,9 +379,12 @@ where
 > **范围决策：** `from_fn()` 不在 `require.md` §19 当前版本强制集合中。
 > 若后续版本确需提供闭包驱动构造器，应另行评估其 API 粒度、性能模型与错误语义。
 
-### 4.5 Good / Bad 对比
+### 5.5 Good / Bad 对比
 
 ```rust
+# use crate::dimension::Ix2;
+# use crate::error::XenonError;
+# use crate::tensor::Tensor;
 // Good - use Result to handle potential shape mismatch
 fn create_matrix(data: Vec<f64>) -> Result<Tensor<f64, Ix2>, XenonError> {
     let n = (data.len() as f64).sqrt() as usize;
@@ -345,15 +400,15 @@ fn create_matrix(data: Vec<f64>) -> Result<Tensor<f64, Ix2>, XenonError> {
 // Bad - using unwrap for shape errors in library code
 fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
     let n = (data.len() as f64).sqrt() as usize;
-    Tensor::from_shape_vec([n, n], data)?  // do not discard the recoverable shape error
+    Tensor::from_shape_vec([n, n], data).unwrap()  // do not discard the recoverable shape error
 }
 ```
 
 ---
 
-## 5. 内部实现设计
+## 6. 内部实现设计
 
-### 5.1 内存初始化策略
+### 6.1 内存初始化策略
 
 | 构造方法           | 分配策略                                          | 初始化                        |
 | ------------------ | ------------------------------------------------- | ----------------------------- |
@@ -364,11 +419,11 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 | `from_scalar`      | 对齐分配（1 元素）                                | 单元素写入                    |
 | `eye`              | 先 `zeros` 再对角线写入                           | 两步：零初始化 + 对角线       |
 
-### 5.2 范围外能力记录
+### 6.2 范围外能力记录
 
 `full()` 与 `from_fn()` 属于后续版本候选能力，当前文档不继续展开其内部填充策略或任务拆分。
 
-### 5.3 安全性论证
+### 6.3 安全性论证
 
 - `from_shape_vec`: 先通过共享 checked helper 验证 `dim.checked_size()`，再验证 `data.len() == expected`；通过后 `Owned::from_vec_aligned` 消费输入 Vec 并复制到对齐存储
 - `from_shape_slice`: 先通过共享 checked helper 验证 `dim.checked_size()`，长度匹配后再拷贝，原始切片不再被引用
@@ -377,12 +432,12 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 
 ---
 
-## 6. 实现任务拆分
+## 7. 实现任务拆分
 
 ### Wave 1: 基础构造
 
 - [ ] **T1**: 创建 `src/construct/` 模块骨架 + `zeros`/`ones`
-  - 文件: `src/construct/mod.rs`, `src/construct/fill.rs`
+  - 文件: `src/construct/mod.rs`, `src/construct/init.rs`
   - 内容: 模块声明、`zeros`/`ones` 实现
   - 测试: `test_zeros`, `test_ones`
   - 前置: `tensor` 模块完成
@@ -405,7 +460,7 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
   - 预计: 10 min
 
 - [ ] **T4**: 实现 `from_array` 和 `from_scalar`
-  - 文件: `src/construct/from_data.rs`, `src/construct/from_fn.rs`
+  - 文件: `src/construct/from_data.rs`, `src/construct/scalar.rs`
   - 内容: 从固定数组构造、零维张量
   - 测试: `test_from_array`, `test_from_scalar`
   - 前置: T3
@@ -432,9 +487,9 @@ Wave 3:           [T6]
 
 ---
 
-## 7. 测试计划
+## 8. 测试计划
 
-### 7.1 测试分类表
+### 8.1 测试分类表
 
 | 测试分类 | 位置                     | 说明                                                                                  |
 | -------- | ------------------------ | ------------------------------------------------------------------------------------- |
@@ -443,7 +498,7 @@ Wave 3:           [T6]
 | 边界测试 | 同模块测试中标注         | 覆盖空张量、零维张量和大张量分配等边界                                                |
 | 属性测试 | `tests/property/`        | 验证 zeros/ones/from_shape_vec 的形状与元素不变量                                     |
 
-### 7.2 单元测试清单
+### 8.2 单元测试清单
 
 | 测试函数                         | 测试内容                     | 优先级 |
 | -------------------------------- | ---------------------------- | ------ |
@@ -460,7 +515,7 @@ Wave 3:           [T6]
 | `test_from_array_success`        | 从固定数组构造               | 中     |
 | `test_from_scalar`               | 零维张量                     | 高     |
 
-### 7.3 边界测试场景
+### 8.3 边界测试场景
 
 | 场景                          | 预期行为                |
 | ----------------------------- | ----------------------- |
@@ -471,7 +526,7 @@ Wave 3:           [T6]
 | `from_shape_vec([0], vec![])` | 空 1D 张量              |
 | 大张量 `zeros([1000, 1000])`  | 分配成功，F-order 连续  |
 
-### 7.4 属性测试不变量
+### 8.4 属性测试不变量
 
 | 不变量                                                     | 测试方法           |
 | ---------------------------------------------------------- | ------------------ |
@@ -479,17 +534,32 @@ Wave 3:           [T6]
 | `ones(s).iter().all(\|x\| x == Element::one())`            | 随机形状           |
 | `from_shape_vec(s, v).len()` 等于 `s` 对应的已验证元素总数 | 随机形状和匹配数据 |
 
-### 7.5 集成测试
+### 8.5 集成测试
 
 | 测试文件                     | 测试内容                                                                     |
 | ---------------------------- | ---------------------------------------------------------------------------- |
 | `tests/test_construction.rs` | 构造 API 与 `dimension`、`storage`、`layout`、`tensor`、`index` 的端到端集成 |
 
+### 8.6 Feature gate / 配置测试
+
+| 配置 | 验证点 |
+| ---- | ---- |
+| 默认配置 | 所有构造器在默认构建下保持 F-order、对齐分配与错误语义契约。 |
+| 其他 feature 组合 | 不适用；当前模块无额外 feature gate。 |
+
+### 8.7 类型边界 / 编译期测试
+
+| 场景 | 测试方式 |
+| ---- | ---- |
+| `eye::<bool>` 不被支持 | 编译期测试。 |
+| `from_scalar` 仅产出 `Ix0` | 编译期签名检查与运行时断言。 |
+| arange / linspace / from_fn / random constructors 不属于当前 API | API 缺失断言。 |
+
 ---
 
-## 8. 与其他模块的交互
+## 9. 与其他模块的交互
 
-### 8.1 接口约定
+### 9.1 接口约定
 
 | 方向                    | 对方模块    | 接口/类型                               | 约定                                                                                                                          |
 | ----------------------- | ----------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
@@ -501,20 +571,31 @@ Wave 3:           [T6]
 | `construct → error`     | `error`     | `XenonError::InvalidShape`              | shape 与长度基数不匹配时返回错误，参见 `26-error.md` §4                                                                       |
 | `construct → index`     | `index`     | 索引访问语义                            | 构造后的张量继续复用索引路径，参见 `17-indexing.md` §4                                                                        |
 
-### 8.2 数据流描述
+### 9.2 数据流描述
 
 ```text
-用户调用 zeros / from_shape_vec / eye
+User calls zeros / from_shape_vec / eye
     │
-    ├── dimension 模块先规范化输入 shape，并通过 checked helper 计算元素总数
-    ├── layout 计算 F-order strides 与初始 flags
-    ├── storage 分配 aligned owned buffer 并写入数据
-    └── tensor 模块封装成 TensorBase<Owned<_>, D>，随后可被 index / iter / math 使用
+    ├── dimension normalizes the input shape and validates element count
+    ├── layout computes F-order strides and initial flags
+    ├── storage allocates aligned owned memory and writes data
+    └── tensor wraps the result as TensorBase<Owned<_>, D> for later use
 ```
 
 ---
 
-## 9. 设计决策记录
+## 10. 错误处理与语义边界
+
+| 主题 | 内容 |
+| ---- | ---- |
+| Recoverable error | shape 与长度基数不匹配、`checked_size()` 溢出等情况返回 `XenonError::InvalidShape`，携带实际与期望元素数。 |
+| Panic | 公开构造 API 不定义额外 panic 语义；失败统一走 `Result`。 |
+| 路径一致性 | 所有构造路径都必须产出 canonical F-order owned 张量，并保持一致的 shape / strides / flags 语义。 |
+| 容差边界 | 不适用。 |
+
+---
+
+## 11. 设计决策记录
 
 ### ADR-1: 当前版本不纳入 `from_fn`
 
@@ -535,9 +616,9 @@ Wave 3:           [T6]
 
 ---
 
-## 10. 性能考量
+## 12. 性能考量
 
-### 10.1 复杂度
+### 12.1 复杂度
 
 | 操作                  | 时间复杂度          | 空间复杂度     |
 | --------------------- | ------------------- | -------------- |
@@ -549,7 +630,7 @@ Wave 3:           [T6]
 | `from_array(n)`       | O(n) 拷贝           | O(n)           |
 | `from_scalar()`       | O(1)                | O(1)           |
 
-### 10.2 对齐分配
+### 12.2 对齐分配
 
 | 元素类型       | 对齐要求           | 分配方式            |
 | -------------- | ------------------ | ------------------- |
@@ -559,7 +640,7 @@ Wave 3:           [T6]
 | `i32`/`i64`    | 16 字节            | `alloc_aligned(16)` |
 | `bool`         | 1 字节             | `alloc_aligned(1)`  |
 
-### 10.3 批量初始化优化
+### 12.3 批量初始化优化
 
 | 场景             | 优化方式                 | 预期性能                           |
 | ---------------- | ------------------------ | ---------------------------------- |
@@ -572,7 +653,7 @@ Wave 3:           [T6]
 
 ---
 
-## 11. 平台与工程约束
+## 13. 平台与工程约束
 
 | 约束       | 说明                                                                |
 | ---------- | ------------------------------------------------------------------- |

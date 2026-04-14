@@ -16,7 +16,7 @@
 | Display 实现   | 面向用户的简洁可读输出                 | serde 序列化         |
 | Debug 实现     | 面向开发的形状/步长/类型信息           | 文件 I/O（读写文件） |
 | NumPy 风格输出 | 嵌套括号、矩阵形式、按逻辑索引顺序展示 | HTML 渲染            |
-| 截断规则       | 超过阈值触发 `...` 省略                | 自定义格式化器注册   |
+| 截断规则       | 超过阈值触发 `... N more elements`，并追加完整 `shape=[...]` | 自定义格式化器注册   |
 
 ### 1.2 设计原则
 
@@ -43,7 +43,18 @@ L7: format  ← 当前模块
 
 ---
 
-## 2. 文件位置
+## 2. 需求映射与范围约束
+
+| 类型     | 内容 |
+| -------- | ---- |
+| 需求映射 | 需求说明书 §24 |
+| 范围内   | `Display` / `Debug`、`FormatConfig`、NumPy 风格多维输出、截断规则与零维张量显式标记。 |
+| 范围外   | 二进制序列化、JSON 输出、自定义 formatter 注册与 HTML / 富文本渲染。 |
+| 非目标   | 不把格式化模块扩展为序列化层，不新增第三方格式化依赖，也不改变 tensor 数据本身。 |
+
+---
+
+## 3. 文件位置
 
 ```
 src/
@@ -67,9 +78,9 @@ src/
 
 ---
 
-## 3. 依赖关系
+## 4. 依赖关系
 
-### 3.1 依赖图
+### 4.1 依赖图
 
 ```
 src/format/
@@ -78,7 +89,7 @@ src/format/
 │   └── re-exports from config, display, debug, pretty
 |
 ├── config.rs
-│   └── (无外部依赖，仅 core/alloc)
+│   └── (no external dependency, only core/alloc)
 |
 ├── display.rs
 │   ├── crate::tensor        # TensorBase<S, D>, shape(), ndim()
@@ -101,7 +112,7 @@ src/format/
     └── super::config        # FormatConfig
 ```
 
-### 3.2 类型级依赖
+### 4.2 类型级依赖
 
 | 来源模块    | 使用的类型/trait                                                              | 使用者                                |
 | ----------- | ----------------------------------------------------------------------------- | ------------------------------------- |
@@ -110,15 +121,23 @@ src/format/
 | `storage`   | `Storage<Elem=A>`（参见 `05-storage.md` §4）                                  | `display.rs`, `debug.rs`, `pretty.rs` |
 | `element`   | `Element`, `type_name::<A>()`（参见 `03-element.md` §3）                      | `display.rs`, `debug.rs`              |
 
-### 3.3 依赖方向声明
+### 4.3 依赖方向声明
 
 > **依赖方向：单向向上。** `format` 仅消费 `tensor` 等核心模块，不被它们依赖。
 
+### 4.4 依赖合法性与替代方案
+
+| 项目           | 说明 |
+| -------------- | ---- |
+| 新增第三方依赖 | 无 |
+| 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
+| 替代方案       | 不适用；当前范围内无需额外第三方依赖。 |
+
 ---
 
-## 4. 公共 API 设计
+## 5. 公共 API 设计
 
-### 4.1 FormatConfig 配置结构体
+### 5.1 FormatConfig 配置结构体
 
 ```rust
 /// Formatting output configuration.
@@ -158,7 +177,7 @@ impl Default for FormatConfig {
 }
 ```
 
-### 4.1b TensorDisplay 包装结构
+### 5.1b TensorDisplay 包装结构
 
 ````rust
 /// A wrapper for formatting a tensor with a specific config.
@@ -205,7 +224,7 @@ where
 }
 ````
 
-### 4.2 Display 实现
+### 5.2 Display 实现
 
 > **读取顺序约定**：格式化输出按**逻辑多维索引顺序**读取元素，而不是按底层物理内存顺序线性扫描。格式化层不得把 `iter()` 的顺序当作公共契约前提；若内部复用 `iter()`，那只应视为私有实现细节，必要时应改为显式逻辑索引或递归子视图遍历。
 
@@ -226,7 +245,8 @@ where
 /// - 2D: matrix form, displayed by logical row/column structure while preserving Xenon's F-order storage model internally
     /// - ND: nested brackets
     ///
-    /// Large arrays are automatically truncated (see §4.4).
+    /// Large arrays are automatically truncated (see §5.5), and any
+    /// truncated output appends the full tensor shape after the closing bracket.
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if self.ndim() == 0 {
             // 0-dim tensor: render with an explicit marker to distinguish it
@@ -243,7 +263,7 @@ where
 }
 ```
 
-### 4.3 Debug 实现
+### 5.3 Debug 实现
 
 ````rust
 // Debug reuses Display for the data section,
@@ -258,6 +278,9 @@ where
     ///
     /// Includes metadata such as shape, strides, and type, then delegates
     /// data formatting to Display.
+    ///
+    /// When the data section is truncated, the delegated Display output keeps
+    /// the truncation summary and appends the full tensor shape as a suffix.
     ///
     /// # Output Format
     ///
@@ -290,7 +313,7 @@ where
 
 > **设计决策：** Debug 输出包含完整的元信息（形状/步长/类型/布局），方便开发调试。Display 只输出数据，面向最终用户；其中零维张量使用显式标记，避免与裸标量文本混淆。
 
-### 4.4 NumPy 风格输出示例
+### 5.4 NumPy 风格输出示例
 
 **1D（完整）**:
 
@@ -315,7 +338,13 @@ where
   [7, 8]]]
 ```
 
-**大数组（截断，默认 edge_items=3）**:
+**1D 大数组（截断，默认 edge_items=3）**:
+
+```
+[1, 2, 3, ..., 998, 999, 1000, ... 994 more elements] shape=[1000]
+```
+
+**2D 大数组（截断，默认 edge_items=3）**:
 
 ```
 [[1, 2, 3, ..., 98, 99, 100],
@@ -324,8 +353,11 @@ where
  ...,
  [9701, 9702, 9703, ..., 9798, 9799, 9800],
  [9801, 9802, 9803, ..., 9898, 9899, 9900],
- [9901, 9902, 9903, ..., 9998, 9999, 10000]]
+ [9901, 9902, 9903, ..., 9998, 9999, 10000],
+ ... 9400 more elements] shape=[100, 100]
 ```
+
+> 当任意维度触发截断时，输出主体仍保持 NumPy 风格的局部预览，但必须在最外层右括号后追加 `shape=[...]`，以暴露完整维度信息。
 
 **Complex<f64> 类型**:
 
@@ -340,7 +372,7 @@ where
 Tensor0(42)
 ```
 
-### 4.5 截断规则
+### 5.5 截断规则
 
 ```
 truncation_rule(tensor, config):
@@ -348,10 +380,13 @@ truncation_rule(tensor, config):
     if total <= config.threshold:
         display all elements
     else:
+        shown = count_displayed_elements(tensor.shape(), config.edge_items)
+        omitted = total - shown
         for each axis:
             show first config.edge_items elements
             show "..."
             show last config.edge_items elements
+        append "... {omitted} more elements] shape={tensor.shape()}"
 ```
 
 | 参数         | 默认值 | 说明                        |
@@ -361,7 +396,7 @@ truncation_rule(tensor, config):
 | `precision`  | `None` | 浮点精度（None = 类型默认） |
 | `line_width` | 80     | 每行最大字符数（用于换行）  |
 
-### 4.6 Good/Bad 对比
+### 5.6 Good/Bad 对比
 
 ```rust
 // Good - Use Display for readable output
@@ -395,9 +430,9 @@ println!("strides: {:?}", tensor.strides());
 
 ---
 
-## 5. 内部实现设计
+## 6. 内部实现设计
 
-### 5.1 格式化算法
+### 6.1 格式化算法
 
 **精度控制**：如果 `FormatConfig::precision` 为 `Some(p)`，浮点数格式化使用 `write!(f, "{:.prec$}", value, prec = p)`；为 `None` 时使用默认精度（即 `write!(f, "{}", value)`）。
 
@@ -412,7 +447,8 @@ fmt_1d(tensor, f):
         for i in (len - edge_items)..len:
             write tensor[[i]]
             if i < len - 1: write ", "
-        write "]"
+        omitted = total - 2 * edge_items
+        write ", ... {omitted} more elements] shape={tensor.shape()}"
     else:
         write "["
         for i in 0..len:
@@ -431,11 +467,14 @@ fmt_nd(tensor, f, depth):
             recursively format each child slice with fmt_nd(child, f, depth + 1)
         insert commas/newlines between sibling slices
     write "]"
+    if depth == 0 and total > threshold:
+        omitted = total - count_displayed_elements(tensor.shape(), edge_items)
+        write " ... {omitted} more elements shape={tensor.shape()}"
 ```
 
 ---
 
-## 6. 实现任务拆分
+## 7. 实现任务拆分
 
 ### Wave 1: 基础设施
 
@@ -494,9 +533,9 @@ Wave 3:        [T5]
 
 ---
 
-## 7. 测试计划
+## 8. 测试计划
 
-### 7.1 测试分类表
+### 8.1 测试分类表
 
 | 测试分类 | 位置                     | 说明                                                    |
 | -------- | ------------------------ | ------------------------------------------------------- |
@@ -505,12 +544,12 @@ Wave 3:        [T5]
 | 边界测试 | 同模块测试中标注         | 覆盖空数组、零维张量、阈值截断和 NaN/Inf 输出           |
 | 属性测试 | `tests/property/`        | 验证截断阈值、逻辑顺序与格式配置不变量                  |
 
-### 7.2 单元测试清单
+### 8.2 单元测试清单
 
 | 测试函数                      | 测试内容                                    | 优先级 |
 | ----------------------------- | ------------------------------------------- | ------ |
 | `test_fmt_1d_full`            | 1D 小数组完整输出 `[1, 2, 3]`               | 高     |
-| `test_fmt_1d_truncated`       | 1D 大数组截断 `[1, 2, 3, ..., 98, 99, 100]` | 高     |
+| `test_fmt_1d_truncated`       | 1D 大数组截断，并追加 `... N more elements] shape=[...]` | 高     |
 | `test_fmt_1d_empty`           | 1D 空数组 `[]`                              | 中     |
 | `test_fmt_1d_single`          | 1D 单元素 `[42]`                            | 中     |
 | `test_fmt_2d`                 | 2D 矩阵形式输出                             | 高     |
@@ -523,35 +562,50 @@ Wave 3:        [T5]
 | `test_fmt_zero_dim`           | 零维张量输出带区分标记                      | 中     |
 | `test_fmt_large_2d_truncated` | 大 2D 数组行列截断                          | 高     |
 
-### 7.3 边界测试场景
+### 8.3 边界测试场景
 
 | 场景               | 预期行为                            |
 | ------------------ | ----------------------------------- |
 | 空数组 `shape=[0]` | 输出 `[]`                           |
 | 单元素 `shape=[1]` | 输出 `[42]`                         |
 | 零维张量           | 输出 `Tensor0(...)`，与裸标量可区分 |
-| 1001 元素 1D       | 触发截断                            |
+| 1001 元素 1D       | 触发截断，并在尾部输出 `shape=[1001]` |
 | 999 元素 1D        | 不截断                              |
 | NaN/Inf            | 输出 `NaN`/`inf`                    |
 
-### 7.4 属性测试不变量
+### 8.4 属性测试不变量
 
 | 不变量                                              | 测试方法 |
 | --------------------------------------------------- | -------- |
 | `debug(tensor)` 包含 shape / strides / dtype 元信息 | 随机形状 |
-| 截断输出包含 `...`                                  | 大数组   |
+| 截断输出包含 `... N more elements` 与完整 `shape=[...]` | 大数组   |
 
-### 7.5 集成测试
+### 8.5 集成测试
 
 | 测试文件               | 测试内容                                                                                  |
 | ---------------------- | ----------------------------------------------------------------------------------------- |
 | `tests/test_output.rs` | `Display` / `Debug` 与 `tensor` 元数据查询、`iter` 遍历、复数与浮点格式化路径的端到端集成 |
 
+### 8.6 Feature gate / 配置测试
+
+| 配置 | 验证点 |
+| ---- | ---- |
+| 默认配置 | `Display` / `Debug` / `FormatConfig::default()` 输出满足 NumPy 风格与零维区分契约。 |
+| 其他 feature 组合 | 不适用；当前模块无额外 feature gate。 |
+
+### 8.7 类型边界 / 编译期测试
+
+| 场景 | 测试方式 |
+| ---- | ---- |
+| `Display` / `Debug` 仅对满足对应 fmt trait 的元素类型开放 | 编译期测试。 |
+| `TensorDisplay` 包装器保留原张量维度与借用生命周期 | 编译期测试。 |
+| binary / JSON / custom formatter APIs 不属于当前范围 | API 缺失断言。 |
+
 ---
 
-## 8. 与其他模块的交互
+## 9. 与其他模块的交互
 
-### 8.1 接口约定
+### 9.1 接口约定
 
 | 方向                    | 对方模块          | 接口/类型                          | 约定                                                         |
 | ----------------------- | ----------------- | ---------------------------------- | ------------------------------------------------------------ |
@@ -560,20 +614,32 @@ Wave 3:        [T5]
 | `format → tensor/index` | `tensor`, `index` | `shape()`, 多维索引访问            | 按逻辑行/列结构读取元素；不依赖 `iter()` 的 F-order 内存顺序 |
 | `format → element`      | `element`         | `core::any::type_name::<A>()`      | 输出 dtype 与元素类型信息，参见 `03-element.md` §3           |
 
-### 8.2 数据流描述
+### 9.2 数据流描述
 
 ```text
-用户调用 `format!("{}", tensor)` / `format!("{:?}", tensor)`
+User calls format!("{}", tensor) / format!("{:?}", tensor)
     │
-    ├── format 模块先查询 tensor 的 shape / strides / flags / dtype
-    ├── 再通过 pretty 层递归子视图/逻辑索引读取需要展示的元素
-    ├── 若元素总数超过 threshold，则按截断规则挑选 edge items
-    └── 最终直接写入 Formatter，不分配额外堆内存
+    ├── format queries tensor shape / strides / flags / dtype metadata
+    ├── pretty recursively reads the required logical elements
+    ├── large arrays are truncated according to threshold and edge-items rules
+    ├── truncated output appends omitted-element count and full shape metadata
+    └── the module writes directly into Formatter without heap allocation
 ```
 
 ---
 
-## 9. 设计决策记录（ADR）
+## 10. 错误处理与语义边界
+
+| 主题 | 内容 |
+| ---- | ---- |
+| Recoverable error | 不适用；当前格式化 API 通过 `fmt::Result` 与格式化器交互，不定义额外模块级 `XenonError` 路径。 |
+| Panic | 不适用；公开格式化路径不引入新的 panic 语义。 |
+| 路径一致性 | `Display`、`Debug` 与 `display_with(config)` 必须共享同一逻辑索引读取与截断契约；无 SIMD / 并行分支。 |
+| 容差边界 | 不适用；`precision` 仅影响文本呈现，不构成数值误差容差语义。 |
+
+---
+
+## 11. 设计决策记录（ADR）
 
 ### 决策 1：截断阈值选择
 
@@ -603,7 +669,7 @@ Wave 3:        [T5]
 
 ---
 
-## 10. 性能考量
+## 12. 性能考量
 
 | 方面       | 设计决策                                                 |
 | ---------- | -------------------------------------------------------- |
@@ -614,7 +680,7 @@ Wave 3:        [T5]
 
 ---
 
-## 11. 平台与工程约束
+## 13. 平台与工程约束
 
 | 约束       | 说明                                                  |
 | ---------- | ----------------------------------------------------- |

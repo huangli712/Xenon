@@ -25,7 +25,7 @@
 | 覆盖对象 | 所有公开 API、公开 trait 入口、公开运算符语义、并行执行路径   |
 | 范围内   | `XenonError`、`Result<T>`、panic 分类、诊断字段、并行传播规则 |
 | 范围外   | 日志系统、遥测、错误上报平台、序列化错误模型                  |
-| 非目标   | 为每个模块单独定义一套错误类型                                |
+| 非目标   | 让每个模块在公开 API 层各自暴露一套彼此独立的错误类型         |
 
 ---
 
@@ -64,6 +64,14 @@
 ### 3.2 统一依赖方向
 
 > **依赖方向：单向向上。** 错误规范由 `error.rs` 提供基础类型，但本文约束的是所有公开 API 的外部行为，而非某一个源码目录的局部实现。
+
+### 3.3 依赖合法性与新增依赖说明
+
+| 项目           | 说明                                         |
+| -------------- | -------------------------------------------- |
+| 新增第三方依赖 | 无新增依赖                                   |
+| 合法性结论     | 符合最小依赖限制                             |
+| 替代方案       | 不适用；错误模型统一由 crate 内部类型与标准库承载 |
 
 ---
 
@@ -141,12 +149,9 @@ pub enum XenonError {
         shape: Option<Cow<'static, [usize]>>,
     },
 
-    FfiError {
-        operation: &'static str,
-        backend: &'static str,
-        precondition: &'static str,
-        actual: &'static str,
-    },
+    Ffi(FfiError),
+
+    Workspace(WorkspaceError),
 
     IndexError {
         attempted_index: usize,
@@ -174,6 +179,8 @@ pub enum TypeConversionReason {
 
 pub type Result<T> = core::result::Result<T, XenonError>;
 ```
+
+模块可以为内部实现保留局部错误分类（例如 `FfiError`、`WorkspaceError`），以避免在模块内部丢失语义；但凡进入 Xenon 的公开 API 边界，必须统一包装为 `XenonError`（如 `XenonError::Ffi(...)`、`XenonError::Workspace(...)`），不得直接向外暴露模块私有错误枚举。
 
 ### 4.3 类型转换错误规范
 
@@ -215,7 +222,8 @@ where
 | 变体              | 最小结构化字段                                                                   |
 | ----------------- | -------------------------------------------------------------------------------- |
 | `InvalidArgument` | `operation`, `argument`, `expected`, `actual`, `axis?`, `shape?`                 |
-| `FfiError`        | `operation`, `backend`, `precondition`, `actual`                                 |
+| `Ffi(FfiError)`   | 由 `FfiError` 提供 `operation`, `backend`, `precondition`, `actual`               |
+| `Workspace(...)`  | 由 `WorkspaceError` 提供 `size`, `align`, `split`, `len` 等适用结构化字段         |
 | `InvalidShape`    | `operation`, `shape`, `expected_elements?`, `actual_elements?`, `offending_dim?` |
 | `IndexError`      | `attempted_index`, `axis`, `shape`                                               |
 | `TypeConversion`  | `source_type`, `target_type`, `reason`, `element_index`                          |
@@ -319,6 +327,8 @@ let value = lhs * rhs;
 ---
 
 ## 6. 平台与工程约束
+
+本文档本身即为错误处理规范。
 
 错误处理规范须遵循项目统一工程约束：
 

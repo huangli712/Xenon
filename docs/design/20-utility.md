@@ -42,7 +42,18 @@ L6: util  ← 当前模块（依赖 tensor, dimension, storage, layout, iter）
 
 ---
 
-## 2. 文件位置
+## 2. 需求映射与范围约束
+
+| 类型     | 内容 |
+| -------- | ---- |
+| 需求映射 | 需求说明书 §21, §22 |
+| 范围内   | `clip` / `clip_inplace`、`fill`、`to_contiguous` / `into_contiguous`。 |
+| 范围外   | sort、argsort、searchsorted，以及除 clip / fill / contiguous 之外的其他 utility 操作。 |
+| 非目标   | 不把 `util` 扩展为通用算法杂项集合，不新增第三方依赖，也不重定义 convert / layout 的职责。 |
+
+---
+
+## 3. 文件位置
 
 ```
 src/
@@ -59,21 +70,21 @@ src/
 
 ---
 
-## 3. 依赖关系
+## 4. 依赖关系
 
-### 3.1 依赖图
+### 4.1 依赖图
 
 ```
 src/util/
-├── crate::tensor        # TensorBase<S, D>, Tensor, 类型别名
+├── crate::tensor        # TensorBase<S, D>, Tensor, type aliases
 ├── crate::dimension     # Dimension trait
 ├── crate::storage       # Storage, StorageMut trait
 ├── crate::element       # Element, RealScalar trait
-├── crate::layout        # is_f_contiguous 查询
-└── crate::iter          # Elements 迭代器（fill/clip 内部使用）
+├── crate::layout        # is_f_contiguous query
+└── crate::iter          # Elements iterator for fill / clip internals
 ```
 
-### 3.2 类型级依赖
+### 4.2 类型级依赖
 
 | 来源模块    | 使用的类型/trait                                                                       |
 | ----------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
@@ -85,15 +96,23 @@ src/util/
 | `iter`      | `iter()`, `iter_mut()`（参见 `10-iterator.md` §4）                                     |
 | `tensor`    | `Tensor<A, D>` 的结果构造路径                                                          | `clip` 分配新的 owned 结果张量并通过 `iter()` / `iter_mut()` 写入 |
 
-### 3.3 依赖方向声明
+### 4.3 依赖方向声明
 
 > **依赖方向：单向向上。** `util` 仅消费 `tensor`、`iter` 等核心模块，不被它们依赖。
 
+### 4.4 依赖合法性与替代方案
+
+| 项目           | 说明 |
+| -------------- | ---- |
+| 新增第三方依赖 | 无 |
+| 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
+| 替代方案       | 不适用；当前范围内无需额外第三方依赖。 |
+
 ---
 
-## 4. 公共 API 设计
+## 5. 公共 API 设计
 
-### 4.1 clip 操作
+### 5.1 clip 操作
 
 ````rust
 pub trait ClipElement: Element + PartialOrd {}
@@ -188,12 +207,12 @@ where
 }
 ````
 
-### 4.2 fill 操作
+### 5.2 fill 操作
 
 ````rust
 impl<S, D, A> TensorBase<S, D>
 where
-    S: StorageMut<Elem = A>,
+    S: Storage<Elem = A>,
     D: Dimension,
     A: Element + Clone,
 {
@@ -202,26 +221,41 @@ where
     /// Correctly handles non-contiguous layouts: iterates over all logical
     /// elements via the iterator. Modifies storage directly without copying.
     ///
-    /// **Note**: broadcast views are read-only in Xenon. A tensor with zero strides
-    /// produced by broadcasting cannot satisfy `StorageMut`, so `fill()` is not
-    /// available on broadcast results.
+    /// Returns `Err(XenonError::InvalidStorageMode)` for read-only or shared-read-only
+    /// storage modes, with diagnostic context describing the actual storage mode.
+    /// For writable storage (`Owned`, `ViewMutRepr`), fills all logical elements and
+    /// returns `Ok(())`.
+    ///
+    /// **Note**: `StorageMut` is still a useful compile-time optimization for known
+    /// static storage types: read-only broadcast views and other statically non-writable
+    /// tensors can still be rejected at compile time. The runtime storage-mode check is
+    /// the recoverable-error path for dynamically determined storage.
     ///
     /// # Examples
     ///
     /// ```
     /// let mut t = Tensor1::<f64>::zeros([5]);
-    /// t.fill(3.14);
+    /// t.fill(3.14)?;
     /// assert!(t.iter().all(|&x| x == 3.14));
     /// ```
-    pub fn fill(&mut self, value: A) {
-        for elem in self.iter_mut() {
-            *elem = value.clone();
+    pub fn fill(&mut self, value: A) -> Result<(), XenonError> {
+        match self.storage_mode() {
+            StorageMode::Owned | StorageMode::ViewMutRepr => {
+                for elem in self.iter_mut() {
+                    *elem = value.clone();
+                }
+                Ok(())
+            }
+            actual_mode => Err(XenonError::InvalidStorageMode {
+                operation: "fill",
+                actual: actual_mode,
+            }),
         }
     }
 }
 ````
 
-### 4.3 连续性保证（to_contiguous）
+### 5.3 连续性保证（to_contiguous）
 
 > `to_contiguous()` 是本模块（20-utility.md §4）定义的公共 API。内部可复用连续化实现，但这不构成 `convert` 模块的独立公共能力。
 >
@@ -292,12 +326,12 @@ where
 > **设计说明：** `to_contiguous(&self)` 保持借用入口，适合统一拿到 owned 结果；
 > `into_contiguous(self)` 补充消费式入口，以满足 `require.md` §22 对“输入已是连续 F-order 存储时可复用现有数据”的要求。
 
-### 4.4 Good / Bad 对比
+### 5.4 Good / Bad 对比
 
 ```rust
 // Good - use fill for in-place filling, zero extra allocation
 let mut t = Tensor1::<f64>::zeros([1000]);
-t.fill(42.0);
+t.fill(42.0)?;
 
 // Bad - create a temporary Vec then construct a new tensor, double allocation
 let data = vec![42.0; 1000];
@@ -320,9 +354,9 @@ process(&contiguous);
 
 ---
 
-## 5. 内部实现设计
+## 6. 内部实现设计
 
-### 5.1 clip 算法
+### 6.1 clip 算法
 
 ```
 clip(tensor, min, max):
@@ -332,17 +366,21 @@ clip(tensor, min, max):
     return result
 ```
 
-### 5.2 fill 算法（非连续布局支持）
+### 6.2 fill 算法（非连续布局支持）
 
 ```
 fill(tensor, value):
-    for each mutable reference elem in tensor (via iter_mut):
-        *elem = value.clone()
+    if storage mode is Owned or ViewMutRepr:
+        for each mutable reference elem in tensor (via iter_mut):
+            *elem = value.clone()
+        return Ok(())
+    else:
+        return InvalidStorageMode(actual storage mode)
 ```
 
-关键点：`iter_mut()` 已经正确处理非连续布局的步长跳转，因此 `fill` 天然支持非连续内存。
+关键点：`iter_mut()` 已经正确处理非连续布局的步长跳转，因此 `fill` 在可写存储上天然支持非连续内存；对只读或共享只读存储则通过可恢复错误返回实际存储模式上下文。
 
-### 5.3 to_contiguous 路径选择
+### 6.3 to_contiguous 路径选择
 
 ```
 to_contiguous(tensor):
@@ -360,7 +398,7 @@ into_contiguous(tensor):
         return util_internal_to_f_contiguous(&tensor)
 ```
 
-### 5.4 NaN 处理语义
+### 6.4 NaN 处理语义
 
 | clip 场景 | 输入   | min   | max   | 输出  | 说明                                          |
 | --------- | ------ | ----- | ----- | ----- | --------------------------------------------- |
@@ -375,14 +413,14 @@ into_contiguous(tensor):
 
 ---
 
-## 6. 实现任务拆分
+## 7. 实现任务拆分
 
 ### Wave 1: 基础操作
 
 - [ ] **T1**: 实现 `fill` 方法
   - 文件: `src/util/fill.rs`
-  - 内容: `fill(&mut self, value: A)` 方法，通过 `iter_mut()` 原地填充
-  - 测试: `test_fill_basic`, `test_fill_non_contiguous`
+  - 内容: `fill(&mut self, value: A) -> Result<(), XenonError>`；可写存储通过 `iter_mut()` 原地填充，只读/共享只读存储返回 `InvalidStorageMode`
+  - 测试: `test_fill_basic`, `test_fill_non_contiguous`, `test_fill_invalid_storage_mode`
   - 前置: tensor 模块、iter 模块完成
   - 预计: 10 min
 
@@ -419,9 +457,9 @@ Wave 2:      [T3] → [T4]
 
 ---
 
-## 7. 测试计划
+## 8. 测试计划
 
-### 7.1 测试分类表
+### 8.1 测试分类表
 
 | 测试分类 | 位置                     | 说明                                                               |
 | -------- | ------------------------ | ------------------------------------------------------------------ |
@@ -429,7 +467,7 @@ Wave 2:      [T3] → [T4]
 | 集成测试 | `tests/`                 | 验证 `utility` 与 `tensor`、`iter`、`layout`、`convert` 的协同路径 |
 | 边界测试 | 同模块测试中标注         | 覆盖空数组、零维张量、NaN 和非连续布局等边界                       |
 
-### 7.2 单元测试清单
+### 8.2 单元测试清单
 
 | 测试函数                                  | 测试内容                                | 优先级 |
 | ----------------------------------------- | --------------------------------------- | ------ |
@@ -449,7 +487,7 @@ Wave 2:      [T3] → [T4]
 | `test_to_contiguous_transposed_becomes_f` | 转置视图转为 F-order owned              | 高     |
 | `test_to_contiguous_non_contiguous`       | 非连续输入返回 F-order owned            | 高     |
 
-### 7.3 边界测试场景
+### 8.3 边界测试场景
 
 | 场景                  | 预期行为                                                          |
 | --------------------- | ----------------------------------------------------------------- |
@@ -459,7 +497,7 @@ Wave 2:      [T3] → [T4]
 | 非连续切片            | `fill`/`clip` 通过迭代器正确处理所有逻辑元素                      |
 | NaN 边界              | `clip(x, NaN, 1.0)` 或 `clip(x, 0.0, NaN)` 返回 `InvalidArgument` |
 
-### 7.4 属性测试不变量
+### 8.4 属性测试不变量
 
 | 不变量                                                                         | 测试方法                |
 | ------------------------------------------------------------------------------ | ----------------------- | ---------- | ----------------- |
@@ -467,17 +505,32 @@ Wave 2:      [T3] → [T4]
 | `fill(v)` 后 `iter().all(                                                      | x                       | \*x == v)` | 随机形状 + 随机值 |
 | `to_contiguous()` / `into_contiguous()` 返回的张量 `is_f_contiguous() == true` | 随机非连续布局          |
 
-### 7.5 集成测试
+### 8.5 集成测试
 
 | 测试文件                | 测试内容                                                                          |
 | ----------------------- | --------------------------------------------------------------------------------- |
 | `tests/test_utility.rs` | `clip`/`fill`/`to_contiguous` 与 `tensor`、`iter`、`layout`、`convert` 的协同路径 |
 
+### 8.6 Feature gate / 配置测试
+
+| 配置 | 验证点 |
+| ---- | ---- |
+| 默认配置 | `clip` / `fill` / `to_contiguous` 在默认构建下保持错误分层与 F-order 输出语义。 |
+| 其他 feature 组合 | 不适用；当前模块无额外 feature gate。 |
+
+### 8.7 类型边界 / 编译期测试
+
+| 场景 | 测试方式 |
+| ---- | ---- |
+| `clip` 仅对 `ClipElement` 开放，拒绝 `bool` / `Complex` | 编译期测试。 |
+| `into_contiguous(self)` 仅对支持 owned 转换的存储模式开放 | 编译期测试。 |
+| sort / argsort / searchsorted 不属于当前 API | API 缺失断言。 |
+
 ---
 
-## 8. 与其他模块的交互
+## 9. 与其他模块的交互
 
-### 8.1 接口约定
+### 9.1 接口约定
 
 | 方向               | 对方模块 | 接口/类型                                      | 约定                                                                                                       |
 | ------------------ | -------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
@@ -486,20 +539,31 @@ Wave 2:      [T3] → [T4]
 | `utility → layout` | `layout` | 连续性查询                                     | `to_contiguous` 先查询当前布局是否已经连续，参见 `06-memory.md` §4                                         |
 | `utility → tensor` | `tensor` | `to_owned()` / `into_owned()` / owned 构造路径 | `to_contiguous` 与 `into_contiguous` 复用张量 owned 化与连续化路径；`clip` 通过 owned 结果张量构造返回新值 |
 
-### 8.2 数据流描述
+### 9.2 数据流描述
 
 ```text
-用户调用 fill() / clip() / to_contiguous() / into_contiguous()
+User calls fill() / clip() / to_contiguous() / into_contiguous()
     │
-    ├── utility 模块先判断是原地修改、生成新 tensor，还是仅做连续化
-    ├── fill / clip 通过 iter / iter_mut 访问逻辑元素
-    ├── to_contiguous 先查询 layout 连续性，再按需走 utility 内部连续化路径
-    └── 最终返回修改后的原张量或新的 owned F-order 张量
+    ├── utility decides between in-place update, new tensor creation, or contiguity repair
+    ├── fill / clip traverse logical elements through iter / iter_mut
+    ├── to_contiguous checks layout flags before materializing F-order storage
+    └── the module returns either the updated tensor or a new owned F-order tensor
 ```
 
 ---
 
-## 9. 设计决策记录
+## 10. 错误处理与语义边界
+
+| 主题 | 内容 |
+| ---- | ---- |
+| Recoverable error | `clip` / `clip_inplace` 在 `min > max` 或边界为 `NaN` 时返回 `XenonError::InvalidArgument`；`fill` 在只读存储上返回 `XenonError::InvalidStorageMode`。 |
+| Panic | 公开 utility API 不定义额外 panic 语义；连续化与裁剪失败统一走显式错误或正常返回。 |
+| 路径一致性 | 连续与非连续布局都必须通过同一逻辑元素语义工作；当前无独立 SIMD / 并行分支。 |
+| 容差边界 | `clip` 对浮点数遵循 IEEE 754 比较语义；不额外引入近似容差。 |
+
+---
+
+## 11. 设计决策记录
 
 ### ADR-1：NaN 的 clip 行为
 
@@ -521,7 +585,7 @@ Wave 2:      [T3] → [T4]
 
 ---
 
-## 10. 性能考量
+## 12. 性能考量
 
 | 操作                              | 时间复杂度 | 空间复杂度 | 说明                             |
 | --------------------------------- | ---------- | ---------- | -------------------------------- |
@@ -539,7 +603,7 @@ Wave 2:      [T3] → [T4]
 
 ---
 
-## 11. 平台与工程约束
+## 13. 平台与工程约束
 
 | 约束       | 说明                                                                                 |
 | ---------- | ------------------------------------------------------------------------------------ |

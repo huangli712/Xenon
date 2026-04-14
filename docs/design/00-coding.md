@@ -1,9 +1,24 @@
 # 通用编码规范
 
-> 文档编号: 00 | 模块: 全局规范 | 阶段: Phase 0
+> 文档编号: 00 | 适用范围: 全局编码与工程约束 | 阶段: Phase 0
 > 前置文档: 无
 > 需求参考: 需求说明书 §1, §4, §7, §10, §27, §28
 > 范围声明: 范围内
+
+---
+
+## 0. 主题定位与适用范围
+
+本文档是 Xenon 的横切编码规范，约束命名、格式、类型系统、unsafe、文档、测试与 feature gate 的统一写法，适用于所有源码模块、测试目录、基准目录与 CI 相关工程配置。
+
+## 需求映射与范围约束
+
+| 类型     | 内容                                                                 |
+| -------- | -------------------------------------------------------------------- |
+| 需求映射 | `require.md §1`, `§4`, `§7`, `§10`, `§27`, `§28`                    |
+| 范围内   | 命名、格式、类型系统、unsafe、文档、测试与 feature gate 的统一编码约束 |
+| 范围外   | 单个业务模块的算法细节、独立功能设计、额外平台适配策略               |
+| 非目标   | 通过本规范引入超出需求范围的新能力、第三方依赖或额外 crate 拆分      |
 
 ---
 
@@ -859,12 +874,20 @@ where
 
 启用 feature 不能移除功能。所有 feature 组合必须能正确编译。
 
+| Feature    | 依赖                 | 说明                          |
+| ---------- | -------------------- | ----------------------------- |
+| `std`      | (default)            | 标准库支持                    |
+| `simd`     | `dep:pulp`, `std`    | SIMD 加速，依赖 `std`         |
+| `parallel` | `dep:rayon`, `std`   | 并行计算，依赖 `std`          |
+
+其中 `simd` 必须隐式启用 `std`，因为 `pulp` 使用平台相关 intrinsics，当前不是 `no_std` 兼容路径。
+
 ```toml
 [features]
 default = ["std"]
 std = []                        # Additive: enables std library
 parallel = ["dep:rayon", "std"] # Additive: enables parallel iterators
-simd = ["dep:pulp"]             # Additive: enables SIMD
+simd = ["dep:pulp", "std"]      # Additive: enables SIMD with std-backed intrinsics
 # Note: libm is NOT a dependency (see 01-architecture.md §1.4).
 # RealScalar math functions (sin/cos/exp/ln) are only available with "std" feature.
 ```
@@ -914,6 +937,16 @@ use std::fmt;
 
 impl std::error::Error for XenonError {}
 ```
+
+---
+
+## 依赖与合法性约束
+
+| 项目           | 说明                               |
+| -------------- | ---------------------------------- |
+| 新增第三方依赖 | 无新增依赖                         |
+| 合法性结论     | 符合最小依赖限制                   |
+| 替代方案       | 不适用；本规范只约束既有依赖的用法 |
 
 ---
 
@@ -972,6 +1005,29 @@ Wave 2: [T4]
 | `test_clippy_check`         | `cargo clippy` 无警告     | 高     |
 | `test_std_default_check`    | 默认 `std` 配置编译通过   | 高     |
 | `test_compile_all_features` | `--all-features` 编译通过 | 高     |
+
+### 11.1 Feature gate / 配置测试
+
+| 配置        | 验证点                                           |
+| ----------- | ------------------------------------------------ |
+| 默认配置    | 编码规范对应 lint、格式与文档约束默认生效        |
+| 启用 `simd` | 条件编译代码仍遵循相同命名、文档与 unsafe 规范    |
+| 启用并行    | 条件编译代码仍遵循相同错误语义、测试与注释要求    |
+| 全 feature  | 所有 feature 组合下格式、lint 与文档检查口径一致 |
+
+### 11.2 类型边界 / 编译期测试
+
+| 场景                         | 测试方式                                 |
+| ---------------------------- | ---------------------------------------- |
+| `unsafe fn` 文档节完整性     | `cargo doc` + rustdoc/clippy 文档 lint   |
+| `unwrap()` / `as` 使用边界   | `cargo clippy` 与仓库 lint 配置校验      |
+| feature gate 可见性与导出边界 | `cargo check` / `cargo test` 配置矩阵验证 |
+
+---
+
+## 错误处理与语义边界
+
+本文档不直接定义错误类型，但要求所有受影响模块遵循 `26-error.md` 的错误语义边界；编码规范只约束 `Result`、panic、`unsafe` 注释与文档节的写法，不单独裁决公开 API 的错误分类。
 
 ---
 

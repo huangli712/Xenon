@@ -36,12 +36,12 @@
 ### 1.3 在架构中的位置
 
 ```
-依赖层级：
+Dependency layers:
 L0: error, private
-L1: complex  ← 当前模块
-L2: layout (依赖 dimension)
-L3: storage (仅依赖 core/alloc)
-L4: tensor (依赖 storage, dimension)
+L1: complex  ← current module
+L2: layout (depends on dimension)
+L3: storage (depends only on core/alloc)
+L4: tensor (depends on storage, dimension)
 L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 ```
 
@@ -57,7 +57,18 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 ---
 
-## 2. 文件位置
+## 2. 需求映射与范围约束
+
+| 项目     | 内容                                                            |
+| -------- | --------------------------------------------------------------- |
+| 需求映射 | 需求说明书 §5                                                   |
+| 范围内   | `Complex<T>` 类型定义、同精度复数运算、格式化、布局与转换边界   |
+| 范围外   | `num-complex` 兼容层、跨精度混合运算、FFT 与高阶复数算法        |
+| 非目标   | 引入第三方复数库依赖、开放任意 `T` 的公开实例化或 `_Complex` ABI 保证 |
+
+---
+
+## 3. 文件位置
 
 ```
 src/complex/
@@ -70,9 +81,9 @@ src/complex/
 
 ---
 
-## 3. 依赖关系
+## 4. 依赖关系
 
-### 3.1 依赖图（ASCII）
+### 4.1 依赖图（ASCII）
 
 ```
 src/complex/
@@ -83,7 +94,7 @@ src/complex/
 
 > **零外部依赖。** `Complex<T>` 的基础结构、基础方法、算术运算和类型转换仅依赖 `core`；涉及浮点数学的复数方法运行在 Xenon 的 `std` 环境前提下。
 
-### 3.2 依赖精确到类型级
+### 4.2 依赖精确到类型级
 
 | 来源        | 使用的类型/trait                              |
 | ----------- | --------------------------------------------- |
@@ -91,16 +102,24 @@ src/complex/
 | `core::fmt` | `Debug`, `Display`（格式化输出）              |
 | `core::cmp` | `PartialEq`（相等比较）                       |
 
-### 3.3 依赖方向声明
+### 4.2a 依赖合法性
+
+| 项目           | 结论                           |
+| -------------- | ------------------------------ |
+| 新增第三方依赖 | 无                             |
+| 合法性结论     | 符合需求说明书最小依赖限制     |
+| 替代方案       | 不适用                         |
+
+### 4.3 依赖方向声明
 
 > **依赖方向：单向向下。** `complex/` 不依赖项目中任何其他模块。
 > 被下游消费：`element/` 模块为 `Complex<f32>`/`Complex<f64>` 实现 Element/Numeric/ComplexScalar trait（参见 `03-element.md` §5.3）。
 
 ---
 
-## 4. 公共 API 设计
+## 5. 公共 API 设计
 
-### 4.1 Complex<T> 完整定义
+### 5.1 Complex<T> 完整定义
 
 ```rust
 /// Complex number: a + bi.
@@ -125,7 +144,7 @@ pub struct Complex<T: ComplexFloat> {
 > Xenon 的封闭元素集合，文档中的 `Complex<T>` 应理解为语法层记号；真正的公开约束应通过
 > 一个 sealed 的 `ComplexFloat` trait 固定到 `f32` / `f64`。
 
-### 4.2 泛型约束
+### 5.2 泛型约束
 
 `Complex<T>` 的方法分为两类：
 
@@ -185,7 +204,7 @@ impl Float for f32 { /* delegates to inherent methods */ }
 impl Float for f64 { /* delegates to inherent methods */ }
 ```
 
-### 4.3 构造方法
+### 5.3 构造方法
 
 ```rust
 impl<T: ComplexFloat> Complex<T> {
@@ -243,7 +262,7 @@ impl Complex<f64> {
 }
 ```
 
-### 4.4 基础方法
+### 5.4 基础方法
 
 ```rust
 // Methods that don't need Float math — publicly available without pub(crate) dependency.
@@ -263,7 +282,7 @@ impl<T: ComplexFloat> Complex<T> {
     /// `Numeric::conjugate()` which is a trait method on the `Numeric` trait.
     /// Both produce the same mathematical result for complex types, but
     /// `Numeric::conjugate()` is the intended API for generic code constrained
-    /// only on `Numeric`. See `03-element.md` §4.2 for details.
+    /// only on `Numeric`. See `03-element.md` §5.2 for details.
     #[inline]
     pub fn conj(self) -> Self {
         Self::new(self.re, -self.im)
@@ -312,7 +331,7 @@ impl Complex<f64> {
 }
 ```
 
-### 4.5 数学方法
+### 5.5 数学方法
 
 > **注意**：数学方法通过具体的 `impl Complex<f32>` 和 `impl Complex<f64>` 块提供，而非泛型 `impl<T: Float>`。这避免了 `Float` trait（`pub(crate)`）暴露到公共 API。
 
@@ -435,7 +454,7 @@ impl Complex<f64> {
 
 > **精度说明：** 对于实部为负的复数，标准 sqrt 算法可能在分支割线附近产生灾难性消去（catastrophic cancellation）。这是已知的精度限制。对精度要求极高的场景，可考虑使用更稳定的数值算法。
 
-### 4.6 算术运算实现
+### 5.6 算术运算实现
 
 ```rust
 // Complex + Complex: (a+bi) + (c+di) = (a+c) + (b+d)i
@@ -492,7 +511,7 @@ impl<T: Float> core::ops::Neg for Complex<T> {
 }
 ```
 
-### 4.7 混合运算（同精度实数与复数）
+### 5.7 混合运算（同精度实数与复数）
 
 ```rust
 // Complex + T: (a+bi) + r = (a+r) + bi
@@ -526,7 +545,7 @@ impl<T: Float> core::ops::Sub<T> for Complex<T> {
 
 > **设计决策：** 仅支持同精度混合运算。`Complex<T> op T` 与 `T op Complex<T>` 的语义都应被视为稳定目标；若直接暴露左侧实数语法成本过高，文档至少必须明确它是“待补齐的具体 impl”，而不是数学上不支持。`Complex<f64> + f32` 这类跨精度混合运算仍然编译错误，须显式转换。
 
-### 4.8 PartialEq 实现
+### 5.8 PartialEq 实现
 
 ```rust
 impl<T: Float> PartialEq for Complex<T> {
@@ -540,7 +559,7 @@ impl<T: Float> PartialEq for Complex<T> {
 // NOT implementing PartialOrd/Ord: complex numbers have no natural total order.
 ```
 
-### 4.9 格式化输出
+### 5.9 格式化输出
 
 ```rust
 impl<T: Float + core::fmt::Display> core::fmt::Display for Complex<T> {
@@ -574,7 +593,7 @@ impl<T: Float + core::fmt::Display> core::fmt::Display for Complex<T> {
 | `Complex::new(0.0, 4.0)`  | `"4i"`       |
 | `Complex::new(0.0, 0.0)`  | `"0"`        |
 
-### 4.10 类型转换
+### 5.10 类型转换
 
 ```rust
 // Precision promotion: f32 -> f64 (lossless)
@@ -616,7 +635,7 @@ impl From<f64> for Complex<f64> {
 }
 ```
 
-### 4.11 内存布局静态断言
+### 5.11 内存布局静态断言
 
 ```rust
 // Compile-time layout verification
@@ -630,7 +649,7 @@ const _: () = {
 
 **安全性论证**: `#[repr(C)]` 仅用于固定字段顺序与 C 兼容结构体表示；安全前提建立在按 `re` / `im` 两个已知字段访问，而非依赖“无 padding”假设。
 
-### 4.12 FFI 布局兼容性说明
+### 5.12 FFI 布局兼容性说明
 
 | C 表示                             | 内存布局           | Rust 等价      |
 | ---------------------------------- | ------------------ | -------------- |
@@ -657,7 +676,7 @@ pub extern "C" fn process_complex(z: *const Complex<f64>) -> Complex<f64> {
 // complex64_t process_complex(const complex64_t* z);
 ```
 
-### 4.13 Good / Bad 对比示例
+### 5.13 Good / Bad 对比示例
 
 ```rust
 // Good - same precision arithmetic, type safe
@@ -687,9 +706,9 @@ let overflow = (big.re * big.re + big.im * big.im).sqrt(); // Inf!
 
 ---
 
-## 5. 内部实现设计
+## 6. 内部实现设计
 
-### 5.1 算法描述
+### 6.1 算法描述
 
 **Complex × Complex 公式**:
 
@@ -720,7 +739,7 @@ hypot(a, b):
 
 优势：中间结果不超过 `2 * max(|a|, |b|)`，避免 `a²` 溢出。
 
-### 5.2 不支持的运算清单
+### 6.2 不支持的运算清单
 
 | 运算                             | 原因                                |
 | -------------------------------- | ----------------------------------- |
@@ -733,45 +752,45 @@ hypot(a, b):
 
 ---
 
-## 6. 与其他模块的交互
+## 7. 与其他模块的交互
 
-### 6.1 与 element 模块的集成
+### 7.1 与 element 模块的集成
 
 | 交互点     | 说明                                                                                                                            |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | 类型定义   | `Complex<T>` 定义在 `crate::complex`                                                                                            |
-| Trait 实现 | `Element`/`Numeric`/`ComplexScalar` 在 `element` 模块定义（参见 `03-element.md` §4.4），在 `primitives.rs` 为 `Complex<T>` 实现 |
+| Trait 实现 | `Element`/`Numeric`/`ComplexScalar` 在 `element` 模块定义（参见 `03-element.md` §5.4），在 `primitives.rs` 为 `Complex<T>` 实现 |
 | 依赖方向   | `element` 依赖 `complex`（类型定义）；`complex` 不依赖 `element`                                                                |
 
-### 6.2 接口边界
+### 7.2 接口边界
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│  element (Element/Numeric/ComplexScalar trait implementations)│
+│  element (Element/Numeric/ComplexScalar trait impls)          │
 └───────────────────────┬───────────────────────────────────────┘
-                        │ 类型依赖（Complex<T> 定义）
+                        │ type dependency (Complex<T> definition)
 ┌───────────────────────▼───────────────────────────────────────┐
-│  complex (Complex<T> 定义，算术运算，类型转换)                   │
+│  complex (Complex<T> definition, arithmetic, conversions)     │
 └───────────────────────────────────────────────────────────────┘
 ```
 
-### 6.3 数据流描述
+### 7.3 数据流描述
 
 ```
-用户构造 Complex<f64>::new(re, im)
+User constructs `Complex<f64>::new(re, im)`
     │
-    ├── complex/ 提供基础方法、算术运算与类型转换
+    ├── complex/ provides core methods, arithmetic, and conversions
     │
-    ├── element/ 为 Complex<f64> 实现 Element/Numeric/ComplexScalar
+    ├── element/ implements Element/Numeric/ComplexScalar for `Complex<f64>`
     │
-    ├── math / matrix / format 等上层模块消费这些 trait 与 inherent methods
+    ├── math / matrix / format and other upper layers consume these traits and inherent methods
     │
-    └── FFI 场景下按双字段 C struct 布局进行互操作；不承诺 `_Complex` ABI 兼容
+    └── FFI paths interoperate via a two-field C struct layout; `_Complex` ABI compatibility is not promised
 ```
 
 ---
 
-## 7. 实现任务拆分
+## 8. 实现任务拆分
 
 ### Wave 1: 核心定义
 
@@ -890,9 +909,9 @@ Wave 5: [T11] → [T12]
 
 ---
 
-## 8. 测试计划
+## 9. 测试计划
 
-### 8.1 测试分类表
+### 9.1 测试分类表
 
 | 测试分类 | 位置                                           | 说明                                                            |
 | -------- | ---------------------------------------------- | --------------------------------------------------------------- |
@@ -901,7 +920,7 @@ Wave 5: [T11] → [T12]
 | 边界测试 | 同模块测试中标注                               | 覆盖 NaN/Inf、极大/极小值与 FFI 布局前提                        |
 | 属性测试 | `tests/test_complex.rs` 或 `tests/property.rs` | 验证共轭、模长、指数对数与极坐标不变量                          |
 
-### 8.2 单元测试清单
+### 9.2 单元测试清单
 
 | 测试函数                         | 测试内容                                                    | 优先级 |
 | -------------------------------- | ----------------------------------------------------------- | ------ |
@@ -934,7 +953,7 @@ Wave 5: [T11] → [T12]
 | `test_f64_to_f32_precision_loss` | `Complex<f64>→Complex<f32>` 精度降低                        | 中     |
 | `test_real_to_complex`           | `f64→Complex<f64>` 虚部为 0                                 | 高     |
 
-### 8.3 边界测试场景
+### 9.3 边界测试场景
 
 | 场景                          | 预期行为                                                 |
 | ----------------------------- | -------------------------------------------------------- |
@@ -946,7 +965,7 @@ Wave 5: [T11] → [T12]
 | 极小值 norm                   | `Complex::new(1e-200, 1e-200).norm()` 正确               |
 | 连续字段布局                  | `Complex<f64>` 的 `re/im` 字段顺序稳定，可逐元素读取     |
 
-### 8.4 属性测试不变量
+### 9.4 属性测试不变量
 
 | 不变量                                | 测试方法           |
 | ------------------------------------- | ------------------ |
@@ -956,15 +975,41 @@ Wave 5: [T11] → [T12]
 | `(z / w) * w ≈ z`                     | 随机 z, w（w ≠ 0） |
 | `z.from_polar(z.norm(), z.arg()) ≈ z` | 随机 z             |
 
-### 8.5 集成测试
+### 9.5 集成测试
 
 | 测试文件                | 测试内容                                                                                             |
 | ----------------------- | ---------------------------------------------------------------------------------------------------- |
 | `tests/test_complex.rs` | 复数类型与 `element` trait 体系、`math` 逐元素运算、`matrix` 共轭内积以及 `ffi` 布局约束的端到端验证 |
 
+### 9.6 Feature gate / 配置测试
+
+| 配置项 | 覆盖方式                             | 说明                                         |
+| ------ | ------------------------------------ | -------------------------------------------- |
+| 默认配置 | 常规单元/集成测试路径                 | 本模块无独立 feature gate，默认配置即主路径  |
+| 非默认 feature | 不适用                             | 本模块未定义 feature gate，故无额外配置矩阵 |
+
+### 9.7 类型边界 / 编译期测试
+
+| 测试类型 | 覆盖方式                                         | 说明                                                    |
+| -------- | ------------------------------------------------ | ------------------------------------------------------- |
+| sealed 边界 | 编译期验证 `ComplexFloat` 仅允许 `f32` / `f64`     | 防止公开 API 暴露任意 `T` 的实例化                      |
+| 语义边界 | compile-fail 测试 `Eq` / `Ord` / `PartialOrd` 未实现 | 验证 NaN 与复数序语义边界不被破坏                       |
+| 精度边界 | compile-fail 测试跨精度混合运算                     | 验证仅同精度混合运算进入稳定 API                         |
+
 ---
 
-## 9. 设计决策记录
+## 10. 错误处理与语义边界
+
+| 项目           | 内容 |
+| -------------- | ---- |
+| Recoverable error | `Complex<f64>::to_f32()` 等有损窄化路径返回可恢复错误；错误类型为 `XenonError`，上下文字段应包含源/目标精度与失败原因 |
+| Panic | 本模块常规复数运算与方法不以 panic 作为错误通道；若调用底层标准库浮点 API，遵循其既有语义 |
+| 路径一致性 | scalar 路径与普通标量实现必须一致；SIMD：不适用；parallel：不适用 |
+| 容差边界 | 复数数值测试采用显式容差；布局、格式化与类型边界测试不适用 |
+
+---
+
+## 11. 设计决策记录
 
 ### 决策 1：自定义 vs num-complex
 
@@ -1002,7 +1047,7 @@ Wave 5: [T11] → [T12]
 
 ---
 
-## 10. 性能考量
+## 12. 性能考量
 
 | 方面         | 设计决策                                                               |
 | ------------ | ---------------------------------------------------------------------- |
@@ -1014,7 +1059,7 @@ Wave 5: [T11] → [T12]
 
 ---
 
-## 11. 平台与工程约束
+## 13. 平台与工程约束
 
 | 约束       | 说明                                    |
 | ---------- | --------------------------------------- |

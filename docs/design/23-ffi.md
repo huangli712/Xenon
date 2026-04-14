@@ -42,7 +42,18 @@ L5: ffi  ← 当前模块
 
 ---
 
-## 2. 文件位置
+## 2. 需求映射与范围约束
+
+| 类型     | 内容 |
+| -------- | ---- |
+| 需求映射 | 需求说明书 §25 |
+| 范围内   | 原始指针访问、raw-parts 往返、BLAS 兼容性查询、多维索引到偏移 / 指针转换。 |
+| 范围外   | 实际 BLAS / LAPACK 例程调用、GPU 互操作、跨进程共享内存与更高层序列化协议。 |
+| 非目标   | 不把 `ffi` 扩展为外部数值库绑定层，不新增第三方 FFI crate 依赖。 |
+
+---
+
+## 3. 文件位置
 
 ```
 src/
@@ -66,16 +77,16 @@ src/
 
 ---
 
-## 3. 依赖关系
+## 4. 依赖关系
 
-### 3.1 依赖图
+### 4.1 依赖图
 
 ```
 src/ffi/
 ├── mod.rs
 │   └── re-exports from types, ptr, blas, offset
 ├── types.rs
-│   └── (无外部依赖，仅 core)
+│   └── (no external dependency, only core)
 ├── ptr.rs
 │   ├── crate::tensor        # TensorBase<S, D>, offset
 │   ├── crate::dimension     # Dimension trait
@@ -85,7 +96,7 @@ src/ffi/
 │   ├── crate::tensor        # TensorBase<S, D>
 │   ├── crate::storage       # Storage
 │   ├── crate::layout        # is_contiguous, has_zero_stride
-│   └── super::types         # BlasInfo, BlasLayout
+│   ├── super::types         # BlasInfo, BlasLayout
 │   └── super::ptr           # as_ptr
 └── offset.rs
     ├── crate::tensor        # TensorBase<S, D>
@@ -93,7 +104,7 @@ src/ffi/
     └── crate::storage       # Storage<Elem=A>
 ```
 
-### 3.2 类型级依赖
+### 4.2 类型级依赖
 
 | 来源模块    | 使用的类型/trait                                                                                        | 参考                 | 使用者                           |
 | ----------- | ------------------------------------------------------------------------------------------------------- | -------------------- | -------------------------------- |
@@ -102,17 +113,25 @@ src/ffi/
 | `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, owned allocator metadata（供 `OwnedRawParts<A, D>` 导出/重建） | `05-storage.md` §4   | `ptr.rs`, `blas.rs`, `offset.rs` |
 | `layout`    | `is_f_contiguous()`, `has_zero_stride()`                                                                | `06-memory.md` §4    | `ptr.rs`, `blas.rs`              |
 
-### 3.3 依赖方向声明
+### 4.3 依赖方向声明
 
 > **依赖方向：单向向上。** `ffi` 仅消费 `tensor`、`storage` 等核心模块，为上游库提供接口。
 
 > **owner 约定：** `as_ptr()` / `as_mut_ptr()` / `into_raw_parts()` / `from_raw_parts_owned()` 是 ffi 模块暴露的公开 FFI API。它们消费 `tensor`/`storage` 的元数据，但不应在依赖表中反向写成“来自 tensor 模块的方法”。
 
+### 4.4 依赖合法性与替代方案
+
+| 项目           | 说明 |
+| -------------- | ---- |
+| 新增第三方依赖 | 无 |
+| 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
+| 替代方案       | 不适用；当前范围内无需额外第三方依赖。 |
+
 ---
 
-## 4. 公共 API 设计
+## 5. 公共 API 设计
 
-### 4.1 辅助类型
+### 5.1 辅助类型
 
 ```rust
 /// BLAS matrix layout identifier.
@@ -141,16 +160,24 @@ impl BlasLayout {
     }
 }
 
-/// FFI-specific recoverable error.
+/// Internal error classification for FFI-specific failures.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FfiError {
     InvalidRank { expected: usize, actual: usize },
     BlasIncompatibleLayout,
     IntegerOverflow { field: &'static str },
+    ExportError,
+}
+
+/// Public Xenon APIs wrap `FfiError` in `XenonError::Ffi` before returning.
+impl From<FfiError> for XenonError {
+    fn from(value: FfiError) -> Self {
+        XenonError::Ffi(value)
+    }
 }
 ```
 
-### 4.2 原始指针 API
+### 5.2 原始指针 API
 
 ````rust
 impl<S, D, A> TensorBase<S, D>
@@ -208,7 +235,66 @@ where
 }
 ````
 
-### 4.3 从裸指针构造张量
+#### C 侧结构化导出格式
+
+````rust
+/// Raw tensor data export for FFI consumers.
+///
+/// # Safety
+/// The pointer remains valid only as long as the source tensor is alive.
+/// The consumer must not write through the pointer if the tensor was exported
+/// as read-only.
+#[repr(C)]
+pub struct TensorExport {
+    /// Pointer to the first element.
+    pub data: *const u8,
+    /// Whether the data is mutable.
+    pub mutable: bool,
+    /// Element type identifier (matches ElementType enum).
+    pub element_type: ElementType,
+    /// Number of dimensions.
+    pub ndim: usize,
+    /// Shape array (length = ndim).
+    pub shape: *const usize,
+    /// Stride array (length = ndim), in units of elements (not bytes).
+    pub strides: *const isize,
+    /// Byte offset from data pointer to the first element.
+    pub offset: usize,
+}
+
+impl<A, D> Tensor<A, D>
+where
+    A: Element,
+    D: Dimension,
+{
+    /// Export tensor data as a raw C-compatible structure.
+    ///
+    /// The returned `TensorExport` borrows the tensor's data. The consumer
+    /// must ensure the tensor outlives the export.
+    ///
+    /// # Errors
+    /// Returns `XenonError::Ffi(FfiError::ExportError)` if the tensor
+    /// contains no elements or the strides cannot be represented as `isize`.
+    pub fn export(&self) -> Result<TensorExport, XenonError>;
+
+    /// Export tensor data with mutable access.
+    ///
+    /// # Errors
+    /// Returns `XenonError::InvalidStorageMode` if the tensor is read-only
+    /// (ViewRepr or shared ArcRepr).
+    pub fn export_mut(&mut self) -> Result<TensorExport, XenonError>;
+}
+````
+
+> **导出语义说明：** `TensorExport` 面向 C 调用方提供“指针 + shape + strides + offset”的结构化快照，其中 `shape` 与 `strides` 指针均借用源张量内部元数据，不能在源张量释放后继续使用。
+
+> **stride 符号约定：** `strides` 以“元素个数”而非字节数表示步长；正值表示沿该轴向前推进，负值表示沿该轴反向推进。当前版本 Xenon 内部布局仍以非负 stride 为主，但 FFI 导出格式保留负 stride 语义，以兼容非连续视图在 C 侧的统一解释。
+
+> **offset 约定：** `data` 按 ABI 约定表示导出结果可见的首元素指针；对当前仅含非负 stride 的实现，`offset` 通常为 `0`。保留 `offset` 字段是为了让同一导出格式也能覆盖未来可能出现的负 stride 视图：若导出时需要为负步长做基址归一化，`offset` 必须完整记录从导出基址到逻辑首元素的字节调整量，C 调用方应始终以 `data.offset(offset as isize)` 的结果作为逻辑首元素地址来源。
+
+> **生命周期与线程安全：** 导出结果不拥有底层内存；一旦源张量被 drop，`TensorExport` 内的 `data`、`shape`、`strides` 全部立即失效。设计上应将该导出结果视为可在线程间移动（Send）但不可共享同步访问（not Sync）的 FFI 借用句柄，尤其不可在多个线程中并发写入同一导出结果所指向的数据。
+
+### 5.3 从裸指针构造张量
 
 ````rust
 impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D>
@@ -322,7 +408,7 @@ where
 }
 ````
 
-### 4.4 将张量解构为裸指针
+### 5.4 将张量解构为裸指针
 
 ````rust
 pub struct OwnedRawParts<A, D> {
@@ -414,7 +500,7 @@ unsafe {
 }
 ```
 
-### 4.5 BLAS 兼容性 API
+### 5.5 BLAS 兼容性 API
 
 ````rust
 impl<S, D> TensorBase<S, D>
@@ -452,7 +538,7 @@ where
 }
 ````
 
-### 4.6 blas_info 和 BlasInfo 结构体
+### 5.6 blas_info 和 BlasInfo 结构体
 
 ````rust
 /// BLAS matrix information.
@@ -484,7 +570,8 @@ where
     ///
     /// - `Ok(BlasInfo)`: compatibility conditions met and all BLAS integer
     ///   parameters fit in `i32`
-    /// - `Err(FfiError)`: not BLAS compatible, not 2D, or any BLAS parameter
+    /// - `Err(XenonError)`: wraps internal `FfiError` when not BLAS compatible,
+    ///   not 2D, or any BLAS parameter
     ///   exceeds `i32::MAX`
     ///
     /// # Example
@@ -495,18 +582,18 @@ where
     /// assert_eq!(info.rows, 3);
     /// assert_eq!(info.cols, 4);
     /// ```
-    pub fn blas_info(&self) -> Result<BlasInfo, FfiError> {
+    pub fn blas_info(&self) -> Result<BlasInfo, XenonError> {
         if self.ndim() != 2 {
-            return Err(FfiError::InvalidRank { expected: 2, actual: self.ndim() });
+            return Err(FfiError::InvalidRank { expected: 2, actual: self.ndim() }.into());
         }
         if !self.is_blas_compatible() {
-            return Err(FfiError::BlasIncompatibleLayout);
+            return Err(FfiError::BlasIncompatibleLayout.into());
         }
 
         let data_ptr = self.as_ptr() as *const u8;
-        let lda = i32::try_from(self.lda()?).map_err(|_| FfiError::IntegerOverflow { field: "lda" })?;
-        let rows = i32::try_from(self.shape()[0]).map_err(|_| FfiError::IntegerOverflow { field: "rows" })?;
-        let cols = i32::try_from(self.shape()[1]).map_err(|_| FfiError::IntegerOverflow { field: "cols" })?;
+        let lda = i32::try_from(self.lda()?).map_err(|_| FfiError::IntegerOverflow { field: "lda" }).map_err(XenonError::from)?;
+        let rows = i32::try_from(self.shape()[0]).map_err(|_| FfiError::IntegerOverflow { field: "rows" }).map_err(XenonError::from)?;
+        let cols = i32::try_from(self.shape()[1]).map_err(|_| FfiError::IntegerOverflow { field: "cols" }).map_err(XenonError::from)?;
 
         Ok(BlasInfo {
             data_ptr,
@@ -518,7 +605,7 @@ where
 }
 ````
 
-### 4.7 LDA 查询
+### 5.7 LDA 查询
 
 ````rust
 impl<S, D> TensorBase<S, D>
@@ -536,21 +623,21 @@ where
     /// # Returns
     ///
     /// - `Ok(usize)`: LDA of a BLAS-compatible 2D array
-    /// - `Err(FfiError)`: not a BLAS-compatible 2D array
+    /// - `Err(XenonError)`: wraps internal `FfiError` for non-BLAS-compatible 2D input
     ///
     /// # Example
     ///
     /// ```
     /// let a = Tensor2::<f64>::zeros([3, 4]);
     /// assert_eq!(a.lda()?, 3);  // F-order, LDA = M = 3
-    /// # Ok::<(), xenon::ffi::FfiError>(())
+    /// # Ok::<(), xenon::XenonError>(())
     /// ```
-    pub fn lda(&self) -> Result<usize, FfiError> {
+    pub fn lda(&self) -> Result<usize, XenonError> {
         if self.ndim() != 2 {
-            return Err(FfiError::InvalidRank { expected: 2, actual: self.ndim() });
+            return Err(FfiError::InvalidRank { expected: 2, actual: self.ndim() }.into());
         }
         if !self.is_blas_compatible() {
-            return Err(FfiError::BlasIncompatibleLayout);
+            return Err(FfiError::BlasIncompatibleLayout.into());
         }
         let strides = self.strides();
         Ok(strides[1])
@@ -558,7 +645,7 @@ where
 }
 ````
 
-### 4.8 多维索引到指针偏移
+### 5.8 多维索引到指针偏移
 
 ````rust
 impl<S, D, A> TensorBase<S, D>
@@ -635,7 +722,7 @@ where
 }
 ````
 
-### 4.9 Good/Bad 对比
+### 5.9 Good/Bad 对比
 
 ```rust
 // blas_trans() is only queried after obtaining a BLAS-compatible representation.
@@ -681,9 +768,9 @@ unsafe {
 
 ---
 
-## 5. 内部实现设计
+## 6. 内部实现设计
 
-### 5.1 指针有效性论证
+### 6.1 指针有效性论证
 
 `as_ptr()` 和 `as_mut_ptr()` 的返回值有效性由 Rust 借用检查器保证（`NonNull` 指针在 `Owned` 支持下）。
 
@@ -691,7 +778,7 @@ unsafe {
 
 `from_raw_parts` 的 Safety 由调用方保证：所有前提条件文档为运行时"契约"，违反任何条件都将导致未定义行为。
 
-### 5.2 BLAS 兼容性检查流程
+### 6.2 BLAS 兼容性检查流程
 
 ```
 is_blas_compatible():
@@ -705,7 +792,7 @@ is_blas_compatible():
 
 ---
 
-## 6. 实现任务拆分
+## 7. 实现任务拆分
 
 ### Wave 1: 基础设施
 
@@ -755,9 +842,9 @@ Wave 3: ┌────┴────┐
 
 ---
 
-## 7. 测试计划
+## 8. 测试计划
 
-### 7.1 测试分类表
+### 8.1 测试分类表
 
 | 测试分类 | 位置                                       | 说明                                                             |
 | -------- | ------------------------------------------ | ---------------------------------------------------------------- |
@@ -766,7 +853,7 @@ Wave 3: ┌────┴────┐
 | 边界测试 | 同模块测试中标注                           | 覆盖空张量、广播维度、未对齐指针和 BLAS 不兼容布局等边界         |
 | 属性测试 | `tests/test_ffi.rs` 或 `tests/property.rs` | 验证 `try_offset_of` / `try_ptr_at` / raw-parts roundtrip 不变量 |
 
-### 7.2 单元测试清单
+### 8.2 单元测试清单
 
 | 测试函数                                 | 测试内容                                           | 优先级 |
 | ---------------------------------------- | -------------------------------------------------- | ------ |
@@ -788,7 +875,7 @@ Wave 3: ┌────┴────┐
 | `test_try_ptr_at_various`                | recoverable 指针转换返回正确指针或错误             | 高     |
 | `test_ptr_at_various`                    | panic-sugar 指针接口在合法索引上正确               | 高     |
 
-### 7.3 边界测试场景
+### 8.3 边界测试场景
 
 | 场景       | 预期行为                                      |
 | ---------- | --------------------------------------------- |
@@ -800,7 +887,7 @@ Wave 3: ┌────┴────┐
 | 零维张量   | `try_offset_of(&[])` 返回 `Ok(0)`             |
 | 未对齐指针 | `from_raw_parts` 的 Safety 文档需说明对齐要求 |
 
-### 7.4 属性测试不变量
+### 8.4 属性测试不变量
 
 | 不变量                                                                                 | 测试方法                             |
 | -------------------------------------------------------------------------------------- | ------------------------------------ |
@@ -808,7 +895,7 @@ Wave 3: ┌────┴────┐
 | `into_raw_parts → from_raw_parts_owned` roundtrip 保持 shape/strides/offset            | 对 F-contiguous owned 张量做往返验证 |
 | `is_blas_compatible() == true` ⟹ `blas_info()` 成功                                    | 以连续二维张量为样本验证             |
 
-### 7.5 内存安全测试
+### 8.5 内存安全测试
 
 | 场景                                           | 验证方式               |
 | ---------------------------------------------- | ---------------------- |
@@ -816,17 +903,32 @@ Wave 3: ┌────┴────┐
 | `into_raw_parts` + `from_raw_parts_owned(raw)` | 重建后由 Drop 正确释放 |
 | `from_raw_parts` 野指针                        | AddressSanitizer 检测  |
 
-### 7.6 集成测试
+### 8.6 集成测试
 
 | 测试文件            | 测试内容                                                                                         |
 | ------------------- | ------------------------------------------------------------------------------------------------ |
 | `tests/test_ffi.rs` | 指针 API / BLAS 兼容检查 / raw-parts roundtrip 与 `tensor`、`layout`、`storage` 的端到端协同路径 |
 
+### 8.7 Feature gate / 配置测试
+
+| 配置 | 验证点 |
+| ---- | ---- |
+| 默认配置 | 指针 API、BLAS 兼容性检查与 raw-parts roundtrip 在默认构建下保持既定安全边界。 |
+| 其他 feature 组合 | 不适用；当前模块无额外 feature gate。 |
+
+### 8.8 类型边界 / 编译期测试
+
+| 场景 | 测试方式 |
+| ---- | ---- |
+| `into_raw_parts()` 仅对 `Owned` 存储开放 | 编译期测试。 |
+| `blas_info()` / `lda()` 仅对 2D BLAS-compatible 张量成功 | 运行时错误测试与签名检查。 |
+| 实际 BLAS/LAPACK 调用与 GPU interop 不属于当前 API | API 缺失断言。 |
+
 ---
 
-## 8. 与其他模块的交互
+## 9. 与其他模块的交互
 
-### 8.1 接口约定
+### 9.1 接口约定
 
 | 方向            | 对方模块  | 接口/类型                            | 约定                                                                    |
 | --------------- | --------- | ------------------------------------ | ----------------------------------------------------------------------- |
@@ -835,20 +937,31 @@ Wave 3: ┌────┴────┐
 | `ffi → storage` | `storage` | `OwnedRawParts` / allocator metadata | `into_raw_parts` 导出 owned 存储的完整重建信息，参见 `05-storage.md` §4 |
 | `ffi → 上游库`  | `上游库`  | `blas_info()` / `lda()`              | 向外部 BLAS/FFI 调用方暴露零拷贝参数                                    |
 
-### 8.2 数据流描述
+### 9.2 数据流描述
 
 ```text
-上游库调用 as_ptr() / blas_info() / into_raw_parts()
+Upstream code calls as_ptr() / blas_info() / into_raw_parts()
     │
-    ├── ffi 模块从 tensor/storage 读取原始指针、shape、strides、offset
-    ├── layout 模块负责判断 BLAS 兼容性与 leading-dimension 前提
-    ├── raw-parts 路径在 owned roundtrip 时导出完整 allocator metadata，并可重建回 tensor
-    └── 最终向外部 C / BLAS 边界暴露零拷贝参数
+    ├── ffi reads raw pointer, shape, strides, and offset from tensor / storage
+    ├── layout decides BLAS compatibility and leading-dimension preconditions
+    ├── raw-parts roundtrip exports full allocator metadata for owned storage
+    └── the module exposes zero-copy parameters to the external C / BLAS boundary
 ```
 
 ---
 
-## 9. 设计决策记录
+## 10. 错误处理与语义边界
+
+| 主题 | 内容 |
+| ---- | ---- |
+| Recoverable error | `blas_info()` / `lda()` 在 rank、布局或 BLAS 整数参数非法时返回 `XenonError::Ffi`；`try_offset_of()` / `try_ptr_at()` 在 rank / bounds 非法时返回 `XenonError`。 |
+| Panic | `offset_of()` / `ptr_at()` 作为 panic-sugar 包装 `try_*`；`from_raw_parts*()` 前置条件违反属于 unsafe UB，而非 recoverable error。 |
+| 路径一致性 | 指针访问、BLAS 查询与 raw-parts roundtrip 必须共享同一 shape / strides / offset 解释；无 SIMD / 并行分支。 |
+| 容差边界 | 不适用。 |
+
+---
+
+## 11. 设计决策记录
 
 ### 决策 1: BLAS 兼容 API 设计
 
@@ -879,7 +992,7 @@ Wave 3: ┌────┴────┐
 
 ---
 
-## 10. 性能考量
+## 12. 性能考量
 
 | 操作                   | 时间复杂度 | 说明                               |
 | ---------------------- | ---------- | ---------------------------------- |
@@ -903,7 +1016,7 @@ Wave 3: ┌────┴────┐
 
 ---
 
-## 11. 平台与工程约束
+## 13. 平台与工程约束
 
 | 约束        | 说明                                                             |
 | ----------- | ---------------------------------------------------------------- |

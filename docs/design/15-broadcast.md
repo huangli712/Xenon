@@ -45,7 +45,18 @@ L5: broadcast  ← 当前模块
 
 ---
 
-## 2. 文件位置
+## 2. 需求映射与范围约束
+
+| 类型     | 内容 |
+| -------- | ---- |
+| 需求映射 | 需求说明书 §16 |
+| 范围内   | `broadcast_shape()`、`can_broadcast()`、`broadcast_strides()`、`broadcast_to()` 与 `broadcast_with()`。 |
+| 范围外   | 原地广播、向动态更高 rank 的额外语义扩展、多操作数调度以及负步长广播。 |
+| 非目标   | 不定义逐元素运算本身，不提供可写广播视图，也不引入第三方广播库。 |
+
+---
+
+## 3. 文件位置
 
 ```
 src/
@@ -56,21 +67,21 @@ src/
 
 ---
 
-## 3. 依赖关系
+## 4. 依赖关系
 
-### 3.1 依赖图（ASCII）
+### 4.1 依赖图（ASCII）
 
 ```
                     ┌──────────────┐
-                    │   error      │
+                    │    error     │
                     │ XenonError   │
                     └──────┬───────┘
-                           │ 使用
+                           │ uses
                     ┌──────▼───────┐
                     │  broadcast   │
                     │ broadcast.rs │
                     └──┬───────┬───┘
-                   使用 │       │ 使用
+                   uses│       │uses
               ┌────────▼──┐ ┌──▼──────────┐
               │ dimension │ │   tensor    │
               │ Dimension │ │ TensorBase  │
@@ -78,7 +89,7 @@ src/
               └───────────┘ └─────────────┘
 ```
 
-### 3.2 类型级依赖
+### 4.2 类型级依赖
 
 | 来源模块    | 使用的类型/trait                                                                                                   |
 | ----------- | ------------------------------------------------------------------------------------------------------------------ |
@@ -86,15 +97,23 @@ src/
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<E>` trait, `.slice()`, `.size()`，参见 `02-dimension.md` §3, §4.9 |
 | `tensor`    | `TensorBase<S, D>`, `TensorView`, `.shape()`, `.strides()`，参见 `07-tensor.md` §4                                 |
 
-### 3.3 依赖方向声明
+### 4.3 依赖方向声明
 
 > **依赖方向：单向向上。** `broadcast` 仅消费 `dimension` 和 `tensor` 的 trait 和类型，不被它们依赖。`math/`、`iter/` 等上层模块消费 `broadcast`。
 
+### 4.4 依赖合法性与替代方案
+
+| 项目           | 说明 |
+| -------------- | ---- |
+| 新增第三方依赖 | 无 |
+| 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
+| 替代方案       | 不适用；当前范围内无需额外第三方依赖。 |
+
 ---
 
-## 4. 公共 API 设计
+## 5. 公共 API 设计
 
-### 4.1 广播形状计算
+### 5.1 广播形状计算
 
 ````rust
 /// Compute the broadcasted result shape of two shapes.
@@ -121,7 +140,7 @@ pub fn broadcast_shape(
 ) -> Result<IxDyn, XenonError>;
 ````
 
-### 4.2 兼容性检查
+### 5.2 兼容性检查
 
 ````rust
 /// Check whether two shapes are broadcast-compatible.
@@ -134,7 +153,7 @@ pub fn broadcast_shape(
 pub fn can_broadcast(shape_a: &[usize], shape_b: &[usize]) -> bool;
 ````
 
-### 4.3 广播步长计算
+### 5.3 广播步长计算
 
 ```rust
 /// Compute broadcast strides. Zero strides are inserted for broadcasted dimensions.
@@ -160,7 +179,7 @@ pub fn broadcast_strides(
 ) -> Result<Vec<isize>, XenonError>;
 ```
 
-### 4.4 显式广播方法
+### 5.4 显式广播方法
 
 ````rust
 impl<'a, A, D> TensorView<'a, A, D>
@@ -218,7 +237,7 @@ where
 }
 ````
 
-### 4.5 Good / Bad 对比
+### 5.5 Good / Bad 对比
 
 ```rust
 // Good - Use ? and Result for broadcast error handling
@@ -236,9 +255,9 @@ fn process_bad(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix1>) -> Result<Tensor<f64,
 
 ---
 
-## 5. 内部实现设计
+## 6. 内部实现设计
 
-### 5.1 NumPy 广播规则算法
+### 6.1 NumPy 广播规则算法
 
 广播遵循三个核心规则：
 
@@ -246,7 +265,7 @@ fn process_bad(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix1>) -> Result<Tensor<f64,
 2. **兼容条件**: 对应维度相等，或其中一个为 1（或不存在）
 3. **结果形状**: 每个维度按 NumPy 规则推导；若一侧为 0 且另一侧为 1，则结果为 0；若两侧相等则保持该值；否则由非 1 一侧决定结果维度
 
-### 5.2 形状兼容性检查算法（伪代码）
+### 6.2 形状兼容性检查算法（伪代码）
 
 ```
 function can_broadcast(shape_a: [usize; N], shape_b: [usize; M]) -> bool:
@@ -268,7 +287,7 @@ function can_broadcast(shape_a: [usize; N], shape_b: [usize; M]) -> bool:
     return true  // 兼容
 ```
 
-### 5.3 广播形状推导算法（伪代码）
+### 6.3 广播形状推导算法（伪代码）
 
 ```
 function broadcast_shape(shape_a: [usize; N], shape_b: [usize; M])
@@ -301,7 +320,7 @@ function broadcast_shape(shape_a: [usize; N], shape_b: [usize; M])
     return Ok(result_shape)
 ```
 
-### 5.4 零步长语义
+### 6.4 零步长语义
 
 零步长是广播的核心实现技术。当某个维度从 1 扩展到 N 时，该维度的步长设为 0：
 
@@ -316,7 +335,7 @@ function broadcast_shape(shape_a: [usize; N], shape_b: [usize; M])
   [2,j] → data[j]  (重复!)
 ```
 
-### 5.5 零步长安全论证
+### 6.5 零步长安全论证
 
 **安全性论证**: 对于 `shape[i] = 1` 的维度，任何合法索引 `idx` 满足 `0 <= idx < target_shape[i]`，访问的偏移量为 `stride[i] * idx = 0 * idx = 0`。因此：
 
@@ -324,7 +343,7 @@ function broadcast_shape(shape_a: [usize; N], shape_b: [usize; M])
 2. 同一广播维度的多个索引访问同一内存位置，但广播视图是只读的（`TensorView`），无数据竞争
 3. 多次读取同一位置是安全的
 
-### 5.6 HAS_ZERO_STRIDE 标志位
+### 6.6 HAS_ZERO_STRIDE 标志位
 
 `LayoutFlags` 中的 `HAS_ZERO_STRIDE` 标志位标记该张量视图存在零步长维度：
 
@@ -342,7 +361,7 @@ fn update_flags_for_broadcast(source_flags: LayoutFlags, new_strides: &[isize]) 
 }
 ```
 
-### 5.7 广播结果只读约束
+### 6.7 广播结果只读约束
 
 广播视图必须只读。原因：
 
@@ -354,7 +373,7 @@ fn update_flags_for_broadcast(source_flags: LayoutFlags, new_strides: &[isize]) 
 
 ---
 
-## 6. 实现任务拆分
+## 7. 实现任务拆分
 
 ### Wave 1: 基础设施
 
@@ -427,9 +446,9 @@ Wave 4:           [T7]
 
 ---
 
-## 7. 测试计划
+## 8. 测试计划
 
-### 7.1 测试分类表
+### 8.1 测试分类表
 
 | 测试分类 | 位置                     | 说明                                                                |
 | -------- | ------------------------ | ------------------------------------------------------------------- |
@@ -438,7 +457,7 @@ Wave 4:           [T7]
 | 边界测试 | 同模块测试中标注         | 覆盖标量广播、空数组和高维广播等边界                                |
 | 属性测试 | `tests/property/`        | 验证广播规则、zero-stride 与 shape 推导不变量                       |
 
-### 7.2 单元测试清单
+### 8.2 单元测试清单
 
 | 测试函数                              | 测试内容                                 | 优先级 |
 | ------------------------------------- | ---------------------------------------- | ------ |
@@ -455,7 +474,7 @@ Wave 4:           [T7]
 | `test_broadcast_with`                 | 两个不同形状张量同时广播                 | 高     |
 | `test_broadcast_read_only`            | 广播视图不允许可变访问（编译期检查）     | 高     |
 
-### 7.3 边界测试场景
+### 8.3 边界测试场景
 
 | 场景                              | 预期行为                             |
 | --------------------------------- | ------------------------------------ |
@@ -465,7 +484,7 @@ Wave 4:           [T7]
 | `[1,1,1]` 广播到 `[5,5,5]`        | 三轴全零步长                         |
 | 标量广播（`[1]` → `[1000,1000]`） | 内存仅 1 元素                        |
 
-### 7.4 属性测试不变量
+### 8.4 属性测试不变量
 
 | 不变量                                                             | 测试方法     |
 | ------------------------------------------------------------------ | ------------ |
@@ -473,17 +492,32 @@ Wave 4:           [T7]
 | 广播后原始数据不变                                                 | 广播前后对比 |
 | `can_broadcast(a, b) == true` ⟹ `broadcast_shape(a, b)` 成功       | 随机形状     |
 
-### 7.5 集成测试
+### 8.5 集成测试
 
 | 测试文件                  | 测试内容                                                                             |
 | ------------------------- | ------------------------------------------------------------------------------------ |
 | `tests/test_broadcast.rs` | `broadcast_with()` 与 `math`、`overload`、`iter::Zip`、`layout` 标志位更新的协同路径 |
 
+### 8.6 Feature gate / 配置测试
+
+| 配置 | 验证点 |
+| ---- | ---- |
+| 默认配置 | 广播规则、zero-stride 元数据与只读约束在默认构建下保持不变。 |
+| 其他 feature 组合 | 不适用；当前模块无额外 feature gate。 |
+
+### 8.7 类型边界 / 编译期测试
+
+| 场景 | 测试方式 |
+| ---- | ---- |
+| `BroadcastDim` 输出维度推导正确 | 编译期测试。 |
+| 广播结果不提供可写入口 | 编译期测试或 API 缺失断言。 |
+| in-place broadcast 与高 rank 动态扩展不属于当前 API | API 缺失断言。 |
+
 ---
 
-## 8. 与其他模块的交互
+## 9. 与其他模块的交互
 
-### 8.1 接口约定
+### 9.1 接口约定
 
 | 方向                   | 对方模块   | 接口/类型                                | 约定                                                                                   |
 | ---------------------- | ---------- | ---------------------------------------- | -------------------------------------------------------------------------------------- |
@@ -493,20 +527,31 @@ Wave 4:           [T7]
 | `broadcast → layout`   | `layout`   | `LayoutFlags`                            | 广播后设置 `HAS_ZERO_STRIDE` 并更新连续性，参见 `06-memory.md` §3                      |
 | `broadcast ← math`     | `math`     | 二元运算前置广播                         | 二元运算在逐元素计算前先广播两个操作数，参见 `11-math.md` §4                           |
 
-### 8.2 数据流描述
+### 9.2 数据流描述
 
 ```text
-用户发起二元运算 / 显式 broadcast_to()
+User requests a binary op or explicit broadcast_to()
     │
-    ├── broadcast 先比较两个输入 shape，生成公共输出 shape
-    ├── 对被扩展的轴写入 zero stride 元数据
-    ├── layout 更新 HAS_ZERO_STRIDE / contiguity 标志
-    └── 返回只读 TensorView，供 iter::Zip / math / overload 继续消费
+    ├── broadcast compares input shapes and computes the common output shape
+    ├── expanded axes receive zero-stride metadata
+    ├── layout flags update HAS_ZERO_STRIDE and contiguity state
+    └── the module returns a read-only TensorView for iter / math / overload
 ```
 
 ---
 
-## 9. 设计决策记录
+## 10. 错误处理与语义边界
+
+| 主题 | 内容 |
+| ---- | ---- |
+| Recoverable error | 形状不兼容或目标 shape 非法时返回 `XenonError::BroadcastError`，携带输入 / 目标 shape 上下文。 |
+| Panic | 公开广播 API 不新增 panic 语义；广播失败统一走 `Result`。 |
+| 路径一致性 | 当前仅有元数据计算路径；无 SIMD / 并行分支，所有入口都必须产生一致的 zero-stride 语义。 |
+| 容差边界 | 不适用。 |
+
+---
+
+## 11. 设计决策记录
 
 ### 决策 1：零拷贝广播 vs 数据复制
 
@@ -542,9 +587,9 @@ Wave 4:           [T7]
 
 ---
 
-## 10. 性能考量
+## 12. 性能考量
 
-### 10.1 复杂度
+### 12.1 复杂度
 
 | 操作                  | 时间复杂度   | 空间复杂度    |
 | --------------------- | ------------ | ------------- |
@@ -554,7 +599,7 @@ Wave 4:           [T7]
 | `broadcast_to()`      | O(ndim)      | O(1) 额外空间 |
 | 数据复制广播          | O(elements)  | O(elements)   |
 
-### 10.2 零步长访问开销
+### 12.2 零步长访问开销
 
 | 场景     | 标量访问                         | 零步长访问                 |
 | -------- | -------------------------------- | -------------------------- |
@@ -562,7 +607,7 @@ Wave 4:           [T7]
 | 缓存行为 | 连续访问，缓存友好               | 重复访问同一地址，缓存极佳 |
 | SIMD     | 可向量化                         | 可向量化（加载一次，广播） |
 
-### 10.3 性能数据（参考）
+### 12.3 性能数据（参考）
 
 | 操作                       | 连续数组 | 广播视图（零步长） | 性能比       |
 | -------------------------- | -------- | ------------------ | ------------ |
@@ -571,7 +616,7 @@ Wave 4:           [T7]
 
 ---
 
-## 11. 平台与工程约束
+## 13. 平台与工程约束
 
 | 项目       | 约束                                                             |
 | ---------- | ---------------------------------------------------------------- |

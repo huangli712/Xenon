@@ -1,6 +1,6 @@
 # 文档模块设计
 
-> 文档编号: 29 | 模块: `docs/` | 阶段: Phase 6
+> 文档编号: 29 | 影响范围: `src/**` pub API 文档、`README.md`、`examples/` 与 docs CI | 阶段: Phase 6
 > 前置文档: 所有前置文档（`00-coding.md` ~ `28-tests.md`）
 > 需求参考: 需求说明书 §28.1
 > 范围声明: 范围内
@@ -49,11 +49,20 @@ L5: overload/, iter/, index/, shape/, broadcast.rs, construct/, ffi/, convert/, 
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+## 2. 需求映射与范围约束
+
+| 类型     | 内容                                                           |
+| -------- | -------------------------------------------------------------- |
+| 需求映射 | `require.md §28.1`                                             |
+| 范围内   | pub API 文档、doctest、examples、docs.rs 配置、README/CHANGELOG |
+| 范围外   | 第三方教程平台、自定义文档主题、交互式 notebook 或站点系统     |
+| 非目标   | 通过文档规范扩展产品能力、引入额外文档构建依赖或改变平台边界   |
+
 ---
 
-## 2. 文件位置
+## 3. 文件位置
 
-### 2.1 文档源码分布
+### 3.1 文档源码分布
 
 ```
 src/
@@ -116,15 +125,15 @@ README.md                     # 项目 README
 CHANGELOG.md                  # 版本变更记录
 ```
 
-### 2.2 划分理由
+### 3.2 划分理由
 
 文档与代码共存：doc comment 在源码中，CI 自动验证一致性。examples/ 独立运行。
 
 ---
 
-## 3. 依赖关系
+## 4. 依赖关系
 
-### 3.1 依赖图
+### 4.1 依赖图
 
 ```
 29-documentation
@@ -138,7 +147,7 @@ CHANGELOG.md                  # 版本变更记录
     └── 性能相关示例、feature gate 和 benchmark 文档引用路径需保持一致
 ```
 
-### 3.2 依赖精确到类型级
+### 4.2 依赖精确到类型级
 
 | 来源             | 使用的内容                         |
 | ---------------- | ---------------------------------- |
@@ -146,15 +155,23 @@ CHANGELOG.md                  # 版本变更记录
 | `Cargo.toml`     | feature 列表、依赖列表、metadata   |
 | 需求说明书       | API 行为规范、精度要求、边界定义   |
 
-### 3.3 依赖方向声明
+### 4.3 依赖方向声明
 
 > **依赖方向：文档跟随代码。** 文档内容基于源码 API 签名和设计文档，不被代码依赖。
 
+### 4.4 依赖合法性与新增依赖说明
+
+| 项目           | 说明                                                     |
+| -------------- | -------------------------------------------------------- |
+| 新增第三方依赖 | 无新增依赖                                               |
+| 合法性结论     | 符合最小依赖限制                                         |
+| 替代方案       | 不适用；文档生成依赖 rustdoc 与现有工程配置              |
+
 ---
 
-## 4. 文档组织结构
+## 5. 文档组织结构
 
-### 4.1 文档层次
+### 5.1 文档层次
 
 ```
 L0: Crate 级 (lib.rs)
@@ -170,7 +187,7 @@ L3: 示例 (examples/)
     └── 完整可运行示例程序
 ```
 
-### 4.2 各层覆盖要求
+### 5.2 各层覆盖要求
 
 | 层次 | 覆盖率要求                    | 验证方式                                             |
 | ---- | ----------------------------- | ---------------------------------------------------- |
@@ -181,9 +198,9 @@ L3: 示例 (examples/)
 
 ---
 
-## 5. 公共 API 设计
+## 6. 公共 API 设计
 
-### 5.1 lib.rs 顶层文档结构
+### 6.1 lib.rs 顶层文档结构
 
 ````rust
 //! # Xenon — N-dimensional Tensor Library for Rust
@@ -239,7 +256,7 @@ L3: 示例 (examples/)
 #![cfg_attr(docsrs, feature(doc_cfg))]
 ````
 
-### 5.2 文档节使用规则
+### 6.2 文档节使用规则
 
 | 文档节        | 何时必须           | 说明                         |
 | ------------- | ------------------ | ---------------------------- |
@@ -253,11 +270,11 @@ L3: 示例 (examples/)
 
 ---
 
-## 6. #![warn(missing_docs)] 配置
+## 7. #![warn(missing_docs)] 配置
 
-### 6.1 Lint 规则
+### 7.1 Lint 规则
 
-> **开发提示**：在开发期间可将 deny 改为 warn（`#![warn(missing_docs)]`），CI 中通过 `RUSTDOCFLAGS="-D warnings" cargo doc` 来强制执行文档完整性检查（参见 §12.1 CI checks）。
+> **开发提示**：在开发期间可将 deny 改为 warn（`#![warn(missing_docs)]`），CI 中通过 `RUSTDOCFLAGS="-D warnings" cargo doc` 来强制执行文档完整性检查（参见 §13.1 CI checks）。
 
 ```rust
 // lib.rs
@@ -271,7 +288,7 @@ L3: 示例 (examples/)
 #![cfg_attr(docsrs, feature(doc_cfg))]        // docs.rs feature annotation
 ```
 
-### 6.2 Clippy 文档 lint
+### 7.2 Clippy 文档 lint
 
 ```rust
 // Enabled in CI
@@ -282,9 +299,9 @@ L3: 示例 (examples/)
 
 ---
 
-## 7. Doctest 规范
+## 8. Doctest 规范
 
-### 7.1 规则
+### 8.1 规则
 
 | 规范       | 说明                                                                              |
 | ---------- | --------------------------------------------------------------------------------- |
@@ -294,7 +311,7 @@ L3: 示例 (examples/)
 | 最小化     | 只展示当前 API 用法                                                               |
 | 有断言     | 用 `assert_eq!` 验证结果                                                          |
 
-### 7.2 Doctest 模板
+### 8.2 Doctest 模板
 
 ````rust
 /// Compute the sum of all elements.
@@ -313,7 +330,7 @@ L3: 示例 (examples/)
 pub fn sum(&self) -> A { ... }
 ````
 
-### 7.3 Feature-gated Doctest
+### 8.3 Feature-gated Doctest
 
 ````rust
 /// Parallel sum using rayon.
@@ -336,9 +353,9 @@ pub fn par_sum(&self) -> A { ... }
 
 ---
 
-## 8. examples/ 目录规划
+## 9. examples/ 目录规划
 
-### 8.1 示例清单
+### 9.1 示例清单
 
 | 文件                 | 内容                                       | Feature    | 目标用户                             |
 | -------------------- | ------------------------------------------ | ---------- | ------------------------------------ |
@@ -349,7 +366,7 @@ pub fn par_sum(&self) -> A { ... }
 | `simd.rs`            | SIMD 加速、回退策略                        | `simd`     | 性能优化（参见 `08-simd.md §4`）     |
 | `ffi.rs`             | 与 C/BLAS 交互                             | 默认       | 库开发者                             |
 
-### 8.2 示例模板
+### 9.2 示例模板
 
 ```rust
 //! Example: Brief description
@@ -371,7 +388,7 @@ fn main() -> xenon::Result<()> {
 }
 ```
 
-### 8.3 示例编写规范
+### 9.3 示例编写规范
 
 | 规范         | 说明                            |
 | ------------ | ------------------------------- |
@@ -383,9 +400,9 @@ fn main() -> xenon::Result<()> {
 
 ---
 
-## 9. README.md 内容规划
+## 10. README.md 内容规划
 
-### 9.1 结构
+### 10.1 结构
 
 ````markdown
 # Xenon
@@ -421,9 +438,9 @@ MIT
 
 ---
 
-## 10. CHANGELOG.md 规范
+## 11. CHANGELOG.md 规范
 
-### 10.1 格式
+### 11.1 格式
 
 遵循 [Keep a Changelog](https://keepachangelog.com/) 格式：
 
@@ -451,7 +468,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 ```
 
-### 10.2 版本号规则
+### 11.2 版本号规则
 
 | 变更类型   | 版本号影响           |
 | ---------- | -------------------- |
@@ -463,9 +480,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## 11. docs.rs 配置
+## 12. docs.rs 配置
 
-### 11.1 Cargo.toml metadata
+### 12.1 Cargo.toml metadata
 
 ```toml
 [package.metadata.docs.rs]
@@ -473,7 +490,7 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 ```
 
-### 11.2 Feature gate 标注
+### 12.2 Feature gate 标注
 
 ```rust
 // lib.rs
@@ -487,9 +504,9 @@ pub fn par_sum(&self) -> A { ... }
 
 ---
 
-## 12. 文档 CI 检查
+## 13. 文档 CI 检查
 
-### 12.1 验证项目
+### 13.1 验证项目
 
 | 检查项   | 命令                                                            | 失败条件     |
 | -------- | --------------------------------------------------------------- | ------------ |
@@ -498,7 +515,7 @@ pub fn par_sum(&self) -> A { ... }
 | 示例编译 | `cargo build --examples --all-features`                         | 任何失败     |
 | 链接检查 | `cargo doc` 无 broken links 警告                                | 无效链接     |
 
-### 12.2 CI 配置
+### 13.2 CI 配置
 
 ```yaml
 # .github/workflows/docs.yml
@@ -516,9 +533,9 @@ docs:
 
 ---
 
-## 13. Good / Bad 文档注释对比
+## 14. Good / Bad 文档注释对比
 
-### 13.1 Good — 完整的函数文档
+### 14.1 Good — 完整的函数文档
 
 ````rust
 /// Compute the sum of all elements in the tensor.
@@ -552,7 +569,7 @@ docs:
 pub fn sum(&self) -> A { ... }
 ````
 
-### 13.2 Bad — 不完整的函数文档
+### 14.2 Bad — 不完整的函数文档
 
 ````rust
 // Bad: no documentation, no examples, no description
@@ -575,7 +592,7 @@ pub fn sum(&self) -> A { ... }
 pub fn sum(&self) -> A { ... }
 ````
 
-### 13.3 Good — unsafe 函数文档
+### 14.3 Good — unsafe 函数文档
 
 ````rust
 /// Create a tensor view from raw parts.
@@ -613,7 +630,7 @@ pub fn sum(&self) -> A { ... }
 pub unsafe fn from_raw_parts<'a, A, D>(...) -> TensorView<'a, A, D>
 ````
 
-### 13.4 Bad — 缺少 Safety 节
+### 14.4 Bad — 缺少 Safety 节
 
 ```rust
 // Bad: unsafe function has no Safety documentation
@@ -623,9 +640,9 @@ pub unsafe fn from_raw_parts<'a, A, D>(...) -> TensorView<'a, A, D>
 
 ---
 
-## 14. 内部实现设计
+## 15. 内部实现设计
 
-### 14.1 文档生成流程
+### 15.1 文档生成流程
 
 ````
 源码中的 doc comments
@@ -641,7 +658,7 @@ pub unsafe fn from_raw_parts<'a, A, D>(...) -> TensorView<'a, A, D>
             └── 运行并验证断言
 ````
 
-### 14.2 文档覆盖率计算
+### 15.2 文档覆盖率计算
 
 ```bash
 # Check for missing docs at deny level
@@ -652,7 +669,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 # 2. Ensure zero warnings
 ```
 
-### 14.3 doc comment 编写工作流
+### 15.3 doc comment 编写工作流
 
 | 步骤                | 操作                        | 验证                              |
 | ------------------- | --------------------------- | --------------------------------- |
@@ -663,9 +680,9 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 ---
 
-## 15. 测试计划
+## 16. 测试计划
 
-### 15.1 测试分类表
+### 16.1 测试分类表
 
 | 类型         | 命令                                                            | 目的                                              |
 | ------------ | --------------------------------------------------------------- | ------------------------------------------------- |
@@ -679,7 +696,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | 链接检查     | `cargo doc` 无 broken links 警告                                | 确保文档内交叉引用有效                            |
 | CI 门禁      | `missing_docs` lint deny 级别                                   | 阻止无文档代码合入                                |
 
-### 15.2 Doctest 覆盖率目标
+### 16.2 Doctest 覆盖率目标
 
 | 模块                                             | 目标覆盖率 | 说明                                                              |
 | ------------------------------------------------ | ---------- | ----------------------------------------------------------------- |
@@ -689,7 +706,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | 辅助模块（convert, format, error）               | ≥60%       | 至少构造和基本使用有 doctest                                      |
 | 迭代与归约模块（iter, reduction, matrix）        | ≥80%       | 核心入口、边界行为和错误路径有 doctest                            |
 
-### 15.3 边界测试场景表
+### 16.3 边界测试场景表
 
 | 场景              | 预期行为                                                              |
 | ----------------- | --------------------------------------------------------------------- |
@@ -698,7 +715,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | unsafe API 文档   | 必须包含 `# Safety` 且示例不省略关键前置条件                          |
 | 大型数组输出示例  | 截断格式与 `22-output.md` 保持一致                                    |
 
-### 15.4 属性测试不变量
+### 16.4 属性测试不变量
 
 | 不变量                               | 验证方式                          |
 | ------------------------------------ | --------------------------------- |
@@ -706,7 +723,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | 所有关键模块都有至少一个可运行示例   | doctest / examples 构建联合验证   |
 | 文档中的路径与模块名和架构文档一致   | broken links 检查 + 人工审阅      |
 
-### 15.5 CI 配置
+### 16.5 CI 配置
 
 ```yaml
 # .github/workflows/docs.yml
@@ -722,11 +739,34 @@ docs:
       run: cargo build --examples --all-features
 ```
 
+### 16.6 Feature gate / 配置测试
+
+| 配置        | 验证点                                                        |
+| ----------- | ------------------------------------------------------------- |
+| 默认配置    | 默认 `std` 文档、README 与 examples 描述一致                  |
+| 启用并行    | `parallel` API 的 `doc(cfg)`、doctest 与示例说明保持一致      |
+| 启用 SIMD   | `simd` API 的 `doc(cfg)`、doctest 与示例说明保持一致          |
+| 全 feature  | docs.rs 构建、doctest 与 examples 在组合配置下均通过          |
+
+### 16.7 类型边界 / 编译期测试
+
+| 场景                         | 测试方式                                            |
+| ---------------------------- | --------------------------------------------------- |
+| `unsafe fn` 的 `# Safety` 节 | rustdoc/clippy 文档 lint + `cargo doc` 校验         |
+| feature-gated API 可见性     | docs.rs 构建与 `doc(cfg)` 检查                      |
+| 公共 API 文档覆盖边界         | `missing_docs` / broken link 检查                   |
+
 ---
 
-## 16. 与其他模块的交互
+## 错误处理与语义边界
 
-### 16.1 文档对被文档模块的依赖
+本文档不直接定义错误类型，但要求所有文档示例、`# Errors` 节、panic 说明与 feature-gated 文档行为统一遵循 `26-error.md` 的错误语义边界；文档层负责准确转述，不重新定义公开错误模型。
+
+---
+
+## 17. 与其他模块的交互
+
+### 17.1 文档对被文档模块的依赖
 
 | 文档任务            | 依赖的模块                                                | 说明                   |
 | ------------------- | --------------------------------------------------------- | ---------------------- |
@@ -737,7 +777,7 @@ docs:
 | T8 (类型级文档)     | 全部                                                      | 逐类型添加 doc comment |
 | T9 (函数级文档)     | 全部                                                      | 逐函数添加 doc comment |
 
-### 16.2 数据流
+### 17.2 数据流
 
 ````
 设计文档 (00-28)
@@ -756,7 +796,7 @@ docs:
 
 ---
 
-## 17. 实现任务拆分
+## 18. 实现任务拆分
 
 ### Wave 1: Crate 级文档
 
@@ -968,7 +1008,7 @@ Wave 6: [T17]
 
 ---
 
-## 18. 设计决策记录
+## 19. 设计决策记录
 
 ### 决策 1：英文文档
 
@@ -1012,7 +1052,7 @@ Wave 6: [T17]
 
 ---
 
-## 19. 平台与工程约束
+## 20. 平台与工程约束
 
 | 约束项     | 约束内容                                                  |
 | ---------- | --------------------------------------------------------- |

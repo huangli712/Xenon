@@ -43,7 +43,18 @@ L5: matrix  ← 当前模块
 
 ---
 
-## 2. 文件位置
+## 2. 需求映射与范围约束
+
+| 类型     | 内容 |
+| -------- | ---- |
+| 需求映射 | 需求说明书 §13 |
+| 范围内   | 向量内积 `dot`、复数共轭线性语义、形状检查、空向量单位元与可选 SIMD 加速。 |
+| 范围外   | 矩阵-矩阵乘法、外积、批量矩阵乘法、矩阵分解以及 BLAS/LAPACK 绑定。 |
+| 非目标   | 不把 `matrix` 扩展为通用线性代数层，不新增第三方线性代数依赖。 |
+
+---
+
+## 3. 文件位置
 
 ```
 src/matrix/
@@ -55,23 +66,23 @@ src/matrix/
 
 ---
 
-## 3. 依赖关系
+## 4. 依赖关系
 
-### 3.1 依赖图
+### 4.1 依赖图
 
 ```
 src/matrix/
 ├── mod.rs
 │   ├── crate::tensor        # TensorView<A, D>
-│   ├── crate::element       # Numeric, ComplexScalar（参见 03-element.md）
-│   └── crate::error         # XenonError（参见 26-error.md）
+│   ├── crate::element       # Numeric, ComplexScalar
+│   └── crate::error         # XenonError
 ├── dot.rs
 │   ├── crate::tensor        # TensorView<A, D>
 │   └── crate::element       # Numeric
-└── crate::simd（可选）      # 独立 backend，提供 dot 所需 SIMD kernel
+└── crate::simd (opt.)       # Shared SIMD backend for dot
 ```
 
-### 3.2 类型级依赖
+### 4.2 类型级依赖
 
 | 来源模块       | 使用的类型/trait                                                                           |
 | -------------- | ------------------------------------------------------------------------------------------ |
@@ -80,15 +91,23 @@ src/matrix/
 | `error`        | `XenonError::ShapeMismatch`                                                                |
 | `simd`（可选） | `pulp::Arch`（参见 `08-simd.md` §3）                                                       |
 
-### 3.3 依赖方向
+### 4.3 依赖方向
 
 > **依赖方向：单向向上。** `matrix` 模块仅消费 `tensor`、`element`、`error`、`simd` 模块。
 
+### 4.4 依赖合法性与替代方案
+
+| 项目           | 说明 |
+| -------------- | ---- |
+| 新增第三方依赖 | 无 |
+| 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
+| 替代方案       | 不适用；当前范围内无需额外第三方依赖。 |
+
 ---
 
-## 4. 公共 API 设计
+## 5. 公共 API 设计
 
-### 4.1 向量内积
+### 5.1 向量内积
 
 ````rust
 /// Vector dot product: result = sum(a[i] * b[i])
@@ -140,7 +159,7 @@ where
 // (dot_impl) repeats these bounds explicitly for clarity.
 ````
 
-### 4.2 复数内积语义
+### 5.2 复数内积语义
 
 ```rust
 // Complex dot product implements conjugate-linearity
@@ -152,7 +171,7 @@ where
 // = Complex{11, -2}
 ```
 
-### 4.3 Good / Bad 对比示例
+### 5.3 Good / Bad 对比示例
 
 ```rust
 // Good - use dot() and handle errors
@@ -175,9 +194,9 @@ let b = Tensor1::<f64>::from_vec(vec![1.0, 2.0, 3.0]);
 
 ---
 
-## 5. 内部实现设计
+## 6. 内部实现设计
 
-### 5.1 执行路径选择
+### 6.1 执行路径选择
 
 ```
 dot_impl(a, b):
@@ -191,7 +210,7 @@ dot_impl(a, b):
     return scalar::dot_impl(a, b)
 ```
 
-### 5.2 标量实现
+### 6.2 标量实现
 
 ```rust
 fn scalar_dot_int<I, D>(
@@ -217,7 +236,7 @@ fn scalar_dot_float_or_complex<A, D>(
 }
 ```
 
-### 5.3 统一内积实现（实数与复数分派）
+### 6.3 统一内积实现（实数与复数分派）
 
 `dot()` 内部统一使用 `x.conjugate() * y` 的乘积生成规则，再按元素类型分派累加策略：整数路径需要同时对**乘法**和**累加**做 checked arithmetic，浮点/复数路径使用普通加法。这通过 `Numeric` trait 中的 `fn conjugate(self) -> Self` 方法实现：
 
@@ -251,7 +270,7 @@ fn dot_impl<A, D>(
 
 ---
 
-## 6. 实现任务拆分
+## 7. 实现任务拆分
 
 ### Wave 1: 基础
 
@@ -303,9 +322,9 @@ Wave 4: [T4]
 
 ---
 
-## 7. 测试计划
+## 8. 测试计划
 
-### 7.1 测试分类表
+### 8.1 测试分类表
 
 | 测试分类 | 位置                                        | 说明                                                         |
 | -------- | ------------------------------------------- | ------------------------------------------------------------ |
@@ -314,7 +333,7 @@ Wave 4: [T4]
 | 边界测试 | 同模块测试中标注                            | 覆盖空向量、单元素、非连续输入等边界                         |
 | 属性测试 | `tests/property/` 或 `tests/test_matrix.rs` | 验证空向量单位元、复数共轭线性与标量/非连续路径一致性不变量  |
 
-### 7.2 单元测试清单
+### 8.2 单元测试清单
 
 | 测试函数                    | 测试内容                          | 优先级 |
 | --------------------------- | --------------------------------- | ------ |
@@ -327,7 +346,7 @@ Wave 4: [T4]
 | `test_dot_single_element`   | 单元素向量内积                    | 中     |
 | `test_dot_simd_consistency` | SIMD 路径结果与标量一致           | 高     |
 
-### 7.3 边界测试场景
+### 8.3 边界测试场景
 
 | 场景                 | 预期行为                 |
 | -------------------- | ------------------------ |
@@ -336,7 +355,7 @@ Wave 4: [T4]
 | 大向量（1M 元素）    | SIMD 路径启用，结果正确  |
 | 非连续向量（切片后） | 回退到标量路径，结果正确 |
 
-### 7.4 属性测试不变量
+### 8.4 属性测试不变量
 
 | 不变量                                          | 测试方法                   |
 | ----------------------------------------------- | -------------------------- |
@@ -344,17 +363,32 @@ Wave 4: [T4]
 | `dot(a, b)` 与标量实现一致                      | 随机 1D 连续/非连续输入    |
 | 复数 `dot(a, b) == sum(conjugate(a[i]) * b[i])` | 随机复数向量               |
 
-### 7.5 集成测试
+### 8.5 集成测试
 
 | 测试文件               | 测试内容                                                                     |
 | ---------------------- | ---------------------------------------------------------------------------- |
 | `tests/test_matrix.rs` | `dot()` 与 `tensor`、`iter`、`element`、`simd`、`error` 路径的端到端协同验证 |
 
+### 8.6 Feature gate / 配置测试
+
+| 配置 | 验证点 |
+| ---- | ---- |
+| 默认配置 | `dot()` 通过标量路径满足实数/复数与错误语义契约。 |
+| 启用 `simd` | 连续实数向量的 SIMD dot 与标量结果一致，非连续输入回退标量。 |
+
+### 8.7 类型边界 / 编译期测试
+
+| 场景 | 测试方式 |
+| ---- | ---- |
+| `bool` / `usize` 不参与 `dot()` | 编译期测试。 |
+| `dot()` 仅接受逻辑 1D 输入 | 运行时错误测试与编译期签名检查结合。 |
+| matrix-matrix multiply 与 decomposition 不属于当前 API | API 缺失断言。 |
+
 ---
 
-## 8. 与其他模块的交互
+## 9. 与其他模块的交互
 
-### 8.1 接口约定
+### 9.1 接口约定
 
 | 方向               | 对方模块  | 接口/类型                   | 约定                                                                             |
 | ------------------ | --------- | --------------------------- | -------------------------------------------------------------------------------- |
@@ -364,20 +398,31 @@ Wave 4: [T4]
 | `matrix → simd`    | `simd`    | SIMD backend                | 连续内存时可自动走 SIMD 路径，参见 `08-simd.md` §3                               |
 | `matrix → error`   | `error`   | `XenonError::ShapeMismatch` | 形状不匹配时返回可恢复错误                                                       |
 
-### 8.2 数据流描述
+### 9.2 数据流描述
 
 ```text
-用户调用 dot(a, b)
+User calls dot(a, b)
     │
-    ├── matrix 模块先检查两侧是否为 1D、长度是否匹配、是否为空
-    ├── 复数路径通过 Numeric/ComplexScalar 决定是否先做共轭
-    ├── 连续内存时可委托 simd backend，否则通过 iter 标量遍历
-    └── 返回标量结果或可恢复错误 `XenonError`
+    ├── matrix validates rank-1 and equal length preconditions
+    ├── complex inputs apply conjugate-linear product generation
+    ├── contiguous inputs may use SIMD; other inputs use scalar iteration
+    └── the module returns a scalar result or a recoverable error
 ```
 
 ---
 
-## 9. 设计决策记录（ADR）
+## 10. 错误处理与语义边界
+
+| 主题 | 内容 |
+| ---- | ---- |
+| Recoverable error | 输入非 1D 或长度不匹配时返回 `XenonError`（如 `ShapeMismatch` / rank 检查错误），携带期望与实际维度信息。 |
+| Panic | 整数 dot 的乘法溢出与累加溢出均为不可恢复错误，按 checked arithmetic 触发 panic。 |
+| 路径一致性 | 标量与 SIMD 路径必须返回同一 dot 结果；不满足连续前提时统一回退标量实现。 |
+| 容差边界 | 当前不放宽任何数值容差；SIMD 仅在可证明与标量结果一致时启用。 |
+
+---
+
+## 11. 设计决策记录（ADR）
 
 ### 决策 1：共轭线性定义选择
 
@@ -408,9 +453,9 @@ Wave 4: [T4]
 
 ---
 
-## 10. 性能考量
+## 12. 性能考量
 
-### 10.1 SIMD 加速预期
+### 12.1 SIMD 加速预期
 
 | 操作                 | 标量路径 | SIMD 路径（AVX2） | 加速比 |
 | -------------------- | -------- | ----------------- | ------ |
@@ -418,14 +463,14 @@ Wave 4: [T4]
 | dot f64 (1M)         | ~2ms     | ~0.7ms            | 2.9x   |
 | dot complex f64 (1M) | ~6ms     | 标量回退          | 1.0x   |
 
-### 10.2 复杂度标注
+### 12.2 复杂度标注
 
 - 标量 dot: O(n) 时间，O(1) 额外空间
 - SIMD dot: O(n) 时间，O(1) 额外空间（更低常数因子）
 
 ---
 
-## 11. 平台与工程约束
+## 13. 平台与工程约束
 
 | 项目       | 约束                                                           |
 | ---------- | -------------------------------------------------------------- |

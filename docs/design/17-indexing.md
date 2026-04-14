@@ -17,11 +17,11 @@
 | 范围索引（切片）  | `s![.., 0..3, ..;2]` 宏驱动切片                                                               | 高级索引（布尔掩码、整数数组高级索引）       |
 | Index trait 实现  | `core::ops::Index` for `TensorBase`                                                           | 比较运算符（在逐元素运算模块）               |
 | 偏移量计算        | F-order 公式：`offset = sum(index[i] * strides[i])`                                           | 其他内存序的偏移量计算                       |
-| get/get_unchecked | `get()` 返回 `Option<&A>` / `get_unchecked()` unsafe 变体                                     | 可变迭代器（在 iter 模块）                   |
+| at/get/get_unchecked | `at()` 返回 `Result<&A, XenonError>`、`get()` 返回 `Option<&A>`、`get_unchecked()` unsafe 变体 | 可变迭代器（在 iter 模块）                   |
 | 切片宏            | `s![]` 宏的语法解析和展开                                                                     | 切片宏设计在 ndarray 之外的库中              |
 | 切片返回视图      | 切片返回只读 `ViewRepr`（零拷贝）                                                             | 勒贝操作（在逐元素运算模块）                 |
 | 步长切片          | 仅支持正 `usize` 步长的范围切片                                                               | 负步长、反向视图（当前版本不提供）           |
-| 边界检查          | `Index` panic、`get*` 返回 `Option`、`slice`/`try_slice` 返回 `Result`、`unchecked` 为 unsafe | 越界 panic 消息模板（在 error 模块）         |
+| 边界检查          | `Index` panic、`at*` 返回 `Result`、`get*` 返回 `Option`、`slice`/`try_slice` 返回 `Result`、`unchecked` 为 unsafe | 越界 panic 消息模板（在 error 模块）         |
 
 ### 1.2 设计原则
 
@@ -29,7 +29,7 @@
 | -------------- | --------------------------------------------------------------------------------------------- |
 | 零拷贝视图     | 切片返回视图（`TensorView`），不复制数据                                                      |
 | 编译期类型安全 | 静态维度通过 `Dimension` trait 保证索引正确性                                                 |
-| 边界检查分层   | `Index` panic、`get*` 返回 `Option`、`slice`/`try_slice` 返回 `Result`、`unchecked` 为 unsafe |
+| 边界检查分层   | `Index` panic、`at*` 返回 `Result`、`get*` 返回 `Option`、`slice`/`try_slice` 返回 `Result`、`unchecked` 为 unsafe |
 | F-order 偏移量 | 偏移量按 F-order 公式计算                                                                     |
 
 ### 1.3 在架构中的位置
@@ -46,7 +46,18 @@ L5: index  ← 当前模块（依赖 tensor, dimension, layout）
 
 ---
 
-## 2. 文件位置
+## 2. 需求映射与范围约束
+
+| 类型     | 内容 |
+| -------- | ---- |
+| 需求映射 | 需求说明书 §18 |
+| 范围内   | 多维整数索引、`at` / `get` / `get_unchecked` 分层、只读切片、`s![]` 宏与正步长切片。 |
+| 范围外   | 高级索引（布尔掩码、fancy indexing）、负步长 / 负索引与共享可写切片。 |
+| 非目标   | 不扩展新的索引语法族，不引入负步长布局，也不新增第三方切片宏依赖。 |
+
+---
+
+## 3. 文件位置
 
 ```
 src/index/
@@ -59,29 +70,29 @@ src/index/
 
 ---
 
-## 3. 依赖关系
+## 4. 依赖关系
 
-### 3.1 依赖图（ASCII）
+### 4.1 依赖图（ASCII）
 
 ```
                     ┌──────────────┐
-                    │   tensor     │
+                    │    tensor    │
                     │ TensorBase   │
                     └──────┬───────┘
-                           │ 使用
+                           │ uses
               ┌────────────┼──────────────────┐
-              │  index                       │
-              │  multi_dim.rs │ slice_index.rs │
+              │   index                      │
+              │   multi_dim.rs │ slice_index.rs │
               └──┬───────────┬───────────────┘
-                 │ 使用       │ 使用
+                 │ uses      │ uses
           ┌──────▼───┐ ┌──────▼──────────────┐
-          │ dimension │ │  memory-layout   │
-          │ Dimension │ │  LayoutFlags     │
-           │ Ix0~IxDyn │ │  HAS_ZERO_STRIDE │
-          └───────────┘ └────────────────────┘
+          │ dimension│ │ memory-layout       │
+          │ Dimension│ │ LayoutFlags         │
+          │ Ix0~IxDyn│ │ HAS_ZERO_STRIDE     │
+          └──────────┘ └─────────────────────┘
 ```
 
-### 3.2 类型级依赖
+### 4.2 类型级依赖
 
 | 来源模块    | 使用的类型/trait                                                                                                 |
 | ----------- | ---------------------------------------------------------------------------------------------------------------- |
@@ -89,18 +100,26 @@ src/index/
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.ndim()`，参见 `02-dimension.md` §3                              |
 | `layout`    | `LayoutFlags`, `Strides<D>`, `HAS_ZERO_STRIDE`，参见 `06-memory.md` §3                                           |
 
-> **注意**：仅 `tensor[[...]]` 这类 `Index` 语法在越界时使用 panic（参见 `26-error.md §5.3`）。
-> `get()` 方法返回 `Option<&A>` 提供轻量探测路径；这属于 Rust 容器常见惯例。对于需要诊断信息的切片 API，`slice()` / `try_slice()` 统一提供显式错误返回。
+> **注意**：`tensor[[...]]` / `tensor[[...]] = ...` 这类 `Index` / `IndexMut` 语法仅作为便捷 sugar，越界时使用 panic（参见 `26-error.md §5.3`），这是 Rust `Index` trait 必须返回引用的契约所决定的。
+> 整数索引的规范安全路径是 `at()` / `at_mut()`：任一前提不满足时返回带诊断上下文的 `XenonError`。`get()` / `get_mut()` 保留为更轻量的 `Option` 便捷接口，但不是主错误返回模型。
 
-### 3.3 依赖方向声明
+### 4.3 依赖方向声明
 
 > **依赖方向：单向向上。** `index/` 消费 `tensor`、`dimension`、`layout` 的 trait 和类型，不被它们依赖。
 
+### 4.4 依赖合法性与替代方案
+
+| 项目           | 说明 |
+| -------------- | ---- |
+| 新增第三方依赖 | 无 |
+| 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
+| 替代方案       | 不适用；当前范围内无需额外第三方依赖。 |
+
 ---
 
-## 4. 公共 API 设计
+## 5. 公共 API 设计
 
-### 4.0 NdIndex trait — 多维索引类型约束
+### 5.0 NdIndex trait — 多维索引类型约束
 
 `NdIndex<D>` 是多维索引类型的 sealed trait，用于 `core::ops::Index` 实现中约束合法的索引参数类型。
 
@@ -182,7 +201,7 @@ impl<D: Dimension> NdIndex<D> for &[usize] {
 > **设计决策：** `NdIndex` 使用 `Sealed` trait 防止外部实现，同时通过编译期常量泛型 `[usize; N]`
 > 支持静态数组索引语法 `tensor[[0, 1]]`（编译期长度已知），以及 `&[usize]` 支持运行时动态索引。
 
-### 4.1 多维整数索引
+### 5.1 多维整数索引
 
 ````rust
 impl<S, D, A> TensorBase<S, D>
@@ -190,7 +209,25 @@ where
     S: Storage<Elem = A>,
     D: Dimension,
 {
-    /// Multi-dimensional index access (read-only, panics on out-of-bounds).
+    /// Primary checked indexing API.
+    ///
+    /// This is the canonical safe path for integer indexing. It returns a
+    /// recoverable `XenonError` with diagnostic context when rank or bounds
+    /// validation fails.
+    ///
+    /// # Errors
+    /// Returns `Err(XenonError)` when the attempted index rank does not match
+    /// the tensor rank, or when any component is out of bounds. The error must
+    /// carry diagnostic context including the tensor shape and the attempted
+    /// index value.
+    pub fn at<I>(&self, index: I) -> Result<&A, XenonError>
+    where
+        I: NdIndex<D>;
+
+    /// Multi-dimensional index access convenience sugar.
+    ///
+    /// This method is a thin wrapper over `at()` for `Index` syntax. It is not
+    /// the canonical safe API.
     ///
     /// # Examples
     /// ```
@@ -200,7 +237,9 @@ where
     /// ```
     ///
     /// # Panics
-    /// Panics if the index is out of bounds.
+    /// Panics if rank or bounds validation fails. This panic is acceptable only
+    /// because Rust's `Index` trait contract requires returning a reference;
+    /// callers needing recoverable errors must use `at()`.
 }
 
 impl<S, D, A, I> core::ops::Index<I> for TensorBase<S, D>
@@ -214,13 +253,38 @@ where
     fn index(&self, index: I) -> &Self::Output;
 }
 
+impl<S, D, A, I> core::ops::IndexMut<I> for TensorBase<S, D>
+where
+    S: StorageMut<Elem = A>,
+    D: Dimension,
+    I: NdIndex<D>,
+{
+    fn index_mut(&mut self, index: I) -> &mut Self::Output;
+}
+
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
 {
+    /// Primary checked mutable indexing API.
+    ///
+    /// This is the canonical safe mutable path and is only available on
+    /// writable storage modes.
+    ///
+    /// # Errors
+    /// Returns `Err(XenonError)` when rank or bounds validation fails. Safe
+    /// mutable indexing against read-only or shared-read-only storage must be
+    /// rejected with `XenonError::InvalidStorageMode`.
+    pub fn at_mut<I>(&mut self, index: I) -> Result<&mut A, XenonError>
+    where
+        S: StorageMut<Elem = A>,
+        I: NdIndex<D>;
 
-    /// Gets a reference to the element, returns None if out of bounds.
+    /// Secondary ergonomic checked accessor.
+    ///
+    /// This method intentionally returns `Option` for light-weight probing.
+    /// Callers that need structured diagnostics should use `at()` first.
     ///
     /// # Examples
     /// ```
@@ -243,7 +307,10 @@ where
     /// ```
     pub unsafe fn get_unchecked(&self, index: &[usize]) -> &A;
 
-    /// Gets a mutable reference to the element, returns None if out of bounds.
+    /// Secondary ergonomic checked mutable accessor.
+    ///
+    /// This method is only available on writable storage modes. Callers that
+    /// need structured diagnostics should use `at_mut()` first.
     pub fn get_mut(&mut self, index: &[usize]) -> Option<&mut A>
     where
         S: StorageMut<Elem = A>;
@@ -252,20 +319,21 @@ where
     ///
     /// # Safety
     /// The caller must ensure that `index[i] < shape[i]` for all dimensions.
-     pub unsafe fn get_unchecked_mut(&mut self, index: &[usize]) -> &mut A
-     where
-         S: StorageMut<Elem = A>;
+    pub unsafe fn get_unchecked_mut(&mut self, index: &[usize]) -> &mut A
+    where
+        S: StorageMut<Elem = A>;
 }
 ````
 
-> **设计决策：** `get()`/`get_mut()` 返回 `Option<&A>` / `Option<&mut A>`，
-> 越界时返回 `None` 而非 panic，便于安全地组合多重索引操作。
+> **设计决策：** `at()` / `at_mut()` 是整数索引的规范安全接口，遵循 `require.md §18`：当索引长度与 rank 不匹配、任一分量越界、或可变访问不满足存储模式前提时，返回可恢复错误而不是 panic。
 
-> `Index` trait 越界时 panic，因为 Rust 惯例要求 `Index::index` 返回引用。
+> `Index` / `IndexMut` 仍保留为便捷语法，并在失败时 panic；这是 Rust `Index` trait 需要返回引用的契约使然，因此 panic 仅限 trait sugar，规范错误返回路径是 `at()` / `at_mut()`。
 
-> `get_unchecked()` 提供 unsafe 快速路径。
+> `get()` / `get_mut()` 保留 `Option` 语义，作为不携带诊断上下文的次级便捷接口；`get_unchecked*()` 提供 unsafe 快速路径。
 
-### 4.1.1 偏移量计算（F-order）
+> `at_mut()` 仅对可写存储模式开放（如 `Owned`、`ViewMutRepr`）。对只读或共享只读存储，任何安全的可变索引入口都必须返回 `XenonError::InvalidStorageMode`，而不能暴露未定义的可变引用。
+
+### 5.1.1 偏移量计算（F-order）
 
 多维索引到线性偏移量的计算公式：
 
@@ -286,20 +354,22 @@ offset = sum(index[i] * product(shape[0..i]))
 index=[1, 2, 1] → offset = 1*1 + 2*2 + 1*6 = 11
 ```
 
-### 4.1.2 边界检查 API 对称性
+### 5.1.2 边界检查 API 对称性
 
-| 方法                         | 返回类型         | 边界检查    | 越界行为                                    |
-| ---------------------------- | ---------------- | ----------- | ------------------------------------------- |
-| `[[i, j]]`                   | `&A`             | panic       | panic                                       |
-| `get(&[i, j])`               | `Option<&A>`     | 返回 None   | 返回 None（轻量探测路径，不携带诊断上下文） |
-| `get_unchecked(&[i, j])`     | `&A`             | 无 (unsafe) | UB                                          |
-| `[[i, j]] = v` (mut)         | `&mut A`         | panic       | panic                                       |
-| `get_mut(&[i, j])`           | `Option<&mut A>` | 返回 None   | 返回 None（轻量探测路径，不携带诊断上下文） |
-| `get_unchecked_mut(&[i, j])` | `&mut A`         | 无 (unsafe) | UB                                          |
+| 方法                         | 返回类型                 | 边界检查             | 失败行为                                                                 |
+| ---------------------------- | ------------------------ | -------------------- | ------------------------------------------------------------------------ |
+| `at([i, j])`                 | `Result<&A, XenonError>` | 返回 `Err`           | 返回带 shape / attempted index 诊断上下文的可恢复错误                   |
+| `[[i, j]]`                   | `&A`                     | panic                | panic（`Index` trait sugar；规范安全路径是 `at()`）                      |
+| `get(&[i, j])`               | `Option<&A>`             | 返回 `None`          | 返回 `None`（轻量探测路径，不携带诊断上下文；次级于 `at()`）            |
+| `get_unchecked(&[i, j])`     | `&A`                     | 无 (unsafe)          | UB                                                                       |
+| `at_mut([i, j])`             | `Result<&mut A, XenonError>` | 返回 `Err`       | 越界/维度不匹配返回诊断错误；只读或共享只读存储返回 `InvalidStorageMode` |
+| `[[i, j]] = v` (mut)         | `&mut A`                 | panic                | panic（`IndexMut` trait sugar；规范安全路径是 `at_mut()`）               |
+| `get_mut(&[i, j])`           | `Option<&mut A>`         | 返回 `None`          | 返回 `None`（轻量探测路径，不携带诊断上下文；次级于 `at_mut()`）         |
+| `get_unchecked_mut(&[i, j])` | `&mut A`                 | 无 (unsafe)          | UB                                                                       |
 
-### 4.2 范围索引（切片）
+### 5.2 范围索引（切片）
 
-#### 4.2.1 SliceInfo 设计
+#### 5.2.1 SliceInfo 设计
 
 ```rust
 /// Slice element type, describing a single axis slice.
@@ -363,7 +433,7 @@ where
 > 切片描述才使用 `SliceInfoIndices::Dynamic(Vec<...>)`，因此“切片操作零拷贝”与
 > “动态 SliceInfo 需要 alloc” 可以同时成立而不再自相矛盾。
 
-#### 4.2.2 s![] 切片宏设计
+#### 5.2.2 s![] 切片宏设计
 
 ````rust
 /// Slice macro for creating type-safe slice descriptions.
@@ -396,7 +466,7 @@ macro_rules! s {
 > `SliceInfoIndices::Inline` 表示，从而在静态维度场景下不引入堆分配；仅运行时动态切片构造
 > 才进入 `Vec` 路径。
 
-#### 4.2.3 切片方法
+#### 5.2.3 切片方法
 
 ````rust
 impl<S, D, A> TensorBase<S, D>
@@ -443,27 +513,28 @@ where
 
 > **错误语义分层：**
 >
-> - `tensor[[...]]`：语言级索引语法，越界 panic。
-> - `get()` / `get_mut()`：越界返回 `None`。
+> - `at()` / `at_mut()`：整数索引的规范安全接口；任一条件不满足时返回 `XenonError`。
+> - `tensor[[...]]`：语言级 `Index` / `IndexMut` 语法，失败时 panic；这是 trait 契约要求，规范错误返回路径仍是 `at()` / `at_mut()`。
+> - `get()` / `get_mut()`：返回 `Option` 的次级便捷接口，不携带诊断上下文。
 > - `slice()` / `try_slice()`：维度不匹配、越界、`step == 0` 等情况统一返回 `XenonError`。
 > - `get_unchecked*()`：完全由调用者保证前置条件，违反即 UB。
 
-#### 4.2.4 Good / Bad 对比
+#### 5.2.4 Good / Bad 对比
 
 ```rust
-// Good - use get() to safely handle potentially out-of-bounds indices
-fn safe_index(tensor: &Tensor<f64, Ix2>, idx: &[usize]) -> Option<&f64> {
-    tensor.get(idx)
+// Good - use at() as the canonical safe indexing path
+fn safe_index(tensor: &Tensor<f64, Ix2>, idx: [usize; 2]) -> Result<&f64, XenonError> {
+    tensor.at(idx)
 }
 
 let tensor = Tensor2::from_shape_vec([2, 3], vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0])?;
 
-// Out-of-bounds returns None instead of panicking
-let result = safe_index(&tensor, &[5, 0]);
-assert!(result.is_none());
+// Out-of-bounds returns a recoverable error with context instead of panicking
+let result = safe_index(&tensor, [5, 0]);
+assert!(matches!(result, Err(XenonError::IndexError { .. })));
 
-// Safe access with a default fallback
-let val = *safe_index(&tensor, &[0, 0]).unwrap_or(&0.0);
+// Callers can still opt into a fallback after checking the Result
+let val = *safe_index(&tensor, [0, 0]).unwrap_or(&0.0);
 assert_eq!(val, 1.0);
 ```
 
@@ -474,7 +545,7 @@ fn unsafe_index(tensor: &Tensor<f64, Ix2>, idx: &[usize]) -> f64 {
 }
 ```
 
-#### 4.2.5 切片后元数据更新
+#### 5.2.5 切片后元数据更新
 
 切片操作需要更新视图的元数据：
 
@@ -485,7 +556,7 @@ fn unsafe_index(tensor: &Tensor<f64, Ix2>, idx: &[usize]) -> f64 {
 | `offset`      | 原偏移 + start × 原步长                                                         |
 | `LayoutFlags` | 基于结果 shape/stride 重算；只保留需求允许的 F-order 连续/非连续/零步长视图状态 |
 
-#### 4.2.6 切片后的连续性规则
+#### 5.2.6 切片后的连续性规则
 
 | 切片模式                                                         | `is_f_contiguous()` 结果 | 说明                                               |
 | ---------------------------------------------------------------- | ------------------------ | -------------------------------------------------- |
@@ -498,9 +569,9 @@ fn unsafe_index(tensor: &Tensor<f64, Ix2>, idx: &[usize]) -> f64 {
 
 ---
 
-## 5. 内部实现设计
+## 6. 内部实现设计
 
-### 5.1 偏移量计算（F-order）
+### 6.1 偏移量计算（F-order）
 
 ```rust
 function compute_offset_f(shape: [usize; N], strides: [isize; N], index: [usize; N]) -> isize:
@@ -510,7 +581,7 @@ function compute_offset_f(shape: [usize; N], strides: [isize; N], index: [usize;
     return offset
 ```
 
-### 5.2 切片步长/形状/偏移量计算
+### 6.2 切片步长/形状/偏移量计算
 
 ```rust
 function compute_slice(shape, strides, offset, slices: [SliceInfoElem; N])
@@ -546,7 +617,7 @@ function compute_slice(shape, strides, offset, slices: [SliceInfoElem; N])
     return (new_shape, new_strides, new_offset, new_layout)
 ```
 
-### 5.3 安全性论证
+### 6.3 安全性论证
 
 - `get_unchecked`: 调用者保证索引在合法范围内；偏移量计算与 checked 版本相同
 - `slice_unchecked`: 调用者保证切片范围在合法范围内
@@ -554,7 +625,7 @@ function compute_slice(shape, strides, offset, slices: [SliceInfoElem; N])
 
 ---
 
-## 6. 实现任务拆分
+## 7. 实现任务拆分
 
 ### Wave 1: 基础设施
 
@@ -574,17 +645,17 @@ function compute_slice(shape, strides, offset, slices: [SliceInfoElem; N])
 
 ### Wave 2: 多维整数索引
 
-- [ ] **T3**: 实现 `Index` trait for `TensorBase`
+- [ ] **T3**: 实现 `at()` 与 `Index` trait for `TensorBase`
   - 文件: `src/index/multi_dim.rs`
-  - 内容: `index()`/`get()`/`get_unchecked()` 实现
-  - 测试: `test_index_2d`, `test_index_3d`, `test_index_out_of_bounds`
+  - 内容: `at()`/`index()`/`get()`/`get_unchecked()` 实现
+  - 测试: `test_at_2d`, `test_index_2d`, `test_index_3d`, `test_at_out_of_bounds`, `test_index_out_of_bounds`
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T4**: 实现 `IndexMut` 和 `get_mut`/`get_unchecked_mut`
+- [ ] **T4**: 实现 `at_mut()`、`IndexMut` 和 `get_mut`/`get_unchecked_mut`
   - 文件: `src/index/multi_dim.rs`
-  - 内容: 可变索引方法实现
-  - 测试: `test_index_mut_2d`, `test_get_mut_out_of_bounds`
+  - 内容: 可变索引方法实现，以及只读存储的 `InvalidStorageMode` 错误路径
+  - 测试: `test_at_mut_2d`, `test_at_mut_invalid_storage_mode`, `test_index_mut_2d`, `test_get_mut_out_of_bounds`
   - 前置: T3
   - 预计: 10 min
 
@@ -627,9 +698,9 @@ Wave 4:           [T7]
 
 ---
 
-## 7. 测试计划
+## 8. 测试计划
 
-### 7.1 测试分类表
+### 8.1 测试分类表
 
 | 测试分类 | 位置                     | 说明                                                           |
 | -------- | ------------------------ | -------------------------------------------------------------- |
@@ -638,15 +709,19 @@ Wave 4:           [T7]
 | 边界测试 | 同模块测试中标注         | 覆盖零维、空数组、正步长和链式切片等边界                       |
 | 属性测试 | `tests/property/`        | 验证切片长度、结果 shape、连续性与链式切片不变量               |
 
-### 7.2 单元测试清单
+### 8.2 单元测试清单
 
 | 测试函数                     | 测试内容                              | 优先级 |
 | ---------------------------- | ------------------------------------- | ------ |
+| `test_at_2d`                 | `at()` 成功返回元素引用               | 高     |
 | `test_index_2d`              | 2D 张量 `[[0, 0]]`, `[[1, 2]]`        | 高     |
 | `test_index_3d`              | 3D 张量 `[[0, 1, 2]]`                 | 高     |
+| `test_at_out_of_bounds`      | `at()` 越界返回 `XenonError`          | 高     |
 | `test_index_out_of_bounds`   | `tensor[[...]]` 越界 panic 验证       | 高     |
 | `test_get_returns_none`      | `get()` 越界返回 None                 | 高     |
 | `test_get_unchecked`         | unsafe 路径正确读取                   | 中     |
+| `test_at_mut_2d`             | `at_mut()` 成功返回可变引用           | 高     |
+| `test_at_mut_invalid_storage_mode` | `at_mut()` 在只读存储上返回 `InvalidStorageMode` | 高     |
 | `test_index_mut_2d`          | 可变索引写入                          | 高     |
 | `test_get_mut_out_of_bounds` | `get_mut()` 越界返回 None             | 高     |
 | `test_slice_basic`           | `s![1..3, ..]` 基本切片               | 高     |
@@ -658,7 +733,7 @@ Wave 4:           [T7]
 | `test_slice_info_dynamic`    | 运行时构造走动态 slice info 表示      | 中     |
 | `test_slice_macro_basic`     | `s![]` 宏基本使用                     | 高     |
 
-### 7.3 边界测试场景
+### 8.3 边界测试场景
 
 | 场景             | 预期行为                             |
 | ---------------- | ------------------------------------ |
@@ -668,7 +743,7 @@ Wave 4:           [T7]
 | 非连续切片后索引 | 正确处理步长跳转                     |
 | `step == 0`      | `slice()` / `try_slice()` 均返回错误 |
 
-### 7.4 属性测试不变量
+### 8.4 属性测试不变量
 
 | 不变量                                                  | 测试方法                       |
 | ------------------------------------------------------- | ------------------------------ |
@@ -677,17 +752,32 @@ Wave 4:           [T7]
 | 视图的视图链式后数据一致                                | 链式切片对比原数据             |
 | 连续切片仅在规范 F-order 条件下保持 `is_f_contiguous()` | 随机完整范围/步长/单点索引组合 |
 
-### 7.5 集成测试
+### 8.5 集成测试
 
 | 测试文件              | 测试内容                                                                            |
 | --------------------- | ----------------------------------------------------------------------------------- |
 | `tests/test_index.rs` | 整数索引 / 切片 / `s![]` 宏 与 `tensor`、`layout`、`iter`、`shape` 的端到端协同路径 |
 
+### 8.6 Feature gate / 配置测试
+
+| 配置 | 验证点 |
+| ---- | ---- |
+| 默认配置 | 整数索引、切片与 `s![]` 宏在默认构建下保持统一错误分层。 |
+| 其他 feature 组合 | 不适用；当前模块无额外 feature gate。 |
+
+### 8.7 类型边界 / 编译期测试
+
+| 场景 | 测试方式 |
+| ---- | ---- |
+| `NdIndex` 仅允许受支持索引类型 | 编译期测试。 |
+| 负步长 / 负索引 / advanced indexing 不属于当前 API | API 缺失断言或编译期失败测试。 |
+| 只读存储上的 `at_mut()` / `get_mut()` 需被拒绝 | 运行时错误测试与 trait 约束验证。 |
+
 ---
 
-## 8. 与其他模块的交互
+## 9. 与其他模块的交互
 
-### 8.1 接口约定
+### 9.1 接口约定
 
 | 方向                | 对方模块    | 接口/类型                   | 约定                                                                |
 | ------------------- | ----------- | --------------------------- | ------------------------------------------------------------------- |
@@ -698,20 +788,31 @@ Wave 4:           [T7]
 | `index ← iter`      | `iter`      | `get_unchecked()`           | 迭代器路径复用快速索引入口，参见 `10-iterator.md` §4                |
 | `index ← shape`     | `shape`     | transpose 后视图语义        | 转置等上游操作产生的只读视图继续复用索引路径，参见 `16-shape.md` §4 |
 
-### 8.2 数据流描述
+### 9.2 数据流描述
 
 ```text
-用户调用 tensor[[...]] / get() / slice() / s![]
+User calls tensor[[...]] / get() / slice() / s![]
     │
-    ├── indexing 模块先规范化索引或切片边界
-    ├── 再结合 tensor 的 shape / strides / offset 计算逻辑位置
-    ├── layout 更新切片后 flags，必要时生成新的 view 元数据
-    └── 结果继续被 iter / shape / math 等上层路径消费
+    ├── indexing normalizes index or slice boundaries
+    ├── tensor shape / strides / offset determine the logical location
+    ├── layout updates slice-derived flags when a new view is created
+    └── iter / shape / math can consume the resulting view or reference
 ```
 
 ---
 
-## 9. 设计决策记录
+## 10. 错误处理与语义边界
+
+| 主题 | 内容 |
+| ---- | ---- |
+| Recoverable error | `at()` / `at_mut()` / `slice()` / `try_slice()` 在 rank 不匹配、越界、`step == 0` 或存储模式不合法时返回 `XenonError`，携带 shape、index、axis 或 storage-mode 上下文。 |
+| Panic | `Index` / `IndexMut` 语法糖在验证失败时 panic；`get_unchecked*()` 前置条件违反属于 unsafe UB。 |
+| 路径一致性 | 整数索引、切片、视图的视图路径必须保持同一 F-order 偏移和边界语义；无 SIMD / 并行分支。 |
+| 容差边界 | 不适用。 |
+
+---
+
+## 11. 设计决策记录
 
 ### 决策 1: 切片宏 s![] 设计
 
@@ -732,9 +833,9 @@ Wave 4:           [T7]
 
 ---
 
-## 10. 性能考量
+## 12. 性能考量
 
-### 10.1 复杂度
+### 12.1 复杂度
 
 | 操作                   | 时间复杂度 | 空间复杂度              |
 | ---------------------- | ---------- | ----------------------- |
@@ -744,7 +845,7 @@ Wave 4:           [T7]
 | 切片 `slice()`         | O(ndim)    | O(ndim)（新视图元数据） |
 | 视图创建               | O(1)       | O(ndim)                 |
 
-### 10.2 索引计算开销
+### 12.2 索引计算开销
 
 | 场景                  | 每元素开销                             |
 | --------------------- | -------------------------------------- |
@@ -752,14 +853,14 @@ Wave 4:           [T7]
 | 非连续数组（切片后）  | 多次乘加运算                           |
 | 非连续 + 广播         | 乘加 + 跳步长处理                      |
 
-### 10.3 缓存行为
+### 12.3 缓存行为
 
 | 场景             | 缓存友好性 | 说明     |
 | ---------------- | ---------- | -------- |
 | 连续数组顺序索引 | 最优       | 顺序访问 |
 | 步长切片         | 较差       | 跳跃访问 |
 
-### 10.4 性能数据（参考）
+### 12.4 性能数据（参考）
 
 | 操作                  | 连续数组 | 非连续数组（步长=2） | 性能比         |
 | --------------------- | -------- | -------------------- | -------------- |
@@ -772,7 +873,7 @@ Wave 4:           [T7]
 
 ---
 
-## 11. 平台与工程约束
+## 13. 平台与工程约束
 
 | 约束       | 说明                                                               |
 | ---------- | ------------------------------------------------------------------ |

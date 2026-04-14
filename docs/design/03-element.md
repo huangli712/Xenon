@@ -16,7 +16,7 @@
 | Element trait       | 基础约束（Copy+Clone+PartialEq+Debug+Display+Send+Sync+Sealed）+ zero()/one()                   | —                                                               |
 | Numeric trait       | Element + Add+Sub+Mul+Div+Neg（四则运算能力标记）                                               | 运算实现本身（委托给 core::ops）                                |
 | RealScalar trait    | Numeric + PartialOrd + abs/sqrt/sin/exp/ln/floor/ceil + NaN 检测                                | 复数运算                                                        |
-| ComplexScalar trait | Numeric + conj（核心复数操作）+ 复数数学接口（norm/from_polar/arg/exp/ln/sqrt）                 | 复数类型定义（在 `src/complex/` 模块，参见 `04-complex.md` §4） |
+| ComplexScalar trait | Numeric + conj（核心复数操作）+ 复数数学接口（norm/from_polar/arg/exp/ln/sqrt）                 | 复数类型定义（在 `src/complex/` 模块，参见 `04-complex.md` §5） |
 | 基础类型实现        | 为 i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool 实现上述 trait；`usize` 仅用于索引/形状元数据 | 类型转换逻辑（在 `src/convert/` 模块）                          |
 | Sealed trait        | 封闭集合，禁止外部 crate 实现                                                                   | 开放扩展                                                        |
 
@@ -33,13 +33,13 @@
 ### 1.3 在架构中的位置
 
 ```
-依赖层级：
+Dependency layers:
 L0: error, private
-L1: element  ← 当前模块
-L1: complex（element 依赖 complex 的类型定义，complex 不反向依赖 element）
-L2: layout (依赖 dimension)
-L3: storage (仅依赖 core/alloc)
-L4: tensor (依赖 storage, dimension)
+L1: element  ← current module
+L1: complex (element depends on complex type definitions; complex does not depend on element)
+L2: layout (depends on dimension)
+L3: storage (depends only on core/alloc)
+L4: tensor (depends on storage, dimension)
 L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 ```
 
@@ -47,7 +47,18 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 ---
 
-## 2. 文件位置
+## 2. 需求映射与范围约束
+
+| 项目     | 内容                                                                      |
+| -------- | ------------------------------------------------------------------------- |
+| 需求映射 | 需求说明书 §4                                                             |
+| 范围内   | `Element`/`Numeric`/`RealScalar`/`ComplexScalar` trait 与封闭元素类型集合 |
+| 范围外   | 张量存储、自动类型提升、开放外部元素扩展、具体类型转换执行逻辑            |
+| 非目标   | 引入新的基础数值类型集合、运行时类型擦除或动态分派元素系统                |
+
+---
+
+## 3. 文件位置
 
 ```
 src/element/
@@ -62,9 +73,9 @@ src/element/
 
 ---
 
-## 3. 依赖关系
+## 4. 依赖关系
 
-### 3.1 依赖图（ASCII）
+### 4.1 依赖图（ASCII）
 
 ```
 src/element/
@@ -75,7 +86,7 @@ src/element/
 └── core::cmp         # PartialEq/PartialOrd 比较
 ```
 
-### 3.2 依赖精确到类型级
+### 4.2 依赖精确到类型级
 
 | 来源模块         | 使用的类型/trait                                           |
 | ---------------- | ---------------------------------------------------------- |
@@ -85,16 +96,24 @@ src/element/
 | `core::fmt`      | `Debug`, `Display`（Element supertrait）                   |
 | `core::cmp`      | `PartialEq`, `PartialOrd`（Element/RealScalar supertrait） |
 
-### 3.3 依赖方向声明
+### 4.2a 依赖合法性
+
+| 项目           | 结论                           |
+| -------------- | ------------------------------ |
+| 新增第三方依赖 | 无                             |
+| 合法性结论     | 符合需求说明书最小依赖限制     |
+| 替代方案       | 不适用                         |
+
+### 4.3 依赖方向声明
 
 > **依赖方向：单向向上。** `element/` 消费 `complex` 的类型定义（即 `element` 依赖 `complex`），`complex` 不反向依赖 `element`。
-> 被下游消费：`math`（参见 `11-math.md` §4）、`reduction`（参见 `13-reduction.md` §4）、`tensor`（参见 `07-tensor.md` §4）等模块使用 Element/Numeric/RealScalar/ComplexScalar 作为泛型约束。
+> 被下游消费：`math`（参见 `11-math.md` §4）、`reduction`（参见 `13-reduction.md` §4）、`tensor`（参见 `07-tensor.md` §5）等模块使用 Element/Numeric/RealScalar/ComplexScalar 作为泛型约束。
 
 ---
 
-## 4. 公共 API 设计
+## 5. 公共 API 设计
 
-### 4.1 Element trait
+### 5.1 Element trait
 
 ```rust
 /// Base trait for all tensor element types.
@@ -130,7 +149,7 @@ pub trait Element:
 | `Sync`      | 可跨线程共享引用（并行只读访问必需）   |
 | `Sealed`    | 防止外部类型实现                       |
 
-### 4.2 Numeric trait
+### 5.2 Numeric trait
 
 ```rust
 /// Numeric element trait.
@@ -200,7 +219,7 @@ pub trait Numeric:
 > - `ComplexScalar::conj()` 返回同类型复数共轭，与 `Numeric::conjugate()` 语义一致；前者面向复数专用 API，后者面向泛型 `Numeric` 代码
 > - **设计决策注释：** `Numeric::conjugate` 的存在是为了让纯 `Numeric` 约束的泛型代码也能调用共轭，无需额外约束 `ComplexScalar`
 
-### 4.3 RealScalar trait
+### 5.3 RealScalar trait
 
 ```rust
 /// Real-valued scalar trait.
@@ -241,7 +260,7 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
 
 > **设计决策：** `min`/`max` 采用 NaN 传播语义（任一参数为 NaN → 返回 NaN）。Xenon 通过 `RealScalar` 自身的契约固定这一行为，不直接复用标准库 `f32::min` / `f64::min` 的全部语义细节。
 
-### 4.4 ComplexScalar trait
+### 5.4 ComplexScalar trait
 
 ```rust
 /// Complex scalar trait.
@@ -275,7 +294,7 @@ pub trait ComplexScalar: Numeric + Sealed {
 }
 ```
 
-### 4.5 支持的类型与 trait 矩阵
+### 5.5 支持的类型与 trait 矩阵
 
 | 类型           | Element | Numeric | RealScalar | ComplexScalar |
 | -------------- | :-----: | :-----: | :--------: | :-----------: |
@@ -289,7 +308,7 @@ pub trait ComplexScalar: Numeric + Sealed {
 
 > **Xenon 特定约束：** 仅支持上表列出的 7 种元素类型。不支持 `usize`、u8/u16/u32/i8/i16 等其他整数类型；`usize` 仅作为索引和形状元数据使用。
 
-### 4.6 BoolElement trait
+### 5.6 BoolElement trait
 
 ```rust
 /// Bool-specific element capability.
@@ -307,7 +326,7 @@ impl BoolElement for bool {
 }
 ```
 
-### 4.7 Sealed trait 策略
+### 5.7 Sealed trait 策略
 
 ```rust
 // src/element/mod.rs
@@ -334,7 +353,7 @@ struct MyType;
 impl Element for MyType { /* error[E0277]: Sealed not satisfied */ }
 ```
 
-### 4.8 Good / Bad 对比示例
+### 5.8 Good / Bad 对比示例
 
 ```rust
 // Good - Numeric constraint automatically excludes bool and non-Numeric types
@@ -368,7 +387,7 @@ let c = &a + &b.cast::<f64>();  // explicit conversion
 // let c = &a + &b;  // Compile error: no matching impl for f64 + i32
 ```
 
-### 4.9 CastTo\<T\> trait（类型转换）
+### 5.9 CastTo\<T\> trait（类型转换）
 
 `CastTo<T>` 是 Xenon 逐元素类型转换规则的唯一 owner，trait 定义放在 `src/element/` 层，由 `convert/cast.rs` 统一消费（参见 `21-type.md §4`），不在其他模块重复定义。
 
@@ -410,7 +429,7 @@ pub trait CastTo<T>: Element {
 | `impl CastTo<i32> for f64` | 有损，默认返回可恢复错误        |
 | `impl CastTo<i32> for i64` | 有损，默认返回可恢复错误        |
 
-### 4.10 CheckedAdd trait（整数溢出检测）
+### 5.10 CheckedAdd trait（整数溢出检测）
 
 `CheckedAdd` 为整数类型提供 checked 加法，供 `sum` 归约操作在整数溢出时 panic（参见 `13-reduction.md §5.1`）。
 
@@ -451,9 +470,9 @@ impl CheckedAdd for i64 {
 
 ---
 
-## 5. 内部实现设计
+## 6. 内部实现设计
 
-### 5.1 bool 排除策略
+### 6.1 bool 排除策略
 
 `bool` 仅实现 `Element`，不实现 `Numeric`：
 
@@ -471,11 +490,11 @@ impl BoolElement for bool {
 
 编译时阻止无效泛型实例化：`fn sum<A: Numeric>` 无法接受 `bool` 张量；需要布尔专用逐元素逻辑非时，使用 `BoolElement::logical_not()` 或 `!`。
 
-### 5.2 usize 语义边界
+### 6.2 usize 语义边界
 
 `usize` 不属于 Xenon 的张量元素集合，仅作为索引、轴和形状元数据类型使用。所有元素 trait（`Element`/`Numeric`/`RealScalar`/`ComplexScalar`）都不为 `usize` 提供实现，也不再为其预留算术扩展路径。
 
-### 5.3 类型提升规则
+### 6.3 类型提升规则
 
 **Xenon 不支持自动类型提升。** 所有跨类型运算须显式转换：
 
@@ -489,7 +508,7 @@ impl BoolElement for bool {
 let c = a + f64::from(b);
 ```
 
-### 5.4 NaN/Inf 处理语义
+### 6.4 NaN/Inf 处理语义
 
 | 方法                  | NaN 输入 | Inf 输入 |
 | --------------------- | -------- | -------- |
@@ -500,7 +519,7 @@ let c = a + f64::from(b);
 | `min(a, b)` 含 NaN    | NaN      | 正常比较 |
 | `partial_cmp(NaN, _)` | None     | 正常比较 |
 
-### 5.5 RealScalar 实现（以 f64 为例）
+### 6.5 RealScalar 实现（以 f64 为例）
 
 ```rust
 // RealScalar math functions are implemented in the `std` environment required by Xenon.
@@ -539,9 +558,9 @@ fn max(self, other: Self) -> Self {
 
 ---
 
-## 6. 与其他模块的交互
+## 7. 与其他模块的交互
 
-### 6.1 接口约定
+### 7.1 接口约定
 
 | 模块           | 使用的 trait                              | 用途                   |
 | -------------- | ----------------------------------------- | ---------------------- |
@@ -553,36 +572,36 @@ fn max(self, other: Self) -> Self {
 
 > 各模块的详细接口约定参见对应设计文档（`11-math.md` §4、`13-reduction.md` §4、`21-type.md` §4）。
 
-### 6.2 接口边界
+### 7.2 接口边界
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│  math / reduction / matrix (使用 Element/Numeric 约束)         │
+│  math / reduction / matrix (consume Element/Numeric bounds)   │
 └──────────────────────┬────────────────────────────────────────┘
-                       │ 泛型约束
+                       │ generic bounds
 ┌──────────────────────▼────────────────────────────────────────┐
-│  element (定义 trait)                                          │
+│  element (defines traits)                                     │
 └──────────────────────┬────────────────────────────────────────┘
-                       │ 类型依赖
+                       │ type dependency
 ┌──────────────────────▼────────────────────────────────────────┐
-│  complex (定义 Complex<T>)                                     │
+│  complex (defines Complex<T>)                                 │
 └───────────────────────────────────────────────────────────────┘
 ```
 
-### 6.3 数据流描述
+### 7.3 数据流描述
 
 ```text
-上游模块声明元素约束
+Upstream modules declare element bounds
     │
-├── tensor 通过 `Element` 接受封闭元素集合（不含 `usize`）
-    ├── math / matrix / reduction 根据 `Numeric`、`RealScalar`、`ComplexScalar` 选择可用运算面
-    ├── convert / set / format 继续消费类型层能力或格式化语义
-    └── 若元素类型不满足约束，则由编译期 trait bound 直接拒绝
+    ├── tensor accepts the sealed element set via `Element` (excluding `usize`)
+    ├── math / matrix / reduction select capabilities via `Numeric`, `RealScalar`, and `ComplexScalar`
+    ├── convert / set / format continue consuming type-level capabilities or formatting semantics
+    └── unsupported element types are rejected by compile-time trait bounds
 ```
 
 ---
 
-## 7. 实现任务拆分
+## 8. 实现任务拆分
 
 ### Wave 1: 基础 trait 定义
 
@@ -697,9 +716,9 @@ Wave 3: [T6]      [T9] ← ────┘
 
 ---
 
-## 8. 测试计划
+## 9. 测试计划
 
-### 8.1 测试分类表
+### 9.1 测试分类表
 
 | 测试分类 | 位置                                           | 说明                                                                  |
 | -------- | ---------------------------------------------- | --------------------------------------------------------------------- |
@@ -708,7 +727,7 @@ Wave 3: [T6]      [T9] ← ────┘
 | 边界测试 | 同模块测试中标注                               | 覆盖 NaN/Inf、bool 限制与 sealed 行为                                 |
 | 属性测试 | `tests/test_element.rs` 或 `tests/property.rs` | 验证零元、单位元与数学函数不变量                                      |
 
-### 8.2 单元测试清单
+### 9.2 单元测试清单
 
 | 测试函数                        | 测试内容                                                   | 优先级 |
 | ------------------------------- | ---------------------------------------------------------- | ------ |
@@ -731,7 +750,7 @@ Wave 3: [T6]      [T9] ← ────┘
 | `test_complex_f64_from_polar`   | `from_polar(1.0, PI/2) ≈ i`                                | 中     |
 | `test_sealed_prevents_external` | 外部类型无法实现 Element（编译测试）                       | 中     |
 
-### 8.3 边界测试场景
+### 9.3 边界测试场景
 
 | 场景                                          | 预期行为                       |
 | --------------------------------------------- | ------------------------------ |
@@ -742,7 +761,7 @@ Wave 3: [T6]      [T9] ← ────┘
 | `Complex::new(f64::NAN, 0.0).norm().is_nan()` | 返回 `true`                    |
 | `bool` 张量调用 `sum()`                       | 编译错误（Numeric 约束不满足） |
 
-### 8.4 属性测试不变量
+### 9.4 属性测试不变量
 
 | 不变量                                | 测试方法                  |
 | ------------------------------------- | ------------------------- |
@@ -752,15 +771,41 @@ Wave 3: [T6]      [T9] ← ────┘
 | `a.sqrt().sqrt() == a.powf(0.25)`     | f32/f64，随机正数 a       |
 | `a.exp().ln() ≈ a`                    | f32/f64，随机有限 a       |
 
-### 8.5 集成测试
+### 9.5 集成测试
 
 | 测试文件                | 测试内容                                                                              |
 | ----------------------- | ------------------------------------------------------------------------------------- |
 | `tests/test_element.rs` | 各元素类型在 `tensor`、`math`、`reduction`、`convert` 中的 trait 约束与端到端行为验证 |
 
+### 9.6 Feature gate / 配置测试
+
+| 配置项 | 覆盖方式                             | 说明                                         |
+| ------ | ------------------------------------ | -------------------------------------------- |
+| 默认配置 | 常规单元/集成测试路径                 | 本模块无独立 feature gate，默认配置即主路径  |
+| 非默认 feature | 不适用                             | 本模块未定义 feature gate，故无额外配置矩阵 |
+
+### 9.7 类型边界 / 编译期测试
+
+| 测试类型 | 覆盖方式                                     | 说明                                                      |
+| -------- | -------------------------------------------- | --------------------------------------------------------- |
+| sealed 边界 | compile-fail 测试外部类型实现 `Element`       | 验证封闭元素集合不会被外部 crate 扩展                     |
+| 元素能力边界 | compile-fail 测试 `bool: Numeric`、`usize: Element` | 验证布尔与索引元数据类型不会越界进入算术元素层            |
+| trait 分层边界 | 编译期验证 `RealScalar`/`ComplexScalar` 仅覆盖规定类型 | 验证 trait 能力分层不被误扩展                             |
+
 ---
 
-## 9. 设计决策记录
+## 10. 错误处理与语义边界
+
+| 项目           | 内容 |
+| -------------- | ---- |
+| Recoverable error | 有损 `CastTo` 默认返回可恢复错误；错误类型由具体 `CastTo<T>::Error` 决定，需携带源类型/目标类型及失败原因等上下文 |
+| Panic | 本模块 trait 方法本身不以 panic 作为常规错误语义；若底层标准库数学实现遇到其自身前置条件，遵循标准库行为 |
+| 路径一致性 | scalar 路径必须与普通标量实现一致；SIMD：不适用；parallel：不适用 |
+| 容差边界 | 浮点相关比较遵循 IEEE 754 与各测试中显式容差；整数与布尔类型不适用 |
+
+---
+
+## 11. 设计决策记录
 
 ### 决策 1：封闭集合，不支持下游扩展
 
@@ -812,7 +857,7 @@ Wave 3: [T6]      [T9] ← ────┘
 
 ---
 
-## 10. 性能考量
+## 12. 性能考量
 
 | 方面         | 设计决策                                           |
 | ------------ | -------------------------------------------------- |
@@ -823,7 +868,7 @@ Wave 3: [T6]      [T9] ← ────┘
 
 ---
 
-## 11. 平台与工程约束
+## 13. 平台与工程约束
 
 | 约束       | 说明                                          |
 | ---------- | --------------------------------------------- |

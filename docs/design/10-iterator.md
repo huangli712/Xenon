@@ -20,7 +20,7 @@
 | 元素遍历       | 按元素遍历（F-order 内存顺序）           | 具体运算逻辑（参见 `11-math.md §1`）   |
 | 轴遍历         | 沿指定轴产生子张量视图                   | 子视图的具体操作                       |
 | 索引遍历       | 带多维索引的元素遍历                     | 索引赋值操作                           |
-| 范围外能力提示 | `Windows` / `Zip` 可作为后续版本议题保留 | 不纳入当前版本实现范围                 |
+| 内部能力提示   | `Zip` 作为 `pub(crate)` 内部工具纳入当前版本；`Windows` 可作为后续版本议题保留 | `Zip` 不作为当前版本公开 API；`Windows` 不纳入当前版本实现范围 |
 | 并行迭代       | —                                        | 并行迭代（参见 `09-parallel.md §4.5`） |
 
 ### 1.3 在架构中的位置
@@ -47,7 +47,18 @@ L5: iter  ← 当前模块
 
 ---
 
-## 2. 文件位置
+## 2. 需求映射与范围约束
+
+| 类型     | 内容 |
+| -------- | ---- |
+| 需求映射 | 需求说明书 §11 |
+| 范围内   | 元素遍历、按轴遍历、带索引遍历，以及仅供内部复用的 `pub(crate)` `Zip`。 |
+| 范围外   | `Zip` 公开 API、`DoubleEndedIterator`、`Windows` / `LaneIter` 与并行公开迭代接口。 |
+| 非目标   | 不扩展当前公开迭代器集合，不新增第三方依赖，也不在本文定义并行 API 契约。 |
+
+---
+
+## 3. 文件位置
 
 ```
 src/iter/
@@ -55,25 +66,26 @@ src/iter/
 ├── elements.rs    # Elements / ElementsMut 扁平元素遍历
 ├── axis.rs        # AxisIter / AxisIterMut 沿轴迭代
 ├── indexed.rs     # IndexedIter / IndexedIterMut 带索引遍历
+└── zip.rs         # Zip 内部多输入锁步遍历工具（pub(crate)）
 ```
 
-单文件划分理由：当前版本仅覆盖元素、按轴、按索引三类迭代器，拆分文件降低单文件复杂度并保持职责清晰。`windows.rs`、`zip.rs`、`lanes.rs` 暂不纳入当前版本。
+单文件划分理由：当前版本公开范围仅覆盖元素、按轴、按索引三类迭代器，拆分文件降低单文件复杂度并保持职责清晰。`zip.rs` 作为内部 `pub(crate)` 工具保留在当前版本，用于逐元素运算、广播与归约的多输入锁步遍历；`windows.rs`、`lanes.rs` 暂不纳入当前版本。
 
 ---
 
-## 3. 依赖关系
+## 4. 依赖关系
 
-### 3.1 依赖图
+### 4.1 依赖图
 
 ```
 src/iter/
 ├── crate::tensor        # TensorBase<S, D>, TensorView, TensorViewMut
 ├── crate::dimension     # Dimension trait, Ix0~Ix6, IxDyn
 ├── crate::storage       # Storage, StorageMut trait
-├── crate::tensor        # 通过 TensorBase 暴露布局/连续性查询
+└── crate::tensor        # Layout and contiguity queries via TensorBase
 ```
 
-### 3.2 类型级依赖
+### 4.2 类型级依赖
 
 | 来源模块    | 使用的类型/trait                                                                                                                                 |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -82,17 +94,25 @@ src/iter/
 | `storage`   | `Storage<Elem = A>`, `StorageMut<Elem = A>`, `Owned<A>`（参见 `05-storage.md §4`）                                                               |
 | `tensor`    | `.is_f_contiguous()`, 布局标志查询（参见 `07-tensor.md §4`）                                                                                     |
 
-### 3.3 依赖方向
+### 4.3 依赖方向
 
 > **依赖方向：单向向上。** `iter/` 仅消费 `tensor`、`dimension`、`storage` 等核心模块，不被它们依赖。布局/连续性判断通过 `TensorBase` 暴露的查询接口完成。
 
+### 4.4 依赖合法性与替代方案
+
+| 项目           | 说明 |
+| -------------- | ---- |
+| 新增第三方依赖 | 无 |
+| 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
+| 替代方案       | 不适用；当前范围内无需额外第三方依赖。 |
+
 ---
 
-## 4. 公共 API 设计
+## 5. 公共 API 设计
 
 > **DoubleEndedIterator 说明：** 当前版本所有迭代器不实现 `DoubleEndedIterator`，因为 F-order 遍历的反向语义在高维情况下不明确，且需求未要求此功能。
 
-### 4.1 Elements 迭代器
+### 5.1 Elements 迭代器
 
 ```rust
 /// Flat element iterator, traverses all elements in F-order memory layout.
@@ -122,7 +142,7 @@ impl<'a, A, D: Dimension> Iterator for ElementsMut<'a, A, D> {
 impl<'a, A, D: Dimension> ExactSizeIterator for ElementsMut<'a, A, D> {}
 ```
 
-### 4.2 AxisIter 沿轴迭代器
+### 5.2 AxisIter 沿轴迭代器
 
 ```rust
 /// Axis iterator, yields a sub-tensor view with reduced dimension each step.
@@ -154,11 +174,27 @@ impl<'a, A, D: Dimension + RemoveAxis> ExactSizeIterator for AxisIterMut<'a, A, 
 
 > **设计决策：** `AxisIter` 的 `Item` 类型为 `TensorView<'a, A, D::Smaller>`。这要求 `D` 满足 `RemoveAxis`，并由 `RemoveAxis` trait 提供 `type Smaller: Dimension` 关联类型。同时，公开构造路径仍须在运行时先检查 `self.ndim() == 0`，并返回可恢复错误，以覆盖动态维度张量在 rank=0 时的按轴遍历请求。
 
-### 4.3 后续能力说明
+### 5.3 `Zip` 内部工具与后续能力说明
 
-`Windows`、`Zip` 与 `LaneIter` 均不属于需求说明书 §11 的当前范围。本文档仅保留统一说明，避免把它们误写成当前版本的公开承诺；如后续引入，应在独立设计中重新定义窗口语义、多输入同步语义以及别名约束。
+`Zip` 纳入当前版本范围，但仅作为 `iter` 模块内的 `pub(crate)` 内部工具存在，不构成公开 API 承诺。它是一个多张量 lock-step 迭代器，供逐元素运算、广播与归约等内部实现复用。`Windows` 与 `LaneIter` 仍不属于需求说明书 §11 的当前范围；如后续引入，应在独立设计中重新定义窗口语义、1D 产出语义以及别名约束。
 
-### 4.4 IndexedIter 带索引迭代器
+```rust
+pub(crate) struct Zip<'a, A, B, DA, DB> {
+    // Internal fields: chained tensor views / iterators and traversal state
+}
+
+impl<'a, A, B, DA, DB> Zip<'a, A, B, DA, DB> {
+    pub(crate) fn from(base: TensorViewMut<'a, A, DA>) -> Self;
+    pub(crate) fn and<C, DC>(self, other: TensorView<'a, C, DC>) -> Zip<'a, A, (B, C), DA, (DB, DC)>;
+    pub(crate) fn for_each<F>(self, f: F)
+    where
+        F: FnMut(&mut A, B);
+}
+```
+
+> **Zip 设计说明：** `Zip` 是 `pub(crate)` 多张量 lock-step 迭代器，用于逐元素运算、广播和归约等内部实现；当前版本不作为公开 API 暴露。
+
+### 5.4 IndexedIter 带索引迭代器
 
 ```rust
 /// Element iterator with multi-dimensional indices.
@@ -187,11 +223,11 @@ impl<'a, A, D: Dimension> Iterator for IndexedIterMut<'a, A, D> {
 impl<'a, A, D: Dimension> ExactSizeIterator for IndexedIterMut<'a, A, D> {}
 ```
 
-### 4.5 LaneIter 延期到后续版本
+### 5.5 LaneIter 延期到后续版本
 
 `LaneIter` / `LaneIterMut` 不属于需求说明书 §11 的必须项。当前版本先不设计该 API，避免与 `AxisIter`、`Windows`、`IndexedIter` 的职责边界重叠；如后续引入，应在独立文档中重新定义 1D 产出语义、轴方向约定与可变别名规则。
 
-### 4.6 TensorBase 上的迭代器入口方法
+### 5.6 TensorBase 上的迭代器入口方法
 
 ```rust
 impl<S, D, A> TensorBase<S, D>
@@ -231,7 +267,7 @@ where
 }
 ```
 
-### 4.7 Good / Bad 对比示例
+### 5.7 Good / Bad 对比示例
 
 ```rust
 // Good - safely iterate elements using iter()
@@ -259,9 +295,9 @@ let scalar = Tensor::<f64, IxDyn>::from_shape_vec(IxDyn(&[]), vec![1.0])?;
 
 ---
 
-## 5. 内部实现设计
+## 6. 内部实现设计
 
-### 5.1 Elements 快速/慢速路径选择
+### 6.1 Elements 快速/慢速路径选择
 
 ```
 Elements::new(view):
@@ -275,7 +311,7 @@ Elements::new(view):
         index = D::zeros(view.ndim())
 ```
 
-### 5.2 步长状态机（StrideState）
+### 6.2 步长状态机（StrideState）
 
 ```
 increment_index_f(shape, index):
@@ -288,7 +324,7 @@ increment_index_f(shape, index):
 
 > **偏移量计算边界：** 当前版本仅处理需求允许的合法 stride 布局：连续 F-order、转置产生的非连续视图，以及广播产生的零步长视图。元素偏移量计算仍为 `offset = base_offset + Σ(stride[i] * index[i])`，但不接受负步长输入。
 
-### 5.3 广播可变迭代禁止
+### 6.3 广播可变迭代禁止
 
 ```rust
 // SAFETY: broadcast_to() returns a TensorView with zero-stride dimensions,
@@ -299,11 +335,11 @@ increment_index_f(shape, index):
 
 > **编译期防护机制：** 广播结果返回 `TensorView`（不可变视图），而非 `TensorViewMut`。由于 `TensorView` 不提供 `iter_mut()` 方法（`iter_mut()` 要求 `StorageMut` 约束，仅 `TensorViewMut` 和 `Tensor` 满足），对广播结果调用 `iter_mut()` 会在编译期被类型系统拒绝，无需运行时检查。参见 `07-tensor.md §4.7` 中视图方法的约束差异。
 
-### 5.4 填充数组迭代
+### 6.4 填充数组迭代
 
 填充数组的迭代仅遍历逻辑元素。迭代器通过 shape 中的逻辑维度计数，跳过填充区域。
 
-### 5.5 `ElementsProducerRange` — 并行分块内部状态
+### 6.5 `ElementsProducerRange` — 并行分块内部状态
 
 > **用途：** 供并行后端（`09-parallel.md §4.5`）中的 `ElementsProducer::split_at` 调用。它不再尝试把任意逻辑前缀/后缀表示成两个 `TensorView`，而是保留原始 view，并以扁平逻辑区间 `[start, end)` 描述生产范围。
 
@@ -344,7 +380,7 @@ where
 
 ---
 
-## 6. 实现任务拆分
+## 7. 实现任务拆分
 
 ### Wave 1: 基础设施
 
@@ -406,9 +442,9 @@ Wave 3: [T6] [T9]
 
 ---
 
-## 7. 测试计划
+## 8. 测试计划
 
-### 7.1 测试分类总表
+### 8.1 测试分类总表
 
 | 测试分类 | 说明                                   | 包含的测试                                                                                                                                                                                                                                                      |
 | -------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -417,7 +453,7 @@ Wave 3: [T6] [T9]
 | 边界测试 | 空数组、零维张量、非连续内存等边界条件 | `test_elements_empty`, `test_elements_ix0`, `test_axis_iter_ix0_error`（详见 §7.2）                                                                                                                                                                             |
 | 属性测试 | 通过随机输入验证不变量                 | `iter().count() == tensor.len()`, `axis_iter(Axis(i)).count() == shape[i]`, `ExactSizeIterator` 递减不变量（详见 §7.3）                                                                                                                                         |
 
-### 7.2 单元测试清单
+### 8.2 单元测试清单
 
 | 测试函数                       | 测试内容                                      | 优先级 |
 | ------------------------------ | --------------------------------------------- | ------ |
@@ -433,7 +469,7 @@ Wave 3: [T6] [T9]
 | `test_axis_iter_ix0_error`     | 零维动态张量调用 `axis_iter()` 返回可恢复错误 | 高     |
 | `test_padded_iter`             | 填充数组仅遍历逻辑元素                        | 低     |
 
-### 7.3 边界测试场景
+### 8.3 边界测试场景
 
 | 场景                          | 预期行为                                         |
 | ----------------------------- | ------------------------------------------------ |
@@ -444,7 +480,7 @@ Wave 3: [T6] [T9]
 | 广播视图 `shape=[1, 4]`       | `iter()` 遍历逻辑元素，`iter_mut()` 编译拒绝     |
 | 填充数组                      | 仅遍历逻辑元素                                   |
 
-### 7.4 属性测试不变量
+### 8.4 属性测试不变量
 
 | 不变量                                   | 测试方法                           |
 | ---------------------------------------- | ---------------------------------- |
@@ -452,41 +488,67 @@ Wave 3: [T6] [T9]
 | `axis_iter(Axis(i)).count() == shape[i]` | 随机形状                           |
 | `iter().len()` 每次调用后递减            | 迭代过程中检查 `ExactSizeIterator` |
 
-### 7.5 集成测试
+### 8.5 集成测试
 
 | 测试文件                 | 测试内容                                                                               |
 | ------------------------ | -------------------------------------------------------------------------------------- |
 | `tests/test_iterator.rs` | `tensor.iter()` / `axis_iter()` / `indexed_iter()` 与 `tensor`、`shape` 模块的协同路径 |
 
+### 8.6 Feature gate / 配置测试
+
+| 配置 | 验证点 |
+| ---- | ---- |
+| 默认配置 | `iter` / `axis_iter` / `indexed_iter` 在无并行后端时保持既定顺序与长度语义。 |
+| 启用并行相关能力 | `ElementsProducerRange` 等内部分块状态与串行迭代在元素覆盖与顺序契约上保持一致。 |
+
+### 8.7 类型边界 / 编译期测试
+
+| 场景 | 测试方式 |
+| ---- | ---- |
+| 广播结果不可变，不提供 `iter_mut()` | 编译期测试或 trait 约束验证。 |
+| `AxisIter` 仅对满足 `RemoveAxis` 的维度开放 | 编译期测试。 |
+| `DoubleEndedIterator` 不属于当前公开接口 | 编译期失败测试或 API 缺失断言。 |
+
 ---
 
-## 8. 与其他模块的交互
+## 9. 与其他模块的交互
 
-### 8.1 接口约定
+### 9.1 接口约定
 
 ```rust
 // tensor module provides iterator entry methods（参见 07-tensor.md §4.6）
 // iter module consumes TensorView / TensorViewMut
 ```
 
-### 8.2 数据流描述
+### 9.2 数据流描述
 
 ```text
-用户调用 tensor.iter() / axis_iter() / indexed_iter()
+User calls tensor.iter() / axis_iter() / indexed_iter()
     │
-    ├── tensor 模块提供 TensorView / TensorViewMut 入口
-    ├── iter 模块根据 shape + strides 构造迭代器状态
-    └── 逐步产出元素 / 子视图，供 math / reduction / overload 消费
+    ├── tensor exposes TensorView / TensorViewMut entry points
+    ├── iter builds iterator state from shape + strides
+    └── iter yields elements or sub-views for math / reduction / overload
 ```
 
-### 8.3 与 storage / dimension 模块
+### 9.3 与 storage / dimension 模块
 
 ```rust
 // Iterators read data via the Storage trait（参见 05-storage.md §4）
 // Index state is managed via the Dimension trait（参见 02-dimension.md §4）
 ```
 
-## 9. 设计决策记录（ADR）
+## 10. 错误处理与语义边界
+
+| 主题 | 内容 |
+| ---- | ---- |
+| Recoverable error | `axis_iter()` / `axis_iter_mut()` 在 `axis` 越界或 rank-0 动态维输入时返回 `XenonError`，携带 `axis` 与 `ndim` 上下文。 |
+| Panic | 公开迭代器 API 不引入新的 panic 语义；仅内部 producer 分块等不变量破坏可使用断言。 |
+| 路径一致性 | 连续、非连续、零步长广播视图及并行 producer 的外部迭代顺序与长度语义必须一致。 |
+| 容差边界 | 不适用。 |
+
+---
+
+## 11. 设计决策记录（ADR）
 
 ### 决策 1：F-order 遍历顺序
 
@@ -527,9 +589,9 @@ Wave 3: [T6] [T9]
 
 ---
 
-## 10. 性能考量
+## 12. 性能考量
 
-### 10.1 连续 vs 非连续性能对比
+### 12.1 连续 vs 非连续性能对比
 
 | 场景           | 实现路径   | 每元素开销      | 缓存友好性       |
 | -------------- | ---------- | --------------- | ---------------- |
@@ -545,7 +607,7 @@ Wave 3: [T6] [T9]
 | 遍历 1M 元素 | ~1ms     | ~3ms                 | 3x     |
 | 缓存命中率   | ~95%     | ~60%                 | -      |
 
-### 10.2 复杂度标注
+### 12.2 复杂度标注
 
 - `Elements::new()`: O(1)，仅初始化状态
 - `Elements::next()`（快速路径）: O(1)，指针递增
@@ -555,14 +617,14 @@ Wave 3: [T6] [T9]
 
 ---
 
-## 11. 平台与工程约束
+## 13. 平台与工程约束
 
 | 项目       | 约束                                                                                |
 | ---------- | ----------------------------------------------------------------------------------- |
 | 标准库环境 | Xenon 当前版本仅支持 `std`，本文档不再承诺 `no_std` 兼容性                          |
 | crate 结构 | 保持单 crate 结构，不为迭代器单独拆分子 crate                                       |
 | 依赖约束   | 不新增第三方依赖；仅复用项目既有核心模块                                            |
-| 范围边界   | 当前版本仅覆盖元素、按轴、按索引迭代；`Windows` / `Zip` / `LaneIter` 保留为后续议题 |
+| 范围边界   | 当前版本公开范围仅覆盖元素、按轴、按索引迭代；`Zip` 作为 `pub(crate)` 内部工具纳入实现范围，`Windows` / `LaneIter` 保留为后续议题 |
 
 ---
 

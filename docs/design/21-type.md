@@ -43,7 +43,18 @@ L7: convert  ← 当前模块
 
 ---
 
-## 2. 文件位置
+## 2. 需求映射与范围约束
+
+| 类型     | 内容 |
+| -------- | ---- |
+| 需求映射 | 需求说明书 §23 |
+| 范围内   | `cast()`、`to_owned()`、`into_owned()`、存储模式互转以及标准库 `From` / `TryFrom` 入口。 |
+| 范围外   | 饱和 / 截断 cast 语义、非张量类型的额外 `From` / `Into` 族以及超出需求矩阵的隐式转换。 |
+| 非目标   | 不默认放宽有损转换规则，不新增第三方转换库，也不把连续性保证升级为 convert 的公开职责。 |
+
+---
+
+## 3. 文件位置
 
 ```
 src/
@@ -57,7 +68,7 @@ src/
 
 多文件设计：按转换职责拆分，便于后续扩展（如新增转换路径、存储模式等）。
 
-### 2.1 文件职责
+### 3.1 文件职责
 
 | 文件            | 职责                                                                      | 预估行数 |
 | --------------- | ------------------------------------------------------------------------- | -------- |
@@ -69,28 +80,28 @@ src/
 
 ---
 
-## 3. 依赖关系
+## 4. 依赖关系
 
-### 3.1 依赖图
+### 4.1 依赖图
 
 ```
 src/convert/
-├── mod.rs          # re-exports: CastTo, cast, to_owned, into_owned, From impls
-├── cast.rs         # 依赖 element (CastTo), tensor (TensorBase)
-├── owned.rs        # 依赖 tensor (TensorBase), storage, layout
-├── from_impl.rs    # 依赖 tensor (Tensor/TensorView), construct (from_vec)
-└── contiguous.rs   # 依赖 tensor (TensorBase), layout
+├── mod.rs          # Re-exports: CastTo, cast, to_owned, into_owned, From impls
+├── cast.rs         # Depends on element (CastTo) and tensor (TensorBase)
+├── owned.rs        # Depends on tensor (TensorBase), storage, layout
+├── from_impl.rs    # Depends on tensor (Tensor / TensorView), construct (from_vec)
+└── contiguous.rs   # Depends on tensor (TensorBase) and layout
 
-外部依赖:
+External dependencies:
 ├── crate::tensor        # TensorBase<S, D>, Tensor, TensorView
 ├── crate::dimension     # Dimension trait
 ├── crate::storage       # Storage, StorageMut, StorageOwned trait
 ├── crate::element       # Element, CastTo trait
-├── crate::layout        # is_f_contiguous 查询
+├── crate::layout        # is_f_contiguous query
 └── crate::error         # XenonError, Result<T>
 ```
 
-### 3.2 类型级依赖
+### 4.2 类型级依赖
 
 | 来源模块    | 使用的类型/trait                                                                                             |
 | ----------- | ------------------------------------------------------------------------------------------------------------ |
@@ -101,19 +112,27 @@ src/convert/
 | `layout`    | `is_f_contiguous()`（参见 `06-memory.md` §4）                                                                |
 | `error`     | `XenonError`, `Result<T>`（参见 `26-error.md` §4）                                                           |
 
-### 3.3 依赖方向声明
+### 4.3 依赖方向声明
 
 > **依赖方向：单向向上。** `convert` 仅消费 `tensor`、`storage` 等核心模块，不被它们依赖。
 
+### 4.4 依赖合法性与替代方案
+
+| 项目           | 说明 |
+| -------------- | ---- |
+| 新增第三方依赖 | 无 |
+| 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
+| 替代方案       | 不适用；当前范围内无需额外第三方依赖。 |
+
 ---
 
-## 4. 公共 API 设计
+## 5. 公共 API 设计
 
-### 4.1 CastTo trait
+### 5.1 CastTo trait
 
 > `CastTo<T>` trait 的唯一 owner 是 `03-element.md §4.8`。`convert` 模块只消费该 trait，并在受支持的源/目标类型矩阵上提供 `cast()` 路径，不重新定义 trait。
 
-### 4.2 cast 方法
+### 5.2 cast 方法
 
 ````rust
 impl<A, D> TensorBase<Owned<A>, D>
@@ -159,7 +178,7 @@ where
 
 > **设计决策（修订）**：根据需求说明书 §23，`cast()` 仅适用于持有数据的存储模式。当前设计将这一范围收窄为 `Owned<A>`；`ViewRepr` / `ViewMutRepr` / `ArcRepr` 均须先调用 `to_owned()`，再进行显式类型转换。
 
-### 4.3 类型转换路径表
+### 5.3 类型转换路径表
 
 | 源类型         | 目标类型       | 默认语义 | 说明                                        |
 | -------------- | -------------- | -------- | ------------------------------------------- |
@@ -190,7 +209,7 @@ where
 
 > `bool` 不参与 `cast()`；任何 `bool` 相关逐元素类型转换都不在本模块范围内。
 
-### 4.4 闭合规则映射
+### 5.4 闭合规则映射
 
 未在上表逐项展开、但属于受支持源/目标集合的组合，按 `require.md §23.2` 闭合：
 
@@ -199,7 +218,7 @@ where
 - 复数 → 复数：实部和虚部分别按对应实数转换规则处理
 - 任一步为有损时，默认整体返回 `XenonError::TypeConversion`
 
-### 4.5 Good / Bad 对比
+### 5.5 Good / Bad 对比
 
 ```rust
 // Good - explicit and fallible cast
@@ -219,7 +238,7 @@ let floats: Tensor<f64, Ix1> = Tensor::from_vec(vec![1.5, 2.7]);
 let ints: Tensor<i32, Ix1> = floats.cast().unwrap();  // forbidden: returns TypeConversion error
 ```
 
-### 4.6 to_owned / into_owned
+### 5.6 to_owned / into_owned
 
 ````rust
 impl<S, D, A> TensorBase<S, D>
@@ -265,7 +284,7 @@ where
 }
 ````
 
-### 4.7 from_vec_aligned — 对齐构造辅助
+### 5.7 from_vec_aligned — 对齐构造辅助
 
 `from_vec_aligned` 是 `Owned<A>` 的内部辅助方法，将 `Vec<A>` 的数据**拷贝**到 64 字节对齐的新分配中（O(n) 操作，参见 `05-storage.md §5.1`）。这条快速路径仅适用于 Xenon 当前封闭元素集合中的 `Copy` 元素；用户原始的 `Vec` 分配被丢弃，不会复用。
 
@@ -320,7 +339,7 @@ impl<A, D> TensorBase<Owned<A>, D> where A: Element, D: Dimension {
 }
 ```
 
-### 4.8 连续化内部实现
+### 5.8 连续化内部实现
 
 本节描述的连续化实现仅作为 `20-utility.md §4.3` 中 `to_contiguous()` 的内部实现细节。`convert` 模块可以持有 `contiguous.rs` 这一内部 helper 文件，但连续性保证的**公共语义、命名和用户入口**始终归 `util` 模块，而不是 `convert` 模块。
 
@@ -354,7 +373,7 @@ pub(crate) fn util_internal_to_f_contiguous(&self) -> Tensor<A, D> {
 }
 ```
 
-### 4.9 存储模式互转
+### 5.9 存储模式互转
 
 | 源 → 目标              | 操作                              | 复杂度       |
 | ---------------------- | --------------------------------- | ------------ |
@@ -369,7 +388,7 @@ pub(crate) fn util_internal_to_f_contiguous(&self) -> Tensor<A, D> {
 
 > **完整性说明：** Xenon 当前不提供 `ViewRepr/ViewMutRepr/ArcRepr → ViewMutRepr` 这类可能引入别名写入的新公开路径；若调用方需要可写 owned 结果，统一经 `to_owned()` / `into_owned()` 收敛。
 
-### 4.10 标准库类型转换接口
+### 5.10 标准库类型转换接口
 
 ```rust
 // Vec<A> → Tensor<A, Ix1>
@@ -400,9 +419,9 @@ impl<'a, A: Element, D: Dimension> From<&'a mut Tensor<A, D>> for TensorViewMut<
 
 ---
 
-## 5. 内部实现设计
+## 6. 内部实现设计
 
-### 5.1 CastTo 实现（核心转换路径）
+### 6.1 CastTo 实现（核心转换路径）
 
 ```rust
 // === Lossy-by-default conversion ===
@@ -459,7 +478,7 @@ impl CastTo<i32> for i64 {
 }
 ```
 
-### 5.2 溢出行为汇总
+### 6.2 溢出行为汇总
 
 > **错误语义约定：** `cast()` 是 fallible API。凡被 `require.md §23` 判定为有损的转换，默认返回 `XenonError::TypeConversion`；仅在该节明确给出额外成功前提时，满足前提后方可成功。
 
@@ -473,7 +492,7 @@ impl CastTo<i32> for i64 {
 
 ---
 
-## 6. 实现任务拆分
+## 7. 实现任务拆分
 
 ### Wave 1: 基础设施
 
@@ -542,9 +561,9 @@ Wave 3: [T6] [T7]  (并行)
 
 ---
 
-## 7. 测试计划
+## 8. 测试计划
 
-### 7.1 测试分类表
+### 8.1 测试分类表
 
 | 测试分类 | 位置                     | 说明                                                                             |
 | -------- | ------------------------ | -------------------------------------------------------------------------------- |
@@ -553,7 +572,7 @@ Wave 3: [T6] [T7]  (并行)
 | 边界测试 | 同模块测试中标注         | 覆盖空张量、NaN/Inf、有损转换报错、复数虚部约束和非连续视图等边界                |
 | 属性测试 | `tests/property/`        | 验证 cast/to_owned 保持 shape 与转换规则不变量                                   |
 
-### 7.2 单元测试清单
+### 8.2 单元测试清单
 
 | 测试函数                                                        | 测试内容                           | 优先级 |
 | --------------------------------------------------------------- | ---------------------------------- | ------ |
@@ -574,7 +593,7 @@ Wave 3: [T6] [T7]  (并行)
 | `test_from_slice`                                               | &[A] → Tensor1                     | 中     |
 | `test_from_tensor_view`                                         | &Tensor → TensorView               | 高     |
 
-### 7.3 边界测试场景
+### 8.3 边界测试场景
 
 | 场景                                 | 预期行为                                        |
 | ------------------------------------ | ----------------------------------------------- |
@@ -586,7 +605,7 @@ Wave 3: [T6] [T7]  (并行)
 | `Complex { re: 1.0, im: 0.0 } → f64` | 成功                                            |
 | `Complex { re: 1.0, im: 2.0 } → f64` | 返回 `TypeConversion`                           |
 
-### 7.4 属性测试不变量
+### 8.4 属性测试不变量
 
 | 不变量                                | 测试方法         |
 | ------------------------------------- | ---------------- |
@@ -595,17 +614,32 @@ Wave 3: [T6] [T7]  (并行)
 | 所有有损组合默认失败                  | 按类型对枚举验证 |
 | `to_owned().shape() == view.shape()`  | 随机形状         |
 
-### 7.5 集成测试
+### 8.5 集成测试
 
 | 测试文件                   | 测试内容                                                                                                   |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `tests/test_conversion.rs` | `cast` / `to_owned` / `into_owned` 与 `tensor`、`element`、`storage`、`layout`、`complex` 的端到端协同路径 |
 
+### 8.6 Feature gate / 配置测试
+
+| 配置 | 验证点 |
+| ---- | ---- |
+| 默认配置 | `cast` / `to_owned` / `into_owned` 在默认构建下保持显式转换与错误诊断契约。 |
+| 其他 feature 组合 | 不适用；当前模块无额外 feature gate。 |
+
+### 8.7 类型边界 / 编译期测试
+
+| 场景 | 测试方式 |
+| ---- | ---- |
+| `bool` 不参与 `cast()` | 编译期测试。 |
+| `cast()` 仅在 `Owned` 上提供 | 编译期测试。 |
+| saturation / truncation casts 与额外 `From/Into` 非张量转换不属于当前 API | API 缺失断言。 |
+
 ---
 
-## 8. 与其他模块的交互
+## 9. 与其他模块的交互
 
-### 8.1 接口约定
+### 9.1 接口约定
 
 | 方向                | 对方模块  | 接口/类型                               | 约定                                                                                              |
 | ------------------- | --------- | --------------------------------------- | ------------------------------------------------------------------------------------------------- |
@@ -616,21 +650,32 @@ Wave 3: [T6] [T7]  (并行)
 | `convert → layout`  | `layout`  | `is_f_contiguous()`                     | `to_owned()` 始终复制到 owned；若调用方需要连续性保证，则由 `util::to_contiguous()` 显式触发重排  |
 | `convert → complex` | `complex` | `Complex<T>`                            | 复数目标类型转换依赖 `Complex` 定义；Complex → 实数可在 `im == 0` 时成功，参见 `04-complex.md` §4 |
 
-### 8.2 数据流描述
+### 9.2 数据流描述
 
 ```text
-用户调用 cast() / to_owned() / into_owned()
+User calls cast() / to_owned() / into_owned()
     │
-    ├── convert 模块先读取 tensor 的 shape / strides / storage 模式
-    ├── cast 路径通过 iter 收集并按 CastTo 规则逐元素重编码
-    ├── to_owned / into_owned 路径按 storage 语义决定 O(1) 转移或 O(n) 拷贝
-    ├── 若需要连续化，由 util::to_contiguous() 触发内部连续化路径将数据重排为 F-order owned 数据
-    └── 最终返回新的 owned tensor 或视图转换结果，供 math / ffi / format 继续消费
+    ├── convert reads tensor shape / strides / storage mode metadata
+    ├── cast collects elements and re-encodes them via CastTo rules
+    ├── owned-conversion paths choose between O(1) transfer and O(n) copy
+    ├── util::to_contiguous() triggers the internal F-order repacking helper when needed
+    └── the module returns a new owned tensor or an explicit view conversion result
 ```
 
 ---
 
-## 9. 设计决策记录
+## 10. 错误处理与语义边界
+
+| 主题 | 内容 |
+| ---- | ---- |
+| Recoverable error | `cast()` 在有损转换、虚部非零或其他规则不满足时返回 `XenonError::TypeConversion`，携带源类型、目标类型、失败原因与元素索引。 |
+| Panic | 公开转换 API 不定义额外 panic 语义；有损场景统一返回可恢复错误。 |
+| 路径一致性 | `cast`、`to_owned`、`into_owned` 与内部连续化 helper 必须保持相同 shape 和 F-order owned 结果约束；无 SIMD / 并行分支。 |
+| 容差边界 | 不适用。 |
+
+---
+
+## 11. 设计决策记录
 
 ### 决策 1：默认失败而非饱和/截断
 
@@ -660,7 +705,7 @@ Wave 3: [T6] [T7]  (并行)
 
 ---
 
-## 10. 性能考量
+## 12. 性能考量
 
 | 操作                  | 时间复杂度 | 空间复杂度 | 说明           |
 | --------------------- | ---------- | ---------- | -------------- |
@@ -673,7 +718,7 @@ Wave 3: [T6] [T7]  (并行)
 
 ---
 
-## 11. 平台与工程约束
+## 13. 平台与工程约束
 
 本模块须遵循项目统一工程约束，不单独定义 `no_std` 目标：
 

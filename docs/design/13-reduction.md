@@ -17,7 +17,7 @@
 | 整数溢出处理 | checked_add，overflow 视为不可恢复错误 | wrapping/saturating 算术            |
 | 浮点语义     | IEEE 754 NaN 传播                      | 整数除法归约                        |
 | 空数组处理   | sum 返回加法单位元（零）               | 篮选/排序操作                       |
-| SIMD 加速    | 连续内存的 SIMD 归约路径               | 并行归约（见 09-parallel.md）       |
+| SIMD 加速    | 连续内存上的整数 SIMD 归约路径         | 浮点/复数 SIMD 归约（见 09-parallel.md） |
 | 并行加速     | 并行归约结果须与单线程实现保持一致     | 篮选/排序操作                       |
 
 > **注意**：当前版本仅支持 sum 归约！不包含 mean/var/prod/min/max/argmin/argmax 等。
@@ -29,7 +29,7 @@
 | 整数溢出安全 | 使用 checked_add，overflow 时 panic  |
 | NaN 传播     | 浮点 sum 中任一元素为 NaN 则返回 NaN |
 | 空数组安全   | 空数组 sum 返回加法单位元（零）      |
-| SIMD 友好    | 连续数组自动走 SIMD 归约路径         |
+| SIMD 友好    | 连续整数数组自动走 SIMD 归约路径     |
 
 ### 1.3 在架构中的位置
 
@@ -45,7 +45,18 @@ L5: reduction  ← 当前模块
 
 ---
 
-## 2. 文件位置
+## 2. 需求映射与范围约束
+
+| 类型     | 内容 |
+| -------- | ---- |
+| 需求映射 | 需求说明书 §14 |
+| 范围内   | 全局 `sum`、`sum_axis`、`sum_axis_keepdims`、整数 checked_add、NaN 传播以及可选 SIMD / 并行路径。 |
+| 范围外   | mean / min / max / argmin / argmax / prod 与自定义归约器。 |
+| 非目标   | 不在当前版本引入更广泛的归约族或放宽串并一致性要求。 |
+
+---
+
+## 3. 文件位置
 
 ```
 src/reduction/
@@ -57,19 +68,19 @@ src/reduction/
 
 ---
 
-## 3. 依赖关系
+## 4. 依赖关系
 
-### 3.1 依赖图
+### 4.1 依赖图
 
 ```
 src/reduction/
-├── mod.rs          # re-exports from sum
+├── mod.rs          # Re-exports from sum
 └── sum.rs          # crate::tensor / iter / element / error
-                   # crate::simd (可选 backend)
-                   # crate::parallel (可选 backend)
+                   # crate::simd (optional backend)
+                   # crate::parallel (optional backend)
 ```
 
-### 3.2 类型级依赖
+### 4.2 类型级依赖
 
 | 来源模块           | 使用的类型/trait                                                    |
 | ------------------ | ------------------------------------------------------------------- |
@@ -81,15 +92,23 @@ src/reduction/
 | `simd`（可选）     | `pulp::Arch`（参见 `08-simd.md` §3）                                |
 | `parallel`（可选） | 并行归约路径（参见 `09-parallel.md` §3）                            |
 
-### 3.3 依赖方向
+### 4.3 依赖方向
 
 > **依赖方向：单向向上。** `reduction` 消费 `iter`、`tensor`、`element` 模块，不被它们依赖。
 
+### 4.4 依赖合法性与替代方案
+
+| 项目           | 说明 |
+| -------------- | ---- |
+| 新增第三方依赖 | 无 |
+| 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
+| 替代方案       | 不适用；当前范围内无需额外第三方依赖。 |
+
 ---
 
-## 4. 公共 API 设计
+## 5. 公共 API 设计
 
-### 4.1 全局 sum 归约
+### 5.1 全局 sum 归约
 
 ````rust
 impl<S, D, A> TensorBase<S, D>
@@ -128,7 +147,7 @@ where
 
 > **分派策略说明：** `sum()` 的公共 API 仍只约束 `Numeric`，但整数溢出检测由 `CheckedAdd`（参见 `03-element.md §4.9`）在内部路径承担；浮点与复数类型继续使用普通加法语义。这样可以避免把整数专用约束暴露到所有数值类型的公共签名上。
 
-### 4.2 沿轴 sum 归约
+### 5.2 沿轴 sum 归约
 
 ````rust
 impl<S, D, A> TensorBase<S, D>
@@ -203,7 +222,7 @@ where
 }
 ````
 
-### 4.3 Good / Bad 对比示例
+### 5.3 Good / Bad 对比示例
 
 ```rust
 // Good - safely sum using sum()
@@ -230,9 +249,9 @@ let first = tensor.iter().next().unwrap();  // panics on empty array
 
 ---
 
-## 5. 内部实现设计
+## 6. 内部实现设计
 
-### 5.1 整数溢出处理
+### 6.1 整数溢出处理
 
 整数 `sum` 使用 `CheckedAdd` trait（定义于 `03-element.md §4.9`）进行安全累加：
 
@@ -247,7 +266,7 @@ fn sum_int<I: Numeric + CheckedAdd>(iter: impl Iterator<Item = &I>) -> I {
 
 `sum` 的泛型约束中，整数类型（`i32`/`i64`）满足 `Numeric + CheckedAdd`，浮点和复数类型则走 §5.2 的 IEEE 754 路径（不使用 `CheckedAdd`）。
 
-### 5.2 浮点/复数累加路径
+### 6.2 浮点/复数累加路径
 
 ```rust
 // Float sum implementation — relies only on additive semantics, not std-only math functions
@@ -262,14 +281,14 @@ fn sum_complex<C: ComplexScalar>(iter: impl Iterator<Item = &C>) -> C {
 }
 ```
 
-### 5.3 空数组处理
+### 6.3 空数组处理
 
 ```rust
 // Empty array: fold initial value is zero(), empty iteration returns zero() directly
 // sum of [] = 0 (additive identity)
 ```
 
-### 5.4 sum_axis_keepdims 实现步骤
+### 6.4 sum_axis_keepdims 实现步骤
 
 `sum_axis_keepdims` 与 `sum_axis` 的区别仅在于输出形状构造：
 
@@ -292,7 +311,7 @@ sum_axis_keepdims(tensor, axis):
 
 ---
 
-## 6. 实现任务拆分
+## 7. 实现任务拆分
 
 ### Wave 1: 全局归约
 
@@ -342,9 +361,9 @@ sum_axis_keepdims(tensor, axis):
 
 ### Wave 3: SIMD 加速
 
-- [ ] **T6**: 实现 SIMD 归约路径
+- [ ] **T6**: 实现整数 SIMD 归约路径
   - 文件: `src/reduction/sum.rs`, `src/simd/vector.rs`
-  - 内容: `reduction::sum` 接入独立 `simd/` backend，执行 SIMD 水平求和与尾部标量处理
+  - 内容: `reduction::sum` 接入独立 `simd/` backend；当前版本仅为整数 `sum` 执行 SIMD 水平求和与尾部标量处理，浮点/复数保持标量回退
   - 测试: `test_sum_simd_consistency`
   - 前置: T2, T3, simd 模块
   - 预计: 10 min
@@ -376,9 +395,9 @@ Wave 5:         [T7]
 
 ---
 
-## 7. 测试计划
+## 8. 测试计划
 
-### 7.1 测试分类表
+### 8.1 测试分类表
 
 | 测试分类 | 位置                     | 说明                                                                |
 | -------- | ------------------------ | ------------------------------------------------------------------- |
@@ -387,7 +406,7 @@ Wave 5:         [T7]
 | 边界测试 | 同模块测试中标注         | 覆盖空数组、NaN/Inf、非连续输入等边界                               |
 | 属性测试 | `tests/property/`        | 验证 keepdims、结果 shape 与串并一致性等不变量                      |
 
-### 7.2 单元测试清单
+### 8.2 单元测试清单
 
 | 测试函数                        | 测试内容                             | 优先级 |
 | ------------------------------- | ------------------------------------ | ------ |
@@ -409,7 +428,7 @@ Wave 5:         [T7]
 | `test_sum_simd_consistency`     | SIMD 路径结果与标量一致              | 高     |
 | `test_sum_parallel_consistency` | 并行路径结果与单线程一致             | 高     |
 
-### 7.3 边界测试场景
+### 8.3 边界测试场景
 
 | 场景                  | 预期行为                                              |
 | --------------------- | ----------------------------------------------------- |
@@ -421,7 +440,7 @@ Wave 5:         [T7]
 | f64 含 +Inf/-Inf      | sum 返回 +Inf/-Inf                                    |
 | 非连续数组（切片后）  | sum 结果与连续数组一致                                |
 
-### 7.4 属性测试不变量
+### 8.4 属性测试不变量
 
 | 不变量                                                             | 测试方法                              |
 | ------------------------------------------------------------------ | ------------------------------------- |
@@ -429,41 +448,68 @@ Wave 5:         [T7]
 | `sum_axis(axis).len() == input.len() / input.shape()[axis].max(1)` | 随机合法形状                          |
 | `sum()` 在串行/并行/非连续路径下结果一致                           | 随机 contiguous / non-contiguous 输入 |
 
-### 7.5 集成测试
+### 8.5 集成测试
 
 | 测试文件                  | 测试内容                                                                                            |
 | ------------------------- | --------------------------------------------------------------------------------------------------- |
 | `tests/test_reduction.rs` | `sum` / `sum_axis` / `keepdims` 与 `iter`、`tensor`、`element`、`simd`、`parallel` 的端到端协同路径 |
 
+### 8.6 Feature gate / 配置测试
+
+| 配置 | 验证点 |
+| ---- | ---- |
+| 默认配置 | 全局 / 按轴 `sum` 走串行路径并满足空数组、NaN 与 keepdims 语义。 |
+| 启用 `simd` | 连续整数输入上的 SIMD 归约结果与默认配置一致；浮点/复数归约仍走标量路径。 |
+| 启用并行能力 | 仅在可证明一致的路径上并行，结果与串行完全一致。 |
+| 启用 `simd` + 并行能力 | 后端组合不改变错误类别、shape 与数值语义。 |
+
+### 8.7 类型边界 / 编译期测试
+
+| 场景 | 测试方式 |
+| ---- | ---- |
+| `bool` 不参与 `sum` | 编译期测试。 |
+| `RemoveAxis` 约束下的 axis 归约输出维度正确 | 编译期测试与 shape 断言。 |
+| mean / min / max / arg* / custom reductions 不属于当前 API | API 缺失断言。 |
+
 ---
 
-## 8. 与其他模块的交互
+## 9. 与其他模块的交互
 
-### 8.1 接口约定
+### 9.1 接口约定
 
 | 方向                   | 对方模块   | 接口/类型                                  | 约定                                                               |
 | ---------------------- | ---------- | ------------------------------------------ | ------------------------------------------------------------------ |
 | `reduction → iter`     | `iter`     | `Elements` / `AxisIter`                    | 使用元素与轴迭代器完成全局归约和按轴归约，参见 `10-iterator.md` §4 |
 | `reduction → tensor`   | `tensor`   | `TensorBase<S, D>` / `Tensor<A, D>`        | 消费输入张量并返回归约结果，参见 `07-tensor.md` §4                 |
 | `reduction → element`  | `element`  | `Numeric` / `CheckedAdd` / `ComplexScalar` | 通过泛型约束区分整数、浮点和复数路径，参见 `03-element.md` §3      |
-| `reduction → simd`     | `simd`     | SIMD 归约路径                              | 连续数组可自动走 SIMD backend，参见 `08-simd.md` §3                |
+| `reduction → simd`     | `simd`     | SIMD 归约路径                              | 连续整数数组可自动走 SIMD backend；浮点/复数归约保持标量，参见 `08-simd.md` §3 |
 | `reduction → parallel` | `parallel` | 并行归约路径                               | 大数组可自动走并行归约，参见 `09-parallel.md` §4                   |
 
-### 8.2 数据流描述
+### 9.2 数据流描述
 
 ```text
-用户调用 sum() / sum_axis() / sum_axis_keepdims()
+User calls sum() / sum_axis() / sum_axis_keepdims()
     │
-    ├── reduction 模块先验证 axis / keepdims / 空数组等前提
-    ├── iter 模块提供元素流或按轴子视图
-    ├── element trait 决定普通求和、NaN 传播与整数 checked_add 策略
-    ├── 连续且 feature 允许时可委托 simd / parallel backend，否则走串行基线
-    └── 最终返回标量或新的 reduced tensor
+    ├── reduction validates axis, keepdims, and empty-input preconditions
+    ├── iter provides element streams or per-axis sub-views
+    ├── element traits select checked integer accumulation or IEEE 754 addition
+    └── SIMD / parallel backends are used only when they preserve serial semantics
 ```
 
 ---
 
-## 9. 设计决策记录（ADR）
+## 10. 错误处理与语义边界
+
+| 主题 | 内容 |
+| ---- | ---- |
+| Recoverable error | `sum_axis()` / `sum_axis_keepdims()` 在 axis 越界或 rank-0 输入时返回 `XenonError`，携带 `axis` 与 `ndim`。 |
+| Panic | 整数 `sum` 的 checked_add 溢出属于不可恢复错误并触发 panic。 |
+| 路径一致性 | 串行、SIMD 与并行路径必须保持相同结果；若无法证明一致性，则自动回退到串行实现。 |
+| 容差边界 | 不适用；当前版本不以近似容差接受并行或 SIMD 结果偏差。 |
+
+---
+
+## 11. 设计决策记录（ADR）
 
 ### 决策 1：overflow 处理策略
 
@@ -497,40 +543,40 @@ Wave 5:         [T7]
 
 ---
 
-## 10. 性能考量
+## 12. 性能考量
 
-### 10.1 Kahan 补偿求和 vs 普通求和
+### 12.1 Kahan 补偿求和 vs 普通求和
 
 | 方法       | 精度               | SIMD 友好          | 实现复杂度 |
 | ---------- | ------------------ | ------------------ | ---------- |
-| 普通求和   | 足够（大多数场景） | 高（向量化累加）   | 低         |
+| 普通求和   | 足够（大多数场景） | 高（整数路径可向量化） | 低     |
 | Kahan 补偿 | 高（补偿精度损失） | 低（4x 操作/元素） | 高         |
 
-### 10.2 SIMD 归约策略
+### 12.2 SIMD 归约策略
 
 | 步骤 | 操作                              |
 | ---- | --------------------------------- |
-| 1    | 加载 SIMD 向量（8x f32 / 4x f64） |
-| 2    | 乘法/累加（向量化）               |
+| 1    | 加载 SIMD 向量（如 8x i32 / 4x i64） |
+| 2    | 累加（向量化）                    |
 | 3    | 水平求和（reduce_add）            |
 | 4    | 尾部标量处理                      |
 
-### 10.3 性能数据（参考）
+### 12.3 性能数据（参考）
 
 | 操作         | 标量路径 | SIMD 路径（AVX2） | 加速比 |
 | ------------ | -------- | ----------------- | ------ |
-| sum f32 (1M) | ~1.5ms   | ~0.4ms            | 3.7x   |
-| sum f64 (1M) | ~2ms     | ~0.7ms            | 2.9x   |
-| sum i32 (1M) | ~1ms     | ~0.3ms            | 3.3x   |
+| sum f32 (1M) | ~1.5ms   | 标量回退（≈1.5ms） | ≈1.0x  |
+| sum f64 (1M) | ~2ms     | 标量回退（≈2ms）   | ≈1.0x  |
+| sum i32 (1M) | ~1ms     | ~0.3ms             | 3.3x   |
 
-### 10.4 复杂度标注
+### 12.4 复杂度标注
 
 - 全局 sum: O(n) 时间，O(1) 额外空间
 - 沿轴 sum: O(n) 时间，O(n/axis_len) 额外空间（结果数组）
 
 ---
 
-## 11. 平台与工程约束
+## 13. 平台与工程约束
 
 | 项目       | 约束                                                           |
 | ---------- | -------------------------------------------------------------- |

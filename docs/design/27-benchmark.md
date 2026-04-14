@@ -1,6 +1,6 @@
 # 基准测试模块设计
 
-> 文档编号: 27 | 模块: `benches/` | 阶段: Phase 6
+> 文档编号: 27 | 影响范围: `benches/`, benchmark CI 与性能回归流程 | 阶段: Phase 6
 > 前置文档: 所有前置文档（`00-coding.md` ~ `26-error.md`）
 > 需求参考: 需求说明书 §9.1, §9.2, §9.3, §28.3, §28.5
 > 范围声明: 范围内
@@ -42,9 +42,18 @@ L5: overload/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, fo
 benches/  ← 当前模块（dev-dependency，仅消费 crate 公共 API）
 ```
 
+## 2. 需求映射与范围约束
+
+| 类型     | 内容                                                                     |
+| -------- | ------------------------------------------------------------------------ |
+| 需求映射 | `require.md §9.1`, `§9.2`, `§9.3`, `§28.3`, `§28.5`                     |
+| 范围内   | benchmark 分类、参数矩阵、回归阈值、CI 分级工作流与结果一致性验证        |
+| 范围外   | 生产运行时性能调优、跨语言基准、额外平台专用测量框架                     |
+| 非目标   | 通过 benchmark 文档扩展 crate 公共 API、引入非必要运行时依赖或改变需求边界 |
+
 ---
 
-## 2. 文件位置
+## 3. 文件位置
 
 ```
 benches/
@@ -66,9 +75,9 @@ benches/
 
 ---
 
-## 3. 依赖关系
+## 4. 依赖关系
 
-### 3.1 依赖图
+### 4.1 依赖图
 
 ```
 benches/
@@ -83,7 +92,7 @@ benches/
 └── 可选本地 benchmark 工具     # 仅用于维护阶段的性能观察
 ```
 
-### 3.2 依赖精确到类型级
+### 4.2 依赖精确到类型级
 
 | 来源模块    | 使用的类型/trait                                                                              |
 | ----------- | --------------------------------------------------------------------------------------------- |
@@ -98,15 +107,23 @@ benches/
 | `construct` | `zeros`, `ones`, `from_vec`, `from_fn`（参见 `18-construction.md §4`）                        |
 | `broadcast` | `broadcast_shape`, 广播运算符（参见 `15-broadcast.md §4`）                                    |
 
-### 3.3 依赖方向声明
+### 4.3 依赖方向声明
 
 > **依赖方向：单向消费。** `benches/` 仅消费 crate 公共 API；benchmark 工具链属于可选维护设施，不被任何模块依赖。
 
+### 4.4 依赖合法性与新增依赖说明
+
+| 项目           | 说明                                                            |
+| -------------- | --------------------------------------------------------------- |
+| 新增第三方依赖 | `criterion`（仅 dev-dependency，用于基准测量）                  |
+| 合法性结论     | 符合最小依赖限制；仅限 benchmark/维护路径，不进入 crate 合约    |
+| 替代方案       | 标准库 `test` 基准或自定义脚本精度与生态支持不足，不作为主方案 |
+
 ---
 
-## 4. 公共 API 设计
+## 5. 公共 API 设计
 
-### 4.1 Cargo.toml 配置
+### 5.1 Cargo.toml 配置
 
 ```toml
 [dev-dependencies]
@@ -151,7 +168,7 @@ name = "construction"
 harness = false
 ```
 
-### 4.2 共享工具模块
+### 5.2 共享工具模块
 
 ```rust
 // benches/utils/mod.rs
@@ -203,7 +220,7 @@ pub fn strided_view_1d(n: usize) -> StridedFixture1D {
 
 ---
 
-### 4.3 四级分类体系
+### 5.3 四级分类体系
 
 ```
 Benchmark 分类
@@ -222,9 +239,9 @@ Benchmark 分类
 
 ---
 
-### 4.4 参数矩阵
+### 5.4 参数矩阵
 
-#### 4.4.1 输入规模
+#### 5.4.1 输入规模
 
 | 级别       | 1D         | 2D        | 3D          |
 | ---------- | ---------- | --------- | ----------- |
@@ -232,7 +249,7 @@ Benchmark 分类
 | **Medium** | 65,536     | 256×256   | 64×32×32    |
 | **Large**  | 16,777,216 | 4096×4096 | 256×256×256 |
 
-#### 4.4.2 数据类型
+#### 5.4.2 数据类型
 
 | 类型           | 优先级   | 说明              |
 | -------------- | -------- | ----------------- |
@@ -240,7 +257,7 @@ Benchmark 分类
 | `f32`          | **必测** | SIMD 向量宽度更大 |
 | `Complex<f64>` | **必测** | 复数运算开销验证  |
 
-#### 4.4.3 内存布局
+#### 5.4.3 内存布局
 
 | 布局           | 构造方式                            | 验证目标               |
 | -------------- | ----------------------------------- | ---------------------- |
@@ -251,7 +268,7 @@ Benchmark 分类
 
 ---
 
-### 4.5 Benchmark 清单
+### 5.5 Benchmark 清单
 
 | 组 ID                         | 操作                    | 规模  | 类型           | 布局           | 说明                                       |
 | ----------------------------- | ----------------------- | ----- | -------------- | -------------- | ------------------------------------------ |
@@ -273,8 +290,8 @@ Benchmark 分类
 | `broadcast_col`               | 列向量广播到矩阵        | S/M/L | f64            | F-contiguous   | 列广播                                     |
 | `transpose_2d`                | 2D 转置（零拷贝）       | S/M/L | f64            | F-contiguous   | 转置视图创建                               |
 | `simd_add_compare`            | `a + b` (SIMD vs 标量)  | M     | f32/f64        | F-contiguous   | SIMD 加速比（参见 `08-simd.md §10`）       |
-| `simd_sum_compare`            | sum (SIMD vs 标量)      | M     | f32/f64        | F-contiguous   | SIMD 归约加速                              |
-| `simd_dot_compare`            | dot (SIMD vs 标量)      | M     | f32/f64        | F-contiguous   | SIMD 内积加速与一致性                      |
+| `simd_sum_compare`            | sum (SIMD vs 标量)      | M     | i32/i64        | F-contiguous   | 仅测当前已覆盖的整数 SIMD 归约加速         |
+| `simd_dot_compare`            | dot (标量基线对比)      | M     | f32/f64        | F-contiguous   | 当前版本无 SIMD 内积 kernel，仅记录标量基线 |
 | `par_sum_compare`             | sum (并行 vs 串行)      | L     | i64            | F-contiguous   | 并行加速比（参见 `09-parallel.md §10`）    |
 | `par_add_compare`             | `a + b` (并行 vs 串行)  | L     | f64            | F-contiguous   | 并行逐元素加速                             |
 | `auto_threshold_switch`       | 自动路径选择            | S/M/L | f64            | F-contiguous   | 阈值附近自动串并切换行为                   |
@@ -286,7 +303,7 @@ Benchmark 分类
 
 ---
 
-### 4.6 CI 三级工作流
+### 5.6 CI 三级工作流
 
 | 工作流               | 基准数量                                                                    | 预计时间 | 频率             |
 | -------------------- | --------------------------------------------------------------------------- | -------- | ---------------- |
@@ -294,9 +311,9 @@ Benchmark 分类
 | **Regression Check** | `elem_add_f64` 和 `sum_1d_f64`                                              | ~10 min  | 每次 PR          |
 | **Full Benchmark**   | 全部文件 × 4 feature 组合（`default`、`simd`、`parallel`、`simd+parallel`） | ~60 min  | 每周/合并到 main |
 
-#### 4.6.1 Smoke Test 覆盖范围
+#### 5.6.1 Smoke Test 覆盖范围
 
-> **注意**：Smoke Test 仅验证 benchmark 代码可以正常编译和运行（"不崩溃"），不用于性能判断，也不执行回归阈值门禁。其调用约定统一使用 `--quick`，性能回归检测由 Regression Check（§4.6.2）负责。
+> **注意**：Smoke Test 仅验证 benchmark 代码可以正常编译和运行（"不崩溃"），不用于性能判断，也不执行回归阈值门禁。其调用约定统一使用 `--quick`，性能回归检测由 Regression Check（§5.6.2）负责。
 
 | 文件              | 组                      | 说明           |
 | ----------------- | ----------------------- | -------------- |
@@ -304,11 +321,11 @@ Benchmark 分类
 | `reduction.rs`    | `sum_1d_f64` (Medium)   | 核心归约路径   |
 | `construction.rs` | `zeros_1d` (Medium)     | 基础构造路径   |
 
-#### 4.6.2 Regression Check 覆盖范围
+#### 5.6.2 Regression Check 覆盖范围
 
-Regression Check 监测以下核心基准：`elem_add_f64`（逐元素加法，f64，256×256）和 `sum_1d_f64`（一维归约，f64，65536 元素）。其中 `256×256` 与 §4.2 的 Medium 规模保持一致。
+Regression Check 监测以下核心基准：`elem_add_f64`（逐元素加法，f64，256×256）和 `sum_1d_f64`（一维归约，f64，65536 元素）。其中 `256×256` 与 §5.2 的 Medium 规模保持一致。
 
-#### 4.6.3 CI 配置示例
+#### 5.6.3 CI 配置示例
 
 ```yaml
 # .github/workflows/bench.yml
@@ -340,7 +357,7 @@ cargo bench --bench construction -- "zeros_1d" --quick
 
 ---
 
-### 4.7 回归阈值
+### 5.7 回归阈值
 
 | 级别     | 阈值       | 动作                     |
 | -------- | ---------- | ------------------------ |
@@ -352,7 +369,7 @@ cargo bench --bench construction -- "zeros_1d" --quick
 
 ---
 
-### 4.8 Benchmark 模板
+### 5.8 Benchmark 模板
 
 ```rust
 // benches/math.rs
@@ -385,9 +402,9 @@ criterion_main!(benches);
 
 ---
 
-### 4.9 Good / Bad 示例
+### 5.9 Good / Bad 示例
 
-#### 4.9.1 Good — 正确的 benchmark 模式
+#### 5.9.1 Good — 正确的 benchmark 模式
 
 ```rust
 // Good: Use black_box to prevent the compiler from eliminating dead code
@@ -399,7 +416,7 @@ fn bench_sum(c: &mut Criterion) {
 }
 ```
 
-#### 4.9.2 Bad — 错误的 benchmark 模式
+#### 5.9.2 Bad — 错误的 benchmark 模式
 
 ```rust
 // Bad: Not using black_box, compiler may eliminate the operation
@@ -423,9 +440,9 @@ fn bench_sum_bad2(c: &mut Criterion) {
 
 ---
 
-## 5. 内部实现设计
+## 6. 内部实现设计
 
-### 5.1 测量方法论
+### 6.1 测量方法论
 
 使用 criterion 的默认测量策略：迭代式计时 + 统计分析。
 
@@ -436,7 +453,7 @@ fn bench_sum_bad2(c: &mut Criterion) {
 | 统计            | 剔除异常值（outlier removal），计算 95% 置信区间 |
 | 报告            | HTML 报告（含趋势图） + CLI 文本摘要             |
 
-### 5.2 数据生成策略
+### 6.2 数据生成策略
 
 | 策略          | 实现                                         | 说明                   |
 | ------------- | -------------------------------------------- | ---------------------- |
@@ -444,16 +461,16 @@ fn bench_sum_bad2(c: &mut Criterion) {
 | 预分配 + 复用 | 数据在 `bench_with_input` 闭包外生成         | 避免测量中混入构造开销 |
 | 非连续视图    | `slice(s![..;2])` 或 `slice(s![.., 0..n-1])` | 模拟真实切片场景       |
 
-> **设计决策**：所有数据在迭代回调外预生成（参见 §4.9.2 Bad 示例），确保仅测量目标操作本身的性能。
+> **设计决策**：所有数据在迭代回调外预生成（参见 §5.9.2 Bad 示例），确保仅测量目标操作本身的性能。
 
-### 5.4 基线消费表
+### 6.4 基线消费表
 
 | 基准 ID        | 输入规模 | baseline 来源              | 报告指标             | 阈值消费者       |
 | -------------- | -------- | -------------------------- | -------------------- | ---------------- |
 | `elem_add_f64` | 256×256  | 最近一次 main 分支通过结果 | wall time / change % | Regression Check |
 | `sum_1d_f64`   | 65,536   | 最近一次 main 分支通过结果 | wall time / change % | Regression Check |
 
-### 5.3 black_box 使用规范
+### 6.3 black_box 使用规范
 
 ```rust
 // Good: black_box wraps the entire expression to prevent dead code elimination
@@ -470,9 +487,9 @@ b.iter(|| &a + &b);
 
 ---
 
-## 8. 与其他模块的交互
+## 7. 与其他模块的交互
 
-### 8.1 Benchmark 文件到被测模块映射
+### 7.1 Benchmark 文件到被测模块映射
 
 | Benchmark 文件           | 被测模块            | 对应设计文档         |
 | ------------------------ | ------------------- | -------------------- |
@@ -486,7 +503,7 @@ b.iter(|| &a + &b);
 | `parallel_comparison.rs` | `parallel` + `math` | `09-parallel.md`     |
 | `construction.rs`        | `construct`         | `18-construction.md` |
 
-### 8.2 数据流
+### 7.2 数据流
 
 ```
 benchmark 文件
@@ -500,7 +517,7 @@ benchmark 文件
 
 ---
 
-## 6. 实现任务拆分
+## 8. 实现任务拆分
 
 ### Wave 1: 基础设施
 
@@ -618,7 +635,7 @@ Wave 5:           [T12]
 
 ---
 
-## 7. 测试计划
+## 9. 测试计划
 
 | 类型            | 位置                                   | 目的                                                     |
 | --------------- | -------------------------------------- | -------------------------------------------------------- |
@@ -627,9 +644,32 @@ Wave 5:           [T12]
 | 边界验证        | CI smoke/regression                    | 验证小规模回退、阈值附近自动切换、嵌套并行回退等边界行为 |
 | 属性/一致性验证 | benchmark 前置断言或 companion check   | 验证 SIMD == 标量、parallel == serial，再记录性能数据    |
 
+### 9.1 Feature gate / 配置测试
+
+| 配置        | 验证点                                                     |
+| ----------- | ---------------------------------------------------------- |
+| 默认配置    | benchmark 能在默认 `std` 配置下编译并执行核心基线          |
+| 启用 `simd` | SIMD comparison 组结果与标量路径一致后再记录性能           |
+| 启用并行    | parallel comparison 组验证串并一致性与阈值切换行为         |
+| 全 feature  | benchmark 入口、结果采集与 CI 工作流在组合配置下保持有效   |
+
+### 9.2 类型边界 / 编译期测试
+
+| 场景                         | 测试方式                                          |
+| ---------------------------- | ------------------------------------------------- |
+| feature-gated benchmark 入口 | `cargo bench --bench ... --features ... -- --list` |
+| SIMD / 并行比较组导出边界     | 配置矩阵编译检查                                  |
+| 非法 feature 组合             | CI 配置矩阵与 smoke check                         |
+
 ---
 
-## 9. 设计决策记录
+## 错误处理与语义边界
+
+本文档不直接定义错误类型，但要求 benchmark 代码、回归脚本与 CI 汇总逻辑在遇到被测 API 失败时遵循 `26-error.md` 的错误语义边界；基准层只允许记录或传播既有错误，不得自定义新的公开错误语义。
+
+---
+
+## 10. 设计决策记录
 
 ### 决策 1：使用 criterion.rs
 
@@ -676,7 +716,7 @@ Wave 5:           [T12]
 
 ---
 
-## 10. 平台与工程约束
+## 11. 平台与工程约束
 
 | 约束项     | 约束内容                                                     |
 | ---------- | ------------------------------------------------------------ |

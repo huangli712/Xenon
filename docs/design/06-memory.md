@@ -32,12 +32,12 @@
 ### 1.3 在架构中的位置
 
 ```
-依赖层级：
+Dependency layers:
 L0: error, private
 L1: dimension, element, complex
-L2: layout (依赖 dimension)  ← 当前模块
-L3: storage (独立于 layout，仅提供底层 buffer 与所有权)
-L4: tensor (依赖 storage, dimension)
+L2: layout (depends on dimension)  ← current module
+L3: storage (independent from layout, only provides the backing buffer and ownership)
+L4: tensor (depends on storage, dimension)
 L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 ```
 
@@ -54,7 +54,18 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 ---
 
-## 2. 文件位置
+## 2. 需求映射与范围约束
+
+| 项目     | 内容                                                             |
+| -------- | ---------------------------------------------------------------- |
+| 需求映射 | 需求说明书 §7                                                    |
+| 范围内   | `LayoutFlags`、`Strides<D>`、F-order 步长/连续性/对齐/零步长语义 |
+| 范围外   | 存储分配、元素访问、C-order、负步长布局支持                      |
+| 非目标   | 引入第三方 bitflags 依赖、多布局系统或运行时可插拔布局后端       |
+
+---
+
+## 3. 文件位置
 
 ```
 src/layout/
@@ -68,31 +79,39 @@ src/layout/
 
 ---
 
-## 3. 依赖关系
+## 4. 依赖关系
 
-### 3.1 依赖图（ASCII）
+### 4.1 依赖图（ASCII）
 
 ```
 src/layout/
 └── crate::dimension     # Dimension trait, Ix0~Ix6, IxDyn
 ```
 
-### 3.2 类型级依赖
+### 4.2 类型级依赖
 
 | 来源模块    | 使用的类型/trait                                               |
 | ----------- | -------------------------------------------------------------- |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md §4`） |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md §5`） |
 | `core`      | `isize`, `usize`                                               |
 
-### 3.3 依赖方向声明
+### 4.2a 依赖合法性
+
+| 项目           | 结论                           |
+| -------------- | ------------------------------ |
+| 新增第三方依赖 | 无                             |
+| 合法性结论     | 符合需求说明书最小依赖限制     |
+| 替代方案       | 不适用                         |
+
+### 4.3 依赖方向声明
 
 > **依赖方向：单向向上。** `layout/` 仅消费 `dimension` 的 trait 和类型，不被其依赖。`tensor/`、`math/`、`simd/` 等上层模块消费 layout 的类型和函数。对齐检查（`is_aligned`）接受原始指针 `*const u8`，无需依赖 `storage` 模块。
 
 ---
 
-## 4. 公共 API 设计
+## 5. 公共 API 设计
 
-### 4.1 LayoutFlags（u8 bitflags）
+### 5.1 LayoutFlags（u8 bitflags）
 
 使用 `u8` 类型存储布局标志位，占用 1 字节：
 
@@ -178,7 +197,7 @@ impl LayoutFlags {
 }
 ```
 
-### 4.1b 内存顺序枚举 Order
+### 5.1b 内存顺序枚举 Order
 
 `Order` 枚举表示内存排列顺序，供形状操作模块（参见 `16-shape.md §4`）在 reshape 时指定目标布局。
 
@@ -220,7 +239,43 @@ impl LayoutFlags {
 }
 ````
 
-### 4.2 步长类型：isize
+### 5.1c LayoutState 布局分类 API
+
+除底层 `LayoutFlags` 外，张量层还需要一个更直接的布局分类结果，便于上层 API、诊断输出和跨模块分支选择表达“当前这块逻辑数据在内存中的连续性状态”。
+
+> **说明：** Xenon 的原生构造路径仍以 F-order 为准；`LayoutState` 是一个**分类结果**，用于描述某个 `TensorBase` 当前 `shape + strides` 组合所呈现的布局状态，而不是放宽当前版本的 F-order only 设计边界。
+
+```rust
+/// Classification of tensor memory layout contiguity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayoutState {
+    /// C-contiguous (row-major): strides decrease monotonically, last stride = 1.
+    CContiguous,
+    /// Fortran-contiguous (column-major): strides increase monotonically, first stride = 1.
+    FContiguous,
+    /// Neither C- nor F-contiguous; arbitrary stride pattern.
+    NonContiguous,
+}
+
+impl<S, A, D> TensorBase<S, A, D> {
+    /// Returns the layout classification of this tensor's memory.
+    pub fn layout_state(&self) -> LayoutState;
+
+    /// Returns true if the tensor is C-contiguous.
+    pub fn is_c_contiguous(&self) -> bool;
+
+    /// Returns true if the tensor is F-contiguous.
+    pub fn is_f_contiguous(&self) -> bool;
+}
+```
+
+分类语义约定如下：
+
+- `LayoutState::FContiguous`：满足当前文档 §5.4 的 F-order 连续性判定。
+- `LayoutState::CContiguous`：用于 raw-parts、外部导入或未来兼容路径中识别 row-major 连续布局；这是一种只读分类能力，不表示当前版本新增 C-order 原生构造支持。
+- `LayoutState::NonContiguous`：表示任意其它 stride 模式，包括转置后布局、切片后非连续布局，以及既非 C 也非 F 的一般视图。
+
+### 5.2 步长类型：isize
 
 步长使用 `isize` 存储，以统一 stride/offset 相关元数据计算；当前版本仅接受非负步长与零步长：
 
@@ -232,9 +287,52 @@ impl LayoutFlags {
 /// - Zero stride: broadcast dimension (repeats the same element)
 ```
 
+### 5.2a `Strides<D>` 正式定义
+
+`Strides<D>` 是 layout 模块拥有的正式步长类型，用于把“每个轴前进一步需要跨过多少个元素”从 `Dimension` 的形状语义中独立出来。
+
+```rust
+/// Strides describe the element-offset along each dimension.
+/// For a tensor with shape [n0, n1, ..., nk], stride[i] gives the number of
+/// elements to skip to advance one position along dimension i.
+pub struct Strides<D: Dimension> {
+    /// Stride values, one per dimension.
+    strides: D,
+}
+
+impl<D: Dimension> Strides<D> {
+    /// Construct strides from a dimension value.
+    /// Panics if any stride is 0 (zero-stride/broadcast not allowed in stride representation).
+    pub fn new(strides: D) -> Self;
+
+    /// Compute default C-contiguous strides for the given shape.
+    pub fn c_contiguous(shape: &D) -> Self;
+
+    /// Compute default F-contiguous strides for the given shape.
+    pub fn f_contiguous(shape: &D) -> Self;
+
+    /// Returns the stride for dimension `axis`.
+    /// Panics if axis is out of bounds.
+    pub fn stride(&self, axis: usize) -> usize;
+}
+```
+
+不变量：
+
+- 所有 stride 值必须为正（非零）。
+- `Strides<D>` 的维度数必须与对应 `shape: D` 完全一致。
+- 对于 C-contiguous 布局：`stride[D-1] = 1`，且 `stride[i] = stride[i+1] * shape[i+1]`。
+- 对于 F-contiguous 布局：`stride[0] = 1`，且 `stride[i] = stride[i-1] * shape[i-1]`。
+
+与 `Dimension`/`TensorBase` 的职责边界如下：
+
+- `02-dimension.md` 中的 `Dimension` 只描述 shape/rank，不保存 stride 语义。
+- `Strides<D>` 负责保存与 shape 同 rank 的步长元数据。
+- `07-tensor.md` 中的 `TensorBase` 通过 `strides: Strides<D>` 持有这部分元数据，并交由 layout 层推导连续性与布局标志。
+
 负步长布局不在当前版本范围内（参见 `require.md §7`）。当前文档仅讨论由 F-order、转置与广播产生的合法布局。
 
-### 4.3 F-order 步长计算
+### 5.3 F-order 步长计算
 
 **算法**：
 
@@ -274,7 +372,7 @@ i=2: stride[2] = 12,   cumulative = 12 * 5 = 60
 pub fn compute_f_strides<D: Dimension>(shape: &D) -> Strides<D>;
 ```
 
-### 4.4 连续性检查算法
+### 5.4 连续性检查算法
 
 **F-连续条件**：
 
@@ -307,7 +405,7 @@ i=0: shape[0]=2, stride[0]=3, expected=1 ✗
 结果: false (not F-contiguous)
 ```
 
-### 4.5 对齐检查
+### 5.5 对齐检查
 
 ```rust
 /// Checks whether the logical-first pointer satisfies the alignment requirement.
@@ -323,13 +421,13 @@ pub fn is_aligned(ptr: *const u8) -> bool {
 }
 ```
 
-### 4.6 对齐与数据一致性
+### 5.6 对齐与数据一致性
 
 > **数据一致性保证：** 对齐布局（64 字节对齐）与非对齐布局必须产生相同的元素值。对齐仅影响 SIMD 访问性能，不改变数据语义。当前设计中 `Owned::from_vec(data)` 统一委托到对齐分配路径，因此与 `Owned::from_vec_aligned(data)` 在逻辑语义上完全等价；`is_aligned()` 标志仅用于指导 SIMD 路径选择，而不是区分两套用户可见的构造语义。
 
 > **Strides 归属约定：** `Strides<D>` 由 layout 模块定义并拥有；`dimension` 只提供 `checked_size()` 和无符号 F-order 形状推导，绝不保存 stride 或 logical-first pointer 语义。`tensor` 持有 `Strides<D>` 实例并把它交给 layout 计算标志位。
 
-### 4.7 零步长语义
+### 5.7 零步长语义
 
 零步长表示广播维度——该维度被扩展，但所有索引访问同一元素：
 
@@ -339,20 +437,20 @@ shape = [3, 4], strides = [1, 0]  // 第二维广播
 索引 [0, 0] 和 [0, 1] 和 [0, 2] 和 [0, 3] 访问同一物理元素
 ```
 
-### 4.8 Layout 结构体
+### 5.8 Layout 结构体
 
 > **注意**：`Layout` 结构体目前为"供未来扩展预留"（reserved for future use）。
-> 当前 `TensorBase` 实现直接内联 `LayoutFlags`（见 `07-tensor.md §4.1`）。
+> 当前 `TensorBase` 实现直接内联 `LayoutFlags`（见 `07-tensor.md §5.1`）。
 
 ```rust
 /// Memory layout descriptor.
 ///
 /// Layout describes memory access pattern flags only.
-/// The byte offset is stored directly in TensorBase (see `07-tensor.md §4.1`).
+/// The byte offset is stored directly in TensorBase (see `07-tensor.md §5.1`).
 ///
 // NOTE: Layout struct is defined here for potential future use.
 // Current TensorBase implementation inlines LayoutFlags directly.
-// See 07-tensor.md §4.1 for the actual implementation.
+// See 07-tensor.md §5.1 for the actual implementation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Layout {
     /// Layout flags
@@ -401,7 +499,7 @@ impl Layout {
 }
 ```
 
-### 4.10 compute_flags 内部函数
+### 5.10 compute_flags 内部函数
 
 ```rust
 /// Computes layout flags from shape, strides, and data pointer.
@@ -426,7 +524,7 @@ pub(crate) fn compute_flags<A, D: Dimension>(
 ) -> LayoutFlags
 ```
 
-### 4.11 Good/Bad 对比
+### 5.11 Good/Bad 对比
 
 ```rust
 // Good - F-order stride computation
@@ -448,9 +546,9 @@ let contig = check_contiguity(tensor.shape(), tensor.strides());  // O(n) repeat
 
 ---
 
-## 5. 内部实现设计
+## 6. 内部实现设计
 
-### 5.1 标志位计算算法
+### 6.1 标志位计算算法
 
 ```
 function compute_flags(shape, strides, ptr):
@@ -468,7 +566,7 @@ function compute_flags(shape, strides, ptr):
     return flags
 ```
 
-### 5.2 特殊情况处理
+### 6.2 特殊情况处理
 
 | 情况            | F-contiguous | 说明                        |
 | --------------- | :----------: | --------------------------- |
@@ -477,7 +575,7 @@ function compute_flags(shape, strides, ptr):
 | 1D 数组         |     true     | 一维情况天然 F-连续         |
 | 含 size=1 轴    |  检查其他轴  | size=1 轴的步长不影响连续性 |
 
-### 5.3 标志位更新规则
+### 6.3 标志位更新规则
 
 | 操作     | 标志位更新方式                                         |
 | -------- | ------------------------------------------------------ |
@@ -488,11 +586,11 @@ function compute_flags(shape, strides, ptr):
 | 视图创建 | 继承全部                                               |
 | 广播     | 继承 + 设置零步长标志                                  |
 
-### 5.4 安全性论证
+### 6.4 安全性论证
 
 Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的只读查询，结果缓存在 `LayoutFlags` 中。
 
-### 5.5 与 Dimension 模块的接口
+### 6.5 与 Dimension 模块的接口
 
 步长不再存储在 `D` 中。`layout` 模块通过 `Strides<D>` 保持与 shape 同维度数量的显式 `isize` 元数据，避免任何 `usize`/`isize` 重解释。
 
@@ -500,7 +598,7 @@ Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的
 
 ---
 
-## 6. 实现任务拆分
+## 7. 实现任务拆分
 
 ### Wave 1: 基础设施
 
@@ -580,9 +678,9 @@ Wave 4:       [T8]
 
 ---
 
-## 7. 测试计划
+## 8. 测试计划
 
-### 7.1 测试分类表
+### 8.1 测试分类表
 
 | 类型     | 位置                            | 目的                             |
 | -------- | ------------------------------- | -------------------------------- |
@@ -591,7 +689,7 @@ Wave 4:       [T8]
 | 边界测试 | `tests/test_layout_boundary.rs` | 空数组、标量、高维等边界情况     |
 | 属性测试 | `tests/property/`               | 验证步长、连续性与对齐相关不变量 |
 
-### 7.2 单元测试清单
+### 8.2 单元测试清单
 
 | 测试函数                   | 测试内容                          | 优先级 |
 | -------------------------- | --------------------------------- | ------ |
@@ -609,7 +707,7 @@ Wave 4:       [T8]
 | `test_flags_all_set`       | 所有标志位同时设置                | 中     |
 | `test_flags_default_empty` | 默认值为空                        | 高     |
 
-### 7.3 边界测试场景
+### 8.3 边界测试场景
 
 | 场景                       | 预期行为                       |
 | -------------------------- | ------------------------------ |
@@ -618,7 +716,7 @@ Wave 4:       [T8]
 | 1D 数组 `shape=[5]`        | F-连续为 true                  |
 | 高维 `shape=[2,2,2,2,2,2]` | F-连续，步长 `[1,2,4,8,16,32]` |
 
-### 7.4 属性测试不变量
+### 8.4 属性测试不变量
 
 | 不变量                                             | 测试方法                                          |
 | -------------------------------------------------- | ------------------------------------------------- |
@@ -627,49 +725,64 @@ Wave 4:       [T8]
 | `compute_f_strides` 后 `is_f_contiguous` 返回 true | 随机 shape                                        |
 | 对齐与非对齐数据元素值一致                         | `from_vec_aligned(v)` 与 `from_vec(v)` 逐元素比较 |
 
-### 7.5 集成测试
+### 8.5 集成测试
 
 | 测试文件               | 测试内容                                                                                                    |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `tests/test_layout.rs` | `compute_f_strides` / `compute_flags` / `is_aligned` 与 `tensor`、`storage`、`simd`、`ffi` 的端到端协同路径 |
 
+### 8.6 Feature gate / 配置测试
+
+| 配置项 | 覆盖方式                             | 说明                                         |
+| ------ | ------------------------------------ | -------------------------------------------- |
+| 默认配置 | 常规单元/集成测试路径                 | 本模块无独立 feature gate，默认配置即主路径  |
+| 非默认 feature | 不适用                             | 本模块未定义 feature gate，故无额外配置矩阵 |
+
+### 8.7 类型边界 / 编译期测试
+
+| 测试类型 | 覆盖方式                                        | 说明                                                      |
+| -------- | ----------------------------------------------- | --------------------------------------------------------- |
+| 布局顺序边界 | 编译期验证 `Order` 仅暴露 `F` 变体                | 验证当前版本不会误暴露 C-order                            |
+| stride 边界 | raw-parts / layout 相关编译期与运行时测试结合覆盖 | 验证 `Strides<D>` 与 `D` 的维度数保持一致                 |
+| 标志位边界 | 编译期验证不依赖外部 bitflags crate               | 验证布局标志保持最小依赖实现                               |
+
 ---
 
-## 8. 与其他模块的交互
+## 9. 与其他模块的交互
 
-### 8.1 接口约定
+### 9.1 接口约定
 
 | 方向                      | 对方模块             | 接口/类型              | 约定                                                                                                       |
 | ------------------------- | -------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `tensor/storage → layout` | `tensor` / `storage` | `layout::is_aligned()` | `TensorBase` 构造时将逻辑首元素指针传入 layout 计算对齐标志；layout 只操作原始指针，不依赖 Storage trait。 |
 
-### 8.2 数据流描述
+### 9.2 数据流描述
 
 ```text
-上层模块创建或变换张量元数据
+Upper layers create or transform tensor metadata
     │
-    ├── layout 模块根据 shape + strides + logical-first pointer 计算 flags
-    ├── tensor 模块缓存 F-contiguous / aligned / zero-stride 结果
-    ├── simd / ffi / shape / index 再消费这些 flags 做路径选择
-    └── 最终避免在热路径重复计算连续性和对齐状态
+    ├── layout computes flags from shape + strides + logical-first pointer
+    ├── tensor caches the F-contiguous / aligned / zero-stride results
+    ├── simd / ffi / shape / index consume these flags for path selection
+    └── repeated hot-path contiguity and alignment recomputation is avoided
 ```
 
-### 8.3 与 Tensor 模块
+### 9.3 与 Tensor 模块
 
 | 方向              | 对方模块 | 接口/类型           | 约定                                                                                                        |
 | ----------------- | -------- | ------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `layout ← tensor` | `tensor` | `LayoutFlags`       | `TensorBase` 直接内联 `LayoutFlags` 作为计算字段，`Layout` 结构体仅为预留定义（参见 `07-tensor.md` §4.1）。 |
+| `layout ← tensor` | `tensor` | `LayoutFlags`       | `TensorBase` 直接内联 `LayoutFlags` 作为计算字段，`Layout` 结构体仅为预留定义（参见 `07-tensor.md` §5.1）。 |
 | `tensor → layout` | `tensor` | 切片后的 flags 更新 | 切片时调用 layout 更新连续性与对齐标志（参见 `17-indexing.md` §5）                                          |
 | `tensor → layout` | `tensor` | reshape 步长重算    | reshape 时重新计算步长和 layout（参见 `16-shape.md` §4）                                                    |
 
-### 8.4 与 SIMD 模块
+### 9.4 与 SIMD 模块
 
 | 方向            | 对方模块 | 接口/类型                            | 约定                                                    |
 | --------------- | -------- | ------------------------------------ | ------------------------------------------------------- |
 | `simd ← layout` | `simd`   | `is_aligned()` / `is_f_contiguous()` | simd 用这些查询结果做路径选择（参见 `08-simd.md` §4.6） |
 | `simd ← layout` | `simd`   | 步长检查                             | simd 继续检查步长是否为 1，以确认连续访问路径           |
 
-### 8.5 与 FFI 模块
+### 9.5 与 FFI 模块
 
 | 方向           | 对方模块 | 接口/类型            | 约定                                                                |
 | -------------- | -------- | -------------------- | ------------------------------------------------------------------- |
@@ -678,7 +791,18 @@ Wave 4:       [T8]
 
 ---
 
-## 9. 设计决策记录
+## 10. 错误处理与语义边界
+
+| 项目           | 内容 |
+| -------------- | ---- |
+| Recoverable error | 对外布局校验失败返回 `XenonError`（由上层构造路径传播），上下文字段应包含 shape、strides、offset 或操作名等布局元数据 |
+| Panic | 纯布局查询函数不以 panic 作为常规错误语义；若内部辅助计算在已验证快捷路径上发生整数溢出，可按契约 panic |
+| 路径一致性 | scalar 布局、SIMD 路径选择与 parallel 上游消费必须共享同一 `LayoutFlags` 语义，不允许因路径差异改变结果 |
+| 容差边界 | 不适用 |
+
+---
+
+## 11. 设计决策记录
 
 ### 决策 1：F-order only
 
@@ -717,7 +841,7 @@ Wave 4:       [T8]
 
 ---
 
-## 10. 性能考量
+## 12. 性能考量
 
 | 方面       | 设计决策                                                   |
 | ---------- | ---------------------------------------------------------- |
@@ -745,7 +869,7 @@ Wave 4:       [T8]
 
 ---
 
-## 11. 平台与工程约束
+## 13. 平台与工程约束
 
 | 约束       | 说明                                   |
 | ---------- | -------------------------------------- |

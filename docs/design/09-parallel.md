@@ -35,36 +35,48 @@
 ### 1.3 在架构中的位置
 
 ```
-依赖层级：
+Dependency levels:
 L0: error, private
 L1: dimension, element, complex
-L2: layout (依赖 dimension)
-L3: storage (仅依赖 core/alloc，不依赖 layout)
-L4: tensor (依赖 storage, dimension)
-L5: parallel  ← 当前模块（可选，feature = "parallel"）
+L2: layout (depends on dimension)
+L3: storage (depends only on core/alloc, not layout)
+L4: tensor (depends on storage, dimension)
+L5: parallel  <- current module (optional, feature = "parallel")
 ```
 
 ### 1.4 性能分层中的角色
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      性能分层决策树                               │
+│                Performance dispatch decision tree               │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  元素数 ≥ PARALLEL_THRESHOLD (默认 1024) 且 parallel 启用        │
-│  └─→ 并行路径                                                   │
-│      └─ 每个分块内部使用的具体执行内核（SIMD 或标量）由上层语义模块 │
-│         或共享 dispatch 辅助层决定；`parallel/` 本身不直接裁决 SIMD │
+│  len >= PARALLEL_THRESHOLD (default 1024) and parallel enabled  │
+│  └─> Parallel path                                              │
+│      └─ The per-chunk execution kernel (SIMD or scalar) is      │
+│         chosen by upper semantic modules or a shared dispatch   │
+│         helper; `parallel/` itself does not choose SIMD         │
 │                                                                 │
-│  默认情况                                                       │
-│  └─→ 串行路径                                                   │
+│  Otherwise                                                      │
+│  └─> Serial path                                                │
 │                                                                │
 └────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 2. 文件位置
+## 2. 需求映射与范围约束
+
+| 类型     | 内容                                                                 |
+| -------- | -------------------------------------------------------------------- |
+| 需求映射 | `需求说明书 §9.2`, `§9.3`                                            |
+| 范围内   | Data-parallel for element-wise/reduction/dot; threshold config; nested parallelism guard |
+| 范围外   | Nested parallelism; GPU backends                                     |
+| 非目标   | No new dependencies beyond rayon                                     |
+
+---
+
+## 3. 文件位置
 
 ```
 src/parallel/
@@ -77,22 +89,22 @@ src/parallel/
 
 ---
 
-## 3. 依赖关系
+## 4. 依赖关系
 
-### 3.1 依赖图
+### 4.1 依赖图
 
 ```
 src/parallel/
-├── rayon (可选)               # 外部依赖，feature = "parallel"
-├── crate::tensor             # TensorBase<S, D>, 类型别名
+├── rayon (optional)          # External dependency, feature = "parallel"
+├── crate::tensor             # TensorBase<S, D>, type aliases
 ├── crate::storage            # Storage, RawStorage trait
 ├── crate::layout             # LayoutFlags, is_f_contiguous()
 ├── crate::element            # Element trait
-├── crate::broadcast          # broadcast_shape() (zip 场景)
-└── （无 direct backend 依赖；SIMD 组合由上层调度层决定）
+├── crate::broadcast          # broadcast_shape() (zip scenarios)
+└── no direct backend dependency; SIMD composition is chosen by upper-layer dispatch
 ```
 
-### 3.2 依赖精确到类型级
+### 4.2 依赖精确到类型级
 
 | 来源模块    | 使用的类型/trait                                                                                                                                                 |
 | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -102,17 +114,25 @@ src/parallel/
 | `layout`    | `LayoutFlags`, `is_f_contiguous()`（参见 `06-memory.md §4`）                                                                                                     |
 | `broadcast` | `broadcast_shape()`（参见 `15-broadcast.md §4`）                                                                                                                 |
 
-### 3.3 依赖方向声明
+### 4.3 依赖方向声明
 
 > **依赖方向：单向向上。** `parallel/` 仅消费 `tensor`、`storage`、`layout` 等核心模块，不被它们依赖。与 `simd/` 的组合由上层语义模块协调，而不是 `parallel/` 直接依赖 `simd/`；`parallel/` 模块在未启用 feature 时完全不存在。
 
 > **说明**: `parallel` 依赖 `broadcast::broadcast_shape()` 用于 zip 场景。虽然两者同属 L5，但 broadcast 仅消费 L1-L4 的类型，不存在循环依赖。
 
+### 4.4 依赖合法性与新增依赖说明
+
+| 项目           | 说明                               |
+| -------------- | ---------------------------------- |
+| 新增第三方依赖 | `rayon`                            |
+| 合法性结论     | 符合需求说明书最小依赖限制         |
+| 替代方案       | 不适用                             |
+
 ---
 
-## 4. 公共 API 设计
+## 5. 公共 API 设计
 
-### 4.1 Xenon 并行约束
+### 5.1 Xenon 并行约束
 
 ```toml
 # Cargo.toml
@@ -130,7 +150,7 @@ rayon = { version = "1.10", optional = true }
 
 > **约束说明：** `parallel` 依赖 `std::sync::atomic`、rayon 线程池与线程本地上下文，因此文档、CI 和 feature 矩阵都必须把 `parallel` 视为 `std` 扩展能力。
 
-### 4.2 并行阈值系统
+### 5.2 并行阈值系统
 
 ```rust
 // src/parallel/mod.rs
@@ -173,7 +193,7 @@ pub fn reset_parallel_threshold() {
 
 > **设计决策：** 使用 `Ordering::Relaxed`。阈值读取不需要与其他操作同步，稍旧的值也可接受。阈值修改通常是启动时一次性操作。
 
-### 4.3 自动路径选择
+### 5.3 自动路径选择
 
 ```rust
 // src/parallel/mod.rs
@@ -216,7 +236,7 @@ pub fn should_parallelize(_len: usize, _is_contiguous: bool) -> bool {
 }
 ```
 
-### 4.4 并行运算 Trait
+### 5.4 并行运算 Trait
 
 ```rust
 // src/parallel/par_ops.rs
@@ -407,7 +427,7 @@ where
 
 > **顺序保证：** `ParZip` 以广播后的共享逻辑扁平索引区间作为唯一分割基准，并向 rayon 暴露 indexed 语义；因此 `collect::<Vec<_>>()` 产生的结果顺序与串行 `zip_with()` 的逻辑元素顺序一致，而不是“线程完成顺序”。
 
-### 4.5 并行迭代器
+### 5.5 并行迭代器
 
 ```rust
 // src/parallel/par_iter.rs
@@ -586,7 +606,7 @@ where
 }
 ```
 
-### 4.6 `par_iter()` 入口
+### 5.6 `par_iter()` 入口
 
 ```rust
 // src/parallel/par_iter.rs (or src/tensor/impls.rs)
@@ -613,7 +633,7 @@ where
 }
 ```
 
-### 4.7 嵌套并行防护（实现）
+### 5.7 嵌套并行防护（实现）
 
 ```rust
 // src/parallel/mod.rs
@@ -642,7 +662,7 @@ impl Drop for ParallelGuard {
 
 > **设计说明：** 不在公共 API 中显式暴露并行令牌参数。并行入口统一通过 `ParallelGuard::enter()` 建立运行时守卫；若检测到已处于并行区域，则内层操作自动回退串行，避免嵌套并行失效。
 
-### 4.8 Good/Bad 对比示例
+### 5.8 Good/Bad 对比示例
 
 ```rust
 // Good - Use automatic path selection
@@ -669,32 +689,32 @@ let result = par_zip_with(&a, &b, |x, y| x + y)?;
 
 ---
 
-## 5. 内部实现设计
+## 6. 内部实现设计
 
-### 5.1 分块策略
+### 6.1 分块策略
 
 ```
-分块决策流程
+Chunking decision flow
 
 ┌─────────────────────────────────────────────────────────────────┐
-│  输入: tensor (TensorBase<S, D>)                                 │
+│  Input: tensor (TensorBase<S, D>)                               │
 │                                                                 │
-│  1. 检查连续性                                                    │
+│  1. Check contiguity                                            │
 │     ├─ is_f_contiguous() ?                                      │
-│     │   └─ 使用连续分块策略（参见 `06-memory.md §4.4`）      │
+│     │   └─ Use contiguous chunking (see `06-memory.md §4.4`)    │
 │     │       compute_contiguous_chunks(len, config)              │
 │     │                                                           │
-│     └─ 非连续                                                    │
-│         └─ 沿第一轴分块                                           │
+│     └─ Non-contiguous                                           │
+│         └─ Chunk along the first axis                           │
 │             compute_strided_chunks(shape, strides, config)      │
 │                                                                 │
-│  2. 返回分块迭代器                                                │
+│  2. Return chunk iterator                                       │
 │     └─ chunks.into_par_iter()                                   │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 5.2 线程池管理
+### 6.2 线程池管理
 
 ```rust
 // src/parallel/mod.rs
@@ -732,7 +752,7 @@ impl ParallelPool {
 }
 ```
 
-### 5.3 并行错误传播
+### 6.3 并行错误传播
 
 ```rust
 // Good - Unrecoverable errors in parallel operations are propagated immediately
@@ -786,7 +806,7 @@ where
 
 ---
 
-## 6. 实现任务拆分
+## 7. 实现任务拆分
 
 ### Wave 1: 基础设施
 
@@ -870,9 +890,9 @@ Wave 4:        [T8]
 
 ---
 
-## 7. 测试计划
+## 8. 测试计划
 
-### 7.1 测试分类表
+### 8.1 测试分类表
 
 | 类型       | 位置                     | 目的                                  |
 | ---------- | ------------------------ | ------------------------------------- |
@@ -882,7 +902,7 @@ Wave 4:        [T8]
 | 并发测试   | `tests/concurrent/`      | 竞态条件检测                          |
 | 属性测试   | `tests/property/`        | 随机数据验证一致性不变量（参见 §7.4） |
 
-### 7.2 单元测试清单
+### 8.2 单元测试清单
 
 | 测试函数                          | 测试内容                    | 优先级 |
 | --------------------------------- | --------------------------- | ------ |
@@ -900,7 +920,7 @@ Wave 4:        [T8]
 | `test_parallel_token_propagation` | 并行上下文令牌传播正确      | 中     |
 | `test_custom_pool`                | 自定义线程池工作正常        | 低     |
 
-### 7.3 边界测试场景
+### 8.3 边界测试场景
 
 | 场景                  | 预期行为                   |
 | --------------------- | -------------------------- |
@@ -912,7 +932,7 @@ Wave 4:        [T8]
 | 非连续数组            | 阈值翻倍后决定             |
 | 嵌套并行              | 内层自动回退串行           |
 
-### 7.4 属性测试不变量
+### 8.4 属性测试不变量
 
 | 不变量                                  | 测试方法                    |
 | --------------------------------------- | --------------------------- |
@@ -922,65 +942,93 @@ Wave 4:        [T8]
 | `par_zip_with(f) == zip_with(f)`        | 随机形状                    |
 | 并行结果与线程数无关                    | 分别用 1, 2, 4, 8 线程验证  |
 
-### 7.5 集成测试
+### 8.5 集成测试
 
 | 测试文件                 | 测试内容                                                                                                          |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------- |
 | `tests/test_parallel.rs` | `par_map` / `par_sum` / `par_dot` / `par_zip_with` 与 `tensor`、`storage`、`simd`、`rayon` guard 的端到端协同路径 |
 
+### 8.6 Feature gate / 配置测试
+
+| 场景                    | 配置方式                             | 预期行为                                 |
+| ----------------------- | ------------------------------------ | ---------------------------------------- |
+| 默认关闭                | 默认 feature 集                      | 不编译并行路径，且无 `rayon` 运行时依赖  |
+| 显式启用                | `--features parallel`                | 并行 API 可用，达到阈值时进入并行路径    |
+| 无硬件/线程收益自动回退 | `--features parallel` + 单线程环境   | 成功编译运行，并自动回退到串行路径       |
+
+### 8.7 类型边界 / 编译期测试
+
+| 测试类型   | 覆盖内容                                                                    | 预期结果                           |
+| ---------- | --------------------------------------------------------------------------- | ---------------------------------- |
+| 类型边界   | `A: Send + Sync`、`B: Send`、`F: Sync` 等 trait 约束                        | 合法类型组合可编译，非法组合被拒绝 |
+| 类型边界   | `par_dot` 仅接受一维输入；`par_zip_with` 需满足 broadcast 约束              | 不满足签名约束时编译或类型检查失败 |
+| 编译期测试 | `#[cfg(feature = "parallel")]` / `#[cfg(not(feature = "parallel"))]` 两侧 API | 两种 feature 组合均可编译          |
+| 编译期测试 | 嵌套并行防护 API 与串行回退路径                                             | 开启 feature 后可编译并保持回退语义 |
+
 ---
 
-## 8. 与其他模块的交互
+## 9. 与其他模块的交互
 
-### 8.1 接口约定
+### 9.1 接口约定
 
-并行路径的每个工作线程可以调用上层提供的分块执行器；若上层在该分块上启用 SIMD，则形成“并行 + SIMD”组合路径（参见 `08-simd.md §8`）。
+并行路径的每个工作线程可以调用上层提供的分块执行器；若上层在该分块上启用 SIMD，则仅限于当前已覆盖的逐元素算术/一元运算和整数归约形成“并行 + SIMD”组合路径。数学函数以及浮点归约/内积在并行路径中仍保持标量执行（参见 `08-simd.md §9`）。
 
 ```
-并行 + SIMD 组合执行
+Parallel + SIMD combined execution
 
 ┌─────────────────────────────────────────────────────────────────┐
 │ par_map(tensor, f)                                              │
-│   ├─ 分块: [0..N/4), [N/4..N/2), [N/2..3N/4), [3N/4..N)       │
+│   ├─ Chunking: [0..N/4), [N/4..N/2), [N/2..3N/4), [3N/4..N)   │
 │   │                                                             │
-│   ├─ 线程 0: execute_chunk(chunk_0)                             │
-│   │   └─ 具体使用 SIMD 还是标量，由上层 dispatch 决定             │
+│   ├─ Thread 0: execute_chunk(chunk_0)                          │
+│   │   └─ SIMD or scalar is chosen by upper-layer dispatch      │
 │   │                                                             │
-│   ├─ 线程 1: execute_chunk(chunk_1)                             │
-│   │   └─ 具体使用 SIMD 还是标量，由上层 dispatch 决定             │
+│   ├─ Thread 1: execute_chunk(chunk_1)                          │
+│   │   └─ SIMD or scalar is chosen by upper-layer dispatch      │
 │   │                                                             │
 │   └─ ...                                                        │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 8.2 数据流描述
+### 9.2 数据流描述
 
 ```text
-上层语义模块调用 par_map / par_sum / par_dot / par_zip_with
+Upper semantic modules call par_map / par_sum / par_dot / par_zip_with
     │
     ├── ParallelGuard::enter()
-    │       └── 若已在并行区域 → 自动回退串行
+    │       └── If already in parallel region -> automatically fall back to serial
     │
     ├── should_parallelize(len, is_f_contiguous)
-    │       ├── 低于阈值 → 串行
-    │       └── 达到阈值 → 并行分块
+    │       ├── Below threshold -> serial
+    │       └── Meets threshold -> parallel chunking
     │
-    ├── rayon 对分块并行执行
+    ├── rayon executes chunks in parallel
     │
-    └── 每个分块内部的具体执行内核（SIMD / 标量）由上层 dispatch 决定
+    └── The execution kernel inside each chunk (SIMD / scalar) is chosen by upper-layer dispatch
 ```
 
-### 8.3 与 storage 模块
+### 9.3 与 storage 模块
 
 并行迭代器通过 `RawStorage` trait 获取原始指针和长度信息（参见 `05-storage.md §4`）。
 
-### 8.4 与 tensor 模块
+### 9.4 与 tensor 模块
 
 并行操作消费 `Tensor<A, D>` 的视图，产出新的 `Tensor<A, D>`（参见 `07-tensor.md §4.5`）。
 
 ---
 
-## 9. 设计决策记录（ADR）
+## 10. 错误处理与语义边界
+
+| 类型                 | 说明                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------ |
+| Recoverable error    | `par_zip_with` 的 shape/broadcast 校验失败、线程池初始化失败等通过 `Result` 返回；阈值不足或检测到嵌套并行时自动回退串行路径 |
+| Panic                | 违反内部长度不变式、`unsafe` 构造前提被破坏等实现级 bug；设计上不因嵌套并行而 panic   |
+| 路径一致性           | parallel 结果与 serial 路径保持一致；若某条并行路径无法证明一致，则必须回退串行       |
+| 容差边界             | integer: exact; float: same numerical semantics or documented tolerance per require §28.3 |
+
+---
+
+## 11. 设计决策记录（ADR）
 
 ### 决策 1：选择 rayon 作为并行框架
 
@@ -1022,9 +1070,9 @@ Wave 4:        [T8]
 
 ---
 
-## 10. 性能考量
+## 12. 性能考量
 
-### 10.1 并行开销分析
+### 12.1 并行开销分析
 
 | 开销来源 | 典型值    | 说明                       |
 | -------- | --------- | -------------------------- |
@@ -1033,29 +1081,29 @@ Wave 4:        [T8]
 | 缓存失效 | ~10-100μs | 大数组跨线程访问           |
 | 同步屏障 | ~0.1-1μs  | reduce 操作的合并步骤      |
 
-### 10.2 最优阈值选取方法
+### 12.2 最优阈值选取方法
 
 ```
-性能 vs 元素数 关系图
+Performance vs element count
 
-速度
-  │          ┌──────────────── 并行路径
+Speed
+  │          ┌──────────────── Parallel path
   │         ╱
-  │        ╱  交叉点 ≈ 1024
-  │───────╱────────────────── 串行路径
+  │        ╱  crossover ≈ 1024
+  │───────╱────────────────── Serial path
   │      ╱
   │     ╱
   │    ╱
-  └─────────────────────── 元素数
+  └─────────────────────── Element count
          ↑
-      并行阈值
+       Parallel threshold
 ```
 
 - 实际最优阈值依赖硬件配置，应通过 benchmark 确定
 - 默认值 1024 是保守估计，适用于主流硬件
 - 用户可通过 `set_parallel_threshold()` 调优
 
-### 10.3 预期加速比
+### 12.3 预期加速比
 
 | 操作               | 元素数 | 4 核加速比 | 8 核加速比 |
 | ------------------ | ------ | ---------- | ---------- |
@@ -1066,7 +1114,7 @@ Wave 4:        [T8]
 
 ---
 
-## 11. 平台与工程约束
+## 13. 平台与工程约束
 
 | 约束       | 说明                         |
 | ---------- | ---------------------------- |
