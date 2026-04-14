@@ -1,744 +1,345 @@
-# 错误处理模块设计
+# 错误处理规范
 
-> 文档编号: 26 | 模块: `src/error.rs` | 阶段: Phase 1
-> 前置文档: `00-coding.md`
+> 文档编号: 26 | 适用范围: 所有公开 API | 阶段: Phase 1
+> 前置文档: `01-architecture.md`, `07-tensor.md`, `21-type.md`
 > 需求参考: 需求说明书 §27
+> 范围声明: 范围内
 
 ---
 
-## 1. 模块定位
+## 1. 主题定位与适用范围
 
-### 1.1 职责边界
+### 1.1 主题定位
 
-| 职责 | 包含 | 不包含 |
-|------|------|--------|
-| 统一错误枚举 | `XenonError` 枚举，覆盖所有可恢复错误场景 | 具体业务逻辑（运算、索引等） |
-| 错误上下文 | 每个错误变体携带期望值与实际值 | 日志系统、错误追踪 |
-| Result 类型别名 | `type Result<T> = core::result::Result<T, XenonError>` | 自定义 Result 扩展方法 |
-| Display 实现 | 所有变体的人类可读错误消息 | 结构化错误序列化 |
-| std::error::Error 实现 | `#[cfg(feature = "std")]` 条件编译 | no_std 下的 Error trait（core 中不可用） |
-| 错误分类规则 | 所有可恢复错误统一通过 `Result` 暴露；仅语言级索引语法保留 panic 例外 | 运行时错误恢复策略 |
+本文档定义 Xenon 全部公开 API 的统一错误模型，包括：
 
-### 1.2 设计原则
+- 可恢复错误如何通过 `Result` 暴露
+- 不可恢复错误如何通过 panic 报告
+- 错误上下文字段的最小集合
+- 类型转换、索引、形状、FFI 等场景的统一诊断规则
 
-| 原则 | 体现 |
-|------|------|
-| API 简洁 | 单一错误枚举，避免错误类型爆炸 |
-| 信息丰富 | 每个变体携带上下文（期望 vs 实际） |
-| 零堆分配 | 错误对象本身避免额外堆分配；少量格式化辅助路径允许临时分配 |
-| no_std 友好 | 仅依赖 `core` + `alloc` |
-| Rust 惯例一致 | 索引语法越界沿用标准库 slice 的 panic 行为；其余可恢复失败使用返回值报告 |
-| 语义集中裁决 | 方法型 API 与运算符相关语义共享同一可恢复错误模型；仅 `tensor[[...]]` 这类语言级索引语法保留 panic 例外 |
+### 1.2 适用范围
 
-### 1.3 在架构中的位置
-
-```
-依赖层级：
-L0: error  ← 当前模块
-L1: dimension, element, complex
-L2: layout (依赖 dimension)
-L3: storage (仅依赖 core/alloc，不依赖 layout)
-L4: tensor (依赖 storage, dimension)
-L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
-```
+| 项目     | 内容                                                          |
+| -------- | ------------------------------------------------------------- |
+| 覆盖对象 | 所有公开 API、公开 trait 入口、公开运算符语义、并行执行路径   |
+| 范围内   | `XenonError`、`Result<T>`、panic 分类、诊断字段、并行传播规则 |
+| 范围外   | 日志系统、遥测、错误上报平台、序列化错误模型                  |
+| 非目标   | 为每个模块单独定义一套错误类型                                |
 
 ---
 
-## 2. 文件位置
+## 2. 需求映射与范围约束
 
-```
-src/
-├── lib.rs
-├── error.rs          ← 错误模块（本设计文档目标）
-├── dimension/
-├── element/
-├── ...
-```
+| 类型     | 内容                                                                     |
+| -------- | ------------------------------------------------------------------------ |
+| 需求映射 | `require.md §27`                                                         |
+| 范围内   | 可恢复错误返回值、panic 分类、诊断字段、类型转换失败、索引失败、FFI 失败 |
+| 范围外   | 自定义日志、第三方错误包装器、跨进程序列化                               |
+| 非目标   | 通过 `panic` 替代本应可恢复的用户输入错误                                |
 
-单文件设计：预估约 200-300 行，所有错误类型紧密相关共同构成一个概念单元，仅依赖 `core`/`alloc`，无复杂依赖图。若未来错误变体超过 15 个或代码超过 500 行，可考虑按错误类别拆分。
+### 2.1 关键约束
 
----
-
-## 3. 依赖关系
-
-### 3.1 依赖图（ASCII）
-
-```
-src/error.rs
-├── core::fmt          # Display trait
-├── core::result       # Result<T, E>
-├── alloc::borrow      # Cow<'static, [usize]>, Cow<'static, str>
-├── alloc::vec         # Vec<usize> (Cow::Owned 变体)
-└── alloc::string      # String (Cow::Owned 变体)
-```
-
-### 3.2 依赖精确到类型级
-
-| 来源 | 使用的类型/trait |
-|------|-----------------|
-| `core::fmt` | `fmt::Display`, `fmt::Formatter`, `fmt::Result` |
-| `core::result` | `Result<T, E>`（用于类型别名） |
-| `alloc::borrow` | `Cow<'static, [usize]>` |
-| `alloc::vec` | `Vec<usize>`（`Cow::Owned` 内部使用） |
-| `alloc::string` | `String`（`Cow::Owned` 内部使用） |
-| `std::error` | `Error` trait（仅 `#[cfg(feature = "std")]`） |
-
-### 3.3 依赖方向声明
-
-> **依赖方向：无内部依赖。** `error.rs` 是整个项目的 L0 层，不依赖 crate 内任何其他模块。
-> 被所有下游模块消费：`dimension`（参见 `02-dimension.md §3`）、`element`（参见 `03-element.md §3`）、`layout`（参见 `06-memory.md §3`）、`storage`（参见 `05-storage.md §3`）、`tensor`（参见 `07-tensor.md §3`）、`math`（参见 `11-math.md §3`）、`shape`（参见 `16-shape.md §3`）、`index`（参见 `17-indexing.md §3`） 等。
+- 可恢复错误须通过返回值形式报告
+- 不可恢复错误须统一通过 panic 暴露
+- 所有可恢复错误以及对应 panic 信息都须携带适用的结构化上下文
+- `cast()` 失败属于可恢复错误，必须进入 `XenonError`
 
 ---
 
-## 4. 公共 API 设计
+## 3. 影响范围
 
-### 4.1 XenonError 枚举完整定义
+### 3.1 受影响模块
+
+| 模块/能力            | 影响内容                               |
+| -------------------- | -------------------------------------- |
+| `tensor` / `shape`   | 形状校验、布局前提、元素总数校验       |
+| `index`              | 越界索引、按轴索引、切片边界诊断       |
+| `broadcast` / `math` | 广播失败、形状不兼容、参数非法         |
+| `reduction`          | 非法轴、空输入、整数溢出 panic         |
+| `convert`            | `TypeConversion` 错误及元素索引定位    |
+| `ffi`                | FFI 前提失败与后端约束诊断             |
+| `parallel`           | panic / `Err` 的立即传播，不得静默吞掉 |
+
+### 3.2 统一依赖方向
+
+> **依赖方向：单向向上。** 错误规范由 `error.rs` 提供基础类型，但本文约束的是所有公开 API 的外部行为，而非某一个源码目录的局部实现。
+
+---
+
+## 4. 规范内容
+
+### 4.1 可恢复错误与 panic 的边界
+
+| 场景                                 | 处理方式                                  | 说明                      |
+| ------------------------------------ | ----------------------------------------- | ------------------------- |
+| 形状不兼容 / 广播失败                | `Result::Err(XenonError)`                 | 运行时输入决定，可恢复    |
+| 轴越界 / 参数非法 / FFI 前提失败     | `Result::Err(XenonError)`                 | 调用方可修正输入并重试    |
+| `cast()` 有损或前提不满足            | `Result::Err(XenonError::TypeConversion)` | `require.md §23` 强制要求 |
+| 方法型索引失败                       | `Result::Err(XenonError::IndexError)`     | 需返回结构化索引上下文    |
+| 语言级 `Index` 语法越界              | panic                                     | 与 Rust 索引惯例保持一致  |
+| 整数溢出 / 整数除以零 / 结果不可表示 | panic                                     | 属于不可恢复算术域错误    |
+
+### 4.2 统一错误类型
 
 ```rust
 use alloc::borrow::Cow;
 use core::fmt;
 
-/// Unified error type for all Xenon operations.
-///
-/// All recoverable errors are represented through this enum,
-/// providing rich context information for debugging.
+/// Unified recoverable error type for all public Xenon APIs.
 #[derive(Debug, Clone, PartialEq)]
 pub enum XenonError {
-    /// Binary operation or zip shapes are incompatible and cannot broadcast.
     ShapeMismatch {
-        /// Expected shape (typically left operand or target shape).
-        expected: Cow<'static, [usize]>,
-        /// Actual shape encountered (right operand).
-        actual: Cow<'static, [usize]>,
+        operation: &'static str,
+        left_shape: Cow<'static, [usize]>,
+        right_shape: Cow<'static, [usize]>,
     },
 
-    /// Broadcast rule violated: non-size-1 dimensions differ.
     BroadcastError {
-        /// Shape of the first input array.
-        shape_a: Cow<'static, [usize]>,
-        /// Shape of the second input array.
-        shape_b: Cow<'static, [usize]>,
+        input_shape: Cow<'static, [usize]>,
+        target_shape: Cow<'static, [usize]>,
+        axis: Option<usize>,
     },
 
-    /// Contiguous layout required but input is non-contiguous.
-    /// Use descriptive static strings like "F-contiguous" and
-    /// "non-contiguous (has strides)" to provide meaningful diagnostics.
     LayoutMismatch {
-        /// Expected layout description (e.g., "F-contiguous", "contiguous").
-        expected: &'static str,
-        /// Actual layout description (e.g., "non-contiguous").
-        actual: &'static str,
+        operation: &'static str,
+        required_layout: &'static str,
+        actual_layout: &'static str,
+        shape: Cow<'static, [usize]>,
     },
 
-    /// Axis index exceeds the number of dimensions.
     InvalidAxis {
-        /// Requested axis index.
         axis: usize,
-        /// Actual number of dimensions in the array.
         ndim: usize,
+        shape: Cow<'static, [usize]>,
     },
 
-    /// Reshape target total size differs from source.
     InvalidShape {
-        /// Source element count.
-        from: usize,
-        /// Target element count.
-        to: usize,
+        operation: &'static str,
+        shape: Cow<'static, [usize]>,
+        expected_elements: Option<usize>,
+        actual_elements: Option<usize>,
+        offending_dim: Option<usize>,
     },
 
-    /// Static/dynamic dimension conversion mismatch.
     DimensionMismatch {
-        /// Expected number of dimensions.
         expected: usize,
-        /// Actual number of dimensions.
         actual: usize,
     },
 
-    /// Operation requires a non-empty array.
-    /// The operation that triggered this error.
     EmptyArray {
         operation: &'static str,
+        shape: Cow<'static, [usize]>,
     },
 
-    /// Invalid non-shape argument.
     InvalidArgument {
-        /// Human-readable diagnostic.
-        message: &'static str,
+        operation: &'static str,
+        argument: &'static str,
+        expected: &'static str,
+        actual: &'static str,
+        axis: Option<usize>,
+        shape: Option<Cow<'static, [usize]>>,
     },
 
-    /// FFI / BLAS integration precondition failed.
     FfiError {
-        /// Human-readable diagnostic.
-        message: &'static str,
+        operation: &'static str,
+        backend: &'static str,
+        precondition: &'static str,
+        actual: &'static str,
+    },
+
+    IndexError {
+        attempted_index: usize,
+        axis: usize,
+        shape: Cow<'static, [usize]>,
+    },
+
+    TypeConversion {
+        source_type: &'static str,
+        target_type: &'static str,
+        reason: TypeConversionReason,
+        element_index: usize,
     },
 }
 
-// NOTE: Current type conversion is intentionally infallible.
-// `cast()` follows the saturating / truncating semantics defined in `21-type.md`
-// and therefore does not allocate a dedicated XenonError variant today.
-// If the project later adopts fallible conversion, add:
-//
-// /// Type conversion overflow (e.g., casting a large f64 to i32).
-// TypeConversionOverflow {
-//     /// Source type name (e.g., "f64").
-//     from_type: &'static str,
-//     /// Target type name (e.g., "i32").
-//     to_type: &'static str,
-//     /// String representation of the value that caused the overflow.
-//     value: alloc::string::String,
-// },
-```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypeConversionReason {
+    LossyIntegerNarrowing,
+    LossyFloatNarrowing,
+    FloatToInteger,
+    IntegerToFloatPrecisionLoss,
+    NonZeroImaginaryPart,
+    UnsupportedByRequirement,
+}
 
-### 4.2 Result 类型别名
-
-```rust
-/// Convenience type alias for Xenon operations.
 pub type Result<T> = core::result::Result<T, XenonError>;
 ```
 
-### 4.3 Display 实现
+### 4.3 类型转换错误规范
+
+`cast()` 的错误模型须与 `21-type.md` 保持一致：
+
+- `cast<B>(&self)` 返回 `Result<Tensor<B, D>, XenonError>`
+- 任何被 `require.md §23` 判定为有损的默认转换组合，都须返回 `XenonError::TypeConversion`
+- 仅当需求显式给出附加成功前提时，满足前提后才可成功
+- `Complex -> Real` 不是编译期拒绝；当 `im == 0` 时允许继续转换，否则返回 `TypeConversion`
+- `bool` 不参与逐元素类型转换，因此不得用 `TypeConversion` 为 `bool` 扩大支持范围
+
+```rust
+// Good - cast is fallible and reports the failing element.
+pub fn cast<B: Element>(&self) -> Result<Tensor<B, D>, XenonError>
+where
+    A: CastTo<B>,
+{
+    let mut out = Vec::with_capacity(self.len());
+    for (index, value) in self.iter().enumerate() {
+        out.push(value.cast_to(index)?);
+    }
+    Ok(Tensor::from_shape_vec_aligned(self.shape().clone(), out))
+}
+
+// Bad - silently saturating or truncating.
+pub fn cast_bad<B: Element>(&self) -> Tensor<B, D>
+where
+    A: CastTo<B>,
+{
+    let out = self.iter().map(|value| value.cast_to_lossy()).collect();
+    Tensor::from_shape_vec_aligned(self.shape().clone(), out)
+}
+```
+
+### 4.4 结构化上下文字段要求
+
+所有错误变体都须带“错误类别 + 适用上下文”的结构化字段；仅字符串消息不足以满足要求。
+
+| 变体              | 最小结构化字段                                                                   |
+| ----------------- | -------------------------------------------------------------------------------- |
+| `InvalidArgument` | `operation`, `argument`, `expected`, `actual`, `axis?`, `shape?`                 |
+| `FfiError`        | `operation`, `backend`, `precondition`, `actual`                                 |
+| `InvalidShape`    | `operation`, `shape`, `expected_elements?`, `actual_elements?`, `offending_dim?` |
+| `IndexError`      | `attempted_index`, `axis`, `shape`                                               |
+| `TypeConversion`  | `source_type`, `target_type`, `reason`, `element_index`                          |
+
+### 4.5 Display 与 panic 信息要求
+
+Display 输出和 panic 文本都必须能让调用方定位问题来源；最少应包含操作名、错误类别以及适用上下文。
 
 ```rust
 impl fmt::Display for XenonError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ShapeMismatch { expected, actual } => {
-                write!(
-                    f,
-                    "shape mismatch: expected [{}], got [{}]",
-                    fmt_shape(expected),
-                    fmt_shape(actual)
-                )
-            }
-            Self::BroadcastError { shape_a, shape_b } => {
-                write!(
-                    f,
-                    "cannot broadcast [{}] with [{}]",
-                    fmt_shape(shape_a),
-                    fmt_shape(shape_b)
-                )
-            }
-            Self::LayoutMismatch { expected, actual } => {
-                write!(
-                    f,
-                    "layout mismatch: expected {}, got {}",
-                    expected, actual
-                )
-            }
-            Self::InvalidAxis { axis, ndim } => {
-                write!(
-                    f,
-                    "axis {} out of bounds for {}-dimensional array",
-                    axis, ndim
-                )
-            }
-            Self::InvalidShape { from, to } => {
-                write!(
-                    f,
-                    "cannot reshape {} elements into {}",
-                    from, to
-                )
-            }
-            Self::DimensionMismatch { expected, actual } => {
-                write!(
-                    f,
-                    "dimension mismatch: expected {}, got {}",
-                    expected, actual
-                )
-            }
-            Self::EmptyArray { operation } => {
-                write!(f, "{} requires a non-empty array", operation)
-            }
-            Self::InvalidArgument { message } => write!(f, "invalid argument: {}", message),
-            Self::FfiError { message } => write!(f, "ffi error: {}", message),
-        }
-    }
-}
-
-/// Formats a shape slice as "2, 3, 4" for human-readable output.
-fn fmt_shape(s: &[usize]) -> alloc::string::String {
-    use alloc::string::ToString;
-    s.iter()
-        .map(|d| d.to_string())
-        .collect::<alloc::vec::Vec<_>>()
-        .join(", ")
-}
-```
-
-### 4.4 std::error::Error 实现（条件编译）
-
-```rust
-#[cfg(feature = "std")]
-impl std::error::Error for XenonError {}
-```
-
-### 4.5 Display 输出示例
-
-| 错误类型 | 输出示例 |
-|----------|----------|
-| `ShapeMismatch` | `shape mismatch: expected [3, 4], got [2, 5]` |
-| `BroadcastError` | `cannot broadcast [3, 4] with [3, 5]` |
-| `LayoutMismatch` | `layout mismatch: expected F-contiguous, got non-contiguous` |
-| `InvalidAxis` | `axis 5 out of bounds for 2-dimensional array` |
-| `InvalidShape` | `cannot reshape 12 elements into 15` |
-| `DimensionMismatch` | `dimension mismatch: expected 2, got 3` |
-| `EmptyArray` | `operation requires a non-empty array` |
-| `InvalidArgument` | `invalid argument: clip requires min <= max` |
-| `FfiError` | `ffi error: BLAS lda exceeds i32 range` |
-
-### 4.6 Good / Bad 对比示例
-
-```rust
-// Good - using ? with XenonError
-pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>> {
-    let target = shape.checked_size().ok_or(XenonError::InvalidShape {
-        from: self.len(),
-        to: usize::MAX,
-    })?;
-    if self.len() != target {
-        return Err(XenonError::InvalidShape {
-            from: self.len(),
-            to: target,
-        });
-    }
-    // ...
-}
-
-// Bad - using unwrap in library code
-pub fn sum_bad(&self) -> A {
-    let first = self.first().unwrap();  // forbidden
-    self.iter().fold(*first, |acc, x| acc + x)
-}
-```
-
-```rust
-// Good - integer overflow using checked arithmetic + panic (unrecoverable)
-pub fn sum(&self) -> A {
-    let mut total = A::zero();
-    for &x in self.iter() {
-        total = total.checked_add(&x)
-            .expect("integer overflow in reduction");
-    }
-    total
-}
-
-// Bad - integer overflow with silent wrapping
-pub fn sum_bad(&self) -> A {
-    self.iter().fold(A::zero(), |acc, &x| acc + x)  // silent wrapping in release
-}
-```
-
-### 4.7 WorkspaceError 的独立性
-
-workspace 模块定义了独立的 `WorkspaceError`，不属于 `XenonError` 枚举。这是为了保持 workspace 模块的独立性（workspace 不依赖核心错误类型），同时允许上游通过 `From<WorkspaceError>` 适配到自定义错误类型。
-
-相应测试也保持同样边界：`tests/test_error.rs` 仅覆盖 `XenonError` 及其方法型 API 失败映射，`WorkspaceError` 继续在 `tests/test_workspace.rs` 中单独验证。
-
-> **集中裁决补充：** Xenon 的错误语义统一按“可恢复错误走 `Result`，不可恢复不变量破坏才 panic”收敛。
-> 当前仅保留一类语法级 panic 例外：`tensor[[...]]` 这类 `Index` trait 语法，越界时与标准库 slice 行为保持一致。
-> `+ - * /` 等运算符文档不再把形状不兼容或广播失败裁定为 panic 的稳定契约；它们应与底层广播/逐元素运算保持同一可恢复错误模型。
-
-> **类型转换例外：** `cast()` 当前采用 `21-type.md` 中定义的 saturating / truncating 语义，因此保持 infallible，不进入 `XenonError` 通道。只有当项目未来切换到 fallible cast 时，才新增专门错误变体并把 `cast()` 改成 `Result`。
-
----
-
-## 5. 内部实现设计
-
-### 5.1 错误分类规则
-
-```
-错误处理策略
-├── 可恢复错误 (Result<XenonError>)
-│   ├── ShapeMismatch      — 二元运算形状不兼容
-│   ├── BroadcastError     — 广播规则不满足
-│   ├── LayoutMismatch     — 布局要求不满足
-│   ├── InvalidAxis        — 轴索引无效
-│   ├── InvalidShape       — reshape / 构造目标形状无效
-│   ├── DimensionMismatch  — 维度类型转换失败
-│   ├── EmptyArray         — 空数组上的非法操作
-│   ├── InvalidArgument    — 一般参数错误（如 clip 范围非法）
-│   └── FfiError           — FFI / BLAS 前置条件不满足
-│
-└── 不可恢复错误 / panic 例外
-    ├── IndexOutOfBounds   — 索引越界（与 std slice 行为一致）
-    └── IntegerOverflow   — 整数归约溢出（需求 §14：不可恢复）
-```
-
-### 5.2 panic vs Result 决策矩阵
-
-| 错误类型 | 处理方式 | 理由 |
-|----------|----------|------|
-| ShapeMismatch | Result | 运行时数据决定，可恢复 |
-| BroadcastError | Result | 运行时数据决定，可恢复 |
-| LayoutMismatch | Result | 运行时状态决定，可恢复 |
-| InvalidAxis | Result | 可能来自用户输入，可恢复 |
-| InvalidShape | Result | 可能来自用户输入，可恢复 |
-| DimensionMismatch | Result | 类型转换失败，可恢复 |
-| EmptyArray | Result | 运行时状态决定，可恢复 |
-| InvalidArgument | Result | 参数非法，可恢复 |
-| FfiError | Result | FFI / BLAS 前置条件不满足，可恢复 |
-| **IndexOutOfBounds** | **panic** | **编程错误，与 Rust slice 一致** |
-| **IntegerOverflow** | **panic** | **需求 §14：整数归约溢出视为不可恢复错误** |
-
-### 5.3 IndexOutOfBounds 为何使用 panic
-
-| 理由 | 说明 |
-|------|------|
-| Rust 标准库惯例 | `[i]` 越界 panic，`get(i)` 返回 `Option` |
-| 性能考虑 | 索引操作频繁，`Result` 匹配有开销 |
-| 语义正确性 | 索引越界是 bug，不应"处理"而应"修复" |
-| API 一致性 | `tensor[[i, j]]` 与 `array[i][j]` 行为一致 |
-
-配套提供 `get()` → `Option` 和 `get_unchecked()` → unsafe 变体。
-
-### 5.4 并行操作中错误立即传播
-
-并行操作中发生不可恢复错误时须立即向调用方传播，不得静默忽略（参见 `09-parallel.md §5`）：
-
-> **集中裁决：** “立即传播”在 Xenon 中的含义是“并行框架不得吞掉 panic，也不得把失败伪装成成功结果”。实现上可依赖 Rayon 的 panic 传播机制或 `try_*` 族 API 尽快中止剩余工作，但设计文档层不再把“所有 worker 结束后再 re-panic”表述成强语义上的“即时”。对调用方而言，本次并行操作必须失败并把 panic/Err 传播出来。
-
-```rust
-// Good - panic propagates immediately in parallel reduction
-#[cfg(feature = "parallel")]
-pub fn par_sum(&self) -> A
-where
-    A: Numeric + Send,
-{
-    self.par_iter().fold(|| A::zero(), |acc, &x| acc + x)
-        .reduce(|| A::zero(), |a, b| a + b)
-}
-```
-
-### 5.5 并行操作中的 Result 错误传播
-
-在并行操作（如 `par_map`、`par_zip_with`）中，如果需要传播 `Result` 错误，应优先使用 try-based 传播模式：各并行任务返回 `Result<B, XenonError>`，由并行框架通过 `collect::<Result<Vec<_>, _>>()`、`try_for_each`、`try_fold` 等机制尽快中止后续工作并把首个错误向上传播，而不是把失败拖到所有 worker 完成之后再统一检查。
-
-### 5.6 资源释放不得 panic（Drop 安全）
-
-所有 `Drop` 实现不得 panic，确保即使在其他 panic 过程中也能安全清理（参见 `05-storage.md §5`）：
-
-### 5.7 Drop 安全与 panic-in-drop 问题
-
-`Drop` 实现调用 `core::ptr::drop_in_place(slice)`，该函数会调用元素类型 `A` 的 `Drop` 实现。如果在 panic unwind 期间 `A` 的 `Drop` 再次 panic，Rust 将中止进程（double panic = abort）。
-
-这在 Xenon 中是可接受的行为，原因如下：
-
-1. Xenon 支持的元素类型（i32、i64、f32、f64、Complex、bool）均为平凡类型，具有永远不会 panic 的 trivial `Drop` 实现。
-2. `Element` trait 的 sealed 特性确保只有这些类型可以被使用；`usize` 仅作为 shape/index 元数据存在，不属于张量元素类型。
-
-因此，实际上 `drop_in_place` 在 Xenon 张量中永远不会 panic。
-
-```rust
-// Good - Drop does not panic
-// We store the Layout at construction time (as cap + align) to avoid
-// recomputing in Drop. Using Layout::from_size_align_unchecked is safe
-// because the layout was valid when used for allocation.
-impl<A> Drop for OwnedRepr<A> {
-    fn drop(&mut self) {
-        // SAFETY: ptr and len are valid by construction
-        unsafe {
-            let slice = core::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len);
-            core::ptr::drop_in_place(slice);
-        }
-        if self.cap > 0 {
-            // SAFETY: layout was valid at allocation time (cap > 0, align is valid),
-            // so from_size_align_unchecked is safe here.
-            unsafe {
-                let layout = alloc::alloc::Layout::from_size_align_unchecked(
-                    self.cap * core::mem::size_of::<A>(),
-                    core::mem::align_of::<A>(),
-                );
-                alloc::alloc::dealloc(self.ptr.as_ptr() as *mut u8, layout);
-            }
+            Self::TypeConversion {
+                source_type,
+                target_type,
+                reason,
+                element_index,
+            } => write!(
+                f,
+                "type conversion failed at element {}: {} -> {} ({:?})",
+                element_index,
+                source_type,
+                target_type,
+                reason,
+            ),
+            Self::IndexError {
+                attempted_index,
+                axis,
+                shape,
+            } => write!(
+                f,
+                "index {} out of bounds for axis {} of shape [{}]",
+                attempted_index,
+                axis,
+                fmt_shape(shape),
+            ),
+            _ => todo!("other variants follow the same structured-display rule"),
         }
     }
 }
 ```
 
-### 5.8 no_std 兼容性
+### 4.6 必须统一覆盖的 panic 类别
+
+除文档已提到的归约溢出外，以下不可恢复情形都须纳入统一 panic 规范：
+
+- 逐元素整数算术溢出
+- 整数除以零
+- 结果不可表示（例如 `abs(i32::MIN)`、`i32::MIN / -1`）
+- 整数内积的乘积或累加溢出
 
 ```rust
-// src/error.rs
-use core::fmt;
-use alloc::borrow::Cow;
+// Good - checked arithmetic with explicit panic message.
+let value = lhs
+    .checked_mul(rhs)
+    .expect("integer overflow in dot product: lhs * rhs is not representable");
 
-// XenonError definition (using core::fmt and alloc)
-// ...
-
-impl fmt::Display for XenonError {
-    // Uses core::fmt, no std needed
-}
-
-// Only implement std::error::Error under std feature
-#[cfg(feature = "std")]
-impl std::error::Error for XenonError {}
+// Bad - silent wrapping in release mode.
+let value = lhs * rhs;
 ```
+
+### 4.7 并行路径与资源释放
+
+- 并行路径中的 `Err(XenonError)` 须尽快向上传播，不得延后为“全部 worker 完成后再统一检查”
+- 并行路径中的 panic 不得被吞掉或伪装为成功结果
+- 所有资源释放逻辑不得再触发 panic；在 `panic = abort` 环境下允许进程级终止带来资源不回收
 
 ---
 
-## 6. 实现任务拆分
+## 5. 验证与落地方式
 
-### Wave 1: XenonError 核心
+### 5.1 验证清单
 
-- [ ] **T1**: 定义 `XenonError` 枚举及所有变体
-  - 文件: `src/error.rs`
-  - 内容: 9 个变体（ShapeMismatch, BroadcastError, LayoutMismatch, InvalidAxis, InvalidShape, DimensionMismatch, EmptyArray, InvalidArgument, FfiError），derive Debug/Clone/PartialEq
-  - 测试: 编译通过
-  - 前置: 无
-  - 预计: 10 min
+| 验证项     | 要求                                                                                |
+| ---------- | ----------------------------------------------------------------------------------- |
+| 单元测试   | 覆盖 `XenonError` 各变体的 Display、Clone、PartialEq 与结构化字段                   |
+| 集成测试   | 覆盖 `reshape`、`broadcast`、`sum_axis`、`cast`、`ffi`、方法型索引等 API 的错误映射 |
+| 边界测试   | 覆盖空形状、非法轴、越界索引、复数虚部非零、整数极值、NaN/Inf 转换                  |
+| panic 测试 | 覆盖逐元素整数溢出、除以零、`abs(MIN)`、dot overflow                                |
+| 并行测试   | 覆盖 `Err` 与 panic 在并行路径中的传播一致性                                        |
 
-- [ ] **T2**: 定义 `Result<T>` 类型别名
-  - 文件: `src/error.rs`
-  - 内容: `pub type Result<T> = core::result::Result<T, XenonError>;`
-  - 测试: 编译通过
-  - 前置: T1
-  - 预计: 2 min
+### 5.2 重点测试用例
 
-- [ ] **T3**: 实现 `Display` trait
-  - 文件: `src/error.rs`
-  - 内容: 所有 9 个变体的 Display 实现 + `fmt_shape` 辅助函数
-  - 测试: 各变体 to_string() 输出正确
-  - 前置: T1
-  - 预计: 10 min
+| 测试函数                                       | 测试内容                                        |
+| ---------------------------------------------- | ----------------------------------------------- |
+| `test_cast_lossy_returns_type_conversion`      | 有损转换返回 `TypeConversion`                   |
+| `test_cast_reports_element_index`              | 转换失败包含 `element_index`                    |
+| `test_complex_to_real_requires_zero_imag`      | 复数转实数的附加成功前提                        |
+| `test_invalid_argument_has_structured_context` | `InvalidArgument` 不再只有 message              |
+| `test_invalid_shape_reports_dimension_context` | `InvalidShape` 包含维度/元素数上下文            |
+| `test_index_error_reports_axis_and_shape`      | 索引错误包含 `attempted_index`、`axis`、`shape` |
+| `test_integer_division_by_zero_panics`         | 除以零走统一 panic                              |
+| `test_dot_overflow_panics`                     | 内积溢出走统一 panic                            |
 
-### Wave 2: std 集成与文档
+### 5.3 评审要求
 
-- [ ] **T4**: 实现 `#[cfg(feature = "std")] std::error::Error`
-  - 文件: `src/error.rs`
-  - 内容: 条件编译的 Error trait 实现
-  - 测试: `dyn std::error::Error` 向上转型成功
-  - 前置: T3
-  - 预计: 3 min
-
-- [ ] **T5**: 完整文档注释
-  - 文件: `src/error.rs`
-  - 内容: 枚举级文档 + 每个变体文档 + 每个字段文档
-  - 测试: `cargo doc` 无 missing_docs 警告
-  - 前置: T1-T4
-  - 预计: 10 min
-
-### Wave 3: 测试
-
-- [ ] **T6**: 单元测试 — Display 输出格式
-  - 文件: `src/error.rs` (`#[cfg(test)] mod tests`)
-  - 内容: 每个变体的 `to_string()` 断言
-  - 测试: 9 个测试函数
-  - 前置: T3
-  - 预计: 10 min
-
-- [ ] **T7**: 单元测试 — Error trait（std feature）
-  - 文件: `src/error.rs` (`#[cfg(test)] mod tests`)
-  - 内容: `#[cfg(feature = "std")]` 下验证 Error trait 实现
-  - 测试: `test_error_trait_std`
-  - 前置: T4
-  - 预计: 5 min
-
-- [ ] **T8**: CI no_std 编译验证
-  - 文件: `.github/workflows/test.yml`
-  - 内容: 使用 `cargo check --no-default-features` 验证 `no_std + alloc` 编译通过
-  - 测试: CI 中运行该检查命令
-  - 前置: T1-T5
-  - 预计: 5 min
-
-### 并行执行分组图
-
-```
-Wave 1: [T1]
-           │
-           ├──▶ [T2]
-           │
-           └──▶ [T3]
-                   │
-Wave 2: [T4] ◄─────┘
-           │
-           └──▶ [T5]
-                   │
-Wave 3: ┌──[T6]────┤
-        │          │
-        ├──[T7]────┤
-        │          │
-        └──[T8] ◄──┘
-```
+- 任何新增公开 API 都必须明确写出“返回 `Result` 还是 panic”的裁决
+- 任何新增错误变体都必须说明结构化字段，不得只增加 `message: &'static str`
+- 任何新增类型转换组合都必须同时更新 `21-type.md` 与本规范中的错误路径说明
 
 ---
 
-## 7. 测试计划
+## 6. 平台与工程约束
 
-### 7.1 测试分类表
+错误处理规范须遵循项目统一工程约束：
 
-| 测试分类 | 位置 | 说明 |
-|----------|------|------|
-| 单元测试 | `#[cfg(test)] mod tests` | 验证错误类型的格式化、比较与 trait 行为 |
-| 集成测试 | `tests/` | 验证公共 API 将底层失败映射为 `XenonError` 的路径 |
-| 边界测试 | 同模块测试中标注 | 覆盖空形状、大形状与极端诊断场景 |
-| 属性测试 | `tests/property/` | 验证错误诊断信息与 Display/Result 不变量 |
+- 仅支持 `std` 环境（参见 `require.md §1.3`）
+- 保持单 crate 结构
+- 遵循 SemVer
+- 不引入额外第三方依赖来包装错误模型
 
-### 7.2 单元测试清单
-
-| 测试函数 | 测试内容 | 优先级 |
-|----------|----------|--------|
-| `test_shape_mismatch_display` | ShapeMismatch 格式化输出 | 高 |
-| `test_broadcast_error_display` | BroadcastError 格式化输出 | 高 |
-| `test_layout_mismatch_display` | LayoutMismatch 格式化输出 | 高 |
-| `test_invalid_axis_display` | InvalidAxis 格式化输出 | 高 |
-| `test_invalid_shape_display` | InvalidShape 格式化输出 | 高 |
-| `test_dimension_mismatch_display` | DimensionMismatch 格式化输出 | 高 |
-| `test_empty_array_display` | EmptyArray 格式化输出 | 高 |
-| `test_error_trait_std` | std feature 下 Error trait 实现 | 中 |
-| `test_result_type_alias` | Result<T> 类型别名可用性 | 中 |
-| `test_partial_eq` | PartialEq 可正确比较相同/不同变体 | 中 |
-| `test_clone` | Clone 产生相等副本 | 低 |
-
-### 7.3 边界测试场景
-
-| 场景 | 预期行为 |
-|------|----------|
-| 空形状 `Cow::Borrowed(&[])` | Display 输出 `[]` |
-| 大形状 `Cow::Owned(vec![1000000, 1000000])` | Display 正确格式化 |
-| 多次 Display 格式化 | 结果一致（无内部状态变化） |
-
-### 7.4 集成测试用例清单
-
-| 测试函数 | 测试内容 | 优先级 |
-|----------|----------|--------|
-| `test_reshape_invalid_shape_returns_error` | reshape 元素数不匹配返回 InvalidShape | 高 |
-| `test_sum_axis_invalid_axis_returns_error` | sum_axis 轴越界返回 InvalidAxis | 高 |
-| `test_empty_array_operation_name` | EmptyArray 包含操作名 | 高 |
-| `test_broadcast_incompatible_returns_error` | 不兼容广播返回 BroadcastError | 高 |
-
-### 7.5 集成测试
-
-| 测试文件 | 测试内容 |
-|----------|----------|
-| `tests/test_error.rs` | `reshape` / `sum_axis` / `broadcast` / `dot` 等公共 API 将底层失败映射为 `XenonError` 的端到端路径 |
-
-### 7.6 属性测试清单
-
-| 测试函数 | 测试内容 | 优先级 |
-|----------|----------|--------|
-| `property_error_display_contains_diagnostics` | 随机形状验证错误消息包含正确的诊断信息 | 中 |
-
----
-
-## 8. 与其他模块的交互
-
-### 8.1 接口约定
-
-| 模块 | 产生的错误类型 | 触发场景 |
-|------|----------------|----------|
-| `dimension/` | `DimensionMismatch` | IxN ↔ IxDyn 转换（参见 `02-dimension.md §4`） |
-| `tensor/` | `InvalidShape` | reshape 操作（参见 `07-tensor.md §4`） |
-| `tensor/` / `shape/` | `LayoutMismatch` | 调用方在消费 `layout/` 的布尔/flags 查询结果后，发现不满足连续性前提（如 reshape 非连续数组） |
-| `tensor/` | `EmptyArray` | 未来需要非空输入的方法型 API |
-| `math/` | `ShapeMismatch` | 二元运算形状不兼容（参见 `11-math.md §4`） |
-| `math/` | `BroadcastError` | 广播失败（参见 `15-broadcast.md §5`） |
-| `reduction/` | `InvalidAxis` | sum_axis 轴索引错误（参见 `13-reduction.md §4`） |
-| `reduction/` | 整数 sum 归约溢出 → panic（非 XenonError，使用 checked_add().expect()） | 整数归约溢出 |
-| `index/` | (panic) IndexOutOfBounds | 索引越界（参见 `17-indexing.md §4`） |
-
-### 8.2 数据流描述
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        用户代码                                  │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     Xenon 公共 API                               │
-│  tensor.reshape() / tensor.sum_axis() / a + b / dot()          │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-              ┌──────────────┼──────────────┐
-              ▼              ▼              ▼
-        ┌──────────┐   ┌──────────┐   ┌──────────┐
-        │dimension │   │  math/   │   │ tensor/  │
-        └────┬─────┘   └────┬─────┘   └────┬─────┘
-             │              │              │
-              │ DimensionMismatch           │ InvalidShape / LayoutMismatch / EmptyArray
-             │ BroadcastError
-             │ ShapeMismatch
-             │ InvalidAxis
-             │ 整数归约溢出(panic)
-             │
-             └──────────────┼──────────────┘
-                            ▼
-                   ┌─────────────────┐
-                   │   XenonError    │
-                   │   (error.rs)    │
-                   └─────────────────┘
-                            │
-                            ▼
-                   ┌─────────────────┐
-                    │   Result<T>     │
-                    └─────────────────┘
-```
-
----
-
-## 9. 设计决策记录
-
-### 决策 1：单一枚举 vs 多错误类型
-
-| 属性 | 值 |
-|------|-----|
-| 决策 | 使用单一 `XenonError` 枚举 |
-| 理由 | API 简单、模式匹配完整、无错误类型爆炸、`?` 无需转换（参见 `00-coding.md §4`） |
-| 替代方案 | 多个错误类型（ShapeError, LayoutError, ...） — 放弃，增加 API 复杂度 |
-| 替代方案 | 使用 thiserror 宏 — 放弃，引入外部依赖，与最小依赖原则冲突 |
-
-### 决策 2：shape 信息使用 Cow\<'static, [usize]\>
-
-| 属性 | 值 |
-|------|-----|
-| 决策 | 使用 `Cow<'static, [usize]>` 存储 shape 信息 |
-| 理由 | 静态形状零分配（`Cow::Borrowed`）；动态形状可持有（`Cow::Owned`） |
-| 替代方案 | `Vec<usize>` — 放弃，总是堆分配 |
-| 替代方案 | `SmallVec<[usize; 6]>` — 放弃，引入 smallvec 依赖 |
-| 替代方案 | 固定数组 `[usize; N]` — 放弃，不支持动态维度 |
-
-### 决策 3：IndexOutOfBounds 使用 panic
-
-| 属性 | 值 |
-|------|-----|
-| 决策 | 索引越界使用 panic，不纳入 XenonError |
-| 理由 | 与 Rust 标准库 slice 行为一致；索引操作频繁，Result 有性能开销；语义上属于编程错误 |
-| 替代方案 | Result — 放弃，与 slice 行为不一致 |
-| 配套措施 | 提供 `get()` → `Option` 和 `get_unchecked()` → unsafe 变体 |
-
-### 决策 4：整数溢出使用 panic
-
-| 属性 | 值 |
-|------|-----|
-| 决策 | 整数归约溢出使用 `checked_add` + `expect` 触发 panic，不纳入 `XenonError` |
-| 理由 | 需求说明书 §14 明确规定整数归约溢出视为不可恢复错误；`checked_add` + `expect` 保证 debug 和 release 行为一致；panic 语义与"不可恢复"匹配 |
-| 替代方案 | `Result<XenonError::OverflowError>` — 放弃，需求明确为"不可恢复"，Result 暗示可恢复 |
-| 替代方案 | wrapping — 放弃，静默错误违背正确性优先原则 |
-
-### 决策 5：LayoutMismatch 字段使用 &'static str
-
-| 属性 | 值 |
-|------|-----|
-| 决策 | `LayoutMismatch` 的 `expected` 和 `actual` 字段使用 `&'static str` |
-| 理由 | 布局描述为固定字符串（"F-contiguous"、"non-contiguous" 等），无需动态分配 |
-| 替代方案 | `Cow<'static, str>` — 放弃，布局描述无需动态生成 |
-| 替代方案 | 自定义 Layout 枚举 — 放弃，过度工程化 |
-
-### 决策 6：方法型 API 与语法糖 API 分离错误语义
-
-| 属性 | 值 |
-|------|-----|
-| 决策 | 方法型 API 统一返回 `Result<XenonError>`；仅索引语法保留 panic，四则运算符沿用底层广播/逐元素运算的可恢复错误模型 |
-| 理由 | 保持可恢复错误的一致出口，同时尊重 Rust `Index` / `Add` 等标准 trait 的签名限制 |
-| 替代方案 | 所有接口统一 panic — 放弃，不利于库集成与诊断 |
-| 替代方案 | 所有语法糖接口也返回 `Result` — 放弃，无法匹配 Rust 标准 trait 设计 |
+| 项目       | 约束                                         |
+| ---------- | -------------------------------------------- |
+| 平台       | 仅 `std`                                     |
+| crate 结构 | 单 crate                                     |
+| 依赖       | 不新增第三方依赖                             |
+| 一致性     | 不同执行路径下错误类别与诊断字段必须保持一致 |
 
 ---
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
+| 版本  | 日期       |
+| ----- | ---------- |
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-08 |
 | 1.0.2 | 2026-04-08 |
@@ -746,7 +347,8 @@ Wave 3: ┌──[T6]────┤
 | 1.0.4 | 2026-04-08 |
 | 1.0.5 | 2026-04-08 |
 | 1.0.6 | 2026-04-10 |
+| 1.1.0 | 2026-04-14 |
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+_本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。_

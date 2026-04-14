@@ -3,6 +3,7 @@
 > 文档编号: 11 | 模块: `src/math/` | 阶段: Phase 4
 > 前置文档: `10-iterator.md`, `15-broadcast.md`
 > 需求参考: 需求说明书 §12
+> 范围声明: 范围内
 
 ---
 
@@ -10,25 +11,25 @@
 
 ### 1.1 职责边界
 
-| 职责 | 包含 | 不包含 |
-|------|------|--------|
-| 算术运算 | add/sub/mul/div，数值类型：i32/i64/f32/f64/Complex | 归约运算（sum/prod/min/max，参见 `13-reduction.md §1`） |
-| 一元运算 | abs/neg/square/signum（Numeric + PartialOrd），数学函数（RealScalar） | 篮选/排序 |
-| 数学函数 | sin/sqrt/exp/ln/floor/ceil，仅 f32/f64 | 运算符重载（参见 `19-overload.md §1`） |
-| 复数运算 | norm（返回实数类型）/conj，仅 Complex | 比较运算（eq/ne/lt/gt） |
-| 逻辑非 | `!`，仅 bool | 位运算 |
-| 比较运算 | eq/ne/lt/gt，返回 bool 张量，NaN 遵循 IEEE 754 | 搜索/排序 |
-| 标量运算 | 标量与张量的逐元素运算 | 矩阵运算（dot/matmul） |
-| 广播支持 | 所有二元运算和比较运算支持广播 | 批量运算 |
+| 职责     | 包含                                                                  | 不包含                                                  |
+| -------- | --------------------------------------------------------------------- | ------------------------------------------------------- |
+| 算术运算 | add/sub/mul/div，数值类型：i32/i64/f32/f64/Complex                    | 归约运算（sum/prod/min/max，参见 `13-reduction.md §1`） |
+| 一元运算 | abs/neg/square/signum（Numeric + PartialOrd），数学函数（RealScalar） | 篮选/排序                                               |
+| 数学函数 | sin/sqrt/exp/ln/floor/ceil，仅 f32/f64                                | 运算符重载（参见 `19-overload.md §1`）                  |
+| 复数运算 | norm（返回实数类型）/conj，仅 Complex                                 | 比较运算（eq/ne/lt/gt）                                 |
+| 逻辑非   | `!`，仅 bool                                                          | 位运算                                                  |
+| 比较运算 | eq/ne/lt/gt，返回 bool 张量，NaN 遵循 IEEE 754                        | 搜索/排序                                               |
+| 标量运算 | 标量与张量的逐元素运算                                                | 矩阵运算（dot/matmul）                                  |
+| 广播支持 | 所有二元运算和比较运算支持广播                                        | 批量运算                                                |
 
 ### 1.2 设计原则
 
-| 原则 | 体现 |
-|------|------|
-| 类型安全边界 | 算术运算仅支持 `Numeric`，bool 编译时排除 |
-| 广播透明集成 | 所有二元运算自动支持广播 |
+| 原则         | 体现                                          |
+| ------------ | --------------------------------------------- |
+| 类型安全边界 | 算术运算仅支持 `Numeric`，bool 编译时排除     |
+| 广播透明集成 | 所有二元运算自动支持广播                      |
 | 存储模式无关 | 对 Tensor、TensorView、TensorViewMut 统一工作 |
-| NaN 语义明确 | IEEE 754 NaN 传播规则 |
+| NaN 语义明确 | IEEE 754 NaN 传播规则                         |
 
 ### 1.3 在架构中的位置
 
@@ -50,14 +51,13 @@ L6: math（逐元素运算） ← 当前模块（依赖 broadcast, iter, element
 ```
 src/math/
 ├── mod.rs              # 模块入口，re-export 公开 API
-├── map.rs              # 逐元素映射（map, mapv, mapv_inplace）
 ├── zip.rs              # 二元逐元素（zip_with，含广播）
 ├── unary.rs            # 一元运算（abs, neg, signum, square, sin, sqrt, exp, ln, floor, ceil, norm, conj, not）
 ├── binary.rs           # 二元算术方法（add, sub, mul, div, add_scalar, sub_scalar, mul_scalar, div_scalar）
 └── comparison.rs       # 比较运算（eq, ne, lt, gt）
 ```
 
-多文件设计理由：按操作元数分组（一元 vs 二元 vs 映射基础设施），每个文件对应独立的 trait 约束边界，降低单文件复杂度。运算符重载（Add/Sub/Mul/Div trait 实现）保留在 `src/overload/arithmetic.rs`。SIMD 加速由独立 backend 模块 `src/simd/` 承载，`math/` 仅负责语义 API 与分发入口。
+多文件设计理由：按操作元数分组（一元 vs 二元）可保持当前最小范围；通用映射基础设施（`map` / `mapv` / `mapv_inplace`）不属于需求说明书 §12 的本期最小交付，暂不纳入当前版本。运算符重载（Add/Sub/Mul/Div trait 实现）保留在 `src/overload/arithmetic.rs`。SIMD 加速由独立 backend 模块 `src/simd/` 承载，`math/` 仅负责语义 API 与分发入口。
 
 ---
 
@@ -68,7 +68,7 @@ src/math/
 ```
 src/math/（整体模块依赖）
 ├── crate::tensor        # TensorBase<S, D>, TensorView
-├── crate::iter          # Elements, ElementsMut, Zip
+├── crate::iter          # Elements, ElementsMut
 ├── crate::element       # Element, Numeric, RealScalar, ComplexScalar
 ├── crate::broadcast     # broadcast_shape()（二元运算广播）
 └── crate::simd (可选)   # pulp::Arch（SIMD 加速路径）
@@ -76,15 +76,15 @@ src/math/（整体模块依赖）
 
 ### 3.2 类型级依赖
 
-| 来源模块 | 使用的类型/trait |
-|----------|-----------------|
-| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.shape()`（参见 `07-tensor.md §4`） |
-| `iter` | `Elements`, `ElementsMut`, `Zip`（参见 `10-iterator.md §4`） |
-| `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element.md §4`） |
-| `broadcast` | `broadcast_shape()`, `broadcast_to()` 返回的 `TensorView`（参见 `15-broadcast.md §4`） |
-| `dimension` | `BroadcastDim<E>` trait（编译期维度推导，参见 `02-dimension.md §4.9`） |
-| `simd`（可选） | `pulp::Arch`（参见 `08-simd.md §4`） |
-| `error` | `XenonError`（含 `BroadcastError` 变体，参见 `26-error.md §4`） |
+| 来源模块       | 使用的类型/trait                                                                       |
+| -------------- | -------------------------------------------------------------------------------------- |
+| `tensor`       | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.shape()`（参见 `07-tensor.md §4`） |
+| `iter`         | `Elements`, `ElementsMut`（参见 `10-iterator.md §4`）                                  |
+| `element`      | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element.md §4`）         |
+| `broadcast`    | `broadcast_shape()`, `broadcast_to()` 返回的 `TensorView`（参见 `15-broadcast.md §4`） |
+| `dimension`    | `BroadcastDim<E>` trait（编译期维度推导，参见 `02-dimension.md §4.9`）                 |
+| `simd`（可选） | `pulp::Arch`（参见 `08-simd.md §4`）                                                   |
+| `error`        | `XenonError`（含 `BroadcastError` 变体，参见 `26-error.md §4`）                        |
 
 ### 3.3 依赖方向
 
@@ -94,46 +94,9 @@ src/math/（整体模块依赖）
 
 ## 4. 公共 API 设计
 
-### 4.1 核心映射操作
+### 4.1 范围边界说明
 
-```rust
-impl<S, D, A> TensorBase<S, D>
-where
-    S: Storage<Elem = A>,
-    D: Dimension,
-    A: Element,
-{
-    /// Element-wise mapping (by reference), returns a newly allocated Tensor.
-    pub fn map<B, F>(&self, f: F) -> Tensor<B, D>
-    where
-        B: Element,
-        F: FnMut(&A) -> B;
-
-    /// Element-wise mapping (by value), returns a newly allocated Tensor.
-    ///
-    /// All Xenon element types are `Copy`, so value semantics is safe and zero-cost.
-    pub fn mapv<B, F>(&self, f: F) -> Tensor<B, D>
-    where
-        B: Element,
-        A: Copy,
-        F: FnMut(A) -> B;
-}
-
-impl<S, D, A> TensorBase<S, D>
-where
-    S: StorageMut<Elem = A>,
-    D: Dimension,
-    A: Element,
-{
-    /// In-place element-wise mapping.
-    ///
-    /// All Xenon element types are `Copy`, so value semantics is safe and zero-cost.
-    pub fn mapv_inplace<F>(&mut self, f: F)
-    where
-        A: Copy,
-        F: FnMut(A) -> A;
-}
-```
+`map` / `mapv` / `mapv_inplace` 属于更通用的逐元素映射基础设施，但不在需求说明书 §12 的当前最小范围内。当前版本文档不将其作为公开 API 承诺；如后续需要，应以独立议题重新评估与类型转换、就地修改、错误语义的边界关系。
 
 ### 4.2 二元 zip 操作
 
@@ -200,6 +163,8 @@ where
 
 支持的类型：i32, i64, f32, f64, Complex\<f32\>, Complex\<f64\>。
 
+> **整数算术补充约束：** 对 `i32` / `i64` 的 `add` / `sub` / `mul` / `div`，实现必须使用 checked arithmetic；凡发生溢出、除以零或结果不可表示，均按需求说明书 §12 与 §27 走 panic 语义，不得回落为 wrapping 行为。
+
 ### 4.4 一元运算（Numeric 约束）
 
 ```rust
@@ -221,9 +186,11 @@ where
     /// # NaN behavior (floats)
     ///
     /// `signum(NaN)` returns `NaN` (IEEE 754 semantics, via PartialOrd).
-    pub fn signum(&self) -> Tensor<A, D>;
+pub fn signum(&self) -> Tensor<A, D>;
 }
 ```
+
+> **整数一元运算补充约束：** `abs` / `square` / `signum` 在整数路径上同样必须使用 checked arithmetic。特别是最小负值取绝对值、平方溢出等情形，均须视为不可恢复错误并触发 panic。
 
 ### 4.5 数学函数（RealScalar 约束：仅 f32/f64）
 
@@ -253,7 +220,6 @@ where
     T: RealScalar,
 {
     /// Norm operation, returns a real-typed tensor.
-    /// Available only when the `std` feature is enabled.
     pub fn norm(&self) -> Tensor<T, D>;
 }
 
@@ -265,18 +231,10 @@ where
 {
     /// Conjugate operation.
     pub fn conjugate(&self) -> Tensor<Complex<T>, D>;
-
-    /// Add a same-precision real scalar to each complex element.
-    pub fn add_real_scalar(&self, scalar: T) -> Tensor<Complex<T>, D>;
-
-    /// Multiply each complex element by a same-precision real scalar.
-    pub fn mul_real_scalar(&self, scalar: T) -> Tensor<Complex<T>, D>;
 }
 ```
 
-> **同精度实复混合运算约束：** `Complex<f32>` 仅与 `f32` 混合，`Complex<f64>` 仅与 `f64` 混合；
-> 跨精度（如 `Complex<f64>` 与 `f32`）必须先显式转换。面向张量 API 时，这些能力通过
-> `ComplexScalar<Real = T>` 路径暴露，而不是自动类型提升。
+> **类型一致性约束：** 参与逐元素运算或比较的双方元素类型须预先一致。因此，`Complex<T>` 与实数标量的混合张量 API（如 `add_real_scalar` / `mul_real_scalar`）不属于当前公开范围；若内部实现需要复用相应标量逻辑，也只能作为不对外承诺的内部辅助路径存在。
 
 ### 4.7 逻辑非（仅 bool）
 
@@ -362,10 +320,6 @@ where
 ### 4.10 Good / Bad 对比示例
 
 ```rust
-// Good - use map for type conversion
-let a: Tensor<i32, Ix1> = Tensor::from_shape_slice([3], &[1, 2, 3])?;
-let b: Tensor<f64, Ix1> = a.map(|&x| x as f64);
-
 // Good - use zip_with for broadcast addition
 let a = Tensor::<f64, Ix2>::zeros([3, 1]);
 let b = Tensor::<f64, Ix2>::zeros([1, 4]);
@@ -388,13 +342,13 @@ for i in 0..3 {
 
 ## 5. 内部实现设计
 
-### 5.1 map 实现
+### 5.1 二元与一元运算的共享执行骨架
 
 ```
-map(view, f):
+apply_unary(view, f):
     result = Tensor::zeros(view.shape())
     for (src, dst) in view.iter().zip(result.iter_mut()):
-        *dst = f(src)
+        *dst = f(*src)
     return result
 ```
 
@@ -448,43 +402,34 @@ where
 
 ## 6. 实现任务拆分
 
-### Wave 1: 核心映射
-
-- [ ] **T1**: 实现 `map` / `mapv` / `mapv_inplace`
-  - 文件: `src/math/map.rs`
-  - 内容: 基于 `Elements` 迭代器的映射操作
-  - 测试: `test_map`, `test_mapv`, `test_mapv_inplace`
-  - 前置: 10-iterator.md 完成
-  - 预计: 10 min
-
-### Wave 2: 二元操作与一元运算
+### Wave 1: 二元操作与一元运算
 
 - [ ] **T2**: 实现 `zip_with`（含广播支持）
   - 文件: `src/math/zip.rs`
-  - 内容: 基于 `Zip` 迭代器的二元操作
+  - 内容: 基于逐元素遍历骨架的二元操作
   - 测试: `test_zip_with_same_shape`, `test_zip_with_broadcast`
-  - 前置: T1, broadcast 模块
+  - 前置: 10-iterator.md, broadcast 模块
   - 预计: 10 min
 
 - [ ] **T3**: 实现一元运算（abs/neg/signum/square）
   - 文件: `src/math/unary.rs`
-  - 内容: 基于 `mapv` 的一元运算
+  - 内容: 基于统一逐元素遍历骨架实现一元运算，并为整数路径补齐 checked arithmetic
   - 测试: `test_abs`, `test_neg`, `test_signum`, `test_square`
-  - 前置: T1
+  - 前置: 10-iterator.md
   - 预计: 10 min
 
 - [ ] **T4**: 实现数学函数（sin/sqrt/exp/ln/floor/ceil）
   - 文件: `src/math/unary.rs`
   - 内容: RealScalar 约束的数学方法
   - 测试: `test_sin`, `test_sqrt`, `test_exp`, `test_floor_ceil`
-  - 前置: T1
+  - 前置: 10-iterator.md
   - 预计: 10 min
 
-- [ ] **T5**: 实现复数操作（`conjugate`）与 std-only 复数数学函数（`norm`）
+- [ ] **T5**: 实现复数操作（`conjugate`）与复数数学函数（`norm`）
   - 文件: `src/math/unary.rs`
-  - 内容: `conjugate` 的 no_std 基础路径 + `norm` 的 std-only 数学路径
+  - 内容: `conjugate` 与 `norm` 的范围内实现
   - 测试: `test_norm`, `test_conj`
-  - 前置: T1
+  - 前置: 10-iterator.md
   - 预计: 10 min
 
 ### Wave 3: 算术与比较运算
@@ -515,20 +460,18 @@ where
 ### 并行执行分组图
 
 ```
-Wave 1:                    [T1]
-                            |
-            ┌───────┬───────┴───────┬───────┐
-            |       |               |       |
-            v       v               v       v
-Wave 2:    [T2]    [T3]            [T4]    [T5]
+            ┌───────┬────────┬───────┐
+            |       |        |       |
+            v       v        v       v
+Wave 1:    [T2]    [T3]     [T4]    [T5]
             |
          ┌──┴─────┐
          |        |
          v        v
-Wave 3: [T6]    [T7]
+Wave 2: [T6]    [T7]
          |
          v
-Wave 4: [T8]
+Wave 3: [T8]
 ```
 
 ---
@@ -537,68 +480,64 @@ Wave 4: [T8]
 
 ### 7.1 测试分类总表
 
-| 测试分类 | 说明 | 包含的测试 |
-|----------|------|-----------|
-| 单元测试 | 验证单个运算函数的基本正确性 | `test_map_type_conversion`, `test_mapv_square`, `test_mapv_inplace`, `test_add_i32`, `test_add_f64`, `test_add_complex`, `test_add_broadcast`, `test_mul_scalar`, `test_abs`, `test_neg`, `test_signum`, `test_sin`, `test_sqrt`, `test_exp_ln_roundtrip`, `test_floor_ceil`, `test_norm`, `test_conj`, `test_not_bool`, `test_eq_f64`, `test_lt_i32`, `test_nan_comparison`, `test_empty_tensor`, `test_add_simd_vs_scalar` |
-| 集成测试 | 验证运算模块与迭代器/广播模块的端到端集成 | `test_zip_with_same_shape`, `test_zip_with_broadcast`（参见 §6 T2） |
-| 边界测试 | 空张量、NaN、Inf、非连续输入等边界条件 | `test_empty_tensor`, `test_nan_comparison`, `test_add_simd_vs_scalar`（详见 §7.2） |
-| 属性测试 | 通过随机输入验证数学不变量 | 详见下方属性测试不变量表 |
+| 测试分类 | 说明                                      | 包含的测试                                                                                                                                                                                                                                                                                                                                                                              |
+| -------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 单元测试 | 验证单个运算函数的基本正确性              | `test_add_i32`, `test_add_f64`, `test_add_complex`, `test_add_broadcast`, `test_mul_scalar`, `test_abs`, `test_neg`, `test_signum`, `test_square_checked_overflow`, `test_sin`, `test_sqrt`, `test_exp_ln_roundtrip`, `test_floor_ceil`, `test_norm`, `test_conj`, `test_not_bool`, `test_eq_f64`, `test_lt_i32`, `test_nan_comparison`, `test_empty_tensor`, `test_add_simd_vs_scalar` |
+| 集成测试 | 验证运算模块与迭代器/广播模块的端到端集成 | `test_zip_with_same_shape`, `test_zip_with_broadcast`（参见 §6 T2）                                                                                                                                                                                                                                                                                                                     |
+| 边界测试 | 空张量、NaN、Inf、非连续输入等边界条件    | `test_empty_tensor`, `test_nan_comparison`, `test_add_simd_vs_scalar`（详见 §7.2）                                                                                                                                                                                                                                                                                                      |
+| 属性测试 | 通过随机输入验证数学不变量                | 详见下方属性测试不变量表                                                                                                                                                                                                                                                                                                                                                                |
 
 **属性测试不变量**
 
-| 不变量 | 测试方法 |
-|--------|----------|
-| 加法交换律（实数类型） | 对随机 f32/f64/i32/i64 张量：`a.add(&b) == b.add(&a)` |
-| NaN 传播：所有运算遇到 NaN 输入时输出包含 NaN | 构造含 NaN 的张量，验证 sin/sqrt/add/mul 等运算结果含 NaN |
-| map 恒等：`a.map(\|&x\| x) == a` | 随机形状和类型的张量 |
-| 标量运算逆元：`a.add_scalar(k).sub_scalar(k) == a` | 随机张量和标量值 |
-| zip_with 结合性（实数加法）：`(a.add(&b)).add(&c) == a.add(&b.add(&c))` | 随机同形状 f64 张量，容差比较 |
+| 不变量                                                                  | 测试方法                                                  |
+| ----------------------------------------------------------------------- | --------------------------------------------------------- |
+| 加法交换律（实数类型）                                                  | 对随机 f32/f64/i32/i64 张量：`a.add(&b) == b.add(&a)`     |
+| NaN 传播：所有运算遇到 NaN 输入时输出包含 NaN                           | 构造含 NaN 的张量，验证 sin/sqrt/add/mul 等运算结果含 NaN |
+| 标量运算逆元：`a.add_scalar(k).sub_scalar(k) == a`                      | 随机张量和标量值                                          |
+| zip_with 结合性（实数加法）：`(a.add(&b)).add(&c) == a.add(&b.add(&c))` | 随机同形状 f64 张量，容差比较                             |
 
 ### 7.2 单元测试清单
 
-| 测试函数 | 测试内容 | 优先级 |
-|----------|----------|--------|
-| `test_map_type_conversion` | `map` 从 i32 到 f64 转换正确 | 高 |
-| `test_mapv_square` | `mapv(\|x\| x * x)` 正确 | 高 |
-| `test_mapv_inplace` | 原地修改后数据正确 | 高 |
-| `test_add_i32` | i32 加法正确 | 高 |
-| `test_add_f64` | f64 加法正确 | 高 |
-| `test_add_complex` | Complex\<f64\> 加法正确 | 高 |
-| `test_add_broadcast` | 广播加法 shape [3,1]+[1,4]=[3,4] | 高 |
-| `test_mul_scalar` | 标量乘法正确 | 中 |
-| `test_add_real_scalar_to_complex` | `Complex<f64>` 张量与 `f64` 标量同精度混合加法正确 | 高 |
-| `test_abs` | abs(-3) = 3, abs(f64) 正确 | 高 |
-| `test_neg` | neg 正确，含复数 | 中 |
-| `test_signum` | signum 正/零/负 | 中 |
-| `test_sin` | sin(0) = 0, sin(pi/2) ≈ 1 | 高 |
-| `test_sqrt` | sqrt(4) = 2, sqrt(-1) = NaN | 高 |
-| `test_exp_ln_roundtrip` | exp(ln(x)) ≈ x | 中 |
-| `test_floor_ceil` | floor(1.7)=1, ceil(1.3)=2 | 中 |
-| `test_norm` | Complex{3,4}.norm() = 5.0 | 高 |
-| `test_conjugate` | Complex{1,2}.conjugate() = Complex{1,-2} | 中 |
-| `test_not_bool` | !true = false, !false = true | 中 |
-| `test_eq_f64` | 逐元素相等比较 | 高 |
-| `test_lt_i32` | 逐元素小于比较 | 高 |
-| `test_nan_comparison` | NaN 比较遵循 IEEE 754 | 高 |
-| `test_empty_tensor` | 空张量运算返回空张量 | 中 |
-| `test_add_simd_vs_scalar` | SIMD 路径结果与标量一致 | 中 |
+| 测试函数                       | 测试内容                                 | 优先级 |
+| ------------------------------ | ---------------------------------------- | ------ |
+| `test_add_i32`                 | i32 加法正确                             | 高     |
+| `test_add_f64`                 | f64 加法正确                             | 高     |
+| `test_add_complex`             | Complex\<f64\> 加法正确                  | 高     |
+| `test_add_broadcast`           | 广播加法 shape [3,1]+[1,4]=[3,4]         | 高     |
+| `test_mul_scalar`              | 标量乘法正确                             | 中     |
+| `test_abs`                     | abs(-3) = 3, abs(f64) 正确               | 高     |
+| `test_neg`                     | neg 正确，含复数                         | 中     |
+| `test_signum`                  | signum 正/零/负                          | 中     |
+| `test_square_checked_overflow` | 整数平方溢出触发 panic                   | 高     |
+| `test_sin`                     | sin(0) = 0, sin(pi/2) ≈ 1                | 高     |
+| `test_sqrt`                    | sqrt(4) = 2, sqrt(-1) = NaN              | 高     |
+| `test_exp_ln_roundtrip`        | exp(ln(x)) ≈ x                           | 中     |
+| `test_floor_ceil`              | floor(1.7)=1, ceil(1.3)=2                | 中     |
+| `test_norm`                    | Complex{3,4}.norm() = 5.0                | 高     |
+| `test_conjugate`               | Complex{1,2}.conjugate() = Complex{1,-2} | 中     |
+| `test_not_bool`                | !true = false, !false = true             | 中     |
+| `test_eq_f64`                  | 逐元素相等比较                           | 高     |
+| `test_lt_i32`                  | 逐元素小于比较                           | 高     |
+| `test_nan_comparison`          | NaN 比较遵循 IEEE 754                    | 高     |
+| `test_empty_tensor`            | 空张量运算返回空张量                     | 中     |
+| `test_add_simd_vs_scalar`      | SIMD 路径结果与标量一致                  | 中     |
 
 ### 7.3 边界测试场景
 
-| 场景 | 预期行为 |
-|------|----------|
-| 空张量 `shape=[0, 3]` | add 返回空张量 |
-| 单元素张量 | 所有运算正确 |
-| NaN 输入（f32/f64） | NaN 传播（sin(NaN)=NaN, 0*NaN=NaN） |
-| Inf 输入 | exp(Inf)=Inf, ln(0)=-Inf |
-| 广播形状不兼容 | zip_with 返回 `XenonError::BroadcastError` |
-| 非连续输入（切片后） | 运算结果与连续输入一致 |
+| 场景                  | 预期行为                                   |
+| --------------------- | ------------------------------------------ |
+| 空张量 `shape=[0, 3]` | add 返回空张量                             |
+| 单元素张量            | 所有运算正确                               |
+| NaN 输入（f32/f64）   | NaN 传播（sin(NaN)=NaN, 0\*NaN=NaN）       |
+| Inf 输入              | exp(Inf)=Inf, ln(0)=-Inf                   |
+| 广播形状不兼容        | zip_with 返回 `XenonError::BroadcastError` |
+| 非连续输入（切片后）  | 运算结果与连续输入一致                     |
 
 ### 7.4 集成测试
 
-| 测试文件 | 测试内容 |
-|----------|----------|
-| `tests/test_math.rs` | `zip_with` / `mapv` / 标量路径与 `iter`、`broadcast`、`tensor`、`simd` backend 的端到端集成 |
+| 测试文件             | 测试内容                                                                           |
+| -------------------- | ---------------------------------------------------------------------------------- |
+| `tests/test_math.rs` | `zip_with` / 标量路径与 `iter`、`broadcast`、`tensor`、`simd` backend 的端到端集成 |
 
 ---
 
@@ -606,17 +545,17 @@ Wave 4: [T8]
 
 ### 8.1 接口约定
 
-| 方向 | 对方模块 | 接口/类型 | 约定 |
-|------|----------|-----------|------|
-| `math → iter` | `iter` | `Elements` / `Zip` | `map` 路径复用 `Elements`，`zip_with` 路径复用 `Zip`（参见 `10-iterator.md` §4） |
-| `math → broadcast` | `broadcast` | `broadcast_shape()` | 二元运算先调用广播模块推导兼容视图（参见 `15-broadcast.md` §4） |
-| `math → element` | `element` | `Numeric` / `RealScalar` / `ComplexScalar` | 通过元素约束区分数值与复数运算语义（参见 `03-element.md` §4） |
-| `math → simd` | `simd` | SIMD backend dispatch facade | 连续数组且 feature 开启时通过稳定的 backend facade 分发到 SIMD 或标量路径，`math` 不直接依赖具体 vector kernel 名称（参见 `08-simd.md` §4.5） |
+| 方向               | 对方模块    | 接口/类型                                  | 约定                                                                                                                                          |
+| ------------------ | ----------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `math → iter`      | `iter`      | `Elements`                                 | 逐元素运算复用 `Elements` 及相关遍历入口（参见 `10-iterator.md` §4）                                                                          |
+| `math → broadcast` | `broadcast` | `broadcast_shape()`                        | 二元运算先调用广播模块推导兼容视图（参见 `15-broadcast.md` §4）                                                                               |
+| `math → element`   | `element`   | `Numeric` / `RealScalar` / `ComplexScalar` | 通过元素约束区分数值与复数运算语义（参见 `03-element.md` §4）                                                                                 |
+| `math → simd`      | `simd`      | SIMD backend dispatch facade               | 连续数组且 feature 开启时通过稳定的 backend facade 分发到 SIMD 或标量路径，`math` 不直接依赖具体 vector kernel 名称（参见 `08-simd.md` §4.5） |
 
 ### 8.2 数据流描述
 
 ```text
-用户调用 add / mapv / zip_with
+用户调用 add / unary op / zip_with
     │
     ├── math 模块根据操作类型选择一元/二元/标量路径
     ├── 二元路径先调用 broadcast 校验并生成兼容视图
@@ -628,32 +567,32 @@ Wave 4: [T8]
 
 ## 9. 设计决策记录（ADR）
 
-### 决策 1：map 返回新张量 vs 原地修改
+### 决策 1：不在当前版本公开 map 系列
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | `map`/`mapv` 返回新分配的 `Tensor<B, D>`，`mapv_inplace` 原地修改 |
-| 理由 | 不可变视图无法写入；返回新张量的生命周期与输入解耦，避免悬垂引用；原地修改作为显式 opt-in |
-| 替代方案 | 全部原地修改 |
-| 拒绝原因 | 类型转换（i32→f64）无法原地修改，破坏 API 一致性 |
+| 属性     | 值                                                             |
+| -------- | -------------------------------------------------------------- |
+| 决策     | 当前版本不把 `map` / `mapv` / `mapv_inplace` 纳入公开 API 承诺 |
+| 理由     | 需求说明书 §12 仅要求明确列出的逐元素运算，不要求通用映射原语  |
+| 替代方案 | 直接在本期暴露完整 map 系列                                    |
+| 拒绝原因 | 会扩大 API 面且引入额外语义边界，不符合当前最小范围            |
 
 ### 决策 2：NaN 比较遵循 IEEE 754
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 比较运算（eq/ne/lt/gt）遵循 IEEE 754 语义：NaN != NaN |
-| 理由 | 与 Rust 标准库 `f64::partial_cmp` 行为一致；与 NumPy/ndarray 行为一致 |
-| 替代方案 | 提供总排序比较（total_cmp） |
-| 拒绝原因 | 当前版本不需要总排序，可未来扩展 |
+| 属性     | 值                                                                    |
+| -------- | --------------------------------------------------------------------- |
+| 决策     | 比较运算（eq/ne/lt/gt）遵循 IEEE 754 语义：NaN != NaN                 |
+| 理由     | 与 Rust 标准库 `f64::partial_cmp` 行为一致；与 NumPy/ndarray 行为一致 |
+| 替代方案 | 提供总排序比较（total_cmp）                                           |
+| 拒绝原因 | 当前版本不需要总排序，可未来扩展                                      |
 
 ### 决策 3：SIMD 优化路径
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 连续 + 对齐内存时自动使用 SIMD 路径，非连续时回退到标量 |
-| 理由 | SIMD 路径只在连续内存上有意义；非连续时标量路径更简单正确 |
-| 替代方案 | 所有路径都用标量 |
-| 拒绝原因 | 性能差距显著（2-4x），科学计算用户期望高性能 |
+| 属性     | 值                                                        |
+| -------- | --------------------------------------------------------- |
+| 决策     | 连续 + 对齐内存时自动使用 SIMD 路径，非连续时回退到标量   |
+| 理由     | SIMD 路径只在连续内存上有意义；非连续时标量路径更简单正确 |
+| 替代方案 | 所有路径都用标量                                          |
+| 拒绝原因 | 性能差距显著（2-4x），科学计算用户期望高性能              |
 
 > **补充**：SIMD 实现位于独立 backend 模块 `src/simd/`，`math/` 仅按连续性和 feature gate 决定是否委托该 backend。
 
@@ -663,63 +602,34 @@ Wave 4: [T8]
 
 ### 10.1 SIMD 加速预期
 
-| 操作 | 标量路径 | SIMD 路径（AVX2） | 加速比 |
-|------|----------|-------------------|--------|
-| add f32 (1M) | ~2ms | ~0.5ms | 4x |
-| mul f64 (1M) | ~3ms | ~1ms | 3x |
-| sin f64 (1M) | ~20ms | ~12ms（部分 SIMD） | 1.7x |
+| 操作         | 标量路径 | SIMD 路径（AVX2）  | 加速比 |
+| ------------ | -------- | ------------------ | ------ |
+| add f32 (1M) | ~2ms     | ~0.5ms             | 4x     |
+| mul f64 (1M) | ~3ms     | ~1ms               | 3x     |
+| sin f64 (1M) | ~20ms    | ~12ms（部分 SIMD） | 1.7x   |
 
 ### 10.2 复杂度标注
 
-- `map`/`mapv`: O(n) 时间，O(n) 空间
 - `zip_with`: O(n) 时间，O(n) 空间
-- `mapv_inplace`: O(n) 时间，O(1) 额外空间
 - 广播操作: O(n) 时间，O(n) 空间（结果），广播本身零拷贝
 
 ---
 
-## 11. no_std 兼容性
+## 11. 平台与工程约束
 
-逐元素运算模块中的非数学运算在 `no_std` 环境下可用，但需注意结果分配；数学函数仅在 `std` feature 下提供。
-
-```rust
-#[cfg(not(feature = "std"))]
-extern crate alloc;
-
-#[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
-```
-
-| 组件 | no_std 支持 | 说明 |
-|------|:----------:|------|
-| `map` / `mapv` | ✅ | 返回新 `Tensor`，需 `no_std + alloc` |
-| `mapv_inplace` | ✅ | 原地修改，无额外分配 |
-| `zip_with` | ✅ | 返回新 `Tensor`，需 `no_std + alloc` |
-| 算术运算 (add/sub/mul/div) | ✅ | 基于 `zip_with`，需 `no_std + alloc` |
-| 数学函数 (sin/sqrt/exp/ln/...) | ❌ | 数学函数（sin/exp/ln/sqrt 等）需要 `std` feature，no_std 环境下不可用（RealScalar 数学方法在 no_std 下无实现者） |
-| 比较运算 (eq/ne/lt/gt) | ✅ | 无特殊依赖 |
-| 复数运算 (`conjugate`) | ✅ | 基于 `map`，需 `no_std + alloc` |
-| 复数数学函数 (`norm`) | ❌ | 仅在 `std` feature 下可用，依赖 `RealScalar` 数学能力 |
-| 逻辑非 (not) | ✅ | 基于 `map`，需 `no_std + alloc` |
-| SIMD 加速路径 | ✅ | pulp crate 支持 `no_std`（参见 `08-simd.md §11`） |
-
-条件编译处理：
-
-```rust
-// map/zip_with return new Tensor — needs alloc::vec::Vec
-// Math functions (sin/exp/ln/sqrt etc.) require `std` feature;
-// in no_std environments, RealScalar math methods have no implementors.
-
-#[cfg(not(feature = "std"))]
-extern crate alloc;
-```
+| 项目       | 约束                                                                                           |
+| ---------- | ---------------------------------------------------------------------------------------------- |
+| 标准库环境 | Xenon 当前版本仅支持 `std`，本文档不再承诺 `no_std` 兼容性                                     |
+| crate 结构 | 保持单 crate 结构，不拆分独立 math crate                                                       |
+| 依赖约束   | 仅允许项目基线中的可选 SIMD / 并行依赖，不新增额外第三方数学库                                 |
+| 范围边界   | 当前版本仅覆盖需求说明书 §12 明确列出的逐元素运算；`map` 系列与实复混合公开 API 不在本期范围内 |
 
 ---
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
+| 版本  | 日期       |
+| ----- | ---------- |
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
@@ -731,4 +641,4 @@ extern crate alloc;
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+_本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。_

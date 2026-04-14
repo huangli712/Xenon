@@ -3,6 +3,7 @@
 > 文档编号: 02 | 模块: `src/dimension/` | 阶段: Phase 1
 > 前置文档: `00-coding.md`, `01-architecture.md`
 > 需求参考: 需求说明书 §3
+> 范围声明: 范围内
 
 ---
 
@@ -10,28 +11,28 @@
 
 ### 1.1 职责边界
 
-| 职责 | 包含 | 不包含 |
-|------|------|--------|
-| 静态维度类型 | `Ix0`-`Ix6` 元组结构体，编译期确定维度数 | 运行时动态维度选择 |
-| 动态维度类型 | `IxDyn`（`Vec<usize>`），运行时维度数 | — |
-| Dimension trait | 完整的维度操作接口（ndim/slice/size/checked_size/strides_for_f_order/into_dyn/try_from_dyn） | 已签名 stride、logical-first pointer、布局标志计算 |
-| IntoDimension trait | 从元组、数组、切片、Vec 构造维度 | 用户自定义维度源 |
-| Axis 类型 | 轴标记新类型（index/next/prev/is_first/is_last） | 轴上的切片/迭代操作（由 tensor 方法提供） |
-| RemoveAxis trait | 移除指定轴降维（Ix1→Ix0, ..., Ix6→Ix5, IxDyn→IxDyn） | Ix0 不实现（标量无轴可移除） |
-| 维度互转 | 静态→动态（总是成功）、动态→静态（需维度匹配） | 隐式维度转换 |
-| F-order 步长计算 | `strides_for_f_order()` 返回无符号步长 | C-order 步长（不在范围内） |
-| 步长类型 | 维度层仅保存无符号形状；有符号步长由 `layout::Strides<D>` 单独建模 | 负步长语义（由 layout 模块负责） |
-| 内存分配 | — | 不负责任何内存分配 |
+| 职责                | 包含                                                                                         | 不包含                                             |
+| ------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| 静态维度类型        | `Ix0`-`Ix6` 元组结构体，编译期确定维度数                                                     | 运行时动态维度选择                                 |
+| 动态维度类型        | `IxDyn`（`Vec<usize>`），运行时维度数                                                        | —                                                  |
+| Dimension trait     | 完整的维度操作接口（ndim/slice/size/checked_size/strides_for_f_order/into_dyn/try_from_dyn） | 已签名 stride、logical-first pointer、布局标志计算 |
+| IntoDimension trait | 从元组、数组、切片、Vec 构造维度                                                             | 用户自定义维度源                                   |
+| Axis 类型           | 轴标记新类型（index/next/prev/is_first/is_last）                                             | 轴上的切片/迭代操作（由 tensor 方法提供）          |
+| RemoveAxis trait    | 移除指定轴降维（Ix1→Ix0, ..., Ix6→Ix5, IxDyn→IxDyn）                                         | Ix0 不实现（标量无轴可移除）                       |
+| 维度互转            | 静态→动态（总是成功）、动态→静态（需维度匹配）                                               | 隐式维度转换                                       |
+| F-order 步长计算    | `strides_for_f_order()` 返回无符号步长                                                       | C-order 步长（不在范围内）                         |
+| 步长类型            | 维度层仅保存无符号形状；stride 元数据由 `layout::Strides<D>` 单独建模                        | 超出当前版本合法布局范围的 stride 变体             |
+| 内存分配            | —                                                                                            | 不负责任何内存分配                                 |
 
 ### 1.2 设计原则
 
-| 原则 | 体现 |
-|------|------|
-| 编译期安全 | 静态维度 `NDIM = Some(N)`，单态化消除虚调用 |
-| 栈优先 | `Ix0`-`Ix6` 全部栈分配，`Ix0` 为 ZST |
-| 封闭集合 | `Dimension` trait 继承 `Sealed`，禁止外部实现 |
-| 最小依赖 | 仅依赖 `error` 模块和 `private::Sealed` |
-| no_std 兼容 | `IxDyn` 使用 `alloc::vec::Vec` |
+| 原则       | 体现                                          |
+| ---------- | --------------------------------------------- |
+| 编译期安全 | 静态维度 `NDIM = Some(N)`，单态化消除虚调用   |
+| 栈优先     | `Ix0`-`Ix6` 全部栈分配，`Ix0` 为 ZST          |
+| 封闭集合   | `Dimension` trait 继承 `Sealed`，禁止外部实现 |
+| 最小依赖   | 仅依赖 `error` 模块和 `private::Sealed`       |
+| `std` only | 本模块依赖 `std` 环境，不讨论 `no_std`        |
 
 ### 1.3 在架构中的位置
 
@@ -74,10 +75,10 @@ src/dimension/
 
 ### 3.2 依赖精确到类型级
 
-| 来源模块 | 使用的类型/trait |
-|----------|-----------------|
-| `error` | `XenonError::DimensionMismatch`（维度转换失败时返回） |
-| `private` | `Sealed`（`Dimension` trait 的 supertrait） |
+| 来源模块  | 使用的类型/trait                                      |
+| --------- | ----------------------------------------------------- |
+| `error`   | `XenonError::DimensionMismatch`（维度转换失败时返回） |
+| `private` | `Sealed`（`Dimension` trait 的 supertrait）           |
 
 ### 3.3 依赖方向声明
 
@@ -189,8 +190,11 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
 ### 4.2 静态维度类型 Ix0-Ix6
 
 ```rust
-/// Maximum supported dimensionality.
-pub const MAX_DIMENSION: usize = 100;
+/// Maximum supported dynamic dimensionality.
+///
+/// Dynamic dimensions are not artificially capped by the static `Ix0`-`Ix6` range.
+/// In practice, they are bounded by `usize` representability and available memory.
+pub const MAX_DIMENSION: usize = usize::MAX;
 
 /// Zero-dimensional (scalar) dimension. ZST.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
@@ -232,13 +236,13 @@ pub struct Ix6(pub usize, pub usize, pub usize, pub usize, pub usize, pub usize)
 
 #### Ix0 特殊语义
 
-| 属性 | 值 | 说明 |
-|------|-----|------|
-| `NDIM` | `Some(0)` | 没有维度 |
-| `slice()` | `&[]` | 空切片 |
-| `size()` | `1` | 一个元素（标量） |
-| `strides_for_f_order()` | `Ix0` | 无步长 |
-| 内存大小 | `0` bytes | ZST，编译器完全消除 |
+| 属性                    | 值        | 说明                |
+| ----------------------- | --------- | ------------------- |
+| `NDIM`                  | `Some(0)` | 没有维度            |
+| `slice()`               | `&[]`     | 空切片              |
+| `size()`                | `1`       | 一个元素（标量）    |
+| `strides_for_f_order()` | `Ix0`     | 无步长              |
+| 内存大小                | `0` bytes | ZST，编译器完全消除 |
 
 #### Ix1-Ix6 实现模式（以 Ix3 为例）
 
@@ -309,25 +313,15 @@ impl Dimension for Ix3 {
 
 ```rust
 /// Dynamic dimension type. Dimension count determined at runtime.
-/// Supports 0 to `MAX_DIMENSION` (100) dimensions.
+/// Dynamic rank is bounded only by `usize` representability and available memory.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub struct IxDyn {
     dims: Vec<usize>,
 }
 
-// All IxDyn constructors enforce the MAX_DIMENSION limit:
-//
-// fn assert_max_dim(dims_len: usize) {
-//     assert!(
-//         dims_len <= MAX_DIMENSION,
-//         "dimension count {} exceeds MAX_DIMENSION ({})",
-//         dims_len,
-//         MAX_DIMENSION,
-//     );
-// }
-//
-// Each constructor (from_slice, from_vec, from_element, ones, zeros)
-// calls assert_max_dim(dims.len()) before constructing the IxDyn.
+// IxDyn constructors do not impose an artificial rank cap.
+// Validation focuses on `usize` representability, allocation success,
+// and later shape/size checks in tensor construction paths.
 
 impl IxDyn {
     /// Creates an empty (0-dimensional) dynamic dimension.
@@ -335,34 +329,21 @@ impl IxDyn {
 
     /// Creates from a slice.
     ///
-    /// # Panics
-    ///
-    /// Panics if `slice.len() > MAX_DIMENSION`.
     pub fn from_slice(slice: &[usize]) -> Self;
 
     /// Creates from a Vec.
     ///
-    /// # Panics
-    ///
-    /// Panics if `dims.len() > MAX_DIMENSION`.
     pub fn from_vec(dims: Vec<usize>) -> Self;
 
     /// Creates with all axes set to a given value.
-    /// Panics if `ndim > MAX_DIMENSION`.
     pub fn from_element(value: usize, ndim: usize) -> Self;
 
     /// Creates filled with ones.
     ///
-    /// # Panics
-    ///
-    /// Panics if `ndim > MAX_DIMENSION`.
     pub fn ones(ndim: usize) -> Self;
 
     /// Creates filled with zeros.
     ///
-    /// # Panics
-    ///
-    /// Panics if `ndim > MAX_DIMENSION`.
     pub fn zeros(ndim: usize) -> Self;
 
     /// Consumes and returns the inner Vec.
@@ -399,18 +380,6 @@ impl Dimension for IxDyn {
 
     // ...
 }
-```
-
-#### no_std 兼容性
-
-```rust
-#[cfg(feature = "std")]
-use std::vec::Vec;
-
-#[cfg(not(feature = "std"))]
-extern crate alloc;
-#[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
 ```
 
 ### 4.4 IntoDimension trait
@@ -595,8 +564,8 @@ fn create_tensor_3d<A>(d1: usize, d2: usize, d3: usize) -> Tensor<A, Ix3> { /* .
 // Good - use Result for dimension conversion
 let dim: Ix3 = Ix3::try_from_dyn(dyn_dim)?;
 
-// Bad - discarding the recoverable conversion error path
-let dim: Ix3 = Ix3::try_from_dyn(dyn_dim)?;
+// Bad - assuming a 5D dynamic dimension can be used as Ix3 without handling mismatch
+let dim: Ix3 = Ix3::try_from_dyn(IxDyn::from_slice(&[2, 3, 4, 5, 6]))?;
 ```
 
 ---
@@ -753,25 +722,25 @@ impl Reverse for IxDyn {
 
 **静态 → 动态（总是成功）**
 
-| 源类型 | 目标类型 | 结果 |
-|--------|----------|------|
-| `Ix0` | `IxDyn` | `IxDyn { dims: vec![] }` |
-| `Ix1(n)` | `IxDyn` | `IxDyn { dims: vec![n] }` |
-| `Ix3(a,b,c)` | `IxDyn` | `IxDyn { dims: vec![a, b, c] }` |
+| 源类型       | 目标类型 | 结果                            |
+| ------------ | -------- | ------------------------------- |
+| `Ix0`        | `IxDyn`  | `IxDyn { dims: vec![] }`        |
+| `Ix1(n)`     | `IxDyn`  | `IxDyn { dims: vec![n] }`       |
+| `Ix3(a,b,c)` | `IxDyn`  | `IxDyn { dims: vec![a, b, c] }` |
 
 **动态 → 静态（需维度匹配）**
 
-| 源类型 | 条件 | 成功 | 失败 |
-|--------|------|------|------|
+| 源类型  | 条件        | 成功       | 失败                                 |
+| ------- | ----------- | ---------- | ------------------------------------ |
 | `IxDyn` | `ndim == N` | `IxN(...)` | `Err(XenonError::DimensionMismatch)` |
 
-### 5.2 负步长支持说明
+### 5.2 stride 表达边界
 
-维度层保存无符号形状（`usize`），步长计算结果也为无符号。负步长由 `layout` 模块处理（参见 `06-memory.md` §4）：
+维度层保存无符号形状（`usize`），步长计算结果也为无符号。`layout` 模块负责具体 stride 元数据，并仅覆盖当前版本允许的连续、转置后非连续和广播零步长布局（参见 `06-memory.md` §4）：
 
 ```
 Dimension 层：shape = [3, 4], strides_for_f_order() = Ix2(1, 3)
-Layout 层：   strides = [1isize, 3isize]（可翻转为负值表示反向视图）
+Layout 层：   strides = [1isize, 3isize]（表示当前版本允许的合法布局）
 ```
 
 > 维度层关注"形状是什么"，layout 层关注"数据如何排列"。
@@ -800,15 +769,15 @@ strides_for_f_order(shape):
 
 ### 6.1 接口约定
 
-| 模块 | 使用的 trait/类型 | 用途 |
-|------|-------------------|------|
-| `layout` | `Dimension` | 计算步长、检查连续性 |
-| `storage` | — | 不直接消费 `Dimension`；仅管理底层连续缓冲区 |
-| `tensor` | `Dimension` | 泛型参数、形状访问 |
-| `shape` | `Dimension`, `IntoDimension` | reshape、transpose |
-| `iter` | `Dimension` | 迭代器泛型参数 |
-| `math` | `Dimension` | 运算泛型参数 |
-| `index` | `Dimension`, `Axis` | 索引操作 |
+| 模块      | 使用的 trait/类型            | 用途                                         |
+| --------- | ---------------------------- | -------------------------------------------- |
+| `layout`  | `Dimension`                  | 计算步长、检查连续性                         |
+| `storage` | —                            | 不直接消费 `Dimension`；仅管理底层连续缓冲区 |
+| `tensor`  | `Dimension`                  | 泛型参数、形状访问                           |
+| `shape`   | `Dimension`, `IntoDimension` | reshape、transpose                           |
+| `iter`    | `Dimension`                  | 迭代器泛型参数                               |
+| `math`    | `Dimension`                  | 运算泛型参数                                 |
+| `index`   | `Dimension`, `Axis`          | 索引操作                                     |
 
 > 各模块的详细接口约定参见对应设计文档（`05-storage.md` §3、`07-tensor.md` §4、`16-shape.md` §4、`17-indexing.md` §4）。
 
@@ -870,7 +839,7 @@ strides_for_f_order(shape):
 
 - [ ] **T6**: 实现 `IxDyn` 动态维度
   - 文件: `src/dimension/dynamic.rs`
-  - 内容: `IxDyn` 结构体 + `Dimension` impl + 构造方法 + no_std 兼容
+  - 内容: `IxDyn` 结构体 + `Dimension` impl + 构造方法
   - 测试: `test_ixdyn_from_slice`, `test_ixdyn_strides`
   - 前置: T2
   - 预计: 10 min
@@ -916,7 +885,7 @@ strides_for_f_order(shape):
 
 - [ ] **T12**: 集成测试与边界测试
   - 文件: `tests/test_dimension.rs`
-  - 内容: 空维度、单元素、大维度、size 溢出、no_std 兼容性
+  - 内容: 空维度、单元素、大维度、size 溢出
   - 测试: 见测试计划 §8
   - 前置: T11
   - 预计: 10 min
@@ -947,154 +916,154 @@ Wave 5:  [T10] → [T11] → [T12]
 
 ### 8.1 测试分类表
 
-| 测试分类 | 位置 | 说明 |
-|----------|------|------|
-| 单元测试 | `#[cfg(test)] mod tests` | 验证各维度类型、步长计算和辅助 trait |
-| 集成测试 | `tests/test_dimension.rs` | 验证 `dimension` 与 `tensor`、`layout`、`shape`、`index` 的协同路径 |
-| 边界测试 | 同模块测试中标注 | 覆盖 Ix0、零长度轴、大维度与溢出路径 |
-| 属性测试 | `tests/test_dimension.rs` 或 `tests/property.rs` | 验证 stride/size/维度互转不变量 |
+| 测试分类 | 位置                                             | 说明                                                                |
+| -------- | ------------------------------------------------ | ------------------------------------------------------------------- |
+| 单元测试 | `#[cfg(test)] mod tests`                         | 验证各维度类型、步长计算和辅助 trait                                |
+| 集成测试 | `tests/test_dimension.rs`                        | 验证 `dimension` 与 `tensor`、`layout`、`shape`、`index` 的协同路径 |
+| 边界测试 | 同模块测试中标注                                 | 覆盖 Ix0、零长度轴、大维度与溢出路径                                |
+| 属性测试 | `tests/test_dimension.rs` 或 `tests/property.rs` | 验证 stride/size/维度互转不变量                                     |
 
 ### 8.2 单元测试清单
 
-| 测试函数 | 测试内容 | 优先级 |
-|----------|----------|--------|
-| `test_ix0_size_is_one` | `Ix0.size() == 1` | 高 |
-| `test_ix0_ndim_is_zero` | `Ix0.ndim() == 0` | 高 |
-| `test_ix0_is_zst` | `size_of::<Ix0>() == 0` | 高 |
-| `test_ix1_strides_f_order` | `Ix1(5).strides_for_f_order() == Ix1(1)` | 高 |
-| `test_ix2_strides_f_order` | `Ix2(3,4).strides_for_f_order() == Ix2(1,3)` | 高 |
-| `test_ix3_strides_f_order` | `Ix3(2,3,4).strides_for_f_order() == Ix3(1,2,6)` | 高 |
-| `test_ix3_size_calculation` | `Ix3(2,3,4).size() == 24` | 高 |
-| `test_ix6_max_dimensions` | `Ix6(1,2,3,4,5,6).size() == 720` | 中 |
-| `test_ixdyn_from_slice` | `IxDyn::from_slice(&[2,3])` | 高 |
-| `test_ixdyn_strides` | `IxDyn::from_slice(&[2,3,4]).strides_for_f_order()` | 高 |
-| `test_static_to_dyn` | `Ix3(2,3,4).into_dyn()` | 高 |
-| `test_dyn_to_static_success` | `Ix3::try_from_dyn(IxDyn::from_slice(&[2,3,4]))` | 高 |
-| `test_dyn_to_static_failure` | `Ix3::try_from_dyn(IxDyn::from_slice(&[2,3,4,5]))` → Err | 高 |
-| `test_tuple_into_dimension` | `(2,3,4).into_dimension()` → `Ix3(2,3,4)` | 中 |
-| `test_slice_to_ixdyn` | `(&[2,3,4][..]).into_dimension()` → `IxDyn` | 中 |
-| `test_axis_next_prev` | `Axis(2).next() == Axis(3)`, `Axis(0).prev() == None` | 中 |
-| `test_axis_is_first_last` | `Axis(0).is_first()`, `Axis(2).is_last(3)` | 中 |
-| `test_size_overflow` | 大值维度 `checked_size()` 返回 `None` | 低 |
+| 测试函数                     | 测试内容                                                 | 优先级 |
+| ---------------------------- | -------------------------------------------------------- | ------ |
+| `test_ix0_size_is_one`       | `Ix0.size() == 1`                                        | 高     |
+| `test_ix0_ndim_is_zero`      | `Ix0.ndim() == 0`                                        | 高     |
+| `test_ix0_is_zst`            | `size_of::<Ix0>() == 0`                                  | 高     |
+| `test_ix1_strides_f_order`   | `Ix1(5).strides_for_f_order() == Ix1(1)`                 | 高     |
+| `test_ix2_strides_f_order`   | `Ix2(3,4).strides_for_f_order() == Ix2(1,3)`             | 高     |
+| `test_ix3_strides_f_order`   | `Ix3(2,3,4).strides_for_f_order() == Ix3(1,2,6)`         | 高     |
+| `test_ix3_size_calculation`  | `Ix3(2,3,4).size() == 24`                                | 高     |
+| `test_ix6_max_dimensions`    | `Ix6(1,2,3,4,5,6).size() == 720`                         | 中     |
+| `test_ixdyn_from_slice`      | `IxDyn::from_slice(&[2,3])`                              | 高     |
+| `test_ixdyn_strides`         | `IxDyn::from_slice(&[2,3,4]).strides_for_f_order()`      | 高     |
+| `test_static_to_dyn`         | `Ix3(2,3,4).into_dyn()`                                  | 高     |
+| `test_dyn_to_static_success` | `Ix3::try_from_dyn(IxDyn::from_slice(&[2,3,4]))`         | 高     |
+| `test_dyn_to_static_failure` | `Ix3::try_from_dyn(IxDyn::from_slice(&[2,3,4,5]))` → Err | 高     |
+| `test_tuple_into_dimension`  | `(2,3,4).into_dimension()` → `Ix3(2,3,4)`                | 中     |
+| `test_slice_to_ixdyn`        | `(&[2,3,4][..]).into_dimension()` → `IxDyn`              | 中     |
+| `test_axis_next_prev`        | `Axis(2).next() == Axis(3)`, `Axis(0).prev() == None`    | 中     |
+| `test_axis_is_first_last`    | `Axis(0).is_first()`, `Axis(2).is_last(3)`               | 中     |
+| `test_size_overflow`         | 大值维度 `checked_size()` 返回 `None`                    | 低     |
 
 ### 8.3 边界测试场景
 
-| 场景 | 预期行为 |
-|------|----------|
-| 空维度 `Ix0` | `size()=1`, `ndim()=0`, `slice()=&[]` |
-| 单元素 `Ix1(1)` | `size()=1` |
-| 零长度轴 `Ix2(0, 3)` | `size()=0`, `contains_zero()=true` |
-| 大维度 `Ix6(100,100,100,100,100,100)` | `checked_size()` 在溢出时返回 `None` |
-| `IxDyn::ones(0)` | 零维动态维度 |
+| 场景                                  | 预期行为                              |
+| ------------------------------------- | ------------------------------------- |
+| 空维度 `Ix0`                          | `size()=1`, `ndim()=0`, `slice()=&[]` |
+| 单元素 `Ix1(1)`                       | `size()=1`                            |
+| 零长度轴 `Ix2(0, 3)`                  | `size()=0`, `contains_zero()=true`    |
+| 大维度 `Ix6(100,100,100,100,100,100)` | `checked_size()` 在溢出时返回 `None`  |
+| `IxDyn::ones(0)`                      | 零维动态维度                          |
 
 ### 8.4 属性测试不变量
 
-| 不变量 | 测试方法 |
-|--------|----------|
+| 不变量                                           | 测试方法     |
+| ------------------------------------------------ | ------------ |
 | `dim.strides_for_f_order().ndim() == dim.ndim()` | 所有维度类型 |
-| `dim.into_dyn().try_from_dyn()` 往返一致 | 静态维度 |
-| `dim.size() == dim.slice().iter().product()` | 随机形状 |
+| `dim.into_dyn().try_from_dyn()` 往返一致         | 静态维度     |
+| `dim.size() == dim.slice().iter().product()`     | 随机形状     |
 
 ### 8.5 集成测试
 
-| 测试文件 | 测试内容 |
-|----------|----------|
+| 测试文件                  | 测试内容                                                                               |
+| ------------------------- | -------------------------------------------------------------------------------------- |
 | `tests/test_dimension.rs` | `IntoDimension`、`Axis`、`BroadcastDim` 与 `tensor`、`shape`、`index` 的端到端协同验证 |
 
 ---
 
 ## 9. 设计决策记录
 
-### 决策 1：最大维度数为 6
+### 决策 1：静态维度数上限为 6
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 固定最大维度数为 6 |
-| 理由 | 科学计算中超 6 维罕见；固定数量允许编译期优化；与 ndarray 设计一致 |
-| 替代方案 | 无限制（仅受 IxDyn 内存限制）— 放弃，增加复杂度 |
-| 替代方案 | 可配置（宏或 const generic）— 放弃，增加维护成本 |
+| 属性     | 值                                                                                                                         |
+| -------- | -------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | 静态维度类型固定覆盖 `Ix0` 到 `Ix6`；动态维度 `IxDyn` 不施加额外 rank 上限                                                 |
+| 理由     | 0-6 维静态类型已经覆盖常见高频路径并保留编译期优化；更高 rank 统一由 `IxDyn` 承担，边界仅受 `usize` 表示能力与可用内存限制 |
+| 替代方案 | 所有维度都做成无限静态族 — 放弃，类型数量和实现复杂度不可控                                                                |
+| 替代方案 | 可配置（宏或 const generic）— 放弃，增加维护成本                                                                           |
 
 ### 决策 2：IxDyn 使用 Vec 而非 SmallVec
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 使用 `Vec<usize>`，SmallVec 作为未来优化 |
-| 理由 | 保持简单、减少依赖；≤6 维场景堆分配开销可接受；未来可通过 feature gate 引入 |
-| 替代方案 | `SmallVec<[usize; 6]>` — 放弃，增加依赖 |
-| 替代方案 | `ArrayVec<usize, 6>` — 放弃，无溢出处理 |
+| 属性     | 值                                                                          |
+| -------- | --------------------------------------------------------------------------- |
+| 决策     | 使用 `Vec<usize>`，SmallVec 作为未来优化                                    |
+| 理由     | 保持简单、减少依赖；≤6 维场景堆分配开销可接受；未来可通过 feature gate 引入 |
+| 替代方案 | `SmallVec<[usize; 6]>` — 放弃，增加依赖                                     |
+| 替代方案 | `ArrayVec<usize, 6>` — 放弃，无溢出处理                                     |
 
 ### 决策 3：Ix0 的 size() 返回 1
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | `Ix0.size() == 1`（标量语义） |
-| 理由 | 数学上零维数组是标量；与 ndarray/NumPy 一致；允许 `Tensor<A, Ix0>` 表示单值；广播正确处理 |
-| 替代方案 | `size() == 0` — 放弃，与标量语义冲突 |
+| 属性     | 值                                                                                        |
+| -------- | ----------------------------------------------------------------------------------------- |
+| 决策     | `Ix0.size() == 1`（标量语义）                                                             |
+| 理由     | 数学上零维数组是标量；与 ndarray/NumPy 一致；允许 `Tensor<A, Ix0>` 表示单值；广播正确处理 |
+| 替代方案 | `size() == 0` — 放弃，与标量语义冲突                                                      |
 
 ### 决策 4：Dimension trait 继承 Sealed
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | `Dimension: Sealed + ...`，禁止外部实现 |
-| 理由 | API 稳定性（可添加新方法不破坏外部）；类型安全；不变量可控；Rust 生态标准做法 |
-| 替代方案 | 开放实现 — 放弃，失去版本控制能力 |
+| 属性     | 值                                                                            |
+| -------- | ----------------------------------------------------------------------------- |
+| 决策     | `Dimension: Sealed + ...`，禁止外部实现                                       |
+| 理由     | API 稳定性（可添加新方法不破坏外部）；类型安全；不变量可控；Rust 生态标准做法 |
+| 替代方案 | 开放实现 — 放弃，失去版本控制能力                                             |
 
 ### 决策 5：仅 F-order 步长计算
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 仅提供 `strides_for_f_order()`，不提供 `strides_for_c_order()` |
-| 理由 | 需求说明书 §7 明确只支持 F-order 布局；减少 API 表面积；C-order 留作未来扩展 |
-| 替代方案 | 同时提供两种 — 放弃，超出需求范围 |
+| 属性     | 值                                                                           |
+| -------- | ---------------------------------------------------------------------------- |
+| 决策     | 仅提供 `strides_for_f_order()`，不提供 `strides_for_c_order()`               |
+| 理由     | 需求说明书 §7 明确只支持 F-order 布局；减少 API 表面积；C-order 留作未来扩展 |
+| 替代方案 | 同时提供两种 — 放弃，超出需求范围                                            |
 
 ### 决策 6：步长在 Dimension 层为无符号
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | `strides_for_f_order()` 返回 `Self`（无符号），负步长由 layout 层处理 |
-| 理由 | 关注点分离：Dimension 关注形状，Layout 关注数据排列 |
-| 替代方案 | Dimension 直接返回 `isize` 步长 — 放弃，维度层不应感知负步长 |
+| 属性     | 值                                                                                |
+| -------- | --------------------------------------------------------------------------------- |
+| 决策     | `strides_for_f_order()` 返回 `Self`（无符号），具体 stride 元数据由 layout 层处理 |
+| 理由     | 关注点分离：Dimension 关注形状，Layout 关注当前版本允许的数据排列                 |
+| 替代方案 | Dimension 直接返回 `isize` 步长 — 放弃，维度层不应承担布局表达职责                |
 
 ### 决策 7：`size()` 与 `checked_size()` 双接口
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 保留 `size()` 作为已验证维度的快捷路径，同时提供 `checked_size()` 供构造与布局验证使用 |
-| 理由 | 既保留日常查询便利性，又避免在关键安全路径上静默回绕 |
-| 风险 | 如果调用方跳过 `checked_size()` 直接在未验证输入上调用 `size()`，仍可能触发 panic |
-| 替代方案 | 仅保留 `checked_size()` — 放弃，普通只读查询会变得冗长 |
-| 替代方案 | 继续使用静默回绕乘法 — 放弃，安全路径不能接受静默回绕 |
+| 属性     | 值                                                                                     |
+| -------- | -------------------------------------------------------------------------------------- |
+| 决策     | 保留 `size()` 作为已验证维度的快捷路径，同时提供 `checked_size()` 供构造与布局验证使用 |
+| 理由     | 既保留日常查询便利性，又避免在关键安全路径上静默回绕                                   |
+| 风险     | 如果调用方跳过 `checked_size()` 直接在未验证输入上调用 `size()`，仍可能触发 panic      |
+| 替代方案 | 仅保留 `checked_size()` — 放弃，普通只读查询会变得冗长                                 |
+| 替代方案 | 继续使用静默回绕乘法 — 放弃，安全路径不能接受静默回绕                                  |
 
 ---
 
 ## 10. 性能考量
 
-| 方面 | 设计决策 |
-|------|----------|
-| 栈分配 | `Ix0`-`Ix6` 全部栈分配，无堆开销 |
-| ZST 优化 | `Ix0` 是零大小类型，编译器完全消除 |
-| 内联 | 所有 `ndim()`, `slice()`, `size()` 标注 `#[inline]` |
-| 单态化 | `Dimension` trait 在泛型上下文中单态化，无虚调用开销 |
-| checked overflow | 构造与布局验证统一走 `checked_size()`，避免静默回绕 |
-| 编译期常量 | `NDIM: Option<usize>` 编译期已知，可优化分支 |
+| 方面             | 设计决策                                             |
+| ---------------- | ---------------------------------------------------- |
+| 栈分配           | `Ix0`-`Ix6` 全部栈分配，无堆开销                     |
+| ZST 优化         | `Ix0` 是零大小类型，编译器完全消除                   |
+| 内联             | 所有 `ndim()`, `slice()`, `size()` 标注 `#[inline]`  |
+| 单态化           | `Dimension` trait 在泛型上下文中单态化，无虚调用开销 |
+| checked overflow | 构造与布局验证统一走 `checked_size()`，避免静默回绕  |
+| 编译期常量       | `NDIM: Option<usize>` 编译期已知，可优化分支         |
 
 ---
 
-## 11. no_std 兼容性
+## 11. 平台与工程约束
 
-| 组件 | 兼容方案 |
-|------|----------|
-| `Ix0`-`Ix6` | 纯栈分配，天然 no_std |
-| `IxDyn` | 需要 `alloc` crate（`alloc::vec::Vec`） |
-| `IntoDimension` | `Vec<usize>` 源需要 alloc；tuple/array 源天然 no_std |
-| Feature gate | `#[cfg(feature = "std")]` 使用 `std::vec::Vec`；`#[cfg(not(feature = "std"))]` 使用 `alloc::vec::Vec` |
+| 约束       | 说明                                   |
+| ---------- | -------------------------------------- |
+| `std` only | 本模块依赖 `std` 环境，不讨论 `no_std` |
+| 单 crate   | 保持单 crate 边界                      |
+| SemVer     | 公开 API 和维度类型变更遵循 SemVer     |
+| 最小依赖   | 无新增第三方依赖                       |
 
 ---
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
+| 版本  | 日期       |
+| ----- | ---------- |
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
@@ -1104,4 +1073,4 @@ Wave 5:  [T10] → [T11] → [T12]
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+_本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。_

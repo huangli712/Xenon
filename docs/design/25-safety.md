@@ -1,33 +1,34 @@
-# 线程安全设计
+# 线程安全规范
 
-> 文档编号: 25 | 模块: `src/storage/`, `src/parallel/`, `src/simd/`, `src/ffi/` | 阶段: Phase 2
+> 文档编号: 25 | 适用范围: `src/storage/`, `src/parallel/`, `src/simd/`, `src/ffi/` | 阶段: Phase 2
 > 前置文档: `05-storage.md`, `07-tensor.md`
 > 需求参考: 需求说明书 §10
+> 范围声明: 范围内
 
 ---
 
-## 1. 模块定位
+## 1. 主题定位与适用范围
 
 线程安全是 Xenon 的横切关注点，贯穿所有存储模式和计算后端。本文档定义各存储模式（参见 `05-storage.md §4`）的 `Send`/`Sync` 实现规则，确保 Xenon 张量（参见 `07-tensor.md §4`）可在多线程环境下安全使用。
 
 ### 1.1 职责边界
 
-| 职责 | 包含 | 不包含 |
-|------|------|--------|
-| Send/Sync 实现 | 各存储模式的 Send/Sync trait 实现 | 锁机制 (Mutex/RwLock) |
-| 正确性保证 | unsafe impl 的安全性论证和证明 | 通道 (mpsc/crossbeam) |
-| 并行安全约束 | SIMD 与并行组合的安全约束 | 异步运行时 (tokio/async-std) |
-| 编译期保证 | 通过 Rust 类型系统在编译期排除数据竞争 | 运行时锁或同步原语 |
-| 广播安全 | 广播结果不可变迭代的约束 | — |
+| 职责           | 包含                                   | 不包含                       |
+| -------------- | -------------------------------------- | ---------------------------- |
+| Send/Sync 实现 | 各存储模式的 Send/Sync trait 实现      | 锁机制 (Mutex/RwLock)        |
+| 正确性保证     | unsafe impl 的安全性论证和证明         | 通道 (mpsc/crossbeam)        |
+| 并行安全约束   | SIMD 与并行组合的安全约束              | 异步运行时 (tokio/async-std) |
+| 编译期保证     | 通过 Rust 类型系统在编译期排除数据竞争 | 运行时锁或同步原语           |
+| 广播安全       | 广播结果不可变迭代的约束               | —                            |
 
 ### 1.2 设计原则
 
-| 原则 | 体现 |
-|------|------|
-| 编译期保证 | 无运行时锁，所有线程安全由 Rust 类型系统在编译期保证 |
-| 最小约束 | 每种存储模式仅实现其语义允许的最小 Send/Sync 约束 |
-| unsafe 安全论证 | 每个 unsafe impl 附带完整 SAFETY 注释 |
-| 所有权协同 | 充分利用 Rust 所有权系统与线程安全的天然协同 |
+| 原则            | 体现                                                 |
+| --------------- | ---------------------------------------------------- |
+| 编译期保证      | 无运行时锁，所有线程安全由 Rust 类型系统在编译期保证 |
+| 最小约束        | 每种存储模式仅实现其语义允许的最小 Send/Sync 约束    |
+| unsafe 安全论证 | 每个 unsafe impl 附带完整 SAFETY 注释                |
+| 所有权协同      | 充分利用 Rust 所有权系统与线程安全的天然协同         |
 
 ### 1.3 在架构中的位置
 
@@ -49,13 +50,13 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 ### 1.4 线程安全在 Xenon 中的重要性
 
-| 场景 | 线程安全需求 |
-|------|--------------|
-| 并行迭代 | 多线程同时访问不同元素区间 |
-| 跨线程共享 | 通过 ArcRepr 在线程间传递只读数据 |
-| 写时复制 | ArcRepr::make_mut() 的原子性保证 |
+| 场景         | 线程安全需求                      |
+| ------------ | --------------------------------- |
+| 并行迭代     | 多线程同时访问不同元素区间        |
+| 跨线程共享   | 通过 ArcRepr 在线程间传递只读数据 |
+| 写时复制     | ArcRepr::make_mut() 的原子性保证  |
 | 数据竞争预防 | 确保 ViewMutRepr 独占访问不被共享 |
-| rayon 集成 | ParallelIterator 要求 Send 约束 |
+| rayon 集成   | ParallelIterator 要求 Send 约束   |
 
 ---
 
@@ -87,7 +88,7 @@ src/
 ```
 src/storage/
 ├── core::marker         # PhantomData, Send, Sync
-├── alloc::sync::Arc     # ArcRepr 使用的原子引用计数（no_std 兼容；std feature 下 alloc::sync::Arc 等价于 std::sync::Arc）
+├── alloc::sync::Arc     # ArcRepr 使用的原子引用计数
 └── std::cell::Cell      # thread_local (parallel 模块)
 
 src/parallel/
@@ -98,12 +99,12 @@ src/parallel/
 
 ### 3.2 依赖精确到类型级
 
-| 来源模块 | 使用的类型/trait |
-|----------|-----------------|
-| `core::marker` | `PhantomData<A>`, `Send`, `Sync` |
-| `std::sync` | `Arc<Vec<A>>`, `AtomicUsize` |
-| `std::cell` | `Cell<usize>`, `Cell<Option<usize>>` |
-| `rayon::iter` | `ParallelIterator` (要求 `Item: Send`，参见 `09-parallel.md §4`) |
+| 来源模块       | 使用的类型/trait                                                 |
+| -------------- | ---------------------------------------------------------------- |
+| `core::marker` | `PhantomData<A>`, `Send`, `Sync`                                 |
+| `std::sync`    | `Arc<Vec<A>>`, `AtomicUsize`                                     |
+| `std::cell`    | `Cell<usize>`, `Cell<Option<usize>>`                             |
+| `rayon::iter`  | `ParallelIterator` (要求 `Item: Send`，参见 `09-parallel.md §4`) |
 
 ### 3.3 依赖方向声明
 
@@ -119,12 +120,12 @@ src/parallel/
 
 完整矩阵：
 
-| 存储模式 | Send | Sync | 条件 | 理由 |
-|----------|:----:|:----:|------|------|
-| `Owned<A>` | ✅ | ✅ | Send: `A: Send`; Sync: `A: Sync` | 独占拥有型存储分别按移动安全和共享安全传播元素约束 |
-| `ViewRepr<'a, A>` | ✅ | ✅ | `A: Sync` | 共享视图跨线程共享要求元素可安全共享 |
-| `ViewMutRepr<'a, A>` | ✅ | ✗ | `A: Send` | 独占可写视图可转移但不可共享 |
-| `ArcRepr<A>` | ✅ | ✅ | `A: Send + Sync` | Arc 原子计数，读共享安全，写入需 `make_mut()` 独占 |
+| 存储模式             | Send | Sync | 条件                             | 理由                                               |
+| -------------------- | :--: | :--: | -------------------------------- | -------------------------------------------------- |
+| `Owned<A>`           |  ✅  |  ✅  | Send: `A: Send`; Sync: `A: Sync` | 独占拥有型存储分别按移动安全和共享安全传播元素约束 |
+| `ViewRepr<'a, A>`    |  ✅  |  ✅  | `A: Sync`                        | 共享视图跨线程共享要求元素可安全共享               |
+| `ViewMutRepr<'a, A>` |  ✅  |  ✗   | `A: Send`                        | 独占可写视图可转移但不可共享                       |
+| `ArcRepr<A>`         |  ✅  |  ✅  | `A: Send + Sync`                 | Arc 原子计数，读共享安全，写入需 `make_mut()` 独占 |
 
 各存储模式的完整 API 定义参见 `05-storage.md §4`。
 
@@ -132,12 +133,12 @@ src/parallel/
 
 `TensorBase<S, D>` 的 `Send`/`Sync` 由 Rust 自动推导，规则如下：
 
-| 存储模式 S | TensorBase\<S, D\> 的 Send | TensorBase\<S, D\> 的 Sync |
-|------------|--------------------------|--------------------------|
-| `Owned<A>` where `A: Send` / `A: Sync` | ✅ Send | ✅ Sync |
-| `ViewRepr<'a, A>` where A: Sync | ✅ Send | ✅ Sync |
-| `ViewMutRepr<'a, A>` where A: Send | ✅ Send | ❌ (exclusive borrow) |
-| `ArcRepr<A>` where A: Send + Sync | ✅ Send | ✅ Sync |
+| 存储模式 S                             | TensorBase\<S, D\> 的 Send | TensorBase\<S, D\> 的 Sync |
+| -------------------------------------- | -------------------------- | -------------------------- |
+| `Owned<A>` where `A: Send` / `A: Sync` | ✅ Send                    | ✅ Sync                    |
+| `ViewRepr<'a, A>` where A: Sync        | ✅ Send                    | ✅ Sync                    |
+| `ViewMutRepr<'a, A>` where A: Send     | ✅ Send                    | ❌ (exclusive borrow)      |
+| `ArcRepr<A>` where A: Send + Sync      | ✅ Send                    | ✅ Sync                    |
 
 > **说明**: `D: Dimension` 要求 `Dimension: Send + Sync`，因此维度类型始终线程安全。
 
@@ -548,99 +549,84 @@ Wave 2:            [T5]
 
 ### 7.1 测试分类表
 
-| 类型 | 位置 | 目的 |
-|------|------|------|
-| 编译期检查 | `static_assertions` 或手动函数 | 验证 Send/Sync 约束传播 |
-| 跨线程测试 | `#[test]` with `std::thread` | 验证跨线程使用安全性 |
-| 并发访问测试 | `tests/test_thread_safety.rs` | 多线程并发场景验证 |
-| 模型检测 | `loom` 或 `miri` | 数据竞争和内存安全检测 |
-| 边界测试 | 同模块测试中标注 | 验证广播只读、非 `Send` / `Sync` 元素、嵌套并行回退等边界 |
-| 属性测试 | 编译期断言 + 参数化并发用例 | 验证 trait 约束传播与分块不重叠不变量 |
-
-> **注意：** `static_assertions` crate 用于编译期断言 Send/Sync 实现。需在 `Cargo.toml` 的 `[dev-dependencies]` 中添加：
-> ```toml
-> static_assertions = "1.1"
-> ```
-
-> **dev-dependency 说明**：编译期负向测试（如 `assert_not_impl_any!`）需要 `static_assertions` crate。需在 `Cargo.toml` 的 `[dev-dependencies]` 中添加 `static_assertions = "1.1"`。
+| 类型         | 位置                                     | 目的                                                      |
+| ------------ | ---------------------------------------- | --------------------------------------------------------- |
+| 编译期检查   | 仓库既有编译期测试机制或手写断言辅助函数 | 验证 Send/Sync 约束传播                                   |
+| 跨线程测试   | `#[test]` with `std::thread`             | 验证跨线程使用安全性                                      |
+| 并发访问测试 | `tests/test_thread_safety.rs`            | 多线程并发场景验证                                        |
+| 边界测试     | 同模块测试中标注                         | 验证广播只读、非 `Send` / `Sync` 元素、嵌套并行回退等边界 |
+| 属性测试     | 编译期断言 + 参数化并发用例              | 验证 trait 约束传播与分块不重叠不变量                     |
 
 ### 7.2 单元测试清单
 
-| 测试函数 | 测试内容 | 优先级 |
-|----------|----------|--------|
-| `test_owned_send_sync` | `Owned<f64>: Send + Sync` 编译通过 | 高 |
-| `test_owned_negative_rc` | `Owned<Rc<i32>>` 不满足 Send | 高 |
-| `test_view_send_sync` | `ViewRepr<'_, f64>: Send + Sync` 编译通过 | 高 |
-| `test_view_cross_thread` | 视图跨线程传递正确 | 高 |
-| `test_view_mut_send` | `ViewMutRepr<'_, f64>: Send` 编译通过 | 高 |
-| `test_view_mut_not_sync` | `ViewMutRepr` 不是 Sync（编译失败检查） | 高 |
-| `test_arc_send_sync` | `ArcRepr<f64>: Send + Sync` 编译通过 | 高 |
-| `test_arc_concurrent_read` | 多线程并发读取 ArcRepr | 中 |
-| `test_chunks_cover_all` | 分块覆盖所有元素 | 中 |
-| `test_chunks_no_overlap` | 分块不重叠 | 中 |
-| `test_owned_cross_thread` | Owned 跨线程移动 | 中 |
-| `test_arc_make_mut_threading` | make_mut 原子性验证 | 低 |
+| 测试函数                      | 测试内容                                  | 优先级 |
+| ----------------------------- | ----------------------------------------- | ------ |
+| `test_owned_send_sync`        | `Owned<f64>: Send + Sync` 编译通过        | 高     |
+| `test_owned_negative_rc`      | `Owned<Rc<i32>>` 不满足 Send              | 高     |
+| `test_view_send_sync`         | `ViewRepr<'_, f64>: Send + Sync` 编译通过 | 高     |
+| `test_view_cross_thread`      | 视图跨线程传递正确                        | 高     |
+| `test_view_mut_send`          | `ViewMutRepr<'_, f64>: Send` 编译通过     | 高     |
+| `test_view_mut_not_sync`      | `ViewMutRepr` 不是 Sync（编译失败检查）   | 高     |
+| `test_arc_send_sync`          | `ArcRepr<f64>: Send + Sync` 编译通过      | 高     |
+| `test_arc_concurrent_read`    | 多线程并发读取 ArcRepr                    | 中     |
+| `test_chunks_cover_all`       | 分块覆盖所有元素                          | 中     |
+| `test_chunks_no_overlap`      | 分块不重叠                                | 中     |
+| `test_owned_cross_thread`     | Owned 跨线程移动                          | 中     |
+| `test_arc_make_mut_threading` | make_mut 原子性验证                       | 低     |
 
 ### 7.3 编译期静态检查模板
 
-使用 `static_assertions` crate 的 `assert_impl_all!` 和 `assert_not_impl_any!` 宏进行编译期验证：
+可使用仓库自带的编译期测试框架或等价断言辅助函数进行验证：
 
 ```rust
-use static_assertions::{assert_impl_all, assert_not_impl_any};
-
-// Positive: verify traits are implemented
-assert_impl_all!(Owned<f64>: Send, Sync);
-assert_impl_all!(ViewRepr<'_, f64>: Send, Sync);
-assert_impl_all!(ViewMutRepr<'_, f64>: Send);
-assert_impl_all!(ArcRepr<f64>: Send, Sync);
-
-// Negative: verify traits are NOT implemented
-assert_not_impl_any!(ViewMutRepr<'_, f64>: Sync);
-assert_not_impl_any!(Owned<Rc<i32>>: Send);
+fn assert_send<T: Send>() {}
+fn assert_sync<T: Sync>() {}
 
 #[test]
 fn owned_send_sync() {
-    // Compile-time check via static_assertions above
+    assert_send::<Owned<f64>>();
+    assert_sync::<Owned<f64>>();
 }
 
 #[test]
 fn view_send_sync() {
-    assert_impl_all!(ViewRepr<'_, f64>: Send, Sync);
+    assert_send::<ViewRepr<'_, f64>>();
+    assert_sync::<ViewRepr<'_, f64>>();
 }
 
 #[test]
 fn view_mut_send_only() {
-    assert_impl_all!(ViewMutRepr<'_, f64>: Send);
-    assert_not_impl_any!(ViewMutRepr<'_, f64>: Sync);
+    assert_send::<ViewMutRepr<'_, f64>>();
 }
 
 #[test]
 fn arc_send_sync() {
-    assert_impl_all!(ArcRepr<f64>: Send, Sync);
+    assert_send::<ArcRepr<f64>>();
+    assert_sync::<ArcRepr<f64>>();
 }
 ```
 
 ### 7.4 边界测试场景
 
-| 场景 | 预期行为 |
-|------|----------|
-| `Owned<Rc<i32>>` | 编译期不满足 `Send` |
-| `ViewMutRepr` 被共享引用跨线程共享 | 编译期不满足 `Sync` |
-| 广播结果调用 `iter_mut()` | 在类型层面不可调用 |
-| 嵌套并行进入 `par_iter()` | 检测后回退串行，不得共享可变状态 |
+| 场景                               | 预期行为                         |
+| ---------------------------------- | -------------------------------- |
+| `Owned<Rc<i32>>`                   | 编译期不满足 `Send`              |
+| `ViewMutRepr` 被共享引用跨线程共享 | 编译期不满足 `Sync`              |
+| 广播结果调用 `iter_mut()`          | 在类型层面不可调用               |
+| 嵌套并行进入 `par_iter()`          | 检测后回退串行，不得共享可变状态 |
 
 ### 7.5 属性测试不变量
 
-| 不变量 | 测试方法 |
-|--------|----------|
-| `Owned<A>: Send + Sync` 当且仅当 `A: Send + Sync` | 用 `static_assertions` 对正/反样例断言 |
-| `ViewMutRepr` 永不实现 `Sync` | 编译期负向断言 |
-| 并行分块覆盖全部元素且互不重叠 | 参数化 shape / chunk 大小验证 |
+| 不变量                                            | 测试方法                                |
+| ------------------------------------------------- | --------------------------------------- |
+| `Owned<A>: Send + Sync` 当且仅当 `A: Send + Sync` | 用仓库既有编译期断言机制对正/反样例验证 |
+| `ViewMutRepr` 永不实现 `Sync`                     | 编译期负向断言                          |
+| 并行分块覆盖全部元素且互不重叠                    | 参数化 shape / chunk 大小验证           |
 
 ### 7.6 集成测试
 
-| 测试文件 | 测试内容 |
-|----------|----------|
+| 测试文件                      | 测试内容                                                                                              |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `tests/test_thread_safety.rs` | `Owned` / `View` / `ViewMut` / `ArcTensor` 与 `parallel`、`workspace`、跨线程传递场景的端到端协同验证 |
 
 ### 7.7 多线程传递测试
@@ -679,14 +665,6 @@ fn test_arc_concurrent_access() {
     assert!(sums.windows(2).all(|w| (w[0] - w[1]).abs() < 1e-10));
 }
 ```
-
-### 7.8 loom/miri 测试策略
-
-| 工具 | 用途 | 运行方式 |
-|------|------|
-| `loom` | 并发模型检测，验证 ArcRepr make_mut 原子性 | `cargo test --features loom` |
-| `miri` | 内存安全检测，验证 unsafe impl 的正确性 | `cargo miri test` |
-| `ThreadSanitizer` | 数据竞争检测 | `RUSTFLAGS="-Z sanitizer=thread" cargo test` |
 
 ---
 
@@ -755,12 +733,12 @@ fn test_arc_concurrent_access() {
 
 rayon 的 `ParallelIterator` 要求 `Item: Send`（参见 `09-parallel.md §8`）：
 
-| 存储模式 | `par_iter()` | `par_iter_mut()` | 约束 |
-|----------|:----------:|:--------------:|------|
-| `Tensor<A, D>` (Owned) | ✅ | ✅ | `A: Send + Sync` |
-| `TensorView<'a, A, D>` | ✅ | ❌ | `A: Sync` |
-| `TensorViewMut<'a, A, D>` | ⚠️ 条件支持 | ✅ | `par_iter()` 需先显式降级为只读视图；`par_iter_mut()` 需要独占借用且块划分不重叠 |
-| `ArcTensor<A, D>` | ✅ | ❌ (需 make_mut) | `A: Send + Sync` |
+| 存储模式                  | `par_iter()` | `par_iter_mut()` | 约束                                                                             |
+| ------------------------- | :----------: | :--------------: | -------------------------------------------------------------------------------- |
+| `Tensor<A, D>` (Owned)    |      ✅      |        ✅        | `A: Send + Sync`                                                                 |
+| `TensorView<'a, A, D>`    |      ✅      |        ❌        | `A: Sync`                                                                        |
+| `TensorViewMut<'a, A, D>` | ⚠️ 条件支持  |        ✅        | `par_iter()` 需先显式降级为只读视图；`par_iter_mut()` 需要独占借用且块划分不重叠 |
+| `ArcTensor<A, D>`         |      ✅      | ❌ (需 make_mut) | `A: Send + Sync`                                                                 |
 
 ### 8.5 与 workspace 模块的交互
 
@@ -800,89 +778,53 @@ Workspace 模块的 `split_at`/`split_at_mut` 使用原子引用计数（`Atomic
 
 ### 决策 1：显式 unsafe impl 而非依赖自动推导
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 使用显式 `unsafe impl Send/Sync`，而非依赖编译器自动推导 |
-| 理由 | 文档化意图，每个 impl 附带完整 SAFETY 注释（参见 `00-coding.md §5`），便于审查和维护 |
-| 替代方案 | 依赖自动推导 — 放弃，缺少安全性论证文档，修改内部字段时可能意外改变线程安全语义 |
+| 属性     | 值                                                                                   |
+| -------- | ------------------------------------------------------------------------------------ |
+| 决策     | 使用显式 `unsafe impl Send/Sync`，而非依赖编译器自动推导                             |
+| 理由     | 文档化意图，每个 impl 附带完整 SAFETY 注释（参见 `00-coding.md §5`），便于审查和维护 |
+| 替代方案 | 依赖自动推导 — 放弃，缺少安全性论证文档，修改内部字段时可能意外改变线程安全语义      |
 
 ### 决策 2：ViewMutRepr 不实现 Sync
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | `ViewMutRepr<'a, A>` 仅实现 `Send`，不实现 `Sync` |
-| 理由 | 独占借用语义（`&mut T`）不可共享。如果 Sync，则 `&ViewMutRepr` 可跨线程移动，导致多线程同时持有 `&mut [A]`，违反 Rust 别名规则 |
-| 替代方案 | 通过 Mutex 包装实现 Sync — 放弃，引入运行时锁，违反"编译期保证"原则 |
+| 属性     | 值                                                                                                                             |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 决策     | `ViewMutRepr<'a, A>` 仅实现 `Send`，不实现 `Sync`                                                                              |
+| 理由     | 独占借用语义（`&mut T`）不可共享。如果 Sync，则 `&ViewMutRepr` 可跨线程移动，导致多线程同时持有 `&mut [A]`，违反 Rust 别名规则 |
+| 替代方案 | 通过 Mutex 包装实现 Sync — 放弃，引入运行时锁，违反"编译期保证"原则                                                            |
 
 ### 决策 3：ArcRepr 要求 A: Send + Sync
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | `ArcRepr<A>` 的 Send/Sync 要求 `A: Send + Sync` |
-| 理由 | `Arc<T>` 的线程安全要求 `T: Send + Sync`，因为多个线程可同时持有 `&T`。ArcRepr 内部使用 `Arc<Vec<A>>`，因此继承此约束 |
-| 替代方案 | 仅要求 `A: Send` — 放弃，允许多线程同时通过 `&ArcRepr` 读取 `A`，如果 `A` 不是 `Sync`，存在数据竞争风险 |
+| 属性     | 值                                                                                                                    |
+| -------- | --------------------------------------------------------------------------------------------------------------------- |
+| 决策     | `ArcRepr<A>` 的 Send/Sync 要求 `A: Send + Sync`                                                                       |
+| 理由     | `Arc<T>` 的线程安全要求 `T: Send + Sync`，因为多个线程可同时持有 `&T`。ArcRepr 内部使用 `Arc<Vec<A>>`，因此继承此约束 |
+| 替代方案 | 仅要求 `A: Send` — 放弃，允许多线程同时通过 `&ArcRepr` 读取 `A`，如果 `A` 不是 `Sync`，存在数据竞争风险               |
 
 ### 决策 4：编译期保证优于运行时锁
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 所有线程安全通过 Rust 类型系统在编译期保证，不使用运行时锁 |
-| 理由 | 零运行时开销、编译期排除数据竞争、与 Rust 安全理念一致 |
-| 替代方案 | 运行时 Mutex/RwLock — 放弃，引入锁开销和死锁风险 |
+| 属性     | 值                                                         |
+| -------- | ---------------------------------------------------------- |
+| 决策     | 所有线程安全通过 Rust 类型系统在编译期保证，不使用运行时锁 |
+| 理由     | 零运行时开销、编译期排除数据竞争、与 Rust 安全理念一致     |
+| 替代方案 | 运行时 Mutex/RwLock — 放弃，引入锁开销和死锁风险           |
 
 ---
 
-## 10. no_std 兼容性
+## 10. 平台与工程约束
 
-线程安全的 Send/Sync 标记 trait 位于 `core::marker`，可在 `no_std` 下使用。`ArcRepr` 使用 `alloc::sync::Arc`，在 `no_std + alloc` 下可用。并行功能依赖 `std`。
-
-```rust
-// Send/Sync traits are in core::marker — no_std available
-use core::marker::{Send, Sync};
-
-// ArcRepr uses alloc::sync::Arc — available in no_std + alloc
-// Parallel/rayon uses std::thread — requires std
-```
-
-| 组件 | no_std 支持 | 说明 |
-|------|:----------:|------|
-| `Owned<A>` Send/Sync | ✅ | 仅 `unsafe impl`，无运行时依赖 |
-| `ViewRepr<'a, A>` Send/Sync | ✅ | 仅 `unsafe impl`，无运行时依赖 |
-| `ViewMutRepr<'a, A>` Send | ✅ | 仅 `unsafe impl`，无运行时依赖 |
-| `ArcRepr<A>` Send/Sync | ✅ | 使用 `alloc::sync::Arc`，`no_std + alloc` 可用 |
-| 并行迭代（rayon） | ❌ | rayon 依赖 `std` 线程原语，参见 `09-parallel.md §11` |
-| 嵌套并行防护（显式上下文令牌） | ❌ | 并行防护依赖 `parallel` feature；`no_std` 路径不提供并行执行 |
-| SIMD Arch 缓存线程安全初始化 | ❌ | 依赖 `std::sync::OnceLock` 或等效机制 |
-
-**no_std 下 SIMD Arch 缓存的替代方案：**
-
-在 `no_std` 环境中，`std::sync::OnceLock` 不可用于缓存 SIMD 架构检测结果。可选方案：
-
-- 对于支持 `critical_section` 的 `no_std` 目标：使用 `critical_section::Mutex<Option<Arch>>` 实现线程安全缓存。
-- 对于禁用中断的裸机目标：在禁用中断期间检测一次并缓存结果。
-- 对于无 OS 的裸机目标：考虑每次直接调用 `Arch::new()`（对于偶尔使用，开销可接受）。
-
-条件编译处理：
-
-```rust
-// Owned/ViewRepr/ViewMutRepr: unsafe impl Send/Sync
-// Uses only core::marker::{Send, Sync} — pure no_std
-
-// ArcRepr: available in no_std + alloc (uses alloc::sync::Arc)
-// No feature gate needed — alloc::sync::Arc is always available when alloc is.
-unsafe impl<A: Send + Sync> Send for ArcRepr<A> {}
-
-// Parallel/rayon: gated behind "parallel" feature (implies "std")
-#[cfg(feature = "parallel")]
-mod parallel { ... }
-```
+| 约束       | 说明                                                                                                            |
+| ---------- | --------------------------------------------------------------------------------------------------------------- |
+| `std` only | 当前版本线程安全规范以 `std` 环境为前提                                                                         |
+| 单 crate   | 线程安全约束分布在既有模块中，不拆分独立并发 crate                                                              |
+| 最小依赖   | 不预设 `static_assertions`、`loom`、`critical_section` 等额外依赖；如需引入，仅可作为仓库内部 dev-only 评估工具 |
+| SemVer     | `Send` / `Sync` 承诺属于公开类型语义的一部分，变更需审慎评估兼容性                                              |
 
 ---
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
+| 版本  | 日期       |
+| ----- | ---------- |
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-08 |
 | 1.0.2 | 2026-04-08 |
@@ -892,4 +834,4 @@ mod parallel { ... }
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+_本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。_

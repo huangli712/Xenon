@@ -3,6 +3,7 @@
 > 文档编号: 19 | 模块: `src/overload/` | 阶段: Phase 4
 > 前置文档: `11-math.md`, `15-broadcast.md`
 > 需求参考: 需求说明书 §20
+> 范围声明: 范围内
 
 ---
 
@@ -10,23 +11,23 @@
 
 ### 1.1 职责边界
 
-| 职责 | 包含 | 不包含 |
-|------|------|--------|
-| 四则运算运算符语法 | `+`/`-`/`*`/`/` 运算符重载 | 原地运算符 `+=`/`-=`/`*=`/`/=`（当前版本不提供） |
-| 张量×张量运算 | 同形状运算、广播运算 | 矩阵乘法（由 `matrix` 提供） |
-| 张量×标量运算 | `tensor op scalar`、常用原生 `scalar op tensor` 与 `Scalar(scalar) op tensor` | 完全泛型的 `T op Tensor<T>` blanket impl |
-| 广播支持 | 运算符语法内建支持广播 | 比较运算符（在 `math` 提供） |
-| 新张量产生 | 所有组合产生新的独立张量 | 原地修改运算 |
-| 借用形式 | `&Tensor op &Tensor`/`&Tensor op Tensor` 等组合 | 索引运算符 `[]`（在 `index` 提供） |
+| 职责               | 包含                                                                          | 不包含                                           |
+| ------------------ | ----------------------------------------------------------------------------- | ------------------------------------------------ |
+| 四则运算运算符语法 | `+`/`-`/`*`/`/` 运算符重载                                                    | 原地运算符 `+=`/`-=`/`*=`/`/=`（当前版本不提供） |
+| 张量×张量运算      | 同形状运算、广播运算                                                          | 矩阵乘法（由 `matrix` 提供）                     |
+| 张量×标量运算      | `tensor op scalar`、常用原生 `scalar op tensor` 与 `Scalar(scalar) op tensor` | 完全泛型的 `T op Tensor<T>` blanket impl         |
+| 广播支持           | 运算符语法内建支持广播                                                        | 比较运算符（在 `math` 提供）                     |
+| 新张量产生         | 所有组合产生新的独立张量                                                      | 原地修改运算                                     |
+| 借用形式           | `&Tensor op &Tensor`/`&Tensor op Tensor` 等组合                               | 索引运算符 `[]`（在 `index` 提供）               |
 
 ### 1.2 设计原则
 
-| 原则 | 体现 |
-|------|------|
-| 委托模式 | 运算符重载委托给逐元素运算，运算符仅为语法糖 |
-| 深拷贝结果 | 所有组合均产生新的独立张量，不共享内存 |
-| 广播透明 | 运算符语法内建支持广播，用户无需手动处理 |
-| 借用优先 | 鼓励使用 `&a + &b` 形式，避免不必要的所有权转移 |
+| 原则       | 体现                                            |
+| ---------- | ----------------------------------------------- |
+| 委托模式   | 运算符重载委托给逐元素运算，运算符仅为语法糖    |
+| 深拷贝结果 | 所有组合均产生新的独立张量，不共享内存          |
+| 广播透明   | 运算符语法内建支持广播，用户无需手动处理        |
+| 借用优先   | 鼓励使用 `&a + &b` 形式，避免不必要的所有权转移 |
 
 ### 1.3 在架构中的位置
 
@@ -83,12 +84,12 @@ src/overload/
 
 ### 3.2 类型级依赖
 
-| 来源模块 | 使用的类型/trait |
-|----------|-----------------|
-| `math` | `zip_with()`, `mapv()`, 二元逐元素运算（参见 `11-math.md` §4） |
-| `broadcast` | `broadcast_shape()`, `broadcast_with()`, `can_broadcast()`（参见 `15-broadcast.md` §4） |
-| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.view()`（参见 `07-tensor.md` §4） |
-| `element` | `Numeric` trait 约束（排除 `bool` 与 `usize`）（参见 `03-element.md` §3） |
+| 来源模块    | 使用的类型/trait                                                                                                     |
+| ----------- | -------------------------------------------------------------------------------------------------------------------- |
+| `math`      | `zip_with()`, `mapv()`, 二元逐元素运算（参见 `11-math.md` §4）                                                       |
+| `broadcast` | `broadcast_shape()`, `broadcast_with()`, `can_broadcast()`（参见 `15-broadcast.md` §4）                              |
+| `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.view()`（参见 `07-tensor.md` §4）                                |
+| `element`   | `Numeric` trait 约束（排除 `bool` 与 `usize`）（参见 `03-element.md` §3）                                            |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<E>`（该 trait 定义于 `02-dimension.md §4.9`，计算广播后的维度类型） |
 
 > **Numeric 隐含 Copy：** `Numeric` trait 继承自 `Element`，而 `Element: Copy`（见 `03-element.md` §4.1）。因此所有 `Numeric` 类型均满足 `Copy`，可以在标量运算中安全地按值传递而无需额外约束。
@@ -105,19 +106,19 @@ src/overload/
 
 完整的 `impl` 组合表（以 `Add` 为例，`Sub`/`Mul`/`Div` 同理）：
 
-| Lhs | Rhs | Output | 广播 | impl 签名 |
-|-----|-----|--------|------|-----------|
-| `Tensor<A, D>` | `Tensor<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>` |
-| `&Tensor<A, D>` | `&Tensor<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<Owned<A>,D>` |
-| `Tensor<A, D>` | `&Tensor<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<&TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>` |
-| `&Tensor<A, D>` | `Tensor<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<TensorBase<Owned<A>,E>> for &TensorBase<Owned<A>,D>` |
-| `Tensor<A, D>` | `A` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for TensorBase<Owned<A>,D>` |
-| `&Tensor<A, D>` | `&A` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&A> for &TensorBase<Owned<A>,D>` |
-| `Scalar<A>` | `Tensor<A, D>` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<TensorBase<Owned<A>,D>> for Scalar<A>` |
-| `Scalar<A>` | `&Tensor<A, D>` | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&TensorBase<Owned<A>,D>> for Scalar<A>` |
-| `&TensorView<A, D>` | `&TensorView<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<ViewRepr<'a, A>,D>` |
-| `&TensorView<A, D>` | `&Tensor<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<ViewRepr<'a, A>,D>` |
-| `&Tensor<A, D>` | `&TensorView<A, E>` | `Tensor<A, F>` | ✓ | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<Owned<A>,D>` |
+| Lhs                 | Rhs                 | Output         | 广播     | impl 签名                                                                          |
+| ------------------- | ------------------- | -------------- | -------- | ---------------------------------------------------------------------------------- |
+| `Tensor<A, D>`      | `Tensor<A, E>`      | `Tensor<A, F>` | ✓        | `impl<...> Add<TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>`                 |
+| `&Tensor<A, D>`     | `&Tensor<A, E>`     | `Tensor<A, F>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<Owned<A>,D>`               |
+| `Tensor<A, D>`      | `&Tensor<A, E>`     | `Tensor<A, F>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>`                |
+| `&Tensor<A, D>`     | `Tensor<A, E>`      | `Tensor<A, F>` | ✓        | `impl<...> Add<TensorBase<Owned<A>,E>> for &TensorBase<Owned<A>,D>`                |
+| `Tensor<A, D>`      | `A`                 | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for TensorBase<Owned<A>,D>`                                      |
+| `&Tensor<A, D>`     | `&A`                | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&A> for &TensorBase<Owned<A>,D>`                                    |
+| `Scalar<A>`         | `Tensor<A, D>`      | `Tensor<A, D>` | 标量广播 | `impl<...> Add<TensorBase<Owned<A>,D>> for Scalar<A>`                              |
+| `Scalar<A>`         | `&Tensor<A, D>`     | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&TensorBase<Owned<A>,D>> for Scalar<A>`                             |
+| `&TensorView<A, D>` | `&TensorView<A, E>` | `Tensor<A, F>` | ✓        | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<ViewRepr<'a, A>,D>` |
+| `&TensorView<A, D>` | `&Tensor<A, E>`     | `Tensor<A, F>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<ViewRepr<'a, A>,D>`        |
+| `&Tensor<A, D>`     | `&TensorView<A, E>` | `Tensor<A, F>` | ✓        | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<Owned<A>,D>`        |
 
 > **说明**：`F` 为广播后的维度类型，由 `D::BroadcastDim<E>::Output` 关联类型计算。
 > `BroadcastDim` 定义于 `02-dimension.md §4.9`。
@@ -165,7 +166,9 @@ where
 }
 ```
 
-> **设计说明：** 上面的 `expect(...)` 只是为了说明 trait 实现最终会委托给 `broadcast_with` / `zip_with` 这一失败点，**不是**公开错误语义的冻结形式。对用户暴露的契约应保持为：广播失败和形状不兼容沿用底层广播/逐元素运算的可恢复错误模型；若最终实现为了适配 trait 语法引入包装结果类型或辅助入口，也不得把 panic 写成稳定契约。
+> **设计决策：** 运算符重载遵循 `std::ops` 风格：`+` / `-` / `*` / `/` 在广播不兼容时使用 panic，
+> 而对应的方法型 API（如 `broadcast_with()`、`zip_with()` 及上层显式 helper）继续返回 `Result` 作为可恢复错误路径。
+> 因此这里的 `expect("broadcast: incompatible shapes")` 体现的是稳定契约，而不是临时写法。
 
 ### 4.2b 视图×视图/张量运算符
 
@@ -301,6 +304,9 @@ where
 // Div: |a, b| a / b   (constraint A: Numeric + Div<Output = A>)
 ```
 
+> **除法语义补充：** 对整数类型，`Div` 路径中的除以零和结果不可表示（如最小负值除以 `-1`）
+> 均遵循 `require.md` §12 与 §27 的统一 panic 语义；运算符重载不额外吞掉或包装这类不可恢复错误。
+
 ### 4.5 Good / Bad 对比
 
 ```rust
@@ -342,6 +348,7 @@ fn compute_bad(a: Tensor<f64, Ix2>, b: &Tensor<f64, Ix2>) -> Tensor<f64, Ix2> {
 ```
 
 运算符 `a + b` 展开为：
+
 1. `broadcast_with(&a.view(), &b.view())` — 广播两个张量
 2. `zip_with(&a_bc, &b_bc, |x, y| x + y)` — 逐元素运算
 
@@ -443,58 +450,58 @@ Wave 5:      [T6]
 
 ### 7.1 测试分类表
 
-| 测试分类 | 位置 | 说明 |
-|----------|------|------|
-| 单元测试 | `#[cfg(test)] mod tests` | 验证运算符语法、广播分派与结果所有权语义 |
-| 集成测试 | `tests/` | 验证 `overload` 与 `broadcast`、`math`、`tensor` 的协同路径 |
-| 边界测试 | 同模块测试中标注 | 覆盖标量、空张量和广播不兼容等边界 |
-| 属性测试 | `tests/property/` | 验证广播后输出形状、借用/所有权等价性与标量路径不变量 |
+| 测试分类 | 位置                     | 说明                                                        |
+| -------- | ------------------------ | ----------------------------------------------------------- |
+| 单元测试 | `#[cfg(test)] mod tests` | 验证运算符语法、广播分派与结果所有权语义                    |
+| 集成测试 | `tests/`                 | 验证 `overload` 与 `broadcast`、`math`、`tensor` 的协同路径 |
+| 边界测试 | 同模块测试中标注         | 覆盖标量、空张量和广播不兼容等边界                          |
+| 属性测试 | `tests/property/`        | 验证广播后输出形状、借用/所有权等价性与标量路径不变量       |
 
 ### 7.2 单元测试清单
 
-| 测试函数 | 测试内容 | 优先级 |
-|----------|----------|--------|
-| `test_add_same_shape` | `[2,3] + [2,3]`，逐元素验证 | 高 |
-| `test_add_broadcast` | `[2,1,3] + [3]`，广播后相加 | 高 |
-| `test_add_ref_ref` | `&a + &b`，所有权保留 | 高 |
-| `test_add_owned_ref` | `a + &b`，a 被消费 | 中 |
-| `test_add_ref_owned` | `&a + b`，b 被消费 | 中 |
-| `test_add_scalar` | `tensor + 5.0` | 高 |
-| `test_scalar_wrapper_add_tensor` | `Scalar(5.0) + tensor` | 高 |
-| `test_native_scalar_add_tensor_f64` | 原生 `5.0 + tensor`（具体类型 impl） | 高 |
-| `test_native_scalar_add_tensor_i32` | 原生 `5i32 + tensor`（具体类型 impl） | 中 |
-| `test_sub_basic` | `a - b` 正确性 | 高 |
-| `test_mul_basic` | `a * b` 正确性 | 高 |
-| `test_div_basic` | `a / b` 正确性 | 高 |
-| `test_broadcast_incompatible` | 不兼容形状返回 `Result` 错误（方法路径）或由包装 helper 显式处理 | 中 |
-| `test_result_ownership` | 结果张量与输入不共享内存 | 高 |
-| `test_i32_tensor` | `i32` 类型张量运算 | 中 |
-| `test_complex_tensor` | `Complex<f64>` 类型张量运算 | 中 |
+| 测试函数                            | 测试内容                                                         | 优先级 |
+| ----------------------------------- | ---------------------------------------------------------------- | ------ |
+| `test_add_same_shape`               | `[2,3] + [2,3]`，逐元素验证                                      | 高     |
+| `test_add_broadcast`                | `[2,1,3] + [3]`，广播后相加                                      | 高     |
+| `test_add_ref_ref`                  | `&a + &b`，所有权保留                                            | 高     |
+| `test_add_owned_ref`                | `a + &b`，a 被消费                                               | 中     |
+| `test_add_ref_owned`                | `&a + b`，b 被消费                                               | 中     |
+| `test_add_scalar`                   | `tensor + 5.0`                                                   | 高     |
+| `test_scalar_wrapper_add_tensor`    | `Scalar(5.0) + tensor`                                           | 高     |
+| `test_native_scalar_add_tensor_f64` | 原生 `5.0 + tensor`（具体类型 impl）                             | 高     |
+| `test_native_scalar_add_tensor_i32` | 原生 `5i32 + tensor`（具体类型 impl）                            | 中     |
+| `test_sub_basic`                    | `a - b` 正确性                                                   | 高     |
+| `test_mul_basic`                    | `a * b` 正确性                                                   | 高     |
+| `test_div_basic`                    | `a / b` 正确性                                                   | 高     |
+| `test_broadcast_incompatible`       | 不兼容形状返回 `Result` 错误（方法路径）或由包装 helper 显式处理 | 中     |
+| `test_result_ownership`             | 结果张量与输入不共享内存                                         | 高     |
+| `test_i32_tensor`                   | `i32` 类型张量运算                                               | 中     |
+| `test_complex_tensor`               | `Complex<f64>` 类型张量运算                                      | 中     |
 
 ### 7.3 边界测试场景
 
-| 场景 | 预期行为 |
-|------|----------|
-| 0 维张量 + 0 维张量 | 标量加法 |
-| 空张量 + 空张量 | 空张量结果 |
-| `[1, 1000] + [1000, 1]` | 广播到 `[1000, 1000]` |
-| 标量 + 0 维张量 | 正常运算 |
-| 大张量 `[10000, 10000] + [10000, 10000]` | 正确完成 |
+| 场景                                     | 预期行为              |
+| ---------------------------------------- | --------------------- |
+| 0 维张量 + 0 维张量                      | 标量加法              |
+| 空张量 + 空张量                          | 空张量结果            |
+| `[1, 1000] + [1000, 1]`                  | 广播到 `[1000, 1000]` |
+| 标量 + 0 维张量                          | 正常运算              |
+| 大张量 `[10000, 10000] + [10000, 10000]` | 正确完成              |
 
 ### 7.4 属性测试不变量
 
-| 不变量 | 测试方法 |
-|--------|----------|
-| `(a + b).shape() == broadcast_shape(a.shape(), b.shape())` | 随机形状对 |
-| `(&a + &b) == (a.clone() + b.clone())` | 借用与所有权结果一致 |
-| `(a + scalar) == a.mapv(\|x\| x + scalar)` | 标量路径等价 |
-| `Scalar(s) + tensor == tensor + s` | 包装器左标量与右标量路径等价 |
-| 结果张量与输入张量不共享内存（`ptr` 不同） | 指针比较 |
+| 不变量                                                     | 测试方法                     |
+| ---------------------------------------------------------- | ---------------------------- |
+| `(a + b).shape() == broadcast_shape(a.shape(), b.shape())` | 随机形状对                   |
+| `(&a + &b) == (a.clone() + b.clone())`                     | 借用与所有权结果一致         |
+| `(a + scalar) == a.mapv(\|x\| x + scalar)`                 | 标量路径等价                 |
+| `Scalar(s) + tensor == tensor + s`                         | 包装器左标量与右标量路径等价 |
+| 结果张量与输入张量不共享内存（`ptr` 不同）                 | 指针比较                     |
 
 ### 7.5 集成测试
 
-| 测试文件 | 测试内容 |
-|----------|----------|
+| 测试文件                 | 测试内容                                                              |
+| ------------------------ | --------------------------------------------------------------------- |
 | `tests/test_overload.rs` | 运算符语法与 `broadcast`、`math`、`tensor` 返回所有权语义的端到端集成 |
 
 ---
@@ -503,13 +510,13 @@ Wave 5:      [T6]
 
 ### 8.1 接口约定
 
-| 方向 | 对方模块 | 接口/类型 | 约定 |
-|------|----------|-----------|------|
-| `arithmetic → math` | `math` | `zip_with()` / `mapv()` | 张量路径走逐元素运算，标量路径走 `mapv()`，参见 `11-math.md` §4 |
-| `arithmetic → broadcast` | `broadcast` | `broadcast_with()` | 先把两个操作数广播到公共形状，参见 `15-broadcast.md` §4 |
-| `arithmetic → tensor` | `tensor` | `Tensor<A, D>` / `.view()` | 构造 owned 结果并在需要时创建视图，参见 `07-tensor.md` §4 |
-| `arithmetic → element` | `element` | `Numeric` | 通过元素约束排除不支持的类型，参见 `03-element.md` §3 |
-| `arithmetic → dimension` | `dimension` | `BroadcastDim<E>::Output` | 通过维度级关联类型推导广播输出形状，参见 `02-dimension.md` §4 |
+| 方向                     | 对方模块    | 接口/类型                  | 约定                                                            |
+| ------------------------ | ----------- | -------------------------- | --------------------------------------------------------------- |
+| `arithmetic → math`      | `math`      | `zip_with()` / `mapv()`    | 张量路径走逐元素运算，标量路径走 `mapv()`，参见 `11-math.md` §4 |
+| `arithmetic → broadcast` | `broadcast` | `broadcast_with()`         | 先把两个操作数广播到公共形状，参见 `15-broadcast.md` §4         |
+| `arithmetic → tensor`    | `tensor`    | `Tensor<A, D>` / `.view()` | 构造 owned 结果并在需要时创建视图，参见 `07-tensor.md` §4       |
+| `arithmetic → element`   | `element`   | `Numeric`                  | 通过元素约束排除不支持的类型，参见 `03-element.md` §3           |
+| `arithmetic → dimension` | `dimension` | `BroadcastDim<E>::Output`  | 通过维度级关联类型推导广播输出形状，参见 `02-dimension.md` §4   |
 
 ### 8.2 数据流描述
 
@@ -528,29 +535,29 @@ Wave 5:      [T6]
 
 ### 决策 1：是否支持 += 原地运算符
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 当前版本不提供 `+=`/`-=`/`*=`/`/=` 原地运算符 |
-| 理由 | 需求说明书 §20 明确"四则运算以外的运算符语法不在当前范围内"；原地运算符涉及 LHS 广播约束复杂 |
-| 替代方案 | 提供 `AddAssign` 等 impl — 留待未来版本 |
+| 属性     | 值                                                                                           |
+| -------- | -------------------------------------------------------------------------------------------- |
+| 决策     | 当前版本不提供 `+=`/`-=`/`*=`/`/=` 原地运算符                                                |
+| 理由     | 需求说明书 §20 明确"四则运算以外的运算符语法不在当前范围内"；原地运算符涉及 LHS 广播约束复杂 |
+| 替代方案 | 提供 `AddAssign` 等 impl — 留待未来版本                                                      |
 
 ### 决策 2：广播错误处理方式
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 运算符重载与方法型 API 共享同一错误语义；文档不再把广播失败裁定为 panic 的稳定承诺 |
-| 理由 | `Add` 等 trait 的 `Output` 可以是库自定义类型或包装结果，文档不应把 panic 视为唯一可行方案；同一失败条件保持一致的诊断路径更利于库集成 |
-| 替代方案 | 继续把运算符失败定义为 panic — 放弃，会与方法型 API 的 `Result` 模型割裂 |
-| 替代方案 | 仅支持 `Scalar<A>` 左标量包装器 — 放弃作为唯一稳定边界，因具体原生标量 lhs impl 可行 |
+| 属性     | 值                                                                                        |
+| -------- | ----------------------------------------------------------------------------------------- |
+| 决策     | 运算符重载在广播不兼容时 panic；方法型 API 保持 `Result` 返回                             |
+| 理由     | 这与 Rust `std::ops` 风格一致：运算符语法直接产出结果值，而显式方法路径承担可恢复错误语义 |
+| 替代方案 | 继续让运算符与方法型 API 共享 `Result` 语义 — 放弃，会削弱运算符语法的直接性              |
+| 替代方案 | 仅支持 `Scalar<A>` 左标量包装器 — 放弃作为唯一稳定边界，因具体原生标量 lhs impl 可行      |
 
-> **补充**：方法型 API 仍然是最直接的错误恢复主路径；运算符语法不得单方面篡改底层广播/逐元素运算的错误语义。
+> **补充**：方法型 API 仍然是最直接的错误恢复主路径；整数除零、整数溢出和结果不可表示等不可恢复错误则继续遵循 `require.md` §12 / §27 的 panic 语义。
 
 ### 决策 3：标量路径使用 mapv 而非广播视图
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 张量×标量运算使用 `mapv(|x| x op scalar)` 而非创建广播视图 |
-| 理由 | 更高效（直接迭代 vs 间接寻址）；编译器更容易内联和向量化 `mapv`；缓存友好 |
+| 属性     | 值                                                                                             |
+| -------- | ---------------------------------------------------------------------------------------------- | --- | ------------------------------ |
+| 决策     | 张量×标量运算使用 `mapv(                                                                       | x   | x op scalar)` 而非创建广播视图 |
+| 理由     | 更高效（直接迭代 vs 间接寻址）；编译器更容易内联和向量化 `mapv`；缓存友好                      |
 | 替代方案 | 创建标量广播视图 `Tensor0::from(scalar).view().broadcast_to(shape)` — 放弃，间接寻址开销不必要 |
 
 ---
@@ -559,32 +566,32 @@ Wave 5:      [T6]
 
 ### 10.1 复杂度
 
-| 操作 | 时间复杂度 | 空间复杂度 | 说明 |
-|------|-----------|-----------|------|
-| 张量 + 张量（同形状） | O(n) | O(n) | 无广播开销 |
-| 张量 + 张量（广播） | O(output_n) | O(output_n) | 广播视图 O(1) 创建 |
-| 张量 + 标量 | O(n) | O(n) | mapv 直接迭代 |
-| 标量 + 张量 | O(n) | O(n) | mapv 直接迭代 |
+| 操作                  | 时间复杂度  | 空间复杂度  | 说明               |
+| --------------------- | ----------- | ----------- | ------------------ |
+| 张量 + 张量（同形状） | O(n)        | O(n)        | 无广播开销         |
+| 张量 + 张量（广播）   | O(output_n) | O(output_n) | 广播视图 O(1) 创建 |
+| 张量 + 标量           | O(n)        | O(n)        | mapv 直接迭代      |
+| 标量 + 张量           | O(n)        | O(n)        | mapv 直接迭代      |
 
 ### 10.2 性能数据（参考）
 
-| 场景 | 路径 | 预计性能 |
-|------|------|
-| `[1000, 1000] + [1000, 1000]` (f64) | zip_with SIMD | ~1ms |
-| `[1000, 1000] + [1, 1000]` (广播) | zip_with 广播 | ~1.2ms |
-| `[1000, 1000] + 5.0` (标量) | mapv | ~0.8ms |
-| `[1000, 1000] + [1000, 1000]` (f64, 非SIMD) | zip_with 标量 | ~4ms |
+| 场景                                        | 路径          | 预计性能 |
+| ------------------------------------------- | ------------- | -------- |
+| `[1000, 1000] + [1000, 1000]` (f64)         | zip_with SIMD | ~1ms     |
+| `[1000, 1000] + [1, 1000]` (广播)           | zip_with 广播 | ~1.2ms   |
+| `[1000, 1000] + 5.0` (标量)                 | mapv          | ~0.8ms   |
+| `[1000, 1000] + [1000, 1000]` (f64, 非SIMD) | zip_with 标量 | ~4ms     |
 
 ### 10.3 SIMD 路径
 
 当 SIMD feature 启用时，`zip_with` 和 `mapv` 自动选择 SIMD 路径（参见 `08-simd.md` §4）：
 
-| 运算符 | SIMD 指令 | 加速比 |
-|--------|----------|--------|
-| `+` (f32) | `AVX _mm256_add_ps` | 4-8x |
-| `+` (f64) | `AVX _mm256_add_pd` | 2-4x |
-| `*` (f32) | `AVX _mm256_mul_ps` | 4-8x |
-| `/` (f64) | `AVX _mm256_div_pd` | 2-4x |
+| 运算符    | SIMD 指令           | 加速比 |
+| --------- | ------------------- | ------ |
+| `+` (f32) | `AVX _mm256_add_ps` | 4-8x   |
+| `+` (f64) | `AVX _mm256_add_pd` | 2-4x   |
+| `*` (f32) | `AVX _mm256_mul_ps` | 4-8x   |
+| `/` (f64) | `AVX _mm256_div_pd` | 2-4x   |
 
 ### 10.4 借用引用优化
 
@@ -600,47 +607,21 @@ Wave 5:      [T6]
 
 ---
 
-## 11. no_std 兼容性
+## 11. 平台与工程约束
 
-运算符重载模块在 `no_std` 环境下可用，但需 `alloc` 支持以分配结果张量。运算符重载委托给逐元素运算和广播模块，其 `no_std` 兼容性参见对应文档。
-
-```rust
-#[cfg(not(feature = "std"))]
-extern crate alloc;
-
-#[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
-```
-
-| 组件 | no_std 支持 | 说明 |
-|------|:----------:|------|
-| `Add` / `Sub` / `Mul` / `Div`（张量×张量） | ✅ | 委托 `zip_with` + `broadcast_with`，需 `no_std + alloc` |
-| `Add` / `Sub` / `Mul` / `Div`（张量×标量） | ✅ | 委托 `mapv`，需 `no_std + alloc` |
-| `Add` / `Sub` / `Mul` / `Div`（标量×张量） | ✅ | 委托 `mapv`，需 `no_std + alloc` |
-| 借用形式（`&Tensor op &Tensor`） | ✅ | 创建视图（O(1)）+ 新 `Tensor`，需 `no_std + alloc` |
-| 广播失败沿统一错误模型处理 | ✅ | no_std 下仍可通过返回值或包装结果保留诊断信息 |
-
-条件编译处理：
-
-```rust
-// Operator overloading delegates to:
-//   - math::zip_with() → alloc (result Tensor)
-//   - math::mapv()     → alloc (result Tensor)
-//   - broadcast::broadcast_with() → alloc-backed dynamic dimension buffer (see 15-broadcast.md)
-
-#[cfg(not(feature = "std"))]
-extern crate alloc;
-
-// 参见 `11-math.md` §11
-// 参见 `15-broadcast.md` §11
-```
+| 约束       | 说明                                                        |
+| ---------- | ----------------------------------------------------------- |
+| `std` only | Xenon 当前版本仅支持 `std` 环境，本文不再讨论 `no_std` 路径 |
+| 单 crate   | `overload` 设计保持在现有 crate 内，不引入额外 crate        |
+| SemVer     | 当前文档明确了“运算符 panic / 方法 Result”的稳定语义边界    |
+| 最小依赖   | 本模块不新增第三方依赖                                      |
 
 ---
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
+| 版本  | 日期       |
+| ----- | ---------- |
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-08 |
 | 1.0.2 | 2026-04-08 |
@@ -653,4 +634,4 @@ extern crate alloc;
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+_本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。_

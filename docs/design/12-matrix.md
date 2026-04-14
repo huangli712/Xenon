@@ -3,6 +3,7 @@
 > 文档编号: 12 | 模块: `src/matrix/` | 阶段: Phase 4
 > 前置文档: `03-element.md`, `07-tensor.md`, `10-iterator.md`, `26-error.md`
 > 需求参考: 需求说明书 §13
+> 范围声明: 范围内
 
 ---
 
@@ -10,23 +11,23 @@
 
 ### 1.1 职责边界
 
-| 职责 | 包含 | 不包含 |
-|------|------|--------|
-| 向量内积 | dot product（实数内积：sum(a[i] * b[i])） | 矩阵乘法、外积 |
-| 复数内积 | 共轭线性定义（sum(conjugate(a[i]) * b[i])） | 批量矩阵乘法 |
-| SIMD 加速 | 连续内存的 SIMD 路径 | BLAS 绑定 |
-| 错误处理 | 形状不匹配返回 XenonError::ShapeMismatch | — |
+| 职责      | 包含                                         | 不包含         |
+| --------- | -------------------------------------------- | -------------- |
+| 向量内积  | dot product（实数内积：sum(a[i] \* b[i])）   | 矩阵乘法、外积 |
+| 复数内积  | 共轭线性定义（sum(conjugate(a[i]) \* b[i])） | 批量矩阵乘法   |
+| SIMD 加速 | 连续内存的 SIMD 路径                         | BLAS 绑定      |
+| 错误处理  | 形状不匹配返回 XenonError::ShapeMismatch     | —              |
 
 > **注意**：当前版本仅支持向量内积（dot）。不包含：矩阵乘法、外积、批量矩阵乘法、BLAS 绑定。
 
 ### 1.2 设计原则
 
-| 原则 | 体现 |
-|------|------|
-| 最小范围 | 当前仅实现向量内积，复杂线性代数由上游库通过 FFI 实现 |
-| 错误恢复 | 维度不匹配返回可恢复错误，不 panic |
-| SIMD 友好 | 连续内存自动走 SIMD 路径 |
-| BLAS 兼容 | 内存布局支持 BLAS 调用约定 |
+| 原则      | 体现                                                  |
+| --------- | ----------------------------------------------------- |
+| 最小范围  | 当前仅实现向量内积，复杂线性代数由上游库通过 FFI 实现 |
+| 错误恢复  | 维度不匹配返回可恢复错误，不 panic                    |
+| SIMD 友好 | 连续内存自动走 SIMD 路径                              |
+| BLAS 兼容 | 内存布局支持 BLAS 调用约定                            |
 
 ### 1.3 在架构中的位置
 
@@ -61,23 +62,23 @@ src/matrix/
 ```
 src/matrix/
 ├── mod.rs
-│   ├── crate::tensor        # TensorView<A, Ix1>
+│   ├── crate::tensor        # TensorView<A, D>
 │   ├── crate::element       # Numeric, ComplexScalar（参见 03-element.md）
 │   └── crate::error         # XenonError（参见 26-error.md）
 ├── dot.rs
-│   ├── crate::tensor        # TensorView<A, Ix1>
+│   ├── crate::tensor        # TensorView<A, D>
 │   └── crate::element       # Numeric
 └── crate::simd（可选）      # 独立 backend，提供 dot 所需 SIMD kernel
 ```
 
 ### 3.2 类型级依赖
 
-| 来源模块 | 使用的类型/trait |
-|----------|-----------------|
-| `tensor` | `TensorView<'a, A, Ix1>`, `.shape()`, `.len()`, `.as_ptr()`, `.is_f_contiguous()` |
-| `element` | `Numeric`, `ComplexScalar` |
-| `error` | `XenonError::ShapeMismatch` |
-| `simd`（可选） | `pulp::Arch`（参见 `08-simd.md` §3） |
+| 来源模块       | 使用的类型/trait                                                                           |
+| -------------- | ------------------------------------------------------------------------------------------ |
+| `tensor`       | `TensorView<'a, A, D>`, `.ndim()`, `.shape()`, `.len()`, `.as_ptr()`, `.is_f_contiguous()` |
+| `element`      | `Numeric`, `ComplexScalar`                                                                 |
+| `error`        | `XenonError::ShapeMismatch`                                                                |
+| `simd`（可选） | `pulp::Arch`（参见 `08-simd.md` §3）                                                       |
 
 ### 3.3 依赖方向
 
@@ -89,7 +90,7 @@ src/matrix/
 
 ### 4.1 向量内积
 
-```rust
+````rust
 /// Vector dot product: result = sum(a[i] * b[i])
 ///
 /// For complex numbers, the conjugate-linear definition is used:
@@ -103,8 +104,8 @@ src/matrix/
 ///
 /// # Arguments
 ///
-/// * `a` - vector of shape (N,)
-/// * `b` - vector of shape (N,)
+/// * `a` - tensor whose logical rank must be 1
+/// * `b` - tensor whose logical rank must be 1
 ///
 /// # Returns
 ///
@@ -112,7 +113,8 @@ src/matrix/
 ///
 /// # Errors
 ///
-/// Returns `XenonError::ShapeMismatch` when dimensions do not match.
+/// Returns a recoverable error when either input is not logically 1D.
+/// Returns `XenonError::ShapeMismatch` when lengths do not match.
 /// Empty vectors are valid inputs and return the additive identity `A::zero()`.
 /// Integer overflow during accumulation is unrecoverable and must panic via
 /// checked arithmetic, matching `13-reduction.md`.
@@ -125,17 +127,18 @@ src/matrix/
 /// let result = dot(&a.view(), &b.view())?;
 /// assert_eq!(result, 32.0);  // 1*4 + 2*5 + 3*6
 /// ```
-pub fn dot<A>(
-    a: &TensorView<'_, A, Ix1>,
-    b: &TensorView<'_, A, Ix1>,
+pub fn dot<A, D>(
+    a: &TensorView<'_, A, D>,
+    b: &TensorView<'_, A, D>,
 ) -> Result<A, XenonError>
 where
-    A: Numeric + Copy;
+    A: Numeric + Copy,
+    D: Dimension;
 // Note: Numeric (defined in 03-element.md) already implies
 // Mul<Output=Self> + Add<Output=Self>, so the public constraint
 // `Numeric + Copy` is sufficient. The internal implementation
 // (dot_impl) repeats these bounds explicitly for clarity.
-```
+````
 
 ### 4.2 复数内积语义
 
@@ -180,20 +183,20 @@ let b = Tensor1::<f64>::from_vec(vec![1.0, 2.0, 3.0]);
 dot_impl(a, b):
     if a.len() != b.len():
         return Err(ShapeMismatch)
-    
+
     #[cfg(feature = "simd")]
     if a.is_f_contiguous() && b.is_f_contiguous():
         return simd::dot_impl(a, b)
-    
+
     return scalar::dot_impl(a, b)
 ```
 
 ### 5.2 标量实现
 
 ```rust
-fn scalar_dot_int<I: Numeric + CheckedAdd + Copy>(
-    a: &TensorView<I, Ix1>,
-    b: &TensorView<I, Ix1>,
+fn scalar_dot_int<I, D>(
+    a: &TensorView<I, D>,
+    b: &TensorView<I, D>,
 ) -> I {
     a.iter()
         .zip(b.iter())
@@ -204,9 +207,9 @@ fn scalar_dot_int<I: Numeric + CheckedAdd + Copy>(
         })
 }
 
-fn scalar_dot_float_or_complex<A: Numeric + Copy>(
-    a: &TensorView<A, Ix1>,
-    b: &TensorView<A, Ix1>,
+fn scalar_dot_float_or_complex<A, D>(
+    a: &TensorView<A, D>,
+    b: &TensorView<A, D>,
 ) -> A {
     a.iter()
         .zip(b.iter())
@@ -217,6 +220,7 @@ fn scalar_dot_float_or_complex<A: Numeric + Copy>(
 ### 5.3 统一内积实现（实数与复数分派）
 
 `dot()` 内部统一使用 `x.conjugate() * y` 的乘积生成规则，再按元素类型分派累加策略：整数路径需要同时对**乘法**和**累加**做 checked arithmetic，浮点/复数路径使用普通加法。这通过 `Numeric` trait 中的 `fn conjugate(self) -> Self` 方法实现：
+
 - 实数类型（`f32`、`f64`、`i32`、`i64`）：`conjugate(x) == x`（恒等实现，直接返回 `self`）
 - 复数类型（`Complex<f32>`、`Complex<f64>`）：`conjugate(x)` 返回共轭复数
 
@@ -228,11 +232,11 @@ fn scalar_dot_float_or_complex<A: Numeric + Copy>(
 /// Unified dot dispatch for both real and complex types.
 /// Uses `x.conjugate() * y` to generate products. Integer accumulation is routed
 /// through checked integer arithmetic; floating-point and complex accumulation use ordinary `+`.
-fn dot_impl<A: Numeric + Copy>(
-    a: &TensorView<'_, A, Ix1>,
-    b: &TensorView<'_, A, Ix1>,
+fn dot_impl<A, D>(
+    a: &TensorView<'_, A, D>,
+    b: &TensorView<'_, A, D>,
 ) -> Result<A, XenonError> {
-    // 1. validate shape
+    // 1. validate rank-1 precondition at runtime
     // 2. dispatch to integer checked path or float/complex path
     // 3. optionally delegate to simd backend only when the selected kernel
     //    preserves Xenon's exact-result contract
@@ -303,47 +307,47 @@ Wave 4: [T4]
 
 ### 7.1 测试分类表
 
-| 测试分类 | 位置 | 说明 |
-|----------|------|------|
-| 单元测试 | `#[cfg(test)] mod tests` | 验证 `dot()` 的核心正确性与错误分支 |
-| 集成测试 | `tests/` | 验证 `dot()` 与 `tensor`、`iter`、`simd`、`error` 的协同路径 |
-| 边界测试 | 同模块测试中标注 | 覆盖空向量、单元素、非连续输入等边界 |
-| 属性测试 | `tests/property/` 或 `tests/test_matrix.rs` | 验证空向量单位元、复数共轭线性与标量/非连续路径一致性不变量 |
+| 测试分类 | 位置                                        | 说明                                                         |
+| -------- | ------------------------------------------- | ------------------------------------------------------------ |
+| 单元测试 | `#[cfg(test)] mod tests`                    | 验证 `dot()` 的核心正确性与错误分支                          |
+| 集成测试 | `tests/`                                    | 验证 `dot()` 与 `tensor`、`iter`、`simd`、`error` 的协同路径 |
+| 边界测试 | 同模块测试中标注                            | 覆盖空向量、单元素、非连续输入等边界                         |
+| 属性测试 | `tests/property/` 或 `tests/test_matrix.rs` | 验证空向量单位元、复数共轭线性与标量/非连续路径一致性不变量  |
 
 ### 7.2 单元测试清单
 
-| 测试函数 | 测试内容 | 优先级 |
-|----------|----------|--------|
-| `test_dot_basic` | 两个长度为 3 的向量内积正确 | 高 |
-| `test_dot_complex` | 复数内积满足共轭线性 | 高 |
-| `test_dot_shape_mismatch` | 长度不匹配返回 ShapeMismatch 错误 | 高 |
-| `test_dot_int_overflow_mul` | 整数乘法溢出触发 panic | 高 |
-| `test_dot_int_overflow_add` | 整数累加溢出触发 panic | 高 |
-| `test_dot_empty` | 两个空向量内积返回加法单位元 | 中 |
-| `test_dot_single_element` | 单元素向量内积 | 中 |
-| `test_dot_simd_consistency` | SIMD 路径结果与标量一致 | 高 |
+| 测试函数                    | 测试内容                          | 优先级 |
+| --------------------------- | --------------------------------- | ------ |
+| `test_dot_basic`            | 两个长度为 3 的向量内积正确       | 高     |
+| `test_dot_complex`          | 复数内积满足共轭线性              | 高     |
+| `test_dot_shape_mismatch`   | 长度不匹配返回 ShapeMismatch 错误 | 高     |
+| `test_dot_int_overflow_mul` | 整数乘法溢出触发 panic            | 高     |
+| `test_dot_int_overflow_add` | 整数累加溢出触发 panic            | 高     |
+| `test_dot_empty`            | 两个空向量内积返回加法单位元      | 中     |
+| `test_dot_single_element`   | 单元素向量内积                    | 中     |
+| `test_dot_simd_consistency` | SIMD 路径结果与标量一致           | 高     |
 
 ### 7.3 边界测试场景
 
-| 场景 | 预期行为 |
-|------|----------|
-| 空向量 `shape=[0]` | 返回加法单位元（零） |
-| 单元素向量 | 返回 a[0] * b[0] |
-| 大向量（1M 元素） | SIMD 路径启用，结果正确 |
+| 场景                 | 预期行为                 |
+| -------------------- | ------------------------ |
+| 空向量 `shape=[0]`   | 返回加法单位元（零）     |
+| 单元素向量           | 返回 a[0] \* b[0]        |
+| 大向量（1M 元素）    | SIMD 路径启用，结果正确  |
 | 非连续向量（切片后） | 回退到标量路径，结果正确 |
 
 ### 7.4 属性测试不变量
 
-| 不变量 | 测试方法 |
-|--------|----------|
-| `dot([], []) == A::zero()` | 空向量对所有受支持类型成立 |
-| `dot(a, b)` 与标量实现一致 | 随机 1D 连续/非连续输入 |
-| 复数 `dot(a, b) == sum(conjugate(a[i]) * b[i])` | 随机复数向量 |
+| 不变量                                          | 测试方法                   |
+| ----------------------------------------------- | -------------------------- |
+| `dot([], []) == A::zero()`                      | 空向量对所有受支持类型成立 |
+| `dot(a, b)` 与标量实现一致                      | 随机 1D 连续/非连续输入    |
+| 复数 `dot(a, b) == sum(conjugate(a[i]) * b[i])` | 随机复数向量               |
 
 ### 7.5 集成测试
 
-| 测试文件 | 测试内容 |
-|----------|----------|
+| 测试文件               | 测试内容                                                                     |
+| ---------------------- | ---------------------------------------------------------------------------- |
 | `tests/test_matrix.rs` | `dot()` 与 `tensor`、`iter`、`element`、`simd`、`error` 路径的端到端协同验证 |
 
 ---
@@ -352,13 +356,13 @@ Wave 4: [T4]
 
 ### 8.1 接口约定
 
-| 方向 | 对方模块 | 接口/类型 | 约定 |
-|------|----------|-----------|------|
-| `matrix → tensor` | `tensor` | `TensorView<A, Ix1>` | 消费 1D 张量视图，参见 `07-tensor.md` §4 |
-| `matrix → iter` | `iter` | `Elements` | 使用元素迭代器遍历输入，参见 `10-iterator.md` §3 |
-| `matrix → element` | `element` | `Numeric` / `ComplexScalar` | 通过泛型约束区分实数与复数路径，参见 `03-element.md` §3 |
-| `matrix → simd` | `simd` | SIMD backend | 连续内存时可自动走 SIMD 路径，参见 `08-simd.md` §3 |
-| `matrix → error` | `error` | `XenonError::ShapeMismatch` | 形状不匹配时返回可恢复错误 |
+| 方向               | 对方模块  | 接口/类型                   | 约定                                                                             |
+| ------------------ | --------- | --------------------------- | -------------------------------------------------------------------------------- |
+| `matrix → tensor`  | `tensor`  | `TensorView<A, D>`          | 消费任意维度张量视图，但在运行时检查其逻辑 rank 是否为 1，参见 `07-tensor.md` §4 |
+| `matrix → iter`    | `iter`    | `Elements`                  | 使用元素迭代器遍历输入，参见 `10-iterator.md` §3                                 |
+| `matrix → element` | `element` | `Numeric` / `ComplexScalar` | 通过泛型约束区分实数与复数路径，参见 `03-element.md` §3                          |
+| `matrix → simd`    | `simd`    | SIMD backend                | 连续内存时可自动走 SIMD 路径，参见 `08-simd.md` §3                               |
+| `matrix → error`   | `error`   | `XenonError::ShapeMismatch` | 形状不匹配时返回可恢复错误                                                       |
 
 ### 8.2 数据流描述
 
@@ -377,30 +381,30 @@ Wave 4: [T4]
 
 ### 决策 1：共轭线性定义选择
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 复数内积采用共轭线性定义：sum(conjugate(a[i]) * b[i]) |
-| 理由 | 这是数学和物理学中的标准定义；与 NumPy（np.vdot）、BLAS（zdotc）一致 |
-| 替代方案 | 简单内积：sum(a[i] * b[i])（不共轭） |
-| 拒绝原因 | 不符合共轭线性空间的数学定义，与主流库行为不一致 |
+| 属性     | 值                                                                   |
+| -------- | -------------------------------------------------------------------- |
+| 决策     | 复数内积采用共轭线性定义：sum(conjugate(a[i]) \* b[i])               |
+| 理由     | 这是数学和物理学中的标准定义；与 NumPy（np.vdot）、BLAS（zdotc）一致 |
+| 替代方案 | 简单内积：sum(a[i] \* b[i])（不共轭）                                |
+| 拒绝原因 | 不符合共轭线性空间的数学定义，与主流库行为不一致                     |
 
 ### 决策 2：错误恢复 vs panic
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 维度不匹配返回 `Result::Err(XenonError::ShapeMismatch)` |
-| 理由 | 运行时形状检查失败属于可恢复错误；用户可能动态构造向量长度，应允许优雅处理 |
-| 替代方案 | panic |
-| 拒绝原因 | 与需求说明书 §13 "维度或形状不匹配时须提供可恢复的错误处理路径" 不一致 |
+| 属性     | 值                                                                         |
+| -------- | -------------------------------------------------------------------------- |
+| 决策     | 维度不匹配返回 `Result::Err(XenonError::ShapeMismatch)`                    |
+| 理由     | 运行时形状检查失败属于可恢复错误；用户可能动态构造向量长度，应允许优雅处理 |
+| 替代方案 | panic                                                                      |
+| 拒绝原因 | 与需求说明书 §13 "维度或形状不匹配时须提供可恢复的错误处理路径" 不一致     |
 
 ### 决策 3：SIMD 优化策略
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 连续 + 同类型内存自动走 SIMD；非连续回退标量 |
-| 理由 | SIMD 仅在连续内存上有意义；非连续时标量路径更简单正确 |
-| 替代方案 | 全部使用标量 |
-| 拒绝原因 | 性能差距显著（3-4x），科学计算用户期望高性能 |
+| 属性     | 值                                                    |
+| -------- | ----------------------------------------------------- |
+| 决策     | 连续 + 同类型内存自动走 SIMD；非连续回退标量          |
+| 理由     | SIMD 仅在连续内存上有意义；非连续时标量路径更简单正确 |
+| 替代方案 | 全部使用标量                                          |
+| 拒绝原因 | 性能差距显著（3-4x），科学计算用户期望高性能          |
 
 ---
 
@@ -408,11 +412,11 @@ Wave 4: [T4]
 
 ### 10.1 SIMD 加速预期
 
-| 操作 | 标量路径 | SIMD 路径（AVX2） | 加速比 |
-|------|----------|-------------------|--------|
-| dot f32 (1M) | ~1.5ms | ~0.4ms | 3.7x |
-| dot f64 (1M) | ~2ms | ~0.7ms | 2.9x |
-| dot complex f64 (1M) | ~6ms | 标量回退 | 1.0x |
+| 操作                 | 标量路径 | SIMD 路径（AVX2） | 加速比 |
+| -------------------- | -------- | ----------------- | ------ |
+| dot f32 (1M)         | ~1.5ms   | ~0.4ms            | 3.7x   |
+| dot f64 (1M)         | ~2ms     | ~0.7ms            | 2.9x   |
+| dot complex f64 (1M) | ~6ms     | 标量回退          | 1.0x   |
 
 ### 10.2 复杂度标注
 
@@ -421,40 +425,21 @@ Wave 4: [T4]
 
 ---
 
-## 11. no_std 兼容性
+## 11. 平台与工程约束
 
-矩阵运算模块在 `no_std` 环境下可用。标量路径仅依赖 `core` trait，SIMD 路径依赖 pulp crate（支持 `no_std`）。
-
-```rust
-#[cfg(not(feature = "std"))]
-extern crate alloc;
-```
-
-| 组件 | no_std 支持 | 说明 |
-|------|:----------:|------|
-| `dot()`（标量路径） | ✅ | 使用 `Iterator::fold`，无堆分配 |
-| `dot()`（复数路径） | ✅ | 使用 `conjugate()` + `fold`，无堆分配 |
-| `dot()`（SIMD 路径） | ✅ | pulp crate 支持 `no_std`，参见 `08-simd.md` §11 |
-| `XenonError::ShapeMismatch` | ✅ | 使用 `core::fmt::Display`，无堆依赖 |
-
-条件编译处理：
-
-```rust
-// Scalar dot: pure Iterator::fold — works in pure no_std
-// SIMD dot: pulp crate supports no_std via core::arch intrinsics
-
-#[cfg(not(feature = "std"))]
-extern crate alloc;
-
-// No Vec/Box/Arc needed — dot() returns a scalar value
-```
+| 项目       | 约束                                                           |
+| ---------- | -------------------------------------------------------------- |
+| 标准库环境 | Xenon 当前版本仅支持 `std`，本文档不再承诺 `no_std` 兼容性     |
+| crate 结构 | 保持单 crate 结构，`matrix` 作为库内模块存在                   |
+| 依赖约束   | 不引入额外线性代数第三方依赖；BLAS 绑定仍属范围外              |
+| API 边界   | `dot()` 仅对逻辑上一维输入开放，并通过运行时检查返回可恢复错误 |
 
 ---
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
+| 版本  | 日期       |
+| ----- | ---------- |
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
@@ -467,4 +452,4 @@ extern crate alloc;
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+_本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。_

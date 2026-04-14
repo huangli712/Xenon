@@ -3,6 +3,7 @@
 > 文档编号: 13 | 模块: `src/reduction/` | 阶段: Phase 4
 > 前置文档: `02-dimension.md`, `03-element.md`, `07-tensor.md`, `10-iterator.md`
 > 需求参考: 需求说明书 §14
+> 范围声明: 范围内
 
 ---
 
@@ -10,25 +11,25 @@
 
 ### 1.1 职责边界
 
-| 职责 | 包含 | 不包含 |
-|------|------|--------|
-| sum 归约 | 全局归约 / 沿轴归约 / keepdims 选项 | mean/var/prod/min/max/argmin/argmax |
-| 整数溢出处理 | checked_add，overflow 视为不可恢复错误 | wrapping/saturating 算术 |
-| 浮点语义 | IEEE 754 NaN 传播 | 整数除法归约 |
-| 空数组处理 | sum 返回加法单位元（零） | 篮选/排序操作 |
-| SIMD 加速 | 连续内存的 SIMD 归约路径 | 并行归约（见 09-parallel.md） |
-| 并行加速 | 并行归约结果须与单线程实现保持一致 | 篮选/排序操作 |
+| 职责         | 包含                                   | 不包含                              |
+| ------------ | -------------------------------------- | ----------------------------------- |
+| sum 归约     | 全局归约 / 沿轴归约 / keepdims 选项    | mean/var/prod/min/max/argmin/argmax |
+| 整数溢出处理 | checked_add，overflow 视为不可恢复错误 | wrapping/saturating 算术            |
+| 浮点语义     | IEEE 754 NaN 传播                      | 整数除法归约                        |
+| 空数组处理   | sum 返回加法单位元（零）               | 篮选/排序操作                       |
+| SIMD 加速    | 连续内存的 SIMD 归约路径               | 并行归约（见 09-parallel.md）       |
+| 并行加速     | 并行归约结果须与单线程实现保持一致     | 篮选/排序操作                       |
 
 > **注意**：当前版本仅支持 sum 归约！不包含 mean/var/prod/min/max/argmin/argmax 等。
 
 ### 1.2 设计原则
 
-| 原则 | 体现 |
-|------|------|
-| 整数溢出安全 | 使用 checked_add，overflow 时 panic |
-| NaN 传播 | 浮点 sum 中任一元素为 NaN 则返回 NaN |
-| 空数组安全 | 空数组 sum 返回加法单位元（零） |
-| SIMD 友好 | 连续数组自动走 SIMD 归约路径 |
+| 原则         | 体现                                 |
+| ------------ | ------------------------------------ |
+| 整数溢出安全 | 使用 checked_add，overflow 时 panic  |
+| NaN 传播     | 浮点 sum 中任一元素为 NaN 则返回 NaN |
+| 空数组安全   | 空数组 sum 返回加法单位元（零）      |
+| SIMD 友好    | 连续数组自动走 SIMD 归约路径         |
 
 ### 1.3 在架构中的位置
 
@@ -70,15 +71,15 @@ src/reduction/
 
 ### 3.2 类型级依赖
 
-| 来源模块 | 使用的类型/trait |
-|----------|-----------------|
-| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.len()`, `.iter()` |
-| `iter` | `Elements`, `AxisIter`, `ExactSizeIterator` |
-| `element` | `Numeric`, `RealScalar` |
-| `dimension` | `Dimension`, `RemoveAxis`, `D::Smaller` |
-| `error` | `XenonError` |
-| `simd`（可选） | `pulp::Arch`（参见 `08-simd.md` §3） |
-| `parallel`（可选） | 并行归约路径（参见 `09-parallel.md` §3） |
+| 来源模块           | 使用的类型/trait                                                    |
+| ------------------ | ------------------------------------------------------------------- |
+| `tensor`           | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.len()`, `.iter()` |
+| `iter`             | `Elements`, `AxisIter`, `ExactSizeIterator`                         |
+| `element`          | `Numeric`, `RealScalar`                                             |
+| `dimension`        | `Dimension`, `RemoveAxis`, `D::Smaller`                             |
+| `error`            | `XenonError`                                                        |
+| `simd`（可选）     | `pulp::Arch`（参见 `08-simd.md` §3）                                |
+| `parallel`（可选） | 并行归约路径（参见 `09-parallel.md` §3）                            |
 
 ### 3.3 依赖方向
 
@@ -90,7 +91,7 @@ src/reduction/
 
 ### 4.1 全局 sum 归约
 
-```rust
+````rust
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -123,13 +124,13 @@ where
     /// ```
     pub fn sum(&self) -> A;
 }
-```
+````
 
 > **分派策略说明：** `sum()` 的公共 API 仍只约束 `Numeric`，但整数溢出检测由 `CheckedAdd`（参见 `03-element.md §4.9`）在内部路径承担；浮点与复数类型继续使用普通加法语义。这样可以避免把整数专用约束暴露到所有数值类型的公共签名上。
 
 ### 4.2 沿轴 sum 归约
 
-```rust
+````rust
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -150,6 +151,8 @@ where
     ///
     /// Returns `Err(XenonError::InvalidAxis { axis: axis.index(), ndim: self.ndim() })`
     /// if `axis` is out of bounds.
+    /// Returns the same recoverable error when `self.ndim() == 0`; zero-rank tensors do
+    /// not support axis reductions in the current API.
     ///
     /// # Examples
     ///
@@ -180,6 +183,8 @@ where
     ///
     /// Returns `Err(XenonError::InvalidAxis { axis: axis.index(), ndim: self.ndim() })`
     /// if `axis` is out of bounds.
+    /// Returns the same recoverable error when `self.ndim() == 0`; zero-rank tensors do
+    /// not support axis reductions in the current API.
     ///
     /// # Examples
     ///
@@ -196,7 +201,7 @@ where
         A: Numeric,
         D: RemoveAxis;
 }
-```
+````
 
 ### 4.3 Good / Bad 对比示例
 
@@ -282,6 +287,8 @@ sum_axis_keepdims(tensor, axis):
 ```
 
 对静态维度（如 `Ix2`），通过 `Dimension::set_axis(axis, 1)` 将对应轴设为 1，得到新的 shape 实例，再构造输出张量。输出保持 `Tensor<A, D>`，仅被归约轴的长度变为 1；axis 边界检查仍通过显式 `axis.index() < ndim` 完成。
+
+对于动态维度 rank=0 输入，`sum_axis()` / `sum_axis_keepdims()` 在进入 `RemoveAxis` 相关逻辑之前必须先执行 `self.ndim() == 0` 的运行时检查，并返回与越界轴一致的可恢复错误，而不是依赖 trait 约束隐式拒绝。
 
 ---
 
@@ -373,58 +380,59 @@ Wave 5:         [T7]
 
 ### 7.1 测试分类表
 
-| 测试分类 | 位置 | 说明 |
-|----------|------|------|
-| 单元测试 | `#[cfg(test)] mod tests` | 验证归约语义、溢出行为与轴向变体 |
-| 集成测试 | `tests/` | 验证 `reduction` 与 `iter`、`tensor`、`simd`、`parallel` 的协同路径 |
-| 边界测试 | 同模块测试中标注 | 覆盖空数组、NaN/Inf、非连续输入等边界 |
-| 属性测试 | `tests/property/` | 验证 keepdims、结果 shape 与串并一致性等不变量 |
+| 测试分类 | 位置                     | 说明                                                                |
+| -------- | ------------------------ | ------------------------------------------------------------------- |
+| 单元测试 | `#[cfg(test)] mod tests` | 验证归约语义、溢出行为与轴向变体                                    |
+| 集成测试 | `tests/`                 | 验证 `reduction` 与 `iter`、`tensor`、`simd`、`parallel` 的协同路径 |
+| 边界测试 | 同模块测试中标注         | 覆盖空数组、NaN/Inf、非连续输入等边界                               |
+| 属性测试 | `tests/property/`        | 验证 keepdims、结果 shape 与串并一致性等不变量                      |
 
 ### 7.2 单元测试清单
 
-| 测试函数 | 测试内容 | 优先级 |
-|----------|----------|--------|
-| `test_sum_i32` | i32 向量求和正确 | 高 |
-| `test_sum_i64` | i64 向量求和正确 | 高 |
-| `test_sum_f32` | f32 向量求和正确 | 高 |
-| `test_sum_f64` | f64 向量求和正确 | 高 |
-| `test_sum_complex_f32` | Complex<f32> 求和正确 | 中 |
-| `test_sum_complex_f64` | Complex<f64> 求和正确 | 中 |
-| `test_sum_overflow_panic` | 整数溢出 panic | 高 |
-| `test_sum_nan` | NaN 传播：含 NaN 的数组 sum 返回 NaN | 高 |
-| `test_sum_empty` | 空数组 sum 返回零 | 高 |
-| `test_sum_single_element` | 单元素 sum 正确 | 中 |
-| `test_sum_axis_2d` | 2D 沿轴 0/1 sum 正确 | 高 |
-| `test_sum_axis_3d` | 3D 沿各轴 sum 正确 | 中 |
-| `test_sum_axis_keepdims` | `sum_axis_keepdims` 保留轴长度 1 | 高 |
-| `test_sum_axis_empty` | 沿轴长度为 0 时结果正确 | 中 |
-| `test_sum_simd_consistency` | SIMD 路径结果与标量一致 | 高 |
-| `test_sum_parallel_consistency` | 并行路径结果与单线程一致 | 高 |
+| 测试函数                        | 测试内容                             | 优先级 |
+| ------------------------------- | ------------------------------------ | ------ |
+| `test_sum_i32`                  | i32 向量求和正确                     | 高     |
+| `test_sum_i64`                  | i64 向量求和正确                     | 高     |
+| `test_sum_f32`                  | f32 向量求和正确                     | 高     |
+| `test_sum_f64`                  | f64 向量求和正确                     | 高     |
+| `test_sum_complex_f32`          | Complex<f32> 求和正确                | 中     |
+| `test_sum_complex_f64`          | Complex<f64> 求和正确                | 中     |
+| `test_sum_overflow_panic`       | 整数溢出 panic                       | 高     |
+| `test_sum_nan`                  | NaN 传播：含 NaN 的数组 sum 返回 NaN | 高     |
+| `test_sum_empty`                | 空数组 sum 返回零                    | 高     |
+| `test_sum_single_element`       | 单元素 sum 正确                      | 中     |
+| `test_sum_axis_2d`              | 2D 沿轴 0/1 sum 正确                 | 高     |
+| `test_sum_axis_3d`              | 3D 沿各轴 sum 正确                   | 中     |
+| `test_sum_axis_keepdims`        | `sum_axis_keepdims` 保留轴长度 1     | 高     |
+| `test_sum_axis_ix0_error`       | rank-0 输入的沿轴归约返回可恢复错误  | 高     |
+| `test_sum_axis_empty`           | 沿轴长度为 0 时结果正确              | 中     |
+| `test_sum_simd_consistency`     | SIMD 路径结果与标量一致              | 高     |
+| `test_sum_parallel_consistency` | 并行路径结果与单线程一致             | 高     |
 
 ### 7.3 边界测试场景
 
-| 场景 | 预期行为 |
-|------|----------|
+| 场景                  | 预期行为                                              |
+| --------------------- | ----------------------------------------------------- |
 | 空数组 `shape=[0, 3]` | 全局 sum 返回 0，`sum_axis(Axis(0))` 返回 `[0, 0, 0]` |
-| 单元素 `[1]` | sum 返回元素值本身 |
-| 大数组（1M 元素） | sum 结果正确，无溢出 |
-| i32 最大值附近 | checked_add 正确检测溢出并 panic |
-| f64 含 NaN | sum 返回 NaN |
-| f64 含 +Inf/-Inf | sum 返回 +Inf/-Inf |
-| 非连续数组（切片后） | sum 结果与连续数组一致 |
+| 单元素 `[1]`          | sum 返回元素值本身                                    |
+| 大数组（1M 元素）     | sum 结果正确，无溢出                                  |
+| i32 最大值附近        | checked_add 正确检测溢出并 panic                      |
+| f64 含 NaN            | sum 返回 NaN                                          |
+| f64 含 +Inf/-Inf      | sum 返回 +Inf/-Inf                                    |
+| 非连续数组（切片后）  | sum 结果与连续数组一致                                |
 
 ### 7.4 属性测试不变量
 
-| 不变量 | 测试方法 |
-|--------|----------|
-| `sum_axis_keepdims(axis).shape()[axis] == 1` | 随机形状与随机 axis |
-| `sum_axis(axis).len() == input.len() / input.shape()[axis].max(1)` | 随机合法形状 |
-| `sum()` 在串行/并行/非连续路径下结果一致 | 随机 contiguous / non-contiguous 输入 |
+| 不变量                                                             | 测试方法                              |
+| ------------------------------------------------------------------ | ------------------------------------- |
+| `sum_axis_keepdims(axis).shape()[axis] == 1`                       | 随机形状与随机 axis                   |
+| `sum_axis(axis).len() == input.len() / input.shape()[axis].max(1)` | 随机合法形状                          |
+| `sum()` 在串行/并行/非连续路径下结果一致                           | 随机 contiguous / non-contiguous 输入 |
 
 ### 7.5 集成测试
 
-| 测试文件 | 测试内容 |
-|----------|----------|
+| 测试文件                  | 测试内容                                                                                            |
+| ------------------------- | --------------------------------------------------------------------------------------------------- |
 | `tests/test_reduction.rs` | `sum` / `sum_axis` / `keepdims` 与 `iter`、`tensor`、`element`、`simd`、`parallel` 的端到端协同路径 |
 
 ---
@@ -433,13 +441,13 @@ Wave 5:         [T7]
 
 ### 8.1 接口约定
 
-| 方向 | 对方模块 | 接口/类型 | 约定 |
-|------|----------|-----------|------|
-| `reduction → iter` | `iter` | `Elements` / `AxisIter` | 使用元素与轴迭代器完成全局归约和按轴归约，参见 `10-iterator.md` §4 |
-| `reduction → tensor` | `tensor` | `TensorBase<S, D>` / `Tensor<A, D>` | 消费输入张量并返回归约结果，参见 `07-tensor.md` §4 |
-| `reduction → element` | `element` | `Numeric` / `CheckedAdd` / `ComplexScalar` | 通过泛型约束区分整数、浮点和复数路径，参见 `03-element.md` §3 |
-| `reduction → simd` | `simd` | SIMD 归约路径 | 连续数组可自动走 SIMD backend，参见 `08-simd.md` §3 |
-| `reduction → parallel` | `parallel` | 并行归约路径 | 大数组可自动走并行归约，参见 `09-parallel.md` §4 |
+| 方向                   | 对方模块   | 接口/类型                                  | 约定                                                               |
+| ---------------------- | ---------- | ------------------------------------------ | ------------------------------------------------------------------ |
+| `reduction → iter`     | `iter`     | `Elements` / `AxisIter`                    | 使用元素与轴迭代器完成全局归约和按轴归约，参见 `10-iterator.md` §4 |
+| `reduction → tensor`   | `tensor`   | `TensorBase<S, D>` / `Tensor<A, D>`        | 消费输入张量并返回归约结果，参见 `07-tensor.md` §4                 |
+| `reduction → element`  | `element`  | `Numeric` / `CheckedAdd` / `ComplexScalar` | 通过泛型约束区分整数、浮点和复数路径，参见 `03-element.md` §3      |
+| `reduction → simd`     | `simd`     | SIMD 归约路径                              | 连续数组可自动走 SIMD backend，参见 `08-simd.md` §3                |
+| `reduction → parallel` | `parallel` | 并行归约路径                               | 大数组可自动走并行归约，参见 `09-parallel.md` §4                   |
 
 ### 8.2 数据流描述
 
@@ -459,32 +467,32 @@ Wave 5:         [T7]
 
 ### 决策 1：overflow 处理策略
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 整数 sum 使用 checked_add，overflow 时 panic |
-| 理由 | 整数溢出通常是编程错误（选择了过小的类型），静默 wrap-around 可能导致严重 bug；与需求说明书 §14 "整数归约溢出视为不可恢复错误" 一致 |
-| 替代方案 | 使用 wrapping_add（静默溢出） |
-| 替代方案 | 使用 saturating_add（饱和溢出） |
-| 拒绝原因 | 需求明确要求 overflow 为不可恢复错误；wrap/saturate 隐藏问题 |
+| 属性     | 值                                                                                                                                  |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | 整数 sum 使用 checked_add，overflow 时 panic                                                                                        |
+| 理由     | 整数溢出通常是编程错误（选择了过小的类型），静默 wrap-around 可能导致严重 bug；与需求说明书 §14 "整数归约溢出视为不可恢复错误" 一致 |
+| 替代方案 | 使用 wrapping_add（静默溢出）                                                                                                       |
+| 替代方案 | 使用 saturating_add（饱和溢出）                                                                                                     |
+| 拒绝原因 | 需求明确要求 overflow 为不可恢复错误；wrap/saturate 隐藏问题                                                                        |
 
 ### 决策 2：并行归约一致性保证
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 并行归约结果必须与单线程实现一致；若某条并行路径无法证明该性质，则自动回退到串行。当前版本对浮点/复数 sum 默认保守回退串行，仅为可严格证明一致的路径开放并行归约。 |
-| 理由 | 需求说明书 §28.5 明确要求并行归约结果与单线程一致；性能优化不能改变语义结果 |
-| 实现约定 | 并行归约测试对所有支持类型使用与单线程结果一致的断言；任何仅能满足近似相等的实现都不得作为默认并行路径 |
-| 替代方案 | 浮点并行路径允许 ≤2 ULP 误差 — 放弃，与需求不一致 |
-| 参见 | `09-parallel.md §9 ADR-2`（协调一致） |
-| **一致性解释** | 对 Xenon 而言，“一致”按语义要求解释为与单线程实现结果相同，而不是近似相等 |
+| 属性           | 值                                                                                                                                                                 |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 决策           | 并行归约结果必须与单线程实现一致；若某条并行路径无法证明该性质，则自动回退到串行。当前版本对浮点/复数 sum 默认保守回退串行，仅为可严格证明一致的路径开放并行归约。 |
+| 理由           | 需求说明书 §28.5 明确要求并行归约结果与单线程一致；性能优化不能改变语义结果                                                                                        |
+| 实现约定       | 并行归约测试对所有支持类型使用与单线程结果一致的断言；任何仅能满足近似相等的实现都不得作为默认并行路径                                                             |
+| 替代方案       | 浮点并行路径允许 ≤2 ULP 误差 — 放弃，与需求不一致                                                                                                                  |
+| 参见           | `09-parallel.md §9 ADR-2`（协调一致）                                                                                                                              |
+| **一致性解释** | 对 Xenon 而言，“一致”按语义要求解释为与单线程实现结果相同，而不是近似相等                                                                                          |
 
 ### 决策 3：Kahan 补偿求和
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 当前版本使用普通求和，不实现 Kahan 补偿 |
-| 理由 | SIMD 实现更简单；大多数场景精度足够；可未来扩展 |
-| 替代方案 | 默认使用 Kahan 补偿求和 |
+| 属性     | 值                                                       |
+| -------- | -------------------------------------------------------- |
+| 决策     | 当前版本使用普通求和，不实现 Kahan 补偿                  |
+| 理由     | SIMD 实现更简单；大多数场景精度足够；可未来扩展          |
+| 替代方案 | 默认使用 Kahan 补偿求和                                  |
 | 拒绝原因 | 增加实现复杂度，降低 SIMD 效率；精度问题仅在极端场景出现 |
 
 ---
@@ -493,27 +501,27 @@ Wave 5:         [T7]
 
 ### 10.1 Kahan 补偿求和 vs 普通求和
 
-| 方法 | 精度 | SIMD 友好 | 实现复杂度 |
-|------|------|-----------|-----------|
-| 普通求和 | 足够（大多数场景） | 高（向量化累加） | 低 |
-| Kahan 补偿 | 高（补偿精度损失） | 低（4x 操作/元素） | 高 |
+| 方法       | 精度               | SIMD 友好          | 实现复杂度 |
+| ---------- | ------------------ | ------------------ | ---------- |
+| 普通求和   | 足够（大多数场景） | 高（向量化累加）   | 低         |
+| Kahan 补偿 | 高（补偿精度损失） | 低（4x 操作/元素） | 高         |
 
 ### 10.2 SIMD 归约策略
 
-| 步骤 | 操作 |
-|------|------|
-| 1 | 加载 SIMD 向量（8x f32 / 4x f64） |
-| 2 | 乘法/累加（向量化） |
-| 3 | 水平求和（reduce_add） |
-| 4 | 尾部标量处理 |
+| 步骤 | 操作                              |
+| ---- | --------------------------------- |
+| 1    | 加载 SIMD 向量（8x f32 / 4x f64） |
+| 2    | 乘法/累加（向量化）               |
+| 3    | 水平求和（reduce_add）            |
+| 4    | 尾部标量处理                      |
 
 ### 10.3 性能数据（参考）
 
-| 操作 | 标量路径 | SIMD 路径（AVX2） | 加速比 |
-|------|----------|-------------------|--------|
-| sum f32 (1M) | ~1.5ms | ~0.4ms | 3.7x |
-| sum f64 (1M) | ~2ms | ~0.7ms | 2.9x |
-| sum i32 (1M) | ~1ms | ~0.3ms | 3.3x |
+| 操作         | 标量路径 | SIMD 路径（AVX2） | 加速比 |
+| ------------ | -------- | ----------------- | ------ |
+| sum f32 (1M) | ~1.5ms   | ~0.4ms            | 3.7x   |
+| sum f64 (1M) | ~2ms     | ~0.7ms            | 2.9x   |
+| sum i32 (1M) | ~1ms     | ~0.3ms            | 3.3x   |
 
 ### 10.4 复杂度标注
 
@@ -522,51 +530,21 @@ Wave 5:         [T7]
 
 ---
 
-## 11. no_std 兼容性
+## 11. 平台与工程约束
 
-归约运算模块在 `no_std` 环境下可用。全局归约返回标量值无堆分配；沿轴归约需 `alloc` 分配结果张量。
-
-```rust
-#[cfg(not(feature = "std"))]
-extern crate alloc;
-
-#[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
-```
-
-| 组件 | no_std 支持 | 说明 |
-|------|:----------:|------|
-| 全局 `sum()` | ✅ | 使用 `Iterator::fold`，返回标量值，无堆分配 |
-| 沿轴 `sum_axis()` | ✅ | 需 `no_std + alloc`，分配结果 `Tensor` |
-| 整数 `checked_add` | ✅ | `core` 内建，无额外依赖 |
-| NaN 传播 | ✅ | IEEE 754 浮点语义，`core` 内建 |
-| SIMD 归约路径 | ✅ | pulp crate 支持 `no_std`，参见 `08-simd.md` §11 |
-| 并行归约路径 | ❌ | rayon 依赖 `std` 线程原语，参见 `09-parallel.md` §11 |
-
-条件编译处理：
-
-```rust
-// Global sum: pure Iterator::fold — works in pure no_std
-// sum_axis: allocates result Tensor → needs alloc::vec::Vec
-// SIMD path: pulp supports no_std
-// Parallel path: requires std (rayon dependency)
-
-#[cfg(not(feature = "std"))]
-extern crate alloc;
-
-#[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
-
-// Parallel reduction disabled under no_std automatically
-// (rayon is gated behind "parallel" feature which requires "std")
-```
+| 项目       | 约束                                                           |
+| ---------- | -------------------------------------------------------------- |
+| 标准库环境 | Xenon 当前版本仅支持 `std`，本文档不再承诺 `no_std` 兼容性     |
+| crate 结构 | 保持单 crate 结构，`reduction` 仅作为库内模块存在              |
+| 依赖约束   | 并行与 SIMD 仅作为可选项目内能力使用，不新增其他第三方归约依赖 |
+| 语义边界   | 零维张量不支持沿轴归约；相关请求须返回可恢复错误               |
 
 ---
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
+| 版本  | 日期       |
+| ----- | ---------- |
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-07 |
@@ -579,4 +557,4 @@ use alloc::vec::Vec;
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+_本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。_

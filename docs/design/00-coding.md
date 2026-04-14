@@ -3,6 +3,7 @@
 > 文档编号: 00 | 模块: 全局规范 | 阶段: Phase 0
 > 前置文档: 无
 > 需求参考: 需求说明书 §1, §4, §7, §10, §27, §28
+> 范围声明: 范围内
 
 ---
 
@@ -85,7 +86,7 @@ pub trait Has_Element { /* ... */ }
 ```rust
 // Good
 pub fn shape(&self) -> &[Ix];
-pub fn reshape(&self, shape: Shape) -> Result<Tensor<A, D>>;
+pub fn transpose(&self) -> TensorView<'_, A, D>;
 fn compute_strides(shape: &[Ix]) -> Vec<Ix>;
 
 // Bad
@@ -113,14 +114,14 @@ pub const Max_Dimension: usize = 6;
 
 类型参数使用单字母大写，选择有语义的字母。
 
-| 参数 | 含义 |
-|------|------|
-| `S` | Storage（存储类型） |
-| `D` | Dimension（维度类型） |
-| `A` | Element type（元素类型，来自 Array） |
-| `L` | Layout（布局类型） |
-| `T` | 通用类型参数 |
-| `E` | Error type（错误类型） |
+| 参数 | 含义                                 |
+| ---- | ------------------------------------ |
+| `S`  | Storage（存储类型）                  |
+| `D`  | Dimension（维度类型）                |
+| `A`  | Element type（元素类型，来自 Array） |
+| `L`  | Layout（布局类型）                   |
+| `T`  | 通用类型参数                         |
+| `E`  | Error type（错误类型）               |
 
 ### 1.7 生命周期
 
@@ -142,13 +143,13 @@ pub struct View<'DATA, A, D> { /* ... */ }
 
 ### 1.8 方法前缀约定
 
-| 前缀 | 语义 | 复杂度 | 示例 |
-|------|------|--------|------|
-| `as_` | 借用转换，O(1)，无分配 | 廉价 | `as_slice()`、`as_ptr()` |
-| `to_` | 克隆转换，可能分配 | 可能昂贵 | `to_vec()`、`to_owned()` |
-| `into_` | 消耗 self，转换所有权 | 变化 | `into_raw_vec()`、`into_shape()` |
-| `is_` | 布尔查询，无副作用 | 廉价 | `is_empty()`、`is_f_contiguous()` |
-| `with_` | 构建器模式，返回 Self | 变化 | `with_strides()`、`with_offset()` |
+| 前缀    | 语义                   | 复杂度   | 示例                              |
+| ------- | ---------------------- | -------- | --------------------------------- |
+| `as_`   | 借用转换，O(1)，无分配 | 廉价     | `as_slice()`、`as_ptr()`          |
+| `to_`   | 克隆转换，可能分配     | 可能昂贵 | `to_vec()`、`to_owned()`          |
+| `into_` | 消耗 self，转换所有权  | 变化     | `into_raw_vec()`、`into_owned()`  |
+| `is_`   | 布尔查询，无副作用     | 廉价     | `is_empty()`、`is_f_contiguous()` |
+| `with_` | 构建器模式，返回 Self  | 变化     | `with_strides()`、`with_offset()` |
 
 ```rust
 // Good
@@ -249,7 +250,6 @@ use alloc::borrow::Cow;
 use core::mem::MaybeUninit;
 use core::ptr::NonNull;
 
-#[cfg(feature = "std")]
 use std::error::Error;
 
 #[cfg(feature = "parallel")]
@@ -347,15 +347,15 @@ pub fn bad<A: Numeric + Add<Output = A> + Sub<Output = A> + Mul<Output = A> + Cl
 
 **PhantomData 模式选择表**：
 
-| 模式 | 含义 | 协变性 |
-|------|------|--------|
-| `PhantomData<T>` | 拥有 T | 协变（covariant） |
-| `PhantomData<&'a T>` | 借用 T | 协变（对 T） |
-| `PhantomData<&'a mut T>` | 可变借用 T | 不变（invariant） |
-| `PhantomData<fn(T) -> T>` | 函数参数/返回 | 不变 |
-| `PhantomData<fn() -> T>` | 仅返回 T | 协变（covariant） |
-| `PhantomData<fn(T) -> ()>` | 仅消费 T | 逆变（contravariant） |
-| `PhantomData<Cell<T>>` | 如需不变 | 不变（invariant） |
+| 模式                       | 含义          | 协变性                |
+| -------------------------- | ------------- | --------------------- |
+| `PhantomData<T>`           | 拥有 T        | 协变（covariant）     |
+| `PhantomData<&'a T>`       | 借用 T        | 协变（对 T）          |
+| `PhantomData<&'a mut T>`   | 可变借用 T    | 不变（invariant）     |
+| `PhantomData<fn(T) -> T>`  | 函数参数/返回 | 不变                  |
+| `PhantomData<fn() -> T>`   | 仅返回 T      | 协变（covariant）     |
+| `PhantomData<fn(T) -> ()>` | 仅消费 T      | 逆变（contravariant） |
+| `PhantomData<Cell<T>>`     | 如需不变      | 不变（invariant）     |
 
 ```rust
 // Good - covariant borrow of element type
@@ -388,12 +388,12 @@ pub struct Bad<A> {
 
 按存储模式声明 `unsafe impl Send/Sync`，须严格遵循以下规则（参见 `05-storage.md` §5.7）：
 
-| 存储模式 | Send | Sync | 条件 |
-|----------|------|------|------|
-| `Owned<A>` | 是 | 是 | Send: `A: Send`，Sync: `A: Sync`（与 `Vec<A>` 一致） |
-| `ViewRepr<'a, A>` | 是 | 是 | `A: Sync` |
-| `ViewMutRepr<'a, A>` | 是 | **否** | `A: Send`（独占借用不可共享） |
-| `ArcRepr<A>` | 是 | 是 | `A: Send + Sync` |
+| 存储模式             | Send | Sync   | 条件                                                 |
+| -------------------- | ---- | ------ | ---------------------------------------------------- |
+| `Owned<A>`           | 是   | 是     | Send: `A: Send`，Sync: `A: Sync`（与 `Vec<A>` 一致） |
+| `ViewRepr<'a, A>`    | 是   | 是     | `A: Sync`                                            |
+| `ViewMutRepr<'a, A>` | 是   | **否** | `A: Send`（独占借用不可共享）                        |
+| `ArcRepr<A>`         | 是   | 是     | `A: Send + Sync`                                     |
 
 > **关键约束**：`ViewMutRepr` 永远不实现 `Sync`——独占借用语义要求同一时刻只有一个线程可访问。
 
@@ -422,11 +422,13 @@ unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 ### 4.1 Result vs panic
 
 **使用 `Result`**（可恢复错误）：
+
 - 运行时约束违反（形状不匹配、广播失败）
 - 用户输入无效
-- 方法型 API 中可恢复的边界检查失败（例如 `reshape()` / `broadcast_with()` / `try_slice()`）
+- 方法型 API 中可恢复的边界检查失败（例如 `broadcast_to()` / `try_slice()` / `try_offset_of()`）
 
 **使用 `panic!`**（编程错误）：
+
 - 前置条件违反（不变量被破坏）
 - 逻辑错误（不可能的状态）
 - 契约违反
@@ -434,15 +436,14 @@ unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 
 ```rust
 // Good - recoverable error
-pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>> {
-    let target = shape.checked_size().ok_or(XenonError::InvalidShape {
-        from: self.len(),
-        to: usize::MAX,
-    })?;
-    if self.len() != target {
-        return Err(XenonError::InvalidShape {
-            from: self.len(),
-            to: target,
+pub fn broadcast_to<D2>(&self, shape: D2) -> Result<TensorView<'_, A, D2>>
+where
+    D2: Dimension,
+{
+    if !is_broadcast_compatible(self.shape(), shape.as_ref()) {
+        return Err(XenonError::BroadcastError {
+            shape_a: self.shape().into(),
+            shape_b: shape.as_ref().into(),
         });
     }
     // ...
@@ -459,11 +460,11 @@ fn compute_offset(&self, index: &[Ix]) -> usize {
 }
 
 // Bad - using panic for recoverable error
-pub fn reshape_bad<D2>(self, shape: D2) -> Tensor<A, D2> {
-    let target = shape.checked_size().expect("reshape_bad: target element count overflow");
-    if self.len() != target {
-        panic!("size mismatch");  // should return Result
-    }
+pub fn broadcast_to_bad<D2>(&self, shape: D2) -> TensorView<'_, A, D2>
+where
+    D2: Dimension,
+{
+    assert!(is_broadcast_compatible(self.shape(), shape.as_ref()));
     // ...
 }
 ```
@@ -472,8 +473,9 @@ pub fn reshape_bad<D2>(self, shape: D2) -> Tensor<A, D2> {
 
 统一错误类型 `XenonError`，覆盖所有可恢复错误场景（参见 `26-error.md` §4.2）：
 
-> **注意**：索引越界（IndexOutOfBounds）使用 `panic` 而非 `XenonError`，与标准库 `slice` 行为一致。
+> **注意**：仅 `tensor[...]` 这类 `Index` trait 语法在索引越界时使用 `panic`，与标准库 `slice` 行为一致；`tensor.get(...)`、`try_offset_of(...)` 等安全接口须返回 `Option` 或 `Result`。
 > 步长相关错误由 `LayoutMismatch` 变体覆盖。参见 `26-error.md` §1.2。
+> 当前枚举仅展示最小骨架；最终错误模型须按 `26-error.md` 扩展，至少补充类型转换、FFI、索引、广播等错误变体，并携带结构化上下文。
 
 ```rust
 #[derive(Debug, Clone)]
@@ -487,7 +489,7 @@ pub enum XenonError {
     EmptyArray { operation: &'static str },
 }
 
-pub type Result<T> = core::result::Result<T, XenonError>;
+pub type Result<T> = std::result::Result<T, XenonError>;
 ```
 
 > **关于 `DimensionMismatch` 的说明**：`XenonError::DimensionMismatch` 是统一错误枚举中的变体，包含 `expected` 和 `actual` 两个 `usize` 字段。全项目统一使用 `XenonError::DimensionMismatch` 作为维度不匹配错误，不使用独立 `DimensionMismatch` 结构体。维度转换（`try_from_dyn`）返回 `Result<Self, XenonError>` 而非独立的 `DimensionMismatch` 类型。
@@ -498,13 +500,15 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 
 ```rust
 // Good - use ? and Result
-pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>> {
-    let target = shape.checked_size().ok_or(XenonError::InvalidShape {
-        from: self.len(),
-        to: usize::MAX,
-    })?;
-    if self.len() != target {
-        return Err(XenonError::InvalidShape { from: self.len(), to: target });
+pub fn broadcast_to<D2>(&self, shape: D2) -> Result<TensorView<'_, A, D2>>
+where
+    D2: Dimension,
+{
+    if !is_broadcast_compatible(self.shape(), shape.as_ref()) {
+        return Err(XenonError::BroadcastError {
+            shape_a: self.shape().into(),
+            shape_b: shape.as_ref().into(),
+        });
     }
     // ...
 }
@@ -520,9 +524,9 @@ let first = self.first().unwrap();  // forbidden
 #[cfg(test)]
 mod tests {
     #[test]
-    fn test_reshape() {
-        let arr = Tensor::from_vec(vec![1, 2, 3, 4, 5, 6]);
-        let reshaped = arr.reshape([2, 3]).unwrap();  // allowed in tests
+    fn test_broadcast() {
+        let arr = Tensor::from_vec(vec![1, 2, 3]);
+        let view = arr.broadcast_to([3, 3]).unwrap();  // allowed in tests
     }
 }
 ```
@@ -659,10 +663,7 @@ src/
 #![warn(missing_debug_implementations)]
 #![warn(rust_2024_compatibility)]
 #![warn(unsafe_op_in_unsafe_fn)]
-#![cfg_attr(not(feature = "std"), no_std)]
-
-#[cfg(not(feature = "std"))]
-extern crate alloc;
+#![warn(clippy::unwrap_used)]
 ```
 
 ### 6.2 所有 pub 项必须有 doc comment
@@ -680,37 +681,37 @@ extern crate alloc;
 7. **# Safety**：unsafe 函数的前提条件
 8. **# Examples**：示例代码
 
-```rust
-/// Reshapes the tensor to the given dimensions.
+````rust
+/// Returns a broadcasted read-only view for the requested shape.
 ///
-/// This operation preserves the total number of elements.
+/// This operation reuses the original storage and only updates metadata.
 ///
 /// # Errors
-/// Returns [`XenonError::InvalidShape`] if `shape.checked_size()` overflows or
-/// if the target element count differs from `self.len()`.
+/// Returns [`XenonError::BroadcastError`] if `shape` is not broadcast-compatible
+/// with `self.shape()`.
 ///
 /// # Examples
 /// ```rust
-/// use xenon::{Tensor, Ix2};
+/// use xenon::{Tensor1, Ix2};
 ///
-/// let arr = Tensor::<i32, _>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6])?;
-/// let reshaped = arr.reshape(Ix2(3, 2))?;
-/// assert_eq!(reshaped.shape(), &[3, 2]);
+/// let arr = Tensor1::from_vec(vec![1, 2, 3])?;
+/// let view = arr.broadcast_to(Ix2(3, 3))?;
+/// assert_eq!(view.shape(), &[3, 3]);
 /// # Ok::<(), xenon::XenonError>(())
 /// ```
-pub fn reshape<D2>(self, shape: D2) -> Result<Tensor<A, D2>>
+pub fn broadcast_to<D2>(&self, shape: D2) -> Result<TensorView<'_, A, D2>>
 where
     D2: Dimension,
 {
     // ...
 }
-```
+````
 
 ### 6.4 示例代码使用 `?` 而非 `unwrap()`
 
 文档示例代码应使用 `?` 运算符处理错误：
 
-```rust
+````rust
 // Good
 /// # Examples
 /// ```rust
@@ -725,7 +726,7 @@ where
 /// ```rust
 /// let arr = Tensor::from_vec(vec![1, 2, 3, 4]).unwrap();  // do not do this
 /// ```
-```
+````
 
 ---
 
@@ -739,10 +740,10 @@ where
 #[cfg(test)]
 mod tests {
     #[test]
-    fn test_reshape_empty_tensor_succeeds() { /* ... */ }
+    fn test_broadcast_scalar_to_matrix_succeeds() { /* ... */ }
 
     #[test]
-    fn test_reshape_incompatible_size_fails() { /* ... */ }
+    fn test_broadcast_incompatible_shape_fails() { /* ... */ }
 
     #[test]
     fn test_index_single_element_returns_value() { /* ... */ }
@@ -760,28 +761,29 @@ mod tests {
 
 ### 7.2 边界覆盖必须覆盖
 
-| 场景 | 预期行为 |
-|------|----------|
-| 空数组 `shape=[0, 3]` | `iter()` 立即结束 |
-| 单元素 `shape=[1, 1]` | `iter()` 产出 1 项 |
-| 非连续切片 | `iter()` 正确处理步长跳转 |
-| NaN/Inf | 遵循 IEEE 754 语义 |
-| 高维 `shape=[2,2,2,2,2,2]` | 正确计算偏移 |
-| 大张量 `[1000, 1000]` | 不栈溢出 |
-| Subnormal 浮点数 | 不 flush to zero |
+| 场景                       | 预期行为                  |
+| -------------------------- | ------------------------- |
+| 空数组 `shape=[0, 3]`      | `iter()` 立即结束         |
+| 单元素 `shape=[1, 1]`      | `iter()` 产出 1 项        |
+| 非连续切片                 | `iter()` 正确处理步长跳转 |
+| NaN/Inf                    | 遵循 IEEE 754 语义        |
+| 高维 `shape=[2,2,2,2,2,2]` | 正确计算偏移              |
+| 大张量 `[1000, 1000]`      | 不栈溢出                  |
+| Subnormal 浮点数           | 不 flush to zero          |
 
 ### 7.3 测试分类
 
-| 类型 | 位置 | 目的 |
-|------|------|------|
-| 单元测试 | `#[cfg(test)] mod tests` | 验证单个函数/方法 |
-| 集成测试 | `tests/` | 验证跨模块交互 |
-| 边界测试 | 集成测试中标注 | 空数组、单元素、NaN/Inf、非连续 |
-| 属性测试 | `tests/property/` | 随机生成验证不变量 |
+| 类型     | 位置                     | 目的                            |
+| -------- | ------------------------ | ------------------------------- |
+| 单元测试 | `#[cfg(test)] mod tests` | 验证单个函数/方法               |
+| 集成测试 | `tests/`                 | 验证跨模块交互                  |
+| 边界测试 | 集成测试中标注           | 空数组、单元素、NaN/Inf、非连续 |
+| 属性测试 | `tests/property/`        | 随机生成验证不变量              |
 
 ### 7.4 测试覆盖率与数值精度
 
 **覆盖率要求**：
+
 - 行覆盖率 ≥ 80%
 - unsafe 代码块必须有对应测试
 - 每个公开 API 至少一个正向 + 一个负向测试
@@ -802,22 +804,24 @@ assert_eq!(result[[0, 0]], 58.0);  // may fail due to rounding errors
 
 ### 7.5 归约操作溢出行为
 
-| 类型 | 行为 |
-|------|------|
-| 整数类型 | debug 和 release 均使用 checked 算术，溢出时 panic |
-| 浮点类型 | 返回 `±Infinity`（IEEE 754 语义） |
-| 空数组 sum | 返回加法单位元 `zero()` |
+| 类型       | 行为                                               |
+| ---------- | -------------------------------------------------- |
+| 整数类型   | debug 和 release 均使用 checked 算术，溢出时 panic |
+| 浮点类型   | 返回 `±Infinity`（IEEE 754 语义）                  |
+| 空数组 sum | 返回加法单位元 `zero()`                            |
 
 ---
 
 ## 8. #[inline] 使用规范
 
 **使用 `#[inline]`**：
+
 - 小函数（1-3 行）
 - 泛型函数（必须在调用处实例化）
 - 频繁调用的简单方法
 
 **不使用 `#[inline]`**：
+
 - 大函数
 - 递归函数
 - 很少调用的函数
@@ -893,22 +897,21 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 ```
 
-### 9.4 no_std 兼容
+### 9.4 平台与工程约束
 
-使用 `core` 和 `alloc` 替代 `std`，确保 `no_std` 兼容（参见 `01-architecture.md` §6）：
+Xenon 当前版本仅面向 `std` 环境，编码规范不再讨论额外平台分支。
 
 ```rust
 // src/lib.rs
-#![cfg_attr(not(feature = "std"), no_std)]
-#[cfg(not(feature = "std"))]
-extern crate alloc;
+#![warn(missing_docs)]
+#![warn(missing_debug_implementations)]
+#![warn(rust_2024_compatibility)]
+#![warn(unsafe_op_in_unsafe_fn)]
 
 // src/error.rs
-use core::fmt;
-use alloc::borrow::Cow;
+use std::borrow::Cow;
+use std::fmt;
 
-// Only implement std::error::Error when std is available
-#[cfg(feature = "std")]
 impl std::error::Error for XenonError {}
 ```
 
@@ -927,7 +930,7 @@ impl std::error::Error for XenonError {}
 
 - [ ] **T2**: 创建 `src/lib.rs` 骨架含 lint 声明
   - 文件: `src/lib.rs`
-  - 内容: missing_docs、unsafe_op_in_unsafe_fn、no_std cfg
+  - 内容: missing_docs、unsafe_op_in_unsafe_fn、std-only lint 配置
   - 测试: 编译通过
   - 前置: 无
   - 预计: 5 min
@@ -943,7 +946,7 @@ impl std::error::Error for XenonError {}
 
 - [ ] **T4**: CI 配置：fmt + clippy + test 矩阵
   - 文件: `.github/workflows/ci.yml`
-  - 内容: std/no_std/parallel/simd feature 组合矩阵
+  - 内容: std-only、parallel、simd feature 组合矩阵
   - 测试: CI 绿灯
   - 前置: T2
   - 预计: 10 min
@@ -963,12 +966,12 @@ Wave 2: [T4]
 
 ## 11. 测试计划
 
-| 测试函数 | 测试内容 | 优先级 |
-|----------|----------|--------|
-| `test_rustfmt_check` | `cargo fmt --check` 通过 | 高 |
-| `test_clippy_check` | `cargo clippy` 无警告 | 高 |
-| `ci_no_std_check` | `cargo check --no-default-features` 编译通过 | 高 |
-| `test_compile_all_features` | `--all-features` 编译通过 | 高 |
+| 测试函数                    | 测试内容                  | 优先级 |
+| --------------------------- | ------------------------- | ------ |
+| `test_rustfmt_check`        | `cargo fmt --check` 通过  | 高     |
+| `test_clippy_check`         | `cargo clippy` 无警告     | 高     |
+| `test_std_default_check`    | 默认 `std` 配置编译通过   | 高     |
+| `test_compile_all_features` | `--all-features` 编译通过 | 高     |
 
 ---
 
@@ -976,45 +979,45 @@ Wave 2: [T4]
 
 ### 决策 1：F-order 单一布局
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 仅支持列优先（F-order）布局，不支持 C-order |
-| 理由 | 简化 API 和实现；BLAS/LAPACK 兼容；减少布局组合爆炸 |
+| 属性     | 值                                                             |
+| -------- | -------------------------------------------------------------- |
+| 决策     | 仅支持列优先（F-order）布局，不支持 C-order                    |
+| 理由     | 简化 API 和实现；BLAS/LAPACK 兼容；减少布局组合爆炸            |
 | 替代方案 | 同时支持 F-order 和 C-order — 放弃，增加复杂度且与项目范围不符 |
-| 替代方案 | 默认 C-order — 放弃，不利于 BLAS 集成 |
+| 替代方案 | 默认 C-order — 放弃，不利于 BLAS 集成                          |
 
 ### 决策 2：封闭元素类型集合
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 元素类型为封闭集合（i32, i64, f32, f64, Complex\<f32\>, Complex\<f64\>, bool），不支持下游扩展；`usize` 仅作为索引与形状元数据类型使用 |
-| 理由 | 允许穷举匹配优化；SIMD 路径可针对每种类型特化；避免泛型膨胀 |
-| 替代方案 | 开放 Element trait 允许用户实现 — 放弃，无法保证 SIMD 行为一致性 |
+| 属性     | 值                                                                                                                                     |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | 元素类型为封闭集合（i32, i64, f32, f64, Complex\<f32\>, Complex\<f64\>, bool），不支持下游扩展；`usize` 仅作为索引与形状元数据类型使用 |
+| 理由     | 允许穷举匹配优化；SIMD 路径可针对每种类型特化；避免泛型膨胀                                                                            |
+| 替代方案 | 开放 Element trait 允许用户实现 — 放弃，无法保证 SIMD 行为一致性                                                                       |
 
 ### 决策 3：单一错误枚举
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 使用单一 `XenonError` 枚举覆盖所有可恢复错误 |
-| 理由 | API 简单、模式匹配完整、无错误类型爆炸、no_std 友好 |
-| 替代方案 | 多个错误类型 — 放弃，增加 API 复杂度 |
-| 替代方案 | 使用 thiserror — 放弃，引入外部依赖 |
+| 属性     | 值                                                                              |
+| -------- | ------------------------------------------------------------------------------- |
+| 决策     | 使用单一 `XenonError` 枚举覆盖所有公开可恢复错误                                |
+| 理由     | API 简单、模式匹配完整，并能集中承载索引、广播、类型转换与 FFI 的结构化诊断信息 |
+| 替代方案 | 多个错误类型 — 放弃，增加 API 复杂度                                            |
+| 替代方案 | 使用 thiserror — 放弃，引入外部依赖                                             |
 
 ### 决策 4：仅 rayon + pulp 依赖
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 外部依赖仅 rayon（并行）和 pulp（SIMD），均为可选 |
-| 理由 | 最小依赖原则；核心功能零依赖；并行和 SIMD 为渐进增强 |
-| 替代方案 | 引入 smallvec — 放弃，增加依赖 |
+| 属性     | 值                                                         |
+| -------- | ---------------------------------------------------------- |
+| 决策     | 外部依赖仅 rayon（并行）和 pulp（SIMD），均为可选          |
+| 理由     | 最小依赖原则；核心功能零依赖；并行和 SIMD 为渐进增强       |
+| 替代方案 | 引入 smallvec — 放弃，增加依赖                             |
 | 替代方案 | 引入 num-traits — 放弃，Xenon 封闭类型集合可自行定义 trait |
 
 ---
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
+| 版本  | 日期       |
+| ----- | ---------- |
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
@@ -1024,4 +1027,4 @@ Wave 2: [T4]
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+_本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。_

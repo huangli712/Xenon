@@ -3,6 +3,7 @@
 > 文档编号: 04 | 模块: `src/complex/` | 阶段: Phase 1
 > 前置文档: `00-coding.md`, `01-architecture.md`
 > 需求参考: 需求说明书 §5
+> 范围声明: 范围内
 
 ---
 
@@ -10,27 +11,27 @@
 
 ### 1.1 职责边界
 
-| 职责 | 包含 | 不包含 |
-|------|------|--------|
-| 类型定义 | `Complex<T>` 结构体（`#[repr(C)]`，re/im 字段） | — |
-| 构造方法 | `new(re, im)`, `from_polar(r, theta)` | — |
-| 基础方法 | `re()`, `im()`, `conj()`, `is_real()`, `is_imaginary()` | — |
-| 数学方法 | `norm()`（hypot）, `arg()`, `exp()`, `ln()`, `sqrt()` | 复数 FFT、高阶复数运算 |
-| 算术运算 | Complex±Complex, Complex×Complex, Complex÷Complex, 一元负号 | 跨精度混合运算 |
-| 实数混合运算 | 同精度：`Complex<f32> op f32`、`Complex<f64> op f64`；左侧实数通过 `Complex::from(real)` 显式转换 | 跨精度：`f32+Complex<f64>`（须显式转换） |
-| 格式化输出 | Display（`"a+bi"` / `"a-bi"`）, Debug | — |
-| 双字段 C 布局基础 | `#[repr(C)]` + 编译期静态断言 | 跨精度混合运算 |
-| 类型转换 | `Complex<f32>↔Complex<f64>`, `f32/f64→Complex` | 整数→复数（须显式先转浮点） |
+| 职责              | 包含                                                                                              | 不包含                                                                                      |
+| ----------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| 类型定义          | `Complex<T>` 结构体（`#[repr(C)]`，re/im 字段）                                                   | —                                                                                           |
+| 构造方法          | `new(re, im)`, `from_polar(r, theta)`                                                             | —                                                                                           |
+| 基础方法          | `re()`, `im()`, `conj()`, `is_real()`, `is_imaginary()`                                           | —                                                                                           |
+| 数学方法          | `norm()`（hypot）, `arg()`, `exp()`, `ln()`, `sqrt()`                                             | 复数 FFT、高阶复数运算                                                                      |
+| 算术运算          | Complex±Complex, Complex×Complex, Complex÷Complex, 一元负号                                       | 跨精度混合运算                                                                              |
+| 实数混合运算      | 同精度：`Complex<f32> op f32`、`Complex<f64> op f64`；左侧实数通过 `Complex::from(real)` 显式转换 | 跨精度：`f32+Complex<f64>`（须显式转换）                                                    |
+| 格式化输出        | Display（`"a+bi"` / `"a-bi"`）, Debug                                                             | —                                                                                           |
+| 双字段 C 布局基础 | `#[repr(C)]` + 编译期静态断言                                                                     | 跨精度混合运算                                                                              |
+| 类型转换          | `Complex<f32>↔Complex<f64>`, `f32/f64→Complex`                                                    | 整数→复数：按 `require.md` §23.1 支持的转换组合直接转换（实部经对应实数规则转换，虚部为 0） |
 
 ### 1.2 设计原则
 
-| 原则 | 体现 |
-|------|------|
-| FFI 友好 | `#[repr(C)]` 保证字段顺序稳定，并为与两字段 C 结构体互操作提供布局基础 |
-| 零依赖 | 不引入任何外部 crate（不使用 num-complex） |
-| 同精度互操作 | 仅支持 `f32↔Complex<f32>` 和 `f64↔Complex<f64>` |
-| 数值稳定 | `norm()` 使用 hypot 算法避免中间溢出 |
-| NaN 语义正确 | `NaN != NaN`，不实现 Eq/Ord |
+| 原则         | 体现                                                                   |
+| ------------ | ---------------------------------------------------------------------- |
+| FFI 友好     | `#[repr(C)]` 保证字段顺序稳定，并为与两字段 C 结构体互操作提供布局基础 |
+| 零依赖       | 不引入任何外部 crate（不使用 num-complex）                             |
+| 同精度互操作 | 仅支持 `f32↔Complex<f32>` 和 `f64↔Complex<f64>`                        |
+| 数值稳定     | `norm()` 使用 hypot 算法避免中间溢出                                   |
+| NaN 语义正确 | `NaN != NaN`，不实现 Eq/Ord                                            |
 
 ### 1.3 在架构中的位置
 
@@ -46,13 +47,13 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 ### 1.4 自定义实现 vs num-complex
 
-| 考量 | 自定义实现 | num-complex |
-|------|-----------|-------------|
-| FFI 布局基础 | `#[repr(C)]` 为双字段 C 结构体互操作提供布局基础 | 同样支持，但需验证 |
-| 依赖控制 | 零额外依赖，符合最小依赖原则 | 引入 num-traits 等传递依赖 |
-| API 精确控制 | 可精确控制 trait 实现（禁止 Eq/Ord） | 实现了 Eq，与需求不符 |
-| 精度约束 | 严格限制同精度互操作 | 支持更宽松的混合精度 |
-| Element 集成 | 无缝集成到 Xenon 元素类型体系 | 需要额外适配层 |
+| 考量         | 自定义实现                                       | num-complex                |
+| ------------ | ------------------------------------------------ | -------------------------- |
+| FFI 布局基础 | `#[repr(C)]` 为双字段 C 结构体互操作提供布局基础 | 同样支持，但需验证         |
+| 依赖控制     | 零额外依赖，符合最小依赖原则                     | 引入 num-traits 等传递依赖 |
+| API 精确控制 | 可精确控制 trait 实现（禁止 Eq/Ord）             | 实现了 Eq，与需求不符      |
+| 精度约束     | 严格限制同精度互操作                             | 支持更宽松的混合精度       |
+| Element 集成 | 无缝集成到 Xenon 元素类型体系                    | 需要额外适配层             |
 
 ---
 
@@ -80,15 +81,15 @@ src/complex/
 └── core::cmp        # PartialEq
 ```
 
-> **零外部依赖。** `Complex<T>` 的基础结构、基础方法、算术运算和类型转换仅依赖 `core`；涉及浮点数学的复数方法仅在 `std` feature 下提供，因此 `Complex<f32>` / `Complex<f64>` 在 no_std 下只保留不依赖数学函数的核心能力。
+> **零外部依赖。** `Complex<T>` 的基础结构、基础方法、算术运算和类型转换仅依赖 `core`；涉及浮点数学的复数方法运行在 Xenon 的 `std` 环境前提下。
 
 ### 3.2 依赖精确到类型级
 
-| 来源 | 使用的类型/trait |
-|------|-----------------|
+| 来源        | 使用的类型/trait                              |
+| ----------- | --------------------------------------------- |
 | `core::ops` | `Add`, `Sub`, `Mul`, `Div`, `Neg`（算术运算） |
-| `core::fmt` | `Debug`, `Display`（格式化输出） |
-| `core::cmp` | `PartialEq`（相等比较） |
+| `core::fmt` | `Debug`, `Display`（格式化输出）              |
+| `core::cmp` | `PartialEq`（相等比较）                       |
 
 ### 3.3 依赖方向声明
 
@@ -315,7 +316,7 @@ impl Complex<f64> {
 
 > **注意**：数学方法通过具体的 `impl Complex<f32>` 和 `impl Complex<f64>` 块提供，而非泛型 `impl<T: Float>`。这避免了 `Float` trait（`pub(crate)`）暴露到公共 API。
 
-```rust
+````rust
 // Concrete impl for Complex<f32> — all methods are public.
 impl Complex<f32> {
     /// Modulus |z| = sqrt(re² + im²), using hypot to avoid overflow.
@@ -430,7 +431,7 @@ impl Complex<f64> {
         (self.norm(), self.arg())
     }
 }
-```
+````
 
 > **精度说明：** 对于实部为负的复数，标准 sqrt 算法可能在分支割线附近产生灾难性消去（catastrophic cancellation）。这是已知的精度限制。对精度要求极高的场景，可考虑使用更稳定的数值算法。
 
@@ -565,13 +566,13 @@ impl<T: Float + core::fmt::Display> core::fmt::Display for Complex<T> {
 }
 ```
 
-| 输入 | Display 输出 |
-|------|-------------|
-| `Complex::new(3.0, 4.0)` | `"3+4i"` |
-| `Complex::new(3.0, -4.0)` | `"3-4i"` |
-| `Complex::new(3.0, 0.0)` | `"3"` |
-| `Complex::new(0.0, 4.0)` | `"4i"` |
-| `Complex::new(0.0, 0.0)` | `"0"` |
+| 输入                      | Display 输出 |
+| ------------------------- | ------------ |
+| `Complex::new(3.0, 4.0)`  | `"3+4i"`     |
+| `Complex::new(3.0, -4.0)` | `"3-4i"`     |
+| `Complex::new(3.0, 0.0)`  | `"3"`        |
+| `Complex::new(0.0, 4.0)`  | `"4i"`       |
+| `Complex::new(0.0, 0.0)`  | `"0"`        |
 
 ### 4.10 类型转换
 
@@ -589,15 +590,17 @@ impl From<Complex<f32>> for Complex<f64> {
 
 // Precision reduction: f64 -> f32 (lossy)
 // NOT implemented as `From` — lossy conversion contradicts std's philosophy.
-// Use the named method `to_f32()` instead.
+// Use the named method `to_f32()` with the recoverable-error model from §23 instead.
 impl Complex<f64> {
-    /// Converts to `Complex<f32>` with possible precision loss.
+    /// Attempts to convert to `Complex<f32>`.
     ///
-    /// Uses IEEE 754 round-to-nearest-even for each component.
-    /// This is the only permitted lossy numeric conversion.
+    /// This conversion is lossy by default, so it follows the recoverable-error
+    /// model from `require.md` §23 instead of unconditionally truncating.
     #[inline]
-    pub fn to_f32(self) -> Complex<f32> {
-        Complex::new(self.re as f32, self.im as f32)
+    pub fn to_f32(self) -> Result<Complex<f32>, XenonError> {
+        // Check the §23 success preconditions for each component before narrowing.
+        // Return a recoverable error when precision-loss conditions are not accepted.
+        unimplemented!()
     }
 }
 
@@ -625,24 +628,20 @@ const _: () = {
 };
 ```
 
-**安全性论证**: `#[repr(C)]` 确保 `re` 和 `im` 字段连续排列且无 padding。从首字段地址读取 2 个 T 值是安全的。
+**安全性论证**: `#[repr(C)]` 仅用于固定字段顺序与 C 兼容结构体表示；安全前提建立在按 `re` / `im` 两个已知字段访问，而非依赖“无 padding”假设。
 
 ### 4.12 FFI 布局兼容性说明
 
-| C 表示 | 内存布局 | Rust 等价 |
-|--------|----------|-----------|
-| `struct { float re; float im; }` | `[float, float]` | `Complex<f32>` |
+| C 表示                             | 内存布局           | Rust 等价      |
+| ---------------------------------- | ------------------ | -------------- |
+| `struct { float re; float im; }`   | `[float, float]`   | `Complex<f32>` |
 | `struct { double re; double im; }` | `[double, double]` | `Complex<f64>` |
 
-Xenon 对需求说明书 §5 的裁决是：**公开 FFI 契约必须与 C99 `_Complex` 兼容**。
-实现上采用两阶段保证：
+Xenon 对需求说明书 §5 的裁决是：**公开 FFI 契约只保证 `#[repr(C)] struct { re: T, im: T }` 等价布局**。
 
 1. `Complex<T>` 在 Rust 侧始终保持双字段 `#[repr(C)]` 布局，作为最低层内存表示；
-2. 当且仅当构建探针确认当前目标平台上 `float _Complex` / `double _Complex` 与相邻两字段 `T` 的 ABI 等价时，
-   Xenon 才声明对应目标满足 `_Complex` ABI 兼容；若探针失败，则与 `_Complex` 相关的 FFI 接口和测试必须在该目标上编译失败，
-   而不是静默退回另一种 ABI 解释。
-
-因此，Xenon 不再把 `_Complex` 兼容描述为“尽力而为”的运行时降级能力，而是把它定义成**构建期验证通过后的目标平台前提**。
+2. 对外文档与测试只承诺其可按两字段 C 结构体解释；
+3. **不保证** 与 C99 `_Complex` 的 ABI 或调用约定兼容，相关互操作若有需要，应由上游按目标平台单独验证并适配。
 
 FFI 示例：
 
@@ -723,14 +722,14 @@ hypot(a, b):
 
 ### 5.2 不支持的运算清单
 
-| 运算 | 原因 |
-|------|------|
-| `Complex<f64> + f32` | 跨精度，须显式转换 |
-| `Complex<f64> + i32` | 整数与复数，须先转浮点 |
-| `impl Eq for Complex<T>` | NaN 违反自反性 |
-| `impl Ord for Complex<T>` | 复数无自然全序 |
-| `impl PartialOrd for Complex<T>` | 字典序无数学意义 |
-| Serde 序列化 | 不在当前范围（参见需求说明书 §2.2） |
+| 运算                             | 原因                                |
+| -------------------------------- | ----------------------------------- |
+| `Complex<f64> + f32`             | 跨精度，须显式转换                  |
+| `Complex<f64> + i32`             | 整数与复数，须先转浮点              |
+| `impl Eq for Complex<T>`         | NaN 违反自反性                      |
+| `impl Ord for Complex<T>`        | 复数无自然全序                      |
+| `impl PartialOrd for Complex<T>` | 字典序无数学意义                    |
+| Serde 序列化                     | 不在当前范围（参见需求说明书 §2.2） |
 
 ---
 
@@ -738,11 +737,11 @@ hypot(a, b):
 
 ### 6.1 与 element 模块的集成
 
-| 交互点 | 说明 |
-|--------|------|
-| 类型定义 | `Complex<T>` 定义在 `crate::complex` |
+| 交互点     | 说明                                                                                                                            |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| 类型定义   | `Complex<T>` 定义在 `crate::complex`                                                                                            |
 | Trait 实现 | `Element`/`Numeric`/`ComplexScalar` 在 `element` 模块定义（参见 `03-element.md` §4.4），在 `primitives.rs` 为 `Complex<T>` 实现 |
-| 依赖方向 | `element` 依赖 `complex`（类型定义）；`complex` 不依赖 `element` |
+| 依赖方向   | `element` 依赖 `complex`（类型定义）；`complex` 不依赖 `element`                                                                |
 
 ### 6.2 接口边界
 
@@ -767,7 +766,7 @@ hypot(a, b):
     │
     ├── math / matrix / format 等上层模块消费这些 trait 与 inherent methods
     │
-    └── FFI 场景下先验证双字段 C struct 布局；若构建探针确认 `_Complex T` ABI 一致，则该目标启用 `_Complex` 互操作；若探针失败，则相关 `_Complex` FFI 接口在该目标上不可用并应编译失败
+    └── FFI 场景下按双字段 C struct 布局进行互操作；不承诺 `_Complex` ABI 兼容
 ```
 
 ---
@@ -895,72 +894,72 @@ Wave 5: [T11] → [T12]
 
 ### 8.1 测试分类表
 
-| 测试分类 | 位置 | 说明 |
-|----------|------|------|
-| 单元测试 | `#[cfg(test)] mod tests` | 验证复数结构、运算、格式化与布局 |
-| 集成测试 | `tests/test_complex.rs` | 验证 `complex` 与 `element`、`math`、`matrix`、`ffi` 的协同路径 |
-| 边界测试 | 同模块测试中标注 | 覆盖 NaN/Inf、极大/极小值与 FFI 布局前提 |
-| 属性测试 | `tests/test_complex.rs` 或 `tests/property.rs` | 验证共轭、模长、指数对数与极坐标不变量 |
+| 测试分类 | 位置                                           | 说明                                                            |
+| -------- | ---------------------------------------------- | --------------------------------------------------------------- |
+| 单元测试 | `#[cfg(test)] mod tests`                       | 验证复数结构、运算、格式化与布局                                |
+| 集成测试 | `tests/test_complex.rs`                        | 验证 `complex` 与 `element`、`math`、`matrix`、`ffi` 的协同路径 |
+| 边界测试 | 同模块测试中标注                               | 覆盖 NaN/Inf、极大/极小值与 FFI 布局前提                        |
+| 属性测试 | `tests/test_complex.rs` 或 `tests/property.rs` | 验证共轭、模长、指数对数与极坐标不变量                          |
 
 ### 8.2 单元测试清单
 
-| 测试函数 | 测试内容 | 优先级 |
-|----------|----------|--------|
-| `test_complex_new` | `Complex::new(3.0, 4.0).re == 3.0` | 高 |
-| `test_complex_layout_f32` | `size_of::<Complex<f32>>() == 8` | 高 |
-| `test_complex_layout_f64` | `size_of::<Complex<f64>>() == 16` | 高 |
-| `test_from_real_imag` | `from_real(5.0).im == 0.0`, `from_imag(3.0).re == 0.0` | 高 |
-| `test_conj` | `Complex::new(3.0, 4.0).conj() == Complex::new(3.0, -4.0)` | 高 |
-| `test_is_real_imaginary` | `from_real(1.0).is_real()`, `from_imag(1.0).is_imaginary()` | 中 |
-| `test_add_complex` | `(1+2i) + (3+4i) == (4+6i)` | 高 |
-| `test_sub_complex` | `(5+7i) - (2+3i) == (3+4i)` | 高 |
-| `test_mul_complex` | `(1+2i) * (3+4i) == (-5+10i)` | 高 |
-| `test_div_complex` | `(6+8i) / (3+4i) == (2+0i)` | 高 |
-| `test_neg_complex` | `-(1+2i) == (-1-2i)` | 高 |
-| `test_add_real` | `(1+2i) + 3.0 == (4+2i)` | 高 |
-| `test_real_to_complex_add` | `Complex::from(3.0) + (1+2i) == (4+2i)` | 高 |
-| `test_mul_real` | `(1+2i) * 3.0 == (3+6i)` | 高 |
-| `test_div_by_real` | `(6+4i) / 2.0 == (3+2i)` | 高 |
-| `test_real_to_complex_div` | `Complex::from(5.0) / (3+4i)` 正确 | 中 |
-| `test_norm_3_4_5` | `Complex::new(3.0, 4.0).norm() == 5.0` | 高 |
-| `test_norm_no_overflow` | `Complex::new(1e200, 1e200).norm()` 不溢出 | 高 |
-| `test_norm_sqr` | `norm_sqr() == re² + im²` | 中 |
-| `test_arg_range` | `arg()` 在 `(-π, π]` 范围内 | 高 |
-| `test_exp_ln_inverse` | `z.exp().ln() ≈ z` | 高 |
-| `test_sqrt_neg_one` | `Complex::new(-1.0, 0.0).sqrt() ≈ i` | 高 |
-| `test_from_polar_i` | `from_polar(1.0, π/2) ≈ i` | 中 |
-| `test_eq_nan` | `Complex::new(NaN, 0.0) != self` | 高 |
-| `test_display_format` | `"3+4i"`, `"3-4i"`, `"3"`, `"4i"`, `"0"` | 中 |
-| `test_f32_to_f64_lossless` | `Complex<f32>→Complex<f64>` 无损 | 高 |
-| `test_f64_to_f32_precision_loss` | `Complex<f64>→Complex<f32>` 精度降低 | 中 |
-| `test_real_to_complex` | `f64→Complex<f64>` 虚部为 0 | 高 |
+| 测试函数                         | 测试内容                                                    | 优先级 |
+| -------------------------------- | ----------------------------------------------------------- | ------ |
+| `test_complex_new`               | `Complex::new(3.0, 4.0).re == 3.0`                          | 高     |
+| `test_complex_layout_f32`        | `size_of::<Complex<f32>>() == 8`                            | 高     |
+| `test_complex_layout_f64`        | `size_of::<Complex<f64>>() == 16`                           | 高     |
+| `test_from_real_imag`            | `from_real(5.0).im == 0.0`, `from_imag(3.0).re == 0.0`      | 高     |
+| `test_conj`                      | `Complex::new(3.0, 4.0).conj() == Complex::new(3.0, -4.0)`  | 高     |
+| `test_is_real_imaginary`         | `from_real(1.0).is_real()`, `from_imag(1.0).is_imaginary()` | 中     |
+| `test_add_complex`               | `(1+2i) + (3+4i) == (4+6i)`                                 | 高     |
+| `test_sub_complex`               | `(5+7i) - (2+3i) == (3+4i)`                                 | 高     |
+| `test_mul_complex`               | `(1+2i) * (3+4i) == (-5+10i)`                               | 高     |
+| `test_div_complex`               | `(6+8i) / (3+4i) == (2+0i)`                                 | 高     |
+| `test_neg_complex`               | `-(1+2i) == (-1-2i)`                                        | 高     |
+| `test_add_real`                  | `(1+2i) + 3.0 == (4+2i)`                                    | 高     |
+| `test_real_to_complex_add`       | `Complex::from(3.0) + (1+2i) == (4+2i)`                     | 高     |
+| `test_mul_real`                  | `(1+2i) * 3.0 == (3+6i)`                                    | 高     |
+| `test_div_by_real`               | `(6+4i) / 2.0 == (3+2i)`                                    | 高     |
+| `test_real_to_complex_div`       | `Complex::from(5.0) / (3+4i)` 正确                          | 中     |
+| `test_norm_3_4_5`                | `Complex::new(3.0, 4.0).norm() == 5.0`                      | 高     |
+| `test_norm_no_overflow`          | `Complex::new(1e200, 1e200).norm()` 不溢出                  | 高     |
+| `test_norm_sqr`                  | `norm_sqr() == re² + im²`                                   | 中     |
+| `test_arg_range`                 | `arg()` 在 `(-π, π]` 范围内                                 | 高     |
+| `test_exp_ln_inverse`            | `z.exp().ln() ≈ z`                                          | 高     |
+| `test_sqrt_neg_one`              | `Complex::new(-1.0, 0.0).sqrt() ≈ i`                        | 高     |
+| `test_from_polar_i`              | `from_polar(1.0, π/2) ≈ i`                                  | 中     |
+| `test_eq_nan`                    | `Complex::new(NaN, 0.0) != self`                            | 高     |
+| `test_display_format`            | `"3+4i"`, `"3-4i"`, `"3"`, `"4i"`, `"0"`                    | 中     |
+| `test_f32_to_f64_lossless`       | `Complex<f32>→Complex<f64>` 无损                            | 高     |
+| `test_f64_to_f32_precision_loss` | `Complex<f64>→Complex<f32>` 精度降低                        | 中     |
+| `test_real_to_complex`           | `f64→Complex<f64>` 虚部为 0                                 | 高     |
 
 ### 8.3 边界测试场景
 
-| 场景 | 预期行为 |
-|------|----------|
-| 零 `Complex::new(0.0, 0.0)` | `norm()==0`, `arg()==0`, `sqrt()==0` |
-| `Complex::new(0.0, 0.0).ln()` | 返回 `-∞ + 0i` |
-| NaN 参与 | `Complex::new(NaN, 0.0).norm().is_nan()` |
-| Inf 参与 | `Complex::new(Inf, 0.0).exp()` 正确处理 |
-| 极大值 norm | `Complex::new(1e200, 1e200).norm()` 不溢出（≈1.414e200） |
-| 极小值 norm | `Complex::new(1e-200, 1e-200).norm()` 正确 |
-| 连续字段布局 | `Complex<f64>` 的 `re/im` 字段顺序稳定，可逐元素读取 |
+| 场景                          | 预期行为                                                 |
+| ----------------------------- | -------------------------------------------------------- |
+| 零 `Complex::new(0.0, 0.0)`   | `norm()==0`, `arg()==0`, `sqrt()==0`                     |
+| `Complex::new(0.0, 0.0).ln()` | 返回 `-∞ + 0i`                                           |
+| NaN 参与                      | `Complex::new(NaN, 0.0).norm().is_nan()`                 |
+| Inf 参与                      | `Complex::new(Inf, 0.0).exp()` 正确处理                  |
+| 极大值 norm                   | `Complex::new(1e200, 1e200).norm()` 不溢出（≈1.414e200） |
+| 极小值 norm                   | `Complex::new(1e-200, 1e-200).norm()` 正确               |
+| 连续字段布局                  | `Complex<f64>` 的 `re/im` 字段顺序稳定，可逐元素读取     |
 
 ### 8.4 属性测试不变量
 
-| 不变量 | 测试方法 |
-|--------|----------|
-| `z * z.conj() == z.norm_sqr()` | 随机 z |
-| `z.exp().ln() ≈ z` | 随机有限 z |
-| `z.sqrt() * z.sqrt() ≈ z` | 随机 z |
-| `(z / w) * w ≈ z` | 随机 z, w（w ≠ 0） |
-| `z.from_polar(z.norm(), z.arg()) ≈ z` | 随机 z |
+| 不变量                                | 测试方法           |
+| ------------------------------------- | ------------------ |
+| `z * z.conj() == z.norm_sqr()`        | 随机 z             |
+| `z.exp().ln() ≈ z`                    | 随机有限 z         |
+| `z.sqrt() * z.sqrt() ≈ z`             | 随机 z             |
+| `(z / w) * w ≈ z`                     | 随机 z, w（w ≠ 0） |
+| `z.from_polar(z.norm(), z.arg()) ≈ z` | 随机 z             |
 
 ### 8.5 集成测试
 
-| 测试文件 | 测试内容 |
-|----------|----------|
+| 测试文件                | 测试内容                                                                                             |
+| ----------------------- | ---------------------------------------------------------------------------------------------------- |
 | `tests/test_complex.rs` | 复数类型与 `element` trait 体系、`math` 逐元素运算、`matrix` 共轭内积以及 `ffi` 布局约束的端到端验证 |
 
 ---
@@ -969,72 +968,67 @@ Wave 5: [T11] → [T12]
 
 ### 决策 1：自定义 vs num-complex
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 自定义 `Complex<T>`，不依赖 `num-complex` |
-| 理由 | 零额外依赖；可精确控制 trait 实现（禁止 Eq/Ord）；严格同精度互操作；FFI 布局可验证；与 Element 体系无缝集成 |
-| 替代方案 | 使用 `num-complex` — 放弃，引入 num-traits 传递依赖；实现了 Eq 与 NaN 语义冲突 |
-| 后果 | 需自行实现所有数学方法；增加维护成本；获得 API 完全控制权 |
+| 属性     | 值                                                                                                          |
+| -------- | ----------------------------------------------------------------------------------------------------------- |
+| 决策     | 自定义 `Complex<T>`，不依赖 `num-complex`                                                                   |
+| 理由     | 零额外依赖；可精确控制 trait 实现（禁止 Eq/Ord）；严格同精度互操作；FFI 布局可验证；与 Element 体系无缝集成 |
+| 替代方案 | 使用 `num-complex` — 放弃，引入 num-traits 传递依赖；实现了 Eq 与 NaN 语义冲突                              |
+| 后果     | 需自行实现所有数学方法；增加维护成本；获得 API 完全控制权                                                   |
 
 ### 决策 2：不实现 Eq/Ord
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 不实现 `Eq`、`PartialOrd`、`Ord` |
-| 理由 | `Eq` 要求自反性（x==x），但 NaN!=NaN 违反此性质；复数无自然全序；实现 Eq 会导致 HashSet 等未定义行为 |
-| 替代方案 | 实现 Eq（同 num-complex）— 放弃，NaN 导致语义错误 |
-| 替代方案 | 实现 PartialOrd（字典序）— 放弃，无数学意义 |
+| 属性     | 值                                                                                                   |
+| -------- | ---------------------------------------------------------------------------------------------------- |
+| 决策     | 不实现 `Eq`、`PartialOrd`、`Ord`                                                                     |
+| 理由     | `Eq` 要求自反性（x==x），但 NaN!=NaN 违反此性质；复数无自然全序；实现 Eq 会导致 HashSet 等未定义行为 |
+| 替代方案 | 实现 Eq（同 num-complex）— 放弃，NaN 导致语义错误                                                    |
+| 替代方案 | 实现 PartialOrd（字典序）— 放弃，无数学意义                                                          |
 
 ### 决策 3：norm() 使用 hypot 而非 sqrt(re²+im²)
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 使用 `hypot(re, im)` 计算模长 |
-| 理由 | 数值稳定：当 re/im 很大时 `re*re` 可能溢出，hypot 使用缩放算法避免；标准库 `f32::hypot`/`f64::hypot` 已实现稳定算法 |
-| 替代方案 | `sqrt(re*re + im*im)` — 放弃，大数溢出 |
+| 属性     | 值                                                                                                                  |
+| -------- | ------------------------------------------------------------------------------------------------------------------- |
+| 决策     | 使用 `hypot(re, im)` 计算模长                                                                                       |
+| 理由     | 数值稳定：当 re/im 很大时 `re*re` 可能溢出，hypot 使用缩放算法避免；标准库 `f32::hypot`/`f64::hypot` 已实现稳定算法 |
+| 替代方案 | `sqrt(re*re + im*im)` — 放弃，大数溢出                                                                              |
 
 ### 决策 4：不实现复合赋值运算符
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 当前版本不实现 `AddAssign`/`SubAssign`/`MulAssign`/`DivAssign` |
-| 理由 | 需求说明书 §20 指出"所有组合均产生新的独立张量"；运算符重载仅产生新张量，不需要原地修改 |
-| 替代方案 | 实现全部复合赋值 — 放弃，超出当前需求 |
+| 属性     | 值                                                                                      |
+| -------- | --------------------------------------------------------------------------------------- |
+| 决策     | 当前版本不实现 `AddAssign`/`SubAssign`/`MulAssign`/`DivAssign`                          |
+| 理由     | 需求说明书 §20 指出"所有组合均产生新的独立张量"；运算符重载仅产生新张量，不需要原地修改 |
+| 替代方案 | 实现全部复合赋值 — 放弃，超出当前需求                                                   |
 
 ---
 
 ## 10. 性能考量
 
-| 方面 | 设计决策 |
-|------|----------|
-| `#[repr(C)]` | 保证字段顺序稳定，便于与双字段 C 结构体做布局验证 |
-| 内联 | 所有运算方法标注 `#[inline]`，编译器可内联 |
-| 零堆分配 | `Complex<T>` 为 `Copy` 类型，全部栈分配 |
-| 单态化 | `Complex<f32>` 和 `Complex<f64>` 各自单态化，无虚调用 |
-| hypot 开销 | `norm()` 的 hypot 比直接 sqrt 多几次比较和分支，但避免溢出，开销可接受 |
+| 方面         | 设计决策                                                               |
+| ------------ | ---------------------------------------------------------------------- |
+| `#[repr(C)]` | 保证字段顺序稳定，便于与双字段 C 结构体做布局验证                      |
+| 内联         | 所有运算方法标注 `#[inline]`，编译器可内联                             |
+| 零堆分配     | `Complex<T>` 为 `Copy` 类型，全部栈分配                                |
+| 单态化       | `Complex<f32>` 和 `Complex<f64>` 各自单态化，无虚调用                  |
+| hypot 开销   | `norm()` 的 hypot 比直接 sqrt 多几次比较和分支，但避免溢出，开销可接受 |
 
 ---
 
-## 11. no_std 兼容性
+## 11. 平台与工程约束
 
-| 组件 | 兼容方案 |
-|------|----------|
-| `Complex<T>` 结构体 | 纯 `#[repr(C)]`，天然 no_std |
-| 基础方法（`re()`, `im()`, `conj()`, `from_real()`, `from_imag()`, `is_real()`, `is_imaginary()`） | 不依赖 `Float` trait，**no_std 可用** |
-| 算术运算（`+`, `-`, `*`, `/`, 一元负号） | 仅依赖 `core::ops`，天然 no_std |
-| 数学方法（`norm()`, `arg()`, `exp()`, `ln()`, `sqrt()`, `to_polar()`, `from_polar()`） | 仅在 `std` feature 下提供；`no_std + alloc` 下不承诺这些 API 可用 |
-| 数学方法（`norm_sqr()`） | 仅使用 `+` 和 `*`，不依赖浮点函数，**no_std 可用** |
-| `is_nan()`, `is_finite()` | 具体类型实现，`f32::is_nan()`/`f32::is_finite()` 在 `core` 中提供，**no_std 可用** |
-| 类型转换 | `From` trait 实现和 `to_f32()` 方法，天然 no_std |
-
-> **与 `01-architecture.md` §1.4 保持一致**：Xenon 不以外部数学 crate 作为公开依赖面，也不在 `no_std + alloc` 下承诺复数数学函数。`norm_sqr()`、基础方法、算术运算、类型转换等仍保持纯 `core` 路径；`norm`、`exp`、`ln`、`sqrt`、`arg`、`to_polar`、`from_polar` 仅在 `std` feature 下提供。
+| 约束       | 说明                                    |
+| ---------- | --------------------------------------- |
+| `std` only | 本模块依赖 `std` 环境，不讨论 `no_std`  |
+| 单 crate   | 保持单 crate 边界                       |
+| SemVer     | 公开 Complex 类型及算术 API 遵循 SemVer |
+| 最小依赖   | 无新增第三方依赖                        |
 
 ---
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
+| 版本  | 日期       |
+| ----- | ---------- |
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
@@ -1042,4 +1036,4 @@ Wave 5: [T11] → [T12]
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+_本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。_

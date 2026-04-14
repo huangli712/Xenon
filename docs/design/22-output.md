@@ -3,6 +3,7 @@
 > 文档编号: 22 | 模块: `src/format/` | 阶段: Phase 4
 > 前置文档: `07-tensor.md`
 > 需求参考: 需求说明书 §24
+> 范围声明: 范围内
 
 ---
 
@@ -10,21 +11,21 @@
 
 ### 1.1 职责边界
 
-| 职责 | 包含 | 不包含 |
-|------|------|--------|
-| Display 实现 | 面向用户的简洁可读输出 | serde 序列化 |
-| Debug 实现 | 面向开发的形状/步长/类型信息 | 文件 I/O（读写文件） |
-| NumPy 风格输出 | 嵌套括号、矩阵形式、按逻辑索引顺序展示 | HTML 渲染 |
-| 截断规则 | 超过阈值触发 `...` 省略 | 自定义格式化器注册 |
+| 职责           | 包含                                   | 不包含               |
+| -------------- | -------------------------------------- | -------------------- |
+| Display 实现   | 面向用户的简洁可读输出                 | serde 序列化         |
+| Debug 实现     | 面向开发的形状/步长/类型信息           | 文件 I/O（读写文件） |
+| NumPy 风格输出 | 嵌套括号、矩阵形式、按逻辑索引顺序展示 | HTML 渲染            |
+| 截断规则       | 超过阈值触发 `...` 省略                | 自定义格式化器注册   |
 
 ### 1.2 设计原则
 
-| 原则 | 体现 |
-|------|------|
-| NumPy 对齐 | 输出格式与 NumPy `np.array_repr` 尽可能一致 |
-| 可配置截断 | 阈值/边缘元素数通过常量或 `FormatConfig` 配置 |
-| no_std 兼容 | `Display` 和 `Debug` 均通过 `core::fmt` 在 `no_std` 下可用 |
-| 零拷贝 | 格式化过程不修改原始数据 |
+| 原则       | 体现                                                     |
+| ---------- | -------------------------------------------------------- |
+| NumPy 对齐 | 输出格式与 NumPy `np.array_repr` 尽可能一致              |
+| 可配置截断 | 阈值/边缘元素数通过常量或 `FormatConfig` 配置            |
+| 平台一致性 | `Display` 和 `Debug` 在当前 `std` 环境下保持一致格式语义 |
+| 零拷贝     | 格式化过程不修改原始数据                                 |
 
 ### 1.3 在架构中的位置
 
@@ -56,13 +57,13 @@ src/
 
 多文件设计：将格式化输出按职责拆分为多个文件，便于后期拓展和维护。
 
-| 文件 | 职责 |
-|------|------|
-| `mod.rs` | 模块入口，导出公共 API，cfg 门控 |
-| `config.rs` | `FormatConfig` 结构体及 `Default` 实现 |
-| `display.rs` | `Display` trait 实现（1D/ND 格式化入口） |
-| `debug.rs` | `Debug` trait 实现（含元信息） |
-| `pretty.rs` | NumPy 风格格式化辅助函数（`fmt_1d_display`, `fmt_nd_display`, 截断逻辑） |
+| 文件         | 职责                                                                     |
+| ------------ | ------------------------------------------------------------------------ |
+| `mod.rs`     | 模块入口，导出公共 API，cfg 门控                                         |
+| `config.rs`  | `FormatConfig` 结构体及 `Default` 实现                                   |
+| `display.rs` | `Display` trait 实现（1D/ND 格式化入口）                                 |
+| `debug.rs`   | `Debug` trait 实现（含元信息）                                           |
+| `pretty.rs`  | NumPy 风格格式化辅助函数（`fmt_1d_display`, `fmt_nd_display`, 截断逻辑） |
 
 ---
 
@@ -102,12 +103,12 @@ src/format/
 
 ### 3.2 类型级依赖
 
-| 来源模块 | 使用的类型/trait | 使用者 |
-|----------|-----------------|--------|
-| `tensor` | `TensorBase<S, D>`, `.shape()`, `.ndim()`, `.len()`（参见 `07-tensor.md` §4） | `display.rs`, `debug.rs`, `pretty.rs` |
-| `dimension` | `Dimension`（参见 `02-dimension.md` §4） | `display.rs`, `pretty.rs` |
-| `storage` | `Storage<Elem=A>`（参见 `05-storage.md` §4） | `display.rs`, `debug.rs`, `pretty.rs` |
-| `element` | `Element`, `type_name::<A>()`（参见 `03-element.md` §3） | `display.rs`, `debug.rs` |
+| 来源模块    | 使用的类型/trait                                                              | 使用者                                |
+| ----------- | ----------------------------------------------------------------------------- | ------------------------------------- |
+| `tensor`    | `TensorBase<S, D>`, `.shape()`, `.ndim()`, `.len()`（参见 `07-tensor.md` §4） | `display.rs`, `debug.rs`, `pretty.rs` |
+| `dimension` | `Dimension`（参见 `02-dimension.md` §4）                                      | `display.rs`, `pretty.rs`             |
+| `storage`   | `Storage<Elem=A>`（参见 `05-storage.md` §4）                                  | `display.rs`, `debug.rs`, `pretty.rs` |
+| `element`   | `Element`, `type_name::<A>()`（参见 `03-element.md` §3）                      | `display.rs`, `debug.rs`              |
 
 ### 3.3 依赖方向声明
 
@@ -159,7 +160,7 @@ impl Default for FormatConfig {
 
 ### 4.1b TensorDisplay 包装结构
 
-```rust
+````rust
 /// A wrapper for formatting a tensor with a specific config.
 pub struct TensorDisplay<'a, S, D, A>
 where
@@ -202,7 +203,7 @@ where
         fmt_with_config(f, self.tensor, &self.config)
     }
 }
-```
+````
 
 ### 4.2 Display 实现
 
@@ -211,7 +212,7 @@ where
 > **注意**：`core::fmt::Display` 在 Rust 1.85 中对 f32/f64 无需 `std` 即可使用，因此此实现不加 `#[cfg(feature = "std")]` 门控。
 
 ```rust
-// Display is available in no_std via core::fmt
+// Display uses core::fmt and stays available in the std-only baseline.
 impl<S, D, A> core::fmt::Display for TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -228,10 +229,11 @@ where
     /// Large arrays are automatically truncated (see §4.4).
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if self.ndim() == 0 {
-            // 0-dim tensor: output scalar value directly
+            // 0-dim tensor: render with an explicit marker to distinguish it
+            // from a plain scalar value in textual output.
             // Zero-dimensional tensor element access via NdIndex<Ix0>,
             // tensor[&[]] corresponds to Index<[usize; 0]> trait (see 17-indexing.md §4.0).
-            write!(f, "{}", self[&[]])
+            write!(f, "Tensor0({})", self[&[]])
         } else if self.ndim() == 1 {
             fmt_1d_display(f, self)
         } else {
@@ -243,8 +245,8 @@ where
 
 ### 4.3 Debug 实现
 
-```rust
-// Debug is available in no_std via core::fmt; Debug reuses Display for the data section,
+````rust
+// Debug reuses Display for the data section,
 // so A must satisfy both Debug and Display.
 impl<S, D, A> core::fmt::Debug for TensorBase<S, D>
 where
@@ -284,9 +286,9 @@ where
         core::fmt::Display::fmt(self, f)
     }
 }
-```
+````
 
-> **设计决策：** Debug 输出包含完整的元信息（形状/步长/类型/布局），方便开发调试。Display 只输出数据，面向最终用户。Debug 和 Display 统一使用 `core::fmt`，均在 `no_std` 下可用。
+> **设计决策：** Debug 输出包含完整的元信息（形状/步长/类型/布局），方便开发调试。Display 只输出数据，面向最终用户；其中零维张量使用显式标记，避免与裸标量文本混淆。
 
 ### 4.4 NumPy 风格输出示例
 
@@ -332,6 +334,12 @@ where
  [5.0+6.0j, 7.0+8.0j]]
 ```
 
+**零维张量**:
+
+```
+Tensor0(42)
+```
+
 ### 4.5 截断规则
 
 ```
@@ -346,12 +354,12 @@ truncation_rule(tensor, config):
             show last config.edge_items elements
 ```
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `edge_items` | 3 | 每边显示的元素/行/列数 |
-| `threshold` | 1000 | 触发截断的最小元素总数 |
-| `precision` | `None` | 浮点精度（None = 类型默认） |
-| `line_width` | 80 | 每行最大字符数（用于换行） |
+| 参数         | 默认值 | 说明                        |
+| ------------ | ------ | --------------------------- |
+| `edge_items` | 3      | 每边显示的元素/行/列数      |
+| `threshold`  | 1000   | 触发截断的最小元素总数      |
+| `precision`  | `None` | 浮点精度（None = 类型默认） |
+| `line_width` | 80     | 每行最大字符数（用于换行）  |
 
 ### 4.6 Good/Bad 对比
 
@@ -466,7 +474,7 @@ fmt_nd(tensor, f, depth):
 - [ ] **T5**: 添加模块文档和 re-exports 完善
   - 文件: `src/format/mod.rs`, `src/format/display.rs`
   - 内容: 模块文档、re-exports 完善（Display/Debug 均无需 std 门控）
-  - 测试: `test_no_std_compile`
+  - 测试: `test_display_compile`
   - 前置: T3, T4
   - 预计: 5 min
 
@@ -490,53 +498,53 @@ Wave 3:        [T5]
 
 ### 7.1 测试分类表
 
-| 测试分类 | 位置 | 说明 |
-|----------|------|------|
-| 单元测试 | `#[cfg(test)] mod tests` | 验证 `Display`、`Debug` 与截断格式化语义 |
-| 集成测试 | `tests/` | 验证 `output` 与 `tensor`、`iter`、`element` 的协同路径 |
-| 边界测试 | 同模块测试中标注 | 覆盖空数组、零维张量、阈值截断和 NaN/Inf 输出 |
-| 属性测试 | `tests/property/` | 验证截断阈值、逻辑顺序与格式配置不变量 |
+| 测试分类 | 位置                     | 说明                                                    |
+| -------- | ------------------------ | ------------------------------------------------------- |
+| 单元测试 | `#[cfg(test)] mod tests` | 验证 `Display`、`Debug` 与截断格式化语义                |
+| 集成测试 | `tests/`                 | 验证 `output` 与 `tensor`、`iter`、`element` 的协同路径 |
+| 边界测试 | 同模块测试中标注         | 覆盖空数组、零维张量、阈值截断和 NaN/Inf 输出           |
+| 属性测试 | `tests/property/`        | 验证截断阈值、逻辑顺序与格式配置不变量                  |
 
 ### 7.2 单元测试清单
 
-| 测试函数 | 测试内容 | 优先级 |
-|----------|----------|--------|
-| `test_fmt_1d_full` | 1D 小数组完整输出 `[1, 2, 3]` | 高 |
-| `test_fmt_1d_truncated` | 1D 大数组截断 `[1, 2, 3, ..., 98, 99, 100]` | 高 |
-| `test_fmt_1d_empty` | 1D 空数组 `[]` | 中 |
-| `test_fmt_1d_single` | 1D 单元素 `[42]` | 中 |
-| `test_fmt_2d` | 2D 矩阵形式输出 | 高 |
-| `test_fmt_3d` | 3D 嵌套括号输出 | 中 |
-| `test_fmt_float_precision` | 浮点精度格式化 | 中 |
-| `test_fmt_i32` | 整数类型格式化 | 中 |
-| `test_fmt_bool` | bool 类型格式化 `[true, false]` | 低 |
-| `test_display_tensor` | Display trait 完整流程 | 高 |
-| `test_debug_tensor` | Debug trait 含元信息 | 高 |
-| `test_fmt_zero_dim` | 零维张量输出标量 | 中 |
-| `test_fmt_large_2d_truncated` | 大 2D 数组行列截断 | 高 |
+| 测试函数                      | 测试内容                                    | 优先级 |
+| ----------------------------- | ------------------------------------------- | ------ |
+| `test_fmt_1d_full`            | 1D 小数组完整输出 `[1, 2, 3]`               | 高     |
+| `test_fmt_1d_truncated`       | 1D 大数组截断 `[1, 2, 3, ..., 98, 99, 100]` | 高     |
+| `test_fmt_1d_empty`           | 1D 空数组 `[]`                              | 中     |
+| `test_fmt_1d_single`          | 1D 单元素 `[42]`                            | 中     |
+| `test_fmt_2d`                 | 2D 矩阵形式输出                             | 高     |
+| `test_fmt_3d`                 | 3D 嵌套括号输出                             | 中     |
+| `test_fmt_float_precision`    | 浮点精度格式化                              | 中     |
+| `test_fmt_i32`                | 整数类型格式化                              | 中     |
+| `test_fmt_bool`               | bool 类型格式化 `[true, false]`             | 低     |
+| `test_display_tensor`         | Display trait 完整流程                      | 高     |
+| `test_debug_tensor`           | Debug trait 含元信息                        | 高     |
+| `test_fmt_zero_dim`           | 零维张量输出带区分标记                      | 中     |
+| `test_fmt_large_2d_truncated` | 大 2D 数组行列截断                          | 高     |
 
 ### 7.3 边界测试场景
 
-| 场景 | 预期行为 |
-|------|----------|
-| 空数组 `shape=[0]` | 输出 `[]` |
-| 单元素 `shape=[1]` | 输出 `[42]` |
-| 零维张量 | 输出标量值 |
-| 1001 元素 1D | 触发截断 |
-| 999 元素 1D | 不截断 |
-| NaN/Inf | 输出 `NaN`/`inf` |
+| 场景               | 预期行为                            |
+| ------------------ | ----------------------------------- |
+| 空数组 `shape=[0]` | 输出 `[]`                           |
+| 单元素 `shape=[1]` | 输出 `[42]`                         |
+| 零维张量           | 输出 `Tensor0(...)`，与裸标量可区分 |
+| 1001 元素 1D       | 触发截断                            |
+| 999 元素 1D        | 不截断                              |
+| NaN/Inf            | 输出 `NaN`/`inf`                    |
 
 ### 7.4 属性测试不变量
 
-| 不变量 | 测试方法 |
-|--------|----------|
+| 不变量                                              | 测试方法 |
+| --------------------------------------------------- | -------- |
 | `debug(tensor)` 包含 shape / strides / dtype 元信息 | 随机形状 |
-| 截断输出包含 `...` | 大数组 |
+| 截断输出包含 `...`                                  | 大数组   |
 
 ### 7.5 集成测试
 
-| 测试文件 | 测试内容 |
-|----------|----------|
+| 测试文件               | 测试内容                                                                                  |
+| ---------------------- | ----------------------------------------------------------------------------------------- |
 | `tests/test_output.rs` | `Display` / `Debug` 与 `tensor` 元数据查询、`iter` 遍历、复数与浮点格式化路径的端到端集成 |
 
 ---
@@ -545,12 +553,12 @@ Wave 3:        [T5]
 
 ### 8.1 接口约定
 
-| 方向 | 对方模块 | 接口/类型 | 约定 |
-|------|----------|-----------|------|
-| `format → tensor` | `tensor` | `.shape()` / `.ndim()` / `.len()` | `Display` 路径读取基础张量元数据，参见 `07-tensor.md` §4 |
-| `format → tensor` | `tensor` | `.strides()` / `is_f_contiguous()` | `Debug` 额外输出布局相关元数据，参见 `06-memory.md` §4 |
-| `format → tensor/index` | `tensor`, `index` | `shape()`, 多维索引访问 | 按逻辑行/列结构读取元素；不依赖 `iter()` 的 F-order 内存顺序 |
-| `format → element` | `element` | `core::any::type_name::<A>()` | 输出 dtype 与元素类型信息，参见 `03-element.md` §3 |
+| 方向                    | 对方模块          | 接口/类型                          | 约定                                                         |
+| ----------------------- | ----------------- | ---------------------------------- | ------------------------------------------------------------ |
+| `format → tensor`       | `tensor`          | `.shape()` / `.ndim()` / `.len()`  | `Display` 路径读取基础张量元数据，参见 `07-tensor.md` §4     |
+| `format → tensor`       | `tensor`          | `.strides()` / `is_f_contiguous()` | `Debug` 额外输出布局相关元数据，参见 `06-memory.md` §4       |
+| `format → tensor/index` | `tensor`, `index` | `shape()`, 多维索引访问            | 按逻辑行/列结构读取元素；不依赖 `iter()` 的 F-order 内存顺序 |
+| `format → element`      | `element`         | `core::any::type_name::<A>()`      | 输出 dtype 与元素类型信息，参见 `03-element.md` §3           |
 
 ### 8.2 数据流描述
 
@@ -569,85 +577,58 @@ Wave 3:        [T5]
 
 ### 决策 1：截断阈值选择
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 默认阈值 1000，默认边缘 3 |
-| 理由 | 与 NumPy 默认行为一致（`np.set_printoptions(threshold=1000, edgeitems=3)`） |
-| 替代方案 | 更小的阈值（如 100） — 放弃，对中等数组也触发截断 |
-| 替代方案 | 可配置阈值通过全局变量 — 放弃，全局可变状态不利于并发测试 |
+| 属性     | 值                                                                          |
+| -------- | --------------------------------------------------------------------------- |
+| 决策     | 默认阈值 1000，默认边缘 3                                                   |
+| 理由     | 与 NumPy 默认行为一致（`np.set_printoptions(threshold=1000, edgeitems=3)`） |
+| 替代方案 | 更小的阈值（如 100） — 放弃，对中等数组也触发截断                           |
+| 替代方案 | 可配置阈值通过全局变量 — 放弃，全局可变状态不利于并发测试                   |
 
 ### 决策 2：输出格式与 NumPy 对齐程度
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 尽可能对齐 NumPy 风格，但不追求 100% 一致 |
-| 理由 | Rust 的 `fmt::Display` 约定与 Python 不同；追求语义一致而非字符级一致 |
-| 替代方案 | 100% 复制 NumPy 格式 — 放弃，Rust 类型信息有价值，不应完全省略 |
-| 替代方案 | 完全自定义格式 — 放弃，与用户 Python 经验的直觉一致性是目标 |
+| 属性     | 值                                                                    |
+| -------- | --------------------------------------------------------------------- |
+| 决策     | 尽可能对齐 NumPy 风格，但不追求 100% 一致                             |
+| 理由     | Rust 的 `fmt::Display` 约定与 Python 不同；追求语义一致而非字符级一致 |
+| 替代方案 | 100% 复制 NumPy 格式 — 放弃，Rust 类型信息有价值，不应完全省略        |
+| 替代方案 | 完全自定义格式 — 放弃，与用户 Python 经验的直觉一致性是目标           |
 
-### 决策 3：Display 和 Debug 在 no_std 下均可使用
+### 决策 3：零维张量使用显式标记
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | `Display` 和 `Debug` 均无条件实现，不加 `#[cfg(feature = "std")]` 门控 |
-| 理由 | Rust 1.85+ 中 f32/f64 的 `Display` 在 `core::fmt` 中可用，无需 `std`；`Debug` 始终在 `core::fmt` 中可用 |
-| 替代方案 | Display 加 std 门控 — 放弃，Rust 1.85 已支持 no_std 浮点 Display |
+| 属性     | 值                                                             |
+| -------- | -------------------------------------------------------------- |
+| 决策     | 零维张量输出采用 `Tensor0(...)` 形式，而不是直接打印裸元素     |
+| 理由     | 满足 `require.md §24` 中“以可区分方式显示标量与零维张量”的要求 |
+| 替代方案 | 直接输出裸标量 — 放弃，会与普通标量文本混淆                    |
 
 ---
 
 ## 10. 性能考量
 
-| 方面 | 设计决策 |
-|------|----------|
-| 格式化开销 | O(n)，不可避免（须遍历每个元素） |
-| 大数组截断 | 截断后仅格式化 O(edge_items * 2 * ndim) 个元素，非 O(n) |
-| 零拷贝 | 格式化过程不修改原始数据 |
-| 临时分配 | 格式化过程无堆分配（直接写入 `Formatter`） |
+| 方面       | 设计决策                                                 |
+| ---------- | -------------------------------------------------------- |
+| 格式化开销 | O(n)，不可避免（须遍历每个元素）                         |
+| 大数组截断 | 截断后仅格式化 O(edge*items * 2 \_ ndim) 个元素，非 O(n) |
+| 零拷贝     | 格式化过程不修改原始数据                                 |
+| 临时分配   | 格式化过程无堆分配（直接写入 `Formatter`）               |
 
 ---
 
-## 11. no_std 兼容性
+## 11. 平台与工程约束
 
-```rust
-// Display is available in no_std via core::fmt (Rust 1.85+)
-// f32/f64 Display is in core, not gated by std
-impl<S, D, A> core::fmt::Display for TensorBase<S, D>
-where
-    S: Storage<Elem = A>,
-    D: Dimension,
-    A: core::fmt::Display + Element,
-{
-    // ...
-}
-
-// Debug is also available under no_std via core::fmt
-impl<S, D, A> core::fmt::Debug for TensorBase<S, D>
-where
-    S: Storage<Elem = A>,
-    D: Dimension,
-A: core::fmt::Debug + core::fmt::Display + Element,
-{
-    // ...
-}
-```
-
-| 特性 | std | no_std |
-|------|-----|--------|
-| `Display` | ✅ | ✅（通过 `core::fmt`，Rust 1.85+） |
-| `Debug` | ✅ | ✅（通过 `core::fmt`） |
-| 浮点精度控制 | ✅ | ✅（`core::fmt` 支持） |
-| 截断规则 | ✅ | ✅ |
-
-> **与 Feature 矩阵一致**：`01-architecture.md §6` Feature 矩阵中，no_std 列下 `Display 格式化` 应更新为 ✅，与此处定义对齐。
->
-> **关于 Rust 1.85 浮点格式化的说明：** 自 Rust 1.85 起，`f32` / `f64` 的 `Display` 已可通过 `core::fmt` 在无 `std` 情况下使用，因此这里不再为 `Display` 添加 `#[cfg(feature = "std")]` 门控。
+| 约束       | 说明                                                  |
+| ---------- | ----------------------------------------------------- |
+| `std` only | 当前版本仅讨论 `std` 环境下的格式化输出行为           |
+| 单 crate   | 格式化逻辑保持在 `src/format/` 内，不拆出独立 crate   |
+| SemVer     | 0D 文本表示属于公开输出契约，后续变更需视为兼容性事项 |
+| 最小依赖   | 不引入额外第三方格式化依赖                            |
 
 ---
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
+| 版本  | 日期       |
+| ----- | ---------- |
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-08 |
 | 1.0.2 | 2026-04-08 |
@@ -659,4 +640,4 @@ A: core::fmt::Debug + core::fmt::Display + Element,
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+_本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。_

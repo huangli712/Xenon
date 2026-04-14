@@ -3,6 +3,7 @@
 > 文档编号: 09 | 模块: `src/parallel/` | 阶段: Phase 5
 > 前置文档: `07-tensor.md`, `10-iterator.md`
 > 需求参考: 需求说明书 §9.2, §9.3
+> 范围声明: 范围内
 
 ---
 
@@ -12,24 +13,24 @@
 
 ### 1.1 职责边界
 
-| 职责 | 包含 | 不包含 |
-|------|------|--------|
-| rayon 集成 | 全局线程池、自定义线程池配置 | 自定义线程池调度策略 |
-| 逐元素并行 | a + b 等逐元素运算的并行执行 | 嵌套并行 |
-| 并行归约 | sum 的并行求和 | GPU 并行 |
-| 函数映射并行 | apply / map_inplace 并行执行 | BLAS 并行绑定 |
-| 多数组同步 | zip 多数组并行迭代 | 自动 DAG 调度 |
-| 自动路径选择 | 根据数据规模自动串行/并行切换 | 编译期静态并行分发 |
+| 职责         | 包含                          | 不包含               |
+| ------------ | ----------------------------- | -------------------- |
+| rayon 集成   | 全局线程池、自定义线程池配置  | 自定义线程池调度策略 |
+| 逐元素并行   | a + b 等逐元素运算的并行执行  | 嵌套并行             |
+| 并行归约     | sum 的并行求和                | GPU 并行             |
+| 函数映射并行 | apply / map_inplace 并行执行  | BLAS 并行绑定        |
+| 多数组同步   | zip 多数组并行迭代            | 自动 DAG 调度        |
+| 自动路径选择 | 根据数据规模自动串行/并行切换 | 编译期静态并行分发   |
 
 ### 1.2 设计原则
 
-| 原则 | 体现 |
-|------|------|
-| 透明集成 | 用户代码无需修改，仅通过 feature gate 启用 |
-| 自动决策 | 运行时根据数据规模和布局自动选择并行/串行 |
-| 可配置性 | 支持全局配置和单次调用覆盖阈值 |
-| 安全性 | 禁止嵌套并行，保证无数据竞争；通过 `ParallelGuard` 运行时守卫检测并回退串行 |
-| 兼容性 | 可被上层语义模块与 SIMD 组合使用，但 `parallel/` 本身不直接依赖 `simd/` |
+| 原则     | 体现                                                                        |
+| -------- | --------------------------------------------------------------------------- |
+| 透明集成 | 用户代码无需修改，仅通过 feature gate 启用                                  |
+| 自动决策 | 运行时根据数据规模和布局自动选择并行/串行                                   |
+| 可配置性 | 支持全局配置和单次调用覆盖阈值                                              |
+| 安全性   | 禁止嵌套并行，保证无数据竞争；通过 `ParallelGuard` 运行时守卫检测并回退串行 |
+| 兼容性   | 可被上层语义模块与 SIMD 组合使用，但 `parallel/` 本身不直接依赖 `simd/`     |
 
 ### 1.3 在架构中的位置
 
@@ -69,7 +70,7 @@ L5: parallel  ← 当前模块（可选，feature = "parallel"）
 src/parallel/
 ├── mod.rs             # 模块入口、rayon 集成、全局阈值配置、模块导出
 ├── par_iter.rs        # 并行迭代器（ParElements, ParZip）
-└── par_ops.rs         # 并行运算（par_map, par_reduce, par_zip_with）
+└── par_ops.rs         # 并行运算（par_map, par_sum, par_dot, par_zip_with）
 ```
 
 模块划分理由：`mod.rs` 管理配置和公共导出；`par_iter.rs` 封装并行迭代逻辑；`par_ops.rs` 实现具体的并行运算。
@@ -93,13 +94,13 @@ src/parallel/
 
 ### 3.2 依赖精确到类型级
 
-| 来源模块 | 使用的类型/trait |
-|----------|-----------------|
-| `rayon` | `ThreadPool`, `ThreadPoolBuilder`, `ParallelIterator`, `IndexedParallelIterator` |
-| `tensor` | `TensorBase<S, D>`, `Tensor<A, D>`, `.view()`, `.len()`, `Tensor::from_raw_vec_unchecked`（参见 `07-tensor.md §4.5`，pub(crate) 方法）（参见 `07-tensor.md §4`） |
-| `storage` | `RawStorage`, `Storage`, `StorageMut`, `.as_slice()`（参见 `05-storage.md §4`） |
-| `layout` | `LayoutFlags`, `is_f_contiguous()`（参见 `06-memory.md §4`） |
-| `broadcast` | `broadcast_shape()`（参见 `15-broadcast.md §4`） |
+| 来源模块    | 使用的类型/trait                                                                                                                                                 |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rayon`     | `ThreadPool`, `ThreadPoolBuilder`, `ParallelIterator`, `IndexedParallelIterator`                                                                                 |
+| `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `.view()`, `.len()`, `Tensor::from_raw_vec_unchecked`（参见 `07-tensor.md §4.5`，pub(crate) 方法）（参见 `07-tensor.md §4`） |
+| `storage`   | `RawStorage`, `Storage`, `StorageMut`, `.as_slice()`（参见 `05-storage.md §4`）                                                                                  |
+| `layout`    | `LayoutFlags`, `is_f_contiguous()`（参见 `06-memory.md §4`）                                                                                                     |
+| `broadcast` | `broadcast_shape()`（参见 `15-broadcast.md §4`）                                                                                                                 |
 
 ### 3.3 依赖方向声明
 
@@ -127,7 +128,7 @@ rayon = { version = "1.10", optional = true }
 - 默认关闭，通过 `features = ["parallel"]` 显式启用
 - 启用后 rayon 与 `std` 同时引入，提供线程池、原子变量和数据并行能力
 
-> **约束说明：** `parallel` 不是纯 `no_std` feature。并行后端依赖 `std::sync::atomic`、rayon 线程池与线程本地上下文，因此文档、CI 和 feature 矩阵都必须把 `parallel` 视为 `std` 扩展能力。
+> **约束说明：** `parallel` 依赖 `std::sync::atomic`、rayon 线程池与线程本地上下文，因此文档、CI 和 feature 矩阵都必须把 `parallel` 视为 `std` 扩展能力。
 
 ### 4.2 并行阈值系统
 
@@ -296,14 +297,13 @@ where
     unsafe { Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()) }
 }
 
-/// Parallel reduction
+/// Internal reduction helper used by `par_sum` / `par_dot`.
 ///
-/// # Constraints
-///
-/// * The reduction function must be associative
-/// * The identity function must return the identity element
+/// This is an implementation detail rather than a public API in the current
+/// version, because `require.md §14` only exposes `sum` as the supported
+/// reduction contract.
 #[cfg(feature = "parallel")]
-pub fn par_reduce<A, D, F, ID>(tensor: &Tensor<A, D>, identity: ID, op: F) -> A
+pub(crate) fn par_reduce_impl<A, D, F, ID>(tensor: &Tensor<A, D>, identity: ID, op: F) -> A
 where
     D: Dimension,
     A: Element + Send + Sync + Clone,
@@ -340,6 +340,19 @@ where
     // - floats / complex: default to serial baseline unless a specific kernel has
     //   a documented proof of exact equivalence.
     dispatch_par_sum(tensor)
+}
+
+/// Parallel dot product.
+///
+/// Only vector inputs participate in dot dispatch. The backend may run a
+/// parallel kernel when the enabled implementation can preserve Xenon's result
+/// contract; otherwise it conservatively falls back to the serial baseline.
+#[cfg(feature = "parallel")]
+pub fn par_dot<A>(lhs: &Tensor<A, Ix1>, rhs: &Tensor<A, Ix1>) -> Result<A, XenonError>
+where
+    A: Element + Numeric + Send + Sync + Clone,
+{
+    dispatch_par_dot(lhs, rhs)
 }
 
 /// Parallel zip operation
@@ -391,6 +404,8 @@ where
     unsafe { Ok(Tensor::from_raw_vec_unchecked(output, output_dim)) }
 }
 ```
+
+> **顺序保证：** `ParZip` 以广播后的共享逻辑扁平索引区间作为唯一分割基准，并向 rayon 暴露 indexed 语义；因此 `collect::<Vec<_>>()` 产生的结果顺序与串行 `zip_with()` 的逻辑元素顺序一致，而不是“线程完成顺序”。
 
 ### 4.5 并行迭代器
 
@@ -814,10 +829,10 @@ where
   - 前置: T2
   - 预计: 10 min
 
-- [ ] **T4**: 实现 `par_reduce` 和 `par_sum`
+- [ ] **T4**: 实现 `par_sum`、`par_dot` 与内部归约辅助
   - 文件: `src/parallel/par_ops.rs`
-  - 内容: `par_reduce()`、`par_sum()`、关联操作约束
-  - 测试: `test_par_sum_correctness`、`test_par_reduce_empty`
+  - 内容: `par_reduce_impl()`（`pub(crate)`）、`par_sum()`、`par_dot()`、一致性约束
+  - 测试: `test_par_sum_correctness`、`test_par_sum_empty`、`test_par_dot_matches_serial`
   - 前置: T2
   - 预计: 10 min
 
@@ -859,57 +874,59 @@ Wave 4:        [T8]
 
 ### 7.1 测试分类表
 
-| 类型 | 位置 | 目的 |
-|------|------|------|
-| 单元测试 | `#[cfg(test)] mod tests` | 验证单个并行操作 |
-| 一致性测试 | `tests/test_parallel.rs` | 并行结果与串行一致 |
-| 边界测试 | 集成测试中标注 | 阈值边界、空数组、单元素 |
-| 并发测试 | `tests/concurrent/` | 竞态条件检测 |
-| 属性测试 | `tests/property/` | 随机数据验证一致性不变量（参见 §7.4） |
+| 类型       | 位置                     | 目的                                  |
+| ---------- | ------------------------ | ------------------------------------- |
+| 单元测试   | `#[cfg(test)] mod tests` | 验证单个并行操作                      |
+| 一致性测试 | `tests/test_parallel.rs` | 并行结果与串行一致                    |
+| 边界测试   | 集成测试中标注           | 阈值边界、空数组、单元素              |
+| 并发测试   | `tests/concurrent/`      | 竞态条件检测                          |
+| 属性测试   | `tests/property/`        | 随机数据验证一致性不变量（参见 §7.4） |
 
 ### 7.2 单元测试清单
 
-| 测试函数 | 测试内容 | 优先级 |
-|----------|----------|--------|
-| `test_default_threshold` | 默认阈值为 1024 | 高 |
-| `test_set_get_threshold` | 设置和获取阈值一致 | 高 |
-| `test_par_elements_len` | 并行迭代器长度正确 | 高 |
-| `test_par_map_result` | 并行映射结果正确 | 高 |
-| `test_par_map_fallback_small` | 小数组回退到串行 | 高 |
-| `test_par_sum_correctness` | 并行求和结果正确 | 高 |
-| `test_par_reduce_empty` | 空数组返回单位元 | 高 |
-| `test_par_zip_with_add` | 并行 zip 加法正确 | 高 |
-| `test_par_zip_broadcast` | 广播并行正确 | 中 |
-| `test_nested_parallel_guard` | 嵌套并行被检测 | 中 |
-| `test_parallel_token_propagation` | 并行上下文令牌传播正确 | 中 |
-| `test_custom_pool` | 自定义线程池工作正常 | 低 |
+| 测试函数                          | 测试内容                    | 优先级 |
+| --------------------------------- | --------------------------- | ------ |
+| `test_default_threshold`          | 默认阈值为 1024             | 高     |
+| `test_set_get_threshold`          | 设置和获取阈值一致          | 高     |
+| `test_par_elements_len`           | 并行迭代器长度正确          | 高     |
+| `test_par_map_result`             | 并行映射结果正确            | 高     |
+| `test_par_map_fallback_small`     | 小数组回退到串行            | 高     |
+| `test_par_sum_correctness`        | 并行求和结果正确            | 高     |
+| `test_par_sum_empty`              | 空数组 `sum` 返回加法单位元 | 高     |
+| `test_par_dot_matches_serial`     | 并行内积与串行语义一致      | 高     |
+| `test_par_zip_with_add`           | 并行 zip 加法正确           | 高     |
+| `test_par_zip_broadcast`          | 广播并行正确                | 中     |
+| `test_nested_parallel_guard`      | 嵌套并行被检测              | 中     |
+| `test_parallel_token_propagation` | 并行上下文令牌传播正确      | 中     |
+| `test_custom_pool`                | 自定义线程池工作正常        | 低     |
 
 ### 7.3 边界测试场景
 
-| 场景 | 预期行为 |
-|------|----------|
-| 空数组 `len=0` | 并行操作立即返回，不 panic |
-| 单元素 `len=1` | 回退到串行 |
-| `len = threshold - 1` | 串行执行 |
-| `len = threshold` | 并行执行 |
-| `len = threshold + 1` | 并行执行 |
-| 非连续数组 | 阈值翻倍后决定 |
-| 嵌套并行 | 内层自动回退串行 |
+| 场景                  | 预期行为                   |
+| --------------------- | -------------------------- |
+| 空数组 `len=0`        | 并行操作立即返回，不 panic |
+| 单元素 `len=1`        | 回退到串行                 |
+| `len = threshold - 1` | 串行执行                   |
+| `len = threshold`     | 并行执行                   |
+| `len = threshold + 1` | 并行执行                   |
+| 非连续数组            | 阈值翻倍后决定             |
+| 嵌套并行              | 内层自动回退串行           |
 
 ### 7.4 属性测试不变量
 
-| 不变量 | 测试方法 |
-|--------|----------|
-| `par_sum() == iter().sum()` | 随机 `[f64; 0..100000]` |
-| `par_map(f) == map(f)` | 随机 `[f32; 0..100000]` |
-| `par_zip_with(f) == zip_with(f)` | 随机形状 |
-| 并行结果与线程数无关 | 分别用 1, 2, 4, 8 线程验证 |
+| 不变量                                  | 测试方法                    |
+| --------------------------------------- | --------------------------- |
+| `par_sum() == iter().sum()`             | 随机 `[f64; 0..100000]`     |
+| `par_dot(a, b)` 与串行 `dot(a, b)` 一致 | 随机一维 `[f64; 0..100000]` |
+| `par_map(f) == map(f)`                  | 随机 `[f32; 0..100000]`     |
+| `par_zip_with(f) == zip_with(f)`        | 随机形状                    |
+| 并行结果与线程数无关                    | 分别用 1, 2, 4, 8 线程验证  |
 
 ### 7.5 集成测试
 
-| 测试文件 | 测试内容 |
-|----------|----------|
-| `tests/test_parallel.rs` | `par_map` / `par_sum` / `par_zip_with` 与 `tensor`、`storage`、`simd`、`rayon` guard 的端到端协同路径 |
+| 测试文件                 | 测试内容                                                                                                          |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `tests/test_parallel.rs` | `par_map` / `par_sum` / `par_dot` / `par_zip_with` 与 `tensor`、`storage`、`simd`、`rayon` guard 的端到端协同路径 |
 
 ---
 
@@ -939,7 +956,7 @@ Wave 4:        [T8]
 ### 8.2 数据流描述
 
 ```text
-上层语义模块调用 par_map / par_sum / par_zip_with
+上层语义模块调用 par_map / par_sum / par_dot / par_zip_with
     │
     ├── ParallelGuard::enter()
     │       └── 若已在并行区域 → 自动回退串行
@@ -967,41 +984,41 @@ Wave 4:        [T8]
 
 ### 决策 1：选择 rayon 作为并行框架
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 使用 rayon crate 作为并行框架 |
-| 理由 | 成熟稳定、work-stealing 调度器高效、`ParallelIterator` API 优雅、Rust 生态标准选择、无数据竞争保证 |
-| 替代方案 | `crossbeam` — 放弃，更底层，需手动管理任务分发 |
-| 替代方案 | `tokio` — 放弃，面向异步 I/O，不适合 CPU 密集型计算 |
-| 替代方案 | 手动 `std::thread` — 放弃，代码复杂度高，错误容易引入 |
+| 属性     | 值                                                                                                 |
+| -------- | -------------------------------------------------------------------------------------------------- |
+| 决策     | 使用 rayon crate 作为并行框架                                                                      |
+| 理由     | 成熟稳定、work-stealing 调度器高效、`ParallelIterator` API 优雅、Rust 生态标准选择、无数据竞争保证 |
+| 替代方案 | `crossbeam` — 放弃，更底层，需手动管理任务分发                                                     |
+| 替代方案 | `tokio` — 放弃，面向异步 I/O，不适合 CPU 密集型计算                                                |
+| 替代方案 | 手动 `std::thread` — 放弃，代码复杂度高，错误容易引入                                              |
 
 ### 决策 2：并行归约浮点一致性
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 所有类型的并行结果都必须与串行实现保持一致；若某条并行路径无法证明该性质，则自动回退串行。当前版本默认仅对可逐块证明一致的整数/逐元素路径启用并行归约，浮点归约保守回退串行。 |
-| 理由 | 需求说明书 §28.5 已固定“并行归约结果须与单线程一致”；性能优化不能改变语义结果 |
-| 测试约定 | 并行 sum / zip / map 的一致性测试使用与串行结果一致的断言，而非近似比较；参见 `28-tests.md §14.2` |
-| 参见 | `13-reduction.md §9 ADR-2`（协调定义） |
+| 属性     | 值                                                                                                                                                                            |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | 所有类型的并行结果都必须与串行实现保持一致；若某条并行路径无法证明该性质，则自动回退串行。当前版本默认仅对可逐块证明一致的整数/逐元素路径启用并行归约，浮点归约保守回退串行。 |
+| 理由     | 需求说明书 §28.5 已固定“并行归约结果须与单线程一致”；性能优化不能改变语义结果                                                                                                 |
+| 测试约定 | 并行 sum / zip / map 的一致性测试使用与串行结果一致的断言，而非近似比较；参见 `28-tests.md §14.2`                                                                             |
+| 参见     | `13-reduction.md §9 ADR-2`（协调定义）                                                                                                                                        |
 
 ### 决策 3：并行阈值默认 1024 元素
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 默认并行阈值设为 1024 元素 |
-| 理由 | 低于此值时线程调度和同步开销大于并行收益；可配置允许用户调优 |
-| 替代方案 | 65536（64K）— 更保守，错过中等规模数组的并行加速 |
-| 替代方案 | 256 — 更激进，小数组并行开销可能大于收益 |
-| 替代方案 | 0（始终并行）— 放弃，小数组并行会严重降低性能 |
+| 属性     | 值                                                           |
+| -------- | ------------------------------------------------------------ |
+| 决策     | 默认并行阈值设为 1024 元素                                   |
+| 理由     | 低于此值时线程调度和同步开销大于并行收益；可配置允许用户调优 |
+| 替代方案 | 65536（64K）— 更保守，错过中等规模数组的并行加速             |
+| 替代方案 | 256 — 更激进，小数组并行开销可能大于收益                     |
+| 替代方案 | 0（始终并行）— 放弃，小数组并行会严重降低性能                |
 
 ### 决策 4：嵌套并行回退到串行而非 panic
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 检测到嵌套并行时自动回退到串行执行 |
-| 理由 | 更宽容，不会中断用户程序；通过 `ParallelGuard` 运行时守卫允许调用链在检测到嵌套时回退串行 |
-| 替代方案 | panic — 放弃，虽然能暴露问题，但可能破坏生产环境 |
-| 替代方案 | 编译期禁止 — 放弃，Rust 类型系统难以在编译期检测嵌套并行 |
+| 属性     | 值                                                                                        |
+| -------- | ----------------------------------------------------------------------------------------- |
+| 决策     | 检测到嵌套并行时自动回退到串行执行                                                        |
+| 理由     | 更宽容，不会中断用户程序；通过 `ParallelGuard` 运行时守卫允许调用链在检测到嵌套时回退串行 |
+| 替代方案 | panic — 放弃，虽然能暴露问题，但可能破坏生产环境                                          |
+| 替代方案 | 编译期禁止 — 放弃，Rust 类型系统难以在编译期检测嵌套并行                                  |
 
 ---
 
@@ -1009,12 +1026,12 @@ Wave 4:        [T8]
 
 ### 10.1 并行开销分析
 
-| 开销来源 | 典型值 | 说明 |
-|----------|--------|------|
-| 线程调度 | ~1-10μs | rayon work-stealing 调度器 |
-| 任务分发 | ~0.1-1μs | 分块和分发 |
-| 缓存失效 | ~10-100μs | 大数组跨线程访问 |
-| 同步屏障 | ~0.1-1μs | reduce 操作的合并步骤 |
+| 开销来源 | 典型值    | 说明                       |
+| -------- | --------- | -------------------------- |
+| 线程调度 | ~1-10μs   | rayon work-stealing 调度器 |
+| 任务分发 | ~0.1-1μs  | 分块和分发                 |
+| 缓存失效 | ~10-100μs | 大数组跨线程访问           |
+| 同步屏障 | ~0.1-1μs  | reduce 操作的合并步骤      |
 
 ### 10.2 最优阈值选取方法
 
@@ -1040,30 +1057,30 @@ Wave 4:        [T8]
 
 ### 10.3 预期加速比
 
-| 操作 | 元素数 | 4 核加速比 | 8 核加速比 |
-|------|--------|-----------|-----------|
-| par_map (f64) | 1M | ~3.5x | ~6x |
-| par_sum (f64) | 1M | 串行回退 | 串行回退 |
-| par_zip_with (f64) | 1M | ~3x | ~5.5x |
+| 操作               | 元素数 | 4 核加速比 | 8 核加速比 |
+| ------------------ | ------ | ---------- | ---------- |
+| par_map (f64)      | 1M     | ~3.5x      | ~6x        |
+| par_sum (f64)      | 1M     | 串行回退   | 串行回退   |
+| par_dot (f64)      | 1M     | 串行回退   | 串行回退   |
+| par_zip_with (f64) | 1M     | ~3x        | ~5.5x      |
 
 ---
 
-## 11. no_std 兼容性
+## 11. 平台与工程约束
 
-`parallel` 模块**不兼容 `no_std`**。rayon 依赖标准库的线程原语。在 `no_std` 环境下，`parallel` feature 不可用。
-
-```rust
-// Conditional compilation: parallel requires std
-#[cfg(all(feature = "parallel", not(feature = "std")))]
-compile_error!("The 'parallel' feature requires the 'std' feature");
-```
+| 约束       | 说明                         |
+| ---------- | ---------------------------- |
+| `std` only | 并行路径依赖 `std` + `rayon` |
+| 单 crate   | 保持单 crate 边界            |
+| SemVer     | 并行 API 变更遵循 SemVer     |
+| 最小依赖   | 可选依赖 `rayon`，默认关闭   |
 
 ---
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
+| 版本  | 日期       |
+| ----- | ---------- |
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
@@ -1073,4 +1090,4 @@ compile_error!("The 'parallel' feature requires the 'std' feature");
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+_本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。_

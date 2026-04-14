@@ -3,6 +3,7 @@
 > 文档编号: 06 | 模块: `src/layout/` | 阶段: Phase 2
 > 前置文档: `02-dimension.md`
 > 需求参考: 需求说明书 §7
+> 范围声明: 范围内
 
 ---
 
@@ -10,23 +11,23 @@
 
 ### 1.1 职责边界
 
-| 职责 | 包含 | 不包含 |
-|------|------|--------|
-| 布局标志位 | `LayoutFlags: u8` 位域定义和操作 | 数据分配（由 `storage/` 提供） |
-| 步长计算 | F-order 步长公式、合法性验证 | 元素访问（由 `tensor/` 提供） |
-| 连续性检查 | F-连续检测算法 | 运算逻辑（由 `math/` 提供） |
-| 对齐检查 | 指针对齐状态查询 | 实际对齐分配（由 `storage/alloc.rs` 提供） |
-| 负步长语义 | 切片/翻转时的负步长处理 | SIMD 路径选择（由 `simd/` 提供，参见 `08-simd.md §4.6`） |
-| 零步长语义 | 广播维度的零步长标记 | 广播规则实现（由 `broadcast/` 提供，参见 `15-broadcast.md §3`） |
+| 职责         | 包含                               | 不包含                                                          |
+| ------------ | ---------------------------------- | --------------------------------------------------------------- |
+| 布局标志位   | `LayoutFlags: u8` 位域定义和操作   | 数据分配（由 `storage/` 提供）                                  |
+| 步长计算     | F-order 步长公式、合法性验证       | 元素访问（由 `tensor/` 提供）                                   |
+| 连续性检查   | F-连续检测算法                     | 运算逻辑（由 `math/` 提供）                                     |
+| 对齐检查     | 指针对齐状态查询                   | 实际对齐分配（由 `storage/alloc.rs` 提供）                      |
+| 步长范围约束 | 当前版本仅讨论非负步长与零步长布局 | 超出 F-order、转置与广播所产生合法布局的 stride 组合            |
+| 零步长语义   | 广播维度的零步长标记               | 广播规则实现（由 `broadcast/` 提供，参见 `15-broadcast.md §3`） |
 
 ### 1.2 设计原则
 
-| 原则 | 体现 |
-|------|------|
-| F-order only | Xenon 仅支持列优先布局，不支持 C-order |
-| O(1) 布局查询 | 通过缓存布局标志位，将高频查询优化为常数时间 |
-| 有符号步长 | `Strides<D>` 使用显式 `isize` 存储，支持负步长（反转）和零步长（广播） |
-| 零成本抽象 | 布局信息为纯元数据，不引入运行时开销 |
+| 原则          | 体现                                                                       |
+| ------------- | -------------------------------------------------------------------------- |
+| F-order only  | Xenon 仅支持列优先布局，不支持 C-order                                     |
+| O(1) 布局查询 | 通过缓存布局标志位，将高频查询优化为常数时间                               |
+| 步长显式建模  | `Strides<D>` 使用显式 `isize` 存储，当前版本仅接受非负步长与零步长（广播） |
+| 零成本抽象    | 布局信息为纯元数据，不引入运行时开销                                       |
 
 ### 1.3 在架构中的位置
 
@@ -45,6 +46,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 > **重要**：Xenon 仅支持 F-order（列优先），不支持 C-order。
 >
 > **理由**：
+>
 > 1. **BLAS 兼容**：BLAS/LAPACK 使用列优先布局
 > 2. **科学计算惯例**：Fortran 在科学计算领域历史悠久
 > 3. **简化设计**：去除 C-order 减少分支和复杂度
@@ -58,7 +60,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 src/layout/
 ├── mod.rs             # LayoutFlags、Strides<D> 和公开 API
 ├── flags.rs           # LayoutFlags: u8 位域定义和操作
-├── strides.rs         # 步长计算、验证、负/零步长处理
+├── strides.rs         # 步长计算、验证、零步长处理
 └── contiguous.rs      # F-连续性检测算法
 ```
 
@@ -77,10 +79,10 @@ src/layout/
 
 ### 3.2 类型级依赖
 
-| 来源模块 | 使用的类型/trait |
-|----------|-----------------|
+| 来源模块    | 使用的类型/trait                                               |
+| ----------- | -------------------------------------------------------------- |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md §4`） |
-| `core` | `isize`, `usize` |
+| `core`      | `isize`, `usize`                                               |
 
 ### 3.3 依赖方向声明
 
@@ -99,13 +101,12 @@ LayoutFlags (u8):
 ┌───┬───┬───┬───┬───┬───┬───┬───┐
 │ 7 │ 6 │ 5 │ 4 │ 3 │ 2 │ 1 │ 0 │
 ├───┼───┼───┼───┼───┼───┼───┼───┤
-│ - │ - │ - │NEG│ZER│ALG│ - │ F │
+│ - │ - │ - │ - │ZER│ALG│ - │ F │
 └───┴───┴───┴───┴───┴───┴───┴───┘
 
 F   = F_CONTIGUOUS    (0b00001)  Fortran 连续
 ALG = ALIGNED         (0b00100)  64 字节对齐
 ZER = HAS_ZERO_STRIDE (0b01000)  包含零步长（广播）
-NEG = HAS_NEG_STRIDE  (0b10000)  包含负步长（切片/翻转）
 -   = 保留位
 ```
 
@@ -131,9 +132,6 @@ impl LayoutFlags {
     /// Zero stride flag (broadcast dimension)
     pub const HAS_ZERO_STRIDE: Self = Self(0b0000_1000); // 0x08
 
-    /// Negative stride flag (reversed dimension)
-    pub const HAS_NEG_STRIDE: Self = Self(0b0001_0000);  // 0x10
-
     // === Query methods ===
 
     /// Returns true if F-order contiguous.
@@ -152,12 +150,6 @@ impl LayoutFlags {
     #[inline]
     pub const fn has_zero_stride(self) -> bool {
         (self.0 & Self::HAS_ZERO_STRIDE.0) != 0
-    }
-
-    /// Returns true if any negative stride exists.
-    #[inline]
-    pub const fn has_neg_stride(self) -> bool {
-        (self.0 & Self::HAS_NEG_STRIDE.0) != 0
     }
 
     // === Setter methods ===
@@ -183,12 +175,6 @@ impl LayoutFlags {
         else { Self(self.0 & !Self::HAS_ZERO_STRIDE.0) }
     }
 
-    /// Sets the negative stride flag.
-    #[inline]
-    pub const fn set_has_neg_stride(self, val: bool) -> Self {
-        if val { Self(self.0 | Self::HAS_NEG_STRIDE.0) }
-        else { Self(self.0 & !Self::HAS_NEG_STRIDE.0) }
-    }
 }
 ```
 
@@ -214,7 +200,7 @@ pub enum Order {
 
 `LayoutFlags` 提供从 `Order` 构造标志的便捷方法。`Order` 仅用于显式表达“目标布局仍为 F-order”，不是在当前版本开放多布局支持：
 
-```rust
+````rust
 impl LayoutFlags {
     /// Creates a LayoutFlags with F_CONTIGUOUS set (and no other flags).
     ///
@@ -232,20 +218,21 @@ impl LayoutFlags {
         }
     }
 }
-```
+````
 
 ### 4.2 步长类型：isize
 
-步长使用有符号整数 `isize` 存储：
+步长使用 `isize` 存储，以统一 stride/offset 相关元数据计算；当前版本仅接受非负步长与零步长：
 
 ```rust
 /// Each element in the stride array represents the memory offset change
 /// (in elements) when moving one index along that axis.
 ///
 /// - Positive stride: forward traversal
-/// - Negative stride: reverse traversal (e.g. flip operation)
 /// - Zero stride: broadcast dimension (repeats the same element)
 ```
+
+负步长布局不在当前版本范围内（参见 `require.md §7`）。当前文档仅讨论由 F-order、转置与广播产生的合法布局。
 
 ### 4.3 F-order 步长计算
 
@@ -283,7 +270,7 @@ i=2: stride[2] = 12,   cumulative = 12 * 5 = 60
 /// * `shape` - Length of each axis
 ///
 /// # Returns
-/// `Strides<D>` with the same rank as `shape`, storing signed strides explicitly.
+/// `Strides<D>` with the same rank as `shape`, storing explicit stride metadata.
 pub fn compute_f_strides<D: Dimension>(shape: &D) -> Strides<D>;
 ```
 
@@ -340,29 +327,9 @@ pub fn is_aligned(ptr: *const u8) -> bool {
 
 > **数据一致性保证：** 对齐布局（64 字节对齐）与非对齐布局必须产生相同的元素值。对齐仅影响 SIMD 访问性能，不改变数据语义。当前设计中 `Owned::from_vec(data)` 统一委托到对齐分配路径，因此与 `Owned::from_vec_aligned(data)` 在逻辑语义上完全等价；`is_aligned()` 标志仅用于指导 SIMD 路径选择，而不是区分两套用户可见的构造语义。
 
-> **Strides 归属约定：** `Strides<D>` 由 layout 模块定义并拥有；`dimension` 只提供 `checked_size()` 和无符号 F-order 形状推导，绝不保存 signed stride 或 logical-first pointer 语义。`tensor` 持有 `Strides<D>` 实例并把它交给 layout 计算标志位。
+> **Strides 归属约定：** `Strides<D>` 由 layout 模块定义并拥有；`dimension` 只提供 `checked_size()` 和无符号 F-order 形状推导，绝不保存 stride 或 logical-first pointer 语义。`tensor` 持有 `Strides<D>` 实例并把它交给 layout 计算标志位。
 
-### 4.7 负步长语义
-
-负步长表示沿该轴反向遍历。对于索引 `[i0, i1, ..., i_{n-1}]`，内存偏移量为：
-
-```
-offset = sum(stride[j] * i[j]) for all j
-```
-
-**示例**：
-
-```
-shape = [3, 4], strides = [4, -1]  // 行反转
-
-索引 [0, 0]: offset = 0*4 + 0*(-1) = 0
-索引 [0, 3]: offset = 0*4 + 3*(-1) = -3  ← 最小偏移
-索引 [2, 0]: offset = 2*4 + 0*(-1) = 8   ← 最大偏移
-```
-
-带负步长的视图仍以**逻辑首元素**为指针基准。Xenon 约定：视图构造阶段先把原始指针规范化到逻辑首元素，再通过带符号的 `strides` 表达反向遍历；`TensorBase.offset` 只表示从底层 storage 基址到该逻辑首元素的**非负**位移（参见 `07-tensor.md §4.1` 与 `§5.2`）。
-
-### 4.8 零步长语义
+### 4.7 零步长语义
 
 零步长表示广播维度——该维度被扩展，但所有索引访问同一元素：
 
@@ -372,7 +339,7 @@ shape = [3, 4], strides = [1, 0]  // 第二维广播
 索引 [0, 0] 和 [0, 1] 和 [0, 2] 和 [0, 3] 访问同一物理元素
 ```
 
-### 4.9 Layout 结构体
+### 4.8 Layout 结构体
 
 > **注意**：`Layout` 结构体目前为"供未来扩展预留"（reserved for future use）。
 > 当前 `TensorBase` 实现直接内联 `LayoutFlags`（见 `07-tensor.md §4.1`）。
@@ -424,12 +391,6 @@ impl Layout {
     #[inline]
     pub fn has_zero_stride(&self) -> bool {
         self.flags.has_zero_stride()
-    }
-
-    /// Returns true if any negative stride exists.
-    #[inline]
-    pub fn has_neg_stride(&self) -> bool {
-        self.flags.has_neg_stride()
     }
 
     /// Returns the full layout flags.
@@ -503,30 +464,29 @@ function compute_flags(shape, strides, ptr):
 
     // 3. 步长特性
     flags = flags.set_has_zero_stride(any(stride == 0 for stride in strides))
-    flags = flags.set_has_neg_stride(any(stride < 0 for stride in strides))
 
     return flags
 ```
 
 ### 5.2 特殊情况处理
 
-| 情况 | F-contiguous | 说明 |
-|------|:------------:|------|
-| 空数组 (size=0) | true | 无元素，视为连续 |
-| 标量 (ndim=0) | true | 单元素 |
-| 1D 数组 | true | 一维情况天然 F-连续 |
-| 含 size=1 轴 | 检查其他轴 | size=1 轴的步长不影响连续性 |
+| 情况            | F-contiguous | 说明                        |
+| --------------- | :----------: | --------------------------- |
+| 空数组 (size=0) |     true     | 无元素，视为连续            |
+| 标量 (ndim=0)   |     true     | 单元素                      |
+| 1D 数组         |     true     | 一维情况天然 F-连续         |
+| 含 size=1 轴    |  检查其他轴  | size=1 轴的步长不影响连续性 |
 
 ### 5.3 标志位更新规则
 
-| 操作 | 标志位更新方式 |
-|------|----------------|
-| 创建 | 全部重新计算 |
-| 切片 | 继承 + 重新计算连续性/对齐（对齐基于切片后逻辑首元素） |
-| 转置 | 继承 + F 连续性标志重置（转置后通常变为非 F-连续） |
-| Reshape | 重新计算全部 |
-| 视图创建 | 继承全部 |
-| 广播 | 继承 + 设置零步长标志 |
+| 操作     | 标志位更新方式                                         |
+| -------- | ------------------------------------------------------ |
+| 创建     | 全部重新计算                                           |
+| 切片     | 继承 + 重新计算连续性/对齐（对齐基于切片后逻辑首元素） |
+| 转置     | 继承 + F 连续性标志重置（转置后通常变为非 F-连续）     |
+| Reshape  | 重新计算全部                                           |
+| 视图创建 | 继承全部                                               |
+| 广播     | 继承 + 设置零步长标志                                  |
 
 ### 5.4 安全性论证
 
@@ -536,7 +496,7 @@ Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的
 
 步长不再存储在 `D` 中。`layout` 模块通过 `Strides<D>` 保持与 shape 同维度数量的显式 `isize` 元数据，避免任何 `usize`/`isize` 重解释。
 
-安全性来自单独的 signed stride 表示：shape 只描述轴长度，stride 只描述遍历方向与步幅，两者的职责边界清晰且可独立验证。
+安全性来自单独的 stride 表示：shape 只描述轴长度，stride 只描述步幅与零步长广播特征，两者的职责边界清晰且可独立验证。
 
 ---
 
@@ -553,7 +513,7 @@ Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的
 
 - [ ] **T2**: 实现 `LayoutFlags` 位定义和基础方法
   - 文件: `src/layout/flags.rs`
-  - 内容: `LayoutFlags(u8)` 定义，常量（F_CONTIGUOUS/ALIGNED/HAS_ZERO_STRIDE/HAS_NEG_STRIDE），查询/设置方法
+  - 内容: `LayoutFlags(u8)` 定义，常量（F_CONTIGUOUS/ALIGNED/HAS_ZERO_STRIDE），查询/设置方法
   - 测试: `test_flags_set_clear`, `test_flags_default_empty`
   - 前置: T1
   - 预计: 10 min
@@ -576,8 +536,8 @@ Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的
 
 - [ ] **T5**: 实现步长特性检测
   - 文件: `src/layout/strides.rs`
-  - 内容: `has_zero_stride<D: Dimension>(strides: &Strides<D>) -> bool`, `has_neg_stride<D: Dimension>(strides: &Strides<D>) -> bool`
-  - 测试: `test_zero_stride_detect`, `test_neg_stride_detect`
+  - 内容: `has_zero_stride<D: Dimension>(strides: &Strides<D>) -> bool`
+  - 测试: `test_zero_stride_detect`
   - 前置: T1
   - 预计: 10 min
 
@@ -601,7 +561,7 @@ Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的
 
 - [ ] **T8**: 集成测试和文档完善
   - 文件: `tests/test_layout.rs`
-  - 内容: 综合测试套件：步长计算、连续性检查、负步长、零步长、对齐检查
+  - 内容: 综合测试套件：步长计算、连续性检查、零步长、对齐检查
   - 测试: 完整集成测试
   - 前置: T6, T7
   - 预计: 10 min
@@ -624,54 +584,53 @@ Wave 4:       [T8]
 
 ### 7.1 测试分类表
 
-| 类型 | 位置 | 目的 |
-|------|------|------|
-| 单元测试 | `#[cfg(test)] mod tests` | 验证单个算法 |
-| 集成测试 | `tests/` | 验证跨维度类型交互 |
-| 边界测试 | `tests/test_layout_boundary.rs` | 空数组、标量、高维等边界情况 |
-| 属性测试 | `tests/property/` | 验证步长、连续性与对齐相关不变量 |
+| 类型     | 位置                            | 目的                             |
+| -------- | ------------------------------- | -------------------------------- |
+| 单元测试 | `#[cfg(test)] mod tests`        | 验证单个算法                     |
+| 集成测试 | `tests/`                        | 验证跨维度类型交互               |
+| 边界测试 | `tests/test_layout_boundary.rs` | 空数组、标量、高维等边界情况     |
+| 属性测试 | `tests/property/`               | 验证步长、连续性与对齐相关不变量 |
 
 ### 7.2 单元测试清单
 
-| 测试函数 | 测试内容 | 优先级 |
-|----------|----------|--------|
-| `test_f_strides_1d` | 1D: `[5]` → strides `[1]` | 高 |
-| `test_f_strides_2d` | 2D: `[3,4]` → strides `[1,3]` | 高 |
-| `test_f_strides_3d` | 3D: `[2,3,4]` → strides `[1,2,6]` | 高 |
-| `test_f_strides_scalar` | 0D: `()` → strides `()` | 高 |
-| `test_f_contig_true` | F-连续数组判定 | 高 |
-| `test_f_contig_false` | 非连续数组判定 | 高 |
-| `test_f_contig_empty` | 空数组判定为连续 | 中 |
-| `test_f_contig_size1_axis` | 含 size=1 轴的连续性判定 | 中 |
-| `test_neg_stride_detect` | 负步长检测 | 高 |
-| `test_zero_stride_detect` | 零步长检测 | 高 |
-| `test_alignment_aligned` | 对齐指针对齐检查 | 高 |
-| `test_alignment_unaligned` | 非对齐指针对齐检查 | 高 |
-| `test_flags_all_set` | 所有标志位同时设置 | 中 |
-| `test_flags_default_empty` | 默认值为空 | 高 |
+| 测试函数                   | 测试内容                          | 优先级 |
+| -------------------------- | --------------------------------- | ------ |
+| `test_f_strides_1d`        | 1D: `[5]` → strides `[1]`         | 高     |
+| `test_f_strides_2d`        | 2D: `[3,4]` → strides `[1,3]`     | 高     |
+| `test_f_strides_3d`        | 3D: `[2,3,4]` → strides `[1,2,6]` | 高     |
+| `test_f_strides_scalar`    | 0D: `()` → strides `()`           | 高     |
+| `test_f_contig_true`       | F-连续数组判定                    | 高     |
+| `test_f_contig_false`      | 非连续数组判定                    | 高     |
+| `test_f_contig_empty`      | 空数组判定为连续                  | 中     |
+| `test_f_contig_size1_axis` | 含 size=1 轴的连续性判定          | 中     |
+| `test_zero_stride_detect`  | 零步长检测                        | 高     |
+| `test_alignment_aligned`   | 对齐指针对齐检查                  | 高     |
+| `test_alignment_unaligned` | 非对齐指针对齐检查                | 高     |
+| `test_flags_all_set`       | 所有标志位同时设置                | 中     |
+| `test_flags_default_empty` | 默认值为空                        | 高     |
 
 ### 7.3 边界测试场景
 
-| 场景 | 预期行为 |
-|------|----------|
-| 空数组 `shape=[0, 3]` | F-连续为 true |
-| 标量 `shape=()` | F-连续为 true，步长为空 |
-| 1D 数组 `shape=[5]` | F-连续为 true |
+| 场景                       | 预期行为                       |
+| -------------------------- | ------------------------------ |
+| 空数组 `shape=[0, 3]`      | F-连续为 true                  |
+| 标量 `shape=()`            | F-连续为 true，步长为空        |
+| 1D 数组 `shape=[5]`        | F-连续为 true                  |
 | 高维 `shape=[2,2,2,2,2,2]` | F-连续，步长 `[1,2,4,8,16,32]` |
 
 ### 7.4 属性测试不变量
 
-| 不变量 | 测试方法 |
-|--------|----------|
-| F-步长乘积 == 总元素数 | `product(shape[i]) == total` |
-| 空数组/标量始终 F-连续 | 随机 0D/空 shape |
-| `compute_f_strides` 后 `is_f_contiguous` 返回 true | 随机 shape |
-| 对齐与非对齐数据元素值一致 | `from_vec_aligned(v)` 与 `from_vec(v)` 逐元素比较 |
+| 不变量                                             | 测试方法                                          |
+| -------------------------------------------------- | ------------------------------------------------- |
+| F-步长乘积 == 总元素数                             | `product(shape[i]) == total`                      |
+| 空数组/标量始终 F-连续                             | 随机 0D/空 shape                                  |
+| `compute_f_strides` 后 `is_f_contiguous` 返回 true | 随机 shape                                        |
+| 对齐与非对齐数据元素值一致                         | `from_vec_aligned(v)` 与 `from_vec(v)` 逐元素比较 |
 
 ### 7.5 集成测试
 
-| 测试文件 | 测试内容 |
-|----------|----------|
+| 测试文件               | 测试内容                                                                                                    |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `tests/test_layout.rs` | `compute_f_strides` / `compute_flags` / `is_aligned` 与 `tensor`、`storage`、`simd`、`ffi` 的端到端协同路径 |
 
 ---
@@ -680,8 +639,8 @@ Wave 4:       [T8]
 
 ### 8.1 接口约定
 
-| 方向 | 对方模块 | 接口/类型 | 约定 |
-|------|----------|-----------|------|
+| 方向                      | 对方模块             | 接口/类型              | 约定                                                                                                       |
+| ------------------------- | -------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `tensor/storage → layout` | `tensor` / `storage` | `layout::is_aligned()` | `TensorBase` 构造时将逻辑首元素指针传入 layout 计算对齐标志；layout 只操作原始指针，不依赖 Storage trait。 |
 
 ### 8.2 数据流描述
@@ -690,32 +649,32 @@ Wave 4:       [T8]
 上层模块创建或变换张量元数据
     │
     ├── layout 模块根据 shape + strides + logical-first pointer 计算 flags
-    ├── tensor 模块缓存 F-contiguous / aligned / zero-stride / neg-stride 结果
+    ├── tensor 模块缓存 F-contiguous / aligned / zero-stride 结果
     ├── simd / ffi / shape / index 再消费这些 flags 做路径选择
     └── 最终避免在热路径重复计算连续性和对齐状态
 ```
 
 ### 8.3 与 Tensor 模块
 
-| 方向 | 对方模块 | 接口/类型 | 约定 |
-|------|----------|-----------|------|
-| `layout ← tensor` | `tensor` | `LayoutFlags` | `TensorBase` 直接内联 `LayoutFlags` 作为计算字段，`Layout` 结构体仅为预留定义（参见 `07-tensor.md` §4.1）。 |
-| `tensor → layout` | `tensor` | 切片后的 flags 更新 | 切片时调用 layout 更新连续性与对齐标志（参见 `17-indexing.md` §5） |
-| `tensor → layout` | `tensor` | reshape 步长重算 | reshape 时重新计算步长和 layout（参见 `16-shape.md` §4） |
+| 方向              | 对方模块 | 接口/类型           | 约定                                                                                                        |
+| ----------------- | -------- | ------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `layout ← tensor` | `tensor` | `LayoutFlags`       | `TensorBase` 直接内联 `LayoutFlags` 作为计算字段，`Layout` 结构体仅为预留定义（参见 `07-tensor.md` §4.1）。 |
+| `tensor → layout` | `tensor` | 切片后的 flags 更新 | 切片时调用 layout 更新连续性与对齐标志（参见 `17-indexing.md` §5）                                          |
+| `tensor → layout` | `tensor` | reshape 步长重算    | reshape 时重新计算步长和 layout（参见 `16-shape.md` §4）                                                    |
 
 ### 8.4 与 SIMD 模块
 
-| 方向 | 对方模块 | 接口/类型 | 约定 |
-|------|----------|-----------|------|
-| `simd ← layout` | `simd` | `is_aligned()` / `is_f_contiguous()` | simd 用这些查询结果做路径选择（参见 `08-simd.md` §4.6） |
-| `simd ← layout` | `simd` | 步长检查 | simd 继续检查步长是否为 1，以确认连续访问路径 |
+| 方向            | 对方模块 | 接口/类型                            | 约定                                                    |
+| --------------- | -------- | ------------------------------------ | ------------------------------------------------------- |
+| `simd ← layout` | `simd`   | `is_aligned()` / `is_f_contiguous()` | simd 用这些查询结果做路径选择（参见 `08-simd.md` §4.6） |
+| `simd ← layout` | `simd`   | 步长检查                             | simd 继续检查步长是否为 1，以确认连续访问路径           |
 
 ### 8.5 与 FFI 模块
 
-| 方向 | 对方模块 | 接口/类型 | 约定 |
-|------|----------|-----------|------|
-| `ffi ← layout` | `ffi` | BLAS 兼容检查 | FFI 路径依赖连续、正步长、无零步长等布局前提（参见 `23-ffi.md` §4） |
-| `ffi ← layout` | `ffi` | `lda()` 相关步长信息 | FFI 从 layout 步长推导 leading dimension |
+| 方向           | 对方模块 | 接口/类型            | 约定                                                                |
+| -------------- | -------- | -------------------- | ------------------------------------------------------------------- |
+| `ffi ← layout` | `ffi`    | BLAS 兼容检查        | FFI 路径依赖连续、正步长、无零步长等布局前提（参见 `23-ffi.md` §4） |
+| `ffi ← layout` | `ffi`    | `lda()` 相关步长信息 | FFI 从 layout 步长推导 leading dimension                            |
 
 ---
 
@@ -723,95 +682,84 @@ Wave 4:       [T8]
 
 ### 决策 1：F-order only
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | Xenon 仅支持 F-order（列优先），不支持 C-order |
-| 理由 | BLAS/LAPACK 兼容；科学计算惯例；简化设计减少分支；需求说明书 §7 明确要求 |
-| 替代方案 | 同时支持 F/C order — 放弃，增加复杂度且当前版本不需要 |
-| 替代方案 | 仅支持 C-order — 放弃，与 BLAS 不兼容 |
+| 属性     | 值                                                                       |
+| -------- | ------------------------------------------------------------------------ |
+| 决策     | Xenon 仅支持 F-order（列优先），不支持 C-order                           |
+| 理由     | BLAS/LAPACK 兼容；科学计算惯例；简化设计减少分支；需求说明书 §7 明确要求 |
+| 替代方案 | 同时支持 F/C order — 放弃，增加复杂度且当前版本不需要                    |
+| 替代方案 | 仅支持 C-order — 放弃，与 BLAS 不兼容                                    |
 
 ### 决策 2：步长使用 isize
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 步长类型为 `isize`（有符号） |
-| 理由 | 支持负步长（反转操作）；支持零步长（广播）；偏移计算统一有符号类型；与 ndarray 一致 |
-| 替代方案 | `usize` — 放弃，无法表示负步长 |
-| 替代方案 | `i64` — 放弃，与平台指针大小不一致 |
+| 属性     | 值                                                                           |
+| -------- | ---------------------------------------------------------------------------- |
+| 决策     | 步长类型为 `isize`（有符号）                                                 |
+| 理由     | 保持 stride 元数据表达统一；支持零步长（广播）；与指针差值和偏移计算模型一致 |
+| 替代方案 | `usize` — 放弃，无法统一表达 stride 与偏移计算所需的带符号中间量             |
+| 替代方案 | `i64` — 放弃，与平台指针大小不一致                                           |
 
 ### 决策 3：64 字节对齐选择
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | `ALIGNED` 标志基于 64 字节对齐 |
-| 理由 | AVX-512 = 512-bit = 64 字节；现代 CPU 缓存行 64 字节；满足所有 SIMD 指令集 |
-| 替代方案 | 16 字节 — 放弃，AVX-512 未对齐 |
-| 替代方案 | 动态对齐 — 放弃，增加运行时开销 |
+| 属性     | 值                                                                         |
+| -------- | -------------------------------------------------------------------------- |
+| 决策     | `ALIGNED` 标志基于 64 字节对齐                                             |
+| 理由     | AVX-512 = 512-bit = 64 字节；现代 CPU 缓存行 64 字节；满足所有 SIMD 指令集 |
+| 替代方案 | 16 字节 — 放弃，AVX-512 未对齐                                             |
+| 替代方案 | 动态对齐 — 放弃，增加运行时开销                                            |
 
 ### 决策 4：使用裸 u8 而非 bitflags crate
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 使用裸 `u8` 包装类型而非 `bitflags` crate |
-| 理由 | 零依赖（项目最小依赖原则）；仅 4 个标志位，手写位操作足够清晰；no_std 兼容 |
-| 替代方案 | bitflags crate — 放弃，引入不必要依赖 |
+| 属性     | 值                                                            |
+| -------- | ------------------------------------------------------------- |
+| 决策     | 使用裸 `u8` 包装类型而非 `bitflags` crate                     |
+| 理由     | 零依赖（项目最小依赖原则）；仅 3 个标志位，手写位操作足够清晰 |
+| 替代方案 | bitflags crate — 放弃，引入不必要依赖                         |
 
 ---
 
 ## 10. 性能考量
 
-| 方面 | 设计决策 |
-|------|----------|
-| 布局查询 | O(1)，直接读取缓存的 `LayoutFlags` |
-| 步长计算 | O(ndim)，仅在创建/reshape 时计算 |
-| 连续性检查 | O(ndim)，仅在切片/转置后重算 |
+| 方面       | 设计决策                                                   |
+| ---------- | ---------------------------------------------------------- |
+| 布局查询   | O(1)，直接读取缓存的 `LayoutFlags`                         |
+| 步长计算   | O(ndim)，仅在创建/reshape 时计算                           |
+| 连续性检查 | O(ndim)，仅在切片/转置后重算                               |
 | 缓存友好性 | F-order 列优先访问与内存布局一致，顺序遍历时缓存命中率最优 |
 
 **性能数据（参考）**：
 
-| 操作 | 复杂度 | 说明 |
-|------|--------|------|
-| `is_f_contiguous()` | O(1) | 读取缓存标志 |
-| `is_aligned()` | O(1) | 读取缓存标志 |
-| `compute_f_strides()` | O(ndim) | ndim ≤ 6 时可忽略 |
+| 操作                        | 复杂度  | 说明              |
+| --------------------------- | ------- | ----------------- |
+| `is_f_contiguous()`         | O(1)    | 读取缓存标志      |
+| `is_aligned()`              | O(1)    | 读取缓存标志      |
+| `compute_f_strides()`       | O(ndim) | ndim ≤ 6 时可忽略 |
 | `is_f_contiguous()`（计算） | O(ndim) | ndim ≤ 6 时可忽略 |
 
 **缓存友好性分析**：
 
-| 遍历模式 | 缓存命中率 | 说明 |
-|----------|-----------|------|
-| F-order 顺序遍历 | ~95% | 顺序访问内存，预取器友好 |
-| 非连续遍历（切片） | ~60% | 跳跃访问，缓存行利用率低 |
-| 广播遍历（零步长） | ~95% | 重复访问同一缓存行 |
+| 遍历模式           | 缓存命中率 | 说明                     |
+| ------------------ | ---------- | ------------------------ |
+| F-order 顺序遍历   | ~95%       | 顺序访问内存，预取器友好 |
+| 非连续遍历（切片） | ~60%       | 跳跃访问，缓存行利用率低 |
+| 广播遍历（零步长） | ~95%       | 重复访问同一缓存行       |
 
 ---
 
-## 11. no_std 兼容性
+## 11. 平台与工程约束
 
-### 11.1 兼容性状态
-
-| 组件 | no_std 兼容 | 说明 |
-|------|:-----------:|------|
-| `LayoutFlags` | ✅ | 纯位操作，无堆分配 |
-| `compute_f_strides` | ✅ | 仅遍历 shape 数组 |
-| `is_f_contiguous` | ✅ | 纯比较逻辑 |
-| `is_aligned` / `is_aligned_to` | ✅ | 指针算术 |
-| `has_zero_stride` / `has_neg_stride` | ✅ | 纯遍历比较 |
-| `Layout` | ✅ | 仅含 `LayoutFlags`，纯元数据 |
-
-### 11.2 条件编译
-
-本模块无需条件编译，所有代码在 `no_std` 环境下均可直接使用。
-
-> **说明**：`layout/` 模块的所有类型和函数仅依赖 `core` 库（`isize`、`usize`、指针操作），
-> 不依赖 `std` 或 `alloc`。这确保模块可在嵌入式和裸机环境中使用。
+| 约束       | 说明                                   |
+| ---------- | -------------------------------------- |
+| `std` only | 本模块依赖 `std` 环境，不讨论 `no_std` |
+| 单 crate   | 保持单 crate 边界                      |
+| SemVer     | 布局类型和 stride 计算变更遵循 SemVer  |
+| 最小依赖   | 无新增第三方依赖                       |
 
 ---
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
+| 版本  | 日期       |
+| ----- | ---------- |
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
@@ -824,4 +772,4 @@ Wave 4:       [T8]
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+_本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。_

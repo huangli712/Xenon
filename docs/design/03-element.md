@@ -3,6 +3,7 @@
 > 文档编号: 03 | 模块: `src/element/` | 阶段: Phase 1
 > 前置文档: `00-coding.md`, `01-architecture.md`
 > 需求参考: 需求说明书 §4
+> 范围声明: 范围内
 
 ---
 
@@ -10,24 +11,24 @@
 
 ### 1.1 职责边界
 
-| 职责 | 包含 | 不包含 |
-|------|------|--------|
-| Element trait | 基础约束（Copy+Clone+PartialEq+Debug+Display+Send+Sync+Sealed）+ zero()/one() | — |
-| Numeric trait | Element + Add+Sub+Mul+Div+Neg（四则运算能力标记） | 运算实现本身（委托给 core::ops） |
-| RealScalar trait | Numeric + PartialOrd + abs/sqrt/sin/cos/exp/ln/floor/ceil + NaN 检测 | 复数运算 |
-| ComplexScalar trait | Numeric + conj（核心复数操作）+ std-only 复数数学接口（norm/from_polar/arg/exp/ln/sqrt） | 复数类型定义（在 `src/complex/` 模块，参见 `04-complex.md` §4） |
-| 基础类型实现 | 为 i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool 实现上述 trait；`usize` 仅用于索引/形状元数据 | 类型转换逻辑（在 `src/convert/` 模块） |
-| Sealed trait | 封闭集合，禁止外部 crate 实现 | 开放扩展 |
+| 职责                | 包含                                                                                            | 不包含                                                          |
+| ------------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| Element trait       | 基础约束（Copy+Clone+PartialEq+Debug+Display+Send+Sync+Sealed）+ zero()/one()                   | —                                                               |
+| Numeric trait       | Element + Add+Sub+Mul+Div+Neg（四则运算能力标记）                                               | 运算实现本身（委托给 core::ops）                                |
+| RealScalar trait    | Numeric + PartialOrd + abs/sqrt/sin/exp/ln/floor/ceil + NaN 检测                                | 复数运算                                                        |
+| ComplexScalar trait | Numeric + conj（核心复数操作）+ 复数数学接口（norm/from_polar/arg/exp/ln/sqrt）                 | 复数类型定义（在 `src/complex/` 模块，参见 `04-complex.md` §4） |
+| 基础类型实现        | 为 i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool 实现上述 trait；`usize` 仅用于索引/形状元数据 | 类型转换逻辑（在 `src/convert/` 模块）                          |
+| Sealed trait        | 封闭集合，禁止外部 crate 实现                                                                   | 开放扩展                                                        |
 
 ### 1.2 设计原则
 
-| 原则 | 体现 |
-|------|------|
-| 能力最小化 | 每层 trait 仅声明必要约束，避免过度限制泛型 |
-| 正交性 | 数值运算（Numeric）、实数函数（RealScalar）、复数运算（ComplexScalar）职责分离 |
-| 零运行时开销 | 所有约束为编译期静态分派 |
-| 封闭集合 | Sealed trait 阻止下游 crate 扩展类型集 |
-| IEEE 754 兼容 | 浮点特殊值（NaN、Inf）处理遵循标准语义 |
+| 原则          | 体现                                                                           |
+| ------------- | ------------------------------------------------------------------------------ |
+| 能力最小化    | 每层 trait 仅声明必要约束，避免过度限制泛型                                    |
+| 正交性        | 数值运算（Numeric）、实数函数（RealScalar）、复数运算（ComplexScalar）职责分离 |
+| 零运行时开销  | 所有约束为编译期静态分派                                                       |
+| 封闭集合      | Sealed trait 阻止下游 crate 扩展类型集                                         |
+| IEEE 754 兼容 | 浮点特殊值（NaN、Inf）处理遵循标准语义                                         |
 
 ### 1.3 在架构中的位置
 
@@ -76,13 +77,13 @@ src/element/
 
 ### 3.2 依赖精确到类型级
 
-| 来源模块 | 使用的类型/trait |
-|----------|-----------------|
-| `crate::complex` | `Complex<f32>`, `Complex<f64>`（元素类型实现目标） |
-| `crate::private` | `Sealed`（封闭 trait 实现边界） |
-| `core::ops` | `Add`, `Sub`, `Mul`, `Div`, `Neg`（Numeric supertrait） |
-| `core::fmt` | `Debug`, `Display`（Element supertrait） |
-| `core::cmp` | `PartialEq`, `PartialOrd`（Element/RealScalar supertrait） |
+| 来源模块         | 使用的类型/trait                                           |
+| ---------------- | ---------------------------------------------------------- |
+| `crate::complex` | `Complex<f32>`, `Complex<f64>`（元素类型实现目标）         |
+| `crate::private` | `Sealed`（封闭 trait 实现边界）                            |
+| `core::ops`      | `Add`, `Sub`, `Mul`, `Div`, `Neg`（Numeric supertrait）    |
+| `core::fmt`      | `Debug`, `Display`（Element supertrait）                   |
+| `core::cmp`      | `PartialEq`, `PartialOrd`（Element/RealScalar supertrait） |
 
 ### 3.3 依赖方向声明
 
@@ -118,16 +119,16 @@ pub trait Element:
 }
 ```
 
-| Supertrait | 作用 |
-|------------|------|
-| `Copy` | 值语义，可按位复制，避免所有权转移开销 |
-| `Clone` | 显式克隆能力 |
-| `PartialEq` | 相等比较，用于断言和测试 |
-| `Debug` | 调试格式输出 `{:?}` |
-| `Display` | 用户友好格式输出 `{}` |
-| `Send` | 可跨线程移动（并行迭代必需） |
-| `Sync` | 可跨线程共享引用（并行只读访问必需） |
-| `Sealed` | 防止外部类型实现 |
+| Supertrait  | 作用                                   |
+| ----------- | -------------------------------------- |
+| `Copy`      | 值语义，可按位复制，避免所有权转移开销 |
+| `Clone`     | 显式克隆能力                           |
+| `PartialEq` | 相等比较，用于断言和测试               |
+| `Debug`     | 调试格式输出 `{:?}`                    |
+| `Display`   | 用户友好格式输出 `{}`                  |
+| `Send`      | 可跨线程移动（并行迭代必需）           |
+| `Sync`      | 可跨线程共享引用（并行只读访问必需）   |
+| `Sealed`    | 防止外部类型实现                       |
 
 ### 4.2 Numeric trait
 
@@ -214,7 +215,6 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
     fn abs(self) -> Self;
     fn sqrt(self) -> Self;
     fn sin(self) -> Self;
-    fn cos(self) -> Self;
     fn exp(self) -> Self;
     fn ln(self) -> Self;
     fn floor(self) -> Self;
@@ -277,19 +277,37 @@ pub trait ComplexScalar: Numeric + Sealed {
 
 ### 4.5 支持的类型与 trait 矩阵
 
-| 类型 | Element | Numeric | RealScalar | ComplexScalar |
-|------|:-------:|:-------:|:----------:|:-------------:|
-| `i32` | ✓ | ✓ | ✗ | ✗ |
-| `i64` | ✓ | ✓ | ✗ | ✗ |
-| `f32` | ✓ | ✓ | ✓ | ✗ |
-| `f64` | ✓ | ✓ | ✓ | ✗ |
-| `Complex<f32>` | ✓ | ✓ | ✗ | ✓ |
-| `Complex<f64>` | ✓ | ✓ | ✗ | ✓ |
-| `bool` | ✓ | ✗ | ✗ | ✗ |
+| 类型           | Element | Numeric | RealScalar | ComplexScalar |
+| -------------- | :-----: | :-----: | :--------: | :-----------: |
+| `i32`          |    ✓    |    ✓    |     ✗      |       ✗       |
+| `i64`          |    ✓    |    ✓    |     ✗      |       ✗       |
+| `f32`          |    ✓    |    ✓    |     ✓      |       ✗       |
+| `f64`          |    ✓    |    ✓    |     ✓      |       ✗       |
+| `Complex<f32>` |    ✓    |    ✓    |     ✗      |       ✓       |
+| `Complex<f64>` |    ✓    |    ✓    |     ✗      |       ✓       |
+| `bool`         |    ✓    |    ✗    |     ✗      |       ✗       |
 
 > **Xenon 特定约束：** 仅支持上表列出的 7 种元素类型。不支持 `usize`、u8/u16/u32/i8/i16 等其他整数类型；`usize` 仅作为索引和形状元数据使用。
 
-### 4.6 Sealed trait 策略
+### 4.6 BoolElement trait
+
+```rust
+/// Bool-specific element capability.
+///
+/// Provides logical NOT for `bool` tensors without making `bool` part of `Numeric`.
+pub trait BoolElement: Element + core::ops::Not<Output = Self> {
+    fn logical_not(self) -> Self;
+}
+
+impl BoolElement for bool {
+    #[inline]
+    fn logical_not(self) -> Self {
+        !self
+    }
+}
+```
+
+### 4.7 Sealed trait 策略
 
 ```rust
 // src/element/mod.rs
@@ -308,6 +326,7 @@ impl Sealed for bool {}
 ```
 
 外部 crate 尝试实现时编译错误：
+
 ```rust
 // External crate attempt:
 use xenon::element::Element;
@@ -315,7 +334,7 @@ struct MyType;
 impl Element for MyType { /* error[E0277]: Sealed not satisfied */ }
 ```
 
-### 4.7 Good / Bad 对比示例
+### 4.8 Good / Bad 对比示例
 
 ```rust
 // Good - Numeric constraint automatically excludes bool and non-Numeric types
@@ -349,7 +368,7 @@ let c = &a + &b.cast::<f64>();  // explicit conversion
 // let c = &a + &b;  // Compile error: no matching impl for f64 + i32
 ```
 
-### 4.8 CastTo\<T\> trait（类型转换）
+### 4.9 CastTo\<T\> trait（类型转换）
 
 `CastTo<T>` 是 Xenon 逐元素类型转换规则的唯一 owner，trait 定义放在 `src/element/` 层，由 `convert/cast.rs` 统一消费（参见 `21-type.md §4`），不在其他模块重复定义。
 
@@ -359,27 +378,39 @@ let c = &a + &b.cast::<f64>();  // explicit conversion
 /// Element-wise type conversion trait.
 ///
 /// Defines explicit conversion from `Self` to `T`.
-/// Overflow behavior is explicitly defined per implementation (see `21-type.md §4.3`).
+/// Lossless conversions return `Ok` with `Infallible` as the error type.
+/// Lossy conversions default to recoverable errors unless a documented success
+/// precondition is satisfied (see `21-type.md §4.3`).
 ///
 /// This trait is implemented only inside Xenon for the supported source/target pairs.
 /// External crates cannot extend the conversion matrix.
 pub trait CastTo<T>: Element {
+    type Error;
+
     /// Performs the type conversion.
-    fn cast_to(self) -> T;
+    fn cast_to(self) -> Result<T, Self::Error>;
 }
 
 // Implemented for all supported source → target type pairs.
 // See 21-type.md §5.1 for full implementation table.
 // Examples:
-//   impl CastTo<f64> for f32  -- lossless upcast
-//   impl CastTo<f32> for f64  -- round-to-nearest-even
-//   impl CastTo<i32> for f64  -- truncate + saturating (NaN→0)
-//   impl CastTo<i32> for i64  -- saturating narrowing
-//   impl CastTo<Complex<f64>> for f64  -- real part, im = 0.0
+//   impl CastTo<f64> for f32  -- lossless upcast, Error = Infallible
+//   impl CastTo<f32> for f64  -- Result, may fail on precision loss
+//   impl CastTo<i32> for f64  -- Result, may fail on fractional or out-of-range input
+//   impl CastTo<i32> for i64  -- Result, may fail on narrowing overflow
+//   impl CastTo<Complex<f64>> for f64  -- lossless, Error = Infallible
 // Note: CastTo<f64> for Complex<f64> is intentionally NOT implemented.
 ```
 
-### 4.9 CheckedAdd trait（整数溢出检测）
+| 转换示例                   | 默认语义                        |
+| -------------------------- | ------------------------------- |
+| `impl CastTo<i64> for i32` | 无损，`Result<i64, Infallible>` |
+| `impl CastTo<f64> for f32` | 无损，`Result<f64, Infallible>` |
+| `impl CastTo<f32> for f64` | 有损，默认返回可恢复错误        |
+| `impl CastTo<i32> for f64` | 有损，默认返回可恢复错误        |
+| `impl CastTo<i32> for i64` | 有损，默认返回可恢复错误        |
+
+### 4.10 CheckedAdd trait（整数溢出检测）
 
 `CheckedAdd` 为整数类型提供 checked 加法，供 `sum` 归约操作在整数溢出时 panic（参见 `13-reduction.md §5.1`）。
 
@@ -433,9 +464,12 @@ impl Element for bool {
     fn one() -> Self { true }
 }
 // No `impl Numeric for bool` — bool arithmetic has no mathematical meaning
+impl BoolElement for bool {
+    fn logical_not(self) -> Self { !self }
+}
 ```
 
-编译时阻止无效泛型实例化：`fn sum<A: Numeric>` 无法接受 `bool` 张量。
+编译时阻止无效泛型实例化：`fn sum<A: Numeric>` 无法接受 `bool` 张量；需要布尔专用逐元素逻辑非时，使用 `BoolElement::logical_not()` 或 `!`。
 
 ### 5.2 usize 语义边界
 
@@ -457,26 +491,23 @@ let c = a + f64::from(b);
 
 ### 5.4 NaN/Inf 处理语义
 
-| 方法 | NaN 输入 | Inf 输入 |
-|------|----------|----------|
-| `abs(NaN)` | NaN | Inf |
-| `sqrt(-1.0)` | NaN | — |
-| `ln(0.0)` | — | -Inf |
-| `exp(Inf)` | — | Inf |
-| `min(a, b)` 含 NaN | NaN | 正常比较 |
-| `partial_cmp(NaN, _)` | None | 正常比较 |
+| 方法                  | NaN 输入 | Inf 输入 |
+| --------------------- | -------- | -------- |
+| `abs(NaN)`            | NaN      | Inf      |
+| `sqrt(-1.0)`          | NaN      | —        |
+| `ln(0.0)`             | —        | -Inf     |
+| `exp(Inf)`            | —        | Inf      |
+| `min(a, b)` 含 NaN    | NaN      | 正常比较 |
+| `partial_cmp(NaN, _)` | None     | 正常比较 |
 
 ### 5.5 RealScalar 实现（以 f64 为例）
 
 ```rust
-// RealScalar math functions are implemented only when the `std` feature is enabled.
-// In `no_std + alloc` builds, the trait remains part of the type hierarchy but
-// f32/f64 do not provide the transcendental/math method implementations.
+// RealScalar math functions are implemented in the `std` environment required by Xenon.
 impl RealScalar for f64 {
     fn abs(self) -> Self { self.abs() }
     fn sqrt(self) -> Self { self.sqrt() }
     fn sin(self) -> Self { self.sin() }
-    fn cos(self) -> Self { self.cos() }
     fn exp(self) -> Self { self.exp() }
     fn ln(self) -> Self { self.ln() }
     fn floor(self) -> Self { self.floor() }
@@ -512,13 +543,13 @@ fn max(self, other: Self) -> Self {
 
 ### 6.1 接口约定
 
-| 模块 | 使用的 trait | 用途 |
-|------|-------------|------|
-| `overload` | `Numeric` | 逐元素运算泛型约束 |
-| `reduction` | `Numeric`（sum）、`RealScalar`（min/max） | 归约运算泛型约束 |
-| `tensor` | `Element` | Tensor<A, D> 的 A 约束 |
-| `matrix` | `Numeric` | 内积运算 |
-| `cast/convert` | `Element` | 类型转换 |
+| 模块           | 使用的 trait                              | 用途                   |
+| -------------- | ----------------------------------------- | ---------------------- |
+| `overload`     | `Numeric`                                 | 逐元素运算泛型约束     |
+| `reduction`    | `Numeric`（sum）、`RealScalar`（min/max） | 归约运算泛型约束       |
+| `tensor`       | `Element`                                 | Tensor<A, D> 的 A 约束 |
+| `matrix`       | `Numeric`                                 | 内积运算               |
+| `cast/convert` | `Element`                                 | 类型转换               |
 
 > 各模块的详细接口约定参见对应设计文档（`11-math.md` §4、`13-reduction.md` §4、`21-type.md` §4）。
 
@@ -573,7 +604,7 @@ fn max(self, other: Self) -> Self {
 
 - [ ] **T3**: 创建 `real.rs`，定义 RealScalar trait
   - 文件: `src/element/real.rs`
-  - 内容: `RealScalar` trait 定义（数学函数 + 常量 + NaN 检测）
+  - 内容: `RealScalar` trait 定义（数学函数 + 常量 + NaN 检测，不含范围外接口）
   - 测试: 编译通过
   - 前置: T2
   - 预计: 10 min
@@ -603,7 +634,7 @@ fn max(self, other: Self) -> Self {
 
 - [ ] **T7**: 为 bool 实现 Element（仅此）
   - 文件: `src/element/primitives.rs`
-  - 内容: `Element` impl（`zero()=false`, `one()=true`），不实现 Numeric
+  - 内容: `Element` impl（`zero()=false`, `one()=true`）+ `BoolElement::logical_not()`，不实现 Numeric
   - 测试: `test_bool_element_only`
   - 前置: T1
   - 预计: 5 min
@@ -626,10 +657,10 @@ fn max(self, other: Self) -> Self {
 
 ### Wave 5: 集成完善
 
-- [ ] **T10**: 添加 std/no_std 数学能力边界验证
-  - 文件: `src/element/real.rs`
-  - 内容: 在 `std` 下实现 `f32`/`f64` 数学函数；在 `no_std + alloc` 下仅保留类型层级与非数学能力，并通过文档/条件编译明确边界
-  - 测试: `std` 与 `no_std` 两种 feature 组合编译通过
+- [ ] **T10**: 校准数学能力与转换错误语义文档
+  - 文件: `src/element/real.rs`, `src/element/mod.rs`
+  - 内容: 保持 `std` 环境下的数学接口边界，并将有损 CastTo 默认语义标注为可恢复错误
+  - 测试: 编译通过
   - 前置: T6
   - 预计: 10 min
 
@@ -670,60 +701,61 @@ Wave 3: [T6]      [T9] ← ────┘
 
 ### 8.1 测试分类表
 
-| 测试分类 | 位置 | 说明 |
-|----------|------|------|
-| 单元测试 | `#[cfg(test)] mod tests` | 验证各 trait 和基础类型实现 |
-| 集成测试 | `tests/test_element.rs` | 验证 `element` 与 `tensor`、`math`、`reduction`、`convert` 的协同路径 |
-| 边界测试 | 同模块测试中标注 | 覆盖 NaN/Inf、bool 限制与 sealed 行为 |
-| 属性测试 | `tests/test_element.rs` 或 `tests/property.rs` | 验证零元、单位元与数学函数不变量 |
+| 测试分类 | 位置                                           | 说明                                                                  |
+| -------- | ---------------------------------------------- | --------------------------------------------------------------------- |
+| 单元测试 | `#[cfg(test)] mod tests`                       | 验证各 trait 和基础类型实现                                           |
+| 集成测试 | `tests/test_element.rs`                        | 验证 `element` 与 `tensor`、`math`、`reduction`、`convert` 的协同路径 |
+| 边界测试 | 同模块测试中标注                               | 覆盖 NaN/Inf、bool 限制与 sealed 行为                                 |
+| 属性测试 | `tests/test_element.rs` 或 `tests/property.rs` | 验证零元、单位元与数学函数不变量                                      |
 
 ### 8.2 单元测试清单
 
-| 测试函数 | 测试内容 | 优先级 |
-|----------|----------|--------|
-| `test_i32_zero_one` | `i32::zero()==0`, `i32::one()==1` | 高 |
-| `test_i64_zero_one` | `i64::zero()==0`, `i64::one()==1` | 高 |
-| `test_i32_arithmetic` | `i32` 的 Add/Sub/Mul/Div/Neg | 高 |
-| `test_f32_zero_one` | `f32::zero()==0.0`, `f32::one()==1.0` | 高 |
-| `test_f64_zero_one` | `f64::zero()==0.0`, `f64::one()==1.0` | 高 |
-| `test_f64_sqrt` | `f64::sqrt(4.0)==2.0` | 高 |
-| `test_f64_sin_cos` | `sin(0)==0`, `cos(0)==1` | 高 |
-| `test_f64_exp_ln_inverse` | `exp(ln(x))==x` | 高 |
-| `test_f32_nan_detection` | `NaN.is_nan()`, `Inf.is_infinite()` | 高 |
-| `test_f64_nan_propagating_min` | `min(NaN, 1.0).is_nan()` | 高 |
-| `test_bool_element_only` | `bool::zero()==false`, `bool::one()==true` | 高 |
-| `test_bool_not_numeric` | bool 不满足 Numeric（编译测试） | 高 |
-| `test_usize_not_element` | `usize` 不属于 Element（编译测试） | 中 |
-| `test_complex_f64_zero_one` | `Complex<f64>::zero()`, `Complex<f64>::one()` | 高 |
-| `test_complex_f64_conj` | `Complex::new(3.0, 4.0).conj() == Complex::new(3.0, -4.0)` | 高 |
-| `test_complex_f32_norm` | `Complex::new(3.0f32, 4.0f32).norm() == 5.0` | 高 |
-| `test_complex_f64_from_polar` | `from_polar(1.0, PI/2) ≈ i` | 中 |
-| `test_sealed_prevents_external` | 外部类型无法实现 Element（编译测试） | 中 |
+| 测试函数                        | 测试内容                                                   | 优先级 |
+| ------------------------------- | ---------------------------------------------------------- | ------ |
+| `test_i32_zero_one`             | `i32::zero()==0`, `i32::one()==1`                          | 高     |
+| `test_i64_zero_one`             | `i64::zero()==0`, `i64::one()==1`                          | 高     |
+| `test_i32_arithmetic`           | `i32` 的 Add/Sub/Mul/Div/Neg                               | 高     |
+| `test_f32_zero_one`             | `f32::zero()==0.0`, `f32::one()==1.0`                      | 高     |
+| `test_f64_zero_one`             | `f64::zero()==0.0`, `f64::one()==1.0`                      | 高     |
+| `test_f64_sqrt`                 | `f64::sqrt(4.0)==2.0`                                      | 高     |
+| `test_f64_sin`                  | `sin(0)==0`                                                | 高     |
+| `test_f64_exp_ln_inverse`       | `exp(ln(x))==x`                                            | 高     |
+| `test_f32_nan_detection`        | `NaN.is_nan()`, `Inf.is_infinite()`                        | 高     |
+| `test_f64_nan_propagating_min`  | `min(NaN, 1.0).is_nan()`                                   | 高     |
+| `test_bool_element_only`        | `bool::zero()==false`, `bool::one()==true`                 | 高     |
+| `test_bool_not_numeric`         | bool 不满足 Numeric（编译测试）                            | 高     |
+| `test_usize_not_element`        | `usize` 不属于 Element（编译测试）                         | 中     |
+| `test_complex_f64_zero_one`     | `Complex<f64>::zero()`, `Complex<f64>::one()`              | 高     |
+| `test_complex_f64_conj`         | `Complex::new(3.0, 4.0).conj() == Complex::new(3.0, -4.0)` | 高     |
+| `test_complex_f32_norm`         | `Complex::new(3.0f32, 4.0f32).norm() == 5.0`               | 高     |
+| `test_complex_f64_from_polar`   | `from_polar(1.0, PI/2) ≈ i`                                | 中     |
+| `test_sealed_prevents_external` | 外部类型无法实现 Element（编译测试）                       | 中     |
 
 ### 8.3 边界测试场景
 
-| 场景 | 预期行为 |
-|------|----------|
-| `f64::nan().is_nan()` | 返回 `true` |
-| `f64::infinity().is_finite()` | 返回 `false` |
-| `f64::sqrt(-1.0).is_nan()` | 返回 `true` |
-| `f64::ln(0.0)` | 返回 `-Inf` |
-| `Complex::new(f64::NAN, 0.0).norm().is_nan()` | 返回 `true` |
-| `bool` 张量调用 `sum()` | 编译错误（Numeric 约束不满足） |
+| 场景                                          | 预期行为                       |
+| --------------------------------------------- | ------------------------------ |
+| `f64::nan().is_nan()`                         | 返回 `true`                    |
+| `f64::infinity().is_finite()`                 | 返回 `false`                   |
+| `f64::sqrt(-1.0).is_nan()`                    | 返回 `true`                    |
+| `f64::ln(0.0)`                                | 返回 `-Inf`                    |
+| `Complex::new(f64::NAN, 0.0).norm().is_nan()` | 返回 `true`                    |
+| `bool` 张量调用 `sum()`                       | 编译错误（Numeric 约束不满足） |
 
 ### 8.4 属性测试不变量
 
-| 不变量 | 测试方法 |
-|--------|----------|
-| `A::zero() + a == a` | 所有 Numeric 类型，随机 a |
-| `A::one() * a == a` | 所有 Numeric 类型，随机 a |
-| `a.sqrt().sqrt() == a.powf(0.25)` | f32/f64，随机正数 a |
-| `a.exp().ln() ≈ a` | f32/f64，随机有限 a |
+| 不变量                                | 测试方法                  |
+| ------------------------------------- | ------------------------- |
+| `A::zero() + a == a`                  | 所有 Numeric 类型，随机 a |
+| `A::one() * a == a`                   | 所有 Numeric 类型，随机 a |
+| `(!b) == BoolElement::logical_not(b)` | `bool`                    |
+| `a.sqrt().sqrt() == a.powf(0.25)`     | f32/f64，随机正数 a       |
+| `a.exp().ln() ≈ a`                    | f32/f64，随机有限 a       |
 
 ### 8.5 集成测试
 
-| 测试文件 | 测试内容 |
-|----------|----------|
+| 测试文件                | 测试内容                                                                              |
+| ----------------------- | ------------------------------------------------------------------------------------- |
 | `tests/test_element.rs` | 各元素类型在 `tensor`、`math`、`reduction`、`convert` 中的 trait 约束与端到端行为验证 |
 
 ---
@@ -732,82 +764,80 @@ Wave 3: [T6]      [T9] ← ────┘
 
 ### 决策 1：封闭集合，不支持下游扩展
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 所有 trait 继承 Sealed，仅允许 crate 内类型实现 |
-| 理由 | API 稳定性（可添加新方法不破坏外部）；所有实现类型行为经过验证；版本控制能力 |
-| 替代方案 | 开放实现 — 放弃，失去版本控制能力，可能导致不一致行为 |
+| 属性     | 值                                                                           |
+| -------- | ---------------------------------------------------------------------------- |
+| 决策     | 所有 trait 继承 Sealed，仅允许 crate 内类型实现                              |
+| 理由     | API 稳定性（可添加新方法不破坏外部）；所有实现类型行为经过验证；版本控制能力 |
+| 替代方案 | 开放实现 — 放弃，失去版本控制能力，可能导致不一致行为                        |
 
 ### 决策 2：仅支持 7 种元素类型
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 仅支持 i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool 作为张量元素类型；`usize` 仅作为索引/形状元数据 |
-| 理由 | 科学计算元素类型需要稳定且平台无关的数值语义；`usize` 作为平台相关的无符号宽度，不适合作为数值元素 |
-| 替代方案 | 支持全部整数类型（u8/u16/u32/i8/i16）— 放弃，增加矩阵复杂度 |
+| 属性     | 值                                                                                                    |
+| -------- | ----------------------------------------------------------------------------------------------------- |
+| 决策     | 仅支持 i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool 作为张量元素类型；`usize` 仅作为索引/形状元数据 |
+| 理由     | 科学计算元素类型需要稳定且平台无关的数值语义；`usize` 作为平台相关的无符号宽度，不适合作为数值元素    |
+| 替代方案 | 支持全部整数类型（u8/u16/u32/i8/i16）— 放弃，增加矩阵复杂度                                           |
 
 ### 决策 3：bool 排除 Numeric
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | `bool` 仅实现 `Element`，不实现 `Numeric` |
-| 理由 | 布尔四则运算无数学意义；防止 `sum([true, false])` 等无意义操作；编译时阻止 |
-| 替代方案 | bool 实现 Numeric（true=1, false=0）— 放弃，语义不清晰 |
+| 属性     | 值                                                                         |
+| -------- | -------------------------------------------------------------------------- |
+| 决策     | `bool` 仅实现 `Element`，不实现 `Numeric`                                  |
+| 理由     | 布尔四则运算无数学意义；防止 `sum([true, false])` 等无意义操作；编译时阻止 |
+| 替代方案 | bool 实现 Numeric（true=1, false=0）— 放弃，语义不清晰                     |
 
 ### 决策 4：usize 不属于元素 trait 集合
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | `usize` 不实现 `Element`/`Numeric`/`RealScalar`/`ComplexScalar`，仅用于索引和形状 |
-| 理由 | `usize` 在 Xenon 中承担索引和形状元数据语义，而不是数值计算语义；其平台相关位宽会引入跨平台差异，不适合作为科学计算元素类型 |
-| 替代方案 | 让 `usize` 作为元素类型存在但排除在 `Numeric` 之外 — 放弃，仍会混淆元素集合与索引语义 |
+| 属性     | 值                                                                                                                          |
+| -------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | `usize` 不实现 `Element`/`Numeric`/`RealScalar`/`ComplexScalar`，仅用于索引和形状                                           |
+| 理由     | `usize` 在 Xenon 中承担索引和形状元数据语义，而不是数值计算语义；其平台相关位宽会引入跨平台差异，不适合作为科学计算元素类型 |
+| 替代方案 | 让 `usize` 作为元素类型存在但排除在 `Numeric` 之外 — 放弃，仍会混淆元素集合与索引语义                                       |
 
 ### 决策 5：不支持自动类型提升
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 类型转换须显式，不支持隐式提升 |
-| 理由 | 显式优于隐式，避免精度损失；性能可预测；与 Rust 哲学一致 |
+| 属性     | 值                                                                     |
+| -------- | ---------------------------------------------------------------------- |
+| 决策     | 类型转换须显式，不支持隐式提升                                         |
+| 理由     | 显式优于隐式，避免精度损失；性能可预测；与 Rust 哲学一致               |
 | 替代方案 | 类似 C++ 的类型提升规则 — 放弃，增加复杂度，可能导致难以调试的精度问题 |
 
 ### 决策 6：RealScalar 和 ComplexScalar 平行继承 Numeric
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 两者都继承 Numeric，无交叉继承 |
-| 理由 | 提供正交的数学函数集；复数无自然全序（不应实现 PartialOrd）；未来可扩展其他标量类型 |
-| 替代方案 | ComplexScalar 继承 RealScalar — 放弃，语义不正确 |
+| 属性     | 值                                                                                  |
+| -------- | ----------------------------------------------------------------------------------- |
+| 决策     | 两者都继承 Numeric，无交叉继承                                                      |
+| 理由     | 提供正交的数学函数集；复数无自然全序（不应实现 PartialOrd）；未来可扩展其他标量类型 |
+| 替代方案 | ComplexScalar 继承 RealScalar — 放弃，语义不正确                                    |
 
 ---
 
 ## 10. 性能考量
 
-| 方面 | 设计决策 |
-|------|----------|
-| 零运行时开销 | 所有 trait 约束为编译期静态分派，无虚调用 |
-| 内联 | RealScalar 数学方法标注 `#[inline]` |
-| 单态化 | `Tensor<A, D>` 中 A 的 trait 约束在编译期单态化 |
-| Sealed | 封闭集合允许编译器做更激进的优化（已知完整类型集） |
+| 方面         | 设计决策                                           |
+| ------------ | -------------------------------------------------- |
+| 零运行时开销 | 所有 trait 约束为编译期静态分派，无虚调用          |
+| 内联         | RealScalar 数学方法标注 `#[inline]`                |
+| 单态化       | `Tensor<A, D>` 中 A 的 trait 约束在编译期单态化    |
+| Sealed       | 封闭集合允许编译器做更激进的优化（已知完整类型集） |
 
 ---
 
-## 11. no_std 兼容性
+## 11. 平台与工程约束
 
-> **兼容性说明**：在 `no_std + alloc` 环境下，`Element` / `Numeric` 的类型层级与非数学能力保持可用；`RealScalar` 的数学函数扩展和 `ComplexScalar` 的复数数学函数仅在 `std` feature 下提供实现。
-
-| 组件 | 兼容方案 |
-|------|----------|
-| `Element` / `Numeric` | 纯 trait，天然 no_std |
-| `RealScalar` / `ComplexScalar` 数学函数 | 仅在 `std` feature 下提供实现；`no_std + alloc` 下不承诺这些数学方法的可用性 |
-| `RealScalar` 常量与 NaN 检测 | 语义上不依赖 `std`，在所有构建模式下保持一致 |
-| Feature gate | `Cargo.toml`: `default = ["std"]`；`std` 负责启用 `RealScalar` 数学函数实现与扩展集成能力 |
+| 约束       | 说明                                          |
+| ---------- | --------------------------------------------- |
+| `std` only | 本模块依赖 `std` 环境，不讨论 `no_std`        |
+| 单 crate   | 保持单 crate 边界                             |
+| SemVer     | 公开 trait、类型约束与转换语义变更遵循 SemVer |
+| 最小依赖   | 无新增第三方依赖                              |
 
 ---
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
+| 版本  | 日期       |
+| ----- | ---------- |
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
@@ -818,4 +848,4 @@ Wave 3: [T6]      [T9] ← ────┘
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+_本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。_

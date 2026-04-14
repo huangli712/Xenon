@@ -3,6 +3,7 @@
 > 文档编号: 14 | 模块: `src/set/` | 阶段: Phase 4
 > 前置文档: `03-element.md`, `04-complex.md`, `07-tensor.md`, `10-iterator.md`
 > 需求参考: 需求说明书 §15
+> 范围声明: 范围内
 
 ---
 
@@ -10,22 +11,23 @@
 
 ### 1.1 职责边界
 
-| 职责 | 包含 | 不包含 |
-|------|------|--------|
-| unique 操作 | 返回排序后的不重复元素作为新 1D 张量 | intersection/union/difference |
-| 支持类型 | i32, i64, f32, f64, Complex<f32>, Complex<f64> | bincount/histogram |
-| 不支持类型 | bool（仅 2 种值，unique 无意义） | argmin/argmax |
+| 职责        | 包含                                             | 不包含                        |
+| ----------- | ------------------------------------------------ | ----------------------------- |
+| unique 操作 | 返回不重复元素组成的新 1D 张量；结果顺序不作要求 | intersection/union/difference |
+| 支持类型    | i32, i64, f32, f64, Complex<f32>, Complex<f64>   | bincount/histogram            |
+| 不支持类型  | bool（仅 2 种值，unique 无意义）                 | argmin/argmax                 |
 
 > **注意**：当前版本仅支持 unique 操作！不包含 intersection/union/difference/bincount/histogram 等。
 
 ### 1.2 设计原则
 
-| 原则 | 体现 |
-|------|------|
-| 最小范围 | 当前仅实现 unique，其他集合操作留待未来扩展 |
-| 类型安全 | bool 显式排除；仅对受支持的元素类型开放 |
-| NaN 处理明确 | 浮点 NaN 的排序行为有明确定义 |
-| 复数排序明确 | 先按实部再按虚部 |
+| 原则           | 体现                                                          |
+| -------------- | ------------------------------------------------------------- |
+| 最小范围       | 当前仅实现 unique，其他集合操作留待未来扩展                   |
+| 类型安全       | bool 显式排除；仅对受支持的元素类型开放                       |
+| 相等语义优先   | `unique` 仅基于逐元素相等关系去重，不承诺排序结果             |
+| IEEE 754 一致  | `NaN != NaN`，因此每个 `NaN` 单独保留；`-0.0 == 0.0` 视为同值 |
+| 复数按分量判等 | 复数去重按实部/虚部分别比较，并沿用对应实数语义               |
 
 ### 1.3 在架构中的位置
 
@@ -66,11 +68,11 @@ src/set/unique.rs
 
 ### 3.2 类型级依赖
 
-| 来源模块 | 使用的类型/trait |
-|----------|-----------------|
-| `tensor` | `TensorBase<S, D>`, `Tensor<A, Ix1>`, `.iter()`, `.len()`，参见 `07-tensor.md` §4 |
-| `element` | `Element`, `ComplexScalar`，参见 `03-element.md` §3 |
-| `iter` | `Elements`（遍历收集元素），参见 `10-iterator.md` §3 |
+| 来源模块  | 使用的类型/trait                                                                  |
+| --------- | --------------------------------------------------------------------------------- |
+| `tensor`  | `TensorBase<S, D>`, `Tensor<A, Ix1>`, `.iter()`, `.len()`，参见 `07-tensor.md` §4 |
+| `element` | `Element`, `ComplexScalar`，参见 `03-element.md` §3                               |
+| `iter`    | `Elements`（遍历收集元素），参见 `10-iterator.md` §3                              |
 
 ### 3.3 依赖方向
 
@@ -82,14 +84,14 @@ src/set/unique.rs
 
 ### 4.1 unique 操作
 
-```rust
+````rust
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
     A: UniqueElement,  // UniqueElement: Element, correct constraint
 {
-    /// Returns sorted unique elements as a new 1D tensor.
+    /// Returns unique elements; order is unspecified and may vary between calls.
     ///
     /// # Supported types
     ///
@@ -99,13 +101,15 @@ where
 ///
 /// - bool: only 2 values (true/false), unique is meaningless for bool
     ///
-    /// # Float sorting behavior
+    /// # Equality behavior
     ///
-    /// NaN is placed last (NaN > any real number).
+    /// Each NaN is preserved because `NaN != NaN`, while `-0.0` and `0.0`
+    /// are treated as equal.
     ///
-    /// # Complex sorting rule
+    /// # Complex equality rule
     ///
-    /// Sort by real part first, then by imaginary part if real parts are equal.
+    /// Complex values are compared component-wise using the corresponding
+    /// real-number equality semantics.
     ///
     /// # Empty array behavior
     ///
@@ -113,14 +117,15 @@ where
     ///
     /// # Complexity
     ///
-    /// O(N log N)
+    /// Implementation-defined; external semantics do not depend on result order.
     ///
     /// # Examples
     ///
     /// ```
     /// let a = Tensor1::from_vec(vec![3, 1, 2, 1, 3, 2]);
     /// let u = a.unique();
-    /// assert_eq!(u, Tensor1::from_vec(vec![1, 2, 3]));
+    /// assert_eq!(u.len(), 3);
+    /// assert!(u.iter().all(|x| [1, 2, 3].contains(x)));
     ///
     /// // empty
     /// let empty: Tensor1<i32> = Tensor1::zeros([0]);
@@ -128,15 +133,15 @@ where
     /// ```
     pub fn unique(&self) -> Tensor<A, Ix1>;
 }
-```
+````
 
 ### 4.2 Good / Bad 对比示例
 
 ```rust
-// Good - use unique to get sorted unique elements
+// Good - use unique to get unique elements with unspecified order
 let a = Tensor1::from_vec(vec![3, 1, 2, 1, 3]);
 let u = a.unique();
-assert_eq!(u, Tensor1::from_vec(vec![1, 2, 3]));
+assert_eq!(u.len(), 3);
 
 // Good - empty array returns empty Tensor1
 let empty: Tensor1<i32> = Tensor1::zeros([0]);
@@ -157,31 +162,28 @@ assert_eq!(empty.unique().len(), 0);
 ```
 unique(self):
     1. 收集所有元素到 Vec<A>
-    2. 排序: vec.sort_by(|a, b| a.total_cmp(b))
-    3. 去重: vec.dedup_by(|a, b| a.total_eq(b))
+    2. 逐个检查元素是否已在结果集中出现
+    3. 若未出现，则追加到结果；若已出现，则跳过
     4. 从 Vec 构造 Tensor<A, Ix1>
 ```
 
-### 5.2 浮点排序处理
+### 5.2 浮点判等处理
 
 ```
-浮点比较策略（基于 Xenon 为 `unique()` 定义的 NaN 归并规则，而非直接复用 `f64::total_cmp` / `f32::total_cmp` 的全部语义）：
-- 所有非 NaN 值按 `total_cmp` 排序
-- 所有 NaN 值统一归并到排序结果末尾
-- `+0.0` 与 `-0.0` 视为不同位模式值，按 `total_cmp` 的顺序稳定排序，不做额外归并
-- `total_eq` 将所有 NaN 视为同一值，因此去重后只保留一个 NaN 等价类代表值（不额外承诺 payload canonicalization）
-- 该规则是“面向 unique 的稳定全序”，并不声称与 IEEE 754 `totalOrder` 的 payload/sign-bit 细节完全相同
+- 对非 NaN 浮点值，按 Rust / IEEE 754 的 `==` 语义判等
+- `NaN != NaN`，因此输入中的每个 `NaN` 都须单独保留，不参与去重
+- `+0.0 == -0.0`，因此两者视为同一个唯一值
+- 文档只约束相等关系，不约束内部使用哈希、线性扫描或其它去重实现
 ```
 
-### 5.3 复数排序规则
+### 5.3 复数判等规则
 
 ```
-复数比较策略（lexicographic order + NaN 归并）：
-- 先比较实部（re）
-- 实部相同再比较虚部（im）
-- 实部或虚部中的 NaN 先按“非 NaN < NaN”归一化，再比较
-- Complex { re: 1.0, im: 2.0 } < Complex { re: 1.0, im: 3.0 }
-- Complex { re: 1.0, im: 2.0 } < Complex { re: 2.0, im: 0.0 }
+复数判等策略（component-wise equality）：
+- 两个复数相等，当且仅当 `re` 与 `im` 两个分量分别相等
+- 分量比较沿用对应实数语义：`NaN != NaN`，`-0.0 == 0.0`
+- 因此，带有 NaN 分量的复数不会因为“都是 NaN”而被去重
+- 文档不定义任何 lexicographic order、模排序或其它排序关系
 ```
 
 ### 5.4 类型排除实现
@@ -189,19 +191,18 @@ unique(self):
 ```rust
 /// Trait for types that support the unique operation.
 ///
-/// Provides a total ordering for sorting and deduplication.
+/// Provides the equality semantics required by `unique`.
 /// `bool` does not implement this trait.
 ///
-/// Note: `Ord` is NOT used as a supertrait because `f32`/`f64`
-/// do not implement `Ord`, and `Complex` does not implement `PartialOrd`.
-/// Instead, each type defines an operation-specific total order for `unique`.
+/// Note: `Ord` is intentionally not required because `unique` does not
+/// define or expose any sorting contract.
 ///
 /// # Why in set/unique.rs, not element module?
 ///
 /// UniqueElement is defined here rather than in the element module because
-/// its semantic (total ordering for deduplication) is operation-specific,
-/// not a fundamental element property. This avoids making the element module
-/// depend on ordering semantics.
+/// its semantic (equality for deduplication) is operation-specific, not a
+/// fundamental element property. This avoids making the element module depend
+/// on `unique`-specific rules.
 ///
 /// # Sealing
 ///
@@ -209,74 +210,35 @@ unique(self):
 /// already provides it. This makes the sealing intent explicit at the
 /// trait definition site.
 pub trait UniqueElement: Element + Sealed {
-    /// Total ordering comparison for sorting and deduplication.
-    ///
-    /// Must satisfy: reflexivity, antisymmetry, transitivity, totality.
-    fn total_cmp(&self, other: &Self) -> core::cmp::Ordering;
-
-    /// Equality check consistent with `total_cmp` and Xenon's canonical-NaN rule.
-    fn total_eq(&self, other: &Self) -> bool {
-        self.total_cmp(other) == core::cmp::Ordering::Equal
-    }
+    /// Equality check used by `unique`.
+    fn unique_eq(&self, other: &Self) -> bool;
 }
 
 impl UniqueElement for i32 {
-    fn total_cmp(&self, other: &Self) -> core::cmp::Ordering { Ord::cmp(self, other) }
+    fn unique_eq(&self, other: &Self) -> bool { self == other }
 }
 
 impl UniqueElement for i64 {
-    fn total_cmp(&self, other: &Self) -> core::cmp::Ordering { Ord::cmp(self, other) }
+    fn unique_eq(&self, other: &Self) -> bool { self == other }
 }
 
 impl UniqueElement for f32 {
-    fn total_cmp(&self, other: &Self) -> core::cmp::Ordering {
-        match (self.is_nan(), other.is_nan()) {
-            (false, false) => f32::total_cmp(self, other),
-            (false, true) => core::cmp::Ordering::Less,
-            (true, false) => core::cmp::Ordering::Greater,
-            (true, true) => core::cmp::Ordering::Equal,
-        }
-    }
-
-    fn total_eq(&self, other: &Self) -> bool {
-        (self.is_nan() && other.is_nan()) || self.to_bits() == other.to_bits()
-    }
+    fn unique_eq(&self, other: &Self) -> bool { self == other }
 }
 
 impl UniqueElement for f64 {
-    fn total_cmp(&self, other: &Self) -> core::cmp::Ordering {
-        match (self.is_nan(), other.is_nan()) {
-            (false, false) => f64::total_cmp(self, other),
-            (false, true) => core::cmp::Ordering::Less,
-            (true, false) => core::cmp::Ordering::Greater,
-            (true, true) => core::cmp::Ordering::Equal,
-        }
-    }
-
-    fn total_eq(&self, other: &Self) -> bool {
-        (self.is_nan() && other.is_nan()) || self.to_bits() == other.to_bits()
-    }
+    fn unique_eq(&self, other: &Self) -> bool { self == other }
 }
 
 impl UniqueElement for Complex<f32> {
-    fn total_cmp(&self, other: &Self) -> core::cmp::Ordering {
-        self.re.total_cmp(&other.re)
-            .then_with(|| self.im.total_cmp(&other.im))
-    }
-
-    fn total_eq(&self, other: &Self) -> bool {
-        self.re.total_eq(&other.re) && self.im.total_eq(&other.im)
+    fn unique_eq(&self, other: &Self) -> bool {
+        self.re == other.re && self.im == other.im
     }
 }
 
 impl UniqueElement for Complex<f64> {
-    fn total_cmp(&self, other: &Self) -> core::cmp::Ordering {
-        self.re.total_cmp(&other.re)
-            .then_with(|| self.im.total_cmp(&other.im))
-    }
-
-    fn total_eq(&self, other: &Self) -> bool {
-        self.re.total_eq(&other.re) && self.im.total_eq(&other.im)
+    fn unique_eq(&self, other: &Self) -> bool {
+        self.re == other.re && self.im == other.im
     }
 }
 // bool does not implement this
@@ -299,24 +261,24 @@ impl UniqueElement for Complex<f64> {
 
 - [ ] **T2**: 实现 `unique` 方法
   - 文件: `src/set/unique.rs`
-  - 内容: 元素收集、排序、去重、Tensor 构造
+  - 内容: 元素收集、基于相等关系去重、Tensor 构造
   - 测试: `test_unique_basic`, `test_unique_empty`, `test_unique_single`, `test_unique_duplicates`
   - 前置: T1
   - 预计: 10 min
 
 ### Wave 3: 浮点与复数扩展
 
-- [ ] **T3**: 实现浮点 NaN 排序处理
+- [ ] **T3**: 实现浮点 NaN / `±0.0` 判等处理
   - 文件: `src/set/unique.rs`
-  - 内容: 使用 NaN 归并规则：所有 NaN 排在末尾，去重时合并为单个 NaN 等价类代表值
-  - 测试: `test_unique_nan_f32`, `test_unique_nan_f64`
+  - 内容: 保留每个 `NaN`，并将 `-0.0` 与 `0.0` 视为同值
+  - 测试: `test_unique_nan_preserved_f32`, `test_unique_signed_zero_equal_f32`
   - 前置: T2
   - 预计: 10 min
 
-- [ ] **T4**: 实现复数排序规则
+- [ ] **T4**: 实现复数按分量判等规则
   - 文件: `src/set/unique.rs`
-  - 内容: 先按实部再按虚部的 lexicographic order
-  - 测试: `test_unique_complex_order`
+  - 内容: 实部和虚部分别沿用对应实数语义，不引入排序语义
+  - 测试: `test_unique_complex_componentwise`
   - 前置: T2
   - 预计: 10 min
 
@@ -347,58 +309,58 @@ Wave 4: [T5]
 
 ### 7.1 测试分类表
 
-| 测试分类 | 位置 | 说明 |
-|----------|------|------|
-| 单元测试 | `#[cfg(test)] mod tests` | 验证 `unique()` 的排序、去重与类型特例 |
-| 集成测试 | `tests/` | 验证 `set` 与 `tensor`、`iter`、`element`、`complex` 的协同路径 |
-| 边界测试 | 同模块测试中标注 | 覆盖空张量、单元素、NaN 和复数排序等边界 |
-| 属性测试 | `tests/property/` | 验证结果有序、无重复、元素集合等价等不变量 |
+| 测试分类 | 位置                     | 说明                                                            |
+| -------- | ------------------------ | --------------------------------------------------------------- |
+| 单元测试 | `#[cfg(test)] mod tests` | 验证 `unique()` 的去重语义、顺序非承诺与类型特例                |
+| 集成测试 | `tests/`                 | 验证 `set` 与 `tensor`、`iter`、`element`、`complex` 的协同路径 |
+| 边界测试 | 同模块测试中标注         | 覆盖空张量、单元素、NaN、`±0.0` 与复数分量判等等边界            |
+| 属性测试 | `tests/property/`        | 验证结果有序、无重复、元素集合等价等不变量                      |
 
 ### 7.2 单元测试清单
 
-| 测试函数 | 测试内容 | 优先级 |
-|----------|----------|--------|
-| `test_unique_basic_i32` | 噪声去除: [3,1,2,1,3,2] → [1,2,3] | 高 |
-| `test_unique_basic_i64` | i64 类型正确性 | 高 |
-| `test_unique_basic_f32` | f32 类型正确性 | 高 |
-| `test_unique_basic_f64` | f64 类型正确性 | 高 |
-| `test_unique_basic_complex` | Complex<f64> 类型正确性 | 高 |
-| `test_unique_empty` | 空数组返回空 Tensor1 | 高 |
-| `test_unique_single` | 单元素返回自身 | 中 |
-| `test_unique_all_same` | 所有元素相同返回单元素 | 中 |
-| `test_unique_nan_f32` | f32 NaN 排在末尾 | 高 |
-| `test_unique_nan_f64` | f64 NaN 排在末尾 | 高 |
-| `test_unique_nan_mixed` | NaN + 正常数混合排序正确 | 高 |
-| `test_unique_nan_dedup` | 含多个 NaN（含不同 bit-pattern）的浮点数组：去重后只保留一个 NaN 等价类代表值 | 高 |
-| `test_unique_complex_order` | 复数先实部再虚部排序 | 高 |
-| `test_unique_2d` | 2D 张量 unique 返回 1D | 中 |
-| `test_unique_preserves_order` | 去重后排序正确 | 中 |
+| 测试函数                            | 测试内容                                     | 优先级 |
+| ----------------------------------- | -------------------------------------------- | ------ |
+| `test_unique_basic_i32`             | 噪声去除后结果包含且仅包含 1/2/3；不要求顺序 | 高     |
+| `test_unique_basic_i64`             | i64 类型正确性                               | 高     |
+| `test_unique_basic_f32`             | f32 类型正确性                               | 高     |
+| `test_unique_basic_f64`             | f64 类型正确性                               | 高     |
+| `test_unique_basic_complex`         | Complex<f64> 类型正确性                      | 高     |
+| `test_unique_empty`                 | 空数组返回空 Tensor1                         | 高     |
+| `test_unique_single`                | 单元素返回自身                               | 中     |
+| `test_unique_all_same`              | 所有元素相同返回单元素                       | 中     |
+| `test_unique_nan_preserved_f32`     | 每个 f32 NaN 都被保留                        | 高     |
+| `test_unique_nan_preserved_f64`     | 每个 f64 NaN 都被保留                        | 高     |
+| `test_unique_signed_zero_equal_f32` | `-0.0` 与 `0.0` 视为同值                     | 高     |
+| `test_unique_signed_zero_equal_f64` | `-0.0` 与 `0.0` 视为同值                     | 高     |
+| `test_unique_complex_componentwise` | 复数按分量判等并沿用实数语义                 | 高     |
+| `test_unique_2d`                    | 2D 张量 unique 返回 1D                       | 中     |
+| `test_unique_order_unspecified`     | 同一输入仅验证集合语义，不断言固定顺序       | 中     |
 
 ### 7.3 边界测试场景
 
-| 场景 | 预期行为 |
-|------|----------|
-| 空张量 `shape=[0]` | 返回空 Tensor1 |
-| 单元素 `[42]` | 返回 `[42]` |
-| 全部相同 `[5, 5, 5]` | 返回 `[5]` |
-| NaN + 实数 `[1.0, NaN, 2.0]` | 返回 `[1.0, 2.0, NaN]` |
-| 复数 `[1+2i, 1+1i, 2+0i]` | 返回 `[1+1i, 1+2i, 2+0i]` |
-| 已排序输入 `[1, 2, 3]` | 返回 `[1, 2, 3]`（当前仍会物化到新张量；后续若增加 fast path 需单独记录） |
-| 逆序输入 `[3, 2, 1]` | 返回 `[1, 2, 3]` |
+| 场景                         | 预期行为                                   |
+| ---------------------------- | ------------------------------------------ |
+| 空张量 `shape=[0]`           | 返回空 Tensor1                             |
+| 单元素 `[42]`                | 返回单元素结果                             |
+| 全部相同 `[5, 5, 5]`         | 返回单个 `5`                               |
+| NaN + 实数 `[1.0, NaN, 2.0]` | 返回长度为 3 的结果，且该 NaN 被保留       |
+| 多个 NaN `[NaN, NaN]`        | 返回长度为 2 的结果                        |
+| `[-0.0, 0.0]`                | 返回长度为 1 的结果                        |
+| 复数 `[1+NaNi, 1+NaNi]`      | 返回长度为 2 的结果（因为 NaN 分量不相等） |
 
 ### 7.4 属性测试不变量
 
-| 不变量 | 测试方法 |
-|--------|----------|
-| 输出严格有序 | 随机输入后检查 `windows(2)` 单调不降 |
-| 输出无重复 | 相邻元素用 `total_eq` 检查均不相等 |
-| 输出元素集合与输入集合相同 | 排序去重后与参考实现对比 |
-| 多维输入始终返回 1D 结果 | 随机 2D/3D 形状输入 |
+| 不变量                                  | 测试方法                             |
+| --------------------------------------- | ------------------------------------ |
+| 输出无重复（按 `unique_eq` 定义）       | 任意两个保留元素都不满足 `unique_eq` |
+| 非 NaN 输入时输出元素集合与输入集合相同 | 以参考集合语义对比                   |
+| NaN 元素按出现次数保留                  | 统计输入/输出中的 NaN 数量并比较     |
+| 多维输入始终返回 1D 结果                | 随机 2D/3D 形状输入                  |
 
 ### 7.5 集成测试
 
-| 测试文件 | 测试内容 |
-|----------|----------|
+| 测试文件            | 测试内容                                                                           |
+| ------------------- | ---------------------------------------------------------------------------------- |
 | `tests/test_set.rs` | `unique()` 与 `tensor`、`iter`、`element`、`complex`、`alloc` 路径的端到端协同验证 |
 
 ---
@@ -407,11 +369,11 @@ Wave 4: [T5]
 
 ### 8.1 接口约定
 
-| 方向 | 对方模块 | 接口/类型 | 约定 |
-|------|----------|-----------|------|
-| `set → tensor` | `tensor` | `TensorBase<S, D>` / `Tensor<A, Ix1>` | 消费输入张量并返回 1D owned 结果，参见 `07-tensor.md` §4 |
-| `set → iter` | `iter` | `Elements` | 使用元素迭代器收集逻辑元素，参见 `10-iterator.md` §3 |
-| `set → element` | `element` | `UniqueElement` | 通过 `total_cmp` / `total_eq` 约束排序与去重语义，参见 `03-element.md` §3 |
+| 方向            | 对方模块  | 接口/类型                             | 约定                                                                   |
+| --------------- | --------- | ------------------------------------- | ---------------------------------------------------------------------- |
+| `set → tensor`  | `tensor`  | `TensorBase<S, D>` / `Tensor<A, Ix1>` | 消费输入张量并返回 1D owned 结果，参见 `07-tensor.md` §4               |
+| `set → iter`    | `iter`    | `Elements`                            | 使用元素迭代器收集逻辑元素，参见 `10-iterator.md` §3                   |
+| `set → element` | `element` | `UniqueElement`                       | 通过 `unique_eq` 约束去重语义，不暴露排序契约，参见 `03-element.md` §3 |
 
 ### 8.2 数据流描述
 
@@ -419,8 +381,8 @@ Wave 4: [T5]
 用户调用 unique()
     │
     ├── set 模块先通过 iter 收集逻辑元素到临时 Vec
-    ├── 再按 UniqueElement::total_cmp / total_eq 排序并去重
-    ├── 若元素为复数，则复用 complex 的字段级排序规则
+    ├── 再按 UniqueElement::unique_eq 执行去重
+    ├── 若元素为复数，则复用 complex 的字段级判等规则
     └── 最终构造新的 1D owned tensor 返回给调用方
 ```
 
@@ -430,31 +392,31 @@ Wave 4: [T5]
 
 ### 决策 1：bool 排除理由
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | unique 不支持 bool 类型 |
-| 理由 | bool 只有 true/false 两种值，unique 对 bool 无意义；用户可直接用 `== true` / `== false` 判断；且 bool 的 unique 语义不明确（是返回 [false, true] 还是 [0, 1]？） |
-| 替代方案 | 支持 bool unique，返回 [false, true] |
-| 拒绝原因 | 增加维护负担，收益几乎为零；需求说明书 §15 "bool 不适用" |
+| 属性     | 值                                                                                                                                                               |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | unique 不支持 bool 类型                                                                                                                                          |
+| 理由     | bool 只有 true/false 两种值，unique 对 bool 无意义；用户可直接用 `== true` / `== false` 判断；且 bool 的 unique 语义不明确（是返回 [false, true] 还是 [0, 1]？） |
+| 替代方案 | 支持 bool unique，返回 [false, true]                                                                                                                             |
+| 拒绝原因 | 增加维护负担，收益几乎为零；需求说明书 §15 "bool 不适用"                                                                                                         |
 
 ### 决策 2：NaN 处理策略
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | unique 使用 canonical-NaN 规则：所有 NaN 排在末尾，并视为相同值去重 |
-| 理由 | 满足用户直觉与测试稳定性；与 NumPy `np.unique(equal_nan=True)` 的目标一致；避免直接暴露 payload/sign-bit 差异 |
-| 替代方案 | NaN 排在最前 |
-| 替代方案 | 抛弃所有 NaN |
-| 拒绝原因 | 与 IEEE 754 不一致；可能丢失数据信息 |
+| 属性     | 值                                                                      |
+| -------- | ----------------------------------------------------------------------- |
+| 决策     | `unique` 严格沿用 IEEE 754 / Rust 相等语义：`NaN != NaN`，`-0.0 == 0.0` |
+| 理由     | 直接满足 `require.md §15`，避免文档额外发明“canonical NaN”语义          |
+| 替代方案 | 归并全部 NaN                                                            |
+| 替代方案 | 把 `-0.0` 与 `0.0` 视为不同值                                           |
+| 拒绝原因 | 均与需求说明书冲突                                                      |
 
-### 决策 3：复数排序规则
+### 决策 3：复数按分量判等
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 复数按 lexicographic order 排序：先实部再虚部 |
-| 理由 | 这是简单、稳定、可实现的全序扩展；便于排序后去重；无需引入按模排序的额外歧义 |
-| 替代方案 | 按模排序 |
-| 拒绝原因 | 模（绝对值）排序不是全序关系（模相等的复数无法排序）；与标准库不一致 |
+| 属性     | 值                                                                    |
+| -------- | --------------------------------------------------------------------- |
+| 决策     | 复数去重仅按实部与虚部逐分量判等                                      |
+| 理由     | `require.md §15` 只要求 component-wise equality，并未授权任何排序语义 |
+| 替代方案 | lexicographic order                                                   |
+| 拒绝原因 | 会把排序错误地写入公开契约，并掩盖 NaN 分量应逐个保留的要求           |
 
 ---
 
@@ -462,67 +424,47 @@ Wave 4: [T5]
 
 ### 10.1 复杂度
 
-- 排序: O(N log N)，其中 N 为元素数量
-- 去重: O(N)，在线性扫描
-- 总体: O(N log N)
+- 对外语义不承诺具体算法复杂度
+- 参考实现可采用线性扫描去重（O(N^2)），也可采用不改变外部语义的辅助索引结构优化
+- 无论内部实现如何，结果顺序都不是稳定契约的一部分
 
 ### 10.2 内存开销
 
 - 收集元素: O(N) 临时 Vec
-- 排序辅助空间: O(log N) 到 O(N)，取决于标准库稳定排序实现
-- 结果: O(U) 其中 U 为唯一值数量
+- 去重辅助状态: 取决于具体实现，可为 O(1) 到 O(N)
+- 结果: O(U) 其中 U 为保留后的元素数量（含每个被保留的 NaN）
 
 ### 10.3 大数组性能（参考）
 
-| 元素数 | 排序时间 | 去重时间 | 总时间 |
-|--------|----------|----------|--------|
-| 1K | ~0.01ms | ~0.001ms | ~0.01ms |
-| 1M | ~15ms | ~1ms | ~16ms |
-| 100M | ~2s | ~100ms | ~2.1s |
+| 说明       | 内容                                                         |
+| ---------- | ------------------------------------------------------------ |
+| 稳定契约   | 不对结果顺序和实现路径做性能承诺                             |
+| 实现自由度 | 可在满足 `require.md §15` 的前提下选择线性扫描或辅助索引结构 |
 
 ---
 
-## 11. no_std 兼容性
+## 11. 平台与工程约束
 
-集合操作模块在 `no_std` 环境下可用，但需 `alloc` 支持以分配临时 `Vec` 和结果张量。排序使用 `alloc::vec::Vec::sort`。
+集合操作模块须遵循项目统一工程约束，不单独定义 `no_std` 方案：
 
-```rust
-#[cfg(not(feature = "std"))]
-extern crate alloc;
+- 仅支持 `std` 环境（参见 `require.md §1.3`）
+- 保持单 crate 结构
+- 遵循 SemVer
+- 不引入超出项目基线的第三方依赖
 
-#[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
-```
-
-| 组件 | no_std 支持 | 说明 |
-|------|:----------:|------|
-| `unique()` | ✅ | 需 `no_std + alloc`，收集元素到 `Vec` + 排序 + 去重，参见 `05-storage.md` §11 |
-| `UniqueElement` trait | ✅ | 纯 trait 定义；仅为受支持元素类型提供实现 |
-| 浮点 NaN 排序 | ✅ | `f32::total_cmp` / `f64::total_cmp`，`core` 内建（Rust 1.62+） |
-| 复数排序 | ✅ | lexicographic `total_cmp` 实现，参见 `04-complex.md` §3 |
-
-条件编译处理：
-
-```rust
-// unique() requires:
-//   1. Collect elements into Vec → alloc::vec::Vec
-//   2. Sort in-place → Vec::sort (available in alloc)
-//   3. Dedup → Vec::dedup (available in alloc)
-//   4. Construct result Tensor → alloc::vec::Vec
-
-#[cfg(not(feature = "std"))]
-extern crate alloc;
-
-#[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
-```
+| 项目       | 约束                                              |
+| ---------- | ------------------------------------------------- |
+| 平台       | 仅 `std`                                          |
+| crate 结构 | 单 crate                                          |
+| 依赖       | 不新增第三方依赖                                  |
+| 语义一致性 | SIMD / 并行等执行路径不得改变 `unique` 的外部语义 |
 
 ---
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
+| 版本  | 日期       |
+| ----- | ---------- |
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
@@ -533,4 +475,4 @@ use alloc::vec::Vec;
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+_本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。_

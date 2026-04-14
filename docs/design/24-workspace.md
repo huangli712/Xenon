@@ -3,6 +3,7 @@
 > 文档编号: 24 | 模块: `src/workspace/` | 阶段: Phase 4
 > 前置文档: `05-storage.md`
 > 需求参考: 需求说明书 §26
+> 范围声明: 范围内
 
 ---
 
@@ -10,22 +11,22 @@
 
 ### 1.1 职责边界
 
-| 职责 | 包含 | 不包含 |
-|------|------|--------|
-| 对齐分配 | 使用 `alloc::alloc` 进行指定对齐的内存分配 | arena 分配器（更复杂的分配策略） |
-| no_std 支持 | 依赖 `core`、`alloc` 和原子能力（`no_std + alloc + atomics`），不依赖 `std` | 池分配（pooled allocation） |
-| 分割 | `split_at` 将工作空间 O(1) 分割为两个子空间 | 栈分配（stack allocation，由调用方自行管理） |
-| 动态扩容 | `ensure_capacity` 支持单向增长（不缩容） | 自动缩容策略 |
+| 职责     | 包含                                        | 不包含                                       |
+| -------- | ------------------------------------------- | -------------------------------------------- |
+| 对齐分配 | 使用 `alloc::alloc` 进行指定对齐的内存分配  | arena 分配器（更复杂的分配策略）             |
+| 平台约束 | 当前版本依赖 `std` 环境下的分配与原子能力   | 池分配（pooled allocation）                  |
+| 分割     | `split_at` 将工作空间 O(1) 分割为两个子空间 | 栈分配（stack allocation，由调用方自行管理） |
+| 动态扩容 | `ensure_capacity` 支持单向增长（不缩容）    | 自动缩容策略                                 |
 
 ### 1.2 设计原则
 
-| 原则 | 体现 |
-|------|------|
-| 借用语义 | 借出期间不可再次借出；只读借用当前版本同一时刻最多一个活跃 guard，归还后可复用 |
-| 单向增长 | 只扩容不缩容，避免内存抖动 |
+| 原则         | 体现                                                                                 |
+| ------------ | ------------------------------------------------------------------------------------ | ------------------ |
+| 借用语义     | 借出期间不可再次借出；只读借用当前版本同一时刻最多一个活跃 guard，归还后可复用       |
+| 单向增长     | 只扩容不缩容，避免内存抖动                                                           |
 | 未初始化感知 | 底层字节视为 `MaybeUninit<u8>`；只有调用方显式声明初始化完成后，才能获取已初始化视图 |
-| O(1) 分割 | 仅指针算术，无内存分配 |
-| 显式生命周期 | 不可跨线程传递（`!Send + !Sync`），仅限创建它的线程使用 | 调用方负责线程安全 |
+| O(1) 分割    | 仅指针算术，无内存分配                                                               |
+| 显式生命周期 | 不可跨线程传递（`!Send + !Sync`），仅限创建它的线程使用                              | 调用方负责线程安全 |
 
 ### 1.3 在架构中的位置
 
@@ -34,7 +35,7 @@
 
 L1: dimension, element, complex
 L2: workspace  ← 当前模块（独立于 tensor）
-          
+
 上游库:
   blas-wrapper ──→ workspace
   fft-lib ───────→ workspace
@@ -62,14 +63,14 @@ src/
 
 ### 2.1 文件职责
 
-| 文件 | 职责 | 预估行数 |
-|------|------|
-| `mod.rs` | 模块根，re-exports 所有公共类型 | ~20 |
-| `error.rs` | `WorkspaceError` 枚举及 Display/Error impl | ~40 |
-| `workspace.rs` | `Workspace` 结构体、常量、`new()`、`with_default_capacity()`、`Drop` | ~100 |
-| `borrow.rs` | `WorkspaceBorrow`、`WorkspaceBorrowMut` 及其方法和 Drop | ~120 |
-| `split.rs` | `SplitBorrowMut` 及其方法（`as_maybe_uninit_slice`、`len`、`split_at`、`split_at_mut`、Drop） | ~100 |
-| `expand.rs` | `ensure_capacity()`、`reallocate()` 扩容逻辑 | ~60 |
+| 文件           | 职责                                                                                          | 预估行数 |
+| -------------- | --------------------------------------------------------------------------------------------- | -------- |
+| `mod.rs`       | 模块根，re-exports 所有公共类型                                                               | ~20      |
+| `error.rs`     | `WorkspaceError` 枚举及 Display/Error impl                                                    | ~40      |
+| `workspace.rs` | `Workspace` 结构体、常量、`new()`、`with_default_capacity()`、`Drop`                          | ~100     |
+| `borrow.rs`    | `WorkspaceBorrow`、`WorkspaceBorrowMut` 及其方法和 Drop                                       | ~120     |
+| `split.rs`     | `SplitBorrowMut` 及其方法（`as_maybe_uninit_slice`、`len`、`split_at`、`split_at_mut`、Drop） | ~100     |
+| `expand.rs`    | `ensure_capacity()`、`reallocate()` 扩容逻辑                                                  | ~60      |
 
 ---
 
@@ -94,11 +95,11 @@ src/workspace/
 
 ### 3.2 类型级依赖
 
-| 来源模块 | 使用的类型/trait |
-|----------|-----------------|
-| `core` | `NonNull<u8>`, `PhantomData`, `AtomicU8`, `fmt::Debug`, `fmt::Display` |
-| `alloc` | `alloc()`, `dealloc()`, `Layout` |
-| `workspace/error.rs` | `WorkspaceError`（模块内独立错误类型，参见 `26-error.md §4.7`） |
+| 来源模块             | 使用的类型/trait                                                       |
+| -------------------- | ---------------------------------------------------------------------- |
+| `core`               | `NonNull<u8>`, `PhantomData`, `AtomicU8`, `fmt::Debug`, `fmt::Display` |
+| `alloc`              | `alloc()`, `dealloc()`, `Layout`                                       |
+| `workspace/error.rs` | `WorkspaceError`（模块内独立错误类型，参见 `26-error.md §4.7`）        |
 
 ### 3.3 依赖方向声明
 
@@ -135,7 +136,7 @@ pub enum WorkspaceError {
 
 ### 4.1 Workspace 结构体
 
-```rust
+````rust
 use core::ptr::NonNull;
 use core::marker::PhantomData;
 use core::sync::atomic::{AtomicU8, Ordering};
@@ -201,9 +202,9 @@ pub struct Workspace {
     /// Marker that intentionally prevents auto-deriving `Send`/`Sync`.
     _not_send_sync: PhantomData<*mut ()>,
 }
-```
+````
 
-> **设计决策：** 使用 `AtomicU8` 管理借用状态而非 `Mutex`，原因：无锁、状态简单（仅需 3 个值）。但这要求目标平台提供原子能力，因此本文档中的 `no_std` 兼容性语义应解读为 **`no_std + alloc + atomics`**（参见 `25-safety.md §4.1`）。
+> **设计决策：** 使用 `AtomicU8` 管理借用状态而非 `Mutex`，原因：无锁、状态简单（仅需 3 个值）。当前版本默认运行于 `std` 环境，因此直接依赖标准平台提供的原子与分配能力。
 
 ### 4.2 常量
 
@@ -237,7 +238,7 @@ impl Workspace {
 
 ### 4.3 构造方法
 
-```rust
+````rust
 impl Workspace {
     /// Create a new workspace.
     ///
@@ -293,7 +294,7 @@ impl Workspace {
         Self::new(Self::DEFAULT_CAPACITY, Self::DEFAULT_ALIGNMENT)
     }
 }
-```
+````
 
 ### 4.4 析构方法
 
@@ -518,7 +519,7 @@ impl<'a> Drop for WorkspaceBorrowMut<'a> {
 
 ### 4.7 分割 API
 
-```rust
+````rust
 /// Borrow guard for a split sub-space.
 ///
 /// Similar to `WorkspaceBorrowMut`, but allows multiple split guards
@@ -701,11 +702,11 @@ impl<'a> Drop for SplitBorrowMut<'a> {
         }
     }
 }
-```
+````
 
 ### 4.8 扩容 API
 
-```rust
+````rust
 impl Workspace {
     /// Ensure capacity is at least `min_capacity`.
     ///
@@ -786,7 +787,7 @@ impl Workspace {
         Ok(())
     }
 }
-```
+````
 
 ### 4.9 Good/Bad 对比
 
@@ -891,6 +892,7 @@ Workspace 内存布局（64 字节对齐）
 > - 如果不加 1，最后一个子分割的 `Drop` 会过早观察到 `prev == 1`，在其他子分割仍然活跃时重置 `borrow_state`，造成安全隐患
 >
 > **示例（3 个活跃子空间）**：
+>
 > 1. `split_at(512)` → `split_count = 2`，创建 `left` 和 `right`
 > 2. `right.split_at_mut(128)` → `fetch_add(1)`，`split_count = 3`，创建 `right_a` 和 `right_b`
 > 3. `left` drop → `split_count: 3→2`，`prev=3 ≠ 1`，不重置 ✅
@@ -999,60 +1001,60 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 
 ### 7.1 测试分类表
 
-| 测试分类 | 位置 | 说明 |
-|----------|------|------|
-| 单元测试 | `#[cfg(test)] mod tests` | 验证工作空间分配、借用、分割与扩容语义 |
-| 集成测试 | `tests/` | 验证 `workspace` 与 `ffi`、上游 scratch-buffer 场景的协同路径 |
-| 边界测试 | 同模块测试中标注 | 覆盖零容量、最小对齐、大容量和递归分割等边界 |
-| 属性测试 | `tests/property/` | 验证借用状态机、typed borrow 字节长度与分割不变量 |
+| 测试分类 | 位置                     | 说明                                                          |
+| -------- | ------------------------ | ------------------------------------------------------------- |
+| 单元测试 | `#[cfg(test)] mod tests` | 验证工作空间分配、借用、分割与扩容语义                        |
+| 集成测试 | `tests/`                 | 验证 `workspace` 与 `ffi`、上游 scratch-buffer 场景的协同路径 |
+| 边界测试 | 同模块测试中标注         | 覆盖零容量、最小对齐、大容量和递归分割等边界                  |
+| 属性测试 | `tests/property/`        | 验证借用状态机、typed borrow 字节长度与分割不变量             |
 
 ### 7.2 单元测试清单
 
-| 测试函数 | 测试内容 | 优先级 |
-|----------|----------|--------|
-| `test_workspace_new_basic` | 指定容量和对齐创建工作空间 | 高 |
-| `test_workspace_new_default` | 默认参数创建 | 高 |
-| `test_workspace_new_invalid_alignment` | 非法对齐值返回 `WorkspaceError::InvalidLayout` | 高 |
-| `test_workspace_drop_no_leak` | Drop 后内存正确释放 | 中 |
-| `test_borrow_basic` | 不可变借用和 `MaybeUninit` 切片访问 | 高 |
-| `test_borrow_mut_basic` | 可变借用和 `MaybeUninit` 类型化访问 | 高 |
-| `test_borrow_double_fails` | 重复借用返回错误 | 高 |
-| `test_borrow_after_drop` | 归还后可再次借用 | 高 |
-| `test_assume_init_requires_initialized_prefix` | 已初始化视图只覆盖调用方证明已初始化的前缀 | 高 |
-| `test_split_at_basic` | 固定位置分割 | 高 |
-| `test_split_at_recursive` | 递归分割（多级） | 中 |
-| `test_split_at_oob` | 越界分割返回错误 | 高 |
-| `test_ensure_capacity_no_grow` | 容量足够时不扩容 | 高 |
-| `test_ensure_capacity_grow` | 容量不足时扩容到 1.5 倍 | 高 |
-| `test_ensure_capacity_while_borrowed_fails` | 借用期间扩容失败 | 高 |
-| `test_alignment_verification` | 对齐值验证 | 中 |
-| `test_typed_slice_alignment` | 类型化切片对齐检查 | 高 |
+| 测试函数                                       | 测试内容                                       | 优先级 |
+| ---------------------------------------------- | ---------------------------------------------- | ------ |
+| `test_workspace_new_basic`                     | 指定容量和对齐创建工作空间                     | 高     |
+| `test_workspace_new_default`                   | 默认参数创建                                   | 高     |
+| `test_workspace_new_invalid_alignment`         | 非法对齐值返回 `WorkspaceError::InvalidLayout` | 高     |
+| `test_workspace_drop_no_leak`                  | Drop 后内存正确释放                            | 中     |
+| `test_borrow_basic`                            | 不可变借用和 `MaybeUninit` 切片访问            | 高     |
+| `test_borrow_mut_basic`                        | 可变借用和 `MaybeUninit` 类型化访问            | 高     |
+| `test_borrow_double_fails`                     | 重复借用返回错误                               | 高     |
+| `test_borrow_after_drop`                       | 归还后可再次借用                               | 高     |
+| `test_assume_init_requires_initialized_prefix` | 已初始化视图只覆盖调用方证明已初始化的前缀     | 高     |
+| `test_split_at_basic`                          | 固定位置分割                                   | 高     |
+| `test_split_at_recursive`                      | 递归分割（多级）                               | 中     |
+| `test_split_at_oob`                            | 越界分割返回错误                               | 高     |
+| `test_ensure_capacity_no_grow`                 | 容量足够时不扩容                               | 高     |
+| `test_ensure_capacity_grow`                    | 容量不足时扩容到 1.5 倍                        | 高     |
+| `test_ensure_capacity_while_borrowed_fails`    | 借用期间扩容失败                               | 高     |
+| `test_alignment_verification`                  | 对齐值验证                                     | 中     |
+| `test_typed_slice_alignment`                   | 类型化切片对齐检查                             | 高     |
 
 ### 7.3 边界测试场景
 
-| 场景 | 预期行为 |
-|------|----------|
-| 零容量工作空间 | `new(0, 64)` 返回最小容量 1 的工作空间 |
-| 最小对齐（8 字节） | 正常创建和使用 |
-| 大容量（1MB+） | 正常分配和释放 |
-| 递归分割到空子空间 | `split_at(0)` 返回空左半 |
-| `ensure_capacity(0)` | 无操作（容量已足够） |
+| 场景                 | 预期行为                                  |
+| -------------------- | ----------------------------------------- |
+| 零容量工作空间       | `new(0, 64)` 返回最小容量 1 的工作空间    |
+| 最小对齐（8 字节）   | 正常创建和使用                            |
+| 大容量（1MB+）       | 正常分配和释放                            |
+| 递归分割到空子空间   | `split_at(0)` 返回空左半                  |
+| `ensure_capacity(0)` | 无操作（容量已足够）                      |
 | 未初始化区域只读访问 | 仅允许 `MaybeUninit` 视图，不暴露 `&[u8]` |
 
 ### 7.4 属性测试不变量
 
-| 不变量 | 测试方法 |
-|--------|----------|
-| `capacity() >= new()` 请求的容量 | 随机容量 |
-| `split_at` 后 `left.len + right.len == capacity` | 随机分割点 |
-| 借用后 `borrow_state != NONE` | 借用状态检查 |
-| 扩容后对齐不变 | `alignment()` 一致 |
-| 未初始化区域只能通过 `MaybeUninit` 视图暴露 | 随机借用 + API 形状检查 |
+| 不变量                                           | 测试方法                |
+| ------------------------------------------------ | ----------------------- |
+| `capacity() >= new()` 请求的容量                 | 随机容量                |
+| `split_at` 后 `left.len + right.len == capacity` | 随机分割点              |
+| 借用后 `borrow_state != NONE`                    | 借用状态检查            |
+| 扩容后对齐不变                                   | `alignment()` 一致      |
+| 未初始化区域只能通过 `MaybeUninit` 视图暴露      | 随机借用 + API 形状检查 |
 
 ### 7.5 集成测试
 
-| 测试文件 | 测试内容 |
-|----------|----------|
+| 测试文件                  | 测试内容                                                                                                                                                       |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tests/test_workspace.rs` | `new` / `borrow` / `split_at_mut` / `ensure_capacity` 与 `ffi`、上游 scratch-buffer 场景的端到端协同验证，并验证 `MaybeUninit` 视图与 `assume_init_*` 前缀约束 |
 
 ---
@@ -1061,11 +1063,11 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 
 ### 8.1 接口约定
 
-| 方向 | 对方模块 | 接口/类型 | 约定 |
-|------|----------|-----------|------|
-| `workspace ← 上游库` | `上游库` | 临时缓冲区请求 | BLAS 等上游库可把 workspace 作为临时缓冲区使用；默认只获得 `MaybeUninit` 视图 |
-| `workspace ← 上游库` | `上游库` | `split_at()` | FFT 等场景可通过分割接口拆分工作空间；子空间同样只暴露 `MaybeUninit` 视图 |
-| `workspace ← 上游库` | `上游库` | `assume_init_*` | 调用方必须先完成写入并证明对应前缀/typed region 已初始化，才能重解释为已初始化视图 |
+| 方向                 | 对方模块 | 接口/类型         | 约定                                                                                                                          |
+| -------------------- | -------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `workspace ← 上游库` | `上游库` | 临时缓冲区请求    | BLAS 等上游库可把 workspace 作为临时缓冲区使用；默认只获得 `MaybeUninit` 视图                                                 |
+| `workspace ← 上游库` | `上游库` | `split_at()`      | FFT 等场景可通过分割接口拆分工作空间；子空间同样只暴露 `MaybeUninit` 视图                                                     |
+| `workspace ← 上游库` | `上游库` | `assume_init_*`   | 调用方必须先完成写入并证明对应前缀/typed region 已初始化，才能重解释为已初始化视图                                            |
 | `workspace ← tensor` | `tensor` | 临时 scratch 空间 | 张量运算在需要时可借用 workspace 提供临时空间；任何借出的 scratch 视图都不得跨越 `ensure_capacity` 或持久化到 tensor 元数据中 |
 
 ### 8.2 数据流描述
@@ -1091,59 +1093,59 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 
 ### 决策 1：设计选择 - workspace vs arena vs pool
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 使用简单的 workspace 类型而非 arena 或 pool 分配器 |
-| 理由 | 实现简单（~400 行）、语义清晰（借用/归还）、满足需求（对齐/分割/扩容）；arena 分配器更复杂，pool 附加管理生命周期困难 |
-| 替代方案 | arena 分配器（bump 分配） — 放弃，需求不复杂，无需 zone/reset |
-| 替代方案 | pool 分配（对象池） — 放弃，工作空间操作原始字节，无需对象语义 |
+| 属性     | 值                                                                                                                    |
+| -------- | --------------------------------------------------------------------------------------------------------------------- |
+| 决策     | 使用简单的 workspace 类型而非 arena 或 pool 分配器                                                                    |
+| 理由     | 实现简单（~400 行）、语义清晰（借用/归还）、满足需求（对齐/分割/扩容）；arena 分配器更复杂，pool 附加管理生命周期困难 |
+| 替代方案 | arena 分配器（bump 分配） — 放弃，需求不复杂，无需 zone/reset                                                         |
+| 替代方案 | pool 分配（对象池） — 放弃，工作空间操作原始字节，无需对象语义                                                        |
 
 ### 决策 2：借用期间不可再次借出
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 借出期间禁止再次借出（由 AtomicU8 CAS 保证） |
-| 理由 | 安全性：避免同一缓冲区被多次借出导致数据竞争；简单性: 单一借用模型更易理解；split_at() 生成的子空间全部释放后，父工作空间才恢复可借用状态。 |
-| 替代方案 | 允许共享借用（多个 reader） — 未来可扩展，当前版本简化 |
+| 属性     | 值                                                                                                                                          |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | 借出期间禁止再次借出（由 AtomicU8 CAS 保证）                                                                                                |
+| 理由     | 安全性：避免同一缓冲区被多次借出导致数据竞争；简单性: 单一借用模型更易理解；split_at() 生成的子空间全部释放后，父工作空间才恢复可借用状态。 |
+| 替代方案 | 允许共享借用（多个 reader） — 未来可扩展，当前版本简化                                                                                      |
 
 ### 决策 3：扩容安全性保证
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 扩容前显式检查 borrow_state == NONE，且需要 `&mut self` |
-| 理由 | `&mut self` 由编译器保证独占访问；显式检查原子状态作为双重保障；防止扩容导致已有引用失效 |
-| 替代方案 | 不检查直接扩容 — 放弃，UB 风险太高 |
+| 属性     | 值                                                                                       |
+| -------- | ---------------------------------------------------------------------------------------- |
+| 决策     | 扩容前显式检查 borrow_state == NONE，且需要 `&mut self`                                  |
+| 理由     | `&mut self` 由编译器保证独占访问；显式检查原子状态作为双重保障；防止扩容导致已有引用失效 |
+| 替代方案 | 不检查直接扩容 — 放弃，UB 风险太高                                                       |
 
 ### 决策 4：不保证零初始化
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | 工作空间不保证零初始化 |
-| 理由 | 性能: 零初始化是 O(n) 操作;不必要: 大多数场景下调用方会覆盖全部数据;与 C 一致: 与 malloc 行为一致 |
-| 替代方案 | 构造时零初始化 — 放弃，性能损失 |
+| 属性     | 值                                                                                                |
+| -------- | ------------------------------------------------------------------------------------------------- |
+| 决策     | 工作空间不保证零初始化                                                                            |
+| 理由     | 性能: 零初始化是 O(n) 操作;不必要: 大多数场景下调用方会覆盖全部数据;与 C 一致: 与 malloc 行为一致 |
+| 替代方案 | 构造时零初始化 — 放弃，性能损失                                                                   |
 
 ### 决策 5：Workspace 不实现 Send/Sync
 
-| 属性 | 值 |
-|------|-----|
-| 决策 | Workspace 不实现 Send 或 Sync |
-| 理由 | Workspace 设计为线程内临时缓冲区，文档约束为 `!Send + !Sync`。即使存在运行时借用状态检查，也不将其建模为可跨线程传递或共享的基础类型；若调用方需要多线程临时缓冲区，应在线程边界外自行分配和管理独立工作空间。 |
-| 替代方案 | 使用 AtomicU8 实现 Send + Sync — 放弃，仅有运行时检查不够，多线程场景下需要完整同步 |
+| 属性     | 值                                                                                                                                                                                                             |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | Workspace 不实现 Send 或 Sync                                                                                                                                                                                  |
+| 理由     | Workspace 设计为线程内临时缓冲区，文档约束为 `!Send + !Sync`。即使存在运行时借用状态检查，也不将其建模为可跨线程传递或共享的基础类型；若调用方需要多线程临时缓冲区，应在线程边界外自行分配和管理独立工作空间。 |
+| 替代方案 | 使用 AtomicU8 实现 Send + Sync — 放弃，仅有运行时检查不够，多线程场景下需要完整同步                                                                                                                            |
 
 ---
 
 ## 10. 性能考量
 
-| 操作 | 时间复杂度 | 空间复杂度 | 说明 |
-|------|-----------|-----------|------|
-| `new()` | O(1) | O(capacity) | 一次分配 |
-| `borrow()` | O(1) | O(1) | 原子 CAS |
-| `borrow_mut()` | O(1) | O(1) | 原子 CAS |
-| `split_at()` | O(1) | O(1) | 仅指针算术 |
-| `split_at_mut()` | O(1) | O(1) | 仅指针算术 |
-| `ensure_capacity()` | O(n) | O(new_capacity) | 分配 + 拷贝 + 释放 |
-| `as_maybe_uninit_typed_slice()` | O(1) | O(1) | 仅指针转换 |
-| `assume_init_typed_slice()` | O(1) | O(1) | 仅在调用方已证明初始化后重解释 |
+| 操作                            | 时间复杂度 | 空间复杂度      | 说明                           |
+| ------------------------------- | ---------- | --------------- | ------------------------------ |
+| `new()`                         | O(1)       | O(capacity)     | 一次分配                       |
+| `borrow()`                      | O(1)       | O(1)            | 原子 CAS                       |
+| `borrow_mut()`                  | O(1)       | O(1)            | 原子 CAS                       |
+| `split_at()`                    | O(1)       | O(1)            | 仅指针算术                     |
+| `split_at_mut()`                | O(1)       | O(1)            | 仅指针算术                     |
+| `ensure_capacity()`             | O(n)       | O(new_capacity) | 分配 + 拷贝 + 释放             |
+| `as_maybe_uninit_typed_slice()` | O(1)       | O(1)            | 仅指针转换                     |
+| `assume_init_typed_slice()`     | O(1)       | O(1)            | 仅在调用方已证明初始化后重解释 |
 
 **性能提示**:
 
@@ -1153,38 +1155,21 @@ Wave 4:               [T7]            ← 依赖 T4、T5、T6 全部完成
 
 ---
 
-## 11. no_std 兼容性
+## 11. 平台与工程约束
 
-| 依赖 | 来源 | no_std 兼容 |
-|------|------|:-----------:|
-| `core::ptr::NonNull` | core | ✅ |
-| `core::sync::atomic::AtomicU8` | core | ✅ |
-| `core::fmt` | core | ✅ |
-| `alloc::alloc::alloc` | alloc | ✅ |
-| `alloc::alloc::dealloc` | alloc | ✅ |
-| `alloc::alloc::Layout` | alloc | ✅ |
-
-所有依赖均在 `core` 或 `alloc` 中；若目标平台提供原子操作，则兼容 `no_std + alloc + atomics`（参见 `01-architecture.md §6`）。若无原子支持，需改用更窄的借用模型或目标专用实现。
-
-```toml
-# Cargo.toml
-[features]
-default = ["std"]
-std = []
-```
-
-```rust
-// Conditional export
-#[cfg(feature = "std")]
-impl std::error::Error for WorkspaceError {}
-```
+| 约束       | 说明                                                  |
+| ---------- | ----------------------------------------------------- |
+| `std` only | 当前版本 workspace 设计以 `std` 环境为前提            |
+| 单 crate   | workspace 保持在主 crate 内，不拆出独立 scratch crate |
+| SemVer     | 借用状态机、分割语义和错误语义属于公开契约            |
+| 最小依赖   | 不新增第三方分配器或同步依赖                          |
 
 ---
 
 ## 版本历史
 
-| 版本 | 日期 |
-|------|------|
+| 版本  | 日期       |
+| ----- | ---------- |
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-08 |
 | 1.0.2 | 2026-04-08 |
@@ -1196,4 +1181,4 @@ impl std::error::Error for WorkspaceError {}
 
 ---
 
-*本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。*
+_本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。_
