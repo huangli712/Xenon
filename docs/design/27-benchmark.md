@@ -30,16 +30,16 @@
 ### 1.3 在架构中的位置
 
 ```
-依赖层级：
+Dependency layers:
 L0: error, private
 L1: dimension, element, complex
-L2: layout (依赖 dimension)
-L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
-L4: tensor (依赖 storage, dimension)
+L2: layout (depends on dimension)
+L3: storage (independent of layout; owned by tensor and consumes layout results)
+L4: tensor (depends on storage, dimension)
 L5: overload/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 
-外部（非 crate 模块）：
-benches/  ← 当前模块（dev-dependency，仅消费 crate 公共 API）
+External (non-crate modules):
+benches/  <- current module (dev-dependency, consumes only the crate's public API)
 ```
 
 ## 2. 需求映射与范围约束
@@ -58,17 +58,17 @@ benches/  ← 当前模块（dev-dependency，仅消费 crate 公共 API）
 ```
 benches/
 ├── utils/
-│   ├── mod.rs              # 共享常量与工具导出
-│   └── data_gen.rs         # 测试数据生成器
-├── math.rs                 # 逐元素运算 benchmark
-├── reduction.rs            # 归约运算 benchmark（sum）
-├── dot_product.rs          # 向量内积 benchmark
-├── set.rs                  # 集合操作 benchmark（unique）
-├── broadcast.rs            # 广播运算 benchmark
-├── shape.rs                # 形状操作 benchmark（transpose）
-├── simd_comparison.rs      # SIMD 对比 benchmark
-├── parallel_comparison.rs  # 并行对比 benchmark
-└── construction.rs         # 构造方法 benchmark
+│   ├── mod.rs              # Shared constants and utility exports
+│   └── data_gen.rs         # Test data generators
+├── math.rs                 # Element-wise operation benchmarks
+├── reduction.rs            # Reduction benchmarks (sum)
+├── dot_product.rs          # Vector dot-product benchmarks
+├── set.rs                  # Set-operation benchmarks (unique)
+├── broadcast.rs            # Broadcast-operation benchmarks
+├── shape.rs                # Shape-operation benchmarks (transpose)
+├── simd_comparison.rs      # SIMD comparison benchmarks
+├── parallel_comparison.rs  # Parallel comparison benchmarks
+└── construction.rs         # Constructor benchmarks
 ```
 
 按操作类别分文件：可独立运行（`cargo bench --bench math`），编译时间可控。
@@ -81,15 +81,15 @@ benches/
 
 ```
 benches/
-├── crate::tensor           # TensorBase, Tensor, TensorView 等
+├── crate::tensor           # TensorBase, Tensor, TensorView, etc.
 ├── crate::dimension        # Ix0~Ix6, IxDyn, Dimension trait
 ├── crate::element          # Element, Numeric, RealScalar, ComplexScalar
-├── crate::math             # 逐元素运算、归约、内积
+├── crate::math             # Element-wise ops, reductions, dot products
 ├── crate::shape            # transpose
 ├── crate::broadcast        # broadcast_shape
 ├── crate::set              # unique
 ├── crate::construct        # zeros, ones, from_vec
-└── 可选本地 benchmark 工具     # 仅用于维护阶段的性能观察
+└── optional local benchmark tools  # used only for maintenance-time performance observation
 ```
 
 ### 4.2 依赖精确到类型级
@@ -492,12 +492,14 @@ b.iter(|| (&a + &b).unwrap());
 
 | 类型 | atol | rtol | 说明 |
 | ---- | ---- | ---- | ---- |
-| `f32` | `1e-6` | `1e-5` | 单精度浮点 |
-| `f64` | `1e-12` | `1e-10` | 双精度浮点 |
-| `Complex<f32>` | `1e-6` | `1e-5` | 按分量比较 |
-| `Complex<f64>` | `1e-12` | `1e-10` | 按分量比较 |
+| `f32` | `1e-5` | `1e-5` | 单精度浮点；与 `28-tests.md §8.1` 的超越函数容差保持一致 |
+| `f64` | `1e-14` | `1e-14` | 双精度浮点；与 `28-tests.md §8.1` 的超越函数容差保持一致 |
+| `Complex<f32>` | `1e-5` | `1e-5` | 按分量比较；与 `28-tests.md §8.1` 保持一致 |
+| `Complex<f64>` | `1e-14` | `1e-14` | 按分量比较；与 `28-tests.md §8.1` 保持一致 |
 
 整数类型须逐元素精确一致，不容差。
+
+容差值与 `28-tests.md §8.1` 保持一致；修改一处须同步另一处。
 
 ---
 
@@ -752,6 +754,7 @@ Wave 5:           [T12]
 | 1.2.0 | 2026-04-08 |
 | 1.2.1 | 2026-04-10 |
 | 1.2.2 | 2026-04-14 |
+| 1.2.3 | 2026-04-15 |
 
 ---
 

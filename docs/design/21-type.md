@@ -14,7 +14,7 @@
 | 职责           | 包含                                                 | 不包含                       |
 | -------------- | ---------------------------------------------------- | ---------------------------- |
 | 逐元素类型转换 | `cast<B>(&self) -> Result<Tensor<B, D>, XenonError>` | 隐式类型提升（需显式调用）   |
-| 同类型拷贝     | `to_owned`、`into_owned`                             | 跨模块转换逻辑（如 reshape） |
+| 同类型拷贝     | `to_owned`、`into_owned`                             | 跨模块转换逻辑               |
 | 存储模式互转   | Owned ↔ ViewRepr ↔ ArcRepr                           | 隐式 Deref 转换              |
 | 标准库接口     | `From`/`Into`（标准库类型转换）                      | 非标准转换（如序列化）       |
 
@@ -30,15 +30,15 @@
 ### 1.3 在架构中的位置
 
 ```
-依赖层级：
+Dependency layers:
 L0: error, private
 L1: dimension, element, complex
-L2: layout (依赖 dimension)
-L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
-L4: tensor (依赖 storage, dimension)
+L2: layout (depends on dimension)
+L3: storage (independent of layout; owned and consumed by tensor)
+L4: tensor (depends on storage, dimension)
 L5: broadcast, iter, ffi
 L6: math, matrix, reduction, shape, index, util
-L7: convert  ← 当前模块
+L7: convert  ← current module
 ```
 
 ---
@@ -58,12 +58,12 @@ L7: convert  ← 当前模块
 
 ```
 src/
-└── convert/                 # 类型转换（目录模块）
-    ├── mod.rs               # 模块根，re-exports
-    ├── cast.rs              # cast() 方法、类型转换路径（消费 element 中定义的 CastTo）
-    ├── owned.rs             # to_owned、into_owned、存储模式互转
-    ├── from_impl.rs         # From/TryFrom trait 实现
-    └── contiguous.rs        # 连续化内部 helper（若保留，仅服务 util::to_contiguous 的实现）
+└── convert/                 # Type conversion module
+    ├── mod.rs               # Module root, re-exports
+    ├── cast.rs              # cast() methods and conversion paths consuming element::CastTo
+    ├── owned.rs             # to_owned, into_owned, storage-mode conversions
+    ├── from_impl.rs         # From/TryFrom trait impls
+    └── contiguous.rs        # Internal helper only for util::to_contiguous if kept
 ```
 
 多文件设计：按转换职责拆分，便于后续扩展（如新增转换路径、存储模式等）。
@@ -90,7 +90,7 @@ src/convert/
 ├── cast.rs         # Depends on element (CastTo) and tensor (TensorBase)
 ├── owned.rs        # Depends on tensor (TensorBase), storage, layout
 ├── from_impl.rs    # Depends on tensor (Tensor / TensorView), construct (from_shape_vec / from_vec)
-└── contiguous.rs   # Depends on tensor (TensorBase) and layout
+└── contiguous.rs   # Internal helper for util::to_contiguous only
 
 External dependencies:
 ├── crate::tensor        # TensorBase<S, D>, Tensor, TensorView
@@ -185,7 +185,7 @@ where
             })?;
             data.push(value);
         }
-        Ok(Tensor::from_shape_vec_aligned(self.shape().clone(), data))
+        Ok(Tensor::from_shape_vec_aligned(self.raw_dim(), data))
     }
 }
 ````
@@ -215,10 +215,10 @@ where
 | `f64`          | `Complex<f32>` | 错误     | 有损，默认失败                              |
 | `Complex<f32>` | `f64`          | 条件成功 | 仅当 `im == 0`，再按 `f32 -> f64` 规则处理  |
 | `Complex<f32>` | `f32`          | 条件成功 | 仅当 `im == 0`；否则错误                    |
-| `Complex<f32>` | `i32/i64`      | 条件成功 | 仅当 `im == 0`，再按 `f32 -> 整数` 规则处理 |
+| `Complex<f32>` | `i32/i64`      | 条件成功 | 仅当 `im == 0`，再按 `f32 -> integer` 规则处理 |
 | `Complex<f64>` | `f64`          | 条件成功 | 仅当 `im == 0`；否则错误                    |
 | `Complex<f64>` | `f32`          | 条件成功 | 仅当 `im == 0`，再按 `f64 -> f32` 规则处理  |
-| `Complex<f64>` | `i32/i64`      | 条件成功 | 仅当 `im == 0`，再按 `f64 -> 整数` 规则处理 |
+| `Complex<f64>` | `i32/i64`      | 条件成功 | 仅当 `im == 0`，再按 `f64 -> integer` 规则处理 |
 | `Complex<f64>` | `Complex<f32>` | 错误     | 分量精度丢失，默认失败                      |
 
 > `bool` 不参与 `cast()`；任何 `bool` 相关逐元素类型转换都不在本模块范围内。
@@ -292,13 +292,15 @@ where
     /// Consumes the tensor, converting to owned.
     ///
     /// - `Tensor`: returned directly, O(1)
-    /// - `TensorView`/`TensorViewMut`: copies data, O(n)
-    /// - `ArcTensor`: returned directly if ref count is 1, otherwise copied
+    /// - `TensorView`/`TensorViewMut`: allocates and copies, O(n)
+    /// - `ArcTensor`: always allocates and copies, O(n), regardless of ref count
     pub fn into_owned(self) -> Tensor<A, D>;
 }
 ````
 
 > **说明：** 同类型拷贝（`to_owned()`/`into_owned()`）不通过 fallible `cast()` 建模，而是始终成功的基础操作。`cast::<A>()` 不适用于同类型拷贝场景。
+>
+> **统一规则（Wave 1）：** `ArcRepr → Owned` 始终分配并复制（O(n)），与引用计数无关。
 
 ### 5.7 from_vec_aligned — 对齐构造辅助
 
@@ -343,11 +345,11 @@ impl<A, D> TensorBase<Owned<A>, D> where A: Element, D: Dimension {
     ///
     /// # Safety
     ///
-    /// 调用者必须保证：
-    /// - `data.len()` 等于 `shape` 对应的已验证元素总数（元素总数匹配）
-    /// - `shape` 和 `strides` 描述合法的内存布局
-    /// - `data` 中所有元素已正确初始化
-    /// - 内存已通过 Xenon 的 64 字节对齐分配器分配（使用 `from_vec_aligned` 保证）
+    /// The caller must guarantee:
+    /// - `data.len()` equals the validated element count for `shape`
+    /// - `shape` and `strides` describe a valid memory layout
+    /// - all elements in `data` are properly initialized
+    /// - the memory was allocated by Xenon's 64-byte aligned allocator (guaranteed by `from_vec_aligned`)
     pub(crate) unsafe fn from_shape_vec_aligned_unchecked(shape: D, data: Vec<A>) -> Self {
         let strides: Strides<D> = shape.strides_for_f_order();
         let storage = Owned::from_vec_aligned(data);
@@ -358,7 +360,7 @@ impl<A, D> TensorBase<Owned<A>, D> where A: Element, D: Dimension {
 
 ### 5.8 连续化内部实现
 
-本节描述的连续化实现仅作为 `20-utility.md §4.3` 中 `to_contiguous()` 的内部实现细节。`convert` 模块可以持有 `contiguous.rs` 这一内部 helper 文件，但连续性保证的**公共语义、命名和用户入口**始终归 `util` 模块，而不是 `convert` 模块。
+本节仅保留到 `20-utility.md §4.3` 的前向引用：若项目继续保留 `convert/contiguous.rs`，它也只能作为 `util::to_contiguous()` 的内部实现细节。连续性保证的**公共语义、命名和用户入口**始终归 `util` 模块，而不是 `convert` 模块。
 
 ```rust
 impl<S, D, A> TensorBase<S, D>
@@ -378,7 +380,7 @@ where
     /// For F-contiguous arrays this matches memory order; for non-contiguous arrays
     /// it follows the iterator contract defined in `10-iterator.md` while re-packing
     /// the result into a fresh F-contiguous allocation.
-pub(crate) fn util_internal_to_f_contiguous(&self) -> Tensor<A, D> {
+    pub(crate) fn util_internal_to_f_contiguous(&self) -> Tensor<A, D> {
         let mut data = Vec::with_capacity(self.len());
         // iter() follows the iterator contract from 10-iterator.md and yields
         // logical elements in the order expected by to_contiguous().
@@ -401,9 +403,11 @@ pub(crate) fn util_internal_to_f_contiguous(&self) -> Tensor<A, D> {
 | ViewMutRepr → ViewRepr | 只读重借用（`view()` / `into()`） | O(1)         |
 | ViewMutRepr → Owned    | `to_owned()`（拷贝）              | O(n)         |
 | ArcRepr → ViewRepr     | 共享只读借用（`view()`）          | O(1)         |
-| ArcRepr → Owned        | `make_mut()` 或 clone             | O(1) 或 O(n) |
+| ArcRepr → Owned        | `into_owned()`（分配并复制）      | O(n)         |
 
 > **完整性说明：** Xenon 当前不提供 `ViewRepr/ViewMutRepr/ArcRepr → ViewMutRepr` 这类可能引入别名写入的新公开路径；若调用方需要可写 owned 结果，统一经 `to_owned()` / `into_owned()` 收敛。
+>
+> **统一规则（Wave 1）：** `ArcRepr → Owned` 始终分配并复制（O(n)），与引用计数无关。
 
 ### 5.10 标准库类型转换接口
 
@@ -571,9 +575,9 @@ impl CastTo<i32> for i64 {
 ```
 Wave 1: [T1] ──▶ [T2]
                     │
-Wave 2: [T3] [T4] [T5]  (并行)
+Wave 2: [T3] [T4] [T5]  (parallel)
              │
-Wave 3: [T6] [T7]  (并行)
+Wave 3: [T6] [T7]  (parallel)
 ```
 
 ---
@@ -674,7 +678,8 @@ User calls cast() / to_owned() / into_owned()
     │
     ├── convert reads tensor shape / strides / storage mode metadata
     ├── cast collects elements and re-encodes them via CastTo rules
-    ├── owned-conversion paths choose between O(1) transfer and O(n) copy
+    ├── owned-conversion paths choose explicit O(1) transfer or O(n) copy by source storage mode
+    ├── ArcRepr → Owned always allocates and copies (O(n))
     ├── util::to_contiguous() triggers the internal F-order repacking helper when needed
     └── the module returns a new owned tensor or an explicit view conversion result
 ```
@@ -730,6 +735,7 @@ User calls cast() / to_owned() / into_owned()
 | `to_owned`            | O(n)       | O(n)       | 总是拷贝       |
 | `into_owned`（Owned） | O(1)       | O(1)       | 直接返回       |
 | `into_owned`（View）  | O(n)       | O(n)       | 拷贝           |
+| `into_owned`（Arc）   | O(n)       | O(n)       | 总是分配并复制 |
 | `view()`              | O(1)       | O(1)       | 仅元数据       |
 | `into_shared()`       | O(1)       | O(1)       | Arc 包装       |
 
@@ -766,6 +772,7 @@ User calls cast() / to_owned() / into_owned()
 | 1.2.1 | 2026-04-08 |
 | 1.2.2 | 2026-04-10 |
 | 1.2.3 | 2026-04-14 |
+| 1.2.4 | 2026-04-15 |
 
 ---
 

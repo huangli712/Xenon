@@ -34,18 +34,18 @@
 ### 1.3 在架构中的位置
 
 ```
-依赖层级：
+Dependency layers:
 L0: error, private
 L1: dimension, element, complex
-L2: layout (依赖 dimension)
-L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
-L4: tensor (依赖 storage, dimension)
+L2: layout (depends on dimension)
+L3: storage (independent of layout; owned by tensor and consumes layout results)
+L4: tensor (depends on storage, dimension)
 L5: overload/, iter/, index/, shape/, broadcast.rs, construct/, ffi/, convert/, format/
 
-横切关注点（全局）：
+Cross-cutting concern (global):
 ┌─────────────────────────────────────────────────────────────────┐
-│  文档 (doc comments, README, examples/)  ← 当前文档（全局）         │
-│  ─ 横贯所有 L0-L5 模块的 pub API 文档                              │
+│  Documentation (doc comments, README, examples/)  <- current document (global) │
+│  - Spans pub API docs across all L0-L5 modules                               │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -66,63 +66,63 @@ L5: overload/, iter/, index/, shape/, broadcast.rs, construct/, ffi/, convert/, 
 
 ```
 src/
-├── lib.rs                    # Crate 级文档（L0）
+├── lib.rs                    # Crate-level docs (L0)
 ├── dimension/
-│   └── mod.rs                # 维度模块文档（L1）
+│   └── mod.rs                # Dimension module docs (L1)
 ├── element/
-│   └── mod.rs                # 元素类型模块文档（L1）
+│   └── mod.rs                # Element-type module docs (L1)
 ├── complex/
-│   └── mod.rs                # 复数模块文档（L1）
+│   └── mod.rs                # Complex-number module docs (L1)
 ├── storage/
-│   └── mod.rs                # 存储模块文档（L1）
+│   └── mod.rs                # Storage module docs (L1)
 ├── layout/
-│   └── mod.rs                # 布局模块文档（L1）
+│   └── mod.rs                # Layout module docs (L1)
 ├── tensor/
-│   └── mod.rs                # 张量模块文档（L1）
+│   └── mod.rs                # Tensor module docs (L1)
 ├── iter/
-│   └── mod.rs                # 迭代器模块文档（L1）
+│   └── mod.rs                # Iterator module docs (L1)
 ├── math/
-│   └── mod.rs                # 逐元素运算模块文档（L1）
+│   └── mod.rs                # Element-wise operation module docs (L1)
 ├── overload/
-│   └── mod.rs                # 运算符重载模块文档（L1）
+│   └── mod.rs                # Operator-overload module docs (L1)
 ├── matrix/
-│   └── mod.rs                # 向量内积模块文档（L1）
+│   └── mod.rs                # Vector dot-product module docs (L1)
 ├── reduction/
-│   └── mod.rs                # 归约模块文档（L1）
-├── broadcast.rs              # 广播模块文档（L1，单文件模块）
+│   └── mod.rs                # Reduction module docs (L1)
+├── broadcast.rs              # Broadcast module docs (L1, single-file module)
 ├── shape/
-│   └── mod.rs                # 形状操作模块文档（L1）
+│   └── mod.rs                # Shape-operation module docs (L1)
 ├── index/
-│   └── mod.rs                # 索引模块文档（L1）
+│   └── mod.rs                # Indexing module docs (L1)
 ├── construct/
-│   └── mod.rs                # 构造模块文档（L1）
+│   └── mod.rs                # Constructor module docs (L1)
 ├── convert/
-│   └── mod.rs                # 类型转换模块文档（L1）
+│   └── mod.rs                # Type-conversion module docs (L1)
 ├── set/
-│   └── mod.rs                # 集合操作模块文档（L1）
+│   └── mod.rs                # Set-operation module docs (L1)
 ├── format/
-│   └── mod.rs                # 输出格式化模块文档（L1）
+│   └── mod.rs                # Output-formatting module docs (L1)
 ├── ffi/
-│   └── mod.rs                # FFI 模块文档（L1）
+│   └── mod.rs                # FFI module docs (L1)
 ├── workspace/
-│   └── mod.rs                # 工作空间模块文档（L1）
+│   └── mod.rs                # Workspace module docs (L1)
 ├── simd/
-│   └── mod.rs                # SIMD 模块文档（L1）
+│   └── mod.rs                # SIMD module docs (L1)
 ├── parallel/
-│   └── mod.rs                # 并行模块文档（L1）
-├── error.rs                  # 错误模块文档（L1）
-└── prelude.rs                # Prelude 文档（L1）
+│   └── mod.rs                # Parallel module docs (L1)
+├── error.rs                  # Error module docs (L1)
+└── prelude.rs                # Prelude docs (L1)
 
 examples/
-├── basic.rs                  # 基础操作示例
-├── complex_numbers.rs        # 复数运算示例
-├── broadcasting.rs           # 广播机制示例
-├── parallel.rs               # 并行计算示例（需 parallel feature）
-├── simd.rs                   # SIMD 加速示例（需 simd feature）
-└── ffi.rs                    # FFI 集成示例
+├── basic.rs                  # Basic-operations example
+├── complex_numbers.rs        # Complex-number operations example
+├── broadcasting.rs           # Broadcasting example
+├── parallel.rs               # Parallel-computation example (requires `parallel` feature)
+├── simd.rs                   # SIMD-acceleration example (requires `simd` feature)
+└── ffi.rs                    # FFI integration example
 
-README.md                     # 项目 README
-CHANGELOG.md                  # 版本变更记录
+README.md                     # Project README
+CHANGELOG.md                  # Version change log
 ```
 
 ### 3.2 划分理由
@@ -187,6 +187,15 @@ L3: Examples (examples/)
     └── complete runnable example programs
 ```
 
+### 5.2 各层覆盖要求
+
+| 层次 | 覆盖率要求                    | 验证方式                                             |
+| ---- | ----------------------------- | ---------------------------------------------------- |
+| L0   | 必须存在                      | CI 检查                                              |
+| L1   | 每个 pub mod 必须有模块文档   | `#![warn(missing_docs)]`                             |
+| L2   | 每个 pub 项必须有 doc comment | `#![warn(missing_docs)]`（参见 `00-coding.md §6`）   |
+| L3   | 关键 API 至少一个示例         | `cargo build --examples` / `cargo run --example ...` |
+
 ### 5.3 关键 API 示例覆盖矩阵
 
 | API 族 | 必须有示例 | 对应设计文档 |
@@ -204,15 +213,6 @@ L3: Examples (examples/)
 | `clip`/`fill` | ✅ | `20-utility` |
 | 工作空间 | ✅ | `24-workspace` |
 | 格式化输出 | ✅ | `22-output` |
-
-### 5.2 各层覆盖要求
-
-| 层次 | 覆盖率要求                    | 验证方式                                             |
-| ---- | ----------------------------- | ---------------------------------------------------- |
-| L0   | 必须存在                      | CI 检查                                              |
-| L1   | 每个 pub mod 必须有模块文档   | `#![warn(missing_docs)]`                             |
-| L2   | 每个 pub 项必须有 doc comment | `#![warn(missing_docs)]`（参见 `00-coding.md §6`）   |
-| L3   | 关键 API 至少一个示例         | `cargo build --examples` / `cargo run --example ...` |
 
 ---
 
@@ -436,7 +436,7 @@ Rust N-dimensional tensor library for scientific computing.
 
 ## Quick Start
 
-[代码示例]
+[code example]
 
 ## Installation
 
@@ -447,7 +447,7 @@ xenon = "x.y.z"
 
 ## Documentation
 
-[docs.rs 链接]
+[docs.rs link]
 
 ## License
 
@@ -632,6 +632,7 @@ pub fn sum(&self) -> A { ... }
 /// ```rust
 /// use xenon::prelude::*;
 ///
+/// # fn demo() -> xenon::Result<()> {
 /// let data = vec![1.0f64, 2.0, 3.0, 4.0];
 ///
 /// // SAFETY: data is non-empty, properly aligned, and outlives the view.
@@ -645,14 +646,16 @@ pub fn sum(&self) -> A { ... }
 ///     )?
 /// };
 /// assert_eq!(view.shape(), &[2, 2]);
+/// # Ok(())
+/// # }
 /// ```
-pub unsafe fn from_raw_parts<A, D>(
+pub unsafe fn from_raw_parts<'a, A, D>(
     ptr: *const A,
     storage_len: usize,
     shape: D,
     strides: Strides<D>,
     offset: usize,
-) -> Result<TensorView<'static, A, D>, XenonError>
+) -> Result<TensorView<'a, A, D>, XenonError>
 where
     A: Element,
     D: Dimension
@@ -673,17 +676,17 @@ pub unsafe fn from_raw_parts<'a, A, D>(...) -> TensorView<'a, A, D>
 ### 15.1 文档生成流程
 
 ````
-源码中的 doc comments
+Doc comments in the source code
     │
-    ├── cargo doc → rustdoc → HTML 文档
-    │       ├── 解析 markdown
-    │       ├── 验证 intra-doc links
-    │       └── 生成 docs.rs 兼容输出
+    ├── cargo doc → rustdoc → HTML docs
+    │       ├── parse Markdown
+    │       ├── validate intra-doc links
+    │       └── generate docs.rs-compatible output
     │
     └── cargo test --doc → rustdoc --test
-            ├── 提取 ```rust ``` 代码块
-            ├── 编译为独立可执行文件
-            └── 运行并验证断言
+            ├── extract ```rust ``` code blocks
+            ├── compile them as standalone executables
+            └── run them and verify assertions
 ````
 
 ### 15.2 文档覆盖率计算
@@ -1103,6 +1106,7 @@ Wave 6: [T17]
 | 1.1.2 | 2026-04-10 |
 | 1.1.3 | 2026-04-10 |
 | 1.1.4 | 2026-04-14 |
+| 1.1.5 | 2026-04-15 |
 
 ---
 

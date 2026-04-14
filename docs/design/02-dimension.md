@@ -63,11 +63,11 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 ```
 src/dimension/
-├── mod.rs             # Dimension trait 定义，模块导出，MAX_DIMENSION 常量
-├── static_dims.rs     # Ix0, Ix1, ..., Ix6 静态维度及 Dimension impl
-├── dynamic.rs         # IxDyn 动态维度及 Dimension impl
-├── into_dimension.rs  # IntoDimension trait 及其实现
-└── axes.rs            # Axis 新类型及轴操作辅助方法
+├── mod.rs             # Dimension trait definition, module exports, MAX_DIMENSION constant
+├── static_dims.rs     # Ix0, Ix1, ..., Ix6 static dimensions and Dimension impls
+├── dynamic.rs         # IxDyn dynamic dimension and Dimension impl
+├── into_dimension.rs  # IntoDimension trait and its impls
+└── axes.rs            # Axis newtype and axis helper methods
 ```
 
 单目录设计：维度类型之间高度相关（互转、公共 trait），集中管理减少耦合复杂度。
@@ -80,8 +80,8 @@ src/dimension/
 
 ```
 src/dimension/
-├── crate::error       # XenonError::DimensionMismatch 错误变体
-└── crate::private     # Sealed trait（防止外部实现 Dimension）
+├── crate::error       # XenonError::DimensionMismatch error variant
+└── crate::private     # Sealed trait (prevents external Dimension impls)
 ```
 
 ### 4.2 依赖精确到类型级
@@ -222,18 +222,27 @@ pub struct Ix0;
 
 /// One-dimensional dimension.
 ///
-/// `#[repr(C)]` guarantees that the single `usize` field is laid out at offset 0,
-/// enabling `slice()` to safely reinterpret `&Ix1` as `&[usize; 1]` via pointer cast.
+/// `#[repr(C)]` is required because `slice()` reinterprets `&Self` as `&[usize; 1]`
+/// via pointer cast; this is only safe because `repr(C)` guarantees the `usize`
+/// fields are laid out contiguously starting at offset 0.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix1(pub usize);
 
 /// Two-dimensional dimension.
+///
+/// `#[repr(C)]` is required because `slice()` reinterprets `&Self` as `&[usize; 2]`
+/// via pointer cast; this is only safe because `repr(C)` guarantees the `usize`
+/// fields are laid out contiguously starting at offset 0.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix2(pub usize, pub usize);
 
 /// Three-dimensional dimension.
+///
+/// `#[repr(C)]` is required because `slice()` reinterprets `&Self` as `&[usize; 3]`
+/// via pointer cast; this is only safe because `repr(C)` guarantees the `usize`
+/// fields are laid out contiguously starting at offset 0.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix3(pub usize, pub usize, pub usize);
@@ -767,8 +776,8 @@ impl Reverse for IxDyn {
 维度层保存无符号形状（`usize`），`strides_for_f_order()` 也返回同一维度类型 `Self`，只是把各轴长度替换为以元素为单位的无符号步长值。下游 `layout` 模块再把这类结果包装为 `Strides<D>`，并负责具体 stride 元数据，仅覆盖当前版本允许的连续、转置后非连续和广播零步长布局（参见 `06-layout.md` §5）：
 
 ```
-Dimension 层：shape = [3, 4], strides_for_f_order() = Ix2(1, 3)
-Layout 层：   strides = [1usize, 3usize]（表示当前版本允许的合法布局）
+Dimension layer: shape = [3, 4], strides_for_f_order() = Ix2(1, 3)
+Layout layer:    strides = [1usize, 3usize] (legal layouts allowed in the current version)
 ```
 
 > 维度层关注"形状是什么"，layout 层关注"数据如何排列"。
@@ -793,36 +802,7 @@ strides_for_f_order(shape):
 
 ---
 
-## 7. 与其他模块的交互
-
-### 7.1 接口约定
-
-| 模块      | 使用的 trait/类型            | 用途                                         |
-| --------- | ---------------------------- | -------------------------------------------- |
-| `layout`  | `Dimension`                  | 计算步长、检查连续性                         |
-| `storage` | —                            | 不直接消费 `Dimension`；仅管理底层连续缓冲区 |
-| `tensor`  | `Dimension`                  | 泛型参数、形状访问                           |
-| `shape`   | `Dimension`, `IntoDimension` | transpose                                    |
-| `iter`    | `Dimension`                  | 迭代器泛型参数                               |
-| `math`    | `Dimension`                  | 运算泛型参数                                 |
-| `index`   | `Dimension`, `Axis`          | 索引操作                                     |
-
-> 各模块的详细接口约定参见对应设计文档（`05-storage.md` §5、`07-tensor.md` §5、`16-shape.md` §5、`17-indexing.md` §5）。当前版本 `shape` 模块仅覆盖 transpose；reshape 超出当前版本范围。
-
-### 7.2 数据流描述
-
-```text
-User provides shape / axis / dimension input
-    │
-    ├── dimension normalizes it into `Ix0`~`Ix6` or `IxDyn`
-    ├── tensor / layout consume `ndim()`, `slice()`, `checked_size()`, and F-order stride metadata
-    ├── shape / iter / index build higher-level operations on `Axis`, `RemoveAxis`, `Reverse`, and related traits
-    └── static/dynamic conversion failures propagate upward as `XenonError::DimensionMismatch`
-```
-
----
-
-## 8. 实现任务拆分
+## 7. 实现任务拆分
 
 ### Wave 1: 基础设施
 
@@ -940,9 +920,9 @@ Wave 5:  [T10] → [T11] → [T12]
 
 ---
 
-## 9. 测试计划
+## 8. 测试计划
 
-### 9.1 测试分类表
+### 8.1 测试分类表
 
 | 测试分类 | 位置                                             | 说明                                                                |
 | -------- | ------------------------------------------------ | ------------------------------------------------------------------- |
@@ -951,7 +931,7 @@ Wave 5:  [T10] → [T11] → [T12]
 | 边界测试 | 同模块测试中标注                                 | 覆盖 Ix0、零长度轴、大维度与溢出路径                                |
 | 属性测试 | `tests/test_dimension.rs` 或 `tests/property.rs` | 验证 stride/size/维度互转不变量                                     |
 
-### 9.2 单元测试清单
+### 8.2 单元测试清单
 
 | 测试函数                     | 测试内容                                                 | 优先级 |
 | ---------------------------- | -------------------------------------------------------- | ------ |
@@ -974,7 +954,7 @@ Wave 5:  [T10] → [T11] → [T12]
 | `test_axis_is_first_last`    | `Axis(0).is_first()`, `Axis(2).is_last(3)`               | 中     |
 | `test_size_overflow`         | 大值维度 `checked_size()` 返回 `None`                    | 低     |
 
-### 9.3 边界测试场景
+### 8.3 边界测试场景
 
 | 场景                                  | 预期行为                              |
 | ------------------------------------- | ------------------------------------- |
@@ -984,7 +964,7 @@ Wave 5:  [T10] → [T11] → [T12]
 | 大维度 `Ix6(100,100,100,100,100,100)` | `checked_size()` 在溢出时返回 `None`  |
 | `IxDyn::ones(0)`                      | 零维动态维度                          |
 
-### 9.4 属性测试不变量
+### 8.4 属性测试不变量
 
 | 不变量                                           | 测试方法     |
 | ------------------------------------------------ | ------------ |
@@ -992,26 +972,55 @@ Wave 5:  [T10] → [T11] → [T12]
 | `dim.into_dyn().try_from_dyn()` 往返一致         | 静态维度     |
 | `dim.size() == dim.slice().iter().product()`     | 随机形状     |
 
-### 9.5 集成测试
+### 8.5 集成测试
 
 | 测试文件                  | 测试内容                                                                               |
 | ------------------------- | -------------------------------------------------------------------------------------- |
 | `tests/test_dimension.rs` | `IntoDimension`、`Axis`、`BroadcastDim` 与 `tensor`、`shape`、`index` 的端到端协同验证 |
 
-### 9.6 Feature gate / 配置测试
+### 8.6 Feature gate / 配置测试
 
 | 配置项 | 覆盖方式                              | 说明                                         |
 | ------ | ------------------------------------- | -------------------------------------------- |
 | 默认配置 | 常规单元/集成测试路径                  | 本模块无独立 feature gate，默认配置即主路径  |
 | 非默认 feature | 不适用                              | 本模块未引入 feature gate，故无额外配置矩阵 |
 
-### 9.7 类型边界 / 编译期测试
+### 8.7 类型边界 / 编译期测试
 
 | 测试类型 | 覆盖方式                                  | 说明                                                 |
 | -------- | ----------------------------------------- | ---------------------------------------------------- |
 | sealed 边界 | compile-fail 测试外部类型实现 `Dimension` | 验证封闭 trait 边界保持成立                          |
 | 维度边界 | 编译期验证 `Ix0` 不实现 `RemoveAxis`        | 验证标量轴操作在类型系统层被拒绝                     |
 | 静动态边界 | 编译期验证数组/元组输入保持预期 `Dim` 类型  | 验证 `IntoDimension` 不会意外退化为动态维度          |
+
+---
+
+## 9. 与其他模块的交互
+
+### 9.1 接口约定
+
+| 模块      | 使用的 trait/类型            | 用途                                         |
+| --------- | ---------------------------- | -------------------------------------------- |
+| `layout`  | `Dimension`                  | 计算步长、检查连续性                         |
+| `storage` | —                            | 不直接消费 `Dimension`；仅管理底层连续缓冲区 |
+| `tensor`  | `Dimension`                  | 泛型参数、形状访问                           |
+| `shape`   | `Dimension`, `IntoDimension` | transpose                                    |
+| `iter`    | `Dimension`                  | 迭代器泛型参数                               |
+| `math`    | `Dimension`                  | 运算泛型参数                                 |
+| `index`   | `Dimension`, `Axis`          | 索引操作                                     |
+
+> 各模块的详细接口约定参见对应设计文档（`05-storage.md` §5、`07-tensor.md` §5、`16-shape.md` §5、`17-indexing.md` §5）。当前版本 `shape` 模块仅覆盖 transpose；reshape 超出当前版本范围。
+
+### 9.2 数据流描述
+
+```text
+User provides shape / axis / dimension input
+    │
+    ├── dimension normalizes it into `Ix0`~`Ix6` or `IxDyn`
+    ├── tensor / layout consume `ndim()`, `slice()`, `checked_size()`, and F-order stride metadata
+    ├── shape / iter / index build higher-level operations on `Axis`, `RemoveAxis`, `Reverse`, and related traits
+    └── static/dynamic conversion failures propagate upward as `XenonError::DimensionMismatch`
+```
 
 ---
 
@@ -1126,6 +1135,7 @@ Wave 5:  [T10] → [T11] → [T12]
 | 1.2.0 | 2026-04-08 |
 | 1.2.1 | 2026-04-14 |
 | 1.2.2 | 2026-04-14 |
+| 1.2.3 | 2026-04-15 |
 
 ---
 

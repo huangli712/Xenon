@@ -25,7 +25,7 @@
 | 原则      | 体现                                                  |
 | --------- | ----------------------------------------------------- |
 | 最小范围  | 当前仅实现向量内积，复杂线性代数由上游库通过 FFI 实现 |
-| 错误恢复  | 维度不匹配返回可恢复错误，不 panic                    |
+| 错误恢复  | 维度不匹配返回可恢复错误（`XenonError`）；整数溢出为不可恢复 panic |
 | 语义优先  | dot 先保证语义与错误契约一致，再按能力选择标量 / SIMD / 并行路径 |
 | BLAS 兼容 | 内存布局支持 BLAS 调用约定                            |
 
@@ -58,8 +58,8 @@ L5: matrix  <- current module
 
 ```
 src/matrix/
-├── mod.rs              # 模块入口，re-exports，dot() 公共 API
-└── dot.rs              # 向量内积实现（标量 / SIMD / 并行分派）
+├── mod.rs              # module entry, re-exports, dot() public API
+└── dot.rs              # vector dot-product implementation (scalar / SIMD / parallel dispatch)
 ```
 
 多文件设计理由：`matrix/` 保持最小语义层，只暴露 dot API 与执行路径分派；`src/simd/` 提供可选的 SIMD kernel，`parallel` 模块提供可选的并行执行能力。默认路径仍可回退到纯标量实现，以保持统一语义与错误契约。
@@ -298,7 +298,7 @@ fn scalar_dot_float_or_complex<A, D>(
 - 复数类型（`Complex<f32>`、`Complex<f64>`）：`conjugate(x)` 返回共轭复数
 
 ```rust
-// Numeric trait 中的 conjugate 方法（定义于 03-element.md §5.2）
+// conjugate method in the Numeric trait (defined in 03-element.md §5.2)
 // Real types: fn conjugate(self) -> Self { self }
 // Complex types: fn conjugate(self) -> Self { Complex::conjugate(self) }
 
@@ -550,6 +550,7 @@ User calls dot(a, b)
 | 1.1.1 | 2026-04-10 |
 | 1.1.2 | 2026-04-10 |
 | 1.1.3 | 2026-04-14 |
+| 1.1.4 | 2026-04-15 |
 
 ---
 

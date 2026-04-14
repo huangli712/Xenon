@@ -69,10 +69,10 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 ```
 src/layout/
-├── mod.rs             # LayoutFlags、Strides<D> 和公开 API
-├── flags.rs           # LayoutFlags: u8 位域定义和操作
-├── strides.rs         # 步长计算、验证、零步长处理
-└── contiguous.rs      # F-连续性检测算法
+├── mod.rs             # LayoutFlags, Strides<D>, and public API
+├── flags.rs           # LayoutFlags: u8 bitfield definitions and operations
+├── strides.rs         # stride computation, validation, and zero-stride handling
+└── contiguous.rs      # F-contiguity detection algorithm
 ```
 
 文件划分理由：步长计算、标志位操作、连续性检测各自独立且职责清晰，拆分后便于独立测试和维护。
@@ -123,10 +123,10 @@ LayoutFlags (u8):
 │ - │ - │ - │ - │ZER│ALG│ - │ F │
 └───┴───┴───┴───┴───┴───┴───┴───┘
 
-F   = F_CONTIGUOUS    (0b00001)  Fortran 连续
-ALG = ALIGNED         (0b00100)  64 字节对齐
-ZER = HAS_ZERO_STRIDE (0b01000)  包含零步长（广播）
--   = 保留位
+F   = F_CONTIGUOUS    (0b00001)  Fortran contiguous
+ALG = ALIGNED         (0b00100)  64-byte aligned
+ZER = HAS_ZERO_STRIDE (0b01000)  contains zero stride (broadcast)
+-   = reserved bits
 ```
 
 > **注意**：Xenon 不需要 `C_CONTIGUOUS` 标志位（不支持 C-order）。1D 和 0D 数组天然 F-连续。
@@ -298,12 +298,22 @@ impl<D: Dimension> Strides<D> {
     /// Zero stride is allowed and represents a broadcast dimension.
     pub fn new(strides: D) -> Self;
 
+    /// Construct strides from raw slice data.
+    /// Returns `XenonError` if the slice length does not match `D`.
+    pub fn from_slice(slice: &[usize]) -> Result<Self, XenonError>;
+
     /// Compute default F-contiguous strides for the given shape.
     pub fn f_contiguous(shape: &D) -> Self;
 
     /// Returns the stride for dimension `axis`.
     /// Panics if axis is out of bounds.
     pub fn stride(&self, axis: usize) -> usize;
+
+    /// Returns an iterator over stride values.
+    pub fn iter(&self) -> impl Iterator<Item = &usize>;
+
+    /// Borrows the stride storage as a slice.
+    pub fn as_slice(&self) -> &[usize];
 }
 ```
 
@@ -347,7 +357,7 @@ i=0: stride[0] = 1,    cumulative = 1 * 3 = 3
 i=1: stride[1] = 3,    cumulative = 3 * 4 = 12
 i=2: stride[2] = 12,   cumulative = 12 * 5 = 60
 
-结果: strides = [1, 3, 12]
+Result: strides = [1, 3, 12]
 ```
 
 **API**：
@@ -369,13 +379,13 @@ pub fn compute_f_strides<D: Dimension>(shape: &D) -> Strides<D>;
 
 ```
 function is_f_contiguous(shape: [usize; N], strides: [usize; N]) -> bool:
-    // 空数组或单元素始终连续
+    // Empty arrays or single elements are always contiguous
     if product(shape) <= 1:
         return true
 
     expected_stride = 1
     for i from 0 to N-1:
-        // 跳过 size=1 的轴（步长可以是任意值）
+        // Skip size=1 axes (their stride may be any value)
         if shape[i] != 1 and strides[i] != expected_stride:
             return false
         expected_stride = expected_stride * shape[i]
@@ -389,11 +399,11 @@ function is_f_contiguous(shape: [usize; N], strides: [usize; N]) -> bool:
 shape = [2, 3], strides = [1, 2]
 i=0: shape[0]=2, stride[0]=1, expected=1 ✓, expected := 1*2=2
 i=1: shape[1]=3, stride[1]=2, expected=2 ✓
-结果: true (F-contiguous)
+Result: true (F-contiguous)
 
 shape = [2, 3], strides = [3, 1]
 i=0: shape[0]=2, stride[0]=3, expected=1 ✗
-结果: false (not F-contiguous)
+Result: false (not F-contiguous)
 ```
 
 ### 5.5 对齐检查
@@ -425,7 +435,7 @@ pub fn is_aligned(ptr: *const u8) -> bool {
 ```
 shape = [3, 4], strides = [1, 0]  // axis 1 is broadcast
 
-索引 [0, 0] 和 [0, 1] 和 [0, 2] 和 [0, 3] 访问同一物理元素
+Indices [0, 0], [0, 1], [0, 2], and [0, 3] access the same physical element
 ```
 
 ### 5.8 Layout 结构体
@@ -547,13 +557,13 @@ let contig = check_contiguity(tensor.shape(), tensor.strides());  // O(n) repeat
 function compute_flags(shape, strides, ptr):
     flags = LayoutFlags::EMPTY
 
-    // 1. 连续性
+    // 1. Contiguity
     flags = flags.set_f_contiguous(is_f_contiguous(shape, strides))
 
-    // 2. 对齐（按逻辑首元素指针，而非底层分配基址）
+    // 2. Alignment (based on the logical-first-element pointer, not the backing allocation base)
     flags = flags.set_aligned(is_aligned(ptr))
 
-    // 3. 步长特性
+    // 3. Stride properties
     flags = flags.set_has_zero_stride(any(stride == 0 for stride in strides))
 
     return flags
@@ -570,14 +580,16 @@ function compute_flags(shape, strides, ptr):
 
 ### 6.3 标志位更新规则
 
+> 所有 flags 更新规则统一通过 `compute_layout_flags()` 入口执行（参见 §5.9）。
+
 | 操作     | 标志位更新方式                                         |
 | -------- | ------------------------------------------------------ |
-| 创建     | 全部重新计算                                           |
-| 切片     | 继承 + 重新计算连续性/对齐（对齐基于切片后逻辑首元素） |
-| 转置     | 继承 + F 连续性标志重置（转置后通常变为非 F-连续）     |
-| Reshape  | 重新计算全部                                           |
-| 视图创建 | 继承全部                                               |
-| 广播     | 继承 + 设置零步长标志                                  |
+| 创建     | 调用 `compute_layout_flags()` 统一重新计算             |
+| 切片     | 调用 `compute_layout_flags()` 统一重新计算（对齐基于切片后逻辑首元素） |
+| 转置     | 调用 `compute_layout_flags()` 统一重新计算             |
+| Reshape  | 调用 `compute_layout_flags()` 统一重新计算             |
+| 视图创建 | 调用 `compute_layout_flags()` 统一重新计算             |
+| 广播     | 调用 `compute_layout_flags()` 统一重新计算             |
 
 ### 6.4 安全性论证
 
@@ -662,7 +674,7 @@ Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的
 ```
 Wave 1: [T1] → [T2]
               ↓
-Wave 2: [T3] [T4] [T5] [T7]   (可并行)
+Wave 2: [T3] [T4] [T5] [T7]   (parallelizable)
               ↓
 Wave 3:       [T6]
               ↓
@@ -765,8 +777,8 @@ Upper layers create or transform tensor metadata
 | 方向              | 对方模块 | 接口/类型           | 约定                                                                                                        |
 | ----------------- | -------- | ------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `layout ← tensor` | `tensor` | `LayoutFlags`       | `TensorBase` 直接内联 `LayoutFlags` 作为计算字段，`Layout` 结构体仅为预留定义（参见 `07-tensor.md` §5.1）。 |
-| `tensor → layout` | `tensor` | 切片后的 flags 更新 | 切片时调用 layout 更新连续性与对齐标志（参见 `17-indexing.md` §5）                                          |
-| `tensor → layout` | `tensor` | transpose 后的步长/flags 重算 | transpose 后重新分类 layout state 与 flags（参见 `16-shape.md` §5.1）                                      |
+| `tensor → layout` | `tensor` | 切片后的 flags 更新 | 切片时统一调用 `compute_layout_flags()` 更新连续性与对齐标志（参见 §5.9、`17-indexing.md` §5）            |
+| `tensor → layout` | `tensor` | transpose 后的步长/flags 重算 | transpose 后统一调用 `compute_layout_flags()` 重算 layout state 与 flags（参见 §5.9、`16-shape.md` §5.1） |
 
 ### 9.4 与 SIMD 模块
 
@@ -870,6 +882,7 @@ Upper layers create or transform tensor metadata
 | 单 crate   | 保持单 crate 边界                      |
 | SemVer     | 布局类型和 stride 计算变更遵循 SemVer  |
 | 最小依赖   | 无新增第三方依赖                       |
+| 线程安全   | `Strides<D>` 本身是 immutable 的值类型；构造后不可修改，因此无需同步原语即可跨线程共享（`Send + Sync` 自动推导） |
 
 ---
 
@@ -887,6 +900,7 @@ Upper layers create or transform tensor metadata
 | 1.2.0 | 2026-04-08 |
 | 1.2.1 | 2026-04-09 |
 | 1.2.2 | 2026-04-14 |
+| 1.2.3 | 2026-04-15 |
 
 ---
 

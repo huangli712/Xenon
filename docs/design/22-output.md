@@ -30,15 +30,15 @@
 ### 1.3 在架构中的位置
 
 ```
-依赖层级：
+Dependency layers:
 L0: error, private
 L1: dimension, element, complex
-L2: layout (依赖 dimension)
-L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
-L4: tensor (依赖 storage, dimension)
+L2: layout (depends on dimension)
+L3: storage (independent of layout; owned by tensor and consumes layout results)
+L4: tensor (depends on storage, dimension)
 L5: broadcast, iter, ffi
 L6: math, matrix, reduction, shape, index, util
-L7: format  ← 当前模块
+L7: format  <- current module
 ```
 
 ---
@@ -59,11 +59,11 @@ L7: format  ← 当前模块
 ```
 src/
 └── format/
-    ├── mod.rs         # 模块根，re-exports，cfg gates
-    ├── config.rs      # FormatConfig 配置结构体及 Default 实现
-    ├── display.rs     # Display trait 实现（基于 core::fmt，无 std gate）
-    ├── debug.rs       # Debug trait 实现
-    └── pretty.rs      # NumPy 风格格式化辅助函数（fmt_1d, fmt_nd, 截断规则）
+    ├── mod.rs         # Module root, re-exports, cfg gates
+    ├── config.rs      # FormatConfig and Default implementation
+    ├── display.rs     # Display trait implementation (based on core::fmt, no std gate)
+    ├── debug.rs       # Debug trait implementation
+    └── pretty.rs      # NumPy-style formatting helpers (fmt_1d, fmt_nd, truncation rules)
 ```
 
 多文件设计：将格式化输出按职责拆分为多个文件，便于后期拓展和维护。
@@ -292,9 +292,9 @@ where
     ///
     /// ```text
     /// Tensor(shape=[3, 4], strides=[1, 3], dtype=f64, f-contiguous)
-    /// [[1.0, 2.0, 3.0, 4.0],
-    ///  [5.0, 6.0, 7.0, 8.0],
-    ///  [9.0, 10.0, 11.0, 12.0]]
+    /// [[1.0, 4.0, 7.0, 10.0],
+    ///  [2.0, 5.0, 8.0, 11.0],
+    ///  [3.0, 6.0, 9.0, 12.0]]
     /// ```
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
@@ -327,39 +327,39 @@ where
 [1, 2, 3, 4, 5]
 ```
 
-**2D（完整）**:
+**2D（完整，shape=[3, 3]，底层数据按 F-order 为 `[1, 2, 3, 4, 5, 6, 7, 8, 9]`）**:
 
 ```
-[[1, 2, 3],
- [4, 5, 6],
- [7, 8, 9]]
+[[1, 4, 7],
+ [2, 5, 8],
+ [3, 6, 9]]
 ```
 
-**3D（完整）**:
+**3D（完整，shape=[2, 2, 2]，底层数据按 F-order 为 `[1, 2, 3, 4, 5, 6, 7, 8]`）**:
 
 ```
-[[[1, 2],
-  [3, 4]],
- [[5, 6],
-  [7, 8]]]
+[[[1, 5],
+  [3, 7]],
+ [[2, 6],
+  [4, 8]]]
 ```
 
-**1D 大数组（截断，默认 edge_items=3）**:
+**1D 大数组（截断，默认 edge_items=3，`threshold=1000` 时仅在元素数 `> 1000` 才截断）**:
 
 ```
-[1, 2, 3, ..., 998, 999, 1000, ... 994 more elements]  shape=[1000]
+[1, 2, 3, ..., 999, 1000, 1001, ... 995 more elements]  shape=[1001]
 ```
 
-**2D 大数组（截断，默认 edge_items=3）**:
+**2D 大数组（截断，默认 edge_items=3，shape=[100, 100]，底层数据按 F-order 为 `1..=10000`）**:
 
 ```
-[[1, 2, 3, ..., 98, 99, 100],
- [101, 102, 103, ..., 198, 199, 200],
- [201, 202, 203, ..., 298, 299, 300],
+[[1, 101, 201, ..., 9701, 9801, 9901],
+ [2, 102, 202, ..., 9702, 9802, 9902],
+ [3, 103, 203, ..., 9703, 9803, 9903],
  ...,
- [9701, 9702, 9703, ..., 9798, 9799, 9800],
- [9801, 9802, 9803, ..., 9898, 9899, 9900],
- [9901, 9902, 9903, ..., 9998, 9999, 10000],
+ [98, 198, 298, ..., 9798, 9898, 9998],
+ [99, 199, 299, ..., 9799, 9899, 9999],
+ [100, 200, 300, ..., 9800, 9900, 10000],
  ... 9964 more elements]  shape=[100, 100]
 ```
 
@@ -368,8 +368,8 @@ where
 **Complex<f64> 类型**:
 
 ```
-[[1.0+2.0j, 3.0+4.0j],
- [5.0+6.0j, 7.0+8.0j]]
+[[1.0+2.0j, 5.0+6.0j],
+ [3.0+4.0j, 7.0+8.0j]]
 ```
 
 **零维张量**:
@@ -400,7 +400,7 @@ truncation_rule(tensor, config):
 | 参数         | 默认值 | 说明                        |
 | ------------ | ------ | --------------------------- |
 | `edge_items` | 3      | 每边显示的元素/行/列数      |
-| `threshold`  | 1000   | 触发截断的最小元素总数      |
+| `threshold`  | 1000   | 元素总数严格大于该值时触发截断 |
 | `precision`  | `None` | 浮点精度（None = 类型默认） |
 | `line_width` | 80     | 每行最大字符数（用于换行）  |
 
@@ -446,6 +446,7 @@ println!("strides: {:?}", tensor.strides());
 
 ```
 fmt_1d(tensor, f):
+    total = tensor.len()
     len = tensor.shape()[0]
     if len > 2 * edge_items and total > threshold:
         write "["
@@ -464,21 +465,34 @@ fmt_1d(tensor, f):
             if i < len - 1: write ", "
         write "]"
 
-fmt_nd(tensor, f, depth):
+fmt_nd(tensor, f, prefix):
+    total = tensor.len()
+    axis = prefix.len()
+    if axis == tensor.ndim():
+        write tensor[prefix]
+        return
+
     write "["
-    iterate logical slices along axis = ndim - depth - 1:
-        if current axis should truncate:
-            format first edge_items slices
-            write ", ..."
-            format last edge_items slices
+    indices = logical_indices_for_axis(tensor.shape()[axis], edge_items, total > threshold)
+    for (pos, entry) in indices.enumerate():
+        if entry == Ellipsis:
+            write "..."
         else:
-            recursively format each child slice with fmt_nd(child, f, depth + 1)
-        insert commas/newlines between sibling slices
-    write "]"
-    if depth == 0 and total > threshold:
+            next_prefix = prefix + [entry]
+            // Outermost dimension is axis 0. For shape [M, N], this emits M rows,
+            // and each displayed element at [i, j] is tensor[[i, j]] in logical F-order.
+            fmt_nd(tensor, f, next_prefix)
+        if pos < indices.len() - 1:
+            write separator_for_axis(axis)
+
+    if axis == 0 and total > threshold:
         omitted = total - count_displayed_elements(tensor.shape(), edge_items)
-        write " ... " + omitted + " more elements]  shape=" + tensor.shape()
+        write ", ... " + omitted + " more elements]  shape=" + tensor.shape()
+    else:
+        write "]"
 ```
+
+> 对 F-order 张量，格式化必须按**逻辑索引**而不是物理线性内存顺序展开。以 `shape=[3, 3]` 为例，显示位置 `[i, j]` 对应逻辑索引 `[i, j]`，其线性位置为 `i + j * 3`；因此输出为 `[[1, 4, 7], [2, 5, 8], [3, 6, 9]]`，而不是按物理连续内存直接切成 `[[1, 2, 3], [4, 5, 6], [7, 8, 9]]`。
 
 ---
 
@@ -532,7 +546,7 @@ Wave 1: [T1] → [T2]
                  │
 Wave 2:    ┌─────┴─────┐
            │           │
-          [T3]        [T4]   (可并行)
+          [T3]        [T4]   (can run in parallel)
            │           │
            └─────┬─────┘
                  │
@@ -581,8 +595,8 @@ Wave 3:        [T5]
 | 空数组 `shape=[0]` | 输出 `[]`                           |
 | 单元素 `shape=[1]` | 输出 `[42]`                         |
 | 零维张量           | 输出 `Tensor0(...)`，与裸标量可区分 |
-| 1001 元素 1D       | 触发截断，并在尾部输出 `shape=[1001]` |
-| 999 元素 1D        | 不截断                              |
+ | 1001 元素 1D       | 触发截断，并在尾部输出 `shape=[1001]` |
+ | 1000 元素 1D       | 不截断                              |
 | NaN/Inf            | 输出 `NaN`/`inf`                    |
 
 ### 8.4 属性测试不变量
@@ -717,6 +731,7 @@ User calls format!("{}", tensor) / format!("{:?}", tensor)
 | 1.1.2 | 2026-04-10 |
 | 1.1.3 | 2026-04-14 |
 | 1.1.4 | 2026-04-14 |
+| 1.1.5 | 2026-04-15 |
 
 ---
 

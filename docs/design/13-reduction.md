@@ -15,7 +15,7 @@
 | ---- | ---- | ------ |
 | sum 归约 | 全局 `sum`、沿轴 `sum_axis`、保留轴版本 `sum_axis_keepdims` | `mean`、`var`、`prod`、`min`、`max`、`argmin`、`argmax` |
 | 数值语义 | 整数 checked arithmetic、浮点 `NaN` 传播、空数组返回加法单位元 | 自动类型提升、近似归约、重排求和顺序 |
-| 执行路径 | 标量基线路径，以及仅在可证明与标量结果一致时启用的 SIMD / 并行分派 | 为追求吞吐而放宽结果一致性的优化路径 |
+| 执行路径 | 标量基线路径，以及仅在满足 `require.md` §28.3 数值语义约束时启用的 SIMD / 并行分派 | 为追求吞吐而放宽结果一致性的优化路径 |
 | 错误边界 | 轴越界返回 `XenonError::InvalidAxis`；整数溢出 panic | 为 axis 错误使用 `InvalidArgument` |
 
 > **注意**：当前版本归约模块只支持 `sum` 家族，不扩展到其它归约操作。
@@ -26,7 +26,7 @@
 | ---- | ---- |
 | 最小范围 | 公开 API 只覆盖 `sum`、`sum_axis`、`sum_axis_keepdims`。 |
 | 语义优先 | 空数组返回加法单位元；浮点遵循 IEEE 754；整数溢出按不可恢复算术域错误处理。 |
-| 路径一致性 | SIMD 与并行只在可证明不改变标量可观察结果时参与，否则回退标量。 |
+| 路径一致性 | SIMD 与并行只在满足 `require.md` §28.3 定义的数值语义约束时参与，否则回退标量。 |
 | 错误统一 | 所有 axis 越界都统一为 `XenonError::InvalidAxis`，并携带 `operation`、`axis`、`ndim`、`shape`。 |
 
 ### 1.3 在架构中的位置
@@ -67,8 +67,8 @@ L6: reduction  <- current module
 
 ```text
 src/reduction/
-├── mod.rs              # 模块入口与公共 re-export
-└── sum.rs              # sum / sum_axis / sum_axis_keepdims 实现
+├── mod.rs              # module entry and public re-exports
+└── sum.rs              # sum / sum_axis / sum_axis_keepdims implementations
 ```
 
 双文件设计理由：`mod.rs` 仅承担模块边界与导出职责，`sum.rs` 集中承载当前版本唯一的归约族。该模块保持最小语义层，SIMD 与并行优化由 `simd/`、`parallel/` 提供能力边界，但不在此模块内扩展新的归约种类。
@@ -131,6 +131,7 @@ where
     /// Returns the sum of all logical elements.
     ///
     /// Empty arrays return the additive identity `A::zero()`.
+    /// Rank-0 (scalar) tensors return their single element.
     /// Integer overflow is unrecoverable and must panic.
     pub fn sum(&self) -> A;
 
@@ -210,7 +211,7 @@ assert_eq!(empty.sum(), 0);
 | axis 校验顺序 | `sum_axis()` 与 `sum_axis_keepdims()` 必须先校验 `axis < ndim`，再执行归约。 |
 | 整数语义 | `i32` / `i64` 累加使用 checked arithmetic，任何溢出立即 panic。 |
 | 浮点/复数语义 | `f32` / `f64` / `Complex<_>` 遵循标量加法语义，`NaN` 按 IEEE 754 自动传播。 |
-| 执行路径约束 | SIMD / 并行若无法证明与标量路径结果一致，则必须回退标量。 |
+| 执行路径约束 | SIMD / 并行若无法满足 `require.md` §28.3 数值语义约束，则必须回退标量。 |
 | 布局前提 | 算法面向 Xenon 当前支持的 F-order 语义和合法 stride 视图，不得引入 C-order 假设。 |
 
 ### 6.2 算法描述
@@ -242,6 +243,8 @@ sum_axis_keepdims(tensor, axis):
     8. Return Tensor<A, D> with the reduced axis length preserved as 1.
 ```
 
+> **0D 张量语义**：`sum()` 对 rank-0 张量（标量）返回其唯一元素，与 `A::zero()` 语义无关。
+
 ### 6.3 类型分派与回退规则
 
 ```rust
@@ -260,7 +263,7 @@ fn sum_float<F: Numeric + Copy>(iter: impl Iterator<Item = F>) -> F {
 - 整数路径：`checked_add()` 失败即 panic，不转换为 `XenonError`。
 - 浮点路径：保持标量加法顺序；`NaN`、`Inf` 等行为沿用 IEEE 754。
 - 复数路径：对实部和虚部分量分别沿用对应实数加法语义，因此含 `NaN` 分量时同样传播。
-- SIMD 路径：仅对能够证明与标量逐元素累加结果完全一致的场景启用；否则回退标量。
+- SIMD 路径：仅在满足 `require.md` §28.3 数值语义约束时启用；否则回退标量。
 - 并行路径：仅在分块归并不会改变可观察结果语义时启用；若无法证明，则回退标量单线程路径。
 
 ### 6.4 安全性论证
@@ -375,6 +378,7 @@ Wave 4:                  [T6]
 | 场景 | 预期行为 |
 | ---- | -------- |
 | 空数组 `shape=[0]` | `sum()` 返回加法单位元 |
+| rank-0 输入 `shape=[]` | `sum()` 返回该标量元素本身 |
 | 被归约轴长度为 `0`，如 `shape=[0, 3]` 沿 `Axis(0)` | 每个输出位置返回零 |
 | 单元素数组 | 结果等于该元素本身 |
 | rank-0 输入调用 `sum_axis*` | 返回 `InvalidAxis`，因 `axis >= ndim` |
@@ -511,7 +515,7 @@ Err(XenonError::InvalidArgument {
 
 | 属性 | 值 |
 | ---- | ---- |
-| 决策 | SIMD / 并行仅在可证明与标量结果一致时启用，否则回退标量。 |
+| 决策 | SIMD / 并行仅在满足 `require.md` §28.3 数值语义约束时启用，否则回退标量。 |
 | 理由 | 归约对累加顺序敏感，必须优先保持统一的对外语义。 |
 | 替代方案 | 无条件按数据规模选择 SIMD 或并行。 |
 | 拒绝原因 | 可能改变浮点/复数结果或 panic 时机，不满足路径一致性约束。 |
@@ -561,6 +565,7 @@ Err(XenonError::InvalidArgument {
 | 版本 | 日期 |
 | ---- | ---- |
 | 1.0.0 | 2026-04-14 |
+| 1.0.1 | 2026-04-15 |
 
 ---
 

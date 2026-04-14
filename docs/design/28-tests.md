@@ -24,23 +24,23 @@
 | 原则     | 体现                                     |
 | -------- | ---------------------------------------- |
 | 全面性   | 覆盖需求说明书中所有 API 的关键行为      |
-| 独立性   | 每个测试文件可独立运行，无跨文件依赖     |
+| 独立性   | 每个Test files可独立运行，无跨文件依赖     |
 | 可读性   | 测试名称描述预期行为，失败信息包含上下文 |
 | 快速反馈 | 完整集成测试 < 5min                      |
 
 ### 1.3 在架构中的位置
 
 ```
-依赖层级：
+Dependency layers:
 L0: error, private
 L1: dimension, element, complex
-L2: layout (依赖 dimension)
-L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
-L4: tensor (依赖 storage, dimension)
+L2: layout (depends on dimension)
+L3: storage (independent of layout; owned by tensor and consumes layout results)
+L4: tensor (depends on storage, dimension)
 L5: overload/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 
-外部（非 crate 模块）：
-tests/  ← 当前模块（仅消费 crate 公共 API）
+External (non-crate modules):
+tests/  <- current module (consumes only the crate's public API)
 ```
 
 ## 2. 需求映射与范围约束
@@ -61,41 +61,41 @@ tests/  ← 当前模块（仅消费 crate 公共 API）
 ```
 tests/
 ├── common/
-│   ├── mod.rs                  # 共享工具导出
-│   ├── assertions.rs           # 自定义断言宏（assert_tensor_close）
-│   └── generators.rs           # 测试数据生成器
+│   ├── mod.rs                  # Shared utility exports
+│   ├── assertions.rs           # Custom assertion macros (`assert_tensor_close`)
+│   └── generators.rs           # Test data generators
 │
+├── compile_fail_tests.rs       # trybuild harness（top-level for Cargo discovery）
 ├── compile-fail/
-│   ├── compile_tests.rs        # trybuild harness
 │   └── ui/
 │       ├── wrong_dimension_type.rs
 │       ├── missing_element_bound.rs
 │       └── mismatched_storage_type.rs
 │
-├── test_tensor.rs              # 张量核心功能（创建/查询/类型别名）
-├── test_math.rs                # 逐元素运算（算术/数学/比较/逻辑）
-├── test_broadcast.rs           # 广播机制（标量/向量/矩阵广播）
-├── test_index.rs               # 索引操作（多维索引/范围切片）
-├── test_construction.rs        # 构造方法（zeros/ones/eye/from_shape_vec/from_vec/from_shape_slice/from_scalar/from_array）
-├── test_iterator.rs            # 迭代器（元素/按轴/按索引）
-├── test_reduction.rs           # 归约运算（sum/沿轴sum）
-├── test_matrix.rs              # 向量内积（dot）
-├── test_set.rs                 # 集合操作（unique）
-├── test_shape.rs               # 形状操作（transpose）
-├── test_conversion.rs          # 类型转换（cast/存储模式转换）
-├── test_utility.rs             # 实用操作（fill/clip/to_contiguous）
-├── test_output.rs              # NumPy 风格格式化输出（Display/Debug/截断）
-├── test_ffi.rs                 # FFI 集成（原始指针/BLAS 兼容）
-├── test_workspace.rs           # Workspace 独立错误与借用/分割/扩容
-├── test_parallel.rs            # 并行计算（一致性/数据竞争）
-├── test_simd.rs                # SIMD 计算（结果一致性）
-├── test_error.rs               # 错误处理（所有错误类型）
+├── test_tensor.rs              # Tensor core functionality (creation/query/type aliases)
+├── test_math.rs                # Element-wise operations (arithmetic/math/comparison/logic)
+├── test_broadcast.rs           # Broadcasting (scalar/vector/matrix broadcasting)
+├── test_index.rs               # Indexing operations (multi-dimensional indexing/range slicing)
+├── test_construction.rs        # Constructors (zeros/ones/eye/from_shape_vec/from_vec/from_shape_slice/from_scalar/from_array)
+├── test_iterator.rs            # Iterators (elements/by-axis/by-index)
+├── test_reduction.rs           # Reduction operations (sum/sum along axis)
+├── test_matrix.rs              # Vector dot product (dot)
+├── test_set.rs                 # Set operations (unique)
+├── test_shape.rs               # Shape operations (transpose)
+├── test_conversion.rs          # Type conversion (cast/storage-mode conversion)
+├── test_utility.rs             # Utility operations (fill/clip/to_contiguous)
+├── test_output.rs              # NumPy-style formatted output (Display/Debug/truncation)
+├── test_ffi.rs                 # FFI integration (raw pointers/BLAS compatibility)
+├── test_workspace.rs           # Workspace-specific errors and borrow/split/growth
+├── test_parallel.rs            # Parallel computation (consistency/data races)
+├── test_simd.rs                # SIMD computation (result consistency)
+├── test_error.rs               # Error handling (all error types)
 │
-├── property.rs                # 属性测试入口（integration test target）
+├── property.rs                # Property-test entry point (integration test target)
 └── property/
-    ├── tensor_props.rs         # 张量不变量（transpose 自反、unique 边界等）
-    ├── ops_props.rs            # 运算不变量（交换律/结合律等）
-    └── shape_props.rs          # 形状不变量（transpose 自反等）
+    ├── tensor_props.rs         # Tensor invariants (transpose involution, unique boundaries, etc.)
+    ├── ops_props.rs            # Operation invariants (commutativity/associativity, etc.)
+    └── shape_props.rs          # Shape invariants (transpose involution, etc.)
 ```
 
 ### 3.2 划分理由
@@ -116,16 +116,16 @@ tests/
 ├── crate::complex          # Complex<f32>, Complex<f64>
 ├── crate::storage          # Owned, ViewRepr, ViewMutRepr, ArcRepr
 ├── crate::layout           # LayoutFlags, Order
-├── crate::math             # 逐元素运算
+├── crate::math             # Element-wise operations
 ├── crate::broadcast        # broadcast_shape
 ├── crate::shape            # transpose
-├── crate::index            # 多维索引、范围切片
+├── crate::index            # Multi-dimensional indexing and range slicing
 ├── crate::construct        # zeros, ones, eye, from_shape_vec, from_shape_slice, from_vec, from_array, from_scalar
 ├── crate::set              # unique
 ├── crate::ffi              # as_ptr, as_mut_ptr, from_raw_parts
 ├── crate::workspace        # Workspace
 ├── crate::error            # XenonError
-└── crate::simd/parallel    # 条件编译模块
+└── crate::simd/parallel    # Conditionally compiled modules
 ```
 
 ### 4.2 依赖精确到类型级
@@ -148,11 +148,11 @@ tests/
 
 | 项目           | 说明                                               |
 | -------------- | -------------------------------------------------- |
-| 新增第三方依赖 | 无新增依赖；维持标准测试工具链与既有可选 feature   |
+| 新增第三方依赖 | `trybuild` 仅作为 dev-dependency 引入；其余维持标准测试工具链与既有可选 feature |
 | 合法性结论     | 符合最小依赖限制                                   |
 | 替代方案       | 不适用；集成测试优先依赖 crate 自身与标准测试机制  |
 
-补充说明：若实现编译期失败测试，可新增仅用于测试目标的 dev-dependency（如 `trybuild`）；该依赖不进入生产依赖闭包，仍符合本文档的最小依赖约束。
+补充说明：`trybuild` 作为 dev-dependency 引入，不进入生产依赖闭包，仍符合本文档的最小依赖约束。
 
 ---
 
@@ -676,7 +676,7 @@ fn test_simd_add_consistency() {
 
 ### 10.2 属性测试框架
 
-使用受控参数化数据生成进行随机化覆盖：
+使用受控参数化数据生成与固定种子样本进行覆盖；不引入额外属性测试框架依赖：
 
 ```rust
 // tests/property/tensor_props.rs
@@ -752,7 +752,7 @@ fn prop_approx_equal(x: f64, y: f64) -> bool {
 | 形状参数         | `1..64usize`           | 避免零/过大形状                 |
 | 浮点数据         | `from_shape_vec` + 固定变换 | 覆盖正常值、NaN、Inf、Subnormal |
 | 浮点数据（过滤） | 手写筛选后的确定性样本 | 排除 NaN/Inf                    |
-| 整数数据         | `any::<i32>()`         | 含负数和边界值                  |
+| 整数数据         | 固定边界样本集         | 含负数、零与边界值              |
 | 1D 向量          | `for len in 1..256`    | 含边界长度                      |
 
 ### 11.3 测试数据生成策略
@@ -831,9 +831,9 @@ fn test_bad_magic() {
 
 ## 13. 与其他模块的交互
 
-### 13.1 测试文件到被测模块映射
+### 13.1 Test files到被测模块映射
 
-| 测试文件               | 被测模块            | 对应设计文档                    |
+| Test files               | 被测模块            | 对应设计文档                    |
 | ---------------------- | ------------------- | ------------------------------- |
 | `test_tensor.rs`       | `tensor`, `storage` | `07-tensor.md`, `05-storage.md` |
 | `test_math.rs`         | `math`              | `11-math.md`                    |
@@ -858,18 +858,18 @@ fn test_bad_magic() {
 ### 13.2 数据流
 
 ```
-测试文件
+Test files
     │
-    ├── 调用 crate 公共 API（Tensor::zeros, +, sum, t, ...）
+    ├── call crate public APIs (Tensor::zeros, +, sum, t, ...)
     │       │
-    │       └── 内部经过: storage → tensor → overload → simd/parallel
+    │       └── internal path: storage → tensor → overload → simd/parallel
     │
-    ├── 使用 common/ 工具
-    │       ├── assert_tensor_close() 进行浮点比较
-    │       └── generators 生成测试数据
+    ├── use common/ utilities
+    │       ├── use assert_tensor_close() for floating-point comparison
+    │       └── generators produce test data
     │
-    └── 参数化数据生成
-            └── 枚举标准输入 → 验证不变量
+    └── parameterized data generation
+            └── enumerate standard inputs → verify invariants
 ```
 
 ---
@@ -1104,17 +1104,19 @@ test:
 编译期失败测试采用 `trybuild` 或等价 harness，在 `dev-dependencies` 中引入即可，不进入生产依赖：
 
 ```text
-tests/compile-fail/
-├── compile_tests.rs    # trybuild harness
-└── ui/
-    ├── wrong_dimension_type.rs
-    ├── missing_element_bound.rs
-    └── mismatched_storage_type.rs
+tests/
+├── compile_fail_tests.rs    # trybuild harness (top-level for Cargo discovery)
+└── compile-fail/
+    └── ui/
+        ├── wrong_dimension_type.rs
+        ├── missing_element_bound.rs
+        └── mismatched_storage_type.rs
 ```
 
 建议的 harness 形式如下：
 
 ```rust
+// tests/compile_fail_tests.rs
 #[test]
 fn compile_fail_cases() {
     let t = trybuild::TestCases::new();
@@ -1194,6 +1196,7 @@ fn compile_fail_cases() {
 | 1.2.1 | 2026-04-08 |
 | 1.2.2 | 2026-04-10 |
 | 1.2.3 | 2026-04-14 |
+| 1.2.4 | 2026-04-15 |
 
 ---
 

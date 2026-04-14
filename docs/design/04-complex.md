@@ -74,9 +74,9 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 ```
 src/complex/
-├── mod.rs     # Complex<T> 定义、基础方法、数学方法、PartialEq、Display、布局断言
-├── ops.rs     # 算术运算符实现（Add/Sub/Mul/Div/Neg + 实数混合运算）
-└── cast.rs    # 类型转换（Complex<f32>↔Complex<f64>、实数→复数）
+├── mod.rs     # Complex<T> definition, basic methods, math methods, PartialEq, Display, layout checks
+├── ops.rs     # Arithmetic operator impls (Add/Sub/Mul/Div/Neg + real/complex mixed ops)
+└── cast.rs    # Type conversions (Complex<f32>↔Complex<f64>, real→complex)
 ```
 
 三文件设计：核心定义、运算、类型转换职责分离。运算和转换高度独立，可并行开发。
@@ -89,10 +89,10 @@ src/complex/
 
 ```
 src/complex/
-├── crate::error       # XenonError for recoverable narrowing conversion
-├── crate::private     # Sealed for ComplexFloat
-├── core::ops        # Add/Sub/Mul/Div/Neg 运算符 trait
-├── core::fmt        # Debug/Display 格式化
+├── crate::error     # XenonError for recoverable conversion failures
+├── crate::private   # Sealed trait for ComplexFloat
+├── core::ops        # Add/Sub/Mul/Div/Neg operator traits
+├── core::fmt        # Debug/Display formatting
 └── core::cmp        # PartialEq
 ```
 
@@ -146,9 +146,9 @@ pub struct Complex<T: ComplexFloat> {
 }
 ```
 
-> **公开边界约束：** `Complex<T>` 的公开实例化范围被封闭在 `T = f32 | f64`。为避免打穿
-> Xenon 的封闭元素集合，文档中的 `Complex<T>` 应理解为语法层记号；真正的公开约束应通过
-> 一个 sealed 的 `ComplexFloat` trait 固定到 `f32` / `f64`。
+> **公开边界约束：** `Complex<T>` 保持公开泛型形式，但其公开 bound 使用 `pub trait ComplexFloat`。
+> 该 trait 通过 `private::Sealed` 超 trait 封闭实现范围，因此下游只能使用 `Complex<f32>` 与
+> `Complex<f64>`，不能为其他类型自行实现 `ComplexFloat`。
 
 ### 5.2 泛型约束
 
@@ -161,6 +161,10 @@ pub struct Complex<T: ComplexFloat> {
 Xenon 公开使用 sealed 的 `ComplexFloat` 约束把 `Complex<T>` 封闭到 `f32` / `f64`；内部仍可定义 `Float` trait 绑定必要数学方法，作为实现细节：
 
 ```rust
+/// Public bound for `Complex<T>`.
+///
+/// This trait is sealed via `private::Sealed`, so downstream crates must not
+/// implement it. Xenon only supports `f32` and `f64` as complex components.
 pub trait ComplexFloat: private::Sealed + Copy + Default + Debug + PartialEq + PartialOrd
     + core::ops::Add<Output = Self>
     + core::ops::Sub<Output = Self>
@@ -173,7 +177,7 @@ impl ComplexFloat for f32 {}
 impl ComplexFloat for f64 {}
 ```
 
-> **API 边界说明**：`Float` 和 `ComplexFloat` 为 sealed trait，仅对 `f32`/`f64` 实现。虽然内部运算实现大量使用这些 trait bound，但它们不是面向下游的公开扩展点。公开 API 通过 `Element`/`Numeric`/`ComplexScalar` 等更高层 trait 约束暴露。
+> **API 边界说明**：`ComplexFloat` 是用于表达 `Complex<T>` 公开 bound 的 `pub` trait，但其实现范围由 `private::Sealed` 封闭到 `f32`/`f64`；它不是面向下游的公开扩展点。`Float` 则保持内部实现细节。公开能力仍主要通过 `Element`/`Numeric`/`ComplexScalar` 等更高层 trait 暴露。
 
 内部实现细节：
 
@@ -668,10 +672,10 @@ impl From<f64> for Complex<f64> {
 
 | 源类型 | 目标类型 | 语义 | 默认行为 |
 |--------|----------|------|---------|
-| `Complex<f32>` | `f32` | 仅当虚部为 `0` 时返回实部 | 虚部非零时返回 `XenonError` |
-| `Complex<f64>` | `f64` | 仅当虚部为 `0` 时返回实部 | 虚部非零时返回 `XenonError` |
-| `Complex<f32>` | `f64` | 仅当虚部为 `0` 时，按 `f32→f64` 规则转换实部 | 虚部非零时返回 `XenonError` |
-| `Complex<f64>` | `f32` | 仅当虚部为 `0` 时，按 `f64→f32` 规则转换实部 | 虚部非零时返回 `XenonError` |
+| `Complex<f32>` | `f32` | 仅当虚部为 `0` 时返回实部 | 虚部非零时返回 `XenonError::TypeConversion(TypeConversionError)` |
+| `Complex<f64>` | `f64` | 仅当虚部为 `0` 时返回实部 | 虚部非零时返回 `XenonError::TypeConversion(TypeConversionError)` |
+| `Complex<f32>` | `f64` | 仅当虚部为 `0` 时，按 `f32→f64` 规则转换实部 | 虚部非零时返回 `XenonError::TypeConversion(TypeConversionError)` |
+| `Complex<f64>` | `f32` | 仅当虚部为 `0` 时，按 `f64→f32` 规则转换实部 | 虚部非零时返回 `XenonError::TypeConversion(TypeConversionError)` |
 
 ```rust
 // Complex -> Real conversions are owned by CastTo<T> in src/element/.
@@ -682,11 +686,12 @@ impl CastTo<f64> for Complex<f64> {
 
     fn cast_to(self) -> Result<f64, Self::Error> {
         if self.im != 0.0 {
-            return Err(XenonError::new(
-                "Complex<f64>",
-                "f64",
-                "non-zero imaginary part",
-            ));
+            return Err(XenonError::TypeConversion(TypeConversionError {
+                source_type: "Complex<f64>".into(),
+                target_type: "f64".into(),
+                reason: TypeConversionReason::NonZeroImaginaryPart,
+                element_index: 0,
+            }));
         }
         Ok(self.re)
     }
@@ -697,11 +702,12 @@ impl CastTo<f32> for Complex<f64> {
 
     fn cast_to(self) -> Result<f32, Self::Error> {
         if self.im != 0.0 {
-            return Err(XenonError::new(
-                "Complex<f64>",
-                "f32",
-                "non-zero imaginary part",
-            ));
+            return Err(XenonError::TypeConversion(TypeConversionError {
+                source_type: "Complex<f64>".into(),
+                target_type: "f32".into(),
+                reason: TypeConversionReason::NonZeroImaginaryPart,
+                element_index: 0,
+            }));
         }
         CastTo::<f32>::cast_to(self.re)
     }
@@ -836,45 +842,7 @@ hypot(a, b):
 
 ---
 
-## 7. 与其他模块的交互
-
-### 7.1 与 element 模块的集成
-
-| 交互点     | 说明                                                                                                                            |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| 类型定义   | `Complex<T>` 定义在 `crate::complex`                                                                                            |
-| Trait 实现 | `Element`/`Numeric`/`ComplexScalar` 在 `element` 模块定义（参见 `03-element.md` §5.1 / §5.2 / §5.4），在 `primitives.rs` 为 `Complex<T>` 实现 |
-| 依赖方向   | `element` 依赖 `complex`（类型定义）；`complex` 不依赖 `element`                                                                |
-
-### 7.2 接口边界
-
-```
-┌───────────────────────────────────────────────────────────────┐
-│  element (Element/Numeric/ComplexScalar trait impls)          │
-└───────────────────────┬───────────────────────────────────────┘
-                        │ type dependency (Complex<T> definition)
-┌───────────────────────▼───────────────────────────────────────┐
-│  complex (Complex<T> definition, arithmetic, conversions)     │
-└───────────────────────────────────────────────────────────────┘
-```
-
-### 7.3 数据流描述
-
-```
-User constructs `Complex<f64>::new(re, im)`
-    │
-    ├── complex/ provides core methods, arithmetic, and conversions
-    │
-    ├── element/ implements Element/Numeric/ComplexScalar for `Complex<f64>`
-    │
-    ├── math / matrix / format and other upper layers consume these traits and inherent methods
-    │
-    └── FFI paths interoperate via a two-field C struct layout; `_Complex` ABI compatibility is not promised
-```
-
----
-
-## 8. 实现任务拆分
+## 7. 任务拆分
 
 ### Wave 1: 核心定义
 
@@ -903,7 +871,7 @@ User constructs `Complex<f64>::new(re, im)`
 
 - [ ] **T4**: 实现 `PartialEq` + `Display`
   - 文件: `src/complex/mod.rs`
-- 内容: `PartialEq` impl（NaN!=NaN）、`Display` impl（a+bj 格式）
+  - 内容: `PartialEq` impl（NaN!=NaN）、`Display` impl（a+bj 格式）
   - 测试: `test_eq`, `test_nan_neq`, `test_display_format`
   - 前置: T1
   - 预计: 10 min
@@ -951,7 +919,7 @@ User constructs `Complex<f64>::new(re, im)`
 
 - [ ] **T10**: 实现类型转换
   - 文件: `src/complex/cast.rs`
-- 内容: `From<Complex<f32>> for Complex<f64>`, `From<f32> for Complex<f32>`, `From<f64> for Complex<f64>`, 以及由 `CastTo<T>` 统一承载的窄化转换
+  - 内容: `From<Complex<f32>> for Complex<f64>`, `From<f32> for Complex<f32>`, `From<f64> for Complex<f64>`, 以及由 `CastTo<T>` 统一承载的窄化转换
   - 测试: `test_f32_to_f64_lossless`, `test_f64_to_f32_precision_loss`, `test_real_to_complex`
   - 前置: T1
   - 预计: 10 min
@@ -991,11 +959,12 @@ Wave 4: [T10]
 Wave 5: [T11] → [T12]
 ```
 
+
 ---
 
-## 9. 测试计划
+## 8. 测试计划
 
-### 9.1 测试分类表
+### 8.1 测试分类表
 
 | 测试分类 | 位置                                           | 说明                                                            |
 | -------- | ---------------------------------------------- | --------------------------------------------------------------- |
@@ -1004,7 +973,7 @@ Wave 5: [T11] → [T12]
 | 边界测试 | 同模块测试中标注                               | 覆盖 NaN/Inf、极大/极小值与 FFI 布局前提                        |
 | 属性测试 | `tests/test_complex.rs` 或 `tests/property.rs` | 验证共轭、模长、指数对数与极坐标不变量                          |
 
-### 9.2 单元测试清单
+### 8.2 单元测试清单
 
 | 测试函数                         | 测试内容                                                    | 优先级 |
 | -------------------------------- | ----------------------------------------------------------- | ------ |
@@ -1017,7 +986,7 @@ Wave 5: [T11] → [T12]
 | `test_add_complex`               | `(1+2j) + (3+4j) == (4+6j)`                                 | 高     |
 | `test_sub_complex`               | `(5+7j) - (2+3j) == (3+4j)`                                 | 高     |
 | `test_mul_complex`               | `(1+2j) * (3+4j) == (-5+10j)`                               | 高     |
-| `test_div_complex`               | `(6+8j) / (3+4j) == (2+0j)`                                 | 高     |
+| `test_div_complex`               | 使用容差断言验证 `(6+8j) / (3+4j)` 约等于 `(2+0j)`         | 高     |
 | `test_neg_complex`               | `-(1+2j) == (-1-2j)`                                        | 高     |
 | `test_add_real`                  | `(1+2j) + 3.0 == (4+2j)`                                    | 高     |
 | `test_real_to_complex_add`       | `Complex::from(3.0) + (1+2j) == (4+2j)`                     | 高     |
@@ -1037,7 +1006,14 @@ Wave 5: [T11] → [T12]
 | `test_f64_to_f32_precision_loss` | `Complex<f64>→Complex<f32>` 精度降低                        | 中     |
 | `test_real_to_complex`           | `f64→Complex<f64>` 虚部为 0                                 | 高     |
 
-### 9.3 边界测试场景
+推荐将 `test_div_complex` 写成显式容差断言，而不是直接对浮点结果做 `==` 比较：
+
+```rust
+let result = Complex::new(6.0_f64, 8.0) / Complex::new(3.0_f64, 4.0);
+assert!((result.re - 2.0).abs() < 1e-10 && result.im.abs() < 1e-10);
+```
+
+### 8.3 边界测试场景
 
 | 场景                          | 预期行为                                                 |
 | ----------------------------- | -------------------------------------------------------- |
@@ -1049,7 +1025,7 @@ Wave 5: [T11] → [T12]
 | 极小值 norm                   | `Complex::new(1e-200, 1e-200).norm()` 正确               |
 | 连续字段布局                  | `Complex<f64>` 的 `re/im` 字段顺序稳定，可逐元素读取     |
 
-### 9.4 属性测试不变量
+### 8.4 属性测试不变量
 
 | 不变量                                | 测试方法           |
 | ------------------------------------- | ------------------ |
@@ -1059,20 +1035,20 @@ Wave 5: [T11] → [T12]
 | `(z / w) * w ≈ z`                     | 随机 z, w（w ≠ 0） |
 | `z.from_polar(z.norm(), z.arg()) ≈ z` | 随机 z             |
 
-### 9.5 集成测试
+### 8.5 集成测试
 
 | 测试文件                | 测试内容                                                                                             |
 | ----------------------- | ---------------------------------------------------------------------------------------------------- |
 | `tests/test_complex.rs` | 复数类型与 `element` trait 体系、`math` 逐元素运算、`matrix` 共轭内积以及 `ffi` 布局约束的端到端验证 |
 
-### 9.6 Feature gate / 配置测试
+### 8.6 Feature gate / 配置测试
 
 | 配置项 | 覆盖方式                             | 说明                                         |
 | ------ | ------------------------------------ | -------------------------------------------- |
 | 默认配置 | 常规单元/集成测试路径                 | 本模块无独立 feature gate，默认配置即主路径  |
 | 非默认 feature | 不适用                             | 本模块未定义 feature gate，故无额外配置矩阵 |
 
-### 9.7 类型边界 / 编译期测试
+### 8.7 类型边界 / 编译期测试
 
 | 测试类型 | 覆盖方式                                         | 说明                                                    |
 | -------- | ------------------------------------------------ | ------------------------------------------------------- |
@@ -1082,11 +1058,49 @@ Wave 5: [T11] → [T12]
 
 ---
 
+## 9. 模块交互
+
+### 9.1 与 element 模块的集成
+
+| 交互点     | 说明                                                                                                                            |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| 类型定义   | `Complex<T>` 定义在 `crate::complex`                                                                                            |
+| Trait 实现 | `Element`/`Numeric`/`ComplexScalar` 在 `element` 模块定义（参见 `03-element.md` §5.1 / §5.2 / §5.4），在 `primitives.rs` 为 `Complex<T>` 实现 |
+| 依赖方向   | `element` 依赖 `complex`（类型定义）；`complex` 不依赖 `element`                                                                |
+
+### 9.2 接口边界
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│  element (Element/Numeric/ComplexScalar trait impls)          │
+└───────────────────────┬───────────────────────────────────────┘
+                        │ type dependency (Complex<T> definition)
+┌───────────────────────▼───────────────────────────────────────┐
+│  complex (Complex<T> definition, arithmetic, conversions)     │
+└───────────────────────────────────────────────────────────────┘
+```
+
+### 9.3 数据流描述
+
+```
+User constructs `Complex<f64>::new(re, im)`
+    │
+    ├── complex/ provides core methods, arithmetic, and conversions
+    │
+    ├── element/ implements Element/Numeric/ComplexScalar for `Complex<f64>`
+    │
+    ├── math / matrix / format and other upper layers consume these traits and inherent methods
+    │
+    └── FFI paths interoperate via a two-field C struct layout; `_Complex` ABI compatibility is not promised
+```
+
+---
+
 ## 10. 错误处理与语义边界
 
 | 项目           | 内容 |
 | -------------- | ---- |
-| Recoverable error | `CastTo<T>` 承载的有损窄化路径返回可恢复错误；错误类型为 `XenonError`，上下文字段应包含源/目标精度与失败原因 |
+| Recoverable error | `CastTo<T>` 承载的有损窄化路径返回可恢复错误；公开错误类型统一为 `XenonError::TypeConversion(TypeConversionError)`，上下文字段应包含源/目标类型、失败原因与元素索引 |
 | Panic | 本模块常规复数运算与方法不以 panic 作为错误通道；若调用底层标准库浮点 API，遵循其既有语义 |
 | 路径一致性 | scalar 路径与普通标量实现必须一致；SIMD：不适用；parallel：不适用 |
 | 容差边界 | 复数数值测试采用显式容差；布局、格式化与类型边界测试不适用 |
@@ -1163,6 +1177,7 @@ Wave 5: [T11] → [T12]
 | 1.0.2 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-14 |
+| 1.1.2 | 2026-04-15 |
 
 ---
 

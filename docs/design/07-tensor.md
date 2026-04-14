@@ -59,10 +59,10 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 ```
 src/tensor/
-├── mod.rs             # TensorBase<S, D> 结构体定义 + 公开导出
-├── impls.rs           # 核心查询方法实现
-├── aliases.rs         # 类型别名定义
-└── construct.rs       # 内部构造方法（unsafe 底层构造）
+├── mod.rs             # TensorBase<S, D> struct definition and public exports
+├── impls.rs           # core query method implementations
+├── aliases.rs         # type alias definitions
+└── construct.rs       # internal constructors (unsafe low-level construction)
 ```
 
 文件划分理由：结构体定义、方法实现、类型别名、构造方法各自独立且职责清晰。
@@ -163,6 +163,8 @@ pub struct TensorBase<S, D> {
 }
 ```
 
+> **FFI 布局说明：** 当前 `TensorBase` 使用 `repr(C)` 以保证 FFI 兼容的字段布局；但该 `repr(C)` 承诺属于内部实现细节，不作为跨版本稳定保证。FFI 消费者应优先使用 `23-ffi.md` 的 `TensorExport` 而非直接依赖 `TensorBase` 的内存布局。
+
 > **设计说明：** TensorBase 直接嵌入 `offset` 和 `flags` 字段，而非使用 doc 06 的 `Layout` 结构体。
 > 这是因为 `offset` 与存储指针配合进行偏移计算，属于张量实例的固有属性，将二者分离避免了
 > 额外的间接层。`Layout` 结构体仅作为纯标志位容器，其 `flags` 字段在需要时可通过
@@ -172,11 +174,11 @@ pub struct TensorBase<S, D> {
 > `offset` 一律表示从 storage base 到逻辑首元素的非负位移；`TensorBase::as_ptr()` /
 > `TensorBase::as_mut_ptr()` 负责应用这一次偏移。`ffi` 文档中的示例与 Safety 说明必须遵循同一语义。
 
-> **线程安全推导**: `TensorBase<S, D>` 的 `Send`/`Sync` 自动由存储模式 `S` 决定。具体规则参见 `25-safety.md §4`。
+> **线程安全推导**: `TensorBase<S, D>` 的 `Send`/`Sync` 由存储模式 `S` 和元素类型 `A` 共同决定：`S` 提供 `Send`/`Sync`（参见 `05-storage.md §5.3`），`A` 须满足对应的线程安全约束（参见 `25-safety.md §4`）。
 
 ````
 
-### 5.2 类型别名（完整列表）
+### 5.2 Type aliases (full list)
 
 ```rust
 // === Primary type aliases ===
@@ -409,7 +411,10 @@ where
     /// - `shape.checked_size()` overflows
     /// - `data.len() != shape.checked_size()`
     ///
-    /// Xenon follows `require.md §19`: “输入数据给出的顺序定义为逻辑索引语义上的元素对应关系”。
+    /// Xenon follows `require.md §19`: "the order of the input data defines the element-to-logical-index correspondence."
+    /// `from_shape_vec` copies the input `Vec` data into Xenon's 64-byte-aligned allocation
+    /// (via `Owned::from_vec_aligned`) and does not guarantee reuse of the original `Vec` allocation. See
+    /// `18-construction.md §5.3`。
     ///
     /// # Example
     ///
@@ -585,13 +590,13 @@ let t = unsafe {
 ### 6.2 offset 字段设计
 
 ```
-原始数组 storage: [a, b, c, d, e, f, g, h]
+Original array storage: [a, b, c, d, e, f, g, h]
 shape: [8], strides: [1], offset: 0
 
-切片 [2..5] 后：
-storage: [a, b, c, d, e, f, g, h]  // 共享，不复制
-shape: [3], strides: [1], offset: 2  // 仅调整元数据
-逻辑视图: [c, d, e]
+After slicing [2..5]:
+storage: [a, b, c, d, e, f, g, h]  // shared, no copy
+shape: [3], strides: [1], offset: 2  // metadata adjustment only
+Logical view: [c, d, e]
 ```
 
 **安全性论证**：安全构造路径必须调用 `validate_access_range(shape, strides, offset, storage_len)` 之类的检查来计算所有逻辑索引可达的最小/最大物理偏移，并验证它们都落在底层 storage 范围内。unsafe raw-parts 路径可复用这些检查拒绝明显错误的元数据，但访问范围前提本身仍由调用方保证。只有这些前提成立后，`as_ptr()` 才能把“logical-first pointer”定义为逻辑首元素地址。
@@ -943,6 +948,9 @@ where
             });
         }
         let strides = layout::compute_f_strides(&shape);
+        // Owned::from_vec_aligned copies the input data into a fresh 64-byte aligned
+        // allocation; from_shape_vec preserves logical element order but does not reuse
+        // the original Vec allocation. See 18-construction.md §5.3.
         let storage = Owned::from_vec_aligned(data);
         let logical_ptr = storage.as_ptr();
         let flags = layout::compute_layout_flags(&shape, &strides, logical_ptr);
@@ -1112,6 +1120,7 @@ User calls `Tensor::<f64, Ix2>::zeros([3, 4])?`
 | 1.1.1 | 2026-04-10 |
 | 1.1.2 | 2026-04-10 |
 | 1.1.3 | 2026-04-14 |
+| 1.1.4 | 2026-04-15 |
 
 ---
 

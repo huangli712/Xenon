@@ -202,11 +202,11 @@ pub fn get_strides(&self) -> &[Ix] { /* ... */ }
 **例外**：当方法可能失败或需要参数时，可使用 `get_` 前缀：
 
 ```rust
-// Good - requires index parameter, may fail
-pub fn get(&self, index: &[Ix]) -> Option<&A> { /* ... */ }
+// Good - requires index parameter, may fail, returns XenonError::IndexOutOfBounds
+pub fn get(&self, index: &[Ix]) -> Result<&A, XenonError> { /* ... */ }
 
-// Good - may fail
-pub fn get_mut(&mut self, index: &[Ix]) -> Option<&mut A> { /* ... */ }
+// Good - may fail, returns XenonError::IndexOutOfBounds
+pub fn get_mut(&mut self, index: &[Ix]) -> Result<&mut A, XenonError> { /* ... */ }
 ```
 
 ---
@@ -496,8 +496,10 @@ where
 
 统一错误类型 `XenonError`，覆盖所有可恢复错误场景（参见 `26-error.md` §4.2）：
 
-> **注意**：仅 `tensor[...]` 这类 `Index` trait 语法在索引越界时使用 `panic`，与标准库 `slice` 行为一致；`tensor.get(...)`、`try_offset_of(...)` 等安全接口须返回 `Option` 或 `Result`。
+> **注意**：仅 `tensor[...]` 这类 `Index` trait 语法在索引越界时使用 `panic`，与标准库 `slice` 行为一致；`tensor.get(...)`、`try_offset_of(...)` 等安全接口须返回 `Result<_, XenonError>`。
 > 本文档中的错误枚举示例字段名必须与 `26-error.md` 保持一致；如需扩展错误模型，应沿用同一套结构化上下文字段，而不是引入旧版别名字段。
+
+> **FFI 边界**：所有 FFI 导出函数（参见 `23-ffi.md`）必须以 `try_*` 前缀返回 `Result`，不得跨越 FFI 边界 panic。`bare_*` 糖函数如须 panic，须在文档中显式标注 panic 条件。参见 `26-error.md §4` 的 FFI panic 边界约定。
 
 ```rust
 #[derive(Debug, Clone)]
@@ -633,17 +635,22 @@ impl<A, D> TensorBase<Owned<A>, D>
 where
     D: Dimension,
 {
-    /// Checked indexing — returns `None` on out of bounds.
-    pub fn get(&self, index: &[Ix]) -> Option<&A> {
+    /// Checked indexing — returns `Err(XenonError::IndexOutOfBounds{...})` on out of bounds.
+    pub fn get(&self, index: &[Ix]) -> Result<&A, XenonError> {
         if !self.is_index_valid(index) {
-            return None;
+            return Err(XenonError::IndexOutOfBounds {
+                operation: "get".into(),
+                attempted_index: 0,
+                axis: 0,
+                shape: self.shape().into(),
+            });
         }
         // SAFETY: index is validated above
-        Some(unsafe { self.get_unchecked(index) })
+        Ok(unsafe { self.get_unchecked(index) })
     }
 
     /// Indexing via `[]` operator — panics on out of bounds.
-    /// Use `get()` for fallible access returning `Option<&A>`.
+    /// Use `get()` for fallible access returning `Result<&A, XenonError>`.
     // Note: Index trait implementation delegates to get().expect("index out of bounds")
 
     /// Unchecked indexing — UB on out of bounds.
@@ -727,13 +734,13 @@ pub fn set(&mut self, index: &[Ix], value: A) -> Result<()> {
 ```
 src/
 ├── tensor/
-│   ├── mod.rs          # 公开 safe API
-│   ├── raw.rs          # 私有 unsafe 原语
-│   └── iter.rs         # 安全迭代器
+│   ├── mod.rs          # public safe API
+│   ├── raw.rs          # private unsafe primitives
+│   └── iter.rs         # safe iterators
 ├── storage/
-│   ├── mod.rs          # 公开 safe API
-│   ├── owned.rs        # 包含 unsafe，但暴露 safe API
-│   └── view.rs         # 包含 unsafe，但暴露 safe API
+│   ├── mod.rs          # public safe API
+│   ├── owned.rs        # contains unsafe, exposes safe API
+│   └── view.rs         # contains unsafe, exposes safe API
 └── lib.rs
 ```
 
@@ -1142,6 +1149,7 @@ Wave 2: [T4]
 | 1.2.0 | 2026-04-08 |
 | 1.2.1 | 2026-04-14 |
 | 1.2.2 | 2026-04-14 |
+| 1.2.3 | 2026-04-15 |
 
 ---
 

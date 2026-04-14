@@ -32,13 +32,13 @@
 ### 1.3 在架构中的位置
 
 ```text
-依赖层级：
+Dependency layers:
 L0: error, private
 L1: dimension, element, complex
 L2: layout
 L3: storage
 L4: tensor
-L5: broadcast  ← 当前模块
+L5: broadcast  ← current module
 L6: shape, index, iter, math, overload
 ```
 
@@ -61,7 +61,7 @@ L6: shape, index, iter, math, overload
 
 ```text
 src/broadcast/
-├── mod.rs             # 模块入口，re-export 公共函数与 trait 约束相关入口
+├── mod.rs             # module entry, re-export public functions and trait-bound-related entry points
 ├── shape.rs           # can_broadcast(), broadcast_shape(), broadcast_strides()
 └── view.rs            # TensorView::broadcast_to(), broadcast_with()
 ```
@@ -165,6 +165,9 @@ where
 | `broadcast_to()` | 显式广播入口；成功时返回共享底层数据的只读 `TensorView`。 |
 | `broadcast_with()` | 把两个输入广播到共同 shape；输出维度类型由 `BroadcastDim` 计算，实际兼容性仍由运行时检查保证。 |
 
+> **同形状快捷路径**：当两个输入形状完全相同时，`broadcast_with()` 可直接返回两个原始视图而不执行步长重写，因为目标 shape 与输入 shape 一致。
+> **目标秩语义**：`broadcast_to()` 的目标 shape 秩决定了输出视图的维度类型；标量广播到高维时，缺失前导轴按 `1` 补齐。
+
 ### 5.3 Good / Bad 对比
 
 ```rust
@@ -263,27 +266,48 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
   - 前置: `dimension`、`layout`、`tensor`、`error` 模块完成
   - 预计: 10 min
 
-- [ ] **T2**: 实现 `can_broadcast()` / `broadcast_shape()` / `broadcast_strides()`
+- [ ] **T2a**: 实现 `can_broadcast()`
   - 文件: `src/broadcast/shape.rs`
-  - 内容: 尾轴对齐比较、零步长写入、结构化错误填充
-  - 测试: `test_can_broadcast_compatible`, `test_broadcast_shape_error`, `test_broadcast_strides_zero_stride`
+  - 内容: 尾轴对齐兼容性判定
+  - 测试: `test_can_broadcast_compatible`
   - 前置: T1
-  - 预计: 20 min
+  - 预计: 5 min
+
+- [ ] **T2b**: 实现 `broadcast_shape()`
+  - 文件: `src/broadcast/shape.rs`
+  - 内容: 公共 shape 推导与结构化广播错误填充
+  - 测试: `test_broadcast_shape_error`
+  - 前置: T2a
+  - 预计: 5 min
+
+- [ ] **T2c**: 实现 `broadcast_strides()`
+  - 文件: `src/broadcast/shape.rs`
+  - 内容: 零步长写入与参数前提校验
+  - 测试: `test_broadcast_strides_zero_stride`
+  - 前置: T2b
+  - 预计: 10 min
 
 ### Wave 2: 视图构造
 
-- [ ] **T3**: 实现 `TensorView::broadcast_to()`
+- [ ] **T3a**: 实现 `broadcast_to()` 基本路径
   - 文件: `src/broadcast/view.rs`
-  - 内容: 目标 shape 校验、只读视图构造、布局状态更新
-  - 测试: `test_broadcast_to_basic`, `test_broadcast_to_error`, `test_broadcast_read_only`
-  - 前置: T2
-  - 预计: 20 min
+  - 内容: 目标 shape 校验与只读视图构造
+  - 测试: `test_broadcast_to_basic`
+  - 前置: T2c
+  - 预计: 10 min
+
+- [ ] **T3b**: 实现 `broadcast_to()` 错误路径与布局更新
+  - 文件: `src/broadcast/view.rs`
+  - 内容: 非法目标 shape 错误返回与 `BroadcastView` 布局状态更新
+  - 测试: `test_broadcast_to_error`, `test_broadcast_read_only`
+  - 前置: T3a
+  - 预计: 10 min
 
 - [ ] **T4**: 实现 `broadcast_with()`
   - 文件: `src/broadcast/view.rs`
   - 内容: 公共 shape 推导、双输入广播、`BroadcastDim` 输出类型对齐
   - 测试: `test_broadcast_with_same_shape`, `test_broadcast_scalar_and_tensor`, `test_broadcast_with_incompatible_shapes`
-  - 前置: T2
+  - 前置: T2c
   - 预计: 15 min
 
 ### Wave 3: 综合验证
@@ -292,17 +316,19 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
   - 文件: `tests/test_broadcast.rs`, `tests/property/test_broadcast.rs`
   - 内容: 兼容性规则、零步长语义、共享只读边界、属性测试
   - 测试: 覆盖范围内所有公开 API
-  - 前置: T3, T4
+  - 前置: T3b, T4
   - 预计: 20 min
 
 ### 并行执行图
 
 ```text
-Wave 1: [T1] -> [T2]
-                    │
-Wave 2:        [T3] + [T4]
-                    │
-Wave 3:             [T5]
+Wave 1: [T1] -> [T2a] -> [T2b] -> [T2c]
+                                   │
+Wave 2:                  [T3a] -> [T3b]
+                                   │
+                           [T4] ----┘
+                                   │
+Wave 3:                           [T5]
 ```
 
 ---
@@ -515,6 +541,7 @@ XenonError::InvalidArgument {
 | 版本 | 日期 |
 | ---- | ---- |
 | 1.0.0 | 2026-04-14 |
+| 1.0.1 | 2026-04-15 |
 
 ---
 

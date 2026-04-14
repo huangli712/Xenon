@@ -13,31 +13,31 @@
 
 | 职责           | 包含                                                     | 不包含                                                       |
 | -------------- | -------------------------------------------------------- | ------------------------------------------------------------ |
-| 转置操作       | `transpose()` / `t()` 交换步长和形状返回只读视图（O(1)） | reshape / squeeze / expand_dims（当前版本不提供）            |
+| 转置操作       | `transpose()` / `t()` 交换步长和形状返回只读视图（O(1)） | 其他形状变换（当前版本不提供）                               |
 | 连续性标志更新 | 转置后按结果 shape/stride 重新计算连续性标志             | pad / repeat / split（当前版本不提供）                       |
 | 转置便捷方法   | `t()` 作为 `transpose()` 简写                            | `permute_axes()` / `swap_axes()` / `moveaxis()` 留待后续版本 |
-| 未来形状操作   | —                                                        | reshape / `into_shape()` / 自动推断维度留待后续版本          |
+| 未来形状操作   | —                                                        | 其他形状变换与自动推断维度留待后续版本                       |
 
 ### 1.2 设计原则
 
 | 原则       | 体现                                                            |
 | ---------- | --------------------------------------------------------------- |
 | 零拷贝优先 | 转置通过调整 shape 和 stride 返回共享底层数据的只读视图         |
-| 语义收敛   | 当前版本只设计 `transpose()` / `t()`，不在本文扩展 reshape 路径 |
+| 语义收敛   | 当前版本只设计 `transpose()` / `t()`，不在本文扩展其他形状变换 |
 | BLAS 友好  | 正确处理转置产生的非连续布局，确保 shape/stride 元数据一致      |
 | 维度安全   | 转置仅做轴反转，不改变逻辑元素值与元素总数                      |
 
 ### 1.3 在架构中的位置
 
 ```
-依赖层级：
+Dependency layers:
 L0: error, private
 L1: dimension, element, complex
-L2: layout (依赖 dimension)
-L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
-L4: tensor (依赖 storage, dimension)
-L5: broadcast (依赖 tensor, dimension)
-L6: shape  ← 当前模块
+L2: layout (depends on dimension)
+L3: storage (independent from layout; owned by tensor and consumed via layout results)
+L4: tensor (depends on storage, dimension)
+L5: broadcast (depends on tensor, dimension)
+L6: shape  <- current module
 ```
 
 ---
@@ -48,7 +48,7 @@ L6: shape  ← 当前模块
 | -------- | ---- |
 | 需求映射 | 需求说明书 §17 |
 | 范围内   | `transpose()` / `t()`、轴反转后的 shape / strides / flags 重算，以及零拷贝只读视图语义。 |
-| 范围外   | reshape、squeeze、expand_dims、flip、roll、pad 及其他形状变换。 |
+| 范围外   | 其他形状变换。 |
 | 非目标   | 不在本文讨论连续性重排 API、动态维推断或额外形状 DSL。 |
 
 ---
@@ -57,7 +57,7 @@ L6: shape  ← 当前模块
 
 ```
 src/shape/
-├── mod.rs             # 模块入口，re-export 公开 trait 和函数
+├── mod.rs             # module entry, re-export public traits and functions
 └── transpose.rs       # transpose, t
 ```
 
@@ -172,7 +172,7 @@ where
 | 零拷贝   | 始终零拷贝（O(1)），仅调整步长和形状              |
 | 形状变化 | `shape[i]` → `shape[ndim-1-i]`（全反转）          |
 | 步长变化 | `strides[i]` → `strides[ndim-1-i]`（全反转）      |
-| 连续性   | `ndim >= 2` 时按结果布局重分类：普通转置视图为 `NonContiguous`，带零步长的转置视图仍为 `BroadcastView`；0D/1D 保留原布局状态 |
+| 连续性   | 按结果布局重分类：转置可能产生 `NonContiguous`；实际布局状态由结果 shape/stride 是否满足 F-order 条件决定。若至少一个被交换轴长度为 1，则仍可保留 `F-contiguous`；带零步长的转置视图仍为 `BroadcastView`；0D/1D 保留原布局状态 |
 | 偏移量   | 保持不变                                          |
 | 1D 数组  | 转置后形状不变（1D 无轴顺序概念）                 |
 
@@ -199,7 +199,7 @@ for i in 0..1000 {
 ### 5.2 范围边界说明
 
 > **范围决策：** 根据 `require.md` §17，当前版本形状操作仅支持转置。
-> `reshape()`、`into_shape()` 及相关连续性驱动的形状重解释不属于本文档覆盖范围，留待后续版本单独设计。
+> 其他形状变换与连续性驱动的形状重解释不属于本文档覆盖范围，留待后续版本单独设计。
 
 ---
 
@@ -235,7 +235,7 @@ fn update_flags_for_transpose(
 
 ### 6.3 范围外能力记录
 
-`reshape` / `into_shape`、自动推断维度以及其他形状变换 API 当前均不在范围内，因此本文不再为它们设计连续性检查逻辑、错误语义或实现任务。
+其他形状变换 API 与自动推断维度当前均不在范围内，因此本文不再为它们设计连续性检查逻辑、错误语义或实现任务。
 
 ---
 
@@ -259,7 +259,7 @@ fn update_flags_for_transpose(
   - 前置: T1
   - 预计: 10 min
 
-### Wave 2: 测试
+### Wave 3: 测试
 
 - [ ] **T3**: 编写综合测试
   - 文件: `tests/test_shape.rs`
@@ -297,7 +297,7 @@ Wave 3: [T3]
 | ------------------------------------------- | -------------------------------------------------- | ------ |
 | `test_transpose_2d`                         | `[2,3]` → `[3,2]`，验证 shape 和数据               | 高     |
 | `test_transpose_3d`                         | `[2,3,4]` → `[4,3,2]`，验证轴反转                  | 高     |
-| `test_transpose_not_f_contiguous`           | F-contiguous 转置后 `is_f_contiguous()` 返回 false | 高     |
+| `test_transpose_not_f_contiguous`           | 典型 2D F-contiguous 转置后 `is_f_contiguous()` 返回 false | 高     |
 | `test_transpose_1d_noop`                    | 1D 数组转置后形状不变                              | 中     |
 | `test_transpose_0d_noop`                    | 0D 标量转置后不变                                  | 中     |
 | `test_transpose_0d_1d_preserves_contiguity` | 0D/1D 转置保留原连续性标志                         | 高     |
@@ -337,7 +337,7 @@ Wave 3: [T3]
 | ---- | ---- |
 | 轴反转辅助逻辑对所有 `D: Dimension` 生效 | 编译期测试与运行时断言。 |
 | 0D / 1D 输入保持原维度类型 | 编译期签名检查与运行时断言。 |
-| reshape / squeeze / expand_dims / flip / roll / pad 不属于当前 API | API 缺失断言。 |
+| 其他形状变换不属于当前 API | API 缺失断言。 |
 
 ---
 
@@ -386,13 +386,13 @@ User calls transpose() / t()
 | 理由     | O(1) 操作；内存效率高；与 ndarray/NumPy 一致 |
 | 替代方案 | 拷贝数据转置 — 放弃，O(n) 开销不必要         |
 
-### 决策 2：当前版本不设计 reshape
+### 决策 2：当前版本不设计其他形状变换
 
 | 属性     | 值                                                                  |
 | -------- | ------------------------------------------------------------------- |
-| 决策     | `reshape()` / `into_shape()` 留待后续版本单独设计，不在当前文档承诺 |
+| 决策     | 其他形状变换留待后续版本单独设计，不在当前文档承诺 |
 | 理由     | `require.md` §17 明确当前版本形状操作仅支持转置                     |
-| 替代方案 | 在本阶段继续保留 reshape 设计 — 放弃，超出当前需求范围              |
+| 替代方案 | 在本阶段继续保留其他形状变换设计 — 放弃，超出当前需求范围          |
 
 ### 决策 3：当前版本仅支持 transpose / `t()`
 
@@ -422,9 +422,10 @@ User calls transpose() / t()
 
 ### 12.3 缓存行为
 
-| 场景                    | 缓存友好性 | 说明                                      |
-| ----------------------- | ---------- | ----------------------------------------- |
-| F-contiguous 转置后遍历 | 较差       | 步长反转，内存跳跃访问（非 F-contiguous） |
+| 场景                                | 缓存友好性 | 说明                                                  |
+| ----------------------------------- | ---------- | ----------------------------------------------------- |
+| 典型 F-contiguous 转置后遍历        | 较差       | 步长反转，常见情况下会出现内存跳跃访问                |
+| 含长度为 1 轴的 F-contiguous 转置后遍历 | 中         | 结果仍可能保持 `F-contiguous`，缓存行为取决于具体 shape |
 
 ---
 
@@ -451,6 +452,7 @@ User calls transpose() / t()
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-10 |
 | 1.1.2 | 2026-04-14 |
+| 1.1.3 | 2026-04-15 |
 
 ---
 

@@ -60,8 +60,8 @@ L7: overload  <- current module (depends on broadcast, math)
 
 ```
 src/overload/
-├── arithmetic.rs       # 四则运算运算符重载
-└── mod.rs              # 模块入口
+├── arithmetic.rs       # arithmetic operator overloading
+└── mod.rs              # module entry
 ```
 
 运算符重载文件 `arithmetic.rs` 独立于逐元素运算 `math`，职责清晰：前者提供语法糖，后者提供计算能力。
@@ -314,7 +314,7 @@ where
 > `impl<T> Add<TensorBase<...>> for T` 这种 blanket impl。当前文档应把稳定承诺调整为：
 > `tensor + scalar` 必须支持；常用原生 `scalar + tensor` 建议按具体类型提供；`Scalar<A>` 保留为统一的泛型左标量补充接口。
 
-> **说明**：对于涉及 `&A` 的组合，不要依赖 Rust 的隐式 auto-deref 作为公开 API 契约。若库希望稳定支持 `tensor + &scalar`，应显式提供 `Add<&A>` 方向的实现；否则文档只保证值形式 `tensor + scalar` 与 `Scalar(scalar) + tensor`。
+> **说明**：当前版本**不**稳定承诺 `&A` 形式的标量运算符重载。公开契约仅保证值形式 `tensor + scalar`、`Scalar(scalar) + tensor`，以及常用原生左标量（如 `5.0 + tensor`）。若后续版本需要 `&A` 支持，应以独立议题评估。
 
 > **说明**：`Scalar<A>` 同样适用于 `TensorView` 和 `TensorViewMut` 的标量运算。
 
@@ -696,6 +696,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | 1.1.2 | 2026-04-10 |
 | 1.1.3 | 2026-04-10 |
 | 1.1.4 | 2026-04-14 |
+| 1.1.5 | 2026-04-15 |
 
 ---
 

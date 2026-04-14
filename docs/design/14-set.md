@@ -32,13 +32,13 @@
 ### 1.3 在架构中的位置
 
 ```
-依赖层级：
+Dependency layers:
 L0: error, private
 L1: dimension, element, complex
-L2: layout (依赖 dimension)
-L3: storage (仅依赖 core/alloc，不依赖 layout)
-L4: tensor (依赖 storage, dimension)
-L5: set  ← 当前模块
+L2: layout (depends on dimension)
+L3: storage (depends only on core/alloc, not on layout)
+L4: tensor (depends on storage, dimension)
+L5: set  ← current module
 ```
 
 ---
@@ -58,8 +58,8 @@ L5: set  ← 当前模块
 
 ```
 src/set/
-├── mod.rs              # 模块入口
-└── unique.rs           # 集合操作（本模块）
+├── mod.rs              # module entry
+└── unique.rs           # set operations (this module)
 ```
 
 单文件设计理由：当前仅实现 unique，未来扩展时再拆分。
@@ -139,6 +139,12 @@ where
     ///
     /// Empty array returns an empty Tensor1.
     ///
+    /// # Multi-dimensional input
+    ///
+    /// For inputs of any dimension, `unique()` logically flattens all elements
+    /// into a 1D sequence before deduplication. The output is always a 1D tensor
+    /// (`Tensor<A, Ix1>`); element order within the output is unspecified.
+    ///
     /// # Complexity
     ///
     /// Implementation-defined; external semantics do not depend on result order.
@@ -185,29 +191,29 @@ assert_eq!(empty.unique().len(), 0);
 
 ```
 unique(self):
-    1. 收集所有元素到 Vec<A>
-    2. 逐个检查元素是否已在结果集中出现
-    3. 若未出现，则追加到结果；若已出现，则跳过
-    4. 从 Vec 构造 Tensor<A, Ix1>
+    1. Collect all elements into Vec<A>
+    2. Check one by one whether each element already appears in the result set
+    3. If not present, append to the result; if already present, skip it
+    4. Construct Tensor<A, Ix1> from Vec
 ```
 
 ### 6.2 浮点判等处理
 
 ```
-- 对非 NaN 浮点值，按 Rust / IEEE 754 的 `==` 语义判等
-- `NaN != NaN`，因此输入中的每个 `NaN` 都须单独保留，不参与去重
-- `+0.0 == -0.0`，因此两者视为同一个唯一值
-- 文档只约束相等关系，不约束内部使用哈希、线性扫描或其它去重实现
+- For non-NaN floating-point values, equality follows Rust / IEEE 754 `==` semantics
+- `NaN != NaN`，therefore each `NaN` in the input must be preserved independently and is not deduplicated
+- `+0.0 == -0.0`，therefore the two are treated as the same unique value
+- The document constrains only equality semantics, not whether the implementation uses hashing, linear scans, or other deduplication strategies
 ```
 
 ### 6.3 复数判等规则
 
 ```
-复数判等策略（component-wise equality）：
-- 两个复数相等，当且仅当 `re` 与 `im` 两个分量分别相等
-- 分量比较沿用对应实数语义：`NaN != NaN`，`-0.0 == 0.0`
-- 因此，带有 NaN 分量的复数不会因为“都是 NaN”而被去重
-- 文档不定义任何 lexicographic order、模排序或其它排序关系
+Complex-number equality strategy (component-wise equality):
+- Two complex numbers are equal iff both `re` and `im` components are equal respectively
+- Component comparison follows the corresponding real-number semantics: `NaN != NaN`, `-0.0 == 0.0`
+- Therefore, complex numbers with NaN components are not deduplicated merely because they are “both NaN”
+- The document does not define any lexicographic order, magnitude order, or other ordering relation
 ```
 
 ### 6.4 类型排除实现
@@ -524,6 +530,7 @@ User calls unique()
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-10 |
 | 1.1.2 | 2026-04-14 |
+| 1.1.3 | 2026-04-15 |
 
 ---
 

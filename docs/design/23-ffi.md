@@ -31,13 +31,13 @@
 ### 1.3 在架构中的位置
 
 ```
-依赖层级：
+Dependency layers:
 L0: error, private
 L1: dimension, element, complex
-L2: layout (依赖 dimension)
-L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
-L4: tensor (依赖 storage, dimension)
-L5: ffi  ← 当前模块
+L2: layout (depends on dimension)
+L3: storage (independent of layout; owned by tensor and consumes layout results)
+L4: tensor (depends on storage, dimension)
+L5: ffi  <- current module
 ```
 
 ---
@@ -58,11 +58,11 @@ L5: ffi  ← 当前模块
 ```
 src/
 └── ffi/
-    ├── mod.rs         # 模块根，re-exports
-    ├── types.rs       # BlasLayout, BlasTrans, BlasInfo 类型定义
-    ├── ptr.rs         # 原始指针 API（as_ptr, as_mut_ptr, from_raw_parts, from_raw_parts_mut, into_raw_parts）
-    ├── blas.rs        # BLAS 兼容性检查（is_blas_compatible, blas_info, lda）
-    └── offset.rs      # 多维索引到指针偏移（try_offset_of/offset_of, try_ptr_at/ptr_at）
+    ├── mod.rs         # Module root, re-exports
+    ├── types.rs       # BlasLayout, BlasTrans, BlasInfo type definitions
+    ├── ptr.rs         # Raw-pointer APIs (as_ptr, as_mut_ptr, from_raw_parts, from_raw_parts_mut, into_raw_parts)
+    ├── blas.rs        # BLAS compatibility checks (is_blas_compatible, blas_info, lda)
+    └── offset.rs      # Multi-dimensional index to pointer offset (try_offset_of/offset_of, try_ptr_at/ptr_at)
 ```
 
 多文件设计：将 FFI 按职责拆分为多个文件，便于后期拓展和维护。
@@ -214,9 +214,13 @@ where
     /// // Can be passed to read-only C functions
     /// ```
     pub fn as_ptr(&self) -> *const A {
-        // SAFETY: self.storage.as_ptr() returns a storage-base pointer. For empty tensors,
-        // the returned pointer may be dangling but must not be dereferenced.
-        // self.offset is guaranteed to be within bounds by TensorBase construction invariants.
+        if self.is_empty() {
+            // For empty tensors, return a non-dereferenceable dangling pointer.
+            // Do NOT call .add() on a potentially dangling base pointer.
+            return self.storage.as_ptr();
+        }
+        // SAFETY: non-empty tensor guarantees storage base pointer is valid
+        // and offset is within bounds by TensorBase construction invariants.
         unsafe {
             self.storage.as_ptr().add(self.offset)
         }
@@ -240,10 +244,9 @@ where
     /// // Can be passed to C functions requiring a mutable pointer
     /// ```
     pub fn as_mut_ptr(&mut self) -> *mut A {
-        // SAFETY: self.storage.as_mut_ptr() returns a storage-base pointer. For empty tensors,
-        // the returned pointer may be dangling but must not be dereferenced.
-        // self.offset is guaranteed to be within bounds by TensorBase construction invariants.
-        // The &mut self reference ensures exclusive access.
+        if self.is_empty() {
+            return self.storage.as_mut_ptr();
+        }
         unsafe {
             self.storage.as_mut_ptr().add(self.offset)
         }
@@ -309,6 +312,8 @@ where
 ````
 
 > **导出语义说明：** `TensorExport` 面向 C 调用方提供“指针 + shape + strides + offset”的结构化快照，其中 `shape` 与 `strides` 指针均借用源张量内部元数据，不能在源张量释放后继续使用。
+
+> **导出范围说明：** 当前 `export()` / `export_mut()` 仅对 `Tensor<A, D>`（Owned 存储）直接提供。对 `TensorView` 或 `ArcTensor`，调用方应先通过 `to_owned()` 转为 Owned 张量再导出；或直接使用 `as_ptr()` + `shape()` / `strides()` / `offset()` 组合获取原始参数。
 
 > **空张量约定：** 空张量（`len() == 0`）导出时 `data` 可为 null 指针，此时 `shape`、`strides`、`offset` 仍须正确反映空张量元数据。`as_ptr()` 对空张量不保证返回非 null 指针，因此 C 调用方必须先基于长度判断是否可解引用。
 
@@ -682,8 +687,8 @@ where
     ///
     /// For F-order matrix `A[M, N]`, `LDA = stride[1]`.
     ///
-    /// **Note:** `lda()` 仅对 BLAS-compatible 的 2D 张量有效。对非连续张量（如切片后的视图），
-    /// 返回的步长无法直接用于 BLAS 调用。建议在调用前先检查 `is_f_contiguous()`。
+    /// **Note:** `lda()` is only valid for BLAS-compatible 2D tensors. For non-contiguous tensors (such as sliced views),
+    /// the returned stride cannot be used directly in a BLAS call. Check `is_f_contiguous()` first.
     ///
     /// # Returns
     ///
@@ -917,7 +922,7 @@ Wave 2:    [T2]
              │
 Wave 3: ┌────┴────┐
         │         │
-       [T3]      [T4]   (可并行)
+       [T3]      [T4]   (can run in parallel)
 ```
 
 ---
@@ -1018,7 +1023,7 @@ Wave 3: ┌────┴────┐
 | `ffi → tensor`  | `tensor`  | 原始指针访问                         | 通过 `TensorBase` 的 storage 获取底层指针，参见 `07-tensor.md` §5       |
 | `ffi ← layout`  | `layout`  | `is_f_contiguous()` / stride 标志    | BLAS 兼容性检查依赖布局查询结果，参见 `06-layout.md` §5.5               |
 | `ffi → storage` | `storage` | `OwnedRawParts` / allocator metadata | `into_raw_parts` 导出 owned 存储的完整重建信息，参见 `05-storage.md` §5 |
-| `ffi → 上游库`  | `上游库`  | `blas_info()` / `lda()`              | 向外部 BLAS/FFI 调用方暴露零拷贝参数                                    |
+| `ffi → upstream libraries`  | `upstream libraries`  | `blas_info()` / `lda()`              | 向外部 BLAS/FFI 调用方暴露零拷贝参数                                    |
 
 ### 9.2 数据流描述
 
@@ -1041,6 +1046,8 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | Panic | `offset_of()` / `ptr_at()` 作为 panic-sugar 包装 `try_*`；`from_raw_parts*()` 前置条件违反属于 unsafe UB，而非 recoverable error。 |
 | 路径一致性 | 指针访问、BLAS 查询与 raw-parts roundtrip 必须共享同一 shape / strides / offset 解释；无 SIMD / 并行分支。 |
 | 容差边界 | 不适用。 |
+
+> **panic-sugar 语义对齐：** `offset_of()` 与 `ptr_at()` 在内部调用 `try_offset_of()` / `try_ptr_at()`，并在失败时通过 `.expect()` 转为 panic。这与 `26-error.md` §4 和 `00-coding.md` §4.3 的 panic 边界约定一致——FFI 模块不引入新的 panic 语义。
 
 ---
 
@@ -1126,6 +1133,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | 1.1.2 | 2026-04-10 |
 | 1.1.3 | 2026-04-10 |
 | 1.1.4 | 2026-04-14 |
+| 1.1.5 | 2026-04-15 |
 
 ---
 

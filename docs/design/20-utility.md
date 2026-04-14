@@ -30,14 +30,14 @@
 ### 1.3 在架构中的位置
 
 ```
-依赖层级：
+Dependency layers:
 L0: error, private
 L1: dimension, element, complex
-L2: layout (依赖 dimension)
-L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
-L4: tensor (依赖 storage, dimension)
+L2: layout (depends on dimension)
+L3: storage (independent from layout; owned by tensor and consumes layout results)
+L4: tensor (depends on storage, dimension)
 L5: broadcast, iter, ffi
-L6: util  ← 当前模块（依赖 tensor, dimension, storage, layout, iter）
+L6: util  <- current module (depends on tensor, dimension, storage, layout, iter)
 ```
 
 ---
@@ -58,10 +58,10 @@ L6: util  ← 当前模块（依赖 tensor, dimension, storage, layout, iter）
 ```
 src/
 └── util/
-    ├── mod.rs           # 模块根，re-exports
-    ├── clip.rs          # clip / clip_inplace（范围裁剪）
-    ├── fill.rs          # fill（原地填充）
-    └── contiguous.rs    # to_contiguous（连续性保证）
+    ├── mod.rs           # Module root, re-exports
+    ├── clip.rs          # clip / clip_inplace (range clamping)
+    ├── fill.rs          # fill (in-place fill)
+    └── contiguous.rs    # to_contiguous (contiguity guarantee)
 ```
 
 多文件设计：三个操作（clip、fill、to_contiguous）按职责分离，通过 `mod.rs` 统一 re-export。
@@ -221,13 +221,15 @@ where
 ````
 
 > 浮点参数非法时：`min > max` 或任一边界为 `NaN` 时返回可恢复错误。
+>
+> `clip` 总是返回新的 owned 张量，因此这里先 `zeros()` 再逐元素覆写是有意设计：它统一了 fresh-owned 输出路径，不会把输入存储别名泄露给结果；由于输出本来就必须独立分配，这不是额外的语义性性能负担。
 
 ### 5.2 fill 操作
 
 ````rust
 impl<S, D, A> TensorBase<S, D>
 where
-    S: StorageMut<Elem = A>,
+    S: Storage<Elem = A>,
     D: Dimension,
     A: Element + Clone,
 {
@@ -236,10 +238,9 @@ where
     /// Correctly handles non-contiguous layouts: iterates over all logical
     /// elements via the iterator. Modifies storage directly without copying.
     ///
-    /// This method is only available when `S: StorageMut<Elem = A>` holds at compile time.
-    /// For read-only references and shared read-only references, `StorageMut` is not
-    /// implemented, so the API is rejected at compile time rather than adding a
-    /// separate runtime error branch.
+    /// This public API is available on all tensor storage modes.
+    /// Writable storage performs the in-place fill; read-only storage returns
+    /// `Err(XenonError::ReadOnlyStorage)` as a recoverable runtime error.
     ///
     /// # Examples
     ///
@@ -249,15 +250,20 @@ where
     /// assert!(t.iter().all(|&x| x == 3.14));
     /// ```
     pub fn fill(&mut self, value: A) -> Result<(), XenonError> {
-        for elem in self.iter_mut() {
-            *elem = value.clone();
+        match self.storage_kind() {
+            StorageKind::Owned | StorageKind::ViewMut => {
+                StorageMut::fill(&mut self.storage, &self.layout(), value)
+            }
+            StorageKind::View | StorageKind::Arc => Err(XenonError::ReadOnlyStorage {
+                operation: "fill",
+                storage: self.storage_kind(),
+            }),
         }
-        Ok(())
     }
 }
 ````
 
-> `fill` 操作仅对编译期已证明具有可写访问权的张量类型（即 `S: StorageMut`）可用。对于只读引用和共享只读引用，由于 `StorageMut` 未实现，该 API 在编译期即不可调用，无需运行时错误分支。此设计满足 `require.md` §21 对填充请求的拒绝要求。
+> `fill` 的公开 API 统一返回 `Result<(), XenonError>`；其中 `XenonError` 是唯一公开错误类型。对 `ViewRepr`、`ArcRepr` 等只读存储，请求必须以可恢复运行时错误（例如 `XenonError::ReadOnlyStorage`）返回；对 `Owned`、`ViewMutRepr` 等可写存储，则进入内部 `StorageMut::fill()` 快路径。
 
 ### 5.3 连续性保证（to_contiguous）
 
@@ -274,7 +280,7 @@ where
 {
     /// Ensure data is stored contiguously in memory (always F-order).
     ///
-    /// - `to_contiguous(&self)` always returns a fresh owned copy
+    /// - `to_contiguous(&self)` always returns a fresh owned tensor
     /// - `into_contiguous(self)` may reuse the existing owned allocation when already F-contiguous
     /// - Non-contiguous inputs are re-packed into F-contiguous layout
     ///
@@ -283,7 +289,7 @@ where
     ///
     /// # Returns
     ///
-    /// Always returns an owned `Tensor<A, D>` with F-contiguous layout.
+    /// Always returns an independent owned `Tensor<A, D>` with F-contiguous layout.
     ///
     /// # Examples
     ///
@@ -328,7 +334,7 @@ where
 }
 ````
 
-> **设计说明：** `to_contiguous(&self)` 是稳定的“总是复制”入口，适合在借用上下文中显式拿到 owned 连续结果；
+> **设计说明：** `to_contiguous(&self)` 是稳定的“总是返回独立 owned 结果”入口；当输入已是连续 F-order 时，它不得改变逻辑值，且可以复用现有数据作为读取来源，但因为返回值必须与借用源解除别名，所以仍会物化为新的 owned 张量。
 > `into_contiguous(self)` 是满足 `require.md` §22 的消费式入口：当输入已经是连续 F-order 且具备 owned 化前提时，可复用现有数据，否则退化为重新打包。
 
 ### 5.4 Good / Bad 对比
@@ -375,13 +381,14 @@ clip(tensor, min, max):
 
 ```
 fill(tensor, value):
-    // callable only when the type already satisfies S: StorageMut
-    for each mutable reference elem in tensor (via iter_mut):
-        *elem = value.clone()
-    return Ok(())
+    if storage is writable:
+        call internal StorageMut::fill(storage, layout, value)
+        return Ok(())
+    else:
+        return Err(XenonError::ReadOnlyStorage)
 ```
 
-关键点：`iter_mut()` 已经正确处理非连续布局的步长跳转，因此 `fill` 在可写存储上天然支持非连续内存；对只读或共享只读存储，因为缺少 `StorageMut` 实现，会在编译期直接拒绝调用。
+关键点：公开 `fill` 对所有存储模式都可见，但只在运行时确认可写性；可写存储走内部 `StorageMut::fill()`，继续保留连续路径优化与非连续布局支持；只读或共享只读存储则返回 `XenonError::ReadOnlyStorage`，满足 `require.md` §21.2 对公开运行时填充 API 的要求。
 
 ### 6.3 to_contiguous 路径选择
 
@@ -422,8 +429,8 @@ into_contiguous(tensor):
 
 - [ ] **T1**: 实现 `fill` 方法
   - 文件: `src/util/fill.rs`
-- 内容: `fill(&mut self, value: A) -> Result<(), XenonError>`；方法签名要求 `S: StorageMut<Elem = A>`，可写存储通过 `iter_mut()` 原地填充；只读与共享只读场景在编译期即被拒绝
-  - 测试: `test_fill_basic`, `test_fill_non_contiguous`, `test_fill_requires_storage_mut`
+  - 内容: `fill(&mut self, value: A) -> Result<(), XenonError>`；公开方法定义在 `TensorBase<S, D>` 上，通过运行时检查区分可写与只读存储；可写存储原地填充，只读与共享只读场景返回 `XenonError::ReadOnlyStorage`
+  - 测试: `test_fill_basic`, `test_fill_non_contiguous`, `test_fill_readonly_storage_error`
   - 前置: tensor 模块、iter 模块完成
   - 预计: 10 min
 
@@ -484,6 +491,7 @@ Wave 2:      [T3] → [T4]
 | `test_clip_inplace_non_contiguous`        | 非连续布局原地裁剪所有逻辑元素          | 高     |
 | `test_fill_basic`                         | 基本填充所有元素为指定值                | 高     |
 | `test_fill_non_contiguous`                | 非连续布局正确填充所有逻辑元素          | 高     |
+| `test_fill_readonly_storage_error`        | 只读存储返回 `ReadOnlyStorage`          | 高     |
 | `test_fill_empty`                         | 空数组 fill 不 panic                    | 中     |
 | `test_to_contiguous_f_order`              | F-order 连续输入返回 owned 拷贝         | 高     |
 | `test_into_contiguous_reuses_owned_data`  | F-order owned 输入消费后复用原数据      | 高     |
@@ -559,7 +567,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `clip` / `clip_inplace` 在 `min > max` 或边界为 `NaN` 时返回 `XenonError::InvalidArgument { operation, argument, expected, actual, axis, shape }`；`fill` 的写入前提由 `S: StorageMut` 在编译期保证，因此无额外运行时错误分支。 |
+| Recoverable error | `clip` / `clip_inplace` 在 `min > max` 或边界为 `NaN` 时返回 `XenonError::InvalidArgument { operation, argument, expected, actual, axis, shape }`；`fill` 在只读存储上返回 `XenonError::ReadOnlyStorage`。`XenonError` 是本模块唯一公开错误类型。 |
 | Panic | 公开 utility API 不定义额外 panic 语义；连续化与裁剪失败统一走显式错误或正常返回。 |
 | 路径一致性 | 连续与非连续布局都必须通过同一逻辑元素语义工作；当前无独立 SIMD / 并行分支。 |
 | 容差边界 | `clip` 对浮点数遵循 IEEE 754 比较语义；不额外引入近似容差。 |
@@ -594,7 +602,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 | --------------------------------- | ---------- | ---------- | -------------------------------- |
 | `clip`                            | O(n)       | O(n)       | 新分配一个张量                   |
 | `clip_inplace`                    | O(n)       | O(1)       | 原地修改，零额外分配             |
-| `fill`                            | O(n)       | O(1)       | 原地修改，要求 `S: StorageMut<Elem = A>`，`Clone` 开销取决于类型 |
+| `fill`                            | O(n)       | O(1)       | 原地修改；公开 API 先做一次可写性判定，然后在可写路径执行填充，`Clone` 开销取决于类型 |
 | `to_contiguous`（已连续）         | O(n)       | O(n)       | 借用入口拷贝到新 owned           |
 | `into_contiguous`（已连续 owned） | O(1)       | O(1)       | 直接复用现有 F-order owned 数据  |
 | `to_contiguous`（非连续）         | O(n)       | O(n)       | 拷贝 + 重新排列                  |
@@ -630,6 +638,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 | 1.1.1 | 2026-04-08 |
 | 1.1.2 | 2026-04-10 |
 | 1.1.3 | 2026-04-14 |
+| 1.1.4 | 2026-04-15 |
 
 ---
 

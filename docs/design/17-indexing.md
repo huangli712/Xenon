@@ -131,6 +131,12 @@ use crate::private::Sealed;
 pub trait NdIndex<D: Dimension>: Sealed {
     fn index_checked(&self, dim: &D, strides: &Strides<D>) -> Option<usize>;
 
+    /// # Safety
+    ///
+    /// The caller must ensure that:
+    /// - `index` length matches the dimension rank
+    /// - Each index component is within bounds for the corresponding axis
+    /// - The resulting offset does not overflow `usize`
     unsafe fn index_unchecked(&self, strides: &Strides<D>) -> usize;
 }
 
@@ -180,6 +186,9 @@ where
 
     pub fn get(&self, index: &[usize]) -> Result<&A, XenonError>;
 
+    /// # Safety
+    ///
+    /// Caller must ensure index is valid: len == ndim and each component < shape[i].
     pub unsafe fn get_unchecked(&self, index: &[usize]) -> &A;
 
     pub fn slice<I>(&self, info: SliceInfo<I, D>) -> Result<TensorView<'_, A, I>, XenonError>
@@ -199,6 +208,10 @@ where
 
     pub fn get_mut(&mut self, index: &[usize]) -> Result<&mut A, XenonError>;
 
+    /// # Safety
+    ///
+    /// Caller must ensure index is valid: len == ndim and each component < shape[i].
+    /// Caller must also have exclusive mutable access to the referenced element.
     pub unsafe fn get_unchecked_mut(&mut self, index: &[usize]) -> &mut A;
 }
 ```
@@ -464,7 +477,7 @@ User calls tensor.slice(info)
 
 | 主题 | 说明 |
 | --- | --- |
-| Recoverable error | `at()` / `get()` / `at_mut()` / `get_mut()` / `slice()` 在 rank 不匹配、轴非法、越界、`step == 0`、只读存储上请求可写访问时返回 `XenonError` |
+| Recoverable error | `at()` / `get()` / `at_mut()` / `get_mut()` / `slice()` 在 rank 不匹配、轴非法、越界、`step == 0`、只读存储上请求可写访问时返回 `XenonError`；其中索引长度与张量 `ndim` 不匹配时，错误类型固定为 `XenonError::DimensionMismatch { expected, actual }` |
 | Panic | `Index` / `IndexMut` 语法糖失败时可 panic；这不是规范安全主路径 |
 | 路径一致性 | 对同一合法输入，checked 与 unchecked 路径必须给出同一偏移和同一逻辑结果；unsafe 只省略检查 |
 | 容差边界 | 不适用；本模块不涉及浮点容差、SIMD 误差或并行归约差异 |
@@ -585,6 +598,7 @@ XenonError::InvalidStorageMode {
 | --- | --- |
 | 1.0.0 | 2026-04-14 |
 | 1.0.1 | 2026-04-14 |
+| 1.0.2 | 2026-04-15 |
 
 ---
 

@@ -36,13 +36,13 @@
 ### 1.3 在架构中的位置
 
 ```
-依赖层级：
+Dependency layers:
 L0: error, private
 L1: dimension, element, complex
-L2: layout (依赖 dimension)
-L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
-L4: tensor (依赖 storage, dimension)
-L5: construct  ← 当前模块（依赖 storage, layout, dimension, element）
+L2: layout (depends on dimension)
+L3: storage (independent of layout; owned by tensor and consumes layout results)
+L4: tensor (depends on storage, dimension)
+L5: construct  <- current module (depends on storage, layout, dimension, element)
 ```
 
 ---
@@ -62,12 +62,12 @@ L5: construct  ← 当前模块（依赖 storage, layout, dimension, element）
 
 ```
 src/
-└── construct/               # 张量构造模块（多文件设计）
-    ├── mod.rs               # 模块根，re-exports 所有公共 API
-    ├── init.rs              # zeros, ones（基础初始化构造）
-    ├── eye.rs               # eye（单位矩阵）
-    ├── from_data.rs         # from_shape_vec, from_shape_slice, from_array（从数据源构造）
-    └── scalar.rs            # from_scalar（标量构造）
+└── construct/               # tensor construction module (multi-file design)
+    ├── mod.rs               # module root, re-exports all public APIs
+    ├── init.rs              # zeros, ones (basic initialization constructors)
+    ├── eye.rs               # eye (identity matrix)
+    ├── from_data.rs         # from_shape_vec, from_shape_slice, from_array (construction from data sources)
+    └── scalar.rs            # from_scalar (scalar construction)
 ```
 
 多文件设计：每个子文件对应一类构造方式，便于后期扩展（如新增 `from_diag.rs` 等）。`mod.rs` 负责统一 re-exports，对外保持单一模块接口。
@@ -696,11 +696,13 @@ User calls zeros / from_shape_vec / eye
 
 | 元素类型       | 对齐要求           | 分配方式            |
 | -------------- | ------------------ | ------------------- |
-| `f64`          | 64 字节（AVX-512） | `alloc_aligned(64)` |
-| `f32`          | 32 字节（AVX）     | `alloc_aligned(32)` |
-| `Complex<f64>` | 64 字节            | `alloc_aligned(64)` |
-| `i32`/`i64`    | 16 字节            | `alloc_aligned(16)` |
-| `bool`         | 1 字节             | `alloc_aligned(1)`  |
+| `f64`          | 64 字节（统一策略） | `alloc_aligned(64)` |
+| `f32`          | 64 字节（统一策略） | `alloc_aligned(64)` |
+| `Complex<f64>` | 64 字节（统一策略） | `alloc_aligned(64)` |
+| `i32`/`i64`    | 64 字节（统一策略） | `alloc_aligned(64)` |
+| `bool`         | 64 字节（统一策略） | `alloc_aligned(64)` |
+
+> **对齐策略说明**：当前版本所有元素类型统一使用 64 字节对齐分配（覆盖 AVX-512 需求），而非按元素类型选择不同对齐值。这简化了分配器设计，代价是对 `i32` / `i64` / `bool` 类型有少量内存浪费。
 
 ### 12.3 批量初始化优化
 
@@ -739,6 +741,7 @@ User calls zeros / from_shape_vec / eye
 | 1.1.1 | 2026-04-08 |
 | 1.1.2 | 2026-04-10 |
 | 1.1.3 | 2026-04-14 |
+| 1.1.4 | 2026-04-15 |
 
 ---
 

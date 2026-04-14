@@ -16,7 +16,7 @@
 | 算术运算 | add/sub/mul/div，数值类型：i32/i64/f32/f64/Complex                    | 归约运算（sum/prod/min/max，参见 `13-reduction.md §1`） |
 | 一元运算 | abs（有序数值）；signum（浮点按符号位、整数按比较）；neg/square（Numeric）；数学函数（RealScalar） | 篮选/排序                                               |
 | 数学函数 | sin/sqrt/exp/ln/floor/ceil，仅 f32/f64                                | 运算符重载（参见 `19-overload.md §1`）                  |
-| 复数运算 | norm（返回实数类型）/conjugate（公开 API；内部 Complex 方法名可记为 conj），仅 Complex | 比较运算（eq/ne/lt/gt）                                 |
+| 复数运算 | norm/模（返回实数类型）/conjugate（公开 API；内部 Complex 方法名可记为 conj），仅 Complex | 比较运算（eq/ne/lt/gt）                                 |
 | 逻辑非   | `!`，仅 bool                                                          | 位运算                                                  |
 | 比较运算 | eq/ne 对所有 Element 可用；lt/gt 对 i32/i64/f32/f64 可用，返回 bool 张量，NaN 遵循 IEEE 754 | 搜索/排序                                               |
 | 标量运算 | 标量与张量的逐元素运算                                                | 矩阵运算（dot/matmul）                                  |
@@ -61,10 +61,10 @@ L6: math (element-wise operations) <- current module (depends on broadcast, iter
 
 ```
 src/math/
-├── mod.rs              # 模块入口，re-export 公开 API
-├── binary.rs           # 二元算术方法与共享二元执行骨架
-├── unary.rs            # 一元运算（abs, neg, signum, square, sin, sqrt, exp, ln, floor, ceil, norm, conjugate, not）
-└── comparison.rs       # 比较运算（eq, ne, lt, gt）
+├── mod.rs              # module entry, re-export public APIs
+├── binary.rs           # binary arithmetic methods and shared binary execution skeleton
+├── unary.rs            # unary operations (abs, neg, signum, square, sin, sqrt, exp, ln, floor, ceil, norm, conjugate, not)
+└── comparison.rs       # comparison operations (eq, ne, lt, gt)
 ```
 
 多文件设计理由：按操作元数分组（一元 vs 二元）可保持当前最小范围；更通用的逐元素映射基础设施不属于需求说明书 §12 的本期最小交付，暂不纳入当前版本。运算符重载（Add/Sub/Mul/Div trait 实现）保留在 `src/overload/arithmetic.rs`。SIMD 加速由独立 backend 模块 `src/simd/` 承载，`math/` 仅负责语义 API 与分发入口。
@@ -138,7 +138,7 @@ src/math/
 
 > **维度推导说明：** 二元逐元素方法统一使用 `BroadcastDim<DB>` 进行编译期维度推导，该 trait 定义于 `02-dimension.md §5.9`，详见该文档。
 
-当前版本不承诺独立的通用二元逐元素 helper 公开函数。二元算术、比较与内部辅助路径统一采用“先广播，再直接遍历广播后视图并写入结果张量”的执行模型。
+当前版本不承诺独立的通用二元逐元素 helper 公开函数。二元算术、比较与内部辅助路径统一采用“先广播，再直接遍历广播后视图并写入结果张量”的执行模型；启用 `parallel` feature 时，同一语义也可委托并行路径执行。
 
 ### 5.3 算术运算（Numeric 约束）
 
@@ -209,8 +209,10 @@ where
     ///
     /// # NaN behavior (floats)
     ///
-    /// Floating-point `signum` is defined by the sign bit: `NaN.signum()` returns
-    /// `NaN` per IEEE 754 semantics; integer `signum` follows `PartialOrd`.
+    /// Floating-point `signum` is defined by the sign bit:
+    /// - `NaN.signum()` returns `NaN` per IEEE 754 semantics
+    /// - `-0.0.signum()` returns `-0.0` (sign bit preserved)
+    /// Integer `signum` follows `PartialOrd`.
     pub fn signum(&self) -> Tensor<A, D>;
 }
 
@@ -274,6 +276,8 @@ where
 ```
 
 > **命名说明：** 公开张量 API 统一使用 `conjugate()`（与 `Numeric::conjugate()` 保持一致）；`conj` 仅允许作为内部 `Complex` 方法名或实现细节出现，不构成公开 API 命名承诺。
+
+> **术语说明：** 中文语境下，`norm()` 在复数场景描述为“模”，表示返回复数模的实数张量，而非其他更宽泛的数学概念。
 
 > **类型一致性约束：** 参与逐元素运算或比较的双方元素类型须预先一致。因此，`Complex<T>` 与实数标量的混合张量 API（如 `add_real_scalar` / `mul_real_scalar`）不属于当前公开范围；若内部实现需要复用相应标量逻辑，也只能作为不对外承诺的内部辅助路径存在。
 
@@ -439,6 +443,8 @@ apply_binary(a, b, f):
 ### 6.3 SIMD 加速路径
 
 SIMD 分发由 `math` 的具体算术操作在满足连续性、对齐和 feature gate 前提时直接委托 `src/simd/` facade；本文不再把额外的中间 helper 视为稳定设计接口。参见 `08-simd.md §5.5` 了解 SIMD 后端详情。当前版本 SIMD 覆盖逐元素算术（`f32`/`f64`/`i32`/`i64`）、归约（`f32`/`f64`/`i32`/`i64`/`Complex`）和内积（`f32`/`f64`/`i32`/`i64`/`Complex`）；`abs` / `signum` / `neg` / `square` / `norm` / `conjugate` 以及 `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 等路径统一回退标量实现。
+
+> **并行路径：** 当 `parallel` feature 启用时，二元逐元素运算可进一步委托 `parallel::par_zip_map` 执行并行遍历（参见 `09-parallel.md §5`）。并行路径在语义上与标量路径保持一致，按数据规模自动选择并行或串行执行。
 
 ---
 
@@ -697,6 +703,7 @@ User calls add / unary op / comparison method
 | 标准库环境 | Xenon 当前版本仅支持 `std`，本文档不再承诺 `no_std` 兼容性                                     |
 | crate 结构 | 保持单 crate 结构，不拆分独立 math crate                                                       |
 | 依赖约束   | 仅允许项目基线中的可选 SIMD / 并行依赖，不新增额外第三方数学库                                 |
+| 线程安全   | 所有逐元素运算接受 `&self`（一元/比较）或 `&self` + `&TensorBase`（二元），可在多线程中并发调用；`get_unchecked` 等 unsafe 方法要求调用方保证独占访问。 |
 | 范围边界   | 当前版本仅覆盖需求说明书 §12 明确列出的逐元素运算；通用映射 helper 与实复混合公开 API 不在本期范围内 |
 
 ---
@@ -714,6 +721,7 @@ User calls add / unary op / comparison method
 | 1.2.0 | 2026-04-08 |
 | 1.2.1 | 2026-04-10 |
 | 1.2.2 | 2026-04-14 |
+| 1.2.3 | 2026-04-15 |
 
 ---
 

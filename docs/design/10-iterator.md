@@ -62,10 +62,10 @@ L5: iter  <- current module
 
 ```
 src/iter/
-├── mod.rs         # 模块入口、公开导出、迭代器 trait 声明
-├── elements.rs    # Elements / ElementsMut 扁平元素遍历
-├── axis.rs        # AxisIter / AxisIterMut 沿轴迭代
-└── indexed.rs     # IndexedIter / IndexedIterMut 带索引遍历
+├── mod.rs         # module entry, public exports, iterator trait definitions
+├── elements.rs    # Elements / ElementsMut flat element iteration
+├── axis.rs        # AxisIter / AxisIterMut axis-wise iteration
+└── indexed.rs     # IndexedIter / IndexedIterMut indexed iteration
 ```
 
 单文件划分理由：当前版本公开范围仅覆盖元素、按轴、按索引三类迭代器，拆分文件降低单文件复杂度并保持职责清晰。逐元素运算、广播与归约如需 lock-step 遍历，由各操作模块在自身内部直接组织遍历逻辑；`windows.rs`、`lanes.rs` 暂不纳入当前版本。
@@ -170,6 +170,15 @@ pub struct AxisIter<'a, A, D: Dimension + RemoveAxis> {
 }
 
 /// Mutable axis iterator.
+///
+/// # Safety
+///
+/// Each call to `next()` computes the next subview base offset from the selected
+/// axis stride and current logical position, then yields exactly one mutable view
+/// for that disjoint slice. Successive positions differ by one axis-step, so the
+/// produced `&mut` views cover non-overlapping logical regions along the iterated
+/// axis. The iterator advances monotonically and never revisits an earlier offset,
+/// which prevents mutable aliasing between yielded items.
 pub struct AxisIterMut<'a, A, D: Dimension + RemoveAxis> {}
 
 impl<'a, A, D: Dimension + RemoveAxis> Iterator for AxisIter<'a, A, D> {
@@ -209,6 +218,16 @@ pub struct IndexedIter<'a, A, D: Dimension> {
     // Internal fields: Elements iterator, current index, stride state machine
 }
 
+/// Mutable indexed iterator.
+///
+/// # Safety
+///
+/// `IndexedIterMut` yields at most one mutable reference for each logical index.
+/// The internal state machine visits every logical coordinate once in F-order and
+/// computes the element address from the tensor's validated stride metadata. Since
+/// no logical index is repeated during a single traversal, each yielded `&mut A`
+/// refers to a distinct element slot and does not overlap with previously yielded
+/// references.
 pub struct IndexedIterMut<'a, A, D: Dimension> {}
 
 impl<'a, A, D: Dimension> Iterator for IndexedIter<'a, A, D> {
@@ -345,6 +364,10 @@ increment_index_f(shape, index):
 ### 6.4 填充数组迭代
 
 填充数组的迭代仅遍历逻辑元素。迭代器通过 shape 中的逻辑维度计数，跳过填充区域。
+
+> **空轴行为：** 空轴（`shape[axis] == 0`）的 `AxisIter` / `AxisIterMut` 产出 0 个元素，与标准库空切片迭代器行为一致。
+
+> **ZST 迭代说明：** ZST（zero-sized type）迭代：当元素类型为 ZST 时，所有迭代器仍可正常遍历，但不对底层数据执行实际读写；`Element::size() == 0` 的类型路径须在测试中显式覆盖。
 
 ### 6.5 并行分块说明
 
@@ -488,7 +511,7 @@ Wave 3: [T6] [T9]
 ### 9.1 接口约定
 
 ```rust
-// tensor module provides iterator entry methods（参见 07-tensor.md §5）
+// tensor module provides iterator entry methods (see 07-tensor.md §5)
 // iter module consumes TensorView / TensorViewMut
 ```
 
@@ -505,8 +528,8 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
 ### 9.3 与 storage / dimension 模块
 
 ```rust
-// Iterators read data via the Storage trait（参见 05-storage.md §5）
-// Index state is managed via the Dimension trait（参见 02-dimension.md §5）
+// Iterators read data via the Storage trait (see 05-storage.md §5)
+// Index state is managed via the Dimension trait (see 02-dimension.md §5)
 ```
 
 ## 10. 错误处理与语义边界
@@ -613,6 +636,7 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
 | 1.1.0 | 2026-04-08 |
 | 1.2.0 | 2026-04-08 |
 | 1.2.1 | 2026-04-14 |
+| 1.2.2 | 2026-04-15 |
 
 ---
 

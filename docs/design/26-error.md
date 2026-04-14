@@ -57,9 +57,9 @@
 | `index`              | 越界索引、按轴索引、切片边界诊断       |
 | `broadcast` / `math` | 广播失败、形状不兼容、参数非法         |
 | `reduction`          | 非法轴、空输入、整数溢出 panic         |
-| `convert`            | `TypeConversion` 错误及元素索引定位    |
+| `convert`            | `TypeConversionError` 内部映射与元素索引定位 |
 | `ffi`                | FFI 前提失败与后端约束诊断             |
-| `parallel`           | panic / `Err` 的立即传播，不得静默吞掉 |
+| `parallel`           | panic / `Err` 的尽快传播，不得静默吞掉 |
 
 ### 3.2 统一依赖方向
 
@@ -79,14 +79,26 @@
 
 ### 4.1 可恢复错误与 panic 的边界
 
-| 场景                                 | 处理方式                                  | 说明                      |
-| ------------------------------------ | ----------------------------------------- | ------------------------- |
-| 形状不兼容 / 广播失败                | `Result::Err(XenonError)`                 | 运行时输入决定，可恢复    |
-| 轴越界 / 参数非法 / FFI 前提失败     | `Result::Err(XenonError)`                 | 调用方可修正输入并重试    |
-| `cast()` 有损或前提不满足            | `Result::Err(XenonError::TypeConversion)` | `require.md §23` 强制要求 |
-| 方法型索引失败                       | `Result::Err(XenonError::IndexOutOfBounds)` | 需返回结构化索引上下文  |
-| 语言级 `Index` 语法越界              | panic                                     | 与 Rust 索引惯例保持一致  |
-| 整数溢出 / 整数除以零 / 结果不可表示 | panic                                     | 属于不可恢复算术域错误    |
+| 场景                                         | 处理方式                                         | 说明                                    |
+| -------------------------------------------- | ------------------------------------------------ | --------------------------------------- |
+| 形状不兼容 / 广播失败                        | `Result::Err(XenonError)`                        | 运行时输入决定，可恢复                  |
+| 轴越界 / 参数非法 / FFI 前提失败             | `Result::Err(XenonError)`                        | 调用方可修正输入并重试                  |
+| `cast()` 有损或前提不满足                    | `Result::Err(XenonError::TypeConversion(_))`     | `require.md §23` 强制要求               |
+| 方法型索引失败                               | `Result::Err(XenonError::IndexOutOfBounds)`      | 需返回结构化索引上下文                  |
+| 语言级 `Index` 语法 `tensor[i]` 越界         | panic                                            | 属于 Rust 语法糖边界，非 `Result` API   |
+| 有符号整数算术溢出 / 除以零 / 结果不可表示   | panic                                            | 仅适用于 `i32` / `i64`，见 `require.md` |
+| `sqrt(negative)`、`ln(negative)`、`ln(0)`    | IEEE 754 返回 `NaN` / `-Inf`，不得 panic         | `f32` / `f64` 数学域边界                |
+
+### 4.1.1 安全 API 的 panic 边界
+
+| 类别 | 允许 panic 的安全 API / 语法 | 约束 |
+| ---- | ---------------------------- | ---- |
+| 语言级语法 | `tensor[i]` | 仅指 `Index`/`IndexMut` 语法糖；越界时可 panic |
+| 算术域错误 | `i32` / `i64` 的逐元素算术、归约、内积 | 溢出、除以零、结果不可表示时 panic |
+| FFI 便捷辅助 | `23-ffi.md` 中的 `offset_of`、`ptr_at` | 仅作为 convenience sugar；非法输入可 panic，且须文档化 |
+| 非用户面向契约 | workspace typed helpers 等内部/unsafe 契约辅助 | 违反 unsafe/contract precondition 的 panic 不计入用户错误模型 |
+
+除上表外，其余安全公开 API 遇到错误条件时都必须返回 `Result<_, XenonError>`，不得以 panic 代替可恢复错误。
 
 ### 4.2 统一错误类型
 
@@ -144,6 +156,7 @@ pub enum XenonError {
     },
 
     DimensionMismatch {
+        operation: &'static str,
         expected: usize,
         actual: usize,
     },
@@ -180,12 +193,16 @@ pub enum XenonError {
         shape: Vec<usize>,
     },
 
-    TypeConversion {
-        source_type: Cow<'static, str>,
-        target_type: Cow<'static, str>,
-        reason: TypeConversionReason,
-        element_index: usize,
-    },
+    TypeConversion(TypeConversionError),
+}
+
+/// Module-internal payload for XenonError::TypeConversion.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeConversionError {
+    source_type: Cow<'static, str>,
+    target_type: Cow<'static, str>,
+    reason: TypeConversionReason,
+    element_index: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -205,17 +222,36 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 
 公开 API 统一使用 prelude 导出的 `crate::error::Result`（即 `Result<T, XenonError>` 别名）作为返回类型。
 
-模块可以为内部实现保留局部错误分类（例如 `FfiError`、`WorkspaceError`），以避免在模块内部丢失语义；但凡进入 Xenon 的公开 API 边界，必须统一包装为 `XenonError`（如 `XenonError::Ffi(...)`、`XenonError::Workspace(...)`），不得直接向外暴露模块私有错误枚举。
+模块可以为内部实现保留局部错误分类（例如 `FfiError`、`WorkspaceError`、`TypeConversionError`），以避免在模块内部丢失语义；但凡进入 Xenon 的公开 API 边界，必须统一包装为 `XenonError`（如 `XenonError::Ffi(...)`、`XenonError::Workspace(...)`、`XenonError::TypeConversion(...)`），不得直接向外暴露模块私有错误类型。
+
+`WorkspaceError` 与 `FfiError` 都必须实现 `std::error::Error`，以便 `XenonError::source()` 暴露完整的内层错误链。
+
+### 4.2.1 公开 API 边界映射
+
+| 边界位置 | 规则 |
+| -------- | ---- |
+| Public API return type | `Result<_, XenonError>` |
+| Internal mapping | `WorkspaceError -> XenonError::Workspace(...)` |
+| Internal mapping | `FfiError -> XenonError::Ffi(...)` |
+| Internal mapping | `TypeConversionError -> XenonError::TypeConversion(...)` |
+
+该表为公开错误边界的唯一基线；其他设计文档若在公开 API 层直接暴露 `WorkspaceError` 或独立的 `TypeConversionError`，均视为与本文冲突，必须以本文为准修正。
 
 ### 4.3 类型转换错误规范
 
 `cast()` 的错误模型须与 `21-type.md` 保持一致：
 
 - `cast<B>(&self)` 返回 `Result<Tensor<B, D>, XenonError>`
-- 任何被 `require.md §23` 判定为有损的默认转换组合，都须返回 `XenonError::TypeConversion`
+- 任何被 `require.md §23` 判定为有损的默认转换组合，都须返回 `XenonError::TypeConversion(TypeConversionError)`
 - 仅当需求显式给出附加成功前提时，满足前提后才可成功
-- `Complex -> Real` 不是编译期拒绝；当 `im == 0` 时允许继续转换，否则返回 `TypeConversion`
+- `Complex -> Real` 不是编译期拒绝；当 `im == 0` 时允许继续转换，否则返回 `XenonError::TypeConversion(TypeConversionError)`
 - `bool` 不参与逐元素类型转换，因此不得用 `TypeConversion` 为 `bool` 扩大支持范围
+
+规范名称固定为 `XenonError::TypeConversion(TypeConversionError)`：
+
+- `TypeConversionError` 是模块内部载荷结构，不是公开错误边界上的独立错误类型
+- `03-element.md`、`04-complex.md` 及其他文档引用类型转换失败时，只能引用 `XenonError::TypeConversion(TypeConversionError)`
+- 不得再把独立 `TypeConversionError` 写成公开 API 可直接返回的错误类型
 
 ```rust
 // Good - cast is fallible and reports the failing element.
@@ -252,14 +288,14 @@ where
 | `InvalidLayout`      | `operation`, `storage_kind`, `shape`, `strides`, `offset`, `storage_len`, `reason`            |
 | `InvalidAxis`        | `operation`, `axis`, `ndim`, `shape`                                                           |
 | `InvalidShape`       | `operation`, `shape`, `expected_elements`, `actual_elements`, `offending_dim?`                 |
-| `DimensionMismatch`  | `expected`, `actual`；建议在需要更丰富诊断的公共 API 层补充 `{ expected: Vec<usize>, actual: Vec<usize>, operation: &'static str, axis: Option<usize> }` 上下文 |
+| `DimensionMismatch`  | `operation`, `expected`, `actual` |
 | `EmptyArray`         | `operation`, `shape`                                                                           |
 | `InvalidArgument`    | `operation`, `argument`, `expected`, `actual`, `axis?`, `shape?`                               |
 | `InvalidStorageMode` | `operation`, `expected`, `actual`, `shape?`                                                    |
 | `Ffi(FfiError)`      | 由 `FfiError` 提供 `operation`, `backend`, `precondition`, `actual`                            |
 | `Workspace(...)`     | 由 `WorkspaceError` 提供 `size`, `align`, `split`, `len` 等适用结构化字段                      |
 | `IndexOutOfBounds`   | `operation`, `attempted_index`, `axis`, `shape`                                                |
-| `TypeConversion`     | `source_type`, `target_type`, `reason`, `element_index`                                        |
+| `TypeConversion(TypeConversionError)` | `source_type`, `target_type`, `reason`, `element_index`                            |
 
 ### 4.5 Display 与 panic 信息要求
 
@@ -353,9 +389,14 @@ impl fmt::Display for XenonError {
                 actual_elements,
                 offending_dim,
             ),
-            Self::DimensionMismatch { expected, actual } => write!(
+            Self::DimensionMismatch {
+                operation,
+                expected,
+                actual,
+            } => write!(
                 f,
-                "dimension mismatch: expected {}, actual {}",
+                "dimension mismatch in {}: expected {}, actual {}",
+                operation,
                 expected,
                 actual,
             ),
@@ -397,18 +438,13 @@ impl fmt::Display for XenonError {
             ),
             Self::Ffi(err) => write!(f, "ffi error: {}", err),
             Self::Workspace(err) => write!(f, "workspace error: {}", err),
-            Self::TypeConversion {
-                source_type,
-                target_type,
-                reason,
-                element_index,
-            } => write!(
+            Self::TypeConversion(err) => write!(
                 f,
                 "type conversion failed at element {}: {} -> {} ({:?})",
-                element_index,
-                source_type,
-                target_type,
-                reason,
+                err.element_index,
+                err.source_type,
+                err.target_type,
+                err.reason,
             ),
             Self::IndexOutOfBounds {
                 operation,
@@ -437,21 +473,47 @@ impl fmt::Display for XenonError {
 - 结果不可表示（例如 `abs(i32::MIN)`、`i32::MIN / -1`）
 - 整数内积的乘积或累加溢出
 
+推荐 panic message 模板：`"Xenon: {operation} overflow for {type} at {context}"`
+
+| panic 类别 | 推荐消息示例 |
+| ---------- | ------------ |
+| 逐元素加法溢出 | `"Xenon: add overflow for i32 at element_index=7"` |
+| 归约溢出 | `"Xenon: sum overflow for i64 at axis=1, output_index=3"` |
+| 内积溢出 | `"Xenon: dot overflow for i32 at lane=12"` |
+| 语言级索引 panic | `"Xenon: index out of bounds for tensor[i] at axis=0, index=9, len=4"` |
+| FFI helper convenience panic | `"Xenon: ptr_at precondition violation for ffi helper at axis=1, index=8"` |
+
 ```rust
 // Good - checked arithmetic with explicit panic message.
 let value = lhs
     .checked_mul(rhs)
-    .expect("integer overflow in dot product: lhs * rhs is not representable");
+    .expect("Xenon: dot overflow for i32 at lhs_index=3, rhs_index=3");
 
 // Bad - silent wrapping in release mode.
 let value = lhs * rhs;
 ```
 
-### 4.7 并行路径与资源释放
+### 4.7 数学函数定义域边界
+
+| 场景 | `f32` / `f64` 行为 | 约束来源 |
+| ---- | ------------------ | -------- |
+| `sqrt(negative)` | 返回 `NaN` | `require.md §28.3` |
+| `ln(negative)` | 返回 `NaN` | `require.md §28.3` |
+| `ln(0)` | 返回 `-Inf` | `require.md §28.3` |
+
+这些情形遵循 IEEE 754 语义，属于数值结果边界，不属于 panic 边界。
+
+### 4.8 并行路径与资源释放
 
 - 并行路径中的 `Err(XenonError)` 须尽快向上传播，不得延后为“全部 worker 完成后再统一检查”
 - 并行路径中的 panic 不得被吞掉或伪装为成功结果
 - 所有资源释放逻辑不得再触发 panic；在 `panic = abort` 环境下允许进程级终止带来资源不回收
+
+对 `rayon` 上下文中的“立即传播”，本文采用工程化解释：
+
+- 任一 worker 首次观察到 panic 或 `Err` 后，须终止该 worker 的当前执行路径并向 join 点报告失败
+- 其他 worker 可能在 join 检测到失败前完成自己已经领取的当前 chunk；这是 `rayon` work-stealing 调度的实际限制
+- 因此 `require.md §27` 中的“立即”含义是“as soon as practically detectable”，而不是“所有线程瞬时同步中止”
 
 ---
 
@@ -462,7 +524,7 @@ let value = lhs * rhs;
 | 验证项     | 要求                                                                                |
 | ---------- | ----------------------------------------------------------------------------------- |
 | 单元测试   | 覆盖 `XenonError` 各变体的 Display、Clone、PartialEq 与结构化字段                   |
-| 集成测试   | 覆盖 `reshape`、`broadcast`、`sum_axis`、`cast`、`ffi`、方法型索引等 API 的错误映射 |
+| 集成测试   | 覆盖 `transpose`、`broadcast`、`sum_axis`、`cast`、`ffi`、方法型索引等 API 的错误映射 |
 | 边界测试   | 覆盖空形状、非法轴、越界索引、复数虚部非零、整数极值、NaN/Inf 转换                  |
 | panic 测试 | 覆盖逐元素整数溢出、除以零、`abs(MIN)`、dot overflow                                |
 | 并行测试   | 覆盖 `Err` 与 panic 在并行路径中的传播一致性                                        |
@@ -522,6 +584,7 @@ let value = lhs * rhs;
 | 1.1.0 | 2026-04-14 |
 | 1.1.1 | 2026-04-14 |
 | 1.1.2 | 2026-04-14 |
+| 1.1.3 | 2026-04-15 |
 
 ---
 

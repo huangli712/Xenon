@@ -33,18 +33,18 @@
 ### 1.3 在架构中的位置
 
 ```
-依赖层级：
+Dependency layers:
 L0: error, private
 L1: dimension, element, complex
-L2: layout (依赖 dimension)
-L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
-L4: tensor (依赖 storage, dimension)
+L2: layout (depends on dimension)
+L3: storage (independent of layout; owned by tensor and consumes layout results)
+L4: tensor (depends on storage, dimension)
 L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 
-横切关注点：
+Cross-cutting concern:
 ┌─────────────────────────────────────────────────────────────────┐
-│  线程安全 (Send/Sync)  ← 当前文档（横跨 L3-L5 各模块）               │
-│  ─ 横贯 storage (L3)、tensor (L4)、parallel/simd (L5)            │
+│  Thread safety (Send/Sync)  <- current document (spans modules across L3-L5) │
+│  - Spans storage (L3), tensor (L4), and parallel/simd (L5)         │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -76,16 +76,16 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 ```
 src/
 ├── storage/
-│   ├── mod.rs          # 模块级线程安全文档
-│   ├── owned.rs        # Owned<A> 的 Send/Sync impl
-│   ├── view.rs         # ViewRepr<'a, A> 的 Send/Sync impl
-│   ├── view_mut.rs     # ViewMutRepr<'a, A> 的 Send/Sync impl
-│   └── arc.rs          # ArcRepr<A> 的 Send/Sync impl
+│   ├── mod.rs          # Module-level thread-safety docs
+│   ├── owned.rs        # Send/Sync impls for Owned<A>
+│   ├── view.rs         # Send/Sync impls for ViewRepr<'a, A>
+│   ├── view_mut.rs     # Send/Sync impls for ViewMutRepr<'a, A>
+│   └── arc.rs          # Send/Sync impls for ArcRepr<A>
 ├── parallel/
-│   ├── mod.rs          # ParallelGuard, 嵌套并行防护
-│   └── par_iter.rs     # ParElements 线程安全约束
+│   ├── mod.rs          # ParallelGuard, nested parallelism guard
+│   └── par_iter.rs     # Thread-safety constraints for ParElements
 └── simd/
-    └── mod.rs          # Arch 缓存的线程安全初始化
+    └── mod.rs          # Thread-safe initialization of the Arch cache
 ```
 
 ---
@@ -97,13 +97,13 @@ src/
 ```
 src/storage/
 ├── core::marker         # PhantomData, Send, Sync
-├── alloc::sync::Arc     # ArcRepr 使用的原子引用计数
-└── std::cell::Cell      # thread_local (parallel 模块)
+├── alloc::sync::Arc     # Atomic reference counting used by ArcRepr
+└── std::cell::Cell      # thread_local (parallel module)
 
 src/parallel/
-├── std::sync::atomic    # AtomicUsize (阈值)
-├── std::cell::Cell      # thread_local (嵌套并行检测)
-└── rayon                # ParallelIterator (Send 约束)
+├── std::sync::atomic    # AtomicUsize (thresholds)
+├── std::cell::Cell      # thread_local (nested parallel detection)
+└── rayon                # ParallelIterator (Send constraint)
 ```
 
 ### 4.2 依赖精确到类型级
@@ -130,6 +130,8 @@ src/parallel/
 ---
 
 ## 5. 公共 API 设计
+
+> **权威来源对齐：** 本文档的 Send/Sync 权威定义以 `05-storage.md §5.3` 和 `00-coding.md §3.4` 为基准；如存在冲突，以本文档为准，并要求同步回写相关设计文档。
 
 > **注意：** 本文档与 `05-storage.md §5.7` 采用同一组 Send/Sync 规则。若后续出现冲突，以本文档作为线程安全裁决源，并同步回写到存储文档。
 
@@ -675,7 +677,7 @@ fn test_arc_concurrent_access() {
 | 配置        | 验证点                                                      |
 | ----------- | ----------------------------------------------------------- |
 | 默认配置    | `Send`/`Sync` 规则在无并行后端时仍成立                      |
-| 启用并行    | `par_iter` / `par_iter_mut` 仅接受满足线程安全边界的类型    |
+| 启用并行    | `par_iter` / 基于 `par_zip_map` 的并行逐元素执行仅接受满足线程安全边界的类型 |
 | 启用 SIMD   | SIMD 与线程安全规则正交，不引入共享可变状态                 |
 | 全 feature  | 组合启用时线程安全约束与回退策略保持一致                    |
 
@@ -701,11 +703,11 @@ fn test_arc_concurrent_access() {
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    storage 模块的线程安全接口                      │
+│                 Thread-safety interface of the storage module       │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  trait RawStorage {                                             │
-│      type Elem;  // 无 Send/Sync 约束                            │
+│      type Elem;  // no Send/Sync constraint                         │
 │  }                                                              │
 │                                                                 │
 │  trait Storage: RawStorage {                                    │
@@ -717,7 +719,7 @@ fn test_arc_concurrent_access() {
 │      fn as_mut_ptr(&mut self) -> *mut Self::Elem;               │
 │  }                                                              │
 │                                                                 │
-│  各实现的 Send/Sync 由具体类型（Owned/ViewRepr/...）决定            │
+│  Send/Sync for each implementation is decided by the concrete type │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -725,33 +727,33 @@ fn test_arc_concurrent_access() {
 ### 9.2 数据流描述
 
 ```text
-存储类型被创建或借用后
+After a storage type is created or borrowed
     │
-    ├── safety 文档先定义其 Send / Sync 最小约束
-    ├── parallel 模块据此决定哪些张量可进入 par_iter / par_iter_mut 路径
-    ├── workspace 等线程内组件则被明确排除在跨线程共享之外
-    └── 最终由类型系统 + 少量运行时约束共同保证跨线程安全
+    ├── safety documentation first defines its minimum Send / Sync constraints
+    ├── the parallel module uses that to decide which tensors may enter parallel paths such as par_iter / par_zip_map
+    ├── thread-local components such as workspace are explicitly excluded from cross-thread sharing
+    └── cross-thread safety is ultimately guaranteed by the type system plus a small number of runtime constraints
 ```
 
 ### 9.3 与 parallel 模块
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    parallel 模块的线程安全要求                     │
+│                 Thread-safety requirements of the parallel module  │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  impl<'a, S, D, A> IntoParallelRefIterator for TensorBase<S, D> │
 │  where                                                          │
 │      S: Storage<Elem = A>,                                      │
 │      D: Dimension,                                              │
-│      A: Element + Send + Sync,  // 关键约束                      │
+│      A: Element + Send + Sync,  // key constraint                  │
 │  {                                                              │
 │      type Iter = ParElements<'a, A, D>;                         │
 │  }                                                              │
 │                                                                 │
-│  分块安全保证：                                                   │
-│  • compute_safe_chunks() 保证不重叠                              │
-│  • 生命周期确保视图有效                                            │
+│  Chunking safety guarantees:                                       │
+│  • compute_safe_chunks() guarantees non-overlap                    │
+│  • lifetimes ensure the view remains valid                         │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -760,12 +762,12 @@ fn test_arc_concurrent_access() {
 
 rayon 的 `ParallelIterator` 要求 `Item: Send`（参见 `09-parallel.md §5.3`）：
 
-| 存储模式                  | `par_iter()` | `par_iter_mut()` | 约束                                                                             |
-| ------------------------- | :----------: | :--------------: | -------------------------------------------------------------------------------- |
-| `Tensor<A, D>` (Owned)    |      ✅      |        ✅        | `A: Send + Sync`                                                                 |
-| `TensorView<'a, A, D>`    |      ✅      |        ❌        | `A: Sync`                                                                        |
-| `TensorViewMut<'a, A, D>` | ⚠️ 条件支持  |        ✅        | `par_iter()` 需先显式降级为只读视图；`par_iter_mut()` 需要独占借用且块划分不重叠 |
-| `ArcTensor<A, D>`         |      ✅      | ❌ (需 make_mut) | `A: Send + Sync`                                                                 |
+| 存储模式                  | `par_iter()` | 基于 `par_zip_map` 的并行逐元素写路径 | 约束                                                                                 |
+| ------------------------- | :----------: | :----------------------------------: | ------------------------------------------------------------------------------------ |
+| `Tensor<A, D>` (Owned)    |      ✅      |                 ✅                  | `A: Send + Sync`                                                                     |
+| `TensorView<'a, A, D>`    |      ✅      |                 ❌                  | `A: Sync`                                                                            |
+| `TensorViewMut<'a, A, D>` | ⚠️ 条件支持  |                 ✅                  | `par_iter()` 需先显式降级为只读视图；并行写路径要求独占借用且块划分不重叠               |
+| `ArcTensor<A, D>`         |      ✅      |          ❌ (需 make_mut)           | `A: Send + Sync`                                                                     |
 
 ### 9.5 与 workspace 模块的交互
 
@@ -778,21 +780,21 @@ Workspace 模块的 `split_at`/`split_at_mut` 使用原子引用计数（`Atomic
 
 详细设计和安全性论证参见 `24-workspace.md §5.7` 和 `24-workspace.md §6.3`。
 
-#### TensorViewMut 的 par_iter_mut() 安全性论证
+#### TensorViewMut 的并行逐元素写路径安全性论证
 
-`TensorViewMut` 仅在**显式独占借用**场景下支持 `par_iter_mut()`；若需要并行只读访问，应先通过只读重借用转换为 `TensorView` 后再调用 `par_iter()`。其安全性基于以下保证：
+`TensorViewMut` 仅在**显式独占借用**场景下支持基于 `par_zip_map` 的并行逐元素写路径；若需要并行只读访问，应先通过只读重借用转换为 `TensorView` 后再调用 `par_iter()`。其安全性基于以下保证：
 
 1. **独占语义**：`TensorViewMut` 持有 `&mut [A]`，Rust 借用规则保证在任意时刻只有唯一的可变访问者
-2. **分块不重叠**：`par_iter_mut()` 将数据按块分割，每个线程获得独占的 `&mut [A]` 切片，块之间无重叠
+2. **分块不重叠**：并行逐元素写路径会将数据按块分割，每个线程获得独占的 `&mut [A]` 切片，块之间无重叠
 3. **Send 约束**：`A: Send` 确保元素类型可跨线程传递
 4. **只读路径分离**：`par_iter()` 不直接依赖 `TensorViewMut: Sync`；调用方先显式获得只读视图，再走 `TensorView` 的并行只读实现
 5. **生命周期**：`TensorViewMut` 的 `'a` 生命周期确保视图不会比源数据存活更久
 
 ```rust
-// Safety argument for par_iter_mut() on TensorViewMut:
+// Safety argument for the parallel element-wise write path on TensorViewMut:
 //
 // TensorViewMut<'a, A, D> holds &mut [A] exclusively.
-// par_iter_mut() splits the slice into non-overlapping chunks,
+// The internal parallel write path splits the slice into non-overlapping chunks,
 // each chunk is sent to a different thread as &mut [A].
 // Since chunks don't overlap, no two threads can access the same element,
 // satisfying the aliasing rule. A: Send ensures element ownership may cross threads;
@@ -860,6 +862,7 @@ Workspace 模块的 `split_at`/`split_at_mut` 使用原子引用计数（`Atomic
 | 1.0.5 | 2026-04-10 |
 | 1.0.6 | 2026-04-14 |
 | 1.0.7 | 2026-04-14 |
+| 1.0.8 | 2026-04-15 |
 
 ---
 
