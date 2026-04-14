@@ -401,7 +401,7 @@ pub struct Bad<A> {
 
 ### 3.4 Send/Sync 实现规范
 
-按存储模式声明 `unsafe impl Send/Sync`，须严格遵循以下规则（参见 `05-storage.md` §5.7）：
+按存储模式声明 `unsafe impl Send/Sync`，须严格遵循以下规则（权威定义参见 `25-safety.md` §4；`05-storage.md` 中相关规则如有冲突，以 `25-safety.md` 为准）：
 
 | 存储模式             | Send | Sync   | 条件                                                 |
 | -------------------- | ---- | ------ | ---------------------------------------------------- |
@@ -528,7 +528,54 @@ pub enum XenonError {
         actual_elements: usize,
         offending_dim: Option<usize>,
     },
+    DimensionMismatch {
+        operation: &'static str,
+        source_dim: usize,
+        target_dim: usize,
+    },
+    InvalidLayout {
+        operation: &'static str,
+        reason: &'static str,
+        shape: Cow<'static, [usize]>,
+        strides: Cow<'static, [usize]>,
+    },
+    LayoutMismatch {
+        operation: &'static str,
+        expected: &'static str,
+        actual: &'static str,
+    },
+    InvalidStorageMode {
+        operation: &'static str,
+        actual: &'static str,
+        required: &'static str,
+    },
+    TypeConversion {
+        operation: &'static str,
+        source_type: &'static str,
+        target_type: &'static str,
+        reason: Cow<'static, str>,
+        element_index: Option<usize>,
+    },
+    IndexError {
+        operation: &'static str,
+        index: Cow<'static, [usize]>,
+        shape: Cow<'static, [usize]>,
+    },
+    IndexOutOfBounds {
+        operation: &'static str,
+        index: Cow<'static, [usize]>,
+        shape: Cow<'static, [usize]>,
+        axis: Option<usize>,
+    },
+    EmptyArray {
+        operation: &'static str,
+    },
+    Ffi(FfiError),
+    Workspace(WorkspaceError),
 }
+
+/// Module-local error types wrapped by XenonError.
+/// See `23-ffi.md` for FfiError and `24-workspace.md` for WorkspaceError.
 
 pub type Result<T> = std::result::Result<T, XenonError>;
 ```

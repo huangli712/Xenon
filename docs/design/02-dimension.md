@@ -316,7 +316,11 @@ impl Dimension for Ix3 {
             let s = dyn_dim.slice();
             Ok(Ix3(s[0], s[1], s[2]))
         } else {
-            Err(XenonError::DimensionMismatch { expected: 3, actual: dyn_dim.ndim() })
+            Err(XenonError::DimensionMismatch {
+                operation: "Dimension::try_from_dyn",
+                source_dim: dyn_dim.ndim(),
+                target_dim: 3,
+            })
         }
     }
 
@@ -599,7 +603,7 @@ let dim: Ix3 = Ix3::try_from_dyn(IxDyn::from_slice(&[2, 3, 4, 5, 6]))?;
 不属于维度系统的核心职责；`dimension` 模块仅在此记录它依赖静态/动态维度类型这一事实。
 
 > **实现建议：** 跨静态维度的 `BroadcastDim` 实现共计约 57 个（含自身广播 7 个 + 跨静态维度 42 个 + 与 IxDyn 混合 7 个（静态维度→IxDyn）+ 1 个（IxDyn→D 泛型 impl））。
-> 建议使用声明宏（`macro_rules!`）生成这些实现，避免手工编写导致的遗漏和错误。
+> 建议使用声明宏（`macro_rules!`）生成这些实现，避免手工编写导致的遗漏和错误。宏生成后须通过 compile-fail 测试验证全覆盖。
 
 ```rust
 /// Trait for computing the output dimension type when broadcasting two arrays.

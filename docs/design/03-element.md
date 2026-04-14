@@ -212,12 +212,7 @@ pub trait Numeric:
 
 > **设计决策：** `Numeric` 定义 `conjugate()` 方法，为实数类型返回 `self`，为复数类型返回共轭。这使得统一的内积（dot product）实现可以泛化处理实数和复数情况。Xenon 采用 `sum(conjugate(a[i]) * b[i])` 的约定，并在 `12-matrix.md` 中保持一致。其余四则运算由 `Add/Sub/Mul/Div/Neg` trait 提供。`usize` 明确保留给索引/形状元数据，不进入元素算术层次。
 >
-> **`Numeric::conjugate()` 与 `ComplexScalar::conj()` 的关系和使用说明：**
->
-> - `Numeric::conjugate()` 对实数类型（i32, i64, f32, f64）是恒等操作（返回自身），对复数类型（Complex<f32>, Complex<f64>）委托给复数共轭实现
-> - 对于泛型代码中仅约束 `Numeric` 时，调用 `x.conjugate()` 会解析到 `Numeric::conjugate()`
-> - `ComplexScalar::conj()` 返回同类型复数共轭，与 `Numeric::conjugate()` 语义一致；前者面向复数专用 API，后者面向泛型 `Numeric` 代码
-> - **设计决策注释：** `Numeric::conjugate` 的存在是为了让纯 `Numeric` 约束的泛型代码也能调用共轭，无需额外约束 `ComplexScalar`
+> **设计说明**：`Numeric::conjugate()` 是面向所有数值类型的统一 trait 入口。对实数类型（`f32`、`f64`、`i32`、`i64`），`conjugate(self)` 为恒等操作（返回 `self`）；对复数类型（`Complex<f32>`、`Complex<f64>`），`conjugate(self)` 委托给 `Complex::conj()` 方法。`Complex::conj()` 是复数类型自身的便捷方法，不经过 `Numeric` trait 分派。两者语义等价，但调用路径不同。
 
 ### 5.3 RealScalar trait
 
@@ -533,24 +528,25 @@ impl RealScalar for f64 {
     fn ceil(self) -> Self { self.ceil() }
     fn is_nan(self) -> bool { self.is_nan() }
     fn is_finite(self) -> bool { self.is_finite() }
-fn min(self, other: Self) -> Self {
-    if self.is_nan() || other.is_nan() {
-        Self::nan()
-    } else if self <= other {
-        self
-    } else {
-        other
+    fn min(self, other: Self) -> Self {
+        if self.is_nan() || other.is_nan() {
+            Self::nan()
+        } else if self <= other {
+            self
+        } else {
+            other
+        }
     }
-}
-fn max(self, other: Self) -> Self {
-    if self.is_nan() || other.is_nan() {
-        Self::nan()
-    } else if self >= other {
-        self
-    } else {
-        other
+
+    fn max(self, other: Self) -> Self {
+        if self.is_nan() || other.is_nan() {
+            Self::nan()
+        } else if self >= other {
+            self
+        } else {
+            other
+        }
     }
-}
     // ...
 }
 // Same pattern applies to f32.

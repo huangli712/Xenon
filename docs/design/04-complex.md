@@ -21,7 +21,7 @@
 | 实数混合运算      | 同精度：`Complex<f32> op f32`、`Complex<f64> op f64`；左侧实数通过 `Complex::from(real)` 显式转换 | 跨精度：`f32+Complex<f64>`（须显式转换）                                                    |
 | 格式化输出        | Display（`"a+bi"` / `"a-bi"`）, Debug                                                             | —                                                                                           |
 | 双字段 C 布局基础 | `#[repr(C)]` + 编译期静态断言                                                                     | 跨精度混合运算                                                                              |
-| 类型转换          | `Complex<f32>↔Complex<f64>`, `f32/f64→Complex`                                                    | 整数→复数：按 `require.md` §23.1 支持的转换组合直接转换（实部经对应实数规则转换，虚部为 0） |
+| 类型转换          | `Complex<f32>↔Complex<f64>`, `f32/f64→Complex`, `i32/i64→Complex`                                 | 未在 `require.md` §23.1 列出的额外整数→复数组合                                               |
 
 ### 1.2 设计原则
 
@@ -65,6 +65,8 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 | 范围内   | `Complex<T>` 类型定义、同精度复数运算、格式化、类型转换、FFI 布局边界 |
 | 范围外   | `num-complex` 兼容层、跨精度混合运算、FFT 与高阶复数算法        |
 | 非目标   | 引入第三方复数库依赖、开放任意 `T` 的公开实例化或 `_Complex` ABI 保证 |
+
+> **当前版本范围声明**：本版本仅支持 `Complex<T> op T`（右侧实数）与 `Complex<T> op Complex<T>` 的混合运算。左侧实数运算（`T op Complex<T>`）不在当前版本范围内，原因是其对 Rust trait 系统的 impl 冲突需要额外设计（如 newtype wrapper 或专门 trait）。若后续版本需要支持，须单独设计并遵守 `require.md` §5 的约束——双方元素类型须预先一致，因此 `T op Complex<T>` 中的 `T` 须与 `Complex<T>` 的分量类型 `T` 相同。
 
 ---
 
@@ -170,6 +172,8 @@ pub trait ComplexFloat: private::Sealed + Copy + Default + Debug + PartialEq + P
 impl ComplexFloat for f32 {}
 impl ComplexFloat for f64 {}
 ```
+
+> **API 边界说明**：`Float` 和 `ComplexFloat` 为 sealed trait，仅对 `f32`/`f64` 实现。虽然内部运算实现大量使用这些 trait bound，但它们不是面向下游的公开扩展点。公开 API 通过 `Element`/`Numeric`/`ComplexScalar` 等更高层 trait 约束暴露。
 
 内部实现细节：
 
@@ -547,7 +551,7 @@ impl<T: Float> core::ops::Sub<T> for Complex<T> {
 }
 ```
 
-> **设计决策：** 仅支持同精度混合运算。`Complex<T> op T` 与 `T op Complex<T>` 的语义都应被视为稳定目标；若直接暴露左侧实数语法成本过高，文档至少必须明确它是“待补齐的具体 impl”，而不是数学上不支持。`Complex<f64> + f32` 这类跨精度混合运算仍然编译错误，须显式转换。
+> **设计决策：** 当前版本仅支持同精度的 `Complex<T> op T`。左侧实数运算 `T op Complex<T>` 暂不纳入稳定 API，调用方若需要该语义，应先显式执行 `Complex::from(real)` 再参与复数运算。`Complex<f64> + f32` 这类跨精度混合运算仍然编译错误，须显式转换。
 
 ### 5.8 PartialEq 实现
 
@@ -638,6 +642,17 @@ impl From<f64> for Complex<f64> {
     fn from(re: f64) -> Self { Self::new(re, 0.0) }
 }
 ```
+
+整数到复数的受支持路径按 `require.md` §23.1 与 §23.2 的规则补充如下：
+
+| 源类型 | 目标类型 | 语义 | 默认行为 |
+|--------|----------|------|---------|
+| `i32` | `Complex<f64>` | 实部 `i32→f64` 无损，虚部为 `0` | 成功 |
+| `i32` | `Complex<f32>` | 实部 `i32→f32` 有损，虚部为 `0` | 返回可恢复错误 |
+| `i64` | `Complex<f64>` | 实部 `i64→f64` 有损，虚部为 `0` | 返回可恢复错误 |
+| `i64` | `Complex<f32>` | 实部 `i64→f32` 有损，虚部为 `0` | 返回可恢复错误 |
+
+其中语义遵循 `require.md` §23.2 的闭合规则：先按对应实数类型到目标复数实部分量类型的规则转换实部，再引入值为 `0` 的虚部。当前版本不额外扩展 `require.md` §23.1 之外的整数→复数组合。
 
 ### 5.11 内存布局静态断言
 

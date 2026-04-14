@@ -1,4 +1,4 @@
-# 内存布局模块设计
+# 布局模块设计
 
 > 文档编号: 06 | 模块: `src/layout/` | 阶段: Phase 2
 > 前置文档: `02-dimension.md`
@@ -245,6 +245,8 @@ impl LayoutFlags {
 
 > **说明：** Xenon 的原生构造路径仍以 F-order 为准；`LayoutState` 是一个**分类结果**，用于描述某个 `shape + strides` 组合所呈现的布局状态，而不是放宽当前版本的 F-order only 设计边界。
 
+> **权威定义声明**：`LayoutState` 由本模块（`layout/`）定义并持有。`07-tensor.md` 中的 `TensorBase::layout_state()` 方法返回本模块定义的 `LayoutState`，不再重复定义该枚举。若后续版本需扩展布局状态分类，须在本模块中修改并通过模块间接口暴露。
+
 ```rust
 /// Classification of tensor memory layout contiguity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -486,7 +488,7 @@ impl Layout {
 }
 ```
 
-### 5.10 compute_flags 内部函数
+### 5.9 compute_flags 内部函数
 
 ```rust
 /// Computes layout flags from shape, strides, and data pointer.
@@ -511,7 +513,7 @@ pub(crate) fn compute_flags<A, D: Dimension>(
 ) -> LayoutFlags
 ```
 
-### 5.11 Good/Bad 对比
+### 5.10 Good/Bad 对比
 
 ```rust
 // Good - F-order stride computation

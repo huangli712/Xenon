@@ -129,7 +129,7 @@ xenon/
 │   │   └── traits.rs          # IsOwned, IsView 等 marker traits
 │   │
 │   ├── layout/                # 内存布局（仅 F-order）
-│   │   ├── mod.rs             # LayoutFlags、Strides<D> 和公开辅助函数
+│   │   ├── mod.rs             # LayoutFlags、LayoutState、Strides<D> 和公开辅助函数
 │   │   ├── flags.rs           # 布局标志位（F_CONTIGUOUS, ALIGNED 等）
 │   │   ├── strides.rs         # F-order 步长计算和验证
 │   │   └── contiguous.rs      # 连续性检查
@@ -262,7 +262,7 @@ xenon/
 | `element/`     | 元素类型 trait 层次（Element → Numeric → RealScalar/ComplexScalar；`usize` 仅作为索引/形状类型，不属于元素算术层） |
 | `complex/`     | 自定义 `Complex<T>` 类型，`#[repr(C)]` 兼容 C FFI                                                                  |
 | `storage/`     | 四种存储模式（Owned/ViewRepr/ViewMutRepr/ArcRepr）                                                                 |
-| `layout/`      | F-order 布局标志位、步长计算、连续性检查                                                                           |
+| `layout/`      | F-order 布局标志位、`LayoutState` 分类、步长计算、连续性检查                                                       |
 | `tensor/`      | 核心 `TensorBase<S, D>` 结构体及类型别名                                                                           |
 | `iter/`        | 元素/轴/索引迭代器                                                                                                 |
 | `simd/`        | SIMD 后端：向量化 kernel、标量回退、运行时分发                                                                     |
@@ -389,7 +389,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 | ------ | ---------------------------------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
 | **L0** | error, private                                             | 无                                                                       | `26-error.md`                                                                                                                    |
 | **L1** | dimension, element, complex                                | error（element 额外依赖 complex）                                        | `02-dimension.md`、`03-element.md`、`04-complex.md`                                                                              |
-| **L2** | layout                                                     | error, dimension                                                         | `06-memory.md`                                                                                                                   |
+| **L2** | layout                                                     | error, dimension（拥有 `LayoutFlags` / `LayoutState` / `Strides<D>` 等布局元数据与判定规则） | `06-memory.md`                                                                                                                   |
 | **L2** | workspace                                                  | std（独立于核心类型系统，可被上游库直接使用）                            | `24-workspace.md`                                                                                                                |
 | **L3** | storage                                                    | core, alloc（只持有底层连续缓冲区，不消费 `dimension` 或 `layout`）      | `05-storage.md`                                                                                                                  |
 | **L4** | tensor                                                     | storage, dimension, layout, element                                      | `07-tensor.md`                                                                                                                   |
@@ -754,19 +754,19 @@ Wave 5: [W5.1] [W5.2] [W5.3] [W5.4]
 | 理由     | 避免相同失败条件在方法与运算符之间分裂成两套模型，保持库集成、诊断与测试口径一致                                                 |
 | 替代方案 | 所有接口统一 panic — 放弃，不利于库集成和诊断；仅索引语法保留 panic 例外 — 当前采用                                              |
 
-### 决策 7：WorkspaceError 仅限内部使用
+### 决策 7：FfiError / WorkspaceError 仅限模块内部使用
 
 | 属性     | 值                                                                                                        |
 | -------- | --------------------------------------------------------------------------------------------------------- |
-| 决策     | `WorkspaceError` 仅作为 workspace 子系统内部错误类型；所有面向 Xenon 用户的公开 API 统一暴露 `XenonError` |
-| 理由     | 保持公开错误模型单一，避免调用方在跨模块组合时处理多套错误语义                                            |
-| 替代方案 | 将 `WorkspaceError` 直接暴露给公开 API — 放弃，会破坏错误入口的一致性                                     |
+| 决策     | `FfiError` 与 `WorkspaceError` 仅作为各自模块内部错误类型；所有面向 Xenon 用户的公开 API 统一暴露 `XenonError` |
+| 理由     | 保持公开错误模型单一，同时保留模块内部诊断语义，避免调用方在跨模块组合时处理多套错误语义                        |
+| 替代方案 | 将 `FfiError` 或 `WorkspaceError` 直接暴露给公开 API — 放弃，会破坏错误入口的一致性                             |
 
 ---
 
 ## 错误处理与语义边界
 
-本文档不直接定义错误类型，但要求所有架构层级、模块边界与执行路径统一遵循 `26-error.md` 的错误语义边界；架构层只裁决错误入口应单一、路径语义应一致，不在此重复定义具体错误枚举。
+本文档不直接定义错误类型，但要求所有架构层级、模块边界与执行路径统一遵循 `26-error.md` 的错误语义边界；架构层只裁决错误入口应单一、路径语义应一致，不在此重复定义具体错误枚举。`FfiError`、`WorkspaceError` 等模块局部错误只允许在模块内部保留语义，跨公开 API 边界时必须包装为 `XenonError`。
 
 ---
 
