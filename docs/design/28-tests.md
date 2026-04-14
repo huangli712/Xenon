@@ -568,7 +568,7 @@ fn test_ixdyn_high_rank_scenarios() {
 
 ### 8.2 浮点比较方式
 
-浮点测试默认使用 **NumPy 风格组合容差**（`atol + rtol`）比较；但后端一致性测试（SIMD / parallel）遵循对应模块的更强契约：若 backend 路径被启用，则结果必须与标量/串行基线路径一致；若无法保证，则应验证其自动回退行为。
+浮点测试默认使用 **NumPy 风格组合容差**（`atol + rtol`）比较；并行与 SIMD 路径对浮点/复数结果的确定性要求须对齐 `require.md §28.3`：同执行路径下结果确定，但跨执行路径（标量/SIMD/并行）允许在文档化误差容差范围内存在舍入差异；整数和布尔路径仍须逐位一致。
 
 ```rust
 /// Compare two floats with combined absolute/relative tolerance.
@@ -619,7 +619,10 @@ fn test_par_sum_consistency() {
     #[cfg(feature = "parallel")]
     {
         let par_sum = t.par_sum();
-        assert_eq!(par_sum, serial_sum, "parallel sum must match serial result exactly");
+        assert!(
+            allclose_eq(par_sum, serial_sum, 1e-12, 1e-12),
+            "parallel sum must stay within documented floating-point tolerance"
+        );
     }
 }
 ```
@@ -641,7 +644,11 @@ fn test_simd_add_consistency() {
     // Verify against scalar loop
     for i in 0..1024 {
         let expected = a[[i]] + b[[i]];
-        assert_eq!(result[[i]], expected, "SIMD add mismatch at {}", i);
+        assert!(
+            allclose_eq(result[[i]], expected, 1e-12, 1e-12),
+            "SIMD add mismatch at {}",
+            i
+        );
     }
 }
 ```
@@ -1156,9 +1163,9 @@ fn compile_fail_cases() {
 
 | 属性     | 值                                                                                          |
 | -------- | ------------------------------------------------------------------------------------------- |
-| 决策     | 并行归约和逐元素运算必须与串行结果在数值上一致                                              |
-| 理由     | 需求说明书 §28.5 明确要求并行归约与单线程一致；逐元素运算和归约运算都必须与串行结果保持一致 |
-| 替代方案 | 允许有限误差 — 放弃，违反需求                                                               |
+| 决策     | 并行归约和逐元素运算在同执行路径下结果确定；浮点/复数跨执行路径允许文档化容差，整数/布尔仍须逐位一致 |
+| 理由     | 与 `require.md §28.3` 对齐：浮点/复数允许舍入差异，整数与布尔仍要求严格一致                              |
+| 替代方案 | 要求所有路径位级完全一致 — 放弃，会把允许的浮点舍入差异误判为失败                                         |
 
 ### 决策 5：测试矩阵仅覆盖 `std` 环境
 

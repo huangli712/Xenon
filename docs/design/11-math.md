@@ -1,7 +1,7 @@
 # 逐元素运算模块设计
 
 > 文档编号: 11 | 模块: `src/math/` | 阶段: Phase 4
-> 前置文档: `10-iterator.md`, `15-broadcast.md`
+> 前置文档: `03-element.md`, `08-simd.md`, `10-iterator.md`, `15-broadcast.md`, `26-error.md`
 > 需求参考: 需求说明书 §12
 > 范围声明: 范围内
 
@@ -16,7 +16,7 @@
 | 算术运算 | add/sub/mul/div，数值类型：i32/i64/f32/f64/Complex                    | 归约运算（sum/prod/min/max，参见 `13-reduction.md §1`） |
 | 一元运算 | abs/neg/square/signum（Numeric + PartialOrd），数学函数（RealScalar） | 篮选/排序                                               |
 | 数学函数 | sin/sqrt/exp/ln/floor/ceil，仅 f32/f64                                | 运算符重载（参见 `19-overload.md §1`）                  |
-| 复数运算 | norm（返回实数类型）/conj，仅 Complex                                 | 比较运算（eq/ne/lt/gt）                                 |
+| 复数运算 | norm（返回实数类型）/conjugate（公开 API；内部 Complex 方法名可记为 conj），仅 Complex | 比较运算（eq/ne/lt/gt）                                 |
 | 逻辑非   | `!`，仅 bool                                                          | 位运算                                                  |
 | 比较运算 | eq/ne 对所有 Element 可用；lt/gt 对 i32/i64/f32/f64 可用，返回 bool 张量，NaN 遵循 IEEE 754 | 搜索/排序                                               |
 | 标量运算 | 标量与张量的逐元素运算                                                | 矩阵运算（dot/matmul）                                  |
@@ -63,7 +63,7 @@ L6: math (element-wise operations) <- current module (depends on broadcast, iter
 src/math/
 ├── mod.rs              # 模块入口，re-export 公开 API
 ├── binary.rs           # 二元算术方法与共享二元执行骨架
-├── unary.rs            # 一元运算（abs, neg, signum, square, sin, sqrt, exp, ln, floor, ceil, norm, conj, not）
+├── unary.rs            # 一元运算（abs, neg, signum, square, sin, sqrt, exp, ln, floor, ceil, norm, conjugate, not）
 └── comparison.rs       # 比较运算（eq, ne, lt, gt）
 ```
 
@@ -256,6 +256,8 @@ where
 }
 ```
 
+> **命名说明：** 公开张量 API 统一使用 `conjugate()`（与 `Numeric::conjugate()` 保持一致）；`conj` 仅允许作为内部 `Complex` 方法名或实现细节出现，不构成公开 API 命名承诺。
+
 > **类型一致性约束：** 参与逐元素运算或比较的双方元素类型须预先一致。因此，`Complex<T>` 与实数标量的混合张量 API（如 `add_real_scalar` / `mul_real_scalar`）不属于当前公开范围；若内部实现需要复用相应标量逻辑，也只能作为不对外承诺的内部辅助路径存在。
 
 ### 5.7 逻辑非（仅 bool）
@@ -447,7 +449,7 @@ SIMD 分发由 `math` 的具体算术操作在满足连续性、对齐和 featur
 - [ ] **T5**: 实现复数操作（`conjugate`）与复数数学函数（`norm`）
   - 文件: `src/math/unary.rs`
   - 内容: `conjugate` 与 `norm` 的范围内实现
-  - 测试: `test_norm`, `test_conj`
+- 测试: `test_norm`, `test_conjugate`
   - 前置: 10-iterator.md
   - 预计: 10 min
 
@@ -501,7 +503,7 @@ Wave 3:    [T8]
 
 | 测试分类 | 说明                                      | 包含的测试                                                                                                                                                                                                                                                                                                                                                                              |
 | -------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 单元测试 | 验证单个运算函数的基本正确性              | `test_add_i32`, `test_add_f64`, `test_add_complex`, `test_add_broadcast`, `test_mul_scalar`, `test_abs`, `test_neg`, `test_signum`, `test_square_checked_overflow`, `test_sin`, `test_sqrt`, `test_exp_ln_roundtrip`, `test_floor_ceil`, `test_norm`, `test_conj`, `test_not_bool`, `test_eq_f64`, `test_lt_i32`, `test_nan_comparison`, `test_empty_tensor`, `test_add_simd_vs_scalar` |
+| 单元测试 | 验证单个运算函数的基本正确性              | `test_add_i32`, `test_add_f64`, `test_add_complex`, `test_add_broadcast`, `test_mul_scalar`, `test_abs`, `test_neg`, `test_signum`, `test_square_checked_overflow`, `test_sin`, `test_sqrt`, `test_exp_ln_roundtrip`, `test_floor_ceil`, `test_norm`, `test_conjugate`, `test_not_bool`, `test_eq_f64`, `test_lt_i32`, `test_nan_comparison`, `test_empty_tensor`, `test_add_simd_vs_scalar` |
 | 集成测试 | 验证运算模块与迭代器/广播模块的端到端集成 | `test_binary_same_shape`, `test_binary_broadcast`（参见 §6 T2）                                                                                                                                                                                                                                                                                                                         |
 | 边界测试 | 空张量、NaN、Inf、非连续输入等边界条件    | `test_empty_tensor`, `test_nan_comparison`, `test_add_simd_vs_scalar`（详见 §7.2）                                                                                                                                                                                                                                                                                                      |
 | 属性测试 | 通过随机输入验证数学不变量                | 详见下方属性测试不变量表                                                                                                                                                                                                                                                                                                                                                                |
@@ -558,14 +560,14 @@ Wave 3:    [T8]
 | -------------------- | ---------------------------------------------------------------------------------- |
 | `tests/test_math.rs` | 二元逐元素辅助路径 / 标量路径与 `iter`、`broadcast`、`tensor`、`simd` backend 的端到端集成 |
 
-### 8.6 Feature gate / 配置测试
+### 8.5 Feature gate / 配置测试
 
 | 配置 | 验证点 |
 | ---- | ---- |
 | 默认配置 | 所有逐元素运算走标量 / fallback 路径且语义满足文档约束。 |
 | 启用 `simd`（`simd = ["dep:pulp", "std"]`） | 连续输入上的 SIMD 分发结果与默认配置保持一致，非连续输入仍正确回退。 |
 
-### 8.7 类型边界 / 编译期测试
+### 8.6 类型边界 / 编译期测试
 
 | 场景 | 测试方式 |
 | ---- | ---- |

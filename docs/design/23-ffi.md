@@ -931,6 +931,7 @@ Wave 3: ┌────┴────┐
 | `test_is_blas_compatible_non_contiguous` | 非连续切片不兼容                                   | 高     |
 | `test_is_blas_compatible_broadcast`      | 广播维度（零步长）不兼容                           | 高     |
 | `test_blas_info_f_order`                 | F-order 返回正确 BlasInfo                          | 高     |
+| `test_blas_info_overflow`                | `blas_info()` 处理接近 `usize::MAX` 的 rows/cols/lda | 高     |
 | `test_lda_f_order`                       | F-order [3,4] 返回 3                               | 高     |
 | `test_lda_non_contiguous`                | 非连续（切片）数组 lda() 返回错误                  | 中     |
 | `test_from_raw_parts_roundtrip`          | `into_raw_parts → from_raw_parts_owned` 往返一致性 | 高     |
@@ -939,8 +940,10 @@ Wave 3: ┌────┴────┐
 | `test_into_raw_parts_memory_leak`        | 解构后正确释放                                     | 中     |
 | `test_try_offset_of_various`             | recoverable 索引转换返回正确偏移或错误             | 高     |
 | `test_offset_of_various`                 | panic-sugar 偏移量接口在合法索引上正确             | 高     |
+| `test_offset_of_illegal_index_panics`    | `offset_of()` 在非法索引上触发 panic               | 高     |
 | `test_try_ptr_at_various`                | recoverable 指针转换返回正确指针或错误             | 高     |
 | `test_ptr_at_various`                    | panic-sugar 指针接口在合法索引上正确               | 高     |
+| `test_ptr_at_illegal_index_panics`       | `ptr_at()` 在非法索引上触发 panic                  | 高     |
 
 ### 8.3 边界测试场景
 

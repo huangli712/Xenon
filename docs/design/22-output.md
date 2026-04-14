@@ -556,12 +556,16 @@ Wave 3:        [T5]
 | `test_fmt_2d`                 | 2D 矩阵形式输出                             | 高     |
 | `test_fmt_3d`                 | 3D 嵌套括号输出                             | 中     |
 | `test_fmt_float_precision`    | 浮点精度格式化                              | 中     |
+| `test_display_complex_f64`    | 复数格式化输出（如 `1.0+2.0i`）             | 中     |
+| `test_display_complex_negative_imag` | 复数负虚部格式化                       | 中     |
 | `test_fmt_i32`                | 整数类型格式化                              | 中     |
 | `test_fmt_bool`               | bool 类型格式化 `[true, false]`             | 低     |
 | `test_display_tensor`         | Display trait 完整流程                      | 高     |
 | `test_debug_tensor`           | Debug trait 含元信息                        | 高     |
 | `test_fmt_zero_dim`           | 零维张量输出带区分标记                      | 中     |
 | `test_fmt_large_2d_truncated` | 大 2D 数组行列截断                          | 高     |
+| `test_line_width_wrapping`    | 多行输出遵守配置的 `line_width`             | 中     |
+| `test_line_width_narrow`      | 窄行宽配置触发更早换行                      | 中     |
 
 ### 8.3 边界测试场景
 

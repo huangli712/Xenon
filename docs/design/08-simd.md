@@ -109,7 +109,7 @@ src/simd/
 ├── pulp (optional)           # External dependency, feature = "simd"
 ├── crate::tensor             # TensorBase<S, D>, type aliases
 ├── crate::storage            # Storage trait, raw slice access
-├── crate::tensor             # Contiguity/layout queries via TensorBase
+├── crate::layout             # Alignment helpers
 └── crate::element            # Element trait, SimdElement
 ```
 
@@ -275,6 +275,11 @@ pub trait SimdKernel<A: Copy + Send + Sync + 'static>: Send + Sync {
 
     /// Vector dot product.
     ///
+    /// NOTE: reserved for future SIMD dot kernels. In the current version,
+    /// all dot operations fall back to the scalar path even when `simd`
+    /// is enabled; this method remains in the trait only for API
+    /// forward-compatibility.
+    ///
     /// # Panics
     ///
     /// Panics if the two slices have different lengths.
@@ -338,6 +343,8 @@ where
 ### 5.4a 当前版本的 SIMD 覆盖范围
 
 当前版本 SIMD 仅覆盖逐元素算术/一元运算和整数归约；数学函数（如 sin/cos/exp/log）和浮点归约/内积均回退标量实现。**当前版本不提供 SIMD 加速的 dot kernel，也不提供浮点/复数 reduction kernel。** 以下需求说明书 §12 / §13 中的操作在当前版本**不提供专门的 SIMD kernel**，即使启用了 `simd` feature，也统一回退到标量路径：
+
+> **`SimdKernel::dot()` 说明：** trait 中保留 `dot()` 仅为未来 API 扩展预留统一入口；当前版本没有向量化 dot 实现，调用方必须视其为标量回退路径的抽象接口，而非已优化能力。
 
 | 类别      | 标量回退操作                                      |
 | --------- | ------------------------------------------------- |
@@ -456,6 +463,17 @@ use crate::layout::is_aligned;
 /// 2. Memory is contiguous (F-order)
 /// 3. Element type supports SIMD (f32/f64/i32/i64)
 /// 4. Data is 64-byte aligned
+///
+/// `simd_width()` returns the minimum lane width required to make SIMD
+/// dispatch worthwhile for the current build target. When `simd` is enabled,
+/// it is defined as `ScalarKernel::<A>::width().max(1)` for the scalar-only
+/// baseline and may be overridden by vector kernels in future revisions.
+#[cfg(feature = "simd")]
+#[inline]
+fn simd_width<A: SimdElement>() -> usize {
+    ScalarKernel::<A>::width().max(1)
+}
+
 #[cfg(feature = "simd")]
 pub fn can_use_simd<A: SimdElement>(
     lhs_ptr: *const A,
@@ -464,7 +482,7 @@ pub fn can_use_simd<A: SimdElement>(
     len: usize,
     is_contiguous: bool,
 ) -> bool {
-    if !is_contiguous || len < simd_width() {
+    if !is_contiguous || len < simd_width::<A>() {
         return false;
     }
     is_aligned(lhs_ptr as *const u8)

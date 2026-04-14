@@ -76,7 +76,7 @@ src/overload/
 | ------ | ---- |
 | 语法糖边界 | `+` / `-` / `*` / `/` 只是对方法型逐元素运算的语法糖；运算结果始终为新的 owned 张量。 |
 | 广播前提 | 张量×张量运算必须先满足广播兼容；广播结果 shape 由 `BroadcastDim<E>::Output` 推导。 |
-| 错误边界 | 运算符路径在广播失败时 panic；方法型 API（如 `.add()`）保留 `Result<Tensor<A, F>, TensorError>` 的可恢复错误语义。 |
+| 错误边界 | 运算符路径在广播失败时 panic；方法型 API（如 `.add()`）保留 `Result<Tensor<A, F>, XenonError>` 的可恢复错误语义。 |
 | 标量路径 | 张量×标量委托给 `*_scalar` 方法；不得通过 Zip 风格 helper 作为稳定语义前提。 |
 | 结果所有权 | 所有运算符组合都返回独立的新张量，不与输入共享存储。 |
 
@@ -84,7 +84,7 @@ src/overload/
 
 | 场景 | 对外语义 |
 | ---- | -------- |
-| 方法型 API 广播失败 | 返回 `TensorError::BroadcastError { operation: "add", input_shape: Cow::Borrowed(rhs.shape()), target_shape: Cow::Borrowed(lhs.shape()), axis: None }`（`sub` / `mul` / `div` 同理）。 |
+| 方法型 API 广播失败 | 返回 `XenonError::BroadcastError { operation: "add", input_shape: Cow::Borrowed(rhs.shape()), target_shape: Cow::Borrowed(lhs.shape()), axis: None }`（`sub` / `mul` / `div` 同理）。 |
 | 运算符路径广播失败 | 触发 panic；这是显式 ADR 决定的语义边界，而不是实现细节。 |
 | 整数除零、整数溢出、结果不可表示 | 沿用底层逐元素方法的 panic 语义，不包装为 `Result`。 |
 | 标量路径参数合法 | `tensor op scalar` 与 `Scalar(scalar) op tensor` 不产生广播错误，但仍须遵循底层算术 panic 规则。 |
@@ -204,7 +204,7 @@ where
 ```
 
 > **设计决策：** 运算符重载遵循 `std::ops` 风格：`+` / `-` / `*` / `/` 在广播不兼容时使用 panic，
-> 而对应的方法型 API（如 `broadcast_with()` 与 `add()` / `sub()` / `mul()` / `div()`）继续返回 `Result<Tensor<A, F>, TensorError>` 作为可恢复错误路径。
+> 而对应的方法型 API（如 `broadcast_with()` 与 `add()` / `sub()` / `mul()` / `div()`）继续返回 `Result<Tensor<A, F>, XenonError>` 作为可恢复错误路径。
 > 这是一条显式的项目级 ADR：运算符语法代表“直接求值”，方法 API 代表“可恢复错误处理”。因此这里的 `expect("broadcast: incompatible shapes")` 体现的是稳定契约，而不是临时写法。
 
 > **语义边界说明：** 运算符在广播失败时 panic，而方法型 API 保持 `Result` 返回；正式 ADR 记录见本文 §11 的 ADR-2a。
@@ -355,7 +355,7 @@ fn compute(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix2>) -> Tensor<f64, Ix2> {
 }
 
 // Good - use explicit API for broadcast safety
-fn compute_safe(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix1>) -> Result<Tensor<f64, Ix2>, TensorError> {
+fn compute_safe(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix1>) -> Result<Tensor<f64, Ix2>, XenonError> {
     a.add(b)
 }
 
@@ -588,7 +588,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | 模块级可恢复错误由委托的显式方法路径承担，如 `broadcast_with()` 或方法型逐元素 API 返回 `TensorError::BroadcastError { operation: &'static str, input_shape: Cow<'static, [usize]>, target_shape: Cow<'static, [usize]>, axis: Option<usize> }`；若方法参数本身非法，则继续使用 `TensorError::InvalidArgument { operation: &'static str, argument: &'static str, expected: &'static str, actual: String, axis: Option<usize>, shape: Option<Cow<'static, [usize]>> }`。 |
+| Recoverable error | 模块级可恢复错误由委托的显式方法路径承担，如 `broadcast_with()` 或方法型逐元素 API 返回 `XenonError::BroadcastError { operation: &'static str, input_shape: Cow<'static, [usize]>, target_shape: Cow<'static, [usize]>, axis: Option<usize> }`；若方法参数本身非法，则继续使用 `XenonError::InvalidArgument { operation: &'static str, argument: &'static str, expected: &'static str, actual: String, axis: Option<usize>, shape: Option<Cow<'static, [usize]>> }`。 |
 | Panic | 运算符语法在广播不兼容时 panic；整数除零、溢出与结果不可表示继续沿用 `math` 的 panic 语义。 |
 | 路径一致性 | 借用 / owned / 标量以及由 `math` 触发的标量 / SIMD 路径必须保持相同输出 shape 与数值语义。 |
 | 容差边界 | 当前不引入额外容差；若底层 `math` 使用 SIMD，仍须与标量路径语义一致。 |
@@ -621,7 +621,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 
 | 属性     | 值 |
 | -------- | --- |
-| 决策     | `+` / `-` / `*` / `/` 在广播失败时 panic；对应方法型 API 返回 `Result<Tensor<A, F>, TensorError>` |
+| 决策     | `+` / `-` / `*` / `/` 在广播失败时 panic；对应方法型 API 返回 `Result<Tensor<A, F>, XenonError>` |
 | 理由     | 运算符用于表达式直接求值，应保持 `std::ops` 风格；需要恢复路径时，调用方应显式选择 `.add()` / `.sub()` / `.mul()` / `.div()` |
 | 替代方案 | 让运算符与方法都返回 `Result`，或让方法型 API 也 panic |
 | 拒绝原因 | 前者破坏运算符表达式的直观性，后者又会抹掉 Xenon 公开 API 的可恢复错误通道 |

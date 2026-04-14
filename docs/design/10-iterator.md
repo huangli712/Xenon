@@ -21,7 +21,7 @@
 | 轴遍历         | 沿指定轴产生子张量视图                   | 子视图的具体操作                       |
 | 索引遍历       | 带多维索引的元素遍历                     | 索引赋值操作                           |
 | 内部能力提示   | 各操作模块可直接实现自身所需的内部迭代分发；`Windows` 可作为后续版本议题保留 | 不单独设计统一的多输入 lock-step 中间抽象；`Windows` 不纳入当前版本实现范围 |
-| 并行迭代       | —                                        | 并行迭代（参见 `09-parallel.md §4.5`） |
+| 并行迭代       | —                                        | 并行迭代（参见 `09-parallel.md`） |
 
 ### 1.3 在架构中的位置
 
@@ -105,10 +105,10 @@ src/iter/
 
 | 来源模块    | 使用的类型/trait                                                                                                                                 |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `tensor`    | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `TensorViewMut<'a, A, D>`, `.shape()`, `.strides()`, `.as_ptr()`, `.len()`（参见 `07-tensor.md §4`） |
+| `tensor`    | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `TensorViewMut<'a, A, D>`, `.shape()`, `.strides()`, `.as_ptr()`, `.len()`（参见 `07-tensor.md §5.3` / `§5.4` / `§5.7`） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `RemoveAxis`, `D::Smaller`（参见 `02-dimension.md §4`）                                                       |
 | `storage`   | `Storage<Elem = A>`, `StorageMut<Elem = A>`, `Owned<A>`（参见 `05-storage.md §4`）                                                               |
-| `tensor`    | `.is_f_contiguous()`, 布局标志查询（参见 `07-tensor.md §4`）                                                                                     |
+| `tensor`    | `.is_f_contiguous()`, 布局标志查询（参见 `07-tensor.md §5.3`）                                                                                   |
 
 ### 4.5 依赖方向
 
@@ -337,7 +337,7 @@ increment_index_f(shape, index):
 // Therefore broadcast_to() only returns an immutable view.
 ```
 
-> **编译期防护机制：** 广播结果返回 `TensorView`（不可变视图），而非 `TensorViewMut`。由于 `TensorView` 不提供 `iter_mut()` 方法（`iter_mut()` 要求 `StorageMut` 约束，仅 `TensorViewMut` 和 `Tensor` 满足），对广播结果调用 `iter_mut()` 会在编译期被类型系统拒绝，无需运行时检查。参见 `07-tensor.md §4.7` 中视图方法的约束差异。
+> **编译期防护机制：** 广播结果返回 `TensorView`（不可变视图），而非 `TensorViewMut`。由于 `TensorView` 不提供 `iter_mut()` 方法（`iter_mut()` 要求 `StorageMut` 约束，仅 `TensorViewMut` 和 `Tensor` 满足），对广播结果调用 `iter_mut()` 会在编译期被类型系统拒绝，无需运行时检查。参见 `07-tensor.md §5.7` 中视图方法的约束差异。
 
 ### 6.4 填充数组迭代
 
@@ -419,8 +419,8 @@ Wave 3: [T6] [T9]
 | -------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 单元测试 | 验证单个迭代器类型的基本功能           | `test_elements_f_contig`, `test_elements_non_contiguous`, `test_elements_empty`, `test_elements_ix0`, `test_elements_mut_write`, `test_axis_iter_count`, `test_axis_iter_shape`, `test_axis_iter_ix0_error`, `test_indexed_iter_order`, `test_indexed_iter_ix0` |
 | 集成测试 | 验证迭代器与 TensorBase 入口方法的集成 | `test_tensor_iter_integration`                                                                                                                                                                                                                                  |
-| 边界测试 | 空数组、零维张量、非连续内存等边界条件 | `test_elements_empty`, `test_elements_ix0`, `test_axis_iter_ix0_error`（详见 §7.2）                                                                                                                                                                             |
-| 属性测试 | 通过随机输入验证不变量                 | `iter().count() == tensor.len()`, `axis_iter(Axis(i)).count() == shape[i]`, `ExactSizeIterator` 递减不变量（详见 §7.3）                                                                                                                                         |
+| 边界测试 | 空数组、零维张量、非连续内存等边界条件 | `test_elements_empty`, `test_elements_ix0`, `test_axis_iter_ix0_error`（详见 §8.3）                                                                                                                                                                             |
+| 属性测试 | 通过随机输入验证不变量                 | `iter().count() == tensor.len()`, `axis_iter(Axis(i)).count() == shape[i]`, `ExactSizeIterator` 递减不变量（详见 §8.4）                                                                                                                                         |
 
 ### 8.2 单元测试清单
 
@@ -485,7 +485,7 @@ Wave 3: [T6] [T9]
 ### 9.1 接口约定
 
 ```rust
-// tensor module provides iterator entry methods（参见 07-tensor.md §4.6）
+// tensor module provides iterator entry methods（参见 07-tensor.md §5）
 // iter module consumes TensorView / TensorViewMut
 ```
 
