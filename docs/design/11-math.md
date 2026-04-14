@@ -18,7 +18,7 @@
 | 数学函数 | sin/sqrt/exp/ln/floor/ceil，仅 f32/f64                                | 运算符重载（参见 `19-overload.md §1`）                  |
 | 复数运算 | norm（返回实数类型）/conj，仅 Complex                                 | 比较运算（eq/ne/lt/gt）                                 |
 | 逻辑非   | `!`，仅 bool                                                          | 位运算                                                  |
-| 比较运算 | eq/ne 对所有 Element 可用；lt/gt 仅限 RealScalar，返回 bool 张量，NaN 遵循 IEEE 754 | 搜索/排序                                               |
+| 比较运算 | eq/ne 对所有 Element 可用；lt/gt 对 i32/i64/f32/f64 可用，返回 bool 张量，NaN 遵循 IEEE 754 | 搜索/排序                                               |
 | 标量运算 | 标量与张量的逐元素运算                                                | 矩阵运算（dot/matmul）                                  |
 | 广播支持 | 所有二元运算和比较运算支持广播                                        | 批量运算                                                |
 
@@ -34,14 +34,14 @@
 ### 1.3 在架构中的位置
 
 ```
-依赖层级：
+Dependency levels:
 L0: error, private
 L1: dimension, element, complex
-L2: layout (依赖 dimension)
-L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
-L4: tensor (依赖 storage, dimension)
-L5: broadcast (依赖 tensor, dimension)
-L6: math（逐元素运算） ← 当前模块（依赖 broadcast, iter, element）
+L2: layout (depends on dimension)
+L3: storage (independent of layout; tensor owns storage and consumes layout results)
+L4: tensor (depends on storage, dimension)
+L5: broadcast (depends on tensor, dimension)
+L6: math (element-wise operations) <- current module (depends on broadcast, iter, element)
 ```
 
 ---
@@ -52,7 +52,7 @@ L6: math（逐元素运算） ← 当前模块（依赖 broadcast, iter, element
 | -------- | ---- |
 | 需求映射 | 需求说明书 §12 |
 | 范围内   | 逐元素算术、一元运算、数学函数、复数 `norm` / `conjugate`、逻辑非、比较运算与广播语义。 |
-| 范围外   | SIMD 数学函数专用 kernel（当前版本数学函数统一回退标量；SIMD 仅覆盖逐元素算术/一元运算和整数归约）、混合类型逐元素运算以及 `map` 系列公开 API。 |
+| 范围外   | SIMD 数学函数专用 kernel（当前版本数学函数统一回退标量；SIMD 仅覆盖逐元素算术与整数 `sum`）、混合类型逐元素运算以及 `map` 系列公开 API。 |
 | 非目标   | 不新增新的数学库依赖，不在本文扩展 mixed-type API 或更通用的逐元素映射原语。 |
 
 ---
@@ -62,46 +62,63 @@ L6: math（逐元素运算） ← 当前模块（依赖 broadcast, iter, element
 ```
 src/math/
 ├── mod.rs              # 模块入口，re-export 公开 API
-├── zip.rs              # 二元逐元素（zip_with，含广播）
+├── binary.rs           # 二元算术方法与共享二元执行骨架
 ├── unary.rs            # 一元运算（abs, neg, signum, square, sin, sqrt, exp, ln, floor, ceil, norm, conj, not）
-├── binary.rs           # 二元算术方法（add, sub, mul, div, add_scalar, sub_scalar, mul_scalar, div_scalar）
 └── comparison.rs       # 比较运算（eq, ne, lt, gt）
 ```
 
-多文件设计理由：按操作元数分组（一元 vs 二元）可保持当前最小范围；通用映射基础设施（`map` / `mapv` / `mapv_inplace`）不属于需求说明书 §12 的本期最小交付，暂不纳入当前版本。运算符重载（Add/Sub/Mul/Div trait 实现）保留在 `src/overload/arithmetic.rs`。SIMD 加速由独立 backend 模块 `src/simd/` 承载，`math/` 仅负责语义 API 与分发入口。
+多文件设计理由：按操作元数分组（一元 vs 二元）可保持当前最小范围；更通用的逐元素映射基础设施不属于需求说明书 §12 的本期最小交付，暂不纳入当前版本。运算符重载（Add/Sub/Mul/Div trait 实现）保留在 `src/overload/arithmetic.rs`。SIMD 加速由独立 backend 模块 `src/simd/` 承载，`math/` 仅负责语义 API 与分发入口。
 
 ---
 
 ## 4. 依赖关系
 
-### 4.1 依赖图
+### 4.1 Invariants
+
+| 不变量 | 说明 |
+| ---- | ---- |
+| 广播先决 | 所有二元逐元素运算与比较运算必须先验证广播兼容性，再遍历广播后的只读视图。 |
+| 输出形状稳定 | 二元运算返回张量的 shape 必须等于广播结果 shape；一元运算与标量运算保持输入 shape 不变。 |
+| 比较类型边界 | `lt` / `gt` 只对 `i32`、`i64`、`f32`、`f64` 开放；`bool` 与 `Complex` 不得通过公开 API 进入该路径。 |
+| SIMD 语义等价 | SIMD 路径仅可用于逐元素算术与整数 `sum`；其 shape、NaN 语义和错误边界必须与标量路径一致。 |
+
+### 4.2 Error Scenarios
+
+| 场景 | 错误 |
+| ---- | ---- |
+| 二元运算广播失败 | 返回 `XenonError::BroadcastError { operation: &'static str, input_shape: Cow<'static, [usize]>, target_shape: Cow<'static, [usize]>, axis: Option<usize> }`。 |
+| 构造结果张量时元素总数与 shape 不一致 | 返回 `XenonError::InvalidShape { operation: &'static str, shape: Cow<'static, [usize]>, expected_elements: usize, actual_elements: usize, offending_dim: Option<usize> }`。 |
+| 公开 API 收到不满足前提的参数 | 返回 `XenonError::InvalidArgument { operation: &'static str, argument: &'static str, expected: &'static str, actual: String, axis: Option<usize>, shape: Option<Cow<'static, [usize]>> }`。 |
+| 整数算术溢出、除零或结果不可表示 | 属于 panic 语义，不进入 `XenonError`。 |
+
+### 4.3 依赖图
 
 ```
 src/math/
 ├── crate::tensor        # TensorBase<S, D>, TensorView
-├── crate::iter          # Elements, ElementsMut, Zip (pub(crate))
+├── crate::iter          # Elements, ElementsMut
 ├── crate::element       # Element, Numeric, RealScalar, ComplexScalar
 ├── crate::broadcast     # broadcast_shape() for binary ops
 └── crate::simd (opt.)   # pulp::Arch backend dispatch
 ```
 
-### 4.2 类型级依赖
+### 4.4 类型级依赖
 
 | 来源模块       | 使用的类型/trait                                                                       |
 | -------------- | -------------------------------------------------------------------------------------- |
 | `tensor`       | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.shape()`（参见 `07-tensor.md §4`） |
-| `iter`         | `Elements`, `ElementsMut`, `Zip`（`pub(crate)` 内部工具，参见 `10-iterator.md §4.3`） |
+| `iter`         | `Elements`, `ElementsMut`（参见 `10-iterator.md §4`）                                  |
 | `element`      | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element.md §4`）         |
 | `broadcast`    | `broadcast_shape()`, `broadcast_to()` 返回的 `TensorView`（参见 `15-broadcast.md §4`） |
 | `dimension`    | `BroadcastDim<E>` trait（编译期维度推导，参见 `02-dimension.md §4.9`）                 |
 | `simd`（可选） | `pulp::Arch`（参见 `08-simd.md §4`）                                                   |
 | `error`        | `XenonError`（含 `BroadcastError` 变体，参见 `26-error.md §4`）                        |
 
-### 4.3 依赖方向
+### 4.5 依赖方向
 
 > **依赖方向：单向向上。** `math` 模块消费 `iter`、`tensor`、`element`、`broadcast` 模块，不被它们依赖。
 
-### 4.4 依赖合法性与替代方案
+### 4.6 依赖合法性与替代方案
 
 | 项目           | 说明 |
 | -------------- | ---- |
@@ -115,27 +132,13 @@ src/math/
 
 ### 5.1 范围边界说明
 
-`map` / `mapv` / `mapv_inplace` 属于更通用的逐元素映射基础设施，但不在需求说明书 §12 的当前最小范围内。当前版本文档不将其作为公开 API 承诺；如后续需要，应以独立议题重新评估与类型转换、就地修改、错误语义的边界关系。
+更通用的逐元素映射基础设施不在需求说明书 §12 的当前最小范围内。当前版本文档不将其作为公开 API 承诺；如后续需要，应以独立议题重新评估与类型转换、就地修改、错误语义的边界关系。
 
-### 5.2 二元 zip 操作
+### 5.2 二元逐元素执行约定
 
-> **维度推导说明：** 此函数使用 `BroadcastDim<DB>` 进行编译期维度推导，该 trait 定义于 `02-dimension.md §4.9`，详见该文档。
+> **维度推导说明：** 二元逐元素方法统一使用 `BroadcastDim<DB>` 进行编译期维度推导，该 trait 定义于 `02-dimension.md §4.9`，详见该文档。
 
-```rust
-/// Binary element-wise operation with broadcast support.
-pub fn zip_with<A, B, C, DA, DB, F>(
-    a: &TensorBase<impl Storage<Elem = A>, DA>,
-    b: &TensorBase<impl Storage<Elem = B>, DB>,
-    f: F,
-) -> Result<Tensor<C, <DA as BroadcastDim<DB>>::Output>, XenonError>
-where
-    DA: BroadcastDim<DB>,
-    DB: Dimension,
-    F: FnMut(A, B) -> C,
-    A: Element + Copy,
-    B: Element + Copy,
-    C: Element;
-```
+当前版本不承诺独立的通用二元逐元素 helper 公开函数。二元算术、比较与内部辅助路径统一采用“先广播，再直接遍历广播后视图并写入结果张量”的执行模型。
 
 ### 5.3 算术运算（Numeric 约束）
 
@@ -205,7 +208,7 @@ where
     /// # NaN behavior (floats)
     ///
     /// `signum(NaN)` returns `NaN` (IEEE 754 semantics, via PartialOrd).
-pub fn signum(&self) -> Tensor<A, D>;
+    pub fn signum(&self) -> Tensor<A, D>;
 }
 ```
 
@@ -270,9 +273,16 @@ where
 
 ### 5.8 比较运算
 
-`eq` / `ne` 对所有元素类型可用（包括 `bool` 与 `Complex`）；`lt` / `gt` 仅对 `RealScalar` 可用，因此只覆盖 `f32` / `f64`。`bool` 与 `Complex` 类型不支持 `lt` / `gt`。
+`eq` / `ne` 对所有元素类型可用（包括 `bool` 与 `Complex`）；`lt` / `gt` 的需求级支持范围固定为 `i32`、`i64`、`f32`、`f64`，返回 `Tensor<bool, _>`。`bool` 与 `Complex` 类型不支持 `lt` / `gt`。
 
 ```rust
+pub trait OrderedCompareElement: Element + PartialOrd {}
+
+impl OrderedCompareElement for i32 {}
+impl OrderedCompareElement for i64 {}
+impl OrderedCompareElement for f32 {}
+impl OrderedCompareElement for f64 {}
+
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -297,14 +307,20 @@ impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: RealScalar,
+    A: OrderedCompareElement,
 {
+    /// Element-wise less-than comparison.
+    ///
+    /// Supported ordered element types are i32, i64, f32, and f64.
     pub fn lt<DB>(&self, other: &TensorBase<impl Storage<Elem = A>, DB>)
         -> Result<Tensor<bool, <D as BroadcastDim<DB>>::Output>, XenonError>
     where
         D: BroadcastDim<DB>,
         DB: Dimension;
 
+    /// Element-wise greater-than comparison.
+    ///
+    /// Supported ordered element types are i32, i64, f32, and f64.
     pub fn gt<DB>(&self, other: &TensorBase<impl Storage<Elem = A>, DB>)
         -> Result<Tensor<bool, <D as BroadcastDim<DB>>::Output>, XenonError>
     where
@@ -312,6 +328,8 @@ where
         DB: Dimension;
 }
 ```
+
+> **类型边界说明：** `lt` / `gt` 不再复用 `RealScalar` 或更宽泛的 `Numeric + PartialOrd` 约束；公开 API 以 `OrderedCompareElement` 明确收敛到 `i32`、`i64`、`f32`、`f64` 四类元素类型。
 
 > **NaN 语义：** `eq(NaN, NaN)` 返回 `false`，`ne(NaN, NaN)` 返回 `true`，遵循 IEEE 754。
 
@@ -341,10 +359,10 @@ where
 ### 5.10 Good / Bad 对比示例
 
 ```rust
-// Good - use zip_with for broadcast addition
+// Good - use method API for broadcast addition
 let a = Tensor::<f64, Ix2>::zeros([3, 1]);
 let b = Tensor::<f64, Ix2>::zeros([1, 4]);
-let c = zip_with(&a, &b, |x, y| x + y)?;  // shape [3, 4]
+let c = a.add(&b)?;  // shape [3, 4]
 
 // Bad - manual loop iteration (poor performance, no broadcast support)
 let mut result = Tensor::<f64, Ix2>::zeros([3, 4]);
@@ -368,56 +386,36 @@ for i in 0..3 {
 ```
 apply_unary(view, f):
     result = Tensor::zeros(view.shape())
-    for (src, dst) in view.iter().zip(result.iter_mut()):
+    src_iter = view.iter()
+    dst_iter = result.iter_mut()
+    while let (Some(src), Some(dst)) = (src_iter.next(), dst_iter.next()):
         *dst = f(*src)
     return result
 ```
 
-### 6.2 zip_with 实现（含广播）
+### 6.2 二元逐元素实现（含广播）
 
 ```
-zip_with(a, b, f):
+apply_binary(a, b, f):
     broadcast_shape = broadcast_shape(a.shape(), b.shape())?
-a_broadcast = a.broadcast_to(broadcast_shape)
-b_broadcast = b.broadcast_to(broadcast_shape)
+    a_broadcast = a.broadcast_to(broadcast_shape)
+    b_broadcast = b.broadcast_to(broadcast_shape)
     result = Tensor::zeros(broadcast_shape)
-    Zip::from(result.view_mut())
-        .and(a_broadcast)
-        .and(b_broadcast)
-        .for_each(|r, a_val, b_val| *r = f(a_val, b_val))
+    dst_iter = result.iter_mut()
+    a_iter = a_broadcast.iter()
+    b_iter = b_broadcast.iter()
+    while let (Some(dst), Some(a_val), Some(b_val)) = (
+        dst_iter.next(),
+        a_iter.next(),
+        b_iter.next(),
+    ):
+        *dst = f(*a_val, *b_val)
     return result
 ```
 
 ### 6.3 SIMD 加速路径
 
-```rust
-// Use #[cfg] attribute for conditional compilation instead of runtime cfg!()
-// This ensures the SIMD path is fully eliminated at compile time when the
-// feature is not enabled.
-
-#[cfg(feature = "simd")]
-fn add_impl_simd<A>(a: &TensorView<A, D>, b: &TensorView<A, D>) -> Tensor<A, D>
-where
-    D: Dimension,
-    A: Numeric + Copy,
-{
-    if a.is_f_contiguous() && b.is_f_contiguous() {
-        return simd::dispatch_binary_op(simd::BinaryOp::Add, a, b);
-    }
-    zip_with_scalar(a, b, |x, y| x + y)
-}
-
-#[cfg(not(feature = "simd"))]
-fn add_impl_simd<A>(a: &TensorView<A, D>, b: &TensorView<A, D>) -> Tensor<A, D>
-where
-    D: Dimension,
-    A: Numeric + Copy,
-{
-    zip_with_scalar(a, b, |x, y| x + y)
-}
-```
-
-参见 `08-simd.md §4.5` 了解 SIMD 后端详情。当前版本 SIMD 仅覆盖逐元素算术/一元运算和整数归约；`sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 等数学函数统一回退标量实现。
+SIMD 分发由 `math` 的具体算术操作在满足连续性、对齐和 feature gate 前提时直接委托 `src/simd/` facade；本文不再把额外的中间 helper 视为稳定设计接口。参见 `08-simd.md §4.5` 了解 SIMD 后端详情。当前版本 SIMD 仅覆盖逐元素算术与整数 `sum`；`abs` / `neg` / `signum` / `square` 以及 `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 等路径统一回退标量实现。
 
 ---
 
@@ -425,10 +423,10 @@ where
 
 ### Wave 1: 二元操作与一元运算
 
-- [ ] **T2**: 实现 `zip_with`（含广播支持）
-  - 文件: `src/math/zip.rs`
-  - 内容: 基于逐元素遍历骨架的二元操作
-  - 测试: `test_zip_with_same_shape`, `test_zip_with_broadcast`
+- [ ] **T2**: 实现共享二元逐元素执行骨架（含广播支持）
+  - 文件: `src/math/binary.rs`
+  - 内容: 基于直接遍历广播视图的二元操作内部辅助路径
+  - 测试: `test_binary_same_shape`, `test_binary_broadcast`
   - 前置: 10-iterator.md, broadcast 模块
   - 预计: 10 min
 
@@ -457,7 +455,7 @@ where
 
 - [ ] **T6**: 实现算术运算（add/sub/mul/div）
   - 文件: `src/math/binary.rs`
-  - 内容: 基于 `zip_with` 的算术运算，标量版本
+  - 内容: 基于共享二元逐元素执行骨架的算术运算，标量版本
   - 测试: `test_add_i32`, `test_add_f64`, `test_add_complex`, `test_mul_scalar`
   - 前置: T2
   - 预计: 10 min
@@ -473,7 +471,7 @@ where
 
 - [ ] **T8**: 添加 SIMD 加速路径
   - 文件: `src/math/binary.rs`, `src/simd/vector.rs`
-  - 内容: 在 `math` 中接入独立 `simd/` backend，为连续数组提供 SIMD 路径并保留标量回退
+  - 内容: 在 `math` 中接入独立 `simd/` backend，为连续数组上的逐元素算术提供 SIMD 路径并保留标量回退
   - 测试: `test_add_simd_vs_scalar`, `test_mul_simd_vs_scalar`
   - 前置: T3, 08-simd.md
   - 预计: 10 min
@@ -481,18 +479,18 @@ where
 ### 并行执行分组图
 
 ```
-            ┌───────┬────────┬───────┐
+            +-------+--------+-------+
             |       |        |       |
             v       v        v       v
 Wave 1:    [T2]    [T3]     [T4]    [T5]
             |
-         ┌──┴─────┐
+         +--+-----+
          |        |
          v        v
 Wave 2: [T6]    [T7]
-         |
-         v
-Wave 3: [T8]
+            |
+            v
+Wave 3:    [T8]
 ```
 
 ---
@@ -504,7 +502,7 @@ Wave 3: [T8]
 | 测试分类 | 说明                                      | 包含的测试                                                                                                                                                                                                                                                                                                                                                                              |
 | -------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 单元测试 | 验证单个运算函数的基本正确性              | `test_add_i32`, `test_add_f64`, `test_add_complex`, `test_add_broadcast`, `test_mul_scalar`, `test_abs`, `test_neg`, `test_signum`, `test_square_checked_overflow`, `test_sin`, `test_sqrt`, `test_exp_ln_roundtrip`, `test_floor_ceil`, `test_norm`, `test_conj`, `test_not_bool`, `test_eq_f64`, `test_lt_i32`, `test_nan_comparison`, `test_empty_tensor`, `test_add_simd_vs_scalar` |
-| 集成测试 | 验证运算模块与迭代器/广播模块的端到端集成 | `test_zip_with_same_shape`, `test_zip_with_broadcast`（参见 §6 T2）                                                                                                                                                                                                                                                                                                                     |
+| 集成测试 | 验证运算模块与迭代器/广播模块的端到端集成 | `test_binary_same_shape`, `test_binary_broadcast`（参见 §6 T2）                                                                                                                                                                                                                                                                                                                         |
 | 边界测试 | 空张量、NaN、Inf、非连续输入等边界条件    | `test_empty_tensor`, `test_nan_comparison`, `test_add_simd_vs_scalar`（详见 §7.2）                                                                                                                                                                                                                                                                                                      |
 | 属性测试 | 通过随机输入验证数学不变量                | 详见下方属性测试不变量表                                                                                                                                                                                                                                                                                                                                                                |
 
@@ -515,7 +513,7 @@ Wave 3: [T8]
 | 加法交换律（实数类型）                                                  | 对随机 f32/f64/i32/i64 张量：`a.add(&b) == b.add(&a)`     |
 | NaN 传播：所有运算遇到 NaN 输入时输出包含 NaN                           | 构造含 NaN 的张量，验证 sin/sqrt/add/mul 等运算结果含 NaN |
 | 标量运算逆元：`a.add_scalar(k).sub_scalar(k) == a`                      | 随机张量和标量值                                          |
-| zip_with 结合性（实数加法）：`(a.add(&b)).add(&c) == a.add(&b.add(&c))` | 随机同形状 f64 张量，容差比较                             |
+| 二元逐元素加法结合性（实数加法）：`(a.add(&b)).add(&c) == a.add(&b.add(&c))` | 随机同形状 f64 张量，容差比较                         |
 
 ### 8.2 单元测试清单
 
@@ -551,28 +549,28 @@ Wave 3: [T8]
 | 单元素张量            | 所有运算正确                               |
 | NaN 输入（f32/f64）   | NaN 传播（sin(NaN)=NaN, 0\*NaN=NaN）       |
 | Inf 输入              | exp(Inf)=Inf, ln(0)=-Inf                   |
-| 广播形状不兼容        | zip_with 返回 `XenonError::BroadcastError` |
+| 广播形状不兼容        | 返回 `XenonError::BroadcastError { operation: &'static str, input_shape: Cow<'static, [usize]>, target_shape: Cow<'static, [usize]>, axis: Option<usize> }` |
 | 非连续输入（切片后）  | 运算结果与连续输入一致                     |
 
 ### 8.4 集成测试
 
 | 测试文件             | 测试内容                                                                           |
 | -------------------- | ---------------------------------------------------------------------------------- |
-| `tests/test_math.rs` | `zip_with` / 标量路径与 `iter`、`broadcast`、`tensor`、`simd` backend 的端到端集成 |
+| `tests/test_math.rs` | 二元逐元素辅助路径 / 标量路径与 `iter`、`broadcast`、`tensor`、`simd` backend 的端到端集成 |
 
 ### 8.6 Feature gate / 配置测试
 
 | 配置 | 验证点 |
 | ---- | ---- |
 | 默认配置 | 所有逐元素运算走标量 / fallback 路径且语义满足文档约束。 |
-| 启用 `simd` | 连续输入上的 SIMD 分发结果与默认配置保持一致，非连续输入仍正确回退。 |
+| 启用 `simd`（`simd = ["dep:pulp", "std"]`） | 连续输入上的 SIMD 分发结果与默认配置保持一致，非连续输入仍正确回退。 |
 
 ### 8.7 类型边界 / 编译期测试
 
 | 场景 | 测试方式 |
 | ---- | ---- |
 | `bool` 不参与算术运算 | 编译期测试或 trait 约束验证。 |
-| `lt` / `gt` 仅对 `RealScalar` 开放 | 编译期失败测试。 |
+| `lt` / `gt` 对 `i32` / `i64` / `f32` / `f64` 开放，但对 `bool` / `Complex` 关闭 | 编译期测试。 |
 | mixed-type 逐元素运算不属于当前公开范围 | API 缺失断言或编译期失败测试。 |
 
 ---
@@ -583,7 +581,7 @@ Wave 3: [T8]
 
 | 方向               | 对方模块    | 接口/类型                                  | 约定                                                                                                                                          |
 | ------------------ | ----------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `math → iter`      | `iter`      | `Elements`, `Zip`                          | 逐元素运算复用 `Elements` 及相关遍历入口，二元与归约路径可复用 `iter::Zip` 这个 `pub(crate)` 内部工具（参见 `10-iterator.md` §4.3）         |
+| `math → iter`      | `iter`      | `Elements`, `ElementsMut`                  | 逐元素运算复用 `iter()` / `iter_mut()` 及相关遍历入口；二元路径直接遍历广播后的视图（参见 `10-iterator.md` §4）                               |
 | `math → broadcast` | `broadcast` | `broadcast_shape()`                        | 二元运算先调用广播模块推导兼容视图（参见 `15-broadcast.md` §4）                                                                               |
 | `math → element`   | `element`   | `Numeric` / `RealScalar` / `ComplexScalar` | 通过元素约束区分数值与复数运算语义（参见 `03-element.md` §4）                                                                                 |
 | `math → simd`      | `simd`      | SIMD backend dispatch facade               | 连续数组且 feature 开启时通过稳定的 backend facade 分发到 SIMD 或标量路径，`math` 不直接依赖具体 vector kernel 名称（参见 `08-simd.md` §4.5） |
@@ -591,11 +589,11 @@ Wave 3: [T8]
 ### 9.2 数据流描述
 
 ```text
-User calls add / unary op / zip_with
+User calls add / unary op / comparison method
     │
     ├── math selects unary, binary, or scalar execution
     ├── binary ops validate broadcast compatibility first
-    ├── iter / Zip produce element streams from shape + strides
+    ├── iter produces element streams from shape + strides
     └── SIMD dispatch is used only when enabled and semantically equivalent
 ```
 
@@ -605,7 +603,7 @@ User calls add / unary op / zip_with
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | 广播不兼容时返回 `XenonError::BroadcastError`，携带输入 shape 上下文；显式 helper 保持 `Result` 路径。 |
+| Recoverable error | 广播不兼容时返回 `XenonError::BroadcastError { operation: &'static str, input_shape: Cow<'static, [usize]>, target_shape: Cow<'static, [usize]>, axis: Option<usize> }`；参数不满足公开前提时返回 `XenonError::InvalidArgument { operation: &'static str, argument: &'static str, expected: &'static str, actual: String, axis: Option<usize>, shape: Option<Cow<'static, [usize]>> }`。 |
 | Panic | 整数 `add/sub/mul/div`、`abs/square/signum` 的溢出、除零或结果不可表示均按需求触发 panic。 |
 | 路径一致性 | 标量与 SIMD 路径必须保持相同 shape、错误类别、NaN/复数语义；不满足前提时统一回退标量实现。 |
 | 容差边界 | 当前不引入额外数值容差；仅在可证明语义等价时启用 SIMD，否则回退标量路径。 |
@@ -614,13 +612,13 @@ User calls add / unary op / zip_with
 
 ## 11. 设计决策记录（ADR）
 
-### 决策 1：不在当前版本公开 map 系列
+### 决策 1：不在当前版本公开通用映射 helper
 
 | 属性     | 值                                                             |
 | -------- | -------------------------------------------------------------- |
-| 决策     | 当前版本不把 `map` / `mapv` / `mapv_inplace` 纳入公开 API 承诺 |
-| 理由     | 需求说明书 §12 仅要求明确列出的逐元素运算，不要求通用映射原语  |
-| 替代方案 | 直接在本期暴露完整 map 系列                                    |
+| 决策     | 当前版本不把更通用的逐元素映射基础设施纳入公开 API 承诺 |
+| 理由     | 需求说明书 §12 仅要求明确列出的逐元素运算，不要求额外的通用映射原语 |
+| 替代方案 | 直接在本期暴露完整映射 helper 集合 |
 | 拒绝原因 | 会扩大 API 面且引入额外语义边界，不符合当前最小范围            |
 
 ### 决策 2：NaN 比较遵循 IEEE 754
@@ -636,12 +634,12 @@ User calls add / unary op / zip_with
 
 | 属性     | 值                                                        |
 | -------- | --------------------------------------------------------- |
-| 决策     | 连续 + 对齐内存时，仅对已覆盖的逐元素算术/一元运算自动使用 SIMD 路径；数学函数仍回退到标量 |
+| 决策     | 连续 + 对齐内存时，仅对已覆盖的逐元素算术自动使用 SIMD 路径；整数 `sum` 由 reduction 模块单独接入，数学函数与其他路径仍回退到标量 |
 | 理由     | SIMD 路径只在连续内存上有意义；非连续时标量路径更简单正确 |
 | 替代方案 | 所有路径都用标量                                          |
 | 拒绝原因 | 性能差距显著（2-4x），科学计算用户期望高性能              |
 
-> **补充**：SIMD 实现位于独立 backend 模块 `src/simd/`，`math/` 仅按连续性和 feature gate 决定是否委托该 backend；当前版本数学函数不接入专门 SIMD kernel。
+> **补充**：SIMD 实现位于独立 backend 模块 `src/simd/`，`math/` 仅按连续性和 feature gate 决定是否委托该 backend；当前版本不提供 dot kernel，也不提供 float / complex reduction kernel，数学函数不接入专门 SIMD kernel。
 
 ---
 
@@ -657,7 +655,7 @@ User calls add / unary op / zip_with
 
 ### 12.2 复杂度标注
 
-- `zip_with`: O(n) 时间，O(n) 空间
+- 二元逐元素执行骨架：O(n) 时间，O(n) 空间
 - 广播操作: O(n) 时间，O(n) 空间（结果），广播本身零拷贝
 
 ---
@@ -669,7 +667,7 @@ User calls add / unary op / zip_with
 | 标准库环境 | Xenon 当前版本仅支持 `std`，本文档不再承诺 `no_std` 兼容性                                     |
 | crate 结构 | 保持单 crate 结构，不拆分独立 math crate                                                       |
 | 依赖约束   | 仅允许项目基线中的可选 SIMD / 并行依赖，不新增额外第三方数学库                                 |
-| 范围边界   | 当前版本仅覆盖需求说明书 §12 明确列出的逐元素运算；`map` 系列与实复混合公开 API 不在本期范围内 |
+| 范围边界   | 当前版本仅覆盖需求说明书 §12 明确列出的逐元素运算；通用映射 helper 与实复混合公开 API 不在本期范围内 |
 
 ---
 

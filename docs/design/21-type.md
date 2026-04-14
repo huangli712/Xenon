@@ -89,7 +89,7 @@ src/convert/
 ├── mod.rs          # Re-exports: CastTo, cast, to_owned, into_owned, From impls
 ├── cast.rs         # Depends on element (CastTo) and tensor (TensorBase)
 ├── owned.rs        # Depends on tensor (TensorBase), storage, layout
-├── from_impl.rs    # Depends on tensor (Tensor / TensorView), construct (from_vec)
+├── from_impl.rs    # Depends on tensor (Tensor / TensorView), construct (from_shape_vec / from_vec)
 └── contiguous.rs   # Depends on tensor (TensorBase) and layout
 
 External dependencies:
@@ -169,7 +169,21 @@ where
     {
         let mut data: Vec<B> = Vec::with_capacity(self.len());
         for (index, x) in self.iter().enumerate() {
-            data.push(x.cast_to(index)?);
+            let value = (*x).cast_to().map_err(|err| match err {
+                XenonError::TypeConversion {
+                    source_type,
+                    target_type,
+                    reason,
+                    ..
+                } => XenonError::TypeConversion {
+                    source_type,
+                    target_type,
+                    reason,
+                    element_index: index,
+                },
+                other => other,
+            })?;
+            data.push(value);
         }
         Ok(Tensor::from_shape_vec_aligned(self.shape().clone(), data))
     }
@@ -303,18 +317,19 @@ impl<A> Owned<A> {
 }
 ```
 
-`from_shape_vec_aligned` 是 `Tensor` 上的对应便捷方法（无需验证长度，调用方已保证）：
+`from_shape_vec_aligned` 是 `Tensor` 上的对应内部便捷方法（无需验证长度，调用方已保证）：
 
 ```rust
+# use crate::layout::Strides;
 impl<A, D> TensorBase<Owned<A>, D> where A: Element, D: Dimension {
     /// Constructs a Tensor from pre-validated data with aligned allocation.
     /// Called internally after size validation is complete.
     ///
-    /// Skips length validation because the caller guarantees data.len() matches
-    /// the validated element count for `shape` (e.g., via `iter().collect()` or `to_owned()`
-    /// where `self.len()` is already known to be correct).
+    /// Skips length validation because the caller guarantees `data.len()` matches
+    /// the validated element count for `shape` (for example after `iter().collect()`,
+    /// `to_owned()`, or the public 1D convenience constructor `from_vec()`).
     pub(crate) fn from_shape_vec_aligned(shape: D, data: Vec<A>) -> Self {
-        let strides = shape.strides_for_f_order();
+        let strides: Strides<D> = shape.strides_for_f_order();
         let storage = Owned::from_vec_aligned(data);
         TensorBase { storage, shape, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) }
     }
@@ -332,7 +347,7 @@ impl<A, D> TensorBase<Owned<A>, D> where A: Element, D: Dimension {
     /// - `data` 中所有元素已正确初始化
     /// - 内存已通过 Xenon 的 64 字节对齐分配器分配（使用 `from_vec_aligned` 保证）
     pub(crate) unsafe fn from_shape_vec_aligned_unchecked(shape: D, data: Vec<A>) -> Self {
-        let strides = shape.strides_for_f_order();
+        let strides: Strides<D> = shape.strides_for_f_order();
         let storage = Owned::from_vec_aligned(data);
         TensorBase { storage, shape, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) }
     }
@@ -427,30 +442,30 @@ impl<'a, A: Element, D: Dimension> From<&'a mut Tensor<A, D>> for TensorViewMut<
 // === Lossy-by-default conversion ===
 impl CastTo<f32> for f64 {
     #[inline]
-    fn cast_to(self, index: usize) -> Result<f32, XenonError> {
+    fn cast_to(self) -> Result<f32, XenonError> {
         Err(XenonError::TypeConversion {
             source_type: "f64",
             target_type: "f32",
             reason: TypeConversionReason::LossyFloatNarrowing,
-            element_index: index,
+            element_index: 0,
         })
     }
 }
 
 impl CastTo<f64> for f32 {
     #[inline]
-    fn cast_to(self, _index: usize) -> Result<f64, XenonError> { Ok(self as f64) }
+    fn cast_to(self) -> Result<f64, XenonError> { Ok(self as f64) }
 }
 
 impl CastTo<i64> for i32 {
     #[inline]
-    fn cast_to(self, _index: usize) -> Result<i64, XenonError> { Ok(self as i64) }
+    fn cast_to(self) -> Result<i64, XenonError> { Ok(self as i64) }
 }
 
 // === Conditionally successful conversions ===
 impl CastTo<f64> for Complex<f64> {
     #[inline]
-    fn cast_to(self, index: usize) -> Result<f64, XenonError> {
+    fn cast_to(self) -> Result<f64, XenonError> {
         if self.im == 0.0 {
             Ok(self.re)
         } else {
@@ -458,7 +473,7 @@ impl CastTo<f64> for Complex<f64> {
                 source_type: "Complex<f64>",
                 target_type: "f64",
                 reason: TypeConversionReason::NonZeroImaginaryPart,
-                element_index: index,
+                element_index: 0,
             })
         }
     }
@@ -467,12 +482,12 @@ impl CastTo<f64> for Complex<f64> {
 // === Lossy-by-default conversion ===
 impl CastTo<i32> for i64 {
     #[inline]
-    fn cast_to(self, index: usize) -> Result<i32, XenonError> {
+    fn cast_to(self) -> Result<i32, XenonError> {
         Err(XenonError::TypeConversion {
             source_type: "i64",
             target_type: "i32",
             reason: TypeConversionReason::LossyIntegerNarrowing,
-            element_index: index,
+            element_index: 0,
         })
     }
 }

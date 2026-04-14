@@ -161,12 +161,26 @@ impl BlasLayout {
 }
 
 /// Internal error classification for FFI-specific failures.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FfiError {
-    InvalidRank { expected: usize, actual: usize },
-    BlasIncompatibleLayout,
-    IntegerOverflow { field: &'static str },
-    ExportError,
+    InvalidRank {
+        operation: &'static str,
+        backend: &'static str,
+        precondition: &'static str,
+        actual: alloc::borrow::Cow<'static, str>,
+    },
+    BlasIncompatibleLayout {
+        operation: &'static str,
+        backend: &'static str,
+        precondition: &'static str,
+        actual: alloc::borrow::Cow<'static, str>,
+    },
+    IntegerOverflow {
+        operation: &'static str,
+        backend: &'static str,
+        precondition: &'static str,
+        actual: alloc::borrow::Cow<'static, str>,
+    },
 }
 
 /// Public Xenon APIs wrap `FfiError` in `XenonError::Ffi` before returning.
@@ -246,7 +260,7 @@ where
 /// as read-only.
 #[repr(C)]
 pub struct TensorExport {
-    /// Pointer to the first element.
+    /// Pointer to the storage base pointer used by the export view.
     pub data: *const u8,
     /// Whether the data is mutable.
     pub mutable: bool,
@@ -257,8 +271,9 @@ pub struct TensorExport {
     /// Shape array (length = ndim).
     pub shape: *const usize,
     /// Stride array (length = ndim), in units of elements (not bytes).
-    pub strides: *const isize,
-    /// Byte offset from data pointer to the first element.
+    pub strides: *const usize,
+    /// Offset from the storage base pointer to the logical first element,
+    /// measured in elements.
     pub offset: usize,
 }
 
@@ -272,25 +287,29 @@ where
     /// The returned `TensorExport` borrows the tensor's data. The consumer
     /// must ensure the tensor outlives the export.
     ///
-    /// # Errors
-    /// Returns `XenonError::Ffi(FfiError::ExportError)` if the tensor
-    /// contains no elements or the strides cannot be represented as `isize`.
+    /// Empty tensors are allowed: when `len() == 0`, the export keeps valid
+    /// shape/stride metadata and uses a null `data` pointer because the payload
+    /// is never dereferenced.
     pub fn export(&self) -> Result<TensorExport, XenonError>;
 
     /// Export tensor data with mutable access.
     ///
     /// # Errors
-    /// Returns `XenonError::InvalidStorageMode` if the tensor is read-only
-    /// (ViewRepr or shared ArcRepr).
+    /// Returns `XenonError::InvalidStorageMode {
+    ///     operation: "ffi::export_mut",
+    ///     expected: "writable storage",
+    ///     actual: "read-only view or shared storage",
+    ///     shape: Some(self.shape().to_vec()),
+    /// }` when the tensor is read-only.
     pub fn export_mut(&mut self) -> Result<TensorExport, XenonError>;
 }
 ````
 
 > **导出语义说明：** `TensorExport` 面向 C 调用方提供“指针 + shape + strides + offset”的结构化快照，其中 `shape` 与 `strides` 指针均借用源张量内部元数据，不能在源张量释放后继续使用。
 
-> **stride 符号约定：** `strides` 以“元素个数”而非字节数表示步长；正值表示沿该轴向前推进，负值表示沿该轴反向推进。当前版本 Xenon 内部布局仍以非负 stride 为主，但 FFI 导出格式保留负 stride 语义，以兼容非连续视图在 C 侧的统一解释。
+> **stride 约定：** `strides` 以“元素个数”而非字节数表示步长，类型为 `usize`。按照 `06-memory.md` §1.2 与 `require.md` §7，当前版本 Xenon 不支持负步长，因此 FFI 导出格式也不保留负 stride 语义。
 
-> **offset 约定：** `data` 按 ABI 约定表示导出结果可见的首元素指针；对当前仅含非负 stride 的实现，`offset` 通常为 `0`。保留 `offset` 字段是为了让同一导出格式也能覆盖未来可能出现的负 stride 视图：若导出时需要为负步长做基址归一化，`offset` 必须完整记录从导出基址到逻辑首元素的字节调整量，C 调用方应始终以 `data.offset(offset as isize)` 的结果作为逻辑首元素地址来源。
+> **offset 约定：** `offset` 一律表示从 `data`（即导出的 storage base pointer）到逻辑首元素的**元素单位**位移，与 `07-tensor.md` 的 raw-parts 契约一致；不得将其解释为字节偏移。C 调用方必须先按元素单位应用这一次偏移，再把结果视为逻辑首元素地址。
 
 > **生命周期与线程安全：** 导出结果不拥有底层内存；一旦源张量被 drop，`TensorExport` 内的 `data`、`shape`、`strides` 全部立即失效。设计上应将该导出结果视为可在线程间移动（Send）但不可共享同步访问（not Sync）的 FFI 借用句柄，尤其不可在多个线程中并发写入同一导出结果所指向的数据。
 
@@ -312,7 +331,8 @@ where
     ///
     /// # Returns
     ///
-    /// A new `TensorView<'a, A, D>` instance.
+    /// `Ok(TensorView<'a, A, D>)` when all directly checkable metadata
+    /// constraints pass; otherwise `Err(XenonError::InvalidLayout { .. })`.
     ///
     /// # Safety
     ///
@@ -334,30 +354,33 @@ where
     /// let view = unsafe {
     ///     TensorView2::from_raw_parts(
     ///         data.as_ptr(),
+    ///         data.len(),
     ///         [3, 4],
     ///         Strides::from_slice(&[1, 3]),
     ///         0,
     ///     )
+    ///     .expect("metadata should describe a valid view")
     /// };
     /// ```
     pub unsafe fn from_raw_parts(
         ptr: *const A,
+        storage_len: usize,
         shape: D,
         strides: Strides<D>,
         offset: usize,
-    ) -> Self {
-        // SAFETY: Caller guarantees ptr is a valid storage base pointer,
-        // aligned and pointing to properly initialized data for the lifetime 'a.
-        // Shape, strides, and offset are consistent and describe a valid region.
-        // The logical-first pointer exposed by `as_ptr()` is derived by applying
-        // `offset` exactly once on top of this storage base pointer.
-        TensorBase {
+    ) -> Result<Self, XenonError> {
+        validate_access_range(&shape, &strides, offset, storage_len)?;
+
+        // SAFETY: Caller still guarantees pointer validity, alignment,
+        // initialization, actual accessible range, and lifetime. The constructor
+        // only rejects metadata combinations it can check directly.
+        Ok(TensorBase {
             storage: ViewRepr::new(ptr),
             shape,
             strides,
             offset,
             flags: layout::compute_flags(&shape, &strides, unsafe { ptr.add(offset) }),
-        }
+        })
     }
 
 }
@@ -383,30 +406,37 @@ where
     /// let view = unsafe {
     ///     TensorViewMut2::from_raw_parts_mut(
     ///         data.as_mut_ptr(),
+    ///         data.len(),
     ///         [3, 4],
     ///         Strides::from_slice(&[1, 3]),
     ///         0,
     ///     )
+    ///     .expect("metadata should describe a valid mutable view")
     /// };
     /// ```
     pub unsafe fn from_raw_parts_mut(
         ptr: *mut A,
+        storage_len: usize,
         shape: D,
         strides: Strides<D>,
         offset: usize,
-    ) -> Self {
+    ) -> Result<Self, XenonError> {
+        validate_access_range(&shape, &strides, offset, storage_len)?;
+
         // SAFETY: Caller guarantees exclusive mutable access to the memory
         // for lifetime 'a. Same validity requirements as from_raw_parts.
-        TensorBase {
+        Ok(TensorBase {
             storage: ViewMutRepr::new(ptr),
             shape,
             strides,
             offset,
             flags: layout::compute_flags(&shape, &strides, unsafe { ptr.add(offset) }),
-        }
+        })
     }
 }
 ````
+
+> **校验边界说明：** 与 `07-tensor.md` §5.6 一致，`from_raw_parts*()` 只验证库能够直接检查的元数据约束（例如 shape/stride/offset/storage_len 组合是否合法、是否溢出、是否越界），并在失败时返回 `Result<_, XenonError>`。指针有效性、对齐、实际可访问范围与生命周期仍由调用方在 `unsafe` 前提下负责。
 
 ### 5.4 将张量解构为裸指针
 
@@ -584,16 +614,42 @@ where
     /// ```
     pub fn blas_info(&self) -> Result<BlasInfo, XenonError> {
         if self.ndim() != 2 {
-            return Err(FfiError::InvalidRank { expected: 2, actual: self.ndim() }.into());
+            return Err(FfiError::InvalidRank {
+                operation: "ffi::blas_info",
+                backend: "blas",
+                precondition: "tensor must be 2D",
+                actual: alloc::format!("ndim={}", self.ndim()).into(),
+            }.into());
         }
         if !self.is_blas_compatible() {
-            return Err(FfiError::BlasIncompatibleLayout.into());
+            return Err(FfiError::BlasIncompatibleLayout {
+                operation: "ffi::blas_info",
+                backend: "blas",
+                precondition: "F-contiguous 2D tensor without zero strides",
+                actual: alloc::format!("shape={:?}, strides={:?}", self.shape(), self.strides()).into(),
+            }.into());
         }
 
         let data_ptr = self.as_ptr() as *const u8;
-        let lda = i32::try_from(self.lda()?).map_err(|_| FfiError::IntegerOverflow { field: "lda" }).map_err(XenonError::from)?;
-        let rows = i32::try_from(self.shape()[0]).map_err(|_| FfiError::IntegerOverflow { field: "rows" }).map_err(XenonError::from)?;
-        let cols = i32::try_from(self.shape()[1]).map_err(|_| FfiError::IntegerOverflow { field: "cols" }).map_err(XenonError::from)?;
+        let raw_lda = self.lda()?;
+        let lda = i32::try_from(raw_lda).map_err(|_| FfiError::IntegerOverflow {
+            operation: "ffi::blas_info",
+            backend: "blas",
+            precondition: "lda must fit in i32",
+            actual: alloc::format!("lda={}", raw_lda).into(),
+        }).map_err(XenonError::from)?;
+        let rows = i32::try_from(self.shape()[0]).map_err(|_| FfiError::IntegerOverflow {
+            operation: "ffi::blas_info",
+            backend: "blas",
+            precondition: "rows must fit in i32",
+            actual: alloc::format!("rows={}", self.shape()[0]).into(),
+        }).map_err(XenonError::from)?;
+        let cols = i32::try_from(self.shape()[1]).map_err(|_| FfiError::IntegerOverflow {
+            operation: "ffi::blas_info",
+            backend: "blas",
+            precondition: "cols must fit in i32",
+            actual: alloc::format!("cols={}", self.shape()[1]).into(),
+        }).map_err(XenonError::from)?;
 
         Ok(BlasInfo {
             data_ptr,
@@ -634,10 +690,20 @@ where
     /// ```
     pub fn lda(&self) -> Result<usize, XenonError> {
         if self.ndim() != 2 {
-            return Err(FfiError::InvalidRank { expected: 2, actual: self.ndim() }.into());
+            return Err(FfiError::InvalidRank {
+                operation: "ffi::lda",
+                backend: "blas",
+                precondition: "tensor must be 2D",
+                actual: alloc::format!("ndim={}", self.ndim()).into(),
+            }.into());
         }
         if !self.is_blas_compatible() {
-            return Err(FfiError::BlasIncompatibleLayout.into());
+            return Err(FfiError::BlasIncompatibleLayout {
+                operation: "ffi::lda",
+                backend: "blas",
+                precondition: "F-contiguous 2D tensor without zero strides",
+                actual: alloc::format!("shape={:?}, strides={:?}", self.shape(), self.strides()).into(),
+            }.into());
         }
         let strides = self.strides();
         Ok(strides[1])
@@ -683,9 +749,10 @@ where
         for i in 0..self.ndim() {
             if index[i] >= shape[i] {
                 return Err(XenonError::IndexOutOfBounds {
+                    operation: "ffi::try_offset_of".into(),
+                    attempted_index: index[i],
                     axis: i,
-                    index: index[i],
-                    bound: shape[i],
+                    shape: shape.to_vec(),
                 });
             }
             offset += strides[i] * index[i];
@@ -776,7 +843,7 @@ unsafe {
 
 对于 View 类型，`offset` 在 storage 范围内则结果合法。数据来自原始 Tensor 的 storage，生命周期由原始引用保证。
 
-`from_raw_parts` 的 Safety 由调用方保证：所有前提条件文档为运行时"契约"，违反任何条件都将导致未定义行为。
+`from_raw_parts` 的 Safety 由调用方保证，但会先执行可直接检查的元数据验证：若 `shape`、`strides`、`offset` 与 `storage_len` 的组合明显非法，则返回 `Err(XenonError::InvalidLayout { .. })`；只有那些库无法从元数据自行证明的指针/生命周期前提，才继续由调用方承担。
 
 ### 6.2 BLAS 兼容性检查流程
 
@@ -986,9 +1053,9 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 
 | 属性     | 值                                                                                                   |
 | -------- | ---------------------------------------------------------------------------------------------------- |
-| 决策     | FFI 方法避免重复安全检查                                                                             |
-| 理由     | FFI 的核心价值是零开销；重复检查会增加不必要的运行时开销；调用方已在 unsafe 块中，可自行决定安全级别 |
-| 替代方案 | 每次调用都检查连续性 — 放弃，与零开销目标冲突                                                        |
+| 决策     | FFI 方法只做可直接检查的元数据验证，不重复承担指针级 Safety 证明                                     |
+| 理由     | 与 `07-tensor.md` 一致：保留必要的 `shape/stride/offset/storage_len` 校验，同时避免把无法证明的内存前提伪装成库内可验证逻辑 |
+| 替代方案 | 完全不校验元数据 — 放弃，会让明显非法输入延迟到 UB；对所有内存前提做深度验证 — 放弃，超出当前边界 |
 
 ---
 
@@ -1005,7 +1072,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | `offset_of()`          | O(ndim)    | `try_offset_of()` + panic-sugar    |
 | `try_ptr_at()`         | O(ndim)    | `try_offset_of()` + 指针加法       |
 | `ptr_at()`             | O(ndim)    | `try_ptr_at()` + panic-sugar       |
-| `from_raw_parts()`     | O(1)       | 仅构造视图                         |
+| `from_raw_parts()`     | O(ndim)    | 元数据校验 + 构造视图              |
 | `into_raw_parts()`     | O(1)       | 提取字段 + `ManuallyDrop`          |
 
 **性能提示**:

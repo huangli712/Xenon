@@ -83,7 +83,7 @@ src/shape/
           ┌──────▼───┐ ┌─────▼────────────┐
           │ dimension│ │ memory-layout    │
           │ Dimension│ │ LayoutFlags      │
-          │ Ix0~IxDyn│ │ Order            │
+          │ Ix0~IxDyn│ │ LayoutState      │
           └──────────┘ └──────────────────┘
 ```
 
@@ -93,7 +93,7 @@ src/shape/
 | ----------- | --------------------------------------------------------------------------------------------------------------- |
 | `tensor`    | `TensorBase<S, D>`, `TensorView`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.offset()`，参见 `07-tensor.md` §4 |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `RemoveAxis`, `IntoDimension`，参见 `02-dimension.md` §3                     |
-| `layout`    | `LayoutFlags`, `Strides<D>`，参见 `06-memory.md` §3, §4                                                         |
+| `layout`    | `LayoutFlags`, `LayoutState`, `Strides<D>`，参见 `06-memory.md` §3, §4                                          |
 | `error`     | 无新增可恢复错误；`transpose()` / `t()` 不走失败返回路径                                                        |
 
 ### 4.3 依赖方向声明
@@ -131,12 +131,10 @@ where
     /// let b = a.transpose();
     /// assert_eq!(b.shape(), &[3, 2]);
     /// ```
-    pub fn transpose(&self) -> TensorView<'_, A, D>
-    where
-        D: Reverse,
-    {
-        let new_shape = self.shape().reverse();
-        let new_strides = self.strides().reverse();
+    pub fn transpose(&self) -> TensorView<'_, A, D> {
+        let new_shape = reverse_axes(self.shape());
+        let new_strides = reverse_axes(self.strides());
+        let new_flags = update_flags_for_transpose(self.flags(), self.ndim());
 
         // actual construction uses TensorView::new_unchecked() or similar
         // internal constructor, see 07-tensor.md
@@ -145,7 +143,7 @@ where
             shape: new_shape,
             strides: new_strides,
             offset: self.offset,
-            flags: self.flags().set_f_contiguous(false),
+            flags: new_flags,
         }
     }
 
@@ -161,10 +159,7 @@ where
     /// let b = a.t();
     /// assert_eq!(b.shape(), &[4, 3]);
     /// ```
-    pub fn t(&self) -> TensorView<'_, A, D>
-    where
-        D: Dimension + Reverse,
-    {
+    pub fn t(&self) -> TensorView<'_, A, D> {
         self.transpose()
     }
 }
@@ -177,7 +172,7 @@ where
 | 零拷贝   | 始终零拷贝（O(1)），仅调整步长和形状              |
 | 形状变化 | `shape[i]` → `shape[ndim-1-i]`（全反转）          |
 | 步长变化 | `strides[i]` → `strides[ndim-1-i]`（全反转）      |
-| 连续性   | 转置后不再 F-contiguous（步长反转，非列优先顺序） |
+| 连续性   | `ndim >= 2` 时按结果布局重分类：普通转置视图为 `NonContiguous`，带零步长的转置视图仍为 `BroadcastView`；0D/1D 保留原布局状态 |
 | 偏移量   | 保持不变                                          |
 | 1D 数组  | 转置后形状不变（1D 无轴顺序概念）                 |
 
@@ -212,32 +207,29 @@ for i in 0..1000 {
 
 ### 6.1 转置布局变化
 
-转置通过直接修改视图的 shape 和 strides 元数据实现，不拷贝数据。具体：交换对应轴的 shape 和 strides 值（即全反转），更新 LayoutFlags。对于 ndim ≥ 2 的一般情况，转置后通常不再 F-contiguous；对 0D/1D，转置是 no-op，应保留原有 contiguity 标志。内部通过创建新的 `TensorView`（共享原始存储的只读引用）实现。
+转置通过直接修改视图的 shape 和 strides 元数据实现，不拷贝数据。具体：交换对应轴的 shape 和 strides 值（即全反转），并按 `06-memory.md` 的 `LayoutState` 重新分类结果布局。对于 `ndim >= 2` 且不含零步长的普通视图，结果通常归类为 `NonContiguous`；若原视图含零步长，则结果仍属于 `BroadcastView`；对 0D/1D，转置是 no-op，应保留原有 flags 和布局状态。内部通过创建新的 `TensorView`（共享原始存储的只读引用）实现。
 
 ```
 原始: shape=[2, 3], strides=[1, 2]  (F-order, F-contiguous)
 转置: shape=[3, 2], strides=[2, 1]  (步长反转，非 F-contiguous)
 ```
 
-> **注意**：Xenon 只支持 F-order 布局，不维护单独的行优先连续性状态。转置后调用
-> `is_f_contiguous()` 返回 `false`；若需恢复连续内存，使用 `to_contiguous()`。
+> **注意**：Xenon 只支持 F-order 布局，不维护单独的行优先连续性状态。对 `ndim >= 2`
+> 且不含零步长的转置结果，`layout_state()` 变为 `LayoutState::NonContiguous` 且
+> `is_f_contiguous()` 返回 `false`；广播视图转置后仍为 `LayoutState::BroadcastView`。
+> 若需恢复连续内存，使用 `to_contiguous()`。
 
 ### 6.2 转置后的连续性标志处理
 
-转置操作不引入新步长值，仅交换现有 stride 顺序。由于 `require.md` §7 明确当前版本不支持负步长布局，因此这里无需讨论 `HAS_NEG_STRIDE`。连续性标志需要按结果布局重算：对 `ndim >= 2` 的一般转置结果，`F-contiguous` 置为 `false`；对 0D/1D 输入，转置是元数据 no-op，应保留原有连续性标志。
+转置操作不引入新步长值，仅交换现有 `usize` stride 顺序。由于 `require.md` §7 明确当前版本不支持负步长布局，因此这里无需讨论负 stride 或相关标志。连续性标志需要按结果布局重算：对 `ndim >= 2` 的一般转置结果，仅清除 `F-contiguous` 位；零步长等其他已存在标志保持不变；对 0D/1D 输入，转置是元数据 no-op，应保留原有连续性标志。
 
 ```rust
-fn update_flags_for_transpose<D>(source_flags: LayoutFlags, dim: &D) -> LayoutFlags
-where
-    D: Dimension,
-{
-    if dim.ndim() <= 1 {
+fn update_flags_for_transpose(source_flags: LayoutFlags, ndim: usize) -> LayoutFlags {
+    if ndim <= 1 {
         source_flags
     } else {
-        let mut flags = source_flags;
         // Transpose reverses stride order; Xenon does not track row-major contiguity.
-        flags.set_f_contiguous(false);
-        flags
+        source_flags.set_f_contiguous(false)
     }
 }
 ```
@@ -344,7 +336,7 @@ Wave 3: [T3]
 
 | 场景 | 测试方式 |
 | ---- | ---- |
-| `D: Reverse` 的维度反转约束成立 | 编译期测试。 |
+| 轴反转辅助逻辑对所有 `D: Dimension` 生效 | 编译期测试与运行时断言。 |
 | 0D / 1D 输入保持原维度类型 | 编译期签名检查与运行时断言。 |
 | reshape / squeeze / expand_dims / flip / roll / pad 不属于当前 API | API 缺失断言。 |
 

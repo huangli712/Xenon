@@ -76,13 +76,14 @@ tests/
 ├── test_math.rs                # 逐元素运算（算术/数学/比较/逻辑）
 ├── test_broadcast.rs           # 广播机制（标量/向量/矩阵广播）
 ├── test_index.rs               # 索引操作（多维索引/范围切片）
-├── test_construction.rs        # 构造方法（zeros/ones/eye/from_vec/from_fn/from_scalar）
-├── test_iterator.rs            # 迭代器（元素/按轴/按窗口/按索引/zip）
+├── test_construction.rs        # 构造方法（zeros/ones/eye/from_shape_vec/from_vec/from_shape_slice/from_scalar/from_array）
+├── test_iterator.rs            # 迭代器（元素/按轴/按索引）
 ├── test_reduction.rs           # 归约运算（sum/沿轴sum）
 ├── test_matrix.rs              # 向量内积（dot）
 ├── test_set.rs                 # 集合操作（unique）
 ├── test_shape.rs               # 形状操作（transpose）
 ├── test_conversion.rs          # 类型转换（cast/存储模式转换）
+├── test_utility.rs             # 实用操作（fill/clip/to_contiguous）
 ├── test_output.rs              # NumPy 风格格式化输出（Display/Debug/截断）
 ├── test_ffi.rs                 # FFI 集成（原始指针/BLAS 兼容）
 ├── test_workspace.rs           # Workspace 独立错误与借用/分割/扩容
@@ -119,7 +120,7 @@ tests/
 ├── crate::broadcast        # broadcast_shape
 ├── crate::shape            # transpose
 ├── crate::index            # 多维索引、范围切片
-├── crate::construct        # zeros, ones, eye, from_vec, from_fn, from_scalar
+├── crate::construct        # zeros, ones, eye, from_shape_vec, from_shape_slice, from_vec, from_array, from_scalar
 ├── crate::set              # unique
 ├── crate::ffi              # as_ptr, as_mut_ptr, from_raw_parts
 ├── crate::workspace        # Workspace
@@ -132,7 +133,7 @@ tests/
 | 来源模块    | 使用的类型/trait                                                                                               |
 | ----------- | -------------------------------------------------------------------------------------------------------------- |
 | `tensor`    | `Tensor<A, D>`, `TensorView`, `TensorViewMut`, `ArcTensor`, `.shape()`, `.strides()`（参见 `07-tensor.md §4`） |
-| `dimension` | `Ix0`~`Ix6`, `IxDyn`, `Dimension`, `XenonError::DimensionMismatch`（参见 `02-dimension.md §4`）                |
+| `dimension` | `Ix0`~`Ix6`, `IxDyn`, `Dimension`（参见 `02-dimension.md §4`）                                                  |
 | `element`   | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element.md §4`）                                 |
 | `complex`   | `Complex<f32>`, `Complex<f64>`（参见 `04-complex.md §4`）                                                      |
 | `storage`   | `Owned`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`, `Storage`（参见 `05-storage.md §4`）                            |
@@ -237,7 +238,11 @@ impl NonContiguous2D {
 
 pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
     NonContiguous2D {
-        owner: Tensor2::<f64>::from_fn([cols, rows], |idx| (idx[0] * rows + idx[1]) as f64),
+        owner: Tensor2::<f64>::from_shape_vec(
+            [cols, rows],
+            (0..cols * rows).map(|idx| idx as f64).collect(),
+        )
+        .expect("shape and data length must match"),
     }
 }
 ```
@@ -303,8 +308,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | ----------------------------- | ----------------------------- | ------ |
 | `test_zeros_ones_from_scalar` | zeros, ones, from_scalar 构造 | 高     |
 | `test_eye_identity`           | 单位矩阵                      | 高     |
-| `test_from_vec_slice`         | from_vec, from_slice 构造     | 高     |
-| `test_from_fn`                | from_fn 函数构造              | 中     |
+| `test_from_data_constructors` | from_shape_vec, from_shape_slice 与 `from_vec`（仅 Ix1）构造 | 高     |
 | `test_from_fixed_array`       | 从固定数组构造                | 中     |
 
 ### 6.6 test_reduction.rs
@@ -324,9 +328,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | -------------------- | ------------------------------- | ------ |
 | `test_iter_elements` | 按元素遍历与 `len()` 一致       | 高     |
 | `test_axis_iter`     | 按轴遍历产出数量与形状一致      | 高     |
-| `test_windows`       | 按窗口遍历正确处理边界          | 中     |
 | `test_indexed_iter`  | 按索引遍历返回 F-order 逻辑索引 | 中     |
-| `test_zip_iter`      | 多数组同步遍历与广播只读约束    | 高     |
 
 ### 6.8 test_matrix.rs
 
@@ -358,10 +360,10 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 
 | 测试函数                    | 测试内容              | 优先级 |
 | --------------------------- | --------------------- | ------ |
-| `test_cast_f32_to_f64`      | f32→f64 精度保持      | 高     |
-| `test_cast_f64_to_f32`      | f64→f32 精度截断      | 高     |
-| `test_cast_real_to_complex` | 实数→复数（虚部为 0） | 中     |
-| `test_cast_nan_to_int`      | NaN→整数行为          | 中     |
+| `test_cast_f32_to_f64`      | `cast()` 成功执行 f32→f64 无损转换              | 高     |
+| `test_cast_f64_to_f32`      | `cast()` 对默认禁止的 f64→f32 有损转换返回错误   | 高     |
+| `test_cast_real_to_complex` | `cast()` 执行实数→复数转换并将虚部补为 0         | 中     |
+| `test_cast_nan_to_int`      | `cast()` 对 NaN→整数返回 `TypeConversion` 错误   | 中     |
 
 ### 6.12 test_utility.rs
 
@@ -435,8 +437,8 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_shape_mismatch_error`     | 不兼容形状运算返回 ShapeMismatch（参见 `26-error.md §4.1`） | 高     |
 | `test_broadcast_error`          | 不可广播返回 `XenonError::BroadcastError`                   | 高     |
 | `test_invalid_axis_error`       | 轴越界返回 InvalidAxis                                      | 高     |
-| `test_dimension_mismatch_error` | 维度互转失败返回 `XenonError::DimensionMismatch`            | 高     |
-| `test_layout_mismatch_error`    | 布局不兼容操作返回 LayoutMismatch                           | 高     |
+| `test_invalid_argument_error`   | 非法参数返回 `XenonError::InvalidArgument`                 | 高     |
+| `test_invalid_shape_error`      | 非法 shape/元素数不匹配返回 `XenonError::InvalidShape`     | 高     |
 | `test_error_display`            | 所有错误类型的 Display 包含上下文                           | 中     |
 | `test_send_sync_contracts`      | 各 storage mode 的 Send/Sync 边界与 `25-safety.md` 一致     | 高     |
 | `test_complex_c99_layout`       | `Complex<T>` 的 C-compatible 布局与 FFI 约定一致            | 高     |
@@ -608,7 +610,9 @@ pub fn allclose_eq(actual: f64, expected: f64, atol: f64, rtol: f64) -> bool {
 #[test]
 fn test_par_sum_consistency() {
     let n = 1_000_000;
-    let t = Tensor1::<f64>::from_fn([n], |idx| (idx[0] as f64).sin());
+    let t = Tensor1::<f64>::from_vec(
+        (0..n).map(|idx| (idx as f64).sin()).collect(),
+    );
 
     let serial_sum = t.sum();
 
@@ -625,8 +629,12 @@ fn test_par_sum_consistency() {
 ```rust
 #[test]
 fn test_simd_add_consistency() {
-    let a = Tensor1::<f64>::from_fn([1024], |idx| (idx[0] as f64).sin());
-    let b = Tensor1::<f64>::from_fn([1024], |idx| (idx[0] as f64).cos());
+    let a = Tensor1::<f64>::from_vec(
+        (0..1024).map(|idx| (idx as f64).sin()).collect(),
+    );
+    let b = Tensor1::<f64>::from_vec(
+        (0..1024).map(|idx| (idx as f64).cos()).collect(),
+    );
 
     let result = &a + &b;
 
@@ -663,7 +671,11 @@ fn test_simd_add_consistency() {
 fn prop_transpose_involution() {
     for r in 1..32usize {
         for c in 1..32usize {
-            let t = Tensor2::from_fn([r, c], |[i, j]| (i * c + j) as f64);
+            let t = Tensor2::from_shape_vec(
+                [r, c],
+                (0..r * c).map(|idx| idx as f64).collect(),
+            )
+            .expect("shape and data length must match");
             let tt = t.t().t().to_owned();
             for (a, b) in t.iter().zip(tt.iter()) {
                 assert_eq!(a, b);
@@ -675,8 +687,8 @@ fn prop_transpose_involution() {
 #[test]
 fn prop_add_commutative() {
     for len in 1..256usize {
-        let a = Tensor1::from_fn([len], |idx| idx[0] as f64);
-        let b = Tensor1::from_fn([len], |idx| idx[0] as f64 + 1.0);
+        let a = Tensor1::from_vec((0..len).map(|idx| idx as f64).collect());
+        let b = Tensor1::from_vec((0..len).map(|idx| idx as f64 + 1.0).collect());
         let ab = &a + &b;
         let ba = &b + &a;
         for (x, y) in ab.iter().zip(ba.iter()) {
@@ -725,7 +737,7 @@ fn prop_approx_equal(x: f64, y: f64) -> bool {
 | 不变量类型       | 参数化策略             | 说明                            |
 | ---------------- | ---------------------- | ------------------------------- |
 | 形状参数         | `1..64usize`           | 避免零/过大形状                 |
-| 浮点数据         | `from_fn` + 固定变换   | 覆盖正常值、NaN、Inf、Subnormal |
+| 浮点数据         | `from_shape_vec` + 固定变换 | 覆盖正常值、NaN、Inf、Subnormal |
 | 浮点数据（过滤） | 手写筛选后的确定性样本 | 排除 NaN/Inf                    |
 | 整数数据         | `any::<i32>()`         | 含负数和边界值                  |
 | 1D 向量          | `for len in 1..256`    | 含边界长度                      |
@@ -734,11 +746,11 @@ fn prop_approx_equal(x: f64, y: f64) -> bool {
 
 | 数据类型   | 生成方法                                      | 用途           |
 | ---------- | --------------------------------------------- | -------------- |
-| 顺序填充   | `from_fn([n], \|idx\| idx[0] as f64)`         | 可重复、确定性 |
-| 三角函数值 | `from_fn([n], \|idx\| (idx[0] as f64).sin())` | 非平凡浮点值   |
+| 顺序填充   | `from_vec((0..n).map(|idx| idx as f64).collect())`         | 可重复、确定性 |
+| 三角函数值 | `from_vec((0..n).map(|idx| (idx as f64).sin()).collect())` | 非平凡浮点值   |
 | 非连续视图 | `t.t()` 或 `t.slice(s![..;2])`                | 测试步长处理   |
 | 空/单元素  | `zeros([0])` / `from_scalar(42.0)`            | 边界测试       |
-| 受控数据   | `from_fn` / 顺序生成                          | 属性测试       |
+| 受控数据   | `from_shape_vec` / 顺序生成                   | 属性测试       |
 
 ---
 
@@ -757,12 +769,11 @@ fn test_add_result() {
     assert_tensor_close(&result, &expected, 1e-10, 1e-10, "add");
 }
 
-// Good: Test error path with method-style API that returns Result
+// Good: Test a supported error path that returns Result
 #[test]
-fn test_incompatible_shapes() {
-    let a = Tensor1::from_vec(vec![1.0, 2.0]);
-    let b = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
-    assert_xenon_error!(zip_with(&a, &b, |x, y| x + y), XenonError::ShapeMismatch { .. });
+fn test_axis_iter_invalid_axis() {
+    let t = Tensor2::<f64>::zeros([2, 3]).expect("shape is valid");
+    assert_xenon_error!(t.axis_iter(Axis(2)), XenonError::InvalidAxis { .. });
 }
 
 // Good: Parameterized test with standard shapes
@@ -788,12 +799,11 @@ fn test_add_bad() {
     assert_eq!(result[[0]], 0.4);  // Floating point exact comparison may fail
 }
 
-// Bad: Ignoring the free-function error path
+// Bad: Ignoring a recoverable error path
 #[test]
-fn test_add_bad2() {
-    let a = Tensor1::from_vec(vec![1.0, 2.0]);
-    let b = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
-    let _ = zip_with(&a, &b, |x, y| x + y);  // Silently ignoring the Result
+fn test_axis_iter_bad() {
+    let t = Tensor2::<f64>::zeros([2, 3]).expect("shape is valid");
+    let _ = t.axis_iter(Axis(2));  // Silently ignoring the Result
 }
 
 // Bad: Hardcoded magic numbers without context
@@ -894,7 +904,7 @@ fn test_bad_magic() {
 
 - [ ] **T6**: 实现 `tests/test_construction.rs`
   - 文件: `tests/test_construction.rs`
-  - 内容: 构造方法（zeros/ones/eye/from_vec/from_fn/from_scalar/from_array）
+  - 内容: 构造方法（zeros/ones/eye/from_shape_vec/from_shape_slice/from_vec/from_scalar/from_array）
   - 测试: `cargo test --test test_construction`
   - 前置: T1
   - 预计: 10 min
@@ -908,7 +918,7 @@ fn test_bad_magic() {
 
 - [ ] **T7a**: 实现 `tests/test_iterator.rs`
   - 文件: `tests/test_iterator.rs`
-  - 内容: 迭代器（elements/axis/windows/indexed/zip）
+  - 内容: 迭代器（elements/axis/indexed）
   - 测试: `cargo test --test test_iterator`
   - 前置: T1
   - 预计: 10 min
@@ -1136,8 +1146,8 @@ fn compile_fail_cases() {
 ### 决策 3：浮点比较使用 NumPy 风格组合容差
 
 | 属性     | 值                                                                                                                       |
-| -------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------- | ----------------- | -------- | --- |
-| 决策     | 浮点测试使用 NumPy 风格组合 atol+rtol 容差，即 `                                                                         | actual - expected | <= atol + rtol \* | expected | `   |
+| -------- | ------------------------------------------------------------------------------------------------------------------------ |
+| 决策     | 浮点测试使用 NumPy 风格组合 atol+rtol 容差，即 `|actual - expected| <= atol + rtol * |expected|`。                     |
 | 理由     | 单纯 rtol 在 expected 接近零时失效（除零）；单纯 atol 对大数值过严对小数值过松。NumPy 的 allclose() 组合方案兼顾两种情况 |
 | 替代方案 | 仅用 atol — 放弃，大数值时精度要求过严，小数值时过松                                                                     |
 | 替代方案 | 仅用 rtol — 放弃，expected 接近零时除零或精度不足                                                                        |

@@ -457,8 +457,10 @@ where
 {
     if !is_broadcast_compatible(self.shape(), shape.as_ref()) {
         return Err(XenonError::BroadcastError {
-            shape_a: self.shape().into(),
-            shape_b: shape.as_ref().into(),
+            operation: "broadcast_to",
+            input_shape: self.shape().into(),
+            target_shape: shape.as_ref().into(),
+            axis: None,
         });
     }
     // ...
@@ -489,25 +491,47 @@ where
 统一错误类型 `XenonError`，覆盖所有可恢复错误场景（参见 `26-error.md` §4.2）：
 
 > **注意**：仅 `tensor[...]` 这类 `Index` trait 语法在索引越界时使用 `panic`，与标准库 `slice` 行为一致；`tensor.get(...)`、`try_offset_of(...)` 等安全接口须返回 `Option` 或 `Result`。
-> 步长相关错误由 `LayoutMismatch` 变体覆盖。参见 `26-error.md` §1.2。
-> 当前枚举仅展示最小骨架；最终错误模型须按 `26-error.md` 扩展，至少补充类型转换、FFI、索引、广播等错误变体，并携带结构化上下文。
+> 本文档中的错误枚举示例字段名必须与 `26-error.md` 保持一致；如需扩展错误模型，应沿用同一套结构化上下文字段，而不是引入旧版别名字段。
 
 ```rust
 #[derive(Debug, Clone)]
 pub enum XenonError {
-    ShapeMismatch { expected: Cow<'static, [usize]>, actual: Cow<'static, [usize]> },
-    BroadcastError { shape_a: Cow<'static, [usize]>, shape_b: Cow<'static, [usize]> },
-    LayoutMismatch { expected: &'static str, actual: &'static str },
-    InvalidAxis { axis: usize, ndim: usize },
-    InvalidShape { from: usize, to: usize },
-    DimensionMismatch { expected: usize, actual: usize },
-    EmptyArray { operation: &'static str },
+    ShapeMismatch {
+        operation: &'static str,
+        left_shape: Cow<'static, [usize]>,
+        right_shape: Cow<'static, [usize]>,
+    },
+    BroadcastError {
+        operation: &'static str,
+        input_shape: Cow<'static, [usize]>,
+        target_shape: Cow<'static, [usize]>,
+        axis: Option<usize>,
+    },
+    InvalidAxis {
+        operation: &'static str,
+        axis: usize,
+        ndim: usize,
+        shape: Cow<'static, [usize]>,
+    },
+    InvalidArgument {
+        operation: &'static str,
+        argument: &'static str,
+        expected: &'static str,
+        actual: String,
+        axis: Option<usize>,
+        shape: Option<Cow<'static, [usize]>>,
+    },
+    InvalidShape {
+        operation: &'static str,
+        shape: Cow<'static, [usize]>,
+        expected_elements: usize,
+        actual_elements: usize,
+        offending_dim: Option<usize>,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, XenonError>;
 ```
-
-> **关于 `DimensionMismatch` 的说明**：`XenonError::DimensionMismatch` 是统一错误枚举中的变体，包含 `expected` 和 `actual` 两个 `usize` 字段。全项目统一使用 `XenonError::DimensionMismatch` 作为维度不匹配错误，不使用独立 `DimensionMismatch` 结构体。维度转换（`try_from_dyn`）返回 `Result<Self, XenonError>` 而非独立的 `DimensionMismatch` 类型。
 
 ### 4.3 unwrap 限制
 
@@ -521,8 +545,10 @@ where
 {
     if !is_broadcast_compatible(self.shape(), shape.as_ref()) {
         return Err(XenonError::BroadcastError {
-            shape_a: self.shape().into(),
-            shape_b: shape.as_ref().into(),
+            operation: "broadcast_to",
+            input_shape: self.shape().into(),
+            target_shape: shape.as_ref().into(),
+            axis: None,
         });
     }
     // ...

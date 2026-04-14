@@ -51,7 +51,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 | ------------ | ------------------------------------------------ | -------------------------- |
 | FFI 布局基础 | `#[repr(C)]` 为双字段 C 结构体互操作提供布局基础 | 同样支持，但需验证         |
 | 依赖控制     | 零额外依赖，符合最小依赖原则                     | 引入 num-traits 等传递依赖 |
-| API 精确控制 | 可精确控制 trait 实现（禁止 Eq/Ord）             | 实现了 Eq，与需求不符      |
+| API 精确控制 | 可精确控制 trait 实现（禁止 Eq/Ord）             | trait surface 更宽，需额外裁剪/适配 |
 | 精度约束     | 严格限制同精度互操作                             | 支持更宽松的混合精度       |
 | Element 集成 | 无缝集成到 Xenon 元素类型体系                    | 需要额外适配层             |
 
@@ -61,8 +61,8 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 | 项目     | 内容                                                            |
 | -------- | --------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §5                                                   |
-| 范围内   | `Complex<T>` 类型定义、同精度复数运算、格式化、布局与转换边界   |
+| 需求映射 | 需求说明书 §5、§23、§25                                         |
+| 范围内   | `Complex<T>` 类型定义、同精度复数运算、格式化、类型转换、FFI 布局边界 |
 | 范围外   | `num-complex` 兼容层、跨精度混合运算、FFT 与高阶复数算法        |
 | 非目标   | 引入第三方复数库依赖、开放任意 `T` 的公开实例化或 `_Complex` ABI 保证 |
 
@@ -87,17 +87,21 @@ src/complex/
 
 ```
 src/complex/
+├── crate::error       # XenonError for recoverable narrowing conversion
+├── crate::private     # Sealed for ComplexFloat
 ├── core::ops        # Add/Sub/Mul/Div/Neg 运算符 trait
 ├── core::fmt        # Debug/Display 格式化
 └── core::cmp        # PartialEq
 ```
 
-> **零外部依赖。** `Complex<T>` 的基础结构、基础方法、算术运算和类型转换仅依赖 `core`；涉及浮点数学的复数方法运行在 Xenon 的 `std` 环境前提下。
+> **零外部依赖。** `Complex<T>` 不引入任何第三方 crate；项目内依赖仅包括 `crate::error`（用于 `to_f32()` 等可恢复错误）和 `crate::private`（用于 sealed 的 `ComplexFloat` 约束），其余基础结构、方法和运算依赖 `core`。涉及浮点数学的复数方法运行在 Xenon 的 `std` 环境前提下。
 
 ### 4.2 依赖精确到类型级
 
 | 来源        | 使用的类型/trait                              |
 | ----------- | --------------------------------------------- |
+| `error`     | `XenonError`（`Complex<f64>::to_f32()` 等可恢复错误） |
+| `private`   | `Sealed`（封闭 `ComplexFloat` 的公开实现范围） |
 | `core::ops` | `Add`, `Sub`, `Mul`, `Div`, `Neg`（算术运算） |
 | `core::fmt` | `Debug`, `Display`（格式化输出）              |
 | `core::cmp` | `PartialEq`（相等比较）                       |
@@ -112,8 +116,8 @@ src/complex/
 
 ### 4.3 依赖方向声明
 
-> **依赖方向：单向向下。** `complex/` 不依赖项目中任何其他模块。
-> 被下游消费：`element/` 模块为 `Complex<f32>`/`Complex<f64>` 实现 Element/Numeric/ComplexScalar trait（参见 `03-element.md` §5.3）。
+> **依赖方向：核心内聚、单向向下。** `complex/` 仅依赖项目内基础模块 `error` 与 `private`，不依赖其他上层业务模块。
+> 被下游消费：`element/` 模块为 `Complex<f32>`/`Complex<f64>` 实现 Element/Numeric/ComplexScalar trait（参见 `03-element.md` §5.1 / §5.2 / §5.4）。
 
 ---
 
@@ -759,7 +763,7 @@ hypot(a, b):
 | 交互点     | 说明                                                                                                                            |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | 类型定义   | `Complex<T>` 定义在 `crate::complex`                                                                                            |
-| Trait 实现 | `Element`/`Numeric`/`ComplexScalar` 在 `element` 模块定义（参见 `03-element.md` §5.4），在 `primitives.rs` 为 `Complex<T>` 实现 |
+| Trait 实现 | `Element`/`Numeric`/`ComplexScalar` 在 `element` 模块定义（参见 `03-element.md` §5.1 / §5.2 / §5.4），在 `primitives.rs` 为 `Complex<T>` 实现 |
 | 依赖方向   | `element` 依赖 `complex`（类型定义）；`complex` 不依赖 `element`                                                                |
 
 ### 7.2 接口边界
@@ -1017,7 +1021,7 @@ Wave 5: [T11] → [T12]
 | -------- | ----------------------------------------------------------------------------------------------------------- |
 | 决策     | 自定义 `Complex<T>`，不依赖 `num-complex`                                                                   |
 | 理由     | 零额外依赖；可精确控制 trait 实现（禁止 Eq/Ord）；严格同精度互操作；FFI 布局可验证；与 Element 体系无缝集成 |
-| 替代方案 | 使用 `num-complex` — 放弃，引入 num-traits 传递依赖；实现了 Eq 与 NaN 语义冲突                              |
+| 替代方案 | 使用 `num-complex` — 放弃，引入 num-traits 传递依赖，且 trait surface 需要额外适配                          |
 | 后果     | 需自行实现所有数学方法；增加维护成本；获得 API 完全控制权                                                   |
 
 ### 决策 2：不实现 Eq/Ord
@@ -1026,7 +1030,7 @@ Wave 5: [T11] → [T12]
 | -------- | ---------------------------------------------------------------------------------------------------- |
 | 决策     | 不实现 `Eq`、`PartialOrd`、`Ord`                                                                     |
 | 理由     | `Eq` 要求自反性（x==x），但 NaN!=NaN 违反此性质；复数无自然全序；实现 Eq 会导致 HashSet 等未定义行为 |
-| 替代方案 | 实现 Eq（同 num-complex）— 放弃，NaN 导致语义错误                                                    |
+| 替代方案 | 实现 Eq — 放弃，NaN 导致语义错误                                                                  |
 | 替代方案 | 实现 PartialOrd（字典序）— 放弃，无数学意义                                                          |
 
 ### 决策 3：norm() 使用 hypot 而非 sqrt(re²+im²)

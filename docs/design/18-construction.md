@@ -143,7 +143,7 @@ where
     ///
     /// # Examples
     /// ```
-    /// let t = Tensor::<f64, _>::zeros([3, 4]).unwrap();
+    /// let t = Tensor::<f64, _>::zeros([3, 4])?;
     /// assert_eq!(t.shape(), &[3, 4]);
     /// assert!(t.iter().all(|&x| x == 0.0));
     /// ```
@@ -153,7 +153,13 @@ where
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();
-        let len = dim.checked_size().ok_or(XenonError::InvalidShape { from: usize::MAX, to: 0 })?;
+        let len = dim.checked_size().ok_or(XenonError::InvalidShape {
+            operation: "zeros",
+            shape: dim.slice().to_vec(),
+            expected_elements: 0,
+            actual_elements: usize::MAX,
+            offending_dim: None,
+        })?;
         let strides = dim.strides_for_f_order();
         let storage = Owned::zeros(len);
         Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) })
@@ -163,7 +169,7 @@ where
     ///
     /// # Examples
     /// ```
-    /// let t = Tensor::<f64, _>::ones([2, 3]).unwrap();
+    /// let t = Tensor::<f64, _>::ones([2, 3])?;
     /// assert!(t.iter().all(|&x| x == 1.0));
     /// ```
     pub fn ones<Sh>(shape: Sh) -> Result<Self, XenonError>
@@ -172,7 +178,13 @@ where
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();
-        let len = dim.checked_size().ok_or(XenonError::InvalidShape { from: usize::MAX, to: 0 })?;
+        let len = dim.checked_size().ok_or(XenonError::InvalidShape {
+            operation: "ones",
+            shape: dim.slice().to_vec(),
+            expected_elements: 0,
+            actual_elements: usize::MAX,
+            offending_dim: None,
+        })?;
         let strides = dim.strides_for_f_order();
         let storage = Owned::ones(len);
         Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) })
@@ -181,7 +193,7 @@ where
 ````
 
 > **范围决策：** `full()` 超出 `require.md` §19 的当前最小构造集合。
-> 本文仅承诺 `zeros()`、`ones()`、`eye()`、`from_shape_vec()`、`from_shape_slice()`、`from_array()` 与 `from_scalar()`；
+> 本文仅承诺 `zeros()`、`ones()`、`eye()`、`from_shape_vec()`、`from_vec()`、`from_shape_slice()`、`from_array()` 与 `from_scalar()`；
 > `full()` 留待后续版本单独设计。
 
 ### 5.2 eye（单位矩阵）
@@ -245,7 +257,7 @@ impl EyeElement for Complex<f64> {}
 ### 5.3 from_shape_vec / from_shape_slice / from_array
 
 ````rust
-# use crate::dimension::{Dimension, IntoDimension};
+# use crate::dimension::{Dimension, IntoDimension, Ix1};
 # use crate::element::Element;
 # use crate::error::XenonError;
 # use crate::layout::{LayoutFlags, Order};
@@ -256,13 +268,15 @@ where
     A: Element,
     D: Dimension,
 {
-    /// Construct a tensor from a Vec (with specified shape, F-order).
+    /// Construct a tensor from a Vec with explicit shape.
     ///
     /// Validates that the Vec length matches the total number of elements in the shape.
     ///
     /// # Data Layout
-    /// The elements in `data` must be laid out in **column-major (F-order)** order.
-    /// That is, the first dimension varies fastest.
+    /// The order of elements in `data` defines the logical index-to-element mapping.
+    /// Callers provide values following Xenon's F-order logical indexing semantics,
+    /// while the library itself is responsible for materializing the internal
+    /// F-order contiguous storage.
     ///
     /// # Errors
     /// Returns `XenonError::InvalidShape` if `checked_size(shape)` overflows or
@@ -270,7 +284,7 @@ where
     ///
     /// # Examples
     /// ```
-    /// let t = Tensor::<f64, _>::from_shape_vec([2, 3], vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
+    /// let t = Tensor::<f64, _>::from_shape_vec([2, 3], vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0])?;
     /// assert_eq!(t.shape(), &[2, 3]);
     /// ```
     pub fn from_shape_vec<Sh>(shape: Sh, data: Vec<A>) -> Result<Self, XenonError>
@@ -279,13 +293,19 @@ where
     {
         let dim = shape.into_dimension();
         let expected = dim.checked_size().ok_or(XenonError::InvalidShape {
-            from: data.len(),
-            to: usize::MAX,
+            operation: "from_shape_vec",
+            shape: dim.slice().to_vec(),
+            expected_elements: 0,
+            actual_elements: data.len(),
+            offending_dim: None,
         })?;
         if data.len() != expected {
             return Err(XenonError::InvalidShape {
-                from: data.len(),
-                to: expected,
+                operation: "from_shape_vec",
+                shape: dim.slice().to_vec(),
+                expected_elements: expected,
+                actual_elements: data.len(),
+                offending_dim: None,
             });
         }
         let strides = dim.strides_for_f_order();
@@ -304,7 +324,7 @@ where
     /// # Examples
     /// ```
     /// let data = [1.0, 2.0, 3.0, 4.0];
-    /// let t = Tensor::<f64, _>::from_shape_slice([2, 2], &data).unwrap();
+    /// let t = Tensor::<f64, _>::from_shape_slice([2, 2], &data)?;
     /// ```
     pub fn from_shape_slice<Sh>(shape: Sh, slice: &[A]) -> Result<Self, XenonError>
     where
@@ -313,16 +333,31 @@ where
     {
         let dim = shape.into_dimension();
         let expected = dim.checked_size().ok_or(XenonError::InvalidShape {
-            from: slice.len(),
-            to: usize::MAX,
+            operation: "from_shape_slice",
+            shape: dim.slice().to_vec(),
+            expected_elements: 0,
+            actual_elements: slice.len(),
+            offending_dim: None,
         })?;
         if slice.len() != expected {
             return Err(XenonError::InvalidShape {
-                from: slice.len(),
-                to: expected,
+                operation: "from_shape_slice",
+                shape: dim.slice().to_vec(),
+                expected_elements: expected,
+                actual_elements: slice.len(),
+                offending_dim: None,
             });
         }
         Self::from_shape_vec(dim, slice.to_vec())
+    }
+
+    /// Construct a 1D tensor directly from a Vec.
+    ///
+    /// This is a convenience wrapper around
+    /// `from_shape_vec(Ix1(data.len()), data)` for 1D construction.
+    pub fn from_vec(data: Vec<A>) -> Tensor<A, Ix1> {
+        Self::from_shape_vec(Ix1(data.len()), data)
+            .expect("Vec -> Tensor1 shape is always valid")
     }
 
     /// Construct a tensor from a fixed-size array.
@@ -330,7 +365,7 @@ where
     /// # Examples
     /// ```
     /// let arr = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-    /// let t = Tensor::<f64, _>::from_array([2, 3], arr).unwrap();
+    /// let t = Tensor::<f64, _>::from_array([2, 3], arr)?;
     /// ```
     pub fn from_array<Sh, const N: usize>(
         shape: Sh,
@@ -390,8 +425,11 @@ fn create_matrix(data: Vec<f64>) -> Result<Tensor<f64, Ix2>, XenonError> {
     let n = (data.len() as f64).sqrt() as usize;
     if n * n != data.len() {
         return Err(XenonError::InvalidShape {
-            from: data.len(),
-            to: n * n,
+            operation: "create_matrix",
+            shape: vec![n, n],
+            expected_elements: n * n,
+            actual_elements: data.len(),
+            offending_dim: None,
         });
     }
     Tensor::from_shape_vec([n, n], data)
@@ -466,13 +504,20 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
   - 前置: T3
   - 预计: 5 min
 
+- [ ] **T5**: 实现 `from_vec` 一维便捷构造
+  - 文件: `src/construct/from_data.rs`
+  - 内容: `from_vec(data: Vec<A>) -> Tensor<A, Ix1>`，内部委托到 `from_shape_vec(Ix1(data.len()), data)`
+  - 测试: `test_from_vec`
+  - 前置: T3
+  - 预计: 5 min
+
 ### Wave 3: 集成与测试
 
 - [ ] **T6**: 编写综合测试
   - 文件: `tests/test_construction.rs`
   - 内容: 各构造方法的集成测试、边界情况
   - 测试: 覆盖所有公共 API
-  - 前置: T1-T4
+  - 前置: T1-T5
   - 预计: 10 min
 
 ### 并行执行图
@@ -482,7 +527,9 @@ Wave 1: [T1] → [T2]
                   │
 Wave 2:      [T3] → [T4]
                       │
-Wave 3:           [T6]
+                  [T5]
+                      │
+Wave 3:            [T6]
 ```
 
 ---

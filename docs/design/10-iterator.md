@@ -20,19 +20,19 @@
 | 元素遍历       | 按元素遍历（F-order 内存顺序）           | 具体运算逻辑（参见 `11-math.md §1`）   |
 | 轴遍历         | 沿指定轴产生子张量视图                   | 子视图的具体操作                       |
 | 索引遍历       | 带多维索引的元素遍历                     | 索引赋值操作                           |
-| 内部能力提示   | `Zip` 作为 `pub(crate)` 内部工具纳入当前版本；`Windows` 可作为后续版本议题保留 | `Zip` 不作为当前版本公开 API；`Windows` 不纳入当前版本实现范围 |
+| 内部能力提示   | 各操作模块可直接实现自身所需的内部迭代分发；`Windows` 可作为后续版本议题保留 | 不单独设计统一的多输入 lock-step 中间抽象；`Windows` 不纳入当前版本实现范围 |
 | 并行迭代       | —                                        | 并行迭代（参见 `09-parallel.md §4.5`） |
 
 ### 1.3 在架构中的位置
 
 ```
-依赖层级：
+Dependency levels:
 L0: error, private
 L1: dimension, element, complex
-L2: layout (依赖 dimension)
-L3: storage (仅依赖 core/alloc，不依赖 layout)
-L4: tensor (依赖 storage, dimension)
-L5: iter  ← 当前模块
+L2: layout (depends on dimension)
+L3: storage (depends only on core/alloc, not layout)
+L4: tensor (depends on storage, dimension)
+L5: iter  <- current module
 ```
 
 ### 1.4 设计原则
@@ -52,8 +52,8 @@ L5: iter  ← 当前模块
 | 类型     | 内容 |
 | -------- | ---- |
 | 需求映射 | 需求说明书 §11 |
-| 范围内   | 元素遍历、按轴遍历、带索引遍历，以及仅供内部复用的 `pub(crate)` `Zip`。 |
-| 范围外   | `Zip` 公开 API、`DoubleEndedIterator`、`Windows` / `LaneIter` 与并行公开迭代接口。 |
+| 范围内   | 元素遍历、按轴遍历、带索引遍历，以及供各运算模块直接实现的内部迭代分发约定。 |
+| 范围外   | 独立的多输入 lock-step 迭代抽象、`DoubleEndedIterator`、`Windows` / `LaneIter` 与并行公开迭代接口。 |
 | 非目标   | 不扩展当前公开迭代器集合，不新增第三方依赖，也不在本文定义并行 API 契约。 |
 
 ---
@@ -65,17 +65,33 @@ src/iter/
 ├── mod.rs         # 模块入口、公开导出、迭代器 trait 声明
 ├── elements.rs    # Elements / ElementsMut 扁平元素遍历
 ├── axis.rs        # AxisIter / AxisIterMut 沿轴迭代
-├── indexed.rs     # IndexedIter / IndexedIterMut 带索引遍历
-└── zip.rs         # Zip 内部多输入锁步遍历工具（pub(crate)）
+└── indexed.rs     # IndexedIter / IndexedIterMut 带索引遍历
 ```
 
-单文件划分理由：当前版本公开范围仅覆盖元素、按轴、按索引三类迭代器，拆分文件降低单文件复杂度并保持职责清晰。`zip.rs` 作为内部 `pub(crate)` 工具保留在当前版本，用于逐元素运算、广播与归约的多输入锁步遍历；`windows.rs`、`lanes.rs` 暂不纳入当前版本。
+单文件划分理由：当前版本公开范围仅覆盖元素、按轴、按索引三类迭代器，拆分文件降低单文件复杂度并保持职责清晰。逐元素运算、广播与归约如需 lock-step 遍历，由各操作模块在自身内部直接组织遍历逻辑；`windows.rs`、`lanes.rs` 暂不纳入当前版本。
 
 ---
 
 ## 4. 依赖关系
 
-### 4.1 依赖图
+### 4.1 Invariants
+
+| 不变量 | 说明 |
+| ---- | ---- |
+| F-order only | 所有公开迭代器的逻辑产出顺序固定为 F-order，不提供 C-order 或顺序切换选项。 |
+| 长度一致性 | `iter().count()`、`indexed_iter().count()` 与 `len()` 必须一致；零维张量恰好产出 1 个元素，空张量产出 0 个元素。 |
+| 只读广播 | 广播视图只能参与只读遍历；任何可变迭代入口都不得对 `BroadcastView` 开放。 |
+| 轴迭代降维 | `AxisIter` / `AxisIterMut` 每次产出的子视图维度必须为 `D::Smaller`，形状等于原形状移除目标轴后的结果。 |
+
+### 4.2 Error Scenarios
+
+| 场景 | 错误 |
+| ---- | ---- |
+| `axis_iter()` / `axis_iter_mut()` 的 `axis` 越界 | 返回 `XenonError::InvalidAxis { operation: "axis_iter", axis, ndim, shape }` 或 `XenonError::InvalidAxis { operation: "axis_iter_mut", axis, ndim, shape }`。 |
+| rank-0 动态维张量调用按轴迭代 | 返回 `XenonError::InvalidAxis { operation, axis: 0, ndim: 0, shape }`，其中 `shape` 为 `Cow<'static, [usize]>` 形式的空形状。 |
+| 试图把广播结果作为可变迭代输入 | 不提供公开 API；通过类型系统在编译期拒绝，而不是返回运行时错误。 |
+
+### 4.3 依赖图
 
 ```
 src/iter/
@@ -85,7 +101,7 @@ src/iter/
 └── crate::tensor        # Layout and contiguity queries via TensorBase
 ```
 
-### 4.2 类型级依赖
+### 4.4 类型级依赖
 
 | 来源模块    | 使用的类型/trait                                                                                                                                 |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -94,11 +110,11 @@ src/iter/
 | `storage`   | `Storage<Elem = A>`, `StorageMut<Elem = A>`, `Owned<A>`（参见 `05-storage.md §4`）                                                               |
 | `tensor`    | `.is_f_contiguous()`, 布局标志查询（参见 `07-tensor.md §4`）                                                                                     |
 
-### 4.3 依赖方向
+### 4.5 依赖方向
 
 > **依赖方向：单向向上。** `iter/` 仅消费 `tensor`、`dimension`、`storage` 等核心模块，不被它们依赖。布局/连续性判断通过 `TensorBase` 暴露的查询接口完成。
 
-### 4.4 依赖合法性与替代方案
+### 4.6 依赖合法性与替代方案
 
 | 项目           | 说明 |
 | -------------- | ---- |
@@ -174,25 +190,13 @@ impl<'a, A, D: Dimension + RemoveAxis> ExactSizeIterator for AxisIterMut<'a, A, 
 
 > **设计决策：** `AxisIter` 的 `Item` 类型为 `TensorView<'a, A, D::Smaller>`。这要求 `D` 满足 `RemoveAxis`，并由 `RemoveAxis` trait 提供 `type Smaller: Dimension` 关联类型。同时，公开构造路径仍须在运行时先检查 `self.ndim() == 0`，并返回可恢复错误，以覆盖动态维度张量在 rank=0 时的按轴遍历请求。
 
-### 5.3 `Zip` 内部工具与后续能力说明
+### 5.3 内部迭代分发说明
 
-`Zip` 纳入当前版本范围，但仅作为 `iter` 模块内的 `pub(crate)` 内部工具存在，不构成公开 API 承诺。它是一个多张量 lock-step 迭代器，供逐元素运算、广播与归约等内部实现复用。`Windows` 与 `LaneIter` 仍不属于需求说明书 §11 的当前范围；如后续引入，应在独立设计中重新定义窗口语义、1D 产出语义以及别名约束。
+当前版本不在 `iter` 模块中设计统一的多输入 lock-step 结构体或配套方法。逐元素运算、广播、归约等需要多输入同步遍历的模块，应直接基于 `Elements` / `ElementsMut`、广播视图和各自的内部状态机完成迭代分发。这样可以避免在 `iter` 模块额外引入一个被误解为稳定能力边界的中间抽象。
 
-```rust
-pub(crate) struct Zip<'a, A, B, DA, DB> {
-    // Internal fields: chained tensor views / iterators and traversal state
-}
+> **Zip 能力说明：** 当前版本明确不支持 `Zip` 结构体、`zip_with`、`zip_apply` 或任何等价的公开 lock-step 迭代 API；如后续需要，应在独立设计文档中重新定义其错误语义、广播边界和别名约束。
 
-impl<'a, A, B, DA, DB> Zip<'a, A, B, DA, DB> {
-    pub(crate) fn from(base: TensorViewMut<'a, A, DA>) -> Self;
-    pub(crate) fn and<C, DC>(self, other: TensorView<'a, C, DC>) -> Zip<'a, A, (B, C), DA, (DB, DC)>;
-    pub(crate) fn for_each<F>(self, f: F)
-    where
-        F: FnMut(&mut A, B);
-}
-```
-
-> **Zip 设计说明：** `Zip` 是 `pub(crate)` 多张量 lock-step 迭代器，用于逐元素运算、广播和归约等内部实现；当前版本不作为公开 API 暴露。
+> **说明：** `Windows` 与 `LaneIter` 仍不属于需求说明书 §11 的当前范围；如后续引入，应在独立文档中重新定义窗口语义、1D 产出语义以及别名约束。
 
 ### 5.4 IndexedIter 带索引迭代器
 
@@ -289,7 +293,7 @@ for i in 0..tensor.shape()[0] {
 }
 
 // Bad - ignoring the recoverable error path for zero-rank axis iteration
-let scalar = Tensor::<f64, IxDyn>::from_shape_vec(IxDyn(&[]), vec![1.0])?;
+let scalar = Tensor::<f64, IxDyn>::from_shape_vec(IxDyn::from_slice(&[]), vec![1.0])?;
 // let _ = scalar.axis_iter(Axis(0)).unwrap();
 ```
 
@@ -302,11 +306,11 @@ let scalar = Tensor::<f64, IxDyn>::from_shape_vec(IxDyn(&[]), vec![1.0])?;
 ```
 Elements::new(view):
     if view.is_f_contiguous():
-        // Fast path: 指针递增
+        // Fast path: pointer increment
         ptr = view.as_ptr()
         end = ptr + view.len()
     else:
-        // Slow path: 步长状态机
+        // Slow path: stride state machine
         stride_state = StrideState::new(&view)
         index = D::zeros(view.ndim())
 ```
@@ -339,44 +343,9 @@ increment_index_f(shape, index):
 
 填充数组的迭代仅遍历逻辑元素。迭代器通过 shape 中的逻辑维度计数，跳过填充区域。
 
-### 6.5 `ElementsProducerRange` — 并行分块内部状态
+### 6.5 并行分块说明
 
-> **用途：** 供并行后端（`09-parallel.md §4.5`）中的 `ElementsProducer::split_at` 调用。它不再尝试把任意逻辑前缀/后缀表示成两个 `TensorView`，而是保留原始 view，并以扁平逻辑区间 `[start, end)` 描述生产范围。
-
-```rust
-pub(crate) struct ElementsProducerRange<'a, A, D> {
-    base: TensorView<'a, A, D>,
-    start: usize,
-    end: usize,
-}
-
-impl<'a, A, D> ElementsProducerRange<'a, A, D>
-where
-    A: Element,
-    D: Dimension,
-{
-    pub(crate) fn from_view(base: TensorView<'a, A, D>) -> Self {
-        let len = base.len();
-        Self { base, start: 0, end: len }
-    }
-
-    pub(crate) fn split_at(self, index: usize) -> (Self, Self) {
-        assert!(index <= self.end - self.start, "split index out of bounds");
-        let mid = self.start + index;
-        (
-            Self { base: self.base.clone(), start: self.start, end: mid },
-            Self { base: self.base, start: mid, end: self.end },
-        )
-    }
-}
-```
-
-**设计要点：**
-
-- 不再要求任意逻辑区间可被表达成单个规则 shape/stride 的 `TensorView`。
-- 连续与非连续视图统一通过“原 view + 逻辑区间”建模。
-- 连续 F-order 视图仍可在 producer 内走更快的指针递增路径；非连续视图则通过逻辑索引到物理偏移的映射按需求址。
-- 该内部状态仅供 `09-parallel.md` 中的 Producer 体系使用，不对外暴露。
+当前版本不在 `iter` 模块中设计独立的内部区间分块抽象。若并行后端需要对元素遍历做分块，应由并行执行模块基于自身的任务划分策略直接维护逻辑区间和调度状态；`iter` 文档只约束串行迭代器的外部语义，不再把这类内部多输入遍历或分块结构描述为稳定设计能力。
 
 ---
 
@@ -434,9 +403,9 @@ where
 
 ```
 Wave 1: [T1] [T2]
-           │     │
+           |     |
 Wave 2: [T3] [T4]
-           │     │
+           |     |
 Wave 3: [T6] [T9]
 ```
 
@@ -499,7 +468,7 @@ Wave 3: [T6] [T9]
 | 配置 | 验证点 |
 | ---- | ---- |
 | 默认配置 | `iter` / `axis_iter` / `indexed_iter` 在无并行后端时保持既定顺序与长度语义。 |
-| 启用并行相关能力 | `ElementsProducerRange` 等内部分块状态与串行迭代在元素覆盖与顺序契约上保持一致。 |
+| 启用并行相关能力 | 并行执行模块自管的内部区间划分必须与串行迭代保持相同的元素覆盖与顺序契约。 |
 
 ### 8.7 类型边界 / 编译期测试
 
@@ -541,7 +510,7 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `axis_iter()` / `axis_iter_mut()` 在 `axis` 越界或 rank-0 动态维输入时返回 `XenonError`，携带 `axis` 与 `ndim` 上下文。 |
+| Recoverable error | `axis_iter()` / `axis_iter_mut()` 在 `axis` 越界或 rank-0 动态维输入时返回 `XenonError::InvalidAxis { operation: &'static str, axis: usize, ndim: usize, shape: Cow<'static, [usize]> }`。 |
 | Panic | 公开迭代器 API 不引入新的 panic 语义；仅内部 producer 分块等不变量破坏可使用断言。 |
 | 路径一致性 | 连续、非连续、零步长广播视图及并行 producer 的外部迭代顺序与长度语义必须一致。 |
 | 容差边界 | 不适用。 |
@@ -567,7 +536,7 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
 | 决策     | 所有迭代器须实现 `ExactSizeIterator`                                                             |
 | 理由     | 提供精确的元素数量信息，调用者可预分配缓冲区、验证迭代完整性；`size_hint()` 的上界和下界始终相等 |
 | 替代方案 | 仅实现 `Iterator`，不保证精确长度                                                                |
-| 拒绝原因 | 归约、zip_with 等操作需要精确长度进行预分配和并行分块                                            |
+| 拒绝原因 | 归约、逐元素运算与并行分块都需要精确长度信息                                                     |
 
 ### 决策 3：零维张量元素迭代产出 1 个元素
 
@@ -624,7 +593,7 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
 | 标准库环境 | Xenon 当前版本仅支持 `std`，本文档不再承诺 `no_std` 兼容性                          |
 | crate 结构 | 保持单 crate 结构，不为迭代器单独拆分子 crate                                       |
 | 依赖约束   | 不新增第三方依赖；仅复用项目既有核心模块                                            |
-| 范围边界   | 当前版本公开范围仅覆盖元素、按轴、按索引迭代；`Zip` 作为 `pub(crate)` 内部工具纳入实现范围，`Windows` / `LaneIter` 保留为后续议题 |
+| 范围边界   | 当前版本公开范围仅覆盖元素、按轴、按索引迭代；内部多输入遍历由各操作模块直接实现，`Windows` / `LaneIter` 保留为后续议题 |
 
 ---
 

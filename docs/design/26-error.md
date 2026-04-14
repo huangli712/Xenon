@@ -92,41 +92,54 @@
 
 ```rust
 use alloc::borrow::Cow;
+use alloc::vec::Vec;
 use core::fmt;
 
 /// Unified recoverable error type for all public Xenon APIs.
 #[derive(Debug, Clone, PartialEq)]
 pub enum XenonError {
     ShapeMismatch {
-        operation: &'static str,
-        left_shape: Cow<'static, [usize]>,
-        right_shape: Cow<'static, [usize]>,
+        operation: Cow<'static, str>,
+        left_shape: Vec<usize>,
+        right_shape: Vec<usize>,
     },
 
     BroadcastError {
-        input_shape: Cow<'static, [usize]>,
-        target_shape: Cow<'static, [usize]>,
+        operation: Cow<'static, str>,
+        input_shape: Vec<usize>,
+        target_shape: Vec<usize>,
         axis: Option<usize>,
     },
 
     LayoutMismatch {
-        operation: &'static str,
-        required_layout: &'static str,
-        actual_layout: &'static str,
-        shape: Cow<'static, [usize]>,
+        operation: Cow<'static, str>,
+        required_layout: Cow<'static, str>,
+        actual_layout: Cow<'static, str>,
+        shape: Vec<usize>,
+    },
+
+    InvalidLayout {
+        operation: Cow<'static, str>,
+        storage_kind: Cow<'static, str>,
+        shape: Vec<usize>,
+        strides: Vec<usize>,
+        offset: usize,
+        storage_len: usize,
+        reason: Cow<'static, str>,
     },
 
     InvalidAxis {
+        operation: Cow<'static, str>,
         axis: usize,
         ndim: usize,
-        shape: Cow<'static, [usize]>,
+        shape: Vec<usize>,
     },
 
     InvalidShape {
-        operation: &'static str,
-        shape: Cow<'static, [usize]>,
-        expected_elements: Option<usize>,
-        actual_elements: Option<usize>,
+        operation: Cow<'static, str>,
+        shape: Vec<usize>,
+        expected_elements: usize,
+        actual_elements: usize,
         offending_dim: Option<usize>,
     },
 
@@ -136,17 +149,24 @@ pub enum XenonError {
     },
 
     EmptyArray {
-        operation: &'static str,
-        shape: Cow<'static, [usize]>,
+        operation: Cow<'static, str>,
+        shape: Vec<usize>,
     },
 
     InvalidArgument {
-        operation: &'static str,
-        argument: &'static str,
-        expected: &'static str,
-        actual: &'static str,
+        operation: Cow<'static, str>,
+        argument: Cow<'static, str>,
+        expected: Cow<'static, str>,
+        actual: Cow<'static, str>,
         axis: Option<usize>,
-        shape: Option<Cow<'static, [usize]>>,
+        shape: Option<Vec<usize>>,
+    },
+
+    InvalidStorageMode {
+        operation: Cow<'static, str>,
+        expected: Cow<'static, str>,
+        actual: Cow<'static, str>,
+        shape: Option<Vec<usize>>,
     },
 
     Ffi(FfiError),
@@ -154,14 +174,22 @@ pub enum XenonError {
     Workspace(WorkspaceError),
 
     IndexError {
+        operation: Cow<'static, str>,
         attempted_index: usize,
         axis: usize,
-        shape: Cow<'static, [usize]>,
+        shape: Vec<usize>,
+    },
+
+    IndexOutOfBounds {
+        operation: Cow<'static, str>,
+        attempted_index: usize,
+        axis: usize,
+        shape: Vec<usize>,
     },
 
     TypeConversion {
-        source_type: &'static str,
-        target_type: &'static str,
+        source_type: Cow<'static, str>,
+        target_type: Cow<'static, str>,
         reason: TypeConversionReason,
         element_index: usize,
     },
@@ -219,14 +247,23 @@ where
 
 所有错误变体都须带“错误类别 + 适用上下文”的结构化字段；仅字符串消息不足以满足要求。
 
-| 变体              | 最小结构化字段                                                                   |
-| ----------------- | -------------------------------------------------------------------------------- |
-| `InvalidArgument` | `operation`, `argument`, `expected`, `actual`, `axis?`, `shape?`                 |
-| `Ffi(FfiError)`   | 由 `FfiError` 提供 `operation`, `backend`, `precondition`, `actual`               |
-| `Workspace(...)`  | 由 `WorkspaceError` 提供 `size`, `align`, `split`, `len` 等适用结构化字段         |
-| `InvalidShape`    | `operation`, `shape`, `expected_elements?`, `actual_elements?`, `offending_dim?` |
-| `IndexError`      | `attempted_index`, `axis`, `shape`                                               |
-| `TypeConversion`  | `source_type`, `target_type`, `reason`, `element_index`                          |
+| 变体                 | 最小结构化字段                                                                                 |
+| -------------------- | ---------------------------------------------------------------------------------------------- |
+| `ShapeMismatch`      | `operation`, `left_shape`, `right_shape`                                                       |
+| `BroadcastError`     | `operation`, `input_shape`, `target_shape`, `axis?`                                            |
+| `LayoutMismatch`     | `operation`, `required_layout`, `actual_layout`, `shape`                                       |
+| `InvalidLayout`      | `operation`, `storage_kind`, `shape`, `strides`, `offset`, `storage_len`, `reason`            |
+| `InvalidAxis`        | `operation`, `axis`, `ndim`, `shape`                                                           |
+| `InvalidShape`       | `operation`, `shape`, `expected_elements`, `actual_elements`, `offending_dim?`                 |
+| `DimensionMismatch`  | `expected`, `actual`                                                                           |
+| `EmptyArray`         | `operation`, `shape`                                                                           |
+| `InvalidArgument`    | `operation`, `argument`, `expected`, `actual`, `axis?`, `shape?`                               |
+| `InvalidStorageMode` | `operation`, `expected`, `actual`, `shape?`                                                    |
+| `Ffi(FfiError)`      | 由 `FfiError` 提供 `operation`, `backend`, `precondition`, `actual`                            |
+| `Workspace(...)`     | 由 `WorkspaceError` 提供 `size`, `align`, `split`, `len` 等适用结构化字段                      |
+| `IndexError`         | `operation`, `attempted_index`, `axis`, `shape`                                                |
+| `IndexOutOfBounds`   | `operation`, `attempted_index`, `axis`, `shape`                                                |
+| `TypeConversion`     | `source_type`, `target_type`, `reason`, `element_index`                                        |
 
 ### 4.5 Display 与 panic 信息要求
 
@@ -236,6 +273,134 @@ Display 输出和 panic 文本都必须能让调用方定位问题来源；最�
 impl fmt::Display for XenonError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::ShapeMismatch {
+                operation,
+                left_shape,
+                right_shape,
+            } => write!(
+                f,
+                "shape mismatch in {}: left [{}], right [{}]",
+                operation,
+                fmt_shape(left_shape),
+                fmt_shape(right_shape),
+            ),
+            Self::BroadcastError {
+                operation,
+                input_shape,
+                target_shape,
+                axis,
+            } => write!(
+                f,
+                "broadcast error in {}: input [{}], target [{}], axis {:?}",
+                operation,
+                fmt_shape(input_shape),
+                fmt_shape(target_shape),
+                axis,
+            ),
+            Self::LayoutMismatch {
+                operation,
+                required_layout,
+                actual_layout,
+                shape,
+            } => write!(
+                f,
+                "layout mismatch in {}: required {}, actual {}, shape [{}]",
+                operation,
+                required_layout,
+                actual_layout,
+                fmt_shape(shape),
+            ),
+            Self::InvalidLayout {
+                operation,
+                storage_kind,
+                shape,
+                strides,
+                offset,
+                storage_len,
+                reason,
+            } => write!(
+                f,
+                "invalid layout in {}: storage_kind={}, shape [{}], strides [{}], offset {}, storage_len {}, reason: {}",
+                operation,
+                storage_kind,
+                fmt_shape(shape),
+                fmt_strides(strides),
+                offset,
+                storage_len,
+                reason,
+            ),
+            Self::InvalidAxis {
+                operation,
+                axis,
+                ndim,
+                shape,
+            } => write!(
+                f,
+                "invalid axis in {}: axis {}, ndim {}, shape [{}]",
+                operation,
+                axis,
+                ndim,
+                fmt_shape(shape),
+            ),
+            Self::InvalidShape {
+                operation,
+                shape,
+                expected_elements,
+                actual_elements,
+                offending_dim,
+            } => write!(
+                f,
+                "invalid shape in {}: shape [{}], expected_elements {}, actual_elements {}, offending_dim {:?}",
+                operation,
+                fmt_shape(shape),
+                expected_elements,
+                actual_elements,
+                offending_dim,
+            ),
+            Self::DimensionMismatch { expected, actual } => write!(
+                f,
+                "dimension mismatch: expected {}, actual {}",
+                expected,
+                actual,
+            ),
+            Self::EmptyArray { operation, shape } => write!(
+                f,
+                "empty array in {}: shape [{}]",
+                operation,
+                fmt_shape(shape),
+            ),
+            Self::InvalidArgument {
+                operation,
+                argument,
+                expected,
+                actual,
+                axis,
+                shape,
+            } => write!(
+                f,
+                "invalid argument in {}: {} expected {}, actual {}, axis {:?}, shape {:?}",
+                operation,
+                argument,
+                expected,
+                actual,
+                axis,
+                shape.as_ref().map(|value| fmt_shape(value)),
+            ),
+            Self::InvalidStorageMode {
+                operation,
+                expected,
+                actual,
+                shape,
+            } => write!(
+                f,
+                "invalid storage mode in {}: expected {}, actual {}, shape {:?}",
+                operation,
+                expected,
+                actual,
+                shape.as_ref().map(|value| fmt_shape(value)),
+            ),
+            Self::Ffi(err) => write!(f, "ffi error: {}", err),
+            Self::Workspace(err) => write!(f, "workspace error: {}", err),
             Self::TypeConversion {
                 source_type,
                 target_type,
@@ -250,17 +415,31 @@ impl fmt::Display for XenonError {
                 reason,
             ),
             Self::IndexError {
+                operation,
                 attempted_index,
                 axis,
                 shape,
             } => write!(
                 f,
-                "index {} out of bounds for axis {} of shape [{}]",
+                "index out of bounds in {}: index {}, axis {}, shape [{}]",
+                operation,
                 attempted_index,
                 axis,
                 fmt_shape(shape),
             ),
-            _ => todo!("other variants follow the same structured-display rule"),
+            Self::IndexOutOfBounds {
+                operation,
+                attempted_index,
+                axis,
+                shape,
+            } => write!(
+                f,
+                "index out of bounds in {}: index {}, axis {}, shape [{}]",
+                operation,
+                attempted_index,
+                axis,
+                fmt_shape(shape),
+            ),
         }
     }
 }

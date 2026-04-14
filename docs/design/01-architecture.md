@@ -144,8 +144,7 @@ xenon/
 │   │   ├── mod.rs             # 迭代器 trait 定义
 │   │   ├── elements.rs        # Elements 迭代器（扁平遍历）
 │   │   ├── axis.rs            # AxisIter 沿轴迭代
-│   │   ├── indexed.rs         # IndexedIter 带索引迭代
-│   │   ├── zip.rs             # Zip 多张量同步迭代
+│   │   └── indexed.rs         # IndexedIter 带索引迭代
 │   │
 │   ├── simd/                  # SIMD 后端（独立性能层，feature = "simd"）
 │   │   ├── mod.rs             # pulp 集成、公开 API、SimdKernel trait
@@ -154,13 +153,11 @@ xenon/
 │   │
 │   ├── parallel/              # 并行后端（独立性能层，feature = "parallel"）
 │   │   ├── mod.rs             # 模块入口、全局阈值配置、模块导出
-│   │   ├── par_iter.rs        # 并行迭代器（ParElements, ParZip）
-│   │   └── par_ops.rs         # 并行运算（par_map, par_reduce, par_zip_with）
+│   │   ├── par_iter.rs        # 并行迭代器（ParElements）
+│   │   └── par_ops.rs         # 并行运算（par_reduce）
 │   │
 │   ├── math/                  # 逐元素数学运算
 │   │   ├── mod.rs             # 模块入口，re-exports
-│   │   ├── map.rs             # 逐元素映射（map, mapv, mapv_inplace）
-│   │   ├── zip.rs             # 二元逐元素（zip_with，含广播）
 │   │   ├── unary.rs           # 一元运算（abs, neg, signum, square, sin, sqrt, exp, ln, floor, ceil, norm, conj, not）
 │   │   ├── binary.rs          # 二元算术方法（add, sub, mul, div, add_scalar, sub_scalar, mul_scalar, div_scalar）
 │   │   └── comparison.rs      # 比较运算（eq, ne, lt, gt）
@@ -202,8 +199,7 @@ xenon/
 │   │   ├── mod.rs             # 模块根，re-exports
 │   │   ├── fill.rs            # zeros, ones, full（填充构造）
 │   │   ├── eye.rs             # eye（单位矩阵）
-│   │   ├── from_data.rs       # from_shape_vec, from_shape_slice, from_array（从数据源构造）
-│   │   └── from_fn.rs         # from_fn, from_scalar（从闭包/标量构造）
+│   │   └── from_data.rs       # from_shape_vec, from_shape_slice, from_array（从数据源构造）
 │   │
 │   ├── convert/               # 类型转换
 │   │   ├── mod.rs             # 模块根，re-exports
@@ -268,10 +264,10 @@ xenon/
 | `storage/`     | 四种存储模式（Owned/ViewRepr/ViewMutRepr/ArcRepr）                                                                 |
 | `layout/`      | F-order 布局标志位、步长计算、连续性检查                                                                           |
 | `tensor/`      | 核心 `TensorBase<S, D>` 结构体及类型别名                                                                           |
-| `iter/`        | 元素/轴/索引/Zip 迭代器                                                                                            |
+| `iter/`        | 元素/轴/索引迭代器                                                                                                 |
 | `simd/`        | SIMD 后端：向量化 kernel、标量回退、运行时分发                                                                     |
-| `parallel/`    | 并行后端：并行迭代器、并行 map/reduce/zip、阈值与 guard                                                            |
-| `math/`        | 逐元素数学运算（映射、一元、二元算术、比较），按需委托 `simd/` / `parallel/`                                       |
+| `parallel/`    | 并行后端：并行迭代器、并行归约、阈值与 guard                                                                       |
+| `math/`        | 逐元素数学运算（一元、二元算术、比较），按需委托 `simd/` / `parallel/`                                            |
 | `overload`     | 运算符重载（Add, Sub, Mul, Div trait 实现）                                                                        |
 | `util/`        | 实用操作（clip 裁剪、fill 填充、to_contiguous 连续性保证的公共入口）                                               |
 | `set/`         | 集合操作（unique 去重）                                                                                            |
@@ -280,7 +276,7 @@ xenon/
 | `reduction/`   | 归约操作（sum），必要时委托 `simd/` / `parallel/`                                                                  |
 | `shape/`       | transpose                                                                                                          |
 | `index/`       | 多维整数索引、范围切片索引                                                                                         |
-| `construct/`   | 张量构造                                                                                                           |
+| `construct/`   | 张量构造（基于已有数据源与填充规则）                                                                               |
 | `convert/`     | 类型转换（cast、存储模式互转、From trait；必要时复用内部 contiguous helper）                                       |
 | `format/`      | NumPy 风格格式化输出                                                                                               |
 | `ffi/`         | 原始指针 API、BLAS 兼容性检查、多维索引偏移（types/ptr/blas/offset）                                               |
@@ -501,7 +497,7 @@ pub use crate::index::s;
 // Construction helpers
 pub use crate::construct::{
     zeros, ones, eye,
-    full, from_shape_vec, from_fn,
+    full, from_shape_vec,
 };
 ```
 
@@ -647,15 +643,14 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 | ------------------------ | ---------- | ---------- | ------------------ |
 | W3.1 Elements iterator   | W2.6       | 中         | 扁平元素迭代       |
 | W3.2 Axis iterator       | W2.6       | 中         | 沿轴迭代           |
-| W3.4 Zip iterator        | W2.6, W3.1 | 高         | 多张量同步迭代     |
-| W3.5 Math                | W3.1       | 中         | map, zip_with      |
-| W3.6 Arithmetic          | W3.5       | 中         | Add, Sub, Mul, Div |
-| W3.7 Reduction (sum)     | W3.1       | 中         | sum, sum_axis      |
-| W3.8 Dot (inner product) | W2.6       | 中         | 向量内积           |
-| W3.9 Broadcast           | W2.6       | 高         | 广播规则           |
-| W3.10 Transpose          | W2.6       | 中         | transpose          |
-| W3.11 Multi-dim index    | W2.6       | 中         | [i, j, k] 索引     |
-| W3.12 Slice index        | W2.6       | 高         | 范围切片           |
+| W3.3 Math                | W3.1       | 中         | unary, binary, comparison |
+| W3.4 Arithmetic          | W3.3       | 中         | Add, Sub, Mul, Div |
+| W3.5 Reduction (sum)     | W3.1       | 中         | sum, sum_axis      |
+| W3.6 Dot (inner product) | W2.6       | 中         | 向量内积           |
+| W3.7 Broadcast           | W2.6       | 高         | 广播规则           |
+| W3.8 Transpose           | W2.6       | 中         | transpose          |
+| W3.9 Multi-dim index     | W2.6       | 中         | [i, j, k] 索引     |
+| W3.10 Slice index        | W2.6       | 高         | 范围切片           |
 
 ### Wave 4: 集成（依赖 Wave 3）
 
@@ -672,10 +667,10 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 
 | 任务                | 依赖       | 预估复杂度 | 产出        |
 | ------------------- | ---------- | ---------- | ----------- |
-| W5.1 par_iter       | W3.1-W3.4  | 高         | 并行迭代器  |
-| W5.2 par_reduction  | W3.7, W5.1 | 高         | 并行 sum    |
-| W5.3 simd math      | W3.5       | 高         | SIMD 逐元素 |
-| W5.4 simd reduction | W3.7       | 高         | SIMD sum    |
+| W5.1 par_iter       | W3.1-W3.2  | 高         | 并行迭代器  |
+| W5.2 par_reduction  | W3.5, W5.1 | 高         | 并行 sum    |
+| W5.3 simd math      | W3.3       | 高         | SIMD 逐元素 |
+| W5.4 simd reduction | W3.5       | 高         | SIMD sum    |
 
 ### 并行执行分组图
 
@@ -693,12 +688,12 @@ Wave 2: [W2.1] [W2.2] [W2.3] [W2.4] [W2.5]
         [W2.6] ──▶ [W2.7]
                            │
                            ▼
-Wave 3: [W3.1] [W3.2] [W3.9] [W3.10] [W3.11] [W3.12]
-           │       │       │       │       │       │       │       │
-           └───────┴───────┴───────┴───────┴───────┴───────┴───────┘
+Wave 3: [W3.1] [W3.2] [W3.7] [W3.8] [W3.9] [W3.10]
+            │       │       │       │       │       │       │       │
+            └───────┴───────┴───────┴───────┴───────┴───────┴───────┘
                            │
                            ▼
-        [W3.4] [W3.5] [W3.7] [W3.8] [W3.6]
+        [W3.3] [W3.4] [W3.5] [W3.6]
                            │
                            ▼
 Wave 4: [W4.1] [W4.2] [W4.3] [W4.4] [W4.5] [W4.6]

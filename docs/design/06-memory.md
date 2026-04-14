@@ -26,7 +26,7 @@
 | ------------- | -------------------------------------------------------------------------- |
 | F-order only  | Xenon 仅支持列优先布局，不支持 C-order                                     |
 | O(1) 布局查询 | 通过缓存布局标志位，将高频查询优化为常数时间                               |
-| 步长显式建模  | `Strides<D>` 使用显式 `isize` 存储，当前版本仅接受非负步长与零步长（广播） |
+| 步长显式建模  | `Strides<D>` 使用显式 `usize` 存储，当前版本仅接受非负步长与零步长（广播） |
 | 零成本抽象    | 布局信息为纯元数据，不引入运行时开销                                       |
 
 ### 1.3 在架构中的位置
@@ -93,7 +93,7 @@ src/layout/
 | 来源模块    | 使用的类型/trait                                               |
 | ----------- | -------------------------------------------------------------- |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md §5`） |
-| `core`      | `isize`, `usize`                                               |
+| `core`      | `usize`                                                        |
 
 ### 4.2a 依赖合法性
 
@@ -243,41 +243,32 @@ impl LayoutFlags {
 
 除底层 `LayoutFlags` 外，张量层还需要一个更直接的布局分类结果，便于上层 API、诊断输出和跨模块分支选择表达“当前这块逻辑数据在内存中的连续性状态”。
 
-> **说明：** Xenon 的原生构造路径仍以 F-order 为准；`LayoutState` 是一个**分类结果**，用于描述某个 `TensorBase` 当前 `shape + strides` 组合所呈现的布局状态，而不是放宽当前版本的 F-order only 设计边界。
+> **说明：** Xenon 的原生构造路径仍以 F-order 为准；`LayoutState` 是一个**分类结果**，用于描述某个 `shape + strides` 组合所呈现的布局状态，而不是放宽当前版本的 F-order only 设计边界。
 
 ```rust
 /// Classification of tensor memory layout contiguity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LayoutState {
-    /// C-contiguous (row-major): strides decrease monotonically, last stride = 1.
-    CContiguous,
-    /// Fortran-contiguous (column-major): strides increase monotonically, first stride = 1.
+    /// Fortran-contiguous (column-major): first stride = 1 and follows F-order progression.
     FContiguous,
-    /// Neither C- nor F-contiguous; arbitrary stride pattern.
+    /// Arbitrary non-broadcast view that is not F-contiguous.
     NonContiguous,
-}
-
-impl<S, A, D> TensorBase<S, A, D> {
-    /// Returns the layout classification of this tensor's memory.
-    pub fn layout_state(&self) -> LayoutState;
-
-    /// Returns true if the tensor is C-contiguous.
-    pub fn is_c_contiguous(&self) -> bool;
-
-    /// Returns true if the tensor is F-contiguous.
-    pub fn is_f_contiguous(&self) -> bool;
+    /// Broadcast view: at least one axis has zero stride.
+    BroadcastView,
 }
 ```
 
 分类语义约定如下：
 
-- `LayoutState::FContiguous`：满足当前文档 §5.4 的 F-order 连续性判定。
-- `LayoutState::CContiguous`：用于 raw-parts、外部导入或未来兼容路径中识别 row-major 连续布局；这是一种只读分类能力，不表示当前版本新增 C-order 原生构造支持。
-- `LayoutState::NonContiguous`：表示任意其它 stride 模式，包括转置后布局、切片后非连续布局，以及既非 C 也非 F 的一般视图。
+- `LayoutState::FContiguous`：满足当前文档 §5.4 的 F-order 连续性判定，且不包含零步长广播轴。
+- `LayoutState::NonContiguous`：表示任意其它非广播 stride 模式，例如转置后布局或切片后非连续布局。
+- `LayoutState::BroadcastView`：表示至少包含一个零步长轴的广播视图，用于与一般非连续视图区分。
 
-### 5.2 步长类型：isize
+`layout_state()` 与 `is_f_contiguous()` 等张量层公开方法定义见 `07-tensor.md`；本模块只定义布局分类与判定规则，不承载 `TensorBase` 的方法声明。
 
-步长使用 `isize` 存储，以统一 stride/offset 相关元数据计算；当前版本仅接受非负步长与零步长：
+### 5.2 步长类型：usize
+
+步长使用 `usize` 存储；当前版本仅接受非负步长与零步长：
 
 ```rust
 /// Each element in the stride array represents the memory offset change
@@ -302,11 +293,8 @@ pub struct Strides<D: Dimension> {
 
 impl<D: Dimension> Strides<D> {
     /// Construct strides from a dimension value.
-    /// Panics if any stride is 0 (zero-stride/broadcast not allowed in stride representation).
+    /// Zero stride is allowed and represents a broadcast dimension.
     pub fn new(strides: D) -> Self;
-
-    /// Compute default C-contiguous strides for the given shape.
-    pub fn c_contiguous(shape: &D) -> Self;
 
     /// Compute default F-contiguous strides for the given shape.
     pub fn f_contiguous(shape: &D) -> Self;
@@ -319,9 +307,8 @@ impl<D: Dimension> Strides<D> {
 
 不变量：
 
-- 所有 stride 值必须为正（非零）。
+- 所有 stride 值必须为非负；零表示广播维度。
 - `Strides<D>` 的维度数必须与对应 `shape: D` 完全一致。
-- 对于 C-contiguous 布局：`stride[D-1] = 1`，且 `stride[i] = stride[i+1] * shape[i+1]`。
 - 对于 F-contiguous 布局：`stride[0] = 1`，且 `stride[i] = stride[i-1] * shape[i-1]`。
 
 与 `Dimension`/`TensorBase` 的职责边界如下：
@@ -337,7 +324,7 @@ impl<D: Dimension> Strides<D> {
 **算法**：
 
 ```
-function compute_f_strides(shape: [usize; N]) -> [isize; N]:
+function compute_f_strides(shape: [usize; N]) -> [usize; N]:
     strides = array of size N
     cumulative = 1
 
@@ -377,7 +364,7 @@ pub fn compute_f_strides<D: Dimension>(shape: &D) -> Strides<D>;
 **F-连续条件**：
 
 ```
-function is_f_contiguous(shape: [usize; N], strides: [isize; N]) -> bool:
+function is_f_contiguous(shape: [usize; N], strides: [usize; N]) -> bool:
     // 空数组或单元素始终连续
     if product(shape) <= 1:
         return true
@@ -511,7 +498,7 @@ impl Layout {
 /// # Arguments
 ///
 /// * `shape` - Dimension lengths
-/// * `strides` - Strides in element units (`Strides<D>` with explicit `isize` storage)
+/// * `strides` - Strides in element units (`Strides<D>` with explicit `usize` storage)
 /// * `ptr` - Raw pointer to the logical first element (`TensorBase::as_ptr()`)
 ///
 /// # Returns
@@ -592,7 +579,7 @@ Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的
 
 ### 6.5 与 Dimension 模块的接口
 
-步长不再存储在 `D` 中。`layout` 模块通过 `Strides<D>` 保持与 shape 同维度数量的显式 `isize` 元数据，避免任何 `usize`/`isize` 重解释。
+步长不再存储在 `D` 中。`layout` 模块通过 `Strides<D>` 保持与 shape 同维度数量的显式 `usize` 元数据，直接表达当前版本允许的非负步长与零步长广播。
 
 安全性来自单独的 stride 表示：shape 只描述轴长度，stride 只描述步幅与零步长广播特征，两者的职责边界清晰且可独立验证。
 
@@ -813,14 +800,14 @@ Upper layers create or transform tensor metadata
 | 替代方案 | 同时支持 F/C order — 放弃，增加复杂度且当前版本不需要                    |
 | 替代方案 | 仅支持 C-order — 放弃，与 BLAS 不兼容                                    |
 
-### 决策 2：步长使用 isize
+### 决策 2：步长使用 usize
 
 | 属性     | 值                                                                           |
 | -------- | ---------------------------------------------------------------------------- |
-| 决策     | 步长类型为 `isize`（有符号）                                                 |
-| 理由     | 保持 stride 元数据表达统一；支持零步长（广播）；与指针差值和偏移计算模型一致 |
-| 替代方案 | `usize` — 放弃，无法统一表达 stride 与偏移计算所需的带符号中间量             |
-| 替代方案 | `i64` — 放弃，与平台指针大小不一致                                           |
+| 决策     | 步长类型为 `usize`（无符号）                                                 |
+| 理由     | 需求说明书 §7 明确当前版本不支持负步长；`Strides<D>` 只需表达非负步长与零步长广播 |
+| 替代方案 | `isize` — 放弃，会暗示当前版本支持负步长                                     |
+| 替代方案 | `i64` — 放弃，与平台 `usize` 不一致                                          |
 
 ### 决策 3：64 字节对齐选择
 

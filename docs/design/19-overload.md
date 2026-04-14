@@ -32,15 +32,15 @@
 ### 1.3 在架构中的位置
 
 ```
-依赖层级：
+Dependency levels:
 L0: error, private
 L1: dimension, element, complex
-L2: layout (依赖 dimension)
-L3: storage (独立于 layout，由 tensor 持有并消费 layout 结果)
-L4: tensor (依赖 storage, dimension)
+L2: layout (depends on dimension)
+L3: storage (independent of layout; tensor owns storage and consumes layout results)
+L4: tensor (depends on storage, dimension)
 L5: broadcast, iter
-L6: math（逐元素运算）
-L7: overload  ← 当前模块（依赖 broadcast, math）
+L6: math (element-wise operations)
+L7: overload  <- current module (depends on broadcast, math)
 ```
 
 ---
@@ -68,14 +68,33 @@ src/overload/
 
 ---
 
-## 4. 依赖关系
+## 4. 依赖关系与实现约束
 
-### 4.1 依赖图（ASCII）
+### 4.1 Invariants
+
+| 不变量 | 说明 |
+| ------ | ---- |
+| 语法糖边界 | `+` / `-` / `*` / `/` 只是对方法型逐元素运算的语法糖；运算结果始终为新的 owned 张量。 |
+| 广播前提 | 张量×张量运算必须先满足广播兼容；广播结果 shape 由 `BroadcastDim<E>::Output` 推导。 |
+| 错误边界 | 运算符路径在广播失败时 panic；方法型 API（如 `.add()`）保留 `Result<Tensor<A, F>, TensorError>` 的可恢复错误语义。 |
+| 标量路径 | 张量×标量委托给 `*_scalar` 方法；不得通过 Zip 风格 helper 作为稳定语义前提。 |
+| 结果所有权 | 所有运算符组合都返回独立的新张量，不与输入共享存储。 |
+
+### 4.2 Error Scenarios
+
+| 场景 | 对外语义 |
+| ---- | -------- |
+| 方法型 API 广播失败 | 返回 `TensorError::BroadcastError { operation: "add", input_shape: Cow::Borrowed(rhs.shape()), target_shape: Cow::Borrowed(lhs.shape()), axis: None }`（`sub` / `mul` / `div` 同理）。 |
+| 运算符路径广播失败 | 触发 panic；这是显式 ADR 决定的语义边界，而不是实现细节。 |
+| 整数除零、整数溢出、结果不可表示 | 沿用底层逐元素方法的 panic 语义，不包装为 `Result`。 |
+| 标量路径参数合法 | `tensor op scalar` 与 `Scalar(scalar) op tensor` 不产生广播错误，但仍须遵循底层算术 panic 规则。 |
+
+### 4.3 依赖图（ASCII）
 
 ```
                     ┌───────────────────┐
                     │      math         │
-                    │ zip_with / mapv   │
+                    │ add/sub/mul/div   │
                     └─────────┬─────────┘
                               │ uses
                     ┌─────────▼─────────┐
@@ -92,11 +111,11 @@ src/overload/
       └───────────────┘ └───────────────┘ └───────────────┘
 ```
 
-### 4.2 类型级依赖
+### 4.4 类型级依赖
 
 | 来源模块    | 使用的类型/trait                                                                                                     |
 | ----------- | -------------------------------------------------------------------------------------------------------------------- |
-| `math`      | `zip_with()`, `mapv()`, 二元逐元素运算（参见 `11-math.md` §4）                                                       |
+| `math`      | `add()` / `sub()` / `mul()` / `div()` 等方法型逐元素运算（参见 `11-math.md` §5）                                     |
 | `broadcast` | `broadcast_shape()`, `broadcast_with()`, `can_broadcast()`（参见 `15-broadcast.md` §4）                              |
 | `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.view()`（参见 `07-tensor.md` §4）                                |
 | `element`   | `Numeric` trait 约束（排除 `bool` 与 `usize`）（参见 `03-element.md` §3）                                            |
@@ -104,11 +123,11 @@ src/overload/
 
 > **Numeric 隐含 Copy：** `Numeric` trait 继承自 `Element`，而 `Element: Copy`（见 `03-element.md` §4.1）。因此所有 `Numeric` 类型均满足 `Copy`，可以在标量运算中安全地按值传递而无需额外约束。
 
-### 4.3 依赖方向声明
+### 4.5 依赖方向声明
 
 > **依赖方向：单向向上。** `arithmetic` 仅消费 `math`、`broadcast`、`tensor`、`element` 的 trait 和类型，不被它们依赖。`arithmetic` 是最上层的用户 API 模块。
 
-### 4.4 依赖合法性与替代方案
+### 4.6 依赖合法性与替代方案
 
 | 项目           | 说明 |
 | -------------- | ---- |
@@ -158,10 +177,10 @@ where
     type Output = Tensor<A, <D as BroadcastDim<E>>::Output>;
 
     fn add(self, rhs: TensorBase<Owned<A>, E>) -> Self::Output {
-        let (a_bc, b_bc) = broadcast_with(&self.view(), &rhs.view())
+        let _ = broadcast_with(&self.view(), &rhs.view())
             .expect("broadcast: incompatible shapes");
-        zip_with(&a_bc, &b_bc, |a, b| a + b)
-            .expect("internal invariant: zip_with should succeed after successful broadcast")
+        self.add(&rhs)
+            .expect("broadcast_with() succeeded, so method dispatch must preserve the same shape contract")
     }
 }
 
@@ -176,17 +195,19 @@ where
     type Output = Tensor<A, <D as BroadcastDim<E>>::Output>;
 
     fn add(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
-        let (a_bc, b_bc) = broadcast_with(&self.view(), &rhs.view())
+        let _ = broadcast_with(&self.view(), &rhs.view())
             .expect("broadcast: incompatible shapes");
-        zip_with(&a_bc, &b_bc, |a, b| a + b)
-            .expect("internal invariant: zip_with should succeed after successful broadcast")
+        self.add(rhs)
+            .expect("broadcast_with() succeeded, so method dispatch must preserve the same shape contract")
     }
 }
 ```
 
 > **设计决策：** 运算符重载遵循 `std::ops` 风格：`+` / `-` / `*` / `/` 在广播不兼容时使用 panic，
-> 而对应的方法型 API（如 `broadcast_with()`、`zip_with()` 及上层显式 helper）继续返回 `Result` 作为可恢复错误路径。
-> 因此这里的 `expect("broadcast: incompatible shapes")` 体现的是稳定契约，而不是临时写法。
+> 而对应的方法型 API（如 `broadcast_with()` 与 `add()` / `sub()` / `mul()` / `div()`）继续返回 `Result<Tensor<A, F>, TensorError>` 作为可恢复错误路径。
+> 这是一条显式的项目级 ADR：运算符语法代表“直接求值”，方法 API 代表“可恢复错误处理”。因此这里的 `expect("broadcast: incompatible shapes")` 体现的是稳定契约，而不是临时写法。
+
+> **语义边界说明：** 运算符在广播失败时 panic，而方法型 API 保持 `Result` 返回；正式 ADR 记录见本文 §11 的 ADR-2a。
 
 ### 5.2b 视图×视图/张量运算符
 
@@ -204,10 +225,10 @@ where
 
     fn add(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
         // delegates to math::add with broadcast
-        let (a_bc, b_bc) = broadcast_with(&self.view(), &rhs.view())
+        let _ = broadcast_with(&self.view(), &rhs.view())
             .expect("broadcast: incompatible shapes");
-        zip_with(&a_bc, &b_bc, |a, b| a + b)
-            .expect("internal invariant: zip_with should succeed after successful broadcast")
+        self.add(rhs)
+            .expect("broadcast_with() succeeded, so method dispatch must preserve the same shape contract")
     }
 }
 
@@ -224,10 +245,10 @@ where
 
     fn add(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
         // delegates to math::add with broadcast
-        let (a_bc, b_bc) = broadcast_with(&self.view(), &rhs.view())
+        let _ = broadcast_with(&self.view(), &rhs.view())
             .expect("broadcast: incompatible shapes");
-        zip_with(&a_bc, &b_bc, |a, b| a + b)
-            .expect("internal invariant: zip_with should succeed after successful broadcast")
+        self.add(rhs)
+            .expect("broadcast_with() succeeded, so method dispatch must preserve the same shape contract")
     }
 }
 ```
@@ -255,7 +276,7 @@ where
     type Output = Tensor<A, D>;
 
     fn add(self, rhs: A) -> Self::Output {
-        self.mapv(|x| x + rhs)
+        self.add_scalar(rhs)
     }
 }
 
@@ -268,7 +289,7 @@ where
     type Output = Tensor<A, D>;
 
     fn add(self, rhs: A) -> Self::Output {
-        self.mapv(|x| x + rhs)
+        self.add_scalar(rhs)
     }
 }
 
@@ -281,7 +302,7 @@ where
     type Output = Tensor<A, D>;
 
     fn add(self, rhs: TensorBase<Owned<A>, D>) -> Self::Output {
-        rhs.mapv(|x| self.0 + x)
+        rhs.add_scalar(self.0)
     }
 }
 
@@ -294,7 +315,7 @@ where
     type Output = Tensor<A, D>;
 
     fn add(self, rhs: &'a TensorBase<Owned<A>, D>) -> Self::Output {
-        rhs.mapv(|x| self.0 + x)
+        rhs.add_scalar(self.0)
     }
 }
 ```
@@ -309,8 +330,8 @@ where
 
 > **说明**：`Scalar<A>` 同样适用于 `TensorView` 和 `TensorViewMut` 的标量运算。
 
-> **设计决策：** 标量运算使用 `mapv` 而非创建广播视图。
-> 原因：`mapv` 直接迭代更高效，避免广播视图的间接寻址开销。
+> **设计决策：** 标量运算委托给 `add_scalar()` / `sub_scalar()` / `mul_scalar()` / `div_scalar()` 等方法型 API，
+> 其内部直接遍历输入与结果张量，而不是额外暴露通用 helper 作为稳定实现描述。
 
 ### 5.4 Sub / Mul / Div
 
@@ -334,9 +355,8 @@ fn compute(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix2>) -> Tensor<f64, Ix2> {
 }
 
 // Good - use explicit API for broadcast safety
-fn compute_safe(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix1>) -> Result<Tensor<f64, Ix2>, XenonError> {
-    let (a_bc, b_bc) = broadcast_with(&a.view(), &b.view())?;
-    zip_with(&a_bc, &b_bc, |x, y| x + y)
+fn compute_safe(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix1>) -> Result<Tensor<f64, Ix2>, TensorError> {
+    a.add(b)
 }
 
 // Bad - mixing owned and borrowed (unnecessarily consumes a)
@@ -354,42 +374,42 @@ fn compute_bad(a: Tensor<f64, Ix2>, b: &Tensor<f64, Ix2>) -> Tensor<f64, Ix2> {
 运算符重载的核心设计模式是 **委托**：
 
 ```
-运算符语法 (arithmetic.rs)
-     │
-     │ 委托
-     ▼
-逐元素运算 (elementwise.rs)
-     │
-     │ 使用
-     ▼
-广播模块 (broadcast.rs) ── 内存访问 (storage)
+Operator syntax (arithmetic.rs)
+     |
+     | delegates to
+     v
+Element-wise math (math methods)
+     |
+     | uses
+     v
+Broadcast module (broadcast.rs) -- memory access (storage)
 ```
 
 运算符 `a + b` 展开为：
 
 1. `broadcast_with(&a.view(), &b.view())` — 广播两个张量
-2. `zip_with(&a_bc, &b_bc, |x, y| x + y)` — 逐元素运算
+2. `add()` / `sub()` / `mul()` / `div()` — 直接逐元素遍历广播后视图并写入新结果张量
 
 ### 6.2 深拷贝保证
 
 所有运算符产生的新张量是独立的：
 
-- `zip_with` 分配新的 `Owned` 存储并逐元素写入
+- 方法型逐元素运算分配新的 `Owned` 存储并逐元素写入
 - 新张量与输入张量不共享内存
 - `Tensor<A, D>` 类型保证所有权独占
 
 ### 6.3 标量路径优化
 
-标量×张量运算使用 `mapv` 而非广播视图：
+标量×张量运算使用专门的标量方法型 API，而非广播视图：
 
 ```
 tensor + scalar:
-    tensor.mapv(|x| x + scalar)
+    tensor.add_scalar(scalar)
 
-    优势:
-    1. 无需创建广播视图
-    2. mapv 内部直接迭代，编译器更容易内联和向量化
-    3. 缓存友好（连续访问）
+    Advantages:
+    1. No broadcast view allocation
+    2. Direct iteration inside scalar methods, easier for inlining/vectorization
+    3. Cache-friendly contiguous access
 ```
 
 ---
@@ -512,7 +532,7 @@ Wave 5:      [T6]
 | ---------------------------------------------------------- | ---------------------------- |
 | `(a + b).shape() == broadcast_shape(a.shape(), b.shape())` | 随机形状对                   |
 | `(&a + &b) == (a.clone() + b.clone())`                     | 借用与所有权结果一致         |
-| `(a + scalar) == a.mapv(\|x\| x + scalar)`                 | 标量路径等价                 |
+| `(a + scalar) == a.add_scalar(scalar)`                      | 标量路径等价                 |
 | `Scalar(s) + tensor == tensor + s`                         | 包装器左标量与右标量路径等价 |
 | 结果张量与输入张量不共享内存（`ptr` 不同）                 | 指针比较                     |
 
@@ -545,7 +565,7 @@ Wave 5:      [T6]
 
 | 方向                     | 对方模块    | 接口/类型                  | 约定                                                            |
 | ------------------------ | ----------- | -------------------------- | --------------------------------------------------------------- |
-| `arithmetic → math`      | `math`      | `zip_with()` / `mapv()`    | 张量路径走逐元素运算，标量路径走 `mapv()`，参见 `11-math.md` §4 |
+| `arithmetic → math`      | `math`      | `add()` / `sub()` / `mul()` / `div()` / `add_scalar()` | 张量路径走方法型逐元素运算，标量路径走标量方法，参见 `11-math.md` §5 |
 | `arithmetic → broadcast` | `broadcast` | `broadcast_with()`         | 先把两个操作数广播到公共形状，参见 `15-broadcast.md` §4         |
 | `arithmetic → tensor`    | `tensor`    | `Tensor<A, D>` / `.view()` | 构造 owned 结果并在需要时创建视图，参见 `07-tensor.md` §4       |
 | `arithmetic → element`   | `element`   | `Numeric`                  | 通过元素约束排除不支持的类型，参见 `03-element.md` §3           |
@@ -557,8 +577,8 @@ Wave 5:      [T6]
 User writes a + b / tensor + scalar / Scalar(x) + tensor
     │
     ├── overload selects the matching trait impl
-    ├── tensor×tensor delegates to broadcast_with() + zip_with()
-    ├── tensor×scalar delegates to mapv()
+    ├── tensor×tensor delegates to broadcast_with() + method dispatch
+    ├── tensor×scalar delegates to scalar method dispatch
     └── tensor / storage allocate and return a new owned result tensor
 ```
 
@@ -568,7 +588,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | 模块级可恢复错误由委托的显式方法路径承担，如 `broadcast_with()` / `zip_with()` 返回 `XenonError::BroadcastError`。 |
+| Recoverable error | 模块级可恢复错误由委托的显式方法路径承担，如 `broadcast_with()` 或方法型逐元素 API 返回 `TensorError::BroadcastError { operation: &'static str, input_shape: Cow<'static, [usize]>, target_shape: Cow<'static, [usize]>, axis: Option<usize> }`；若方法参数本身非法，则继续使用 `TensorError::InvalidArgument { operation: &'static str, argument: &'static str, expected: &'static str, actual: String, axis: Option<usize>, shape: Option<Cow<'static, [usize]>> }`。 |
 | Panic | 运算符语法在广播不兼容时 panic；整数除零、溢出与结果不可表示继续沿用 `math` 的 panic 语义。 |
 | 路径一致性 | 借用 / owned / 标量以及由 `math` 触发的标量 / SIMD 路径必须保持相同输出 shape 与数值语义。 |
 | 容差边界 | 当前不引入额外容差；若底层 `math` 使用 SIMD，仍须与标量路径语义一致。 |
@@ -584,6 +604,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | 决策     | 当前版本不提供 `+=`/`-=`/`*=`/`/=` 原地运算符                                                |
 | 理由     | 需求说明书 §20 明确"四则运算以外的运算符语法不在当前范围内"；原地运算符涉及 LHS 广播约束复杂 |
 | 替代方案 | 提供 `AddAssign` 等 impl — 留待未来版本                                                      |
+| 拒绝原因 | 会把当前文档从纯表达式语法扩展到原地写入语义，增加广播别名与可变借用复杂度                    |
 
 ### 决策 2：广播错误处理方式
 
@@ -591,18 +612,28 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | -------- | ----------------------------------------------------------------------------------------- |
 | 决策     | 运算符重载在广播不兼容时 panic；方法型 API 保持 `Result` 返回                             |
 | 理由     | 这与 Rust `std::ops` 风格一致：运算符语法直接产出结果值，而显式方法路径承担可恢复错误语义 |
-| 替代方案 | 继续让运算符与方法型 API 共享 `Result` 语义 — 放弃，会削弱运算符语法的直接性              |
-| 替代方案 | 仅支持 `Scalar<A>` 左标量包装器 — 放弃作为唯一稳定边界，因具体原生标量 lhs impl 可行      |
+| 替代方案 | 继续让运算符与方法型 API 共享 `Result` 语义，或仅把 `Scalar<A>` 左标量包装器作为唯一稳定边界 |
+| 拒绝原因 | 前者会削弱运算符语法的直接性；后者又过度收窄了可提供的具体原生左标量实现范围               |
 
 > **补充**：方法型 API 仍然是最直接的错误恢复主路径；整数除零、整数溢出和结果不可表示等不可恢复错误则继续遵循 `require.md` §12 / §27 的 panic 语义。
 
-### 决策 3：标量路径使用 mapv 而非广播视图
+### ADR-2a：运算符 panic / 方法 Result 的稳定边界
 
-| 属性     | 值                                                                                             |
-| -------- | ---------------------------------------------------------------------------------------------- | --- | ------------------------------ |
-| 决策     | 张量×标量运算使用 `mapv(                                                                       | x   | x op scalar)` 而非创建广播视图 |
-| 理由     | 更高效（直接迭代 vs 间接寻址）；编译器更容易内联和向量化 `mapv`；缓存友好                      |
-| 替代方案 | 创建标量广播视图 `Tensor0::from(scalar).view().broadcast_to(shape)` — 放弃，间接寻址开销不必要 |
+| 属性     | 值 |
+| -------- | --- |
+| 决策     | `+` / `-` / `*` / `/` 在广播失败时 panic；对应方法型 API 返回 `Result<Tensor<A, F>, TensorError>` |
+| 理由     | 运算符用于表达式直接求值，应保持 `std::ops` 风格；需要恢复路径时，调用方应显式选择 `.add()` / `.sub()` / `.mul()` / `.div()` |
+| 替代方案 | 让运算符与方法都返回 `Result`，或让方法型 API 也 panic |
+| 拒绝原因 | 前者破坏运算符表达式的直观性，后者又会抹掉 Xenon 公开 API 的可恢复错误通道 |
+
+### 决策 3：标量路径使用直接标量方法而非广播视图
+
+| 属性     | 值 |
+| -------- | --- |
+| 决策     | 张量×标量运算委托给 `*_scalar` 方法，由方法内部直接遍历并写入结果，而非创建广播视图 |
+| 理由     | 更高效（直接迭代 vs 间接寻址），同时避免把通用映射 helper 误写成当前版本的稳定设计依赖 |
+| 替代方案 | 创建标量广播视图 `Tensor0::from_scalar(scalar).view().broadcast_to(shape)` |
+| 拒绝原因 | 会增加间接寻址与额外中间视图概念，不符合当前最小实现描述 |
 
 ---
 
@@ -614,21 +645,21 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | --------------------- | ----------- | ----------- | ------------------ |
 | 张量 + 张量（同形状） | O(n)        | O(n)        | 无广播开销         |
 | 张量 + 张量（广播）   | O(output_n) | O(output_n) | 广播视图 O(1) 创建 |
-| 张量 + 标量           | O(n)        | O(n)        | mapv 直接迭代      |
-| 标量 + 张量           | O(n)        | O(n)        | mapv 直接迭代      |
+| 张量 + 标量           | O(n)        | O(n)        | `*_scalar` 直接迭代 |
+| 标量 + 张量           | O(n)        | O(n)        | `*_scalar` 直接迭代 |
 
 ### 12.2 性能数据（参考）
 
 | 场景                                        | 路径          | 预计性能 |
 | ------------------------------------------- | ------------- | -------- |
-| `[1000, 1000] + [1000, 1000]` (f64)         | zip_with SIMD | ~1ms     |
-| `[1000, 1000] + [1, 1000]` (广播)           | zip_with 广播 | ~1.2ms   |
-| `[1000, 1000] + 5.0` (标量)                 | mapv          | ~0.8ms   |
-| `[1000, 1000] + [1000, 1000]` (f64, 非SIMD) | zip_with 标量 | ~4ms     |
+| `[1000, 1000] + [1000, 1000]` (f64)         | 方法分发 + SIMD | ~1ms   |
+| `[1000, 1000] + [1, 1000]` (广播)           | 方法分发 + 广播 | ~1.2ms |
+| `[1000, 1000] + 5.0` (标量)                 | `add_scalar`    | ~0.8ms |
+| `[1000, 1000] + [1000, 1000]` (f64, 非SIMD) | 方法分发 + 标量 | ~4ms   |
 
 ### 12.3 SIMD 路径
 
-当 SIMD feature 启用时，`zip_with` 和 `mapv` 自动选择 SIMD 路径（参见 `08-simd.md` §4）：
+当 SIMD feature 启用时，方法型逐元素运算与标量方法会在满足前提时自动选择 SIMD 路径（参见 `08-simd.md` §4）：
 
 | 运算符    | SIMD 指令           | 加速比 |
 | --------- | ------------------- | ------ |

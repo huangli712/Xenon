@@ -201,7 +201,8 @@ where
     /// # Examples
     ///
     /// ```
-    /// let tensor = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
+    /// let tensor = Tensor::from_shape_vec([3], vec![1.0, 2.0, 3.0])
+    ///     .expect("shape and data length should match");
     /// let config = FormatConfig { precision: Some(2), ..Default::default() };
     /// println!("{}", tensor.display_with(config));
     /// ```
@@ -242,7 +243,7 @@ where
     ///
     /// Follows NumPy style:
     /// - 1D: `[1, 2, 3, 4]`
-/// - 2D: matrix form, displayed by logical row/column structure while preserving Xenon's F-order storage model internally
+    /// - 2D: matrix form, displayed by logical row/column structure while preserving Xenon's F-order storage model internally
     /// - ND: nested brackets
     ///
     /// Large arrays are automatically truncated (see §5.5), and any
@@ -386,7 +387,7 @@ truncation_rule(tensor, config):
             show first config.edge_items elements
             show "..."
             show last config.edge_items elements
-        append "... {omitted} more elements] shape={tensor.shape()}"
+        append "... " + omitted + " more elements] shape=" + tensor.shape()
 ```
 
 | 参数         | 默认值 | 说明                        |
@@ -448,7 +449,7 @@ fmt_1d(tensor, f):
             write tensor[[i]]
             if i < len - 1: write ", "
         omitted = total - 2 * edge_items
-        write ", ... {omitted} more elements] shape={tensor.shape()}"
+        write ", ... " + omitted + " more elements] shape=" + tensor.shape()
     else:
         write "["
         for i in 0..len:
@@ -469,7 +470,7 @@ fmt_nd(tensor, f, depth):
     write "]"
     if depth == 0 and total > threshold:
         omitted = total - count_displayed_elements(tensor.shape(), edge_items)
-        write " ... {omitted} more elements shape={tensor.shape()}"
+        write " ... " + omitted + " more elements] shape=" + tensor.shape()
 ```
 
 ---
@@ -549,7 +550,7 @@ Wave 3:        [T5]
 | 测试函数                      | 测试内容                                    | 优先级 |
 | ----------------------------- | ------------------------------------------- | ------ |
 | `test_fmt_1d_full`            | 1D 小数组完整输出 `[1, 2, 3]`               | 高     |
-| `test_fmt_1d_truncated`       | 1D 大数组截断，并追加 `... N more elements] shape=[...]` | 高     |
+| `test_fmt_1d_truncated`       | 1D 大数组截断，并追加统一后缀 `... N more elements] shape=[...]` | 高     |
 | `test_fmt_1d_empty`           | 1D 空数组 `[]`                              | 中     |
 | `test_fmt_1d_single`          | 1D 单元素 `[42]`                            | 中     |
 | `test_fmt_2d`                 | 2D 矩阵形式输出                             | 高     |
@@ -578,7 +579,7 @@ Wave 3:        [T5]
 | 不变量                                              | 测试方法 |
 | --------------------------------------------------- | -------- |
 | `debug(tensor)` 包含 shape / strides / dtype 元信息 | 随机形状 |
-| 截断输出包含 `... N more elements` 与完整 `shape=[...]` | 大数组   |
+| 截断输出包含统一后缀 `... N more elements] shape=[...]` | 大数组   |
 
 ### 8.5 集成测试
 
@@ -632,7 +633,7 @@ User calls format!("{}", tensor) / format!("{:?}", tensor)
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | 不适用；当前格式化 API 通过 `fmt::Result` 与格式化器交互，不定义额外模块级 `XenonError` 路径。 |
+| Recoverable error | 不适用；按 `26-error.md` 的边界约定，当前格式化 API 只通过 `fmt::Result` 与格式化器交互，不额外引入 `XenonError` 变体。 |
 | Panic | 不适用；公开格式化路径不引入新的 panic 语义。 |
 | 路径一致性 | `Display`、`Debug` 与 `display_with(config)` 必须共享同一逻辑索引读取与截断契约；无 SIMD / 并行分支。 |
 | 容差边界 | 不适用；`precision` 仅影响文本呈现，不构成数值误差容差语义。 |

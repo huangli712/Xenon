@@ -104,7 +104,7 @@ benches/
 | `matrix`    | `dot`（参见 `12-matrix.md §4`）                                                               |
 | `shape`     | `transpose`（参见 `16-shape.md §4`）                                                          |
 | `set`       | `unique`（参见 `14-set.md §4`）                                                               |
-| `construct` | `zeros`, `ones`, `from_vec`, `from_fn`（参见 `18-construction.md §4`）                        |
+| `construct` | `zeros`, `ones`, `from_vec`（参见 `18-construction.md §4`）                                   |
 | `broadcast` | `broadcast_shape`, 广播运算符（参见 `15-broadcast.md §4`）                                    |
 
 ### 4.3 依赖方向声明
@@ -194,12 +194,16 @@ use xenon::prelude::*;
 
 /// Generate a 1D tensor with sequential f64 values.
 pub fn sequential_1d(n: usize) -> Tensor1<f64> {
-    Tensor1::from_fn([n], |idx| idx[0] as f64)
+    Tensor1::from_vec((0..n).map(|idx| idx as f64).collect())
 }
 
 /// Generate a 2D F-order tensor with sequential f64 values.
 pub fn sequential_2d(rows: usize, cols: usize) -> Tensor2<f64> {
-    Tensor2::from_fn([rows, cols], |idx| (idx[0] + idx[1] * rows) as f64)
+    Tensor2::from_shape_vec(
+        [rows, cols],
+        (0..rows * cols).map(|idx| idx as f64).collect(),
+    )
+    .expect("shape and data length must match")
 }
 
 /// Generate a non-contiguous view by slicing every other element.
@@ -299,7 +303,6 @@ Benchmark 分类
 | `simd_scalar_equivalence`     | SIMD 与标量结果一致性   | M     | f32/f64        | F-contiguous   | 性能测量前先验证结果一致                   |
 | `parallel_serial_equivalence` | 并行与串行结果一致性    | M/L   | f64            | F-contiguous   | 验证并行路径不改变结果                     |
 | `zeros_1d`                    | zeros 构造              | S/M/L | f64            | F-contiguous   | 构造开销                                   |
-| `from_fn_2d`                  | from_fn 构造            | S/M/L | f64            | F-contiguous   | 函数构造开销                               |
 
 ---
 
@@ -457,18 +460,11 @@ fn bench_sum_bad2(c: &mut Criterion) {
 
 | 策略          | 实现                                         | 说明                   |
 | ------------- | -------------------------------------------- | ---------------------- |
-| 顺序填充      | `from_fn([n], \|idx\| idx[0] as f64)`        | 可重复，无随机性       |
+| 顺序填充      | 预先构造顺序 `Vec<f64>` 后用 `from_vec` / `from_shape_vec` 导入 | 可重复，无随机性       |
 | 预分配 + 复用 | 数据在 `bench_with_input` 闭包外生成         | 避免测量中混入构造开销 |
 | 非连续视图    | `slice(s![..;2])` 或 `slice(s![.., 0..n-1])` | 模拟真实切片场景       |
 
 > **设计决策**：所有数据在迭代回调外预生成（参见 §5.9.2 Bad 示例），确保仅测量目标操作本身的性能。
-
-### 6.4 基线消费表
-
-| 基准 ID        | 输入规模 | baseline 来源              | 报告指标             | 阈值消费者       |
-| -------------- | -------- | -------------------------- | -------------------- | ---------------- |
-| `elem_add_f64` | 256×256  | 最近一次 main 分支通过结果 | wall time / change % | Regression Check |
-| `sum_1d_f64`   | 65,536   | 最近一次 main 分支通过结果 | wall time / change % | Regression Check |
 
 ### 6.3 black_box 使用规范
 
@@ -484,6 +480,13 @@ b.iter(|| &a + &b);
 ```
 
 `black_box` 的作用是告诉编译器"此值可能被以任何方式使用"，防止编译器将结果视为死代码而消除整个计算。
+
+### 6.4 基线消费表
+
+| 基准 ID        | 输入规模 | baseline 来源              | 报告指标             | 阈值消费者       |
+| -------------- | -------- | -------------------------- | -------------------- | ---------------- |
+| `elem_add_f64` | 256×256  | 最近一次 main 分支通过结果 | wall time / change % | Regression Check |
+| `sum_1d_f64`   | 65,536   | 最近一次 main 分支通过结果 | wall time / change % | Regression Check |
 
 ---
 
@@ -508,7 +511,7 @@ b.iter(|| &a + &b);
 ```
 benchmark 文件
     │
-    ├── 调用 crate 公共 API（Tensor::from_fn, zeros, +, sum, ...）
+    ├── 调用 crate 公共 API（Tensor::from_vec, zeros, +, sum, ...）
     │       │
     │       └── 内部经过: storage → tensor → overload → simd/parallel
     │
@@ -583,7 +586,7 @@ benchmark 文件
 
 - [ ] **T9**: 实现 `benches/construction.rs`
   - 文件: `benches/construction.rs`
-  - 内容: zeros_1d/from_fn_2d/from_vec
+  - 内容: zeros_1d/from_vec
   - 测试: `cargo bench --bench construction -- --quick`
   - 前置: T2
   - 预计: 10 min

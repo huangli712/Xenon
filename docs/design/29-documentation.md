@@ -424,7 +424,7 @@ Rust N-dimensional tensor library for scientific computing.
 
 ```toml
 [dependencies]
-xenon = "0.1"
+xenon = "x.y.z"
 ```
 
 ## Documentation
@@ -911,7 +911,7 @@ docs:
 
 - [ ] **T9d**: construct 和 set 模块文档
   - 文件: `src/construct/mod.rs`, `src/set/mod.rs`
-  - 内容: zeros, ones, full, eye, from_shape_vec, from_fn, unique 函数文档和 doctest
+  - 内容: zeros, ones, full, eye, from_shape_vec, unique 函数文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min

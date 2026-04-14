@@ -789,7 +789,7 @@ Workspace 模块的 `split_at`/`split_at_mut` 使用原子引用计数（`Atomic
 - 每个 `SplitBorrowMut::drop()` 原子递减 `split_count`，仅在 `prev == 1` 时重置 `borrow_state`
 - 这确保所有子空间（包括递归产生的）全部释放后，workspace 才可被重新借用
 
-详细设计和安全性论证参见 `24-workspace.md §4.7` 和 `24-workspace.md §5.3`。
+详细设计和安全性论证参见 `24-workspace.md §5.7` 和 `24-workspace.md §6.3`。
 
 #### TensorViewMut 的 par_iter_mut() 安全性论证
 

@@ -102,7 +102,7 @@ src/dimension/
 ### 4.3 依赖方向声明
 
 > **依赖方向：单向向上。** `dimension/` 仅消费 `error` 和 `private`，不被它们反向依赖。
-> 被下游模块消费：`layout`（参见 `06-memory.md` §4）、`tensor`（参见 `07-tensor.md` §5）、`shape`（参见 `16-shape.md` §4）、`iter`（参见 `10-iterator.md` §4）、`math`（参见 `11-math.md` §4）、`index`（参见 `17-indexing.md` §4）。`storage` 不消费 `Dimension`；它只持有底层连续缓冲区。
+> 被下游模块消费：`layout`（参见 `06-memory.md` §5）、`tensor`（参见 `07-tensor.md` §5）、`shape`（参见 `16-shape.md` §5）、`iter`（参见 `10-iterator.md` §5）、`math`（参见 `11-math.md` §5）、`index`（参见 `17-indexing.md` §5）。`storage` 不消费 `Dimension`；它只持有底层连续缓冲区。
 
 ---
 
@@ -136,8 +136,9 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
 
     /// Computes strides for Fortran-order (column-major) layout.
     ///
-    /// Returns strides in element units (not bytes).
-    /// First axis has stride 1.
+    /// Returns `Self`, carrying stride counts in element units (not bytes).
+    /// First axis has stride 1. The layout layer later wraps this result into
+    /// `layout::Strides<D>` when signed stride metadata is needed.
     fn strides_for_f_order(&self) -> Self;
 
     /// Returns the total number of elements.
@@ -466,9 +467,11 @@ impl Axis {
     pub fn is_first(self) -> bool { self.0 == 0 }
 
     #[inline]
-    pub fn is_last(self, ndim: usize) -> bool { self.0 == ndim.saturating_sub(1) }
+    pub fn is_last(self, ndim: usize) -> bool { ndim > 0 && self.0 == ndim - 1 }
 }
 ```
+
+> **说明：** 当 `ndim == 0`（标量、无轴）时，`is_last()` 返回 `false`。这一定义避免了把“无轴”误判为“最后一轴”，调用方若在轴语义上区分标量场景，应先检查 `ndim > 0`。
 
 ### 5.6 RemoveAxis trait
 
@@ -479,8 +482,8 @@ impl Axis {
 /// `Ix0` does NOT implement this trait: a scalar has no axes to remove.
 ///
 /// Used by:
-/// - `AxisIter` (see `10-iterator.md §4`): `Item = TensorView<'a, A, D::Smaller>`
-/// - `sum_axis` (see `13-reduction.md §4`): result dimension is `D::Smaller`
+/// - `AxisIter` (see `10-iterator.md §5.2`): `Item = TensorView<'a, A, D::Smaller>`
+/// - `sum_axis` (see `13-reduction.md §5.2`): result dimension is `D::Smaller`
 pub trait RemoveAxis: Dimension {
     /// The dimension type with one fewer axis.
     type Smaller: Dimension;
@@ -697,7 +700,7 @@ impl<D: Dimension> BroadcastDim<D> for IxDyn { type Output = IxDyn; }
 ```rust
 /// Trait for reversing the axis order of a dimension.
 ///
-/// Used by `transpose()` in `shape` (see `16-shape.md §4`).
+/// Used by `transpose()` in `shape` (see `16-shape.md` §5.1).
 pub trait Reverse: Dimension {
     /// Reverse the axis order of this dimension.
     fn reverse(self) -> Self;
@@ -755,11 +758,11 @@ impl Reverse for IxDyn {
 
 ### 6.2 stride 表达边界
 
-维度层保存无符号形状（`usize`），步长计算结果也为无符号。`layout` 模块负责具体 stride 元数据，并仅覆盖当前版本允许的连续、转置后非连续和广播零步长布局（参见 `06-memory.md` §5）：
+维度层保存无符号形状（`usize`），`strides_for_f_order()` 也返回同一维度类型 `Self`，只是把各轴长度替换为以元素为单位的无符号步长值。下游 `layout` 模块再把这类结果包装为 `Strides<D>`，并负责具体 stride 元数据，仅覆盖当前版本允许的连续、转置后非连续和广播零步长布局（参见 `06-memory.md` §5）：
 
 ```
 Dimension 层：shape = [3, 4], strides_for_f_order() = Ix2(1, 3)
-Layout 层：   strides = [1isize, 3isize]（表示当前版本允许的合法布局）
+Layout 层：   strides = [1usize, 3usize]（表示当前版本允许的合法布局）
 ```
 
 > 维度层关注"形状是什么"，layout 层关注"数据如何排列"。
@@ -798,7 +801,7 @@ strides_for_f_order(shape):
 | `math`    | `Dimension`                  | 运算泛型参数                                 |
 | `index`   | `Dimension`, `Axis`          | 索引操作                                     |
 
-> 各模块的详细接口约定参见对应设计文档（`05-storage.md` §4、`07-tensor.md` §5、`16-shape.md` §4、`17-indexing.md` §4）。
+> 各模块的详细接口约定参见对应设计文档（`05-storage.md` §5、`07-tensor.md` §5、`16-shape.md` §5、`17-indexing.md` §5）。
 
 ### 7.2 数据流描述
 
@@ -1065,8 +1068,8 @@ Wave 5:  [T10] → [T11] → [T12]
 
 | 属性     | 值                                                                                |
 | -------- | --------------------------------------------------------------------------------- |
-| 决策     | `strides_for_f_order()` 返回 `Self`（无符号），具体 stride 元数据由 layout 层处理 |
-| 理由     | 关注点分离：Dimension 关注形状，Layout 关注当前版本允许的数据排列                 |
+| 决策     | `strides_for_f_order()` 返回 `Self`（无符号），下游再包装为 `layout::Strides<D>` 处理具体 stride 元数据 |
+| 理由     | 关注点分离：Dimension 关注形状与同类型返回，Layout 关注当前版本允许的数据排列                      |
 | 替代方案 | Dimension 直接返回 `isize` 步长 — 放弃，维度层不应承担布局表达职责                |
 
 ### 决策 7：`size()` 与 `checked_size()` 双接口

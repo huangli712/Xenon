@@ -74,6 +74,7 @@ src/set/
 src/set/unique.rs
 ├── crate::tensor        # TensorBase<S, D>, Tensor<A, Ix1>
 ├── crate::element       # Element, ComplexScalar
+├── crate::complex       # Complex<f32>, Complex<f64>
 └── crate::iter          # Elements for collection
 ```
 
@@ -81,13 +82,14 @@ src/set/unique.rs
 
 | 来源模块  | 使用的类型/trait                                                                  |
 | --------- | --------------------------------------------------------------------------------- |
-| `tensor`  | `TensorBase<S, D>`, `Tensor<A, Ix1>`, `.iter()`, `.len()`，参见 `07-tensor.md` §4 |
-| `element` | `Element`, `ComplexScalar`，参见 `03-element.md` §3                               |
-| `iter`    | `Elements`（遍历收集元素），参见 `10-iterator.md` §3                              |
+| `tensor`  | `TensorBase<S, D>`, `Tensor<A, Ix1>`, `.iter()`, `.len()`，参见 `07-tensor.md` §5 |
+| `element` | `Element`, `ComplexScalar`，参见 `03-element.md` §5.1 / §5.4                      |
+| `complex` | `Complex<f32>`, `Complex<f64>`，参见 `04-complex.md` §5                           |
+| `iter`    | `Elements`（遍历收集元素），参见 `10-iterator.md` §5.1                            |
 
 ### 4.3 依赖方向
 
-> **依赖方向：单向向上。** `set` 仅消费 `tensor`、`element`、`iter` 模块。
+> **依赖方向：单向向上。** `set` 仅消费 `tensor`、`element`、`complex`、`iter` 模块。
 
 ### 4.4 依赖合法性与替代方案
 
@@ -333,7 +335,7 @@ Wave 4: [T5]
 | 单元测试 | `#[cfg(test)] mod tests` | 验证 `unique()` 的去重语义、顺序非承诺与类型特例                |
 | 集成测试 | `tests/`                 | 验证 `set` 与 `tensor`、`iter`、`element`、`complex` 的协同路径 |
 | 边界测试 | 同模块测试中标注         | 覆盖空张量、单元素、NaN、`±0.0` 与复数分量判等等边界            |
-| 属性测试 | `tests/property/`        | 验证结果有序、无重复、元素集合等价等不变量                      |
+| 属性测试 | `tests/property/`        | 验证结果无重复、元素集合与输入等价等不变量                      |
 
 ### 8.2 单元测试清单
 
@@ -405,9 +407,10 @@ Wave 4: [T5]
 
 | 方向            | 对方模块  | 接口/类型                             | 约定                                                                   |
 | --------------- | --------- | ------------------------------------- | ---------------------------------------------------------------------- |
-| `set → tensor`  | `tensor`  | `TensorBase<S, D>` / `Tensor<A, Ix1>` | 消费输入张量并返回 1D owned 结果，参见 `07-tensor.md` §4               |
-| `set → iter`    | `iter`    | `Elements`                            | 使用元素迭代器收集逻辑元素，参见 `10-iterator.md` §3                   |
-| `set → element` | `element` | `UniqueElement`                       | 通过 `unique_eq` 约束去重语义，不暴露排序契约，参见 `03-element.md` §3 |
+| `set → tensor`  | `tensor`  | `TensorBase<S, D>` / `Tensor<A, Ix1>` | 消费输入张量并返回 1D owned 结果，参见 `07-tensor.md` §5               |
+| `set → iter`    | `iter`    | `Elements`                            | 使用元素迭代器收集逻辑元素，参见 `10-iterator.md` §5.1                 |
+| `set → element` | `element` | `Element`, `ComplexScalar`            | 复用元素类型边界与复数标量语义，参见 `03-element.md` §5.1 / §5.4       |
+| `set → set`     | `set`     | `UniqueElement`                       | `UniqueElement` 定义在 `src/set/unique.rs`，通过 `unique_eq` 约束去重语义 |
 
 ### 9.2 数据流描述
 

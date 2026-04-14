@@ -86,15 +86,15 @@ src/util/
 
 ### 4.2 类型级依赖
 
-| 来源模块    | 使用的类型/trait                                                                       |
-| ----------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`（参见 `07-tensor.md` §4） |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §4）                         |
-| `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`（参见 `05-storage.md` §4）                     |
-| `element`   | `Element`，以及 utility 层定义的 operation-specific `ClipElement` 约束                 |
-| `layout`    | `is_f_contiguous()`（参见 `06-memory.md` §4）                                          |
-| `iter`      | `iter()`, `iter_mut()`（参见 `10-iterator.md` §4）                                     |
-| `tensor`    | `Tensor<A, D>` 的结果构造路径                                                          | `clip` 分配新的 owned 结果张量并通过 `iter()` / `iter_mut()` 写入 |
+| 来源模块    | 使用的类型/trait                                                                                                      |
+| ----------- | --------------------------------------------------------------------------------------------------------------------- |
+| `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.storage_kind()`（参见 `07-tensor.md` §4）           |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §4）                                                      |
+| `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, `StorageIntoOwned<Elem=A>`（参见 `05-storage.md` §4）                      |
+| `element`   | `Element`，以及 utility 层定义的 operation-specific `ClipElement` 约束                                              |
+| `layout`    | `is_f_contiguous()`（参见 `06-memory.md` §4）                                                                       |
+| `iter`      | `iter()`, `iter_mut()`（参见 `10-iterator.md` §4）                                                                  |
+| `tensor`    | `Tensor<A, D>` 的结果构造路径；`clip` 分配新的 owned 结果张量并通过 `iter()` / `iter_mut()` 写入逻辑元素           |
 
 ### 4.3 依赖方向声明
 
@@ -163,7 +163,14 @@ where
         A: Clone,
     {
         if min.partial_cmp(&max).is_none() || min > max {
-            return Err(XenonError::InvalidArgument { message: "clip requires min <= max" });
+            return Err(XenonError::InvalidArgument {
+                operation: "clip",
+                argument: "min/max",
+                expected: "min <= max and finite bounds for floating-point inputs",
+                actual: "min > max or NaN bound",
+                axis: None,
+                shape: Some(self.shape().to_vec()),
+            });
         }
         let mut out = Tensor::zeros(self.raw_dim());
         for (src, dst) in self.iter().zip(out.iter_mut()) {
@@ -193,7 +200,14 @@ where
         A: Clone,
     {
         if min.partial_cmp(&max).is_none() || min > max {
-            return Err(XenonError::InvalidArgument { message: "clip requires min <= max" });
+            return Err(XenonError::InvalidArgument {
+                operation: "clip_inplace",
+                argument: "min/max",
+                expected: "min <= max and finite bounds for floating-point inputs",
+                actual: "min > max or NaN bound",
+                axis: None,
+                shape: Some(self.shape().to_vec()),
+            });
         }
         for elem in self.iter_mut() {
             if *elem < min {
@@ -212,7 +226,7 @@ where
 ````rust
 impl<S, D, A> TensorBase<S, D>
 where
-    S: Storage<Elem = A>,
+    S: StorageMut<Elem = A>,
     D: Dimension,
     A: Element + Clone,
 {
@@ -221,15 +235,9 @@ where
     /// Correctly handles non-contiguous layouts: iterates over all logical
     /// elements via the iterator. Modifies storage directly without copying.
     ///
-    /// Returns `Err(XenonError::InvalidStorageMode)` for read-only or shared-read-only
-    /// storage modes, with diagnostic context describing the actual storage mode.
-    /// For writable storage (`Owned`, `ViewMutRepr`), fills all logical elements and
-    /// returns `Ok(())`.
-    ///
-    /// **Note**: `StorageMut` is still a useful compile-time optimization for known
-    /// static storage types: read-only broadcast views and other statically non-writable
-    /// tensors can still be rejected at compile time. The runtime storage-mode check is
-    /// the recoverable-error path for dynamically determined storage.
+    /// This method is only available when `S: StorageMut<Elem = A>` holds at compile time.
+    /// Runtime rejection still applies when the current storage classification is not
+    /// a writable kind accepted by the public API contract.
     ///
     /// # Examples
     ///
@@ -239,16 +247,18 @@ where
     /// assert!(t.iter().all(|&x| x == 3.14));
     /// ```
     pub fn fill(&mut self, value: A) -> Result<(), XenonError> {
-        match self.storage_mode() {
-            StorageMode::Owned | StorageMode::ViewMutRepr => {
+        match self.storage_kind() {
+            StorageKind::Owned | StorageKind::ViewMut => {
                 for elem in self.iter_mut() {
                     *elem = value.clone();
                 }
                 Ok(())
             }
-            actual_mode => Err(XenonError::InvalidStorageMode {
+            actual_kind => Err(XenonError::InvalidStorageMode {
                 operation: "fill",
-                actual: actual_mode,
+                expected: "Owned or ViewMut",
+                actual: format!("{:?}", actual_kind).into(),
+                shape: Some(self.shape().to_vec()),
             }),
         }
     }
@@ -270,8 +280,9 @@ where
 {
     /// Ensure data is stored contiguously in memory (always F-order).
     ///
-    /// - If already F-contiguous, returns `to_owned()` (copy, layout preserved)
-    /// - Otherwise (non-contiguous, e.g. transposed views), copies into F-contiguous layout
+    /// - `to_contiguous(&self)` always returns a fresh owned copy
+    /// - `into_contiguous(self)` may reuse the existing owned allocation when already F-contiguous
+    /// - Non-contiguous inputs are re-packed into F-contiguous layout
     ///
     /// Xenon only supports F-order (see requirement §7).
     /// `to_contiguous()` always produces F-order output.
@@ -323,8 +334,8 @@ where
 }
 ````
 
-> **设计说明：** `to_contiguous(&self)` 保持借用入口，适合统一拿到 owned 结果；
-> `into_contiguous(self)` 补充消费式入口，以满足 `require.md` §22 对“输入已是连续 F-order 存储时可复用现有数据”的要求。
+> **设计说明：** `to_contiguous(&self)` 是稳定的“总是复制”入口，适合在借用上下文中显式拿到 owned 连续结果；
+> `into_contiguous(self)` 是满足 `require.md` §22 的消费式入口：当输入已经是连续 F-order 且具备 owned 化前提时，可复用现有数据，否则退化为重新打包。
 
 ### 5.4 Good / Bad 对比
 
@@ -370,12 +381,17 @@ clip(tensor, min, max):
 
 ```
 fill(tensor, value):
-    if storage mode is Owned or ViewMutRepr:
+    if storage kind is Owned or ViewMut:
         for each mutable reference elem in tensor (via iter_mut):
             *elem = value.clone()
         return Ok(())
     else:
-        return InvalidStorageMode(actual storage mode)
+        return InvalidStorageMode {
+            operation: "fill",
+            expected: "Owned or ViewMut",
+            actual: actual storage kind,
+            shape: tensor.shape(),
+        }
 ```
 
 关键点：`iter_mut()` 已经正确处理非连续布局的步长跳转，因此 `fill` 在可写存储上天然支持非连续内存；对只读或共享只读存储则通过可恢复错误返回实际存储模式上下文。
@@ -419,7 +435,7 @@ into_contiguous(tensor):
 
 - [ ] **T1**: 实现 `fill` 方法
   - 文件: `src/util/fill.rs`
-  - 内容: `fill(&mut self, value: A) -> Result<(), XenonError>`；可写存储通过 `iter_mut()` 原地填充，只读/共享只读存储返回 `InvalidStorageMode`
+- 内容: `fill(&mut self, value: A) -> Result<(), XenonError>`；方法签名要求 `S: StorageMut<Elem = A>`，可写存储通过 `iter_mut()` 原地填充，其他不满足公开写入前提的存储类别返回带结构化字段的 `InvalidStorageMode`
   - 测试: `test_fill_basic`, `test_fill_non_contiguous`, `test_fill_invalid_storage_mode`
   - 前置: tensor 模块、iter 模块完成
   - 预计: 10 min
@@ -502,7 +518,7 @@ Wave 2:      [T3] → [T4]
 | 不变量                                                                         | 测试方法                |
 | ------------------------------------------------------------------------------ | ----------------------- | ---------- | ----------------- |
 | `clip(min, max)` 结果的每个元素 ∈ [min, max]                                   | 随机张量 + 随机 min/max |
-| `fill(v)` 后 `iter().all(                                                      | x                       | \*x == v)` | 随机形状 + 随机值 |
+| `fill(v)` 后 `iter().all(\|x\| *x == v)`                                      | 随机形状 + 随机值       |
 | `to_contiguous()` / `into_contiguous()` 返回的张量 `is_f_contiguous() == true` | 随机非连续布局          |
 
 ### 8.5 集成测试
@@ -556,7 +572,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `clip` / `clip_inplace` 在 `min > max` 或边界为 `NaN` 时返回 `XenonError::InvalidArgument`；`fill` 在只读存储上返回 `XenonError::InvalidStorageMode`。 |
+| Recoverable error | `clip` / `clip_inplace` 在 `min > max` 或边界为 `NaN` 时返回 `XenonError::InvalidArgument { operation, argument, expected, actual, axis, shape }`；`fill` 在存储类别不满足写入前提时返回 `XenonError::InvalidStorageMode { operation, expected, actual, shape }`。 |
 | Panic | 公开 utility API 不定义额外 panic 语义；连续化与裁剪失败统一走显式错误或正常返回。 |
 | 路径一致性 | 连续与非连续布局都必须通过同一逻辑元素语义工作；当前无独立 SIMD / 并行分支。 |
 | 容差边界 | `clip` 对浮点数遵循 IEEE 754 比较语义；不额外引入近似容差。 |
@@ -591,7 +607,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 | --------------------------------- | ---------- | ---------- | -------------------------------- |
 | `clip`                            | O(n)       | O(n)       | 新分配一个张量                   |
 | `clip_inplace`                    | O(n)       | O(1)       | 原地修改，零额外分配             |
-| `fill`                            | O(n)       | O(1)       | 原地修改，`Clone` 开销取决于类型 |
+| `fill`                            | O(n)       | O(1)       | 原地修改，要求 `S: StorageMut<Elem = A>`，`Clone` 开销取决于类型 |
 | `to_contiguous`（已连续）         | O(n)       | O(n)       | 借用入口拷贝到新 owned           |
 | `into_contiguous`（已连续 owned） | O(1)       | O(1)       | 直接复用现有 F-order owned 数据  |
 | `to_contiguous`（非连续）         | O(n)       | O(n)       | 拷贝 + 重新排列                  |

@@ -1,141 +1,27 @@
 # 并行后端模块设计
 
 > 文档编号: 09 | 模块: `src/parallel/` | 阶段: Phase 5
-> 前置文档: `07-tensor.md`, `10-iterator.md`
+> 前置文档: `07-tensor.md`, `10-iterator.md`, `13-reduction.md`, `26-error.md`
 > 需求参考: 需求说明书 §9.2, §9.3
 > 范围声明: 范围内
 
 ---
 
-## 1. 模块定位
+## §1 Overview（概述）
 
-并行后端模块是 Xenon 张量库的可选性能加速层，通过 `rayon` crate 提供数据并行能力，为大规模数组操作提供多线程加速。该模块默认关闭，通过 `features = ["parallel"]` 启用。
+并行后端模块是 Xenon 的可选执行后端，通过 `rayon` 为逐元素映射与归约提供数据并行能力。该模块默认关闭，仅在启用 `parallel` feature 时参与构建。
 
-### 1.1 职责边界
+当前版本的职责边界如下：
 
-| 职责         | 包含                          | 不包含               |
-| ------------ | ----------------------------- | -------------------- |
-| rayon 集成   | 全局线程池、自定义线程池配置  | 自定义线程池调度策略 |
-| 逐元素并行   | a + b 等逐元素运算的并行执行  | 嵌套并行             |
-| 并行归约     | sum 的并行求和                | GPU 并行             |
-| 函数映射并行 | apply / map_inplace 并行执行  | BLAS 并行绑定        |
-| 多数组同步   | zip 多数组并行迭代            | 自动 DAG 调度        |
-| 自动路径选择 | 根据数据规模自动串行/并行切换 | 编译期静态并行分发   |
+- 范围内：`par_map`、阈值控制、并行 `sum` / `dot` 分派、嵌套并行防护、panic / `Err` 传播一致性
+- 范围外：GPU 后端、自动任务图调度、多数组并行同步接口
+- 关键约束：并行路径不得改变串行语义；若无法证明一致性，必须回退串行
 
-### 1.2 设计原则
+## §2 Data Structures（数据结构）
 
-| 原则     | 体现                                                                        |
-| -------- | --------------------------------------------------------------------------- |
-| 透明集成 | 用户代码无需修改，仅通过 feature gate 启用                                  |
-| 自动决策 | 运行时根据数据规模和布局自动选择并行/串行                                   |
-| 可配置性 | 支持全局配置和单次调用覆盖阈值                                              |
-| 安全性   | 禁止嵌套并行，保证无数据竞争；通过 `ParallelGuard` 运行时守卫检测并回退串行 |
-| 兼容性   | 可被上层语义模块与 SIMD 组合使用，但 `parallel/` 本身不直接依赖 `simd/`     |
-
-### 1.3 在架构中的位置
-
-```
-Dependency levels:
-L0: error, private
-L1: dimension, element, complex
-L2: layout (depends on dimension)
-L3: storage (depends only on core/alloc, not layout)
-L4: tensor (depends on storage, dimension)
-L5: parallel  <- current module (optional, feature = "parallel")
-```
-
-### 1.4 性能分层中的角色
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                Performance dispatch decision tree               │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  len >= PARALLEL_THRESHOLD (default 1024) and parallel enabled  │
-│  └─> Parallel path                                              │
-│      └─ The per-chunk execution kernel (SIMD or scalar) is      │
-│         chosen by upper semantic modules or a shared dispatch   │
-│         helper; `parallel/` itself does not choose SIMD         │
-│                                                                 │
-│  Otherwise                                                      │
-│  └─> Serial path                                                │
-│                                                                │
-└────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 2. 需求映射与范围约束
-
-| 类型     | 内容                                                                 |
-| -------- | -------------------------------------------------------------------- |
-| 需求映射 | `需求说明书 §9.2`, `§9.3`                                            |
-| 范围内   | Data-parallel for element-wise/reduction/dot; threshold config; nested parallelism guard |
-| 范围外   | Nested parallelism; GPU backends                                     |
-| 非目标   | No new dependencies beyond rayon                                     |
-
----
-
-## 3. 文件位置
-
-```
-src/parallel/
-├── mod.rs             # 模块入口、rayon 集成、全局阈值配置、模块导出
-├── par_iter.rs        # 并行迭代器（ParElements, ParZip）
-└── par_ops.rs         # 并行运算（par_map, par_sum, par_dot, par_zip_with）
-```
-
-模块划分理由：`mod.rs` 管理配置和公共导出；`par_iter.rs` 封装并行迭代逻辑；`par_ops.rs` 实现具体的并行运算。
-
----
-
-## 4. 依赖关系
-
-### 4.1 依赖图
-
-```
-src/parallel/
-├── rayon (optional)          # External dependency, feature = "parallel"
-├── crate::tensor             # TensorBase<S, D>, type aliases
-├── crate::storage            # Storage, RawStorage trait
-├── crate::layout             # LayoutFlags, is_f_contiguous()
-├── crate::element            # Element trait
-├── crate::broadcast          # broadcast_shape() (zip scenarios)
-└── no direct backend dependency; SIMD composition is chosen by upper-layer dispatch
-```
-
-### 4.2 依赖精确到类型级
-
-| 来源模块    | 使用的类型/trait                                                                                                                                                 |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rayon`     | `ThreadPool`, `ThreadPoolBuilder`, `ParallelIterator`, `IndexedParallelIterator`                                                                                 |
-| `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `.view()`, `.len()`, `Tensor::from_raw_vec_unchecked`（参见 `07-tensor.md §4.5`，pub(crate) 方法）（参见 `07-tensor.md §4`） |
-| `storage`   | `RawStorage`, `Storage`, `StorageMut`, `.as_slice()`（参见 `05-storage.md §4`）                                                                                  |
-| `layout`    | `LayoutFlags`, `is_f_contiguous()`（参见 `06-memory.md §4`）                                                                                                     |
-| `broadcast` | `broadcast_shape()`（参见 `15-broadcast.md §4`）                                                                                                                 |
-
-### 4.3 依赖方向声明
-
-> **依赖方向：单向向上。** `parallel/` 仅消费 `tensor`、`storage`、`layout` 等核心模块，不被它们依赖。与 `simd/` 的组合由上层语义模块协调，而不是 `parallel/` 直接依赖 `simd/`；`parallel/` 模块在未启用 feature 时完全不存在。
-
-> **说明**: `parallel` 依赖 `broadcast::broadcast_shape()` 用于 zip 场景。虽然两者同属 L5，但 broadcast 仅消费 L1-L4 的类型，不存在循环依赖。
-
-### 4.4 依赖合法性与新增依赖说明
-
-| 项目           | 说明                               |
-| -------------- | ---------------------------------- |
-| 新增第三方依赖 | `rayon`                            |
-| 合法性结论     | 符合需求说明书最小依赖限制         |
-| 替代方案       | 不适用                             |
-
----
-
-## 5. 公共 API 设计
-
-### 5.1 Xenon 并行约束
+### 2.1 Feature gate 与配置
 
 ```toml
-# Cargo.toml
 [features]
 default = ["std"]
 std = []
@@ -145,143 +31,55 @@ parallel = ["dep:rayon", "std"]
 rayon = { version = "1.10", optional = true }
 ```
 
-- 默认关闭，通过 `features = ["parallel"]` 显式启用
-- 启用后 rayon 与 `std` 同时引入，提供线程池、原子变量和数据并行能力
+并行模块只依赖 `rayon` 与 `std`，不直接依赖 `simd/`。若上层语义模块需要“并行 + SIMD”组合，必须由上层分派策略协调，`parallel/` 只负责并行执行边界。
 
-> **约束说明：** `parallel` 依赖 `std::sync::atomic`、rayon 线程池与线程本地上下文，因此文档、CI 和 feature 矩阵都必须把 `parallel` 视为 `std` 扩展能力。
-
-### 5.2 并行阈值系统
+### 2.2 核心运行时结构
 
 ```rust
-// src/parallel/mod.rs
-
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// Default parallel threshold: 1024 elements.
-///
-/// When the number of array elements reaches or exceeds this value,
-/// parallel execution is enabled. This value is empirically tuned;
-/// on small arrays, parallelization overhead outweighs the benefit.
 const DEFAULT_PARALLEL_THRESHOLD: usize = 1024;
 
-/// Global parallel threshold.
 static GLOBAL_PARALLEL_THRESHOLD: AtomicUsize =
     AtomicUsize::new(DEFAULT_PARALLEL_THRESHOLD);
 
-/// Get the current global parallel threshold
-#[inline]
-pub fn get_parallel_threshold() -> usize {
-    GLOBAL_PARALLEL_THRESHOLD.load(Ordering::Relaxed)
-}
+pub struct ParallelGuard;
 
-/// Set the global parallel threshold
-///
-/// # Note
-///
-/// This setting affects all subsequent parallel operations.
-/// It is recommended to set this at program startup to avoid
-/// frequent runtime modifications.
-pub fn set_parallel_threshold(threshold: usize) {
-    GLOBAL_PARALLEL_THRESHOLD.store(threshold, Ordering::Relaxed);
-}
-
-/// Reset the global parallel threshold to the default value
-pub fn reset_parallel_threshold() {
-    GLOBAL_PARALLEL_THRESHOLD.store(DEFAULT_PARALLEL_THRESHOLD, Ordering::Relaxed);
-}
-```
-
-> **设计决策：** 使用 `Ordering::Relaxed`。阈值读取不需要与其他操作同步，稍旧的值也可接受。阈值修改通常是启动时一次性操作。
-
-### 5.3 自动路径选择
-
-```rust
-// src/parallel/mod.rs
-
-/// Determine whether parallel execution should be enabled
-///
-/// # Decision logic
-///
-/// 1. Check if the `parallel` feature is enabled
-/// 2. Check if the element count meets the threshold
-/// 3. Consider data layout (non-contiguous arrays need a higher threshold)
-///
-/// # Arguments
-///
-/// * `len` - Number of elements
-/// * `is_f_contiguous` - Whether the data is F-order contiguous
-///
-/// # Returns
-///
-/// `true` if parallel execution should be enabled.
 #[cfg(feature = "parallel")]
-pub fn should_parallelize(len: usize, is_f_contiguous: bool) -> bool {
-    // If only one thread is available, parallelism adds overhead with no benefit
-    if rayon::current_num_threads() <= 1 {
-        return false;
-    }
-    let threshold = get_parallel_threshold();
-    let meets_threshold = if is_f_contiguous {
-        len >= threshold
-    } else {
-        // Non-contiguous: double the threshold to account for overhead
-        len >= threshold * 2
-    };
-    meets_threshold
-}
-
-#[cfg(not(feature = "parallel"))]
-pub fn should_parallelize(_len: usize, _is_contiguous: bool) -> bool {
-    false
+pub struct ParallelPool {
+    inner: rayon::ThreadPool,
 }
 ```
 
-### 5.4 并行运算 Trait
+- `GLOBAL_PARALLEL_THRESHOLD`：控制自动串并切换阈值
+- `ParallelGuard`：防止嵌套并行；进入失败时必须回退串行而不是 panic
+- `ParallelPool`：可选自定义线程池包装，仅改变执行上下文，不改变 API 语义
+
+## §3 API（接口）
+
+### 3.1 公共入口
 
 ```rust
-// src/parallel/par_ops.rs
+#[cfg(feature = "parallel")]
+pub fn get_parallel_threshold() -> usize;
 
-use rayon::prelude::*;
+#[cfg(feature = "parallel")]
+pub fn set_parallel_threshold(threshold: usize);
 
-/// Parallel map operation
-///
-/// # Constraints
-///
-/// * `F: Fn(&A) -> B + Sync` - Function must be shareable across threads
-/// * `A: Send + Sync` - Input elements must be thread-safe
-/// * `B: Send` - Output elements must be sendable across threads
-///
-/// # Automatic decision
-///
-/// If the element count is below the parallel threshold, falls back to serial `map`.
+#[cfg(feature = "parallel")]
+pub fn reset_parallel_threshold();
+
+#[cfg(feature = "parallel")]
+pub fn should_parallelize(len: usize, is_f_contiguous: bool) -> bool;
+
 #[cfg(feature = "parallel")]
 pub fn par_map<A, B, D, F>(tensor: &Tensor<A, D>, f: F) -> Tensor<B, D>
 where
     D: Dimension,
     A: Element + Send + Sync,
     B: Element + Send,
-    F: Fn(&A) -> B + Sync,
-{
-    let _guard = match ParallelGuard::enter() {
-        Some(g) => g,
-        None => {
-            // Already in parallel context, fall back to serial
-            return tensor.map(f);
-        }
-    };
-    if !should_parallelize(tensor.len(), tensor.is_f_contiguous()) {
-        return tensor.map(f);
-    }
+    F: Fn(&A) -> B + Sync;
 
-    let len = tensor.len();
-    let output: Vec<B> = tensor.par_iter().map(|x| f(x)).collect();
-
-    // SAFETY: output length == tensor.len()
-    unsafe { Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()) }
-}
-
-/// Parallel map with a custom parallelization threshold.
-/// Only parallelizes if the tensor has more than `threshold` elements.
 #[cfg(feature = "parallel")]
 pub fn par_map_with_threshold<A, B, D, F>(
     tensor: &TensorBase<impl Storage<Elem = A>, D>,
@@ -289,161 +87,39 @@ pub fn par_map_with_threshold<A, B, D, F>(
     threshold: usize,
 ) -> Tensor<B, D>
 where
+    D: Dimension,
     A: Element + Send + Sync,
     B: Element + Send,
-    D: Dimension,
-    F: Fn(&A) -> B + Send + Sync,
-{
-    let _guard = match ParallelGuard::enter() {
-        Some(g) => g,
-        None => {
-            // Already in parallel context, fall back to serial
-            let output: Vec<B> = tensor.iter().map(|x| f(x)).collect();
-            // SAFETY: output length == tensor.len()
-            return unsafe { Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()) };
-        }
-    };
-    let len = tensor.len();
-    if len < threshold {
-        // Below threshold: serial execution
-        let output: Vec<B> = tensor.iter().map(|x| f(x)).collect();
-        // SAFETY: output length == tensor.len()
-        return unsafe { Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()) };
-    }
+    F: Fn(&A) -> B + Send + Sync;
 
-    let output: Vec<B> = tensor.par_iter().map(|x| f(x)).collect();
-
-    // SAFETY: output length == tensor.len()
-    unsafe { Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()) }
-}
-
-/// Internal reduction helper used by `par_sum` / `par_dot`.
-///
-/// This is an implementation detail rather than a public API in the current
-/// version, because `require.md §14` only exposes `sum` as the supported
-/// reduction contract.
 #[cfg(feature = "parallel")]
-pub(crate) fn par_reduce_impl<A, D, F, ID>(tensor: &Tensor<A, D>, identity: ID, op: F) -> A
+pub(crate) fn par_reduce_impl<A, D, F, ID>(
+    tensor: &Tensor<A, D>,
+    identity: ID,
+    op: F,
+) -> A
 where
     D: Dimension,
     A: Element + Send + Sync + Clone,
     F: Fn(A, A) -> A + Sync,
-    ID: Fn() -> A + Sync + Clone,
-{
-    let _guard = match ParallelGuard::enter() {
-        Some(g) => g,
-        None => {
-            // Already in parallel context, fall back to serial
-            return tensor.iter().fold(identity(), |acc, x| op(acc, *x));
-        }
-    };
-    if tensor.is_empty() {
-        return identity();
-    }
-    if !should_parallelize(tensor.len(), tensor.is_f_contiguous()) {
-        return tensor.iter().fold(identity(), |acc, x| op(acc, *x));
-    }
+    ID: Fn() -> A + Sync + Clone;
 
-    tensor.par_iter().cloned().reduce(identity, op)
-}
-
-/// Parallel sum
 #[cfg(feature = "parallel")]
 pub fn par_sum<A, D>(tensor: &Tensor<A, D>) -> A
 where
     D: Dimension,
-    A: Element + Numeric + Send + Sync + Clone,
-{
-    // Dispatch policy:
-    // - integers: may use parallel checked accumulation when the reduction tree
-    //   preserves Xenon's exact result contract;
-    // - floats / complex: default to serial baseline unless a specific kernel has
-    //   a documented proof of exact equivalence.
-    dispatch_par_sum(tensor)
-}
+    A: Element + Numeric + Send + Sync + Clone;
 
-/// Parallel dot product.
-///
-/// Only vector inputs participate in dot dispatch. The backend may run a
-/// parallel kernel when the enabled implementation can preserve Xenon's result
-/// contract; otherwise it conservatively falls back to the serial baseline.
 #[cfg(feature = "parallel")]
 pub fn par_dot<A>(lhs: &Tensor<A, Ix1>, rhs: &Tensor<A, Ix1>) -> Result<A, XenonError>
 where
-    A: Element + Numeric + Send + Sync + Clone,
-{
-    dispatch_par_dot(lhs, rhs)
-}
-
-/// Parallel zip operation
-///
-/// # Constraints
-///
-/// * Shapes must be compatible (identical or broadcastable)
-/// * Supports broadcasting
-#[cfg(feature = "parallel")]
-pub fn par_zip_with<A, B, C, DA, DB, F>(
-    a: &Tensor<A, DA>,
-    b: &Tensor<B, DB>,
-    f: F,
-) -> Result<Tensor<C, <DA as BroadcastDim<DB>>::Output>, XenonError>
-where
-    DA: Dimension + BroadcastDim<DB>,
-    DB: Dimension,
-    <DA as BroadcastDim<DB>>::Output: Dimension,
-    A: Element + Send + Sync,
-    B: Element + Send + Sync,
-    C: Element + Send,
-    F: Fn(&A, &B) -> C + Sync,
-{
-    let _guard = match ParallelGuard::enter() {
-        Some(g) => g,
-        None => {
-            // Already in parallel context, fall back to serial
-            return zip_with(a, b, f);
-        }
-    };
-    let broadcast_shape = broadcast::broadcast_shape(&a.shape(), &b.shape())?;
-    let len = broadcast_shape.checked_size().ok_or(XenonError::InvalidShape {
-        from: 0,
-        to: usize::MAX,
-    })?;
-    let is_f_contiguous = a.is_f_contiguous() && b.is_f_contiguous();
-
-    if !should_parallelize(len, is_f_contiguous) {
-        return zip_with(a, b, f);
-    }
-
-    let output_dim = <DA as BroadcastDim<DB>>::Output::from_slice(&broadcast_shape);
-    let a_view = a.broadcast_to(output_dim.clone())?;
-    let b_view = b.broadcast_to(output_dim.clone())?;
-
-    let output: Vec<C> = ParZip::new(a_view, b_view)?.map(|(x, y)| f(x, y)).collect();
-
-    // SAFETY: output length matches dim
-    unsafe { Ok(Tensor::from_raw_vec_unchecked(output, output_dim)) }
-}
+    A: Element + Numeric + Send + Sync + Clone;
 ```
 
-> **顺序保证：** `ParZip` 以广播后的共享逻辑扁平索引区间作为唯一分割基准，并向 rayon 暴露 indexed 语义；因此 `collect::<Vec<_>>()` 产生的结果顺序与串行 `zip_with()` 的逻辑元素顺序一致，而不是“线程完成顺序”。
-
-### 5.5 并行迭代器
+### 3.2 并行迭代入口
 
 ```rust
-// src/parallel/par_iter.rs
-
-use rayon::iter::{ParallelIterator, IndexedParallelIterator};
-
-/// Parallel element iterator
-///
-/// Iterates all logical elements in parallel following the same element order
-/// contract as `iter::Elements`.
-///
-/// # Thread Safety
-///
-/// `A: Send + Sync` is required because elements are accessed from multiple threads:
-/// - `Send`: elements can be transferred across thread boundaries
-/// - `Sync`: shared references can be safely accessed from multiple threads
+#[cfg(feature = "parallel")]
 pub struct ParElements<'a, A, D>
 where
     A: Element + Send + Sync,
@@ -452,169 +128,6 @@ where
     base: TensorView<'a, A, D>,
 }
 
-impl<'a, A, D> ParElements<'a, A, D>
-where
-    A: Element + Send + Sync,
-    D: Dimension,
-{
-    /// Create a parallel element iterator
-    pub fn new(base: TensorView<'a, A, D>) -> Self {
-        ParElements { base }
-    }
-
-    /// Get total element count
-    pub fn len(&self) -> usize { self.base.len() }
-
-    /// Check if empty
-    pub fn is_empty(&self) -> bool { self.base.is_empty() }
-}
-
-#[cfg(feature = "parallel")]
-impl<'a, A, D> ParallelIterator for ParElements<'a, A, D>
-where
-    A: Element + Send + Sync,
-    D: Dimension + Send,
-{
-    type Item = &'a A;
-
-    fn drive_unindexed<C>(self, consumer: C) -> C::Result
-    where
-        C: rayon::iter::plumbing::UnindexedConsumer<Self::Item>,
-    {
-        // Splits data into chunks and drives parallel execution
-        rayon::iter::plumbing::bridge(self, consumer)
-    }
-}
-
-#[cfg(feature = "parallel")]
-impl<'a, A, D> IndexedParallelIterator for ParElements<'a, A, D>
-where
-    A: Element + Send + Sync,
-    D: Dimension + Send,
-{
-    fn len(&self) -> usize { self.base.len() }
-
-    fn drive<C: rayon::iter::plumbing::Consumer<Self::Item>>(self, consumer: C) -> C::Result {
-        rayon::iter::plumbing::bridge(self, consumer)
-    }
-
-    fn with_producer<CB: rayon::iter::plumbing::ProducerCallback<Self::Item>>(
-        self,
-        callback: CB,
-    ) -> CB::Output {
-        // Split the flat index range and map to elements
-        callback.callback(ElementsProducer {
-            range: crate::iter::ElementsProducerRange::from_view(self.base),
-        })
-    }
-}
-
-/// Producer for ordered parallel element iteration.
-///
-/// Splits the logical flat index range into sub-ranges for parallel processing,
-/// preserving the same observable element order as the serial iterator.
-pub struct ElementsProducer<'a, A, D>
-where
-    A: Element + Send + Sync,
-    D: Dimension,
-{
-    range: crate::iter::ElementsProducerRange<'a, A, D>,
-}
-
-#[cfg(feature = "parallel")]
-impl<'a, A, D> rayon::iter::plumbing::Producer for ElementsProducer<'a, A, D>
-where
-    A: Element + Send + Sync,
-    D: Dimension + Send,
-{
-    type Item = &'a A;
-    type IntoIter = crate::iter::Elements<'a, A, D>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        crate::iter::Elements::from_producer_range(self.range)
-    }
-
-    fn split_at(self, index: usize) -> (Self, Self) {
-        // Split the producer range at the flat logical index boundary.
-        // `ElementsProducerRange` preserves `[start, end)` state instead of
-        // pretending the two halves are standalone TensorViews.
-        let (left, right) = self.range.split_at(index);
-        (
-            ElementsProducer { range: left },
-            ElementsProducer { range: right },
-        )
-    }
-}
-
-/// Parallel multi-array synchronized iterator
-///
-/// Iterates two arrays simultaneously, yielding tuples element wise.
-/// Inputs must already be normalized to the same broadcasted dimension by the
-/// caller (`par_zip_with` performs this step before constructing `ParZip`).
-///
-/// # Thread Safety
-///
-/// `A: Send + Sync` and `B: Send + Sync` are required because elements from both
-/// arrays are accessed from multiple threads concurrently.
-pub struct ParZip<'a, A, B, D>
-where
-    A: Element + Send + Sync,
-    B: Element + Send + Sync,
-    D: Dimension,
-{
-    a: TensorView<'a, A, D>,
-    b: TensorView<'a, B, D>,
-    len: usize,
-}
-
-impl<'a, A, B, D> ParZip<'a, A, B, D>
-where
-    A: Element + Send + Sync,
-    B: Element + Send + Sync,
-    D: Dimension,
-{
-    /// Create a parallel zip iterator
-    pub fn new(
-        a: TensorView<'a, A, D>,
-        b: TensorView<'a, B, D>,
-    ) -> Result<Self, XenonError> {
-        debug_assert_eq!(a.shape(), b.shape());
-        let len = a.len();
-        Ok(ParZip { a, b, len })
-    }
-
-    pub fn len(&self) -> usize { self.len }
-    pub fn is_empty(&self) -> bool { self.len == 0 }
-}
-
-#[cfg(feature = "parallel")]
-impl<'a, A, B, D> ParallelIterator for ParZip<'a, A, B, D>
-where
-    A: Element + Send + Sync,
-    B: Element + Send + Sync,
-    D: Dimension + Send,
-{
-    type Item = (&'a A, &'a B);
-
-    fn drive_unindexed<C>(self, consumer: C) -> C::Result
-    where
-        C: rayon::iter::plumbing::UnindexedConsumer<Self::Item>,
-    {
-        // Splits data into chunks and drives parallel execution
-        rayon::iter::plumbing::bridge(self, consumer)
-    }
-}
-```
-
-### 5.6 `par_iter()` 入口
-
-```rust
-// src/parallel/par_iter.rs (or src/tensor/impls.rs)
-
-/// Parallel element iterator method on TensorBase.
-///
-/// This method is feature-gated and only available when the
-/// `parallel` feature is enabled.
 #[cfg(feature = "parallel")]
 impl<S, D, A> TensorBase<S, D>
 where
@@ -622,140 +135,71 @@ where
     D: Dimension,
     A: Element + Send + Sync,
 {
-    /// Returns a parallel element iterator.
-    ///
-    /// # Feature Gate
-    ///
-    /// Only available with `features = ["parallel"]`.
     pub fn par_iter(&self) -> ParElements<'_, A, D> {
         ParElements::new(self.view())
     }
 }
 ```
 
-### 5.7 嵌套并行防护（实现）
+当前版本不提供任何并行双输入同步 API；需要多输入逐元素调度时，应先由上层语义模块完成形状与执行策略裁决，再决定是否复用单输入并行内核。
+
+## §4 Algorithm（算法）
+
+### §4.1 Invariants（不变式）
+
+- 仅支持 F-order 语义；并行模块不得引入 C-order 前提或额外布局状态
+- `should_parallelize()` 只读取长度与 F-order 连续性，不改变张量元数据
+- 进入并行区域前必须先尝试 `ParallelGuard::enter()`；失败时只能串行回退
+- 并行路径返回的逻辑结果必须与串行路径一致；若无法证明一致性，必须回退串行
+- panic 与 `Err(XenonError)` 都不得被吞掉或延迟为“全部 worker 完成后再统一检查”
+
+### §4.2 Error Scenarios（错误场景）
+
+并行模块本身不新增专属错误枚举；公开错误必须复用 `26-error.md` 中的统一模型。
 
 ```rust
-// src/parallel/mod.rs
-
-/// Runtime guard for parallel execution.
-///
-/// Parallel entry points call `ParallelGuard::enter()` before spawning work.
-/// If a guard is already active in the current execution context, nested
-/// parallel APIs fall back to serial execution.
-pub struct ParallelGuard;
-
-impl ParallelGuard {
-    /// Enter a parallel context.
-    ///
-    /// Returns `None` if the current execution context is already inside
-    /// a parallel region.
-    pub fn enter() -> Option<Self>;
+XenonError::ShapeMismatch {
+    operation: "dot",
+    left_shape: Cow::Borrowed(&[lhs.len()]),
+    right_shape: Cow::Borrowed(&[rhs.len()]),
 }
 
-impl Drop for ParallelGuard {
-    fn drop(&mut self) {
-        // Releases the explicit parallel token.
-    }
+XenonError::InvalidArgument {
+    operation: "set_parallel_threshold",
+    argument: "threshold",
+    expected: "threshold > 0",
+    actual: threshold.to_string(),
+    axis: None,
+    shape: None,
 }
 ```
 
-> **设计说明：** 不在公共 API 中显式暴露并行令牌参数。并行入口统一通过 `ParallelGuard::enter()` 建立运行时守卫；若检测到已处于并行区域，则内层操作自动回退串行，避免嵌套并行失效。
+- `par_dot()` 的 shape 不兼容必须返回 `ShapeMismatch`
+- 自定义线程池或阈值类参数若存在非法值，应返回 `InvalidArgument`
+- 归约中的整数溢出仍属于不可恢复错误，必须 panic，而不是包装为 `XenonError`
+- 线程池初始化失败属于实现接线问题时，可映射到统一错误模型；不得发明仅限并行模块的公开字段名
 
-### 5.8 Good/Bad 对比示例
-
-```rust
-// Good - Use automatic path selection
-let result = tensor.par_map(|x| x * 2.0);
-// Small arrays automatically serial, large arrays automatically parallel
-
-// Good - Use a custom threshold
-let result = tensor.par_map_with_threshold(|x| x * 2.0, 8192);
-
-// Good - Use serial operations inside a parallel context to avoid nesting
-tensor.axis_iter(Axis(0)).for_each(|slice| {
-    // Inner layer uses serial operations
-    let sum: f64 = slice.iter().sum();
-});
-
-// Bad - Nested parallelism
-tensor.axis_iter(Axis(0)).for_each(|slice| {
-    let sum = slice.par_sum(); // Forbidden! Thread pool starvation
-});
-
-// Bad - ignoring parallel errors
-let result = par_zip_with(&a, &b, |x, y| x + y)?;
-```
-
----
-
-## 6. 内部实现设计
-
-### 6.1 分块策略
-
-```
-Chunking decision flow
-
-┌─────────────────────────────────────────────────────────────────┐
-│  Input: tensor (TensorBase<S, D>)                               │
-│                                                                 │
-│  1. Check contiguity                                            │
-│     ├─ is_f_contiguous() ?                                      │
-│     │   └─ Use contiguous chunking (see `06-memory.md §4.4`)    │
-│     │       compute_contiguous_chunks(len, config)              │
-│     │                                                           │
-│     └─ Non-contiguous                                           │
-│         └─ Chunk along the first axis                           │
-│             compute_strided_chunks(shape, strides, config)      │
-│                                                                 │
-│  2. Return chunk iterator                                       │
-│     └─ chunks.into_par_iter()                                   │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### 6.2 线程池管理
+### 4.3 路径选择与传播
 
 ```rust
-// src/parallel/mod.rs
-
-/// Custom thread pool wrapper
 #[cfg(feature = "parallel")]
-pub struct ParallelPool {
-    inner: rayon::ThreadPool,
-}
-
-#[cfg(feature = "parallel")]
-impl ParallelPool {
-    /// Create a new thread pool
-    pub fn new(num_threads: usize) -> Result<Self, PoolInitError> {
-        let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(num_threads)
-            .build()
-            .map_err(|e| PoolInitError::BuildFailed(e.to_string()))?;
-        Ok(ParallelPool { inner: pool })
+pub fn should_parallelize(len: usize, is_f_contiguous: bool) -> bool {
+    if rayon::current_num_threads() <= 1 {
+        return false;
     }
 
-    /// Execute a closure on this thread pool
-    pub fn install<OP, R>(&self, op: OP) -> R
-    where
-        OP: FnOnce() -> R + Send,
-        R: Send,
-    {
-        self.inner.install(op)
-    }
+    let threshold = get_parallel_threshold();
+    let effective_threshold = if is_f_contiguous {
+        threshold
+    } else {
+        threshold.saturating_mul(2)
+    };
 
-    /// Get the number of threads
-    pub fn num_threads(&self) -> usize {
-        self.inner.current_num_threads()
-    }
+    len >= effective_threshold
 }
 ```
 
-### 6.3 并行错误传播
-
 ```rust
-// Good - Unrecoverable errors in parallel operations are propagated immediately
 pub fn par_map_checked<A, B, D, F>(
     tensor: &Tensor<A, D>,
     f: F,
@@ -767,375 +211,42 @@ where
     F: Fn(&A) -> Result<B, XenonError> + Sync,
 {
     if !should_parallelize(tensor.len(), tensor.is_f_contiguous()) {
-        // Serial path: propagate errors naturally
         let mut output = Vec::with_capacity(tensor.len());
         for elem in tensor.iter() {
             output.push(f(elem)?);
         }
-        // SAFETY: output length == tensor.len() (each element maps to exactly one output)
         return Ok(unsafe { Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()) });
     }
 
-    // Parallel path: prefer try-based propagation so worker failures surface as
-    // soon as the parallel framework can stop scheduling more work.
-    let output: Result<Vec<B>, XenonError> = tensor
-        .par_iter()
-        .map(|x| f(x))
-        .collect();
-
-    let output = output?;
-    // SAFETY: output length == tensor.len() (each successful result produces one output)
-    Ok(unsafe { Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()) })
-}
-
-// Bad - Silently ignoring errors in parallel operations
-pub fn par_map_silent<A, B, D, F>(tensor: &Tensor<A, D>, f: F) -> Tensor<B, D>
-where
-    F: Fn(&A) -> Option<B> + Sync,
-{
-    // Forbidden: errors are silently swallowed
-    let output: Vec<B> = tensor
-        .par_iter()
-        .filter_map(|x| f(x))  // Silently discards None
-        .collect();
-    // output length may not match the expected length!
-    // SAFETY: BUG — length invariant is NOT upheld due to filter_map discarding elements
-    unsafe { Tensor::from_raw_vec_unchecked(output, tensor.raw_dim()) }
+    let output: Result<Vec<B>, XenonError> = tensor.par_iter().map(|x| f(x)).collect();
+    Ok(unsafe { Tensor::from_raw_vec_unchecked(output?, tensor.raw_dim()) })
 }
 ```
 
----
-
-## 7. 实现任务拆分
-
-### Wave 1: 基础设施
-
-- [ ] **T1**: 创建 `src/parallel/mod.rs` 骨架
-  - 文件: `src/parallel/mod.rs`
-  - 内容: feature gate 声明、rayon 集成、全局阈值 `AtomicUsize`、`should_parallelize()`、`ParallelGuard`、模块导出
-  - 测试: 编译通过、`test_default_threshold`
-  - 前置: tensor 模块完成
-  - 预计: 10 min
-
-### Wave 2: 迭代器与基础设施扩展
-
-- [ ] **T2**: 创建 `src/parallel/par_iter.rs` 并行迭代器
-  - 文件: `src/parallel/par_iter.rs`
-  - 内容: `ParElements` 结构体和 `ParallelIterator` 实现、`ParZip` 结构体和 `ParallelIterator` 实现
-  - 测试: `test_par_elements_len`、`test_par_zip_len`
-  - 前置: T1
-  - 预计: 10 min
-
-- [ ] **T6**: 实现嵌套并行防护
-  - 文件: `src/parallel/mod.rs`
-  - 内容: `ParallelGuard` 显式令牌、串行回退检查、上下文传播辅助函数
-  - 测试: `test_nested_parallel_guard`、`test_parallel_token_propagation`
-  - 前置: T1
-  - 预计: 10 min
-
-- [ ] **T7**: 线程池管理与配置
-  - 文件: `src/parallel/mod.rs`
-  - 内容: `ParallelPool` 封装、`configure_global_pool()`
-  - 测试: `test_custom_pool`
-  - 前置: T1
-  - 预计: 10 min
-
-### Wave 3: 并行运算
-
-- [ ] **T3**: 实现 `par_map` 和 `par_map_inplace`
-  - 文件: `src/parallel/par_ops.rs`
-  - 内容: `par_map()`、`par_map_inplace()`、自动阈值检查、串行回退
-  - 测试: `test_par_map_result`、`test_par_map_fallback_small`
-  - 前置: T2
-  - 预计: 10 min
-
-- [ ] **T4**: 实现 `par_sum`、`par_dot` 与内部归约辅助
-  - 文件: `src/parallel/par_ops.rs`
-  - 内容: `par_reduce_impl()`（`pub(crate)`）、`par_sum()`、`par_dot()`、一致性约束
-  - 测试: `test_par_sum_correctness`、`test_par_sum_empty`、`test_par_dot_matches_serial`
-  - 前置: T2
-  - 预计: 10 min
-
-- [ ] **T5**: 实现 `par_zip_with`
-  - 文件: `src/parallel/par_ops.rs`
-  - 内容: `par_zip_with()`、广播兼容性、并行 zip 实现
-  - 测试: `test_par_zip_with_add`、`test_par_zip_broadcast`
-  - 前置: T2
-  - 预计: 10 min
-
-### Wave 4: 集成与测试
-
-- [ ] **T8**: 集成测试与一致性验证
-  - 文件: `tests/test_parallel.rs`
-  - 内容: 并行与串行结果一致性测试、阈值行为测试、竞态条件检测
-  - 测试: `test_par_sum_matches_serial`、`test_threshold_boundary`
-  - 前置: T3, T4, T5
-  - 预计: 10 min
-
-```
-Wave 1:        [T1]
-                  │
-                  ▼
-Wave 2: [T2] [T6] [T7]
-           │
-     ┌─────┼─────┐
-     ▼     ▼     ▼
-Wave 3: [T3]  [T4]  [T5]
-           │     │     │
-           └─────┼─────┘
-                 │
-                 ▼
-Wave 4:        [T8]
-```
-
----
-
-## 8. 测试计划
-
-### 8.1 测试分类表
-
-| 类型       | 位置                     | 目的                                  |
-| ---------- | ------------------------ | ------------------------------------- |
-| 单元测试   | `#[cfg(test)] mod tests` | 验证单个并行操作                      |
-| 一致性测试 | `tests/test_parallel.rs` | 并行结果与串行一致                    |
-| 边界测试   | 集成测试中标注           | 阈值边界、空数组、单元素              |
-| 并发测试   | `tests/concurrent/`      | 竞态条件检测                          |
-| 属性测试   | `tests/property/`        | 随机数据验证一致性不变量（参见 §7.4） |
-
-### 8.2 单元测试清单
-
-| 测试函数                          | 测试内容                    | 优先级 |
-| --------------------------------- | --------------------------- | ------ |
-| `test_default_threshold`          | 默认阈值为 1024             | 高     |
-| `test_set_get_threshold`          | 设置和获取阈值一致          | 高     |
-| `test_par_elements_len`           | 并行迭代器长度正确          | 高     |
-| `test_par_map_result`             | 并行映射结果正确            | 高     |
-| `test_par_map_fallback_small`     | 小数组回退到串行            | 高     |
-| `test_par_sum_correctness`        | 并行求和结果正确            | 高     |
-| `test_par_sum_empty`              | 空数组 `sum` 返回加法单位元 | 高     |
-| `test_par_dot_matches_serial`     | 并行内积与串行语义一致      | 高     |
-| `test_par_zip_with_add`           | 并行 zip 加法正确           | 高     |
-| `test_par_zip_broadcast`          | 广播并行正确                | 中     |
-| `test_nested_parallel_guard`      | 嵌套并行被检测              | 中     |
-| `test_parallel_token_propagation` | 并行上下文令牌传播正确      | 中     |
-| `test_custom_pool`                | 自定义线程池工作正常        | 低     |
-
-### 8.3 边界测试场景
-
-| 场景                  | 预期行为                   |
-| --------------------- | -------------------------- |
-| 空数组 `len=0`        | 并行操作立即返回，不 panic |
-| 单元素 `len=1`        | 回退到串行                 |
-| `len = threshold - 1` | 串行执行                   |
-| `len = threshold`     | 并行执行                   |
-| `len = threshold + 1` | 并行执行                   |
-| 非连续数组            | 阈值翻倍后决定             |
-| 嵌套并行              | 内层自动回退串行           |
-
-### 8.4 属性测试不变量
-
-| 不变量                                  | 测试方法                    |
-| --------------------------------------- | --------------------------- |
-| `par_sum() == iter().sum()`             | 随机 `[f64; 0..100000]`     |
-| `par_dot(a, b)` 与串行 `dot(a, b)` 一致 | 随机一维 `[f64; 0..100000]` |
-| `par_map(f) == map(f)`                  | 随机 `[f32; 0..100000]`     |
-| `par_zip_with(f) == zip_with(f)`        | 随机形状                    |
-| 并行结果与线程数无关                    | 分别用 1, 2, 4, 8 线程验证  |
-
-### 8.5 集成测试
-
-| 测试文件                 | 测试内容                                                                                                          |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `tests/test_parallel.rs` | `par_map` / `par_sum` / `par_dot` / `par_zip_with` 与 `tensor`、`storage`、`simd`、`rayon` guard 的端到端协同路径 |
-
-### 8.6 Feature gate / 配置测试
-
-| 场景                    | 配置方式                             | 预期行为                                 |
-| ----------------------- | ------------------------------------ | ---------------------------------------- |
-| 默认关闭                | 默认 feature 集                      | 不编译并行路径，且无 `rayon` 运行时依赖  |
-| 显式启用                | `--features parallel`                | 并行 API 可用，达到阈值时进入并行路径    |
-| 无硬件/线程收益自动回退 | `--features parallel` + 单线程环境   | 成功编译运行，并自动回退到串行路径       |
-
-### 8.7 类型边界 / 编译期测试
-
-| 测试类型   | 覆盖内容                                                                    | 预期结果                           |
-| ---------- | --------------------------------------------------------------------------- | ---------------------------------- |
-| 类型边界   | `A: Send + Sync`、`B: Send`、`F: Sync` 等 trait 约束                        | 合法类型组合可编译，非法组合被拒绝 |
-| 类型边界   | `par_dot` 仅接受一维输入；`par_zip_with` 需满足 broadcast 约束              | 不满足签名约束时编译或类型检查失败 |
-| 编译期测试 | `#[cfg(feature = "parallel")]` / `#[cfg(not(feature = "parallel"))]` 两侧 API | 两种 feature 组合均可编译          |
-| 编译期测试 | 嵌套并行防护 API 与串行回退路径                                             | 开启 feature 后可编译并保持回退语义 |
-
----
-
-## 9. 与其他模块的交互
-
-### 9.1 接口约定
-
-并行路径的每个工作线程可以调用上层提供的分块执行器；若上层在该分块上启用 SIMD，则仅限于当前已覆盖的逐元素算术/一元运算和整数归约形成“并行 + SIMD”组合路径。数学函数以及浮点归约/内积在并行路径中仍保持标量执行（参见 `08-simd.md §9`）。
-
-```
-Parallel + SIMD combined execution
-
-┌─────────────────────────────────────────────────────────────────┐
-│ par_map(tensor, f)                                              │
-│   ├─ Chunking: [0..N/4), [N/4..N/2), [N/2..3N/4), [3N/4..N)   │
-│   │                                                             │
-│   ├─ Thread 0: execute_chunk(chunk_0)                          │
-│   │   └─ SIMD or scalar is chosen by upper-layer dispatch      │
-│   │                                                             │
-│   ├─ Thread 1: execute_chunk(chunk_1)                          │
-│   │   └─ SIMD or scalar is chosen by upper-layer dispatch      │
-│   │                                                             │
-│   └─ ...                                                        │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### 9.2 数据流描述
-
-```text
-Upper semantic modules call par_map / par_sum / par_dot / par_zip_with
-    │
-    ├── ParallelGuard::enter()
-    │       └── If already in parallel region -> automatically fall back to serial
-    │
-    ├── should_parallelize(len, is_f_contiguous)
-    │       ├── Below threshold -> serial
-    │       └── Meets threshold -> parallel chunking
-    │
-    ├── rayon executes chunks in parallel
-    │
-    └── The execution kernel inside each chunk (SIMD / scalar) is chosen by upper-layer dispatch
-```
-
-### 9.3 与 storage 模块
-
-并行迭代器通过 `RawStorage` trait 获取原始指针和长度信息（参见 `05-storage.md §4`）。
-
-### 9.4 与 tensor 模块
-
-并行操作消费 `Tensor<A, D>` 的视图，产出新的 `Tensor<A, D>`（参见 `07-tensor.md §4.5`）。
-
----
-
-## 10. 错误处理与语义边界
-
-| 类型                 | 说明                                                                                 |
-| -------------------- | ------------------------------------------------------------------------------------ |
-| Recoverable error    | `par_zip_with` 的 shape/broadcast 校验失败、线程池初始化失败等通过 `Result` 返回；阈值不足或检测到嵌套并行时自动回退串行路径 |
-| Panic                | 违反内部长度不变式、`unsafe` 构造前提被破坏等实现级 bug；设计上不因嵌套并行而 panic   |
-| 路径一致性           | parallel 结果与 serial 路径保持一致；若某条并行路径无法证明一致，则必须回退串行       |
-| 容差边界             | integer: exact; float: same numerical semantics or documented tolerance per require §28.3 |
-
----
-
-## 11. 设计决策记录（ADR）
-
-### 决策 1：选择 rayon 作为并行框架
-
-| 属性     | 值                                                                                                 |
-| -------- | -------------------------------------------------------------------------------------------------- |
-| 决策     | 使用 rayon crate 作为并行框架                                                                      |
-| 理由     | 成熟稳定、work-stealing 调度器高效、`ParallelIterator` API 优雅、Rust 生态标准选择、无数据竞争保证 |
-| 替代方案 | `crossbeam` — 放弃，更底层，需手动管理任务分发                                                     |
-| 替代方案 | `tokio` — 放弃，面向异步 I/O，不适合 CPU 密集型计算                                                |
-| 替代方案 | 手动 `std::thread` — 放弃，代码复杂度高，错误容易引入                                              |
-
-### 决策 2：并行归约浮点一致性
-
-| 属性     | 值                                                                                                                                                                            |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | 所有类型的并行结果都必须与串行实现保持一致；若某条并行路径无法证明该性质，则自动回退串行。当前版本默认仅对可逐块证明一致的整数/逐元素路径启用并行归约，浮点归约保守回退串行。 |
-| 理由     | 需求说明书 §28.5 已固定“并行归约结果须与单线程一致”；性能优化不能改变语义结果                                                                                                 |
-| 测试约定 | 并行 sum / zip / map 的一致性测试使用与串行结果一致的断言，而非近似比较；参见 `28-tests.md §14.2`                                                                             |
-| 参见     | `13-reduction.md §9 ADR-2`（协调定义）                                                                                                                                        |
-
-### 决策 3：并行阈值默认 1024 元素
-
-| 属性     | 值                                                           |
-| -------- | ------------------------------------------------------------ |
-| 决策     | 默认并行阈值设为 1024 元素                                   |
-| 理由     | 低于此值时线程调度和同步开销大于并行收益；可配置允许用户调优 |
-| 替代方案 | 65536（64K）— 更保守，错过中等规模数组的并行加速             |
-| 替代方案 | 256 — 更激进，小数组并行开销可能大于收益                     |
-| 替代方案 | 0（始终并行）— 放弃，小数组并行会严重降低性能                |
-
-### 决策 4：嵌套并行回退到串行而非 panic
-
-| 属性     | 值                                                                                        |
-| -------- | ----------------------------------------------------------------------------------------- |
-| 决策     | 检测到嵌套并行时自动回退到串行执行                                                        |
-| 理由     | 更宽容，不会中断用户程序；通过 `ParallelGuard` 运行时守卫允许调用链在检测到嵌套时回退串行 |
-| 替代方案 | panic — 放弃，虽然能暴露问题，但可能破坏生产环境                                          |
-| 替代方案 | 编译期禁止 — 放弃，Rust 类型系统难以在编译期检测嵌套并行                                  |
-
----
-
-## 12. 性能考量
-
-### 12.1 并行开销分析
-
-| 开销来源 | 典型值    | 说明                       |
-| -------- | --------- | -------------------------- |
-| 线程调度 | ~1-10μs   | rayon work-stealing 调度器 |
-| 任务分发 | ~0.1-1μs  | 分块和分发                 |
-| 缓存失效 | ~10-100μs | 大数组跨线程访问           |
-| 同步屏障 | ~0.1-1μs  | reduce 操作的合并步骤      |
-
-### 12.2 最优阈值选取方法
-
-```
-Performance vs element count
-
-Speed
-  │          ┌──────────────── Parallel path
-  │         ╱
-  │        ╱  crossover ≈ 1024
-  │───────╱────────────────── Serial path
-  │      ╱
-  │     ╱
-  │    ╱
-  └─────────────────────── Element count
-         ↑
-       Parallel threshold
-```
-
-- 实际最优阈值依赖硬件配置，应通过 benchmark 确定
-- 默认值 1024 是保守估计，适用于主流硬件
-- 用户可通过 `set_parallel_threshold()` 调优
-
-### 12.3 预期加速比
-
-| 操作               | 元素数 | 4 核加速比 | 8 核加速比 |
-| ------------------ | ------ | ---------- | ---------- |
-| par_map (f64)      | 1M     | ~3.5x      | ~6x        |
-| par_sum (f64)      | 1M     | 串行回退   | 串行回退   |
-| par_dot (f64)      | 1M     | 串行回退   | 串行回退   |
-| par_zip_with (f64) | 1M     | ~3x        | ~5.5x      |
-
----
-
-## 13. 平台与工程约束
-
-| 约束       | 说明                         |
-| ---------- | ---------------------------- |
-| `std` only | 并行路径依赖 `std` + `rayon` |
-| 单 crate   | 保持单 crate 边界            |
-| SemVer     | 并行 API 变更遵循 SemVer     |
-| 最小依赖   | 可选依赖 `rayon`，默认关闭   |
-
----
-
-## 版本历史
-
-| 版本  | 日期       |
-| ----- | ---------- |
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.1.1 | 2026-04-10 |
-
----
-
-_本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。_
+## §5 Testing（测试）
+
+| 测试函数 | 目的 |
+| --- | --- |
+| `test_default_threshold` | 默认阈值为 1024 |
+| `test_set_get_threshold` | 阈值设置与读取一致 |
+| `test_par_map_fallback_small` | 小张量自动回退串行 |
+| `test_par_sum_matches_serial` | 并行 `sum` 与串行语义一致 |
+| `test_par_dot_matches_serial` | `par_dot` 与串行结果一致 |
+| `test_nested_parallel_guard` | 嵌套并行回退串行 |
+| `test_parallel_error_propagation` | 并行 `Err` 及时上传 |
+| `test_parallel_panic_propagation` | 并行 panic 不被吞掉 |
+
+还必须覆盖以下场景：
+
+- `--features parallel` 与默认构建均可编译
+- 单线程环境下 `should_parallelize()` 返回 `false`
+- 非连续视图阈值翻倍后仍保持正确回退行为
+- 任何并行路径都不依赖多数组同步迭代接口
+
+## §6 References（参考）
+
+- `07-tensor.md`
+- `10-iterator.md`
+- `13-reduction.md`
+- `26-error.md`
+- 需求说明书 §9.2, §9.3

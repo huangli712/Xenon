@@ -248,10 +248,10 @@ where
     /// Returns a slice of axis lengths.
     pub fn shape(&self) -> &[usize];
 
-    /// Returns a slice of strides (isize, in element units).
+    /// Returns a slice of strides (usize, in element units).
     ///
     /// Strides may be zero for broadcast dimensions.
-    pub fn strides(&self) -> &[isize];
+    pub fn strides(&self) -> &[usize];
 
     /// Returns the number of dimensions.
     ///
@@ -276,6 +276,9 @@ where
 
     /// Returns the storage-location classification of the tensor payload.
     pub fn storage_kind(&self) -> StorageKind;
+
+    /// Returns the layout-state classification of the logical tensor view.
+    pub fn layout_state(&self) -> LayoutState;
 
     /// Whether the data is F-order contiguous.
     #[inline]
@@ -303,6 +306,13 @@ pub enum StorageKind {
     View,
     ViewMut,
     Shared,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayoutState {
+    FContiguous,
+    NonContiguous,
+    BroadcastView,
 }
 ```
 
@@ -392,7 +402,10 @@ where
     /// # Arguments
     ///
     /// * `shape` - Length of each axis
-    /// * `data` - Element data (Vec)
+    /// * `data` - Element data following logical-index correspondence semantics
+    ///   defined by `require.md §19`; the input order defines which element belongs
+    ///   to each logical index, rather than requiring callers to pre-arrange bytes
+    ///   in a specific physical layout
     ///
     /// # Errors
     ///
@@ -400,12 +413,18 @@ where
     /// - `shape.checked_size()` overflows
     /// - `data.len() != shape.checked_size()`
     ///
+    /// Xenon follows `require.md §19`: “输入数据给出的顺序定义为逻辑索引语义上的元素对应关系”。
+    ///
     /// # Example
     ///
     /// ```ignore
     /// let t = Tensor2::<f64>::from_shape_vec([3, 4], vec![1.0; 12])?;
     /// ```
     pub fn from_shape_vec(shape: D, data: Vec<A>) -> Result<Self, XenonError>;
+
+    /// Other safe constructors such as `zeros()` and `ones()` also return
+    /// `Result<Self, XenonError>` and must be used with `?` or `.unwrap()` in
+    /// examples and calling code.
     // NOTE: from_shape_vec internally copies data into new 64-byte aligned memory
     // via `Owned::from_vec_aligned(data)`. Time complexity is O(n).
     // This ensures the tensor always satisfies SIMD alignment requirements.
@@ -558,8 +577,8 @@ let t = unsafe {
 > | 层次                 | 类型         | 说明                                                                  |
 > | -------------------- | ------------ | --------------------------------------------------------------------- |
 > | `TensorBase.strides` | `Strides<D>` | 与 shape 维度数一致，显式保存 stride 元数据                           |
-> | `strides()` 返回值   | `&[isize]`   | 直接来自 `Strides<D>`（参见 `06-memory.md §5`）                       |
-> | layout 模块计算      | `isize`      | F-order、转置与零步长布局在 layout 层计算（参见 `06-memory.md §5.2`） |
+> | `strides()` 返回值   | `&[usize]`   | 直接来自 `Strides<D>`（参见 `06-memory.md §5`）                       |
+> | layout 模块计算      | `usize`      | F-order、转置与零步长布局在 layout 层计算（参见 `06-memory.md §5.2`） |
 >
 > **权衡：**
 >
@@ -589,48 +608,66 @@ shape: [3], strides: [1], offset: 2  // 仅调整元数据
 
 ```text
 validate_access_range(shape, strides, offset, storage_len):
-    for axis in 0..ndim:
-        if strides[axis] < 0:
-            return Err(XenonError::InvalidLayout {
-                op: "validate_access_range",
-                storage_kind: "raw_parts",
-                shape: shape.slice().to_vec(),
-                strides: strides.as_slice().to_vec(),
-                offset,
-                storage_len,
-                reason: "negative strides are not supported in the current version",
-            })
-
     if shape.checked_size() overflows:
         return Err(XenonError::InvalidLayout {
-            op: "validate_access_range",
+            operation: "validate_access_range",
             storage_kind: "raw_parts",
             shape: shape.slice().to_vec(),
-            strides: strides.as_slice().to_vec(),
+            strides: strides
+                .as_slice()
+                .iter()
+                .map(|&value| value as isize)
+                .collect(),
             offset,
             storage_len,
             reason: "element count overflow",
         })
 
-    min_offset = offset as isize
-    max_offset = offset as isize
+    max_offset = offset
 
     for axis in 0..ndim:
         if shape[axis] == 0:
             return Ok(())
 
-        span = (shape[axis] as isize - 1) * strides[axis]
-        if span < 0:
-            min_offset += span
-        else:
-            max_offset += span
+        span = (shape[axis] - 1).checked_mul(strides[axis])
+            .ok_or_else(|| XenonError::InvalidLayout {
+                operation: "validate_access_range",
+                storage_kind: "raw_parts",
+                shape: shape.slice().to_vec(),
+                strides: strides
+                    .as_slice()
+                    .iter()
+                    .map(|&value| value as isize)
+                    .collect(),
+                offset,
+                storage_len,
+                reason: "stride span overflow",
+            })?
+        max_offset = max_offset.checked_add(span)
+            .ok_or_else(|| XenonError::InvalidLayout {
+                operation: "validate_access_range",
+                storage_kind: "raw_parts",
+                shape: shape.slice().to_vec(),
+                strides: strides
+                    .as_slice()
+                    .iter()
+                    .map(|&value| value as isize)
+                    .collect(),
+                offset,
+                storage_len,
+                reason: "logical access range overflow",
+            })?
 
-    if min_offset < 0 or max_offset >= storage_len as isize:
+    if max_offset >= storage_len:
         return Err(XenonError::InvalidLayout {
-            op: "validate_access_range",
+            operation: "validate_access_range",
             storage_kind: "raw_parts",
             shape: shape.slice().to_vec(),
-            strides: strides.as_slice().to_vec(),
+            strides: strides
+                .as_slice()
+                .iter()
+                .map(|&value| value as isize)
+                .collect(),
             offset,
             storage_len,
             reason: "logical access range exceeds backing storage",
@@ -699,8 +736,8 @@ Tensor2<f64> = TensorBase<Owned<f64>, Ix2>
 
 - [ ] **T5**: 实现布局查询委托方法
   - 文件: `src/tensor/impls.rs`
-  - 内容: `is_f_contiguous()`/`is_aligned()`/`has_zero_stride()`
-  - 测试: `test_layout_flags_delegate`
+  - 内容: `layout_state()`/`is_f_contiguous()`/`is_aligned()`/`has_zero_stride()`
+  - 测试: `test_layout_flags_delegate`, `test_layout_state_classification`
   - 前置: T4
   - 预计: 10 min
 
@@ -791,6 +828,7 @@ Wave 4:       [T10]
 | `test_tensor_ndim_static`           | `Tensor2` 的 `ndim()` == 2                           | 高     |
 | `test_tensor_ndim_dynamic`          | `TensorD` 的 `ndim()` 运行时                         | 中     |
 | `test_tensor_strides_f_order`       | F-order 步长正确 `[1, shape[0], ...]`                | 高     |
+| `test_tensor_layout_state`          | `FContiguous`/`NonContiguous`/`BroadcastView` 分类正确 | 高     |
 | `test_tensor_flags_f_contiguous`    | 新构造张量 F-连续                                    | 高     |
 | `test_tensor_flags_aligned`         | 新构造张量对齐                                       | 高     |
 | `test_tensor_as_ptr`                | 指针指向正确位置                                     | 高     |
@@ -1000,19 +1038,19 @@ where
 {
     pub fn from_shape_vec(shape: D, data: Vec<A>) -> Result<Self, XenonError> {
         let expected = shape.checked_size().ok_or(XenonError::InvalidShape {
-            op: "from_shape_vec",
-            storage_kind: "owned",
+            operation: "from_shape_vec",
             shape: shape.slice().to_vec(),
-            expected_len: None,
-            actual_len: data.len(),
+            expected_elements: 0,
+            actual_elements: data.len(),
+            offending_dim: None,
         })?;
         if data.len() != expected {
             return Err(XenonError::InvalidShape {
-                op: "from_shape_vec",
-                storage_kind: "owned",
+                operation: "from_shape_vec",
                 shape: shape.slice().to_vec(),
-                expected_len: Some(expected),
-                actual_len: data.len(),
+                expected_elements: expected,
+                actual_elements: data.len(),
+                offending_dim: None,
             });
         }
         let strides = layout::compute_f_strides(&shape);
@@ -1067,7 +1105,7 @@ where
 ## 附录 C：数据流图
 
 ```
-User calls `zeros::<f64, Ix2>([3, 4])`
+User calls `Tensor::<f64, Ix2>::zeros([3, 4])?`
     │
     ├── `Dimension::ndim()`          → 2
     ├── `Dimension::slice()`         → [3, 4]
@@ -1075,7 +1113,7 @@ User calls `zeros::<f64, Ix2>([3, 4])`
     ├── compute strides (F-order)    → [1, 3]
     ├── aligned allocation 12 * 8 = 96 bytes  → 64-byte aligned
     ├── compute `LayoutFlags`        → F_CONTIGUOUS | ALIGNED
-    └── return `TensorBase<Owned<f64>, Ix2>`
+    └── return `Result<TensorBase<Owned<f64>, Ix2>, XenonError>`
 ```
 
 ---
