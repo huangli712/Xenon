@@ -93,7 +93,7 @@ src/
 | 章节 | 必须 | 说明 | 规范章节 |
 |------|------|------|---------|
 | 1. 模块定位/概述 | ✅ | 职责、包含/不包含、设计原则 | §4 |
-| 2. 需求映射与范围约束 | ✅ | 对应需求条款、in-scope、out-of-scope、非目标 | §5 |
+| 2. 需求映射与范围约束 | ✅ | 对应需求条款、范围内、范围外、非目标 | §5 |
 | 3. 文件位置 | ✅ | 文件路径 + 划分理由 | §1.3 |
 | 4. 依赖关系 | ✅ | 依赖图 + 具体消费的类型/trait + 依赖合法性声明 | §6 |
 | 5. 公共 API 设计 | ✅ | 公共接口草案、关键签名、文档/示例交付物 | §7 |
@@ -114,7 +114,7 @@ src/
 | 章节 | 必须 | 说明 |
 |------|------|------|
 | 1. 主题定位/适用范围 | ✅ | 说明约束主题、覆盖范围、适用对象 |
-| 2. 需求映射与范围约束 | ✅ | 对应需求条款、in-scope、out-of-scope、非目标 |
+| 2. 需求映射与范围约束 | ✅ | 对应需求条款、范围内、范围外、非目标 |
 | 3. 影响范围或涉及模块 | ✅ | 说明受该规范影响的模块、路径或能力集合 |
 | 4. 规范内容/约束定义 | ✅ | 明确规则、边界、禁止项、兼容性要求 |
 | 5. 验证与落地方式 | ✅ | 测试、检查项、执行路径一致性或评审要求 |
@@ -236,7 +236,7 @@ API 设计部分至少应包含：
 关键 API 的使用方式须配有 `Good` / `Bad` 对比示例：
 
 ```rust
-// Good - 使用 ? 和 Result
+// Good - use `?` and `Result` for shape incompatibility
 pub fn broadcast_to<D2>(&self, shape: D2) -> Result<TensorView<'_, A, D2>> {
     if !is_broadcast_compatible(self.shape(), shape.as_ref()) {
         return Err(XenonError::IncompatibleShape);
@@ -244,12 +244,14 @@ pub fn broadcast_to<D2>(&self, shape: D2) -> Result<TensorView<'_, A, D2>> {
     // ...
 }
 
-// Bad - 将形状不兼容隐藏为 panic
+// Bad - hide shape incompatibility as a panic
 pub fn broadcast_to_bad<D2>(&self, shape: D2) -> TensorView<'_, A, D2> {
     assert!(is_broadcast_compatible(self.shape(), shape.as_ref()));
     // ...
 }
 ```
+
+示例代码全部使用英文（包括代码与注释）。
 
 ### 7.3 设计决策内联标注
 
@@ -269,6 +271,9 @@ pub fn broadcast_to_bad<D2>(&self, shape: D2) -> TensorView<'_, A, D2> {
 核心算法用伪代码或步骤列表描述：
 
 ```
+//
+// the following pseudo-codes are used to illustrate the core algorithm.
+//
 increment_index_f(shape, index):
     for i in 0..ndim:
         index[i] += 1
@@ -303,7 +308,7 @@ increment_index_f(shape, index):
 
 ### 9.1 统一任务粒度
 
-每个任务约 **10 分钟**，范围限定在"单个函数或单个 trait impl"。
+每个任务一般不超过 **10 分钟**，范围限定在"单个函数或单个 trait impl"。
 
 ### 9.2 Wave/Phase 分组
 
@@ -439,12 +444,12 @@ Wave 2: [W2.1] [W2.2] [W2.3] [W2.4] [W2.5]
 用 ASCII 图或顺序步骤描述模块间的数据流转：
 
 ```
-用户调用 tensor.iter()
+User calls tensor.iter()
     │
-    ├── iter/mod.rs 构造 Elements<'a, A, D>（持有不可变引用）
-    │       └── 迭代时逐步产出 &A
+    ├── iter/mod.rs constructs Elements<'a, A, D> (holding an immutable reference)
+    │       └── yields &A element by element during iteration
     │
-    └── math/ 模块消费迭代器执行运算
+    └── math/ module consumes the iterator to perform computation
 ```
 
 ### 11.3 生命周期与所有权约定（按需）
@@ -568,6 +573,8 @@ Wave 2: [W2.1] [W2.2] [W2.3] [W2.4] [W2.5]
 
 ### 16.1 模块依赖图
 
+模块依赖图一律使用英文。
+
 ```
                     ┌──────────┐
                     │  error   │
@@ -585,24 +592,28 @@ Wave 2: [W2.1] [W2.2] [W2.3] [W2.4] [W2.5]
 
 ### 16.2 数据流图
 
+数据流图一律使用英文。
+
 ```
-用户调用 zeros::<f64, Ix2>([3, 4])
+User calls zeros::<f64, Ix2>([3, 4])
     │
-    ├── Dimension::ndim()         → 2
-    ├── Dimension::slice()        → [3, 4]
-    ├── 计算总元素数               → 12
-    ├── 计算步长 (F-order)         → [1, 3]
-    ├── 对齐分配 12 * 8 = 96 字节  → 64 字节对齐
-    └── 返回 TensorBase<Owned<f64>, Ix2>
+    ├── Dimension::ndim()               -> 2
+    ├── Dimension::slice()              -> [3, 4]
+    ├── compute total element count     -> 12
+    ├── compute strides (F-order)       -> [1, 3]
+    ├── aligned alloc 12 * 8 = 96 bytes -> 64-byte aligned
+    └── return TensorBase<Owned<f64>, Ix2>
 ```
 
 ### 16.3 系统架构图
 
+系统架构图一律使用英文。
+
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│                        迭代与视图系统架构                        │
+│            Iteration and View System Architecture             │
 │  ┌─────────────────────────────────────────────────────────┐  │
-│  │                 Tensor / View / Iterator 层             │  │
+│  │              Tensor / View / Iterator Layer             │  │
 │  └─────────────────────────────────────────────────────────┘  │
 │                              │                                │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐            │
@@ -615,8 +626,9 @@ Wave 2: [W2.1] [W2.2] [W2.3] [W2.4] [W2.5]
 
 ## 17. 性能与 Benchmark 附加规范（按需）
 
-> 仅当模块涉及性能关键路径、SIMD、并行或需要量化性能目标时，才需要应用本节要求。
-> 本节用于约束 benchmark 设计文档的写法，不预设具体 benchmark 框架，也不要求引入外部对比对象。
+仅当模块涉及性能关键路径、SIMD、并行或需要量化性能目标时，才需要应用本节要求。
+
+本节用于约束 benchmark 设计文档的写法，不预设具体 benchmark 框架，也不要求引入外部对比对象。
 
 ### 17.1 四级分类体系
 
@@ -684,6 +696,8 @@ Benchmark 分类
 ---
 
 ## 18. 文档编写通则
+
+本节所称的文档指的是Xenon项目的设计方案文档，并不是指程序文档。
 
 ### 18.1 语言
 
@@ -791,6 +805,7 @@ Benchmark 分类
 | 版本 | 日期 |
 |------|------|
 | 1.0.0 | 2026-04-08 |
+| 1.1.0 | 2026-04-14 |
 
 ---
 
