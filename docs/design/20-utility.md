@@ -171,7 +171,7 @@ where
                 shape: Some(self.shape().to_vec()),
             });
         }
-        let mut out = Tensor::zeros(self.raw_dim());
+        let mut out = Tensor::zeros(self.raw_dim())?;
         for (src, dst) in self.iter().zip(out.iter_mut()) {
             *dst = if *src < min {
                 min.clone()
@@ -237,34 +237,27 @@ where
     /// elements via the iterator. Modifies storage directly without copying.
     ///
     /// This method is only available when `S: StorageMut<Elem = A>` holds at compile time.
-    /// Runtime rejection still applies when the current storage classification is not
-    /// a writable kind accepted by the public API contract.
+    /// For read-only references and shared read-only references, `StorageMut` is not
+    /// implemented, so the API is rejected at compile time rather than adding a
+    /// separate runtime error branch.
     ///
     /// # Examples
     ///
     /// ```
-    /// let mut t = Tensor1::<f64>::zeros([5]);
+    /// let mut t = Tensor1::<f64>::zeros([5])?;
     /// t.fill(3.14)?;
     /// assert!(t.iter().all(|&x| x == 3.14));
     /// ```
     pub fn fill(&mut self, value: A) -> Result<(), XenonError> {
-        match self.storage_kind() {
-            StorageKind::Owned | StorageKind::ViewMut => {
-                for elem in self.iter_mut() {
-                    *elem = value.clone();
-                }
-                Ok(())
-            }
-            actual_kind => Err(XenonError::InvalidStorageMode {
-                operation: "fill",
-                expected: "Owned or ViewMut",
-                actual: format!("{:?}", actual_kind).into(),
-                shape: Some(self.shape().to_vec()),
-            }),
+        for elem in self.iter_mut() {
+            *elem = value.clone();
         }
+        Ok(())
     }
 }
 ````
+
+> `fill` 操作仅对编译期已证明具有可写访问权的张量类型（即 `S: StorageMut`）可用。对于只读引用和共享只读引用，由于 `StorageMut` 未实现，该 API 在编译期即不可调用，无需运行时错误分支。此设计满足 `require.md` §21 对填充请求的拒绝要求。
 
 ### 5.3 连续性保证（to_contiguous）
 
@@ -295,7 +288,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// let t = Tensor2::<f64>::zeros([3, 4]);
+    /// let t = Tensor2::<f64>::zeros([3, 4])?;
     /// let contig = t.to_contiguous();
     /// assert!(contig.is_f_contiguous());
     ///
@@ -342,7 +335,7 @@ where
 
 ```rust
 // Good - use fill for in-place filling, zero extra allocation
-let mut t = Tensor1::<f64>::zeros([1000]);
+let mut t = Tensor1::<f64>::zeros([1000])?;
 t.fill(42.0)?;
 
 // Bad - create a temporary Vec then construct a new tensor, double allocation
@@ -382,20 +375,13 @@ clip(tensor, min, max):
 
 ```
 fill(tensor, value):
-    if storage kind is Owned or ViewMut:
-        for each mutable reference elem in tensor (via iter_mut):
-            *elem = value.clone()
-        return Ok(())
-    else:
-        return InvalidStorageMode {
-            operation: "fill",
-            expected: "Owned or ViewMut",
-            actual: actual storage kind,
-            shape: tensor.shape(),
-        }
+    // callable only when the type already satisfies S: StorageMut
+    for each mutable reference elem in tensor (via iter_mut):
+        *elem = value.clone()
+    return Ok(())
 ```
 
-关键点：`iter_mut()` 已经正确处理非连续布局的步长跳转，因此 `fill` 在可写存储上天然支持非连续内存；对只读或共享只读存储则通过可恢复错误返回实际存储模式上下文。
+关键点：`iter_mut()` 已经正确处理非连续布局的步长跳转，因此 `fill` 在可写存储上天然支持非连续内存；对只读或共享只读存储，因为缺少 `StorageMut` 实现，会在编译期直接拒绝调用。
 
 ### 6.3 to_contiguous 路径选择
 
@@ -436,8 +422,8 @@ into_contiguous(tensor):
 
 - [ ] **T1**: 实现 `fill` 方法
   - 文件: `src/util/fill.rs`
-- 内容: `fill(&mut self, value: A) -> Result<(), XenonError>`；方法签名要求 `S: StorageMut<Elem = A>`，可写存储通过 `iter_mut()` 原地填充，其他不满足公开写入前提的存储类别返回带结构化字段的 `InvalidStorageMode`
-  - 测试: `test_fill_basic`, `test_fill_non_contiguous`, `test_fill_invalid_storage_mode`
+- 内容: `fill(&mut self, value: A) -> Result<(), XenonError>`；方法签名要求 `S: StorageMut<Elem = A>`，可写存储通过 `iter_mut()` 原地填充；只读与共享只读场景在编译期即被拒绝
+  - 测试: `test_fill_basic`, `test_fill_non_contiguous`, `test_fill_requires_storage_mut`
   - 前置: tensor 模块、iter 模块完成
   - 预计: 10 min
 
@@ -573,7 +559,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `clip` / `clip_inplace` 在 `min > max` 或边界为 `NaN` 时返回 `XenonError::InvalidArgument { operation, argument, expected, actual, axis, shape }`；`fill` 在存储类别不满足写入前提时返回 `XenonError::InvalidStorageMode { operation, expected, actual, shape }`。 |
+| Recoverable error | `clip` / `clip_inplace` 在 `min > max` 或边界为 `NaN` 时返回 `XenonError::InvalidArgument { operation, argument, expected, actual, axis, shape }`；`fill` 的写入前提由 `S: StorageMut` 在编译期保证，因此无额外运行时错误分支。 |
 | Panic | 公开 utility API 不定义额外 panic 语义；连续化与裁剪失败统一走显式错误或正常返回。 |
 | 路径一致性 | 连续与非连续布局都必须通过同一逻辑元素语义工作；当前无独立 SIMD / 并行分支。 |
 | 容差边界 | `clip` 对浮点数遵循 IEEE 754 比较语义；不额外引入近似容差。 |

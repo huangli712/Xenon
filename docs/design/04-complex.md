@@ -96,13 +96,13 @@ src/complex/
 └── core::cmp        # PartialEq
 ```
 
-> **零外部依赖。** `Complex<T>` 不引入任何第三方 crate；项目内依赖仅包括 `crate::error`（用于 `to_f32()` 等可恢复错误）和 `crate::private`（用于 sealed 的 `ComplexFloat` 约束），其余基础结构、方法和运算依赖 `core`。涉及浮点数学的复数方法运行在 Xenon 的 `std` 环境前提下。
+> **零外部依赖。** `Complex<T>` 不引入任何第三方 crate；项目内依赖仅包括 `crate::error`（用于 `CastTo<T>` 窄化等可恢复错误）和 `crate::private`（用于 sealed 的 `ComplexFloat` 约束），其余基础结构、方法和运算依赖 `core`。涉及浮点数学的复数方法运行在 Xenon 的 `std` 环境前提下。
 
 ### 4.2 依赖精确到类型级
 
 | 来源        | 使用的类型/trait                              |
 | ----------- | --------------------------------------------- |
-| `error`     | `XenonError`（`Complex<f64>::to_f32()` 等可恢复错误） |
+| `error`     | `XenonError`（`CastTo<T>` 窄化等可恢复错误） |
 | `private`   | `Sealed`（封闭 `ComplexFloat` 的公开实现范围） |
 | `core::ops` | `Add`, `Sub`, `Mul`, `Div`, `Neg`（算术运算） |
 | `core::fmt` | `Debug`, `Display`（格式化输出）              |
@@ -582,9 +582,9 @@ impl<T: Float> PartialEq for Complex<T> {
 impl<T: Float + core::fmt::Display> core::fmt::Display for Complex<T> {
     /// Formats as "a+bj", "a-bj", "a", "bj", or "0".
     ///
-    /// NaN handling: when the imaginary part is NaN, explicitly display
-    /// as "re+NaNj" (or "re-NaNj") to avoid the ambiguity of NaN comparison
-    /// in the `im > T::zero()` branch.
+    /// NaN handling: when the imaginary part is NaN, always display
+    /// as "re+NaNj". This deliberately normalizes the textual form instead
+    /// of inferring a sign from NaN payload/sign-bit details.
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if self.im.is_nan() {
             return write!(f, "{}+NaNj", self.re);
@@ -626,17 +626,16 @@ impl From<Complex<f32>> for Complex<f64> {
 
 // Precision reduction: f64 -> f32 (lossy)
 // NOT implemented as `From` — lossy conversion contradicts std's philosophy.
-// Use the named method `to_f32()` for component-wise lossy conversion.
-impl Complex<f64> {
-    /// Attempts to convert to `Complex<f32>`.
-    ///
-    /// This is the explicit lossy narrowing path for complex-to-complex conversion.
-    /// Each component is narrowed independently using Rust's floating-point cast
-    /// semantics; callers that need strict validation should use the `CastTo`
-    /// conversion matrix at the element layer.
+// Complex-to-complex narrowing is unified under `CastTo<T>` in `03-element.md`.
+impl CastTo<Complex<f32>> for Complex<f64> {
+    type Error = XenonError;
+
     #[inline]
-    pub fn to_f32(self) -> Result<Complex<f32>, XenonError> {
-        Ok(Complex::<f32>::new(self.re as f32, self.im as f32))
+    fn cast_to(self) -> Result<Complex<f32>, Self::Error> {
+        Ok(Complex::<f32>::new(
+            CastTo::<f32>::cast_to(self.re)?,
+            CastTo::<f32>::cast_to(self.im)?,
+        ))
     }
 }
 
@@ -662,6 +661,8 @@ impl From<f64> for Complex<f64> {
 | `i64` | `Complex<f32>` | 实部 `i64→f32` 有损，虚部为 `0` | 返回可恢复错误 |
 
 其中语义遵循 `require.md` §23.2 的闭合规则：先按对应实数类型到目标复数实部分量类型的规则转换实部，再引入值为 `0` 的虚部。当前版本不额外扩展 `require.md` §23.1 之外的整数→复数组合。
+
+> **统一转换入口说明：** `Complex` 类型的逐元素类型转换统一由 `03-element.md` 定义的 `CastTo<T>` trait 管理，本节不再单独定义张量级转换入口；本模块仅保留复数类型自身固有、且符合无损语义的 `From`/`Into` 标量级转换（如 `f32 -> Complex<f32>`、`Complex<f32> -> Complex<f64>`）。
 
 复杂到实数的受支持路径同样受 `require.md` §23.1 与 §23.2 约束，且统一由 `03-element.md` §5.9 定义的 `CastTo<T>` trait 作为唯一 owner；`complex/` 模块文档仅声明其语义，不重复定义独立转换入口。
 
@@ -740,6 +741,8 @@ FFI 示例：
 // Rust side
 #[no_mangle]
 pub extern "C" fn process_complex(z: *const Complex<f64>) -> Complex<f64> {
+    // SAFETY: the C caller must pass a non-null, properly aligned pointer to a
+    // valid `Complex<f64>` object that is live for the duration of this call.
     unsafe { *z * *z }
 }
 
@@ -948,7 +951,7 @@ User constructs `Complex<f64>::new(re, im)`
 
 - [ ] **T10**: 实现类型转换
   - 文件: `src/complex/cast.rs`
-  - 内容: `From<Complex<f32>> for Complex<f64>`, `From<f32> for Complex<f32>`, `From<f64> for Complex<f64>`, `Complex<f64>::to_f32()` 方法
+- 内容: `From<Complex<f32>> for Complex<f64>`, `From<f32> for Complex<f32>`, `From<f64> for Complex<f64>`, 以及由 `CastTo<T>` 统一承载的窄化转换
   - 测试: `test_f32_to_f64_lossless`, `test_f64_to_f32_precision_loss`, `test_real_to_complex`
   - 前置: T1
   - 预计: 10 min
@@ -1083,7 +1086,7 @@ Wave 5: [T11] → [T12]
 
 | 项目           | 内容 |
 | -------------- | ---- |
-| Recoverable error | `Complex<f64>::to_f32()` 等有损窄化路径返回可恢复错误；错误类型为 `XenonError`，上下文字段应包含源/目标精度与失败原因 |
+| Recoverable error | `CastTo<T>` 承载的有损窄化路径返回可恢复错误；错误类型为 `XenonError`，上下文字段应包含源/目标精度与失败原因 |
 | Panic | 本模块常规复数运算与方法不以 panic 作为错误通道；若调用底层标准库浮点 API，遵循其既有语义 |
 | 路径一致性 | scalar 路径与普通标量实现必须一致；SIMD：不适用；parallel：不适用 |
 | 容差边界 | 复数数值测试采用显式容差；布局、格式化与类型边界测试不适用 |

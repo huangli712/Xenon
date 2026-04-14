@@ -243,7 +243,7 @@ pub type ArcTensorD<A> = ArcTensor<A, IxDyn>;
 ```rust
 impl<S, D> TensorBase<S, D>
 where
-    D: Dimension,
+    D: Dimension + Clone,
 {
     /// Returns a slice of axis lengths.
     pub fn shape(&self) -> &[usize];
@@ -664,7 +664,7 @@ Tensor2<f64> = TensorBase<Owned<f64>, Ix2>
 ┌─────────────────────────────────────────┐
 │ storage: Owned<f64>                     │
 │   ┌───────────────────────────────────┐ │
-│   │ data: Vec<f64> (64B 对齐)          │ │
+│   │ data: Vec<f64> (64B aligned)       │ │
 │   │ [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]    │ │
 │   └───────────────────────────────────┘ │
 │ shape: Ix2(2, 3)                        │
@@ -673,7 +673,7 @@ Tensor2<f64> = TensorBase<Owned<f64>, Ix2>
 │ flags: F_CONTIGUOUS | ALIGNED           │
 └─────────────────────────────────────────┘
 
-逻辑视图：
+Logical view:
   [[1.0, 3.0, 5.0],
    [2.0, 4.0, 6.0]]
 ```
@@ -877,7 +877,100 @@ User calls constructors / `view()` / `view_mut()` / query APIs
 
 ---
 
-## 9. 设计决策记录
+## 9. 与其他模块的交互
+
+### 9.1 与 storage 模块的接口
+
+```rust
+// TensorBase obtains element type via Storage trait's associated type
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+{
+    pub fn as_ptr(&self) -> *const A {
+        // storage.as_ptr() returns the storage base pointer; TensorBase converts it
+        // to the logical-first pointer after construction invariants have been validated.
+        unsafe { self.storage.as_ptr().add(self.offset) }
+    }
+}
+```
+
+### 9.2 与 dimension 模块的接口
+
+```rust
+// Dimension trait provides shape operations
+impl<S, D> TensorBase<S, D>
+where
+    D: Dimension,
+{
+    pub fn shape(&self) -> &[usize] {
+        self.shape.slice()
+    }
+
+    pub fn len(&self) -> usize {
+        // `size()` is the infallible query form here; constructor / reshape paths
+        // must use checked_size() before allocating or validating layouts.
+        self.shape.size()
+    }
+}
+```
+
+### 9.3 与 layout 模块的接口
+
+```rust
+// Layout module provides stride computation and contiguity checks
+// TensorBase computes LayoutFlags during construction
+impl<A, D> TensorBase<Owned<A>, D>
+where
+    D: Dimension,
+{
+    pub fn from_shape_vec(shape: D, data: Vec<A>) -> Result<Self, XenonError> {
+        let expected = shape.checked_size().ok_or(XenonError::InvalidShape {
+            operation: "from_shape_vec",
+            shape: shape.slice().to_vec(),
+            expected_elements: 0,
+            actual_elements: data.len(),
+            offending_dim: None,
+        })?;
+        if data.len() != expected {
+            return Err(XenonError::InvalidShape {
+                operation: "from_shape_vec",
+                shape: shape.slice().to_vec(),
+                expected_elements: expected,
+                actual_elements: data.len(),
+                offending_dim: None,
+            });
+        }
+        let strides = layout::compute_f_strides(&shape);
+        let storage = Owned::from_vec_aligned(data);
+        let logical_ptr = storage.as_ptr();
+        let flags = layout::compute_layout_flags(&shape, &strides, logical_ptr);
+        Ok(Self {
+            storage,
+            shape,
+            strides,
+            offset: 0,
+            flags,
+        })
+    }
+}
+```
+
+---
+
+## 10. 错误处理与语义边界
+
+| 项目           | 内容 |
+| -------------- | ---- |
+| Recoverable error | `from_shape_vec()`、`from_raw_parts*()` 等构造校验失败返回 `XenonError`；上下文字段应包含操作名、shape、strides、offset、storage_len 或期望长度等元数据 |
+| Panic | 本模块公开安全构造不以 panic 作为常规错误通道；仅在内部已验证快捷路径或明显违背 `unsafe` 前提的后续使用中可能出现 panic/未定义行为风险 |
+| 路径一致性 | scalar、SIMD 快路径与 parallel 上游消费必须共享同一逻辑首元素与 flags 语义，不允许因路径差异改变结果 |
+| 容差边界 | 不适用 |
+
+---
+
+## 11. 设计决策记录
 
 ### 决策 1：TensorBase\<S, D\> 双参数泛型设计
 
@@ -917,18 +1010,7 @@ User calls constructors / `view()` / `view_mut()` / query APIs
 
 ---
 
-## 10. 错误处理与语义边界
-
-| 项目           | 内容 |
-| -------------- | ---- |
-| Recoverable error | `from_shape_vec()`、`from_raw_parts*()` 等构造校验失败返回 `XenonError`；上下文字段应包含操作名、shape、strides、offset、storage_len 或期望长度等元数据 |
-| Panic | 本模块公开安全构造不以 panic 作为常规错误通道；仅在内部已验证快捷路径或明显违背 `unsafe` 前提的后续使用中可能出现 panic/未定义行为风险 |
-| 路径一致性 | scalar、SIMD 快路径与 parallel 上游消费必须共享同一逻辑首元素与 flags 语义，不允许因路径差异改变结果 |
-| 容差边界 | 不适用 |
-
----
-
-## 11. 性能考量
+## 12. 性能考量
 
 | 方面       | 设计决策                                          |
 | ---------- | ------------------------------------------------- |
@@ -957,7 +1039,7 @@ User calls constructors / `view()` / `view_mut()` / query APIs
 
 ---
 
-## 12. 平台与工程约束
+## 13. 平台与工程约束
 
 | 约束       | 说明                                    |
 | ---------- | --------------------------------------- |
@@ -968,87 +1050,6 @@ User calls constructors / `view()` / `view_mut()` / query APIs
 
 ---
 
-## 13. 与其他模块的交互
-
-### 13.1 与 storage 模块的接口
-
-```rust
-// TensorBase obtains element type via Storage trait's associated type
-impl<S, D, A> TensorBase<S, D>
-where
-    S: Storage<Elem = A>,
-    D: Dimension,
-{
-    pub fn as_ptr(&self) -> *const A {
-        // storage.as_ptr() returns the storage base pointer; TensorBase converts it
-        // to the logical-first pointer after construction invariants have been validated.
-        unsafe { self.storage.as_ptr().add(self.offset) }
-    }
-}
-```
-
-### 13.2 与 dimension 模块的接口
-
-```rust
-// Dimension trait provides shape operations
-impl<S, D> TensorBase<S, D>
-where
-    D: Dimension,
-{
-    pub fn shape(&self) -> &[usize] {
-        self.shape.slice()
-    }
-
-    pub fn len(&self) -> usize {
-        // `size()` is the infallible query form here; constructor / reshape paths
-        // must use checked_size() before allocating or validating layouts.
-        self.shape.size()
-    }
-}
-```
-
-### 13.3 与 layout 模块的接口
-
-```rust
-// Layout module provides stride computation and contiguity checks
-// TensorBase computes LayoutFlags during construction
-impl<A, D> TensorBase<Owned<A>, D>
-where
-    D: Dimension,
-{
-    pub fn from_shape_vec(shape: D, data: Vec<A>) -> Result<Self, XenonError> {
-        let expected = shape.checked_size().ok_or(XenonError::InvalidShape {
-            operation: "from_shape_vec",
-            shape: shape.slice().to_vec(),
-            expected_elements: 0,
-            actual_elements: data.len(),
-            offending_dim: None,
-        })?;
-        if data.len() != expected {
-            return Err(XenonError::InvalidShape {
-                operation: "from_shape_vec",
-                shape: shape.slice().to_vec(),
-                expected_elements: expected,
-                actual_elements: data.len(),
-                offending_dim: None,
-            });
-        }
-        let strides = layout::compute_f_strides(&shape);
-        let storage = Owned::from_vec_aligned(data);
-        let logical_ptr = storage.as_ptr();
-        let flags = layout::compute_flags(&shape, &strides, logical_ptr);
-        Ok(Self {
-            storage,
-            shape,
-            strides,
-            offset: 0,
-            flags,
-        })
-    }
-}
-```
-
----
 
 ## 附录 A：完整类型关系图
 

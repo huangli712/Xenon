@@ -289,6 +289,8 @@ pub trait ComplexScalar: Numeric + Sealed {
 }
 ```
 
+> **范围说明：** `ComplexScalar` 中的 `arg`/`exp`/`ln`/`sqrt`/`from_polar`/`i` 方法为内部复数运算所需基础设施，不直接作为张量级公开 API 承诺。当前版本公开的张量运算范围仍以 `require.md` §12/§15 为准。
+
 ### 5.5 支持的类型与 trait 矩阵
 
 | 类型           | Element | Numeric | RealScalar | ComplexScalar |
@@ -399,7 +401,7 @@ let c = &a + &b.cast::<f64>();  // explicit conversion
 /// This trait is implemented only inside Xenon for the supported source/target pairs.
 /// External crates cannot extend the conversion matrix.
 pub trait CastTo<T>: Element {
-    type Error;
+    type Error = XenonError;
 
     /// Performs the type conversion.
     fn cast_to(self) -> Result<T, Self::Error>;
@@ -415,6 +417,8 @@ pub trait CastTo<T>: Element {
 //   impl CastTo<Complex<f64>> for f64  -- lossless, Error = Infallible
 //   impl CastTo<f64> for Complex<f64>  -- Result, requires zero imaginary part
 ```
+
+> **错误映射说明：** 该 trait 的错误类型在张量公共 API 层统一映射为 `XenonError::TypeConversion`。若内部仍保留关联类型用于细分实现细节，也不得改变对外错误语义。
 
 `Complex<T> → Real` 转换已纳入 `CastTo<T>` 的支持矩阵，但采用条件成功语义：仅当虚部为 `0` 时才继续执行对应的实数目标转换；若虚部非零，则返回可恢复错误。具体规则如下：
 

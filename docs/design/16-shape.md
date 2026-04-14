@@ -24,7 +24,7 @@
 | ---------- | --------------------------------------------------------------- |
 | 零拷贝优先 | 转置通过调整 shape 和 stride 返回共享底层数据的只读视图         |
 | 语义收敛   | 当前版本只设计 `transpose()` / `t()`，不在本文扩展 reshape 路径 |
-| BLAS 友好  | 保持 F-order 布局的连续性，确保与 BLAS 互操作                   |
+| BLAS 友好  | 正确处理转置产生的非连续布局，确保 shape/stride 元数据一致      |
 | 维度安全   | 转置仅做轴反转，不改变逻辑元素值与元素总数                      |
 
 ### 1.3 在架构中的位置
@@ -134,7 +134,7 @@ where
     pub fn transpose(&self) -> TensorView<'_, A, D> {
         let new_shape = reverse_axes(self.shape());
         let new_strides = reverse_axes(self.strides());
-        let new_flags = update_flags_for_transpose(self.flags(), self.ndim());
+        let new_flags = update_flags_for_transpose(self.flags(), new_shape.slice(), new_strides.as_slice());
 
         // actual construction uses TensorView::new_unchecked() or similar
         // internal constructor, see 07-tensor.md
@@ -210,8 +210,8 @@ for i in 0..1000 {
 转置通过直接修改视图的 shape 和 strides 元数据实现，不拷贝数据。具体：交换对应轴的 shape 和 strides 值（即全反转），并按 `06-layout.md` 的 `LayoutState` 重新分类结果布局。对于 `ndim >= 2` 且不含零步长的普通视图，结果通常归类为 `NonContiguous`；若原视图含零步长，则结果仍属于 `BroadcastView`；对 0D/1D，转置是 no-op，应保留原有 flags 和布局状态。内部通过创建新的 `TensorView`（共享原始存储的只读引用）实现。
 
 ```
-原始: shape=[2, 3], strides=[1, 2]  (F-order, F-contiguous)
-转置: shape=[3, 2], strides=[2, 1]  (步长反转，非 F-contiguous)
+Source: shape=[2, 3], strides=[1, 2]  (F-order, F-contiguous)
+Transpose: shape=[3, 2], strides=[2, 1]  (strides reversed, not F-contiguous)
 ```
 
 > **注意**：Xenon 只支持 F-order 布局，不维护单独的行优先连续性状态。转置后连续性须根据结果的

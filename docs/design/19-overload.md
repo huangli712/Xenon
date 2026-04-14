@@ -177,7 +177,7 @@ where
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
 
     fn add(self, rhs: TensorBase<Owned<A>, E>) -> Self::Output {
-        self.add(&rhs)
+        self.add_owned_ref(&rhs)
     }
 }
 
@@ -200,6 +200,8 @@ where
 > **设计决策：** 为了与 `require.md` §12 / §27 保持一致，`+` / `-` / `*` / `/` 在广播不兼容时返回 `Result<Tensor<A, F>, XenonError>`，
 > 而不是 panic。虽然这偏离了 `std::ops` 的常见用法（通常 panic），但 Xenon 的错误模型优先于运算符习惯；
 > 因此运算符语法与对应的方法型 API 共享可恢复错误边界。
+
+> **实现说明：** 委托示例中的 `add_owned_ref()` 代表与 trait 方法同名的内部/固有辅助入口，用于避免 `fn add(self, rhs) { self.add(&rhs) }` 这类写法产生对 trait 方法自身的递归歧义。
 
 > **语义边界说明：** 运算符在广播失败时返回 `Err(XenonError::BroadcastError { ... })`，而整数除零、整数溢出与结果不可表示仍保持 panic；正式 ADR 记录见本文 §11 的 ADR-2a。
 

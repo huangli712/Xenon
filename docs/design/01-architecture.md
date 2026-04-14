@@ -391,11 +391,11 @@ rustdoc-args = ["--cfg", "docsrs"]
 | **L1** | dimension, element, complex                                | error（element 额外依赖 complex）                                        | `02-dimension.md`、`03-element.md`、`04-complex.md`                                                                              |
 | **L2** | layout                                                     | error, dimension（拥有 `LayoutFlags` / `LayoutState` / `Strides<D>` 等布局元数据与判定规则） | `06-layout.md`                                                                                                                   |
 | **L2** | workspace                                                  | std（独立于核心类型系统，可被上游库直接使用）                            | `24-workspace.md`                                                                                                                |
-| **L3** | storage                                                    | core, alloc（只持有底层连续缓冲区，不消费 `dimension` 或 `layout`）      | `05-storage.md`                                                                                                                  |
+| **L3** | storage                                                    | core, alloc, std::sync::Arc, crate::error（只持有底层连续缓冲区，不消费 `dimension` 或 `layout`） | `05-storage.md`                                                                                                                  |
 | **L4** | tensor                                                     | storage, dimension, layout, element                                      | `07-tensor.md`                                                                                                                   |
 | **L5** | broadcast, iter, ffi, simd, parallel                       | tensor（parallel 额外依赖 iter/broadcast；simd 额外依赖 layout/element） | `15-broadcast.md`、`10-iterator.md`、`23-ffi.md`、`08-simd.md`、`09-parallel.md`                                                 |
 | **L6** | math, overload, set, matrix, reduction, shape, index, util | tensor, broadcast，以及按需调用独立 backend 模块                         | `11-math.md`、`12-matrix.md`、`13-reduction.md`、`14-set.md`、`16-shape.md`、`17-indexing.md`、`19-overload.md`、`20-utility.md` |
-| **L7** | construct, convert, format                                 | tensor, shape                                                            | `18-construction.md`、`21-type.md`、`22-output.md`                                                                               |
+| **L7** | construct, convert, format                                 | tensor, shape, element, complex, storage                                 | `18-construction.md`、`21-type.md`、`22-output.md`                                                                               |
 
 ### 5.2 依赖图（ASCII）
 
@@ -497,7 +497,7 @@ pub use crate::index::s;
 // Construction helpers
 pub use crate::construct::{
     zeros, ones, eye,
-    full, from_shape_vec,
+    from_shape_vec,
 };
 ```
 
@@ -603,7 +603,7 @@ LayoutFlags: u8
 // Element trait hierarchy
 Element                        // Base: Copy + PartialEq + Debug + Display + Send + Sync
 └── Numeric                    // Numeric: Add + Sub + Mul + Div + Neg (i32/i64/f32/f64/Complex only)
-    ├── RealScalar             // Real: sqrt, sin, cos, etc.
+    ├── RealScalar             // Real: sqrt, sin, exp, ln, floor, ceil
     └── ComplexScalar          // Complex: conjugate, modulus, etc.
 ```
 

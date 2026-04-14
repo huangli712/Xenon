@@ -420,7 +420,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_simd_add_consistency`  | SIMD add 与标量 add 结果一致（参见 `08-simd.md §8`） | 高     |
 | `test_simd_sum_consistency`  | SIMD sum 与标量 sum 结果一致                         | 高     |
 | `test_simd_fallback_small`   | 小数组 SIMD 回退到标量                               | 中     |
-| `test_simd_complex_fallback` | Complex 输入自动回退标量路径                         | 中     |
+| `test_simd_complex_path`     | 验证 `Complex<f32>` / `Complex<f64>` SIMD kernel 与标量路径在文档容差内一致 | 中     |
 
 ### 6.18 平台与工程约束
 
@@ -434,7 +434,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 
 | 测试函数                        | 测试内容                                                    | 优先级 |
 | ------------------------------- | ----------------------------------------------------------- | ------ |
-| `test_shape_mismatch_error`     | 不兼容形状运算返回 ShapeMismatch（参见 `26-error.md §4.1`） | 高     |
+| `test_broadcast_shape_error`    | 逐元素/广播不兼容形状返回 `XenonError::BroadcastError`；`ShapeMismatch` 仅用于非广播双输入形状冲突（如 dot） | 高     |
 | `test_broadcast_error`          | 不可广播返回 `XenonError::BroadcastError`                   | 高     |
 | `test_invalid_axis_error`       | 轴越界返回 InvalidAxis                                      | 高     |
 | `test_invalid_argument_error`   | 非法参数返回 `XenonError::InvalidArgument`                 | 高     |
@@ -475,7 +475,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 ```rust
 #[test]
 fn test_empty_tensor_properties() {
-    let t = Tensor2::<f64>::zeros([0, 5]);
+    let t = Tensor2::<f64>::zeros([0, 5]).expect("shape is valid");
     assert!(t.is_empty());
     assert_eq!(t.len(), 0);
     assert_eq!(t.ndim(), 2);
@@ -485,7 +485,7 @@ fn test_empty_tensor_properties() {
 
 #[test]
 fn test_empty_tensor_sum() {
-    let t = Tensor1::<f64>::zeros([0]);
+    let t = Tensor1::<f64>::zeros([0]).expect("shape is valid");
     assert_eq!(t.sum(), 0.0); // additive identity
 }
 
@@ -504,11 +504,11 @@ fn test_nan_sum_propagation() {
 
 #[test]
 fn test_high_dim_operations() {
-    let t4 = Tensor::<f64, Ix4>::zeros([2, 3, 4, 5]);
+    let t4 = Tensor::<f64, Ix4>::zeros([2, 3, 4, 5]).expect("shape is valid");
     assert_eq!(t4.len(), 120);
     assert_eq!(t4.sum(), 0.0);
 
-    let t6 = Tensor::<f64, Ix6>::ones([2, 2, 2, 2, 2, 2]);
+    let t6 = Tensor::<f64, Ix6>::ones([2, 2, 2, 2, 2, 2]).expect("shape is valid");
     assert_eq!(t6.len(), 64);
     assert_eq!(t6.sum(), 64.0);
 }
@@ -534,20 +534,26 @@ fn test_large_tensor_boundary_10m_elements() {
 fn test_ixdyn_high_rank_scenarios() {
     for rank in 0..=12usize {
         let shape = vec![1usize; rank];
-        let t = Tensor::<i32, IxDyn>::zeros(IxDyn(&shape));
+        let t = Tensor::<i32, IxDyn>::zeros(IxDyn::from_slice(&shape)).expect("shape is valid");
         assert_eq!(t.ndim(), rank);
         assert_eq!(t.shape(), shape.as_slice());
     }
 
-    let fixed = Tensor2::<i32>::zeros([2, 3]);
-    let dyn_view = fixed.view().into_dimensionality::<IxDyn>().unwrap();
-    assert_eq!(dyn_view.shape(), &[2, 3]);
+    let fixed = Tensor2::<i32>::zeros([2, 3]).expect("shape is valid");
+    let dyn_tensor = Tensor::<i32, IxDyn>::from_shape_vec(
+        IxDyn::from_slice(fixed.shape()),
+        fixed.iter().copied().collect(),
+    )
+    .expect("fixed tensor should convert to IxDyn shape");
+    assert_eq!(dyn_tensor.shape(), &[2, 3]);
 
-    let lhs = Tensor::<i32, IxDyn>::ones(IxDyn(&[3, 1, 4]));
-    let rhs = Tensor::<i32, IxDyn>::ones(IxDyn(&[1, 5, 4]));
+    let lhs = Tensor::<i32, IxDyn>::ones(IxDyn::from_slice(&[3, 1, 4]))
+        .expect("shape is valid");
+    let rhs = Tensor::<i32, IxDyn>::ones(IxDyn::from_slice(&[1, 5, 4]))
+        .expect("shape is valid");
     let sum = (&lhs + &rhs).unwrap();
     assert_eq!(sum.shape(), &[3, 5, 4]);
-    assert_eq!(sum[IxDyn(&[2, 4, 3])], 2);
+    assert_eq!(sum[IxDyn::from_slice(&[2, 4, 3])], 2);
 }
 ```
 
@@ -563,8 +569,8 @@ fn test_ixdyn_high_rank_scenarios() {
 | ------------------ | ---------------- | ---------------- | --------------- |
 | 加减乘             | 精确 (≤0.5 ULP)  | 精确 (≤0.5 ULP)  | 直接计算        |
 | 归约 (sum)         | 与单线程结果一致 | 与单线程结果一致 | 单线程基线路径  |
-| 超越函数 (sin/cos) | rtol < 1e-14     | rtol < 1e-5      | `std::f64::sin` |
-| 超越函数 (exp/ln)  | rtol < 1e-14     | rtol < 1e-5      | `std::f64::exp` |
+| 超越函数 (sin)     | atol = 1e-14, rtol = 1e-14 | atol = 1e-5, rtol = 1e-5 | `std::f64::sin` |
+| 超越函数 (exp/ln)  | atol = 1e-14, rtol = 1e-14 | atol = 1e-5, rtol = 1e-5 | `std::f64::exp` |
 
 ### 8.2 浮点比较方式
 
@@ -636,7 +642,7 @@ fn test_simd_add_consistency() {
         (0..1024).map(|idx| (idx as f64).sin()).collect(),
     );
     let b = Tensor1::<f64>::from_vec(
-        (0..1024).map(|idx| (idx as f64).cos()).collect(),
+        (0..1024).map(|idx| ((idx as f64) / 1024.0).exp()).collect(),
     );
 
     let result = (&a + &b).unwrap();
@@ -756,7 +762,7 @@ fn prop_approx_equal(x: f64, y: f64) -> bool {
 | 顺序填充   | `from_vec((0..n).map(|idx| idx as f64).collect())`         | 可重复、确定性 |
 | 三角函数值 | `from_vec((0..n).map(|idx| (idx as f64).sin()).collect())` | 非平凡浮点值   |
 | 非连续视图 | `t.t()` 或 `t.slice(s![..;2])`                | 测试步长处理   |
-| 空/单元素  | `zeros([0])` / `from_scalar(42.0)`            | 边界测试       |
+| 空/单元素  | `zeros([0])?` / `Tensor::<f64, Ix0>::from_scalar(42.0)` | 边界测试       |
 | 受控数据   | `from_shape_vec` / 顺序生成                   | 属性测试       |
 
 ---
@@ -787,7 +793,7 @@ fn test_axis_iter_invalid_axis() {
 #[test]
 fn test_transpose_shapes() {
     for (r, c) in standard_shapes_2d() {
-        let t = Tensor2::<f64>::zeros([r, c]);
+        let t = Tensor2::<f64>::zeros([r, c]).expect("shape is valid");
         let tt = t.t();
         assert_eq!(tt.shape(), &[c, r]);
     }
@@ -816,7 +822,7 @@ fn test_axis_iter_bad() {
 // Bad: Hardcoded magic numbers without context
 #[test]
 fn test_bad_magic() {
-    let t = Tensor1::<f64>::zeros([100]);
+    let t = Tensor1::<f64>::zeros([100]).expect("shape is valid");
     assert_eq!(t.sum(), 0.0);  // What is 100? Why zeros?
 }
 ```
@@ -1118,7 +1124,7 @@ fn compile_fail_cases() {
 
 编译期失败场景至少覆盖以下三类：
 
-- 错误的维度类型：例如将不满足 `Dimension` 约束的类型传入 `Tensor<A, D>` 或 `into_dimensionality::<D>()`。
+- 错误的维度类型：例如将不满足 `Dimension` 约束的类型传入 `Tensor<A, D>`，或把错误 rank 的 `IxDyn::from_slice(...)` 传给固定维度转换入口。
 - 非法 trait bound：例如元素类型缺失 `Element` / `Numeric` / `RealScalar` 等必要约束，违反第 4 节元素类型边界。
 - 不匹配的存储类型：例如要求 `StorageMut` 的 API 传入只读 view，或将不兼容的 storage representation 组合到同一签名中。
 
@@ -1174,16 +1180,6 @@ fn compile_fail_cases() {
 | 决策     | 集成测试、doctest 与 CI 测试矩阵仅覆盖 `std` 环境                                  |
 | 理由     | 需求说明书 §1.3 已将平台支持限定为 `std`；继续维护额外平台测试分支会制造超范围契约 |
 | 替代方案 | 保留额外平台编译检查 — 放弃，与当前版本范围矛盾                                    |
-
----
-
-## 17. 平台与工程约束
-
-| 约束项     | 约束内容                                                              |
-| ---------- | --------------------------------------------------------------------- |
-| 平台支持   | 测试计划仅覆盖 `std` 环境                                             |
-| crate 结构 | 测试目录依附当前单 crate，不拆分多 crate 测试架构                     |
-| 依赖约束   | 保持标准测试工具链与现有可选 feature 组合，不新增额外平台专用验证依赖 |
 
 ---
 

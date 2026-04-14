@@ -137,14 +137,14 @@ CHANGELOG.md                  # 版本变更记录
 
 ```
 29-documentation
-├── 依赖所有模块设计文档（00-28）
-│   └── 每个模块的文档内容基于其设计文档
-├── 依赖 `00-coding.md`
-│   └── 文档风格遵循编码规范（参见 `00-coding.md §6`）
-├── 依赖 `28-tests.md`
-│   └── doctest / examples / docs CI 的验证策略与测试口径需保持一致
-└── 依赖 `27-benchmark.md`
-    └── 性能相关示例、feature gate 和 benchmark 文档引用路径需保持一致
+├── depends on all design docs (00-28)
+│   └── each module's docs are derived from its design doc
+├── depends on `00-coding.md`
+│   └── documentation style follows the coding conventions (see `00-coding.md §6`)
+├── depends on `28-tests.md`
+│   └── doctest / examples / docs CI validation must stay aligned
+└── depends on `27-benchmark.md`
+    └── performance examples, feature-gate notes, and benchmark references must stay aligned
 ```
 
 ### 4.2 依赖精确到类型级
@@ -174,18 +174,36 @@ CHANGELOG.md                  # 版本变更记录
 ### 5.1 文档层次
 
 ```
-L0: Crate 级 (lib.rs)
-    └── 项目概述、快速入门、feature 列表
+L0: Crate level (lib.rs)
+    └── project overview, quick start, feature list
 
-L1: 模块级 (各 mod.rs)
-    └── 模块职责、核心概念、类型关系
+L1: Module level (each mod.rs)
+    └── module responsibilities, core concepts, type relationships
 
-L2: 类型/函数级 (doc comments)
-    └── API 文档、参数说明、使用示例
+L2: Type/function level (doc comments)
+    └── API docs, parameter notes, usage examples
 
-L3: 示例 (examples/)
-    └── 完整可运行示例程序
+L3: Examples (examples/)
+    └── complete runnable example programs
 ```
+
+### 5.3 关键 API 示例覆盖矩阵
+
+| API 族 | 必须有示例 | 对应设计文档 |
+| ------ | ---------- | ------------ |
+| 构造 (`zeros`/`ones`/`eye`/`from_*`) | ✅ | `18-construction` |
+| 索引/切片 | ✅ | `17-indexing` |
+| 转置 | ✅ | `16-shape` |
+| 广播 | ✅ | `15-broadcast` |
+| 逐元素运算 | ✅ | `11-math` |
+| 归约 (`sum`) | ✅ | `13-reduction` |
+| 内积 (`dot`) | ✅ | `12-matrix` |
+| 类型转换 (`cast`) | ✅ | `21-type` |
+| FFI unsafe API | ✅ | `23-ffi` |
+| 运算符重载 | ✅ | `19-overload` |
+| `clip`/`fill` | ✅ | `20-utility` |
+| 工作空间 | ✅ | `24-workspace` |
+| 格式化输出 | ✅ | `22-output` |
 
 ### 5.2 各层覆盖要求
 
@@ -790,18 +808,18 @@ docs:
 ### 17.2 数据流
 
 ````
-设计文档 (00-28)
+Design docs (00-28)
     │
-    ├── 提取模块职责、核心概念、API 签名
+    ├── extract module responsibilities, core concepts, and API signatures
     │       │
-    │       └── 写入各 mod.rs 的 //! 模块文档
+    │       └── write module docs into each mod.rs (`//!`)
     │
-    └── 提取类型定义、方法签名
+    └── extract type definitions and method signatures
             │
-            ├── 写入 doc comment (///)
-            └── 写入 doctest (```rust ```)
+            ├── write doc comments (`///`)
+            └── write doctests (```rust ```)
                     │
-                    └── cargo test --doc 验证
+                    └── validate with `cargo test --doc`
 ````
 
 ---

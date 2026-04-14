@@ -14,10 +14,10 @@
 | 职责     | 包含                                              | 不包含                             |
 | -------- | ------------------------------------------------- | ---------------------------------- |
 | 存储抽象 | 定义统一的 `Storage` trait 层次，支持多种存储模式 | 具体运算逻辑（由 `overload` 提供） |
-| 内存管理 | 拥有、借用、共享三种所有权语义                    | 并行调度（由 `parallel` 模块提供） |
+| 内存管理 | 拥有、借用（只读/可写）与共享只读四种存储模式    | 并行调度（由 `parallel` 模块提供） |
 | 对齐分配 | 64 字节对齐的内存分配器，优化 SIMD 性能           | 高级线性代数（矩阵分解等）         |
 | 类型安全 | 通过 trait 约束在编译期保证访问权限正确性         | GPU 存储后端（当前仅 CPU）         |
-| 多级访问 | 只读、可写、拥有三种访问控制级别                  | 迭代器实现（由 `iter`模块 提供）   |
+| 多级访问 | 只读、可写、共享只读、拥有四种访问/持有模式       | 迭代器实现（由 `iter`模块 提供）   |
 | ZST 安全 | 零大小类型和空数组操作不引发未定义行为            | —                                  |
 
 ### 1.2 设计原则
@@ -426,14 +426,16 @@ pub unsafe trait StorageShared: Storage + Clone {
     /// Triggers copy-on-write and yields exclusive mutable access to the
     /// underlying buffer.
     ///
-    /// For `ArcRepr<A>`, this API is an explicit escape hatch from shared
-    /// read-only storage to an exclusive owned buffer. It does **not** make
-    /// `ArcRepr<A>` a shared-writable storage mode and does **not** imply
-    /// `StorageMut` is implemented for `ArcRepr<A>`.
+    /// For `ArcRepr<A>`, this API is an explicit copy-on-write hook for
+    /// obtaining temporary exclusive access to the buffer managed inside the
+    /// shared storage object. It does **not** make `ArcRepr<A>` a
+    /// shared-writable storage mode, does **not** imply `StorageMut` is
+    /// implemented for `ArcRepr<A>`, and must not be interpreted as a public
+    /// zero-copy `ArcRepr<A> -> Owned<A>` conversion.
     ///
-    /// If the reference count is 1, the existing owned buffer can be reused.
-    /// If the reference count is greater than 1, data is cloned into a fresh
-    /// owned allocation before mutable access is returned.
+    /// The returned mutable slice is only an internal CoW access path.
+    /// Public `into_owned_storage()` for `ArcRepr<A>` still allocates and
+    /// copies regardless of reference count, per `require.md` §6.2.
     ///
     /// Note: sub-view offset and length are managed by `TensorBase`, not by
     /// `ArcRepr` (see design decision in §6.5).
@@ -453,7 +455,7 @@ pub unsafe trait StorageShared: Storage + Clone {
 ///
 /// - `Owned<A>` → O(1), returns self directly
 /// - `ViewRepr`/`ViewMutRepr` → O(n), copies data
-/// - `ArcRepr` → O(1) when `ref_count == 1` via `Arc::try_unwrap`; O(n) copy otherwise
+/// - `ArcRepr` → O(n), always allocates and copies into a fresh owned buffer
 pub unsafe trait StorageIntoOwned: Storage {
     /// Consume this storage, returning an `Owned<A>` storage.
     fn into_owned_storage(self) -> Owned<Self::Elem>
@@ -501,20 +503,20 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
 | `Owned<A>`           | `ArcRepr<A>`         | O(1)        | 零拷贝降级为共享只读引用                 |
 | `ViewRepr<'_, A>`    | `Owned<A>`           | O(n)        | 复制逻辑元素到新的对齐缓冲               |
 | `ViewMutRepr<'_, A>` | `Owned<A>`           | O(n)        | 复制逻辑元素到新的对齐缓冲               |
-| `ViewMutRepr<'_, A>` | `ArcRepr<A>`         | O(1)        | 零拷贝降级为共享只读引用，但结果存续期间必须放弃源写权限 |
+| `ViewMutRepr<'_, A>` | `ArcRepr<A>`         | 不可转换    | `ViewMutRepr` 仅持有独占借用，不持有底层分配所有权，无法升级为 `Arc` 共享所有权 |
 | `ArcRepr<A>`         | `ViewRepr<'_, A>`    | O(1)        | 共享只读借用                             |
-| `ArcRepr<A>`         | `Owned<A>`           | O(1) / O(n) | 引用计数为 1 时尝试 `Arc::try_unwrap` 复用缓冲；否则分配新的独占缓冲并复制数据 |
+| `ArcRepr<A>`         | `Owned<A>`           | O(n)        | 总是分配新的独占缓冲并复制数据；不提供条件零拷贝 |
 
 | 源 \ 目标            | `Owned<A>`                  | `ViewRepr<'_, A>`       | `ViewMutRepr<'_, A>`        | `ArcRepr<A>`                  |
 | -------------------- | --------------------------- | ----------------------- | --------------------------- | ----------------------------- |
 | `Owned<A>`           | —                           | 零拷贝                  | 零拷贝                      | 零拷贝                        |
 | `ViewRepr<'_, A>`    | 须分配                      | —                       | 不可转换                    | 不可转换                      |
-| `ViewMutRepr<'_, A>` | 须分配                      | 零拷贝                  | —                           | 零拷贝（需满足独占约束）      |
-| `ArcRepr<A>`         | 条件零拷贝 / 须分配         | 零拷贝                  | 不可转换                    | —                             |
+| `ViewMutRepr<'_, A>` | 须分配                      | 零拷贝                  | —                           | 不可转换                      |
+| `ArcRepr<A>`         | 须分配                      | 零拷贝                  | 不可转换                    | —                             |
 
-> **补充说明：** 上表按四种具体存储表示细化 `require.md` §6.2 的抽象规则：零拷贝表示仅重借用或降级访问权限；须分配表示需要分配新的 owned 缓冲并复制数据；条件零拷贝表示仅在 `ArcRepr` 引用计数为 1 时可通过 `Arc::try_unwrap` 直接复用底层缓冲，否则仍须分配并复制；不可转换表示违反 Rust 的可变性/独占借用约束，例如 `ViewRepr<'_, A> → ArcRepr<A>` 与 `ArcRepr<A> → ViewMutRepr<'_, A>`。其中 `ViewMutRepr<'_, A> → ArcRepr<A>` 虽为零拷贝，但结果一旦形成共享只读引用，就必须放弃原先的可写访问权。
+> **补充说明：** 上表按四种具体存储表示细化 `require.md` §6.2 的抽象规则：零拷贝表示仅重借用或降级访问权限；须分配表示需要分配新的 owned 缓冲并复制数据；不可转换表示 Rust 类型系统下无法在不违反所有权/独占借用约束的前提下完成该转换，例如 `ViewRepr<'_, A> → ArcRepr<A>`、`ViewMutRepr<'_, A> → ArcRepr<A>` 与 `ArcRepr<A> → ViewMutRepr<'_, A>`。
 
-> **类型安全论证**：`ViewMutRepr<'a, A>` → `ArcRepr<A>` 的零拷贝转换通过消费 `ViewMutRepr` 实例实现。转换后，原始 `&mut` 引用的生命周期 `'a` 被 `ArcRepr` 的共享语义取代，原 `ViewMutRepr` 不再可用（所有权已转移）。Rust 类型系统保证了转换后无法再通过原 `ViewMutRepr` 路径写入数据。`ArcRepr` 仅暴露只读接口，因此共享引用不会导致数据竞争。
+> **类型安全论证**：`ViewMutRepr<'a, A>` 只持有 `&'a mut A` 派生出的借用语义，不拥有底层分配，因此不能在零拷贝前提下构造 `ArcRepr<A>` 所需的共享所有权句柄。Rust 不允许把借用“升级”为 `Arc` 所有权；若需要共享只读结果，必须先复制到新的 owned/arc 后备缓冲。
 
 > **约束：** Xenon 当前元素类型集合是封闭且按值语义处理的集合；`Owned::from_vec` 保持 `Elem: Copy` 约束，并统一复制到内部 64B 对齐缓冲（参见 `06-layout.md §5.6`）。其它从迭代器或构造器进入 `Owned` 的路径由上层构造模块统一收敛。
 
@@ -746,7 +748,7 @@ pub struct ArcRepr<A> {
 }
 ```
 
-> **设计决策：** `ArcRepr<A>` 不存储独立的 `offset` 字段。偏移量与切片范围由外层 `TensorBase` 元数据管理（见 `07-tensor.md §5.1`），而 `ArcRepr` 只表示共享只读引用语义下的底层连续缓冲区。`make_mut()` 仅针对整个底层缓冲区执行写时复制，用于显式生成独占 owned 数据，不负责解释张量视图的 `offset` / `shape` / `strides`，也不把 `ArcRepr` 提升为共享可写存储模式。
+> **设计决策：** `ArcRepr<A>` 不存储独立的 `offset` 字段。偏移量与切片范围由外层 `TensorBase` 元数据管理（见 `07-tensor.md §5.1`），而 `ArcRepr` 只表示共享只读引用语义下的底层连续缓冲区。`make_mut()` 仅针对整个底层缓冲区执行写时复制，用于在共享存储对象内部获得独占可写缓冲访问，不负责解释张量视图的 `offset` / `shape` / `strides`，也不把 `ArcRepr` 提升为共享可写存储模式，更不构成公开的 `ArcRepr<A> -> Owned<A>` 零拷贝转换。
 
 **写时复制流程**：
 

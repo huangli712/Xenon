@@ -14,7 +14,7 @@
 | 职责     | 包含                                                                  | 不包含                                                  |
 | -------- | --------------------------------------------------------------------- | ------------------------------------------------------- |
 | 算术运算 | add/sub/mul/div，数值类型：i32/i64/f32/f64/Complex                    | 归约运算（sum/prod/min/max，参见 `13-reduction.md §1`） |
-| 一元运算 | abs/signum（Numeric + PartialOrd）；neg/square（Numeric）；数学函数（RealScalar） | 篮选/排序                                               |
+| 一元运算 | abs（有序数值）；signum（浮点按符号位、整数按比较）；neg/square（Numeric）；数学函数（RealScalar） | 篮选/排序                                               |
 | 数学函数 | sin/sqrt/exp/ln/floor/ceil，仅 f32/f64                                | 运算符重载（参见 `19-overload.md §1`）                  |
 | 复数运算 | norm（返回实数类型）/conjugate（公开 API；内部 Complex 方法名可记为 conj），仅 Complex | 比较运算（eq/ne/lt/gt）                                 |
 | 逻辑非   | `!`，仅 bool                                                          | 位运算                                                  |
@@ -52,7 +52,7 @@ L6: math (element-wise operations) <- current module (depends on broadcast, iter
 | -------- | ---- |
 | 需求映射 | 需求说明书 §12 |
 | 范围内   | 逐元素算术、一元运算、数学函数、复数 `norm` / `conjugate`、逻辑非、比较运算与广播语义。 |
-| 范围外   | SIMD 数学函数专用 kernel（当前版本数学函数统一回退标量；SIMD 仅覆盖逐元素算术与整数 `sum`）、混合类型逐元素运算以及 `map` 系列公开 API。 |
+| 范围外   | SIMD 数学函数专用 kernel（当前版本数学函数统一回退标量；SIMD 仅覆盖逐元素算术（`f32`/`f64`/`i32`/`i64`）、归约（`f32`/`f64`/`i32`/`i64`/`Complex`）和内积（`f32`/`f64`/`i32`/`i64`/`Complex`））、混合类型逐元素运算以及 `map` 系列公开 API。 |
 | 非目标   | 不新增新的数学库依赖，不在本文扩展 mixed-type API 或更通用的逐元素映射原语。 |
 
 ---
@@ -80,7 +80,7 @@ src/math/
 | 广播先决 | 所有二元逐元素运算与比较运算必须先验证广播兼容性，再遍历广播后的只读视图。 |
 | 输出形状稳定 | 二元运算返回张量的 shape 必须等于广播结果 shape；一元运算与标量运算保持输入 shape 不变。 |
 | 比较类型边界 | `lt` / `gt` 只对 `i32`、`i64`、`f32`、`f64` 开放；`bool` 与 `Complex` 不得通过公开 API 进入该路径。 |
-| SIMD 语义等价 | SIMD 路径仅可用于逐元素算术与整数 `sum`；其 shape、NaN 语义和错误边界必须与标量路径一致。 |
+| SIMD 语义等价 | SIMD 路径仅可用于逐元素算术（`f32`/`f64`/`i32`/`i64`）、归约（`f32`/`f64`/`i32`/`i64`/`Complex`）和内积（`f32`/`f64`/`i32`/`i64`/`Complex`）；数学函数、`abs`、`signum`、`neg`、`square`、`norm`、`conjugate` 必须回退标量，其 shape、NaN 语义和错误边界必须与标量路径一致。 |
 
 ### 4.2 Error Scenarios
 
@@ -150,33 +150,37 @@ where
     A: Numeric,
 {
     /// Element-wise addition (with broadcast support).
-    pub fn add<E>(&self, other: &TensorBase<impl Storage<Elem = A>, E>)
+    pub fn add<S2, E>(&self, other: &TensorBase<S2, E>)
         -> Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>
     where
+        S2: Storage<Elem = A>,
         D: BroadcastDim<E>,
         E: Dimension,
         A: Numeric + Copy + Add<Output = A>;
 
     /// Element-wise subtraction.
-    pub fn sub<E>(&self, other: &TensorBase<impl Storage<Elem = A>, E>)
+    pub fn sub<S2, E>(&self, other: &TensorBase<S2, E>)
         -> Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>
     where
+        S2: Storage<Elem = A>,
         D: BroadcastDim<E>,
         E: Dimension,
         A: Numeric + Copy + Sub<Output = A>;
 
     /// Element-wise multiplication.
-    pub fn mul<E>(&self, other: &TensorBase<impl Storage<Elem = A>, E>)
+    pub fn mul<S2, E>(&self, other: &TensorBase<S2, E>)
         -> Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>
     where
+        S2: Storage<Elem = A>,
         D: BroadcastDim<E>,
         E: Dimension,
         A: Numeric + Copy + Mul<Output = A>;
 
     /// Element-wise division.
-    pub fn div<E>(&self, other: &TensorBase<impl Storage<Elem = A>, E>)
+    pub fn div<S2, E>(&self, other: &TensorBase<S2, E>)
         -> Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>
     where
+        S2: Storage<Elem = A>,
         D: BroadcastDim<E>,
         E: Dimension,
         A: Numeric + Copy + Div<Output = A>;
@@ -205,7 +209,8 @@ where
     ///
     /// # NaN behavior (floats)
     ///
-    /// `signum(NaN)` returns `NaN` (IEEE 754 semantics, via PartialOrd).
+    /// Floating-point `signum` is defined by the sign bit: `NaN.signum()` returns
+    /// `NaN` per IEEE 754 semantics; integer `signum` follows `PartialOrd`.
     pub fn signum(&self) -> Tensor<A, D>;
 }
 
@@ -304,15 +309,17 @@ where
     A: Element + PartialEq,
 {
     /// Element-wise equality comparison, returns a bool tensor. NaN comparison follows IEEE 754.
-    pub fn eq<DB>(&self, other: &TensorBase<impl Storage<Elem = A>, DB>)
+    pub fn eq<S2, DB>(&self, other: &TensorBase<S2, DB>)
         -> Result<Tensor<bool, <D as BroadcastDim<DB>>::Output>, XenonError>
     where
+        S2: Storage<Elem = A>,
         D: BroadcastDim<DB>,
         DB: Dimension;
 
-    pub fn ne<DB>(&self, other: &TensorBase<impl Storage<Elem = A>, DB>)
+    pub fn ne<S2, DB>(&self, other: &TensorBase<S2, DB>)
         -> Result<Tensor<bool, <D as BroadcastDim<DB>>::Output>, XenonError>
     where
+        S2: Storage<Elem = A>,
         D: BroadcastDim<DB>,
         DB: Dimension;
 }
@@ -326,18 +333,20 @@ where
     /// Element-wise less-than comparison.
     ///
     /// Supported ordered element types are i32, i64, f32, and f64.
-    pub fn lt<DB>(&self, other: &TensorBase<impl Storage<Elem = A>, DB>)
+    pub fn lt<S2, DB>(&self, other: &TensorBase<S2, DB>)
         -> Result<Tensor<bool, <D as BroadcastDim<DB>>::Output>, XenonError>
     where
+        S2: Storage<Elem = A>,
         D: BroadcastDim<DB>,
         DB: Dimension;
 
     /// Element-wise greater-than comparison.
     ///
     /// Supported ordered element types are i32, i64, f32, and f64.
-    pub fn gt<DB>(&self, other: &TensorBase<impl Storage<Elem = A>, DB>)
+    pub fn gt<S2, DB>(&self, other: &TensorBase<S2, DB>)
         -> Result<Tensor<bool, <D as BroadcastDim<DB>>::Output>, XenonError>
     where
+        S2: Storage<Elem = A>,
         D: BroadcastDim<DB>,
         DB: Dimension;
 }
@@ -429,13 +438,20 @@ apply_binary(a, b, f):
 
 ### 6.3 SIMD 加速路径
 
-SIMD 分发由 `math` 的具体算术操作在满足连续性、对齐和 feature gate 前提时直接委托 `src/simd/` facade；本文不再把额外的中间 helper 视为稳定设计接口。参见 `08-simd.md §5.5` 了解 SIMD 后端详情。当前版本 SIMD 仅覆盖逐元素算术与整数 `sum`；`abs` / `neg` / `signum` / `square` 以及 `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 等路径统一回退标量实现。
+SIMD 分发由 `math` 的具体算术操作在满足连续性、对齐和 feature gate 前提时直接委托 `src/simd/` facade；本文不再把额外的中间 helper 视为稳定设计接口。参见 `08-simd.md §5.5` 了解 SIMD 后端详情。当前版本 SIMD 覆盖逐元素算术（`f32`/`f64`/`i32`/`i64`）、归约（`f32`/`f64`/`i32`/`i64`/`Complex`）和内积（`f32`/`f64`/`i32`/`i64`/`Complex`）；`abs` / `signum` / `neg` / `square` / `norm` / `conjugate` 以及 `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 等路径统一回退标量实现。
 
 ---
 
 ## 7. 实现任务拆分
 
 ### Wave 1: 二元操作与一元运算
+
+- [ ] **T1**: 创建 `src/math/mod.rs` 骨架与公开导出
+  - 文件: `src/math/mod.rs`
+  - 内容: 模块声明、re-export 公开 API、为后续二元/一元/比较文件预留入口
+  - 测试: 编译通过
+  - 前置: 无
+  - 预计: 10 min
 
 - [ ] **T2**: 实现共享二元逐元素执行骨架（含广播支持）
   - 文件: `src/math/binary.rs`
@@ -648,12 +664,12 @@ User calls add / unary op / comparison method
 
 | 属性     | 值                                                        |
 | -------- | --------------------------------------------------------- |
-| 决策     | 连续 + 对齐内存时，仅对已覆盖的逐元素算术自动使用 SIMD 路径；整数 `sum` 由 reduction 模块单独接入，数学函数与其他路径仍回退到标量 |
+| 决策     | 连续 + 对齐内存时，仅对已覆盖的逐元素算术自动使用 SIMD 路径；`sum` / `dot` 的 SIMD 能力由 `08-simd.md` 中定义的归约/内积后端接入，数学函数与 `abs`/`signum`/`neg`/`square`/`norm`/`conjugate` 仍回退到标量 |
 | 理由     | SIMD 路径只在连续内存上有意义；非连续时标量路径更简单正确 |
 | 替代方案 | 所有路径都用标量                                          |
 | 拒绝原因 | 性能差距显著（2-4x），科学计算用户期望高性能              |
 
-> **补充**：SIMD 实现位于独立 backend 模块 `src/simd/`，`math/` 仅按连续性和 feature gate 决定是否委托该 backend；逐元素算术之外，dot/inner-product 的 SIMD 设计见 `08-simd.md`，公开 `dot()` API 与分发语义见 `12-matrix.md`。当前版本 `math` 模块仅覆盖逐元素数学函数，不提供 float / complex reduction kernel，数学函数也不接入专门 SIMD kernel。
+> **补充**：SIMD 实现位于独立 backend 模块 `src/simd/`，`math/` 仅按连续性和 feature gate 决定是否委托该 backend；逐元素算术之外，归约/内积的 SIMD 设计见 `08-simd.md`。当前版本 `math` 模块不为数学函数、`abs`、`signum`、`neg`、`square`、`norm`、`conjugate` 提供专门 SIMD kernel。
 
 ---
 

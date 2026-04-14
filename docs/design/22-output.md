@@ -347,7 +347,7 @@ where
 **1D 大数组（截断，默认 edge_items=3）**:
 
 ```
-[1, 2, 3, ..., 998, 999, 1000, ... 994 more elements] shape=[1000]
+[1, 2, 3, ..., 998, 999, 1000, ... 994 more elements]  shape=[1000]
 ```
 
 **2D 大数组（截断，默认 edge_items=3）**:
@@ -360,7 +360,7 @@ where
  [9701, 9702, 9703, ..., 9798, 9799, 9800],
  [9801, 9802, 9803, ..., 9898, 9899, 9900],
  [9901, 9902, 9903, ..., 9998, 9999, 10000],
- ... 9964 more elements] shape=[100, 100]
+ ... 9964 more elements]  shape=[100, 100]
 ```
 
 > 当任意维度触发截断时，输出主体仍保持 NumPy 风格的局部预览，但必须在最外层右括号后追加 `shape=[...]`，以暴露完整维度信息。
@@ -456,7 +456,7 @@ fmt_1d(tensor, f):
             write tensor[[i]]
             if i < len - 1: write ", "
         omitted = total - 2 * edge_items
-        write ", ... " + omitted + " more elements] shape=" + tensor.shape()
+        write ", ... " + omitted + " more elements]  shape=" + tensor.shape()
     else:
         write "["
         for i in 0..len:
@@ -477,7 +477,7 @@ fmt_nd(tensor, f, depth):
     write "]"
     if depth == 0 and total > threshold:
         omitted = total - count_displayed_elements(tensor.shape(), edge_items)
-        write " ... " + omitted + " more elements shape=" + tensor.shape()
+        write " ... " + omitted + " more elements]  shape=" + tensor.shape()
 ```
 
 ---

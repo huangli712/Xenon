@@ -16,7 +16,7 @@
 | 多维整数索引 | `usize` 多维索引、`at` / `at_mut` / `get` / `get_mut` / `get_unchecked*` | 负索引、布尔掩码、整数数组高级索引 |
 | 范围索引（切片） | 以范围描述符表达的只读切片、`slice`、`s![]` 宏 | 负步长切片、共享可写切片、隐式复制切片 |
 | 元数据更新 | 按 F-order 规则更新 offset、shape、stride 与布局标记 | 改变逻辑元素顺序、引入与源张量无关的新存储 |
-| 错误边界 | 安全接口返回可恢复错误或 `Option`，unsafe 接口由调用方保证前提 | 将越界默认为 panic 的安全主路径 |
+| 错误边界 | 安全接口返回可恢复错误，unsafe 接口由调用方保证前提 | 将越界默认为 panic 的安全主路径 |
 
 ### 1.2 设计原则
 
@@ -152,7 +152,19 @@ pub enum SliceInfoIndices {
     },
     Dynamic(Vec<SliceInfoElem>),
 }
+
+pub struct SliceInfo<I, D>
+where
+    I: Dimension,
+    D: Dimension,
+{
+    pub indices: SliceInfoIndices,
+    pub in_dim: D,
+    pub out_dim: I,
+}
 ```
+
+`SliceInfo<I, D>` 是切片描述符的公开包装类型：`D` 表示输入维度，`I` 表示切片后的输出维度；其内部持有 `SliceInfoIndices`，并在 `slice.rs` 中负责把范围描述与维度信息绑定。
 
 ### 5.2 张量访问与切片 API
 
@@ -166,7 +178,7 @@ where
     where
         I: NdIndex<D>;
 
-    pub fn get(&self, index: &[usize]) -> Option<&A>;
+    pub fn get(&self, index: &[usize]) -> Result<&A, XenonError>;
 
     pub unsafe fn get_unchecked(&self, index: &[usize]) -> &A;
 
@@ -185,19 +197,20 @@ where
     where
         I: NdIndex<D>;
 
-    pub fn get_mut(&mut self, index: &[usize]) -> Option<&mut A>;
+    pub fn get_mut(&mut self, index: &[usize]) -> Result<&mut A, XenonError>;
 
     pub unsafe fn get_unchecked_mut(&mut self, index: &[usize]) -> &mut A;
 }
 ```
 
-> **设计决策：** `Index` / `IndexMut` 语法糖可继续保留，但仅作为 panic 型便捷接口；规范安全主路径始终是 `at()` / `at_mut()` 与 `slice()`。此前草案中的 `try_slice()` 与当前 `slice()` 具有相同签名且同样返回 `Result`，没有额外语义，因此移除以避免冗余接口。
+> **设计决策：** `Index` / `IndexMut` 语法糖可继续保留，但仅作为 panic 型便捷接口；规范安全主路径始终是 `at()` / `get()` / `at_mut()` / `get_mut()` 与 `slice()`。此前草案中的 `try_slice()` 与当前 `slice()` 具有相同签名且同样返回 `Result`，没有额外语义，因此移除以避免冗余接口。
 
 ### 5.3 Good / Bad 对比
 
 ```rust
 // Good - checked indexing keeps recoverable errors on the main path.
 let value = tensor.at((2, 1))?;
+let value2 = tensor.get(&[2, 1])?;
 
 // Bad - panic-based sugar is not the primary safe contract.
 let value = &tensor[(2, 1)];
@@ -300,7 +313,7 @@ compute_slice(shape, strides, offset, slices):
 - [ ] **T2**: 实现 `at` / `get` / `get_unchecked`
     - 文件: `src/index/access.rs`
     - 内容: 统一安全与 unsafe 访问路径，保证错误边界一致
-    - 测试: `test_get_returns_none`, `test_index_out_of_bounds`
+    - 测试: `test_get_returns_index_out_of_bounds`, `test_index_out_of_bounds`
     - 前置: T1
     - 预计: 10 min
 
@@ -369,7 +382,7 @@ Wave 2:         [T3]         Wave 3: [T4] -> [T5] -> [T6]
 | `test_at_out_of_bounds` | 越界返回 `IndexOutOfBounds` | 高 |
 | `test_index_out_of_bounds` | `Index` 语法糖失败时 panic | 中 |
 | `test_at_mut_invalid_storage_mode` | 只读存储上可写访问返回 `InvalidStorageMode` | 高 |
-| `test_get_returns_none` | `get()` 失败返回 `None` | 高 |
+| `test_get_returns_index_out_of_bounds` | `get()` 失败返回 `IndexOutOfBounds` | 高 |
 | `test_slice_basic` | 基本切片结果的 shape 与数据正确 | 高 |
 | `test_slice_with_step` | 正步长切片结果正确 | 高 |
 | `test_slice_step_zero` | `step == 0` 返回 `InvalidArgument` | 高 |
@@ -451,7 +464,7 @@ User calls tensor.slice(info)
 
 | 主题 | 说明 |
 | --- | --- |
-| Recoverable error | `at()` / `at_mut()` / `slice()` 在 rank 不匹配、轴非法、越界、`step == 0`、只读存储上请求可写访问时返回 `XenonError` |
+| Recoverable error | `at()` / `get()` / `at_mut()` / `get_mut()` / `slice()` 在 rank 不匹配、轴非法、越界、`step == 0`、只读存储上请求可写访问时返回 `XenonError` |
 | Panic | `Index` / `IndexMut` 语法糖失败时可 panic；这不是规范安全主路径 |
 | 路径一致性 | 对同一合法输入，checked 与 unchecked 路径必须给出同一偏移和同一逻辑结果；unsafe 只省略检查 |
 | 容差边界 | 不适用；本模块不涉及浮点容差、SIMD 误差或并行归约差异 |
@@ -494,7 +507,7 @@ XenonError::InvalidStorageMode {
 
 - 不再使用缺少 `ndim` / `shape` 的旧 `InvalidAxis` 形式。
 - 不引入单独公开的 `InvalidSliceStep` 私有错误名。
-- `get()` / `get_mut()` 作为轻量接口，失败返回 `None`，不负责诊断细节。
+- `get()` / `get_mut()` 与 `at()` / `at_mut()` 一样返回结构化可恢复错误；越界时使用 `XenonError::IndexOutOfBounds`。
 
 ---
 
@@ -504,7 +517,7 @@ XenonError::InvalidStorageMode {
 
 | 属性 | 值 |
 | --- | --- |
-| 决策 | `at()` / `at_mut()` / `slice()` 作为规范安全接口，失败返回可恢复错误 |
+| 决策 | `at()` / `get()` / `at_mut()` / `get_mut()` / `slice()` 作为规范安全接口，失败返回可恢复错误 |
 | 理由 | 符合 `require.md` §18 对安全接口的要求，并与 `26-error.md` 的统一诊断模型对齐 |
 | 替代方案 | 全部使用 `Index` / `IndexMut` panic 语法糖 — 放弃，错误恢复与上游组合能力不足 |
 | 替代方案 | 统一返回 `Option` — 放弃，无法承载轴、shape、索引等诊断信息 |

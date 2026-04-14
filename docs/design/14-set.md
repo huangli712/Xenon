@@ -119,11 +119,11 @@ where
     ///
     /// # Supported types
     ///
-/// i32, i64, f32, f64, Complex<f32>, Complex<f64>
+    /// i32, i64, f32, f64, Complex<f32>, Complex<f64>
     ///
-/// # Unsupported types
-///
-/// - bool: only 2 values (true/false), unique is meaningless for bool
+    /// # Unsupported types
+    ///
+    /// - bool: only 2 values (true/false), unique is meaningless for bool
     ///
     /// # Equality behavior
     ///

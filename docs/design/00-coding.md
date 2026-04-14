@@ -446,7 +446,7 @@ unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 
 - 运行时约束违反（形状不匹配、广播失败）
 - 用户输入无效
-- 方法型 API 中可恢复的边界检查失败（例如 `broadcast_to()` / `try_slice()` / `try_offset_of()`）
+- 方法型 API 中可恢复的边界检查失败（例如 `broadcast_to()` / `slice()` / `try_offset_of()`）
 
 **使用 `panic!`**（编程错误）：
 
@@ -967,7 +967,7 @@ std = []                        # Additive: enables std library
 parallel = ["dep:rayon", "std"] # Additive: enables parallel iterators
 simd = ["dep:pulp", "std"]      # Additive: enables SIMD with std-backed intrinsics
 # Note: libm is NOT a dependency (see 01-architecture.md §1.4).
-# RealScalar math functions (sin/cos/exp/ln) are only available with "std" feature.
+# RealScalar math functions (sin/exp/ln) are only available with "std" feature.
 ```
 
 ### 9.2 使用 `dep:` 语法声明可选依赖
@@ -1003,6 +1003,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 | 约束项     | 要求                                                             |
 | ---------- | ---------------------------------------------------------------- |
 | `std` only | 所有代码依赖 `std`，不讨论 `no_std`                              |
+| MSRV       | Rust 1.85+                                                       |
 | 单 crate   | 保持单 crate 边界，不引入额外 crate                              |
 | SemVer     | 遵循 SemVer，公开 API 变更须同步版本号                           |
 | 最小依赖   | 仅允许 `rayon`（并行）和 `pulp`（SIMD）作为可选外部依赖，默认关闭 |

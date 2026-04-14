@@ -39,7 +39,7 @@ L1: dimension, element, complex
 L2: layout
 L3: storage
 L4: tensor
-L5: iter, reduction
+L5: iter, internal kernel
 L6: parallel  <- current module (optional, feature = "parallel")
 ```
 
@@ -77,7 +77,7 @@ src/parallel/
 ├── crate::tensor            # Tensor, TensorBase, TensorView
 ├── crate::dimension         # Ix1
 ├── (module-owned)           # ParElements and par_iter() entry belong to parallel/
-├── crate::reduction         # serial reduction semantics mirrored by par_sum/par_dot
+├── crate::kernel            # private serial reduction/dot kernels shared with reduction/matrix
 └── crate::error             # XenonError
 ```
 
@@ -89,12 +89,14 @@ src/parallel/
 | `tensor`    | `Tensor<A, D>`, `TensorBase<S, D>`, `TensorView<'a, A, D>`, `.len()`, `.raw_dim()`, `.is_f_contiguous()` |
 | `dimension` | `Ix1` |
 | `parallel`  | `ParElements<'a, A, D>`, `TensorBase::par_iter()`                                                               |
-| `reduction` | 串行 `sum` / `dot` 的语义基线与 identity / combine 约束                                                         |
+| `kernel`    | 私有串行 `sum` / `dot` kernel、identity / combine 约束                                                         |
 | `error`     | `XenonError`, `XenonError::ShapeMismatch`, `XenonError::InvalidArgument`                                        |
 
 ### 4.3 依赖方向
 
-> **依赖方向：单向向上。** `parallel/` 仅消费 `tensor`、`reduction`、`error` 和可选 `rayon`；`ParElements` 与 `TensorBase::par_iter()` 归属 `parallel` 模块本身，不属于 `iter` 模块。并行路径只建立在上层已完成的张量形状、布局与类型约束之上。
+> **依赖方向：单向向上。** `parallel/` 仅消费 `tensor`、私有 `kernel`、`error` 和可选 `rayon`；`ParElements` 与 `TensorBase::par_iter()` 归属 `parallel` 模块本身，不属于 `iter` 模块。并行路径只建立在上层已完成的张量形状、布局与类型约束之上。
+
+> **设计决策：** 串行归约/内积的共享 kernel 应下沉到内部私有模块（如 `kernel`），避免与公开 `reduction`/`matrix` 模块形成循环依赖。`parallel` 只依赖该私有 kernel，不直接依赖公开归约模块。
 
 ### 4.4 合法性声明
 
@@ -141,7 +143,7 @@ pub struct ParallelPool {
 ```
 
 - `GLOBAL_PARALLEL_THRESHOLD`：控制自动串并切换阈值。
-- `ParallelGuard`：防止嵌套并行；使用 thread-local `AtomicBool` 标记当前线程是否已处于并行执行上下文，构造时检查并设置标志，析构时清除；进入失败时必须回退串行而不是 panic，panic 时也通过 RAII 析构自动清理标志。
+- `ParallelGuard`：防止嵌套并行；使用 thread-local `Cell<bool>` 标记当前线程是否已处于并行执行上下文，构造时检查并设置标志，析构时清除；进入失败时必须回退串行而不是 panic，panic 时也通过 RAII 析构自动清理标志。
 - `ParallelPool`：可选自定义线程池包装，只改变执行上下文，不改变 API 语义；其内部调用同样受 `ParallelGuard` 保护，自定义 pool 内嵌套调用并行 API 时会自动回退串行，不允许嵌套 `ParallelPool` 实例。
 
 ### 5.2 公共函数签名
@@ -160,32 +162,35 @@ pub fn reset_parallel_threshold();
 pub fn should_parallelize(len: usize, is_f_contiguous: bool) -> bool;
 
 #[cfg(feature = "parallel")]
-pub fn par_map<A, B, D, F>(tensor: &Tensor<A, D>, f: F) -> Tensor<B, D>
+pub fn par_map<S, A, B, D, F>(tensor: &TensorBase<S, D>, f: F) -> Tensor<B, D>
 where
+    S: Storage<Elem = A>,
     D: Dimension,
     A: Element + Send + Sync,
     B: Element + Send,
     F: Fn(&A) -> B + Send + Sync;
 
 #[cfg(feature = "parallel")]
-pub fn par_map_with_threshold<A, B, D, F>(
-    tensor: &TensorBase<impl Storage<Elem = A>, D>,
+pub fn par_map_with_threshold<S, A, B, D, F>(
+    tensor: &TensorBase<S, D>,
     f: F,
     threshold: usize,
 ) -> Result<Tensor<B, D>, XenonError>
 where
+    S: Storage<Elem = A>,
     D: Dimension,
     A: Element + Send + Sync,
     B: Element + Send,
     F: Fn(&A) -> B + Send + Sync;
 
 #[cfg(feature = "parallel")]
-pub(crate) fn par_reduce_impl<A, D, F, ID>(
-    tensor: &Tensor<A, D>,
+pub(crate) fn par_reduce_impl<S, A, D, F, ID>(
+    tensor: &TensorBase<S, D>,
     identity: ID,
     op: F,
 ) -> A
 where
+    S: Storage<Elem = A>,
     D: Dimension,
     A: Element + Send + Sync + Clone,
     F: Fn(A, A) -> A + Sync,
@@ -198,11 +203,13 @@ where
     A: Element + Numeric + Send + Sync + Clone;
 
 #[cfg(feature = "parallel")]
-pub fn par_dot<A>(
-    lhs: &TensorBase<impl Storage<Elem = A>, Ix1>,
-    rhs: &TensorBase<impl Storage<Elem = A>, Ix1>,
+pub fn par_dot<SL, SR, A>(
+    lhs: &TensorBase<SL, Ix1>,
+    rhs: &TensorBase<SR, Ix1>,
 ) -> Result<A, XenonError>
 where
+    SL: Storage<Elem = A>,
+    SR: Storage<Elem = A>,
     A: Element + Numeric + Send + Sync + Clone;
 ```
 
@@ -362,7 +369,7 @@ where
 
 | 主题                             | 论证                                                                                                                                       |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ParallelGuard`                  | 嵌套并行不是公开错误，而是执行策略问题；因此使用 thread-local `AtomicBool` 记录当前线程是否已处于并行上下文，进入失败时回退串行，析构时自动清理标志，避免库内部再开第二层并行，满足 `需求说明书 §9.2`。 |
+| `ParallelGuard`                  | 嵌套并行不是公开错误，而是执行策略问题；因此使用 thread-local `Cell<bool>` 记录当前线程是否已处于并行上下文，进入失败时回退串行，析构时自动清理标志，避免库内部再开第二层并行，满足 `需求说明书 §9.2`。 |
 | `Tensor::from_raw_vec_unchecked` | 这里只在输出向量长度与 `tensor.raw_dim()` 已由输入张量长度和映射过程保持一致时使用；并行与串行路径都必须保证产出元素数等于输入逻辑元素数。 |
 | panic / `Err` 传播               | 并行 worker 上的 panic 与 `Err(XenonError)` 均不得吞掉或延迟到“全部 worker 完成后再统一检查”；必须沿 `rayon` 传播链即时向外反映。          |
 
@@ -633,6 +640,15 @@ XenonError::InvalidArgument {
 | 理由     | 保持跨模块诊断字段与错误类别一致，满足 `需求说明书 §27` |
 | 替代方案 | 定义 `ParallelError` —— 放弃，会破坏统一错误模型        |
 | 替代方案 | 以 panic 处理非法阈值 —— 放弃，不符合可恢复错误要求     |
+
+### 决策 4：并行归约依赖私有 kernel 而非公开 reduction 模块
+
+| 属性     | 值                                                                                         |
+| -------- | ------------------------------------------------------------------------------------------ |
+| 决策     | `parallel` 的串行基线依赖下沉到内部私有 `kernel` 模块，不直接依赖公开 `reduction`/`matrix` |
+| 理由     | 避免 `parallel` 与公开归约/矩阵模块互相调用形成循环依赖，同时保留共享串行 kernel 的单一事实来源 |
+| 替代方案 | 直接依赖 `reduction` —— 放弃，会形成架构循环                                               |
+| 替代方案 | 在 `parallel` 内复制一份串行逻辑 —— 放弃，会造成语义漂移与维护重复                         |
 
 ---
 

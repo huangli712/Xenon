@@ -313,6 +313,8 @@ impl<D: Dimension> Strides<D> {
 - `Strides<D>` 的维度数必须与对应 `shape: D` 完全一致。
 - 对于 F-contiguous 布局：`stride[0] = 1`，且 `stride[i] = stride[i-1] * shape[i-1]`。
 
+拥有型存储的 stride 必须满足 F-order 连续条件（即 `strides[i] = product of shape[0..i]`）；若传入非 F-order stride，构造须返回 `XenonError::InvalidLayout`。
+
 与 `Dimension`/`TensorBase` 的职责边界如下：
 
 - `02-dimension.md` 中的 `Dimension` 只描述 shape/rank，不保存 stride 语义。
@@ -421,7 +423,7 @@ pub fn is_aligned(ptr: *const u8) -> bool {
 零步长表示广播维度——该维度被扩展，但所有索引访问同一元素：
 
 ```
-shape = [3, 4], strides = [1, 0]  // 第二维广播
+shape = [3, 4], strides = [1, 0]  // axis 1 is broadcast
 
 索引 [0, 0] 和 [0, 1] 和 [0, 2] 和 [0, 3] 访问同一物理元素
 ```
@@ -458,7 +460,7 @@ impl Layout {
         strides: &Strides<D>,
         ptr: *const u8,
     ) -> Self {
-        let flags = compute_flags_inner(shape, strides, ptr);
+        let flags = compute_layout_flags(shape, strides, ptr);
         Self { flags }
     }
 
@@ -488,7 +490,7 @@ impl Layout {
 }
 ```
 
-### 5.9 compute_flags 内部函数
+### 5.9 compute_layout_flags 内部函数
 
 ```rust
 /// Computes layout flags from shape, strides, and data pointer.
@@ -506,12 +508,14 @@ impl Layout {
 /// # Returns
 ///
 /// A `LayoutFlags` instance with all relevant flags set.
-pub(crate) fn compute_flags<A, D: Dimension>(
+pub(crate) fn compute_layout_flags<A, D: Dimension>(
     shape: &D,
     strides: &Strides<D>,
     ptr: *const A,
 ) -> LayoutFlags
 ```
+
+> **命名约定：** 当前文档统一使用 `compute_layout_flags` 表示“从 `shape + strides + ptr` 计算 `LayoutFlags`”的主函数；若实现中存在更细粒度辅助函数，应在文档中明确其仅为内部步骤。
 
 ### 5.10 Good/Bad 对比
 

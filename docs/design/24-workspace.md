@@ -847,7 +847,7 @@ let mut buf = ws.borrow_mut()?;
 // Bad - Resize during borrow
 let mut ws = Workspace::new(256, 64)?;
 let buf = ws.borrow_mut()?;
-ws.ensure_capacity(1024);  // Compile error! borrow_mut requires &mut self
+ws.ensure_capacity(1024);  // Compile error: `buf` holds an active immutable borrow of `ws`
 ```
 
 ---
@@ -857,25 +857,25 @@ ws.ensure_capacity(1024);  // Compile error! borrow_mut requires &mut self
 ### 6.1 对齐分配实现
 
 ```
-Workspace 内存布局（64 字节对齐）
+Workspace memory layout (64-byte aligned)
 
-地址:     0x00           0x40           0x80           0xC0
+Address:  0x00           0x40           0x80           0xC0
           ├──────────────┼──────────────┼──────────────┼──────────────┤
-数据:     |  scratch  |  scratch  |  scratch  |  scratch  |
-          |  buffer  |  buffer  |  buffer  |  buffer  |
-          └────────────┴────────────┴────────────┴────────────┘
-          │<───────────────── capacity ─────────────────>│
+Data:     |  scratch  |  scratch  |  scratch  |  scratch  |
+           |  buffer  |  buffer  |  buffer  |  buffer  |
+           └────────────┴────────────┴────────────┴────────────┘
+           │<───────────────── capacity ─────────────────>│
 
           ↑
           ptr (NonNull<u8>)
 
-对齐检查: (addr % 64) == 0 ✓
+Alignment check: (addr % 64) == 0 ✓
 ```
 
 ### 6.2 split_at O(1) 原理
 
 ```
-传统方案（需分配）:
+Traditional approach (requires allocation):
 ┌─────────────────────────────────────┐
 │ Workspace [1024 bytes]              │
 └─────────────────────────────────────┘
@@ -885,9 +885,9 @@ Workspace 内存布局（64 字节对齐）
 │ Left [512 bytes] │  │ Right [512 bytes]│
 │ (独立分配)       │  │ (独立分配)       │
 └──────────────────┘  └──────────────────┘
-         O(n) 内存拷贝 ❌
+         O(n) memory copy ❌
 
-本设计（零分配）:
+This design (zero allocation):
 ┌─────────────────────────────────────┐
 │ Workspace [1024 bytes]              │
 │ ptr = 0x1000                        │
@@ -933,7 +933,7 @@ Workspace 内存布局（64 字节对齐）
 5. 任何 `MaybeUninit` / `assume_init_*` 视图都不得跨越 `ensure_capacity` 保留
 
 ```
-扩容流程：
+Growth flow:
 ensure_capacity(&mut self, 2048)
     │
     ├── 1. 检查 borrow_state == NONE  ✓

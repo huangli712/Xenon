@@ -227,11 +227,11 @@ pub fn strided_view_1d(n: usize) -> StridedFixture1D {
 ### 5.3 四级分类体系
 
 ```
-Benchmark 分类
-├── Micro-benchmarks        # 单操作、单函数级别（如 zeros 构造）
-├── Kernel benchmarks       # 核心计算内核（如 add, sum, dot）
-├── Workflow benchmarks     # 真实使用模式（如 broadcast + add 链）
-└── Comparison benchmarks   # 外部对比（SIMD 开/关，并行 开/关）
+Benchmark categories
+├── Micro-benchmarks        # Single operation / single function (for example zeros)
+├── Kernel benchmarks       # Core compute kernels (for example add, sum, dot)
+├── Workflow benchmarks     # Real usage flows (for example broadcast + add chain)
+└── Comparison benchmarks   # External comparison (SIMD on/off, parallel on/off)
 ```
 
 | 级别       | 示例                                           | 用途         |
@@ -488,6 +488,17 @@ b.iter(|| (&a + &b).unwrap());
 | `elem_add_f64` | 256×256  | 最近一次 main 分支通过结果 | wall time / change % | Regression Check |
 | `sum_1d_f64`   | 65,536   | 最近一次 main 分支通过结果 | wall time / change % | Regression Check |
 
+### 6.5 数值一致性容差
+
+| 类型 | atol | rtol | 说明 |
+| ---- | ---- | ---- | ---- |
+| `f32` | `1e-6` | `1e-5` | 单精度浮点 |
+| `f64` | `1e-12` | `1e-10` | 双精度浮点 |
+| `Complex<f32>` | `1e-6` | `1e-5` | 按分量比较 |
+| `Complex<f64>` | `1e-12` | `1e-10` | 按分量比较 |
+
+整数类型须逐元素精确一致，不容差。
+
 ---
 
 ## 7. 与其他模块的交互
@@ -509,13 +520,13 @@ b.iter(|| (&a + &b).unwrap());
 ### 7.2 数据流
 
 ```
-benchmark 文件
+benchmark files
     │
-    ├── 调用 crate 公共 API（Tensor::from_vec, zeros, +, sum, ...）
+    ├── call crate public APIs (Tensor::from_vec, zeros, +, sum, ...)
     │       │
-    │       └── 内部经过: storage → tensor → overload → simd/parallel
+    │       └── internal path: storage -> tensor -> overload -> simd/parallel
     │
-    └── criterion 测量端到端耗时
+    └── criterion measures end-to-end runtime
 ```
 
 ---

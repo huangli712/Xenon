@@ -131,9 +131,10 @@ src/iter/
 ### 5.1 Elements 迭代器
 
 ```rust
-/// Flat element iterator, traverses all elements in F-order memory layout.
+/// Flat element iterator, traverses all elements in logical F-order index order.
 pub struct Elements<'a, A, D: Dimension> {
-    // Internal fields: view, pointer/index state, remaining count
+    // Internal fields: view, pointer/index state, remaining count,
+    // and PhantomData<&'a A> to tie the yielded references to lifetime 'a.
 }
 
 /// Mutable flat element iterator.

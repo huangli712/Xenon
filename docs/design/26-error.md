@@ -203,7 +203,7 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 
 `XenonError` 须实现 `std::error::Error` trait，提供 `source()` 方法用于链式错误追踪。
 
-公开 API 统一使用 `Result<T, XenonError>` 作为返回类型。库可在 prelude 中提供 `pub use core::result::Result;` 以避免与标准库 `Result` 名称冲突。
+公开 API 统一使用 prelude 导出的 `crate::error::Result`（即 `Result<T, XenonError>` 别名）作为返回类型。
 
 模块可以为内部实现保留局部错误分类（例如 `FfiError`、`WorkspaceError`），以避免在模块内部丢失语义；但凡进入 Xenon 的公开 API 边界，必须统一包装为 `XenonError`（如 `XenonError::Ffi(...)`、`XenonError::Workspace(...)`），不得直接向外暴露模块私有错误枚举。
 
@@ -252,7 +252,7 @@ where
 | `InvalidLayout`      | `operation`, `storage_kind`, `shape`, `strides`, `offset`, `storage_len`, `reason`            |
 | `InvalidAxis`        | `operation`, `axis`, `ndim`, `shape`                                                           |
 | `InvalidShape`       | `operation`, `shape`, `expected_elements`, `actual_elements`, `offending_dim?`                 |
-| `DimensionMismatch`  | `expected`, `actual`                                                                           |
+| `DimensionMismatch`  | `expected`, `actual`；建议在需要更丰富诊断的公共 API 层补充 `{ expected: Vec<usize>, actual: Vec<usize>, operation: &'static str, axis: Option<usize> }` 上下文 |
 | `EmptyArray`         | `operation`, `shape`                                                                           |
 | `InvalidArgument`    | `operation`, `argument`, `expected`, `actual`, `axis?`, `shape?`                               |
 | `InvalidStorageMode` | `operation`, `expected`, `actual`, `shape?`                                                    |

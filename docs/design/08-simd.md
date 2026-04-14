@@ -9,14 +9,14 @@
 
 ## 1. 模块定位
 
-SIMD 后端模块是 Xenon 张量库的可选性能加速层，通过 `pulp` crate 提供跨平台 SIMD 抽象。当前版本 SIMD 覆盖逐元素算术/一元运算、整数/浮点/复数归约与向量内积；数学函数仍统一回退标量。该模块默认关闭，通过 `features = ["simd"]` 启用。
+SIMD 后端模块是 Xenon 张量库的可选性能加速层，通过 `pulp` crate 提供跨平台 SIMD 抽象。当前版本 SIMD 覆盖 `f32`/`f64`/`i32`/`i64` 的逐元素算术，以及 `f32`/`f64`/`i32`/`i64`/`Complex<f32>`/`Complex<f64>` 的 `sum` / `dot`；数学函数与其余一元/复数操作统一回退标量。该模块默认关闭，通过 `features = ["simd"]` 启用。
 
 ### 1.1 职责边界
 
 | 职责       | 包含                                                                 | 不包含                                     |
 | ---------- | -------------------------------------------------------------------- | ------------------------------------------ |
 | SIMD 抽象  | 通过 pulp 统一抽象 x86/ARM 指令集                                    | GPU 加速 (CUDA/OpenCL)                     |
-| 逐元素运算 | 加减乘除、abs、neg 等已覆盖操作的向量化                              | `sqrt` 等数学函数、复杂线性代数 (矩阵分解) |
+| 逐元素运算 | `f32`/`f64`/`i32`/`i64` 的加减乘除向量化                             | 数学函数、`abs`/`signum`/`neg`/`square`、复杂线性代数 (矩阵分解) |
 | 归约运算   | `i32`/`i64`/`f32`/`f64`/`Complex<f32>`/`Complex<f64>` 的 SIMD sum    | `max`/`argmax` 等其他归约                  |
 | 内积运算   | `f32`/`f64`/`Complex<f32>`/`Complex<f64>` SIMD dot；整数 widening dot | 外积、矩阵乘法                             |
 | 标量回退   | 所有操作的纯标量基准实现                                             | —                                          |
@@ -359,15 +359,15 @@ where
 
 ### 5.4a 当前版本的 SIMD 覆盖范围
 
-当前版本 SIMD 覆盖逐元素算术/一元运算、`sum()` 与 `dot()` 的指定类型 kernel；数学函数（如 sin/cos/exp/log）和未列入支持矩阵的高阶算子仍回退标量实现。以下需求说明书 §12 / §13 中的操作在当前版本**不提供专门的 SIMD kernel**，即使启用了 `simd` feature，也统一回退到标量路径：
+当前版本 SIMD 覆盖 `f32`/`f64`/`i32`/`i64` 的逐元素算术，以及 `f32`/`f64`/`i32`/`i64`/`Complex<f32>`/`Complex<f64>` 的 `sum()` 与 `dot()` kernel；其余运算统一回退标量实现。该覆盖范围与 `11-math.md` 的 SIMD 说明保持一致。以下需求说明书 §12 / §13 中的操作在当前版本**不提供专门的 SIMD kernel**，即使启用了 `simd` feature，也统一回退到标量路径：
 
 > **`SimdKernel::dot()` 说明：** `dot()` 为当前版本正式能力。`f32` / `f64` / `Complex<f32>` / `Complex<f64>` 使用 SIMD dot kernel；整数 dot 使用 widening accumulation。若某 ISA 上无法满足文档定义的语义约束，则该次调用自动回退标量实现。
 
-| 类别      | 标量回退操作                                      |
-| --------- | ------------------------------------------------- |
-| 一元/比较 | `square`, `signum`, `eq`, `ne`, `lt`, `gt`, `not` |
-| 复数      | `conj`, `norm`                                    |
-| 数学函数  | `sin`, `sqrt`, `exp`, `ln`, `floor`, `ceil`       |
+| 类别      | 标量回退操作                                                         |
+| --------- | -------------------------------------------------------------------- |
+| 一元/比较 | `abs`, `signum`, `neg`, `square`, `eq`, `ne`, `lt`, `gt`, `not`     |
+| 复数      | `norm`, `conjugate`                                                  |
+| 数学函数  | `sin`, `sqrt`, `exp`, `ln`, `floor`, `ceil`                          |
 
 该约束不改变公开 API 的可用性；SIMD 仅影响执行路径选择，不改变结果语义。
 
@@ -450,7 +450,7 @@ SIMD dot dispatch flow
 ┌─────────────────────────────────────────────────────────────────┐
 │ Check SIMD conditions + type-specific contract                  │
 │ • f32/f64: SIMD mul + pairwise/Kahan-style accumulation         │
-│ • Complex: conjugate-multiply-add on split real/imag lanes      │
+│ • Complex: `conj(lhs)`-multiply-add on split real/imag lanes    │
 │ • Integer: widening accumulation + final overflow validation    │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
@@ -857,7 +857,7 @@ Consistency guarantee strategy
 > **一致性说明：** 对于逐元素操作（add、mul 等），SIMD 和标量路径产生逐位一致的结果。
 > 对于归约/内积操作，Xenon 不接受未记录的“近似一致”；若某个 SIMD 内核无法满足文档定义的数值语义与容差边界，则不走 SIMD 路径。
 >
-> **覆盖说明：** 当前版本 SIMD 覆盖逐元素算术/一元运算、整数/浮点/复数 `sum` 和全部规定的 `dot` kernel；数学函数维持公开 API 不变并自动回退标量路径。
+> **覆盖说明：** 当前版本 SIMD 仅覆盖 `f32`/`f64`/`i32`/`i64` 的逐元素算术，以及 `f32`/`f64`/`i32`/`i64`/`Complex<f32>`/`Complex<f64>` 的 `sum` / `dot` kernel；数学函数、`abs`、`signum`、`neg`、`square`、`norm`、`conjugate` 维持公开 API 不变并自动回退标量路径。这一点与 `11-math.md` 的模块边界说明保持一致。
 
 ### 6.5 SIMD reduction / dot 内部策略
 
@@ -867,8 +867,10 @@ Consistency guarantee strategy
 | `i64` | 不构造虚假的 `i128` SIMD 向量；采用分块装载、lane 级拆分/扩展到标量 `i128` 累加器，再做标量水平归并 | `i64 × i64` 先做分 lane 乘法与高低位拆分，归并到标量 `i128` 累加器 | 仅把 SIMD 用于批量装载与部分 lane 运算；最终以标量 `i128` 完成精确检查 |
 | `f32` | lane 内 pairwise/Kahan-style 累加，水平合并使用 pairwise scalar merge | `mul` 后进入同一 pairwise/Kahan-style 累加流程 | 必须匹配标量数值语义；允许文档化的最后 1 ULP 差异 |
 | `f64` | lane 内 pairwise/Kahan-style 累加，水平合并使用 pairwise scalar merge | `mul` 后进入同一 pairwise/Kahan-style 累加流程 | 必须匹配标量数值语义；允许文档化的最后 1 ULP 差异 |
-| `Complex<f32>` | 将 AoS 数据重排为实/虚 lane，分别累加后重组 | 先执行共轭乘法：`(a+bi)·conj(c+di)`，再分别累加实部与虚部 | 每个分量遵循对应实数容差；差异来源仅限合并顺序 |
-| `Complex<f64>` | 将 AoS 数据重排为实/虚 lane，分别累加后重组 | 先执行共轭乘法：`(a+bi)·conj(c+di)`，再分别累加实部与虚部 | 每个分量遵循对应实数容差；差异来源仅限合并顺序 |
+| `Complex<f32>` | 将 AoS 数据重排为实/虚 lane，分别累加后重组 | 先执行共轭乘法：`conj(lhs_i) * rhs_i`，再分别累加实部与虚部 | 每个分量遵循对应实数容差；差异来源仅限合并顺序 |
+| `Complex<f64>` | 将 AoS 数据重排为实/虚 lane，分别累加后重组 | 先执行共轭乘法：`conj(lhs_i) * rhs_i`，再分别累加实部与虚部 | 每个分量遵循对应实数容差；差异来源仅限合并顺序 |
+
+> **复数内积方向说明：** 根据 `require.md` §13，复数 `dot` 的定义必须是 `sum(conj(x_i) * y_i)`，即对左操作数（lhs）取共轭，而不是对右操作数取共轭。SIMD 复数 dot kernel 必须保持这一共轭线性方向。
 
 > **`i64 -> i128` 可行性说明：** 这里的“widening”不是要求存在完整的 `i128` SIMD 向量寄存器。设计采用 lane-wise widening add / split-lane multiply-add：先用 SIMD 批量装载 `i64` 数据，再把每个 lane 的部分和安全转移到标量 `i128` 累加器，最后做标量水平归约与溢出检查。该方案满足 §27 的整数精确语义，同时避免伪造硬件并不存在的 full-width `i128` vector。
 

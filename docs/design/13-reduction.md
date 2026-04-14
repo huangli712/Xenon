@@ -441,7 +441,7 @@ User calls sum / sum_axis / sum_axis_keepdims
 | Recoverable error | `sum_axis()` 与 `sum_axis_keepdims()` 的 axis 越界统一返回 `XenonError::InvalidAxis { operation, axis, ndim, shape }`；其中 `operation` 必须分别为 `"sum_axis"` 和 `"sum_axis_keepdims"`。 |
 | Panic | `i32` / `i64` 归约中的累加溢出属于不可恢复错误，必须通过 checked arithmetic panic。 |
 | 空输入语义 | 空数组 `sum()` 返回加法单位元；沿轴归约时若被归约轴长度为 `0`，结果张量对应槽位也返回加法单位元。 |
-| 数值边界 | 浮点与复数遵循 IEEE 754 语义；`NaN` 自动传播；当前文档不放宽额外误差容差。 |
+| 数值边界 | 整数类型结果须逐元素精确一致。对浮点和复数类型，不同执行路径（标量/SIMD/并行）的结果须满足 `require.md` §28.3 定义的数值语义约束；若存在已知舍入差异，须在文档化误差容差范围内；`NaN` 仍按 IEEE 754 自动传播。 |
 | 路径一致性 | 标量、SIMD、并行路径在启用条件满足时必须返回相同 shape、相同错误类别，以及满足同一数值语义约束的结果；不能证明时必须回退。 |
 
 ### 10.1 错误示例

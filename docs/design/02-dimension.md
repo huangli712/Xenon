@@ -423,7 +423,8 @@ impl<D: Dimension> IntoDimension for D {
     fn into_dimension(self) -> Self::Dim { self }
 }
 
-// Tuples -> Ix1-Ix6
+// Tuples -> Ix0-Ix6
+impl IntoDimension for () { type Dim = Ix0; /* ... */ }
 impl IntoDimension for (usize,) { type Dim = Ix1; /* ... */ }
 impl IntoDimension for (usize, usize) { type Dim = Ix2; /* ... */ }
 impl IntoDimension for (usize, usize, usize) { type Dim = Ix3; /* ... */ }
@@ -801,12 +802,12 @@ strides_for_f_order(shape):
 | `layout`  | `Dimension`                  | 计算步长、检查连续性                         |
 | `storage` | —                            | 不直接消费 `Dimension`；仅管理底层连续缓冲区 |
 | `tensor`  | `Dimension`                  | 泛型参数、形状访问                           |
-| `shape`   | `Dimension`, `IntoDimension` | reshape、transpose                           |
+| `shape`   | `Dimension`, `IntoDimension` | transpose                                    |
 | `iter`    | `Dimension`                  | 迭代器泛型参数                               |
 | `math`    | `Dimension`                  | 运算泛型参数                                 |
 | `index`   | `Dimension`, `Axis`          | 索引操作                                     |
 
-> 各模块的详细接口约定参见对应设计文档（`05-storage.md` §5、`07-tensor.md` §5、`16-shape.md` §5、`17-indexing.md` §5）。
+> 各模块的详细接口约定参见对应设计文档（`05-storage.md` §5、`07-tensor.md` §5、`16-shape.md` §5、`17-indexing.md` §5）。当前版本 `shape` 模块仅覆盖 transpose；reshape 超出当前版本范围。
 
 ### 7.2 数据流描述
 

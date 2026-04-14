@@ -214,7 +214,8 @@ where
     /// // Can be passed to read-only C functions
     /// ```
     pub fn as_ptr(&self) -> *const A {
-        // SAFETY: self.storage.as_ptr() returns a valid non-null pointer.
+        // SAFETY: self.storage.as_ptr() returns a storage-base pointer. For empty tensors,
+        // the returned pointer may be dangling but must not be dereferenced.
         // self.offset is guaranteed to be within bounds by TensorBase construction invariants.
         unsafe {
             self.storage.as_ptr().add(self.offset)
@@ -239,7 +240,8 @@ where
     /// // Can be passed to C functions requiring a mutable pointer
     /// ```
     pub fn as_mut_ptr(&mut self) -> *mut A {
-        // SAFETY: self.storage.as_mut_ptr() returns a valid non-null mutable pointer.
+        // SAFETY: self.storage.as_mut_ptr() returns a storage-base pointer. For empty tensors,
+        // the returned pointer may be dangling but must not be dereferenced.
         // self.offset is guaranteed to be within bounds by TensorBase construction invariants.
         // The &mut self reference ensures exclusive access.
         unsafe {
@@ -310,6 +312,8 @@ where
 
 > **空张量约定：** 空张量（`len() == 0`）导出时 `data` 可为 null 指针，此时 `shape`、`strides`、`offset` 仍须正确反映空张量元数据。`as_ptr()` 对空张量不保证返回非 null 指针，因此 C 调用方必须先基于长度判断是否可解引用。
 
+> **指针语义补充：** 对空张量（元素数为 `0`），`as_ptr()` 返回值可为悬垂但非解引用的指针；导出时 `data` 字段可为 null。
+
 > **stride 约定：** `strides` 以“元素个数”而非字节数表示步长，类型为 `usize`。按照 `06-layout.md` §1.2 与 `require.md` §7，当前版本 Xenon 不支持负步长，因此 FFI 导出格式也不保留负 stride 语义。
 
 > **offset 约定：** `offset` 一律表示从 `data`（即导出的 storage base pointer）到逻辑首元素的**元素单位**位移，与 `07-tensor.md` 的 raw-parts 契约一致；不得将其解释为字节偏移。C 调用方必须先按元素单位应用这一次偏移，再把结果视为逻辑首元素地址。
@@ -343,7 +347,7 @@ where
     ///
     /// | Prerequisite | Description |
     /// |----------|------|
-    /// | Pointer validity | `ptr` must be non-null, non-dangling, and aligned to `align_of::<A>()` |
+    /// | Pointer validity | For non-empty tensors, `ptr` must be non-null, non-dangling, and aligned to `align_of::<A>()`; empty tensors may use a non-dereferenceable sentinel pointer |
     /// | Memory range | Memory starting from the storage base pointer `ptr` must cover all accessible elements (considering offset, shape, strides) |
     /// | Lifetime | Memory must remain valid for lifetime `'a` |
     /// | Aliasing rules | Memory can be read-shared but must not be written to |
@@ -382,7 +386,7 @@ where
             shape,
             strides,
             offset,
-            flags: layout::compute_flags(&shape, &strides, unsafe { ptr.add(offset) }),
+            flags: layout::compute_layout_flags(&shape, &strides, unsafe { ptr.add(offset) }),
         })
     }
 
@@ -433,13 +437,15 @@ where
             shape,
             strides,
             offset,
-            flags: layout::compute_flags(&shape, &strides, unsafe { ptr.add(offset) }),
+            flags: layout::compute_layout_flags(&shape, &strides, unsafe { ptr.add(offset) }),
         })
     }
 }
 ````
 
 > **校验边界说明：** 与 `07-tensor.md` §5.6 一致，`from_raw_parts*()` 只验证库能够直接检查的元数据约束（例如 shape/stride/offset/storage_len 组合是否合法、是否溢出、是否越界），并在失败时返回 `Result<_, XenonError>`。指针有效性、对齐、实际可访问范围与生命周期仍由调用方在 `unsafe` 前提下负责。
+
+> **空张量补充：** `ptr.add(offset)` 形式的逻辑首元素地址计算只适用于非空张量；空张量路径不得解引用该结果，构造实现应按 `len() == 0` 的特例处理。
 
 ### 5.4 将张量解构为裸指针
 
@@ -514,7 +520,7 @@ pub unsafe fn from_raw_parts_owned(
     raw: OwnedRawParts<A, D>,
 ) -> TensorBase<Owned<A>, D> {
     let storage = Owned::from_raw_parts(raw.ptr, raw.len, raw.cap, raw.align);
-    let flags = layout::compute_flags(&raw.shape, &raw.strides, raw.ptr);
+    let flags = layout::compute_layout_flags(&raw.shape, &raw.strides, raw.ptr);
     TensorBase { storage, shape: raw.shape, strides: raw.strides, offset: raw.offset, flags }
 }
 ```
