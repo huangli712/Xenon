@@ -116,10 +116,10 @@ src/format/
 
 | 来源模块    | 使用的类型/trait                                                              | 使用者                                |
 | ----------- | ----------------------------------------------------------------------------- | ------------------------------------- |
-| `tensor`    | `TensorBase<S, D>`, `.shape()`, `.ndim()`, `.len()`（参见 `07-tensor.md` §4） | `display.rs`, `debug.rs`, `pretty.rs` |
-| `dimension` | `Dimension`（参见 `02-dimension.md` §4）                                      | `display.rs`, `pretty.rs`             |
-| `storage`   | `Storage<Elem=A>`（参见 `05-storage.md` §4）                                  | `display.rs`, `debug.rs`, `pretty.rs` |
-| `element`   | `Element`, `type_name::<A>()`（参见 `03-element.md` §3）                      | `display.rs`, `debug.rs`              |
+| `tensor`    | `TensorBase<S, D>`, `.shape()`, `.ndim()`, `.len()`（参见 `07-tensor.md` §5） | `display.rs`, `debug.rs`, `pretty.rs` |
+| `dimension` | `Dimension`（参见 `02-dimension.md` §5）                                      | `display.rs`, `pretty.rs`             |
+| `storage`   | `Storage<Elem=A>`（参见 `05-storage.md` §5）                                  | `display.rs`, `debug.rs`, `pretty.rs` |
+| `element`   | `Element`, `type_name::<A>()`（参见 `03-element.md` §5.1）                    | `display.rs`, `debug.rs`              |
 
 ### 4.3 依赖方向声明
 
@@ -160,6 +160,9 @@ pub struct FormatConfig {
     pub precision: Option<usize>,
 
     /// Line width (characters), used for line-break decisions.
+    ///
+    /// When a rendered line would exceed this width, insert line breaks
+    /// between elements, preferring axis boundaries when possible.
     ///
     /// Defaults to 80.
     pub line_width: usize,
@@ -231,6 +234,8 @@ where
 
 > **注意**：`core::fmt::Display` 在 Rust 1.85 中对 f32/f64 无需 `std` 即可使用，因此此实现不加 `#[cfg(feature = "std")]` 门控。
 
+> **默认配置绑定**：`Display for TensorBase` 默认使用 `FormatConfig::default()` 配置；如需自定义，请使用 `display_with(config)` 方法。
+
 ```rust
 // Display uses core::fmt and stays available in the std-only baseline.
 impl<S, D, A> core::fmt::Display for TensorBase<S, D>
@@ -253,7 +258,7 @@ where
             // 0-dim tensor: render with an explicit marker to distinguish it
             // from a plain scalar value in textual output.
             // Zero-dimensional tensor element access via NdIndex<Ix0>,
-            // tensor[&[]] corresponds to Index<[usize; 0]> trait (see 17-indexing.md §4.0).
+            // tensor[&[]] corresponds to Index<[usize; 0]> trait (see 17-indexing.md §5.1).
             write!(f, "Tensor0({})", self[&[]])
         } else if self.ndim() == 1 {
             fmt_1d_display(f, self)
@@ -355,7 +360,7 @@ where
  [9701, 9702, 9703, ..., 9798, 9799, 9800],
  [9801, 9802, 9803, ..., 9898, 9899, 9900],
  [9901, 9902, 9903, ..., 9998, 9999, 10000],
- ... 9400 more elements] shape=[100, 100]
+ ... 9964 more elements] shape=[100, 100]
 ```
 
 > 当任意维度触发截断时，输出主体仍保持 NumPy 风格的局部预览，但必须在最外层右括号后追加 `shape=[...]`，以暴露完整维度信息。
@@ -389,6 +394,8 @@ truncation_rule(tensor, config):
             show last config.edge_items elements
         append "... " + omitted + " more elements] shape=" + tensor.shape()
 ```
+
+`line_width` 行为：当一行输出超过 `line_width` 字符时，在元素之间插入换行，优先在轴边界处折行。
 
 | 参数         | 默认值 | 说明                        |
 | ------------ | ------ | --------------------------- |
@@ -470,7 +477,7 @@ fmt_nd(tensor, f, depth):
     write "]"
     if depth == 0 and total > threshold:
         omitted = total - count_displayed_elements(tensor.shape(), edge_items)
-        write " ... " + omitted + " more elements] shape=" + tensor.shape()
+        write " ... " + omitted + " more elements shape=" + tensor.shape()
 ```
 
 ---
@@ -556,7 +563,7 @@ Wave 3:        [T5]
 | `test_fmt_2d`                 | 2D 矩阵形式输出                             | 高     |
 | `test_fmt_3d`                 | 3D 嵌套括号输出                             | 中     |
 | `test_fmt_float_precision`    | 浮点精度格式化                              | 中     |
-| `test_display_complex_f64`    | 复数格式化输出（如 `1.0+2.0i`）             | 中     |
+| `test_display_complex_f64`    | 复数格式化输出（如 `1.0+2.0j`）             | 中     |
 | `test_display_complex_negative_imag` | 复数负虚部格式化                       | 中     |
 | `test_fmt_i32`                | 整数类型格式化                              | 中     |
 | `test_fmt_bool`               | bool 类型格式化 `[true, false]`             | 低     |
@@ -614,10 +621,10 @@ Wave 3:        [T5]
 
 | 方向                    | 对方模块          | 接口/类型                          | 约定                                                         |
 | ----------------------- | ----------------- | ---------------------------------- | ------------------------------------------------------------ |
-| `format → tensor`       | `tensor`          | `.shape()` / `.ndim()` / `.len()`  | `Display` 路径读取基础张量元数据，参见 `07-tensor.md` §4     |
-| `format → tensor`       | `tensor`          | `.strides()` / `is_f_contiguous()` | `Debug` 额外输出布局相关元数据，参见 `06-memory.md` §4       |
+| `format → tensor`       | `tensor`          | `.shape()` / `.ndim()` / `.len()`  | `Display` 路径读取基础张量元数据，参见 `07-tensor.md` §5     |
+| `format → tensor`       | `tensor`          | `.strides()` / `is_f_contiguous()` | `Debug` 额外输出布局相关元数据，参见 `06-layout.md` §5       |
 | `format → tensor/index` | `tensor`, `index` | `shape()`, 多维索引访问            | 按逻辑行/列结构读取元素；不依赖 `iter()` 的 F-order 内存顺序 |
-| `format → element`      | `element`         | `core::any::type_name::<A>()`      | 输出 dtype 与元素类型信息，参见 `03-element.md` §3           |
+| `format → element`      | `element`         | `core::any::type_name::<A>()`      | 输出 dtype 与元素类型信息，参见 `03-element.md` §5.1         |
 
 ### 9.2 数据流描述
 
@@ -708,6 +715,8 @@ User calls format!("{}", tensor) / format!("{:?}", tensor)
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-08 |
 | 1.1.2 | 2026-04-10 |
+| 1.1.3 | 2026-04-14 |
+| 1.1.4 | 2026-04-14 |
 
 ---
 

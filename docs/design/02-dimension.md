@@ -52,7 +52,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 | 项目     | 内容                                                                 |
 | -------- | -------------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §3                                                        |
+| 需求映射 | 需求说明书 §3；其中 `BroadcastDim` 支持 §16 广播语义，`Reverse` 支持 §17 转置语义 |
 | 范围内   | 静态/动态维度类型、`Dimension`/`IntoDimension`/`RemoveAxis`、轴元数据 |
 | 范围外   | 内存分配、布局标志计算、张量运算、C-order 支持                       |
 | 非目标   | 引入开放维度扩展机制、负步长维度模型或新的存储后端                   |
@@ -102,7 +102,7 @@ src/dimension/
 ### 4.3 依赖方向声明
 
 > **依赖方向：单向向上。** `dimension/` 仅消费 `error` 和 `private`，不被它们反向依赖。
-> 被下游模块消费：`layout`（参见 `06-memory.md` §5）、`tensor`（参见 `07-tensor.md` §5）、`shape`（参见 `16-shape.md` §5）、`iter`（参见 `10-iterator.md` §5）、`math`（参见 `11-math.md` §5）、`index`（参见 `17-indexing.md` §5）。`storage` 不消费 `Dimension`；它只持有底层连续缓冲区。
+> 被下游模块消费：`layout`（参见 `06-layout.md` §5）、`tensor`（参见 `07-tensor.md` §5）、`shape`（参见 `16-shape.md` §5）、`iter`（参见 `10-iterator.md` §5）、`math`（参见 `11-math.md` §5）、`index`（参见 `17-indexing.md` §5）。`storage` 不消费 `Dimension`；它只持有底层连续缓冲区。
 
 ---
 
@@ -138,7 +138,7 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
     ///
     /// Returns `Self`, carrying stride counts in element units (not bytes).
     /// First axis has stride 1. The layout layer later wraps this result into
-    /// `layout::Strides<D>` when signed stride metadata is needed.
+    /// `layout::Strides<D>` when layout-level stride metadata is needed.
     fn strides_for_f_order(&self) -> Self;
 
     /// Returns the total number of elements.
@@ -199,8 +199,8 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
         self.slice().iter()
     }
 
-    /// Signed strides are modeled separately by `layout::Strides<D>`.
-    /// `Dimension` only describes axis lengths and rank, never traversal sign.
+    /// Unsigned strides are modeled separately by `layout::Strides<D>`.
+    /// `Dimension` only describes axis lengths and rank, never additional layout metadata.
 }
 ```
 
@@ -210,10 +210,10 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
 ### 5.2 静态维度类型 Ix0-Ix6
 
 ```rust
-/// Maximum supported dynamic dimensionality.
+/// Sentinel upper bound for dynamic rank.
 ///
-/// Dynamic dimensions are not artificially capped by the static `Ix0`-`Ix6` range.
-/// In practice, they are bounded by `usize` representability and available memory.
+/// `usize::MAX` here means there is no artificial upper bound beyond `usize`
+/// representability and available memory; it is not a practical max supported rank.
 pub const MAX_DIMENSION: usize = usize::MAX;
 
 /// Zero-dimensional (scalar) dimension. ZST.
@@ -253,6 +253,8 @@ pub struct Ix5(pub usize, pub usize, pub usize, pub usize, pub usize);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix6(pub usize, pub usize, pub usize, pub usize, pub usize, pub usize);
 ```
+
+> **说明：** `MAX_DIMENSION` 是哨兵值，表示动态维度类型 `IxDyn` 不设人工上限，而非表示系统支持的最大维度数。
 
 #### Ix0 特殊语义
 
@@ -317,9 +319,8 @@ impl Dimension for Ix3 {
             Ok(Ix3(s[0], s[1], s[2]))
         } else {
             Err(XenonError::DimensionMismatch {
-                operation: "Dimension::try_from_dyn",
-                source_dim: dyn_dim.ndim(),
-                target_dim: 3,
+                expected: 3,
+                actual: dyn_dim.ndim(),
             })
         }
     }
@@ -762,7 +763,7 @@ impl Reverse for IxDyn {
 
 ### 6.2 stride 表达边界
 
-维度层保存无符号形状（`usize`），`strides_for_f_order()` 也返回同一维度类型 `Self`，只是把各轴长度替换为以元素为单位的无符号步长值。下游 `layout` 模块再把这类结果包装为 `Strides<D>`，并负责具体 stride 元数据，仅覆盖当前版本允许的连续、转置后非连续和广播零步长布局（参见 `06-memory.md` §5）：
+维度层保存无符号形状（`usize`），`strides_for_f_order()` 也返回同一维度类型 `Self`，只是把各轴长度替换为以元素为单位的无符号步长值。下游 `layout` 模块再把这类结果包装为 `Strides<D>`，并负责具体 stride 元数据，仅覆盖当前版本允许的连续、转置后非连续和广播零步长布局（参见 `06-layout.md` §5）：
 
 ```
 Dimension 层：shape = [3, 4], strides_for_f_order() = Ix2(1, 3)
@@ -1017,7 +1018,7 @@ Wave 5:  [T10] → [T11] → [T12]
 
 | 项目           | 内容 |
 | -------------- | ---- |
-| Recoverable error | 动态转静态维度数不匹配时返回 `XenonError::DimensionMismatch`；上下文字段包括 `expected`、`actual` |
+| Recoverable error | 动态转静态维度数不匹配时返回 `XenonError::DimensionMismatch`；上下文字段统一为 `expected`、`actual` |
 | Panic | `size()` 或 `strides_for_f_order()` 的已验证快捷路径发生乘法溢出时 panic；`from_slice()` 长度不匹配或 `remove_axis()` 越界时 panic |
 | 路径一致性 | scalar 路径与普通标量化实现必须保持一致；SIMD：不适用；parallel：不适用 |
 | 容差边界 | 不适用 |
@@ -1122,6 +1123,8 @@ Wave 5:  [T10] → [T11] → [T12]
 | 1.0.3 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
 | 1.2.0 | 2026-04-08 |
+| 1.2.1 | 2026-04-14 |
+| 1.2.2 | 2026-04-14 |
 
 ---
 

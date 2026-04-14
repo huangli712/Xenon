@@ -199,7 +199,7 @@ impl LayoutFlags {
 
 ### 5.1b 内存顺序枚举 Order
 
-`Order` 枚举表示内存排列顺序，供形状操作模块（参见 `16-shape.md §4`）在 reshape 时指定目标布局。
+`Order` 枚举表示内存排列顺序，供形状操作模块（参见 `16-shape.md §5.1`）在转置等形状元数据操作中明确目标布局。
 
 ```rust
 /// Memory layout order.
@@ -762,20 +762,20 @@ Upper layers create or transform tensor metadata
 | ----------------- | -------- | ------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `layout ← tensor` | `tensor` | `LayoutFlags`       | `TensorBase` 直接内联 `LayoutFlags` 作为计算字段，`Layout` 结构体仅为预留定义（参见 `07-tensor.md` §5.1）。 |
 | `tensor → layout` | `tensor` | 切片后的 flags 更新 | 切片时调用 layout 更新连续性与对齐标志（参见 `17-indexing.md` §5）                                          |
-| `tensor → layout` | `tensor` | reshape 步长重算    | reshape 时重新计算步长和 layout（参见 `16-shape.md` §4）                                                    |
+| `tensor → layout` | `tensor` | transpose 后的步长/flags 重算 | transpose 后重新分类 layout state 与 flags（参见 `16-shape.md` §5.1）                                      |
 
 ### 9.4 与 SIMD 模块
 
 | 方向            | 对方模块 | 接口/类型                            | 约定                                                    |
 | --------------- | -------- | ------------------------------------ | ------------------------------------------------------- |
-| `simd ← layout` | `simd`   | `is_aligned()` / `is_f_contiguous()` | simd 用这些查询结果做路径选择（参见 `08-simd.md` §4.6） |
+| `simd ← layout` | `simd`   | `is_aligned()` / `is_f_contiguous()` | simd 用这些查询结果做路径选择（参见 `08-simd.md` §5.6） |
 | `simd ← layout` | `simd`   | 步长检查                             | simd 继续检查步长是否为 1，以确认连续访问路径           |
 
 ### 9.5 与 FFI 模块
 
 | 方向           | 对方模块 | 接口/类型            | 约定                                                                |
 | -------------- | -------- | -------------------- | ------------------------------------------------------------------- |
-| `ffi ← layout` | `ffi`    | BLAS 兼容检查        | FFI 路径依赖连续、正步长、无零步长等布局前提（参见 `23-ffi.md` §4） |
+| `ffi ← layout` | `ffi`    | BLAS 兼容检查        | FFI 路径依赖连续、正步长、无零步长等布局前提（参见 `23-ffi.md` §5.5） |
 | `ffi ← layout` | `ffi`    | `lda()` 相关步长信息 | FFI 从 layout 步长推导 leading dimension                            |
 
 ---
@@ -882,6 +882,7 @@ Upper layers create or transform tensor metadata
 | 1.1.0 | 2026-04-08 |
 | 1.2.0 | 2026-04-08 |
 | 1.2.1 | 2026-04-09 |
+| 1.2.2 | 2026-04-14 |
 
 ---
 

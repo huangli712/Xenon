@@ -242,7 +242,7 @@ impl Workspace {
 
     /// Borrow state constants.
     const BORROW_NONE: u8 = 0;
-    const BORROW_SHARED: u8 = 1;
+    const BORROW_READ: u8 = 1;
     const BORROW_EXCLUSIVE: u8 = 2;
 
     /// Growth factor numerator (1.5x).
@@ -375,10 +375,12 @@ impl Workspace {
     /// temporary-scratch-buffer positioning. The returned guard still models the
     /// bytes as potentially uninitialized; use `assume_init_slice` only when the
     /// caller can prove the inspected prefix has been written.
+    ///
+    /// `borrow()`/`borrow_mut()` 接收 `&self` 而非 `&mut self`，这是因为借用排他性通过内部 `AtomicU8` 状态机在运行时保证，而非 Rust 编译期借用检查器。调用方须确保不在同一 `Workspace` 上同时持有多个活跃借用 guard。
     pub fn borrow(&self) -> Result<WorkspaceBorrow<'_>, WorkspaceError> {
         let prev = self.borrow_state.compare_exchange(
             Self::BORROW_NONE,
-            Self::BORROW_SHARED,
+            Self::BORROW_READ,
             Ordering::Acquire,
             Ordering::Relaxed,
         );
@@ -1225,6 +1227,8 @@ Upper-layer code requests temporary scratch space
 | 1.2.0 | 2026-04-08 |
 | 1.2.1 | 2026-04-08 |
 | 1.2.2 | 2026-04-10 |
+| 1.2.3 | 2026-04-14 |
+| 1.2.4 | 2026-04-14 |
 
 ---
 

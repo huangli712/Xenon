@@ -88,7 +88,7 @@ src/iter/
 | 场景 | 错误 |
 | ---- | ---- |
 | `axis_iter()` / `axis_iter_mut()` 的 `axis` 越界 | 返回 `XenonError::InvalidAxis { operation: "axis_iter", axis, ndim, shape }` 或 `XenonError::InvalidAxis { operation: "axis_iter_mut", axis, ndim, shape }`。 |
-| rank-0 动态维张量调用按轴迭代 | 返回 `XenonError::InvalidAxis { operation, axis: 0, ndim: 0, shape }`，其中 `shape` 为 `Cow<'static, [usize]>` 形式的空形状。 |
+| rank-0 动态维张量调用按轴迭代 | 返回 `XenonError::InvalidAxis { operation, axis: 0, ndim: 0, shape }`，其中 `shape` 为 `Vec<usize>` 形式的空形状。 |
 | 试图把广播结果作为可变迭代输入 | 不提供公开 API；通过类型系统在编译期拒绝，而不是返回运行时错误。 |
 
 ### 4.3 依赖图
@@ -106,8 +106,8 @@ src/iter/
 | 来源模块    | 使用的类型/trait                                                                                                                                 |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `tensor`    | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `TensorViewMut<'a, A, D>`, `.shape()`, `.strides()`, `.as_ptr()`, `.len()`（参见 `07-tensor.md §5.3` / `§5.4` / `§5.7`） |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `RemoveAxis`, `D::Smaller`（参见 `02-dimension.md §4`）                                                       |
-| `storage`   | `Storage<Elem = A>`, `StorageMut<Elem = A>`, `Owned<A>`（参见 `05-storage.md §4`）                                                               |
+| `dimension` | `Dimension`, `Axis`, `Ix0`~`Ix6`, `IxDyn`, `RemoveAxis`, `D::Smaller`（参见 `02-dimension.md §5`）                                               |
+| `storage`   | `Storage<Elem = A>`, `StorageMut<Elem = A>`, `Owned<A>`（参见 `05-storage.md §5`）                                                               |
 | `tensor`    | `.is_f_contiguous()`, 布局标志查询（参见 `07-tensor.md §5.3`）                                                                                   |
 
 ### 4.5 依赖方向
@@ -203,7 +203,7 @@ impl<'a, A, D: Dimension + RemoveAxis> ExactSizeIterator for AxisIterMut<'a, A, 
 ```rust
 /// Element iterator with multi-dimensional indices.
 ///
-/// Yields (D::Slice, &'a A) tuples, indices increment in F-order.
+/// Yields (D, &'a A) tuples, indices increment in F-order.
 pub struct IndexedIter<'a, A, D: Dimension> {
     // Internal fields: Elements iterator, current index, stride state machine
 }
@@ -211,7 +211,7 @@ pub struct IndexedIter<'a, A, D: Dimension> {
 pub struct IndexedIterMut<'a, A, D: Dimension> {}
 
 impl<'a, A, D: Dimension> Iterator for IndexedIter<'a, A, D> {
-    type Item = (D::Slice, &'a A);
+    type Item = (D, &'a A);
     fn next(&mut self) -> Option<Self::Item>;
     fn size_hint(&self) -> (usize, Option<usize>);
 }
@@ -219,13 +219,15 @@ impl<'a, A, D: Dimension> Iterator for IndexedIter<'a, A, D> {
 impl<'a, A, D: Dimension> ExactSizeIterator for IndexedIter<'a, A, D> {}
 
 impl<'a, A, D: Dimension> Iterator for IndexedIterMut<'a, A, D> {
-    type Item = (D::Slice, &'a mut A);
+    type Item = (D, &'a mut A);
     fn next(&mut self) -> Option<Self::Item>;
     fn size_hint(&self) -> (usize, Option<usize>);
 }
 
 impl<'a, A, D: Dimension> ExactSizeIterator for IndexedIterMut<'a, A, D> {}
 ```
+
+> **索引所有权说明：** 索引值直接使用维度类型 `D` 本身承载（如 `Ix2` 或 `IxDyn`），而不是借用切片。这样与 `Dimension` trait 的权威定义保持一致，也符合按索引迭代“产出同 rank 的拥有型索引值”这一语义。
 
 ### 5.5 LaneIter 延期到后续版本
 
@@ -502,15 +504,15 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
 ### 9.3 与 storage / dimension 模块
 
 ```rust
-// Iterators read data via the Storage trait（参见 05-storage.md §4）
-// Index state is managed via the Dimension trait（参见 02-dimension.md §4）
+// Iterators read data via the Storage trait（参见 05-storage.md §5）
+// Index state is managed via the Dimension trait（参见 02-dimension.md §5）
 ```
 
 ## 10. 错误处理与语义边界
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `axis_iter()` / `axis_iter_mut()` 在 `axis` 越界或 rank-0 动态维输入时返回 `XenonError::InvalidAxis { operation: &'static str, axis: usize, ndim: usize, shape: Cow<'static, [usize]> }`。 |
+| Recoverable error | `axis_iter()` / `axis_iter_mut()` 在 `axis` 越界或 rank-0 动态维输入时返回 `XenonError::InvalidAxis { operation: Cow<'static, str>, axis: usize, ndim: usize, shape: Vec<usize> }`。 |
 | Panic | 公开迭代器 API 不引入新的 panic 语义；仅内部 producer 分块等不变量破坏可使用断言。 |
 | 路径一致性 | 连续、非连续、零步长广播视图及并行 producer 的外部迭代顺序与长度语义必须一致。 |
 | 容差边界 | 不适用。 |
@@ -609,6 +611,7 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
 | 1.0.5 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
 | 1.2.0 | 2026-04-08 |
+| 1.2.1 | 2026-04-14 |
 
 ---
 

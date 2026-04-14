@@ -14,7 +14,7 @@
 | 职责     | 包含                                                                  | 不包含                                                  |
 | -------- | --------------------------------------------------------------------- | ------------------------------------------------------- |
 | 算术运算 | add/sub/mul/div，数值类型：i32/i64/f32/f64/Complex                    | 归约运算（sum/prod/min/max，参见 `13-reduction.md §1`） |
-| 一元运算 | abs/neg/square/signum（Numeric + PartialOrd），数学函数（RealScalar） | 篮选/排序                                               |
+| 一元运算 | abs/signum（Numeric + PartialOrd）；neg/square（Numeric）；数学函数（RealScalar） | 篮选/排序                                               |
 | 数学函数 | sin/sqrt/exp/ln/floor/ceil，仅 f32/f64                                | 运算符重载（参见 `19-overload.md §1`）                  |
 | 复数运算 | norm（返回实数类型）/conjugate（公开 API；内部 Complex 方法名可记为 conj），仅 Complex | 比较运算（eq/ne/lt/gt）                                 |
 | 逻辑非   | `!`，仅 bool                                                          | 位运算                                                  |
@@ -86,9 +86,9 @@ src/math/
 
 | 场景 | 错误 |
 | ---- | ---- |
-| 二元运算广播失败 | 返回 `XenonError::BroadcastError { operation: &'static str, input_shape: Cow<'static, [usize]>, target_shape: Cow<'static, [usize]>, axis: Option<usize> }`。 |
-| 构造结果张量时元素总数与 shape 不一致 | 返回 `XenonError::InvalidShape { operation: &'static str, shape: Cow<'static, [usize]>, expected_elements: usize, actual_elements: usize, offending_dim: Option<usize> }`。 |
-| 公开 API 收到不满足前提的参数 | 返回 `XenonError::InvalidArgument { operation: &'static str, argument: &'static str, expected: &'static str, actual: String, axis: Option<usize>, shape: Option<Cow<'static, [usize]>> }`。 |
+| 二元运算广播失败 | 返回 `XenonError::BroadcastError { operation: Cow<'static, str>, input_shape: Vec<usize>, target_shape: Vec<usize>, axis: Option<usize> }`。 |
+| 构造结果张量时元素总数与 shape 不一致 | 返回 `XenonError::InvalidShape { operation: Cow<'static, str>, shape: Vec<usize>, expected_elements: usize, actual_elements: usize, offending_dim: Option<usize> }`。 |
+| 公开 API 收到不满足前提的参数 | 返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, shape: Option<Vec<usize>> }`。 |
 | 整数算术溢出、除零或结果不可表示 | 属于 panic 语义，不进入 `XenonError`。 |
 
 ### 4.3 依赖图
@@ -106,12 +106,12 @@ src/math/
 
 | 来源模块       | 使用的类型/trait                                                                       |
 | -------------- | -------------------------------------------------------------------------------------- |
-| `tensor`       | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.shape()`（参见 `07-tensor.md §4`） |
-| `iter`         | `Elements`, `ElementsMut`（参见 `10-iterator.md §4`）                                  |
-| `element`      | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element.md §4`）         |
-| `broadcast`    | `broadcast_shape()`, `broadcast_to()` 返回的 `TensorView`（参见 `15-broadcast.md §4`） |
-| `dimension`    | `BroadcastDim<E>` trait（编译期维度推导，参见 `02-dimension.md §4.9`）                 |
-| `simd`（可选） | `pulp::Arch`（参见 `08-simd.md §4`）                                                   |
+| `tensor`       | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.shape()`（参见 `07-tensor.md §5`） |
+| `iter`         | `Elements`, `ElementsMut`（参见 `10-iterator.md §5`）                                  |
+| `element`      | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element.md §5`）         |
+| `broadcast`    | `broadcast_shape()`, `broadcast_to()` 返回的 `TensorView`（参见 `15-broadcast.md §5`） |
+| `dimension`    | `BroadcastDim<E>` trait（编译期维度推导，参见 `02-dimension.md §5.9`）                 |
+| `simd`（可选） | `pulp::Arch`（参见 `08-simd.md §5`）                                                   |
 | `error`        | `XenonError`（含 `BroadcastError` 变体，参见 `26-error.md §4`）                        |
 
 ### 4.5 依赖方向
@@ -136,7 +136,7 @@ src/math/
 
 ### 5.2 二元逐元素执行约定
 
-> **维度推导说明：** 二元逐元素方法统一使用 `BroadcastDim<DB>` 进行编译期维度推导，该 trait 定义于 `02-dimension.md §4.9`，详见该文档。
+> **维度推导说明：** 二元逐元素方法统一使用 `BroadcastDim<DB>` 进行编译期维度推导，该 trait 定义于 `02-dimension.md §5.9`，详见该文档。
 
 当前版本不承诺独立的通用二元逐元素 helper 公开函数。二元算术、比较与内部辅助路径统一采用“先广播，再直接遍历广播后视图并写入结果张量”的执行模型。
 
@@ -187,7 +187,7 @@ where
 
 > **整数算术补充约束：** 对 `i32` / `i64` 的 `add` / `sub` / `mul` / `div`，实现必须使用 checked arithmetic；凡发生溢出、除以零或结果不可表示，均按需求说明书 §12 与 §27 走 panic 语义，不得回落为 wrapping 行为。
 
-### 5.4 一元运算（Numeric 约束）
+### 5.4 一元运算（分离 trait bounds）
 
 ```rust
 impl<S, D, A> TensorBase<S, D>
@@ -197,8 +197,6 @@ where
     A: Numeric + PartialOrd,
 {
     pub fn abs(&self) -> Tensor<A, D>;
-    pub fn neg(&self) -> Tensor<A, D>;
-    pub fn square(&self) -> Tensor<A, D>;
 
     /// Element-wise sign function: returns -1, 0, or 1 based on the sign of each element.
     ///
@@ -210,7 +208,19 @@ where
     /// `signum(NaN)` returns `NaN` (IEEE 754 semantics, via PartialOrd).
     pub fn signum(&self) -> Tensor<A, D>;
 }
+
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Numeric,
+{
+    pub fn neg(&self) -> Tensor<A, D>;
+    pub fn square(&self) -> Tensor<A, D>;
+}
 ```
+
+`abs` / `signum` 仅对具备自然顺序的数值类型开放：i32, i64, f32, f64。`neg` / `square` 对所有 `Numeric` 类型开放：i32, i64, f32, f64, Complex<f32>, Complex<f64>。
 
 > **整数一元运算补充约束：** `abs` / `square` / `signum` 在整数路径上同样必须使用 checked arithmetic。特别是最小负值取绝对值、平方溢出等情形，均须视为不可恢复错误并触发 panic。
 
@@ -231,6 +241,8 @@ where
     pub fn ceil(&self) -> Tensor<A, D>;
 }
 ```
+
+> **数学函数精度约束：** `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 统一复用底层 `libm` / 平台标准数学库语义，遵循 IEEE 754；实现必须在文档与测试中声明其采用的 ULP 误差边界。当前版本至少要求把这些方法视为“遵循 IEEE 754，误差受底层 `libm` 文档化 ULP 上界约束”的接口承诺，而非无误差精确计算。
 
 ### 5.6 复数运算（ComplexScalar 约束）
 
@@ -417,7 +429,7 @@ apply_binary(a, b, f):
 
 ### 6.3 SIMD 加速路径
 
-SIMD 分发由 `math` 的具体算术操作在满足连续性、对齐和 feature gate 前提时直接委托 `src/simd/` facade；本文不再把额外的中间 helper 视为稳定设计接口。参见 `08-simd.md §4.5` 了解 SIMD 后端详情。当前版本 SIMD 仅覆盖逐元素算术与整数 `sum`；`abs` / `neg` / `signum` / `square` 以及 `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 等路径统一回退标量实现。
+SIMD 分发由 `math` 的具体算术操作在满足连续性、对齐和 feature gate 前提时直接委托 `src/simd/` facade；本文不再把额外的中间 helper 视为稳定设计接口。参见 `08-simd.md §5.5` 了解 SIMD 后端详情。当前版本 SIMD 仅覆盖逐元素算术与整数 `sum`；`abs` / `neg` / `signum` / `square` 以及 `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 等路径统一回退标量实现。
 
 ---
 
@@ -551,7 +563,7 @@ Wave 3:    [T8]
 | 单元素张量            | 所有运算正确                               |
 | NaN 输入（f32/f64）   | NaN 传播（sin(NaN)=NaN, 0\*NaN=NaN）       |
 | Inf 输入              | exp(Inf)=Inf, ln(0)=-Inf                   |
-| 广播形状不兼容        | 返回 `XenonError::BroadcastError { operation: &'static str, input_shape: Cow<'static, [usize]>, target_shape: Cow<'static, [usize]>, axis: Option<usize> }` |
+| 广播形状不兼容        | 返回 `XenonError::BroadcastError { operation: Cow<'static, str>, input_shape: Vec<usize>, target_shape: Vec<usize>, axis: Option<usize> }` |
 | 非连续输入（切片后）  | 运算结果与连续输入一致                     |
 
 ### 8.4 集成测试
@@ -605,10 +617,10 @@ User calls add / unary op / comparison method
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | 广播不兼容时返回 `XenonError::BroadcastError { operation: &'static str, input_shape: Cow<'static, [usize]>, target_shape: Cow<'static, [usize]>, axis: Option<usize> }`；参数不满足公开前提时返回 `XenonError::InvalidArgument { operation: &'static str, argument: &'static str, expected: &'static str, actual: String, axis: Option<usize>, shape: Option<Cow<'static, [usize]>> }`。 |
+| Recoverable error | 广播不兼容时返回 `XenonError::BroadcastError { operation: Cow<'static, str>, input_shape: Vec<usize>, target_shape: Vec<usize>, axis: Option<usize> }`；参数不满足公开前提时返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, shape: Option<Vec<usize>> }`。 |
 | Panic | 整数 `add/sub/mul/div`、`abs/square/signum` 的溢出、除零或结果不可表示均按需求触发 panic。 |
 | 路径一致性 | 标量与 SIMD 路径必须保持相同 shape、错误类别、NaN/复数语义；不满足前提时统一回退标量实现。 |
-| 容差边界 | 当前不引入额外数值容差；仅在可证明语义等价时启用 SIMD，否则回退标量路径。 |
+| 容差边界 | `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 遵循 IEEE 754，误差边界以底层 `libm` / 平台标准数学库文档化的 ULP 上界为准；除该类数学函数外，当前不引入额外数值容差。仅在可证明语义等价时启用 SIMD，否则回退标量路径。 |
 
 ---
 
@@ -641,7 +653,7 @@ User calls add / unary op / comparison method
 | 替代方案 | 所有路径都用标量                                          |
 | 拒绝原因 | 性能差距显著（2-4x），科学计算用户期望高性能              |
 
-> **补充**：SIMD 实现位于独立 backend 模块 `src/simd/`，`math/` 仅按连续性和 feature gate 决定是否委托该 backend；当前版本不提供 dot kernel，也不提供 float / complex reduction kernel，数学函数不接入专门 SIMD kernel。
+> **补充**：SIMD 实现位于独立 backend 模块 `src/simd/`，`math/` 仅按连续性和 feature gate 决定是否委托该 backend；逐元素算术之外，dot/inner-product 的 SIMD 设计见 `08-simd.md`，公开 `dot()` API 与分发语义见 `12-matrix.md`。当前版本 `math` 模块仅覆盖逐元素数学函数，不提供 float / complex reduction kernel，数学函数也不接入专门 SIMD kernel。
 
 ---
 
@@ -685,6 +697,7 @@ User calls add / unary op / comparison method
 | 1.1.0 | 2026-04-08 |
 | 1.2.0 | 2026-04-08 |
 | 1.2.1 | 2026-04-10 |
+| 1.2.2 | 2026-04-14 |
 
 ---
 

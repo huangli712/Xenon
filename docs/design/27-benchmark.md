@@ -96,16 +96,16 @@ benches/
 
 | 来源模块    | 使用的类型/trait                                                                              |
 | ----------- | --------------------------------------------------------------------------------------------- |
-| `tensor`    | `Tensor<A, D>`, `TensorView`, `TensorViewMut`, `.shape()`, `.sum()`（参见 `07-tensor.md §4`） |
-| `dimension` | `Ix1`, `Ix2`, `Ix3`, `IxDyn`, `Dimension`（参见 `02-dimension.md §4`）                        |
-| `element`   | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element.md §4`）                |
-| `math`      | `add`, `sub`, `mul`, `div`, `sin`, `exp`, `abs`（参见 `11-math.md §4`）                       |
-| `reduction` | `sum`, `sum_axis`（参见 `13-reduction.md §4`）                                                |
-| `matrix`    | `dot`（参见 `12-matrix.md §4`）                                                               |
-| `shape`     | `transpose`（参见 `16-shape.md §4`）                                                          |
-| `set`       | `unique`（参见 `14-set.md §4`）                                                               |
-| `construct` | `zeros`, `ones`, `from_vec`（参见 `18-construction.md §4`）                                   |
-| `broadcast` | `broadcast_shape`, 广播运算符（参见 `15-broadcast.md §4`）                                    |
+| `tensor`    | `Tensor<A, D>`, `TensorView`, `TensorViewMut`, `.shape()`, `.sum()`（参见 `07-tensor.md §5`） |
+| `dimension` | `Ix1`, `Ix2`, `Ix3`, `IxDyn`, `Dimension`（参见 `02-dimension.md §5`）                        |
+| `element`   | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element.md §5`）                |
+| `math`      | `add`, `sub`, `mul`, `div`, `sin`, `exp`, `abs`（参见 `11-math.md §5`）                       |
+| `reduction` | `sum`, `sum_axis`（参见 `13-reduction.md §5`）                                                |
+| `matrix`    | `dot`（参见 `12-matrix.md §5`）                                                               |
+| `shape`     | `transpose`（参见 `16-shape.md §5`）                                                          |
+| `set`       | `unique`（参见 `14-set.md §5`）                                                               |
+| `construct` | `zeros`, `ones`, `from_vec`（参见 `18-construction.md §5`）                                   |
+| `broadcast` | `broadcast_shape`, 广播运算符（参见 `15-broadcast.md §5`）                                    |
 
 ### 4.3 依赖方向声明
 
@@ -268,7 +268,7 @@ Benchmark 分类
 | F-contiguous   | `zeros(shape)`                      | 默认路径性能基线       |
 | Non-contiguous | `tensor.slice(s![..;2])` 或转置视图 | 非连续路径标量回退惩罚 |
 
-> **注意**：Xenon 仅支持 F-order 布局，不存在 C-order 路径。非连续布局通过切片/转置视图产生（参见 `06-memory.md §4`）。
+> **注意**：Xenon 仅支持 F-order 布局，不存在 C-order 路径。非连续布局通过切片/转置视图产生（参见 `06-layout.md §5.4` / `§5.1c`）。
 
 ---
 
@@ -293,10 +293,10 @@ Benchmark 分类
 | `broadcast_row`               | 行向量广播到矩阵        | S/M/L | f64            | F-contiguous   | 行广播                                     |
 | `broadcast_col`               | 列向量广播到矩阵        | S/M/L | f64            | F-contiguous   | 列广播                                     |
 | `transpose_2d`                | 2D 转置（零拷贝）       | S/M/L | f64            | F-contiguous   | 转置视图创建                               |
-| `simd_add_compare`            | `a + b` (SIMD vs 标量)  | M     | f32/f64        | F-contiguous   | SIMD 加速比（参见 `08-simd.md §10`）       |
+| `simd_add_compare`            | `a + b` (SIMD vs 标量)  | M     | f32/f64        | F-contiguous   | SIMD 加速比（参见 `08-simd.md §12`）       |
 | `simd_sum_compare`            | sum (SIMD vs 标量)      | M     | i32/i64        | F-contiguous   | 仅测当前已覆盖的整数 SIMD 归约加速         |
-| `simd_dot_compare`            | dot (标量基线对比)      | M     | f32/f64        | F-contiguous   | 当前版本无 SIMD 内积 kernel，仅记录标量基线 |
-| `par_sum_compare`             | sum (并行 vs 串行)      | L     | i64            | F-contiguous   | 并行加速比（参见 `09-parallel.md §10`）    |
+| `simd_dot_compare`            | dot (SIMD vs 标量)      | M     | f32/f64        | F-contiguous   | SIMD dot kernel 已在 `08-simd.md` 中设计，本基准对比 SIMD 与标量路径的性能差异与数值等价性（§28.3）。 |
+| `par_sum_compare`             | sum (并行 vs 串行)      | L     | i64            | F-contiguous   | 并行加速比（参见 `09-parallel.md §12`）    |
 | `par_add_compare`             | `a + b` (并行 vs 串行)  | L     | f64            | F-contiguous   | 并行逐元素加速                             |
 | `auto_threshold_switch`       | 自动路径选择            | S/M/L | f64            | F-contiguous   | 阈值附近自动串并切换行为                   |
 | `nested_parallel_fallback`    | 嵌套并行回退            | M     | f64            | F-contiguous   | 已处于并行上下文时必须回退串行             |
@@ -326,7 +326,7 @@ Benchmark 分类
 
 #### 5.6.2 Regression Check 覆盖范围
 
-Regression Check 监测以下核心基准：`elem_add_f64`（逐元素加法，f64，256×256）和 `sum_1d_f64`（一维归约，f64，65536 元素）。其中 `256×256` 与 §5.2 的 Medium 规模保持一致。
+Regression Check 监测以下核心基准：`elem_add_f64`（逐元素加法，f64，256×256）和 `sum_1d_f64`（一维归约，f64，65536 元素）。其中 `256×256` 与 §5.4.1 的 Medium 规模保持一致。
 
 #### 5.6.3 CI 配置示例
 
@@ -391,7 +391,7 @@ fn bench_elem_add(c: &mut Criterion) {
             BenchmarkId::new("f64/contiguous", size),
             &size,
             |b, _| {
-                b.iter(|| black_box(&a + &b));
+                b.iter(|| black_box((&a + &b).unwrap()));
             },
         );
     }
@@ -470,13 +470,13 @@ fn bench_sum_bad2(c: &mut Criterion) {
 
 ```rust
 // Good: black_box wraps the entire expression to prevent dead code elimination
-b.iter(|| black_box(&a + &b));
+b.iter(|| black_box((&a + &b).unwrap()));
 
 // Good: black_box wraps input to prevent constant folding
 b.iter(|| black_box(a) + black_box(b));
 
 // Bad: forgetting black_box allows compiler to optimize away
-b.iter(|| &a + &b);
+b.iter(|| (&a + &b).unwrap());
 ```
 
 `black_box` 的作用是告诉编译器"此值可能被以任何方式使用"，防止编译器将结果视为死代码而消除整个计算。
@@ -740,6 +740,7 @@ Wave 5:           [T12]
 | 1.1.1 | 2026-04-08 |
 | 1.2.0 | 2026-04-08 |
 | 1.2.1 | 2026-04-10 |
+| 1.2.2 | 2026-04-14 |
 
 ---
 

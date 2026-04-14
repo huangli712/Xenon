@@ -88,12 +88,12 @@ src/util/
 
 | 来源模块    | 使用的类型/trait                                                                                                      |
 | ----------- | --------------------------------------------------------------------------------------------------------------------- |
-| `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.storage_kind()`（参见 `07-tensor.md` §4）           |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §4）                                                      |
-| `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, `StorageIntoOwned<Elem=A>`（参见 `05-storage.md` §4）                      |
+| `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.storage_kind()`（参见 `07-tensor.md` §5）           |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §5）                                                      |
+| `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, `StorageIntoOwned<Elem=A>`（参见 `05-storage.md` §5）                      |
 | `element`   | `Element`，以及 utility 层定义的 operation-specific `ClipElement` 约束                                              |
-| `layout`    | `is_f_contiguous()`（参见 `06-memory.md` §4）                                                                       |
-| `iter`      | `iter()`, `iter_mut()`（参见 `10-iterator.md` §4）                                                                  |
+| `layout`    | `is_f_contiguous()`（参见 `06-layout.md` §5）                                                                       |
+| `iter`      | `iter()`, `iter_mut()`（参见 `10-iterator.md` §5）                                                                  |
 | `tensor`    | `Tensor<A, D>` 的结果构造路径；`clip` 分配新的 owned 结果张量并通过 `iter()` / `iter_mut()` 写入逻辑元素           |
 
 ### 4.3 依赖方向声明
@@ -137,9 +137,9 @@ where
     /// Available for types implementing `ClipElement`: i32, i64, f32, f64.
     /// **Not available for `Complex<f32>`/`Complex<f64>`** because complex numbers
     /// have no natural total ordering (`Complex` does not implement `PartialOrd`,
-    /// see `04-complex.md §4`).
+/// see `04-complex.md §5`).
 /// **Not available for `bool` / `Complex<_>`** because clip requires an ordered scalar domain.
-    /// (see `03-element.md §3`).
+    /// (see `03-element.md §5.3`).
     ///
     /// # Arguments
     ///
@@ -148,8 +148,7 @@ where
     ///
     /// # Errors
     ///
-    /// Returns `Err(XenonError::InvalidArgument)` when `min > max`.
-    /// For floating-point tensors, `min`/`max` must not be `NaN`.
+    /// Returns `Err(XenonError::InvalidArgument)` when `min > max` or either bound is `NaN`.
     ///
     /// # Examples
     ///
@@ -166,7 +165,7 @@ where
             return Err(XenonError::InvalidArgument {
                 operation: "clip",
                 argument: "min/max",
-                expected: "min <= max and finite bounds for floating-point inputs",
+                expected: "min <= max; NaN bounds are invalid for floating-point inputs",
                 actual: "min > max or NaN bound",
                 axis: None,
                 shape: Some(self.shape().to_vec()),
@@ -203,7 +202,7 @@ where
             return Err(XenonError::InvalidArgument {
                 operation: "clip_inplace",
                 argument: "min/max",
-                expected: "min <= max and finite bounds for floating-point inputs",
+                expected: "min <= max; NaN bounds are invalid for floating-point inputs",
                 actual: "min > max or NaN bound",
                 axis: None,
                 shape: Some(self.shape().to_vec()),
@@ -220,6 +219,8 @@ where
     }
 }
 ````
+
+> 浮点参数非法时：`min > max` 或任一边界为 `NaN` 时返回可恢复错误。
 
 ### 5.2 fill 操作
 
@@ -550,9 +551,9 @@ Wave 2:      [T3] → [T4]
 
 | 方向               | 对方模块 | 接口/类型                                      | 约定                                                                                                       |
 | ------------------ | -------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `utility → iter`   | `iter`   | `iter_mut()`                                   | `fill` 通过可变迭代器遍历逻辑元素，参见 `10-iterator.md` §4.1                                              |
-| `utility → iter`   | `iter`   | `iter()`                                       | `clip` 通过只读迭代器读取并写入新张量，参见 `10-iterator.md` §4.1                                          |
-| `utility → layout` | `layout` | 连续性查询                                     | `to_contiguous` 先查询当前布局是否已经连续，参见 `06-memory.md` §4                                         |
+| `utility → iter`   | `iter`   | `iter_mut()`                                   | `fill` 通过可变迭代器遍历逻辑元素，参见 `10-iterator.md` §5.6                                              |
+| `utility → iter`   | `iter`   | `iter()`                                       | `clip` 通过只读迭代器读取并写入新张量，参见 `10-iterator.md` §5.6                                          |
+| `utility → layout` | `layout` | 连续性查询                                     | `to_contiguous` 先查询当前布局是否已经连续，参见 `06-layout.md` §5.4                                       |
 | `utility → tensor` | `tensor` | `to_owned()` / `into_owned()` / owned 构造路径 | `to_contiguous` 与 `into_contiguous` 复用张量 owned 化与连续化路径；`clip` 通过 owned 结果张量构造返回新值 |
 
 ### 9.2 数据流描述
@@ -615,7 +616,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 **优化提示**：
 
 - 连续布局的 `fill` 仅在填充值是全零 bit-pattern 时才可使用 `ptr::write_bytes(0)` 优化；一般情况仍应逐元素写入，避免把任意 `Copy` 值错误地按字节复制
-- `clip` 的热点路径可考虑 SIMD 加速（参见 `08-simd.md` §4）
+- `clip` 的热点路径可考虑 SIMD 加速（参见 `08-simd.md` §5）
 
 ---
 
@@ -642,6 +643,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-08 |
 | 1.1.2 | 2026-04-10 |
+| 1.1.3 | 2026-04-14 |
 
 ---
 

@@ -9,7 +9,7 @@
 
 ## 1. 主题定位与适用范围
 
-线程安全是 Xenon 的横切关注点，贯穿所有存储模式和计算后端。本文档定义各存储模式（参见 `05-storage.md §4`）的 `Send`/`Sync` 实现规则，确保 Xenon 张量（参见 `07-tensor.md §4`）可在多线程环境下安全使用。
+线程安全是 Xenon 的横切关注点，贯穿所有存储模式和计算后端。本文档定义各存储模式（参见 `05-storage.md §5`）的 `Send`/`Sync` 实现规则，确保 Xenon 张量（参见 `07-tensor.md §5`）可在多线程环境下安全使用。
 
 ### 1.1 职责边界
 
@@ -113,11 +113,11 @@ src/parallel/
 | `core::marker` | `PhantomData<A>`, `Send`, `Sync`                                 |
 | `std::sync`    | `Arc<Vec<A>>`, `AtomicUsize`                                     |
 | `std::cell`    | `Cell<usize>`, `Cell<Option<usize>>`                             |
-| `rayon::iter`  | `ParallelIterator` (要求 `Item: Send`，参见 `09-parallel.md §4`) |
+| `rayon::iter`  | `ParallelIterator` (要求 `Item: Send`，参见 `09-parallel.md §5.3`) |
 
 ### 4.3 依赖方向声明
 
-> **依赖方向：线程安全是横切关注点。** 各存储模块自行声明 Send/Sync（参见 `05-storage.md §5`），parallel 模块消费这些约束（参见 `09-parallel.md §4`）。无循环依赖。
+> **依赖方向：线程安全是横切关注点。** 各存储模块自行声明 Send/Sync（参见 `05-storage.md §5`），parallel 模块消费这些约束（参见 `09-parallel.md §5.2`）。无循环依赖。
 
 ### 4.4 依赖合法性与新增依赖说明
 
@@ -144,7 +144,9 @@ src/parallel/
 | `ViewMutRepr<'a, A>` |  ✅  |  ✗   | `A: Send`                        | 独占可写视图可转移但不可共享                       |
 | `ArcRepr<A>`         |  ✅  |  ✅  | `A: Send + Sync`                 | Arc 原子计数，读共享安全，写入需 `make_mut()` 独占 |
 
-各存储模式的完整 API 定义参见 `05-storage.md §4`。
+> **补充说明：** `ViewRepr` 仅持有共享引用（`&A`），跨线程传递共享引用只要求 `A: Sync`（允许多线程共享读取），不要求 `A: Send`（所有权转移）。这是 Rust 标准库 `&T: Send + Sync where T: Sync` 的直接推论。
+
+各存储模式的完整 API 定义参见 `05-storage.md §5`。
 
 ### 5.2 TensorBase<S, D> 自动推导规则
 
@@ -158,6 +160,16 @@ src/parallel/
 | `ArcRepr<A>` where A: Send + Sync      | ✅ Send                    | ✅ Sync                    |
 
 > **说明**: `D: Dimension` 要求 `Dimension: Send + Sync`，因此维度类型始终线程安全。
+
+### 5.2.1 安全违规分类表
+
+| 安全违规类型 | 检测层级 | 处理方式 |
+| ------------ | -------- | -------- |
+| 存储模式不支持可写操作 | 类型层（编译期） | 通过 trait 约束拒绝 |
+| 广播结果尝试可变访问 | 类型层（编译期） | 通过返回类型拒绝 |
+| 并行中二次并行 | 运行时（ParallelGuard） | 自动回退串行路径 |
+| Workspace 违规借用 | 运行时（AtomicU8） | 返回 `XenonError::Workspace(AlreadyBorrowed)` |
+| 整数溢出 | 运行时（checked arithmetic） | panic（不可恢复） |
 
 ### 5.3 Owned<A> 的 Send/Sync
 
@@ -376,7 +388,7 @@ let sum: f64 = b.iter().sum();  // OK: read-only iteration
 // b_mut.iter_mut()  // Compile error! ViewRepr does not implement StorageMut
 ```
 
-> **设计决策：** 广播结果使用 `ViewRepr`（只读视图），因为广播不拷贝数据，语义上仅为只读（参见 `15-broadcast.md §4`）。如果允许可变迭代，修改广播结果会意外修改原数据的多个位置，这既不符合广播语义，也容易引入 bug。
+> **设计决策：** 广播结果使用 `ViewRepr`（只读视图），因为广播不拷贝数据，语义上仅为只读（参见 `15-broadcast.md §5`）。如果允许可变迭代，修改广播结果会意外修改原数据的多个位置，这既不符合广播语义，也容易引入 bug。
 
 ### 5.9 Good/Bad 对比示例
 
@@ -454,7 +466,7 @@ fn parallel_iteration(tensor: &Tensor2<f64>) {
 
 ### 6.2 并行操作安全约束
 
-并行迭代的安全保证基于分块访问隔离（参见 `09-parallel.md §5`）：
+并行迭代的安全保证基于分块访问隔离（参见 `09-parallel.md §6.2`）：
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -771,7 +783,7 @@ fn test_arc_concurrent_access() {
 
 ### 9.4 与 rayon 的集成
 
-rayon 的 `ParallelIterator` 要求 `Item: Send`（参见 `09-parallel.md §8`）：
+rayon 的 `ParallelIterator` 要求 `Item: Send`（参见 `09-parallel.md §5.3`）：
 
 | 存储模式                  | `par_iter()` | `par_iter_mut()` | 约束                                                                             |
 | ------------------------- | :----------: | :--------------: | -------------------------------------------------------------------------------- |
@@ -871,6 +883,8 @@ Workspace 模块的 `split_at`/`split_at_mut` 使用原子引用计数（`Atomic
 | 1.0.3 | 2026-04-08 |
 | 1.0.4 | 2026-04-08 |
 | 1.0.5 | 2026-04-10 |
+| 1.0.6 | 2026-04-14 |
+| 1.0.7 | 2026-04-14 |
 
 ---
 

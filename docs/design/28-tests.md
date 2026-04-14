@@ -132,12 +132,12 @@ tests/
 
 | 来源模块    | 使用的类型/trait                                                                                               |
 | ----------- | -------------------------------------------------------------------------------------------------------------- |
-| `tensor`    | `Tensor<A, D>`, `TensorView`, `TensorViewMut`, `ArcTensor`, `.shape()`, `.strides()`（参见 `07-tensor.md §4`） |
-| `dimension` | `Ix0`~`Ix6`, `IxDyn`, `Dimension`（参见 `02-dimension.md §4`）                                                  |
-| `element`   | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element.md §4`）                                 |
-| `complex`   | `Complex<f32>`, `Complex<f64>`（参见 `04-complex.md §4`）                                                      |
-| `storage`   | `Owned`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`, `Storage`（参见 `05-storage.md §4`）                            |
-| `layout`    | `LayoutFlags`, `Order`（参见 `06-memory.md §4`）                                                               |
+| `tensor`    | `Tensor<A, D>`, `TensorView`, `TensorViewMut`, `ArcTensor`, `.shape()`, `.strides()`（参见 `07-tensor.md §5`） |
+| `dimension` | `Ix0`~`Ix6`, `IxDyn`, `Dimension`（参见 `02-dimension.md §5`）                                                  |
+| `element`   | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element.md §5`）                                 |
+| `complex`   | `Complex<f32>`, `Complex<f64>`（参见 `04-complex.md §5`）                                                      |
+| `storage`   | `Owned`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`, `Storage`（参见 `05-storage.md §5`）                            |
+| `layout`    | `LayoutFlags`, `Order`（参见 `06-layout.md §5`）                                                               |
 | `error`     | `XenonError`, `Result<T>`（参见 `26-error.md §4`）                                                             |
 
 ### 4.3 依赖方向声明
@@ -190,8 +190,8 @@ pub fn assert_tensor_close<A, D>(
         "{}: shape mismatch: {:?} vs {:?}", msg, actual.shape(), expected.shape());
 
     for (idx, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
-        let a_f: f64 = (*a).cast_to();
-        let e_f: f64 = (*e).cast_to();
+        let a_f: f64 = (*a).cast_to().unwrap();
+        let e_f: f64 = (*e).cast_to().unwrap();
         let diff = (a_f - e_f).abs();
         let tolerance = atol + rtol * e_f.abs();
         assert!(diff <= tolerance,
@@ -392,7 +392,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_lda`                      | lda 返回 leading dimension                 | 中     |
 | `test_is_blas_compatible`       | BLAS 兼容性检查                            | 高     |
 | `test_from_raw_parts_roundtrip` | into_raw_parts → from_raw_parts_owned 往返 | 高     |
-| `test_index_to_offset`          | index_to_offset 正确计算                   | 高     |
+| `test_try_offset_of`            | try_offset_of 正确计算                     | 高     |
 
 ### 6.15 test_workspace.rs
 
@@ -408,16 +408,16 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 
 | 测试函数                                    | 测试内容                                                 | 优先级 |
 | ------------------------------------------- | -------------------------------------------------------- | ------ |
-| `test_par_sum_consistency`                  | 并行 sum 与串行 sum 结果一致（参见 `09-parallel.md §7`） | 高     |
+| `test_par_sum_consistency`                  | 并行 sum 与串行 sum 结果一致（参见 `09-parallel.md §8`） | 高     |
 | `test_par_add_consistency`                  | 并行 add 与串行 add 结果一致                             | 高     |
-| `test_parallel_read`                        | 多线程并发只读访问安全（参见 `25-safety.md §4.4`）       | 高     |
+| `test_parallel_read`                        | 多线程并发只读访问安全（参见 `25-safety.md §5`）         | 高     |
 | `test_nested_parallel_falls_back_to_serial` | 嵌套并行检测后自动回退串行                               | 中     |
 
 ### 6.17 test_simd.rs
 
 | 测试函数                     | 测试内容                                             | 优先级 |
 | ---------------------------- | ---------------------------------------------------- | ------ |
-| `test_simd_add_consistency`  | SIMD add 与标量 add 结果一致（参见 `08-simd.md §7`） | 高     |
+| `test_simd_add_consistency`  | SIMD add 与标量 add 结果一致（参见 `08-simd.md §8`） | 高     |
 | `test_simd_sum_consistency`  | SIMD sum 与标量 sum 结果一致                         | 高     |
 | `test_simd_fallback_small`   | 小数组 SIMD 回退到标量                               | 中     |
 | `test_simd_complex_fallback` | Complex 输入自动回退标量路径                         | 中     |
@@ -491,7 +491,7 @@ fn test_empty_tensor_sum() {
 
 #[test]
 fn test_single_element() {
-    let t = Tensor::<f64, Ix0>::from_scalar(42.0f64);  // see 18-construction.md §4.4
+    let t = Tensor::<f64, Ix0>::from_scalar(42.0f64);  // see 18-construction.md §5.4
     assert_eq!(t.len(), 1);
     assert_eq!(t.sum(), 42.0);
 }
@@ -545,7 +545,7 @@ fn test_ixdyn_high_rank_scenarios() {
 
     let lhs = Tensor::<i32, IxDyn>::ones(IxDyn(&[3, 1, 4]));
     let rhs = Tensor::<i32, IxDyn>::ones(IxDyn(&[1, 5, 4]));
-    let sum = &lhs + &rhs;
+    let sum = (&lhs + &rhs).unwrap();
     assert_eq!(sum.shape(), &[3, 5, 4]);
     assert_eq!(sum[IxDyn(&[2, 4, 3])], 2);
 }
@@ -596,7 +596,7 @@ pub fn allclose_eq(actual: f64, expected: f64, atol: f64, rtol: f64) -> bool {
 
 ### 9.1 并行无数据竞争
 
-线程安全测试方案（参见 `25-safety.md §7`）：
+线程安全测试方案（参见 `25-safety.md §8`）：
 
 | 方式            | 说明                                                     |
 | --------------- | -------------------------------------------------------- |
@@ -639,7 +639,7 @@ fn test_simd_add_consistency() {
         (0..1024).map(|idx| (idx as f64).cos()).collect(),
     );
 
-    let result = &a + &b;
+    let result = (&a + &b).unwrap();
 
     // Verify against scalar loop
     for i in 0..1024 {
@@ -661,8 +661,8 @@ fn test_simd_add_consistency() {
 
 | 不变量             | 测试方法                                                                                          | 优先级 |
 | ------------------ | ------------------------------------------------------------------------------------------------- | ------ |
-| `sum` 保加法单位元 | 空数组 sum == 0（参见 `13-reduction.md §4`）                                                      | 高     |
-| `transpose` 自反性 | `t.t().t()` == `t`（参见 `16-shape.md §4`）                                                       | 高     |
+| `sum` 保加法单位元 | 空数组 sum == 0（参见 `13-reduction.md §5.1`）                                                    | 高     |
+| `transpose` 自反性 | `t.t().t()` == `t`（参见 `16-shape.md §5.1`）                                                     | 高     |
 | 加法交换律         | `a + b` == `b + a`（近似）                                                                        | 中     |
 | `unique` 保元素数  | `unique(a).len()` ≤ `a.len()`                                                                     | 中     |
 | `unique` 不含重复  | 对非 `NaN` 元素，结果中不得重复；`NaN` 按 IEEE 754 自反不相等语义逐个保留                         | 中     |
@@ -696,8 +696,8 @@ fn prop_add_commutative() {
     for len in 1..256usize {
         let a = Tensor1::from_vec((0..len).map(|idx| idx as f64).collect());
         let b = Tensor1::from_vec((0..len).map(|idx| idx as f64 + 1.0).collect());
-        let ab = &a + &b;
-        let ba = &b + &a;
+        let ab = (&a + &b).unwrap();
+        let ba = (&b + &a).unwrap();
         for (x, y) in ab.iter().zip(ba.iter()) {
             assert!(prop_approx_equal(*x, *y));
         }
@@ -771,7 +771,7 @@ fn prop_approx_equal(x: f64, y: f64) -> bool {
 fn test_add_result() {
     let a = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
     let b = Tensor1::from_vec(vec![4.0, 5.0, 6.0]);
-    let result = &a + &b;
+    let result = (&a + &b).unwrap();
     let expected = Tensor1::from_vec(vec![5.0, 7.0, 9.0]);
     assert_tensor_close(&result, &expected, 1e-10, 1e-10, "add");
 }
@@ -802,7 +802,7 @@ fn test_transpose_shapes() {
 fn test_add_bad() {
     let a = Tensor1::from_vec(vec![0.1, 0.2]);
     let b = Tensor1::from_vec(vec![0.3, 0.4]);
-    let result = &a + &b;
+    let result = (&a + &b).unwrap();
     assert_eq!(result[[0]], 0.4);  // Floating point exact comparison may fail
 }
 
@@ -1197,6 +1197,7 @@ fn compile_fail_cases() {
 | 1.2.0 | 2026-04-08 |
 | 1.2.1 | 2026-04-08 |
 | 1.2.2 | 2026-04-10 |
+| 1.2.3 | 2026-04-14 |
 
 ---
 

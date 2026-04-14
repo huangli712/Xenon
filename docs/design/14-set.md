@@ -83,7 +83,10 @@ src/set/unique.rs
 | 来源模块  | 使用的类型/trait                                                                  |
 | --------- | --------------------------------------------------------------------------------- |
 | `tensor`  | `TensorBase<S, D>`, `Tensor<A, Ix1>`, `.iter()`, `.len()`，参见 `07-tensor.md` §5 |
+| `storage` | `Storage` trait（consuming tensor storage for data access）                       |
+| `dimension` | `Dimension`, `Ix1`（output dimension type for flatten result）                  |
 | `element` | `Element`, `ComplexScalar`，参见 `03-element.md` §5.1 / §5.4                      |
+| `element` | `Sealed`（sealed trait pattern for `UniqueElement`）                              |
 | `complex` | `Complex<f32>`, `Complex<f64>`，参见 `04-complex.md` §5                           |
 | `iter`    | `Elements`（遍历收集元素），参见 `10-iterator.md` §5.1                            |
 
@@ -520,6 +523,7 @@ User calls unique()
 | 1.0.4 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-10 |
+| 1.1.2 | 2026-04-14 |
 
 ---
 

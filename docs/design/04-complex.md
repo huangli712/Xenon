@@ -19,7 +19,7 @@
 | 数学方法          | `norm()`（hypot）, `arg()`, `exp()`, `ln()`, `sqrt()`                                             | 复数 FFT、高阶复数运算                                                                      |
 | 算术运算          | Complex±Complex, Complex×Complex, Complex÷Complex, 一元负号                                       | 跨精度混合运算                                                                              |
 | 实数混合运算      | 同精度：`Complex<f32> op f32`、`Complex<f64> op f64`；左侧实数通过 `Complex::from(real)` 显式转换 | 跨精度：`f32+Complex<f64>`（须显式转换）                                                    |
-| 格式化输出        | Display（`"a+bi"` / `"a-bi"`）, Debug                                                             | —                                                                                           |
+| 格式化输出        | Display（`"a+bj"` / `"a-bj"`）, Debug                                                             | —                                                                                           |
 | 双字段 C 布局基础 | `#[repr(C)]` + 编译期静态断言                                                                     | 跨精度混合运算                                                                              |
 | 类型转换          | `Complex<f32>↔Complex<f64>`, `f32/f64→Complex`, `i32/i64→Complex`                                 | 未在 `require.md` §23.1 列出的额外整数→复数组合                                               |
 
@@ -128,7 +128,7 @@ src/complex/
 ### 5.1 Complex<T> 完整定义
 
 ```rust
-/// Complex number: a + bi.
+/// Complex number: a + bj.
 ///
 /// # Memory layout
 ///
@@ -241,13 +241,13 @@ impl<T: ComplexFloat> Complex<T> {
 
 // Concrete implementations for f32 — public API, no pub(crate) dependency
 impl Complex<f32> {
-    /// Creates from polar coordinates: r * (cos(theta) + i*sin(theta)).
+    /// Creates from polar coordinates: r * (cos(theta) + j*sin(theta)).
     #[inline]
     pub fn from_polar(r: f32, theta: f32) -> Self {
         Self::new(r * theta.cos(), r * theta.sin())
     }
 
-    /// Imaginary unit i (f32 specialization).
+    /// Imaginary unit j (f32 specialization).
     #[inline]
     pub fn i() -> Self {
         Self::new(0.0, 1.0)
@@ -256,13 +256,13 @@ impl Complex<f32> {
 
 // Concrete implementations for f64 — public API, no pub(crate) dependency
 impl Complex<f64> {
-    /// Creates from polar coordinates: r * (cos(theta) + i*sin(theta)).
+    /// Creates from polar coordinates: r * (cos(theta) + j*sin(theta)).
     #[inline]
     pub fn from_polar(r: f64, theta: f64) -> Self {
         Self::new(r * theta.cos(), r * theta.sin())
     }
 
-    /// Imaginary unit i (f64 specialization).
+    /// Imaginary unit j (f64 specialization).
     #[inline]
     pub fn i() -> Self {
         Self::new(0.0, 1.0)
@@ -283,7 +283,7 @@ impl<T: ComplexFloat> Complex<T> {
     #[inline]
     pub fn im(self) -> T { self.im }
 
-    /// Returns the complex conjugate: conj(a + bi) = a - bi.
+    /// Returns the complex conjugate: conj(a + bj) = a - bj.
     ///
     /// **Design note:** `Complex::conj()` is an inherent method returning `Self`
     /// (the same complex type with negated imaginary part). It differs from
@@ -364,14 +364,14 @@ impl Complex<f32> {
         self.im.atan2(self.re)
     }
 
-    /// Complex exponential: e^z = e^re * (cos(im) + i*sin(im)).
+    /// Complex exponential: e^z = e^re * (cos(im) + j*sin(im)).
     #[inline]
     pub fn exp(self) -> Self {
         let exp_re = self.re.exp();
         Self::new(exp_re * self.im.cos(), exp_re * self.im.sin())
     }
 
-    /// Complex natural logarithm (principal value): ln|z| + i*arg(z).
+    /// Complex natural logarithm (principal value): ln|z| + j*arg(z).
     #[inline]
     pub fn ln(self) -> Self {
         Self::new(self.norm().ln(), self.arg())
@@ -425,14 +425,14 @@ impl Complex<f64> {
         self.im.atan2(self.re)
     }
 
-    /// Complex exponential: e^z = e^re * (cos(im) + i*sin(im)).
+    /// Complex exponential: e^z = e^re * (cos(im) + j*sin(im)).
     #[inline]
     pub fn exp(self) -> Self {
         let exp_re = self.re.exp();
         Self::new(exp_re * self.im.cos(), exp_re * self.im.sin())
     }
 
-    /// Complex natural logarithm (principal value): ln|z| + i*arg(z).
+    /// Complex natural logarithm (principal value): ln|z| + j*arg(z).
     #[inline]
     pub fn ln(self) -> Self {
         Self::new(self.norm().ln(), self.arg())
@@ -465,7 +465,7 @@ impl Complex<f64> {
 ### 5.6 算术运算实现
 
 ```rust
-// Complex + Complex: (a+bi) + (c+di) = (a+c) + (b+d)i
+// Complex + Complex: (a+bj) + (c+dj) = (a+c) + (b+d)j
 impl<T: Float> core::ops::Add for Complex<T> {
     type Output = Self;
     #[inline]
@@ -474,7 +474,7 @@ impl<T: Float> core::ops::Add for Complex<T> {
     }
 }
 
-// Complex - Complex: (a+bi) - (c+di) = (a-c) + (b-d)i
+// Complex - Complex: (a+bj) - (c+dj) = (a-c) + (b-d)j
 impl<T: Float> core::ops::Sub for Complex<T> {
     type Output = Self;
     #[inline]
@@ -483,7 +483,7 @@ impl<T: Float> core::ops::Sub for Complex<T> {
     }
 }
 
-// Complex * Complex: (a+bi) * (c+di) = (ac-bd) + (ad+bc)i
+// Complex * Complex: (a+bj) * (c+dj) = (ac-bd) + (ad+bc)j
 impl<T: Float> core::ops::Mul for Complex<T> {
     type Output = Self;
     #[inline]
@@ -495,21 +495,30 @@ impl<T: Float> core::ops::Mul for Complex<T> {
     }
 }
 
-// Complex / Complex: multiply by conjugate of denominator
-// (a+bi) / (c+di) = [(ac+bd) + (bc-ad)i] / (c²+d²)
+// Complex / Complex: Smith's algorithm for better numerical stability
 impl<T: Float> core::ops::Div for Complex<T> {
     type Output = Self;
     #[inline]
     fn div(self, rhs: Self) -> Self {
-        let denom = rhs.re * rhs.re + rhs.im * rhs.im;
-        Self::new(
-            (self.re * rhs.re + self.im * rhs.im) / denom,
-            (self.im * rhs.re - self.re * rhs.im) / denom,
-        )
+        if rhs.re.abs() >= rhs.im.abs() {
+            let r = rhs.im / rhs.re;
+            let denom = rhs.re + rhs.im * r;
+            Self::new(
+                (self.re + self.im * r) / denom,
+                (self.im - self.re * r) / denom,
+            )
+        } else {
+            let r = rhs.re / rhs.im;
+            let denom = rhs.re * r + rhs.im;
+            Self::new(
+                (self.re * r + self.im) / denom,
+                (self.im * r - self.re) / denom,
+            )
+        }
     }
 }
 
-// -Complex: -(a+bi) = -a - bi
+// -Complex: -(a+bj) = -a - bj
 impl<T: Float> core::ops::Neg for Complex<T> {
     type Output = Self;
     #[inline]
@@ -522,21 +531,21 @@ impl<T: Float> core::ops::Neg for Complex<T> {
 ### 5.7 混合运算（同精度实数与复数）
 
 ```rust
-// Complex + T: (a+bi) + r = (a+r) + bi
+// Complex + T: (a+bj) + r = (a+r) + bj
 impl<T: Float> core::ops::Add<T> for Complex<T> {
     type Output = Self;
     #[inline]
     fn add(self, rhs: T) -> Self { Self::new(self.re + rhs, self.im) }
 }
 
-// Complex * T: (a+bi) * r = ar + bri
+// Complex * T: (a+bj) * r = ar + brj
 impl<T: Float> core::ops::Mul<T> for Complex<T> {
     type Output = Self;
     #[inline]
     fn mul(self, rhs: T) -> Self { Self::new(self.re * rhs, self.im * rhs) }
 }
 
-// Complex / T: (a+bi) / r = (a/r) + (b/r)i
+// Complex / T: (a+bj) / r = (a/r) + (b/r)j
 impl<T: Float> core::ops::Div<T> for Complex<T> {
     type Output = Self;
     #[inline]
@@ -571,23 +580,23 @@ impl<T: Float> PartialEq for Complex<T> {
 
 ```rust
 impl<T: Float + core::fmt::Display> core::fmt::Display for Complex<T> {
-    /// Formats as "a+bi", "a-bi", "a", "bi", or "0".
+    /// Formats as "a+bj", "a-bj", "a", "bj", or "0".
     ///
     /// NaN handling: when the imaginary part is NaN, explicitly display
-    /// as "re+NaNi" (or "re-NaNi") to avoid the ambiguity of NaN comparison
+    /// as "re+NaNj" (or "re-NaNj") to avoid the ambiguity of NaN comparison
     /// in the `im > T::zero()` branch.
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if self.im.is_nan() {
-            return write!(f, "{}+NaNi", self.re);
+            return write!(f, "{}+NaNj", self.re);
         }
         if self.im == T::zero() {
             write!(f, "{}", self.re)
         } else if self.re == T::zero() {
-            write!(f, "{}i", self.im)
+            write!(f, "{}j", self.im)
         } else if self.im > T::zero() {
-            write!(f, "{}+{}i", self.re, self.im)
+            write!(f, "{}+{}j", self.re, self.im)
         } else {
-            write!(f, "{}{}i", self.re, self.im) // negative sign included in im
+            write!(f, "{}{}j", self.re, self.im) // negative sign included in im
         }
     }
 }
@@ -595,10 +604,10 @@ impl<T: Float + core::fmt::Display> core::fmt::Display for Complex<T> {
 
 | 输入                      | Display 输出 |
 | ------------------------- | ------------ |
-| `Complex::new(3.0, 4.0)`  | `"3+4i"`     |
-| `Complex::new(3.0, -4.0)` | `"3-4i"`     |
+| `Complex::new(3.0, 4.0)`  | `"3+4j"`     |
+| `Complex::new(3.0, -4.0)` | `"3-4j"`     |
 | `Complex::new(3.0, 0.0)`  | `"3"`        |
-| `Complex::new(0.0, 4.0)`  | `"4i"`       |
+| `Complex::new(0.0, 4.0)`  | `"4j"`       |
 | `Complex::new(0.0, 0.0)`  | `"0"`        |
 
 ### 5.10 类型转换
@@ -617,17 +626,17 @@ impl From<Complex<f32>> for Complex<f64> {
 
 // Precision reduction: f64 -> f32 (lossy)
 // NOT implemented as `From` — lossy conversion contradicts std's philosophy.
-// Use the named method `to_f32()` with the recoverable-error model from §23 instead.
+// Use the named method `to_f32()` for component-wise lossy conversion.
 impl Complex<f64> {
     /// Attempts to convert to `Complex<f32>`.
     ///
-    /// This conversion is lossy by default, so it follows the recoverable-error
-    /// model from `require.md` §23 instead of unconditionally truncating.
+    /// This is the explicit lossy narrowing path for complex-to-complex conversion.
+    /// Each component is narrowed independently using Rust's floating-point cast
+    /// semantics; callers that need strict validation should use the `CastTo`
+    /// conversion matrix at the element layer.
     #[inline]
     pub fn to_f32(self) -> Result<Complex<f32>, XenonError> {
-        // Check the §23 success preconditions for each component before narrowing.
-        // Return a recoverable error when precision-loss conditions are not accepted.
-        unimplemented!()
+        Ok(Complex::<f32>::new(self.re as f32, self.im as f32))
     }
 }
 
@@ -653,6 +662,50 @@ impl From<f64> for Complex<f64> {
 | `i64` | `Complex<f32>` | 实部 `i64→f32` 有损，虚部为 `0` | 返回可恢复错误 |
 
 其中语义遵循 `require.md` §23.2 的闭合规则：先按对应实数类型到目标复数实部分量类型的规则转换实部，再引入值为 `0` 的虚部。当前版本不额外扩展 `require.md` §23.1 之外的整数→复数组合。
+
+复杂到实数的受支持路径同样受 `require.md` §23.1 与 §23.2 约束，且统一由 `03-element.md` §5.9 定义的 `CastTo<T>` trait 作为唯一 owner；`complex/` 模块文档仅声明其语义，不重复定义独立转换入口。
+
+| 源类型 | 目标类型 | 语义 | 默认行为 |
+|--------|----------|------|---------|
+| `Complex<f32>` | `f32` | 仅当虚部为 `0` 时返回实部 | 虚部非零时返回 `XenonError` |
+| `Complex<f64>` | `f64` | 仅当虚部为 `0` 时返回实部 | 虚部非零时返回 `XenonError` |
+| `Complex<f32>` | `f64` | 仅当虚部为 `0` 时，按 `f32→f64` 规则转换实部 | 虚部非零时返回 `XenonError` |
+| `Complex<f64>` | `f32` | 仅当虚部为 `0` 时，按 `f64→f32` 规则转换实部 | 虚部非零时返回 `XenonError` |
+
+```rust
+// Complex -> Real conversions are owned by CastTo<T> in src/element/.
+// complex/ documents the rule here to keep the conversion matrix complete.
+
+impl CastTo<f64> for Complex<f64> {
+    type Error = XenonError;
+
+    fn cast_to(self) -> Result<f64, Self::Error> {
+        if self.im != 0.0 {
+            return Err(XenonError::new(
+                "Complex<f64>",
+                "f64",
+                "non-zero imaginary part",
+            ));
+        }
+        Ok(self.re)
+    }
+}
+
+impl CastTo<f32> for Complex<f64> {
+    type Error = XenonError;
+
+    fn cast_to(self) -> Result<f32, Self::Error> {
+        if self.im != 0.0 {
+            return Err(XenonError::new(
+                "Complex<f64>",
+                "f32",
+                "non-zero imaginary part",
+            ));
+        }
+        CastTo::<f32>::cast_to(self.re)
+    }
+}
+```
 
 ### 5.11 内存布局静态断言
 
@@ -732,18 +785,27 @@ let overflow = (big.re * big.re + big.im * big.im).sqrt(); // Inf!
 **Complex × Complex 公式**:
 
 ```
-(a+bi)(c+di) = ac + adi + bci + bdi²
-             = ac + adi + bci - bd    [i² = -1]
-             = (ac-bd) + (ad+bc)i
+(a+bj)(c+dj) = ac + adj + bcj + bdj²
+             = ac + adj + bcj - bd    [j² = -1]
+             = (ac-bd) + (ad+bc)j
 ```
 
-**Complex ÷ Complex 公式**（乘以分母共轭）:
+**Complex ÷ Complex 公式**（Smith's algorithm，避免直接形成 `c² + d²`）:
 
 ```
-(a+bi)     (a+bi)(c-di)     (ac+bd) + (bc-ad)i
---------  =  -------------  =  ----------------------
-(c+di)     (c+di)(c-di)           c² + d²
+if |c| >= |d|:
+    r = d / c
+    denom = c + d * r
+    result_re = (a + b * r) / denom
+    result_im = (b - a * r) / denom
+else:
+    r = c / d
+    denom = c * r + d
+    result_re = (a * r + b) / denom
+    result_im = (b * r - a) / denom
 ```
+
+优势：避免在极大或极小值输入下直接计算 `c² + d²`，降低中间溢出、下溢与灾难性消去风险。
 
 **norm() hypot 算法**:
 
@@ -838,7 +900,7 @@ User constructs `Complex<f64>::new(re, im)`
 
 - [ ] **T4**: 实现 `PartialEq` + `Display`
   - 文件: `src/complex/mod.rs`
-  - 内容: `PartialEq` impl（NaN!=NaN）、`Display` impl（a+bi 格式）
+- 内容: `PartialEq` impl（NaN!=NaN）、`Display` impl（a+bj 格式）
   - 测试: `test_eq`, `test_nan_neq`, `test_display_format`
   - 前置: T1
   - 预计: 10 min
@@ -949,25 +1011,25 @@ Wave 5: [T11] → [T12]
 | `test_from_real_imag`            | `from_real(5.0).im == 0.0`, `from_imag(3.0).re == 0.0`      | 高     |
 | `test_conj`                      | `Complex::new(3.0, 4.0).conj() == Complex::new(3.0, -4.0)`  | 高     |
 | `test_is_real_imaginary`         | `from_real(1.0).is_real()`, `from_imag(1.0).is_imaginary()` | 中     |
-| `test_add_complex`               | `(1+2i) + (3+4i) == (4+6i)`                                 | 高     |
-| `test_sub_complex`               | `(5+7i) - (2+3i) == (3+4i)`                                 | 高     |
-| `test_mul_complex`               | `(1+2i) * (3+4i) == (-5+10i)`                               | 高     |
-| `test_div_complex`               | `(6+8i) / (3+4i) == (2+0i)`                                 | 高     |
-| `test_neg_complex`               | `-(1+2i) == (-1-2i)`                                        | 高     |
-| `test_add_real`                  | `(1+2i) + 3.0 == (4+2i)`                                    | 高     |
-| `test_real_to_complex_add`       | `Complex::from(3.0) + (1+2i) == (4+2i)`                     | 高     |
-| `test_mul_real`                  | `(1+2i) * 3.0 == (3+6i)`                                    | 高     |
-| `test_div_by_real`               | `(6+4i) / 2.0 == (3+2i)`                                    | 高     |
-| `test_real_to_complex_div`       | `Complex::from(5.0) / (3+4i)` 正确                          | 中     |
+| `test_add_complex`               | `(1+2j) + (3+4j) == (4+6j)`                                 | 高     |
+| `test_sub_complex`               | `(5+7j) - (2+3j) == (3+4j)`                                 | 高     |
+| `test_mul_complex`               | `(1+2j) * (3+4j) == (-5+10j)`                               | 高     |
+| `test_div_complex`               | `(6+8j) / (3+4j) == (2+0j)`                                 | 高     |
+| `test_neg_complex`               | `-(1+2j) == (-1-2j)`                                        | 高     |
+| `test_add_real`                  | `(1+2j) + 3.0 == (4+2j)`                                    | 高     |
+| `test_real_to_complex_add`       | `Complex::from(3.0) + (1+2j) == (4+2j)`                     | 高     |
+| `test_mul_real`                  | `(1+2j) * 3.0 == (3+6j)`                                    | 高     |
+| `test_div_by_real`               | `(6+4j) / 2.0 == (3+2j)`                                    | 高     |
+| `test_real_to_complex_div`       | `Complex::from(5.0) / (3+4j)` 正确                          | 中     |
 | `test_norm_3_4_5`                | `Complex::new(3.0, 4.0).norm() == 5.0`                      | 高     |
 | `test_norm_no_overflow`          | `Complex::new(1e200, 1e200).norm()` 不溢出                  | 高     |
 | `test_norm_sqr`                  | `norm_sqr() == re² + im²`                                   | 中     |
 | `test_arg_range`                 | `arg()` 在 `(-π, π]` 范围内                                 | 高     |
 | `test_exp_ln_inverse`            | `z.exp().ln() ≈ z`                                          | 高     |
-| `test_sqrt_neg_one`              | `Complex::new(-1.0, 0.0).sqrt() ≈ i`                        | 高     |
-| `test_from_polar_i`              | `from_polar(1.0, π/2) ≈ i`                                  | 中     |
+| `test_sqrt_neg_one`              | `Complex::new(-1.0, 0.0).sqrt() ≈ j`                        | 高     |
+| `test_from_polar_i`              | `from_polar(1.0, π/2) ≈ j`                                  | 中     |
 | `test_eq_nan`                    | `Complex::new(NaN, 0.0) != self`                            | 高     |
-| `test_display_format`            | `"3+4i"`, `"3-4i"`, `"3"`, `"4i"`, `"0"`                    | 中     |
+| `test_display_format`            | `"3+4j"`, `"3-4j"`, `"3"`, `"4j"`, `"0"`                    | 中     |
 | `test_f32_to_f64_lossless`       | `Complex<f32>→Complex<f64>` 无损                            | 高     |
 | `test_f64_to_f32_precision_loss` | `Complex<f64>→Complex<f32>` 精度降低                        | 中     |
 | `test_real_to_complex`           | `f64→Complex<f64>` 虚部为 0                                 | 高     |
@@ -977,7 +1039,7 @@ Wave 5: [T11] → [T12]
 | 场景                          | 预期行为                                                 |
 | ----------------------------- | -------------------------------------------------------- |
 | 零 `Complex::new(0.0, 0.0)`   | `norm()==0`, `arg()==0`, `sqrt()==0`                     |
-| `Complex::new(0.0, 0.0).ln()` | 返回 `-∞ + 0i`                                           |
+| `Complex::new(0.0, 0.0).ln()` | 返回 `-∞ + 0j`                                           |
 | NaN 参与                      | `Complex::new(NaN, 0.0).norm().is_nan()`                 |
 | Inf 参与                      | `Complex::new(Inf, 0.0).exp()` 正确处理                  |
 | 极大值 norm                   | `Complex::new(1e200, 1e200).norm()` 不溢出（≈1.414e200） |
@@ -1097,6 +1159,7 @@ Wave 5: [T11] → [T12]
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
+| 1.1.1 | 2026-04-14 |
 
 ---
 

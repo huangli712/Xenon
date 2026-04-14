@@ -11,6 +11,10 @@
 
 本文档是 Xenon 的横切编码规范，约束命名、格式、类型系统、unsafe、文档、测试与 feature gate 的统一写法，适用于所有源码模块、测试目录、基准目录与 CI 相关工程配置。
 
+## 0.1 影响范围
+
+本文档适用于 Xenon 项目的所有源码文件、测试文件、基准测试和 CI 配置。受影响的模块包括 `src/` 下所有子模块以及 `tests/`、`benches/` 目录。
+
 ## 需求映射与范围约束
 
 | 类型     | 内容                                                                 |
@@ -234,6 +238,8 @@ use_try_shorthand = true
 wrap_comments = true
 format_code_in_doc_comments = true
 ```
+
+⚠️ `imports_granularity` 和 `group_imports` 选项需要确认在 Rust 1.85 对应稳定版 rustfmt 中可用。若不可用，应移除这些选项或升级 MSRV。参见 <https://rust-lang.github.io/rustfmt/> 确认稳定性状态。
 
 **行宽限制**：100 字符。超过时优先换行而非缩短变量名。
 
@@ -497,78 +503,77 @@ where
 #[derive(Debug, Clone)]
 pub enum XenonError {
     ShapeMismatch {
-        operation: &'static str,
-        left_shape: Cow<'static, [usize]>,
-        right_shape: Cow<'static, [usize]>,
+        operation: Cow<'static, str>,
+        left_shape: Vec<usize>,
+        right_shape: Vec<usize>,
     },
     BroadcastError {
-        operation: &'static str,
-        input_shape: Cow<'static, [usize]>,
-        target_shape: Cow<'static, [usize]>,
+        operation: Cow<'static, str>,
+        input_shape: Vec<usize>,
+        target_shape: Vec<usize>,
         axis: Option<usize>,
     },
     InvalidAxis {
-        operation: &'static str,
+        operation: Cow<'static, str>,
         axis: usize,
         ndim: usize,
-        shape: Cow<'static, [usize]>,
+        shape: Vec<usize>,
     },
     InvalidArgument {
-        operation: &'static str,
-        argument: &'static str,
-        expected: &'static str,
-        actual: String,
+        operation: Cow<'static, str>,
+        argument: Cow<'static, str>,
+        expected: Cow<'static, str>,
+        actual: Cow<'static, str>,
         axis: Option<usize>,
-        shape: Option<Cow<'static, [usize]>>,
+        shape: Option<Vec<usize>>,
     },
     InvalidShape {
-        operation: &'static str,
-        shape: Cow<'static, [usize]>,
+        operation: Cow<'static, str>,
+        shape: Vec<usize>,
         expected_elements: usize,
         actual_elements: usize,
         offending_dim: Option<usize>,
     },
     DimensionMismatch {
-        operation: &'static str,
-        source_dim: usize,
-        target_dim: usize,
+        expected: usize,
+        actual: usize,
     },
     InvalidLayout {
-        operation: &'static str,
-        reason: &'static str,
-        shape: Cow<'static, [usize]>,
-        strides: Cow<'static, [usize]>,
+        operation: Cow<'static, str>,
+        storage_kind: Cow<'static, str>,
+        shape: Vec<usize>,
+        strides: Vec<usize>,
+        offset: usize,
+        storage_len: usize,
+        reason: Cow<'static, str>,
     },
     LayoutMismatch {
-        operation: &'static str,
-        expected: &'static str,
-        actual: &'static str,
+        operation: Cow<'static, str>,
+        required_layout: Cow<'static, str>,
+        actual_layout: Cow<'static, str>,
+        shape: Vec<usize>,
     },
     InvalidStorageMode {
-        operation: &'static str,
-        actual: &'static str,
-        required: &'static str,
+        operation: Cow<'static, str>,
+        expected: Cow<'static, str>,
+        actual: Cow<'static, str>,
+        shape: Option<Vec<usize>>,
     },
     TypeConversion {
-        operation: &'static str,
-        source_type: &'static str,
-        target_type: &'static str,
-        reason: Cow<'static, str>,
-        element_index: Option<usize>,
-    },
-    IndexError {
-        operation: &'static str,
-        index: Cow<'static, [usize]>,
-        shape: Cow<'static, [usize]>,
+        source_type: Cow<'static, str>,
+        target_type: Cow<'static, str>,
+        reason: TypeConversionReason,
+        element_index: usize,
     },
     IndexOutOfBounds {
-        operation: &'static str,
-        index: Cow<'static, [usize]>,
-        shape: Cow<'static, [usize]>,
-        axis: Option<usize>,
+        operation: Cow<'static, str>,
+        attempted_index: usize,
+        axis: usize,
+        shape: Vec<usize>,
     },
     EmptyArray {
-        operation: &'static str,
+        operation: Cow<'static, str>,
+        shape: Vec<usize>,
     },
     Ffi(FfiError),
     Workspace(WorkspaceError),
@@ -993,33 +998,14 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 ```
 
-### 9.4 平台与工程约束
+## 平台与工程约束
 
-Xenon 当前版本仅面向 `std` 环境，编码规范不再讨论额外平台分支。
-
-```rust
-// src/lib.rs
-#![warn(missing_docs)]
-#![warn(missing_debug_implementations)]
-#![warn(rust_2024_compatibility)]
-#![warn(unsafe_op_in_unsafe_fn)]
-
-// src/error.rs
-use std::borrow::Cow;
-use std::fmt;
-
-impl std::error::Error for XenonError {}
-```
-
----
-
-## 依赖与合法性约束
-
-| 项目           | 说明                               |
-| -------------- | ---------------------------------- |
-| 新增第三方依赖 | 无新增依赖                         |
-| 合法性结论     | 符合最小依赖限制                   |
-| 替代方案       | 不适用；本规范只约束既有依赖的用法 |
+| 约束项     | 要求                                                             |
+| ---------- | ---------------------------------------------------------------- |
+| `std` only | 所有代码依赖 `std`，不讨论 `no_std`                              |
+| 单 crate   | 保持单 crate 边界，不引入额外 crate                              |
+| SemVer     | 遵循 SemVer，公开 API 变更须同步版本号                           |
+| 最小依赖   | 仅允许 `rayon`（并行）和 `pulp`（SIMD）作为可选外部依赖，默认关闭 |
 
 ---
 
@@ -1153,6 +1139,8 @@ Wave 2: [T4]
 | 1.0.3 | 2026-04-08 |
 | 1.1.0 | 2026-04-08 |
 | 1.2.0 | 2026-04-08 |
+| 1.2.1 | 2026-04-14 |
+| 1.2.2 | 2026-04-14 |
 
 ---
 

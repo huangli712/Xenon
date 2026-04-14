@@ -105,11 +105,11 @@ External dependencies:
 
 | 来源模块    | 使用的类型/trait                                                                                             |
 | ----------- | ------------------------------------------------------------------------------------------------------------ |
-| `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.is_f_contiguous()`（参见 `07-tensor.md` §4） |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §4）                                               |
-| `storage`   | `Storage<Elem=A>`, `StorageMut`, `Owned<A>`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`（参见 `05-storage.md` §4） |
-| `element`   | `Element`, `CastTo<B>`（参见 `03-element.md` §4.8；convert 只消费该 trait，不重新定义）                      |
-| `layout`    | `is_f_contiguous()`（参见 `06-memory.md` §4）                                                                |
+| `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.is_f_contiguous()`（参见 `07-tensor.md` §5） |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §5）                                               |
+| `storage`   | `Storage<Elem=A>`, `StorageMut`, `Owned<A>`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`（参见 `05-storage.md` §5） |
+| `element`   | `Element`, `CastTo<B>`（参见 `03-element.md` §5.9；convert 只消费该 trait，不重新定义）                      |
+| `layout`    | `is_f_contiguous()`（参见 `06-layout.md` §5）                                                                |
 | `error`     | `XenonError`, `Result<T>`（参见 `26-error.md` §4）                                                           |
 
 ### 4.3 依赖方向声明
@@ -130,7 +130,7 @@ External dependencies:
 
 ### 5.1 CastTo trait
 
-> `CastTo<T>` trait 的唯一 owner 是 `03-element.md §4.8`。`convert` 模块只消费该 trait，并在受支持的源/目标类型矩阵上提供 `cast()` 路径，不重新定义 trait。
+> `CastTo<T>` trait 的唯一 owner 是 `03-element.md §5.9`。`convert` 模块只消费该 trait，并在受支持的源/目标类型矩阵上提供 `cast()` 路径，不重新定义 trait。
 
 ### 5.2 cast 方法
 
@@ -297,6 +297,8 @@ where
     pub fn into_owned(self) -> Tensor<A, D>;
 }
 ````
+
+> **说明：** 同类型拷贝（`to_owned()`/`into_owned()`）不通过 fallible `cast()` 建模，而是始终成功的基础操作。`cast::<A>()` 不适用于同类型拷贝场景。
 
 ### 5.7 from_vec_aligned — 对齐构造辅助
 
@@ -763,6 +765,7 @@ User calls cast() / to_owned() / into_owned()
 | 1.2.0 | 2026-04-08 |
 | 1.2.1 | 2026-04-08 |
 | 1.2.2 | 2026-04-10 |
+| 1.2.3 | 2026-04-14 |
 
 ---
 

@@ -102,11 +102,11 @@ src/
 
 | 来源模块    | 使用的类型/trait                                                                           |
 | ----------- | ------------------------------------------------------------------------------------------ |
-| `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, 类型别名 `Tensor0`~`Tensor6`（参见 `07-tensor.md` §4） |
-| `storage`   | `Owned<A>`, `Storage<Elem = A>`, `from_vec_aligned()`（参见 `05-storage.md` §4）           |
-| `layout`    | `LayoutFlags`, `Strides<D>`, F-order 步长计算（参见 `06-memory.md` §3）                    |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`（参见 `02-dimension.md` §4）            |
-| `element`   | `Element`（`zero()` / `one()` 由 `Element` 提供，参见 `03-element.md` §3）                 |
+| `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, 类型别名 `Tensor0`~`Tensor6`（参见 `07-tensor.md` §5） |
+| `storage`   | `Owned<A>`, `Storage<Elem = A>`, `from_vec_aligned()`（参见 `05-storage.md` §5）           |
+| `layout`    | `LayoutFlags`, `Strides<D>`, F-order 步长计算（参见 `06-layout.md` §3）                    |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`（参见 `02-dimension.md` §5）            |
+| `element`   | `Element`（`zero()` / `one()` 由 `Element` 提供，参见 `03-element.md` §5.1）               |
 | `error`     | `XenonError::InvalidShape`（用于构造时的 shape/length 基数不匹配，参见 `26-error.md` §4）  |
 
 ### 4.3 依赖方向声明
@@ -149,7 +149,7 @@ where
     /// ```
     pub fn zeros<Sh>(shape: Sh) -> Result<Self, XenonError>
     where
-        A: Element,  // A::zero() is provided by the Element trait (see 03-element.md §4.1)
+        A: Element,  // A::zero() is provided by the Element trait (see 03-element.md §5.1)
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();
@@ -174,7 +174,7 @@ where
     /// ```
     pub fn ones<Sh>(shape: Sh) -> Result<Self, XenonError>
     where
-        A: Element,  // A::one() is provided by the Element trait (see 03-element.md §4.1)
+        A: Element,  // A::one() is provided by the Element trait (see 03-element.md §5.1)
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();
@@ -286,6 +286,21 @@ where
     /// ```
     /// let t = Tensor::<f64, _>::from_shape_vec([2, 3], vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0])?;
     /// assert_eq!(t.shape(), &[2, 3]);
+    ///
+    /// // F-order construction example:
+    /// // shape = [2, 3], data = vec![1, 2, 3, 4, 5, 6]
+    /// //
+    /// // F-order mapping (column-major):
+    /// // Logical index [0,0] = 1  (data[0])
+    /// // Logical index [1,0] = 2  (data[1])
+    /// // Logical index [0,1] = 3  (data[2])
+    /// // Logical index [1,1] = 4  (data[3])
+    /// // Logical index [0,2] = 5  (data[4])
+    /// // Logical index [1,2] = 6  (data[5])
+    /// //
+    /// // Result tensor:
+    /// // | 1  3  5 |
+    /// // | 2  4  6 |
     /// ```
     pub fn from_shape_vec<Sh>(shape: Sh, data: Vec<A>) -> Result<Self, XenonError>
     where
@@ -610,11 +625,11 @@ Wave 3:            [T6]
 
 | 方向                    | 对方模块    | 接口/类型                               | 约定                                                                                                                          |
 | ----------------------- | ----------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `construct → tensor`    | `tensor`    | `TensorBase`                            | 构造张量实例，参见 `07-tensor.md` §4.1                                                                                        |
-| `construct → storage`   | `storage`   | `Owned::zeros()` / `from_vec_aligned()` | 使用对齐存储完成底层分配；`from_vec_aligned()` 当前仅用于 Xenon 封闭元素集合中的 `Copy` 元素快路径，参见 `05-storage.md` §4.2 |
-| `construct → layout`    | `layout`    | F-order 步长                            | 构造阶段计算 F-order 步长，参见 `06-memory.md` §4                                                                             |
-| `construct → dimension` | `dimension` | `IntoDimension`                         | 接受灵活形状参数并归一化，参见 `02-dimension.md` §4.3                                                                         |
-| `construct → element`   | `element`   | `Element`                               | 通过 `Element::zero()` / `Element::one()` 约束构造 API，参见 `03-element.md` §3                                               |
+| `construct → tensor`    | `tensor`    | `TensorBase`                            | 构造张量实例，参见 `07-tensor.md` §5.1                                                                                        |
+| `construct → storage`   | `storage`   | `Owned::zeros()` / `from_vec_aligned()` | 使用对齐存储完成底层分配；`from_vec_aligned()` 当前仅用于 Xenon 封闭元素集合中的 `Copy` 元素快路径，参见 `05-storage.md` §5.1 |
+| `construct → layout`    | `layout`    | F-order 步长                            | 构造阶段计算 F-order 步长，参见 `06-layout.md` §4                                                                             |
+| `construct → dimension` | `dimension` | `IntoDimension`                         | 接受灵活形状参数并归一化，参见 `02-dimension.md` §5.4                                                                         |
+| `construct → element`   | `element`   | `Element`                               | 通过 `Element::zero()` / `Element::one()` 约束构造 API，参见 `03-element.md` §5.1                                             |
 | `construct → error`     | `error`     | `XenonError::InvalidShape`              | shape 与长度基数不匹配时返回错误，参见 `26-error.md` §4                                                                       |
 | `construct → index`     | `index`     | 索引访问语义                            | 构造后的张量继续复用索引路径，参见 `17-indexing.md` §4                                                                        |
 
@@ -723,6 +738,7 @@ User calls zeros / from_shape_vec / eye
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-08 |
 | 1.1.2 | 2026-04-10 |
+| 1.1.3 | 2026-04-14 |
 
 ---
 

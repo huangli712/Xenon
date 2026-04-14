@@ -15,8 +15,8 @@
 | --------- | -------------------------------------------- | -------------- |
 | 向量内积  | dot product（实数内积：sum(a[i] \* b[i])）   | 矩阵乘法、外积 |
 | 复数内积  | 共轭线性定义（sum(conjugate(a[i]) \* b[i])） | 批量矩阵乘法   |
-| SIMD 状态 | 当前版本仅提供标量 dot；尚未提供 SIMD 加速   | BLAS 绑定      |
-| 错误处理  | 形状不匹配返回 `XenonError::ShapeMismatch { operation, left_shape, right_shape }` | —              |
+| SIMD 状态 | dot 可选接入 `simd` 模块 kernel 做 SIMD 加速，并可选接入 `parallel` 模块执行并行归约 | BLAS 绑定      |
+| 错误处理  | 非 1D 输入返回 `XenonError::InvalidArgument`；形状不匹配返回 `XenonError::ShapeMismatch { operation, left_shape, right_shape }` | —              |
 
 > **注意**：当前版本仅支持向量内积（dot）。不包含：矩阵乘法、外积、批量矩阵乘法、BLAS 绑定。
 
@@ -26,7 +26,7 @@
 | --------- | ----------------------------------------------------- |
 | 最小范围  | 当前仅实现向量内积，复杂线性代数由上游库通过 FFI 实现 |
 | 错误恢复  | 维度不匹配返回可恢复错误，不 panic                    |
-| 语义优先  | 当前版本 dot 保持标量实现，先保证语义与错误契约一致   |
+| 语义优先  | dot 先保证语义与错误契约一致，再按能力选择标量 / SIMD / 并行路径 |
 | BLAS 兼容 | 内存布局支持 BLAS 调用约定                            |
 
 ### 1.3 在架构中的位置
@@ -48,7 +48,7 @@ L5: matrix  <- current module
 | 类型     | 内容 |
 | -------- | ---- |
 | 需求映射 | 需求说明书 §13 |
-| 范围内   | 向量内积 `dot`、复数共轭线性语义、形状检查、空向量单位元与当前版本标量实现。 |
+| 范围内   | 向量内积 `dot`、复数共轭线性语义、形状检查、空向量单位元，以及可选 SIMD / 并行执行路径。 |
 | 范围外   | 矩阵-矩阵乘法、外积、批量矩阵乘法、矩阵分解以及 BLAS/LAPACK 绑定。 |
 | 非目标   | 不把 `matrix` 扩展为通用线性代数层，不新增第三方线性代数依赖。 |
 
@@ -59,10 +59,10 @@ L5: matrix  <- current module
 ```
 src/matrix/
 ├── mod.rs              # 模块入口，re-exports，dot() 公共 API
-└── dot.rs              # 向量内积实现（当前版本为标量路径）
+└── dot.rs              # 向量内积实现（标量 / SIMD / 并行分派）
 ```
 
-多文件设计理由：`matrix/` 保持最小语义层，只暴露 dot API 与标量逻辑；`src/simd/` 在当前版本仍负责说明统一的加速边界，但 dot 不接入专门 SIMD kernel。当前版本使用纯标量实现内积；SIMD 加速暂不可用。
+多文件设计理由：`matrix/` 保持最小语义层，只暴露 dot API 与执行路径分派；`src/simd/` 提供可选的 SIMD kernel，`parallel` 模块提供可选的并行执行能力。默认路径仍可回退到纯标量实现，以保持统一语义与错误契约。
 
 ---
 
@@ -75,15 +75,15 @@ src/matrix/
 | 逻辑 rank | `dot(a, b)` 的两个输入都必须是逻辑 1D；若 `ndim != 1`，必须走可恢复错误路径，而不是静默降级或 panic。 |
 | 长度一致 | 两个输入在逻辑上一维时，`len(a) == len(b)` 才允许继续计算；否则返回 `ShapeMismatch`。 |
 | 复数语义 | 复数内积固定使用 `sum(conjugate(a[i]) * b[i])`；实数类型的 `conjugate()` 为恒等操作。 |
-| 执行路径 | 当前版本 dot 只有标量实现；即使启用 `simd` feature，也不得引入专门的 dot SIMD kernel。 |
+| 执行路径 | `dot` 在语义检查后可按能力选择标量、`simd` 模块 kernel 或 `parallel` 模块并行归约；各路径必须保持一致的结果、错误类别与 panic 契约。 |
 | 溢出契约 | 整数 dot 的乘法溢出与累加溢出均为不可恢复错误，必须通过 checked arithmetic panic。 |
 
 ### 4.2 Error Scenarios
 
 | 场景 | 对外语义 |
 | ---- | -------- |
-| 输入不是逻辑 1D | 返回 `XenonError::InvalidArgument { operation: "dot", argument: "input", expected: "logical 1D tensor", actual: format!("ndim={}", input.ndim()), axis: None, shape: Some(Cow::Borrowed(input.shape())) }`。 |
-| 两个 1D 输入长度不一致 | 返回 `XenonError::ShapeMismatch { operation: "dot", left_shape: Cow::Borrowed(a.shape()), right_shape: Cow::Borrowed(b.shape()) }`。 |
+| 输入不是逻辑 1D | 返回 `XenonError::InvalidArgument { operation: "dot".into(), argument: "input".into(), expected: "logical 1D tensor".into(), actual: format!("ndim={}", input.ndim()).into(), axis: None, shape: Some(input.shape().to_vec()) }`。 |
+| 两个 1D 输入长度不一致 | 返回 `XenonError::ShapeMismatch { operation: "dot".into(), left_shape: a.shape().to_vec(), right_shape: b.shape().to_vec() }`。 |
 | 整数乘法或累加溢出 | 触发 panic；这属于不可恢复算术域错误。 |
 | 空向量输入 | 合法，返回加法单位元 `A::zero()`。 |
 
@@ -98,7 +98,8 @@ src/matrix/
 ├── dot.rs
 │   ├── crate::tensor        # TensorView<A, D>
 │   └── crate::element       # Numeric
-└── crate::simd (opt.)       # Coverage boundary reference only
+├── crate::simd (opt.)       # Optional SIMD dot kernel
+└── crate::parallel (opt.)   # Optional parallel reduction path
 ```
 
 ### 4.4 类型级依赖
@@ -107,12 +108,13 @@ src/matrix/
 | -------------- | ------------------------------------------------------------------------------------------ |
 | `tensor`       | `TensorView<'a, A, D>`, `.ndim()`, `.shape()`, `.len()`, `.as_ptr()`, `.is_f_contiguous()` |
 | `element`      | `Numeric`, `ComplexScalar`                                                                 |
-| `error`        | `XenonError::ShapeMismatch`                                                                |
-| `simd`（可选） | 当前仅用于说明 coverage 边界，dot 尚未接入 SIMD 实现（参见 `08-simd.md` §5.4a）            |
+| `error`        | `XenonError::InvalidArgument`, `XenonError::ShapeMismatch`                                 |
+| `simd`（可选） | 为满足条件的输入提供 dot 的 SIMD kernel（参见 `08-simd.md`）                               |
+| `parallel`（可选） | 为大输入提供 dot 的并行归约执行路径                                                     |
 
 ### 4.5 依赖方向
 
-> **依赖方向：单向向上。** `matrix` 模块仅消费 `tensor`、`element`、`error`、`simd` 模块。
+> **依赖方向：单向向上。** `matrix` 模块仅消费 `tensor`、`element`、`error`、`simd`、`parallel` 模块。
 
 ### 4.6 依赖合法性与替代方案
 
@@ -155,6 +157,9 @@ src/matrix/
 /// Returns `XenonError::ShapeMismatch { operation, left_shape, right_shape }`
 /// when lengths do not match.
 /// Empty vectors are valid inputs and return the additive identity `A::zero()`.
+/// When available, dot may delegate to the `simd` module for SIMD acceleration
+/// or to the `parallel` module for parallel execution while preserving the same
+/// observable semantics.
 /// Integer overflow during accumulation is unrecoverable and must panic via
 /// checked arithmetic, matching `13-reduction.md`.
 ///
@@ -166,13 +171,14 @@ src/matrix/
 /// let result = dot(&a.view(), &b.view())?;
 /// assert_eq!(result, 32.0);  // 1*4 + 2*5 + 3*6
 /// ```
-pub fn dot<A, D>(
-    a: &TensorView<'_, A, D>,
-    b: &TensorView<'_, A, D>,
+pub fn dot<A, D1, D2>(
+    a: &TensorView<'_, A, D1>,
+    b: &TensorView<'_, A, D2>,
 ) -> Result<A, XenonError>
 where
     A: Numeric + Copy,
-    D: Dimension;
+    D1: Dimension,
+    D2: Dimension;
 // Note: Numeric (defined in 03-element.md) already implies
 // Mul<Output=Self> + Add<Output=Self>, so the public constraint
 // `Numeric + Copy` is sufficient. The internal implementation
@@ -222,35 +228,41 @@ let b = Tensor1::<f64>::from_shape_vec(Ix1(3), vec![1.0, 2.0, 3.0])?;
 dot_impl(a, b):
     if a.ndim() != 1:
         return Err(XenonError::InvalidArgument {
-            operation: "dot",
-            argument: "input",
-            expected: "logical 1D tensor",
-            actual: format!("ndim={}", a.ndim()),
+            operation: "dot".into(),
+            argument: "input".into(),
+            expected: "logical 1D tensor".into(),
+            actual: format!("ndim={}", a.ndim()).into(),
             axis: None,
-            shape: Some(Cow::Borrowed(a.shape())),
+            shape: Some(a.shape().to_vec()),
         })
 
     if b.ndim() != 1:
         return Err(XenonError::InvalidArgument {
-            operation: "dot",
-            argument: "input",
-            expected: "logical 1D tensor",
-            actual: format!("ndim={}", b.ndim()),
+            operation: "dot".into(),
+            argument: "input".into(),
+            expected: "logical 1D tensor".into(),
+            actual: format!("ndim={}", b.ndim()).into(),
             axis: None,
-            shape: Some(Cow::Borrowed(b.shape())),
+            shape: Some(b.shape().to_vec()),
         })
 
     if a.len() != b.len():
         return Err(XenonError::ShapeMismatch {
-            operation: "dot",
-            left_shape: Cow::Borrowed(a.shape()),
-            right_shape: Cow::Borrowed(b.shape()),
+            operation: "dot".into(),
+            left_shape: a.shape().to_vec(),
+            right_shape: b.shape().to_vec(),
         })
+
+    if simd path is available for (a, b):
+        return simd::dot_impl(a, b)
+
+    if parallel path is enabled for (a, b):
+        return parallel::par_dot(a, b)
 
     return scalar::dot_impl(a, b)
 ```
 
-> **当前版本约束：** 依据 `08-simd.md`，当前版本使用纯标量实现内积；SIMD 加速暂不可用。即使启用 `simd` feature，也不会为内积选择专门的 SIMD kernel。
+> **执行路径约束：** `dot` 必须先完成逻辑 1D 与长度一致性检查；随后可按条件选择 `simd` 模块 kernel、`parallel` 模块的公开 `par_dot()` 并行归约入口或标量回退路径。所有路径都必须保持一致的结果、错误模型与整数溢出 panic 语义。
 
 ### 6.2 标量实现
 
@@ -286,21 +298,21 @@ fn scalar_dot_float_or_complex<A, D>(
 - 复数类型（`Complex<f32>`、`Complex<f64>`）：`conjugate(x)` 返回共轭复数
 
 ```rust
-// Numeric trait 中的 conjugate 方法（定义于 03-element.md §4.3）
+// Numeric trait 中的 conjugate 方法（定义于 03-element.md §5.2）
 // Real types: fn conjugate(self) -> Self { self }
 // Complex types: fn conjugate(self) -> Self { Complex::conjugate(self) }
 
 /// Unified dot dispatch for both real and complex types.
 /// Uses `x.conjugate() * y` to generate products. Integer accumulation is routed
 /// through checked integer arithmetic; floating-point and complex accumulation use ordinary `+`.
-fn dot_impl<A, D>(
-    a: &TensorView<'_, A, D>,
-    b: &TensorView<'_, A, D>,
+fn dot_impl<A, D1, D2>(
+    a: &TensorView<'_, A, D1>,
+    b: &TensorView<'_, A, D2>,
 ) -> Result<A, XenonError> {
     // 1. validate rank-1 precondition at runtime
-    // 2. dispatch to integer checked path or float/complex path
-    // 3. current version always stays on the scalar path
-    unimplemented!("dispatches to scalar_dot_int or scalar_dot_float_or_complex")
+    // 2. choose simd / parallel::par_dot / scalar execution path
+    // 3. dispatch to integer checked path or float/complex path inside the selected backend
+    unimplemented!("dispatches to simd, parallel, or scalar dot backends")
 }
 ```
 
@@ -322,22 +334,22 @@ fn dot_impl<A, D>(
   - 前置: tensor 模块完成
   - 预计: 5 min
 
-### Wave 2: 标量实现
+### Wave 2: 基础执行实现
 
-- [ ] **T2**: 实现标量 dot
+- [ ] **T2**: 实现 dot 基础执行路径
   - 文件: `src/matrix/dot.rs`
-  - 内容: 标量内积实现，实数和复数
+  - 内容: 标量内积实现，以及 SIMD / parallel 分派骨架，实数和复数
   - 测试: `test_dot_basic`, `test_dot_complex`
   - 前置: T1
   - 预计: 10 min
 
-### Wave 3: SIMD 边界校验
+### Wave 3: SIMD / 并行路径校验
 
-- [ ] **T3**: 保持 dot 的标量实现并校验 SIMD 回退边界
-  - 文件: `src/matrix/dot.rs`, `src/simd/mod.rs`
-- 内容: 明确 `matrix::dot` 不接入 SIMD 加速，启用 `simd` 时仍回退标量
-  - 测试: `test_dot_scalar_path_with_simd_feature`
-  - 前置: T2, simd 模块
+- [ ] **T3**: 接入并校验可选 SIMD / 并行路径
+  - 文件: `src/matrix/dot.rs`, `src/simd/mod.rs`, `src/parallel/mod.rs`
+  - 内容: 满足条件时接入 SIMD kernel 或并行归约，不满足条件时回退标量
+  - 测试: `test_dot_simd_path_with_feature`, `test_dot_parallel_path`
+  - 前置: T2, simd / parallel 模块
   - 预计: 10 min
 
 ### Wave 4: 测试
@@ -385,7 +397,8 @@ Wave 4: [T4]
 | `test_dot_int_overflow_add` | 整数累加溢出触发 panic            | 高     |
 | `test_dot_empty`            | 两个空向量内积返回加法单位元      | 中     |
 | `test_dot_single_element`   | 单元素向量内积                    | 中     |
-| `test_dot_scalar_path_with_simd_feature` | 启用 `simd` 后 dot 仍走标量语义 | 高     |
+| `test_dot_simd_path_with_feature` | 启用 `simd` 后 dot 可走 SIMD 路径且结果语义一致 | 高     |
+| `test_dot_parallel_path`          | 启用并行路径后结果与标量语义一致 | 高     |
 
 ### 8.3 边界测试场景
 
@@ -393,7 +406,7 @@ Wave 4: [T4]
 | -------------------- | ------------------------ |
 | 空向量 `shape=[0]`   | 返回加法单位元（零）     |
 | 单元素向量           | 返回 a[0] \* b[0]        |
-| 大向量（1M 元素）    | 仍走标量 dot 路径，结果正确 |
+| 大向量（1M 元素）    | 可选择并行 dot 路径，结果正确 |
 | 非连续向量（切片后） | 回退到标量路径，结果正确 |
 
 ### 8.4 属性测试不变量
@@ -415,7 +428,7 @@ Wave 4: [T4]
 | 配置 | 验证点 |
 | ---- | ---- |
 | 默认配置 | `dot()` 通过标量路径满足实数/复数与错误语义契约。 |
-| 启用 `simd` | dot 仍回退标量实现，结果与默认配置一致。 |
+| 启用 `simd` | dot 可选择 SIMD 路径；结果与默认语义一致。 |
 
 ### 8.7 类型边界 / 编译期测试
 
@@ -433,11 +446,12 @@ Wave 4: [T4]
 
 | 方向               | 对方模块  | 接口/类型                   | 约定                                                                             |
 | ------------------ | --------- | --------------------------- | -------------------------------------------------------------------------------- |
-| `matrix → tensor`  | `tensor`  | `TensorView<A, D>`          | 消费任意维度张量视图，但在运行时检查其逻辑 rank 是否为 1，参见 `07-tensor.md` §4 |
-| `matrix → iter`    | `iter`    | `Elements`                  | 使用元素迭代器遍历输入，参见 `10-iterator.md` §3                                 |
-| `matrix → element` | `element` | `Numeric` / `ComplexScalar` | 通过泛型约束区分实数与复数路径，参见 `03-element.md` §3                          |
-| `matrix → simd`    | `simd`    | coverage boundary reference | 当前版本 dot 不接入 SIMD 加速路径，参见 `08-simd.md` §5.4a                       |
-| `matrix → error`   | `error`   | `XenonError::ShapeMismatch` | 形状不匹配时返回可恢复错误，字段使用 `operation` / `left_shape` / `right_shape` 的规范形式 |
+| `matrix → tensor`  | `tensor`  | `TensorView<A, D>`          | 消费任意维度张量视图，但在运行时检查其逻辑 rank 是否为 1，参见 `07-tensor.md` §5 |
+| `matrix → iter`    | `iter`    | `Elements`                  | 使用元素迭代器遍历输入，参见 `10-iterator.md` §5.1                               |
+| `matrix → element` | `element` | `Numeric` / `ComplexScalar` | 通过泛型约束区分实数与复数路径，参见 `03-element.md` §5                          |
+| `matrix → simd`    | `simd`    | dot kernel                  | 满足条件时委托给 `simd` 模块做内积加速，且保持统一语义                           |
+| `matrix → parallel`| `parallel`| parallel reduction          | 大输入时可委托给 `parallel` 模块做并行归约，且保持统一语义                       |
+| `matrix → error`   | `error`   | `XenonError::InvalidArgument`, `XenonError::ShapeMismatch` | 非 1D 输入或形状不匹配时返回可恢复错误，字段使用规范形式 |
 
 ### 9.2 数据流描述
 
@@ -446,7 +460,7 @@ User calls dot(a, b)
     │
     ├── matrix validates rank-1 and equal length preconditions
     ├── complex inputs apply conjugate-linear product generation
-    ├── current version always uses scalar dot iteration
+    ├── matrix selects simd / parallel / scalar execution backend
     └── the module returns a scalar result or a recoverable error
 ```
 
@@ -456,10 +470,10 @@ User calls dot(a, b)
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | 输入非 1D 时返回 `XenonError::InvalidArgument { operation: &'static str, argument: &'static str, expected: &'static str, actual: String, axis: Option<usize>, shape: Option<Cow<'static, [usize]>> }`，典型取值为 `axis: None`、`shape: Some(Cow::Borrowed(input.shape()))`；长度不匹配时返回 `XenonError::ShapeMismatch { operation: &'static str, left_shape: Cow<'static, [usize]>, right_shape: Cow<'static, [usize]> }`。 |
+| Recoverable error | 输入非 1D 时返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, shape: Option<Vec<usize>> }`，典型取值为 `axis: None`、`shape: Some(input.shape().to_vec())`；长度不匹配时返回 `XenonError::ShapeMismatch { operation: Cow<'static, str>, left_shape: Vec<usize>, right_shape: Vec<usize> }`。 |
 | Panic | 整数 dot 的乘法溢出与累加溢出均为不可恢复错误，按 checked arithmetic 触发 panic。 |
-| 路径一致性 | 当前版本只有标量 dot 路径；启用 `simd` feature 也不得改变结果、错误类别或 panic 语义。 |
-| 容差边界 | 当前不放宽任何数值容差；由于 dot 不提供 SIMD 加速路径，因此不存在额外路径间误差差异。 |
+| 路径一致性 | `dot` 可选择标量、SIMD 或并行路径；任何可选路径都不得改变结果、错误类别或 panic 语义。 |
+| 容差边界 | 当前不放宽任何数值容差；SIMD / 并行路径必须与标量语义保持一致，不引入额外可观察误差契约。 |
 
 ---
 
@@ -487,10 +501,10 @@ User calls dot(a, b)
 
 | 属性     | 值                                                    |
 | -------- | ----------------------------------------------------- |
-| 决策     | 当前版本使用纯标量实现内积；SIMD 加速暂不可用 |
-| 理由     | `08-simd.md` 明确当前版本尚未为 dot 提供 SIMD 加速，先保证与标量语义、错误模型和整数溢出契约完全一致 |
-| 替代方案 | 为连续输入提供专门 SIMD 加速实现                     |
-| 拒绝原因 | 当前版本尚无可验证的一致性证明，与 SIMD 模块文档不一致 |
+| 决策     | `dot` 在满足条件时可接入 SIMD kernel 与并行归约，否则回退标量实现 |
+| 理由     | inner product 需要覆盖 SIMD / 并行能力，同时保持与标量路径一致的语义、错误模型和整数溢出契约 |
+| 替代方案 | 始终只使用标量实现                     |
+| 拒绝原因 | 与需求说明书对 inner product 的 SIMD / 并行覆盖要求不一致 |
 
 ---
 
@@ -500,14 +514,14 @@ User calls dot(a, b)
 
 | 操作                 | 当前路径 | 说明 |
 | -------------------- | -------- | ---- |
-| dot f32 (1M)         | 标量路径 | 当前版本使用纯标量实现内积；SIMD 加速暂不可用 |
-| dot f64 (1M)         | 标量路径 | 当前版本使用纯标量实现内积；SIMD 加速暂不可用 |
-| dot complex f64 (1M) | 标量路径 | 复数内积同样保持标量实现 |
+| dot f32 (1M)         | SIMD / 并行优先，失败时回退标量 | 在满足条件时优先使用 SIMD 或并行能力 |
+| dot f64 (1M)         | SIMD / 并行优先，失败时回退标量 | 在满足条件时优先使用 SIMD 或并行能力 |
+| dot complex f64 (1M) | 视 kernel 支持情况选择并行或标量 | 复数内积同样必须保持共轭线性语义 |
 
 ### 12.2 复杂度标注
 
 - 标量 dot: O(n) 时间，O(1) 额外空间
-- 当前版本 dot: O(n) 时间，O(1) 额外空间
+- dot（任一路径）: O(n) 时间；并行路径的额外调度开销取决于执行器实现
 
 ---
 
@@ -535,6 +549,7 @@ User calls dot(a, b)
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-10 |
 | 1.1.2 | 2026-04-10 |
+| 1.1.3 | 2026-04-14 |
 
 ---
 

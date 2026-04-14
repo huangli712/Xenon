@@ -98,11 +98,11 @@ src/element/
 
 ### 4.2a 依赖合法性
 
-| 项目           | 结论                           |
-| -------------- | ------------------------------ |
-| 新增第三方依赖 | 无                             |
-| 合法性结论     | 符合需求说明书最小依赖限制     |
-| 替代方案       | 不适用                         |
+| 项目           | 结论                       |
+| -------------- | -------------------------- |
+| 新增第三方依赖 | 无                         |
+| 合法性结论     | 符合需求说明书最小依赖限制 |
+| 替代方案       | 不适用                     |
 
 ### 4.3 依赖方向声明
 
@@ -173,7 +173,7 @@ pub trait Numeric:
     /// Returns the conjugate of this value.
     ///
     /// For real numeric types (i32, i64, f32, f64), this returns `self` unchanged.
-    /// For `ComplexScalar` types, this returns the complex conjugate (re - im*i).
+    /// For `ComplexScalar` types, this returns the complex conjugate (re - im*j).
     ///
     /// This method is needed by `12-matrix` for unified dot product implementation,
     /// allowing a single generic algorithm to handle both real and complex inner products.
@@ -212,7 +212,7 @@ pub trait Numeric:
 
 > **设计决策：** `Numeric` 定义 `conjugate()` 方法，为实数类型返回 `self`，为复数类型返回共轭。这使得统一的内积（dot product）实现可以泛化处理实数和复数情况。Xenon 采用 `sum(conjugate(a[i]) * b[i])` 的约定，并在 `12-matrix.md` 中保持一致。其余四则运算由 `Add/Sub/Mul/Div/Neg` trait 提供。`usize` 明确保留给索引/形状元数据，不进入元素算术层次。
 >
-> **设计说明**：`Numeric::conjugate()` 是面向所有数值类型的统一 trait 入口。对实数类型（`f32`、`f64`、`i32`、`i64`），`conjugate(self)` 为恒等操作（返回 `self`）；对复数类型（`Complex<f32>`、`Complex<f64>`），`conjugate(self)` 委托给 `Complex::conj()` 方法。`Complex::conj()` 是复数类型自身的便捷方法，不经过 `Numeric` trait 分派。两者语义等价，但调用路径不同。
+> **设计说明**：`Numeric::conjugate()` 是泛型入口：实数类型返回自身，复数类型委托给 `ComplexScalar::conj()`。`ComplexScalar::conj()` 是复数专用的底层实现。对实数类型（`f32`、`f64`、`i32`、`i64`），`conjugate(self)` 为恒等操作（返回 `self`）；对复数类型（`Complex<f32>`、`Complex<f64>`），`conjugate(self)` 通过复数 trait 路径执行共轭。两者语义等价，但职责分层不同。
 
 ### 5.3 RealScalar trait
 
@@ -271,7 +271,7 @@ pub trait ComplexScalar: Numeric + Sealed {
 
     fn re(self) -> Self::Real;
     fn im(self) -> Self::Real;
-    /// Returns the complex conjugate (re - im*i).
+    /// Returns the complex conjugate (re - im*j).
     ///
     /// Note: `Numeric` also defines a `conjugate()` method with identical semantics.
     /// For types that implement both `Numeric` and `ComplexScalar` (e.g., `Complex<f64>`),
@@ -384,7 +384,7 @@ let c = &a + &b.cast::<f64>();  // explicit conversion
 
 ### 5.9 CastTo\<T\> trait（类型转换）
 
-`CastTo<T>` 是 Xenon 逐元素类型转换规则的唯一 owner，trait 定义放在 `src/element/` 层，由 `convert/cast.rs` 统一消费（参见 `21-type.md §4`），不在其他模块重复定义。
+`CastTo<T>` 是 Xenon 逐元素类型转换规则的唯一 owner，trait 定义放在 `src/element/` 层，由 `convert/cast.rs` 统一消费（参见 `21-type.md §5.1`），不在其他模块重复定义。
 
 ```rust
 // src/element/mod.rs
@@ -394,7 +394,7 @@ let c = &a + &b.cast::<f64>();  // explicit conversion
 /// Defines explicit conversion from `Self` to `T`.
 /// Lossless conversions return `Ok` with `Infallible` as the error type.
 /// Lossy conversions default to recoverable errors unless a documented success
-/// precondition is satisfied (see `21-type.md §4.3`).
+/// precondition is satisfied (see `21-type.md §5.3`).
 ///
 /// This trait is implemented only inside Xenon for the supported source/target pairs.
 /// External crates cannot extend the conversion matrix.
@@ -406,15 +406,120 @@ pub trait CastTo<T>: Element {
 }
 
 // Implemented for all supported source → target type pairs.
-// See 21-type.md §5.1 for full implementation table.
+// See 21-type.md §5.3 for full implementation table.
 // Examples:
 //   impl CastTo<f64> for f32  -- lossless upcast, Error = Infallible
 //   impl CastTo<f32> for f64  -- Result, may fail on precision loss
 //   impl CastTo<i32> for f64  -- Result, may fail on fractional or out-of-range input
 //   impl CastTo<i32> for i64  -- Result, may fail on narrowing overflow
 //   impl CastTo<Complex<f64>> for f64  -- lossless, Error = Infallible
-// Note: CastTo<f64> for Complex<f64> is intentionally NOT implemented.
+//   impl CastTo<f64> for Complex<f64>  -- Result, requires zero imaginary part
 ```
+
+`Complex<T> → Real` 转换已纳入 `CastTo<T>` 的支持矩阵，但采用条件成功语义：仅当虚部为 `0` 时才继续执行对应的实数目标转换；若虚部非零，则返回可恢复错误。具体规则如下：
+
+| 转换示例                                | 默认语义                                                             |
+| --------------------------------------- | -------------------------------------------------------------------- |
+| `impl CastTo<f32> for Complex<f32>`     | 虚部必须为 `0`；满足时按 `f32 -> f32` 恒等转换，否则返回可恢复错误   |
+| `impl CastTo<f64> for Complex<f64>`     | 虚部必须为 `0`；满足时按 `f64 -> f64` 恒等转换，否则返回可恢复错误   |
+| `impl CastTo<f32> for Complex<f64>`     | 虚部必须为 `0`；满足时按 `f64 -> f32` 有损转换，否则返回可恢复错误   |
+| `impl CastTo<f64> for Complex<f32>`     | 虚部必须为 `0`；满足时按 `f32 -> f64` 无损转换，否则返回可恢复错误   |
+| `impl CastTo<i32> for Complex<f32/f64>` | 虚部必须为 `0`；满足时按 `float -> i32` 规则转换，否则返回可恢复错误 |
+| `impl CastTo<i64> for Complex<f32/f64>` | 虚部必须为 `0`；满足时按 `float -> i64` 规则转换，否则返回可恢复错误 |
+
+```rust
+// src/element/mod.rs
+
+impl CastTo<f32> for Complex<f32> {
+    type Error = TypeConversionError;
+
+    fn cast_to(self) -> Result<f32, Self::Error> {
+        if self.im != 0.0 {
+            return Err(TypeConversionError::new("Complex<f32>", "f32", "non-zero imaginary part"));
+        }
+        Ok(self.re)
+    }
+}
+
+impl CastTo<f64> for Complex<f64> {
+    type Error = TypeConversionError;
+
+    fn cast_to(self) -> Result<f64, Self::Error> {
+        if self.im != 0.0 {
+            return Err(TypeConversionError::new("Complex<f64>", "f64", "non-zero imaginary part"));
+        }
+        Ok(self.re)
+    }
+}
+
+impl CastTo<f32> for Complex<f64> {
+    type Error = TypeConversionError;
+
+    fn cast_to(self) -> Result<f32, Self::Error> {
+        if self.im != 0.0 {
+            return Err(TypeConversionError::new("Complex<f64>", "f32", "non-zero imaginary part"));
+        }
+        CastTo::<f32>::cast_to(self.re)
+    }
+}
+
+impl CastTo<f64> for Complex<f32> {
+    type Error = TypeConversionError;
+
+    fn cast_to(self) -> Result<f64, Self::Error> {
+        if self.im != 0.0 {
+            return Err(TypeConversionError::new("Complex<f32>", "f64", "non-zero imaginary part"));
+        }
+        Ok(f64::from(self.re))
+    }
+}
+
+impl CastTo<i32> for Complex<f32> {
+    type Error = TypeConversionError;
+
+    fn cast_to(self) -> Result<i32, Self::Error> {
+        if self.im != 0.0 {
+            return Err(TypeConversionError::new("Complex<f32>", "i32", "non-zero imaginary part"));
+        }
+        CastTo::<i32>::cast_to(self.re)
+    }
+}
+
+impl CastTo<i64> for Complex<f64> {
+    type Error = TypeConversionError;
+
+    fn cast_to(self) -> Result<i64, Self::Error> {
+        if self.im != 0.0 {
+            return Err(TypeConversionError::new("Complex<f64>", "i64", "non-zero imaginary part"));
+        }
+        CastTo::<i64>::cast_to(self.re)
+    }
+}
+
+impl CastTo<i32> for Complex<f64> {
+    type Error = TypeConversionError;
+
+    fn cast_to(self) -> Result<i32, Self::Error> {
+        if self.im != 0.0 {
+            return Err(TypeConversionError::new("Complex<f64>", "i32", "non-zero imaginary part"));
+        }
+        CastTo::<i32>::cast_to(self.re)
+    }
+}
+
+impl CastTo<i64> for Complex<f32> {
+    type Error = TypeConversionError;
+
+    fn cast_to(self) -> Result<i64, Self::Error> {
+        if self.im != 0.0 {
+            return Err(TypeConversionError::new("Complex<f32>", "i64", "non-zero imaginary part"));
+        }
+        CastTo::<i64>::cast_to(self.re)
+    }
+}
+```
+
+> **实现约束：** `Complex<T> -> Real` 的所有 `CastTo` 实现都必须先检查虚部是否为 `0`。检查通过后，再复用对应实部的标量转换规则：恒等转换保持成功、无损扩大转换保持无错误、有损或窄化转换继续沿用原有 `TypeConversionError` 语义。检查失败时统一返回可恢复错误，失败原因标记为 `non-zero imaginary part`。
 
 | 转换示例                   | 默认语义                        |
 | -------------------------- | ------------------------------- |
@@ -462,6 +567,8 @@ impl CheckedAdd for i64 {
 ```
 
 > **设计决策：** `CheckedAdd` 仅覆盖整数加法（`i32`/`i64`），用于归约等必须精确检测溢出的路径。逐元素整数乘法不通过 `CheckedAdd` 约束暴露，具体溢出策略由对应运算模块单独规定。
+>
+> **补充说明：** 乘法、除法、平方和内积的整数溢出检查不由本 trait 承担，而是由各运算模块（`math`、`matrix`）在实现层通过 `checked_mul`/`checked_rem` 等标准库方法或显式检查完成（参见 `11-math.md`、`12-matrix.md`）。
 
 ---
 
@@ -743,7 +850,7 @@ Wave 3: [T6]      [T9] ← ────┘
 | `test_complex_f64_zero_one`     | `Complex<f64>::zero()`, `Complex<f64>::one()`              | 高     |
 | `test_complex_f64_conj`         | `Complex::new(3.0, 4.0).conj() == Complex::new(3.0, -4.0)` | 高     |
 | `test_complex_f32_norm`         | `Complex::new(3.0f32, 4.0f32).norm() == 5.0`               | 高     |
-| `test_complex_f64_from_polar`   | `from_polar(1.0, PI/2) ≈ i`                                | 中     |
+| `test_complex_f64_from_polar`   | `from_polar(1.0, PI/2) ≈ j`                                | 中     |
 | `test_sealed_prevents_external` | 外部类型无法实现 Element（编译测试）                       | 中     |
 
 ### 9.3 边界测试场景
@@ -775,29 +882,29 @@ Wave 3: [T6]      [T9] ← ────┘
 
 ### 9.6 Feature gate / 配置测试
 
-| 配置项 | 覆盖方式                             | 说明                                         |
-| ------ | ------------------------------------ | -------------------------------------------- |
-| 默认配置 | 常规单元/集成测试路径                 | 本模块无独立 feature gate，默认配置即主路径  |
-| 非默认 feature | 不适用                             | 本模块未定义 feature gate，故无额外配置矩阵 |
+| 配置项         | 覆盖方式              | 说明                                        |
+| -------------- | --------------------- | ------------------------------------------- |
+| 默认配置       | 常规单元/集成测试路径 | 本模块无独立 feature gate，默认配置即主路径 |
+| 非默认 feature | 不适用                | 本模块未定义 feature gate，故无额外配置矩阵 |
 
 ### 9.7 类型边界 / 编译期测试
 
-| 测试类型 | 覆盖方式                                     | 说明                                                      |
-| -------- | -------------------------------------------- | --------------------------------------------------------- |
-| sealed 边界 | compile-fail 测试外部类型实现 `Element`       | 验证封闭元素集合不会被外部 crate 扩展                     |
-| 元素能力边界 | compile-fail 测试 `bool: Numeric`、`usize: Element` | 验证布尔与索引元数据类型不会越界进入算术元素层            |
-| trait 分层边界 | 编译期验证 `RealScalar`/`ComplexScalar` 仅覆盖规定类型 | 验证 trait 能力分层不被误扩展                             |
+| 测试类型       | 覆盖方式                                               | 说明                                           |
+| -------------- | ------------------------------------------------------ | ---------------------------------------------- |
+| sealed 边界    | compile-fail 测试外部类型实现 `Element`                | 验证封闭元素集合不会被外部 crate 扩展          |
+| 元素能力边界   | compile-fail 测试 `bool: Numeric`、`usize: Element`    | 验证布尔与索引元数据类型不会越界进入算术元素层 |
+| trait 分层边界 | 编译期验证 `RealScalar`/`ComplexScalar` 仅覆盖规定类型 | 验证 trait 能力分层不被误扩展                  |
 
 ---
 
 ## 10. 错误处理与语义边界
 
-| 项目           | 内容 |
-| -------------- | ---- |
-| Recoverable error | 有损 `CastTo` 默认返回可恢复错误；错误类型由具体 `CastTo<T>::Error` 决定，需携带源类型/目标类型及失败原因等上下文 |
-| Panic | 本模块 trait 方法本身不以 panic 作为常规错误语义；若底层标准库数学实现遇到其自身前置条件，遵循标准库行为 |
-| 路径一致性 | scalar 路径必须与普通标量实现一致；SIMD：不适用；parallel：不适用 |
-| 容差边界 | 浮点相关比较遵循 IEEE 754 与各测试中显式容差；整数与布尔类型不适用 |
+| 项目              | 内容                                                                                                                                                                                                   |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Recoverable error | 有损 `CastTo` 默认返回可恢复错误；`Complex<T> -> Real` 在虚部非零时也返回可恢复错误；错误类型由具体 `CastTo<T>::Error` 决定，需携带源类型/目标类型及失败原因（包括 `non-zero imaginary part`）等上下文 |
+| Panic             | 本模块 trait 方法本身不以 panic 作为常规错误语义；若底层标准库数学实现遇到其自身前置条件，遵循标准库行为                                                                                               |
+| 路径一致性        | scalar 路径必须与普通标量实现一致；SIMD：不适用；parallel：不适用                                                                                                                                      |
+| 容差边界          | 浮点相关比较遵循 IEEE 754 与各测试中显式容差；整数与布尔类型不适用                                                                                                                                     |
 
 ---
 
@@ -886,6 +993,9 @@ Wave 3: [T6]      [T9] ← ────┘
 | 1.1.0 | 2026-04-08 |
 | 1.2.0 | 2026-04-08 |
 | 1.2.1 | 2026-04-10 |
+| 1.2.2 | 2026-04-14 |
+| 1.2.3 | 2026-04-14 |
+| 1.2.4 | 2026-04-14 |
 
 ---
 

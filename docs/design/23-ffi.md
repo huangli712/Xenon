@@ -1,7 +1,7 @@
 # FFI 接口模块设计
 
 > 文档编号: 23 | 模块: `src/ffi/` | 阶段: Phase 4
-> 前置文档: `07-tensor.md`, `06-memory.md`
+> 前置文档: `07-tensor.md`, `06-layout.md`
 > 需求参考: 需求说明书 §25
 > 范围声明: 范围内
 
@@ -95,7 +95,7 @@ src/ffi/
 ├── blas.rs
 │   ├── crate::tensor        # TensorBase<S, D>
 │   ├── crate::storage       # Storage
-│   ├── crate::layout        # is_contiguous, has_zero_stride
+│   ├── crate::layout        # is_f_contiguous, has_zero_stride
 │   ├── super::types         # BlasInfo, BlasLayout
 │   └── super::ptr           # as_ptr
 └── offset.rs
@@ -108,10 +108,10 @@ src/ffi/
 
 | 来源模块    | 使用的类型/trait                                                                                        | 参考                 | 使用者                           |
 | ----------- | ------------------------------------------------------------------------------------------------------- | -------------------- | -------------------------------- |
-| `tensor`    | `TensorBase<S, D>`, `.shape()`, `.strides()`, `.offset()`                                               | `07-tensor.md` §4    | `ptr.rs`, `blas.rs`, `offset.rs` |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`                                                                       | `02-dimension.md` §4 | `ptr.rs`, `offset.rs`            |
-| `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, owned allocator metadata（供 `OwnedRawParts<A, D>` 导出/重建） | `05-storage.md` §4   | `ptr.rs`, `blas.rs`, `offset.rs` |
-| `layout`    | `is_f_contiguous()`, `has_zero_stride()`                                                                | `06-memory.md` §4    | `ptr.rs`, `blas.rs`              |
+| `tensor`    | `TensorBase<S, D>`, `.shape()`, `.strides()`, `.offset()`                                               | `07-tensor.md` §5    | `ptr.rs`, `blas.rs`, `offset.rs` |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`                                                                       | `02-dimension.md` §5 | `ptr.rs`, `offset.rs`            |
+| `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, owned allocator metadata（供 `OwnedRawParts<A, D>` 导出/重建） | `05-storage.md` §5   | `ptr.rs`, `blas.rs`, `offset.rs` |
+| `layout`    | `is_f_contiguous()`, `has_zero_stride()`                                                                | `06-layout.md` §5    | `ptr.rs`, `blas.rs`              |
 
 ### 4.3 依赖方向声明
 
@@ -260,7 +260,7 @@ where
 /// as read-only.
 #[repr(C)]
 pub struct TensorExport {
-    /// Pointer to the storage base pointer used by the export view.
+    /// Pointer to the storage base address (element-granularity, not byte-granularity).
     pub data: *const u8,
     /// Whether the data is mutable.
     pub mutable: bool,
@@ -287,18 +287,19 @@ where
     /// The returned `TensorExport` borrows the tensor's data. The consumer
     /// must ensure the tensor outlives the export.
     ///
-    /// Empty tensors are allowed: when `len() == 0`, the export keeps valid
-    /// shape/stride metadata and uses a null `data` pointer because the payload
-    /// is never dereferenced.
+    /// Empty tensors are allowed: when `len() == 0`, `data` may be null.
+    /// In that case `shape`, `strides`, and `offset` must still correctly
+    /// describe the empty tensor metadata. `as_ptr()` does not guarantee a
+    /// non-null pointer for empty tensors.
     pub fn export(&self) -> Result<TensorExport, XenonError>;
 
     /// Export tensor data with mutable access.
     ///
     /// # Errors
     /// Returns `XenonError::InvalidStorageMode {
-    ///     operation: "ffi::export_mut",
-    ///     expected: "writable storage",
-    ///     actual: "read-only view or shared storage",
+    ///     operation: "ffi::export_mut".into(),
+    ///     expected: "writable storage".into(),
+    ///     actual: "read-only view or shared storage".into(),
     ///     shape: Some(self.shape().to_vec()),
     /// }` when the tensor is read-only.
     pub fn export_mut(&mut self) -> Result<TensorExport, XenonError>;
@@ -307,7 +308,9 @@ where
 
 > **导出语义说明：** `TensorExport` 面向 C 调用方提供“指针 + shape + strides + offset”的结构化快照，其中 `shape` 与 `strides` 指针均借用源张量内部元数据，不能在源张量释放后继续使用。
 
-> **stride 约定：** `strides` 以“元素个数”而非字节数表示步长，类型为 `usize`。按照 `06-memory.md` §1.2 与 `require.md` §7，当前版本 Xenon 不支持负步长，因此 FFI 导出格式也不保留负 stride 语义。
+> **空张量约定：** 空张量（`len() == 0`）导出时 `data` 可为 null 指针，此时 `shape`、`strides`、`offset` 仍须正确反映空张量元数据。`as_ptr()` 对空张量不保证返回非 null 指针，因此 C 调用方必须先基于长度判断是否可解引用。
+
+> **stride 约定：** `strides` 以“元素个数”而非字节数表示步长，类型为 `usize`。按照 `06-layout.md` §1.2 与 `require.md` §7，当前版本 Xenon 不支持负步长，因此 FFI 导出格式也不保留负 stride 语义。
 
 > **offset 约定：** `offset` 一律表示从 `data`（即导出的 storage base pointer）到逻辑首元素的**元素单位**位移，与 `07-tensor.md` 的 raw-parts 契约一致；不得将其解释为字节偏移。C 调用方必须先按元素单位应用这一次偏移，再把结果视为逻辑首元素地址。
 
@@ -484,7 +487,7 @@ where
 }
 ````
 
-> **设计决策：** `into_raw_parts` 仅适用于 Owned 存储，且导出的内存布局必须满足 Xenon 的 owned 不变量：F-order contiguous、`offset == 0`、canonical F-order strides。若调用方持有的是 view 或带 offset 的逻辑子视图，必须先显式物化为新的 owned contiguous tensor，再跨越 FFI 边界导出裸指针。如需将 View 转为 Owned 再解构，参见 `21-type.md` §4.5。
+> **设计决策：** `into_raw_parts` 仅适用于 Owned 存储，且导出的内存布局必须满足 Xenon 的 owned 不变量：F-order contiguous、`offset == 0`、canonical F-order strides。若调用方持有的是 view 或带 offset 的逻辑子视图，必须先显式物化为新的 owned contiguous tensor，再跨越 FFI 边界导出裸指针。如需将 View 转为 Owned 再解构，参见 `21-type.md` §5.6。
 
 #### 内存管理
 
@@ -562,7 +565,7 @@ where
     /// assert!(!b.is_blas_compatible());
     /// ```
     pub fn is_blas_compatible(&self) -> bool {
-        self.is_f_contiguous()      // method name: see 07-tensor.md §4.3
+self.is_f_contiguous()      // method name: see 07-tensor.md §5.3
             && !self.has_zero_stride()
     }
 }
@@ -725,6 +728,10 @@ where
     /// Offset = Σ(stride[i] * index[i]) for all i in [0, ndim)
     ///
     /// Returns a `usize` offset relative to the logical first element pointer.
+    /// The calculation `offset += strides[i] * index[i]` relies on the safe
+    /// construction path to guarantee that valid shape/stride combinations do
+    /// not overflow `usize` for legal indices, so no extra overflow check is
+    /// performed here.
     ///
     /// Prefer `try_offset_of()` when the caller needs a recoverable error path.
     ///
@@ -949,7 +956,7 @@ Wave 3: ┌────┴────┐
 
 | 场景       | 预期行为                                      |
 | ---------- | --------------------------------------------- |
-| 空张量     | `as_ptr()` 返回非空但不应解引用               |
+| 空张量     | `as_ptr()` 对空张量不保证返回非空指针；不得解引用 |
 | 单元素张量 | `as_ptr()` 指向唯一元素                       |
 | 非连续切片 | `is_blas_compatible()` 返回 `false`           |
 | 广播维度   | `is_blas_compatible()` 返回 `false`           |
@@ -1002,9 +1009,9 @@ Wave 3: ┌────┴────┐
 
 | 方向            | 对方模块  | 接口/类型                            | 约定                                                                    |
 | --------------- | --------- | ------------------------------------ | ----------------------------------------------------------------------- |
-| `ffi → tensor`  | `tensor`  | 原始指针访问                         | 通过 `TensorBase` 的 storage 获取底层指针，参见 `07-tensor.md` §4       |
-| `ffi ← layout`  | `layout`  | `is_f_contiguous()` / stride 标志    | BLAS 兼容性检查依赖布局查询结果，参见 `06-memory.md` §4                 |
-| `ffi → storage` | `storage` | `OwnedRawParts` / allocator metadata | `into_raw_parts` 导出 owned 存储的完整重建信息，参见 `05-storage.md` §4 |
+| `ffi → tensor`  | `tensor`  | 原始指针访问                         | 通过 `TensorBase` 的 storage 获取底层指针，参见 `07-tensor.md` §5       |
+| `ffi ← layout`  | `layout`  | `is_f_contiguous()` / stride 标志    | BLAS 兼容性检查依赖布局查询结果，参见 `06-layout.md` §5.5               |
+| `ffi → storage` | `storage` | `OwnedRawParts` / allocator metadata | `into_raw_parts` 导出 owned 存储的完整重建信息，参见 `05-storage.md` §5 |
 | `ffi → 上游库`  | `上游库`  | `blas_info()` / `lda()`              | 向外部 BLAS/FFI 调用方暴露零拷贝参数                                    |
 
 ### 9.2 数据流描述
@@ -1060,6 +1067,8 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | 理由     | 与 `07-tensor.md` 一致：保留必要的 `shape/stride/offset/storage_len` 校验，同时避免把无法证明的内存前提伪装成库内可验证逻辑 |
 | 替代方案 | 完全不校验元数据 — 放弃，会让明显非法输入延迟到 UB；对所有内存前提做深度验证 — 放弃，超出当前边界 |
 
+> **补充**：`try_offset_of()` 中的 `offset += strides[i] * index[i]` 不额外执行溢出检查。该设计依赖安全构造路径对 `shape`/`stride`/`offset` 合法性的保证：通过安全构造路径创建的张量，任一合法索引对应的偏移量均不会溢出 `usize`。
+
 ---
 
 ## 12. 性能考量
@@ -1110,6 +1119,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | 1.1.1 | 2026-04-08 |
 | 1.1.2 | 2026-04-10 |
 | 1.1.3 | 2026-04-10 |
+| 1.1.4 | 2026-04-14 |
 
 ---
 

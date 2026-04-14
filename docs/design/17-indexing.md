@@ -1,7 +1,7 @@
 # 索引操作模块设计
 
 > 文档编号: 17 | 模块: `src/index/` | 阶段: Phase 3
-> 前置文档: `02-dimension.md`, `06-memory.md`, `07-tensor.md`, `26-error.md`
+> 前置文档: `02-dimension.md`, `06-layout.md`, `07-tensor.md`, `26-error.md`
 > 需求参考: 需求说明书 §18
 > 范围声明: 范围内
 
@@ -14,7 +14,7 @@
 | 职责 | 包含 | 不包含 |
 | --- | --- | --- |
 | 多维整数索引 | `usize` 多维索引、`at` / `at_mut` / `get` / `get_mut` / `get_unchecked*` | 负索引、布尔掩码、整数数组高级索引 |
-| 范围索引（切片） | 以范围描述符表达的只读切片、`slice` / `try_slice`、`s![]` 宏 | 负步长切片、共享可写切片、隐式复制切片 |
+| 范围索引（切片） | 以范围描述符表达的只读切片、`slice`、`s![]` 宏 | 负步长切片、共享可写切片、隐式复制切片 |
 | 元数据更新 | 按 F-order 规则更新 offset、shape、stride 与布局标记 | 改变逻辑元素顺序、引入与源张量无关的新存储 |
 | 错误边界 | 安全接口返回可恢复错误或 `Option`，unsafe 接口由调用方保证前提 | 将越界默认为 panic 的安全主路径 |
 
@@ -63,7 +63,7 @@ src/
     ├── mod.rs           # module root and public re-exports
     ├── ndindex.rs       # NdIndex trait and tuple/slice index implementations
     ├── access.rs        # at/get/get_unchecked and mutable variants
-    ├── slice.rs         # SliceInfo, slice/try_slice, shape/stride updates
+    ├── slice.rs         # SliceInfo, slice, shape/stride updates
     └── macros.rs        # s![] macro and descriptor helpers
 ```
 
@@ -104,7 +104,7 @@ src/
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, rank / axis metadata |
 | `layout` | `Strides<D>`, layout flags, F-order offset interpretation |
 | `storage` | `Storage`, `StorageMut`, read-only / writable storage capability |
-| `error` | `XenonError::InvalidAxis`, `InvalidArgument`, `IndexError`, `InvalidStorageMode` |
+| `error` | `XenonError::InvalidAxis`, `InvalidArgument`, `IndexOutOfBounds`, `InvalidStorageMode` |
 | `private` | `Sealed`，用于封闭 `NdIndex` 的外部实现面 |
 
 ### 4.3 依赖方向声明
@@ -174,9 +174,6 @@ where
     where
         I: Dimension;
 
-    pub fn try_slice<I>(&self, info: SliceInfo<I, D>) -> Result<TensorView<'_, A, I>, XenonError>
-    where
-        I: Dimension;
 }
 
 impl<S, D, A> TensorBase<S, D>
@@ -194,7 +191,7 @@ where
 }
 ```
 
-> **设计决策：** `Index` / `IndexMut` 语法糖可继续保留，但仅作为 panic 型便捷接口；规范安全主路径始终是 `at()` / `at_mut()` 与 `slice()` / `try_slice()`。
+> **设计决策：** `Index` / `IndexMut` 语法糖可继续保留，但仅作为 panic 型便捷接口；规范安全主路径始终是 `at()` / `at_mut()` 与 `slice()`。此前草案中的 `try_slice()` 与当前 `slice()` 具有相同签名且同样返回 `Result`，没有额外语义，因此移除以避免冗余接口。
 
 ### 5.3 Good / Bad 对比
 
@@ -208,10 +205,10 @@ let value = &tensor[(2, 1)];
 
 ```rust
 // Good - slice validation rejects invalid step values explicitly.
-let view = tensor.try_slice(s![1..4;2, ..])?;
+let view = tensor.slice(s![1..4;2, ..])?;
 
 // Bad - invalid slice input must not be forced through as if it were valid.
-let view = tensor.try_slice(s![1..4;0, ..]).unwrap();
+let view = tensor.slice(s![1..4;0, ..]).unwrap();
 ```
 
 ```rust
@@ -325,7 +322,7 @@ compute_slice(shape, strides, offset, slices):
     - 前置: T1
     - 预计: 10 min
 
-- [ ] **T5**: 实现 `slice` / `try_slice` 的 shape/stride 更新与布局重算
+- [ ] **T5**: 实现 `slice` 的 shape/stride 更新与布局重算
     - 文件: `src/index/slice.rs`
     - 内容: `Index` 折轴、`Range` 更新 shape/stride、只读视图返回
     - 测试: `test_slice_with_step`, `test_slice_layout_recomputed`
@@ -369,13 +366,13 @@ Wave 2:         [T3]         Wave 3: [T4] -> [T5] -> [T6]
 | 测试函数 | 测试内容 | 优先级 |
 | --- | --- | --- |
 | `test_at_2d` | `at()` 成功返回二维张量元素引用 | 高 |
-| `test_at_out_of_bounds` | 越界返回 `IndexError` | 高 |
+| `test_at_out_of_bounds` | 越界返回 `IndexOutOfBounds` | 高 |
 | `test_index_out_of_bounds` | `Index` 语法糖失败时 panic | 中 |
 | `test_at_mut_invalid_storage_mode` | 只读存储上可写访问返回 `InvalidStorageMode` | 高 |
 | `test_get_returns_none` | `get()` 失败返回 `None` | 高 |
 | `test_slice_basic` | 基本切片结果的 shape 与数据正确 | 高 |
 | `test_slice_with_step` | 正步长切片结果正确 | 高 |
-| `test_try_slice_step_zero` | `step == 0` 返回 `InvalidArgument` | 高 |
+| `test_slice_step_zero` | `step == 0` 返回 `InvalidArgument` | 高 |
 | `test_slice_chain` | 视图的视图保持一致的共享数据语义 | 中 |
 | `test_slice_layout_recomputed` | 切片后布局状态被重新计算 | 高 |
 
@@ -436,7 +433,7 @@ User calls tensor.at(index)
     ├── index/ computes offset from shape + strides
     └── tensor/storage returns shared or mutable reference
 
-User calls tensor.try_slice(info)
+User calls tensor.slice(info)
     │
     ├── index/ validates each SliceInfoElem
     ├── index/ updates offset, shape, and strides
@@ -454,7 +451,7 @@ User calls tensor.try_slice(info)
 
 | 主题 | 说明 |
 | --- | --- |
-| Recoverable error | `at()` / `at_mut()` / `slice()` / `try_slice()` 在 rank 不匹配、轴非法、越界、`step == 0`、只读存储上请求可写访问时返回 `XenonError` |
+| Recoverable error | `at()` / `at_mut()` / `slice()` 在 rank 不匹配、轴非法、越界、`step == 0`、只读存储上请求可写访问时返回 `XenonError` |
 | Panic | `Index` / `IndexMut` 语法糖失败时可 panic；这不是规范安全主路径 |
 | 路径一致性 | 对同一合法输入，checked 与 unchecked 路径必须给出同一偏移和同一逻辑结果；unsafe 只省略检查 |
 | 容差边界 | 不适用；本模块不涉及浮点容差、SIMD 误差或并行归约差异 |
@@ -463,33 +460,33 @@ User calls tensor.try_slice(info)
 
 ```rust
 XenonError::InvalidAxis {
-    operation: "slice",
+    operation: "slice".into(),
     axis,
     ndim: self.ndim(),
-    shape: Cow::Owned(self.shape().to_vec()),
+    shape: self.shape().to_vec(),
 }
 
 XenonError::InvalidArgument {
-    operation: "slice",
-    argument: "step",
-    expected: "step > 0",
-    actual: "0".to_string(),
+    operation: "slice".into(),
+    argument: "step".into(),
+    expected: "step > 0".into(),
+    actual: "0".into(),
     axis: Some(axis),
-    shape: Some(Cow::Owned(self.shape().to_vec())),
+    shape: Some(self.shape().to_vec()),
 }
 
-XenonError::IndexError {
-    operation: "at",
+XenonError::IndexOutOfBounds {
+    operation: "at".into(),
     attempted_index: index_component,
     axis,
-    shape: Cow::Owned(self.shape().to_vec()),
+    shape: self.shape().to_vec(),
 }
 
 XenonError::InvalidStorageMode {
     operation: "at_mut".into(),
     expected: "writable storage".into(),
     actual: storage_mode.into(),
-    shape: Some(Cow::Owned(self.shape().to_vec())),
+    shape: Some(self.shape().to_vec()),
 }
 ```
 
@@ -507,7 +504,7 @@ XenonError::InvalidStorageMode {
 
 | 属性 | 值 |
 | --- | --- |
-| 决策 | `at()` / `at_mut()` / `slice()` / `try_slice()` 作为规范安全接口，失败返回可恢复错误 |
+| 决策 | `at()` / `at_mut()` / `slice()` 作为规范安全接口，失败返回可恢复错误 |
 | 理由 | 符合 `require.md` §18 对安全接口的要求，并与 `26-error.md` 的统一诊断模型对齐 |
 | 替代方案 | 全部使用 `Index` / `IndexMut` panic 语法糖 — 放弃，错误恢复与上游组合能力不足 |
 | 替代方案 | 统一返回 `Option` — 放弃，无法承载轴、shape、索引等诊断信息 |
@@ -540,7 +537,7 @@ XenonError::InvalidStorageMode {
 | --- | --- | --- |
 | `at` / `get` / `at_mut` | O(rank) | O(1) |
 | `get_unchecked*` | O(rank) | O(1) |
-| `slice` / `try_slice` | O(rank) | O(1)（仅视图元数据） |
+| `slice` | O(rank) | O(1)（仅视图元数据） |
 
 ### 12.2 内存与缓存行为
 
@@ -574,6 +571,7 @@ XenonError::InvalidStorageMode {
 | 版本 | 日期 |
 | --- | --- |
 | 1.0.0 | 2026-04-14 |
+| 1.0.1 | 2026-04-14 |
 
 ---
 

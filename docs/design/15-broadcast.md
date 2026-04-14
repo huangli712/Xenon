@@ -1,7 +1,7 @@
 # 广播模块设计
 
 > 文档编号: 15 | 模块: `src/broadcast/` | 阶段: Phase 3
-> 前置文档: `02-dimension.md`, `06-memory.md`, `07-tensor.md`, `26-error.md`
+> 前置文档: `02-dimension.md`, `06-layout.md`, `07-tensor.md`, `26-error.md`
 > 需求参考: 需求说明书 §16
 > 范围声明: 范围内
 
@@ -16,7 +16,7 @@
 | 广播兼容性判定 | `can_broadcast()`、`broadcast_shape()`，按 NumPy 规则从尾轴开始逐轴比对 | 自动触发广播、隐式改写其他模块的 shape 契约 |
 | 广播步长计算 | `broadcast_strides()` 生成目标视图步长；广播轴写入 `0` | 负步长、复制式 reshape、额外布局模式 |
 | 广播视图创建 | `broadcast_to()`、`broadcast_with()` 返回零拷贝共享底层数据的只读视图 | 可写广播视图、共享可写广播结果 |
-| 类型层维度推导 | 通过 `BroadcastDim<D1, D2>` 在编译期确定输出维度类型 | 在类型层替代运行时 shape 兼容性检查 |
+| 类型层维度推导 | 通过 `D1: BroadcastDim<D2>` 在编译期确定输出维度类型 | 在类型层替代运行时 shape 兼容性检查 |
 | 广播语义收敛 | 广播结果统一视为共享只读引用（`ArcRepr` 或 `ViewRepr`） | 多输入同步迭代调度、多操作数广播编排 |
 
 ### 1.2 设计原则
@@ -26,7 +26,7 @@
 | NumPy 一致性 | 从尾轴开始比对；轴长度相同或一方为 `1` 时兼容，否则返回 `XenonError::BroadcastError`。 |
 | 零拷贝优先 | 广播只改写 shape/stride/flags，不复制底层数据。 |
 | 共享只读 | 广播结果始终降级为共享只读视图；任何可变访问都必须在类型层或运行时显式拒绝。 |
-| 步长显式化 | 广播轴使用 `usize` 零步长表达，与 `06-memory.md` 中的 `BroadcastView` 布局状态保持一致。 |
+| 步长显式化 | 广播轴使用 `usize` 零步长表达，与 `06-layout.md` 中的 `BroadcastView` 布局状态保持一致。 |
 | 类型与运行时分层 | `BroadcastDim` 负责输出维度类型推导，`broadcast_shape()` 负责实际兼容性裁决。 |
 
 ### 1.3 在架构中的位置
@@ -233,7 +233,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
     4. Mark the result layout as BroadcastView when any stride is 0.
 ```
 
-对广播轴写入零步长意味着该轴被逻辑扩展，但所有索引都回落到同一底层元素；这与 `06-memory.md` §5.7 的零步长语义保持一致。若任一轴出现 `0` 步长，结果即不再视为普通 `FContiguous` 或一般 `NonContiguous` 视图，而统一进入 `BroadcastView`。
+对广播轴写入零步长意味着该轴被逻辑扩展，但所有索引都回落到同一底层元素；这与 `06-layout.md` §5.7 的零步长语义保持一致。若任一轴出现 `0` 步长，结果即不再视为普通 `FContiguous` 或一般 `NonContiguous` 视图，而统一进入 `BroadcastView`。
 
 ### 6.4 共享只读视图构造
 
@@ -410,28 +410,28 @@ User calls broadcast_to() or broadcast_with()
 
 ```rust
 XenonError::BroadcastError {
-    operation: "broadcast_to",
-    input_shape: Cow::Owned(self.shape().to_vec()),
-    target_shape: Cow::Owned(shape.slice().to_vec()),
+    operation: "broadcast_to".into(),
+    input_shape: self.shape().to_vec(),
+    target_shape: shape.slice().to_vec(),
     axis: None,
 }
 
 XenonError::BroadcastError {
-    operation: "broadcast_shape",
-    input_shape: Cow::Owned(shape_a.to_vec()),
-    target_shape: Cow::Owned(shape_b.to_vec()),
+    operation: "broadcast_shape".into(),
+    input_shape: shape_a.to_vec(),
+    target_shape: shape_b.to_vec(),
     axis: Some(axis_from_right),
 }
 ```
 
 ```rust
 XenonError::InvalidArgument {
-    operation: "broadcast_strides",
-    argument: "orig_strides",
-    expected: "orig_shape.len() == orig_strides.len()",
-    actual: format!("shape={}, strides={}", orig_shape.len(), orig_strides.len()),
+    operation: "broadcast_strides".into(),
+    argument: "orig_strides".into(),
+    expected: "orig_shape.len() == orig_strides.len()".into(),
+    actual: format!("shape={}, strides={}", orig_shape.len(), orig_strides.len()).into(),
     axis: None,
-    shape: Some(Cow::Borrowed(orig_shape)),
+    shape: Some(orig_shape.to_vec()),
 }
 ```
 

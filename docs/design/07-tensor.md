@@ -1,7 +1,7 @@
 # 张量类型模块设计
 
 > 文档编号: 07 | 模块: `src/tensor/` | 阶段: Phase 3
-> 前置文档: `02-dimension.md`, `05-storage.md`, `06-memory.md`
+> 前置文档: `02-dimension.md`, `05-storage.md`, `06-layout.md`
 > 需求参考: 需求说明书 §8
 > 范围声明: 范围内
 
@@ -15,7 +15,7 @@
 | ----------- | ----------------------------------------------------------------------------- | -------------------------------------------------------- |
 | 核心结构体  | `TensorBase<S, D>` 双参数泛型结构体定义                                       | 逐元素与归约逻辑（参见 `11-math.md`、`13-reduction.md`） |
 | 类型别名    | `Tensor`/`TensorView`/`TensorViewMut`/`ArcTensor` 及维度便捷别名              | 广播规则（参见 `15-broadcast.md §3`）                    |
-| 基础查询    | shape/ndim/len/strides/is_empty/is_f_contiguous/is_aligned/存储位置查询等方法 | 形状操作（reshape/transpose，参见 `16-shape.md §1`）     |
+| 基础查询    | shape/ndim/len/strides/is_empty/is_f_contiguous/is_aligned/存储位置查询等方法 | 形状操作（当前仅 transpose，参见 `16-shape.md §5.1`）    |
 | 安全构造    | 从形状和数据构造，验证合法性                                                  | 索引操作（参见 `17-indexing.md §1`）                     |
 | unsafe 构造 | `from_raw_parts`，用于 FFI                                                    | 切片操作（参见 `17-indexing.md §5`）                     |
 | 视图方法    | view/view_mut                                                                 | 集合操作（参见 `14-set.md §1`）                          |
@@ -99,7 +99,7 @@ src/tensor/
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `storage`   | `Owned<A>`, `ViewRepr<'a, A>`, `ViewMutRepr<'a, A>`, `ArcRepr<A>`, `Storage`, `StorageMut`, `StorageOwned`, `StorageShared`（参见 `05-storage.md §5`） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.size()`, `.ndim()`（参见 `02-dimension.md §5`）                                                       |
-| `layout`    | `LayoutFlags`, `compute_f_strides()`, `is_f_contiguous()`, `is_aligned()`（参见 `06-memory.md §5`）                                                    |
+| `layout`    | `LayoutFlags`, `compute_f_strides()`, `is_f_contiguous()`, `is_aligned()`（参见 `06-layout.md §5`）                                                    |
 
 ### 4.2a 依赖合法性
 
@@ -109,7 +109,7 @@ src/tensor/
 | 合法性结论     | 符合需求说明书最小依赖限制     |
 | 替代方案       | 不适用                         |
 
-> 注意：`Layout` 结构体定义于 `06-memory.md`，目前为"供未来扩展预留"。`TensorBase` 当前直接内联 `LayoutFlags` 字段而非嵌套 `Layout`。
+> 注意：`Layout` 结构体定义于 `06-layout.md`，目前为"供未来扩展预留"。`TensorBase` 当前直接内联 `LayoutFlags` 字段而非嵌套 `Layout`。
 
 ### 4.3 依赖方向声明
 
@@ -307,14 +307,10 @@ pub enum StorageKind {
     ViewMut,
     Shared,
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LayoutState {
-    FContiguous,
-    NonContiguous,
-    BroadcastView,
-}
 ```
+
+> `LayoutState` 使用 `crate::layout::LayoutState`（参见 `06-layout.md §5`）；
+> 本文档不再重复定义 `FContiguous`、`NonContiguous`、`BroadcastView` 三个变体。
 
 ### 5.4 指针访问方法
 
@@ -577,8 +573,8 @@ let t = unsafe {
 > | 层次                 | 类型         | 说明                                                                  |
 > | -------------------- | ------------ | --------------------------------------------------------------------- |
 > | `TensorBase.strides` | `Strides<D>` | 与 shape 维度数一致，显式保存 stride 元数据                           |
-> | `strides()` 返回值   | `&[usize]`   | 直接来自 `Strides<D>`（参见 `06-memory.md §5`）                       |
-> | layout 模块计算      | `usize`      | F-order、转置与零步长布局在 layout 层计算（参见 `06-memory.md §5.2`） |
+> | `strides()` 返回值   | `&[usize]`   | 直接来自 `Strides<D>`（参见 `06-layout.md §5`）                       |
+> | layout 模块计算      | `usize`      | F-order、转置与零步长布局在 layout 层计算（参见 `06-layout.md §5.3` / `§5.7`） |
 >
 > **权衡：**
 >
@@ -613,11 +609,7 @@ validate_access_range(shape, strides, offset, storage_len):
             operation: "validate_access_range",
             storage_kind: "raw_parts",
             shape: shape.slice().to_vec(),
-            strides: strides
-                .as_slice()
-                .iter()
-                .map(|&value| value as isize)
-                .collect(),
+            strides: strides.as_slice().to_vec(),
             offset,
             storage_len,
             reason: "element count overflow",
@@ -634,11 +626,7 @@ validate_access_range(shape, strides, offset, storage_len):
                 operation: "validate_access_range",
                 storage_kind: "raw_parts",
                 shape: shape.slice().to_vec(),
-                strides: strides
-                    .as_slice()
-                    .iter()
-                    .map(|&value| value as isize)
-                    .collect(),
+                strides: strides.as_slice().to_vec(),
                 offset,
                 storage_len,
                 reason: "stride span overflow",
@@ -648,11 +636,7 @@ validate_access_range(shape, strides, offset, storage_len):
                 operation: "validate_access_range",
                 storage_kind: "raw_parts",
                 shape: shape.slice().to_vec(),
-                strides: strides
-                    .as_slice()
-                    .iter()
-                    .map(|&value| value as isize)
-                    .collect(),
+                strides: strides.as_slice().to_vec(),
                 offset,
                 storage_len,
                 reason: "logical access range overflow",
@@ -663,11 +647,7 @@ validate_access_range(shape, strides, offset, storage_len):
             operation: "validate_access_range",
             storage_kind: "raw_parts",
             shape: shape.slice().to_vec(),
-            strides: strides
-                .as_slice()
-                .iter()
-                .map(|&value| value as isize)
-                .collect(),
+            strides: strides.as_slice().to_vec(),
             offset,
             storage_len,
             reason: "logical access range exceeds backing storage",
@@ -828,7 +808,7 @@ Wave 4:       [T10]
 | `test_tensor_ndim_static`           | `Tensor2` 的 `ndim()` == 2                           | 高     |
 | `test_tensor_ndim_dynamic`          | `TensorD` 的 `ndim()` 运行时                         | 中     |
 | `test_tensor_strides_f_order`       | F-order 步长正确 `[1, shape[0], ...]`                | 高     |
-| `test_tensor_layout_state`          | `FContiguous`/`NonContiguous`/`BroadcastView` 分类正确 | 高     |
+| `test_tensor_layout_state`          | 按 `crate::layout::LayoutState`（参见 `06-layout.md §5`）完成分类 | 高     |
 | `test_tensor_flags_f_contiguous`    | 新构造张量 F-连续                                    | 高     |
 | `test_tensor_flags_aligned`         | 新构造张量对齐                                       | 高     |
 | `test_tensor_as_ptr`                | 指针指向正确位置                                     | 高     |
@@ -1130,6 +1110,7 @@ User calls `Tensor::<f64, Ix2>::zeros([3, 4])?`
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-10 |
 | 1.1.2 | 2026-04-10 |
+| 1.1.3 | 2026-04-14 |
 
 ---
 

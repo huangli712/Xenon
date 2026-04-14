@@ -84,7 +84,7 @@
 | 形状不兼容 / 广播失败                | `Result::Err(XenonError)`                 | 运行时输入决定，可恢复    |
 | 轴越界 / 参数非法 / FFI 前提失败     | `Result::Err(XenonError)`                 | 调用方可修正输入并重试    |
 | `cast()` 有损或前提不满足            | `Result::Err(XenonError::TypeConversion)` | `require.md §23` 强制要求 |
-| 方法型索引失败                       | `Result::Err(XenonError::IndexError)`     | 需返回结构化索引上下文    |
+| 方法型索引失败                       | `Result::Err(XenonError::IndexOutOfBounds)` | 需返回结构化索引上下文  |
 | 语言级 `Index` 语法越界              | panic                                     | 与 Rust 索引惯例保持一致  |
 | 整数溢出 / 整数除以零 / 结果不可表示 | panic                                     | 属于不可恢复算术域错误    |
 
@@ -173,13 +173,6 @@ pub enum XenonError {
 
     Workspace(WorkspaceError),
 
-    IndexError {
-        operation: Cow<'static, str>,
-        attempted_index: usize,
-        axis: usize,
-        shape: Vec<usize>,
-    },
-
     IndexOutOfBounds {
         operation: Cow<'static, str>,
         attempted_index: usize,
@@ -207,6 +200,10 @@ pub enum TypeConversionReason {
 
 pub type Result<T> = core::result::Result<T, XenonError>;
 ```
+
+`XenonError` 须实现 `std::error::Error` trait，提供 `source()` 方法用于链式错误追踪。
+
+公开 API 统一使用 `Result<T, XenonError>` 作为返回类型。库可在 prelude 中提供 `pub use core::result::Result;` 以避免与标准库 `Result` 名称冲突。
 
 模块可以为内部实现保留局部错误分类（例如 `FfiError`、`WorkspaceError`），以避免在模块内部丢失语义；但凡进入 Xenon 的公开 API 边界，必须统一包装为 `XenonError`（如 `XenonError::Ffi(...)`、`XenonError::Workspace(...)`），不得直接向外暴露模块私有错误枚举。
 
@@ -261,7 +258,6 @@ where
 | `InvalidStorageMode` | `operation`, `expected`, `actual`, `shape?`                                                    |
 | `Ffi(FfiError)`      | 由 `FfiError` 提供 `operation`, `backend`, `precondition`, `actual`                            |
 | `Workspace(...)`     | 由 `WorkspaceError` 提供 `size`, `align`, `split`, `len` 等适用结构化字段                      |
-| `IndexError`         | `operation`, `attempted_index`, `axis`, `shape`                                                |
 | `IndexOutOfBounds`   | `operation`, `attempted_index`, `axis`, `shape`                                                |
 | `TypeConversion`     | `source_type`, `target_type`, `reason`, `element_index`                                        |
 
@@ -414,19 +410,6 @@ impl fmt::Display for XenonError {
                 target_type,
                 reason,
             ),
-            Self::IndexError {
-                operation,
-                attempted_index,
-                axis,
-                shape,
-            } => write!(
-                f,
-                "index out of bounds in {}: index {}, axis {}, shape [{}]",
-                operation,
-                attempted_index,
-                axis,
-                fmt_shape(shape),
-            ),
             Self::IndexOutOfBounds {
                 operation,
                 attempted_index,
@@ -537,6 +520,8 @@ let value = lhs * rhs;
 | 1.0.5 | 2026-04-08 |
 | 1.0.6 | 2026-04-10 |
 | 1.1.0 | 2026-04-14 |
+| 1.1.1 | 2026-04-14 |
+| 1.1.2 | 2026-04-14 |
 
 ---
 

@@ -294,6 +294,10 @@ pub unsafe trait Storage: RawStorage {
     /// `shape` / `strides` / `offset` metadata, so callers must not treat it as a
     /// logical tensor slice. The tensor-level zero-copy fast path lives in
     /// `TensorBase::as_slice()` (see `07-tensor.md §5.4a`).
+    ///
+    /// Warning: this returns the full backing storage buffer rather than the
+    /// tensor's logical element view. For non-contiguous or offset tensors,
+    /// callers must interpret it together with tensor metadata.
     #[inline]
     fn as_slice(&self) -> &[Self::Elem] {
         // SAFETY: Storage guarantees all elements are initialized
@@ -342,6 +346,7 @@ pub unsafe trait StorageMut: Storage + RawStorageMut {
     ///
     /// Like `Storage::as_slice()`, this is a storage-level API and ignores
     /// tensor-level `shape` / `strides` / `offset` metadata.
+    /// It does not represent the tensor's logical mutable element view.
     #[inline]
     fn as_mut_slice(&mut self) -> &mut [Self::Elem] {
         // SAFETY: StorageMut guarantees all elements are initialized and exclusive access
@@ -362,6 +367,8 @@ pub unsafe trait StorageMut: Storage + RawStorageMut {
     }
 }
 ````
+
+> **警告：** ⚠️ `as_slice()` / `as_mut_slice()` 返回的是底层存储的完整缓冲区切片，而非张量的逻辑元素视图。对于非连续或带偏移的张量，调用方须结合 `offset()` 和 `strides()` 使用。
 
 ### 5.7 StorageOwned Trait
 
@@ -429,7 +436,7 @@ pub unsafe trait StorageShared: Storage + Clone {
     /// owned allocation before mutable access is returned.
     ///
     /// Note: sub-view offset and length are managed by `TensorBase`, not by
-    /// `ArcRepr` (see design decision in §5.5).
+    /// `ArcRepr` (see design decision in §6.5).
     fn make_mut(&mut self) -> &mut [Self::Elem];
 
     /// Returns the current reference count.
@@ -439,14 +446,14 @@ pub unsafe trait StorageShared: Storage + Clone {
 
 ### 5.9 StorageIntoOwned Trait
 
-消耗式转为 Owned 存储，用于 `into_owned()` 和 `into_shape()`（参见 `21-type.md §4.5`）。
+消耗式转为 Owned 存储，用于 `into_owned()` 和 `into_shape()`（参见 `21-type.md §5.6`）。
 
 ```rust
 /// Storage types that can be converted into an owned tensor by consuming self.
 ///
 /// - `Owned<A>` → O(1), returns self directly
 /// - `ViewRepr`/`ViewMutRepr` → O(n), copies data
-/// - `ArcRepr` → O(n), always allocates a fresh owned buffer
+/// - `ArcRepr` → O(1) when `ref_count == 1` via `Arc::try_unwrap`; O(n) copy otherwise
 pub unsafe trait StorageIntoOwned: Storage {
     /// Consume this storage, returning an `Owned<A>` storage.
     fn into_owned_storage(self) -> Owned<Self::Elem>
@@ -457,7 +464,7 @@ pub unsafe trait StorageIntoOwned: Storage {
 
 ### 5.10 StorageIntoRaw Trait
 
-消耗式解构为裸指针，用于 `into_raw_parts()`（参见 `23-ffi.md §4.4`）。
+消耗式解构为裸指针，用于 `into_raw_parts()`（参见 `23-ffi.md §5.4`）。
 
 ```rust
 /// Storage types that can be destructured into raw parts.
@@ -470,7 +477,7 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
     ///
 /// The caller must preserve the allocator metadata required to reconstruct
 /// the owned buffer. In Xenon's tensor-level FFI API, this metadata is carried
-/// by `OwnedRawParts` (see `23-ffi.md §4.4`).
+/// by `OwnedRawParts` (see `23-ffi.md §5.4`).
     unsafe fn into_raw(self) -> *mut Self::Elem;
 }
 ```
@@ -496,20 +503,20 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
 | `ViewMutRepr<'_, A>` | `Owned<A>`           | O(n)        | 复制逻辑元素到新的对齐缓冲               |
 | `ViewMutRepr<'_, A>` | `ArcRepr<A>`         | O(1)        | 零拷贝降级为共享只读引用，但结果存续期间必须放弃源写权限 |
 | `ArcRepr<A>`         | `ViewRepr<'_, A>`    | O(1)        | 共享只读借用                             |
-| `ArcRepr<A>`         | `Owned<A>`           | O(n)        | 必须分配新的独占缓冲并复制数据           |
+| `ArcRepr<A>`         | `Owned<A>`           | O(1) / O(n) | 引用计数为 1 时尝试 `Arc::try_unwrap` 复用缓冲；否则分配新的独占缓冲并复制数据 |
 
 | 源 \ 目标            | `Owned<A>`                  | `ViewRepr<'_, A>`       | `ViewMutRepr<'_, A>`        | `ArcRepr<A>`                  |
 | -------------------- | --------------------------- | ----------------------- | --------------------------- | ----------------------------- |
 | `Owned<A>`           | —                           | 零拷贝                  | 零拷贝                      | 零拷贝                        |
 | `ViewRepr<'_, A>`    | 须分配                      | —                       | 不可转换                    | 不可转换                      |
 | `ViewMutRepr<'_, A>` | 须分配                      | 零拷贝                  | —                           | 零拷贝（需满足独占约束）      |
-| `ArcRepr<A>`         | 须分配                      | 零拷贝                  | 不可转换                    | —                             |
+| `ArcRepr<A>`         | 条件零拷贝 / 须分配         | 零拷贝                  | 不可转换                    | —                             |
 
-> **补充说明：** 上表按四种具体存储表示细化 `require.md` §6.2 的抽象规则：零拷贝表示仅重借用或降级访问权限；须分配表示需要分配新的 owned 缓冲并复制数据；不可转换表示违反 Rust 的可变性/独占借用约束，例如 `ViewRepr<'_, A> → ArcRepr<A>` 与 `ArcRepr<A> → ViewMutRepr<'_, A>`。其中 `ViewMutRepr<'_, A> → ArcRepr<A>` 虽为零拷贝，但结果一旦形成共享只读引用，就必须放弃原先的可写访问权。
+> **补充说明：** 上表按四种具体存储表示细化 `require.md` §6.2 的抽象规则：零拷贝表示仅重借用或降级访问权限；须分配表示需要分配新的 owned 缓冲并复制数据；条件零拷贝表示仅在 `ArcRepr` 引用计数为 1 时可通过 `Arc::try_unwrap` 直接复用底层缓冲，否则仍须分配并复制；不可转换表示违反 Rust 的可变性/独占借用约束，例如 `ViewRepr<'_, A> → ArcRepr<A>` 与 `ArcRepr<A> → ViewMutRepr<'_, A>`。其中 `ViewMutRepr<'_, A> → ArcRepr<A>` 虽为零拷贝，但结果一旦形成共享只读引用，就必须放弃原先的可写访问权。
 
 > **类型安全论证**：`ViewMutRepr<'a, A>` → `ArcRepr<A>` 的零拷贝转换通过消费 `ViewMutRepr` 实例实现。转换后，原始 `&mut` 引用的生命周期 `'a` 被 `ArcRepr` 的共享语义取代，原 `ViewMutRepr` 不再可用（所有权已转移）。Rust 类型系统保证了转换后无法再通过原 `ViewMutRepr` 路径写入数据。`ArcRepr` 仅暴露只读接口，因此共享引用不会导致数据竞争。
 
-> **约束：** Xenon 当前元素类型集合是封闭且按值语义处理的集合；`Owned::from_vec` 保持 `Elem: Copy` 约束，并统一复制到内部 64B 对齐缓冲（参见 `06-memory.md §5.6`）。其它从迭代器或构造器进入 `Owned` 的路径由上层构造模块统一收敛。
+> **约束：** Xenon 当前元素类型集合是封闭且按值语义处理的集合；`Owned::from_vec` 保持 `Elem: Copy` 约束，并统一复制到内部 64B 对齐缓冲（参见 `06-layout.md §5.6`）。其它从迭代器或构造器进入 `Owned` 的路径由上层构造模块统一收敛。
 
 > **错误语义补充：** 上表中的复杂度只描述成功路径。凡转换违反 `require.md` §6.2 的可变性或独占性前提（例如试图把共享只读结果继续当作可写存储传播），已公开的运行时转换 API 须返回可恢复错误，而不是隐式降级为别的存储模式。
 
@@ -805,28 +812,7 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 
 ---
 
-## 7. ZST 和空数组处理
-
-| 场景           | 预期行为                                             | 安全性论证                                                            |
-| -------------- | ---------------------------------------------------- | --------------------------------------------------------------------- |
-| ZST 元素类型   | 使用非空悬挂哨兵指针，不调用分配器，len 正常计算     | ZST 不需要真实 backing storage，且禁止把 `size=0` 传给 `AlignedAlloc` |
-| 空数组 `len=0` | `as_ptr()` 返回非空悬垂指针，`as_slice()` 返回空切片 | `Vec` 保证空时 `as_ptr()` 非空                                        |
-| ZST + 空数组   | 不引发分配，不引发 UB                                | ZST 不需要实际内存                                                    |
-
----
-
-## 8. 平台与工程约束
-
-| 约束       | 说明                                   |
-| ---------- | -------------------------------------- |
-| `std` only | 本模块依赖 `std` 环境，不讨论 `no_std` |
-| 单 crate   | 保持单 crate 边界                      |
-| SemVer     | 存储类型和 trait 变更遵循 SemVer       |
-| 最小依赖   | 无新增第三方依赖                       |
-
----
-
-## 9. 实现任务拆分
+## 7. 实现任务拆分
 
 ### Wave 1: 基础 trait 定义
 
@@ -941,20 +927,9 @@ Wave 4:              [T12] → [T13]
 
 ---
 
-## 10. 错误处理与语义边界
+## 8. 测试计划
 
-| 项目           | 内容 |
-| -------------- | ---- |
-| Recoverable error | `try_reserve()`、显式运行时转换与 raw-parts 元数据校验失败返回 `XenonError`；上下文字段应包含操作名、存储模式、长度/容量或布局信息 |
-| Panic | 对齐分配器在 `align` 非 2 的幂、`size == 0` 或分配失败时 panic；已验证快捷路径中的整数溢出也可 panic |
-| 路径一致性 | scalar：不适用；SIMD 对齐与非对齐路径必须返回一致元素值；parallel 存储访问须与串行路径保持一致 |
-| 容差边界 | 不适用 |
-
----
-
-## 11. 测试计划
-
-### 11.1 测试分类
+### 8.1 测试分类
 
 | 类型     | 位置                     | 目的                |
 | -------- | ------------------------ | ------------------- |
@@ -963,7 +938,7 @@ Wave 4:              [T12] → [T13]
 | 边界测试 | 集成测试中标注           | ZST、空数组、大数组 |
 | 属性测试 | `tests/property/`        | 随机生成验证不变量  |
 
-### 11.2 单元测试清单
+### 8.2 单元测试清单
 
 | 测试函数                          | 测试内容                                        | 优先级 |
 | --------------------------------- | ----------------------------------------------- | ------ |
@@ -987,7 +962,7 @@ Wave 4:              [T12] → [T13]
 | `test_arc_alignment_preserved`    | `ArcRepr` 保持与 `Owned` 相同的对齐语义         | 高     |
 | `test_storage_into_owned_matrix`  | 各存储模式到 `Owned` 的转换复杂度与语义符合矩阵 | 中     |
 
-### 11.3 边界测试场景
+### 8.3 边界测试场景
 
 | 场景                                | 预期行为                              |
 | ----------------------------------- | ------------------------------------- |
@@ -997,7 +972,7 @@ Wave 4:              [T12] → [T13]
 | 大数组 16M 元素                     | 正常分配和访问                        |
 | 容量乘法接近 `usize::MAX`           | 显式 panic 或返回错误，不发生整数回绕 |
 
-### 11.4 属性测试不变量
+### 8.4 属性测试不变量
 
 | 不变量                                            | 测试方法           |
 | ------------------------------------------------- | ------------------ |
@@ -1006,14 +981,14 @@ Wave 4:              [T12] → [T13]
 | `arc.make_mut()` 后引用计数为 1                   | 随机共享数量       |
 | `Owned::from_vec_aligned` 在 ZST 上不调用分配器   | 随机 ZST 长度      |
 
-### 11.5 Feature gate / 配置测试
+### 8.5 Feature gate / 配置测试
 
 | 配置项 | 覆盖方式                             | 说明                                         |
 | ------ | ------------------------------------ | -------------------------------------------- |
 | 默认配置 | 常规单元/集成测试路径                 | 本模块无独立 feature gate，默认配置即主路径  |
 | 非默认 feature | 不适用                             | 本模块未定义 feature gate，故无额外配置矩阵 |
 
-### 11.6 类型边界 / 编译期测试
+### 8.6 类型边界 / 编译期测试
 
 | 测试类型 | 覆盖方式                                         | 说明                                                    |
 | -------- | ------------------------------------------------ | ------------------------------------------------------- |
@@ -1023,9 +998,9 @@ Wave 4:              [T12] → [T13]
 
 ---
 
-## 12. 与其他模块的交互
+## 9. 模块交互设计
 
-### 12.1 与 Tensor 模块
+### 9.1 与 Tensor 模块
 
 `TensorBase<S, D>` 的 `S` 参数约束为 `Storage` 或 `StorageMut`，通过关联类型 `Elem` 获取元素类型（参见 `07-tensor.md` §5）：
 
@@ -1043,15 +1018,15 @@ where
 }
 ```
 
-### 12.2 与 Layout 模块
+### 9.2 与 Layout 模块
 
-Storage 提供对齐信息（`is_aligned()`），Layout 模块查询对齐状态更新 `LayoutFlags::ALIGNED`（参见 `06-memory.md` §5）。
+Storage 提供对齐信息（`is_aligned()`），Layout 模块查询对齐状态更新 `LayoutFlags::ALIGNED`（参见 `06-layout.md` §5）。
 
-### 12.3 与 Parallel 模块
+### 9.3 与 Parallel 模块
 
 并行迭代要求 `S: Storage + Sync`（读）或 `S: StorageMut + Send`（写），由 storage 的 Send/Sync 实现保证（参见 `09-parallel.md` §4）。
 
-### 12.4 数据流描述
+### 9.4 数据流描述
 
 ```
 User calls `TensorBase::as_ptr()`
@@ -1067,7 +1042,26 @@ User calls `TensorBase::as_ptr()`
 
 ---
 
-## 13. 设计决策记录
+## 10. 错误处理与语义边界
+
+| 项目           | 内容 |
+| -------------- | ---- |
+| Recoverable error | `try_reserve()`、显式运行时转换与 raw-parts 元数据校验失败返回 `XenonError`；上下文字段应包含操作名、存储模式、长度/容量或布局信息 |
+| Panic | 对齐分配器在 `align` 非 2 的幂、`size == 0` 或分配失败时 panic；已验证快捷路径中的整数溢出也可 panic |
+| 路径一致性 | scalar：不适用；SIMD 对齐与非对齐路径必须返回一致元素值；parallel 存储访问须与串行路径保持一致 |
+| 容差边界 | 不适用 |
+
+### 10.1 ZST 和空数组处理
+
+| 场景           | 预期行为                                             | 安全性论证                                                            |
+| -------------- | ---------------------------------------------------- | --------------------------------------------------------------------- |
+| ZST 元素类型   | 使用非空悬挂哨兵指针，不调用分配器，len 正常计算     | ZST 不需要真实 backing storage，且禁止把 `size=0` 传给 `AlignedAlloc` |
+| 空数组 `len=0` | `as_ptr()` 返回非空悬垂指针，`as_slice()` 返回空切片 | `Vec` 保证空时 `as_ptr()` 非空                                        |
+| ZST + 空数组   | 不引发分配，不引发 UB                                | ZST 不需要实际内存                                                    |
+
+---
+
+## 11. 设计决策记录
 
 ### 决策 1：64 字节默认对齐
 
@@ -1096,7 +1090,7 @@ User calls `TensorBase::as_ptr()`
 
 ---
 
-## 14. 性能考量
+## 12. 性能描述
 
 | 方面         | 设计决策                                                            |
 | ------------ | ------------------------------------------------------------------- |
@@ -1120,6 +1114,17 @@ User calls `TensorBase::as_ptr()`
 
 ---
 
+## 13. 平台与工程约束
+
+| 约束       | 说明                                   |
+| ---------- | -------------------------------------- |
+| `std` only | 本模块依赖 `std` 环境，不讨论 `no_std` |
+| 单 crate   | 保持单 crate 边界                      |
+| SemVer     | 存储类型和 trait 变更遵循 SemVer       |
+| 最小依赖   | 无新增第三方依赖                       |
+
+---
+
 ## 版本历史
 
 | 版本  | 日期       |
@@ -1131,6 +1136,8 @@ User calls `TensorBase::as_ptr()`
 | 1.1.0 | 2026-04-08 |
 | 1.2.0 | 2026-04-08 |
 | 1.2.1 | 2026-04-10 |
+| 1.2.2 | 2026-04-14 |
+| 1.2.3 | 2026-04-14 |
 
 ---
 

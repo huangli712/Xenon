@@ -213,12 +213,12 @@ L3: 示例 (examples/)
 //! ```rust
 //! use xenon::prelude::*;
 //!
-//! // Create tensors (see 18-construction.md §4.1 for constructor signatures)
+//! // Create tensors (see 18-construction.md §5.1 for constructor signatures)
 //! let a = Tensor1::<f64>::zeros(5.into());
 //! let b = Tensor2::<f64>::zeros([3, 4].into());
 //!
 //! // Element-wise operations with broadcasting
-//! let sum = &a + &a;
+//! let sum = (&a + &a).unwrap();
 //!
 //! // Reduction
 //! let total = b.sum();
@@ -362,8 +362,8 @@ pub fn par_sum(&self) -> A { ... }
 | `basic.rs`           | 创建、运算、归约、打印                     | 默认       | 新用户                               |
 | `complex_numbers.rs` | 复数构造、同类型复数运算、显式转换后的运算 | 默认       | 科学计算                             |
 | `broadcasting.rs`    | 广播规则、行/列/标量广播                   | 默认       | 日常使用                             |
-| `parallel.rs`        | 并行计算、阈值配置                         | `parallel` | 性能优化（参见 `09-parallel.md §4`） |
-| `simd.rs`            | SIMD 加速、回退策略                        | `simd`     | 性能优化（参见 `08-simd.md §4`）     |
+| `parallel.rs`        | 并行计算、阈值配置                         | `parallel` | 性能优化（参见 `09-parallel.md §5`） |
+| `simd.rs`            | SIMD 加速、回退策略                        | `simd`     | 性能优化（参见 `08-simd.md §5`）     |
 | `ffi.rs`             | 与 C/BLAS 交互                             | 默认       | 库开发者                             |
 
 ### 9.2 示例模板
@@ -602,7 +602,7 @@ pub fn sum(&self) -> A { ... }
 /// The caller must ensure:
 ///
 /// 1. `ptr` is non-null, non-dangling, and aligned to `align_of::<A>()`
-/// 2. The memory range covers all accessible elements
+/// 2. `storage_len` matches the number of elements in the backing storage reachable from `ptr`
 /// 3. The memory is valid for the lifetime `'a`
 /// 4. No mutable references to the memory exist
 /// 5. `shape` and `strides` have the same length
@@ -618,16 +618,26 @@ pub fn sum(&self) -> A { ... }
 ///
 /// // SAFETY: data is non-empty, properly aligned, and outlives the view.
 /// let view = unsafe {
-///     TensorView::from_raw_parts(
+///     TensorView::from_raw_parts::<f64, Ix2>(
 ///         data.as_ptr(),
+///         data.len(),
 ///         Ix2::from_slice(&[2, 2]),
-///         Ix2::from_isize_slice(&[1, 2]),
+///         Strides::from_slice(&[1, 2]),
 ///         0,
-///     )
+///     )?
 /// };
 /// assert_eq!(view.shape(), &[2, 2]);
 /// ```
-pub unsafe fn from_raw_parts<'a, A, D>(...) -> TensorView<'a, A, D>
+pub unsafe fn from_raw_parts<A, D>(
+    ptr: *const A,
+    storage_len: usize,
+    shape: D,
+    strides: Strides<D>,
+    offset: usize,
+) -> Result<TensorView<'static, A, D>, XenonError>
+where
+    A: Element,
+    D: Dimension
 ````
 
 ### 14.4 Bad — 缺少 Safety 节
@@ -832,7 +842,7 @@ docs:
 
 - [ ] **T5**: 编写核心模块文档（dimension, element, complex, storage, layout）
   - 文件: 各 `mod.rs`
-  - 内容: 模块职责、核心概念、使用示例、依赖图、设计决策（参见 `02-dimension.md §1`、`03-element.md §1`、`04-complex.md §1`、`05-storage.md §1`、`06-memory.md §1`）
+- 内容: 模块职责、核心概念、使用示例、依赖图、设计决策（参见 `02-dimension.md §1`、`03-element.md §1`、`04-complex.md §1`、`05-storage.md §1`、`06-layout.md §1`）
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T2
   - 预计: 10 min
@@ -911,7 +921,7 @@ docs:
 
 - [ ] **T9d**: construct 和 set 模块文档
   - 文件: `src/construct/mod.rs`, `src/set/mod.rs`
-  - 内容: zeros, ones, full, eye, from_shape_vec, unique 函数文档和 doctest
+- 内容: zeros, ones, eye, from_shape_vec, unique 函数文档和 doctest（`full` 当前版本未提供）
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
@@ -1074,6 +1084,7 @@ Wave 6: [T17]
 | 1.1.1 | 2026-04-08 |
 | 1.1.2 | 2026-04-10 |
 | 1.1.3 | 2026-04-10 |
+| 1.1.4 | 2026-04-14 |
 
 ---
 
