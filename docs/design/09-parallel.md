@@ -145,11 +145,28 @@ pub(crate) struct ParallelPool {
 
 > **执行策略说明：** 并行阈值配置由 `dispatch.rs` 统一管理，`parallel/` 模块不提供独立的阈值配置接口。所有并行入口接受 dispatch 层传入的执行策略参数。
 
+### 5.2a 并行阈值配置规范
+
+| 参数 | 类型 | 默认值 | 说明 |
+| ---- | ---- | ------ | ---- |
+| `parallel_threshold` | `usize` | 65536 | 元素数低于此值时使用串行路径 |
+| `max_workers` | `Option<usize>` | `None`（使用线程池默认） | 最大并行工作线程数 |
+| `chunk_size` | `Option<usize>` | `None`（自动计算） | 每个 chunk 的元素数 |
+
+配置入口由 `dispatch.rs` 提供。`parallel/` 模块通过 `ParallelExecStrategy` 接收配置。
+
+### 5.2b `ParallelExecStrategy` 参数校验规则
+
+| 字段 | 合法范围 | 默认值 | 非法时行为 |
+| ---- | -------- | ------ | ---------- |
+| `max_workers` | `Some(1..=pool_size)` 或 `None` | `None` | `0` 或超过线程池大小返回 `InvalidArgument` |
+| `chunk_size` | `Some(n)` where `n > 0` 或 `None` | `None` | `0` 返回 `InvalidArgument` |
+
 ### 5.3 函数签名
 
 ```rust,ignore
 pub(crate) struct ParallelExecStrategy {
-    pub chunk_size_hint: Option<usize>,
+    pub chunk_size: Option<usize>,
     pub max_workers: Option<usize>,
 }
 
@@ -294,7 +311,7 @@ dispatch-selected parallel entry
 
 - `parallel/` 假定调用方已经完成阈值、线程环境、SIMD 能力与嵌套并行治理判断。
 - 并行函数只负责固定 chunking、执行 `rayon` 并行迭代以及保持结果语义与调用方选择的串行基线一致。
-- `parallel/` 模块不在内部再次调用 `dispatch` 入口，避免嵌套并行。
+- `parallel/` 模块仅负责数据并行分块和执行。SIMD/scalar 路径选择由 `dispatch.rs` 在调用 `par_*` 函数之前决定，并通过参数传入；`parallel/` 不在内部再次调用 `dispatch`。
 
 ### 6.3 二元逐元素并行路径
 
@@ -329,7 +346,7 @@ where
 
     let num_threads = strategy.max_workers.unwrap_or_else(rayon::current_num_threads);
     let chunk_size = strategy
-        .chunk_size_hint
+        .chunk_size
         .unwrap_or_else(|| usize::max(1, (total + num_threads - 1) / num_threads));
 
     // Build broadcast-compatible read-only chunk views for lhs / rhs.
@@ -344,7 +361,7 @@ where
 - 广播处理顺序固定为：先由 `math` 模块验证 `lhs` / `rhs` 广播兼容并产出 `output_dim`，再由 `parallel/` 按逻辑线性区间分块；默认 `chunk_size = max(1, (total_elements + num_threads - 1) / num_threads)`，其中 `num_threads = rayon::current_num_threads()`，并按固定左折叠顺序合并 chunk 结果。每个 chunk 为两个输入分别构造与该线性区间对应、且仍与 `output_dim` 兼容的只读 sub-view。若某一侧是广播轴（stride 为 `0` 或逻辑重复维），chunk 视图保持该广播语义，不做物理复制。`DL`、`DR`、`DO` 独立建模，以表达输入与输出 rank 可能不同的广播结果。
 - 线性区间到多维 broadcast sub-view 的映射草图：先把 chunk 的 `[linear_start, linear_end)` 按 `output_dim` 的 F-order 索引规则转换为多维区间；随后对 `lhs` / `rhs` 分别按广播规则投影该区间，得到只读 sub-view。对输出维中长度为 `1` 的广播轴，输入 sub-view 固定复用同一逻辑坐标；对非广播轴，sub-view 保持与输出相同的区间跨度。实现不得为广播轴做物理展开或额外分配。
 - `par_zip_map` 仅包含并行执行逻辑；若调用发生，表示 `dispatch.rs` 已确认当前输入适合走并行路径。
-- 错误传播策略与 `par_map_checked()` 一致：广播形状不兼容时立即返回 `XenonError::BroadcastError { operation, input_shape, target_shape, axis }`；其中 `operation` 标识当前并行入口（如 `"par_zip_map"`），`input_shape` 为失败输入的逻辑 shape，`target_shape` 为调用侧尝试写入的广播输出 shape（而不是右操作数 shape），`axis` 在可定位到具体失败轴时填写对应值，否则为 `None`。字段名和含义必须与 `26-error.md §4.2` / `§4.4` 完全一致。并行操作中发生 panic 或返回 Err 时，错误不会被静默忽略。语义上，并行操作须至少传播一个错误，不保证传播“第一个”发生的错误。实现上，Rayon 的并行 collect/reduce 可能不会物理中断其他 worker，但错误信息会被收集并在最终结果中报告。
+- `par_zip_map()` 假定广播兼容性已由调用方验证。不兼容的形状将导致未定义行为或 panic。调用方须在调用前完成兼容性检查。并行操作中发生 panic 或返回 `Err` 时，错误不会被静默忽略。语义上，并行操作须至少传播一个错误，不保证传播“第一个”发生的错误。实现上，Rayon 的并行 collect/reduce 可能不会物理中断其他 worker，但错误信息会被收集并在最终结果中报告。
 
 ### 6.3a 轴向归约并行方案
 
@@ -361,15 +378,17 @@ where
 - 对归约和内积，若调用方选择并行路径，则 `parallel/` 必须提供固定 chunking 与固定 merge tree，保证同平台、同配置、同路径下结果确定。
 - 并行归约采用固定分块策略：`chunk` 大小 = `max(1, (n + num_workers - 1) / num_workers)`，worker 按固定索引范围分配，merge 按 worker 索引顺序合并。
 - 若执行对象为整数 `sum` / `dot`，每个 worker 必须在本分片内执行 `checked_add` / `checked_mul` + `checked_add`；任一 worker 发现溢出时必须传播 panic，不得转写为 `XenonError`。
+- SIMD 与并行的组合边界由 `dispatch.rs` 统一裁决：先决定 parallel vs serial，再决定当前执行路径内使用 SIMD 还是 scalar；`parallel/` 不在 worker 内部再次做 SIMD/parallel 二次分派。
 
 ### 6.5 Checked 映射与错误传播
 
 ```rust,ignore
-pub(crate) fn par_map_checked<A, B, D, F>(
-    tensor: &Tensor<A, D>,
+pub(crate) fn par_map_checked<A, B, S, D, F>(
+    tensor: &TensorBase<S, D>,
     f: F,
 ) -> Result<Tensor<B, D>, XenonError>
 where
+    S: Storage<Elem = A>,
     D: Dimension,
     A: Element + Send + Sync,
     B: Element + Send,
@@ -397,7 +416,7 @@ where
 | ------------ | ------------------------------------------------------------------------------- |
 | 广播分块     | `par_zip_map()` 按逻辑线性区间分块并复用 broadcast-compatible sub-view，避免复制 |
 | 原子访问     | 内部状态只保留并行执行所需的固定成本访问，不额外引入锁                          |
-| chunk 内决策 | SIMD/scalar 在 chunk 内局部选择，减少对非对齐尾块的过度保守回退                 |
+| 路径职责边界 | `parallel/` 只负责分块与执行；SIMD/scalar 选择由 `dispatch.rs` 在调用前完成     |
 
 ---
 
@@ -616,7 +635,7 @@ XenonError::DimensionMismatch {
 
 - 并行模块本身不新增专属错误枚举；公开错误必须复用 `26-error.md` 中的统一模型。
 - 自定义线程池类参数若存在非法值，应返回 `InvalidArgument { operation, argument, expected, actual, axis, shape }`。
-- `par_zip_map()` 的广播形状不兼容时，必须返回 `XenonError::BroadcastError { operation, input_shape, target_shape, axis }`，不得降级为逐元素截断或隐式复制。
+- 若未来在 `parallel/` 内部新增广播错误构造，必须使用 `XenonError::BroadcastError { operation, lhs_shape, rhs_shape, attempted_target_shape, axis }` 这一权威字段集合；当前 `par_zip_map()` 不承担广播兼容性校验。
 - panic 与 `Err(XenonError)` 都不得被吞掉；并行执行中发生的错误须至少传播一个，不保证传播“第一个”发生的错误。
 - 执行路径裁决由 `dispatch.rs` 负责；`parallel/` 不新增路径选择语义。
 

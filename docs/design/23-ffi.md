@@ -127,7 +127,7 @@ src/ffi/
 
 > **依赖方向：单向向上。** `ffi` 仅消费 `tensor`、`storage` 等核心模块，为上游库提供接口。
 
-> **owner 约定：** `as_ptr()` / `as_mut_ptr()` / `into_raw_parts()` / `from_raw_parts_owned()` 是 ffi 模块暴露的公开 FFI API。它们消费 `tensor`/`storage` 的元数据，但不应在依赖表中反向写成“来自 tensor 模块的方法”。
+> **owner 约定：** `as_ptr()` / `as_mut_ptr()` 的核心定义在 `07-tensor.md`（tensor 核心层）；`ffi` 模块负责指针导出格式（`TensorExport`）、BLAS 辅助 API 和裸指针构造。本文聚焦这些能力在 FFI 边界的公开形态，因此依赖表中仍把相关实现文件归入 `ffi` 模块文档范围，而不把它写成反向依赖。
 
 ### 4.4 依赖合法性与替代方案
 
@@ -203,7 +203,7 @@ where
     S: Storage<Elem = A>,
     D: Dimension,
 {
-    /// Returns a read-only raw pointer to the data start.
+    /// Returns a read-only raw pointer to the logical first element.
     ///
     /// The pointer returned here points to the first logical element.
     /// Internally, storage keeps the storage base pointer and TensorBase applies
@@ -221,7 +221,7 @@ where
         if self.is_empty() {
             // For empty tensors, return a non-dereferenceable dangling pointer.
             // Do NOT call .add() on a potentially dangling base pointer.
-            return self.storage.as_ptr();
+            return core::ptr::NonNull::<A>::dangling().as_ptr();
         }
         // SAFETY: non-empty tensor guarantees storage base pointer is valid
         // and offset is within bounds by TensorBase construction invariants.
@@ -236,7 +236,7 @@ where
     S: StorageMut<Elem = A>,
     D: Dimension,
 {
-    /// Returns a mutable raw pointer to the data start.
+    /// Returns a mutable raw pointer to the logical first element.
     ///
     /// Only available for writable storage (Owned, ViewMut).
     ///
@@ -249,7 +249,7 @@ where
     /// ```ignore
     pub fn as_mut_ptr(&mut self) -> *mut A {
         if self.is_empty() {
-            return self.storage.as_mut_ptr();
+            return core::ptr::NonNull::<A>::dangling().as_ptr();
         }
         unsafe {
             self.storage.as_mut_ptr().add(self.offset)
@@ -283,6 +283,19 @@ impl ElementType {
     /// This is determined at compile time via `Element` trait association.
     pub const fn of<A: Element>() -> Self;
 }
+
+> **实现基础说明：** 可在 `Element` sealed trait 中引入 `const ELEMENT_TYPE: ElementType` 关联常量作为 `ElementType::of::<A>()` 的实现基础。若当前 Rust 版本不支持所需 const 机制，可将该 API 降为普通 `fn`，保持语义不变。
+
+### 5.2.1 指针约定对照
+
+| API | 基准 | 说明 |
+|-----|------|------|
+| `as_ptr()` / `as_mut_ptr()` | 逻辑首元素 | 对非空张量返回第一个逻辑元素的指针；空张量返回 dangling |
+| `TensorExport.data` | 存储基地址 | 底层分配的起始地址，不含 offset |
+| `BlasInfo.data_ptr` | 逻辑首元素 | 等价于 `as_ptr()` |
+| `try_ptr_at(indices)` | 指定逻辑位置 | 基于 `as_ptr() + offset` 计算 |
+
+> **语义拆分说明：** Xenon 在 FFI 边界同时保留“逻辑首元素指针”和“存储基地址 + offset 元数据”两种约定：前者便于只关心当前逻辑视图的调用方，后者便于做 raw-parts roundtrip 与跨语言重建视图。两者不得混用。
 
 /// Raw tensor data export for FFI consumers.
 ///
@@ -397,7 +410,7 @@ where
 
 > **可写导出边界：** `export_mut()` 通过 `&mut self` 和 `S: StorageMut` 保证 Xenon 侧的独占可写访问；只读视图和共享只读存储则在 trait 边界上直接被拒绝。这与 `require.md §6` 的存储模式转换和 `§25` 的零拷贝导出要求保持一致。
 
-> **空张量约定：** 空张量（`len() == 0`）导出时 `data` 可为悬垂但非解引用的哨兵指针，此时 `shape`、`strides`、`offset` 仍须正确反映空张量元数据。C 调用方必须先基于长度判断是否可解引用。
+> **空张量约定：** 空张量上的 `as_ptr()` / `as_mut_ptr()` 必须返回悬垂但非解引用的 dangling 指针，而不是 storage base pointer。导出时 `TensorExport*.data` 仍表示 storage base pointer；此时 `shape`、`strides`、`offset` 仍须正确反映空张量元数据。C 调用方必须先基于长度判断是否可解引用。
 
 > **指针语义补充：** `TensorExport<'_, A>::data` 是 `*const A`，`TensorExportMut<'_, A>::data` 是 `*mut A`，二者语义上都始终指向 storage base pointer。`offset` 与 `strides` 都以"元素个数"计量，而不是字节数。逻辑首元素地址等于 `data.add(offset)`（仅对非空张量成立）。
 
@@ -409,7 +422,7 @@ where
 
 > **生命周期与借用语义：** 导出结果不拥有底层内存；一旦源张量被 drop，`TensorExport` 内的 `data`、`shape`、`strides` 全部立即失效。应将该导出结果视为对源张量当前元数据与指针状态的借用快照：`export()` 暴露只读快照，`export_mut()` 暴露独占可写快照；无论是否跨 FFI 边界缓存，该快照都不得超出源张量的生命周期，也不得绕过 `&mut self` 所表达的独占写语义。本文不额外指定 `TensorExport<'_, _>` / `TensorExportMut<'_, _>` 的 auto trait 组合，线程相关性质以其字段与 Rust auto-trait 推导结果为准。
 
-#### 5.2.1 Complex FFI 布局契约
+#### 5.2.2 Complex FFI 布局契约
 
 ```rust,ignore
 #[repr(C)]
@@ -432,7 +445,7 @@ pub struct Complex64 {
 > **导出语义：** 导出复数张量时，`TensorExport<Complex<f32>>` / `TensorExport<Complex<f64>>` 和 `TensorExportMut<Complex<f32>>` / `TensorExportMut<Complex<f64>>` 中的 `data` 仍是“复数元素指针”，`offset` 与 `strides` 仍按“复数元素个数”计量，而不是按标量 `re/im` 分量或字节计量。C 侧看到的是 `Complex32*` / `Complex64*` 加上相同的 shape/stride 元数据。
 
 
-#### 5.2.2 Bool FFI 布局契约
+#### 5.2.3 Bool FFI 布局契约
 
 > **Bool ABI 要求：** Rust `bool` 在 FFI 中等价于 C 的 `_Bool`（C23 起为 `bool`），大小为 1 字节，对齐为 1，合法值为 `0`（false）和 `1`（true）。C 消费者必须使用 `_Bool` 或 `bool`（C23）来匹配 `TensorExport<bool>` / `TensorExportMut<bool>` 中的 `data` 指针类型；使用 `int`、`unsigned char` 或其它整数类型会导致未定义行为。
 
@@ -1084,7 +1097,7 @@ unsafe {
 
 - **Owned 存储**：由 Xenon 的对齐分配器分配，base pointer 保证非 null、对齐且覆盖全部元素；Owned 张量的 `offset` 始终为 0。
 - **View / ViewMut 存储**：base pointer 与 offset 由安全构造路径保证在底层 storage 的可访问范围内；若通过 `from_raw_parts()` 构造，则由调用方在 `unsafe` 前提下保证指针有效性与对齐。
-- **空张量**：storage base pointer 可能是悬垂但非解引用的哨兵值，`as_ptr()` 不对其做 `.add(offset)` 运算，直接返回 base pointer。
+- **空张量**：`as_ptr()` / `as_mut_ptr()` 必须返回悬垂但非解引用的 dangling 指针；它们不对空张量做 `.add(offset)` 运算，也不泄露 storage base pointer 作为逻辑首元素指针。
 
 `from_raw_parts` 的 Safety 由调用方保证，但会先执行可直接检查的元数据验证：若 `shape`、`strides`、`offset` 与 `storage_len` 的组合明显非法，则返回 `Err(XenonError::InvalidLayout { .. })`；只有那些库无法从元数据自行证明的指针/生命周期前提，才继续由调用方承担。空张量路径必须跳过 `ptr.add(offset)`，改用非解引用哨兵值参与 flags 计算。
 

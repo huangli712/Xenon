@@ -51,7 +51,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 | 项目     | 内容                                                                 |
 | -------- | -------------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §3、§11、§14、§16、§17、§18；其中 `BroadcastDim` 支持 §16 广播语义，`Reverse` 支持 §17 转置语义，零维轴错误/降维输出/索引轴合法性分别对应 §11、§14、§18 |
+| 需求映射 | 需求说明书 §3、§11、§14、§16、§17、§18；其中内部 helper `BroadcastDim` 覆盖 §16 广播语义，内部 helper `Reverse` 覆盖 §17 转置语义，零维轴错误/降维输出/索引轴合法性分别对应 §11、§14、§18 |
 | 范围内   | 静态/动态维度类型、`Dimension`/`IntoDimension`/`RemoveAxis`、轴元数据 |
 | 范围外   | 内存分配、布局标志计算、张量运算、C-order 支持                       |
 | 非目标   | 引入开放维度扩展机制、负步长维度模型或新的存储后端                   |
@@ -130,9 +130,6 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
     /// Returns the shape as a slice of axis lengths.
     fn slice(&self) -> &[usize];
 
-    /// Returns a mutable reference to the shape slice.
-    fn slice_mut(&mut self) -> &mut [usize];
-
     /// Returns the total number of elements.
     /// For `Ix0`, returns 1 (scalar has one element).
     /// Implementations must not silently wrap on overflow.
@@ -170,12 +167,24 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
         })
     }
 
-    /// Sets the axis length at the given index.
+}
+```
+
+> **公开面收缩说明：** `Dimension` 稳定公开面仅保留 `ndim`、`slice`、`checked_size`、`checked`、`into_dyn`、`try_from_dyn`、`try_from_slice` 与只读 `axis` 查询等核心契约；以下可变访问与便捷遍历能力不要求保留在稳定主 trait 中。
+
+```rust
+/// Internal/helper extension methods for dimension manipulation.
+///
+/// These methods may be provided via an extension trait, `pub(crate)` helper,
+/// or standalone functions. They are not part of Xenon's stable public API surface.
+pub(crate) trait DimensionExt: Dimension {
+    fn slice_mut(&mut self) -> &mut [usize];
+
     fn set_axis(&mut self, axis: Axis, value: usize) -> Result<(), XenonError> {
         let ndim = self.ndim();
         let shape = self.slice().to_vec();
         let slot = self.slice_mut().get_mut(axis.0).ok_or(XenonError::InvalidAxis {
-            operation: "Dimension::set_axis".into(),
+            operation: "DimensionExt::set_axis".into(),
             axis: axis.index(),
             ndim,
             shape,
@@ -184,31 +193,25 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
         Ok(())
     }
 
-    /// Returns the last valid axis marker.
-    ///
-    /// For `Ix0`, returns `None` because a scalar has no axis.
     fn last_axis(&self) -> Option<Axis> {
         self.ndim().checked_sub(1).map(Axis)
     }
 
-    /// Returns the first valid axis marker.
-    ///
-    /// For `Ix0`, returns `None` because a scalar has no axis.
     fn first_axis(&self) -> Option<Axis> {
         (self.ndim() > 0).then_some(Axis(0))
     }
 
-    /// Checks if any axis has zero length.
     fn contains_zero(&self) -> bool {
         self.slice().iter().any(|&d| d == 0)
     }
 
-    /// Returns an iterator over axis lengths.
     fn iter(&self) -> core::slice::Iter<'_, usize> {
         self.slice().iter()
     }
 }
 ```
+
+> **说明：** 以下方法为内部辅助，可考虑通过扩展 trait 或独立函数提供：`slice_mut`、`set_axis`、`iter`、`first_axis`、`last_axis`、`contains_zero`。
 
 ### 5.2 静态维度类型 Ix0-Ix6
 
@@ -313,12 +316,14 @@ impl Dimension for Ix3 {
         let dims = [self.0, self.1, self.2];
         let mut acc = 1usize;
         for (axis, &dim) in dims.iter().enumerate() {
+            let previous = acc;
             acc = acc.checked_mul(dim).ok_or(XenonError::InvalidShape {
                 operation: "Dimension::checked_size".into(),
                 shape: dims.into(),
-                expected_elements: 0,
-                actual_elements: 0,
+                expected_elements: previous,
+                actual_elements: dim,
                 offending_dim: Some(axis),
+                reason: Some("element count overflow".into()),
             })?;
         }
         Ok(acc)
@@ -413,12 +418,14 @@ impl Dimension for IxDyn {
     fn checked_size(&self) -> Result<usize, XenonError> {
         let mut acc = 1usize;
         for (axis, &dim) in self.dims.iter().enumerate() {
+            let previous = acc;
             acc = acc.checked_mul(dim).ok_or(XenonError::InvalidShape {
                 operation: "Dimension::checked_size".into(),
                 shape: self.dims.clone(),
-                expected_elements: 0,
-                actual_elements: 0,
+                expected_elements: previous,
+                actual_elements: dim,
                 offending_dim: Some(axis),
+                reason: Some("element count overflow".into()),
             })?;
         }
         Ok(acc)
@@ -687,6 +694,8 @@ let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
 > **实现建议：** 跨静态维度的 `BroadcastDim` 实现共计约 57 个（含自身广播 7 个 + 跨静态维度 42 个 + 与 IxDyn 混合 7 个（静态维度→IxDyn）+ 1 个（IxDyn→D 泛型 impl））。
 > 建议使用声明宏（`macro_rules!`）生成这些实现，避免手工编写导致的遗漏和错误。宏生成后须通过 compile-fail 测试验证全覆盖。
 
+> **公开性说明：** 以下 trait 为内部实现辅助，标记为 `pub(crate)`，不纳入稳定公开 API 面。
+
 ```rust
 /// Trait for computing the output dimension type when broadcasting two arrays.
 ///
@@ -694,7 +703,7 @@ let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
 /// - `IxN BroadcastDim IxDyn` → `IxDyn`
 /// - `IxDyn BroadcastDim IxN` → `IxDyn`
 /// - `IxDyn BroadcastDim IxDyn` → `IxDyn`
-pub trait BroadcastDim<Other: Dimension>: Dimension {
+pub(crate) trait BroadcastDim<Other: Dimension>: Dimension {
     /// The output dimension type after broadcasting.
     type Output: Dimension;
 }
@@ -783,11 +792,13 @@ impl<D: Dimension> BroadcastDim<D> for IxDyn { type Output = IxDyn; }
 
 `PermuteAxes` 为转置操作提供通用轴置换语义；`Reverse` 仅作为 `transpose()` 默认轴反转形式的便捷层：
 
+> **公开性说明：** 以下 trait 为内部实现辅助，标记为 `pub(crate)`，不纳入稳定公开 API 面。
+
 ```rust
 /// Trait for permuting the axis order of a dimension.
 ///
 /// Used by `transpose()` in `shape` (see `16-shape.md` §5.1).
-pub trait PermuteAxes: Dimension {
+pub(crate) trait PermuteAxes: Dimension {
     /// Applies an explicit axis permutation.
     fn permuted_axes(&self, permutation: &[Axis]) -> Result<Self, XenonError>
     where
@@ -795,7 +806,7 @@ pub trait PermuteAxes: Dimension {
 }
 
 /// Convenience trait for the default reverse-axis transpose.
-pub trait Reverse: Dimension {
+pub(crate) trait Reverse: Dimension {
     fn reverse(self) -> Self;
 }
 
@@ -850,12 +861,10 @@ impl PermuteAxes for IxDyn {
             *slot = true;
             dims.push(self.axis(axis)?);
         }
-        if seen.iter().any(|present| !present) {
-            return Err(XenonError::InvalidAxis {
+        if let Some(missing_axis) = seen.iter().position(|present| !present) {
+            return Err(XenonError::InvalidArgument {
                 operation: "PermuteAxes::permuted_axes".into(),
-                axis: self.ndim(),
-                ndim: self.ndim(),
-                shape: self.slice().into(),
+                message: format!("permutation is missing axis {}", missing_axis),
             });
         }
         Ok(IxDyn::from_vec(dims))

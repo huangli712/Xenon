@@ -2,7 +2,7 @@
 
 > 文档编号: 14 | 模块: `src/set/` | 阶段: Phase 4
 > 前置文档: `03-element.md`, `04-complex.md`, `07-tensor.md`, `10-iterator.md`
-> 需求参考: 需求说明书 §15
+> 需求参考: 需求说明书 §4, §15, §28.2, §28.4
 > 范围声明: 范围内
 
 ---
@@ -47,7 +47,7 @@ L5: set  ← current module
 
 | 类型     | 内容                                                                              |
 | -------- | --------------------------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §15                                                                    |
+| 需求映射 | 需求说明书 §4, §15, §28.2, §28.4                                                  |
 | 范围内   | `unique()` 去重、NaN / `±0.0` 语义、复数按分量判等，以及 1D owned 结果构造。      |
 | 范围外   | sort、unique counts、bincount、intersection / union / difference 等其他集合操作。 |
 | 非目标   | 不引入排序契约、不新增第三方去重依赖，也不扩展到 histogram 类 API。               |
@@ -211,7 +211,7 @@ Note:
 > 1. `NaN != NaN`，因此每个 `NaN` 都必须单独保留，不能因为“同为 NaN”而被合并。
 > 2. `-0.0 == 0.0`，因此两者必须视为同一个 unique 值。
 > 3. 复数按分量比较，且每个分量分别沿用对应实数的上述语义。
-> 4. 若实现采用哈希优化，键规范固定如下：`i32` / `i64` 直接以数值作为键；`f32` / `f64` 以位模式为基础，但所有 `+0.0` / `-0.0` 归一到同一键、不同 NaN payload/符号位保持不同键；`Complex<T>` 的键为 `(re_key, im_key)`，其中每个分量键按对应实数规则独立计算。
+> 4. 若实现采用哈希优化，键规范固定如下：NaN 元素不进入普通去重键路径。实现须对 NaN 单独旁路处理，保证输入中的每个 NaN（无论位模式是否相同）均被保留。普通哈希键仅用于非 NaN 元素；其中 `i32` / `i64` 直接以数值作为键，`f32` / `f64` 对所有 `+0.0` / `-0.0` 归一到同一键，`Complex<T>` 的键为 `(re_key, im_key)`，并对含 NaN 的分量同样走旁路保留逻辑。
 >
 > 换言之，若实现采用哈希优化，则键设计必须显式编码这些语义；若无法保证，则应退回线性扫描，禁止使用与本文档语义不一致的默认集合判重行为。
 
@@ -406,6 +406,9 @@ Wave 4: [T5]
 | `test_unique_signed_zero_equal_f64` | `-0.0` 与 `0.0` 视为同值                     | 高     |
 | `test_unique_complex_componentwise` | 复数按分量判等并沿用实数语义                 | 高     |
 | `test_unique_2d`                    | 2D 张量 unique 返回 1D                       | 中     |
+| `test_unique_non_contiguous_view`   | 切片视图输入仍按逻辑元素去重                 | 高     |
+| `test_unique_transposed_view`       | 转置视图输入仍按逻辑元素去重                 | 高     |
+| `test_unique_padded_tensor_ignores_padding` | padding 区域不应暴露到 unique 语义中 | 高     |
 | `test_unique_order_unspecified`     | 同一输入仅验证集合语义，不断言固定顺序       | 中     |
 | `test_unique_large_tensor_high_dup` | `10^7` 元素高重复输入主路径保持正确          | 中     |
 | `test_unique_high_rank_ixdyn`       | `IxDyn` rank 5+ 输入仍统一展平到 1D          | 中     |
@@ -425,6 +428,9 @@ Wave 4: [T5]
 | 大张量（`10^7` 元素，高重复）                     | 结果仍满足 unique 语义，且不改变 1D owned F-order 输出契约 |
 | `IxDyn` rank 5+ 高维输入                          | 逻辑展平后去重，结果仍为 1D owned contiguous F-order 张量  |
 | `i32::MIN` / `i32::MAX` / `i64::MIN` / `i64::MAX` | 极值按值语义去重，不发生额外归一化                         |
+| 非连续切片视图                                    | 仅基于逻辑元素去重，不遗漏或重复                           |
+| 转置视图                                          | 仅基于逻辑元素去重，不引入布局相关语义漂移                 |
+| 含 padding 的张量                                | padding 区域不参与 `unique()` 输入集合                     |
 
 ### 8.4 属性测试不变量
 

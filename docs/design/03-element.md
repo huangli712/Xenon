@@ -197,13 +197,15 @@ pub trait Numeric:
 
 ### 5.2a Signum trait
 
+> **公开性说明：** 以下 trait 为内部实现辅助，不纳入稳定公开 API 面。具体可见性由实现决定。
+
 ```rust
 /// Unified signum capability for the sealed signed scalar set.
 ///
 /// Implemented only for `i32`, `i64`, `f32`, and `f64`.
 /// Integer implementations return `-1`, `0`, or `1`.
 /// Floating-point implementations follow IEEE 754 sign-function semantics.
-pub trait Signum: Numeric + Sealed {
+pub(crate) trait Signum: Numeric + Sealed {
     fn signum(self) -> Self;
 }
 
@@ -258,6 +260,7 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
     fn ceil(self) -> Self;
 
     // ========== Constants ==========
+    // Internal convenience accessors only; keep the minimum set actually needed.
     fn epsilon() -> Self;
     fn min_positive() -> Self;
     fn max_value() -> Self;
@@ -281,6 +284,10 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
 > **跨模块约束：** `math`、`reduction`、`format` 等任何需要依赖该语义的模块，必须调用 `RealScalar::min()` / `RealScalar::max()` 或与其完全等价的封装，不得直接退回标准库固有方法，否则会破坏 Xenon 在 NaN 传播上的统一契约。
 >
 > **`signum` 语义补充：** `RealScalar::signum()` 明确采用 IEEE 754 sign-function 语义：保留带符号零，`NaN` 传播为 `NaN`，无穷值返回对应符号的单位值。`11-math.md` 中张量级 `signum()` 的浮点语义以此 trait 契约为权威基线；整数 `signum` 仍按比较结果返回 `-1/0/1`。
+>
+> **常量访问器说明：** `epsilon`、`min_positive`、`max_value`、`infinity`、`neg_infinity`、`nan` 为内部辅助方法，保留当前版本实际需要的最小集。以下常量访问器为实现便利，不构成稳定 API 承诺。
+>
+> **NaN 语义显式说明：** 此方法采用 NaN 传播语义（任一参数为 NaN → 返回 NaN），与标准库 `f32::min` / `f64::min` 的 NaN 处理不同。命名为 `min` / `max` 而非 `minimum` / `maximum` 是为了 API 简洁性。
 
 ### 5.4 ComplexScalar trait
 
@@ -308,12 +315,14 @@ pub trait ComplexScalar: Numeric + Sealed {
 
 ### 5.4a OrderedCompareElement trait
 
+> **公开性说明：** 以下 trait 为内部实现辅助，不纳入稳定公开 API 面。具体可见性由实现决定。
+
 ```rust
 /// Ordered comparison element trait.
 ///
 /// Restricts public ordered comparisons (`lt` / `gt`) to element types with the
 /// current version's required ordering semantics.
-pub trait OrderedCompareElement: Element + PartialOrd + Sealed {}
+pub(crate) trait OrderedCompareElement: Element + PartialOrd + Sealed {}
 
 impl OrderedCompareElement for i32 {}
 impl OrderedCompareElement for i64 {}
@@ -341,11 +350,13 @@ impl OrderedCompareElement for f64 {}
 
 ### 5.6 BoolElement trait
 
+> **公开性说明：** 以下 trait 为内部实现辅助，不纳入稳定公开 API 面。具体可见性由实现决定。
+
 ```rust
 /// Bool-specific element capability.
 ///
 /// Provides logical NOT for `bool` tensors without making `bool` part of `Numeric`.
-pub trait BoolElement: Element + core::ops::Not<Output = Self> {
+pub(crate) trait BoolElement: Element + core::ops::Not<Output = Self> {
     fn logical_not(self) -> Self;
 }
 
@@ -454,6 +465,8 @@ pub trait CastTo<T>: Element {
 > **错误映射说明：** `XenonError` 是唯一公开错误类型。类型转换错误对外统一表示为 `XenonError::TypeConversion(TypeConversionError)`；若实现内部保留 `TypeConversionReason` 等细节类型，也只能作为 `TypeConversionError` 的内部载荷，不能成为公开 API 的错误返回类型。
 >
 > **Bool 边界说明：** `bool` 不为任何目标类型实现 `CastTo<T>`；`bool` 张量调用 `.cast::<f32>()` 等转换必须在编译期失败。
+>
+> **无损/有损区分说明：** 同类型拷贝和无损转换虽然通过 `Result` 返回，但按契约不可失败。调用方可以安全使用 `.unwrap()` 或 `.expect()`。
 
 `Complex<T> → Real` 转换已纳入 `CastTo<T>` 的支持矩阵，但采用条件成功语义：仅当虚部为 `0` 时才继续执行对应的实数目标转换；若虚部非零，则返回可恢复错误。具体规则如下：
 
@@ -600,6 +613,8 @@ impl CastTo<i64> for Complex<f32> {
 
 `CheckedAdd` 为整数类型提供 checked 加法，供 `sum` 归约操作在整数溢出时 panic（参见 `13-reduction.md §5.1`）。
 
+> **公开性说明：** 以下 trait 为内部实现辅助，不纳入稳定公开 API 面。具体可见性由实现决定。
+
 ```rust
 // src/element/mod.rs
 
@@ -611,7 +626,7 @@ impl CastTo<i64> for Complex<f32> {
 ///
 /// Used by integer `sum()` reduction to guarantee overflow is detected
 /// in both debug and release builds (per requirement §14).
-pub trait CheckedAdd: Numeric {
+pub(crate) trait CheckedAdd: Numeric {
     /// Returns `Some(self + rhs)` if no overflow, `None` otherwise.
     fn checked_add(self, rhs: Self) -> Option<Self>;
 }
@@ -633,7 +648,7 @@ impl CheckedAdd for i64 {
 // bool: NOT implemented — not Numeric.
 
 /// Checked subtraction for integer-only overflow-sensitive paths.
-pub trait CheckedSub: Numeric + Sealed {
+pub(crate) trait CheckedSub: Numeric + Sealed {
     fn checked_sub(self, rhs: Self) -> Option<Self>;
 }
 
@@ -648,7 +663,7 @@ impl CheckedSub for i64 {
 }
 
 /// Checked multiplication for integer-only overflow-sensitive paths.
-pub trait CheckedMul: Numeric + Sealed {
+pub(crate) trait CheckedMul: Numeric + Sealed {
     fn checked_mul(self, rhs: Self) -> Option<Self>;
 }
 
@@ -663,7 +678,7 @@ impl CheckedMul for i64 {
 }
 
 /// Checked negation for integer-only overflow-sensitive paths.
-pub trait CheckedNeg: Numeric + Sealed {
+pub(crate) trait CheckedNeg: Numeric + Sealed {
     fn checked_neg(self) -> Option<Self>;
 }
 
@@ -681,6 +696,8 @@ impl CheckedNeg for i64 {
 > **设计决策：** `CheckedAdd` 仅覆盖整数加法（`i32`/`i64`），用于归约等必须精确检测溢出的路径。逐元素整数乘法不通过 `CheckedAdd` 约束暴露，具体溢出策略由对应运算模块单独规定。
 >
 > **补充说明：** 当前元素层统一提供 `CheckedAdd` / `CheckedSub` / `CheckedMul` / `CheckedNeg` 四类整数 checked 原语，供 `math`、`matrix`、`reduction` 等模块复用；除法、余数与更高阶组合检查仍由具体运算模块在实现层完成（参见 `11-math.md`、`12-matrix.md`）。
+
+> **架构同步说明：** 本文新增的 `BoolElement`、`OrderedCompareElement`、`Checked*`、`CastTo` 等 trait 须与 `01-architecture.md` 的核心类型速查表保持同步。
 
 ---
 

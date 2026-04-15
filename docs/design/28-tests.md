@@ -74,7 +74,10 @@ tests/
 │   └── ui/
 │       ├── wrong_dimension_type.rs
 │       ├── missing_element_bound.rs
-│       └── mismatched_storage_type.rs
+│       ├── mismatched_storage_type.rs
+│       ├── ui_bool_sum_rejected.rs
+│       ├── ui_bool_unique_rejected.rs
+│       └── ui_bool_arithmetic_rejected.rs
 │
 ├── test_tensor.rs              # Tensor core functionality (creation/query/type aliases)
 ├── test_math.rs                # Element-wise operations (arithmetic/math/comparison/logic)
@@ -173,6 +176,39 @@ pub mod generators;
 ```rust
 // tests/common/assertions.rs
 
+/// Exact real-comparison helpers must use native-type bit patterns / ULP checks.
+/// f32 tests compare as f32, and f64 tests compare as f64.
+pub trait ExactRealTestScalar: RealScalar {
+    type Bits: Copy + Eq + core::fmt::Debug;
+
+    fn to_bits(self) -> Self::Bits;
+    fn ulp_distance(self, other: Self) -> u64;
+}
+
+impl ExactRealTestScalar for f32 {
+    type Bits = u32;
+
+    fn to_bits(self) -> Self::Bits {
+        f32::to_bits(self)
+    }
+
+    fn ulp_distance(self, other: Self) -> u64 {
+        ulp_distance_f32(self, other)
+    }
+}
+
+impl ExactRealTestScalar for f64 {
+    type Bits = u64;
+
+    fn to_bits(self) -> Self::Bits {
+        f64::to_bits(self)
+    }
+
+    fn ulp_distance(self, other: Self) -> u64 {
+        ulp_distance_f64(self, other)
+    }
+}
+
 /// Assert two real-valued tensors are exactly equal on the same execution path.
 ///
 /// This is the default helper for IEEE 754 base operations and reductions.
@@ -183,21 +219,18 @@ pub fn assert_tensor_exact_real<A, D>(
     expected: &TensorBase<impl Storage<Elem = A>, D>,
     msg: &str,
 ) where
-    A: RealScalar + CastTo<f64>,
+    A: ExactRealTestScalar,
     D: Dimension,
 {
     assert_eq!(actual.shape(), expected.shape(),
         "{}: shape mismatch: {:?} vs {:?}", msg, actual.shape(), expected.shape());
 
     for (idx, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
-        let a_f: f64 = (*a)
-            .cast::<f64>()
-            .expect("real test helper requires cast::<f64>() support");
-        let e_f: f64 = (*e)
-            .cast::<f64>()
-            .expect("real test helper requires cast::<f64>() support");
-        assert!(ulp_eq_f64_exact(a_f, e_f),
-            "{}: element {} differs: actual={}, expected={}, comparison=strict ULP==0",
+        let a_native = *a;
+        let e_native = *e;
+        assert!(
+            a_native.to_bits() == e_native.to_bits() || a_native.ulp_distance(e_native) == 0,
+            "{}: element {} differs: actual={:?}, expected={:?}, comparison=strict native-type ULP==0",
             msg, idx, a, e);
     }
 }
@@ -212,23 +245,23 @@ pub fn assert_tensor_exact_complex<A, D>(
     msg: &str,
 ) where
     A: ComplexScalar,
-    A::Real: RealScalar + CastTo<f64>,
+    A::Real: ExactRealTestScalar,
     D: Dimension,
 {
     assert_eq!(actual.shape(), expected.shape(),
         "{}: shape mismatch: {:?} vs {:?}", msg, actual.shape(), expected.shape());
 
     for (idx, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
-        let a_re: f64 = a.re().cast::<f64>().expect("complex test helper requires cast::<f64>() support");
-        let a_im: f64 = a.im().cast::<f64>().expect("complex test helper requires cast::<f64>() support");
-        let e_re: f64 = e.re().cast::<f64>().expect("complex test helper requires cast::<f64>() support");
-        let e_im: f64 = e.im().cast::<f64>().expect("complex test helper requires cast::<f64>() support");
+        let a_re = a.re();
+        let a_im = a.im();
+        let e_re = e.re();
+        let e_im = e.im();
 
-        assert!(ulp_eq_f64_exact(a_re, e_re),
-            "{}: element {} real part differs: actual={}, expected={}, comparison=strict ULP==0",
+        assert!(a_re.to_bits() == e_re.to_bits() || a_re.ulp_distance(e_re) == 0,
+            "{}: element {} real part differs: actual={:?}, expected={:?}, comparison=strict native-type ULP==0",
             msg, idx, a_re, e_re);
-        assert!(ulp_eq_f64_exact(a_im, e_im),
-            "{}: element {} imaginary part differs: actual={}, expected={}, comparison=strict ULP==0",
+        assert!(a_im.to_bits() == e_im.to_bits() || a_im.ulp_distance(e_im) == 0,
+            "{}: element {} imaginary part differs: actual={:?}, expected={:?}, comparison=strict native-type ULP==0",
             msg, idx, a_im, e_im);
     }
 }
@@ -321,6 +354,8 @@ macro_rules! assert_xenon_error {
     };
 }
 ```
+
+> **说明**：精确比较须使用对应原生类型的位模式/ULP 比较，不依赖跨精度转换。`f32` 测试用 `f32` 比较，`f64` 测试用 `f64` 比较。
 
 ### 5.3 tests/common/generators.rs
 
@@ -489,6 +524,23 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_unique_nan_preserved`     | 浮点 `NaN != NaN`，输入中的每个 NaN 都应保留      | 高     |
 | `test_unique_signed_zero_equal` | `-0.0` 与 `0.0` 视为相等，仅保留一个零值          | 高     |
 | `test_unique_complex`           | 复数 unique                                       | 中     |
+| `test_unique_non_contiguous`    | 转置/切片视图上的 unique 仅按逻辑元素处理         | 高     |
+
+```rust
+#[test]
+fn test_unique_non_contiguous() {
+    let owner = Tensor2::<f64>::from_shape_vec(
+        [2, 3],
+        vec![1.0, 2.0, 1.0, 3.0, 2.0, 3.0],
+    )
+    .expect("shape and data length must match");
+
+    let transposed = owner.transpose();
+    let uniq = transposed.unique().expect("unique should accept logical-element iteration");
+
+    assert_eq!(uniq.len(), 3);
+}
+```
 
 ### 8.10 test_shape.rs
 
@@ -585,6 +637,9 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `ui_mismatched_storage_type`           | 不合法存储表示组合在编译期被拒绝                                | 高     |
 | `ui_unsigned_tensor_element_rejected`  | `usize` 等无符号整数不能作为张量元素类型                        | 高     |
 | `ui_invalid_unsigned_element_rejected` | `u8` / `u16` / `u32` / `u64` 等非法无符号元素类型在编译期被拒绝 | 高     |
+| `ui_bool_sum_rejected`                 | `bool` 不参与 sum 归约                                           | 高     |
+| `ui_bool_unique_rejected`              | `bool` 不参与 unique 操作                                        | 高     |
+| `ui_bool_arithmetic_rejected`          | `bool` 不参与四则运算                                            | 高     |
 
 ### 8.19 property.rs
 
@@ -610,7 +665,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_send_sync_contracts`    | 各 storage mode 的 Send/Sync 边界与 `25-safety.md` 一致                                                      | 高     |
 | `test_complex_c99_layout`     | `Complex<T>` 的 C-compatible 布局与 FFI 约定一致                                                             | 高     |
 | `test_ix0_iter_single`        | 零维张量元素迭代恰好产出 1 个元素                                                                            | 高     |
-| `test_zst_storage_no_ub`      | 验证内部实现对零大小类型的安全处理（内部不变量测试，非公开 API 契约）                                        | 高     |
+| `test_zst_storage_no_ub`      | 验证内部实现对零大小类型的安全处理。此为内部实现回归测试，非公开 API 契约测试。                              | 高     |
 
 ---
 
@@ -636,7 +691,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 - 对 `10^7` 元素张量，须验证内存分配成功、测试过程不因设计缺陷触发 OOM，并显式检查 shape 乘积与线性索引换算在 `usize` 边界内不发生溢出。
 - 大张量索引须覆盖首元素、末元素及跨行边界元素（如 `[0, 0]`、`[9999, 999]`、`[1, 0]`），确保逻辑索引到线性偏移的映射正确。
 - 高维场景除 `Ix4`~`Ix6` 外，还须覆盖 `IxDyn` 动态维度：rank 0（标量）、1、2，直至 12 的代表性张量，满足需求说明书 §28.4 对“高 rank 的动态维度张量”的覆盖要求。
-- `IxDyn` 测试须验证与固定维度 `Ix1`~`Ix6` 的 shape/dimension 转换、广播、动态索引与迭代行为；当前设计以 rank 12 作为跨平台上限的测试目标，不假定平台支持无限 rank。
+- `IxDyn` 测试须验证与固定维度 `Ix1`~`Ix6` 的 shape/dimension 转换、广播、动态索引与迭代行为；rank 12 为测试采样上限，不是 API 或实现上限。`IxDyn` 理论上支持任意 rank。
 
 #### 8.21.2 边界测试示例
 
@@ -726,7 +781,7 @@ fn test_ixdyn_high_rank_scenarios() {
 }
 ```
 
-说明：上述示例中的大张量测试以 `f32` 作为默认元素类型，以在 `10^7` 元素量级下控制测试内存占用；若目标平台内存预算更紧，可保留元素数量目标不变并避免并发叠加分配。`IxDyn` 高 rank 测试以 rank 12 为上限，兼顾需求覆盖与测试执行成本。
+说明：上述示例中的大张量测试以 `f32` 作为默认元素类型，以在 `10^7` 元素量级下控制测试内存占用；若目标平台内存预算更紧，可保留元素数量目标不变并避免并发叠加分配。`IxDyn` 高 rank 测试以 rank 12 作为测试采样上限，兼顾需求覆盖与测试执行成本；这不是 API 或实现上限。
 
 > **执行分层要求：** 大张量用例默认归入 weekly / release 级 extended test；PR 级别只保留 smoke/required 层中的小中规模代表性样例。若 PR 需要触发大张量专项验证，应显式标记为额外质量门，而非默认必跑项。
 
@@ -1374,7 +1429,10 @@ tests/
         ├── missing_element_bound.rs
         ├── mismatched_storage_type.rs
         ├── unsigned_tensor_element_rejected.rs
-        └── invalid_unsigned_element_rejected.rs
+        ├── invalid_unsigned_element_rejected.rs
+        ├── ui_bool_sum_rejected.rs
+        ├── ui_bool_unique_rejected.rs
+        └── ui_bool_arithmetic_rejected.rs
 ```
 
 建议的 harness 形式如下（伪代码，需避免与辅助函数同名）：
@@ -1395,6 +1453,7 @@ fn compile_fail_harness() {
 - 非法 trait bound：例如元素类型缺失 `Element` / `Numeric` / `RealScalar` 等必要约束，违反第 4 节元素类型边界。
 - 不匹配的存储类型：例如要求 `StorageMut` 的 API 传入只读 view，或将不兼容的 storage representation 组合到同一签名中。
 - `usize` / 非法无符号元素类型边界：例如拒绝 `Tensor<usize, Ix1>`、拒绝把 `usize` 送入逐元素算术或数值 cast，同时允许 `usize` 仅出现在 shape、axis、index 与切片边界等元数据位置。
+- `bool` 操作边界：例如拒绝 `bool` 参与 `sum`、`unique` 与四则运算，确保布尔类型只出现在文档允许的逻辑语义范围内。
 
 这些 compile-fail 用例与运行时错误测试互补：前者验证“错误代码无法通过编译”，后者验证“合法代码在非法输入下返回正确错误语义”。
 
@@ -1452,7 +1511,7 @@ fn compile_fail_harness() {
 ---
 
 
-## 13. 平台与工程约束
+## 12. 平台与工程约束
 
 | 约束项     | 约束内容                                           |
 | ---------- | -------------------------------------------------- |

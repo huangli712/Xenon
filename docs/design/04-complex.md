@@ -173,7 +173,8 @@ Xenon 公开使用 sealed 的 `ComplexFloat` 约束把 `Complex<T>` 封闭到 `f
 ```rust,ignore
 /// Public bound for `Complex<T>`.
 ///
-/// This trait is sealed via `private::Sealed`, so downstream crates must not
+/// This trait is an internal abstraction for `Complex<f32>` / `Complex<f64>`.
+/// It is sealed via `private::Sealed`, so downstream crates must not
 /// implement it. Xenon only supports `f32` and `f64` as complex components.
 pub trait ComplexFloat: private::Sealed + Copy + Default + Debug + PartialEq + PartialOrd
     + core::ops::Add<Output = Self>
@@ -196,7 +197,7 @@ impl ComplexFloat for f64 {
 }
 ```
 
-> **API 边界说明**：`ComplexFloat` 是用于表达 `Complex<T>` 公开 bound 的 `pub` trait，但其实现范围由 `private::Sealed` 封闭到 `f32`/`f64`；它不是面向下游的公开扩展点。`Float` 则保持内部实现细节。公开能力仍主要通过 `Element`/`Numeric`/`ComplexScalar` 等更高层 trait 暴露。
+> **API 边界说明**：`ComplexFloat` 是用于表达 `Complex<T>` 公开 bound 的 `pub` trait，但其实现范围由 `private::Sealed` 封闭到 `f32`/`f64`；它不是面向下游的公开扩展点。此 trait 实际上是 `Complex<f32>` / `Complex<f64>` 的内部抽象，公开文档必须明确：当前版本唯一受支持实例只有 `Complex<f32>` 与 `Complex<f64>`。`Float` 则保持内部实现细节。公开能力仍主要通过 `Element`/`Numeric`/`ComplexScalar` 等更高层 trait 暴露。
 
 内部实现细节：
 
@@ -358,6 +359,8 @@ impl Complex<f64> {
 ### 5.5 数学方法
 
 > **注意**：数学方法通过具体的 `impl Complex<f32>` 和 `impl Complex<f64>` 块提供，而非泛型 `impl<T: Float>`。这避免了 `Float` trait（`pub(crate)`）暴露到公共 API。
+
+> **内部 helper 说明**：以下为内部实现 helper，仅作实现参考。当前版本需求不要求这些 helper 的稳定化设计。
 
 ````rust,ignore
 // Concrete impl for Complex<f32> — public stable methods plus internal helpers.
@@ -592,7 +595,11 @@ impl<T: ComplexFloat + core::fmt::Display> core::fmt::Display for Complex<T> {
             return write!(f, "{}+NaNj", self.re);
         }
         if self.im == T::default() {
-            write!(f, "{}", self.re)
+            if scalar_is_positive_zero(self.im) {
+                write!(f, "{}", self.re)
+            } else {
+                write!(f, "{}{}j", self.re, self.im)
+            }
         } else if self.re == T::default() {
             write!(f, "{}j", self.im)
         } else if self.im > T::default() {
@@ -602,17 +609,31 @@ impl<T: ComplexFloat + core::fmt::Display> core::fmt::Display for Complex<T> {
         }
     }
 }
+
+// Concrete f32/f64 helpers distinguish +0.0 from -0.0 via IEEE-754 bit patterns.
+#[inline]
+fn scalar_is_positive_zero(im: f32) -> bool {
+    im.to_bits() == 0.0f32.to_bits()
+}
+
+#[inline]
+fn scalar_is_positive_zero(im: f64) -> bool {
+    im.to_bits() == 0.0f64.to_bits()
+}
 ```
+
+> **实现要点：** `scalar_is_positive_zero()` 只识别正零 bit pattern；`-0.0` 会落入“保留虚部表示”的分支，因此 `Complex::new(re, -0.0)` 不再被错误折叠为纯实数输出。
 
 | 输入                      | Display 输出 |
 | ------------------------- | ------------ |
 | `Complex::new(3.0, 4.0)`  | `"3+4j"`     |
 | `Complex::new(3.0, -4.0)` | `"3-4j"`     |
 | `Complex::new(3.0, 0.0)`  | `"3"`        |
+| `Complex::new(3.0, -0.0)` | `"3-0j"` / 含虚部表示 |
 | `Complex::new(0.0, 4.0)`  | `"4j"`       |
 | `Complex::new(0.0, 0.0)`  | `"0"`        |
 
-> **Display 稳定性规则：** `-0.0` 必须保留标量自身的文本符号，不得在复数格式化层强行归一化为 `0.0`；`NaN` 的 payload / sign bit 不作为稳定输出契约的一部分；`Inf` / `-Inf` 直接沿用分量标量的 `Display` 结果。复数字符串层只保证组合规则稳定，不承诺超出底层浮点 `Display` 的额外 canonicalization。
+> **Display 稳定性规则：** `-0.0` 必须保留其符号信息；当虚部为 `-0.0` 时，输出须包含虚部表示，不能落入“仅输出实部”的 `im == 0` 折叠路径。实现上须显式区分 `+0.0` 与 `-0.0`：例如通过 `im.to_bits() == 0.0f32.to_bits()` / 对应 `f64` 正零 bit pattern 判断正零，并单独识别负零 bit pattern。`NaN` 的 payload / sign bit 不作为稳定输出契约的一部分；`Inf` / `-Inf` 直接沿用分量标量的 `Display` 结果。复数字符串层只保证组合规则稳定，不承诺超出底层浮点 `Display` 的额外 canonicalization。
 
 ### 5.10 类型转换
 
@@ -678,6 +699,8 @@ Xenon 对需求说明书 §5 的裁决是：**公开 FFI 契约只保证 `#[repr
 3. **不保证** 与 C99 `_Complex` 的 ABI 或调用约定兼容，相关互操作若有需要，应由上游按目标平台单独验证并适配。
 
 FFI 示例：
+
+> **ABI 范围说明：** 示例仅针对等价两字段 struct ABI，不保证与 C99 `_Complex` ABI 或所有平台 ABI 兼容。
 
 ```rust,ignore
 // Rust side

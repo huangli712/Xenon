@@ -471,9 +471,13 @@ pub unsafe trait StorageShared: Storage + Clone {
 }
 ```
 
+> **公开性说明：** `ref_count()` / `is_unique()` 主要用于内部优化与调试辅助，不纳入稳定公开 API 契约。实现上可降为 `pub(crate)` 或仅通过内部 trait 暴露。
+
 ### 5.9 StorageIntoOwned Trait
 
 消耗式转为 Owned 存储，用于 `into_owned()` 等需要物化独占 owned 结果的路径。
+
+> **语义边界说明：** `StorageIntoOwned` 仅提供底层 buffer 复制能力，不感知 `shape` / `strides` / `offset`。逻辑张量物化（`into_owned()`）的完整语义须在 tensor 层实现。storage 层仅提供 `copy_buffer()` 等内部 helper；若示例展示 `into_owned()`，应理解为对应张量层 API，详见 `07-tensor.md`。
 
 ```rust
 /// Storage types that can be converted into an owned tensor by consuming self.
@@ -541,6 +545,25 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
 
 > **补充说明：** 上表逐格对应 `require.md` §6.2 的抽象转换矩阵，并把每个抽象格子落实为具体表示路径：零拷贝表示仅重借用、共享只读降级或降级访问权限；须分配表示需要分配新的 owned 缓冲并复制数据；不可转换表示 Rust 类型系统下无法在不违反所有权/独占借用约束的前提下完成该转换，例如 `ViewRepr<'_, A> -> ArcRepr<A>` 与 `ArcRepr<A> -> ViewMutRepr<'_, A>`。
 
+#### 5.11.1a 转换成功/失败模型
+
+| 转换入口 | 成功条件 | 失败错误类型 |
+| -------- | -------- | ------------ |
+| `Owned<A> -> Owned<A>`（move） | 直接转移所有权 | 不失败 |
+| `Owned<A>::to_owned()` | `A: Clone`，深拷贝底层 buffer 成功 | 不新增公开转换错误；若底层分配失败，遵循分配器/运行时既有行为，不通过新的 `XenonError` 变体建模 |
+| `Owned<A> -> ViewRepr<'_, A>` | 借用源 owned，生命周期合法 | 不失败 |
+| `Owned<A> -> ViewMutRepr<'_, A>` | 独占借用源 owned，生命周期合法 | 不失败 |
+| `Owned<A> -> ArcRepr<A>` | 允许零拷贝降级为共享只读表示 | 不失败 |
+| `ViewRepr<'_, A> -> Owned<A>` | 成功复制底层 buffer 到新 owned | 不新增公开转换错误；若底层分配失败，遵循分配器/运行时既有行为，不通过新的 `XenonError` 变体建模 |
+| `ViewMutRepr<'_, A> -> ViewRepr<'_, A>` | 零拷贝只读重借用 | 不失败 |
+| `ViewMutRepr<'_, A> -> Owned<A>` | 成功复制底层 buffer 到新 owned | 不新增公开转换错误；若底层分配失败，遵循分配器/运行时既有行为，不通过新的 `XenonError` 变体建模 |
+| `ArcRepr<A> -> ViewRepr<'_, A>` | 成功借出共享只读视图 | 不失败 |
+| `ArcRepr<A> -> Owned<A>` | 成功分配新 owned 并复制整个 buffer | 不新增公开转换错误；若底层分配失败，遵循分配器/运行时既有行为，不通过新的 `XenonError` 变体建模 |
+| 任意只读/共享只读 -> `ViewMutRepr<'_, A>` | 不允许违反独占可写前提 | `XenonError::InvalidStorageMode { .. }` |
+| `ViewRepr<'_, A> -> ArcRepr<A>` | storage 层不具备共享所有权句柄，禁止运行时补造 | `XenonError::InvalidStorageMode { .. }` |
+
+> **错误模型说明：** 上表与 `require.md` §6.2 的矩阵一致：违反存储模式/可变性前提的公开转换失败统一使用 `26-error.md` 定义的 `XenonError::InvalidStorageMode { .. }`；复制型成功路径本身不再额外引入新的公开转换错误类型。
+
 > **类型安全论证**：`ViewMutRepr<'a, A>` 的零拷贝降级路径是只读重借用 `ViewRepr<'a, A>`，其语义与 `require.md` §6.2 对“可写引用 → 共享只读引用 = 零拷贝”的要求一致：结果显式放弃写权限，且在该只读结果存续期间不得再并发写入同一底层数据。相对地，`ViewMutRepr<'a, A>` 不持有底层分配所有权，因此仍不能在零拷贝前提下构造 `ArcRepr<A>` 所需的共享所有权句柄。
 
 #### 5.11.2 公开转换 API 对照表
@@ -577,6 +600,7 @@ fn process_bad(storage: &Owned<f64>) {
 ```rust
 // Good - materialize an owned buffer before mutation
 fn modify_shared(arc: ArcRepr<f64>) -> Owned<f64> {
+    // Note: tensor-level `into_owned()` semantics live in 07-tensor.md.
     let mut owned = arc.into_owned_storage();
     owned.as_mut_slice()[0] = 10.0;
     owned
@@ -612,6 +636,9 @@ fn modify_shared(arc: ArcRepr<f64>) -> Owned<f64> {
 ///
 /// Use `is_aligned()` at runtime to query whether the backing allocation
 /// satisfies the 64-byte alignment requirement.
+/// The authoritative `ALIGNED` layout flag is still computed by
+/// `layout::compute_layout_flags(shape, strides, ptr)` rather than copied
+/// directly from storage state.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Owned<A> {
     /// Internal data storage.
@@ -849,6 +876,25 @@ pub unsafe trait IsArc: RawStorage {}
 ```
 
 使用 Sealed trait 模式防止外部类型实现。
+
+### 6.5a `as_ptr()` / 空张量偏移规则
+
+storage 层返回的是 storage base pointer，不预先叠加张量逻辑 `offset`。与 `07-tensor.md` 保持一致：对空张量（`len() == 0`），张量层指针 API 必须直接返回 `NonNull::dangling().as_ptr()`，不对 storage base pointer 做 `add(offset)` 操作。
+
+```rust,ignore
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+{
+    pub fn as_ptr(&self) -> *const A {
+        if self.len() == 0 {
+            return NonNull::<A>::dangling().as_ptr();
+        }
+        unsafe { self.storage.as_ptr().add(self.offset) }
+    }
+}
+```
 
 ### 6.7 Send/Sync 实现规则
 
@@ -1092,6 +1138,9 @@ where
     D: Dimension,
 {
     pub fn as_ptr(&self) -> *const A {
+        if self.len() == 0 {
+            return NonNull::<A>::dangling().as_ptr();
+        }
         // storage.as_ptr() is the storage base pointer. TensorBase is responsible
         // for applying offset and exposing the logical-first pointer to upper layers.
         unsafe { self.storage.as_ptr().add(self.offset) }
@@ -1101,7 +1150,7 @@ where
 
 ### 9.2 与 Layout 模块
 
-Storage 提供对齐信息（`is_aligned()`），Layout 模块查询对齐状态更新 `LayoutFlags::ALIGNED`（参见 `06-layout.md` §5）。
+`LayoutFlags::ALIGNED` 的唯一权威计算入口是 `layout::compute_layout_flags(shape, strides, ptr)`（参见 `06-layout.md` §5）。storage 提供的 `is_aligned()` 仅用于查询底层分配/指针的对齐信息，不直接决定 layout flag。
 
 ### 9.3 与 Parallel 模块
 

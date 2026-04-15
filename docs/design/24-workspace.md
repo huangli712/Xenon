@@ -26,7 +26,7 @@
 | 单向增长     | 只扩容不缩容，避免内存抖动                                                           |
 | 未初始化感知 | 底层字节视为 `MaybeUninit<u8>`；只有调用方显式声明初始化完成后，才能获取已初始化视图 |
 | O(1) 分割    | 仅指针算术，无内存分配                                                               |
-| 显式生命周期 | 不可跨线程传递（`!Send + !Sync`），仅限创建它的线程使用；借用排他性由运行时状态机保证 |
+| 显式生命周期 | 当前实现默认不可跨线程传递（`!Send + !Sync`）；这是为简化借用安全性论证采取的实现选择，而非 `require.md §26` 的强制要求 |
 
 ### 1.3 在架构中的位置
 
@@ -138,7 +138,7 @@ External dependencies:
 
 > **与 XenonError 的关系**: `WorkspaceError` 仍作为内部分类存在，以避免 workspace 模块内部丢失领域语义；但公开 Xenon API 不直接暴露它，而是统一返回包装后的 `XenonError`。参见 `26-error.md`。
 
-> **与线程安全需求的边界**: workspace 不是 `require.md §10` 中张量 storage mode 的一部分，而是独立的上游缓冲区工具。其 `!Send + !Sync` 设计不与张量存储模式的线程安全承诺冲突。
+> **与线程安全需求的边界**: workspace 不是 `require.md §10` 中张量 storage mode 的一部分，而是独立的上游缓冲区工具。`!Send + !Sync` 为当前实现选择，非 `require.md §26` 的强制要求。采用此限制是为了简化借用安全性论证；未来版本可考虑放宽为 `Send`（需配合安全的跨线程借用检查）。
 
 > **初始化语义约定**: Workspace 的底层缓冲区始终按“可能未初始化”建模。公共 API 默认只暴露 `MaybeUninit` 视图；只有调用方能够证明某一前缀或某一 typed region 已被完整写入时，才允许通过 `assume_init_*` 系列 unsafe API 将其解释为已初始化视图。
 
@@ -182,9 +182,10 @@ use crate::error::{Result, XenonError};
 ///
 /// - Cannot be re-borrowed while borrowed (enforced by borrow guards)
 /// - Can be reused after returning
-/// - Not transferable across threads (`!Send + !Sync`); only usable on the
-///   creating thread. This ensures memory safety — Workspace holds raw
-///   pointers, and cross-thread transfer could cause data races.
+/// - The current implementation is not transferable across threads
+///   (`!Send + !Sync`), which simplifies the borrow-safety argument around raw
+///   pointers. This is an implementation choice rather than a `require.md §26`
+///   mandate; future versions may relax it with safe cross-thread borrow checks.
 ///
 /// # Initialization Model
 ///
@@ -222,7 +223,7 @@ pub struct Workspace {
     /// Borrow state (atomic).
     ///
     /// - 0: not borrowed
-    /// - 1: shared borrow
+    /// - 1: read guard
     /// - 2: exclusive borrow
     borrow_state: AtomicU8,
 
@@ -237,7 +238,7 @@ pub struct Workspace {
 
 > **设计决策：** 使用 `AtomicU8` 管理借用状态而非 `Mutex`，原因：无锁、状态简单（仅需 3 个值）。当前版本默认运行于 `std` 环境，因此直接依赖标准平台提供的原子与分配能力。
 
-> **设计备注：** 当前实现使用 `AtomicU8`/`AtomicUsize` 管理借用状态。由于 `Workspace` 类型被标记为 `!Send + !Sync`，理论上可以使用 `Cell`/`RefCell` 替代以简化实现。选择原子操作是为了在未来版本可能支持跨线程共享时减少迁移成本。
+> **设计备注：** 当前实现使用 `AtomicU8`/`AtomicUsize` 管理借用状态。由于 `Workspace` 当前实现选择为 `!Send + !Sync`，理论上可以使用 `Cell`/`RefCell` 替代以简化实现。选择原子操作是为了在未来版本可能支持跨线程借用检查时减少迁移成本。
 
 ### 5.2 常量
 
@@ -378,13 +379,13 @@ pub struct WorkspaceBorrowMut<'a> {
 }
 
 impl Workspace {
-    /// Acquire the workspace for shared inspection of the scratch region.
+    /// Acquire the workspace for read-only inspection of the scratch region.
     ///
     /// # Errors
     ///
     /// `XenonError::Workspace(WorkspaceError::AlreadyBorrowed)`: Workspace is already borrowed.
     ///
-    /// Note: the current design allows at most one active shared guard at a time.
+    /// Note: the current design allows at most one active read guard at a time.
     /// This keeps the runtime state machine simple and matches the workspace's
     /// temporary-scratch-buffer positioning. The returned guard still models the
     /// bytes as potentially uninitialized; use `assume_init_slice` only when the
@@ -868,6 +869,7 @@ impl Workspace {
             .map_err(|_| WorkspaceError::InvalidLayout {
                 size: new_capacity,
                 align: self.alignment,
+                reason: Cow::Borrowed("Layout::from_size_align rejected the requested size/alignment during reallocate"),
             })?;
 
         let new_ptr = unsafe { alloc(new_layout) };
@@ -1189,7 +1191,7 @@ Wave 4:               [T7]            <- depends on T4, T5, and T6 all being com
 
 | 配置 | 验证点 |
 | ---- | ---- |
-| 默认配置 | workspace 在默认构建下保持 `!Send + !Sync`、MaybeUninit 暴露与借用状态机语义。 |
+| 默认配置 | workspace 在默认构建下采用 `!Send + !Sync` 这一当前实现选择，并保持 MaybeUninit 暴露与借用状态机语义。 |
 | 其他 feature 组合 | 不适用；当前模块无额外 feature gate。 |
 
 ### 8.7 类型边界 / 编译期测试
@@ -1261,7 +1263,7 @@ Upper-layer code requests temporary scratch space
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | 决策     | 借出期间禁止再次借出（由 AtomicU8 CAS 保证）                                                                                                |
 | 理由     | 安全性：避免同一缓冲区被多次借出导致数据竞争；简单性: 单一借用模型更易理解；`split_at_mut()` 生成的子空间全部释放后，父工作空间才恢复可借用状态。 |
-| 替代方案 | 允许共享借用（多个 reader） — 未来可扩展，当前版本简化                                                                                      |
+| 替代方案 | 允许多个并发 read guard（多个 reader） — 未来可扩展，当前版本简化                                                                            |
 
 ### 决策 3：扩容安全性保证
 
@@ -1283,9 +1285,9 @@ Upper-layer code requests temporary scratch space
 
 | 属性     | 值                                                                                                                                                                                                             |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | Workspace 不实现 Send 或 Sync                                                                                                                                                                                  |
-| 理由     | Workspace 设计为线程内临时缓冲区，文档约束为 `!Send + !Sync`。即使存在运行时借用状态检查，也不将其建模为可跨线程传递或共享的基础类型；若调用方需要多线程临时缓冲区，应在线程边界外自行分配和管理独立工作空间。 |
-| 替代方案 | 使用 AtomicU8 实现 Send + Sync — 放弃，仅有运行时检查不够，多线程场景下需要完整同步                                                                                                                            |
+| 决策     | Workspace 当前实现不实现 Send 或 Sync                                                                                                                                                                           |
+| 理由     | `!Send + !Sync` 为当前实现选择，目的是简化借用安全性论证。即使存在运行时借用状态检查，也暂不将其建模为可跨线程传递或共享的基础类型；若调用方需要多线程临时缓冲区，应在线程边界外自行分配和管理独立工作空间。未来版本可在补充安全的跨线程借用检查后重新评估。 |
+| 替代方案 | 放宽为 Send（并配套跨线程借用检查） — 未来可评估；仅依赖当前 AtomicU8 状态机不足以直接支持完整多线程语义                                                                                                     |
 
 ---
 

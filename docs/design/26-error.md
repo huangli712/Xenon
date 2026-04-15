@@ -117,10 +117,12 @@ pub enum XenonError {
         right_shape: Vec<usize>,
     },
 
+    // 本定义为 BroadcastError 的唯一权威源；其他文档引用时须与此一致。
     BroadcastError {
-        operation: Cow<'static, str>,
-        input_shape: Vec<usize>,
-        target_shape: Vec<usize>,
+        operation: &'static str,
+        lhs_shape: Vec<usize>,
+        rhs_shape: Vec<usize>,
+        attempted_target_shape: Option<Vec<usize>>,
         axis: Option<usize>,
     },
 
@@ -148,12 +150,14 @@ pub enum XenonError {
         shape: Vec<usize>,
     },
 
+    // 本定义为 InvalidShape 的唯一权威源；其他文档不得增删字段，除非先同步更新此处。
     InvalidShape {
         operation: Cow<'static, str>,
         shape: Vec<usize>,
         expected_elements: usize,
         actual_elements: usize,
         offending_dim: Option<usize>,
+        reason: Option<Cow<'static, str>>,
     },
 
     DimensionMismatch {
@@ -168,6 +172,9 @@ pub enum XenonError {
         expected: Cow<'static, str>,
         actual: Cow<'static, str>,
         axis: Option<usize>,
+        axis_len: Option<usize>,
+        start: Option<usize>,
+        end: Option<usize>,
         shape: Option<Vec<usize>>,
     },
 
@@ -288,13 +295,13 @@ where
 | 变体                                  | 最小结构化字段                                                                     |
 | ------------------------------------- | ---------------------------------------------------------------------------------- |
 | `ShapeMismatch`                       | `operation`, `left_shape`, `right_shape`                                           |
-| `BroadcastError`                      | `operation`, `input_shape`, `target_shape`, `axis?`                                |
+| `BroadcastError`                      | `operation`, `lhs_shape`, `rhs_shape`, `attempted_target_shape?`, `axis?`          |
 | `LayoutMismatch`                      | `operation`, `required_layout`, `actual_layout`, `shape`                           |
 | `InvalidLayout`                       | `operation`, `storage_kind`, `shape`, `strides`, `offset`, `storage_len`, `reason` |
 | `InvalidAxis`                         | `operation`, `axis`, `ndim`, `shape`                                               |
-| `InvalidShape`                        | `operation`, `shape`, `expected_elements`, `actual_elements`, `offending_dim?`     |
+| `InvalidShape`                        | `operation`, `shape`, `expected_elements`, `actual_elements`, `offending_dim?`, `reason?` |
 | `DimensionMismatch`                   | `operation`, `expected`, `actual`                                                  |
-| `InvalidArgument`                     | `operation`, `argument`, `expected`, `actual`, `axis?`, `shape?`；范围切片越界时额外以 `argument="slice_range"`、`actual=<range>` 表达，并携带 `axis` |
+| `InvalidArgument`                     | `operation`, `argument`, `expected`, `actual`, `axis?`, `axis_len?`, `start?`, `end?`, `shape?`；范围切片越界时必须额外携带 `axis`、`axis_len`、`start`、`end`，不得仅以字符串拼接描述 |
 | `InvalidStorageMode`                  | `operation`, `expected`, `actual`, `shape?`, `source_storage_mode?`, `target_storage_mode?`, `conversion_type?` |
 | `Ffi(FfiError)`                       | 由 `FfiError` 提供 `operation`, `backend`, `precondition`, `actual`                |
 | `Workspace(...)`                      | 由 `WorkspaceError` 提供 `size`, `align`, `split`, `len` 等适用结构化字段          |
@@ -306,6 +313,8 @@ where
 ### 4.5 Display 与 panic 信息要求
 
 Display 输出和 panic 文本都必须能让调用方定位问题来源；最少应包含操作名、错误类别以及适用上下文。
+
+**正式规则：** panic 信息必须包含 `operation` + error kind + 至少一个关键上下文字段（如 `axis`、`shape`、`index`、类型等）。
 
 ```rust
 impl fmt::Display for XenonError {
@@ -324,15 +333,20 @@ impl fmt::Display for XenonError {
             ),
             Self::BroadcastError {
                 operation,
-                input_shape,
-                target_shape,
+                lhs_shape,
+                rhs_shape,
+                attempted_target_shape,
                 axis,
             } => write!(
                 f,
-                "broadcast error in {}: input [{}], target [{}], axis {:?}",
+                "broadcast error in {}: lhs [{}], rhs [{}], attempted_target {}, axis {:?}",
                 operation,
-                fmt_shape(input_shape),
-                fmt_shape(target_shape),
+                fmt_shape(lhs_shape),
+                fmt_shape(rhs_shape),
+                attempted_target_shape
+                    .as_ref()
+                    .map(|value| fmt_shape(value))
+                    .unwrap_or_else(|| "<none>".to_string()),
                 axis,
             ),
             Self::LayoutMismatch {
@@ -386,14 +400,16 @@ impl fmt::Display for XenonError {
                 expected_elements,
                 actual_elements,
                 offending_dim,
+                reason,
             } => write!(
                 f,
-                "invalid shape in {}: shape [{}], expected_elements {}, actual_elements {}, offending_dim {:?}",
+                "invalid shape in {}: shape [{}], expected_elements {}, actual_elements {}, offending_dim {:?}, reason {}",
                 operation,
                 fmt_shape(shape),
                 expected_elements,
                 actual_elements,
                 offending_dim,
+                reason.as_deref().unwrap_or("<none>"),
             ),
             Self::DimensionMismatch {
                 operation,
@@ -412,15 +428,21 @@ impl fmt::Display for XenonError {
                 expected,
                 actual,
                 axis,
+                axis_len,
+                start,
+                end,
                 shape,
             } => write!(
                 f,
-                "invalid argument in {}: {} expected {}, actual {}, axis {}, shape {}",
+                "invalid argument in {}: {} expected {}, actual {}, axis {}, axis_len {}, start {}, end {}, shape {}",
                 operation,
                 argument,
                 expected,
                 actual,
                 axis.map(|value| value.to_string()).unwrap_or_else(|| "<any>".to_string()),
+                axis_len.map(|value| value.to_string()).unwrap_or_else(|| "<any>".to_string()),
+                start.map(|value| value.to_string()).unwrap_or_else(|| "<any>".to_string()),
+                end.map(|value| value.to_string()).unwrap_or_else(|| "<any>".to_string()),
                 shape.as_ref().map(|value| fmt_shape(value)).unwrap_or_else(|| "<any>".to_string()),
             ),
             Self::InvalidStorageMode {

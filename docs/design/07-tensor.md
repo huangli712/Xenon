@@ -265,7 +265,10 @@ where
     /// For dynamic dimensions (IxDyn), this is a runtime value.
     pub fn ndim(&self) -> usize;
 
-    /// Returns the total number of elements (product of all dimension lengths).
+    /// Returns the total number of logical elements (product of all dimension lengths).
+    ///
+    /// Current design note: this query is O(ndim). If O(1) is required in the
+    /// future, `TensorBase` may cache the logical element count explicitly.
     pub fn len(&self) -> usize;
 
     /// Returns whether the array is empty (any dimension length is 0).
@@ -332,7 +335,17 @@ pub enum DataLocation {
 
 > **数据位置查询说明：** 当前版本仅支持 CPU 内存，`data_location()` 恒返回 `DataLocation::Cpu`，用于满足 `require.md §8` 的存储位置查询接口。
 
-> **`storage_kind()` 语义说明：** `storage_kind()` 返回 `Owned / View / ViewMut / Shared` 四类存储语义，而不是具体底层实现名。广播结果统一报告为 `Shared`；转置视图与切片视图统一报告为 `View`；可写借用报告为 `ViewMut`。
+> **`storage_kind()` 语义说明：** `storage_kind()` 返回底层**实际存储表示类型**对应的 `Owned / View / ViewMut / Shared`，而不是高层语义分类。`OwnedRepr` 报告 `Owned`，`ViewRepr` 报告 `View`，`ViewMutRepr` 报告 `ViewMut`，`ArcRepr` 报告 `Shared`。因此广播结果若底层表示为 `ViewRepr`，其 `storage_kind()` 也必须返回 `View`，而不是 `Shared`。
+
+> **广播语义补充：** 广播结果的只读共享语义通过 layout flags 和访问控制表达，而非通过 `storage_kind()` 伪装。详见 `15-broadcast.md`。
+
+> **三层语义模型：**
+>
+> 1. **存储表示层**：`Owned` / `View` / `ViewMut` / `Shared`，即 `storage_kind()` 的返回值，描述底层 representation。
+> 2. **访问语义层**：`ReadOnly` / `SharedReadOnly` / `Writable`，由存储表示与当前访问约束共同导出。
+> 3. **布局状态层**：`FContiguous` / `NonContiguous` / `BroadcastView`，由 `LayoutFlags` / `LayoutState` 描述。
+>
+> 广播张量通常表现为“表示层 = `View`，访问语义层 = `SharedReadOnly`，布局状态层 = `BroadcastView`”。
 
 > `LayoutState` 使用 `crate::layout::LayoutState`（参见 `06-layout.md §5`）；
 > 本文档不再重复定义 `FContiguous`、`NonContiguous`、`BroadcastView` 三个变体。
@@ -442,6 +455,13 @@ where
     /// Returns `Err` when:
     /// - `shape.checked_size()` overflows
     /// - `data.len() != shape.checked_size()`
+    /// - F-order stride derivation fails
+    /// - underlying storage construction fails
+    ///
+    /// Error conditions include but are not limited to: shape-product overflow,
+    /// mismatch between logical element count and input data length, failure to
+    /// derive canonical F-order strides, and failure to construct the underlying
+    /// storage. Any unmet condition returns `XenonError`.
     ///
     /// Xenon follows `require.md §19`: "the order of the input data defines the element-to-logical-index correspondence."
     /// The current version defaults to 64-byte-aligned allocation
@@ -1141,7 +1161,7 @@ where
 | ---------- | ------------------------------------------------- |
 | 栈上元数据 | 静态维度（Ix0-Ix6）的 TensorBase 元数据完全在栈上 |
 | 零成本抽象 | 不同存储模式编译为不同类型，无虚调用              |
-| O(1) 查询  | shape/ndim/len/flags 查询均为 O(1)                |
+| 查询复杂度 | `shape()`/`ndim()`/`flags()` 为 O(1)，`len()` 当前为 O(ndim) |
 | 视图零拷贝 | `view()`/`view_mut()` 仅复制元数据                |
 | 单态化     | Dimension + Storage trait 在泛型上下文中单态化    |
 

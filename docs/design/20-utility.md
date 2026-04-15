@@ -2,7 +2,7 @@
 
 > 文档编号: 20 | 模块: `src/util/` | 阶段: Phase 4
 > 前置文档: `05-storage.md`, `06-layout.md`, `07-tensor.md`, `10-iterator.md`
-> 需求参考: 需求说明书 §21, §22, §28.4
+> 需求参考: 需求说明书 §21, §22, §27, §28.4
 > 范围声明: 范围内
 
 ---
@@ -14,7 +14,7 @@
 | 职责           | 包含                                     | 不包含                                            |
 | -------------- | ---------------------------------------- | ------------------------------------------------- |
 | 范围裁剪       | `clip`（将元素限制在 [min, max] 范围内） | 其他 numpy 风格变换（flip/roll/shift），以及不再作为稳定公共 API 的 `clip_inplace` |
-| 填充操作       | `try_fill` / `fill`（当前都仅对可写张量开放；跨存储模式运行时分派保留为内部 helper） | 构造方法（zeros/ones/full，由 construct.rs 提供） |
+| 填充操作       | `try_fill` / `fill`（`try_fill` 对所有张量公开并在运行时分派；`fill` 仅对可写张量开放） | 构造方法（zeros/ones/full，由 construct.rs 提供） |
 | 连续性保证     | `to_contiguous`（确保内存连续存储）      | 布局计算逻辑（由 layout 模块提供）                |
 | 非连续布局支持 | 通过迭代器正确处理非连续内存             | 布局优化策略                                      |
 
@@ -46,7 +46,7 @@ L6: util  <- current module (depends on tensor, dimension, storage, layout, iter
 
 | 类型     | 内容 |
 | -------- | ---- |
-| 需求映射 | 需求说明书 §21, §22, §28.4 |
+| 需求映射 | 需求说明书 §21, §22, §27, §28.4 |
 | 范围内   | `clip`、`try_fill` / `fill`、`to_contiguous` / `into_contiguous`。 |
 | 范围外   | sort、argsort、searchsorted，以及除 clip / fill / contiguous 之外的其他 utility 操作。 |
 | 非目标   | 不把 `util` 扩展为通用算法杂项集合，不新增第三方依赖，也不重定义 convert / layout 的职责。 |
@@ -197,7 +197,7 @@ where
 
 ### 5.2 fill 操作
 
-> **公开入口调整：** 当前版本将 `try_fill()` 收缩为仅对 `S: StorageMut` 公开；只读 / 共享只读张量上的运行时可恢复分派保留为内部 `fill_try_dispatch()` 设计占位，待 storage-kind 枚举化入口稳定后再单独公开。`fill()` 同样保持 `S: StorageMut` 约束，仅作为可写张量的便捷入口。
+> **公开入口调整：** `try_fill()` 对所有张量实例公开可用。对可写存储执行填充并返回 `Ok(())`；对只读 / 共享只读存储返回 `XenonError::InvalidStorageMode { .. }`。`fill()` 保持 `S: StorageMut` 约束，仅作为可写张量的便捷入口。
 
 ````rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -208,18 +208,17 @@ where
 {
     /// Fill all logical elements with the specified value.
     ///
-    /// Public fallible entry point for writable tensor storage.
-    /// The broader cross-storage dispatch remains an internal helper contract.
+    /// Public fallible entry point for all tensor storage modes.
+    /// Writable storage performs the fill; read-only/shared read-only storage
+    /// returns `XenonError::InvalidStorageMode`.
     pub fn try_fill(&mut self, value: A) -> Result<(), XenonError>
-    where
-        S: StorageMut<Elem = A>,
     {
         fill_try_dispatch(self, value)
     }
 }
 ````
 
-> 对于 `Owned` 与 `ViewMut` 等可写张量，`try_fill()` 成功后语义与 `fill()` 一致。只读 / 共享只读张量上的运行时错误语义保留给内部 `fill_try_dispatch()` 的未来公开形态；本文当前不再把该入口写成对所有存储模式都已稳定开放的承诺。
+> 对于 `Owned` 与 `ViewMut` 等可写张量，`try_fill()` 成功后语义与 `fill()` 一致。对于 `View`、`Shared` 等只读 / 共享只读张量，`try_fill()` 返回 `XenonError::InvalidStorageMode { .. }`；该错误是公开契约的一部分，而不是内部占位语义。
 
 ````rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -257,7 +256,7 @@ where
 }
 ````
 
-> **分层说明：** `fill` 与当前版本的 `try_fill` 都通过 `S: StorageMut` 在类型层限制为可写张量 API；内部 helper `fill_try_dispatch()` 继续保留“可写走直接写路径、只读返回 `InvalidStorageMode`”的分派准则，供未来若放开跨存储模式公开入口时复用。
+> **分层说明：** `try_fill()` 在 `S: Storage` 层公开，并通过内部 `fill_try_dispatch()` 执行“可写走直接写路径、只读返回 `InvalidStorageMode`”的运行时分派；`fill()` 继续通过 `S: StorageMut` 在类型层限制为可写张量 API。
 
 #### 5.2.2 `fill_try_dispatch()` 分派准则
 
@@ -600,7 +599,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `clip` 在 `min > max` 或边界为 `NaN` 时返回 `XenonError::InvalidArgument { operation, argument, expected, actual, axis, shape }`。当前公开 `try_fill()` 与 `fill()` 都仅在 `StorageMut` 路径上可用，其中 `try_fill()` 作为 fallible 包装入口保留 `Result<(), XenonError>` 形态；只读 / 共享只读张量上的 `InvalidStorageMode` 分派语义保留给内部 `fill_try_dispatch()` 设计占位。`XenonError` 是本模块唯一公开错误类型。 |
+| Recoverable error | `clip` 在 `min > max` 或边界为 `NaN` 时返回 `XenonError::InvalidArgument { operation, argument, expected, actual, axis, shape }`。`try_fill()` 对所有张量实例公开：可写存储成功返回 `Ok(())`，只读 / 共享只读存储返回 `XenonError::InvalidStorageMode { .. }`；`fill()` 仍仅对 `StorageMut` 路径可用。`XenonError` 是本模块唯一公开错误类型。 |
 | Panic | 公开 utility API 不定义额外 panic 语义；连续化与裁剪失败统一走显式错误或正常返回。 |
 | 路径一致性 | 连续与非连续布局都必须通过同一逻辑元素语义工作；当前无独立 SIMD / 并行分支。 |
 | 容差边界 | `clip` 对浮点数遵循 IEEE 754 比较语义；不额外引入近似容差。 |

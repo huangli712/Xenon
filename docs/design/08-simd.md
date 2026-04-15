@@ -213,7 +213,7 @@ impl SimdElement for Complex<f64> {
 >
 > | 类型         | 原因                                       |
 > | ------------ | ------------------------------------------ |
-> | `bool`       | 当前版本不进入数值 SIMD kernel；`not` 仅保留为语义模块串行回退目标。若未来引入独立 mask/byte-lane kernel，再单独设计其类型边界 |
+> | `bool`       | 当前版本不进入数值 SIMD kernel；`not` 通过独立 bool / mask SIMD kernel 覆盖，因此不复用本 trait 的数值类型边界 |
 > | `usize`      | 指针宽度依赖平台，SIMD 语义不稳定          |
 > | 其他 `Complex<T>` | 仅 `Complex<f32>` / `Complex<f64>` 在当前设计中进入专用 kernel |
 >
@@ -361,7 +361,7 @@ where
 
 ### 5.4a 当前版本的 SIMD 覆盖范围
 
-根据 `require.md` §9.1，SIMD 路径当前已覆盖逐元素运算、归约与内积三个大类，但仍按“已实现 / 规划中”分阶段推进。是否实际进入 SIMD 仍取决于元素类型、ISA 能力、统一对齐快路径与语义约束；当前版本在 `matrix` 相关范围内仅承载 **vector dot**，不展开矩阵乘法或其他 matrix 范围能力。
+根据 `require.md` §9.1，SIMD 路径当前已覆盖逐元素运算、归约与内积三个大类。是否实际进入 SIMD 仍取决于元素类型、ISA 能力、统一对齐快路径与语义约束；当前版本在 `matrix` 相关范围内仅承载 **vector dot**，不展开矩阵乘法或其他 matrix 范围能力。
 
 > **透明回退说明：** 对于下表中尚未提供 SIMD kernel 的操作，或运行时不满足 SIMD 入口条件的输入，`dispatch.rs` 会透明回退到对应语义模块的标量/串行路径；公开 API 与结果语义保持不变。
 
@@ -372,13 +372,15 @@ where
 | `add` / `sub` / `mul` / `div` | `f32` / `f64` / `Complex<f32>` / `Complex<f64>` | 已实现 | 当前版本提供 SIMD kernel |
 | `neg` | `f32` / `f64` / `Complex<f32>` / `Complex<f64>` | 已实现 | 当前版本提供 SIMD kernel |
 | `sum` | `f32` / `f64` / `Complex<f32>` / `Complex<f64>` | 已实现 | 浮点/复数遵循本文档记录的归约容差 |
+| `sum` | `i32` / `i64` | 已实现 | 整数归约的 SIMD 路径使用 widening accumulator（`i32 -> i64` 中间累加）；每 N 个元素做一次溢出检查。若无法保证与标量 checked 语义完全等价，则回退到标量 checked 路径 |
 | `dot` | `f32` / `f64` / `Complex<f32>` / `Complex<f64>` | 已实现 | 复数 `dot` 采用 `sum(conj(lhs_i) * rhs_i)` |
-| `abs` | `f32` / `f64` | 规划中 | 当前仍由语义模块串行实现 |
-| `square` | `i32` / `i64` / `f32` / `f64` / `Complex<f32>` / `Complex<f64>` | 规划中 | 当前无独立 SIMD kernel |
-| `eq` / `ne` / `lt` / `gt` | 适用的整数 / 浮点类型 | 规划中 | 当前无独立 SIMD kernel |
-| `signum` / `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` | `f32` / `f64` | 标量回退 | 由 `dispatch.rs` 回到语义模块串行路径 |
-| `not` | `bool` | 标量回退 | 当前版本不引入独立 bool SIMD kernel |
-| `complex_abs` / `conjugate` | `Complex<f32>` / `Complex<f64>` | 标量回退 | 当前由复数语义模块串行实现 |
+| `dot` | `i32` / `i64` | 已实现 | 整数内积的 SIMD 路径使用 widening accumulator（`i32 -> i64` 中间累加）；每 N 个元素做一次溢出检查。若无法保证与标量 checked 语义完全等价，则回退到标量 checked 路径 |
+| `abs` | `f32` / `f64` | 本版覆盖（通过 SIMD 算术路径或专用 kernel） | 与逐元素算术共享向量装载/收尾框架 |
+| `square` | `i32` / `i64` / `f32` / `f64` / `Complex<f32>` / `Complex<f64>` | 本版覆盖（通过 SIMD 算术路径或专用 kernel） | 标量语义不变；可复用乘法/分量级 kernel |
+| `eq` / `ne` / `lt` / `gt` | 适用的整数 / 浮点类型 | 本版覆盖（整数/浮点通过 SIMD 比较 + blend） | mask 结果按目标元素类型回写 |
+| `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` | `f32` / `f64` | 标量回退 + 可选 SIMD 加速 | 数学函数的 SIMD 实现依赖平台 libm 或手动实现，精度约束见 §5.5 |
+| `not` | `bool` | 本版覆盖（单指令 SIMD not） | 通过独立 bool / mask kernel 实现 |
+| `complex_abs` / `conjugate` | `Complex<f32>` / `Complex<f64>` | 分量级 SIMD 加速（算术路径覆盖），模/共轭通过分量组合实现 | 复数 AoS 输入在寄存器内重排后执行 |
 
 > **`SimdKernel::dot()` 说明：** `dot()` 为当前版本正式能力，当前版本覆盖 `f32` / `f64` / `Complex<f32>` / `Complex<f64>`。其他类型或未列出的操作保持语义模块串行路径。
 
@@ -391,6 +393,17 @@ where
 1. **Minimum length**：输入长度必须达到对应操作的最小向量化阈值，避免短切片因装载/收尾成本高于收益而误入 SIMD。
 2. **Alignment requirement**：参与运算的切片必须满足 Xenon 统一对齐快路径要求（通过 `layout::is_aligned()` 一类检查判定）；不满足时直接回退标量/串行路径。
 3. **ISA width check**：运行时需确认当前 `pulp::Arch` 上存在可用 ISA 且 lane 宽度大于 1；若目标类型或当前 ISA 无法提供有效向量宽度，则不进入 SIMD。
+
+| 操作类型 | 元素类型 | SIMD 最小长度 | 说明 |
+| -------- | -------- | ------------- | ---- |
+| 逐元素算术 | `f32` / `f64` | 64 | 对齐后向量宽度 |
+| 逐元素算术 | `i32` / `i64` | 64 | 同上 |
+| 归约 `sum` | `f32` / `f64` | 1024 | 归约开销较高，需更大输入 |
+| 归约 `sum` | `i32` / `i64` | 512 | widening accumulator |
+| 内积 `dot` | `f32` / `f64` | 512 | 同归约 |
+| 内积 `dot` | `i32` / `i64` | 256 | 同上 |
+
+以上阈值为默认值，可通过 dispatch 配置调整。当输入长度低于阈值时，自动回退到标量路径。
 
 这些阈值只影响执行路径选择，不改变 API 结果；未通过任一条件时，系统透明回退到非 SIMD 路径。
 
@@ -707,8 +720,8 @@ Consistency guarantee strategy
 
 | 类型 | `sum()` SIMD 策略 | `dot()` SIMD 策略 | 精度/溢出约束 |
 | ---- | ----------------- | ----------------- | ------------- |
-| `i32` | 仅在可证明与标量逐步 `checked_add` 等价时进入 SIMD；否则标量回退 | 仅在可证明与标量逐步 `checked_mul` + `checked_add` 等价时进入 SIMD；否则标量回退 | 与标量整数语义精确一致，任一步溢出立即 panic |
-| `i64` | 同上；不以 widening accumulation 代替 checked 语义 | 同上 | 与标量整数语义精确一致，任一步溢出立即 panic |
+| `i32` | 使用 widening accumulator（`i32 -> i64` 中间累加），每 N 个元素执行一次溢出检查；若无法证明与标量 checked 语义完全等价则回退标量 | 使用 widening accumulator（`i32 -> i64` 中间累加），每 N 个元素执行一次溢出检查；若无法证明与标量 checked 语义完全等价则回退标量 | 与标量整数语义精确一致；无法维持等价时不得进入 SIMD |
+| `i64` | 采用 widening / checked merge 策略；每 N 个元素执行一次溢出检查；若无法证明与标量 checked 语义完全等价则回退标量 | 同上 | 与标量整数语义精确一致；无法维持等价时不得进入 SIMD |
 | `f32` | lane 内 pairwise/Kahan-style 累加，水平合并允许不同顺序 | `mul` 后进入同一累加流程 | 每个实数分量与标量路径结果之差不超过 `max(1 ULP, 2^-23 * |scalar_result|)`；以下容差公式适用于当前版本实现的 SIMD 算法。当算法或目标 ISA 变更时，容差须重新验证 |
 | `f64` | lane 内 pairwise/Kahan-style 累加，水平合并允许不同顺序 | `mul` 后进入同一累加流程 | 每个实数分量与标量路径结果之差不超过 `max(1 ULP, 2^-52 * |scalar_result|)`；以下容差公式适用于当前版本实现的 SIMD 算法。当算法或目标 ISA 变更时，容差须重新验证 |
 | `Complex<f32>` | 将 AoS 数据重排为实/虚 lane，分别累加后重组 | 先执行共轭乘法：`conj(lhs_i) * rhs_i`，再分别累加实部与虚部 | 实部/虚部分别满足 `f32` 容差契约；以下容差公式适用于当前版本实现的 SIMD 算法。当算法或目标 ISA 变更时，容差须重新验证 |
@@ -716,7 +729,7 @@ Consistency guarantee strategy
 
 > **复数内积方向说明：** 根据 `require.md` §13，复数 `dot` 的定义必须是 `sum(conj(x_i) * y_i)`，即对左操作数（lhs）取共轭，而不是对右操作数取共轭。SIMD 复数 dot kernel 必须保持这一共轭线性方向。
 
-> **整数归约/内积补充约束：** 本文不再声明 widening accumulation 与 checked 语义等价。对 `i32` / `i64` 的 `sum()` / `dot()`，只有在某个 SIMD kernel 能证明与标量逐步 `checked_add` / `checked_mul` + `checked_add` 完全等价时才允许进入 SIMD；否则必须回退标量路径。
+> **整数归约/内积补充约束：** 对 `i32` / `i64` 的 `sum()` / `dot()`，SIMD 路径优先采用 widening accumulator 与分段 checked merge；每 N 个元素至少执行一次显式溢出检查。若某个实现无法证明与标量逐步 `checked_add` / `checked_mul` + `checked_add` 完全等价，则必须回退标量 checked 路径。
 
 > **FMA 使用约束：** 元素级 `mul()` / `add()` / `dot()` 主循环中的乘法和加法必须按标量表达式顺序分开执行，不得在这些公开语义上隐式启用 FMA，以保持逐元素路径与标量路径的逐位一致。仅在 `sum()` / `dot()` 的内部 reduction merge 已显式声明“允许末位 ULP 差异”的位置，才能在特定 ISA 上使用 FMA 作为局部优化；启用时必须满足本节容差约束。
 
@@ -936,7 +949,7 @@ math/reduction/dot call acceleration entry
 
 ### 9.3 与 parallel 模块
 
-并行路径的每个工作线程内部可以使用 SIMD。组合使用时：先按并行阈值分块到各线程，线程内部再检查 SIMD 条件执行向量化（参见 `09-parallel.md §6.1`）。
+SIMD 与并行的组合策略：由 `dispatch.rs` 统一裁决。`dispatch` 先决定是否启用并行（基于元素数和并行阈值），再在每个执行线程（或串行路径）内决定是否启用 SIMD（基于元素数、对齐和 ISA 支持）。并行路径的 worker 线程内调用 SIMD helper 时，不会再次触发并行分派。
 
 ### 9.4 与 storage/layout 模块
 

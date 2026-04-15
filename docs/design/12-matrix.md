@@ -2,7 +2,7 @@
 
 > 文档编号: 12 | 模块: `src/matrix/` | 阶段: Phase 4
 > 前置文档: `03-element.md`, `07-tensor.md`, `08-simd.md`, `09-parallel.md`, `10-iterator.md`, `13-reduction.md`, `26-error.md`
-> 需求参考: 需求说明书 §9.1, §9.2, §9.3, §13, §27, §28.2, §28.3, §28.4, §28.5
+> 需求参考: 需求说明书 §4, §9.1, §9.2, §9.3, §10, §13, §27, §28.2, §28.3, §28.4, §28.5
 > 范围声明: 范围内
 
 ---
@@ -47,7 +47,7 @@ L5: matrix  <- current module
 
 | 类型     | 内容 |
 | -------- | ---- |
-| 需求映射 | 需求说明书 §9.1, §9.2, §9.3, §13, §27, §28.2, §28.3, §28.4, §28.5 |
+| 需求映射 | 需求说明书 §4, §9.1, §9.2, §9.3, §10, §13, §27, §28.2, §28.3, §28.4, §28.5 |
 | 范围内   | 向量内积 `dot`、复数共轭线性语义、形状检查、空向量单位元，以及可选 SIMD / 并行执行路径。 |
 | 范围外   | 矩阵-矩阵乘法、外积、批量矩阵乘法、矩阵分解以及 BLAS/LAPACK 绑定。 |
 | 非目标   | 不把 `matrix` 扩展为通用线性代数层，不新增第三方线性代数依赖。 |
@@ -195,6 +195,16 @@ where
 // Mul<Output=Self> + Add<Output=Self>, so the public constraint
 // `Numeric + Copy` is sufficient. The internal implementation
 // (dot_impl) repeats these bounds explicitly for clarity.
+
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Numeric + Copy,
+{
+    /// Stable method-style API; semantically equivalent to `matrix::dot()`.
+    pub fn dot(&self, other: &TensorBase<impl Storage<Elem = A>, D>) -> Result<A, XenonError>;
+}
 ````
 
 > **整数 checked accumulation 说明：** 整数内积使用 checked arithmetic 进行中间乘积和累加。泛型约束 `A: Numeric + Copy` 在实现层通过 sealed trait `CheckedArith` 确保 `i32` / `i64` 路径使用 checked `mul` / `add`。
@@ -213,7 +223,7 @@ where
 
 > **SIMD 覆盖说明：** 复数内积的 SIMD 加速参见 `08-simd.md` 覆盖矩阵。目标是对 `Complex<f32>` / `Complex<f64>` 内积提供 SIMD 路径。
 
-> **方法式 API 说明：** 当前版本将 `dot()` 作为 `matrix` 模块的自由函数定义；`TensorBase` 上的 method-style API（如 `a.dot(&b)`）不属于本文档的稳定承诺。若后续需要新增方法式入口，应以该自由函数为语义基线，不改变错误类别、复数共轭线性定义与容差规则。
+> **方法式 API 说明：** `TensorBase::dot(&self, other: &TensorBase<impl Storage<Elem = A>, D>) -> Result<A, XenonError>` 是稳定的 method-style API；自由函数 `dot(&TensorView, &TensorView)` 作为等价的 convenience wrapper 保留。两者必须共享相同的错误类别、复数共轭线性定义与容差规则。
 
 ### 5.3 Good / Bad 对比示例
 
@@ -431,6 +441,9 @@ Wave 4: [T4]
 | `test_dot_simd_path_with_feature` | 启用 `simd` 后 dot 可走 SIMD 路径且结果语义一致 | 高     |
 | `test_dot_parallel_path`          | 启用并行路径后结果与标量语义一致 | 高     |
 | `test_dot_large_vector_parallel_threshold` | 大向量达到阈值后可走并行路径，结果与标量一致 | 高     |
+| `test_dot_nested_parallel_falls_back` | 已处于库内并行区域时不得开启第二层并行 | 高     |
+| `test_dot_simd_parallel_combined_consistency` | SIMD+并行组合路径与标量串行结果一致 | 高     |
+| `test_dot_parallel_threshold_boundary` | 并行阈值边界两侧都保持正确路径选择与结果语义 | 高     |
 | `test_dot_high_rank_invalid_argument` | 高 rank 输入（如 6D/动态高维）调用 `dot` 返回 `InvalidArgument` | 高     |
 | `test_dot_float_tolerance_across_paths` | 浮点路径在标量/SIMD/并行之间满足文档化容差 | 高     |
 
@@ -443,6 +456,7 @@ Wave 4: [T4]
 | 空向量边界占位       | 预留 `test_dot_empty_vector_boundary`：覆盖空输入在标量/SIMD/并行配置下的单位元与错误语义 |
 | 高维输入边界占位     | 预留 `test_dot_high_dim_boundary`：覆盖高 rank `IxDyn` / 静态高维输入的 `InvalidArgument` 诊断 |
 | 大向量边界占位       | 预留 `test_dot_large_vector_boundary`：覆盖超大输入下阈值切换、容差与 panic 契约一致性 |
+| 阈值边界输入         | 覆盖低于/等于/高于并行阈值时的路径裁决与结果一致性 |
 | 大向量（`10^7` 量级元素） | 可按阈值选择并行 dot 路径，结果正确 |
 | 高维输入 `shape=[1,1,1,1,1,1]` | 返回 `InvalidArgument`，诊断中包含 `operation`、`argument`、`expected`、`actual`、`shape` |
 | 非连续向量（切片后） | 回退到标量路径，结果正确 |
@@ -469,6 +483,7 @@ Wave 4: [T4]
 | 默认配置 | `dot()` 通过标量路径满足实数/复数与错误语义契约。 |
 | 启用 `simd` | dot 可选择 SIMD 路径；结果与默认语义一致。 |
 | 启用并行 | dot 可选择并行归约路径；必须复用全局阈值配置并禁止嵌套并行，结果、错误类别与 panic 语义仍与标量路径一致。 |
+| 同时启用 `simd,parallel` | 并行 chunk 内可局部选择 SIMD 或标量，但整体结果仍须与标量串行基线一致，并遵守无二级并行约束。 |
 
 ### 8.7 类型边界 / 编译期测试
 

@@ -14,6 +14,8 @@
 线程安全是 Xenon 的横切关注点，贯穿所有存储模式和计算后端。本文档定义各存储模式（参见 `05-storage.md §5`）的 `Send`/`Sync` 实现规则，确保 Xenon 张量（参见 `07-tensor.md §5`）可在多线程环境下安全使用。
 
 > **范围注记：** workspace 的线程安全属性参见 `24-workspace.md`；本文不将 workspace 纳入 `require.md §10` 的存储模式线程安全矩阵。
+>
+> **设计扩展说明：** 以下为设计扩展约束，超出 `require.md §10` 的强制范围。
 
 ## 1.5 影响范围
 
@@ -301,15 +303,15 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 
 // ViewMutRepr does not implement Sync
 //
-// Reason: &mut T cannot be shared; Rust's borrowing rules forbid it.
+// Reason: the type must carry an explicit !Sync marker.
+// Rust auto-trait rules allow `&mut T: Sync` when `T: Sync`, so
+// `PhantomData<&'a mut A>` only models provenance/invariance and cannot
+// by itself block Sync derivation.
 //
-// ViewMutRepr deliberately models exclusive access via `&'a mut A` semantics.
-// Its representation stores `NonNull<A>`, a separate length field, and
-// `PhantomData<&'a mut A>` to carry mutable provenance, so shared references to
-// ViewMutRepr must not become a back door to aliasing mutable access.
-// Rust's negative trait impls (!Sync) cannot be written on stable, therefore the design
-// relies on the underlying `NonNull<A>` + mutable-borrow marker shape to prevent
-// Sync auto-derivation.
+// Therefore ViewMutRepr must use an actual !Sync marker, such as
+// `PhantomData<Cell<A>>`, `PhantomData<*const ()>` plus an explicit negative
+// design constraint, or an explicit `impl !Sync for ViewMutRepr<'a, A>` when
+// the language/toolchain permits it.
 ```
 
 ### 5.6 ArcRepr<A> 的 Send/Sync
@@ -364,7 +366,7 @@ unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 
 ### 5.7 ViewMutRepr 不实现 Sync 的证明
 
-`ViewMutRepr<'a, A>` 包含 `NonNull<A>`、长度元数据与 `PhantomData<&'a mut A>`。其中 `NonNull<A>` 本身可为 `Send + Sync`，不会阻止 auto-trait 推导；真正决定 `!Sync` 的是 `PhantomData<&'a mut A>`。按照 Rust 的 auto-trait 规则，`&mut T` 不实现 `Sync`，因此携带 `PhantomData<&'a mut A>` 的 `ViewMutRepr<'a, A>` 也不会自动实现 `Sync`。这使共享引用 `&ViewMutRepr<'a, A>` 不会成为跨线程共享独占可写视图的后门。该结论依赖编译期 auto-trait 推导，并通过编译期负向测试验证。
+`ViewMutRepr<'a, A>` 包含 `NonNull<A>`、长度元数据与可变借用语义标记时，`NonNull<A>` 本身通常不足以阻止 auto-trait 推导；而 `PhantomData<&'a mut A>` 也**不能**作为阻止 `Sync` 的依据，因为 Rust 的 auto-trait 规则中，`&mut T` 在 `T: Sync` 时同样实现 `Sync`。因此，若要确保 `ViewMutRepr` 不实现 `Sync`，必须在表示层中引入真实的 `!Sync` 标记，例如 `PhantomData<Cell<A>>`，或在语言/工具链允许时显式写出 `impl !Sync for ViewMutRepr<'a, A>`。只有这样，`&ViewMutRepr<'a, A>` 才不会成为跨线程共享独占可写视图的后门。相关结论应通过编译期负向测试验证，而不是依赖对 `PhantomData<&'a mut A>` 的错误推断。
 
 ### 5.8 广播结果不可变迭代的原因
 
@@ -643,6 +645,8 @@ fn arc_send_sync() {
 
 ### 8.3.1 迭代器 Send/Sync 验证矩阵
 
+> **设计扩展说明：** 以下为设计扩展约束，超出 `require.md §10` 的强制范围。
+
 | 迭代器类型 | 预期 trait 边界 | 验证方式 |
 | ---------- | --------------- | -------- |
 | `Elements<'a, A, D>` | `Send + Sync` 当底层只读存储满足 `A: Sync` | 编译期断言正向测试 |
@@ -651,7 +655,7 @@ fn arc_send_sync() {
 | `ElementsMut<'a, A, D>` | `Send` 取决于 `A: Send`，不得实现 `Sync` | 正向 `Send` + 负向 `Sync` 测试 |
 | `AxisIterMut<'a, A, D>` | `Send` 取决于 `A: Send`，不得实现 `Sync` | 正向 `Send` + 负向 `Sync` 测试 |
 
-> **验证要求：** 迭代器类型的线程安全必须与其底层存储语义一致：只读迭代器沿用 `ViewRepr` / 共享读取规则，可按 `A: Sync` 推导 `Send + Sync`；可写迭代器沿用 `ViewMutRepr` / 独占写入规则，只允许 `Send`，不得实现 `Sync`。
+> **验证要求：** 迭代器类型的线程安全必须与其底层存储语义一致：只读迭代器沿用 `ViewRepr` / 共享读取规则，可按 `A: Sync` 推导 `Send + Sync`；可写迭代器沿用 `ViewMutRepr` / 独占写入规则。由于 `ViewMutRepr !Sync` 的前提已改为“必须显式引入 `!Sync` 标记”，`ElementsMut` / `AxisIterMut` 的最终线程安全结论也需随修正后的存储表示重新验证，不得继续基于 `PhantomData<&mut A>` 的旧论证直接下结论。
 
 ### 8.4 边界测试场景
 
@@ -679,6 +683,8 @@ fn arc_send_sync() {
 | `tests/test_thread_safety.rs` | `Owned` / `View` / `ViewMut` / 共享 Arc 存储张量与 `parallel`、跨线程传递场景的端到端协同验证 |
 
 ### 8.6.1 FFI 导出描述符线程安全规则
+
+> **设计扩展说明：** 以下为设计扩展约束，超出 `require.md §10` 的强制范围。
 
 FFI 导出描述符的线程安全约束必须与其导出的 Rust 视图语义保持一致：
 
@@ -821,6 +827,8 @@ After a storage type is created or borrowed
 | `ArcTensor<A, D>`         |              ✅              | ❌（若实现内部写路径，则必须先内部唯一化 / 必要时复制后恢复可写） | `A: Send + Sync`                                                         |
 
 ### 9.5 与 workspace 模块的边界
+
+> **设计扩展说明：** 以下为设计扩展约束，超出 `require.md §10` 的强制范围。
 
 workspace 的线程安全规则、借用状态机与分割守卫生命周期不属于本文档范围，统一参见 `24-workspace.md §5.7` 与 `24-workspace.md §6.3`。本文仅要求并行与张量存储相关设计在引用 workspace 时，不得与该文档定义的线程安全边界冲突。
 

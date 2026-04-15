@@ -48,10 +48,12 @@ L4: index  <- current module
 | -------- | ------------------------------------------------------------------------------------------------------------------------ |
 | 需求映射 | 需求说明书 §18；并受 §4（`usize` 元数据角色）与 §6（只读/共享只读存储约束）补充约束                                      |
 | 范围内   | `usize` 多维索引、范围索引（切片）、rank 一致性检查、越界 recoverable error、unsafe 未检查变体、切片后 shape/stride 更新 |
-| 范围外   | 负索引、负步长、布尔/整数数组高级索引、共享可写视图、额外索引语法                                                        |
-| 非目标   | 不新增索引能力，不改变现有 panic 语法糖定位，不引入新的存储模式或复制语义                                                |
+| 范围外   | 负索引、负步长、布尔/整数数组高级索引、共享可写视图、额外索引语法；`Index`/`IndexMut` 运算符语法（panic 语义）不在当前版本的稳定 API 承诺范围内。 |
+| 非目标   | 不新增索引能力，不引入新的存储模式或复制语义                                                                              |
 
 > **范围决策：** 当前版本只承诺“`usize` 多维索引 + 范围切片”两类能力；`s![]` 宏仅作为现有范围描述的语法包装，不扩展新语义。
+
+> **范围补充：** `Index`/`IndexMut` 运算符语法（panic 语义）不在当前版本的稳定 API 承诺范围内。主索引路径为 `try_at` / `try_at_mut`（返回 `Result`）。若未来版本需要运算符语法糖，须在需求层获得明确豁免。
 
 ---
 
@@ -184,7 +186,7 @@ where
 }
 ```
 
-`SliceInfo<I, D>` 是切片描述符的公开包装类型：`D` 表示输入维度，`I` 表示切片后的输出维度；其内部字段保持私有，必须通过带校验的构造器建立，以避免手工拼出“索引长度、输入维度、输出维度彼此矛盾”的无效状态。
+`SliceInfo<I, D>` 是切片描述符的公开包装类型：`D` 表示输入维度，`I` 表示切片后的输出维度；其内部字段保持私有，必须通过带校验的构造器建立，以避免手工拼出“索引长度、输入维度、输出维度彼此矛盾”的无效状态。建议将 `SliceInfo::new` 设为 crate-private，对外提供自动推导输出维度的包装接口。调用方不应手动构造 `out_dim`。
 
 ### 5.2 张量访问与切片 API
 
@@ -258,9 +260,9 @@ where
 }
 ```
 
-> **设计决策：** 当前版本把 `try_at()` / `get()` / `try_at_mut()` / `get_mut()` 与 `slice()` 作为对外规范的主恢复路径；同时保留 `Index` / `IndexMut`（`[]` / `[]=`）作为**已验证索引场景**的公开语法糖。其语义是受限且文档化的：成功时等价于已验证索引访问，失败时 panic。此前草案中的 `try_slice()` 与当前 `slice()` 具有相同签名且同样返回 `Result`，没有额外语义，因此移除以避免冗余接口。
+> **设计决策：** 当前版本把 `try_at()` / `get()` / `try_at_mut()` / `get_mut()` 与 `slice()` 作为对外规范的主恢复路径。此前草案中的 `try_slice()` 与当前 `slice()` 具有相同签名且同样返回 `Result`，没有额外语义，因此移除以避免冗余接口。
 
-> **显式声明：** `Index` / `IndexMut` 实现为受限 panic 语法糖。这些 trait 实现属于便利 API，等价于调用 `try_at()` / `try_at_mut()` 并在失败时 panic。panic 消息必须携带完整诊断上下文（索引值、轴、shape）。安全编程应优先使用 `try_at()` / `try_at_mut()`。
+> **非规范便利接口说明：** 若实现内部或实验性配置中保留 `Index` / `IndexMut`（`[]` / `[]=`）语法糖，其 panic 行为仅属于非规范便利接口，不在当前版本稳定承诺内。稳定语义以 `try_at()` / `try_at_mut()` 为准。
 
 ### 5.3 Good / Bad 对比
 
@@ -281,7 +283,13 @@ let view = tensor.slice(s![1..4;2, ..])?;
 let view = tensor.slice(s![1..4;0, ..]).unwrap();
 ```
 
-> **范围补充：** 带步长切片属于当前版本的扩展能力。需求说明书 §18 仅强制要求范围索引；若实现支持步长切片，则必须满足与基本范围切片相同的边界验证、只读共享语义和布局重算规则；若暂不实现，不影响需求符合性。
+> **范围补充：** 正步长切片（`step > 0`）在当前版本中实现但标记为 `unstable` feature gate，不属于 `require.md` §18 的最小必要范围。基础范围索引（`start..end`, `..`）为稳定承诺。
+
+```rust
+// Full collapse example: all axes are indexed, result becomes 0D.
+let scalar = tensor.slice(s![1, 2])?;
+let scalar: TensorView<'_, A, Ix0> = scalar;
+```
 
 ```rust
 // Good - unsafe path is only used when the caller already proved validity.
@@ -349,7 +357,7 @@ compute_slice(shape, strides, offset, slices):
 - 布局状态只能重新落在 `FContiguous`、`NonContiguous`、`BroadcastView` 三种之一。
 - `SliceInfo::new(...)` 必须校验索引描述长度、`in_dim` 与 `out_dim` 的对应关系，拒绝构造内部自相矛盾的描述符。
 
-> **`out_dim` 由调用方提供的原因：** 当前设计显式要求 `SliceInfo::new(indices, in_dim, out_dim)` 接收 `out_dim`，是为了兼容静态维度下的编译期维度推导与未来更强的类型级推断路径。若后续需要更易用入口，可增补 `new_auto()` 之类的包装构造器，但不改变当前底层表示。
+> **`out_dim` 入口收敛：** 建议将 `SliceInfo::new` 收敛为 crate-private 内部构造器，对外提供自动推导输出维度的包装接口。当前公开文档不鼓励调用方手动传入 `out_dim`。
 
 > **切片布局标志规则：** 切片结果的 layout flags 根据新的 `shape` / `stride` 组合重新计算。若源视图带有 `BroadcastView`，且切片后仍存在任一零步长轴，则继续保留 `BroadcastView` flag；否则按普通 F-order / non-contiguous 规则重分类。
 
@@ -462,7 +470,7 @@ Wave 2:         [T3]         Wave 3: [T4] -> [T5] -> [T6]
 | `test_slice_layout_recomputed`         | 切片后布局状态被重新计算                       | 高     |
 | `test_slice_high_rank_ixdyn`           | `IxDyn` 高 rank 输入的切片元数据正确           | 中     |
 | `test_slice_extreme_offset_checked`    | 大步长/大 shape 下偏移计算不溢出或返回错误     | 中     |
-| `test_index_panic_sugar_diagnostics`   | `Index`/`IndexMut` panic 携带完整诊断信息      | 中     |
+| `test_index_panic_sugar_diagnostics`   | 非规范 `Index`/`IndexMut` 便利接口的 panic 诊断 | 中     |
 
 ### 8.3 边界测试场景表
 
@@ -542,7 +550,7 @@ User calls tensor.slice(info)
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Recoverable error | `try_at()` / `get()` / `slice()` 在 rank 不匹配、轴非法、越界、`step == 0` 时返回 `XenonError`；其中索引长度与张量 `ndim` 不匹配时，错误类型固定为 `XenonError::DimensionMismatch { operation: "try_at", expected, actual }` |
 | Trait-bound 边界  | `try_at_mut()` / `get_mut()` / `get_unchecked_mut()` 仅在 `S: StorageMut` 前提成立时存在；不再为“只读存储上的可写索引”设计运行时 `InvalidStorageMode` 分支                                                                   |
-| Panic             | `Index` / `IndexMut` 作为受限公开语法糖存在：成功路径等价于已验证索引访问，失败时按 Rust 语法糖边界 panic；规范安全主路径仍是返回 `Result` 的 checked API                                                                    |
+| Panic             | 当前版本稳定 API 不承诺 `Index` / `IndexMut` panic 语法糖；若实现保留该便利接口，其行为不属于规范契约。规范安全主路径仍是返回 `Result` 的 checked API                                                                          |
 | 路径一致性        | 对同一合法输入，checked 与 unchecked 路径必须给出同一偏移和同一逻辑结果；unsafe 只省略检查                                                                                                                                   |
 | 容差边界          | 不适用；本模块不涉及浮点容差、SIMD 误差或并行归约差异                                                                                                                                                                        |
 

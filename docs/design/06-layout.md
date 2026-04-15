@@ -226,6 +226,8 @@ pub(crate) const fn flags_for_f_layout(aligned: bool, has_zero_stride: bool) -> 
 
 > **权威定义声明**：`LayoutState` 由本模块（`layout/`）定义并持有。`07-tensor.md` 中的 `TensorBase::layout_state()` 方法返回本模块定义的 `LayoutState`，不再重复定义该枚举。若后续版本需扩展布局状态分类，须在本模块中修改并通过模块间接口暴露。
 
+> **权威计算入口声明**：`LayoutFlags` 的唯一权威计算入口为 `compute_layout_flags(shape, strides, ptr)`。其他模块查询布局状态时须引用本模块的结果，不得各自复算或绕过本模块自行裁定 `F_CONTIGUOUS` / `ALIGNED` / `HAS_ZERO_STRIDE`。
+
 ```rust
 /// Classification of tensor memory layout contiguity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -406,10 +408,10 @@ Result: false (not F-contiguous)
 - **F-order contiguous**：对所有轴满足 `strides[i] == product(shape[0..i])`；对 `shape[i] == 1` 的轴，可按 §5.4 的连续性规则放宽判定；若零步长来自广播语义，则不得归类为 `F_CONTIGUOUS`，但空数组在退化 metadata 表示下出现的零步长不自动破坏 `F_CONTIGUOUS`。
 - **转置视图（non-contiguous）**：`strides` 是对应 F-order contiguous stride 集合的轴置换结果，且所有 stride 都为正。
 - **切片派生的正步长非连续视图**：由范围切片等操作产生，所有 stride 都为正，但不满足 F-order 连续条件；例如在已有非连续视图上继续切片后得到的正步长布局仍属合法。
-- **广播视图**：广播轴允许 stride 为 `0`；其余非广播轴必须保持 F-order 或转置后的正 stride 模式。
+- **广播视图**：广播轴允许 stride 为 `0`；是否为广播轴由广播语义决定（源维度为 1 且目标维度 > 1），而非由结果张量的 `shape[i] == 1` 判定。其余非广播轴必须保持 F-order 或转置后的正 stride 模式。
 - **单元素或 0-D**：只要 metadata 可表示且访问范围合法，任意有效 stride 都视为合法。
 
-> **校验口径说明：** 上述“合法 stride 布局族”描述的是设计意图与来源闭包，不是运行时可判定的 provenance 证明。具体 safe/unsafe 构造只检查一个**充分条件**集合：stride 非负、元素总数与访问范围可表示、且访问范围在 backing storage 内；实现不会尝试在运行时证明某组 stride 必然来自某个历史转置/切片操作。
+> **校验口径说明：** 上述“合法 stride 布局族”描述的是设计意图与来源闭包，不是运行时可判定的 provenance 证明。当前版本的 safe 构造验证仅检查非负、可表示、范围不越界等充分条件，不尝试在运行时证明 stride 的来源（转置/切片/广播）。这意味着 safe 构造可能接受超出 F-order / 转置 / 切片 / 广播闭合集的正 stride 组合。这些额外接受的布局仅作为只读视图合法；拥有型连续存储仍须满足 F-order 约束。
 
 #### 非法 stride 组合
 
@@ -436,7 +438,7 @@ Result: false (not F-contiguous)
 > - 所有 `stride[i] <= isize::MAX`
 > - 当 `total_elements == 0` 时，仅要求 `offset <= storage_len`
 > - 当 `total_elements > 0` 时，`max_accessed_offset = offset + sum((shape[i] - 1) * stride[i]) < storage_len`
-> - 广播视图：`shape[i] == 1` 时 `stride[i]` 可为 `0`
+> - 广播视图：广播轴的 `stride[i]` 可为 `0`；是否为广播轴由广播语义决定（源维度为 1 且目标维度 > 1），而非由结果张量的 `shape[i] == 1` 判定
 > - 单元素轴 `shape[i] == 1` 时 `stride[i]` 不受连续性约束
 
 #### safe vs unsafe 构造的责任分工
@@ -576,11 +578,11 @@ function compute_flags(shape, strides, ptr):
 
 ### 6.2a 内部 stride 校验规则
 
-当前版本内部实现只接受由 packed F-order、其轴置换、广播零步长以及正步长切片派生出的 stride 族；任何负步长、轴间 padding 或无法映射回这组闭合集的 stride 组合都必须在校验阶段拒绝。
+当前版本内部实现的设计目标仍以 packed F-order、其轴置换、广播零步长以及正步长切片派生的 stride 族为主；但 safe 构造的实际运行时校验口径只验证非负、可表示、访问范围不越界等充分条件，并不会证明某组 stride 必然来自这些来源。因此 safe 路径可能接受更宽的正 stride 组合；这些布局只能作为只读视图语义成立，拥有型连续存储仍需满足 packed F-order。
 
 - F-order 连续布局：`stride[i] = product(shape[0..i])`
 - 转置派生布局：stride 必须是某个 F-order 连续 stride 集合的轴置换，且全部为正
-- 广播派生布局：仅广播轴允许 `stride = 0`
+- 广播派生布局：仅广播轴允许 `stride = 0`；是否为广播轴由广播语义决定（源维度为 1 且目标维度 > 1），而非由结果张量的 `shape[i] == 1` 判定
 - 切片派生布局：仅允许正步长子范围；stride 保持原值，通过 `offset` 表示起点移动
 
 ### 6.3 标志位更新规则

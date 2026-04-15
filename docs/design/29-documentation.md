@@ -1,4 +1,4 @@
-# 文档模块设计
+# 文档交付规范
 
 > 文档编号: 29 | 影响范围: `src/**` pub API 文档、`README.md`、`examples/` 与 docs CI | 阶段: Phase 6
 > 前置文档: 所有前置文档（`00-coding.md` ~ `28-tests.md`）
@@ -302,9 +302,9 @@ L3: Examples (examples/)
 | `# Examples`  | 所有关键 API       | 至少一个可运行示例           |
 | `# See Also`  | 有相关 API 时      | 交叉引用                     |
 
-涉及浮点或复数运算的公开 API，其文档说明中须包含误差容差及适用范围。具体包括：(1) 同路径下的精确性保证；(2) 跨路径（SIMD/并行 vs 标量/串行）的已知容差；(3) 数学函数的函数级容差。容差定义须与 `28-tests.md` 中的容差体系一致。
+容差体系、错误模型和 panic 语义的具体内容由对应技术规范（`26-error.md`、`28-tests.md`）定义。文档层仅要求引用这些规范，不重复定义。
 
-对运算符重载入口（如 `Add` / `Sub` / `Mul` / `Div` 的实现文档），即使签名经由 trait 间接暴露，也应补齐与对应方法型 API 一致的 `# Errors` / `# Panics` 模板，明确广播失败、形状不兼容、整数溢出等语义边界，避免仅留下语法糖示例而缺少失败条件说明。
+对运算符重载入口（如 `Add` / `Sub` / `Mul` / `Div` 的实现文档），即使签名经由 trait 间接暴露，也应补齐与对应方法型 API 一致的 `# Errors` / `# Panics` 模板，并引用对应技术规范，避免仅留下语法糖示例而缺少失败条件说明。
 
 ---
 
@@ -314,7 +314,9 @@ L3: Examples (examples/)
 
 > **开发提示**：在开发期间可将 deny 改为 warn（`#![warn(missing_docs)]`），CI 中通过 `RUSTDOCFLAGS="-D warnings" cargo doc` 来强制执行文档完整性检查（参见 §5.11.1 CI checks）。
 
-> **门禁说明**：`#![warn(missing_docs)]` 本身不足以作为实际门禁；建议 CI 中使用 deny-level rustdoc 检查（如 `RUSTDOCFLAGS='-D warnings'`）作为实际门禁。
+> **门禁说明**：`#![warn(missing_docs)]` 为最小存在性检查（确保公开 item 有文档文本），不保证文档质量、完整性或示例覆盖。完整文档质量由评审流程保障。
+
+> **执行矩阵说明**：doctest 与测试 CI 矩阵由 `28-tests.md` 统一定义。本文档仅规定“需要哪些文档验证”，不维护 CI 执行矩阵。
 
 ```rust,ignore
 // lib.rs
@@ -569,10 +571,12 @@ pub fn sum(&self) -> A { ... }
 | -------- | --------------------------------------------------------------- | ------------ |
 | 缺失文档 | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps` | 任何 warning |
 | Doctest  | `cargo test --doc --all-features`                               | 任何失败     |
-| 示例验证 | `cargo build --examples --all-features` + 关键示例运行命令      | 任何失败     |
+| 示例验证 | `cargo build --examples --all-features` + 关键默认示例运行命令（当前为 `basic` / `broadcasting` / `workspace`） | 任何失败     |
 | 链接检查 | `cargo doc` 无 broken links 警告                                | 无效链接     |
 
 #### 5.11.2 CI 配置
+
+> **说明**：以下仅为文档交付验证示例。权威的 doctest / examples CI 执行矩阵以 `28-tests.md` 为准。
 
 ```yaml
 # .github/workflows/docs.yml
@@ -787,12 +791,12 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | 类型         | 命令                                                              | 目的                                              |
 | ------------ | ----------------------------------------------------------------- | ------------------------------------------------- |
 | 单元检查     | `cargo test --doc --all-features`                                 | 验证单个 API 文档示例可编译运行                   |
-| 集成检查     | `cargo doc --all-features --no-deps` + examples 构建/关键示例运行 | 验证模块文档、README、examples 与源码接口协同一致 |
+| 集成检查     | `cargo doc --all-features --no-deps` + examples 构建/关键默认示例运行 | 验证模块文档、README、examples 与源码接口协同一致 |
 | 边界检查     | feature-gated/unsafe doctest 逐项编译                             | 验证条件编译、unsafe 说明和 `std` 环境边界        |
 | 属性检查     | broken links / missing docs 不变量                                | 验证“公开 API 均有文档、关键入口均可追踪”         |
 | Doctest      | `cargo test --doc --all-features`                                 | 验证文档中的代码示例可编译运行                    |
 | 缺失文档检查 | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`   | 确保所有 pub API 有文档                           |
-| 示例验证     | `cargo build --examples --all-features` + 关键示例运行命令        | 验证 examples/ 下程序可编译，关键示例可运行       |
+| 示例验证     | `cargo build --examples --all-features` + 关键默认示例运行命令    | 验证 examples/ 下程序可编译，关键默认示例可运行   |
 | 链接检查     | `cargo doc` 无 broken links 警告                                  | 确保文档内交叉引用有效                            |
 | CI 门禁      | `missing_docs` lint deny 级别                                     | 阻止无文档代码合入                                |
 
@@ -824,6 +828,8 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | 文档中的路径与模块名和架构文档一致   | broken links 检查 + 人工审阅      |
 
 ### 8.5 CI 配置
+
+> **说明**：本文档只保留文档交付所需的验证类别与示例命令；doctest / examples 的统一 CI 执行矩阵由 `28-tests.md` 维护。
 
 ```yaml
 # .github/workflows/docs.yml

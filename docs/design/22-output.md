@@ -188,6 +188,8 @@ impl Default for FormatConfig {
 }
 ```
 
+> **扩展边界说明：** `precision` 和 `line_width` 为受控扩展，超出 `require.md §24` 的最小必要集。纳入稳定 API 面须遵守 SemVer。
+
 ### 5.1b TensorDisplay 包装结构
 
 ````rust,ignore
@@ -285,13 +287,14 @@ where
 > **Display / Debug 分工约定：** `Display` 只负责数据文本；当发生截断时，它在最外层右括号后追加 `shape=[...]`，用于满足 `require.md §24` 的“可识别 shape”要求。`Debug` 已在头部输出 `shape=`、`strides=`、`dtype=` 和 `layout=`，因此其数据段复用相同截断选点规则，但不再重复追加 `shape=[...]` 后缀。
 
 ````rust,ignore
-// Debug reuses Display for the data section,
-// so A must satisfy both Debug and Display.
+// Debug should depend only on Debug for element rendering.
+// Shared formatting logic, if any, must be routed through an internal helper
+// abstraction rather than a public Display bound.
 impl<S, D, A> core::fmt::Debug for TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: core::fmt::Debug + core::fmt::Display + Element + 'static,
+    A: core::fmt::Debug + Element + 'static,
 {
     /// Developer-facing debug output.
     ///
@@ -327,12 +330,15 @@ where
             write!(f, "non-contiguous")?;
         }
         write!(f, ")\n")?;
-        // Data section (shares the same rendering rules as Display, but does
-        // not append a second shape suffix when truncation happens).
+        // Data section (shares the same truncation/layout rules as Display, but
+        // not the public trait bound surface and does not append a second shape
+        // suffix when truncation happens).
         fmt_debug_data(f, self)
     }
 }
 ````
+
+> **实现约束说明：** Debug impl 应仅依赖 `A: Debug`。若内部复用 Display helper，应通过独立内部 trait 抽象，避免在公开约束中引入 Display 依赖。
 
 > **设计决策：** Debug 输出包含完整的元信息（形状/步长/类型/布局），方便开发调试。Display 只输出数据，面向最终用户；其中零维张量使用显式标记，避免与裸标量文本混淆。
 

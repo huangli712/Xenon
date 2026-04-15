@@ -5,7 +5,7 @@
 > 需求参考: 需求说明书 §1, §4, §7, §10, §27, §28
 > 范围声明: 范围内
 
-> **格式豁免声明**：本文档为全局编码规范，按 `design.md` §3 豁免标准章节结构，并采用适配编码规范主题的章节组织，而非严格遵循 §3.2 的横切文档模板。
+> **格式豁免声明**：本文档豁免 `design.md` §3.1 模块文档标准章节结构，但已按 §3.2 横切规范文档模板覆盖所有必需内容。
 
 ---
 
@@ -516,7 +516,9 @@ where
 
 > **注意**：公开安全索引 API（如 `try_at(...)`、`try_at_mut(...)`、`try_offset_of(...)`）在索引越界或维度不匹配时都须返回 `Result<_, XenonError>`。`[]` 语法糖需单独说明为受限 panic sugar，只用于内部或调用前已验证索引的快捷路径，不单独作为公开安全 API 契约。
 > 本文档中的错误枚举示例统一使用结构化字段承载诊断上下文；即使某个模块内部保留局部错误类型，也必须在公开 API 边界映射为 `XenonError` 的结构化变体，而不是直接暴露模块私有错误类型。
-> 错误模型以 `26-error.md §4.2` / `§4.4` 为准；此处示例须与该文档保持一致。
+> 错误模型以 `26-error.md §4.2` / `§4.4` 为准；此处仅保留最小示意。
+>
+> **说明：** 以下为字段形态示意，非权威定义。错误模型以 `26-error.md` 为准。
 
 > **FFI 边界**：Rust 内部的 fallible API 使用 `try_* -> Result` 模式。真正的 `extern "C"` FFI 边界必须使用 FFI-safe 状态码与输出参数，不得跨 ABI 返回 `Result`，也不得让 panic 穿越边界。公开架构不提供 `bare_*` / panic-sugar 形式的 FFI helper；需要偏移或指针计算时，仅保留 `try_offset_of()`、`try_ptr_at()` 这类可恢复错误入口。参见 `23-ffi.md`。
 
@@ -524,16 +526,11 @@ where
 #[derive(Debug, Clone)]
 pub enum XenonError {
     BroadcastError {
-        operation: Cow<'static, str>,
-        input_shape: Vec<usize>,
-        target_shape: Vec<usize>,
+        operation: &'static str,
+        lhs_shape: Vec<usize>,
+        rhs_shape: Vec<usize>,
+        attempted_target_shape: Option<Vec<usize>>,
         axis: Option<usize>,
-    },
-    InvalidAxis {
-        operation: Cow<'static, str>,
-        axis: usize,
-        ndim: usize,
-        shape: Vec<usize>,
     },
     InvalidArgument {
         operation: Cow<'static, str>,
@@ -541,6 +538,9 @@ pub enum XenonError {
         expected: Cow<'static, str>,
         actual: Cow<'static, str>,
         axis: Option<usize>,
+        axis_len: Option<usize>,
+        start: Option<usize>,
+        end: Option<usize>,
         shape: Option<Vec<usize>>,
     },
     InvalidShape {
@@ -549,42 +549,23 @@ pub enum XenonError {
         expected_elements: usize,
         actual_elements: usize,
         offending_dim: Option<usize>,
+        reason: Option<Cow<'static, str>>,
     },
-    DimensionMismatch {
-        operation: Cow<'static, str>,
-        expected: usize,
-        actual: usize,
-    },
-    InvalidLayout {
-        operation: Cow<'static, str>,
-        storage_kind: Cow<'static, str>,
-        shape: Vec<usize>,
-        strides: Vec<usize>,
-        offset: usize,
-        storage_len: usize,
-        reason: Cow<'static, str>,
-    },
-    LayoutMismatch {
-        operation: Cow<'static, str>,
-        required_layout: Cow<'static, str>,
-        actual_layout: Cow<'static, str>,
-        shape: Vec<usize>,
-    },
-    InvalidStorageMode {
-        operation: Cow<'static, str>,
-        expected: Cow<'static, str>,
-        actual: Cow<'static, str>,
-        shape: Option<Vec<usize>>,
-    },
-    Ffi(FfiError),
-    Workspace(WorkspaceError),
-    TypeConversion(TypeConversionError),
     IndexOutOfBounds {
         operation: Cow<'static, str>,
-        attempted_index: usize,
+        attempted_index: Vec<usize>,
         axis: usize,
         shape: Vec<usize>,
     },
+    InvalidAxis {
+        operation: Cow<'static, str>,
+        axis: usize,
+        ndim: usize,
+        shape: Vec<usize>,
+    },
+    TypeConversion(TypeConversionError),
+    Ffi(FfiError),
+    Workspace(WorkspaceError),
 }
 
 #[derive(Debug, Clone)]
@@ -628,8 +609,9 @@ where
     if !is_broadcast_compatible(self.shape(), shape.as_ref()) {
         return Err(XenonError::BroadcastError {
             operation: "broadcast_to",
-            input_shape: self.shape().into(),
-            target_shape: shape.as_ref().into(),
+            lhs_shape: self.shape().into(),
+            rhs_shape: shape.as_ref().into(),
+            attempted_target_shape: Some(shape.as_ref().into()),
             axis: None,
         });
     }
@@ -668,7 +650,7 @@ where
         if !self.is_index_valid(index) {
             return Err(XenonError::IndexOutOfBounds {
                 operation: "try_at".into(),
-                attempted_index: 0,
+                attempted_index: index.into(),
                 axis: 0,
                 shape: self.shape().into(),
             });
@@ -1093,6 +1075,8 @@ rustdoc-args = ["--cfg", "docsrs"]
   - 预计: 10 min
 
 > **CI 策略补充说明：** `cargo fmt --check`、`cargo test`、关键 compile-fail/文档检查哪些属于阻塞发布的 hard gate，哪些仅作为 advisory 信号，仍需项目级统一裁决；本规范只定义建议纳入的检查项，不越权替代仓库治理决策。
+>
+> **工程治理说明：** 以下为工程治理建议，不构成 `require.md` 当前版本的规范性基线。
 
 ### 并行执行分组图
 
@@ -1107,7 +1091,7 @@ Wave 2: [T4]
 
 ---
 
-## 11. 测试计划
+## 验证与落地方式
 
 | 测试函数                    | 测试内容                  | 优先级 |
 | --------------------------- | ------------------------- | ------ |
@@ -1115,6 +1099,8 @@ Wave 2: [T4]
 | `test_clippy_check`         | `cargo clippy` 无警告     | 高     |
 | `test_std_default_check`    | 默认 `std` 配置编译通过   | 高     |
 | `test_compile_all_features` | `--all-features` 编译通过 | 高     |
+
+> **覆盖补充：** 边界类（空张量/单元素/大张量/极值/高维/非法元素类型）、并行/SIMD 路径一致性、compile-fail 约束测试由对应模块文档（`27-benchmark.md`、`28-tests.md`）具体定义。
 
 ### 11.1 Feature gate / 配置测试
 
@@ -1134,6 +1120,8 @@ Wave 2: [T4]
 | feature gate 可见性与导出边界 | `cargo check` / `cargo test` 配置矩阵验证 |
 
 > **compile-fail 测试机制建议：** 对 sealed trait、feature gate 可见性、错误用法示例等编译期失败场景，建议使用 `trybuild` 或等价 compile-fail harness 统一维护；若项目后续选择其他机制，需保证失败快照与错误意图可审计。
+
+> **工程治理说明：** 以下为工程治理建议，不构成 `require.md` 当前版本的规范性基线。
 
 ---
 

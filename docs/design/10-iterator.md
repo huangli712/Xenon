@@ -90,7 +90,7 @@ src/iter/
 | 场景 | 错误 |
 | ---- | ---- |
 | `axis_iter()` / `axis_iter_mut()` 的 `axis` 越界 | 返回 `XenonError::InvalidAxis { operation: "axis_iter", axis, ndim, shape }` 或 `XenonError::InvalidAxis { operation: "axis_iter_mut", axis, ndim, shape }`。 |
-| 零维张量调用按轴迭代 | 公开 API 统一返回 `XenonError::InvalidAxis { operation, axis, ndim: 0, shape }`，其中 `axis` 保留调用方实际传入值；静态零维 `Ix0` 的编译期排除仅允许作为内部优化，不改变该公开语义。 |
+| 零维张量调用按轴迭代 | `axis_iter()` / `axis_iter_mut()` 要求 `D: RemoveAxis`；静态零维 `Ix0` 在编译期不可调用。对满足 `RemoveAxis` 的维度类型，若运行时 `ndim == 0` 或 `axis` 越界，仍返回 `XenonError::InvalidAxis { operation, axis, ndim, shape }`。 |
 | 试图把广播结果作为可变迭代输入 | 不提供公开 API；通过类型系统在编译期拒绝，而不是返回运行时错误。 |
 
 ### 4.3 依赖图
@@ -168,15 +168,11 @@ impl<'a, A, D: Dimension> ExactSizeIterator for ElementsMut<'a, A, D> {}
 ```rust,ignore
 /// Axis iterator, yields a sub-tensor view with reduced dimension each step.
 ///
-/// Publicly this iterator is opaque: construction must accept any `D: Dimension`
-/// so rank-0 inputs can reach runtime validation and return `InvalidAxis` rather
-/// than failing trait resolution at compile time. After validation succeeds, the
-/// implementation may delegate to a private `AxisIterState<'a, A, D>` enum whose
-/// active variant stores a private `AxisIterImpl<'a, A, D>` requiring `D: RemoveAxis`.
-/// The public wrapper may also hold an inert/empty state so the public iterator trait
-/// impl never needs to expose `RemoveAxis`.
+/// Public construction requires `D: RemoveAxis`, matching the reduced output type
+/// `D::Smaller`. After construction, the implementation may still use private state
+/// to distinguish active iteration from runtime-invalid axis cases.
 pub struct AxisIter<'a, A, D: Dimension> {
-    // Internal fields: wrapper around private active/empty state.
+    // Internal fields: iterator state for validated axis traversal.
 }
 
 /// Mutable axis iterator.
@@ -190,27 +186,39 @@ pub struct AxisIter<'a, A, D: Dimension> {
 /// axis. The iterator advances monotonically and never revisits an earlier offset,
 /// which prevents mutable aliasing between yielded items.
 pub struct AxisIterMut<'a, A, D: Dimension> {
-    // Internal fields: wrapper around private active/empty state.
+    // Internal fields: iterator state for validated mutable axis traversal.
 }
 
-impl<'a, A, D: Dimension> Iterator for AxisIter<'a, A, D> {
+impl<'a, A, D> Iterator for AxisIter<'a, A, D>
+where
+    D: RemoveAxis,
+{
     type Item = TensorView<'a, A, D::Smaller>;
     fn next(&mut self) -> Option<Self::Item>;
     fn size_hint(&self) -> (usize, Option<usize>);
 }
 
-impl<'a, A, D: Dimension> ExactSizeIterator for AxisIter<'a, A, D> {}
+impl<'a, A, D> ExactSizeIterator for AxisIter<'a, A, D>
+where
+    D: RemoveAxis,
+{}
 
-impl<'a, A, D: Dimension> Iterator for AxisIterMut<'a, A, D> {
+impl<'a, A, D> Iterator for AxisIterMut<'a, A, D>
+where
+    D: RemoveAxis,
+{
     type Item = TensorViewMut<'a, A, D::Smaller>;
     fn next(&mut self) -> Option<Self::Item>;
     fn size_hint(&self) -> (usize, Option<usize>);
 }
 
-impl<'a, A, D: Dimension> ExactSizeIterator for AxisIterMut<'a, A, D> {}
+impl<'a, A, D> ExactSizeIterator for AxisIterMut<'a, A, D>
+where
+    D: RemoveAxis,
+{}
 ```
 
-> **设计决策：** `axis_iter()` / `axis_iter_mut()` 对所有 `D: Dimension` 都可见，公开签名不暴露 `D: RemoveAxis`，以确保 `Ix0` 与 rank-0 `IxDyn` 都能进入统一的运行时校验路径。若 `ndim == 0`，方法直接返回 `Err(XenonError::InvalidAxis { operation, axis, ndim: 0, shape })`；只有在 `ndim >= 1` 且内部私有实现可建立 `RemoveAxis` 能力时，迭代器才进入 active 状态。`AxisIter<'a, A, D>` / `AxisIterMut<'a, A, D>` 的公开 `Iterator` 与 `ExactSizeIterator` 实现始终不带 `D: RemoveAxis` where 子句：active 状态委托给私有 `RemoveAxis`-backed 实现，inert 状态的 `next()` 永远返回 `None`。按照公开 API 契约，成功返回给调用方的实例总是已通过运行时轴校验；inert 状态仅作为包装器内部表示存在，不构成新的对外语义分支。
+> **设计决策：** `axis_iter()` / `axis_iter_mut()` 的公开签名显式要求 `D: RemoveAxis`，对应其 `Iterator::Item = TensorView<'a, A, D::Smaller>` / `TensorViewMut<'a, A, D::Smaller>` 的类型需求。`axis_iter` / `axis_iter_mut` 要求 `D: RemoveAxis`，这与 Rust 的类型系统一致。零维张量本身不满足 `RemoveAxis`（无轴可移除），因此无法调用 `axis_iter`。对满足 `RemoveAxis` 的维度类型，运行时仍需继续校验 `axis < ndim`，越界时返回 `XenonError::InvalidAxis { operation, axis, ndim, shape }`。
 
 > **`ExactSizeIterator` 契约说明：** `AxisIter` / `AxisIterMut` 的 `len()` 返回 `shape[axis]`；因此 `size_hint()` 的上下界必须始终相等，并与剩余未产出的轴切片数量一致。空轴（`shape[axis] == 0`）时，`len() == 0`。
 
@@ -282,7 +290,9 @@ where
     pub fn indexed_iter(&self) -> IndexedIter<'_, A, D>;
 
     /// Iterate along an axis (yields sub-tensors orthogonal to the axis).
-    pub fn axis_iter(&self, axis: Axis) -> Result<AxisIter<'_, A, D>, XenonError>;
+    pub fn axis_iter(&self, axis: Axis) -> Result<AxisIter<'_, A, D>, XenonError>
+    where
+        D: RemoveAxis;
 
 }
 
@@ -298,7 +308,9 @@ where
     pub fn indexed_iter_mut(&mut self) -> IndexedIterMut<'_, A, D>;
 
     /// Mutable axis iteration.
-    pub fn axis_iter_mut(&mut self, axis: Axis) -> Result<AxisIterMut<'_, A, D>, XenonError>;
+    pub fn axis_iter_mut(&mut self, axis: Axis) -> Result<AxisIterMut<'_, A, D>, XenonError>
+    where
+        D: RemoveAxis;
 
 }
 ```
@@ -317,14 +329,14 @@ assert_eq!(tensor.iter().count(), 12);
 let iter = tensor.iter();
 assert_eq!(iter.len(), 12);
 
-// Bad - manual index traversal (poor performance, may go out of bounds on non-contiguous data)
+// Bad - manual index traversal (poor performance, repeated bounds checks, loses unified iteration semantics)
 for i in 0..tensor.shape()[0] {
     for j in 0..tensor.shape()[1] {
         let _ = tensor[[i, j]];  // not recommended
     }
 }
 
-// Bad - ignoring the recoverable error path for zero-rank axis iteration
+// Bad - ignoring the recoverable error path for invalid axis iteration
 let scalar = Tensor::<f64, IxDyn>::from_shape_vec(IxDyn::from_slice(&[]), vec![1.0])?;
 // let _ = scalar.axis_iter(Axis(0)).unwrap();
 ```
@@ -450,7 +462,7 @@ increment_index_f(shape, index):
 
 ### Wave 3: 核心元素与索引迭代器
 
-- [ ] **T6**: 实现 `IndexedIter` / `IndexedIterMut`
+- [ ] **T5**: 实现 `IndexedIter` / `IndexedIterMut`
   - 文件: `src/iter/indexed.rs`
   - 内容: 基于 Elements 的索引包装
   - 测试: `test_indexed_iter_order`, `test_indexed_iter_ix0`
@@ -459,11 +471,11 @@ increment_index_f(shape, index):
 
 ### Wave 4: TensorBase 入口集成
 
-- [ ] **T9**: 在 TensorBase 上添加迭代器入口方法
+- [ ] **T6**: 在 TensorBase 上添加迭代器入口方法
   - 文件: `src/tensor/`（或 `src/iter/mod.rs` 通过 trait extension）
   - 内容: `iter()`, `iter_mut()`, `axis_iter()`, `indexed_iter()` 等
   - 测试: `test_tensor_iter_integration`
-  - 前置: T3, T4, T6
+  - 前置: T3, T4, T5
   - 预计: 10 min
 
 ### 并行执行分组图
@@ -475,9 +487,9 @@ Wave 2: [T2] [T4]
            |
 Wave 3: [T3]
            |
-Wave 4: [T6]
+Wave 4: [T5]
            |
-Wave 5: [T9]
+Wave 5: [T6]
 ```
 
 ---
@@ -488,9 +500,9 @@ Wave 5: [T9]
 
 | 测试分类 | 说明                                   | 包含的测试                                                                                                                                                                                                                                                      |
 | -------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 单元测试 | 验证单个迭代器类型的基本功能           | `test_elements_f_contig`, `test_elements_non_contiguous`, `test_elements_empty`, `test_elements_ix0`, `test_elements_mut_write`, `test_axis_iter_count`, `test_axis_iter_shape`, `test_axis_iter_ix0_error`, `test_indexed_iter_order`, `test_indexed_iter_ix0` |
+| 单元测试 | 验证单个迭代器类型的基本功能           | `test_elements_f_contig`, `test_elements_non_contiguous`, `test_elements_empty`, `test_elements_ix0`, `test_elements_mut_write`, `test_axis_iter_count`, `test_axis_iter_shape`, `test_axis_iter_dyn_rank0_error`, `test_indexed_iter_order`, `test_indexed_iter_ix0` |
 | 集成测试 | 验证迭代器与 TensorBase 入口方法的集成 | `test_tensor_iter_integration`                                                                                                                                                                                                                                  |
-| 边界测试 | 空数组、零维张量、非连续内存、大张量/高维/极端索引元数据等边界条件 | `test_elements_empty`, `test_elements_ix0`, `test_axis_iter_ix0_error`, `test_elements_large_tensor_count`, `test_indexed_iter_high_rank_ixdyn`, `test_axis_iter_large_axis_index_error`（详见 §8.3） |
+| 边界测试 | 空数组、零维张量、非连续内存、大张量/高维/极端索引元数据等边界条件 | `test_elements_empty`, `test_elements_ix0`, `test_axis_iter_dyn_rank0_error`, `test_elements_large_tensor_count`, `test_indexed_iter_high_rank_ixdyn`, `test_axis_iter_large_axis_index_error`（详见 §8.3） |
 | 属性测试 | 通过随机输入验证不变量                 | `iter().count() == tensor.len()`, `axis_iter(Axis(i)).count() == shape[i]`, `ExactSizeIterator` 递减不变量（详见 §8.4）                                                                                                                                         |
 
 ### 8.2 单元测试清单
@@ -506,7 +518,7 @@ Wave 5: [T9]
 | `test_axis_iter_shape`         | 沿轴迭代产出的子视图形状正确                  | 高     |
 | `test_indexed_iter_order`      | 索引按 F-order 递增                           | 高     |
 | `test_indexed_iter_ix0`        | 零维张量索引为空切片                          | 中     |
-| `test_axis_iter_ix0_error`     | 零维张量调用 `axis_iter()` 返回 `InvalidAxis` 可恢复错误 | 高     |
+| `test_axis_iter_dyn_rank0_error` | rank-0 `IxDyn` 调用 `axis_iter()` 返回 `InvalidAxis` 可恢复错误 | 高     |
 | `test_elements_large_tensor_count` | 大张量（`10^7` 量级元素）上的 `count()` / `len()` 一致，且不访问越界内存 | 高     |
 | `test_indexed_iter_high_rank_ixdyn` | 高 rank `IxDyn`（接近静态上限/超过静态维度）索引遍历次序与数量正确 | 高     |
 | `test_axis_iter_large_axis_index_error` | 极端 axis 值（如 `usize::MAX`）返回 `InvalidAxis` 且携带完整诊断 | 高     |
@@ -518,7 +530,7 @@ Wave 5: [T9]
 | ----------------------------- | ------------------------------------------------ |
 | 空数组 `shape=[0, 3]`         | `iter()` 立即结束，`count() == 0`                |
 | 单元素 `shape=[1, 1]`         | `iter()` 产出 1 项                               |
-| 零维张量 `Ix0` / rank-0 `IxDyn` | `iter()` 产出 1 项；`axis_iter()` / `axis_iter_mut()` 统一返回 `InvalidAxis` 可恢复错误 |
+| 零维张量 `Ix0` / rank-0 `IxDyn` | `iter()` 产出 1 项；`Ix0` 上 `axis_iter()` / `axis_iter_mut()` 编译期不可调用，rank-0 `IxDyn` 统一返回 `InvalidAxis` 可恢复错误 |
 | 非连续切片 `s![.., 0..3]`     | `iter()` 正确处理步长跳转                        |
 | 广播视图 `shape=[1, 4]`       | `iter()` 遍历逻辑元素，`iter_mut()` 编译拒绝     |
 | 填充数组                      | 仅遍历逻辑元素                                   |
@@ -557,7 +569,7 @@ Wave 5: [T9]
 | 场景 | 测试方式 |
 | ---- | ---- |
 | 广播结果不可变，不提供 `iter_mut()` | 编译期测试或 trait 约束验证。 |
-| `AxisIter` / `AxisIterMut` 的公开构造签名不暴露 `RemoveAxis`，但内部实现仍可利用该 trait 优化 | 运行时错误测试 + 内部实现约束验证。 |
+| `AxisIter` / `AxisIterMut` 与 `axis_iter()` / `axis_iter_mut()` 公开签名要求 `D: RemoveAxis` | 编译期 trait 边界测试 + 运行时 axis 越界错误测试。 |
 | `DoubleEndedIterator` 不属于当前公开接口 | 编译期失败测试或 API 缺失断言。 |
 
 ---
@@ -593,7 +605,7 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `axis_iter()` / `axis_iter_mut()` 在 `axis` 越界或任意零维输入（包括 `Ix0` 与 rank-0 `IxDyn`）时返回 `XenonError::InvalidAxis { operation: Cow<'static, str>, axis: usize, ndim: usize, shape: Vec<usize> }`；编译期排除仅可作为内部优化。 |
+| Recoverable error | `axis_iter()` / `axis_iter_mut()` 在 `axis` 越界或运行时 rank-0 动态维输入上返回 `XenonError::InvalidAxis { operation: Cow<'static, str>, axis: usize, ndim: usize, shape: Vec<usize> }`；静态零维 `Ix0` 因 `D: RemoveAxis` 约束不进入该公开调用路径。 |
 | Panic | 公开迭代器 API 不引入新的 panic 语义；仅内部 producer 分块等不变量破坏可使用断言。 |
 | 路径一致性 | 连续、非连续、零步长广播视图及并行 producer 的外部迭代顺序与长度语义必须一致。 |
 | 容差边界 | 不适用。 |
