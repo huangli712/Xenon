@@ -61,7 +61,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 | 项目     | 内容                                                            |
 | -------- | --------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §4、§5、§12、§13、§15、§23、§24、§25、§28            |
+| 需求映射 | 需求说明书 §4、§5、§12、§13、§15、§20、§23、§24、§25、§28      |
 | 范围内   | `Complex<T>` 类型定义、同精度复数算术、`conj()` / `norm()` / `norm_sqr()`、格式化、类型转换、FFI 布局边界 |
 | 范围外   | `num-complex` 兼容层、跨精度混合运算、FFT 与高阶复数算法、额外公开复数数学函数 |
 | 非目标   | 引入第三方复数库依赖、开放任意 `T` 的公开实例化、把内部数学 helper 稳定化，或 `_Complex` ABI 保证 |
@@ -157,6 +157,8 @@ pub struct Complex<T: ComplexFloat> {
 > **公开边界约束：** `Complex<T>` 保持公开泛型形式，但其公开 bound 使用 `pub trait ComplexFloat`。
 > 该 trait 通过 `private::Sealed` 超 trait 封闭实现范围，因此下游只能使用 `Complex<f32>` 与
 > `Complex<f64>`，不能为其他类型自行实现 `ComplexFloat`。
+
+> **rustdoc 呈现补充说明：** rustdoc 会把 `Complex<T: ComplexFloat>` 渲染成一般泛型类型，容易让读者误以为任意 `T` 都可实例化。文档、示例与导出注释必须反复强调：公开可构造实例实际上只包含 `Complex<f32>` 与 `Complex<f64>` 两种 sealed 组件类型。
 
 ### 5.2 泛型约束
 
@@ -301,12 +303,10 @@ impl<T: ComplexFloat> Complex<T> {
     /// Returns the complex conjugate: conj(a + bj) = a - bj.
     ///
     /// **Design note:** `Complex::conj()` is an inherent method returning `Self`
-    /// (the same complex type with negated imaginary part). It differs from
-    /// `ComplexScalar::conjugate()` which is the trait method on the complex
-    /// capability layer.
-    /// Both produce the same mathematical result for complex types, but
-    /// `ComplexScalar::conjugate()` is the intended trait-level API for generic
-    /// code constrained on complex scalars. See `03-element.md` §5.4 for details.
+    /// (the same complex type with negated imaginary part). Generic code should
+    /// use `Numeric::conjugate()` as the unified trait-level API; `ComplexScalar`
+    /// only carries complex-specific read capabilities such as `re`, `im`, and `norm`.
+    /// See `03-element.md` §5.2 / §5.4 for the trait layering details.
     #[inline]
     pub fn conj(self) -> Self {
         Self::new(self.re, -self.im)
@@ -547,7 +547,7 @@ impl<T: ComplexFloat> core::ops::Neg for Complex<T> {
 }
 ```
 
-> **除零语义说明：** `Complex<T>` 的除法在分母为 `0+0j` 时遵循 IEEE 754 浮点传播语义；实现可产生 `NaN` / `Inf` 组合结果，但不额外返回可恢复错误，也不引入额外 panic。该约束适用于 `Complex<T> / Complex<T>` 公开运算符语义，并与 `require.md §28.3` 保持一致。
+> **除法特殊值语义说明：** `Complex<T>` 除法使用 Smith 算法做数值稳定化，但不为 `NaN` / `Inf` / `±0.0` 引入额外分支裁决；所有特殊值行为都继续委托给底层 `f32` / `f64` 的 IEEE 754 运算传播。分母为 `0+0j`、分量含 `NaN`、或中间结果上溢/下溢时，可产生 `NaN` / `Inf` / `-0.0` 组合结果，但不额外返回可恢复错误，也不引入额外 panic。该约束适用于 `Complex<T> / Complex<T>` 公开运算符语义，并与 `require.md §24` / `§28.3` 保持一致。
 
 ### 5.7 显式实数构造与混合运算边界
 
@@ -584,6 +584,9 @@ impl<T: ComplexFloat + core::fmt::Display> core::fmt::Display for Complex<T> {
     /// NaN handling: when the imaginary part is NaN, always display
     /// as "re+NaNj". This deliberately normalizes the textual form instead
     /// of inferring a sign from NaN payload/sign-bit details.
+    /// `-0.0` must preserve the underlying scalar Display output, `Inf` / `-Inf`
+    /// follow the component scalar formatting, and NaN payload bits are not
+    /// rendered textually distinct.
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if self.im != self.im {
             return write!(f, "{}+NaNj", self.re);
@@ -608,6 +611,8 @@ impl<T: ComplexFloat + core::fmt::Display> core::fmt::Display for Complex<T> {
 | `Complex::new(3.0, 0.0)`  | `"3"`        |
 | `Complex::new(0.0, 4.0)`  | `"4j"`       |
 | `Complex::new(0.0, 0.0)`  | `"0"`        |
+
+> **Display 稳定性规则：** `-0.0` 必须保留标量自身的文本符号，不得在复数格式化层强行归一化为 `0.0`；`NaN` 的 payload / sign bit 不作为稳定输出契约的一部分；`Inf` / `-Inf` 直接沿用分量标量的 `Display` 结果。复数字符串层只保证组合规则稳定，不承诺超出底层浮点 `Display` 的额外 canonicalization。
 
 ### 5.10 类型转换
 
@@ -641,6 +646,8 @@ impl<T: ComplexFloat + core::fmt::Display> core::fmt::Display for Complex<T> {
 
 > **实现片段省略：** `Complex -> Real` 的具体 `CastTo<T>` 实现同样位于 `convert/cast.rs`。`complex/` 仅保留“虚部必须为 `0`，否则返回 `XenonError::TypeConversion(TypeConversionError)`”这一语义约束，字段模型以 `26-error.md §4.2` / `§4.4` 为准。
 
+> **`-0.0` 补充说明：** 复数到实数转换对“虚部是否为零”的判断遵循 IEEE 754 比较语义；因此 `-0.0` 视为零，`Complex::new(3.0, -0.0)` 允许按虚部为零的路径继续转换，不应被误判为非零虚部。
+
 ### 5.11 内存布局静态断言
 
 ```rust,ignore
@@ -654,6 +661,8 @@ const _: () = {
 ```
 
 **安全性论证**: `#[repr(C)]` 仅用于固定字段顺序与 C 兼容结构体表示；安全前提建立在按 `re` / `im` 两个已知字段访问，而非依赖“无 padding”假设。
+
+> **字段偏移验证意图：** 除 size/align 静态断言外，测试计划还应补充 `re` 位于偏移 0、`im` 位于 `size_of::<T>()` 偏移处的验证意图，用于防止未来重构破坏两字段 C struct 的约定布局。
 
 ### 5.12 FFI 布局兼容性说明
 
@@ -951,6 +960,9 @@ assert!((result.re - 2.0).abs() < 1e-10 && result.im.abs() < 1e-10);
 | 极小值 norm                   | `Complex::new(1e-200, 1e-200).norm()` 正确               |
 | `Complex::new(1.0, 2.0) / Complex::new(0.0, 0.0)` | 遵循 IEEE 754 传播语义，不返回可恢复错误，也不额外 panic |
 | 连续字段布局                  | `Complex<f64>` 的 `re/im` 字段顺序稳定，可逐元素读取     |
+| §28.4 占位：large-tensor      | 后续补充大批量复数元素运算/格式化回归 |
+| §28.4 占位：high-dim          | 后续补充高维复数张量在 `math` / `matrix` / `ffi` 协同回归 |
+| §28.4 占位：extreme-value     | 后续补充 `NaN` / `Inf` / `-0.0` / subnormal 组合回归 |
 
 ### 8.4 属性测试不变量
 

@@ -51,7 +51,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 | 项目     | 内容                                                                 |
 | -------- | -------------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §3、§16、§17；其中 `BroadcastDim` 支持 §16 广播语义，`Reverse` 支持 §17 转置语义 |
+| 需求映射 | 需求说明书 §3、§11、§14、§16、§17、§18；其中 `BroadcastDim` 支持 §16 广播语义，`Reverse` 支持 §17 转置语义，零维轴错误/降维输出/索引轴合法性分别对应 §11、§14、§18 |
 | 范围内   | 静态/动态维度类型、`Dimension`/`IntoDimension`/`RemoveAxis`、轴元数据 |
 | 范围外   | 内存分配、布局标志计算、张量运算、C-order 支持                       |
 | 非目标   | 引入开放维度扩展机制、负步长维度模型或新的存储后端                   |
@@ -90,7 +90,7 @@ src/dimension/
 | `error`   | `XenonError::DimensionMismatch`（维度转换失败时返回） |
 | `private` | `Sealed`（`Dimension` trait 的 supertrait）           |
 
-### 4.2a 依赖合法性
+### 4.2a 依赖合法性与新增依赖说明
 
 | 项目           | 结论                               |
 | -------------- | ---------------------------------- |
@@ -290,9 +290,9 @@ impl Dimension for Ix3 {
 
     #[inline]
     fn slice(&self) -> &[usize] {
-        // SAFETY: Ix3 is #[repr(C)], so its 3 usize fields are laid out consecutively
-        // at offsets 0, size_of::<usize>(), 2*size_of::<usize>() with no padding.
-        // Reinterpreting &Ix3 as &[usize; 3] via pointer cast is therefore safe.
+        // SAFETY (§8.2): `Ix3` uses `#[repr(C)]` and contains exactly three `usize`
+        // fields in declaration order. Reinterpreting `&Ix3` as a contiguous
+        // `*const usize` slice of length 3 preserves provenance, alignment, and size.
         unsafe {
             core::slice::from_raw_parts(self as *const Self as *const usize, 3)
         }
@@ -300,7 +300,9 @@ impl Dimension for Ix3 {
 
     #[inline]
     fn slice_mut(&mut self) -> &mut [usize] {
-        // SAFETY: Same as slice() — #[repr(C)] guarantees consecutive layout.
+        // SAFETY (§8.2): Same argument as `slice()`: `#[repr(C)]` guarantees the
+        // three `usize` fields are laid out contiguously with compatible alignment,
+        // so forming a mutable slice over exactly 3 elements is sound.
         unsafe {
             core::slice::from_raw_parts_mut(self as *mut Self as *mut usize, 3)
         }
@@ -308,16 +310,18 @@ impl Dimension for Ix3 {
 
     #[inline]
     fn checked_size(&self) -> Result<usize, XenonError> {
-        self.0
-            .checked_mul(self.1)
-            .and_then(|v| v.checked_mul(self.2))
-            .ok_or(XenonError::InvalidShape {
+        let dims = [self.0, self.1, self.2];
+        let mut acc = 1usize;
+        for (axis, &dim) in dims.iter().enumerate() {
+            acc = acc.checked_mul(dim).ok_or(XenonError::InvalidShape {
                 operation: "Dimension::checked_size".into(),
-                shape: self.slice().into(),
+                shape: dims.into(),
                 expected_elements: 0,
                 actual_elements: 0,
-                offending_dim: Some(2),
-            })
+                offending_dim: Some(axis),
+            })?;
+        }
+        Ok(acc)
     }
 
     #[inline]
@@ -407,16 +411,17 @@ impl Dimension for IxDyn {
     fn slice(&self) -> &[usize] { &self.dims }
     fn slice_mut(&mut self) -> &mut [usize] { &mut self.dims }
     fn checked_size(&self) -> Result<usize, XenonError> {
-        self.dims
-            .iter()
-            .try_fold(1usize, |acc, &dim| acc.checked_mul(dim).ok_or(()))
-            .map_err(|_| XenonError::InvalidShape {
+        let mut acc = 1usize;
+        for (axis, &dim) in self.dims.iter().enumerate() {
+            acc = acc.checked_mul(dim).ok_or(XenonError::InvalidShape {
                 operation: "Dimension::checked_size".into(),
                 shape: self.dims.clone(),
                 expected_elements: 0,
                 actual_elements: 0,
-                offending_dim: None,
-            })
+                offending_dim: Some(axis),
+            })?;
+        }
+        Ok(acc)
     }
 
     fn checked(&self) -> Result<(), XenonError> {
@@ -620,6 +625,8 @@ impl RemoveAxis for IxDyn {
     }
 }
 ```
+
+> **公开 API 约束：** `RemoveAxis` 是维度层内部/泛型辅助能力，公开张量方法不直接把该 trait 暴露给用户；对 `Ix0` 的移轴请求统一在运行时返回 `XenonError::InvalidAxis`，而不是通过公开 API 暴露 `RemoveAxis` 细节或要求用户理解零维 `Smaller` 类型。
 
 > **设计决策：** `RemoveAxis` 作为独立 trait 而非 `Dimension` 的关联类型。
 > 它负责描述“可移除一条轴后的结果维度类型”，但零维轴操作不应依赖编译期拒绝；
@@ -866,7 +873,9 @@ impl Reverse for IxDyn {
 
 > **范围说明：** 当前版本的形状操作只包含 transpose，但 transpose 语义本身须支持显式轴置换；默认的轴反转是 `transpose()` 的一种特例。参见 `require.md` §17。
 
-> **静态维度补充说明：** 对静态维度 `Ix0`..`Ix6`，`PermuteAxes` 通过编译期常量泛型或宏生成实现；当前版本仅 `IxDyn` 提供完整的运行时轴置换。静态维度的 `transpose` 由 `16-shape.md` 定义，不依赖通用 `PermuteAxes` trait。
+> **静态维度补充说明：** 对静态维度 `Ix0`..`Ix6`，`PermuteAxes` 通过编译期常量泛型或宏生成实现；当前版本仅 `IxDyn` 提供完整的运行时轴置换。静态维度的 `transpose` 由 `16-shape.md` 定义，不依赖通用 `PermuteAxes` trait。其生成签名模式可写为：`impl PermuteAxes for Ix3 { fn permuted_axes(&self, permutation: &[Axis]) -> Result<Ix3, XenonError>; }`，更高/更低静态维度按同一模板展开。
+
+> **宏覆盖测试策略：** `BroadcastDim`、静态 `PermuteAxes` 等宏生成实现应至少通过三类测试覆盖：成功路径（每个静态 rank 至少一例）、compile-fail 边界（非法 rank/非法输入不暴露实现）、以及文档/trait 矩阵核对，防止某个 rank 在宏展开中遗漏。
 
 ---
 
@@ -1064,6 +1073,9 @@ Wave 5:  [T10] → [T11] → [T12]
 | 大维度 `Ix6(100,100,100,100,100,100)` | `checked_size()` 在溢出时返回带 `offending_dim` 的错误 |
 | `IxDyn::ones(0)`                      | 零维动态维度                          |
 | `PermuteAxes` 重复/缺失轴              | 返回可恢复错误，不接受非双射排列       |
+| §28.4 占位：large-tensor              | 后续补充超大 shape 元数据与溢出边界回归 |
+| §28.4 占位：high-dim                  | 后续补充高维 `IxDyn` / 广播 / 转置协同回归 |
+| §28.4 占位：extreme-value             | 后续补充 `usize` 极值与乘积溢出诊断回归 |
 
 ### 8.4 属性测试不变量
 

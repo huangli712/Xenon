@@ -2,7 +2,7 @@
 
 > 文档编号: 22 | 模块: `src/format/` | 阶段: Phase 4
 > 前置文档: `05-storage.md`, `06-layout.md`, `07-tensor.md`
-> 需求参考: 需求说明书 §4, §5, §8, §24, §28.1
+> 需求参考: 需求说明书 §4, §5, §8, §24, §28.1, §28.4
 > 范围声明: 范围内
 
 ---
@@ -47,7 +47,7 @@ L7: format  <- current module
 
 | 类型     | 内容 |
 | -------- | ---- |
-| 需求映射 | 需求说明书 §4, §5, §8, §24, §28.1 |
+| 需求映射 | 需求说明书 §4, §5, §8, §24, §28.1, §28.4 |
 | 范围内   | `Display` / `Debug`、`FormatConfig`、NumPy 风格多维输出、截断规则与零维张量显式标记。 |
 | 范围外   | 二进制序列化、JSON 输出、自定义 formatter 注册与 HTML / 富文本渲染。 |
 | 非目标   | 不把格式化模块扩展为序列化层，不新增第三方格式化依赖，也不改变 tensor 数据本身。 |
@@ -240,7 +240,7 @@ where
 
 > **读取顺序约定**：格式化输出按**逻辑多维索引顺序**读取元素，而不是按底层物理内存顺序线性扫描。格式化层不得把 `iter()` 的顺序当作公共契约前提；若内部复用 `iter()`，那只应视为私有实现细节，必要时应改为显式逻辑索引或递归子视图遍历。
 
-> **内部访问说明**：内部实现可使用 `read_at(indices)` 之类的辅助函数访问逻辑位置元素；这只是实现细节，**不扩展 `require.md` §18 的公开索引契约**。
+> **内部访问说明**：内部实现可使用 `read_at(indices)` 之类的辅助函数访问逻辑位置元素；这只是实现细节，**不扩展 `require.md` §18 的公开索引契约**。`read_at(indices)` 的时间复杂度为 `O(ndim)`，前提为 `indices` 在合法范围内。
 
 > **注意**：`core::fmt::Display` 在 Rust 1.85 中对 f32/f64 无需 `std` 即可使用，因此此实现不加 `#[cfg(feature = "std")]` 门控。
 
@@ -291,7 +291,7 @@ impl<S, D, A> core::fmt::Debug for TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: core::fmt::Debug + core::fmt::Display + Element,
+    A: core::fmt::Debug + core::fmt::Display + Element + 'static,
 {
     /// Developer-facing debug output.
     ///
@@ -422,6 +422,8 @@ Tensor0(42)
    - `Display` 只输出数据文本；若 `omitted > 0`，则在最外层右括号后追加 ` ... (N elements omitted)  shape=[...]`；
    - `Debug` 先输出 `shape=` / `strides=` / `dtype=` / `layout=` 头部；若 `omitted > 0`，则只在数据段末尾追加 ` ... (N elements omitted)`，不重复追加 `shape=[...]`。
 6. `line_width` 仅影响换行位置；它不得改变是否截断、每层保留的头尾项数量、`visible_elements` 或 `omitted`。
+
+> **稳定排版规则：** 缩进规则：每增加一层维度嵌套，缩进增加 2 个空格。元素间分隔符固定为 `, `。换行阈值由 `line_width` 参数控制；达到阈值时，只允许在元素边界或轴边界处换行，不得改变元素顺序。
 
 > **单一执行规范：** 当前版本不定义 `max_display_elements`、`max_rows` 或其他额外截断阈值；所有截断行为都只由 `threshold` 与 `edge_items` 共同决定。
 
@@ -575,7 +577,7 @@ fmt_nd(tensor, f, prefix):
         write "]"
 ```
 
-> 对 F-order 张量，格式化必须按**逻辑索引**而不是物理线性内存顺序展开。以 `shape=[3, 3]` 为例，显示位置 `[i, j]` 对应逻辑索引 `[i, j]`，其线性位置为 `i + j * 3`；因此输出为 `[[1, 4, 7], [2, 5, 8], [3, 6, 9]]`，而不是按物理连续内存直接切成 `[[1, 2, 3], [4, 5, 6], [7, 8, 9]]`。内部若使用 `read_at(indices)` 等辅助函数，仅表示实现通过逻辑坐标取值，不构成新的公开索引承诺。
+> 对 F-order 张量，格式化必须按**逻辑索引**而不是物理线性内存顺序展开。以 `shape=[3, 3]` 为例，显示位置 `[i, j]` 对应逻辑索引 `[i, j]`，其线性位置为 `i + j * 3`；因此输出为 `[[1, 4, 7], [2, 5, 8], [3, 6, 9]]`，而不是按物理连续内存直接切成 `[[1, 2, 3], [4, 5, 6], [7, 8, 9]]`。内部若使用 `read_at(indices)` 等辅助函数，仅表示实现通过逻辑坐标取值，不构成新的公开索引承诺；该 helper 的前提为索引已通过范围检查，单次读取复杂度为 `O(ndim)`。
 
 ### 6.2 dtype 名称映射
 
@@ -687,6 +689,8 @@ Wave 3:        [T5]
 | `test_debug_tensor`           | Debug trait 含元信息，且数据段不重复输出 `shape=[...]` | 高     |
 | `test_fmt_zero_dim`           | 零维张量输出带区分标记                      | 中     |
 | `test_fmt_large_2d_truncated` | 大 2D 数组行列截断                          | 高     |
+| `test_fmt_broadcast_view`     | broadcast view 按逻辑索引顺序格式化         | 高     |
+| `test_fmt_transposed_view`    | transposed view 按逻辑行列结构格式化        | 高     |
 | `test_line_width_wrapping`    | 多行输出遵守配置的 `line_width`             | 中     |
 | `test_line_width_narrow`      | 窄行宽配置触发更早换行                      | 中     |
 
@@ -700,28 +704,38 @@ Wave 3:        [T5]
 | 1001 元素 1D       | 触发截断，并在尾部输出 `... (N elements omitted)  shape=[1001]` |
 | 1000 元素 1D       | 不截断                              |
 | NaN/Inf            | 输出 `NaN`/`inf`                    |
+| broadcast view     | 按逻辑索引顺序格式化，不因零步长重复存储表示而改变展示顺序 |
+| transposed view    | 按逻辑行列结构输出，并标记 `layout=non-contiguous` |
 
-### 8.4 属性测试不变量
+### 8.4 §28.4 边界测试占位
+
+| 占位场景 | 说明 |
+| -------- | ---- |
+| broadcast view 格式化 | 预留给 `require.md §28.4` 的零步长广播视图显示/调试边界测试 |
+| transposed view 格式化 | 预留给 `require.md §28.4` 的转置非连续视图显示顺序测试 |
+| 大维度窄行宽 | 预留给 `require.md §28.4` 的高维嵌套 + `line_width` 边界折行测试 |
+
+### 8.5 属性测试不变量
 
 | 不变量                                              | 测试方法 |
 | --------------------------------------------------- | -------- |
 | `debug(tensor)` 包含 shape / strides / dtype 元信息 | 随机形状 |
 | 截断输出包含统一后缀 `... (N elements omitted)  shape=[...]` | 大数组 |
 
-### 8.5 集成测试
+### 8.6 集成测试
 
 | 测试文件               | 测试内容                                                                                  |
 | ---------------------- | ----------------------------------------------------------------------------------------- |
 | `tests/test_output.rs` | `Display` / `Debug` 与 `tensor` 元数据查询、`iter` 遍历、复数与浮点格式化路径的端到端集成 |
 
-### 8.6 Feature gate / 配置测试
+### 8.7 Feature gate / 配置测试
 
 | 配置 | 验证点 |
 | ---- | ---- |
 | 默认配置 | `Display` / `Debug` / `FormatConfig::default()` 输出满足 NumPy 风格与零维区分契约。 |
 | 其他 feature 组合 | 不适用；当前模块无额外 feature gate。 |
 
-### 8.7 类型边界 / 编译期测试
+### 8.8 类型边界 / 编译期测试
 
 | 场景 | 测试方式 |
 | ---- | ---- |

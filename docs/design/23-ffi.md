@@ -2,7 +2,7 @@
 
 > 文档编号: 23 | 模块: `src/ffi/` | 阶段: Phase 4
 > 前置文档: `07-tensor.md`, `06-layout.md`
-> 需求参考: 需求说明书 §5, §6, §7, §8, §25, §27, §28.1
+> 需求参考: 需求说明书 §5, §6, §7, §8, §25, §27, §28.1, §28.4
 > 范围声明: 范围内
 
 ---
@@ -46,7 +46,7 @@ L5: ffi  <- current module
 
 | 类型     | 内容 |
 | -------- | ---- |
-| 需求映射 | 需求说明书 §5, §6, §7, §8, §25, §27, §28.1 |
+| 需求映射 | 需求说明书 §5, §6, §7, §8, §25, §27, §28.1, §28.4 |
 | 范围内   | 原始指针访问、raw-parts 往返、BLAS 兼容性查询、多维索引到偏移 / 指针转换。 |
 | 范围外   | 实际 BLAS / LAPACK 例程调用、GPU 互操作、跨进程共享内存与更高层序列化协议。 |
 | 非目标   | 不把 `ffi` 扩展为外部数值库绑定层，不新增第三方 FFI crate 依赖。 |
@@ -183,7 +183,17 @@ impl From<FfiError> for XenonError {
         XenonError::Ffi(value)
     }
 }
+
+impl core::fmt::Display for FfiError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl std::error::Error for FfiError {}
 ```
+
+> **公开边界说明：** `FfiError` 为内部错误类型，通过 `From<FfiError> for XenonError` 转换后公开。`pub mod ffi` 不直接 re-export `FfiError`，对外稳定错误边界仍是 `XenonError`。
 
 ### 5.2 原始指针 API
 
@@ -289,7 +299,7 @@ impl ElementType {
 /// - `TensorExport` is the read-only export form and uses `*const A`.
 ///   `TensorExportMut` is the writable export form and uses `*mut A`.
 #[repr(C)]
-pub struct TensorExport<A> {
+pub struct TensorExport<'a, A> {
     /// Typed pointer to the storage base address.
     ///
     /// `data`, `strides`, and `offset` all use element units of `A`.
@@ -297,6 +307,8 @@ pub struct TensorExport<A> {
     /// both `offset` and `strides` as element counts rather than byte counts.
     ///
     pub data: *const A,
+    /// Lifetime marker tying the export to the source tensor borrow.
+    pub _marker: core::marker::PhantomData<&'a A>,
     /// Element type identifier (matches ElementType enum).
     pub element_type: ElementType,
     /// Number of dimensions.
@@ -308,6 +320,8 @@ pub struct TensorExport<A> {
     pub shape: *const usize,
     /// Stride array (length = ndim), in units of elements (not bytes).
     pub strides: *const usize,
+    /// Storage length in elements for safe view reconstruction.
+    pub storage_len: usize,
     /// Offset from the storage base pointer to the logical first element,
     /// measured in elements.
     pub offset: usize,
@@ -315,13 +329,15 @@ pub struct TensorExport<A> {
 
 /// Raw mutable tensor data export for FFI consumers.
 #[repr(C)]
-pub struct TensorExportMut<A> {
+pub struct TensorExportMut<'a, A> {
     /// Typed pointer to the storage base address.
     ///
     /// `data`, `strides`, and `offset` all use element units of `A`.
     /// C consumers must cast `data` to the matching element type and interpret
     /// both `offset` and `strides` as element counts rather than byte counts.
     pub data: *mut A,
+    /// Lifetime marker tying the export to the source tensor borrow.
+    pub _marker: core::marker::PhantomData<&'a mut A>,
     /// Element type identifier (matches ElementType enum).
     pub element_type: ElementType,
     /// Number of dimensions.
@@ -333,6 +349,8 @@ pub struct TensorExportMut<A> {
     pub shape: *const usize,
     /// Stride array (length = ndim), in units of elements (not bytes).
     pub strides: *const usize,
+    /// Storage length in elements for safe view reconstruction.
+    pub storage_len: usize,
     /// Offset from the storage base pointer to the logical first element,
     /// measured in elements.
     pub offset: usize,
@@ -353,7 +371,7 @@ where
     /// Empty tensors are allowed: when `len() == 0`, `data` may be a
     /// non-dereferenceable sentinel pointer. In that case `shape`, `strides`,
     /// and `offset` must still correctly describe the empty tensor metadata.
-    pub fn export(&self) -> TensorExport<A>;
+    pub fn export(&self) -> TensorExport<'_, A>;
 }
 
 impl<S, D, A> TensorBase<S, D>
@@ -369,29 +387,29 @@ where
     /// modes are rejected at the trait boundary rather than at runtime.
     /// No additional fallible validation is performed beyond the existing
     /// `&mut self` + `S: StorageMut` exclusivity boundary.
-    pub fn export_mut(&mut self) -> TensorExportMut<A>;
+    pub fn export_mut(&mut self) -> TensorExportMut<'_, A>;
 }
 ````
 
-> **导出语义说明：** `TensorExport` 面向 C 调用方提供"指针 + shape + strides + offset"的结构化快照，其中 `shape` 与 `strides` 指针均借用源张量内部元数据，不能在源张量释放后继续使用。
+> **导出语义说明：** `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 面向 C 调用方提供"指针 + shape + strides + storage_len + offset"的结构化快照，其中 `shape` 与 `strides` 指针均借用源张量内部元数据，不能在源张量释放后继续使用；生命周期参数和 `PhantomData` 明确表达“源张量必须活得比导出结构更久”。
 
-> **导出范围说明：** `export()` 提供只读结构化导出并返回 `TensorExport<A>`，适用于任意 `TensorBase<S, D>` 且仅要求 `S: Storage`，因此覆盖 Owned、View、只读共享存储以及所有合法 stride 布局。`export_mut()` 直接返回 `TensorExportMut<A>`，适用于任意满足 `S: StorageMut` 的 `TensorBase<S, D>`，因此同时覆盖 Owned 与 `ViewMut` 这两类可写存储。
+> **导出范围说明：** `export()` 提供只读结构化导出并返回 `TensorExport<'_, A>`，适用于任意 `TensorBase<S, D>` 且仅要求 `S: Storage`，因此覆盖 Owned、View、只读共享存储以及所有合法 stride 布局。`export_mut()` 直接返回 `TensorExportMut<'_, A>`，适用于任意满足 `S: StorageMut` 的 `TensorBase<S, D>`，因此同时覆盖 Owned 与 `ViewMut` 这两类可写存储。
 
 > **可写导出边界：** `export_mut()` 通过 `&mut self` 和 `S: StorageMut` 保证 Xenon 侧的独占可写访问；只读视图和共享只读存储则在 trait 边界上直接被拒绝。这与 `require.md §6` 的存储模式转换和 `§25` 的零拷贝导出要求保持一致。
 
 > **空张量约定：** 空张量（`len() == 0`）导出时 `data` 可为悬垂但非解引用的哨兵指针，此时 `shape`、`strides`、`offset` 仍须正确反映空张量元数据。C 调用方必须先基于长度判断是否可解引用。
 
-> **指针语义补充：** `TensorExport<A>::data` 是 `*const A`，`TensorExportMut<A>::data` 是 `*mut A`，二者语义上都始终指向 storage base pointer。`offset` 与 `strides` 都以"元素个数"计量，而不是字节数。逻辑首元素地址等于 `data.add(offset)`（仅对非空张量成立）。
+> **指针语义补充：** `TensorExport<'_, A>::data` 是 `*const A`，`TensorExportMut<'_, A>::data` 是 `*mut A`，二者语义上都始终指向 storage base pointer。`offset` 与 `strides` 都以"元素个数"计量，而不是字节数。逻辑首元素地址等于 `data.add(offset)`（仅对非空张量成立）。
 
-> **stride 约定：** `strides` 以"元素个数"而非字节数表示步长，类型为 `usize`。按照 `06-layout.md` §1.2 与 `require.md` §7，当前版本 Xenon 不支持负步长，因此 FFI 导出格式也不保留负 stride 语义。
+> **stride 约定：** `strides` 以"元素个数"而非字节数表示步长，类型为 `usize`。按照 `06-layout.md` §1.2 与 `require.md` §7，当前版本 Xenon 不支持负步长，因此 FFI 导出格式也不保留负 stride 语义。`from_raw_parts()` 允许零步长布局以表达广播只读视图；`from_raw_parts_mut()` 则拒绝所有非空零步长布局（即任何非单元素轴的 `stride == 0` 都会报错）。
 
 > **offset 约定：** `offset` 一律表示从 `data`（即导出的 storage base pointer）到逻辑首元素的**元素单位**位移，与 `07-tensor.md` 的 raw-parts 契约一致；不得将其解释为字节偏移。C 调用方必须先按元素单位应用这一次偏移，再把结果视为逻辑首元素地址。
 
 > **ndim 一致性约定：** C 消费者须以 `ndim` 为 `shape` 和 `strides` 数组的长度，不得以硬编码长度或其它来源替代。`TensorExport` 的构造保证 `shape` 和 `strides` 指向的数组长度均等于 `ndim`。
 
-> **生命周期与借用语义：** 导出结果不拥有底层内存；一旦源张量被 drop，`TensorExport` 内的 `data`、`shape`、`strides` 全部立即失效。应将该导出结果视为对源张量当前元数据与指针状态的借用快照：`export()` 暴露只读快照，`export_mut()` 暴露独占可写快照；无论是否跨 FFI 边界缓存，该快照都不得超出源张量的生命周期，也不得绕过 `&mut self` 所表达的独占写语义。本文不额外指定 `TensorExport<_>` / `TensorExportMut<_>` 的 auto trait 组合，线程相关性质以其字段与 Rust auto-trait 推导结果为准。
+> **生命周期与借用语义：** 导出结果不拥有底层内存；一旦源张量被 drop，`TensorExport` 内的 `data`、`shape`、`strides` 全部立即失效。应将该导出结果视为对源张量当前元数据与指针状态的借用快照：`export()` 暴露只读快照，`export_mut()` 暴露独占可写快照；无论是否跨 FFI 边界缓存，该快照都不得超出源张量的生命周期，也不得绕过 `&mut self` 所表达的独占写语义。本文不额外指定 `TensorExport<'_, _>` / `TensorExportMut<'_, _>` 的 auto trait 组合，线程相关性质以其字段与 Rust auto-trait 推导结果为准。
 
-#### 5.2.1 Complex FFI layout contract
+#### 5.2.1 Complex FFI 布局契约
 
 ```rust,ignore
 #[repr(C)]
@@ -414,11 +432,13 @@ pub struct Complex64 {
 > **导出语义：** 导出复数张量时，`TensorExport<Complex<f32>>` / `TensorExport<Complex<f64>>` 和 `TensorExportMut<Complex<f32>>` / `TensorExportMut<Complex<f64>>` 中的 `data` 仍是“复数元素指针”，`offset` 与 `strides` 仍按“复数元素个数”计量，而不是按标量 `re/im` 分量或字节计量。C 侧看到的是 `Complex32*` / `Complex64*` 加上相同的 shape/stride 元数据。
 
 
-#### 5.2.2 Bool FFI layout contract
+#### 5.2.2 Bool FFI 布局契约
 
 > **Bool ABI 要求：** Rust `bool` 在 FFI 中等价于 C 的 `_Bool`（C23 起为 `bool`），大小为 1 字节，对齐为 1，合法值为 `0`（false）和 `1`（true）。C 消费者必须使用 `_Bool` 或 `bool`（C23）来匹配 `TensorExport<bool>` / `TensorExportMut<bool>` 中的 `data` 指针类型；使用 `int`、`unsigned char` 或其它整数类型会导致未定义行为。
 
 > **导出语义：** 导出 `bool` 张量时，`TensorExport<bool>` 中的 `data` 为 `*const bool`（C 侧 `const _Bool*`），`TensorExportMut<bool>` 中的 `data` 为 `*mut bool`（C 侧 `_Bool*`），`offset` 与 `strides` 按 `bool` 元素个数计量。`strides[i] == 1` 表示相邻逻辑元素在内存中连续排列（每个占 1 字节）。
+
+> **C 侧验证说明：** Xenon 侧只声明 Rust `bool` 与 C `_Bool` 的 ABI 约定；跨语言集成时，调用方仍应在 C 侧通过 `sizeof(_Bool) == 1`、`_Alignof(_Bool) == 1` 等静态断言验证目标工具链兼容性。
 ### 5.3 从裸指针构造张量
 
 ````rust,ignore
@@ -490,7 +510,7 @@ where
         // initialization, actual accessible range, and lifetime. The constructor
         // only rejects metadata combinations it can check directly.
         Ok(TensorBase {
-            storage: ViewRepr::new(ptr),
+            storage: ViewRepr::new(ptr, storage_len),
             shape,
             strides,
             offset,
@@ -539,7 +559,7 @@ where
         offset: usize,
     ) -> Result<Self, XenonError> {
         validate_access_range(&shape, &strides, offset, storage_len)?;
-        if shape.size() != 0 && layout::has_zero_stride(&strides) {
+        if shape.size() != 0 && shape.iter().zip(strides.iter()).any(|(&axis_len, &stride)| axis_len > 1 && stride == 0) {
             return Err(XenonError::InvalidLayout {
                 operation: "ffi::from_raw_parts_mut".into(),
                 storage_kind: "view_mut".into(),
@@ -547,7 +567,7 @@ where
                 strides: strides.to_vec(),
                 offset,
                 storage_len,
-                reason: "mutable raw-parts view must not contain zero strides".into(),
+                reason: "mutable raw-parts view must not contain zero strides on non-singleton axes".into(),
             });
         }
         validate_non_overlapping_layout(&shape, &strides, offset)?;
@@ -562,7 +582,7 @@ where
         // SAFETY: Caller guarantees exclusive mutable access to the memory
         // for lifetime 'a. Same validity requirements as from_raw_parts.
         Ok(TensorBase {
-            storage: ViewMutRepr::new(ptr),
+            storage: ViewMutRepr::new(ptr, storage_len),
             shape,
             strides,
             offset,
@@ -576,7 +596,7 @@ where
 
 > **空张量补充：** `ptr.add(offset)` 形式的逻辑首元素地址计算只适用于非空张量；空张量路径必须跳过该指针运算，并改用 `NonNull::dangling()` 这类明确定义的非解引用哨兵值参与 flags / metadata 初始化。
 
-> **可写视图补充：** `from_raw_parts_mut()` 不仅必须拒绝零步长布局，还必须拒绝一切能被高效保守判定为潜在自别名的布局。实现上先用 `validate_access_range()` 验证越界与可表示性，再用 `validate_non_overlapping_layout()` 对受支持的正步长布局做保守非重叠判定；若布局超出该高效判定范围，也必须返回可恢复错误，而不是枚举全部可达 offset。
+> **可写视图补充：** `from_raw_parts_mut()` 不仅必须拒绝所有非空零步长布局（任何非单元素轴的 `stride == 0`），还必须拒绝一切能被高效保守判定为潜在自别名的布局。实现上先用 `validate_access_range()` 验证越界与可表示性，再用 `validate_non_overlapping_layout()` 对受支持的正步长布局做保守非重叠判定；若布局超出该高效判定范围，也必须返回可恢复错误，而不是枚举全部可达 offset。
 
 ### 5.4 将张量解构为裸指针
 
@@ -835,7 +855,8 @@ where
     /// BLAS/LAPACK 后端的整数宽度因实现而异。`blas_info()` 提供
     /// `rows`/`cols`/`leading_dim` 的原始 `usize` 值，并提供
     /// `as_blas_int()` 辅助方法将其转换为后端所需的整数类型（`i32` 或
-    /// `i64`）。调用方根据目标后端选择合适的转换。
+    /// `i64`）。调用方根据目标后端选择合适的转换。`blas_info()` 本身
+    /// 不执行该整数宽度转换；真正可能失败的是后续的 `as_blas_int()`。
     ///
     /// 本模块同时提供面向 LAPACK 集成的辅助能力。LAPACK 所需的
     /// leading dimension、矩阵布局信息与 BLAS 共享同一套 metadata 导出格式
@@ -1219,7 +1240,7 @@ Wave 3: ┌────┴────┐
 | `test_as_ptr_offset`                     | 指针考虑 offset 后指向正确元素                     | 高     |
 | `test_is_blas_layout_compatible`                | BLAS 布局兼容性主路径（含兼容/不兼容子场景） | 高     |
 | `test_blas_info_f_order`                 | F-order 返回正确 BlasInfo                          | 高     |
-| `test_blas_info_overflow`                | `blas_info()` 处理接近 `usize::MAX` 的 rows/cols/lda | 高     |
+| `test_blas_info_as_blas_int_overflow`    | `BlasInfo::as_blas_int()` 对接近 `usize::MAX` 的 rows/cols/lda 返回转换错误 | 高     |
 | `test_lda_f_order`                       | F-order [3,4] 返回 3                               | 高     |
 | `test_lda_non_contiguous`                | 非连续（切片）数组 lda() 返回错误                  | 中     |
 | `test_from_raw_parts_roundtrip`          | `into_raw_parts → from_raw_parts_owned` 往返一致性 | 高     |
@@ -1250,7 +1271,15 @@ Wave 3: ┌────┴────┐
 | 零维张量   | `try_offset_of(&[])` 返回 `Ok(0)`             |
 | 未对齐指针 | `from_raw_parts` 的 Safety 文档需说明对齐要求 |
 
-### 8.4 属性测试不变量
+### 8.4 §28.4 边界测试占位
+
+| 占位场景 | 说明 |
+| -------- | ---- |
+| 导出结构生命周期 | 预留给 `require.md §28.4` 的 `TensorExport<'a, _>` / `TensorExportMut<'a, _>` 生命周期边界测试 |
+| 广播零步长导入 | 预留给 `require.md §28.4` 的只读零步长布局导入 / 可写零步长拒绝测试 |
+| `storage_len` 重建 | 预留给 `require.md §28.4` 的导出后按 `storage_len` 重建视图边界测试 |
+
+### 8.5 属性测试不变量
 
 | 不变量                                                                                 | 测试方法                             |
 | -------------------------------------------------------------------------------------- | ------------------------------------ |
@@ -1258,27 +1287,27 @@ Wave 3: ┌────┴────┐
 | `into_raw_parts → from_raw_parts_owned` roundtrip 保持 shape/strides/offset            | 对 F-contiguous owned 张量做往返验证 |
 | `is_blas_layout_compatible() == true` 且维度/整数范围合法 ⟹ `blas_info()` 成功         | 以连续二维张量为样本验证             |
 
-### 8.5 内存安全测试
+### 8.6 内存安全测试
 
 | 场景                                           | 验证方式               |
 | ---------------------------------------------- | ---------------------- |
 | `from_raw_parts` + Drop                        | 无内存泄漏（借用语义） |
 | `into_raw_parts` + `from_raw_parts_owned(raw)` | 重建后由 Drop 正确释放 |
 
-### 8.6 集成测试
+### 8.7 集成测试
 
 | 测试文件            | 测试内容                                                                                         |
 | ------------------- | ------------------------------------------------------------------------------------------------ |
 | `tests/test_ffi.rs` | 指针 API / BLAS 兼容检查 / raw-parts roundtrip 与 `tensor`、`layout`、`storage` 的端到端协同路径 |
 
-### 8.7 Feature gate / 配置测试
+### 8.8 Feature gate / 配置测试
 
 | 配置 | 验证点 |
 | ---- | ---- |
 | 默认配置 | 指针 API、BLAS 兼容性检查与 raw-parts roundtrip 在默认构建下保持既定安全边界。 |
 | 其他 feature 组合 | 不适用；当前模块无额外 feature gate。 |
 
-### 8.8 类型边界 / 编译期测试
+### 8.9 类型边界 / 编译期测试
 
 | 场景 | 测试方式 |
 | ---- | ---- |
@@ -1327,7 +1356,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `blas_info()` / `lda()` 在 rank、布局或 BLAS 整数参数非法时返回 `XenonError::Ffi`；`from_raw_parts_owned()` 在 owned 元数据非法时返回 `XenonError::InvalidLayout`；`try_offset_of()` / `try_ptr_at()` 在 rank / bounds / checked arithmetic 非法时返回 `XenonError`；`from_raw_parts_mut()` 在可写布局自别名时返回 `XenonError::InvalidLayout`。 |
+| Recoverable error | `blas_info()` / `lda()` 在 rank 或布局非法时返回 `XenonError::Ffi`；BLAS 整数宽度转换失败由 `BlasInfo::as_blas_int()` 返回 `XenonError::Ffi`；`from_raw_parts_owned()` 在 owned 元数据非法时返回 `XenonError::InvalidLayout`；`try_offset_of()` / `try_ptr_at()` 在 rank / bounds / checked arithmetic 非法时返回 `XenonError`；`from_raw_parts_mut()` 在可写布局自别名时返回 `XenonError::InvalidLayout`。 |
 | Panic | 不提供公开 panic-sugar 索引转换 API；`from_raw_parts*()` 中那些无法直接验证的不安全前提若被违反，仍属于 unsafe UB，而非 recoverable error。 |
 | 路径一致性 | 指针访问、BLAS 查询与 raw-parts roundtrip 必须共享同一 shape / strides / offset 解释；无 SIMD / 并行分支。 |
 | 容差边界 | 不适用。 |
@@ -1398,7 +1427,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | `std` only  | 当前版本仅讨论 `std` 环境下的 FFI 接口；FFI 指针操作依赖 `std` 提供的分配器与布局保证         |
 | MSRV        | Rust 1.85+                                                                                   |
 | 单 crate    | FFI 模块位于 `src/ffi/`，不引入额外 crate，保持 Xenon 单 crate 结构                           |
-| SemVer      | `TensorExport<A>`、`TensorExportMut<A>`、`OwnedRawParts<A,D>` 的字段布局和 `#[repr(C)]` 表示均为公开契约，变更须遵循 SemVer；新增公共 FFI 方法或枚举变体属于 minor 变更 |
+| SemVer      | `TensorExport<'a, A>`、`TensorExportMut<'a, A>`、`OwnedRawParts<A, D>` 的字段布局和 `#[repr(C)]` 表示均为公开契约，变更须遵循 SemVer；新增公共 FFI 方法或枚举变体属于 minor 变更 |
 | 最小依赖    | 无新增第三方依赖，符合 `require.md` §1.3 对最小依赖的限制                                     |
 | 索引类型    | 逻辑索引统一使用 `usize`；BLAS/LAPACK 整数参数在边界处按目标后端转换为 `i32` 或 `i64`         |
 | stride 范围 | 当前版本只接受非负 stride；负步长导入不在范围内                                                |

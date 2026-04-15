@@ -143,13 +143,15 @@ External dependencies:
 > **初始化语义约定**: Workspace 的底层缓冲区始终按“可能未初始化”建模。公共 API 默认只暴露 `MaybeUninit` 视图；只有调用方能够证明某一前缀或某一 typed region 已被完整写入时，才允许通过 `assume_init_*` 系列 unsafe API 将其解释为已初始化视图。
 
 ```rust,ignore
+use alloc::borrow::Cow;
+
 /// Error type for workspace operations.
 #[derive(Debug, Clone, PartialEq)]
 pub enum WorkspaceError {
     /// Allocation failed (out of memory or invalid layout).
     AllocFailed { size: usize, align: usize },
     /// The requested alignment is not a power of 2.
-    InvalidLayout { size: usize, align: usize },
+    InvalidLayout { size: usize, align: usize, reason: Cow<'static, str> },
     /// Cannot borrow: workspace is already mutably borrowed.
     AlreadyBorrowed,
     /// Split point is out of bounds.
@@ -294,6 +296,7 @@ impl Workspace {
             return Err(XenonError::Workspace(WorkspaceError::InvalidLayout {
                 size: capacity,
                 align: alignment,
+                reason: Cow::Borrowed("alignment must be a power of two and >= MIN_ALIGNMENT"),
             }));
         }
 
@@ -302,6 +305,7 @@ impl Workspace {
             .map_err(|_| XenonError::Workspace(WorkspaceError::InvalidLayout {
                 size,
                 align: alignment,
+                reason: Cow::Borrowed("Layout::from_size_align rejected the requested size/alignment"),
             }))?;
 
         let ptr = unsafe { alloc(layout) };
@@ -468,7 +472,8 @@ impl<'a> WorkspaceBorrow<'a> {
         if initialized_len > self.len {
             return Err(XenonError::Workspace(WorkspaceError::InvalidLayout {
                 size: initialized_len,
-                align: 1,
+                align: self.workspace.alignment(),
+                reason: Cow::Borrowed("initialized_len exceeds borrow length"),
             }));
         }
         Ok(core::slice::from_raw_parts(self.ptr.as_ptr(), initialized_len))
@@ -512,6 +517,7 @@ impl<'a> WorkspaceBorrowMut<'a> {
             return Err(XenonError::Workspace(WorkspaceError::InvalidLayout {
                 size: 0,
                 align: core::mem::align_of::<T>(),
+                reason: Cow::Borrowed("zero-sized types are not supported for typed workspace borrows"),
             }));
         }
         let byte_len = count
@@ -519,11 +525,20 @@ impl<'a> WorkspaceBorrowMut<'a> {
             .ok_or(XenonError::Workspace(WorkspaceError::InvalidLayout {
                 size: count,
                 align: core::mem::align_of::<T>(),
+                reason: Cow::Borrowed("count * size_of::<T>() overflowed"),
             }))?;
-        if byte_len > self.len || self.ptr.as_ptr() as usize % core::mem::align_of::<T>() != 0 {
+        if byte_len > self.len {
             return Err(XenonError::Workspace(WorkspaceError::InvalidLayout {
                 size: byte_len,
                 align: core::mem::align_of::<T>(),
+                reason: Cow::Borrowed("typed slice byte length exceeds borrow length"),
+            }));
+        }
+        if self.ptr.as_ptr() as usize % core::mem::align_of::<T>() != 0 {
+            return Err(XenonError::Workspace(WorkspaceError::InvalidLayout {
+                size: byte_len,
+                align: core::mem::align_of::<T>(),
+                reason: Cow::Borrowed("workspace pointer does not satisfy T alignment"),
             }));
         }
         Ok(core::slice::from_raw_parts_mut(
@@ -549,6 +564,7 @@ impl<'a> WorkspaceBorrowMut<'a> {
             return Err(XenonError::Workspace(WorkspaceError::InvalidLayout {
                 size: 0,
                 align: core::mem::align_of::<T>(),
+                reason: Cow::Borrowed("zero-sized types are not supported for typed workspace borrows"),
             }));
         }
         let byte_len = count
@@ -556,11 +572,20 @@ impl<'a> WorkspaceBorrowMut<'a> {
             .ok_or(XenonError::Workspace(WorkspaceError::InvalidLayout {
                 size: count,
                 align: core::mem::align_of::<T>(),
+                reason: Cow::Borrowed("count * size_of::<T>() overflowed"),
             }))?;
-        if byte_len > self.len || self.ptr.as_ptr() as usize % core::mem::align_of::<T>() != 0 {
+        if byte_len > self.len {
             return Err(XenonError::Workspace(WorkspaceError::InvalidLayout {
                 size: byte_len,
                 align: core::mem::align_of::<T>(),
+                reason: Cow::Borrowed("typed slice byte length exceeds borrow length"),
+            }));
+        }
+        if self.ptr.as_ptr() as usize % core::mem::align_of::<T>() != 0 {
+            return Err(XenonError::Workspace(WorkspaceError::InvalidLayout {
+                size: byte_len,
+                align: core::mem::align_of::<T>(),
+                reason: Cow::Borrowed("workspace pointer does not satisfy T alignment"),
             }));
         }
         Ok(core::slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut T, count))
@@ -788,8 +813,12 @@ impl Workspace {
     /// If current capacity is insufficient, a larger memory region will be allocated.
     /// New capacity = max(requested capacity, current capacity × 1.5).
     ///
-    /// 扩容操作不保证保留已有内容。调用方应假设扩容后所有字节状态为
-    /// unspecified。扩容操作仅保证容量满足新请求、对齐不变。
+    /// Growth may preserve existing bytes in the current implementation, but
+    /// callers must not rely on that behavior.
+    /// After growth, all previous views and borrows are invalidated. Treat the
+    /// entire scratch region as unspecified until it is re-initialized.
+    /// Growth only guarantees that capacity satisfies the new request and that
+    /// alignment remains unchanged.
     ///
     /// # Errors
     ///
@@ -848,9 +877,10 @@ impl Workspace {
                 align: self.alignment,
             })?;
 
-        // Copy old data if the implementation chooses to do so.
-        // Public contract: callers must still treat all bytes as unspecified
-        // after growth, even if the current implementation copies them.
+        // The implementation may copy old bytes during growth, but callers must
+        // not rely on content preservation. All previous views and borrows are
+        // invalid after reallocation, and the scratch region must be treated as
+        // unspecified until re-initialized.
         // SAFETY: src and dst do not overlap, copy min(old, new) bytes
         unsafe {
             core::ptr::copy_nonoverlapping(
@@ -880,7 +910,7 @@ impl Workspace {
 
 > **错误映射说明：** `reallocate()` 保留 `Result<(), WorkspaceError>` 作为模块内实现签名，`ensure_capacity()` 在公开边界显式通过 `.map_err(|e| XenonError::Workspace(e))` 做统一包装；不得让 `WorkspaceError` 直接穿透公开 API。
 
-> **扩容语义说明：** `ensure_capacity()` / `reallocate()` 的公开契约仅保证扩容后容量不小于请求值且对齐保持不变，不保证保留扩容前的任何字节内容。即使底层实现当前采用复制旧缓冲区的方式完成重分配，调用方仍必须把扩容后的全部 scratch 区域视为 unspecified 状态，并在重新初始化后再通过 `assume_init_*` 系列 API 解释为已初始化数据。
+> **扩容语义说明：** `ensure_capacity()` / `reallocate()` 的公开契约仅保证扩容后容量不小于请求值且对齐保持不变。当前实现可能复制旧缓冲区中的字节，但调用方不得依赖内容被保留；扩容后所有旧视图与借用均失效，必须把整个 scratch 区域重新视为 unspecified 状态，并在重新初始化后再通过 `assume_init_*` 系列 API 解释为已初始化数据。
 
 ### 5.9 Good/Bad 对比
 
@@ -1124,6 +1154,9 @@ Wave 4:               [T7]            <- depends on T4, T5, and T6 all being com
 | `test_ensure_capacity_while_borrowed_fails`    | 借用期间扩容失败                               | 高     |
 | `test_alignment_verification`                  | 对齐值验证                                     | 中     |
 | `test_typed_slice_alignment`                   | 类型化切片对齐检查                             | 高     |
+| `test_workspace_not_send_not_sync`             | `Workspace` 的 `!Send + !Sync` 编译期负向验证  | 高     |
+| `test_split_borrow_mut_not_send_not_sync`      | `SplitBorrowMut` 的 `!Send + !Sync` 编译期负向验证 | 高  |
+| `test_recursive_split_drop_order_independent`  | 递归 split 以任意 drop 顺序归还时都能正确复用工作空间 | 中 |
 
 ### 8.3 边界测试场景
 
@@ -1164,6 +1197,7 @@ Wave 4:               [T7]            <- depends on T4, T5, and T6 all being com
 | 场景 | 测试方式 |
 | ---- | ---- |
 | `Workspace` 不实现 `Send` / `Sync` | 编译期测试。 |
+| `SplitBorrowMut` 不实现 `Send` / `Sync` | 编译期测试。 |
 | typed borrow 拒绝 ZST 与不对齐区域 | 编译期 / 运行时错误测试。 |
 | custom allocator 与 persistent allocation 不属于当前 API | API 缺失断言。 |
 

@@ -54,7 +54,7 @@ Cross-cutting concern (global):
 
 | 类型     | 内容                                                         |
 | -------- | ------------------------------------------------------------ |
-| 需求映射 | `require.md §28.1`                                           |
+| 需求映射 | `require.md §28.1`, `§28.3`, `§9.1`, `§9.2`, `§9.3`, `§25`, `§27` |
 | 范围内   | pub API 文档、doctest、examples、docs.rs 配置、README        |
 | 范围外   | 第三方教程平台、自定义文档主题、交互式 notebook 或站点系统   |
 | 非目标   | 通过文档规范扩展产品能力、引入额外文档构建依赖或改变平台边界 |
@@ -120,7 +120,8 @@ examples/
 ├── broadcasting.rs           # Broadcasting example
 ├── feature_flags.rs          # Optional-feature behavior example (`simd` / internal parallel execution effects)
 ├── simd.rs                   # SIMD-acceleration example (requires `simd` feature)
-└── ffi.rs                    # FFI integration example
+├── ffi.rs                    # FFI integration example
+└── workspace.rs              # Workspace borrow/split/growth example
 
 README.md                     # Project README
 CHANGELOG.md                  # Optional engineering changelog artifact (non-required deliverable)
@@ -215,6 +216,8 @@ L3: Examples (examples/)
 | 工作空间                             | ✅         | `24-workspace.md`    |
 | 格式化输出                           | ✅         | `22-output.md`       |
 
+> **执行范围说明：** 上表是示例覆盖矩阵的理想目标。CI 实际执行范围受时间与资源约束，采用分层执行策略；参见 §8 的 CI 与 feature 维度验证矩阵。
+
 ---
 
 ### 5.4 核心文档模板
@@ -301,6 +304,8 @@ L3: Examples (examples/)
 
 涉及浮点或复数运算的公开 API，其文档说明中须包含误差容差及适用范围。具体包括：(1) 同路径下的精确性保证；(2) 跨路径（SIMD/并行 vs 标量/串行）的已知容差；(3) 数学函数的函数级容差。容差定义须与 `28-tests.md` 中的容差体系一致。
 
+对运算符重载入口（如 `Add` / `Sub` / `Mul` / `Div` 的实现文档），即使签名经由 trait 间接暴露，也应补齐与对应方法型 API 一致的 `# Errors` / `# Panics` 模板，明确广播失败、形状不兼容、整数溢出等语义边界，避免仅留下语法糖示例而缺少失败条件说明。
+
 ---
 
 ### 5.5 Lint 与文档门禁
@@ -309,7 +314,7 @@ L3: Examples (examples/)
 
 > **开发提示**：在开发期间可将 deny 改为 warn（`#![warn(missing_docs)]`），CI 中通过 `RUSTDOCFLAGS="-D warnings" cargo doc` 来强制执行文档完整性检查（参见 §5.11.1 CI checks）。
 
-> **门禁说明**：`#![warn(missing_docs)]` 本身不足以作为实际门禁；建议 CI 中使用 deny-level rustdoc 检查（如 `RUSTDOCFLAGS='--deny warnings'`）作为实际门禁。
+> **门禁说明**：`#![warn(missing_docs)]` 本身不足以作为实际门禁；建议 CI 中使用 deny-level rustdoc 检查（如 `RUSTDOCFLAGS='-D warnings'`）作为实际门禁。
 
 ```rust,ignore
 // lib.rs
@@ -406,6 +411,7 @@ pub fn sum(&self) -> A { ... }
 | `feature_flags.rs`   | 可选 feature 对公开 API 语义/性能路径的影响 | `parallel`, `simd` | 性能优化（参见 `08-simd.md §5`、`09-parallel.md §5`） |
 | `simd.rs`            | `simd` feature 对公开运算路径的影响与回退策略 | `simd`     | 性能优化（参见 `08-simd.md §5`）     |
 | `ffi.rs`             | 为上游 C/BLAS-LAPACK 集成提供辅助 API 与兼容性判断 | 默认       | 库开发者                             |
+| `workspace.rs`       | 工作空间借用、split 与扩容语义示例         | 默认       | 上游 scratch-buffer 使用者           |
 
 #### 5.7.2 示例模板
 
@@ -535,6 +541,11 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 #### 5.10.2 Feature gate 标注
 
+文档中必须显式区分以下两类情况：
+
+1. **API gated by feature**：API 本身只在特定 feature 启用时出现，此时使用条件编译与必要的 `doc(cfg)`/可见性说明。
+2. **API always present but behavior varies by feature**：API 始终存在，只是启用 feature 后内部执行路径或性能特征变化；此时不得把该 API 误写成“仅在 feature 下可用”，而应在正文中说明行为差异。
+
 ```rust
 // lib.rs
 #![cfg_attr(docsrs, feature(doc_cfg))]
@@ -578,8 +589,9 @@ docs:
 
     - name: Run key examples
       run: |
-         cargo run --example basic
-         cargo run --example broadcasting
+          cargo run --example basic
+          cargo run --example broadcasting
+          cargo run --example workspace
 ```
 
 #### 5.11.3 Feature 维度验证矩阵

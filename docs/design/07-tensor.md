@@ -38,7 +38,7 @@ L0: error, private
 L1: dimension, element, complex
 L2: layout (depends on dimension)
 L3: storage (independent from layout)
-L4: tensor (depends on storage, dimension)  ← current module
+L4: tensor (depends on storage, dimension, layout)  ← current module
 L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 ```
 
@@ -52,6 +52,8 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 | 范围内   | `TensorBase<S, D>`、类型别名、基础查询、构造校验、视图与 raw-parts 契约 |
 | 范围外   | 广播、索引、reshape、归约与逐元素运算                                 |
 | 非目标   | 引入运行时动态张量类型系统、隐藏存储模式差异或跳过元数据合法性校验     |
+
+> **需求 §6 边界说明：** 存储模式转换矩阵与具体转换 API 由 `05-storage.md` 承载实现设计；本文档仅定义 `storage_kind()`、view/raw-parts 与张量查询接口，不重复展开转换细节。
 
 ---
 
@@ -121,7 +123,7 @@ src/tensor/
 
 ### 5.1 TensorBase\<S, D\> 核心结构体
 
-```rust
+```rust,ignore
 /// Core abstraction for multi-dimensional arrays.
 ///
 /// # Type Parameters
@@ -172,6 +174,13 @@ pub struct TensorBase<S, D> {
 > `TensorBase::as_mut_ptr()` 负责应用这一次偏移。`ffi` 文档中的示例与 Safety 说明必须遵循同一语义。
 
 > **线程安全推导**: `TensorBase<S, D>` 的 `Send`/`Sync` 由存储模式 `S` 和元素类型 `A` 共同决定：`S` 提供 `Send`/`Sync`（参见 `05-storage.md §5.3`），`A` 须满足对应的线程安全约束（参见 `25-safety.md §4`）。
+
+| 张量存储模式 | `Send` 条件 | `Sync` 条件 | 说明 |
+| ------------ | ----------- | ----------- | ---- |
+| `Tensor<Owned<A>, D>` | 取决于 `Owned<A>: Send` | 取决于 `Owned<A>: Sync` | 拥有型规则与 `05-storage.md`、`25-safety.md` 一致 |
+| `TensorView<'a, A, D>` | 取决于 `ViewRepr<'a, A>: Send` | 取决于 `ViewRepr<'a, A>: Sync` | 只读借用可跨线程共享的前提由 storage 层定义 |
+| `TensorViewMut<'a, A, D>` | 取决于 `ViewMutRepr<'a, A>: Send` | 不成立 | 可变视图只允许独占传播 |
+| `ArcTensor<A, D>` | 取决于 `ArcRepr<A>: Send` | 取决于 `ArcRepr<A>: Sync` | 共享只读线程安全前提完全继承 storage 层 |
 
 ### 5.2 Type aliases (full list)
 
@@ -237,10 +246,10 @@ pub type ArcTensorD<A> = ArcTensor<A, IxDyn>;
 
 ### 5.3 基础信息查询方法
 
-```rust
+```rust,ignore
 impl<S, D> TensorBase<S, D>
 where
-    D: Dimension + Clone,
+    D: Dimension,
 {
     /// Returns a slice of axis lengths.
     pub fn shape(&self) -> &[usize];
@@ -265,14 +274,14 @@ where
     /// Returns the data start offset (in element units).
     pub fn offset(&self) -> usize;
 
-    /// Returns a clone of the dimension type.
-    pub fn raw_dim(&self) -> D;
-
     /// Returns the complete layout flags.
     pub fn flags(&self) -> LayoutFlags;
 
     /// Returns the storage-location classification of the tensor payload.
     pub fn storage_kind(&self) -> StorageKind;
+
+    /// Returns the physical data location of the tensor payload.
+    pub fn data_location(&self) -> DataLocation;
 
     /// Returns the layout-state classification of the logical tensor view.
     pub fn layout_state(&self) -> LayoutState;
@@ -297,6 +306,14 @@ where
 
 }
 
+impl<S, D> TensorBase<S, D>
+where
+    D: Dimension + Clone,
+{
+    /// Returns a clone of the dimension type.
+    pub fn raw_dim(&self) -> D;
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StorageKind {
     Owned,
@@ -304,18 +321,25 @@ pub enum StorageKind {
     ViewMut,
     Shared,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DataLocation {
+    Cpu,
+}
 ```
 
 > **`len` / storage 长度不变量：** `TensorBase::len()` 返回逻辑元素总数（由 `shape` 计算）；`Storage::len()` 返回底层存储的可见长度。对于视图类型，storage len 可能大于 logical len。所有 bounds check 基于 logical len，raw-parts 构造基于 storage len。
 
-> **数据位置查询说明：** 当前版本仅支持 CPU 内存，data location 查询恒为 CPU。`storage_kind()` 返回存储模式分类（Owned / View / Arc / ViewMut），不表示物理设备位置。
+> **数据位置查询说明：** 当前版本仅支持 CPU 内存，`data_location()` 恒返回 `DataLocation::Cpu`，用于满足 `require.md §8` 的存储位置查询接口。
+
+> **`storage_kind()` 语义说明：** `storage_kind()` 返回 `Owned / View / ViewMut / Shared` 四类存储语义，而不是具体底层实现名。广播结果统一报告为 `Shared`；转置视图与切片视图统一报告为 `View`；可写借用报告为 `ViewMut`。
 
 > `LayoutState` 使用 `crate::layout::LayoutState`（参见 `06-layout.md §5`）；
 > 本文档不再重复定义 `FContiguous`、`NonContiguous`、`BroadcastView` 三个变体。
 
 ### 5.4 指针访问方法
 
-```rust
+```rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -356,7 +380,7 @@ where
 
 ### 5.4a 连续切片访问方法
 
-```rust
+```rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -372,6 +396,7 @@ where
     /// disqualify the fast path: if `as_ptr()` already points at the logical
     /// first element and the layout is contiguous, `as_slice()` may still be
     /// returned zero-copy.
+    /// Empty tensors return `Some(&[])`.
     pub fn as_slice(&self) -> Option<&[A]>;
 }
 
@@ -387,6 +412,7 @@ where
     /// satisfy this method's preconditions. As with `as_slice()`, a non-zero
     /// logical offset is acceptable as long as `as_mut_ptr()` points at the
     /// logical first element and the logical layout remains contiguous.
+    /// Empty tensors return `Some(&mut [])`.
     pub fn as_mut_slice(&mut self) -> Option<&mut [A]>;
 }
 ```
@@ -395,7 +421,7 @@ where
 
 > **构造责任边界：** 安全构造路径必须验证全部可验证元数据约束，至少包括 shape/stride 可表示性、元素总数计算不溢出、以及逻辑访问范围不越界。`from_shape_vec` 这类 API 不得把这些前提留给调用方；safe 构造负责兜底全部可检查元数据条件。
 
-````rust
+````rust,ignore
 impl<A, D> TensorBase<Owned<A>, D>
 where
     A: Element,
@@ -444,8 +470,15 @@ where
     /// Construct a tensor from a Vec without validating shape/stride consistency.
     ///
     /// # Safety
+    /// - `data.as_ptr()` must remain valid for the duration of construction, and
+    ///   `Vec<A>` must satisfy the alignment requirements of `A`
     /// - `data.len()` must equal the product of all shape dimensions
+    /// - That product must be representable in `usize` without overflow
     /// - `shape` must be representable by the current dimension type
+    /// - The default packed F-order stride derived from `shape` must be
+    ///   representable and consistent with `require.md §7`
+    /// - The constructor assumes no extra offset and therefore treats the input
+    ///   buffer as the full logical tensor payload
     pub(crate) unsafe fn from_raw_vec_unchecked(data: Vec<A>, shape: D) -> Self {
         // computes F-order strides internally
         // ...
@@ -457,7 +490,7 @@ where
 
 > **unsafe 构造责任边界：** `from_raw_parts*()` 这类接口只验证能够基于输入元数据直接检查的条件；safe 构造会兜底验证全部可检查元数据，而 unsafe 构造仅拒绝明显非法的 shape/stride/offset/storage_len 组合。若这些元数据校验失败，构造器返回 `Err(XenonError::InvalidLayout)`（附带上下文）。调用方仍负责保证指针有效性、对齐、可访问范围和生命周期等库无法自行证明的内存前提。文档中的 `# Safety` 说明必须与这一分工保持一致。
 
-```rust
+```rust,ignore
 impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D>
 where
     A: Element,
@@ -526,7 +559,7 @@ where
 
 ### 5.7 视图方法
 
-```rust
+```rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -853,7 +886,7 @@ Wave 4:       [T10]
 | `test_tensor_flags_aligned`         | 新构造张量对齐                                       | 高     |
 | `test_tensor_as_ptr`                | 指针指向正确位置                                     | 高     |
 | `test_tensor_as_mut_ptr`            | 可变指针指向正确位置                                 | 高     |
-| `test_tensor_storage_kind`          | `Owned`/`View`/`ViewMut`/`Arc` 的存储位置查询正确    | 高     |
+| `test_tensor_storage_kind`          | `Owned`/`View`/`ViewMut`/`Shared` 的存储位置查询正确 | 高     |
 | `test_tensor_view`                  | `view()` 创建正确视图                                | 高     |
 | `test_tensor_view_mut`              | `view_mut()` 创建正确可变视图                        | 高     |
 | `test_from_shape_vec_valid`         | 合法构造成功                                         | 高     |
@@ -876,6 +909,14 @@ Wave 4:       [T10]
 | 非连续转置视图        | 可构造 `view()`，但连续切片快路径返回 `None` |
 | 空张量 + 多种 offset  | 只要 `offset <= storage_len` 即合法 |
 | 非法元素类型编译失败  | compile-fail 测试拒绝不满足元素约束的类型 |
+
+### 8.4a 需求说明书 §28.4 边界测试占位
+
+| 占位项 | 说明 |
+| ------ | ---- |
+| 空张量边界 | 占位：覆盖 `as_ptr()` dangling sentinel、`as_slice()` / `as_mut_slice()` 返回空切片 |
+| 大张量边界 | 占位：覆盖超大 shape 的 `checked_size()`、stride 计算与构造错误传播 |
+| 高维张量边界 | 占位：覆盖高维 `TensorD` / `Tensor6` 的 shape、strides 与 `layout_state()` 查询 |
 
 ### 8.5 属性测试不变量
 
@@ -931,7 +972,7 @@ User calls constructors / `view()` / `view_mut()` / query APIs
 | `Owned::from_vec_aligned(data)` | `tensor` 消费 `storage` | 当前版本默认采用 64 字节对齐分配策略；若存在例外，须显式文档化，且不得改变 `require.md §19` 规定的逻辑元素顺序 |
 | `Storage<Elem = A>` / `StorageMut<Elem = A>` | `tensor` 消费 `storage` trait | 元素类型、只读/可写访问能力完全由存储模式 trait 约束决定，`tensor` 不重复维护独立元素类型参数 |
 
-```rust
+```rust,ignore
 // TensorBase obtains element type via Storage trait's associated type
 impl<S, D, A> TensorBase<S, D>
 where
@@ -970,7 +1011,7 @@ where
 | `Dimension::checked_size()` | `tensor` 消费 `dimension` | `tensor` 基于已验证 shape 暴露 `len()`；凡直接消费 `shape: D` 做构造、分配或范围校验时必须先用 `checked_size()` 避免溢出 |
 | `Dimension` rank contract | `tensor` 消费 `dimension` | `shape` 与 `Strides<D>` 必须保持相同 rank，供 `simd` / `parallel` 继续消费同一布局契约 |
 
-```rust
+```rust,ignore
 // Dimension trait provides shape operations
 impl<S, D> TensorBase<S, D>
 where
@@ -998,7 +1039,7 @@ where
 | `layout::compute_layout_flags(&shape, &strides, logical_ptr)` | `tensor` 消费 `layout` | `flags` 的计算必须基于 logical-first pointer 契约，与 `as_ptr()` / `as_slice()` 的可见语义一致 |
 | `LayoutState` / layout flags queries | `simd`、`parallel` 继续消费 `tensor` 暴露结果 | 上游加速模块只通过 `TensorBase` 查询连续性、对齐和广播状态，不绕过 `tensor` 直接重建布局判断 |
 
-```rust
+```rust,ignore
 // Layout module provides stride computation and contiguity checks
 // TensorBase computes LayoutFlags during construction
 impl<A, D> TensorBase<Owned<A>, D>
@@ -1027,7 +1068,7 @@ where
         // The current version defaults to a fresh 64-byte aligned allocation.
         // Any exception must be explicitly documented by the corresponding
         // constructor path. See 05-storage.md §5 and 18-construction.md §5.3.
-        let storage = Owned::from_vec_aligned(data);
+        let storage = Owned::from_vec_aligned(data)?;
         let logical_ptr = storage.as_ptr();
         let flags = layout::compute_layout_flags(&shape, &strides, logical_ptr);
         Ok(Self {

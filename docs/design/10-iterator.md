@@ -56,6 +56,8 @@ L5: iter  <- current module
 | 范围外   | 独立的多输入 lock-step 迭代抽象、`DoubleEndedIterator`、`Windows` / `LaneIter`、负步长布局以及并行公开迭代接口。 |
 | 非目标   | 不扩展当前公开迭代器集合，不新增第三方依赖，不放宽广播只读约束，也不在本文定义新的并行 API 契约。 |
 
+> **§10 线程安全映射说明：** 迭代器类型的 `Send` / `Sync` 由其持有的引用类型和元素类型共同决定。`Elements<'a, A, D>` 实现 `Send` / `Sync` 当且仅当 `&'a A` 分别满足 `Send` / `Sync`；`AxisIter`、`IndexedIter` 及对应可变版本同理，不额外放宽或收紧张量/视图本身的线程安全边界。
+
 ---
 
 ## 3. 文件位置
@@ -163,16 +165,18 @@ impl<'a, A, D: Dimension> ExactSizeIterator for ElementsMut<'a, A, D> {}
 
 ### 5.2 AxisIter 沿轴迭代器
 
-```rust
+```rust,ignore
 /// Axis iterator, yields a sub-tensor view with reduced dimension each step.
 ///
 /// Publicly this iterator is opaque: construction must accept any `D: Dimension`
 /// so rank-0 inputs can reach runtime validation and return `InvalidAxis` rather
 /// than failing trait resolution at compile time. After validation succeeds, the
-/// implementation may delegate to a private `AxisIterImpl<'a, A, D>` that requires
-/// `D: RemoveAxis`.
+/// implementation may delegate to a private `AxisIterState<'a, A, D>` enum whose
+/// active variant stores a private `AxisIterImpl<'a, A, D>` requiring `D: RemoveAxis`.
+/// The public wrapper may also hold an inert/empty state so the public iterator trait
+/// impl never needs to expose `RemoveAxis`.
 pub struct AxisIter<'a, A, D: Dimension> {
-    // Internal fields: opaque public wrapper around a private RemoveAxis-backed iterator.
+    // Internal fields: wrapper around private active/empty state.
 }
 
 /// Mutable axis iterator.
@@ -186,37 +190,27 @@ pub struct AxisIter<'a, A, D: Dimension> {
 /// axis. The iterator advances monotonically and never revisits an earlier offset,
 /// which prevents mutable aliasing between yielded items.
 pub struct AxisIterMut<'a, A, D: Dimension> {
-    // Internal fields: opaque public wrapper around a private RemoveAxis-backed iterator.
+    // Internal fields: wrapper around private active/empty state.
 }
 
-impl<'a, A, D: Dimension> Iterator for AxisIter<'a, A, D>
-where
-    D: RemoveAxis,
-{
+impl<'a, A, D: Dimension> Iterator for AxisIter<'a, A, D> {
     type Item = TensorView<'a, A, D::Smaller>;
+    fn next(&mut self) -> Option<Self::Item>;
     fn size_hint(&self) -> (usize, Option<usize>);
 }
 
-impl<'a, A, D: Dimension> ExactSizeIterator for AxisIter<'a, A, D>
-where
-    D: RemoveAxis,
-{}
+impl<'a, A, D: Dimension> ExactSizeIterator for AxisIter<'a, A, D> {}
 
-impl<'a, A, D: Dimension> Iterator for AxisIterMut<'a, A, D>
-where
-    D: RemoveAxis,
-{
+impl<'a, A, D: Dimension> Iterator for AxisIterMut<'a, A, D> {
     type Item = TensorViewMut<'a, A, D::Smaller>;
+    fn next(&mut self) -> Option<Self::Item>;
     fn size_hint(&self) -> (usize, Option<usize>);
 }
 
-impl<'a, A, D: Dimension> ExactSizeIterator for AxisIterMut<'a, A, D>
-where
-    D: RemoveAxis,
-{}
+impl<'a, A, D: Dimension> ExactSizeIterator for AxisIterMut<'a, A, D> {}
 ```
 
-> **设计决策：** 公开构造签名不再暴露 `D: RemoveAxis`，以确保 `Ix0` 与 rank-0 `IxDyn` 都能通过编译并进入统一的运行时校验路径。成功构造后的实际降维迭代仍可由私有 `AxisIterImpl<'a, A, D>` / `AxisIterMutImpl<'a, A, D>` 承担，这些内部实现再使用 `D: RemoveAxis` 与 `D::Smaller`。因此，`RemoveAxis` 只属于内部实现 trait，不属于公开 API 契约。
+> **设计决策：** `axis_iter()` / `axis_iter_mut()` 对所有 `D: Dimension` 都可见，公开签名不暴露 `D: RemoveAxis`，以确保 `Ix0` 与 rank-0 `IxDyn` 都能进入统一的运行时校验路径。若 `ndim == 0`，方法直接返回 `Err(XenonError::InvalidAxis { operation, axis, ndim: 0, shape })`；只有在 `ndim >= 1` 且内部私有实现可建立 `RemoveAxis` 能力时，迭代器才进入 active 状态。`AxisIter<'a, A, D>` / `AxisIterMut<'a, A, D>` 的公开 `Iterator` 与 `ExactSizeIterator` 实现始终不带 `D: RemoveAxis` where 子句：active 状态委托给私有 `RemoveAxis`-backed 实现，inert 状态的 `next()` 永远返回 `None`。按照公开 API 契约，成功返回给调用方的实例总是已通过运行时轴校验；inert 状态仅作为包装器内部表示存在，不构成新的对外语义分支。
 
 > **`ExactSizeIterator` 契约说明：** `AxisIter` / `AxisIterMut` 的 `len()` 返回 `shape[axis]`；因此 `size_hint()` 的上下界必须始终相等，并与剩余未产出的轴切片数量一致。空轴（`shape[axis] == 0`）时，`len() == 0`。
 
@@ -381,11 +375,15 @@ increment_index_f(shape, index):
 
 填充数组的迭代仅遍历逻辑元素。迭代器通过 shape 中的逻辑维度计数，跳过填充区域。
 
+> **填充区不暴露不变量：** 所有迭代器（包括用于填充的迭代器）仅遍历逻辑元素，不暴露 padding 区域。非连续视图的填充迭代器根据 stride 跳转，确保不写入逻辑元素之外的内存。
+
 > **空轴行为：** 空轴（`shape[axis] == 0`）的 `AxisIter` / `AxisIterMut` 产出 0 个元素，与标准库空切片迭代器行为一致。
 
 > **ZST 迭代说明：** ZST（zero-sized type）迭代相关讨论仅用于说明边界情况处理，ZST 不是当前版本的张量元素类型（`require.md` §4）；若内部测试或辅助代码覆盖该路径，也不得把它扩展为公开元素类型承诺。
 
-### 6.5 可变迭代器的布局合法性前提
+### 6.5 可变迭代器的正式安全论证
+
+#### 6.5.1 布局合法性前提
 
 `ElementsMut`、`AxisIterMut` 与 `IndexedIterMut` 的安全性论证除“访问区间不重叠”外，还依赖张量层先前已经建立的**布局合法性前提**：
 
@@ -397,6 +395,18 @@ increment_index_f(shape, index):
 | 逻辑元素不含填充区 | 即使底层存储存在对齐填充，迭代状态机也只覆盖逻辑元素坐标，不会把填充区当作可写元素暴露。 |
 
 只有在上述布局前提成立时，`next()` 基于 stride 计算出的地址不重叠这一结论才成立；若调用方绕过安全构造路径伪造非法布局，则该前提失效，责任属于上游不安全构造方，而不是迭代器公开 API 的契约范围。
+
+#### 6.5.2 `IndexedIterMut` 安全性证明
+
+`IndexedIterMut` 的 `unsafe` 使用（如基于原始指针重建 `&'a mut A`）必须满足以下链式论证：
+
+1. **唯一逻辑索引访问**：内部状态机以 F-order 仅访问每个逻辑索引一次，不会回访先前索引。
+2. **地址映射确定**：每个逻辑索引通过已验证的 `shape` / `stride` / `offset` 映射到唯一物理地址。
+3. **广播可写被排除**：零步长广播视图不会形成 `TensorViewMut`，因此不存在多个逻辑索引映射到同一可写地址的路径。
+4. **无负步长与无填充暴露**：当前版本不支持负步长，且迭代器只覆盖逻辑元素，所以不会因反向重叠或 padding 暴露产生别名。
+5. **单调推进**：`next()` 每成功产出一次即推进内部状态，不保留可再次生成同一地址的分支。
+
+在以上前提全部成立时，`IndexedIterMut` 每次重建的 `&'a mut A` 都指向尚未借出的独立逻辑元素槽位，因此不会与先前产出的可变引用重叠。
 
 ### 6.6 并行分块说明
 
@@ -512,6 +522,9 @@ Wave 5: [T9]
 | 非连续切片 `s![.., 0..3]`     | `iter()` 正确处理步长跳转                        |
 | 广播视图 `shape=[1, 4]`       | `iter()` 遍历逻辑元素，`iter_mut()` 编译拒绝     |
 | 填充数组                      | 仅遍历逻辑元素                                   |
+| 空张量边界占位                | 预留 `test_empty_tensor_iteration_boundary`：覆盖空张量上的 `iter()`、`indexed_iter()`、`axis_iter()` 长度与错误语义 |
+| 高维 axis 边界占位            | 预留 `test_high_dim_axis_iteration_boundary`：覆盖高 rank `IxDyn` 上的 axis 选择、子视图 shape 与数量一致性 |
+| 大张量边界占位                | 预留 `test_large_tensor_iteration_boundary`：覆盖超大 `len` 输入上的 `ExactSizeIterator`、`count()` 与越界安全性 |
 | 大张量 `len ≈ 10^7`           | `ExactSizeIterator` 长度、`count()` 与 `len()` 保持一致 |
 | 高维动态张量 `IxDyn([1, 1, 1, 1, 1, 1, 1, 1])` | `indexed_iter()` 产出数量正确，索引按 F-order 递增 |
 | 极端 axis 值 `Axis(usize::MAX)` | `axis_iter()` / `axis_iter_mut()` 返回 `InvalidAxis`，诊断字段包含 `operation`、`axis`、`ndim`、`shape` |

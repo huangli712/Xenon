@@ -15,6 +15,7 @@
 | ------------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
 | Element trait       | 基础约束（Copy+Clone+PartialEq+Debug+Display+Send+Sync+Sealed）+ zero()/one()                   | —                                                               |
 | Numeric trait       | Element + Add+Sub+Mul+Div+Neg + conjugate（通用数值运算能力标记）                              | 运算实现本身（委托给 core::ops）                                |
+| Signum trait        | 为 `i32`/`i64`/`f32`/`f64` 提供统一 `signum()` 能力                                              | 复数 signum 或开放类型扩展                                      |
 | RealScalar trait    | Numeric + PartialOrd + abs/sqrt/sin/exp/ln/floor/ceil + NaN 检测                                | 复数运算                                                        |
 | ComplexScalar trait | Numeric + re/im/norm（复数专用只读能力）                                                     | 复数类型定义（在 `src/complex/` 模块，参见 `04-complex.md` §5） |
 | 基础类型实现        | 为 i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool 实现上述 trait；`usize` 仅用于索引/形状元数据 | 类型转换逻辑（在 `src/convert/` 模块）                          |
@@ -51,7 +52,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 | 项目     | 内容                                                                      |
 | -------- | ------------------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §4、§5、§12、§13、§14、§15、§23                             |
+| 需求映射 | 需求说明书 §4、§5、§12、§13、§14、§15、§20、§23、§24                  |
 | 范围内   | `Element`/`Numeric`/`RealScalar`/`ComplexScalar` trait 与封闭元素类型集合 |
 | 范围外   | 张量存储、自动类型提升、开放外部元素扩展、具体类型转换执行逻辑            |
 | 非目标   | 引入新的基础数值类型集合、运行时类型擦除或动态分派元素系统                |
@@ -98,7 +99,7 @@ src/element/
 | `core::fmt`      | `Debug`, `Display`（Element supertrait）                   |
 | `core::cmp`      | `PartialEq`, `PartialOrd`（Element/RealScalar supertrait） |
 
-### 4.2a 依赖合法性
+### 4.2a 依赖合法性与新增依赖说明
 
 | 项目           | 结论                       |
 | -------------- | -------------------------- |
@@ -194,6 +195,41 @@ pub trait Numeric:
 >
 > **整数算术契约**：`Add/Sub/Mul/Div/Neg` 只表达运算符可用性，不单独定义 Xenon 的溢出语义。凡需求文档要求“溢出/除零/结果不可表示即 panic”的整数运算路径，具体模块必须通过 checked 标量原语或等价显式检查落实，不得仅凭原生运算符 trait 假定语义成立。
 
+### 5.2a Signum trait
+
+```rust
+/// Unified signum capability for the sealed signed scalar set.
+///
+/// Implemented only for `i32`, `i64`, `f32`, and `f64`.
+/// Integer implementations return `-1`, `0`, or `1`.
+/// Floating-point implementations follow IEEE 754 sign-function semantics.
+pub trait Signum: Numeric + Sealed {
+    fn signum(self) -> Self;
+}
+
+impl Signum for i32 {
+    #[inline]
+    fn signum(self) -> Self { i32::signum(self) }
+}
+
+impl Signum for i64 {
+    #[inline]
+    fn signum(self) -> Self { i64::signum(self) }
+}
+
+impl Signum for f32 {
+    #[inline]
+    fn signum(self) -> Self { f32::signum(self) }
+}
+
+impl Signum for f64 {
+    #[inline]
+    fn signum(self) -> Self { f64::signum(self) }
+}
+```
+
+> **适用范围说明：** 张量级 `signum()` 公开能力需覆盖 `i32`、`i64`、`f32`、`f64`（对应 `require.md §12`）。因此本设计将 `signum` 收敛到独立的 sealed `Signum` 子 trait：整数通过 `-1/0/1` 语义实现，浮点继续服从 `RealScalar::signum()` 的 IEEE 754 契约；`Complex<T>` 与 `bool` 不实现该能力。
+
 ### 5.3 RealScalar trait
 
 ```rust
@@ -241,6 +277,8 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
 ```
 
 > **设计决策：** `min`/`max` 采用 NaN 传播语义（任一参数为 NaN → 返回 NaN）。Xenon 通过 `RealScalar` 自身的契约固定这一行为，不直接复用标准库 `f32::min` / `f64::min` 的全部语义细节。
+>
+> **跨模块约束：** `math`、`reduction`、`format` 等任何需要依赖该语义的模块，必须调用 `RealScalar::min()` / `RealScalar::max()` 或与其完全等价的封装，不得直接退回标准库固有方法，否则会破坏 Xenon 在 NaN 传播上的统一契约。
 >
 > **`signum` 语义补充：** `RealScalar::signum()` 明确采用 IEEE 754 sign-function 语义：保留带符号零，`NaN` 传播为 `NaN`，无穷值返回对应符号的单位值。`11-math.md` 中张量级 `signum()` 的浮点语义以此 trait 契约为权威基线；整数 `signum` 仍按比较结果返回 `-1/0/1`。
 
@@ -548,6 +586,8 @@ impl CastTo<i64> for Complex<f32> {
 
 > **实现约束：** `Complex<T> -> Real` 的所有 `CastTo` 实现都必须先检查虚部是否为 `0`。检查通过后，再复用对应实部的标量转换规则；检查失败时统一返回 `XenonError::TypeConversion(TypeConversionError)`。`TypeConversionError::element_index` 是必填字段：标量级示例使用 `0` 作为当前位置，占位表示“当前唯一元素”；张量级批量转换则必须填写实际失败元素索引。
 
+> **类型级能力说明：** 理论上可进一步把 `CastTo<T>` 拆为 lossless / lossy 两组 trait，以在类型层编码“绝不失败”与“可能失败”的差异；但当前版本仍统一返回 `Result<T, XenonError>`，以保持转换入口单一、错误载荷一致，并避免为有限封闭类型集合引入第二套 trait 维度与额外泛型分支。
+
 | 转换示例                   | 默认语义                        |
 | -------------------------- | ------------------------------- |
 | `impl CastTo<i64> for i32` | 无损，`Result<i64, XenonError>`（实际不会失败） |
@@ -556,7 +596,7 @@ impl CastTo<i64> for Complex<f32> {
 | `impl CastTo<i32> for f64` | 有损，默认返回可恢复错误        |
 | `impl CastTo<i32> for i64` | 有损，默认返回可恢复错误        |
 
-### 5.10 CheckedAdd trait（整数溢出检测）
+### 5.10 Checked arithmetic traits（整数溢出检测）
 
 `CheckedAdd` 为整数类型提供 checked 加法，供 `sum` 归约操作在整数溢出时 panic（参见 `13-reduction.md §5.1`）。
 
@@ -591,11 +631,56 @@ impl CheckedAdd for i64 {
 }
 // f32, f64, Complex: NOT implemented — overflow is handled by IEEE 754 semantics.
 // bool: NOT implemented — not Numeric.
+
+/// Checked subtraction for integer-only overflow-sensitive paths.
+pub trait CheckedSub: Numeric + Sealed {
+    fn checked_sub(self, rhs: Self) -> Option<Self>;
+}
+
+impl CheckedSub for i32 {
+    #[inline]
+    fn checked_sub(self, rhs: Self) -> Option<Self> { i32::checked_sub(self, rhs) }
+}
+
+impl CheckedSub for i64 {
+    #[inline]
+    fn checked_sub(self, rhs: Self) -> Option<Self> { i64::checked_sub(self, rhs) }
+}
+
+/// Checked multiplication for integer-only overflow-sensitive paths.
+pub trait CheckedMul: Numeric + Sealed {
+    fn checked_mul(self, rhs: Self) -> Option<Self>;
+}
+
+impl CheckedMul for i32 {
+    #[inline]
+    fn checked_mul(self, rhs: Self) -> Option<Self> { i32::checked_mul(self, rhs) }
+}
+
+impl CheckedMul for i64 {
+    #[inline]
+    fn checked_mul(self, rhs: Self) -> Option<Self> { i64::checked_mul(self, rhs) }
+}
+
+/// Checked negation for integer-only overflow-sensitive paths.
+pub trait CheckedNeg: Numeric + Sealed {
+    fn checked_neg(self) -> Option<Self>;
+}
+
+impl CheckedNeg for i32 {
+    #[inline]
+    fn checked_neg(self) -> Option<Self> { i32::checked_neg(self) }
+}
+
+impl CheckedNeg for i64 {
+    #[inline]
+    fn checked_neg(self) -> Option<Self> { i64::checked_neg(self) }
+}
 ```
 
 > **设计决策：** `CheckedAdd` 仅覆盖整数加法（`i32`/`i64`），用于归约等必须精确检测溢出的路径。逐元素整数乘法不通过 `CheckedAdd` 约束暴露，具体溢出策略由对应运算模块单独规定。
 >
-> **补充说明：** 乘法、除法、平方和内积的整数溢出检查不由本 trait 承担，而是由各运算模块（`math`、`matrix`）在实现层通过 `checked_mul`/`checked_rem` 等标准库方法或显式检查完成（参见 `11-math.md`、`12-matrix.md`）。
+> **补充说明：** 当前元素层统一提供 `CheckedAdd` / `CheckedSub` / `CheckedMul` / `CheckedNeg` 四类整数 checked 原语，供 `math`、`matrix`、`reduction` 等模块复用；除法、余数与更高阶组合检查仍由具体运算模块在实现层完成（参见 `11-math.md`、`12-matrix.md`）。
 
 ---
 
@@ -886,6 +971,9 @@ Wave 3: [T6]      [T9] ← ────┘
 | `Complex::new(f64::NAN, 0.0).norm().is_nan()` | 返回 `true`                      |
 | `bool` 张量调用 `sum()`                       | 编译错误（Numeric 约束不满足）   |
 | `bool` 张量调用 `.cast::<f32>()`              | 编译错误（未实现 `CastTo<f32>`） |
+| §28.4 占位：large-tensor                      | 后续补充大批量元素类型转换/归约边界回归 |
+| §28.4 占位：high-dim                          | 后续补充高维张量在元素 trait 分发上的回归 |
+| §28.4 占位：extreme-value                     | 后续补充 `NaN` / `Inf` / `MIN` / `MAX` / `-0.0` 组合回归 |
 
 ### 8.4 属性测试不变量
 

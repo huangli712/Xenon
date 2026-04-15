@@ -2,7 +2,7 @@
 
 > 文档编号: 05 | 模块: `src/storage/` | 阶段: Phase 2
 > 前置文档: `01-architecture.md`, `02-dimension.md`, `03-element.md`, `04-complex.md`
-> 需求参考: 需求说明书 §6, §8, §10, §25, §26, §27, §28
+> 需求参考: 需求说明书 §6, §8, §10, §16, §17, §21.2, §25, §26, §27, §28
 > 范围声明: 范围内
 
 ---
@@ -47,7 +47,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 | 项目     | 内容                                                              |
 | -------- | ----------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §6、§8、§10、§25、§26、§27、§28                       |
+| 需求映射 | 需求说明书 §6、§8、§10、§16、§17、§21.2、§25、§26、§27、§28     |
 | 范围内   | `Storage` trait 层次、拥有/借用/共享存储模式、对齐分配与 ZST 处理 |
 | 范围外   | GPU 后端、并行调度、张量运算逻辑、负步长布局解释                  |
 | 非目标   | 引入第三方分配器依赖、共享可写存储模式或运行时类型擦除存储层      |
@@ -253,7 +253,7 @@ pub unsafe trait RawStorage {
 
 ### 5.4 RawStorageMut Trait
 
-```rust
+```rust,ignore
 /// Raw pointer access for mutable storage.
 ///
 /// # Safety
@@ -269,17 +269,23 @@ pub unsafe trait RawStorageMut: RawStorage {
     ///
     /// # Safety
     ///
-    /// The storage must be non-empty.
+    /// For empty storage, this returns `NonNull::dangling()` as a sentinel.
+    /// Callers must check `self.len() > 0` before dereferencing the result or
+    /// performing element access through it.
     #[inline]
     unsafe fn as_non_null(&mut self) -> NonNull<Self::Elem> {
-        NonNull::new_unchecked(self.as_mut_ptr())
+        if self.len() == 0 {
+            NonNull::dangling()
+        } else {
+            NonNull::new_unchecked(self.as_mut_ptr())
+        }
     }
 }
 ```
 
 ### 5.5 Storage Trait
 
-````rust
+````rust,ignore
 /// Safe read access to the entire backing storage.
 ///
 /// # Example
@@ -329,9 +335,16 @@ pub unsafe trait Storage: RawStorage {
 }
 ````
 
+#### 5.5a `unsafe trait Storage` / `StorageMut` 契约充分性论证
+
+- `Storage` / `StorageMut` 的 `unsafe` 责任集中在实现者：`as_ptr()` / `as_mut_ptr()` 必须与 `len()` 指向同一个真实可访问的 backing range。
+- 因此安全层 `get()` / `get_mut()` / `as_slice()` / `as_mut_slice()` 只需先做边界检查，再在该 backing range 内执行指针偏移；若 `len` 与底层可访问范围不一致，UB 责任归于错误的 `unsafe impl`，而非安全 API 调用方。
+- storage 层不解释 `shape` / `strides` / `offset`；这些逻辑视图元数据由 `TensorBase` 在张量层验证并应用，因此 storage 契约足以覆盖本层全部 UB 风险来源。
+- `StorageMut` 额外要求独占可写访问。只要实现者保证 `as_mut_ptr()` 指向的 `len()` 元素区间不存在别名可写访问，安全层暴露的 `&mut T` / `&mut [T]` 就不会引入额外 UB。
+
 ### 5.6 StorageMut Trait
 
-````rust
+````rust,ignore
 /// Safe read-write access to storage.
 ///
 /// # Example
@@ -376,7 +389,12 @@ pub unsafe trait StorageMut: Storage + RawStorageMut {
         unsafe { core::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
     }
 
-    /// Fills the entire storage with the given value.
+    /// Fills the entire storage-visible backing range with the given value.
+    ///
+    /// This is a storage-layer API and therefore has `fill_all()` semantics.
+    /// It is **not** the tensor-level logical `fill()` required by
+    /// `require.md §21.2`; tensor-level fill must only visit writable logical
+    /// elements after applying `shape` / `strides` / `offset`.
     #[inline]
     fn fill(&mut self, value: Self::Elem)
     where
@@ -391,7 +409,7 @@ pub unsafe trait StorageMut: Storage + RawStorageMut {
 
 ### 5.7 StorageOwned Trait
 
-````rust
+````rust,ignore
 /// Storage that owns data.
 ///
 /// # Example
@@ -407,10 +425,12 @@ pub unsafe trait StorageOwned: StorageMut + Clone {
         Self::Elem: Default;
 
     /// Allocates storage of the given size, filled with the given value.
-    fn from_elem(len: usize, value: Self::Elem) -> Self;
+    fn from_elem(len: usize, value: Self::Elem) -> Self
+    where
+        Self::Elem: Clone;
 
     /// Constructs storage from a Vec.
-    fn from_vec(vec: Vec<Self::Elem>) -> Self
+    fn from_vec(vec: Vec<Self::Elem>) -> Result<Self, XenonError>
     where
         Self::Elem: Copy;
 
@@ -426,7 +446,11 @@ pub unsafe trait StorageOwned: StorageMut + Clone {
     /// Returns the capacity of the storage.
     fn capacity(&self) -> usize;
 
-    /// Attempts to resize the storage capacity.
+    /// Attempts to ensure total capacity is at least `new_capacity`.
+    ///
+    /// `new_capacity` is the target total capacity, not an additional amount.
+    /// If `new_capacity <= capacity()`, this is a no-op and must not shrink the
+    /// allocation.
     fn try_reserve(&mut self, new_capacity: usize) -> Result<(), XenonError>;
 }
 ````
@@ -568,7 +592,7 @@ fn modify_shared(arc: ArcRepr<f64>) -> Owned<f64> {
 
 ### 6.1 Owned\<A\> 结构体
 
-```rust
+```rust,ignore
 /// Owned storage.
 ///
 /// `Owned<A>` has full ownership of the data, stored on the heap.
@@ -608,7 +632,7 @@ impl<A> Owned<A> {
     /// alignment-aware buffer representation. This keeps `Owned<A>` consistent
     /// with the rest of the storage model, where owned construction paths are
     /// free to require fresh aligned storage.
-    pub fn from_vec(data: Vec<A>) -> Self
+    pub fn from_vec(data: Vec<A>) -> Result<Self, XenonError>
     where
         A: Copy,
     {
@@ -619,18 +643,24 @@ impl<A> Owned<A> {
     ///
     /// Backing implementation used by `from_vec` and Xenon construction paths
     /// (`from_shape_vec`, etc.) to guarantee SIMD-compatible alignment.
-    pub fn from_vec_aligned(data: Vec<A>) -> Self
+    pub fn from_vec_aligned(data: Vec<A>) -> Result<Self, XenonError>
     where
         A: Copy,
     {
         let len = data.len();
         let elem_size = core::mem::size_of::<A>();
         if len == 0 || elem_size == 0 {
-            return Self { data: AlignedBuf::empty() };
+            return Ok(Self { data: AlignedBuf::empty() });
         }
         let size = len
             .checked_mul(elem_size)
-            .expect("storage allocation size overflow");
+            .ok_or_else(|| XenonError::InvalidShape {
+                operation: "Owned::from_vec_aligned",
+                shape: vec![len],
+                expected_elements: len,
+                actual_elements: len,
+                offending_dim: None,
+            })?;
         // Allocate aligned memory and copy elements
         // SAFETY: AlignedAlloc returns a valid, aligned allocation of the requested size.
         let ptr = AlignedAlloc::alloc(size, Self::DEFAULT_ALIGNMENT);
@@ -640,7 +670,7 @@ impl<A> Owned<A> {
         // the two ranges are non-overlapping (typed_ptr is freshly allocated).
         unsafe { core::ptr::copy_nonoverlapping(data.as_ptr(), typed_ptr, len); }
         // SAFETY: ptr was allocated by AlignedAlloc with len elements.
-        Self { data: unsafe { AlignedBuf::from_raw_parts(typed_ptr, len, len, Self::DEFAULT_ALIGNMENT) } }
+        Ok(Self { data: unsafe { AlignedBuf::from_raw_parts(typed_ptr, len, len, Self::DEFAULT_ALIGNMENT) } })
     }
 
     /// Creates Owned with 64-byte aligned allocation.
@@ -665,8 +695,11 @@ impl<A> Owned<A> {
 
 ### 6.2 当前默认 64 字节对齐分配器
 
-```rust
+```rust,ignore
 /// Aligned memory allocator.
+///
+/// Design note: implementation should prefer `pub(crate)` unless Xenon later
+/// decides to expose allocator customization as a public semver commitment.
 pub struct AlignedAlloc;
 
 impl AlignedAlloc {
@@ -702,6 +735,8 @@ impl AlignedAlloc {
 ```
 
 **分配策略说明**：当前默认实现选择 64 字节对齐，以匹配 SIMD 友好的 owned 缓冲策略；这是一项实现选择，而不是 `require.md` 所要求的唯一对齐值。对齐值可配置。为保持文档与当前设计一致，`AlignedAlloc` 不提供“小数组回退到普通分配”的分支。除 ZST 与 `len == 0` 这两类显式跳过分配的情形外，当前默认实现的真实堆分配统一使用该默认对齐值。
+
+**可见性说明**：若后续没有把对齐分配器作为独立公共扩展点的计划，实现应默认使用 `pub(crate)`，避免把底层分配细节固化为公开 API。
 
 **安全性论证**：`AlignedAlloc` 使用 `alloc::alloc::Layout` 确保对齐值是 2 的幂且总大小合法。分配失败时调用 `handle_alloc_error` 而非返回空指针，避免 UB。
 
@@ -774,6 +809,8 @@ struct SharedBuf<A> {
 > **设计决策：** `ArcRepr<A>` 不承诺公开可见的内部字段，但其底层数据表示与 `Owned<A>` 保持一致：二者都以 `AlignedBuf<A>` 作为连续缓冲区表示，`ArcRepr<A>` 仅在 `arc.rs` 内部额外附着 `Arc` 引用计数头。偏移量与切片范围由外层 `TensorBase` 元数据管理（见 `07-tensor.md §5.1`），而 `ArcRepr` 只抽象表示共享只读语义下的底层连续缓冲区。该共享表示保证 `Owned<A> -> ArcRepr<A>` 可以按 O(1) 零拷贝完成：不发生数据复制，也不发生布局变换。任何写时复制 helper 都仅能在 `arc.rs` 内部针对整个底层缓冲区执行，不负责解释张量视图的 `offset` / `shape` / `strides`，也不把 `ArcRepr` 提升为共享可写存储模式，更不构成公开的 `ArcRepr<A> -> Owned<A>` 零拷贝转换。
 
 > **CoW 语义边界：** `ArcRepr` 的 CoW 能力仅为内部实现优化，不作为公开语义承诺。对外始终表现为共享只读存储。
+
+> **API 边界补充：** `ArcRepr<A>` 永不通过公开 API 暴露内部缓冲区的 `&mut A` 或 `&mut [A]`。即便内部 CoW helper 在唯一引用场景下暂时取得独占缓冲，该能力也必须停留在 `arc.rs` 私有边界内；公开层可写访问唯一合法路径仍是先物化为 `Owned<A>`。
 
 **内部写时复制流程**：
 
@@ -997,7 +1034,15 @@ Wave 4:              [T12] → [T13]
 | 单元素 `Owned::from_vec(vec![1.0])` | `len() == 1`, `get(0) == Some(&1.0)`  |
 | ZST 元素 `Owned::<()>::zeros(1000)` | 不分配内存，不引发 UB                 |
 | 大数组 16M 元素                     | 正常分配和访问                        |
-| 容量乘法接近 `usize::MAX`           | 显式 panic 或返回错误，不发生整数回绕 |
+| 容量乘法接近 `usize::MAX`           | 返回 `XenonError::InvalidShape`，不发生整数回绕 |
+
+### 8.3a 需求说明书 §28.4 边界测试占位
+
+| 占位项 | 说明 |
+| ------ | ---- |
+| 空存储边界 | 占位：覆盖 `len == 0` 时 dangling sentinel、空切片与 `offset <= storage_len` 契约 |
+| 大存储边界 | 占位：覆盖超大 `len` / `elem_size` 乘法接近上界时返回 `InvalidShape` |
+| ZST 存储边界 | 占位：覆盖 ZST + 空/非空存储不分配且不解引用哨兵指针 |
 
 ### 8.4 属性测试不变量
 

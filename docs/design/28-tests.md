@@ -190,8 +190,12 @@ pub fn assert_tensor_exact_real<A, D>(
         "{}: shape mismatch: {:?} vs {:?}", msg, actual.shape(), expected.shape());
 
     for (idx, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
-        let a_f: f64 = (*a).cast_to().unwrap();
-        let e_f: f64 = (*e).cast_to().unwrap();
+        let a_f: f64 = (*a)
+            .cast::<f64>()
+            .expect("real test helper requires cast::<f64>() support");
+        let e_f: f64 = (*e)
+            .cast::<f64>()
+            .expect("real test helper requires cast::<f64>() support");
         assert!(ulp_eq_f64_exact(a_f, e_f),
             "{}: element {} differs: actual={}, expected={}, comparison=strict ULP==0",
             msg, idx, a, e);
@@ -215,10 +219,10 @@ pub fn assert_tensor_exact_complex<A, D>(
         "{}: shape mismatch: {:?} vs {:?}", msg, actual.shape(), expected.shape());
 
     for (idx, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
-        let a_re: f64 = a.re().cast_to().unwrap();
-        let a_im: f64 = a.im().cast_to().unwrap();
-        let e_re: f64 = e.re().cast_to().unwrap();
-        let e_im: f64 = e.im().cast_to().unwrap();
+        let a_re: f64 = a.re().cast::<f64>().expect("complex test helper requires cast::<f64>() support");
+        let a_im: f64 = a.im().cast::<f64>().expect("complex test helper requires cast::<f64>() support");
+        let e_re: f64 = e.re().cast::<f64>().expect("complex test helper requires cast::<f64>() support");
+        let e_im: f64 = e.im().cast::<f64>().expect("complex test helper requires cast::<f64>() support");
 
         assert!(ulp_eq_f64_exact(a_re, e_re),
             "{}: element {} real part differs: actual={}, expected={}, comparison=strict ULP==0",
@@ -242,8 +246,33 @@ pub fn assert_tensor_close_real_cross_path<A, D>(
     A: RealScalar + CastTo<f64>,
     D: Dimension,
 {
-    // Same shape checks as the exact helper; element-wise comparison delegates
-    // to the documented cross-path tolerance helper.
+    assert_eq!(actual.shape(), expected.shape(),
+        "{}: shape mismatch: {:?} vs {:?}", msg, actual.shape(), expected.shape());
+
+    for (idx, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
+        let a_f: f64 = (*a)
+            .cast::<f64>()
+            .expect("cross-path helper requires cast::<f64>() support");
+        let e_f: f64 = (*e)
+            .cast::<f64>()
+            .expect("cross-path helper requires cast::<f64>() support");
+        let scale = a_f.abs().max(e_f.abs()).max(1.0);
+        let relative_error = (a_f - e_f).abs() / scale;
+        let relative_limit = match tolerance {
+            MathTolerance::CrossPath { epsilon, .. } | MathTolerance::MathFunc { epsilon, .. } => epsilon,
+            MathTolerance::Exact => 0.0,
+        };
+
+        assert!(
+            ulp_eq_f64_with_tolerance(a_f, e_f, tolerance) || relative_error <= relative_limit,
+            "{}: element {} differs: actual={}, expected={}, relative_error={}, comparison=cross-path tolerance",
+            msg,
+            idx,
+            a_f,
+            e_f,
+            relative_error,
+        );
+    }
 }
 
 /// Assert math-function results stay within the per-function documented tolerance.
@@ -259,8 +288,26 @@ pub fn assert_tensor_close_real_math<A, D>(
     A: RealScalar + CastTo<f64>,
     D: Dimension,
 {
-    // Same shape checks as the exact helper; element-wise comparison delegates
-    // to function-specific tolerance rules.
+    assert_eq!(actual.shape(), expected.shape(),
+        "{}: shape mismatch: {:?} vs {:?}", msg, actual.shape(), expected.shape());
+
+    for (idx, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
+        let a_f: f64 = (*a)
+            .cast::<f64>()
+            .expect("math helper requires cast::<f64>() support");
+        let e_f: f64 = (*e)
+            .cast::<f64>()
+            .expect("math helper requires cast::<f64>() support");
+
+        assert!(
+            math_eq_f64(a_f, e_f, tolerance),
+            "{}: element {} differs: actual={}, expected={}, comparison=math-function tolerance",
+            msg,
+            idx,
+            a_f,
+            e_f,
+        );
+    }
 }
 
 /// Assert a tensor operation returns the expected error variant.
@@ -400,6 +447,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_eye_identity`           | 单位矩阵                                                                             | 高     |
 | `test_from_data_constructors` | 以 `from_shape_vec`、`from_shape_slice` 为主；`from_vec` 仅覆盖 Ix1 非规范便捷层（see 18-construction.md §5.1） | 高     |
 | `test_from_fixed_array`       | 从固定数组构造                                                                       | 中     |
+| `test_from_shape_vec_f_order_mapping` | F-order 逻辑元素顺序与线性输入映射正确                                        | 高     |
 
 ### 8.6 test_reduction.rs
 
@@ -429,6 +477,8 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_dot_complex`        | 复数内积共轭线性          | 高     |
 | `test_dot_shape_mismatch` | 内积维度不匹配返回错误    | 高     |
 | `test_dot_empty`          | 空向量 dot 返回加法单位元 | 中     |
+| `test_i32_dot_overflow_panics` | `i32` 内积溢出触发 panic | 高 |
+| `test_i64_dot_overflow_panics` | `i64` 内积溢出触发 panic | 高 |
 
 ### 8.9 test_set.rs
 
@@ -467,6 +517,8 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_clip`                | 裁剪操作                | 中     |
 | `test_clip_non_contiguous` | 非连续布局裁剪          | 中     |
 | `test_to_contiguous`       | 连续化保持逻辑元素顺序  | 高     |
+| `test_clip_invalid_parameters` | `min > max`、NaN 边界等非法参数返回错误 | 高 |
+| `test_fill_rejects_readonly_or_broadcast` | 只读视图或广播视图上的 fill 被拒绝 | 高 |
 
 ### 8.13 test_output.rs
 
@@ -476,6 +528,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_display_truncated`       | 超阈值触发截断                    | 高     |
 | `test_debug_includes_metadata` | Debug 包含 shape/stride/type 信息 | 中     |
 | `test_output_complex`          | 复数格式化输出                    | 中     |
+| `test_scalar_vs_zero_dim_formatting` | 标量值与零维张量输出语义区分清晰 | 中 |
 
 ### 8.14 test_ffi.rs
 
@@ -489,6 +542,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_export_mut_roundtrip`              | `export_mut` 导出可变视图并验证独占写路径        | 高     |
 | `test_from_raw_parts_mut_reject_overlap` | `from_raw_parts_mut` 对地址重叠/别名冲突执行检查 | 高     |
 | `test_try_offset_of`                     | try_offset_of 正确计算                           | 高     |
+| `test_export_alignment_preconditions`    | 导出描述符仅在满足对齐前提时声明可供上游直接消费 | 高     |
 
 ### 8.15 test_workspace.rs
 
@@ -499,6 +553,8 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_workspace_split`                 | split 后子工作空间边界正确                                                 | 中     |
 | `test_workspace_ensure_capacity`       | 扩容不破坏已借用安全性                                                     | 高     |
 | `test_workspace_assume_init_prefix`    | `assume_init_*` 只允许访问调用方已证明初始化的前缀                         | 高     |
+| `test_workspace_storage_mode_conversion_error_mapping` | 工作空间相关存储模式转换错误映射覆盖 §6.2 | 中 |
+| `test_workspace_not_send_not_sync`     | `Workspace` / `SplitBorrowMut` 的 `!Send + !Sync` 编译期验证               | 高     |
 
 ### 8.16 test_parallel.rs
 
@@ -506,6 +562,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | ------------------------------------------- | ------------------------------------------------------------------------------------------- | ------ |
 | `test_sum_parallel_feature_consistency`     | 启用 `parallel` feature 后，同一公开 `sum()` 语义与默认配置一致（参见 `09-parallel.md §8`） | 高     |
 | `test_par_add_consistency`                  | 并行 add 与串行 add 结果一致                                                                | 高     |
+| `test_par_dot_consistency`                  | 并行 dot 与串行 dot 结果一致                                                                | 高     |
 | `test_parallel_read`                        | 多线程并发只读访问安全（参见 `25-safety.md §5`）                                            | 高     |
 | `test_nested_parallel_falls_back_to_serial` | 嵌套并行检测后自动回退串行                                                                  | 中     |
 
@@ -515,6 +572,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | --------------------------- | --------------------------------------------------------------------------- | ------ |
 | `test_simd_add_consistency` | SIMD add 与显式标量 baseline 结果一致（参见 `08-simd.md §8`）               | 高     |
 | `test_simd_sum_consistency` | SIMD sum 与显式标量 baseline 结果一致                                       | 高     |
+| `test_simd_dot_consistency` | SIMD dot 与显式标量 baseline 结果一致                                       | 高     |
 | `test_simd_fallback_small`  | 小数组 SIMD 回退到标量                                                      | 中     |
 | `test_simd_complex_path`    | 验证 `Complex<f32>` / `Complex<f64>` SIMD kernel 与标量路径在文档容差内一致 | 中     |
 
@@ -546,6 +604,8 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_invalid_axis_error`     | 轴越界返回 InvalidAxis                                                                                       | 高     |
 | `test_invalid_argument_error` | 非法参数返回 `XenonError::InvalidArgument`                                                                   | 高     |
 | `test_invalid_shape_error`    | 非法 shape/元素数不匹配返回 `XenonError::InvalidShape`                                                       | 高     |
+| `test_invalid_storage_mode_conversion_error` | 存储模式转换失败返回 `XenonError::InvalidStorageMode`，含转换上下文                                      | 高     |
+| `test_layout_state_query_error_context`      | 布局状态查询失败时返回结构化上下文                                                                        | 中     |
 | `test_error_display`          | 所有错误类型的 Display 包含上下文                                                                            | 中     |
 | `test_send_sync_contracts`    | 各 storage mode 的 Send/Sync 边界与 `25-safety.md` 一致                                                      | 高     |
 | `test_complex_c99_layout`     | `Complex<T>` 的 C-compatible 布局与 FFI 约定一致                                                             | 高     |
@@ -668,6 +728,8 @@ fn test_ixdyn_high_rank_scenarios() {
 
 说明：上述示例中的大张量测试以 `f32` 作为默认元素类型，以在 `10^7` 元素量级下控制测试内存占用；若目标平台内存预算更紧，可保留元素数量目标不变并避免并发叠加分配。`IxDyn` 高 rank 测试以 rank 12 为上限，兼顾需求覆盖与测试执行成本。
 
+> **执行分层要求：** 大张量用例默认归入 weekly / release 级 extended test；PR 级别只保留 smoke/required 层中的小中规模代表性样例。若 PR 需要触发大张量专项验证，应显式标记为额外质量门，而非默认必跑项。
+
 ---
 
 ### 8.22 数值精度规范
@@ -721,6 +783,10 @@ pub enum MathTolerance {
 /// This is the default helper for Tier 1 IEEE 754 base operations.
 /// NaN / Inf semantics must be asserted explicitly in dedicated tests.
 pub fn ulp_eq_f64_exact(actual: f64, expected: f64) -> bool {
+    if actual == expected {
+        return true;
+    }
+
     if !actual.is_finite() || !expected.is_finite() {
         return false;
     }
@@ -988,7 +1054,7 @@ fn test_transpose_shapes() {
 
 #### 8.26.2 Bad — 错误的集成测试模式
 
-```rust
+```rust,ignore
 // Bad: Applying a blanket tolerance to a same-path base arithmetic test
 #[test]
 fn test_add_bad() {
@@ -1384,6 +1450,7 @@ fn compile_fail_harness() {
 | 替代方案 | 保留额外平台编译检查 — 放弃，与当前版本范围矛盾                                    |
 
 ---
+
 
 ## 13. 平台与工程约束
 

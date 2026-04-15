@@ -33,7 +33,7 @@
 
 | 类型     | 内容                                                                                                             |
 | -------- | ---------------------------------------------------------------------------------------------------------------- |
-| 需求映射 | `require.md §8`, `§12`, `§13`, `§14`, `§16`, `§18`, `§21`, `§23`, `§25`, `§26`, `§27`, `§28.2`, `§28.3`, `§28.5` |
+| 需求映射 | `require.md §8`, `§12`, `§13`, `§14`, `§16`, `§18`, `§21`, `§23`, `§25`, `§26`, `§27`, `§28.2`, `§28.3`, `§28.5`, `§6.2` |
 | 范围内   | 可恢复错误返回值、panic 分类、诊断字段、类型转换失败、索引失败、FFI 失败                                         |
 | 范围外   | 自定义日志、第三方错误包装器、跨进程序列化                                                                       |
 | 非目标   | 通过 `panic` 替代本应可恢复的用户输入错误                                                                        |
@@ -176,6 +176,9 @@ pub enum XenonError {
         expected: Cow<'static, str>,
         actual: Cow<'static, str>,
         shape: Option<Vec<usize>>,
+        source_storage_mode: Option<Cow<'static, str>>,
+        target_storage_mode: Option<Cow<'static, str>>,
+        conversion_type: Option<Cow<'static, str>>,
     },
 
     Ffi(FfiError),
@@ -184,7 +187,7 @@ pub enum XenonError {
 
     IndexOutOfBounds {
         operation: Cow<'static, str>,
-        attempted_index: usize,
+        attempted_index: Vec<usize>,
         axis: usize,
         shape: Vec<usize>,
     },
@@ -225,6 +228,8 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 `WorkspaceError` 与 `FfiError` 都必须实现 `std::error::Error`，以便 `XenonError::source()` 暴露完整的内层错误链。
 
 > **FfiError 结构化说明：** `FfiError` 已采用结构化字段设计，具体字段定义参见 `23-ffi.md`。
+
+> **存储模式转换说明：** 存储模式转换失败统一使用 `XenonError::InvalidStorageMode`，并携带 `source_storage_mode`、`target_storage_mode`、`conversion_type` 字段；当某个调用点并不涉及显式存储模式转换时，这些字段可为 `None`。
 
 ### 4.2.1 公开 API 边界映射
 
@@ -289,12 +294,14 @@ where
 | `InvalidAxis`                         | `operation`, `axis`, `ndim`, `shape`                                               |
 | `InvalidShape`                        | `operation`, `shape`, `expected_elements`, `actual_elements`, `offending_dim?`     |
 | `DimensionMismatch`                   | `operation`, `expected`, `actual`                                                  |
-| `InvalidArgument`                     | `operation`, `argument`, `expected`, `actual`, `axis?`, `shape?`                   |
-| `InvalidStorageMode`                  | `operation`, `expected`, `actual`, `shape?`                                        |
+| `InvalidArgument`                     | `operation`, `argument`, `expected`, `actual`, `axis?`, `shape?`；范围切片越界时额外以 `argument="slice_range"`、`actual=<range>` 表达，并携带 `axis` |
+| `InvalidStorageMode`                  | `operation`, `expected`, `actual`, `shape?`, `source_storage_mode?`, `target_storage_mode?`, `conversion_type?` |
 | `Ffi(FfiError)`                       | 由 `FfiError` 提供 `operation`, `backend`, `precondition`, `actual`                |
 | `Workspace(...)`                      | 由 `WorkspaceError` 提供 `size`, `align`, `split`, `len` 等适用结构化字段          |
-| `IndexOutOfBounds`                    | `operation`, `attempted_index`, `axis`, `shape`                                    |
+| `IndexOutOfBounds`                    | `operation`, `attempted_index`, `axis`, `shape`；`attempted_index` 表示完整多维索引 tuple，`axis` 指出首个越界维度 |
 | `TypeConversion(TypeConversionError)` | `source_type`, `target_type`, `reason`, `element_index`                            |
+
+> **分配成本说明：** `attempted_index: Vec<usize>`、`shape: Vec<usize>` 以及 `InvalidArgument` / `InvalidStorageMode` 中的可选 `Vec<usize>` 字段会带来少量堆分配成本；这是当前版本可接受的诊断开销，用于换取跨公开 API 的一致结构化上下文。
 
 ### 4.5 Display 与 panic 信息要求
 
@@ -408,26 +415,32 @@ impl fmt::Display for XenonError {
                 shape,
             } => write!(
                 f,
-                "invalid argument in {}: {} expected {}, actual {}, axis {:?}, shape {:?}",
+                "invalid argument in {}: {} expected {}, actual {}, axis {}, shape {}",
                 operation,
                 argument,
                 expected,
                 actual,
-                axis,
-                shape.as_ref().map(|value| fmt_shape(value)),
+                axis.map(|value| value.to_string()).unwrap_or_else(|| "<any>".to_string()),
+                shape.as_ref().map(|value| fmt_shape(value)).unwrap_or_else(|| "<any>".to_string()),
             ),
             Self::InvalidStorageMode {
                 operation,
                 expected,
                 actual,
                 shape,
+                source_storage_mode,
+                target_storage_mode,
+                conversion_type,
             } => write!(
                 f,
-                "invalid storage mode in {}: expected {}, actual {}, shape {:?}",
+                "invalid storage mode in {}: expected {}, actual {}, shape {}, source {}, target {}, conversion {}",
                 operation,
                 expected,
                 actual,
-                shape.as_ref().map(|value| fmt_shape(value)),
+                shape.as_ref().map(|value| fmt_shape(value)).unwrap_or_else(|| "<any>".to_string()),
+                source_storage_mode.as_deref().unwrap_or("<any>"),
+                target_storage_mode.as_deref().unwrap_or("<any>"),
+                conversion_type.as_deref().unwrap_or("<any>"),
             ),
             Self::Ffi(err) => write!(f, "ffi error: {}", err),
             Self::Workspace(err) => write!(f, "workspace error: {}", err),
@@ -446,9 +459,9 @@ impl fmt::Display for XenonError {
                 shape,
             } => write!(
                 f,
-                "index out of bounds in {}: index {}, axis {}, shape [{}]",
+                "index out of bounds in {}: index [{}], axis {}, shape [{}]",
                 operation,
-                attempted_index,
+                fmt_shape(attempted_index),
                 axis,
                 fmt_shape(shape),
             ),
@@ -456,6 +469,8 @@ impl fmt::Display for XenonError {
     }
 }
 ```
+
+> **Display 约束：** 对 `Option<Vec<usize>>` 等可选结构化字段，`Display` 实现必须做人性化格式化；`None` 统一显示为 `<any>`，不得直接打印 `Some(...)` / `None` 调试文本。
 
 ### 4.6 必须统一覆盖的 panic 类别
 

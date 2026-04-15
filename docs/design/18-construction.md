@@ -16,7 +16,7 @@
 | 零初始化构造   | `zeros<A, D>(shape)` 全零张量                        | arange / linspace / logspace 序列生成（当前版本不提供）        |
 | 常量构造       | `ones<A, D>(shape)` 全一张量                         | `full<A, D>(shape, scalar)` 与随机数构造（当前版本不提供）     |
 | 单位矩阵       | `eye<A>(n)` 单位矩阵                                 | 从文件加载（当前版本不提供）                                   |
-| 从 Vec 构造    | `from_shape_vec(shape, vec)` 消费输入 Vec 并构造张量 | 从迭代器/生成器构造（当前版本不提供）                         |
+| 从 Vec 构造    | `from_shape_vec(shape, vec)` 消费输入 Vec 并构造张量 | 从迭代器/生成器构造（当前版本不提供）                          |
 | 从切片构造     | `from_shape_slice(shape, slice)` 从切片拷贝数据      | 从文件/网络加载（当前版本不提供）                              |
 | 从固定数组构造 | `from_array<A, N>(shape, arr)` 从固定大小数组构造    | 从文件加载（当前版本不提供）                                   |
 | 从标量构造     | `from_scalar<A>(scalar)` 零维张量                    | —                                                              |
@@ -25,13 +25,13 @@
 
 ### 1.2 设计原则
 
-| 原则         | 体现                                                                                                                                                             |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 合法性验证   | 所有构造路径须验证合法性，防止越界访问（需求说明书 §8）                                                                                                          |
-| F-order 默认 | 构造时数据按 F-order 存放，默认列优先布局                                                                                                                        |
-| 对齐分配     | `zeros`/`ones` 使用项目统一的对齐分配策略，满足拥有型连续存储的实现需求；具体对齐值不作为构造 API 的公开语义                                                   |
-| 对齐优先     | `from_shape_vec` 可复用项目统一的 owned 存储构造路径；是否复制输入 `Vec<A>`、以及采用何种对齐值，均属于内部实现选择，不单独形成公开承诺                       |
-| 类型安全     | 形状和元素类型通过泛型约束在编译期检查                                                                                                                           |
+| 原则         | 体现                                                                                                                                    |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 合法性验证   | 所有构造路径须验证合法性，防止越界访问（需求说明书 §8）                                                                                 |
+| F-order 默认 | 构造时数据按 F-order 存放，默认列优先布局                                                                                               |
+| 对齐分配     | `zeros`/`ones` 使用项目统一的对齐分配策略，满足拥有型连续存储的实现需求；具体对齐值不作为构造 API 的公开语义                            |
+| 对齐优先     | `from_shape_vec` 可复用项目统一的 owned 存储构造路径；是否复制输入 `Vec<A>`、以及采用何种对齐值，均属于内部实现选择，不单独形成公开承诺 |
+| 类型安全     | 形状和元素类型通过泛型约束在编译期检查                                                                                                  |
 
 ### 1.3 在架构中的位置
 
@@ -49,12 +49,12 @@ L5: construct  <- current module (depends on storage, layout, dimension, element
 
 ## 2. 需求映射与范围约束
 
-| 类型     | 内容 |
-| -------- | ---- |
-| 需求映射 | 需求说明书 §19 |
-| 范围内   | `zeros` / `ones` / `eye` / `from_shape_vec` / `from_shape_slice` / `from_array` / `from_scalar`。 |
-| 范围外   | arange、linspace、from_fn、随机构造器与其他序列生成 API。 |
-| 非目标   | 不新增新的构造器家族，不改变 F-order / 对齐分配基线，也不引入第三方随机或数据加载依赖。 |
+| 类型     | 内容                                                                                                                                                  |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 需求映射 | 需求说明书 §19                                                                                                                                        |
+| 范围内   | `zeros` / `ones` / `eye` / `from_shape_vec` / `from_shape_slice` / `from_array` / `from_scalar`，以及空张量 / 零维张量 / ZST 路径的合法性与错误语义。 |
+| 范围外   | arange、linspace、from_fn、随机构造器与其他序列生成 API。                                                                                             |
+| 非目标   | 不新增新的构造器家族，不改变 F-order / 对齐分配基线，也不引入第三方随机或数据加载依赖。                                                               |
 
 ---
 
@@ -100,14 +100,14 @@ src/
 
 ### 4.2 类型级依赖
 
-| 来源模块    | 使用的类型/trait                                                                           |
-| ----------- | ------------------------------------------------------------------------------------------ |
-| `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, 类型别名 `Tensor0`~`Tensor6`（参见 `07-tensor.md` §5） |
-| `storage`   | `Owned<A>`, `Storage<Elem = A>`, `from_vec_aligned()`（参见 `05-storage.md` §5）           |
+| 来源模块    | 使用的类型/trait                                                                                                  |
+| ----------- | ----------------------------------------------------------------------------------------------------------------- |
+| `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, 类型别名 `Tensor0`~`Tensor6`（参见 `07-tensor.md` §5）                        |
+| `storage`   | `Owned<A>`, `Storage<Elem = A>`, `from_vec_aligned()`（参见 `05-storage.md` §5）                                  |
 | `layout`    | `LayoutFlags`, `Strides<D>`, 共享 checked/layout helper（元素总数与 F-order stride 计算，参见 `06-layout.md` §3） |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`（参见 `02-dimension.md` §5）            |
-| `element`   | `Element`（`zero()` / `one()` 由 `Element` 提供，参见 `03-element.md` §5.1）               |
-| `error`     | `XenonError::InvalidShape`（用于构造时的 shape/length 基数不匹配，参见 `26-error.md` §4）  |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`（参见 `02-dimension.md` §5）                                   |
+| `element`   | `Element`（`zero()` / `one()` 由 `Element` 提供，参见 `03-element.md` §5.1）                                      |
+| `error`     | `XenonError::InvalidShape`（用于构造时的 shape/length 基数不匹配，参见 `26-error.md` §4）                         |
 
 ### 4.3 依赖方向声明
 
@@ -115,11 +115,11 @@ src/
 
 ### 4.4 依赖合法性与替代方案
 
-| 项目           | 说明 |
-| -------------- | ---- |
-| 新增第三方依赖 | 无 |
+| 项目           | 说明                                                                          |
+| -------------- | ----------------------------------------------------------------------------- |
+| 新增第三方依赖 | 无                                                                            |
 | 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
-| 替代方案       | 不适用；当前范围内无需额外第三方依赖。 |
+| 替代方案       | 不适用；当前范围内无需额外第三方依赖。                                        |
 
 ---
 
@@ -156,8 +156,7 @@ where
         let len = layout::checked_element_count(&dim).ok_or(XenonError::InvalidShape {
             operation: "zeros",
             shape: dim.slice().to_vec(),
-            expected_elements: 0,
-            actual_elements: usize::MAX,
+            reason: "element count overflow".into(),
             offending_dim: None,
         })?;
         let strides = layout::f_order_strides(&dim);
@@ -182,8 +181,7 @@ where
         let len = layout::checked_element_count(&dim).ok_or(XenonError::InvalidShape {
             operation: "ones",
             shape: dim.slice().to_vec(),
-            expected_elements: 0,
-            actual_elements: usize::MAX,
+            reason: "element count overflow".into(),
             offending_dim: None,
         })?;
         let strides = layout::f_order_strides(&dim);
@@ -237,7 +235,12 @@ where
     {
         let mut result = Self::zeros([n, n])?;
         for i in 0..n {
-            result[[i, i]] = A::one();
+            // SAFETY: `i < n`, so `[i, i]` is always in-bounds for the validated
+            // `[n, n]` shape created above. `eye()` uses unchecked indexing
+            // internally and does not rely on the public `IndexMut` panic sugar.
+            unsafe {
+                *result.get_unchecked_mut(&[i, i]) = A::one();
+            }
         }
         Ok(result)
     }
@@ -313,8 +316,7 @@ where
         let expected = layout::checked_element_count(&dim).ok_or(XenonError::InvalidShape {
             operation: "from_shape_vec",
             shape: dim.slice().to_vec(),
-            expected_elements: 0,
-            actual_elements: data.len(),
+            reason: "element count overflow".into(),
             offending_dim: None,
         })?;
         if data.len() != expected {
@@ -357,8 +359,7 @@ where
         let expected = layout::checked_element_count(&dim).ok_or(XenonError::InvalidShape {
             operation: "from_shape_slice",
             shape: dim.slice().to_vec(),
-            expected_elements: 0,
-            actual_elements: slice.len(),
+            reason: "element count overflow".into(),
             offending_dim: None,
         })?;
         if slice.len() != expected {
@@ -469,14 +470,14 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 
 ### 6.1 内存初始化策略
 
-| 构造方法           | 分配策略                                          | 初始化                        |
-| ------------------ | ------------------------------------------------- | ----------------------------- |
-| `zeros`            | 对齐分配 + 零初始化                               | `ptr::write_bytes(0)`         |
-| `ones`             | 对齐分配 + 批量填充                               | `ptr::write(A::one())`        |
-| `from_shape_vec`   | 走共享 owned 构造路径；可按实现需要复用或重打包输入缓冲区 | 用户提供数据                        |
-| `from_shape_slice` | 先物化 owned 缓冲区，再委托共享 owned 构造路径          | 至少一次切片拷贝；后续是否再搬运取决于内部实现 |
-| `from_scalar`      | 对齐分配（1 元素）                                | 单元素写入                    |
-| `eye`              | 先 `zeros` 再对角线写入                           | 两步：零初始化 + 对角线       |
+| 构造方法           | 分配策略                                                  | 初始化                                         |
+| ------------------ | --------------------------------------------------------- | ---------------------------------------------- |
+| `zeros`            | 对齐分配 + 零初始化                                       | `ptr::write_bytes(0)`                          |
+| `ones`             | 对齐分配 + 批量填充                                       | `ptr::write(A::one())`                         |
+| `from_shape_vec`   | 走共享 owned 构造路径；可按实现需要复用或重打包输入缓冲区 | 用户提供数据                                   |
+| `from_shape_slice` | 先物化 owned 缓冲区，再委托共享 owned 构造路径            | 至少一次切片拷贝；后续是否再搬运取决于内部实现 |
+| `from_scalar`      | 对齐分配（1 元素）                                        | 单元素写入                                     |
+| `eye`              | 先 `zeros` 再对角线写入                                   | 两步：零初始化 + 对角线                        |
 
 ### 6.2 范围外能力记录
 
@@ -484,10 +485,12 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 
 ### 6.3 安全性论证
 
+- `zeros`: 全零字节初始化仅对当前封闭元素集合合法：`i32` / `i64` 的 `0`、`f32` / `f64` 的 `+0.0`（IEEE 754）、`bool` 的 `false`、`Complex<T>` 的 `(0 + 0i)`。若未来新增元素类型，必须重新验证“全零字节可表示合法值”这一不变量。
+- `ones`: 逐元素写入过程中，若 `A::one()` 的 copy 在理论上发生 panic（当前封闭类型集合中不预期出现），未初始化内存仍须由 `Owned` 析构路径基于“已初始化长度跟踪”正确回收。
 - `from_shape_vec`: 先通过 layout 层共享 checked helper 验证元素总数，再验证 `data.len() == expected`；通过后进入共享 owned 构造路径。是否复用原始 `Vec` 分配、是否进行额外重打包，均属于内部实现选择，不影响公开语义
 - `from_shape_slice`: 先通过 layout 层共享 checked helper 验证元素总数，长度匹配后先把切片物化为 owned 缓冲区，再委托给 `from_shape_vec`；这样把 F-order 映射、长度约束与 owned 结果语义统一收敛到单一路径
-- 元素总数 / F-order stride 计算溢出：构造路径须在共享的 layout checked helper 中统一转为 `XenonError::InvalidShape`，不得把这些职责下沉到 `Dimension` trait。ZST 与空张量路径须与 `05-storage.md` 的约束保持一致
-- `eye`: 内部使用已验证的 `zeros` 和合法索引 `[[i, i]]`（`0 <= i < n`），无越界风险
+- 元素总数 / F-order stride 计算溢出：构造路径须在共享的 layout checked helper 中统一转为 `XenonError::InvalidShape`，不得把这些职责下沉到 `Dimension` trait。具体到 F-order stride，必须逐步验证 `stride[i] = product(shape[0..i])` 的乘积不会溢出 `usize`。ZST、空张量路径与 `05-storage.md` 约束保持一致
+- `eye`: 内部使用已验证的 `zeros` 与 unchecked 写入；因为循环变量满足 `0 <= i < n`，所以 `[i, i]` 索引必然合法，不依赖公开 `IndexMut` panic 语法糖
 
 ---
 
@@ -559,31 +562,37 @@ Wave 3:            [T5]
 
 ### 8.2 单元测试清单
 
-| 测试函数                         | 测试内容                     | 优先级 |
-| -------------------------------- | ---------------------------- | ------ |
-| `test_zeros_shape`               | `zeros([3, 4])` 形状正确     | 高     |
-| `test_zeros_values`              | 所有元素为零                 | 高     |
-| `test_ones_values`               | 所有元素为一                 | 高     |
-| `test_eye_3x3`                   | 3×3 单位矩阵对角线为 1       | 高     |
-| `test_eye_bool_not_supported`    | `eye::<bool>` 在类型层被拒绝 | 高     |
-| `test_eye_zero`                  | `eye(0)` 空矩阵              | 中     |
-| `test_from_shape_vec_success`    | 合法 Vec 构造成功            | 高     |
-| `test_from_shape_vec_mismatch`   | Vec 长度不匹配返回错误       | 高     |
-| `test_from_shape_slice_success`  | 从切片构造                   | 高     |
-| `test_from_shape_slice_mismatch` | 切片长度不匹配               | 高     |
-| `test_from_array_success`        | 从固定数组构造               | 中     |
-| `test_from_scalar`               | 零维张量                     | 高     |
+| 测试函数                            | 测试内容                                   | 优先级 |
+| ----------------------------------- | ------------------------------------------ | ------ |
+| `test_zeros_shape`                  | `zeros([3, 4])` 形状正确                   | 高     |
+| `test_zeros_values`                 | 所有元素为零                               | 高     |
+| `test_ones_values`                  | 所有元素为一                               | 高     |
+| `test_eye_3x3`                      | 3×3 单位矩阵对角线为 1                     | 高     |
+| `test_eye_bool_not_supported`       | `eye::<bool>` 在类型层被拒绝               | 高     |
+| `test_eye_zero`                     | `eye(0)` 空矩阵                            | 中     |
+| `test_from_shape_vec_success`       | 合法 Vec 构造成功                          | 高     |
+| `test_from_shape_vec_mismatch`      | Vec 长度不匹配返回错误                     | 高     |
+| `test_from_shape_slice_success`     | 从切片构造                                 | 高     |
+| `test_from_shape_slice_mismatch`    | 切片长度不匹配                             | 高     |
+| `test_from_array_success`           | 从固定数组构造                             | 中     |
+| `test_from_scalar`                  | 零维张量                                   | 高     |
+| `test_construction_large_tensor`    | 大张量构造保持合法错误/成功语义            | 中     |
+| `test_construction_high_rank_ixdyn` | 高 rank 构造路径与 F-order stride 校验正确 | 中     |
+| `test_eye_overflow`                 | `eye()` 在元素总数溢出时返回结构化错误     | 中     |
 
 ### 8.3 边界测试场景
 
-| 场景                          | 预期行为                |
-| ----------------------------- | ----------------------- |
-| `zeros([0])`                  | 空张量，`len() == 0`    |
-| `zeros([0, 3])`               | 空张量，`len() == 0`    |
-| `eye(0)`                      | 空 0×0 矩阵             |
-| `from_scalar(42)`             | 零维张量，`ndim() == 0` |
-| `from_shape_vec([0], vec![])` | 空 1D 张量              |
-| 大张量 `zeros([1000, 1000])`  | 分配成功，F-order 连续  |
+| 场景                          | 预期行为                                    |
+| ----------------------------- | ------------------------------------------- |
+| `zeros([0])`                  | 空张量，`len() == 0`                        |
+| `zeros([0, 3])`               | 空张量，`len() == 0`                        |
+| `eye(0)`                      | 空 0×0 矩阵                                 |
+| `from_scalar(42)`             | 零维张量，`ndim() == 0`                     |
+| `from_shape_vec([0], vec![])` | 空 1D 张量                                  |
+| 大张量 `zeros([1000, 1000])`  | 分配成功，F-order 连续                      |
+| 极大 shape 导致元素总数溢出   | 返回 `InvalidShape`，不伪造 expected/actual |
+| 高 rank `IxDyn` shape         | 正确计算或拒绝 F-order stride               |
+| `eye(n)` 接近溢出边界         | 在 `n * n` 溢出前返回结构化错误             |
 
 ### 8.4 属性测试不变量
 
@@ -601,18 +610,18 @@ Wave 3:            [T5]
 
 ### 8.6 Feature gate / 配置测试
 
-| 配置 | 验证点 |
-| ---- | ---- |
-| 默认配置 | 所有构造器在默认构建下保持 F-order 与错误语义契约；具体对齐值与是否重打包输入缓冲区不作为公开断言。 |
-| 其他 feature 组合 | 不适用；当前模块无额外 feature gate。 |
+| 配置              | 验证点                                                                                              |
+| ----------------- | --------------------------------------------------------------------------------------------------- |
+| 默认配置          | 所有构造器在默认构建下保持 F-order 与错误语义契约；具体对齐值与是否重打包输入缓冲区不作为公开断言。 |
+| 其他 feature 组合 | 不适用；当前模块无额外 feature gate。                                                               |
 
 ### 8.7 类型边界 / 编译期测试
 
-| 场景 | 测试方式 |
-| ---- | ---- |
-| `eye::<bool>` 不被支持 | 编译期测试。 |
-| `from_scalar` 仅产出 `Ix0` | 编译期签名检查与运行时断言。 |
-| arange / linspace / from_fn / random constructors 不属于当前 API | API 缺失断言。 |
+| 场景                                                             | 测试方式                     |
+| ---------------------------------------------------------------- | ---------------------------- |
+| `eye::<bool>` 不被支持                                           | 编译期测试。                 |
+| `from_scalar` 仅产出 `Ix0`                                       | 编译期签名检查与运行时断言。 |
+| arange / linspace / from_fn / random constructors 不属于当前 API | API 缺失断言。               |
 
 ---
 
@@ -620,15 +629,15 @@ Wave 3:            [T5]
 
 ### 9.1 接口约定
 
-| 方向                    | 对方模块    | 接口/类型                               | 约定                                                                                                                          |
-| ----------------------- | ----------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `construct → tensor`    | `tensor`    | `TensorBase`                            | 构造张量实例，参见 `07-tensor.md` §5.1                                                                                        |
+| 方向                    | 对方模块    | 接口/类型                            | 约定                                                                                               |
+| ----------------------- | ----------- | ------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| `construct → tensor`    | `tensor`    | `TensorBase`                         | 构造张量实例，参见 `07-tensor.md` §5.1                                                             |
 | `construct → storage`   | `storage`   | `Owned::zeros()` / owned 构造 helper | 使用项目统一的 owned 存储构造路径完成底层分配；具体对齐值、是否重打包输入缓冲区由 storage 内部负责 |
-| `construct → layout`    | `layout`    | F-order 步长                            | 构造阶段计算 F-order 步长，参见 `06-layout.md` §4                                                                             |
-| `construct → dimension` | `dimension` | `IntoDimension`                         | 接受灵活形状参数并归一化，参见 `02-dimension.md` §5.4                                                                         |
-| `construct → element`   | `element`   | `Element`                               | 通过 `Element::zero()` / `Element::one()` 约束构造 API，参见 `03-element.md` §5.1                                             |
-| `construct → error`     | `error`     | `XenonError::InvalidShape`              | shape 与长度基数不匹配时返回错误，参见 `26-error.md` §4                                                                       |
-| `construct → index`     | `index`     | 索引访问语义                            | 构造后的张量继续复用索引路径，参见 `17-indexing.md` §4                                                                        |
+| `construct → layout`    | `layout`    | F-order 步长                         | 构造阶段计算 F-order 步长，参见 `06-layout.md` §4                                                  |
+| `construct → dimension` | `dimension` | `IntoDimension`                      | 接受灵活形状参数并归一化，参见 `02-dimension.md` §5.4                                              |
+| `construct → element`   | `element`   | `Element`                            | 通过 `Element::zero()` / `Element::one()` 约束构造 API，参见 `03-element.md` §5.1                  |
+| `construct → error`     | `error`     | `XenonError::InvalidShape`           | shape 与长度基数不匹配时返回错误，参见 `26-error.md` §4                                            |
+| `construct → index`     | `index`     | 索引访问语义                         | 构造后的张量继续复用索引路径，参见 `17-indexing.md` §4                                             |
 
 ### 9.2 数据流描述
 
@@ -645,12 +654,12 @@ User calls zeros / from_shape_vec / eye
 
 ## 10. 错误处理与语义边界
 
-| 主题 | 内容 |
-| ---- | ---- |
-| Recoverable error | shape 与长度基数不匹配、共享 checked helper 报告元素总数溢出等情况返回 `XenonError::InvalidShape`，携带实际与期望元素数。 |
-| Panic | 公开构造 API 不定义额外 panic 语义；失败统一走 `Result`。 |
-| 路径一致性 | 所有构造路径都必须产出 canonical F-order owned 张量，并保持一致的 shape / strides / flags 语义。 |
-| 容差边界 | 不适用。 |
+| 主题              | 内容                                                                                                                                                                                                                                            |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Recoverable error | shape 与长度基数不匹配、共享 checked helper 报告元素总数溢出等情况返回 `XenonError::InvalidShape`。长度不匹配时携带实际与期望元素数；元素总数溢出时改用 `reason = "element count overflow"`，不得伪造 `expected_elements` / `actual_elements`。 |
+| Panic             | 公开构造 API 不定义额外 panic 语义；失败统一走 `Result`。                                                                                                                                                                                       |
+| 路径一致性        | 所有构造路径都必须产出 canonical F-order owned 张量，并保持一致的 shape / strides / flags 语义。                                                                                                                                                |
+| 容差边界          | 不适用。                                                                                                                                                                                                                                        |
 
 ---
 
@@ -679,23 +688,23 @@ User calls zeros / from_shape_vec / eye
 
 ### 12.1 复杂度
 
-| 操作                  | 时间复杂度          | 空间复杂度     |
-| --------------------- | ------------------- | -------------- |
-| `zeros(n)`            | O(n)                | O(n)           |
-| `ones(n)`             | O(n)                | O(n)           |
-| `eye(n)`              | O(n²)               | O(n²)          |
-| `from_shape_vec(n)`   | O(n)                | O(n)           |
-| `from_shape_slice(n)` | O(n) 起步；若内部重打包则仍为 O(n) 级别 | O(n)           |
-| `from_array(n)`       | O(n) 拷贝           | O(n)           |
-| `from_scalar()`       | O(1)                | O(1)           |
+| 操作                  | 时间复杂度                              | 空间复杂度 |
+| --------------------- | --------------------------------------- | ---------- |
+| `zeros(n)`            | O(n)                                    | O(n)       |
+| `ones(n)`             | O(n)                                    | O(n)       |
+| `eye(n)`              | O(n²)                                   | O(n²)      |
+| `from_shape_vec(n)`   | O(n)                                    | O(n)       |
+| `from_shape_slice(n)` | O(n) 起步；若内部重打包则仍为 O(n) 级别 | O(n)       |
+| `from_array(n)`       | O(n) 拷贝                               | O(n)       |
+| `from_scalar()`       | O(1)                                    | O(1)       |
 
 ### 12.2 对齐分配
 
-| 主题 | 说明 |
-| ---- | ---- |
+| 主题     | 说明                                                                                                  |
+| -------- | ----------------------------------------------------------------------------------------------------- |
 | 公共语义 | `require.md` §7 只要求支持对齐布局，并允许存在仅用于实现目的的填充区域；构造 API 不额外暴露具体对齐值 |
-| 实现选择 | `Owned` 存储可按 SIMD / FFI / allocator 约束选择合适的对齐策略 |
-| 兼容性 | 只要逻辑元素值、访问结果与 F-order 语义不变，更换具体对齐值不构成构造模块语义变化 |
+| 实现选择 | `Owned` 存储可按 SIMD / FFI / allocator 约束选择合适的对齐策略                                        |
+| 兼容性   | 只要逻辑元素值、访问结果与 F-order 语义不变，更换具体对齐值不构成构造模块语义变化                     |
 
 > **对齐策略说明：** 文档只要求构造结果遵守 Xenon 的 owned/F-order/合法布局语义；实际对齐值由 storage 层统一决定，可随实现演进而调整，无需成为构造 API 的稳定承诺。
 

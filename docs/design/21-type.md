@@ -2,7 +2,7 @@
 
 > 文档编号: 21 | 模块: `src/convert/` | 阶段: Phase 4
 > 前置文档: `07-tensor.md`, `03-element.md`
-> 需求参考: 需求说明书 §23
+> 需求参考: 需求说明书 §23, §28.4
 > 范围声明: 范围内
 
 ---
@@ -46,7 +46,7 @@ L7: convert  ← current module
 
 | 类型     | 内容 |
 | -------- | ---- |
-| 需求映射 | 需求说明书 §23 |
+| 需求映射 | 需求说明书 §23, §28.4 |
 | 范围内   | `cast()` 逐元素类型转换，以及 `to_owned()` / `into_owned()` 同类型拷贝。 |
 | 范围外   | 存储模式互转（归 `storage` / `tensor`）、标准库 `From` / `TryFrom` 实现（归构造模块）、连续化 helper（归 `utility`），以及超出需求矩阵的隐式转换。 |
 | 非目标   | 不默认放宽有损转换规则，不新增第三方转换库，也不在本模块新增独立的连续化 API。 |
@@ -235,6 +235,8 @@ where
 
 > `bool` 不参与 `cast()`；任何 `bool` 相关逐元素类型转换都不在本模块范围内。
 
+> **覆盖闭合说明：** `CastTo` 的完整实现矩阵通过宏生成或 exhaustive enum dispatch 保证。§5.3 和 §5.4 的表项加闭合规则覆盖所有受支持组合，编译期测试验证无遗漏。
+
 ### 5.4 闭合规则映射
 
 凡 `§23.1` 已逐项列出的组合，其默认语义与附加成功前提以 `§23.1` 表格为准；闭合规则仅用于补足未逐项列出的受支持组合，不得覆盖或重新解释已列组合的语义。
@@ -245,6 +247,8 @@ where
 - 复数 → 实数：仅当虚部为 `0` 时继续；随后按实部到目标实数类型的规则处理
 - 复数 → 复数：实部和虚部分别按对应实数转换规则处理
 - 任一步为有损时，默认整体返回 `XenonError::TypeConversion(TypeConversionError)`
+
+> **实现闭合说明：** 上述闭合规则不是“人工补脑”的说明文字，而是实现矩阵的一部分；实际代码必须通过宏生成或 exhaustive enum dispatch 把所有受支持源/目标对闭合到完整集合。
 
 ### 5.5 Good / Bad 对比
 
@@ -422,9 +426,9 @@ impl CastTo<i32> for i64 {
 
 ### Wave 2: 核心方法
 
-- [ ] **T3**: 实现 `to_owned` / `into_owned` 及存储模式互转
+- [ ] **T3**: 实现 `to_owned` / `into_owned`
   - 文件: `src/convert/owned.rs`
-  - 内容: `to_owned()` 克隆方法与 `into_owned()` 消费方法；不在本模块扩展 view/view_mut/into_shared 等额外存储模式互转入口
+  - 内容: `to_owned()` 克隆方法与 `into_owned()` 消费方法；不在本模块扩展 view/view_mut/into_shared 等额外存储模式互转入口，也不把同类型 owned 化表述为独立“存储模式互转”任务
   - 测试: `test_to_owned_from_view`, `test_into_owned_from_tensor`, `test_into_owned_from_arc`
   - 前置: T2, tensor 模块完成
   - 预计: 10 min
@@ -494,7 +498,15 @@ Wave 2: [T3] [T4] [T5]  (parallel)
 | `Complex { re: 1.0, im: 0.0 } → f64` | 成功                                            |
 | `Complex { re: 1.0, im: 2.0 } → f64` | 返回 `TypeConversion`                           |
 
-### 8.4 属性测试不变量
+### 8.4 §28.4 边界测试占位
+
+| 占位场景 | 说明 |
+| -------- | ---- |
+| 高维非连续输入 | 预留给 `require.md §28.4` 的高维 view / arc 输入 `cast()` 边界用例 |
+| 大张量逐元素失败定位 | 预留给 `require.md §28.4` 的大张量转换错误索引定位验证 |
+| `usize` 拒绝路径 | 预留给 `require.md §28.4` 的 `Tensor<usize, _>` 目标/源类型拒绝验证 |
+
+### 8.5 属性测试不变量
 
 | 不变量                                | 测试方法         |
 | ------------------------------------- | ---------------- |
@@ -503,25 +515,26 @@ Wave 2: [T3] [T4] [T5]  (parallel)
 | 所有有损组合默认失败                  | 按类型对枚举验证 |
 | `to_owned().shape() == view.shape()`  | 随机形状         |
 
-### 8.5 集成测试
+### 8.6 集成测试
 
 | 测试文件                   | 测试内容                                                                                                   |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `tests/test_conversion.rs` | `cast` / `to_owned` / `into_owned` 与 `tensor`、`element`、`storage`、`layout`、`complex` 的端到端协同路径 |
 
-### 8.6 Feature gate / 配置测试
+### 8.7 Feature gate / 配置测试
 
 | 配置 | 验证点 |
 | ---- | ---- |
 | 默认配置 | `cast` / `to_owned` / `into_owned` 在默认构建下保持显式转换与错误诊断契约。 |
 | 其他 feature 组合 | 不适用；当前模块无额外 feature gate。 |
 
-### 8.7 类型边界 / 编译期测试
+### 8.8 类型边界 / 编译期测试
 
 | 场景 | 测试方式 |
 | ---- | ---- |
 | `bool` 不参与 `cast()`，且不属于 `CastElement` | 编译期测试。 |
 | `Tensor<bool, _>.cast::<T>()` 作为源类型被拒绝 | compile-fail：验证 `bool`/`BoolElement` 不能作为 `cast()` 的源元素类型。 |
+| `Tensor<usize, _>.cast::<T>()` 与 `Tensor<T, _>.cast::<usize>()` 都被拒绝 | compile-fail：验证 `usize` 不属于 `CastElement`，不会被闭合规则意外放入矩阵。 |
 | `cast()` 对所有可读存储提供，但统一返回 owned 结果 | 编译期测试。 |
 | saturation / truncation casts 与额外 `From/Into` 非张量转换不属于当前 API | API 缺失断言。 |
 
@@ -534,7 +547,7 @@ Wave 2: [T3] [T4] [T5]  (parallel)
 | 方向                | 对方模块  | 接口/类型                               | 约定                                                                                              |
 | ------------------- | --------- | --------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `convert → tensor`  | `tensor`  | `TensorBase<S, D>` / `StorageIntoOwned` | `cast()`、`to_owned()`、`into_owned()` 都定义在张量抽象之上；其中 `to_owned()` / `into_owned()` 负责产出 canonical F-order owned 结果 |
-| `convert → element` | `element` | `CastTo`                                | 逐元素类型转换通过 `CastTo` trait 驱动，参见 `03-element.md` §4                                   |
+| `convert → element` | `element` | `CastTo`                                | 逐元素类型转换通过 `CastTo` trait 驱动，参见 `03-element.md` §5.9                                 |
 | `convert → math`    | `math`    | 逐元素转换语义                          | `cast()` 采用迭代收集路径，不复用 `mapv()` 的同类型返回语义                                       |
 | `convert → storage` | `storage` | `Owned` / readable storage traits       | convert 只消费可读存储与 owned 化能力，不在本文扩展额外存储模式互转矩阵                           |
 | `convert → layout`  | `layout`  | F-order metadata                        | `cast()`、`to_owned()`、`into_owned()` 保持张量 shape 与逻辑元素顺序，并为 owned 结果建立 canonical F-order 元数据；若调用方需要显式连续化入口，则由 `util::to_contiguous()` 负责 |

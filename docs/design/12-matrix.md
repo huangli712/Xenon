@@ -2,7 +2,7 @@
 
 > 文档编号: 12 | 模块: `src/matrix/` | 阶段: Phase 4
 > 前置文档: `03-element.md`, `07-tensor.md`, `08-simd.md`, `09-parallel.md`, `10-iterator.md`, `13-reduction.md`, `26-error.md`
-> 需求参考: 需求说明书 §9.2, §9.3, §13, §27, §28.2, §28.3, §28.4, §28.5
+> 需求参考: 需求说明书 §9.1, §9.2, §9.3, §13, §27, §28.2, §28.3, §28.4, §28.5
 > 范围声明: 范围内
 
 ---
@@ -47,7 +47,7 @@ L5: matrix  <- current module
 
 | 类型     | 内容 |
 | -------- | ---- |
-| 需求映射 | 需求说明书 §9.2, §9.3, §13, §27, §28.2, §28.3, §28.4, §28.5 |
+| 需求映射 | 需求说明书 §9.1, §9.2, §9.3, §13, §27, §28.2, §28.3, §28.4, §28.5 |
 | 范围内   | 向量内积 `dot`、复数共轭线性语义、形状检查、空向量单位元，以及可选 SIMD / 并行执行路径。 |
 | 范围外   | 矩阵-矩阵乘法、外积、批量矩阵乘法、矩阵分解以及 BLAS/LAPACK 绑定。 |
 | 非目标   | 不把 `matrix` 扩展为通用线性代数层，不新增第三方线性代数依赖。 |
@@ -213,6 +213,8 @@ where
 
 > **SIMD 覆盖说明：** 复数内积的 SIMD 加速参见 `08-simd.md` 覆盖矩阵。目标是对 `Complex<f32>` / `Complex<f64>` 内积提供 SIMD 路径。
 
+> **方法式 API 说明：** 当前版本将 `dot()` 作为 `matrix` 模块的自由函数定义；`TensorBase` 上的 method-style API（如 `a.dot(&b)`）不属于本文档的稳定承诺。若后续需要新增方法式入口，应以该自由函数为语义基线，不改变错误类别、复数共轭线性定义与容差规则。
+
 ### 5.3 Good / Bad 对比示例
 
 ```rust,ignore
@@ -251,13 +253,13 @@ dot_impl(a, b):
     if a.len() != b.len():
         return Err(XenonError::DimensionMismatch { ... })
 
-    match dispatch::select_exec_path(a.len(), a.is_f_contiguous(), alignment_ok):
+    match dispatch::select_exec_path(a.len(), a.is_f_contiguous() && b.is_f_contiguous(), alignment_ok):
         ExecPath::Parallel => parallel::par_dot(as_ix1_view(a)?, as_ix1_view(b)?)
         ExecPath::Simd    => simd::vector_dot(a, b)
         ExecPath::Serial  => scalar::dot_impl(a, b)
 ```
 
-> **执行路径约束：** `dot` 必须先完成逻辑 1D 与长度一致性检查；随后可按条件选择 `simd` 模块 kernel、`parallel` 模块的 `pub(crate)` `par_dot()` 并行归约入口或标量回退路径。`par_dot()` 自身的 API 契约仍与 `09-parallel.md` 一致，保持对泛型 `D: Dimension` 输入开放，并在实现内部执行运行时 1D 校验；这里“只接受 `Ix1`”描述的是 `matrix::dot()` 进入并行后端前的私有桥接约束，而不是 `par_dot()` 的公开函数签名。也就是说，`matrix::dot()` 在确认 `a.ndim() == 1` 且 `b.ndim() == 1` 后，必须先通过私有桥接 helper 把泛型 `TensorView<'_, A, D1/D2>` 安全收窄为 `TensorView<'_, A, Ix1>`，再把这个已收窄视图传给 `par_dot()`；不得在未完成运行时 rank 校验前直接调用并行实现。桥接 helper 只做“已验证 1D 视图 -> `Ix1` 视图”的 reborrow / dimensionality narrowing，不改变借用范围、shape 数据或布局元数据。所有路径都必须保持一致的结果、错误模型与整数溢出 panic 语义。
+> **执行路径约束：** `dot` 必须先完成逻辑 1D 与长度一致性检查；随后可按条件选择 `simd` 模块 kernel、`parallel` 模块的 `pub(crate)` `par_dot()` 并行归约入口或标量回退路径。SIMD 路径要求 `a` 和 `b` **均**为 F-contiguous 且满足对齐前提；若任一输入不满足条件，必须回退到标量或并行中的标量 chunk 路径。`par_dot()` 自身的 API 契约仍与 `09-parallel.md` 一致，保持对泛型 `D: Dimension` 输入开放，并在实现内部执行运行时 1D 校验；这里“只接受 `Ix1`”描述的是 `matrix::dot()` 进入并行后端前的私有桥接约束，而不是 `par_dot()` 的公开函数签名。也就是说，`matrix::dot()` 在确认 `a.ndim() == 1` 且 `b.ndim() == 1` 后，必须先通过私有桥接 helper 把泛型 `TensorView<'_, A, D1/D2>` 安全收窄为 `TensorView<'_, A, Ix1>`，再把这个已收窄视图传给 `par_dot()`；不得在未完成运行时 rank 校验前直接调用并行实现。桥接 helper 只做“已验证 1D 视图 -> `Ix1` 视图”的 reborrow / dimensionality narrowing，不改变借用范围、shape 数据或布局元数据。所有路径都必须保持一致的结果、错误模型与整数溢出 panic 语义。
 
 ### 6.1.1 并行阈值与禁止嵌套并行
 
@@ -274,10 +276,10 @@ dot_impl(a, b):
 
 ### 6.2 标量实现
 
-```rust
+```rust,ignore
 fn scalar_dot_int<I, D>(
-    a: &TensorView<I, D>,
-    b: &TensorView<I, D>,
+    a: &TensorView<'_, I, D>,
+    b: &TensorView<'_, I, D>,
 ) -> I {
     a.iter()
         .zip(b.iter())
@@ -289,8 +291,8 @@ fn scalar_dot_int<I, D>(
 }
 
 fn scalar_dot_float_or_complex<A, D>(
-    a: &TensorView<A, D>,
-    b: &TensorView<A, D>,
+    a: &TensorView<'_, A, D>,
+    b: &TensorView<'_, A, D>,
 ) -> A {
     a.iter()
         .zip(b.iter())
@@ -340,6 +342,8 @@ fn dot_impl<A, D1, D2>(
     unimplemented!("dispatches to simd, parallel, or scalar dot backends")
 }
 ```
+
+> **非连续 1D 视图说明：** `as_ix1_view()` 只在已验证 `ndim == 1` 后做维度收窄，不重排元素，也不强制把视图转为连续布局。若输入本身是合法的非连续 1D 视图，则返回的 `TensorView<'_, A, Ix1>` 保留原始 stride；后续是否可进入 SIMD 路径，仍由连续性与对齐检查单独决定。
 
 > **并行桥接说明：** 推荐桥接形式是对已通过校验的视图执行 `.view().into_dimensionality::<Ix1>()`（或等价的私有 reborrow helper），把 `TensorView<'_, A, D>` 收窄为 `TensorView<'_, A, Ix1>` 后再调用 `parallel::par_dot()`。该步骤只重用原有 view 的 shape/stride/offset/storage 借用，不重新分配也不复制元素；若未来为性能保留 `unsafe` 快路径，也只能放在这个私有 helper 内，并以先前的 `ndim == 1` 运行时断言为前提，而不能暴露成公开 API 契约。若 rank 校验失败，`dot()` 必须在桥接前直接返回 `XenonError::InvalidArgument`。
 
@@ -436,6 +440,9 @@ Wave 4: [T4]
 | -------------------- | ------------------------ |
 | 空向量 `shape=[0]`   | 返回加法单位元（零）     |
 | 单元素向量           | 返回 a[0] \* b[0]        |
+| 空向量边界占位       | 预留 `test_dot_empty_vector_boundary`：覆盖空输入在标量/SIMD/并行配置下的单位元与错误语义 |
+| 高维输入边界占位     | 预留 `test_dot_high_dim_boundary`：覆盖高 rank `IxDyn` / 静态高维输入的 `InvalidArgument` 诊断 |
+| 大向量边界占位       | 预留 `test_dot_large_vector_boundary`：覆盖超大输入下阈值切换、容差与 panic 契约一致性 |
 | 大向量（`10^7` 量级元素） | 可按阈值选择并行 dot 路径，结果正确 |
 | 高维输入 `shape=[1,1,1,1,1,1]` | 返回 `InvalidArgument`，诊断中包含 `operation`、`argument`、`expected`、`actual`、`shape` |
 | 非连续向量（切片后） | 回退到标量路径，结果正确 |
@@ -479,7 +486,7 @@ Wave 4: [T4]
 
 | 方向               | 对方模块  | 接口/类型                   | 约定                                                                             |
 | ------------------ | --------- | --------------------------- | -------------------------------------------------------------------------------- |
-| `matrix → tensor`  | `tensor`  | `TensorView<A, D>`          | 消费任意维度张量视图，但在运行时检查其逻辑 rank 是否为 1，参见 `07-tensor.md` §5 |
+| `matrix → tensor`  | `tensor`  | `TensorView<'_, A, D>`      | 消费任意维度张量视图，但在运行时检查其逻辑 rank 是否为 1，参见 `07-tensor.md` §5 |
 | `matrix → iter`    | `iter`    | `Elements`                  | 使用元素迭代器遍历输入，参见 `10-iterator.md` §5.1                               |
 | `matrix → element` | `element` | `Numeric` / `ComplexScalar` | 通过泛型约束区分实数与复数路径，参见 `03-element.md` §5                          |
 | `matrix → simd`    | `simd`    | dot kernel                  | 满足条件时委托给 `simd` 模块做内积加速，且保持统一语义                           |
@@ -506,7 +513,7 @@ User calls dot(a, b)
 | Recoverable error | 左/右输入非 1D 时分别返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, shape: Option<Vec<usize>> }`，典型取值为 `argument: "lhs"` 或 `"rhs"`、`axis: None`、`shape: Some(input.shape().to_vec())`；长度不匹配时返回 `XenonError::DimensionMismatch { operation: "dot", expected: usize, actual: usize }`。 |
 | Panic | 整数 dot 的乘法溢出与累加溢出均为不可恢复错误，按 checked arithmetic 触发 panic。panic 文本至少包含 `operation=dot`、元素类型、`trigger`（`multiply` / `accumulate`）、逻辑位置（如 `lane`）以及输入 shape。 |
 | 路径一致性 | `dot` 可选择标量、SIMD 或并行路径；任何可选路径都不得改变结果、错误类别或 panic 语义。 |
-| 容差边界 | 容差规则参见 `08-simd.md` 和 `require.md §28.3` 的统一定义，不在本文档单独定义。 |
+| 容差边界 | 内积的浮点容差遵循 `08-simd.md` 定义。具体为：`max(1 ULP, epsilon * |scalar_result|)`。复数内积按实部、虚部分量分别比较。 |
 
 ---
 

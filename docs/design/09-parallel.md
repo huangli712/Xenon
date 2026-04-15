@@ -2,7 +2,7 @@
 
 > 文档编号: 09 | 模块: `src/parallel/` | 阶段: Phase 5
 > 前置文档: `07-tensor.md`, `26-error.md`
-> 需求参考: 需求说明书 §9.2, §9.3, §27, §28.3, §28.5
+> 需求参考: 需求说明书 §1.2, §9.2, §9.3, §27, §28.3, §28.4, §28.5
 > 范围声明: 范围内
 
 ---
@@ -15,7 +15,7 @@
 
 | 职责           | 包含                                                          | 不包含                           |
 | -------------- | ------------------------------------------------------------- | -------------------------------- |
-| 并行逐元素执行 | `par_map`、`par_map_with_threshold`、`par_zip_map`、基于视图的并行遍历 | 通用多输入同步并行公开迭代器 API |
+| 并行逐元素执行 | `par_map`、`par_zip_map`、基于视图的并行遍历 | 通用多输入同步并行公开迭代器 API |
 | 并行归约       | `par_sum`、`par_dot`、内部 `par_reduce_impl`                  | 矩阵乘法、矩阵分解、GPU 后端     |
 | 线程池封装     | 内部 `ParallelPool` 改变执行上下文而不改变 API 语义           | 新的公开调度语义或额外第三方依赖 |
 
@@ -46,7 +46,7 @@ L6: parallel  <- current module (optional, feature = "parallel")
 
 | 类型     | 内容                                                                                           |
 | -------- | ---------------------------------------------------------------------------------------------- |
-| 需求映射 | `需求说明书 §9.2`、`§9.3`、`§27`、`§28.3`、`§28.5` |
+| 需求映射 | `需求说明书 §1.2`、`§9.2`、`§9.3`、`§27`、`§28.3`、`§28.4`、`§28.5` |
 | 范围内   | 可选数据并行、逐元素运算（含二元广播）/归约/内积的并行执行路径 |
 | 范围外   | GPU 后端、自动任务图调度、通用多数组 lock-step 并行公开接口、额外第三方依赖                             |
 | 非目标   | 不把文档改成 `no_std`，不增加除 `rayon` 之外的外部依赖，不扩展当前并行能力集合                 |
@@ -59,7 +59,7 @@ L6: parallel  <- current module (optional, feature = "parallel")
 src/parallel/
 ├── mod.rs         # Module entry, re-exports, ParallelPool
 ├── par_iter.rs    # ParElements and TensorBase::par_iter()
-├── map.rs         # par_map, par_map_with_threshold, par_zip_map
+├── map.rs         # par_map, par_zip_map
 ├── reduce.rs      # par_reduce_impl, par_sum, par_dot
 └── checked.rs     # par_map_checked and error/panic propagation
 ```
@@ -67,7 +67,7 @@ src/parallel/
 多文件职责划分：
 - `mod.rs`：模块声明、re-exports、`ParallelPool` 线程池包装、feature gate 入口。
 - `par_iter.rs`：`ParElements` 结构体与 `TensorBase::par_iter()` 单输入元素级并行遍历入口。
-- `map.rs`：`par_map`、`par_map_with_threshold`、`par_zip_map` 逐元素映射与二元广播并行入口。
+- `map.rs`：`par_map`、`par_zip_map` 逐元素映射与二元广播并行入口。
 - `reduce.rs`：`par_reduce_impl`、`par_sum`、`par_dot` 并行归约与内积。
 - `checked.rs`：`par_map_checked` 及统一的错误/panic 传播逻辑。
 
@@ -143,27 +143,25 @@ pub(crate) struct ParallelPool {
 
 阈值配置与嵌套并行防护已迁移至内部 `dispatch.rs` 模块，本模块仅提供纯并行执行入口。
 
+> **执行策略说明：** 并行阈值配置由 `dispatch.rs` 统一管理，`parallel/` 模块不提供独立的阈值配置接口。所有并行入口接受 dispatch 层传入的执行策略参数。
+
 ### 5.3 函数签名
 
 ```rust,ignore
-#[cfg(feature = "parallel")]
-pub(crate) fn par_map<S, A, B, D, F>(tensor: &TensorBase<S, D>, f: F) -> Tensor<B, D>
-where
-    S: Storage<Elem = A>,
-    D: Dimension,
-    A: Element + Send + Sync,
-    B: Element + Send,
-    F: Fn(&A) -> B + Send + Sync;
+pub(crate) struct ParallelExecStrategy {
+    pub chunk_size_hint: Option<usize>,
+    pub max_workers: Option<usize>,
+}
 
 #[cfg(feature = "parallel")]
-pub(crate) fn par_map_with_threshold<S, A, B, D, F>(
+pub(crate) fn par_map<S, A, B, D, F>(
     tensor: &TensorBase<S, D>,
+    strategy: &ParallelExecStrategy,
     f: F,
-    threshold: usize,
 ) -> Tensor<B, D>
 where
     S: Storage<Elem = A>,
-    D: Dimension,
+    D: Dimension + Clone,
     A: Element + Send + Sync,
     B: Element + Send,
     F: Fn(&A) -> B + Send + Sync;
@@ -173,6 +171,7 @@ pub(crate) fn par_zip_map<SL, SR, A, B, C, DL, DR, DO, F>(
     lhs: &TensorBase<SL, DL>,
     rhs: &TensorBase<SR, DR>,
     output_dim: &DO,
+    strategy: &ParallelExecStrategy,
     f: F,
 ) -> Result<Tensor<C, DO>, XenonError>
 where
@@ -180,7 +179,7 @@ where
     SR: Storage<Elem = B>,
     DL: Dimension,
     DR: Dimension,
-    DO: Dimension,
+    DO: Dimension + Clone,
     A: Element + Send + Sync,
     B: Element + Send + Sync,
     C: Element + Send,
@@ -189,6 +188,7 @@ where
 #[cfg(feature = "parallel")]
 pub(crate) fn par_reduce_impl<S, A, D, F, ID>(
     tensor: &TensorBase<S, D>,
+    strategy: &ParallelExecStrategy,
     identity: ID,
     op: F,
 ) -> A
@@ -200,7 +200,7 @@ where
     ID: Fn() -> A + Sync + Clone;
 
 #[cfg(feature = "parallel")]
-pub(crate) fn par_sum<S, A, D>(tensor: &TensorBase<S, D>) -> A
+pub(crate) fn par_sum<S, A, D>(tensor: &TensorBase<S, D>, strategy: &ParallelExecStrategy) -> A
 where
     S: Storage<Elem = A>,
     D: Dimension,
@@ -210,6 +210,7 @@ where
 pub(crate) fn par_dot<SL, SR, A, DL, DR>(
     lhs: &TensorBase<SL, DL>,
     rhs: &TensorBase<SR, DR>,
+    strategy: &ParallelExecStrategy,
 ) -> Result<A, XenonError>
 where
     SL: Storage<Elem = A>,
@@ -221,7 +222,7 @@ where
 
 `par_dot()` 在类型层面接受任意 `Dimension` 输入，以便与更通用的上层张量调用路径对接；但其语义契约仍限定为一维向量内积，因此实现必须在运行时检查 `lhs.ndim() == 1`、`rhs.ndim() == 1`，并在进入并行归约前再次确认两侧逻辑长度一致。
 
-整数类型（`i32` / `i64`）的归约和内积操作不使用并行路径。由于并行分组会改变 checked overflow 的触发时机，无法保证与串行路径相同的 panic 语义。整数归约/内积始终走串行 checked arithmetic 路径。
+整数 `sum` / `dot` 支持并行路径。在并行路径中，每个分片独立执行 checked 算术；若任一分片检测到溢出，并行执行立即终止并传播 panic。并行实现不保证与串行路径拥有相同的“首个溢出位置”，但必须保持“不静默忽略溢出”的语义边界。
 
 复数内积采用共轭线性定义：`result = sum(conj(lhs_i) * rhs_i)`，与 `08-simd.md` 中的复数内积语义完全一致。
 
@@ -241,7 +242,7 @@ where
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
-    D: Dimension,
+    D: Dimension + Clone,
     A: Element + Send + Sync,
 {
     pub(crate) fn par_iter(&self) -> ParElements<'_, A, D> {
@@ -256,10 +257,10 @@ where
 
 ```rust,ignore
 // Good - shape mismatch stays in Result.
-let dot = par_dot(&lhs, &rhs)?;
+let dot = par_dot(&lhs, &rhs, strategy)?;
 
 // Bad - converting recoverable shape mismatch into unwrap panic.
-let dot = par_dot(&lhs, &rhs).unwrap();
+let dot = par_dot(&lhs, &rhs, strategy).unwrap();
 ```
 
 ### 5.6 文档与示例交付要求
@@ -293,6 +294,7 @@ dispatch-selected parallel entry
 
 - `parallel/` 假定调用方已经完成阈值、线程环境、SIMD 能力与嵌套并行治理判断。
 - 并行函数只负责固定 chunking、执行 `rayon` 并行迭代以及保持结果语义与调用方选择的串行基线一致。
+- `parallel/` 模块不在内部再次调用 `dispatch` 入口，避免嵌套并行。
 
 ### 6.3 二元逐元素并行路径
 
@@ -302,6 +304,7 @@ pub(crate) fn par_zip_map<SL, SR, A, B, C, DL, DR, DO, F>(
     lhs: &TensorBase<SL, DL>,
     rhs: &TensorBase<SR, DR>,
     output_dim: &DO,
+    strategy: &ParallelExecStrategy,
     f: F,
 ) -> Result<Tensor<C, DO>, XenonError>
 where
@@ -309,7 +312,7 @@ where
     SR: Storage<Elem = B>,
     DL: Dimension,
     DR: Dimension,
-    DO: Dimension,
+    DO: Dimension + Clone,
     A: Element + Send + Sync,
     B: Element + Send + Sync,
     C: Element + Send,
@@ -318,13 +321,16 @@ where
     let total = output_dim.checked_size().map_err(|_| XenonError::InvalidShape {
         operation: "par_zip_map".into(),
         shape: output_dim.slice().to_vec(),
-        expected_elements: usize::MAX,
+        expected_elements: 0,
         actual_elements: 0,
         offending_dim: None,
+        reason: "element count overflow".into(),
     })?;
 
-    let num_threads = rayon::current_num_threads();
-    let chunk_size = usize::max(1, (total + num_threads - 1) / num_threads);
+    let num_threads = strategy.max_workers.unwrap_or_else(rayon::current_num_threads);
+    let chunk_size = strategy
+        .chunk_size_hint
+        .unwrap_or_else(|| usize::max(1, (total + num_threads - 1) / num_threads));
 
     // Build broadcast-compatible read-only chunk views for lhs / rhs.
     // Execute f in parallel and collect Result<Vec<C>, XenonError> directly.
@@ -336,8 +342,9 @@ where
 - `par_zip_map()` 是二元逐元素并行路径的统一设计入口，供 `math` 模块中的 `add` / `sub` / `mul` / `div` 广播运算消费，不直接暴露为公开用户 API。
 - `par_zip_map()` 接收的 `lhs`、`rhs` 与 `output_dim` 必须已由调用侧完成兼容性验证；广播裁决（含输出 rank/shape 计算）属于 `math` 模块职责，`parallel/` 不重复做形状推导。
 - 广播处理顺序固定为：先由 `math` 模块验证 `lhs` / `rhs` 广播兼容并产出 `output_dim`，再由 `parallel/` 按逻辑线性区间分块；默认 `chunk_size = max(1, (total_elements + num_threads - 1) / num_threads)`，其中 `num_threads = rayon::current_num_threads()`，并按固定左折叠顺序合并 chunk 结果。每个 chunk 为两个输入分别构造与该线性区间对应、且仍与 `output_dim` 兼容的只读 sub-view。若某一侧是广播轴（stride 为 `0` 或逻辑重复维），chunk 视图保持该广播语义，不做物理复制。`DL`、`DR`、`DO` 独立建模，以表达输入与输出 rank 可能不同的广播结果。
+- 线性区间到多维 broadcast sub-view 的映射草图：先把 chunk 的 `[linear_start, linear_end)` 按 `output_dim` 的 F-order 索引规则转换为多维区间；随后对 `lhs` / `rhs` 分别按广播规则投影该区间，得到只读 sub-view。对输出维中长度为 `1` 的广播轴，输入 sub-view 固定复用同一逻辑坐标；对非广播轴，sub-view 保持与输出相同的区间跨度。实现不得为广播轴做物理展开或额外分配。
 - `par_zip_map` 仅包含并行执行逻辑；若调用发生，表示 `dispatch.rs` 已确认当前输入适合走并行路径。
-- 错误传播策略与 `par_map_checked()` 一致：广播形状不兼容时立即返回 `XenonError::BroadcastError { operation, input_shape, target_shape, axis }`；其中 `operation` 标识当前并行入口（如 `"par_zip_map"`），`input_shape` 为失败输入的逻辑 shape，`target_shape` 为调用侧尝试写入的广播输出 shape（而不是右操作数 shape），`axis` 在可定位到具体失败轴时填写对应值，否则为 `None`。字段名和含义必须与 `26-error.md §4.2` / `§4.4` 完全一致。并行操作中发生 panic 或返回 Err 时，错误不会被静默忽略。语义上，并行操作的最终结果须反映首先发生的错误。实现上，Rayon 的并行 collect/reduce 可能不会物理中断其他 worker，但错误信息会被收集并在最终结果中报告。
+- 错误传播策略与 `par_map_checked()` 一致：广播形状不兼容时立即返回 `XenonError::BroadcastError { operation, input_shape, target_shape, axis }`；其中 `operation` 标识当前并行入口（如 `"par_zip_map"`），`input_shape` 为失败输入的逻辑 shape，`target_shape` 为调用侧尝试写入的广播输出 shape（而不是右操作数 shape），`axis` 在可定位到具体失败轴时填写对应值，否则为 `None`。字段名和含义必须与 `26-error.md §4.2` / `§4.4` 完全一致。并行操作中发生 panic 或返回 Err 时，错误不会被静默忽略。语义上，并行操作须至少传播一个错误，不保证传播“第一个”发生的错误。实现上，Rayon 的并行 collect/reduce 可能不会物理中断其他 worker，但错误信息会被收集并在最终结果中报告。
 
 ### 6.3a 轴向归约并行方案
 
@@ -353,6 +360,7 @@ where
 - `par_map`、`par_zip_map`、`par_sum` 接收的输入都已由上层语义模块和 `dispatch.rs` 验证完毕；`par_dot` 在进入并行归约前仍需自行做运行时校验，要求 `lhs.ndim() == 1`、`rhs.ndim() == 1` 且两侧逻辑长度一致。
 - 对归约和内积，若调用方选择并行路径，则 `parallel/` 必须提供固定 chunking 与固定 merge tree，保证同平台、同配置、同路径下结果确定。
 - 并行归约采用固定分块策略：`chunk` 大小 = `max(1, (n + num_workers - 1) / num_workers)`，worker 按固定索引范围分配，merge 按 worker 索引顺序合并。
+- 若执行对象为整数 `sum` / `dot`，每个 worker 必须在本分片内执行 `checked_add` / `checked_mul` + `checked_add`；任一 worker 发现溢出时必须传播 panic，不得转写为 `XenonError`。
 
 ### 6.5 Checked 映射与错误传播
 
@@ -380,7 +388,8 @@ where
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `Tensor::from_raw_vec_unchecked` | 这里只在输出向量长度与 `tensor.raw_dim()` 已由输入张量长度和映射过程保持一致时使用；并行与串行路径都必须保证产出元素数等于输入逻辑元素数。 |
 | `par_zip_map` broadcast chunking | 每个并行 chunk 仅借用两个输入的只读 broadcast-compatible sub-view；广播轴保持逻辑重复语义，不进行额外物理展开，因此不会引入越界写或悬垂引用。 |
-| panic / `Err` 传播               | 并行操作中发生 panic 或返回 `Err(XenonError)` 时，错误不会被静默忽略；语义上最终结果须反映首先发生的错误。实现上 Rayon 的并行 collect/reduce 可能不会物理中断其他 worker，但错误信息会被收集并在最终结果中报告。 |
+| panic / `Err` 传播               | 并行操作中发生 panic 或返回 `Err(XenonError)` 时，错误不会被静默忽略；语义上最终结果须至少传播一个错误，不保证传播“第一个”发生的错误。实现上 Rayon 的并行 collect/reduce 可能不会物理中断其他 worker，但错误信息会被收集并在最终结果中报告。 |
+| Send/Sync/借用边界               | 并行执行只借用输入张量的只读视图；闭包与元素类型必须满足 `Send` / `Sync` 约束；输出分配与写入归当前 worker 独占，不能向其他 worker 暴露共享可写借用。 |
 
 ### 6.7 性能考量
 
@@ -407,10 +416,10 @@ where
   - 前置: `dispatch.rs` 执行路径裁决已可用，`10-iterator.md` 中只读迭代语义已确定
   - 预计: 10 min
 
-- [ ] **T5**: 实现 `par_map` / `par_map_with_threshold`
+- [ ] **T5**: 实现 `par_map`
   - 文件: `src/parallel/map.rs`
-  - 内容: 纯并行逐元素映射入口，支持调用方显式传入阈值上下文
-  - 测试: `test_par_map_parallel_path`, `test_par_map_with_threshold_override`
+  - 内容: 纯并行逐元素映射入口，执行策略参数由 `dispatch.rs` 统一传入
+  - 测试: `test_par_map_parallel_path`
   - 前置: T4
   - 预计: 10 min
 
@@ -514,6 +523,18 @@ Wave 4:                                [T10]
 | 长度不匹配的一维输入 | `par_dot()` 返回 `XenonError::DimensionMismatch { operation, expected, actual }`    |
 | 二元广播逐元素输入   | `par_zip_map()` 在广播兼容时返回与串行 `add/sub/mul/div` 一致的结果                 |
 
+### 8.3a Send/Sync/借用边界测试计划
+
+- [ ] 验证只读输入视图在并行 worker 间共享时不产生可写别名。
+- [ ] 验证闭包捕获类型不满足 `Send` / `Sync` 时保持编译期拒绝。
+- [ ] 验证输出缓冲区按 worker 独占区间写入，不跨 worker 共享可写借用。
+
+### 8.3b `需求说明书 §28.4` 边界占位
+
+- [ ] 补充空张量、单元素、极端形状与广播退化形状在并行路径下的边界测试。
+- [ ] 补充浮点/复数 `NaN`、`±Inf`、`±0.0` 组合下的归约与内积边界测试。
+- [ ] 补充整数 `sum` / `dot` 在溢出路径上的 panic 传播边界测试。
+
 ### 8.4 属性测试与不变量
 
 | 不变量                                                    | 测试方法                                 |
@@ -578,7 +599,7 @@ math / reduction / matrix call dispatch entry
 
 | 主题              | 说明                                                                                                                                                               |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Recoverable error | `par_dot()` 的长度不兼容返回 `XenonError::DimensionMismatch { operation, expected, actual }`                                                                     |
+| Recoverable error | `par_dot()` 的长度不兼容返回 `XenonError::DimensionMismatch { operation, expected, actual }`；`par_zip_map()` 的元素总数溢出返回 `InvalidShape { expected_elements: 0, actual_elements: 0, reason: "element count overflow" }` |
 | Panic             | 归约中的整数溢出仍属于不可恢复错误，必须 panic，而不是包装为 `XenonError`                                                                                          |
 | 路径一致性        | `dispatch.rs` 负责执行路径选择；一旦进入 `parallel/`，并行路径必须返回与调用方串行基线相同形状、相同错误类别，以及满足同一数值语义约束的结果                    |
 | 容差边界          | 浮点与复数若存在执行路径相关的已知舍入差异，只能落在 `需求说明书 §28.3` 与 `§28.5` 允许且已文档化的范围内                                                           |
@@ -596,13 +617,13 @@ XenonError::DimensionMismatch {
 - 并行模块本身不新增专属错误枚举；公开错误必须复用 `26-error.md` 中的统一模型。
 - 自定义线程池类参数若存在非法值，应返回 `InvalidArgument { operation, argument, expected, actual, axis, shape }`。
 - `par_zip_map()` 的广播形状不兼容时，必须返回 `XenonError::BroadcastError { operation, input_shape, target_shape, axis }`，不得降级为逐元素截断或隐式复制。
-- panic 与 `Err(XenonError)` 都不得被吞掉或延迟为“全部 worker 完成后再统一检查”。
+- panic 与 `Err(XenonError)` 都不得被吞掉；并行执行中发生的错误须至少传播一个，不保证传播“第一个”发生的错误。
 - 执行路径裁决由 `dispatch.rs` 负责；`parallel/` 不新增路径选择语义。
 
 ### 10.1 浮点/复数并行归约容差
 
 - 浮点与复数并行归约允许与标量路径不同的合并顺序；该差异视为合法实现细节，但必须受 `需求说明书 §28.3` 文档化容差约束。
-- 与 `08-simd.md` 保持一致：`par_sum()`、`par_dot()` 与其他内部并行归约在浮点或复数输入上，每个实数分量与标量路径结果之差不得超过 `max(1 ULP, 2^-23 * |scalar_result|)`（`f32`）或 `max(1 ULP, 2^-52 * |scalar_result|)`（`f64`）。
+- 与 `08-simd.md` 保持一致：`par_sum()`、`par_dot()` 与其他内部并行归约在浮点或复数输入上，每个实数分量与标量路径结果之差不得超过 `max(1 ULP, 2^-23 * |scalar_result|)`（`f32`）或 `max(1 ULP, 2^-52 * |scalar_result|)`（`f64`）。以下容差公式适用于当前版本实现的并行归约算法。当算法或目标 ISA 变更时，容差须重新验证。
 - `NaN`：按 IEEE 754 语义检查（`NaN !=` 任何值），不使用数值容差。
 - `±Inf`：必须同号同类。
 - `+0.0` / `-0.0`：符号必须一致。
@@ -678,7 +699,6 @@ XenonError::DimensionMismatch {
 ### 12.1 复杂度标注
 
 - `par_map()`：时间 `O(n)`，额外结果空间 `O(n)`。
-- `par_map_with_threshold()`：时间 `O(n)`，额外结果空间 `O(n)`。
 - `par_sum()`：时间 `O(n)`，额外工作空间取决于 `rayon` 分块；逻辑额外空间 `O(1)`。
 - `par_dot()`：时间 `O(n)`，逻辑额外空间 `O(1)`。
 

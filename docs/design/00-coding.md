@@ -21,7 +21,7 @@
 
 | 类型     | 内容                                                                 |
 | -------- | -------------------------------------------------------------------- |
-| 需求映射 | `需求说明书 §1`, `§4`, `§7`, `§10`, `§27`, `§28`                    |
+| 需求映射 | `需求说明书 §1`, `§4`, `§7`, `§10`, `§18`, `§23`, `§25`, `§27`, `§28` |
 | 范围内   | 命名、格式、类型系统、unsafe、文档、测试与 feature gate 的统一编码约束 |
 | 范围外   | 单个业务模块的算法细节、独立功能设计、额外平台适配策略               |
 | 非目标   | 通过本规范引入超出需求范围的新能力、第三方依赖或额外 crate 拆分      |
@@ -215,6 +215,9 @@ pub fn try_at(&self, index: &[Ix]) -> Result<&A> { /* ... */ }
 pub fn try_at_mut(&mut self, index: &[Ix]) -> Result<&mut A, XenonError> { /* ... */ }
 
 // `[]` remains a separate restricted panic sugar for already-validated paths.
+// The corresponding docs must include a `# Panics` section, and internal
+// validated builders such as `eye()` may use unchecked indexing only with a
+// localized `SAFETY (§8.2): ...` argument.
 ```
 
 ---
@@ -248,6 +251,8 @@ format_code_in_doc_comments = true
 ```
 
 `imports_granularity` 和 `group_imports` 在 Rust 1.85 对应稳定版 rustfmt 中可用，可按上表直接纳入项目默认格式配置。
+
+若本地工具链的 rustfmt 版本暂未稳定支持上述键，则应保留 4 空格缩进、100 列行宽与导入分组意图，并以可识别的最接近稳定配置回退；回退方案不得改变项目对格式结果的语义预期，待工具链升级后再恢复完整配置。
 
 **行宽限制**：100 字符。超过时优先换行而非缩短变量名。
 
@@ -857,9 +862,9 @@ where
 
 ### 7.1 测试命名规范
 
-测试函数命名格式：`test_<function>_<scenario>_<expected>`
+测试函数命名格式：`test_<function>_<scenario>_<expected>`。其中 `Index` / `IndexMut` 的 `[]` 语法仅作为已验证路径的受限人体工学 panic sugar；公开安全 API 必须优先通过 `try_at()` / `try_at_mut()` 暴露可恢复错误语义。
 
-```rust
+```rust,ignore
 #[cfg(test)]
 mod tests {
     #[test]
@@ -872,7 +877,16 @@ mod tests {
     fn test_index_single_element_returns_value() { /* ... */ }
 
     #[test]
-    fn test_index_out_of_bounds_panics() { /* ... */ }
+    fn test_index_out_of_bounds_panics() {
+        // This test intentionally exercises `Index` panic sugar (`[]`),
+        // not Xenon's recoverable safe indexing API.
+    }
+
+    #[test]
+    fn test_safe_index_returns_error() {
+        // Safe public indexing must use `try_at()` / `try_at_mut()` and
+        // return `XenonError::IndexOutOfBounds` instead of panicking.
+    }
 
     #[test]
     fn test_sum_float_tensor_with_nan_returns_nan() { /* ... */ }
@@ -893,6 +907,9 @@ mod tests {
 | 高维 `shape=[2,2,2,2,2,2]` | 正确计算偏移              |
 | 大张量 `shape=[10_000_000]` 或 GiB 级输入 | 不栈溢出，且边界检查保持可恢复错误语义 |
 | Subnormal 浮点数           | 不 flush to zero          |
+| §28.4 占位：large-tensor   | 后续补充超大张量边界回归用例 |
+| §28.4 占位：high-dim       | 后续补充高维 shape / stride / index 回归用例 |
+| §28.4 占位：extreme-value  | 后续补充极值/特殊值数值回归用例 |
 
 ### 7.3 测试分类
 
@@ -1075,6 +1092,8 @@ rustdoc-args = ["--cfg", "docsrs"]
   - 前置: T2
   - 预计: 10 min
 
+> **CI 策略补充说明：** `cargo fmt --check`、`cargo test`、关键 compile-fail/文档检查哪些属于阻塞发布的 hard gate，哪些仅作为 advisory 信号，仍需项目级统一裁决；本规范只定义建议纳入的检查项，不越权替代仓库治理决策。
+
 ### 并行执行分组图
 
 ```
@@ -1113,6 +1132,8 @@ Wave 2: [T4]
 | `unsafe fn` 文档节完整性     | `cargo doc` + rustdoc/clippy 文档 lint   |
 | `unwrap()` / `as` 使用边界   | `cargo clippy` 与仓库 lint 配置校验      |
 | feature gate 可见性与导出边界 | `cargo check` / `cargo test` 配置矩阵验证 |
+
+> **compile-fail 测试机制建议：** 对 sealed trait、feature gate 可见性、错误用法示例等编译期失败场景，建议使用 `trybuild` 或等价 compile-fail harness 统一维护；若项目后续选择其他机制，需保证失败快照与错误意图可审计。
 
 ---
 

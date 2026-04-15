@@ -2,7 +2,7 @@
 
 > 文档编号: 19 | 模块: `src/overload/` | 阶段: Phase 4
 > 前置文档: `11-math.md`, `15-broadcast.md`
-> 需求参考: 需求说明书 §20
+> 需求参考: 需求说明书 §20, §27, §28.4
 > 范围声明: 范围内
 
 ---
@@ -49,7 +49,7 @@ L7: overload  <- current module (depends on broadcast, math)
 
 | 类型     | 内容 |
 | -------- | ---- |
-| 需求映射 | 需求说明书 §20 |
+| 需求映射 | 需求说明书 §20, §27, §28.4 |
 | 范围内   | `+` / `-` / `*` / `/` 的张量×张量、张量×标量及常用左标量重载，含广播与 borrowed 组合。 |
 | 范围外   | 位运算、比较运算符、赋值运算符、原地运算与其他超出四则运算范围的 operator API。 |
 | 非目标   | 不把运算符层扩展为新的计算后端，不新增第三方依赖，也不在本文设计原地广播语义。 |
@@ -70,7 +70,7 @@ src/overload/
 
 ## 4. 依赖关系与实现约束
 
-### 4.1 Invariants
+### 4.1 不变量
 
 | 不变量 | 说明 |
 | ------ | ---- |
@@ -80,13 +80,13 @@ src/overload/
 | 标量路径 | 张量×标量委托给 `*_scalar` helper；标量路径不涉及广播错误，返回值直接为 `Tensor<A, D>`。 |
 | 结果所有权 | 所有运算符组合在成功时都返回独立的新张量，不与输入共享存储。 |
 
-### 4.2 Error Scenarios
+### 4.2 错误场景
 
 | 场景 | 对外语义 |
 | ---- | -------- |
 | 方法型 API 广播失败 | 返回 `XenonError::BroadcastError { operation: "add".into(), input_shape: lhs.shape().to_vec(), target_shape: compute_broadcast_target(lhs.shape(), rhs.shape()), axis: None }`（`sub` / `mul` / `div` 同理）。其中 `compute_broadcast_target(...)` 表示失败检查前记录的“期望广播目标 shape”，而不是 `broadcast_shape(...)` 的成功返回值。 |
 | 运算符路径广播失败 | 返回 `Err(XenonError::BroadcastError { ... })`；这是为满足 `require.md` §12 / §27 而确定的稳定语义边界。 |
-| 整数除零、整数溢出、结果不可表示 | 沿用底层逐元素方法的 panic 语义，不包装为 `Result`。 |
+| 整数除零、整数溢出、结果不可表示 | 沿用底层逐元素方法的 panic 语义，不包装为 `Result`；panic 消息须携带操作类型（`add` / `sub` / `mul` / `div`）、元素类型，以及触发位置（第一个溢出的元素索引，若可确定）。 |
 | 标量路径参数合法 | `tensor op scalar`、`Scalar(scalar) op tensor` 与常用原生左标量路径不产生广播错误，直接返回 `Tensor`；整数溢出仍遵循 panic 语义。 |
 
 ### 4.3 依赖图（ASCII）
@@ -143,24 +143,30 @@ src/overload/
 
 完整的 `impl` 组合表（以 `Add` 为例，`Sub`/`Mul`/`Div` 同理）：
 
-| Lhs                 | Rhs                 | Output         | 广播     | impl 签名                                                                          |
-| ------------------- | ------------------- | -------------- | -------- | ---------------------------------------------------------------------------------- |
-| `Tensor<A, D>`      | `Tensor<A, E>`      | `Result<Tensor<A, F>, XenonError>` | ✓        | `impl<...> Add<TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>`                 |
-| `&Tensor<A, D>`     | `&Tensor<A, E>`     | `Result<Tensor<A, F>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<Owned<A>,D>`               |
-| `Tensor<A, D>`      | `&Tensor<A, E>`     | `Result<Tensor<A, F>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>`                |
-| `&Tensor<A, D>`     | `Tensor<A, E>`      | `Result<Tensor<A, F>, XenonError>` | ✓        | `impl<...> Add<TensorBase<Owned<A>,E>> for &TensorBase<Owned<A>,D>`                |
-| `Tensor<A, D>`      | `A`                 | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for TensorBase<Owned<A>,D>`                                      |
-| `&Tensor<A, D>`     | `A`                 | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for &TensorBase<Owned<A>,D>`                                     |
-| `Scalar<A>`         | `Tensor<A, D>`      | `Tensor<A, D>` | 标量广播 | `impl<...> Add<TensorBase<Owned<A>,D>> for Scalar<A>`                              |
-| `Scalar<A>`         | `&Tensor<A, D>`     | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&TensorBase<Owned<A>,D>> for Scalar<A>`                             |
-| `&TensorView<A, D>` | `&TensorView<A, E>` | `Result<Tensor<A, F>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<ViewRepr<'a, A>,D>` |
-| `&TensorView<A, D>` | `&Tensor<A, E>`     | `Result<Tensor<A, F>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<ViewRepr<'a, A>,D>`        |
-| `&Tensor<A, D>`     | `&TensorView<A, E>` | `Result<Tensor<A, F>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<Owned<A>,D>`        |
+| Lhs                  | Rhs                  | Output         | 广播     | impl 签名                                                                           |
+| -------------------- | -------------------- | -------------- | -------- | ----------------------------------------------------------------------------------- |
+| `Tensor<A, D>`       | `Tensor<A, E>`       | `Result<Tensor<A, F>, XenonError>` | ✓        | `impl<...> Add<TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>`                  |
+| `&Tensor<A, D>`      | `&Tensor<A, E>`      | `Result<Tensor<A, F>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<Owned<A>,D>`                |
+| `Tensor<A, D>`       | `&Tensor<A, E>`      | `Result<Tensor<A, F>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>`                 |
+| `&Tensor<A, D>`      | `Tensor<A, E>`       | `Result<Tensor<A, F>, XenonError>` | ✓        | `impl<...> Add<TensorBase<Owned<A>,E>> for &TensorBase<Owned<A>,D>`                 |
+| `&ArcTensor<A, D>`   | `&Tensor<A, E>`      | `Result<Tensor<A, F>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<ArcRepr<A>,D>`              |
+| `&Tensor<A, D>`      | `&ArcTensor<A, E>`   | `Result<Tensor<A, F>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ArcRepr<A>,E>> for &TensorBase<Owned<A>,D>`              |
+| `&ArcTensor<A, D>`   | `&ArcTensor<A, E>`   | `Result<Tensor<A, F>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ArcRepr<A>,E>> for &TensorBase<ArcRepr<A>,D>`            |
+| `Tensor<A, D>`       | `A`                  | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for TensorBase<Owned<A>,D>`                                       |
+| `&Tensor<A, D>`      | `A`                  | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for &TensorBase<Owned<A>,D>`                                      |
+| `Scalar<A>`          | `Tensor<A, D>`       | `Tensor<A, D>` | 标量广播 | `impl<...> Add<TensorBase<Owned<A>,D>> for Scalar<A>`                               |
+| `Scalar<A>`          | `&Tensor<A, D>`      | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&TensorBase<Owned<A>,D>> for Scalar<A>`                              |
+| `&TensorView<A, D>`  | `&TensorView<A, E>`  | `Result<Tensor<A, F>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<ViewRepr<'a, A>,D>`  |
+| `&TensorView<A, D>`  | `&Tensor<A, E>`      | `Result<Tensor<A, F>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<ViewRepr<'a, A>,D>`         |
+| `&Tensor<A, D>`      | `&TensorView<A, E>`  | `Result<Tensor<A, F>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<Owned<A>,D>`         |
+| `&TensorView<A, D>`  | `&ArcTensor<A, E>`   | `Result<Tensor<A, F>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ArcRepr<A>,E>> for &TensorBase<ViewRepr<'a, A>,D>`       |
+| `&ArcTensor<A, D>`   | `&TensorView<A, E>`  | `Result<Tensor<A, F>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<ArcRepr<A>,D>`       |
 
 > **说明**：`F` 为广播后的维度类型，由 `<D as BroadcastDim<E>>::Output` 关联类型计算。
 > `BroadcastDim` 定义于 `02-dimension.md §5.9`。
 
-> **说明**：`TensorView` 和 `TensorViewMut` 通过引用模式参与运算符重载（如 `&view + &tensor`）。
+> **说明**：`TensorView`、`TensorViewMut` 与共享只读 `ArcRepr` 都通过引用模式参与运算符重载（如 `&view + &tensor`、`&arc + &tensor`）。
+> `TensorViewMut` 通过 `&self` 重借用参与只读运算。运算符签名不直接接受 `ViewMutRepr`，而是通过 `Deref` 到 `ViewRepr` 间接支持。
 > 张量×张量/视图路径在广播失败时返回 `Result<Tensor<A, F>, XenonError>`；标量路径无广播失败分支，直接返回 `Tensor<A, D>`。两类路径成功值都为 owned 结果，因为视图本身不拥有数据，无法作为运算结果的存储。
 
 ### 5.2 张量×张量运算符
@@ -192,6 +198,51 @@ where
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
 
     fn add(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
+        self.add_tensor_impl(rhs)
+    }
+}
+
+// &ArcTensor + &Tensor (shared read-only + owned reference)
+impl<'a, 'b, A, D, E> Add<&'b TensorBase<Owned<A>, E>> for &'a TensorBase<ArcRepr<A>, D>
+where
+    A: Numeric,
+    D: Dimension,
+    E: Dimension,
+    D: BroadcastDim<E>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
+
+    fn add(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
+        self.add_tensor_impl(rhs)
+    }
+}
+
+// &ArcTensor + &ArcTensor (shared read-only + shared read-only)
+impl<'a, 'b, A, D, E> Add<&'b TensorBase<ArcRepr<A>, E>> for &'a TensorBase<ArcRepr<A>, D>
+where
+    A: Numeric,
+    D: Dimension,
+    E: Dimension,
+    D: BroadcastDim<E>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
+
+    fn add(self, rhs: &'b TensorBase<ArcRepr<A>, E>) -> Self::Output {
+        self.add_tensor_impl(rhs)
+    }
+}
+
+// &Tensor + &ArcTensor (owned reference + shared read-only)
+impl<'a, 'b, A, D, E> Add<&'b TensorBase<ArcRepr<A>, E>> for &'a TensorBase<Owned<A>, D>
+where
+    A: Numeric,
+    D: Dimension,
+    E: Dimension,
+    D: BroadcastDim<E>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
+
+    fn add(self, rhs: &'b TensorBase<ArcRepr<A>, E>) -> Self::Output {
         self.add_tensor_impl(rhs)
     }
 }
@@ -239,9 +290,41 @@ where
         self.add_tensor_impl(rhs)
     }
 }
+
+// &TensorView + &ArcTensor (view + shared read-only reference)
+impl<'a, 'b, A, D, E> Add<&'b TensorBase<ArcRepr<A>, E>>
+    for &'a TensorBase<ViewRepr<'a, A>, D>
+where
+    A: Numeric,
+    D: Dimension,
+    E: Dimension,
+    D: BroadcastDim<E>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
+
+    fn add(self, rhs: &'b TensorBase<ArcRepr<A>, E>) -> Self::Output {
+        self.add_tensor_impl(rhs)
+    }
+}
+
+// &ArcTensor + &TensorView (shared read-only + view reference)
+impl<'a, 'b, A, D, E> Add<&'b TensorBase<ViewRepr<'b, A>, E>>
+    for &'a TensorBase<ArcRepr<A>, D>
+where
+    A: Numeric,
+    D: Dimension,
+    E: Dimension,
+    D: BroadcastDim<E>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
+
+    fn add(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
+        self.add_tensor_impl(rhs)
+    }
+}
 ```
 
-> **说明**：`Sub`/`Mul`/`Div` 的视图组合模式与 `Add` 相同，仅替换运算符和闭包，并统一返回 `Result<Tensor<A, F>, XenonError>`。`ViewMutRepr<'a, A>` 通过只读重借用参与这些组合，其共享视图类型记作 `TensorBase<ViewRepr<'a, A>, ...>`。
+> **说明**：`Sub`/`Mul`/`Div` 的视图 / 共享只读组合模式与 `Add` 相同，仅替换运算符和闭包，并统一返回 `Result<Tensor<A, F>, XenonError>`。`ArcRepr<A>` 仅通过 `&self` 解引用为只读视图参与运算，不提供消费式写入语义。`TensorViewMut` 通过 `&self` 重借用参与这些组合，其共享视图类型记作 `TensorBase<ViewRepr<'a, A>, ...>`。
 
 ### 5.3 张量×标量运算符
 
@@ -313,6 +396,8 @@ where
 > 可以逐类型生成 `impl Add<TensorBase<...>> for T`；真正不可行的是 `impl<T> Add<TensorBase<...>> for T` 这种 blanket impl。
 > 因此“常用原生标量”在本文中明确指上述 6 个受支持算术元素类型，而不包括 `bool`、`usize` 或其他范围外类型。
 
+> **宏生成说明：** 标量运算符的 LHS/RHS 组合通过宏生成，覆盖矩阵参见 §5.3-5.4。
+
 > **标量路径返回说明：** 标量路径无形状不兼容风险，不返回 `Result`；运算符返回 `Tensor` 直接。整数溢出仍遵循 panic 语义。
 
 > **说明**：当前版本**不**稳定承诺 `&A` 形式的标量运算符重载。公开契约仅保证值形式 `tensor + scalar`、`Scalar(scalar) + tensor`，以及常用原生左标量（如 `5.0 + tensor`）。若后续版本需要 `&A` 支持，应以独立议题评估。
@@ -369,6 +454,8 @@ where
 | `Complex<f64>` | `-` | `sub_scalar_impl` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
 | `Complex<f64>` | `*` | `mul_scalar_impl` | 原生左标量 / `Scalar<A>` → `mul_scalar_impl` |
 | `Complex<f64>` | `/` | `div_scalar_impl` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
+
+> **矩阵生成说明：** 上表由宏展开后的规范化结果表示；实际实现中，标量运算符的 LHS/RHS 组合通过宏生成，覆盖矩阵参见 §5.3-5.4。
 
 ### 5.5 Good / Bad 对比
 
@@ -551,7 +638,15 @@ Wave 5:      [T6]
 | 大张量 `[10000, 10000] + [10000, 10000]` | 返回 `Ok`，正确完成            |
 | `[2, 3] + [4, 5]`                        | 返回 `Err(XenonError::BroadcastError { .. })` |
 
-### 8.4 属性测试不变量
+### 8.4 §28.4 边界测试占位
+
+| 占位场景 | 说明 |
+| -------- | ---- |
+| 高维广播链 | 预留给 `require.md §28.4` 的高维广播边界用例（如 `Ix6` / `IxDyn` 混合广播） |
+| 大规模整数 panic 诊断 | 预留给 `require.md §28.4` 的整数溢出/除零诊断验证，断言 panic 消息包含操作类型、元素类型与首个失败索引 |
+| `ArcRepr` 只读参与 | 预留给 `require.md §28.4` 的共享只读张量参与四则运算边界用例 |
+
+### 8.5 属性测试不变量
 
 | 不变量                                                     | 测试方法                     |
 | ---------------------------------------------------------- | ---------------------------- |
@@ -561,13 +656,13 @@ Wave 5:      [T6]
 | `Scalar(s) + tensor == tensor + s`                         | 包装器左标量与右标量路径等价 |
 | 结果张量与输入张量不共享内存（`ptr` 不同）                 | 对 `Ok` 结果做指针比较       |
 
-### 8.5 集成测试
+### 8.6 集成测试
 
 | 测试文件                 | 测试内容                                                              |
 | ------------------------ | --------------------------------------------------------------------- |
 | `tests/test_overload.rs` | 运算符语法与 `broadcast`、`math`、`tensor` 返回所有权语义的端到端集成 |
 
-### 8.6 Feature gate / 配置测试
+### 8.7 Feature gate / 配置测试
 
 | 配置 | 验证点 |
 | ---- | ---- |
@@ -575,7 +670,7 @@ Wave 5:      [T6]
 | 启用 `simd` | 通过 `math` 委托的 SIMD 路径不改变广播、`Result` 与结果所有权语义。 |
 | 启用并行 | 通过 `math` 委托的并行路径不改变广播、错误边界与结果所有权语义。 |
 
-### 8.7 类型边界 / 编译期测试
+### 8.8 类型边界 / 编译期测试
 
 | 场景 | 测试方式 |
 | ---- | ---- |
@@ -618,7 +713,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | 主题 | 内容 |
 | ---- | ---- |
 | Recoverable error | 模块级可恢复错误由运算符路径与显式方法路径共同承担；`+` / `-` / `*` / `/` 以及 `broadcast_with()`、方法型逐元素 API 均返回 `XenonError::BroadcastError { operation: Cow<'static, str>, input_shape: Vec<usize>, target_shape: Vec<usize>, axis: Option<usize> }`；若方法参数本身非法，则继续使用 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, shape: Option<Vec<usize>> }`。 |
-| Panic | 广播不兼容不再 panic；整数除零、溢出与结果不可表示继续沿用 `math` 的 panic 语义。 |
+| Panic | 广播不兼容不再 panic；整数除零、溢出与结果不可表示继续沿用 `math` 的 panic 语义，且 panic 消息须包含操作类型、元素类型与第一个失败元素索引（若可确定）。 |
 | 路径一致性 | 借用 / owned / 标量以及由 `math` 触发的标量 / SIMD 路径必须保持相同输出 shape 与数值语义。 |
 | 容差边界 | 当前不引入额外容差；若底层 `math` 使用 SIMD，仍须与标量路径语义一致。 |
 

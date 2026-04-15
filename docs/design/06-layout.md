@@ -37,7 +37,7 @@ L0: error, private
 L1: dimension, element, complex
 L2: layout (depends on dimension)  ← current module
 L3: storage (independent from layout, only provides the backing buffer and ownership)
-L4: tensor (depends on storage, dimension)
+L4: tensor (depends on storage, dimension, layout)
 L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 ```
 
@@ -310,6 +310,8 @@ impl<D: Dimension> Strides<D> {
 
 拥有型存储的 stride 必须满足 F-order 连续条件（即 `strides[i] = product of shape[0..i]`）；若传入非 F-order stride，构造须返回 `XenonError::InvalidLayout`。
 
+> **需求 §7 收紧解释：** 本设计对需求 §7 中“仅用于对齐或实现目的的填充区域”做收紧解释：当前版本仅允许 tail padding，不允许 inter-axis padding（例如 padded leading dimension）。这一收紧不影响需求兼容性，因为逻辑元素值及其访问结果与不存在填充区域时保持一致。
+
 与 `Dimension`/`TensorBase` 的职责边界如下：
 
 - `02-dimension.md` 中的 `Dimension` 只描述 shape/rank，不保存 stride 语义。
@@ -407,6 +409,8 @@ Result: false (not F-contiguous)
 - **广播视图**：广播轴允许 stride 为 `0`；其余非广播轴必须保持 F-order 或转置后的正 stride 模式。
 - **单元素或 0-D**：只要 metadata 可表示且访问范围合法，任意有效 stride 都视为合法。
 
+> **校验口径说明：** 上述“合法 stride 布局族”描述的是设计意图与来源闭包，不是运行时可判定的 provenance 证明。具体 safe/unsafe 构造只检查一个**充分条件**集合：stride 非负、元素总数与访问范围可表示、且访问范围在 backing storage 内；实现不会尝试在运行时证明某组 stride 必然来自某个历史转置/切片操作。
+
 #### 非法 stride 组合
 
 - **负步长**：当前版本不支持。
@@ -430,7 +434,8 @@ Result: false (not F-contiguous)
 > 验证规则：
 > - 所有 `stride[i] >= 0`（非负）
 > - 所有 `stride[i] <= isize::MAX`
-> - `max_offset = sum(shape[i] * stride[i]) <= storage_len`（对非广播视图）
+> - 当 `total_elements == 0` 时，仅要求 `offset <= storage_len`
+> - 当 `total_elements > 0` 时，`max_accessed_offset = offset + sum((shape[i] - 1) * stride[i]) < storage_len`
 > - 广播视图：`shape[i] == 1` 时 `stride[i]` 可为 `0`
 > - 单元素轴 `shape[i] == 1` 时 `stride[i]` 不受连续性约束
 
@@ -441,7 +446,7 @@ Result: false (not F-contiguous)
 
 ### 5.5 对齐检查
 
-```rust
+```rust,ignore
 /// Checks whether the logical-first pointer satisfies the alignment requirement.
 ///
 /// # Preconditions
@@ -458,6 +463,8 @@ pub fn is_aligned(ptr: *const u8) -> bool {
     is_aligned_to(ptr, 64)
 }
 ```
+
+> **空张量对齐规则：** 空张量（元素数为 0）的 `ALIGNED` flag 统一设为 `true`，不依赖逻辑首指针是否可观测地满足 64 字节对齐。`compute_layout_flags()` 在空张量分支上应直接写入该约定，以保持 `require.md` 的空布局查询稳定语义。
 
 ### 5.6 对齐与数据一致性
 
@@ -711,6 +718,14 @@ Wave 3:       [T8]
 | 1D 数组 `shape=[5]`        | F-连续为 true                  |
 | 高维 `shape=[2,2,2,2,2,2]` | F-连续，步长 `[1,2,4,8,16,32]` |
 
+### 8.3a 需求说明书 §28.4 边界测试占位
+
+| 占位项 | 说明 |
+| ------ | ---- |
+| 空张量布局边界 | 占位：覆盖 `shape.checked_size() == 0` 时 `F_CONTIGUOUS == true` 且 `ALIGNED == true` |
+| 大张量布局边界 | 占位：覆盖大 shape 的步长乘法/访问范围 checked arithmetic |
+| 高维布局边界 | 占位：覆盖高维 `Strides<D>`、转置后正步长和广播零步长组合 |
+
 ### 8.4 属性测试不变量
 
 | 不变量                                             | 测试方法                                          |
@@ -791,7 +806,7 @@ Upper layers create or transform tensor metadata
 | 项目           | 内容 |
 | -------------- | ---- |
 | Recoverable error | 对外布局校验失败返回 `XenonError`（由上层构造路径传播），上下文字段应包含 shape、strides、offset 或操作名等布局元数据 |
-| Panic | 纯布局查询函数不以 panic 作为常规错误语义；若内部辅助计算在已验证快捷路径上发生整数溢出，可按契约 panic |
+| Panic | 对外公开语义中，safe 布局构造/校验失败必须返回 `XenonError`，不以 panic 作为常规错误通道；仅内部 bug（例如“已验证快捷路径”仍触发不可能的整数溢出）或文档明确标注的前置条件违背，才可视为 panic 级缺陷 |
 | 路径一致性 | scalar 布局、SIMD 路径选择与 parallel 上游消费必须共享同一 `LayoutFlags` 语义，不允许因路径差异改变结果 |
 | 容差边界 | 不适用 |
 
@@ -839,7 +854,7 @@ Upper layers create or transform tensor metadata
 | 属性     | 值 |
 | -------- | --- |
 | 决策     | 当前版本中，`require.md` §7 提到的“padding”仅指分配层面的尾部容量/对齐冗余（例如分配器为满足对齐返回多于请求值的字节数）；拥有型张量的逻辑布局元数据（`shape`、`strides`）仍保持规范化 packed F-order，即 `stride[i] = product(shape[0..i])`。当前版本**不支持**轴间 padding（例如 padded leading dimension）。 |
-| 决策补充 | `require.md` §7 所指的“填充区域”在本设计中解释为仅用于分配层对齐目的的尾部冗余空间（tail padding），不包含轴间填充（inter-axis padding）或 padded leading dimension。逻辑元素访问不受任何填充影响。 |
+| 决策补充 | `require.md` §7 所指的“填充区域”在本设计中解释为仅用于分配层对齐目的的尾部冗余空间（tail padding），不包含轴间填充（inter-axis padding）或 padded leading dimension。该收紧解释不改变逻辑元素值及其访问结果，因此保持与需求兼容。 |
 | 理由     | 规范化 packed F-order 可简化布局校验与 FFI 导出；轴间 padding 将引入 `leading_dim` 一类概念，显著增加类型系统复杂度；分配级对齐由 `storage` 层的 `AlignedBuf` 处理，而非 `layout` 层。 |
 | 替代方案 | 在 `layout` 元数据中显式支持轴间 padding / padded leading dimension — 放弃，会扩大布局状态空间并增加验证、类型表达与 FFI 映射复杂度。 |
 

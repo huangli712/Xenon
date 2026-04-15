@@ -99,7 +99,7 @@ src/reduction/
 | -------- | ---------------- |
 | `tensor` | `TensorBase<S, D>`、`Tensor<A, D>`、`.shape()`、`.ndim()`、`.iter()`、`.indexed_iter()`、结果张量构造接口 |
 | `dimension` | `Axis`、`Dimension`、`RemoveAxis`、运行时 axis/shape 投影辅助 |
-| `element` | `Numeric`、`CheckedAdd`、`ComplexScalar`、`A::zero()` |
+| `element` | `Numeric`、`CheckedAdd`、`ComplexScalar`、`RealScalar`、`A::zero()` |
 | `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`should_parallelize()`、`can_use_simd()` |
 | `error` | `XenonError::InvalidAxis` |
 | `simd`（可选） | 仅在可证明与标量累加顺序和结果语义一致时通过纯向量化 kernel 参与 `sum` 实现 |
@@ -123,7 +123,7 @@ src/reduction/
 
 ### 5.1 核心接口
 
-````rust
+````rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -140,10 +140,9 @@ where
     /// Reduces along `axis` and removes that axis from the output shape.
     ///
     /// Returns `XenonError::InvalidAxis` when `axis.index() >= self.ndim()`.
-    /// This API is only available when `D: RemoveAxis`.
-    pub fn sum_axis(&self, axis: Axis) -> Result<Tensor<A, D::Smaller>, XenonError>
-    where
-        D: RemoveAxis;
+    /// This API is available for all `D: Dimension`; rank-0 inputs are rejected
+    /// at runtime with `InvalidAxis` before any internal axis-removal logic runs.
+    pub fn sum_axis(&self, axis: Axis) -> Result<Tensor<A, D::Smaller>, XenonError>;
 
     /// Reduces along `axis` and keeps the reduced axis with length 1.
     ///
@@ -153,7 +152,7 @@ where
 }
 ````
 
-> **0D 轴归约设计决策：** `sum_axis()` 在静态零维类型 `Ix0` 上因不存在可移除轴，`remove_axis` 的运行时语义返回 `XenonError::InvalidAxis { operation, axis, ndim: 0, shape: vec![] }`。对动态维度 `IxDyn` 且 `ndim == 0` 的输入，`sum_axis()` 与 `sum_axis_keepdims()` 也继续通过运行时返回同类 `InvalidAxis` 满足可恢复错误契约。这与 `require.md §14` 保持一致：凡是仍经由 axis 校验路径的调用，都统一给出可恢复错误。
+> **0D 轴归约设计决策：** `sum_axis()` 与 `sum_axis_keepdims()` 对所有 `D: Dimension` 都可见，不在公开签名中暴露 `RemoveAxis`。对静态零维 `Ix0` 与动态零维 `IxDyn([])`，两者都必须先经过统一的运行时轴校验，并返回 `XenonError::InvalidAxis { operation, axis, ndim: 0, shape: vec![] }`。只有在确认 `ndim >= 1` 后，内部实现才可进入私有的 axis-removal / shape-projection 逻辑并使用 `RemoveAxis` / `D::Smaller` 完成实际归约。这与 `require.md §14` 保持一致：凡是经由 axis 校验路径的调用，都统一给出可恢复错误。
 >
 > keepdims 不移除被归约轴，因此不需要 `RemoveAxis` 约束。输出维度类型与输入维度类型相同，被归约轴长度变为 `1`。但对 0D 张量而言不存在任何合法轴，因此 `sum_axis_keepdims()` 仍须返回 `InvalidAxis`，而不能定义为 no-op。
 
@@ -214,7 +213,7 @@ assert_eq!(empty.sum(), 0);
 | ------ | ---- |
 | 归约族范围 | 当前版本只实现 `sum`，不为其它归约预留公开入口。 |
 | 空输入语义 | `sum()` 对空数组返回 `A::zero()`；沿轴归约的被归约轴长度为 `0` 时，对每个输出槽写入 `A::zero()`。 |
-| axis 校验顺序 | `sum_axis()` 在进入轴移除逻辑前要求满足 `D: RemoveAxis`；`sum_axis_keepdims()` 不移除轴，因此不需要该约束。对所有进入 axis 归约路径的调用（包括 0D 张量），都必须先校验 `axis < ndim`；若越界则统一返回 `XenonError::InvalidAxis`。 |
+| axis 校验顺序 | `sum_axis()` 与 `sum_axis_keepdims()` 的公开入口都只要求 `D: Dimension`。对所有进入 axis 归约路径的调用（包括 0D 张量），都必须先校验 `axis < ndim`；若越界则统一返回 `XenonError::InvalidAxis`。只有在确认 `ndim >= 1` 后，`sum_axis()` 的内部私有实现才可使用 `RemoveAxis` / `D::Smaller` 完成维度投影。 |
 | 整数语义 | `i32` / `i64` 累加使用 checked arithmetic，任何溢出立即 panic。 |
 | 浮点/复数语义 | `f32` / `f64` / `Complex<_>` 遵循标量加法语义，`NaN` 按 IEEE 754 自动传播。 |
 | 执行路径约束 | SIMD / 并行若无法满足 `require.md` §28.3 数值语义约束，则必须回退标量。 |
@@ -263,18 +262,22 @@ fn sum_int<I: Numeric + CheckedAdd>(iter: impl Iterator<Item = I>) -> I {
     })
 }
 
-fn sum_float<F: Numeric + Copy>(iter: impl Iterator<Item = F>) -> F {
-    iter.fold(F::zero(), |acc, x| acc + x)
+fn sum_floating_or_complex<A: Numeric + Copy>(iter: impl Iterator<Item = A>) -> A {
+    iter.fold(A::zero(), |acc, x| acc + x)
 }
 ```
 
 - 整数路径：`checked_add()` 失败即 panic，不转换为 `XenonError`。
 - 浮点路径：保持标量加法顺序；`NaN`、`Inf` 等行为沿用 IEEE 754。
 - 复数路径：对实部和虚部分量分别沿用对应实数加法语义，因此含 `NaN` 分量时同样传播。
-- SIMD 路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Simd` 时委托 `simd/` 纯向量化后端；整数路径必须与标量逐步 checked arithmetic 精确一致，浮点/复数路径允许不同合并顺序，但结果相对标量参考值每个实数分量必须满足 `max(1 ULP, epsilon * |scalar_result|)` 容差，其中 `epsilon` 取对应标量类型（`f32`/`f64`）的 `RealScalar::epsilon()`，否则回退标量。
-- 并行路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Parallel` 时委托 `parallel/` 纯并行后端；整数路径必须保持与串行精确一致，浮点/复数路径允许不同合并顺序，但同样受每个实数分量 `max(1 ULP, epsilon * |scalar_result|)` 的文档化容差约束，其中 `epsilon` 取对应标量类型（`f32`/`f64`）的 `RealScalar::epsilon()`，无法满足时必须回退标量单线程路径。
+- SIMD 路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Simd` 时委托 `simd/` 纯向量化后端；整数路径必须与标量逐步 checked arithmetic 精确一致，浮点/复数路径允许不同合并顺序，但结果相对标量参考值每个实数分量必须满足 `max(1 ULP, epsilon * |scalar_result|)` 容差，其中 `epsilon` 取对应标量类型（`f32`/`f64`）的 `RealScalar::epsilon()`，否则回退标量。此容差公式适用于浮点/复数类型的 SIMD 归约路径；标量串行路径作为比较基准。
+- 并行路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Parallel` 时委托 `parallel/` 纯并行后端；整数路径必须保持与串行精确一致，浮点/复数路径允许不同合并顺序，但同样受每个实数分量 `max(1 ULP, epsilon * |scalar_result|)` 的文档化容差约束，其中 `epsilon` 取对应标量类型（`f32`/`f64`）的 `RealScalar::epsilon()`，无法满足时必须回退标量单线程路径。此容差公式同样适用于浮点/复数类型的并行归约路径；标量串行路径作为比较基准。
 
-### 6.3.1 并行阈值配置
+### 6.3.1 并行 axis 归约写回策略
+
+沿轴归约进入并行路径时，写回策略必须按**输出槽位分区**而不是按输入元素任意抢占：每个并行任务只负责一组互不重叠的输出索引区间，并在其私有局部累加完成后一次性写回对应输出槽位。不得让两个任务同时写入同一个输出元素，也不得通过共享可变引用在任务间累加同一槽位。由此可保证并行 axis-reduction 不发生数据竞争；若当前布局或调度策略无法证明这一点，必须回退串行路径。
+
+### 6.3.2 并行阈值配置
 
 归约模块不自定义新的阈值参数，而是通过 `dispatch.rs` 统一管理全局阈值与嵌套并行防护：
 
@@ -403,7 +406,10 @@ Wave 4:                  [T6]
 | rank-0 输入 `shape=[]` | `sum()` 返回该标量元素本身 |
 | 被归约轴长度为 `0`，如 `shape=[0, 3]` 沿 `Axis(0)` | 每个输出位置返回零 |
 | 单元素数组 | 结果等于该元素本身 |
-| 静态 rank-0 输入 `Ix0` 调用 `sum_axis()` | 返回 `InvalidAxis`，因为不存在可移除轴 |
+| 空张量边界占位 | 预留 `test_sum_empty_tensor_boundary`：覆盖空输入在 `sum` / `sum_axis*` 上的单位元与输出 shape 语义 |
+| 高维 axis 边界占位 | 预留 `test_sum_high_dim_axis_boundary`：覆盖高 rank `IxDyn` 上 axis 投影、keepdims 与错误诊断 |
+| 大张量边界占位 | 预留 `test_sum_large_tensor_boundary`：覆盖大输入在默认/SIMD/并行配置下的容差与 panic 契约 |
+| 静态 rank-0 输入 `Ix0` 调用 `sum_axis()` | 返回 `InvalidAxis`，因为 0D 上不存在合法轴；不再把该情形建模为公开签名中的 `RemoveAxis` 缺失 |
 | 静态 rank-0 输入 `Ix0` 调用 `sum_axis_keepdims()` | 返回 `InvalidAxis`，因为 0D 上不存在合法轴 |
 | 动态 rank-0 输入 `IxDyn([])` 调用 `sum_axis*` | 返回 `InvalidAxis`，因运行时 `axis >= ndim` |
 | 非连续视图 | 结果与连续输入一致 |
@@ -592,7 +598,7 @@ Err(XenonError::InvalidArgument {
 | 标准库环境 | Xenon 当前版本仅支持 `std`。 |
 | crate 结构 | 保持单 crate 结构，`reduction` 作为库内模块存在。 |
 | 依赖约束 | 不新增第三方依赖；仅可使用需求中已允许的 `rayon` / `pulp` 对应可选能力。 |
-| SemVer | `sum` 家族的空输入语义、`InvalidAxis` 错误类别、`sum_axis()` 的 `D: RemoveAxis` 类型边界、`sum_axis_keepdims()` 不要求 `RemoveAxis`、0D 张量上的 axis-based API 统一返回 `InvalidAxis` 以及文档化容差规则均属于稳定契约；后续优化不得改变。 |
+| SemVer | `sum` 家族的空输入语义、`InvalidAxis` 错误类别、`sum_axis()` / `sum_axis_keepdims()` 公开入口统一仅要求 `D: Dimension`、0D 张量上的 axis-based API 统一返回 `InvalidAxis` 以及文档化容差规则均属于稳定契约；后续优化不得改变。 |
 | 平台语义 | 同平台、同编译配置、同执行路径下结果须确定；跨平台遵循 IEEE 754 语义约束。 |
 | API 稳定性 | 不改变当前 `sum` 家族公开接口与错误类别边界。 |
 
