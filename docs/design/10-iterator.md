@@ -88,6 +88,7 @@ src/iter/
 | 场景 | 错误 |
 | ---- | ---- |
 | `axis_iter()` / `axis_iter_mut()` 的 `axis` 越界 | 返回 `XenonError::InvalidAxis { operation: "axis_iter", axis, ndim, shape }` 或 `XenonError::InvalidAxis { operation: "axis_iter_mut", axis, ndim, shape }`。 |
+| 静态零维 `Ix0` 调用按轴迭代 | 不提供此 API：`axis_iter` / `axis_iter_mut` 通过 `D: RemoveAxis` 在类型层直接排除。 |
 | rank-0 动态维张量调用按轴迭代 | 返回 `XenonError::InvalidAxis { operation, axis: 0, ndim: 0, shape }`，其中 `shape` 为 `Vec<usize>` 形式的空形状。 |
 | 试图把广播结果作为可变迭代输入 | 不提供公开 API；通过类型系统在编译期拒绝，而不是返回运行时错误。 |
 
@@ -200,7 +201,7 @@ impl<'a, A, D: Dimension + RemoveAxis> Iterator for AxisIterMut<'a, A, D> {
 impl<'a, A, D: Dimension + RemoveAxis> ExactSizeIterator for AxisIterMut<'a, A, D> {}
 ```
 
-> **设计决策：** `AxisIter` 的 `Item` 类型为 `TensorView<'a, A, D::Smaller>`。这要求 `D` 满足 `RemoveAxis`，并由 `RemoveAxis` trait 提供 `type Smaller: Dimension` 关联类型。同时，公开构造路径仍须在运行时先检查 `self.ndim() == 0`，并返回可恢复错误，以覆盖动态维度张量在 rank=0 时的按轴遍历请求。
+> **设计决策：** `AxisIter` 的 `Item` 类型为 `TensorView<'a, A, D::Smaller>`。这要求 `D` 满足 `RemoveAxis`，并由 `RemoveAxis` trait 提供 `type Smaller: Dimension` 关联类型。静态零维 `Ix0` 因不满足该约束而在类型层直接排除；公开构造路径中的运行时 `self.ndim() == 0` 检查仅用于覆盖动态维度张量在 rank=0 时的按轴遍历请求。
 
 ### 5.3 内部迭代分发说明
 
@@ -490,7 +491,7 @@ Wave 4:        [T9]
 | ----------------------------- | ------------------------------------------------ |
 | 空数组 `shape=[0, 3]`         | `iter()` 立即结束，`count() == 0`                |
 | 单元素 `shape=[1, 1]`         | `iter()` 产出 1 项                               |
-| 零维张量 Ix0 / rank-0 `IxDyn` | `iter()` 产出 1 项，`axis_iter()` 返回可恢复错误 |
+| 零维张量 `Ix0` / rank-0 `IxDyn` | `iter()` 产出 1 项；`Ix0` 不提供 `axis_iter()` API，rank-0 `IxDyn` 调用 `axis_iter()` 返回可恢复错误 |
 | 非连续切片 `s![.., 0..3]`     | `iter()` 正确处理步长跳转                        |
 | 广播视图 `shape=[1, 4]`       | `iter()` 遍历逻辑元素，`iter_mut()` 编译拒绝     |
 | 填充数组                      | 仅遍历逻辑元素                                   |
@@ -562,7 +563,7 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `axis_iter()` / `axis_iter_mut()` 在 `axis` 越界或 rank-0 动态维输入时返回 `XenonError::InvalidAxis { operation: Cow<'static, str>, axis: usize, ndim: usize, shape: Vec<usize> }`。 |
+| Recoverable error | `axis_iter()` / `axis_iter_mut()` 在 `axis` 越界或 rank-0 动态维输入时返回 `XenonError::InvalidAxis { operation: Cow<'static, str>, axis: usize, ndim: usize, shape: Vec<usize> }`；静态零维 `Ix0` 不提供对应运行时错误入口。 |
 | Panic | 公开迭代器 API 不引入新的 panic 语义；仅内部 producer 分块等不变量破坏可使用断言。 |
 | 路径一致性 | 连续、非连续、零步长广播视图及并行 producer 的外部迭代顺序与长度语义必须一致。 |
 | 容差边界 | 不适用。 |

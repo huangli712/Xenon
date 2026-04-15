@@ -94,13 +94,16 @@ src/matrix/
 ├── mod.rs
 │   ├── crate::tensor        # TensorView<A, D>
 │   ├── crate::element       # Numeric, ComplexScalar
+│   ├── crate::iter          # Elements
 │   └── crate::error         # XenonError
 ├── dot.rs
 │   ├── crate::tensor        # TensorView<A, D>
 │   ├── crate::element       # Numeric
+│   ├── crate::iter          # Elements
 │   ├── crate::error         # XenonError
 │   ├── crate::simd (opt.)   # Optional SIMD dot kernel
 │   └── crate::parallel (opt.) # Optional parallel reduction path
+├── crate::iter              # Element iteration helpers
 ├── crate::simd (opt.)       # Optional SIMD dot kernel
 └── crate::parallel (opt.)   # Optional parallel reduction path
 ```
@@ -111,13 +114,14 @@ src/matrix/
 | -------------- | ------------------------------------------------------------------------------------------ |
 | `tensor`       | `TensorView<'a, A, D>`, `.ndim()`, `.shape()`, `.len()`, `.as_ptr()`, `.is_f_contiguous()` |
 | `element`      | `Numeric`, `ComplexScalar`                                                                 |
+| `iter`         | `Elements`, `.iter()`                                                                      |
 | `error`        | `XenonError::InvalidArgument`, `XenonError::ShapeMismatch`                                 |
 | `simd`（可选） | 为满足条件的输入提供 dot 的 SIMD kernel（参见 `08-simd.md`）                               |
 | `parallel`（可选） | 为大输入提供 dot 的并行归约执行路径，并复用阈值/guard 运行时状态                        |
 
 ### 4.5 依赖方向
 
-> **依赖方向：单向向上。** `matrix` 模块仅消费 `tensor`、`element`、`error`、`simd`、`parallel` 模块。
+> **依赖方向：单向向上。** `matrix` 模块仅消费 `tensor`、`element`、`iter`、`error`、`simd`、`parallel` 模块。
 
 ### 4.6 依赖合法性与替代方案
 

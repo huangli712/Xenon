@@ -49,7 +49,7 @@ L7: convert  ← current module
 | 需求映射 | 需求说明书 §23 |
 | 范围内   | `cast()` 逐元素类型转换，以及 `to_owned()` / `into_owned()` 同类型拷贝。 |
 | 范围外   | 存储模式互转（归 `storage` / `tensor`）、标准库 `From` / `TryFrom` 实现（归构造模块）、连续化 helper（归 `utility`），以及超出需求矩阵的隐式转换。 |
-| 非目标   | 不默认放宽有损转换规则，不新增第三方转换库，也不把连续性保证升级为 convert 的公开职责。 |
+| 非目标   | 不默认放宽有损转换规则，不新增第三方转换库，也不在本模块新增独立的连续化 API。 |
 
 ---
 
@@ -145,7 +145,7 @@ where
     ///
     /// # Errors
     ///
-    /// Returns `XenonError::TypeConversion` when any element cannot be converted
+    /// Returns `XenonError::TypeConversion(TypeConversionError)` when any element cannot be converted
     /// under the rules defined in `require.md §23`.
     ///
     /// # Examples
@@ -164,17 +164,14 @@ where
         let mut data: Vec<B> = Vec::with_capacity(self.len());
         for (index, x) in self.iter().enumerate() {
             let value = (*x).cast_to().map_err(|err| match err {
-                XenonError::TypeConversion {
-                    source_type,
-                    target_type,
-                    reason,
-                    ..
-                } => XenonError::TypeConversion {
-                    source_type,
-                    target_type,
-                    reason,
-                    element_index: index,
-                },
+                XenonError::TypeConversion(err) => {
+                    XenonError::TypeConversion(TypeConversionError {
+                        source_type: err.source_type,
+                        target_type: err.target_type,
+                        reason: err.reason,
+                        element_index: index,
+                    })
+                }
                 other => other,
             })?;
             data.push(value);
@@ -232,7 +229,7 @@ where
 - 实数 → 复数：先按实数到目标复数实部分量类型的规则转换实部，再补 `0` 虚部
 - 复数 → 实数：仅当虚部为 `0` 时继续；随后按实部到目标实数类型的规则处理
 - 复数 → 复数：实部和虚部分别按对应实数转换规则处理
-- 任一步为有损时，默认整体返回 `XenonError::TypeConversion`
+- 任一步为有损时，默认整体返回 `XenonError::TypeConversion(TypeConversionError)`
 
 ### 5.5 Good / Bad 对比
 
@@ -258,7 +255,7 @@ let ints: Tensor<i32, Ix1> = floats.cast().unwrap();  // forbidden: returns Type
 
 > **跨模块协作说明：** 本节保留 `to_owned()` / `into_owned()` 的实现细节，是因为 `require.md §23` 明确将同类型拷贝纳入本节约束；其中与具体存储表示相关的路径选择仍以 `tensor` / `storage` 模块为主责。
 
-> **归属声明：** `to_owned()` / `into_owned()` 的公开语义只在本文维护；`20-utility.md` 可引用它们作为 `to_contiguous()` 的实现依赖，但不再重复定义其契约。
+> **归属声明：** `to_owned()` / `into_owned()` 的公开语义只在本文维护；它们返回的 owned 结果固定为 Xenon 的 canonical F-order。`20-utility.md` 可引用它们作为 `to_contiguous()` 的实现依赖，但不再重复定义其契约。
 
 ````rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -270,6 +267,7 @@ where
     /// Clones data into a new owned tensor.
     ///
     /// Always allocates new memory and copies data, even if input is already Owned.
+    /// The returned owned tensor uses Xenon's canonical F-order layout.
     ///
     /// # Examples
     ///
@@ -298,8 +296,8 @@ where
     /// Consumes the tensor, converting to owned.
     ///
     /// - `Tensor`: returned directly, O(1)
-    /// - `TensorView`/`TensorViewMut`: allocates and copies, O(n)
-    /// - `ArcTensor`: always allocates and copies, O(n), regardless of ref count
+    /// - `TensorView`/`TensorViewMut`: allocates and copies into canonical F-order, O(n)
+    /// - `ArcTensor`: always allocates and copies into canonical F-order, O(n), regardless of ref count
     pub fn into_owned(self) -> Tensor<A, D>;
 }
 ````
@@ -325,12 +323,12 @@ where
 impl CastTo<f32> for f64 {
     #[inline]
     fn cast_to(self) -> Result<f32, XenonError> {
-        Err(XenonError::TypeConversion {
-            source_type: "f64",
-            target_type: "f32",
+        Err(XenonError::TypeConversion(TypeConversionError {
+            source_type: "f64".into(),
+            target_type: "f32".into(),
             reason: TypeConversionReason::LossyFloatNarrowing,
             element_index: 0,
-        })
+        }))
     }
 }
 
@@ -351,12 +349,12 @@ impl CastTo<f64> for Complex<f64> {
         if self.im == 0.0 {
             Ok(self.re)
         } else {
-            Err(XenonError::TypeConversion {
-                source_type: "Complex<f64>",
-                target_type: "f64",
+            Err(XenonError::TypeConversion(TypeConversionError {
+                source_type: "Complex<f64>".into(),
+                target_type: "f64".into(),
                 reason: TypeConversionReason::NonZeroImaginaryPart,
                 element_index: 0,
-            })
+            }))
         }
     }
 }
@@ -365,19 +363,19 @@ impl CastTo<f64> for Complex<f64> {
 impl CastTo<i32> for i64 {
     #[inline]
     fn cast_to(self) -> Result<i32, XenonError> {
-        Err(XenonError::TypeConversion {
-            source_type: "i64",
-            target_type: "i32",
+        Err(XenonError::TypeConversion(TypeConversionError {
+            source_type: "i64".into(),
+            target_type: "i32".into(),
             reason: TypeConversionReason::LossyIntegerNarrowing,
             element_index: 0,
-        })
+        }))
     }
 }
 ```
 
 ### 6.2 溢出行为汇总
 
-> **错误语义约定：** `cast()` 是 fallible API。凡被 `require.md §23` 判定为有损的转换，默认返回 `XenonError::TypeConversion`；仅在该节明确给出额外成功前提时，满足前提后方可成功。
+> **错误语义约定：** `cast()` 是 fallible API。凡被 `require.md §23` 判定为有损的转换，默认返回 `XenonError::TypeConversion(TypeConversionError)`；仅在该节明确给出额外成功前提时，满足前提后方可成功。
 
 | 输入值/组合                    | 目标类型 | 结果                  | 说明                   |
 | ------------------------------ | -------- | --------------------- | ---------------------- |
@@ -519,11 +517,11 @@ Wave 2: [T3] [T4] [T5]  (parallel)
 
 | 方向                | 对方模块  | 接口/类型                               | 约定                                                                                              |
 | ------------------- | --------- | --------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `convert → tensor`  | `tensor`  | `TensorBase<S, D>` / `StorageIntoOwned` | `cast()`、`to_owned()`、`into_owned()` 都定义在张量抽象之上；连续化语义不再归属 convert，参见 `07-tensor.md` §4 |
+| `convert → tensor`  | `tensor`  | `TensorBase<S, D>` / `StorageIntoOwned` | `cast()`、`to_owned()`、`into_owned()` 都定义在张量抽象之上；其中 `to_owned()` / `into_owned()` 负责产出 canonical F-order owned 结果 |
 | `convert → element` | `element` | `CastTo`                                | 逐元素类型转换通过 `CastTo` trait 驱动，参见 `03-element.md` §4                                   |
 | `convert → math`    | `math`    | 逐元素转换语义                          | `cast()` 采用迭代收集路径，不复用 `mapv()` 的同类型返回语义                                       |
 | `convert → storage` | `storage` | `Owned` / readable storage traits       | convert 只消费可读存储与 owned 化能力，不在本文扩展额外存储模式互转矩阵                           |
-| `convert → layout`  | `layout`  | F-order metadata                        | `to_owned()` / `cast()` 保持张量 shape 与逻辑元素顺序；若调用方需要连续性保证，则由 `util::to_contiguous()` 负责 |
+| `convert → layout`  | `layout`  | F-order metadata                        | `cast()`、`to_owned()`、`into_owned()` 保持张量 shape 与逻辑元素顺序，并为 owned 结果建立 canonical F-order 元数据；若调用方需要显式连续化入口，则由 `util::to_contiguous()` 负责 |
 | `convert → complex` | `complex` | `Complex<T>`                            | 复数目标类型转换依赖 `Complex` 定义；Complex → 实数可在 `im == 0` 时成功，参见 `04-complex.md` §4 |
 
 ### 9.2 数据流描述
@@ -544,9 +542,9 @@ User calls cast() / to_owned() / into_owned()
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `cast()` 在有损转换、虚部非零或其他规则不满足时返回 `XenonError::TypeConversion`，携带源类型、目标类型、失败原因与元素索引。 |
+| Recoverable error | `cast()` 在有损转换、虚部非零或其他规则不满足时返回 `XenonError::TypeConversion(TypeConversionError)`，携带源类型、目标类型、失败原因与元素索引。 |
 | Panic | 公开转换 API 不定义额外 panic 语义；有损场景统一返回可恢复错误。 |
-| 路径一致性 | `cast`、`to_owned`、`into_owned` 必须保持相同 shape 与逻辑元素顺序；若需要连续化保证，则由 `util` 模块另行负责。无 SIMD / 并行分支。 |
+| 路径一致性 | `cast`、`to_owned`、`into_owned` 必须保持相同 shape 与逻辑元素顺序；其中 `to_owned` / `into_owned` 的 owned 结果固定为 canonical F-order。无 SIMD / 并行分支。 |
 | 容差边界 | 不适用。 |
 
 ---
@@ -557,7 +555,7 @@ User calls cast() / to_owned() / into_owned()
 
 | 属性     | 值                                                                        |
 | -------- | ------------------------------------------------------------------------- |
-| 决策     | 所有有损转换默认返回 `XenonError::TypeConversion`                         |
+| 决策     | 所有有损转换默认返回 `XenonError::TypeConversion(TypeConversionError)`    |
 | 理由     | 这是 `require.md §23` 的强制要求；文档不得私自引入饱和、截断或 NaN→0 语义 |
 | 替代方案 | saturating / truncating — 放弃，与需求冲突                                |
 | 替代方案 | panic on overflow — 放弃，需求要求可恢复错误                              |

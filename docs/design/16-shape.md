@@ -15,7 +15,7 @@
 | -------------- | -------------------------------------------------------- | ------------------------------------------------------------ |
 | 转置操作       | `transpose()` 交换步长和形状返回只读视图（O(1)）         | 其他形状变换（当前版本不提供）                               |
 | 连续性标志更新 | 转置后按结果 shape/stride 重新计算连续性标志             | pad / repeat / split（当前版本不提供）                       |
-| 非规范便捷别名 | 可选地提供 `t()` 作为 `transpose()` 简写，但它不属于 `require.md` §17 的规范契约 | `permute_axes()` / `swap_axes()` / `moveaxis()` 留待后续版本 |
+| 非规范便捷别名 | 若后续提供 `t()` 作为 `transpose()` 简写，也仅能作为非规范便捷别名，不纳入当前版本交付 | `permute_axes()` / `swap_axes()` / `moveaxis()` 留待后续版本 |
 | 未来形状操作   | —                                                        | 其他形状变换与自动推断维度留待后续版本                       |
 
 ### 1.2 设计原则
@@ -58,7 +58,7 @@ L6: shape  <- current module
 ```
 src/shape/
 ├── mod.rs             # module entry, re-export public traits and functions
-└── transpose.rs       # transpose and optional alias glue
+└── transpose.rs       # transpose implementation
 ```
 
 文件划分理由：当前版本仅支持转置，因此保留单一实现文件即可覆盖范围内能力。
@@ -147,28 +147,10 @@ where
         }
     }
 
-    /// Shorthand for transpose.
-    ///
-    /// Equivalent to `.transpose()`, provides concise syntax similar to ndarray.
-    /// For 2D inputs this matches the usual matrix-transpose intuition; for
-    /// higher-rank tensors it is still a full axis reversal.
-    ///
-    /// This alias is optional and non-normative: `require.md` §17 only
-    /// requires the transpose operation itself, not this shorthand spelling.
-    ///
-    /// # Examples
-    /// ```
-    /// let a = Tensor::<f64, _>::zeros([3, 4]);
-    /// let b = a.t();
-    /// assert_eq!(b.shape(), &[4, 3]);
-    /// ```
-    pub fn t(&self) -> TensorView<'_, A, D> {
-        self.transpose()
-    }
 }
 ````
 
-> **别名说明：** `t()` 仅可作为非规范语法别名；规范契约只要求 `transpose()`。
+> **别名说明：** `t()` 不纳入当前版本正式 API、任务拆分或测试交付；若未来提供，也只能作为非规范语法别名。
 
 #### 5.1.1 转置语义
 
@@ -184,9 +166,9 @@ where
 #### 5.1.2 Good / Bad 对比
 
 ```rust
-// Good - use t() for zero-copy transpose
+// Good - use transpose() for zero-copy transpose
 let a = Tensor::<f64, _>::zeros([1000, 1000]);
-let b = a.t();  // O(1), zero-copy
+let b = a.transpose();  // O(1), zero-copy
 assert_eq!(b.shape(), &[1000, 1000]);
 
 // Bad - manually copy data for transpose (wastes memory and time)

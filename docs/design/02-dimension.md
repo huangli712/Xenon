@@ -15,13 +15,12 @@
 | ------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------- |
 | 静态维度类型        | `Ix0`-`Ix6` 元组结构体，编译期确定维度数                                                     | 运行时动态维度选择                                 |
 | 动态维度类型        | `IxDyn`（`Vec<usize>`），运行时维度数                                                        | —                                                  |
-| Dimension trait     | 完整的维度操作接口（ndim/slice/checked_size/checked_strides_for_f_order/into_dyn/try_from_dyn） | 已签名 stride、logical-first pointer、布局标志计算 |
+| Dimension trait     | 维度形状与 rank 接口（ndim/slice/checked_size/into_dyn/try_from_dyn）                           | stride 计算、logical-first pointer、布局标志计算   |
 | IntoDimension trait | 从元组、数组、切片、Vec 构造维度                                                             | 用户自定义维度源                                   |
 | Axis 类型           | 轴标记新类型（index/next/prev/is_first/is_last）                                             | 轴上的切片/迭代操作（由 tensor 方法提供）          |
 | RemoveAxis trait    | 移除指定轴降维（Ix1→Ix0, ..., Ix6→Ix5, IxDyn→IxDyn）                                         | Ix0 不实现（标量无轴可移除）                       |
 | 维度互转            | 静态→动态（总是成功）、动态→静态（需维度匹配）                                               | 隐式维度转换                                       |
-| F-order 步长计算    | `checked_strides_for_f_order()` 返回无符号步长                                               | C-order 步长（不在范围内）                         |
-| 步长类型            | 维度层仅保存无符号形状；stride 元数据由 `layout::Strides<D>` 单独建模                        | 超出当前版本合法布局范围的 stride 变体             |
+| 形状元数据          | 维度层仅保存无符号形状与 rank，供 layout/tensor 读取                                         | stride 元数据及其合法性判定                        |
 | 内存分配            | —                                                                                            | 不负责任何内存分配                                 |
 
 ### 1.2 设计原则
@@ -134,13 +133,6 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
     /// Returns a mutable reference to the shape slice.
     fn slice_mut(&mut self) -> &mut [usize];
 
-    /// Computes strides for Fortran-order (column-major) layout.
-    ///
-    /// Returns `Self`, carrying stride counts in element units (not bytes).
-    /// First axis has stride 1. The layout layer later wraps this result into
-    /// `layout::Strides<D>` when layout-level stride metadata is needed.
-    fn checked_strides_for_f_order(&self) -> Result<Self, XenonError>;
-
     /// Returns the total number of elements.
     /// For `Ix0`, returns 1 (scalar has one element).
     /// Implementations must not silently wrap on overflow.
@@ -204,14 +196,8 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
     fn iter(&self) -> core::slice::Iter<'_, usize> {
         self.slice().iter()
     }
-
-    /// Unsigned strides are modeled separately by `layout::Strides<D>`.
-    /// `Dimension` only describes axis lengths and rank, never additional layout metadata.
 }
 ```
-
-> **设计决策：** Xenon 仅提供 `checked_strides_for_f_order()`，不提供 `strides_for_c_order()`。
-> C-order 布局不在当前范围内（参见需求说明书 §7）。
 
 ### 5.2 静态维度类型 Ix0-Ix6
 
@@ -278,7 +264,6 @@ pub struct Ix6(pub usize, pub usize, pub usize, pub usize, pub usize, pub usize)
 | `NDIM`                  | `Some(0)` | 没有维度            |
 | `slice()`               | `&[]`     | 空切片              |
 | `checked_size()`        | `Ok(1)`   | 一个元素（标量）    |
-| `checked_strides_for_f_order()` | `Ok(Ix0)` | 无步长        |
 | 内存大小                | `0` bytes | ZST，编译器完全消除 |
 
 #### Ix1-Ix6 实现模式（以 Ix3 为例）
@@ -321,22 +306,6 @@ impl Dimension for Ix3 {
                 offending_dim: None,
                 overflow_at_axis: Some(2),
             })
-    }
-
-    #[inline]
-    fn checked_strides_for_f_order(&self) -> Result<Self, XenonError> {
-        Ok(Ix3(
-            1,
-            self.0,
-            self.0.checked_mul(self.1).ok_or(XenonError::InvalidShape {
-                operation: "Dimension::checked_strides_for_f_order".into(),
-                shape: self.slice().into(),
-                expected_elements: 0,
-                actual_elements: 0,
-                offending_dim: Some(2),
-                overflow_at_axis: Some(2),
-            })?,
-        ))
     }
 
     #[inline]
@@ -434,23 +403,6 @@ impl Dimension for IxDyn {
                 offending_dim: None,
                 overflow_at_axis: None,
             })
-    }
-
-    fn checked_strides_for_f_order(&self) -> Result<Self, XenonError> {
-        let mut strides = Vec::with_capacity(self.dims.len());
-        let mut stride = 1usize;
-        for &dim in &self.dims {
-            strides.push(stride);
-            stride = stride.checked_mul(dim).ok_or(XenonError::InvalidShape {
-                operation: "Dimension::checked_strides_for_f_order".into(),
-                shape: self.dims.clone(),
-                expected_elements: 0,
-                actual_elements: 0,
-                offending_dim: None,
-                overflow_at_axis: Some(strides.len()),
-            })?;
-        }
-        Ok(IxDyn { dims: strides })
     }
 
     fn into_dyn(self) -> IxDyn { self }
@@ -865,32 +817,11 @@ impl Reverse for IxDyn {
 | ------- | ----------- | ---------- | ------------------------------------ |
 | `IxDyn` | `ndim == N` | `IxN(...)` | `Err(XenonError::DimensionMismatch)` |
 
-### 6.2 stride 表达边界
+### 6.2 形状表达边界
 
-维度层保存无符号形状（`usize`），`checked_strides_for_f_order()` 也返回同一维度类型 `Self`，只是把各轴长度替换为以元素为单位的无符号步长值。下游 `layout` 模块再把这类结果包装为 `Strides<D>`，并负责具体 stride 元数据，仅覆盖当前版本允许的连续、转置后非连续和广播零步长布局（参见 `06-layout.md` §5）：
+维度层保存无符号形状（`usize`）与 rank，仅回答“形状是什么”。步长、连续性与广播零步长等布局语义统一由 `layout` 模块建模和校验（参见 `06-layout.md` §5）。
 
-```
-Dimension layer: shape = [3, 4], checked_strides_for_f_order() = Ok(Ix2(1, 3))
-Layout layer:    strides = [1usize, 3usize] (legal layouts allowed in the current version)
-```
-
-> 维度层关注"形状是什么"，layout 层关注"数据如何排列"。
-
-### 6.3 F-order 步长计算算法
-
-```
-checked_strides_for_f_order(shape):
-    strides = []
-    stride = 1
-    for dim in shape:
-        strides.append(stride)
-        stride = checked_mul(stride, dim)  // overflow -> Err(XenonError::InvalidShape { overflow_at_axis: ... })
-    return strides
-```
-
-**示例**：`shape = Ix3(2, 3, 4)` → `strides = Ix3(1, 2, 6)`
-
-### 6.4 辅助 trait 实现
+### 6.3 辅助 trait 实现
 
 静态维度额外实现：`Index<usize>`、`IndexMut<usize>`、`IntoIterator`、`From<(usize, ...)>`。
 
@@ -926,7 +857,7 @@ checked_strides_for_f_order(shape):
 - [ ] **T4**: 实现 `Ix1`-`Ix2`
   - 文件: `src/dimension/static_dims.rs`
   - 内容: `Ix1`, `Ix2` 结构体 + `Dimension` impl + `Index<usize>` impl
-  - 测试: `test_ix1_strides_f_order`, `test_ix2_strides_f_order`
+  - 测试: `test_ix1_slice`, `test_ix2_slice`
   - 前置: T3
   - 预计: 10 min
 
@@ -942,7 +873,7 @@ checked_strides_for_f_order(shape):
 - [ ] **T6**: 实现 `IxDyn` 动态维度
   - 文件: `src/dimension/dynamic.rs`
   - 内容: `IxDyn` 结构体 + `Dimension` impl + 构造方法
-  - 测试: `test_ixdyn_from_slice`, `test_ixdyn_strides`
+  - 测试: `test_ixdyn_from_slice`, `test_ixdyn_size`
   - 前置: T2
   - 预计: 10 min
 
@@ -1020,10 +951,10 @@ Wave 5:  [T10] → [T11] → [T12]
 
 | 测试分类 | 位置                                             | 说明                                                                |
 | -------- | ------------------------------------------------ | ------------------------------------------------------------------- |
-| 单元测试 | `#[cfg(test)] mod tests`                         | 验证各维度类型、步长计算和辅助 trait                                |
+| 单元测试 | `#[cfg(test)] mod tests`                         | 验证各维度类型、形状/rank API 和辅助 trait                          |
 | 集成测试 | `tests/test_dimension.rs`                        | 验证 `dimension` 与 `tensor`、`layout`、`shape`、`index` 的协同路径 |
 | 边界测试 | 同模块测试中标注                                 | 覆盖 Ix0、零长度轴、大维度与溢出路径                                |
-| 属性测试 | `tests/test_dimension.rs` 或 `tests/property.rs` | 验证 stride/size/维度互转不变量                                     |
+| 属性测试 | `tests/test_dimension.rs` 或 `tests/property.rs` | 验证 size/维度互转不变量                                            |
 
 ### 8.2 单元测试清单
 
@@ -1032,13 +963,13 @@ Wave 5:  [T10] → [T11] → [T12]
 | `test_ix0_size_is_one`       | `Ix0.checked_size() == Ok(1)`                            | 高     |
 | `test_ix0_ndim_is_zero`      | `Ix0.ndim() == 0`                                        | 高     |
 | `test_ix0_is_zst`            | `size_of::<Ix0>() == 0`                                  | 高     |
-| `test_ix1_strides_f_order`   | `Ix1(5).checked_strides_for_f_order() == Ok(Ix1(1))`     | 高     |
-| `test_ix2_strides_f_order`   | `Ix2(3,4).checked_strides_for_f_order() == Ok(Ix2(1,3))` | 高     |
-| `test_ix3_strides_f_order`   | `Ix3(2,3,4).checked_strides_for_f_order() == Ok(Ix3(1,2,6))` | 高  |
+| `test_ix1_slice`             | `Ix1(5).slice() == &[5]`                                 | 高     |
+| `test_ix2_slice`             | `Ix2(3,4).slice() == &[3,4]`                             | 高     |
+| `test_ix3_slice`             | `Ix3(2,3,4).slice() == &[2,3,4]`                         | 高     |
 | `test_ix3_size_calculation`  | `Ix3(2,3,4).checked_size() == Ok(24)`                    | 高     |
 | `test_ix6_max_dimensions`    | `Ix6(1,2,3,4,5,6).checked_size() == Ok(720)`             | 中     |
 | `test_ixdyn_from_slice`      | `IxDyn::from_slice(&[2,3])`                              | 高     |
-| `test_ixdyn_strides`         | `IxDyn::from_slice(&[2,3,4]).checked_strides_for_f_order()` | 高  |
+| `test_ixdyn_size`            | `IxDyn::from_slice(&[2,3,4]).checked_size() == Ok(24)`   | 高     |
 | `test_static_to_dyn`         | `Ix3(2,3,4).into_dyn()`                                  | 高     |
 | `test_dyn_to_static_success` | `Ix3::try_from_dyn(IxDyn::from_slice(&[2,3,4]))`         | 高     |
 | `test_dyn_to_static_failure` | `Ix3::try_from_dyn(IxDyn::from_slice(&[2,3,4,5]))` → Err | 高     |
@@ -1062,7 +993,6 @@ Wave 5:  [T10] → [T11] → [T12]
 
 | 不变量                                           | 测试方法     |
 | ------------------------------------------------ | ------------ |
-| `dim.checked_strides_for_f_order()?.ndim() == dim.ndim()` | 所有维度类型 |
 | `Ix3::try_from_dyn(dim.clone().into_dyn()) == Ok(dim)`    | 静态维度     |
 | `dim.checked_size()? == dim.slice().iter().product()`     | 随机形状     |
 
@@ -1095,7 +1025,7 @@ Wave 5:  [T10] → [T11] → [T12]
 
 | 模块      | 使用的 trait/类型            | 用途                                         |
 | --------- | ---------------------------- | -------------------------------------------- |
-| `layout`  | `Dimension`                  | 计算步长、检查连续性                         |
+| `layout`  | `Dimension`                  | 消费形状/rank 元数据并建模步长、检查连续性   |
 | `storage` | —                            | 不直接消费 `Dimension`；仅管理底层连续缓冲区 |
 | `tensor`  | `Dimension`                  | 泛型参数、形状访问                           |
 | `shape`   | `Dimension`, `IntoDimension` | transpose                                    |
@@ -1111,7 +1041,7 @@ Wave 5:  [T10] → [T11] → [T12]
 User provides shape / axis / dimension input
     │
     ├── dimension normalizes it into `Ix0`~`Ix6` or `IxDyn`
-    ├── tensor / layout consume `ndim()`, `slice()`, `checked_size()`, and F-order stride metadata
+    ├── tensor / layout consume `ndim()`, `slice()`, and `checked_size()`
     ├── shape / iter / index build higher-level operations on `Axis`, `RemoveAxis`, `Reverse`, and related traits
     └── static/dynamic conversion failures propagate upward as `XenonError::DimensionMismatch`
 ```
@@ -1122,7 +1052,7 @@ User provides shape / axis / dimension input
 
 | 项目           | 内容 |
 | -------------- | ---- |
-| Recoverable error | 动态转静态维度数不匹配时返回 `XenonError::DimensionMismatch { operation, expected, actual, shape }`；`checked_size()`、`checked_strides_for_f_order()`、`try_from_slice()`、`axis()`、`set_axis()`、`remove_axis()` 在失败时统一返回结构化 `XenonError` |
+| Recoverable error | 动态转静态维度数不匹配时返回 `XenonError::DimensionMismatch { operation, expected, actual, shape }`；`checked_size()`、`try_from_slice()`、`axis()`、`set_axis()`、`remove_axis()` 在失败时统一返回结构化 `XenonError` |
 | Panic | 本模块公开设计不再把维度溢出、轴越界或切片长度不匹配建模为 panic；若内部已验证快捷路径保留 unwrap/expect，也不得穿透公开 API |
 | 路径一致性 | scalar 路径与普通标量化实现必须保持一致；SIMD：不适用；parallel：不适用 |
 | 容差边界 | 不适用 |
@@ -1165,27 +1095,11 @@ User provides shape / axis / dimension input
 | 理由     | API 稳定性（可添加新方法不破坏外部）；类型安全；不变量可控；Rust 生态标准做法 |
 | 替代方案 | 开放实现 — 放弃，失去版本控制能力                                             |
 
-### 决策 5：仅 checked F-order 步长计算
-
-| 属性     | 值                                                                           |
-| -------- | ---------------------------------------------------------------------------- |
-| 决策     | 仅提供 `checked_strides_for_f_order()`，不提供 `strides_for_c_order()`       |
-| 理由     | 需求说明书 §7 明确只支持 F-order 布局；减少 API 表面积；C-order 留作未来扩展 |
-| 替代方案 | 同时提供两种 — 放弃，超出需求范围                                            |
-
-### 决策 6：步长在 Dimension 层以 checked 无符号接口表达
-
-| 属性     | 值                                                                                |
-| -------- | --------------------------------------------------------------------------------- |
-| 决策     | `checked_strides_for_f_order()` 返回 `Result<Self, XenonError>`；成功时的 `Self` 仍是无符号步长，下游再包装为 `layout::Strides<D>` |
-| 理由     | 关注点分离：Dimension 关注形状与同类型返回，Layout 关注当前版本允许的数据排列                      |
-| 替代方案 | Dimension 直接返回 `isize` 步长 — 放弃，维度层不应承担布局表达职责                |
-
-### 决策 7：仅保留 checked 公开接口
+### 决策 5：仅保留 checked 公开接口
 
 | 属性     | 值                                                                                     |
 | -------- | -------------------------------------------------------------------------------------- |
-| 决策     | 将 `checked_size()` 与 `checked_strides_for_f_order()` 作为公开主接口，构造与布局验证统一走可恢复错误路径 |
+| 决策     | 将 `checked_size()` 作为公开主接口，维度乘法溢出统一走可恢复错误路径                                          |
 | 理由     | 避免公开 API 在维度乘法溢出时 panic，同时满足需求说明书对可恢复错误的要求                                    |
 | 风险     | 调用方需要显式处理 `Result`，文档与示例必须保持一致                                                          |
 | 替代方案 | 继续把未 checked 的旧接口作为公开主接口 — 放弃，公开安全路径不能以 panic 表达可恢复错误                     |

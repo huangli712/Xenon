@@ -51,7 +51,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 | 项目     | 内容                                                                      |
 | -------- | ------------------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §4                                                             |
+| 需求映射 | 需求说明书 §4、§5、§13、§14、§23                                         |
 | 范围内   | `Element`/`Numeric`/`RealScalar`/`ComplexScalar` trait 与封闭元素类型集合 |
 | 范围外   | 张量存储、自动类型提升、开放外部元素扩展、具体类型转换执行逻辑            |
 | 非目标   | 引入新的基础数值类型集合、运行时类型擦除或动态分派元素系统                |
@@ -294,6 +294,23 @@ pub trait ComplexScalar: Numeric + Sealed {
 
 > **范围说明：** `ComplexScalar` 公开面仅保留当前范围内真正需要的复数能力。`arg`/`exp`/`ln`/`sqrt`/`from_polar`/`i` 等超出当前张量 API 范围的方法若实现需要，降为 `complex` 模块内部 helper，不放入本公开 trait。
 
+### 5.4a OrderedCompareElement trait
+
+```rust
+/// Ordered comparison element trait.
+///
+/// Restricts public ordered comparisons (`lt` / `gt`) to element types with the
+/// current version's required ordering semantics.
+pub trait OrderedCompareElement: Element + PartialOrd + Sealed {}
+
+impl OrderedCompareElement for i32 {}
+impl OrderedCompareElement for i64 {}
+impl OrderedCompareElement for f32 {}
+impl OrderedCompareElement for f64 {}
+```
+
+> **设计决策：** `OrderedCompareElement` 用于把有序比较能力显式收敛到 `i32`、`i64`、`f32`、`f64`。这与需求说明书 §12 的 `lt` / `gt` 适用类型保持一致，并避免 `bool` 或 `Complex<T>` 因泛化的 `PartialOrd` 约束误入公开比较 API。
+
 ### 5.5 支持的类型与 trait 矩阵
 
 | 类型           | Element | Numeric | RealScalar | ComplexScalar |
@@ -305,6 +322,8 @@ pub trait ComplexScalar: Numeric + Sealed {
 | `Complex<f32>` |    ✓    |    ✓    |     ✗      |       ✓       |
 | `Complex<f64>` |    ✓    |    ✓    |     ✗      |       ✓       |
 | `bool`         |    ✓    |    ✗    |     ✗      |       ✗       |
+
+> **OrderedCompareElement 适用类型：** `i32`、`i64`、`f32`、`f64`。
 
 > **Xenon 特定约束：** 仅支持上表列出的 7 种元素类型。不支持 `usize`、u8/u16/u32/i8/i16 等其他整数类型；`usize` 仅作为索引和形状元数据使用。
 

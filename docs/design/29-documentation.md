@@ -40,7 +40,7 @@ L1: dimension, element, complex
 L2: layout (depends on dimension)
 L3: storage (independent of layout; owned by tensor and consumes layout results)
 L4: tensor (depends on storage, dimension)
-L5: overload/, iter/, index/, shape/, broadcast.rs, construct/, ffi/, convert/, format/
+L5: overload/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 
 Cross-cutting concern (global):
 ┌─────────────────────────────────────────────────────────────────┐
@@ -91,7 +91,8 @@ src/
 │   └── mod.rs                # Vector dot-product module docs (L1)
 ├── reduction/
 │   └── mod.rs                # Reduction module docs (L1)
-├── broadcast.rs              # Broadcast module docs (L1, single-file module)
+├── broadcast/
+│   └── mod.rs                # Broadcast module docs (L1)
 ├── shape/
 │   └── mod.rs                # Shape-operation module docs (L1)
 ├── index/
@@ -231,7 +232,7 @@ L3: Examples (examples/)
 //! ## Quick Start
 //!
 //! ```rust
-//! use xenon::prelude::*;
+//! # use xenon::prelude::*;
 //!
 //! # fn demo() -> xenon::Result<()> {
 //! // Create tensors (see 18-construction.md §5.1 for constructor signatures)
@@ -351,7 +352,7 @@ L3: Examples (examples/)
 /// # Examples
 ///
 /// ```
-/// use xenon::prelude::*;
+/// # use xenon::prelude::*;
 ///
 /// # fn demo() -> xenon::Result<()> {
 /// let t = Tensor1::from_shape_vec([3], vec![1.0, 2.0, 3.0])?;
@@ -372,7 +373,7 @@ pub fn sum(&self) -> A { ... }
 /// ```
 /// # #[cfg(feature = "parallel")]
 /// # {
-/// use xenon::prelude::*;
+/// # use xenon::prelude::*;
 ///
 /// # fn demo() -> xenon::Result<()> {
 /// let t = Tensor1::<f64>::ones([1_000_000])?;
@@ -416,7 +417,7 @@ fn main() -> xenon::Result<()> {
     println!("Created 3x4 zero matrix: shape={:?}", a.shape());
 
     // Step 2: Perform operation
-    let b = a.t();
+    let b = a.transpose();
     println!("Transposed: shape={:?}", b.shape());
 
     Ok(())
@@ -588,13 +589,13 @@ docs:
 /// # Examples
 ///
 /// ```
-/// use xenon::prelude::*;
+/// # use xenon::prelude::*;
 ///
 /// # fn demo() -> xenon::Result<()> {
 /// let t = Tensor1::from_shape_vec([3], vec![1.0, 2.0, 3.0])?;
 /// assert_eq!(t.sum(), 6.0);
 ///
-/// let empty = Tensor1::<f64>::zeros([0]);
+/// let empty = Tensor1::<f64>::zeros([0])?;
 /// assert_eq!(empty.sum(), 0.0);
 /// # Ok(())
 /// # }
@@ -624,7 +625,7 @@ pub fn sum(&self) -> A { ... }
 // Bad: the example is incomplete — it omits the surrounding API description,
 // return-value semantics, and edge-case notes even though the doctest itself compiles.
 /// ```
-/// use xenon::prelude::*;
+/// # use xenon::prelude::*;
 /// # fn demo() -> xenon::Result<()> {
 /// let t = Tensor1::from_shape_vec([3], vec![1.0, 2.0, 3.0])?;
 /// assert_eq!(t.sum(), 6.0);
@@ -654,7 +655,7 @@ pub fn sum(&self) -> A { ... }
 /// # Examples
 ///
 /// ```rust
-/// use xenon::prelude::*;
+/// # use xenon::prelude::*;
 ///
 /// # fn demo() -> xenon::Result<()> {
 /// let data = vec![1.0f64, 2.0, 3.0, 4.0];
@@ -963,7 +964,7 @@ Design docs (00-28)
   - 预计: 10 min
 
 - [ ] **T9c**: broadcast 和 shape 模块文档
-  - 文件: `src/broadcast.rs`, `src/shape/mod.rs`
+  - 文件: `src/broadcast/`, `src/shape/mod.rs`
   - 内容: broadcast_shape, transpose 函数文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7

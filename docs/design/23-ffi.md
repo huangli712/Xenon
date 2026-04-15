@@ -550,8 +550,12 @@ where
         if shape.size() != 0 && layout::has_zero_stride(&strides) {
             return Err(XenonError::InvalidLayout {
                 operation: "ffi::from_raw_parts_mut".into(),
+                storage_kind: "view_mut".into(),
+                shape: shape.to_vec(),
+                strides: strides.to_vec(),
+                offset,
+                storage_len,
                 reason: "mutable raw-parts view must not contain zero strides".into(),
-                shape: Some(shape.to_vec()),
             });
         }
         validate_non_overlapping_layout(&shape, &strides, offset)?;
@@ -632,7 +636,7 @@ where
 
 #### 内存管理
 
-`into_raw_parts()` 返回的是 Xenon 分配器元信息的完整快照。正确回收内存的方式如下：
+`into_raw_parts()` 返回的是 Xenon 分配器元信息的完整快照。回收必须遵守 Xenon 的分配契约：要么通过 `Tensor::from_raw_parts_owned(raw)` 重建后交由 Xenon 的 Drop 释放，要么仅使用与该契约等价、且明确以 Xenon 分配器元数据为前提的回收路径；不得把该指针交给系统 `free`、C 侧默认释放器或其他不知晓 `cap` / `align` 的 foreign allocator。正确回收内存的方式如下：
 
 | 规则                 | 说明                                                            |
 | -------------------- | --------------------------------------------------------------- |
@@ -661,38 +665,58 @@ where
     if raw.offset != 0 {
         return Err(XenonError::InvalidLayout {
             operation: "ffi::from_raw_parts_owned".into(),
+            storage_kind: "owned".into(),
+            shape: raw.shape.to_vec(),
+            strides: raw.strides.to_vec(),
+            offset: raw.offset,
+            storage_len: raw.len,
             reason: "owned raw parts must use offset == 0".into(),
-            shape: Some(raw.shape.to_vec()),
         });
     }
     let expected_len = raw.shape.size();
     if raw.len != expected_len {
         return Err(XenonError::InvalidLayout {
             operation: "ffi::from_raw_parts_owned".into(),
+            storage_kind: "owned".into(),
+            shape: raw.shape.to_vec(),
+            strides: raw.strides.to_vec(),
+            offset: raw.offset,
+            storage_len: raw.len,
             reason: "raw.len must equal product(shape)".into(),
-            shape: Some(raw.shape.to_vec()),
         });
     }
     if raw.cap < raw.len {
         return Err(XenonError::InvalidLayout {
             operation: "ffi::from_raw_parts_owned".into(),
+            storage_kind: "owned".into(),
+            shape: raw.shape.to_vec(),
+            strides: raw.strides.to_vec(),
+            offset: raw.offset,
+            storage_len: raw.len,
             reason: "raw.cap must be >= raw.len".into(),
-            shape: Some(raw.shape.to_vec()),
         });
     }
     if !raw.align.is_power_of_two() || raw.align < core::mem::align_of::<A>() {
         return Err(XenonError::InvalidLayout {
             operation: "ffi::from_raw_parts_owned".into(),
+            storage_kind: "owned".into(),
+            shape: raw.shape.to_vec(),
+            strides: raw.strides.to_vec(),
+            offset: raw.offset,
+            storage_len: raw.len,
             reason: "raw.align must be a valid power-of-two alignment for A".into(),
-            shape: Some(raw.shape.to_vec()),
         });
     }
     let expected_strides = layout::canonical_f_strides(&raw.shape);
     if raw.strides != expected_strides {
         return Err(XenonError::InvalidLayout {
             operation: "ffi::from_raw_parts_owned".into(),
+            storage_kind: "owned".into(),
+            shape: raw.shape.to_vec(),
+            strides: raw.strides.to_vec(),
+            offset: raw.offset,
+            storage_len: raw.len,
             reason: "owned raw parts must use canonical F-order strides".into(),
-            shape: Some(raw.shape.to_vec()),
         });
     }
 
@@ -940,6 +964,7 @@ where
     pub fn try_offset_of(&self, index: &[usize]) -> Result<usize, XenonError> {
         if index.len() != self.ndim() {
             return Err(XenonError::DimensionMismatch {
+                operation: "ffi::try_offset_of".into(),
                 expected: self.ndim(),
                 actual: index.len(),
             });
@@ -958,13 +983,21 @@ where
             }
             let term = strides[i].checked_mul(index[i]).ok_or_else(|| XenonError::InvalidLayout {
                 operation: "ffi::try_offset_of".into(),
+                storage_kind: self.storage_kind().into(),
+                shape: shape.to_vec(),
+                strides: strides.to_vec(),
+                offset: self.offset(),
+                storage_len: self.storage_len(),
                 reason: "index-to-offset multiplication overflow".into(),
-                shape: Some(shape.to_vec()),
             })?;
             offset = offset.checked_add(term).ok_or_else(|| XenonError::InvalidLayout {
                 operation: "ffi::try_offset_of".into(),
+                storage_kind: self.storage_kind().into(),
+                shape: shape.to_vec(),
+                strides: strides.to_vec(),
+                offset: self.offset(),
+                storage_len: self.storage_len(),
                 reason: "index-to-offset accumulation overflow".into(),
-                shape: Some(shape.to_vec()),
             })?;
         }
         Ok(offset)
@@ -1068,7 +1101,14 @@ validate_access_range(shape, strides, offset, storage_len):
           logical_min = checked_add(offset, sum of min contributions)
           logical_max = checked_add(offset, sum of max contributions)
        If any checked operation fails, return Err(IntegerOverflow).
-    5. If logical_max >= storage_len: return Err(InvalidLayout { reason: "access range exceeds storage" }).
+    5. If logical_max >= storage_len: return Err(InvalidLayout {
+           storage_kind,
+           shape,
+           strides,
+           offset,
+           storage_len,
+           reason: "access range exceeds storage",
+       }).
     6. Return Ok(()).
 ```
 
@@ -1087,7 +1127,14 @@ validate_non_overlapping_layout(shape, strides, offset):
     1. If product(shape) <= 1: return Ok(()).
     2. Enumerate the reachable element offsets implied by `(shape, strides, offset)`.
     3. If any two distinct logical indices map to the same offset, return
-       Err(InvalidLayout { reason: "mutable layout must not self-alias" }).
+       Err(InvalidLayout {
+           storage_kind: "view_mut",
+           shape,
+           strides,
+           offset,
+           storage_len,
+           reason: "mutable layout must not self-alias",
+       }).
     4. Otherwise return Ok(()).
 ```
 
@@ -1275,7 +1322,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | 操作 | 所有权/生命周期语义 |
 |------|---------------------|
 | `as_ptr()` / `as_mut_ptr()` | 返回的指针借用源张量；源张量 drop 后指针立即失效。`as_mut_ptr()` 要求独占 `&mut self`，借用期间不可有其它引用。 |
-| `into_raw_parts()` | 消费源张量（`self`），将内存所有权转移给调用方。调用方须通过 `from_raw_parts_owned()` 重建张量并由 Drop 释放，或显式承担内存释放责任。 |
+| `into_raw_parts()` | 消费源张量（`self`），将内存所有权转移给调用方。调用方须按 Xenon 分配契约回收：通过 `from_raw_parts_owned()` 重建张量并由 Drop 释放，或使用与 Xenon 分配器元数据等价的专用回收路径；不得直接调用系统 `free` 或其他 foreign allocator。 |
 | `from_raw_parts()` / `from_raw_parts_mut()` | 构造的视图生命周期 `'a` 由调用方在 `unsafe` 前提下保证，须与底层内存的实际存活期一致。视图不拥有内存，drop 时不会释放。 |
 | `from_raw_parts_owned()` | 接收 `OwnedRawParts` 并重建 Owned 张量，内存所有权回归 Xenon 的 Drop 管理。 |
 | `export()` / `export_mut()` | 返回的 `TensorExport` 中 `data`、`shape`、`strides` 均借用源张量内部存储；源张量 drop 后全部指针失效。`export_mut()` 额外要求 `&mut self` 且 `S: StorageMut`，确保独占可写访问。 |

@@ -21,7 +21,7 @@
 | 实数混合运算      | 同精度标量便捷：`Complex<f32> op f32`、`Complex<f64> op f64`；张量级运算前须先显式转为 `Complex<T>` | 跨精度：`f32+Complex<f64>`（须显式转换）；将该类标量便捷 impl 直接外推为张量级重载            |
 | 格式化输出        | Display（`"a+bj"` / `"a-bj"`）, Debug                                                             | —                                                                                           |
 | 双字段 C 布局基础 | `#[repr(C)]` + 编译期静态断言                                                                     | 跨精度混合运算                                                                              |
-| 类型转换          | `Complex<f32>↔Complex<f64>`, `f32/f64→Complex`, `i32/i64→Complex`                                 | 未在 `require.md` §23.1 列出的额外整数→复数组合                                               |
+| 类型转换语义      | 定义 `Complex<f32>↔Complex<f64>`, `f32/f64→Complex`, `i32/i64→Complex` 的语义边界                 | 转换实现入口与张量级转换 owner（由 `convert/` 负责）                                           |
 
 ### 1.2 设计原则
 
@@ -77,10 +77,10 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 ```
 src/complex/
 ├── mod.rs     # Complex<T> definition, basic methods, math methods, PartialEq, Display, layout checks
-├── ops.rs     # Arithmetic operator impls (Add/Sub/Mul/Div/Neg + real/complex mixed ops)
+└── ops.rs     # Arithmetic operator impls (Add/Sub/Mul/Div/Neg + real/complex mixed ops)
 
 src/convert/
-└── cast.rs    # CastTo-based conversion implementations, including Complex-related paths
+└── cast.rs    # Consumes element::CastTo and hosts Complex-related conversion implementations
 ```
 
 文件职责按模块 owner 划分：`complex/` 负责类型定义与运算；`CastTo` trait 定义位于 `element` 模块；复数相关的转换实现归入 `convert/` 模块（参见 `21-type.md`）。
@@ -95,24 +95,26 @@ src/convert/
 
 ```
 src/complex/
-├── crate::error     # XenonError for recoverable conversion failures
 ├── crate::private   # Sealed trait for ComplexFloat
 ├── core::ops        # Add/Sub/Mul/Div/Neg operator traits
 ├── core::fmt        # Debug/Display formatting
 └── core::cmp        # PartialEq
+
+src/convert/
+└── cast.rs          # Conversion owner for Complex-related CastTo/From implementations
 ```
 
-> **零外部依赖。** `Complex<T>` 不引入任何第三方 crate；项目内依赖仅包括 `crate::error`（用于 `CastTo<T>` 窄化等可恢复错误）和 `crate::private`（用于 sealed 的 `ComplexFloat` 约束），其余基础结构、方法和运算依赖 `core`。涉及浮点数学的复数方法运行在 Xenon 的 `std` 环境前提下。
+> **零外部依赖。** `Complex<T>` 不引入任何第三方 crate；`complex/` 自身仅依赖 `crate::private` 与 `core`。可恢复类型转换错误由 `convert/` owner 在其实现入口中处理；涉及浮点数学的复数方法运行在 Xenon 的 `std` 环境前提下。
 
 ### 4.2 依赖精确到类型级
 
-| 来源        | 使用的类型/trait                              |
-| ----------- | --------------------------------------------- |
-| `error`     | `XenonError`（`CastTo<T>` 窄化等可恢复错误） |
-| `private`   | `Sealed`（封闭 `ComplexFloat` 的公开实现范围） |
-| `core::ops` | `Add`, `Sub`, `Mul`, `Div`, `Neg`（算术运算） |
-| `core::fmt` | `Debug`, `Display`（格式化输出）              |
-| `core::cmp` | `PartialEq`（相等比较）                       |
+| 来源         | 使用的类型/trait                                         |
+| ------------ | -------------------------------------------------------- |
+| `private`    | `Sealed`（封闭 `ComplexFloat` 的公开实现范围）           |
+| `core::ops`  | `Add`, `Sub`, `Mul`, `Div`, `Neg`（算术运算）            |
+| `core::fmt`  | `Debug`, `Display`（格式化输出）                         |
+| `core::cmp`  | `PartialEq`（相等比较）                                  |
+| `convert/`   | 作为 `CastTo`/`XenonError` 的 owner 承载复数相关转换实现 |
 
 ### 4.2a 依赖合法性
 
@@ -124,7 +126,7 @@ src/complex/
 
 ### 4.3 依赖方向声明
 
-> **依赖方向：核心内聚、单向向下。** `complex/` 仅依赖项目内基础模块 `error` 与 `private`，不依赖其他上层业务模块。
+> **依赖方向：核心内聚、单向向下。** `complex/` 仅依赖项目内基础模块 `private` 与 `core`，不依赖其他上层业务模块；类型转换实现入口由 `convert/` owner 承载。
 > 被下游消费：`element/` 模块为 `Complex<f32>`/`Complex<f64>` 实现 Element/Numeric/ComplexScalar trait（参见 `03-element.md` §5.1 / §5.2 / §5.4）。
 
 ---
@@ -627,43 +629,7 @@ impl<T: Float + core::fmt::Display> core::fmt::Display for Complex<T> {
 
 ### 5.10 类型转换
 
-```rust,ignore
-// Precision promotion: f32 -> f64 (lossless)
-// This is the lossless direction — follows std's philosophy that From
-// should only be implemented for lossless conversions.
-impl From<Complex<f32>> for Complex<f64> {
-    #[inline]
-    fn from(z: Complex<f32>) -> Self {
-        // Lossless: f32 → f64 preserves all bits
-        Self::new(f64::from(z.re), f64::from(z.im))
-    }
-}
-
-// Precision reduction: f64 -> f32 (lossy)
-// NOT implemented as `From` — lossy conversion contradicts std's philosophy.
-// Complex-to-complex narrowing is unified under `CastTo<T>` in `03-element.md`
-// and implemented under the convert module umbrella (see `21-type.md`).
-impl CastTo<Complex<f32>> for Complex<f64> {
-    #[inline]
-    fn cast_to(self) -> Result<Complex<f32>, XenonError> {
-        Ok(Complex::<f32>::new(
-            CastTo::<f32>::cast_to(self.re)?,
-            CastTo::<f32>::cast_to(self.im)?,
-        ))
-    }
-}
-
-// Real -> Complex (same precision)
-impl From<f32> for Complex<f32> {
-    #[inline]
-    fn from(re: f32) -> Self { Self::new(re, 0.0) }
-}
-
-impl From<f64> for Complex<f64> {
-    #[inline]
-    fn from(re: f64) -> Self { Self::new(re, 0.0) }
-}
-```
+> **实现归属说明：** 本节只保留语义矩阵。具体 `From` / `CastTo` 实现由 `convert/cast.rs` 统一承载；下列规则描述当前版本允许的语义，不再在 `complex/` 文档中重复大段实现片段。
 
 整数到复数的受支持路径按 `require.md` §23.1 与 §23.2 的规则补充如下：
 
@@ -687,38 +653,7 @@ impl From<f64> for Complex<f64> {
 | `Complex<f32>` | `f64` | 仅当虚部为 `0` 时，按 `f32→f64` 规则转换实部 | 虚部非零时返回 `XenonError::TypeConversion { ... }` |
 | `Complex<f64>` | `f32` | 仅当虚部为 `0` 时，按 `f64→f32` 规则转换实部 | 虚部非零时返回 `XenonError::TypeConversion { ... }` |
 
-```rust,ignore
-// Complex -> Real conversions are owned by CastTo<T> in src/element/.
-// complex/ documents the rule here to keep the conversion matrix complete.
-
-impl CastTo<f64> for Complex<f64> {
-    fn cast_to(self) -> Result<f64, XenonError> {
-        if self.im != 0.0 {
-            return Err(XenonError::TypeConversion {
-                source_type: "Complex<f64>".into(),
-                target_type: "f64".into(),
-                reason: "non-zero imaginary part".into(),
-                element_index: None,
-            });
-        }
-        Ok(self.re)
-    }
-}
-
-impl CastTo<f32> for Complex<f64> {
-    fn cast_to(self) -> Result<f32, XenonError> {
-        if self.im != 0.0 {
-            return Err(XenonError::TypeConversion {
-                source_type: "Complex<f64>".into(),
-                target_type: "f32".into(),
-                reason: "non-zero imaginary part".into(),
-                element_index: None,
-            });
-        }
-        CastTo::<f32>::cast_to(self.re)
-    }
-}
-```
+> **实现片段省略：** `Complex -> Real` 的具体 `CastTo<T>` 实现同样位于 `convert/cast.rs`。`complex/` 仅保留“虚部必须为 `0`，否则返回 `XenonError::TypeConversion { ... }`”这一语义约束。
 
 ### 5.11 内存布局静态断言
 

@@ -96,7 +96,7 @@ src/parallel/
 
 > **依赖方向：单向向上。** `parallel/` 仅消费 `tensor`、私有 `kernel`、`error` 和可选 `rayon`；`ParElements` 与 `TensorBase::par_iter()` 归属 `parallel` 模块本身，不属于 `iter` 模块。并行路径只建立在上层已完成的张量形状、布局与类型约束之上；广播形状裁决由 `math` 调用侧先完成，再以 `output_dim` 形式传入。
 
-> **设计决策：** 串行归约/内积的共享 kernel 应下沉到内部私有模块（如 `kernel`，已在 `01-architecture.md` 注册为 private internal module），避免与公开 `reduction`/`dot` 模块形成循环依赖。`parallel` 只依赖该私有 `kernel` 能力，不直接依赖公开语义模块。
+> **设计决策：** 串行归约/内积的共享 kernel 应下沉到内部私有模块（如 `kernel`，已在 `01-architecture.md` 注册为 private internal module），避免与公开 `reduction`/`matrix` 模块形成循环依赖。`parallel` 只依赖该私有 `kernel` 能力，不直接依赖公开语义模块。
 
 ### 4.4 合法性声明
 
@@ -118,9 +118,7 @@ src/parallel/
 
 ```toml
 [features]
-default = ["std"]
-std = []
-parallel = ["dep:rayon", "std"]
+parallel = ["dep:rayon"]
 
 [dependencies]
 rayon = { version = "1.10", optional = true }
@@ -148,9 +146,9 @@ pub(crate) struct ParallelPool {
 
 ### 5.2 公开运行时接口与内部执行入口
 
-> **可见性说明：** `parallel/` 对外的稳定契约只包括 feature gate、阈值读写与自动加速行为本身；`par_map`、`par_zip_map`、`par_sum`、`par_dot`、`ParallelPool` 均为内部执行后端，由 `math` / `reduction` / `dot` 等语义模块自动选择调用，不作为公开 API 契约的一部分。
+> **可见性说明：** `parallel/` 对外的稳定契约只包括 feature gate、阈值读写与自动加速行为本身；`par_map`、`par_zip_map`、`par_sum`、`par_dot`、`ParallelPool` 均为内部执行后端，由 `math` / `reduction` / `matrix` 等语义模块自动选择调用，不作为公开 API 契约的一部分。
 >
-> **内部后端声明：** 这些 API 为内部执行后端，由 `math` / `reduction` / `dot` 等语义模块自动选择调用，不作为公开 API 契约的一部分。
+> **内部后端声明：** 这些 API 为内部执行后端，由 `math` / `reduction` / `matrix` 等语义模块自动选择调用，不作为公开 API 契约的一部分。
 
 ### 5.3 函数签名
 
@@ -405,7 +403,18 @@ where
     C: Element + Send,
     F: Fn(&A, &B) -> Result<C, XenonError> + Send + Sync,
 {
-    if !should_parallelize(output_dim.size(), lhs.is_f_contiguous() && rhs.is_f_contiguous()) {
+    if !should_parallelize(
+        output_dim.checked_size().map_err(|_| XenonError::InvalidLayout {
+            operation: "par_zip_map",
+            storage_kind: "owned",
+            shape: output_dim.slice().to_vec(),
+            strides: Vec::new(),
+            offset: 0,
+            storage_len: 0,
+            reason: "output dimension element count overflow",
+        })?,
+        lhs.is_f_contiguous() && rhs.is_f_contiguous(),
+    ) {
         return crate::kernel::zip_map_serial(lhs, rhs, output_dim, f);
     }
 
@@ -422,7 +431,7 @@ where
 ### 6.4 自动路径派发与所有权
 
 ```text
-math / reduction / dot module
+math / reduction / matrix module
     │
     ├── call kernel::dispatch_parallel_policy(...)
     │       ├── check len vs threshold
@@ -439,7 +448,7 @@ math / reduction / dot module
                     └── scalar otherwise
 ```
 
-- 串并裁决的调用方是 `math`、`reduction`、`dot` 等上层语义模块；这些模块不直接内联阈值和 SIMD 判断，而是调用 `kernel/` 私有 dispatch helper。
+- 串并裁决的调用方是 `math`、`reduction`、`matrix` 等上层语义模块；这些模块不直接内联阈值和 SIMD 判断，而是调用 `kernel/` 私有 dispatch helper。
 - `kernel/` 是内部调度促进者，不改变公开 API 所有权边界；它负责汇总长度、阈值、线程环境、SIMD 能力和对齐信息，并返回当前调用应走的执行策略。
 - 判定顺序固定：先依据 `len` 与并行阈值、线程数决定是否“有资格并行”，再通过 `ParallelGuard::enter()` 与私有 `ParallelContext` token 检查是否已在并行区域；只有真正进入 parallel 后，才在每个 chunk 内依据 SIMD 可用性与数据对齐决定 **SIMD vs scalar**。禁止先做 SIMD 判定再反推是否并行。
 - `ParallelContext` 采用“显式 token + 私有 dispatch helper”机制，而不是仅靠调用线程 TLS：上层模块一旦进入并行区域，token 会被捕获到 Rayon worker 闭包中，所有内部并行 helper 都必须接收或查询该 token，从而在 worker 线程上也能识别嵌套并行并回退串行。
@@ -449,7 +458,7 @@ math / reduction / dot module
 ### 6.5 Checked 映射与错误传播
 
 ```rust
-pub fn par_map_checked<A, B, D, F>(
+pub(crate) fn par_map_checked<A, B, D, F>(
     tensor: &Tensor<A, D>,
     f: F,
 ) -> Result<Tensor<B, D>, XenonError>
@@ -777,7 +786,7 @@ XenonError::InvalidArgument {
 
 | 属性     | 值                                                                                         |
 | -------- | ------------------------------------------------------------------------------------------ |
-| 决策     | `parallel` 的串行基线依赖下沉到内部私有 `kernel` 模块，不直接依赖公开 `reduction`/`dot` |
+| 决策     | `parallel` 的串行基线依赖下沉到内部私有 `kernel` 模块，不直接依赖公开 `reduction`/`matrix` |
 | 理由     | 避免 `parallel` 与公开归约/矩阵模块互相调用形成循环依赖，同时保留共享串行 kernel 的单一事实来源 |
 | 替代方案 | 直接依赖 `reduction` —— 放弃，会形成架构循环                                               |
 | 替代方案 | 在 `parallel` 内复制一份串行逻辑 —— 放弃，会造成语义漂移与维护重复                         |
@@ -795,7 +804,7 @@ XenonError::InvalidArgument {
 
 | 属性     | 值                                                                                 |
 | -------- | ---------------------------------------------------------------------------------- |
-| 决策     | `math` / `reduction` / `dot` 调用 `kernel::dispatch_parallel_policy()` 决定执行路径 |
+| 决策     | `math` / `reduction` / `matrix` 调用 `kernel::dispatch_parallel_policy()` 决定执行路径 |
 | 理由     | 统一串并阈值、SIMD 能力、数据对齐判断，避免多个模块各自实现分支树                   |
 | 替代方案 | 每个模块自行判断 serial/parallel/SIMD —— 放弃，易产生阈值漂移和行为不一致           |
 | 替代方案 | 先选 SIMD 再决定是否并行 —— 放弃，与 chunk 级策略不符且会放大非对齐尾块成本         |

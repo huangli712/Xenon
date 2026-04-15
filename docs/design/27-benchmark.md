@@ -208,7 +208,10 @@ pub struct StridedFixture1D {
 
 impl StridedFixture1D {
     pub fn view(&self) -> TensorView1<'_, f64> {
-        self.owner.row(1).expect("row index must be in bounds")
+        self.owner
+            .view()
+            .index_axis(Axis(0), 1)
+            .expect("axis index must be in bounds")
     }
 }
 

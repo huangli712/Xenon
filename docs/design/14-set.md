@@ -88,7 +88,6 @@ src/set/unique.rs
 | `storage` | `Storage` trait（consuming tensor storage for data access）                       |
 | `dimension` | `Dimension`, `Ix1`（output dimension type for flatten result）                  |
 | `element` | `Element`, `ComplexScalar`，参见 `03-element.md` §5.1 / §5.4                      |
-| `element` | `Sealed`（sealed trait pattern for `UniqueElement`）                              |
 | `complex` | `Complex<f32>`, `Complex<f64>`，参见 `04-complex.md` §5                           |
 | `iter`    | `Elements`（遍历收集元素），参见 `10-iterator.md` §5.1                            |
 
@@ -242,10 +241,9 @@ Complex-number equality strategy (component-wise equality):
 ///
 /// # Sealing
 ///
-/// Directly inherits Sealed for defensive sealing, even though Element
-/// already provides it. This makes the sealing intent explicit at the
-/// trait definition site.
-pub trait UniqueElement: Element + Sealed {
+/// `UniqueElement` relies on the same closed element set as `Element`; it does
+/// not re-expose any additional private sealing trait in the public signature.
+pub trait UniqueElement: Element {
     /// Equality check used by `unique`.
     fn unique_eq(&self, other: &Self) -> bool;
 }

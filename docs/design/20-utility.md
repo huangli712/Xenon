@@ -207,10 +207,9 @@ where
     /// Correctly handles non-contiguous layouts: iterates over all logical
     /// elements via the iterator. Modifies storage directly without copying.
     ///
-    /// This is the writable-layer API. Read-only and shared-readonly tensors do
-    /// not satisfy `StorageMut`; higher-level convenience entry points, if
-    /// exposed elsewhere in the tensor module, must reject those cases with the
-    /// documented recoverable error rather than reaching this implementation.
+    /// This is the only public `fill` entry in the current design. Read-only and
+    /// shared-readonly tensors do not satisfy `StorageMut`, so those cases are
+    /// rejected at the type level rather than via a runtime error branch.
     ///
     /// # Examples
     ///
@@ -225,14 +224,14 @@ where
 }
 ````
 
-> **分层说明：** `fill` 的核心实现收敛在 `S: StorageMut` 的可写层，不再在单一 `impl<S: Storage>` 中混合“可写执行 + 只读报错”两种类型状态。若 `tensor` 层另外提供面向所有存储模式的统一入口，则只读或共享只读结果（例如广播结果）须在到达此 helper 前返回 `XenonError::ReadOnlyStorage`；该错误属于上层入口的公开语义，而不是 `fill_storage_mut()` 的内部分支。
+> **分层说明：** 本文明确选择**类型层拒绝只读/共享只读存储**：`fill` 的公开入口仅存在于 `S: StorageMut` 的可写层，不再设计覆盖所有存储模式的统一运行时入口。
 
 #### 5.2.1 fill 的显式写入语义
 
 - `fill` 必须按**逻辑索引**迭代，并且只写入逻辑元素。
 - 对带 padding 的底层存储：不得写入任何 padding bytes。
 - 对非连续但可写的视图：必须严格按 layout strides 导航到每个逻辑元素。
-- 对存在零步长的布局：按照 `require.md` §16，它们来自广播只读结果；因此公开 `fill` 不应在可写层遇到这类输入，相关拒绝应作为上层只读入口的不变量维护，而不是 `fill` 自身的额外错误分支。
+- 对存在零步长的布局：按照 `require.md` §16，它们来自广播只读结果；由于公开 `fill` 仅对 `StorageMut` 开放，当前设计下不会为这类输入提供运行时填充入口。
 
 ```
 fill_logical_only(storage, layout, value):
@@ -241,7 +240,7 @@ fill_logical_only(storage, layout, value):
         write storage[offset] = clone(value)
 ```
 
-> 上述伪代码强调的是契约，而不是公开 API：实现可以使用递归多维索引、stride-aware iterator 或其他等价内部辅助函数，但结果必须等价于“按逻辑索引逐元素写入，且不触碰 padding / 非逻辑区域”。`ReadOnlyStorage` 拒绝分支与广播零步长输入的屏蔽，属于到达该 helper 之前的上层职责。
+> 上述伪代码强调的是契约，而不是公开 API：实现可以使用递归多维索引、stride-aware iterator 或其他等价内部辅助函数，但结果必须等价于“按逻辑索引逐元素写入，且不触碰 padding / 非逻辑区域”。
 
 ### 5.3 连续性保证（to_contiguous）
 
@@ -320,7 +319,7 @@ where
 ```rust,ignore
 // Good - use fill for in-place filling, zero extra allocation
 let mut t = Tensor1::<f64>::zeros([1000])?;
-t.fill(42.0)?;
+t.fill(42.0);
 
 // Bad - create a temporary Vec then construct a new tensor, double allocation
 let data = vec![42.0; 1000];
@@ -365,7 +364,7 @@ fill(tensor, value):
         write storage[offset] = clone(value)
 ```
 
-关键点：utility 层的核心 `fill` helper 只接收可写存储，因此不再引入 `InvalidLayout` 这种对广播零步长布局的公开错误分支；广播结果与其他只读结果的拒绝由上层入口负责。可写存储仍必须遵守“只写逻辑元素”的契约：连续布局可走快路径，带 padding / 非连续布局必须按逻辑索引与 strides 写入，且不得触碰 padding bytes。
+关键点：utility 层的核心 `fill` helper 只接收可写存储，因此当前版本不设计针对只读/广播结果的运行时错误分支。可写存储仍必须遵守“只写逻辑元素”的契约：连续布局可走快路径，带 padding / 非连续布局必须按逻辑索引与 strides 写入，且不得触碰 padding bytes。
 
 ### 6.3 to_contiguous 路径选择
 
@@ -406,8 +405,8 @@ into_contiguous(tensor):
 
 - [ ] **T1**: 实现 `fill` 方法
   - 文件: `src/util/fill.rs`
-  - 内容: 在 `S: StorageMut` 层实现 `fill(&mut self, value: A)` 核心 helper；若上层需要统一入口，则由上层负责把只读与共享只读场景映射为 `XenonError::ReadOnlyStorage`
-  - 测试: `test_fill_basic`, `test_fill_non_contiguous`, `test_fill_readonly_storage_error`, `test_fill_broadcast_view_error`, `test_fill_transposed_view_error`, `test_fill_padded_writes_logical_only`
+  - 内容: 在 `S: StorageMut` 层实现 `fill(&mut self, value: A)` 核心 helper，并保持只写逻辑元素的契约
+  - 测试: `test_fill_basic`, `test_fill_non_contiguous`, `test_fill_padded_writes_logical_only`
   - 前置: tensor 模块、iter 模块完成
   - 预计: 10 min
 
@@ -466,9 +465,6 @@ Wave 2:      [T3] → [T4]
 | `test_clip_non_contiguous`                | 非连续布局返回正确裁剪结果              | 高     |
 | `test_fill_basic`                         | 基本填充所有元素为指定值                | 高     |
 | `test_fill_non_contiguous`                | 非连续布局正确填充所有逻辑元素          | 高     |
-| `test_fill_readonly_storage_error`        | 只读存储返回 `ReadOnlyStorage`          | 高     |
-| `test_fill_broadcast_view_error`          | 对 broadcast 结果执行 fill 返回可恢复错误 | 高   |
-| `test_fill_transposed_view_error`         | 对只读转置视图执行 fill 返回可恢复错误  | 高     |
 | `test_fill_padded_writes_logical_only`    | 带 padding 的可写张量仅覆写逻辑元素     | 高     |
 | `test_fill_empty`                         | 空数组 fill 不 panic                    | 中     |
 | `test_to_contiguous_f_order`              | F-order 连续输入返回 owned 拷贝         | 高     |
@@ -484,8 +480,6 @@ Wave 2:      [T3] → [T4]
 | 单元素 `shape=[1]`    | `clip` 正确裁剪单个元素                                           |
 | 零维张量              | `clip` 返回标量裁剪结果                                           |
 | 非连续切片            | `fill`/`clip` 通过迭代器正确处理所有逻辑元素                      |
-| broadcast 只读视图    | `fill` 返回可恢复错误，不允许对零步长别名布局写入                 |
-| 只读转置视图          | `fill` 返回 `ReadOnlyStorage`，不修改底层数据                     |
 | 带 padding 的可写布局 | `fill` 只修改逻辑元素，对 padding bytes 保持不变                  |
 | NaN 边界              | `clip(x, NaN, 1.0)` 或 `clip(x, 0.0, NaN)` 返回 `InvalidArgument` |
 
@@ -548,7 +542,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `clip` 在 `min > max` 或边界为 `NaN` 时返回 `XenonError::InvalidArgument { operation, argument, expected, actual, axis, shape }`；若上层统一入口允许对所有存储模式请求填充，则对只读存储返回 `XenonError::ReadOnlyStorage`。`XenonError` 是本模块唯一公开错误类型。 |
+| Recoverable error | `clip` 在 `min > max` 或边界为 `NaN` 时返回 `XenonError::InvalidArgument { operation, argument, expected, actual, axis, shape }`。当前版本的公开 `fill` 入口采用类型层约束，不额外定义只读存储的运行时错误分支。`XenonError` 是本模块唯一公开错误类型。 |
 | Panic | 公开 utility API 不定义额外 panic 语义；连续化与裁剪失败统一走显式错误或正常返回。 |
 | 路径一致性 | 连续与非连续布局都必须通过同一逻辑元素语义工作；当前无独立 SIMD / 并行分支。 |
 | 容差边界 | `clip` 对浮点数遵循 IEEE 754 比较语义；不额外引入近似容差。 |

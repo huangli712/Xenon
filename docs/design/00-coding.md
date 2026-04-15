@@ -243,7 +243,7 @@ wrap_comments = true
 format_code_in_doc_comments = true
 ```
 
-⚠️ `imports_granularity` 和 `group_imports` 选项需要确认在 Rust 1.85 对应稳定版 rustfmt 中可用。若不可用，应移除这些选项或升级 MSRV。参见 <https://rust-lang.github.io/rustfmt/> 确认稳定性状态。
+`imports_granularity` 和 `group_imports` 在 Rust 1.85 对应稳定版 rustfmt 中可用，可按上表直接纳入项目默认格式配置。
 
 **行宽限制**：100 字符。超过时优先换行而非缩短变量名。
 

@@ -114,7 +114,7 @@ src/math/
 | -------------- | -------------------------------------------------------------------------------------- |
 | `tensor`       | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.shape()`（参见 `07-tensor.md §5`） |
 | `iter`         | `Elements`, `ElementsMut`（参见 `10-iterator.md §5`）                                  |
-| `element`      | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`, `OrderedCompareElement`（参见 `03-element.md §5`）         |
+| `element`      | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`, `OrderedCompareElement`（定义见 `03-element.md §5.4a`）         |
 | `complex`      | `Complex<f32>`, `Complex<f64>`（参见 `04-complex.md §5`）                              |
 | `broadcast`    | `broadcast_shape()`, `broadcast_to()` 返回的 `TensorView`（参见 `15-broadcast.md §5`） |
 | `dimension`    | `BroadcastDim<E>` trait（编译期维度推导，参见 `02-dimension.md §5.9`）                 |
@@ -257,7 +257,7 @@ where
 }
 ```
 
-> **数学函数精度约束：** `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 使用 Rust `std` 提供的数学能力，不引入外部数学 crate；实现必须在文档与测试中声明其采用的 ULP 误差边界。当前版本至少要求把这些方法视为“遵循 IEEE 754，误差受 Rust `std` / 平台实现文档化 ULP 上界约束”的接口承诺，而非无误差精确计算。
+> **数学函数精度约束：** `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 使用 Rust 提供的数学能力，不引入外部数学 crate；实现必须在文档与测试中声明其采用的 ULP 误差边界。当前版本至少要求把这些方法视为“遵循 IEEE 754，误差受 Rust / 平台实现文档化 ULP 上界约束”的接口承诺，而非无误差精确计算。
 
 ### 5.6 复数运算（ComplexScalar 约束）
 
@@ -315,13 +315,6 @@ where
 `eq` / `ne` 对所有元素类型可用（包括 `bool` 与 `Complex`）；`lt` / `gt` 的需求级支持范围固定为 `i32`、`i64`、`f32`、`f64`，返回 `Tensor<bool, _>`。`bool` 与 `Complex` 类型不支持 `lt` / `gt`。
 
 ```rust
-pub trait OrderedCompareElement: Element + PartialOrd {}
-
-impl OrderedCompareElement for i32 {}
-impl OrderedCompareElement for i64 {}
-impl OrderedCompareElement for f32 {}
-impl OrderedCompareElement for f64 {}
-
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -372,9 +365,33 @@ where
 }
 ```
 
-> **类型边界说明：** `lt` / `gt` 不再复用 `RealScalar` 或更宽泛的 `Numeric + PartialOrd` 约束；公开 API 以 `OrderedCompareElement` 明确收敛到 `i32`、`i64`、`f32`、`f64` 四类元素类型。
+> **类型边界说明：** `lt` / `gt` 不再复用 `RealScalar` 或更宽泛的 `Numeric + PartialOrd` 约束；公开 API 以 `OrderedCompareElement` 明确收敛到 `i32`、`i64`、`f32`、`f64` 四类元素类型。该 trait 定义见 `03-element.md §5.4a`。
 
 > **NaN 语义：** `eq(NaN, NaN)` 返回 `false`，`ne(NaN, NaN)` 返回 `true`，遵循 IEEE 754。
+
+> **标量比较入口：** 与 `require.md §12` 一致，比较运算也提供标量-张量入口；标量按可广播到目标全形状的零维输入处理，因此成功路径的形状与对应张量输入版本一致。
+
+```rust
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Element + PartialEq,
+{
+    pub fn eq_scalar(&self, scalar: A) -> Tensor<bool, D>;
+    pub fn ne_scalar(&self, scalar: A) -> Tensor<bool, D>;
+}
+
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: OrderedCompareElement,
+{
+    pub fn lt_scalar(&self, scalar: A) -> Tensor<bool, D>;
+    pub fn gt_scalar(&self, scalar: A) -> Tensor<bool, D>;
+}
+```
 
 ### 5.9 标量与张量运算
 
@@ -458,7 +475,7 @@ apply_binary(a, b, f):
 
 ### 6.3 SIMD 加速路径
 
-SIMD 分发由 `math` 的具体逐元素操作在满足连续性、对齐和 feature gate 前提时直接委托 `src/simd/` facade；本文不再把额外的中间 helper 视为稳定设计接口。参见 `08-simd.md §5.5` 了解 SIMD 后端详情。SIMD 覆盖范围以 `08-simd.md` 为准，设计目标是覆盖需求说明书 §12 中定义的全部逐元素运算；若当前类型、ISA 或语义约束不满足，则对应路径自动回退标量实现。
+SIMD 分发由 `math` 的具体逐元素操作在满足连续性、对齐和 feature gate 前提时直接委托 `src/simd/` facade；本文不再把额外的中间 helper 视为稳定设计接口。参见 `08-simd.md §5.5` 了解 SIMD 后端详情。数学模块定义需求说明书 §12 中列出的全部逐元素运算；当前版本的 SIMD 实际覆盖范围以 `08-simd.md` 为准，若某类运算、类型、ISA 或语义约束暂不满足 SIMD 前提，则对应路径自动回退标量实现。
 
 > **并行路径：** 当 `parallel` feature 启用时，二元逐元素运算可进一步委托 `parallel::par_zip_map` 执行并行遍历（参见 `09-parallel.md §5`）。并行路径必须遵守 `09-parallel.md §6` 的阈值裁决与禁止库内二次并行约束；若 guard 进入失败、输入过小或语义无法证明一致，则自动回退标量执行。
 
@@ -623,8 +640,8 @@ Wave 3:    [T8]
 | 配置 | 验证点 |
 | ---- | ---- |
 | 默认配置 | 所有逐元素运算走标量 / fallback 路径且语义满足文档约束。 |
-| 启用 `simd`（`simd = ["dep:pulp", "std"]`） | 连续输入上的 SIMD 分发结果与默认配置保持一致，非连续输入仍正确回退。 |
-| 启用 `parallel`（`parallel = ["dep:rayon", "std"]`） | 大输入上的并行逐元素路径与默认配置保持相同 shape、错误类别与数值语义，并遵守阈值与无嵌套并行约束。 |
+| 启用 `simd`（`simd = ["dep:pulp"]`） | 连续输入上的 SIMD 分发结果与默认配置保持一致，非连续输入仍正确回退。 |
+| 启用 `parallel`（`parallel = ["dep:rayon"]`） | 大输入上的并行逐元素路径与默认配置保持相同 shape、错误类别与数值语义，并遵守阈值与无嵌套并行约束。 |
 | 同时启用 `simd,parallel` | 并行 chunk 内可局部选择 SIMD 或标量，但对外语义仍与默认配置一致。 |
 
 ### 8.6 类型边界 / 编译期测试

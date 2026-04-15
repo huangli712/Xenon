@@ -118,8 +118,7 @@ xenon/
 │   │
 │   ├── complex/               # Custom complex type
 │   │   ├── mod.rs             # Complex<T> definition, #[repr(C)]
-│   │   ├── ops.rs             # Arithmetic implementations
-│   │   └── cast.rs            # Type conversions
+│   │   └── ops.rs             # Arithmetic implementations
 │   │
 │   ├── storage/               # Storage system (buffer and ownership only)
 │   │   ├── mod.rs             # Storage and RawStorage traits
@@ -207,7 +206,7 @@ xenon/
 │   │
 │   ├── convert/               # Type conversion
 │   │   ├── mod.rs             # Module root and re-exports
-│   │   ├── cast.rs            # CastTo trait, cast() method, conversion paths
+│   │   ├── cast.rs            # Consumes element::CastTo and hosts conversion implementations
 │   │   ├── owned.rs           # to_owned, into_owned, storage-mode conversions
 │   │   ├── from_impl.rs       # From/TryFrom implementations
 │   │   └── contiguous.rs      # Internal contiguous helper for convert/util

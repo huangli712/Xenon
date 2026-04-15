@@ -82,7 +82,7 @@ tests/
 ├── test_matrix.rs              # Vector dot product (dot)
 ├── test_set.rs                 # Set operations (unique)
 ├── test_shape.rs               # Shape operations (transpose)
-├── test_conversion.rs          # Type conversion (cast/storage-mode conversion)
+├── test_conversion.rs          # Type conversion (cast)
 ├── test_utility.rs             # Utility operations (fill/clip/to_contiguous)
 ├── test_output.rs              # NumPy-style formatted output (Display/Debug/truncation)
 ├── test_ffi.rs                 # FFI integration (raw pointers/BLAS compatibility)
@@ -278,6 +278,10 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_compare_eq_ne`              | 等于/不等于比较              | 高     |
 | `test_compare_lt_gt`              | 小于/大于比较                | 中     |
 | `test_square`                     | square 逐元素平方            | 中     |
+| `test_integer_add_overflow_panics` | 整数加法溢出触发 panic       | 高     |
+| `test_integer_divide_by_zero_panics` | 整数除以零触发 panic       | 高     |
+| `test_integer_min_abs_panics`     | 最小负值取绝对值触发 panic   | 高     |
+| `test_integer_min_div_neg_one_panics` | 最小负值除以 `-1` 触发 panic | 高   |
 
 ### 6.3 test_broadcast.rs
 
@@ -420,7 +424,25 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_simd_fallback_small`  | 小数组 SIMD 回退到标量                                                      | 中     |
 | `test_simd_complex_path`    | 验证 `Complex<f32>` / `Complex<f64>` SIMD kernel 与标量路径在文档容差内一致 | 中     |
 
-### 6.18 平台与工程约束
+### 6.18 compile_fail_tests.rs
+
+| 测试函数                              | 测试内容                                           | 优先级 |
+| ------------------------------------- | -------------------------------------------------- | ------ |
+| `ui_wrong_dimension_type`             | 非法维度类型在编译期被拒绝                         | 高     |
+| `ui_missing_element_bound`            | 非法元素类型或缺失元素约束在编译期被拒绝           | 高     |
+| `ui_mismatched_storage_type`          | 不合法存储表示组合在编译期被拒绝                   | 高     |
+| `ui_unsigned_tensor_element_rejected` | `usize` 等无符号整数不能作为张量元素类型           | 高     |
+
+### 6.19 property.rs
+
+| 测试函数                  | 测试内容                                  | 优先级 |
+| ------------------------- | ----------------------------------------- | ------ |
+| `prop_transpose_involution` | `transpose().transpose()` 与原张量相等 | 高     |
+| `prop_add_commutative`    | 逐元素加法满足交换律（在文档化容差内）    | 中     |
+| `prop_unique_len_bound`   | `unique(a).len()` 不超过 `a.len()`        | 中     |
+| `prop_broadcast_shape_rule` | 广播结果形状遵循 NumPy 规则             | 高     |
+
+### 6.20 平台与工程约束
 
 | 约束项     | 约束内容                                           |
 | ---------- | -------------------------------------------------- |
@@ -428,7 +450,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | crate 结构 | 测试方案依附当前单 crate，不拆分额外测试 crate     |
 | 依赖约束   | 维持标准测试工具链，不为测试矩阵引入额外第三方依赖 |
 
-### 6.19 test_error.rs
+### 6.21 test_error.rs
 
 | 测试函数                      | 测试内容                                                                                                     | 优先级 |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------ | ------ |
@@ -671,7 +693,7 @@ fn test_simd_add_consistency() {
 | 不变量             | 测试方法                                                                                          | 优先级 |
 | ------------------ | ------------------------------------------------------------------------------------------------- | ------ |
 | `sum` 保加法单位元 | 空数组 sum == 0（参见 `13-reduction.md §5.1`）                                                    | 高     |
-| `transpose` 自反性 | `t.t().t()` == `t`（参见 `16-shape.md §5.1`）                                                     | 高     |
+| `transpose` 自反性 | `transpose().transpose()` == 原张量（参见 `16-shape.md §5.1`）                                   | 高     |
 | 加法交换律         | `a + b` == `b + a`（近似）                                                                        | 中     |
 | `unique` 保元素数  | `unique(a).len()` ≤ `a.len()`                                                                     | 中     |
 | `unique` 不含重复  | 对非 `NaN` 元素，结果中不得重复；`NaN` 按 IEEE 754 自反不相等语义逐个保留                         | 中     |
@@ -692,7 +714,7 @@ fn prop_transpose_involution() {
                 (0..r * c).map(|idx| idx as f64).collect(),
             )
             .expect("shape and data length must match");
-            let tt = t.t().t().to_owned();
+            let tt = t.transpose().transpose().to_owned();
             for (a, b) in t.iter().zip(tt.iter()) {
                 assert_eq!(a, b);
             }
@@ -849,6 +871,7 @@ fn test_bad_magic() {
 | `test_set.rs`          | `set`               | `14-set.md`                     |
 | `test_shape.rs`        | `shape`             | `16-shape.md`                   |
 | `test_conversion.rs`   | `convert`           | `21-type.md`                    |
+| `test_workspace.rs`    | `workspace`         | `24-workspace.md`               |
 | `test_utility.rs`      | `utility`           | `20-utility.md`                 |
 | `test_output.rs`       | `format`            | `22-output.md`                  |
 | `test_ffi.rs`          | `ffi`, `workspace`  | `23-ffi.md`, `24-workspace.md`  |

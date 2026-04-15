@@ -313,8 +313,8 @@ impl<D: Dimension> Strides<D> {
     pub fn f_contiguous(shape: &D) -> Result<Self, XenonError>;
 
     /// Returns the stride for dimension `axis`.
-    /// Panics if axis is out of bounds.
-    pub fn stride(&self, axis: usize) -> usize;
+    /// Returns `Err(XenonError)` if axis is out of bounds.
+    pub fn try_stride(&self, axis: usize) -> Result<usize, XenonError>;
 
     /// Returns an iterator over stride values.
     pub fn iter(&self) -> impl Iterator<Item = &usize>;

@@ -98,7 +98,7 @@ src/tensor/
 | 来源模块    | 使用的类型/trait                                                                                                                                       |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `storage`   | `Owned<A>`, `ViewRepr<'a, A>`, `ViewMutRepr<'a, A>`, `ArcRepr<A>`, `Storage`, `StorageMut`, `StorageOwned`, `StorageShared`（参见 `05-storage.md §5`） |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.size()`, `.ndim()`（参见 `02-dimension.md §5`）                                                       |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.checked_size()`, `.ndim()`（参见 `02-dimension.md §5`）                                              |
 | `layout`    | `LayoutFlags`, `compute_f_strides()`, `is_f_contiguous()`, `is_aligned()`（参见 `06-layout.md §5`）                                                    |
 
 ### 4.2a 依赖合法性
@@ -109,7 +109,7 @@ src/tensor/
 | 合法性结论     | 符合需求说明书最小依赖限制     |
 | 替代方案       | 不适用                         |
 
-> 注意：`Layout` 结构体定义于 `06-layout.md`，目前为"供未来扩展预留"。`TensorBase` 当前直接内联 `LayoutFlags` 字段而非嵌套 `Layout`。
+> 注意：`06-layout.md` 的当前结论是不再引入公开 `Layout` 结构体；`TensorBase` 直接内联 `offset` 与 `LayoutFlags` 等布局元数据。
 
 ### 4.3 依赖方向声明
 
@@ -164,10 +164,8 @@ pub struct TensorBase<S, D> {
 
 > **FFI 布局说明：** `TensorBase` 不对外承诺稳定的结构体内存布局，也不作为 FFI 边界类型。FFI 消费者应优先使用 `23-ffi.md` 的 `TensorExport`，而非直接依赖 `TensorBase` 的字段顺序或 ABI 表示。
 
-> **设计说明：** TensorBase 直接嵌入 `offset` 和 `flags` 字段，而非使用 doc 06 的 `Layout` 结构体。
-> 这是因为 `offset` 与存储指针配合进行偏移计算，属于张量实例的固有属性，将二者分离避免了
-> 额外的间接层。`Layout` 结构体仅作为纯标志位容器，其 `flags` 字段在需要时可通过
-> `TensorBase::flags()` 获取。
+> **设计说明：** `TensorBase` 直接嵌入 `offset` 和 `flags` 字段。
+> 这是因为 `offset` 与存储指针配合进行偏移计算，属于张量实例的固有属性；直接内联这些布局元数据可以避免额外的间接层，并保持与 `06-layout.md` 的当前结论一致。
 
 > **raw-parts 契约：** `from_raw_parts*()` 系列中的 `ptr` 一律表示 storage base pointer，
 > `offset` 一律表示从 storage base 到逻辑首元素的非负位移；`TensorBase::as_ptr()` /
@@ -629,7 +627,7 @@ validate_access_range(shape, strides, offset, storage_len):
             reason: "element count overflow",
         })
 
-    if shape.size() == 0:
+    if shape.checked_size() == Ok(0):
         if offset != 0:
             return Err(XenonError::InvalidLayout {
                 operation: "validate_access_range",
@@ -954,7 +952,7 @@ where
 | 接口 | 方向 | 契约 |
 | ---- | ---- | ---- |
 | `Dimension::slice()` | `tensor` 消费 `dimension` | `shape()` 返回的轴长切片与底层 `D` 保持一致，不复制逻辑元数据语义 |
-| `Dimension::size()` / `checked_size()` | `tensor` 消费 `dimension` | 查询路径可使用 `size()`；凡涉及构造、分配或范围校验的路径必须先用 `checked_size()` 避免溢出 |
+| `Dimension::checked_size()` | `tensor` 消费 `dimension` | `tensor` 基于已验证 shape 暴露 `len()`；凡直接消费 `shape: D` 做构造、分配或范围校验时必须先用 `checked_size()` 避免溢出 |
 | `Dimension` rank contract | `tensor` 消费 `dimension` | `shape` 与 `Strides<D>` 必须保持相同 rank，供 `simd` / `parallel` 继续消费同一布局契约 |
 
 ```rust
@@ -968,9 +966,9 @@ where
     }
 
     pub fn len(&self) -> usize {
-        // `size()` is the infallible query form here; constructor / reshape paths
-        // must use checked_size() before allocating or validating layouts.
-        self.shape.size()
+        // TensorBase only reaches this query path after construction-time shape
+        // validation, so checked_size() must already succeed here.
+        self.shape.checked_size().expect("tensor shape must be validated before len()")
     }
 }
 ```
@@ -991,7 +989,7 @@ where
     D: Dimension,
 {
     pub fn from_shape_vec(shape: D, data: Vec<A>) -> Result<Self, XenonError> {
-        let expected = shape.checked_size().ok_or(XenonError::InvalidShape {
+        let expected = shape.checked_size().map_err(|_| XenonError::InvalidShape {
             operation: "from_shape_vec",
             shape: shape.slice().to_vec(),
             expected_elements: 0,
