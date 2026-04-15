@@ -230,7 +230,7 @@ where
 }
 ```
 
-> **设计决策：** 当前版本不把 `Index` / `IndexMut` 运算符重载纳入公共 API 契约，也不为其提供规范承诺。对外规范安全主路径始终是 `try_at()` / `get()` / `try_at_mut()` / `get_mut()` 与 `slice()`；若实现中保留 `Index` / `IndexMut`，其也只属于内部便捷层 / 非规范行为，且必须显式文档化“失败即 panic”。此前草案中的 `try_slice()` 与当前 `slice()` 具有相同签名且同样返回 `Result`，没有额外语义，因此移除以避免冗余接口。
+> **设计决策：** 当前版本把 `try_at()` / `get()` / `try_at_mut()` / `get_mut()` 与 `slice()` 作为对外规范的主恢复路径；同时保留 `Index` / `IndexMut`（`[]` / `[]=`）作为**已验证索引场景**的公开语法糖。其语义是受限且文档化的：成功时等价于已验证索引访问，失败时 panic。此前草案中的 `try_slice()` 与当前 `slice()` 具有相同签名且同样返回 `Result`，没有额外语义，因此移除以避免冗余接口。
 
 ### 5.3 Good / Bad 对比
 
@@ -239,7 +239,7 @@ where
 let value = tensor.try_at((2, 1))?;
 let value2 = tensor.get(&[2, 1])?;
 
-// Bad - panic-based sugar is not part of the normative public contract.
+// Acceptable only after index validity has already been established.
 let value = &tensor[(2, 1)];
 ```
 
@@ -491,9 +491,9 @@ User calls tensor.slice(info)
 
 | 主题 | 说明 |
 | --- | --- |
-| Recoverable error | `try_at()` / `get()` / `slice()` 在 rank 不匹配、轴非法、越界、`step == 0` 时返回 `XenonError`；其中索引长度与张量 `ndim` 不匹配时，错误类型固定为 `XenonError::DimensionMismatch { expected, actual }` |
+| Recoverable error | `try_at()` / `get()` / `slice()` 在 rank 不匹配、轴非法、越界、`step == 0` 时返回 `XenonError`；其中索引长度与张量 `ndim` 不匹配时，错误类型固定为 `XenonError::DimensionMismatch { operation: "try_at", expected, actual }` |
 | Trait-bound 边界 | `try_at_mut()` / `get_mut()` / `get_unchecked_mut()` 仅在 `S: StorageMut` 前提成立时存在；不再为“只读存储上的可写索引”设计运行时 `InvalidStorageMode` 分支 |
-| Panic | 若实现保留 `Index` / `IndexMut` 作为内部便捷层 / 非规范 API 契约，其失败时可 panic；这不是规范安全主路径，也不属于公开承诺 |
+| Panic | `Index` / `IndexMut` 作为受限公开语法糖存在：成功路径等价于已验证索引访问，失败时按 Rust 语法糖边界 panic；规范安全主路径仍是返回 `Result` 的 checked API |
 | 路径一致性 | 对同一合法输入，checked 与 unchecked 路径必须给出同一偏移和同一逻辑结果；unsafe 只省略检查 |
 | 容差边界 | 不适用；本模块不涉及浮点容差、SIMD 误差或并行归约差异 |
 

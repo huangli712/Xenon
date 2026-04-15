@@ -16,7 +16,7 @@
 | 原始指针 API    | `as_ptr()`/`as_mut_ptr()`                       | BLAS 绑定实现（由上游库通过 `blas-sys` crate 提供） |
 | 裸指针构造张量  | `from_raw_parts`/`from_raw_parts_mut`           | GPU 内存操作                                        |
 | 裸指针解构张量  | `into_raw_parts`                                | 跨进程共享内存                                      |
-| BLAS 兼容性 API | `blas_layout()`/`is_blas_layout_compatible()`，以及非核心的兼容性辅助 `blas_trans()` / `BlasTrans` | 自动调用 BLAS（由上游库负责）                       |
+| BLAS 兼容性 API | `is_blas_layout_compatible()` 与 BLAS 元数据导出（`blas_info()` / `lda()`） | 自动调用 BLAS（由上游库负责）                       |
 | 多维索引转换    | `try_offset_of()`/`try_ptr_at()`                | 序列化/反序列化                                     |
 
 ### 1.2 设计原则
@@ -69,7 +69,7 @@ L5: ffi  <- current module
 src/
 └── ffi/
     ├── mod.rs         # Module root, re-exports
-    ├── types.rs       # BlasLayout, BlasTrans, BlasInfo type definitions
+    ├── types.rs       # FfiError and BlasInfo type definitions
     ├── ptr.rs         # Raw-pointer APIs (as_ptr, as_mut_ptr, from_raw_parts, from_raw_parts_mut, into_raw_parts)
     ├── blas.rs        # BLAS compatibility checks (is_blas_layout_compatible, blas_info, lda)
     └── offset.rs      # Multi-dimensional index to pointer offset (try_offset_of, try_ptr_at)
@@ -80,7 +80,7 @@ src/
 | 文件        | 职责                                                                                        |
 | ----------- | ------------------------------------------------------------------------------------------- |
 | `mod.rs`    | 模块入口，导出公共 API                                                                      |
-| `types.rs`  | `BlasLayout`/`BlasTrans` 枚举、`BlasInfo` 结构体                                            |
+| `types.rs`  | `FfiError` 枚举、`BlasInfo` 结构体                                                          |
 | `ptr.rs`    | 原始指针访问（`as_ptr`/`as_mut_ptr`）和裸指针构造/解构（`from_raw_parts`/`into_raw_parts`） |
 | `blas.rs`   | BLAS 兼容性检查和参数查询（`is_blas_layout_compatible`/`blas_info`/`lda`）                  |
 | `offset.rs` | 多维索引到偏移量和指针转换（`try_offset_of`、`try_ptr_at`）                                 |
@@ -106,7 +106,7 @@ src/ffi/
 │   ├── crate::tensor        # TensorBase<S, D>
 │   ├── crate::storage       # Storage
 │   ├── crate::layout        # is_f_contiguous, has_zero_stride
-│   ├── super::types         # BlasInfo, BlasLayout, compatibility-only BlasTrans
+│   ├── super::types         # BlasInfo, FfiError
 │   └── super::ptr           # as_ptr
 └── offset.rs
     ├── crate::tensor        # TensorBase<S, D>
@@ -144,38 +144,6 @@ src/ffi/
 ### 5.1 辅助类型
 
 ```rust,ignore
-/// BLAS matrix layout identifier.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BlasLayout {
-    /// Column-major (Fortran order).
-    /// Corresponds to BLAS `CblasColMajor` (102).
-    ColumnMajor,
-}
-
-/// BLAS transpose identifier.
-///
-/// This enum is a compatibility helper for upstream BLAS call sites, not part of
-/// Xenon's core tensor semantics or required public tensor surface. Xenon's direct
-/// BLAS-compatible tensors are always F-order (column-major), so `blas_trans()`
-/// only serves as a non-core convenience wrapper around the fixed `NoTrans`
-/// choice after BLAS-compatibility checks. Upstream callers may ignore this
-/// helper and pass the corresponding backend constant directly once they have
-/// established an equivalent precondition.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BlasTrans {
-    /// No transpose.
-    NoTrans,
-    /// Transpose.
-    Trans,
-    /// Conjugate transpose (complex only).
-    ConjTrans,
-}
-
-impl BlasLayout {
-    /// Xenon's BLAS layout is always column-major.
-    pub const COLUMN_MAJOR: BlasLayout = BlasLayout::ColumnMajor;
-}
-
 /// Internal error classification for FFI-specific failures.
 ///
 /// # Diagnostics Design
@@ -399,13 +367,15 @@ where
     ///
     /// This API is only implemented for writable storage, so read-only storage
     /// modes are rejected at the trait boundary rather than at runtime.
-    pub fn export_mut(&mut self) -> Result<TensorExportMut<A>, XenonError>;
+    /// No additional fallible validation is performed beyond the existing
+    /// `&mut self` + `S: StorageMut` exclusivity boundary.
+    pub fn export_mut(&mut self) -> TensorExportMut<A>;
 }
 ````
 
 > **导出语义说明：** `TensorExport` 面向 C 调用方提供"指针 + shape + strides + offset"的结构化快照，其中 `shape` 与 `strides` 指针均借用源张量内部元数据，不能在源张量释放后继续使用。
 
-> **导出范围说明：** `export()` 提供只读结构化导出并返回 `TensorExport<A>`，适用于任意 `TensorBase<S, D>` 且仅要求 `S: Storage`，因此覆盖 Owned、View、只读共享存储以及所有合法 stride 布局。`export_mut()` 返回 `TensorExportMut<A>`，适用于任意满足 `S: StorageMut` 的 `TensorBase<S, D>`，因此同时覆盖 Owned 与 `ViewMut` 这两类可写存储。
+> **导出范围说明：** `export()` 提供只读结构化导出并返回 `TensorExport<A>`，适用于任意 `TensorBase<S, D>` 且仅要求 `S: Storage`，因此覆盖 Owned、View、只读共享存储以及所有合法 stride 布局。`export_mut()` 直接返回 `TensorExportMut<A>`，适用于任意满足 `S: StorageMut` 的 `TensorBase<S, D>`，因此同时覆盖 Owned 与 `ViewMut` 这两类可写存储。
 
 > **可写导出边界：** `export_mut()` 通过 `&mut self` 和 `S: StorageMut` 保证 Xenon 侧的独占可写访问；只读视图和共享只读存储则在 trait 边界上直接被拒绝。这与 `require.md §6` 的存储模式转换和 `§25` 的零拷贝导出要求保持一致。
 
@@ -1046,39 +1016,19 @@ where
 ### 5.9 Good/Bad 对比
 
 ```rust,ignore
-// blas_trans() is only a compatibility helper queried after obtaining a
-// BLAS-compatible representation. For Xenon's direct BLAS path, this is always
-// a standard F-order matrix and therefore maps to BlasTrans::NoTrans.
-impl<S, D> TensorBase<S, D>
-where
-    S: Storage,
-    D: Dimension,
-{
-    /// Returns the BLAS transpose identifier for this tensor.
-    ///
-    /// This is a compatibility-only helper, not a core tensor API commitment.
-    /// For Xenon's BLAS-compatible F-order matrices it returns `BlasTrans::NoTrans`.
-    /// Transposed or otherwise non-BLAS-compatible views must first be converted
-    /// into an owned F-order tensor before calling BLAS; callers may also bypass
-    /// this helper and pass the equivalent backend constant directly.
-    pub fn blas_trans(&self) -> BlasTrans {
-        BlasTrans::NoTrans
-    }
-}
-
 // Good - Check BLAS layout compatibility before passing
 if tensor.is_blas_layout_compatible() {
     let info = tensor.blas_info().expect("BLAS-compatible tensor should yield BlasInfo");
     unsafe {
         // SAFETY: `info` came from `blas_info()`, so layout/rank/integer checks passed.
-        call_blas_dgemm(info, tensor.blas_trans(), ...);
+        call_blas_dgemm(CblasColMajor, CblasNoTrans, info, ...);
     }
 } else {
     let contiguous = tensor.to_contiguous();
     let info = contiguous.blas_info().expect("contiguous tensor should yield BlasInfo");
     unsafe {
         // SAFETY: `contiguous` is materialized into Xenon's BLAS-compatible layout.
-        call_blas_dgemm(info, contiguous.blas_trans(), ...);
+        call_blas_dgemm(CblasColMajor, CblasNoTrans, info, ...);
     }
 }
 
@@ -1194,8 +1144,8 @@ Additional caller-side checks:
 
 - [ ] **T1**: 创建 `src/ffi/` 模块骨架和辅助类型
   - 文件: `src/ffi/mod.rs`, `src/ffi/types.rs`
-  - 内容: 模块声明、re-exports、`BlasLayout`、兼容性辅助 `BlasTrans`、`BlasInfo` 结构体
-  - 测试: `test_blas_layout_column_major`, `test_blas_trans_helper`
+  - 内容: 模块声明、re-exports、`FfiError`、`BlasInfo` 结构体
+  - 测试: `test_blas_info_f_order`, `test_ffi_error_mapping`
   - 前置: 无
   - 预计: 10 min
 
@@ -1213,7 +1163,7 @@ Additional caller-side checks:
 - [ ] **T3**: 实现 BLAS 兼容性 API
   - 文件: `src/ffi/blas.rs`
   - 内容: `is_blas_layout_compatible()`, `blas_info()`, `lda()`
-  - 测试: `test_is_blas_layout_compatible_f_order`, `test_is_blas_layout_compatible_non_contiguous`, `test_lda_f_order`
+  - 测试: `test_is_blas_layout_compatible`, `test_lda_f_order`
   - 前置: T1
   - 预计: 10 min
 
@@ -1256,9 +1206,7 @@ Wave 3: ┌────┴────┐
 | `test_as_ptr_basic`                      | `as_ptr()` 返回有效指针                            | 高     |
 | `test_as_mut_ptr_basic`                  | `as_mut_ptr()` 返回有效可写指针                    | 高     |
 | `test_as_ptr_offset`                     | 指针考虑 offset 后指向正确元素                     | 高     |
-| `test_is_blas_layout_compatible_f_order`        | F-order 连续数组兼容                        | 高     |
-| `test_is_blas_layout_compatible_non_contiguous` | 非连续切片不兼容                            | 高     |
-| `test_is_blas_layout_compatible_broadcast`      | 广播维度（零步长）不兼容                    | 高     |
+| `test_is_blas_layout_compatible`                | BLAS 布局兼容性主路径（含兼容/不兼容子场景） | 高     |
 | `test_blas_info_f_order`                 | F-order 返回正确 BlasInfo                          | 高     |
 | `test_blas_info_overflow`                | `blas_info()` 处理接近 `usize::MAX` 的 rows/cols/lda | 高     |
 | `test_lda_f_order`                       | F-order [3,4] 返回 3                               | 高     |
@@ -1300,7 +1248,6 @@ Wave 3: ┌────┴────┐
 | ---------------------------------------------- | ---------------------- |
 | `from_raw_parts` + Drop                        | 无内存泄漏（借用语义） |
 | `into_raw_parts` + `from_raw_parts_owned(raw)` | 重建后由 Drop 正确释放 |
-| `from_raw_parts` 野指针                        | AddressSanitizer 检测  |
 
 ### 8.6 集成测试
 
@@ -1383,7 +1330,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | 替代方案 | 仅返回 `bool is_blas_layout_compatible()` — 放弃，上游库需要重复获取多个参数            |
 | 替代方案 | 返回 raw C 常量 — 放弃，不符合 Rust 惯例                                                |
 
-> **补充**：Xenon 的直接 BLAS 路径只接受 BLAS-compatible 的 F-order 2D 张量。转置或非连续视图必须先显式 materialize 为 `to_contiguous()` 结果，再以 `BlasTrans::NoTrans` 传给上游 BLAS。
+> **补充**：Xenon 的直接 BLAS 路径只接受 BLAS-compatible 的 F-order 2D 张量。转置或非连续视图必须先显式 materialize 为 `to_contiguous()` 结果，再由调用方结合导出的元数据传入对应的后端常量。
 
 ### 决策 2: Safety 独立边界
 

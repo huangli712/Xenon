@@ -460,7 +460,8 @@ where
     /// Caller must ensure:
     /// - `ptr` points to the storage base pointer of the view; for empty arrays or
     ///   ZST elements, a well-formed dangling sentinel is permitted because it is never dereferenced
-    /// - For empty tensors, `offset` must be 0
+    /// - For empty tensors, metadata validation treats `offset` as a bounded metadata
+    ///   value only (`offset <= storage_len`) and performs no actual pointer offset
     /// - Memory remains valid for the lifetime `'a` of the returned view
     /// - Pointer alignment and initialization requirements of `A` are satisfied
     /// - The access range implied by `shape`, `strides`, and `offset` is actually accessible within the backing storage
@@ -492,8 +493,12 @@ where
     ///
     /// # Safety
     ///
-    /// Same as `from_raw_parts`, including the requirement that empty tensors use
-    /// `offset == 0`, with the additional requirement of exclusive access.
+    /// Same as `from_raw_parts`, including the rule that empty tensors only require
+    /// `offset <= storage_len` and never perform actual pointer offsetting, with the
+    /// additional requirement of exclusive access. In particular, mutable views must
+    /// not describe overlapping logical elements: if multiple logical indices map to
+    /// the same physical address, the constructor must reject the layout and return
+    /// an error.
     ///
     /// The constructor returns `Err(XenonError::InvalidLayout)` when directly
     /// checkable metadata validation fails; the unsafe obligation remains the
@@ -563,7 +568,7 @@ let t = unsafe {
         data.as_ptr(),
         data.len(),
         Ix2(3, 4),
-        Strides::from_slice(&[1, 3]),
+        Strides::from_slice(&[1, 3]).unwrap(),
         0,
     )?
 };
@@ -611,7 +616,7 @@ Logical view: [c, d, e]
 
 > **raw-parts 设计补充：** `storage_len` 是 raw-parts 视图构造的必填输入。`ViewRepr` / `ViewMutRepr` 需要保存 backing storage 的可访问元素数，`validate_access_range(...)` 也必须基于该长度执行边界校验；仅有 `ptr + shape + strides + offset` 不足以安全重建视图。
 
-> **空张量指针说明：** 当 `len == 0` 时，元数据仍可描述一个合法的空视图，但 `as_ptr()` / `as_mut_ptr()` 不能对 storage base pointer 执行 `add(offset)`。Rust 的指针算术要求结果仍落在同一已分配对象内；对悬垂哨兵或空存储基指针做偏移计算会触发未定义行为，且对 ZST 即使执行 `add(0)` 也不应依赖这种做法。设计上因此要求空张量 `offset == 0`，并让指针 API 直接返回 `NonNull::dangling().as_ptr()` 快路径。
+> **空张量指针说明：** 当 `len == 0` 时，元数据仍可描述一个合法的空视图，但 `as_ptr()` / `as_mut_ptr()` 不能对 storage base pointer 执行 `add(offset)`。Rust 的指针算术要求结果仍落在同一已分配对象内；对悬垂哨兵或空存储基指针做偏移计算会触发未定义行为，且对 ZST 即使执行 `add(0)` 也不应依赖这种做法。设计上因此统一采用“空张量 `offset` 仅需满足 `offset <= storage_len`，但不做实际偏移”的契约，并让指针 API 直接返回 `NonNull::dangling().as_ptr()` 快路径。
 
 ```text
 validate_access_range(shape, strides, offset, storage_len):
@@ -627,7 +632,7 @@ validate_access_range(shape, strides, offset, storage_len):
         })
 
     if shape.checked_size() == Ok(0):
-        if offset != 0:
+        if offset > storage_len:
             return Err(XenonError::InvalidLayout {
                 operation: "validate_access_range",
                 storage_kind: "raw_parts",
@@ -635,7 +640,7 @@ validate_access_range(shape, strides, offset, storage_len):
                 strides: strides.as_slice().to_vec(),
                 offset,
                 storage_len,
-                reason: "empty tensor requires zero offset",
+                reason: "empty tensor requires offset <= storage_len",
             })
         return Ok(())
 

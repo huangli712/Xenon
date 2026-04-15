@@ -130,7 +130,7 @@ xenon/
 │   │   └── traits.rs          # Marker traits such as IsOwned and IsView
 │   │
 │   ├── layout/                # Memory layout (F-order only)
-│   │   ├── mod.rs             # LayoutFlags, LayoutState, Strides<D>, helpers
+│   │   ├── mod.rs             # Module-level layout helpers and validation entry points
 │   │   ├── flags.rs           # Layout flags (F_CONTIGUOUS, ALIGNED, ...)
 │   │   ├── strides.rs         # F-order stride calculation and validation
 │   │   └── contiguous.rs      # Contiguity checks
@@ -201,7 +201,7 @@ xenon/
 │   │   ├── mod.rs             # Module root and re-exports
 │   │   ├── init.rs            # zeros, ones
 │   │   ├── eye.rs             # eye
-│   │   ├── from_data.rs       # from_shape_vec, from_shape_slice, from_array, from_vec
+│   │   ├── from_data.rs       # from_shape_vec, from_shape_slice, from_array, from_vec (non-normative convenience)
 │   │   └── scalar.rs          # from_scalar
 │   │
 │   ├── convert/               # Type conversion
@@ -221,9 +221,9 @@ xenon/
 │   ├── ffi/                   # FFI interface
 │   │   ├── mod.rs             # Module root and re-exports
 │   │   ├── types.rs           # BlasLayout, BlasTrans, BlasInfo definitions
-│   │   ├── ptr.rs             # Raw pointer API (as_ptr, as_mut_ptr, from_raw_parts, into_raw_parts)
+│   │   ├── ptr.rs             # Raw pointer API (export/export_mut, from_raw_parts, into_raw_parts)
 │   │   ├── blas.rs            # BLAS compatibility checks (is_blas_compatible, blas_info, lda)
-│   │   └── offset.rs          # Index-to-pointer offset (try_offset_of, try_ptr_at)
+│   │   └── offset.rs          # Index-to-pointer offset (export/export_mut helpers rely on checked arithmetic)
 │   │
 │   ├── workspace/             # Temporary workspace
 │       ├── mod.rs             # Module root and re-exports
@@ -266,7 +266,7 @@ xenon/
 | `element/`     | 元素类型 trait 层次（Element → Numeric → RealScalar/ComplexScalar；`usize` 仅作为索引/形状类型，不属于元素算术层） |
 | `complex/`     | 自定义 `Complex<T>` 类型，`#[repr(C)]` 兼容 C FFI                                                                  |
 | `storage/`     | 四种存储模式（Owned/ViewRepr/ViewMutRepr/ArcRepr）                                                                 |
-| `layout/`      | F-order 布局标志位、`LayoutState` 分类、步长计算、连续性检查                                                       |
+| `layout/`      | F-order 布局函数、步长计算、连续性检查与验证入口                                                                   |
 | `tensor/`      | 核心 `TensorBase<S, D>` 结构体及类型别名                                                                           |
 | `iter/`        | 元素/轴/索引迭代器                                                                                                 |
 | `simd/`        | SIMD 后端：向量化 kernel、标量回退、运行时分发                                                                     |
@@ -389,7 +389,7 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | ------ | ---------------------------------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
 | **L0** | error, private                                             | 无                                                                       | `26-error.md`                                                                                                                    |
 | **L1** | dimension, element, complex                                | error（element 额外依赖 complex）                                        | `02-dimension.md`、`03-element.md`、`04-complex.md`                                                                              |
-| **L2** | layout                                                     | error, dimension（拥有 `LayoutFlags` / `LayoutState` / `Strides<D>` 等布局元数据与判定规则） | `06-layout.md`                                                                                                                   |
+| **L2** | layout                                                     | error, dimension（提供模块级布局函数与判定规则，不承诺额外公共布局类型） | `06-layout.md`                                                                                                                   |
 | **L2** | workspace                                                  | std（独立于核心类型系统，可被上游库直接使用）                            | `24-workspace.md`                                                                                                                |
 | **L3** | storage                                                    | core, alloc, std::sync::Arc, crate::error（只持有底层连续缓冲区，不消费 `dimension` 或 `layout`） | `05-storage.md`                                                                                                                  |
 | **L4** | tensor                                                     | storage, dimension, layout, element                                      | `07-tensor.md`                                                                                                                   |
@@ -477,8 +477,7 @@ pub use crate::dimension::{
     Axis,
 };
 
-// Layout
-pub use crate::layout::LayoutFlags;
+// Layout helpers stay module-scoped and are not re-exported by prelude.
 
 // Element traits
 pub use crate::element::{
@@ -553,7 +552,7 @@ pub mod simd;
 
 #[cfg(feature = "parallel")]
 #[cfg_attr(docsrs, doc(cfg(feature = "parallel")))]
-pub mod parallel;
+pub(crate) mod parallel;
 
 // Prelude
 pub mod prelude;
@@ -573,7 +572,8 @@ pub use error::XenonError;
 | 公开 trait 方法          | **稳定**   | 只增不减                                                             |
 | 内部模块 (`mod private`, `mod kernel`) | **不稳定** | 随时可能变更                                             |
 | `#[doc(hidden)]`         | **不稳定** | 仅供内部使用                                                         |
-| `simd`/`parallel` 模块   | **稳定**   | 作为公开模块纳入 SemVer；feature gate 仅控制可用性，不降低兼容性承诺 |
+| `simd` 模块             | **稳定**   | 作为公开模块纳入 SemVer；feature gate 仅控制可用性，不降低兼容性承诺 |
+| 内部后端 (`parallel`)   | **不稳定** | `pub(crate)` 内部实现，仅影响自动并行加速，不构成公开模块 API         |
 
 ---
 
@@ -593,13 +593,10 @@ ArcTensor<A, D>               // = TensorBase<ArcRepr<A>, D>
 Ix0, Ix1, Ix2, ..., Ix6       // Static dimensions (0-6 dimensions)
 IxDyn                         // Dynamic dimension
 
-// Layout flags (F-order only)
-LayoutFlags: u8
-├── F_CONTIGUOUS    (0b00001) // Fortran contiguous
-├── ALIGNED         (0b00100) // 64-byte aligned
-├── HAS_ZERO_STRIDE (0b01000) // Contains zero stride (broadcast)
-
-// No negative-stride flag in the current version.
+// Layout helpers (F-order only)
+compute_f_strides(shape)       // Compute canonical F-order strides
+validate_layout(shape, strides, offset, storage_len)
+classify_layout(shape, strides) // Internal classification helper
 
 // Element trait hierarchy
 Element                        // Base: Copy + PartialEq + Debug + Display + Send + Sync
@@ -629,7 +626,7 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 | W1.5 dynamic dimension | W1.3       | 中         | `IxDyn`                            |
 | W1.6 element traits    | W1.1       | 中         | `Element`, `Numeric`, `RealScalar` |
 | W1.7 Complex\<T\>      | W1.6       | 高         | 自定义复数类型                     |
-| W1.8 layout flags      | W1.1       | 低         | `LayoutFlags`                      |
+| W1.8 layout helpers    | W1.1       | 低         | 模块级布局函数与判定入口          |
 | W1.9 F-order strides   | W1.1, W1.3 | 中         | F-order 步长计算                   |
 
 ### Wave 2: 核心（依赖 Wave 1）
@@ -663,7 +660,7 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 
 | 任务            | 依赖        | 预估复杂度 | 产出                            |
 | --------------- | ----------- | ---------- | ------------------------------- |
-| W4.1 construct  | W2.6, W3.10 | 中         | zeros, ones, eye, from_vec      |
+| W4.1 construct  | W2.6, W3.10 | 中         | zeros, ones, eye, from_vec（非规范便捷层） |
 | W4.2 convert    | W2.6        | 中         | cast, to_owned                  |
 | W4.3 format     | W2.6        | 低         | Display/Debug                   |
 | W4.4 ffi        | W2.6        | 中         | 原始指针 API                    |
@@ -757,7 +754,7 @@ Wave 5: [W5.1] [W5.2] [W5.3] [W5.4]
 
 | 属性     | 值                                                                                                                               |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | 可恢复错误统一通过 `Result` 暴露；公开安全索引入口仅保留 `try_at()` / `try_at_mut()` / `get()` 等 fallible 形式；FFI 偏移与指针计算的公开入口仅保留 `try_offset_of()` / `try_ptr_at()` |
+| 决策     | 可恢复错误统一通过 `Result` 暴露；公开安全索引入口收敛为 `try_at()` / `try_at_mut()`；`[]` 单独作为受限 panic sugar 说明；FFI 公开接口收敛为 `export()` / `export_mut()`，并以 checked arithmetic 计算偏移与指针 |
 | 理由     | 保持与 `require.md` §18 的安全接口契约一致，避免相同失败条件在公开方法与运算符之间分裂成两套模型，同时让 FFI helper 与需求文档的可恢复错误约束保持一致 |
 | 替代方案 | 所有接口统一 panic — 放弃，不利于库集成和诊断；把 `[]` 语法糖当作稳定公开安全 API — 放弃，会与索引失败的可恢复错误契约冲突；为 FFI helper 额外提供 panic-sugar 包装 — 放弃，会破坏公开错误入口的一致性                 |
 
@@ -773,9 +770,9 @@ Wave 5: [W5.1] [W5.2] [W5.3] [W5.4]
 
 ## 错误处理与语义边界
 
-本文档不直接定义错误类型，但要求所有架构层级、模块边界与执行路径统一遵循单一 `XenonError` 公开错误模型；架构层只裁决错误入口应单一、路径语义应一致，不在此重复定义完整错误枚举。`FfiError`、`WorkspaceError` 等模块局部错误只允许在模块内部保留语义，跨公开 API 边界时必须映射为 `00-coding.md` §4.2 定义的结构化 `XenonError` 字段。对于 FFI 场景，`try_offset_of()` / `try_ptr_at()` 是公开的可恢复错误入口。
+本文档不直接定义错误类型，但要求所有架构层级、模块边界与执行路径统一遵循单一 `XenonError` 公开错误模型；架构层只裁决错误入口应单一、路径语义应一致，不在此重复定义完整错误枚举。`FfiError`、`WorkspaceError` 等模块局部错误只允许在模块内部保留语义，跨公开 API 边界时必须映射为 `00-coding.md` §4.2 定义的结构化 `XenonError` 字段。对于 FFI 场景，公开 Rust 入口收敛为 `export()` / `export_mut()`，并通过 checked arithmetic 计算偏移与指针。
 
-> **FFI 补充说明**：`extern "C"` 边界不得返回 `Result`，也不得依赖 panic-sugar helper；公开 Rust API 层同样不额外承诺 `offset_of` / `ptr_at` 这类 panic 包装，参见 `00-coding.md` §4.2。
+> **FFI 补充说明**：`extern "C"` 边界不得返回 `Result`，也不得依赖 panic-sugar helper；公开 Rust API 层同样不额外承诺 `offset_of` / `ptr_at` 这类 panic 包装，而是由 `export()` / `export_mut()` 统一承载可恢复错误入口，参见 `00-coding.md` §4.2。
 
 ---
 

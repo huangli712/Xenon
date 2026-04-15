@@ -9,7 +9,7 @@
 
 ## 1. 模块定位
 
-SIMD 后端模块是 Xenon 张量库的可选性能加速层，通过 `pulp` crate 提供跨平台 SIMD 抽象。根据需求说明书 §9.1，当前版本以算术运算为优先，逐步覆盖比较、`conjugate`、`sum` 与 `dot` 等已实现子集；数学函数属于后续增强目标，完整覆盖计划见 §5.4a。该模块默认关闭，通过 `features = ["simd"]` 启用。
+SIMD 后端模块是 Xenon 张量库的可选性能加速层，通过 `pulp` crate 提供跨平台 SIMD 抽象。根据需求说明书 §9.1，当前版本以算术运算为优先，逐步覆盖比较、`conjugate`、`sum` 与 **vector dot** 等已实现子集；数学函数属于后续增强目标，完整覆盖计划见 §5.4a。该模块默认关闭，通过 `features = ["simd"]` 启用。
 
 ### 1.1 职责边界
 
@@ -49,8 +49,8 @@ L5: simd  <- current module (optional, feature = "simd")
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Call layer (overload/iter)                   │
-│                 math, reduction, matrix                         │
-│  See 11-math.md §5, 13-reduction.md §5, 12-matrix.md §5         │
+│              math, reduction, matrix::dot                       │
+│  See 11-math.md §5, 13-reduction.md §5, 12-matrix.md §5.1       │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
                           ▼
@@ -295,7 +295,7 @@ pub trait SimdKernel<A: Copy + Send + Sync + 'static>: Send + Sync {
     fn sum(&self, data: &[A]) -> A;
 
     // ========================================
-    // Dot product operations
+    // Vector dot operations
     // ========================================
 
     /// Vector dot product.
@@ -340,7 +340,7 @@ pub fn get_arch() -> () {
 
 /// Stable slice-based dispatch facade used by upper semantic modules.
 ///
-/// `math/`, `matrix/`, and `reduction/` must call this facade only after
+/// `math/`, `matrix::dot`, and `reduction/` must call this facade only after
 /// extracting compatible contiguous slices, rather than passing tensor/view
 /// objects directly. The facade may choose a vector kernel or fall back to
 /// `ScalarKernel` based on the current version's contiguous unified-alignment fast path
@@ -360,7 +360,7 @@ where
 
 ### 5.4a 当前版本的 SIMD 覆盖范围
 
-当前版本 SIMD 只覆盖下表列出的子集；未列出的操作统一走标量路径。是否实际进入 SIMD 还取决于元素类型、ISA 能力、统一对齐快路径与语义约束。以下表格给出当前设计的覆盖矩阵：
+当前版本 SIMD 只覆盖下表列出的子集；未列出的操作统一走标量路径。是否实际进入 SIMD 还取决于元素类型、ISA 能力、统一对齐快路径与语义约束。当前版本在 `matrix` 相关范围内仅承载 **vector dot**，不展开矩阵乘法或其他 matrix 范围能力。以下表格给出当前设计的覆盖矩阵：
 
 | 类别 | 操作 | 类型 | 当前设计目标 |
 | ---- | ---- | ---- | ------------ |

@@ -236,6 +236,13 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
     // at each trait level.
     // ========== Math functions ==========
     fn abs(self) -> Self;
+    /// Returns the IEEE 754 sign of the value.
+    ///
+    /// For finite non-zero inputs, the result is `1.0` or `-1.0` with the
+    /// same sign bit as the input. `signum(+0.0) == +0.0`,
+    /// `signum(-0.0) == -0.0`, `signum(+∞) == 1.0`, `signum(-∞) == -1.0`,
+    /// and `signum(NaN) == NaN`.
+    fn signum(self) -> Self;
     fn sqrt(self) -> Self;
     fn sin(self) -> Self;
     fn exp(self) -> Self;
@@ -263,6 +270,8 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
 ```
 
 > **设计决策：** `min`/`max` 采用 NaN 传播语义（任一参数为 NaN → 返回 NaN）。Xenon 通过 `RealScalar` 自身的契约固定这一行为，不直接复用标准库 `f32::min` / `f64::min` 的全部语义细节。
+>
+> **`signum` 语义补充：** `RealScalar::signum()` 明确采用 IEEE 754 sign-function 语义：保留带符号零，`NaN` 传播为 `NaN`，无穷值返回对应符号的单位值。`11-math.md` 中张量级 `signum()` 的浮点语义以此 trait 契约为权威基线；整数 `signum` 仍按比较结果返回 `-1/0/1`。
 
 ### 5.4 ComplexScalar trait
 

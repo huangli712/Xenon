@@ -18,7 +18,7 @@
  | Dimension trait     | 维度形状与 rank 接口（ndim/slice/checked/checked_size/into_dyn/try_from_dyn）                   | stride 计算、logical-first pointer、布局标志计算   |
 | IntoDimension trait | 从元组、数组、切片、Vec 构造维度                                                             | 用户自定义维度源                                   |
 | Axis 类型           | 轴标记新类型（index/next/prev/is_first/is_last）                                             | 轴上的切片/迭代操作（由 tensor 方法提供）          |
-| RemoveAxis trait    | 移除指定轴降维（Ix1→Ix0, ..., Ix6→Ix5, IxDyn→IxDyn）                                         | Ix0 不实现（标量无轴可移除）                       |
+| RemoveAxis trait    | 移除指定轴降维（Ix1→Ix0, ..., Ix6→Ix5, IxDyn→IxDyn）                                         | 不负责把标量轴错误建模为编译期拒绝；零维场景统一走运行时可恢复错误 |
 | 维度互转            | 静态→动态（总是成功）、动态→静态（需维度匹配）                                               | 隐式维度转换                                       |
 | 形状元数据          | 维度层仅保存无符号形状与 rank，供 layout/tensor 读取                                         | stride 元数据及其合法性判定                        |
 | 内存分配            | —                                                                                            | 不负责任何内存分配                                 |
@@ -506,8 +506,9 @@ impl Axis {
 ```rust
 /// Trait for dimension types that support removing an axis.
 ///
-/// Implemented for `Ix1`-`Ix6` and `IxDyn`.
-/// `Ix0` does NOT implement this trait: a scalar has no axes to remove.
+/// Implemented for `Ix0`-`Ix6` and `IxDyn`.
+/// For `Ix0`, the operation is still a runtime-recoverable error because a scalar
+/// has no removable axis; the public contract must not rely on compile-time rejection.
 ///
 /// Used by:
 /// - `AxisIter` (see `10-iterator.md §5.2`): `Item = TensorView<'a, A, D::Smaller>`
@@ -524,6 +525,7 @@ pub trait RemoveAxis: Dimension {
 
 // Static dimension implementations:
 //
+// Ix0 -> runtime error
 // Ix1 -> Ix0
 // Ix2 -> Ix1
 // Ix3 -> Ix2
@@ -531,6 +533,19 @@ pub trait RemoveAxis: Dimension {
 // Ix5 -> Ix4
 // Ix6 -> Ix5
 // IxDyn -> IxDyn
+
+impl RemoveAxis for Ix0 {
+    type Smaller = Ix0;
+
+    fn remove_axis(&self, axis: Axis) -> Result<Ix0, XenonError> {
+        Err(XenonError::InvalidAxis {
+            operation: "RemoveAxis::remove_axis".into(),
+            axis: axis.index(),
+            ndim: 0,
+            shape: self.slice().into(),
+        })
+    }
+}
 
 impl RemoveAxis for Ix1 {
     type Smaller = Ix0;
@@ -588,9 +603,9 @@ impl RemoveAxis for IxDyn {
 }
 ```
 
-> **设计决策：** `RemoveAxis` 作为独立 trait 而非 Dimension 的关联类型。
-> 这样 `Ix0` 天然不满足 `RemoveAxis` 约束，编译器自动拒绝对标量的轴操作，
-> 无需运行时检查。
+> **设计决策：** `RemoveAxis` 作为独立 trait 而非 `Dimension` 的关联类型。
+> 它负责描述“可移除一条轴后的结果维度类型”，但零维轴操作不应依赖编译期拒绝；
+> 标量场景若进入统一轴操作入口，仍须返回运行时可恢复错误。
 
 ### 5.7 Sealed trait 策略
 
@@ -741,7 +756,7 @@ impl<D: Dimension> BroadcastDim<D> for IxDyn { type Output = IxDyn; }
 
 ### 5.10 PermuteAxes / Reverse trait
 
-`PermuteAxes` 为转置操作提供通用轴置换语义；`Reverse` 仅作为默认 `.t()` 风格转置的便捷层：
+`PermuteAxes` 为转置操作提供通用轴置换语义；`Reverse` 仅作为 `transpose()` 默认轴反转形式的便捷层：
 
 ```rust
 /// Trait for permuting the axis order of a dimension.
@@ -831,7 +846,7 @@ impl Reverse for IxDyn {
 }
 ```
 
-> **范围说明：** 当前版本的形状操作只包含 transpose，但 transpose 语义本身须支持显式轴置换；默认的轴反转（`.t()`）只是该语义的便捷特例。参见 `require.md` §17。
+> **范围说明：** 当前版本的形状操作只包含 transpose，但 transpose 语义本身须支持显式轴置换；默认的轴反转是 `transpose()` 的一种特例。参见 `require.md` §17。
 
 ---
 
@@ -1054,7 +1069,7 @@ Wave 5:  [T10] → [T11] → [T12]
 | 测试类型 | 覆盖方式                                  | 说明                                                 |
 | -------- | ----------------------------------------- | ---------------------------------------------------- |
 | sealed 边界 | compile-fail 测试外部类型实现 `Dimension` | 验证封闭 trait 边界保持成立                          |
-| 维度边界 | 编译期验证 `Ix0` 不实现 `RemoveAxis`        | 验证标量轴操作在类型系统层被拒绝                     |
+| 维度边界 | 运行时验证零维轴操作返回 `XenonError::InvalidAxis` | 验证标量轴操作走可恢复错误路径                     |
 | 静动态边界 | 编译期验证数组/元组输入保持预期 `Dim` 类型  | 验证 `IntoDimension` 不会意外退化为动态维度          |
 
 ---

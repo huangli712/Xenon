@@ -106,7 +106,7 @@ pub trait Has_Element { /* ... */ }
 // Good
 pub fn shape(&self) -> &[Ix];
 pub fn transpose(&self) -> TensorView<'_, A, D>;
-fn compute_strides(shape: &[Ix]) -> Vec<Ix>;
+fn compute_f_strides(shape: &[Ix]) -> Result<Vec<Ix>, XenonError>;
 
 // Bad
 pub fn Shape(&self) -> &[Ix];
@@ -138,7 +138,7 @@ pub const Max_Dimension: usize = 6;
 | `S`  | Storage（存储类型）                  |
 | `D`  | Dimension（维度类型）                |
 | `A`  | Element type（元素类型，来自 Array） |
-| `L`  | Layout（布局类型）                   |
+| `L`  | Local helper type（仅模块内部局部泛型示例） |
 | `T`  | 通用类型参数                         |
 | `E`  | Error type（错误类型）               |
 
@@ -168,7 +168,7 @@ pub struct View<'DATA, A, D> { /* ... */ }
 | `to_`   | 克隆转换，可能分配     | 可能昂贵 | `to_vec()`、`to_owned()`          |
 | `into_` | 消耗 self，转换所有权  | 变化     | `into_raw_vec()`、`into_owned()`  |
 | `is_`   | 布尔查询，无副作用     | 廉价     | `is_empty()`、`is_f_contiguous()` |
-| `with_` | 构建器模式，返回 Self  | 变化     | `with_strides()`、`with_offset()` |
+| `with_` | 构建器模式，返回 Self  | 变化     | 通用命名示例：`with_shape()`、`with_capacity()` |
 
 ```rust
 // Good
@@ -203,14 +203,16 @@ pub fn get_shape(&self) -> &[Ix] { /* ... */ }
 pub fn get_strides(&self) -> &[Ix] { /* ... */ }
 ```
 
-**例外**：当方法可能失败或需要参数时，可使用 `get_` 前缀：
+**例外**：当方法可能失败或需要参数时，使用 `try_` 前缀表达 fallible API：
 
 ```rust
 // Good - requires index parameter, may fail, returns XenonError::IndexOutOfBounds
-pub fn get(&self, index: &[Ix]) -> Result<&A, XenonError> { /* ... */ }
+pub fn try_at(&self, index: &[Ix]) -> Result<&A, XenonError> { /* ... */ }
 
 // Good - may fail, returns XenonError::IndexOutOfBounds
-pub fn get_mut(&mut self, index: &[Ix]) -> Result<&mut A, XenonError> { /* ... */ }
+pub fn try_at_mut(&mut self, index: &[Ix]) -> Result<&mut A, XenonError> { /* ... */ }
+
+// `[]` remains a separate restricted panic sugar for already-validated paths.
 ```
 
 ---
@@ -282,7 +284,7 @@ use rayon::prelude::*;
 
 use crate::dimension::Dimension;
 use crate::error::XenonError;
-use crate::layout::Layout;
+use crate::layout::{compute_f_strides, is_f_contiguous};
 use crate::storage::Storage;
 
 // Bad
@@ -503,7 +505,7 @@ where
 
 统一错误类型 `XenonError`，覆盖所有可恢复错误场景：
 
-> **注意**：公开安全索引 API（如 `try_at(...)`、`try_at_mut(...)`、`tensor.get(...)`、`try_offset_of(...)`）在索引越界或维度不匹配时都须返回 `Result<_, XenonError>`。`[]` 语法糖只用于内部或调用前已验证索引的快捷路径，不单独作为公开安全 API 承诺 panic 语义。
+> **注意**：公开安全索引 API（如 `try_at(...)`、`try_at_mut(...)`、`try_offset_of(...)`）在索引越界或维度不匹配时都须返回 `Result<_, XenonError>`。`[]` 语法糖需单独说明为受限 panic sugar，只用于内部或调用前已验证索引的快捷路径，不单独作为公开安全 API 契约。
 > 本文档中的错误枚举示例统一使用结构化字段承载诊断上下文；即使某个模块内部保留局部错误类型，也必须在公开 API 边界映射为 `XenonError` 的结构化变体，而不是直接暴露模块私有错误类型。
 > 错误模型以 `26-error.md §4.2` / `§4.4` 为准；此处示例须与该文档保持一致。
 
@@ -512,11 +514,6 @@ where
 ```rust
 #[derive(Debug, Clone)]
 pub enum XenonError {
-    ShapeMismatch {
-        operation: Cow<'static, str>,
-        left_shape: Vec<usize>,
-        right_shape: Vec<usize>,
-    },
     BroadcastError {
         operation: Cow<'static, str>,
         input_shape: Vec<usize>,
@@ -590,7 +587,7 @@ pub struct TypeConversionError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TypeConversionReason {
+pub(crate) enum TypeConversionReason {
     LossyIntegerNarrowing,
     LossyFloatNarrowing,
     FloatToInteger,
@@ -606,7 +603,7 @@ pub type Result<T> = std::result::Result<T, XenonError>;
 > 它们跨越公开边界时必须统一包装为 `XenonError::Ffi(...)`、`XenonError::Workspace(...)`、`XenonError::TypeConversion(...)`，
 > 不得直接作为公开 API 返回类型暴露。
 
-> **内部辅助类型说明：** `TypeConversionReason` 作为 `TypeConversionError` 的内部枚举载荷存在；
+> **内部辅助类型说明：** `TypeConversionReason` 是 `pub(crate)` 内部枚举载荷；
 > 公开错误边界固定为 `XenonError::TypeConversion(TypeConversionError)`。
 
 ### 4.3 unwrap 限制
@@ -642,7 +639,7 @@ let first = self.first().unwrap();  // forbidden
 mod tests {
     #[test]
     fn test_broadcast() {
-        let arr = Tensor::from_vec(vec![1, 2, 3]);
+        let arr = Tensor::from_vec(vec![1, 2, 3]); // non-normative convenience layer
         let view = arr.broadcast_to([3, 3]).unwrap();  // allowed in tests
     }
 }
@@ -658,10 +655,10 @@ where
     D: Dimension,
 {
     /// Checked indexing — returns `Err(XenonError::IndexOutOfBounds{...})` on out of bounds.
-    pub fn get(&self, index: &[Ix]) -> Result<&A, XenonError> {
+    pub fn try_at(&self, index: &[Ix]) -> Result<&A, XenonError> {
         if !self.is_index_valid(index) {
             return Err(XenonError::IndexOutOfBounds {
-                operation: "get".into(),
+                operation: "try_at".into(),
                 attempted_index: 0,
                 axis: 0,
                 shape: self.shape().into(),
@@ -671,9 +668,9 @@ where
         Ok(unsafe { self.get_unchecked(index) })
     }
 
-    /// Indexing sugar for already-validated internal paths.
-    /// Public safe APIs should use `get()` / `try_at()` and return recoverable errors.
-    // Note: any `Index`-style sugar remains outside Xenon's stable safe API contract.
+    /// `[]` indexing sugar for already-validated internal paths.
+    /// Public safe APIs should use `try_at()` / `try_at_mut()` and return recoverable errors.
+    // Note: `[]` remains restricted panic sugar outside Xenon's stable safe API contract.
 
     /// Unchecked indexing — UB on out of bounds.
     ///
@@ -816,7 +813,7 @@ src/
 /// ```rust
 /// use xenon::{Tensor1, Ix2};
 ///
-/// let arr = Tensor1::from_vec(vec![1, 2, 3])?;
+/// let arr = Tensor1::from_vec(vec![1, 2, 3])?; // non-normative convenience layer
 /// let view = arr.broadcast_to(Ix2(3, 3))?;
 /// assert_eq!(view.shape(), &[3, 3]);
 /// # Ok::<(), xenon::XenonError>(())
@@ -839,7 +836,7 @@ where
 /// ```rust
 /// use xenon::Tensor;
 ///
-/// let arr = Tensor::from_vec(vec![1, 2, 3, 4])?;
+/// let arr = Tensor::from_vec(vec![1, 2, 3, 4])?; // non-normative convenience layer
 /// # Ok::<(), xenon::XenonError>(())
 /// ```
 
@@ -913,11 +910,12 @@ mod tests {
 **浮点比较**：对存在舍入误差容差的数值路径，使用近似比较；对比较 API 自身、布尔结果、文档明确要求精确一致的场景，允许/要求精确断言。参见 `require.md` §12（NaN 遵循 IEEE 754）和 §28.3。
 
 ```rust
-// Good - relative error tolerance
-fn assert_close(a: f64, b: f64, rtol: f64) {
+// Good - tolerance uses max(1 ULP, epsilon * |scalar_result|)
+fn assert_close(a: f64, b: f64, epsilon: f64) {
     let diff = (a - b).abs();
-    let max_abs = a.abs().max(b.abs()).max(1e-15);
-    assert!(diff / max_abs < rtol, "expected {a} ≈ {b}, rtol={rtol}");
+    let scalar_result = a.abs().max(b.abs());
+    let tol = f64::EPSILON.max(epsilon * scalar_result.abs());
+    assert!(diff <= tol, "expected {a} ≈ {b}, tol={tol}");
 }
 
 // Bad - direct float comparison
@@ -992,7 +990,7 @@ where
 
 ```toml
 [features]
-parallel = ["dep:rayon"]      # Additive: enables parallel iterators
+parallel = ["dep:rayon"]      # Additive: enables internal parallel execution backend
 simd = ["dep:pulp"]           # Additive: enables SIMD with std-backed intrinsics
 # Note: libm is NOT a dependency (see 01-architecture.md §1.4).
 # RealScalar math functions (sin/exp/ln) rely on Xenon's unconditional std baseline.
@@ -1009,12 +1007,13 @@ pulp = { version = "0.18", optional = true }
 ### 9.3 `cfg_attr(docsrs, doc(cfg(...)))` 标注条件编译 API
 
 ```rust
-/// Parallel iterator over tensor elements.
+/// Internal parallel execution backend marker.
 #[cfg(feature = "parallel")]
 #[cfg_attr(docsrs, doc(cfg(feature = "parallel")))]
-pub trait IntoParallelIterator {
-    type Iter: rayon::iter::ParallelIterator<Item = A>;
-    fn into_par_iter(self) -> Self::Iter;
+pub(crate) trait ParallelBackend {
+    fn for_each<F>(&self, f: F)
+    where
+        F: Fn(usize) + Send + Sync;
 }
 ```
 

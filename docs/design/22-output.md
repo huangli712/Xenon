@@ -582,8 +582,8 @@ fn dtype_name<A: Element>() -> &'static str {
         id if id == core::any::TypeId::of::<f64>() => "f64",
         id if id == core::any::TypeId::of::<i32>() => "i32",
         id if id == core::any::TypeId::of::<i64>() => "i64",
-        id if id == core::any::TypeId::of::<Complex<f32>>() => "complex<f32>",
-        id if id == core::any::TypeId::of::<Complex<f64>>() => "complex<f64>",
+        id if id == core::any::TypeId::of::<Complex<f32>>() => "Complex<f32>",
+        id if id == core::any::TypeId::of::<Complex<f64>>() => "Complex<f64>",
         id if id == core::any::TypeId::of::<bool>() => "bool",
         _ => core::any::type_name::<A>(),
     }

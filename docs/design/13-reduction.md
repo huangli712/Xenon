@@ -139,7 +139,7 @@ where
     ///
     /// Returns `XenonError::InvalidAxis` when `axis.index() >= self.ndim()`.
     /// Rank-0 inputs use the same runtime error contract.
-    pub fn sum_axis(&self, axis: Axis) -> Result<Tensor<A, IxDyn>, XenonError>;
+    pub fn sum_axis(&self, axis: Axis) -> Result<Tensor<A, D::Smaller>, XenonError>;
 
     /// Reduces along `axis` and keeps the reduced axis with length 1.
     ///
@@ -149,7 +149,7 @@ where
 }
 ````
 
-> **0D 轴归约说明：** 公开轴归约契约统一为**先做运行时 axis 校验**。当输入运行时 `ndim == 0`（尤其是 `IxDyn([])` 等 rank-0 动态维输入）时，`sum_axis` / `sum_axis_keepdims` 必须返回 `XenonError::InvalidAxis { operation, axis, ndim: 0, shape: vec![] }`。是否在内部为固定维场景使用 `RemoveAxis` 一类约束做专门优化，属于实现选择，不构成另一套公开 0D 编译期契约。
+> **0D 轴归约说明：** `sum_axis` 的公开入口必须先做运行时 axis 校验，因此对 `ndim == 0` 的输入（尤其是 `IxDyn([])`）必须返回 `XenonError::InvalidAxis { operation, axis, ndim: 0, shape: vec![] }`，而不是依赖编译期拒绝。合法输入在完成 axis 校验后再进入降维路径，公开返回类型保持 `Tensor<A, D::Smaller>`；`sum_axis_keepdims` 仍保持原 rank。
 
 ### 5.2 对外错误契约
 
@@ -263,8 +263,8 @@ fn sum_float<F: Numeric + Copy>(iter: impl Iterator<Item = F>) -> F {
 - 整数路径：`checked_add()` 失败即 panic，不转换为 `XenonError`。
 - 浮点路径：保持标量加法顺序；`NaN`、`Inf` 等行为沿用 IEEE 754。
 - 复数路径：对实部和虚部分量分别沿用对应实数加法语义，因此含 `NaN` 分量时同样传播。
-- SIMD 路径：仅在输入满足 `08-simd.md` 约束（例如元素类型与布局前提受支持）时启用；整数路径必须与标量逐步 checked arithmetic 精确一致，浮点/复数路径允许不同合并顺序，但结果相对标量参考值每个实数分量最多 `2 ULP`，否则回退标量。
-- 并行路径：仅在满足 `09-parallel.md` 的阈值裁决与禁止嵌套并行约束时启用；整数路径必须保持与串行精确一致，浮点/复数路径允许不同合并顺序，但同样受每个实数分量最多 `2 ULP` 的文档化容差约束，无法满足时必须回退标量单线程路径。
+- SIMD 路径：仅在输入满足 `08-simd.md` 约束（例如元素类型与布局前提受支持）时启用；整数路径必须与标量逐步 checked arithmetic 精确一致，浮点/复数路径允许不同合并顺序，但结果相对标量参考值每个实数分量必须满足 `max(1 ULP, epsilon * |scalar_result|)` 容差，其中 `epsilon` 取对应标量类型（`f32`/`f64`）的 `RealScalar::epsilon()`，否则回退标量。
+- 并行路径：仅在满足 `09-parallel.md` 的阈值裁决与禁止嵌套并行约束时启用；整数路径必须保持与串行精确一致，浮点/复数路径允许不同合并顺序，但同样受每个实数分量 `max(1 ULP, epsilon * |scalar_result|)` 的文档化容差约束，其中 `epsilon` 取对应标量类型（`f32`/`f64`）的 `RealScalar::epsilon()`，无法满足时必须回退标量单线程路径。
 
 ### 6.3.1 并行阈值配置
 
@@ -417,7 +417,7 @@ Wave 4:                  [T6]
 | 默认配置 | 仅标量路径也满足全部正确性与错误语义要求 |
 | 启用 `simd` | 只在可证明一致时使用 SIMD，否则回退标量 |
 | 启用并行 | 受全局阈值配置控制，不得嵌套并行，且结果/错误/panic 语义与标量路径一致 |
-| `simd = ["dep:pulp", "std"]` | feature gate 约束保持不变 |
+| `simd = ["dep:pulp"]` | feature gate 约束保持不变 |
 
 ### 8.6 类型边界 / 编译期测试
 
@@ -463,7 +463,7 @@ User calls sum / sum_axis / sum_axis_keepdims
 | Panic | `i32` / `i64` 归约中的累加溢出属于不可恢复错误，必须通过 checked arithmetic panic。 |
 | Panic 诊断 | panic 文本至少包含 `operation`、元素类型、触发位置（如 `axis`、`output_index` 或 `element_index`）以及适用 `shape`；推荐格式遵循 `26-error.md §4.6`。 |
 | 空输入语义 | 空数组 `sum()` 返回加法单位元；沿轴归约时若被归约轴长度为 `0`，结果张量对应槽位也返回加法单位元。 |
-| 数值边界 | 整数类型结果须逐元素精确一致。对浮点和复数类型，不同执行路径（标量/SIMD/并行）允许不同合并顺序，但相对标量参考值每个实数分量最多 `2 ULP`；`NaN` / `Inf` 仍按 IEEE 754 自动传播。 |
+| 数值边界 | 整数类型结果须逐元素精确一致。对浮点和复数类型，不同执行路径（标量/SIMD/并行）允许不同合并顺序，但相对标量参考值每个实数分量必须满足 `max(1 ULP, epsilon * |scalar_result|)`，其中 `epsilon` 取对应标量类型（`f32`/`f64`）的 `RealScalar::epsilon()`；`NaN` / `Inf` 仍按 IEEE 754 自动传播。 |
 | 路径一致性 | 标量、SIMD、并行路径在启用条件满足时必须返回相同 shape、相同错误类别，以及满足同一数值语义约束的结果；不能证明时必须回退。 |
 
 ### 10.1 错误示例

@@ -88,7 +88,7 @@ src/iter/
 | 场景 | 错误 |
 | ---- | ---- |
 | `axis_iter()` / `axis_iter_mut()` 的 `axis` 越界 | 返回 `XenonError::InvalidAxis { operation: "axis_iter", axis, ndim, shape }` 或 `XenonError::InvalidAxis { operation: "axis_iter_mut", axis, ndim, shape }`。 |
-| 零维张量调用按轴迭代 | 公开 API 统一返回 `XenonError::InvalidAxis { operation, axis: 0, ndim: 0, shape }`；其中静态零维 `Ix0` 的编译期排除仅允许作为内部优化，不改变该公开语义。 |
+| 零维张量调用按轴迭代 | 公开 API 统一返回 `XenonError::InvalidAxis { operation, axis, ndim: 0, shape }`，其中 `axis` 保留调用方实际传入值；静态零维 `Ix0` 的编译期排除仅允许作为内部优化，不改变该公开语义。 |
 | 试图把广播结果作为可变迭代输入 | 不提供公开 API；通过类型系统在编译期拒绝，而不是返回运行时错误。 |
 
 ### 4.3 依赖图

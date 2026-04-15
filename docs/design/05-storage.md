@@ -110,7 +110,7 @@ src/storage/
 | ---------------- | ---------------------------------------------------- |
 | `core`           | `*const T`, `*mut T`, `NonNull<T>`, `PhantomData<T>` |
 | `alloc`          | `Vec<A>`, `alloc`/`dealloc`                          |
-| `std::sync`      | `Arc<A>`                                             |
+| `std::sync`      | `Arc`（作为 `ArcRepr<A>` 的可能实现基础，而非公开契约） |
 | `crate::error`   | `XenonError`（用于 `try_reserve` 等可恢复错误）      |
 | `crate::private` | `Sealed`（用于 marker trait 封闭实现）               |
 
@@ -146,7 +146,7 @@ Storage mode taxonomy
 │   └── ViewMutRepr<'a, A> — exclusive borrow, readable/writable, non-cloneable
 │
 └── Shared read-only
-    └── ArcRepr<A> — Arc-backed shared read-only handle, shallow-clone
+    └── ArcRepr<A> — abstract shared read-only handle, shallow-clone
 ```
 
 #### 访问级别与所有权矩阵
@@ -156,7 +156,7 @@ Storage mode taxonomy
 | `Owned<A>`           |      ✅       |  ✅  |               ✅               | 深拷贝              | 当前默认实现为 64 字节对齐堆分配（可配置；ZST 不分配） |
 | `ViewRepr<'a, A>`    |   ❌ (借用)   |  ✅  |               ❌               | O(1) 元数据拷贝     | 无分配                          |
 | `ViewMutRepr<'a, A>` | ❌ (独占借用) |  ✅  |               ✅               | 不可克隆            | 无分配                          |
-| `ArcRepr<A>`         |   ✅ (共享)   |  ✅  | 仅通过 CoW 生成独占 owned 数据 | 浅拷贝 (引用计数+1) | 共享对齐缓冲，写时按需深拷贝    |
+| `ArcRepr<A>`         |   ✅ (共享)   |  ✅  | 仅通过 CoW 生成独占 owned 数据 | 浅拷贝 (共享句柄+1) | 共享只读缓冲，写时按需深拷贝    |
 
 > **术语澄清：** `require.md` §6.2 的“共享只读引用”描述的是抽象访问语义，而不是唯一具体表示。对拥有型来源，Xenon 用 `ArcRepr<A>` 表达可共享底层缓冲区的只读结果；对 `ViewMutRepr<'a, A>` 的零拷贝降级，Xenon 用 `ViewRepr<'a, A>` 表达放弃写权限后的只读重借用。两者都满足“共享只读、不提供写访问”的语义，只是前者共享所有权，后者共享借用生命周期。任何写时复制逻辑都只能是 `arc.rs` 内部实现细节，不能作为 storage 层公开 API 暴露。
 
@@ -476,9 +476,9 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
     ///
     /// # Safety
     ///
-/// The caller must preserve the allocator metadata required to reconstruct
-/// the owned buffer. In Xenon's tensor-level FFI API, this metadata is carried
-/// by `OwnedRawParts` (see `23-ffi.md §5.4`).
+    /// The caller must preserve the allocator metadata required to reconstruct
+    /// the owned buffer. In Xenon's tensor-level FFI API, this metadata is carried
+    /// by `OwnedRawParts` (see `23-ffi.md §5.4`).
     unsafe fn into_raw(self) -> *mut Self::Elem;
 }
 ```
@@ -739,19 +739,18 @@ pub type ViewMut<'a, A> = ViewMutRepr<'a, A>;
 ### 6.5 ArcRepr\<A\> 结构体
 
 ```rust
-/// Shared read-only storage backed by `Arc`.
+/// Shared read-only storage.
 ///
-/// Uses `Arc<AlignedBuf<A>>` to share aligned owned storage while preserving the
-/// same backing-allocation invariants as `Owned<A>`. The public storage mode is
-/// shared read-only; any copy-on-write logic stays internal to `arc.rs` and is
-/// not part of the storage-layer public API.
+/// `ArcRepr<A>` is an abstract shared read-only buffer representation.
+/// Its concrete backing type stays internal to `arc.rs`; the public contract is
+/// limited to shared ownership semantics plus read-only access.
 #[derive(Debug)]
 pub struct ArcRepr<A> {
-    inner: Arc<AlignedBuf<A>>,
+    shared_read_only_buffer: core::marker::PhantomData<A>,
 }
 ```
 
-> **设计决策：** `ArcRepr<A>` 不存储独立的 `offset` 字段。偏移量与切片范围由外层 `TensorBase` 元数据管理（见 `07-tensor.md §5.1`），而 `ArcRepr` 只表示共享只读引用语义下的底层连续缓冲区。任何写时复制 helper 都仅能在 `arc.rs` 内部针对整个底层缓冲区执行，不负责解释张量视图的 `offset` / `shape` / `strides`，也不把 `ArcRepr` 提升为共享可写存储模式，更不构成公开的 `ArcRepr<A> -> Owned<A>` 零拷贝转换。
+> **设计决策：** `ArcRepr<A>` 不承诺公开可见的内部字段。偏移量与切片范围由外层 `TensorBase` 元数据管理（见 `07-tensor.md §5.1`），而 `ArcRepr` 只抽象表示共享只读语义下的底层连续缓冲区。任何写时复制 helper 都仅能在 `arc.rs` 内部针对整个底层缓冲区执行，不负责解释张量视图的 `offset` / `shape` / `strides`，也不把 `ArcRepr` 提升为共享可写存储模式，更不构成公开的 `ArcRepr<A> -> Owned<A>` 零拷贝转换。
 
 **内部写时复制流程**：
 
@@ -800,7 +799,7 @@ pub unsafe trait IsArc: RawStorage {}
 | `Owned<A>`           |    A: Send     |    A: Sync     | 拥有数据，Send/Sync 条件与 `Vec<A>` 一致（分别要求 A:Send 和 A:Sync） |
 | `ViewRepr<'a, A>`    |    A: Sync     |    A: Sync     | 共享借用需要 Sync 才能跨线程共享                                      |
 | `ViewMutRepr<'a, A>` |    A: Send     |   ❌ 永远不    | 独占借用可转移但不可共享                                              |
-| `ArcRepr<A>`         | A: Send + Sync | A: Send + Sync | Arc 内部原子操作保证线程安全                                          |
+| `ArcRepr<A>`         | A: Send + Sync | A: Send + Sync | 抽象共享所有权实现需保证线程安全                                          |
 
 ```rust
 // SAFETY: ViewRepr<'a, A> only allows shared (read-only) access.

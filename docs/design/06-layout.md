@@ -63,7 +63,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 | 范围外   | 存储分配、元素访问、C-order、负步长布局支持、reshape、into_shape、布局顺序转换                      |
 | 非目标   | 引入第三方 bitflags 依赖、多布局系统、运行时可插拔布局后端，或在当前版本引入 reshape/顺序转换语义   |
 
-> **范围声明**：当前版本不支持 reshape 或布局顺序转换。`Order` 枚举仅用于标识 F-order 连续布局状态。
+> **范围声明**：当前版本不支持 reshape 或布局顺序转换。布局接口保持纯函数式，不额外承诺顺序枚举类型。
 
 ---
 
@@ -203,46 +203,18 @@ impl LayoutFlags {
 }
 ```
 
-### 5.1b 内存顺序枚举 Order
+### 5.1b 纯函数式布局接口
 
-`Order` 枚举仅用于标识 “该布局是 F-order 连续布局”。当前版本不支持 reshape、`into_shape` 或布局顺序转换；转置只更新 shape/stride 元数据，不引入新的目标顺序语义。
-
-```rust
-/// Memory layout order.
-///
-/// Xenon only supports F-order (column-major) as its native layout.
-/// In the current version, this enum is only used to identify
-/// the F-order contiguous layout state.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Order {
-    /// Fortran-order (column-major): first index varies fastest.
-    ///
-    /// Strides satisfy `strides[i] = product(shape[0..i])`.
-    /// This is the only order natively supported by Xenon.
-    F,
-}
-```
-
-`LayoutFlags` 提供从 `Order` 构造标志的便捷方法。该能力仅用于把 F-order 连续状态映射为 `LayoutFlags`；当前版本的布局元数据只使用 `LayoutFlags`、`LayoutState` 与 `Strides<D>`，也不代表支持顺序转换：
+当前版本仅支持 F-order，因此布局接口保持纯函数式：由 `shape`、`strides`、对齐信息等输入直接计算标志与分类结果，不额外承诺任何顺序枚举或基于顺序值的公开构造约定。
 
 ````rust
-impl LayoutFlags {
-    /// Creates a LayoutFlags with F_CONTIGUOUS set (and no other flags).
-    ///
-    /// Used internally when metadata construction needs to stamp
-    /// an F-order contiguous layout state.
-    ///
-    /// # Examples
-    /// ```ignore
-    /// let flags = LayoutFlags::from_order(Order::F);
-    /// assert!(flags.is_f_contiguous());
-    /// ```
-    #[inline]
-    pub(crate) const fn from_order(order: Order) -> Self {
-        match order {
-            Order::F => Self(Self::F_CONTIGUOUS.0),
-        }
-    }
+/// Computes the canonical flags for a validated F-order layout.
+#[inline]
+pub(crate) const fn flags_for_f_layout(aligned: bool, has_zero_stride: bool) -> LayoutFlags {
+    LayoutFlags::EMPTY
+        .set_f_contiguous(true)
+        .set_aligned(aligned)
+        .set_has_zero_stride(has_zero_stride)
 }
 ````
 
@@ -732,7 +704,7 @@ Wave 3:       [T8]
 
 | 测试类型 | 覆盖方式                                        | 说明                                                      |
 | -------- | ----------------------------------------------- | --------------------------------------------------------- |
-| 布局顺序边界 | 编译期验证 `Order` 仅暴露 `F` 变体                | 验证当前版本不会误暴露 C-order                            |
+| 布局顺序边界 | 编译期与文档测试验证仅保留纯函数式 F-order 布局接口 | 验证当前版本不会误暴露顺序枚举或 C-order 契约              |
 | stride 边界 | raw-parts / layout 相关编译期与运行时测试结合覆盖 | 验证 `Strides<D>` 与 `D` 的维度数保持一致                 |
 | 标志位边界 | 编译期验证不依赖外部 bitflags crate               | 验证布局标志保持最小依赖实现                               |
 

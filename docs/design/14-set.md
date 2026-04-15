@@ -154,7 +154,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// let a = Tensor1::from_vec(vec![3, 1, 2, 1, 3, 2]);
+    /// let a = Tensor1::from_shape_vec(Ix1(6), vec![3, 1, 2, 1, 3, 2])?;
     /// let u = a.unique();
     /// assert_eq!(u.len(), 3);
     /// assert!(u.iter().all(|x| [1, 2, 3].contains(x)));
@@ -171,7 +171,7 @@ where
 
 ```rust,ignore
 // Good - use unique to get unique elements with unspecified order
-let a = Tensor1::from_vec(vec![3, 1, 2, 1, 3]);
+let a = Tensor1::from_shape_vec(Ix1(5), vec![3, 1, 2, 1, 3])?;
 let u = a.unique();
 assert_eq!(u.len(), 3);
 
@@ -180,7 +180,7 @@ let empty: Tensor1<i32> = Tensor1::zeros([0]);
 assert_eq!(empty.unique().len(), 0);
 
 // Bad - calling unique on a bool tensor (compile error)
-// let b = Tensor1::from_vec(vec![true, false, true]);
+// let b = Tensor1::from_shape_vec(Ix1(3), vec![true, false, true])?;
 // b.unique();  // compile error: bool does not implement UniqueElement trait
 
 ```

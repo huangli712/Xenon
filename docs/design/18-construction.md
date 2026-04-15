@@ -92,9 +92,9 @@ src/
               └──┬───────────┬─────────┘
                  │ uses      │ uses
           ┌──────▼───┐ ┌──────▼────────┐
-          │ storage  │ │ layout        │
-          │ Owned<A> │ │ LayoutFlags   │
-          │ Storage  │ │ Order         │
+          │ storage  │ │ layout              │
+          │ Owned<A> │ │ LayoutFlags         │
+          │ Storage  │ │ flags_for_f_layout  │
           └──────────┘ └───────────────┘
 ```
 
@@ -131,7 +131,7 @@ src/
 # use crate::dimension::{Dimension, IntoDimension};
 # use crate::element::Element;
 # use crate::error::XenonError;
-# use crate::layout::{LayoutFlags, Order};
+# use crate::layout;
 # use crate::storage::Owned;
 # use crate::tensor::{Tensor, TensorBase};
 impl<A, D> TensorBase<Owned<A>, D>
@@ -162,7 +162,8 @@ where
         })?;
         let strides = layout::f_order_strides(&dim);
         let storage = Owned::zeros(len);
-        Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) })
+        let flags = layout::flags_for_f_layout(storage.is_aligned(), false);
+        Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags })
     }
 
     /// Create a tensor filled with ones (F-order).
@@ -187,7 +188,8 @@ where
         })?;
         let strides = layout::f_order_strides(&dim);
         let storage = Owned::ones(len);
-        Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) })
+        let flags = layout::flags_for_f_layout(storage.is_aligned(), false);
+        Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags })
     }
 }
 ````
@@ -203,7 +205,7 @@ where
 # use crate::complex::Complex;
 # use crate::element::Element;
 # use crate::error::XenonError;
-# use crate::layout::{LayoutFlags, Order};
+# use crate::layout;
 # use crate::storage::Owned;
 # use crate::tensor::{Tensor, TensorBase};
 # use crate::dimension::Ix2;
@@ -261,7 +263,7 @@ impl EyeElement for Complex<f64> {}
 # use crate::dimension::{Dimension, IntoDimension};
 # use crate::element::Element;
 # use crate::error::XenonError;
-# use crate::layout::{LayoutFlags, Order};
+# use crate::layout;
 # use crate::storage::Owned;
 # use crate::tensor::{Tensor, TensorBase};
 impl<A, D> TensorBase<Owned<A>, D>
@@ -331,7 +333,8 @@ where
         // allocation or materializes a new aligned allocation is intentionally
         // left as an internal choice.
         let storage = Owned::from_vec_aligned(data);
-        Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) })
+        let flags = layout::flags_for_f_layout(storage.is_aligned(), false);
+        Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags })
     }
 
     /// Construct a tensor from a slice (copies data).
@@ -400,7 +403,7 @@ where
 ````rust,ignore
 # use crate::dimension::Ix0;
 # use crate::element::Element;
-# use crate::layout::{LayoutFlags, Order, Strides};
+# use crate::layout::{self, Strides};
 # use crate::storage::Owned;
 # use crate::tensor::{Tensor, TensorBase};
 impl<A> TensorBase<Owned<A>, Ix0>
@@ -415,12 +418,14 @@ where
     /// assert_eq!(t[[]], 3.14);
     /// ```
     pub fn from_scalar(scalar: A) -> Self {
+        let storage = Owned::from_vec_aligned(vec![scalar]);
+        let flags = layout::flags_for_f_layout(storage.is_aligned(), false);
         TensorBase {
-            storage: Owned::from_vec_aligned(vec![scalar]),
+            storage,
             shape: Ix0,
             strides: Strides::<Ix0>::from_slice(&[]),
             offset: 0,
-            flags: LayoutFlags::from_order(Order::F),
+            flags,
         }
     }
 }

@@ -219,7 +219,14 @@ where
     /// assert!(t.iter().all(|&x| x == 3.14));
     /// ```
     pub fn fill(&mut self, value: A) {
-        fill_storage_mut(&mut self.storage, &self.layout(), value)
+        fill_storage_mut(
+            &mut self.storage,
+            self.shape(),
+            self.strides(),
+            self.offset(),
+            self.flags(),
+            value,
+        )
     }
 }
 ````
@@ -230,13 +237,14 @@ where
 
 - `fill` 必须按**逻辑索引**迭代，并且只写入逻辑元素。
 - 对带 padding 的底层存储：不得写入任何 padding bytes。
-- 对非连续但可写的视图：必须严格按 layout strides 导航到每个逻辑元素。
+- 对非连续但可写的视图：必须严格按 `shape` / `strides` / `offset` / `flags` 或等价 layout helper 导航到每个逻辑元素。
 - 对存在零步长的布局：按照 `require.md` §16，它们来自广播只读结果；由于公开 `fill` 仅对 `StorageMut` 开放，当前设计下不会为这类输入提供运行时填充入口。
 
 ```
-fill_logical_only(storage, layout, value):
-    for logical_index in 0..layout.logical_len():
-        offset = layout.offset_for_logical_index(logical_index)
+fill_logical_only(storage, shape, strides, offset, flags, value):
+    logical_len = product(shape)
+    for logical_index in 0..logical_len:
+        offset = offset_for_logical_index(shape, strides, offset, logical_index)
         write storage[offset] = clone(value)
 ```
 
@@ -244,7 +252,7 @@ fill_logical_only(storage, layout, value):
 
 ### 5.3 连续性保证（to_contiguous）
 
-> `to_contiguous()` 是本模块（20-utility.md §4）定义的公共 API。内部可复用连续化实现，但这不构成 `convert` 模块的独立公共能力。
+> `to_contiguous()` 是本模块（20-utility.md §5.3）定义的公共 API。内部可复用连续化实现，但这不构成 `convert` 模块的独立公共能力。
 >
 > **依赖说明**: `to_contiguous()` 由 utility 模块暴露；若非连续路径需要额外实现步骤，也仅属于 utility 的内部细节。类型转换语义仍归 convert，连续性保证语义仍归 utility。
 

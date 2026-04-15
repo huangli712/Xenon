@@ -90,7 +90,7 @@ src/parallel/           # optional parallel backend consumed by math dispatch
 
 | 场景 | 错误 |
 | ---- | ---- |
-| 二元运算广播失败 | 返回 `XenonError::BroadcastError { operation: Cow<'static, str>, input_shape: Vec<usize>, target_shape: Vec<usize>, axis: Option<usize> }`。 |
+| 二元运算广播失败 | 返回 `XenonError::BroadcastError`；在二元逐元素语境下，诊断信息必须分别区分 `input_shape(lhs)` 与 `other_shape(rhs)`，不得再让 `target_shape` 承载右操作数 shape 的含义。 |
 | 构造结果张量时元素总数与 shape 不一致 | 返回 `XenonError::InvalidShape { operation: Cow<'static, str>, shape: Vec<usize>, expected_elements: usize, actual_elements: usize, offending_dim: Option<usize> }`。 |
 | 公开 API 收到不满足前提的参数 | 返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, shape: Option<Vec<usize>> }`。 |
 | 整数算术溢出、除零或结果不可表示 | 属于 panic 语义，不进入 `XenonError`。 |
@@ -474,7 +474,7 @@ apply_binary(a, b, f):
 
 ### 6.3 SIMD 加速路径
 
-SIMD 分发由 `math` 的具体逐元素操作在满足连续性、对齐和 feature gate 前提时直接委托 `src/simd/` facade；本文不再把额外的中间 helper 视为稳定设计接口。参见 `08-simd.md §5.5` 了解 SIMD 后端详情。数学模块定义需求说明书 §12 中列出的全部逐元素运算；当前版本的 SIMD 实际覆盖范围见 `08-simd.md §5.4a`，若某类运算、类型、ISA 或语义约束暂不满足 SIMD 前提，则对应路径自动回退标量实现。
+SIMD 分发由 `math` 的具体逐元素操作在满足连续性、对齐和 feature gate 前提时直接委托 `src/simd/` facade；本文不再把额外的中间 helper 视为稳定设计接口。参见 `08-simd.md §5.5` 了解 SIMD 后端详情。数学模块定义需求说明书 §12 中列出的逐元素运算，但当前版本只对 `08-simd.md §5.4a` 覆盖矩阵列出的子集尝试 SIMD；未列出的运算、类型、ISA 或不满足语义约束的路径统一回退标量实现。
 
 > **并行路径：** 当 `parallel` feature 启用时，二元逐元素运算可进一步委托 `parallel::par_zip_map` 执行并行遍历（参见 `09-parallel.md §5`）。并行路径必须遵守 `09-parallel.md §6` 的阈值裁决与禁止库内二次并行约束；若 guard 进入失败、输入过小或语义无法证明一致，则自动回退标量执行。
 
@@ -624,7 +624,7 @@ Wave 3:    [T8]
 | 高 rank `IxDyn` 输入  | 广播与逐元素结果 shape 正确，遍历不越界     |
 | NaN 输入（f32/f64）   | NaN 传播（sin(NaN)=NaN, 0\*NaN=NaN）       |
 | Inf 输入              | exp(Inf)=Inf, ln(0)=-Inf                   |
-| 广播形状不兼容        | 返回 `XenonError::BroadcastError { operation: Cow<'static, str>, input_shape: Vec<usize>, target_shape: Vec<usize>, axis: Option<usize> }` |
+| 广播形状不兼容        | 返回 `XenonError::BroadcastError`；诊断上分别区分 `input_shape(lhs)` 与 `other_shape(rhs)`，不得把 `target_shape` 复用于右操作数 shape |
 | 非连续输入（切片后）  | 运算结果与连续输入一致                     |
 | 整数除零 / 最小值绝对值 | panic 信息至少包含 `operation`、`type`、`trigger`、`element_index` 与适用 `shape` |
 
@@ -683,10 +683,10 @@ User calls add / unary op / comparison method
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | 广播不兼容时返回 `XenonError::BroadcastError { operation: Cow<'static, str>, input_shape: Vec<usize>, target_shape: Vec<usize>, axis: Option<usize> }`；参数不满足公开前提时返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, shape: Option<Vec<usize>> }`。 |
+| Recoverable error | 广播不兼容时返回 `XenonError::BroadcastError`；诊断上分别区分 `input_shape(lhs)` 与 `other_shape(rhs)`，不得把 `target_shape` 复用于右操作数 shape。参数不满足公开前提时返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, shape: Option<Vec<usize>> }`。 |
 | Panic | 整数 `add/sub/mul/div`、`abs/square` 的溢出、除零或结果不可表示均按需求触发 panic；`signum` 不新增 panic 约束。panic 信息至少包含 `operation`、`type`、`trigger`、`element_index`，并在适用时附带 `shape`。推荐格式：`Xenon: {operation} overflow for {type} at element_index={i}, shape={shape}, trigger={trigger}`。 |
 | 路径一致性 | 标量、SIMD 与并行路径必须保持相同 shape、错误类别、NaN/复数语义；不满足前提或 guard 失败时统一回退标量实现。 |
-| 容差边界 | `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 遵循 IEEE 754，误差边界以 Rust `std` / 平台实现文档化的 ULP 上界为准；其余 SIMD 容差约束参见 `08-simd.md`。仅在可证明语义等价或满足文档化容差时启用 SIMD，否则回退标量路径。 |
+| 容差边界 | `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 遵循 IEEE 754，误差边界以 Rust `std` / 平台实现文档化的 ULP 上界为准；其余 SIMD 容差约束参见 `08-simd.md`。对浮点与复数结果，每个实数分量相对标量参考值的容差统一为 `max(1 ULP, epsilon * |scalar_result|)`，其中 `epsilon` 取对应标量类型的 `RealScalar::epsilon()`；仅在可证明语义等价或满足该文档化容差时启用 SIMD，否则回退标量路径。 |
 
 ---
 
@@ -714,7 +714,7 @@ User calls add / unary op / comparison method
 
 | 属性     | 值                                                        |
 | -------- | --------------------------------------------------------- |
-| 决策     | 连续 + 对齐内存时，`math` 按 `08-simd.md` 中定义的覆盖范围委托 SIMD backend；设计目标是覆盖需求说明书 §12 中定义的全部逐元素运算 |
+| 决策     | 连续 + 对齐内存时，`math` 仅对 `08-simd.md §5.4a` 覆盖矩阵列出的子集委托 SIMD backend；未列出的逐元素运算保持标量路径 |
 | 理由     | SIMD 路径只在连续内存上有意义；非连续时标量路径更简单正确 |
 | 替代方案 | 所有路径都用标量                                          |
 | 拒绝原因 | 性能差距显著（2-4x），科学计算用户期望高性能              |

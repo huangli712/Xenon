@@ -1102,7 +1102,7 @@ Wave 4:               [T7]            <- depends on T4, T5, and T6 all being com
 | ---------------------------------------------- | ---------------------------------------------- | ------ |
 | `test_workspace_new_basic`                     | 指定容量和对齐创建工作空间                     | 高     |
 | `test_workspace_new_default`                   | 默认参数创建                                   | 高     |
-| `test_workspace_new_invalid_alignment`         | 非法对齐值返回 `WorkspaceError::InvalidLayout` | 高     |
+| `test_workspace_new_invalid_alignment`         | 非法对齐值返回 `XenonError::Workspace(WorkspaceError::InvalidLayout)` | 高     |
 | `test_workspace_drop_no_leak`                  | Drop 后内存正确释放                            | 中     |
 | `test_borrow_basic`                            | 不可变借用和 `MaybeUninit` 切片访问            | 高     |
 | `test_borrow_mut_basic`                        | 可变借用和 `MaybeUninit` 类型化访问            | 高     |
@@ -1196,7 +1196,7 @@ Upper-layer code requests temporary scratch space
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `new()` / `ensure_capacity()` / `borrow*()` / `split_at_mut()` 失败时返回 `WorkspaceError`（经公开边界包装为 `XenonError::Workspace`），携带容量、对齐、分割点或借用状态上下文；typed helper 的 ZST、长度和对齐输入错误也通过 `Result` 报告。 |
+| Recoverable error | `new()` / `ensure_capacity()` / `borrow*()` / `split_at_mut()` 失败时统一返回 `XenonError::Workspace(WorkspaceError)`，携带容量、对齐、分割点或借用状态上下文；typed helper 的 ZST、长度和对齐输入错误也通过同一公开错误边界报告。 |
 | Panic | 不为公开 API 输入校验引入 panic；`unsafe` 初始化前提若被违反，仍属于调用方责任范围内的 UB。 |
 | 路径一致性 | 当前仅有单一借用状态机与扩容路径；无 SIMD / 并行分支，所有 guard 释放规则必须保持一致。 |
 | 容差边界 | 不适用。 |

@@ -111,8 +111,7 @@ src/
 │   └── mod.rs                # Workspace module docs (L1)
 ├── simd/
 │   └── mod.rs                # SIMD module docs (L1)
-├── parallel/
-│   └── mod.rs                # Parallel module docs (L1)
+├── internal execution backends  # parallel remains internal and is documented only via feature effects on public APIs
 ├── error.rs                  # Error module docs (L1)
 └── prelude.rs                # Prelude docs (L1)
 
@@ -120,7 +119,7 @@ examples/
 ├── basic.rs                  # Basic-operations example
 ├── complex_numbers.rs        # Complex-number operations example
 ├── broadcasting.rs           # Broadcasting example
-├── parallel.rs               # Parallel-computation example (requires `parallel` feature)
+├── feature_flags.rs          # Optional-feature behavior example (`simd` / internal parallel execution effects)
 ├── simd.rs                   # SIMD-acceleration example (requires `simd` feature)
 └── ffi.rs                    # FFI integration example
 
@@ -368,7 +367,11 @@ pub fn sum(&self) -> A { ... }
 #### 5.6.3 Feature-gated Doctest
 
 ````rust
-/// Parallel sum using rayon.
+/// Compute the sum of all elements.
+///
+/// With the `parallel` feature enabled, the implementation may choose an
+/// internal parallel execution path while preserving the documented public
+/// `sum()` semantics.
 ///
 /// # Examples
 ///
@@ -379,14 +382,13 @@ pub fn sum(&self) -> A { ... }
 ///
 /// # fn demo() -> xenon::Result<()> {
 /// let t = Tensor1::<f64>::ones([1_000_000])?;
-/// let s = t.par_sum();
+/// let s = t.sum();
 /// assert_eq!(s, 1_000_000.0);
 /// # Ok(())
 /// # }
 /// # }
 /// ```
-#[cfg(feature = "parallel")]
-pub fn par_sum(&self) -> A { ... }
+pub fn sum(&self) -> A { ... }
 ````
 
 ---
@@ -400,7 +402,7 @@ pub fn par_sum(&self) -> A { ... }
 | `basic.rs`           | 创建、运算、归约、打印                     | 默认       | 新用户                               |
 | `complex_numbers.rs` | 复数构造、同类型复数运算、显式转换后的运算 | 默认       | 科学计算                             |
 | `broadcasting.rs`    | 广播规则、行/列/标量广播                   | 默认       | 日常使用                             |
-| `parallel.rs`        | 并行计算、阈值配置                         | `parallel` | 性能优化（参见 `09-parallel.md §5`） |
+| `feature_flags.rs`   | 可选 feature 对公开 API 语义/性能路径的影响 | `parallel`, `simd` | 性能优化（参见 `08-simd.md §5`、`09-parallel.md §5`） |
 | `simd.rs`            | SIMD 加速、回退策略                        | `simd`     | 性能优化（参见 `08-simd.md §5`）     |
 | `ffi.rs`             | 为上游 C/BLAS-LAPACK 集成提供辅助 API 与兼容性判断 | 默认       | 库开发者                             |
 
@@ -536,10 +538,9 @@ rustdoc-args = ["--cfg", "docsrs"]
 // lib.rs
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-// Each feature-gated pub item
-#[cfg(feature = "parallel")]
+// Public APIs whose behavior is affected by an optional feature
 #[cfg_attr(docsrs, doc(cfg(feature = "parallel")))]
-pub fn par_sum(&self) -> A { ... }
+pub fn sum(&self) -> A { ... }
 ```
 
 ---
@@ -647,12 +648,6 @@ pub fn sum(&self) -> A { ... }
 /// BLAS/LAPACK; callers must inspect the exported descriptor and compatibility
 /// predicates before passing it across the boundary.
 ///
-/// # Errors
-///
-/// Returns [`XenonError::Ffi`] when checked arithmetic over shape/stride/offset
-/// metadata overflows, or when the layout cannot be represented by the exported
-/// descriptor contract.
-///
 /// # Examples
 ///
 /// ```rust
@@ -661,24 +656,18 @@ pub fn sum(&self) -> A { ... }
 /// # fn demo() -> xenon::Result<()> {
 /// let data = vec![1.0f64, 2.0, 3.0, 4.0];
 /// let tensor = Tensor2::from_shape_vec([2, 2], data)?;
-/// let exported = tensor.export()?;
+/// let exported = tensor.export();
 /// assert_eq!(exported.shape(), &[2, 2]);
-/// assert!(tensor.is_blas_compatible());
+/// assert!(tensor.is_blas_layout_compatible());
 /// # Ok(())
 /// # }
 /// ```
-pub fn export(&self) -> Result<FfiExport<'_, A, D>, XenonError>
+pub fn export(&self) -> FfiExport<'_, A, D>
 where
     A: Element,
     D: Dimension
 
 /// Export the tensor as a mutable FFI descriptor.
-///
-/// # Errors
-///
-/// Returns [`XenonError::Ffi`] when checked arithmetic fails, when the layout
-/// cannot be represented, or when the requested mutable export would violate the
-/// non-overlap / exclusivity contract of the backing storage.
 ///
 /// # Safety
 ///
@@ -686,21 +675,24 @@ where
 /// exported descriptor stay within the exported bounds, do not create aliasing
 /// violations with any other live Rust reference, and do not assume BLAS/LAPACK
 /// compatibility unless that was checked explicitly before the call.
-pub fn export_mut(&mut self) -> Result<FfiExportMut<'_, A, D>, XenonError>
+pub fn export_mut(&mut self) -> FfiExportMut<'_, A, D>
 where
     A: Element,
     D: Dimension
 ````
 
-#### 5.12.4 Bad — 过时的 FFI 文档
+#### 5.12.4 Bad — Safety 文档不完整的 FFI 注释
 
 ```rust
-// Bad: documents only the removed raw-parts constructor contract.
+// Bad: safety contract is incomplete for a still-supported raw-parts constructor.
 /// Create a tensor view from raw parts.
 ///
 /// # Safety
 ///
 /// Caller guarantees ptr/shape/strides/offset are valid.
+///
+/// // Missing: aliasing, lifetime provenance, initialization,
+/// // bounds, and overflow/layout preconditions required by 23-ffi.md.
 pub unsafe fn from_raw_parts<'a, A, D>(...) -> TensorView<'a, A, D>
 ```
 
@@ -782,7 +774,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | ------------------------------------------------ | --------------------------------------------------- |
 | 核心类型（tensor, dimension, storage）           | 核心入口和高频查询方法必须有 doctest                |
 | 运算模块（overload, math, broadcast, reduction） | 代表性运算、广播与错误路径必须有 doctest            |
-| 工具模块（ffi, workspace, simd, parallel）       | 关键 API、feature gate 与 Safety 边界必须有 doctest |
+| 工具模块（ffi, workspace, simd）                 | 关键 API、feature gate 与 Safety 边界必须有 doctest；`parallel` 仅文档化其对公开 API 的 feature 影响 |
 | 辅助模块（convert, format, error）               | 至少覆盖构造、基本使用与错误语义                    |
 | 迭代与归约模块（iter, reduction, matrix）        | 核心入口、边界行为和错误路径必须可追踪              |
 
@@ -829,7 +821,7 @@ docs:
 | 配置       | 验证点                                                   |
 | ---------- | -------------------------------------------------------- |
 | 默认配置   | 默认 `std` 文档、README 与 examples 描述一致             |
-| 启用并行   | `parallel` API 的 `doc(cfg)`、doctest 与示例说明保持一致 |
+| 启用并行   | 受 `parallel` feature 影响的公开 API 文档、`doc(cfg)` 与示例说明保持一致 |
 | 启用 SIMD  | `simd` API 的 `doc(cfg)`、doctest 与示例说明保持一致     |
 | 全 feature | docs.rs 构建、doctest 与 examples 在组合配置下均通过     |
 
@@ -858,7 +850,7 @@ docs:
 | T1 (lib.rs 文档)    | 全部                                                      | 需要了解所有模块的概览 |
 | T5 (核心模块文档)   | dimension, element, complex, storage, layout              | 基于 §1 章节编写       |
 | T6 (张量与运算文档) | tensor, overload, broadcast, shape, index, construct, set | 基于 §1 章节编写       |
-| T7 (基础设施文档)   | ffi, workspace, simd, parallel, error, prelude            | 基于 §1 章节编写       |
+| T7 (基础设施文档)   | ffi, workspace, simd, error, prelude                      | 基于 §1 章节编写       |
 | T8 (类型级文档)     | 全部                                                      | 逐类型添加 doc comment |
 | T9 (函数级文档)     | 全部                                                      | 逐函数添加 doc comment |
 
@@ -935,9 +927,9 @@ Design docs (00-28)
   - 前置: T2
   - 预计: 10 min
 
-- [ ] **T7**: 编写基础设施模块文档（ffi, workspace, simd, parallel, error, prelude, convert, format）
+- [ ] **T7**: 编写基础设施模块文档（ffi, workspace, simd, error, prelude, convert, format）
   - 文件: 各 `mod.rs`
-  - 内容: 模块职责、Safety 约定、feature gate 说明、转换与输出语义（参见 `23-ffi.md §1`、`24-workspace.md §1`、`08-simd.md §1`、`09-parallel.md §1`、`21-type.md §1`、`22-output.md §1`、`26-error.md §1`）
+  - 内容: 模块职责、Safety 约定、feature gate 说明、转换与输出语义；并行仅说明其对公开 API 执行路径/语义验证的 feature 影响（参见 `23-ffi.md §1`、`24-workspace.md §1`、`08-simd.md §1`、`09-parallel.md §1`、`21-type.md §1`、`22-output.md §1`、`26-error.md §1`）
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T2
   - 预计: 10 min
@@ -1044,10 +1036,10 @@ Design docs (00-28)
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T13**: 编写 examples/parallel.rs
-  - 文件: `examples/parallel.rs`
-  - 内容: 并行计算、阈值配置
-  - 测试: `cargo run --example parallel --features parallel`
+- [ ] **T13**: 编写 examples/feature_flags.rs
+  - 文件: `examples/feature_flags.rs`
+  - 内容: 可选 feature 启用方式，以及 `parallel` / `simd` 对公开 API 执行路径和文档可见性的影响
+  - 测试: `cargo run --example feature_flags --features parallel`
   - 前置: T1
   - 预计: 10 min
 
@@ -1137,7 +1129,7 @@ Wave 6: [T17]
 
 | 属性     | 值                                                         |
 | -------- | ---------------------------------------------------------- |
-| 决策     | examples/ 按使用场景（basic/broadcasting/parallel 等）组织 |
+| 决策     | examples/ 按使用场景（basic/broadcasting/feature_flags 等）组织 |
 | 理由     | 用户按需求查找示例，而非按源码模块                         |
 | 替代方案 | 按源码模块组织 — 放弃，不便于用户理解实际用法              |
 

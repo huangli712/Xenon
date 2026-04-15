@@ -76,7 +76,7 @@ tests/
 ├── test_math.rs                # Element-wise operations (arithmetic/math/comparison/logic)
 ├── test_broadcast.rs           # Broadcasting (scalar/vector/matrix broadcasting)
 ├── test_index.rs               # Indexing operations (multi-dimensional indexing/range slicing)
-├── test_construction.rs        # Constructors (zeros/ones/eye/from_shape_vec/from_vec/from_shape_slice/from_scalar/from_array)
+├── test_construction.rs        # Constructors (zeros/ones/eye/from_shape_vec/from_shape_slice/from_scalar/from_array; `from_vec` convenience coverage only)
 ├── test_iterator.rs            # Iterators (elements/by-axis/by-index)
 ├── test_reduction.rs           # Reduction operations (sum/sum along axis)
 ├── test_matrix.rs              # Vector dot product (dot)
@@ -115,12 +115,12 @@ tests/
 ├── crate::element          # Element, Numeric, RealScalar, ComplexScalar
 ├── crate::complex          # Complex<f32>, Complex<f64>
 ├── crate::storage          # Owned, ViewRepr, ViewMutRepr, ArcRepr
-├── crate::layout           # LayoutFlags, Order
+├── crate::layout           # LayoutFlags
 ├── crate::math             # Element-wise operations
 ├── crate::broadcast        # broadcast_shape
 ├── crate::shape            # transpose
 ├── crate::index            # Multi-dimensional indexing and range slicing
-├── crate::construct        # zeros, ones, eye, from_shape_vec, from_shape_slice, from_vec, from_array, from_scalar
+├── crate::construct        # zeros, ones, eye, from_shape_vec, from_shape_slice, from_array, from_scalar (`from_vec` convenience path only)
 ├── crate::set              # unique
 ├── crate::ffi              # as_ptr, as_mut_ptr, from_raw_parts
 ├── crate::workspace        # Workspace
@@ -137,7 +137,7 @@ tests/
 | `element`   | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element.md §5`）                                 |
 | `complex`   | `Complex<f32>`, `Complex<f64>`（参见 `04-complex.md §5`）                                                      |
 | `storage`   | `Owned`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`, `Storage`（参见 `05-storage.md §5`）                            |
-| `layout`    | `LayoutFlags`, `Order`（参见 `06-layout.md §5`）                                                               |
+| `layout`    | `LayoutFlags`（参见 `06-layout.md §5`）                                                                        |
 | `error`     | `XenonError`, `Result<T>`（参见 `26-error.md §4`）                                                             |
 
 ### 4.3 依赖方向声明
@@ -169,7 +169,7 @@ pub mod generators;
 ```rust
 // tests/common/assertions.rs
 
-/// Assert two real-valued tensors satisfy the default ULP contract.
+/// Assert two real-valued tensors satisfy max(1 ULP, epsilon * |scalar_result|).
 ///
 /// This is the default comparison helper for exact arithmetic paths.
 /// Mathematical functions that are explicitly allowed to use dedicated
@@ -190,12 +190,12 @@ pub fn assert_tensor_close_real<A, D>(
         let a_f: f64 = (*a).cast_to().unwrap();
         let e_f: f64 = (*e).cast_to().unwrap();
         assert!(ulp_eq_f64(a_f, e_f, max_ulp),
-            "{}: element {} differs: actual={}, expected={}, max_ulp={}",
+            "{}: element {} differs: actual={}, expected={}, tolerance=max(1 ULP, epsilon * |scalar_result|); configured ulp_limit={}",
             msg, idx, a, e, max_ulp);
     }
 }
 
-/// Assert two complex tensors satisfy the default component-wise ULP contract.
+/// Assert two complex tensors satisfy max(1 ULP, epsilon * |scalar_result|) per component.
 ///
 /// The real and imaginary components are compared independently so the helper
 /// stays aligned with the current CastTo-based scalar conversion boundary.
@@ -219,10 +219,10 @@ pub fn assert_tensor_close_complex<A, D>(
         let e_im: f64 = e.im().cast_to().unwrap();
 
         assert!(ulp_eq_f64(a_re, e_re, max_ulp),
-            "{}: element {} real part differs: actual={}, expected={}, max_ulp={}",
+            "{}: element {} real part differs: actual={}, expected={}, tolerance=max(1 ULP, epsilon * |scalar_result|); configured ulp_limit={}",
             msg, idx, a_re, e_re, max_ulp);
         assert!(ulp_eq_f64(a_im, e_im, max_ulp),
-            "{}: element {} imaginary part differs: actual={}, expected={}, max_ulp={}",
+            "{}: element {} imaginary part differs: actual={}, expected={}, tolerance=max(1 ULP, epsilon * |scalar_result|); configured ulp_limit={}",
             msg, idx, a_im, e_im, max_ulp);
     }
 }
@@ -281,7 +281,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | 方面 | 说明 |
 | ---- | ---- |
 | 断言辅助 | 以 `assert_tensor_close_real` / `assert_tensor_close_complex`、错误断言宏与共享生成器统一测试表达，避免各测试文件重复定义比较逻辑 |
-| 数值比较 | 默认比较遵循 ULP-based contract；复数按实部/虚部分量分别校验；仅数学函数场景允许引用单独容差规则 |
+| 数值比较 | 默认比较遵循 mixed tolerance contract；复数按实部/虚部分量分别校验；仅数学函数场景允许引用单独容差规则 |
 | 编译期边界 | compile-fail harness 负责验证 `usize`/非法无符号元素类型、错误 trait bound 与不合法存储组合 |
 | 数据生成 | 顺序数据、三角函数样本、非连续视图与大张量样本均在共享工具中集中生成，保证可重复性 |
 
@@ -313,7 +313,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_type_aliases`         | Tensor0~Tensor3, TensorD 别名正确        | 高     |
 | `test_tensor_debug_display` | Debug/Display 格式化输出                 | 中     |
 | `test_arc_tensor_clone`     | ArcTensor clone 为浅拷贝                 | 中     |
-| `test_arc_tensor_public_write_path_cow` | 共享/独占状态下公开写路径的可观察 CoW 行为 | 中     |
+| `test_arc_tensor_alias_isolation_on_write` | 共享后通过公开写入口修改副本时，不影响原值且保持别名隔离 | 中     |
 
 ### 8.2 test_math.rs
 
@@ -362,7 +362,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | ----------------------------- | ------------------------------------------------------------ | ------ |
 | `test_zeros_ones_from_scalar` | zeros, ones, from_scalar 构造                                | 高     |
 | `test_eye_identity`           | 单位矩阵                                                     | 高     |
-| `test_from_data_constructors` | from_shape_vec, from_shape_slice 与 `from_vec`（仅 Ix1）构造 | 高     |
+| `test_from_data_constructors` | 以 `from_shape_vec`、`from_shape_slice` 为主；`from_vec` 仅覆盖 Ix1 convenience path | 高     |
 | `test_from_fixed_array`       | 从固定数组构造                                               | 中     |
 
 ### 8.6 test_reduction.rs
@@ -448,10 +448,10 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_as_ptr`                   | as_ptr 返回正确指针                        | 高     |
 | `test_as_mut_ptr`               | as_mut_ptr 返回可变指针                    | 高     |
 | `test_lda`                      | lda 返回 leading dimension                 | 中     |
-| `test_is_blas_compatible`       | BLAS 兼容性检查                            | 高     |
+| `test_is_blas_layout_compatible` | BLAS 兼容性检查                           | 高     |
 | `test_export_roundtrip`         | `export` 导出只读视图并验证元数据往返      | 高     |
 | `test_export_mut_roundtrip`     | `export_mut` 导出可变视图并验证独占写路径   | 高     |
-| `test_export_overlap_checks`    | `export_mut` 对地址重叠/别名冲突执行检查    | 高     |
+| `test_from_raw_parts_mut_reject_overlap` | `from_raw_parts_mut` 对地址重叠/别名冲突执行检查 | 高     |
 | `test_try_offset_of`            | try_offset_of 正确计算                     | 高     |
 
 ### 8.15 test_workspace.rs
@@ -468,7 +468,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 
 | 测试函数                                    | 测试内容                                                 | 优先级 |
 | ------------------------------------------- | -------------------------------------------------------- | ------ |
-| `test_par_sum_consistency`                  | 并行 sum 与串行 sum 结果一致（参见 `09-parallel.md §8`） | 高     |
+| `test_sum_parallel_feature_consistency`     | 启用 `parallel` feature 后，同一公开 `sum()` 语义与默认配置一致（参见 `09-parallel.md §8`） | 高     |
 | `test_par_add_consistency`                  | 并行 add 与串行 add 结果一致                             | 高     |
 | `test_parallel_read`                        | 多线程并发只读访问安全（参见 `25-safety.md §5`）         | 高     |
 | `test_nested_parallel_falls_back_to_serial` | 嵌套并行检测后自动回退串行                               | 中     |
@@ -570,7 +570,8 @@ fn test_single_element() {
 
 #[test]
 fn test_nan_sum_propagation() {
-    let t = Tensor1::from_vec(vec![1.0, f64::NAN, 3.0]);
+    let t = Tensor1::from_shape_vec([3], vec![1.0, f64::NAN, 3.0])
+        .expect("shape and data length must match");
     assert!(t.sum().is_nan());
 }
 
@@ -637,23 +638,23 @@ fn test_ixdyn_high_rank_scenarios() {
 
 #### 8.22.1 IEEE 754 精度要求
 
-| 运算类别                    | 默认比较规则                            | 参考实现              |
-| --------------------------- | --------------------------------------- | --------------------- |
-| 加减乘                      | 精确（≤0.5 ULP）                        | 显式标量 helper       |
-| 归约 (`sum`)                | 与标量基线一致；默认按 ULP contract 判定 | 显式标量基线路径      |
-| 复数加减乘                  | 实部/虚部分别满足对应实数类型的 ULP 上限 | 显式标量复数 helper   |
+| 运算类别                    | 默认比较规则                                                | 参考实现              |
+| --------------------------- | ----------------------------------------------------------- | --------------------- |
+| 加减乘                      | `max(1 ULP, epsilon * |scalar_result|)` 混合容差           | 显式标量 helper       |
+| 归约 (`sum`)                | 与标量基线一致；默认按混合容差契约判定                      | 显式标量基线路径      |
+| 复数加减乘                  | 实部/虚部分别满足对应实数类型的混合容差上限                 | 显式标量复数 helper   |
 | 超越函数 (`sin`/`exp`/`ln`) | 不继承默认比较；仅可引用各 API 单独容差规则 | `std` 对应数学函数 |
 
-对 `Complex<f32>` / `Complex<f64>` 的 ULP 容差采用**分量级判定**：分别比较实部与虚部，各自必须满足对应精度实数类型的 ULP 上限；不得把复数整体模长误差替代为分量误差。
+对 `Complex<f32>` / `Complex<f64>` 的默认容差采用**分量级混合判定**：分别比较实部与虚部，各自必须满足 `max(1 ULP, epsilon * |scalar_result|)`；不得把复数整体模长误差替代为分量误差。
 
 #### 8.22.2 浮点比较方式
 
-浮点测试默认使用 **ULP-based contract** 比较；并行与 SIMD 路径对浮点/复数结果的确定性要求须对齐 `require.md §28.3`：同执行路径下结果确定，但跨执行路径（标量/SIMD/并行）只允许出现处于文档化 ULP 契约内的舍入差异；整数和布尔路径仍须逐位一致。
+浮点测试默认使用 **mixed tolerance contract** 比较；并行与 SIMD 路径对浮点/复数结果的确定性要求须对齐 `require.md §28.3`：同执行路径下结果确定，但跨执行路径（标量/SIMD/并行）只允许出现处于文档化混合容差契约内的舍入差异；整数和布尔路径仍须逐位一致。
 
-默认 ULP 契约适用于不同执行路径（串行/SIMD/并行）下的浮点和复数比较。只有需求或对应 API 文档明确放宽时，`sin` / `exp` / `ln` 等数学函数才可使用单独容差 helper；`usize` 与其他无符号整数约束属于 `require.md §28.5` 的编译期边界，不适用该数值规则。
+默认混合容差契约适用于不同执行路径（串行/SIMD/并行）下的浮点和复数比较。只有需求或对应 API 文档明确放宽时，`sin` / `exp` / `ln` 等数学函数才可使用单独容差 helper；`usize` 与其他无符号整数约束属于 `require.md §28.5` 的编译期边界，不适用该数值规则。
 
 ```rust
-/// Compare two finite floats with a bounded ULP distance.
+/// Compare two finite floats with the default mixed tolerance contract.
 ///
 /// This is the default helper for floating-point result comparison.
 /// NaN / Inf semantics must be asserted explicitly in dedicated tests.
@@ -662,10 +663,13 @@ pub fn ulp_eq_f64(actual: f64, expected: f64, max_ulp: u64) -> bool {
         return false;
     }
 
-    ulp_distance(actual, expected) <= max_ulp
+    let ulp_ok = ulp_distance(actual, expected) <= max_ulp;
+    let epsilon_ok = (actual - expected).abs() <= f64::EPSILON * expected.abs();
+
+    ulp_ok || epsilon_ok
 }
 
-/// Compare two complex values component-wise under the ULP contract.
+/// Compare two complex values component-wise under the mixed tolerance contract.
 pub fn ulp_eq_complex64(
     actual: Complex<f64>,
     expected: Complex<f64>,
@@ -694,21 +698,27 @@ pub fn ulp_eq_complex64(
 
 ```rust
 #[test]
-fn test_par_sum_consistency() {
+fn test_sum_parallel_feature_consistency() {
     let n = 1_000_000;
-    let t = Tensor1::<f64>::from_vec(
+    let t = Tensor1::<f64>::from_shape_vec(
+        [n],
         (0..n).map(|idx| (idx as f64).sin()).collect(),
-    );
+    )
+    .expect("shape and data length must match");
 
-    let serial_sum = t.sum();
+    let scalar_baseline: f64 = t.iter().copied().sum();
 
     #[cfg(feature = "parallel")]
     {
-        let par_sum = t.par_sum();
         assert!(
-            ulp_eq_f64(par_sum, serial_sum, 1),
-            "parallel sum must stay within the documented ULP contract"
+            ulp_eq_f64(t.sum(), scalar_baseline, 1),
+            "sum() under the parallel feature must stay within the documented mixed tolerance contract"
         );
+    }
+
+    #[cfg(not(feature = "parallel"))]
+    {
+        assert!(ulp_eq_f64(t.sum(), scalar_baseline, 1));
     }
 }
 ```
@@ -718,12 +728,16 @@ fn test_par_sum_consistency() {
 ```rust
 #[test]
 fn test_simd_add_consistency() {
-    let a = Tensor1::<f64>::from_vec(
+    let a = Tensor1::<f64>::from_shape_vec(
+        [1024],
         (0..1024).map(|idx| (idx as f64).sin()).collect(),
-    );
-    let b = Tensor1::<f64>::from_vec(
+    )
+    .expect("shape and data length must match");
+    let b = Tensor1::<f64>::from_shape_vec(
+        [1024],
         (0..1024).map(|idx| ((idx as f64) / 1024.0).exp()).collect(),
-    );
+    )
+    .expect("shape and data length must match");
 
     let result = (&a + &b).unwrap();
     let expected: Vec<f64> = a
@@ -785,21 +799,16 @@ fn prop_transpose_involution() {
 #[test]
 fn prop_add_commutative() {
     for len in 1..256usize {
-        let a = Tensor1::from_vec((0..len).map(|idx| idx as f64).collect());
-        let b = Tensor1::from_vec((0..len).map(|idx| idx as f64 + 1.0).collect());
+        let a = Tensor1::from_shape_vec([len], (0..len).map(|idx| idx as f64).collect())
+            .expect("shape and data length must match");
+        let b = Tensor1::from_shape_vec([len], (0..len).map(|idx| idx as f64 + 1.0).collect())
+            .expect("shape and data length must match");
         let ab = (&a + &b).unwrap();
         let ba = (&b + &a).unwrap();
         for (x, y) in ab.iter().zip(ba.iter()) {
-            assert!(prop_approx_equal(*x, *y));
+            assert!(ulp_eq_f64(*x, *y, 1));
         }
     }
-}
-
-/// Approximate equality that handles special float values (NaN, Inf).
-fn prop_approx_equal(x: f64, y: f64) -> bool {
-    if x.is_nan() && y.is_nan() { return true; }
-    if x.is_infinite() && y.is_infinite() && x.signum() == y.signum() { return true; }
-    (x - y).abs() < 1e-10
 }
 ```
 
@@ -814,8 +823,8 @@ fn prop_approx_equal(x: f64, y: f64) -> bool {
 `assert_tensor_close_real` / `assert_tensor_close_complex` 的核心逻辑：
 
 1. **形状检查**：先比较 shape，不匹配立即断言失败并附上下文
-2. **逐元素比较**：默认路径使用 ULP 判定；复数路径按实部/虚部分量分别比较；仅在 API 文档明确允许的数学函数场景使用单独容差 helper
-3. **错误信息**：包含测试名称、元素索引、实际值、期望值和比较契约（ULP 上限或单独容差）
+2. **逐元素比较**：默认路径使用 `max(1 ULP, epsilon * |scalar_result|)` 混合判定；复数路径按实部/虚部分量分别比较；仅在 API 文档明确允许的数学函数场景使用单独容差 helper
+3. **错误信息**：包含测试名称、元素索引、实际值、期望值和比较契约（混合容差或单独容差）
 
 ```rust
 // Internal implementation detail of the default tensor-close helpers
@@ -824,7 +833,7 @@ fn prop_approx_equal(x: f64, y: f64) -> bool {
 // 2. element-wise iteration: uses iter() according to the iterator contract
 //    from 10-iterator.md; tests compare logical element sequences, not raw
 //    storage order assumptions
-// 3. default comparison uses the ULP contract; complex values compare real and
+// 3. default comparison uses the mixed tolerance contract; complex values compare real and
 //    imaginary components independently
 // 4. dedicated tolerance helpers are opt-in for mathematically allowed APIs
 // 5. error message includes: msg, index, actual, expected, and comparison contract
@@ -844,8 +853,8 @@ fn prop_approx_equal(x: f64, y: f64) -> bool {
 
 | 数据类型   | 生成方法                                                     | 用途                     |
 | ---------- | ------------------------------------------------------------ | ------------------------ |
-| 顺序填充   | `from_vec((0..n).map(|idx| idx as f64).collect())`           | 可重复、确定性           |
-| 三角函数值 | `from_vec((0..n).map(|idx| (idx as f64).sin()).collect())`   | 非平凡浮点值             |
+| 顺序填充   | `from_shape_vec([n], (0..n).map(|idx| idx as f64).collect())` | 可重复、确定性           |
+| 三角函数值 | `from_shape_vec([n], (0..n).map(|idx| (idx as f64).sin()).collect())` | 非平凡浮点值             |
 | 非连续视图 | `t.transpose()` 或 `t.slice(s![0..n])`                      | 测试子区间与转置视图处理 |
 | 空/单元素  | `zeros([0])?` / `Tensor::<f64, Ix0>::from_scalar(42.0)`      | 边界测试                 |
 | 受控数据   | `from_shape_vec(...)` / 顺序生成                             | 属性测试                 |
@@ -857,13 +866,16 @@ fn prop_approx_equal(x: f64, y: f64) -> bool {
 #### 8.26.1 Good — 正确的集成测试模式
 
 ```rust
-// Good: Use the default ULP-based helper for floating point comparison
+// Good: Use the default mixed-tolerance helper for floating point comparison
 #[test]
 fn test_add_result() {
-    let a = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
-    let b = Tensor1::from_vec(vec![4.0, 5.0, 6.0]);
+    let a = Tensor1::from_shape_vec([3], vec![1.0, 2.0, 3.0])
+        .expect("shape and data length must match");
+    let b = Tensor1::from_shape_vec([3], vec![4.0, 5.0, 6.0])
+        .expect("shape and data length must match");
     let result = (&a + &b).unwrap();
-    let expected = Tensor1::from_vec(vec![5.0, 7.0, 9.0]);
+    let expected = Tensor1::from_shape_vec([3], vec![5.0, 7.0, 9.0])
+        .expect("shape and data length must match");
     assert_tensor_close_real(&result, &expected, 1, "add");
 }
 
@@ -891,8 +903,10 @@ fn test_transpose_shapes() {
 // Bad: Using exact equality for floating point
 #[test]
 fn test_add_bad() {
-    let a = Tensor1::from_vec(vec![0.1, 0.2]);
-    let b = Tensor1::from_vec(vec![0.3, 0.4]);
+    let a = Tensor1::from_shape_vec([2], vec![0.1, 0.2])
+        .expect("shape and data length must match");
+    let b = Tensor1::from_shape_vec([2], vec![0.3, 0.4])
+        .expect("shape and data length must match");
     let result = (&a + &b).unwrap();
     assert_eq!(result[[0]], 0.4);  // Floating point exact comparison may fail
 }
@@ -951,7 +965,7 @@ Test files
     │       └── internal path: storage → tensor → overload → simd/parallel
     │
     ├── use common/ utilities
-    │       ├── use the default ULP-based assertion helpers for numeric comparison
+│       ├── use the default mixed-tolerance assertion helpers for numeric comparison
     │       └── generators produce test data
     │
     └── parameterized data generation
@@ -1003,7 +1017,7 @@ Test files
 
 - [ ] **T6**: 实现 `tests/test_construction.rs`
   - 文件: `tests/test_construction.rs`
-  - 内容: 构造方法（zeros/ones/eye/from_shape_vec/from_shape_slice/from_vec/from_scalar/from_array）
+  - 内容: 构造方法（zeros/ones/eye/from_shape_vec/from_shape_slice/from_scalar/from_array；`from_vec` 仅作为 Ix1 convenience coverage）
   - 测试: `cargo test --test test_construction`
   - 前置: T1
   - 预计: 10 min
@@ -1082,7 +1096,7 @@ Test files
 
 - [ ] **T12**: 实现 `tests/test_parallel.rs`
   - 文件: `tests/test_parallel.rs`
-  - 内容: 并行计算一致性（par_sum/par_add/并发读取/嵌套禁止）
+  - 内容: 启用 `parallel` feature 后公开 `sum`/`add` 行为一致性、并发读取、嵌套禁止
   - 测试: `cargo test --test test_parallel --features parallel`
   - 前置: T3, T7
   - 预计: 10 min
@@ -1255,13 +1269,13 @@ fn compile_fail_harness() {
 | 理由     | 不引入额外依赖，仍能稳定覆盖 transpose/交换律等关键不变量 |
 | 替代方案 | 外部属性测试框架 — 放弃，与最小依赖原则冲突               |
 
-### 决策 3：默认浮点比较采用 ULP 契约
+### 决策 3：默认浮点比较采用混合容差契约
 
 | 属性     | 值                                                                                                  |
 | -------- | --------------------------------------------------------------------------------------------------- |
-| 决策     | 浮点/复数默认比较遵循 ULP-based contract；复数按实部/虚部分量分别判定。                              |
-| 理由     | 与统一数值契约一致，且能覆盖接近零值、跨执行路径舍入差异以及复数分量级比较的需求。                 |
-| 替代方案 | 默认改用 NumPy 风格 `atol + rtol` — 放弃，与当前 ULP-based tolerance contract 不一致。             |
+| 决策     | 浮点/复数默认比较遵循 `max(1 ULP, epsilon * |scalar_result|)` 混合容差契约；复数按实部/虚部分量分别判定。 |
+| 理由     | 与统一数值契约一致，且能覆盖接近零值、跨执行路径舍入差异以及复数分量级比较的需求。                      |
+| 替代方案 | 默认改用 NumPy 风格 `atol + rtol` — 放弃，与当前混合容差契约不一致。                                  |
 | 替代方案 | 仅做逐位完全相等比较 — 放弃，会把允许的浮点舍入差异误判为失败。                                     |
 
 ### 决策 4：并行一致性测试为必须项
