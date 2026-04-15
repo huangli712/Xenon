@@ -523,7 +523,7 @@ User calls dot(a, b)
 | Recoverable error | 左/右输入非 1D 时分别返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, shape: Option<Vec<usize>> }`，典型取值为 `argument: "lhs"` 或 `"rhs"`、`axis: None`、`shape: Some(input.shape().to_vec())`；长度不匹配时返回 `XenonError::DimensionMismatch { operation: "dot", expected: usize, actual: usize }`。 |
 | Panic | 整数 dot 的乘法溢出与累加溢出均为不可恢复错误，按 checked arithmetic 触发 panic。panic 文本至少包含 `operation=dot`、元素类型、`trigger`（`multiply` / `accumulate`）、逻辑位置（如 `lane`）以及输入 shape。 |
 | 路径一致性 | `dot` 可选择标量、SIMD 或并行路径；任何可选路径都不得改变结果、错误类别或 panic 语义。 |
-| 容差边界 | 整数类型结果须逐元素精确一致。对浮点和复数类型，不同执行路径（标量/SIMD/并行）的结果允许因合并顺序不同而存在差异，但必须遵守与 `08-simd.md` / `09-parallel.md` 一致的规则：每个实数分量与标量路径结果之差不超过 `max(1 ULP, 2^-23 * |scalar_result|)`（`f32`）或 `max(1 ULP, 2^-52 * |scalar_result|)`（`f64`）。 |
+| 容差边界 | 容差规则参见 `08-simd.md` 和 `require.md §28.3` 的统一定义，不在本文档单独定义。 |
 
 ---
 
@@ -606,6 +606,7 @@ User calls dot(a, b)
 | 1.1.3 | 2026-04-14 |
 | 1.1.4 | 2026-04-15 |
 | 1.1.5 | 2026-04-15 |
+| 1.1.6 | 2026-04-15 |
 
 ---
 

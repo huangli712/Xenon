@@ -97,7 +97,7 @@ src/reduction/
 | 来源模块 | 使用的类型/trait |
 | -------- | ---------------- |
 | `tensor` | `TensorBase<S, D>`、`Tensor<A, D>`、`.shape()`、`.ndim()`、`.iter()`、`.indexed_iter()`、结果张量构造接口 |
-| `dimension` | `Axis`、`Dimension`、运行时 axis/shape 投影辅助 |
+| `dimension` | `Axis`、`Dimension`、`RemoveAxis`、运行时 axis/shape 投影辅助 |
 | `element` | `Numeric`、`CheckedAdd`、`ComplexScalar`、`A::zero()` |
 | `error` | `XenonError::InvalidAxis` |
 | `simd`（可选） | 仅在可证明与标量累加顺序和结果语义一致时参与 `sum` 实现 |
@@ -138,8 +138,10 @@ where
     /// Reduces along `axis` and removes that axis from the output shape.
     ///
     /// Returns `XenonError::InvalidAxis` when `axis.index() >= self.ndim()`.
-    /// Rank-0 inputs use the same runtime error contract.
-    pub fn sum_axis(&self, axis: Axis) -> Result<Tensor<A, D::Smaller>, XenonError>;
+    /// This API is only available when `D: RemoveAxis`.
+    pub fn sum_axis(&self, axis: Axis) -> Result<Tensor<A, D::Smaller>, XenonError>
+    where
+        D: RemoveAxis;
 
     /// Reduces along `axis` and keeps the reduced axis with length 1.
     ///
@@ -149,7 +151,7 @@ where
 }
 ````
 
-> **0D 轴归约说明：** `sum_axis` 的公开入口必须先做运行时 axis 校验，因此对 `ndim == 0` 的输入（尤其是 `IxDyn([])`）必须返回 `XenonError::InvalidAxis { operation, axis, ndim: 0, shape: vec![] }`，而不是依赖编译期拒绝。合法输入在完成 axis 校验后再进入降维路径，公开返回类型保持 `Tensor<A, D::Smaller>`；`sum_axis_keepdims` 仍保持原 rank。
+> **0D 轴归约设计决策：** 采用方案 B：沿轴归约公开 API 要求 `D: RemoveAxis` 约束，因此静态零维类型 `Ix0` 在类型层不可调用 `sum_axis()`。仅动态维度 `IxDyn` 且 `ndim == 0` 的输入可在运行时返回 `XenonError::InvalidAxis { operation, axis, ndim: 0, shape: vec![] }`。`sum_axis_keepdims()` 仍保持原 rank，因此继续保留统一的运行时 axis 校验语义。
 
 ### 5.2 对外错误契约
 
@@ -573,7 +575,7 @@ Err(XenonError::InvalidArgument {
 | 标准库环境 | Xenon 当前版本仅支持 `std`。 |
 | crate 结构 | 保持单 crate 结构，`reduction` 作为库内模块存在。 |
 | 依赖约束 | 不新增第三方依赖；仅可使用需求中已允许的 `rayon` / `pulp` 对应可选能力。 |
-| SemVer | `sum` 家族的空输入语义、`InvalidAxis` 错误类别、0D 轴归约运行时诊断与文档化容差规则均属于稳定契约；后续优化不得改变。 |
+| SemVer | `sum` 家族的空输入语义、`InvalidAxis` 错误类别、`sum_axis()` 的 `D: RemoveAxis` 类型边界、动态 0D 轴归约运行时诊断与文档化容差规则均属于稳定契约；后续优化不得改变。 |
 | 平台语义 | 同平台、同编译配置、同执行路径下结果须确定；跨平台遵循 IEEE 754 语义约束。 |
 | API 稳定性 | 不改变当前 `sum` 家族公开接口与错误类别边界。 |
 
@@ -586,6 +588,7 @@ Err(XenonError::InvalidArgument {
 | 1.0.0 | 2026-04-14 |
 | 1.0.1 | 2026-04-15 |
 | 1.0.2 | 2026-04-15 |
+| 1.0.3 | 2026-04-15 |
 
 ---
 

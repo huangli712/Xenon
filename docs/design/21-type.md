@@ -13,7 +13,7 @@
 
 | 职责           | 包含                                                 | 不包含                                                 |
 | -------------- | ---------------------------------------------------- | ------------------------------------------------------ |
-| 逐元素类型转换 | `cast<B>(&self) -> Result<Tensor<B, D>, XenonError>` | 隐式类型提升（需显式调用）                             |
+| 逐元素类型转换 | `cast<B: CastElement>(&self) -> Result<Tensor<B, D>, XenonError>` | 隐式类型提升（需显式调用）                             |
 | 同类型拷贝     | `to_owned`、`into_owned`                             | 标准库 `From`/`Into` 实现（归构造模块）                |
 | 范围边界       | §23 要求的逐元素类型转换与同类型拷贝                 | 存储模式互转（归 `storage` / `tensor`）、连续化 helper（归 `utility`） |
 
@@ -125,6 +125,19 @@ External dependencies:
 
 > `CastTo<T>` trait 的唯一 owner 是 `03-element.md §5.9`。`convert` 模块只消费该 trait，并在受支持的源/目标类型矩阵上提供 `cast()` 路径，不重新定义 trait。
 
+````rust,ignore
+pub trait CastElement: Element + private::Sealed {}
+
+impl CastElement for i32 {}
+impl CastElement for i64 {}
+impl CastElement for f32 {}
+impl CastElement for f64 {}
+impl CastElement for Complex<f32> {}
+impl CastElement for Complex<f64> {}
+````
+
+> `CastElement` 为封闭 trait，下游不得扩展。`bool` 不属于 `CastElement`，因此 `cast::<bool>()` 在编译期被拒绝。
+
 ### 5.2 cast 方法
 
 ````rust,ignore
@@ -157,7 +170,7 @@ where
     /// let c = Tensor1::from_vec(vec![Complex::new(1.0_f64, 0.0)]);
     /// let d: Tensor1<f64> = c.cast()?;
     /// ```
-    pub fn cast<B: Element>(&self) -> Result<Tensor<B, D>, XenonError>
+    pub fn cast<B: CastElement>(&self) -> Result<Tensor<B, D>, XenonError>
     where
         A: CastTo<B>,
     {
@@ -181,7 +194,7 @@ where
 }
 ````
 
-> **设计决策（修订）：** `require.md §23` 要求的是逐元素转换语义，而不是“仅限 Owned 输入”。因此 `cast()` 面向所有可读存储开放；无论输入是 `Owned`、`ViewRepr`、`ViewMutRepr` 还是 `ArcRepr`，结果统一物化为新的 owned 张量，以保持返回类型与所有权语义一致。
+> **设计决策（修订）：** `require.md §23` 要求的是逐元素转换语义，而不是“仅限 Owned 输入”。因此 `cast()` 面向所有可读存储开放；无论输入是 `Owned`、`ViewRepr`、`ViewMutRepr` 还是 `ArcRepr`，结果统一物化为新的 owned 张量，以保持返回类型与所有权语义一致。目标类型进一步收缩为 `CastElement`，从签名层面排除 `bool`。
 
 ### 5.3 类型转换路径表
 
@@ -505,7 +518,7 @@ Wave 2: [T3] [T4] [T5]  (parallel)
 
 | 场景 | 测试方式 |
 | ---- | ---- |
-| `bool` 不参与 `cast()` | 编译期测试。 |
+| `bool` 不参与 `cast()`，且不属于 `CastElement` | 编译期测试。 |
 | `cast()` 对所有可读存储提供，但统一返回 owned 结果 | 编译期测试。 |
 | saturation / truncation casts 与额外 `From/Into` 非张量转换不属于当前 API | API 缺失断言。 |
 
@@ -624,6 +637,7 @@ User calls cast() / to_owned() / into_owned()
 | 1.2.3 | 2026-04-14 |
 | 1.2.4 | 2026-04-15 |
 | 1.2.5 | 2026-04-15 |
+| 1.2.6 | 2026-04-15 |
 
 ---
 

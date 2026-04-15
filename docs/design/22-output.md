@@ -576,7 +576,7 @@ fmt_nd(tensor, f, prefix):
 ### 6.2 dtype 名称映射
 
 ```rust,ignore
-fn dtype_name<A: Element>() -> &'static str {
+fn dtype_name<A: Element + 'static>() -> &'static str {
     match core::any::TypeId::of::<A>() {
         id if id == core::any::TypeId::of::<f32>() => "f32",
         id if id == core::any::TypeId::of::<f64>() => "f64",
@@ -800,7 +800,7 @@ User calls format!("{}", tensor) / format!("{:?}", tensor)
 | 格式化开销 | 非截断输出 O(n)                                          |
 | 大数组截断 | 截断输出 O(visible_elements + overhead)                  |
 | 零拷贝     | 格式化过程不修改原始数据                                 |
-| 临时分配   | 格式化过程无堆分配（直接写入 `Formatter`）               |
+| 临时分配   | 格式化过程尽量避免中间字符串构造，直接写入 `Formatter`；动态维度可能需要少量索引缓冲，但不产生格式化结果字符串本身的堆分配 |
 
 ---
 
@@ -830,6 +830,7 @@ User calls format!("{}", tensor) / format!("{:?}", tensor)
 | 1.1.3 | 2026-04-14 |
 | 1.1.4 | 2026-04-14 |
 | 1.1.5 | 2026-04-15 |
+| 1.1.6 | 2026-04-15 |
 
 ---
 

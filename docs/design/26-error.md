@@ -157,7 +157,7 @@ pub enum XenonError {
     },
 
     DimensionMismatch {
-        operation: &'static str,
+        operation: Cow<'static, str>,
         expected: usize,
         actual: usize,
     },
@@ -223,6 +223,8 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 模块可以为内部实现保留局部错误分类（例如 `FfiError`、`WorkspaceError`、`TypeConversionError`），以避免在模块内部丢失语义；但凡进入 Xenon 的公开 API 边界，必须统一包装为 `XenonError`（如 `XenonError::Ffi(...)`、`XenonError::Workspace(...)`、`XenonError::TypeConversion(...)`），不得直接向外暴露模块私有错误类型。
 
 `WorkspaceError` 与 `FfiError` 都必须实现 `std::error::Error`，以便 `XenonError::source()` 暴露完整的内层错误链。
+
+> **FfiError 结构化演进说明：** `FfiError` 的 `context` 字段当前以自由文本承载上下文信息。未来版本应将其升级为结构化字段（如 `shape`、`strides`、`ndim` 等），以提升诊断可编程性。
 
 ### 4.2.1 公开 API 边界映射
 
@@ -576,6 +578,7 @@ let value = lhs * rhs;
 | 1.1.1 | 2026-04-14 |
 | 1.1.2 | 2026-04-14 |
 | 1.1.3 | 2026-04-15 |
+| 1.1.4 | 2026-04-15 |
 
 ---
 

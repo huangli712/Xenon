@@ -18,7 +18,7 @@
 | 基础方法          | `re()`, `im()`, `conj()`, `is_real()`, `is_imaginary()`                                           | —                                                                                           |
 | 数学方法          | `norm()`（hypot）, `norm_sqr()`                                                                   | 将 `to_polar()`、`arg` / `exp` / `ln` / `sqrt` 暴露为公开稳定 API、复数 FFT、高阶复数运算 |
 | 算术运算          | Complex±Complex, Complex×Complex, Complex÷Complex, 一元负号                                       | 跨精度混合运算                                                                              |
-| 实数混合运算      | 同精度标量便捷：`Complex<f32> op f32`、`Complex<f64> op f64`；混合运算前须先显式转换到匹配的复数元素类型 | 跨精度：`f32+Complex<f64>`（须显式转换）；将该类标量便捷 impl 直接外推为张量级重载              |
+| 实数构造与混合运算边界 | `From<T> for Complex<T>` 的显式标量构造；`Complex<T> op Complex<T>` 前须先完成显式构造              | `Complex<T> op T` / `T op Complex<T>` 便捷运算符；跨精度混合运算                                  |
 | 格式化输出        | Display（`"a+bj"` / `"a-bj"`）, Debug                                                             | —                                                                                           |
 | 双字段 C 布局基础 | `#[repr(C)]` + 编译期静态断言                                                                     | 跨精度混合运算                                                                              |
 | 类型转换语义      | 定义 `Complex<f32>↔Complex<f64>`, `f32/f64→Complex`, `i32/i64→Complex` 的语义边界                 | 转换实现入口与张量级转换 owner（由 `convert/` 负责）                                           |
@@ -66,7 +66,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 | 范围外   | `num-complex` 兼容层、跨精度混合运算、FFT 与高阶复数算法、额外公开复数数学函数 |
 | 非目标   | 引入第三方复数库依赖、开放任意 `T` 的公开实例化、把内部数学 helper 稳定化，或 `_Complex` ABI 保证 |
 
-> **当前版本范围声明**：本版本保留 `Complex<T> op T`（右侧实数）的**标量级便捷实现**与 `Complex<T> op Complex<T>` 运算。前者仅用于单个复数值与同精度实数值的便捷组合，**不直接适用于张量逐元素运算或 `19-overload.md` 的运算符重载设计**。根据 `require.md` §5，涉及实数与复数的张量逐元素运算、运算符重载及相关 API 组合时，参与运算双方的元素类型须预先一致；用户须先将实数显式转换为 `Complex<T>`，再进入张量级运算。左侧实数运算（`T op Complex<T>`）仍不在当前版本范围内，若后续版本需要支持，须单独设计并继续满足上述同类型前提。
+> **当前版本范围声明**：当前版本仅保留 `Complex<T> op Complex<T>` 运算。根据 `require.md` §5，涉及实数与复数的张量逐元素运算、运算符重载及相关 API 组合时，参与运算双方的元素类型须预先一致；用户须先通过显式 `From<T> for Complex<T>` 构造把实数转换为匹配的复数元素类型，再进入后续运算。`Complex<T> op T` 与 `T op Complex<T>` 便捷运算符均不纳入当前版本公开 API。
 
 > **公开 API 收紧**：`to_polar()`、`arg` / `exp` / `ln` / `sqrt` / `from_polar` / `i` 仅作为 `complex/` 内部实现辅助能力存在，用于测试或后续上层模块实现，但**不作为当前版本对下游承诺的公开稳定 API**。本文档中的对应算法仅描述内部实现方案。
 
@@ -77,7 +77,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 ```
 src/complex/
 ├── mod.rs     # Complex<T> definition, basic methods, math methods, PartialEq, Display, layout checks
-└── ops.rs     # Arithmetic operator impls (Add/Sub/Mul/Div/Neg + real/complex mixed ops)
+└── ops.rs     # Arithmetic operator impls (Add/Sub/Mul/Div/Neg for Complex<T>)
 
 src/convert/
 └── cast.rs    # Consumes element::CastTo and hosts Complex-related conversion implementations
@@ -162,7 +162,7 @@ pub struct Complex<T: ComplexFloat> {
 
 `Complex<T>` 的方法分为两类：
 
-1. **基础方法**（无需浮点数学）：在 `impl<T: ComplexFloat> Complex<T>` 中实现，公开可用。包括 `re()`、`im()`、`conj()`、`from_real()`、`from_imag()`、`is_real()`、`is_imaginary()`。
+1. **基础方法**（无需浮点数学）：在 `impl<T: ComplexFloat> Complex<T>` 中实现，公开可用。包括 `re()`、`im()`、`conj()`、`from_imag()`、`is_real()`、`is_imaginary()`；纯实数构造统一走 `From<T> for Complex<T>`。
 
 2. **数学方法**（需要浮点数学）：对外稳定承诺仅包括 `norm()`、`norm_sqr()`；`to_polar()`、`arg_impl()`、`exp_impl()`、`ln_impl()`、`sqrt_impl()`、`from_polar_impl()` 等仅作为 `complex/` 内部 helper，由具体的 `impl Complex<f32>` / `impl Complex<f64>` 或私有模块承载。
 
@@ -179,10 +179,19 @@ pub trait ComplexFloat: private::Sealed + Copy + Default + Debug + PartialEq + P
     + core::ops::Mul<Output = Self>
     + core::ops::Div<Output = Self>
     + core::ops::Neg<Output = Self>
-{}
+{
+    fn abs(self) -> Self;
+}
 
-impl ComplexFloat for f32 {}
-impl ComplexFloat for f64 {}
+impl ComplexFloat for f32 {
+    #[inline]
+    fn abs(self) -> Self { self.abs() }
+}
+
+impl ComplexFloat for f64 {
+    #[inline]
+    fn abs(self) -> Self { self.abs() }
+}
 ```
 
 > **API 边界说明**：`ComplexFloat` 是用于表达 `Complex<T>` 公开 bound 的 `pub` trait，但其实现范围由 `private::Sealed` 封闭到 `f32`/`f64`；它不是面向下游的公开扩展点。`Float` 则保持内部实现细节。公开能力仍主要通过 `Element`/`Numeric`/`ComplexScalar` 等更高层 trait 暴露。
@@ -238,12 +247,6 @@ impl<T: ComplexFloat> Complex<T> {
 // Methods that don't need Float math — available for all T satisfying
 // basic arithmetic constraints.
 impl<T: ComplexFloat> Complex<T> {
-    /// Creates a purely real number (im = 0).
-    #[inline]
-    pub fn from_real(re: T) -> Self {
-        Self::new(re, T::default())
-    }
-
     /// Creates a purely imaginary number (re = 0).
     #[inline]
     pub fn from_imag(im: T) -> Self {
@@ -299,10 +302,11 @@ impl<T: ComplexFloat> Complex<T> {
     ///
     /// **Design note:** `Complex::conj()` is an inherent method returning `Self`
     /// (the same complex type with negated imaginary part). It differs from
-    /// `Numeric::conjugate()` which is a trait method on the `Numeric` trait.
+    /// `ComplexScalar::conjugate()` which is the trait method on the complex
+    /// capability layer.
     /// Both produce the same mathematical result for complex types, but
-    /// `Numeric::conjugate()` is the intended API for generic code constrained
-    /// only on `Numeric`. See `03-element.md` §5.2 for details.
+    /// `ComplexScalar::conjugate()` is the intended trait-level API for generic
+    /// code constrained on complex scalars. See `03-element.md` §5.4 for details.
     #[inline]
     pub fn conj(self) -> Self {
         Self::new(self.re, -self.im)
@@ -481,7 +485,7 @@ impl Complex<f64> {
 
 ```rust,ignore
 // Complex + Complex: (a+bj) + (c+dj) = (a+c) + (b+d)j
-impl<T: Float> core::ops::Add for Complex<T> {
+impl<T: ComplexFloat> core::ops::Add for Complex<T> {
     type Output = Self;
     #[inline]
     fn add(self, rhs: Self) -> Self {
@@ -490,7 +494,7 @@ impl<T: Float> core::ops::Add for Complex<T> {
 }
 
 // Complex - Complex: (a+bj) - (c+dj) = (a-c) + (b-d)j
-impl<T: Float> core::ops::Sub for Complex<T> {
+impl<T: ComplexFloat> core::ops::Sub for Complex<T> {
     type Output = Self;
     #[inline]
     fn sub(self, rhs: Self) -> Self {
@@ -499,7 +503,7 @@ impl<T: Float> core::ops::Sub for Complex<T> {
 }
 
 // Complex * Complex: (a+bj) * (c+dj) = (ac-bd) + (ad+bc)j
-impl<T: Float> core::ops::Mul for Complex<T> {
+impl<T: ComplexFloat> core::ops::Mul for Complex<T> {
     type Output = Self;
     #[inline]
     fn mul(self, rhs: Self) -> Self {
@@ -511,7 +515,7 @@ impl<T: Float> core::ops::Mul for Complex<T> {
 }
 
 // Complex / Complex: Smith's algorithm for better numerical stability
-impl<T: Float> core::ops::Div for Complex<T> {
+impl<T: ComplexFloat> core::ops::Div for Complex<T> {
     type Output = Self;
     #[inline]
     fn div(self, rhs: Self) -> Self {
@@ -534,7 +538,7 @@ impl<T: Float> core::ops::Div for Complex<T> {
 }
 
 // -Complex: -(a+bj) = -a - bj
-impl<T: Float> core::ops::Neg for Complex<T> {
+impl<T: ComplexFloat> core::ops::Neg for Complex<T> {
     type Output = Self;
     #[inline]
     fn neg(self) -> Self {
@@ -543,48 +547,24 @@ impl<T: Float> core::ops::Neg for Complex<T> {
 }
 ```
 
-> **除零语义说明：** `Complex<T>` 的除法在分母为 `0+0j` 时遵循 IEEE 754 浮点传播语义；实现可产生 `NaN` / `Inf` 组合结果，但不额外返回可恢复错误，也不引入额外 panic。该约束同时适用于 `Complex<T> / Complex<T>` 与 `Complex<T> / T` 的公开运算符语义，并与 `require.md §28.3` 保持一致。
+> **除零语义说明：** `Complex<T>` 的除法在分母为 `0+0j` 时遵循 IEEE 754 浮点传播语义；实现可产生 `NaN` / `Inf` 组合结果，但不额外返回可恢复错误，也不引入额外 panic。该约束适用于 `Complex<T> / Complex<T>` 公开运算符语义，并与 `require.md §28.3` 保持一致。
 
-### 5.7 混合运算（同精度实数与复数）
+### 5.7 显式实数构造与混合运算边界
 
 ```rust,ignore
-// Complex + T: (a+bj) + r = (a+r) + bj
-impl<T: Float> core::ops::Add<T> for Complex<T> {
-    type Output = Self;
-    #[inline]
-    fn add(self, rhs: T) -> Self { Self::new(self.re + rhs, self.im) }
-}
-
-// Complex * T: (a+bj) * r = ar + brj
-impl<T: Float> core::ops::Mul<T> for Complex<T> {
-    type Output = Self;
-    #[inline]
-    fn mul(self, rhs: T) -> Self { Self::new(self.re * rhs, self.im * rhs) }
-}
-
-// Complex / T: (a+bj) / r = (a/r) + (b/r)j
-impl<T: Float> core::ops::Div<T> for Complex<T> {
-    type Output = Self;
-    #[inline]
-    fn div(self, rhs: T) -> Self { Self::new(self.re / rhs, self.im / rhs) }
-}
-
-// Complex - T
-impl<T: Float> core::ops::Sub<T> for Complex<T> {
-    type Output = Self;
-    #[inline]
-    fn sub(self, rhs: T) -> Self { Self::new(self.re - rhs, self.im) }
-}
+let z = Complex::new(1.0_f64, 2.0);
+let rhs = Complex::from(3.0_f64);
+let sum = z + rhs;
 ```
 
-> **设计决策：** 当前版本仅支持同精度的 `Complex<T> op T`。左侧实数运算 `T op Complex<T>` 暂不纳入稳定 API，调用方若需要该语义，应先显式转换到匹配的复数元素类型后再参与运算。`Complex<f64> + f32`、`Complex<f64> + i32` 这类混合运算都必须先做显式转换。
+> **设计决策：** 当前版本不提供 `Complex<T> op T` 或 `T op Complex<T>` 便捷运算符。调用方若需要与实数混合运算，必须先通过显式 `From<T> for Complex<T>` 构造把实数提升为同元素类型的复数值，再参与 `Complex<T> op Complex<T>` 运算。
 
-> **边界说明：** 这些 `Complex<T> op T` impl 仅为标量级便捷能力，**不属于张量级逐元素运算或 `19-overload.md` 运算符重载设计的稳定承诺**。张量级场景中，双方元素类型必须预先一致（见 `require.md` §5）；用户须先把实数显式转换为 `Complex<T>`，再参与张量运算。
+> **边界说明：** `From<T> for Complex<T>` 是当前版本**唯一**允许的显式标量构造路径，不存在通过运算符触发的隐式实数到复数转换。张量级场景中，双方元素类型必须预先一致（见 `require.md` §5）；用户须先把实数显式构造成 `Complex<T>`，再参与张量运算。
 
 ### 5.8 PartialEq 实现
 
 ```rust,ignore
-impl<T: Float> PartialEq for Complex<T> {
+impl<T: ComplexFloat> PartialEq for Complex<T> {
     /// Component-wise equality. NaN != NaN (IEEE 754).
     #[inline]
     fn eq(&self, other: &Self) -> bool {
@@ -598,21 +578,21 @@ impl<T: Float> PartialEq for Complex<T> {
 ### 5.9 格式化输出
 
 ```rust,ignore
-impl<T: Float + core::fmt::Display> core::fmt::Display for Complex<T> {
+impl<T: ComplexFloat + core::fmt::Display> core::fmt::Display for Complex<T> {
     /// Formats as "a+bj", "a-bj", "a", "bj", or "0".
     ///
     /// NaN handling: when the imaginary part is NaN, always display
     /// as "re+NaNj". This deliberately normalizes the textual form instead
     /// of inferring a sign from NaN payload/sign-bit details.
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        if self.im.is_nan() {
+        if self.im != self.im {
             return write!(f, "{}+NaNj", self.re);
         }
-        if self.im == T::zero() {
+        if self.im == T::default() {
             write!(f, "{}", self.re)
-        } else if self.re == T::zero() {
+        } else if self.re == T::default() {
             write!(f, "{}j", self.im)
-        } else if self.im > T::zero() {
+        } else if self.im > T::default() {
             write!(f, "{}+{}j", self.re, self.im)
         } else {
             write!(f, "{}{}j", self.re, self.im) // negative sign included in im
@@ -644,7 +624,7 @@ impl<T: Float + core::fmt::Display> core::fmt::Display for Complex<T> {
 
 其中语义遵循 `require.md` §23.2 的闭合规则：先按对应实数类型到目标复数实部分量类型的规则转换实部，再引入值为 `0` 的虚部。当前版本不额外扩展 `require.md` §23.1 之外的整数→复数组合。
 
-> **统一转换入口说明：** `Complex` 类型的逐元素类型转换统一由 `03-element.md` 定义的 `CastTo<T>` trait 管理，trait 定义位于 `element` 模块，具体实现归入 `convert/` 模块；本节不再单独定义张量级转换入口；本模块仅保留复数类型自身固有、且符合无损语义的 `From`/`Into` 标量级转换（如 `f32 -> Complex<f32>`、`Complex<f32> -> Complex<f64>`）。
+> **统一转换入口说明：** `Complex` 类型的逐元素类型转换统一由 `03-element.md` 定义的 `CastTo<T>` trait 管理，trait 定义位于 `element` 模块，具体实现归入 `convert/` 模块；本节不再单独定义张量级转换入口；本模块仅保留复数类型自身固有、且符合无损语义的 `From`/`Into` 标量级转换（如 `f32 -> Complex<f32>`、`Complex<f32> -> Complex<f64>`）。其中 `From<T> for Complex<T>` 是当前版本**唯一**允许的显式实数到复数标量构造路径。
 
 复杂到实数的受支持路径同样受 `require.md` §23.1 与 §23.2 约束，且统一由 `03-element.md` §5.9 定义的 `CastTo<T>` trait 作为唯一 owner；`complex/` 模块文档仅声明其语义，不重复定义独立转换入口。
 
@@ -707,16 +687,17 @@ pub extern "C" fn process_complex(z: *const Complex<f64>) -> Complex<f64> {
 let z = Complex::new(1.0_f64, 2.0);
 let w = Complex::new(3.0, 4.0);
 let sum = z + w;          // Complex<f64>
-let scaled = z * 2.0_f64; // Complex<f64>, same precision
+let scaled = z * Complex::from(2.0_f64); // Complex<f64>, explicit conversion first
 
 // Bad - cross-precision mixed arithmetic (compile error)
 let z = Complex::new(1.0_f64, 2.0);
 // let bad = z + 3.0_f32;  // Compile error: type mismatch
+// let also_bad = z + 3.0_f64; // Compile error: no Complex<f64> + f64 convenience impl
 
 // Good - explicit cross-precision conversion
 let z32 = Complex::new(1.0_f32, 2.0);
 let z64: Complex<f64> = z32.into(); // Explicit upcast
-let result = z64 + 3.0_f64;         // Now same precision
+let result = z64 + Complex::from(3.0_f64); // Explicit real-to-complex construction
 ```
 
 ```rust,ignore
@@ -776,8 +757,9 @@ hypot(a, b):
 
 | 运算                             | 原因                                |
 | -------------------------------- | ----------------------------------- |
-| `Complex<f64> + f32`             | 跨精度，须显式转换                  |
-| `Complex<f64> + i32`             | 整数与复数，须先转浮点              |
+| `Complex<f64> + f64`             | 公开 API 不提供 `Complex<T> op T`，须先显式构造 `Complex::from(…)` |
+| `Complex<f64> + f32`             | 跨精度，且公开 API 不提供 `Complex<T> op T` 便捷运算符             |
+| `Complex<f64> + i32`             | 整数与复数，须先显式转换并构造匹配的 `Complex<T>`                  |
 | `impl Eq for Complex<T>`         | NaN 违反自反性                      |
 | `impl Ord for Complex<T>`        | 复数无自然全序                      |
 | `impl PartialOrd for Complex<T>` | 字典序无数学意义                    |
@@ -791,7 +773,7 @@ hypot(a, b):
 
 - [ ] **T1**: 定义 `Complex<T>` 结构体和 `new()` 构造方法
   - 文件: `src/complex/mod.rs`
-  - 内容: 结构体定义 + `new()` + `Float` trait 定义 + `impl Float for f32/f64`
+  - 内容: 结构体定义 + `new()` + `ComplexFloat`/`Float` trait 定义 + 对 `f32`/`f64` 的实现
   - 测试: `test_complex_new`, 编译通过
   - 前置: 无
   - 预计: 10 min
@@ -807,8 +789,8 @@ hypot(a, b):
 
 - [ ] **T3**: 实现基础访问方法和构造辅助
   - 文件: `src/complex/mod.rs`
-  - 内容: `re()`, `im()`, `from_real()`, `from_imag()`, `conj()`, `is_real()`, `is_imaginary()`；`i` 仅保留为内部 helper
-  - 测试: `test_conj`, `test_is_real`, `test_from_real`
+  - 内容: `re()`, `im()`, `from_imag()`, `conj()`, `is_real()`, `is_imaginary()`；纯实数构造统一使用 `From<T> for Complex<T>`；`i` 仅保留为内部 helper
+  - 测试: `test_conj`, `test_is_real`, `test_from_imag`
   - 前置: T1
   - 预计: 10 min
 
@@ -835,10 +817,10 @@ hypot(a, b):
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T7**: 实现 Complex 与同精度实数混合运算
+- [ ] **T7**: 收紧实数与复数混合运算边界
   - 文件: `src/complex/ops.rs`
-  - 内容: `Complex±T`, `Complex*T`, `Complex/T`，并补充 `Complex::from(real)` 的显式转换用法示例
-  - 测试: `test_add_real`, `test_mul_real`, `test_div_real`
+  - 内容: 仅保留 `Complex<T> op Complex<T>`，并补充 `Complex::from(real)` 的显式转换用法示例
+  - 测试: `test_real_to_complex_add`
   - 前置: T5, T6
   - 预计: 10 min
 
@@ -923,20 +905,16 @@ Wave 5: [T11] → [T12]
 | `test_complex_new`               | `Complex::new(3.0, 4.0).re == 3.0`                          | 高     |
 | `test_complex_layout_f32`        | `size_of::<Complex<f32>>() == 8`                            | 高     |
 | `test_complex_layout_f64`        | `size_of::<Complex<f64>>() == 16`                           | 高     |
-| `test_from_real_imag`            | `from_real(5.0).im == 0.0`, `from_imag(3.0).re == 0.0`      | 高     |
+| `test_from_imag`                 | `from_imag(3.0).re == 0.0`                                  | 高     |
 | `test_conj`                      | `Complex::new(3.0, 4.0).conj() == Complex::new(3.0, -4.0)`  | 高     |
-| `test_is_real_imaginary`         | `from_real(1.0).is_real()`, `from_imag(1.0).is_imaginary()` | 中     |
+| `test_is_real_imaginary`         | `Complex::from(1.0).is_real()`, `from_imag(1.0).is_imaginary()` | 中     |
 | `test_add_complex`               | `(1+2j) + (3+4j) == (4+6j)`                                 | 高     |
 | `test_sub_complex`               | `(5+7j) - (2+3j) == (3+4j)`                                 | 高     |
 | `test_mul_complex`               | `(1+2j) * (3+4j) == (-5+10j)`                               | 高     |
 | `test_div_complex`               | 使用容差断言验证 `(6+8j) / (3+4j)` 约等于 `(2+0j)`         | 高     |
 | `test_div_zero_propagates_ieee754` | `(1+2j) / (0+0j)` 产生 IEEE 754 传播结果且不返回错误/额外 panic | 高     |
 | `test_neg_complex`               | `-(1+2j) == (-1-2j)`                                        | 高     |
-| `test_add_real`                  | `(1+2j) + 3.0 == (4+2j)`                                    | 高     |
 | `test_real_to_complex_add`       | `Complex::from(3.0) + (1+2j) == (4+2j)`                     | 高     |
-| `test_mul_real`                  | `(1+2j) * 3.0 == (3+6j)`                                    | 高     |
-| `test_div_by_real`               | `(6+4j) / 2.0 == (3+2j)`                                    | 高     |
-| `test_real_to_complex_div`       | `Complex::from(5.0) / (3+4j)` 正确                          | 中     |
 | `test_norm_3_4_5`                | `Complex::new(3.0, 4.0).norm() == 5.0`                      | 高     |
 | `test_norm_no_overflow`          | `Complex::new(1e200, 1e200).norm()` 不溢出                  | 高     |
 | `test_norm_sqr`                  | `norm_sqr() == re² + im²`                                   | 中     |
@@ -999,7 +977,7 @@ assert!((result.re - 2.0).abs() < 1e-10 && result.im.abs() < 1e-10);
 | -------- | ------------------------------------------------ | ------------------------------------------------------- |
 | sealed 边界 | 编译期验证 `ComplexFloat` 仅允许 `f32` / `f64`     | 防止公开 API 暴露任意 `T` 的实例化                      |
 | 语义边界 | compile-fail 测试 `Eq` / `Ord` / `PartialOrd` 未实现 | 验证 NaN 与复数序语义边界不被破坏                       |
-| 精度边界 | compile-fail 测试跨精度混合运算                     | 验证仅同精度混合运算进入稳定 API                         |
+| 精度边界 | compile-fail 测试 `Complex<T> op T` 与跨精度混合运算 | 验证公开 API 仅接受预先同类型化后的 `Complex<T> op Complex<T>` |
 
 ---
 
@@ -1125,6 +1103,7 @@ User constructs `Complex<f64>::new(re, im)`
 | 1.1.0 | 2026-04-08 |
 | 1.1.1 | 2026-04-14 |
 | 1.1.2 | 2026-04-15 |
+| 1.1.3 | 2026-04-15 |
 
 ---
 

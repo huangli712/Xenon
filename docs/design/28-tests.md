@@ -514,7 +514,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_send_sync_contracts`    | 各 storage mode 的 Send/Sync 边界与 `25-safety.md` 一致                                                      | 高     |
 | `test_complex_c99_layout`     | `Complex<T>` 的 C-compatible 布局与 FFI 约定一致                                                             | 高     |
 | `test_ix0_iter_single`        | 零维张量元素迭代恰好产出 1 个元素                                                                            | 高     |
-| `test_zst_storage_no_ub`      | ZST 存储与张量操作不触发 UB                                                                                  | 高     |
+| `test_zst_storage_no_ub`      | 验证内部实现对零大小类型的安全处理（内部不变量测试，非公开 API 契约）                                       | 高     |
 
 ---
 
@@ -1318,6 +1318,7 @@ fn compile_fail_harness() {
 | 1.2.2 | 2026-04-10 |
 | 1.2.3 | 2026-04-14 |
 | 1.2.4 | 2026-04-15 |
+| 1.2.5 | 2026-04-15 |
 
 ---
 

@@ -1,7 +1,7 @@
 # 布局模块设计
 
 > 文档编号: 06 | 模块: `src/layout/` | 阶段: Phase 2
-> 前置文档: `02-dimension.md`
+> 前置文档: `01-architecture.md`, `02-dimension.md`
 > 需求参考: 需求说明书 §7, §8, §16, §17, §19, §22, §25, §26, §27, §28
 > 范围声明: 范围内
 
@@ -131,7 +131,7 @@ LayoutFlags (u8):
 
 F   = F_CONTIGUOUS    (0b00001)  Fortran contiguous
 ALG = ALIGNED         (0b00100)  64-byte aligned
-ZER = HAS_ZERO_STRIDE (0b01000)  contains zero stride (broadcast)
+ZER = HAS_ZERO_STRIDE (0b01000)  contains broadcast zero stride
 -   = reserved bits
 ```
 
@@ -171,7 +171,7 @@ impl LayoutFlags {
         (self.0 & Self::ALIGNED.0) != 0
     }
 
-    /// Returns true if any zero stride exists.
+    /// Returns true if any broadcast zero stride exists.
     #[inline]
     pub const fn has_zero_stride(self) -> bool {
         (self.0 & Self::HAS_ZERO_STRIDE.0) != 0
@@ -212,7 +212,7 @@ impl LayoutFlags {
 #[inline]
 pub(crate) const fn flags_for_f_layout(aligned: bool, has_zero_stride: bool) -> LayoutFlags {
     LayoutFlags::EMPTY
-        .set_f_contiguous(true)
+        .set_f_contiguous(!has_zero_stride)
         .set_aligned(aligned)
         .set_has_zero_stride(has_zero_stride)
 }
@@ -244,6 +244,12 @@ pub enum LayoutState {
 - `LayoutState::FContiguous`：满足当前文档 §5.4 的 F-order 连续性判定；广播引入的零步长轴不得归入该类，但空数组在退化表示下出现的零步长可继续保持 `FContiguous`。
 - `LayoutState::NonContiguous`：表示任意其它非广播 stride 模式，例如转置后布局或切片后非连续布局。
 - `LayoutState::BroadcastView`：表示至少包含一个零步长轴的广播视图，用于与一般非连续视图区分。
+
+`LayoutFlags -> LayoutState` 的确定性映射规则如下：
+
+1. 若 `HAS_ZERO_STRIDE == true`，返回 `LayoutState::BroadcastView`
+2. 否则若 `F_CONTIGUOUS == true`，返回 `LayoutState::FContiguous`
+3. 否则返回 `LayoutState::NonContiguous`
 
 `layout_state()` 与 `is_f_contiguous()` 等张量层公开方法定义见 `07-tensor.md`；本模块只定义布局分类与判定规则，不承载 `TensorBase` 的方法声明。
 
@@ -310,7 +316,7 @@ impl<D: Dimension> Strides<D> {
 - `Strides<D>` 负责保存与 shape 同 rank 的步长元数据。
 - `07-tensor.md` 中的 `TensorBase` 通过 `strides: Strides<D>` 持有这部分元数据，并交由 layout 层推导连续性与布局标志。
 
-负步长布局不在当前版本范围内（参见 `require.md §7`）。当前文档仅讨论由 F-order、转置与广播产生的合法布局。
+负步长布局不在当前版本范围内（参见 `require.md §7`）。当前文档仅讨论由 F-order、转置、切片派生的正步长非连续视图与广播产生的合法布局。
 
 ### 5.3 F-order 步长计算
 
@@ -395,6 +401,7 @@ Result: false (not F-contiguous)
 
 - **F-order contiguous**：对所有轴满足 `strides[i] == product(shape[0..i])`；对 `shape[i] == 1` 的轴，可按 §5.4 的连续性规则放宽判定；若零步长来自广播语义，则不得归类为 `F_CONTIGUOUS`，但空数组在退化 metadata 表示下出现的零步长不自动破坏 `F_CONTIGUOUS`。
 - **转置视图（non-contiguous）**：`strides` 是对应 F-order contiguous stride 集合的轴置换结果，且所有 stride 都为正。
+- **切片派生的正步长非连续视图**：由范围切片等操作产生，所有 stride 都为正，但不满足 F-order 连续条件；例如在已有非连续视图上继续切片后得到的正步长布局仍属合法。
 - **广播视图**：广播轴允许 stride 为 `0`；其余非广播轴必须保持 F-order 或转置后的正 stride 模式。
 - **单元素或 0-D**：只要 metadata 可表示且访问范围合法，任意有效 stride 都视为合法。
 
@@ -518,11 +525,11 @@ function compute_flags(shape, strides, ptr):
     flags = LayoutFlags::EMPTY
 
     // 1. Stride properties
-    has_zero_stride = any(stride == 0 for stride in strides)
+    has_zero_stride = any(stride == 0 for stride in strides) and product(shape) > 0
     flags = flags.set_has_zero_stride(has_zero_stride)
 
-    // Distinguish broadcast-introduced zero strides from empty-array degenerate metadata.
-    is_broadcast_zero_stride = has_zero_stride and product(shape) > 0
+    // At this point, HAS_ZERO_STRIDE already excludes empty-array degenerate metadata.
+    is_broadcast_zero_stride = has_zero_stride
 
     // 2. Contiguity
     flags = flags.set_f_contiguous(!is_broadcast_zero_stride && is_f_contiguous(shape, strides))
@@ -858,6 +865,7 @@ Upper layers create or transform tensor metadata
 | 1.2.1 | 2026-04-09 |
 | 1.2.2 | 2026-04-14 |
 | 1.2.3 | 2026-04-15 |
+| 1.2.4 | 2026-04-15 |
 
 ---
 

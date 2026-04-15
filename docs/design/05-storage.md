@@ -1,7 +1,7 @@
 # 存储系统模块设计
 
 > 文档编号: 05 | 模块: `src/storage/` | 阶段: Phase 2
-> 前置文档: `02-dimension.md`, `03-element.md`, `04-complex.md`
+> 前置文档: `01-architecture.md`, `02-dimension.md`, `03-element.md`, `04-complex.md`
 > 需求参考: 需求说明书 §6, §8, §10, §25, §26, §27, §28
 > 范围声明: 范围内
 
@@ -110,7 +110,7 @@ src/storage/
 | ---------------- | ---------------------------------------------------- |
 | `core`           | `*const T`, `*mut T`, `NonNull<T>`, `PhantomData<T>` |
 | `alloc`          | `Vec<A>`, `alloc`/`dealloc`                          |
-| `std::sync`      | `Arc`（作为 `ArcRepr<A>` 的可能实现基础，而非公开契约） |
+| `std::sync`      | `Arc`（用于 `ArcRepr<A>` 的内部引用计数头；底层数据缓冲保持 `AlignedBuf<A>` 表示） |
 | `crate::error`   | `XenonError`（用于 `try_reserve` 等可恢复错误）      |
 | `crate::private` | `Sealed`（用于 marker trait 封闭实现）               |
 
@@ -742,15 +742,16 @@ pub type ViewMut<'a, A> = ViewMutRepr<'a, A>;
 /// Shared read-only storage.
 ///
 /// `ArcRepr<A>` is an abstract shared read-only buffer representation.
-/// Its concrete backing type stays internal to `arc.rs`; the public contract is
-/// limited to shared ownership semantics plus read-only access.
+/// Internally it wraps the same `AlignedBuf<A>` backing used by `Owned<A>`,
+/// adding only an `Arc` reference-counting header in `arc.rs`.
+/// The public contract remains shared ownership semantics plus read-only access.
 #[derive(Debug)]
 pub struct ArcRepr<A> {
     shared_read_only_buffer: core::marker::PhantomData<A>,
 }
 ```
 
-> **设计决策：** `ArcRepr<A>` 不承诺公开可见的内部字段。偏移量与切片范围由外层 `TensorBase` 元数据管理（见 `07-tensor.md §5.1`），而 `ArcRepr` 只抽象表示共享只读语义下的底层连续缓冲区。任何写时复制 helper 都仅能在 `arc.rs` 内部针对整个底层缓冲区执行，不负责解释张量视图的 `offset` / `shape` / `strides`，也不把 `ArcRepr` 提升为共享可写存储模式，更不构成公开的 `ArcRepr<A> -> Owned<A>` 零拷贝转换。
+> **设计决策：** `ArcRepr<A>` 不承诺公开可见的内部字段，但其底层数据表示与 `Owned<A>` 保持一致：二者都以 `AlignedBuf<A>` 作为连续缓冲区表示，`ArcRepr<A>` 仅在 `arc.rs` 内部额外附着 `Arc` 引用计数头。偏移量与切片范围由外层 `TensorBase` 元数据管理（见 `07-tensor.md §5.1`），而 `ArcRepr` 只抽象表示共享只读语义下的底层连续缓冲区。该共享表示保证 `Owned<A> -> ArcRepr<A>` 可以按 O(1) 零拷贝完成：不发生数据复制，也不发生布局变换。任何写时复制 helper 都仅能在 `arc.rs` 内部针对整个底层缓冲区执行，不负责解释张量视图的 `offset` / `shape` / `strides`，也不把 `ArcRepr` 提升为共享可写存储模式，更不构成公开的 `ArcRepr<A> -> Owned<A>` 零拷贝转换。
 
 **内部写时复制流程**：
 
@@ -1093,7 +1094,15 @@ User calls `TensorBase::as_ptr()`
 | 理由     | 可变访问涉及潜在 O(n) 复制；把 CoW 限定在内部实现可以避免 storage 层直接暴露整缓冲 `&mut [T]`，并保持“当前版本不提供共享可写存储模式”的需求边界 |
 | 替代方案 | 实现 `StorageMut` — 放弃，隐藏 CoW 成本                                                                  |
 
-### 决策 3：ArcRepr 作为统一 trait 体系的一部分
+### 决策 3：Owned 与 ArcRepr 共享底层缓冲表示
+
+| 属性     | 值 |
+| -------- | --- |
+| 决策     | `Owned<A>` 与 `ArcRepr<A>` 共享同一 `AlignedBuf<A>` 底层缓冲表示；`ArcRepr<A>` 仅在内部添加 `Arc` 引用计数头 |
+| 理由     | 明确支撑 `Owned<A> -> ArcRepr<A>` 的 O(1) 零拷贝转换；避免在 storage 设计中引入“语义上零拷贝、实现上重分配”的矛盾 |
+| 替代方案 | `ArcRepr<A>` 使用与 `Owned<A>` 不同的独立缓冲表示 — 放弃，会使 `Owned<A> -> ArcRepr<A>` 无法真实保持 O(1) 零拷贝 |
+
+### 决策 4：ArcRepr 作为统一 trait 体系的一部分
 
 | 属性     | 值                                                                     |
 | -------- | ---------------------------------------------------------------------- |
@@ -1152,6 +1161,7 @@ User calls `TensorBase::as_ptr()`
 | 1.2.2 | 2026-04-14 |
 | 1.2.3 | 2026-04-14 |
 | 1.2.4 | 2026-04-15 |
+| 1.2.5 | 2026-04-15 |
 
 ---
 

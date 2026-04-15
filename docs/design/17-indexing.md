@@ -154,7 +154,7 @@ pub enum SliceInfoElem {
 pub enum SliceInfoIndices {
     Inline {
         len: u8,
-        elems: [SliceInfoElem; 6],
+        elems: [Option<SliceInfoElem>; 6],
     },
     Dynamic(Vec<SliceInfoElem>),
 }
@@ -265,7 +265,7 @@ let value = unsafe { tensor.get_unchecked(user_index.as_slice()) };
 
 ### 6.1 核心数据结构
 
-`NdIndex<D>` 负责把多维索引转换为偏移量；`SliceInfoElem` / `SliceInfoIndices` 负责表达“定点索引”和“范围索引”的组合。两类描述都只接受 `usize`，从类型层面排除负索引与负步长。`SliceInfo<I, D>` 额外负责把这些索引描述与输入/输出维度绑定，但其内部字段不对外公开，只能通过构造器统一校验。
+`NdIndex<D>` 负责把多维索引转换为偏移量；`SliceInfoElem` / `SliceInfoIndices` 负责表达“定点索引”和“范围索引”的组合。两类描述都只接受 `usize`，从类型层面排除负索引与负步长。`SliceInfoIndices::Inline` 使用固定 6 槽位表示短切片描述，尾部未使用的槽位填充为 `None`，`len` 表示前缀中实际参与校验与计算的元素数量。`SliceInfo<I, D>` 额外负责把这些索引描述与输入/输出维度绑定，但其内部字段不对外公开，只能通过构造器统一校验。
 
 ### 6.2 偏移量计算
 
@@ -297,6 +297,14 @@ compute_slice(shape, strides, offset, slices):
     5. Recompute layout flags from the new shape and strides.
     6. Return a read-only TensorView.
 ```
+
+`Range { start, end, step }` 的结果轴长度按以下规则计算：
+
+- `start` 默认 `0`
+- `end` 默认 `shape[axis]`
+- 区间语义为 `[start, end)`（左闭右开）
+- 当 `start >= end` 时，结果长度为 `0`
+- 否则结果长度为 `(end - start) / step` 的向上取整，即 `(end - start + step - 1) / step`
 
 切片后的语义约束如下：
 
@@ -609,6 +617,7 @@ XenonError::IndexOutOfBounds {
 | 1.0.0 | 2026-04-14 |
 | 1.0.1 | 2026-04-14 |
 | 1.0.2 | 2026-04-15 |
+| 1.0.3 | 2026-04-15 |
 
 ---
 

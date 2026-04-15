@@ -17,11 +17,11 @@
 | 动态维度类型        | `IxDyn`（`Vec<usize>`），运行时维度数                                                        | —                                                  |
  | Dimension trait     | 维度形状与 rank 接口（ndim/slice/checked/checked_size/into_dyn/try_from_dyn）                   | stride 计算、logical-first pointer、布局标志计算   |
 | IntoDimension trait | 从元组、数组、切片、Vec 构造维度                                                             | 用户自定义维度源                                   |
-| Axis 类型           | 轴标记新类型（index/next/prev/is_first/is_last）                                             | 轴上的切片/迭代操作（由 tensor 方法提供）          |
+| Axis 类型           | 轴标记新类型（index/checked_next/next/prev/is_first/is_last）                               | 轴上的切片/迭代操作（由 tensor 方法提供）          |
 | RemoveAxis trait    | 移除指定轴降维（Ix1→Ix0, ..., Ix6→Ix5, IxDyn→IxDyn）                                         | 不负责把标量轴错误建模为编译期拒绝；零维场景统一走运行时可恢复错误 |
 | 维度互转            | 静态→动态（总是成功）、动态→静态（需维度匹配）                                               | 隐式维度转换                                       |
 | 形状元数据          | 维度层仅保存无符号形状与 rank，供 layout/tensor 读取                                         | stride 元数据及其合法性判定                        |
-| 内存分配            | —                                                                                            | 不负责任何内存分配                                 |
+| 内存分配            | 为 `IxDyn` 动态维度与维度转换进行少量元数据分配                                               | 不负责张量数据分配                                 |
 
 ### 1.2 设计原则
 
@@ -486,6 +486,9 @@ impl Axis {
     pub fn index(self) -> usize { self.0 }
 
     #[inline]
+    pub fn checked_next(self) -> Option<Self> { self.0.checked_add(1).map(Axis) }
+
+    #[inline]
     pub fn next(self) -> Self { Axis(self.0 + 1) }
 
     #[inline]
@@ -500,6 +503,8 @@ impl Axis {
 ```
 
 > **说明：** 当 `ndim == 0`（标量、无轴）时，`is_last()` 返回 `false`。这一定义避免了把“无轴”误判为“最后一轴”，调用方若在轴语义上区分标量场景，应先检查 `ndim > 0`。
+
+> **补充说明：** `next()` 的前置条件为 `axis < usize::MAX`；如需无前置条件的推进语义，使用 `checked_next()`。
 
 ### 5.6 RemoveAxis trait
 
@@ -848,6 +853,8 @@ impl Reverse for IxDyn {
 
 > **范围说明：** 当前版本的形状操作只包含 transpose，但 transpose 语义本身须支持显式轴置换；默认的轴反转是 `transpose()` 的一种特例。参见 `require.md` §17。
 
+> **静态维度补充说明：** 对静态维度 `Ix0`..`Ix6`，`PermuteAxes` 通过编译期常量泛型或宏生成实现；当前版本仅 `IxDyn` 提供完整的运行时轴置换。静态维度的 `transpose` 由 `16-shape.md` 定义，不依赖通用 `PermuteAxes` trait。
+
 ---
 
 ## 6. 内部实现设计
@@ -1027,6 +1034,7 @@ Wave 5:  [T10] → [T11] → [T12]
 | `test_tuple_into_dimension`  | `(2,3,4).into_dimension()` → `Ix3(2,3,4)`                | 中     |
 | `test_slice_to_ixdyn`        | `(&[2,3,4][..]).into_dimension()` → `IxDyn`              | 中     |
 | `test_axis_next_prev`        | `Axis(2).next() == Axis(3)`, `Axis(0).prev() == None`    | 中     |
+| `test_axis_checked_next`     | `Axis(usize::MAX).checked_next() == None`                | 中     |
 | `test_axis_is_first_last`    | `Axis(0).is_first()`, `Axis(2).is_last(3)`               | 中     |
 | `test_size_overflow`         | 大值维度 `checked_size()` 返回含 `offending_dim` 的 `XenonError::InvalidShape` | 低 |
 | `test_permuted_axes_valid_permutation` | `PermuteAxes` 仅接受 `0..ndim-1` 的双射排列 | 高 |
@@ -1199,6 +1207,7 @@ User provides shape / axis / dimension input
 | 1.2.1 | 2026-04-14 |
 | 1.2.2 | 2026-04-14 |
 | 1.2.3 | 2026-04-15 |
+| 1.2.4 | 2026-04-15 |
 
 ---
 

@@ -148,7 +148,7 @@ xenon/
 │   │   └── indexed.rs         # IndexedIter with indices
 │   │
 │   ├── simd/                  # SIMD backend (feature = "simd")
-│   │   ├── mod.rs             # pulp integration, internal dispatch, SimdKernel trait
+│   │   ├── mod.rs             # pulp integration, dispatch facade, public kernel trait
 │   │   ├── scalar.rs          # Scalar fallback implementation
 │   │   └── vector.rs          # Vectorized implementation
 │   │
@@ -162,7 +162,7 @@ xenon/
 │   │
 │   ├── math/                  # Element-wise math
 │   │   ├── mod.rs             # Module entry and re-exports
-│   │   ├── unary.rs           # Unary ops (abs, neg, signum, square, sin, sqrt, exp, ln, floor, ceil, norm, conj, not)
+│   │   ├── unary.rs           # Unary ops (abs, neg, signum, square, sin, sqrt, exp, ln, floor, ceil, modulus, conj, not)
 │   │   ├── binary.rs          # Binary arithmetic methods (add, sub, mul, div, add_scalar, sub_scalar, mul_scalar, div_scalar)
 │   │   └── comparison.rs      # Comparison ops (eq, ne, lt, gt)
 │   │
@@ -269,7 +269,7 @@ xenon/
 | `layout/`      | F-order 布局函数、步长计算、连续性检查与验证入口                                                                   |
 | `tensor/`      | 核心 `TensorBase<S, D>` 结构体及类型别名                                                                           |
 | `iter/`        | 元素/轴/索引迭代器                                                                                                 |
-| `simd/`        | SIMD 后端：向量化 kernel、标量回退、运行时分发                                                                     |
+| `simd/`        | SIMD 后端：稳定公开面仅含 dispatch facade 与公共 kernel trait；具体 kernel 实现、ISA 检测细节为 `pub(crate)` 或 `#[doc(hidden)]` |
 | `parallel/`    | 并行后端：单文件模块，承载阈值、guard、并行入口，并依赖私有 `kernel/`                                              |
 | `math/`        | 逐元素数学运算（一元、二元算术、比较），按需委托 `simd/` / `parallel/`                                            |
 | `overload`     | 运算符重载（Add, Sub, Mul, Div trait 实现）                                                                        |
@@ -283,7 +283,7 @@ xenon/
 | `construct/`   | 张量构造（`zeros`、`ones`、`eye`、from-data、`from_scalar`）                                                       |
 | `convert/`     | 类型转换（cast、存储模式互转、From trait；必要时复用内部 contiguous helper）                                       |
 | `format/`      | NumPy 风格格式化输出                                                                                               |
-| `ffi/`         | 原始指针 API、BLAS 兼容性检查、多维索引偏移（types/ptr/blas/offset）                                               |
+| `ffi/`         | 原始指针 API、BLAS 兼容性检查、多维索引偏移；公开入口含 `export()` / `export_mut()` 与 `try_offset_of()` / `try_ptr_at()` |
 | `workspace/`   | 临时工作空间（对齐分配、借用守卫、分割、扩容；错误类型仅内部使用）                                                 |
 
 ---
@@ -550,6 +550,10 @@ pub mod workspace;
 #[cfg_attr(docsrs, doc(cfg(feature = "simd")))]
 pub mod simd;
 
+// `simd` public surface is limited to the dispatch facade and public kernel
+// traits. Concrete kernels and ISA detection details remain `pub(crate)` or
+// `#[doc(hidden)]` implementation details.
+
 #[cfg(feature = "parallel")]
 #[cfg_attr(docsrs, doc(cfg(feature = "parallel")))]
 pub(crate) mod parallel;
@@ -572,7 +576,7 @@ pub use error::XenonError;
 | 公开 trait 方法          | **稳定**   | 只增不减                                                             |
 | 内部模块 (`mod private`, `mod kernel`) | **不稳定** | 随时可能变更                                             |
 | `#[doc(hidden)]`         | **不稳定** | 仅供内部使用                                                         |
-| `simd` 模块             | **稳定**   | 作为公开模块纳入 SemVer；feature gate 仅控制可用性，不降低兼容性承诺 |
+| `simd` 模块             | **稳定**   | 作为公开模块纳入 SemVer；稳定公开面仅含 dispatch facade 与公共 kernel trait；feature gate 仅控制可用性，不降低兼容性承诺 |
 | 内部后端 (`parallel`)   | **不稳定** | `pub(crate)` 内部实现，仅影响自动并行加速，不构成公开模块 API         |
 
 ---
@@ -602,7 +606,7 @@ classify_layout(shape, strides) // Internal classification helper
 Element                        // Base: Copy + PartialEq + Debug + Display + Send + Sync
 └── Numeric                    // Numeric: arithmetic syntax + checked integer contract + conjugate semantics
     ├── RealScalar             // Real: sqrt, sin, exp, ln, floor, ceil
-    └── ComplexScalar          // Complex: complex-specific conj/norm/re/im helpers
+    └── ComplexScalar          // Complex: complex-specific conj/modulus/re/im helpers (`Complex<f32> -> f32`, `Complex<f64> -> f64`)
 ```
 
 其中 `Numeric` 不仅表示 `Add + Sub + Mul + Div + Neg` 语法可用，还要求：
@@ -754,9 +758,9 @@ Wave 5: [W5.1] [W5.2] [W5.3] [W5.4]
 
 | 属性     | 值                                                                                                                               |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | 可恢复错误统一通过 `Result` 暴露；公开安全索引入口收敛为 `try_at()` / `try_at_mut()`；`[]` 单独作为受限 panic sugar 说明；FFI 公开接口收敛为 `export()` / `export_mut()`，并以 checked arithmetic 计算偏移与指针 |
-| 理由     | 保持与 `require.md` §18 的安全接口契约一致，避免相同失败条件在公开方法与运算符之间分裂成两套模型，同时让 FFI helper 与需求文档的可恢复错误约束保持一致 |
-| 替代方案 | 所有接口统一 panic — 放弃，不利于库集成和诊断；把 `[]` 语法糖当作稳定公开安全 API — 放弃，会与索引失败的可恢复错误契约冲突；为 FFI helper 额外提供 panic-sugar 包装 — 放弃，会破坏公开错误入口的一致性                 |
+| 决策     | 可恢复错误统一通过 `Result` 暴露；公开安全索引入口收敛为 `try_at()` / `try_at_mut()`；`[]` 单独作为受限 panic sugar 说明；FFI 公开入口包含结构化导出 `export()` / `export_mut()` 与 checked 查询 `try_offset_of()` / `try_ptr_at()`，并统一以 checked arithmetic 计算偏移与指针 |
+| 理由     | 保持与 `require.md` §18 的安全接口契约一致，避免相同失败条件在公开方法与运算符之间分裂成两套模型，同时让 FFI 结构化导出与偏移/指针查询都遵循相同的可恢复错误约束 |
+| 替代方案 | 所有接口统一 panic — 放弃，不利于库集成和诊断；把 `[]` 语法糖当作稳定公开安全 API — 放弃，会与索引失败的可恢复错误契约冲突；为 FFI 额外提供 `offset_of()` / `ptr_at()` 这类 panic-sugar 包装 — 放弃，会破坏公开错误入口的一致性                 |
 
 ### 决策 7：FfiError / WorkspaceError 仅限模块内部使用
 
@@ -770,9 +774,9 @@ Wave 5: [W5.1] [W5.2] [W5.3] [W5.4]
 
 ## 错误处理与语义边界
 
-本文档不直接定义错误类型，但要求所有架构层级、模块边界与执行路径统一遵循单一 `XenonError` 公开错误模型；架构层只裁决错误入口应单一、路径语义应一致，不在此重复定义完整错误枚举。`FfiError`、`WorkspaceError` 等模块局部错误只允许在模块内部保留语义，跨公开 API 边界时必须映射为 `00-coding.md` §4.2 定义的结构化 `XenonError` 字段。对于 FFI 场景，公开 Rust 入口收敛为 `export()` / `export_mut()`，并通过 checked arithmetic 计算偏移与指针。
+本文档不直接定义错误类型，但要求所有架构层级、模块边界与执行路径统一遵循单一 `XenonError` 公开错误模型；架构层只裁决错误入口应单一、路径语义应一致，不在此重复定义完整错误枚举。`FfiError`、`WorkspaceError` 等模块局部错误只允许在模块内部保留语义，跨公开 API 边界时必须映射为 `00-coding.md` §4.2 定义的结构化 `XenonError` 字段。对于 FFI 场景，公开 Rust 入口包含结构化导出 `export()` / `export_mut()` 与 checked 查询 `try_offset_of()` / `try_ptr_at()`，并统一通过 checked arithmetic 计算偏移与指针。
 
-> **FFI 补充说明**：`extern "C"` 边界不得返回 `Result`，也不得依赖 panic-sugar helper；公开 Rust API 层同样不额外承诺 `offset_of` / `ptr_at` 这类 panic 包装，而是由 `export()` / `export_mut()` 统一承载可恢复错误入口，参见 `00-coding.md` §4.2。
+> **FFI 补充说明**：`extern "C"` 边界不得返回 `Result`，也不得依赖 panic-sugar helper；公开 Rust API 层提供结构化导出 `export()` / `export_mut()` 与 checked 查询 `try_offset_of()` / `try_ptr_at()`，不额外承诺 `offset_of()` / `ptr_at()` 这类 panic 包装，参见 `00-coding.md` §4.2。
 
 ---
 
@@ -809,6 +813,7 @@ Wave 5: [W5.1] [W5.2] [W5.3] [W5.4]
 | 1.2.1 | 2026-04-10 |
 | 1.2.2 | 2026-04-14 |
 | 1.2.3 | 2026-04-15 |
+| 1.2.4 | 2026-04-15 |
 
 ---
 

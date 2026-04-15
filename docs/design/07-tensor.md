@@ -1,7 +1,7 @@
 # 张量类型模块设计
 
 > 文档编号: 07 | 模块: `src/tensor/` | 阶段: Phase 3
-> 前置文档: `02-dimension.md`, `05-storage.md`, `06-layout.md`
+> 前置文档: `01-architecture.md`, `02-dimension.md`, `05-storage.md`, `06-layout.md`
 > 需求参考: 需求说明书 §6、§7、§8、§10、§19、§22、§27、§28
 > 范围声明: 范围内
 
@@ -413,11 +413,11 @@ where
     /// - `data.len() != shape.checked_size()`
     ///
     /// Xenon follows `require.md §19`: "the order of the input data defines the element-to-logical-index correspondence."
-    /// `from_shape_vec` uses Xenon's 64-byte-aligned allocation strategy by default
-    /// (for example via `Owned::from_vec_aligned`), but this is a storage-layer policy
-    /// rather than a hard API requirement. When SIMD alignment is not needed,
-    /// non-aligned paths are also acceptable as long as logical element order is preserved.
-    /// See `05-storage.md §5` and `18-construction.md §5.3`。
+    /// The current version defaults to 64-byte-aligned allocation
+    /// (for example via `Owned::from_vec_aligned`), consistent with `05-storage.md`.
+    /// This aligned path is the default owned-storage policy; any exception must be
+    /// explicitly documented by the corresponding constructor and still preserve
+    /// the same logical element order. See `05-storage.md §5` and `18-construction.md §5.3`。
     ///
     /// # Example
     ///
@@ -693,7 +693,7 @@ Tensor2<f64> = TensorBase<Owned<f64>, Ix2>
 ┌─────────────────────────────────────────┐
 │ storage: Owned<f64>                     │
 │   ┌───────────────────────────────────┐ │
-│   │ data: Vec<f64> (64B aligned)       │ │
+│   │ data: AlignedBuf<f64> (64B aligned)│ │
 │   │ [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]    │ │
 │   └───────────────────────────────────┘ │
 │ shape: Ix2(2, 3)                        │
@@ -863,7 +863,7 @@ Wave 4:       [T10]
 | 动态维度 `TensorD`    | `ndim()` 运行时值正确          |
 | 大张量 `10^7` 元素    | 构造成功，长度与 flags 保持正确 |
 | 非连续转置视图        | 可构造 `view()`，但连续切片快路径返回 `None` |
-| 空张量 + 多种 offset  | `offset==0` 合法，非零 offset 被拒绝 |
+| 空张量 + 多种 offset  | 只要 `offset <= storage_len` 即合法 |
 | 非法元素类型编译失败  | compile-fail 测试拒绝不满足元素约束的类型 |
 
 ### 8.5 属性测试不变量
@@ -917,7 +917,7 @@ User calls constructors / `view()` / `view_mut()` / query APIs
 | 接口 | 方向 | 契约 |
 | ---- | ---- | ---- |
 | `Storage::as_ptr()` / `StorageMut::as_mut_ptr()` | `tensor` 消费 `storage` | storage 层返回 storage base pointer；`TensorBase` 负责叠加 `offset` 并形成 logical-first pointer |
-| `Owned::from_vec_aligned(data)` | `tensor` 消费 `storage` | 默认拥有型构造可选择对齐分配策略，但不得改变 `require.md §19` 规定的逻辑元素顺序 |
+| `Owned::from_vec_aligned(data)` | `tensor` 消费 `storage` | 当前版本默认采用 64 字节对齐分配策略；若存在例外，须显式文档化，且不得改变 `require.md §19` 规定的逻辑元素顺序 |
 | `Storage<Elem = A>` / `StorageMut<Elem = A>` | `tensor` 消费 `storage` trait | 元素类型、只读/可写访问能力完全由存储模式 trait 约束决定，`tensor` 不重复维护独立元素类型参数 |
 
 ```rust
@@ -1010,10 +1010,9 @@ where
             });
         }
         let strides = layout::compute_f_strides(&shape)?;
-        // The default storage strategy may choose a fresh 64-byte aligned allocation,
-        // but this policy lives in the storage module rather than being a hard
-        // requirement of from_shape_vec itself. See 05-storage.md §5 and
-        // 18-construction.md §5.3.
+        // The current version defaults to a fresh 64-byte aligned allocation.
+        // Any exception must be explicitly documented by the corresponding
+        // constructor path. See 05-storage.md §5 and 18-construction.md §5.3.
         let storage = Owned::from_vec_aligned(data);
         let logical_ptr = storage.as_ptr();
         let flags = layout::compute_layout_flags(&shape, &strides, logical_ptr);
@@ -1131,8 +1130,8 @@ where
           │                   │                   │
           ▼                   ▼                   ▼
     TensorBase<        TensorBase<          TensorBase<
-      Owned<A>,         ViewRepr<           ViewMutRepr<
-         D>            &'a A>, D>          &'a mut A>, D>
+      Owned<A>,         ViewRepr<'a, A>,    ViewMutRepr<'a, A>,
+         D>                    D>                    D>
           │                   │                   │
           ▼                   ▼                   ▼
       Tensor<A,D>      TensorView<'a,A,D>  TensorViewMut<'a,A,D>
@@ -1184,6 +1183,7 @@ User calls constructor-module API `Tensor::<f64, Ix2>::zeros([3, 4])?`
 | 1.1.2 | 2026-04-10 |
 | 1.1.3 | 2026-04-14 |
 | 1.1.4 | 2026-04-15 |
+| 1.1.5 | 2026-04-15 |
 
 ---
 

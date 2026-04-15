@@ -188,9 +188,37 @@ pub struct AxisIter<'a, A, D: Dimension> {
 pub struct AxisIterMut<'a, A, D: Dimension> {
     // Internal fields: opaque public wrapper around a private RemoveAxis-backed iterator.
 }
+
+impl<'a, A, D: Dimension> Iterator for AxisIter<'a, A, D>
+where
+    D: RemoveAxis,
+{
+    type Item = TensorView<'a, A, D::Smaller>;
+    fn size_hint(&self) -> (usize, Option<usize>);
+}
+
+impl<'a, A, D: Dimension> ExactSizeIterator for AxisIter<'a, A, D>
+where
+    D: RemoveAxis,
+{}
+
+impl<'a, A, D: Dimension> Iterator for AxisIterMut<'a, A, D>
+where
+    D: RemoveAxis,
+{
+    type Item = TensorViewMut<'a, A, D::Smaller>;
+    fn size_hint(&self) -> (usize, Option<usize>);
+}
+
+impl<'a, A, D: Dimension> ExactSizeIterator for AxisIterMut<'a, A, D>
+where
+    D: RemoveAxis,
+{}
 ```
 
 > **设计决策：** 公开构造签名不再暴露 `D: RemoveAxis`，以确保 `Ix0` 与 rank-0 `IxDyn` 都能通过编译并进入统一的运行时校验路径。成功构造后的实际降维迭代仍可由私有 `AxisIterImpl<'a, A, D>` / `AxisIterMutImpl<'a, A, D>` 承担，这些内部实现再使用 `D: RemoveAxis` 与 `D::Smaller`。因此，`RemoveAxis` 只属于内部实现 trait，不属于公开 API 契约。
+
+> **`ExactSizeIterator` 契约说明：** `AxisIter` / `AxisIterMut` 的 `len()` 返回 `shape[axis]`；因此 `size_hint()` 的上下界必须始终相等，并与剩余未产出的轴切片数量一致。空轴（`shape[axis] == 0`）时，`len() == 0`。
 
 ### 5.3 内部迭代分发说明
 
@@ -655,6 +683,7 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
 | 1.2.1 | 2026-04-14 |
 | 1.2.2 | 2026-04-15 |
 | 1.2.3 | 2026-04-15 |
+| 1.2.4 | 2026-04-15 |
 
 ---
 

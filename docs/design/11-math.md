@@ -16,7 +16,7 @@
 | 算术运算 | add/sub/mul/div，数值类型：i32/i64/f32/f64/Complex                    | 归约运算（sum/prod/min/max，参见 `13-reduction.md §1`） |
 | 一元运算 | abs（有序数值）；signum（浮点按符号位、整数按比较）；neg/square（Numeric）；数学函数（RealScalar） | 篮选/排序                                               |
 | 数学函数 | sin/sqrt/exp/ln/floor/ceil，仅 f32/f64                                | 运算符重载（参见 `19-overload.md §1`）                  |
-| 复数运算 | norm/模（返回实数类型）/conjugate（公开 API；内部 Complex 方法名可记为 conj），仅 Complex | 比较运算（eq/ne/lt/gt）                                 |
+| 复数运算 | modulus/模（返回实数类型）/conjugate（公开 API；内部 Complex 方法名可记为 conj），仅 Complex | 比较运算（eq/ne/lt/gt）                                 |
 | 逻辑非   | `!`，仅 bool                                                          | 位运算                                                  |
 | 比较运算 | eq/ne 对所有 Element 可用；lt/gt 对 i32/i64/f32/f64 可用，返回 bool 张量，NaN 遵循 IEEE 754 | 搜索/排序                                               |
 | 标量运算 | 标量与张量的逐元素运算                                                | 矩阵运算（dot/matmul）                                  |
@@ -51,7 +51,7 @@ L6: math (element-wise operations) <- current module (depends on broadcast, iter
 | 类型     | 内容 |
 | -------- | ---- |
 | 需求映射 | 需求说明书 §4, §9.1, §9.2, §9.3, §12, §20, §27, §28.2, §28.3, §28.4, §28.5 |
-| 范围内   | 逐元素算术、一元运算、数学函数、复数 `norm` / `conjugate`、逻辑非、比较运算、标量-张量逐元素语义与广播语义。 |
+| 范围内   | 逐元素算术、一元运算、数学函数、复数 `modulus` / `conjugate`、逻辑非、比较运算、标量-张量逐元素语义与广播语义。 |
 | 范围外   | 混合类型逐元素运算以及 `map` 系列公开 API。SIMD 与并行覆盖范围仅限本模块负责的逐元素运算；若当前类型/ISA/语义约束不满足，则自动回退标量。 |
 | 非目标   | 不新增新的数学库依赖，不在本文扩展 mixed-type API 或更通用的逐元素映射原语。 |
 
@@ -63,7 +63,7 @@ L6: math (element-wise operations) <- current module (depends on broadcast, iter
 src/math/
 ├── mod.rs              # module entry, re-export public APIs
 ├── binary.rs           # binary arithmetic methods and shared binary execution skeleton
-├── unary.rs            # unary operations (abs, neg, signum, square, sin, sqrt, exp, ln, floor, ceil, norm, conjugate, not)
+├── unary.rs            # unary operations (abs, neg, signum, square, sin, sqrt, exp, ln, floor, ceil, modulus, conjugate, not)
 └── comparison.rs       # comparison operations (eq, ne, lt, gt)
 
 Optional dependency touchpoints:
@@ -238,6 +238,8 @@ where
 
 > **整数一元运算补充约束：** `abs` / `square` 在整数路径上必须使用 checked arithmetic。特别是最小负值取绝对值、平方溢出等情形，均须视为不可恢复错误并触发 panic。`signum` 仅做符号分类，不额外要求 checked arithmetic。
 
+> **`neg()` 整数边界：** 对有符号整数，`neg(i32::MIN)` / `neg(i64::MIN)` 等不可表示情形视为不可恢复错误，遵循 panic 语义。
+
 ### 5.5 数学函数（RealScalar 约束：仅 f32/f64）
 
 ```rust
@@ -267,8 +269,8 @@ where
     D: Dimension,
     T: RealScalar,
 {
-    /// Norm operation, returns a real-typed tensor.
-    pub fn norm(&self) -> Tensor<T, D>;
+    /// Modulus operation, returns a real-typed tensor.
+    pub fn modulus(&self) -> Tensor<T, D>;
 }
 
 impl<S, D> TensorBase<S, D>
@@ -292,7 +294,7 @@ where
 
 > **命名说明：** 公开张量 API 统一使用 `conjugate()`（与 `Numeric::conjugate()` 保持一致）；`conj` 仅允许作为内部 `Complex` 方法名或实现细节出现，不构成公开 API 命名承诺。
 
-> **术语说明：** 中文语境下，`norm()` 在复数场景描述为“模”，表示返回复数模的实数张量，而非其他更宽泛的数学概念。
+> **术语说明：** `modulus()` 对应需求说明书 §12 中的“模”运算。`Complex<f32> → f32`，`Complex<f64> → f64`。
 
 > **类型一致性约束：** 参与逐元素运算或比较的双方元素类型须预先一致。因此，`Complex<T>` 与实数标量的混合张量 API（如 `add_real_scalar` / `mul_real_scalar`）不属于当前公开范围；若内部实现需要复用相应标量逻辑，也只能作为不对外承诺的内部辅助路径存在。
 
@@ -414,6 +416,8 @@ where
     pub fn div_scalar(&self, scalar: A) -> Tensor<A, D>;
 }
 ```
+
+> **标量算术语义：** 标量版算术方法与张量-张量运算遵循相同的 checked arithmetic 语义：有符号整数溢出、除以零、结果不可表示均遵循 panic 语义。
 
 ### 5.10 Good / Bad 对比示例
 
@@ -684,9 +688,9 @@ User calls add / unary op / comparison method
 | 主题 | 内容 |
 | ---- | ---- |
 | Recoverable error | 广播不兼容时返回 `XenonError::BroadcastError`；诊断上分别区分 `input_shape(lhs)` 与 `other_shape(rhs)`，不得把 `target_shape` 复用于右操作数 shape。参数不满足公开前提时返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, shape: Option<Vec<usize>> }`。 |
-| Panic | 整数 `add/sub/mul/div`、`abs/square` 的溢出、除零或结果不可表示均按需求触发 panic；`signum` 不新增 panic 约束。panic 信息至少包含 `operation`、`type`、`trigger`、`element_index`，并在适用时附带 `shape`。推荐格式：`Xenon: {operation} overflow for {type} at element_index={i}, shape={shape}, trigger={trigger}`。 |
+| Panic | 整数 `add/sub/mul/div`、标量版 `add_scalar/sub_scalar/mul_scalar/div_scalar`、`abs/neg/square` 的溢出、除零或结果不可表示均按需求触发 panic；`signum` 不新增 panic 约束。panic 信息至少包含 `operation`、`type`、`trigger`、`element_index`，并在适用时附带 `shape`。推荐格式：`Xenon: {operation} overflow for {type} at element_index={i}, shape={shape}, trigger={trigger}`。 |
 | 路径一致性 | 标量、SIMD 与并行路径必须保持相同 shape、错误类别、NaN/复数语义；不满足前提或 guard 失败时统一回退标量实现。 |
-| 容差边界 | `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 遵循 IEEE 754，误差边界以 Rust `std` / 平台实现文档化的 ULP 上界为准；其余 SIMD 容差约束参见 `08-simd.md`。对浮点与复数结果，每个实数分量相对标量参考值的容差统一为 `max(1 ULP, epsilon * |scalar_result|)`，其中 `epsilon` 取对应标量类型的 `RealScalar::epsilon()`；仅在可证明语义等价或满足该文档化容差时启用 SIMD，否则回退标量路径。 |
+| 容差边界 | `floor` / `ceil` 的 SIMD/并行路径结果必须与标量路径逐元素完全一致，不允许容差；`sqrt` / `exp` / `ln` / `sin` 以及其他 SIMD 容差约束参见 `08-simd.md`。复数结果按实部、虚部分量分别应用对应实数容差规则；仅在可证明语义等价或满足文档化容差时启用 SIMD，否则回退标量路径。 |
 
 ---
 
@@ -768,6 +772,7 @@ User calls add / unary op / comparison method
 | 1.2.2 | 2026-04-14 |
 | 1.2.3 | 2026-04-15 |
 | 1.2.4 | 2026-04-15 |
+| 1.2.5 | 2026-04-15 |
 
 ---
 

@@ -538,8 +538,12 @@ rustdoc-args = ["--cfg", "docsrs"]
 // lib.rs
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-// Public APIs whose behavior is affected by an optional feature
-#[cfg_attr(docsrs, doc(cfg(feature = "parallel")))]
+// Public APIs whose behavior is affected by an optional feature should document
+// the behavior change directly instead of using doc(cfg) when the API itself is
+// always available.
+// Documentation note example:
+// Enabled with the `parallel` feature, the internal execution path may use
+// parallel acceleration while the public API semantics remain unchanged.
 pub fn sum(&self) -> A { ... }
 ```
 
@@ -657,25 +661,26 @@ pub fn sum(&self) -> A { ... }
 /// let data = vec![1.0f64, 2.0, 3.0, 4.0];
 /// let tensor = Tensor2::from_shape_vec([2, 2], data)?;
 /// let exported = tensor.export();
-/// assert_eq!(exported.shape(), &[2, 2]);
+/// let shape = unsafe { core::slice::from_raw_parts(exported.shape, exported.ndim) };
+/// assert_eq!(shape, &[2, 2]);
 /// assert!(tensor.is_blas_layout_compatible());
 /// # Ok(())
 /// # }
 /// ```
-pub fn export(&self) -> FfiExport<'_, A, D>
+pub fn export(&self) -> TensorExport<A>
 where
     A: Element,
     D: Dimension
 
 /// Export the tensor as a mutable FFI descriptor.
 ///
-/// # Safety
+/// # 写入边界
 ///
 /// The caller of the foreign code must ensure that writes performed through the
 /// exported descriptor stay within the exported bounds, do not create aliasing
 /// violations with any other live Rust reference, and do not assume BLAS/LAPACK
 /// compatibility unless that was checked explicitly before the call.
-pub fn export_mut(&mut self) -> FfiExportMut<'_, A, D>
+pub fn export_mut(&mut self) -> TensorExportMut<A>
 where
     A: Element,
     D: Dimension
@@ -821,7 +826,7 @@ docs:
 | 配置       | 验证点                                                   |
 | ---------- | -------------------------------------------------------- |
 | 默认配置   | 默认 `std` 文档、README 与 examples 描述一致             |
-| 启用并行   | 受 `parallel` feature 影响的公开 API 文档、`doc(cfg)` 与示例说明保持一致 |
+| 启用并行   | 受 `parallel` feature 影响的公开 API 文档说明、性能路径注记与示例说明保持一致 |
 | 启用 SIMD  | `simd` API 的 `doc(cfg)`、doctest 与示例说明保持一致     |
 | 全 feature | docs.rs 构建、doctest 与 examples 在组合配置下均通过     |
 
@@ -830,7 +835,7 @@ docs:
 | 场景                         | 测试方式                                    |
 | ---------------------------- | ------------------------------------------- |
 | `unsafe fn` 的 `# Safety` 节 | rustdoc/clippy 文档 lint + `cargo doc` 校验 |
-| feature-gated API 可见性     | docs.rs 构建与 `doc(cfg)` 检查              |
+| feature-gated API 可见性     | docs.rs 构建与条件编译可见性检查            |
 | 公共 API 文档覆盖边界        | `missing_docs` / broken link 检查           |
 
 ---
@@ -1169,6 +1174,7 @@ Wave 6: [T17]
 | 1.1.3 | 2026-04-10 |
 | 1.1.4 | 2026-04-14 |
 | 1.1.5 | 2026-04-15 |
+| 1.1.6 | 2026-04-15 |
 
 ---
 

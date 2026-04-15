@@ -16,7 +16,7 @@
 | Element trait       | 基础约束（Copy+Clone+PartialEq+Debug+Display+Send+Sync+Sealed）+ zero()/one()                   | —                                                               |
 | Numeric trait       | Element + Add+Sub+Mul+Div+Neg（四则运算能力标记）                                               | 运算实现本身（委托给 core::ops）                                |
 | RealScalar trait    | Numeric + PartialOrd + abs/sqrt/sin/exp/ln/floor/ceil + NaN 检测                                | 复数运算                                                        |
-| ComplexScalar trait | Numeric + conj/norm/re/im（当前公开范围内需要的复数能力）                                      | 复数类型定义（在 `src/complex/` 模块，参见 `04-complex.md` §5） |
+| ComplexScalar trait | Numeric + conjugate/norm/re/im（当前公开范围内需要的复数能力）                                 | 复数类型定义（在 `src/complex/` 模块，参见 `04-complex.md` §5） |
 | 基础类型实现        | 为 i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool 实现上述 trait；`usize` 仅用于索引/形状元数据 | 类型转换逻辑（在 `src/convert/` 模块）                          |
 | Sealed trait        | 封闭集合，禁止外部 crate 实现                                                                   | 开放扩展                                                        |
 
@@ -176,50 +176,10 @@ pub trait Numeric:
     + core::ops::Mul<Output = Self>
     + core::ops::Div<Output = Self>
     + core::ops::Neg<Output = Self>
-{
-    /// Returns the conjugate of this value.
-    ///
-    /// For real numeric types (i32, i64, f32, f64), this returns `self` unchanged.
-    /// For `ComplexScalar` types, this returns the complex conjugate (re - im*j).
-    ///
-    /// This method is needed by `12-matrix` for unified dot product implementation,
-    /// allowing a single generic algorithm to handle both real and complex inner products.
-    fn conjugate(self) -> Self;
-
-}
-
-// Real type implementations return self (identity):
-//
-// impl Numeric for i32 {
-//     fn conjugate(self) -> Self { self }
-//     // integer overflow handling is provided separately by CheckedAdd when needed
-// }
-// impl Numeric for i64 {
-//     fn conjugate(self) -> Self { self }
-//     // integer overflow handling is provided separately by CheckedAdd when needed
-// }
-// impl Numeric for f32 {
-//     fn conjugate(self) -> Self { self }
-//     // ordinary IEEE 754 addition uses the Add supertrait implementation
-// }
-// impl Numeric for f64 {
-//     fn conjugate(self) -> Self { self }
-//     // ordinary IEEE 754 addition uses the Add supertrait implementation
-// }
-// Complex type implementations return the complex conjugate:
-// impl Numeric for Complex<f32> {
-//     fn conjugate(self) -> Self { Complex::new(self.re, -self.im) }
-//     // ordinary complex addition uses the Add supertrait implementation
-// }
-// impl Numeric for Complex<f64> {
-//     fn conjugate(self) -> Self { Complex::new(self.re, -self.im) }
-//     // ordinary complex addition uses the Add supertrait implementation
-// }
+{}
 ```
 
-> **设计决策：** `Numeric` 定义 `conjugate()` 方法，为实数类型返回 `self`，为复数类型返回共轭。这使得统一的内积（dot product）实现可以泛化处理实数和复数情况。Xenon 采用 `sum(conjugate(a[i]) * b[i])` 的约定，并在 `12-matrix.md` 中保持一致。其余四则运算由 `Add/Sub/Mul/Div/Neg` trait 提供。`usize` 明确保留给索引/形状元数据，不进入元素算术层次。
->
-> **设计说明**：`Numeric::conjugate()` 是泛型入口：实数类型返回自身，复数类型委托给 `ComplexScalar::conj()`。`ComplexScalar::conj()` 是复数专用的底层实现。对实数类型（`f32`、`f64`、`i32`、`i64`），`conjugate(self)` 为恒等操作（返回 `self`）；对复数类型（`Complex<f32>`、`Complex<f64>`），`conjugate(self)` 通过复数 trait 路径执行共轭。两者语义等价，但职责分层不同。
+> **设计决策：** `Numeric` 仅定义四则运算能力，不混入复数专用操作。这与需求说明书 §4 的能力分层一致：共轭属于复数运算层，不属于通用算术层。Xenon 采用 `sum(conjugate(a[i]) * b[i])` 的约定，并在 `12-matrix.md` 中保持一致；需要共轭的泛型路径必须显式约束 `ComplexScalar`。
 >
 > **整数算术契约**：`Add/Sub/Mul/Div/Neg` 只表达运算符可用性，不单独定义 Xenon 的溢出语义。凡需求文档要求“溢出/除零/结果不可表示即 panic”的整数运算路径，具体模块必须通过 checked 标量原语或等价显式检查落实，不得仅凭原生运算符 trait 假定语义成立。
 
@@ -290,18 +250,12 @@ pub trait ComplexScalar: Numeric + Sealed {
     fn re(self) -> Self::Real;
     fn im(self) -> Self::Real;
     /// Returns the complex conjugate (re - im*j).
-    ///
-    /// Note: `Numeric` also defines a `conjugate()` method with identical semantics.
-    /// For types that implement both `Numeric` and `ComplexScalar` (e.g., `Complex<f64>`),
-    /// use fully-qualified syntax to disambiguate:
-    /// - `ComplexScalar::conj(x)` — via ComplexScalar trait
-    /// - `Numeric::conjugate(x)` — via Numeric trait
-    fn conj(self) -> Self;
+    fn conjugate(self) -> Self;
     fn norm(self) -> Self::Real;
 }
 ```
 
-> **范围说明：** `ComplexScalar` 公开面仅保留当前范围内真正需要的复数能力。`arg`/`exp`/`ln`/`sqrt`/`from_polar`/`i` 等超出当前张量 API 范围的方法若实现需要，降为 `complex` 模块内部 helper，不放入本公开 trait。
+> **范围说明：** `ComplexScalar` 公开面仅保留当前范围内真正需要的复数能力，并作为 `conjugate()` 的唯一 trait 入口。`arg`/`exp`/`ln`/`sqrt`/`from_polar`/`i` 等超出当前张量 API 范围的方法若实现需要，降为 `complex` 模块内部 helper，不放入本公开 trait。
 
 ### 5.4a OrderedCompareElement trait
 
@@ -738,7 +692,7 @@ impl RealScalar for f64 {
 
 - [ ] **T2**: 创建 `numeric.rs`，定义 Numeric trait 及其核心方法契约
   - 文件: `src/element/numeric.rs`
-- 内容: `Numeric` trait 定义（四则运算 supertrait + `conjugate()` 契约）
+- 内容: `Numeric` trait 定义（四则运算 supertrait，不含复数专用方法）
   - 测试: 编译通过
   - 前置: T1
   - 预计: 5 min
@@ -862,7 +816,7 @@ Wave 3: [T6]      [T9] ← ────┘
 | `test_f64_zero_one`             | `f64::zero()==0.0`, `f64::one()==1.0`                      | 高     |
 | `test_f64_sqrt`                 | `f64::sqrt(4.0)==2.0`                                      | 高     |
 | `test_f64_sin`                  | `sin(0)==0`                                                | 高     |
-| `test_f64_exp_ln_inverse`       | `exp(ln(x))==x`                                            | 高     |
+| `test_f64_exp_ln_inverse`       | 对 `x > 0` 且有限输入使用容差断言验证 `exp(ln(x)) ≈ x`     | 高     |
 | `test_f32_nan_detection`        | `NaN.is_nan()`, `Inf.is_infinite()`                        | 高     |
 | `test_f64_nan_propagating_min`  | `min(NaN, 1.0).is_nan()`                                   | 高     |
 | `test_bool_element_only`        | `bool::zero()==false`, `bool::one()==true`                 | 高     |
@@ -895,6 +849,7 @@ Wave 3: [T6]      [T9] ← ────┘
 | `(!b) == BoolElement::logical_not(b)` | `bool`                    |
 | `let y = a.sqrt(); (y * y) ≈ a`（容差内） | f32/f64，随机非负数 a     |
 | `a.exp().ln() ≈ a`                    | f32/f64，随机有限 a       |
+| `x.ln().exp() ≈ x`                    | f32/f64，随机正且有限 x   |
 
 ### 8.5 集成测试
 
@@ -928,7 +883,7 @@ Wave 3: [T6]      [T9] ← ────┘
 | `overload`     | `Numeric`                                 | 逐元素运算泛型约束     |
 | `reduction`    | `Numeric`（sum）                          | 归约运算泛型约束       |
 | `tensor`       | `Element`                                 | Tensor<A, D> 的 A 约束 |
-| `matrix`       | `Numeric`                                 | 内积运算               |
+| `matrix`       | `Numeric` / `ComplexScalar`               | 内积运算               |
 | `cast/convert` | `Element`                                 | 类型转换               |
 
 > 各模块的详细接口约定参见对应设计文档（`11-math.md` §4、`13-reduction.md` §4、`21-type.md` §4）。
@@ -1062,6 +1017,7 @@ Upstream modules declare element bounds
 | 1.2.3 | 2026-04-14 |
 | 1.2.4 | 2026-04-14 |
 | 1.2.5 | 2026-04-15 |
+| 1.2.6 | 2026-04-15 |
 
 ---
 

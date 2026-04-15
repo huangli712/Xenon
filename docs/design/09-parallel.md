@@ -124,7 +124,7 @@ parallel = ["dep:rayon"]
 rayon = { version = "1.10", optional = true }
 ```
 
-```rust
+```rust,ignore
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 const DEFAULT_PARALLEL_THRESHOLD: usize = 1024;
@@ -150,7 +150,7 @@ pub(crate) struct ParallelPool {
 
 ### 5.3 函数签名
 
-```rust
+```rust,ignore
 #[cfg(feature = "parallel")]
 pub(crate) fn get_parallel_threshold() -> usize;
 
@@ -240,7 +240,7 @@ where
 
 ### 5.4 并行迭代入口
 
-```rust
+```rust,ignore
 #[cfg(feature = "parallel")]
 pub(crate) struct ParElements<'a, A, D>
 where
@@ -267,7 +267,7 @@ where
 
 ### 5.5 Good / Bad 对比示例
 
-```rust
+```rust,ignore
 // Good - invalid threshold returns a recoverable error.
 pub(crate) fn set_parallel_threshold(threshold: usize) -> Result<(), XenonError> {
     if threshold == 0 {
@@ -292,7 +292,7 @@ pub(crate) fn set_parallel_threshold_bad(threshold: usize) {
 }
 ```
 
-```rust
+```rust,ignore
 // Good - shape mismatch stays in Result.
 let dot = par_dot(&lhs, &rhs)?;
 
@@ -316,7 +316,7 @@ let dot = par_dot(&lhs, &rhs).unwrap();
 
 ### 6.1 路径选择算法
 
-```rust
+```rust,ignore
 #[cfg(feature = "parallel")]
 pub(crate) fn should_parallelize(len: usize, is_f_contiguous: bool) -> bool {
     if rayon::current_num_threads() <= 1 {
@@ -344,7 +344,7 @@ pub(crate) fn should_parallelize(len: usize, is_f_contiguous: bool) -> bool {
 
 ### 6.2 核心执行路径
 
-```rust
+```rust,ignore
 fn dispatch_parallel_region<R>(
     len: usize,
     is_f_contiguous: bool,
@@ -382,7 +382,7 @@ dispatch entry
 
 ### 6.3 二元逐元素并行路径
 
-```rust
+```rust,ignore
 #[cfg(feature = "parallel")]
 pub(crate) fn par_zip_map<SL, SR, A, B, C, DL, DR, DO, F>(
     lhs: &TensorBase<SL, DL>,
@@ -421,8 +421,16 @@ where
 - `par_zip_map()` 是二元逐元素并行路径的统一设计入口，供 `math` 模块中的 `add` / `sub` / `mul` / `div` 广播运算消费，不直接暴露为公开用户 API。
 - `par_zip_map()` 接收的 `lhs`、`rhs` 与 `output_dim` 必须已由调用侧完成兼容性验证；广播裁决（含输出 rank/shape 计算）属于 `math` 模块职责，`parallel/` 不重复做形状推导。
 - 广播处理顺序固定为：先由 `math` 模块验证 `lhs` / `rhs` 广播兼容并产出 `output_dim`，再由 `parallel/` 按逻辑线性区间分块；默认 `chunk_size = max(1, total_elements / rayon::current_num_threads())`，并按固定左折叠顺序合并 chunk 结果。每个 chunk 为两个输入分别构造与该线性区间对应、且仍与 `output_dim` 兼容的只读 sub-view。若某一侧是广播轴（stride 为 `0` 或逻辑重复维），chunk 视图保持该广播语义，不做物理复制。`DL`、`DR`、`DO` 独立建模，以表达输入与输出 rank 可能不同的广播结果。
+- `par_zip_map` 的并行快路径仅适用于可按逻辑线性区间分块的布局；对广播+非连续+高维等复杂布局，自动回退串行路径。
 - 错误传播策略与 `par_map_checked()` 一致：广播形状不兼容时立即返回 `XenonError::BroadcastError { operation, input_shape, target_shape, axis }`；其中 `operation` 标识当前并行入口（如 `"par_zip_map"`），`input_shape` 为失败输入的逻辑 shape，`target_shape` 为调用侧尝试写入的广播输出 shape（而不是右操作数 shape），`axis` 在可定位到具体失败轴时填写对应值，否则为 `None`。字段名和含义必须与 `26-error.md §4.2` / `§4.4` 完全一致。worker 内 `Err(XenonError)` 通过 `rayon` 的 `collect::<Result<Vec<_>, _>>()` 立即向外传播；panic 不捕获、不吞掉。
 - 串行回退路径与并行路径共用 `kernel/` 中的私有广播索引与 zip kernel，保证二者使用同一语义基线。
+
+### 6.3a 轴向归约并行方案
+
+- 轴向 `sum(axis)` / `sum_axis(axis)` / `sum_keepdims(axis)` 的并行路径沿未被归约的轴切分为彼此独立的 chunk。
+- 每个 chunk 在目标轴上执行串行归约，随后按输出逻辑位置写入局部结果；最终结果按 chunk 索引顺序合并。
+- `keepdims` 行为在并行路径下保持不变，仅影响输出 shape，不改变分块策略。
+- 空轴归约返回加法单位元。
 
 ### 6.4 自动路径派发与所有权
 
@@ -450,10 +458,11 @@ math / reduction / matrix module
 - `ParallelContext` 采用“显式 token + 私有 dispatch helper”机制，而不是仅靠调用线程 TLS：上层模块一旦进入并行区域，token 会被捕获到 Rayon worker 闭包中，所有内部并行 helper 都必须接收或查询该 token，从而在 worker 线程上也能识别嵌套并行并回退串行。
 - `par_map`、`par_zip_map`、`par_sum`、`par_dot` 都遵守这一路径归属，从而避免不同模块各自维护一份阈值/SIMD 分支逻辑。
 - 对归约和内积，若并行实现无法提供固定 chunking 与固定 merge tree，从而无法满足文档化的确定性要求，则必须回退串行路径。
+- 并行归约采用固定分块策略：`chunk` 大小 = `ceil(n / num_workers)`，worker 按固定索引范围分配，merge 按 worker 索引顺序合并。同平台、同配置、同路径下结果确定。
 
 ### 6.5 Checked 映射与错误传播
 
-```rust
+```rust,ignore
 pub(crate) fn par_map_checked<A, B, D, F>(
     tensor: &Tensor<A, D>,
     f: F,
@@ -572,7 +581,7 @@ where
 
 - [ ] **T9**: 完成错误与 panic 传播收口
   - 文件: `src/parallel/mod.rs`
-- 内容: `XenonError` 透传、panic 不吞掉、非法阈值返回 `DimensionMismatch`
+  - 内容: `XenonError` 透传、panic 不吞掉、非法阈值返回 `InvalidArgument`
   - 测试: `test_parallel_error_propagation`, `test_parallel_panic_propagation`
   - 前置: T5, T6, T7
   - 预计: 10 min
@@ -623,7 +632,7 @@ Wave 4:                                    [T10]
 | ------------------------------------- | --------------------------------------------------- | ------ |
 | `test_default_threshold`              | 默认阈值为 `1024`                                   | 高     |
 | `test_set_get_threshold`              | 阈值设置与读取一致                                  | 高     |
-| `test_set_threshold_dimension_mismatch` | `threshold == 0` 返回 `XenonError::DimensionMismatch` | 高     |
+| `test_set_threshold_invalid_argument` | `threshold == 0` 返回 `XenonError::InvalidArgument` | 高     |
 | `test_par_map_fallback_small`         | 小张量自动回退串行                                  | 高     |
 | `test_par_zip_map_matches_serial_add` | 二元逐元素并行加法结果与串行一致                     | 高     |
 | `test_par_zip_map_broadcast_rhs_scalar` | 右侧标量广播时并行路径与串行一致                  | 高     |
@@ -668,7 +677,7 @@ Wave 4:                                    [T10]
 | ----------------------------------- | ---------------------------------------- |
 | `bool` 不参与 `par_sum` / `par_dot` | 编译期 trait 约束测试                    |
 | 非法 feature 组合                   | 配置矩阵测试                             |
-| 非法阈值参数                        | 运行时返回 `XenonError::DimensionMismatch { operation, expected, actual }` |
+| 非法阈值参数                        | 运行时返回 `XenonError::InvalidArgument { operation, argument, expected, actual, axis, shape }` |
 
 ---
 
@@ -709,29 +718,32 @@ math / reduction / dot calls dispatch entry
 
 | 主题              | 说明                                                                                                                                                               |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Recoverable error | `par_dot()` 的长度不兼容返回 `XenonError::DimensionMismatch { operation, expected, actual }`；`set_parallel_threshold()` 与 `par_map_with_threshold()` 的非法阈值返回 `XenonError::DimensionMismatch { operation, expected, actual }` |
+| Recoverable error | `par_dot()` 的长度不兼容返回 `XenonError::DimensionMismatch { operation, expected, actual }`；`set_parallel_threshold()` 与 `par_map_with_threshold()` 的非法阈值返回 `XenonError::InvalidArgument { operation, argument, expected, actual, axis, shape }` |
 | Panic             | 归约中的整数溢出仍属于不可恢复错误，必须 panic，而不是包装为 `XenonError`                                                                                          |
 | 路径一致性        | 串行 / 并行路径必须返回相同形状、相同错误类别，以及满足同一数值语义约束的结果                                                                                      |
 | 容差边界          | 浮点与复数若存在执行路径相关的已知舍入差异，只能落在 `需求说明书 §28.3` 与 `§28.5` 允许且已文档化的范围内                                                           |
 
-```rust
+```rust,ignore
 XenonError::DimensionMismatch {
     operation: "par_dot",
     expected: lhs.len(),
     actual: rhs.len(),
 }
 
-XenonError::DimensionMismatch {
+XenonError::InvalidArgument {
     operation: "set_parallel_threshold",
-    expected: 1,
-    actual: threshold,
+    argument: "threshold",
+    expected: ">= 1",
+    actual: threshold.to_string().into(),
+    axis: None,
+    shape: None,
 }
 ```
 
 路径语义边界：
 
 - 并行模块本身不新增专属错误枚举；公开错误必须复用 `26-error.md` 中的统一模型。
-- 自定义线程池或阈值类参数若存在非法值，应返回 `DimensionMismatch { operation, expected, actual }`。
+- 自定义线程池或阈值类参数若存在非法值，应返回 `InvalidArgument { operation, argument, expected, actual, axis, shape }`。
 - `par_zip_map()` 的广播形状不兼容时，必须返回 `XenonError::BroadcastError { operation, input_shape, target_shape, axis }`，不得降级为逐元素截断或隐式复制。
 - panic 与 `Err(XenonError)` 都不得被吞掉或延迟为“全部 worker 完成后再统一检查”。
 - 若无法证明并行路径与串行路径一致，必须回退串行，而不是定义新语义。
@@ -740,7 +752,15 @@ XenonError::DimensionMismatch {
 
 - 浮点与复数并行归约允许与标量路径不同的合并顺序；该差异视为合法实现细节，但必须受 `需求说明书 §28.3` 文档化容差约束。
 - 与 `08-simd.md` 保持一致：`par_sum()`、`par_dot()` 与其他内部并行归约在浮点或复数输入上，每个实数分量与标量路径结果之差不得超过 `max(1 ULP, 2^-23 * |scalar_result|)`（`f32`）或 `max(1 ULP, 2^-52 * |scalar_result|)`（`f64`）。
+- `NaN`：按 IEEE 754 语义检查（`NaN !=` 任何值），不使用数值容差。
+- `±Inf`：必须同号同类。
+- `+0.0` / `-0.0`：符号必须一致。
+- 容差规则仅适用于有限值结果。
 - 复数按实部、虚部分别适用同一文档化规则；若某一并行实现无法满足该容差或无法提供固定 chunking + fixed merge tree 的确定性约束，则必须回退串行或调整分块/合并策略。
+
+### 10.2 线程安全
+
+并行后端不改变 `TensorBase<S, D>` 的 `Send` / `Sync` 判定。线程安全性仍由元素类型与存储模式共同决定（参见 `25-safety.md`）。
 
 ---
 
@@ -812,7 +832,7 @@ XenonError::DimensionMismatch {
 - `set_parallel_threshold()`：时间 `O(1)`，空间 `O(1)`。
 - `should_parallelize()`：时间 `O(1)`，空间 `O(1)`。
 - `par_map()`：时间 `O(n)`，额外结果空间 `O(n)`。
-- `par_map_with_threshold()`：时间 `O(n)`，额外结果空间 `O(n)`；当 `threshold == 0` 时返回 `Err(XenonError::DimensionMismatch { operation, expected, actual })`。
+- `par_map_with_threshold()`：时间 `O(n)`，额外结果空间 `O(n)`；当 `threshold == 0` 时返回 `Err(XenonError::InvalidArgument { operation, argument, expected, actual, axis, shape })`。
 - `par_sum()`：时间 `O(n)`，额外工作空间取决于 `rayon` 分块；逻辑额外空间 `O(1)`。
 - `par_dot()`：时间 `O(n)`，逻辑额外空间 `O(1)`。
 
@@ -844,6 +864,7 @@ XenonError::DimensionMismatch {
 | 1.1.1 | 2026-04-14 |
 | 1.1.2 | 2026-04-14 |
 | 1.2.0 | 2026-04-15 |
+| 1.2.1 | 2026-04-15 |
 
 ---
 

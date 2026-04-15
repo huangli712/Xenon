@@ -322,6 +322,12 @@ where
 > **设计决策：** 标量运算委托给 `add_scalar_impl()` / `sub_scalar_impl()` / `mul_scalar_impl()` / `div_scalar_impl()` 等内部 helper，
 > 其内部直接遍历输入与结果张量，而不是额外暴露通用 helper 作为稳定实现描述。
 
+对左标量的非交换运算，需显式区分 helper：
+
+- `scalar - tensor`：使用 `sub_scalar_left_impl(scalar, tensor)`，逐元素计算 `scalar - each_element`
+- `scalar / tensor`：使用 `div_scalar_left_impl(scalar, tensor)`，逐元素计算 `scalar / each_element`
+- 这两条路径不能复用现有 `tensor.sub_scalar_impl(scalar)` / `tensor.div_scalar_impl(scalar)`，因为减法与除法不满足交换律
+
 ### 5.4 Sub / Mul / Div
 
 `Sub`、`Mul`、`Div` 的实现模式与 `Add` 完全相同，需覆盖与 `Add` 对称的张量/引用/标量/`Scalar<A>` 组合；其中张量×张量/视图路径返回 `Result<Tensor<A, F>, XenonError>`，标量路径返回 `Tensor<A, D>`。仅替换运算符和对应闭包：
@@ -334,6 +340,35 @@ where
 
 > **除法语义补充：** 对整数类型，`Div` 路径中的除以零和结果不可表示（如最小负值除以 `-1`）
 > 均遵循 `require.md` §12 与 §27 的统一 panic 语义；运算符重载仅把广播不兼容报告为 `Result::Err`，不额外吞掉或包装这类不可恢复错误。
+
+#### 5.4.1 标量重载覆盖矩阵
+
+| 算术类型 | 运算符 | `tensor op scalar` | `scalar op tensor` |
+| -------- | ------ | ------------------ | ------------------ |
+| `i32` | `+` | `add_scalar_impl` | 原生左标量 / `Scalar<A>` → `add_scalar_impl` |
+| `i32` | `-` | `sub_scalar_impl` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
+| `i32` | `*` | `mul_scalar_impl` | 原生左标量 / `Scalar<A>` → `mul_scalar_impl` |
+| `i32` | `/` | `div_scalar_impl` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
+| `i64` | `+` | `add_scalar_impl` | 原生左标量 / `Scalar<A>` → `add_scalar_impl` |
+| `i64` | `-` | `sub_scalar_impl` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
+| `i64` | `*` | `mul_scalar_impl` | 原生左标量 / `Scalar<A>` → `mul_scalar_impl` |
+| `i64` | `/` | `div_scalar_impl` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
+| `f32` | `+` | `add_scalar_impl` | 原生左标量 / `Scalar<A>` → `add_scalar_impl` |
+| `f32` | `-` | `sub_scalar_impl` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
+| `f32` | `*` | `mul_scalar_impl` | 原生左标量 / `Scalar<A>` → `mul_scalar_impl` |
+| `f32` | `/` | `div_scalar_impl` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
+| `f64` | `+` | `add_scalar_impl` | 原生左标量 / `Scalar<A>` → `add_scalar_impl` |
+| `f64` | `-` | `sub_scalar_impl` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
+| `f64` | `*` | `mul_scalar_impl` | 原生左标量 / `Scalar<A>` → `mul_scalar_impl` |
+| `f64` | `/` | `div_scalar_impl` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
+| `Complex<f32>` | `+` | `add_scalar_impl` | 原生左标量 / `Scalar<A>` → `add_scalar_impl` |
+| `Complex<f32>` | `-` | `sub_scalar_impl` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
+| `Complex<f32>` | `*` | `mul_scalar_impl` | 原生左标量 / `Scalar<A>` → `mul_scalar_impl` |
+| `Complex<f32>` | `/` | `div_scalar_impl` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
+| `Complex<f64>` | `+` | `add_scalar_impl` | 原生左标量 / `Scalar<A>` → `add_scalar_impl` |
+| `Complex<f64>` | `-` | `sub_scalar_impl` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
+| `Complex<f64>` | `*` | `mul_scalar_impl` | 原生左标量 / `Scalar<A>` → `mul_scalar_impl` |
+| `Complex<f64>` | `/` | `div_scalar_impl` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
 
 ### 5.5 Good / Bad 对比
 
@@ -702,6 +737,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | 1.1.3 | 2026-04-10 |
 | 1.1.4 | 2026-04-14 |
 | 1.1.5 | 2026-04-15 |
+| 1.1.6 | 2026-04-15 |
 
 ---
 
