@@ -667,7 +667,7 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 
 - 对整数路径，具体运算模块必须落实 checked overflow / divide-by-zero / unrepresentable-result contract；
 - 对实数类型，`conjugate(self)` 为恒等；对复数类型，`conjugate(self)` 执行数学共轭；
-- 统一错误入口与结构化字段约束遵循 `00-coding.md` §4.2，不得在架构层引入第二套公开错误模型。
+- 统一错误入口与结构化字段约束遵循 `26-error.md`，不得在架构层引入第二套公开错误模型。
 
 ---
 
@@ -836,9 +836,9 @@ Wave 5: [W5.1] [W5.2] [W5.3] [W5.4]
 
 ## 错误处理与语义边界
 
-本文档不直接定义错误类型，但要求所有架构层级、模块边界与执行路径统一遵循单一 `XenonError` 公开错误模型；架构层只裁决错误入口应单一、路径语义应一致，不在此重复定义完整错误枚举。`FfiError`、`WorkspaceError` 等模块局部错误只允许在模块内部保留语义，跨公开 API 边界时必须映射为 `00-coding.md` §4.2 定义的结构化 `XenonError` 字段。对于 FFI 场景，公开 Rust 入口包含结构化导出 `export()` / `export_mut()` 与 checked 查询 `try_offset_of()` / `try_ptr_at()`，并统一通过 checked arithmetic 计算偏移与指针。
+本文档不直接定义错误类型，但要求所有架构层级、模块边界与执行路径统一遵循单一 `XenonError` 公开错误模型；架构层只裁决错误入口应单一、路径语义应一致，不在此重复定义完整错误枚举。`FfiError`、`WorkspaceError` 等模块局部错误只允许在模块内部保留语义，跨公开 API 边界时必须映射为 `26-error.md` 定义的结构化 `XenonError` 字段；规范错误模型的 canonical source 亦以 `26-error.md` 为准。对于 FFI 场景，公开 Rust 入口包含结构化导出 `export()` / `export_mut()` 与 checked 查询 `try_offset_of()` / `try_ptr_at()`，并统一通过 checked arithmetic 计算偏移与指针。
 
-> **FFI 补充说明**：`extern "C"` 边界不得返回 `Result`，也不得依赖 panic-sugar helper；公开 Rust API 层提供结构化导出 `export()` / `export_mut()` 与 checked 查询 `try_offset_of()` / `try_ptr_at()`，不额外承诺 `offset_of()` / `ptr_at()` 这类 panic 包装，参见 `00-coding.md` §4.2。
+> **FFI 补充说明**：`extern "C"` 边界不得返回 `Result`，也不得依赖 panic-sugar helper；公开 Rust API 层提供结构化导出 `export()` / `export_mut()` 与 checked 查询 `try_offset_of()` / `try_ptr_at()`，不额外承诺 `offset_of()` / `ptr_at()` 这类 panic 包装，相关公开错误模型以 `26-error.md` 为准。
 
 ---
 

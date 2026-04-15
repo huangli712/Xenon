@@ -864,7 +864,7 @@ impl Workspace {
     }
 
     /// Internal reallocation.
-    fn reallocate(&mut self, new_capacity: usize) -> Result<(), WorkspaceError> {
+    fn reallocate(&mut self, new_capacity: usize) -> Result<()> {
         let new_layout = Layout::from_size_align(new_capacity, self.alignment)
             .map_err(|_| WorkspaceError::InvalidLayout {
                 size: new_capacity,
@@ -910,7 +910,7 @@ impl Workspace {
 }
 ````
 
-> **错误映射说明：** `reallocate()` 保留 `Result<(), WorkspaceError>` 作为模块内实现签名，`ensure_capacity()` 在公开边界显式通过 `.map_err(|e| XenonError::Workspace(e))` 做统一包装；不得让 `WorkspaceError` 直接穿透公开 API。
+> **错误映射说明：** `reallocate()` 使用统一的 `Result<()>` 别名作为模块内实现签名，内部 `WorkspaceError` 通过 `XenonError::Workspace(...)` 做统一包装；不得让 `WorkspaceError` 直接穿透公开 API。
 
 > **扩容语义说明：** `ensure_capacity()` / `reallocate()` 的公开契约仅保证扩容后容量不小于请求值且对齐保持不变。当前实现可能复制旧缓冲区中的字节，但调用方不得依赖内容被保留；扩容后所有旧视图与借用均失效，必须把整个 scratch 区域重新视为 unspecified 状态，并在重新初始化后再通过 `assume_init_*` 系列 API 解释为已初始化数据。
 

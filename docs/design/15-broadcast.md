@@ -459,7 +459,7 @@ User calls broadcast_to() or broadcast_with()
 
 ```rust
 XenonError::BroadcastError {
-    operation: "broadcast_to".into(),
+    operation: "broadcast_to",
     lhs_shape: self.shape().to_vec(),
     rhs_shape: vec![],
     attempted_target_shape: Some(shape.slice().to_vec()),
@@ -467,7 +467,7 @@ XenonError::BroadcastError {
 }
 
 XenonError::BroadcastError {
-    operation: "broadcast_shape".into(),
+    operation: "broadcast_shape",
     lhs_shape: shape_a.to_vec(),
     rhs_shape: shape_b.to_vec(),
     attempted_target_shape: None,

@@ -97,8 +97,8 @@ src/parallel/           # optional parallel backend consumed by math dispatch
 | 场景 | 错误 |
 | ---- | ---- |
 | 二元运算广播失败 | 返回 `XenonError::BroadcastError { operation, lhs_shape, rhs_shape, attempted_target_shape, axis }`，分别记录操作名、左右输入 shape、本次尝试构造的目标广播 shape 以及适用轴上下文。 |
-| 构造结果张量时元素总数与 shape 不一致 | 返回 `XenonError::InvalidShape { operation: Cow<'static, str>, shape: Vec<usize>, expected_elements: usize, actual_elements: usize, offending_dim: Option<usize> }`。 |
-| 公开 API 收到不满足前提的参数 | 返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, shape: Option<Vec<usize>> }`。 |
+| 构造结果张量时元素总数与 shape 不一致 | 返回 `XenonError::InvalidShape { operation: Cow<'static, str>, shape: Vec<usize>, expected_elements: usize, actual_elements: usize, offending_dim: Option<usize>, reason: Option<Cow<'static, str>> }`。 |
+| 公开 API 收到不满足前提的参数 | 返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, axis_len: Option<usize>, start: Option<usize>, end: Option<usize>, shape: Option<Vec<usize>> }`。 |
 | 整数算术溢出、除零或结果不可表示 | 属于 panic 语义，不进入 `XenonError`。 |
 
 ### 4.3 依赖图
@@ -233,11 +233,6 @@ where
     A: Numeric + PartialOrd,
 {
     pub fn abs(&self) -> Tensor<A, D>;
-
-    /// Element-wise sign function.
-    ///
-    /// Available for all ordered numeric types: i32, i64, f32, f64.
-    pub fn signum(&self) -> Tensor<A, D>;
 }
 
 impl<S, D, A> TensorBase<S, D>
@@ -249,13 +244,47 @@ where
     pub fn neg(&self) -> Tensor<A, D>;
     pub fn square(&self) -> Tensor<A, D>;
 }
+
+// Conceptual overload set for signum: integer and floating-point paths are
+// documented separately because they have different semantic rules.
+impl<S, D> TensorBase<S, D>
+where
+    S: Storage<Elem = i32>,
+    D: Dimension,
+{
+    pub fn signum(&self) -> Tensor<i32, D>;
+}
+
+impl<S, D> TensorBase<S, D>
+where
+    S: Storage<Elem = i64>,
+    D: Dimension,
+{
+    pub fn signum(&self) -> Tensor<i64, D>;
+}
+
+impl<S, D> TensorBase<S, D>
+where
+    S: Storage<Elem = f32>,
+    D: Dimension,
+{
+    pub fn signum(&self) -> Tensor<f32, D>;
+}
+
+impl<S, D> TensorBase<S, D>
+where
+    S: Storage<Elem = f64>,
+    D: Dimension,
+{
+    pub fn signum(&self) -> Tensor<f64, D>;
+}
 ```
 
 `abs` / `signum` 仅对具备自然顺序的数值类型开放：i32, i64, f32, f64。`neg` / `square` 对所有 `Numeric` 类型开放：i32, i64, f32, f64, Complex<f32>, Complex<f64>。
 
 > **`signum()` 语义拆分：**
 >
-> - 整数 `signum`：基于数值符号返回 `-1`、`0` 或 `1`。`i32` / `i64` 的最小负值取绝对值溢出时，按 `§27` panic 语义处理。
+> - 整数 `signum`：基于数值符号返回 `-1`、`0` 或 `1`。
 > - 浮点 `signum`：遵循 IEEE 754 语义：`NaN -> NaN`、`+0.0 -> 0.0`、`-0.0 -> -0.0`、正数 `-> 1.0`、负数 `-> -1.0`。这与 Rust 标准库 `f32::signum` / `f64::signum` 行为一致。
 
 > **整数一元运算补充约束：** `abs` / `square` 在整数路径上必须使用 checked arithmetic。特别是最小负值取绝对值、平方溢出等情形，均须视为不可恢复错误并触发 panic。`signum` 仅做符号分类，不额外要求 checked arithmetic。
@@ -723,7 +752,7 @@ User calls add / unary op / comparison method
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | 广播不兼容时返回 `XenonError::BroadcastError { operation, lhs_shape, rhs_shape, attempted_target_shape, axis }`。参数不满足公开前提时返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, shape: Option<Vec<usize>> }`。 |
+| Recoverable error | 广播不兼容时返回 `XenonError::BroadcastError { operation, lhs_shape, rhs_shape, attempted_target_shape, axis }`。参数不满足公开前提时返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, axis_len: Option<usize>, start: Option<usize>, end: Option<usize>, shape: Option<Vec<usize>> }`。 |
 | Panic | 整数 `add/sub/mul/div`、标量版 `add_scalar/sub_scalar/mul_scalar/div_scalar`、`abs/neg/square` 的溢出、除零或结果不可表示均按需求触发 panic；`signum` 不新增 panic 约束。panic 信息至少包含 `operation`、`type`、`trigger`、`element_index`，并在适用时附带 `shape`。推荐格式：`Xenon: {operation} overflow for {type} at element_index={i}, shape={shape}, trigger={trigger}`。 |
 | 路径一致性 | 标量、SIMD 与并行路径必须保持相同 shape、错误类别、NaN/复数语义；不满足前提或 guard 失败时统一回退标量实现。 |
 | 容差边界 | `floor` / `ceil` 的 SIMD/并行路径结果必须与标量路径逐元素完全一致；其余浮点数学结果统一采用 `max(1 ULP, epsilon * |scalar_result|)`。复数结果按实部、虚部分量分别应用对应实数容差规则；仅在可证明语义等价或满足文档化容差时启用 SIMD/并行，否则回退标量路径。 |

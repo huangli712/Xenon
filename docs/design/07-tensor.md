@@ -1074,6 +1074,7 @@ where
             expected_elements: 0,
             actual_elements: data.len(),
             offending_dim: None,
+            reason: Some("element count overflow".into()),
         })?;
         if data.len() != expected {
             return Err(XenonError::InvalidShape {
@@ -1082,6 +1083,7 @@ where
                 expected_elements: expected,
                 actual_elements: data.len(),
                 offending_dim: None,
+                reason: Some("data length does not match shape element count".into()),
             });
         }
         let strides = layout::compute_f_strides(&shape)?;

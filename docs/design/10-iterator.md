@@ -168,14 +168,20 @@ impl<'a, A, D: Dimension> ExactSizeIterator for ElementsMut<'a, A, D> {}
 ```rust,ignore
 /// Axis iterator, yields a sub-tensor view with reduced dimension each step.
 ///
-/// Public construction requires `D: RemoveAxis`, matching the reduced output type
-/// `D::Smaller`. After construction, the implementation may still use private state
-/// to distinguish active iteration from runtime-invalid axis cases.
+/// The struct itself only needs `D: Dimension` for its stored fields, but public
+/// construction and `Iterator`/`ExactSizeIterator` use require `D: RemoveAxis`,
+/// matching the reduced output type `D::Smaller`. After construction, the
+/// implementation may still use private state to distinguish active iteration from
+/// runtime-invalid axis cases.
 pub struct AxisIter<'a, A, D: Dimension> {
     // Internal fields: iterator state for validated axis traversal.
 }
 
 /// Mutable axis iterator.
+///
+/// As with `AxisIter`, the struct declaration keeps the minimal `D: Dimension`
+/// bound needed by its fields, while public construction and iterator trait impls
+/// require `D: RemoveAxis` so the yielded item type can use `D::Smaller`.
 ///
 /// # Safety
 ///
@@ -482,14 +488,12 @@ increment_index_f(shape, index):
 
 ```
 Wave 1: [T1]
-           |
-Wave 2: [T2] [T4]
-           |
-Wave 3: [T3]
-           |
-Wave 4: [T5]
-           |
-Wave 5: [T6]
+            |
+Wave 2: [T2] [T3] [T4]
+            |
+Wave 3: [T5]
+            |
+Wave 4: [T6]
 ```
 
 ---

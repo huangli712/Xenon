@@ -216,7 +216,7 @@ where
     /// let tensor = Tensor2::<f64>::zeros([3, 4]);
     /// let ptr = tensor.as_ptr();
     /// // Can be passed to read-only C functions
-    /// ```ignore
+    /// ```
     pub fn as_ptr(&self) -> *const A {
         if self.is_empty() {
             // For empty tensors, return a non-dereferenceable dangling pointer.
@@ -246,7 +246,7 @@ where
     /// let mut tensor = Tensor2::<f64>::zeros([3, 4]);
     /// let ptr = tensor.as_mut_ptr();
     /// // Can be passed to C functions requiring a mutable pointer
-    /// ```ignore
+    /// ```
     pub fn as_mut_ptr(&mut self) -> *mut A {
         if self.is_empty() {
             return core::ptr::NonNull::<A>::dangling().as_ptr();
@@ -283,6 +283,7 @@ impl ElementType {
     /// This is determined at compile time via `Element` trait association.
     pub const fn of<A: Element>() -> Self;
 }
+````
 
 > **实现基础说明：** 可在 `Element` sealed trait 中引入 `const ELEMENT_TYPE: ElementType` 关联常量作为 `ElementType::of::<A>()` 的实现基础。若当前 Rust 版本不支持所需 const 机制，可将该 API 降为普通 `fn`，保持语义不变。
 
@@ -297,6 +298,7 @@ impl ElementType {
 
 > **语义拆分说明：** Xenon 在 FFI 边界同时保留“逻辑首元素指针”和“存储基地址 + offset 元数据”两种约定：前者便于只关心当前逻辑视图的调用方，后者便于做 raw-parts roundtrip 与跨语言重建视图。两者不得混用。
 
+````rust,ignore
 /// Raw tensor data export for FFI consumers.
 ///
 /// # Safety
@@ -502,7 +504,7 @@ where
     ///     )
     ///     .expect("metadata should describe a valid view")
     /// };
-    /// ```ignore
+    /// ```
     pub unsafe fn from_raw_parts(
         ptr: *const A,
         storage_len: usize,
@@ -583,7 +585,7 @@ where
                 reason: "mutable raw-parts view must not contain zero strides on non-singleton axes".into(),
             });
         }
-        validate_non_overlapping_layout(&shape, &strides, offset)?;
+        validate_non_overlapping_layout(&shape, &strides, offset, storage_len)?;
         let logical_ptr = if shape.size() == 0 {
             // Empty tensors must not do pointer arithmetic on a possibly dangling
             // storage-base sentinel. Use a well-defined non-dereferenceable value.
@@ -609,7 +611,7 @@ where
 
 > **空张量补充：** `ptr.add(offset)` 形式的逻辑首元素地址计算只适用于非空张量；空张量路径必须跳过该指针运算，并改用 `NonNull::dangling()` 这类明确定义的非解引用哨兵值参与 flags / metadata 初始化。
 
-> **可写视图补充：** `from_raw_parts_mut()` 不仅必须拒绝所有非空零步长布局（任何非单元素轴的 `stride == 0`），还必须拒绝一切能被高效保守判定为潜在自别名的布局。实现上先用 `validate_access_range()` 验证越界与可表示性，再用 `validate_non_overlapping_layout()` 对受支持的正步长布局做保守非重叠判定；若布局超出该高效判定范围，也必须返回可恢复错误，而不是枚举全部可达 offset。
+> **可写视图补充：** `from_raw_parts_mut()` 不仅必须拒绝所有非空零步长布局（任何非单元素轴的 `stride == 0`），还必须拒绝一切能被高效保守判定为潜在自别名的布局。实现上先用 `validate_access_range()` 验证越界与可表示性，再用 `validate_non_overlapping_layout(shape, strides, offset, storage_len)` 对受支持的正步长布局做保守非重叠判定；若布局超出该高效判定范围，也必须返回可恢复错误，而不是枚举全部可达 offset。
 
 ### 5.4 将张量解构为裸指针
 
@@ -1013,7 +1015,7 @@ where
             if index[i] >= shape[i] {
                 return Err(XenonError::IndexOutOfBounds {
                     operation: "ffi::try_offset_of".into(),
-                    attempted_index: index[i],
+                    attempted_index: index.to_vec(),
                     axis: i,
                     shape: shape.to_vec(),
                 });
@@ -1142,7 +1144,7 @@ validate_access_range(shape, strides, offset, storage_len):
 `from_raw_parts_mut()` 还必须拒绝会让两个不同逻辑索引映射到同一地址的可写布局。这里的“非重叠”定义为：任意两个不同逻辑索引 `i != j`，其可写目标地址 `addr(i)` 与 `addr(j)` 必须不同；换言之，逻辑元素地址集合不得重叠。该校验不得通过枚举全部可达 offset 来实现；当前版本只承诺接受可高效保守判定的正步长布局（例如 canonical F-order，以及满足同一保守判据的更一般正步长布局）。算法如下：
 
 ```
-validate_non_overlapping_layout(shape, strides, offset):
+validate_non_overlapping_layout(shape, strides, offset, storage_len):
     1. If product(shape) <= 1: return Ok(()).
     2. Reject immediately if any non-singleton axis has stride == 0.
     3. Collect all non-singleton axes, sort them by stride ascending, and track

@@ -339,15 +339,15 @@ impl fmt::Display for XenonError {
                 axis,
             } => write!(
                 f,
-                "broadcast error in {}: lhs [{}], rhs [{}], attempted_target {}, axis {:?}",
+                "broadcast error in {}: lhs [{}], rhs [{}], attempted_target {}, axis {}",
                 operation,
                 fmt_shape(lhs_shape),
                 fmt_shape(rhs_shape),
                 attempted_target_shape
                     .as_ref()
                     .map(|value| fmt_shape(value))
-                    .unwrap_or_else(|| "<none>".to_string()),
-                axis,
+                    .unwrap_or_else(|| "<any>".to_string()),
+                axis.map(|value| value.to_string()).unwrap_or_else(|| "<any>".to_string()),
             ),
             Self::LayoutMismatch {
                 operation,
@@ -403,13 +403,13 @@ impl fmt::Display for XenonError {
                 reason,
             } => write!(
                 f,
-                "invalid shape in {}: shape [{}], expected_elements {}, actual_elements {}, offending_dim {:?}, reason {}",
+                "invalid shape in {}: shape [{}], expected_elements {}, actual_elements {}, offending_dim {}, reason {}",
                 operation,
                 fmt_shape(shape),
                 expected_elements,
                 actual_elements,
-                offending_dim,
-                reason.as_deref().unwrap_or("<none>"),
+                offending_dim.map(|value| value.to_string()).unwrap_or_else(|| "<any>".to_string()),
+                reason.as_deref().unwrap_or("<any>"),
             ),
             Self::DimensionMismatch {
                 operation,

@@ -302,16 +302,6 @@ impl Dimension for Ix3 {
     }
 
     #[inline]
-    fn slice_mut(&mut self) -> &mut [usize] {
-        // SAFETY (§8.2): Same argument as `slice()`: `#[repr(C)]` guarantees the
-        // three `usize` fields are laid out contiguously with compatible alignment,
-        // so forming a mutable slice over exactly 3 elements is sound.
-        unsafe {
-            core::slice::from_raw_parts_mut(self as *mut Self as *mut usize, 3)
-        }
-    }
-
-    #[inline]
     fn checked_size(&self) -> Result<usize, XenonError> {
         let dims = [self.0, self.1, self.2];
         let mut acc = 1usize;
@@ -366,6 +356,18 @@ impl Dimension for Ix3 {
 
     // Remaining helper methods follow the same pattern.
 }
+
+impl DimensionExt for Ix3 {
+    #[inline]
+    fn slice_mut(&mut self) -> &mut [usize] {
+        // SAFETY (§8.2): Same argument as `slice()`: `#[repr(C)]` guarantees the
+        // three `usize` fields are laid out contiguously with compatible alignment,
+        // so forming a mutable slice over exactly 3 elements is sound.
+        unsafe {
+            core::slice::from_raw_parts_mut(self as *mut Self as *mut usize, 3)
+        }
+    }
+}
 ```
 
 ### 5.3 动态维度 IxDyn
@@ -414,7 +416,6 @@ impl Dimension for IxDyn {
 
     fn ndim(&self) -> usize { self.dims.len() }
     fn slice(&self) -> &[usize] { &self.dims }
-    fn slice_mut(&mut self) -> &mut [usize] { &mut self.dims }
     fn checked_size(&self) -> Result<usize, XenonError> {
         let mut acc = 1usize;
         for (axis, &dim) in self.dims.iter().enumerate() {
@@ -442,6 +443,10 @@ impl Dimension for IxDyn {
     }
 
     // ...
+}
+
+impl DimensionExt for IxDyn {
+    fn slice_mut(&mut self) -> &mut [usize] { &mut self.dims }
 }
 ```
 
@@ -864,7 +869,14 @@ impl PermuteAxes for IxDyn {
         if let Some(missing_axis) = seen.iter().position(|present| !present) {
             return Err(XenonError::InvalidArgument {
                 operation: "PermuteAxes::permuted_axes".into(),
-                message: format!("permutation is missing axis {}", missing_axis),
+                argument: "permutation".into(),
+                expected: "a bijection over axes 0..ndim-1".into(),
+                actual: format!("missing axis {}", missing_axis).into(),
+                axis: Some(missing_axis),
+                axis_len: None,
+                start: None,
+                end: None,
+                shape: Some(self.slice().into()),
             });
         }
         Ok(IxDyn::from_vec(dims))

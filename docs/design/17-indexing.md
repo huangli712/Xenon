@@ -176,7 +176,7 @@ where
     I: Dimension,
     D: Dimension,
 {
-    pub fn new(indices: SliceInfoIndices, in_dim: D, out_dim: I) -> Result<Self, XenonError>;
+    pub(crate) fn new(indices: SliceInfoIndices, in_dim: D, out_dim: I) -> Result<Self, XenonError>;
 
     pub fn indices(&self) -> &SliceInfoIndices;
 
@@ -186,7 +186,9 @@ where
 }
 ```
 
-`SliceInfo<I, D>` 是切片描述符的公开包装类型：`D` 表示输入维度，`I` 表示切片后的输出维度；其内部字段保持私有，必须通过带校验的构造器建立，以避免手工拼出“索引长度、输入维度、输出维度彼此矛盾”的无效状态。建议将 `SliceInfo::new` 设为 crate-private，对外提供自动推导输出维度的包装接口。调用方不应手动构造 `out_dim`。
+设计说明：为支持 `XenonError::IndexOutOfBounds { attempted_index: Vec<usize>, .. }` 与 `26-error.md` 的规范对齐，`NdIndex<D>` 将提供 `fn to_index_vec(&self) -> Vec<usize>`（或等价 helper）用于把任意合法索引表示统一转换为 `Vec<usize>`。这样 tuple-based `Ix0`~`Ix6` 与切片形式索引都能在错误上报路径中生成一致的结构化诊断数据。
+
+`SliceInfo<I, D>` 是切片描述符的公开包装类型：`D` 表示输入维度，`I` 表示切片后的输出维度；其内部字段保持私有，必须通过带校验的构造器建立，以避免手工拼出“索引长度、输入维度、输出维度彼此矛盾”的无效状态。`SliceInfo::new` 作为 crate-private 构造器存在，对外提供自动推导输出维度的包装接口。调用方不应手动构造 `out_dim`。
 
 ### 5.2 张量访问与切片 API
 
@@ -231,38 +233,11 @@ where
     pub unsafe fn get_unchecked_mut(&mut self, index: &[usize]) -> &mut A;
 }
 
-impl<S, D, I> Index<I> for TensorBase<S, D>
-where
-    S: Storage,
-    D: Dimension,
-    I: NdIndex<D>,
-{
-    type Output = S::Elem;
-
-    /// # Panics
-    ///
-    /// Panics when `try_at()` would return an error. The panic message must
-    /// include full diagnostic context such as index value, axis, and shape.
-    fn index(&self, index: I) -> &Self::Output;
-}
-
-impl<S, D, I> IndexMut<I> for TensorBase<S, D>
-where
-    S: StorageMut,
-    D: Dimension,
-    I: NdIndex<D>,
-{
-    /// # Panics
-    ///
-    /// Panics when `try_at_mut()` would return an error. The panic message must
-    /// include full diagnostic context such as index value, axis, and shape.
-    fn index_mut(&mut self, index: I) -> &mut Self::Output;
-}
 ```
 
 > **设计决策：** 当前版本把 `try_at()` / `get()` / `try_at_mut()` / `get_mut()` 与 `slice()` 作为对外规范的主恢复路径。此前草案中的 `try_slice()` 与当前 `slice()` 具有相同签名且同样返回 `Result`，没有额外语义，因此移除以避免冗余接口。
 
-> **非规范便利接口说明：** 若实现内部或实验性配置中保留 `Index` / `IndexMut`（`[]` / `[]=`）语法糖，其 panic 行为仅属于非规范便利接口，不在当前版本稳定承诺内。稳定语义以 `try_at()` / `try_at_mut()` 为准。
+> **非规范便利接口说明：** 若实现内部或实验性配置中保留 `Index` / `IndexMut`（`[]` / `[]=`）语法糖，其 panic 行为仅属于非规范便利接口，不列入本节稳定接口草案。稳定语义以 `try_at()` / `try_at_mut()` 为准。
 
 ### 5.3 Good / Bad 对比
 
@@ -272,7 +247,7 @@ let value = tensor.try_at((2, 1))?;
 let value2 = tensor.get(&[2, 1])?;
 
 // Acceptable only after index validity has already been established.
-let value = &tensor[(2, 1)];
+let value = tensor.try_at((2, 1)).expect("index already validated");
 ```
 
 ```rust
@@ -283,7 +258,7 @@ let view = tensor.slice(s![1..4;2, ..])?;
 let view = tensor.slice(s![1..4;0, ..]).unwrap();
 ```
 
-> **范围补充：** 正步长切片（`step > 0`）在当前版本中实现但标记为 `unstable` feature gate，不属于 `require.md` §18 的最小必要范围。基础范围索引（`start..end`, `..`）为稳定承诺。
+> **范围补充：** 正步长切片（`step > 0`）属于当前版本实现中的扩展能力，但不作为 `require.md` §18 的最小必要范围承诺。基础范围索引（`start..end`, `..`）为稳定承诺。
 
 ```rust
 // Full collapse example: all axes are indexed, result becomes 0D.
@@ -357,7 +332,7 @@ compute_slice(shape, strides, offset, slices):
 - 布局状态只能重新落在 `FContiguous`、`NonContiguous`、`BroadcastView` 三种之一。
 - `SliceInfo::new(...)` 必须校验索引描述长度、`in_dim` 与 `out_dim` 的对应关系，拒绝构造内部自相矛盾的描述符。
 
-> **`out_dim` 入口收敛：** 建议将 `SliceInfo::new` 收敛为 crate-private 内部构造器，对外提供自动推导输出维度的包装接口。当前公开文档不鼓励调用方手动传入 `out_dim`。
+> **`out_dim` 入口收敛：** `SliceInfo::new` 收敛为 crate-private 内部构造器，对外提供自动推导输出维度的包装接口。当前公开文档不鼓励调用方手动传入 `out_dim`。
 
 > **切片布局标志规则：** 切片结果的 layout flags 根据新的 `shape` / `stride` 组合重新计算。若源视图带有 `BroadcastView`，且切片后仍存在任一零步长轴，则继续保留 `BroadcastView` flag；否则按普通 F-order / non-contiguous 规则重分类。
 
@@ -575,7 +550,7 @@ XenonError::InvalidArgument {
 
 XenonError::IndexOutOfBounds {
     operation: "try_at".into(),
-    attempted_index: index_component,
+    attempted_index: index.to_vec(),
     axis,
     shape: self.shape().to_vec(),
 }

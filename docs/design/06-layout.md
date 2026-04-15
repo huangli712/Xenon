@@ -336,7 +336,7 @@ function compute_f_strides(shape: [usize; N]) -> Result<[usize; N], XenonError>:
     for i from 0 to N-1:
         strides[i] = cumulative
         cumulative = checked_mul(cumulative, shape[i])
-            or return IntegerOverflow / InvalidLayout
+            or panic on integer overflow; otherwise return InvalidLayout
 
     return Ok(strides)
 ```
@@ -411,7 +411,7 @@ Result: false (not F-contiguous)
 - **广播视图**：广播轴允许 stride 为 `0`；是否为广播轴由广播语义决定（源维度为 1 且目标维度 > 1），而非由结果张量的 `shape[i] == 1` 判定。其余非广播轴必须保持 F-order 或转置后的正 stride 模式。
 - **单元素或 0-D**：只要 metadata 可表示且访问范围合法，任意有效 stride 都视为合法。
 
-> **校验口径说明：** 上述“合法 stride 布局族”描述的是设计意图与来源闭包，不是运行时可判定的 provenance 证明。当前版本的 safe 构造验证仅检查非负、可表示、范围不越界等充分条件，不尝试在运行时证明 stride 的来源（转置/切片/广播）。这意味着 safe 构造可能接受超出 F-order / 转置 / 切片 / 广播闭合集的正 stride 组合。这些额外接受的布局仅作为只读视图合法；拥有型连续存储仍须满足 F-order 约束。
+> **校验口径说明：** 上述“合法 stride 布局族”描述的是设计意图与来源闭包，不是运行时可判定的 provenance 证明。当前版本的 safe 构造验证仅检查非负、可表示、范围不越界等充分条件，不尝试在运行时证明 stride 的来源（转置/切片/广播）。这意味着 safe 构造可能接受超出 F-order / 转置 / 切片 / 广播闭合集的正 stride 组合。这些额外接受的布局仅说明在当前校验口径下可满足内存安全性，且仅作为只读视图合法；拥有型连续存储仍须满足 F-order 约束。本条件为内存安全性充分条件，不构成对超出当前版本支持范围的布局组合的 API 承诺。当前版本仅承诺 F-order、转置、切片、广播闭包内的 shape+stride 组合。
 
 #### 非法 stride 组合
 
@@ -578,7 +578,7 @@ function compute_flags(shape, strides, ptr):
 
 ### 6.2a 内部 stride 校验规则
 
-当前版本内部实现的设计目标仍以 packed F-order、其轴置换、广播零步长以及正步长切片派生的 stride 族为主；但 safe 构造的实际运行时校验口径只验证非负、可表示、访问范围不越界等充分条件，并不会证明某组 stride 必然来自这些来源。因此 safe 路径可能接受更宽的正 stride 组合；这些布局只能作为只读视图语义成立，拥有型连续存储仍需满足 packed F-order。
+当前版本内部实现的设计目标仍以 packed F-order、其轴置换、广播零步长以及正步长切片派生的 stride 族为主；但 safe 构造的实际运行时校验口径只验证非负、可表示、访问范围不越界等充分条件，并不会证明某组 stride 必然来自这些来源。因此 safe 路径可能接受更宽的正 stride 组合；这些布局只能作为只读视图语义成立，拥有型连续存储仍需满足 packed F-order。本口径描述的是“内存安全”充分条件，不等同于“当前版本承诺支持”的布局范围；当前版本仅承诺 F-order、转置、切片、广播闭包内的 shape+stride 组合。
 
 - F-order 连续布局：`stride[i] = product(shape[0..i])`
 - 转置派生布局：stride 必须是某个 F-order 连续 stride 集合的轴置换，且全部为正

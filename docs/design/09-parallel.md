@@ -341,7 +341,7 @@ where
         expected_elements: 0,
         actual_elements: 0,
         offending_dim: None,
-        reason: "element count overflow".into(),
+        reason: Some(alloc::borrow::Cow::Borrowed("element count overflow")),
     })?;
 
     let num_threads = strategy.max_workers.unwrap_or_else(rayon::current_num_threads);
@@ -389,7 +389,7 @@ pub(crate) fn par_map_checked<A, B, S, D, F>(
 ) -> Result<Tensor<B, D>, XenonError>
 where
     S: Storage<Elem = A>,
-    D: Dimension,
+    D: Dimension + Clone,
     A: Element + Send + Sync,
     B: Element + Send,
     F: Fn(&A) -> Result<B, XenonError> + Sync + Send,
@@ -618,7 +618,7 @@ math / reduction / matrix call dispatch entry
 
 | 主题              | 说明                                                                                                                                                               |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Recoverable error | `par_dot()` 的长度不兼容返回 `XenonError::DimensionMismatch { operation, expected, actual }`；`par_zip_map()` 的元素总数溢出返回 `InvalidShape { expected_elements: 0, actual_elements: 0, reason: "element count overflow" }` |
+| Recoverable error | `par_dot()` 的长度不兼容返回 `XenonError::DimensionMismatch { operation, expected, actual }`；`par_zip_map()` 的元素总数溢出返回 `InvalidShape { expected_elements: 0, actual_elements: 0, offending_dim: None, reason: Some(Cow::Borrowed("element count overflow")) }` |
 | Panic             | 归约中的整数溢出仍属于不可恢复错误，必须 panic，而不是包装为 `XenonError`                                                                                          |
 | 路径一致性        | `dispatch.rs` 负责执行路径选择；一旦进入 `parallel/`，并行路径必须返回与调用方串行基线相同形状、相同错误类别，以及满足同一数值语义约束的结果                    |
 | 容差边界          | 浮点与复数若存在执行路径相关的已知舍入差异，只能落在 `需求说明书 §28.3` 与 `§28.5` 允许且已文档化的范围内                                                           |
@@ -634,7 +634,7 @@ XenonError::DimensionMismatch {
 路径语义边界：
 
 - 并行模块本身不新增专属错误枚举；公开错误必须复用 `26-error.md` 中的统一模型。
-- 自定义线程池类参数若存在非法值，应返回 `InvalidArgument { operation, argument, expected, actual, axis, shape }`。
+- 自定义线程池类参数若存在非法值，应返回 `InvalidArgument { operation, argument, expected, actual, axis, axis_len, start, end, shape }`。
 - 若未来在 `parallel/` 内部新增广播错误构造，必须使用 `XenonError::BroadcastError { operation, lhs_shape, rhs_shape, attempted_target_shape, axis }` 这一权威字段集合；当前 `par_zip_map()` 不承担广播兼容性校验。
 - panic 与 `Err(XenonError)` 都不得被吞掉；并行执行中发生的错误须至少传播一个，不保证传播“第一个”发生的错误。
 - 执行路径裁决由 `dispatch.rs` 负责；`parallel/` 不新增路径选择语义。

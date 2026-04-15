@@ -480,8 +480,9 @@ where
     if !is_broadcast_compatible(self.shape(), shape.as_ref()) {
         return Err(XenonError::BroadcastError {
             operation: "broadcast_to",
-            input_shape: self.shape().into(),
-            target_shape: shape.as_ref().into(),
+            lhs_shape: self.shape().into(),
+            rhs_shape: shape.as_ref().into(),
+            attempted_target_shape: Some(shape.as_ref().into()),
             axis: None,
         });
     }
@@ -1101,6 +1102,8 @@ Wave 2: [T4]
 | `test_compile_all_features` | `--all-features` 编译通过 | 高     |
 
 > **覆盖补充：** 边界类（空张量/单元素/大张量/极值/高维/非法元素类型）、并行/SIMD 路径一致性、compile-fail 约束测试由对应模块文档（`27-benchmark.md`、`28-tests.md`）具体定义。
+
+## 11. 验证补充
 
 ### 11.1 Feature gate / 配置测试
 

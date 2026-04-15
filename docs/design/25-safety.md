@@ -15,16 +15,7 @@
 
 > **范围注记：** workspace 的线程安全属性参见 `24-workspace.md`；本文不将 workspace 纳入 `require.md §10` 的存储模式线程安全矩阵。
 >
-> **设计扩展说明：** 以下为设计扩展约束，超出 `require.md §10` 的强制范围。
-
-## 1.5 影响范围
-
-- `storage`: 各存储模式的 `Send`/`Sync` 约束与内部唯一化写路径
-- `tensor`: `TensorBase<S, D>` 的 auto-trait 传播与公开语义边界
-- `iterator`: 只读/可写迭代器的线程可用性与别名约束
-- `simd`: SIMD 内核在多线程场景下的无共享状态约束
-- `parallel`: 启用 `parallel` feature 后公开 API 的内部并行执行路径
-- `ffi`: 跨边界指针与导出描述符在多线程中的可共享/可写前提
+> **设计扩展总注记：** 本文凡以“设计扩展说明”标注的内容，均属于超出 `require.md §10` 强制范围的设计决策，用于补充实现边界与验证方式，不应与需求基线混淆。
 
 ### 1.1 职责边界
 
@@ -72,6 +63,15 @@ Cross-cutting concern:
 | 写时复制     | ArcRepr 内部唯一化 / 必要时复制后恢复可写性的实现约束 |
 | 数据竞争预防 | 确保 ViewMutRepr 独占访问不被共享  |
 | rayon 集成   | ParallelIterator 要求 Send 约束    |
+
+## 1.5 影响范围
+
+- `storage`: 各存储模式的 `Send`/`Sync` 约束与内部唯一化写路径
+- `tensor`: `TensorBase<S, D>` 的 auto-trait 传播与公开语义边界
+- `iterator`: 只读/可写迭代器的线程可用性与别名约束
+- `simd`: SIMD 内核在多线程场景下的无共享状态约束
+- `parallel`: 启用 `parallel` feature 后公开 API 的内部并行执行路径
+- `ffi`: 跨边界指针与导出描述符在多线程中的可共享/可写前提
 
 ## 2. 需求映射与范围约束
 
@@ -645,7 +645,7 @@ fn arc_send_sync() {
 
 ### 8.3.1 迭代器 Send/Sync 验证矩阵
 
-> **设计扩展说明：** 以下为设计扩展约束，超出 `require.md §10` 的强制范围。
+> **设计扩展说明：** 下表属于超出 `require.md §10` 强制范围的设计扩展，用于补充迭代器线程安全验证策略。
 
 | 迭代器类型 | 预期 trait 边界 | 验证方式 |
 | ---------- | --------------- | -------- |
@@ -684,7 +684,7 @@ fn arc_send_sync() {
 
 ### 8.6.1 FFI 导出描述符线程安全规则
 
-> **设计扩展说明：** 以下为设计扩展约束，超出 `require.md §10` 的强制范围。
+> **设计扩展说明：** 本节属于超出 `require.md §10` 强制范围的设计扩展，用于补充 FFI 导出描述符的线程安全边界。
 
 FFI 导出描述符的线程安全约束必须与其导出的 Rust 视图语义保持一致：
 
@@ -828,7 +828,7 @@ After a storage type is created or borrowed
 
 ### 9.5 与 workspace 模块的边界
 
-> **设计扩展说明：** 以下为设计扩展约束，超出 `require.md §10` 的强制范围。
+> **设计扩展说明：** 本节属于超出 `require.md §10` 强制范围的设计扩展，用于说明与 workspace 文档的边界衔接。
 
 workspace 的线程安全规则、借用状态机与分割守卫生命周期不属于本文档范围，统一参见 `24-workspace.md §5.7` 与 `24-workspace.md §6.3`。本文仅要求并行与张量存储相关设计在引用 workspace 时，不得与该文档定义的线程安全边界冲突。
 

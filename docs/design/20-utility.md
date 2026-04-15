@@ -168,6 +168,9 @@ where
                 expected: "min <= max; NaN bounds are invalid for floating-point inputs",
                 actual: "min > max or NaN bound",
                 axis: None,
+                axis_len: None,
+                start: None,
+                end: None,
                 shape: Some(self.shape().to_vec()),
             });
         }
@@ -513,7 +516,8 @@ Wave 2:      [T3] → [T4]
 | `test_fill_basic`                         | 基本填充所有元素为指定值                | 高     |
 | `test_fill_non_contiguous`                | 非连续布局正确填充所有逻辑元素          | 高     |
 | `test_fill_padded_writes_logical_only`    | 带 padding 的可写张量仅覆写逻辑元素     | 高     |
-| `test_try_fill_writable_matches_fill`          | `try_fill()` 在可写张量上与 `fill()` 语义一致      | 高     |
+| `test_try_fill_writable_matches_fill`      | `try_fill()` 在可写张量上与 `fill()` 语义一致                          | 高     |
+| `test_try_fill_public_error_contract`      | `try_fill()` 作为公共 API 在广播只读结果 / 只读存储上返回公开错误契约 | 高     |
 | `test_fill_empty`                         | 空数组 fill 不 panic                    | 中     |
 | `test_to_contiguous_f_order`              | F-order 连续输入返回 owned 拷贝         | 高     |
 | `test_into_contiguous_reuses_owned_data`  | F-order owned 输入消费后复用原数据      | 高     |
@@ -565,7 +569,7 @@ Wave 2:      [T3] → [T4]
 | 场景 | 测试方式 |
 | ---- | ---- |
 | `clip` 仅对 `ClipElement` 开放，拒绝 `bool` / `Complex` | 编译期测试。 |
-| 只读 / 共享只读填充分派仅作为内部 `fill_try_dispatch()` 设计占位 | 内部测试占位或后续公开 API 议题。 |
+| `try_fill()` 对只读 / 共享只读 / 广播只读结果返回公开错误契约 | 运行时测试，断言返回 `XenonError::InvalidStorageMode { .. }`。 |
 | `into_contiguous(self)` 仅对支持 owned 转换的存储模式开放 | 编译期测试。 |
 | sort / argsort / searchsorted 不属于当前 API | API 缺失断言。 |
 

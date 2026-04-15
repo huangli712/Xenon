@@ -160,8 +160,10 @@ where
         let len = layout::checked_element_count(&dim).ok_or(XenonError::InvalidShape {
             operation: "zeros",
             shape: dim.slice().to_vec(),
-            reason: "element count overflow".into(),
+            expected_elements: 0,
+            actual_elements: 0,
             offending_dim: None,
+            reason: Some("element count overflow".into()),
         })?;
         let strides = layout::f_order_strides(&dim);
         let storage = Owned::zeros(len);
@@ -185,8 +187,10 @@ where
         let len = layout::checked_element_count(&dim).ok_or(XenonError::InvalidShape {
             operation: "ones",
             shape: dim.slice().to_vec(),
-            reason: "element count overflow".into(),
+            expected_elements: 0,
+            actual_elements: 0,
             offending_dim: None,
+            reason: Some("element count overflow".into()),
         })?;
         let strides = layout::f_order_strides(&dim);
         let storage = Owned::ones(len);
@@ -229,9 +233,9 @@ where
     /// # Examples
     /// ```ignore
     /// let e = Tensor::<f64, Ix2>::eye(3).unwrap();
-    /// assert_eq!(e[[0, 0]], 1.0);
-    /// assert_eq!(e[[0, 1]], 0.0);
-    /// assert_eq!(e[[1, 1]], 1.0);
+    /// assert_eq!(*e.get(&[0, 0]).unwrap(), 1.0);
+    /// assert_eq!(*e.get(&[0, 1]).unwrap(), 0.0);
+    /// assert_eq!(*e.get(&[1, 1]).unwrap(), 1.0);
     /// ```
     pub fn eye(n: usize) -> Result<Self, XenonError>
     where
@@ -322,8 +326,10 @@ where
         let expected = layout::checked_element_count(&dim).ok_or(XenonError::InvalidShape {
             operation: "from_shape_vec",
             shape: dim.slice().to_vec(),
-            reason: "element count overflow".into(),
+            expected_elements: 0,
+            actual_elements: 0,
             offending_dim: None,
+            reason: Some("element count overflow".into()),
         })?;
         if data.len() != expected {
             return Err(XenonError::InvalidShape {
@@ -332,6 +338,7 @@ where
                 expected_elements: expected,
                 actual_elements: data.len(),
                 offending_dim: None,
+                reason: None,
             });
         }
         let strides = layout::f_order_strides(&dim);
@@ -365,8 +372,10 @@ where
         let expected = layout::checked_element_count(&dim).ok_or(XenonError::InvalidShape {
             operation: "from_shape_slice",
             shape: dim.slice().to_vec(),
-            reason: "element count overflow".into(),
+            expected_elements: 0,
+            actual_elements: 0,
             offending_dim: None,
+            reason: Some("element count overflow".into()),
         })?;
         if slice.len() != expected {
             return Err(XenonError::InvalidShape {
@@ -375,6 +384,7 @@ where
                 expected_elements: expected,
                 actual_elements: slice.len(),
                 offending_dim: None,
+                reason: None,
             });
         }
         // The baseline implementation materializes an owned buffer from the slice
@@ -422,7 +432,7 @@ where
     /// # Examples
     /// ```
     /// let t = Tensor::<f64, Ix0>::from_scalar(3.14);
-    /// assert_eq!(t[[]], 3.14);
+    /// assert_eq!(*t.get(&[]).unwrap(), 3.14);
     /// ```
     pub fn from_scalar(scalar: A) -> Self {
         let storage = Owned::from_vec_aligned(vec![scalar]);
@@ -458,6 +468,7 @@ fn create_matrix(data: Vec<f64>) -> Result<Tensor<f64, Ix2>, XenonError> {
             expected_elements: n * n,
             actual_elements: data.len(),
             offending_dim: None,
+            reason: None,
         });
     }
     Tensor::from_shape_vec([n, n], data)
@@ -662,7 +673,7 @@ User calls zeros / from_shape_vec / eye
 
 | 主题              | 内容                                                                                                                                                                                                                                            |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | shape 与长度基数不匹配、共享 checked helper 报告元素总数溢出等情况返回 `XenonError::InvalidShape`。长度不匹配时携带实际与期望元素数；元素总数溢出时改用 `reason = "element count overflow"`，不得伪造 `expected_elements` / `actual_elements`。 |
+| Recoverable error | shape 与长度基数不匹配、共享 checked helper 报告元素总数溢出等情况返回 `XenonError::InvalidShape`。所有 `InvalidShape` 示例都保持 `26-error.md` 的 canonical 字段集；长度不匹配时携带实际与期望元素数，元素总数溢出时额外以 `reason = Some("element count overflow".into())` 标识溢出原因。 |
 | Panic             | 公开构造 API 不定义额外 panic 语义；失败统一走 `Result`。                                                                                                                                                                                       |
 | 路径一致性        | 所有构造路径都必须产出 canonical F-order owned 张量，并保持一致的 shape / strides / flags 语义。                                                                                                                                                |
 | 容差边界          | 不适用。                                                                                                                                                                                                                                        |

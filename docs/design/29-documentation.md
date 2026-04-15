@@ -54,12 +54,14 @@ Cross-cutting concern (global):
 
 | 类型     | 内容                                                         |
 | -------- | ------------------------------------------------------------ |
-| 需求映射 | `require.md §28.1`, `§28.3`, `§9.1`, `§9.2`, `§9.3`, `§25`, `§27` |
+| 需求映射 | `require.md §28.1` |
 | 范围内   | pub API 文档、doctest、examples、docs.rs 配置、README        |
 | 范围外   | 第三方教程平台、自定义文档主题、交互式 notebook 或站点系统   |
 | 非目标   | 通过文档规范扩展产品能力、引入额外文档构建依赖或改变平台边界 |
 
 > **说明**：`CHANGELOG.md` 为工程辅助产物，不属于 `require.md §28.1` 的文档要求范围。
+
+> **范围注记：** `require.md §28.1` 的最低要求聚焦 pub API 文档、README 与示例交付。下文中的 `CHANGELOG.md`、版本号规则、docs.rs metadata、文档 CI / feature 验证矩阵、Wave 拆分与详细任务清单均为设计扩展，用于工程化落地，不构成对 `require.md §28.1` 的新增强制项。
 
 ---
 
@@ -491,6 +493,8 @@ MIT
 
 ### 5.9 CHANGELOG.md（可选工程整理，非默认交付）
 
+> **设计扩展说明：** 本节及后续涉及版本号规则、docs.rs metadata、文档 CI / feature 验证矩阵的内容，均属于超出 `require.md §28.1` 最低范围的工程化设计扩展。
+
 #### 5.9.1 格式
 
 `CHANGELOG.md` 可遵循 [Keep a Changelog](https://keepachangelog.com/) 格式维护，但该文件属于可选工程整理项，不进入 `require.md §28.1` 的默认交付波次：
@@ -848,6 +852,7 @@ docs:
       run: |
         cargo run --example basic
         cargo run --example broadcasting
+        cargo run --example workspace
 ```
 
 ### 8.6 Feature gate / 配置测试

@@ -82,8 +82,8 @@ src/matrix/
 
 | 场景 | 对外语义 |
 | ---- | -------- |
-| 左输入不是逻辑 1D | 返回 `XenonError::InvalidArgument { operation: "dot".into(), argument: "lhs".into(), expected: "logical 1D tensor".into(), actual: format!("ndim={}", lhs.ndim()).into(), axis: None, shape: Some(lhs.shape().to_vec()) }`。 |
-| 右输入不是逻辑 1D | 返回 `XenonError::InvalidArgument { operation: "dot".into(), argument: "rhs".into(), expected: "logical 1D tensor".into(), actual: format!("ndim={}", rhs.ndim()).into(), axis: None, shape: Some(rhs.shape().to_vec()) }`。 |
+| 左输入不是逻辑 1D | 返回 `XenonError::InvalidArgument { operation: "dot".into(), argument: "lhs".into(), expected: "logical 1D tensor".into(), actual: format!("ndim={}", lhs.ndim()).into(), axis: None, axis_len: None, start: None, end: None, shape: Some(lhs.shape().to_vec()) }`。 |
+| 右输入不是逻辑 1D | 返回 `XenonError::InvalidArgument { operation: "dot".into(), argument: "rhs".into(), expected: "logical 1D tensor".into(), actual: format!("ndim={}", rhs.ndim()).into(), axis: None, axis_len: None, start: None, end: None, shape: Some(rhs.shape().to_vec()) }`。 |
 | 两个 1D 输入长度不一致 | 返回 `XenonError::DimensionMismatch { operation: "dot", expected: a.len(), actual: b.len() }`。 |
 | 整数乘法或累加溢出 | 触发 panic；这属于不可恢复算术域错误。 |
 | 空向量输入 | 合法，返回加法单位元 `A::zero()`。 |
@@ -203,7 +203,10 @@ where
     A: Numeric + Copy,
 {
     /// Stable method-style API; semantically equivalent to `matrix::dot()`.
-    pub fn dot(&self, other: &TensorBase<impl Storage<Elem = A>, D>) -> Result<A, XenonError>;
+    pub fn dot<S2, D2>(&self, other: &TensorBase<S2, D2>) -> Result<A, XenonError>
+    where
+        S2: Storage<Elem = A>,
+        D2: Dimension;
 }
 ````
 
@@ -223,7 +226,7 @@ where
 
 > **SIMD 覆盖说明：** 复数内积的 SIMD 加速参见 `08-simd.md` 覆盖矩阵。目标是对 `Complex<f32>` / `Complex<f64>` 内积提供 SIMD 路径。
 
-> **方法式 API 说明：** `TensorBase::dot(&self, other: &TensorBase<impl Storage<Elem = A>, D>) -> Result<A, XenonError>` 是稳定的 method-style API；自由函数 `dot(&TensorView, &TensorView)` 作为等价的 convenience wrapper 保留。两者必须共享相同的错误类别、复数共轭线性定义与容差规则。
+> **方法式 API 说明：** `TensorBase::dot<S2, D2>(&self, other: &TensorBase<S2, D2>) -> Result<A, XenonError>` 是稳定的 method-style API；它与自由函数 `dot(&TensorView<'_, A, D1>, &TensorView<'_, A, D2>)` 一样，允许两侧使用不同的维度类型，只在运行时检查双方是否都为逻辑 1D。两者必须共享相同的错误类别、复数共轭线性定义与容差规则。
 
 ### 5.3 Good / Bad 对比示例
 
@@ -335,6 +338,9 @@ where
             expected: "logical 1D tensor".into(),
             actual: format!("ndim={}", view.ndim()).into(),
             axis: None,
+            axis_len: None,
+            start: None,
+            end: None,
             shape: Some(view.shape().to_vec()),
         })
 }
@@ -525,7 +531,7 @@ User calls dot(a, b)
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | 左/右输入非 1D 时分别返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, shape: Option<Vec<usize>> }`，典型取值为 `argument: "lhs"` 或 `"rhs"`、`axis: None`、`shape: Some(input.shape().to_vec())`；长度不匹配时返回 `XenonError::DimensionMismatch { operation: "dot", expected: usize, actual: usize }`。 |
+| Recoverable error | 左/右输入非 1D 时分别返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, axis_len: Option<usize>, start: Option<usize>, end: Option<usize>, shape: Option<Vec<usize>> }`，典型取值为 `argument: "lhs"` 或 `"rhs"`、`axis: None`、`axis_len: None`、`start: None`、`end: None`、`shape: Some(input.shape().to_vec())`；长度不匹配时返回 `XenonError::DimensionMismatch { operation: "dot", expected: usize, actual: usize }`。 |
 | Panic | 整数 dot 的乘法溢出与累加溢出均为不可恢复错误，按 checked arithmetic 触发 panic。panic 文本至少包含 `operation=dot`、元素类型、`trigger`（`multiply` / `accumulate`）、逻辑位置（如 `lane`）以及输入 shape。 |
 | 路径一致性 | `dot` 可选择标量、SIMD 或并行路径；任何可选路径都不得改变结果、错误类别或 panic 语义。 |
 | 容差边界 | 内积的浮点容差遵循 `08-simd.md` 定义。具体为：`max(1 ULP, epsilon * |scalar_result|)`。复数内积按实部、虚部分量分别比较。 |

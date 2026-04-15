@@ -75,6 +75,8 @@ tests/
 │       ├── wrong_dimension_type.rs
 │       ├── missing_element_bound.rs
 │       ├── mismatched_storage_type.rs
+│       ├── unsigned_tensor_element_rejected.rs
+│       ├── invalid_unsigned_element_rejected.rs
 │       ├── ui_bool_sum_rejected.rs
 │       ├── ui_bool_unique_rejected.rs
 │       └── ui_bool_arithmetic_rejected.rs

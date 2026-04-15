@@ -223,11 +223,11 @@ where
 | `i64`          | `Complex<f64>` | 错误     | 由 `i64 -> f64` 有损导致默认失败            |
 | `i64`          | `Complex<f32>` | 错误     | 有损，默认失败                              |
 | `f64`          | `Complex<f32>` | 错误     | 有损，默认失败                              |
-| `Complex<f32>` | `f64`          | 条件成功 | 仅当 `im == 0`，再按 `f32 -> f64` 规则处理  |
-| `Complex<f32>` | `f32`          | 条件成功 | 仅当 `im == 0`；否则错误                    |
+| `Complex<f32>` | `f64`          | 默认错误 | 默认错误（虚部非 0 时返回 `NonZeroImaginaryPart`；虚部为 0 时再按 `f32 -> f64` 规则处理） |
+| `Complex<f32>` | `f32`          | 默认错误 | 默认错误（虚部非 0 时返回 `NonZeroImaginaryPart`；虚部为 0 时返回实部） |
 | `Complex<f32>` | `i32`          | 默认错误 | 默认错误（虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误） |
 | `Complex<f32>` | `i64`          | 默认错误 | 默认错误（虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误） |
-| `Complex<f64>` | `f64`          | 条件成功 | 仅当 `im == 0`；否则错误                    |
+| `Complex<f64>` | `f64`          | 默认错误 | 默认错误（虚部非 0 时返回 `NonZeroImaginaryPart`；虚部为 0 时返回实部） |
 | `Complex<f64>` | `f32`          | 默认错误 | 默认错误（虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误） |
 | `Complex<f64>` | `i32`          | 默认错误 | 默认错误（虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误） |
 | `Complex<f64>` | `i64`          | 默认错误 | 默认错误（虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误） |
@@ -412,7 +412,7 @@ impl CastTo<i32> for i64 {
 
 - [ ] **T1**: 实现 `CastTo` trait 的核心转换路径
   - 文件: `src/convert/cast.rs`
-  - 内容: 复用 `element` 模块中的 fallible `CastTo<T>` trait，实现无损与条件成功路径
+  - 内容: 复用 `element` 模块中的 fallible `CastTo<T>` trait，实现无损与默认错误路径
   - 测试: `test_cast_f32_to_f64`, `test_cast_i32_to_i64`, `test_cast_complex_f64_to_f64_when_imag_zero`
   - 前置: element 模块完成
   - 预计: 10 min
@@ -551,7 +551,7 @@ Wave 2: [T3] [T4] [T5]  (parallel)
 | `convert → math`    | `math`    | 逐元素转换语义                          | `cast()` 采用迭代收集路径，不复用 `mapv()` 的同类型返回语义                                       |
 | `convert → storage` | `storage` | `Owned` / readable storage traits       | convert 只消费可读存储与 owned 化能力，不在本文扩展额外存储模式互转矩阵                           |
 | `convert → layout`  | `layout`  | F-order metadata                        | `cast()`、`to_owned()`、`into_owned()` 保持张量 shape 与逻辑元素顺序，并为 owned 结果建立 canonical F-order 元数据；若调用方需要显式连续化入口，则由 `util::to_contiguous()` 负责 |
-| `convert → complex` | `complex` | `Complex<T>`                            | 复数目标类型转换依赖 `Complex` 定义；Complex → 实数仅在 `im == 0` 且内层实数转换本身无损时成功，参见 `04-complex.md` §4 |
+| `convert → complex` | `complex` | `Complex<T>`                            | 复数目标类型转换依赖 `Complex` 定义；Complex → 实数默认为错误（虚部非 0 时返回 `NonZeroImaginaryPart`），仅在 `im == 0` 且内层实数转换本身无损时可成功，参见 `04-complex.md` §4 |
 
 ### 9.2 数据流描述
 

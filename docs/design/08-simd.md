@@ -371,6 +371,7 @@ where
 | ---- | ---- | ------------------------------ | ---- |
 | `add` / `sub` / `mul` / `div` | `f32` / `f64` / `Complex<f32>` / `Complex<f64>` | 已实现 | 当前版本提供 SIMD kernel |
 | `neg` | `f32` / `f64` / `Complex<f32>` / `Complex<f64>` | 已实现 | 当前版本提供 SIMD kernel |
+| `sign` / `signum` | `f32` / `f64` | 本版覆盖（通过 SIMD 比较 + blend） | 当前版本仅为实数浮点提供 SIMD 路径；其他类型保持标量/串行路径 |
 | `sum` | `f32` / `f64` / `Complex<f32>` / `Complex<f64>` | 已实现 | 浮点/复数遵循本文档记录的归约容差 |
 | `sum` | `i32` / `i64` | 已实现 | 整数归约的 SIMD 路径使用 widening accumulator（`i32 -> i64` 中间累加）；每 N 个元素做一次溢出检查。若无法保证与标量 checked 语义完全等价，则回退到标量 checked 路径 |
 | `dot` | `f32` / `f64` / `Complex<f32>` / `Complex<f64>` | 已实现 | 复数 `dot` 采用 `sum(conj(lhs_i) * rhs_i)` |
@@ -398,6 +399,12 @@ where
 | -------- | -------- | ------------- | ---- |
 | 逐元素算术 | `f32` / `f64` | 64 | 对齐后向量宽度 |
 | 逐元素算术 | `i32` / `i64` | 64 | 同上 |
+| 逐元素算术 | `Complex<f32>` / `Complex<f64>` | 128 | AoS 输入需寄存器内重排，默认阈值高于实数路径 |
+| 比较 | 适用的整数 / 浮点类型 | 64 | 与逐元素算术共享向量装载/收尾框架 |
+| `abs` / `sign` / `signum` | `f32` / `f64` | 64 | 一元实数路径，通常复用比较/位运算或算术框架 |
+| `square` | `i32` / `i64` / `f32` / `f64` | 64 | 复用逐元素乘法 kernel |
+| `square` | `Complex<f32>` / `Complex<f64>` | 128 | 复用 complex 算术路径与寄存器重排框架 |
+| `bool` (`not`) | `bool` | N/A | 由独立 bool / mask kernel 决定，不在统一数值阈值表内单独承诺 |
 | 归约 `sum` | `f32` / `f64` | 1024 | 归约开销较高，需更大输入 |
 | 归约 `sum` | `i32` / `i64` | 512 | widening accumulator |
 | 内积 `dot` | `f32` / `f64` | 512 | 同归约 |

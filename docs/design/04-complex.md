@@ -581,7 +581,7 @@ impl<T: ComplexFloat> PartialEq for Complex<T> {
 ### 5.9 格式化输出
 
 ```rust,ignore
-impl<T: ComplexFloat + core::fmt::Display> core::fmt::Display for Complex<T> {
+impl<T: ComplexFloat + core::fmt::Display + PositiveZero> core::fmt::Display for Complex<T> {
     /// Formats as "a+bj", "a-bj", "a", "bj", or "0".
     ///
     /// NaN handling: when the imaginary part is NaN, always display
@@ -611,14 +611,27 @@ impl<T: ComplexFloat + core::fmt::Display> core::fmt::Display for Complex<T> {
 }
 
 // Concrete f32/f64 helpers distinguish +0.0 from -0.0 via IEEE-754 bit patterns.
-#[inline]
-fn scalar_is_positive_zero(im: f32) -> bool {
-    im.to_bits() == 0.0f32.to_bits()
+trait PositiveZero {
+    fn is_positive_zero(self) -> bool;
+}
+
+impl PositiveZero for f32 {
+    #[inline]
+    fn is_positive_zero(self) -> bool {
+        self.to_bits() == 0.0f32.to_bits()
+    }
+}
+
+impl PositiveZero for f64 {
+    #[inline]
+    fn is_positive_zero(self) -> bool {
+        self.to_bits() == 0.0f64.to_bits()
+    }
 }
 
 #[inline]
-fn scalar_is_positive_zero(im: f64) -> bool {
-    im.to_bits() == 0.0f64.to_bits()
+fn scalar_is_positive_zero<T: PositiveZero>(im: T) -> bool {
+    im.is_positive_zero()
 }
 ```
 
@@ -704,16 +717,26 @@ FFI 示例：
 
 ```rust,ignore
 // Rust side
-#[no_mangle]
-pub extern "C" fn process_complex(z: *const Complex<f64>) -> Complex<f64> {
-    // SAFETY: the C caller must pass a non-null, properly aligned pointer to a
-    // valid `Complex<f64>` object that is live for the duration of this call.
-    unsafe { *z * *z }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn process_complex(
+    z: *const Complex<f64>,
+    out: *mut Complex<f64>,
+) -> i32 {
+    if z.is_null() || out.is_null() {
+        return -1;
+    }
+
+    // SAFETY: the C caller must pass non-null, properly aligned pointers to
+    // valid `Complex<f64>` objects that are live for the duration of this call.
+    unsafe {
+        *out = *z * *z;
+    }
+    0
 }
 
 // C side
 // typedef struct { double re; double im; } complex64_t;
-// complex64_t process_complex(const complex64_t* z);
+// int32_t process_complex(const complex64_t* z, complex64_t* out);
 ```
 
 ### 5.13 Good / Bad 对比示例

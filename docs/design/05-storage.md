@@ -687,6 +687,7 @@ impl<A> Owned<A> {
                 expected_elements: len,
                 actual_elements: len,
                 offending_dim: None,
+                reason: Some("element count overflow".into()),
             })?;
         // Allocate aligned memory and copy elements
         // SAFETY: AlignedAlloc returns a valid, aligned allocation of the requested size.
@@ -1186,7 +1187,7 @@ User calls `TensorBase::as_ptr()`
 | 场景           | 预期行为                                             | 安全性论证                                                            |
 | -------------- | ---------------------------------------------------- | --------------------------------------------------------------------- |
 | ZST 元素类型   | 使用非空悬挂哨兵指针，不调用分配器，len 正常计算     | ZST 不需要真实 backing storage，且禁止把 `size=0` 传给 `AlignedAlloc` |
-| 空数组 `len=0` | `as_ptr()` 返回非空悬垂指针，`as_slice()` 返回空切片 | `Vec` 保证空时 `as_ptr()` 非空                                        |
+| 空数组 `len=0` | `as_ptr()` 返回非空悬垂指针，`as_slice()` 返回空切片 | `AlignedBuf::empty()` 为 owned 空缓冲提供非空悬垂哨兵指针语义          |
 | ZST + 空数组   | 不引发分配，不引发 UB                                | ZST 不需要实际内存                                                    |
 
 ---
