@@ -103,8 +103,9 @@ src/math/
 ├── crate::iter          # Elements, ElementsMut
 ├── crate::element       # Element, Numeric, RealScalar, ComplexScalar
 ├── crate::broadcast     # broadcast_shape() for binary ops
-├── crate::simd (opt.)   # pulp::Arch backend dispatch
-├── crate::parallel (opt.) # par_zip_map() backend dispatch
+├── crate::dispatch      # ExecPath, select_exec_path() for execution path decision
+├── crate::simd (opt.)   # Pure vectorized backend
+├── crate::parallel (opt.) # Pure parallel backend
 └── crate::error         # XenonError
 ```
 
@@ -119,8 +120,9 @@ src/math/
 | `broadcast`    | `broadcast_shape()`, `broadcast_to()` 返回的 `TensorView`（参见 `15-broadcast.md §5`） |
 | `dimension`    | `BroadcastDim<E>` trait（编译期维度推导，参见 `02-dimension.md §5.9`）                 |
 | `storage`      | `Storage<Elem = A>`, `StorageMut<Elem = A>`                                            |
+| `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`should_parallelize()`、`can_use_simd()` |
 | `simd`（可选） | `pulp::Arch`（参见 `08-simd.md §5`）                                                   |
-| `parallel`（可选） | `par_zip_map()`、阈值与嵌套并行防护（参见 `09-parallel.md §5` / `§6`）            |
+| `parallel`（可选） | `par_zip_map()`（纯并行执行入口，不含串行回退，参见 `09-parallel.md §5` / `§6`） |
 | `error`        | `XenonError`（含 `BroadcastError` 变体，参见 `26-error.md §4`）                        |
 
 ### 4.5 依赖方向
@@ -478,9 +480,9 @@ apply_binary(a, b, f):
 
 ### 6.3 SIMD 加速路径
 
-SIMD 分发由 `math` 的具体逐元素操作在满足连续性、对齐和 feature gate 前提时直接委托 `src/simd/` facade；本文不再把额外的中间 helper 视为稳定设计接口。参见 `08-simd.md §5.5` 了解 SIMD 后端详情。数学模块定义需求说明书 §12 中列出的逐元素运算，但当前版本只对 `08-simd.md §5.4a` 覆盖矩阵列出的子集尝试 SIMD；未列出的运算、类型、ISA 或不满足语义约束的路径统一回退标量实现。
+SIMD 分发由 `math` 模块在满足连续性、对齐和 feature gate 前提时通过 `dispatch::select_exec_path()` 选择执行路径，再委托 `simd/` 纯向量化后端执行。参见 `08-simd.md §5.5` 了解 SIMD 后端详情。数学模块定义需求说明书 §12 中列出的逐元素运算，但当前版本只对 `08-simd.md §5.4a` 覆盖矩阵列出的子集尝试 SIMD；未列出的运算、类型、ISA 或不满足语义约束的路径统一回退标量实现。
 
-> **并行路径：** 当 `parallel` feature 启用时，二元逐元素运算可进一步委托 `parallel::par_zip_map` 执行并行遍历（参见 `09-parallel.md §5`）。并行路径必须遵守 `09-parallel.md §6` 的阈值裁决与禁止库内二次并行约束；若 guard 进入失败、输入过小或语义无法证明一致，则自动回退标量执行。
+> **并行路径：** 当 `parallel` feature 启用时，二元逐元素运算通过 `dispatch::select_exec_path()` 判断后委托 `parallel::par_zip_map` 执行并行遍历。并行模块不含串行回退，串行路径由本模块串行实现承担。
 
 ---
 
@@ -773,6 +775,7 @@ User calls add / unary op / comparison method
 | 1.2.3 | 2026-04-15 |
 | 1.2.4 | 2026-04-15 |
 | 1.2.5 | 2026-04-15 |
+| 1.3.0 | 2026-04-15 |
 
 ---
 

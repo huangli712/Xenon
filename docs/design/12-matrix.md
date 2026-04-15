@@ -96,17 +96,20 @@ src/matrix/
 │   ├── crate::tensor        # TensorView<A, D>
 │   ├── crate::element       # Numeric, ComplexScalar
 │   ├── crate::iter          # Elements
+│   ├── crate::dispatch      # ExecPath, select_exec_path() for execution path decision
 │   └── crate::error         # XenonError
 ├── dot.rs
 │   ├── crate::tensor        # TensorView<A, D>
 │   ├── crate::element       # Numeric
 │   ├── crate::iter          # Elements
+│   ├── crate::dispatch      # select_exec_path(), can_use_simd()
 │   ├── crate::error         # XenonError
-│   ├── crate::simd (opt.)   # Optional SIMD dot kernel
-│   └── crate::parallel (opt.) # Optional parallel reduction path
+│   ├── crate::simd (opt.)   # Pure vectorized dot kernel
+│   └── crate::parallel (opt.) # Pure parallel dot execution
 ├── crate::iter              # Element iteration helpers
-├── crate::simd (opt.)       # Optional SIMD dot kernel
-└── crate::parallel (opt.)   # Optional parallel reduction path
+├── crate::dispatch          # Execution path decision
+├── crate::simd (opt.)       # Pure vectorized dot kernel
+└── crate::parallel (opt.)   # Pure parallel dot execution
 ```
 
 ### 4.4 类型级依赖
@@ -116,9 +119,10 @@ src/matrix/
 | `tensor`       | `TensorView<'a, A, D>`, `.ndim()`, `.shape()`, `.len()`, `.as_ptr()`, `.is_f_contiguous()` |
 | `element`      | `Numeric`, `ComplexScalar`                                                                 |
 | `iter`         | `Elements`, `.iter()`                                                                      |
+| `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`should_parallelize()`、`can_use_simd()` |
 | `error`        | `XenonError::InvalidArgument`, `XenonError::DimensionMismatch`                             |
 | `simd`（可选） | 为满足条件的输入提供 dot 的 SIMD kernel（参见 `08-simd.md`）                               |
-| `parallel`（可选） | 为大输入提供 dot 的并行归约执行路径，并复用阈值/guard 运行时状态                        |
+| `parallel`（可选） | 为大输入提供 dot 的纯并行归约执行路径（不含串行回退），阈值与嵌套并行由 `dispatch.rs` 管理 |
 
 ### 4.5 依赖方向
 
@@ -237,41 +241,18 @@ let _ = dot(&a.view(), &b.view()).unwrap();
 ```
 dot_impl(a, b):
     if a.ndim() != 1:
-        return Err(XenonError::InvalidArgument {
-            operation: "dot".into(),
-            argument: "lhs".into(),
-            expected: "logical 1D tensor".into(),
-            actual: format!("ndim={}", a.ndim()).into(),
-            axis: None,
-            shape: Some(a.shape().to_vec()),
-        })
+        return Err(XenonError::InvalidArgument { ... })
 
     if b.ndim() != 1:
-        return Err(XenonError::InvalidArgument {
-            operation: "dot".into(),
-            argument: "rhs".into(),
-            expected: "logical 1D tensor".into(),
-            actual: format!("ndim={}", b.ndim()).into(),
-            axis: None,
-            shape: Some(b.shape().to_vec()),
-        })
+        return Err(XenonError::InvalidArgument { ... })
 
     if a.len() != b.len():
-        return Err(XenonError::DimensionMismatch {
-            operation: "dot",
-            expected: a.len(),
-            actual: b.len(),
-        })
+        return Err(XenonError::DimensionMismatch { ... })
 
-    if simd path is available for (a, b):
-        return simd::dot_impl(a, b)
-
-    if parallel path is enabled for (a, b):
-        let a1 = as_ix1_view(a)?
-        let b1 = as_ix1_view(b)?
-        return parallel::par_dot(&a1, &b1)
-
-    return scalar::dot_impl(a, b)
+    match dispatch::select_exec_path(a.len(), a.is_f_contiguous(), alignment_ok):
+        ExecPath::Parallel => parallel::par_dot(as_ix1_view(a)?, as_ix1_view(b)?)
+        ExecPath::Simd    => simd::vector_dot(a, b)
+        ExecPath::Serial  => scalar::dot_impl(a, b)
 ```
 
 > **执行路径约束：** `dot` 必须先完成逻辑 1D 与长度一致性检查；随后可按条件选择 `simd` 模块 kernel、`parallel` 模块的 `pub(crate)` `par_dot()` 并行归约入口或标量回退路径。由于 `par_dot()` 只接受 `TensorBase<_, Ix1>`，`matrix::dot()` 在确认 `a.ndim() == 1` 且 `b.ndim() == 1` 后，必须先通过私有桥接 helper 把泛型 `TensorView<'_, A, D1/D2>` 安全收窄为 `TensorView<'_, A, Ix1>`，再进入并行后端；不得在未完成运行时 rank 校验前直接调用并行实现。桥接 helper 只做“已验证 1D 视图 -> `Ix1` 视图”的 reborrow / dimensionality narrowing，不改变借用范围、shape 数据或布局元数据。所有路径都必须保持一致的结果、错误模型与整数溢出 panic 语义。
@@ -282,9 +263,9 @@ dot_impl(a, b):
 
 | 约束 | 要求 |
 | ---- | ---- |
-| 阈值来源 | 是否进入并行路径由 `parallel::should_parallelize(len, is_f_contiguous)` 与全局阈值配置决定。 |
-| 非连续惩罚 | 非连续视图沿用 `parallel` 模块的有效阈值翻倍策略；仅当收益明确时才进入并行。 |
-| 禁止嵌套并行 | 若当前线程已处于库内部并行区域，则 `ParallelGuard::enter()` 失败并强制回退标量/串行路径，不得再开启第二层并行。 |
+| 阈值来源 | 是否进入并行路径由 `dispatch::should_parallelize(len, is_f_contiguous)` 与全局阈值配置决定。 |
+| 非连续惩罚 | 非连续视图沿用 `dispatch.rs` 的有效阈值翻倍策略；仅当收益明确时才进入并行。 |
+| 禁止嵌套并行 | 若当前线程已处于库内部并行区域，则 `dispatch::ParallelGuard::enter()` 失败并强制回退标量/串行路径，不得再开启第二层并行。 |
 | 路径顺序 | 先做 rank/shape 校验，再做阈值与 guard 判定，最后在并行 chunk 内局部选择 SIMD 或标量。 |
 
 这满足 `require.md §9.2` / `§9.3` 对“支持阈值配置”和“库内部不得开启第二层并行”的要求。
@@ -607,6 +588,7 @@ User calls dot(a, b)
 | 1.1.4 | 2026-04-15 |
 | 1.1.5 | 2026-04-15 |
 | 1.1.6 | 2026-04-15 |
+| 1.2.0 | 2026-04-15 |
 
 ---
 

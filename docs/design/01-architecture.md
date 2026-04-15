@@ -98,8 +98,7 @@ xenon/
 │   ├── lib.rs                 # Crate root: feature gates, re-exports, docs
 │   ├── prelude.rs             # Common pub-use exports
 │   ├── private.rs             # Sealed-trait infrastructure
-│   ├── kernel/                # Private internal dispatch layer
-│   │   └── mod.rs             # Shared serial kernels, not publicly exported
+│   ├── dispatch.rs            # Internal dispatch helper (ExecPath, ParallelGuard, thresholds, SIMD checks)
 │   ├── error.rs               # XenonError enum and Result alias
 │   │
 │   ├── dimension/             # Dimension type system
@@ -149,11 +148,14 @@ xenon/
 │   │
 │   ├── simd/                  # SIMD backend (feature = "simd")
 │   │   ├── mod.rs             # pulp integration, dispatch facade, public kernel trait
-│   │   ├── scalar.rs          # Scalar fallback implementation
 │   │   └── vector.rs          # Vectorized implementation
 │   │
 │   ├── parallel/              # Parallel backend (feature = "parallel")
-│   │   └── mod.rs             # Entry point, threshold state, guard, internal dispatch
+│   │   ├── mod.rs             # Module entry, re-exports, ParallelPool
+│   │   ├── par_iter.rs        # ParElements and TensorBase::par_iter()
+│   │   ├── map.rs             # par_map, par_map_with_threshold, par_zip_map
+│   │   ├── reduce.rs          # par_reduce_impl, par_sum, par_dot
+│   │   └── checked.rs         # par_map_checked and error/panic propagation
 │   │
 │   ├── broadcast/             # Broadcast rules and read-only views
 │   │   ├── mod.rs             # Module entry and re-exports
@@ -261,7 +263,7 @@ xenon/
 | 模块           | 职责                                                                                                               |
 | -------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `error.rs`     | `XenonError` 统一错误枚举，`Result<T>` 类型别名                                                                    |
-| `kernel/`      | 私有内部 dispatch/kernel 层，供 `parallel/`、`reduction/`、`matrix/` 共享串行基线，不作为公开模块导出            |
+| `dispatch.rs`  | 私有内部执行路径裁决层（`ExecPath`、`ParallelGuard`、阈值、SIMD 条件判断），不作为公开模块导出 |
 | `dimension/`   | `Dimension` trait 和静态/动态维度类型（Ix0-Ix6, IxDyn）                                                            |
 | `element/`     | 元素类型 trait 层次（Element → Numeric → RealScalar/ComplexScalar；`usize` 仅作为索引/形状类型，不属于元素算术层） |
 | `complex/`     | 自定义 `Complex<T>` 类型，`#[repr(C)]` 兼容 C FFI                                                                  |
@@ -269,8 +271,8 @@ xenon/
 | `layout/`      | F-order 布局函数、步长计算、连续性检查与验证入口                                                                   |
 | `tensor/`      | 核心 `TensorBase<S, D>` 结构体及类型别名                                                                           |
 | `iter/`        | 元素/轴/索引迭代器                                                                                                 |
-| `simd/`        | SIMD 后端：稳定公开面仅含 dispatch facade 与公共 kernel trait；具体 kernel 实现、ISA 检测细节为 `pub(crate)` 或 `#[doc(hidden)]` |
-| `parallel/`    | 并行后端：单文件模块，承载阈值、guard、并行入口，并依赖私有 `kernel/`                                              |
+| `simd/`        | SIMD 后端：向量化 kernel（pulp）、运行时分发，不含标量回退                                         |
+| `parallel/`    | 并行后端：多文件模块，承载纯并行执行入口（par_map/par_zip_map/par_sum/par_dot）和 ParElements 迭代器，不含串行回退         |
 | `math/`        | 逐元素数学运算（一元、二元算术、比较），按需委托 `simd/` / `parallel/`                                            |
 | `overload`     | 运算符重载（Add, Sub, Mul, Div trait 实现）                                                                        |
 | `util/`        | 实用操作（clip 裁剪、fill 填充、to_contiguous 连续性保证的公共入口）                                               |
@@ -393,8 +395,8 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | **L2** | workspace                                                  | std（独立于核心类型系统，可被上游库直接使用）                            | `24-workspace.md`                                                                                                                |
 | **L3** | storage                                                    | core, alloc, std::sync::Arc, crate::error（只持有底层连续缓冲区，不消费 `dimension` 或 `layout`） | `05-storage.md`                                                                                                                  |
 | **L4** | tensor                                                     | storage, dimension, layout, element                                      | `07-tensor.md`                                                                                                                   |
-| **L5** | broadcast, iter, ffi, simd, kernel                         | tensor（simd 额外依赖 layout/element；kernel 为私有串行 dispatch 层）    | `15-broadcast.md`、`10-iterator.md`、`23-ffi.md`、`08-simd.md`、`09-parallel.md`                                                 |
-| **L6** | math, overload, set, matrix, reduction, shape, index, util, parallel | tensor, broadcast，以及按需调用独立 backend / private kernel 模块 | `11-math.md`、`12-matrix.md`、`13-reduction.md`、`14-set.md`、`16-shape.md`、`17-indexing.md`、`19-overload.md`、`20-utility.md`、`09-parallel.md` |
+| **L5** | broadcast, iter, ffi, simd, dispatch                       | tensor（simd 额外依赖 layout/element）                                    | `15-broadcast.md`、`10-iterator.md`、`23-ffi.md`、`08-simd.md`、`09-parallel.md`、`01-architecture.md`                           |
+| **L6** | math, overload, set, matrix, reduction, shape, index, util, parallel | tensor, broadcast，以及按需调用 `dispatch` 做路径选择并委托后端或模块内串行实现 | `11-math.md`、`12-matrix.md`、`13-reduction.md`、`14-set.md`、`16-shape.md`、`17-indexing.md`、`19-overload.md`、`20-utility.md`、`09-parallel.md` |
 | **L7** | construct, convert, format                                 | tensor, shape, element, complex, storage                                 | `18-construction.md`、`21-type.md`、`22-output.md`                                                                               |
 
 ### 5.2 依赖图（ASCII）
@@ -410,7 +412,7 @@ L3:  storage
       │
 L4:  tensor
       │
-L5:  iter    broadcast    ffi    simd    kernel
+L5:  iter    broadcast    ffi    simd    dispatch
       │         │           │      │        │
       └─────────┴───────────┴──────┴────────┘
                            │
@@ -419,7 +421,7 @@ L6:        math   overload   set   matrix   reduction   shape   index   util   p
 L7:                 construct   convert   format
 ```
 
-> **L5/L6 模块说明**：`simd` 与 `parallel` 保持为独立 backend 模块，不再内嵌到 `math/`、`matrix/`、`reduction/` 目录中。`kernel/` 是私有内部 dispatch 层，用于承载 `parallel`、`reduction`、`matrix` 共享的串行基线实现，避免公开模块之间形成循环依赖；它不属于稳定公开模块面。
+> **L5/L6 模块说明**：`simd` 与 `parallel` 保持为独立后端模块，各自只提供纯执行能力（向量化/并行），不含串行回退。`dispatch.rs` 是内部执行路径裁决层，统一承载阈值判断、嵌套并行防护和 SIMD 条件检查；各 L6 语义模块通过 `dispatch::select_exec_path()` 选择串行、SIMD 或并行路径，再委托到对应后端或使用本模块串行实现。`dispatch.rs` 不属于稳定公开模块面。
 
 ### 5.3 依赖合法性与新增依赖说明
 
@@ -519,7 +521,7 @@ pub use crate::construct::{
 
 // Internal modules
 mod private;
-mod kernel;
+mod dispatch;
 
 // Public modules
 pub mod error;
@@ -574,7 +576,7 @@ pub use error::XenonError;
 | ------------------------ | ---------- | -------------------------------------------------------------------- |
 | `prelude::*`             | **稳定**   | 主版本号内保持兼容                                                   |
 | 公开 trait 方法          | **稳定**   | 只增不减                                                             |
-| 内部模块 (`mod private`, `mod kernel`) | **不稳定** | 随时可能变更                                             |
+| 内部模块 (`mod private`, `mod dispatch`) | **不稳定** | 随时可能变更                                             |
 | `#[doc(hidden)]`         | **不稳定** | 仅供内部使用                                                         |
 | `simd` 模块             | **稳定**   | 作为公开模块纳入 SemVer；稳定公开面仅含 dispatch facade 与公共 kernel trait；feature gate 仅控制可用性，不降低兼容性承诺 |
 | 内部后端 (`parallel`)   | **不稳定** | `pub(crate)` 内部实现，仅影响自动并行加速，不构成公开模块 API         |
@@ -675,10 +677,10 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 
 | 任务                | 依赖       | 预估复杂度 | 产出        |
 | ------------------- | ---------- | ---------- | ----------- |
-| W5.1 parallel dispatch | W3.1-W3.2  | 高         | 内部并行执行后端 |
+| W5.1 parallel dispatch | W3.1-W3.2  | 高         | 纯并行执行后端（不含串行回退） |
 | W5.2 par_reduction  | W3.5, W5.1 | 高         | 并行 sum    |
-| W5.3 simd math      | W3.3       | 高         | SIMD 逐元素 |
-| W5.4 simd reduction | W3.5       | 高         | SIMD sum    |
+| W5.3 simd math      | W3.3       | 高         | 纯向量化逐元素（不含标量回退） |
+| W5.4 simd reduction | W3.5       | 高         | 纯向量化 sum |
 
 ### 并行执行分组图
 
@@ -750,11 +752,19 @@ Wave 5: [W5.1] [W5.2] [W5.3] [W5.4]
 
 | 属性     | 值                                                                                                   |
 | -------- | ---------------------------------------------------------------------------------------------------- |
-| 决策     | `simd/` 与 `parallel/` 保持为独立顶级 backend 模块，由 `math` / `matrix` / `reduction` 按需调用      |
-| 理由     | 性能后端是横切关注点，独立模块更便于统一 feature gate、共享分发逻辑、集中测试与文档维护              |
-| 替代方案 | 将 backend 内嵌到 `math/`、`reduction/`、`matrix/` — 放弃，会让性能实现与语义 API 耦合，扩大重复实现 |
+| 决策     | `simd/`、`parallel/` 保持为独立顶级后端模块，只提供纯执行能力；执行路径裁决由内部 `dispatch.rs` 统一承担 |
+| 理由     | 性能后端是横切关注点，独立模块便于统一 feature gate 与共享分发逻辑；`dispatch.rs` 集中阈值判断、嵌套并行防护和 SIMD 条件检查，避免各语义模块重复实现分支树 |
+| 替代方案 | 将后端内嵌到各语义模块 — 放弃，会让性能实现与语义 API 耦合，扩大重复实现；使用独立 kernel 模块承载串行基线 — 改为 `dispatch.rs` + 各模块自含串行实现，减少冗余 |
 
-### 决策 6：错误语义集中裁决
+### 决策 6：dispatch.rs 统一执行路径裁决
+
+| 属性     | 值                                                                                                   |
+| -------- | ---------------------------------------------------------------------------------------------------- |
+| 决策     | 新增 `dispatch.rs` 内部 helper，统一承载执行路径裁决（`ExecPath`）、嵌套并行防护（`ParallelGuard`）和 SIMD 条件判断 |
+| 理由     | 判断归 dispatch，执行归各模块；避免 `parallel/` 和 `simd/` 各自携带串行回退，也避免各语义模块重复实现阈值/SIMD 分支树 |
+| 替代方案 | 各语义模块各自实现判断逻辑 — 放弃，会导致阈值行为不一致和代码重复 |
+
+### 决策 7：错误语义集中裁决
 
 | 属性     | 值                                                                                                                               |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------- |
@@ -762,7 +772,7 @@ Wave 5: [W5.1] [W5.2] [W5.3] [W5.4]
 | 理由     | 保持与 `require.md` §18 的安全接口契约一致，避免相同失败条件在公开方法与运算符之间分裂成两套模型，同时让 FFI 结构化导出与偏移/指针查询都遵循相同的可恢复错误约束 |
 | 替代方案 | 所有接口统一 panic — 放弃，不利于库集成和诊断；把 `[]` 语法糖当作稳定公开安全 API — 放弃，会与索引失败的可恢复错误契约冲突；为 FFI 额外提供 `offset_of()` / `ptr_at()` 这类 panic-sugar 包装 — 放弃，会破坏公开错误入口的一致性                 |
 
-### 决策 7：FfiError / WorkspaceError 仅限模块内部使用
+### 决策 8：FfiError / WorkspaceError 仅限模块内部使用
 
 | 属性     | 值                                                                                                        |
 | -------- | --------------------------------------------------------------------------------------------------------- |
@@ -814,6 +824,7 @@ Wave 5: [W5.1] [W5.2] [W5.3] [W5.4]
 | 1.2.2 | 2026-04-14 |
 | 1.2.3 | 2026-04-15 |
 | 1.2.4 | 2026-04-15 |
+| 1.3.0 | 2026-04-15 |
 
 ---
 

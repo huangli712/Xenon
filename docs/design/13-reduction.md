@@ -87,9 +87,10 @@ src/reduction/
     ├── crate::tensor        # TensorBase<S, D>, Tensor<A, D>, shape/ndim helpers
     ├── crate::dimension     # Axis, Dimension, runtime axis projection helpers
     ├── crate::element       # Numeric, CheckedAdd, ComplexScalar
+    ├── crate::dispatch      # ExecPath, select_exec_path(), can_use_simd(), should_parallelize()
     ├── crate::error         # XenonError::InvalidAxis
-    ├── crate::simd (opt.)   # Optional sum kernels when semantics match scalar path
-    └── crate::parallel (opt.) # Optional parallel dispatch when semantics match scalar path
+    ├── crate::simd (opt.)   # Pure vectorized sum kernel (no scalar fallback)
+    └── crate::parallel (opt.) # Pure parallel sum execution (no serial fallback)
 ```
 
 ### 4.2 类型级依赖
@@ -99,9 +100,10 @@ src/reduction/
 | `tensor` | `TensorBase<S, D>`、`Tensor<A, D>`、`.shape()`、`.ndim()`、`.iter()`、`.indexed_iter()`、结果张量构造接口 |
 | `dimension` | `Axis`、`Dimension`、`RemoveAxis`、运行时 axis/shape 投影辅助 |
 | `element` | `Numeric`、`CheckedAdd`、`ComplexScalar`、`A::zero()` |
+| `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`should_parallelize()`、`can_use_simd()` |
 | `error` | `XenonError::InvalidAxis` |
-| `simd`（可选） | 仅在可证明与标量累加顺序和结果语义一致时参与 `sum` 实现 |
-| `parallel`（可选） | 仅在可证明与标量结果一致时参与分派，并遵守无嵌套并行约束 |
+| `simd`（可选） | 仅在可证明与标量累加顺序和结果语义一致时通过纯向量化 kernel 参与 `sum` 实现 |
+| `parallel`（可选） | 仅在通过 dispatch.rs 路径裁决后提供纯并行执行，不含串行回退，并遵守无嵌套并行约束 |
 
 ### 4.3 依赖方向
 
@@ -249,6 +251,8 @@ sum_axis_keepdims(tensor, axis):
 
 ### 6.3 类型分派与回退规则
 
+执行路径由 `dispatch::select_exec_path()` 统一裁决（参见 `01-architecture.md`），本模块根据返回的 `ExecPath` 委托到对应后端或使用本模块串行实现。
+
 ```rust
 fn sum_int<I: Numeric + CheckedAdd>(iter: impl Iterator<Item = I>) -> I {
     iter.fold(I::zero(), |acc, x| {
@@ -265,19 +269,19 @@ fn sum_float<F: Numeric + Copy>(iter: impl Iterator<Item = F>) -> F {
 - 整数路径：`checked_add()` 失败即 panic，不转换为 `XenonError`。
 - 浮点路径：保持标量加法顺序；`NaN`、`Inf` 等行为沿用 IEEE 754。
 - 复数路径：对实部和虚部分量分别沿用对应实数加法语义，因此含 `NaN` 分量时同样传播。
-- SIMD 路径：仅在输入满足 `08-simd.md` 约束（例如元素类型与布局前提受支持）时启用；整数路径必须与标量逐步 checked arithmetic 精确一致，浮点/复数路径允许不同合并顺序，但结果相对标量参考值每个实数分量必须满足 `max(1 ULP, epsilon * |scalar_result|)` 容差，其中 `epsilon` 取对应标量类型（`f32`/`f64`）的 `RealScalar::epsilon()`，否则回退标量。
-- 并行路径：仅在满足 `09-parallel.md` 的阈值裁决与禁止嵌套并行约束时启用；整数路径必须保持与串行精确一致，浮点/复数路径允许不同合并顺序，但同样受每个实数分量 `max(1 ULP, epsilon * |scalar_result|)` 的文档化容差约束，其中 `epsilon` 取对应标量类型（`f32`/`f64`）的 `RealScalar::epsilon()`，无法满足时必须回退标量单线程路径。
+- SIMD 路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Simd` 时委托 `simd/` 纯向量化后端；整数路径必须与标量逐步 checked arithmetic 精确一致，浮点/复数路径允许不同合并顺序，但结果相对标量参考值每个实数分量必须满足 `max(1 ULP, epsilon * |scalar_result|)` 容差，其中 `epsilon` 取对应标量类型（`f32`/`f64`）的 `RealScalar::epsilon()`，否则回退标量。
+- 并行路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Parallel` 时委托 `parallel/` 纯并行后端；整数路径必须保持与串行精确一致，浮点/复数路径允许不同合并顺序，但同样受每个实数分量 `max(1 ULP, epsilon * |scalar_result|)` 的文档化容差约束，其中 `epsilon` 取对应标量类型（`f32`/`f64`）的 `RealScalar::epsilon()`，无法满足时必须回退标量单线程路径。
 
 ### 6.3.1 并行阈值配置
 
-归约模块不自定义新的阈值参数，而是直接复用 `parallel` 模块的全局阈值与 guard：
+归约模块不自定义新的阈值参数，而是通过 `dispatch.rs` 统一管理全局阈值与嵌套并行防护：
 
 | 项目 | 规则 |
 | ---- | ---- |
-| 阈值来源 | `sum()` 与 `sum_axis*()` 是否进入并行路径，由 `parallel::should_parallelize(len, is_f_contiguous)` 决定。 |
-| 非连续惩罚 | 非连续视图沿用 `parallel` 模块的有效阈值翻倍策略。 |
-| 嵌套并行 | 若已在库内部并行区域中，`ParallelGuard::enter()` 失败时必须回退串行，而不是再开第二层并行。 |
-| 配置接口 | 阈值读写与重置由 `parallel` 模块统一提供；`reduction` 不额外暴露重复配置。 |
+| 阈值来源 | `sum()` 与 `sum_axis*()` 是否进入并行路径，由 `dispatch::select_exec_path()` 统一裁决。 |
+| 非连续惩罚 | 非连续视图沿用 `dispatch.rs` 的有效阈值翻倍策略。 |
+| 嵌套并行 | 在 `dispatch::ParallelGuard` 保护下不得嵌套并行，而是回退串行，不再开第二层并行。 |
+| 配置接口 | 阈值读写与重置由 `dispatch.rs` 统一提供；`reduction` 不额外暴露重复配置。 |
 
 ### 6.4 安全性论证
 
@@ -589,6 +593,7 @@ Err(XenonError::InvalidArgument {
 | 1.0.1 | 2026-04-15 |
 | 1.0.2 | 2026-04-15 |
 | 1.0.3 | 2026-04-15 |
+| 1.1.0 | 2026-04-15 |
 
 ---
 
