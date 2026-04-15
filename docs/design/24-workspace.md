@@ -235,7 +235,7 @@ pub struct Workspace {
 
 > **设计决策：** 使用 `AtomicU8` 管理借用状态而非 `Mutex`，原因：无锁、状态简单（仅需 3 个值）。当前版本默认运行于 `std` 环境，因此直接依赖标准平台提供的原子与分配能力。
 
-> **实现备注：** 当前原型使用原子操作实现借用追踪。由于 `Workspace` 为 `!Send + !Sync`（线程内使用），后续可简化为 `Cell`-based 方案。
+> **设计备注：** 当前实现使用 `AtomicU8`/`AtomicUsize` 管理借用状态。由于 `Workspace` 类型被标记为 `!Send + !Sync`，理论上可以使用 `Cell`/`RefCell` 替代以简化实现。选择原子操作是为了在未来版本可能支持跨线程共享时减少迁移成本。
 
 ### 5.2 常量
 
@@ -788,6 +788,9 @@ impl Workspace {
     /// If current capacity is insufficient, a larger memory region will be allocated.
     /// New capacity = max(requested capacity, current capacity × 1.5).
     ///
+    /// 扩容操作不保证保留已有内容。调用方应假设扩容后所有字节状态为
+    /// unspecified。扩容操作仅保证容量满足新请求、对齐不变。
+    ///
     /// # Errors
     ///
     /// - `XenonError::Workspace(WorkspaceError::AlreadyBorrowed)`: Workspace is already borrowed
@@ -845,7 +848,9 @@ impl Workspace {
                 align: self.alignment,
             })?;
 
-        // Copy old data
+        // Copy old data if the implementation chooses to do so.
+        // Public contract: callers must still treat all bytes as unspecified
+        // after growth, even if the current implementation copies them.
         // SAFETY: src and dst do not overlap, copy min(old, new) bytes
         unsafe {
             core::ptr::copy_nonoverlapping(
@@ -874,6 +879,8 @@ impl Workspace {
 ````
 
 > **错误映射说明：** `reallocate()` 保留 `Result<(), WorkspaceError>` 作为模块内实现签名，`ensure_capacity()` 在公开边界显式通过 `.map_err(|e| XenonError::Workspace(e))` 做统一包装；不得让 `WorkspaceError` 直接穿透公开 API。
+
+> **扩容语义说明：** `ensure_capacity()` / `reallocate()` 的公开契约仅保证扩容后容量不小于请求值且对齐保持不变，不保证保留扩容前的任何字节内容。即使底层实现当前采用复制旧缓冲区的方式完成重分配，调用方仍必须把扩容后的全部 scratch 区域视为 unspecified 状态，并在重新初始化后再通过 `assume_init_*` 系列 API 解释为已初始化数据。
 
 ### 5.9 Good/Bad 对比
 
@@ -1273,6 +1280,7 @@ Upper-layer code requests temporary scratch space
 | 约束       | 说明                                                  |
 | ---------- | ----------------------------------------------------- |
 | `std` only | 当前版本 workspace 设计以 `std` 环境为前提            |
+| MSRV       | Rust 1.85+                                            |
 | 单 crate   | workspace 保持在主 crate 内，不拆出独立 scratch crate |
 | SemVer     | 借用状态机、分割语义和错误语义属于公开契约            |
 | 最小依赖   | 不新增第三方分配器或同步依赖                          |

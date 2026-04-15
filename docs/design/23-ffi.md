@@ -764,8 +764,9 @@ where
     /// `false` if a copy is needed first.
     ///
     /// This method checks layout only. Callers must still verify `ndim() == 2`
-    /// and ensure `rows`, `cols`, and `lda` fit the BLAS backend integer type
-    /// (currently `i32`), typically by calling `blas_info()`.
+    /// and convert `rows`, `cols`, and `lda` to the BLAS/LAPACK backend integer
+    /// type expected by the target implementation, typically by calling
+    /// `blas_info()` and then `as_blas_int()` on the exported metadata.
     ///
     /// # Example
     ///
@@ -786,18 +787,35 @@ where
 ### 5.6 blas_info 和 BlasInfo 结构体
 
 ````rust,ignore
-/// BLAS matrix information.
+/// BLAS/LAPACK matrix metadata.
 ///
-/// Contains all parameters needed for BLAS function calls.
+/// BLAS/LAPACK backends may use different integer widths. Xenon therefore keeps
+/// the raw dimensions in `usize` and lets callers convert them to the backend's
+/// integer type (`i32` or `i64`) at the FFI boundary.
 pub struct BlasInfo<A> {
     /// Data pointer to the logical first element.
     pub data_ptr: *const A,
-    /// Leading dimension (element units).
-    pub leading_dim: i32,
+    /// Leading dimension (element units, raw `usize`).
+    pub leading_dim: usize,
     /// Number of rows.
-    pub rows: i32,
+    pub rows: usize,
     /// Number of columns.
-    pub cols: i32,
+    pub cols: usize,
+}
+
+impl<A> BlasInfo<A> {
+    /// Convert a raw BLAS/LAPACK size parameter to the backend integer type.
+    pub fn as_blas_int<I>(&self, value: usize) -> Result<I, XenonError>
+    where
+        I: TryFrom<usize>,
+    {
+        value.try_into().map_err(|_| FfiError::IntegerOverflow {
+            operation: "ffi::blas_info",
+            backend: "blas/lapack",
+            precondition: "BLAS/LAPACK integer parameter must fit target backend type",
+            actual: alloc::format!("value={}", value).into(),
+        }.into())
+    }
 }
 
 impl<S, D, A> TensorBase<S, D>
@@ -809,11 +827,20 @@ where
     ///
     /// # Returns
     ///
-    /// - `Ok(BlasInfo<A>)`: compatibility conditions met and all BLAS integer
-    ///   parameters fit in `i32`
+    /// - `Ok(BlasInfo<A>)`: compatibility conditions met; `rows` / `cols` /
+    ///   `leading_dim` are returned as raw `usize` metadata
     /// - `Err(XenonError)`: wraps internal `FfiError` when not BLAS compatible,
-    ///   not 2D, or any BLAS parameter
-    ///   exceeds `i32::MAX`
+    ///   or not 2D
+    ///
+    /// BLAS/LAPACK 后端的整数宽度因实现而异。`blas_info()` 提供
+    /// `rows`/`cols`/`leading_dim` 的原始 `usize` 值，并提供
+    /// `as_blas_int()` 辅助方法将其转换为后端所需的整数类型（`i32` 或
+    /// `i64`）。调用方根据目标后端选择合适的转换。
+    ///
+    /// 本模块同时提供面向 LAPACK 集成的辅助能力。LAPACK 所需的
+    /// leading dimension、矩阵布局信息与 BLAS 共享同一套 metadata 导出格式
+    /// （`blas_info()` / `is_blas_layout_compatible()`）。LAPACK 特有的参数
+    /// （如 pivot indices）由上游库通过 raw pointer API 自行管理。
     ///
     /// # Example
     ///
@@ -842,25 +869,9 @@ where
         }
 
         let data_ptr = self.as_ptr();
-        let raw_lda = self.lda()?;
-        let lda = i32::try_from(raw_lda).map_err(|_| FfiError::IntegerOverflow {
-            operation: "ffi::blas_info",
-            backend: "blas",
-            precondition: "lda must fit in i32",
-            actual: alloc::format!("lda={}", raw_lda).into(),
-        }).map_err(XenonError::from)?;
-        let rows = i32::try_from(self.shape()[0]).map_err(|_| FfiError::IntegerOverflow {
-            operation: "ffi::blas_info",
-            backend: "blas",
-            precondition: "rows must fit in i32",
-            actual: alloc::format!("rows={}", self.shape()[0]).into(),
-        }).map_err(XenonError::from)?;
-        let cols = i32::try_from(self.shape()[1]).map_err(|_| FfiError::IntegerOverflow {
-            operation: "ffi::blas_info",
-            backend: "blas",
-            precondition: "cols must fit in i32",
-            actual: alloc::format!("cols={}", self.shape()[1]).into(),
-        }).map_err(XenonError::from)?;
+        let lda = self.lda()?;
+        let rows = self.shape()[0];
+        let cols = self.shape()[1];
 
         Ok(BlasInfo {
             data_ptr,
@@ -1385,10 +1396,11 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | 约束        | 说明                                                                                          |
 | ----------- | --------------------------------------------------------------------------------------------- |
 | `std` only  | 当前版本仅讨论 `std` 环境下的 FFI 接口；FFI 指针操作依赖 `std` 提供的分配器与布局保证         |
+| MSRV        | Rust 1.85+                                                                                   |
 | 单 crate    | FFI 模块位于 `src/ffi/`，不引入额外 crate，保持 Xenon 单 crate 结构                           |
 | SemVer      | `TensorExport<A>`、`TensorExportMut<A>`、`OwnedRawParts<A,D>` 的字段布局和 `#[repr(C)]` 表示均为公开契约，变更须遵循 SemVer；新增公共 FFI 方法或枚举变体属于 minor 变更 |
 | 最小依赖    | 无新增第三方依赖，符合 `require.md` §1.3 对最小依赖的限制                                     |
-| 索引类型    | 逻辑索引统一使用 `usize`；仅 BLAS 整数参数在边界处再转换为 `i32`                               |
+| 索引类型    | 逻辑索引统一使用 `usize`；BLAS/LAPACK 整数参数在边界处按目标后端转换为 `i32` 或 `i64`         |
 | stride 范围 | 当前版本只接受非负 stride；负步长导入不在范围内                                                |
 | 错误诊断    | `blas_info()` / `lda()` 返回 `Result`，保留失败原因                                            |
 

@@ -170,6 +170,8 @@ Storage mode taxonomy
 | `SharedReadOnlyRef` | `ArcRepr<A>` | 来自拥有型来源时的共享只读表示，提供共享所有权 |
 | `SharedReadOnlyRef` | `ViewRepr<'a, A>` | 来自 `ViewMutRepr<'a, A>` 零拷贝降级时的共享只读表示；共享的是借用生命周期而非所有权 |
 
+> **补充说明：** 只读引用（`ViewRepr`）和共享只读引用（`ArcRepr`）都提供只读访问语义，但所有权模型不同：`ViewRepr` 基于借用，`ArcRepr` 基于引用计数共享。从广播、转置、切片产生的只读视图统一使用 `ViewRepr`；从 `Owned` 零拷贝转换而来的共享只读结果使用 `ArcRepr`；`ViewMut` 的零拷贝降级仍使用 `ViewRepr`，但在抽象层同样满足 shared-readonly 语义。
+
 #### 设计权衡对比
 
 | 考量         | Owned          | View         | ViewMut   | Arc                  |
@@ -517,6 +519,17 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
 
 > **类型安全论证**：`ViewMutRepr<'a, A>` 的零拷贝降级路径是只读重借用 `ViewRepr<'a, A>`，其语义与 `require.md` §6.2 对“可写引用 → 共享只读引用 = 零拷贝”的要求一致：结果显式放弃写权限，且在该只读结果存续期间不得再并发写入同一底层数据。相对地，`ViewMutRepr<'a, A>` 不持有底层分配所有权，因此仍不能在零拷贝前提下构造 `ArcRepr<A>` 所需的共享所有权句柄。
 
+#### 5.11.2 公开转换 API 对照表
+
+| From \ To | `ReadOnlyRef` | `SharedReadOnlyRef` | `WritableRef` | `Owned` |
+| --------- | ------------- | ------------------- | ------------- | ------- |
+| `Owned` | `view()` | `to_shared()` | `view_mut()` | move / `to_owned()` |
+| `WritableRef` | `view()` | `view()` | type-level only | `to_owned()` |
+| `ReadOnlyRef` | type-level only | type-level only | type-level only | `to_owned()` |
+| `SharedReadOnlyRef` | `view()` | type-level only | type-level only | `to_owned()` |
+
+> **说明：** 本表用于标注公开运行时 API 与纯类型层拒绝的边界。`type-level only` 表示该格子不提供运行时转换入口，而是由 Rust 类型系统直接拒绝；若同一抽象格子有多种具体表示，API 可用性以具体来源为准。
+
 > **约束：** Xenon 当前元素类型集合是封闭且按值语义处理的集合；`Owned::from_vec` 保持 `Elem: Copy` 约束，并统一复制到内部 64B 对齐缓冲（参见 `06-layout.md §5.6`）。其它从迭代器或构造器进入 `Owned` 的路径由上层构造模块统一收敛。
 
 > **错误语义补充：** 上表中的复杂度只描述成功路径。凡转换违反 `require.md` §6.2 的可变性或独占性前提（例如试图把共享只读结果继续当作可写存储传播），已公开的运行时转换 API 须返回可恢复错误，而不是隐式降级为别的存储模式。
@@ -759,6 +772,8 @@ struct SharedBuf<A> {
 ```
 
 > **设计决策：** `ArcRepr<A>` 不承诺公开可见的内部字段，但其底层数据表示与 `Owned<A>` 保持一致：二者都以 `AlignedBuf<A>` 作为连续缓冲区表示，`ArcRepr<A>` 仅在 `arc.rs` 内部额外附着 `Arc` 引用计数头。偏移量与切片范围由外层 `TensorBase` 元数据管理（见 `07-tensor.md §5.1`），而 `ArcRepr` 只抽象表示共享只读语义下的底层连续缓冲区。该共享表示保证 `Owned<A> -> ArcRepr<A>` 可以按 O(1) 零拷贝完成：不发生数据复制，也不发生布局变换。任何写时复制 helper 都仅能在 `arc.rs` 内部针对整个底层缓冲区执行，不负责解释张量视图的 `offset` / `shape` / `strides`，也不把 `ArcRepr` 提升为共享可写存储模式，更不构成公开的 `ArcRepr<A> -> Owned<A>` 零拷贝转换。
+
+> **CoW 语义边界：** `ArcRepr` 的 CoW 能力仅为内部实现优化，不作为公开语义承诺。对外始终表现为共享只读存储。
 
 **内部写时复制流程**：
 
@@ -1151,6 +1166,7 @@ User calls `TensorBase::as_ptr()`
 | 单 crate   | 保持单 crate 边界                      |
 | SemVer     | 存储类型和 trait 变更遵循 SemVer       |
 | 最小依赖   | 无新增第三方依赖                       |
+| MSRV       | Rust 1.85+                            |
 
 ---
 

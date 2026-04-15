@@ -184,26 +184,18 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
         Ok(())
     }
 
-    /// Returns the last axis length.
+    /// Returns the last valid axis marker.
     ///
-    /// WARNING: This helper is only meaningful when `self.ndim() > 0`.
-    /// For `Ix0`, the fallback return value `1` is a sentinel convenience for
-    /// legacy internal code paths; it does not mean that a scalar has one axis
-    /// of length 1. Callers that need true axis semantics must check
-    /// `self.ndim() > 0` first.
-    fn last_axis(&self) -> usize {
-        self.slice().last().copied().unwrap_or(1)
+    /// For `Ix0`, returns `None` because a scalar has no axis.
+    fn last_axis(&self) -> Option<Axis> {
+        self.ndim().checked_sub(1).map(Axis)
     }
 
-    /// Returns the first axis length.
+    /// Returns the first valid axis marker.
     ///
-    /// WARNING: This helper is only meaningful when `self.ndim() > 0`.
-    /// For `Ix0`, the fallback return value `1` is a sentinel convenience for
-    /// legacy internal code paths; it does not mean that a scalar has one axis
-    /// of length 1. Callers that need true axis semantics must check
-    /// `self.ndim() > 0` first.
-    fn first_axis(&self) -> usize {
-        self.slice().first().copied().unwrap_or(1)
+    /// For `Ix0`, returns `None` because a scalar has no axis.
+    fn first_axis(&self) -> Option<Axis> {
+        (self.ndim() > 0).then_some(Axis(0))
     }
 
     /// Checks if any axis has zero length.
@@ -285,7 +277,7 @@ pub struct Ix6(pub usize, pub usize, pub usize, pub usize, pub usize, pub usize)
 | `checked_size()`        | `Ok(1)`   | 一个元素（标量）    |
 | 内存大小                | `0` bytes | ZST，编译器完全消除 |
 
-> **Ix0 轴语义警告：** `first_axis()` / `last_axis()` 对 `Ix0` 的回退值 `1` 仅为兼容性哨兵值，不能解释为“存在一个长度为 1 的轴”。调用方若需要真实轴语义，必须先检查 `ndim() > 0`。
+> **Ix0 轴语义警告：** `first_axis()` / `last_axis()` 在本设计中统一返回 `Option<Axis>`；对 `Ix0` 必须返回 `None`，以避免把“无轴”误判为“存在一个长度为 1 的轴”。
 
 #### Ix1-Ix6 实现模式（以 Ix3 为例）
 
@@ -505,10 +497,12 @@ impl Axis {
     #[inline]
     /// Caller must guarantee `self.0 < usize::MAX`.
     ///
-    /// On overflow, `self.0 + 1` panics in debug builds and wraps in release
-    /// builds, so use `checked_next()` if that precondition is not already
-    /// guaranteed by the surrounding logic.
-    pub fn next(self) -> Self { Axis(self.0 + 1) }
+    /// This helper is intentionally checked: wraparound is treated as a bug and
+    /// panics in all build modes. Use `checked_next()` if overflow is part of the
+    /// normal control flow.
+    pub fn next(self) -> Self {
+        Axis(self.0.checked_add(1).expect("Axis::next overflow"))
+    }
 
     #[inline]
     pub fn prev(self) -> Option<Self> { self.0.checked_sub(1).map(Axis) }
@@ -523,7 +517,7 @@ impl Axis {
 
 > **说明：** 当 `ndim == 0`（标量、无轴）时，`is_last()` 返回 `false`。这一定义避免了把“无轴”误判为“最后一轴”，调用方若在轴语义上区分标量场景，应先检查 `ndim > 0`。
 
-> **补充说明：** `checked_next()` 通过 `checked_add(1)` 返回 `Option<Axis>`，在 `axis == usize::MAX` 时返回 `None`。`next()` 仍保留为无检查快捷方法，但它仅应在调用方已保证 `axis < usize::MAX` 时使用；否则会触发整数溢出——debug 构建下 panic，release 构建下回绕。
+> **补充说明：** `checked_next()` 通过 `checked_add(1)` 返回 `Option<Axis>`，在 `axis == usize::MAX` 时返回 `None`。`next()` 仍保留为快捷方法，但内部同样使用 checked 加法；若调用方未先保证 `axis < usize::MAX`，则统一 panic，而不是在 release 构建中静默回绕。
 
 ### 5.6 RemoveAxis trait
 
@@ -1207,6 +1201,7 @@ User provides shape / axis / dimension input
 | 约束       | 说明                                   |
 | ---------- | -------------------------------------- |
 | `std` only | 本模块依赖 `std` 环境，不讨论 `no_std` |
+| MSRV       | Rust 1.85+                            |
 | 单 crate   | 保持单 crate 边界                      |
 | SemVer     | 公开 API 和维度类型变更遵循 SemVer     |
 | 最小依赖   | 无新增第三方依赖                       |

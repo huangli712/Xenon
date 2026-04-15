@@ -114,7 +114,7 @@ impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: UniqueElement,  // UniqueElement: Element, correct constraint
+    A: UniqueElement + Copy,
 {
     /// Returns unique elements; order is unspecified and may vary between calls.
     ///
@@ -252,10 +252,10 @@ Complex-number equality strategy (component-wise equality):
 ///
 /// # Sealing
 ///
-/// `UniqueElement` relies on `Element`'s closed set of supported tensor element
-/// types; this trait adds operation-specific equality semantics on top of that
-/// closed set and does not widen it.
-pub trait UniqueElement: Element {
+/// `UniqueElement` is a sealed trait. It is implemented only inside this crate
+/// for supported element types, so the closed element set required by
+/// `require.md` §4 is preserved.
+pub(crate) trait UniqueElement: Element {
     /// Equality check used by `unique`.
     fn unique_eq(&self, other: &Self) -> bool;
 }
@@ -531,6 +531,7 @@ User calls unique()
 集合操作模块须遵循项目统一工程约束，不单独定义 `no_std` 方案：
 
 - 仅支持 `std` 环境（参见 `require.md §1.3`）
+- MSRV: Rust 1.85+
 - 保持单 crate 结构
 - 遵循 SemVer
 - 不引入超出项目基线的第三方依赖
@@ -538,6 +539,7 @@ User calls unique()
 | 项目       | 约束                                              |
 | ---------- | ------------------------------------------------- |
 | 平台       | 仅 `std`                                          |
+| MSRV       | Rust 1.85+                                        |
 | crate 结构 | 单 crate                                          |
 | 依赖       | 不新增第三方依赖                                  |
 | 语义一致性 | SIMD / 并行等执行路径不得改变 `unique` 的外部语义 |

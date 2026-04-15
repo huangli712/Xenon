@@ -304,10 +304,12 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 // Reason: &mut T cannot be shared; Rust's borrowing rules forbid it.
 //
 // ViewMutRepr deliberately models exclusive access via `&'a mut A` semantics.
-// Its representation carries mutable provenance (`*mut A` plus mutable borrow marker),
-// so shared references to ViewMutRepr must not become a back door to aliasing mutable access.
+// Its representation stores `NonNull<A>`, a separate length field, and
+// `PhantomData<&'a mut A>` to carry mutable provenance, so shared references to
+// ViewMutRepr must not become a back door to aliasing mutable access.
 // Rust's negative trait impls (!Sync) cannot be written on stable, therefore the design
-// relies on the underlying mutable-pointer / PhantomData shape to prevent Sync auto-derivation.
+// relies on the underlying `NonNull<A>` + mutable-borrow marker shape to prevent
+// Sync auto-derivation.
 ```
 
 ### 5.6 ArcRepr<A> 的 Send/Sync
@@ -362,7 +364,7 @@ unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 
 ### 5.7 ViewMutRepr 不实现 Sync 的证明
 
-`ViewMutRepr<'_, A>` 包含 `&mut [A]` 字段。由于 `&mut T` 不实现 `Sync`（其别名与可变访问语义不能被跨线程共享；底层可变指针 `*mut T` 也不实现 `Sync`），`ViewMutRepr` 也不会自动实现 `Sync`。因此这里依赖 Rust 的 auto-trait 推导结果，而不是显式编写 `unsafe impl !Sync` 之类的额外声明。
+`ViewMutRepr<'_, A>` 采用 `NonNull<A>` + 长度 + `PhantomData<&'a mut A>` 的表示。`PhantomData<&'a mut A>` 将 `&mut A` 的独占借用语义编码进类型，因此 `ViewMutRepr` 不会自动实现 `Sync`；`NonNull<A>` 仅负责承载非空裸指针与长度元数据，不改变这一点。因此这里依赖 Rust 的 auto-trait 推导结果，而不是显式编写 `unsafe impl !Sync` 之类的额外声明。
 
 ### 5.8 广播结果不可变迭代的原因
 

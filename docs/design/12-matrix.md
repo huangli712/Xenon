@@ -197,6 +197,8 @@ where
 // (dot_impl) repeats these bounds explicitly for clarity.
 ````
 
+> **整数 checked accumulation 说明：** 整数内积使用 checked arithmetic 进行中间乘积和累加。泛型约束 `A: Numeric + Copy` 在实现层通过 sealed trait `CheckedArith` 确保 `i32` / `i64` 路径使用 checked `mul` / `add`。
+
 ### 5.2 复数内积语义
 
 ```rust
@@ -564,6 +566,7 @@ User calls dot(a, b)
 | 项目       | 约束                                                           |
 | ---------- | -------------------------------------------------------------- |
 | 标准库环境 | Xenon 当前版本仅支持 `std`，本文档不再承诺 `no_std` 兼容性     |
+| MSRV       | Rust 1.85+                                                     |
 | crate 结构 | 保持单 crate 结构，`matrix` 作为库内模块存在                   |
 | SemVer     | `dot()` 的输入维度前提、错误类别、复数共轭线性定义以及浮点/复数路径容差规则属于稳定契约；后续优化不得改变这些公开语义 |
 | 依赖约束   | 不引入额外线性代数第三方依赖；BLAS 绑定仍属范围外              |

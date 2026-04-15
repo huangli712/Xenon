@@ -57,7 +57,7 @@ L6: reduction  <- current module
 
 - 仅以下元素类型参与 `sum` 归约：`i32`、`i64`、`f32`、`f64`、`Complex<f32>`、`Complex<f64>`。
 - `bool` 不参与 `sum` 归约。
-- 静态零维 `Ix0` 上，`sum_axis()` 由于不存在可移除轴，其 `remove_axis` 语义在运行时返回 `XenonError::InvalidAxis`；`sum_axis_keepdims()` 则保留原始维度类型，并在 0D 上文档化为 no-op，直接返回原标量。对运行时维度输入，轴索引越界仍须返回可恢复错误，错误类型统一为 `XenonError::InvalidAxis`。
+- 对 0D 张量（`Ix0` / `IxDyn` with `ndim=0`），`sum_axis()` 与 `sum_axis_keepdims()` 调用时因任何轴索引均越界，须返回 `XenonError::InvalidAxis` 可恢复错误。统一规则：对 0D 张量调用任何需要指定轴的操作（包括 `sum_axis`、`sum_axis_keepdims`），均因轴索引越界而返回 `InvalidAxis` 可恢复错误。
 - 有符号整数归约溢出属于不可恢复错误，必须 panic。
 - 当输入为空，或沿轴归约的被归约轴长度为 `0` 时，结果须为对应元素类型的加法单位元。
 
@@ -148,16 +148,14 @@ where
     /// Reduces along `axis` and keeps the reduced axis with length 1.
     ///
     /// Returns `XenonError::InvalidAxis` when `axis.index() >= self.ndim()`.
-    /// This API is only available when `D: RemoveAxis`.
-    pub fn sum_axis_keepdims(&self, axis: Axis) -> Result<Tensor<A, D>, XenonError>
-    where
-        D: RemoveAxis;
+    /// keepdims does not remove the reduced axis.
+    pub fn sum_axis_keepdims(&self, axis: Axis) -> Result<Tensor<A, D>, XenonError>;
 }
 ````
 
-> **0D 轴归约设计决策：** `sum_axis()` 与 `sum_axis_keepdims()` 都保留 `D: RemoveAxis` 边界；其中 `sum_axis()` 在静态零维类型 `Ix0` 上因不存在可移除轴，`remove_axis` 的运行时语义返回 `XenonError::InvalidAxis { operation, axis, ndim: 0, shape: vec![] }`。对动态维度 `IxDyn` 且 `ndim == 0` 的输入，这两个 API 也继续通过运行时返回同类 `InvalidAxis` 满足可恢复错误契约。这与 `require.md §14` 保持一致：凡是仍经由 axis 校验路径的调用，都统一给出可恢复错误。
+> **0D 轴归约设计决策：** `sum_axis()` 在静态零维类型 `Ix0` 上因不存在可移除轴，`remove_axis` 的运行时语义返回 `XenonError::InvalidAxis { operation, axis, ndim: 0, shape: vec![] }`。对动态维度 `IxDyn` 且 `ndim == 0` 的输入，`sum_axis()` 与 `sum_axis_keepdims()` 也继续通过运行时返回同类 `InvalidAxis` 满足可恢复错误契约。这与 `require.md §14` 保持一致：凡是仍经由 axis 校验路径的调用，都统一给出可恢复错误。
 >
-> 注意：`sum_axis_keepdims()` 的内部实现不调用 `remove_axis()`——它只将目标轴长度置为 1 并保留原始维度类型。因此，即使 `Ix0` 实现了 `RemoveAxis`（`remove_axis` 运行时返回 `InvalidAxis`），`sum_axis_keepdims()` 仍可在 `Ix0` 上作为 no-op 工作，返回原始标量。这是因为 0D 张量没有可归约的轴，keepdims 的“保留维度”语义自然满足。
+> keepdims 不移除被归约轴，因此不需要 `RemoveAxis` 约束。输出维度类型与输入维度类型相同，被归约轴长度变为 `1`。但对 0D 张量而言不存在任何合法轴，因此 `sum_axis_keepdims()` 仍须返回 `InvalidAxis`，而不能定义为 no-op。
 
 ### 5.2 对外错误契约
 
@@ -216,7 +214,7 @@ assert_eq!(empty.sum(), 0);
 | ------ | ---- |
 | 归约族范围 | 当前版本只实现 `sum`，不为其它归约预留公开入口。 |
 | 空输入语义 | `sum()` 对空数组返回 `A::zero()`；沿轴归约的被归约轴长度为 `0` 时，对每个输出槽写入 `A::zero()`。 |
-| axis 校验顺序 | `sum_axis()` 与 `sum_axis_keepdims()` 都要求先满足 `D: RemoveAxis`。对 `sum_axis_keepdims()` 在静态 `Ix0` 上的调用，实现直接返回 `self` 的克隆（no-op），不进入 axis 校验路径。除此之外，对所有进入 axis 归约路径的调用，都必须先校验 `axis < ndim`，再执行归约。 |
+| axis 校验顺序 | `sum_axis()` 在进入轴移除逻辑前要求满足 `D: RemoveAxis`；`sum_axis_keepdims()` 不移除轴，因此不需要该约束。对所有进入 axis 归约路径的调用（包括 0D 张量），都必须先校验 `axis < ndim`；若越界则统一返回 `XenonError::InvalidAxis`。 |
 | 整数语义 | `i32` / `i64` 累加使用 checked arithmetic，任何溢出立即 panic。 |
 | 浮点/复数语义 | `f32` / `f64` / `Complex<_>` 遵循标量加法语义，`NaN` 按 IEEE 754 自动传播。 |
 | 执行路径约束 | SIMD / 并行若无法满足 `require.md` §28.3 数值语义约束，则必须回退标量。 |
@@ -241,15 +239,14 @@ sum_axis(tensor, axis):
     7. Return the reduced tensor after runtime shape projection.
 
 sum_axis_keepdims(tensor, axis):
-    1. If tensor is statically `Ix0`, return tensor.clone() as a no-op.
-    2. Validate axis against tensor.ndim().
-    3. Clone the input shape.
-    4. Set result_shape[axis] = 1.
-    5. Allocate the output tensor with zeros.
-    6. Iterate all logical input elements.
-    7. Map each input index to the keepdims output index by forcing the reduced axis to 0.
-    8. Accumulate using the same type-specific add semantics.
-    9. Return Tensor<A, D> with the reduced axis length preserved as 1.
+    1. Validate axis against tensor.ndim().
+    2. Clone the input shape.
+    3. Set result_shape[axis] = 1.
+    4. Allocate the output tensor with zeros.
+    5. Iterate all logical input elements.
+    6. Map each input index to the keepdims output index by forcing the reduced axis to 0.
+    7. Accumulate using the same type-specific add semantics.
+    8. Return Tensor<A, D> with the reduced axis length preserved as 1.
 ```
 
 > **0D 张量语义**：`sum()` 对 rank-0 张量（标量）返回其唯一元素，与 `A::zero()` 语义无关。
@@ -407,7 +404,7 @@ Wave 4:                  [T6]
 | 被归约轴长度为 `0`，如 `shape=[0, 3]` 沿 `Axis(0)` | 每个输出位置返回零 |
 | 单元素数组 | 结果等于该元素本身 |
 | 静态 rank-0 输入 `Ix0` 调用 `sum_axis()` | 返回 `InvalidAxis`，因为不存在可移除轴 |
-| 静态 rank-0 输入 `Ix0` 调用 `sum_axis_keepdims()` | 返回原标量本身；keepdims 在 0D 上视为 no-op |
+| 静态 rank-0 输入 `Ix0` 调用 `sum_axis_keepdims()` | 返回 `InvalidAxis`，因为 0D 上不存在合法轴 |
 | 动态 rank-0 输入 `IxDyn([])` 调用 `sum_axis*` | 返回 `InvalidAxis`，因运行时 `axis >= ndim` |
 | 非连续视图 | 结果与连续输入一致 |
 | 大张量 `len ≈ 10^7` | 可按阈值选择并行路径，结果仍满足文档化数值语义 |
@@ -472,7 +469,7 @@ User calls sum / sum_axis / sum_axis_keepdims
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | 对所有需要运行时 axis 校验的 `sum_axis()` / `sum_axis_keepdims()` 调用，axis 越界统一返回 `XenonError::InvalidAxis { operation, axis, ndim, shape }`；其中 `operation` 必须分别为 `"sum_axis"` 和 `"sum_axis_keepdims"`。该契约覆盖动态 rank-0 输入。静态 `Ix0` 上的 `sum_axis_keepdims()` 是文档化 no-op，不进入该错误路径。 |
+| Recoverable error | 对所有需要运行时 axis 校验的 `sum_axis()` / `sum_axis_keepdims()` 调用，axis 越界统一返回 `XenonError::InvalidAxis { operation, axis, ndim, shape }`；其中 `operation` 必须分别为 `"sum_axis"` 和 `"sum_axis_keepdims"`。该契约统一覆盖静态/动态 rank-0 输入。 |
 | Panic | `i32` / `i64` 归约中的累加溢出属于不可恢复错误，必须通过 checked arithmetic panic。 |
 | Panic 诊断 | panic 文本至少包含 `operation`、元素类型、触发位置（如 `axis`、`output_index` 或 `element_index`）以及适用 `shape`；推荐格式遵循 `26-error.md §4.6`。 |
 | 空输入语义 | 空数组 `sum()` 返回加法单位元；沿轴归约时若被归约轴长度为 `0`，结果张量对应槽位也返回加法单位元。 |
@@ -533,14 +530,14 @@ Err(XenonError::InvalidArgument {
 | 替代方案 | 让部分入口使用 `InvalidArgument` 表达 axis 参数非法。 |
 | 拒绝原因 | 会破坏归约 API 的错误一致性，也弱化 axis 专用诊断字段语义。 |
 
-### 决策 3：0D 轴归约采用“运行时诊断 + keepdims no-op”的组合语义
+### 决策 3：0D 轴归约统一返回 `InvalidAxis`
 
 | 属性 | 值 |
 | ---- | ---- |
-| 决策 | `sum_axis()` 在静态 `Ix0` 上沿用 `RemoveAxis for Ix0` 的运行时 `InvalidAxis` 语义；动态 `IxDyn([])` 上同样返回 `InvalidAxis`；`sum_axis_keepdims()` 在静态 `Ix0` 上返回原标量不变。 |
-| 理由 | 0D 张量字面上不存在可被移除的轴，因此 `sum_axis()` 只要进入 axis 移除语义，就应统一落在 `InvalidAxis` 契约上；而动态 0D 也需要满足 `require.md` 对 axis 越界使用可恢复错误的要求。`sum_axis_keepdims()` 不调用 `remove_axis()`，只保留原 rank 并将目标轴长度视作维持为 `1` 的 no-op，因此在静态 `Ix0` 上定义为 no-op 可避免把“无轴可约”误解释为实现缺口。 |
-| 替代方案 | (1) 让所有 0D 情况都统一返回运行时 `InvalidAxis`；(2) 让 `sum_axis_keepdims()` 也在静态 `Ix0` 上不可调用。 |
-| 拒绝原因 | 方案 (1) 会把 `sum_axis_keepdims()` 也拖入统一错误路径，违背其不调用 `remove_axis()` 的实现事实；方案 (2) 会把 keepdims 的 rank-preserving 语义人为收紧，并丢失“0D keepdims 是 no-op”这一更自然的定义。 |
+| 决策 | 对 0D 张量（静态 `Ix0` 与动态 `IxDyn([])`），`sum_axis()` 与 `sum_axis_keepdims()` 都统一返回 `XenonError::InvalidAxis`。 |
+| 理由 | 0D 张量不存在任何合法轴；`require.md §14` 要求 axis 越界返回可恢复错误。即使 `sum_axis_keepdims()` 不移除轴，也仍然需要先通过 axis 合法性校验，因此不能在 0D 上定义为 no-op。 |
+| 替代方案 | (1) 让 `sum_axis_keepdims()` 在静态 `Ix0` 上返回原标量；(2) 为 0D keepdims 单独定义特殊返回语义。 |
+| 拒绝原因 | 这两种方案都会让 0D 的 axis-based API 语义与其余维度不一致，并违反 axis 越界统一返回 `InvalidAxis` 的错误契约。 |
 
 ### 决策 4：整数溢出使用 panic 而非 `Result`
 
@@ -595,7 +592,7 @@ Err(XenonError::InvalidArgument {
 | 标准库环境 | Xenon 当前版本仅支持 `std`。 |
 | crate 结构 | 保持单 crate 结构，`reduction` 作为库内模块存在。 |
 | 依赖约束 | 不新增第三方依赖；仅可使用需求中已允许的 `rayon` / `pulp` 对应可选能力。 |
-| SemVer | `sum` 家族的空输入语义、`InvalidAxis` 错误类别、`sum_axis()` 的 `D: RemoveAxis` 类型边界、静态 `Ix0` 上 `sum_axis_keepdims()` 的 no-op 语义、动态 0D 轴归约运行时诊断与文档化容差规则均属于稳定契约；后续优化不得改变。 |
+| SemVer | `sum` 家族的空输入语义、`InvalidAxis` 错误类别、`sum_axis()` 的 `D: RemoveAxis` 类型边界、`sum_axis_keepdims()` 不要求 `RemoveAxis`、0D 张量上的 axis-based API 统一返回 `InvalidAxis` 以及文档化容差规则均属于稳定契约；后续优化不得改变。 |
 | 平台语义 | 同平台、同编译配置、同执行路径下结果须确定；跨平台遵循 IEEE 754 语义约束。 |
 | API 稳定性 | 不改变当前 `sum` 家族公开接口与错误类别边界。 |
 

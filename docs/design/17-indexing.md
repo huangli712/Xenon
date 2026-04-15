@@ -604,6 +604,7 @@ XenonError::IndexOutOfBounds {
 | 约束 | 说明 |
 | --- | --- |
 | `std` only | 当前项目基线为 `std` 环境；本文不扩展 `no_std` 路径 |
+| MSRV | Rust 1.85+ |
 | 单 crate | 索引设计保持在现有 crate 内，不引入额外 crate 或拆分子包 |
 | SemVer | 文档仅把旧结构重写为标准模板，不新增索引能力或改变已承诺语义 |
 | 最小依赖 | 不新增第三方依赖；继续复用仓库既有模块 |

@@ -306,6 +306,10 @@ pub enum StorageKind {
 }
 ```
 
+> **`len` / storage 长度不变量：** `TensorBase::len()` 返回逻辑元素总数（由 `shape` 计算）；`Storage::len()` 返回底层存储的可见长度。对于视图类型，storage len 可能大于 logical len。所有 bounds check 基于 logical len，raw-parts 构造基于 storage len。
+
+> **数据位置查询说明：** 当前版本仅支持 CPU 内存，data location 查询恒为 CPU。`storage_kind()` 返回存储模式分类（Owned / View / Arc / ViewMut），不表示物理设备位置。
+
 > `LayoutState` 使用 `crate::layout::LayoutState`（参见 `06-layout.md §5`）；
 > 本文档不再重复定义 `FContiguous`、`NonContiguous`、`BroadcastView` 三个变体。
 
@@ -984,6 +988,8 @@ where
 }
 ```
 
+> **实现约束重申：** `len()` 的返回值始终来源于逻辑 `shape`，不允许退化为读取 `storage.len()`；后者仅用于 raw-parts 与底层访问范围校验。
+
 ### 9.3 与 layout 模块的接口
 
 | 接口 | 方向 | 契约 |
@@ -1125,6 +1131,7 @@ where
 | 单 crate   | 保持单 crate 边界                       |
 | SemVer     | 张量元数据字段与构造契约变更遵循 SemVer |
 | 最小依赖   | 无新增第三方依赖                        |
+| MSRV       | Rust 1.85+                             |
 
 ---
 

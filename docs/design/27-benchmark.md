@@ -346,6 +346,8 @@ Benchmark categories
 
 本文档统一使用同一组规模基线：Small = `64` / `8×8` / `4×4×4`，Medium = `65,536` / `256×256` / `64×32×32`，Large = `16,777,216` / `4096×4096` / `256×256×256`。
 
+Large 规模基准测试（如 `4096×4096`、`256×256×256`）仅在 weekly/full benchmark 流水线中执行。PR 级别的 Smoke Test 仅使用 Small/Medium 规模。CI 配置须设置合理的内存上限，大张量测试在低内存环境中应跳过并标记为 skipped。
+
 #### 5.6.3 CI 配置示例
 
 ```yaml
@@ -751,6 +753,7 @@ benchmark files
 | 约束项     | 约束内容                                              |
 | ---------- | ----------------------------------------------------- |
 | 平台支持   | benchmark 方案仅覆盖 `std` 环境                       |
+| MSRV       | Rust 1.85+                                            |
 | crate 结构 | 保持单 crate，不为 benchmark 拆分独立 crate           |
 | 依赖约束   | 不引入 benchmark 专用第三方依赖；不扩展额外运行时依赖 |
 | SemVer     | 无影响；benchmark 与性能观测流程不构成 crate 稳定 API 合约 |

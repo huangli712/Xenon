@@ -209,7 +209,7 @@ pub fn get_strides(&self) -> &[Ix] { /* ... */ }
 
 ```rust
 // Good - requires index parameter, may fail, returns XenonError::IndexOutOfBounds
-pub fn try_at(&self, index: &[Ix]) -> Result<&A, XenonError> { /* ... */ }
+pub fn try_at(&self, index: &[Ix]) -> Result<&A> { /* ... */ }
 
 // Good - may fail, returns XenonError::IndexOutOfBounds
 pub fn try_at_mut(&mut self, index: &[Ix]) -> Result<&mut A, XenonError> { /* ... */ }
@@ -586,7 +586,7 @@ pub enum XenonError {
 pub struct TypeConversionError {
     source_type: Cow<'static, str>,
     target_type: Cow<'static, str>,
-    reason: TypeConversionReason,
+    pub(crate) reason: TypeConversionReason,
     element_index: usize,
 }
 
@@ -659,7 +659,7 @@ where
     D: Dimension,
 {
     /// Checked indexing — returns `Err(XenonError::IndexOutOfBounds{...})` on out of bounds.
-    pub fn try_at(&self, index: &[Ix]) -> Result<&A, XenonError> {
+    pub fn try_at(&self, index: &[Ix]) -> Result<&A> {
         if !self.is_index_valid(index) {
             return Err(XenonError::IndexOutOfBounds {
                 operation: "try_at".into(),

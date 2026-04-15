@@ -221,6 +221,10 @@ where
 
 `par_dot()` 在类型层面接受任意 `Dimension` 输入，以便与更通用的上层张量调用路径对接；但其语义契约仍限定为一维向量内积，因此实现必须在运行时检查 `lhs.ndim() == 1`、`rhs.ndim() == 1`，并在进入并行归约前再次确认两侧逻辑长度一致。
 
+整数类型（`i32` / `i64`）的归约和内积操作不使用并行路径。由于并行分组会改变 checked overflow 的触发时机，无法保证与串行路径相同的 panic 语义。整数归约/内积始终走串行 checked arithmetic 路径。
+
+复数内积采用共轭线性定义：`result = sum(conj(lhs_i) * rhs_i)`，与 `08-simd.md` 中的复数内积语义完全一致。
+
 ### 5.4 并行迭代入口
 
 ```rust,ignore
@@ -333,7 +337,7 @@ where
 - `par_zip_map()` 接收的 `lhs`、`rhs` 与 `output_dim` 必须已由调用侧完成兼容性验证；广播裁决（含输出 rank/shape 计算）属于 `math` 模块职责，`parallel/` 不重复做形状推导。
 - 广播处理顺序固定为：先由 `math` 模块验证 `lhs` / `rhs` 广播兼容并产出 `output_dim`，再由 `parallel/` 按逻辑线性区间分块；默认 `chunk_size = max(1, (total_elements + num_threads - 1) / num_threads)`，其中 `num_threads = rayon::current_num_threads()`，并按固定左折叠顺序合并 chunk 结果。每个 chunk 为两个输入分别构造与该线性区间对应、且仍与 `output_dim` 兼容的只读 sub-view。若某一侧是广播轴（stride 为 `0` 或逻辑重复维），chunk 视图保持该广播语义，不做物理复制。`DL`、`DR`、`DO` 独立建模，以表达输入与输出 rank 可能不同的广播结果。
 - `par_zip_map` 仅包含并行执行逻辑；若调用发生，表示 `dispatch.rs` 已确认当前输入适合走并行路径。
-- 错误传播策略与 `par_map_checked()` 一致：广播形状不兼容时立即返回 `XenonError::BroadcastError { operation, input_shape, target_shape, axis }`；其中 `operation` 标识当前并行入口（如 `"par_zip_map"`），`input_shape` 为失败输入的逻辑 shape，`target_shape` 为调用侧尝试写入的广播输出 shape（而不是右操作数 shape），`axis` 在可定位到具体失败轴时填写对应值，否则为 `None`。字段名和含义必须与 `26-error.md §4.2` / `§4.4` 完全一致。worker 内 `Err(XenonError)` 通过 `rayon` 的 `collect::<Result<Vec<_>, _>>()` 立即向外传播；panic 不捕获、不吞掉。
+- 错误传播策略与 `par_map_checked()` 一致：广播形状不兼容时立即返回 `XenonError::BroadcastError { operation, input_shape, target_shape, axis }`；其中 `operation` 标识当前并行入口（如 `"par_zip_map"`），`input_shape` 为失败输入的逻辑 shape，`target_shape` 为调用侧尝试写入的广播输出 shape（而不是右操作数 shape），`axis` 在可定位到具体失败轴时填写对应值，否则为 `None`。字段名和含义必须与 `26-error.md §4.2` / `§4.4` 完全一致。并行操作中发生 panic 或返回 Err 时，错误不会被静默忽略。语义上，并行操作的最终结果须反映首先发生的错误。实现上，Rayon 的并行 collect/reduce 可能不会物理中断其他 worker，但错误信息会被收集并在最终结果中报告。
 
 ### 6.3a 轴向归约并行方案
 
@@ -361,7 +365,7 @@ where
     D: Dimension,
     A: Element + Send + Sync,
     B: Element + Send,
-    F: Fn(&A) -> Result<B, XenonError> + Sync,
+    F: Fn(&A) -> Result<B, XenonError> + Sync + Send,
 {
     let output: Result<Vec<B>, XenonError> = tensor.par_iter().map(|x| f(x)).collect();
     Ok(unsafe { Tensor::from_raw_vec_unchecked(output?, tensor.raw_dim()) })
@@ -376,7 +380,7 @@ where
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `Tensor::from_raw_vec_unchecked` | 这里只在输出向量长度与 `tensor.raw_dim()` 已由输入张量长度和映射过程保持一致时使用；并行与串行路径都必须保证产出元素数等于输入逻辑元素数。 |
 | `par_zip_map` broadcast chunking | 每个并行 chunk 仅借用两个输入的只读 broadcast-compatible sub-view；广播轴保持逻辑重复语义，不进行额外物理展开，因此不会引入越界写或悬垂引用。 |
-| panic / `Err` 传播               | 并行 worker 上的 panic 与 `Err(XenonError)` 均不得吞掉或延迟到“全部 worker 完成后再统一检查”；必须沿 `rayon` 传播链即时向外反映。          |
+| panic / `Err` 传播               | 并行操作中发生 panic 或返回 `Err(XenonError)` 时，错误不会被静默忽略；语义上最终结果须反映首先发生的错误。实现上 Rayon 的并行 collect/reduce 可能不会物理中断其他 worker，但错误信息会被收集并在最终结果中报告。 |
 
 ### 6.7 性能考量
 
@@ -693,6 +697,7 @@ XenonError::DimensionMismatch {
 | 约束       | 说明                                                                                         |
 | ---------- | -------------------------------------------------------------------------------------------- |
 | `std` only | 本模块依赖 `rayon`，且项目基线仅支持 `std`；不讨论 `no_std`                                  |
+| MSRV       | Rust 1.85+                                                                                   |
 | 单 crate   | 设计保持在 Xenon 单 crate 内，不引入额外 crate 拆分                                          |
 | SemVer     | 并行后端入口属于 `pub(crate)` 内部契约；其语义仍需在 crate 内保持稳定，但不构成面向最终用户的独立公开 API 承诺 |
 | 最小依赖   | 仅使用允许的可选依赖 `rayon`，默认关闭                                                       |

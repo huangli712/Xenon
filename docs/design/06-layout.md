@@ -419,6 +419,21 @@ Result: false (not F-contiguous)
   `max_accessed_offset = offset + sum(stride[i] * (shape[i] - 1) for all i where shape[i] > 0)`（逐轴累加且使用 checked arithmetic）必须满足 `max_accessed_offset < storage_len`。
 - 每个 `stride[i]` 都必须可表示为 `isize`，不得发生表示溢出。
 
+> **当前版本的具体校验口径：**
+>
+> 合法 stride 族：
+> 1. F-order 连续：`strides[i] = product(shape[0..i])`
+> 2. 转置衍生：对 F-order 连续布局的轴置换结果，`stride[i]` 仍为正且与原始轴的 stride 对应
+> 3. 广播衍生：部分轴 `stride = 0`
+> 4. 切片衍生：正步长子范围，`stride` 不变，`offset` 调整
+>
+> 验证规则：
+> - 所有 `stride[i] >= 0`（非负）
+> - 所有 `stride[i] <= isize::MAX`
+> - `max_offset = sum(shape[i] * stride[i]) <= storage_len`（对非广播视图）
+> - 广播视图：`shape[i] == 1` 时 `stride[i]` 可为 `0`
+> - 单元素轴 `shape[i] == 1` 时 `stride[i]` 不受连续性约束
+
 #### safe vs unsafe 构造的责任分工
 
 - **Safe constructors**：必须检查以上全部规则；任一条件不满足时返回 `Result::Err`。
@@ -551,6 +566,15 @@ function compute_flags(shape, strides, ptr):
 | 1D 数组         |     true     | 一维情况天然 F-连续         |
 | 含 size=1 轴    |  检查其他轴  | size=1 轴的步长不影响连续性 |
 | 广播零步长轴    |    false     | 广播视图不得带 `F_CONTIGUOUS` |
+
+### 6.2a 内部 stride 校验规则
+
+当前版本内部实现只接受由 packed F-order、其轴置换、广播零步长以及正步长切片派生出的 stride 族；任何负步长、轴间 padding 或无法映射回这组闭合集的 stride 组合都必须在校验阶段拒绝。
+
+- F-order 连续布局：`stride[i] = product(shape[0..i])`
+- 转置派生布局：stride 必须是某个 F-order 连续 stride 集合的轴置换，且全部为正
+- 广播派生布局：仅广播轴允许 `stride = 0`
+- 切片派生布局：仅允许正步长子范围；stride 保持原值，通过 `offset` 表示起点移动
 
 ### 6.3 标志位更新规则
 
@@ -815,6 +839,7 @@ Upper layers create or transform tensor metadata
 | 属性     | 值 |
 | -------- | --- |
 | 决策     | 当前版本中，`require.md` §7 提到的“padding”仅指分配层面的尾部容量/对齐冗余（例如分配器为满足对齐返回多于请求值的字节数）；拥有型张量的逻辑布局元数据（`shape`、`strides`）仍保持规范化 packed F-order，即 `stride[i] = product(shape[0..i])`。当前版本**不支持**轴间 padding（例如 padded leading dimension）。 |
+| 决策补充 | `require.md` §7 所指的“填充区域”在本设计中解释为仅用于分配层对齐目的的尾部冗余空间（tail padding），不包含轴间填充（inter-axis padding）或 padded leading dimension。逻辑元素访问不受任何填充影响。 |
 | 理由     | 规范化 packed F-order 可简化布局校验与 FFI 导出；轴间 padding 将引入 `leading_dim` 一类概念，显著增加类型系统复杂度；分配级对齐由 `storage` 层的 `AlignedBuf` 处理，而非 `layout` 层。 |
 | 替代方案 | 在 `layout` 元数据中显式支持轴间 padding / padded leading dimension — 放弃，会扩大布局状态空间并增加验证、类型表达与 FFI 映射复杂度。 |
 
@@ -857,6 +882,7 @@ Upper layers create or transform tensor metadata
 | SemVer     | 布局类型和 stride 计算变更遵循 SemVer  |
 | 最小依赖   | 无新增第三方依赖                       |
 | 线程安全   | `Strides<D>` 本身是 immutable 的值类型；构造后不可修改，因此无需同步原语即可跨线程共享（`Send + Sync` 自动推导） |
+| MSRV       | Rust 1.85+                            |
 
 ---
 

@@ -147,7 +147,7 @@ xenon/
 │   │   └── indexed.rs         # IndexedIter with indices
 │   │
 │   ├── simd/                  # SIMD backend (feature = "simd")
-│   │   ├── mod.rs             # pulp integration, dispatch facade, public kernel trait
+│   │   ├── mod.rs             # pulp integration, dispatch facade, crate-internal kernel trait
 │   │   └── vector.rs          # Vectorized implementation
 │   │
 │   ├── parallel/              # Parallel backend (feature = "parallel")
@@ -271,7 +271,7 @@ xenon/
 | `layout/`      | F-order 布局函数、步长计算、连续性检查与验证入口                                                                   |
 | `tensor/`      | 核心 `TensorBase<S, D>` 结构体及类型别名                                                                           |
 | `iter/`        | 元素/轴/索引迭代器                                                                                                 |
-| `simd/`        | SIMD 后端：向量化 kernel（pulp）、运行时分发，不含标量回退                                         |
+| `simd/`        | SIMD 后端：向量化 kernel（pulp）、运行时分发，不含标量回退；模块本身为 crate 内部后端实现                         |
 | `parallel/`    | 并行后端：多文件模块，承载纯并行执行入口（par_map/par_zip_map/par_sum/par_dot）与内部并行迭代 helper，不含串行回退；所有公开并行加速均经 `dispatch.rs` 内部裁决透明启用 |
 | `math/`        | 逐元素数学运算（一元、二元算术、比较），按需委托 `simd/` / `parallel/`                                            |
 | `overload`     | 运算符重载（Add, Sub, Mul, Div trait 实现）                                                                        |
@@ -493,7 +493,7 @@ pub use crate::complex::Complex;
 // Error types
 pub use crate::error::{XenonError, Result};
 
-// Construction helpers
+// Construction convenience helpers delegating to TensorBase inherent methods
 pub use crate::construct::{
     zeros, ones, eye,
     from_shape_vec,
@@ -550,10 +550,10 @@ pub mod workspace;
 // Conditional modules
 #[cfg(feature = "simd")]
 #[cfg_attr(docsrs, doc(cfg(feature = "simd")))]
-pub mod simd;
+pub(crate) mod simd;
 
-// `simd` is exposed as a feature-gated backend module, but concrete SIMD
-// traits, kernels, and ISA detection details remain `pub(crate)` or
+// `simd` remains a feature-gated internal backend module; concrete SIMD
+// traits, kernels, and ISA detection details stay `pub(crate)` or
 // `#[doc(hidden)]` implementation details.
 
 #[cfg(feature = "parallel")]
@@ -578,7 +578,7 @@ pub use error::XenonError;
 | 公开 trait 方法          | **稳定**   | 只增不减                                                             |
 | 内部模块 (`mod private`, `mod dispatch`) | **不稳定** | 随时可能变更                                             |
 | `#[doc(hidden)]`         | **不稳定** | 仅供内部使用                                                         |
-| `simd` 模块             | **内部/不稳定** | SIMD 加速对用户透明；`simd` 仅作为 feature gate 控制的后端实现细节，不应视为稳定公开 API，具体实现与导出形态可调整 |
+| `simd` 模块             | **内部/不稳定** | SIMD 加速对用户透明；`simd` 为 feature gate 控制的 crate 内部后端实现细节，不应视为稳定公开 API，具体实现与导出形态可调整 |
 | 内部后端 (`parallel`)   | **不稳定** | `pub(crate)` 内部实现，仅影响自动并行加速，不构成公开模块 API         |
 
 ---
@@ -598,6 +598,8 @@ pub use error::XenonError;
 | `iter` / `axis_iter` | `TensorBase` 固有方法 | 迭代器入口保持实例方法风格 |
 
 > **说明**：Xenon 的公开 API 以 `TensorBase` 固有方法为主；`parallel` / `simd` 仅影响这些公开 API 的内部执行路径，不额外暴露稳定的并行或 SIMD 用户侧入口。
+
+> **构造补充**：构造操作统一通过 `TensorBase` 固有方法暴露；`prelude` 仅重导出少量委托到这些固有方法的便捷自由函数（例如 `from_shape_vec`）。
 
 ---
 
@@ -657,7 +659,7 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 
 | 任务                 | 依赖                 | 预估复杂度 | 产出                                         |
 | -------------------- | -------------------- | ---------- | -------------------------------------------- |
-| W2.1 Storage trait   | 无                   | 高         | `Storage`, `RawStorage`（仅依赖 core/alloc） |
+| W2.1 Storage trait   | 无                   | 高         | `Storage`, `RawStorage`（依赖 `std`，含 `Arc`、allocator API 等） |
 | W2.2 Owned storage   | W2.1                 | 中         | `Owned<A>` + 64 字节对齐分配                 |
 | W2.3 View storage    | W2.1                 | 中         | `ViewRepr<'a, A>`                            |
 | W2.4 ViewMut storage | W2.1                 | 中         | `ViewMutRepr<'a, A>`                         |

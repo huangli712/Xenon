@@ -203,7 +203,7 @@ where
 
 > **实现说明：** 委托示例中的 `add_tensor_impl()` 代表与 trait 方法同名的内部/固有辅助入口，用于避免 `fn add(self, rhs) { self.add(&rhs) }` 这类写法产生对 trait 方法自身的递归歧义。
 
-> **语义边界说明：** 运算符在广播失败时返回 `Err(XenonError::BroadcastError { ... })`，而整数除零、整数溢出与结果不可表示仍保持 panic；正式 ADR 记录见本文 §11 的 ADR-2a。
+> **语义边界说明：** 运算符在广播失败时返回 `Err(XenonError::BroadcastError { ... })`，而整数除零、整数溢出与结果不可表示仍保持 panic；正式决策记录见本文 §11 的决策 2a / ADR-2b。
 
 ### 5.2b 视图×视图/张量运算符
 
@@ -627,7 +627,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 ## 11. 设计决策记录
 
 > [!WARNING]
-> 运算符返回 `Result<Tensor, XenonError>` 是一项高风险的全局 API 决策。此决策意味着 `a + b` 需要 `?` 或 `unwrap()` 来获取结果，而 `a + scalar` 不需要，两者使用体验不同。本设计建议在正式实现前，将此决策升级为项目级 ADR，经全库层面评审确认后再落地。
+> 运算符返回 `Result<Tensor, XenonError>` 是一项高影响的全局 API 风格决策。此决策意味着 `a + b` 需要 `?` 或 `unwrap()` 来获取结果，而 `a + scalar` 不需要；本文将其作为正式 ADR 记录，并确认该差异是为满足 Xenon 的可恢复错误语义而有意接受的权衡。
 
 ### 决策 1：是否支持 += 原地运算符
 
@@ -649,7 +649,17 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 
 > **补充**：运算符与方法型 API 现在共享广播错误的恢复主路径；整数除零、整数溢出和结果不可表示等不可恢复错误则继续遵循 `require.md` §12 / §27 的 panic 语义。
 
-### ADR-2a：仅张量×张量路径共享 Result 边界
+### 决策 2a：运算符返回 Result
+
+| 属性     | 值 |
+| -------- | --- |
+| 决策     | 四则运算符的 `Output` 类型为 `Result<Tensor<A, D>, XenonError>` |
+| 理由     | 广播不兼容时须返回可恢复错误（`require.md` §20 / §27）；运算符是唯一的公开入口，不可静默 panic |
+| 替代方案 | 运算符 panic + 提供 `try_add` / `try_sub` 系列方法 — 放弃，因为需求明确要求广播不兼容为可恢复错误，panic 违反语义 |
+| 替代方案 | 运算符不返回 `Result`，广播失败由单独的 broadcast 步骤处理 — 放弃，增加调用复杂度 |
+| 确认     | 本决策已作为项目级 API 风格决策，接受与 Rust 标准运算符惯例的差异 |
+
+### ADR-2b：仅张量×张量路径共享 Result 边界
 
 | 属性     | 值 |
 | -------- | --- |
@@ -719,6 +729,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | 约束       | 说明                                                        |
 | ---------- | ----------------------------------------------------------- |
 | `std` only | Xenon 当前版本仅支持 `std` 环境，本文不再讨论 `no_std` 路径 |
+| MSRV       | Rust 1.85+                                                  |
 | 单 crate   | `overload` 设计保持在现有 crate 内，不引入额外 crate        |
 | SemVer     | 当前文档明确了“运算符与方法均以 `Result` 报告广播错误”的稳定语义边界 |
 | 最小依赖   | 本模块不新增第三方依赖                                      |

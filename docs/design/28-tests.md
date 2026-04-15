@@ -236,7 +236,7 @@ pub fn assert_tensor_exact_complex<A, D>(
 pub fn assert_tensor_close_real_cross_path<A, D>(
     actual: &TensorBase<impl Storage<Elem = A>, D>,
     expected: &TensorBase<impl Storage<Elem = A>, D>,
-    max_ulp: u64,
+    tolerance: MathTolerance,
     msg: &str,
 ) where
     A: RealScalar + CastTo<f64>,
@@ -317,7 +317,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | 方面       | 说明                                                                                                                                                                      |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 断言辅助   | 以 `assert_tensor_exact_real` / `assert_tensor_exact_complex`、跨路径容差 helper、数学函数容差 helper、错误断言宏与共享生成器统一测试表达，避免各测试文件重复定义比较逻辑 |
-| 数值比较   | 默认使用精确比较；仅标量/SIMD、串行/并行等跨执行路径比较允许文档化容差；`sin`/`sqrt`/`exp`/`ln`/`floor`/`ceil` 等数学函数使用各自文档化容差                               |
+| 数值比较   | 默认使用精确比较；仅标量/SIMD、串行/并行等跨执行路径比较允许文档化容差；`sin`/`sqrt`/`exp`/`ln`/`floor`/`ceil` 等数学函数使用各自文档化容差。所有数值比较统一通过 `MathTolerance` 进行，不再单独使用 `max_ulp` 或 `epsilon` 参数 |
 | 编译期边界 | compile-fail harness 负责验证 `usize`/非法无符号元素类型、错误 trait bound 与不合法存储组合                                                                               |
 | 数据生成   | 顺序数据、三角函数样本、非连续视图与大张量样本均在共享工具中集中生成，保证可重复性                                                                                        |
 
@@ -686,21 +686,34 @@ fn test_ixdyn_high_rank_scenarios() {
 
 数值比较采用明确的三层结构，并与 `require.md §28.3` 保持一致：默认只对基础 IEEE 754 运算使用精确比较；只有在标量/SIMD、串行/并行等**不同执行路径**之间比较时，才可引用文档化跨路径容差；`sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 等数学函数则必须使用按函数单独记录的容差规则。
 
-因此，`tests/` 中不得把 `max(1 ULP, epsilon * |scalar_result|)` 当作全局默认比较。它只能作为 Tier 2 的已文档化跨路径容差实现之一；`usize` 与其他无符号整数约束属于 `require.md §28.5` 的编译期边界，不适用该数值规则。
+因此，`tests/` 中不得把 `max(1 ULP, epsilon * |scalar_result|)` 当作全局默认比较。它只能作为 `MathTolerance::CrossPath { max_ulp, epsilon }` 的实现语义；`usize` 与其他无符号整数约束属于 `require.md §28.5` 的编译期边界，不适用该数值规则。所有数值比较统一通过 `MathTolerance` 进行，不再单独使用 `max_ulp` 或 `epsilon` 参数。
 
 为避免 `assert_tensor_close_real_math(..., tolerance: MathTolerance, ...)` 与 `math_eq_f64(..., tolerance: MathTolerance)` 中的类型名悬空，测试辅助层在 `tests/common/assertions.rs` 中显式定义如下容差契约：
 
 ```rust
 /// Tolerance specification for floating-point tensor comparisons.
+#[derive(Clone, Copy, Debug)]
 pub enum MathTolerance {
-    /// Exact bit-for-bit equality (for same-path results)
+    /// Exact equality (for deterministic same-path comparisons)
     Exact,
-    /// Cross-path tolerance: max(1 ULP, epsilon * |reference|)
-    CrossPath { epsilon: f64 },
+    /// Cross-path tolerance (SIMD vs scalar, parallel vs serial)
+    CrossPath { max_ulp: u64, epsilon: f64 },
+    /// Per-math-function tolerance
+    MathFunc { max_ulp: u64, epsilon: f64 },
 }
 ```
 
-其中 `ulp_distance(actual, expected) -> u64` 由测试 utility helper module 提供，用于计算两个 `f64` 值之间的 ULP 距离；本节的 `ulp_eq_f64_exact` / `ulp_eq_f64_cross_path` 仅引用该 helper，而不在此文档中重复展开其实现。
+其中 `ulp_distance(actual, expected) -> u64` 由测试 utility helper module 提供，用于计算两个 `f64` 值之间的 ULP 距离；本节的 `ulp_eq_f64_exact` / `ulp_eq_f64_with_tolerance` 仅引用该 helper，而不在此文档中重复展开其实现。
+
+数学函数容差须按函数单独文档化，最小基线如下：
+
+| 函数 | 容差 (ULP) | epsilon | 说明 |
+|------|-----------|---------|------|
+| sin/cos | 4 | 1e-6 | 标准三角函数 |
+| sqrt | 1 | 1e-7 | |
+| exp | 2 | 1e-6 | |
+| ln | 2 | 1e-6 | |
+| floor/ceil | 0 | 0 | 精确 |
 
 ```rust
 /// Compare two finite floats for exact equality on the same execution path.
@@ -715,31 +728,36 @@ pub fn ulp_eq_f64_exact(actual: f64, expected: f64) -> bool {
     ulp_distance(actual, expected) == 0
 }
 
-/// Compare two finite floats under a documented cross-path tolerance budget.
-pub fn ulp_eq_f64_cross_path(actual: f64, expected: f64, max_ulp: u64) -> bool {
+/// Compare two finite floats under a documented tolerance budget.
+pub fn ulp_eq_f64_with_tolerance(actual: f64, expected: f64, tolerance: MathTolerance) -> bool {
     if !actual.is_finite() || !expected.is_finite() {
         return false;
     }
 
-    let ulp_ok = ulp_distance(actual, expected) <= max_ulp;
-    let epsilon_ok = (actual - expected).abs() <= f64::EPSILON * expected.abs();
-
-    ulp_ok || epsilon_ok
+    match tolerance {
+        MathTolerance::Exact => ulp_distance(actual, expected) == 0,
+        MathTolerance::CrossPath { max_ulp, epsilon }
+        | MathTolerance::MathFunc { max_ulp, epsilon } => {
+            let ulp_ok = ulp_distance(actual, expected) <= max_ulp;
+            let epsilon_ok = (actual - expected).abs() <= epsilon;
+            ulp_ok || epsilon_ok
+        }
+    }
 }
 
-/// Compare two complex values component-wise under a documented cross-path tolerance budget.
-pub fn ulp_eq_complex64_cross_path(
+/// Compare two complex values component-wise under a documented tolerance budget.
+pub fn ulp_eq_complex64_with_tolerance(
     actual: Complex<f64>,
     expected: Complex<f64>,
-    max_ulp: u64,
+    tolerance: MathTolerance,
 ) -> bool {
-    ulp_eq_f64_cross_path(actual.re, expected.re, max_ulp)
-        && ulp_eq_f64_cross_path(actual.im, expected.im, max_ulp)
+    ulp_eq_f64_with_tolerance(actual.re, expected.re, tolerance)
+        && ulp_eq_f64_with_tolerance(actual.im, expected.im, tolerance)
 }
 
 /// Compare math-function results with a per-function documented tolerance.
 pub fn math_eq_f64(actual: f64, expected: f64, tolerance: MathTolerance) -> bool {
-    tolerance.accepts(actual, expected)
+    ulp_eq_f64_with_tolerance(actual, expected, tolerance)
 }
 ```
 
@@ -774,7 +792,11 @@ fn test_sum_parallel_feature_consistency() {
     #[cfg(feature = "parallel")]
     {
         assert!(
-            ulp_eq_f64_cross_path(t.sum(), scalar_baseline, 1),
+            ulp_eq_f64_with_tolerance(
+                t.sum(),
+                scalar_baseline,
+                MathTolerance::CrossPath { max_ulp: 1, epsilon: 1e-12 },
+            ),
             "sum() under the parallel feature must stay within the documented cross-path tolerance"
         );
     }
@@ -813,7 +835,11 @@ fn test_simd_add_consistency() {
     for i in 0..1024 {
         let expected_value = expected[i];
         assert!(
-            ulp_eq_f64_cross_path(result[[i]], expected_value, 1),
+            ulp_eq_f64_with_tolerance(
+                result[[i]],
+                expected_value,
+                MathTolerance::CrossPath { max_ulp: 1, epsilon: 1e-12 },
+            ),
             "SIMD add mismatch at {}",
             i
         );
@@ -1364,6 +1390,7 @@ fn compile_fail_harness() {
 | 约束项     | 约束内容                                           |
 | ---------- | -------------------------------------------------- |
 | 平台支持   | 集成测试仅覆盖 `std` 环境                          |
+| MSRV       | Rust 1.85+                                         |
 | crate 结构 | 测试方案依附当前单 crate，不拆分额外测试 crate     |
 | 依赖约束   | 维持标准测试工具链，不为测试矩阵引入额外第三方依赖 |
 | SemVer     | 无影响；测试矩阵与 CI 分层属于工程验证约束，不改变公开 API 语义 |

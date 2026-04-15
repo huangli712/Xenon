@@ -202,6 +202,21 @@ where
 
 > **整数算术补充约束：** 对 `i32` / `i64` 的 `add` / `sub` / `mul` / `div`，实现必须使用 checked arithmetic；凡发生溢出、除以零或结果不可表示，均按需求说明书 §12 与 §27 走 panic 语义，不得回落为 wrapping 行为。
 
+> **checked arithmetic 实现约束：** 整数 checked arithmetic 通过内部 sealed trait 实现：
+
+```rust
+/// Internal sealed trait for checked binary arithmetic.
+/// Only implemented for i32, i64.
+pub(crate) trait CheckedArith: Sized {
+    fn checked_add(a: Self, b: Self) -> Self; // panics on overflow
+    fn checked_sub(a: Self, b: Self) -> Self; // panics on overflow
+    fn checked_mul(a: Self, b: Self) -> Self; // panics on overflow
+    fn checked_div(a: Self, b: Self) -> Self; // panics on div-by-zero
+}
+```
+
+所有整数逐元素运算在实现层使用此 trait，确保 debug 和 release 均在溢出/除零时 panic。浮点和复数使用标准算术运算符。
+
 ### 5.4 一元运算（分离 trait bounds）
 
 ```rust
@@ -751,6 +766,7 @@ User calls add / unary op / comparison method
 | 项目       | 约束                                                                                           |
 | ---------- | ---------------------------------------------------------------------------------------------- |
 | 标准库环境 | Xenon 当前版本仅支持 `std`，本文档不再承诺 `no_std` 兼容性                                     |
+| MSRV       | Rust 1.85+                                                                                     |
 | crate 结构 | 保持单 crate 结构，不拆分独立 math crate                                                       |
 | SemVer     | 逐元素方法签名、支持类型集合、广播错误类别以及整数 panic 诊断字段均属于稳定契约；后续新增优化路径不得改变这些公开语义 |
 | 依赖约束   | 仅允许项目基线中的可选 SIMD / 并行依赖，不新增额外第三方数学库                                 |

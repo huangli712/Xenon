@@ -16,7 +16,7 @@
 | Element trait       | 基础约束（Copy+Clone+PartialEq+Debug+Display+Send+Sync+Sealed）+ zero()/one()                   | —                                                               |
 | Numeric trait       | Element + Add+Sub+Mul+Div+Neg + conjugate（通用数值运算能力标记）                              | 运算实现本身（委托给 core::ops）                                |
 | RealScalar trait    | Numeric + PartialOrd + abs/sqrt/sin/exp/ln/floor/ceil + NaN 检测                                | 复数运算                                                        |
-| ComplexScalar trait | Numeric + re/im/norm（并为复数类型特化 `conjugate`）                                          | 复数类型定义（在 `src/complex/` 模块，参见 `04-complex.md` §5） |
+| ComplexScalar trait | Numeric + re/im/norm（复数专用只读能力）                                                     | 复数类型定义（在 `src/complex/` 模块，参见 `04-complex.md` §5） |
 | 基础类型实现        | 为 i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool 实现上述 trait；`usize` 仅用于索引/形状元数据 | 类型转换逻辑（在 `src/convert/` 模块）                          |
 | Sealed trait        | 封闭集合，禁止外部 crate 实现                                                                   | 开放扩展                                                        |
 
@@ -260,17 +260,13 @@ pub trait ComplexScalar: Numeric + Sealed {
 
     fn re(self) -> Self::Real;
     fn im(self) -> Self::Real;
-    /// Returns the complex conjugate (re - im*j).
-    ///
-    /// This method is also provided by `Numeric::conjugate()` for all numeric
-    /// types; `ComplexScalar` overrides it with the mathematical conjugate
-    /// implementation for complex values.
-    fn conjugate(self) -> Self;
     fn norm(self) -> Self::Real;
 }
 ```
 
-> **范围说明：** `ComplexScalar` 公开面仅保留当前范围内真正需要的复数能力；其中 `conjugate()` 与 `Numeric::conjugate()` 保持同一语义入口，但在复数类型上提供数学共轭实现。`arg`/`exp`/`ln`/`sqrt`/`from_polar`/`i` 等超出当前张量 API 范围的方法若实现需要，降为 `complex` 模块内部 helper，不放入本公开 trait。
+> **设计说明：** `Numeric::conjugate()` 是全体数值元素唯一的统一共轭入口：实数路径返回恒等，复数路径返回数学共轭。`ComplexScalar` 只保留 `re` / `im` / `norm` 这类复数专用能力，不再重复声明 `conjugate()`，从而避免两个公开 trait 暴露同名契约。
+>
+> **范围说明：** `ComplexScalar` 公开面仅保留当前范围内真正需要的复数能力。`arg`/`exp`/`ln`/`sqrt`/`from_polar`/`i` 等超出当前张量 API 范围的方法若实现需要，降为 `complex` 模块内部 helper，不放入本公开 trait。
 
 ### 5.4a OrderedCompareElement trait
 
@@ -721,13 +717,12 @@ impl ComplexScalar for Complex<f64> {
 
     fn re(self) -> Self::Real { self.re }
     fn im(self) -> Self::Real { self.im }
-    fn conjugate(self) -> Self { Self::conj(self) }
     fn norm(self) -> Self::Real { self.norm() }
 }
 // Same pattern applies to Complex<f32>.
 ```
 
-> **补充说明：** `i32`/`i64`/`f32`/`f64` 作为实数路径上的 `Numeric` 实现，`conjugate()` 一律为恒等操作；`Complex<f32>`/`Complex<f64>` 的 `Numeric` 与 `ComplexScalar` 实现则提供数学共轭，其中 `ComplexScalar::conjugate()` 保持 `fn conjugate(self) -> Self { Self::conj(self) }`。
+> **补充说明：** `i32`/`i64`/`f32`/`f64` 作为实数路径上的 `Numeric` 实现，`conjugate()` 一律为恒等操作；`Complex<f32>`/`Complex<f64>` 的数学共轭也统一通过 `Numeric::conjugate()` 暴露，`ComplexScalar` 实现只补充复数特有的 `re`/`im`/`norm`。
 
 ---
 
@@ -1048,6 +1043,7 @@ Upstream modules declare element bounds
 | 约束       | 说明                                          |
 | ---------- | --------------------------------------------- |
 | `std` only | 本模块依赖 `std` 环境，不讨论 `no_std`        |
+| MSRV       | Rust 1.85+                                   |
 | 单 crate   | 保持单 crate 边界                             |
 | SemVer     | 公开 trait、类型约束与转换语义变更遵循 SemVer |
 | 最小依赖   | 无新增第三方依赖                              |

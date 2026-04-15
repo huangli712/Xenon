@@ -145,7 +145,7 @@ impl<S, A, D> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: Element,
+    A: CastElement,
 {
     /// Element-wise type conversion.
     ///
@@ -194,9 +194,9 @@ where
 }
 ````
 
-> **设计决策（修订）：** `require.md §23` 要求的是逐元素转换语义，而不是“仅限 Owned 输入”。因此 `cast()` 面向所有可读存储开放；无论输入是 `Owned`、`ViewRepr`、`ViewMutRepr` 还是 `ArcRepr`，结果统一物化为新的 owned 张量，以保持返回类型与所有权语义一致。目标类型进一步收缩为 `CastElement`，从签名层面排除 `bool`。
+> **设计决策（修订）：** `require.md §23` 要求的是逐元素转换语义，而不是“仅限 Owned 输入”。因此 `cast()` 面向所有可读存储开放；无论输入是 `Owned`、`ViewRepr`、`ViewMutRepr` 还是 `ArcRepr`，结果统一物化为新的 owned 张量，以保持返回类型与所有权语义一致。源类型与目标类型都进一步收缩为 `CastElement`，从签名层面排除 `bool`。
 
-> **bool 源类型边界：** `Tensor<bool, _>` 也不能作为 `cast()` 的源类型使用。`bool`/`BoolElement` 不在本模块约定的 `CastElement` 源集合内，因此相关调用应在编译期失败，而不是落到运行时 `TypeConversion`。
+> **bool 源类型边界：** `cast<B>()` 仅在 `A: CastElement + CastTo<B>` 时可用。`bool` 不实现 `CastElement`，因此 `Tensor<bool, _>` 上 `cast()` 在编译期不可调用，而不是落到运行时 `TypeConversion`。
 
 ### 5.3 类型转换路径表
 
@@ -619,6 +619,7 @@ User calls cast() / to_owned() / into_owned()
 | 项目       | 约束                                                      |
 | ---------- | --------------------------------------------------------- |
 | 平台       | 仅 `std`                                                  |
+| MSRV       | Rust 1.85+                                                |
 | crate 结构 | 单 crate                                                  |
 | 依赖       | 不新增第三方依赖                                          |
 | 错误语义   | 所有执行路径都须保持同一 `Result` / `TypeConversion` 契约 |

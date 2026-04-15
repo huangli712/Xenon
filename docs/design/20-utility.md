@@ -14,7 +14,7 @@
 | 职责           | 包含                                     | 不包含                                            |
 | -------------- | ---------------------------------------- | ------------------------------------------------- |
 | 范围裁剪       | `clip`（将元素限制在 [min, max] 范围内） | 其他 numpy 风格变换（flip/roll/shift），以及不再作为稳定公共 API 的 `clip_inplace` |
-| 填充操作       | `try_fill` / `fill`（仅对可写张量开放的原地填充） | 构造方法（zeros/ones/full，由 construct.rs 提供） |
+| 填充操作       | `try_fill` / `fill`（`try_fill` 覆盖所有张量，`fill` 仅对可写张量开放） | 构造方法（zeros/ones/full，由 construct.rs 提供） |
 | 连续性保证     | `to_contiguous`（确保内存连续存储）      | 布局计算逻辑（由 layout 模块提供）                |
 | 非连续布局支持 | 通过迭代器正确处理非连续内存             | 布局优化策略                                      |
 
@@ -47,7 +47,7 @@ L6: util  <- current module (depends on tensor, dimension, storage, layout, iter
 | 类型     | 内容 |
 | -------- | ---- |
 | 需求映射 | 需求说明书 §21, §22 |
-| 范围内   | `clip`、`fill`、`to_contiguous` / `into_contiguous`。 |
+| 范围内   | `clip`、`try_fill` / `fill`、`to_contiguous` / `into_contiguous`。 |
 | 范围外   | sort、argsort、searchsorted，以及除 clip / fill / contiguous 之外的其他 utility 操作。 |
 | 非目标   | 不把 `util` 扩展为通用算法杂项集合，不新增第三方依赖，也不重定义 convert / layout 的职责。 |
 
@@ -195,27 +195,26 @@ where
 
 ### 5.2 fill 操作
 
-> **公开入口调整：** `try_fill()` 与 `fill()` 都是仅对 `S: StorageMut` 可写路径开放的写入 API；当张量类型不满足可写约束时，方法在类型层面不可用。
+> **公开入口调整：** `try_fill()` 是覆盖所有张量类型的运行时可恢复入口；当底层存储为只读/共享只读时，返回 `Err(XenonError::InvalidStorageMode { operation: "try_fill".into(), expected: "writable storage".into(), actual: self.storage_kind().to_string().into(), shape: Some(self.shape().to_vec()) })`。`fill()` 保持 `S: StorageMut` 约束，仅作为可写张量的便捷入口。
 
 ````rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
-    S: StorageMut<Elem = A>,
+    S: Storage<Elem = A>,
     D: Dimension,
     A: Element + Clone,
 {
     /// Fill all logical elements with the specified value.
     ///
-    /// Public recoverable entry point for writable tensors.
-    /// Read-only tensor types do not expose this method because the impl
-    /// requires `S: StorageMut`.
+    /// Public recoverable entry point for all tensor storage modes.
+    /// Read-only storage returns `InvalidStorageMode` at runtime.
     pub fn try_fill(&mut self, value: A) -> Result<(), XenonError> {
         fill_try_dispatch(self, value)
     }
 }
 ````
 
-> 对于只读/共享只读张量类型，`try_fill()` 不会出现在可用方法集中；只有满足 `S: StorageMut` 的可写张量才暴露此入口。对于可写张量，`try_fill()` 是返回 `Result` 的公开写入入口。
+> 对于 `Owned` 与 `ViewMut` 等可写张量，`try_fill()` 成功后语义与 `fill()` 一致；对于 `View`、`Shared` 以及其他只读存储模式，`try_fill()` 按 `require.md §21.2` 返回可恢复错误，而不是在类型层面完全隐藏该入口。
 
 ````rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -231,7 +230,7 @@ where
     ///
     /// Efficient direct-write path for writable storage.
     /// Public documentation should guide end users to `try_fill()` when they
-    /// want the recoverable API on a writable tensor type.
+    /// need the runtime-checked API that also covers read-only tensor types.
     ///
     /// # Examples
     ///
@@ -253,14 +252,14 @@ where
 }
 ````
 
-> **分层说明：** `try_fill` 与 `fill` 都通过 `S: StorageMut` 在类型层限制为可写张量 API。只读/共享只读存储不会在运行时“拒绝 fill”；它们根本不满足该方法的 impl 约束，因此方法不可调用。
+> **分层说明：** `fill` 继续通过 `S: StorageMut` 在类型层限制为可写张量 API，以保留易用的编译期拒绝；`try_fill` 则对所有张量开放，并在只读/共享只读场景返回 `InvalidStorageMode`，从而满足已公开运行时填充 API 的可恢复错误约束。
 
 #### 5.2.1 fill 的显式写入语义
 
 - `fill` 必须按**逻辑索引**迭代，并且只写入逻辑元素。
 - 对带 padding 的底层存储：不得写入任何 padding bytes。
 - 对非连续但可写的视图：必须严格按 `shape` / `strides` / `offset` / `flags` 或等价 layout helper 导航到每个逻辑元素。
-- 对存在零步长的布局：按照 `require.md` §16，它们来自广播只读结果；这类只读/共享只读张量不满足 `StorageMut` 约束，因此 `try_fill()` / `fill()` 都不会作为可用方法暴露。
+- 对存在零步长的布局：按照 `require.md` §16，它们来自广播只读结果；这类只读/共享只读张量的 `try_fill()` 必须返回 `InvalidStorageMode`，而 `fill()` 因 `StorageMut` 约束在编译期不可用。
 
 ```
 fill_logical_only(storage, shape, strides, offset, flags, value):
@@ -343,6 +342,8 @@ where
 
 > **设计说明：** `to_contiguous(&self)` 是稳定的“总是返回独立 owned 结果”入口；当输入已是连续 F-order 时，它不得改变逻辑值，且可以复用现有数据作为读取来源，但因为返回值必须与借用源解除别名，所以仍会物化为新的 owned 张量。
 > `into_contiguous(self)` 是满足 `require.md` §22 的消费式入口：当输入已经是连续 F-order 且具备 owned 化前提时，可复用现有数据，否则退化为重新打包。
+>
+> **与 `to_owned()` / `into_owned()` 的边界：** `to_contiguous()` / `into_contiguous()` 专注于连续性保证：对已是 F-order 连续的输入可 O(1) 复用。`to_owned()` / `into_owned()`（见 `21-type.md`）专注于独立拷贝：无论原始布局如何，始终产出独立的拥有型存储。二者可能产生相同结果（非连续输入 → 连续 owned），但语义主语不同。
 
 ### 5.4 Good / Bad 对比
 
@@ -394,7 +395,7 @@ fill(tensor, value):
         write storage[offset] = clone(value)
 ```
 
-关键点：utility 层保留两层入口，但二者都只对可写张量开放：`try_fill()` 提供返回 `Result` 的公开入口，`fill()` 提供直接写入路径。只读/广播结果不会在运行时被拒绝，而是通过 `S: StorageMut` 类型约束直接排除在可用 API 之外。可写存储仍必须遵守“只写逻辑元素”的契约：连续布局可走快路径，带 padding / 非连续布局必须按逻辑索引与 strides 写入，且不得触碰 padding bytes。
+关键点：utility 层保留两层入口：`try_fill()` 是对所有张量开放的运行时检查入口，`fill()` 是仅对可写张量开放的直接写入路径。只读/广播结果在 `try_fill()` 上返回 `InvalidStorageMode`，而 `fill()` 继续通过 `S: StorageMut` 做编译期拒绝。可写存储仍必须遵守“只写逻辑元素”的契约：连续布局可走快路径，带 padding / 非连续布局必须按逻辑索引与 strides 写入，且不得触碰 padding bytes。
 
 ### 6.3 to_contiguous 路径选择
 
@@ -435,8 +436,8 @@ into_contiguous(tensor):
 
 - [ ] **T1**: 实现 `fill` 方法
   - 文件: `src/util/fill.rs`
-  - 内容: 在 `S: StorageMut` 层实现 `fill(&mut self, value: A)` 核心 helper，并保持只写逻辑元素的契约
-  - 测试: `test_fill_basic`, `test_fill_non_contiguous`, `test_fill_padded_writes_logical_only`
+  - 内容: 在 `S: StorageMut` 层实现 `fill(&mut self, value: A)` 核心 helper，并补上对所有张量开放的 `try_fill(&mut self, value: A) -> Result<(), XenonError>` 分发路径；只读张量返回 `InvalidStorageMode`
+  - 测试: `test_fill_basic`, `test_fill_non_contiguous`, `test_fill_padded_writes_logical_only`, `test_try_fill_read_only_returns_invalid_storage_mode`
   - 前置: tensor 模块、iter 模块完成
   - 预计: 10 min
 
@@ -496,6 +497,7 @@ Wave 2:      [T3] → [T4]
 | `test_fill_basic`                         | 基本填充所有元素为指定值                | 高     |
 | `test_fill_non_contiguous`                | 非连续布局正确填充所有逻辑元素          | 高     |
 | `test_fill_padded_writes_logical_only`    | 带 padding 的可写张量仅覆写逻辑元素     | 高     |
+| `test_try_fill_read_only_returns_invalid_storage_mode` | 只读张量上的 `try_fill()` 返回 `InvalidStorageMode` | 高     |
 | `test_fill_empty`                         | 空数组 fill 不 panic                    | 中     |
 | `test_to_contiguous_f_order`              | F-order 连续输入返回 owned 拷贝         | 高     |
 | `test_into_contiguous_reuses_owned_data`  | F-order owned 输入消费后复用原数据      | 高     |
@@ -539,6 +541,7 @@ Wave 2:      [T3] → [T4]
 | 场景 | 测试方式 |
 | ---- | ---- |
 | `clip` 仅对 `ClipElement` 开放，拒绝 `bool` / `Complex` | 编译期测试。 |
+| `try_fill()` 对只读 / 共享只读张量返回 `InvalidStorageMode` | 运行时测试。 |
 | `into_contiguous(self)` 仅对支持 owned 转换的存储模式开放 | 编译期测试。 |
 | sort / argsort / searchsorted 不属于当前 API | API 缺失断言。 |
 
@@ -572,7 +575,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `clip` 在 `min > max` 或边界为 `NaN` 时返回 `XenonError::InvalidArgument { operation, argument, expected, actual, axis, shape }`。`try_fill` 是 `S: StorageMut` 可写路径上的 `Result` 入口；只读或共享只读张量因不满足类型约束而不暴露 `try_fill` / `fill`。`XenonError` 是本模块唯一公开错误类型。 |
+| Recoverable error | `clip` 在 `min > max` 或边界为 `NaN` 时返回 `XenonError::InvalidArgument { operation, argument, expected, actual, axis, shape }`。`try_fill()` 对所有张量类型开放：可写张量返回 `Ok(())`，只读或共享只读张量返回 `XenonError::InvalidStorageMode { operation, expected, actual, shape }`；`fill()` 仍因 `StorageMut` 约束仅在可写张量上可用。`XenonError` 是本模块唯一公开错误类型。 |
 | Panic | 公开 utility API 不定义额外 panic 语义；连续化与裁剪失败统一走显式错误或正常返回。 |
 | 路径一致性 | 连续与非连续布局都必须通过同一逻辑元素语义工作；当前无独立 SIMD / 并行分支。 |
 | 容差边界 | `clip` 对浮点数遵循 IEEE 754 比较语义；不额外引入近似容差。 |
@@ -623,6 +626,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 | 约束       | 说明                                                                                 |
 | ---------- | ------------------------------------------------------------------------------------ |
 | `std` only | Xenon 当前版本仅支持 `std` 环境，本文不再讨论 `no_std` 路径                          |
+| MSRV       | Rust 1.85+                                                                           |
 | 单 crate   | `util` 设计保持在现有 crate 内，不引入额外 crate                                     |
 | SemVer     | 当前文档补充了 `into_contiguous(self)` 的复用语义，并明确 `clip` 的 NaN 边界错误语义 |
 | 最小依赖   | 本模块不新增第三方依赖                                                               |
