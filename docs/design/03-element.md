@@ -16,7 +16,7 @@
 | Element trait       | 基础约束（Copy+Clone+PartialEq+Debug+Display+Send+Sync+Sealed）+ zero()/one()                   | —                                                               |
 | Numeric trait       | Element + Add+Sub+Mul+Div+Neg（四则运算能力标记）                                               | 运算实现本身（委托给 core::ops）                                |
 | RealScalar trait    | Numeric + PartialOrd + abs/sqrt/sin/exp/ln/floor/ceil + NaN 检测                                | 复数运算                                                        |
-| ComplexScalar trait | Numeric + conj（核心复数操作）+ 复数数学接口（norm/from_polar/arg/exp/ln/sqrt）                 | 复数类型定义（在 `src/complex/` 模块，参见 `04-complex.md` §5） |
+| ComplexScalar trait | Numeric + conj/norm/re/im（当前公开范围内需要的复数能力）                                      | 复数类型定义（在 `src/complex/` 模块，参见 `04-complex.md` §5） |
 | 基础类型实现        | 为 i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool 实现上述 trait；`usize` 仅用于索引/形状元数据 | 类型转换逻辑（在 `src/convert/` 模块）                          |
 | Sealed trait        | 封闭集合，禁止外部 crate 实现                                                                   | 开放扩展                                                        |
 
@@ -79,6 +79,7 @@ src/element/
 
 ```
 src/element/
+├── crate::error      # XenonError for recoverable conversion diagnostics
 ├── crate::complex    # Complex<T> type definition
 ├── crate::private    # Sealed trait infrastructure
 ├── core::ops         # Add/Sub/Mul/Div/Neg operator traits
@@ -90,6 +91,7 @@ src/element/
 
 | 来源模块         | 使用的类型/trait                                           |
 | ---------------- | ---------------------------------------------------------- |
+| `crate::error`   | `XenonError`（显式类型转换失败时返回）                     |
 | `crate::complex` | `Complex<f32>`, `Complex<f64>`（元素类型实现目标）         |
 | `crate::private` | `Sealed`（封闭 trait 实现边界）                            |
 | `core::ops`      | `Add`, `Sub`, `Mul`, `Div`, `Neg`（Numeric supertrait）    |
@@ -160,6 +162,11 @@ pub trait Element:
 /// `bool` is explicitly excluded. `usize` is reserved for index/shape metadata
 /// and is not part of the tensor element set.
 ///
+/// The native operator supertraits describe syntax availability only.
+/// Overflow-sensitive integer paths must additionally follow Xenon's checked
+/// arithmetic contracts in operation modules so that recoverable vs panic
+/// behavior remains consistent with `require.md`.
+///
 /// Note: `Sealed` is not listed as a separate supertrait here because
 /// `Element` already inherits `Sealed`.
 pub trait Numeric:
@@ -213,6 +220,8 @@ pub trait Numeric:
 > **设计决策：** `Numeric` 定义 `conjugate()` 方法，为实数类型返回 `self`，为复数类型返回共轭。这使得统一的内积（dot product）实现可以泛化处理实数和复数情况。Xenon 采用 `sum(conjugate(a[i]) * b[i])` 的约定，并在 `12-matrix.md` 中保持一致。其余四则运算由 `Add/Sub/Mul/Div/Neg` trait 提供。`usize` 明确保留给索引/形状元数据，不进入元素算术层次。
 >
 > **设计说明**：`Numeric::conjugate()` 是泛型入口：实数类型返回自身，复数类型委托给 `ComplexScalar::conj()`。`ComplexScalar::conj()` 是复数专用的底层实现。对实数类型（`f32`、`f64`、`i32`、`i64`），`conjugate(self)` 为恒等操作（返回 `self`）；对复数类型（`Complex<f32>`、`Complex<f64>`），`conjugate(self)` 通过复数 trait 路径执行共轭。两者语义等价，但职责分层不同。
+>
+> **整数算术契约**：`Add/Sub/Mul/Div/Neg` 只表达运算符可用性，不单独定义 Xenon 的溢出语义。凡需求文档要求“溢出/除零/结果不可表示即 panic”的整数运算路径，具体模块必须通过 checked 标量原语或等价显式检查落实，不得仅凭原生运算符 trait 假定语义成立。
 
 ### 5.3 RealScalar trait
 
@@ -260,8 +269,8 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
 ```rust
 /// Complex scalar trait.
 ///
-/// Provides complex-specific operations on top of Numeric.
-/// Only Complex<f32> and Complex<f64> implement this.
+/// Provides the minimal complex-specific operations required by the current
+/// tensor API surface. Only Complex<f32> and Complex<f64> implement this.
 pub trait ComplexScalar: Numeric + Sealed {
     // Sealed is already inherited via Element (which Numeric extends),
     // but listed here for defensive clarity — makes the sealed intent explicit
@@ -280,16 +289,10 @@ pub trait ComplexScalar: Numeric + Sealed {
     /// - `Numeric::conjugate(x)` — via Numeric trait
     fn conj(self) -> Self;
     fn norm(self) -> Self::Real;
-    fn arg(self) -> Self::Real;
-    fn exp(self) -> Self;
-    fn ln(self) -> Self;
-    fn sqrt(self) -> Self;
-    fn from_polar(r: Self::Real, theta: Self::Real) -> Self;
-    fn i() -> Self;
 }
 ```
 
-> **范围说明：** `ComplexScalar` 中的 `arg`/`exp`/`ln`/`sqrt`/`from_polar`/`i` 方法为内部复数运算所需基础设施，不直接作为张量级公开 API 承诺。当前版本公开的张量运算范围仍以 `require.md` §12/§15 为准。
+> **范围说明：** `ComplexScalar` 公开面仅保留当前范围内真正需要的复数能力。`arg`/`exp`/`ln`/`sqrt`/`from_polar`/`i` 等超出当前张量 API 范围的方法若实现需要，降为 `complex` 模块内部 helper，不放入本公开 trait。
 
 ### 5.5 支持的类型与 trait 矩阵
 
@@ -378,7 +381,8 @@ where
 // Good - explicit type conversion, no automatic promotion
 let a: Tensor<f64, Ix2> = Tensor::zeros((3, 4));
 let b: Tensor<i32, Ix2> = Tensor::zeros((3, 4));
-let c = &a + &b.cast::<f64>();  // explicit conversion
+let b64 = b.cast::<f64>()?;
+let c = &a + &b64;
 
 // Bad - expecting automatic type promotion (not supported in Xenon)
 // let c = &a + &b;  // Compile error: no matching impl for f64 + i32
@@ -401,7 +405,7 @@ let c = &a + &b.cast::<f64>();  // explicit conversion
 /// This trait is implemented only inside Xenon for the supported source/target pairs.
 /// External crates cannot extend the conversion matrix.
 pub trait CastTo<T>: Element {
-    type Error = XenonError;
+    type Error;
 
     /// Performs the type conversion.
     fn cast_to(self) -> Result<T, Self::Error>;
@@ -418,7 +422,7 @@ pub trait CastTo<T>: Element {
 //   impl CastTo<f64> for Complex<f64>  -- Result, requires zero imaginary part
 ```
 
-> **错误映射说明：** `XenonError` 是唯一公开错误类型，类型转换错误的规范对外形式为 `XenonError::TypeConversion(TypeConversionError)`。`TypeConversionError` 仅作为内部细节承载源类型/目标类型/失败原因等上下文，不得直接暴露为公共 API 的返回错误类型。
+> **错误映射说明：** `XenonError` 是唯一公开错误类型。类型转换错误对外统一表示为 `XenonError::TypeConversion { source_type, target_type, reason, element_index }`；若实现内部保留 `TypeConversionReason` 等细节类型，也只能作为构造该结构化字段的内部辅助，不能成为公开 API 的错误返回类型。
 >
 > **Bool 边界说明：** `bool` 不为任何目标类型实现 `CastTo<T>`；`bool` 张量调用 `.cast::<f32>()` 等转换必须在编译期失败。
 
@@ -441,11 +445,12 @@ impl CastTo<f32> for Complex<f32> {
 
     fn cast_to(self) -> Result<f32, Self::Error> {
         if self.im != 0.0 {
-            return Err(XenonError::TypeConversion(TypeConversionError::new(
-                "Complex<f32>",
-                "f32",
-                "non-zero imaginary part",
-            )));
+            return Err(XenonError::TypeConversion {
+                source_type: "Complex<f32>".into(),
+                target_type: "f32".into(),
+                reason: TypeConversionReason::NonZeroImaginaryPart,
+                element_index: 0,
+            });
         }
         Ok(self.re)
     }
@@ -456,11 +461,12 @@ impl CastTo<f64> for Complex<f64> {
 
     fn cast_to(self) -> Result<f64, Self::Error> {
         if self.im != 0.0 {
-            return Err(XenonError::TypeConversion(TypeConversionError::new(
-                "Complex<f64>",
-                "f64",
-                "non-zero imaginary part",
-            )));
+            return Err(XenonError::TypeConversion {
+                source_type: "Complex<f64>".into(),
+                target_type: "f64".into(),
+                reason: TypeConversionReason::NonZeroImaginaryPart,
+                element_index: 0,
+            });
         }
         Ok(self.re)
     }
@@ -471,11 +477,12 @@ impl CastTo<f32> for Complex<f64> {
 
     fn cast_to(self) -> Result<f32, Self::Error> {
         if self.im != 0.0 {
-            return Err(XenonError::TypeConversion(TypeConversionError::new(
-                "Complex<f64>",
-                "f32",
-                "non-zero imaginary part",
-            )));
+            return Err(XenonError::TypeConversion {
+                source_type: "Complex<f64>".into(),
+                target_type: "f32".into(),
+                reason: TypeConversionReason::NonZeroImaginaryPart,
+                element_index: 0,
+            });
         }
         CastTo::<f32>::cast_to(self.re)
     }
@@ -486,13 +493,14 @@ impl CastTo<f64> for Complex<f32> {
 
     fn cast_to(self) -> Result<f64, Self::Error> {
         if self.im != 0.0 {
-            return Err(XenonError::TypeConversion(TypeConversionError::new(
-                "Complex<f32>",
-                "f64",
-                "non-zero imaginary part",
-            )));
+            return Err(XenonError::TypeConversion {
+                source_type: "Complex<f32>".into(),
+                target_type: "f64".into(),
+                reason: TypeConversionReason::NonZeroImaginaryPart,
+                element_index: 0,
+            });
         }
-        Ok(f64::from(self.re))
+        CastTo::<f64>::cast_to(self.re)
     }
 }
 
@@ -501,11 +509,12 @@ impl CastTo<i32> for Complex<f32> {
 
     fn cast_to(self) -> Result<i32, Self::Error> {
         if self.im != 0.0 {
-            return Err(XenonError::TypeConversion(TypeConversionError::new(
-                "Complex<f32>",
-                "i32",
-                "non-zero imaginary part",
-            )));
+            return Err(XenonError::TypeConversion {
+                source_type: "Complex<f32>".into(),
+                target_type: "i32".into(),
+                reason: TypeConversionReason::NonZeroImaginaryPart,
+                element_index: 0,
+            });
         }
         CastTo::<i32>::cast_to(self.re)
     }
@@ -516,11 +525,12 @@ impl CastTo<i64> for Complex<f64> {
 
     fn cast_to(self) -> Result<i64, Self::Error> {
         if self.im != 0.0 {
-            return Err(XenonError::TypeConversion(TypeConversionError::new(
-                "Complex<f64>",
-                "i64",
-                "non-zero imaginary part",
-            )));
+            return Err(XenonError::TypeConversion {
+                source_type: "Complex<f64>".into(),
+                target_type: "i64".into(),
+                reason: TypeConversionReason::NonZeroImaginaryPart,
+                element_index: 0,
+            });
         }
         CastTo::<i64>::cast_to(self.re)
     }
@@ -531,11 +541,12 @@ impl CastTo<i32> for Complex<f64> {
 
     fn cast_to(self) -> Result<i32, Self::Error> {
         if self.im != 0.0 {
-            return Err(XenonError::TypeConversion(TypeConversionError::new(
-                "Complex<f64>",
-                "i32",
-                "non-zero imaginary part",
-            )));
+            return Err(XenonError::TypeConversion {
+                source_type: "Complex<f64>".into(),
+                target_type: "i32".into(),
+                reason: TypeConversionReason::NonZeroImaginaryPart,
+                element_index: 0,
+            });
         }
         CastTo::<i32>::cast_to(self.re)
     }
@@ -546,18 +557,19 @@ impl CastTo<i64> for Complex<f32> {
 
     fn cast_to(self) -> Result<i64, Self::Error> {
         if self.im != 0.0 {
-            return Err(XenonError::TypeConversion(TypeConversionError::new(
-                "Complex<f32>",
-                "i64",
-                "non-zero imaginary part",
-            )));
+            return Err(XenonError::TypeConversion {
+                source_type: "Complex<f32>".into(),
+                target_type: "i64".into(),
+                reason: TypeConversionReason::NonZeroImaginaryPart,
+                element_index: 0,
+            });
         }
         CastTo::<i64>::cast_to(self.re)
     }
 }
 ```
 
-> **实现约束：** `Complex<T> -> Real` 的所有 `CastTo` 实现都必须先检查虚部是否为 `0`。检查通过后，再复用对应实部的标量转换规则：恒等转换保持成功、无损扩大转换保持无错误、有损或窄化转换继续沿用内部 `TypeConversionError` 细节，但对外统一包装为 `XenonError::TypeConversion(...)`。检查失败时统一返回可恢复错误，失败原因标记为 `non-zero imaginary part`。
+> **实现约束：** `Complex<T> -> Real` 的所有 `CastTo` 实现都必须先检查虚部是否为 `0`。检查通过后，再复用对应实部的标量转换规则；检查失败时统一返回结构化 `XenonError::TypeConversion { ... }`，失败原因标记为 `TypeConversionReason::NonZeroImaginaryPart`。
 
 | 转换示例                   | 默认语义                        |
 | -------------------------- | ------------------------------- |
@@ -646,8 +658,8 @@ impl BoolElement for bool {
 // let b: i32 = 2;
 // let c = a + b;  // Compile error
 
-// Must convert explicitly (no `as` — use From/TryFrom)
-let c = a + f64::from(b);
+// Must convert explicitly through Xenon's cast contract
+let c = a + b.cast_to()?;
 ```
 
 ### 6.4 NaN/Inf 处理语义
@@ -848,7 +860,6 @@ Wave 3: [T6]      [T9] ← ────┘
 | `test_complex_f64_zero_one`     | `Complex<f64>::zero()`, `Complex<f64>::one()`              | 高     |
 | `test_complex_f64_conj`         | `Complex::new(3.0, 4.0).conj() == Complex::new(3.0, -4.0)` | 高     |
 | `test_complex_f32_norm`         | `Complex::new(3.0f32, 4.0f32).norm() == 5.0`               | 高     |
-| `test_complex_f64_from_polar`   | `from_polar(1.0, PI/2) ≈ j`                                | 中     |
 | `test_sealed_prevents_external` | 外部类型无法实现 Element（编译测试）                       | 中     |
 
 ### 8.3 边界测试场景
@@ -903,7 +914,7 @@ Wave 3: [T6]      [T9] ← ────┘
 | 模块           | 使用的 trait                              | 用途                   |
 | -------------- | ----------------------------------------- | ---------------------- |
 | `overload`     | `Numeric`                                 | 逐元素运算泛型约束     |
-| `reduction`    | `Numeric`（sum）、`RealScalar`（min/max） | 归约运算泛型约束       |
+| `reduction`    | `Numeric`（sum）                          | 归约运算泛型约束       |
 | `tensor`       | `Element`                                 | Tensor<A, D> 的 A 约束 |
 | `matrix`       | `Numeric`                                 | 内积运算               |
 | `cast/convert` | `Element`                                 | 类型转换               |
@@ -943,7 +954,7 @@ Upstream modules declare element bounds
 
 | 项目              | 内容                                                                                                                                                                                                                                                                  |
 | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | 有损 `CastTo` 默认返回可恢复错误；`Complex<T> -> Real` 在虚部非零时也返回可恢复错误；对外统一使用 `XenonError::TypeConversion(TypeConversionError)`，其中 `TypeConversionError` 仅作为内部细节承载源类型/目标类型及失败原因（包括 `non-zero imaginary part`）等上下文 |
+| Recoverable error | 有损 `CastTo` 默认返回可恢复错误；`Complex<T> -> Real` 在虚部非零时也返回可恢复错误；对外统一使用结构化 `XenonError::TypeConversion { source_type, target_type, reason, element_index }` |
 | Panic             | 本模块 trait 方法本身不以 panic 作为常规错误语义；若底层标准库数学实现遇到其自身前置条件，遵循标准库行为                                                                                                                                                              |
 | 路径一致性        | scalar 路径必须与普通标量实现一致；SIMD：不适用；parallel：不适用                                                                                                                                                                                                     |
 | 容差边界          | 浮点相关比较遵循 IEEE 754 与各测试中显式容差；整数与布尔类型不适用                                                                                                                                                                                                    |

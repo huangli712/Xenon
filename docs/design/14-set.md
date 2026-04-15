@@ -73,6 +73,8 @@ src/set/
 ```
 src/set/unique.rs
 ├── crate::tensor        # TensorBase<S, D>, Tensor<A, Ix1>
+├── crate::storage       # Storage
+├── crate::dimension     # Dimension, Ix1
 ├── crate::element       # Element, ComplexScalar
 ├── crate::complex       # Complex<f32>, Complex<f64>
 └── crate::iter          # Elements for collection
@@ -92,7 +94,7 @@ src/set/unique.rs
 
 ### 4.3 依赖方向
 
-> **依赖方向：单向向上。** `set` 仅消费 `tensor`、`element`、`complex`、`iter` 模块。
+> **依赖方向：单向向上。** `set` 仅消费 `tensor`、`storage`、`dimension`、`element`、`complex`、`iter` 模块。
 
 ### 4.4 依赖合法性与替代方案
 
@@ -191,10 +193,14 @@ assert_eq!(empty.unique().len(), 0);
 
 ```
 unique(self):
-    1. Collect all elements into Vec<A>
-    2. Check one by one whether each element already appears in the result set
-    3. If not present, append to the result; if already present, skip it
-    4. Construct Tensor<A, Ix1> from Vec
+    1. Collect all logical elements from the input tensor.
+    2. Partition them into equivalence classes using `unique_eq`.
+    3. Keep exactly one representative for each class, while preserving every NaN instance.
+    4. Construct Tensor<A, Ix1> from the retained representatives.
+
+Note:
+    - The document constrains only set semantics.
+    - Output order is not part of the contract and may vary between implementations or runs.
 ```
 
 ### 6.2 浮点判等处理
@@ -273,6 +279,16 @@ impl UniqueElement for Complex<f64> {
 }
 // bool does not implement this
 ```
+
+### 6.5 推荐实现策略
+
+| 场景 | 推荐策略 | 说明 |
+| ---- | -------- | ---- |
+| 小输入或原型实现 | 线性扫描 | 可直接复用 `unique_eq`，但最坏 O(N^2)，不宜作为大张量主路径。 |
+| 大输入主路径 | 哈希 / 索引辅助结构 | 在不改变 `require.md` §15 集合语义的前提下，用哈希表、索引表或等价辅助结构把重复检测降到近似 O(N)。 |
+| 浮点 / 复数特殊值 | 专门分支处理 | `NaN != NaN`，因此哈希或索引策略也必须显式保留每个 `NaN`，不得把它们合并。 |
+
+实现可以自由选择代表元保留顺序、桶顺序或其它内部组织方式；这些选择都不得被文档固化为稳定输出顺序契约。
 
 ---
 
@@ -477,12 +493,12 @@ User calls unique()
 
 ---
 
-## 12. 性能考量
+## 12. 性能描述
 
 ### 12.1 复杂度
 
 - 对外语义不承诺具体算法复杂度
-- 参考实现可采用线性扫描去重（O(N^2)），也可采用不改变外部语义的辅助索引结构优化
+- 参考实现可采用线性扫描去重（O(N^2)），但对大张量主路径应优先采用不改变外部语义的哈希或索引辅助结构
 - 无论内部实现如何，结果顺序都不是稳定契约的一部分
 
 ### 12.2 内存开销

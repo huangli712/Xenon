@@ -2,7 +2,7 @@
 
 > 文档编号: 26 | 适用范围: 所有公开 API | 阶段: Phase 1
 > 前置文档: `01-architecture.md`, `07-tensor.md`, `21-type.md`
-> 需求参考: 需求说明书 §23, §27, §28.3
+> 需求参考: 需求说明书 §8, §12-§26, §27, §28.2, §28.3, §28.5
 > 范围声明: 范围内
 
 ---
@@ -31,12 +31,12 @@
 
 ## 2. 需求映射与范围约束
 
-| 类型     | 内容                                                                     |
-| -------- | ------------------------------------------------------------------------ |
-| 需求映射 | `require.md §23`, `require.md §27`, `require.md §28.3`                   |
-| 范围内   | 可恢复错误返回值、panic 分类、诊断字段、类型转换失败、索引失败、FFI 失败 |
-| 范围外   | 自定义日志、第三方错误包装器、跨进程序列化                               |
-| 非目标   | 通过 `panic` 替代本应可恢复的用户输入错误                                |
+| 类型     | 内容                                                                                                             |
+| -------- | ---------------------------------------------------------------------------------------------------------------- |
+| 需求映射 | `require.md §8`, `§12`, `§13`, `§14`, `§16`, `§18`, `§21`, `§23`, `§25`, `§26`, `§27`, `§28.2`, `§28.3`, `§28.5` |
+| 范围内   | 可恢复错误返回值、panic 分类、诊断字段、类型转换失败、索引失败、FFI 失败                                         |
+| 范围外   | 自定义日志、第三方错误包装器、跨进程序列化                                                                       |
+| 非目标   | 通过 `panic` 替代本应可恢复的用户输入错误                                                                        |
 
 ### 2.1 关键约束
 
@@ -51,15 +51,15 @@
 
 ### 3.1 受影响模块
 
-| 模块/能力            | 影响内容                                       |
-| -------------------- | ---------------------------------------------- |
-| `tensor` / `shape`   | 形状校验、布局前提、元素总数校验               |
-| `index`              | 越界索引、按轴索引、切片边界诊断               |
-| `broadcast` / `math` | 广播失败、形状不兼容、参数非法                 |
-| `reduction`          | 非法轴、需至少一个元素的空输入、整数溢出 panic |
-| `convert`            | `TypeConversionError` 内部映射与元素索引定位   |
-| `ffi`                | FFI 前提失败与后端约束诊断                     |
-| `parallel`           | panic / `Err` 的尽快传播，不得静默吞掉         |
+| 模块/能力            | 影响内容                                     |
+| -------------------- | -------------------------------------------- |
+| `tensor` / `shape`   | 形状校验、布局前提、元素总数校验             |
+| `index`              | 越界索引、按轴索引、切片边界诊断             |
+| `broadcast` / `math` | 广播失败、形状不兼容、参数非法               |
+| `reduction`          | 非法轴、空输入单位元语义、整数溢出 panic     |
+| `convert`            | `TypeConversionError` 内部映射与元素索引定位 |
+| `ffi`                | FFI 前提失败与后端约束诊断                   |
+| `parallel`           | panic / `Err` 的尽快传播，不得静默吞掉       |
 
 ### 3.2 统一依赖方向
 
@@ -93,11 +93,11 @@
 
 > **总原则：** 所有安全公开 API 对非法输入须返回可恢复错误（`Result`）；仅 `unsafe` 函数的前提违反和内部 helper 可使用 panic。
 
-| 类别           | 允许 panic 的安全 API / 语法                   | 约束                                                          |
-| -------------- | ---------------------------------------------- | ------------------------------------------------------------- |
-| 语言级语法     | `tensor[i]`                                    | 仅指 `Index`/`IndexMut` 语法糖；越界时可 panic                |
-| 算术域错误     | `i32` / `i64` 的逐元素算术、归约、内积         | 溢出、除以零、结果不可表示时 panic                            |
-| 非用户面向契约 | workspace typed helpers 等内部/unsafe 契约辅助 | 违反 unsafe/contract precondition 的 panic 不计入用户错误模型 |
+| 类别                          | 允许 panic 的边界                                               | 约束                                                              |
+| ----------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------- |
+| 语言级语法边界                | `tensor[i]` / `tensor[i] = value`                               | 仅指 `Index`/`IndexMut` 语法糖；越界时可 panic                    |
+| 需求明确定义的算术域边界      | `i32` / `i64` 的逐元素算术、归约、内积                          | 溢出、除以零、结果不可表示时 panic                                |
+| internal / unsafe helper 边界 | private helper、`unsafe fn` 前提检查、未对外公开的 typed helper | 仅限实现内部或不安全前提；不得作为安全公开 API 的用户输入错误出口 |
 
 除上表外，其余安全公开 API 遇到错误条件时都必须返回 `Result<_, XenonError>`，不得以 panic 代替可恢复错误；即使是 FFI convenience helper，只要属于安全公开 API，也必须遵循这一规则。
 
@@ -162,11 +162,6 @@ pub enum XenonError {
         actual: usize,
     },
 
-    EmptyArray {
-        operation: Cow<'static, str>,
-        shape: Vec<usize>,
-    },
-
     InvalidArgument {
         operation: Cow<'static, str>,
         argument: Cow<'static, str>,
@@ -219,7 +214,7 @@ pub enum TypeConversionReason {
 pub type Result<T> = core::result::Result<T, XenonError>;
 ```
 
-`EmptyArray` 仅用于需要至少一个元素的操作（如 reduce 系列中需要初始值的场景）。`sum` 归约和 `dot` 内积对空输入返回加法单位元，不触发此错误。
+当前版本不定义 `EmptyArray` 公开错误变体。按 `require.md §13-§14`，空输入 `dot` 与 `sum` 返回加法单位元；若未来新增确需“至少一个元素”的 API，应在对应版本中单独裁定是否引入专门错误变体。
 
 `XenonError` 须实现 `std::error::Error` trait，提供 `source()` 方法用于链式错误追踪。
 
@@ -292,7 +287,6 @@ where
 | `InvalidAxis`                         | `operation`, `axis`, `ndim`, `shape`                                               |
 | `InvalidShape`                        | `operation`, `shape`, `expected_elements`, `actual_elements`, `offending_dim?`     |
 | `DimensionMismatch`                   | `operation`, `expected`, `actual`                                                  |
-| `EmptyArray`                          | `operation`, `shape`（仅限需要至少一个元素的操作；`sum`/`dot` 空输入不使用该错误） |
 | `InvalidArgument`                     | `operation`, `argument`, `expected`, `actual`, `axis?`, `shape?`                   |
 | `InvalidStorageMode`                  | `operation`, `expected`, `actual`, `shape?`                                        |
 | `Ffi(FfiError)`                       | 由 `FfiError` 提供 `operation`, `backend`, `precondition`, `actual`                |
@@ -402,12 +396,6 @@ impl fmt::Display for XenonError {
                 operation,
                 expected,
                 actual,
-            ),
-            Self::EmptyArray { operation, shape } => write!(
-                f,
-                "empty array in {}: shape [{}]",
-                operation,
-                fmt_shape(shape),
             ),
             Self::InvalidArgument {
                 operation,

@@ -2,7 +2,7 @@
 
 > 文档编号: 04 | 模块: `src/complex/` | 阶段: Phase 1
 > 前置文档: `00-coding.md`, `01-architecture.md`
-> 需求参考: 需求说明书 §5
+> 需求参考: 需求说明书 §4, §5, §23, §24, §25, §28
 > 范围声明: 范围内
 
 ---
@@ -14,9 +14,9 @@
 | 职责              | 包含                                                                                              | 不包含                                                                                      |
 | ----------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | 类型定义          | `Complex<T>` 结构体（`#[repr(C)]`，re/im 字段）                                                   | —                                                                                           |
-| 构造方法          | `new(re, im)`, `from_polar(r, theta)`                                                             | —                                                                                           |
+| 构造方法          | `new(re, im)`                                                                                     | 额外公开构造器（如 `from_polar`）                                                           |
 | 基础方法          | `re()`, `im()`, `conj()`, `is_real()`, `is_imaginary()`                                           | —                                                                                           |
-| 数学方法          | `norm()`（hypot）, `arg()`, `exp()`, `ln()`, `sqrt()`                                             | 复数 FFT、高阶复数运算                                                                      |
+| 数学方法          | `norm()`（hypot）, `norm_sqr()`, `to_polar()`                                                     | 将 `arg` / `exp` / `ln` / `sqrt` 暴露为公开稳定 API、复数 FFT、高阶复数运算                |
 | 算术运算          | Complex±Complex, Complex×Complex, Complex÷Complex, 一元负号                                       | 跨精度混合运算                                                                              |
 | 实数混合运算      | 同精度标量便捷：`Complex<f32> op f32`、`Complex<f64> op f64`；张量级运算前须先显式转为 `Complex<T>` | 跨精度：`f32+Complex<f64>`（须显式转换）；将该类标量便捷 impl 直接外推为张量级重载            |
 | 格式化输出        | Display（`"a+bj"` / `"a-bj"`）, Debug                                                             | —                                                                                           |
@@ -61,12 +61,14 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 | 项目     | 内容                                                            |
 | -------- | --------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §5、§23、§25                                         |
-| 范围内   | `Complex<T>` 类型定义、同精度复数运算、格式化、类型转换、FFI 布局边界 |
-| 范围外   | `num-complex` 兼容层、跨精度混合运算、FFT 与高阶复数算法        |
-| 非目标   | 引入第三方复数库依赖、开放任意 `T` 的公开实例化或 `_Complex` ABI 保证 |
+| 需求映射 | 需求说明书 §4、§5、§23、§24、§25、§28                           |
+| 范围内   | `Complex<T>` 类型定义、同精度复数算术、`conj()` / `norm()` / `norm_sqr()` / `to_polar()`、格式化、类型转换、FFI 布局边界 |
+| 范围外   | `num-complex` 兼容层、跨精度混合运算、FFT 与高阶复数算法、额外公开复数数学函数 |
+| 非目标   | 引入第三方复数库依赖、开放任意 `T` 的公开实例化、把内部数学 helper 稳定化，或 `_Complex` ABI 保证 |
 
 > **当前版本范围声明**：本版本保留 `Complex<T> op T`（右侧实数）的**标量级便捷实现**与 `Complex<T> op Complex<T>` 运算。前者仅用于单个复数值与同精度实数值的便捷组合，**不直接适用于张量逐元素运算或 `19-overload.md` 的运算符重载设计**。根据 `require.md` §5，涉及实数与复数的张量逐元素运算、运算符重载及相关 API 组合时，参与运算双方的元素类型须预先一致；用户须先将实数显式转换为 `Complex<T>`，再进入张量级运算。左侧实数运算（`T op Complex<T>`）仍不在当前版本范围内，若后续版本需要支持，须单独设计并继续满足上述同类型前提。
+
+> **公开 API 收紧**：`arg` / `exp` / `ln` / `sqrt` / `from_polar` / `i` 可作为 `complex/` 内部实现辅助能力存在，用于支撑 `to_polar()`、测试或后续上层模块实现，但**不作为当前版本对下游承诺的公开稳定 API**。本文档中的对应算法仅描述内部实现方案。
 
 ---
 
@@ -131,7 +133,7 @@ src/complex/
 
 ### 5.1 Complex<T> 完整定义
 
-```rust
+```rust,ignore
 /// Complex number: a + bj.
 ///
 /// # Memory layout
@@ -160,11 +162,11 @@ pub struct Complex<T: ComplexFloat> {
 
 1. **基础方法**（无需浮点数学）：在 `impl<T: ComplexFloat> Complex<T>` 中实现，公开可用。包括 `re()`、`im()`、`conj()`、`from_real()`、`from_imag()`、`is_real()`、`is_imaginary()`。
 
-2. **数学方法**（需要浮点数学）：在具体的 `impl Complex<f32>` 和 `impl Complex<f64>` 块中实现，公开可用。包括 `norm()`、`norm_sqr()`、`arg()`、`exp()`、`ln()`、`sqrt()`、`to_polar()`、`from_polar()`。
+2. **数学方法**（需要浮点数学）：对外稳定承诺仅包括 `norm()`、`norm_sqr()`、`to_polar()`；`arg_impl()`、`exp_impl()`、`ln_impl()`、`sqrt_impl()`、`from_polar_impl()` 等仅作为 `complex/` 内部 helper，由具体的 `impl Complex<f32>` / `impl Complex<f64>` 或私有模块承载。
 
 Xenon 公开使用 sealed 的 `ComplexFloat` 约束把 `Complex<T>` 封闭到 `f32` / `f64`；内部仍可定义 `Float` trait 绑定必要数学方法，作为实现细节：
 
-```rust
+```rust,ignore
 /// Public bound for `Complex<T>`.
 ///
 /// This trait is sealed via `private::Sealed`, so downstream crates must not
@@ -185,7 +187,7 @@ impl ComplexFloat for f64 {}
 
 内部实现细节：
 
-```rust
+```rust,ignore
 /// Internal trait for floating-point types used in Complex<T>.
 /// Only f32 and f64 implement this.
 /// NOT part of the public API — math methods are exposed via concrete impl blocks.
@@ -222,7 +224,7 @@ impl Float for f64 { /* delegates to inherent methods */ }
 
 ### 5.3 构造方法
 
-```rust
+```rust,ignore
 impl<T: ComplexFloat> Complex<T> {
     /// Creates a new complex number.
     #[inline]
@@ -247,32 +249,32 @@ impl<T: ComplexFloat> Complex<T> {
     }
 }
 
-// Concrete implementations for f32 — public API, no pub(crate) dependency
+// Internal helper implementations for f32.
 impl Complex<f32> {
-    /// Creates from polar coordinates: r * (cos(theta) + j*sin(theta)).
+    /// Internal constructor from polar coordinates: r * (cos(theta) + j*sin(theta)).
     #[inline]
-    pub fn from_polar(r: f32, theta: f32) -> Self {
+    pub(crate) fn from_polar_impl(r: f32, theta: f32) -> Self {
         Self::new(r * theta.cos(), r * theta.sin())
     }
 
-    /// Imaginary unit j (f32 specialization).
+    /// Internal imaginary-unit helper (f32 specialization).
     #[inline]
-    pub fn i() -> Self {
+    pub(crate) fn i_impl() -> Self {
         Self::new(0.0, 1.0)
     }
 }
 
-// Concrete implementations for f64 — public API, no pub(crate) dependency
+// Internal helper implementations for f64.
 impl Complex<f64> {
-    /// Creates from polar coordinates: r * (cos(theta) + j*sin(theta)).
+    /// Internal constructor from polar coordinates: r * (cos(theta) + j*sin(theta)).
     #[inline]
-    pub fn from_polar(r: f64, theta: f64) -> Self {
+    pub(crate) fn from_polar_impl(r: f64, theta: f64) -> Self {
         Self::new(r * theta.cos(), r * theta.sin())
     }
 
-    /// Imaginary unit j (f64 specialization).
+    /// Internal imaginary-unit helper (f64 specialization).
     #[inline]
-    pub fn i() -> Self {
+    pub(crate) fn i_impl() -> Self {
         Self::new(0.0, 1.0)
     }
 }
@@ -280,7 +282,7 @@ impl Complex<f64> {
 
 ### 5.4 基础方法
 
-```rust
+```rust,ignore
 // Methods that don't need Float math — publicly available without pub(crate) dependency.
 impl<T: ComplexFloat> Complex<T> {
     /// Returns the real part.
@@ -351,8 +353,8 @@ impl Complex<f64> {
 
 > **注意**：数学方法通过具体的 `impl Complex<f32>` 和 `impl Complex<f64>` 块提供，而非泛型 `impl<T: Float>`。这避免了 `Float` trait（`pub(crate)`）暴露到公共 API。
 
-````rust
-// Concrete impl for Complex<f32> — all methods are public.
+````rust,ignore
+// Concrete impl for Complex<f32> — public stable methods plus internal helpers.
 impl Complex<f32> {
     /// Modulus |z| = sqrt(re² + im²), using hypot to avoid overflow.
     #[inline]
@@ -366,28 +368,36 @@ impl Complex<f32> {
         self.re * self.re + self.im * self.im
     }
 
-    /// Argument (phase angle): atan2(im, re). Range: (-π, π].
+    /// Returns polar coordinates (r, theta).
     #[inline]
-    pub fn arg(self) -> f32 {
+    pub fn to_polar(self) -> (f32, f32) {
+        (self.norm(), self.arg_impl())
+    }
+}
+
+impl Complex<f32> {
+    /// Internal argument helper: atan2(im, re). Range: (-π, π].
+    #[inline]
+    pub(crate) fn arg_impl(self) -> f32 {
         self.im.atan2(self.re)
     }
 
-    /// Complex exponential: e^z = e^re * (cos(im) + j*sin(im)).
+    /// Internal complex exponential: e^z = e^re * (cos(im) + j*sin(im)).
     #[inline]
-    pub fn exp(self) -> Self {
+    pub(crate) fn exp_impl(self) -> Self {
         let exp_re = self.re.exp();
         Self::new(exp_re * self.im.cos(), exp_re * self.im.sin())
     }
 
-    /// Complex natural logarithm (principal value): ln|z| + j*arg(z).
+    /// Internal complex natural logarithm (principal value): ln|z| + j*arg(z).
     #[inline]
-    pub fn ln(self) -> Self {
-        Self::new(self.norm().ln(), self.arg())
+    pub(crate) fn ln_impl(self) -> Self {
+        Self::new(self.norm().ln(), self.arg_impl())
     }
 
-    /// Complex square root (principal value, real part >= 0).
+    /// Internal complex square root (principal value, real part >= 0).
     #[inline]
-    pub fn sqrt(self) -> Self {
+    pub(crate) fn sqrt_impl(self) -> Self {
         let r = self.norm();
         if r == 0.0 {
             return Self::new(0.0, 0.0);
@@ -398,16 +408,9 @@ impl Complex<f32> {
         let im_sign = if self.im >= 0.0 { im_part } else { -im_part };
         Self::new(re_part, im_sign)
     }
-
-    /// Converts to polar coordinates (r, theta).
-    #[inline]
-    pub fn to_polar(self) -> (f32, f32) {
-        (self.norm(), self.arg())
-    }
 }
 
-// Concrete impl for Complex<f64> — all methods are public.
-// Same logic as f32, with f64 types.
+// Concrete impl for Complex<f64> — public stable methods plus internal helpers.
 impl Complex<f64> {
     /// Modulus |z| = sqrt(re² + im²), using hypot to avoid overflow.
     ///
@@ -427,28 +430,36 @@ impl Complex<f64> {
         self.re * self.re + self.im * self.im
     }
 
-    /// Argument (phase angle): atan2(im, re). Range: (-π, π].
+    /// Returns polar coordinates (r, theta).
     #[inline]
-    pub fn arg(self) -> f64 {
+    pub fn to_polar(self) -> (f64, f64) {
+        (self.norm(), self.arg_impl())
+    }
+}
+
+impl Complex<f64> {
+    /// Internal argument helper: atan2(im, re). Range: (-π, π].
+    #[inline]
+    pub(crate) fn arg_impl(self) -> f64 {
         self.im.atan2(self.re)
     }
 
-    /// Complex exponential: e^z = e^re * (cos(im) + j*sin(im)).
+    /// Internal complex exponential: e^z = e^re * (cos(im) + j*sin(im)).
     #[inline]
-    pub fn exp(self) -> Self {
+    pub(crate) fn exp_impl(self) -> Self {
         let exp_re = self.re.exp();
         Self::new(exp_re * self.im.cos(), exp_re * self.im.sin())
     }
 
-    /// Complex natural logarithm (principal value): ln|z| + j*arg(z).
+    /// Internal complex natural logarithm (principal value): ln|z| + j*arg(z).
     #[inline]
-    pub fn ln(self) -> Self {
-        Self::new(self.norm().ln(), self.arg())
+    pub(crate) fn ln_impl(self) -> Self {
+        Self::new(self.norm().ln(), self.arg_impl())
     }
 
-    /// Complex square root (principal value, real part >= 0).
+    /// Internal complex square root (principal value, real part >= 0).
     #[inline]
-    pub fn sqrt(self) -> Self {
+    pub(crate) fn sqrt_impl(self) -> Self {
         let r = self.norm();
         if r == 0.0 {
             return Self::new(0.0, 0.0);
@@ -459,12 +470,6 @@ impl Complex<f64> {
         let im_sign = if self.im >= 0.0 { im_part } else { -im_part };
         Self::new(re_part, im_sign)
     }
-
-    /// Converts to polar coordinates (r, theta).
-    #[inline]
-    pub fn to_polar(self) -> (f64, f64) {
-        (self.norm(), self.arg())
-    }
 }
 ````
 
@@ -472,7 +477,7 @@ impl Complex<f64> {
 
 ### 5.6 算术运算实现
 
-```rust
+```rust,ignore
 // Complex + Complex: (a+bj) + (c+dj) = (a+c) + (b+d)j
 impl<T: Float> core::ops::Add for Complex<T> {
     type Output = Self;
@@ -538,7 +543,7 @@ impl<T: Float> core::ops::Neg for Complex<T> {
 
 ### 5.7 混合运算（同精度实数与复数）
 
-```rust
+```rust,ignore
 // Complex + T: (a+bj) + r = (a+r) + bj
 impl<T: Float> core::ops::Add<T> for Complex<T> {
     type Output = Self;
@@ -574,7 +579,7 @@ impl<T: Float> core::ops::Sub<T> for Complex<T> {
 
 ### 5.8 PartialEq 实现
 
-```rust
+```rust,ignore
 impl<T: Float> PartialEq for Complex<T> {
     /// Component-wise equality. NaN != NaN (IEEE 754).
     #[inline]
@@ -588,7 +593,7 @@ impl<T: Float> PartialEq for Complex<T> {
 
 ### 5.9 格式化输出
 
-```rust
+```rust,ignore
 impl<T: Float + core::fmt::Display> core::fmt::Display for Complex<T> {
     /// Formats as "a+bj", "a-bj", "a", "bj", or "0".
     ///
@@ -622,7 +627,7 @@ impl<T: Float + core::fmt::Display> core::fmt::Display for Complex<T> {
 
 ### 5.10 类型转换
 
-```rust
+```rust,ignore
 // Precision promotion: f32 -> f64 (lossless)
 // This is the lossless direction — follows std's philosophy that From
 // should only be implemented for lossless conversions.
@@ -684,7 +689,7 @@ impl From<f64> for Complex<f64> {
 | `Complex<f32>` | `f64` | 仅当虚部为 `0` 时，按 `f32→f64` 规则转换实部 | 虚部非零时返回 `XenonError::TypeConversion(TypeConversionError)` |
 | `Complex<f64>` | `f32` | 仅当虚部为 `0` 时，按 `f64→f32` 规则转换实部 | 虚部非零时返回 `XenonError::TypeConversion(TypeConversionError)` |
 
-```rust
+```rust,ignore
 // Complex -> Real conversions are owned by CastTo<T> in src/element/.
 // complex/ documents the rule here to keep the conversion matrix complete.
 
@@ -723,7 +728,7 @@ impl CastTo<f32> for Complex<f64> {
 
 ### 5.11 内存布局静态断言
 
-```rust
+```rust,ignore
 // Compile-time layout verification
 const _: () = {
     assert!(core::mem::size_of::<Complex<f32>>() == 8);
@@ -750,7 +755,7 @@ Xenon 对需求说明书 §5 的裁决是：**公开 FFI 契约只保证 `#[repr
 
 FFI 示例：
 
-```rust
+```rust,ignore
 // Rust side
 #[no_mangle]
 pub extern "C" fn process_complex(z: *const Complex<f64>) -> Complex<f64> {
@@ -766,7 +771,7 @@ pub extern "C" fn process_complex(z: *const Complex<f64>) -> Complex<f64> {
 
 ### 5.13 Good / Bad 对比示例
 
-```rust
+```rust,ignore
 // Good - same precision arithmetic, type safe
 let z = Complex::new(1.0_f64, 2.0);
 let w = Complex::new(3.0, 4.0);
@@ -783,7 +788,7 @@ let z64: Complex<f64> = z32.into(); // Explicit upcast
 let result = z64 + 3.0_f64;         // Now same precision
 ```
 
-```rust
+```rust,ignore
 // Good - use norm() for modulus (hypot prevents overflow)
 let big = Complex::new(1e200_f64, 1e200);
 let n = big.norm(); // 1.414...e200, safe
@@ -871,7 +876,7 @@ hypot(a, b):
 
 - [ ] **T3**: 实现基础访问方法和构造辅助
   - 文件: `src/complex/mod.rs`
-  - 内容: `re()`, `im()`, `from_real()`, `from_imag()`, `i()`, `conj()`, `is_real()`, `is_imaginary()`
+  - 内容: `re()`, `im()`, `from_real()`, `from_imag()`, `conj()`, `is_real()`, `is_imaginary()`；`i` 仅保留为内部 helper
   - 测试: `test_conj`, `test_is_real`, `test_from_real`
   - 前置: T1
   - 预计: 10 min
@@ -908,17 +913,17 @@ hypot(a, b):
 
 ### Wave 4: 数学方法
 
-- [ ] **T8**: 实现数学方法 `norm`, `norm_sqr`, `arg`
+- [ ] **T8**: 实现稳定数学方法 `norm`, `norm_sqr`, `to_polar`
   - 文件: `src/complex/mod.rs`
-  - 内容: `norm()`（hypot）, `norm_sqr()`, `arg()`（atan2）, `to_polar()`
+  - 内容: `norm()`（hypot）, `norm_sqr()`, `to_polar()`；内部复用 `arg_impl()`
   - 测试: `test_norm_3_4_5`, `test_norm_no_overflow`, `test_arg_range`
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T9**: 实现数学方法 `exp`, `ln`, `sqrt`, `from_polar`
+- [ ] **T9**: 实现内部复数数学 helper
   - 文件: `src/complex/mod.rs`
-  - 内容: `exp()`, `ln()`, `sqrt()`, `from_polar()`
-  - 测试: `test_exp_ln_inverse`, `test_sqrt_neg_one`, `test_from_polar_i`
+  - 内容: `arg_impl()`, `exp_impl()`, `ln_impl()`, `sqrt_impl()`, `from_polar_impl()`, `i_impl()`
+  - 测试: `test_exp_ln_inverse`, `test_sqrt_neg_one`, `test_from_polar_i`（作为内部回归测试）
   - 前置: T8
   - 预计: 10 min
 
@@ -1015,7 +1020,7 @@ Wave 5: [T11] → [T12]
 
 推荐将 `test_div_complex` 写成显式容差断言，而不是直接对浮点结果做 `==` 比较：
 
-```rust
+```rust,ignore
 let result = Complex::new(6.0_f64, 8.0) / Complex::new(3.0_f64, 4.0);
 assert!((result.re - 2.0).abs() < 1e-10 && result.im.abs() < 1e-10);
 ```

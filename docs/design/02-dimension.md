@@ -15,7 +15,7 @@
 | ------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------- |
 | 静态维度类型        | `Ix0`-`Ix6` 元组结构体，编译期确定维度数                                                     | 运行时动态维度选择                                 |
 | 动态维度类型        | `IxDyn`（`Vec<usize>`），运行时维度数                                                        | —                                                  |
-| Dimension trait     | 完整的维度操作接口（ndim/slice/size/checked_size/strides_for_f_order/into_dyn/try_from_dyn） | 已签名 stride、logical-first pointer、布局标志计算 |
+| Dimension trait     | 完整的维度操作接口（ndim/slice/checked_size/checked_strides_for_f_order/into_dyn/try_from_dyn） | 已签名 stride、logical-first pointer、布局标志计算 |
 | IntoDimension trait | 从元组、数组、切片、Vec 构造维度                                                             | 用户自定义维度源                                   |
 | Axis 类型           | 轴标记新类型（index/next/prev/is_first/is_last）                                             | 轴上的切片/迭代操作（由 tensor 方法提供）          |
 | RemoveAxis trait    | 移除指定轴降维（Ix1→Ix0, ..., Ix6→Ix5, IxDyn→IxDyn）                                         | Ix0 不实现（标量无轴可移除）                       |
@@ -139,20 +139,12 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
     /// Returns `Self`, carrying stride counts in element units (not bytes).
     /// First axis has stride 1. The layout layer later wraps this result into
     /// `layout::Strides<D>` when layout-level stride metadata is needed.
-    fn strides_for_f_order(&self) -> Self;
+    fn checked_strides_for_f_order(&self) -> Result<Self, XenonError>;
 
     /// Returns the total number of elements.
     /// For `Ix0`, returns 1 (scalar has one element).
-    ///
-    /// # Overflow behavior
-    ///
     /// Implementations must not silently wrap on overflow.
-    /// Construction paths and layout validation must use `checked_size()` before
-    /// allocating memory or computing accessible address ranges.
-    fn size(&self) -> usize;
-
-    /// Returns the total number of elements, or `None` if the product overflows.
-    fn checked_size(&self) -> Option<usize>;
+    fn checked_size(&self) -> Result<usize, XenonError>;
 
     /// Converts to dynamic dimension. Always succeeds.
     fn into_dyn(self) -> IxDyn;
@@ -163,14 +155,6 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
     where
         Self: Sized;
 
-    /// Creates dimension from a slice.
-    /// Panics if slice length doesn't match dimension count.
-    /// Internal convenience only; public construction paths should prefer
-    /// `try_from_slice()` to surface a recoverable error.
-    fn from_slice(slice: &[usize]) -> Self
-    where
-        Self: Sized;
-
     /// Tries to create a dimension from a slice.
     /// Returns `XenonError::DimensionMismatch` on rank mismatch.
     fn try_from_slice(slice: &[usize]) -> Result<Self, XenonError>
@@ -178,13 +162,27 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
         Self: Sized;
 
     /// Returns the axis length at the given index.
-    fn axis(&self, axis: Axis) -> usize {
-        self.slice()[axis.0]
+    fn axis(&self, axis: Axis) -> Result<usize, XenonError> {
+        self.slice().get(axis.0).copied().ok_or(XenonError::InvalidAxis {
+            operation: "Dimension::axis".into(),
+            axis: axis.index(),
+            ndim: self.ndim(),
+            shape: self.slice().into(),
+        })
     }
 
     /// Sets the axis length at the given index.
-    fn set_axis(&mut self, axis: Axis, value: usize) {
-        self.slice_mut()[axis.0] = value;
+    fn set_axis(&mut self, axis: Axis, value: usize) -> Result<(), XenonError> {
+        let ndim = self.ndim();
+        let shape = self.slice().to_vec();
+        let slot = self.slice_mut().get_mut(axis.0).ok_or(XenonError::InvalidAxis {
+            operation: "Dimension::set_axis".into(),
+            axis: axis.index(),
+            ndim,
+            shape,
+        })?;
+        *slot = value;
+        Ok(())
     }
 
     /// Returns the last axis length. `Ix0` returns 1.
@@ -311,23 +309,37 @@ impl Dimension for Ix3 {
     }
 
     #[inline]
-    fn size(&self) -> usize {
-        self.checked_size().expect("dimension size overflow")
+    fn checked_size(&self) -> Result<usize, XenonError> {
+        self.0
+            .checked_mul(self.1)
+            .and_then(|v| v.checked_mul(self.2))
+            .ok_or(XenonError::InvalidShape {
+                operation: "Dimension::checked_size".into(),
+                shape: self.slice().into(),
+                expected_elements: 0,
+                actual_elements: 0,
+                offending_dim: None,
+            })
     }
 
     #[inline]
-    fn checked_size(&self) -> Option<usize> {
-        self.0.checked_mul(self.1)?.checked_mul(self.2)
-    }
-
-    #[inline]
-    fn strides_for_f_order(&self) -> Self {
-        Ix3(1, self.0, self.0.checked_mul(self.1).expect("f-order stride overflow"))
+    fn checked_strides_for_f_order(&self) -> Result<Self, XenonError> {
+        Ok(Ix3(
+            1,
+            self.0,
+            self.0.checked_mul(self.1).ok_or(XenonError::InvalidShape {
+                operation: "Dimension::checked_strides_for_f_order".into(),
+                shape: self.slice().into(),
+                expected_elements: 0,
+                actual_elements: 0,
+                offending_dim: Some(2),
+            })?,
+        ))
     }
 
     #[inline]
     fn into_dyn(self) -> IxDyn {
-        IxDyn::from_slice(&[self.0, self.1, self.2])
+        IxDyn::from_vec(vec![self.0, self.1, self.2])
     }
 
     fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
@@ -342,9 +354,15 @@ impl Dimension for Ix3 {
         }
     }
 
-    fn from_slice(slice: &[usize]) -> Self {
-        assert_eq!(slice.len(), 3, "Ix3 requires exactly 3 elements");
-        Ix3(slice[0], slice[1], slice[2])
+    fn try_from_slice(slice: &[usize]) -> Result<Self, XenonError> {
+        if slice.len() == 3 {
+            Ok(Ix3(slice[0], slice[1], slice[2]))
+        } else {
+            Err(XenonError::DimensionMismatch {
+                expected: 3,
+                actual: slice.len(),
+            })
+        }
     }
 
     // Remaining helper methods follow the same pattern.
@@ -398,20 +416,33 @@ impl Dimension for IxDyn {
     fn ndim(&self) -> usize { self.dims.len() }
     fn slice(&self) -> &[usize] { &self.dims }
     fn slice_mut(&mut self) -> &mut [usize] { &mut self.dims }
-    fn size(&self) -> usize { self.checked_size().expect("dimension size overflow") }
-
-    fn checked_size(&self) -> Option<usize> {
-        self.dims.iter().try_fold(1usize, |acc, &dim| acc.checked_mul(dim))
+    fn checked_size(&self) -> Result<usize, XenonError> {
+        self.dims
+            .iter()
+            .try_fold(1usize, |acc, &dim| acc.checked_mul(dim).ok_or(()))
+            .map_err(|_| XenonError::InvalidShape {
+                operation: "Dimension::checked_size".into(),
+                shape: self.dims.clone(),
+                expected_elements: 0,
+                actual_elements: 0,
+                offending_dim: None,
+            })
     }
 
-    fn strides_for_f_order(&self) -> Self {
+    fn checked_strides_for_f_order(&self) -> Result<Self, XenonError> {
         let mut strides = Vec::with_capacity(self.dims.len());
         let mut stride = 1usize;
         for &dim in &self.dims {
             strides.push(stride);
-            stride = stride.checked_mul(dim).expect("f-order stride overflow");
+            stride = stride.checked_mul(dim).ok_or(XenonError::InvalidShape {
+                operation: "Dimension::checked_strides_for_f_order".into(),
+                shape: self.dims.clone(),
+                expected_elements: 0,
+                actual_elements: 0,
+                offending_dim: None,
+            })?;
         }
-        IxDyn { dims: strides }
+        Ok(IxDyn { dims: strides })
     }
 
     fn into_dyn(self) -> IxDyn { self }
@@ -515,10 +546,8 @@ pub trait RemoveAxis: Dimension {
 
     /// Remove the specified axis, returning a dimension with one fewer axis.
     ///
-    /// # Panics
-    ///
-    /// Panics if `axis.index() >= self.ndim()`.
-    fn remove_axis(&self, axis: Axis) -> Self::Smaller;
+    /// Returns `XenonError::InvalidAxis` if `axis.index() >= self.ndim()`.
+    fn remove_axis(&self, axis: Axis) -> Result<Self::Smaller, XenonError>;
 }
 
 // Static dimension implementations:
@@ -534,20 +563,33 @@ pub trait RemoveAxis: Dimension {
 impl RemoveAxis for Ix1 {
     type Smaller = Ix0;
 
-    fn remove_axis(&self, axis: Axis) -> Ix0 {
-        assert!(axis.index() < 1, "axis out of bounds");
-        Ix0
+    fn remove_axis(&self, axis: Axis) -> Result<Ix0, XenonError> {
+        if axis.index() < 1 {
+            Ok(Ix0)
+        } else {
+            Err(XenonError::InvalidAxis {
+                operation: "RemoveAxis::remove_axis".into(),
+                axis: axis.index(),
+                ndim: 1,
+                shape: self.slice().into(),
+            })
+        }
     }
 }
 
 impl RemoveAxis for Ix2 {
     type Smaller = Ix1;
 
-    fn remove_axis(&self, axis: Axis) -> Ix1 {
-        assert!(axis.index() < 2, "axis out of bounds");
+    fn remove_axis(&self, axis: Axis) -> Result<Ix1, XenonError> {
         match axis.index() {
-            0 => Ix1(self.1),
-            _ => Ix1(self.0),
+            0 => Ok(Ix1(self.1)),
+            1 => Ok(Ix1(self.0)),
+            _ => Err(XenonError::InvalidAxis {
+                operation: "RemoveAxis::remove_axis".into(),
+                axis: axis.index(),
+                ndim: 2,
+                shape: self.slice().into(),
+            }),
         }
     }
 }
@@ -558,11 +600,18 @@ impl RemoveAxis for Ix2 {
 impl RemoveAxis for IxDyn {
     type Smaller = IxDyn;
 
-    fn remove_axis(&self, axis: Axis) -> IxDyn {
-        assert!(axis.index() < self.ndim(), "axis out of bounds");
+    fn remove_axis(&self, axis: Axis) -> Result<IxDyn, XenonError> {
+        if axis.index() >= self.ndim() {
+            return Err(XenonError::InvalidAxis {
+                operation: "RemoveAxis::remove_axis".into(),
+                axis: axis.index(),
+                ndim: self.ndim(),
+                shape: self.slice().into(),
+            });
+        }
         let mut v = self.dims.clone();
         v.remove(axis.index());
-        IxDyn { dims: v }
+        Ok(IxDyn { dims: v })
     }
 }
 ```
@@ -611,8 +660,8 @@ fn create_tensor_3d<A>(d1: usize, d2: usize, d3: usize) -> Tensor<A, Ix3> { /* .
 // Good - use Result for dimension conversion
 let dim: Ix3 = Ix3::try_from_dyn(dyn_dim)?;
 
-// Bad - assuming a 5D dynamic dimension can be used as Ix3 without handling mismatch
-let dim: Ix3 = Ix3::try_from_dyn(IxDyn::from_slice(&[2, 3, 4, 5, 6]))?;
+// Bad - unwrap a fallible conversion and turn a recoverable error into a panic
+let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
 ```
 
 ---
@@ -718,16 +767,23 @@ impl<D: Dimension> BroadcastDim<D> for IxDyn { type Output = IxDyn; }
 > 运行时兼容性由 `broadcast_shape()` 在调用处验证。  
 > 与 `IxDyn` 混合时始终返回 `IxDyn` 以保证类型安全。
 
-### 5.10 Reverse trait
+### 5.10 PermuteAxes / Reverse trait
 
-`Reverse` 用于转置操作，对维度序列进行反转：
+`PermuteAxes` 为转置操作提供通用轴置换语义；`Reverse` 仅作为默认 `.t()` 风格转置的便捷层：
 
 ```rust
-/// Trait for reversing the axis order of a dimension.
+/// Trait for permuting the axis order of a dimension.
 ///
 /// Used by `transpose()` in `shape` (see `16-shape.md` §5.1).
+pub trait PermuteAxes: Dimension {
+    /// Applies an explicit axis permutation.
+    fn permuted_axes(&self, permutation: &[Axis]) -> Result<Self, XenonError>
+    where
+        Self: Sized;
+}
+
+/// Convenience trait for the default reverse-axis transpose.
 pub trait Reverse: Dimension {
-    /// Reverse the axis order of this dimension.
     fn reverse(self) -> Self;
 }
 
@@ -752,6 +808,22 @@ impl Reverse for Ix3 {
 }
 
 // Ix4-Ix6: same pattern
+impl PermuteAxes for IxDyn {
+    fn permuted_axes(&self, permutation: &[Axis]) -> Result<Self, XenonError> {
+        if permutation.len() != self.ndim() {
+            return Err(XenonError::DimensionMismatch {
+                expected: self.ndim(),
+                actual: permutation.len(),
+            });
+        }
+        let mut dims = Vec::with_capacity(self.ndim());
+        for &axis in permutation {
+            dims.push(self.axis(axis)?);
+        }
+        Ok(IxDyn::from_vec(dims))
+    }
+}
+
 impl Reverse for IxDyn {
     fn reverse(self) -> Self {
         let mut dims = self.into_vec();
@@ -761,7 +833,7 @@ impl Reverse for IxDyn {
 }
 ```
 
-> **范围说明：** 当前版本 `transpose` 仅支持默认轴反转（`.t()`）。一般轴置换不在当前版本范围内，参见 `require.md` §17。
+> **范围说明：** 当前版本的形状操作只包含 transpose，但 transpose 语义本身须支持显式轴置换；默认的轴反转（`.t()`）只是该语义的便捷特例。参见 `require.md` §17。
 
 ---
 
@@ -980,9 +1052,9 @@ Wave 5:  [T10] → [T11] → [T12]
 
 | 不变量                                           | 测试方法     |
 | ------------------------------------------------ | ------------ |
-| `dim.strides_for_f_order().ndim() == dim.ndim()` | 所有维度类型 |
-| `dim.into_dyn().try_from_dyn()` 往返一致         | 静态维度     |
-| `dim.size() == dim.slice().iter().product()`     | 随机形状     |
+| `dim.checked_strides_for_f_order()?.ndim() == dim.ndim()` | 所有维度类型 |
+| `Ix3::try_from_dyn(dim.clone().into_dyn()) == Ok(dim)`    | 静态维度     |
+| `dim.checked_size()? == dim.slice().iter().product()`     | 随机形状     |
 
 ### 8.5 集成测试
 
@@ -1040,8 +1112,8 @@ User provides shape / axis / dimension input
 
 | 项目           | 内容 |
 | -------------- | ---- |
-| Recoverable error | 动态转静态维度数不匹配时返回 `XenonError::DimensionMismatch`；上下文字段统一为 `expected`、`actual` |
-| Panic | `size()` 或 `strides_for_f_order()` 的已验证快捷路径发生乘法溢出时 panic；`from_slice()` 长度不匹配或 `remove_axis()` 越界时 panic |
+| Recoverable error | 动态转静态维度数不匹配时返回 `XenonError::DimensionMismatch`；`checked_size()`、`checked_strides_for_f_order()`、`try_from_slice()`、`axis()`、`set_axis()`、`remove_axis()` 在失败时统一返回结构化 `XenonError` |
+| Panic | 本模块公开设计不再把维度溢出、轴越界或切片长度不匹配建模为 panic；若内部已验证快捷路径保留 unwrap/expect，也不得穿透公开 API |
 | 路径一致性 | scalar 路径与普通标量化实现必须保持一致；SIMD：不适用；parallel：不适用 |
 | 容差边界 | 不适用 |
 
@@ -1103,11 +1175,11 @@ User provides shape / axis / dimension input
 
 | 属性     | 值                                                                                     |
 | -------- | -------------------------------------------------------------------------------------- |
-| 决策     | 保留 `size()` 作为已验证维度的快捷路径，同时提供 `checked_size()` 供构造与布局验证使用 |
-| 理由     | 既保留日常查询便利性，又避免在关键安全路径上静默回绕                                   |
-| 风险     | 如果调用方跳过 `checked_size()` 直接在未验证输入上调用 `size()`，仍可能触发 panic      |
-| 替代方案 | 仅保留 `checked_size()` — 放弃，普通只读查询会变得冗长                                 |
-| 替代方案 | 继续使用静默回绕乘法 — 放弃，安全路径不能接受静默回绕                                  |
+| 决策     | 将 `checked_size()` 与 `checked_strides_for_f_order()` 作为公开主接口，构造与布局验证统一走可恢复错误路径 |
+| 理由     | 避免公开 API 在维度乘法溢出时 panic，同时满足需求说明书对可恢复错误的要求                                    |
+| 风险     | 调用方需要显式处理 `Result`，文档与示例必须保持一致                                                          |
+| 替代方案 | 继续把 `size()` / `strides_for_f_order()` 作为公开主接口 — 放弃，公开安全路径不能以 panic 表达可恢复错误    |
+| 替代方案 | 继续使用静默回绕乘法 — 放弃，安全路径不能接受静默回绕                                                        |
 
 ---
 

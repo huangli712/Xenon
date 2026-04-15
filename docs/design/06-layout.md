@@ -2,7 +2,7 @@
 
 > 文档编号: 06 | 模块: `src/layout/` | 阶段: Phase 2
 > 前置文档: `02-dimension.md`
-> 需求参考: 需求说明书 §7, §8, §16, §17, §19, §22, §25, §27, §28
+> 需求参考: 需求说明书 §7, §8, §16, §17, §19, §22, §25, §26, §27, §28
 > 范围声明: 范围内
 
 ---
@@ -58,7 +58,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 | 项目     | 内容                                                                                                 |
 | -------- | ---------------------------------------------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §7、§8、§16、§17、§19、§22、§25、§27、§28                                                 |
+| 需求映射 | 需求说明书 §7、§8、§16、§17、§19、§22、§25、§26、§27、§28                                            |
 | 范围内   | `LayoutFlags`、`Strides<D>`、F-order 步长/连续性/对齐/零步长语义、转置/广播相关合法布局校验         |
 | 范围外   | 存储分配、元素访问、C-order、负步长布局支持、reshape、into_shape、布局顺序转换                      |
 | 非目标   | 引入第三方 bitflags 依赖、多布局系统、运行时可插拔布局后端，或在当前版本引入 reshape/顺序转换语义   |
@@ -87,6 +87,7 @@ src/layout/
 
 ```
 src/layout/
+├── crate::error         # XenonError for checked stride computation / validation
 └── crate::dimension     # Dimension trait, Ix0~Ix6, IxDyn
 ```
 
@@ -94,6 +95,7 @@ src/layout/
 
 | 来源模块    | 使用的类型/trait                                               |
 | ----------- | -------------------------------------------------------------- |
+| `error`     | `XenonError`（步长计算和布局校验失败）                         |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md §5`） |
 | `core`      | `usize`                                                        |
 
@@ -108,6 +110,8 @@ src/layout/
 ### 4.3 依赖方向声明
 
 > **依赖方向：单向向上。** `layout/` 仅消费 `dimension` 的 trait 和类型，不被其依赖。`tensor/`、`math/`、`simd/` 等上层模块消费 layout 的类型和函数。对齐检查（`is_aligned`）接受原始指针 `*const u8`，无需依赖 `storage` 模块。
+
+> **职责统一声明：** `Dimension` 只拥有 shape/rank 语义；所有 stride 计算与保存（包括其它文档中曾出现的 `strides_for_f_order` 一类能力）统一收敛到 `layout/` 的 `Strides<D>` 与 `compute_f_strides()`，避免跨模块重复承载 stride 语义。
 
 ---
 
@@ -219,7 +223,7 @@ pub enum Order {
 }
 ```
 
-`LayoutFlags` 提供从 `Order` 构造标志的便捷方法。该能力仅服务于内部元数据表达，不代表当前版本支持顺序转换：
+`LayoutFlags` 提供从 `Order` 构造标志的便捷方法。该能力仅作为**内部临时占位 helper** 服务于元数据构建，不代表当前版本支持顺序转换，也不足以表达完整布局状态：
 
 ````rust
 impl LayoutFlags {
@@ -234,7 +238,7 @@ impl LayoutFlags {
     /// assert!(flags.is_f_contiguous());
     /// ```
     #[inline]
-    pub const fn from_order(order: Order) -> Self {
+    pub(crate) const fn from_order(order: Order) -> Self {
         match order {
             Order::F => Self(Self::F_CONTIGUOUS.0),
         }
@@ -265,7 +269,7 @@ pub enum LayoutState {
 
 分类语义约定如下：
 
-- `LayoutState::FContiguous`：满足当前文档 §5.4 的 F-order 连续性判定，且不包含零步长广播轴。
+- `LayoutState::FContiguous`：满足当前文档 §5.4 的 F-order 连续性判定，且**严格不包含零步长广播轴**。
 - `LayoutState::NonContiguous`：表示任意其它非广播 stride 模式，例如转置后布局或切片后非连续布局。
 - `LayoutState::BroadcastView`：表示至少包含一个零步长轴的广播视图，用于与一般非连续视图区分。
 
@@ -306,7 +310,7 @@ impl<D: Dimension> Strides<D> {
     pub fn from_slice(slice: &[usize]) -> Result<Self, XenonError>;
 
     /// Compute default F-contiguous strides for the given shape.
-    pub fn f_contiguous(shape: &D) -> Self;
+    pub fn f_contiguous(shape: &D) -> Result<Self, XenonError>;
 
     /// Returns the stride for dimension `axis`.
     /// Panics if axis is out of bounds.
@@ -341,15 +345,16 @@ impl<D: Dimension> Strides<D> {
 **算法**：
 
 ```
-function compute_f_strides(shape: [usize; N]) -> [usize; N]:
+function compute_f_strides(shape: [usize; N]) -> Result<[usize; N], XenonError>:
     strides = array of size N
     cumulative = 1
 
     for i from 0 to N-1:
         strides[i] = cumulative
-        cumulative = cumulative * shape[i]
+        cumulative = checked_mul(cumulative, shape[i])
+            or return IntegerOverflow / InvalidLayout
 
-    return strides
+    return Ok(strides)
 ```
 
 **示例**：
@@ -360,7 +365,7 @@ i=0: stride[0] = 1,    cumulative = 1 * 3 = 3
 i=1: stride[1] = 3,    cumulative = 3 * 4 = 12
 i=2: stride[2] = 12,   cumulative = 12 * 5 = 60
 
-Result: strides = [1, 3, 12]
+Result: Ok(strides = [1, 3, 12])
 ```
 
 **API**：
@@ -372,8 +377,9 @@ Result: strides = [1, 3, 12]
 /// * `shape` - Length of each axis
 ///
 /// # Returns
-/// `Strides<D>` with the same rank as `shape`, storing explicit stride metadata.
-pub fn compute_f_strides<D: Dimension>(shape: &D) -> Strides<D>;
+/// `Result<Strides<D>, XenonError>` with the same rank as `shape`, storing
+/// explicit stride metadata.
+pub fn compute_f_strides<D: Dimension>(shape: &D) -> Result<Strides<D>, XenonError>;
 ```
 
 ### 5.4 连续性检查算法
@@ -415,7 +421,7 @@ Result: false (not F-contiguous)
 
 #### 合法 stride 布局族
 
-- **F-order contiguous**：对所有轴满足 `strides[i] == product(shape[0..i])`；对 `shape[i] == 1` 的轴，可按 §5.4 的连续性规则放宽判定。
+- **F-order contiguous**：对所有轴满足 `strides[i] == product(shape[0..i])`；对 `shape[i] == 1` 的轴，可按 §5.4 的连续性规则放宽判定；一旦出现零步长，则不得归类为 `F_CONTIGUOUS`。
 - **转置视图（non-contiguous）**：`strides` 是对应 F-order contiguous stride 集合的轴置换结果，且所有 stride 都为正。
 - **广播视图**：广播轴允许 stride 为 `0`；其余非广播轴必须保持 F-order 或转置后的正 stride 模式。
 - **单元素或 0-D**：只要 metadata 可表示且访问范围合法，任意有效 stride 都视为合法。
@@ -428,7 +434,8 @@ Result: false (not F-contiguous)
 #### 校验规则
 
 - `total_elements = product(shape)`，且计算过程不得溢出 `usize`。
-- `max_accessed_offset = sum(stride[i] * (shape[i] - 1))`（逐轴累加）必须小于底层 storage 的可见长度。
+- 访问范围校验必须显式纳入 `offset`。当 `total_elements == 0` 时，要求 `offset <= storage_len`，且不得计算 `shape[i] - 1`；当 `total_elements > 0` 时，
+  `max_accessed_offset = offset + sum(stride[i] * (shape[i] - 1) for all i where shape[i] > 0)`（逐轴累加且使用 checked arithmetic）必须满足 `max_accessed_offset < storage_len`。
 - 每个 `stride[i]` 都必须可表示为 `isize`，不得发生表示溢出。
 
 #### safe vs unsafe 构造的责任分工
@@ -472,67 +479,9 @@ shape = [3, 4], strides = [1, 0]  // axis 1 is broadcast
 Indices [0, 0], [0, 1], [0, 2], and [0, 3] access the same physical element
 ```
 
-### 5.8 Layout 结构体
+### 5.8 当前任务边界
 
-> **注意**：`Layout` 结构体目前为"内部预留，当前版本不作为公开 API"（reserved for future internal use）。
-> 当前 `TensorBase` 实现直接内联 `LayoutFlags`（见 `07-tensor.md §5.1`）；本节保留该结构体仅用于实现草案与未来版本讨论。
-
-```rust,ignore
-/// Memory layout descriptor.
-///
-/// Layout describes memory access pattern flags only.
-/// The byte offset is stored directly in TensorBase (see `07-tensor.md §5.1`).
-///
-// NOTE: Layout struct is defined here for potential future use.
-// Current TensorBase implementation inlines LayoutFlags directly.
-// See 07-tensor.md §5.1 for the actual implementation.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Layout {
-    /// Layout flags
-    flags: LayoutFlags,
-}
-
-impl Layout {
-    /// Creates a new layout from flags.
-    pub fn new(flags: LayoutFlags) -> Self {
-        Self { flags }
-    }
-
-    /// Computes the layout flags from shape, strides, and pointer.
-    pub fn compute<D: Dimension>(
-        shape: &D,
-        strides: &Strides<D>,
-        ptr: *const u8,
-    ) -> Self {
-        let flags = compute_layout_flags(shape, strides, ptr);
-        Self { flags }
-    }
-
-    /// Returns true if F-order contiguous.
-    #[inline]
-    pub fn is_f_contiguous(&self) -> bool {
-        self.flags.is_f_contiguous()
-    }
-
-    /// Returns true if 64-byte aligned.
-    #[inline]
-    pub fn is_aligned(&self) -> bool {
-        self.flags.is_aligned()
-    }
-
-    /// Returns true if any zero stride exists.
-    #[inline]
-    pub fn has_zero_stride(&self) -> bool {
-        self.flags.has_zero_stride()
-    }
-
-    /// Returns the full layout flags.
-    #[inline]
-    pub fn flags(&self) -> LayoutFlags {
-        self.flags
-    }
-}
-```
+> **任务收缩：** 当前版本的 layout 设计不再单独引入 `Layout` 结构体。`TensorBase` 直接缓存 `LayoutFlags`，layout 模块对外只提供 `LayoutFlags`、`LayoutState`、`Strides<D>` 与相关计算/校验函数。若后续版本确需额外布局描述对象，须以新需求为前提单独设计。
 
 ### 5.9 compute_layout_flags 内部函数
 
@@ -564,8 +513,8 @@ pub(crate) fn compute_layout_flags<A, D: Dimension>(
 ### 5.10 Good/Bad 对比
 
 ```rust,ignore
-// Good - F-order stride computation
-let strides = compute_f_strides(&shape);  // [1, 3, 12] for [3,4,5]
+// Good - checked F-order stride computation
+let strides = compute_f_strides(&shape)?;  // [1, 3, 12] for [3,4,5]
 
 // Bad - hardcoded strides (not general-purpose, error-prone)
 let strides = [1, 3, 12];  // only valid for [3,4,5]
@@ -591,14 +540,15 @@ let contig = check_contiguity(tensor.shape(), tensor.strides());  // O(n) repeat
 function compute_flags(shape, strides, ptr):
     flags = LayoutFlags::EMPTY
 
-    // 1. Contiguity
-    flags = flags.set_f_contiguous(is_f_contiguous(shape, strides))
+    // 1. Stride properties
+    has_zero_stride = any(stride == 0 for stride in strides)
+    flags = flags.set_has_zero_stride(has_zero_stride)
 
-    // 2. Alignment (based on the logical-first-element pointer, not the backing allocation base)
+    // 2. Contiguity
+    flags = flags.set_f_contiguous(!has_zero_stride && is_f_contiguous(shape, strides))
+
+    // 3. Alignment (based on the logical-first-element pointer, not the backing allocation base)
     flags = flags.set_aligned(is_aligned(ptr))
-
-    // 3. Stride properties
-    flags = flags.set_has_zero_stride(any(stride == 0 for stride in strides))
 
     return flags
 ```
@@ -607,10 +557,11 @@ function compute_flags(shape, strides, ptr):
 
 | 情况            | F-contiguous | 说明                        |
 | --------------- | :----------: | --------------------------- |
-| 空数组 (size=0) |     true     | 无元素，视为连续            |
+| 空数组 (size=0) |     true     | 无元素，视为连续；若含零步长标记则仍按 `BroadcastView` 分类 |
 | 标量 (ndim=0)   |     true     | 单元素                      |
 | 1D 数组         |     true     | 一维情况天然 F-连续         |
 | 含 size=1 轴    |  检查其他轴  | size=1 轴的步长不影响连续性 |
+| 任意零步长轴    |    false     | 零步长广播视图不得带 `F_CONTIGUOUS` |
 
 ### 6.3 标志位更新规则
 
@@ -657,10 +608,10 @@ Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的
 
 ### Wave 2: 核心算法
 
-- [ ] **T3**: 实现 F-order 步长计算算法
+- [ ] **T3**: 实现带错误返回的 F-order 步长计算算法
   - 文件: `src/layout/strides.rs`
-  - 内容: `compute_f_strides<D: Dimension>(shape: &D) -> Strides<D>`
-  - 测试: `test_f_strides_2d`, `test_f_strides_3d`, `test_f_strides_scalar`
+  - 内容: `compute_f_strides<D: Dimension>(shape: &D) -> Result<Strides<D>, XenonError>`
+  - 测试: `test_f_strides_2d`, `test_f_strides_3d`, `test_f_strides_scalar`, `test_f_strides_overflow`
   - 前置: T1
   - 预计: 10 min
 
@@ -678,14 +629,7 @@ Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的
   - 前置: T1
   - 预计: 10 min
 
-### Wave 3: Layout 结构体和集成
-
-- [ ] **T6**: 定义 `Layout` 结构体和构造方法
-  - 文件: `src/layout/mod.rs`
-  - 内容: `Layout` 结构体，`new`/`compute` 方法，查询方法委托
-  - 测试: `test_layout_new`, `test_layout_compute`
-  - 前置: T2, T3, T4, T5
-  - 预计: 10 min
+### Wave 3: 集成
 
 - [ ] **T7**: 实现对齐检查
   - 文件: `src/layout/strides.rs`
@@ -700,7 +644,7 @@ Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的
   - 文件: `tests/test_layout.rs`
   - 内容: 综合测试套件：步长计算、连续性检查、零步长、对齐检查
   - 测试: 完整集成测试
-  - 前置: T6, T7
+  - 前置: T3, T4, T5, T7
   - 预计: 10 min
 
 ### 并行执行图
@@ -710,9 +654,7 @@ Wave 1: [T1] → [T2]
               ↓
 Wave 2: [T3] [T4] [T5] [T7]   (parallelizable)
               ↓
-Wave 3:       [T6]
-              ↓
-Wave 4:       [T8]
+Wave 3:       [T8]
 ```
 
 ---
@@ -736,6 +678,7 @@ Wave 4:       [T8]
 | `test_f_strides_2d`        | 2D: `[3,4]` → strides `[1,3]`     | 高     |
 | `test_f_strides_3d`        | 3D: `[2,3,4]` → strides `[1,2,6]` | 高     |
 | `test_f_strides_scalar`    | 0D: `()` → strides `()`           | 高     |
+| `test_f_strides_overflow`  | 乘积溢出时返回 `XenonError`       | 高     |
 | `test_f_contig_true`       | F-连续数组判定                    | 高     |
 | `test_f_contig_false`      | 非连续数组判定                    | 高     |
 | `test_f_contig_empty`      | 空数组判定为连续                  | 中     |
@@ -761,7 +704,7 @@ Wave 4:       [T8]
 | -------------------------------------------------- | ------------------------------------------------- |
 | F-步长乘积 == 总元素数                             | `product(shape[i]) == total`                      |
 | 空数组/标量始终 F-连续                             | 随机 0D/空 shape                                  |
-| `compute_f_strides` 后 `is_f_contiguous` 返回 true | 随机 shape                                        |
+| `compute_f_strides` 成功后 `is_f_contiguous` 返回 true | 随机 shape                                     |
 | 对齐与非对齐数据元素值一致                         | `from_vec_aligned(v)` 与 `from_vec(v)` 逐元素比较 |
 
 ### 8.5 集成测试

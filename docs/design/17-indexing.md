@@ -104,7 +104,7 @@ src/
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, rank / axis metadata |
 | `layout` | `Strides<D>`, layout flags, F-order offset interpretation |
 | `storage` | `Storage`, `StorageMut`, read-only / writable storage capability |
-| `error` | `XenonError::InvalidAxis`, `InvalidArgument`, `IndexOutOfBounds`, `DimensionMismatch`, `InvalidStorageMode` |
+| `error` | `XenonError::InvalidAxis`, `InvalidArgument`, `IndexOutOfBounds`, `DimensionMismatch` |
 | `private` | `Sealed`，用于封闭 `NdIndex` 的外部实现面 |
 
 ### 4.3 依赖方向声明
@@ -164,13 +164,27 @@ where
     I: Dimension,
     D: Dimension,
 {
-    pub indices: SliceInfoIndices,
-    pub in_dim: D,
-    pub out_dim: I,
+    indices: SliceInfoIndices,
+    in_dim: D,
+    out_dim: I,
+}
+
+impl<I, D> SliceInfo<I, D>
+where
+    I: Dimension,
+    D: Dimension,
+{
+    pub fn new(indices: SliceInfoIndices, in_dim: D, out_dim: I) -> Result<Self, XenonError>;
+
+    pub fn indices(&self) -> &SliceInfoIndices;
+
+    pub fn input_dim(&self) -> &D;
+
+    pub fn output_dim(&self) -> &I;
 }
 ```
 
-`SliceInfo<I, D>` 是切片描述符的公开包装类型：`D` 表示输入维度，`I` 表示切片后的输出维度；其内部持有 `SliceInfoIndices`，并在 `slice.rs` 中负责把范围描述与维度信息绑定。
+`SliceInfo<I, D>` 是切片描述符的公开包装类型：`D` 表示输入维度，`I` 表示切片后的输出维度；其内部字段保持私有，必须通过带校验的构造器建立，以避免手工拼出“索引长度、输入维度、输出维度彼此矛盾”的无效状态。
 
 ### 5.2 张量访问与切片 API
 
@@ -216,7 +230,7 @@ where
 }
 ```
 
-> **设计决策：** 当前版本不把 `Index` / `IndexMut` 运算符重载纳入公共 API 契约。这些 trait 的签名无法返回 `Result`，与 `require.md` §18“安全接口失败时返回可恢复错误”的要求冲突；对外规范安全主路径始终是 `at()` / `get()` / `at_mut()` / `get_mut()` 与 `slice()`。若实现中仍保留 `Index` / `IndexMut`，其定位也仅限于内部便捷层 / 非规范 API 契约，且必须显式文档化“失败即 panic”。此前草案中的 `try_slice()` 与当前 `slice()` 具有相同签名且同样返回 `Result`，没有额外语义，因此移除以避免冗余接口。
+> **设计决策：** 当前版本不把 `Index` / `IndexMut` 运算符重载纳入公共 API 契约，也不为其提供规范承诺。对外规范安全主路径始终是 `at()` / `get()` / `at_mut()` / `get_mut()` 与 `slice()`；若实现中保留 `Index` / `IndexMut`，其也只属于内部便捷层 / 非规范行为，且必须显式文档化“失败即 panic”。此前草案中的 `try_slice()` 与当前 `slice()` 具有相同签名且同样返回 `Result`，没有额外语义，因此移除以避免冗余接口。
 
 ### 5.3 Good / Bad 对比
 
@@ -251,7 +265,7 @@ let value = unsafe { tensor.get_unchecked(user_index.as_slice()) };
 
 ### 6.1 核心数据结构
 
-`NdIndex<D>` 负责把多维索引转换为偏移量；`SliceInfoElem` / `SliceInfoIndices` 负责表达“定点索引”和“范围索引”的组合。两类描述都只接受 `usize`，从类型层面排除负索引与负步长。
+`NdIndex<D>` 负责把多维索引转换为偏移量；`SliceInfoElem` / `SliceInfoIndices` 负责表达“定点索引”和“范围索引”的组合。两类描述都只接受 `usize`，从类型层面排除负索引与负步长。`SliceInfo<I, D>` 额外负责把这些索引描述与输入/输出维度绑定，但其内部字段不对外公开，只能通过构造器统一校验。
 
 ### 6.2 偏移量计算
 
@@ -292,6 +306,7 @@ compute_slice(shape, strides, offset, slices):
 - 当前版本仅允许正步长；`step == 0` 返回可恢复错误。
 - 切片结果与源张量共享底层数据时，仅可落在只读或共享只读范围内，不提供共享可写视图。
 - 布局状态只能重新落在 `FContiguous`、`NonContiguous`、`BroadcastView` 三种之一。
+- `SliceInfo::new(...)` 必须校验索引描述长度、`in_dim` 与 `out_dim` 的对应关系，拒绝构造内部自相矛盾的描述符。
 
 ### 6.4 安全性论证
 
@@ -326,16 +341,16 @@ compute_slice(shape, strides, offset, slices):
 - [ ] **T2**: 实现 `at` / `get` / `get_unchecked`
     - 文件: `src/index/access.rs`
     - 内容: 统一安全与 unsafe 访问路径，保证错误边界一致
-    - 测试: `test_get_returns_index_out_of_bounds`, `test_index_out_of_bounds`
+    - 测试: `test_get_returns_index_out_of_bounds`
     - 前置: T1
     - 预计: 10 min
 
-### Wave 2: 可写访问与存储模式校验
+### Wave 2: 可写访问与 trait 约束
 
 - [ ] **T3**: 实现 `at_mut` / `get_mut` / `get_unchecked_mut`
     - 文件: `src/index/access.rs`
-    - 内容: 仅在 `StorageMut` 前提成立时暴露可写访问
-    - 测试: `test_at_mut_invalid_storage_mode`
+    - 内容: 仅在 `StorageMut` trait 前提成立时暴露可写访问
+    - 测试: `test_at_mut_requires_storage_mut`
     - 前置: T2
     - 预计: 10 min
 
@@ -393,8 +408,7 @@ Wave 2:         [T3]         Wave 3: [T4] -> [T5] -> [T6]
 | --- | --- | --- |
 | `test_at_2d` | `at()` 成功返回二维张量元素引用 | 高 |
 | `test_at_out_of_bounds` | 越界返回 `IndexOutOfBounds` | 高 |
-| `test_index_out_of_bounds` | `Index` 语法糖失败时 panic | 中 |
-| `test_at_mut_invalid_storage_mode` | 只读存储上可写访问返回 `InvalidStorageMode` | 高 |
+| `test_at_mut_requires_storage_mut` | 只在 `StorageMut` 前提成立时才存在可写访问入口 | 高 |
 | `test_get_returns_index_out_of_bounds` | `get()` 失败返回 `IndexOutOfBounds` | 高 |
 | `test_slice_basic` | 基本切片结果的 shape 与数据正确 | 高 |
 | `test_slice_with_step` | 正步长切片结果正确 | 高 |
@@ -409,7 +423,7 @@ Wave 2:         [T3]         Wave 3: [T4] -> [T5] -> [T6]
 | rank-0 张量索引 | 仅接受零维合法索引形式，偏移为 0 |
 | 广播视图上的只读索引 | 索引成功但结果仍遵循只读/共享只读语义 |
 | 非连续切片后的访问 | 偏移量计算继续基于 stride，不假设连续 |
-| 任一轴越界 | 安全接口返回 recoverable error，非主路径语法糖可 panic |
+| 任一轴越界 | 安全接口返回 recoverable error；非规范语法糖若存在可 panic |
 | 切片 `step == 0` | 返回 `InvalidArgument`，不得构造结果视图 |
 
 ### 8.4 属性测试不变量（按需）
@@ -477,8 +491,9 @@ User calls tensor.slice(info)
 
 | 主题 | 说明 |
 | --- | --- |
-| Recoverable error | `at()` / `get()` / `at_mut()` / `get_mut()` / `slice()` 在 rank 不匹配、轴非法、越界、`step == 0`、只读存储上请求可写访问时返回 `XenonError`；其中索引长度与张量 `ndim` 不匹配时，错误类型固定为 `XenonError::DimensionMismatch { expected, actual }` |
-| Panic | 若实现保留 `Index` / `IndexMut` 作为内部便捷层 / 非规范 API 契约，其失败时可 panic；这不是规范安全主路径 |
+| Recoverable error | `at()` / `get()` / `slice()` 在 rank 不匹配、轴非法、越界、`step == 0` 时返回 `XenonError`；其中索引长度与张量 `ndim` 不匹配时，错误类型固定为 `XenonError::DimensionMismatch { expected, actual }` |
+| Trait-bound 边界 | `at_mut()` / `get_mut()` / `get_unchecked_mut()` 仅在 `S: StorageMut` 前提成立时存在；不再为“只读存储上的可写索引”设计运行时 `InvalidStorageMode` 分支 |
+| Panic | 若实现保留 `Index` / `IndexMut` 作为内部便捷层 / 非规范 API 契约，其失败时可 panic；这不是规范安全主路径，也不属于公开承诺 |
 | 路径一致性 | 对同一合法输入，checked 与 unchecked 路径必须给出同一偏移和同一逻辑结果；unsafe 只省略检查 |
 | 容差边界 | 不适用；本模块不涉及浮点容差、SIMD 误差或并行归约差异 |
 
@@ -508,19 +523,14 @@ XenonError::IndexOutOfBounds {
     shape: self.shape().to_vec(),
 }
 
-XenonError::InvalidStorageMode {
-    operation: "at_mut".into(),
-    expected: "writable storage".into(),
-    actual: storage_mode.into(),
-    shape: Some(self.shape().to_vec()),
-}
 ```
 
 显式边界：
 
 - 不再使用缺少 `ndim` / `shape` 的旧 `InvalidAxis` 形式。
 - 不引入单独公开的 `InvalidSliceStep` 私有错误名。
-- `get()` / `get_mut()` 与 `at()` / `at_mut()` 一样返回结构化可恢复错误；越界时使用 `XenonError::IndexOutOfBounds`。
+- `get()` / `get_mut()` 与 `at()` / `at_mut()` 在各自存在的前提下都返回结构化可恢复错误；越界时使用 `XenonError::IndexOutOfBounds`。
+- 可写访问能力由 `StorageMut` trait-bound 决定，而不是在运行时回退为 `InvalidStorageMode`。
 
 ---
 

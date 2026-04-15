@@ -410,7 +410,7 @@ pub struct Bad<A> {
 
 ### 3.4 Send/Sync 实现规范
 
-按存储模式声明 `unsafe impl Send/Sync`，须严格遵循以下规则（权威定义参见 `25-safety.md` §4；`05-storage.md` 中相关规则如有冲突，以 `25-safety.md` 为准）：
+按存储模式声明 `unsafe impl Send/Sync`，须严格遵循以下规则（权威定义参见 `25-safety.md` §5.1；`05-storage.md` 中相关规则如有冲突，以 `require.md` 与 `25-safety.md` 为准）：
 
 | 存储模式             | Send | Sync   | 条件                                                 |
 | -------------------- | ---- | ------ | ---------------------------------------------------- |
@@ -497,12 +497,12 @@ where
 
 ### 4.2 XenonError 设计
 
-统一错误类型 `XenonError`，覆盖所有可恢复错误场景（参见 `26-error.md` §4.2）：
+统一错误类型 `XenonError`，覆盖所有可恢复错误场景：
 
 > **注意**：仅 `tensor[...]` 这类 `Index` trait 语法在索引越界时使用 `panic`，与标准库 `slice` 行为一致；`tensor.get(...)`、`try_offset_of(...)` 等安全接口须返回 `Result<_, XenonError>`。
-> 本文档中的错误枚举示例字段名必须与 `26-error.md` 保持一致；如需扩展错误模型，应沿用同一套结构化上下文字段，而不是引入旧版别名字段。
+> 本文档中的错误枚举示例统一使用结构化字段承载诊断上下文；即使某个模块内部保留局部错误类型，也必须在公开 API 边界映射为 `XenonError` 的结构化变体，而不是直接暴露模块私有错误类型。
 
-> **FFI 边界**：Rust 内部的 fallible API 使用 `try_* -> Result` 模式。真正的 `extern "C"` FFI 边界必须使用 FFI-safe 状态码与输出参数，不得跨 ABI 返回 `Result`，也不得让 panic 穿越边界。`bare_*` 糖函数如须 panic，须在文档中显式标注 panic 条件。参见 `23-ffi.md`、`26-error.md §4`。
+> **FFI 边界**：Rust 内部的 fallible API 使用 `try_* -> Result` 模式。真正的 `extern "C"` FFI 边界必须使用 FFI-safe 状态码与输出参数，不得跨 ABI 返回 `Result`，也不得让 panic 穿越边界。公开架构不提供 `bare_*` / panic-sugar 形式的 FFI helper；需要偏移或指针计算时，仅保留 `try_offset_of()`、`try_ptr_at()` 这类可恢复错误入口。参见 `23-ffi.md`。
 
 ```rust
 #[derive(Debug, Clone)]
@@ -580,12 +580,20 @@ pub enum XenonError {
         operation: Cow<'static, str>,
         shape: Vec<usize>,
     },
-    Ffi(FfiError),
-    Workspace(WorkspaceError),
+    FfiError {
+        operation: Cow<'static, str>,
+        symbol: Option<Cow<'static, str>>,
+        shape: Option<Vec<usize>>,
+        reason: Cow<'static, str>,
+    },
+    WorkspaceError {
+        operation: Cow<'static, str>,
+        requested_bytes: usize,
+        available_bytes: Option<usize>,
+        alignment: Option<usize>,
+        reason: Cow<'static, str>,
+    },
 }
-
-/// Module-local error types wrapped by XenonError.
-/// See `23-ffi.md` for FfiError and `24-workspace.md` for WorkspaceError.
 
 pub type Result<T> = std::result::Result<T, XenonError>;
 ```
@@ -871,7 +879,7 @@ mod tests {
 | 非连续切片                 | `iter()` 正确处理步长跳转 |
 | NaN/Inf                    | 遵循 IEEE 754 语义        |
 | 高维 `shape=[2,2,2,2,2,2]` | 正确计算偏移              |
-| 大张量 `[1000, 1000]`      | 不栈溢出                  |
+| 大张量 `shape=[10_000_000]` 或 GiB 级输入 | 不栈溢出，且边界检查保持可恢复错误语义 |
 | Subnormal 浮点数           | 不 flush to zero          |
 
 ### 7.3 测试分类
@@ -885,11 +893,11 @@ mod tests {
 
 ### 7.4 测试覆盖率与数值精度
 
-**覆盖率要求**：
+**覆盖率与质量门槛**：
 
-- 行覆盖率 ≥ 80%
 - unsafe 代码块必须有对应测试
 - 每个公开 API 至少一个正向 + 一个负向测试
+- 如仓库后续引入覆盖率门槛，应作为可选 CI 质量信号维护，不得写成超出 `require.md` 的硬性发布准入条件
 
 **浮点比较**：对存在舍入误差容差的数值路径，使用近似比较；对比较 API 自身、布尔结果、文档明确要求精确一致的场景，允许/要求精确断言。参见 `require.md` §12（NaN 遵循 IEEE 754）和 §28.3。
 
@@ -962,24 +970,19 @@ where
 
 启用 feature 不能移除功能。所有 feature 组合必须能正确编译。
 
-| Feature    | 依赖                 | 说明                          |
-| ---------- | -------------------- | ----------------------------- |
-| `std`      | (default)            | 标准库支持                    |
-| `simd`     | `dep:pulp`, `std`    | SIMD 加速，依赖 `std`         |
-| `parallel` | `dep:rayon`, `std`   | 并行计算，依赖 `std`          |
+| Feature    | 依赖        | 说明                   |
+| ---------- | ----------- | ---------------------- |
+| `simd`     | `dep:pulp`  | SIMD 加速，默认关闭    |
+| `parallel` | `dep:rayon` | 并行计算，默认关闭     |
 
-其中 `simd` 必须隐式启用 `std`，因为 `pulp` 使用平台相关 intrinsics，当前不是 `no_std` 兼容路径。
-
-> **注意**：Xenon 仅支持 `std` 环境（`require.md` §1.3）。`std` feature 在 `Cargo.toml` 中存在仅为统一 feature 命名惯例；`--no-default-features` 为不支持配置，不在项目契约范围内。
+其中 `simd` 与 `parallel` 都建立在 Xenon 的 `std` 前提之上；`std` 是无条件工程基线，不单独建模为 feature。
 
 ```toml
 [features]
-default = ["std"]
-std = []                        # Additive: enables std library
-parallel = ["dep:rayon", "std"] # Additive: enables parallel iterators
-simd = ["dep:pulp", "std"]      # Additive: enables SIMD with std-backed intrinsics
+parallel = ["dep:rayon"]      # Additive: enables parallel iterators
+simd = ["dep:pulp"]           # Additive: enables SIMD with std-backed intrinsics
 # Note: libm is NOT a dependency (see 01-architecture.md §1.4).
-# RealScalar math functions (sin/exp/ln) are only available with "std" feature.
+# RealScalar math functions (sin/exp/ln) rely on Xenon's unconditional std baseline.
 ```
 
 ### 9.2 使用 `dep:` 语法声明可选依赖

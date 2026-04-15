@@ -13,7 +13,7 @@
 
 | 职责           | 包含                                     | 不包含                                            |
 | -------------- | ---------------------------------------- | ------------------------------------------------- |
-| 范围裁剪       | `clip`（将元素限制在 [min, max] 范围内） | 其他 numpy 风格变换（flip/roll/shift）            |
+| 范围裁剪       | `clip`（将元素限制在 [min, max] 范围内） | 其他 numpy 风格变换（flip/roll/shift），以及不再作为稳定公共 API 的 `clip_inplace` |
 | 填充操作       | `fill`（原地填充所有逻辑元素）           | 构造方法（zeros/ones/full，由 construct.rs 提供） |
 | 连续性保证     | `to_contiguous`（确保内存连续存储）      | 布局计算逻辑（由 layout 模块提供）                |
 | 非连续布局支持 | 通过迭代器正确处理非连续内存             | 布局优化策略                                      |
@@ -47,7 +47,7 @@ L6: util  <- current module (depends on tensor, dimension, storage, layout, iter
 | 类型     | 内容 |
 | -------- | ---- |
 | 需求映射 | 需求说明书 §21, §22 |
-| 范围内   | `clip` / `clip_inplace`、`fill`、`to_contiguous` / `into_contiguous`。 |
+| 范围内   | `clip`、`fill`、`to_contiguous` / `into_contiguous`。 |
 | 范围外   | sort、argsort、searchsorted，以及除 clip / fill / contiguous 之外的其他 utility 操作。 |
 | 非目标   | 不把 `util` 扩展为通用算法杂项集合，不新增第三方依赖，也不重定义 convert / layout 的职责。 |
 
@@ -59,7 +59,7 @@ L6: util  <- current module (depends on tensor, dimension, storage, layout, iter
 src/
 └── util/
     ├── mod.rs           # Module root, re-exports
-    ├── clip.rs          # clip / clip_inplace (range clamping)
+    ├── clip.rs          # clip (range clamping) and internal clamp helpers
     ├── fill.rs          # fill (in-place fill)
     └── contiguous.rs    # to_contiguous (contiguity guarantee)
 ```
@@ -152,11 +152,11 @@ where
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// let t = Tensor1::from_shape_vec([5], vec![-1.0, 0.5, 1.0, 2.0, 3.0])?;
     /// let clipped = t.clip(0.0, 2.0)?;
     /// assert_eq!(clipped.to_vec(), vec![0.0, 0.5, 1.0, 2.0, 2.0]);
-    /// ```
+    /// ```ignore
     pub fn clip(&self, min: A, max: A) -> Result<Tensor<A, D>, XenonError>
     where
         A: Clone,
@@ -171,65 +171,34 @@ where
                 shape: Some(self.shape().to_vec()),
             });
         }
-        let mut out = Tensor::zeros(self.raw_dim())?;
-        for (src, dst) in self.iter().zip(out.iter_mut()) {
-            *dst = if *src < min {
+        let mut out = Tensor::uninit_like(self.raw_dim())?;
+        for (src, dst) in self.iter().zip(out.iter_uninit_mut()) {
+            dst.write(if *src < min {
                 min.clone()
             } else if *src > max {
                 max.clone()
             } else {
                 src.clone()
-            };
-        }
-        Ok(out)
-    }
-
-    /// Clip in place.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let mut t = Tensor1::from_shape_vec([3], vec![-1.0, 0.5, 3.0])?;
-    /// t.clip_inplace(0.0, 2.0)?;
-    /// assert_eq!(t.to_vec(), vec![0.0, 0.5, 2.0]);
-    /// ```
-    pub fn clip_inplace(&mut self, min: A, max: A) -> Result<(), XenonError>
-    where
-        S: StorageMut<Elem = A>,
-        A: Clone,
-    {
-        if min.partial_cmp(&max).is_none() || min > max {
-            return Err(XenonError::InvalidArgument {
-                operation: "clip_inplace",
-                argument: "min/max",
-                expected: "min <= max; NaN bounds are invalid for floating-point inputs",
-                actual: "min > max or NaN bound",
-                axis: None,
-                shape: Some(self.shape().to_vec()),
             });
         }
-        for elem in self.iter_mut() {
-            if *elem < min {
-                *elem = min.clone();
-            } else if *elem > max {
-                *elem = max.clone();
-            }
-        }
-        Ok(())
+        let out = unsafe { out.assume_init() };
+        Ok(out)
     }
 }
 ````
 
 > 浮点参数非法时：`min > max` 或任一边界为 `NaN` 时返回可恢复错误。
 >
-> `clip` 总是返回新的 owned 张量，因此这里先 `zeros()` 再逐元素覆写是有意设计：它统一了 fresh-owned 输出路径，不会把输入存储别名泄露给结果；由于输出本来就必须独立分配，这不是额外的语义性性能负担。
+> `clip` 总是返回新的 owned 张量，但本文不再把“先 `zeros()` 再逐元素覆写”写成稳定实现承诺；实现可使用 `MaybeUninit` 或等价的内部未初始化 owned 缓冲区，一次写入最终值，避免无意义的零填充后再覆写。
+
+> **边界收缩：** `clip_inplace` 不属于 `require.md` §21.1 的强制公共接口。若实现上需要原地 clamp helper，可仅作为 `src/util/clip.rs` 的内部辅助，不纳入稳定 API 承诺与测试矩阵。
 
 ### 5.2 fill 操作
 
 ````rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
-    S: Storage<Elem = A>,
+    S: StorageMut<Elem = A>,
     D: Dimension,
     A: Element + Clone,
 {
@@ -238,55 +207,41 @@ where
     /// Correctly handles non-contiguous layouts: iterates over all logical
     /// elements via the iterator. Modifies storage directly without copying.
     ///
-    /// This public API is available on all tensor storage modes.
-    /// Writable storage performs the in-place fill; read-only storage returns
-    /// `Err(XenonError::ReadOnlyStorage)` as a recoverable runtime error.
+    /// This is the writable-layer API. Read-only and shared-readonly tensors do
+    /// not satisfy `StorageMut`; higher-level convenience entry points, if
+    /// exposed elsewhere in the tensor module, must reject those cases with the
+    /// documented recoverable error rather than reaching this implementation.
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// let mut t = Tensor1::<f64>::zeros([5])?;
     /// t.fill(3.14)?;
     /// assert!(t.iter().all(|&x| x == 3.14));
     /// ```
-    pub fn fill(&mut self, value: A) -> Result<(), XenonError> {
-        match self.storage_kind() {
-            StorageKind::Owned | StorageKind::ViewMut => {
-                StorageMut::fill(&mut self.storage, &self.layout(), value)
-            }
-            StorageKind::View | StorageKind::Arc => Err(XenonError::ReadOnlyStorage {
-                operation: "fill",
-                storage: self.storage_kind(),
-            }),
-        }
+    pub fn fill(&mut self, value: A) {
+        fill_storage_mut(&mut self.storage, &self.layout(), value)
     }
 }
 ````
 
-> `fill` 的公开 API 统一返回 `Result<(), XenonError>`；其中 `XenonError` 是唯一公开错误类型。对 `ViewRepr`、`ArcRepr` 等只读存储，请求必须以可恢复运行时错误（例如 `XenonError::ReadOnlyStorage`）返回；对 `Owned`、`ViewMutRepr` 等可写存储，则进入内部 `StorageMut::fill()` 快路径。
+> **分层说明：** `fill` 的核心实现收敛在 `S: StorageMut` 的可写层，不再在单一 `impl<S: Storage>` 中混合“可写执行 + 只读报错”两种类型状态。若 `tensor` 层另外提供面向所有存储模式的统一入口，则只读或共享只读结果（例如广播结果）须在到达此 helper 前返回 `XenonError::ReadOnlyStorage`；该错误属于上层入口的公开语义，而不是 `fill_storage_mut()` 的内部分支。
 
 #### 5.2.1 fill 的显式写入语义
 
 - `fill` 必须按**逻辑索引**迭代，并且只写入逻辑元素。
 - 对带 padding 的底层存储：不得写入任何 padding bytes。
 - 对非连续但可写的视图：必须严格按 layout strides 导航到每个逻辑元素。
-- 对存在零步长的可写布局：必须拒绝执行并返回可恢复错误，因为多个逻辑位置会别名到同一物理地址，原地写入语义不再单值确定。
+- 对存在零步长的布局：按照 `require.md` §16，它们来自广播只读结果；因此公开 `fill` 不应在可写层遇到这类输入，相关拒绝应作为上层只读入口的不变量维护，而不是 `fill` 自身的额外错误分支。
 
 ```
 fill_logical_only(storage, layout, value):
-    if !layout.is_writable():
-        return Err(XenonError::ReadOnlyStorage)
-    if layout.has_zero_stride_alias():
-        return Err(XenonError::InvalidLayout)
-
     for logical_index in 0..layout.logical_len():
         offset = layout.offset_for_logical_index(logical_index)
         write storage[offset] = clone(value)
-
-    return Ok(())
 ```
 
-> 上述伪代码强调的是契约，而不是公开 API：实现可以使用递归多维索引、stride-aware iterator 或其他等价内部辅助函数，但结果必须等价于“按逻辑索引逐元素写入，且不触碰 padding / 非逻辑区域”。
+> 上述伪代码强调的是契约，而不是公开 API：实现可以使用递归多维索引、stride-aware iterator 或其他等价内部辅助函数，但结果必须等价于“按逻辑索引逐元素写入，且不触碰 padding / 非逻辑区域”。`ReadOnlyStorage` 拒绝分支与广播零步长输入的屏蔽，属于到达该 helper 之前的上层职责。
 
 ### 5.3 连续性保证（to_contiguous）
 
@@ -362,7 +317,7 @@ where
 
 ### 5.4 Good / Bad 对比
 
-```rust
+```rust,ignore
 // Good - use fill for in-place filling, zero extra allocation
 let mut t = Tensor1::<f64>::zeros([1000])?;
 t.fill(42.0)?;
@@ -372,7 +327,7 @@ let data = vec![42.0; 1000];
 let t = Tensor1::from_shape_vec([1000], data)?;
 ```
 
-```rust
+```rust,ignore
 // Good - check contiguity first before deciding whether to convert
 if tensor.is_f_contiguous() {
     process(&tensor);
@@ -394,9 +349,10 @@ process(&contiguous);
 
 ```
 clip(tensor, min, max):
-    allocate result tensor with same shape
-    for each (src, dst) pair via iter()/iter_mut():
-        *dst = clamp(*src, min, max)
+    allocate uninitialized owned result with same shape
+    for each (src, dst) pair via iter()/iter_uninit_mut():
+        dst.write(clamp(*src, min, max))
+    mark result initialized
     return result
 ```
 
@@ -404,18 +360,12 @@ clip(tensor, min, max):
 
 ```
 fill(tensor, value):
-    if storage is writable:
-        if layout has zero-stride alias:
-            return Err(XenonError::InvalidLayout)
-        for each logical index in layout order:
-            offset = offset_for_logical_index(layout, logical index)
-            write storage[offset] = clone(value)
-        return Ok(())
-    else:
-        return Err(XenonError::ReadOnlyStorage)
+    for each logical index in layout order:
+        offset = offset_for_logical_index(layout, logical index)
+        write storage[offset] = clone(value)
 ```
 
-关键点：公开 `fill` 对所有存储模式都可见，但只在运行时确认可写性；可写存储必须遵守“只写逻辑元素”的契约：连续布局可走快路径，带 padding / 非连续布局必须按逻辑索引与 strides 写入，且不得触碰 padding bytes；零步长可写布局必须以可恢复错误拒绝；只读或共享只读存储则返回 `XenonError::ReadOnlyStorage`，满足 `require.md` §21.2 对公开运行时填充 API 的要求。
+关键点：utility 层的核心 `fill` helper 只接收可写存储，因此不再引入 `InvalidLayout` 这种对广播零步长布局的公开错误分支；广播结果与其他只读结果的拒绝由上层入口负责。可写存储仍必须遵守“只写逻辑元素”的契约：连续布局可走快路径，带 padding / 非连续布局必须按逻辑索引与 strides 写入，且不得触碰 padding bytes。
 
 ### 6.3 to_contiguous 路径选择
 
@@ -456,14 +406,14 @@ into_contiguous(tensor):
 
 - [ ] **T1**: 实现 `fill` 方法
   - 文件: `src/util/fill.rs`
-  - 内容: `fill(&mut self, value: A) -> Result<(), XenonError>`；公开方法定义在 `TensorBase<S, D>` 上，通过运行时检查区分可写与只读存储；可写存储原地填充，只读与共享只读场景返回 `XenonError::ReadOnlyStorage`
+  - 内容: 在 `S: StorageMut` 层实现 `fill(&mut self, value: A)` 核心 helper；若上层需要统一入口，则由上层负责把只读与共享只读场景映射为 `XenonError::ReadOnlyStorage`
   - 测试: `test_fill_basic`, `test_fill_non_contiguous`, `test_fill_readonly_storage_error`, `test_fill_broadcast_view_error`, `test_fill_transposed_view_error`, `test_fill_padded_writes_logical_only`
   - 前置: tensor 模块、iter 模块完成
   - 预计: 10 min
 
 - [ ] **T2**: 实现 `clip` 方法
   - 文件: `src/util/clip.rs`
-  - 内容: `clip(&self, min: A, max: A) -> Result<Tensor<A, D>, XenonError>` 和 `clip_inplace` 方法
+  - 内容: `clip(&self, min: A, max: A) -> Result<Tensor<A, D>, XenonError>`；内部可复用非公开 clamp helper
   - 测试: `test_clip_basic`, `test_clip_nan`, `test_clip_nan_bound`, `test_clip_integers`
   - 前置: T1
   - 预计: 10 min
@@ -480,7 +430,7 @@ into_contiguous(tensor):
 - [ ] **T4**: 编写综合测试
   - 文件: `tests/test_utility.rs`
   - 内容: 边界测试（空数组、单元素、大数组、非连续布局）
-  - 测试: `test_clip_empty`, `test_clip_single_element`, `test_clip_non_contiguous`, `test_clip_inplace_non_contiguous`, `test_fill_zero_dim`
+  - 测试: `test_clip_empty`, `test_clip_single_element`, `test_clip_non_contiguous`, `test_fill_zero_dim`
   - 前置: T1, T2, T3
   - 预计: 10 min
 
@@ -501,7 +451,7 @@ Wave 2:      [T3] → [T4]
 | 测试分类 | 位置                     | 说明                                                               |
 | -------- | ------------------------ | ------------------------------------------------------------------ |
 | 单元测试 | `#[cfg(test)] mod tests` | 验证 `clip`、`fill` 和 `to_contiguous` 的核心语义                  |
-| 集成测试 | `tests/`                 | 验证 `utility` 与 `tensor`、`iter`、`layout`、`convert` 的协同路径 |
+| 集成测试 | `tests/`                 | 验证 `utility` 与 `tensor`、`iter`、`layout` 的协同路径 |
 | 边界测试 | 同模块测试中标注         | 覆盖空数组、零维张量、NaN 和非连续布局等边界                       |
 
 ### 8.2 单元测试清单
@@ -512,10 +462,8 @@ Wave 2:      [T3] → [T4]
 | `test_clip_no_change`                     | 所有元素在范围内，无变化                | 高     |
 | `test_clip_nan`                           | NaN 输入保持 NaN                        | 高     |
 | `test_clip_nan_bound`                     | NaN 作为 min/max 返回 `InvalidArgument` | 高     |
-| `test_clip_inplace`                       | 原地裁剪正确性                          | 高     |
 | `test_clip_integers`                      | i32/i64 整数裁剪                        | 中     |
 | `test_clip_non_contiguous`                | 非连续布局返回正确裁剪结果              | 高     |
-| `test_clip_inplace_non_contiguous`        | 非连续布局原地裁剪所有逻辑元素          | 高     |
 | `test_fill_basic`                         | 基本填充所有元素为指定值                | 高     |
 | `test_fill_non_contiguous`                | 非连续布局正确填充所有逻辑元素          | 高     |
 | `test_fill_readonly_storage_error`        | 只读存储返回 `ReadOnlyStorage`          | 高     |
@@ -551,9 +499,9 @@ Wave 2:      [T3] → [T4]
 
 ### 8.5 集成测试
 
-| 测试文件                | 测试内容                                                                          |
-| ----------------------- | --------------------------------------------------------------------------------- |
-| `tests/test_utility.rs` | `clip`/`fill`/`to_contiguous` 与 `tensor`、`iter`、`layout`、`convert` 的协同路径 |
+| 测试文件                | 测试内容                                                                 |
+| ----------------------- | ------------------------------------------------------------------------ |
+| `tests/test_utility.rs` | `clip`/`fill`/`to_contiguous` 与 `tensor`、`iter`、`layout` 的协同路径 |
 
 ### 8.6 Feature gate / 配置测试
 
@@ -581,7 +529,7 @@ Wave 2:      [T3] → [T4]
 | `utility → iter`   | `iter`   | `iter_mut()`                                   | `fill` 通过可变迭代器遍历逻辑元素，参见 `10-iterator.md` §5.6                                              |
 | `utility → iter`   | `iter`   | `iter()`                                       | `clip` 通过只读迭代器读取并写入新张量，参见 `10-iterator.md` §5.6                                          |
 | `utility → layout` | `layout` | 连续性查询                                     | `to_contiguous` 先查询当前布局是否已经连续，参见 `06-layout.md` §5.4                                       |
-| `utility → tensor` | `tensor` | `to_owned()` / `into_owned()` / owned 构造路径 | `to_contiguous` 与 `into_contiguous` 复用张量 owned 化与连续化路径；`clip` 通过 owned 结果张量构造返回新值 |
+| `utility → tensor` | `tensor` | `to_owned()` / `into_owned()` / owned 构造路径 | `to_contiguous` 与 `into_contiguous` 复用张量 owned 化与连续化路径；`clip` 通过 owned 结果张量构造返回新值；跨文档连续化归属统一在 utility |
 
 ### 9.2 数据流描述
 
@@ -600,7 +548,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `clip` / `clip_inplace` 在 `min > max` 或边界为 `NaN` 时返回 `XenonError::InvalidArgument { operation, argument, expected, actual, axis, shape }`；`fill` 在只读存储上返回 `XenonError::ReadOnlyStorage`。`XenonError` 是本模块唯一公开错误类型。 |
+| Recoverable error | `clip` 在 `min > max` 或边界为 `NaN` 时返回 `XenonError::InvalidArgument { operation, argument, expected, actual, axis, shape }`；若上层统一入口允许对所有存储模式请求填充，则对只读存储返回 `XenonError::ReadOnlyStorage`。`XenonError` 是本模块唯一公开错误类型。 |
 | Panic | 公开 utility API 不定义额外 panic 语义；连续化与裁剪失败统一走显式错误或正常返回。 |
 | 路径一致性 | 连续与非连续布局都必须通过同一逻辑元素语义工作；当前无独立 SIMD / 并行分支。 |
 | 容差边界 | `clip` 对浮点数遵循 IEEE 754 比较语义；不额外引入近似容差。 |
@@ -634,8 +582,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 | 操作                              | 时间复杂度 | 空间复杂度 | 说明                             |
 | --------------------------------- | ---------- | ---------- | -------------------------------- |
 | `clip`                            | O(n)       | O(n)       | 新分配一个张量                   |
-| `clip_inplace`                    | O(n)       | O(1)       | 原地修改，零额外分配             |
-| `fill`                            | O(n)       | O(1)       | 原地修改；公开 API 先做一次可写性判定，然后在可写路径执行填充，`Clone` 开销取决于类型 |
+| `fill`                            | O(n)       | O(1)       | 原地修改；utility 核心 helper 仅在可写层执行，`Clone` 开销取决于类型 |
 | `to_contiguous`（已连续）         | O(n)       | O(n)       | 借用入口拷贝到新 owned           |
 | `into_contiguous`（已连续 owned） | O(1)       | O(1)       | 直接复用现有 F-order owned 数据  |
 | `to_contiguous`（非连续）         | O(n)       | O(n)       | 拷贝 + 重新排列                  |

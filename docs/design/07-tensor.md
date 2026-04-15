@@ -133,7 +133,6 @@ src/tensor/
 ///
 /// Struct size depends on the concrete instantiation of S and D. For static dimensions (Ix0-Ix6),
 /// D is a stack-allocated fixed-size array; for dynamic dimensions (IxDyn), D contains a heap-allocated Vec.
-#[repr(C)]
 pub struct TensorBase<S, D> {
     /// Underlying data storage.
     storage: S,
@@ -163,7 +162,7 @@ pub struct TensorBase<S, D> {
 }
 ```
 
-> **FFI 布局说明：** 当前 `TensorBase` 使用 `repr(C)` 以保证 FFI 兼容的字段布局；但该 `repr(C)` 承诺属于内部实现细节，不作为跨版本稳定保证。FFI 消费者应优先使用 `23-ffi.md` 的 `TensorExport` 而非直接依赖 `TensorBase` 的内存布局。
+> **FFI 布局说明：** `TensorBase` 不对外承诺稳定的结构体内存布局，也不作为 FFI 边界类型。FFI 消费者应优先使用 `23-ffi.md` 的 `TensorExport`，而非直接依赖 `TensorBase` 的字段顺序或 ABI 表示。
 
 > **设计说明：** TensorBase 直接嵌入 `offset` 和 `flags` 字段，而非使用 doc 06 的 `Layout` 结构体。
 > 这是因为 `offset` 与存储指针配合进行偏移计算，属于张量实例的固有属性，将二者分离避免了
@@ -176,7 +175,7 @@ pub struct TensorBase<S, D> {
 
 > **线程安全推导**: `TensorBase<S, D>` 的 `Send`/`Sync` 由存储模式 `S` 和元素类型 `A` 共同决定：`S` 提供 `Send`/`Sync`（参见 `05-storage.md §5.3`），`A` 须满足对应的线程安全约束（参见 `25-safety.md §4`）。
 
-````
+```
 
 ### 5.2 Type aliases (full list)
 
@@ -769,7 +768,7 @@ Logical view:
 
 - [ ] **T8**: 实现安全构造方法 (construct.rs)
   - 文件: `src/tensor/construct.rs`
-  - 内容: `from_shape_vec`/`new_unchecked`(内部方法)
+  - 内容: `from_shape_vec`/`from_raw_vec_unchecked`(内部方法)
   - 测试: `test_from_shape_vec_valid`, `test_from_shape_vec_invalid`
   - 前置: T5, T7
   - 预计: 10 min
@@ -915,6 +914,12 @@ User calls constructors / `view()` / `view_mut()` / query APIs
 
 ### 9.1 与 storage 模块的接口
 
+| 接口 | 方向 | 契约 |
+| ---- | ---- | ---- |
+| `Storage::as_ptr()` / `StorageMut::as_mut_ptr()` | `tensor` 消费 `storage` | storage 层返回 storage base pointer；`TensorBase` 负责叠加 `offset` 并形成 logical-first pointer |
+| `Owned::from_vec_aligned(data)` | `tensor` 消费 `storage` | 默认拥有型构造可选择对齐分配策略，但不得改变 `require.md §19` 规定的逻辑元素顺序 |
+| `Storage<Elem = A>` / `StorageMut<Elem = A>` | `tensor` 消费 `storage` trait | 元素类型、只读/可写访问能力完全由存储模式 trait 约束决定，`tensor` 不重复维护独立元素类型参数 |
+
 ```rust
 // TensorBase obtains element type via Storage trait's associated type
 impl<S, D, A> TensorBase<S, D>
@@ -948,6 +953,12 @@ where
 
 ### 9.2 与 dimension 模块的接口
 
+| 接口 | 方向 | 契约 |
+| ---- | ---- | ---- |
+| `Dimension::slice()` | `tensor` 消费 `dimension` | `shape()` 返回的轴长切片与底层 `D` 保持一致，不复制逻辑元数据语义 |
+| `Dimension::size()` / `checked_size()` | `tensor` 消费 `dimension` | 查询路径可使用 `size()`；凡涉及构造、分配或范围校验的路径必须先用 `checked_size()` 避免溢出 |
+| `Dimension` rank contract | `tensor` 消费 `dimension` | `shape` 与 `Strides<D>` 必须保持相同 rank，供 `simd` / `parallel` 继续消费同一布局契约 |
+
 ```rust
 // Dimension trait provides shape operations
 impl<S, D> TensorBase<S, D>
@@ -967,6 +978,12 @@ where
 ```
 
 ### 9.3 与 layout 模块的接口
+
+| 接口 | 方向 | 契约 |
+| ---- | ---- | ---- |
+| `layout::compute_f_strides(&shape)` | `tensor` 消费 `layout` | 安全构造拥有型连续张量时统一按 F-order 生成 stride |
+| `layout::compute_layout_flags(&shape, &strides, logical_ptr)` | `tensor` 消费 `layout` | `flags` 的计算必须基于 logical-first pointer 契约，与 `as_ptr()` / `as_slice()` 的可见语义一致 |
+| `LayoutState` / layout flags queries | `simd`、`parallel` 继续消费 `tensor` 暴露结果 | 上游加速模块只通过 `TensorBase` 查询连续性、对齐和广播状态，不绕过 `tensor` 直接重建布局判断 |
 
 ```rust
 // Layout module provides stride computation and contiguity checks

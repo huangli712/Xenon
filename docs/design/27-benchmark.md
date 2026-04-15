@@ -44,11 +44,11 @@ benches/  <- current module (dev-dependency, consumes only the crate's public AP
 
 ## 2. 需求映射与范围约束
 
-| 类型     | 内容                                                                     |
-| -------- | ------------------------------------------------------------------------ |
-| 需求映射 | `require.md §9.1`, `§9.2`, `§9.3`, `§28.3`, `§28.5`                     |
-| 范围内   | benchmark 分类、参数矩阵、回归阈值、CI 分级工作流与结果一致性验证        |
-| 范围外   | 生产运行时性能调优、跨语言基准、额外平台专用测量框架                     |
+| 类型     | 内容                                                                       |
+| -------- | -------------------------------------------------------------------------- |
+| 需求映射 | `require.md §9.1`, `§9.2`, `§9.3`, `§28.3`, `§28.5`                        |
+| 范围内   | benchmark 分类、参数矩阵、回归阈值、CI 分级工作流                          |
+| 范围外   | 生产运行时性能调优、跨语言基准、额外平台专用测量框架                       |
 | 非目标   | 通过 benchmark 文档扩展 crate 公共 API、引入非必要运行时依赖或改变需求边界 |
 
 ---
@@ -113,11 +113,11 @@ benches/
 
 ### 4.4 依赖合法性与新增依赖说明
 
-| 项目           | 说明                                                            |
-| -------------- | --------------------------------------------------------------- |
-| 新增第三方依赖 | `criterion`（仅 dev-dependency，用于基准测量）                  |
-| 合法性结论     | benchmark 使用 `criterion` 作为 dev-dependency。这属于开发工具依赖，不影响 crate 的公开 API 或运行时依赖。`require.md §1.2` 的最小依赖约束针对运行时可选依赖（`rayon`/`pulp`），dev-dependency 政策须在上位规范中另行明确。 |
-| 替代方案       | 标准库 `test` 基准或自定义脚本精度与生态支持不足，不作为主方案 |
+| 项目           | 说明                                                                                           |
+| -------------- | ---------------------------------------------------------------------------------------------- |
+| 新增第三方依赖 | 当前基线不新增 benchmark 专用 dev-dependency；若后续希望引入外部框架，须单独裁决               |
+| 合法性结论     | 以 `std::time::Instant`、`std::hint::black_box` 与仓库内脚本作为当前版本基线，符合最小依赖约束 |
+| 替代方案       | 外部 benchmark 框架可作为未来方案评估，但不属于当前版本默认要求                                |
 
 ---
 
@@ -126,11 +126,6 @@ benches/
 ### 5.1 Cargo.toml 配置
 
 ```toml
-[dev-dependencies]
-criterion = "0.5"
-
-# Optional local tooling only; not part of the base crate contract.
-
 [[bench]]
 name = "math"
 harness = false
@@ -206,20 +201,21 @@ pub fn sequential_2d(rows: usize, cols: usize) -> Tensor2<f64> {
     .expect("shape and data length must match")
 }
 
-/// Generate a non-contiguous view by slicing a subrange.
+/// Generate a truly non-contiguous 1D view from an F-order 2D owner.
 pub struct StridedFixture1D {
-    pub owner: Tensor1<f64>,
+    pub owner: Tensor2<f64>,
 }
 
 impl StridedFixture1D {
     pub fn view(&self) -> TensorView1<'_, f64> {
-        let n = self.owner.len() / 2;
-        self.owner.slice(s![0..n])
+        self.owner.row(1).expect("row index must be in bounds")
     }
 }
 
 pub fn strided_view_1d(n: usize) -> StridedFixture1D {
-    StridedFixture1D { owner: sequential_1d(n * 2) }
+    StridedFixture1D {
+        owner: sequential_2d(2, n),
+    }
 }
 ```
 
@@ -232,15 +228,15 @@ Benchmark categories
 ├── Micro-benchmarks        # Single operation / single function (for example zeros)
 ├── Kernel benchmarks       # Core compute kernels (for example add, sum, dot)
 ├── Workflow benchmarks     # Real usage flows (for example broadcast + add chain)
-└── Comparison benchmarks   # External comparison (SIMD on/off, parallel on/off)
+└── Comparison benchmarks   # In-repo baseline comparison (SIMD/scalar, parallel/serial)
 ```
 
-| 级别       | 示例                                           | 用途         |
-| ---------- | ---------------------------------------------- | ------------ |
-| Micro      | `zeros_1d`, `from_vec`                         | 基础开销基线 |
-| Kernel     | `add_f64`, `sum_f64`, `dot_f64`                | 核心路径性能 |
-| Workflow   | `broadcast_add_row`, `transpose_then_sum`      | 真实场景吞吐 |
-| Comparison | `add_simd_vs_scalar`, `sum_parallel_vs_serial` | 优化效果验证 |
+| 级别       | 示例                                           | 用途           |
+| ---------- | ---------------------------------------------- | -------------- |
+| Micro      | `zeros_1d`, `from_vec`                         | 基础开销基线   |
+| Kernel     | `add_f64`, `sum_f64`, `dot_f64`                | 核心路径性能   |
+| Workflow   | `broadcast_add_row`, `transpose_then_sum`      | 真实场景吞吐   |
+| Comparison | `add_simd_vs_scalar`, `sum_parallel_vs_serial` | 仓库内路径对比 |
 
 ---
 
@@ -264,10 +260,10 @@ Benchmark categories
 
 #### 5.4.3 内存布局
 
-| 布局           | 构造方式                            | 验证目标               |
-| -------------- | ----------------------------------- | ---------------------- |
-| F-contiguous   | `zeros(shape)`                      | 默认路径性能基线       |
-| Non-contiguous | `tensor.slice(s![0..n])` 或转置视图 | 非连续路径标量回退惩罚 |
+| 布局           | 构造方式                          | 验证目标           |
+| -------------- | --------------------------------- | ------------------ |
+| F-contiguous   | `zeros(shape)`                    | 默认路径性能基线   |
+| Non-contiguous | F-order 2D 张量的行视图或转置视图 | 非连续路径性能惩罚 |
 
 > **注意**：Xenon 仅支持 F-order 布局，不存在 C-order 路径。非连续布局通过切片/转置视图产生（参见 `06-layout.md §5.4` / `§5.1c`）。
 
@@ -277,35 +273,33 @@ Benchmark categories
 
 ### 5.5 Benchmark 清单
 
-| 组 ID                         | 操作                    | 规模  | 类型           | 布局           | 说明                                       |
-| ----------------------------- | ----------------------- | ----- | -------------- | -------------- | ------------------------------------------ |
-| `elem_add_f64`                | `a + b`                 | S/M/L | f64            | F-contiguous   | 连续数组逐元素加法                         |
-| `elem_add_f32`                | `a + b`                 | S/M/L | f32            | F-contiguous   | f32 加法，SIMD 向量宽度更大                |
-| `elem_add_complex`            | `a + b`                 | S/M/L | Complex\<f64\> | F-contiguous   | 复数加法开销                               |
-| `elem_mul_f64`                | `a * b`                 | S/M/L | f64            | F-contiguous   | 逐元素乘法                                 |
-| `elem_sin_f64`                | `sin(a)`                | S/M/L | f64            | F-contiguous   | 超越函数逐元素                             |
-| `elem_add_sliced`             | `a + b`（b 为切片视图） | M     | f64            | Non-contiguous | 非连续惩罚                                 |
-| `sum_1d_f64`                  | 全局 sum                | S/M/L | f64            | F-contiguous   | 1D 归约                                    |
-| `sum_2d_axis0`                | 沿轴 0 sum              | S/M/L | f64            | F-contiguous   | 2D 沿轴归约                                |
-| `sum_2d_axis1`                | 沿轴 1 sum              | S/M/L | f64            | F-contiguous   | 2D 沿轴归约                                |
-| `sum_sliced`                  | 非连续 sum              | M     | f64            | Non-contiguous | 非连续归约惩罚                             |
-| `dot_1d_f64`                  | 向量内积                | S/M/L | f64            | F-contiguous   | 基本内积                                   |
-| `dot_1d_complex`              | 复数内积                | S/M/L | Complex\<f64\> | F-contiguous   | 复数内积（含共轭）                         |
-| `unique_1d`                   | unique 操作             | S/M/L | f64            | F-contiguous   | 返回不重复元素，结果无需排序且顺序不作要求 |
-| `broadcast_scalar`            | 标量广播加法            | S/M/L | f64            | F-contiguous   | 标量广播开销                               |
-| `broadcast_row`               | 行向量广播到矩阵        | S/M/L | f64            | F-contiguous   | 行广播                                     |
-| `broadcast_col`               | 列向量广播到矩阵        | S/M/L | f64            | F-contiguous   | 列广播                                     |
-| `transpose_2d`                | 2D 转置（零拷贝）       | S/M/L | f64            | F-contiguous   | 转置视图创建                               |
-| `simd_add_compare`            | `a + b` (SIMD vs 标量)  | M     | f32/f64        | F-contiguous   | SIMD 加速比（参见 `08-simd.md §12`）       |
-| `simd_sum_compare`            | sum (SIMD vs 标量)      | M     | i32/i64        | F-contiguous   | 仅测当前已覆盖的整数 SIMD 归约加速         |
-| `simd_dot_compare`            | dot (SIMD vs 标量)      | M     | f32/f64        | F-contiguous   | SIMD dot kernel 已在 `08-simd.md` 中设计，本基准对比 SIMD 与标量路径的性能差异与数值等价性（§28.3）。 |
-| `par_sum_compare`             | sum (并行 vs 串行)      | L     | i64            | F-contiguous   | 并行加速比（参见 `09-parallel.md §12`）    |
-| `par_add_compare`             | `a + b` (并行 vs 串行)  | L     | f64            | F-contiguous   | 并行逐元素加速                             |
-| `auto_threshold_switch`       | 自动路径选择            | S/M/L | f64            | F-contiguous   | 阈值附近自动串并切换行为                   |
-| `nested_parallel_fallback`    | 嵌套并行回退            | M     | f64            | F-contiguous   | 已处于并行上下文时必须回退串行             |
-| `simd_scalar_equivalence`     | SIMD 与标量结果一致性   | M     | f32/f64        | F-contiguous   | 性能测量前先验证结果一致                   |
-| `parallel_serial_equivalence` | 并行与串行结果一致性    | M/L   | f64            | F-contiguous   | 验证并行路径不改变结果                     |
-| `zeros_1d`                    | zeros 构造              | S/M/L | f64            | F-contiguous   | 构造开销                                   |
+| 组 ID                      | 操作                    | 规模  | 类型           | 布局           | 说明                                                                             |
+| -------------------------- | ----------------------- | ----- | -------------- | -------------- | -------------------------------------------------------------------------------- |
+| `elem_add_f64`             | `a + b`                 | S/M/L | f64            | F-contiguous   | 连续数组逐元素加法                                                               |
+| `elem_add_f32`             | `a + b`                 | S/M/L | f32            | F-contiguous   | f32 加法，SIMD 向量宽度更大                                                      |
+| `elem_add_complex`         | `a + b`                 | S/M/L | Complex\<f64\> | F-contiguous   | 复数加法开销                                                                     |
+| `elem_mul_f64`             | `a * b`                 | S/M/L | f64            | F-contiguous   | 逐元素乘法                                                                       |
+| `elem_sin_f64`             | `sin(a)`                | S/M/L | f64            | F-contiguous   | 超越函数逐元素                                                                   |
+| `elem_add_sliced`          | `a + b`（b 为切片视图） | M     | f64            | Non-contiguous | 非连续惩罚                                                                       |
+| `sum_1d_f64`               | 全局 sum                | S/M/L | f64            | F-contiguous   | 1D 归约                                                                          |
+| `sum_2d_axis0`             | 沿轴 0 sum              | S/M/L | f64            | F-contiguous   | 2D 沿轴归约                                                                      |
+| `sum_2d_axis1`             | 沿轴 1 sum              | S/M/L | f64            | F-contiguous   | 2D 沿轴归约                                                                      |
+| `sum_sliced`               | 非连续 sum              | M     | f64            | Non-contiguous | 非连续归约惩罚                                                                   |
+| `dot_1d_f64`               | 向量内积                | S/M/L | f64            | F-contiguous   | 基本内积                                                                         |
+| `dot_1d_complex`           | 复数内积                | S/M/L | Complex\<f64\> | F-contiguous   | 复数内积（含共轭）                                                               |
+| `unique_1d`                | unique 操作             | S/M/L | f64            | F-contiguous   | 返回不重复元素，结果无需排序且顺序不作要求                                       |
+| `broadcast_scalar`         | 标量广播加法            | S/M/L | f64            | F-contiguous   | 标量广播开销                                                                     |
+| `broadcast_row`            | 行向量广播到矩阵        | S/M/L | f64            | F-contiguous   | 行广播                                                                           |
+| `broadcast_col`            | 列向量广播到矩阵        | S/M/L | f64            | F-contiguous   | 列广播                                                                           |
+| `transpose_2d`             | 2D 转置（零拷贝）       | S/M/L | f64            | F-contiguous   | 转置视图创建                                                                     |
+| `simd_add_compare`         | `a + b` (SIMD vs 标量)  | M     | f32/f64        | F-contiguous   | SIMD 加速比（参见 `08-simd.md §12`）                                             |
+| `simd_sum_compare`         | sum (SIMD vs 标量)      | M     | i32/i64        | F-contiguous   | 仅测当前已覆盖的整数 SIMD 归约加速                                               |
+| `simd_dot_compare`         | dot (SIMD vs 标量)      | M     | f32/f64        | F-contiguous   | SIMD dot kernel 已在 `08-simd.md` 中设计，本基准仅对比 SIMD 与标量路径的性能差异 |
+| `par_sum_compare`          | sum (并行 vs 串行)      | L     | i64            | F-contiguous   | 并行加速比（参见 `09-parallel.md §12`）                                          |
+| `par_add_compare`          | `a + b` (并行 vs 串行)  | L     | f64            | F-contiguous   | 并行逐元素加速                                                                   |
+| `auto_threshold_switch`    | 自动路径选择            | S/M/L | f64            | F-contiguous   | 阈值附近自动串并切换行为                                                         |
+| `nested_parallel_fallback` | 嵌套并行回退            | M     | f64            | F-contiguous   | 已处于并行上下文时必须回退串行                                                   |
+| `zeros_1d`                 | zeros 构造              | S/M/L | f64            | F-contiguous   | 构造开销                                                                         |
 
 ---
 
@@ -348,18 +342,11 @@ cargo bench --bench math -- "elem_add_f64" --quick
 cargo bench --bench reduction -- "sum_1d_f64" --quick
 cargo bench --bench construction -- "zeros_1d" --quick
 
-        - name: Store results
-          uses: benchmark-action/github-action-benchmark@v1
-          with:
-            tool: cargo
-            report-json-path: target/benchmark-results/regression.json
-            alert-threshold: "200%"
-            fail-on-alert: false
+        - name: Summarize results
+          run: python tools/bench/report.py --input target/benchmark-results --output target/benchmark-results/regression.json
 ```
 
-> **说明**：benchmark CI 不应依赖 Criterion 默认不存在的固定输出文件名。若需要机器可读结果，应通过仓库内脚本显式导出到约定路径（如 `target/benchmark-results/regression.json`），并在 CI 中消费该脚本产物。
-
-> **注意**：criterion 的标准 HTML/JSON 输出位于 `target/criterion/<benchmark_name>/` 目录下。CI 若需要机器可读摘要，应通过单独的提取脚本或 bencher 兼容输出生成汇总文件，而不是把 Cargo 的 `--message-format=json` 误传给 benchmark binary。
+> **说明**：benchmark CI 若需要机器可读摘要，须通过仓库内脚本显式导出到约定路径（如 `target/benchmark-results/regression.json`），而不是依赖第三方 GitHub Action 或外部服务。
 
 > **baseline 管理**：Regression Check 以上一轮 main 分支通过的结果作为 baseline；当性能改善或已知噪声需要更新基线时，应在专门的 benchmark PR 中更新并记录原因。
 
@@ -381,31 +368,26 @@ cargo bench --bench construction -- "zeros_1d" --quick
 
 ```rust
 // benches/math.rs
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use std::hint::black_box;
+use std::time::Instant;
 mod utils;
 use utils::{SIZES_1D, data_gen};
 
-fn bench_elem_add(c: &mut Criterion) {
-    let mut group = c.benchmark_group("elem_add_f64");
-
+fn bench_elem_add() {
     for &size in SIZES_1D {
         let a = data_gen::sequential_1d(size);
         let b = data_gen::sequential_1d(size);
-
-        group.bench_with_input(
-            BenchmarkId::new("f64/contiguous", size),
-            &size,
-            |b, _| {
-                b.iter(|| black_box((&a + &b).unwrap()));
-            },
-        );
+        let started_at = Instant::now();
+        for _iteration in 0..100 {
+            let _result = black_box((&a + &b).unwrap());
+        }
+        println!("elem_add_f64/{size}: {:?}", started_at.elapsed());
     }
-
-    group.finish();
 }
 
-criterion_group!(benches, bench_elem_add);
-criterion_main!(benches);
+fn main() {
+    bench_elem_add();
+}
 ```
 
 ---
@@ -415,12 +397,14 @@ criterion_main!(benches);
 #### 5.9.1 Good — 正确的 benchmark 模式
 
 ```rust
-// Good: Use black_box to prevent the compiler from eliminating dead code
-fn bench_sum(c: &mut Criterion) {
+// Good: Use black_box and a dedicated timing loop
+fn bench_sum() {
     let data = data_gen::sequential_1d(65_536);
-    c.bench_function("sum_f64_65k", |b| {
-        b.iter(|| black_box(data.sum()));
-    });
+    let started_at = Instant::now();
+    for _iteration in 0..100 {
+        let _result = black_box(data.sum());
+    }
+    println!("sum_f64_65k: {:?}", started_at.elapsed());
 }
 ```
 
@@ -428,21 +412,23 @@ fn bench_sum(c: &mut Criterion) {
 
 ```rust
 // Bad: Not using black_box, compiler may eliminate the operation
-fn bench_sum_bad(c: &mut Criterion) {
+fn bench_sum_bad() {
     let data = data_gen::sequential_1d(65_536);
-    c.bench_function("sum_f64_65k", |b| {
-        b.iter(|| data.sum());  // Compiler may optimize this away
-    });
+    for _iteration in 0..100 {
+        let _result = data.sum();  // Compiler may optimize this away
+        let _ = _result;
+    }
 }
 
-// Bad: Constructing data inside iter callback, mixing in construction overhead
-fn bench_sum_bad2(c: &mut Criterion) {
-    c.bench_function("sum_f64_65k", |b| {
-        b.iter(|| {
-            let data = data_gen::sequential_1d(65_536);  // Construction overhead mixed in
-            data.sum()
-        });
-    });
+// Bad: Constructing data inside the timed loop, mixing in construction overhead
+fn bench_sum_bad2() {
+    let started_at = Instant::now();
+    for _iteration in 0..100 {
+        let data = data_gen::sequential_1d(65_536);  // Construction overhead mixed in
+        let _result = data.sum();
+        let _ = _result;
+    }
+    println!("sum_f64_65k_bad: {:?}", started_at.elapsed());
 }
 ```
 
@@ -452,22 +438,22 @@ fn bench_sum_bad2(c: &mut Criterion) {
 
 ### 6.1 测量方法论
 
-使用 criterion 的默认测量策略：迭代式计时 + 统计分析。
+使用仓库内轻量 benchmark harness：预热后以 `Instant` 计时，并由脚本统一汇总结果。
 
-| 阶段            | 说明                                             |
-| --------------- | ------------------------------------------------ |
-| 预热 (warm-up)  | 每个基准先运行 3 秒预热，消除冷启动效应          |
-| 采样 (sampling) | 默认 100 次采样，Smoke Test 使用 `--quick`       |
-| 统计            | 剔除异常值（outlier removal），计算 95% 置信区间 |
-| 报告            | HTML 报告（含趋势图） + CLI 文本摘要             |
+| 阶段            | 说明                                                     |
+| --------------- | -------------------------------------------------------- |
+| 预热 (warm-up)  | 每个基准先运行固定轮数预热，消除冷启动效应               |
+| 采样 (sampling) | 固定迭代次数；Smoke Test 使用缩减轮数                    |
+| 汇总            | 由仓库脚本统一读取 stdout / JSON 摘要并计算回归百分比    |
+| 报告            | CLI 文本摘要；如后续需要更复杂报告，须单独裁决引入新工具 |
 
 ### 6.2 数据生成策略
 
-| 策略          | 实现                                         | 说明                   |
-| ------------- | -------------------------------------------- | ---------------------- |
+| 策略          | 实现                                                            | 说明                   |
+| ------------- | --------------------------------------------------------------- | ---------------------- |
 | 顺序填充      | 预先构造顺序 `Vec<f64>` 后用 `from_vec` / `from_shape_vec` 导入 | 可重复，无随机性       |
-| 预分配 + 复用 | 数据在 `bench_with_input` 闭包外生成         | 避免测量中混入构造开销 |
-| 非连续视图    | `slice(s![0..n])` 或 `slice(s![.., 0..n-1])` | 模拟真实切片场景       |
+| 预分配 + 复用 | 数据在计时循环外生成                                            | 避免测量中混入构造开销 |
+| 非连续视图    | 行视图或转置视图                                                | 模拟真实非连续访问场景 |
 
 > **设计决策**：所有数据在迭代回调外预生成（参见 §5.9.2 Bad 示例），确保仅测量目标操作本身的性能。
 
@@ -475,13 +461,13 @@ fn bench_sum_bad2(c: &mut Criterion) {
 
 ```rust
 // Good: black_box wraps the entire expression to prevent dead code elimination
-b.iter(|| black_box((&a + &b).unwrap()));
+let _result = black_box((&a + &b).unwrap());
 
-// Good: black_box wraps input to prevent constant folding
-b.iter(|| black_box(a) + black_box(b));
+// Good: black_box wraps inputs to prevent constant folding
+let _result = black_box(a) + black_box(b);
 
 // Bad: forgetting black_box allows compiler to optimize away
-b.iter(|| (&a + &b).unwrap());
+let _result = (&a + &b).unwrap();
 ```
 
 `black_box` 的作用是告诉编译器"此值可能被以任何方式使用"，防止编译器将结果视为死代码而消除整个计算。
@@ -495,18 +481,16 @@ b.iter(|| (&a + &b).unwrap());
 
 ### 6.5 数值一致性容差
 
-| 类型 | atol | rtol | 说明 |
-| ---- | ---- | ---- | ---- |
-| `f32` | `1e-5` | `1e-5` | 单精度浮点；与 `28-tests.md §8.1` 的超越函数容差保持一致 |
-| `f64` | `1e-14` | `1e-14` | 双精度浮点；与 `28-tests.md §8.1` 的超越函数容差保持一致 |
-| `Complex<f32>` | `1e-5` | `1e-5` | 按分量比较；与 `28-tests.md §8.1` 保持一致 |
-| `Complex<f64>` | `1e-14` | `1e-14` | 按分量比较；与 `28-tests.md §8.1` 保持一致 |
+| 类型           | atol    | rtol    | 说明                                                                            |
+| -------------- | ------- | ------- | ------------------------------------------------------------------------------- |
+| `f32`          | `1e-5`  | `1e-5`  | 仅作为与 `28-tests.md §8.1` 对齐的参考容差，不在 benchmark 流程中承担正确性门禁 |
+| `f64`          | `1e-14` | `1e-14` | 仅作为与 `28-tests.md §8.1` 对齐的参考容差，不在 benchmark 流程中承担正确性门禁 |
+| `Complex<f32>` | `1e-5`  | `1e-5`  | 按分量比较；仅供引用 `28-tests.md` 中的正确性测试口径                           |
+| `Complex<f64>` | `1e-14` | `1e-14` | 按分量比较；仅供引用 `28-tests.md` 中的正确性测试口径                           |
 
 整数类型须逐元素精确一致，不容差。
 
-容差值与 `28-tests.md §8.1` 保持一致；修改一处须同步另一处。
-
-容差仅适用于不同执行路径（串行/SIMD/并行）下浮点和复数结果的比较。同平台同配置同路径下结果须确定一致。参见 `require.md §28.3`。
+容差值与 `28-tests.md §8.1` 保持一致；benchmark 文档仅可引用该容差口径，不在本文件中新增正确性测试职责。参见 `require.md §28.3`。
 
 ---
 
@@ -535,7 +519,7 @@ benchmark files
     │       │
     │       └── internal path: storage -> tensor -> overload -> simd/parallel
     │
-    └── criterion measures end-to-end runtime
+    └── repository-local harness measures end-to-end runtime
 ```
 
 ---
@@ -544,9 +528,9 @@ benchmark files
 
 ### Wave 1: 基础设施
 
-- [ ] **T1**: 配置 `Cargo.toml` bench 入口和 criterion 依赖
+- [ ] **T1**: 配置 `Cargo.toml` bench 入口和仓库内基准 harness
   - 文件: `Cargo.toml`
-  - 内容: 添加 `criterion` dev-dependency，9 个 `[[bench]]` 入口
+  - 内容: 添加 9 个 `[[bench]]` 入口，不新增 benchmark 专用第三方依赖
   - 测试: `cargo bench --bench math -- --list` 输出正常
   - 前置: 无
   - 预计: 5 min
@@ -569,7 +553,7 @@ benchmark files
 
 - [ ] **T4**: 实现 `benches/reduction.rs`
   - 文件: `benches/reduction.rs`
-- 内容: sum_1d_f64/sum_2d_axis0/sum_2d_axis1/sum_sliced
+  - 内容: sum_1d_f64/sum_2d_axis0/sum_2d_axis1/sum_sliced
   - 测试: `cargo bench --bench reduction -- "sum" --quick`
   - 前置: T2
   - 预计: 10 min
@@ -615,14 +599,14 @@ benchmark files
 
 - [ ] **T10**: 实现 `benches/simd_comparison.rs`
   - 文件: `benches/simd_comparison.rs`
-  - 内容: add/sum/dot 在 `--features simd` 开/关时的对比，并补 `simd_scalar_equivalence`
+  - 内容: add/sum/dot 在 `--features simd` 开/关时的性能对比
   - 测试: 分别以两种 feature 配置运行，对比结果
   - 前置: T3, T4
   - 预计: 10 min
 
 - [ ] **T11**: 实现 `benches/parallel_comparison.rs`
   - 文件: `benches/parallel_comparison.rs`
-  - 内容: sum/add 在 `--features parallel` 开/关时的对比，并补 `auto_threshold_switch` / `nested_parallel_fallback` / `parallel_serial_equivalence`
+  - 内容: sum/add 在 `--features parallel` 开/关时的性能对比，并补 `auto_threshold_switch` / `nested_parallel_fallback`
   - 测试: 分别以两种 feature 配置运行，对比结果
   - 前置: T3, T4
   - 预计: 10 min
@@ -660,29 +644,29 @@ Wave 5:           [T12]
 
 ## 9. 测试计划
 
-| 类型            | 位置                                   | 目的                                                     |
-| --------------- | -------------------------------------- | -------------------------------------------------------- |
-| 单元验证        | `cargo bench --bench X -- --list`      | 每个 benchmark 文件可编译并正确列出基准组                |
-| 集成验证        | `cargo bench --bench X -- "Y" --quick` | 快速验证单个 benchmark 可运行，输入与 feature 组合正确   |
-| 边界验证        | CI smoke/regression                    | 验证小规模回退、阈值附近自动切换、嵌套并行回退等边界行为 |
-| 属性/一致性验证 | benchmark 前置断言或 companion check   | 验证 SIMD == 标量、parallel == serial，再记录性能数据    |
+| 类型     | 位置                                   | 目的                                                     |
+| -------- | -------------------------------------- | -------------------------------------------------------- |
+| 单元验证 | `cargo bench --bench X -- --list`      | 每个 benchmark 文件可编译并正确列出基准组                |
+| 集成验证 | `cargo bench --bench X -- "Y" --quick` | 快速验证单个 benchmark 可运行，输入与 feature 组合正确   |
+| 边界验证 | CI smoke/regression                    | 验证小规模回退、阈值附近自动切换、嵌套并行回退等边界行为 |
+| 基线校验 | benchmark 输入准备与路径选择检查       | 验证 benchmark 分组、输入规模与 feature 组合符合预期     |
 
 ### 9.1 Feature gate / 配置测试
 
-| 配置        | 验证点                                                     |
-| ----------- | ---------------------------------------------------------- |
-| 默认配置    | benchmark 能在默认 `std` 配置下编译并执行核心基线          |
-| 启用 `simd` | SIMD comparison 组结果与标量路径一致后再记录性能           |
-| 启用并行    | parallel comparison 组验证串并一致性与阈值切换行为         |
-| 全 feature  | benchmark 入口、结果采集与 CI 工作流在组合配置下保持有效   |
+| 配置        | 验证点                                                                 |
+| ----------- | ---------------------------------------------------------------------- |
+| 默认配置    | benchmark 能在默认 `std` 配置下编译并执行核心基线                      |
+| 启用 `simd` | SIMD comparison 组在 `simd` feature 下可用，并记录路径切换后的性能     |
+| 启用并行    | parallel comparison 组在 `parallel` feature 下可用，并覆盖阈值切换行为 |
+| 全 feature  | benchmark 入口、结果采集与 CI 工作流在组合配置下保持有效               |
 
 ### 9.2 类型边界 / 编译期测试
 
-| 场景                         | 测试方式                                          |
-| ---------------------------- | ------------------------------------------------- |
+| 场景                         | 测试方式                                           |
+| ---------------------------- | -------------------------------------------------- |
 | feature-gated benchmark 入口 | `cargo bench --bench ... --features ... -- --list` |
-| SIMD / 并行比较组导出边界     | 配置矩阵编译检查                                  |
-| 非法 feature 组合             | CI 配置矩阵与 smoke check                         |
+| SIMD / 并行比较组导出边界    | 配置矩阵编译检查                                   |
+| 非法 feature 组合            | CI 配置矩阵与 smoke check                          |
 
 ---
 
@@ -694,14 +678,14 @@ Wave 5:           [T12]
 
 ## 10. 设计决策记录
 
-### 决策 1：使用 criterion.rs
+### 决策 1：不引入额外 benchmark 框架
 
-| 属性     | 值                                                                                                      |
-| -------- | ------------------------------------------------------------------------------------------------------- |
-| 决策     | 使用 criterion.rs 0.5 作为 benchmark 框架                                                               |
-| 理由     | 统计分析（置信区间、异常值检测）；HTML 报告；与 CI 集成成熟；stable Rust 可用（参见 `00-coding.md §7`） |
-| 替代方案 | `#[bench]` nightly — 放弃，需要 nightly 编译器                                                          |
-| 替代方案 | divan — 放弃，生态不如 criterion 成熟                                                                   |
+| 属性     | 值                                                                                            |
+| -------- | --------------------------------------------------------------------------------------------- |
+| 决策     | 当前版本 benchmark 基线使用 `std::time::Instant`、`std::hint::black_box` 与仓库内结果汇总脚本 |
+| 理由     | 满足最小依赖约束，并可在 stable Rust 下落地                                                   |
+| 替代方案 | `#[bench]` nightly — 放弃，需要 nightly 编译器                                                |
+| 替代方案 | 外部 benchmark 框架 — 暂不采用，需先单独裁决 dev-dependency 政策                              |
 
 ### 决策 2：按操作类别分文件
 
@@ -741,11 +725,11 @@ Wave 5:           [T12]
 
 ## 11. 平台与工程约束
 
-| 约束项     | 约束内容                                                     |
-| ---------- | ------------------------------------------------------------ |
-| 平台支持   | benchmark 方案仅覆盖 `std` 环境                              |
-| crate 结构 | 保持单 crate，不为 benchmark 拆分独立 crate                  |
-| 依赖约束   | 仅引入 `criterion` 作为 dev-dependency；不扩展额外运行时依赖 |
+| 约束项     | 约束内容                                              |
+| ---------- | ----------------------------------------------------- |
+| 平台支持   | benchmark 方案仅覆盖 `std` 环境                       |
+| crate 结构 | 保持单 crate，不为 benchmark 拆分独立 crate           |
+| 依赖约束   | 不引入 benchmark 专用第三方依赖；不扩展额外运行时依赖 |
 
 ---
 

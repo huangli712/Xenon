@@ -13,9 +13,9 @@
 
 | 职责           | 包含                                                     | 不包含                                                       |
 | -------------- | -------------------------------------------------------- | ------------------------------------------------------------ |
-| 转置操作       | `transpose()` / `t()` 交换步长和形状返回只读视图（O(1)） | 其他形状变换（当前版本不提供）                               |
+| 转置操作       | `transpose()` 交换步长和形状返回只读视图（O(1)）         | 其他形状变换（当前版本不提供）                               |
 | 连续性标志更新 | 转置后按结果 shape/stride 重新计算连续性标志             | pad / repeat / split（当前版本不提供）                       |
-| 转置便捷方法   | `t()` 作为 `transpose()` 简写                            | `permute_axes()` / `swap_axes()` / `moveaxis()` 留待后续版本 |
+| 非规范便捷别名 | 可选地提供 `t()` 作为 `transpose()` 简写，但它不属于 `require.md` §17 的规范契约 | `permute_axes()` / `swap_axes()` / `moveaxis()` 留待后续版本 |
 | 未来形状操作   | —                                                        | 其他形状变换与自动推断维度留待后续版本                       |
 
 ### 1.2 设计原则
@@ -23,7 +23,7 @@
 | 原则       | 体现                                                            |
 | ---------- | --------------------------------------------------------------- |
 | 零拷贝优先 | 转置通过调整 shape 和 stride 返回共享底层数据的只读视图         |
-| 语义收敛   | 当前版本只设计 `transpose()` / `t()`，不在本文扩展其他形状变换 |
+| 语义收敛   | 当前版本规范契约只设计 `transpose()`，不在本文扩展其他形状变换 |
 | BLAS 友好  | 正确处理转置产生的非连续布局，确保 shape/stride 元数据一致      |
 | 维度安全   | 转置仅做轴反转，不改变逻辑元素值与元素总数                      |
 
@@ -47,7 +47,7 @@ L6: shape  <- current module
 | 类型     | 内容 |
 | -------- | ---- |
 | 需求映射 | 需求说明书 §17 |
-| 范围内   | `transpose()` / `t()`、轴反转后的 shape / strides / flags 重算，以及零拷贝只读视图语义。 |
+| 范围内   | `transpose()`、轴反转后的 shape / strides / flags 重算，以及零拷贝只读视图语义。 |
 | 范围外   | 其他形状变换。 |
 | 非目标   | 不在本文讨论连续性重排 API、动态维推断或额外形状 DSL。 |
 
@@ -58,7 +58,7 @@ L6: shape  <- current module
 ```
 src/shape/
 ├── mod.rs             # module entry, re-export public traits and functions
-└── transpose.rs       # transpose, t
+└── transpose.rs       # transpose and optional alias glue
 ```
 
 文件划分理由：当前版本仅支持转置，因此保留单一实现文件即可覆盖范围内能力。
@@ -114,7 +114,7 @@ src/shape/
 
 ### 5.1 转置操作
 
-````rust
+````rust,ignore
 impl<S, A, D> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -153,6 +153,9 @@ where
     /// For 2D inputs this matches the usual matrix-transpose intuition; for
     /// higher-rank tensors it is still a full axis reversal.
     ///
+    /// This alias is optional and non-normative: `require.md` §17 only
+    /// requires the transpose operation itself, not this shorthand spelling.
+    ///
     /// # Examples
     /// ```
     /// let a = Tensor::<f64, _>::zeros([3, 4]);
@@ -165,7 +168,7 @@ where
 }
 ````
 
-> **别名说明：** `t()` 为 `transpose()` 的语法别名，不增加新能力，仅提供便捷入口。
+> **别名说明：** `t()` 仅可作为非规范语法别名；规范契约只要求 `transpose()`。
 
 #### 5.1.1 转置语义
 
@@ -254,7 +257,7 @@ fn update_flags_for_transpose(
 
 ### Wave 2: 转置实现
 
-- [ ] **T2**: 实现 `transpose()` / `t()` 方法
+- [ ] **T2**: 实现 `transpose()` 与可选 `t()` 别名
   - 文件: `src/shape/transpose.rs`
   - 内容: `TensorBase::transpose()`, `TensorBase::t()`, `LayoutFlags::update_for_transpose()`
   - 测试: `test_transpose_2d`, `test_transpose_3d`, `test_transpose_contiguity_swap`, `test_transpose_0d_1d_preserves_contiguity`
@@ -288,7 +291,7 @@ Wave 3: [T3]
 
 | 测试分类 | 位置                     | 说明                                                                |
 | -------- | ------------------------ | ------------------------------------------------------------------- |
-| 单元测试 | `#[cfg(test)] mod tests` | 验证转置与 `t()` 的核心语义                                         |
+| 单元测试 | `#[cfg(test)] mod tests` | 验证 `transpose()` 的核心语义，以及可选 `t()` 别名与其保持一致       |
 | 集成测试 | `tests/`                 | 验证 `shape` 与 `tensor`、`layout`、`index`、`broadcast` 的协同路径 |
 | 边界测试 | 同模块测试中标注         | 覆盖空数组、单元素、大数组和高维转置等边界                          |
 | 属性测试 | `tests/property/`        | 验证转置长度保持与数据一致性不变量                                  |
@@ -324,13 +327,13 @@ Wave 3: [T3]
 
 | 测试文件              | 测试内容                                                                 |
 | --------------------- | ------------------------------------------------------------------------ |
-| `tests/test_shape.rs` | `transpose` / `t` 与 `tensor`、`layout`、`index`、`broadcast` 的协同路径 |
+| `tests/test_shape.rs` | `transpose()` 与 `tensor`、`layout`、`index`、`broadcast` 的协同路径；若提供 `t()`，则额外验证其别名一致性 |
 
 ### 8.6 Feature gate / 配置测试
 
 | 配置 | 验证点 |
 | ---- | ---- |
-| 默认配置 | `transpose()` / `t()` 的零拷贝与 flags 语义保持一致。 |
+| 默认配置 | `transpose()` 的零拷贝与 flags 语义保持一致；若提供 `t()`，则其语义必须与 `transpose()` 一致。 |
 | 其他 feature 组合 | 不适用；当前模块无额外 feature gate。 |
 
 ### 8.7 类型边界 / 编译期测试
@@ -406,7 +409,7 @@ User calls transpose() / t()
 
 ---
 
-## 12. 性能考量
+## 12. 性能描述
 
 ### 12.1 复杂度
 

@@ -2,7 +2,7 @@
 
 > 文档编号: 22 | 模块: `src/format/` | 阶段: Phase 4
 > 前置文档: `05-storage.md`, `06-layout.md`, `07-tensor.md`
-> 需求参考: 需求说明书 §24
+> 需求参考: 需求说明书 §4, §5, §8, §24, §28.1
 > 范围声明: 范围内
 
 ---
@@ -47,10 +47,18 @@ L7: format  <- current module
 
 | 类型     | 内容 |
 | -------- | ---- |
-| 需求映射 | 需求说明书 §24 |
+| 需求映射 | 需求说明书 §4, §5, §8, §24, §28.1 |
 | 范围内   | `Display` / `Debug`、`FormatConfig`、NumPy 风格多维输出、截断规则与零维张量显式标记。 |
 | 范围外   | 二进制序列化、JSON 输出、自定义 formatter 注册与 HTML / 富文本渲染。 |
 | 非目标   | 不把格式化模块扩展为序列化层，不新增第三方格式化依赖，也不改变 tensor 数据本身。 |
+
+| 需求条款 | 本文承接方式 |
+| -------- | ------------ |
+| §4 元素类型 | `Display` / `Debug` 覆盖全部受支持元素类型，包括 `bool` 与复数。 |
+| §5 复数类型 | 复数文本表示采用稳定、可读且可区分实部/虚部的输出格式。 |
+| §8 张量类型 | 输出可读取 shape / strides / layout / dtype 等元数据，并明确区分标量与零维张量。 |
+| §24 格式化输出 | 采用稳定的 NumPy 风格文本表示与统一截断规则。 |
+| §28.1 文档 | 关键格式化 API 提供使用示例；示例代码若非完整可编译上下文则标记为 `ignore`。 |
 
 ---
 
@@ -139,7 +147,7 @@ src/format/
 
 ### 5.1 FormatConfig 配置结构体
 
-```rust
+```rust,ignore
 /// Formatting output configuration.
 ///
 /// Controls truncation behavior and display parameters for large arrays.
@@ -182,7 +190,7 @@ impl Default for FormatConfig {
 
 ### 5.1b TensorDisplay 包装结构
 
-````rust
+````rust,ignore
 /// A wrapper for formatting a tensor with a specific config.
 pub struct TensorDisplay<'a, S, D, A>
 where
@@ -238,7 +246,7 @@ where
 
 > **默认配置绑定**：`Display for TensorBase` 默认使用 `FormatConfig::default()` 配置；如需自定义，请使用 `display_with(config)` 方法。
 
-```rust
+```rust,ignore
 // Display uses core::fmt and stays available in the std-only baseline.
 impl<S, D, A> core::fmt::Display for TensorBase<S, D>
 where
@@ -274,7 +282,9 @@ where
 
 ### 5.3 Debug 实现
 
-````rust
+> **Display / Debug 分工约定：** `Display` 只负责数据文本；当发生截断时，它在最外层右括号后追加 `shape=[...]`，用于满足 `require.md §24` 的“可识别 shape”要求。`Debug` 已在头部输出 `shape=`、`strides=`、`dtype=` 和 `layout=`，因此其数据段复用相同截断选点规则，但不再重复追加 `shape=[...]` 后缀。
+
+````rust,ignore
 // Debug reuses Display for the data section,
 // so A must satisfy both Debug and Display.
 impl<S, D, A> core::fmt::Debug for TensorBase<S, D>
@@ -288,8 +298,9 @@ where
     /// Includes metadata such as shape, strides, and type, then delegates
     /// data formatting to Display.
     ///
-    /// When the data section is truncated, the delegated Display output keeps
-    /// the truncation summary and appends the full tensor shape as a suffix.
+    /// When the data section is truncated, Debug keeps the same visible head/tail
+    /// selection as Display but omits the trailing `shape=[...]` suffix because
+    /// shape metadata is already present in the header.
     ///
     /// # Output Format
     ///
@@ -316,8 +327,9 @@ where
             write!(f, "non-contiguous")?;
         }
         write!(f, ")\n")?;
-        // Data section (reuses Display formatting logic)
-        core::fmt::Display::fmt(self, f)
+        // Data section (shares the same rendering rules as Display, but does
+        // not append a second shape suffix when truncation happens).
+        fmt_debug_data(f, self)
     }
 }
 ````
@@ -359,13 +371,13 @@ Tensor(shape=[3, 4], strides=[4, 1], dtype=f64, layout=non-contiguous)
   [4, 8]]]
 ```
 
-**1D 大数组（截断，默认 edge_items=3，`threshold=1000` 时仅在元素数 `> 1000` 才截断）**:
+**1D 大数组（截断，默认 `edge_items=3`，`threshold=1000`，元素数 `> 1000` 时触发）**:
 
 ```
 [1, 2, 3, ..., 999, 1000, 1001] ... (995 elements omitted)  shape=[1001]
 ```
 
-**2D 大数组（截断，默认 edge_items=3，shape=[100, 100]，底层数据按 F-order 为 `1..=10000`）**:
+**2D 大数组（截断，默认 `edge_items=3`，shape=[100, 100]，底层数据按 F-order 为 `1..=10000`）**:
 
 ```
 [[1, 101, 201, ..., 9701, 9801, 9901],
@@ -396,50 +408,84 @@ Tensor0(42)
 
 #### 5.5.1 形式化截断算法
 
-1. 配置参数 `max_display_elements` 决定最多可见的逻辑元素数；默认实现中该值由 `FormatConfig::threshold` 触发，并结合 `edge_items` 计算可见预算。
-2. 从最外层轴开始递归：若当前子树剩余预算足以完整显示该轴的全部逻辑元素，则完整显示该轴。
-3. 否则显示头部 `K` 项、一个 `...` 省略标记，以及尾部 `K` 项，其中 `K` 由预算与 `edge_items` 共同决定，并保证总可见元素数不超过阈值。
-4. 完成递归后，若发生截断，必须在主体之后追加 `... (N elements omitted)`，其中 `N = total_elements - visible_elements`。
-5. 任何截断输出都必须在末尾追加完整 `shape=[...]`。
-6. `line_width` 只影响换行位置，不影响元素选择、head/tail 分配或 omitted 计数。
+1. 截断决策仅由 `threshold` 决定：当 `tensor.len() <= threshold` 时，输出全部逻辑元素；当 `tensor.len() > threshold` 时，进入截断模式。
+2. 截断模式下，每一层轴只使用一个局部规则：
+   - 若当前轴长度 `axis_len <= 2 * edge_items`，该轴完整显示；
+   - 若 `axis_len > 2 * edge_items`，该轴仅显示前 `edge_items` 项、一个 `...` 标记、以及后 `edge_items` 项。
+3. `visible_elements` 定义为最终真实打印出的逻辑元素数量，不包含任何 `...` 标记、逗号、括号、换行或 `shape=[...]` 后缀。
+4. `omitted = tensor.len() - visible_elements`。只有在 `tensor.len() > threshold` 且至少一个轴满足 `axis_len > 2 * edge_items` 时，`omitted` 才会大于 `0`。
+5. `Display` 与 `Debug` 共享完全相同的元素选点规则与 `visible_elements` / `omitted` 计算规则；差异仅在元信息呈现：
+   - `Display` 只输出数据文本；若 `omitted > 0`，则在最外层右括号后追加 ` ... (N elements omitted)  shape=[...]`；
+   - `Debug` 先输出 `shape=` / `strides=` / `dtype=` / `layout=` 头部；若 `omitted > 0`，则只在数据段末尾追加 ` ... (N elements omitted)`，不重复追加 `shape=[...]`。
+6. `line_width` 仅影响换行位置；它不得改变是否截断、每层保留的头尾项数量、`visible_elements` 或 `omitted`。
+
+> **单一执行规范：** 当前版本不定义 `max_display_elements`、`max_rows` 或其他额外截断阈值；所有截断行为都只由 `threshold` 与 `edge_items` 共同决定。
 
 ```
-truncation_rule(tensor, config):
-    total = tensor.len()
-    if total <= config.threshold:
-        display all elements
-    else:
-        visible_budget = config.max_display_elements()
-        rendered, visible = render_axis(axis = 0, prefix = [], budget = visible_budget)
-        omitted = total - visible
-        append rendered
-        append " ... (" + omitted + " elements omitted)"
-        append "  shape=" + tensor.shape()
+truncation_rule(tensor, config, mode):
+    truncated = tensor.len() > config.threshold
+    rendered, visible_elements = render_axis(tensor, config, axis = 0, prefix = [], truncated)
+    omitted = tensor.len() - visible_elements
 
-render_axis(axis, prefix, budget):
+    if omitted == 0:
+        return rendered
+    if mode == Display:
+        return rendered + " ... (" + omitted + " elements omitted)  shape=" + tensor.shape()
+    return rendered + " ... (" + omitted + " elements omitted)"
+
+render_axis(tensor, config, axis, prefix, truncated):
+    if axis == tensor.ndim():
+        return render_scalar(prefix), 1
+
     axis_len = tensor.shape()[axis]
-    subtree = logical_subtree_size(axis + 1)
-    if axis_len * subtree <= budget:
-        return render_all(axis, prefix), axis_len * subtree
+    if !truncated || axis_len <= 2 * config.edge_items:
+        entries = [0, 1, ..., axis_len - 1]
+    else:
+        k = config.edge_items
+        entries = [0, 1, ..., k - 1, Ellipsis, axis_len - k, ..., axis_len - 1]
 
-    k = choose_edge_items(axis_len, subtree, config.edge_items, budget)
-    head = render first k entries
-    tail = render last k entries
-    return concat(head, "...", tail), visible_count(head) + visible_count(tail)
+    rendered = "["
+    visible = 0
+    for entry in entries:
+        if entry == Ellipsis:
+            rendered += "..."
+        else:
+            child_rendered, child_visible = render_axis(
+                tensor,
+                config,
+                axis + 1,
+                prefix + [entry],
+                truncated,
+            )
+            rendered += child_rendered
+            visible += child_visible
+        rendered += separator_for_axis(axis, entry)
+    rendered += "]"
+    return rendered, visible
 ```
+
+在该规则下，若 rank 为 `n` 且截断模式下第 `i` 个轴实际显示 `shown_i` 个索引位置（`shown_i = axis_len_i` 或 `2 * edge_items`），则：
+
+`visible_elements = Π shown_i`（对所有轴求乘积）。
+
+因此 `shape=[100, 100]`、`edge_items=3`、`threshold=1000` 时：
+
+- 每个轴都显示 `6` 个索引位置；
+- `visible_elements = 6 × 6 = 36`；
+- `omitted = 10000 - 36 = 9964`。
 
 `line_width` 行为：当一行输出超过 `line_width` 字符时，在元素之间插入换行，优先在轴边界处折行。
 
 | 参数         | 默认值 | 说明                        |
 | ------------ | ------ | --------------------------- |
-| `edge_items` | 3      | 每边显示的元素/行/列数      |
+| `edge_items` | 3      | 每层轴在截断时保留的头/尾项数 |
 | `threshold`  | 1000   | 元素总数严格大于该值时触发截断 |
 | `precision`  | `None` | 浮点精度（None = 类型默认） |
 | `line_width` | 80     | 每行最大字符数（用于换行）  |
 
 ### 5.6 Good/Bad 对比
 
-```rust
+```rust,ignore
 // Good - Use Display for readable output
 let tensor = Tensor2::<f64>::zeros([3, 4]);
 println!("{}", tensor);  // NumPy style output
@@ -454,7 +500,7 @@ for i in 0..3 {
 }
 ```
 
-```rust
+```rust,ignore
 // Good - Use Debug for debug information
 let tensor = Tensor2::<f64>::zeros([3, 4]);
 println!("{:?}", tensor);
@@ -529,7 +575,7 @@ fmt_nd(tensor, f, prefix):
 
 ### 6.2 dtype 名称映射
 
-```rust
+```rust,ignore
 fn dtype_name<A: Element>() -> &'static str {
     match core::any::TypeId::of::<A>() {
         id if id == core::any::TypeId::of::<f32>() => "f32",
@@ -623,7 +669,7 @@ Wave 3:        [T5]
 | 测试函数                      | 测试内容                                    | 优先级 |
 | ----------------------------- | ------------------------------------------- | ------ |
 | `test_fmt_1d_full`            | 1D 小数组完整输出 `[1, 2, 3]`               | 高     |
-| `test_fmt_1d_truncated`       | 1D 大数组截断，并追加统一后缀 `... (N elements omitted) shape=[...]` | 高  |
+| `test_fmt_1d_truncated`       | 1D 大数组截断，并追加统一后缀 `... (N elements omitted)  shape=[...]` | 高  |
 | `test_fmt_1d_empty`           | 1D 空数组 `[]`                              | 中     |
 | `test_fmt_1d_single`          | 1D 单元素 `[42]`                            | 中     |
 | `test_fmt_2d`                 | 2D 矩阵形式输出                             | 高     |
@@ -634,7 +680,7 @@ Wave 3:        [T5]
 | `test_fmt_i32`                | 整数类型格式化                              | 中     |
 | `test_fmt_bool`               | bool 类型格式化 `[true, false]`             | 低     |
 | `test_display_tensor`         | Display trait 完整流程                      | 高     |
-| `test_debug_tensor`           | Debug trait 含元信息                        | 高     |
+| `test_debug_tensor`           | Debug trait 含元信息，且数据段不重复输出 `shape=[...]` | 高     |
 | `test_fmt_zero_dim`           | 零维张量输出带区分标记                      | 中     |
 | `test_fmt_large_2d_truncated` | 大 2D 数组行列截断                          | 高     |
 | `test_line_width_wrapping`    | 多行输出遵守配置的 `line_width`             | 中     |

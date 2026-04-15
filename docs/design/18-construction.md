@@ -29,8 +29,8 @@
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 合法性验证   | 所有构造路径须验证合法性，防止越界访问（需求说明书 §8）                                                                                                          |
 | F-order 默认 | 构造时数据按 F-order 存放，默认列优先布局                                                                                                                        |
-| 对齐分配     | `zeros`/`ones` 使用对齐分配器，满足 BLAS 兼容性（参见 `23-ffi.md` §4.5）                                                                                         |
-| 对齐优先     | `from_shape_vec` 将输入 `Vec<A>` 的数据复制到新分配的 64 字节对齐内存中（通过 `Owned::from_vec_aligned()`），确保 SIMD 友好的内存对齐；不承诺复用原始 Vec 的分配 |
+| 对齐分配     | `zeros`/`ones` 使用项目统一的对齐分配策略，满足拥有型连续存储的实现需求；具体对齐值不作为构造 API 的公开语义                                                   |
+| 对齐优先     | `from_shape_vec` 可复用项目统一的 owned 存储构造路径；是否复制输入 `Vec<A>`、以及采用何种对齐值，均属于内部实现选择，不单独形成公开承诺                       |
 | 类型安全     | 形状和元素类型通过泛型约束在编译期检查                                                                                                                           |
 
 ### 1.3 在架构中的位置
@@ -52,7 +52,7 @@ L5: construct  <- current module (depends on storage, layout, dimension, element
 | 类型     | 内容 |
 | -------- | ---- |
 | 需求映射 | 需求说明书 §19 |
-| 范围内   | `zeros` / `ones` / `eye` / `from_shape_vec` / `from_shape_slice` / `from_array` / `from_scalar`。 |
+| 范围内   | `zeros` / `ones` / `eye` / `from_shape_vec` / `from_shape_slice` / `from_array` / `from_scalar`，以及与 §19 对齐的 1D 便捷入口 `from_vec`。 |
 | 范围外   | arange、linspace、from_fn、随机构造器与其他序列生成 API。 |
 | 非目标   | 不新增新的构造器家族，不改变 F-order / 对齐分配基线，也不引入第三方随机或数据加载依赖。 |
 
@@ -127,7 +127,7 @@ src/
 
 ### 5.1 zeros / ones
 
-````rust
+````rust,ignore
 # use crate::dimension::{Dimension, IntoDimension};
 # use crate::element::Element;
 # use crate::error::XenonError;
@@ -142,11 +142,11 @@ where
     /// Create a zero-initialized tensor (F-order).
     ///
     /// # Examples
-    /// ```
+    /// ```ignore
     /// let t = Tensor::<f64, _>::zeros([3, 4])?;
     /// assert_eq!(t.shape(), &[3, 4]);
     /// assert!(t.iter().all(|&x| x == 0.0));
-    /// ```
+    /// ```ignore
     pub fn zeros<Sh>(shape: Sh) -> Result<Self, XenonError>
     where
         A: Element,  // A::zero() is provided by the Element trait (see 03-element.md §5.1)
@@ -168,10 +168,10 @@ where
     /// Create a tensor filled with ones (F-order).
     ///
     /// # Examples
-    /// ```
+    /// ```ignore
     /// let t = Tensor::<f64, _>::ones([2, 3])?;
     /// assert!(t.iter().all(|&x| x == 1.0));
-    /// ```
+    /// ```ignore
     pub fn ones<Sh>(shape: Sh) -> Result<Self, XenonError>
     where
         A: Element,  // A::one() is provided by the Element trait (see 03-element.md §5.1)
@@ -193,14 +193,14 @@ where
 ````
 
 > **范围决策：** `full()` 超出 `require.md` §19 的当前最小构造集合。
-> 本文仅承诺 `zeros()`、`ones()`、`eye()`、`from_shape_vec()`、`from_vec()`、`from_shape_slice()`、`from_array()` 与 `from_scalar()`；
-> `full()` 留待后续版本单独设计。
+> `from_vec()` 虽可作为 `from_shape_vec(Ix1(data.len()), data)` 的 1D 便捷包装保留，但它不构成独立的需求扩展；
+> 本文稳定承诺仍以 `require.md` §19 已覆盖的标准构造语义为准。
 
 > **`bool` 特殊值说明：** `zeros::<bool>()` 对应 `false`，`ones::<bool>()` 对应 `true`（`require.md` §19）。
 
 ### 5.2 eye（单位矩阵）
 
-````rust
+````rust,ignore
 # use crate::complex::Complex;
 # use crate::element::Element;
 # use crate::error::XenonError;
@@ -224,12 +224,12 @@ where
     /// Diagonal elements are 1, all others are 0. F-order layout.
     ///
     /// # Examples
-    /// ```
+    /// ```ignore
     /// let e = Tensor::<f64, Ix2>::eye(3).unwrap();
     /// assert_eq!(e[[0, 0]], 1.0);
     /// assert_eq!(e[[0, 1]], 0.0);
     /// assert_eq!(e[[1, 1]], 1.0);
-    /// ```
+    /// ```ignore
     pub fn eye(n: usize) -> Result<Self, XenonError>
     where
         A: EyeElement,
@@ -243,7 +243,7 @@ where
 }
 ````
 
-```rust
+```rust,ignore
 pub trait EyeElement: Element {}
 
 impl EyeElement for i32 {}
@@ -258,7 +258,7 @@ impl EyeElement for Complex<f64> {}
 
 ### 5.3 from_shape_vec / from_shape_slice / from_array
 
-````rust
+````rust,ignore
 # use crate::dimension::{Dimension, IntoDimension, Ix1};
 # use crate::element::Element;
 # use crate::error::XenonError;
@@ -326,8 +326,11 @@ where
             });
         }
         let strides = dim.strides_for_f_order();
-        // from_vec_aligned: defined in 05-storage.md §5.1;
-        // copies data into Xenon's aligned allocation for SIMD compatibility.
+        // from_vec_aligned stands for Xenon's internal owned construction path.
+        // The public contract only requires validated F-order logical mapping and
+        // an owned result; whether the implementation reuses the original Vec
+        // allocation or materializes a new aligned allocation is intentionally
+        // left as an internal choice.
         let storage = Owned::from_vec_aligned(data);
         Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) })
     }
@@ -365,12 +368,17 @@ where
                 offending_dim: None,
             });
         }
+        // The baseline implementation materializes an owned buffer from the slice
+        // and then delegates to the shared owned construction path. This may imply
+        // an extra data move when the owned path chooses to re-pack into Xenon's
+        // preferred allocation, but it keeps all length validation and F-order
+        // materialization logic centralized in one place.
         Self::from_shape_vec(dim, slice.to_vec())
     }
 
     /// Construct a 1D tensor directly from a Vec.
     ///
-    /// This is a convenience wrapper around
+    /// This is an optional convenience wrapper around
     /// `from_shape_vec(Ix1(data.len()), data)` for 1D construction.
     pub fn from_vec(data: Vec<A>) -> Tensor<A, Ix1> {
         Self::from_shape_vec(Ix1(data.len()), data)
@@ -398,7 +406,7 @@ where
 
 ### 5.4 from_scalar
 
-````rust
+````rust,ignore
 # use crate::dimension::Ix0;
 # use crate::element::Element;
 # use crate::layout::{LayoutFlags, Order, Strides};
@@ -433,7 +441,7 @@ where
 
 ### 5.5 Good / Bad 对比
 
-```rust
+```rust,ignore
 # use crate::dimension::Ix2;
 # use crate::error::XenonError;
 # use crate::tensor::Tensor;
@@ -469,8 +477,8 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 | ------------------ | ------------------------------------------------- | ----------------------------- |
 | `zeros`            | 对齐分配 + 零初始化                               | `ptr::write_bytes(0)`         |
 | `ones`             | 对齐分配 + 批量填充                               | `ptr::write(A::one())`        |
-| `from_shape_vec`   | 复制到对齐分配（按元素类型选择 Xenon 的标准对齐） | 用户提供数据                  |
-| `from_shape_slice` | 先复制到临时 Vec，再复制到对齐分配                | 两次数据搬运（保持 API 简洁） |
+| `from_shape_vec`   | 走共享 owned 构造路径；可按实现需要复用或重打包输入缓冲区 | 用户提供数据                        |
+| `from_shape_slice` | 先物化 owned 缓冲区，再委托共享 owned 构造路径          | 至少一次切片拷贝；后续是否再搬运取决于内部实现 |
 | `from_scalar`      | 对齐分配（1 元素）                                | 单元素写入                    |
 | `eye`              | 先 `zeros` 再对角线写入                           | 两步：零初始化 + 对角线       |
 
@@ -480,8 +488,8 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 
 ### 6.3 安全性论证
 
-- `from_shape_vec`: 先通过共享 checked helper 验证 `dim.checked_size()`，再验证 `data.len() == expected`；通过后 `Owned::from_vec_aligned` 消费输入 Vec 并复制到对齐存储
-- `from_shape_slice`: 先通过共享 checked helper 验证 `dim.checked_size()`，长度匹配后再拷贝，原始切片不再被引用
+- `from_shape_vec`: 先通过共享 checked helper 验证 `dim.checked_size()`，再验证 `data.len() == expected`；通过后进入共享 owned 构造路径。是否复用原始 `Vec` 分配、是否进行额外重打包，均属于内部实现选择，不影响公开语义
+- `from_shape_slice`: 先通过共享 checked helper 验证 `dim.checked_size()`，长度匹配后先把切片物化为 owned 缓冲区，再委托给 `from_shape_vec`；这样把 F-order 映射、长度约束与 owned 结果语义统一收敛到单一路径
 - `dim.size()` / 步长计算溢出：构造路径须在共享的 checked helper 中统一转为 `XenonError::InvalidShape`，再决定是否由上层便捷构造包装；不得产生未定义行为。ZST 与空张量路径须与 `05-storage.md` 的约束保持一致
 - `eye`: 内部使用已验证的 `zeros` 和合法索引 `[[i, i]]`（`0 <= i < n`），无越界风险
 
@@ -521,7 +529,7 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
   - 前置: T3
   - 预计: 5 min
 
-- [ ] **T5**: 实现 `from_vec` 一维便捷构造
+- [ ] **T5**: 实现 `from_vec` 一维便捷构造（可选）
   - 文件: `src/construct/from_data.rs`
   - 内容: `from_vec(data: Vec<A>) -> Tensor<A, Ix1>`，内部委托到 `from_shape_vec(Ix1(data.len()), data)`
   - 测试: `test_from_vec`
@@ -608,7 +616,7 @@ Wave 3:            [T6]
 
 | 配置 | 验证点 |
 | ---- | ---- |
-| 默认配置 | 所有构造器在默认构建下保持 F-order、对齐分配与错误语义契约。 |
+| 默认配置 | 所有构造器在默认构建下保持 F-order 与错误语义契约；具体对齐值与是否重打包输入缓冲区不作为公开断言。 |
 | 其他 feature 组合 | 不适用；当前模块无额外 feature gate。 |
 
 ### 8.7 类型边界 / 编译期测试
@@ -628,7 +636,7 @@ Wave 3:            [T6]
 | 方向                    | 对方模块    | 接口/类型                               | 约定                                                                                                                          |
 | ----------------------- | ----------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `construct → tensor`    | `tensor`    | `TensorBase`                            | 构造张量实例，参见 `07-tensor.md` §5.1                                                                                        |
-| `construct → storage`   | `storage`   | `Owned::zeros()` / `from_vec_aligned()` | 使用对齐存储完成底层分配；`from_vec_aligned()` 当前仅用于 Xenon 封闭元素集合中的 `Copy` 元素快路径，参见 `05-storage.md` §5.1 |
+| `construct → storage`   | `storage`   | `Owned::zeros()` / owned 构造 helper | 使用项目统一的 owned 存储构造路径完成底层分配；具体对齐值、是否重打包输入缓冲区由 storage 内部负责 |
 | `construct → layout`    | `layout`    | F-order 步长                            | 构造阶段计算 F-order 步长，参见 `06-layout.md` §4                                                                             |
 | `construct → dimension` | `dimension` | `IntoDimension`                         | 接受灵活形状参数并归一化，参见 `02-dimension.md` §5.4                                                                         |
 | `construct → element`   | `element`   | `Element`                               | 通过 `Element::zero()` / `Element::one()` 约束构造 API，参见 `03-element.md` §5.1                                             |
@@ -642,7 +650,7 @@ User calls zeros / from_shape_vec / eye
     │
     ├── dimension normalizes the input shape and validates element count
     ├── layout computes F-order strides and initial flags
-    ├── storage allocates aligned owned memory and writes data
+    ├── storage allocates owned memory and writes data according to Xenon's internal policy
     └── tensor wraps the result as TensorBase<Owned<_>, D> for later use
 ```
 
@@ -689,22 +697,20 @@ User calls zeros / from_shape_vec / eye
 | `zeros(n)`            | O(n)                | O(n)           |
 | `ones(n)`             | O(n)                | O(n)           |
 | `eye(n)`              | O(n²)               | O(n²)          |
-| `from_shape_vec(n)`   | O(n) 拷贝到对齐内存 | O(n)（新分配） |
-| `from_shape_slice(n)` | O(n) 拷贝           | O(n)           |
+| `from_shape_vec(n)`   | O(n)                | O(n)           |
+| `from_shape_slice(n)` | O(n) 起步；若内部重打包则仍为 O(n) 级别 | O(n)           |
 | `from_array(n)`       | O(n) 拷贝           | O(n)           |
 | `from_scalar()`       | O(1)                | O(1)           |
 
 ### 12.2 对齐分配
 
-| 元素类型       | 对齐要求           | 分配方式            |
-| -------------- | ------------------ | ------------------- |
-| `f64`          | 64 字节（统一策略） | `alloc_aligned(64)` |
-| `f32`          | 64 字节（统一策略） | `alloc_aligned(64)` |
-| `Complex<f64>` | 64 字节（统一策略） | `alloc_aligned(64)` |
-| `i32`/`i64`    | 64 字节（统一策略） | `alloc_aligned(64)` |
-| `bool`         | 64 字节（统一策略） | `alloc_aligned(64)` |
+| 主题 | 说明 |
+| ---- | ---- |
+| 公共语义 | `require.md` §7 只要求支持对齐布局，并允许存在仅用于实现目的的填充区域；构造 API 不额外暴露具体对齐值 |
+| 实现选择 | `Owned` 存储可按 SIMD / FFI / allocator 约束选择合适的对齐策略 |
+| 兼容性 | 只要逻辑元素值、访问结果与 F-order 语义不变，更换具体对齐值不构成构造模块语义变化 |
 
-> **对齐策略说明**：当前版本所有元素类型统一使用 64 字节对齐分配（覆盖 AVX-512 需求），而非按元素类型选择不同对齐值。这简化了分配器设计，代价是对 `i32` / `i64` / `bool` 类型有少量内存浪费。
+> **对齐策略说明：** 文档只要求构造结果遵守 Xenon 的 owned/F-order/合法布局语义；实际对齐值由 storage 层统一决定，可随实现演进而调整，无需成为构造 API 的稳定承诺。
 
 ### 12.3 批量初始化优化
 
@@ -712,7 +718,7 @@ User calls zeros / from_shape_vec / eye
 | ---------------- | ------------------------ | ---------------------------------- |
 | `zeros` 大数组   | `ptr::write_bytes(0)`    | ~10 GB/s（memset 速度）            |
 | `ones` 大数组    | `ptr::write(value)` 循环 | ~5 GB/s                            |
-| `from_shape_vec` | 拷贝到对齐内存           | O(n)（拷贝到 64 字节对齐分配）     |
+| `from_shape_vec` | 共享 owned 构造路径      | O(n)                               |
 | `eye` 大矩阵     | 先零后对角               | n 次 `write` + n² 次 `write_bytes` |
 
 > **注意**：`from_array` 当前存在双重拷贝（源数组 → Vec → 对齐分配），未来版本可优化为直接构建。

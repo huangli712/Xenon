@@ -1,8 +1,8 @@
 # 迭代器模块设计
 
 > 文档编号: 10 | 模块: `src/iter/` | 阶段: Phase 4
-> 前置文档: `07-tensor.md`
-> 需求参考: 需求说明书 §11
+> 前置文档: `02-dimension.md`, `05-storage.md`, `07-tensor.md`, `09-parallel.md`, `26-error.md`
+> 需求参考: 需求说明书 §6.1, §7, §8, §10, §11, §16, §17, §18, §21.2, §27, §28.2, §28.4, §28.5
 > 范围声明: 范围内
 
 ---
@@ -51,10 +51,10 @@ L5: iter  <- current module
 
 | 类型     | 内容 |
 | -------- | ---- |
-| 需求映射 | 需求说明书 §11 |
-| 范围内   | 元素遍历、按轴遍历、带索引遍历，以及供各运算模块直接实现的内部迭代分发约定。 |
-| 范围外   | 独立的多输入 lock-step 迭代抽象、`DoubleEndedIterator`、`Windows` / `LaneIter` 与并行公开迭代接口。 |
-| 非目标   | 不扩展当前公开迭代器集合，不新增第三方依赖，也不在本文定义并行 API 契约。 |
+| 需求映射 | 需求说明书 §6.1, §7, §8, §10, §11, §16, §17, §18, §21.2, §27, §28.2, §28.4, §28.5 |
+| 范围内   | 元素遍历、按轴遍历、带索引遍历、对连续/非连续/广播只读视图的统一逻辑遍历语义，以及供各运算模块直接实现的内部迭代分发约定。 |
+| 范围外   | 独立的多输入 lock-step 迭代抽象、`DoubleEndedIterator`、`Windows` / `LaneIter`、负步长布局以及并行公开迭代接口。 |
+| 非目标   | 不扩展当前公开迭代器集合，不新增第三方依赖，不放宽广播只读约束，也不在本文定义新的并行 API 契约。 |
 
 ---
 
@@ -98,6 +98,7 @@ src/iter/
 ├── crate::tensor        # TensorBase<S, D>, TensorView, TensorViewMut
 ├── crate::dimension     # Dimension trait, Ix0~Ix6, IxDyn
 ├── crate::storage       # Storage, StorageMut trait
+├── crate::error         # XenonError
 └── crate::tensor        # Layout and contiguity queries via TensorBase
 ```
 
@@ -108,6 +109,7 @@ src/iter/
 | `tensor`    | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `TensorViewMut<'a, A, D>`, `.shape()`, `.strides()`, `.as_ptr()`, `.len()`（参见 `07-tensor.md §5.3` / `§5.4` / `§5.7`） |
 | `dimension` | `Dimension`, `Axis`, `Ix0`~`Ix6`, `IxDyn`, `RemoveAxis`, `D::Smaller`（参见 `02-dimension.md §5`）                                               |
 | `storage`   | `Storage<Elem = A>`, `StorageMut<Elem = A>`, `Owned<A>`（参见 `05-storage.md §5`）                                                               |
+| `error`     | `XenonError::InvalidAxis`（参见 `26-error.md §4.2` / `§4.4`）                                                                                     |
 | `tensor`    | `.is_f_contiguous()`, 布局标志查询（参见 `07-tensor.md §5.3`）                                                                                   |
 
 ### 4.5 依赖方向
@@ -369,7 +371,20 @@ increment_index_f(shape, index):
 
 > **ZST 迭代说明：** ZST（zero-sized type）迭代相关讨论仅用于说明边界情况处理，ZST 不是当前版本的张量元素类型（`require.md` §4）；若内部测试或辅助代码覆盖该路径，也不得把它扩展为公开元素类型承诺。
 
-### 6.5 并行分块说明
+### 6.5 可变迭代器的布局合法性前提
+
+`ElementsMut`、`AxisIterMut` 与 `IndexedIterMut` 的安全性论证除“访问区间不重叠”外，还依赖张量层先前已经建立的**布局合法性前提**：
+
+| 前提 | 说明 |
+| ---- | ---- |
+| shape/stride 已验证 | 输入必须来自 `tensor` 模块的合法构造路径；`shape`、`stride`、`offset` 与 `storage_len` 的组合已满足 `require.md` §8 的可表示性与边界约束。 |
+| 无负步长 | 当前版本不支持负步长布局，因此可变迭代器不需要处理“同一逻辑区间反向重叠”的别名情形。 |
+| 广播可写被禁止 | 零步长广播视图永远不会形成 `TensorViewMut`，因此可变迭代不会落在“多个逻辑索引映射同一物理地址”的未定义行为路径。 |
+| 逻辑元素不含填充区 | 即使底层存储存在对齐填充，迭代状态机也只覆盖逻辑元素坐标，不会把填充区当作可写元素暴露。 |
+
+只有在上述布局前提成立时，`next()` 基于 stride 计算出的地址不重叠这一结论才成立；若调用方绕过安全构造路径伪造非法布局，则该前提失效，责任属于上游不安全构造方，而不是迭代器公开 API 的契约范围。
+
+### 6.6 并行分块说明
 
 当前版本不在 `iter` 模块中设计独立的内部区间分块抽象。若并行后端需要对元素遍历做分块，应由并行执行模块基于自身的任务划分策略直接维护逻辑区间和调度状态；`iter` 文档只约束串行迭代器的外部语义，不再把这类内部多输入遍历或分块结构描述为稳定设计能力。
 
@@ -447,7 +462,7 @@ Wave 4:        [T9]
 | -------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 单元测试 | 验证单个迭代器类型的基本功能           | `test_elements_f_contig`, `test_elements_non_contiguous`, `test_elements_empty`, `test_elements_ix0`, `test_elements_mut_write`, `test_axis_iter_count`, `test_axis_iter_shape`, `test_axis_iter_ix0_error`, `test_indexed_iter_order`, `test_indexed_iter_ix0` |
 | 集成测试 | 验证迭代器与 TensorBase 入口方法的集成 | `test_tensor_iter_integration`                                                                                                                                                                                                                                  |
-| 边界测试 | 空数组、零维张量、非连续内存等边界条件 | `test_elements_empty`, `test_elements_ix0`, `test_axis_iter_ix0_error`（详见 §8.3）                                                                                                                                                                             |
+| 边界测试 | 空数组、零维张量、非连续内存、大张量/高维/极端索引元数据等边界条件 | `test_elements_empty`, `test_elements_ix0`, `test_axis_iter_ix0_error`, `test_elements_large_tensor_count`, `test_indexed_iter_high_rank_ixdyn`, `test_axis_iter_large_axis_index_error`（详见 §8.3） |
 | 属性测试 | 通过随机输入验证不变量                 | `iter().count() == tensor.len()`, `axis_iter(Axis(i)).count() == shape[i]`, `ExactSizeIterator` 递减不变量（详见 §8.4）                                                                                                                                         |
 
 ### 8.2 单元测试清单
@@ -464,6 +479,9 @@ Wave 4:        [T9]
 | `test_indexed_iter_order`      | 索引按 F-order 递增                           | 高     |
 | `test_indexed_iter_ix0`        | 零维张量索引为空切片                          | 中     |
 | `test_axis_iter_ix0_error`     | 零维动态张量调用 `axis_iter()` 返回可恢复错误 | 高     |
+| `test_elements_large_tensor_count` | 大张量（`10^7` 量级元素）上的 `count()` / `len()` 一致，且不访问越界内存 | 高     |
+| `test_indexed_iter_high_rank_ixdyn` | 高 rank `IxDyn`（接近静态上限/超过静态维度）索引遍历次序与数量正确 | 高     |
+| `test_axis_iter_large_axis_index_error` | 极端 axis 值（如 `usize::MAX`）返回 `InvalidAxis` 且携带完整诊断 | 高     |
 | `test_padded_iter`             | 填充数组仅遍历逻辑元素                        | 低     |
 
 ### 8.3 边界测试场景
@@ -476,6 +494,9 @@ Wave 4:        [T9]
 | 非连续切片 `s![.., 0..3]`     | `iter()` 正确处理步长跳转                        |
 | 广播视图 `shape=[1, 4]`       | `iter()` 遍历逻辑元素，`iter_mut()` 编译拒绝     |
 | 填充数组                      | 仅遍历逻辑元素                                   |
+| 大张量 `len ≈ 10^7`           | `ExactSizeIterator` 长度、`count()` 与 `len()` 保持一致 |
+| 高维动态张量 `IxDyn([1, 1, 1, 1, 1, 1, 1, 1])` | `indexed_iter()` 产出数量正确，索引按 F-order 递增 |
+| 极端 axis 值 `Axis(usize::MAX)` | `axis_iter()` / `axis_iter_mut()` 返回 `InvalidAxis`，诊断字段包含 `operation`、`axis`、`ndim`、`shape` |
 
 ### 8.4 属性测试不变量
 
@@ -495,8 +516,10 @@ Wave 4:        [T9]
 
 | 配置 | 验证点 |
 | ---- | ---- |
-| 默认配置 | `iter` / `axis_iter` / `indexed_iter` 在无并行后端时保持既定顺序与长度语义。 |
-| 启用并行相关能力 | 并行执行模块自管的内部区间划分必须与串行迭代保持相同的元素覆盖与顺序契约。 |
+| 默认配置 | `iter` / `axis_iter` / `indexed_iter` 在无并行后端时保持既定顺序、长度与错误语义。 |
+| `--features parallel` | `parallel` 模块启用后，所有串行公开迭代器 API 仍保持相同的元素覆盖、顺序与 `ExactSizeIterator` 契约。 |
+| `--features parallel` + 大输入 | 上层并行后端基于迭代器分块时，元素覆盖与串行基线一致，且不出现二次并行导致的语义漂移。 |
+| `--features parallel` + 非连续/广播视图 | 并行后端消费迭代语义时仍遵守广播只读与非连续布局的逻辑遍历契约。 |
 
 ### 8.7 类型边界 / 编译期测试
 
@@ -621,6 +644,7 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
 | ---------- | ----------------------------------------------------------------------------------- |
 | 标准库环境 | Xenon 当前版本仅支持 `std`，本文档不再承诺 `no_std` 兼容性                          |
 | crate 结构 | 保持单 crate 结构，不为迭代器单独拆分子 crate                                       |
+| SemVer     | 公开迭代顺序、`ExactSizeIterator` 精确长度、广播只读限制以及 `InvalidAxis` 错误字段均属于稳定契约；后续只能在新增能力时扩展，不能破坏既有语义 |
 | 依赖约束   | 不新增第三方依赖；仅复用项目既有核心模块                                            |
 | 范围边界   | 当前版本公开范围仅覆盖元素、按轴、按索引迭代；内部多输入遍历由各操作模块直接实现，`Windows` / `LaneIter` 保留为后续议题 |
 
@@ -640,6 +664,7 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
 | 1.2.0 | 2026-04-08 |
 | 1.2.1 | 2026-04-14 |
 | 1.2.2 | 2026-04-15 |
+| 1.2.3 | 2026-04-15 |
 
 ---
 

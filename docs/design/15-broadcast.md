@@ -17,7 +17,7 @@
 | 广播步长计算 | `broadcast_strides()` 生成目标视图步长；广播轴写入 `0` | 负步长、复制式 reshape、额外布局模式 |
 | 广播视图创建 | `broadcast_to()`、`broadcast_with()` 返回零拷贝共享底层数据的只读视图 | 可写广播视图、共享可写广播结果 |
 | 类型层维度推导 | 通过 `D1: BroadcastDim<D2>` 在编译期确定输出维度类型 | 在类型层替代运行时 shape 兼容性检查 |
-| 广播语义收敛 | 广播结果统一视为“共享底层数据且绝不暴露写权限”的共享只读语义；若源为 `Owned` / `ArcRepr` 则结果走 `ArcRepr`，若源为 `ViewRepr` 则结果保持 `ViewRepr` 只读借用 | 多输入同步迭代调度、多操作数广播编排 |
+| 广播语义收敛 | 广播结果统一视为“共享底层数据且绝不暴露写权限”的共享只读语义 | 多输入同步迭代调度、多操作数广播编排 |
 
 ### 1.2 设计原则
 
@@ -63,7 +63,7 @@ L6: shape, index, iter, math, overload
 src/broadcast/
 ├── mod.rs             # module entry, re-export public functions and trait-bound-related entry points
 ├── shape.rs           # can_broadcast(), broadcast_shape(), broadcast_strides()
-└── view.rs            # TensorView::broadcast_to(), broadcast_with()
+└── view.rs            # TensorBase::broadcast_to(), broadcast_with()
 ```
 
 文件划分理由：广播模块天然分为“兼容性/步长规则”和“视图构造”两部分；前者只处理 shape 与 stride 元数据，后者负责把结果降级为共享只读视图。采用 `src/broadcast/` 目录结构能使规则函数与视图入口分离，同时保持当前版本只覆盖显式广播能力。
@@ -97,7 +97,7 @@ src/broadcast/
 
 | 来源模块 | 使用的类型/trait |
 | -------- | ---------------- |
-| `tensor` | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `.shape()`, `.strides()`, `.offset()`, 视图构造入口，以及广播结果在 `Owned` / `ArcRepr` 输入下复用 `ArcRepr`、在 `ViewRepr` 输入下复用只读 `ViewRepr` 的表示路径。 |
+| `tensor` | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `.shape()`, `.strides()`, `.offset()`, 视图构造入口，以及从任意受支持存储模式降级到只读广播视图的入口。 |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<Other>`。 |
 | `layout` | `Strides<D>`, `LayoutFlags`, `LayoutState::FContiguous`, `LayoutState::NonContiguous`, `LayoutState::BroadcastView`。 |
 | `error` | `XenonError::BroadcastError`, `XenonError::InvalidArgument`。 |
@@ -131,18 +131,19 @@ pub fn broadcast_strides(
     target_shape: &[usize],
 ) -> Result<Vec<usize>, XenonError>;
 
-impl<'a, A, D> TensorView<'a, A, D>
+impl<S, A, D> TensorBase<S, D>
 where
+    S: Storage<Elem = A>,
     D: Dimension,
 {
-    pub fn broadcast_to<E>(&self, shape: E) -> Result<TensorView<'a, A, E>, XenonError>
+    pub fn broadcast_to<E>(&self, shape: E) -> Result<TensorView<'_, A, E>, XenonError>
     where
         E: Dimension;
 }
 
-pub fn broadcast_with<'a, A, D, E>(
-    a: &TensorView<'a, A, D>,
-    b: &TensorView<'a, A, E>,
+pub fn broadcast_with<'a, A, S1, D, S2, E>(
+    a: &'a TensorBase<S1, D>,
+    b: &'a TensorBase<S2, E>,
 ) -> Result<
     (
         TensorView<'a, A, <D as BroadcastDim<E>>::Output>,
@@ -151,6 +152,8 @@ pub fn broadcast_with<'a, A, D, E>(
     XenonError,
 >
 where
+    S1: Storage<Elem = A>,
+    S2: Storage<Elem = A>,
     D: Dimension + BroadcastDim<E>,
     E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>;
 ```
@@ -162,12 +165,12 @@ where
 | `can_broadcast()` | 仅回答兼容性，不分配、不生成中间结果。 |
 | `broadcast_shape()` | 运行时计算公共 shape；不兼容时返回 `XenonError::BroadcastError`。 |
 | `broadcast_strides()` | 对齐原 shape 与目标 shape，广播轴写入 `0` 步长；输入长度非法时返回 `InvalidArgument`。 |
-| `broadcast_to()` | 显式广播入口；成功时返回共享底层数据的只读 `TensorView`。该 `TensorView` 在广播语境下被约束为共享只读语义：可共享底层数据，但永不提供写访问。 |
-| `broadcast_with()` | 把两个输入广播到共同 shape；输出维度类型由 `BroadcastDim` 计算，实际兼容性仍由运行时检查保证；返回的两个 `TensorView` 同样只承载共享只读语义。 |
+| `broadcast_to()` | 显式广播入口；成功时返回共享底层数据的只读 `TensorView`。结果必须满足 `require.md` §6 对“共享只读引用”的定义：可在多个张量实例之间共享同一底层数据，但不提供可写访问权。 |
+| `broadcast_with()` | 面向两个张量输入的专用助手：先计算共同 shape，再分别构造两个共享只读广播视图。它不承担通用 shape 工具职责；仅需 shape 判定时应使用 `can_broadcast()` / `broadcast_shape()`。 |
 
 > **同形状快捷路径**：当两个输入形状完全相同时，`broadcast_with()` 可直接返回两个原始视图而不执行步长重写，因为目标 shape 与输入 shape 一致。
 > **目标秩语义**：`broadcast_to()` 的目标 shape 秩决定了输出视图的维度类型；标量广播到高维时，缺失前导轴按 `1` 补齐。
-> **类型说明：** 当前版本继续复用 `TensorView` 作为返回类型，而不是引入单独的 `BroadcastView` 新类型；其满足 `require.md` §16 的方式是把“广播结果”解释为一种受存储模式约束的 `TensorView`：若源来自 `Owned` / `ArcRepr`，结果以共享只读 `ArcRepr` 表示；若源来自 `ViewRepr`，结果以只读借用 `ViewRepr` 表示。两种表示都共享底层数据，且都不暴露写权限，因此都满足“须作为共享只读引用对待”的约束。
+> **类型说明：** 当前版本继续复用 `TensorView` 作为返回类型，而不是引入单独的 `BroadcastView` 新类型；其公开语义统一为“共享只读引用”：广播结果与源张量共享底层数据，但不提供可写访问权，也不得通过该结果重新获得可写访问权。
 
 ### 5.3 Good / Bad 对比
 
@@ -205,7 +208,7 @@ assert_eq!(view.strides()[0], 0);
 ### 6.1 广播不变式
 
 - 广播必须是零拷贝；不得复制底层数据。
-- 广播结果只能返回只读 `TensorView`，并按共享只读引用处理；这里的“共享只读”指共享底层数据且不暴露写权限，而不要求所有实现都强制转成同一种底层表示。
+- 广播结果只能返回只读 `TensorView`，并按共享只读引用处理；这里的“共享只读引用”含义与 `require.md` §6 一致：结果可在多个张量实例之间共享同一底层数据，但不提供可写访问权。
 - 广播轴的 stride 必须写成 `0`，且 stride 类型保持为 `usize`。
 - 若结果存在零步长轴，则布局状态必须标记为 `LayoutState::BroadcastView`。
 - 广播不改变底层 storage、offset 与逻辑元素顺序语义。
@@ -241,7 +244,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 
 ### 6.4 共享只读视图构造
 
-`broadcast_to()` 和 `broadcast_with()` 只负责在元数据层重建视图：保留原始 storage 与 offset，改写 shape、strides 与 flags。返回类型虽然仍是 `TensorView`，但在广播语境下其存储模式被收紧为共享只读语义：若源本身是 `Owned` 或 `ArcRepr`，结果通过 `ArcRepr` 共享底层数据；若源本身是 `ViewRepr`，结果继续以 `ViewRepr` 只读借用源数据。两条路径的共同约束是——广播结果永不提供写访问；任何试图从广播结果取得可变访问权的 API，都必须在类型层缺失或运行时返回错误。
+`broadcast_to()` 和 `broadcast_with()` 只负责在元数据层重建视图：保留原始 storage 与 offset，改写 shape、strides 与 flags。返回类型虽然仍是 `TensorView`，但其公开语义必须统一收敛到共享只读引用：广播结果永不提供写访问；任何试图从广播结果取得可变访问权的 API，都必须在类型层缺失或运行时返回错误。
 
 ### 6.5 `BroadcastDim` 的职责边界
 

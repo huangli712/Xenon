@@ -149,12 +149,12 @@ xenon/
 │   │   └── indexed.rs         # IndexedIter with indices
 │   │
 │   ├── simd/                  # SIMD backend (feature = "simd")
-│   │   ├── mod.rs             # pulp integration, public API, SimdKernel trait
+│   │   ├── mod.rs             # pulp integration, internal dispatch, SimdKernel trait
 │   │   ├── scalar.rs          # Scalar fallback implementation
 │   │   └── vector.rs          # Vectorized implementation
 │   │
 │   ├── parallel/              # Parallel backend (feature = "parallel")
-│   │   └── mod.rs             # Entry point, threshold state, guard, public API
+│   │   └── mod.rs             # Entry point, threshold state, guard, internal dispatch
 │   │
 │   ├── broadcast/             # Broadcast rules and read-only views
 │   │   ├── mod.rs             # Module entry and re-exports
@@ -173,7 +173,7 @@ xenon/
 │   │
 │   ├── util/                  # Utility operations
 │   │   ├── mod.rs             # Module root and re-exports
-│   │   ├── clip.rs            # clip / clip_inplace
+│   │   ├── clip.rs            # clip
 │   │   ├── fill.rs            # fill
 │   │   └── contiguous.rs      # to_contiguous public entry point
 │   │
@@ -224,7 +224,7 @@ xenon/
 │   │   ├── types.rs           # BlasLayout, BlasTrans, BlasInfo definitions
 │   │   ├── ptr.rs             # Raw pointer API (as_ptr, as_mut_ptr, from_raw_parts, into_raw_parts)
 │   │   ├── blas.rs            # BLAS compatibility checks (is_blas_compatible, blas_info, lda)
-│   │   └── offset.rs          # Index-to-pointer offset (try_offset_of/offset_of, try_ptr_at/ptr_at)
+│   │   └── offset.rs          # Index-to-pointer offset (try_offset_of, try_ptr_at)
 │   │
 │   ├── workspace/             # Temporary workspace
 │       ├── mod.rs             # Module root and re-exports
@@ -303,16 +303,12 @@ keywords = ["tensor", "array", "numpy", "scientific", "ndarray"]
 categories = ["science", "mathematics", "data-structures"]
 
 [features]
-default = ["std"]
 
-# Standard library support
-std = []
+# Parallel computing (depends on rayon)
+parallel = ["dep:rayon"]
 
-# Parallel computing (depends on rayon + std)
-parallel = ["dep:rayon", "std"]
-
-# SIMD acceleration (depends on pulp + std)
-simd = ["dep:pulp", "std"]
+# SIMD acceleration (depends on pulp)
+simd = ["dep:pulp"]
 
 [dependencies]
 rayon = { version = "1.10", optional = true }
@@ -372,7 +368,7 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 ```
 
-`simd` 显式依赖 `std`：`pulp` 使用平台相关 intrinsics，当前实现不是 `no_std` 兼容路径，因此依赖链为 `simd -> std`，`parallel -> std`。
+Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前提之上，不再把 `std` 建模为独立 feature。
 
 ### Feature 组合说明
 
@@ -438,25 +434,24 @@ L7:                 construct   convert   format
 
 ## 6. Feature Gate 矩阵
 
-| 功能             | 默认 (`std`) | +parallel | +simd | +parallel+simd |
-| ---------------- | :----------: | :-------: | :---: | :------------: |
-| 基础张量操作     |      ✅      |    ✅     |  ✅   |       ✅       |
-| 视图/视图可变    |      ✅      |    ✅     |  ✅   |       ✅       |
-| Arc 存储         |      ✅      |    ✅     |  ✅   |       ✅       |
-| 迭代器           |      ✅      |    ✅     |  ✅   |       ✅       |
-| 逐元素非数学运算 |      ✅      |    ✅     |  ✅   |       ✅       |
-| 逐元素数学函数   |      ✅      |    ✅     |  ✅   |       ✅       |
-| sum 归约         |      ✅      |    ✅     |  ✅   |       ✅       |
-| 内积 (dot)       |      ✅      |    ✅     |  ✅   |       ✅       |
-| transpose        |      ✅      |    ✅     |  ✅   |       ✅       |
-| 整数索引 / 切片  |      ✅      |    ✅     |  ✅   |       ✅       |
-| Display 格式化   |      ✅      |    ✅     |  ✅   |       ✅       |
-| 并行迭代器       |      ❌      |    ✅     |  ❌   |       ✅       |
-| 并行归约         |      ❌      |    ✅     |  ❌   |       ✅       |
-| SIMD 向量化      |      ❌      |    ❌     |  ✅   |       ✅       |
-| BLAS 兼容 API    |      ✅      |    ✅     |  ✅   |       ✅       |
+| 功能             | 默认 | +parallel | +simd | +parallel+simd |
+| ---------------- | :--: | :-------: | :---: | :------------: |
+| 基础张量操作     |  ✅  |    ✅     |  ✅   |       ✅       |
+| 视图/视图可变    |  ✅  |    ✅     |  ✅   |       ✅       |
+| Arc 存储         |  ✅  |    ✅     |  ✅   |       ✅       |
+| 迭代器           |  ✅  |    ✅     |  ✅   |       ✅       |
+| 逐元素非数学运算 |  ✅  |    ✅     |  ✅   |       ✅       |
+| 逐元素数学函数   |  ✅  |    ✅     |  ✅   |       ✅       |
+| sum 归约         |  ✅  |    ✅     |  ✅   |       ✅       |
+| 内积 (dot)       |  ✅  |    ✅     |  ✅   |       ✅       |
+| transpose        |  ✅  |    ✅     |  ✅   |       ✅       |
+| 整数索引 / 切片  |  ✅  |    ✅     |  ✅   |       ✅       |
+| Display 格式化   |  ✅  |    ✅     |  ✅   |       ✅       |
+| 并行执行后端     |  ❌  |    ✅     |  ❌   |       ✅       |
+| SIMD 向量化      |  ❌  |    ❌     |  ✅   |       ✅       |
+| BLAS 兼容 API    |  ✅  |    ✅     |  ✅   |       ✅       |
 
-> **说明**：并行迭代器 API 为内部执行后端能力，不作为 `require.md` §9 要求的公开 API 契约。公开 API 的并行加速为透明内部实现。
+> **说明**：`parallel` 只表示内部执行后端可用，不引入额外的公开并行迭代 API。公开 API 的并行加速为透明内部实现。
 
 ---
 
@@ -498,9 +493,6 @@ pub use crate::complex::Complex;
 // Error types
 pub use crate::error::{XenonError, Result};
 
-// Slice macro
-pub use crate::index::s;
-
 // Construction helpers
 pub use crate::construct::{
     zeros, ones, eye,
@@ -508,7 +500,7 @@ pub use crate::construct::{
 };
 ```
 
-> **注**：`s!` 宏为可选便捷层，不在 `require.md` §18 的当前版本公开 API 范围内。如需引入，须在需求文档中显式确认。
+> **注**：当前版本 `prelude` 仅导出 `require.md` 已授权的稳定公开项；`s!` 之类便捷宏不纳入默认导出面。
 
 ---
 
@@ -677,7 +669,7 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 
 | 任务                | 依赖       | 预估复杂度 | 产出        |
 | ------------------- | ---------- | ---------- | ----------- |
-| W5.1 par_iter       | W3.1-W3.2  | 高         | 并行迭代器  |
+| W5.1 parallel dispatch | W3.1-W3.2  | 高         | 内部并行执行后端 |
 | W5.2 par_reduction  | W3.5, W5.1 | 高         | 并行 sum    |
 | W5.3 simd math      | W3.3       | 高         | SIMD 逐元素 |
 | W5.4 simd reduction | W3.5       | 高         | SIMD sum    |
@@ -760,9 +752,9 @@ Wave 5: [W5.1] [W5.2] [W5.3] [W5.4]
 
 | 属性     | 值                                                                                                                               |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | 可恢复错误统一通过 `Result` 暴露；索引语法 `tensor[[...]]` 保留 panic；少数显式标注为 panic-sugar 的安全包装（如 `ffi::offset_of()` / `ffi::ptr_at()`）作为窄例外存在，但其失败语义必须直接委托对应 `try_*` API |
-| 理由     | 避免相同失败条件在方法与运算符之间分裂成两套模型，同时允许与 Rust 索引风格一致的少量便捷包装维持直觉用法；异常入口仍须有单一 `Result` 基线可回退 |
-| 替代方案 | 所有接口统一 panic — 放弃，不利于库集成和诊断；完全禁止 panic-sugar 包装 — 放弃，会削弱与索引式用法一致的便捷层                 |
+| 决策     | 可恢复错误统一通过 `Result` 暴露；索引语法 `tensor[[...]]` 保留 panic；FFI 偏移与指针计算的公开入口仅保留 `try_offset_of()` / `try_ptr_at()` |
+| 理由     | 避免相同失败条件在方法与运算符之间分裂成两套模型，同时让 FFI helper 与需求文档的可恢复错误约束保持一致 |
+| 替代方案 | 所有接口统一 panic — 放弃，不利于库集成和诊断；为 FFI helper 额外提供 panic-sugar 包装 — 放弃，会破坏公开错误入口的一致性                 |
 
 ### 决策 7：FfiError / WorkspaceError 仅限模块内部使用
 
@@ -776,9 +768,9 @@ Wave 5: [W5.1] [W5.2] [W5.3] [W5.4]
 
 ## 错误处理与语义边界
 
-本文档不直接定义错误类型，但要求所有架构层级、模块边界与执行路径统一遵循 `26-error.md` 的错误语义边界；架构层只裁决错误入口应单一、路径语义应一致，不在此重复定义具体错误枚举。`FfiError`、`WorkspaceError` 等模块局部错误只允许在模块内部保留语义，跨公开 API 边界时必须包装为 `XenonError`。对于 FFI 场景，`try_offset_of()` / `try_ptr_at()` 之类 API 仍是统一的可恢复错误入口；`offset_of()` / `ptr_at()` 仅作为显式 panic-sugar 便捷包装存在，不改变底层错误分类模型。
+本文档不直接定义错误类型，但要求所有架构层级、模块边界与执行路径统一遵循单一 `XenonError` 公开错误模型；架构层只裁决错误入口应单一、路径语义应一致，不在此重复定义完整错误枚举。`FfiError`、`WorkspaceError` 等模块局部错误只允许在模块内部保留语义，跨公开 API 边界时必须映射为结构化 `XenonError` 字段。对于 FFI 场景，`try_offset_of()` / `try_ptr_at()` 是公开的可恢复错误入口。
 
-> **FFI 补充说明**：FFI helper 中可能存在 panic-sugar 包装（如 `offset_of`），这些仅用于 Rust 内部便捷调用。`extern "C"` 边界不得使用这些 sugar，参见 `00-coding.md` §4.2。
+> **FFI 补充说明**：`extern "C"` 边界不得返回 `Result`，也不得依赖 panic-sugar helper；公开 Rust API 层同样不额外承诺 `offset_of` / `ptr_at` 这类 panic 包装，参见 `00-coding.md` §4.2。
 
 ---
 
@@ -788,7 +780,7 @@ Wave 5: [W5.1] [W5.2] [W5.3] [W5.4]
 
 | 配置             | 验证点                                           |
 | ---------------- | ------------------------------------------------ |
-| 默认 `std`       | 架构分层与模块导出在默认配置下保持成立           |
+| 默认配置         | 架构分层与模块导出在默认配置下保持成立           |
 | `parallel`       | 并行 backend 仅作为可选上层能力接入，不破坏层级  |
 | `simd`           | SIMD backend 仅作为可选上层能力接入，不破坏层级  |
 | `parallel + simd` | 两类 backend 可组合启用且不引入循环依赖          |

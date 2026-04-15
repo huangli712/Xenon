@@ -2,7 +2,7 @@
 
 > 文档编号: 05 | 模块: `src/storage/` | 阶段: Phase 2
 > 前置文档: `02-dimension.md`, `03-element.md`, `04-complex.md`
-> 需求参考: 需求说明书 §6
+> 需求参考: 需求说明书 §6, §8, §10, §25, §26, §27, §28
 > 范围声明: 范围内
 
 ---
@@ -36,7 +36,7 @@ Dependency layers:
 L0: error, private
 L1: dimension, element, complex
 L2: layout (depends on dimension)
-L3: storage (does not depend on layout; exposed under a `std` environment)  ← current module
+L3: storage (independent from layout; exposed under a `std` environment)  ← current module
 L4: tensor (depends on storage, dimension)
 L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 ```
@@ -47,7 +47,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 | 项目     | 内容                                                              |
 | -------- | ----------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §6                                                     |
+| 需求映射 | 需求说明书 §6、§8、§10、§25、§26、§27、§28                       |
 | 范围内   | `Storage` trait 层次、拥有/借用/共享存储模式、对齐分配与 ZST 处理 |
 | 范围外   | GPU 后端、并行调度、张量运算逻辑、负步长布局解释                  |
 | 非目标   | 引入第三方分配器依赖、共享可写存储模式或运行时类型擦除存储层      |
@@ -124,9 +124,9 @@ src/storage/
 
 ### 4.3 依赖方向声明
 
-> **依赖方向：单向向下。** storage 模块不依赖 layout；实现层主要使用标准库及既有 `core` / `alloc` / `std::sync` 能力，并依赖 `crate::error` 提供 `XenonError`、依赖 `crate::private` 提供 `Sealed`。`storage/` 不直接依赖 `element` 模块；元素类型约束通过 `TensorBase` 的泛型参数间接体现（`Storage::Elem` 关联类型）。`tensor/`（参见 `07-tensor.md` §5）和 `iter/`（参见 `10-iterator.md` §4）模块消费 storage 的 trait 和类型。
+> **依赖方向：单向向下。** storage 模块不依赖 layout；实现层主要使用标准库及既有 `core` / `alloc` / `std::sync` 能力，并依赖 `crate::error` 提供 `XenonError`、依赖 `crate::private` 提供 `Sealed`。`storage/` 不直接依赖 `element` 或 `layout` 模块；元素类型约束通过 `TensorBase` 的泛型参数间接体现（`Storage::Elem` 关联类型）。`tensor/`（参见 `07-tensor.md` §5）和 `iter/`（参见 `10-iterator.md` §4）模块消费 storage 的 trait 和类型。
 >
-> **前向引用：** `Strides` 的辅助接口（如 `Strides::from_slice()`、`.iter()`、`.as_slice()`）由 `06-layout.md` 定义并由上层 `tensor` / `iter` / `ffi` 路径消费。storage 文档仅引用这些能力，不在本模块重复定义 layout API。
+> **依赖边界补充：** `Strides` 及其它 layout 元数据由 `06-layout.md` 定义并由上层 `tensor` / `ffi` / `iter` 组合消费。storage 只负责 backing buffer 与所有权/可变性语义，不直接消费 `Strides`。
 
 ---
 
@@ -158,7 +158,7 @@ Storage mode taxonomy
 | `ViewMutRepr<'a, A>` | ❌ (独占借用) |  ✅  |               ✅               | 不可克隆            | 无分配                          |
 | `ArcRepr<A>`         |   ✅ (共享)   |  ✅  | 仅通过 CoW 生成独占 owned 数据 | 浅拷贝 (引用计数+1) | 共享对齐缓冲，写时按需深拷贝    |
 
-> **术语澄清：** `require.md` §6.2 的“共享只读引用”描述的是抽象访问语义，而不是唯一具体表示。对拥有型来源，Xenon 用 `ArcRepr<A>` 表达可共享底层缓冲区的只读结果；对 `ViewMutRepr<'a, A>` 的零拷贝降级，Xenon 用 `ViewRepr<'a, A>` 表达放弃写权限后的只读重借用。两者都满足“共享只读、不提供写访问”的语义，只是前者共享所有权，后者共享借用生命周期。`make_mut()` 只是 `ArcRepr<A>` 从共享只读状态显式转入独占 owned 缓冲的实现机制；它不意味着 `ArcRepr<A>` 本身提供共享可写访问，也不意味着它实现 `StorageMut`。
+> **术语澄清：** `require.md` §6.2 的“共享只读引用”描述的是抽象访问语义，而不是唯一具体表示。对拥有型来源，Xenon 用 `ArcRepr<A>` 表达可共享底层缓冲区的只读结果；对 `ViewMutRepr<'a, A>` 的零拷贝降级，Xenon 用 `ViewRepr<'a, A>` 表达放弃写权限后的只读重借用。两者都满足“共享只读、不提供写访问”的语义，只是前者共享所有权，后者共享借用生命周期。任何写时复制逻辑都只能是 `arc.rs` 内部实现细节，不能作为 storage 层公开 API 暴露。
 
 #### 抽象模式 ↔ 具体表示 对照表
 
@@ -215,7 +215,11 @@ pub unsafe trait RawStorage {
     /// The element type of the storage.
     type Elem;
 
-    /// Returns a raw pointer to the start of the data.
+    /// Returns the raw storage base pointer.
+    ///
+    /// Tensor-level logical offsets are modeled by `TensorBase::offset`
+    /// (see `07-tensor.md §5.1`), so storage implementations must not pre-apply
+    /// view offsets here.
     fn as_ptr(&self) -> *const Self::Elem;
 
     /// Returns the number of elements in storage.
@@ -306,11 +310,10 @@ pub unsafe trait Storage: RawStorage {
 
     /// Returns a slice view of the storage-visible backing range.
     ///
-    /// This is a storage-level API. Implementors must expose the visible range
-    /// of the storage object itself: for subviews, `as_ptr()` must already be
-    /// offset-adjusted and `len()` must cover only the storage-visible element
-    /// range. Hidden allocator capacity or alignment padding must not be
-    /// exposed through this API.
+    /// This is a storage-level API. It starts at the storage base pointer and
+    /// spans exactly `len()` initialized elements owned or borrowed by the
+    /// storage object itself. Hidden allocator capacity or alignment padding
+    /// must not be exposed through this API.
     ///
     /// This API still does **not** account for tensor-level `shape` /
     /// `strides` metadata, so callers must not treat it as an arbitrary logical
@@ -362,9 +365,9 @@ pub unsafe trait StorageMut: Storage + RawStorageMut {
 
     /// Returns a mutable slice view of the storage-visible backing range.
     ///
-    /// Like `Storage::as_slice()`, this is a storage-level API. The pointer
-    /// must already be offset-adjusted to the storage-visible range, and hidden
-    /// allocator padding must not be exposed here.
+    /// Like `Storage::as_slice()`, this is a storage-level API over the storage
+    /// base pointer and `len()` initialized elements. Tensor-level logical
+    /// offsets remain the responsibility of `TensorBase`.
     #[inline]
     fn as_mut_slice(&mut self) -> &mut [Self::Elem] {
         // SAFETY: StorageMut guarantees all elements are initialized and exclusive access
@@ -382,7 +385,7 @@ pub unsafe trait StorageMut: Storage + RawStorageMut {
 }
 ````
 
-> **警告：** ⚠️ `as_slice()` / `as_mut_slice()` 返回的是当前存储对象可见的 backing range，而不是原始分配器缓冲区；对带偏移的视图，该范围应已完成 offset 调整，且不得暴露容量尾部或对齐填充。对于非连续张量，调用方仍须结合 `shape` / `strides()` 解释逻辑元素顺序。
+> **警告：** ⚠️ `as_slice()` / `as_mut_slice()` 返回的是从 storage base pointer 开始的 storage-visible backing range，不自动应用 `TensorBase::offset`，且不得暴露容量尾部或对齐填充。对于非连续张量或带偏移视图，调用方仍须结合 `offset` / `shape` / `strides()` 解释逻辑元素顺序；逻辑张量快路径见 `07-tensor.md §5.4a`。
 
 ### 5.7 StorageOwned Trait
 
@@ -436,27 +439,6 @@ pub unsafe trait StorageOwned: StorageMut + Clone {
 pub unsafe trait StorageShared: Storage + Clone {
     /// Checks if this is the sole owner.
     fn is_unique(&self) -> bool;
-
-    /// Triggers copy-on-write and yields exclusive mutable access to the
-    /// underlying buffer.
-    ///
-    /// For `ArcRepr<A>`, this API is an explicit copy-on-write hook for
-    /// obtaining temporary exclusive access to the buffer managed inside the
-    /// shared storage object. It does **not** make `ArcRepr<A>` a
-    /// shared-writable storage mode, does **not** imply `StorageMut` is
-    /// implemented for `ArcRepr<A>`, and must not be interpreted as a public
-    /// zero-copy `ArcRepr<A> -> Owned<A>` conversion.
-    ///
-    /// NOTE: This is NOT a shared-writable mode. It triggers copy-on-write,
-    /// producing exclusive `&mut` access.
-    ///
-    /// The returned mutable slice is only an internal CoW access path.
-    /// Public `into_owned_storage()` for `ArcRepr<A>` still allocates and
-    /// copies regardless of reference count, per `require.md` §6.2.
-    ///
-    /// Note: sub-view offset and length are managed by `TensorBase`, not by
-    /// `ArcRepr` (see design decision in §6.5).
-    fn make_mut(&mut self) -> &mut [Self::Elem];
 
     /// Returns the current reference count.
     fn ref_count(&self) -> usize;
@@ -556,14 +538,15 @@ fn process_bad(storage: &Owned<f64>) {
 ```
 
 ```rust
-// Good - ArcRepr explicitly triggers CoW before mutable access
-fn modify_arc(arc: &mut ArcRepr<f64>) {
-    let data = arc.make_mut();  // Explicit CoW
-    data[0] = 10.0;
+// Good - materialize an owned buffer before mutation
+fn modify_shared(arc: ArcRepr<f64>) -> Owned<f64> {
+    let mut owned = arc.into_owned_storage();
+    owned.as_mut_slice()[0] = 10.0;
+    owned
 }
 
-// Bad - Attempting to treat ArcRepr as shared-writable storage (compile error)
-// arc.as_mut_ptr();  // ArcRepr does not implement StorageMut
+// Bad - attempting to expose mutable storage directly from shared read-only data
+// arc.make_mut();  // no public API: shared-writable mode is forbidden
 ```
 
 ---
@@ -760,22 +743,22 @@ pub type ViewMut<'a, A> = ViewMutRepr<'a, A>;
 ///
 /// Uses `Arc<AlignedBuf<A>>` to share aligned owned storage while preserving the
 /// same backing-allocation invariants as `Owned<A>`. The public storage mode is
-/// shared read-only; copy-on-write (CoW) via `make_mut()` is only an explicit
-/// transition path to an exclusive owned buffer.
+/// shared read-only; any copy-on-write logic stays internal to `arc.rs` and is
+/// not part of the storage-layer public API.
 #[derive(Debug)]
 pub struct ArcRepr<A> {
     inner: Arc<AlignedBuf<A>>,
 }
 ```
 
-> **设计决策：** `ArcRepr<A>` 不存储独立的 `offset` 字段。偏移量与切片范围由外层 `TensorBase` 元数据管理（见 `07-tensor.md §5.1`），而 `ArcRepr` 只表示共享只读引用语义下的底层连续缓冲区。`make_mut()` 仅针对整个底层缓冲区执行写时复制，用于在共享存储对象内部获得独占可写缓冲访问，不负责解释张量视图的 `offset` / `shape` / `strides`，也不把 `ArcRepr` 提升为共享可写存储模式，更不构成公开的 `ArcRepr<A> -> Owned<A>` 零拷贝转换。
+> **设计决策：** `ArcRepr<A>` 不存储独立的 `offset` 字段。偏移量与切片范围由外层 `TensorBase` 元数据管理（见 `07-tensor.md §5.1`），而 `ArcRepr` 只表示共享只读引用语义下的底层连续缓冲区。任何写时复制 helper 都仅能在 `arc.rs` 内部针对整个底层缓冲区执行，不负责解释张量视图的 `offset` / `shape` / `strides`，也不把 `ArcRepr` 提升为共享可写存储模式，更不构成公开的 `ArcRepr<A> -> Owned<A>` 零拷贝转换。
 
-**写时复制流程**：
+**内部写时复制流程**：
 
 ```
-make_mut() flow
+internal CoW helper flow
 ┌──────────────────────┐
-│      make_mut()      │
+│ internal CoW helper  │
 └──────────┬───────────┘
            │
            ▼
@@ -786,8 +769,8 @@ make_mut() flow
     ┌─────┴─────┐
     │ YES       │ NO
     ▼           ▼
-return directly  allocate new buffer → copy data → drop one shared handle
-   &mut [A]           (O(n) deep copy)
+return internal unique buffer
+           allocate new buffer → copy data → drop one shared handle
 ```
 
 ### 6.6 Marker Traits
@@ -912,9 +895,9 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
   - 前置: T5
   - 预计: 10 min
 
-- [ ] **T11**: 实现 `ArcRepr<A>` 及 `make_mut()`
+- [ ] **T11**: 实现 `ArcRepr<A>` 与内部 CoW 机制
   - 文件: `src/storage/arc.rs`
-  - 内容: 结构定义、`from_vec`/`from_owned`/`ref_count`/`is_unique`/`make_mut`/`into_owned`、`StorageShared` 实现
+  - 内容: 结构定义、`from_vec`/`from_owned`/`ref_count`/`is_unique`/`into_owned`、`StorageShared` 实现，以及仅限 `arc.rs` 内部使用的 CoW helper
   - 测试: `test_arc_cow`, `test_arc_ref_count`
   - 前置: T5, T7
   - 预计: 20 min
@@ -977,7 +960,7 @@ Wave 4:              [T12] → [T13]
 | `test_view_mut_no_clone`          | 编译期验证不可克隆                              | 高     |
 | `test_arc_ref_count`              | 引用计数正确                                    | 高     |
 | `test_arc_cow`                    | 写时复制语义正确                                | 高     |
-| `test_arc_make_mut_unique`        | 唯一时 make_mut 无复制                          | 中     |
+| `test_arc_internal_cow_unique`    | 唯一持有时内部 CoW helper 不复制                | 中     |
 | `test_aligned_alloc_64`           | 分配器 64 字节对齐                              | 高     |
 | `test_zst_no_ub`                  | ZST 元素类型不引发 UB，且不会调用对齐分配器     | 高     |
 | `test_empty_array`                | 空数组操作安全                                  | 高     |
@@ -1000,7 +983,7 @@ Wave 4:              [T12] → [T13]
 | ------------------------------------------------- | ------------------ |
 | `owned.to_owned().as_slice() == owned.as_slice()` | 随机元素类型和大小 |
 | `view.clone().as_ptr() == view.as_ptr()`          | 随机切片范围       |
-| `arc.make_mut()` 后引用计数为 1                   | 随机共享数量       |
+| 内部 CoW helper 完成后引用计数收敛到 1            | 随机共享数量       |
 | `Owned::from_vec_aligned` 在 ZST 上不调用分配器   | 随机 ZST 长度      |
 
 ### 8.5 Feature gate / 配置测试
@@ -1026,7 +1009,7 @@ Wave 4:              [T12] → [T13]
 
 | 方向 | 对方模块 | 接口/类型 | 约定 |
 | ---- | -------- | --------- | ---- |
-| 消费（输入） | `layout` | `Strides` 及其辅助接口 | 仅引用 `06-layout.md` 已定义的 `from_slice()` / `iter()` / `as_slice()` 等能力；storage 不重复定义 layout API |
+| 并列协作 | `layout` | `Strides` 及其辅助接口 | `Strides` 由 `06-layout.md` 定义并与 storage 在 `tensor` / `ffi` 上层组合使用；storage 本身不直接消费 layout API |
 | 产出（输出） | `tensor` | `Storage` / `StorageMut` / `StorageOwned` / `StorageShared`，以及 `Owned<A>` / `ViewRepr<'a, A>` / `ViewMutRepr<'a, A>` / `ArcRepr<A>` | `TensorBase<S, D>` 通过 `S: Storage` 或 `S: StorageMut` 消费底层存储；`TensorBase` 负责解释 `offset` / `shape` / `strides` |
 | 产出（输出） | `parallel` | `S: Storage + Sync` 或 `S: StorageMut + Send` | 并行路径只能在满足 Send/Sync 前提时消费 storage；不得突破共享只读 / 独占可写边界 |
 | 产出（输出） | `iter` / `ffi` | `as_ptr()` / `as_slice()` / `into_raw()` | 上层仅消费 storage-visible backing range；不得把 storage API 误解为逻辑张量切片 |
@@ -1107,8 +1090,8 @@ User calls `TensorBase::as_ptr()`
 
 | 属性     | 值                                                                                                       |
 | -------- | -------------------------------------------------------------------------------------------------------- |
-| 决策     | `ArcRepr` 通过 `StorageShared::make_mut()` 触发 CoW 并转入独占 owned 缓冲，不实现 `StorageMut`；`make_mut()` 仅是内部 CoW 机制，不构成共享可写模式 |
-| 理由     | 可变访问涉及潜在 O(n) 复制，显式调用让用户知晓性能影响；返回的 `&mut` 是复制后或唯一所有权下的独占访问，并保持“当前版本不提供共享可写存储模式”的需求边界 |
+| 决策     | `ArcRepr` 不实现 `StorageMut`；如需写入，公开路径只能先转为 `Owned`。任何 CoW 逻辑都仅限 `arc.rs` 内部 helper，不构成共享可写模式 |
+| 理由     | 可变访问涉及潜在 O(n) 复制；把 CoW 限定在内部实现可以避免 storage 层直接暴露整缓冲 `&mut [T]`，并保持“当前版本不提供共享可写存储模式”的需求边界 |
 | 替代方案 | 实现 `StorageMut` — 放弃，隐藏 CoW 成本                                                                  |
 
 ### 决策 3：ArcRepr 作为统一 trait 体系的一部分
@@ -1128,7 +1111,7 @@ User calls `TensorBase::as_ptr()`
 | 对齐分配     | `Owned` 与 `ArcRepr` 统一保持 64 字节对齐语义；ZST 和空数组跳过分配 |
 | 视图克隆     | O(1)，仅复制指针和长度                                              |
 | Arc 克隆     | O(1)，仅增加引用计数                                                |
-| Arc make_mut | 唯一时 O(1)，非唯一时 O(n) 深拷贝                                   |
+| Arc internal CoW helper | 唯一时 O(1)，非唯一时 O(n) 深拷贝                         |
 | Owned 克隆   | O(n) 深拷贝                                                         |
 | 内联         | 所有 `as_ptr`/`len`/`get` 标注 `#[inline]`                          |
 | 单态化       | Storage trait 在泛型上下文中单态化，无虚调用开销                    |
@@ -1140,8 +1123,8 @@ User calls `TensorBase::as_ptr()`
 | `Owned::zeros(1M)`                   | ~1ms | 包含分配和零初始化 |
 | `View::clone()`                      | ~2ns | 仅复制 3 个字段    |
 | `Arc::clone()`                       | ~5ns | 原子引用计数增加   |
-| `Arc::make_mut()`（唯一）            | ~2ns | 直接返回可变引用   |
-| `Arc::make_mut()`（非唯一，1M 元素） | ~1ms | 深拷贝             |
+| internal Arc CoW helper（唯一）      | ~2ns | 仅作为实现参考     |
+| internal Arc CoW helper（非唯一，1M 元素） | ~1ms | 深拷贝         |
 
 ---
 
