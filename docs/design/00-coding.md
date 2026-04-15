@@ -192,7 +192,11 @@ pub fn to_view(&self) -> View<'_, A, D> { /* ... */ }  // view conversion should
 pub fn shape(&self) -> &[Ix] { &self.dim.slice() }
 pub fn strides(&self) -> &[Ix] { &self.strides.slice() }
 pub fn ndim(&self) -> usize { self.dim.ndim() }
-pub fn len(&self) -> usize { self.dim.size() }
+pub fn len(&self) -> usize {
+    self.dim
+        .checked_size()
+        .expect("len: dimension metadata must already be validated by constructors")
+}
 
 // Bad
 pub fn get_shape(&self) -> &[Ix] { /* ... */ }
@@ -538,10 +542,13 @@ pub enum XenonError {
         expected_elements: usize,
         actual_elements: usize,
         offending_dim: Option<usize>,
+        overflow_at_axis: Option<usize>,
     },
     DimensionMismatch {
+        operation: Cow<'static, str>,
         expected: usize,
         actual: usize,
+        shape: Vec<usize>,
     },
     InvalidLayout {
         operation: Cow<'static, str>,
@@ -567,8 +574,8 @@ pub enum XenonError {
     TypeConversion {
         source_type: Cow<'static, str>,
         target_type: Cow<'static, str>,
-        reason: TypeConversionReason,
-        element_index: usize,
+        reason: Cow<'static, str>,
+        element_index: Option<usize>,
     },
     IndexOutOfBounds {
         operation: Cow<'static, str>,
@@ -580,23 +587,17 @@ pub enum XenonError {
         operation: Cow<'static, str>,
         shape: Vec<usize>,
     },
-    FfiError {
-        operation: Cow<'static, str>,
-        symbol: Option<Cow<'static, str>>,
-        shape: Option<Vec<usize>>,
-        reason: Cow<'static, str>,
-    },
-    WorkspaceError {
-        operation: Cow<'static, str>,
-        requested_bytes: usize,
-        available_bytes: Option<usize>,
-        alignment: Option<usize>,
-        reason: Cow<'static, str>,
-    },
 }
 
 pub type Result<T> = std::result::Result<T, XenonError>;
 ```
+
+> **模块内部错误说明：** `FfiError`、`WorkspaceError` 等类型若在实现中存在，只能保留为模块内部错误。
+> 它们跨越公开边界时必须映射到 `XenonError::InvalidArgument`、`InvalidLayout`、`InvalidStorageMode` 等结构化字段，
+> 不得成为公开错误枚举成员。
+
+> **内部辅助类型说明：** `TypeConversionReason` 可作为 `convert/` 或 `element/` 内部辅助枚举存在，
+> 但公开 `XenonError` 只承诺稳定的结构化字段（例如 `reason: Cow<'static, str>` 与 `element_index: Option<usize>`）。
 
 ### 4.3 unwrap 限制
 
@@ -943,7 +944,9 @@ assert_eq!(result[[0, 0]], 58.0);  // may fail due to rounding errors
 // Good - small function
 #[inline]
 pub fn len(&self) -> usize {
-    self.dim.size()
+    self.dim
+        .checked_size()
+        .expect("len: dimension metadata must already be validated by constructors")
 }
 
 #[inline]

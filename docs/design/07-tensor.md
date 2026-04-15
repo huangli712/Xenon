@@ -235,7 +235,7 @@ pub type ArcTensor4<A> = ArcTensor<A, Ix4>;
 pub type ArcTensor5<A> = ArcTensor<A, Ix5>;
 pub type ArcTensor6<A> = ArcTensor<A, Ix6>;
 pub type ArcTensorD<A> = ArcTensor<A, IxDyn>;
-````
+```
 
 ### 5.3 基础信息查询方法
 
@@ -720,7 +720,7 @@ Logical view:
 
 - [ ] **T2**: 定义 `TensorBase<S, D>` 结构体
   - 文件: `src/tensor/mod.rs`
-  - 内容: `#[repr(C)]` 结构体定义，5 个字段：storage、shape、strides、offset、flags
+  - 内容: 结构体定义，5 个字段：storage、shape、strides、offset、flags
   - 测试: 结构体编译通过
   - 前置: T1
   - 预计: 10 min

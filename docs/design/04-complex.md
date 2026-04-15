@@ -644,10 +644,8 @@ impl From<Complex<f32>> for Complex<f64> {
 // Complex-to-complex narrowing is unified under `CastTo<T>` in `03-element.md`
 // and implemented under the convert module umbrella (see `21-type.md`).
 impl CastTo<Complex<f32>> for Complex<f64> {
-    type Error = XenonError;
-
     #[inline]
-    fn cast_to(self) -> Result<Complex<f32>, Self::Error> {
+    fn cast_to(self) -> Result<Complex<f32>, XenonError> {
         Ok(Complex::<f32>::new(
             CastTo::<f32>::cast_to(self.re)?,
             CastTo::<f32>::cast_to(self.im)?,
@@ -684,42 +682,38 @@ impl From<f64> for Complex<f64> {
 
 | 源类型 | 目标类型 | 语义 | 默认行为 |
 |--------|----------|------|---------|
-| `Complex<f32>` | `f32` | 仅当虚部为 `0` 时返回实部 | 虚部非零时返回 `XenonError::TypeConversion(TypeConversionError)` |
-| `Complex<f64>` | `f64` | 仅当虚部为 `0` 时返回实部 | 虚部非零时返回 `XenonError::TypeConversion(TypeConversionError)` |
-| `Complex<f32>` | `f64` | 仅当虚部为 `0` 时，按 `f32→f64` 规则转换实部 | 虚部非零时返回 `XenonError::TypeConversion(TypeConversionError)` |
-| `Complex<f64>` | `f32` | 仅当虚部为 `0` 时，按 `f64→f32` 规则转换实部 | 虚部非零时返回 `XenonError::TypeConversion(TypeConversionError)` |
+| `Complex<f32>` | `f32` | 仅当虚部为 `0` 时返回实部 | 虚部非零时返回 `XenonError::TypeConversion { ... }` |
+| `Complex<f64>` | `f64` | 仅当虚部为 `0` 时返回实部 | 虚部非零时返回 `XenonError::TypeConversion { ... }` |
+| `Complex<f32>` | `f64` | 仅当虚部为 `0` 时，按 `f32→f64` 规则转换实部 | 虚部非零时返回 `XenonError::TypeConversion { ... }` |
+| `Complex<f64>` | `f32` | 仅当虚部为 `0` 时，按 `f64→f32` 规则转换实部 | 虚部非零时返回 `XenonError::TypeConversion { ... }` |
 
 ```rust,ignore
 // Complex -> Real conversions are owned by CastTo<T> in src/element/.
 // complex/ documents the rule here to keep the conversion matrix complete.
 
 impl CastTo<f64> for Complex<f64> {
-    type Error = XenonError;
-
-    fn cast_to(self) -> Result<f64, Self::Error> {
+    fn cast_to(self) -> Result<f64, XenonError> {
         if self.im != 0.0 {
-            return Err(XenonError::TypeConversion(TypeConversionError {
+            return Err(XenonError::TypeConversion {
                 source_type: "Complex<f64>".into(),
                 target_type: "f64".into(),
-                reason: TypeConversionReason::NonZeroImaginaryPart,
-                element_index: 0,
-            }));
+                reason: "non-zero imaginary part".into(),
+                element_index: None,
+            });
         }
         Ok(self.re)
     }
 }
 
 impl CastTo<f32> for Complex<f64> {
-    type Error = XenonError;
-
-    fn cast_to(self) -> Result<f32, Self::Error> {
+    fn cast_to(self) -> Result<f32, XenonError> {
         if self.im != 0.0 {
-            return Err(XenonError::TypeConversion(TypeConversionError {
+            return Err(XenonError::TypeConversion {
                 source_type: "Complex<f64>".into(),
                 target_type: "f32".into(),
-                reason: TypeConversionReason::NonZeroImaginaryPart,
-                element_index: 0,
-            }));
+                reason: "non-zero imaginary part".into(),
+                element_index: None,
+            });
         }
         CastTo::<f32>::cast_to(self.re)
     }
@@ -916,14 +910,14 @@ hypot(a, b):
 - [ ] **T8**: 实现稳定数学方法 `norm`, `norm_sqr`, `to_polar`
   - 文件: `src/complex/mod.rs`
   - 内容: `norm()`（hypot）, `norm_sqr()`, `to_polar()`；内部复用 `arg_impl()`
-  - 测试: `test_norm_3_4_5`, `test_norm_no_overflow`, `test_arg_range`
+  - 测试: `test_norm_3_4_5`, `test_norm_no_overflow`, `test_arg_impl_range`
   - 前置: T1
   - 预计: 10 min
 
 - [ ] **T9**: 实现内部复数数学 helper
   - 文件: `src/complex/mod.rs`
   - 内容: `arg_impl()`, `exp_impl()`, `ln_impl()`, `sqrt_impl()`, `from_polar_impl()`, `i_impl()`
-  - 测试: `test_exp_ln_inverse`, `test_sqrt_neg_one`, `test_from_polar_i`（作为内部回归测试）
+  - 测试: `test_exp_impl_ln_impl_inverse`, `test_sqrt_impl_neg_one`, `test_from_polar_impl_i`（作为内部回归测试）
   - 前置: T8
   - 预计: 10 min
 
@@ -1008,10 +1002,10 @@ Wave 5: [T11] → [T12]
 | `test_norm_3_4_5`                | `Complex::new(3.0, 4.0).norm() == 5.0`                      | 高     |
 | `test_norm_no_overflow`          | `Complex::new(1e200, 1e200).norm()` 不溢出                  | 高     |
 | `test_norm_sqr`                  | `norm_sqr() == re² + im²`                                   | 中     |
-| `test_arg_range`                 | `arg()` 在 `(-π, π]` 范围内                                 | 高     |
-| `test_exp_ln_inverse`            | `ln(z).exp() ≈ z`（约束：`z ≠ 0` 且避开主值分支割线附近）   | 高     |
-| `test_sqrt_neg_one`              | `Complex::new(-1.0, 0.0).sqrt() ≈ j`                        | 高     |
-| `test_from_polar_i`              | `from_polar(1.0, π/2) ≈ j`                                  | 中     |
+| `test_arg_impl_range`            | `arg_impl()` 在 `(-π, π]` 范围内                            | 高     |
+| `test_exp_impl_ln_impl_inverse`  | `ln_impl(z).exp_impl() ≈ z`（约束：`z ≠ 0` 且避开主值分支割线附近） | 高 |
+| `test_sqrt_impl_neg_one`         | `Complex::new(-1.0, 0.0).sqrt_impl() ≈ j`                   | 高     |
+| `test_from_polar_impl_i`         | `from_polar_impl(1.0, π/2) ≈ j`                             | 中     |
 | `test_eq_nan`                    | `Complex::new(NaN, 0.0) != self`                            | 高     |
 | `test_display_format`            | `"3+4j"`, `"3-4j"`, `"3"`, `"4j"`, `"0"`                    | 中     |
 | `test_f32_to_f64_lossless`       | `Complex<f32>→Complex<f64>` 无损                            | 高     |
@@ -1029,10 +1023,10 @@ assert!((result.re - 2.0).abs() < 1e-10 && result.im.abs() < 1e-10);
 
 | 场景                          | 预期行为                                                 |
 | ----------------------------- | -------------------------------------------------------- |
-| 零 `Complex::new(0.0, 0.0)`   | `norm()==0`, `arg()==0`, `sqrt()==0`                     |
-| `Complex::new(0.0, 0.0).ln()` | 返回 `-∞ + 0j`                                           |
+| 零 `Complex::new(0.0, 0.0)`   | `norm()==0`, `arg_impl()==0`, `sqrt_impl()==0`（内部回归测试） |
+| `Complex::new(0.0, 0.0).ln_impl()` | 返回 `-∞ + 0j`（内部回归测试）                      |
 | NaN 参与                      | `Complex::new(NaN, 0.0).norm().is_nan()`                 |
-| Inf 参与                      | `Complex::new(Inf, 0.0).exp()` 正确处理                  |
+| Inf 参与                      | `Complex::new(Inf, 0.0).exp_impl()` 正确处理（内部回归测试） |
 | 极大值 norm                   | `Complex::new(1e200, 1e200).norm()` 不溢出（≈1.414e200） |
 | 极小值 norm                   | `Complex::new(1e-200, 1e-200).norm()` 正确               |
 | 连续字段布局                  | `Complex<f64>` 的 `re/im` 字段顺序稳定，可逐元素读取     |
@@ -1042,10 +1036,10 @@ assert!((result.re - 2.0).abs() < 1e-10 && result.im.abs() < 1e-10);
 | 不变量                                                             | 测试方法                                |
 | ------------------------------------------------------------------ | --------------------------------------- |
 | `(z * z.conj()).re == z.norm_sqr()` 且 `(z * z.conj()).im == 0`    | 随机 z                                  |
-| `ln(z).exp() ≈ z`                                                  | 随机有限 z（`z ≠ 0`，且避开分支割线附近） |
-| `z.sqrt() * z.sqrt() ≈ z`                                          | 随机 z                                  |
+| `ln_impl(z).exp_impl() ≈ z`                                        | 随机有限 z（`z ≠ 0`，且避开分支割线附近） |
+| `z.sqrt_impl() * z.sqrt_impl() ≈ z`                                | 随机 z                                  |
 | `(z / w) * w ≈ z`                                                  | 随机 z, w（w ≠ 0）                      |
-| `Complex::from_polar(z.norm(), z.arg()) ≈ z`                       | 随机 z                                  |
+| `Complex::from_polar_impl(z.norm(), z.arg_impl()) ≈ z`             | 随机 z（作为内部 helper 回归测试）      |
 
 ### 8.5 集成测试
 
@@ -1114,7 +1108,7 @@ User constructs `Complex<f64>::new(re, im)`
 
 | 项目           | 内容 |
 | -------------- | ---- |
-| Recoverable error | `CastTo<T>` 承载的有损窄化路径返回可恢复错误；公开错误类型统一为 `XenonError::TypeConversion(TypeConversionError)`，上下文字段应包含源/目标类型、失败原因与元素索引 |
+| Recoverable error | `CastTo<T>` 承载的有损窄化路径返回可恢复错误；公开错误类型统一为 `XenonError::TypeConversion { source_type, target_type, reason, element_index }` |
 | Panic | 本模块常规复数运算与方法不以 panic 作为错误通道；若调用底层标准库浮点 API，遵循其既有语义 |
 | 路径一致性 | scalar 路径与普通标量实现必须一致；SIMD：不适用；parallel：不适用 |
 | 容差边界 | 复数数值测试采用显式容差；布局、格式化与类型边界测试不适用 |

@@ -133,7 +133,7 @@ src/matrix/
 
 ### 5.1 向量内积
 
-````rust
+````rust,ignore
 /// Vector dot product: result = sum(a[i] * b[i])
 ///
 /// For complex numbers, the conjugate-linear definition is used:

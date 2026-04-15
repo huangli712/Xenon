@@ -269,7 +269,7 @@ pub enum LayoutState {
 
 分类语义约定如下：
 
-- `LayoutState::FContiguous`：满足当前文档 §5.4 的 F-order 连续性判定，且**严格不包含零步长广播轴**。
+- `LayoutState::FContiguous`：满足当前文档 §5.4 的 F-order 连续性判定；广播引入的零步长轴不得归入该类，但空数组在退化表示下出现的零步长可继续保持 `FContiguous`。
 - `LayoutState::NonContiguous`：表示任意其它非广播 stride 模式，例如转置后布局或切片后非连续布局。
 - `LayoutState::BroadcastView`：表示至少包含一个零步长轴的广播视图，用于与一般非连续视图区分。
 
@@ -421,7 +421,7 @@ Result: false (not F-contiguous)
 
 #### 合法 stride 布局族
 
-- **F-order contiguous**：对所有轴满足 `strides[i] == product(shape[0..i])`；对 `shape[i] == 1` 的轴，可按 §5.4 的连续性规则放宽判定；一旦出现零步长，则不得归类为 `F_CONTIGUOUS`。
+- **F-order contiguous**：对所有轴满足 `strides[i] == product(shape[0..i])`；对 `shape[i] == 1` 的轴，可按 §5.4 的连续性规则放宽判定；若零步长来自广播语义，则不得归类为 `F_CONTIGUOUS`，但空数组在退化 metadata 表示下出现的零步长不自动破坏 `F_CONTIGUOUS`。
 - **转置视图（non-contiguous）**：`strides` 是对应 F-order contiguous stride 集合的轴置换结果，且所有 stride 都为正。
 - **广播视图**：广播轴允许 stride 为 `0`；其余非广播轴必须保持 F-order 或转置后的正 stride 模式。
 - **单元素或 0-D**：只要 metadata 可表示且访问范围合法，任意有效 stride 都视为合法。
@@ -471,7 +471,12 @@ pub fn is_aligned(ptr: *const u8) -> bool {
 
 ### 5.7 零步长语义
 
-零步长表示广播维度——该维度被扩展，但所有索引访问同一元素：
+零步长需要区分两类来源：
+
+- **广播零步长**：由广播语义引入；所有索引访问同一物理元素，布局分类为 `BroadcastView`。
+- **空数组退化零步长**：仅因 `shape` 含零轴而出现；它不表示广播，也不必取消 `FContiguous`。
+
+广播零步长示例：
 
 ```
 shape = [3, 4], strides = [1, 0]  // axis 1 is broadcast
@@ -544,8 +549,11 @@ function compute_flags(shape, strides, ptr):
     has_zero_stride = any(stride == 0 for stride in strides)
     flags = flags.set_has_zero_stride(has_zero_stride)
 
+    // Distinguish broadcast-introduced zero strides from empty-array degenerate metadata.
+    is_broadcast_zero_stride = has_zero_stride and product(shape) > 0
+
     // 2. Contiguity
-    flags = flags.set_f_contiguous(!has_zero_stride && is_f_contiguous(shape, strides))
+    flags = flags.set_f_contiguous(!is_broadcast_zero_stride && is_f_contiguous(shape, strides))
 
     // 3. Alignment (based on the logical-first-element pointer, not the backing allocation base)
     flags = flags.set_aligned(is_aligned(ptr))
@@ -557,11 +565,11 @@ function compute_flags(shape, strides, ptr):
 
 | 情况            | F-contiguous | 说明                        |
 | --------------- | :----------: | --------------------------- |
-| 空数组 (size=0) |     true     | 无元素，视为连续；若含零步长标记则仍按 `BroadcastView` 分类 |
+| 空数组 (size=0) |     true     | 无元素，视为连续；退化零步长 metadata 不强制降级为 `BroadcastView` |
 | 标量 (ndim=0)   |     true     | 单元素                      |
 | 1D 数组         |     true     | 一维情况天然 F-连续         |
 | 含 size=1 轴    |  检查其他轴  | size=1 轴的步长不影响连续性 |
-| 任意零步长轴    |    false     | 零步长广播视图不得带 `F_CONTIGUOUS` |
+| 广播零步长轴    |    false     | 广播视图不得带 `F_CONTIGUOUS` |
 
 ### 6.3 标志位更新规则
 
@@ -683,7 +691,7 @@ Wave 3:       [T8]
 | `test_f_contig_false`      | 非连续数组判定                    | 高     |
 | `test_f_contig_empty`      | 空数组判定为连续                  | 中     |
 | `test_f_contig_size1_axis` | 含 size=1 轴的连续性判定          | 中     |
-| `test_zero_stride_detect`  | 零步长检测                        | 高     |
+| `test_zero_stride_detect`  | 区分广播零步长与空数组退化零步长  | 高     |
 | `test_alignment_aligned`   | 对齐指针对齐检查                  | 高     |
 | `test_alignment_unaligned` | 非对齐指针对齐检查                | 高     |
 | `test_flags_all_set`       | 所有标志位同时设置                | 中     |
@@ -693,7 +701,7 @@ Wave 3:       [T8]
 
 | 场景                       | 预期行为                       |
 | -------------------------- | ------------------------------ |
-| 空数组 `shape=[0, 3]`      | F-连续为 true                  |
+| 空数组 `shape=[0, 3]`      | F-连续为 true；退化零步长仍可保持 `FContiguous` |
 | 标量 `shape=()`            | F-连续为 true，步长为空        |
 | 1D 数组 `shape=[5]`        | F-连续为 true                  |
 | 高维 `shape=[2,2,2,2,2,2]` | F-连续，步长 `[1,2,4,8,16,32]` |

@@ -573,7 +573,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
     ├── overload selects the matching trait impl
     ├── tensor×tensor delegates to broadcast_with() + method dispatch
     ├── tensor×scalar delegates to scalar method dispatch
-    └── tensor / storage allocate a new owned result tensor and return `Ok(...)` or `Err(...)`
+    └── tensor / storage allocate a new owned result tensor; tensor×tensor paths return `Result`, scalar paths return `Tensor`
 ```
 
 ---

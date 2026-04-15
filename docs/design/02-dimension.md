@@ -20,7 +20,7 @@
 | Axis 类型           | 轴标记新类型（index/next/prev/is_first/is_last）                                             | 轴上的切片/迭代操作（由 tensor 方法提供）          |
 | RemoveAxis trait    | 移除指定轴降维（Ix1→Ix0, ..., Ix6→Ix5, IxDyn→IxDyn）                                         | Ix0 不实现（标量无轴可移除）                       |
 | 维度互转            | 静态→动态（总是成功）、动态→静态（需维度匹配）                                               | 隐式维度转换                                       |
-| F-order 步长计算    | `strides_for_f_order()` 返回无符号步长                                                       | C-order 步长（不在范围内）                         |
+| F-order 步长计算    | `checked_strides_for_f_order()` 返回无符号步长                                               | C-order 步长（不在范围内）                         |
 | 步长类型            | 维度层仅保存无符号形状；stride 元数据由 `layout::Strides<D>` 单独建模                        | 超出当前版本合法布局范围的 stride 变体             |
 | 内存分配            | —                                                                                            | 不负责任何内存分配                                 |
 
@@ -210,7 +210,7 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
 }
 ```
 
-> **设计决策：** Xenon 仅提供 `strides_for_f_order()`，不提供 `strides_for_c_order()`。
+> **设计决策：** Xenon 仅提供 `checked_strides_for_f_order()`，不提供 `strides_for_c_order()`。
 > C-order 布局不在当前范围内（参见需求说明书 §7）。
 
 ### 5.2 静态维度类型 Ix0-Ix6
@@ -277,8 +277,8 @@ pub struct Ix6(pub usize, pub usize, pub usize, pub usize, pub usize, pub usize)
 | ----------------------- | --------- | ------------------- |
 | `NDIM`                  | `Some(0)` | 没有维度            |
 | `slice()`               | `&[]`     | 空切片              |
-| `size()`                | `1`       | 一个元素（标量）    |
-| `strides_for_f_order()` | `Ix0`     | 无步长              |
+| `checked_size()`        | `Ok(1)`   | 一个元素（标量）    |
+| `checked_strides_for_f_order()` | `Ok(Ix0)` | 无步长        |
 | 内存大小                | `0` bytes | ZST，编译器完全消除 |
 
 #### Ix1-Ix6 实现模式（以 Ix3 为例）
@@ -319,6 +319,7 @@ impl Dimension for Ix3 {
                 expected_elements: 0,
                 actual_elements: 0,
                 offending_dim: None,
+                overflow_at_axis: Some(2),
             })
     }
 
@@ -333,6 +334,7 @@ impl Dimension for Ix3 {
                 expected_elements: 0,
                 actual_elements: 0,
                 offending_dim: Some(2),
+                overflow_at_axis: Some(2),
             })?,
         ))
     }
@@ -348,8 +350,10 @@ impl Dimension for Ix3 {
             Ok(Ix3(s[0], s[1], s[2]))
         } else {
             Err(XenonError::DimensionMismatch {
+                operation: "Dimension::try_from_dyn".into(),
                 expected: 3,
                 actual: dyn_dim.ndim(),
+                shape: dyn_dim.slice().into(),
             })
         }
     }
@@ -359,8 +363,10 @@ impl Dimension for Ix3 {
             Ok(Ix3(slice[0], slice[1], slice[2]))
         } else {
             Err(XenonError::DimensionMismatch {
+                operation: "Dimension::try_from_slice".into(),
                 expected: 3,
                 actual: slice.len(),
+                shape: slice.into(),
             })
         }
     }
@@ -426,6 +432,7 @@ impl Dimension for IxDyn {
                 expected_elements: 0,
                 actual_elements: 0,
                 offending_dim: None,
+                overflow_at_axis: None,
             })
     }
 
@@ -440,6 +447,7 @@ impl Dimension for IxDyn {
                 expected_elements: 0,
                 actual_elements: 0,
                 offending_dim: None,
+                overflow_at_axis: Some(strides.len()),
             })?;
         }
         Ok(IxDyn { dims: strides })
@@ -812,8 +820,10 @@ impl PermuteAxes for IxDyn {
     fn permuted_axes(&self, permutation: &[Axis]) -> Result<Self, XenonError> {
         if permutation.len() != self.ndim() {
             return Err(XenonError::DimensionMismatch {
+                operation: "PermuteAxes::permuted_axes".into(),
                 expected: self.ndim(),
                 actual: permutation.len(),
+                shape: self.slice().into(),
             });
         }
         let mut dims = Vec::with_capacity(self.ndim());
@@ -857,10 +867,10 @@ impl Reverse for IxDyn {
 
 ### 6.2 stride 表达边界
 
-维度层保存无符号形状（`usize`），`strides_for_f_order()` 也返回同一维度类型 `Self`，只是把各轴长度替换为以元素为单位的无符号步长值。下游 `layout` 模块再把这类结果包装为 `Strides<D>`，并负责具体 stride 元数据，仅覆盖当前版本允许的连续、转置后非连续和广播零步长布局（参见 `06-layout.md` §5）：
+维度层保存无符号形状（`usize`），`checked_strides_for_f_order()` 也返回同一维度类型 `Self`，只是把各轴长度替换为以元素为单位的无符号步长值。下游 `layout` 模块再把这类结果包装为 `Strides<D>`，并负责具体 stride 元数据，仅覆盖当前版本允许的连续、转置后非连续和广播零步长布局（参见 `06-layout.md` §5）：
 
 ```
-Dimension layer: shape = [3, 4], strides_for_f_order() = Ix2(1, 3)
+Dimension layer: shape = [3, 4], checked_strides_for_f_order() = Ok(Ix2(1, 3))
 Layout layer:    strides = [1usize, 3usize] (legal layouts allowed in the current version)
 ```
 
@@ -869,12 +879,12 @@ Layout layer:    strides = [1usize, 3usize] (legal layouts allowed in the curren
 ### 6.3 F-order 步长计算算法
 
 ```
-strides_for_f_order(shape):
+checked_strides_for_f_order(shape):
     strides = []
     stride = 1
     for dim in shape:
         strides.append(stride)
-        stride = checked_mul(stride, dim)  // overflow -> None / panic in validated paths
+        stride = checked_mul(stride, dim)  // overflow -> Err(XenonError::InvalidShape { overflow_at_axis: ... })
     return strides
 ```
 
@@ -908,7 +918,7 @@ strides_for_f_order(shape):
 
 - [ ] **T3**: 实现 `Ix0` 零维标量
   - 文件: `src/dimension/static_dims.rs`
-  - 内容: `Ix0` 结构体 + `Dimension` impl（`size()=1`, `slice()=&[]`）
+  - 内容: `Ix0` 结构体 + `Dimension` impl（`checked_size()=Ok(1)`, `slice()=&[]`）
   - 测试: `test_ix0_size_is_one`, `test_ix0_ndim_is_zero`
   - 前置: T2
   - 预计: 10 min
@@ -1019,16 +1029,16 @@ Wave 5:  [T10] → [T11] → [T12]
 
 | 测试函数                     | 测试内容                                                 | 优先级 |
 | ---------------------------- | -------------------------------------------------------- | ------ |
-| `test_ix0_size_is_one`       | `Ix0.size() == 1`                                        | 高     |
+| `test_ix0_size_is_one`       | `Ix0.checked_size() == Ok(1)`                            | 高     |
 | `test_ix0_ndim_is_zero`      | `Ix0.ndim() == 0`                                        | 高     |
 | `test_ix0_is_zst`            | `size_of::<Ix0>() == 0`                                  | 高     |
-| `test_ix1_strides_f_order`   | `Ix1(5).strides_for_f_order() == Ix1(1)`                 | 高     |
-| `test_ix2_strides_f_order`   | `Ix2(3,4).strides_for_f_order() == Ix2(1,3)`             | 高     |
-| `test_ix3_strides_f_order`   | `Ix3(2,3,4).strides_for_f_order() == Ix3(1,2,6)`         | 高     |
-| `test_ix3_size_calculation`  | `Ix3(2,3,4).size() == 24`                                | 高     |
-| `test_ix6_max_dimensions`    | `Ix6(1,2,3,4,5,6).size() == 720`                         | 中     |
+| `test_ix1_strides_f_order`   | `Ix1(5).checked_strides_for_f_order() == Ok(Ix1(1))`     | 高     |
+| `test_ix2_strides_f_order`   | `Ix2(3,4).checked_strides_for_f_order() == Ok(Ix2(1,3))` | 高     |
+| `test_ix3_strides_f_order`   | `Ix3(2,3,4).checked_strides_for_f_order() == Ok(Ix3(1,2,6))` | 高  |
+| `test_ix3_size_calculation`  | `Ix3(2,3,4).checked_size() == Ok(24)`                    | 高     |
+| `test_ix6_max_dimensions`    | `Ix6(1,2,3,4,5,6).checked_size() == Ok(720)`             | 中     |
 | `test_ixdyn_from_slice`      | `IxDyn::from_slice(&[2,3])`                              | 高     |
-| `test_ixdyn_strides`         | `IxDyn::from_slice(&[2,3,4]).strides_for_f_order()`      | 高     |
+| `test_ixdyn_strides`         | `IxDyn::from_slice(&[2,3,4]).checked_strides_for_f_order()` | 高  |
 | `test_static_to_dyn`         | `Ix3(2,3,4).into_dyn()`                                  | 高     |
 | `test_dyn_to_static_success` | `Ix3::try_from_dyn(IxDyn::from_slice(&[2,3,4]))`         | 高     |
 | `test_dyn_to_static_failure` | `Ix3::try_from_dyn(IxDyn::from_slice(&[2,3,4,5]))` → Err | 高     |
@@ -1036,16 +1046,16 @@ Wave 5:  [T10] → [T11] → [T12]
 | `test_slice_to_ixdyn`        | `(&[2,3,4][..]).into_dimension()` → `IxDyn`              | 中     |
 | `test_axis_next_prev`        | `Axis(2).next() == Axis(3)`, `Axis(0).prev() == None`    | 中     |
 | `test_axis_is_first_last`    | `Axis(0).is_first()`, `Axis(2).is_last(3)`               | 中     |
-| `test_size_overflow`         | 大值维度 `checked_size()` 返回 `None`                    | 低     |
+| `test_size_overflow`         | 大值维度 `checked_size()` 返回含 `overflow_at_axis` 的 `XenonError::InvalidShape` | 低 |
 
 ### 8.3 边界测试场景
 
 | 场景                                  | 预期行为                              |
 | ------------------------------------- | ------------------------------------- |
-| 空维度 `Ix0`                          | `size()=1`, `ndim()=0`, `slice()=&[]` |
-| 单元素 `Ix1(1)`                       | `size()=1`                            |
-| 零长度轴 `Ix2(0, 3)`                  | `size()=0`, `contains_zero()=true`    |
-| 大维度 `Ix6(100,100,100,100,100,100)` | `checked_size()` 在溢出时返回 `None`  |
+| 空维度 `Ix0`                          | `checked_size()=Ok(1)`, `ndim()=0`, `slice()=&[]` |
+| 单元素 `Ix1(1)`                       | `checked_size()=Ok(1)`                |
+| 零长度轴 `Ix2(0, 3)`                  | `checked_size()=Ok(0)`, `contains_zero()=true` |
+| 大维度 `Ix6(100,100,100,100,100,100)` | `checked_size()` 在溢出时返回带 `overflow_at_axis` 的错误 |
 | `IxDyn::ones(0)`                      | 零维动态维度                          |
 
 ### 8.4 属性测试不变量
@@ -1112,7 +1122,7 @@ User provides shape / axis / dimension input
 
 | 项目           | 内容 |
 | -------------- | ---- |
-| Recoverable error | 动态转静态维度数不匹配时返回 `XenonError::DimensionMismatch`；`checked_size()`、`checked_strides_for_f_order()`、`try_from_slice()`、`axis()`、`set_axis()`、`remove_axis()` 在失败时统一返回结构化 `XenonError` |
+| Recoverable error | 动态转静态维度数不匹配时返回 `XenonError::DimensionMismatch { operation, expected, actual, shape }`；`checked_size()`、`checked_strides_for_f_order()`、`try_from_slice()`、`axis()`、`set_axis()`、`remove_axis()` 在失败时统一返回结构化 `XenonError` |
 | Panic | 本模块公开设计不再把维度溢出、轴越界或切片长度不匹配建模为 panic；若内部已验证快捷路径保留 unwrap/expect，也不得穿透公开 API |
 | 路径一致性 | scalar 路径与普通标量化实现必须保持一致；SIMD：不适用；parallel：不适用 |
 | 容差边界 | 不适用 |
@@ -1139,13 +1149,13 @@ User provides shape / axis / dimension input
 | 替代方案 | `SmallVec<[usize; 6]>` — 放弃，增加依赖                                     |
 | 替代方案 | `ArrayVec<usize, 6>` — 放弃，无溢出处理                                     |
 
-### 决策 3：Ix0 的 size() 返回 1
+### 决策 3：Ix0 的 checked_size() 返回 Ok(1)
 
 | 属性     | 值                                                                                        |
 | -------- | ----------------------------------------------------------------------------------------- |
-| 决策     | `Ix0.size() == 1`（标量语义）                                                             |
+| 决策     | `Ix0.checked_size() == Ok(1)`（标量语义）                                                 |
 | 理由     | 数学上零维数组是标量；与 ndarray/NumPy 一致；允许 `Tensor<A, Ix0>` 表示单值；广播正确处理 |
-| 替代方案 | `size() == 0` — 放弃，与标量语义冲突                                                      |
+| 替代方案 | 将标量元素总数定义为 `0` — 放弃，与标量语义冲突                                           |
 
 ### 决策 4：Dimension trait 继承 Sealed
 
@@ -1155,30 +1165,30 @@ User provides shape / axis / dimension input
 | 理由     | API 稳定性（可添加新方法不破坏外部）；类型安全；不变量可控；Rust 生态标准做法 |
 | 替代方案 | 开放实现 — 放弃，失去版本控制能力                                             |
 
-### 决策 5：仅 F-order 步长计算
+### 决策 5：仅 checked F-order 步长计算
 
 | 属性     | 值                                                                           |
 | -------- | ---------------------------------------------------------------------------- |
-| 决策     | 仅提供 `strides_for_f_order()`，不提供 `strides_for_c_order()`               |
+| 决策     | 仅提供 `checked_strides_for_f_order()`，不提供 `strides_for_c_order()`       |
 | 理由     | 需求说明书 §7 明确只支持 F-order 布局；减少 API 表面积；C-order 留作未来扩展 |
 | 替代方案 | 同时提供两种 — 放弃，超出需求范围                                            |
 
-### 决策 6：步长在 Dimension 层为无符号
+### 决策 6：步长在 Dimension 层以 checked 无符号接口表达
 
 | 属性     | 值                                                                                |
 | -------- | --------------------------------------------------------------------------------- |
-| 决策     | `strides_for_f_order()` 返回 `Self`（无符号），下游再包装为 `layout::Strides<D>` 处理具体 stride 元数据 |
+| 决策     | `checked_strides_for_f_order()` 返回 `Result<Self, XenonError>`；成功时的 `Self` 仍是无符号步长，下游再包装为 `layout::Strides<D>` |
 | 理由     | 关注点分离：Dimension 关注形状与同类型返回，Layout 关注当前版本允许的数据排列                      |
 | 替代方案 | Dimension 直接返回 `isize` 步长 — 放弃，维度层不应承担布局表达职责                |
 
-### 决策 7：`size()` 与 `checked_size()` 双接口
+### 决策 7：仅保留 checked 公开接口
 
 | 属性     | 值                                                                                     |
 | -------- | -------------------------------------------------------------------------------------- |
 | 决策     | 将 `checked_size()` 与 `checked_strides_for_f_order()` 作为公开主接口，构造与布局验证统一走可恢复错误路径 |
 | 理由     | 避免公开 API 在维度乘法溢出时 panic，同时满足需求说明书对可恢复错误的要求                                    |
 | 风险     | 调用方需要显式处理 `Result`，文档与示例必须保持一致                                                          |
-| 替代方案 | 继续把 `size()` / `strides_for_f_order()` 作为公开主接口 — 放弃，公开安全路径不能以 panic 表达可恢复错误    |
+| 替代方案 | 继续把未 checked 的旧接口作为公开主接口 — 放弃，公开安全路径不能以 panic 表达可恢复错误                     |
 | 替代方案 | 继续使用静默回绕乘法 — 放弃，安全路径不能接受静默回绕                                                        |
 
 ---
@@ -1189,7 +1199,7 @@ User provides shape / axis / dimension input
 | ---------------- | ---------------------------------------------------- |
 | 栈分配           | `Ix0`-`Ix6` 全部栈分配，无堆开销                     |
 | ZST 优化         | `Ix0` 是零大小类型，编译器完全消除                   |
-| 内联             | 所有 `ndim()`, `slice()`, `size()` 标注 `#[inline]`  |
+| 内联             | 所有 `ndim()`, `slice()`, `checked_size()` 标注 `#[inline]` |
 | 单态化           | `Dimension` trait 在泛型上下文中单态化，无虚调用开销 |
 | checked overflow | 构造与布局验证统一走 `checked_size()`，避免静默回绕  |
 | 编译期常量       | `NDIM: Option<usize>` 编译期已知，可优化分支         |

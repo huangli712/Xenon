@@ -604,10 +604,16 @@ LayoutFlags: u8
 
 // Element trait hierarchy
 Element                        // Base: Copy + PartialEq + Debug + Display + Send + Sync
-└── Numeric                    // Numeric: Add + Sub + Mul + Div + Neg (i32/i64/f32/f64/Complex only)
+└── Numeric                    // Numeric: arithmetic syntax + checked integer contract + conjugate semantics
     ├── RealScalar             // Real: sqrt, sin, exp, ln, floor, ceil
-    └── ComplexScalar          // Complex: conjugate, modulus, etc.
+    └── ComplexScalar          // Complex: complex-specific conj/norm/re/im helpers
 ```
+
+其中 `Numeric` 不仅表示 `Add + Sub + Mul + Div + Neg` 语法可用，还要求：
+
+- 对整数路径，具体运算模块必须落实 checked overflow / divide-by-zero / unrepresentable-result contract；
+- 对实数类型，`conjugate(self)` 为恒等；对复数类型，`conjugate(self)` 执行数学共轭；
+- 统一错误入口与结构化字段约束遵循 `00-coding.md` §4.2，不得在架构层引入第二套公开错误模型。
 
 ---
 
@@ -768,7 +774,7 @@ Wave 5: [W5.1] [W5.2] [W5.3] [W5.4]
 
 ## 错误处理与语义边界
 
-本文档不直接定义错误类型，但要求所有架构层级、模块边界与执行路径统一遵循单一 `XenonError` 公开错误模型；架构层只裁决错误入口应单一、路径语义应一致，不在此重复定义完整错误枚举。`FfiError`、`WorkspaceError` 等模块局部错误只允许在模块内部保留语义，跨公开 API 边界时必须映射为结构化 `XenonError` 字段。对于 FFI 场景，`try_offset_of()` / `try_ptr_at()` 是公开的可恢复错误入口。
+本文档不直接定义错误类型，但要求所有架构层级、模块边界与执行路径统一遵循单一 `XenonError` 公开错误模型；架构层只裁决错误入口应单一、路径语义应一致，不在此重复定义完整错误枚举。`FfiError`、`WorkspaceError` 等模块局部错误只允许在模块内部保留语义，跨公开 API 边界时必须映射为 `00-coding.md` §4.2 定义的结构化 `XenonError` 字段。对于 FFI 场景，`try_offset_of()` / `try_ptr_at()` 是公开的可恢复错误入口。
 
 > **FFI 补充说明**：`extern "C"` 边界不得返回 `Result`，也不得依赖 panic-sugar helper；公开 Rust API 层同样不额外承诺 `offset_of` / `ptr_at` 这类 panic 包装，参见 `00-coding.md` §4.2。
 

@@ -216,7 +216,7 @@ where
     ///
     /// ```ignore
     /// let mut t = Tensor1::<f64>::zeros([5])?;
-    /// t.fill(3.14)?;
+    /// t.fill(3.14);
     /// assert!(t.iter().all(|&x| x == 3.14));
     /// ```
     pub fn fill(&mut self, value: A) {

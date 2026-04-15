@@ -297,7 +297,7 @@ where
 
 ### 5.7 Good / Bad 对比示例
 
-```rust
+```rust,ignore
 // Good - safely iterate elements using iter()
 let tensor = Tensor::<f64, Ix2>::zeros([3, 4]);
 for &elem in tensor.iter() {

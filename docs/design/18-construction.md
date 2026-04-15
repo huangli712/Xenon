@@ -376,15 +376,6 @@ where
         Self::from_shape_vec(dim, slice.to_vec())
     }
 
-    /// Construct a 1D tensor directly from a Vec.
-    ///
-    /// This is an optional convenience wrapper around
-    /// `from_shape_vec(Ix1(data.len()), data)` for 1D construction.
-    pub fn from_vec(data: Vec<A>) -> Tensor<A, Ix1> {
-        Self::from_shape_vec(Ix1(data.len()), data)
-            .expect("Vec -> Tensor1 shape is always valid")
-    }
-
     /// Construct a tensor from a fixed-size array.
     ///
     /// # Examples
@@ -400,6 +391,20 @@ where
         Sh: IntoDimension<Dim = D>,
     {
         Self::from_shape_vec(shape, arr.into_iter().collect())
+    }
+}
+
+impl<A> TensorBase<Owned<A>, Ix1>
+where
+    A: Element,
+{
+    /// Construct a 1D tensor directly from a Vec.
+    ///
+    /// This is an optional convenience wrapper around
+    /// `from_shape_vec(Ix1(data.len()), data)` for 1D construction.
+    pub fn from_vec(data: Vec<A>) -> Tensor<A, Ix1> {
+        Self::from_shape_vec(Ix1(data.len()), data)
+            .expect("Vec -> Tensor1 shape is always valid")
     }
 }
 ````
@@ -517,7 +522,7 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 
 - [ ] **T3**: 实现 `from_shape_vec` 和 `from_shape_slice`
   - 文件: `src/construct/from_data.rs`
-  - 内容: 消费输入 Vec 并复制到对齐存储、从切片拷贝
+  - 内容: 消费输入 Vec 进入共享 owned 构造路径；是否复用或重打包底层缓冲区由内部决定；从切片拷贝
   - 测试: `test_from_shape_vec`, `test_from_shape_vec_mismatch`, `test_from_shape_slice`
   - 前置: T1
   - 预计: 10 min

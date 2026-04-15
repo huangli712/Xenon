@@ -398,27 +398,25 @@ let c = &a + &b64;
 /// Element-wise type conversion trait.
 ///
 /// Defines explicit conversion from `Self` to `T`.
-/// Lossless conversions return `Ok` with `Infallible` as the error type.
-/// Lossy conversions default to recoverable errors unless a documented success
-/// precondition is satisfied (see `21-type.md §5.3`).
+/// Lossless conversions return `Ok(T)`.
+/// Lossy conversions default to recoverable `XenonError` unless a documented
+/// success precondition is satisfied (see `21-type.md §5.3`).
 ///
 /// This trait is implemented only inside Xenon for the supported source/target pairs.
 /// External crates cannot extend the conversion matrix.
 pub trait CastTo<T>: Element {
-    type Error;
-
     /// Performs the type conversion.
-    fn cast_to(self) -> Result<T, Self::Error>;
+    fn cast_to(self) -> Result<T, XenonError>;
 }
 
 // Implemented for all supported source → target type pairs.
 // See 21-type.md §5.3 for full implementation table.
 // Examples:
-//   impl CastTo<f64> for f32  -- lossless upcast, Error = Infallible
+//   impl CastTo<f64> for f32  -- lossless upcast
 //   impl CastTo<f32> for f64  -- Result, may fail on precision loss
 //   impl CastTo<i32> for f64  -- Result, may fail on fractional or out-of-range input
 //   impl CastTo<i32> for i64  -- Result, may fail on narrowing overflow
-//   impl CastTo<Complex<f64>> for f64  -- lossless, Error = Infallible
+//   impl CastTo<Complex<f64>> for f64  -- lossless
 //   impl CastTo<f64> for Complex<f64>  -- Result, requires zero imaginary part
 ```
 
@@ -441,15 +439,13 @@ pub trait CastTo<T>: Element {
 // src/element/mod.rs
 
 impl CastTo<f32> for Complex<f32> {
-    type Error = XenonError;
-
-    fn cast_to(self) -> Result<f32, Self::Error> {
+    fn cast_to(self) -> Result<f32, XenonError> {
         if self.im != 0.0 {
             return Err(XenonError::TypeConversion {
                 source_type: "Complex<f32>".into(),
                 target_type: "f32".into(),
-                reason: TypeConversionReason::NonZeroImaginaryPart,
-                element_index: 0,
+                reason: "non-zero imaginary part".into(),
+                element_index: None,
             });
         }
         Ok(self.re)
@@ -457,15 +453,13 @@ impl CastTo<f32> for Complex<f32> {
 }
 
 impl CastTo<f64> for Complex<f64> {
-    type Error = XenonError;
-
-    fn cast_to(self) -> Result<f64, Self::Error> {
+    fn cast_to(self) -> Result<f64, XenonError> {
         if self.im != 0.0 {
             return Err(XenonError::TypeConversion {
                 source_type: "Complex<f64>".into(),
                 target_type: "f64".into(),
-                reason: TypeConversionReason::NonZeroImaginaryPart,
-                element_index: 0,
+                reason: "non-zero imaginary part".into(),
+                element_index: None,
             });
         }
         Ok(self.re)
@@ -473,15 +467,13 @@ impl CastTo<f64> for Complex<f64> {
 }
 
 impl CastTo<f32> for Complex<f64> {
-    type Error = XenonError;
-
-    fn cast_to(self) -> Result<f32, Self::Error> {
+    fn cast_to(self) -> Result<f32, XenonError> {
         if self.im != 0.0 {
             return Err(XenonError::TypeConversion {
                 source_type: "Complex<f64>".into(),
                 target_type: "f32".into(),
-                reason: TypeConversionReason::NonZeroImaginaryPart,
-                element_index: 0,
+                reason: "non-zero imaginary part".into(),
+                element_index: None,
             });
         }
         CastTo::<f32>::cast_to(self.re)
@@ -489,15 +481,13 @@ impl CastTo<f32> for Complex<f64> {
 }
 
 impl CastTo<f64> for Complex<f32> {
-    type Error = XenonError;
-
-    fn cast_to(self) -> Result<f64, Self::Error> {
+    fn cast_to(self) -> Result<f64, XenonError> {
         if self.im != 0.0 {
             return Err(XenonError::TypeConversion {
                 source_type: "Complex<f32>".into(),
                 target_type: "f64".into(),
-                reason: TypeConversionReason::NonZeroImaginaryPart,
-                element_index: 0,
+                reason: "non-zero imaginary part".into(),
+                element_index: None,
             });
         }
         CastTo::<f64>::cast_to(self.re)
@@ -505,15 +495,13 @@ impl CastTo<f64> for Complex<f32> {
 }
 
 impl CastTo<i32> for Complex<f32> {
-    type Error = XenonError;
-
-    fn cast_to(self) -> Result<i32, Self::Error> {
+    fn cast_to(self) -> Result<i32, XenonError> {
         if self.im != 0.0 {
             return Err(XenonError::TypeConversion {
                 source_type: "Complex<f32>".into(),
                 target_type: "i32".into(),
-                reason: TypeConversionReason::NonZeroImaginaryPart,
-                element_index: 0,
+                reason: "non-zero imaginary part".into(),
+                element_index: None,
             });
         }
         CastTo::<i32>::cast_to(self.re)
@@ -521,15 +509,13 @@ impl CastTo<i32> for Complex<f32> {
 }
 
 impl CastTo<i64> for Complex<f64> {
-    type Error = XenonError;
-
-    fn cast_to(self) -> Result<i64, Self::Error> {
+    fn cast_to(self) -> Result<i64, XenonError> {
         if self.im != 0.0 {
             return Err(XenonError::TypeConversion {
                 source_type: "Complex<f64>".into(),
                 target_type: "i64".into(),
-                reason: TypeConversionReason::NonZeroImaginaryPart,
-                element_index: 0,
+                reason: "non-zero imaginary part".into(),
+                element_index: None,
             });
         }
         CastTo::<i64>::cast_to(self.re)
@@ -537,15 +523,13 @@ impl CastTo<i64> for Complex<f64> {
 }
 
 impl CastTo<i32> for Complex<f64> {
-    type Error = XenonError;
-
-    fn cast_to(self) -> Result<i32, Self::Error> {
+    fn cast_to(self) -> Result<i32, XenonError> {
         if self.im != 0.0 {
             return Err(XenonError::TypeConversion {
                 source_type: "Complex<f64>".into(),
                 target_type: "i32".into(),
-                reason: TypeConversionReason::NonZeroImaginaryPart,
-                element_index: 0,
+                reason: "non-zero imaginary part".into(),
+                element_index: None,
             });
         }
         CastTo::<i32>::cast_to(self.re)
@@ -553,15 +537,13 @@ impl CastTo<i32> for Complex<f64> {
 }
 
 impl CastTo<i64> for Complex<f32> {
-    type Error = XenonError;
-
-    fn cast_to(self) -> Result<i64, Self::Error> {
+    fn cast_to(self) -> Result<i64, XenonError> {
         if self.im != 0.0 {
             return Err(XenonError::TypeConversion {
                 source_type: "Complex<f32>".into(),
                 target_type: "i64".into(),
-                reason: TypeConversionReason::NonZeroImaginaryPart,
-                element_index: 0,
+                reason: "non-zero imaginary part".into(),
+                element_index: None,
             });
         }
         CastTo::<i64>::cast_to(self.re)
@@ -569,12 +551,12 @@ impl CastTo<i64> for Complex<f32> {
 }
 ```
 
-> **实现约束：** `Complex<T> -> Real` 的所有 `CastTo` 实现都必须先检查虚部是否为 `0`。检查通过后，再复用对应实部的标量转换规则；检查失败时统一返回结构化 `XenonError::TypeConversion { ... }`，失败原因标记为 `TypeConversionReason::NonZeroImaginaryPart`。
+> **实现约束：** `Complex<T> -> Real` 的所有 `CastTo` 实现都必须先检查虚部是否为 `0`。检查通过后，再复用对应实部的标量转换规则；检查失败时统一返回结构化 `XenonError::TypeConversion { ... }`。当错误来自标量转换实现时，`element_index` 使用 `None` 表示“当前仅有单个标量值”；只有张量级批量转换在逐元素遍历时才填写 `Some(index)`。
 
 | 转换示例                   | 默认语义                        |
 | -------------------------- | ------------------------------- |
-| `impl CastTo<i64> for i32` | 无损，`Result<i64, Infallible>` |
-| `impl CastTo<f64> for f32` | 无损，`Result<f64, Infallible>` |
+| `impl CastTo<i64> for i32` | 无损，`Result<i64, XenonError>`（实际不会失败） |
+| `impl CastTo<f64> for f32` | 无损，`Result<f64, XenonError>`（实际不会失败） |
 | `impl CastTo<f32> for f64` | 有损，默认返回可恢复错误        |
 | `impl CastTo<i32> for f64` | 有损，默认返回可恢复错误        |
 | `impl CastTo<i32> for i64` | 有损，默认返回可恢复错误        |

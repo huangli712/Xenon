@@ -284,7 +284,7 @@ where
         for elem in self.iter().cloned() {
             data.push(elem);
         }
-        // from_vec_aligned: copies into a 64-byte aligned allocation (see 05-storage.md §5.1)
+        // from_vec_aligned: copies into Xenon's internal aligned allocation path (see 05-storage.md §5.1)
         Tensor::from_shape_vec_aligned(self.raw_dim(), data)
     }
 }
@@ -571,13 +571,13 @@ User calls cast() / to_owned() / into_owned()
 | 替代方案 | 仅在 `Owned` 上实现 — 放弃，会无依据地缩小 `require.md §23` 的适用范围                                                                                         |
 | 替代方案 | 按输入存储模式返回不同结果类型 — 放弃，会引入生命周期与所有权分歧，破坏公开 API 一致性                                                                        |
 
-### 决策 3：存储模式转换策略
+### 决策 3：收缩 convert 模块边界到当前需求集合
 
 | 属性     | 值                                                                           |
 | -------- | ---------------------------------------------------------------------------- |
-| 决策     | 提供显式方法（`view()`, `view_mut()`, `into_shared()`），不使用 `Into` trait |
-| 理由     | 显式方法命名更清晰，避免隐式行为；`From` 仅用于标准库接口                    |
-| 替代方案 | 为所有模式对实现 `From` — 放弃，组合爆炸（N×N 对）                           |
+| 决策     | convert 模块仅覆盖 `cast()`、`to_owned()`、`into_owned()`；其余存储模式互转仅作跨文档引用，不在本文展开 |
+| 理由     | 当前 `require.md §23` 只要求逐元素类型转换与同类型拷贝；继续讨论 `view` / `view_mut` / `into_shared` 会超出收缩后的边界 |
+| 替代方案 | 在本文继续完整展开所有存储模式互转 — 放弃，会把 convert 文档扩展到非本节需求范围 |
 
 ---
 

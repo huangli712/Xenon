@@ -202,19 +202,19 @@ L3: Examples (examples/)
 
 | API 族                               | 必须有示例 | 对应设计文档      |
 | ------------------------------------ | ---------- | ----------------- |
-| 构造 (`zeros`/`ones`/`eye`/`from_*`) | ✅         | `18-construction` |
-| 索引/切片                            | ✅         | `17-indexing`     |
-| 转置                                 | ✅         | `16-shape`        |
-| 广播                                 | ✅         | `15-broadcast`    |
-| 逐元素运算                           | ✅         | `11-math`         |
-| 归约 (`sum`)                         | ✅         | `13-reduction`    |
-| 内积 (`dot`)                         | ✅         | `12-matrix`       |
-| 类型转换 (`cast`)                    | ✅         | `21-type`         |
-| FFI unsafe API                       | ✅         | `23-ffi`          |
-| 运算符重载                           | ✅         | `19-overload`     |
-| `clip`/`fill`                        | ✅         | `20-utility`      |
-| 工作空间                             | ✅         | `24-workspace`    |
-| 格式化输出                           | ✅         | `22-output`       |
+| 构造 (`zeros`/`ones`/`eye`/`from_*`) | ✅         | `18-construction.md` |
+| 索引/切片                            | ✅         | `17-indexing.md`     |
+| 转置                                 | ✅         | `16-shape.md`        |
+| 广播                                 | ✅         | `15-broadcast.md`    |
+| 逐元素运算                           | ✅         | `11-math.md`         |
+| 归约 (`sum`)                         | ✅         | `13-reduction.md`    |
+| 内积 (`dot`)                         | ✅         | `12-matrix.md`       |
+| 类型转换 (`cast`)                    | ✅         | `21-type.md`         |
+| FFI unsafe API                       | ✅         | `23-ffi.md`          |
+| 运算符重载                           | ✅         | `19-overload.md`     |
+| `clip`/`fill`                        | ✅         | `20-utility.md`      |
+| 工作空间                             | ✅         | `24-workspace.md`    |
+| 格式化输出                           | ✅         | `22-output.md`       |
 
 ---
 
@@ -374,9 +374,12 @@ pub fn sum(&self) -> A { ... }
 /// # {
 /// use xenon::prelude::*;
 ///
-/// let t = Tensor1::<f64>::ones([1_000_000]);
+/// # fn demo() -> xenon::Result<()> {
+/// let t = Tensor1::<f64>::ones([1_000_000])?;
 /// let s = t.par_sum();
 /// assert_eq!(s, 1_000_000.0);
+/// # Ok(())
+/// # }
 /// # }
 /// ```
 #[cfg(feature = "parallel")]
@@ -409,7 +412,7 @@ use xenon::prelude::*;
 
 fn main() -> xenon::Result<()> {
     // Step 1: Create tensors
-    let a = Tensor2::<f64>::zeros([3, 4]);
+    let a = Tensor2::<f64>::zeros([3, 4])?;
     println!("Created 3x4 zero matrix: shape={:?}", a.shape());
 
     // Step 2: Perform operation

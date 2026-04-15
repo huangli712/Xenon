@@ -94,7 +94,7 @@ src/shape/
 | `tensor`    | `TensorBase<S, D>`, `TensorView`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.offset()`，参见 `07-tensor.md` §5 |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `RemoveAxis`, `IntoDimension`，参见 `02-dimension.md` §3                     |
 | `layout`    | `LayoutFlags`, `LayoutState`, `Strides<D>`，参见 `06-layout.md` §3, §4                                          |
-| `error`     | 无新增可恢复错误；`transpose()` / `t()` 不走失败返回路径                                                        |
+| `error`     | 无新增可恢复错误；规范性 `transpose()` 不走失败返回路径                                                        |
 
 ### 4.3 依赖方向声明
 
@@ -257,9 +257,9 @@ fn update_flags_for_transpose(
 
 ### Wave 2: 转置实现
 
-- [ ] **T2**: 实现 `transpose()` 与可选 `t()` 别名
+- [ ] **T2**: 实现 `transpose()`
   - 文件: `src/shape/transpose.rs`
-  - 内容: `TensorBase::transpose()`, `TensorBase::t()`, `LayoutFlags::update_for_transpose()`
+  - 内容: `TensorBase::transpose()`, `LayoutFlags::update_for_transpose()`
   - 测试: `test_transpose_2d`, `test_transpose_3d`, `test_transpose_contiguity_swap`, `test_transpose_0d_1d_preserves_contiguity`
   - 前置: T1
   - 预计: 10 min
@@ -291,7 +291,7 @@ Wave 3: [T3]
 
 | 测试分类 | 位置                     | 说明                                                                |
 | -------- | ------------------------ | ------------------------------------------------------------------- |
-| 单元测试 | `#[cfg(test)] mod tests` | 验证 `transpose()` 的核心语义，以及可选 `t()` 别名与其保持一致       |
+| 单元测试 | `#[cfg(test)] mod tests` | 验证 `transpose()` 的核心语义与连续性标志重算                       |
 | 集成测试 | `tests/`                 | 验证 `shape` 与 `tensor`、`layout`、`index`、`broadcast` 的协同路径 |
 | 边界测试 | 同模块测试中标注         | 覆盖空数组、单元素、大数组和高维转置等边界                          |
 | 属性测试 | `tests/property/`        | 验证转置长度保持与数据一致性不变量                                  |
@@ -327,13 +327,13 @@ Wave 3: [T3]
 
 | 测试文件              | 测试内容                                                                 |
 | --------------------- | ------------------------------------------------------------------------ |
-| `tests/test_shape.rs` | `transpose()` 与 `tensor`、`layout`、`index`、`broadcast` 的协同路径；若提供 `t()`，则额外验证其别名一致性 |
+| `tests/test_shape.rs` | `transpose()` 与 `tensor`、`layout`、`index`、`broadcast` 的协同路径 |
 
 ### 8.6 Feature gate / 配置测试
 
 | 配置 | 验证点 |
 | ---- | ---- |
-| 默认配置 | `transpose()` 的零拷贝与 flags 语义保持一致；若提供 `t()`，则其语义必须与 `transpose()` 一致。 |
+| 默认配置 | `transpose()` 的零拷贝与 flags 语义保持一致。 |
 | 其他 feature 组合 | 不适用；当前模块无额外 feature gate。 |
 
 ### 8.7 类型边界 / 编译期测试
@@ -361,7 +361,7 @@ Wave 3: [T3]
 ### 9.2 数据流描述
 
 ```text
-User calls transpose() / t()
+User calls transpose()
     │
     ├── shape rewrites shape + strides + flags by reversing axes
     ├── the result shares the original storage and stays read-only
@@ -374,7 +374,7 @@ User calls transpose() / t()
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | 不适用；当前范围内 `transpose()` / `t()` 不返回模块级可恢复错误。 |
+| Recoverable error | 不适用；当前范围内 `transpose()` 不返回模块级可恢复错误。 |
 | Panic | 不适用；公开 API 不定义额外 panic 分支。 |
 | 路径一致性 | 当前仅有元数据重写路径；无 SIMD / 并行分支，0D/1D 输入与高维输入都必须保持同一转置契约。 |
 | 容差边界 | 不适用。 |
@@ -399,13 +399,13 @@ User calls transpose() / t()
 | 理由     | `require.md` §17 明确当前版本形状操作仅支持转置                     |
 | 替代方案 | 在本阶段继续保留其他形状变换设计 — 放弃，超出当前需求范围          |
 
-### 决策 3：当前版本仅支持 transpose / `t()`
+### 决策 3：当前版本交付边界仅包含 `transpose()`
 
 | 属性     | 值                                                         |
 | -------- | ---------------------------------------------------------- |
-| 决策     | Phase 4 仅实现 transpose / `t()`，其他形状操作留待后续版本 |
-| 理由     | 需求说明书 §17 明确当前版本只提供转置操作                  |
-| 替代方案 | 一次性实现所有操作 — 放弃，范围过大，违反增量开发原则      |
+| 决策     | Phase 4 仅把 `transpose()` 纳入当前版本交付；`t()` 仅可作为后续可选的非规范便捷别名 |
+| 理由     | `require.md` §17 明确当前版本只要求转置操作本身，文档不应把别名扩写成当前交付承诺 |
+| 替代方案 | 在当前版本同时承诺 `t()` 或其他形状操作 — 放弃，超出规范性 API 边界                |
 
 ---
 
@@ -416,14 +416,12 @@ User calls transpose() / t()
 | 操作          | 连续输入 | 非连续输入 |
 | ------------- | -------- | ---------- |
 | `transpose()` | O(1)     | O(1)       |
-| `t()`         | O(1)     | O(1)       |
 
 ### 12.2 内存
 
 | 操作          | 内存分配 | 数据拷贝 |
 | ------------- | -------- | -------- |
 | `transpose()` | 无       | 无       |
-| `t()`         | 无       | 无       |
 
 ### 12.3 缓存行为
 
@@ -440,7 +438,7 @@ User calls transpose() / t()
 | ---------- | -------------------------------------------------------------------- |
 | `std` only | Xenon 当前版本仅支持 `std` 环境，本文不再讨论 `no_std` 路径          |
 | 单 crate   | `shape` 设计保持在现有 crate 内，不引入额外 crate                    |
-| SemVer     | 当前调整是收敛文档范围到 `transpose()` / `t()`，不新增超范围公开 API |
+| SemVer     | 当前调整是收敛文档范围到规范性 `transpose()` API，不新增超范围公开 API |
 | 最小依赖   | 本模块不新增第三方依赖                                               |
 
 ---

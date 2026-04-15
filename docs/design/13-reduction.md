@@ -85,7 +85,7 @@ src/reduction/
 │   └── crate::reduction::sum
 └── sum.rs
     ├── crate::tensor        # TensorBase<S, D>, Tensor<A, D>, shape/ndim helpers
-    ├── crate::dimension     # Axis, Dimension, RemoveAxis
+    ├── crate::dimension     # Axis, Dimension, runtime axis projection helpers
     ├── crate::element       # Numeric, CheckedAdd, ComplexScalar
     ├── crate::error         # XenonError::InvalidAxis
     ├── crate::simd (opt.)   # Optional sum kernels when semantics match scalar path
@@ -97,7 +97,7 @@ src/reduction/
 | 来源模块 | 使用的类型/trait |
 | -------- | ---------------- |
 | `tensor` | `TensorBase<S, D>`、`Tensor<A, D>`、`.shape()`、`.ndim()`、`.iter()`、`.indexed_iter()`、结果张量构造接口 |
-| `dimension` | `Axis`、`Dimension`、`RemoveAxis`、`D::Smaller` |
+| `dimension` | `Axis`、`Dimension`、运行时 axis/shape 投影辅助 |
 | `element` | `Numeric`、`CheckedAdd`、`ComplexScalar`、`A::zero()` |
 | `error` | `XenonError::InvalidAxis` |
 | `simd`（可选） | 仅在可证明与标量累加顺序和结果语义一致时参与 `sum` 实现 |
@@ -138,20 +138,18 @@ where
     /// Reduces along `axis` and removes that axis from the output shape.
     ///
     /// Returns `XenonError::InvalidAxis` when `axis.index() >= self.ndim()`.
-    pub fn sum_axis(&self, axis: Axis) -> Result<Tensor<A, D::Smaller>, XenonError>
-    where
-        D: RemoveAxis;
+    /// Rank-0 inputs use the same runtime error contract.
+    pub fn sum_axis(&self, axis: Axis) -> Result<Tensor<A, IxDyn>, XenonError>;
 
     /// Reduces along `axis` and keeps the reduced axis with length 1.
     ///
     /// Returns `XenonError::InvalidAxis` when `axis.index() >= self.ndim()`.
-    pub fn sum_axis_keepdims(&self, axis: Axis) -> Result<Tensor<A, D>, XenonError>
-    where
-        D: RemoveAxis;
+    /// Rank-0 inputs use the same runtime error contract.
+    pub fn sum_axis_keepdims(&self, axis: Axis) -> Result<Tensor<A, D>, XenonError>;
 }
 ````
 
-> **0D 轴归约说明：** 公开轴归约契约统一为**先做运行时 axis 校验**。当输入运行时 `ndim == 0`（尤其是 `IxDyn([])` 等 rank-0 动态维输入）时，`sum_axis` / `sum_axis_keepdims` 必须返回 `XenonError::InvalidAxis { operation, axis, ndim: 0, shape: vec![] }`。`D: RemoveAxis` 仅用于表达输出维度类型，不得被解释为另一套独立的“0D 编译期错误契约”。
+> **0D 轴归约说明：** 公开轴归约契约统一为**先做运行时 axis 校验**。当输入运行时 `ndim == 0`（尤其是 `IxDyn([])` 等 rank-0 动态维输入）时，`sum_axis` / `sum_axis_keepdims` 必须返回 `XenonError::InvalidAxis { operation, axis, ndim: 0, shape: vec![] }`。是否在内部为固定维场景使用 `RemoveAxis` 一类约束做专门优化，属于实现选择，不构成另一套公开 0D 编译期契约。
 
 ### 5.2 对外错误契约
 
@@ -179,7 +177,7 @@ XenonError::InvalidAxis {
 
 ### 5.3 Good / Bad 对比示例
 
-```rust
+```rust,ignore
 // Good - handle recoverable axis errors explicitly
 let x = Tensor2::<f64>::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0])?;
 let reduced = x.sum_axis(Axis(1))?;
@@ -232,7 +230,7 @@ sum_axis(tensor, axis):
     4. Iterate all logical input elements.
     5. Map each input index to its output index with the target axis removed.
     6. Accumulate into the corresponding output slot using type-specific add semantics.
-    7. Return Tensor<A, D::Smaller>.
+    7. Return the reduced tensor after runtime shape projection.
 
 sum_axis_keepdims(tensor, axis):
     1. Validate axis against tensor.ndim().
@@ -438,7 +436,7 @@ Wave 4:                  [T6]
 | 方向 | 对方模块 | 接口/类型 | 约定 |
 | ---- | -------- | --------- | ---- |
 | `reduction → tensor` | `tensor` | `TensorBase<S, D>`、结果张量构造接口 | 输入可为连续或合法非连续视图；归约只观察逻辑元素顺序与 shape/stride 元数据。 |
-| `reduction → dimension` | `dimension` | `Axis`、`RemoveAxis` | 按轴归约必须先验证 `axis < ndim`，再做维度投影。 |
+| `reduction → dimension` | `dimension` | `Axis`、运行时 shape 投影辅助 | 按轴归约必须先验证 `axis < ndim`，再做维度投影。 |
 | `reduction → element` | `element` | `Numeric`、`CheckedAdd`、`ComplexScalar` | 依据元素类型分派整数、浮点、复数归约语义。 |
 | `reduction → error` | `error` | `XenonError::InvalidAxis` | axis 越界统一返回结构化错误，不再使用 `InvalidArgument`。 |
 | `reduction → simd/parallel` | `simd` / `parallel` | 可选加速入口 | 只有在可证明标量等价时才允许接入。 |
@@ -470,7 +468,7 @@ User calls sum / sum_axis / sum_axis_keepdims
 
 ### 10.1 错误示例
 
-```rust
+```rust,ignore
 Err(XenonError::InvalidAxis {
     operation: "sum_axis",
     axis: axis.index(),
@@ -479,7 +477,7 @@ Err(XenonError::InvalidAxis {
 })
 ```
 
-```rust
+```rust,ignore
 Err(XenonError::InvalidAxis {
     operation: "sum_axis_keepdims",
     axis: axis.index(),
@@ -488,7 +486,7 @@ Err(XenonError::InvalidAxis {
 })
 ```
 
-```rust
+```rust,ignore
 // Forbidden for axis out-of-bounds in public reduction APIs
 Err(XenonError::InvalidArgument {
     operation: "sum_axis_keepdims",
