@@ -14,7 +14,7 @@
 | 职责           | 包含                                     | 不包含                                            |
 | -------------- | ---------------------------------------- | ------------------------------------------------- |
 | 范围裁剪       | `clip`（将元素限制在 [min, max] 范围内） | 其他 numpy 风格变换（flip/roll/shift），以及不再作为稳定公共 API 的 `clip_inplace` |
-| 填充操作       | `try_fill`（公开可恢复错误入口）、`fill`（可写路径原地填充） | 构造方法（zeros/ones/full，由 construct.rs 提供） |
+| 填充操作       | `try_fill` / `fill`（仅对可写张量开放的原地填充） | 构造方法（zeros/ones/full，由 construct.rs 提供） |
 | 连续性保证     | `to_contiguous`（确保内存连续存储）      | 布局计算逻辑（由 layout 模块提供）                |
 | 非连续布局支持 | 通过迭代器正确处理非连续内存             | 布局优化策略                                      |
 
@@ -156,7 +156,7 @@ where
     /// let t = Tensor1::from_shape_vec([5], vec![-1.0, 0.5, 1.0, 2.0, 3.0])?;
     /// let clipped = t.clip(0.0, 2.0)?;
     /// assert_eq!(clipped.to_vec(), vec![0.0, 0.5, 1.0, 2.0, 2.0]);
-    /// ```ignore
+    /// ```
     pub fn clip(&self, min: A, max: A) -> Result<Tensor<A, D>, XenonError>
     where
         A: Clone,
@@ -195,34 +195,27 @@ where
 
 ### 5.2 fill 操作
 
-> **公开入口调整：** 面向用户的主入口为 `try_fill()`；`fill()` 仍保留为 `S: StorageMut` 下的高效直接写入路径。
+> **公开入口调整：** `try_fill()` 与 `fill()` 都是仅对 `S: StorageMut` 可写路径开放的写入 API；当张量类型不满足可写约束时，方法在类型层面不可用。
 
 ````rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
-    S: Storage<Elem = A>,
+    S: StorageMut<Elem = A>,
     D: Dimension,
     A: Element + Clone,
 {
     /// Fill all logical elements with the specified value.
     ///
-    /// Public entry point - returns recoverable error for non-writable storage.
-    /// For writable tensors, this is equivalent to direct mutation.
-    pub fn try_fill(&self, value: A) -> Result<(), XenonError> {
-        match self.storage_kind() {
-            StorageKind::Readonly | StorageKind::SharedReadonly => {
-                Err(XenonError::ReadonlyStorage {
-                    operation: "try_fill",
-                    shape: self.shape().to_vec(),
-                })
-            }
-            _ => fill_try_dispatch(self, value),
-        }
+    /// Public recoverable entry point for writable tensors.
+    /// Read-only tensor types do not expose this method because the impl
+    /// requires `S: StorageMut`.
+    pub fn try_fill(&mut self, value: A) -> Result<(), XenonError> {
+        fill_try_dispatch(self, value)
     }
 }
 ````
 
-> 对于编译期已知的只读/共享只读张量类型，此方法始终返回 `Err(XenonError::ReadonlyStorage { ... })`。对于可写张量，此方法等价于直接写入。
+> 对于只读/共享只读张量类型，`try_fill()` 不会出现在可用方法集中；只有满足 `S: StorageMut` 的可写张量才暴露此入口。对于可写张量，`try_fill()` 是返回 `Result` 的公开写入入口。
 
 ````rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -237,8 +230,8 @@ where
     /// elements via the iterator. Modifies storage directly without copying.
     ///
     /// Efficient direct-write path for writable storage.
-    /// Public documentation should guide end users to `try_fill()` first when
-    /// the storage mutability is not statically known.
+    /// Public documentation should guide end users to `try_fill()` when they
+    /// want the recoverable API on a writable tensor type.
     ///
     /// # Examples
     ///
@@ -260,16 +253,14 @@ where
 }
 ````
 
-> **分层说明：** `fill` 仍保留**类型层拒绝只读/共享只读存储**的高效路径：它仅存在于 `S: StorageMut` 的可写层。
->
-> 同时，为满足 `require.md` §21.2 的可恢复错误要求，用户侧主文档入口改为 `try_fill()`：它对任意 `TensorBase` 可见，并在只读/共享只读输入上返回 `XenonError::ReadonlyStorage`；`fill()` 仅保留为可写路径的高效 helper。
+> **分层说明：** `try_fill` 与 `fill` 都通过 `S: StorageMut` 在类型层限制为可写张量 API。只读/共享只读存储不会在运行时“拒绝 fill”；它们根本不满足该方法的 impl 约束，因此方法不可调用。
 
 #### 5.2.1 fill 的显式写入语义
 
 - `fill` 必须按**逻辑索引**迭代，并且只写入逻辑元素。
 - 对带 padding 的底层存储：不得写入任何 padding bytes。
 - 对非连续但可写的视图：必须严格按 `shape` / `strides` / `offset` / `flags` 或等价 layout helper 导航到每个逻辑元素。
-- 对存在零步长的布局：按照 `require.md` §16，它们来自广播只读结果；`try_fill()` 在这类只读/共享只读输入上返回 recoverable error，而 `fill()` 仅保留给已满足 `StorageMut` 的可写路径。
+- 对存在零步长的布局：按照 `require.md` §16，它们来自广播只读结果；这类只读/共享只读张量不满足 `StorageMut` 约束，因此 `try_fill()` / `fill()` 都不会作为可用方法暴露。
 
 ```
 fill_logical_only(storage, shape, strides, offset, flags, value):
@@ -403,7 +394,7 @@ fill(tensor, value):
         write storage[offset] = clone(value)
 ```
 
-关键点：utility 层保留两层入口。`try_fill()` 对所有 `TensorBase` 暴露，并把只读/广播结果映射为 recoverable error；内部 `fill` helper 只接收可写存储。可写存储仍必须遵守“只写逻辑元素”的契约：连续布局可走快路径，带 padding / 非连续布局必须按逻辑索引与 strides 写入，且不得触碰 padding bytes。
+关键点：utility 层保留两层入口，但二者都只对可写张量开放：`try_fill()` 提供返回 `Result` 的公开入口，`fill()` 提供直接写入路径。只读/广播结果不会在运行时被拒绝，而是通过 `S: StorageMut` 类型约束直接排除在可用 API 之外。可写存储仍必须遵守“只写逻辑元素”的契约：连续布局可走快路径，带 padding / 非连续布局必须按逻辑索引与 strides 写入，且不得触碰 padding bytes。
 
 ### 6.3 to_contiguous 路径选择
 
@@ -581,7 +572,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `clip` 在 `min > max` 或边界为 `NaN` 时返回 `XenonError::InvalidArgument { operation, argument, expected, actual, axis, shape }`。`try_fill` 在只读或共享只读输入上返回 `XenonError::ReadonlyStorage { operation, shape, .. }`；`fill` 仅存在于 `S: StorageMut` 的可写路径。`XenonError` 是本模块唯一公开错误类型。 |
+| Recoverable error | `clip` 在 `min > max` 或边界为 `NaN` 时返回 `XenonError::InvalidArgument { operation, argument, expected, actual, axis, shape }`。`try_fill` 是 `S: StorageMut` 可写路径上的 `Result` 入口；只读或共享只读张量因不满足类型约束而不暴露 `try_fill` / `fill`。`XenonError` 是本模块唯一公开错误类型。 |
 | Panic | 公开 utility API 不定义额外 panic 语义；连续化与裁剪失败统一走显式错误或正常返回。 |
 | 路径一致性 | 连续与非连续布局都必须通过同一逻辑元素语义工作；当前无独立 SIMD / 并行分支。 |
 | 容差边界 | `clip` 对浮点数遵循 IEEE 754 比较语义；不额外引入近似容差。 |

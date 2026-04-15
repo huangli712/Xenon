@@ -29,7 +29,7 @@
 | ------------ | ---------------------------------------------------------------------- |
 | FFI 友好     | `#[repr(C)]` 保证字段顺序稳定，并为与两字段 C 结构体互操作提供布局基础 |
 | 零依赖       | 不引入任何外部 crate（不使用 num-complex）                             |
-| 同精度互操作 | 仅支持 `f32↔Complex<f32>` 和 `f64↔Complex<f64>`                        |
+| 同元素类型运算 | 运算阶段只允许同元素类型；跨精度/实复类型变化仅允许通过显式转换完成      |
 | 数值稳定     | `norm()` 使用 hypot 算法避免中间溢出                                   |
 | NaN 语义正确 | `NaN != NaN`，不实现 Eq/Ord                                            |
 
@@ -625,6 +625,8 @@ impl<T: ComplexFloat + core::fmt::Display> core::fmt::Display for Complex<T> {
 其中语义遵循 `require.md` §23.2 的闭合规则：先按对应实数类型到目标复数实部分量类型的规则转换实部，再引入值为 `0` 的虚部。当前版本不额外扩展 `require.md` §23.1 之外的整数→复数组合。
 
 > **统一转换入口说明：** `Complex` 类型的逐元素类型转换统一由 `03-element.md` 定义的 `CastTo<T>` trait 管理，trait 定义位于 `element` 模块，具体实现归入 `convert/` 模块；本节不再单独定义张量级转换入口；本模块仅保留复数类型自身固有、且符合无损语义的 `From`/`Into` 标量级转换（如 `f32 -> Complex<f32>`、`Complex<f32> -> Complex<f64>`）。其中 `From<T> for Complex<T>` 是当前版本**唯一**允许的显式实数到复数标量构造路径。
+
+无损标量构造使用 `From<T> for Complex<T>`；其余显式类型转换统一通过 `CastTo<T>` trait 实现（参见 `03-element.md` §5.9 和 `21-type.md`）。
 
 复杂到实数的受支持路径同样受 `require.md` §23.1 与 §23.2 约束，且统一由 `03-element.md` §5.9 定义的 `CastTo<T>` trait 作为唯一 owner；`complex/` 模块文档仅声明其语义，不重复定义独立转换入口。
 

@@ -164,10 +164,10 @@ where
     /// # Examples
     ///
     /// ```ignore
-    /// let a = Tensor1::from_vec(vec![1_i32, 2, 3]);
+/// let a = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3])?;
     /// let b: Tensor1<f64> = a.cast()?;
     ///
-    /// let c = Tensor1::from_vec(vec![Complex::new(1.0_f64, 0.0)]);
+/// let c = Tensor1::from_shape_vec(Ix1(1), vec![Complex::new(1.0_f64, 0.0)])?;
     /// let d: Tensor1<f64> = c.cast()?;
     /// ```
     pub fn cast<B: CastElement>(&self) -> Result<Tensor<B, D>, XenonError>
@@ -195,6 +195,8 @@ where
 ````
 
 > **设计决策（修订）：** `require.md §23` 要求的是逐元素转换语义，而不是“仅限 Owned 输入”。因此 `cast()` 面向所有可读存储开放；无论输入是 `Owned`、`ViewRepr`、`ViewMutRepr` 还是 `ArcRepr`，结果统一物化为新的 owned 张量，以保持返回类型与所有权语义一致。目标类型进一步收缩为 `CastElement`，从签名层面排除 `bool`。
+
+> **bool 源类型边界：** `Tensor<bool, _>` 也不能作为 `cast()` 的源类型使用。`bool`/`BoolElement` 不在本模块约定的 `CastElement` 源集合内，因此相关调用应在编译期失败，而不是落到运行时 `TypeConversion`。
 
 ### 5.3 类型转换路径表
 
@@ -248,19 +250,19 @@ where
 
 ```rust,ignore
 // Good - explicit and fallible cast
-let a: Tensor<i32, Ix1> = Tensor::from_vec(vec![1, 2]);
+let a: Tensor<i32, Ix1> = Tensor::from_shape_vec(Ix1(2), vec![1, 2])?;
 let b: Tensor<f64, Ix1> = a.cast()?;
 
 // Bad - implicit type promotion (Xenon does not support this)
-let floats: Tensor<f64, Ix1> = Tensor::from_vec(vec![1.0, 2.0]);
+let floats: Tensor<f64, Ix1> = Tensor::from_shape_vec(Ix1(2), vec![1.0, 2.0])?;
 let ints: Tensor<i32, Ix1> = floats + 1.0;  // Compile error: type mismatch
 
 // Good - complex to real is allowed only when imag == 0
-let complex_t: Tensor<Complex<f64>, Ix1> = Tensor::from_vec(vec![Complex::new(3.0, 0.0)]);
+let complex_t: Tensor<Complex<f64>, Ix1> = Tensor::from_shape_vec(Ix1(1), vec![Complex::new(3.0, 0.0)])?;
 let re_parts: Tensor<f64, Ix1> = complex_t.cast()?;
 
 // Bad - assuming lossy conversion succeeds by default
-let floats: Tensor<f64, Ix1> = Tensor::from_vec(vec![1.5, 2.7]);
+let floats: Tensor<f64, Ix1> = Tensor::from_shape_vec(Ix1(2), vec![1.5, 2.7])?;
 let ints: Tensor<i32, Ix1> = floats.cast().unwrap();  // forbidden: returns TypeConversion error
 ```
 
@@ -295,7 +297,7 @@ where
         for elem in self.iter().cloned() {
             data.push(elem);
         }
-        // from_vec_aligned: copies into Xenon's internal aligned allocation path (see 05-storage.md §5.1)
+        // from_shape_vec is the normative construction path; this aligned variant stays an internal helper for Xenon's allocation path (see 05-storage.md §5.1)
         Tensor::from_shape_vec_aligned(self.raw_dim(), data)
     }
 }
@@ -519,6 +521,7 @@ Wave 2: [T3] [T4] [T5]  (parallel)
 | 场景 | 测试方式 |
 | ---- | ---- |
 | `bool` 不参与 `cast()`，且不属于 `CastElement` | 编译期测试。 |
+| `Tensor<bool, _>.cast::<T>()` 作为源类型被拒绝 | compile-fail：验证 `bool`/`BoolElement` 不能作为 `cast()` 的源元素类型。 |
 | `cast()` 对所有可读存储提供，但统一返回 owned 结果 | 编译期测试。 |
 | saturation / truncation casts 与额外 `From/Into` 非张量转换不属于当前 API | API 缺失断言。 |
 

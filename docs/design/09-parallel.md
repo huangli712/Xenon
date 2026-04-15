@@ -1,7 +1,7 @@
 # 并行后端模块设计
 
 > 文档编号: 09 | 模块: `src/parallel/` | 阶段: Phase 5
-> 前置文档: `07-tensor.md`, `10-iterator.md`, `13-reduction.md`, `26-error.md`
+> 前置文档: `07-tensor.md`, `26-error.md`
 > 需求参考: 需求说明书 §9.2, §9.3, §27, §28.3, §28.5
 > 范围声明: 范围内
 
@@ -81,7 +81,7 @@ src/parallel/
 src/parallel/
 ├── rayon (optional)         # ThreadPool, ParallelIterator, current_num_threads
 ├── crate::tensor            # Tensor, TensorBase, TensorView
-├── crate::dimension         # Ix1
+├── crate::dimension         # Dimension
 ├── (module-owned)           # ParElements and par_iter() entry belong to parallel/
 └── crate::error             # XenonError
 ```
@@ -92,7 +92,7 @@ src/parallel/
 | ----------- | --------------------------------------------------------------------------------------------------------------- |
 | `rayon`     | `rayon::ThreadPool`, `rayon::current_num_threads`, `rayon::iter::ParallelIterator`                              |
 | `tensor`    | `Tensor<A, D>`, `TensorBase<S, D>`, `TensorView<'a, A, D>`, `.len()`, `.raw_dim()`, `.is_f_contiguous()` |
-| `dimension` | `Ix1` |
+| `dimension` | `Dimension` |
 | `parallel`  | `ParElements<'a, A, D>`, `TensorBase::par_iter()`, `par_zip_map()`                                             |
 | `error`     | `XenonError`, `XenonError::BroadcastError`, `XenonError::DimensionMismatch`, `XenonError::InvalidShape`        |
 
@@ -207,15 +207,19 @@ where
     A: Element + Numeric + Send + Sync + Clone;
 
 #[cfg(feature = "parallel")]
-pub(crate) fn par_dot<SL, SR, A>(
-    lhs: &TensorBase<SL, Ix1>,
-    rhs: &TensorBase<SR, Ix1>,
+pub(crate) fn par_dot<SL, SR, A, DL, DR>(
+    lhs: &TensorBase<SL, DL>,
+    rhs: &TensorBase<SR, DR>,
 ) -> Result<A, XenonError>
 where
     SL: Storage<Elem = A>,
     SR: Storage<Elem = A>,
+    DL: Dimension,
+    DR: Dimension,
     A: Element + Numeric + Send + Sync + Clone;
 ```
+
+`par_dot()` 在类型层面接受任意 `Dimension` 输入，以便与更通用的上层张量调用路径对接；但其语义契约仍限定为一维向量内积，因此实现必须在运行时检查 `lhs.ndim() == 1`、`rhs.ndim() == 1`，并在进入并行归约前再次确认两侧逻辑长度一致。
 
 ### 5.4 并行迭代入口
 
@@ -315,7 +319,8 @@ where
         offending_dim: None,
     })?;
 
-    let chunk_size = usize::max(1, total / rayon::current_num_threads());
+    let num_threads = rayon::current_num_threads();
+    let chunk_size = usize::max(1, (total + num_threads - 1) / num_threads);
 
     // Build broadcast-compatible read-only chunk views for lhs / rhs.
     // Execute f in parallel and collect Result<Vec<C>, XenonError> directly.
@@ -326,13 +331,13 @@ where
 
 - `par_zip_map()` 是二元逐元素并行路径的统一设计入口，供 `math` 模块中的 `add` / `sub` / `mul` / `div` 广播运算消费，不直接暴露为公开用户 API。
 - `par_zip_map()` 接收的 `lhs`、`rhs` 与 `output_dim` 必须已由调用侧完成兼容性验证；广播裁决（含输出 rank/shape 计算）属于 `math` 模块职责，`parallel/` 不重复做形状推导。
-- 广播处理顺序固定为：先由 `math` 模块验证 `lhs` / `rhs` 广播兼容并产出 `output_dim`，再由 `parallel/` 按逻辑线性区间分块；默认 `chunk_size = max(1, total_elements / rayon::current_num_threads())`，并按固定左折叠顺序合并 chunk 结果。每个 chunk 为两个输入分别构造与该线性区间对应、且仍与 `output_dim` 兼容的只读 sub-view。若某一侧是广播轴（stride 为 `0` 或逻辑重复维），chunk 视图保持该广播语义，不做物理复制。`DL`、`DR`、`DO` 独立建模，以表达输入与输出 rank 可能不同的广播结果。
+- 广播处理顺序固定为：先由 `math` 模块验证 `lhs` / `rhs` 广播兼容并产出 `output_dim`，再由 `parallel/` 按逻辑线性区间分块；默认 `chunk_size = max(1, (total_elements + num_threads - 1) / num_threads)`，其中 `num_threads = rayon::current_num_threads()`，并按固定左折叠顺序合并 chunk 结果。每个 chunk 为两个输入分别构造与该线性区间对应、且仍与 `output_dim` 兼容的只读 sub-view。若某一侧是广播轴（stride 为 `0` 或逻辑重复维），chunk 视图保持该广播语义，不做物理复制。`DL`、`DR`、`DO` 独立建模，以表达输入与输出 rank 可能不同的广播结果。
 - `par_zip_map` 仅包含并行执行逻辑；若调用发生，表示 `dispatch.rs` 已确认当前输入适合走并行路径。
 - 错误传播策略与 `par_map_checked()` 一致：广播形状不兼容时立即返回 `XenonError::BroadcastError { operation, input_shape, target_shape, axis }`；其中 `operation` 标识当前并行入口（如 `"par_zip_map"`），`input_shape` 为失败输入的逻辑 shape，`target_shape` 为调用侧尝试写入的广播输出 shape（而不是右操作数 shape），`axis` 在可定位到具体失败轴时填写对应值，否则为 `None`。字段名和含义必须与 `26-error.md §4.2` / `§4.4` 完全一致。worker 内 `Err(XenonError)` 通过 `rayon` 的 `collect::<Result<Vec<_>, _>>()` 立即向外传播；panic 不捕获、不吞掉。
 
 ### 6.3a 轴向归约并行方案
 
-- 轴向 `sum(axis)` / `sum_axis(axis)` / `sum_keepdims(axis)` 的并行路径沿未被归约的轴切分为彼此独立的 chunk。
+- 轴向 `sum_axis(axis)` / `sum_axis_keepdims(axis)` 的并行路径沿未被归约的轴切分为彼此独立的 chunk。
 - 每个 chunk 在目标轴上执行串行归约，随后按输出逻辑位置写入局部结果；最终结果按 chunk 索引顺序合并。
 - `keepdims` 行为在并行路径下保持不变，仅影响输出 shape，不改变分块策略。
 - 空轴归约返回加法单位元。
@@ -341,9 +346,9 @@ where
 
 `dispatch.rs` 负责自动路径派发与执行策略裁决。`parallel/` 只接收已经完成路径选择、输入校验与语义前置条件检查的调用。
 
-- `par_map`、`par_zip_map`、`par_sum`、`par_dot` 接收的输入都已由上层语义模块和 `dispatch.rs` 验证完毕。
+- `par_map`、`par_zip_map`、`par_sum` 接收的输入都已由上层语义模块和 `dispatch.rs` 验证完毕；`par_dot` 在进入并行归约前仍需自行做运行时校验，要求 `lhs.ndim() == 1`、`rhs.ndim() == 1` 且两侧逻辑长度一致。
 - 对归约和内积，若调用方选择并行路径，则 `parallel/` 必须提供固定 chunking 与固定 merge tree，保证同平台、同配置、同路径下结果确定。
-- 并行归约采用固定分块策略：`chunk` 大小 = `ceil(n / num_workers)`，worker 按固定索引范围分配，merge 按 worker 索引顺序合并。
+- 并行归约采用固定分块策略：`chunk` 大小 = `max(1, (n + num_workers - 1) / num_workers)`，worker 按固定索引范围分配，merge 按 worker 索引顺序合并。
 
 ### 6.5 Checked 映射与错误传播
 
@@ -421,7 +426,7 @@ where
 
 - [ ] **T7**: 实现 `par_dot`
   - 文件: `src/parallel/reduce.rs`
-  - 内容: shape 检查、并行内积、错误返回与空数组单位元语义
+  - 内容: 运行时 `ndim() == 1` / 长度一致性检查、并行内积、错误返回与空数组单位元语义
   - 测试: `test_par_dot_matches_serial`, `test_par_dot_shape_mismatch`, `test_par_dot_empty_identity`
   - 前置: T6
   - 预计: 10 min
@@ -501,6 +506,7 @@ Wave 4:                                [T10]
 | 单元素张量           | 若 `dispatch.rs` 仍选择并行路径，结果与串行一致                                     |
 | 非连续视图           | 若 `dispatch.rs` 选择并行路径，结果仍与串行一致                                     |
 | 单线程环境           | 不由 `parallel/` 自行处理；调用方不应选择并行路径                                   |
+| 非一维输入           | `par_dot()` 在任一输入 `ndim() != 1` 时返回错误                                     |
 | 长度不匹配的一维输入 | `par_dot()` 返回 `XenonError::DimensionMismatch { operation, expected, actual }`    |
 | 二元广播逐元素输入   | `par_zip_map()` 在广播兼容时返回与串行 `add/sub/mul/div` 一致的结果                 |
 
@@ -702,6 +708,8 @@ XenonError::DimensionMismatch {
 | 1.2.0 | 2026-04-15 |
 | 1.2.1 | 2026-04-15 |
 | 1.3.0 | 2026-04-15 |
+| 1.3.1 | 2026-04-15 |
+| 1.3.2 | 2026-04-15 |
 
 ---
 

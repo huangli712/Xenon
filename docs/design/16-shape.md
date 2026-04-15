@@ -170,7 +170,9 @@ where
 | 持有(Owned) | 只读引用(ViewRepr) |
 | 可写引用(ViewMutRepr) | 只读引用(ViewRepr) |
 | 只读引用(ViewRepr) | 只读引用(ViewRepr) |
-| 共享只读(ArcRepr) | 共享只读(ArcRepr) |
+| 共享只读(ArcRepr) | 只读引用(ViewRepr) |
+
+> **显式设计决策（ADR）：** `transpose()` 的返回类型统一固定为 `TensorView<'_, A, D>`，因此结果始终是基于借用的只读视图，只能持有 `ViewRepr`。即使源张量底层使用 `ArcRepr`（共享只读存储），转置结果也不会保留共享所有权语义，而是降级为普通借用视图。这是有意为之：转置仅重写 shape/stride/flags 等元数据，不复制也不迁移底层存储；原张量自身继续保留其原有存储模式，`ArcRepr` 的共享所有权能力仍由源对象负责维持。统一返回 `TensorView` 可以避免为元数据操作引入额外表示类型或条件返回类型，保持 API 与实现的简单性和一致性。
 
 #### 5.1.3 Good / Bad 对比
 
@@ -397,6 +399,14 @@ User calls transpose()
 | 决策     | Phase 4 仅把 `transpose()` 纳入当前版本交付 |
 | 理由     | `require.md` §17 明确当前版本只要求转置操作本身，文档不应把别名扩写成当前交付承诺 |
 | 替代方案 | 在当前版本同时承诺其他形状操作 — 放弃，超出规范性 API 边界                         |
+
+### 决策 4：`transpose()` 不保留 `ArcRepr` 共享所有权语义
+
+| 属性     | 值 |
+| -------- | --- |
+| 决策     | `transpose()` 始终返回 `TensorView<'_, A, D>`；无论源存储是 `Owned`、`ViewMutRepr`、`ViewRepr` 还是 `ArcRepr`，结果统一使用只读借用视图 `ViewRepr` |
+| 理由     | `TensorView` 是当前统一返回类型，而该类型只能表达基于借用的只读视图。转置本身只是元数据重写，不需要也不应该改变源张量的存储所有权模型；让结果始终降级到 `ViewRepr` 可以保持 API 简单、类型稳定，并避免仅为 `ArcRepr` 分支引入额外返回表示 |
+| 替代方案 | 让 `ArcRepr` 输入返回保留共享所有权的新视图类型 — 放弃，会破坏 `transpose()` 的统一返回类型，增加类型系统与实现复杂度，而收益有限 |
 
 ---
 

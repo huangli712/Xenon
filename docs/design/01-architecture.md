@@ -5,7 +5,7 @@
 > 需求参考: 需求说明书 §1, §2, §3, §4, §5, §6, §7, §8, §9, §10, §11, §12, §13, §14, §15, §16, §17, §18, §19, §20, §21, §22, §23, §24, §25, §26, §27, §28
 > 范围声明: 范围内
 
-> **格式豁免声明**：本文档为全局架构规范，按 `design.md` §3 豁免标准章节结构。
+> **格式豁免声明**：本文档为全局架构规范，按 `design.md` §3 豁免标准章节结构；允许使用面向架构审查的自定义章节编排、目录树与稳定性/导出总表。
 
 ---
 
@@ -152,7 +152,7 @@ xenon/
 │   │
 │   ├── parallel/              # Parallel backend (feature = "parallel")
 │   │   ├── mod.rs             # Module entry, re-exports, ParallelPool
-│   │   ├── par_iter.rs        # ParElements and TensorBase::par_iter()
+│   │   ├── par_iter.rs        # Internal parallel iteration helpers (pub(crate))
 │   │   ├── map.rs             # par_map, par_map_with_threshold, par_zip_map
 │   │   ├── reduce.rs          # par_reduce_impl, par_sum, par_dot
 │   │   └── checked.rs         # par_map_checked and error/panic propagation
@@ -272,7 +272,7 @@ xenon/
 | `tensor/`      | 核心 `TensorBase<S, D>` 结构体及类型别名                                                                           |
 | `iter/`        | 元素/轴/索引迭代器                                                                                                 |
 | `simd/`        | SIMD 后端：向量化 kernel（pulp）、运行时分发，不含标量回退                                         |
-| `parallel/`    | 并行后端：多文件模块，承载纯并行执行入口（par_map/par_zip_map/par_sum/par_dot）和 ParElements 迭代器，不含串行回退         |
+| `parallel/`    | 并行后端：多文件模块，承载纯并行执行入口（par_map/par_zip_map/par_sum/par_dot）与内部并行迭代 helper，不含串行回退；所有公开并行加速均经 `dispatch.rs` 内部裁决透明启用 |
 | `math/`        | 逐元素数学运算（一元、二元算术、比较），按需委托 `simd/` / `parallel/`                                            |
 | `overload`     | 运算符重载（Add, Sub, Mul, Div trait 实现）                                                                        |
 | `util/`        | 实用操作（clip 裁剪、fill 填充、to_contiguous 连续性保证的公共入口）                                               |
@@ -282,7 +282,7 @@ xenon/
 | `reduction/`   | 归约操作（sum），必要时委托 `simd/` / `parallel/`                                                                  |
 | `shape/`       | transpose                                                                                                          |
 | `index/`       | 多维整数索引、范围切片索引                                                                                         |
-| `construct/`   | 张量构造（`zeros`、`ones`、`eye`、from-data、`from_scalar`）                                                       |
+| `construct/`   | 张量构造（`zeros`、`ones`、`eye`、from-data、`from_scalar`）；`from_shape_vec` 最终通过 `TensorBase` 的固有方法暴露（参见 `07-tensor.md`），`construct` 模块内部负责实现逻辑 |
 | `convert/`     | 类型转换（cast、存储模式互转、From trait；必要时复用内部 contiguous helper）                                       |
 | `format/`      | NumPy 风格格式化输出                                                                                               |
 | `ffi/`         | 原始指针 API、BLAS 兼容性检查、多维索引偏移；公开入口含 `export()` / `export_mut()` 与 `try_offset_of()` / `try_ptr_at()` |
@@ -552,8 +552,8 @@ pub mod workspace;
 #[cfg_attr(docsrs, doc(cfg(feature = "simd")))]
 pub mod simd;
 
-// `simd` public surface is limited to the dispatch facade and public kernel
-// traits. Concrete kernels and ISA detection details remain `pub(crate)` or
+// `simd` is exposed as a feature-gated backend module, but concrete SIMD
+// traits, kernels, and ISA detection details remain `pub(crate)` or
 // `#[doc(hidden)]` implementation details.
 
 #[cfg(feature = "parallel")]
@@ -578,12 +578,30 @@ pub use error::XenonError;
 | 公开 trait 方法          | **稳定**   | 只增不减                                                             |
 | 内部模块 (`mod private`, `mod dispatch`) | **不稳定** | 随时可能变更                                             |
 | `#[doc(hidden)]`         | **不稳定** | 仅供内部使用                                                         |
-| `simd` 模块             | **稳定**   | 作为公开模块纳入 SemVer；稳定公开面仅含 dispatch facade 与公共 kernel trait；feature gate 仅控制可用性，不降低兼容性承诺 |
+| `simd` 模块             | **内部/不稳定** | SIMD 加速对用户透明；`simd` 仅作为 feature gate 控制的后端实现细节，不应视为稳定公开 API，具体实现与导出形态可调整 |
 | 内部后端 (`parallel`)   | **不稳定** | `pub(crate)` 内部实现，仅影响自动并行加速，不构成公开模块 API         |
 
 ---
 
-## 10. 核心类型速查
+## 10. 公开 API 暴露方式
+
+| API | 暴露方式 | 说明 |
+| --- | --- | --- |
+| `sum` / `sum_axis` | `TensorBase` 固有方法 | 归约语义由张量实例直接触发 |
+| `dot` | 自由函数 | 位于 `matrix` 模块的独立 API，而非 `TensorBase` 固有方法 |
+| `transpose` | `TensorBase` 固有方法 | 形状变换直接挂载在张量实例上 |
+| `broadcast_to` | `TensorBase` 固有方法 | 广播视图构造由张量实例发起 |
+| `clip` | `TensorBase` 固有方法 | 逐元素裁剪作为张量实用操作暴露 |
+| `fill` | `TensorBase` 固有方法（仅可写张量） | 仅 `TensorViewMut` / 可变存储路径可调用 |
+| `cast` | `TensorBase` 固有方法 | 类型转换保持实例方法风格 |
+| `unique` | `TensorBase` 固有方法 | 集合操作直接从张量实例触发 |
+| `iter` / `axis_iter` | `TensorBase` 固有方法 | 迭代器入口保持实例方法风格 |
+
+> **说明**：Xenon 的公开 API 以 `TensorBase` 固有方法为主；`parallel` / `simd` 仅影响这些公开 API 的内部执行路径，不额外暴露稳定的并行或 SIMD 用户侧入口。
+
+---
+
+## 11. 核心类型速查
 
 各类型的详细设计参见对应模块文档（`02-dimension.md`、`03-element.md`、`05-storage.md`、`06-layout.md`）。
 
@@ -619,7 +637,7 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 
 ---
 
-## 11. 实现任务分解
+## 12. 实现任务分解
 
 ### Wave 1: 基础设施（可完全并行）
 
@@ -714,7 +732,7 @@ Wave 5: [W5.1] [W5.2] [W5.3] [W5.4]
 
 ---
 
-## 12. 设计决策记录
+## 13. 设计决策记录
 
 ### 决策 1：单 Crate 设计
 

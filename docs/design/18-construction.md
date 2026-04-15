@@ -146,7 +146,7 @@ where
     /// let t = Tensor::<f64, _>::zeros([3, 4])?;
     /// assert_eq!(t.shape(), &[3, 4]);
     /// assert!(t.iter().all(|&x| x == 0.0));
-    /// ```ignore
+    /// ```
     pub fn zeros<Sh>(shape: Sh) -> Result<Self, XenonError>
     where
         A: Element,  // A::zero() is provided by the Element trait (see 03-element.md §5.1)
@@ -172,7 +172,7 @@ where
     /// ```ignore
     /// let t = Tensor::<f64, _>::ones([2, 3])?;
     /// assert!(t.iter().all(|&x| x == 1.0));
-    /// ```ignore
+    /// ```
     pub fn ones<Sh>(shape: Sh) -> Result<Self, XenonError>
     where
         A: Element,  // A::one() is provided by the Element trait (see 03-element.md §5.1)
@@ -230,7 +230,7 @@ where
     /// assert_eq!(e[[0, 0]], 1.0);
     /// assert_eq!(e[[0, 1]], 0.0);
     /// assert_eq!(e[[1, 1]], 1.0);
-    /// ```ignore
+    /// ```
     pub fn eye(n: usize) -> Result<Self, XenonError>
     where
         A: EyeElement,

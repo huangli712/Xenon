@@ -394,6 +394,7 @@ where
 ````rust
 impl<A, D> TensorBase<Owned<A>, D>
 where
+    A: Element,
     D: Dimension,
 {
     /// Constructs an owning tensor from shape and data, validating correctness.
@@ -418,6 +419,10 @@ where
     /// This aligned path is the default owned-storage policy; any exception must be
     /// explicitly documented by the corresponding constructor and still preserve
     /// the same logical element order. See `05-storage.md §5` and `18-construction.md §5.3`。
+    /// Owned tensors constructed from shape + data also use the canonical packed
+    /// F-order stride for their logical layout; any mentioned "padding" refers only
+    /// to allocation-level tail capacity, not to logical tensor stride gaps. See
+    /// `06-layout.md` Decision 5 for the full ADR.
     ///
     /// # Example
     ///
@@ -451,6 +456,7 @@ where
 ```rust
 impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D>
 where
+    A: Element,
     D: Dimension,
 {
     /// Constructs an immutable view from raw parts.
@@ -487,6 +493,7 @@ where
 
 impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D>
 where
+    A: Element,
     D: Dimension,
 {
     /// Constructs a mutable view from raw parts.
@@ -990,6 +997,7 @@ where
 // TensorBase computes LayoutFlags during construction
 impl<A, D> TensorBase<Owned<A>, D>
 where
+    A: Element,
     D: Dimension,
 {
     pub fn from_shape_vec(shape: D, data: Vec<A>) -> Result<Self, XenonError> {

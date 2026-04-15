@@ -84,7 +84,7 @@ src/overload/
 
 | 场景 | 对外语义 |
 | ---- | -------- |
-| 方法型 API 广播失败 | 返回 `XenonError::BroadcastError { operation: "add".into(), input_shape: rhs.shape().to_vec(), target_shape: lhs.shape().to_vec(), axis: None }`（`sub` / `mul` / `div` 同理）。 |
+| 方法型 API 广播失败 | 返回 `XenonError::BroadcastError { operation: "add".into(), input_shape: lhs.shape().to_vec(), target_shape: compute_broadcast_target(lhs.shape(), rhs.shape()), axis: None }`（`sub` / `mul` / `div` 同理）。其中 `compute_broadcast_target(...)` 表示失败检查前记录的“期望广播目标 shape”，而不是 `broadcast_shape(...)` 的成功返回值。 |
 | 运算符路径广播失败 | 返回 `Err(XenonError::BroadcastError { ... })`；这是为满足 `require.md` §12 / §27 而确定的稳定语义边界。 |
 | 整数除零、整数溢出、结果不可表示 | 沿用底层逐元素方法的 panic 语义，不包装为 `Result`。 |
 | 标量路径参数合法 | `tensor op scalar`、`Scalar(scalar) op tensor` 与常用原生左标量路径不产生广播错误，直接返回 `Tensor`；整数溢出仍遵循 panic 语义。 |
@@ -626,6 +626,9 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 
 ## 11. 设计决策记录
 
+> [!WARNING]
+> 运算符返回 `Result<Tensor, XenonError>` 是一项高风险的全局 API 决策。此决策意味着 `a + b` 需要 `?` 或 `unwrap()` 来获取结果，而 `a + scalar` 不需要，两者使用体验不同。本设计建议在正式实现前，将此决策升级为项目级 ADR，经全库层面评审确认后再落地。
+
 ### 决策 1：是否支持 += 原地运算符
 
 | 属性     | 值                                                                                           |
@@ -738,6 +741,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | 1.1.4 | 2026-04-14 |
 | 1.1.5 | 2026-04-15 |
 | 1.1.6 | 2026-04-15 |
+| 1.1.7 | 2026-04-15 |
 
 ---
 

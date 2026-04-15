@@ -320,6 +320,8 @@ impl<D: Dimension> Strides<D> {
 
 ### 5.3 F-order 步长计算
 
+> **Padding 说明**：`compute_f_strides()` 产出的仍是规范化 packed F-order stride（`stride[i] = product(shape[0..i])`）。需求说明书 §7 提到的“padding”在当前版本不进入逻辑布局元数据；详见 §11 决策 5“Owned Layout Padding Policy”。
+
 **算法**：
 
 ```
@@ -692,7 +694,7 @@ Wave 3:       [T8]
 | F-步长乘积 == 总元素数                             | `product(shape[i]) == total`                      |
 | 空数组/标量始终 F-连续                             | 随机 0D/空 shape                                  |
 | `compute_f_strides` 成功后 `is_f_contiguous` 返回 true | 随机 shape                                     |
-| 对齐与非对齐数据元素值一致                         | `from_vec_aligned(v)` 与 `from_vec(v)` 逐元素比较 |
+| `Owned::from_vec(v)` 走规范对齐分配路径             | 验证返回存储/布局的对齐标志与指针对齐状态一致，且满足 64-byte 对齐契约 |
 
 ### 8.5 集成测试
 
@@ -807,6 +809,14 @@ Upper layers create or transform tensor metadata
 | 决策     | 使用裸 `u8` 包装类型而非 `bitflags` crate                     |
 | 理由     | 零依赖（项目最小依赖原则）；仅 3 个标志位，手写位操作足够清晰 |
 | 替代方案 | bitflags crate — 放弃，引入不必要依赖                         |
+
+### 决策 5：Owned Layout Padding Policy
+
+| 属性     | 值 |
+| -------- | --- |
+| 决策     | 当前版本中，`require.md` §7 提到的“padding”仅指分配层面的尾部容量/对齐冗余（例如分配器为满足对齐返回多于请求值的字节数）；拥有型张量的逻辑布局元数据（`shape`、`strides`）仍保持规范化 packed F-order，即 `stride[i] = product(shape[0..i])`。当前版本**不支持**轴间 padding（例如 padded leading dimension）。 |
+| 理由     | 规范化 packed F-order 可简化布局校验与 FFI 导出；轴间 padding 将引入 `leading_dim` 一类概念，显著增加类型系统复杂度；分配级对齐由 `storage` 层的 `AlignedBuf` 处理，而非 `layout` 层。 |
+| 替代方案 | 在 `layout` 元数据中显式支持轴间 padding / padded leading dimension — 放弃，会扩大布局状态空间并增加验证、类型表达与 FFI 映射复杂度。 |
 
 ---
 

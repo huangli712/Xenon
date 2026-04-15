@@ -267,11 +267,11 @@ pub enum ElementType {
     Complex64,
 }
 
-impl<A: Element> ElementType {
+impl ElementType {
     /// Returns the `ElementType` discriminant for `A`.
     ///
     /// This is determined at compile time via `Element` trait association.
-    pub const fn of() -> Self;
+    pub const fn of<A: Element>() -> Self;
 }
 
 /// Raw tensor data export for FFI consumers.
@@ -721,7 +721,7 @@ where
 
 > **owned 重建校验说明：** `from_raw_parts_owned()` 虽然仍是 `unsafe`，但必须先验证所有可直接从元数据证明的约束：`offset == 0`、`strides` 等于 canonical F-order、`len == product(shape)`、`cap >= len`、`align` 是对 `A` 有效的 2 的幂对齐。只有指针真实来源、分配器匹配和初始化状态等无法由元数据单独证明的前提继续留给调用方承担。
 
-> **裸指针直接构造 Owned 张量的设计约束：** 当前版本不提供从任意裸指针直接构造 `Owned` 张量的接口。`from_raw_parts()` / `from_raw_parts_mut()` 仅构造视图（View / ViewMut），`from_raw_parts_owned()` 仅从 `into_raw_parts()` 导出的 `OwnedRawParts` 重建 Owned 张量。原因是 `Owned` 存储需要 Xenon 分配器的元数据（capacity、alignment），这些信息无法从单一裸指针推断。若调用方需要从裸指针创建 Owned 张量，须先将数据复制到 Xenon 分配的张量中（如通过 `Tensor::from_vec()` 等构造方法）。
+ > **裸指针直接构造 Owned 张量的设计约束：** 当前版本不提供从任意裸指针直接构造 `Owned` 张量的接口。`from_raw_parts()` / `from_raw_parts_mut()` 仅构造视图（View / ViewMut），`from_raw_parts_owned()` 仅从 `into_raw_parts()` 导出的 `OwnedRawParts` 重建 Owned 张量。原因是 `Owned` 存储需要 Xenon 分配器的元数据（capacity、alignment），这些信息无法从单一裸指针推断。若调用方需要从裸指针创建 Owned 张量，须先将数据复制到 Xenon 分配的张量中（如通过 `Tensor::from_shape_vec()` 等构造方法）。
 
 ```rust,ignore
 // Correct round-trip: into_raw_parts → use pointer → from_raw_parts_owned → drop
@@ -1000,7 +1000,7 @@ where
     /// # Example
     ///
     /// ```ignore
-    /// let tensor = Tensor1::<i32>::from_vec(vec![10, 20, 30, 40]);
+    /// let tensor = Tensor1::<i32>::from_shape_vec(Ix1(4), vec![10, 20, 30, 40])?;
     /// let ptr = tensor.try_ptr_at(&[2])?;
     /// assert_eq!(unsafe { *ptr }, 30);
     /// # Ok::<(), xenon::XenonError>(())
@@ -1094,7 +1094,7 @@ validate_access_range(shape, strides, offset, storage_len):
 
 ### 6.3 可写布局非重叠校验 (`validate_non_overlapping_layout`)
 
-`from_raw_parts_mut()` 还必须拒绝会让两个不同逻辑索引映射到同一地址的可写布局。这里的“非重叠”定义为：任意两个不同逻辑索引 `i != j`，其可写目标地址 `addr(i)` 与 `addr(j)` 必须不同；换言之，逻辑元素地址集合不得重叠。该校验不得通过枚举全部可达 offset 来实现；当前版本只承诺接受可高效保守判定的正步长布局（例如 contiguous / canonical C-order / canonical F-order，以及满足同一保守判据的更一般正步长布局）。算法如下：
+`from_raw_parts_mut()` 还必须拒绝会让两个不同逻辑索引映射到同一地址的可写布局。这里的“非重叠”定义为：任意两个不同逻辑索引 `i != j`，其可写目标地址 `addr(i)` 与 `addr(j)` 必须不同；换言之，逻辑元素地址集合不得重叠。该校验不得通过枚举全部可达 offset 来实现；当前版本只承诺接受可高效保守判定的正步长布局（例如 canonical F-order，以及满足同一保守判据的更一般正步长布局）。算法如下：
 
 ```
 validate_non_overlapping_layout(shape, strides, offset):
@@ -1216,6 +1216,11 @@ Wave 3: ┌────┴────┐
 | `test_from_raw_parts_mut_reject_overlap` | 可写 raw-parts 构造拒绝地址重叠布局                | 高     |
 | `test_into_raw_parts`                    | Owned 张量解构后指针有效                           | 高     |
 | `test_into_raw_parts_memory_leak`        | 解构后正确释放                                     | 中     |
+| `test_export_contract`                   | `export()` 导出 `data/shape/strides/offset/ndim` 与源张量元数据一致 | 高     |
+| `test_export_mut_contract`               | `export_mut()` 仅对 `StorageMut` 路径开放，且返回可写导出描述符 | 高     |
+| `test_complex_ffi_abi`                   | `Complex32/Complex64` 的 `#[repr(C)]` 字段顺序、大小与对齐满足 ABI 约定 | 高     |
+| `test_bool_ffi_abi`                      | `bool` FFI 导出要求匹配 `_Bool` ABI（1-byte / align 1 / 值域 0/1） | 高     |
+| `test_export_empty_tensor_sentinel`      | 空张量导出时允许非解引用哨兵指针，且 shape/strides/offset 仍正确 | 高     |
 | `test_try_offset_of_various`             | recoverable 索引转换返回正确偏移或错误             | 高     |
 | `test_try_offset_of_checked_overflow`    | 极端 stride/index 组合返回可恢复错误而非 panic     | 高     |
 | `test_try_ptr_at_various`                | recoverable 指针转换返回正确指针或错误             | 高     |
@@ -1224,7 +1229,7 @@ Wave 3: ┌────┴────┐
 
 | 场景       | 预期行为                                      |
 | ---------- | --------------------------------------------- |
-| 空张量     | `as_ptr()` 对空张量不保证返回可解引用指针；raw-parts 构造需跳过 `ptr.add(offset)` |
+| 空张量     | `as_ptr()` 对空张量不保证返回可解引用指针；raw-parts 构造需跳过 `ptr.add(offset)`；`export()` / `export_mut()` 允许返回非解引用哨兵指针但必须保留正确元数据 |
 | 单元素张量 | `as_ptr()` 指向唯一元素                       |
 | 非连续切片 | `is_blas_layout_compatible()` 返回 `false`   |
 | 广播维度   | `is_blas_layout_compatible()` 返回 `false`   |
@@ -1268,6 +1273,7 @@ Wave 3: ┌────┴────┐
 | ---- | ---- |
 | `into_raw_parts()` 仅对 `Owned` 存储开放 | 编译期测试。 |
 | `blas_info()` / `lda()` 仅对 2D BLAS-compatible 张量成功 | 运行时错误测试与签名检查。 |
+| `export_mut()` 仅对 `S: StorageMut` 路径开放，`export()` 覆盖所有 `S: Storage` 路径 | 编译期测试 + 运行时契约断言。 |
 | 实际 BLAS/LAPACK 调用与 GPU interop 不属于当前 API | API 缺失断言。 |
 
 ---
@@ -1405,6 +1411,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | 1.1.5 | 2026-04-15 |
 | 1.2.0 | 2026-04-15 |
 | 1.2.1 | 2026-04-15 |
+| 1.2.2 | 2026-04-15 |
 
 ---
 

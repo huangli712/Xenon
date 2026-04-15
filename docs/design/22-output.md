@@ -398,6 +398,10 @@ Tensor(shape=[3, 4], strides=[4, 1], dtype=f64, layout=non-contiguous)
  [3.0+4.0j, 7.0+8.0j]]
 ```
 
+> 复数显示规则补充：负虚部必须紧跟实部输出，例如 `1.0-2.0j`（`-` 前不插入空格）；若配置 `FormatConfig::precision = Some(p)`，则 `precision` 分别作用于实部和虚部，各自按同一精度格式化。
+
+> 浮点特殊值沿用 Rust 默认文本格式：`-0.0` 显示为 `"-0.0"`，`NaN` 显示为 `"NaN"`，正无穷显示为 `"inf"`；复数中的实部/虚部若出现这些值，也分别按各自分量的 Rust 默认格式输出。
+
 **零维张量**:
 
 ```
@@ -521,7 +525,7 @@ println!("strides: {:?}", tensor.strides());
 
 ### 6.1 格式化算法
 
-**精度控制**：如果 `FormatConfig::precision` 为 `Some(p)`，浮点数格式化使用 `write!(f, "{:.prec$}", value, prec = p)`；为 `None` 时使用默认精度（即 `write!(f, "{}", value)`）。
+**精度控制**：如果 `FormatConfig::precision` 为 `Some(p)`，浮点数格式化使用 `write!(f, "{:.prec$}", value, prec = p)`；为 `None` 时使用默认精度（即 `write!(f, "{}", value)`）。对 `Complex<T>` 而言，`precision` 分别作用于 `re` 和 `im` 两个分量，再按 `a+bj` / `a-bj` 规则拼接，不共享额外的整体舍入层。
 
 ```
 fmt_1d(tensor, f):

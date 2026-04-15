@@ -255,7 +255,7 @@ dot_impl(a, b):
         ExecPath::Serial  => scalar::dot_impl(a, b)
 ```
 
-> **执行路径约束：** `dot` 必须先完成逻辑 1D 与长度一致性检查；随后可按条件选择 `simd` 模块 kernel、`parallel` 模块的 `pub(crate)` `par_dot()` 并行归约入口或标量回退路径。由于 `par_dot()` 只接受 `TensorBase<_, Ix1>`，`matrix::dot()` 在确认 `a.ndim() == 1` 且 `b.ndim() == 1` 后，必须先通过私有桥接 helper 把泛型 `TensorView<'_, A, D1/D2>` 安全收窄为 `TensorView<'_, A, Ix1>`，再进入并行后端；不得在未完成运行时 rank 校验前直接调用并行实现。桥接 helper 只做“已验证 1D 视图 -> `Ix1` 视图”的 reborrow / dimensionality narrowing，不改变借用范围、shape 数据或布局元数据。所有路径都必须保持一致的结果、错误模型与整数溢出 panic 语义。
+> **执行路径约束：** `dot` 必须先完成逻辑 1D 与长度一致性检查；随后可按条件选择 `simd` 模块 kernel、`parallel` 模块的 `pub(crate)` `par_dot()` 并行归约入口或标量回退路径。`par_dot()` 自身的 API 契约仍与 `09-parallel.md` 一致，保持对泛型 `D: Dimension` 输入开放，并在实现内部执行运行时 1D 校验；这里“只接受 `Ix1`”描述的是 `matrix::dot()` 进入并行后端前的私有桥接约束，而不是 `par_dot()` 的公开函数签名。也就是说，`matrix::dot()` 在确认 `a.ndim() == 1` 且 `b.ndim() == 1` 后，必须先通过私有桥接 helper 把泛型 `TensorView<'_, A, D1/D2>` 安全收窄为 `TensorView<'_, A, Ix1>`，再把这个已收窄视图传给 `par_dot()`；不得在未完成运行时 rank 校验前直接调用并行实现。桥接 helper 只做“已验证 1D 视图 -> `Ix1` 视图”的 reborrow / dimensionality narrowing，不改变借用范围、shape 数据或布局元数据。所有路径都必须保持一致的结果、错误模型与整数溢出 panic 语义。
 
 ### 6.1.1 并行阈值与禁止嵌套并行
 
@@ -306,7 +306,7 @@ fn scalar_dot_float_or_complex<A, D>(
 ```rust
 // conjugate method in the Numeric trait (defined in 03-element.md §5.2)
 // Real types: fn conjugate(self) -> Self { self }
-// Complex types: fn conjugate(self) -> Self { Complex::conjugate(self) }
+// Complex types: fn conjugate(self) -> Self { Complex::conj(self) }
 
 fn as_ix1_view<'a, A, D>(view: &TensorView<'a, A, D>) -> Result<TensorView<'a, A, Ix1>, XenonError>
 where
@@ -589,6 +589,8 @@ User calls dot(a, b)
 | 1.1.5 | 2026-04-15 |
 | 1.1.6 | 2026-04-15 |
 | 1.2.0 | 2026-04-15 |
+| 1.2.1 | 2026-04-15 |
+| 1.2.2 | 2026-04-15 |
 
 ---
 

@@ -14,9 +14,9 @@
 | 职责                | 包含                                                                                            | 不包含                                                          |
 | ------------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
 | Element trait       | 基础约束（Copy+Clone+PartialEq+Debug+Display+Send+Sync+Sealed）+ zero()/one()                   | —                                                               |
-| Numeric trait       | Element + Add+Sub+Mul+Div+Neg（四则运算能力标记）                                               | 运算实现本身（委托给 core::ops）                                |
+| Numeric trait       | Element + Add+Sub+Mul+Div+Neg + conjugate（通用数值运算能力标记）                              | 运算实现本身（委托给 core::ops）                                |
 | RealScalar trait    | Numeric + PartialOrd + abs/sqrt/sin/exp/ln/floor/ceil + NaN 检测                                | 复数运算                                                        |
-| ComplexScalar trait | Numeric + conjugate/norm/re/im（当前公开范围内需要的复数能力）                                 | 复数类型定义（在 `src/complex/` 模块，参见 `04-complex.md` §5） |
+| ComplexScalar trait | Numeric + re/im/norm（并为复数类型特化 `conjugate`）                                          | 复数类型定义（在 `src/complex/` 模块，参见 `04-complex.md` §5） |
 | 基础类型实现        | 为 i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool 实现上述 trait；`usize` 仅用于索引/形状元数据 | 类型转换逻辑（在 `src/convert/` 模块）                          |
 | Sealed trait        | 封闭集合，禁止外部 crate 实现                                                                   | 开放扩展                                                        |
 
@@ -176,10 +176,21 @@ pub trait Numeric:
     + core::ops::Mul<Output = Self>
     + core::ops::Div<Output = Self>
     + core::ops::Neg<Output = Self>
-{}
+{
+    /// Returns the canonical conjugate of the value.
+    ///
+    /// Real-valued types return `self` unchanged (identity).
+    /// Complex-valued types return the mathematical conjugate.
+    fn conjugate(self) -> Self;
+}
 ```
 
-> **设计决策：** `Numeric` 仅定义四则运算能力，不混入复数专用操作。这与需求说明书 §4 的能力分层一致：共轭属于复数运算层，不属于通用算术层。Xenon 采用 `sum(conjugate(a[i]) * b[i])` 的约定，并在 `12-matrix.md` 中保持一致；需要共轭的泛型路径必须显式约束 `ComplexScalar`。
+| 必需项          | 语义说明                                                           |
+| --------------- | ------------------------------------------------------------------ |
+| `Add/Sub/Mul/Div/Neg` | 提供通用数值四则运算与取负能力                                   |
+| `conjugate(self)`     | 统一提供共轭语义：实数类型返回 `self`，复数类型返回数学共轭       |
+
+> **设计决策：** `Numeric` 在保留通用算术分层的同时，通过 `Numeric::conjugate()` 统一提供共轭语义：实数类型为恒等操作，复数类型执行数学共轭。`ComplexScalar` 保留复数专用能力（`re`/`im`/`norm`），不再单独承担 `conjugate` 的唯一 trait 入口角色。这与 `01-architecture.md`、`11-math.md`、`12-matrix.md` 的泛型约定保持一致。
 >
 > **整数算术契约**：`Add/Sub/Mul/Div/Neg` 只表达运算符可用性，不单独定义 Xenon 的溢出语义。凡需求文档要求“溢出/除零/结果不可表示即 panic”的整数运算路径，具体模块必须通过 checked 标量原语或等价显式检查落实，不得仅凭原生运算符 trait 假定语义成立。
 
@@ -250,12 +261,16 @@ pub trait ComplexScalar: Numeric + Sealed {
     fn re(self) -> Self::Real;
     fn im(self) -> Self::Real;
     /// Returns the complex conjugate (re - im*j).
+    ///
+    /// This method is also provided by `Numeric::conjugate()` for all numeric
+    /// types; `ComplexScalar` overrides it with the mathematical conjugate
+    /// implementation for complex values.
     fn conjugate(self) -> Self;
     fn norm(self) -> Self::Real;
 }
 ```
 
-> **范围说明：** `ComplexScalar` 公开面仅保留当前范围内真正需要的复数能力，并作为 `conjugate()` 的唯一 trait 入口。`arg`/`exp`/`ln`/`sqrt`/`from_polar`/`i` 等超出当前张量 API 范围的方法若实现需要，降为 `complex` 模块内部 helper，不放入本公开 trait。
+> **范围说明：** `ComplexScalar` 公开面仅保留当前范围内真正需要的复数能力；其中 `conjugate()` 与 `Numeric::conjugate()` 保持同一语义入口，但在复数类型上提供数学共轭实现。`arg`/`exp`/`ln`/`sqrt`/`from_polar`/`i` 等超出当前张量 API 范围的方法若实现需要，降为 `complex` 模块内部 helper，不放入本公开 trait。
 
 ### 5.4a OrderedCompareElement trait
 
@@ -642,6 +657,26 @@ let c = a + b.cast_to()?;
 ### 6.5 RealScalar 实现（以 f64 为例）
 
 ```rust
+impl Numeric for i32 {
+    #[inline]
+    fn conjugate(self) -> Self { self }
+}
+
+impl Numeric for i64 {
+    #[inline]
+    fn conjugate(self) -> Self { self }
+}
+
+impl Numeric for f32 {
+    #[inline]
+    fn conjugate(self) -> Self { self }
+}
+
+impl Numeric for f64 {
+    #[inline]
+    fn conjugate(self) -> Self { self }
+}
+
 // RealScalar math functions are implemented in the `std` environment required by Xenon.
 impl RealScalar for f64 {
     fn abs(self) -> Self { self.abs() }
@@ -675,7 +710,24 @@ impl RealScalar for f64 {
     // ...
 }
 // Same pattern applies to f32.
+
+impl Numeric for Complex<f64> {
+    #[inline]
+    fn conjugate(self) -> Self { Self::conj(self) }
+}
+
+impl ComplexScalar for Complex<f64> {
+    type Real = f64;
+
+    fn re(self) -> Self::Real { self.re }
+    fn im(self) -> Self::Real { self.im }
+    fn conjugate(self) -> Self { Self::conj(self) }
+    fn norm(self) -> Self::Real { self.norm() }
+}
+// Same pattern applies to Complex<f32>.
 ```
+
+> **补充说明：** `i32`/`i64`/`f32`/`f64` 作为实数路径上的 `Numeric` 实现，`conjugate()` 一律为恒等操作；`Complex<f32>`/`Complex<f64>` 的 `Numeric` 与 `ComplexScalar` 实现则提供数学共轭，其中 `ComplexScalar::conjugate()` 保持 `fn conjugate(self) -> Self { Self::conj(self) }`。
 
 ---
 
@@ -692,7 +744,7 @@ impl RealScalar for f64 {
 
 - [ ] **T2**: 创建 `numeric.rs`，定义 Numeric trait 及其核心方法契约
   - 文件: `src/element/numeric.rs`
-- 内容: `Numeric` trait 定义（四则运算 supertrait，不含复数专用方法）
+  - 内容: `Numeric` trait 定义（四则运算 supertrait + 统一 `conjugate()` 语义）
   - 测试: 编译通过
   - 前置: T1
   - 预计: 5 min
@@ -1018,6 +1070,7 @@ Upstream modules declare element bounds
 | 1.2.4 | 2026-04-14 |
 | 1.2.5 | 2026-04-15 |
 | 1.2.6 | 2026-04-15 |
+| 1.2.7 | 2026-04-15 |
 
 ---
 

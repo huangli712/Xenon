@@ -224,7 +224,7 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 
 `WorkspaceError` 与 `FfiError` 都必须实现 `std::error::Error`，以便 `XenonError::source()` 暴露完整的内层错误链。
 
-> **FfiError 结构化演进说明：** `FfiError` 的 `context` 字段当前以自由文本承载上下文信息。未来版本应将其升级为结构化字段（如 `shape`、`strides`、`ndim` 等），以提升诊断可编程性。
+> **FfiError 结构化说明：** `FfiError` 已采用结构化字段设计，具体字段定义参见 `23-ffi.md`。
 
 ### 4.2.1 公开 API 边界映射
 

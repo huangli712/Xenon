@@ -67,7 +67,7 @@ src/storage/
 └── traits.rs          # marker traits such as IsOwned and IsView
 ```
 
-单文件设计理由：各文件职责清晰，存储类型之间高度相关但不适合合并，拆分保持可维护性。
+多文件目录设计理由：`src/storage/` 按 trait 定义、具体表示、分配器与 marker trait 分层拆分；各文件职责清晰，存储类型之间高度相关但不适合合并，拆分保持可维护性。
 
 ---
 
@@ -747,7 +747,14 @@ pub type ViewMut<'a, A> = ViewMutRepr<'a, A>;
 /// The public contract remains shared ownership semantics plus read-only access.
 #[derive(Debug)]
 pub struct ArcRepr<A> {
-    shared_read_only_buffer: core::marker::PhantomData<A>,
+    inner: std::sync::Arc<SharedBuf<A>>,
+}
+
+#[derive(Debug)]
+struct SharedBuf<A> {
+    aligned_buf: AlignedBuf<A>,
+    len: usize,
+    capacity: usize,
 }
 ```
 

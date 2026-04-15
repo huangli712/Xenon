@@ -4,6 +4,7 @@
 > 前置文档: 所有前置文档（`00-coding.md` ~ `26-error.md`）
 > 需求参考: 需求说明书 §9.1, §9.2, §9.3, §28.3
 > 范围声明: 范围内
+> **格式豁免声明**：本文档为横切性的性能观测规范，按 `design.md` §3 豁免标准模块文档格式；允许围绕 benchmark 分类、观测流程、CI 分级与回归口径组织章节，而非严格套用单模块模板。
 
 ---
 
@@ -50,6 +51,8 @@ benches/  <- current module (dev-dependency, consumes only the crate's public AP
 | 范围内   | benchmark 分类、参数矩阵、基准 harness 与结果汇总口径                      |
 | 范围外   | 生产运行时性能调优、跨语言基准、额外平台专用测量框架                       |
 | 非目标   | 通过 benchmark 文档扩展 crate 公共 API、引入非必要运行时依赖或改变需求边界 |
+
+> **定位说明**：本文档是“性能观测规范”，用于约定 benchmark 采样口径、趋势记录与可选回归检测；它不是完整质量门禁规范。功能正确性、错误语义、并发/UB 边界等质量要求统一由 `28-tests.md` 承担。
 
 ### 2.1 前提条件
 
@@ -117,7 +120,7 @@ benches/
 | `matrix`    | `dot`（参见 `12-matrix.md §5`）                                                               |
 | `shape`     | `transpose`（参见 `16-shape.md §5`）                                                          |
 | `set`       | `unique`（参见 `14-set.md §5`）                                                               |
-| `construct` | `zeros`, `ones`, `from_shape_vec`（参见 `18-construction.md §5`；`from_vec` 仅作为 Ix1 convenience path） |
+| `construct` | `zeros`, `ones`, `from_shape_vec`（参见 `18-construction.md §5`；`from_vec` 仅作为 Ix1 非规范便捷层（参见 `18-construction.md §5.1`，不纳入公开 API 承诺）） |
 | `broadcast` | `broadcast_shape`, 广播运算符（参见 `15-broadcast.md §5`）                                    |
 
 ### 4.3 依赖方向声明
@@ -467,7 +470,7 @@ fn bench_sum_bad2() {
 
 | 策略          | 实现                                                            | 说明                   |
 | ------------- | --------------------------------------------------------------- | ---------------------- |
-| 顺序填充      | 预先构造顺序 `Vec<f64>` 后用 `from_shape_vec` 导入；`from_vec` 仅作为 Ix1 convenience path 对照 | 可重复，无随机性       |
+| 顺序填充      | 预先构造顺序 `Vec<f64>` 后用 `from_shape_vec` 导入；`from_vec` 仅作为 Ix1 非规范便捷层（参见 `18-construction.md §5.1`，不纳入公开 API 承诺）对照 | 可重复，无随机性       |
 | 预分配 + 复用 | 数据在计时循环外生成                                            | 避免测量中混入构造开销 |
 | 非连续视图    | 行视图或转置视图                                                | 模拟真实非连续访问场景 |
 
@@ -750,6 +753,7 @@ benchmark files
 | 平台支持   | benchmark 方案仅覆盖 `std` 环境                       |
 | crate 结构 | 保持单 crate，不为 benchmark 拆分独立 crate           |
 | 依赖约束   | 不引入 benchmark 专用第三方依赖；不扩展额外运行时依赖 |
+| SemVer     | 无影响；benchmark 与性能观测流程不构成 crate 稳定 API 合约 |
 
 ---
 

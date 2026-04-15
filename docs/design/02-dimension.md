@@ -184,12 +184,24 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
         Ok(())
     }
 
-    /// Returns the last axis length. `Ix0` returns 1.
+    /// Returns the last axis length.
+    ///
+    /// WARNING: This helper is only meaningful when `self.ndim() > 0`.
+    /// For `Ix0`, the fallback return value `1` is a sentinel convenience for
+    /// legacy internal code paths; it does not mean that a scalar has one axis
+    /// of length 1. Callers that need true axis semantics must check
+    /// `self.ndim() > 0` first.
     fn last_axis(&self) -> usize {
         self.slice().last().copied().unwrap_or(1)
     }
 
-    /// Returns the first axis length. `Ix0` returns 1.
+    /// Returns the first axis length.
+    ///
+    /// WARNING: This helper is only meaningful when `self.ndim() > 0`.
+    /// For `Ix0`, the fallback return value `1` is a sentinel convenience for
+    /// legacy internal code paths; it does not mean that a scalar has one axis
+    /// of length 1. Callers that need true axis semantics must check
+    /// `self.ndim() > 0` first.
     fn first_axis(&self) -> usize {
         self.slice().first().copied().unwrap_or(1)
     }
@@ -272,6 +284,8 @@ pub struct Ix6(pub usize, pub usize, pub usize, pub usize, pub usize, pub usize)
 | `slice()`               | `&[]`     | 空切片              |
 | `checked_size()`        | `Ok(1)`   | 一个元素（标量）    |
 | 内存大小                | `0` bytes | ZST，编译器完全消除 |
+
+> **Ix0 轴语义警告：** `first_axis()` / `last_axis()` 对 `Ix0` 的回退值 `1` 仅为兼容性哨兵值，不能解释为“存在一个长度为 1 的轴”。调用方若需要真实轴语义，必须先检查 `ndim() > 0`。
 
 #### Ix1-Ix6 实现模式（以 Ix3 为例）
 
@@ -489,6 +503,11 @@ impl Axis {
     pub fn checked_next(self) -> Option<Self> { self.0.checked_add(1).map(Axis) }
 
     #[inline]
+    /// Caller must guarantee `self.0 < usize::MAX`.
+    ///
+    /// On overflow, `self.0 + 1` panics in debug builds and wraps in release
+    /// builds, so use `checked_next()` if that precondition is not already
+    /// guaranteed by the surrounding logic.
     pub fn next(self) -> Self { Axis(self.0 + 1) }
 
     #[inline]
@@ -504,7 +523,7 @@ impl Axis {
 
 > **说明：** 当 `ndim == 0`（标量、无轴）时，`is_last()` 返回 `false`。这一定义避免了把“无轴”误判为“最后一轴”，调用方若在轴语义上区分标量场景，应先检查 `ndim > 0`。
 
-> **补充说明：** `next()` 的前置条件为 `axis < usize::MAX`；如需无前置条件的推进语义，使用 `checked_next()`。
+> **补充说明：** `checked_next()` 通过 `checked_add(1)` 返回 `Option<Axis>`，在 `axis == usize::MAX` 时返回 `None`。`next()` 仍保留为无检查快捷方法，但它仅应在调用方已保证 `axis < usize::MAX` 时使用；否则会触发整数溢出——debug 构建下 panic，release 构建下回绕。
 
 ### 5.6 RemoveAxis trait
 

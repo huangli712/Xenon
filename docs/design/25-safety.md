@@ -1,6 +1,6 @@
 # 线程安全规范
 
-> 文档编号: 25 | 适用范围: `src/storage/`, `src/simd/`, `src/ffi/`，以及启用 `parallel` feature 后受影响的公开 API | 阶段: Phase 2
+> 文档编号: 25 | 适用范围: `src/storage/`, `src/tensor/`, `src/iter/`, `src/simd/`, `src/ffi/`，以及启用 `parallel` feature 后受影响的公开 API | 阶段: Phase 2
 > 前置文档: `05-storage.md`, `07-tensor.md`
 > 需求参考: 需求说明书 §10
 > 范围声明: 范围内
@@ -386,7 +386,8 @@ let sum: f64 = b.iter().sum();  // OK: read-only iteration
 ```rust
 // Good - ViewMutRepr cross-thread movement inside thread::scope
 fn send_view_mut() {
-    let mut owned = Owned::from_vec(vec![1.0, 2.0, 3.0]);
+    let mut owned = Tensor1::from_shape_vec(Ix1(3), vec![1.0, 2.0, 3.0])
+        .expect("shape and data length must match");
     let mut view_mut = owned.view_mut();
 
     std::thread::scope(|scope| {
@@ -401,7 +402,8 @@ fn send_view_mut() {
 
 // Bad - attempting to share ViewMutRepr (compilation error)
 fn cannot_share_view_mut() {
-    let mut owned = Owned::from_vec(vec![1.0, 2.0, 3.0]);
+    let mut owned = Tensor1::from_shape_vec(Ix1(3), vec![1.0, 2.0, 3.0])
+        .expect("shape and data length must match");
     let view_mut = owned.view_mut();
     let view_ref = &view_mut;
 
@@ -414,7 +416,8 @@ fn cannot_share_view_mut() {
 
 // Good - ArcRepr cross-thread sharing
 fn share_arc_tensor() {
-    let arc = ArcTensor1::from_vec(vec![1.0, 2.0, 3.0]);
+    let arc = ArcTensor1::from_shape_vec(Ix1(3), vec![1.0, 2.0, 3.0])
+        .expect("shape and data length must match");
     let arc_clone = arc.clone();  // strong_count = 2
 
     std::thread::scope(|scope| {
@@ -662,7 +665,8 @@ fn arc_send_sync() {
 ```rust
 #[test]
 fn test_owned_cross_thread() {
-    let tensor = Tensor1::from_vec(vec![1.0, 2.0, 3.0]);
+    let tensor = Tensor1::from_shape_vec(Ix1(3), vec![1.0, 2.0, 3.0])
+        .expect("shape and data length must match");
     let handle = std::thread::spawn(move || {
         // tensor is available in the new thread
         assert_eq!(tensor[0], 1.0);
@@ -673,7 +677,8 @@ fn test_owned_cross_thread() {
 
 #[test]
 fn test_arc_concurrent_access() {
-    let arc = ArcTensor1::from_vec(vec![1.0, 2.0, 3.0]);
+    let arc = ArcTensor1::from_shape_vec(Ix1(3), vec![1.0, 2.0, 3.0])
+        .expect("shape and data length must match");
     let mut handles = vec![];
 
     for _ in 0..4 {

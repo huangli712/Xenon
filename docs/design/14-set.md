@@ -203,6 +203,16 @@ Note:
     - Output order is not part of the contract and may vary between implementations or runs.
 ```
 
+> **实现约束（float / complex unique）**
+>
+> 对 `f32` / `f64` 及 `Complex<f32>` / `Complex<f64>` 的 `unique` 实现，**不得**直接依赖标准 Rust `Hash` / `Eq` 语义，也**不得**直接建立在 `BTreeSet` / `HashSet` 这类标准集合之上；必须使用线性扫描或自定义哈希键策略，以严格满足本文档定义的判等规则：
+>
+> 1. `NaN != NaN`，因此每个 `NaN` 都必须单独保留，不能因为“同为 NaN”而被合并。
+> 2. `-0.0 == 0.0`，因此两者必须视为同一个 unique 值。
+> 3. 复数按分量比较，且每个分量分别沿用对应实数的上述语义。
+>
+> 换言之，若实现采用哈希优化，则键设计必须显式编码这些语义；若无法保证，则应退回线性扫描，禁止使用与本文档语义不一致的默认集合判重行为。
+
 ### 6.2 浮点判等处理
 
 ```

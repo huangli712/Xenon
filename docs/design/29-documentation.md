@@ -4,6 +4,7 @@
 > 前置文档: 所有前置文档（`00-coding.md` ~ `28-tests.md`）
 > 需求参考: 需求说明书 §28.1
 > 范围声明: 范围内
+> **格式豁免声明**：本文档为横切性的文档规范，按 `design.md` §3 豁免标准模块文档格式；允许围绕 pub API 文档、README、examples、docs.rs 与 docs CI 组织章节，而非严格套用单模块模板。
 
 ---
 
@@ -109,9 +110,7 @@ src/
 │   └── mod.rs                # FFI module docs (L1)
 ├── workspace/
 │   └── mod.rs                # Workspace module docs (L1)
-├── simd/
-│   └── mod.rs                # SIMD module docs (L1)
-├── internal execution backends  # parallel remains internal and is documented only via feature effects on public APIs
+├── internal execution backends  # simd / parallel remain internal and are documented only via feature effects on public APIs
 ├── error.rs                  # Error module docs (L1)
 └── prelude.rs                # Prelude docs (L1)
 
@@ -222,7 +221,7 @@ L3: Examples (examples/)
 
 #### 5.4.1 lib.rs 顶层文档结构
 
-````rust
+````rust,ignore
 //! # Xenon — N-dimensional Tensor Library for Rust
 //!
 //! Xenon is a high-performance N-dimensional array (tensor) library for Rust,
@@ -310,7 +309,7 @@ L3: Examples (examples/)
 
 > **门禁说明**：`#![warn(missing_docs)]` 本身不足以作为实际门禁；建议 CI 中使用 deny-level rustdoc 检查（如 `RUSTDOCFLAGS='--deny warnings'`）作为实际门禁。
 
-```rust
+```rust,ignore
 // lib.rs
 // During development: warn level allows gradual documentation
 // In CI: RUSTDOCFLAGS="-D warnings" cargo doc enforces deny-level
@@ -324,7 +323,7 @@ L3: Examples (examples/)
 
 #### 5.5.2 Clippy 文档 lint
 
-```rust
+```rust,ignore
 // Enabled in CI
 #![warn(clippy::missing_errors_doc)]      // Result functions need Errors section
 #![warn(clippy::missing_panics_doc)]      // Panicking functions need Panics section
@@ -347,7 +346,7 @@ L3: Examples (examples/)
 
 #### 5.6.2 Doctest 模板
 
-````rust
+````rust,ignore
 /// Compute the sum of all elements.
 ///
 /// # Examples
@@ -366,7 +365,7 @@ pub fn sum(&self) -> A { ... }
 
 #### 5.6.3 Feature-gated Doctest
 
-````rust
+````rust,ignore
 /// Compute the sum of all elements.
 ///
 /// With the `parallel` feature enabled, the implementation may choose an
@@ -403,12 +402,12 @@ pub fn sum(&self) -> A { ... }
 | `complex_numbers.rs` | 复数构造、同类型复数运算、显式转换后的运算 | 默认       | 科学计算                             |
 | `broadcasting.rs`    | 广播规则、行/列/标量广播                   | 默认       | 日常使用                             |
 | `feature_flags.rs`   | 可选 feature 对公开 API 语义/性能路径的影响 | `parallel`, `simd` | 性能优化（参见 `08-simd.md §5`、`09-parallel.md §5`） |
-| `simd.rs`            | SIMD 加速、回退策略                        | `simd`     | 性能优化（参见 `08-simd.md §5`）     |
+| `simd.rs`            | `simd` feature 对公开运算路径的影响与回退策略 | `simd`     | 性能优化（参见 `08-simd.md §5`）     |
 | `ffi.rs`             | 为上游 C/BLAS-LAPACK 集成提供辅助 API 与兼容性判断 | 默认       | 库开发者                             |
 
 #### 5.7.2 示例模板
 
-```rust
+```rust,ignore
 //! Example: Brief description
 //!
 //! Run with: `cargo run --example basic`
@@ -577,9 +576,18 @@ docs:
 
     - name: Run key examples
       run: |
-        cargo run --example basic
-        cargo run --example broadcasting
+         cargo run --example basic
+         cargo run --example broadcasting
 ```
+
+#### 5.11.3 Feature 维度验证矩阵
+
+| 配置 | 文档检查（docs） | Doctest 检查 | examples 检查 |
+| ---- | ---------------- | ------------ | ------------- |
+| 默认配置 | `cargo doc --no-deps`：验证默认 `std` 文档、README 引导与未 gated API 的文档可生成 | `cargo test --doc`：验证默认配置下的文档示例 | `cargo build --examples`，并运行关键默认示例（如 `basic`、`broadcasting`） |
+| `--features simd` | `cargo doc --features simd --no-deps`：额外验证 `simd` feature 对公开 API 行为/性能路径的说明与 docs.rs 展示口径 | `cargo test --doc --features simd`：验证公开 API 在启用 `simd` 时的相关 doctest 与默认 doctest 共同通过 | `cargo build --examples --features simd`，并验证 `simd`、`feature_flags` 等相关示例 |
+| `--features parallel` | `cargo doc --features parallel --no-deps`：验证并行 feature 对公开 API 行为说明与性能路径注记 | `cargo test --doc --features parallel`：验证并行相关 doctest 与默认 doctest 共同通过 | `cargo build --examples --features parallel`，并验证 `feature_flags` 等相关示例 |
+| `--all-features` | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`：验证组合配置下完整文档、链接与 docs.rs 口径 | `cargo test --doc --all-features`：验证所有 feature 组合后的 doctest | `cargo build --examples --all-features`，并运行关键组合示例，确认默认/feature 示例在全集配置下仍成立 |
 
 ---
 
@@ -587,7 +595,7 @@ docs:
 
 #### 5.12.1 Good — 完整的函数文档
 
-````rust
+````rust,ignore
 /// Compute the sum of all elements in the tensor.
 ///
 /// Returns the additive identity (zero) for empty tensors.
@@ -610,8 +618,9 @@ docs:
 ///
 /// # Performance
 ///
-/// O(n) time complexity. With `simd` feature enabled, uses SIMD
-/// acceleration for contiguous data.
+/// O(n) time complexity. With `simd` feature enabled, the implementation may
+/// choose an internal SIMD path for contiguous data while preserving the same
+/// public API semantics.
 ///
 /// # See Also
 ///
@@ -621,7 +630,7 @@ pub fn sum(&self) -> A { ... }
 
 #### 5.12.2 Bad — 不完整的函数文档
 
-````rust
+````rust,ignore
 // Bad: no documentation, no examples, no description
 pub fn sum(&self) -> A { ... }
 
@@ -644,7 +653,7 @@ pub fn sum(&self) -> A { ... }
 
 #### 5.12.3 Good — FFI 边界文档
 
-````rust
+````rust,ignore
 /// Export the tensor as an immutable FFI descriptor.
 ///
 /// This helper only exposes metadata needed by upstream FFI callers.
@@ -674,7 +683,7 @@ where
 
 /// Export the tensor as a mutable FFI descriptor.
 ///
-/// # 写入边界
+/// # Write boundary
 ///
 /// The caller of the foreign code must ensure that writes performed through the
 /// exported descriptor stay within the exported bounds, do not create aliasing
@@ -688,7 +697,7 @@ where
 
 #### 5.12.4 Bad — Safety 文档不完整的 FFI 注释
 
-```rust
+```rust,ignore
 // Bad: safety contract is incomplete for a still-supported raw-parts constructor.
 /// Create a tensor view from raw parts.
 ///
@@ -779,7 +788,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | ------------------------------------------------ | --------------------------------------------------- |
 | 核心类型（tensor, dimension, storage）           | 核心入口和高频查询方法必须有 doctest                |
 | 运算模块（overload, math, broadcast, reduction） | 代表性运算、广播与错误路径必须有 doctest            |
-| 工具模块（ffi, workspace, simd）                 | 关键 API、feature gate 与 Safety 边界必须有 doctest；`parallel` 仅文档化其对公开 API 的 feature 影响 |
+| 工具模块（ffi, workspace）                       | 关键 API、feature gate 与 Safety 边界必须有 doctest；`simd` / `parallel` 仅文档化其对公开 API 的 feature 影响 |
 | 辅助模块（convert, format, error）               | 至少覆盖构造、基本使用与错误语义                    |
 | 迭代与归约模块（iter, reduction, matrix）        | 核心入口、边界行为和错误路径必须可追踪              |
 
@@ -827,7 +836,7 @@ docs:
 | ---------- | -------------------------------------------------------- |
 | 默认配置   | 默认 `std` 文档、README 与 examples 描述一致             |
 | 启用并行   | 受 `parallel` feature 影响的公开 API 文档说明、性能路径注记与示例说明保持一致 |
-| 启用 SIMD  | `simd` API 的 `doc(cfg)`、doctest 与示例说明保持一致     |
+| 启用 SIMD  | 受 `simd` feature 影响的公开 API 文档说明、性能路径注记与示例说明保持一致 |
 | 全 feature | docs.rs 构建、doctest 与 examples 在组合配置下均通过     |
 
 ### 8.7 类型边界 / 编译期测试
@@ -855,7 +864,7 @@ docs:
 | T1 (lib.rs 文档)    | 全部                                                      | 需要了解所有模块的概览 |
 | T5 (核心模块文档)   | dimension, element, complex, storage, layout              | 基于 §1 章节编写       |
 | T6 (张量与运算文档) | tensor, overload, broadcast, shape, index, construct, set | 基于 §1 章节编写       |
-| T7 (基础设施文档)   | ffi, workspace, simd, error, prelude                      | 基于 §1 章节编写       |
+| T7 (基础设施文档)   | ffi, workspace, error, prelude                            | 基于 §1 章节编写       |
 | T8 (类型级文档)     | 全部                                                      | 逐类型添加 doc comment |
 | T9 (函数级文档)     | 全部                                                      | 逐函数添加 doc comment |
 
@@ -932,9 +941,9 @@ Design docs (00-28)
   - 前置: T2
   - 预计: 10 min
 
-- [ ] **T7**: 编写基础设施模块文档（ffi, workspace, simd, error, prelude, convert, format）
-  - 文件: 各 `mod.rs`
-  - 内容: 模块职责、Safety 约定、feature gate 说明、转换与输出语义；并行仅说明其对公开 API 执行路径/语义验证的 feature 影响（参见 `23-ffi.md §1`、`24-workspace.md §1`、`08-simd.md §1`、`09-parallel.md §1`、`21-type.md §1`、`22-output.md §1`、`26-error.md §1`）
+- [ ] **T7**: 编写基础设施模块文档（ffi, workspace, error, prelude, convert, format，以及 simd/parallel 内部后端说明）
+  - 文件: 对外模块各 `mod.rs`；`simd` / `parallel` 仅补充内部架构说明与 feature 影响说明，不视为独立公开模块文档交付
+  - 内容: 模块职责、Safety 约定、feature gate 说明、转换与输出语义；`simd` / `parallel` 作为内部执行后端，仅文档化内部架构说明及其对公开 API feature 行为/执行路径的影响，不定义独立公开 API surface 文档（参见 `23-ffi.md §1`、`24-workspace.md §1`、`08-simd.md §1`、`09-parallel.md §1`、`21-type.md §1`、`22-output.md §1`、`26-error.md §1`）
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T2
   - 预计: 10 min
@@ -1157,6 +1166,7 @@ Wave 6: [T17]
 | 平台支持   | 文档、doctest 与 examples 默认面向 `std` 环境             |
 | crate 结构 | 文档产物围绕当前单 crate 组织，不维护额外平台模板工程     |
 | 依赖约束   | 仅文档化现有 feature 与依赖，不扩展超出需求范围的工程契约 |
+| SemVer     | 无影响；文档组织、doctest 与 examples 策略不单独扩展稳定 API 合约 |
 
 ---
 
@@ -1175,6 +1185,8 @@ Wave 6: [T17]
 | 1.1.4 | 2026-04-14 |
 | 1.1.5 | 2026-04-15 |
 | 1.1.6 | 2026-04-15 |
+| 1.1.7 | 2026-04-15 |
+| 1.1.8 | 2026-04-15 |
 
 ---
 
