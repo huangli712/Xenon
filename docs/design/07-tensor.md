@@ -175,8 +175,6 @@ pub struct TensorBase<S, D> {
 
 > **线程安全推导**: `TensorBase<S, D>` 的 `Send`/`Sync` 由存储模式 `S` 和元素类型 `A` 共同决定：`S` 提供 `Send`/`Sync`（参见 `05-storage.md §5.3`），`A` 须满足对应的线程安全约束（参见 `25-safety.md §4`）。
 
-```
-
 ### 5.2 Type aliases (full list)
 
 ```rust
