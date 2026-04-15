@@ -116,7 +116,7 @@ benches/
 | 项目           | 说明                                                            |
 | -------------- | --------------------------------------------------------------- |
 | 新增第三方依赖 | `criterion`（仅 dev-dependency，用于基准测量）                  |
-| 合法性结论     | 符合最小依赖限制；仅限 benchmark/维护路径，不进入 crate 合约    |
+| 合法性结论     | benchmark 使用 `criterion` 作为 dev-dependency。这属于开发工具依赖，不影响 crate 的公开 API 或运行时依赖。`require.md §1.2` 的最小依赖约束针对运行时可选依赖（`rayon`/`pulp`），dev-dependency 政策须在上位规范中另行明确。 |
 | 替代方案       | 标准库 `test` 基准或自定义脚本精度与生态支持不足，不作为主方案 |
 
 ---
@@ -206,14 +206,15 @@ pub fn sequential_2d(rows: usize, cols: usize) -> Tensor2<f64> {
     .expect("shape and data length must match")
 }
 
-/// Generate a non-contiguous view by slicing every other element.
+/// Generate a non-contiguous view by slicing a subrange.
 pub struct StridedFixture1D {
     pub owner: Tensor1<f64>,
 }
 
 impl StridedFixture1D {
     pub fn view(&self) -> TensorView1<'_, f64> {
-        self.owner.slice(s![..;2])
+        let n = self.owner.len() / 2;
+        self.owner.slice(s![0..n])
     }
 }
 
@@ -266,9 +267,11 @@ Benchmark categories
 | 布局           | 构造方式                            | 验证目标               |
 | -------------- | ----------------------------------- | ---------------------- |
 | F-contiguous   | `zeros(shape)`                      | 默认路径性能基线       |
-| Non-contiguous | `tensor.slice(s![..;2])` 或转置视图 | 非连续路径标量回退惩罚 |
+| Non-contiguous | `tensor.slice(s![0..n])` 或转置视图 | 非连续路径标量回退惩罚 |
 
 > **注意**：Xenon 仅支持 F-order 布局，不存在 C-order 路径。非连续布局通过切片/转置视图产生（参见 `06-layout.md §5.4` / `§5.1c`）。
+
+> **补充**：数据竞争和 UB 验证由 `28-tests.md` 覆盖。benchmark 仅验证性能指标，不承担正确性验证职责。
 
 ---
 
@@ -327,6 +330,8 @@ Benchmark categories
 #### 5.6.2 Regression Check 覆盖范围
 
 Regression Check 监测以下核心基准：`elem_add_f64`（逐元素加法，f64，256×256）和 `sum_1d_f64`（一维归约，f64，65536 元素）。其中 `256×256` 与 §5.4.1 的 Medium 规模保持一致。
+
+本文档统一使用同一组规模基线：Small = `64` / `8×8` / `4×4×4`，Medium = `65,536` / `256×256` / `64×32×32`，Large = `16,777,216` / `4096×4096` / `256×256×256`。
 
 #### 5.6.3 CI 配置示例
 
@@ -462,7 +467,7 @@ fn bench_sum_bad2(c: &mut Criterion) {
 | ------------- | -------------------------------------------- | ---------------------- |
 | 顺序填充      | 预先构造顺序 `Vec<f64>` 后用 `from_vec` / `from_shape_vec` 导入 | 可重复，无随机性       |
 | 预分配 + 复用 | 数据在 `bench_with_input` 闭包外生成         | 避免测量中混入构造开销 |
-| 非连续视图    | `slice(s![..;2])` 或 `slice(s![.., 0..n-1])` | 模拟真实切片场景       |
+| 非连续视图    | `slice(s![0..n])` 或 `slice(s![.., 0..n-1])` | 模拟真实切片场景       |
 
 > **设计决策**：所有数据在迭代回调外预生成（参见 §5.9.2 Bad 示例），确保仅测量目标操作本身的性能。
 
@@ -500,6 +505,8 @@ b.iter(|| (&a + &b).unwrap());
 整数类型须逐元素精确一致，不容差。
 
 容差值与 `28-tests.md §8.1` 保持一致；修改一处须同步另一处。
+
+容差仅适用于不同执行路径（串行/SIMD/并行）下浮点和复数结果的比较。同平台同配置同路径下结果须确定一致。参见 `require.md §28.3`。
 
 ---
 

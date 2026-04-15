@@ -2,7 +2,7 @@
 
 > 文档编号: 03 | 模块: `src/element/` | 阶段: Phase 1
 > 前置文档: `00-coding.md`, `01-architecture.md`
-> 需求参考: 需求说明书 §4
+> 需求参考: 需求说明书 §4、§5、§13、§14、§23
 > 范围声明: 范围内
 
 ---
@@ -870,7 +870,7 @@ Wave 3: [T6]      [T9] ← ────┘
 | `A::zero() + a == a`                  | 所有 Numeric 类型，随机 a |
 | `A::one() * a == a`                   | 所有 Numeric 类型，随机 a |
 | `(!b) == BoolElement::logical_not(b)` | `bool`                    |
-| `a.sqrt().sqrt() == a.powf(0.25)`     | f32/f64，随机正数 a       |
+| `let y = a.sqrt(); (y * y) ≈ a`（容差内） | f32/f64，随机非负数 a     |
 | `a.exp().ln() ≈ a`                    | f32/f64，随机有限 a       |
 
 ### 8.5 集成测试

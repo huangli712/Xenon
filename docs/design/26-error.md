@@ -2,7 +2,7 @@
 
 > 文档编号: 26 | 适用范围: 所有公开 API | 阶段: Phase 1
 > 前置文档: `01-architecture.md`, `07-tensor.md`, `21-type.md`
-> 需求参考: 需求说明书 §27
+> 需求参考: 需求说明书 §23, §27, §28.3
 > 范围声明: 范围内
 
 ---
@@ -33,7 +33,7 @@
 
 | 类型     | 内容                                                                     |
 | -------- | ------------------------------------------------------------------------ |
-| 需求映射 | `require.md §27`                                                         |
+| 需求映射 | `require.md §23`, `require.md §27`, `require.md §28.3`                   |
 | 范围内   | 可恢复错误返回值、panic 分类、诊断字段、类型转换失败、索引失败、FFI 失败 |
 | 范围外   | 自定义日志、第三方错误包装器、跨进程序列化                               |
 | 非目标   | 通过 `panic` 替代本应可恢复的用户输入错误                                |
@@ -51,15 +51,15 @@
 
 ### 3.1 受影响模块
 
-| 模块/能力            | 影响内容                               |
-| -------------------- | -------------------------------------- |
-| `tensor` / `shape`   | 形状校验、布局前提、元素总数校验       |
-| `index`              | 越界索引、按轴索引、切片边界诊断       |
-| `broadcast` / `math` | 广播失败、形状不兼容、参数非法         |
-| `reduction`          | 非法轴、空输入、整数溢出 panic         |
-| `convert`            | `TypeConversionError` 内部映射与元素索引定位 |
-| `ffi`                | FFI 前提失败与后端约束诊断             |
-| `parallel`           | panic / `Err` 的尽快传播，不得静默吞掉 |
+| 模块/能力            | 影响内容                                       |
+| -------------------- | ---------------------------------------------- |
+| `tensor` / `shape`   | 形状校验、布局前提、元素总数校验               |
+| `index`              | 越界索引、按轴索引、切片边界诊断               |
+| `broadcast` / `math` | 广播失败、形状不兼容、参数非法                 |
+| `reduction`          | 非法轴、需至少一个元素的空输入、整数溢出 panic |
+| `convert`            | `TypeConversionError` 内部映射与元素索引定位   |
+| `ffi`                | FFI 前提失败与后端约束诊断                     |
+| `parallel`           | panic / `Err` 的尽快传播，不得静默吞掉         |
 
 ### 3.2 统一依赖方向
 
@@ -67,10 +67,10 @@
 
 ### 3.3 依赖合法性与新增依赖说明
 
-| 项目           | 说明                                         |
-| -------------- | -------------------------------------------- |
-| 新增第三方依赖 | 无新增依赖                                   |
-| 合法性结论     | 符合最小依赖限制                             |
+| 项目           | 说明                                              |
+| -------------- | ------------------------------------------------- |
+| 新增第三方依赖 | 无新增依赖                                        |
+| 合法性结论     | 符合最小依赖限制                                  |
 | 替代方案       | 不适用；错误模型统一由 crate 内部类型与标准库承载 |
 
 ---
@@ -79,26 +79,27 @@
 
 ### 4.1 可恢复错误与 panic 的边界
 
-| 场景                                         | 处理方式                                         | 说明                                    |
-| -------------------------------------------- | ------------------------------------------------ | --------------------------------------- |
-| 形状不兼容 / 广播失败                        | `Result::Err(XenonError)`                        | 运行时输入决定，可恢复                  |
-| 轴越界 / 参数非法 / FFI 前提失败             | `Result::Err(XenonError)`                        | 调用方可修正输入并重试                  |
-| `cast()` 有损或前提不满足                    | `Result::Err(XenonError::TypeConversion(_))`     | `require.md §23` 强制要求               |
-| 方法型索引失败                               | `Result::Err(XenonError::IndexOutOfBounds)`      | 需返回结构化索引上下文                  |
-| 语言级 `Index` 语法 `tensor[i]` 越界         | panic                                            | 属于 Rust 语法糖边界，非 `Result` API   |
-| 有符号整数算术溢出 / 除以零 / 结果不可表示   | panic                                            | 仅适用于 `i32` / `i64`，见 `require.md` |
-| `sqrt(negative)`、`ln(negative)`、`ln(0)`    | IEEE 754 返回 `NaN` / `-Inf`，不得 panic         | `f32` / `f64` 数学域边界                |
+| 场景                                       | 处理方式                                     | 说明                                    |
+| ------------------------------------------ | -------------------------------------------- | --------------------------------------- |
+| 形状不兼容 / 广播失败                      | `Result::Err(XenonError)`                    | 运行时输入决定，可恢复                  |
+| 轴越界 / 参数非法 / FFI 前提失败           | `Result::Err(XenonError)`                    | 调用方可修正输入并重试                  |
+| `cast()` 有损或前提不满足                  | `Result::Err(XenonError::TypeConversion(_))` | `require.md §23` 强制要求               |
+| 方法型索引失败                             | `Result::Err(XenonError::IndexOutOfBounds)`  | 需返回结构化索引上下文                  |
+| 语言级 `Index` 语法 `tensor[i]` 越界       | panic                                        | 属于 Rust 语法糖边界，非 `Result` API   |
+| 有符号整数算术溢出 / 除以零 / 结果不可表示 | panic                                        | 仅适用于 `i32` / `i64`，见 `require.md` |
+| `sqrt(negative)`、`ln(negative)`、`ln(0)`  | IEEE 754 返回 `NaN` / `-Inf`，不得 panic     | `f32` / `f64` 数学域边界                |
 
 ### 4.1.1 安全 API 的 panic 边界
 
-| 类别 | 允许 panic 的安全 API / 语法 | 约束 |
-| ---- | ---------------------------- | ---- |
-| 语言级语法 | `tensor[i]` | 仅指 `Index`/`IndexMut` 语法糖；越界时可 panic |
-| 算术域错误 | `i32` / `i64` 的逐元素算术、归约、内积 | 溢出、除以零、结果不可表示时 panic |
-| FFI 便捷辅助 | `23-ffi.md` 中的 `offset_of`、`ptr_at` | 仅作为 convenience sugar；非法输入可 panic，且须文档化 |
+> **总原则：** 所有安全公开 API 对非法输入须返回可恢复错误（`Result`）；仅 `unsafe` 函数的前提违反和内部 helper 可使用 panic。
+
+| 类别           | 允许 panic 的安全 API / 语法                   | 约束                                                          |
+| -------------- | ---------------------------------------------- | ------------------------------------------------------------- |
+| 语言级语法     | `tensor[i]`                                    | 仅指 `Index`/`IndexMut` 语法糖；越界时可 panic                |
+| 算术域错误     | `i32` / `i64` 的逐元素算术、归约、内积         | 溢出、除以零、结果不可表示时 panic                            |
 | 非用户面向契约 | workspace typed helpers 等内部/unsafe 契约辅助 | 违反 unsafe/contract precondition 的 panic 不计入用户错误模型 |
 
-除上表外，其余安全公开 API 遇到错误条件时都必须返回 `Result<_, XenonError>`，不得以 panic 代替可恢复错误。
+除上表外，其余安全公开 API 遇到错误条件时都必须返回 `Result<_, XenonError>`，不得以 panic 代替可恢复错误；即使是 FFI convenience helper，只要属于安全公开 API，也必须遵循这一规则。
 
 ### 4.2 统一错误类型
 
@@ -218,6 +219,8 @@ pub enum TypeConversionReason {
 pub type Result<T> = core::result::Result<T, XenonError>;
 ```
 
+`EmptyArray` 仅用于需要至少一个元素的操作（如 reduce 系列中需要初始值的场景）。`sum` 归约和 `dot` 内积对空输入返回加法单位元，不触发此错误。
+
 `XenonError` 须实现 `std::error::Error` trait，提供 `source()` 方法用于链式错误追踪。
 
 公开 API 统一使用 prelude 导出的 `crate::error::Result`（即 `Result<T, XenonError>` 别名）作为返回类型。
@@ -228,12 +231,12 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 
 ### 4.2.1 公开 API 边界映射
 
-| 边界位置 | 规则 |
-| -------- | ---- |
-| Public API return type | `Result<_, XenonError>` |
-| Internal mapping | `WorkspaceError -> XenonError::Workspace(...)` |
-| Internal mapping | `FfiError -> XenonError::Ffi(...)` |
-| Internal mapping | `TypeConversionError -> XenonError::TypeConversion(...)` |
+| 边界位置               | 规则                                                     |
+| ---------------------- | -------------------------------------------------------- |
+| Public API return type | `Result<_, XenonError>`                                  |
+| Internal mapping       | `WorkspaceError -> XenonError::Workspace(...)`           |
+| Internal mapping       | `FfiError -> XenonError::Ffi(...)`                       |
+| Internal mapping       | `TypeConversionError -> XenonError::TypeConversion(...)` |
 
 该表为公开错误边界的唯一基线；其他设计文档若在公开 API 层直接暴露 `WorkspaceError` 或独立的 `TypeConversionError`，均视为与本文冲突，必须以本文为准修正。
 
@@ -280,21 +283,21 @@ where
 
 所有错误变体都须带“错误类别 + 适用上下文”的结构化字段；仅字符串消息不足以满足要求。
 
-| 变体                 | 最小结构化字段                                                                                 |
-| -------------------- | ---------------------------------------------------------------------------------------------- |
-| `ShapeMismatch`      | `operation`, `left_shape`, `right_shape`                                                       |
-| `BroadcastError`     | `operation`, `input_shape`, `target_shape`, `axis?`                                            |
-| `LayoutMismatch`     | `operation`, `required_layout`, `actual_layout`, `shape`                                       |
-| `InvalidLayout`      | `operation`, `storage_kind`, `shape`, `strides`, `offset`, `storage_len`, `reason`            |
-| `InvalidAxis`        | `operation`, `axis`, `ndim`, `shape`                                                           |
-| `InvalidShape`       | `operation`, `shape`, `expected_elements`, `actual_elements`, `offending_dim?`                 |
-| `DimensionMismatch`  | `operation`, `expected`, `actual` |
-| `EmptyArray`         | `operation`, `shape`                                                                           |
-| `InvalidArgument`    | `operation`, `argument`, `expected`, `actual`, `axis?`, `shape?`                               |
-| `InvalidStorageMode` | `operation`, `expected`, `actual`, `shape?`                                                    |
-| `Ffi(FfiError)`      | 由 `FfiError` 提供 `operation`, `backend`, `precondition`, `actual`                            |
-| `Workspace(...)`     | 由 `WorkspaceError` 提供 `size`, `align`, `split`, `len` 等适用结构化字段                      |
-| `IndexOutOfBounds`   | `operation`, `attempted_index`, `axis`, `shape`                                                |
+| 变体                                  | 最小结构化字段                                                                     |
+| ------------------------------------- | ---------------------------------------------------------------------------------- |
+| `ShapeMismatch`                       | `operation`, `left_shape`, `right_shape`                                           |
+| `BroadcastError`                      | `operation`, `input_shape`, `target_shape`, `axis?`                                |
+| `LayoutMismatch`                      | `operation`, `required_layout`, `actual_layout`, `shape`                           |
+| `InvalidLayout`                       | `operation`, `storage_kind`, `shape`, `strides`, `offset`, `storage_len`, `reason` |
+| `InvalidAxis`                         | `operation`, `axis`, `ndim`, `shape`                                               |
+| `InvalidShape`                        | `operation`, `shape`, `expected_elements`, `actual_elements`, `offending_dim?`     |
+| `DimensionMismatch`                   | `operation`, `expected`, `actual`                                                  |
+| `EmptyArray`                          | `operation`, `shape`（仅限需要至少一个元素的操作；`sum`/`dot` 空输入不使用该错误） |
+| `InvalidArgument`                     | `operation`, `argument`, `expected`, `actual`, `axis?`, `shape?`                   |
+| `InvalidStorageMode`                  | `operation`, `expected`, `actual`, `shape?`                                        |
+| `Ffi(FfiError)`                       | 由 `FfiError` 提供 `operation`, `backend`, `precondition`, `actual`                |
+| `Workspace(...)`                      | 由 `WorkspaceError` 提供 `size`, `align`, `split`, `len` 等适用结构化字段          |
+| `IndexOutOfBounds`                    | `operation`, `attempted_index`, `axis`, `shape`                                    |
 | `TypeConversion(TypeConversionError)` | `source_type`, `target_type`, `reason`, `element_index`                            |
 
 ### 4.5 Display 与 panic 信息要求
@@ -475,13 +478,13 @@ impl fmt::Display for XenonError {
 
 推荐 panic message 模板：`"Xenon: {operation} overflow for {type} at {context}"`
 
-| panic 类别 | 推荐消息示例 |
-| ---------- | ------------ |
-| 逐元素加法溢出 | `"Xenon: add overflow for i32 at element_index=7"` |
-| 归约溢出 | `"Xenon: sum overflow for i64 at axis=1, output_index=3"` |
-| 内积溢出 | `"Xenon: dot overflow for i32 at lane=12"` |
-| 语言级索引 panic | `"Xenon: index out of bounds for tensor[i] at axis=0, index=9, len=4"` |
-| FFI helper convenience panic | `"Xenon: ptr_at precondition violation for ffi helper at axis=1, index=8"` |
+| panic 类别                   | 推荐消息示例                                                                   |
+| ---------------------------- | ------------------------------------------------------------------------------ |
+| 逐元素加法溢出               | `"Xenon: add overflow for i32 at element_index=7"`                             |
+| 归约溢出                     | `"Xenon: sum overflow for i64 at axis=1, output_index=3"`                      |
+| 内积溢出                     | `"Xenon: dot overflow for i32 at lane=12"`                                     |
+| 语言级索引 panic             | `"Xenon: index out of bounds for tensor[i] at axis=0, index=9, len=4"`         |
+| internal/unsafe helper panic | `"Xenon: ptr_at precondition violation in internal helper at axis=1, index=8"` |
 
 ```rust
 // Good - checked arithmetic with explicit panic message.
@@ -495,11 +498,11 @@ let value = lhs * rhs;
 
 ### 4.7 数学函数定义域边界
 
-| 场景 | `f32` / `f64` 行为 | 约束来源 |
-| ---- | ------------------ | -------- |
-| `sqrt(negative)` | 返回 `NaN` | `require.md §28.3` |
-| `ln(negative)` | 返回 `NaN` | `require.md §28.3` |
-| `ln(0)` | 返回 `-Inf` | `require.md §28.3` |
+| 场景             | `f32` / `f64` 行为 | 约束来源           |
+| ---------------- | ------------------ | ------------------ |
+| `sqrt(negative)` | 返回 `NaN`         | `require.md §28.3` |
+| `ln(negative)`   | 返回 `NaN`         | `require.md §28.3` |
+| `ln(0)`          | 返回 `-Inf`        | `require.md §28.3` |
 
 这些情形遵循 IEEE 754 语义，属于数值结果边界，不属于 panic 边界。
 
@@ -521,13 +524,13 @@ let value = lhs * rhs;
 
 ### 5.1 验证清单
 
-| 验证项     | 要求                                                                                |
-| ---------- | ----------------------------------------------------------------------------------- |
-| 单元测试   | 覆盖 `XenonError` 各变体的 Display、Clone、PartialEq 与结构化字段                   |
+| 验证项     | 要求                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------- |
+| 单元测试   | 覆盖 `XenonError` 各变体的 Display、Clone、PartialEq 与结构化字段                     |
 | 集成测试   | 覆盖 `transpose`、`broadcast`、`sum_axis`、`cast`、`ffi`、方法型索引等 API 的错误映射 |
-| 边界测试   | 覆盖空形状、非法轴、越界索引、复数虚部非零、整数极值、NaN/Inf 转换                  |
-| panic 测试 | 覆盖逐元素整数溢出、除以零、`abs(MIN)`、dot overflow                                |
-| 并行测试   | 覆盖 `Err` 与 panic 在并行路径中的传播一致性                                        |
+| 边界测试   | 覆盖空形状、非法轴、越界索引、复数虚部非零、整数极值、NaN/Inf 转换                    |
+| panic 测试 | 覆盖逐元素整数溢出、除以零、`abs(MIN)`、dot overflow                                  |
+| 并行测试   | 覆盖 `Err` 与 panic 在并行路径中的传播一致性                                          |
 
 ### 5.2 重点测试用例
 

@@ -1,7 +1,7 @@
 # 实用操作模块设计
 
 > 文档编号: 20 | 模块: `src/util/` | 阶段: Phase 4
-> 前置文档: `07-tensor.md`, `10-iterator.md`
+> 前置文档: `05-storage.md`, `06-layout.md`, `07-tensor.md`, `10-iterator.md`
 > 需求参考: 需求说明书 §21, §22
 > 范围声明: 范围内
 
@@ -114,7 +114,7 @@ src/util/
 
 ### 5.1 clip 操作
 
-````rust
+````rust,ignore
 pub trait ClipElement: Element + PartialOrd {}
 
 impl ClipElement for i32 {}
@@ -226,7 +226,7 @@ where
 
 ### 5.2 fill 操作
 
-````rust
+````rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -265,13 +265,36 @@ where
 
 > `fill` 的公开 API 统一返回 `Result<(), XenonError>`；其中 `XenonError` 是唯一公开错误类型。对 `ViewRepr`、`ArcRepr` 等只读存储，请求必须以可恢复运行时错误（例如 `XenonError::ReadOnlyStorage`）返回；对 `Owned`、`ViewMutRepr` 等可写存储，则进入内部 `StorageMut::fill()` 快路径。
 
+#### 5.2.1 fill 的显式写入语义
+
+- `fill` 必须按**逻辑索引**迭代，并且只写入逻辑元素。
+- 对带 padding 的底层存储：不得写入任何 padding bytes。
+- 对非连续但可写的视图：必须严格按 layout strides 导航到每个逻辑元素。
+- 对存在零步长的可写布局：必须拒绝执行并返回可恢复错误，因为多个逻辑位置会别名到同一物理地址，原地写入语义不再单值确定。
+
+```
+fill_logical_only(storage, layout, value):
+    if !layout.is_writable():
+        return Err(XenonError::ReadOnlyStorage)
+    if layout.has_zero_stride_alias():
+        return Err(XenonError::InvalidLayout)
+
+    for logical_index in 0..layout.logical_len():
+        offset = layout.offset_for_logical_index(logical_index)
+        write storage[offset] = clone(value)
+
+    return Ok(())
+```
+
+> 上述伪代码强调的是契约，而不是公开 API：实现可以使用递归多维索引、stride-aware iterator 或其他等价内部辅助函数，但结果必须等价于“按逻辑索引逐元素写入，且不触碰 padding / 非逻辑区域”。
+
 ### 5.3 连续性保证（to_contiguous）
 
 > `to_contiguous()` 是本模块（20-utility.md §4）定义的公共 API。内部可复用连续化实现，但这不构成 `convert` 模块的独立公共能力。
 >
 > **依赖说明**: `to_contiguous()` 由 utility 模块暴露；若非连续路径需要额外实现步骤，也仅属于 utility 的内部细节。类型转换语义仍归 convert，连续性保证语义仍归 utility。
 
-````rust
+````rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -382,13 +405,17 @@ clip(tensor, min, max):
 ```
 fill(tensor, value):
     if storage is writable:
-        call internal StorageMut::fill(storage, layout, value)
+        if layout has zero-stride alias:
+            return Err(XenonError::InvalidLayout)
+        for each logical index in layout order:
+            offset = offset_for_logical_index(layout, logical index)
+            write storage[offset] = clone(value)
         return Ok(())
     else:
         return Err(XenonError::ReadOnlyStorage)
 ```
 
-关键点：公开 `fill` 对所有存储模式都可见，但只在运行时确认可写性；可写存储走内部 `StorageMut::fill()`，继续保留连续路径优化与非连续布局支持；只读或共享只读存储则返回 `XenonError::ReadOnlyStorage`，满足 `require.md` §21.2 对公开运行时填充 API 的要求。
+关键点：公开 `fill` 对所有存储模式都可见，但只在运行时确认可写性；可写存储必须遵守“只写逻辑元素”的契约：连续布局可走快路径，带 padding / 非连续布局必须按逻辑索引与 strides 写入，且不得触碰 padding bytes；零步长可写布局必须以可恢复错误拒绝；只读或共享只读存储则返回 `XenonError::ReadOnlyStorage`，满足 `require.md` §21.2 对公开运行时填充 API 的要求。
 
 ### 6.3 to_contiguous 路径选择
 
@@ -430,7 +457,7 @@ into_contiguous(tensor):
 - [ ] **T1**: 实现 `fill` 方法
   - 文件: `src/util/fill.rs`
   - 内容: `fill(&mut self, value: A) -> Result<(), XenonError>`；公开方法定义在 `TensorBase<S, D>` 上，通过运行时检查区分可写与只读存储；可写存储原地填充，只读与共享只读场景返回 `XenonError::ReadOnlyStorage`
-  - 测试: `test_fill_basic`, `test_fill_non_contiguous`, `test_fill_readonly_storage_error`
+  - 测试: `test_fill_basic`, `test_fill_non_contiguous`, `test_fill_readonly_storage_error`, `test_fill_broadcast_view_error`, `test_fill_transposed_view_error`, `test_fill_padded_writes_logical_only`
   - 前置: tensor 模块、iter 模块完成
   - 预计: 10 min
 
@@ -492,6 +519,9 @@ Wave 2:      [T3] → [T4]
 | `test_fill_basic`                         | 基本填充所有元素为指定值                | 高     |
 | `test_fill_non_contiguous`                | 非连续布局正确填充所有逻辑元素          | 高     |
 | `test_fill_readonly_storage_error`        | 只读存储返回 `ReadOnlyStorage`          | 高     |
+| `test_fill_broadcast_view_error`          | 对 broadcast 结果执行 fill 返回可恢复错误 | 高   |
+| `test_fill_transposed_view_error`         | 对只读转置视图执行 fill 返回可恢复错误  | 高     |
+| `test_fill_padded_writes_logical_only`    | 带 padding 的可写张量仅覆写逻辑元素     | 高     |
 | `test_fill_empty`                         | 空数组 fill 不 panic                    | 中     |
 | `test_to_contiguous_f_order`              | F-order 连续输入返回 owned 拷贝         | 高     |
 | `test_into_contiguous_reuses_owned_data`  | F-order owned 输入消费后复用原数据      | 高     |
@@ -506,12 +536,15 @@ Wave 2:      [T3] → [T4]
 | 单元素 `shape=[1]`    | `clip` 正确裁剪单个元素                                           |
 | 零维张量              | `clip` 返回标量裁剪结果                                           |
 | 非连续切片            | `fill`/`clip` 通过迭代器正确处理所有逻辑元素                      |
+| broadcast 只读视图    | `fill` 返回可恢复错误，不允许对零步长别名布局写入                 |
+| 只读转置视图          | `fill` 返回 `ReadOnlyStorage`，不修改底层数据                     |
+| 带 padding 的可写布局 | `fill` 只修改逻辑元素，对 padding bytes 保持不变                  |
 | NaN 边界              | `clip(x, NaN, 1.0)` 或 `clip(x, 0.0, NaN)` 返回 `InvalidArgument` |
 
 ### 8.4 属性测试不变量
 
 | 不变量                                                                         | 测试方法                |
-| ------------------------------------------------------------------------------ | ----------------------- | ---------- | ----------------- |
+| ------------------------------------------------------------------------------ | ----------------------- |
 | `clip(min, max)` 结果的每个元素 ∈ [min, max]                                   | 随机张量 + 随机 min/max |
 | `fill(v)` 后 `iter().all(\|x\| *x == v)`                                      | 随机形状 + 随机值       |
 | `to_contiguous()` / `into_contiguous()` 返回的张量 `is_f_contiguous() == true` | 随机非连续布局          |

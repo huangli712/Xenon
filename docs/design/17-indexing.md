@@ -104,7 +104,7 @@ src/
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, rank / axis metadata |
 | `layout` | `Strides<D>`, layout flags, F-order offset interpretation |
 | `storage` | `Storage`, `StorageMut`, read-only / writable storage capability |
-| `error` | `XenonError::InvalidAxis`, `InvalidArgument`, `IndexOutOfBounds`, `InvalidStorageMode` |
+| `error` | `XenonError::InvalidAxis`, `InvalidArgument`, `IndexOutOfBounds`, `DimensionMismatch`, `InvalidStorageMode` |
 | `private` | `Sealed`，用于封闭 `NdIndex` 的外部实现面 |
 
 ### 4.3 依赖方向声明
@@ -216,7 +216,7 @@ where
 }
 ```
 
-> **设计决策：** `Index` / `IndexMut` 语法糖可继续保留，但仅作为 panic 型便捷接口；规范安全主路径始终是 `at()` / `get()` / `at_mut()` / `get_mut()` 与 `slice()`。此前草案中的 `try_slice()` 与当前 `slice()` 具有相同签名且同样返回 `Result`，没有额外语义，因此移除以避免冗余接口。
+> **设计决策：** 当前版本不把 `Index` / `IndexMut` 运算符重载纳入公共 API 契约。这些 trait 的签名无法返回 `Result`，与 `require.md` §18“安全接口失败时返回可恢复错误”的要求冲突；对外规范安全主路径始终是 `at()` / `get()` / `at_mut()` / `get_mut()` 与 `slice()`。若实现中仍保留 `Index` / `IndexMut`，其定位也仅限于内部便捷层 / 非规范 API 契约，且必须显式文档化“失败即 panic”。此前草案中的 `try_slice()` 与当前 `slice()` 具有相同签名且同样返回 `Result`，没有额外语义，因此移除以避免冗余接口。
 
 ### 5.3 Good / Bad 对比
 
@@ -225,7 +225,7 @@ where
 let value = tensor.at((2, 1))?;
 let value2 = tensor.get(&[2, 1])?;
 
-// Bad - panic-based sugar is not the primary safe contract.
+// Bad - panic-based sugar is not part of the normative public contract.
 let value = &tensor[(2, 1)];
 ```
 
@@ -478,7 +478,7 @@ User calls tensor.slice(info)
 | 主题 | 说明 |
 | --- | --- |
 | Recoverable error | `at()` / `get()` / `at_mut()` / `get_mut()` / `slice()` 在 rank 不匹配、轴非法、越界、`step == 0`、只读存储上请求可写访问时返回 `XenonError`；其中索引长度与张量 `ndim` 不匹配时，错误类型固定为 `XenonError::DimensionMismatch { expected, actual }` |
-| Panic | `Index` / `IndexMut` 语法糖失败时可 panic；这不是规范安全主路径 |
+| Panic | 若实现保留 `Index` / `IndexMut` 作为内部便捷层 / 非规范 API 契约，其失败时可 panic；这不是规范安全主路径 |
 | 路径一致性 | 对同一合法输入，checked 与 unchecked 路径必须给出同一偏移和同一逻辑结果；unsafe 只省略检查 |
 | 容差边界 | 不适用；本模块不涉及浮点容差、SIMD 误差或并行归约差异 |
 

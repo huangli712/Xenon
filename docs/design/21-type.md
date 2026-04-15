@@ -2,7 +2,7 @@
 
 > 文档编号: 21 | 模块: `src/convert/` | 阶段: Phase 4
 > 前置文档: `07-tensor.md`, `03-element.md`
-> 需求参考: 需求说明书 §22, §23
+> 需求参考: 需求说明书 §23
 > 范围声明: 范围内
 
 ---
@@ -11,12 +11,11 @@
 
 ### 1.1 职责边界
 
-| 职责           | 包含                                                 | 不包含                       |
-| -------------- | ---------------------------------------------------- | ---------------------------- |
-| 逐元素类型转换 | `cast<B>(&self) -> Result<Tensor<B, D>, XenonError>` | 隐式类型提升（需显式调用）   |
-| 同类型拷贝     | `to_owned`、`into_owned`                             | 跨模块转换逻辑               |
-| 存储模式互转   | Owned ↔ ViewRepr ↔ ArcRepr                           | 隐式 Deref 转换              |
-| 标准库接口     | `From`/`Into`（标准库类型转换）                      | 非标准转换（如序列化）       |
+| 职责           | 包含                                                 | 不包含                                                 |
+| -------------- | ---------------------------------------------------- | ------------------------------------------------------ |
+| 逐元素类型转换 | `cast<B>(&self) -> Result<Tensor<B, D>, XenonError>` | 隐式类型提升（需显式调用）                             |
+| 同类型拷贝     | `to_owned`、`into_owned`                             | 标准库 `From`/`Into` 实现（归构造模块）                |
+| 范围边界       | §23 要求的逐元素类型转换与同类型拷贝                 | 存储模式互转（归 `storage` / `tensor`）、连续化 helper（归 `utility`） |
 
 ### 1.2 设计原则
 
@@ -24,7 +23,7 @@
 | ---------- | -------------------------------------------------------------------------- |
 | 显式转换   | 所有类型转换须显式调用 `cast()`，无隐式提升                                |
 | 失败可诊断 | 有损转换默认返回可恢复错误，错误上下文由 `XenonError::TypeConversion` 承载 |
-| 存储约束   | `cast` 当前仅在 `Owned` 上提供；其它存储模式须先 `to_owned`                |
+| 存储约束   | `cast` 当前仅在 `Owned` 上提供；这是设计决策，不是 `require.md §23` 的直接要求 |
 | 需求闭合   | 仅支持 `require.md §23.1` 与 `§23.2` 定义的类型对及其成功前提              |
 
 ### 1.3 在架构中的位置
@@ -47,10 +46,11 @@ L7: convert  ← current module
 
 | 类型     | 内容 |
 | -------- | ---- |
-| 需求映射 | 需求说明书 §22, §23 |
-| 范围内   | `cast()`、`to_owned()`、`into_owned()`、存储模式互转以及标准库 `From` / `TryFrom` 入口。 |
-| 范围外   | 饱和 / 截断 cast 语义、非张量类型的额外 `From` / `Into` 族以及超出需求矩阵的隐式转换。 |
+| 需求映射 | 需求说明书 §23 |
+| 范围内   | `cast()` 逐元素类型转换，以及 `to_owned()` / `into_owned()` 同类型拷贝。 |
+| 范围外   | 存储模式互转（归 `storage` / `tensor`）、标准库 `From` / `TryFrom` 实现（归构造模块）、连续化 helper（归 `utility`），以及超出需求矩阵的隐式转换。 |
 | 非目标   | 不默认放宽有损转换规则，不新增第三方转换库，也不把连续性保证升级为 convert 的公开职责。 |
+| 协作说明 | 若文中保留存储模式互转、标准库转换入口或连续化 helper 的实现草案，均仅作为跨模块协作参考，不构成 convert 模块的主职责。 |
 
 ---
 
@@ -61,8 +61,8 @@ src/
 └── convert/                 # Type conversion module
     ├── mod.rs               # Module root, re-exports
     ├── cast.rs              # cast() methods and conversion paths consuming element::CastTo
-    ├── owned.rs             # to_owned, into_owned, storage-mode conversions
-    ├── from_impl.rs         # From/TryFrom trait impls
+    ├── owned.rs             # to_owned, into_owned, plus storage collaboration notes
+    ├── from_impl.rs         # From/TryFrom alignment notes if kept here
     └── contiguous.rs        # Internal helper only for util::to_contiguous if kept
 ```
 
@@ -74,9 +74,9 @@ src/
 | --------------- | ------------------------------------------------------------------------- | -------- |
 | `mod.rs`        | 模块根，re-exports 所有公共类型                                           | ~20      |
 | `cast.rs`       | 消费 `CastTo<T>` trait，提供所有类型转换 impl 与 `cast()` 方法            | ~200     |
-| `owned.rs`      | `to_owned()`、`into_owned()`、存储模式互转（view/view_mut/into_shared）   | ~100     |
-| `from_impl.rs`  | `From<Vec<A>>`、`From<&[A]>`、`From<[A; N]>`、`From<&Tensor> for View` 等 | ~80      |
-| `contiguous.rs` | 连续化内部 helper（公共语义由 util::to_contiguous 持有）                  | ~50      |
+| `owned.rs`      | `to_owned()`、`into_owned()`，并记录与存储模式互转相关的跨模块协作边界    | ~100     |
+| `from_impl.rs`  | 标准库 `From` / `TryFrom` 入口草案（归构造模块，此处仅作对齐参考）        | ~80      |
+| `contiguous.rs` | 连续化内部 helper（归 `util`，此处仅保留协作说明）                        | ~50      |
 
 ---
 
@@ -190,7 +190,7 @@ where
 }
 ````
 
-> **设计决策（修订）**：根据需求说明书 §23，`cast()` 仅适用于持有数据的存储模式。当前设计将这一范围收窄为 `Owned<A>`；`ViewRepr` / `ViewMutRepr` / `ArcRepr` 均须先调用 `to_owned()`，再进行显式类型转换。
+> **设计决策（修订）**：`require.md §23` 要求提供逐元素类型转换，但未强制规定仅限某一具体存储实现。当前设计选择将 `cast()` 收敛到 `Owned<A>`；`ViewRepr` / `ViewMutRepr` / `ArcRepr` 均须先调用 `to_owned()`，再进行显式类型转换，以避免共享/视图结果的所有权语义歧义。
 
 ### 5.3 类型转换路径表
 
@@ -206,24 +206,32 @@ where
 | `Complex<f32>` | `Complex<f64>` | 成功     | 分量宽化                                    |
 | `i64`          | `i32`          | 错误     | 有损，默认失败                              |
 | `f64`          | `f32`          | 错误     | 有损，默认失败                              |
-| `f32/f64`      | `i32/i64`      | 错误     | 有损，默认失败                              |
+| `f32`          | `i32`          | 错误     | 有损，默认失败                              |
+| `f32`          | `i64`          | 错误     | 有损，默认失败                              |
+| `f64`          | `i32`          | 错误     | 有损，默认失败                              |
+| `f64`          | `i64`          | 错误     | 有损，默认失败                              |
 | `i32`          | `f32`          | 错误     | 有损，默认失败                              |
-| `i64`          | `f32/f64`      | 错误     | 有损，默认失败                              |
+| `i64`          | `f32`          | 错误     | 有损，默认失败                              |
+| `i64`          | `f64`          | 错误     | 有损，默认失败                              |
 | `i32`          | `Complex<f32>` | 错误     | 由 `i32 -> f32` 有损导致默认失败            |
 | `i64`          | `Complex<f64>` | 错误     | 由 `i64 -> f64` 有损导致默认失败            |
 | `i64`          | `Complex<f32>` | 错误     | 有损，默认失败                              |
 | `f64`          | `Complex<f32>` | 错误     | 有损，默认失败                              |
 | `Complex<f32>` | `f64`          | 条件成功 | 仅当 `im == 0`，再按 `f32 -> f64` 规则处理  |
 | `Complex<f32>` | `f32`          | 条件成功 | 仅当 `im == 0`；否则错误                    |
-| `Complex<f32>` | `i32/i64`      | 条件成功 | 仅当 `im == 0`，再按 `f32 -> integer` 规则处理 |
+| `Complex<f32>` | `i32`          | 条件成功 | 仅当 `im == 0`，再按 `f32 -> i32` 规则处理  |
+| `Complex<f32>` | `i64`          | 条件成功 | 仅当 `im == 0`，再按 `f32 -> i64` 规则处理  |
 | `Complex<f64>` | `f64`          | 条件成功 | 仅当 `im == 0`；否则错误                    |
 | `Complex<f64>` | `f32`          | 条件成功 | 仅当 `im == 0`，再按 `f64 -> f32` 规则处理  |
-| `Complex<f64>` | `i32/i64`      | 条件成功 | 仅当 `im == 0`，再按 `f64 -> integer` 规则处理 |
+| `Complex<f64>` | `i32`          | 条件成功 | 仅当 `im == 0`，再按 `f64 -> i32` 规则处理  |
+| `Complex<f64>` | `i64`          | 条件成功 | 仅当 `im == 0`，再按 `f64 -> i64` 规则处理  |
 | `Complex<f64>` | `Complex<f32>` | 错误     | 分量精度丢失，默认失败                      |
 
 > `bool` 不参与 `cast()`；任何 `bool` 相关逐元素类型转换都不在本模块范围内。
 
 ### 5.4 闭合规则映射
+
+凡 `§23.1` 已逐项列出的组合，其默认语义与附加成功前提以 `§23.1` 表格为准；闭合规则仅用于补足未逐项列出的受支持组合，不得覆盖或重新解释已列组合的语义。
 
 未在上表逐项展开、但属于受支持源/目标集合的组合，按 `require.md §23.2` 闭合：
 
@@ -253,6 +261,8 @@ let ints: Tensor<i32, Ix1> = floats.cast().unwrap();  // forbidden: returns Type
 ```
 
 ### 5.6 to_owned / into_owned
+
+> **跨模块协作说明：** 本节保留 `to_owned()` / `into_owned()` 的实现细节，是因为 `require.md §23` 明确将同类型拷贝纳入本节约束；其中与具体存储表示相关的路径选择仍以 `tensor` / `storage` 模块为主责。
 
 ````rust
 impl<S, D, A> TensorBase<S, D>
@@ -303,6 +313,8 @@ where
 > **统一规则（Wave 1）：** `ArcRepr → Owned` 始终分配并复制（O(n)），与引用计数无关。
 
 ### 5.7 from_vec_aligned — 对齐构造辅助
+
+> **跨模块协作说明：** 本节仅说明 `cast()` / `to_owned()` 最终依赖的对齐构造辅助；该能力本身归 `storage` / `tensor` 内部构造路径，不是 convert 模块的主职责。
 
 `from_vec_aligned` 是 `Owned<A>` 的内部辅助方法，将 `Vec<A>` 的数据**拷贝**到 64 字节对齐的新分配中（O(n) 操作，参见 `05-storage.md §5.1`）。这条快速路径仅适用于 Xenon 当前封闭元素集合中的 `Copy` 元素；用户原始的 `Vec` 分配被丢弃，不会复用。
 
@@ -360,6 +372,8 @@ impl<A, D> TensorBase<Owned<A>, D> where A: Element, D: Dimension {
 
 ### 5.8 连续化内部实现
 
+> **跨模块协作说明：** 连续化 helper 不是 convert 模块的主职责；若保留本节，仅用于说明 convert 与 `util::to_contiguous()` 的协作边界。
+
 本节仅保留到 `20-utility.md §4.3` 的前向引用：若项目继续保留 `convert/contiguous.rs`，它也只能作为 `util::to_contiguous()` 的内部实现细节。连续性保证的**公共语义、命名和用户入口**始终归 `util` 模块，而不是 `convert` 模块。
 
 ```rust
@@ -394,6 +408,8 @@ where
 
 ### 5.9 存储模式互转
 
+> **跨模块协作说明：** 存储模式互转不属于 `require.md §23` 为 convert 主模块定义的核心职责。本节仅记录 `cast()` / owned 化路径与 `tensor`、`storage` API 的协作关系。
+
 | 源 → 目标              | 操作                              | 复杂度       |
 | ---------------------- | --------------------------------- | ------------ |
 | Owned → ViewRepr       | 借用（`view()`）                  | O(1)         |
@@ -410,6 +426,8 @@ where
 > **统一规则（Wave 1）：** `ArcRepr → Owned` 始终分配并复制（O(n)），与引用计数无关。
 
 ### 5.10 标准库类型转换接口
+
+> **跨模块协作说明：** 标准库 `From` / `TryFrom` 风格入口可受 `require.md §23` 语义约束，但实现归属应收敛到构造模块；此处仅保留接口草案作为对齐参考，而非 convert 主职责。
 
 ```rust
 // Vec<A> → Tensor<A, Ix1>
@@ -708,14 +726,14 @@ User calls cast() / to_owned() / into_owned()
 | 替代方案 | saturating / truncating — 放弃，与需求冲突                                |
 | 替代方案 | panic on overflow — 放弃，需求要求可恢复错误                              |
 
-### 决策 2：cast() 仅在持有数据的存储模式上实现
+### 决策 2：cast() 仅对持有型存储返回结果
 
 | 属性     | 值                                                                                                                                                           |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 决策     | `cast()` 仅在 `Owned<A>` 上实现                                                                                                                              |
-| 理由     | 需求 §23 明确要求"类型转换仅适用于持有数据的存储模式"。为避免 `ArcRepr` 是否算作“持有数据”产生歧义，统一要求 View / ViewMut / Arc 都先 `to_owned()` 再转换。 |
-| 替代方案 | 在 `Storage` 约束上实现（允许 View 直接 cast） — 放弃，与需求 §23 冲突                                                                                       |
-| 替代方案 | 在 `Owned` 和 `ArcRepr` 上同时实现 — 放弃，会把共享存储重新定义成持有型存储，增加语义歧义                                                                    |
+| 决策     | `cast()` 仅在 `Owned<A>` 上实现，并统一返回 owned tensor                                                                                                      |
+| 理由     | 这是显式设计选择，而非 `require.md §23` 的直接要求；这样可避免共享/视图结果的所有权歧义，并统一 `cast()` 的返回结果语义。                                     |
+| 替代方案 | 在 `Storage` 约束上实现（允许 View 直接 cast） — 放弃，会把返回结果的所有权与生命周期语义复杂化                                                               |
+| 替代方案 | 在 `Owned` 和 `ArcRepr` 上同时实现 — 放弃，会把共享存储重新定义成“可直接产出 cast 结果”的路径，增加 API 语义歧义                                             |
 
 ### 决策 3：存储模式转换策略
 
@@ -773,6 +791,7 @@ User calls cast() / to_owned() / into_owned()
 | 1.2.2 | 2026-04-10 |
 | 1.2.3 | 2026-04-14 |
 | 1.2.4 | 2026-04-15 |
+| 1.2.5 | 2026-04-15 |
 
 ---
 

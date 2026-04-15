@@ -17,7 +17,7 @@
 
 | 职责           | 包含                                     | 不包含                                 |
 | -------------- | ---------------------------------------- | -------------------------------------- |
-| 元素遍历       | 按元素遍历（F-order 内存顺序）           | 具体运算逻辑（参见 `11-math.md §1`）   |
+| 元素遍历       | 按元素遍历（逻辑 F-order 索引顺序）      | 具体运算逻辑（参见 `11-math.md §1`）   |
 | 轴遍历         | 沿指定轴产生子张量视图                   | 子视图的具体操作                       |
 | 索引遍历       | 带多维索引的元素遍历                     | 索引赋值操作                           |
 | 内部能力提示   | 各操作模块可直接实现自身所需的内部迭代分发；`Windows` 可作为后续版本议题保留 | 不单独设计统一的多输入 lock-step 中间抽象；`Windows` 不纳入当前版本实现范围 |
@@ -367,7 +367,7 @@ increment_index_f(shape, index):
 
 > **空轴行为：** 空轴（`shape[axis] == 0`）的 `AxisIter` / `AxisIterMut` 产出 0 个元素，与标准库空切片迭代器行为一致。
 
-> **ZST 迭代说明：** ZST（zero-sized type）迭代：当元素类型为 ZST 时，所有迭代器仍可正常遍历，但不对底层数据执行实际读写；`Element::size() == 0` 的类型路径须在测试中显式覆盖。
+> **ZST 迭代说明：** ZST（zero-sized type）迭代相关讨论仅用于说明边界情况处理，ZST 不是当前版本的张量元素类型（`require.md` §4）；若内部测试或辅助代码覆盖该路径，也不得把它扩展为公开元素类型承诺。
 
 ### 6.5 并行分块说明
 
@@ -430,9 +430,11 @@ increment_index_f(shape, index):
 ```
 Wave 1: [T1] [T2]
            |     |
-Wave 2: [T3] [T4]
-           |     |
-Wave 3: [T6] [T9]
+Wave 2: [T4] [T3]
+                 |
+Wave 3:        [T6]
+                 |
+Wave 4:        [T9]
 ```
 
 ---
@@ -510,10 +512,11 @@ Wave 3: [T6] [T9]
 
 ### 9.1 接口约定
 
-```rust
-// tensor module provides iterator entry methods (see 07-tensor.md §5)
-// iter module consumes TensorView / TensorViewMut
-```
+| 方向 | 对方模块 | 接口/类型 | 约定 |
+| ---- | -------- | --------- | ---- |
+| `iter → tensor` | `tensor` | `TensorBase<S, D>`、`TensorView<'a, A, D>`、`TensorViewMut<'a, A, D>` | 由 `tensor` 暴露迭代器入口与视图类型，参见 `07-tensor.md` §5。 |
+| `iter → dimension` | `dimension` | `Dimension`、`Axis`、`RemoveAxis` | 迭代状态机按维度与轴语义推进，参见 `02-dimension.md` §5。 |
+| `iter → storage` | `storage` | `Storage`、`StorageMut` | 元素访问与可变访问分别受只读/可写存储约束保护，参见 `05-storage.md` §5。 |
 
 ### 9.2 数据流描述
 

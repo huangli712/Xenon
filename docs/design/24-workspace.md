@@ -37,9 +37,8 @@ L1: dimension, element, complex
 L2: workspace  <- current module (independent of tensor)
 
 Upstream libraries:
-  blas-wrapper ──→ workspace
-  fft-lib ───────→ workspace
-  tensor (optional) ──→ workspace
+  upstream numeric libraries ──→ workspace
+  tensor (optional) ───────────→ workspace
 ```
 
 Workspace 模块位于 L2，独立于核心张量类型系统，可被上游库直接使用而无需引入 tensor 依赖（参见 `01-architecture.md §5`）。
@@ -227,6 +226,8 @@ pub struct Workspace {
 ````
 
 > **设计决策：** 使用 `AtomicU8` 管理借用状态而非 `Mutex`，原因：无锁、状态简单（仅需 3 个值）。当前版本默认运行于 `std` 环境，因此直接依赖标准平台提供的原子与分配能力。
+
+> **实现备注：** 当前原型使用原子操作实现借用追踪。由于 `Workspace` 为 `!Send + !Sync`（线程内使用），后续可简化为 `Cell`-based 方案。
 
 ### 5.2 常量
 
@@ -668,9 +669,12 @@ impl<'a> SplitBorrowMut<'a> {
     pub fn split_at_mut(
         self,
         mid: usize,
-    ) -> Result<(SplitBorrowMut<'a>, SplitBorrowMut<'a>), WorkspaceError> {
+    ) -> Result<(SplitBorrowMut<'a>, SplitBorrowMut<'a>), XenonError> {
         if mid > self.len {
-            return Err(WorkspaceError::SplitOutOfBounds { split: mid, len: self.len });
+            return Err(XenonError::Workspace(WorkspaceError::SplitOutOfBounds {
+                split: mid,
+                len: self.len,
+            }));
         }
 
         let this = core::mem::ManuallyDrop::new(self);
@@ -713,6 +717,8 @@ impl<'a> SplitBorrowMut<'a> {
 ///
 /// After `drop`, the caller must not use any existing references into the workspace
 /// memory. The Rust borrow checker enforces this via the `'a` lifetime.
+/// Any pair of active split guards — including recursively produced descendants —
+/// must always cover disjoint, non-overlapping byte ranges.
 impl<'a> Drop for SplitBorrowMut<'a> {
     fn drop(&mut self) {
         // Atomically decrement the split count.
@@ -927,6 +933,8 @@ This design (zero allocation):
 >
 > 1. `split_at(512)` → `split_count = 2`，创建 `left` 和 `right`
 > 2. `right.split_at_mut(128)` → `fetch_add(1)`，`split_count = 3`，创建 `right_a` 和 `right_b`
+
+> **公开/内部边界说明：** 本文中的 `assert!` / `expect()` 仅用于 `unsafe` 辅助方法与内部不变量说明；公开安全 API（如 `new`、`borrow`、`borrow_mut`、`split_at`、`split_at_mut`、`ensure_capacity`）应统一返回可恢复错误，而不是把输入校验失败暴露为 panic。
 > 3. `left` drop → `split_count: 3→2`，`prev=3 ≠ 1`，不重置 ✅
 > 4. `right_a` drop → `split_count: 2→1`，`prev=2 ≠ 1`，不重置 ✅
 > 5. `right_b` drop → `split_count: 1→0`，`prev=1`，重置 `borrow_state` ✅
@@ -1112,8 +1120,8 @@ Wave 4:               [T7]            <- depends on T4, T5, and T6 all being com
 
 | 方向                 | 对方模块 | 接口/类型         | 约定                                                                                                                          |
 | -------------------- | -------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `workspace ← upstream libraries` | `upstream libraries` | 临时缓冲区请求    | BLAS 等上游库可把 workspace 作为临时缓冲区使用；默认只获得 `MaybeUninit` 视图                                                 |
-| `workspace ← upstream libraries` | `upstream libraries` | `split_at()`      | FFT 等场景可通过分割接口拆分工作空间；子空间同样只暴露 `MaybeUninit` 视图                                                     |
+| `workspace ← upstream libraries` | `upstream libraries` | 临时缓冲区请求    | 上游数值库可把 workspace 作为临时缓冲区使用；默认只获得 `MaybeUninit` 视图                                                     |
+| `workspace ← upstream libraries` | `upstream libraries` | `split_at()`      | 上游数值库场景可通过分割接口拆分工作空间；子空间同样只暴露 `MaybeUninit` 视图                                                   |
 | `workspace ← upstream libraries` | `upstream libraries` | `assume_init_*`   | 调用方必须先完成写入并证明对应前缀/typed region 已初始化，才能重解释为已初始化视图                                            |
 | `workspace ← tensor` | `tensor` | 临时 scratch 空间 | 张量运算在需要时可借用 workspace 提供临时空间；任何借出的 scratch 视图都不得跨越 `ensure_capacity` 或持久化到 tensor 元数据中 |
 

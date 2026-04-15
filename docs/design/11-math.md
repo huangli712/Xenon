@@ -52,7 +52,7 @@ L6: math (element-wise operations) <- current module (depends on broadcast, iter
 | -------- | ---- |
 | 需求映射 | 需求说明书 §12 |
 | 范围内   | 逐元素算术、一元运算、数学函数、复数 `norm` / `conjugate`、逻辑非、比较运算与广播语义。 |
-| 范围外   | SIMD 数学函数专用 kernel（当前版本数学函数统一回退标量；SIMD 仅覆盖逐元素算术（`f32`/`f64`/`i32`/`i64`）、归约（`f32`/`f64`/`i32`/`i64`/`Complex`）和内积（`f32`/`f64`/`i32`/`i64`/`Complex`））、混合类型逐元素运算以及 `map` 系列公开 API。 |
+| 范围外   | 混合类型逐元素运算以及 `map` 系列公开 API。SIMD 覆盖范围参见 `08-simd.md`，设计目标是覆盖需求说明书 §12 中定义的全部逐元素运算；若当前类型/ISA/语义约束不满足，则自动回退标量。 |
 | 非目标   | 不新增新的数学库依赖，不在本文扩展 mixed-type API 或更通用的逐元素映射原语。 |
 
 ---
@@ -80,7 +80,7 @@ src/math/
 | 广播先决 | 所有二元逐元素运算与比较运算必须先验证广播兼容性，再遍历广播后的只读视图。 |
 | 输出形状稳定 | 二元运算返回张量的 shape 必须等于广播结果 shape；一元运算与标量运算保持输入 shape 不变。 |
 | 比较类型边界 | `lt` / `gt` 只对 `i32`、`i64`、`f32`、`f64` 开放；`bool` 与 `Complex` 不得通过公开 API 进入该路径。 |
-| SIMD 语义等价 | SIMD 路径仅可用于逐元素算术（`f32`/`f64`/`i32`/`i64`）、归约（`f32`/`f64`/`i32`/`i64`/`Complex`）和内积（`f32`/`f64`/`i32`/`i64`/`Complex`）；数学函数、`abs`、`signum`、`neg`、`square`、`norm`、`conjugate` 必须回退标量，其 shape、NaN 语义和错误边界必须与标量路径一致。 |
+| SIMD 语义等价 | SIMD 覆盖范围参见 `08-simd.md`；设计目标是覆盖需求说明书 §12 中定义的全部逐元素运算，并在需要时覆盖 `sum` / `dot`。任一路径的 shape、NaN 语义和错误边界都必须与公开契约一致；不满足 SIMD 前提时统一回退标量。 |
 
 ### 4.2 Error Scenarios
 
@@ -205,7 +205,6 @@ where
     /// Element-wise sign function: returns -1, 0, or 1 based on the sign of each element.
     ///
     /// Available for all ordered numeric types: i32, i64, f32, f64.
-    /// For complex types (no natural ordering), use `ComplexScalar::arg()` instead.
     ///
     /// # NaN behavior (floats)
     ///
@@ -249,7 +248,7 @@ where
 }
 ```
 
-> **数学函数精度约束：** `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 统一复用底层 `libm` / 平台标准数学库语义，遵循 IEEE 754；实现必须在文档与测试中声明其采用的 ULP 误差边界。当前版本至少要求把这些方法视为“遵循 IEEE 754，误差受底层 `libm` 文档化 ULP 上界约束”的接口承诺，而非无误差精确计算。
+> **数学函数精度约束：** `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 使用 Rust `std` 提供的数学能力，不引入外部数学 crate；实现必须在文档与测试中声明其采用的 ULP 误差边界。当前版本至少要求把这些方法视为“遵循 IEEE 754，误差受 Rust `std` / 平台实现文档化 ULP 上界约束”的接口承诺，而非无误差精确计算。
 
 ### 5.6 复数运算（ComplexScalar 约束）
 
@@ -442,7 +441,7 @@ apply_binary(a, b, f):
 
 ### 6.3 SIMD 加速路径
 
-SIMD 分发由 `math` 的具体算术操作在满足连续性、对齐和 feature gate 前提时直接委托 `src/simd/` facade；本文不再把额外的中间 helper 视为稳定设计接口。参见 `08-simd.md §5.5` 了解 SIMD 后端详情。当前版本 SIMD 覆盖逐元素算术（`f32`/`f64`/`i32`/`i64`）、归约（`f32`/`f64`/`i32`/`i64`/`Complex`）和内积（`f32`/`f64`/`i32`/`i64`/`Complex`）；`abs` / `signum` / `neg` / `square` / `norm` / `conjugate` 以及 `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 等路径统一回退标量实现。
+SIMD 分发由 `math` 的具体逐元素操作在满足连续性、对齐和 feature gate 前提时直接委托 `src/simd/` facade；本文不再把额外的中间 helper 视为稳定设计接口。参见 `08-simd.md §5.5` 了解 SIMD 后端详情。SIMD 覆盖范围以 `08-simd.md` 为准，设计目标是覆盖需求说明书 §12 中定义的全部逐元素运算；若当前类型、ISA 或语义约束不满足，则对应路径自动回退标量实现。
 
 > **并行路径：** 当 `parallel` feature 启用时，二元逐元素运算可进一步委托 `parallel::par_zip_map` 执行并行遍历（参见 `09-parallel.md §5`）。并行路径在语义上与标量路径保持一致，按数据规模自动选择并行或串行执行。
 
@@ -642,7 +641,7 @@ User calls add / unary op / comparison method
 | Recoverable error | 广播不兼容时返回 `XenonError::BroadcastError { operation: Cow<'static, str>, input_shape: Vec<usize>, target_shape: Vec<usize>, axis: Option<usize> }`；参数不满足公开前提时返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, shape: Option<Vec<usize>> }`。 |
 | Panic | 整数 `add/sub/mul/div`、`abs/square/signum` 的溢出、除零或结果不可表示均按需求触发 panic。 |
 | 路径一致性 | 标量与 SIMD 路径必须保持相同 shape、错误类别、NaN/复数语义；不满足前提时统一回退标量实现。 |
-| 容差边界 | `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 遵循 IEEE 754，误差边界以底层 `libm` / 平台标准数学库文档化的 ULP 上界为准；除该类数学函数外，当前不引入额外数值容差。仅在可证明语义等价时启用 SIMD，否则回退标量路径。 |
+| 容差边界 | `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 遵循 IEEE 754，误差边界以 Rust `std` / 平台实现文档化的 ULP 上界为准；其余 SIMD 容差约束参见 `08-simd.md`。仅在可证明语义等价或满足文档化容差时启用 SIMD，否则回退标量路径。 |
 
 ---
 
@@ -670,12 +669,12 @@ User calls add / unary op / comparison method
 
 | 属性     | 值                                                        |
 | -------- | --------------------------------------------------------- |
-| 决策     | 连续 + 对齐内存时，仅对已覆盖的逐元素算术自动使用 SIMD 路径；`sum` / `dot` 的 SIMD 能力由 `08-simd.md` 中定义的归约/内积后端接入，数学函数与 `abs`/`signum`/`neg`/`square`/`norm`/`conjugate` 仍回退到标量 |
+| 决策     | 连续 + 对齐内存时，`math` 按 `08-simd.md` 中定义的覆盖范围委托 SIMD backend；设计目标是覆盖需求说明书 §12 中定义的全部逐元素运算，`sum` / `dot` 的 SIMD 能力也由该后端接入 |
 | 理由     | SIMD 路径只在连续内存上有意义；非连续时标量路径更简单正确 |
 | 替代方案 | 所有路径都用标量                                          |
 | 拒绝原因 | 性能差距显著（2-4x），科学计算用户期望高性能              |
 
-> **补充**：SIMD 实现位于独立 backend 模块 `src/simd/`，`math/` 仅按连续性和 feature gate 决定是否委托该 backend；逐元素算术之外，归约/内积的 SIMD 设计见 `08-simd.md`。当前版本 `math` 模块不为数学函数、`abs`、`signum`、`neg`、`square`、`norm`、`conjugate` 提供专门 SIMD kernel。
+> **补充**：SIMD 实现位于独立 backend 模块 `src/simd/`，`math/` 仅按连续性和 feature gate 决定是否委托该 backend；全部逐元素运算以及 `sum` / `dot` 的 SIMD 设计细节见 `08-simd.md`。若某个操作在当前类型或 ISA 上尚无满足语义约束的 SIMD kernel，则自动回退标量实现。
 
 ---
 

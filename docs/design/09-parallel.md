@@ -2,7 +2,7 @@
 
 > 文档编号: 09 | 模块: `src/parallel/` | 阶段: Phase 5
 > 前置文档: `07-tensor.md`, `10-iterator.md`, `13-reduction.md`, `26-error.md`
-> 需求参考: 需求说明书 §9.2, §9.3
+> 需求参考: 需求说明书 §9.2, §9.3, §27, §28.3, §28.5
 > 范围声明: 范围内
 
 ---
@@ -49,7 +49,7 @@ L6: parallel  <- current module (optional, feature = "parallel")
 
 | 类型     | 内容                                                                                           |
 | -------- | ---------------------------------------------------------------------------------------------- |
-| 需求映射 | `Requirements §9.2`, `§9.3`, `§27`, `§28`                                                        |
+| 需求映射 | `Requirements §9.2`, `§9.3`, `§27`, `§28.3`, `§28.5`                                            |
 | 范围内   | 可选数据并行、并行阈值配置、逐元素运算（含二元广播）/归约/内积的并行执行路径、自动串并选择、禁止库内二次并行 |
 | 范围外   | GPU 后端、自动任务图调度、通用多数组 lock-step 并行公开接口、额外第三方依赖                             |
 | 非目标   | 不把文档改成 `no_std`，不增加除 `rayon` 之外的外部依赖，不扩展当前并行能力集合                 |
@@ -94,7 +94,7 @@ src/parallel/
 
 ### 4.3 依赖方向
 
-> **依赖方向：单向向上。** `parallel/` 仅消费 `tensor`、私有 `kernel`、`error` 和可选 `rayon`；`ParElements` 与 `TensorBase::par_iter()` 归属 `parallel` 模块本身，不属于 `iter` 模块。并行路径只建立在上层已完成的张量形状、布局与类型约束之上。
+> **依赖方向：单向向上。** `parallel/` 仅消费 `tensor`、私有 `kernel`、`error` 和可选 `rayon`；`ParElements` 与 `TensorBase::par_iter()` 归属 `parallel` 模块本身，不属于 `iter` 模块。并行路径只建立在上层已完成的张量形状、布局与类型约束之上；广播形状裁决由 `math` 调用侧先完成，再以 `broadcast_dim` 形式传入。
 
 > **设计决策：** 串行归约/内积的共享 kernel 应下沉到内部私有模块（如 `kernel`，已在 `01-architecture.md` 注册为 private internal module），避免与公开 `reduction`/`matrix` 模块形成循环依赖。`parallel` 只依赖该私有 `kernel` 能力，不直接依赖公开归约模块。
 
@@ -137,16 +137,22 @@ static GLOBAL_PARALLEL_THRESHOLD: AtomicUsize =
 pub struct ParallelGuard;
 
 #[cfg(feature = "parallel")]
-pub struct ParallelPool {
+pub(crate) struct ParallelPool {
     inner: rayon::ThreadPool,
 }
 ```
 
 - `GLOBAL_PARALLEL_THRESHOLD`：控制自动串并切换阈值。
-- `ParallelGuard`：防止嵌套并行；使用 thread-local `Cell<bool>` 标记当前线程是否已处于并行执行上下文，构造时检查并设置标志，析构时清除；进入失败时必须回退串行而不是 panic，panic 时也通过 RAII 析构自动清理标志。
-- `ParallelPool`：可选自定义线程池包装，只改变执行上下文，不改变 API 语义；其内部调用同样受 `ParallelGuard` 保护，自定义 pool 内嵌套调用并行 API 时会自动回退串行，不允许嵌套 `ParallelPool` 实例。
+- `ParallelGuard`：防止库内部嵌套并行；实现上不再只依赖调用线程的 thread-local `Cell<bool>`，而是由私有 dispatch helper 创建一个可捕获的 `ParallelContext` token，并在进入并行区域前同时设置调用线程的本地标志。worker 闭包通过捕获该 token 感知“已处于并行区域”，析构时统一清理；进入失败时必须回退串行而不是 panic，panic 时也通过 RAII 自动清理。
+- `ParallelPool`：内部线程池包装，只改变执行上下文，不改变外部语义；其内部调用同样受 `ParallelGuard` + `ParallelContext` 保护，自定义 pool 内嵌套调用并行入口时会自动回退串行，不允许嵌套 `ParallelPool` 实例。
 
-### 5.2 公共函数签名
+### 5.2 公开运行时接口与内部执行入口
+
+> **可见性说明：** `parallel/` 对外的稳定契约只包括 feature gate、阈值读写与自动加速行为本身；`par_map`、`par_zip_map`、`par_sum`、`par_dot`、`ParallelPool` 均为内部执行后端，由 `math` / `reduction` / `dot` 等语义模块自动选择调用，不作为公开 API 契约的一部分。
+>
+> **内部后端声明：** 这些 API 为内部执行后端，由 `math` / `reduction` / `dot` 等语义模块自动选择调用，不作为公开 API 契约的一部分。
+
+### 5.3 函数签名
 
 ```rust
 #[cfg(feature = "parallel")]
@@ -162,7 +168,7 @@ pub fn reset_parallel_threshold();
 pub fn should_parallelize(len: usize, is_f_contiguous: bool) -> bool;
 
 #[cfg(feature = "parallel")]
-pub fn par_map<S, A, B, D, F>(tensor: &TensorBase<S, D>, f: F) -> Tensor<B, D>
+pub(crate) fn par_map<S, A, B, D, F>(tensor: &TensorBase<S, D>, f: F) -> Tensor<B, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
@@ -171,7 +177,7 @@ where
     F: Fn(&A) -> B + Send + Sync;
 
 #[cfg(feature = "parallel")]
-pub fn par_map_with_threshold<S, A, B, D, F>(
+pub(crate) fn par_map_with_threshold<S, A, B, D, F>(
     tensor: &TensorBase<S, D>,
     f: F,
     threshold: usize,
@@ -187,6 +193,7 @@ where
 pub(crate) fn par_zip_map<SL, SR, A, B, C, D, F>(
     lhs: &TensorBase<SL, D>,
     rhs: &TensorBase<SR, D>,
+    broadcast_dim: &D,
     f: F,
 ) -> Result<Tensor<C, D>, XenonError>
 where
@@ -212,13 +219,13 @@ where
     ID: Fn() -> A + Sync + Clone;
 
 #[cfg(feature = "parallel")]
-pub fn par_sum<A, D>(tensor: &Tensor<A, D>) -> A
+pub(crate) fn par_sum<A, D>(tensor: &Tensor<A, D>) -> A
 where
     D: Dimension,
     A: Element + Numeric + Send + Sync + Clone;
 
 #[cfg(feature = "parallel")]
-pub fn par_dot<SL, SR, A>(
+pub(crate) fn par_dot<SL, SR, A>(
     lhs: &TensorBase<SL, Ix1>,
     rhs: &TensorBase<SR, Ix1>,
 ) -> Result<A, XenonError>
@@ -232,7 +239,7 @@ where
 >
 > `par_map_with_threshold(..., threshold)` 与 `set_parallel_threshold()` 保持一致：当 `threshold == 0` 时，必须返回 `Err(XenonError::InvalidArgument)`，而不是静默修正、panic 或退化为默认阈值。
 
-### 5.3 并行迭代入口
+### 5.4 并行迭代入口
 
 ```rust
 #[cfg(feature = "parallel")]
@@ -259,7 +266,7 @@ where
 
 当前版本不提供任何通用并行双输入公开 API；需要二元逐元素调度时，由 `math` 模块先完成广播与输出形状裁决，再调用 `pub(crate)` 级 `par_zip_map()` 执行并行路径。
 
-### 5.4 Good / Bad 对比示例
+### 5.5 Good / Bad 对比示例
 
 ```rust
 // Good - invalid threshold returns a recoverable error.
@@ -294,15 +301,15 @@ let dot = par_dot(&lhs, &rhs)?;
 let dot = par_dot(&lhs, &rhs).unwrap();
 ```
 
-### 5.5 文档与示例交付要求
+### 5.6 文档与示例交付要求
 
-| API                               | 文档要求                               | 示例要求                         |
-| --------------------------------- | -------------------------------------- | -------------------------------- |
-| `set_parallel_threshold`          | 说明默认阈值、合法值范围、错误返回     | 给出成功与非法阈值示例           |
-| `should_parallelize`              | 说明其只基于长度、连续性和线程数做判断 | 给出小张量回退示例               |
-| `par_map` / `par_sum` / `par_dot` | 说明与串行路径的语义一致性             | 给出 feature 开启后的调用示例    |
-| `par_zip_map`                     | 说明其为 `math` 模块消费的内部广播并行入口 | 给出 `add/sub/mul/div` 广播示例 |
-| `ParallelPool`                    | 说明仅改变执行上下文，不改变语义       | 给出在线程池内执行并行入口的示例 |
+| API                               | 文档要求                                           | 示例要求                             |
+| --------------------------------- | -------------------------------------------------- | ------------------------------------ |
+| `set_parallel_threshold`          | 说明默认阈值、合法值范围、错误返回                 | 给出成功与非法阈值示例               |
+| `should_parallelize`              | 说明其只基于长度、连续性和线程数做判断             | 给出小张量回退示例                   |
+| `par_map` / `par_sum` / `par_dot` | 明确标注为内部后端入口，只承诺与串行路径语义一致   | 由上层语义模块调用的内部示例         |
+| `par_zip_map`                     | 说明其为 `math` 模块消费的内部广播并行入口         | 给出 `add/sub/mul/div` 的内部调度示例 |
+| `ParallelPool`                    | 明确标注为内部执行上下文包装，不构成公开 API 契约 | 给出在线程池内执行内部并行入口的示例 |
 
 ---
 
@@ -313,10 +320,6 @@ let dot = par_dot(&lhs, &rhs).unwrap();
 ```rust
 #[cfg(feature = "parallel")]
 pub fn should_parallelize(len: usize, is_f_contiguous: bool) -> bool {
-    if ParallelGuard::is_active() {
-        return false;
-    }
-
     if rayon::current_num_threads() <= 1 {
         return false;
     }
@@ -335,25 +338,48 @@ pub fn should_parallelize(len: usize, is_f_contiguous: bool) -> bool {
 算法要点：
 
 1. 单线程环境直接回退串行。
-2. 若 `ParallelGuard` 检测到当前线程已处于并行执行上下文，则自动回退串行，避免库内部二次并行。
+2. `should_parallelize()` 只负责阈值、连续性与线程环境判断；嵌套并行检测由外层 dispatch flow 在进入 guard 前完成。
 3. 连续 F-order 张量使用全局阈值。
 4. 非连续视图将有效阈值翻倍，以覆盖步长访问的缓存损失。
 5. 只有长度达到有效阈值时才进入并行路径。
 
 ### 6.2 核心执行路径
 
+```rust
+fn dispatch_parallel_region<R>(
+    len: usize,
+    is_f_contiguous: bool,
+    serial: impl FnOnce() -> R,
+    parallel: impl FnOnce(&ParallelContext) -> R,
+) -> R {
+    if !should_parallelize(len, is_f_contiguous) {
+        return serial();
+    }
+
+    let Ok(ctx) = ParallelGuard::enter() else {
+        return serial();
+    };
+
+    parallel(&ctx)
+}
+```
+
 ```text
-module dispatch entry
+dispatch entry
     │
     ├── read len + contiguity metadata
-    ├── ParallelGuard::enter()
-    │       ├── fail -> serial fallback
-    │       └── pass -> continue
     ├── should_parallelize(...)
     │       ├── false -> serial fallback
-    │       └── true  -> rayon parallel path
-    └── propagate panic / Err without swallowing
+    │       └── true  -> continue
+    ├── ParallelGuard::enter()
+    │       ├── fail -> serial fallback
+    │       └── pass -> create ParallelContext token
+    ├── execute rayon parallel path with captured context
+    └── RAII drop guard/context, propagate panic / Err without swallowing
 ```
+
+- 判定顺序固定为：**先阈值/线程环境判断，再进入 guard，再执行并行路径**；禁止先 enter guard 再调用 `should_parallelize()`，否则 guard 已激活会把本次合法并行误判为嵌套并行。
+- `ParallelContext` 为私有 token，由 dispatch helper 创建并传给所有内部并行入口；worker 闭包通过捕获该 token 感知当前已在并行区域，从而在尝试再次派发时强制回退串行。
 
 ### 6.3 二元逐元素并行路径
 
@@ -362,6 +388,7 @@ module dispatch entry
 pub(crate) fn par_zip_map<SL, SR, A, B, C, D, F>(
     lhs: &TensorBase<SL, D>,
     rhs: &TensorBase<SR, D>,
+    broadcast_dim: &D,
     f: F,
 ) -> Result<Tensor<C, D>, XenonError>
 where
@@ -373,17 +400,16 @@ where
     C: Element + Send,
     F: Fn(&A, &B) -> Result<C, XenonError> + Send + Sync,
 {
-    let broadcast_dim = crate::math::broadcast_shape(lhs.raw_dim(), rhs.raw_dim())?;
-
     if !should_parallelize(broadcast_dim.size(), lhs.is_f_contiguous() && rhs.is_f_contiguous()) {
-        return crate::kernel::zip_map_serial(lhs, rhs, &broadcast_dim, f);
+        return crate::kernel::zip_map_serial(lhs, rhs, broadcast_dim, f);
     }
 
-    crate::kernel::zip_map_parallel(lhs, rhs, &broadcast_dim, f)
+    crate::kernel::zip_map_parallel(lhs, rhs, broadcast_dim, f)
 }
 ```
 
 - `par_zip_map()` 是二元逐元素并行路径的统一设计入口，供 `math` 模块中的 `add` / `sub` / `mul` / `div` 广播运算消费，不直接暴露为公开用户 API。
+- `par_zip_map()` 接收的 `lhs`、`rhs` 与 `broadcast_dim` 必须已由调用侧完成兼容性验证；广播裁决（含 `broadcast_shape()`）属于 `math` 模块职责，`parallel/` 不重复做形状推导。
 - 广播处理顺序固定为：先由 `math` 模块验证 `lhs` / `rhs` 广播兼容并产出 `broadcast_dim`，再由 `parallel/` 按逻辑线性区间分块；每个 chunk 为两个输入分别构造与该线性区间对应、且仍与 `broadcast_dim` 兼容的只读 sub-view。若某一侧是广播轴（stride 为 `0` 或逻辑重复维），chunk 视图保持该广播语义，不做物理复制。
 - 错误传播策略与 `par_map_checked()` 一致：广播形状不兼容时立即返回 `XenonError::ShapeMismatch`；worker 内 `Err(XenonError)` 通过 `rayon` 的 `collect::<Result<Vec<_>, _>>()` 立即向外传播；panic 不捕获、不吞掉。
 - 串行回退路径与并行路径共用 `kernel/` 中的私有广播索引与 zip kernel，保证二者使用同一语义基线。
@@ -410,7 +436,8 @@ math / reduction / dot module
 
 - 串并裁决的调用方是 `math`、`reduction`、`dot` 等上层语义模块；这些模块不直接内联阈值和 SIMD 判断，而是调用 `kernel/` 私有 dispatch helper。
 - `kernel/` 是内部调度促进者，不改变公开 API 所有权边界；它负责汇总长度、阈值、线程环境、SIMD 能力和对齐信息，并返回当前调用应走的执行策略。
-- 判定顺序固定：先依据 `len` 与并行阈值、`ParallelGuard` 状态、线程数决定 **serial vs parallel**；只有在已选择 parallel 且工作被切分为 chunk 后，才在每个 chunk 内依据 SIMD 可用性与数据对齐决定 **SIMD vs scalar**。禁止先做 SIMD 判定再反推是否并行。
+- 判定顺序固定：先依据 `len` 与并行阈值、线程数决定是否“有资格并行”，再通过 `ParallelGuard::enter()` 与私有 `ParallelContext` token 检查是否已在并行区域；只有真正进入 parallel 后，才在每个 chunk 内依据 SIMD 可用性与数据对齐决定 **SIMD vs scalar**。禁止先做 SIMD 判定再反推是否并行。
+- `ParallelContext` 采用“显式 token + 私有 dispatch helper”机制，而不是仅靠调用线程 TLS：上层模块一旦进入并行区域，token 会被捕获到 Rayon worker 闭包中，所有内部并行 helper 都必须接收或查询该 token，从而在 worker 线程上也能识别嵌套并行并回退串行。
 - `par_map`、`par_zip_map`、`par_sum`、`par_dot` 都遵守这一路径归属，从而避免不同模块各自维护一份阈值/SIMD 分支逻辑。
 
 ### 6.5 Checked 映射与错误传播
@@ -443,7 +470,7 @@ where
 
 | 主题                             | 论证                                                                                                                                       |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ParallelGuard`                  | 嵌套并行不是公开错误，而是执行策略问题；因此使用 thread-local `Cell<bool>` 记录当前线程是否已处于并行上下文，进入失败时回退串行，析构时自动清理标志，避免库内部再开第二层并行，满足 `Requirements §9.2`。 |
+| `ParallelGuard`                  | 嵌套并行不是公开错误，而是执行策略问题；因此 guard 由私有 dispatch helper 创建，并同时维护调用线程本地标志与可被 worker 捕获的 `ParallelContext` token。进入失败时回退串行，析构时自动清理，避免库内部再开第二层并行，满足 `Requirements §9.2`。 |
 | `Tensor::from_raw_vec_unchecked` | 这里只在输出向量长度与 `tensor.raw_dim()` 已由输入张量长度和映射过程保持一致时使用；并行与串行路径都必须保证产出元素数等于输入逻辑元素数。 |
 | `par_zip_map` broadcast chunking | 每个并行 chunk 仅借用两个输入的只读 broadcast-compatible sub-view；广播轴保持逻辑重复语义，不进行额外物理展开，因此不会引入越界写或悬垂引用。 |
 | panic / `Err` 传播               | 并行 worker 上的 panic 与 `Err(XenonError)` 均不得吞掉或延迟到“全部 worker 完成后再统一检查”；必须沿 `rayon` 传播链即时向外反映。          |
@@ -674,7 +701,7 @@ math / reduction / dot calls dispatch entry
 | Recoverable error | `par_dot()` 的 shape 不兼容返回 `XenonError::ShapeMismatch`；`set_parallel_threshold()` 与 `par_map_with_threshold()` 的非法阈值返回 `XenonError::InvalidArgument` |
 | Panic             | 归约中的整数溢出仍属于不可恢复错误，必须 panic，而不是包装为 `XenonError`                                                                                          |
 | 路径一致性        | 串行 / 并行路径必须返回相同形状、相同错误类别，以及满足同一数值语义约束的结果                                                                                      |
-| 容差边界          | 浮点与复数若存在执行路径相关的已知舍入差异，只能落在 `Requirements §28.3` 允许且已文档化的范围内                                                                     |
+| 容差边界          | 浮点与复数若存在执行路径相关的已知舍入差异，只能落在 `Requirements §28.3` 与 `§28.5` 允许且已文档化的范围内                                                           |
 
 ```rust
 XenonError::ShapeMismatch {
@@ -701,6 +728,12 @@ XenonError::InvalidArgument {
 - panic 与 `Err(XenonError)` 都不得被吞掉或延迟为“全部 worker 完成后再统一检查”。
 - 若无法证明并行路径与串行路径一致，必须回退串行，而不是定义新语义。
 
+### 10.1 浮点/复数并行归约容差
+
+- 浮点与复数并行归约允许与标量路径不同的合并顺序；该差异视为合法实现细节，但必须受 `Requirements §28.3` 文档化容差约束。
+- 与 `08-simd.md` 保持一致：`par_sum()`、`par_dot()` 与其他内部并行归约在浮点或复数输入上，结果相对串行基线的偏差按**每个实数分量最多 2 ULP**约束。
+- 复数按实部、虚部分别适用该上界；若某一并行实现无法满足该容差，则必须回退串行或调整分块/合并策略。
+
 ---
 
 ## 11. 设计决策记录
@@ -723,7 +756,7 @@ XenonError::InvalidArgument {
 | 替代方案 | 允许库内部继续二次并行 —— 放弃，违反需求                                       |
 | 替代方案 | 将嵌套并行视为 recoverable error —— 放弃，会污染公开 API 语义                  |
 
-补充说明：`ParallelPool` 内部调用同样必须经过 `ParallelGuard`。若用户在自定义 pool 中再次调用并行 API，guard 会检测到二次并行并自动回退串行，与全局线程池行为一致；同时不允许嵌套 `ParallelPool` 实例，以避免引入额外调度语义。
+补充说明：`ParallelPool` 内部调用同样必须经过 `ParallelGuard`。若用户在自定义 pool 中再次调用内部并行后端，dispatch helper 会把 `ParallelContext` token 捕获到 Rayon worker 闭包中，并在二次派发时自动回退串行，与全局线程池行为一致；同时不允许嵌套 `ParallelPool` 实例，以避免引入额外调度语义。
 
 ### 决策 3：并行模块不新增专属公开错误类型
 

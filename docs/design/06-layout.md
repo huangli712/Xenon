@@ -2,7 +2,7 @@
 
 > 文档编号: 06 | 模块: `src/layout/` | 阶段: Phase 2
 > 前置文档: `02-dimension.md`
-> 需求参考: 需求说明书 §7
+> 需求参考: 需求说明书 §7, §8, §16, §17, §19, §22, §25, §27, §28
 > 范围声明: 范围内
 
 ---
@@ -56,12 +56,14 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 ## 2. 需求映射与范围约束
 
-| 项目     | 内容                                                             |
-| -------- | ---------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §7                                                    |
-| 范围内   | `LayoutFlags`、`Strides<D>`、F-order 步长/连续性/对齐/零步长语义 |
-| 范围外   | 存储分配、元素访问、C-order、负步长布局支持                      |
-| 非目标   | 引入第三方 bitflags 依赖、多布局系统或运行时可插拔布局后端       |
+| 项目     | 内容                                                                                                 |
+| -------- | ---------------------------------------------------------------------------------------------------- |
+| 需求映射 | 需求说明书 §7、§8、§16、§17、§19、§22、§25、§27、§28                                                 |
+| 范围内   | `LayoutFlags`、`Strides<D>`、F-order 步长/连续性/对齐/零步长语义、转置/广播相关合法布局校验         |
+| 范围外   | 存储分配、元素访问、C-order、负步长布局支持、reshape、into_shape、布局顺序转换                      |
+| 非目标   | 引入第三方 bitflags 依赖、多布局系统、运行时可插拔布局后端，或在当前版本引入 reshape/顺序转换语义   |
+
+> **范围声明**：当前版本不支持 reshape 或布局顺序转换。`Order` 枚举仅用于标识 F-order 连续布局状态。
 
 ---
 
@@ -199,14 +201,14 @@ impl LayoutFlags {
 
 ### 5.1b 内存顺序枚举 Order
 
-`Order` 枚举表示内存排列顺序，供形状操作模块（参见 `16-shape.md §5.1`）在转置等形状元数据操作中明确目标布局。
+`Order` 枚举仅用于标识 “该布局是 F-order 连续布局”。当前版本不支持 reshape、`into_shape` 或布局顺序转换；转置只更新 shape/stride 元数据，不引入新的目标顺序语义。
 
 ```rust
 /// Memory layout order.
 ///
 /// Xenon only supports F-order (column-major) as its native layout.
-/// This enum is provided so that reshape and related operations can
-/// reference the target order explicitly in their APIs.
+/// In the current version, this enum is only used to identify
+/// the F-order contiguous layout state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Order {
     /// Fortran-order (column-major): first index varies fastest.
@@ -217,13 +219,14 @@ pub enum Order {
 }
 ```
 
-`LayoutFlags` 提供从 `Order` 构造标志的便捷方法。`Order` 仅用于显式表达“目标布局仍为 F-order”，不是在当前版本开放多布局支持：
+`LayoutFlags` 提供从 `Order` 构造标志的便捷方法。该能力仅服务于内部元数据表达，不代表当前版本支持顺序转换：
 
 ````rust
 impl LayoutFlags {
     /// Creates a LayoutFlags with F_CONTIGUOUS set (and no other flags).
     ///
-    /// Used by reshape/into_shape to stamp the layout flags of newly created tensors.
+    /// Used internally when metadata construction needs to stamp
+    /// an F-order contiguous layout state.
     ///
     /// # Examples
     /// ```ignore
@@ -406,10 +409,41 @@ i=0: shape[0]=2, stride[0]=3, expected=1 ✗
 Result: false (not F-contiguous)
 ```
 
+### 5.4a 布局合法性与校验规则
+
+当前版本支持的 stride/layout 组合按以下闭合规则判定：
+
+#### 合法 stride 布局族
+
+- **F-order contiguous**：对所有轴满足 `strides[i] == product(shape[0..i])`；对 `shape[i] == 1` 的轴，可按 §5.4 的连续性规则放宽判定。
+- **转置视图（non-contiguous）**：`strides` 是对应 F-order contiguous stride 集合的轴置换结果，且所有 stride 都为正。
+- **广播视图**：广播轴允许 stride 为 `0`；其余非广播轴必须保持 F-order 或转置后的正 stride 模式。
+- **单元素或 0-D**：只要 metadata 可表示且访问范围合法，任意有效 stride 都视为合法。
+
+#### 非法 stride 组合
+
+- **负步长**：当前版本不支持。
+- **可写上下文中的重叠访问**：若多个逻辑索引会写入同一物理位置，则该布局非法；广播视图因此只能作为只读/共享只读视图暴露。
+
+#### 校验规则
+
+- `total_elements = product(shape)`，且计算过程不得溢出 `usize`。
+- `max_accessed_offset = sum(stride[i] * (shape[i] - 1))`（逐轴累加）必须小于底层 storage 的可见长度。
+- 每个 `stride[i]` 都必须可表示为 `isize`，不得发生表示溢出。
+
+#### safe vs unsafe 构造的责任分工
+
+- **Safe constructors**：必须检查以上全部规则；任一条件不满足时返回 `Result::Err`。
+- **Unsafe constructors**：至少检查可验证的 metadata 约束（如 shape/stride 一致性、元素总数与访问范围公式）；指针有效性、生命周期与实际可访问内存范围由调用方保证。
+
 ### 5.5 对齐检查
 
 ```rust
 /// Checks whether the logical-first pointer satisfies the alignment requirement.
+///
+/// # Preconditions
+///
+/// `align` must be greater than 0 and a power of 2.
 #[inline]
 pub fn is_aligned_to(ptr: *const u8, align: usize) -> bool {
     (ptr as usize) % align == 0
@@ -440,10 +474,10 @@ Indices [0, 0], [0, 1], [0, 2], and [0, 3] access the same physical element
 
 ### 5.8 Layout 结构体
 
-> **注意**：`Layout` 结构体目前为"供未来扩展预留"（reserved for future use）。
-> 当前 `TensorBase` 实现直接内联 `LayoutFlags`（见 `07-tensor.md §5.1`）。
+> **注意**：`Layout` 结构体目前为"内部预留，当前版本不作为公开 API"（reserved for future internal use）。
+> 当前 `TensorBase` 实现直接内联 `LayoutFlags`（见 `07-tensor.md §5.1`）；本节保留该结构体仅用于实现草案与未来版本讨论。
 
-```rust
+```rust,ignore
 /// Memory layout descriptor.
 ///
 /// Layout describes memory access pattern flags only.
@@ -529,7 +563,7 @@ pub(crate) fn compute_layout_flags<A, D: Dimension>(
 
 ### 5.10 Good/Bad 对比
 
-```rust
+```rust,ignore
 // Good - F-order stride computation
 let strides = compute_f_strides(&shape);  // [1, 3, 12] for [3,4,5]
 
@@ -537,7 +571,7 @@ let strides = compute_f_strides(&shape);  // [1, 3, 12] for [3,4,5]
 let strides = [1, 3, 12];  // only valid for [3,4,5]
 ```
 
-```rust
+```rust,ignore
 // Good - Query using LayoutFlags
 if tensor.is_f_contiguous() && tensor.is_aligned() {
     // Use SIMD accelerated path
@@ -582,14 +616,14 @@ function compute_flags(shape, strides, ptr):
 
 > 所有 flags 更新规则统一通过 `compute_layout_flags()` 入口执行（参见 §5.9）。
 
-| 操作     | 标志位更新方式                                         |
-| -------- | ------------------------------------------------------ |
-| 创建     | 调用 `compute_layout_flags()` 统一重新计算             |
-| 切片     | 调用 `compute_layout_flags()` 统一重新计算（对齐基于切片后逻辑首元素） |
-| 转置     | 调用 `compute_layout_flags()` 统一重新计算             |
-| Reshape  | 调用 `compute_layout_flags()` 统一重新计算             |
-| 视图创建 | 调用 `compute_layout_flags()` 统一重新计算             |
-| 广播     | 调用 `compute_layout_flags()` 统一重新计算             |
+| 操作     | 标志位更新方式                                                                 |
+| -------- | ------------------------------------------------------------------------------ |
+| 创建     | 调用 `compute_layout_flags()` 统一重新计算                                     |
+| 切片     | 调用 `compute_layout_flags()` 统一重新计算（对齐基于切片后逻辑首元素）         |
+| 转置     | 调用 `compute_layout_flags()` 统一重新计算                                     |
+| 视图创建 | 调用 `compute_layout_flags()` 统一重新计算                                     |
+| 广播     | 调用 `compute_layout_flags()` 统一重新计算                                     |
+| reshape  | **不在当前版本范围内**（`require.md §17` 当前仅允许 transpose）                |
 
 ### 6.4 安全性论证
 
@@ -851,7 +885,7 @@ Upper layers create or transform tensor metadata
 | 方面       | 设计决策                                                   |
 | ---------- | ---------------------------------------------------------- |
 | 布局查询   | O(1)，直接读取缓存的 `LayoutFlags`                         |
-| 步长计算   | O(ndim)，仅在创建/reshape 时计算                           |
+| 步长计算   | O(ndim)，仅在创建、转置视图重算或广播视图校验时计算        |
 | 连续性检查 | O(ndim)，仅在切片/转置后重算                               |
 | 缓存友好性 | F-order 列优先访问与内存布局一致，顺序遍历时缓存命中率最优 |
 

@@ -96,7 +96,7 @@ src/reduction/
 
 | 来源模块 | 使用的类型/trait |
 | -------- | ---------------- |
-| `tensor` | `TensorBase<S, D>`、`Tensor<A, D>`、`.shape()`、`.ndim()`、元素遍历/索引访问接口 |
+| `tensor` | `TensorBase<S, D>`、`Tensor<A, D>`、`.shape()`、`.ndim()`、`.iter()`、`.indexed_iter()`、结果张量构造接口 |
 | `dimension` | `Axis`、`Dimension`、`RemoveAxis`、`D::Smaller` |
 | `element` | `Numeric`、`CheckedAdd`、`ComplexScalar`、`A::zero()` |
 | `error` | `XenonError::InvalidAxis` |
@@ -150,6 +150,8 @@ where
         D: RemoveAxis;
 }
 ````
+
+> **0D 轴归约说明：** 静态 `Ix0` 不实现 `RemoveAxis`，因此 `sum_axis` 在类型层拒绝 0D 输入。这与 `require.md` §14 的可恢复错误要求一致：0D 张量没有可归约的轴，请求本身不合法。
 
 ### 5.2 对外错误契约
 
@@ -263,7 +265,7 @@ fn sum_float<F: Numeric + Copy>(iter: impl Iterator<Item = F>) -> F {
 - 整数路径：`checked_add()` 失败即 panic，不转换为 `XenonError`。
 - 浮点路径：保持标量加法顺序；`NaN`、`Inf` 等行为沿用 IEEE 754。
 - 复数路径：对实部和虚部分量分别沿用对应实数加法语义，因此含 `NaN` 分量时同样传播。
-- SIMD 路径：仅在满足 `require.md` §28.3 数值语义约束时启用；否则回退标量。
+- SIMD 路径：仅在输入满足 `08-simd.md` 约束（例如元素类型与布局前提受支持，且可证明与标量路径语义一致）时启用；否则回退标量。
 - 并行路径：仅在分块归并不会改变可观察结果语义时启用；若无法证明，则回退标量单线程路径。
 
 ### 6.4 安全性论证
@@ -390,7 +392,7 @@ Wave 4:                  [T6]
 | ------ | -------- |
 | `sum(empty) == A::zero()` | 对所有受支持类型生成空输入验证 |
 | `sum_axis_keepdims(axis).shape()[axis] == 1` | 随机合法 shape 与 axis 验证 |
-| `sum_axis(axis)` 与 `sum_axis_keepdims(axis).squeeze(axis)` 等价 | 随机输入验证 |
+| `sum_axis(axis)` 与 `sum_axis_keepdims(axis)` 在移除长度为 `1` 的目标轴后结果等价 | 随机输入验证 |
 | 连续/非连续视图上的 `sum` 结果一致 | 基于切片/转置生成视图后比较 |
 
 ### 8.5 Feature gate / 配置测试

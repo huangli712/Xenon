@@ -153,12 +153,22 @@ Storage mode taxonomy
 
 | 存储模式             |   拥有数据    | 可读 |              可写              | 克隆语义            | 分配方式                        |
 | -------------------- | :-----------: | :--: | :----------------------------: | ------------------- | ------------------------------- |
-| `Owned<A>`           |      ✅       |  ✅  |               ✅               | 深拷贝              | 64 字节对齐堆分配（ZST 不分配） |
+| `Owned<A>`           |      ✅       |  ✅  |               ✅               | 深拷贝              | 当前默认实现为 64 字节对齐堆分配（可配置；ZST 不分配） |
 | `ViewRepr<'a, A>`    |   ❌ (借用)   |  ✅  |               ❌               | O(1) 元数据拷贝     | 无分配                          |
 | `ViewMutRepr<'a, A>` | ❌ (独占借用) |  ✅  |               ✅               | 不可克隆            | 无分配                          |
 | `ArcRepr<A>`         |   ✅ (共享)   |  ✅  | 仅通过 CoW 生成独占 owned 数据 | 浅拷贝 (引用计数+1) | 共享对齐缓冲，写时按需深拷贝    |
 
 > **术语澄清：** `require.md` §6.2 的“共享只读引用”描述的是抽象访问语义，而不是唯一具体表示。对拥有型来源，Xenon 用 `ArcRepr<A>` 表达可共享底层缓冲区的只读结果；对 `ViewMutRepr<'a, A>` 的零拷贝降级，Xenon 用 `ViewRepr<'a, A>` 表达放弃写权限后的只读重借用。两者都满足“共享只读、不提供写访问”的语义，只是前者共享所有权，后者共享借用生命周期。`make_mut()` 只是 `ArcRepr<A>` 从共享只读状态显式转入独占 owned 缓冲的实现机制；它不意味着 `ArcRepr<A>` 本身提供共享可写访问，也不意味着它实现 `StorageMut`。
+
+#### 抽象模式 ↔ 具体表示 对照表
+
+| 抽象模式 | 具体表示 | 适用语境 / 说明 |
+| -------- | -------- | --------------- |
+| `Owned` | `Owned<A>` | 拥有底层分配，可零拷贝借出只读 / 可写视图，也可零拷贝降级为共享只读 |
+| `WritableRef` | `ViewMutRepr<'a, A>` | 基于独占借用的可写引用 |
+| `ReadOnlyRef` | `ViewRepr<'a, A>` | 普通只读借用视图 |
+| `SharedReadOnlyRef` | `ArcRepr<A>` | 来自拥有型来源时的共享只读表示，提供共享所有权 |
+| `SharedReadOnlyRef` | `ViewRepr<'a, A>` | 来自 `ViewMutRepr<'a, A>` 零拷贝降级时的共享只读表示；共享的是借用生命周期而非所有权 |
 
 #### 设计权衡对比
 
@@ -223,7 +233,11 @@ pub unsafe trait RawStorage {
         (self.as_ptr() as usize) % align == 0
     }
 
-    /// Checks if the storage is 64-byte aligned (required for AVX-512 optimizations).
+    /// Checks if the storage satisfies the current default alignment (64 bytes).
+    ///
+    /// Note: 64 bytes is the current default implementation choice for SIMD-
+    /// friendly owned buffers, not a hard requirement of the storage model.
+    /// Callers needing a different alignment should use `is_aligned_to()`.
     #[inline]
     fn is_aligned(&self) -> bool {
         self.is_aligned_to(64)
@@ -433,6 +447,9 @@ pub unsafe trait StorageShared: Storage + Clone {
     /// implemented for `ArcRepr<A>`, and must not be interpreted as a public
     /// zero-copy `ArcRepr<A> -> Owned<A>` conversion.
     ///
+    /// NOTE: This is NOT a shared-writable mode. It triggers copy-on-write,
+    /// producing exclusive `&mut` access.
+    ///
     /// The returned mutable slice is only an internal CoW access path.
     /// Public `into_owned_storage()` for `ArcRepr<A>` still allocates and
     /// copies regardless of reference count, per `require.md` §6.2.
@@ -507,14 +524,14 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
 | `ArcRepr<A>`         | `ViewRepr<'_, A>`    | O(1)        | 共享只读借用                             |
 | `ArcRepr<A>`         | `Owned<A>`           | O(n)        | 总是分配新的独占缓冲并复制数据；不提供条件零拷贝 |
 
-| 源 \ 目标            | `Owned<A>`                  | `ViewRepr<'_, A>`       | `ViewMutRepr<'_, A>`        | `ArcRepr<A>`                  |
-| -------------------- | --------------------------- | ----------------------- | --------------------------- | ----------------------------- |
-| `Owned<A>`           | —                           | 零拷贝                  | 零拷贝                      | 零拷贝                        |
-| `ViewRepr<'_, A>`    | 须分配                      | —                       | 不可转换                    | 不可转换                      |
-| `ViewMutRepr<'_, A>` | 须分配                      | 零拷贝                  | —                           | 不可转换                      |
-| `ArcRepr<A>`         | 须分配                      | 零拷贝                  | 不可转换                    | —                             |
+| 抽象源（具体表示） | `ReadOnlyRef` | `SharedReadOnlyRef` | `WritableRef` | `Owned` |
+| ------------------ | ------------- | ------------------- | ------------- | ------- |
+| `Owned` (`Owned<A>`) | `Owned<A> -> ViewRepr<'_, A>`：零拷贝 | `Owned<A> -> ArcRepr<A>`：零拷贝 | `Owned<A> -> ViewMutRepr<'_, A>`：零拷贝 | — |
+| `WritableRef` (`ViewMutRepr<'_, A>`) | `ViewMutRepr<'_, A> -> ViewRepr<'_, A>`：零拷贝 | `ViewMutRepr<'_, A> -> ViewRepr<'_, A>`：零拷贝；此处 `ViewRepr` 充当基于借用的 shared-readonly 表示，满足 `require.md` §6.2 | — | `ViewMutRepr<'_, A> -> Owned<A>`：须分配 |
+| `ReadOnlyRef` (`ViewRepr<'_, A>`) | — | `ViewRepr<'_, A> -> ArcRepr<A>`：不可转换 | `ViewRepr<'_, A> -> ViewMutRepr<'_, A>`：不可转换 | `ViewRepr<'_, A> -> Owned<A>`：须分配 |
+| `SharedReadOnlyRef` (`ArcRepr<A>` / 降级后的 `ViewRepr<'_, A>`) | `ArcRepr<A> -> ViewRepr<'_, A>`：零拷贝；若来源已是降级后的 `ViewRepr`，则为同一借用语义下的只读重借用 | — | `ArcRepr<A> -> ViewMutRepr<'_, A>`：不可转换；降级后的 `ViewRepr` 同样不可恢复写权限 | `ArcRepr<A> -> Owned<A>`：须分配；降级后的 `ViewRepr<'_, A>` 亦须分配 |
 
-> **补充说明：** 上表按四种具体存储表示细化 `require.md` §6.2 的抽象规则：零拷贝表示仅重借用、共享只读降级或降级访问权限；须分配表示需要分配新的 owned 缓冲并复制数据；不可转换表示 Rust 类型系统下无法在不违反所有权/独占借用约束的前提下完成该转换，例如 `ViewRepr<'_, A> → ArcRepr<A>` 与 `ArcRepr<A> → ViewMutRepr<'_, A>`。
+> **补充说明：** 上表逐格对应 `require.md` §6.2 的抽象转换矩阵，并把每个抽象格子落实为具体表示路径：零拷贝表示仅重借用、共享只读降级或降级访问权限；须分配表示需要分配新的 owned 缓冲并复制数据；不可转换表示 Rust 类型系统下无法在不违反所有权/独占借用约束的前提下完成该转换，例如 `ViewRepr<'_, A> -> ArcRepr<A>` 与 `ArcRepr<A> -> ViewMutRepr<'_, A>`。
 
 > **类型安全论证**：`ViewMutRepr<'a, A>` 的零拷贝降级路径是只读重借用 `ViewRepr<'a, A>`，其语义与 `require.md` §6.2 对“可写引用 → 共享只读引用 = 零拷贝”的要求一致：结果显式放弃写权限，且在该只读结果存续期间不得再并发写入同一底层数据。相对地，`ViewMutRepr<'a, A>` 不持有底层分配所有权，因此仍不能在零拷贝前提下构造 `ArcRepr<A>` 所需的共享所有权句柄。
 
@@ -650,14 +667,17 @@ impl<A> Owned<A> {
 }
 ```
 
-### 6.2 64 字节对齐分配器
+### 6.2 当前默认 64 字节对齐分配器
 
 ```rust
-/// 64-byte aligned memory allocator.
+/// Aligned memory allocator.
 pub struct AlignedAlloc;
 
 impl AlignedAlloc {
-    /// Default alignment: 64 bytes.
+    /// Current default alignment: 64 bytes.
+    ///
+    /// This default is configurable and is not a hard requirement of the
+    /// storage abstraction itself.
     pub const DEFAULT_ALIGNMENT: usize = 64;
 
     /// Allocates a memory block of the given size and alignment, without initialization.
@@ -685,7 +705,7 @@ impl AlignedAlloc {
 }
 ```
 
-**分配策略说明**：为保持文档与当前设计一致，`AlignedAlloc` 不提供“小数组回退到普通分配”的分支。除 ZST 与 `len == 0` 这两类显式跳过分配的情形外，所有真实堆分配都统一使用 64 字节对齐。
+**分配策略说明**：当前默认实现选择 64 字节对齐，以匹配 SIMD 友好的 owned 缓冲策略；这是一项实现选择，而不是 `require.md` 所要求的唯一对齐值。对齐值可配置。为保持文档与当前设计一致，`AlignedAlloc` 不提供“小数组回退到普通分配”的分支。除 ZST 与 `len == 0` 这两类显式跳过分配的情形外，当前默认实现的真实堆分配统一使用该默认对齐值。
 
 **安全性论证**：`AlignedAlloc` 使用 `alloc::alloc::Layout` 确保对齐值是 2 的幂且总大小合法。分配失败时调用 `handle_alloc_error` 而非返回空指针，避免 UB。
 
@@ -1002,6 +1022,15 @@ Wave 4:              [T12] → [T13]
 
 ## 9. 模块交互设计
 
+### 9.0 接口约定
+
+| 方向 | 对方模块 | 接口/类型 | 约定 |
+| ---- | -------- | --------- | ---- |
+| 消费（输入） | `layout` | `Strides` 及其辅助接口 | 仅引用 `06-layout.md` 已定义的 `from_slice()` / `iter()` / `as_slice()` 等能力；storage 不重复定义 layout API |
+| 产出（输出） | `tensor` | `Storage` / `StorageMut` / `StorageOwned` / `StorageShared`，以及 `Owned<A>` / `ViewRepr<'a, A>` / `ViewMutRepr<'a, A>` / `ArcRepr<A>` | `TensorBase<S, D>` 通过 `S: Storage` 或 `S: StorageMut` 消费底层存储；`TensorBase` 负责解释 `offset` / `shape` / `strides` |
+| 产出（输出） | `parallel` | `S: Storage + Sync` 或 `S: StorageMut + Send` | 并行路径只能在满足 Send/Sync 前提时消费 storage；不得突破共享只读 / 独占可写边界 |
+| 产出（输出） | `iter` / `ffi` | `as_ptr()` / `as_slice()` / `into_raw()` | 上层仅消费 storage-visible backing range；不得把 storage API 误解为逻辑张量切片 |
+
 ### 9.1 与 Tensor 模块
 
 `TensorBase<S, D>` 的 `S` 参数约束为 `Storage` 或 `StorageMut`，通过关联类型 `Elem` 获取元素类型（参见 `07-tensor.md` §5）：
@@ -1069,7 +1098,7 @@ User calls `TensorBase::as_ptr()`
 
 | 属性     | 值                                                                                        |
 | -------- | ----------------------------------------------------------------------------------------- |
-| 决策     | 使用 64 字节作为默认对齐                                                                  |
+| 决策     | 当前默认实现使用 64 字节作为默认对齐；该默认值可配置，且不构成需求层硬约束                 |
 | 理由     | AVX-512 缓存行大小；现代 CPU 缓存行通常 64 字节；满足 SSE/AVX/AVX2/AVX-512 所有 SIMD 指令 |
 | 替代方案 | 16 字节 — 放弃，AVX-512 未对齐                                                            |
 | 替代方案 | 32 字节 — 放弃，AVX-512 未对齐                                                            |
@@ -1078,8 +1107,8 @@ User calls `TensorBase::as_ptr()`
 
 | 属性     | 值                                                                                                       |
 | -------- | -------------------------------------------------------------------------------------------------------- |
-| 决策     | `ArcRepr` 通过 `StorageShared::make_mut()` 触发 CoW 并转入独占 owned 缓冲，不实现 `StorageMut`           |
-| 理由     | 可变访问涉及潜在 O(n) 复制，显式调用让用户知晓性能影响，并保持“当前版本不提供共享可写存储模式”的需求边界 |
+| 决策     | `ArcRepr` 通过 `StorageShared::make_mut()` 触发 CoW 并转入独占 owned 缓冲，不实现 `StorageMut`；`make_mut()` 仅是内部 CoW 机制，不构成共享可写模式 |
+| 理由     | 可变访问涉及潜在 O(n) 复制，显式调用让用户知晓性能影响；返回的 `&mut` 是复制后或唯一所有权下的独占访问，并保持“当前版本不提供共享可写存储模式”的需求边界 |
 | 替代方案 | 实现 `StorageMut` — 放弃，隐藏 CoW 成本                                                                  |
 
 ### 决策 3：ArcRepr 作为统一 trait 体系的一部分

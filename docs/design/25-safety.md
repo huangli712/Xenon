@@ -9,7 +9,11 @@
 
 ## 1. 主题定位与适用范围
 
+> **文档定位说明：** 本文档为横切规范文档，关注线程安全性约束的跨模块适用。部分模块化章节（如文件位置、公共 API）仅用于补充说明，主线为约束定义与验证。
+
 线程安全是 Xenon 的横切关注点，贯穿所有存储模式和计算后端。本文档定义各存储模式（参见 `05-storage.md §5`）的 `Send`/`Sync` 实现规则，确保 Xenon 张量（参见 `07-tensor.md §5`）可在多线程环境下安全使用。
+
+> **范围注记：** workspace 的线程安全属性参见 `24-workspace.md`；本文不将 workspace 纳入 `require.md §10` 的存储模式线程安全矩阵。
 
 ### 1.1 职责边界
 
@@ -50,28 +54,30 @@ Cross-cutting concern:
 
 ### 1.4 线程安全在 Xenon 中的重要性
 
-| 场景         | 线程安全需求                      |
-| ------------ | --------------------------------- |
-| 并行迭代     | 多线程同时访问不同元素区间        |
-| 跨线程共享   | 通过 ArcRepr 在线程间传递只读数据 |
-| 写时复制     | ArcRepr::make_mut() 的原子性保证  |
-| 数据竞争预防 | 确保 ViewMutRepr 独占访问不被共享 |
-| rayon 集成   | ParallelIterator 要求 Send 约束   |
+| 场景         | 线程安全需求                       |
+| ------------ | ---------------------------------- |
+| 并行迭代     | 多线程同时访问不同元素区间         |
+| 跨线程共享   | 通过 ArcRepr 在线程间传递只读数据  |
+| 写时复制     | ArcRepr::make_mut() 的独占访问保证 |
+| 数据竞争预防 | 确保 ViewMutRepr 独占访问不被共享  |
+| rayon 集成   | ParallelIterator 要求 Send 约束    |
 
 ## 2. 需求映射与范围约束
 
-| 类型     | 内容                                                                 |
-| -------- | -------------------------------------------------------------------- |
-| 需求映射 | `require.md §10`                                                     |
-| 范围内   | `Send`/`Sync` 规则、并行安全边界、广播只读约束、跨线程访问证明       |
-| 范围外   | 异步运行时、锁封装策略、通用并发原语抽象                             |
-| 非目标   | 通过线程安全规范引入新的同步原语、运行时锁或额外第三方并发依赖       |
+| 类型     | 内容                                                           |
+| -------- | -------------------------------------------------------------- |
+| 需求映射 | `require.md §10`                                               |
+| 范围内   | `Send`/`Sync` 规则、并行安全边界、广播只读约束、跨线程访问证明 |
+| 范围外   | 异步运行时、锁封装策略、通用并发原语抽象                       |
+| 非目标   | 通过线程安全规范引入新的同步原语、运行时锁或额外第三方并发依赖 |
 
 ---
 
 ## 3. 文件位置
 
 线程安全实现散布于各存储模块中，不单独创建文件：
+
+> **命名说明：** 以下 API 名称为当前候选方案，最终命名以实现为准。
 
 ```
 src/
@@ -82,7 +88,7 @@ src/
 │   ├── view_mut.rs     # Send/Sync impls for ViewMutRepr<'a, A>
 │   └── arc.rs          # Send/Sync impls for ArcRepr<A>
 ├── parallel/
-│   ├── mod.rs          # ParallelGuard, nested parallelism guard
+│   ├── mod.rs          # Nested parallelism guard candidates
 │   └── par_iter.rs     # Thread-safety constraints for ParElements
 └── simd/
     └── mod.rs          # Thread-safe initialization of the Arch cache
@@ -108,11 +114,11 @@ src/parallel/
 
 ### 4.2 依赖精确到类型级
 
-| 来源模块       | 使用的类型/trait                                                 |
-| -------------- | ---------------------------------------------------------------- |
-| `core::marker` | `PhantomData<A>`, `Send`, `Sync`                                 |
-| `std::sync`    | `Arc<Vec<A>>`, `AtomicUsize`                                     |
-| `std::cell`    | `Cell<usize>`, `Cell<Option<usize>>`                             |
+| 来源模块       | 使用的类型/trait                                                   |
+| -------------- | ------------------------------------------------------------------ |
+| `core::marker` | `PhantomData<A>`, `Send`, `Sync`                                   |
+| `std::sync`    | `Arc<Vec<A>>`, `AtomicUsize`                                       |
+| `std::cell`    | `Cell<usize>`, `Cell<Option<usize>>`                               |
 | `rayon::iter`  | `ParallelIterator` (要求 `Item: Send`，参见 `09-parallel.md §5.3`) |
 
 ### 4.3 依赖方向声明
@@ -121,19 +127,19 @@ src/parallel/
 
 ### 4.4 依赖合法性与新增依赖说明
 
-| 项目           | 说明                                                               |
-| -------------- | ------------------------------------------------------------------ |
-| 新增第三方依赖 | 无新增依赖；仅复用既有 `rayon` 可选依赖与标准库同步原语            |
-| 合法性结论     | 符合最小依赖限制                                                   |
-| 替代方案       | 不适用；线程安全约束优先通过 Rust 类型系统与既有模块实现表达       |
+| 项目           | 说明                                                         |
+| -------------- | ------------------------------------------------------------ |
+| 新增第三方依赖 | 无新增依赖；仅复用既有 `rayon` 可选依赖与标准库同步原语      |
+| 合法性结论     | 符合最小依赖限制                                             |
+| 替代方案       | 不适用；线程安全约束优先通过 Rust 类型系统与既有模块实现表达 |
 
 ---
 
 ## 5. 公共 API 设计
 
-> **权威来源对齐：** 本文档的 Send/Sync 权威定义以 `05-storage.md §5.3` 和 `00-coding.md §3.4` 为基准；如存在冲突，以本文档为准，并要求同步回写相关设计文档。
+> **权威来源对齐：** 本文档的 Send/Sync 定义以 `05-storage.md §5.3`、`00-coding.md §3.4` 与 `require.md` 为基准；若与其他设计文档冲突，以 `require.md` 为规范基线解决，并同步修正相关文档。
 
-> **注意：** 本文档与 `05-storage.md §5.7` 采用同一组 Send/Sync 规则。若后续出现冲突，以本文档作为线程安全裁决源，并同步回写到存储文档。
+> **注意：** 本文档与 `05-storage.md §5.7` 采用同一组 Send/Sync 规则；若后续出现不一致，应按 `require.md` 统一校正并同步回写相关设计文档。
 
 ### 5.1 Send/Sync 实现规则表
 
@@ -161,17 +167,16 @@ src/parallel/
 | `ViewMutRepr<'a, A>` where A: Send     | ✅ Send                    | ❌ (exclusive borrow)      |
 | `ArcRepr<A>` where A: Send + Sync      | ✅ Send                    | ✅ Sync                    |
 
-> **说明**: `D: Dimension` 要求 `Dimension: Send + Sync`，因此维度类型始终线程安全。
+> **说明**: `D: Dimension` 要求 `Dimension: Send + Sync`；所有 Dimension 类型（`Ix0`-`Ix6`, `IxDyn`）内部仅包含 Copy 类型的值数组或 `Vec<usize>`，因此自动满足 `Send + Sync`。
 
 ### 5.2.1 安全违规分类表
 
-| 安全违规类型 | 检测层级 | 处理方式 |
-| ------------ | -------- | -------- |
-| 存储模式不支持可写操作 | 类型层（编译期） | 通过 trait 约束拒绝 |
-| 广播结果尝试可变访问 | 类型层（编译期） | 通过返回类型拒绝 |
-| 并行中二次并行 | 运行时（ParallelGuard） | 自动回退串行路径 |
-| Workspace 违规借用 | 运行时（AtomicU8） | 返回 `XenonError::Workspace(AlreadyBorrowed)` |
-| 整数溢出 | 运行时（checked arithmetic） | panic（不可恢复） |
+| 安全违规类型           | 检测层级                     | 处理方式            |
+| ---------------------- | ---------------------------- | ------------------- |
+| 存储模式不支持可写操作 | 类型层（编译期）             | 通过 trait 约束拒绝 |
+| 广播结果尝试可变访问   | 类型层（编译期）             | 通过返回类型拒绝    |
+| 并行中二次并行         | 运行时（嵌套并行防护机制）   | 自动回退串行路径    |
+| 整数溢出               | 运行时（checked arithmetic） | panic（不可恢复）   |
 
 ### 5.3 Owned<A> 的 Send/Sync
 
@@ -319,10 +324,11 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 /// 3. **Read-only sharing**: When multiple `ArcRepr`s share the same data, they can only read.
 ///    Writing requires obtaining exclusive access via `make_mut()`.
 ///
-/// 4. **make_mut atomicity**: `Arc::make_mut` guarantees:
-///    - Atomically check the reference count
-///    - If >1, copy the data and atomically decrement the original reference count
-///    - No data races
+/// 4. **COW exclusivity**: Safety relies on the exclusive access guaranteed by
+///    `&mut Arc<_>`. `make_mut` checks uniqueness through `Arc::get_mut()`;
+///    if the strong count is 1, it returns `&mut` directly, otherwise it deep-clones
+///    the data and then returns `&mut`. This is not an atomic transaction; it is
+///    a safe operation guaranteed by Rust's borrowing rules.
 ///
 /// **Counter-example: if `A` is not `Send + Sync`**
 ///
@@ -578,7 +584,7 @@ Wave 2:            [T5]
 | `test_chunks_cover_all`       | 分块覆盖所有元素                          | 中     |
 | `test_chunks_no_overlap`      | 分块不重叠                                | 中     |
 | `test_owned_cross_thread`     | Owned 跨线程移动                          | 中     |
-| `test_arc_make_mut_threading` | make_mut 原子性验证                       | 低     |
+| `test_arc_make_mut_threading` | make_mut 写时复制独占性验证               | 低     |
 
 ### 8.3 编译期静态检查模板
 
@@ -631,9 +637,9 @@ fn arc_send_sync() {
 
 ### 8.6 集成测试
 
-| 测试文件                      | 测试内容                                                                                              |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `tests/test_thread_safety.rs` | `Owned` / `View` / `ViewMut` / `ArcTensor` 与 `parallel`、`workspace`、跨线程传递场景的端到端协同验证 |
+| 测试文件                      | 测试内容                                                                                 |
+| ----------------------------- | ---------------------------------------------------------------------------------------- |
+| `tests/test_thread_safety.rs` | `Owned` / `View` / `ViewMut` / `ArcTensor` 与 `parallel`、跨线程传递场景的端到端协同验证 |
 
 ### 8.7 多线程传递测试
 
@@ -674,20 +680,20 @@ fn test_arc_concurrent_access() {
 
 ### 8.8 Feature gate / 配置测试
 
-| 配置        | 验证点                                                      |
-| ----------- | ----------------------------------------------------------- |
-| 默认配置    | `Send`/`Sync` 规则在无并行后端时仍成立                      |
-| 启用并行    | `par_iter` / 基于 `par_zip_map` 的并行逐元素执行仅接受满足线程安全边界的类型 |
-| 启用 SIMD   | SIMD 与线程安全规则正交，不引入共享可变状态                 |
-| 全 feature  | 组合启用时线程安全约束与回退策略保持一致                    |
+| 配置       | 验证点                                                      |
+| ---------- | ----------------------------------------------------------- |
+| 默认配置   | `Send`/`Sync` 规则在无并行后端时仍成立                      |
+| 启用并行   | `par_iter` / 并行逐元素执行路径仅接受满足线程安全边界的类型 |
+| 启用 SIMD  | SIMD 与线程安全规则正交，不引入共享可变状态                 |
+| 全 feature | 组合启用时线程安全约束与回退策略保持一致                    |
 
 ### 8.9 类型边界 / 编译期测试
 
-| 场景                               | 测试方式                                   |
-| ---------------------------------- | ------------------------------------------ |
-| `Owned<A>` 的 `Send`/`Sync` 传播    | 编译期断言辅助函数                         |
-| `ViewMutRepr` 永不实现 `Sync`       | 编译期负向断言或等价约束验证               |
-| 非 `Send` / `Sync` 元素被拒绝       | 编译期失败测试或手写 trait 边界检查        |
+| 场景                             | 测试方式                            |
+| -------------------------------- | ----------------------------------- |
+| `Owned<A>` 的 `Send`/`Sync` 传播 | 编译期断言辅助函数                  |
+| `ViewMutRepr` 永不实现 `Sync`    | 编译期负向断言或等价约束验证        |
+| 非 `Send` / `Sync` 元素被拒绝    | 编译期失败测试或手写 trait 边界检查 |
 
 ---
 
@@ -730,8 +736,8 @@ fn test_arc_concurrent_access() {
 After a storage type is created or borrowed
     │
     ├── safety documentation first defines its minimum Send / Sync constraints
-    ├── the parallel module uses that to decide which tensors may enter parallel paths such as par_iter / par_zip_map
-    ├── thread-local components such as workspace are explicitly excluded from cross-thread sharing
+    ├── the parallel module uses that to decide which tensors may enter parallel paths such as par_iter / parallel element-wise execution
+    ├── workspace-related thread-safety rules remain in the dedicated workspace design document
     └── cross-thread safety is ultimately guaranteed by the type system plus a small number of runtime constraints
 ```
 
@@ -762,27 +768,20 @@ After a storage type is created or borrowed
 
 rayon 的 `ParallelIterator` 要求 `Item: Send`（参见 `09-parallel.md §5.3`）：
 
-| 存储模式                  | `par_iter()` | 基于 `par_zip_map` 的并行逐元素写路径 | 约束                                                                                 |
-| ------------------------- | :----------: | :----------------------------------: | ------------------------------------------------------------------------------------ |
-| `Tensor<A, D>` (Owned)    |      ✅      |                 ✅                  | `A: Send + Sync`                                                                     |
-| `TensorView<'a, A, D>`    |      ✅      |                 ❌                  | `A: Sync`                                                                            |
-| `TensorViewMut<'a, A, D>` | ⚠️ 条件支持  |                 ✅                  | `par_iter()` 需先显式降级为只读视图；并行写路径要求独占借用且块划分不重叠               |
-| `ArcTensor<A, D>`         |      ✅      |          ❌ (需 make_mut)           | `A: Send + Sync`                                                                     |
+| 存储模式                  | `par_iter()` | 并行逐元素写路径 | 约束                                                                      |
+| ------------------------- | :----------: | :--------------: | ------------------------------------------------------------------------- |
+| `Tensor<A, D>` (Owned)    |      ✅      |        ✅        | `A: Send + Sync`                                                          |
+| `TensorView<'a, A, D>`    |      ✅      |        ❌        | `A: Sync`                                                                 |
+| `TensorViewMut<'a, A, D>` | ⚠️ 条件支持  |        ✅        | `par_iter()` 需先显式降级为只读视图；并行写路径要求独占借用且块划分不重叠 |
+| `ArcTensor<A, D>`         |      ✅      | ❌ (需 make_mut) | `A: Send + Sync`                                                          |
 
-### 9.5 与 workspace 模块的交互
+### 9.5 与 workspace 模块的边界
 
-Workspace 模块的 `split_at`/`split_at_mut` 使用原子引用计数（`AtomicUsize`）管理分割守卫的生命周期。安全性保证：
-
-- `split_at()` 设置 `split_count = 2`（二分产生 2 个子空间）
-- `split_at_mut()` 原子递增 `split_count`（递归分割产生净 +1 个活跃守卫）
-- 每个 `SplitBorrowMut::drop()` 原子递减 `split_count`，仅在 `prev == 1` 时重置 `borrow_state`
-- 这确保所有子空间（包括递归产生的）全部释放后，workspace 才可被重新借用
-
-详细设计和安全性论证参见 `24-workspace.md §5.7` 和 `24-workspace.md §6.3`。
+workspace 的线程安全规则、借用状态机与分割守卫生命周期不属于本文档范围，统一参见 `24-workspace.md §5.7` 与 `24-workspace.md §6.3`。本文仅要求并行与张量存储相关设计在引用 workspace 时，不得与该文档定义的线程安全边界冲突。
 
 #### TensorViewMut 的并行逐元素写路径安全性论证
 
-`TensorViewMut` 仅在**显式独占借用**场景下支持基于 `par_zip_map` 的并行逐元素写路径；若需要并行只读访问，应先通过只读重借用转换为 `TensorView` 后再调用 `par_iter()`。其安全性基于以下保证：
+`TensorViewMut` 仅在**显式独占借用**场景下支持并行逐元素写路径；若需要并行只读访问，应先通过只读重借用转换为 `TensorView` 后再调用 `par_iter()`。其安全性基于以下保证：
 
 1. **独占语义**：`TensorViewMut` 持有 `&mut [A]`，Rust 借用规则保证在任意时刻只有唯一的可变访问者
 2. **分块不重叠**：并行逐元素写路径会将数据按块分割，每个线程获得独占的 `&mut [A]` 切片，块之间无重叠

@@ -314,6 +314,8 @@ where
 > `impl<T> Add<TensorBase<...>> for T` 这种 blanket impl。当前文档应把稳定承诺调整为：
 > `tensor + scalar` 必须支持；常用原生 `scalar + tensor` 建议按具体类型提供；`Scalar<A>` 保留为统一的泛型左标量补充接口。
 
+> **标量路径返回说明：** 标量路径无形状不兼容风险，不返回 `Result`；运算符返回 `Tensor` 直接。整数溢出仍遵循 panic 语义。
+
 > **说明**：当前版本**不**稳定承诺 `&A` 形式的标量运算符重载。公开契约仅保证值形式 `tensor + scalar`、`Scalar(scalar) + tensor`，以及常用原生左标量（如 `5.0 + tensor`）。若后续版本需要 `&A` 支持，应以独立议题评估。
 
 > **说明**：`Scalar<A>` 同样适用于 `TensorView` 和 `TensorViewMut` 的标量运算。
@@ -537,6 +539,7 @@ Wave 5:      [T6]
 | ---- | ---- |
 | 默认配置 | 运算符语法在纯标量后端下与方法型 API 语义保持一致，包括广播失败返回 `Result::Err`。 |
 | 启用 `simd` | 通过 `math` 委托的 SIMD 路径不改变广播、`Result` 与结果所有权语义。 |
+| 启用并行 | 通过 `math` 委托的并行路径不改变广播、错误边界与结果所有权语义。 |
 
 ### 8.7 类型边界 / 编译期测试
 
@@ -545,6 +548,9 @@ Wave 5:      [T6]
 | `AddAssign` / `SubAssign` / `MulAssign` / `DivAssign` 不属于当前 API | API 缺失断言。 |
 | bitwise / comparison operators 不在本模块范围内 | 编译期失败测试或 API 缺失断言。 |
 | 常用原生左标量仅对受支持具体类型提供实现 | 编译期测试。 |
+| `bool` 不参与四则运算符重载 | compile-fail 测试。 |
+| `usize` 不属于运算符元素类型 | compile-fail 测试。 |
+| 混合元素类型（如 `Tensor<f64> + Tensor<i32>`）不自动提升 | compile-fail 测试。 |
 
 ---
 

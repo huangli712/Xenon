@@ -18,7 +18,7 @@
 | 基础方法          | `re()`, `im()`, `conj()`, `is_real()`, `is_imaginary()`                                           | —                                                                                           |
 | 数学方法          | `norm()`（hypot）, `arg()`, `exp()`, `ln()`, `sqrt()`                                             | 复数 FFT、高阶复数运算                                                                      |
 | 算术运算          | Complex±Complex, Complex×Complex, Complex÷Complex, 一元负号                                       | 跨精度混合运算                                                                              |
-| 实数混合运算      | 同精度：`Complex<f32> op f32`、`Complex<f64> op f64`；左侧实数通过 `Complex::from(real)` 显式转换 | 跨精度：`f32+Complex<f64>`（须显式转换）                                                    |
+| 实数混合运算      | 同精度标量便捷：`Complex<f32> op f32`、`Complex<f64> op f64`；张量级运算前须先显式转为 `Complex<T>` | 跨精度：`f32+Complex<f64>`（须显式转换）；将该类标量便捷 impl 直接外推为张量级重载            |
 | 格式化输出        | Display（`"a+bj"` / `"a-bj"`）, Debug                                                             | —                                                                                           |
 | 双字段 C 布局基础 | `#[repr(C)]` + 编译期静态断言                                                                     | 跨精度混合运算                                                                              |
 | 类型转换          | `Complex<f32>↔Complex<f64>`, `f32/f64→Complex`, `i32/i64→Complex`                                 | 未在 `require.md` §23.1 列出的额外整数→复数组合                                               |
@@ -66,7 +66,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 | 范围外   | `num-complex` 兼容层、跨精度混合运算、FFT 与高阶复数算法        |
 | 非目标   | 引入第三方复数库依赖、开放任意 `T` 的公开实例化或 `_Complex` ABI 保证 |
 
-> **当前版本范围声明**：本版本仅支持 `Complex<T> op T`（右侧实数）与 `Complex<T> op Complex<T>` 的混合运算。左侧实数运算（`T op Complex<T>`）不在当前版本范围内，原因是其对 Rust trait 系统的 impl 冲突需要额外设计（如 newtype wrapper 或专门 trait）。若后续版本需要支持，须单独设计并遵守 `require.md` §5 的约束——双方元素类型须预先一致，因此 `T op Complex<T>` 中的 `T` 须与 `Complex<T>` 的分量类型 `T` 相同。
+> **当前版本范围声明**：本版本保留 `Complex<T> op T`（右侧实数）的**标量级便捷实现**与 `Complex<T> op Complex<T>` 运算。前者仅用于单个复数值与同精度实数值的便捷组合，**不直接适用于张量逐元素运算或 `19-overload.md` 的运算符重载设计**。根据 `require.md` §5，涉及实数与复数的张量逐元素运算、运算符重载及相关 API 组合时，参与运算双方的元素类型须预先一致；用户须先将实数显式转换为 `Complex<T>`，再进入张量级运算。左侧实数运算（`T op Complex<T>`）仍不在当前版本范围内，若后续版本需要支持，须单独设计并继续满足上述同类型前提。
 
 ---
 
@@ -76,10 +76,14 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 src/complex/
 ├── mod.rs     # Complex<T> definition, basic methods, math methods, PartialEq, Display, layout checks
 ├── ops.rs     # Arithmetic operator impls (Add/Sub/Mul/Div/Neg + real/complex mixed ops)
-└── cast.rs    # Type conversions (Complex<f32>↔Complex<f64>, real→complex)
+
+src/convert/
+└── cast.rs    # CastTo-based conversion implementations, including Complex-related paths
 ```
 
-三文件设计：核心定义、运算、类型转换职责分离。运算和转换高度独立，可并行开发。
+文件职责按模块 owner 划分：`complex/` 负责类型定义与运算；`CastTo` trait 定义位于 `element` 模块；复数相关的转换实现归入 `convert/` 模块（参见 `21-type.md`）。
+
+> **转换归属说明**：`CastTo` trait 定义位于 `element` 模块；复数相关的转换实现参见 `21-type.md`（`convert` 模块）。
 
 ---
 
@@ -566,6 +570,8 @@ impl<T: Float> core::ops::Sub<T> for Complex<T> {
 
 > **设计决策：** 当前版本仅支持同精度的 `Complex<T> op T`。左侧实数运算 `T op Complex<T>` 暂不纳入稳定 API，调用方若需要该语义，应先显式执行 `Complex::from(real)` 再参与复数运算。`Complex<f64> + f32` 这类跨精度混合运算仍然编译错误，须显式转换。
 
+> **边界说明：** 这些 `Complex<T> op T` impl 仅为标量级便捷能力，**不属于张量级逐元素运算或 `19-overload.md` 运算符重载设计的稳定承诺**。张量级场景中，双方元素类型必须预先一致（见 `require.md` §5）；用户须先把实数显式转换为 `Complex<T>`，再参与张量运算。
+
 ### 5.8 PartialEq 实现
 
 ```rust
@@ -630,7 +636,8 @@ impl From<Complex<f32>> for Complex<f64> {
 
 // Precision reduction: f64 -> f32 (lossy)
 // NOT implemented as `From` — lossy conversion contradicts std's philosophy.
-// Complex-to-complex narrowing is unified under `CastTo<T>` in `03-element.md`.
+// Complex-to-complex narrowing is unified under `CastTo<T>` in `03-element.md`
+// and implemented under the convert module umbrella (see `21-type.md`).
 impl CastTo<Complex<f32>> for Complex<f64> {
     type Error = XenonError;
 
@@ -666,7 +673,7 @@ impl From<f64> for Complex<f64> {
 
 其中语义遵循 `require.md` §23.2 的闭合规则：先按对应实数类型到目标复数实部分量类型的规则转换实部，再引入值为 `0` 的虚部。当前版本不额外扩展 `require.md` §23.1 之外的整数→复数组合。
 
-> **统一转换入口说明：** `Complex` 类型的逐元素类型转换统一由 `03-element.md` 定义的 `CastTo<T>` trait 管理，本节不再单独定义张量级转换入口；本模块仅保留复数类型自身固有、且符合无损语义的 `From`/`Into` 标量级转换（如 `f32 -> Complex<f32>`、`Complex<f32> -> Complex<f64>`）。
+> **统一转换入口说明：** `Complex` 类型的逐元素类型转换统一由 `03-element.md` 定义的 `CastTo<T>` trait 管理，trait 定义位于 `element` 模块，具体实现归入 `convert/` 模块；本节不再单独定义张量级转换入口；本模块仅保留复数类型自身固有、且符合无损语义的 `From`/`Into` 标量级转换（如 `f32 -> Complex<f32>`、`Complex<f32> -> Complex<f64>`）。
 
 复杂到实数的受支持路径同样受 `require.md` §23.1 与 §23.2 约束，且统一由 `03-element.md` §5.9 定义的 `CastTo<T>` trait 作为唯一 owner；`complex/` 模块文档仅声明其语义，不重复定义独立转换入口。
 
@@ -901,7 +908,7 @@ hypot(a, b):
 
 ### Wave 4: 数学方法
 
-- [ ] **T8**: 实现数学方法 `conj`, `norm`, `norm_sqr`, `arg`
+- [ ] **T8**: 实现数学方法 `norm`, `norm_sqr`, `arg`
   - 文件: `src/complex/mod.rs`
   - 内容: `norm()`（hypot）, `norm_sqr()`, `arg()`（atan2）, `to_polar()`
   - 测试: `test_norm_3_4_5`, `test_norm_no_overflow`, `test_arg_range`
@@ -918,14 +925,14 @@ hypot(a, b):
 ### Wave 5: 类型转换与集成
 
 - [ ] **T10**: 实现类型转换
-  - 文件: `src/complex/cast.rs`
-  - 内容: `From<Complex<f32>> for Complex<f64>`, `From<f32> for Complex<f32>`, `From<f64> for Complex<f64>`, 以及由 `CastTo<T>` 统一承载的窄化转换
+  - 文件: `src/convert/cast.rs`
+  - 内容: `element` 模块定义 `CastTo<T>` trait；`convert/cast.rs` 承载复数相关转换实现，包括 `From<Complex<f32>> for Complex<f64>`、`From<f32> for Complex<f32>`、`From<f64> for Complex<f64>` 与统一的窄化转换
   - 测试: `test_f32_to_f64_lossless`, `test_f64_to_f32_precision_loss`, `test_real_to_complex`
   - 前置: T1
   - 预计: 10 min
 
 - [ ] **T11**: 文档注释与 `cargo doc` 验证
-  - 文件: 所有 `src/complex/` 文件
+  - 文件: 所有 `src/complex/` 文件 + `src/convert/cast.rs`
   - 内容: 所有 pub 项添加文档注释
   - 测试: `cargo doc` 无警告
   - 前置: T9, T10
@@ -997,7 +1004,7 @@ Wave 5: [T11] → [T12]
 | `test_norm_no_overflow`          | `Complex::new(1e200, 1e200).norm()` 不溢出                  | 高     |
 | `test_norm_sqr`                  | `norm_sqr() == re² + im²`                                   | 中     |
 | `test_arg_range`                 | `arg()` 在 `(-π, π]` 范围内                                 | 高     |
-| `test_exp_ln_inverse`            | `z.exp().ln() ≈ z`                                          | 高     |
+| `test_exp_ln_inverse`            | `ln(z).exp() ≈ z`（约束：`z ≠ 0` 且避开主值分支割线附近）   | 高     |
 | `test_sqrt_neg_one`              | `Complex::new(-1.0, 0.0).sqrt() ≈ j`                        | 高     |
 | `test_from_polar_i`              | `from_polar(1.0, π/2) ≈ j`                                  | 中     |
 | `test_eq_nan`                    | `Complex::new(NaN, 0.0) != self`                            | 高     |
@@ -1027,13 +1034,13 @@ assert!((result.re - 2.0).abs() < 1e-10 && result.im.abs() < 1e-10);
 
 ### 8.4 属性测试不变量
 
-| 不变量                                | 测试方法           |
-| ------------------------------------- | ------------------ |
-| `z * z.conj() == z.norm_sqr()`        | 随机 z             |
-| `z.exp().ln() ≈ z`                    | 随机有限 z         |
-| `z.sqrt() * z.sqrt() ≈ z`             | 随机 z             |
-| `(z / w) * w ≈ z`                     | 随机 z, w（w ≠ 0） |
-| `z.from_polar(z.norm(), z.arg()) ≈ z` | 随机 z             |
+| 不变量                                                             | 测试方法                                |
+| ------------------------------------------------------------------ | --------------------------------------- |
+| `(z * z.conj()).re == z.norm_sqr()` 且 `(z * z.conj()).im == 0`    | 随机 z                                  |
+| `ln(z).exp() ≈ z`                                                  | 随机有限 z（`z ≠ 0`，且避开分支割线附近） |
+| `z.sqrt() * z.sqrt() ≈ z`                                          | 随机 z                                  |
+| `(z / w) * w ≈ z`                                                  | 随机 z, w（w ≠ 0）                      |
+| `Complex::from_polar(z.norm(), z.arg()) ≈ z`                       | 随机 z                                  |
 
 ### 8.5 集成测试
 
@@ -1076,7 +1083,7 @@ assert!((result.re - 2.0).abs() < 1e-10 && result.im.abs() < 1e-10);
 └───────────────────────┬───────────────────────────────────────┘
                         │ type dependency (Complex<T> definition)
 ┌───────────────────────▼───────────────────────────────────────┐
-│  complex (Complex<T> definition, arithmetic, conversions)     │
+│  complex (Complex<T> definition, arithmetic, scalar conversions) │
 └───────────────────────────────────────────────────────────────┘
 ```
 
@@ -1085,9 +1092,11 @@ assert!((result.re - 2.0).abs() < 1e-10 && result.im.abs() < 1e-10);
 ```
 User constructs `Complex<f64>::new(re, im)`
     │
-    ├── complex/ provides core methods, arithmetic, and conversions
+    ├── complex/ provides core methods, arithmetic, and scalar-level conversion semantics
     │
     ├── element/ implements Element/Numeric/ComplexScalar for `Complex<f64>`
+    │
+    ├── convert/ consumes `CastTo` and hosts tensor-level conversion implementations
     │
     ├── math / matrix / format and other upper layers consume these traits and inherent methods
     │

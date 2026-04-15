@@ -2,7 +2,7 @@
 
 > 文档编号: 07 | 模块: `src/tensor/` | 阶段: Phase 3
 > 前置文档: `02-dimension.md`, `05-storage.md`, `06-layout.md`
-> 需求参考: 需求说明书 §8
+> 需求参考: 需求说明书 §6、§7、§8、§10、§19、§22、§27、§28
 > 范围声明: 范围内
 
 ---
@@ -48,7 +48,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 | 项目     | 内容                                                                  |
 | -------- | --------------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §8                                                         |
+| 需求映射 | 需求说明书 §6、§7、§8、§10、§19、§22、§27、§28                         |
 | 范围内   | `TensorBase<S, D>`、类型别名、基础查询、构造校验、视图与 raw-parts 契约 |
 | 范围外   | 广播、索引、reshape、归约与逐元素运算                                 |
 | 非目标   | 引入运行时动态张量类型系统、隐藏存储模式差异或跳过元数据合法性校验     |
@@ -323,6 +323,9 @@ where
     D: Dimension,
 {
     /// Returns a raw pointer to the logical first element.
+    ///
+    /// For empty tensors, this returns `NonNull::dangling().as_ptr()` and does
+    /// not perform pointer arithmetic on the storage base pointer.
     pub fn as_ptr(&self) -> *const A;
 
     /// Returns the raw storage base pointer WITHOUT adding the offset.
@@ -345,6 +348,9 @@ where
     D: Dimension,
 {
     /// Returns a mutable raw pointer to the data start.
+    ///
+    /// For empty tensors, this returns `NonNull::dangling().as_ptr()` and does
+    /// not perform pointer arithmetic on the storage base pointer.
     pub fn as_mut_ptr(&mut self) -> *mut A;
 }
 ```
@@ -412,9 +418,11 @@ where
     /// - `data.len() != shape.checked_size()`
     ///
     /// Xenon follows `require.md §19`: "the order of the input data defines the element-to-logical-index correspondence."
-    /// `from_shape_vec` copies the input `Vec` data into Xenon's 64-byte-aligned allocation
-    /// (via `Owned::from_vec_aligned`) and does not guarantee reuse of the original `Vec` allocation. See
-    /// `18-construction.md §5.3`。
+    /// `from_shape_vec` uses Xenon's 64-byte-aligned allocation strategy by default
+    /// (for example via `Owned::from_vec_aligned`), but this is a storage-layer policy
+    /// rather than a hard API requirement. When SIMD alignment is not needed,
+    /// non-aligned paths are also acceptable as long as logical element order is preserved.
+    /// See `05-storage.md §5` and `18-construction.md §5.3`。
     ///
     /// # Example
     ///
@@ -426,9 +434,9 @@ where
     /// Other safe constructors such as `zeros()` and `ones()` also return
     /// `Result<Self, XenonError>` and must be used with `?` or `.unwrap()` in
     /// examples and calling code.
-    // NOTE: from_shape_vec internally copies data into new 64-byte aligned memory
-    // via `Owned::from_vec_aligned(data)`. Time complexity is O(n).
-    // This ensures the tensor always satisfies SIMD alignment requirements.
+    // NOTE: the default storage path may copy data into a fresh 64-byte aligned
+    // allocation, but non-aligned storage paths remain valid when SIMD alignment
+    // is not required. Any alignment policy belongs to the storage module.
 
     /// Construct a tensor from a Vec without validating shape/stride consistency.
     ///
@@ -458,6 +466,7 @@ where
     /// Caller must ensure:
     /// - `ptr` points to the storage base pointer of the view; for empty arrays or
     ///   ZST elements, a well-formed dangling sentinel is permitted because it is never dereferenced
+    /// - For empty tensors, `offset` must be 0
     /// - Memory remains valid for the lifetime `'a` of the returned view
     /// - Pointer alignment and initialization requirements of `A` are satisfied
     /// - The access range implied by `shape`, `strides`, and `offset` is actually accessible within the backing storage
@@ -489,7 +498,8 @@ where
     ///
     /// # Safety
     ///
-    /// Same as `from_raw_parts`, with the additional requirement of exclusive access.
+    /// Same as `from_raw_parts`, including the requirement that empty tensors use
+    /// `offset == 0`, with the additional requirement of exclusive access.
     ///
     /// The constructor returns `Err(XenonError::InvalidLayout)` when directly
     /// checkable metadata validation fails; the unsafe obligation remains the
@@ -510,7 +520,7 @@ where
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
-    D: Dimension,
+    D: Dimension + Clone,
 {
     /// Creates an immutable view (zero-copy).
     pub fn view(&self) -> TensorView<'_, A, D>;
@@ -519,7 +529,7 @@ where
 impl<S, D, A> TensorBase<S, D>
 where
     S: StorageMut<Elem = A>,
-    D: Dimension,
+    D: Dimension + Clone,
 {
     /// Creates a mutable view (zero-copy, exclusive access).
     pub fn view_mut(&mut self) -> TensorViewMut<'_, A, D>;
@@ -607,6 +617,8 @@ Logical view: [c, d, e]
 
 > **raw-parts 设计补充：** `storage_len` 是 raw-parts 视图构造的必填输入。`ViewRepr` / `ViewMutRepr` 需要保存 backing storage 的可访问元素数，`validate_access_range(...)` 也必须基于该长度执行边界校验；仅有 `ptr + shape + strides + offset` 不足以安全重建视图。
 
+> **空张量指针说明：** 当 `len == 0` 时，元数据仍可描述一个合法的空视图，但 `as_ptr()` / `as_mut_ptr()` 不能对 storage base pointer 执行 `add(offset)`。Rust 的指针算术要求结果仍落在同一已分配对象内；对悬垂哨兵或空存储基指针做偏移计算会触发未定义行为，且对 ZST 即使执行 `add(0)` 也不应依赖这种做法。设计上因此要求空张量 `offset == 0`，并让指针 API 直接返回 `NonNull::dangling().as_ptr()` 快路径。
+
 ```text
 validate_access_range(shape, strides, offset, storage_len):
     if shape.checked_size() overflows:
@@ -619,6 +631,19 @@ validate_access_range(shape, strides, offset, storage_len):
             storage_len,
             reason: "element count overflow",
         })
+
+    if shape.size() == 0:
+        if offset != 0:
+            return Err(XenonError::InvalidLayout {
+                operation: "validate_access_range",
+                storage_kind: "raw_parts",
+                shape: shape.slice().to_vec(),
+                strides: strides.as_slice().to_vec(),
+                offset,
+                storage_len,
+                reason: "empty tensor requires zero offset",
+            })
+        return Ok(())
 
     max_offset = offset
 
@@ -837,6 +862,10 @@ Wave 4:       [T10]
 | 标量 `Tensor0<f64>`   | `ndim()==0`, `len()==1`        |
 | 高维 `Tensor6`        | `ndim()==6`, 步长正确          |
 | 动态维度 `TensorD`    | `ndim()` 运行时值正确          |
+| 大张量 `10^7` 元素    | 构造成功，长度与 flags 保持正确 |
+| 非连续转置视图        | 可构造 `view()`，但连续切片快路径返回 `None` |
+| 空张量 + 多种 offset  | `offset==0` 合法，非零 offset 被拒绝 |
+| 非法元素类型编译失败  | compile-fail 测试拒绝不满足元素约束的类型 |
 
 ### 8.5 属性测试不变量
 
@@ -894,9 +923,25 @@ where
     D: Dimension,
 {
     pub fn as_ptr(&self) -> *const A {
+        if self.is_empty() {
+            return NonNull::<A>::dangling().as_ptr();
+        }
         // storage.as_ptr() returns the storage base pointer; TensorBase converts it
         // to the logical-first pointer after construction invariants have been validated.
         unsafe { self.storage.as_ptr().add(self.offset) }
+    }
+}
+
+impl<S, D, A> TensorBase<S, D>
+where
+    S: StorageMut<Elem = A>,
+    D: Dimension,
+{
+    pub fn as_mut_ptr(&mut self) -> *mut A {
+        if self.is_empty() {
+            return NonNull::<A>::dangling().as_ptr();
+        }
+        unsafe { self.storage.as_mut_ptr().add(self.offset) }
     }
 }
 ```
@@ -948,9 +993,10 @@ where
             });
         }
         let strides = layout::compute_f_strides(&shape);
-        // Owned::from_vec_aligned copies the input data into a fresh 64-byte aligned
-        // allocation; from_shape_vec preserves logical element order but does not reuse
-        // the original Vec allocation. See 18-construction.md §5.3.
+        // The default storage strategy may choose a fresh 64-byte aligned allocation,
+        // but this policy lives in the storage module rather than being a hard
+        // requirement of from_shape_vec itself. See 05-storage.md §5 and
+        // 18-construction.md §5.3.
         let storage = Owned::from_vec_aligned(data);
         let logical_ptr = storage.as_ptr();
         let flags = layout::compute_layout_flags(&shape, &strides, logical_ptr);

@@ -2,7 +2,7 @@
 
 > 文档编号: 28 | 影响范围: `tests/`, doctest 与测试 CI 矩阵 | 阶段: Phase 6
 > 前置文档: 所有前置文档（`00-coding.md` ~ `27-benchmark.md`）
-> 需求参考: 需求说明书 §28.2, §28.4
+> 需求参考: 需求说明书 §28.2, §28.4, §28.5
 > 范围声明: 范围内
 
 ---
@@ -26,7 +26,7 @@
 | 全面性   | 覆盖需求说明书中所有 API 的关键行为      |
 | 独立性   | 每个Test files可独立运行，无跨文件依赖     |
 | 可读性   | 测试名称描述预期行为，失败信息包含上下文 |
-| 快速反馈 | 完整集成测试 < 5min                      |
+| 快速反馈 | 分层执行：smoke test ~2min（每次 PR）/ required test ~10min（每次 PR）/ extended test ~30min（每周/发版） |
 
 ### 1.3 在架构中的位置
 
@@ -47,7 +47,7 @@ tests/  <- current module (consumes only the crate's public API)
 
 | 类型     | 内容                                                             |
 | -------- | ---------------------------------------------------------------- |
-| 需求映射 | `require.md §28.2`, `§28.4`                                      |
+| 需求映射 | `require.md §28.2`, `§28.4`, `§28.5`                             |
 | 范围内   | 集成测试矩阵、边界测试、属性测试、并行与 SIMD 一致性验证         |
 | 范围外   | benchmark、生产环境监控、额外平台专用测试基础设施               |
 | 非目标   | 通过测试文档引入新的产品能力、运行时依赖或超出需求范围的测试契约 |
@@ -149,10 +149,10 @@ tests/
 | 项目           | 说明                                               |
 | -------------- | -------------------------------------------------- |
 | 新增第三方依赖 | `trybuild` 仅作为 dev-dependency 引入；其余维持标准测试工具链与既有可选 feature |
-| 合法性结论     | 符合最小依赖限制                                   |
+| 合法性结论     | `trybuild` 作为 dev-dependency 用于编译期类型约束测试。dev-dependency 政策须在上位规范中另行明确。 |
 | 替代方案       | 不适用；集成测试优先依赖 crate 自身与标准测试机制  |
 
-补充说明：`trybuild` 作为 dev-dependency 引入，不进入生产依赖闭包，仍符合本文档的最小依赖约束。
+补充说明：`trybuild` 作为 dev-dependency 引入，不进入生产依赖闭包；其用途仅限编译期类型约束测试，不改变 crate 的公开 API 或运行时依赖。
 
 ---
 
@@ -299,7 +299,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_multi_dim_index`              | [i, j, k] 多维索引           | 高     |
 | `test_index_out_of_bounds`          | 越界返回可恢复错误           | 高     |
 | `test_slice_range`                  | 范围切片                     | 高     |
-| `test_slice_step`                   | 步长切片                     | 中     |
+| `test_slice_subrange`               | 范围切片子区间               | 中     |
 | `test_slice_mut_broadcast_rejected` | 广播视图上的可变切片返回错误 | 高     |
 
 ### 6.5 test_construction.rs
@@ -455,12 +455,13 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | ------------------- | -------------------------------- | -------------------------------- |
 | 空张量              | shape 含 0 的数组（如 `[0, 3]`） | 构造、迭代、归约、形状操作、索引 |
 | 单元素              | shape 全为 1（如 `[1, 1]`）      | 所有运算、归约、广播             |
-| 大张量              | 元素数 > 1M                      | 归约精度、并行正确性             |
+| 大张量              | 元素数量达到 `10^7` 量级或总字节数达到 GiB 量级 | 归约精度、并行正确性             |
 | 极端值（NaN）       | 含 NaN 的浮点数组                | 归约、比较                       |
 | 极端值（Inf）       | 含 Inf 的浮点数组                | 算术、归约、cast                 |
 | 极端值（Subnormal） | 含次正规数                       | 算术精度                         |
 | 非连续布局          | 转置/切片后的视图                | 所有运算、迭代、归约             |
 | 高维（≥4 维）       | 4D~6D 数组                       | 形状操作、广播、迭代             |
+| 非法元素类型        | 违反 §4 约束的输入（如 `usize`、`String`） | 编译期失败或 trait 约束拒绝      |
 
 补充覆盖要求：
 
@@ -575,6 +576,8 @@ fn test_ixdyn_high_rank_scenarios() {
 ### 8.2 浮点比较方式
 
 浮点测试默认使用 **NumPy 风格组合容差**（`atol + rtol`）比较；并行与 SIMD 路径对浮点/复数结果的确定性要求须对齐 `require.md §28.3`：同执行路径下结果确定，但跨执行路径（标量/SIMD/并行）允许在文档化误差容差范围内存在舍入差异；整数和布尔路径仍须逐位一致。
+
+该容差仅适用于不同执行路径（串行/SIMD/并行）下浮点和复数结果的比较。同平台同配置同路径下结果须确定一致；`usize` 与其他无符号整数约束属于 `require.md §28.5` 的编译期边界，不适用该数值容差规则。
 
 ```rust
 /// Compare two floats with combined absolute/relative tolerance.
@@ -761,7 +764,7 @@ fn prop_approx_equal(x: f64, y: f64) -> bool {
 | ---------- | --------------------------------------------- | -------------- |
 | 顺序填充   | `from_vec((0..n).map(|idx| idx as f64).collect())`         | 可重复、确定性 |
 | 三角函数值 | `from_vec((0..n).map(|idx| (idx as f64).sin()).collect())` | 非平凡浮点值   |
-| 非连续视图 | `t.t()` 或 `t.slice(s![..;2])`                | 测试步长处理   |
+| 非连续视图 | `t.t()` 或 `t.slice(s![0..n])`                | 测试子区间与转置视图处理 |
 | 空/单元素  | `zeros([0])?` / `Tensor::<f64, Ix0>::from_scalar(42.0)` | 边界测试       |
 | 受控数据   | `from_shape_vec` / 顺序生成                   | 属性测试       |
 
@@ -1101,6 +1104,15 @@ test:
 | 非法元素类型与 trait 边界         | 编译期失败测试或等价约束验证               |
 | feature gate 导出边界             | `cargo test` 配置矩阵与条件编译测试        |
 
+### 15.5 `require.md §28.5` 专项约束测试
+
+| 约束 | 验证方式 |
+| ---- | -------- |
+| 验证 `usize` 仅承担元数据角色（索引、轴、形状、切片边界） | 编译期断言 + compile-fail 用例 |
+| 验证 `usize` 不属于张量元素类型 | `Tensor<usize, D>` compile-fail |
+| 验证 `usize` 不参与逐元素算术或类型转换 | trait-bound / compile-fail 用例 |
+| 验证其他非法无符号元素类型边界不被放宽 | trait-bound / compile-fail 用例 |
+
 编译期失败测试采用 `trybuild` 或等价 harness，在 `dev-dependencies` 中引入即可，不进入生产依赖：
 
 ```text
@@ -1129,6 +1141,7 @@ fn compile_fail_cases() {
 - 错误的维度类型：例如将不满足 `Dimension` 约束的类型传入 `Tensor<A, D>`，或把错误 rank 的 `IxDyn::from_slice(...)` 传给固定维度转换入口。
 - 非法 trait bound：例如元素类型缺失 `Element` / `Numeric` / `RealScalar` 等必要约束，违反第 4 节元素类型边界。
 - 不匹配的存储类型：例如要求 `StorageMut` 的 API 传入只读 view，或将不兼容的 storage representation 组合到同一签名中。
+- `usize` / 非法无符号元素类型边界：例如拒绝 `Tensor<usize, Ix1>`、拒绝把 `usize` 送入逐元素算术或数值 cast，同时允许 `usize` 仅出现在 shape、axis、index 与切片边界等元数据位置。
 
 这些 compile-fail 用例与运行时错误测试互补：前者验证“错误代码无法通过编译”，后者验证“合法代码在非法输入下返回正确错误语义”。
 

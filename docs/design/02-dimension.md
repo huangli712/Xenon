@@ -2,7 +2,7 @@
 
 > 文档编号: 02 | 模块: `src/dimension/` | 阶段: Phase 1
 > 前置文档: `00-coding.md`, `01-architecture.md`
-> 需求参考: 需求说明书 §3
+> 需求参考: 需求说明书 §3、§16、§17
 > 范围声明: 范围内
 
 ---
@@ -52,7 +52,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 | 项目     | 内容                                                                 |
 | -------- | -------------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §3；其中 `BroadcastDim` 支持 §16 广播语义，`Reverse` 支持 §17 转置语义 |
+| 需求映射 | 需求说明书 §3、§16、§17；其中 `BroadcastDim` 支持 §16 广播语义，`Reverse` 支持 §17 转置语义 |
 | 范围内   | 静态/动态维度类型、`Dimension`/`IntoDimension`/`RemoveAxis`、轴元数据 |
 | 范围外   | 内存分配、布局标志计算、张量运算、C-order 支持                       |
 | 非目标   | 引入开放维度扩展机制、负步长维度模型或新的存储后端                   |
@@ -165,7 +165,15 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
 
     /// Creates dimension from a slice.
     /// Panics if slice length doesn't match dimension count.
+    /// Internal convenience only; public construction paths should prefer
+    /// `try_from_slice()` to surface a recoverable error.
     fn from_slice(slice: &[usize]) -> Self
+    where
+        Self: Sized;
+
+    /// Tries to create a dimension from a slice.
+    /// Returns `XenonError::DimensionMismatch` on rank mismatch.
+    fn try_from_slice(slice: &[usize]) -> Result<Self, XenonError>
     where
         Self: Sized;
 
@@ -456,6 +464,8 @@ impl IntoDimension for [usize; 6] { type Dim = Ix6; /* ... */ }
 
 // Dynamic arrays remain explicitly dynamic via slices/Vec/IxDyn.
 ```
+
+> **固定数组范围说明：** 固定数组 `[usize; N]` 当 `N > 6` 时须先转为切片或 `Vec`，再通过 `IxDyn` 构造。当前版本仅支持 `[usize; 0]` 到 `[usize; 6]` 的直接转换。
 
 ### 5.5 Axis 新类型
 
@@ -750,6 +760,8 @@ impl Reverse for IxDyn {
     }
 }
 ```
+
+> **范围说明：** 当前版本 `transpose` 仅支持默认轴反转（`.t()`）。一般轴置换不在当前版本范围内，参见 `require.md` §17。
 
 ---
 

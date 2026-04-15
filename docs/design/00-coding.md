@@ -297,10 +297,11 @@ use crate::storage::Storage;
 
 公开 API 和常规代码中禁止使用 `as` 进行数值类型转换。使用 `From`/`TryFrom`/`Into` trait。
 
+> **说明**：Rust 标准库不提供 `From<i32> for f64`。整数到浮点的转换须通过 Xenon 自身的显式转换 API 实现，参见 `require.md` §23 和 `21-type.md`。
+
 ```rust
 // Good
 let x: i32 = value.try_into().map_err(|_| ConversionError)?;
-let y: f64 = value.into();  // From<i32> for f64
 
 // Bad — in public API or general code
 let x: i32 = value as i32;  // dangerous: may truncate or change sign
@@ -324,6 +325,8 @@ let offset = ptr as usize;
 // CAST-SAFETY: saturating semantics per IEEE 754
 let truncated = float_val as i32;
 ```
+
+> **注意**：`as` 截断语义仅适用于已单独定义为 truncating/saturating 的专用内部路径。默认 `cast()` 语义不得使用该策略，须返回 `Result`。参见 `require.md` §23。
 
 ### 3.2 泛型约束写法
 
@@ -499,7 +502,7 @@ where
 > **注意**：仅 `tensor[...]` 这类 `Index` trait 语法在索引越界时使用 `panic`，与标准库 `slice` 行为一致；`tensor.get(...)`、`try_offset_of(...)` 等安全接口须返回 `Result<_, XenonError>`。
 > 本文档中的错误枚举示例字段名必须与 `26-error.md` 保持一致；如需扩展错误模型，应沿用同一套结构化上下文字段，而不是引入旧版别名字段。
 
-> **FFI 边界**：所有 FFI 导出函数（参见 `23-ffi.md`）必须以 `try_*` 前缀返回 `Result`，不得跨越 FFI 边界 panic。`bare_*` 糖函数如须 panic，须在文档中显式标注 panic 条件。参见 `26-error.md §4` 的 FFI panic 边界约定。
+> **FFI 边界**：Rust 内部的 fallible API 使用 `try_* -> Result` 模式。真正的 `extern "C"` FFI 边界必须使用 FFI-safe 状态码与输出参数，不得跨 ABI 返回 `Result`，也不得让 panic 穿越边界。`bare_*` 糖函数如须 panic，须在文档中显式标注 panic 条件。参见 `23-ffi.md`、`26-error.md §4`。
 
 ```rust
 #[derive(Debug, Clone)]
@@ -888,7 +891,7 @@ mod tests {
 - unsafe 代码块必须有对应测试
 - 每个公开 API 至少一个正向 + 一个负向测试
 
-**浮点比较**：使用相对误差容限（rtol），禁止直接 `==` 比较浮点结果。
+**浮点比较**：对存在舍入误差容差的数值路径，使用近似比较；对比较 API 自身、布尔结果、文档明确要求精确一致的场景，允许/要求精确断言。参见 `require.md` §12（NaN 遵循 IEEE 754）和 §28.3。
 
 ```rust
 // Good - relative error tolerance
@@ -966,6 +969,8 @@ where
 | `parallel` | `dep:rayon`, `std`   | 并行计算，依赖 `std`          |
 
 其中 `simd` 必须隐式启用 `std`，因为 `pulp` 使用平台相关 intrinsics，当前不是 `no_std` 兼容路径。
+
+> **注意**：Xenon 仅支持 `std` 环境（`require.md` §1.3）。`std` feature 在 `Cargo.toml` 中存在仅为统一 feature 命名惯例；`--no-default-features` 为不支持配置，不在项目契约范围内。
 
 ```toml
 [features]

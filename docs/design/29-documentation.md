@@ -16,7 +16,7 @@
 | API 文档     | 所有 pub 类型和函数的 doc comment                              | 内部实现注释（非 pub） |
 | 使用示例     | 关键 API 的可运行代码示例（doctest）                           | 完整教程、视频教程     |
 | Safety 说明  | 所有 unsafe 函数的 `# Safety` 文档节（参见 `00-coding.md §5`） | 安全函数的 Safety 节   |
-| Crate 级文档 | lib.rs 顶层文档、README、CHANGELOG                             | 第三方博客文章         |
+| Crate 级文档 | lib.rs 顶层文档、README                                        | 第三方博客文章、CHANGELOG 工程产物 |
 | 模块级文档   | 各 mod.rs 的 `//!` 模块概述                                    | 内部实现文档           |
 | examples/    | 独立可运行示例程序                                             | 交互式 notebook        |
 | docs.rs 配置 | metadata、feature gate 标注                                    | 自定义文档主题         |
@@ -54,9 +54,11 @@ Cross-cutting concern (global):
 | 类型     | 内容                                                           |
 | -------- | -------------------------------------------------------------- |
 | 需求映射 | `require.md §28.1`                                             |
-| 范围内   | pub API 文档、doctest、examples、docs.rs 配置、README/CHANGELOG |
+| 范围内   | pub API 文档、doctest、examples、docs.rs 配置、README           |
 | 范围外   | 第三方教程平台、自定义文档主题、交互式 notebook 或站点系统     |
 | 非目标   | 通过文档规范扩展产品能力、引入额外文档构建依赖或改变平台边界   |
+
+> **说明**：`CHANGELOG.md` 为工程辅助产物，不属于 `require.md §28.1` 的文档要求范围。
 
 ---
 
@@ -143,8 +145,8 @@ CHANGELOG.md                  # Version change log
 │   └── documentation style follows the coding conventions (see `00-coding.md §6`)
 ├── depends on `28-tests.md`
 │   └── doctest / examples / docs CI validation must stay aligned
-└── depends on `27-benchmark.md`
-    └── performance examples, feature-gate notes, and benchmark references must stay aligned
+└── may reference `27-benchmark.md`
+    └── 如需 benchmark 文档模板，可参考 `27-benchmark.md`；非强前置依赖
 ```
 
 ### 4.2 依赖精确到类型级
@@ -242,11 +244,16 @@ L3: Examples (examples/)
 //! let total = b.sum();
 //! ```
 //!
-//! ## Features
+//! ## Runtime Environment
+//!
+//! Xenon supports only the `std` environment (`require.md §1.3`).
+//! It does not need or provide a `std` feature toggle.
+//! All documentation assumes a `std` environment.
+//!
+//! ## Optional Features
 //!
 //! | Feature | Default | Description |
 //! |---------|:-------:|-------------|
-//! | `std` | ✓ | Standard library support |
 //! | `parallel` | ✗ | Data parallelism via rayon |
 //! | `simd` | ✗ | SIMD acceleration via pulp |
 //!
@@ -293,6 +300,8 @@ L3: Examples (examples/)
 ### 7.1 Lint 规则
 
 > **开发提示**：在开发期间可将 deny 改为 warn（`#![warn(missing_docs)]`），CI 中通过 `RUSTDOCFLAGS="-D warnings" cargo doc` 来强制执行文档完整性检查（参见 §13.1 CI checks）。
+
+> **门禁说明**：`#![warn(missing_docs)]` 本身不足以作为实际门禁；建议 CI 中使用 deny-level rustdoc 检查（如 `RUSTDOCFLAGS='--deny warnings'`）作为实际门禁。
 
 ```rust
 // lib.rs
@@ -456,11 +465,11 @@ MIT
 
 ---
 
-## 11. CHANGELOG.md 规范
+## 11. CHANGELOG.md 规范（工程辅助产物）
 
 ### 11.1 格式
 
-遵循 [Keep a Changelog](https://keepachangelog.com/) 格式：
+`CHANGELOG.md` 可遵循 [Keep a Changelog](https://keepachangelog.com/) 格式维护，但该文件属于工程辅助产物，不是 `require.md §28.1` 的必需交付物：
 
 ```markdown
 # Changelog

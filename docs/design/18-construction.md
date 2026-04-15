@@ -196,6 +196,8 @@ where
 > 本文仅承诺 `zeros()`、`ones()`、`eye()`、`from_shape_vec()`、`from_vec()`、`from_shape_slice()`、`from_array()` 与 `from_scalar()`；
 > `full()` 留待后续版本单独设计。
 
+> **`bool` 特殊值说明：** `zeros::<bool>()` 对应 `false`，`ones::<bool>()` 对应 `true`（`require.md` §19）。
+
 ### 5.2 eye（单位矩阵）
 
 ````rust

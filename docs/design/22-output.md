@@ -1,7 +1,7 @@
 # 格式化输出模块设计
 
 > 文档编号: 22 | 模块: `src/format/` | 阶段: Phase 4
-> 前置文档: `07-tensor.md`
+> 前置文档: `05-storage.md`, `06-layout.md`, `07-tensor.md`
 > 需求参考: 需求说明书 §24
 > 范围声明: 范围内
 
@@ -232,6 +232,8 @@ where
 
 > **读取顺序约定**：格式化输出按**逻辑多维索引顺序**读取元素，而不是按底层物理内存顺序线性扫描。格式化层不得把 `iter()` 的顺序当作公共契约前提；若内部复用 `iter()`，那只应视为私有实现细节，必要时应改为显式逻辑索引或递归子视图遍历。
 
+> **内部访问说明**：内部实现可使用 `read_at(indices)` 之类的辅助函数访问逻辑位置元素；这只是实现细节，**不扩展 `require.md` §18 的公开索引契约**。
+
 > **注意**：`core::fmt::Display` 在 Rust 1.85 中对 f32/f64 无需 `std` 即可使用，因此此实现不加 `#[cfg(feature = "std")]` 门控。
 
 > **默认配置绑定**：`Display for TensorBase` 默认使用 `FormatConfig::default()` 配置；如需自定义，请使用 `display_with(config)` 方法。
@@ -257,9 +259,10 @@ where
         if self.ndim() == 0 {
             // 0-dim tensor: render with an explicit marker to distinguish it
             // from a plain scalar value in textual output.
-            // Zero-dimensional tensor element access via NdIndex<Ix0>,
-            // tensor[&[]] corresponds to Index<[usize; 0]> trait (see 17-indexing.md §5.1).
-            write!(f, "Tensor0({})", self[&[]])
+            // Zero-dimensional tensor element access goes through an internal
+            // logical-index helper such as read_at([]). This is an implementation
+            // detail and does not extend the public indexing contract.
+            write!(f, "Tensor0({})", self.read_at([]))
         } else if self.ndim() == 1 {
             fmt_1d_display(f, self)
         } else {
@@ -291,7 +294,7 @@ where
     /// # Output Format
     ///
     /// ```text
-    /// Tensor(shape=[3, 4], strides=[1, 3], dtype=f64, f-contiguous)
+    /// Tensor(shape=[3, 4], strides=[1, 3], dtype=f64, layout=f-contiguous)
     /// [[1.0, 4.0, 7.0, 10.0],
     ///  [2.0, 5.0, 8.0, 11.0],
     ///  [3.0, 6.0, 9.0, 12.0]]
@@ -299,13 +302,15 @@ where
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
-            "Tensor(shape={:?}, strides={:?}, dtype={}, ",
+            "Tensor(shape={:?}, strides={:?}, dtype={}, layout=",
             self.shape(),
             self.strides(),
-            core::any::type_name::<A>()
+            dtype_name::<A>()
         )?;
         // Layout information
-        if self.is_f_contiguous() {
+        if self.strides().iter().any(|&stride| stride == 0) {
+            write!(f, "broadcast")?;
+        } else if self.is_f_contiguous() {
             write!(f, "f-contiguous")?;
         } else {
             write!(f, "non-contiguous")?;
@@ -318,6 +323,8 @@ where
 ````
 
 > **设计决策：** Debug 输出包含完整的元信息（形状/步长/类型/布局），方便开发调试。Display 只输出数据，面向最终用户；其中零维张量使用显式标记，避免与裸标量文本混淆。
+
+> **布局分类约定：** Debug 至少区分三类布局：`layout=f-contiguous`、`layout=broadcast`（存在零步长）、`layout=non-contiguous`（如转置、切片等非广播非连续布局）。
 
 ### 5.4 NumPy 风格输出示例
 
@@ -335,6 +342,14 @@ where
  [3, 6, 9]]
 ```
 
+**Debug 元信息示例（连续 / broadcast / 非连续）**:
+
+```text
+Tensor(shape=[3, 4], strides=[1, 3], dtype=f64, layout=f-contiguous)
+Tensor(shape=[3, 4], strides=[1, 0], dtype=f64, layout=broadcast)
+Tensor(shape=[3, 4], strides=[4, 1], dtype=f64, layout=non-contiguous)
+```
+
 **3D（完整，shape=[2, 2, 2]，底层数据按 F-order 为 `[1, 2, 3, 4, 5, 6, 7, 8]`）**:
 
 ```
@@ -347,7 +362,7 @@ where
 **1D 大数组（截断，默认 edge_items=3，`threshold=1000` 时仅在元素数 `> 1000` 才截断）**:
 
 ```
-[1, 2, 3, ..., 999, 1000, 1001, ... 995 more elements]  shape=[1001]
+[1, 2, 3, ..., 999, 1000, 1001] ... (995 elements omitted)  shape=[1001]
 ```
 
 **2D 大数组（截断，默认 edge_items=3，shape=[100, 100]，底层数据按 F-order 为 `1..=10000`）**:
@@ -359,8 +374,7 @@ where
  ...,
  [98, 198, 298, ..., 9798, 9898, 9998],
  [99, 199, 299, ..., 9799, 9899, 9999],
- [100, 200, 300, ..., 9800, 9900, 10000],
- ... 9964 more elements]  shape=[100, 100]
+ [100, 200, 300, ..., 9800, 9900, 10000]] ... (9964 elements omitted)  shape=[100, 100]
 ```
 
 > 当任意维度触发截断时，输出主体仍保持 NumPy 风格的局部预览，但必须在最外层右括号后追加 `shape=[...]`，以暴露完整维度信息。
@@ -380,19 +394,38 @@ Tensor0(42)
 
 ### 5.5 截断规则
 
+#### 5.5.1 形式化截断算法
+
+1. 配置参数 `max_display_elements` 决定最多可见的逻辑元素数；默认实现中该值由 `FormatConfig::threshold` 触发，并结合 `edge_items` 计算可见预算。
+2. 从最外层轴开始递归：若当前子树剩余预算足以完整显示该轴的全部逻辑元素，则完整显示该轴。
+3. 否则显示头部 `K` 项、一个 `...` 省略标记，以及尾部 `K` 项，其中 `K` 由预算与 `edge_items` 共同决定，并保证总可见元素数不超过阈值。
+4. 完成递归后，若发生截断，必须在主体之后追加 `... (N elements omitted)`，其中 `N = total_elements - visible_elements`。
+5. 任何截断输出都必须在末尾追加完整 `shape=[...]`。
+6. `line_width` 只影响换行位置，不影响元素选择、head/tail 分配或 omitted 计数。
+
 ```
 truncation_rule(tensor, config):
     total = tensor.len()
     if total <= config.threshold:
         display all elements
     else:
-        shown = count_displayed_elements(tensor.shape(), config.edge_items)
-        omitted = total - shown
-        for each axis:
-            show first config.edge_items elements
-            show "..."
-            show last config.edge_items elements
-        append "... " + omitted + " more elements] shape=" + tensor.shape()
+        visible_budget = config.max_display_elements()
+        rendered, visible = render_axis(axis = 0, prefix = [], budget = visible_budget)
+        omitted = total - visible
+        append rendered
+        append " ... (" + omitted + " elements omitted)"
+        append "  shape=" + tensor.shape()
+
+render_axis(axis, prefix, budget):
+    axis_len = tensor.shape()[axis]
+    subtree = logical_subtree_size(axis + 1)
+    if axis_len * subtree <= budget:
+        return render_all(axis, prefix), axis_len * subtree
+
+    k = choose_edge_items(axis_len, subtree, config.edge_items, budget)
+    head = render first k entries
+    tail = render last k entries
+    return concat(head, "...", tail), visible_count(head) + visible_count(tail)
 ```
 
 `line_width` 行为：当一行输出超过 `line_width` 字符时，在元素之间插入换行，优先在轴边界处折行。
@@ -451,17 +484,17 @@ fmt_1d(tensor, f):
     if len > 2 * edge_items and total > threshold:
         write "["
         for i in 0..edge_items:
-            write tensor[[i]], ", "
+            write read_at([i]), ", "
         write "..., "
         for i in (len - edge_items)..len:
-            write tensor[[i]]
+            write read_at([i])
             if i < len - 1: write ", "
         omitted = total - 2 * edge_items
-        write ", ... " + omitted + " more elements]  shape=" + tensor.shape()
+        write "] ... (" + omitted + " elements omitted)  shape=" + tensor.shape()
     else:
         write "["
         for i in 0..len:
-            write tensor[[i]]
+            write read_at([i])
             if i < len - 1: write ", "
         write "]"
 
@@ -469,7 +502,7 @@ fmt_nd(tensor, f, prefix):
     total = tensor.len()
     axis = prefix.len()
     if axis == tensor.ndim():
-        write tensor[prefix]
+        write read_at(prefix)
         return
 
     write "["
@@ -487,12 +520,31 @@ fmt_nd(tensor, f, prefix):
 
     if axis == 0 and total > threshold:
         omitted = total - count_displayed_elements(tensor.shape(), edge_items)
-        write ", ... " + omitted + " more elements]  shape=" + tensor.shape()
+        write "] ... (" + omitted + " elements omitted)  shape=" + tensor.shape()
     else:
         write "]"
 ```
 
-> 对 F-order 张量，格式化必须按**逻辑索引**而不是物理线性内存顺序展开。以 `shape=[3, 3]` 为例，显示位置 `[i, j]` 对应逻辑索引 `[i, j]`，其线性位置为 `i + j * 3`；因此输出为 `[[1, 4, 7], [2, 5, 8], [3, 6, 9]]`，而不是按物理连续内存直接切成 `[[1, 2, 3], [4, 5, 6], [7, 8, 9]]`。
+> 对 F-order 张量，格式化必须按**逻辑索引**而不是物理线性内存顺序展开。以 `shape=[3, 3]` 为例，显示位置 `[i, j]` 对应逻辑索引 `[i, j]`，其线性位置为 `i + j * 3`；因此输出为 `[[1, 4, 7], [2, 5, 8], [3, 6, 9]]`，而不是按物理连续内存直接切成 `[[1, 2, 3], [4, 5, 6], [7, 8, 9]]`。内部若使用 `read_at(indices)` 等辅助函数，仅表示实现通过逻辑坐标取值，不构成新的公开索引承诺。
+
+### 6.2 dtype 名称映射
+
+```rust
+fn dtype_name<A: Element>() -> &'static str {
+    match core::any::TypeId::of::<A>() {
+        id if id == core::any::TypeId::of::<f32>() => "f32",
+        id if id == core::any::TypeId::of::<f64>() => "f64",
+        id if id == core::any::TypeId::of::<i32>() => "i32",
+        id if id == core::any::TypeId::of::<i64>() => "i64",
+        id if id == core::any::TypeId::of::<Complex<f32>>() => "complex<f32>",
+        id if id == core::any::TypeId::of::<Complex<f64>>() => "complex<f64>",
+        id if id == core::any::TypeId::of::<bool>() => "bool",
+        _ => core::any::type_name::<A>(),
+    }
+}
+```
+
+> Debug 输出的 `dtype=` 字段应通过内部 `dtype_name()` 映射获得稳定、紧凑的展示名，而不是直接暴露编译器的完整类型路径。
 
 ---
 
@@ -571,7 +623,7 @@ Wave 3:        [T5]
 | 测试函数                      | 测试内容                                    | 优先级 |
 | ----------------------------- | ------------------------------------------- | ------ |
 | `test_fmt_1d_full`            | 1D 小数组完整输出 `[1, 2, 3]`               | 高     |
-| `test_fmt_1d_truncated`       | 1D 大数组截断，并追加统一后缀 `... N more elements] shape=[...]` | 高     |
+| `test_fmt_1d_truncated`       | 1D 大数组截断，并追加统一后缀 `... (N elements omitted) shape=[...]` | 高  |
 | `test_fmt_1d_empty`           | 1D 空数组 `[]`                              | 中     |
 | `test_fmt_1d_single`          | 1D 单元素 `[42]`                            | 中     |
 | `test_fmt_2d`                 | 2D 矩阵形式输出                             | 高     |
@@ -595,8 +647,8 @@ Wave 3:        [T5]
 | 空数组 `shape=[0]` | 输出 `[]`                           |
 | 单元素 `shape=[1]` | 输出 `[42]`                         |
 | 零维张量           | 输出 `Tensor0(...)`，与裸标量可区分 |
- | 1001 元素 1D       | 触发截断，并在尾部输出 `shape=[1001]` |
- | 1000 元素 1D       | 不截断                              |
+| 1001 元素 1D       | 触发截断，并在尾部输出 `... (N elements omitted)  shape=[1001]` |
+| 1000 元素 1D       | 不截断                              |
 | NaN/Inf            | 输出 `NaN`/`inf`                    |
 
 ### 8.4 属性测试不变量
@@ -604,7 +656,7 @@ Wave 3:        [T5]
 | 不变量                                              | 测试方法 |
 | --------------------------------------------------- | -------- |
 | `debug(tensor)` 包含 shape / strides / dtype 元信息 | 随机形状 |
-| 截断输出包含统一后缀 `... N more elements] shape=[...]` | 大数组   |
+| 截断输出包含统一后缀 `... (N elements omitted)  shape=[...]` | 大数组 |
 
 ### 8.5 集成测试
 
@@ -637,8 +689,8 @@ Wave 3:        [T5]
 | ----------------------- | ----------------- | ---------------------------------- | ------------------------------------------------------------ |
 | `format → tensor`       | `tensor`          | `.shape()` / `.ndim()` / `.len()`  | `Display` 路径读取基础张量元数据，参见 `07-tensor.md` §5     |
 | `format → tensor`       | `tensor`          | `.strides()` / `is_f_contiguous()` | `Debug` 额外输出布局相关元数据，参见 `06-layout.md` §5       |
-| `format → tensor/index` | `tensor`, `index` | `shape()`, 多维索引访问            | 按逻辑行/列结构读取元素；不依赖 `iter()` 的 F-order 内存顺序 |
-| `format → element`      | `element`         | `core::any::type_name::<A>()`      | 输出 dtype 与元素类型信息，参见 `03-element.md` §5.1         |
+| `format → tensor/index` | `tensor`, `index` | `shape()`, 内部 `read_at(indices)` | 按逻辑行/列结构读取元素；不依赖 `iter()` 的 F-order 内存顺序，且不扩展公开索引契约 |
+| `format → element`      | `element`         | 内部 `dtype_name::<A>()`           | 输出稳定 dtype 名称与元素类型信息，参见 `03-element.md` §5.1 |
 
 ### 9.2 数据流描述
 
@@ -699,8 +751,8 @@ User calls format!("{}", tensor) / format!("{:?}", tensor)
 
 | 方面       | 设计决策                                                 |
 | ---------- | -------------------------------------------------------- |
-| 格式化开销 | O(n)，不可避免（须遍历每个元素）                         |
-| 大数组截断 | 截断后仅格式化 O(edge*items * 2 \_ ndim) 个元素，非 O(n) |
+| 格式化开销 | 非截断输出 O(n)                                          |
+| 大数组截断 | 截断输出 O(visible_elements + overhead)                  |
 | 零拷贝     | 格式化过程不修改原始数据                                 |
 | 临时分配   | 格式化过程无堆分配（直接写入 `Formatter`）               |
 
