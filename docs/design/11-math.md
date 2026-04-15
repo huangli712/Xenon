@@ -84,7 +84,7 @@ src/parallel/           # optional parallel backend consumed by math dispatch
 | 广播先决 | 所有二元逐元素运算与比较运算必须先验证广播兼容性，再遍历广播后的只读视图。 |
 | 输出形状稳定 | 二元运算返回张量的 shape 必须等于广播结果 shape；一元运算与标量运算保持输入 shape 不变。 |
 | 比较类型边界 | `lt` / `gt` 只对 `i32`、`i64`、`f32`、`f64` 开放；`bool` 与 `Complex` 不得通过公开 API 进入该路径。 |
-| SIMD 语义等价 | SIMD 覆盖范围参见 `08-simd.md`；在本模块内仅讨论需求说明书 §12 定义的逐元素运算。任一路径的 shape、NaN 语义和错误边界都必须与公开契约一致；不满足 SIMD 前提时统一回退标量。 |
+| SIMD 语义等价 | SIMD 覆盖范围见 `08-simd.md §5.4a`；在本模块内仅讨论需求说明书 §12 定义的逐元素运算。任一路径的 shape、NaN 语义和错误边界都必须与公开契约一致；不满足 SIMD 前提时统一回退标量。 |
 
 ### 4.2 Error Scenarios
 
@@ -217,9 +217,8 @@ where
     ///
     /// # NaN behavior (floats)
     ///
-    /// Floating-point `signum` is defined by the sign bit:
-    /// - `NaN.signum()` returns `NaN` per IEEE 754 semantics
-    /// - `-0.0.signum()` returns `-0.0` (sign bit preserved)
+    /// Floating-point `signum` follows IEEE 754 sign-function semantics,
+    /// including NaN propagation and signed-zero behavior.
     /// Integer `signum` follows `PartialOrd`.
     pub fn signum(&self) -> Tensor<A, D>;
 }
@@ -475,7 +474,7 @@ apply_binary(a, b, f):
 
 ### 6.3 SIMD 加速路径
 
-SIMD 分发由 `math` 的具体逐元素操作在满足连续性、对齐和 feature gate 前提时直接委托 `src/simd/` facade；本文不再把额外的中间 helper 视为稳定设计接口。参见 `08-simd.md §5.5` 了解 SIMD 后端详情。数学模块定义需求说明书 §12 中列出的全部逐元素运算；当前版本的 SIMD 实际覆盖范围以 `08-simd.md` 为准，若某类运算、类型、ISA 或语义约束暂不满足 SIMD 前提，则对应路径自动回退标量实现。
+SIMD 分发由 `math` 的具体逐元素操作在满足连续性、对齐和 feature gate 前提时直接委托 `src/simd/` facade；本文不再把额外的中间 helper 视为稳定设计接口。参见 `08-simd.md §5.5` 了解 SIMD 后端详情。数学模块定义需求说明书 §12 中列出的全部逐元素运算；当前版本的 SIMD 实际覆盖范围见 `08-simd.md §5.4a`，若某类运算、类型、ISA 或语义约束暂不满足 SIMD 前提，则对应路径自动回退标量实现。
 
 > **并行路径：** 当 `parallel` feature 启用时，二元逐元素运算可进一步委托 `parallel::par_zip_map` 执行并行遍历（参见 `09-parallel.md §5`）。并行路径必须遵守 `09-parallel.md §6` 的阈值裁决与禁止库内二次并行约束；若 guard 进入失败、输入过小或语义无法证明一致，则自动回退标量执行。
 
@@ -580,7 +579,7 @@ Wave 3:    [T8]
 | 不变量                                                                  | 测试方法                                                  |
 | ----------------------------------------------------------------------- | --------------------------------------------------------- |
 | 加法交换律（整数与无 NaN 实数输入）                                     | 对随机 i32/i64 与有限 f32/f64 张量验证 `a.add(&b) == b.add(&a)` |
-| NaN 传播：所有运算遇到 NaN 输入时输出包含 NaN                           | 构造含 NaN 的张量，验证 sin/sqrt/add/mul 等运算结果含 NaN |
+| NaN 传播：数值型逐元素运算遇到 NaN 输入时输出按 IEEE 754 传播 NaN         | 构造含 NaN 的张量，验证 sin/sqrt/add/mul 等数值型逐元素运算结果含 NaN |
 | 标量运算逆元：`a.add_scalar(k).sub_scalar(k) == a`                      | 对整数与有限浮点随机张量和标量值验证                      |
 | 取反对合：`a.neg().neg() == a`                                          | 对所有 `Numeric` 支持类型验证                             |
 
@@ -749,7 +748,7 @@ User calls add / unary op / comparison method
 | crate 结构 | 保持单 crate 结构，不拆分独立 math crate                                                       |
 | SemVer     | 逐元素方法签名、支持类型集合、广播错误类别以及整数 panic 诊断字段均属于稳定契约；后续新增优化路径不得改变这些公开语义 |
 | 依赖约束   | 仅允许项目基线中的可选 SIMD / 并行依赖，不新增额外第三方数学库                                 |
-| 线程安全   | 所有逐元素运算接受 `&self`（一元/比较）或 `&self` + `&TensorBase`（二元），可在多线程中并发调用；`get_unchecked` 等 unsafe 方法要求调用方保证独占访问。 |
+| 线程安全   | 所有逐元素运算接受 `&self`（一元/比较）或 `&self` + `&TensorBase`（二元）；这些调用能否在线程间安全共享或传递，取决于元素类型与底层存储模式是否满足相应 `Send` / `Sync` 前提。`get_unchecked` 等 unsafe 方法仍要求调用方保证独占访问。 |
 | 范围边界   | 当前版本仅覆盖需求说明书 §12 明确列出的逐元素运算；通用映射 helper 与实复混合公开 API 不在本期范围内 |
 
 ---

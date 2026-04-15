@@ -504,7 +504,7 @@ for i in 0..3 {
 // Good - Use Debug for debug information
 let tensor = Tensor2::<f64>::zeros([3, 4]);
 println!("{:?}", tensor);
-// Tensor(shape=[3, 4], strides=[1, 3], dtype=f64, f-contiguous)
+// Tensor(shape=[3, 4], strides=[1, 3], dtype=f64, layout=f-contiguous)
 // [[0.0, 0.0, 0.0, 0.0],
 //  [0.0, 0.0, 0.0, 0.0],
 //  [0.0, 0.0, 0.0, 0.0]]

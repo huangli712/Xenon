@@ -426,12 +426,11 @@ where
     /// ```
     pub fn from_shape_vec(shape: D, data: Vec<A>) -> Result<Self, XenonError>;
 
-    /// Other safe constructors such as `zeros()` and `ones()` also return
+    /// Constructor-module APIs such as `zeros()` and `ones()` also return
     /// `Result<Self, XenonError>` and must be used with `?` or `.unwrap()` in
     /// examples and calling code.
-    // NOTE: the default storage path may copy data into a fresh 64-byte aligned
-    // allocation, but non-aligned storage paths remain valid when SIMD alignment
-    // is not required. Any alignment policy belongs to the storage module.
+    // NOTE: the default owned-storage path uses aligned allocation.
+    // The concrete alignment policy belongs to the storage module.
 
     /// Construct a tensor from a Vec without validating shape/stride consistency.
     ///
@@ -821,7 +820,7 @@ Wave 4:       [T10]
 | ---------------------------------------- | ------------------------------------------------------------------------------------- |
 | `test_tensor_cross_dim_interop`          | TensorBase 与 Dimension 模块交互：验证 Ix0~Ix6 和 IxDyn 的 shape/strides 查询         |
 | `test_tensor_storage_layout_integration` | TensorBase 与 Storage/Layout 模块交互：验证 from_shape_vec 后的标志位计算和指针正确性 |
-| `test_tensor_view_roundtrip`             | 验证 view() → view_mut() → 原始数据的零拷贝往返一致性                                 |
+| `test_tensor_view_mut_roundtrip`         | 验证 `view_mut()` 可直接获取零拷贝可变视图并回写到底层数据                            |
 
 ### 8.3 单元测试清单
 
@@ -1005,7 +1004,7 @@ where
                 offending_dim: None,
             });
         }
-        let strides = layout::compute_f_strides(&shape);
+        let strides = layout::compute_f_strides(&shape)?;
         // The default storage strategy may choose a fresh 64-byte aligned allocation,
         // but this policy lives in the storage module rather than being a hard
         // requirement of from_shape_vec itself. See 05-storage.md §5 and
@@ -1153,7 +1152,7 @@ where
 ## 附录 C：数据流图
 
 ```
-User calls `Tensor::<f64, Ix2>::zeros([3, 4])?`
+User calls constructor-module API `Tensor::<f64, Ix2>::zeros([3, 4])?`
     │
     ├── `Dimension::ndim()`          → 2
     ├── `Dimension::slice()`         → [3, 4]

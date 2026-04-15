@@ -125,7 +125,7 @@ examples/
 └── ffi.rs                    # FFI integration example
 
 README.md                     # Project README
-CHANGELOG.md                  # Version change log
+CHANGELOG.md                  # Optional engineering changelog artifact (non-required deliverable)
 ```
 
 ### 3.2 划分理由
@@ -172,7 +172,7 @@ CHANGELOG.md                  # Version change log
 
 ---
 
-## 5. 文档组织结构
+## 5. 公共 API 设计
 
 ### 5.1 文档层次
 
@@ -219,9 +219,9 @@ L3: Examples (examples/)
 
 ---
 
-## 6. 公共 API 设计
+### 5.4 核心文档模板
 
-### 6.1 lib.rs 顶层文档结构
+#### 5.4.1 lib.rs 顶层文档结构
 
 ````rust
 //! # Xenon — N-dimensional Tensor Library for Rust
@@ -276,7 +276,9 @@ L3: Examples (examples/)
 //!
 //! ## Memory Layout
 //!
-//! Default layout is **F-order (column-major)**, compatible with BLAS/LAPACK.
+//! Default layout is **F-order (column-major)**.
+//! Xenon provides helper APIs that make upstream BLAS/LAPACK integration easier,
+//! but not every legal layout is natively BLAS/LAPACK-compatible.
 //!
 
 // During development: warn level allows gradual documentation
@@ -287,7 +289,7 @@ L3: Examples (examples/)
 #![cfg_attr(docsrs, feature(doc_cfg))]
 ````
 
-### 6.2 文档节使用规则
+#### 5.4.2 文档节使用规则
 
 | 文档节        | 何时必须           | 说明                         |
 | ------------- | ------------------ | ---------------------------- |
@@ -301,11 +303,11 @@ L3: Examples (examples/)
 
 ---
 
-## 7. #![warn(missing_docs)] 配置
+### 5.5 Lint 与文档门禁
 
-### 7.1 Lint 规则
+#### 5.5.1 Lint 规则
 
-> **开发提示**：在开发期间可将 deny 改为 warn（`#![warn(missing_docs)]`），CI 中通过 `RUSTDOCFLAGS="-D warnings" cargo doc` 来强制执行文档完整性检查（参见 §13.1 CI checks）。
+> **开发提示**：在开发期间可将 deny 改为 warn（`#![warn(missing_docs)]`），CI 中通过 `RUSTDOCFLAGS="-D warnings" cargo doc` 来强制执行文档完整性检查（参见 §5.11.1 CI checks）。
 
 > **门禁说明**：`#![warn(missing_docs)]` 本身不足以作为实际门禁；建议 CI 中使用 deny-level rustdoc 检查（如 `RUSTDOCFLAGS='--deny warnings'`）作为实际门禁。
 
@@ -321,7 +323,7 @@ L3: Examples (examples/)
 #![cfg_attr(docsrs, feature(doc_cfg))]        // docs.rs feature annotation
 ```
 
-### 7.2 Clippy 文档 lint
+#### 5.5.2 Clippy 文档 lint
 
 ```rust
 // Enabled in CI
@@ -332,9 +334,9 @@ L3: Examples (examples/)
 
 ---
 
-## 8. Doctest 规范
+### 5.6 Doctest 规范
 
-### 8.1 规则
+#### 5.6.1 规则
 
 | 规范       | 说明                                                                                                                        |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------- |
@@ -344,7 +346,7 @@ L3: Examples (examples/)
 | 最小化     | 只展示当前 API 用法                                                                                                         |
 | 有断言     | 用 `assert_eq!` 验证结果                                                                                                    |
 
-### 8.2 Doctest 模板
+#### 5.6.2 Doctest 模板
 
 ````rust
 /// Compute the sum of all elements.
@@ -363,7 +365,7 @@ L3: Examples (examples/)
 pub fn sum(&self) -> A { ... }
 ````
 
-### 8.3 Feature-gated Doctest
+#### 5.6.3 Feature-gated Doctest
 
 ````rust
 /// Parallel sum using rayon.
@@ -389,9 +391,9 @@ pub fn par_sum(&self) -> A { ... }
 
 ---
 
-## 9. examples/ 目录规划
+### 5.7 examples/ 目录规划
 
-### 9.1 示例清单
+#### 5.7.1 示例清单
 
 | 文件                 | 内容                                       | Feature    | 目标用户                             |
 | -------------------- | ------------------------------------------ | ---------- | ------------------------------------ |
@@ -400,9 +402,9 @@ pub fn par_sum(&self) -> A { ... }
 | `broadcasting.rs`    | 广播规则、行/列/标量广播                   | 默认       | 日常使用                             |
 | `parallel.rs`        | 并行计算、阈值配置                         | `parallel` | 性能优化（参见 `09-parallel.md §5`） |
 | `simd.rs`            | SIMD 加速、回退策略                        | `simd`     | 性能优化（参见 `08-simd.md §5`）     |
-| `ffi.rs`             | 与 C/BLAS 交互                             | 默认       | 库开发者                             |
+| `ffi.rs`             | 为上游 C/BLAS-LAPACK 集成提供辅助 API 与兼容性判断 | 默认       | 库开发者                             |
 
-### 9.2 示例模板
+#### 5.7.2 示例模板
 
 ```rust
 //! Example: Brief description
@@ -424,7 +426,7 @@ fn main() -> xenon::Result<()> {
 }
 ```
 
-### 9.3 示例编写规范
+#### 5.7.3 示例编写规范
 
 | 规范         | 说明                            |
 | ------------ | ------------------------------- |
@@ -436,11 +438,11 @@ fn main() -> xenon::Result<()> {
 
 ---
 
-## 10. README.md 内容规划
+### 5.8 README.md 内容规划
 
 README 使用英文的来源与 crate 内 doc comment 一致：遵循 `00-coding.md §6` 的英文文档约束，并面向 docs.rs / crates.io 的 Rust 生态读者。
 
-### 10.1 结构
+#### 5.8.1 结构
 
 ````markdown
 # Xenon
@@ -450,7 +452,7 @@ Rust N-dimensional tensor library for scientific computing.
 ## Features
 
 - N-dimensional arrays with static (0-6D) and dynamic dimensions (`IxDyn` for runtime-rank tensors)
-- Column-major (F-order) default, BLAS-compatible memory layout
+- Column-major (F-order) default, with helper APIs and compatibility checks for upstream BLAS/LAPACK integration when the layout preconditions are satisfied
 - Custom FFI-friendly complex number type
 - Optional SIMD (pulp) and parallel (rayon) acceleration
 
@@ -476,11 +478,11 @@ MIT
 
 ---
 
-## 11. CHANGELOG.md（附录：工程辅助产物）
+### 5.9 CHANGELOG.md（可选工程整理，非默认交付）
 
-### 11.1 格式
+#### 5.9.1 格式
 
-`CHANGELOG.md` 可遵循 [Keep a Changelog](https://keepachangelog.com/) 格式维护，但该文件属于工程辅助产物，不是 `require.md §28.1` 的必需交付物：
+`CHANGELOG.md` 可遵循 [Keep a Changelog](https://keepachangelog.com/) 格式维护，但该文件属于可选工程整理项，不进入 `require.md §28.1` 的默认交付波次：
 
 ```markdown
 # Changelog
@@ -506,7 +508,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 ```
 
-### 11.2 版本号规则
+#### 5.9.2 版本号规则
 
 | 变更类型   | 版本号影响           |
 | ---------- | -------------------- |
@@ -518,9 +520,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## 12. docs.rs 配置
+### 5.10 docs.rs 配置
 
-### 12.1 Cargo.toml metadata
+#### 5.10.1 Cargo.toml metadata
 
 ```toml
 [package.metadata.docs.rs]
@@ -528,7 +530,7 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 ```
 
-### 12.2 Feature gate 标注
+#### 5.10.2 Feature gate 标注
 
 ```rust
 // lib.rs
@@ -542,9 +544,9 @@ pub fn par_sum(&self) -> A { ... }
 
 ---
 
-## 13. 文档 CI 检查
+### 5.11 文档 CI 检查
 
-### 13.1 验证项目
+#### 5.11.1 验证项目
 
 | 检查项   | 命令                                                            | 失败条件     |
 | -------- | --------------------------------------------------------------- | ------------ |
@@ -553,7 +555,7 @@ pub fn par_sum(&self) -> A { ... }
 | 示例验证 | `cargo build --examples --all-features` + 关键示例运行命令      | 任何失败     |
 | 链接检查 | `cargo doc` 无 broken links 警告                                | 无效链接     |
 
-### 13.2 CI 配置
+#### 5.11.2 CI 配置
 
 ```yaml
 # .github/workflows/docs.yml
@@ -576,9 +578,9 @@ docs:
 
 ---
 
-## 14. Good / Bad 文档注释对比
+### 5.12 Good / Bad 文档注释对比
 
-### 14.1 Good — 完整的函数文档
+#### 5.12.1 Good — 完整的函数文档
 
 ````rust
 /// Compute the sum of all elements in the tensor.
@@ -612,7 +614,7 @@ docs:
 pub fn sum(&self) -> A { ... }
 ````
 
-### 14.2 Bad — 不完整的函数文档
+#### 5.12.2 Bad — 不完整的函数文档
 
 ````rust
 // Bad: no documentation, no examples, no description
@@ -635,22 +637,21 @@ pub fn sum(&self) -> A { ... }
 pub fn sum(&self) -> A { ... }
 ````
 
-### 14.3 Good — unsafe 函数文档
+#### 5.12.3 Good — FFI 边界文档
 
 ````rust
-/// Create a tensor view from raw parts.
+/// Export the tensor as an immutable FFI descriptor.
 ///
-/// # Safety
+/// This helper only exposes metadata needed by upstream FFI callers.
+/// It does not promise that every legal tensor layout is directly consumable by
+/// BLAS/LAPACK; callers must inspect the exported descriptor and compatibility
+/// predicates before passing it across the boundary.
 ///
-/// The caller must ensure:
+/// # Errors
 ///
-/// 1. `ptr` is non-null, non-dangling, and aligned to `align_of::<A>()`
-/// 2. `storage_len` matches the number of elements in the backing storage reachable from `ptr`
-/// 3. The memory is valid for the lifetime `'a`
-/// 4. No mutable references to the memory exist
-/// 5. `shape` and `strides` have the same length
-/// 6. All index-calculated offsets are in bounds
-/// 7. All accessible elements are properly initialized
+/// Returns [`XenonError::Ffi`] when checked arithmetic over shape/stride/offset
+/// metadata overflows, or when the layout cannot be represented by the exported
+/// descriptor contract.
 ///
 /// # Examples
 ///
@@ -659,46 +660,55 @@ pub fn sum(&self) -> A { ... }
 ///
 /// # fn demo() -> xenon::Result<()> {
 /// let data = vec![1.0f64, 2.0, 3.0, 4.0];
-///
-/// // SAFETY: data is non-empty, properly aligned, and outlives the view.
-/// let view = unsafe {
-///     TensorView::from_raw_parts::<f64, Ix2>(
-///         data.as_ptr(),
-///         data.len(),
-///         Ix2::from_slice(&[2, 2]),
-///         Strides::from_slice(&[1, 2]),
-///         0,
-///     )?
-/// };
-/// assert_eq!(view.shape(), &[2, 2]);
+/// let tensor = Tensor2::from_shape_vec([2, 2], data)?;
+/// let exported = tensor.export()?;
+/// assert_eq!(exported.shape(), &[2, 2]);
+/// assert!(tensor.is_blas_compatible());
 /// # Ok(())
 /// # }
 /// ```
-pub unsafe fn from_raw_parts<'a, A, D>(
-    ptr: *const A,
-    storage_len: usize,
-    shape: D,
-    strides: Strides<D>,
-    offset: usize,
-) -> Result<TensorView<'a, A, D>, XenonError>
+pub fn export(&self) -> Result<FfiExport<'_, A, D>, XenonError>
+where
+    A: Element,
+    D: Dimension
+
+/// Export the tensor as a mutable FFI descriptor.
+///
+/// # Errors
+///
+/// Returns [`XenonError::Ffi`] when checked arithmetic fails, when the layout
+/// cannot be represented, or when the requested mutable export would violate the
+/// non-overlap / exclusivity contract of the backing storage.
+///
+/// # Safety
+///
+/// The caller of the foreign code must ensure that writes performed through the
+/// exported descriptor stay within the exported bounds, do not create aliasing
+/// violations with any other live Rust reference, and do not assume BLAS/LAPACK
+/// compatibility unless that was checked explicitly before the call.
+pub fn export_mut(&mut self) -> Result<FfiExportMut<'_, A, D>, XenonError>
 where
     A: Element,
     D: Dimension
 ````
 
-### 14.4 Bad — 缺少 Safety 节
+#### 5.12.4 Bad — 过时的 FFI 文档
 
 ```rust
-// Bad: unsafe function has no Safety documentation
+// Bad: documents only the removed raw-parts constructor contract.
 /// Create a tensor view from raw parts.
+///
+/// # Safety
+///
+/// Caller guarantees ptr/shape/strides/offset are valid.
 pub unsafe fn from_raw_parts<'a, A, D>(...) -> TensorView<'a, A, D>
 ```
 
 ---
 
-## 15. 内部实现设计
+## 6. 内部实现设计
 
-### 15.1 文档生成流程
+### 6.1 文档生成流程
 
 ````
 Doc comments in the source code
@@ -714,7 +724,7 @@ Doc comments in the source code
             └── run them and verify assertions
 ````
 
-### 15.2 文档覆盖率计算
+### 6.2 文档覆盖率计算
 
 ```bash
 # Check for missing docs at deny level
@@ -725,7 +735,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 # 2. Ensure zero warnings
 ```
 
-### 15.3 doc comment 编写工作流
+### 6.3 doc comment 编写工作流
 
 | 步骤                | 操作                        | 验证                              |
 | ------------------- | --------------------------- | --------------------------------- |
@@ -736,9 +746,23 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 ---
 
-## 16. 测试计划
+## 7. 实现任务拆分
 
-### 16.1 测试分类表
+| Wave | 目标 | 说明 |
+| ---- | ---- | ---- |
+| Wave 1 | Crate 级文档 | 补齐 `lib.rs`、README 与 docs.rs 基础配置 |
+| Wave 2 | 模块级文档 | 按模块职责补齐 `//!` 概述与关键概念说明 |
+| Wave 3 | 类型/函数级文档 | 为关键 public API 添加 `# Examples`、`# Errors`、`# Safety` 等文档节 |
+| Wave 4 | 示例程序 | 为关键 API 族提供可运行 examples，并与 doctest 口径保持一致 |
+| Wave 5 | CI 集成 | 固化 missing docs、doctest、examples 构建与关键示例运行检查 |
+
+> 详细任务清单继续采用 Wave 形式维护，见后文“详细任务清单”。
+
+---
+
+## 8. 测试计划
+
+### 8.1 测试分类表
 
 | 类型         | 命令                                                              | 目的                                              |
 | ------------ | ----------------------------------------------------------------- | ------------------------------------------------- |
@@ -752,7 +776,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | 链接检查     | `cargo doc` 无 broken links 警告                                  | 确保文档内交叉引用有效                            |
 | CI 门禁      | `missing_docs` lint deny 级别                                     | 阻止无文档代码合入                                |
 
-### 16.2 Doctest 覆盖要求
+### 8.2 Doctest 覆盖要求
 
 | 模块类别                                         | 定性要求                                            |
 | ------------------------------------------------ | --------------------------------------------------- |
@@ -762,7 +786,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | 辅助模块（convert, format, error）               | 至少覆盖构造、基本使用与错误语义                    |
 | 迭代与归约模块（iter, reduction, matrix）        | 核心入口、边界行为和错误路径必须可追踪              |
 
-### 16.3 边界测试场景表
+### 8.3 边界测试场景表
 
 | 场景              | 预期行为                                                              |
 | ----------------- | --------------------------------------------------------------------- |
@@ -771,7 +795,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | unsafe API 文档   | 必须包含 `# Safety` 且示例不省略关键前置条件                          |
 | 大型数组输出示例  | 截断格式与 `22-output.md` 保持一致                                    |
 
-### 16.4 属性测试不变量
+### 8.4 属性测试不变量
 
 | 不变量                               | 验证方式                          |
 | ------------------------------------ | --------------------------------- |
@@ -779,7 +803,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | 所有关键模块都有至少一个可运行示例   | doctest / examples 构建联合验证   |
 | 文档中的路径与模块名和架构文档一致   | broken links 检查 + 人工审阅      |
 
-### 16.5 CI 配置
+### 8.5 CI 配置
 
 ```yaml
 # .github/workflows/docs.yml
@@ -800,7 +824,7 @@ docs:
         cargo run --example broadcasting
 ```
 
-### 16.6 Feature gate / 配置测试
+### 8.6 Feature gate / 配置测试
 
 | 配置       | 验证点                                                   |
 | ---------- | -------------------------------------------------------- |
@@ -809,7 +833,7 @@ docs:
 | 启用 SIMD  | `simd` API 的 `doc(cfg)`、doctest 与示例说明保持一致     |
 | 全 feature | docs.rs 构建、doctest 与 examples 在组合配置下均通过     |
 
-### 16.7 类型边界 / 编译期测试
+### 8.7 类型边界 / 编译期测试
 
 | 场景                         | 测试方式                                    |
 | ---------------------------- | ------------------------------------------- |
@@ -819,15 +843,15 @@ docs:
 
 ---
 
-## 错误处理与语义边界
+### 8.8 错误语义前置说明
 
 本文档不直接定义错误类型，但要求所有文档示例、`# Errors` 节、panic 说明与 feature-gated 文档行为统一遵循 `26-error.md` 的错误语义边界；文档层负责准确转述，不重新定义公开错误模型。
 
 ---
 
-## 17. 与其他模块的交互
+## 9. 模块交互设计
 
-### 17.1 文档对被文档模块的依赖
+### 9.1 文档对被文档模块的依赖
 
 | 文档任务            | 依赖的模块                                                | 说明                   |
 | ------------------- | --------------------------------------------------------- | ---------------------- |
@@ -838,7 +862,7 @@ docs:
 | T8 (类型级文档)     | 全部                                                      | 逐类型添加 doc comment |
 | T9 (函数级文档)     | 全部                                                      | 逐函数添加 doc comment |
 
-### 17.2 数据流
+### 9.2 数据流
 
 ````
 Design docs (00-28)
@@ -857,7 +881,13 @@ Design docs (00-28)
 
 ---
 
-## 18. 实现任务拆分
+## 10. 错误处理与语义边界
+
+本文档不直接定义错误类型，但要求所有文档示例、`# Errors` 节、panic 说明与 feature-gated 文档行为统一遵循 `26-error.md` 的错误语义边界；文档层负责准确转述，不重新定义公开错误模型。
+
+---
+
+## 详细任务清单
 
 ### Wave 1: Crate 级文档
 
@@ -882,9 +912,9 @@ Design docs (00-28)
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T4**: 创建 CHANGELOG.md
+- [ ] **T4**: 可选维护 CHANGELOG.md
   - 文件: `CHANGELOG.md`
-  - 内容: Keep a Changelog 格式；仅作为工程辅助产物，不属于 `require.md §28.1` 的必需交付物
+  - 内容: Keep a Changelog 格式；仅作为可选工程整理项，不属于 `require.md §28.1` 的默认交付物
   - 测试: 格式正确
   - 前置: 无
   - 预计: 5 min
@@ -1030,7 +1060,7 @@ Design docs (00-28)
 
 - [ ] **T15**: 编写 examples/ffi.rs
   - 文件: `examples/ffi.rs`
-  - 内容: 与 C/BLAS 交互
+  - 内容: 为上游 C/BLAS 集成展示辅助 API 与兼容性判断
   - 测试: `cargo run --example ffi`
   - 前置: T1
   - 预计: 10 min
@@ -1069,7 +1099,7 @@ Wave 6: [T17]
 
 ---
 
-## 19. 设计决策记录
+## 11. 设计决策记录
 
 ### 决策 1：英文文档
 
@@ -1113,7 +1143,17 @@ Wave 6: [T17]
 
 ---
 
-## 20. 平台与工程约束
+## 12. 性能描述
+
+| 方面 | 说明 |
+| ---- | ---- |
+| 构建成本 | 文档方案主要关心 `cargo doc`、`cargo test --doc` 与 examples 构建成本，避免引入额外文档站点生成链路 |
+| 运行门禁 | 当前版本以文档完整性与可运行示例为主，不把文档构建耗时定义为正式性能门禁 |
+| 工程增强 | 若后续需要统计 docs CI 时间、broken-link 密度或 missing-docs 趋势，可作为工程增强单独演进 |
+
+---
+
+## 13. 平台与工程约束
 
 | 约束项     | 约束内容                                                  |
 | ---------- | --------------------------------------------------------- |

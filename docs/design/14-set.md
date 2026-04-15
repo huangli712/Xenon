@@ -15,7 +15,7 @@
 | ----------- | ------------------------------------------------ | ----------------------------- |
 | unique 操作 | 返回不重复元素组成的新 1D 张量；结果顺序不作要求 | intersection/union/difference |
 | 支持类型    | i32, i64, f32, f64, Complex<f32>, Complex<f64>   | bincount/histogram            |
-| 不支持类型  | bool（仅 2 种值，unique 无意义）                 | argmin/argmax                 |
+| 不支持类型  | bool（`[false, true]` 中两个元素彼此不同，但 `require.md §15` 明确将 bool 排除在 `unique` 之外） | argmin/argmax                 |
 
 > **注意**：当前版本仅支持 unique 操作！不包含 intersection/union/difference/bincount/histogram 等。
 
@@ -109,7 +109,7 @@ src/set/unique.rs
 
 ### 5.1 unique 操作
 
-````rust
+````rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -124,7 +124,8 @@ where
     ///
     /// # Unsupported types
     ///
-    /// - bool: only 2 values (true/false), unique is meaningless for bool
+    /// - bool: `false` and `true` are still distinct values, but `require.md` §15
+    ///   explicitly excludes bool from the current `unique` contract
     ///
     /// # Equality behavior
     ///
@@ -168,7 +169,7 @@ where
 
 ### 5.2 Good / Bad 对比示例
 
-```rust
+```rust,ignore
 // Good - use unique to get unique elements with unspecified order
 let a = Tensor1::from_vec(vec![3, 1, 2, 1, 3]);
 let u = a.unique();
@@ -241,8 +242,9 @@ Complex-number equality strategy (component-wise equality):
 ///
 /// # Sealing
 ///
-/// `UniqueElement` relies on the same closed element set as `Element`; it does
-/// not re-expose any additional private sealing trait in the public signature.
+/// `UniqueElement` relies on `Element`'s closed set of supported tensor element
+/// types; this trait adds operation-specific equality semantics on top of that
+/// closed set and does not widen it.
 pub trait UniqueElement: Element {
     /// Equality check used by `unique`.
     fn unique_eq(&self, other: &Self) -> bool;
@@ -466,7 +468,7 @@ User calls unique()
 | 属性     | 值                                                                                                                                                               |
 | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 决策     | unique 不支持 bool 类型                                                                                                                                          |
-| 理由     | bool 只有 true/false 两种值，unique 对 bool 无意义；用户可直接用 `== true` / `== false` 判断；且 bool 的 unique 语义不明确（是返回 [false, true] 还是 [0, 1]？） |
+| 理由     | `bool` 的 `unique` 结果在集合语义上仍可定义（如输入同时包含 `false` 与 `true` 时可得到两个不同元素），但 `require.md §15` 已明确将 bool 排除在当前版本范围之外；因此本期不为 bool 建立额外契约。 |
 | 替代方案 | 支持 bool unique，返回 [false, true]                                                                                                                             |
 | 拒绝原因 | 增加维护负担，收益几乎为零；需求说明书 §15 "bool 不适用"                                                                                                         |
 

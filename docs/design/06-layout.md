@@ -223,7 +223,7 @@ pub enum Order {
 }
 ```
 
-`LayoutFlags` 提供从 `Order` 构造标志的便捷方法。该能力仅作为**内部临时占位 helper** 服务于元数据构建，不代表当前版本支持顺序转换，也不足以表达完整布局状态：
+`LayoutFlags` 提供从 `Order` 构造标志的便捷方法。该能力仅用于把 F-order 连续状态映射为 `LayoutFlags`；当前版本的布局元数据只使用 `LayoutFlags`、`LayoutState` 与 `Strides<D>`，也不代表支持顺序转换：
 
 ````rust
 impl LayoutFlags {
@@ -761,7 +761,7 @@ Upper layers create or transform tensor metadata
 
 | 方向              | 对方模块 | 接口/类型           | 约定                                                                                                        |
 | ----------------- | -------- | ------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `layout ← tensor` | `tensor` | `LayoutFlags`       | `TensorBase` 直接内联 `LayoutFlags` 作为计算字段，`Layout` 结构体仅为预留定义（参见 `07-tensor.md` §5.1）。 |
+| `layout ← tensor` | `tensor` | `LayoutFlags`       | `TensorBase` 直接内联 `LayoutFlags` 作为计算字段，并结合 `LayoutState` / `Strides<D>` 表达布局元数据（参见 `07-tensor.md` §5.1）。 |
 | `tensor → layout` | `tensor` | 切片后的 flags 更新 | 切片时统一调用 `compute_layout_flags()` 更新连续性与对齐标志（参见 §5.9、`17-indexing.md` §5）            |
 | `tensor → layout` | `tensor` | transpose 后的步长/flags 重算 | transpose 后统一调用 `compute_layout_flags()` 重算 layout state 与 flags（参见 §5.9、`16-shape.md` §5.1） |
 

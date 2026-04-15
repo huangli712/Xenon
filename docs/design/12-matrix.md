@@ -82,7 +82,8 @@ src/matrix/
 
 | 场景 | 对外语义 |
 | ---- | -------- |
-| 输入不是逻辑 1D | 返回 `XenonError::InvalidArgument { operation: "dot".into(), argument: "input".into(), expected: "logical 1D tensor".into(), actual: format!("ndim={}", input.ndim()).into(), axis: None, shape: Some(input.shape().to_vec()) }`。 |
+| 左输入不是逻辑 1D | 返回 `XenonError::InvalidArgument { operation: "dot".into(), argument: "lhs".into(), expected: "logical 1D tensor".into(), actual: format!("ndim={}", lhs.ndim()).into(), axis: None, shape: Some(lhs.shape().to_vec()) }`。 |
+| 右输入不是逻辑 1D | 返回 `XenonError::InvalidArgument { operation: "dot".into(), argument: "rhs".into(), expected: "logical 1D tensor".into(), actual: format!("ndim={}", rhs.ndim()).into(), axis: None, shape: Some(rhs.shape().to_vec()) }`。 |
 | 两个 1D 输入长度不一致 | 返回 `XenonError::ShapeMismatch { operation: "dot".into(), left_shape: a.shape().to_vec(), right_shape: b.shape().to_vec() }`。 |
 | 整数乘法或累加溢出 | 触发 panic；这属于不可恢复算术域错误。 |
 | 空向量输入 | 合法，返回加法单位元 `A::zero()`。 |
@@ -238,7 +239,7 @@ dot_impl(a, b):
     if a.ndim() != 1:
         return Err(XenonError::InvalidArgument {
             operation: "dot".into(),
-            argument: "input".into(),
+            argument: "lhs".into(),
             expected: "logical 1D tensor".into(),
             actual: format!("ndim={}", a.ndim()).into(),
             axis: None,
@@ -248,7 +249,7 @@ dot_impl(a, b):
     if b.ndim() != 1:
         return Err(XenonError::InvalidArgument {
             operation: "dot".into(),
-            argument: "input".into(),
+            argument: "rhs".into(),
             expected: "logical 1D tensor".into(),
             actual: format!("ndim={}", b.ndim()).into(),
             axis: None,
@@ -266,12 +267,14 @@ dot_impl(a, b):
         return simd::dot_impl(a, b)
 
     if parallel path is enabled for (a, b):
-        return parallel::par_dot(a, b)
+        let a1 = as_ix1_view(a)?
+        let b1 = as_ix1_view(b)?
+        return parallel::par_dot(&a1, &b1)
 
     return scalar::dot_impl(a, b)
 ```
 
-> **执行路径约束：** `dot` 必须先完成逻辑 1D 与长度一致性检查；随后可按条件选择 `simd` 模块 kernel、`parallel` 模块的公开 `par_dot()` 并行归约入口或标量回退路径。所有路径都必须保持一致的结果、错误模型与整数溢出 panic 语义。
+> **执行路径约束：** `dot` 必须先完成逻辑 1D 与长度一致性检查；随后可按条件选择 `simd` 模块 kernel、`parallel` 模块的 `pub(crate)` `par_dot()` 并行归约入口或标量回退路径。由于 `par_dot()` 只接受 `TensorBase<_, Ix1>`，`matrix::dot()` 在确认 `a.ndim() == 1` 且 `b.ndim() == 1` 后，必须先通过私有桥接 helper 把泛型 `TensorView<'_, A, D1/D2>` 安全收窄为 `TensorView<'_, A, Ix1>`，再进入并行后端；不得在未完成运行时 rank 校验前直接调用并行实现。桥接 helper 只做“已验证 1D 视图 -> `Ix1` 视图”的 reborrow / dimensionality narrowing，不改变借用范围、shape 数据或布局元数据。所有路径都必须保持一致的结果、错误模型与整数溢出 panic 语义。
 
 ### 6.1.1 并行阈值与禁止嵌套并行
 
@@ -324,6 +327,23 @@ fn scalar_dot_float_or_complex<A, D>(
 // Real types: fn conjugate(self) -> Self { self }
 // Complex types: fn conjugate(self) -> Self { Complex::conjugate(self) }
 
+fn as_ix1_view<'a, A, D>(view: &TensorView<'a, A, D>) -> Result<TensorView<'a, A, Ix1>, XenonError>
+where
+    D: Dimension,
+{
+    debug_assert_eq!(view.ndim(), 1);
+    view.view()
+        .into_dimensionality::<Ix1>()
+        .map_err(|_| XenonError::InvalidArgument {
+            operation: "dot".into(),
+            argument: "input".into(),
+            expected: "logical 1D tensor".into(),
+            actual: format!("ndim={}", view.ndim()).into(),
+            axis: None,
+            shape: Some(view.shape().to_vec()),
+        })
+}
+
 /// Unified dot dispatch for both real and complex types.
 /// Uses `x.conjugate() * y` to generate products. Integer accumulation is routed
 /// through checked integer arithmetic; floating-point and complex accumulation use ordinary `+`.
@@ -332,11 +352,13 @@ fn dot_impl<A, D1, D2>(
     b: &TensorView<'_, A, D2>,
 ) -> Result<A, XenonError> {
     // 1. validate rank-1 precondition at runtime
-    // 2. choose simd / parallel::par_dot / scalar execution path
+    // 2. choose simd / private Ix1 bridge + parallel::par_dot / scalar execution path
     // 3. dispatch to integer checked path or float/complex path inside the selected backend
     unimplemented!("dispatches to simd, parallel, or scalar dot backends")
 }
 ```
+
+> **并行桥接说明：** 推荐桥接形式是对已通过校验的视图执行 `.view().into_dimensionality::<Ix1>()`（或等价的私有 reborrow helper），把 `TensorView<'_, A, D>` 收窄为 `TensorView<'_, A, Ix1>` 后再调用 `parallel::par_dot()`。该步骤只重用原有 view 的 shape/stride/offset/storage 借用，不重新分配也不复制元素；若未来为性能保留 `unsafe` 快路径，也只能放在这个私有 helper 内，并以先前的 `ndim == 1` 运行时断言为前提，而不能暴露成公开 API 契约。若 rank 校验失败，`dot()` 必须在桥接前直接返回 `XenonError::InvalidArgument`。
 
 > **设计决策：** 通过 `Numeric::conjugate()` 方法实现实数与复数的统一分派，避免为复数类型单独实现 `complex_dot` 函数。
 > 实数类型的 `conjugate()` 为零开销（内联后等价于直接使用 `x * y`），不引入额外运行时成本。
@@ -441,7 +463,7 @@ Wave 4: [T4]
 | 不变量                                          | 测试方法                   |
 | ----------------------------------------------- | -------------------------- |
 | `dot([], []) == A::zero()`                      | 空向量对所有受支持类型成立 |
-| `dot(a, b)` 与标量实现一致                      | 随机 1D 连续/非连续输入    |
+| `dot(a, b)` 与标量实现一致（整数严格一致，浮点/复数满足文档化容差） | 随机 1D 连续/非连续输入    |
 | 复数 `dot(a, b) == sum(conjugate(a[i]) * b[i])` | 随机复数向量               |
 
 ### 8.5 集成测试
@@ -498,10 +520,10 @@ User calls dot(a, b)
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | 输入非 1D 时返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, shape: Option<Vec<usize>> }`，典型取值为 `axis: None`、`shape: Some(input.shape().to_vec())`；长度不匹配时返回 `XenonError::ShapeMismatch { operation: Cow<'static, str>, left_shape: Vec<usize>, right_shape: Vec<usize> }`。 |
+| Recoverable error | 左/右输入非 1D 时分别返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, shape: Option<Vec<usize>> }`，典型取值为 `argument: "lhs"` 或 `"rhs"`、`axis: None`、`shape: Some(input.shape().to_vec())`；长度不匹配时返回 `XenonError::ShapeMismatch { operation: Cow<'static, str>, left_shape: Vec<usize>, right_shape: Vec<usize> }`。 |
 | Panic | 整数 dot 的乘法溢出与累加溢出均为不可恢复错误，按 checked arithmetic 触发 panic。panic 文本至少包含 `operation=dot`、元素类型、`trigger`（`multiply` / `accumulate`）、逻辑位置（如 `lane`）以及输入 shape。 |
 | 路径一致性 | `dot` 可选择标量、SIMD 或并行路径；任何可选路径都不得改变结果、错误类别或 panic 语义。 |
-| 容差边界 | 整数类型结果须逐元素精确一致。对浮点和复数类型，不同执行路径（标量/SIMD/并行）的结果允许因合并顺序不同而存在差异，但必须遵守与 `08-simd.md` / `09-parallel.md` 一致的规则：相对标量参考值每个实数分量最多 `2 ULP`。 |
+| 容差边界 | 整数类型结果须逐元素精确一致。对浮点和复数类型，不同执行路径（标量/SIMD/并行）的结果允许因合并顺序不同而存在差异，但必须遵守与 `08-simd.md` / `09-parallel.md` 一致的规则：每个实数分量与标量路径结果之差不超过 `max(1 ULP, 2^-23 * |scalar_result|)`（`f32`）或 `max(1 ULP, 2^-52 * |scalar_result|)`（`f64`）。 |
 
 ---
 
@@ -547,7 +569,7 @@ User calls dot(a, b)
 | dot f32 (`len < threshold`) | 标量或 SIMD | 小输入避免并行调度开销；连续输入可优先尝试 SIMD |
 | dot f32 (`len >= threshold`) | SIMD / 并行优先，失败时回退标量 | 大输入优先尝试并行；chunk 内可局部选择 SIMD |
 | dot f64 (`len >= threshold`) | SIMD / 并行优先，失败时回退标量 | 与 f32 相同，但受 ISA 与对齐条件约束 |
-| dot complex f64 (`len >= threshold`) | 视 kernel 支持情况选择并行或标量 | 复数内积同样必须保持共轭线性语义与 2 ULP 分量容差 |
+| dot complex f64 (`len >= threshold`) | 视 kernel 支持情况选择并行或标量 | 复数内积同样必须保持共轭线性语义，并对每个实数分量满足文档化容差契约 |
 
 ### 12.2 复杂度标注
 

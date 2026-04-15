@@ -276,7 +276,7 @@ where
     /// assert!(contig.is_f_contiguous());
     ///
     /// // Even transposed views become F-contiguous
-    /// let transposed = t.t();
+    /// let transposed = t.transpose();
     /// let contig2 = transposed.to_contiguous();
     /// assert!(contig2.is_f_contiguous());
     /// ```

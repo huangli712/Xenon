@@ -16,7 +16,7 @@
 | 原始指针 API    | `as_ptr()`/`as_mut_ptr()`                       | BLAS 绑定实现（由上游库通过 `blas-sys` crate 提供） |
 | 裸指针构造张量  | `from_raw_parts`/`from_raw_parts_mut`           | GPU 内存操作                                        |
 | 裸指针解构张量  | `into_raw_parts`                                | 跨进程共享内存                                      |
-| BLAS 兼容性 API | `blas_layout()`/`is_blas_layout_compatible()`   | 自动调用 BLAS（由上游库负责）                       |
+| BLAS 兼容性 API | `blas_layout()`/`is_blas_layout_compatible()`，以及非核心的兼容性辅助 `blas_trans()` / `BlasTrans` | 自动调用 BLAS（由上游库负责）                       |
 | 多维索引转换    | `try_offset_of()`/`try_ptr_at()`                | 序列化/反序列化                                     |
 
 ### 1.2 设计原则
@@ -106,7 +106,7 @@ src/ffi/
 │   ├── crate::tensor        # TensorBase<S, D>
 │   ├── crate::storage       # Storage
 │   ├── crate::layout        # is_f_contiguous, has_zero_stride
-│   ├── super::types         # BlasInfo, BlasLayout
+│   ├── super::types         # BlasInfo, BlasLayout, compatibility-only BlasTrans
 │   └── super::ptr           # as_ptr
 └── offset.rs
     ├── crate::tensor        # TensorBase<S, D>
@@ -154,11 +154,13 @@ pub enum BlasLayout {
 
 /// BLAS transpose identifier.
 ///
-/// Xenon's BLAS-compatible tensors are always F-order (column-major), so
-/// `blas_trans()` always returns `NoTrans`. The `Trans` and `ConjTrans` variants
-/// exist solely for upstream BLAS call sites: the upstream library may need to
-/// pass these identifiers when calling BLAS routines with externally transposed
-/// data. Xenon itself never returns `Trans` or `ConjTrans`.
+/// This enum is a compatibility helper for upstream BLAS call sites, not part of
+/// Xenon's core tensor semantics or required public tensor surface. Xenon's direct
+/// BLAS-compatible tensors are always F-order (column-major), so `blas_trans()`
+/// only serves as a non-core convenience wrapper around the fixed `NoTrans`
+/// choice after BLAS-compatibility checks. Upstream callers may ignore this
+/// helper and pass the corresponding backend constant directly once they have
+/// established an equivalent precondition.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BlasTrans {
     /// No transpose.
@@ -313,13 +315,11 @@ impl<A: Element> ElementType {
 ///   source tensor is dropped.
 /// - C consumers must use `ndim` as the length of both the `shape` and `strides`
 ///   arrays. Do NOT use hardcoded lengths or any other source.
-/// - `mutable` indicates whether the data region is writable. C consumers must
-///   not write through `data` when `mutable == false`.
 /// - For `bool` element type, C consumers must use `_Bool` (C23 `bool`) to match
 ///   Rust's `bool` ABI representation. Using `int` or `unsigned char` is
 ///   undefined behavior.
-/// - `data` is typed as `*mut A` for uniform usage. When `mutable == false`,
-///   the consumer must treat it as read-only (equivalent to `*const A`).
+/// - `TensorExport` is the read-only export form and uses `*const A`.
+///   `TensorExportMut` is the writable export form and uses `*mut A`.
 #[repr(C)]
 pub struct TensorExport<A> {
     /// Typed pointer to the storage base address.
@@ -328,10 +328,32 @@ pub struct TensorExport<A> {
     /// C consumers must cast `data` to the matching element type and interpret
     /// both `offset` and `strides` as element counts rather than byte counts.
     ///
-    /// When `mutable == false`, the consumer must not write through this pointer.
+    pub data: *const A,
+    /// Element type identifier (matches ElementType enum).
+    pub element_type: ElementType,
+    /// Number of dimensions.
+    ///
+    /// C consumers must use this value as the length of both `shape` and `strides`
+    /// arrays. Do NOT substitute with any other value.
+    pub ndim: usize,
+    /// Shape array (length = ndim).
+    pub shape: *const usize,
+    /// Stride array (length = ndim), in units of elements (not bytes).
+    pub strides: *const usize,
+    /// Offset from the storage base pointer to the logical first element,
+    /// measured in elements.
+    pub offset: usize,
+}
+
+/// Raw mutable tensor data export for FFI consumers.
+#[repr(C)]
+pub struct TensorExportMut<A> {
+    /// Typed pointer to the storage base address.
+    ///
+    /// `data`, `strides`, and `offset` all use element units of `A`.
+    /// C consumers must cast `data` to the matching element type and interpret
+    /// both `offset` and `strides` as element counts rather than byte counts.
     pub data: *mut A,
-    /// Whether the data is mutable.
-    pub mutable: bool,
     /// Element type identifier (matches ElementType enum).
     pub element_type: ElementType,
     /// Number of dimensions.
@@ -377,19 +399,19 @@ where
     ///
     /// This API is only implemented for writable storage, so read-only storage
     /// modes are rejected at the trait boundary rather than at runtime.
-    pub fn export_mut(&mut self) -> Result<TensorExport<A>, XenonError>;
+    pub fn export_mut(&mut self) -> Result<TensorExportMut<A>, XenonError>;
 }
 ````
 
 > **导出语义说明：** `TensorExport` 面向 C 调用方提供"指针 + shape + strides + offset"的结构化快照，其中 `shape` 与 `strides` 指针均借用源张量内部元数据，不能在源张量释放后继续使用。
 
-> **导出范围说明：** `export()` 提供只读结构化导出，适用于任意 `TensorBase<S, D>` 且仅要求 `S: Storage`，因此覆盖 Owned、View、只读共享存储以及所有合法 stride 布局。`export_mut()` 适用于任意满足 `S: StorageMut` 的 `TensorBase<S, D>`，因此同时覆盖 Owned 与 `ViewMut` 这两类可写存储。
+> **导出范围说明：** `export()` 提供只读结构化导出并返回 `TensorExport<A>`，适用于任意 `TensorBase<S, D>` 且仅要求 `S: Storage`，因此覆盖 Owned、View、只读共享存储以及所有合法 stride 布局。`export_mut()` 返回 `TensorExportMut<A>`，适用于任意满足 `S: StorageMut` 的 `TensorBase<S, D>`，因此同时覆盖 Owned 与 `ViewMut` 这两类可写存储。
 
 > **可写导出边界：** `export_mut()` 通过 `&mut self` 和 `S: StorageMut` 保证 Xenon 侧的独占可写访问；只读视图和共享只读存储则在 trait 边界上直接被拒绝。这与 `require.md §6` 的存储模式转换和 `§25` 的零拷贝导出要求保持一致。
 
 > **空张量约定：** 空张量（`len() == 0`）导出时 `data` 可为悬垂但非解引用的哨兵指针，此时 `shape`、`strides`、`offset` 仍须正确反映空张量元数据。C 调用方必须先基于长度判断是否可解引用。
 
-> **指针语义补充：** `data` 是 `*mut A` 类型指针，语义上始终指向 storage base pointer。当 `mutable == false` 时，C 调用方必须将其视为只读指针。`offset` 与 `strides` 都以"元素个数"计量，而不是字节数。逻辑首元素地址等于 `data.add(offset)`（仅对非空张量成立）。
+> **指针语义补充：** `TensorExport<A>::data` 是 `*const A`，`TensorExportMut<A>::data` 是 `*mut A`，二者语义上都始终指向 storage base pointer。`offset` 与 `strides` 都以"元素个数"计量，而不是字节数。逻辑首元素地址等于 `data.add(offset)`（仅对非空张量成立）。
 
 > **stride 约定：** `strides` 以"元素个数"而非字节数表示步长，类型为 `usize`。按照 `06-layout.md` §1.2 与 `require.md` §7，当前版本 Xenon 不支持负步长，因此 FFI 导出格式也不保留负 stride 语义。
 
@@ -397,7 +419,7 @@ where
 
 > **ndim 一致性约定：** C 消费者须以 `ndim` 为 `shape` 和 `strides` 数组的长度，不得以硬编码长度或其它来源替代。`TensorExport` 的构造保证 `shape` 和 `strides` 指向的数组长度均等于 `ndim`。
 
-> **生命周期与线程安全：** 导出结果不拥有底层内存；一旦源张量被 drop，`TensorExport` 内的 `data`、`shape`、`strides` 全部立即失效。设计上应将该导出结果视为可在线程间移动（Send）但不可共享同步访问（not Sync）的 FFI 借用句柄，尤其不可在多个线程中并发写入同一导出结果所指向的数据。
+> **生命周期与借用语义：** 导出结果不拥有底层内存；一旦源张量被 drop，`TensorExport` 内的 `data`、`shape`、`strides` 全部立即失效。应将该导出结果视为对源张量当前元数据与指针状态的借用快照：`export()` 暴露只读快照，`export_mut()` 暴露独占可写快照；无论是否跨 FFI 边界缓存，该快照都不得超出源张量的生命周期，也不得绕过 `&mut self` 所表达的独占写语义。本文不额外指定 `TensorExport<_>` / `TensorExportMut<_>` 的 auto trait 组合，线程相关性质以其字段与 Rust auto-trait 推导结果为准。
 
 #### 5.2.1 Complex FFI layout contract
 
@@ -419,14 +441,14 @@ pub struct Complex64 {
 
 > **内存保证：** `#[repr(C)]` 保证字段顺序固定为 `re` 后接 `im`，整体对齐分别等于 `f32` / `f64` 的 C ABI 对齐要求；若目标 ABI 需要尾部 padding，则该 padding 仅作用于单个复数元素末尾，不改变数组按该结构逐元素重复排布的语义。
 
-> **导出语义：** 导出复数张量时，`TensorExport<Complex<f32>>` 或 `TensorExport<Complex<f64>>` 中的 `data` 仍是“复数元素指针”，`offset` 与 `strides` 仍按“复数元素个数”计量，而不是按标量 `re/im` 分量或字节计量。C 侧看到的是 `Complex32*` / `Complex64*` 加上相同的 shape/stride 元数据。
+> **导出语义：** 导出复数张量时，`TensorExport<Complex<f32>>` / `TensorExport<Complex<f64>>` 和 `TensorExportMut<Complex<f32>>` / `TensorExportMut<Complex<f64>>` 中的 `data` 仍是“复数元素指针”，`offset` 与 `strides` 仍按“复数元素个数”计量，而不是按标量 `re/im` 分量或字节计量。C 侧看到的是 `Complex32*` / `Complex64*` 加上相同的 shape/stride 元数据。
 
 
 #### 5.2.2 Bool FFI layout contract
 
-> **Bool ABI 要求：** Rust `bool` 在 FFI 中等价于 C 的 `_Bool`（C23 起为 `bool`），大小为 1 字节，对齐为 1，合法值为 `0`（false）和 `1`（true）。C 消费者必须使用 `_Bool` 或 `bool`（C23）来匹配 `TensorExport<bool>` 中的 `data` 指针类型；使用 `int`、`unsigned char` 或其它整数类型会导致未定义行为。
+> **Bool ABI 要求：** Rust `bool` 在 FFI 中等价于 C 的 `_Bool`（C23 起为 `bool`），大小为 1 字节，对齐为 1，合法值为 `0`（false）和 `1`（true）。C 消费者必须使用 `_Bool` 或 `bool`（C23）来匹配 `TensorExport<bool>` / `TensorExportMut<bool>` 中的 `data` 指针类型；使用 `int`、`unsigned char` 或其它整数类型会导致未定义行为。
 
-> **导出语义：** 导出 `bool` 张量时，`TensorExport<bool>` 中的 `data` 为 `bool*`（C 侧 `_Bool*`），`offset` 与 `strides` 按 `bool` 元素个数计量。`strides[i] == 1` 表示相邻逻辑元素在内存中连续排列（每个占 1 字节）。
+> **导出语义：** 导出 `bool` 张量时，`TensorExport<bool>` 中的 `data` 为 `*const bool`（C 侧 `const _Bool*`），`TensorExportMut<bool>` 中的 `data` 为 `*mut bool`（C 侧 `_Bool*`），`offset` 与 `strides` 按 `bool` 元素个数计量。`strides[i] == 1` 表示相邻逻辑元素在内存中连续排列（每个占 1 字节）。
 ### 5.3 从裸指针构造张量
 
 ````rust,ignore
@@ -584,7 +606,7 @@ where
 
 > **空张量补充：** `ptr.add(offset)` 形式的逻辑首元素地址计算只适用于非空张量；空张量路径必须跳过该指针运算，并改用 `NonNull::dangling()` 这类明确定义的非解引用哨兵值参与 flags / metadata 初始化。
 
-> **可写视图补充：** `from_raw_parts_mut()` 不仅必须拒绝零步长布局，还必须拒绝一切可检测的地址重叠布局。实现上先用 `validate_access_range()` 验证越界与可表示性，再用 `validate_non_overlapping_layout()` 验证“不同逻辑索引不会写到同一地址”，从而把自别名可写布局统一收敛为可恢复错误。
+> **可写视图补充：** `from_raw_parts_mut()` 不仅必须拒绝零步长布局，还必须拒绝一切能被高效保守判定为潜在自别名的布局。实现上先用 `validate_access_range()` 验证越界与可表示性，再用 `validate_non_overlapping_layout()` 对受支持的正步长布局做保守非重叠判定；若布局超出该高效判定范围，也必须返回可恢复错误，而不是枚举全部可达 offset。
 
 ### 5.4 将张量解构为裸指针
 
@@ -1024,9 +1046,9 @@ where
 ### 5.9 Good/Bad 对比
 
 ```rust,ignore
-// blas_trans() is only queried after obtaining a BLAS-compatible representation.
-// For Xenon's direct BLAS path, this is always a standard F-order matrix and
-// therefore returns BlasTrans::NoTrans.
+// blas_trans() is only a compatibility helper queried after obtaining a
+// BLAS-compatible representation. For Xenon's direct BLAS path, this is always
+// a standard F-order matrix and therefore maps to BlasTrans::NoTrans.
 impl<S, D> TensorBase<S, D>
 where
     S: Storage,
@@ -1034,9 +1056,11 @@ where
 {
     /// Returns the BLAS transpose identifier for this tensor.
     ///
-    /// Returns `BlasTrans::NoTrans` for BLAS-compatible F-order matrices.
+    /// This is a compatibility-only helper, not a core tensor API commitment.
+    /// For Xenon's BLAS-compatible F-order matrices it returns `BlasTrans::NoTrans`.
     /// Transposed or otherwise non-BLAS-compatible views must first be converted
-    /// into an owned F-order tensor before calling BLAS.
+    /// into an owned F-order tensor before calling BLAS; callers may also bypass
+    /// this helper and pass the equivalent backend constant directly.
     pub fn blas_trans(&self) -> BlasTrans {
         BlasTrans::NoTrans
     }
@@ -1120,25 +1144,31 @@ validate_access_range(shape, strides, offset, storage_len):
 
 ### 6.3 可写布局非重叠校验 (`validate_non_overlapping_layout`)
 
-`from_raw_parts_mut()` 还必须拒绝会让两个不同逻辑索引映射到同一地址的可写布局。这里的“非重叠”定义为：任意两个不同逻辑索引 `i != j`，其可写目标地址 `addr(i)` 与 `addr(j)` 必须不同；换言之，逻辑元素地址集合不得重叠。算法如下：
+`from_raw_parts_mut()` 还必须拒绝会让两个不同逻辑索引映射到同一地址的可写布局。这里的“非重叠”定义为：任意两个不同逻辑索引 `i != j`，其可写目标地址 `addr(i)` 与 `addr(j)` 必须不同；换言之，逻辑元素地址集合不得重叠。该校验不得通过枚举全部可达 offset 来实现；当前版本只承诺接受可高效保守判定的正步长布局（例如 contiguous / canonical C-order / canonical F-order，以及满足同一保守判据的更一般正步长布局）。算法如下：
 
 ```
 validate_non_overlapping_layout(shape, strides, offset):
     1. If product(shape) <= 1: return Ok(()).
-    2. Enumerate the reachable element offsets implied by `(shape, strides, offset)`.
-    3. If any two distinct logical indices map to the same offset, return
+    2. Reject immediately if any non-singleton axis has stride == 0.
+    3. Collect all non-singleton axes, sort them by stride ascending, and track
+       the already-covered span of the lower-stride subspace.
+    4. For each sorted axis i:
+         require stride[i] >= covered_span;
+         covered_span = covered_span + (shape[i] - 1) * stride[i]
+       If any checked arithmetic fails or the inequality does not hold, reject.
+    5. If the conservative test cannot prove non-overlap, return
        Err(InvalidLayout {
            storage_kind: "view_mut",
            shape,
            strides,
            offset,
            storage_len,
-           reason: "mutable layout must not self-alias",
-       }).
-    4. Otherwise return Ok(()).
+           reason: "mutable layout is not in the efficiently verifiable non-overlapping subset",
+        }).
+    6. Otherwise return Ok(()).
 ```
 
-> 该校验与 `validate_access_range()` 分工不同：前者解决“会不会越界”，后者解决“会不会别名写入”。两者都属于 `require.md §8` 下可直接验证的安全构造前提，失败时都须返回可恢复错误。
+> 该校验与 `validate_access_range()` 分工不同：前者解决“会不会越界”，后者解决“会不会别名写入”。两者都属于 `require.md §8` 下可直接验证的安全构造前提，失败时都须返回可恢复错误。该保守算法允许拒绝一部分理论上合法但无法高效证明不重叠的 exotic stride 布局；当前版本不为这类布局提供可写 raw-parts 构造承诺。
 
 ### 6.4 BLAS 兼容性检查流程
 
@@ -1164,8 +1194,8 @@ Additional caller-side checks:
 
 - [ ] **T1**: 创建 `src/ffi/` 模块骨架和辅助类型
   - 文件: `src/ffi/mod.rs`, `src/ffi/types.rs`
-  - 内容: 模块声明、re-exports、`BlasLayout`/`BlasTrans` 枚举、`BlasInfo` 结构体
-  - 测试: `test_blas_layout_column_major`, `test_blas_trans_variants`
+  - 内容: 模块声明、re-exports、`BlasLayout`、兼容性辅助 `BlasTrans`、`BlasInfo` 结构体
+  - 测试: `test_blas_layout_column_major`, `test_blas_trans_helper`
   - 前置: 无
   - 预计: 10 min
 
@@ -1325,7 +1355,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | `into_raw_parts()` | 消费源张量（`self`），将内存所有权转移给调用方。调用方须按 Xenon 分配契约回收：通过 `from_raw_parts_owned()` 重建张量并由 Drop 释放，或使用与 Xenon 分配器元数据等价的专用回收路径；不得直接调用系统 `free` 或其他 foreign allocator。 |
 | `from_raw_parts()` / `from_raw_parts_mut()` | 构造的视图生命周期 `'a` 由调用方在 `unsafe` 前提下保证，须与底层内存的实际存活期一致。视图不拥有内存，drop 时不会释放。 |
 | `from_raw_parts_owned()` | 接收 `OwnedRawParts` 并重建 Owned 张量，内存所有权回归 Xenon 的 Drop 管理。 |
-| `export()` / `export_mut()` | 返回的 `TensorExport` 中 `data`、`shape`、`strides` 均借用源张量内部存储；源张量 drop 后全部指针失效。`export_mut()` 额外要求 `&mut self` 且 `S: StorageMut`，确保独占可写访问。 |
+| `export()` / `export_mut()` | 返回的 `TensorExport` / `TensorExportMut` 中 `data`、`shape`、`strides` 均借用源张量内部存储；源张量 drop 后全部指针失效。`export_mut()` 额外要求 `&mut self` 且 `S: StorageMut`，确保独占可写访问。 |
 
 ---
 
@@ -1403,7 +1433,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | ----------- | --------------------------------------------------------------------------------------------- |
 | `std` only  | 当前版本仅讨论 `std` 环境下的 FFI 接口；FFI 指针操作依赖 `std` 提供的分配器与布局保证         |
 | 单 crate    | FFI 模块位于 `src/ffi/`，不引入额外 crate，保持 Xenon 单 crate 结构                           |
-| SemVer      | `TensorExport<A>`、`OwnedRawParts<A,D>` 的字段布局和 `#[repr(C)]` 表示均为公开契约，变更须遵循 SemVer；新增公共 FFI 方法或枚举变体属于 minor 变更 |
+| SemVer      | `TensorExport<A>`、`TensorExportMut<A>`、`OwnedRawParts<A,D>` 的字段布局和 `#[repr(C)]` 表示均为公开契约，变更须遵循 SemVer；新增公共 FFI 方法或枚举变体属于 minor 变更 |
 | 最小依赖    | 无新增第三方依赖，符合 `require.md` §1.3 对最小依赖的限制                                     |
 | 索引类型    | 逻辑索引统一使用 `usize`；仅 BLAS 整数参数在边界处再转换为 `i32`                               |
 | stride 范围 | 当前版本只接受非负 stride；负步长导入不在范围内                                                |

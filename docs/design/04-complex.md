@@ -2,7 +2,7 @@
 
 > 文档编号: 04 | 模块: `src/complex/` | 阶段: Phase 1
 > 前置文档: `00-coding.md`, `01-architecture.md`
-> 需求参考: 需求说明书 §4, §5, §23, §24, §25, §28
+> 需求参考: 需求说明书 §4, §5, §12, §13, §15, §23, §24, §25, §28
 > 范围声明: 范围内
 
 ---
@@ -16,9 +16,9 @@
 | 类型定义          | `Complex<T>` 结构体（`#[repr(C)]`，re/im 字段）                                                   | —                                                                                           |
 | 构造方法          | `new(re, im)`                                                                                     | 额外公开构造器（如 `from_polar`）                                                           |
 | 基础方法          | `re()`, `im()`, `conj()`, `is_real()`, `is_imaginary()`                                           | —                                                                                           |
-| 数学方法          | `norm()`（hypot）, `norm_sqr()`, `to_polar()`                                                     | 将 `arg` / `exp` / `ln` / `sqrt` 暴露为公开稳定 API、复数 FFT、高阶复数运算                |
+| 数学方法          | `norm()`（hypot）, `norm_sqr()`                                                                   | 将 `to_polar()`、`arg` / `exp` / `ln` / `sqrt` 暴露为公开稳定 API、复数 FFT、高阶复数运算 |
 | 算术运算          | Complex±Complex, Complex×Complex, Complex÷Complex, 一元负号                                       | 跨精度混合运算                                                                              |
-| 实数混合运算      | 同精度标量便捷：`Complex<f32> op f32`、`Complex<f64> op f64`；张量级运算前须先显式转为 `Complex<T>` | 跨精度：`f32+Complex<f64>`（须显式转换）；将该类标量便捷 impl 直接外推为张量级重载            |
+| 实数混合运算      | 同精度标量便捷：`Complex<f32> op f32`、`Complex<f64> op f64`；混合运算前须先显式转换到匹配的复数元素类型 | 跨精度：`f32+Complex<f64>`（须显式转换）；将该类标量便捷 impl 直接外推为张量级重载              |
 | 格式化输出        | Display（`"a+bj"` / `"a-bj"`）, Debug                                                             | —                                                                                           |
 | 双字段 C 布局基础 | `#[repr(C)]` + 编译期静态断言                                                                     | 跨精度混合运算                                                                              |
 | 类型转换语义      | 定义 `Complex<f32>↔Complex<f64>`, `f32/f64→Complex`, `i32/i64→Complex` 的语义边界                 | 转换实现入口与张量级转换 owner（由 `convert/` 负责）                                           |
@@ -61,14 +61,14 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 | 项目     | 内容                                                            |
 | -------- | --------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §4、§5、§23、§24、§25、§28                           |
-| 范围内   | `Complex<T>` 类型定义、同精度复数算术、`conj()` / `norm()` / `norm_sqr()` / `to_polar()`、格式化、类型转换、FFI 布局边界 |
+| 需求映射 | 需求说明书 §4、§5、§12、§13、§15、§23、§24、§25、§28            |
+| 范围内   | `Complex<T>` 类型定义、同精度复数算术、`conj()` / `norm()` / `norm_sqr()`、格式化、类型转换、FFI 布局边界 |
 | 范围外   | `num-complex` 兼容层、跨精度混合运算、FFT 与高阶复数算法、额外公开复数数学函数 |
 | 非目标   | 引入第三方复数库依赖、开放任意 `T` 的公开实例化、把内部数学 helper 稳定化，或 `_Complex` ABI 保证 |
 
 > **当前版本范围声明**：本版本保留 `Complex<T> op T`（右侧实数）的**标量级便捷实现**与 `Complex<T> op Complex<T>` 运算。前者仅用于单个复数值与同精度实数值的便捷组合，**不直接适用于张量逐元素运算或 `19-overload.md` 的运算符重载设计**。根据 `require.md` §5，涉及实数与复数的张量逐元素运算、运算符重载及相关 API 组合时，参与运算双方的元素类型须预先一致；用户须先将实数显式转换为 `Complex<T>`，再进入张量级运算。左侧实数运算（`T op Complex<T>`）仍不在当前版本范围内，若后续版本需要支持，须单独设计并继续满足上述同类型前提。
 
-> **公开 API 收紧**：`arg` / `exp` / `ln` / `sqrt` / `from_polar` / `i` 可作为 `complex/` 内部实现辅助能力存在，用于支撑 `to_polar()`、测试或后续上层模块实现，但**不作为当前版本对下游承诺的公开稳定 API**。本文档中的对应算法仅描述内部实现方案。
+> **公开 API 收紧**：`to_polar()`、`arg` / `exp` / `ln` / `sqrt` / `from_polar` / `i` 仅作为 `complex/` 内部实现辅助能力存在，用于测试或后续上层模块实现，但**不作为当前版本对下游承诺的公开稳定 API**。本文档中的对应算法仅描述内部实现方案。
 
 ---
 
@@ -164,7 +164,7 @@ pub struct Complex<T: ComplexFloat> {
 
 1. **基础方法**（无需浮点数学）：在 `impl<T: ComplexFloat> Complex<T>` 中实现，公开可用。包括 `re()`、`im()`、`conj()`、`from_real()`、`from_imag()`、`is_real()`、`is_imaginary()`。
 
-2. **数学方法**（需要浮点数学）：对外稳定承诺仅包括 `norm()`、`norm_sqr()`、`to_polar()`；`arg_impl()`、`exp_impl()`、`ln_impl()`、`sqrt_impl()`、`from_polar_impl()` 等仅作为 `complex/` 内部 helper，由具体的 `impl Complex<f32>` / `impl Complex<f64>` 或私有模块承载。
+2. **数学方法**（需要浮点数学）：对外稳定承诺仅包括 `norm()`、`norm_sqr()`；`to_polar()`、`arg_impl()`、`exp_impl()`、`ln_impl()`、`sqrt_impl()`、`from_polar_impl()` 等仅作为 `complex/` 内部 helper，由具体的 `impl Complex<f32>` / `impl Complex<f64>` 或私有模块承载。
 
 Xenon 公开使用 sealed 的 `ComplexFloat` 约束把 `Complex<T>` 封闭到 `f32` / `f64`；内部仍可定义 `Float` trait 绑定必要数学方法，作为实现细节：
 
@@ -370,9 +370,9 @@ impl Complex<f32> {
         self.re * self.re + self.im * self.im
     }
 
-    /// Returns polar coordinates (r, theta).
+    /// Internal helper returning polar coordinates (r, theta).
     #[inline]
-    pub fn to_polar(self) -> (f32, f32) {
+    pub(crate) fn to_polar_impl(self) -> (f32, f32) {
         (self.norm(), self.arg_impl())
     }
 }
@@ -432,9 +432,9 @@ impl Complex<f64> {
         self.re * self.re + self.im * self.im
     }
 
-    /// Returns polar coordinates (r, theta).
+    /// Internal helper returning polar coordinates (r, theta).
     #[inline]
-    pub fn to_polar(self) -> (f64, f64) {
+    pub(crate) fn to_polar_impl(self) -> (f64, f64) {
         (self.norm(), self.arg_impl())
     }
 }
@@ -543,6 +543,8 @@ impl<T: Float> core::ops::Neg for Complex<T> {
 }
 ```
 
+> **除零语义说明：** `Complex<T>` 的除法在分母为 `0+0j` 时遵循 IEEE 754 浮点传播语义；实现可产生 `NaN` / `Inf` 组合结果，但不额外返回可恢复错误，也不引入额外 panic。该约束同时适用于 `Complex<T> / Complex<T>` 与 `Complex<T> / T` 的公开运算符语义，并与 `require.md §28.3` 保持一致。
+
 ### 5.7 混合运算（同精度实数与复数）
 
 ```rust,ignore
@@ -575,7 +577,7 @@ impl<T: Float> core::ops::Sub<T> for Complex<T> {
 }
 ```
 
-> **设计决策：** 当前版本仅支持同精度的 `Complex<T> op T`。左侧实数运算 `T op Complex<T>` 暂不纳入稳定 API，调用方若需要该语义，应先显式执行 `Complex::from(real)` 再参与复数运算。`Complex<f64> + f32` 这类跨精度混合运算仍然编译错误，须显式转换。
+> **设计决策：** 当前版本仅支持同精度的 `Complex<T> op T`。左侧实数运算 `T op Complex<T>` 暂不纳入稳定 API，调用方若需要该语义，应先显式转换到匹配的复数元素类型后再参与运算。`Complex<f64> + f32`、`Complex<f64> + i32` 这类混合运算都必须先做显式转换。
 
 > **边界说明：** 这些 `Complex<T> op T` impl 仅为标量级便捷能力，**不属于张量级逐元素运算或 `19-overload.md` 运算符重载设计的稳定承诺**。张量级场景中，双方元素类型必须预先一致（见 `require.md` §5）；用户须先把实数显式转换为 `Complex<T>`，再参与张量运算。
 
@@ -648,12 +650,12 @@ impl<T: Float + core::fmt::Display> core::fmt::Display for Complex<T> {
 
 | 源类型 | 目标类型 | 语义 | 默认行为 |
 |--------|----------|------|---------|
-| `Complex<f32>` | `f32` | 仅当虚部为 `0` 时返回实部 | 虚部非零时返回 `XenonError::TypeConversion { ... }` |
-| `Complex<f64>` | `f64` | 仅当虚部为 `0` 时返回实部 | 虚部非零时返回 `XenonError::TypeConversion { ... }` |
-| `Complex<f32>` | `f64` | 仅当虚部为 `0` 时，按 `f32→f64` 规则转换实部 | 虚部非零时返回 `XenonError::TypeConversion { ... }` |
-| `Complex<f64>` | `f32` | 仅当虚部为 `0` 时，按 `f64→f32` 规则转换实部 | 虚部非零时返回 `XenonError::TypeConversion { ... }` |
+| `Complex<f32>` | `f32` | 仅当虚部为 `0` 时返回实部 | 虚部非零时返回 `XenonError::TypeConversion(TypeConversionError)` |
+| `Complex<f64>` | `f64` | 仅当虚部为 `0` 时返回实部 | 虚部非零时返回 `XenonError::TypeConversion(TypeConversionError)` |
+| `Complex<f32>` | `f64` | 仅当虚部为 `0` 时，按 `f32→f64` 规则转换实部 | 虚部非零时返回 `XenonError::TypeConversion(TypeConversionError)` |
+| `Complex<f64>` | `f32` | 仅当虚部为 `0` 时，按 `f64→f32` 规则转换实部 | 虚部非零时返回 `XenonError::TypeConversion(TypeConversionError)` |
 
-> **实现片段省略：** `Complex -> Real` 的具体 `CastTo<T>` 实现同样位于 `convert/cast.rs`。`complex/` 仅保留“虚部必须为 `0`，否则返回 `XenonError::TypeConversion { ... }`”这一语义约束。
+> **实现片段省略：** `Complex -> Real` 的具体 `CastTo<T>` 实现同样位于 `convert/cast.rs`。`complex/` 仅保留“虚部必须为 `0`，否则返回 `XenonError::TypeConversion(TypeConversionError)`”这一语义约束，字段模型以 `26-error.md §4.2` / `§4.4` 为准。
 
 ### 5.11 内存布局静态断言
 
@@ -842,16 +844,16 @@ hypot(a, b):
 
 ### Wave 4: 数学方法
 
-- [ ] **T8**: 实现稳定数学方法 `norm`, `norm_sqr`, `to_polar`
+- [ ] **T8**: 实现稳定数学方法 `norm`, `norm_sqr`
   - 文件: `src/complex/mod.rs`
-  - 内容: `norm()`（hypot）, `norm_sqr()`, `to_polar()`；内部复用 `arg_impl()`
+  - 内容: `norm()`（hypot）, `norm_sqr()`；内部 helper 可复用 `arg_impl()` / `to_polar_impl()`
   - 测试: `test_norm_3_4_5`, `test_norm_no_overflow`, `test_arg_impl_range`
   - 前置: T1
   - 预计: 10 min
 
 - [ ] **T9**: 实现内部复数数学 helper
   - 文件: `src/complex/mod.rs`
-  - 内容: `arg_impl()`, `exp_impl()`, `ln_impl()`, `sqrt_impl()`, `from_polar_impl()`, `i_impl()`
+  - 内容: `to_polar_impl()`, `arg_impl()`, `exp_impl()`, `ln_impl()`, `sqrt_impl()`, `from_polar_impl()`, `i_impl()`
   - 测试: `test_exp_impl_ln_impl_inverse`, `test_sqrt_impl_neg_one`, `test_from_polar_impl_i`（作为内部回归测试）
   - 前置: T8
   - 预计: 10 min
@@ -928,6 +930,7 @@ Wave 5: [T11] → [T12]
 | `test_sub_complex`               | `(5+7j) - (2+3j) == (3+4j)`                                 | 高     |
 | `test_mul_complex`               | `(1+2j) * (3+4j) == (-5+10j)`                               | 高     |
 | `test_div_complex`               | 使用容差断言验证 `(6+8j) / (3+4j)` 约等于 `(2+0j)`         | 高     |
+| `test_div_zero_propagates_ieee754` | `(1+2j) / (0+0j)` 产生 IEEE 754 传播结果且不返回错误/额外 panic | 高     |
 | `test_neg_complex`               | `-(1+2j) == (-1-2j)`                                        | 高     |
 | `test_add_real`                  | `(1+2j) + 3.0 == (4+2j)`                                    | 高     |
 | `test_real_to_complex_add`       | `Complex::from(3.0) + (1+2j) == (4+2j)`                     | 高     |
@@ -964,6 +967,7 @@ assert!((result.re - 2.0).abs() < 1e-10 && result.im.abs() < 1e-10);
 | Inf 参与                      | `Complex::new(Inf, 0.0).exp_impl()` 正确处理（内部回归测试） |
 | 极大值 norm                   | `Complex::new(1e200, 1e200).norm()` 不溢出（≈1.414e200） |
 | 极小值 norm                   | `Complex::new(1e-200, 1e-200).norm()` 正确               |
+| `Complex::new(1.0, 2.0) / Complex::new(0.0, 0.0)` | 遵循 IEEE 754 传播语义，不返回可恢复错误，也不额外 panic |
 | 连续字段布局                  | `Complex<f64>` 的 `re/im` 字段顺序稳定，可逐元素读取     |
 
 ### 8.4 属性测试不变量
@@ -1043,7 +1047,7 @@ User constructs `Complex<f64>::new(re, im)`
 
 | 项目           | 内容 |
 | -------------- | ---- |
-| Recoverable error | `CastTo<T>` 承载的有损窄化路径返回可恢复错误；公开错误类型统一为 `XenonError::TypeConversion { source_type, target_type, reason, element_index }` |
+| Recoverable error | `CastTo<T>` 承载的有损窄化路径返回可恢复错误；公开错误类型统一为 `XenonError::TypeConversion(TypeConversionError)` |
 | Panic | 本模块常规复数运算与方法不以 panic 作为错误通道；若调用底层标准库浮点 API，遵循其既有语义 |
 | 路径一致性 | scalar 路径与普通标量实现必须一致；SIMD：不适用；parallel：不适用 |
 | 容差边界 | 复数数值测试采用显式容差；布局、格式化与类型边界测试不适用 |

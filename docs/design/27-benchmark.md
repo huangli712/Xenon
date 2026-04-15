@@ -13,7 +13,7 @@
 
 | 职责         | 包含                           | 不包含                           |
 | ------------ | ------------------------------ | -------------------------------- |
-| 性能回归检测 | 每次 PR 自动运行，检测性能退化 | 功能正确性验证（由集成测试覆盖） |
+| 性能回归检测 | 可选工程增强：在仓库需要时运行，观测性能退化趋势 | 功能正确性验证（由集成测试覆盖） |
 | 优化验证     | SIMD/并行优化效果的量化验证    | 编译时间测量                     |
 | 性能档案     | 记录各操作在不同参数下的吞吐量 | 内存泄漏检测                     |
 | 参数矩阵     | 多规模、多类型、多布局组合     | 跨语言对比（非核心目标）         |
@@ -25,7 +25,7 @@
 | 可重复性 | 固定数据规模、固定随机种子、预热后测量                                      |
 | 全面覆盖 | 覆盖所有性能关键路径（逐元素、归约、内积、转置、广播）                      |
 | 低噪声   | 使用固定输入与稳定运行环境收集趋势；benchmark 结果不作为 crate 合约的一部分 |
-| 分级执行 | CI 三级工作流：Smoke / Regression / Full                                    |
+| 分级执行 | 可选 CI 分级工作流：Smoke / Regression / Full，不阻塞默认交付                 |
 
 ### 1.3 在架构中的位置
 
@@ -47,9 +47,22 @@ benches/  <- current module (dev-dependency, consumes only the crate's public AP
 | 类型     | 内容                                                                       |
 | -------- | -------------------------------------------------------------------------- |
 | 需求映射 | `require.md §9.1`, `§9.2`, `§9.3`, `§28.3`                                 |
-| 范围内   | benchmark 分类、参数矩阵、回归阈值、CI 分级工作流                          |
+| 范围内   | benchmark 分类、参数矩阵、基准 harness 与结果汇总口径                      |
 | 范围外   | 生产运行时性能调优、跨语言基准、额外平台专用测量框架                       |
 | 非目标   | 通过 benchmark 文档扩展 crate 公共 API、引入非必要运行时依赖或改变需求边界 |
+
+### 2.1 前提条件
+
+| 前提项 | 说明 |
+| ------ | ---- |
+| 平台前提 | 仅面向 `std` 环境，且保持单 crate 结构，不引入 benchmark 专用第三方依赖 |
+| 能力前提 | 被测公开 API 已按 `require.md` 范围落地：逐元素运算、归约、内积、广播、转置、构造、集合操作 |
+| feature 前提 | `simd` / `parallel` 默认关闭，仅在显式启用对应 feature 时进入对比基准 |
+| 布局前提 | 拥有型连续布局仅覆盖 F-order；非连续输入仅通过切片/转置等合法视图产生 |
+| 数据前提 | benchmark 输入在计时前预生成并固定，必要时使用固定随机种子或确定性序列 |
+| 基线前提 | Regression Check 仅在存在最近一次 main 分支通过结果作为 baseline 时执行；否则仅记录观测值 |
+| 环境前提 | 回归趋势比较需在固定硬件或等效稳定环境运行；CI 噪声不得被解释为公开语义变化 |
+| 正确性前提 | benchmark 不承担功能正确性与 UB 验证职责；相关语义由 `28-tests.md` 覆盖 |
 
 ---
 
@@ -210,8 +223,7 @@ impl StridedFixture1D {
     pub fn view(&self) -> TensorView1<'_, f64> {
         self.owner
             .view()
-            .index_axis(Axis(0), 1)
-            .expect("axis index must be in bounds")
+            .slice(s![1, ..])
     }
 }
 
@@ -306,17 +318,17 @@ Benchmark categories
 
 ---
 
-### 5.6 CI 三级工作流
+### 5.6 可选 CI 三级工作流
 
-| 工作流               | 基准数量                                                                    | 预计时间 | 频率             |
-| -------------------- | --------------------------------------------------------------------------- | -------- | ---------------- |
-| **Smoke Test**       | 3 个核心文件 × `--quick`                                                    | ~5 min   | 每次 PR          |
-| **Regression Check** | `elem_add_f64` 和 `sum_1d_f64`                                              | ~10 min  | 每次 PR          |
-| **Full Benchmark**   | 全部文件 × 4 feature 组合（`default`、`simd`、`parallel`、`simd+parallel`） | ~60 min  | 每周/合并到 main |
+| 工作流               | 基准数量                                                                    | 预计时间 | 启用方式                     |
+| -------------------- | --------------------------------------------------------------------------- | -------- | ---------------------------- |
+| **Smoke Test**       | 3 个核心文件 × `--quick`                                                    | ~5 min   | 仓库可按需启用；不阻塞交付   |
+| **Regression Check** | `elem_add_f64` 和 `sum_1d_f64`                                              | ~10 min  | 存在 baseline 时可选启用     |
+| **Full Benchmark**   | 全部文件 × 4 feature 组合（`default`、`simd`、`parallel`、`simd+parallel`） | ~60 min  | 维护期按需运行               |
 
 #### 5.6.1 Smoke Test 覆盖范围
 
-> **注意**：Smoke Test 仅验证 benchmark 代码可以正常编译和运行（"不崩溃"），不用于性能判断，也不执行回归阈值门禁。其调用约定统一使用 `--quick`，性能回归检测由 Regression Check（§5.6.2）负责。
+> **注意**：Smoke Test 仅验证 benchmark 代码可以正常编译和运行（"不崩溃"），不用于性能判断，也不执行回归阈值门禁。其调用约定统一使用 `--quick`；若仓库选择启用性能回归检测，再由 Regression Check（§5.6.2）承担趋势观测。
 
 | 文件              | 组                      | 说明           |
 | ----------------- | ----------------------- | -------------- |
@@ -326,7 +338,7 @@ Benchmark categories
 
 #### 5.6.2 Regression Check 覆盖范围
 
-Regression Check 监测以下核心基准：`elem_add_f64`（逐元素加法，f64，256×256）和 `sum_1d_f64`（一维归约，f64，65536 元素）。其中 `256×256` 与 §5.4.1 的 Medium 规模保持一致。
+当仓库显式启用 Regression Check 时，可监测以下核心基准：`elem_add_f64`（逐元素加法，f64，256×256）和 `sum_1d_f64`（一维归约，f64，65536 元素）。其中 `256×256` 与 §5.4.1 的 Medium 规模保持一致。
 
 本文档统一使用同一组规模基线：Small = `64` / `8×8` / `4×4×4`，Medium = `65,536` / `256×256` / `64×32×32`，Large = `16,777,216` / `4096×4096` / `256×256×256`。
 
@@ -349,21 +361,21 @@ cargo bench --bench construction -- "zeros_1d" --quick
           run: python tools/bench/report.py --input target/benchmark-results --output target/benchmark-results/regression.json
 ```
 
-> **说明**：benchmark CI 若需要机器可读摘要，须通过仓库内脚本显式导出到约定路径（如 `target/benchmark-results/regression.json`），而不是依赖第三方 GitHub Action 或外部服务。
+> **说明**：若仓库选择为 benchmark 增加 CI 摘要，则须通过仓库内脚本显式导出到约定路径（如 `target/benchmark-results/regression.json`），而不是依赖第三方 GitHub Action 或外部服务。
 
-> **baseline 管理**：Regression Check 以上一轮 main 分支通过的结果作为 baseline；当性能改善或已知噪声需要更新基线时，应在专门的 benchmark PR 中更新并记录原因。
+> **baseline 管理**：若启用 Regression Check，则以上一轮 main 分支通过的结果作为 baseline；当性能改善或已知噪声需要更新基线时，应在专门的 benchmark PR 中更新并记录原因。未启用时不影响默认交付。
 
 ---
 
-### 5.7 回归阈值
+### 5.7 可选回归阈值
 
-| 级别     | 阈值       | 动作                     |
-| -------- | ---------- | ------------------------ |
-| **警告** | > 5% 变慢  | CI warning（不阻塞合并） |
-| **失败** | > 20% 变慢 | CI failure（阻塞合并）   |
-| **改善** | > 5% 变快  | CI note（记录性能改善）  |
+| 级别     | 阈值       | 动作                                      |
+| -------- | ---------- | ----------------------------------------- |
+| **警告** | > 5% 变慢  | 可选 CI warning（不阻塞默认交付）         |
+| **失败** | > 20% 变慢 | 可选 CI failure gate（仅仓库显式启用时）  |
+| **改善** | > 5% 变快  | 可选 CI note（记录性能改善）              |
 
-> **设计决策**：5% 以内视为测量噪声，20% 以上几乎确定是真实回归。
+> **设计决策**：5% 以内视为测量噪声，20% 以上通常可视为真实回归；这些门限只在仓库显式启用回归门禁时生效，不构成默认必需交付。
 
 ---
 
@@ -479,55 +491,18 @@ let _result = (&a + &b).unwrap();
 
 | 基准 ID        | 输入规模 | baseline 来源              | 报告指标             | 阈值消费者       |
 | -------------- | -------- | -------------------------- | -------------------- | ---------------- |
-| `elem_add_f64` | 256×256  | 最近一次 main 分支通过结果 | wall time / change % | Regression Check |
-| `sum_1d_f64`   | 65,536   | 最近一次 main 分支通过结果 | wall time / change % | Regression Check |
+| `elem_add_f64` | 256×256  | 最近一次 main 分支通过结果 | wall time / change % | 可选 Regression Check |
+| `sum_1d_f64`   | 65,536   | 最近一次 main 分支通过结果 | wall time / change % | 可选 Regression Check |
 
-### 6.5 数值一致性容差
+### 6.5 数值正确性引用边界
 
-| 类型           | atol    | rtol    | 说明                                                                            |
-| -------------- | ------- | ------- | ------------------------------------------------------------------------------- |
-| `f32`          | `1e-5`  | `1e-5`  | 仅作为与 `28-tests.md §8.1` 对齐的参考容差，不在 benchmark 流程中承担正确性门禁 |
-| `f64`          | `1e-14` | `1e-14` | 仅作为与 `28-tests.md §8.1` 对齐的参考容差，不在 benchmark 流程中承担正确性门禁 |
-| `Complex<f32>` | `1e-5`  | `1e-5`  | 按分量比较；仅供引用 `28-tests.md` 中的正确性测试口径                           |
-| `Complex<f64>` | `1e-14` | `1e-14` | 按分量比较；仅供引用 `28-tests.md` 中的正确性测试口径                           |
+benchmark 不定义正确性容差，也不在本文件内重复维护 `atol` / `rtol` 或其他比较表。所有数值正确性判断统一引用 `28-tests.md` 中冻结的数值契约：默认比较遵循 ULP-based contract，仅在文档明确允许的数学函数场景使用单独容差规则。
 
-整数类型须逐元素精确一致，不容差。
-
-容差值与 `28-tests.md §8.1` 保持一致；benchmark 文档仅可引用该容差口径，不在本文件中新增正确性测试职责。参见 `require.md §28.3`。
+benchmark 侧只允许复用这些契约来说明“性能观测建立在既有正确性测试之上”，不得把 benchmark 结果或阈值升级为新的正确性门禁。参见 `require.md §28.3`。
 
 ---
 
-## 7. 与其他模块的交互
-
-### 7.1 Benchmark 文件到被测模块映射
-
-| Benchmark 文件           | 被测模块            | 对应设计文档         |
-| ------------------------ | ------------------- | -------------------- |
-| `math.rs`                | `math`              | `11-math.md`         |
-| `reduction.rs`           | `reduction`         | `13-reduction.md`    |
-| `dot_product.rs`         | `matrix`            | `12-matrix.md`       |
-| `set.rs`                 | `set`               | `14-set.md`          |
-| `broadcast.rs`           | `broadcast`         | `15-broadcast.md`    |
-| `shape.rs`               | `shape`             | `16-shape.md`        |
-| `simd_comparison.rs`     | `simd` + `math`     | `08-simd.md`         |
-| `parallel_comparison.rs` | `parallel` + `math` | `09-parallel.md`     |
-| `construction.rs`        | `construct`         | `18-construction.md` |
-
-### 7.2 数据流
-
-```
-benchmark files
-    │
-    ├── call crate public APIs (Tensor::from_vec, zeros, +, sum, ...)
-    │       │
-    │       └── internal path: storage -> tensor -> overload -> simd/parallel
-    │
-    └── repository-local harness measures end-to-end runtime
-```
-
----
-
-## 8. 实现任务拆分
+## 7. 实现任务拆分
 
 ### Wave 1: 基础设施
 
@@ -616,9 +591,9 @@ benchmark files
 
 ### Wave 5: CI 集成
 
-- [ ] **T12**: 配置 CI benchmark 工作流
+- [ ] **T12**: 配置可选 CI benchmark 工作流
   - 文件: `.github/workflows/bench.yml`
-  - 内容: Smoke/Regression/Full 三级工作流，回归阈值配置
+  - 内容: Smoke/Regression/Full 三级工作流与可选回归阈值配置；不作为默认交付阻塞项
   - 测试: CI 触发运行
   - 前置: T3-T11
   - 预计: 10 min
@@ -645,7 +620,7 @@ Wave 5:           [T12]
 
 ---
 
-## 9. 测试计划
+## 8. 测试计划
 
 | 类型     | 位置                                   | 目的                                                     |
 | -------- | -------------------------------------- | -------------------------------------------------------- |
@@ -654,7 +629,7 @@ Wave 5:           [T12]
 | 边界验证 | CI smoke/regression                    | 验证小规模回退、阈值附近自动切换、嵌套并行回退等边界行为 |
 | 基线校验 | benchmark 输入准备与路径选择检查       | 验证 benchmark 分组、输入规模与 feature 组合符合预期     |
 
-### 9.1 Feature gate / 配置测试
+### 8.1 Feature gate / 配置测试
 
 | 配置        | 验证点                                                                 |
 | ----------- | ---------------------------------------------------------------------- |
@@ -663,7 +638,7 @@ Wave 5:           [T12]
 | 启用并行    | parallel comparison 组在 `parallel` feature 下可用，并覆盖阈值切换行为 |
 | 全 feature  | benchmark 入口、结果采集与 CI 工作流在组合配置下保持有效               |
 
-### 9.2 类型边界 / 编译期测试
+### 8.2 类型边界 / 编译期测试
 
 | 场景                         | 测试方式                                           |
 | ---------------------------- | -------------------------------------------------- |
@@ -673,13 +648,43 @@ Wave 5:           [T12]
 
 ---
 
-## 错误处理与语义边界
+## 9. 模块交互设计
+
+### 9.1 Benchmark 文件到被测模块映射
+
+| Benchmark 文件           | 被测模块            | 对应设计文档         |
+| ------------------------ | ------------------- | -------------------- |
+| `math.rs`                | `math`              | `11-math.md`         |
+| `reduction.rs`           | `reduction`         | `13-reduction.md`    |
+| `dot_product.rs`         | `matrix`            | `12-matrix.md`       |
+| `set.rs`                 | `set`               | `14-set.md`          |
+| `broadcast.rs`           | `broadcast`         | `15-broadcast.md`    |
+| `shape.rs`               | `shape`             | `16-shape.md`        |
+| `simd_comparison.rs`     | `simd` + `math`     | `08-simd.md`         |
+| `parallel_comparison.rs` | `parallel` + `math` | `09-parallel.md`     |
+| `construction.rs`        | `construct`         | `18-construction.md` |
+
+### 9.2 数据流
+
+```
+benchmark files
+    │
+    ├── call crate public APIs (Tensor::from_vec, zeros, +, sum, ...)
+    │       │
+    │       └── internal path: storage -> tensor -> overload -> simd/parallel
+    │
+    └── repository-local harness measures end-to-end runtime
+```
+
+---
+
+## 10. 错误处理与语义边界
 
 本文档不直接定义错误类型，但要求 benchmark 代码、回归脚本与 CI 汇总逻辑在遇到被测 API 失败时遵循 `26-error.md` 的错误语义边界；基准层只允许记录或传播既有错误，不得自定义新的公开错误语义。
 
 ---
 
-## 10. 设计决策记录
+## 11. 设计决策记录
 
 ### 决策 1：不引入额外 benchmark 框架
 
@@ -706,15 +711,15 @@ Wave 5:           [T12]
 | 理由     | 覆盖 SIMD 宽度边界、并行阈值边界；对齐友好；便于跨版本对比 |
 | 替代方案 | 任意规模 — 放弃，不利于跨版本对比                          |
 
-### 决策 4：回归阈值 5%/20%
+### 决策 4：CI 回归阈值属于可选工程增强
 
 | 属性     | 值                                                                    |
 | -------- | --------------------------------------------------------------------- |
-| 决策     | >5% warning，>20% fail，>5% 快记录改善                                |
-| 理由     | 5% 以内可能是测量噪声；20% 以上几乎确定是真实回归；改善记录供优化参考 |
-| 替代方案 | 5% fail — 放弃，CI 环境噪声可能导致误报                               |
+| 决策     | 若仓库后续启用 Regression Check，可采用 >5% warning、>20% fail、>5% 改善记录 的工程门限 |
+| 理由     | 该门限有助于持续观察性能趋势，但属于 CI/维护流程增强，不是 `require.md` 当前版本的必需交付 |
+| 替代方案 | 完全不设门限 — 允许，当前版本至少需保留可重复 benchmark 方案与结果汇总口径 |
 
-> **补充**：Regression Check 才应用 5% warning / 20% fail 的性能门限；Smoke Test 只验证 benchmark 可运行性，不应阻塞合并。
+> **补充**：Regression Check、baseline 更新与 5% / 20% 门限均属于可选工程增强；当前版本必需交付的是 benchmark 分组、输入矩阵、feature 组合与可重复测量方法，Smoke Test 只验证 benchmark 可运行性，不应阻塞合并。
 
 ### 决策 5：仅 F-order 布局测试
 
@@ -726,7 +731,18 @@ Wave 5:           [T12]
 
 ---
 
-## 11. 平台与工程约束
+## 12. 性能描述
+
+| 方面 | 说明 |
+| ---- | ---- |
+| 覆盖范围 | 重点观察逐元素运算、归约、内积、广播、转置、构造等当前版本范围内的性能关键路径 |
+| 对比口径 | 默认记录 wall time 与相对变化；SIMD / 并行仅在对应 feature 启用时进行对比 |
+| 非目标 | 不把 CI 回归阈值、baseline 门禁或固定硬件流程视为当前版本必需交付 |
+| 语义边界 | benchmark 结果只描述性能表现，不改变 `require.md` 规定的公开 API 语义与正确性契约 |
+
+---
+
+## 13. 平台与工程约束
 
 | 约束项     | 约束内容                                              |
 | ---------- | ----------------------------------------------------- |

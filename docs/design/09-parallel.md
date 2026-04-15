@@ -90,7 +90,7 @@ src/parallel/
 | `dimension` | `Ix1` |
 | `parallel`  | `ParElements<'a, A, D>`, `TensorBase::par_iter()`, `par_zip_map()`                                             |
 | `kernel`    | 私有串行 `sum` / `dot` kernel、内部 dispatch helper、identity / combine 约束                                   |
-| `error`     | `XenonError`, `XenonError::ShapeMismatch`, `XenonError::InvalidArgument`                                        |
+| `error`     | `XenonError`, `XenonError::BroadcastError`, `XenonError::InvalidArgument`                                       |
 
 ### 4.3 依赖方向
 
@@ -146,9 +146,7 @@ pub(crate) struct ParallelPool {
 
 ### 5.2 公开运行时接口与内部执行入口
 
-> **可见性说明：** `parallel/` 对外的稳定契约只包括 feature gate、阈值读写与自动加速行为本身；`par_map`、`par_zip_map`、`par_sum`、`par_dot`、`ParallelPool` 均为内部执行后端，由 `math` / `reduction` / `matrix` 等语义模块自动选择调用，不作为公开 API 契约的一部分。
->
-> **内部后端声明：** 这些 API 为内部执行后端，由 `math` / `reduction` / `matrix` 等语义模块自动选择调用，不作为公开 API 契约的一部分。
+> **可见性说明：** `parallel/` 对外的稳定契约只包括 feature gate、阈值读写与自动加速行为本身；所有执行后端函数与类型（包括 `par_map`、`par_zip_map`、`par_sum`、`par_dot`、`ParallelPool`、`ParElements`）均保持 `pub(crate)`，仅供 `math` / `reduction` / `matrix` 等语义模块自动调用。
 
 ### 5.3 函数签名
 
@@ -424,8 +422,8 @@ where
 
 - `par_zip_map()` 是二元逐元素并行路径的统一设计入口，供 `math` 模块中的 `add` / `sub` / `mul` / `div` 广播运算消费，不直接暴露为公开用户 API。
 - `par_zip_map()` 接收的 `lhs`、`rhs` 与 `output_dim` 必须已由调用侧完成兼容性验证；广播裁决（含输出 rank/shape 计算）属于 `math` 模块职责，`parallel/` 不重复做形状推导。
-- 广播处理顺序固定为：先由 `math` 模块验证 `lhs` / `rhs` 广播兼容并产出 `output_dim`，再由 `parallel/` 按逻辑线性区间分块；每个 chunk 为两个输入分别构造与该线性区间对应、且仍与 `output_dim` 兼容的只读 sub-view。若某一侧是广播轴（stride 为 `0` 或逻辑重复维），chunk 视图保持该广播语义，不做物理复制。`DL`、`DR`、`DO` 独立建模，以表达输入与输出 rank 可能不同的广播结果。
-- 错误传播策略与 `par_map_checked()` 一致：广播形状不兼容时立即返回 `XenonError::ShapeMismatch`；worker 内 `Err(XenonError)` 通过 `rayon` 的 `collect::<Result<Vec<_>, _>>()` 立即向外传播；panic 不捕获、不吞掉。
+- 广播处理顺序固定为：先由 `math` 模块验证 `lhs` / `rhs` 广播兼容并产出 `output_dim`，再由 `parallel/` 按逻辑线性区间分块；默认 `chunk_size = max(1, total_elements / rayon::current_num_threads())`，并按固定左折叠顺序合并 chunk 结果。每个 chunk 为两个输入分别构造与该线性区间对应、且仍与 `output_dim` 兼容的只读 sub-view。若某一侧是广播轴（stride 为 `0` 或逻辑重复维），chunk 视图保持该广播语义，不做物理复制。`DL`、`DR`、`DO` 独立建模，以表达输入与输出 rank 可能不同的广播结果。
+- 错误传播策略与 `par_map_checked()` 一致：广播形状不兼容时立即返回 `XenonError::BroadcastError { operation, input_shape, target_shape, axis }`；其中 `operation` 标识当前并行入口（如 `"par_zip_map"`），`input_shape` 为失败输入的逻辑 shape，`target_shape` 为调用侧已裁决的目标广播 shape，`axis` 在可定位到具体失败轴时填写对应值，否则为 `None`。worker 内 `Err(XenonError)` 通过 `rayon` 的 `collect::<Result<Vec<_>, _>>()` 立即向外传播；panic 不捕获、不吞掉。
 - 串行回退路径与并行路径共用 `kernel/` 中的私有广播索引与 zip kernel，保证二者使用同一语义基线。
 
 ### 6.4 自动路径派发与所有权
@@ -739,14 +737,14 @@ XenonError::InvalidArgument {
 
 - 并行模块本身不新增专属错误枚举；公开错误必须复用 `26-error.md` 中的统一模型。
 - 自定义线程池或阈值类参数若存在非法值，应返回 `InvalidArgument`。
-- `par_zip_map()` 的广播形状不兼容时，必须返回 `XenonError::ShapeMismatch`，不得降级为逐元素截断或隐式复制。
+- `par_zip_map()` 的广播形状不兼容时，必须返回 `XenonError::BroadcastError { operation, input_shape, target_shape, axis }`，不得降级为逐元素截断或隐式复制。
 - panic 与 `Err(XenonError)` 都不得被吞掉或延迟为“全部 worker 完成后再统一检查”。
 - 若无法证明并行路径与串行路径一致，必须回退串行，而不是定义新语义。
 
 ### 10.1 浮点/复数并行归约容差
 
 - 浮点与复数并行归约允许与标量路径不同的合并顺序；该差异视为合法实现细节，但必须受 `需求说明书 §28.3` 文档化容差约束。
-- 与 `08-simd.md` 保持一致：`par_sum()`、`par_dot()` 与其他内部并行归约在浮点或复数输入上，其容差待基于最终算法与测试基线定义。
+- 与 `08-simd.md` 保持一致：`par_sum()`、`par_dot()` 与其他内部并行归约在浮点或复数输入上，每个实数分量与标量路径结果之差不得超过 `max(1 ULP, 2^-23 * |scalar_result|)`（`f32`）或 `max(1 ULP, 2^-52 * |scalar_result|)`（`f64`）。
 - 复数按实部、虚部分别适用同一文档化规则；若某一并行实现无法满足该容差或无法提供固定 chunking + fixed merge tree 的确定性约束，则必须回退串行或调整分块/合并策略。
 
 ---

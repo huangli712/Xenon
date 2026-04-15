@@ -460,7 +460,7 @@ unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 - 前置条件违反（不变量被破坏）
 - 逻辑错误（不可能的状态）
 - 契约违反
-- 索引语法 `[]` 的越界访问（与标准库 `slice` 行为一致）
+- 已证明前提下的内部快捷路径可使用 unchecked 或索引语法糖；公开安全索引 API 的越界与维度不匹配必须返回可恢复错误
 
 ```rust
 // Good - recoverable error
@@ -503,8 +503,9 @@ where
 
 统一错误类型 `XenonError`，覆盖所有可恢复错误场景：
 
-> **注意**：仅 `tensor[...]` 这类 `Index` trait 语法在索引越界时使用 `panic`，与标准库 `slice` 行为一致；`tensor.get(...)`、`try_offset_of(...)` 等安全接口须返回 `Result<_, XenonError>`。
+> **注意**：公开安全索引 API（如 `try_at(...)`、`try_at_mut(...)`、`tensor.get(...)`、`try_offset_of(...)`）在索引越界或维度不匹配时都须返回 `Result<_, XenonError>`。`[]` 语法糖只用于内部或调用前已验证索引的快捷路径，不单独作为公开安全 API 承诺 panic 语义。
 > 本文档中的错误枚举示例统一使用结构化字段承载诊断上下文；即使某个模块内部保留局部错误类型，也必须在公开 API 边界映射为 `XenonError` 的结构化变体，而不是直接暴露模块私有错误类型。
+> 错误模型以 `26-error.md §4.2` / `§4.4` 为准；此处示例须与该文档保持一致。
 
 > **FFI 边界**：Rust 内部的 fallible API 使用 `try_* -> Result` 模式。真正的 `extern "C"` FFI 边界必须使用 FFI-safe 状态码与输出参数，不得跨 ABI 返回 `Result`，也不得让 panic 穿越边界。公开架构不提供 `bare_*` / panic-sugar 形式的 FFI helper；需要偏移或指针计算时，仅保留 `try_offset_of()`、`try_ptr_at()` 这类可恢复错误入口。参见 `23-ffi.md`。
 
@@ -542,13 +543,11 @@ pub enum XenonError {
         expected_elements: usize,
         actual_elements: usize,
         offending_dim: Option<usize>,
-        overflow_at_axis: Option<usize>,
     },
     DimensionMismatch {
         operation: Cow<'static, str>,
         expected: usize,
         actual: usize,
-        shape: Vec<usize>,
     },
     InvalidLayout {
         operation: Cow<'static, str>,
@@ -571,33 +570,44 @@ pub enum XenonError {
         actual: Cow<'static, str>,
         shape: Option<Vec<usize>>,
     },
-    TypeConversion {
-        source_type: Cow<'static, str>,
-        target_type: Cow<'static, str>,
-        reason: Cow<'static, str>,
-        element_index: Option<usize>,
-    },
+    Ffi(FfiError),
+    Workspace(WorkspaceError),
+    TypeConversion(TypeConversionError),
     IndexOutOfBounds {
         operation: Cow<'static, str>,
         attempted_index: usize,
         axis: usize,
         shape: Vec<usize>,
     },
-    EmptyArray {
-        operation: Cow<'static, str>,
-        shape: Vec<usize>,
-    },
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeConversionError {
+    source_type: Cow<'static, str>,
+    target_type: Cow<'static, str>,
+    reason: TypeConversionReason,
+    element_index: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypeConversionReason {
+    LossyIntegerNarrowing,
+    LossyFloatNarrowing,
+    FloatToInteger,
+    IntegerToFloatPrecisionLoss,
+    NonZeroImaginaryPart,
+    UnsupportedByRequirement,
 }
 
 pub type Result<T> = std::result::Result<T, XenonError>;
 ```
 
-> **模块内部错误说明：** `FfiError`、`WorkspaceError` 等类型若在实现中存在，只能保留为模块内部错误。
-> 它们跨越公开边界时必须映射到 `XenonError::InvalidArgument`、`InvalidLayout`、`InvalidStorageMode` 等结构化字段，
-> 不得成为公开错误枚举成员。
+> **模块内部错误说明：** `FfiError`、`WorkspaceError`、`TypeConversionError` 可作为模块内部载荷结构存在；
+> 它们跨越公开边界时必须统一包装为 `XenonError::Ffi(...)`、`XenonError::Workspace(...)`、`XenonError::TypeConversion(...)`，
+> 不得直接作为公开 API 返回类型暴露。
 
-> **内部辅助类型说明：** `TypeConversionReason` 可作为 `convert/` 或 `element/` 内部辅助枚举存在，
-> 但公开 `XenonError` 只承诺稳定的结构化字段（例如 `reason: Cow<'static, str>` 与 `element_index: Option<usize>`）。
+> **内部辅助类型说明：** `TypeConversionReason` 作为 `TypeConversionError` 的内部枚举载荷存在；
+> 公开错误边界固定为 `XenonError::TypeConversion(TypeConversionError)`。
 
 ### 4.3 unwrap 限制
 
@@ -661,9 +671,9 @@ where
         Ok(unsafe { self.get_unchecked(index) })
     }
 
-    /// Indexing via `[]` operator — panics on out of bounds.
-    /// Use `get()` for fallible access returning `Result<&A, XenonError>`.
-    // Note: Index trait implementation delegates to get().expect("index out of bounds")
+    /// Indexing sugar for already-validated internal paths.
+    /// Public safe APIs should use `get()` / `try_at()` and return recoverable errors.
+    // Note: any `Index`-style sugar remains outside Xenon's stable safe API contract.
 
     /// Unchecked indexing — UB on out of bounds.
     ///

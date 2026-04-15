@@ -15,7 +15,7 @@
 | ------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------- |
 | 静态维度类型        | `Ix0`-`Ix6` 元组结构体，编译期确定维度数                                                     | 运行时动态维度选择                                 |
 | 动态维度类型        | `IxDyn`（`Vec<usize>`），运行时维度数                                                        | —                                                  |
-| Dimension trait     | 维度形状与 rank 接口（ndim/slice/checked_size/into_dyn/try_from_dyn）                           | stride 计算、logical-first pointer、布局标志计算   |
+ | Dimension trait     | 维度形状与 rank 接口（ndim/slice/checked/checked_size/into_dyn/try_from_dyn）                   | stride 计算、logical-first pointer、布局标志计算   |
 | IntoDimension trait | 从元组、数组、切片、Vec 构造维度                                                             | 用户自定义维度源                                   |
 | Axis 类型           | 轴标记新类型（index/next/prev/is_first/is_last）                                             | 轴上的切片/迭代操作（由 tensor 方法提供）          |
 | RemoveAxis trait    | 移除指定轴降维（Ix1→Ix0, ..., Ix6→Ix5, IxDyn→IxDyn）                                         | Ix0 不实现（标量无轴可移除）                       |
@@ -137,6 +137,13 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
     /// For `Ix0`, returns 1 (scalar has one element).
     /// Implementations must not silently wrap on overflow.
     fn checked_size(&self) -> Result<usize, XenonError>;
+
+    /// Validates that this dimension is representable for public safe APIs.
+    ///
+    /// This method is the non-allocating validation entry when the caller only
+    /// needs to verify shape metadata, not consume the computed element count.
+    /// The default contract is equivalent to `self.checked_size().map(|_| ())`.
+    fn checked(&self) -> Result<(), XenonError>;
 
     /// Converts to dynamic dimension. Always succeeds.
     fn into_dyn(self) -> IxDyn;
@@ -303,9 +310,13 @@ impl Dimension for Ix3 {
                 shape: self.slice().into(),
                 expected_elements: 0,
                 actual_elements: 0,
-                offending_dim: None,
-                overflow_at_axis: Some(2),
+                offending_dim: Some(2),
             })
+    }
+
+    #[inline]
+    fn checked(&self) -> Result<(), XenonError> {
+        self.checked_size().map(|_| ())
     }
 
     #[inline]
@@ -322,7 +333,6 @@ impl Dimension for Ix3 {
                 operation: "Dimension::try_from_dyn".into(),
                 expected: 3,
                 actual: dyn_dim.ndim(),
-                shape: dyn_dim.slice().into(),
             })
         }
     }
@@ -335,7 +345,6 @@ impl Dimension for Ix3 {
                 operation: "Dimension::try_from_slice".into(),
                 expected: 3,
                 actual: slice.len(),
-                shape: slice.into(),
             })
         }
     }
@@ -401,8 +410,11 @@ impl Dimension for IxDyn {
                 expected_elements: 0,
                 actual_elements: 0,
                 offending_dim: None,
-                overflow_at_axis: None,
             })
+    }
+
+    fn checked(&self) -> Result<(), XenonError> {
+        self.checked_size().map(|_| ())
     }
 
     fn into_dyn(self) -> IxDyn { self }
@@ -775,12 +787,36 @@ impl PermuteAxes for IxDyn {
                 operation: "PermuteAxes::permuted_axes".into(),
                 expected: self.ndim(),
                 actual: permutation.len(),
-                shape: self.slice().into(),
             });
         }
+        let mut seen = vec![false; self.ndim()];
         let mut dims = Vec::with_capacity(self.ndim());
         for &axis in permutation {
+            let axis_index = axis.index();
+            let slot = seen.get_mut(axis_index).ok_or(XenonError::InvalidAxis {
+                operation: "PermuteAxes::permuted_axes".into(),
+                axis: axis_index,
+                ndim: self.ndim(),
+                shape: self.slice().into(),
+            })?;
+            if *slot {
+                return Err(XenonError::InvalidAxis {
+                    operation: "PermuteAxes::permuted_axes".into(),
+                    axis: axis_index,
+                    ndim: self.ndim(),
+                    shape: self.slice().into(),
+                });
+            }
+            *slot = true;
             dims.push(self.axis(axis)?);
+        }
+        if seen.iter().any(|present| !present) {
+            return Err(XenonError::InvalidAxis {
+                operation: "PermuteAxes::permuted_axes".into(),
+                axis: self.ndim(),
+                ndim: self.ndim(),
+                shape: self.slice().into(),
+            });
         }
         Ok(IxDyn::from_vec(dims))
     }
@@ -977,7 +1013,10 @@ Wave 5:  [T10] → [T11] → [T12]
 | `test_slice_to_ixdyn`        | `(&[2,3,4][..]).into_dimension()` → `IxDyn`              | 中     |
 | `test_axis_next_prev`        | `Axis(2).next() == Axis(3)`, `Axis(0).prev() == None`    | 中     |
 | `test_axis_is_first_last`    | `Axis(0).is_first()`, `Axis(2).is_last(3)`               | 中     |
-| `test_size_overflow`         | 大值维度 `checked_size()` 返回含 `overflow_at_axis` 的 `XenonError::InvalidShape` | 低 |
+| `test_size_overflow`         | 大值维度 `checked_size()` 返回含 `offending_dim` 的 `XenonError::InvalidShape` | 低 |
+| `test_permuted_axes_valid_permutation` | `PermuteAxes` 仅接受 `0..ndim-1` 的双射排列 | 高 |
+| `test_permuted_axes_duplicate_axis_error` | 重复轴返回可恢复错误 | 高 |
+| `test_permuted_axes_missing_axis_error` | 缺失轴返回可恢复错误 | 高 |
 
 ### 8.3 边界测试场景
 
@@ -986,8 +1025,9 @@ Wave 5:  [T10] → [T11] → [T12]
 | 空维度 `Ix0`                          | `checked_size()=Ok(1)`, `ndim()=0`, `slice()=&[]` |
 | 单元素 `Ix1(1)`                       | `checked_size()=Ok(1)`                |
 | 零长度轴 `Ix2(0, 3)`                  | `checked_size()=Ok(0)`, `contains_zero()=true` |
-| 大维度 `Ix6(100,100,100,100,100,100)` | `checked_size()` 在溢出时返回带 `overflow_at_axis` 的错误 |
+| 大维度 `Ix6(100,100,100,100,100,100)` | `checked_size()` 在溢出时返回带 `offending_dim` 的错误 |
 | `IxDyn::ones(0)`                      | 零维动态维度                          |
+| `PermuteAxes` 重复/缺失轴              | 返回可恢复错误，不接受非双射排列       |
 
 ### 8.4 属性测试不变量
 
@@ -1052,7 +1092,7 @@ User provides shape / axis / dimension input
 
 | 项目           | 内容 |
 | -------------- | ---- |
-| Recoverable error | 动态转静态维度数不匹配时返回 `XenonError::DimensionMismatch { operation, expected, actual, shape }`；`checked_size()`、`try_from_slice()`、`axis()`、`set_axis()`、`remove_axis()` 在失败时统一返回结构化 `XenonError` |
+| Recoverable error | 动态转静态维度数不匹配时返回 `XenonError::DimensionMismatch { operation, expected, actual }`；`checked()`、`checked_size()`、`try_from_slice()`、`axis()`、`set_axis()`、`remove_axis()` 在失败时统一返回结构化 `XenonError` |
 | Panic | 本模块公开设计不再把维度溢出、轴越界或切片长度不匹配建模为 panic；若内部已验证快捷路径保留 unwrap/expect，也不得穿透公开 API |
 | 路径一致性 | scalar 路径与普通标量化实现必须保持一致；SIMD：不适用；parallel：不适用 |
 | 容差边界 | 不适用 |
@@ -1099,9 +1139,9 @@ User provides shape / axis / dimension input
 
 | 属性     | 值                                                                                     |
 | -------- | -------------------------------------------------------------------------------------- |
-| 决策     | 将 `checked_size()` 作为公开主接口，维度乘法溢出统一走可恢复错误路径                                          |
-| 理由     | 避免公开 API 在维度乘法溢出时 panic，同时满足需求说明书对可恢复错误的要求                                    |
-| 风险     | 调用方需要显式处理 `Result`，文档与示例必须保持一致                                                          |
+| 决策     | 将 `checked()` 与 `checked_size()` 作为公开 checked 接口；前者负责验证维度元数据，后者负责返回元素总数 |
+| 理由     | 避免公开 API 在维度乘法溢出时 panic；调用方只需验证时可使用 `checked()`，需要元素总数时再调用 `checked_size()` |
+| 风险     | 调用方需要显式处理 `Result`，文档与示例必须保持一致 |
 | 替代方案 | 继续把未 checked 的旧接口作为公开主接口 — 放弃，公开安全路径不能以 panic 表达可恢复错误                     |
 | 替代方案 | 继续使用静默回绕乘法 — 放弃，安全路径不能接受静默回绕                                                        |
 
@@ -1113,7 +1153,7 @@ User provides shape / axis / dimension input
 | ---------------- | ---------------------------------------------------- |
 | 栈分配           | `Ix0`-`Ix6` 全部栈分配，无堆开销                     |
 | ZST 优化         | `Ix0` 是零大小类型，编译器完全消除                   |
-| 内联             | 所有 `ndim()`, `slice()`, `checked_size()` 标注 `#[inline]` |
+| 内联             | 所有 `ndim()`, `slice()`, `checked()`, `checked_size()` 标注 `#[inline]` |
 | 单态化           | `Dimension` trait 在泛型上下文中单态化，无虚调用开销 |
 | checked overflow | 构造与布局验证统一走 `checked_size()`，避免静默回绕  |
 | 编译期常量       | `NDIM: Option<usize>` 编译期已知，可优化分支         |

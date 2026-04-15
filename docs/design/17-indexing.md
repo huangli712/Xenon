@@ -13,7 +13,7 @@
 
 | 职责 | 包含 | 不包含 |
 | --- | --- | --- |
-| 多维整数索引 | `usize` 多维索引、`at` / `at_mut` / `get` / `get_mut` / `get_unchecked*` | 负索引、布尔掩码、整数数组高级索引 |
+| 多维整数索引 | `usize` 多维索引、`try_at` / `try_at_mut` / `get` / `get_mut` / `get_unchecked*` | 负索引、布尔掩码、整数数组高级索引 |
 | 范围索引（切片） | 以范围描述符表达的只读切片、`slice`、`s![]` 宏 | 负步长切片、共享可写切片、隐式复制切片 |
 | 元数据更新 | 按 F-order 规则更新 offset、shape、stride 与布局标记 | 改变逻辑元素顺序、引入与源张量无关的新存储 |
 | 错误边界 | 安全接口返回可恢复错误，unsafe 接口由调用方保证前提 | 将越界默认为 panic 的安全主路径 |
@@ -62,7 +62,7 @@ src/
 └── index/
     ├── mod.rs           # module root and public re-exports
     ├── ndindex.rs       # NdIndex trait and tuple/slice index implementations
-    ├── access.rs        # at/get/get_unchecked and mutable variants
+    ├── access.rs        # try_at/get/get_unchecked and mutable variants
     ├── slice.rs         # SliceInfo, slice, shape/stride updates
     └── macros.rs        # s![] macro and descriptor helpers
 ```
@@ -194,7 +194,7 @@ where
     S: Storage<Elem = A>,
     D: Dimension,
 {
-    pub fn at<I>(&self, index: I) -> Result<&A, XenonError>
+    pub fn try_at<I>(&self, index: I) -> Result<&A, XenonError>
     where
         I: NdIndex<D>;
 
@@ -216,7 +216,7 @@ where
     S: StorageMut<Elem = A>,
     D: Dimension,
 {
-    pub fn at_mut<I>(&mut self, index: I) -> Result<&mut A, XenonError>
+    pub fn try_at_mut<I>(&mut self, index: I) -> Result<&mut A, XenonError>
     where
         I: NdIndex<D>;
 
@@ -230,13 +230,13 @@ where
 }
 ```
 
-> **设计决策：** 当前版本不把 `Index` / `IndexMut` 运算符重载纳入公共 API 契约，也不为其提供规范承诺。对外规范安全主路径始终是 `at()` / `get()` / `at_mut()` / `get_mut()` 与 `slice()`；若实现中保留 `Index` / `IndexMut`，其也只属于内部便捷层 / 非规范行为，且必须显式文档化“失败即 panic”。此前草案中的 `try_slice()` 与当前 `slice()` 具有相同签名且同样返回 `Result`，没有额外语义，因此移除以避免冗余接口。
+> **设计决策：** 当前版本不把 `Index` / `IndexMut` 运算符重载纳入公共 API 契约，也不为其提供规范承诺。对外规范安全主路径始终是 `try_at()` / `get()` / `try_at_mut()` / `get_mut()` 与 `slice()`；若实现中保留 `Index` / `IndexMut`，其也只属于内部便捷层 / 非规范行为，且必须显式文档化“失败即 panic”。此前草案中的 `try_slice()` 与当前 `slice()` 具有相同签名且同样返回 `Result`，没有额外语义，因此移除以避免冗余接口。
 
 ### 5.3 Good / Bad 对比
 
 ```rust
 // Good - checked indexing keeps recoverable errors on the main path.
-let value = tensor.at((2, 1))?;
+let value = tensor.try_at((2, 1))?;
 let value2 = tensor.get(&[2, 1])?;
 
 // Bad - panic-based sugar is not part of the normative public contract.
@@ -334,11 +334,11 @@ compute_slice(shape, strides, offset, slices):
 - [ ] **T1**: 定义 `NdIndex<D>` 与 tuple / slice index 的合法性检查
     - 文件: `src/index/ndindex.rs`
     - 内容: rank 匹配、逐轴边界检查、checked / unchecked offset 计算
-    - 测试: `test_at_2d`, `test_at_out_of_bounds`
+    - 测试: `test_try_at_2d`, `test_try_at_out_of_bounds`
     - 前置: `dimension`、`tensor` 基础能力已可用
     - 预计: 10 min
 
-- [ ] **T2**: 实现 `at` / `get` / `get_unchecked`
+- [ ] **T2**: 实现 `try_at` / `get` / `get_unchecked`
     - 文件: `src/index/access.rs`
     - 内容: 统一安全与 unsafe 访问路径，保证错误边界一致
     - 测试: `test_get_returns_index_out_of_bounds`
@@ -347,10 +347,10 @@ compute_slice(shape, strides, offset, slices):
 
 ### Wave 2: 可写访问与 trait 约束
 
-- [ ] **T3**: 实现 `at_mut` / `get_mut` / `get_unchecked_mut`
+- [ ] **T3**: 实现 `try_at_mut` / `get_mut` / `get_unchecked_mut`
     - 文件: `src/index/access.rs`
     - 内容: 仅在 `StorageMut` trait 前提成立时暴露可写访问
-    - 测试: `test_at_mut_requires_storage_mut`
+    - 测试: `test_try_at_mut_requires_storage_mut`
     - 前置: T2
     - 预计: 10 min
 
@@ -406,9 +406,9 @@ Wave 2:         [T3]         Wave 3: [T4] -> [T5] -> [T6]
 
 | 测试函数 | 测试内容 | 优先级 |
 | --- | --- | --- |
-| `test_at_2d` | `at()` 成功返回二维张量元素引用 | 高 |
-| `test_at_out_of_bounds` | 越界返回 `IndexOutOfBounds` | 高 |
-| `test_at_mut_requires_storage_mut` | 只在 `StorageMut` 前提成立时才存在可写访问入口 | 高 |
+| `test_try_at_2d` | `try_at()` 成功返回二维张量元素引用 | 高 |
+| `test_try_at_out_of_bounds` | 越界返回 `IndexOutOfBounds` | 高 |
+| `test_try_at_mut_requires_storage_mut` | 只在 `StorageMut` 前提成立时才存在可写访问入口 | 高 |
 | `test_get_returns_index_out_of_bounds` | `get()` 失败返回 `IndexOutOfBounds` | 高 |
 | `test_slice_basic` | 基本切片结果的 shape 与数据正确 | 高 |
 | `test_slice_with_step` | 正步长切片结果正确 | 高 |
@@ -467,7 +467,7 @@ Wave 2:         [T3]         Wave 3: [T4] -> [T5] -> [T6]
 ### 9.2 数据流描述
 
 ```text
-User calls tensor.at(index)
+User calls tensor.try_at(index)
     │
     ├── index/ validates rank and bounds
     ├── index/ computes offset from shape + strides
@@ -483,7 +483,7 @@ User calls tensor.slice(info)
 
 ### 9.3 生命周期与所有权约定
 
-> **约定：** `at()`、`get()` 与 `slice()` 返回的借用结果都绑定源张量生命周期；切片不会转移所有权，也不会复制底层数据。当前版本不存在共享可写视图，因此任何共享结果都必须失去可写访问权。
+> **约定：** `try_at()`、`get()` 与 `slice()` 返回的借用结果都绑定源张量生命周期；切片不会转移所有权，也不会复制底层数据。当前版本不存在共享可写视图，因此任何共享结果都必须失去可写访问权。
 
 ---
 
@@ -491,8 +491,8 @@ User calls tensor.slice(info)
 
 | 主题 | 说明 |
 | --- | --- |
-| Recoverable error | `at()` / `get()` / `slice()` 在 rank 不匹配、轴非法、越界、`step == 0` 时返回 `XenonError`；其中索引长度与张量 `ndim` 不匹配时，错误类型固定为 `XenonError::DimensionMismatch { expected, actual }` |
-| Trait-bound 边界 | `at_mut()` / `get_mut()` / `get_unchecked_mut()` 仅在 `S: StorageMut` 前提成立时存在；不再为“只读存储上的可写索引”设计运行时 `InvalidStorageMode` 分支 |
+| Recoverable error | `try_at()` / `get()` / `slice()` 在 rank 不匹配、轴非法、越界、`step == 0` 时返回 `XenonError`；其中索引长度与张量 `ndim` 不匹配时，错误类型固定为 `XenonError::DimensionMismatch { expected, actual }` |
+| Trait-bound 边界 | `try_at_mut()` / `get_mut()` / `get_unchecked_mut()` 仅在 `S: StorageMut` 前提成立时存在；不再为“只读存储上的可写索引”设计运行时 `InvalidStorageMode` 分支 |
 | Panic | 若实现保留 `Index` / `IndexMut` 作为内部便捷层 / 非规范 API 契约，其失败时可 panic；这不是规范安全主路径，也不属于公开承诺 |
 | 路径一致性 | 对同一合法输入，checked 与 unchecked 路径必须给出同一偏移和同一逻辑结果；unsafe 只省略检查 |
 | 容差边界 | 不适用；本模块不涉及浮点容差、SIMD 误差或并行归约差异 |
@@ -517,7 +517,7 @@ XenonError::InvalidArgument {
 }
 
 XenonError::IndexOutOfBounds {
-    operation: "at".into(),
+    operation: "try_at".into(),
     attempted_index: index_component,
     axis,
     shape: self.shape().to_vec(),
@@ -529,7 +529,7 @@ XenonError::IndexOutOfBounds {
 
 - 不再使用缺少 `ndim` / `shape` 的旧 `InvalidAxis` 形式。
 - 不引入单独公开的 `InvalidSliceStep` 私有错误名。
-- `get()` / `get_mut()` 与 `at()` / `at_mut()` 在各自存在的前提下都返回结构化可恢复错误；越界时使用 `XenonError::IndexOutOfBounds`。
+- `get()` / `get_mut()` 与 `try_at()` / `try_at_mut()` 在各自存在的前提下都返回结构化可恢复错误；越界时使用 `XenonError::IndexOutOfBounds`。
 - 可写访问能力由 `StorageMut` trait-bound 决定，而不是在运行时回退为 `InvalidStorageMode`。
 
 ---
@@ -540,7 +540,7 @@ XenonError::IndexOutOfBounds {
 
 | 属性 | 值 |
 | --- | --- |
-| 决策 | `at()` / `get()` / `at_mut()` / `get_mut()` / `slice()` 作为规范安全接口，失败返回可恢复错误 |
+| 决策 | `try_at()` / `get()` / `try_at_mut()` / `get_mut()` / `slice()` 作为规范安全接口，失败返回可恢复错误 |
 | 理由 | 符合 `require.md` §18 对安全接口的要求，并与 `26-error.md` 的统一诊断模型对齐 |
 | 替代方案 | 全部使用 `Index` / `IndexMut` panic 语法糖 — 放弃，错误恢复与上游组合能力不足 |
 | 替代方案 | 统一返回 `Option` — 放弃，无法承载轴、shape、索引等诊断信息 |
@@ -571,7 +571,7 @@ XenonError::IndexOutOfBounds {
 
 | 操作 | 时间复杂度 | 空间复杂度 |
 | --- | --- | --- |
-| `at` / `get` / `at_mut` | O(rank) | O(1) |
+| `try_at` / `get` / `try_at_mut` | O(rank) | O(1) |
 | `get_unchecked*` | O(rank) | O(1) |
 | `slice` | O(rank) | O(1)（仅视图元数据） |
 

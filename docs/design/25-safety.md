@@ -58,7 +58,7 @@ Cross-cutting concern:
 | ------------ | ---------------------------------- |
 | 并行迭代     | 多线程同时访问不同元素区间         |
 | 跨线程共享   | 通过 ArcRepr 在线程间传递只读数据  |
-| 写时复制     | ArcRepr::make_mut() 的独占访问保证 |
+| 写时复制     | ArcRepr 内部唯一化 / 必要时复制后恢复可写性的实现约束 |
 | 数据竞争预防 | 确保 ViewMutRepr 独占访问不被共享  |
 | rayon 集成   | ParallelIterator 要求 Send 约束    |
 
@@ -149,7 +149,7 @@ src/parallel/
 | `Owned<A>`           |  ✅  |  ✅  | Send: `A: Send`; Sync: `A: Sync` | 独占拥有型存储分别按移动安全和共享安全传播元素约束 |
 | `ViewRepr<'a, A>`    |  ✅  |  ✅  | `A: Sync`                        | 共享视图跨线程共享要求元素可安全共享               |
 | `ViewMutRepr<'a, A>` |  ✅  |  ✗   | `A: Send`                        | 独占可写视图可转移但不可共享                       |
-| `ArcRepr<A>`         |  ✅  |  ✅  | `A: Send + Sync`                 | Arc 原子计数，读共享安全，写入需 `make_mut()` 独占 |
+| `ArcRepr<A>`         |  ✅  |  ✅  | `A: Send + Sync`                 | Arc 原子计数，读共享安全；写路径仅能在内部唯一化 / 必要时复制后恢复可写性 |
 
 > **补充说明：** `ViewRepr` 仅持有共享引用（`&A`），跨线程传递共享引用只要求 `A: Sync`（允许多线程共享读取），不要求 `A: Send`（所有权转移）。这是 Rust 标准库 `&T: Send + Sync where T: Sync` 的直接推论。
 
@@ -321,13 +321,13 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 ///    - `Sync`: multiple threads can hold `&A` simultaneously
 ///
 /// 3. **Read-only sharing**: When multiple `ArcRepr`s share the same data, they can only read.
-///    Writing requires obtaining exclusive access via `make_mut()`.
+///    Any later write path must first regain unique ownership (cloning when needed)
+///    before mutable access is re-enabled.
 ///
 /// 4. **COW exclusivity**: Safety relies on the exclusive access guaranteed by
-///    `&mut Arc<_>`. `make_mut` checks uniqueness through `Arc::get_mut()`;
-///    if the strong count is 1, it returns `&mut` directly, otherwise it deep-clones
-///    the data and then returns `&mut`. This is not an atomic transaction; it is
-///    a safe operation guaranteed by Rust's borrowing rules.
+///    Rust's `&mut` borrowing. Xenon's internal write path must first prove or
+///    establish unique ownership of the backing allocation; if uniqueness cannot
+///    be reused directly, it materializes a private copy before exposing mutable access.
 ///
 /// **Counter-example: if `A` is not `Send + Sync`**
 ///
@@ -346,8 +346,8 @@ unsafe impl<A: Send + Sync> Send for ArcRepr<A> {}
 ///    because the internal data can be safely shared by reference across multiple threads.
 ///
 /// 3. **No interior mutability**: Data cannot be modified through `&ArcRepr`.
-///    `make_mut(&mut self)` requires `&mut ArcRepr`, and the borrow checker
-///    guarantees only one mutable reference exists at any given time.
+///    Any internal transition back to writable state requires exclusive `&mut`
+///    access and is not exposed as a separate public API guarantee.
 unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 ```
 
@@ -586,7 +586,7 @@ Wave 2:            [T5]
 | `test_chunks_cover_all`       | 分块覆盖所有元素                          | 中     |
 | `test_chunks_no_overlap`      | 分块不重叠                                | 中     |
 | `test_owned_cross_thread`     | Owned 跨线程移动                          | 中     |
-| `test_arc_make_mut_threading` | make_mut 写时复制独占性验证               | 低     |
+| `test_arc_internal_restore_writable_after_uniquify` | 内部唯一化 / 必要时复制后的写路径独占性验证 | 低     |
 
 ### 8.3 编译期静态检查模板
 
@@ -641,7 +641,7 @@ fn arc_send_sync() {
 
 | 测试文件                      | 测试内容                                                                                 |
 | ----------------------------- | ---------------------------------------------------------------------------------------- |
-| `tests/test_thread_safety.rs` | `Owned` / `View` / `ViewMut` / `ArcTensor` 与 `parallel`、跨线程传递场景的端到端协同验证 |
+| `tests/test_thread_safety.rs` | `Owned` / `View` / `ViewMut` / 共享 Arc 存储张量与 `parallel`、跨线程传递场景的端到端协同验证 |
 
 ### 8.7 多线程传递测试
 
@@ -775,7 +775,7 @@ rayon 的 `ParallelIterator` 要求 `Item: Send`（参见 `09-parallel.md §5.3`
 | `Tensor<A, D>` (Owned)    |      ✅      |        ✅        | `A: Send + Sync`                                                          |
 | `TensorView<'a, A, D>`    |      ✅      |        ❌        | `A: Sync`                                                                 |
 | `TensorViewMut<'a, A, D>` | ⚠️ 条件支持  |        ✅        | `par_iter()` 需先显式降级为只读视图；并行写路径要求独占借用且块划分不重叠 |
-| `ArcTensor<A, D>`         |      ✅      | ❌ (需 make_mut) | `A: Send + Sync`                                                          |
+| `ArcTensor<A, D>`         |      ✅      | ❌（若实现内部写路径，则必须先内部唯一化 / 必要时复制后恢复可写） | `A: Send + Sync`                                                     |
 
 ### 9.5 与 workspace 模块的边界
 

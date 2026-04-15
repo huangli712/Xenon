@@ -98,7 +98,7 @@ src/
 ```
 src/workspace/
 ├── mod.rs          # Re-exports: Workspace, WorkspaceBorrow, WorkspaceBorrowMut, SplitBorrowMut, WorkspaceError
-├── error.rs        # Independent, no internal dependency
+├── error.rs        # Defines WorkspaceError; consumed by workspace.rs/split.rs/expand.rs and mapped at the public boundary through crate::error
 ├── workspace.rs    # Depends on error
 ├── borrow.rs       # Depends on workspace (by reference)
 ├── split.rs        # Depends on workspace (by reference) and error
@@ -107,7 +107,7 @@ src/workspace/
 External dependencies:
 ├── core            # ptr::NonNull, marker, sync::atomic, fmt
 ├── alloc           # alloc::alloc, alloc::dealloc, alloc::Layout
-└── no shared crate-level error dependency; WorkspaceError lives in workspace/error.rs
+└── crate::error      # XenonError public boundary mapping
 ```
 
 ### 4.2 类型级依赖
@@ -116,11 +116,12 @@ External dependencies:
 | -------------------- | ---------------------------------------------------------------------- |
 | `core`               | `NonNull<u8>`, `PhantomData`, `AtomicU8`, `fmt::Debug`, `fmt::Display` |
 | `alloc`              | `alloc()`, `dealloc()`, `Layout`                                       |
-| `workspace/error.rs` | `WorkspaceError`（模块内错误分类；公开 Xenon API 需包装到 `XenonError`） |
+| `workspace/error.rs` | `WorkspaceError`（模块内错误分类） |
+| `crate::error`       | `XenonError`（公开 Xenon API 边界包装） |
 
 ### 4.3 依赖方向声明
 
-> **依赖方向：单向。** `workspace` 仅依赖 `core`、`alloc` 和原子能力，不依赖 `tensor`（参见 `07-tensor.md §3`）。上游库和 `tensor` 可消费 `workspace`。
+> **依赖方向：单向。** `workspace` 仅依赖 `core`、`alloc`、原子能力、模块内 `WorkspaceError`，以及 `crate::error` 的公开错误边界封装，不依赖 `tensor`（参见 `07-tensor.md §3`）。上游库和 `tensor` 可消费 `workspace`。
 
 ### 4.4 依赖合法性与替代方案
 
@@ -826,6 +827,7 @@ impl Workspace {
         let new_capacity = grown.max(min_capacity);
 
         self.reallocate(new_capacity)
+            .map_err(|e| XenonError::Workspace(e))
     }
 
     /// Internal reallocation.
@@ -870,6 +872,8 @@ impl Workspace {
     }
 }
 ````
+
+> **错误映射说明：** `reallocate()` 保留 `Result<(), WorkspaceError>` 作为模块内实现签名，`ensure_capacity()` 在公开边界显式通过 `.map_err(|e| XenonError::Workspace(e))` 做统一包装；不得让 `WorkspaceError` 直接穿透公开 API。
 
 ### 5.9 Good/Bad 对比
 

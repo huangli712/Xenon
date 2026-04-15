@@ -88,8 +88,7 @@ src/iter/
 | 场景 | 错误 |
 | ---- | ---- |
 | `axis_iter()` / `axis_iter_mut()` 的 `axis` 越界 | 返回 `XenonError::InvalidAxis { operation: "axis_iter", axis, ndim, shape }` 或 `XenonError::InvalidAxis { operation: "axis_iter_mut", axis, ndim, shape }`。 |
-| 静态零维 `Ix0` 调用按轴迭代 | 不提供此 API：`axis_iter` / `axis_iter_mut` 通过 `D: RemoveAxis` 在类型层直接排除。 |
-| rank-0 动态维张量调用按轴迭代 | 返回 `XenonError::InvalidAxis { operation, axis: 0, ndim: 0, shape }`，其中 `shape` 为 `Vec<usize>` 形式的空形状。 |
+| 零维张量调用按轴迭代 | 公开 API 统一返回 `XenonError::InvalidAxis { operation, axis: 0, ndim: 0, shape }`；其中静态零维 `Ix0` 的编译期排除仅允许作为内部优化，不改变该公开语义。 |
 | 试图把广播结果作为可变迭代输入 | 不提供公开 API；通过类型系统在编译期拒绝，而不是返回运行时错误。 |
 
 ### 4.3 依赖图
@@ -108,7 +107,7 @@ src/iter/
 | 来源模块    | 使用的类型/trait                                                                                                                                 |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `tensor`    | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `TensorViewMut<'a, A, D>`, `.shape()`, `.strides()`, `.as_ptr()`, `.len()`（参见 `07-tensor.md §5.3` / `§5.4` / `§5.7`） |
-| `dimension` | `Dimension`, `Axis`, `Ix0`~`Ix6`, `IxDyn`, `RemoveAxis`, `D::Smaller`（参见 `02-dimension.md §5`）                                               |
+| `dimension` | `Dimension`, `Axis`, `Ix0`~`Ix6`, `IxDyn`，以及仅供内部轴迭代实现使用的 `RemoveAxis` / `D::Smaller`（参见 `02-dimension.md §5`）                  |
 | `storage`   | `Storage<Elem = A>`, `StorageMut<Elem = A>`, `Owned<A>`（参见 `05-storage.md §5`）                                                               |
 | `error`     | `XenonError::InvalidAxis`（参见 `26-error.md §4.2` / `§4.4`）                                                                                     |
 | `tensor`    | `.is_f_contiguous()`, 布局标志查询（参见 `07-tensor.md §5.3`）                                                                                   |
@@ -167,9 +166,13 @@ impl<'a, A, D: Dimension> ExactSizeIterator for ElementsMut<'a, A, D> {}
 ```rust
 /// Axis iterator, yields a sub-tensor view with reduced dimension each step.
 ///
-/// Input dimension N, output dimension N-1 views.
-pub struct AxisIter<'a, A, D: Dimension + RemoveAxis> {
-    // Internal fields: view, axis, current position, length
+/// Publicly this iterator is opaque: construction must accept any `D: Dimension`
+/// so rank-0 inputs can reach runtime validation and return `InvalidAxis` rather
+/// than failing trait resolution at compile time. After validation succeeds, the
+/// implementation may delegate to a private `AxisIterImpl<'a, A, D>` that requires
+/// `D: RemoveAxis`.
+pub struct AxisIter<'a, A, D: Dimension> {
+    // Internal fields: opaque public wrapper around a private RemoveAxis-backed iterator.
 }
 
 /// Mutable axis iterator.
@@ -182,26 +185,12 @@ pub struct AxisIter<'a, A, D: Dimension + RemoveAxis> {
 /// produced `&mut` views cover non-overlapping logical regions along the iterated
 /// axis. The iterator advances monotonically and never revisits an earlier offset,
 /// which prevents mutable aliasing between yielded items.
-pub struct AxisIterMut<'a, A, D: Dimension + RemoveAxis> {}
-
-impl<'a, A, D: Dimension + RemoveAxis> Iterator for AxisIter<'a, A, D> {
-    type Item = TensorView<'a, A, D::Smaller>;
-    fn next(&mut self) -> Option<Self::Item>;
-    fn size_hint(&self) -> (usize, Option<usize>);
+pub struct AxisIterMut<'a, A, D: Dimension> {
+    // Internal fields: opaque public wrapper around a private RemoveAxis-backed iterator.
 }
-
-impl<'a, A, D: Dimension + RemoveAxis> ExactSizeIterator for AxisIter<'a, A, D> {}
-
-impl<'a, A, D: Dimension + RemoveAxis> Iterator for AxisIterMut<'a, A, D> {
-    type Item = TensorViewMut<'a, A, D::Smaller>;
-    fn next(&mut self) -> Option<Self::Item>;
-    fn size_hint(&self) -> (usize, Option<usize>);
-}
-
-impl<'a, A, D: Dimension + RemoveAxis> ExactSizeIterator for AxisIterMut<'a, A, D> {}
 ```
 
-> **设计决策：** `AxisIter` 的 `Item` 类型为 `TensorView<'a, A, D::Smaller>`。这要求 `D` 满足 `RemoveAxis`，并由 `RemoveAxis` trait 提供 `type Smaller: Dimension` 关联类型。静态零维 `Ix0` 因不满足该约束而在类型层直接排除；公开构造路径中的运行时 `self.ndim() == 0` 检查仅用于覆盖动态维度张量在 rank=0 时的按轴遍历请求。
+> **设计决策：** 公开构造签名不再暴露 `D: RemoveAxis`，以确保 `Ix0` 与 rank-0 `IxDyn` 都能通过编译并进入统一的运行时校验路径。成功构造后的实际降维迭代仍可由私有 `AxisIterImpl<'a, A, D>` / `AxisIterMutImpl<'a, A, D>` 承担，这些内部实现再使用 `D: RemoveAxis` 与 `D::Smaller`。因此，`RemoveAxis` 只属于内部实现 trait，不属于公开 API 契约。
 
 ### 5.3 内部迭代分发说明
 
@@ -271,9 +260,7 @@ where
     pub fn indexed_iter(&self) -> IndexedIter<'_, A, D>;
 
     /// Iterate along an axis (yields sub-tensors orthogonal to the axis).
-    pub fn axis_iter(&self, axis: Axis) -> Result<AxisIter<'_, A, D>, XenonError>
-    where
-        D: RemoveAxis;
+    pub fn axis_iter(&self, axis: Axis) -> Result<AxisIter<'_, A, D>, XenonError>;
 
 }
 
@@ -289,9 +276,7 @@ where
     pub fn indexed_iter_mut(&mut self) -> IndexedIterMut<'_, A, D>;
 
     /// Mutable axis iteration.
-    pub fn axis_iter_mut(&mut self, axis: Axis) -> Result<AxisIterMut<'_, A, D>, XenonError>
-    where
-        D: RemoveAxis;
+    pub fn axis_iter_mut(&mut self, axis: Axis) -> Result<AxisIterMut<'_, A, D>, XenonError>;
 
 }
 ```
@@ -402,14 +387,14 @@ increment_index_f(shape, index):
   - 前置: `07-tensor.md` 完成
   - 预计: 5 min
 
+### Wave 2: 基础状态机与独立轴迭代
+
 - [ ] **T2**: 实现 StrideState 步长状态机
   - 文件: `src/iter/elements.rs`（内部辅助结构）
   - 内容: F-order 索引递增逻辑
   - 测试: `test_stride_state_increment`
   - 前置: T1
   - 预计: 10 min
-
-### Wave 2: 核心迭代器
 
 - [ ] **T3**: 实现 `Elements` / `ElementsMut`
   - 文件: `src/iter/elements.rs`
@@ -425,6 +410,8 @@ increment_index_f(shape, index):
   - 前置: T1
   - 预计: 10 min
 
+### Wave 3: 核心元素与索引迭代器
+
 - [ ] **T6**: 实现 `IndexedIter` / `IndexedIterMut`
   - 文件: `src/iter/indexed.rs`
   - 内容: 基于 Elements 的索引包装
@@ -432,7 +419,7 @@ increment_index_f(shape, index):
   - 前置: T3
   - 预计: 10 min
 
-### Wave 3: TensorBase 入口集成
+### Wave 4: TensorBase 入口集成
 
 - [ ] **T9**: 在 TensorBase 上添加迭代器入口方法
   - 文件: `src/tensor/`（或 `src/iter/mod.rs` 通过 trait extension）
@@ -444,13 +431,15 @@ increment_index_f(shape, index):
 ### 并行执行分组图
 
 ```
-Wave 1: [T1] [T2]
-           |     |
-Wave 2: [T4] [T3]
-                 |
-Wave 3:        [T6]
-                 |
-Wave 4:        [T9]
+Wave 1: [T1]
+           |
+Wave 2: [T2] [T4]
+           |
+Wave 3: [T3]
+           |
+Wave 4: [T6]
+           |
+Wave 5: [T9]
 ```
 
 ---
@@ -479,7 +468,7 @@ Wave 4:        [T9]
 | `test_axis_iter_shape`         | 沿轴迭代产出的子视图形状正确                  | 高     |
 | `test_indexed_iter_order`      | 索引按 F-order 递增                           | 高     |
 | `test_indexed_iter_ix0`        | 零维张量索引为空切片                          | 中     |
-| `test_axis_iter_ix0_error`     | 零维动态张量调用 `axis_iter()` 返回可恢复错误 | 高     |
+| `test_axis_iter_ix0_error`     | 零维张量调用 `axis_iter()` 返回 `InvalidAxis` 可恢复错误 | 高     |
 | `test_elements_large_tensor_count` | 大张量（`10^7` 量级元素）上的 `count()` / `len()` 一致，且不访问越界内存 | 高     |
 | `test_indexed_iter_high_rank_ixdyn` | 高 rank `IxDyn`（接近静态上限/超过静态维度）索引遍历次序与数量正确 | 高     |
 | `test_axis_iter_large_axis_index_error` | 极端 axis 值（如 `usize::MAX`）返回 `InvalidAxis` 且携带完整诊断 | 高     |
@@ -491,7 +480,7 @@ Wave 4:        [T9]
 | ----------------------------- | ------------------------------------------------ |
 | 空数组 `shape=[0, 3]`         | `iter()` 立即结束，`count() == 0`                |
 | 单元素 `shape=[1, 1]`         | `iter()` 产出 1 项                               |
-| 零维张量 `Ix0` / rank-0 `IxDyn` | `iter()` 产出 1 项；`Ix0` 不提供 `axis_iter()` API，rank-0 `IxDyn` 调用 `axis_iter()` 返回可恢复错误 |
+| 零维张量 `Ix0` / rank-0 `IxDyn` | `iter()` 产出 1 项；`axis_iter()` / `axis_iter_mut()` 统一返回 `InvalidAxis` 可恢复错误 |
 | 非连续切片 `s![.., 0..3]`     | `iter()` 正确处理步长跳转                        |
 | 广播视图 `shape=[1, 4]`       | `iter()` 遍历逻辑元素，`iter_mut()` 编译拒绝     |
 | 填充数组                      | 仅遍历逻辑元素                                   |
@@ -527,7 +516,7 @@ Wave 4:        [T9]
 | 场景 | 测试方式 |
 | ---- | ---- |
 | 广播结果不可变，不提供 `iter_mut()` | 编译期测试或 trait 约束验证。 |
-| `AxisIter` 仅对满足 `RemoveAxis` 的维度开放 | 编译期测试。 |
+| `AxisIter` / `AxisIterMut` 的公开构造签名不暴露 `RemoveAxis`，但内部实现仍可利用该 trait 优化 | 运行时错误测试 + 内部实现约束验证。 |
 | `DoubleEndedIterator` 不属于当前公开接口 | 编译期失败测试或 API 缺失断言。 |
 
 ---
@@ -539,7 +528,7 @@ Wave 4:        [T9]
 | 方向 | 对方模块 | 接口/类型 | 约定 |
 | ---- | -------- | --------- | ---- |
 | `iter → tensor` | `tensor` | `TensorBase<S, D>`、`TensorView<'a, A, D>`、`TensorViewMut<'a, A, D>` | 由 `tensor` 暴露迭代器入口与视图类型，参见 `07-tensor.md` §5。 |
-| `iter → dimension` | `dimension` | `Dimension`、`Axis`、`RemoveAxis` | 迭代状态机按维度与轴语义推进，参见 `02-dimension.md` §5。 |
+| `iter → dimension` | `dimension` | `Dimension`、`Axis`，以及内部轴迭代实现使用的 `RemoveAxis` | 迭代状态机按维度与轴语义推进，参见 `02-dimension.md` §5。 |
 | `iter → storage` | `storage` | `Storage`、`StorageMut` | 元素访问与可变访问分别受只读/可写存储约束保护，参见 `05-storage.md` §5。 |
 
 ### 9.2 数据流描述
@@ -563,7 +552,7 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `axis_iter()` / `axis_iter_mut()` 在 `axis` 越界或 rank-0 动态维输入时返回 `XenonError::InvalidAxis { operation: Cow<'static, str>, axis: usize, ndim: usize, shape: Vec<usize> }`；静态零维 `Ix0` 不提供对应运行时错误入口。 |
+| Recoverable error | `axis_iter()` / `axis_iter_mut()` 在 `axis` 越界或任意零维输入（包括 `Ix0` 与 rank-0 `IxDyn`）时返回 `XenonError::InvalidAxis { operation: Cow<'static, str>, axis: usize, ndim: usize, shape: Vec<usize> }`；编译期排除仅可作为内部优化。 |
 | Panic | 公开迭代器 API 不引入新的 panic 语义；仅内部 producer 分块等不变量破坏可使用断言。 |
 | 路径一致性 | 连续、非连续、零步长广播视图及并行 producer 的外部迭代顺序与长度语义必须一致。 |
 | 容差边界 | 不适用。 |

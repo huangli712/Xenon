@@ -52,7 +52,7 @@ L5: construct  <- current module (depends on storage, layout, dimension, element
 | 类型     | 内容 |
 | -------- | ---- |
 | 需求映射 | 需求说明书 §19 |
-| 范围内   | `zeros` / `ones` / `eye` / `from_shape_vec` / `from_shape_slice` / `from_array` / `from_scalar`，以及与 §19 对齐的 1D 便捷入口 `from_vec`。 |
+| 范围内   | `zeros` / `ones` / `eye` / `from_shape_vec` / `from_shape_slice` / `from_array` / `from_scalar`。 |
 | 范围外   | arange、linspace、from_fn、随机构造器与其他序列生成 API。 |
 | 非目标   | 不新增新的构造器家族，不改变 F-order / 对齐分配基线，也不引入第三方随机或数据加载依赖。 |
 
@@ -104,7 +104,7 @@ src/
 | ----------- | ------------------------------------------------------------------------------------------ |
 | `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, 类型别名 `Tensor0`~`Tensor6`（参见 `07-tensor.md` §5） |
 | `storage`   | `Owned<A>`, `Storage<Elem = A>`, `from_vec_aligned()`（参见 `05-storage.md` §5）           |
-| `layout`    | `LayoutFlags`, `Strides<D>`, F-order 步长计算（参见 `06-layout.md` §3）                    |
+| `layout`    | `LayoutFlags`, `Strides<D>`, 共享 checked/layout helper（元素总数与 F-order stride 计算，参见 `06-layout.md` §3） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`（参见 `02-dimension.md` §5）            |
 | `element`   | `Element`（`zero()` / `one()` 由 `Element` 提供，参见 `03-element.md` §5.1）               |
 | `error`     | `XenonError::InvalidShape`（用于构造时的 shape/length 基数不匹配，参见 `26-error.md` §4）  |
@@ -153,14 +153,14 @@ where
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();
-        let len = dim.checked_size().ok_or(XenonError::InvalidShape {
+        let len = layout::checked_element_count(&dim).ok_or(XenonError::InvalidShape {
             operation: "zeros",
             shape: dim.slice().to_vec(),
             expected_elements: 0,
             actual_elements: usize::MAX,
             offending_dim: None,
         })?;
-        let strides = dim.strides_for_f_order();
+        let strides = layout::f_order_strides(&dim);
         let storage = Owned::zeros(len);
         Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) })
     }
@@ -178,14 +178,14 @@ where
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();
-        let len = dim.checked_size().ok_or(XenonError::InvalidShape {
+        let len = layout::checked_element_count(&dim).ok_or(XenonError::InvalidShape {
             operation: "ones",
             shape: dim.slice().to_vec(),
             expected_elements: 0,
             actual_elements: usize::MAX,
             offending_dim: None,
         })?;
-        let strides = dim.strides_for_f_order();
+        let strides = layout::f_order_strides(&dim);
         let storage = Owned::ones(len);
         Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags: LayoutFlags::from_order(Order::F) })
     }
@@ -193,8 +193,7 @@ where
 ````
 
 > **范围决策：** `full()` 超出 `require.md` §19 的当前最小构造集合。
-> `from_vec()` 虽可作为 `from_shape_vec(Ix1(data.len()), data)` 的 1D 便捷包装保留，但它不构成独立的需求扩展；
-> 本文稳定承诺仍以 `require.md` §19 已覆盖的标准构造语义为准。
+> 如实现后续自愿提供 `from_vec()` 这类 1D 便捷包装，也仅属于非规范 convenience layer；本文的稳定承诺仍以 `require.md` §19 已覆盖的标准构造语义为准，不把该便捷入口纳入范围、任务或测试承诺。
 
 > **`bool` 特殊值说明：** `zeros::<bool>()` 对应 `false`，`ones::<bool>()` 对应 `true`（`require.md` §19）。
 
@@ -259,7 +258,7 @@ impl EyeElement for Complex<f64> {}
 ### 5.3 from_shape_vec / from_shape_slice / from_array
 
 ````rust,ignore
-# use crate::dimension::{Dimension, IntoDimension, Ix1};
+# use crate::dimension::{Dimension, IntoDimension};
 # use crate::element::Element;
 # use crate::error::XenonError;
 # use crate::layout::{LayoutFlags, Order};
@@ -281,8 +280,8 @@ where
     /// F-order contiguous storage.
     ///
     /// # Errors
-    /// Returns `XenonError::InvalidShape` if `checked_size(shape)` overflows or
-    /// `data.len() != checked_size(shape)`.
+    /// Returns `XenonError::InvalidShape` if the shared checked helper reports
+    /// element-count overflow or `data.len()` does not match the validated count.
     ///
     /// # Examples
     /// ```
@@ -309,7 +308,7 @@ where
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();
-        let expected = dim.checked_size().ok_or(XenonError::InvalidShape {
+        let expected = layout::checked_element_count(&dim).ok_or(XenonError::InvalidShape {
             operation: "from_shape_vec",
             shape: dim.slice().to_vec(),
             expected_elements: 0,
@@ -325,7 +324,7 @@ where
                 offending_dim: None,
             });
         }
-        let strides = dim.strides_for_f_order();
+        let strides = layout::f_order_strides(&dim);
         // from_vec_aligned stands for Xenon's internal owned construction path.
         // The public contract only requires validated F-order logical mapping and
         // an owned result; whether the implementation reuses the original Vec
@@ -338,8 +337,8 @@ where
     /// Construct a tensor from a slice (copies data).
     ///
     /// # Errors
-    /// Returns `XenonError::InvalidShape` if `checked_size(shape)` overflows or
-    /// `slice.len() != checked_size(shape)`.
+    /// Returns `XenonError::InvalidShape` if the shared checked helper reports
+    /// element-count overflow or `slice.len()` does not match the validated count.
     ///
     /// # Examples
     /// ```
@@ -352,7 +351,7 @@ where
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();
-        let expected = dim.checked_size().ok_or(XenonError::InvalidShape {
+        let expected = layout::checked_element_count(&dim).ok_or(XenonError::InvalidShape {
             operation: "from_shape_slice",
             shape: dim.slice().to_vec(),
             expected_elements: 0,
@@ -394,19 +393,6 @@ where
     }
 }
 
-impl<A> TensorBase<Owned<A>, Ix1>
-where
-    A: Element,
-{
-    /// Construct a 1D tensor directly from a Vec.
-    ///
-    /// This is an optional convenience wrapper around
-    /// `from_shape_vec(Ix1(data.len()), data)` for 1D construction.
-    pub fn from_vec(data: Vec<A>) -> Tensor<A, Ix1> {
-        Self::from_shape_vec(Ix1(data.len()), data)
-            .expect("Vec -> Tensor1 shape is always valid")
-    }
-}
 ````
 
 ### 5.4 from_scalar
@@ -493,9 +479,9 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 
 ### 6.3 安全性论证
 
-- `from_shape_vec`: 先通过共享 checked helper 验证 `dim.checked_size()`，再验证 `data.len() == expected`；通过后进入共享 owned 构造路径。是否复用原始 `Vec` 分配、是否进行额外重打包，均属于内部实现选择，不影响公开语义
-- `from_shape_slice`: 先通过共享 checked helper 验证 `dim.checked_size()`，长度匹配后先把切片物化为 owned 缓冲区，再委托给 `from_shape_vec`；这样把 F-order 映射、长度约束与 owned 结果语义统一收敛到单一路径
-- `dim.size()` / 步长计算溢出：构造路径须在共享的 checked helper 中统一转为 `XenonError::InvalidShape`，再决定是否由上层便捷构造包装；不得产生未定义行为。ZST 与空张量路径须与 `05-storage.md` 的约束保持一致
+- `from_shape_vec`: 先通过 layout 层共享 checked helper 验证元素总数，再验证 `data.len() == expected`；通过后进入共享 owned 构造路径。是否复用原始 `Vec` 分配、是否进行额外重打包，均属于内部实现选择，不影响公开语义
+- `from_shape_slice`: 先通过 layout 层共享 checked helper 验证元素总数，长度匹配后先把切片物化为 owned 缓冲区，再委托给 `from_shape_vec`；这样把 F-order 映射、长度约束与 owned 结果语义统一收敛到单一路径
+- 元素总数 / F-order stride 计算溢出：构造路径须在共享的 layout checked helper 中统一转为 `XenonError::InvalidShape`，不得把这些职责下沉到 `Dimension` trait。ZST 与空张量路径须与 `05-storage.md` 的约束保持一致
 - `eye`: 内部使用已验证的 `zeros` 和合法索引 `[[i, i]]`（`0 <= i < n`），无越界风险
 
 ---
@@ -534,20 +520,13 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
   - 前置: T3
   - 预计: 5 min
 
-- [ ] **T5**: 实现 `from_vec` 一维便捷构造（可选）
-  - 文件: `src/construct/from_data.rs`
-  - 内容: `from_vec(data: Vec<A>) -> Tensor<A, Ix1>`，内部委托到 `from_shape_vec(Ix1(data.len()), data)`
-  - 测试: `test_from_vec`
-  - 前置: T3
-  - 预计: 5 min
-
 ### Wave 3: 集成与测试
 
-- [ ] **T6**: 编写综合测试
+- [ ] **T5**: 编写综合测试
   - 文件: `tests/test_construction.rs`
   - 内容: 各构造方法的集成测试、边界情况
   - 测试: 覆盖所有公共 API
-  - 前置: T1-T5
+  - 前置: T1-T4
   - 预计: 10 min
 
 ### 并行执行图
@@ -557,9 +536,7 @@ Wave 1: [T1] → [T2]
                   │
 Wave 2:      [T3] → [T4]
                       │
-                  [T5]
-                      │
-Wave 3:            [T6]
+Wave 3:            [T5]
 ```
 
 ---
@@ -653,8 +630,8 @@ Wave 3:            [T6]
 ```text
 User calls zeros / from_shape_vec / eye
     │
-    ├── dimension normalizes the input shape and validates element count
-    ├── layout computes F-order strides and initial flags
+    ├── dimension normalizes the input shape only
+    ├── layout shared checked helpers validate element count and compute F-order strides / initial flags
     ├── storage allocates owned memory and writes data according to Xenon's internal policy
     └── tensor wraps the result as TensorBase<Owned<_>, D> for later use
 ```
@@ -665,7 +642,7 @@ User calls zeros / from_shape_vec / eye
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | shape 与长度基数不匹配、`checked_size()` 溢出等情况返回 `XenonError::InvalidShape`，携带实际与期望元素数。 |
+| Recoverable error | shape 与长度基数不匹配、共享 checked helper 报告元素总数溢出等情况返回 `XenonError::InvalidShape`，携带实际与期望元素数。 |
 | Panic | 公开构造 API 不定义额外 panic 语义；失败统一走 `Result`。 |
 | 路径一致性 | 所有构造路径都必须产出 canonical F-order owned 张量，并保持一致的 shape / strides / flags 语义。 |
 | 容差边界 | 不适用。 |

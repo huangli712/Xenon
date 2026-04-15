@@ -177,7 +177,7 @@ Storage mode taxonomy
 | **创建开销** | 高 (分配)      | 低 (借用)    | 低 (借用) | 中 (Arc 包装)        |
 | **克隆开销** | O(n)           | O(1)         | 不可克隆  | O(1)                 |
 | **写入开销** | 无             | 不可写       | 无        | 可能 O(n) (CoW)      |
-| **线程安全** | Send+Sync      | Send+Sync    | Send only | Send+Sync            |
+| **线程安全** | 取决于 `A: Send + Sync` | 取决于 `A: Sync` | 取决于 `A: Send` | 取决于 `A: Send + Sync` |
 | **典型用途** | 创建、运算结果 | 切片、子数组 | 原地修改  | 跨线程共享、延迟复制 |
 
 ### 5.2 Storage Trait 层次
