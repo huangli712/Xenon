@@ -14,7 +14,7 @@
 | 职责             | 包含                                                                             | 不包含                                     |
 | ---------------- | -------------------------------------------------------------------------------- | ------------------------------------------ |
 | 多维整数索引     | `usize` 多维索引、`try_at` / `try_at_mut` / `get` / `get_mut` / `get_unchecked*` | 负索引、布尔掩码、整数数组高级索引         |
-| 范围索引（切片） | 以范围描述符表达的只读切片、`slice`、`s![]` 宏（可选语法糖，非稳定承诺）         | 负步长切片、共享可写切片、隐式复制切片     |
+| 范围索引（切片） | 以范围描述符表达的只读切片、`slice` 编程式接口                                 | 负步长切片、共享可写切片、隐式复制切片     |
 | 元数据更新       | 按 F-order 规则更新 offset、shape、stride 与布局标记                             | 改变逻辑元素顺序、引入与源张量无关的新存储 |
 | 错误边界         | 安全接口返回可恢复错误，unsafe 接口由调用方保证前提                              | 将越界默认为 panic 的安全主路径            |
 
@@ -51,12 +51,12 @@ L4: index  <- current module
 | 范围外   | 负索引、负步长、布尔/整数数组高级索引、共享可写视图、额外索引语法；`Index`/`IndexMut` 运算符语法（panic 语义）不在当前版本的稳定 API 承诺范围内。 |
 | 非目标   | 不新增索引能力，不引入新的存储模式或复制语义                                                                              |
 
-> **范围决策：** 当前版本只承诺“`usize` 多维索引 + 范围切片”两类能力；`s![]` 宏仅作为现有范围描述的可选语法包装，不扩展新语义，也不构成当前稳定 API 承诺。
+> **范围决策：** 当前版本只承诺“`usize` 多维索引 + 范围切片”两类能力，仅提供 `slice()` 的编程式切片接口。
 
 > **范围补充：** `Index`/`IndexMut` 运算符语法（panic 语义）不在当前版本的稳定 API 承诺范围内。主索引路径为 `try_at` / `try_at_mut`（返回 `Result`）。若未来版本需要运算符语法糖，须在需求层获得明确豁免。
 
 > [!IMPORTANT]
-> **范围说明：** stepped slicing（`step` 参数）计划在未来版本提供，**不**属于当前稳定 API surface。本文所有与 step 相关的设计均为**规划预览（非规范）**，不得覆盖 `require.md` §18 当前仅要求的整数索引与范围索引稳定承诺。
+> **范围说明：** 步长切片（step slicing）不在当前版本范围内，未来版本可另行设计。
 
 ---
 
@@ -68,11 +68,10 @@ src/
     ├── mod.rs           # module root and public re-exports
     ├── ndindex.rs       # NdIndex trait and tuple/slice index implementations
     ├── access.rs        # try_at/get/get_unchecked and mutable variants
-    ├── slice.rs         # SliceInfo, slice, shape/stride updates
-    └── macros.rs        # s![] macro and descriptor helpers
+    └── slice.rs         # SliceInfo, slice, shape/stride updates
 ```
 
-按能力拆分为 `ndindex`、`access`、`slice`、`macros`，可把“索引地址计算”和“切片元数据变换”分开维护；`mod.rs` 负责统一导出，保持对外仍是单一 `src/index/` 模块边界。
+按能力拆分为 `ndindex`、`access`、`slice`，可把“索引地址计算”和“切片元数据变换”分开维护；`mod.rs` 负责统一导出，保持对外仍是单一 `src/index/` 模块边界。
 
 ---
 
@@ -149,10 +148,9 @@ pub trait NdIndex<D: Dimension>: Sealed {
 pub enum SliceInfoElem {
     Index(usize),
     Range {
-        start: Option<usize>,
-        end: Option<usize>,
-        // Planning preview only, not part of current stable API.
-        step: Option<usize>,
+        start: usize,
+        end: usize,
+        // 步长切片（step slicing）不在当前版本范围内，未来版本可另行设计。
     },
 }
 
@@ -192,7 +190,7 @@ where
 
 设计说明：为支持 `XenonError::IndexOutOfBounds { attempted_index: Vec<usize>, .. }` 与 `26-error.md` 的规范对齐，`NdIndex<D>` 将提供 `fn to_index_vec(&self) -> Vec<usize>`（或等价 helper）用于把任意合法索引表示统一转换为 `Vec<usize>`。这样 tuple-based `Ix0`~`Ix6` 与切片形式索引都能在错误上报路径中生成一致的结构化诊断数据。
 
-`SliceInfo<I, D>` 是切片描述符的公开包装类型：`D` 表示输入维度，`I` 表示切片后的输出维度；其内部字段保持私有，必须通过带校验的构造器建立，以避免手工拼出“索引长度、输入维度、输出维度彼此矛盾”的无效状态。`SliceInfo::new` 作为 crate-private 构造器存在，对外提供自动推导输出维度的包装接口。调用方不应手动构造 `out_dim`。
+`SliceInfo<I, D>` 是切片描述符的公开包装类型：`D` 表示输入维度，`I` 表示切片后的输出维度；其内部字段保持私有，必须通过带校验的构造器建立，以避免手工拼出“索引长度、输入维度、输出维度彼此矛盾”的无效状态。`SliceInfo::new` 作为 crate-private 构造器存在，对外提供自动推导输出维度的包装接口。调用方不应手动构造 `out_dim`。范围语法中的省略边界应在进入 `SliceInfoElem::Range` 前先被规范化为显式 `start` / `end`。
 
 ### 5.2 张量访问与切片 API
 
@@ -254,21 +252,6 @@ let value2 = tensor.get(&[2, 1])?;
 let value = tensor.try_at((2, 1)).expect("index already validated");
 ```
 
-```rust
-// Planning preview (non-normative) - future step validation rejects invalid step values explicitly.
-let view = tensor.slice(s![1..4;2, ..])?;
-
-// Planning preview (non-normative) - invalid future step input must not be forced through as if it were valid.
-let view = tensor.slice(s![1..4;0, ..]).unwrap();
-```
-
-> **规划预览（非规范）：** 正步长切片（`step > 0`）属于未来版本预留能力，不作为 `require.md` §18 的最小必要范围承诺。基础范围索引（`start..end`, `..`）为当前稳定承诺。
-
-```rust
-// Full collapse example: all axes are indexed, result becomes 0D.
-let scalar = tensor.slice(s![1, 2])?;
-let scalar: TensorView<'_, A, Ix0> = scalar;
-```
 
 ```rust
 // Good - unsafe path is only used when the caller already proved validity.
@@ -289,12 +272,13 @@ let value = unsafe { tensor.get_unchecked(user_index.as_slice()) };
 ### 6.2 偏移量计算
 
 ```rust
-fn compute_offset_f<D: Dimension>(index: &[usize], strides: &Strides<D>) -> usize {
+fn compute_offset_f<D: Dimension>(index: &[usize], strides: &Strides<D>) -> Option<usize> {
     let mut offset = 0usize;
     for (&idx, &stride) in index.iter().zip(strides.iter()) {
-        offset += idx * stride;
+        let term = idx.checked_mul(stride)?;
+        offset = offset.checked_add(term)?;
     }
-    offset
+    Some(offset)
 }
 ```
 
@@ -311,29 +295,20 @@ fn compute_offset_f<D: Dimension>(index: &[usize], strides: &Strides<D>) -> usiz
 ```text
 compute_slice(shape, strides, offset, slices):
     1. Validate the slice descriptor rank against ndim.
-    2. For Index(idx), check bounds and fold into the new offset.
-    3. [Planning preview only] For Range { start, end, step }, reject step == 0.
-    4. [Planning preview only] Compute the resulting axis length and stride multiplication.
+    2. For Index(idx), check bounds and fold into the new offset with checked arithmetic.
+    3. For Range { start, end }, validate `0 <= start <= end <= shape[axis]`.
+    4. Update the resulting axis length as `end - start` and keep stride semantics unchanged.
     5. Recompute layout flags from the new shape and strides.
     6. Return a read-only TensorView.
 ```
 
-> **规划预览（非规范）：** 以下 `Range { start, end, step }` 规则仅用于描述未来 stepped slicing 方案，不构成当前稳定 API 约束。
-
-`Range { start, end, step }` 的结果轴长度按以下规则计算：
-
-- `start` 默认 `0`
-- `end` 默认 `shape[axis]`
-- 区间语义为 `[start, end)`（左闭右开）
-- 当 `start >= end` 时，结果长度为 `0`
-- 否则结果长度为 `(end - start) / step` 的向上取整，即 `(end - start + step - 1) / step`
+> **说明：** 步长切片（step slicing）不在当前版本范围内，未来版本可另行设计。
 
 切片后的语义约束如下：
 
 - 结果须保持原有逻辑元素顺序。
-- `Index(usize)` 会折叠对应轴并累加 offset。
-- `Range` 会按起止边界更新 shape 和 stride；若未来启用 stepped slicing，则再叠加步长语义。
-- **规划预览（非规范）：** 若未来启用 `step`，则仅允许正步长；`step == 0` 返回可恢复错误。
+- `Index(usize)` 会折叠对应轴并以 checked arithmetic 累加 offset。
+- `Range` 会按起止边界更新 shape 和 stride。
 - 切片结果与源张量共享底层数据时，仅可落在只读或共享只读范围内，不提供共享可写视图。
 - 布局状态只能重新落在 `FContiguous`、`NonContiguous`、`BroadcastView` 三种之一。
 - `SliceInfo::new(...)` 必须校验索引描述长度、`in_dim` 与 `out_dim` 的对应关系，拒绝构造内部自相矛盾的描述符。
@@ -399,16 +374,9 @@ compute_slice(shape, strides, offset, slices):
 
 - [ ] **T5**: 实现 `slice` 的 shape/stride 更新与布局重算
   - 文件: `src/index/slice.rs`
-  - 内容: `Index` 折轴、`Range` 更新 shape/stride、只读视图返回；stepped slicing 仅作未来能力预览，不纳入当前完成标准
-  - 测试: `test_slice_layout_recomputed`；`test_slice_with_step` 仅作未来能力预览（可选，非当前完成标准）
+  - 内容: `Index` 折轴、`Range` 更新 shape/stride、只读视图返回
+  - 测试: `test_slice_layout_recomputed`、`test_slice_chain`
   - 前置: T4
-  - 预计: 10 min
-
-- [ ] **T6**: 集成 `s![]` 宏到切片描述符（可选语法糖，非稳定承诺）
-  - 文件: `src/index/macros.rs`
-  - 内容: 将现有语法映射到范围内切片能力，不新增语义；仅作为非规范便利层，不新增稳定 API 承诺
-  - 测试: `test_slice_chain`
-  - 前置: T5
   - 预计: 10 min
 
 ### Wave 依赖图
@@ -418,7 +386,7 @@ Wave 1: [T1] -> [T2]
                   │
                   ├──────────────┐
                   ▼              ▼
-Wave 2:         [T3]         Wave 3: [T4] -> [T5] -> [T6]
+Wave 2:         [T3]         Wave 3: [T4] -> [T5]
 ```
 
 ---
@@ -445,8 +413,6 @@ Wave 2:         [T3]         Wave 3: [T4] -> [T5] -> [T6]
 | `test_try_at_mut_requires_storage_mut` | 只在 `StorageMut` 前提成立时才存在可写访问入口 | 高     |
 | `test_get_returns_index_out_of_bounds` | `get()` 失败返回 `IndexOutOfBounds`            | 高     |
 | `test_slice_basic`                     | 基本切片结果的 shape 与数据正确                | 高     |
-| `test_slice_with_step`                 | 正步长切片结果正确（未来能力预览，可选，非当前完成标准） | 中     |
-| `test_slice_step_zero`                 | `step == 0` 返回 `InvalidArgument`（未来能力预览，可选，非当前完成标准） | 中     |
 | `test_slice_chain`                     | 视图的视图保持一致的共享数据语义               | 中     |
 | `test_slice_layout_recomputed`         | 切片后布局状态被重新计算                       | 高     |
 | `test_slice_high_rank_ixdyn`           | `IxDyn` 高 rank 输入的切片元数据正确           | 中     |
@@ -461,7 +427,6 @@ Wave 2:         [T3]         Wave 3: [T4] -> [T5] -> [T6]
 | 广播视图上的只读索引                  | 索引成功但结果仍遵循只读/共享只读语义                      |
 | 非连续切片后的访问                    | 偏移量计算继续基于 stride，不假设连续                      |
 | 任一轴越界                            | 安全接口返回 recoverable error；非规范语法糖若存在可 panic |
-| 切片 `step == 0`（未来能力预览，可选） | 若未来启用 stepped slicing，则返回 `InvalidArgument`，且不构造结果视图 |
 | 高 rank（静态上限附近或 `IxDyn`）切片 | rank 校验、输出 shape 与 stride 更新保持正确               |
 
 ### 8.4 属性测试不变量（按需）
@@ -470,7 +435,7 @@ Wave 2:         [T3]         Wave 3: [T4] -> [T5] -> [T6]
 | ---------------------------------------------------- | --------------------------------------------------- |
 | `checked_offset == unchecked_offset`（在合法输入上） | 随机生成合法 shape / strides / index 并比较两条路径 |
 | `slice.len()` 与更新后的 shape 一致                  | 随机合法范围输入，验证逻辑元素数量守恒              |
-| 切片保持逻辑顺序                                     | 对合法正步长切片比较视图遍历序列与参考实现          |
+| 切片保持逻辑顺序                                     | 对合法基础范围切片比较视图遍历序列与参考实现        |
 
 ### 8.5 Feature gate / 配置测试
 
@@ -529,7 +494,7 @@ User calls tensor.slice(info)
 
 | 主题              | 说明                                                                                                                                                                                                                         |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | `try_at()` / `get()` / `slice()` 在 rank 不匹配、轴非法、越界时返回 `XenonError`；若未来启用 stepped slicing，则 `step == 0` 也返回 `XenonError`。其中索引长度与张量 `ndim` 不匹配时，错误类型固定为 `XenonError::DimensionMismatch { operation: 按 API 分别填写对应 operation, expected, actual }` |
+| Recoverable error | `try_at()` / `get()` / `slice()` 在 rank 不匹配、轴非法、越界时返回 `XenonError`。其中索引长度与张量 `ndim` 不匹配时，错误类型固定为 `XenonError::DimensionMismatch { operation: 按 API 分别填写对应 operation, expected, actual }` |
 | Trait-bound 边界  | `try_at_mut()` / `get_mut()` / `get_unchecked_mut()` 仅在 `S: StorageMut` 前提成立时存在；不再为“只读存储上的可写索引”设计运行时 `InvalidStorageMode` 分支                                                                   |
 | Panic             | 当前版本稳定 API 不承诺 `Index` / `IndexMut` panic 语法糖；若实现保留该便利接口，其行为不属于规范契约。规范安全主路径仍是返回 `Result` 的 checked API                                                                          |
 | 路径一致性        | 对同一合法输入，checked 与 unchecked 路径必须给出同一偏移和同一逻辑结果；unsafe 只省略检查                                                                                                                                   |
@@ -543,15 +508,6 @@ XenonError::InvalidAxis {
     axis,
     ndim: self.ndim(),
     shape: self.shape().to_vec(),
-}
-
-XenonError::InvalidArgument {
-    operation: "slice".into(),
-    argument: "step".into(),
-    expected: "step > 0".into(),
-    actual: "0".into(),
-    axis: Some(axis),
-    shape: Some(self.shape().to_vec()),
 }
 
 XenonError::IndexOutOfBounds {
@@ -592,15 +548,6 @@ XenonError::IndexOutOfBounds {
 | 替代方案 | 允许共享可写切片 — 放弃，超出当前版本范围且引入别名写入风险       |
 | 替代方案 | 切片总是复制生成独立张量 — 放弃，会破坏零拷贝视图语义并扩大成本   |
 
-### ADR-3: stepped slicing 作为未来能力预览保留
-
-| 属性     | 值                                                                      |
-| -------- | ----------------------------------------------------------------------- |
-| 决策     | `Range.step` 相关设计仅作为未来版本的规划预览保留；当前稳定 API 不承诺 stepped slicing。若未来落地，则仅支持正整数步长，`step == 0` 报错，负步长不纳入能力集合 |
-| 理由     | `require.md` §18 当前只要求整数索引与范围索引，不要求 step 语义；将其保留为预览可避免删除已有设计，同时不扩大当前稳定承诺 |
-| 替代方案 | 支持负步长并反转逻辑顺序 — 放弃，属于新能力扩展                         |
-| 替代方案 | 把 `step == 0` 视为 panic — 放弃；若未来启用该能力，也应保持安全接口 recoverable error 要求 |
-
 ---
 
 ## 12. 性能描述
@@ -638,6 +585,17 @@ XenonError::IndexOutOfBounds {
 | 单 crate   | 索引设计保持在现有 crate 内，不引入额外 crate 或拆分子包     |
 | SemVer     | 文档仅把旧结构重写为标准模板，不新增索引能力或改变已承诺语义 |
 | 最小依赖   | 不新增第三方依赖；继续复用仓库既有模块                       |
+
+---
+
+## 附录 A. 未来规划（非规范）
+
+> **注**：`s![]` 宏为便利语法层设计，当前版本仅提供编程式切片接口。宏设计保留作为未来版本的增强候选。
+
+> **注**：步长切片（step slicing）不在当前版本范围内，未来版本可另行设计。
+
+- 若未来恢复 `s![]` 宏，应仅包装既有 `SliceInfo` / `slice()` 能力，不引入新语义。
+- 若未来设计步长切片，应单独补充 `SliceInfoElem::Range` 扩展、错误语义与测试矩阵；本版不作规范承诺。
 
 ---
 

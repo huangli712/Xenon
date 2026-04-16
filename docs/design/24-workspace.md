@@ -57,7 +57,7 @@ Workspace 模块位于 L2，独立于核心张量类型系统，可被上游库�
 | 需求条款 | 本文承接方式 |
 | -------- | ------------ |
 | §26 临时工作空间 | 定义对齐分配、借用守卫、`split_at_mut()` 与 `ensure_capacity()` 的行为边界。 |
-| §27 错误处理 | 公开入口统一使用 `crate::error::Result<_>`；其错误值为 `XenonError::Workspace(...)`，覆盖长度、对齐、ZST、越界和扩容溢出。 |
+| §27 错误处理 | 公开入口统一使用 `crate::error::Result<_>`；其错误值为 `XenonError::Workspace { reason: String }`，覆盖长度、对齐、ZST、越界和扩容溢出。 |
 | §28.1 文档 | 关键 API 提供文档和示例；非完整可编译示例统一标记 `ignore`。 |
 | §28.2 测试 | 测试计划覆盖单元、集成、边界、类型边界与借用状态机路径。 |
 
@@ -272,6 +272,8 @@ impl Workspace {
 
 ### 5.3 构造方法
 
+> **错误公开边界**：`WorkspaceError` 为模块内部类型，不对外暴露。公开 API 统一通过 `XenonError::Workspace { reason: String }` 报告错误，详见 `26-error.md`。
+
 ````rust,ignore
 impl Workspace {
     /// Create a new workspace.
@@ -294,33 +296,19 @@ impl Workspace {
     pub fn new(capacity: usize, alignment: usize) -> Result<Self> {
         if !alignment.is_power_of_two() || alignment < Self::MIN_ALIGNMENT {
             return Err(XenonError::Workspace {
-                reason: WorkspaceError::InvalidLayout {
-                size: capacity,
-                align: alignment,
-                reason: Cow::Borrowed("alignment must be a power of two and >= MIN_ALIGNMENT"),
-                }
-                .to_string(),
+                reason: "invalid workspace layout: alignment must be a power of two and >= MIN_ALIGNMENT".into(),
             });
         }
 
         let size = capacity.max(1);
         let layout = Layout::from_size_align(size, alignment)
             .map_err(|_| XenonError::Workspace {
-                reason: WorkspaceError::InvalidLayout {
-                    size,
-                    align: alignment,
-                    reason: Cow::Borrowed("Layout::from_size_align rejected the requested size/alignment"),
-                }
-                .to_string(),
+                reason: "invalid workspace layout: Layout::from_size_align rejected the requested size/alignment".into(),
             })?;
 
         let ptr = unsafe { alloc(layout) };
         let ptr = NonNull::new(ptr).ok_or(XenonError::Workspace {
-            reason: WorkspaceError::AllocFailed {
-                size,
-                align: alignment,
-            }
-            .to_string(),
+            reason: "workspace allocation failed".into(),
         })?;
 
         Ok(Self {
@@ -412,7 +400,9 @@ impl Workspace {
         );
 
         if prev.is_err() {
-            return Err(XenonError::Workspace(WorkspaceError::AlreadyBorrowed));
+            return Err(XenonError::Workspace {
+                reason: "workspace already borrowed".into(),
+            });
         }
 
         Ok(WorkspaceBorrow {
@@ -426,7 +416,7 @@ impl Workspace {
     ///
     /// # Errors
     ///
-    /// `XenonError::Workspace(WorkspaceError::AlreadyBorrowed)`: Workspace is already borrowed.
+    /// `XenonError::Workspace { reason }`: Workspace is already borrowed.
     pub fn borrow_mut(&self) -> Result<WorkspaceBorrowMut<'_>> {
         let prev = self.borrow_state.compare_exchange(
             Self::BORROW_NONE,
@@ -436,7 +426,9 @@ impl Workspace {
         );
 
         if prev.is_err() {
-            return Err(XenonError::Workspace(WorkspaceError::AlreadyBorrowed));
+            return Err(XenonError::Workspace {
+                reason: "workspace already borrowed".into(),
+            });
         }
 
         Ok(WorkspaceBorrowMut {
@@ -479,11 +471,9 @@ impl<'a> WorkspaceBorrow<'a> {
         initialized_len: usize,
     ) -> Result<&[u8]> {
         if initialized_len > self.len {
-            return Err(XenonError::Workspace(WorkspaceError::InvalidLayout {
-                size: initialized_len,
-                align: self.workspace.alignment(),
-                reason: Cow::Borrowed("initialized_len exceeds borrow length"),
-            }));
+            return Err(XenonError::Workspace {
+                reason: "invalid workspace layout: initialized_len exceeds borrow length".into(),
+            });
         }
         Ok(core::slice::from_raw_parts(self.ptr.as_ptr(), initialized_len))
     }
@@ -523,32 +513,24 @@ impl<'a> WorkspaceBorrowMut<'a> {
         count: usize,
     ) -> Result<&mut [core::mem::MaybeUninit<T>]> {
         if core::mem::size_of::<T>() == 0 {
-            return Err(XenonError::Workspace(WorkspaceError::InvalidLayout {
-                size: 0,
-                align: core::mem::align_of::<T>(),
-                reason: Cow::Borrowed("zero-sized types are not supported for typed workspace borrows"),
-            }));
+            return Err(XenonError::Workspace {
+                reason: "invalid workspace layout: zero-sized types are not supported for typed workspace borrows".into(),
+            });
         }
         let byte_len = count
             .checked_mul(core::mem::size_of::<T>())
-            .ok_or(XenonError::Workspace(WorkspaceError::InvalidLayout {
-                size: count,
-                align: core::mem::align_of::<T>(),
-                reason: Cow::Borrowed("count * size_of::<T>() overflowed"),
-            }))?;
+            .ok_or(XenonError::Workspace {
+                reason: "invalid workspace layout: count * size_of::<T>() overflowed".into(),
+            })?;
         if byte_len > self.len {
-            return Err(XenonError::Workspace(WorkspaceError::InvalidLayout {
-                size: byte_len,
-                align: core::mem::align_of::<T>(),
-                reason: Cow::Borrowed("typed slice byte length exceeds borrow length"),
-            }));
+            return Err(XenonError::Workspace {
+                reason: "invalid workspace layout: typed slice byte length exceeds borrow length".into(),
+            });
         }
         if self.ptr.as_ptr() as usize % core::mem::align_of::<T>() != 0 {
-            return Err(XenonError::Workspace(WorkspaceError::InvalidLayout {
-                size: byte_len,
-                align: core::mem::align_of::<T>(),
-                reason: Cow::Borrowed("workspace pointer does not satisfy T alignment"),
-            }));
+            return Err(XenonError::Workspace {
+                reason: "invalid workspace layout: workspace pointer does not satisfy T alignment".into(),
+            });
         }
         Ok(core::slice::from_raw_parts_mut(
             self.ptr.as_ptr() as *mut core::mem::MaybeUninit<T>,
@@ -570,32 +552,24 @@ impl<'a> WorkspaceBorrowMut<'a> {
         count: usize,
     ) -> Result<&mut [T]> {
         if core::mem::size_of::<T>() == 0 {
-            return Err(XenonError::Workspace(WorkspaceError::InvalidLayout {
-                size: 0,
-                align: core::mem::align_of::<T>(),
-                reason: Cow::Borrowed("zero-sized types are not supported for typed workspace borrows"),
-            }));
+            return Err(XenonError::Workspace {
+                reason: "invalid workspace layout: zero-sized types are not supported for typed workspace borrows".into(),
+            });
         }
         let byte_len = count
             .checked_mul(core::mem::size_of::<T>())
-            .ok_or(XenonError::Workspace(WorkspaceError::InvalidLayout {
-                size: count,
-                align: core::mem::align_of::<T>(),
-                reason: Cow::Borrowed("count * size_of::<T>() overflowed"),
-            }))?;
+            .ok_or(XenonError::Workspace {
+                reason: "invalid workspace layout: count * size_of::<T>() overflowed".into(),
+            })?;
         if byte_len > self.len {
-            return Err(XenonError::Workspace(WorkspaceError::InvalidLayout {
-                size: byte_len,
-                align: core::mem::align_of::<T>(),
-                reason: Cow::Borrowed("typed slice byte length exceeds borrow length"),
-            }));
+            return Err(XenonError::Workspace {
+                reason: "invalid workspace layout: typed slice byte length exceeds borrow length".into(),
+            });
         }
         if self.ptr.as_ptr() as usize % core::mem::align_of::<T>() != 0 {
-            return Err(XenonError::Workspace(WorkspaceError::InvalidLayout {
-                size: byte_len,
-                align: core::mem::align_of::<T>(),
-                reason: Cow::Borrowed("workspace pointer does not satisfy T alignment"),
-            }));
+            return Err(XenonError::Workspace {
+                reason: "invalid workspace layout: workspace pointer does not satisfy T alignment".into(),
+            });
         }
         Ok(core::slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut T, count))
     }
@@ -684,7 +658,9 @@ impl Workspace {
         mid: usize,
     ) -> Result<(SplitBorrowMut<'_>, SplitBorrowMut<'_>)> {
         if mid > self.capacity {
-            return Err(XenonError::Workspace(WorkspaceError::SplitOutOfBounds { split: mid, len: self.capacity }));
+            return Err(XenonError::Workspace {
+                reason: format!("split out of bounds: split={}, len={}", mid, self.capacity),
+            });
         }
 
         let prev = self.borrow_state.compare_exchange(
@@ -695,7 +671,9 @@ impl Workspace {
         );
 
         if prev.is_err() {
-            return Err(XenonError::Workspace(WorkspaceError::AlreadyBorrowed));
+            return Err(XenonError::Workspace {
+                reason: "workspace already borrowed".into(),
+            });
         }
 
         // Set split_count to 2 (two sub-spaces will be created)
@@ -749,10 +727,9 @@ impl<'a> SplitBorrowMut<'a> {
         mid: usize,
     ) -> Result<(SplitBorrowMut<'a>, SplitBorrowMut<'a>)> {
         if mid > self.len {
-            return Err(XenonError::Workspace(WorkspaceError::SplitOutOfBounds {
-                split: mid,
-                len: self.len,
-            }));
+            return Err(XenonError::Workspace {
+                reason: format!("split out of bounds: split={}, len={}", mid, self.len),
+            });
         }
 
         let this = core::mem::ManuallyDrop::new(self);
@@ -849,46 +826,38 @@ impl Workspace {
         // Check borrow state
         let state = self.borrow_state.load(Ordering::Acquire);
         if state != Self::BORROW_NONE {
-            return Err(XenonError::Workspace(WorkspaceError::AlreadyBorrowed));
+            return Err(XenonError::Workspace {
+                reason: "workspace already borrowed".into(),
+            });
         }
 
         // 1.5x growth
         // Growth-factor arithmetic must use checked_mul to avoid usize overflow.
-        // On overflow, return WorkspaceError::AllocFailed mapped to
-        // XenonError::Workspace { reason } at the public boundary rather than
+        // On overflow, return XenonError::Workspace { reason }
+        // at the public boundary rather than
         // panicking or silently wrapping.
         let grown = self.capacity
             .checked_mul(Self::GROWTH_FACTOR_NUMERATOR)
             .ok_or(XenonError::Workspace {
-                reason: WorkspaceError::AllocFailed {
-                    size: min_capacity,
-                    align: self.alignment,
-                }
-                .to_string(),
+                reason: "workspace allocation failed: capacity growth overflow".into(),
             })?
             / Self::GROWTH_FACTOR_DENOMINATOR;
         let new_capacity = grown.max(min_capacity);
 
         self.reallocate(new_capacity)
-            .map_err(|e| XenonError::Workspace {
-                reason: e.to_string(),
-            })
     }
 
     /// Internal reallocation.
     fn reallocate(&mut self, new_capacity: usize) -> Result<()> {
         let new_layout = Layout::from_size_align(new_capacity, self.alignment)
-            .map_err(|_| WorkspaceError::InvalidLayout {
-                size: new_capacity,
-                align: self.alignment,
-                reason: Cow::Borrowed("Layout::from_size_align rejected the requested size/alignment during reallocate"),
+            .map_err(|_| XenonError::Workspace {
+                reason: "invalid workspace layout: Layout::from_size_align rejected the requested size/alignment during reallocate".into(),
             })?;
 
         let new_ptr = unsafe { alloc(new_layout) };
         let new_ptr = NonNull::new(new_ptr)
-            .ok_or(WorkspaceError::AllocFailed {
-                size: new_capacity,
-                align: self.alignment,
+            .ok_or(XenonError::Workspace {
+                reason: "workspace allocation failed during reallocate".into(),
             })?;
 
         // The implementation may copy old bytes during growth, but callers must

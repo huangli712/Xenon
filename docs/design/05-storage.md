@@ -172,6 +172,19 @@ Storage mode taxonomy
 
 > **补充说明：** 只读引用（`ViewRepr`）和共享只读引用（`ArcRepr`）都提供只读访问语义，但所有权模型不同：`ViewRepr` 基于借用，`ArcRepr` 基于引用计数共享。从广播、转置、切片产生的只读视图统一使用 `ViewRepr`；从 `Owned` 零拷贝转换而来的共享只读结果使用 `ArcRepr`；`ViewMut` 的零拷贝降级仍使用 `ViewRepr`，但在抽象层同样满足 shared-readonly 语义。
 
+### 访问语义查询
+
+为满足需求说明书 §6.1 对“显式区分所有权与可变性语义”的要求，张量层须提供稳定的访问语义查询接口：
+
+| 语义分类 | 对应表示类型 | 查询结果 |
+| -------- | ------------ | -------- |
+| 只读引用 | `ViewRepr<'_, A>`（非广播来源） | `AccessSemantics::ReadOnlyRef` |
+| 共享只读引用 | `ArcRepr<A>` 或 `ViewRepr<'_, A>`（广播来源或可写降级来源） | `AccessSemantics::SharedReadOnlyRef` |
+| 可写引用 | `ViewMutRepr<'_, A>` | `AccessSemantics::WritableRef` |
+| 拥有 | `Owned<A>` | `AccessSemantics::Owned` |
+
+> **关键约束：** 当 `ViewRepr` 作为广播结果或从可写引用降级产生时，须通过额外的语义标记（而非仅表示类型）将其归类为共享只读引用。该标记由张量层的 `access_semantics()` 方法统一提供，作为满足 §6.1 的权威判定来源。详见 `07-tensor.md` 的 `access_semantics()` 设计。
+
 #### 设计权衡对比
 
 | 考量         | Owned          | View         | ViewMut   | Arc                  |
@@ -545,6 +558,8 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
 
 > **补充说明：** 上表逐格对应 `require.md` §6.2 的抽象转换矩阵，并把每个抽象格子落实为具体表示路径：零拷贝表示仅重借用、共享只读降级或降级访问权限；须分配表示需要分配新的 owned 缓冲并复制数据；不可转换表示 Rust 类型系统下无法在不违反所有权/独占借用约束的前提下完成该转换，例如 `ViewRepr<'_, A> -> ArcRepr<A>` 与 `ArcRepr<A> -> ViewMutRepr<'_, A>`。
 
+> **语义判定补充：** `WritableRef -> SharedReadOnlyRef` 的零拷贝结果虽然仍是 `ViewRepr<'_, A>`，但必须在张量查询层被标记为 `AccessSemantics::SharedReadOnlyRef`，不能按普通 `ReadOnlyRef` 处理。也就是说，该转换的“共享只读”判定来源于 `access_semantics()` 返回值，而不是 `ViewRepr` 这一表示类型本身。
+
 #### 5.11.1a 转换成功/失败模型
 
 | 转换入口 | 成功条件 | 失败错误类型 |
@@ -563,6 +578,8 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
 | `ViewRepr<'_, A> -> ArcRepr<A>` | storage 层不具备共享所有权句柄，禁止运行时补造 | `XenonError::InvalidStorageMode { .. }` |
 
 > **错误模型说明：** 上表与 `require.md` §6.2 的矩阵一致：违反存储模式/可变性前提的公开转换失败统一使用 `26-error.md` 定义的 `XenonError::InvalidStorageMode { .. }`；复制型成功路径本身不再额外引入新的公开转换错误类型。
+
+> **分配失败说明：** 涉及内存分配的转换操作，若分配失败则遵循运行时既有行为（如全局分配器 panic 或 OOM），不通过 `XenonError` 建模。此设计决策与需求说明书 §6.2 的“须分配”路径一致：该路径仅在目标为持有时可执行，分配失败不属于张量语义层的可恢复错误。
 
 > **类型安全论证**：`ViewMutRepr<'a, A>` 的零拷贝降级路径是只读重借用 `ViewRepr<'a, A>`，其语义与 `require.md` §6.2 对“可写引用 → 共享只读引用 = 零拷贝”的要求一致：结果显式放弃写权限，且在该只读结果存续期间不得再并发写入同一底层数据。相对地，`ViewMutRepr<'a, A>` 不持有底层分配所有权，因此仍不能在零拷贝前提下构造 `ArcRepr<A>` 所需的共享所有权句柄。
 

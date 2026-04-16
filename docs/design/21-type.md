@@ -140,6 +140,10 @@ impl CastElement for Complex<f64> {}
 
 ### 5.2 cast 方法
 
+> **注意**：`TypeConversionError` 的字段为 `pub(crate)` 可见性。模块间通过 `pub(crate) fn new(...)` 构造器和公开访问器方法（`source_type()`、`target_type()`、`reason()`、`element_index()`）操作该类型。详见 `26-error.md`。
+>
+> **注意**：`element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引。
+
 ````rust,ignore
 impl<S, A, D> TensorBase<S, D>
 where
@@ -176,16 +180,13 @@ where
     {
         let mut data: Vec<B> = Vec::with_capacity(self.len());
         for (index, x) in self.iter().enumerate() {
-            let value = (*x).cast_to().map_err(|err| match err {
-                XenonError::TypeConversion(err) => {
-                    XenonError::TypeConversion(TypeConversionError {
-                        source_type: err.source_type,
-                        target_type: err.target_type,
-                        reason: err.reason,
-                        element_index: index,
-                    })
-                }
-                other => other,
+            let value = (*x).cast_to().map_err(|err| {
+                XenonError::TypeConversion(TypeConversionError::new(
+                    err.source_type(),
+                    err.target_type(),
+                    err.reason(),
+                    index,
+                ))
             })?;
             data.push(value);
         }
@@ -337,43 +338,60 @@ where
 
 ### 6.1 CastTo 实现（核心转换路径）
 
+> `CastTo` 的规范签名统一为：
+>
+> ```rust
+> pub trait CastTo<T> {
+>     fn cast_to(self) -> Result<T, TypeConversionError>;
+> }
+> ```
+>
+> 调用形态为 `value.cast_to()`；`element_index` 由调用方在逐元素遍历时单独跟踪，而不是作为 `CastTo` 的参数传入。
+>
+> **注意**：`element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引。
+>
+> ```rust
+> // Element index is tracked by the caller, not passed to CastTo
+> let converted: Result<T, TypeConversionError> = value.cast_to();
+> ```
+
 ```rust,ignore
 // === Lossy-by-default conversion ===
 impl CastTo<f32> for f64 {
     #[inline]
-    fn cast_to(self) -> Result<f32, XenonError> {
-        Err(XenonError::TypeConversion(TypeConversionError {
-            source_type: "f64".into(),
-            target_type: "f32".into(),
-            reason: TypeConversionReason::LossyFloatNarrowing,
-            element_index: 0,
-        }))
+    fn cast_to(self) -> Result<f32, TypeConversionError> {
+        Err(TypeConversionError::new(
+            "f64",
+            "f32",
+            TypeConversionReason::LossyFloatNarrowing,
+            0,
+        ))
     }
 }
 
 impl CastTo<f64> for f32 {
     #[inline]
-    fn cast_to(self) -> Result<f64, XenonError> { Ok(self as f64) }
+    fn cast_to(self) -> Result<f64, TypeConversionError> { Ok(self as f64) }
 }
 
 impl CastTo<i64> for i32 {
     #[inline]
-    fn cast_to(self) -> Result<i64, XenonError> { Ok(self as i64) }
+    fn cast_to(self) -> Result<i64, TypeConversionError> { Ok(self as i64) }
 }
 
 // === Conditionally successful conversions ===
 impl CastTo<f64> for Complex<f64> {
     #[inline]
-    fn cast_to(self) -> Result<f64, XenonError> {
+    fn cast_to(self) -> Result<f64, TypeConversionError> {
         if self.im == 0.0 {
             Ok(self.re)
         } else {
-            Err(XenonError::TypeConversion(TypeConversionError {
-                source_type: "Complex<f64>".into(),
-                target_type: "f64".into(),
-                reason: TypeConversionReason::NonZeroImaginaryPart,
-                element_index: 0,
-            }))
+            Err(TypeConversionError::new(
+                "Complex<f64>",
+                "f64",
+                TypeConversionReason::NonZeroImaginaryPart,
+                0,
+            ))
         }
     }
 }
@@ -381,13 +399,13 @@ impl CastTo<f64> for Complex<f64> {
 // === Lossy-by-default conversion ===
 impl CastTo<i32> for i64 {
     #[inline]
-    fn cast_to(self) -> Result<i32, XenonError> {
-        Err(XenonError::TypeConversion(TypeConversionError {
-            source_type: "i64".into(),
-            target_type: "i32".into(),
-            reason: TypeConversionReason::LossyIntegerNarrowing,
-            element_index: 0,
-        }))
+    fn cast_to(self) -> Result<i32, TypeConversionError> {
+        Err(TypeConversionError::new(
+            "i64",
+            "i32",
+            TypeConversionReason::LossyIntegerNarrowing,
+            0,
+        ))
     }
 }
 ```
@@ -571,7 +589,7 @@ User calls cast() / to_owned() / into_owned()
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `cast()` 在有损转换、虚部非零或其他规则不满足时返回 `XenonError::TypeConversion(TypeConversionError)`，携带源类型、目标类型、失败原因与元素索引。 |
+| Recoverable error | `cast()` 在有损转换、虚部非零或其他规则不满足时返回 `XenonError::TypeConversion(TypeConversionError)`，携带源类型、目标类型、失败原因与元素索引。`element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引。 |
 | Panic | 公开转换 API 不定义额外 panic 语义；有损场景统一返回可恢复错误。 |
 | 路径一致性 | `cast`、`to_owned`、`into_owned` 必须保持相同 shape 与逻辑元素顺序；其中 `to_owned` / `into_owned` 的 owned 结果固定为 canonical F-order。无 SIMD / 并行分支。 |
 | 容差边界 | 不适用。 |

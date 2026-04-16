@@ -159,6 +159,8 @@ where
 
 ### 5.2 对外错误契约
 
+> **`sum` 元素类型约束说明：** 布尔类型 (`bool`) 不参与 `sum` 归约（需求说明书 §14）。该约束由元素层 trait 边界保证，`sum` API 的元素类型约束应使用更精确的可求和元素 trait，而非仅依赖 `Numeric`。
+
 沿轴归约的 axis 越界错误必须统一为：
 
 ```rust
@@ -253,7 +255,7 @@ sum_axis_keepdims(tensor, axis):
 
 ### 6.3 类型分派与回退规则
 
-执行路径由 `dispatch::select_exec_path()` 统一裁决（参见 `01-architecture.md`），本模块根据返回的 `ExecPath` 委托到对应后端或使用本模块串行实现。
+调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。执行路径由 `dispatch::select_exec_path()` 统一裁决（参见 `01-architecture.md`），本模块根据返回的 `ExecPath` 委托到对应后端或使用本模块串行实现。
 
 ```rust
 fn sum_int<I: Numeric + CheckedAdd>(iter: impl Iterator<Item = I>) -> I {
@@ -272,8 +274,8 @@ fn sum_floating_or_complex<A: Numeric + Copy>(iter: impl Iterator<Item = A>) -> 
 - 浮点路径：保持标量加法顺序；`NaN`、`Inf` 等行为沿用 IEEE 754。
 - 复数路径：对实部和虚部分量分别沿用对应实数加法语义，因此含 `NaN` 分量时同样传播。
 - 整数 SIMD fallback：整数归约默认优先标量/串行路径以保证 checked arithmetic 精确等价。仅当 SIMD 路径能证明与逐步 checked 加法完全一致时才启用优化。
-- SIMD 路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Simd` 时委托 `simd/` 纯向量化后端；浮点/复数路径允许不同合并顺序，但结果相对标量参考值每个实数分量必须满足 `max(1 ULP, epsilon * |scalar_result|)` 容差，否则回退标量。此容差公式适用于浮点/复数类型的 SIMD 归约路径；标量串行路径作为比较基准。
-- 并行路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Parallel` 时委托 `parallel/` 纯并行后端；整数路径必须保持与串行精确一致，浮点/复数路径允许不同合并顺序，但同样受每个实数分量 `max(1 ULP, epsilon * |scalar_result|)` 的文档化容差约束，无法满足时必须回退标量单线程路径。此容差公式同样适用于浮点/复数类型的并行归约路径；标量串行路径作为比较基准。
+- SIMD 路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Simd` 时委托 `simd/` 纯向量化后端；浮点/复数路径允许不同合并顺序。容差阈值为当前建议测试基线，待实现验证后定稿。最终容差以实现验证后的文档化结论为准。
+- 并行路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Parallel` 时委托 `parallel/` 纯并行后端；整数路径必须保持与串行精确一致，浮点/复数路径允许不同合并顺序。容差阈值为当前建议测试基线，待实现验证后定稿。最终容差以实现验证后的文档化结论为准。
 
 ### 6.3.1 并行 axis 归约写回策略
 
@@ -453,7 +455,7 @@ Wave 4:                  [T6]
 
 | 方向 | 对方模块 | 接口/类型 | 约定 |
 | ---- | -------- | --------- | ---- |
-| `reduction → tensor` | `tensor` | `TensorBase<S, D>`、结果张量构造接口 | 输入可为连续或合法非连续视图；归约只观察逻辑元素顺序与 shape/stride 元数据。 |
+| `reduction → tensor` | `tensor` | `TensorBase<S, D>`、结果张量构造接口 | 输入可为连续或合法非连续视图；归约只观察逻辑元素顺序与 shape/stride 元数据。归约操作接受广播只读视图作为输入，按逻辑元素读取并归约。 |
 | `reduction → dimension` | `dimension` | `Axis`、运行时 shape 投影辅助 | 按轴归约必须先验证 `axis < ndim`，再做维度投影。 |
 | `reduction → element` | `element` | `Numeric`、`CheckedAdd`、`ComplexScalar` | 依据元素类型分派整数、浮点、复数归约语义。 |
 | `reduction → error` | `error` | `XenonError::InvalidAxis` | axis 越界统一返回结构化错误，不再使用 `InvalidArgument`。 |
@@ -481,7 +483,7 @@ User calls sum / sum_axis / sum_axis_keepdims
 | Panic | `i32` / `i64` 归约中的累加溢出属于不可恢复错误，必须通过 checked arithmetic panic。 |
 | Panic 诊断 | panic 文本至少包含 `operation`、元素类型、触发位置（如 `axis`、`output_index` 或 `element_index`）以及适用 `shape`；推荐格式遵循 `26-error.md §4.6`。 |
 | 空输入语义 | 空数组 `sum()` 返回加法单位元；沿轴归约时若被归约轴长度为 `0`，结果张量对应槽位也返回加法单位元。 |
-| 数值边界 | 整数类型结果须逐元素精确一致。对浮点和复数类型，不同执行路径（标量/SIMD/并行）允许不同合并顺序，但相对标量参考值每个实数分量必须满足 `max(1 ULP, epsilon * abs(scalar_result))`；`NaN` / `Inf` 仍按 IEEE 754 自动传播。 |
+| 数值边界 | 整数类型结果须逐元素精确一致。对浮点和复数类型，不同执行路径（标量/SIMD/并行）允许不同合并顺序。容差阈值为当前建议测试基线，待实现验证后定稿。最终容差以实现验证后的文档化结论为准。`NaN` / `Inf` 仍按 IEEE 754 自动传播。 |
 | 路径一致性 | 标量、SIMD、并行路径在启用条件满足时必须返回相同 shape、相同错误类别，以及满足同一数值语义约束的结果；不能证明时必须回退。 |
 
 ### 10.1 错误示例
@@ -600,7 +602,7 @@ Err(XenonError::InvalidArgument {
 | 标准库环境 | Xenon 当前版本仅支持 `std`。 |
 | crate 结构 | 保持单 crate 结构，`reduction` 作为库内模块存在。 |
 | 依赖约束 | 不新增第三方依赖；仅可使用需求中已允许的 `rayon` / `pulp` 对应可选能力。 |
-| SemVer | `sum` 家族的空输入语义、`InvalidAxis` 错误类别、`sum_axis()` 的 `D: RemoveAxis` 约束、`sum_axis_keepdims()` 的公开入口要求 `D: Dimension`、0D 张量上的 keepdims axis API 统一返回 `InvalidAxis` 以及文档化容差规则均属于稳定契约；后续优化不得改变。 |
+| SemVer | `sum` 家族的空输入语义、`InvalidAxis` 错误类别、`sum_axis()` 的 `D: RemoveAxis` 约束、`sum_axis_keepdims()` 的公开入口要求 `D: Dimension`、0D 张量上的 keepdims axis API 统一返回 `InvalidAxis` 以及容差文档化结论均属于稳定契约；后续优化不得改变。 |
 | 平台语义 | 同平台、同编译配置、同执行路径下结果须确定；跨平台遵循 IEEE 754 语义约束。 |
 | API 稳定性 | 不改变当前 `sum` 家族公开接口与错误类别边界。 |
 

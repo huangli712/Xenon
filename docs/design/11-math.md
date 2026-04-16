@@ -155,7 +155,7 @@ src/math/
 
 > **维度推导说明：** 二元逐元素方法统一使用 `BroadcastDim<DB>` 进行编译期维度推导，该 trait 定义于 `02-dimension.md §5.9`，详见该文档。
 
-当前版本不承诺独立的通用二元逐元素 helper 公开函数。二元算术、比较与内部辅助路径统一采用“先广播，再直接遍历广播后视图并写入结果张量”的执行模型；启用 `parallel` feature 时，同一语义也可委托并行路径执行。
+当前版本不承诺独立的通用二元逐元素 helper 公开函数。二元算术、比较与内部辅助路径统一采用“先广播，再直接遍历广播后视图并写入结果张量”的执行模型。调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。
 
 ### 5.3 算术运算（Numeric 约束）
 
@@ -309,7 +309,10 @@ where
 }
 ```
 
-> **数学函数精度约束：** `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 使用 Rust 提供的数学能力，不引入外部数学 crate。误差容差统一采用 `max(1 ULP, epsilon * |scalar_result|)` 公式。具体 ULP 上限由后端实现决定，须在文档中注明适用范围；其中 `floor` / `ceil` 作为精确操作，仍要求与标量结果逐元素一致。
+> **数学函数精度约束：** `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 使用 Rust 提供的数学能力，不引入外部数学 crate。
+>
+> - 精确类（`floor` / `ceil`）：结果须与标量路径逐元素一致，容差为 0 ULP。
+> - 近似类（`sin` / `sqrt` / `exp` / `ln`）：容差阈值为当前建议测试基线，待实现验证后定稿。最终容差以实现验证后的文档化结论为准。
 
 ### 5.6 复数运算（ComplexScalar 约束）
 
@@ -470,6 +473,8 @@ where
 
 > **标量算术语义：** 标量版算术方法与张量-张量运算遵循相同的 checked arithmetic 语义：有符号整数溢出、除以零、结果不可表示均遵循 panic 语义。
 
+> **标量广播语义：** 标量与张量之间的逐元素运算，标量按可广播到目标张量全形状的零维输入语义处理，统一经由广播路径实现，不另起独立语义。
+
 ### 5.10 Good / Bad 对比示例
 
 ```rust,ignore
@@ -531,18 +536,20 @@ apply_binary(a, b, f):
 
 ### 6.3 SIMD 加速路径
 
-SIMD 分发由 `math` 模块在满足连续性、对齐和 feature gate 前提时通过 `dispatch::select_exec_path()` 选择执行路径，再委托 `simd/` 纯向量化后端执行。参见 `08-simd.md §5.5` 了解 SIMD 后端详情。数学模块定义需求说明书 §12 中列出的逐元素运算，但当前版本只对 `08-simd.md §5.4a` 覆盖矩阵列出的子集尝试 SIMD；未列出的运算、类型、ISA 或不满足语义约束的路径统一回退标量实现。
+> **SIMD/并行覆盖范围**：本文描述的逐元素运算功能范围以需求说明书 §12 为准。SIMD 和并行加速路径的当前正式支持子集以 `08-simd.md` 和 `09-parallel.md` 定义的能力边界为准，不在本文档中另行扩张覆盖承诺。
+
+调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。SIMD 具体能力与后端细节参见 `08-simd.md §5.5`。未列出的运算、类型、ISA 或不满足语义约束的路径统一回退标量实现。
 
 | 操作类别 | SIMD 状态 | 并行状态 |
 | -------- | --------- | -------- |
-| 算术（`+ - * /`） | 覆盖：满足连续性 / 对齐 / 类型约束时走 SIMD kernel，否则回退标量 | 覆盖：达到阈值且 guard 允许时并行，否则回退串行 |
-| 一元（`neg` / `abs` / `signum` / `square`） | 覆盖：后端可按类型选择 SIMD 或标量 fallback，外部语义统一 | 覆盖：可并行分块执行，不满足条件时回退串行 |
-| 比较（`eq` / `ne` / `lt` / `gt`） | 覆盖：支持的类型/ISA 走 SIMD，不支持时回退标量 | 覆盖：大输入可并行，不满足阈值或 guard 时回退串行 |
-| 数学（`sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil`） | 覆盖：允许 SIMD backend 或标量 fallback，只要满足统一容差约束 | 覆盖：允许并行分块；每个 chunk 可局部选择 SIMD 或标量 |
-| 复数（`modulus` / `conjugate`） | 覆盖：按后端能力选择 SIMD 或标量 fallback，保持复数语义一致 | 覆盖：大输入可并行，不满足条件时回退串行 |
-| 逻辑（`not`） | 覆盖：支持路径可向量化，否则回退标量 | 覆盖：支持路径可并行，否则回退串行 |
+| 算术（`+ - * /`） | 覆盖：仅在 `08-simd.md` 定义的正式支持子集内尝试 SIMD；其余情况回退标量 | 覆盖：仅在 `09-parallel.md` 定义的正式支持子集内尝试并行；其余情况回退串行 |
+| 一元（`neg` / `abs` / `signum` / `square`） | 覆盖：仅在 `08-simd.md` 定义的正式支持子集内尝试 SIMD；其余情况回退标量 | 覆盖：仅在 `09-parallel.md` 定义的正式支持子集内尝试并行；其余情况回退串行 |
+| 比较（`eq` / `ne` / `lt` / `gt`） | 覆盖：仅在 `08-simd.md` 定义的正式支持子集内尝试 SIMD；其余情况回退标量 | 覆盖：仅在 `09-parallel.md` 定义的正式支持子集内尝试并行；其余情况回退串行 |
+| 数学（`sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil`） | 覆盖：仅在 `08-simd.md` 定义的正式支持子集内尝试 SIMD，否则回退标量 | 覆盖：仅在 `09-parallel.md` 定义的正式支持子集内尝试并行；进入并行路径后每个 worker 可局部选择 SIMD 或标量 |
+| 复数（`modulus` / `conjugate`） | 覆盖：仅在 `08-simd.md` 定义的正式支持子集内尝试 SIMD；其余情况回退标量 | 覆盖：仅在 `09-parallel.md` 定义的正式支持子集内尝试并行；其余情况回退串行 |
+| 逻辑（`not`） | 覆盖：仅在 `08-simd.md` 定义的正式支持子集内尝试 SIMD；其余情况回退标量 | 覆盖：仅在 `09-parallel.md` 定义的正式支持子集内尝试并行；其余情况回退串行 |
 
-> **并行路径：** 当 `parallel` feature 启用时，二元逐元素运算通过 `dispatch::select_exec_path()` 判断后委托 `parallel::par_zip_map` 执行并行遍历。并行模块不含串行回退，串行路径由本模块串行实现承担。
+> **并行路径：** 调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。并行模块不含串行回退，串行路径由本模块串行实现承担。
 
 ---
 
@@ -732,7 +739,7 @@ Wave 3:    [T8]
 | `math → broadcast` | `broadcast` | `broadcast_shape()`                        | 二元运算先调用广播模块推导兼容视图（参见 `15-broadcast.md` §4）                                                                               |
 | `math → element`   | `element`   | `Numeric` / `RealScalar` / `ComplexScalar` | 通过元素约束区分数值与复数运算语义（参见 `03-element.md` §4）                                                                                 |
 | `math → simd`      | `simd`      | SIMD backend dispatch facade               | 连续数组且 feature 开启时通过稳定的 backend facade 分发到 SIMD 或标量路径，`math` 不直接依赖具体 vector kernel 名称（参见 `08-simd.md` §4.5） |
-| `math → parallel`  | `parallel`  | `par_zip_map()` / threshold / guard        | 大输入时二元逐元素运算可委托并行后端；若阈值未达到或 guard 失败则回退标量（参见 `09-parallel.md` §5 / `§6`） |
+| `math → parallel`  | `parallel`  | `par_zip_map()` / threshold / guard        | `dispatch.rs` 统一决定串行 vs 并行；进入并行路径后各 worker 在无第二层并行前提下可局部选择 SIMD 或标量（参见 `09-parallel.md` §5 / `§6`） |
 
 ### 9.2 数据流描述
 
@@ -741,9 +748,10 @@ User calls add / unary op / comparison method
     │
     ├── math selects unary, binary, or scalar execution
     ├── binary ops validate broadcast compatibility first
-    ├── iter produces element streams from shape + strides
-    ├── parallel dispatch is used only when threshold/guard checks pass
-    └── SIMD dispatch is used only when enabled and semantically equivalent
+    ├── dispatch.rs decides serial vs parallel
+    ├── parallel workers avoid second-level parallelism
+    ├── each worker may choose SIMD or scalar locally
+    └── iter produces element streams from shape + strides
 ```
 
 ---
@@ -755,7 +763,7 @@ User calls add / unary op / comparison method
 | Recoverable error | 广播不兼容时返回 `XenonError::BroadcastError { operation, lhs_shape, rhs_shape, attempted_target_shape, axis }`。参数不满足公开前提时返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, axis_len: Option<usize>, start: Option<usize>, end: Option<usize>, shape: Option<Vec<usize>> }`。 |
 | Panic | 整数 `add/sub/mul/div`、标量版 `add_scalar/sub_scalar/mul_scalar/div_scalar`、`abs/neg/square` 的溢出、除零或结果不可表示均按需求触发 panic；`signum` 不新增 panic 约束。panic 信息至少包含 `operation`、`type`、`trigger`、`element_index`，并在适用时附带 `shape`。推荐格式：`Xenon: {operation} overflow for {type} at element_index={i}, shape={shape}, trigger={trigger}`。 |
 | 路径一致性 | 标量、SIMD 与并行路径必须保持相同 shape、错误类别、NaN/复数语义；不满足前提或 guard 失败时统一回退标量实现。 |
-| 容差边界 | `floor` / `ceil` 的 SIMD/并行路径结果必须与标量路径逐元素完全一致；其余浮点数学结果统一采用 `max(1 ULP, epsilon * abs(scalar_result))`。复数结果按实部、虚部分量分别应用对应实数容差规则；仅在可证明语义等价或满足文档化容差时启用 SIMD/并行，否则回退标量路径。 |
+| 容差边界 | 精确类（`floor` / `ceil`）结果须与标量路径逐元素一致，容差为 0 ULP。近似类（`sin` / `sqrt` / `exp` / `ln`）容差阈值为当前建议测试基线，待实现验证后定稿。最终容差以实现验证后的文档化结论为准。复数结果按实部、虚部分量分别应用对应实数规则；仅在可证明语义等价或满足文档化容差时启用 SIMD/并行，否则回退标量路径。 |
 
 ---
 

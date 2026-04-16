@@ -8,7 +8,7 @@
 
 ---
 
-## 1. 模块定位
+## 1. 主题定位
 
 ### 1.1 职责边界
 
@@ -47,7 +47,8 @@ benches/  <- current module (dev-dependency, consumes only the crate's public AP
 
 | 类型     | 内容                                                                       |
 | -------- | -------------------------------------------------------------------------- |
-| 需求映射 | `require.md §9.1`, `§9.2`, `§9.3`, `§28.2`, `§28.3`, `§28.4`, `§28.5`     |
+| 需求映射 | `require.md §9.1`, `§9.2`, `§9.3`                                              |
+| 正确性映射 | `require.md §28.2`：由 `28-tests.md` 负责验证，本文档不承接。<br>`require.md §28.3`：引用的正确性前提，benchmark 不定义正确性容差。<br>`require.md §28.4`：由 `28-tests.md` 负责验证，本文档不承接。<br>`require.md §28.5`：由 `28-tests.md` 负责验证，本文档不承接。 |
 | 范围内   | benchmark 分类、参数矩阵、基准 harness 与结果汇总口径                      |
 | 范围外   | 生产运行时性能调优、跨语言基准、额外平台专用测量框架                       |
 | 非目标   | 通过 benchmark 文档扩展 crate 公共 API、引入非必要运行时依赖或改变需求边界 |
@@ -73,7 +74,7 @@ benches/  <- current module (dev-dependency, consumes only the crate's public AP
 
 ---
 
-## 3. 文件位置
+## 3. 适用范围
 
 ```
 benches/
@@ -141,7 +142,7 @@ benches/
 
 ---
 
-## 5. 公共 API 设计
+## 5. Benchmark 结构设计
 
 ### 5.1 Cargo.toml 配置
 

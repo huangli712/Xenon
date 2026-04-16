@@ -151,6 +151,8 @@ CHANGELOG.md                  # Optional engineering changelog artifact (non-req
     └── 如需 benchmark 文档模板，可参考 `27-benchmark.md`；非强前置依赖
 ```
 
+> **数值容差公开要求**：凡 `28-tests.md` 中定义了跨路径舍入差异或数学函数容差的 API，公共文档须同步说明适用范围。容差定义以 `28-tests.md` 为权威来源，文档交付以本文档为验收入口。
+
 ### 4.2 依赖精确到类型级
 
 | 来源             | 使用的内容                         |
@@ -571,12 +573,12 @@ pub fn sum(&self) -> A { ... }
 
 #### 5.11.1 验证项目
 
-| 检查项   | 命令                                                            | 失败条件     |
-| -------- | --------------------------------------------------------------- | ------------ |
-| 缺失文档 | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps` | 任何 warning |
-| Doctest  | `cargo test --doc --all-features`                               | 任何失败     |
-| 示例验证 | `cargo build --examples --all-features` + 关键默认示例运行命令（当前为 `basic` / `broadcasting` / `workspace`） | 任何失败     |
-| 链接检查 | `cargo doc` 无 broken links 警告                                | 无效链接     |
+| 检查项 | 命令 | 失败条件 |
+| ------ | ---- | -------- |
+| Gate 1：rustdoc 文档门禁 | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps` | 任何 missing docs / broken intra-doc links / 其他 rustdoc warning |
+| Gate 2：文档节完整性门禁 | `cargo clippy --all-features -- -W clippy::missing_errors_doc -W clippy::missing_panics_doc -W clippy::missing_safety_doc` | 缺少 `# Errors` / `# Panics` / `# Safety` 文档节 |
+| Doctest | `cargo test --doc --all-features` | 任何失败 |
+| 示例验证 | `cargo build --examples --all-features` + 关键默认示例运行命令（当前为 `basic` / `broadcasting` / `workspace`） | 任何失败 |
 
 #### 5.11.2 CI 配置
 
@@ -586,8 +588,11 @@ pub fn sum(&self) -> A { ... }
 # .github/workflows/docs.yml
 docs:
   steps:
-    - name: Check missing docs
+    - name: Gate 1 - rustdoc warnings
       run: RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
+
+    - name: Gate 2 - documentation section completeness
+      run: cargo clippy --all-features -- -W clippy::missing_errors_doc -W clippy::missing_panics_doc -W clippy::missing_safety_doc
 
     - name: Run doctests
       run: cargo test --doc --all-features
@@ -784,6 +789,14 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | Wave 4 | 示例程序 | 为关键 API 族提供可运行 examples，并与 doctest 口径保持一致 |
 | Wave 5 | CI 集成 | 固化 missing docs、doctest、examples 构建与关键示例运行检查 |
 
+### 7.1 unsafe API 权威清单
+
+须在实现阶段维护一份全项目 unsafe 公开函数清单，作为验证“所有 unsafe 函数均有 `# Safety` 文档”的基线。清单应至少包含：函数签名、所在模块、`# Safety` 文档是否就绪。
+
+### 7.2 关键 API 示例矩阵
+
+须在实现阶段维护一份关键 API 清单，每个条目标注是否已有使用示例（doctest 或 `example`）。需求说明书 §28.1 要求关键 API 提供使用示例，本矩阵作为验收基线。
+
 > 详细任务清单继续采用 Wave 形式维护，见后文“详细任务清单”。
 
 ---
@@ -792,17 +805,16 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 ### 8.1 测试分类表
 
-| 类型         | 命令                                                              | 目的                                              |
-| ------------ | ----------------------------------------------------------------- | ------------------------------------------------- |
-| 单元检查     | `cargo test --doc --all-features`                                 | 验证单个 API 文档示例可编译运行                   |
-| 集成检查     | `cargo doc --all-features --no-deps` + examples 构建/关键默认示例运行 | 验证模块文档、README、examples 与源码接口协同一致 |
-| 边界检查     | feature-gated/unsafe doctest 逐项编译                             | 验证条件编译、unsafe 说明和 `std` 环境边界        |
-| 属性检查     | broken links / missing docs 不变量                                | 验证“公开 API 均有文档、关键入口均可追踪”         |
-| Doctest      | `cargo test --doc --all-features`                                 | 验证文档中的代码示例可编译运行                    |
-| 缺失文档检查 | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`   | 确保所有 pub API 有文档                           |
-| 示例验证     | `cargo build --examples --all-features` + 关键默认示例运行命令    | 验证 examples/ 下程序可编译，关键默认示例可运行   |
-| 链接检查     | `cargo doc` 无 broken links 警告                                  | 确保文档内交叉引用有效                            |
-| CI 门禁      | `missing_docs` lint deny 级别                                     | 阻止无文档代码合入                                |
+| 类型 | 命令 | 目的 |
+| ---- | ---- | ---- |
+| 单元检查 | `cargo test --doc --all-features` | 验证单个 API 文档示例可编译运行 |
+| 集成检查 | `cargo doc --all-features --no-deps` + examples 构建/关键默认示例运行 | 验证模块文档、README、examples 与源码接口协同一致 |
+| 边界检查 | feature-gated/unsafe doctest 逐项编译 | 验证条件编译、unsafe 说明和 `std` 环境边界 |
+| 属性检查 | broken links / missing docs 不变量 | 验证“公开 API 均有文档、关键入口均可追踪” |
+| Gate 1：rustdoc 文档门禁 | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps` | 拦截 missing docs、broken intra-doc links 与其他 rustdoc warning |
+| Gate 2：文档节完整性门禁 | `cargo clippy --all-features -- -W clippy::missing_errors_doc -W clippy::missing_panics_doc -W clippy::missing_safety_doc` | 拦截缺少 `# Errors` / `# Panics` / `# Safety` 的公开 API 文档 |
+| Doctest | `cargo test --doc --all-features` | 验证文档中的代码示例可编译运行 |
+| 示例验证 | `cargo build --examples --all-features` + 关键默认示例运行命令 | 验证 examples/ 下程序可编译，关键默认示例可运行 |
 
 ### 8.2 Doctest 覆盖要求
 
@@ -839,8 +851,11 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 # .github/workflows/docs.yml
 docs:
   steps:
-    - name: Check missing docs
+    - name: Gate 1 - rustdoc warnings
       run: RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
+
+    - name: Gate 2 - documentation section completeness
+      run: cargo clippy --all-features -- -W clippy::missing_errors_doc -W clippy::missing_panics_doc -W clippy::missing_safety_doc
 
     - name: Run doctests
       run: cargo test --doc --all-features
@@ -866,17 +881,11 @@ docs:
 
 ### 8.7 类型边界 / 编译期测试
 
-| 场景                         | 测试方式                                    |
-| ---------------------------- | ------------------------------------------- |
-| `unsafe fn` 的 `# Safety` 节 | rustdoc/clippy 文档 lint + `cargo doc` 校验 |
-| feature-gated API 可见性     | docs.rs 构建与条件编译可见性检查            |
-| 公共 API 文档覆盖边界        | `missing_docs` / broken link 检查           |
-
----
-
-### 8.8 错误语义前置说明
-
-本文档不直接定义错误类型，但要求所有文档示例、`# Errors` 节、panic 说明与 feature-gated 文档行为统一遵循 `26-error.md` 的错误语义边界；文档层负责准确转述，不重新定义公开错误模型。
+| 场景 | 测试方式 |
+| ---- | -------- |
+| `unsafe fn` 的 `# Safety` 节 | Gate 1 + Gate 2 联合校验，其中 Gate 2 为权威门禁 |
+| feature-gated API 可见性 | docs.rs 构建与条件编译可见性检查 |
+| 公共 API 文档覆盖边界 | Gate 1（missing docs / broken intra-doc links） |
 
 ---
 

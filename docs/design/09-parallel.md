@@ -311,7 +311,7 @@ dispatch-selected parallel entry
 
 - `parallel/` 假定调用方已经完成阈值、线程环境、SIMD 能力与嵌套并行治理判断。
 - 并行函数只负责固定 chunking、执行 `rayon` 并行迭代以及保持结果语义与调用方选择的串行基线一致。
-- `parallel/` 模块仅负责数据并行分块和执行。SIMD/scalar 路径选择由 `dispatch.rs` 在调用 `par_*` 函数之前决定，并通过参数传入；`parallel/` 不在内部再次调用 `dispatch`。
+- 调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。
 
 ### 6.3 二元逐元素并行路径
 
@@ -361,7 +361,7 @@ where
 - 广播处理顺序固定为：先由 `math` 模块验证 `lhs` / `rhs` 广播兼容并产出 `output_dim`，再由 `parallel/` 按外轴/块状多维 tile 分块；默认 `chunk_size = max(1, (total_elements + num_threads - 1) / num_threads)` 仍作为 tile 目标工作量上界，其中 `num_threads = rayon::current_num_threads()`，并按固定左折叠顺序合并 chunk 结果。每个 chunk 为两个输入分别构造与该 tile 对应、且仍与 `output_dim` 兼容的只读 sub-view。若某一侧是广播轴（stride 为 `0` 或逻辑重复维），chunk 视图保持该广播语义，不做物理复制。`DL`、`DR`、`DO` 独立建模，以表达输入与输出 rank 可能不同的广播结果。
 - 广播 chunk 映射草图：优先按 `output_dim` 的外轴边界生成块状多维 tile，使 chunk 在输出空间内保持可直接切片的矩形子域；若某些退化形状无法形成理想矩形 tile，则实现可退化为“线性索引区间 + 逐元素广播投影”的内部执行形式，而不是要求把任意线性区间整体重建成单个 broadcast sub-view。对输出维中的广播轴，输入侧固定复用同一逻辑坐标；对非广播轴，chunk 保持对应 tile 的区间跨度。实现不得为广播轴做物理展开或额外分配。
 - `par_zip_map` 仅包含并行执行逻辑；若调用发生，表示 `dispatch.rs` 已确认当前输入适合走并行路径。
-- `par_zip_map()` 作为内部并行入口，假定广播兼容性已由调用方验证，不再额外定义单独的 checked 变体。若前置条件被破坏，debug 模式下可触发 panic，以便尽早暴露内部调用错误；release 模式下行为未指定但仍保持内存安全。并行操作中发生 panic 或返回 `Err` 时，错误不会被静默忽略。语义上，并行操作须至少传播一个错误，不保证传播“第一个”发生的错误。实现上，Rayon 的并行 collect/reduce 可能不会物理中断其他 worker，但错误信息会被收集并在最终结果中报告。
+- `par_zip_map()` 作为内部并行入口，假定广播兼容性已由调用方验证，不再额外定义单独的 checked 变体。此为内部前置条件。违反时视为内部 bug，可触发 debug assert，但不得破坏内存安全或对外错误模型。release 模式下行为保持语义定义，不引入未指定行为。并行操作中发生 panic 或返回 `Err` 时，错误不会被静默忽略。语义上，并行操作须至少传播一个错误，不保证传播“第一个”发生的错误。实现上，Rayon 的并行 collect/reduce 可能不会物理中断其他 worker，但错误信息会被收集并在最终结果中报告。
 
 ### 6.3a 轴向归约并行方案
 
@@ -378,7 +378,7 @@ where
 - 对归约和内积，若调用方选择并行路径，则 `parallel/` 必须提供固定 chunking 与固定 merge tree，保证同平台、同配置、同路径下结果确定。
 - 并行归约采用固定分块策略：`chunk` 大小 = `max(1, (n + num_workers - 1) / num_workers)`，worker 按固定索引范围分配，merge 按 worker 索引顺序合并。
 - 若执行对象为整数 `sum` / `dot`，每个 worker 必须在本分片内执行 `checked_add` / `checked_mul` + `checked_add`；任一 worker 发现溢出时必须传播 panic，不得转写为 `XenonError`。
-- SIMD 与并行的组合边界由 `dispatch.rs` 统一裁决：先决定 parallel vs serial，再决定当前执行路径内使用 SIMD 还是 scalar；`parallel/` 不在 worker 内部再次做 SIMD/parallel 二次分派。
+- 调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。
 
 ### 6.5 Checked 映射与错误传播
 
@@ -642,10 +642,10 @@ XenonError::DimensionMismatch {
 ### 10.1 浮点/复数并行归约容差
 
 - 浮点与复数并行归约允许与标量路径不同的合并顺序；该差异视为合法实现细节，但必须受 `需求说明书 §28.3` 文档化容差约束。
-- 与 `08-simd.md` 保持一致：`par_sum()`、`par_dot()` 与其他内部并行归约在浮点或复数输入上，每个实数分量与标量路径结果之差不得超过 `max(1 ULP, 2^-23 * |scalar_result|)`（`f32`）或 `max(1 ULP, 2^-52 * |scalar_result|)`（`f64`）。以下容差公式适用于当前版本实现的并行归约算法。当算法或目标 ISA 变更时，容差须重新验证。
+- 容差阈值为当前建议测试基线，待实现验证后定稿。最终容差以实现验证后的文档化结论为准。
 - `NaN`：按 IEEE 754 语义检查（`NaN !=` 任何值），不使用数值容差。
 - `±Inf`：必须同号同类。
-- `+0.0` / `-0.0`：符号必须一致。
+- 并行归约结果的 `+0.0/-0.0` 符号应尽可能与串行路径一致；若当前实现无法保证（如不同 merge 顺序导致符号差异），须在文档中明确说明，并考虑对受影响路径回退串行执行。
 - 容差规则仅适用于有限值结果。
 - 复数按实部、虚部分别适用同一文档化规则；若某一并行实现无法满足该容差或无法提供固定 chunking + fixed merge tree 的确定性约束，则必须回退串行或调整分块/合并策略。
 

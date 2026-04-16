@@ -149,11 +149,10 @@ src/overload/
 
 完整的 `impl` 组合表（以 `Add` 为例，`Sub`/`Mul`/`Div` 同理）：
 
-> **稳定性分层说明：** 下表分为“当前稳定承诺”与“增强候选（implementation enhancement）”两组。稳定组对应当前对外 API 承诺；增强候选组用于记录已评审的扩展方向，是否落地仍以后续版本决议为准。
+> **稳定性分层说明：** 下表仅列出当前稳定承诺；`TensorView` / `ArcTensor` 相关增强候选已移至文末“附录：增强候选”，避免与当前版本范围混淆。
 
 | Lhs                  | Rhs                  | Output         | 广播     | impl 签名                                                                           |
 | -------------------- | -------------------- | -------------- | -------- | ----------------------------------------------------------------------------------- |
-| **稳定承诺（stable）** |                      |                |          |                                                                                     |
 | `Tensor<A, D>`       | `Tensor<A, E>`       | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>`                  |
 | `&Tensor<A, D>`      | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<Owned<A>,D>`                |
 | `Tensor<A, D>`       | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>`                 |
@@ -162,24 +161,9 @@ src/overload/
 | `&Tensor<A, D>`      | `A`                  | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for &TensorBase<Owned<A>,D>`                                      |
 | `Scalar<A>`          | `Tensor<A, D>`       | `Tensor<A, D>` | 标量广播 | `impl<...> Add<TensorBase<Owned<A>,D>> for Scalar<A>`                               |
 | `Scalar<A>`          | `&Tensor<A, D>`      | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&TensorBase<Owned<A>,D>> for Scalar<A>`                              |
-| **增强候选（implementation enhancement）** | | | | |
-| `&TensorView<A, D>`（增强候选） | `&TensorView<A, E>`（增强候选） | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<ViewRepr<'a, A>,D>`（增强候选） |
-| `&TensorView<A, D>`（增强候选） | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<ViewRepr<'a, A>,D>`（增强候选） |
-| `&Tensor<A, D>`      | `&TensorView<A, E>`（增强候选） | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<Owned<A>,D>`（增强候选） |
-| `&TensorView<A, D>`（增强候选） | `&ArcTensor<A, E>`（增强候选）  | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ArcRepr<A>,E>> for &TensorBase<ViewRepr<'a, A>,D>`（增强候选） |
-| `&ArcTensor<A, D>`（增强候选）  | `&TensorView<A, E>`（增强候选） | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<ArcRepr<A>,D>`（增强候选） |
-| `&ArcTensor<A, D>`（增强候选）  | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<ArcRepr<A>,D>`（增强候选） |
-| `&Tensor<A, D>`      | `&ArcTensor<A, E>`（增强候选）  | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ArcRepr<A>,E>> for &TensorBase<Owned<A>,D>`（增强候选） |
-| `&ArcTensor<A, D>`（增强候选）  | `&ArcTensor<A, E>`（增强候选）  | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ArcRepr<A>,E>> for &TensorBase<ArcRepr<A>,D>`（增强候选） |
 
 > **说明**：`F` 为广播后的维度类型，由 `<D as BroadcastDim<E>>::Output` 关联类型计算。
 > `BroadcastDim` 定义于 `02-dimension.md §5.9`。
-
-> **范围收敛说明：** 当前稳定承诺聚焦 `Owned×Owned`、其借用变体以及标量路径；`ArcTensor` / `TensorView` 相关组合保留为增强候选（implementation enhancement），是否进入稳定面以后续版本决议为准。实现优先级：`Owned×Owned` > `Owned×Scalar` > `View×View`。
-
-> **说明**：当前设计支持 `TensorView` 与共享只读 `ArcRepr` 通过引用模式参与运算符重载（如 `&view + &tensor`、`&arc + &tensor`）。
-> `TensorViewMut` **不**直接参与运算符重载。若要使用运算符，必须先调用 `.view()` 获取只读 `TensorView`，再对该只读视图应用运算符。
-> 张量×张量/视图路径在广播失败时返回 `Result<Tensor<A, F>, XenonError>`；标量路径无广播失败分支，直接返回 `Tensor<A, D>`。两类路径成功值都为 owned 结果，因为视图本身不拥有数据，无法作为运算结果的存储。
 
 ### 5.2 张量×张量运算符
 
@@ -211,48 +195,6 @@ where
         self.add_tensor_impl(rhs)
     }
 }
-
-// Enhancement candidate: &ArcTensor + &Tensor (shared read-only + owned reference)
-impl<'a, 'b, A, D, E> Add<&'b TensorBase<Owned<A>, E>> for &'a TensorBase<ArcRepr<A>, D>
-where
-    A: Numeric,
-    D: Dimension + BroadcastDim<E>,
-    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
-{
-    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
-
-    fn add(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
-        self.add_tensor_impl(rhs)
-    }
-}
-
-// Enhancement candidate: &ArcTensor + &ArcTensor (shared read-only + shared read-only)
-impl<'a, 'b, A, D, E> Add<&'b TensorBase<ArcRepr<A>, E>> for &'a TensorBase<ArcRepr<A>, D>
-where
-    A: Numeric,
-    D: Dimension + BroadcastDim<E>,
-    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
-{
-    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
-
-    fn add(self, rhs: &'b TensorBase<ArcRepr<A>, E>) -> Self::Output {
-        self.add_tensor_impl(rhs)
-    }
-}
-
-// Enhancement candidate: &Tensor + &ArcTensor (owned reference + shared read-only)
-impl<'a, 'b, A, D, E> Add<&'b TensorBase<ArcRepr<A>, E>> for &'a TensorBase<Owned<A>, D>
-where
-    A: Numeric,
-    D: Dimension + BroadcastDim<E>,
-    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
-{
-    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
-
-    fn add(self, rhs: &'b TensorBase<ArcRepr<A>, E>) -> Self::Output {
-        self.add_tensor_impl(rhs)
-    }
-}
 ```
 
 > **设计决策引用：** 此处沿用 §4.2 `ADR-OVERLOAD-RESULT` 的项目级稳定结论：`+` / `-` / `*` / `/` 在广播不兼容时返回 `Result<Tensor<A, F>, XenonError>`，而不是 panic。
@@ -263,71 +205,11 @@ where
 
 > **语义边界说明：** 广播失败走 `Err(XenonError::BroadcastError { ... })` 的项目级稳定定性见 §4.2 `ADR-OVERLOAD-RESULT`；整数除零、整数溢出与结果不可表示仍保持 panic。本文 §11 的决策 2a / ADR-2b 仅记录该 ADR 在本模块中的细化范围。
 
-### 5.2b 视图×视图/张量运算符
+> **范围收敛说明：** 当前稳定承诺聚焦 `Owned×Owned`、其借用变体以及标量路径；`TensorView` / `ArcTensor` 相关组合已移至文末“附录：增强候选”，是否进入稳定面以后续版本决议为准。实现优先级：`Owned×Owned` > `Owned×Scalar` > `View×View`。
 
-```rust,ignore
-// Enhancement candidate: &TensorView + &TensorView (reference + reference)
-impl<'a, 'b, A, D, E> Add<&'b TensorBase<ViewRepr<'b, A>, E>>
-    for &'a TensorBase<ViewRepr<'a, A>, D>
-where
-    A: Numeric,
-    D: Dimension + BroadcastDim<E>,
-    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
-{
-    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
-
-    fn add(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
-        self.add_tensor_impl(rhs)
-    }
-}
-
-// Enhancement candidate: &TensorView + &Tensor (view + owned reference)
-impl<'a, 'b, A, D, E> Add<&'b TensorBase<Owned<A>, E>>
-    for &'a TensorBase<ViewRepr<'a, A>, D>
-where
-    A: Numeric,
-    D: Dimension + BroadcastDim<E>,
-    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
-{
-    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
-
-    fn add(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
-        self.add_tensor_impl(rhs)
-    }
-}
-
-// Enhancement candidate: &TensorView + &ArcTensor (view + shared read-only reference)
-impl<'a, 'b, A, D, E> Add<&'b TensorBase<ArcRepr<A>, E>>
-    for &'a TensorBase<ViewRepr<'a, A>, D>
-where
-    A: Numeric,
-    D: Dimension + BroadcastDim<E>,
-    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
-{
-    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
-
-    fn add(self, rhs: &'b TensorBase<ArcRepr<A>, E>) -> Self::Output {
-        self.add_tensor_impl(rhs)
-    }
-}
-
-// Enhancement candidate: &ArcTensor + &TensorView (shared read-only + view reference)
-impl<'a, 'b, A, D, E> Add<&'b TensorBase<ViewRepr<'b, A>, E>>
-    for &'a TensorBase<ArcRepr<A>, D>
-where
-    A: Numeric,
-    D: Dimension + BroadcastDim<E>,
-    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
-{
-    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
-
-    fn add(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
-        self.add_tensor_impl(rhs)
-    }
-}
-```
-
-> **说明**：`Sub`/`Mul`/`Div` 的视图 / 共享只读组合模式与 `Add` 相同，仅替换运算符和闭包，并统一返回 `Result<Tensor<A, F>, XenonError>`。`ArcRepr<A>` 仅通过 `&self` 解引用为只读视图参与运算，不提供消费式写入语义。`TensorViewMut` **不**直接参与这些组合；需要先调用 `.view()` 转为只读 `TensorView`。
+> **说明**：当前稳定 API 不直接承诺 `TensorView` 与 `ArcRepr` 参与运算符重载；若后续版本需要这些组合，统一参考文末附录。
+> `TensorViewMut` **不**直接参与运算符重载。若要使用运算符，必须先调用 `.view()` 获取只读 `TensorView`，再对该只读视图应用运算符。
+> 张量×张量路径在广播失败时返回 `Result<Tensor<A, F>, XenonError>`；标量路径无广播失败分支，直接返回 `Tensor<A, D>`。两类路径成功值都为 owned 结果，因为视图本身不拥有数据，无法作为运算结果的存储。
 
 ### 5.3 张量×标量运算符
 
@@ -405,7 +287,7 @@ where
 
 > **说明**：当前版本**不**稳定承诺 `&A` 形式的标量运算符重载。公开契约仅保证值形式 `tensor + scalar`、`Scalar(scalar) + tensor`，以及常用原生左标量（如 `5.0 + tensor`）。若后续版本需要 `&A` 支持，应以独立议题评估。
 
-> **说明**：`Scalar<A>` 同样适用于 `TensorView` 的标量运算。`TensorViewMut` 若需使用标量运算符，同样必须先调用 `.view()` 转为只读 `TensorView`。
+> **说明**：若后续版本采纳附录中的 `TensorView` 增强候选，`Scalar<A>` 可沿用相同的标量运算模式。`TensorViewMut` 若需使用标量运算符，同样必须先调用 `.view()` 转为只读 `TensorView`。
 
 > **设计决策：** 标量运算委托给 `add_scalar_impl()` / `sub_scalar_impl()` / `mul_scalar_impl()` / `div_scalar_impl()` 等内部 helper，
 > 其内部直接遍历输入与结果张量，而不是额外暴露通用 helper 作为稳定实现描述。
@@ -418,7 +300,7 @@ where
 
 ### 5.4 Sub / Mul / Div
 
-`Sub`、`Mul`、`Div` 的实现模式与 `Add` 完全相同，需覆盖与 `Add` 对称的张量/引用/标量/`Scalar<A>` 组合；其中张量×张量/视图路径返回 `Result<Tensor<A, F>, XenonError>`，标量路径返回 `Tensor<A, D>`。仅替换运算符和对应闭包：
+`Sub`、`Mul`、`Div` 的实现模式与 `Add` 完全相同，需覆盖与 `Add` 对称的张量/引用/标量/`Scalar<A>` 组合；其中当前稳定范围内的张量×张量路径返回 `Result<Tensor<A, F>, XenonError>`，标量路径返回 `Tensor<A, D>`。附录中的视图 / `ArcTensor` 增强候选沿用相同返回边界。仅替换运算符和对应闭包：
 
 ```rust,ignore
 // Sub: |a, b| a - b
@@ -630,16 +512,6 @@ Wave 5:      [T6]
 | `test_i32_tensor`                   | `i32` 类型张量运算返回 `Ok(...)`                                   | 中     |
 | `test_complex_tensor`               | `Complex<f64>` 类型张量运算返回 `Ok(...)`                          | 中     |
 
-### 8.2a 可选验证（enhancement candidates）
-
-| 测试函数                            | 测试内容                                                           | 优先级 |
-| ----------------------------------- | ------------------------------------------------------------------ | ------ |
-| `test_add_view_view`                | `&TensorView + &TensorView` 组合在增强候选实现启用时返回 `Ok(...)` | 中     |
-| `test_add_view_tensor`              | `&TensorView + &Tensor` 组合在增强候选实现启用时返回 `Ok(...)`     | 中     |
-| `test_add_arc_tensor`               | `&ArcTensor` 参与的组合在增强候选实现启用时返回 `Ok(...)`          | 中     |
-
-> **说明：** 本节仅用于增强候选的可选验证，不属于当前稳定 API 测试基线；若相应增强未实现或未进入稳定面，可不作为默认必过项。
-
 ### 8.3 边界测试场景
 
 | 场景                                     | 预期行为                       |
@@ -767,6 +639,17 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | 替代方案 | 运算符不返回 `Result`，广播失败由单独的 broadcast 步骤处理 — 放弃，增加调用复杂度 |
 | 确认     | 本决策经跨模块评审后确认，现作为项目级稳定 API 风格决策生效 |
 
+### 运算符返回 `Result` 的代价分析
+
+| 方面 | 影响 |
+|------|------|
+| 链式表达式 | `a + b + c` 须改写为 `(a + b)? + c`，每层运算均需 `?` 传播 |
+| 泛型互操作 | `std::ops::Add<Output=Result<_,_>>` 与标准库运算符语义不兼容 |
+| 用户心智成本 | 所有张量运算表达式均需考虑错误处理路径 |
+| 设计理由 | 广播不兼容须返回可恢复错误（需求说明书 §20），运算符无法通过类型系统排除不兼容输入 |
+
+> **决策**：接受上述代价，运算符统一返回 `Result`。这是在"运算符便利性"与"需求要求广播错误可恢复"之间的显式权衡。
+
 ### ADR-2b：仅张量×张量路径共享 Result 边界
 
 | 属性     | 值 |
@@ -841,6 +724,143 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | 单 crate   | `overload` 设计保持在现有 crate 内，不引入额外 crate        |
 | SemVer     | §4.2 `ADR-OVERLOAD-RESULT` 已确认项目级稳定 API 边界；张量×张量路径的规范 `Output` 类型为 `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` |
 | 最小依赖   | 本模块不新增第三方依赖                                      |
+
+---
+
+## 附录：增强候选
+
+以下增强候选不在当前版本范围内，仅作为未来版本设计参考。
+
+### A.1 运算符 trait 实现矩阵补充
+
+| Lhs                  | Rhs                  | Output         | 广播     | impl 签名                                                                           |
+| -------------------- | -------------------- | -------------- | -------- | ----------------------------------------------------------------------------------- |
+| `&TensorView<A, D>`（增强候选） | `&TensorView<A, E>`（增强候选） | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<ViewRepr<'a, A>,D>`（增强候选） |
+| `&TensorView<A, D>`（增强候选） | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<ViewRepr<'a, A>,D>`（增强候选） |
+| `&Tensor<A, D>`      | `&TensorView<A, E>`（增强候选） | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<Owned<A>,D>`（增强候选） |
+| `&TensorView<A, D>`（增强候选） | `&ArcTensor<A, E>`（增强候选）  | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ArcRepr<A>,E>> for &TensorBase<ViewRepr<'a, A>,D>`（增强候选） |
+| `&ArcTensor<A, D>`（增强候选）  | `&TensorView<A, E>`（增强候选） | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<ArcRepr<A>,D>`（增强候选） |
+| `&ArcTensor<A, D>`（增强候选）  | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<ArcRepr<A>,D>`（增强候选） |
+| `&Tensor<A, D>`      | `&ArcTensor<A, E>`（增强候选）  | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ArcRepr<A>,E>> for &TensorBase<Owned<A>,D>`（增强候选） |
+| `&ArcTensor<A, D>`（增强候选）  | `&ArcTensor<A, E>`（增强候选）  | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ArcRepr<A>,E>> for &TensorBase<ArcRepr<A>,D>`（增强候选） |
+
+### A.2 视图 / 共享只读组合运算符
+
+```rust,ignore
+// Enhancement candidate: &ArcTensor + &Tensor (shared read-only + owned reference)
+impl<'a, 'b, A, D, E> Add<&'b TensorBase<Owned<A>, E>> for &'a TensorBase<ArcRepr<A>, D>
+where
+    A: Numeric,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
+
+    fn add(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
+        self.add_tensor_impl(rhs)
+    }
+}
+
+// Enhancement candidate: &ArcTensor + &ArcTensor (shared read-only + shared read-only)
+impl<'a, 'b, A, D, E> Add<&'b TensorBase<ArcRepr<A>, E>> for &'a TensorBase<ArcRepr<A>, D>
+where
+    A: Numeric,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
+
+    fn add(self, rhs: &'b TensorBase<ArcRepr<A>, E>) -> Self::Output {
+        self.add_tensor_impl(rhs)
+    }
+}
+
+// Enhancement candidate: &Tensor + &ArcTensor (owned reference + shared read-only)
+impl<'a, 'b, A, D, E> Add<&'b TensorBase<ArcRepr<A>, E>> for &'a TensorBase<Owned<A>, D>
+where
+    A: Numeric,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
+
+    fn add(self, rhs: &'b TensorBase<ArcRepr<A>, E>) -> Self::Output {
+        self.add_tensor_impl(rhs)
+    }
+}
+
+// Enhancement candidate: &TensorView + &TensorView (reference + reference)
+impl<'a, 'b, A, D, E> Add<&'b TensorBase<ViewRepr<'b, A>, E>>
+    for &'a TensorBase<ViewRepr<'a, A>, D>
+where
+    A: Numeric,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
+
+    fn add(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
+        self.add_tensor_impl(rhs)
+    }
+}
+
+// Enhancement candidate: &TensorView + &Tensor (view + owned reference)
+impl<'a, 'b, A, D, E> Add<&'b TensorBase<Owned<A>, E>>
+    for &'a TensorBase<ViewRepr<'a, A>, D>
+where
+    A: Numeric,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
+
+    fn add(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
+        self.add_tensor_impl(rhs)
+    }
+}
+
+// Enhancement candidate: &TensorView + &ArcTensor (view + shared read-only reference)
+impl<'a, 'b, A, D, E> Add<&'b TensorBase<ArcRepr<A>, E>>
+    for &'a TensorBase<ViewRepr<'a, A>, D>
+where
+    A: Numeric,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
+
+    fn add(self, rhs: &'b TensorBase<ArcRepr<A>, E>) -> Self::Output {
+        self.add_tensor_impl(rhs)
+    }
+}
+
+// Enhancement candidate: &ArcTensor + &TensorView (shared read-only + view reference)
+impl<'a, 'b, A, D, E> Add<&'b TensorBase<ViewRepr<'b, A>, E>>
+    for &'a TensorBase<ArcRepr<A>, D>
+where
+    A: Numeric,
+    D: Dimension + BroadcastDim<E>,
+    E: Dimension + BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>,
+{
+    type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
+
+    fn add(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
+        self.add_tensor_impl(rhs)
+    }
+}
+```
+
+> **说明**：`Sub`/`Mul`/`Div` 的视图 / 共享只读组合模式与 `Add` 相同，仅替换运算符和闭包，并统一返回 `Result<Tensor<A, F>, XenonError>`。`ArcRepr<A>` 仅通过 `&self` 解引用为只读视图参与运算，不提供消费式写入语义。`TensorViewMut` **不**直接参与这些组合；需要先调用 `.view()` 转为只读 `TensorView`。
+
+### A.3 可选验证（enhancement candidates）
+
+| 测试函数                            | 测试内容                                                           | 优先级 |
+| ----------------------------------- | ------------------------------------------------------------------ | ------ |
+| `test_add_view_view`                | `&TensorView + &TensorView` 组合在增强候选实现启用时返回 `Ok(...)` | 中     |
+| `test_add_view_tensor`              | `&TensorView + &Tensor` 组合在增强候选实现启用时返回 `Ok(...)`     | 中     |
+| `test_add_arc_tensor`               | `&ArcTensor` 参与的组合在增强候选实现启用时返回 `Ok(...)`          | 中     |
+
+> **说明：** 本节仅用于增强候选的可选验证，不属于当前稳定 API 测试基线；若相应增强未实现或未进入稳定面，可不作为默认必过项。
 
 ---
 

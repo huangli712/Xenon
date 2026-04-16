@@ -283,6 +283,7 @@ pub struct Strides<D: Dimension> {
 impl<D: Dimension> Strides<D> {
     /// Construct strides from a dimension value.
     /// Zero stride is allowed and represents a broadcast dimension.
+    /// This constructor only wraps the stride carrier and does not perform full layout validation.
     pub fn new(strides: D) -> Self;
 
     /// Construct strides from raw slice data.
@@ -314,13 +315,15 @@ impl<D: Dimension> Strides<D> {
 
 > **需求 §7 收紧解释：** 本设计对需求 §7 中“仅用于对齐或实现目的的填充区域”做收紧解释：当前版本仅允许 tail padding，不允许 inter-axis padding（例如 padded leading dimension）。这一收紧不影响需求兼容性，因为逻辑元素值及其访问结果与不存在填充区域时保持一致。
 
+补充说明：`Strides::new()` 仅构造承载对象，不执行完整合法性验证。布局合法性由构造器/validator 入口统一负责。
+
 与 `Dimension`/`TensorBase` 的职责边界如下：
 
 - `02-dimension.md` 中的 `Dimension` 只描述 shape/rank，不保存 stride 语义。
 - `Strides<D>` 负责保存与 shape 同 rank 的步长元数据。
 - `07-tensor.md` 中的 `TensorBase` 通过 `strides: Strides<D>` 持有这部分元数据，并交由 layout 层推导连续性与布局标志。
 
-负步长布局不在当前版本范围内（参见 `require.md §7`）。当前文档仅讨论由 F-order、转置、切片派生的正步长非连续视图与广播产生的合法布局。
+负步长布局不在当前版本范围内（参见 `需求说明书 §7`）。当前文档仅讨论由 F-order、转置、切片派生的正步长非连续视图与广播产生的合法布局。
 
 ### 5.3 F-order 步长计算
 
@@ -336,7 +339,7 @@ function compute_f_strides(shape: [usize; N]) -> Result<[usize; N], XenonError>:
     for i from 0 to N-1:
         strides[i] = cumulative
         cumulative = checked_mul(cumulative, shape[i])
-            or panic on integer overflow; otherwise return InvalidLayout
+            或在整数溢出时返回可恢复错误（`InvalidLayout` 或等效错误类别）
 
     return Ok(strides)
 ```
@@ -596,7 +599,7 @@ function compute_flags(shape, strides, ptr):
 | 转置     | 调用 `compute_layout_flags()` 统一重新计算                                     |
 | 视图创建 | 调用 `compute_layout_flags()` 统一重新计算                                     |
 | 广播     | 调用 `compute_layout_flags()` 统一重新计算                                     |
-| reshape  | **不在当前版本范围内**（`require.md §17` 当前仅允许 transpose）                |
+| reshape  | **不在当前版本范围内**（`需求说明书 §17` 当前仅允许 transpose）                |
 
 ### 6.4 安全性论证
 

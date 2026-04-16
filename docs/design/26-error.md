@@ -207,16 +207,43 @@ pub enum XenonError {
 }
 
 /// Module-internal payload for XenonError::TypeConversion.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeConversionError {
-    source_type: Cow<'static, str>,
-    target_type: Cow<'static, str>,
-    reason: TypeConversionReason,
-    element_index: usize,
+    pub(crate) source_type: TypeId,
+    pub(crate) target_type: TypeId,
+    pub(crate) reason: ConversionFailureReason,
+    pub(crate) element_index: Option<usize>,
+}
+
+impl TypeConversionError {
+    pub(crate) fn new(source: TypeId, target: TypeId, reason: ConversionFailureReason) -> Self {
+        Self {
+            source_type: source,
+            target_type: target,
+            reason,
+            element_index: None,
+        }
+    }
+
+    pub fn source_type(&self) -> TypeId {
+        self.source_type
+    }
+
+    pub fn target_type(&self) -> TypeId {
+        self.target_type
+    }
+
+    pub fn reason(&self) -> &ConversionFailureReason {
+        &self.reason
+    }
+
+    pub fn element_index(&self) -> Option<usize> {
+        self.element_index
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TypeConversionReason {
+pub enum ConversionFailureReason {
     LossyIntegerNarrowing,
     LossyFloatNarrowing,
     FloatToInteger,
@@ -231,6 +258,8 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 当前版本不定义 `EmptyArray` 公开错误变体。按 `require.md §13-§14`，空输入 `dot` 与 `sum` 返回加法单位元；若未来新增确需“至少一个元素”的 API，应在对应版本中单独裁定是否引入专门错误变体。
 
 `XenonError` 须实现 `std::error::Error` trait，提供 `source()` 方法用于链式错误追踪。
+
+对于 `XenonError::Ffi { reason }` 和 `XenonError::Workspace { reason }` 等使用 opaque `String` 的变体，`source()` 返回 `None`。`XenonError::TypeConversion` 的 `source()` 同样返回 `None`，除非内部保留了链式错误源（当前版本不保留）。
 
 公开 API 统一使用 prelude 导出的 `crate::error::Result`（即 `Result<T, XenonError>` 别名）作为返回类型。
 
@@ -269,7 +298,13 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 - `03-element.md`、`04-complex.md` 及其他文档引用类型转换失败时，只能引用 `XenonError::TypeConversion(TypeConversionError)`
 - 不得再把独立 `TypeConversionError` 写成公开 API 可直接返回的错误类型
 
+> **可见性**：`TypeConversionError` 的字段为 `pub(crate)`，模块间通过 `new(...)` 构造器和公开访问器方法操作。`convert` 模块等内部模块通过 `pub(crate)` 构造器创建实例，公开 API 返回此类型时用户通过访问器方法读取诊断信息。
+
 ```rust
+pub trait CastTo<T> {
+    fn cast_to(self) -> Result<T, TypeConversionError>;
+}
+
 // Good - cast is fallible and reports the failing element.
 pub fn cast<B: Element>(&self) -> Result<Tensor<B, D>, XenonError>
 where
@@ -277,7 +312,11 @@ where
 {
     let mut out = Vec::with_capacity(self.len());
     for (index, value) in self.iter().enumerate() {
-        out.push(value.cast_to(index)?);
+        let converted = value.cast_to().map_err(|mut err| {
+            err.element_index = Some(index);
+            XenonError::TypeConversion(err)
+        })?;
+        out.push(converted);
     }
     Ok(Tensor::from_shape_vec_aligned(self.shape().clone(), out))
 }
@@ -310,7 +349,7 @@ where
 | `Ffi { reason }`                      | 由内部 `FfiError` 归一化生成公开 `reason`；不得在公开 API 中暴露 `FfiError` 类型名 |
 | `Workspace { reason }`                | 由内部 `WorkspaceError` 归一化生成公开 `reason`；不得在公开 API 中暴露 `WorkspaceError` 类型名 |
 | `IndexOutOfBounds`                    | `operation`, `attempted_index`, `axis`, `shape`；`attempted_index` 表示完整多维索引 tuple，`axis` 指出首个越界维度 |
-| `TypeConversion(TypeConversionError)` | `source_type`, `target_type`, `reason`, `element_index`                            |
+| `TypeConversion(TypeConversionError)` | `source_type`, `target_type`, `reason`, `element_index?`                           |
 
 > **分配成本说明：** `attempted_index: Vec<usize>`、`shape: Vec<usize>` 以及 `InvalidArgument` / `InvalidStorageMode` 中的可选 `Vec<usize>` 字段会带来少量堆分配成本；这是当前版本可接受的诊断开销，用于换取跨公开 API 的一致结构化上下文。
 
@@ -473,10 +512,12 @@ impl fmt::Display for XenonError {
             Self::TypeConversion(err) => write!(
                 f,
                 "type conversion failed at element {}: {} -> {} ({:?})",
-                err.element_index,
-                err.source_type,
-                err.target_type,
-                err.reason,
+                err.element_index()
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "<any>".to_string()),
+                err.source_type(),
+                err.target_type(),
+                err.reason(),
             ),
             Self::IndexOutOfBounds {
                 operation,

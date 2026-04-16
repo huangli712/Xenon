@@ -191,7 +191,7 @@ pub fn to_view(&self) -> View<'_, A, D> { /* ... */ }  // view conversion should
 
 ```rust
 // Good
-pub fn shape(&self) -> &[Ix] { &self.dim.slice() }
+pub fn shape(&self) -> &[Ix] { self.dim.slice() }
 pub fn strides(&self) -> &[Ix] { &self.strides.slice() }
 pub fn ndim(&self) -> usize { self.dim.ndim() }
 pub fn len(&self) -> usize {
@@ -310,7 +310,7 @@ use crate::storage::Storage;
 
 公开 API 和常规代码中禁止使用 `as` 进行数值类型转换。使用 `From`/`TryFrom`/`Into` trait。
 
-> **说明**：Rust 标准库不提供 `From<i32> for f64`。整数到浮点的转换须通过 Xenon 自身的显式转换 API 实现，参见 `require.md` §23 和 `21-type.md`。
+> **说明**：Rust 标准库不提供 `From<i32> for f64`。整数到浮点的转换须通过 Xenon 自身的显式转换 API 实现，参见 需求说明书 §23 和 `21-type.md`。
 
 ```rust
 // Good
@@ -339,7 +339,7 @@ let offset = ptr as usize;
 let truncated = float_val as i32;
 ```
 
-> **注意**：`as` 截断语义仅适用于已单独定义为 truncating/saturating 的专用内部路径。默认 `cast()` 语义不得使用该策略，须返回 `Result`。参见 `require.md` §23。
+> **注意**：`as` 截断语义仅适用于已单独定义为 truncating/saturating 的专用内部路径。默认 `cast()` 语义不得使用该策略，须返回 `Result`。参见 需求说明书 §23。
 
 ### 3.2 泛型约束写法
 
@@ -523,7 +523,7 @@ where
 
 > **FFI 边界**：Rust 内部的 fallible API 使用 `try_* -> Result` 模式。真正的 `extern "C"` FFI 边界必须使用 FFI-safe 状态码与输出参数，不得跨 ABI 返回 `Result`，也不得让 panic 穿越边界。公开架构不提供 `bare_*` / panic-sugar 形式的 FFI helper；需要偏移或指针计算时，仅保留 `try_offset_of()`、`try_ptr_at()` 这类可恢复错误入口。参见 `23-ffi.md`。
 
-```rust
+```rust,ignore
 #[derive(Debug, Clone)]
 pub enum XenonError {
     BroadcastError {
@@ -641,7 +641,7 @@ mod tests {
 
 对于性能关键的边界检查操作，提供 checked 和 unchecked 两个版本：
 
-```rust
+```rust,ignore
 impl<A, D> TensorBase<Owned<A>, D>
 where
     D: Dimension,
@@ -684,7 +684,7 @@ where
 
 ### 5.1 最小化 unsafe 块范围
 
-```rust
+```rust,ignore
 // Good - minimal scope
 pub fn get_unchecked(&self, index: usize) -> &A {
     // SAFETY: caller guarantees index < self.len()
@@ -704,7 +704,7 @@ pub fn get_unchecked_bad(&self, index: usize) -> &A {
 
 每个 `unsafe fn` 必须在文档中包含 `# Safety` 节，列出所有前提条件。
 
-```rust
+```rust,ignore
 /// Creates a tensor from raw components.
 ///
 /// # Safety
@@ -725,7 +725,7 @@ pub unsafe fn from_raw_parts<'a>(
 
 ### 5.3 unsafe 块必须有 // SAFETY: 注释
 
-```rust
+```rust,ignore
 pub fn set(&mut self, index: &[Ix], value: A) -> Result<()> {
     let offset = self.compute_offset(index)?;
 
@@ -738,7 +738,19 @@ pub fn set(&mut self, index: &[Ix], value: A) -> Result<()> {
 }
 ```
 
-### 5.4 unsafe 封装在安全抽象内部
+### 5.4 ZST 与空数组安全
+
+涉及零大小类型（ZST）和空数组的 unsafe 操作，须确保不引发未定义行为，包括但不限于空切片指针运算和零长度偏移计算。实现中必须先证明指针来源、对齐、可达范围与偏移语义在 `len == 0` 或 `size_of::<T>() == 0` 时仍然成立，不得把“不会解引用”当作可跳过前提校验的理由。
+
+```rust,ignore
+pub unsafe fn ptr_at_unchecked<T>(ptr: *const T, len: usize, index: usize) -> *const T {
+    debug_assert!(index <= len);
+    // SAFETY: caller guarantees provenance, bounds, and ZST/empty-slice behavior.
+    ptr.add(index)
+}
+```
+
+### 5.5 unsafe 封装在安全抽象内部
 
 所有 `unsafe` 代码应封装在安全抽象内部，对外暴露安全 API：
 
@@ -759,10 +771,12 @@ src/
 
 ## 6. 文档规范
 
-### 6.1 #![warn(missing_docs)]
+### 6.1 `lib.rs` 项目级 lint 基线
 
-`lib.rs` 必须包含 `missing_docs` lint 警告：
+`lib.rs` 必须声明项目级统一 lint 基线；其中 `#![warn(clippy::unwrap_used)]` 是整个项目库代码的统一要求，不得在其他模块或文档片段中弱化或省略。
 
+> **权威来源说明**：本节的 `lib.rs` lint 列表是权威来源。`01-architecture.md` 及其他文档中的 `lib.rs` 片段须与本节保持一致。
+>
 > **CI 强制执行**：开发期间使用 `warn` 级别，CI 通过 `RUSTDOCFLAGS="-D warnings"` 将所有 lint 警告提升为错误，确保文档和代码质量。
 
 ```rust
@@ -911,7 +925,7 @@ mod tests {
 - 每个公开 API 至少一个正向 + 一个负向测试
 - 如仓库后续引入覆盖率门槛，应作为可选 CI 质量信号维护，不得写成超出 `require.md` 的硬性发布准入条件
 
-**浮点比较**：对存在舍入误差容差的数值路径，使用近似比较；对比较 API 自身、布尔结果、文档明确要求精确一致的场景，允许/要求精确断言。参见 `require.md` §12（NaN 遵循 IEEE 754）和 §28.3。
+**浮点比较**：对存在舍入误差容差的数值路径，使用近似比较；对比较 API 自身、布尔结果、文档明确要求精确一致的场景，允许/要求精确断言。参见 需求说明书 §12（NaN 遵循 IEEE 754）和 §28.3。
 
 ```rust
 // Good - tolerance uses max(1 ULP, epsilon * |scalar_result|)
@@ -1054,7 +1068,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 - [ ] **T2**: 创建 `src/lib.rs` 骨架含 lint 声明
   - 文件: `src/lib.rs`
-  - 内容: missing_docs、unsafe_op_in_unsafe_fn、std-only lint 配置
+  - 内容: missing_docs、unsafe_op_in_unsafe_fn、clippy::unwrap_used、std-only lint 配置
   - 测试: 编译通过
   - 前置: 无
   - 预计: 5 min

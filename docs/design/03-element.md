@@ -116,6 +116,8 @@ src/element/
 
 ## 5. 公共 API 设计
 
+> **sealed 约束说明：** 以上所有公开 trait 均通过 `private::Sealed` 实现 sealed trait 模式，禁止下游 crate 为自定义类型实现这些 trait。元素类型集合为封闭集合，不支持外部扩展。
+
 ### 5.1 Element trait
 
 ```rust
@@ -193,6 +195,8 @@ pub trait Numeric:
 
 > **设计决策：** `Numeric` 在保留通用算术分层的同时，通过 `Numeric::conjugate()` 统一提供共轭语义：实数类型为恒等操作，复数类型执行数学共轭。`ComplexScalar` 保留复数专用能力（`re`/`im`/`norm`），不再单独承担 `conjugate` 的唯一 trait 入口角色。这与 `01-architecture.md`、`11-math.md`、`12-matrix.md` 的泛型约定保持一致。
 >
+> **`conjugate()` 语义说明：** `conjugate()` 为泛型算法统一入口；对实数类型返回恒等值（自身），对复数类型返回共轭。此方法不代表所有 `Numeric` 类型均具备复数运算能力。
+>
 > **整数算术契约**：`Add/Sub/Mul/Div/Neg` 只表达运算符可用性，不单独定义 Xenon 的溢出语义。凡需求文档要求“溢出/除零/结果不可表示即 panic”的整数运算路径，具体模块必须通过 checked 标量原语或等价显式检查落实，不得仅凭原生运算符 trait 假定语义成立。
 
 ### 5.2a Signum trait
@@ -259,21 +263,21 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
     fn floor(self) -> Self;
     fn ceil(self) -> Self;
 
-    // ========== Constants ==========
-    // Internal convenience accessors only; keep the minimum set actually needed.
+    // ========== Stable public contract ==========
+    fn is_nan(self) -> bool;
+
+    // ========== Internal helper methods (not stable public contract) ==========
+    // The following methods are reused by internal modules in the current version.
+    // They are not part of the current stable public API contract and may be
+    // promoted later only if future requirement specs explicitly require them.
     fn epsilon() -> Self;
     fn min_positive() -> Self;
     fn max_value() -> Self;
     fn infinity() -> Self;
     fn neg_infinity() -> Self;
     fn nan() -> Self;
-
-    // ========== Special value detection ==========
-    fn is_nan(self) -> bool;
     fn is_infinite(self) -> bool;
     fn is_finite(self) -> bool;
-
-    // ========== NaN-propagating min/max ==========
     fn min(self, other: Self) -> Self;
     fn max(self, other: Self) -> Self;
 }
@@ -284,6 +288,9 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
 > **跨模块约束：** `math`、`reduction`、`format` 等任何需要依赖该语义的模块，必须调用 `RealScalar::min()` / `RealScalar::max()` 或与其完全等价的封装，不得直接退回标准库固有方法，否则会破坏 Xenon 在 NaN 传播上的统一契约。
 >
 > **`signum` 语义补充：** `RealScalar::signum()` 明确采用 IEEE 754 sign-function 语义：保留带符号零，`NaN` 传播为 `NaN`，无穷值返回对应符号的单位值。`11-math.md` 中张量级 `signum()` 的浮点语义以此 trait 契约为权威基线；整数 `signum` 仍按比较结果返回 `-1/0/1`。
+>
+> **注意**：以下 `RealScalar` 方法仅供库内部模块复用，不构成当前版本的公开稳定契约。仅当需求说明书后续版本显式要求时，方可提升为公开稳定能力。
+> 适用范围包括：`epsilon()`、`min_positive()`、`max_value()`、`infinity()`、`neg_infinity()`、`nan()`、`is_infinite()`、`is_finite()`、`min()`、`max()`。
 >
 > **常量访问器说明：** `epsilon`、`min_positive`、`max_value`、`infinity`、`neg_infinity`、`nan` 为内部辅助方法，保留当前版本实际需要的最小集。以下常量访问器为实现便利，不构成稳定 API 承诺。
 >
@@ -370,6 +377,8 @@ impl BoolElement for bool {
 
 ### 5.7 Sealed trait 策略
 
+> **sealed 模式声明：** `Element`、`Numeric`、`RealScalar`、`ComplexScalar` 全部通过共享的 `private::Sealed` 基础设施实现 sealed trait 模式。下游 crate 只能使用 Xenon 已声明的元素类型，不能为自定义类型补充这些 trait 实现。
+
 ```rust
 // src/element/mod.rs
 // Uses the shared Sealed trait from crate::private
@@ -433,6 +442,8 @@ let c = &a + &b64;
 ### 5.9 CastTo\<T\> trait（类型转换）
 
 `CastTo<T>` 的 trait 定义位于 `src/element/mod.rs`，具体 impl 与错误构造示例统一放在 `src/convert/cast.rs`；`convert/` 负责消费该 trait 并承载受支持转换矩阵的实现（参见 `21-type.md §5.1`），不在其他模块重复定义或分散实现。
+
+> **位置说明：** `CastTo<T>` 的语义定义和转换规则详见 `21-type.md`，本节仅定义其在元素层 trait 体系中的位置。
 
 ```rust
 // src/element/mod.rs

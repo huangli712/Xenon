@@ -296,11 +296,11 @@ impl ElementType {
 | API | 基准 | 说明 |
 |-----|------|------|
 | `as_ptr()` / `as_mut_ptr()` | 逻辑首元素 | 对非空张量返回第一个逻辑元素的指针；空张量返回 dangling |
-| `TensorExport.data` | 逻辑首元素 | 非空张量时等于逻辑首元素地址；空张量时为有效对齐但不可解引用的指针 |
+| `TensorExport.data` | storage base pointer | 非空张量时等于底层存储的基地址；空张量时为有效对齐但不可解引用的指针 |
 | `BlasInfo.data_ptr` | 逻辑首元素 | 等价于 `as_ptr()` |
 | `try_ptr_at(indices)` | 指定逻辑位置 | 基于 `as_ptr() + offset` 计算 |
 
-> **语义统一说明：** Xenon 在 FFI 边界统一规定 `TensorExport*.data` 表示逻辑首元素指针。`offset` 与 `storage_len` 仍保留，用于跨语言校验底层可访问范围以及与 raw-parts 契约对齐；调用方不得再将 `data` 解释为独立的 storage base pointer。
+> **指针语义统一**：`TensorExport.data` 和 `TensorExportMut.data` 指向底层存储的基地址（storage base pointer），与 `from_raw_parts()` 的 `ptr` 参数语义一致。逻辑首元素地址可通过 `base_ptr + offset` 计算。
 
 ````rust,ignore
 /// Raw tensor data export for FFI consumers.
@@ -319,15 +319,16 @@ impl ElementType {
 ///   `TensorExportMut` is the writable export form and uses `*mut A`.
 #[repr(C)]
 pub struct TensorExport<'a, A> {
-    /// Typed pointer to the logical first element.
+    /// Typed pointer to the storage base pointer.
     ///
-    /// For non-empty tensors this points at the first logical element.
+    /// For non-empty tensors this points at the underlying storage base.
     /// For empty tensors (`len() == 0`), this is still a valid aligned pointer
     /// but must not be dereferenced.
     ///
     /// `strides` and `offset` use element units of `A`.
     /// C consumers must cast `data` to the matching element type and interpret
     /// both `offset` and `strides` as element counts rather than byte counts.
+    /// The logical first element address is `data.add(offset)` when `len() != 0`.
     ///
     pub data: *const A,
     /// Lifetime marker tying the export to the source tensor borrow.
@@ -353,15 +354,16 @@ pub struct TensorExport<'a, A> {
 /// Raw mutable tensor data export for FFI consumers.
 #[repr(C)]
 pub struct TensorExportMut<'a, A> {
-    /// Typed pointer to the logical first element.
+    /// Typed pointer to the storage base pointer.
     ///
-    /// For non-empty tensors this points at the first logical element.
+    /// For non-empty tensors this points at the underlying storage base.
     /// For empty tensors (`len() == 0`), this is still a valid aligned pointer
     /// but must not be dereferenced.
     ///
     /// `strides` and `offset` use element units of `A`.
     /// C consumers must cast `data` to the matching element type and interpret
     /// both `offset` and `strides` as element counts rather than byte counts.
+    /// The logical first element address is `data.add(offset)` when `len() != 0`.
     pub data: *mut A,
     /// Lifetime marker tying the export to the source tensor borrow.
     pub _marker: core::marker::PhantomData<&'a mut A>,
@@ -395,6 +397,8 @@ where
     /// The consumer must ensure the tensor outlives the export.
     /// This method does not fail; it always returns a valid export.
     ///
+    /// `data` always carries the storage base pointer; the logical first element
+    /// address is derived from `data.add(offset)` for non-empty tensors.
     /// Empty tensors are allowed: when `len() == 0`, `data` is a valid aligned
     /// pointer that must not be dereferenced. `shape`, `strides`, and `offset`
     /// still describe the empty tensor metadata.
@@ -424,13 +428,13 @@ where
 
 > **可写导出边界：** `export_mut()` 通过 `&mut self` 和 `S: StorageMut` 保证 Xenon 侧的独占可写访问；只读视图和共享只读存储则在 trait 边界上直接被拒绝。这与 `require.md §6` 的存储模式转换和 `§25` 的零拷贝导出要求保持一致。
 
-> **空张量约定：** 空张量上的 `as_ptr()` / `as_mut_ptr()` 必须返回有效对齐但不可解引用的 dangling 指针。导出时 `TensorExport*.data` 也遵循相同约定：它始终表示逻辑首元素位置；当 `len() == 0` 时该位置没有可解引用元素，因此调用方必须先基于长度判断是否可访问。
+> **空张量约定：** 空张量上的 `as_ptr()` / `as_mut_ptr()` 必须返回有效对齐但不可解引用的 dangling 指针。导出时 `TensorExport*.data` 也遵循相同约定：它始终表示 storage base pointer；当 `len() == 0` 时该位置没有可解引用元素，因此调用方必须先基于长度判断是否可访问。
 
-> **指针语义补充：** `TensorExport<'_, A>::data` 是 `*const A`，`TensorExportMut<'_, A>::data` 是 `*mut A`，二者语义上都始终指向逻辑首元素。对非空张量，该地址与当前布局下的可访问首元素一致；若该张量同时满足 `offset == 0`，它也恰好等于 storage base。`offset` 与 `strides` 都以"元素个数"计量，而不是字节数。
+> **指针语义补充：** `TensorExport<'_, A>::data` 是 `*const A`，`TensorExportMut<'_, A>::data` 是 `*mut A`，二者语义上都始终指向 storage base pointer。对非空张量，逻辑首元素地址需通过 `data.add(offset)` 计算；当 `offset == 0` 时，它与 storage base 重合。`offset` 与 `strides` 都以"元素个数"计量，而不是字节数。
 
 > **stride 约定：** `strides` 以"元素个数"而非字节数表示步长，类型为 `usize`。按照 `06-layout.md` §1.2 与 `require.md` §7，当前版本 Xenon 不支持负步长，因此 FFI 导出格式也不保留负 stride 语义。`from_raw_parts()` 允许零步长布局以表达广播只读视图；`from_raw_parts_mut()` 则拒绝所有非空零步长布局（即任何非单元素轴的 `stride == 0` 都会报错）。
 
-> **offset 约定：** `offset` 记录与 `07-tensor.md` raw-parts 契约一致的逻辑偏移元数据，单位始终是元素个数而不是字节数。即使导出结构中的 `data` 已直接指向逻辑首元素，C 调用方也不得把 `offset` 改写为新的指针基准；它仅用于视图重建、范围校验和与 Xenon 原始布局元数据对齐。
+> **offset 约定：** `offset` 记录与 `07-tensor.md` raw-parts 契约一致的逻辑偏移元数据，单位始终是元素个数而不是字节数。导出结构中的 `data` 始终指向 storage base pointer，C 调用方应通过 `data + offset` 还原逻辑首元素地址；`offset` 本身仍仅用于视图重建、范围校验和与 Xenon 原始布局元数据对齐。
 
 > **ndim 一致性约定：** C 消费者须以 `ndim` 为 `shape` 和 `strides` 数组的长度，不得以硬编码长度或其它来源替代。`TensorExport` 的构造保证 `shape` 和 `strides` 指向的数组长度均等于 `ndim`。
 
@@ -1120,7 +1124,7 @@ unsafe {
 
 ### 6.2 元数据校验算法 (`validate_access_range`)
 
-`from_raw_parts()` / `from_raw_parts_mut()` 内部调用 `validate_access_range()` 验证元数据合法性。算法如下：
+`from_raw_parts()` / `from_raw_parts_mut()` 内部调用 `validate_access_range()` 验证元数据合法性。当前版本 stride 全为非负 `usize`，因此 `logical_min` 恒等于 `offset`。算法如下：
 
 ```
 validate_access_range(shape, strides, offset, storage_len):
@@ -1128,14 +1132,14 @@ validate_access_range(shape, strides, offset, storage_len):
     2. Compute total_elements = product(shape) with checked multiplication;
        on overflow, return Err(IntegerOverflow).
     3. If total_elements == 0: skip pointer-range checks (empty tensor).
-    4. Compute the minimum and maximum element offsets that any logical element
-       can reach, using checked subtraction / multiplication / addition:
+    4. Compute the maximum element offset that any logical element can
+       reach, using checked multiplication / addition:
           For each axis i in [0, ndim):
             if shape[i] > 0:
               axis_extent = checked_mul(shape[i] - 1, strides[i])
-              track axis-wise min/max contribution
-          logical_min = checked_add(offset, sum of min contributions)
-          logical_max = checked_add(offset, sum of max contributions)
+              accumulate max contribution
+          logical_min = offset
+          logical_max = checked_add(offset, sum of axis_extent)
        If any checked operation fails, return Err(IntegerOverflow).
     5. If logical_max >= storage_len: return Err(InvalidLayout {
            storage_kind,
