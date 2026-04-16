@@ -57,7 +57,7 @@
 | `index`              | 越界索引、按轴索引、切片边界诊断             |
 | `broadcast` / `math` | 广播失败、形状不兼容、参数非法               |
 | `reduction`          | 非法轴、空输入单位元语义、整数溢出 panic     |
-| `convert`            | `TypeConversionError` 内部映射与元素索引定位 |
+| `convert`            | 类型转换失败的元素索引定位 |
 | `ffi`                | FFI 前提失败与后端约束诊断                   |
 | `parallel`           | panic / `Err` 的尽快传播，不得静默吞掉       |
 
@@ -106,6 +106,7 @@
 ```rust,ignore
 use alloc::borrow::Cow;
 use alloc::vec::Vec;
+use core::any::TypeId;
 use core::fmt;
 
 /// Unified recoverable error type for all public Xenon APIs.
@@ -189,11 +190,21 @@ pub enum XenonError {
     },
 
     Ffi {
-        reason: String,
+        operation: &'static str,
+        category: FfiErrorCategory,
+        backend: &'static str,
+        precondition: &'static str,
+        actual: Cow<'static, str>,
     },
 
     Workspace {
-        reason: String,
+        operation: Cow<'static, str>,
+        category: WorkspaceErrorCategory,
+        size: Option<usize>,
+        align: Option<usize>,
+        split: Option<usize>,
+        len: Option<usize>,
+        reason: Option<Cow<'static, str>>,
     },
 
     IndexOutOfBounds {
@@ -203,51 +214,29 @@ pub enum XenonError {
         shape: Vec<usize>,
     },
 
-    TypeConversion(TypeConversionError),
-}
-
-/// Module-internal payload for XenonError::TypeConversion.
-///
-/// This definition is the single authoritative source for the
-/// `TypeConversionError` payload referenced by other design documents.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TypeConversionError {
-    pub(crate) source_type: TypeId,
-    pub(crate) target_type: TypeId,
-    pub(crate) reason: ConversionFailureReason,
-    pub(crate) element_index: Option<usize>,
-}
-
-impl TypeConversionError {
-    pub(crate) fn new(
+    TypeConversion {
         source_type: TypeId,
         target_type: TypeId,
         reason: ConversionFailureReason,
         element_index: Option<usize>,
-    ) -> Self {
-        Self {
-            source_type,
-            target_type,
-            reason,
-            element_index,
-        }
-    }
+    },
+}
 
-    pub fn source_type(&self) -> TypeId {
-        self.source_type
-    }
+/// FFI error category for `XenonError::Ffi`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FfiErrorCategory {
+    InvalidRank,
+    BlasIncompatibleLayout,
+    IntegerOverflow,
+}
 
-    pub fn target_type(&self) -> TypeId {
-        self.target_type
-    }
-
-    pub fn reason(&self) -> ConversionFailureReason {
-        self.reason
-    }
-
-    pub fn element_index(&self) -> Option<usize> {
-        self.element_index
-    }
+/// Workspace error category for `XenonError::Workspace`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceErrorCategory {
+    AllocFailed,
+    InvalidLayout,
+    AlreadyBorrowed,
+    SplitOutOfBounds,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -267,50 +256,38 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 
 `XenonError` 须实现 `std::error::Error` trait，提供 `source()` 方法用于链式错误追踪。
 
-对于 `XenonError::Ffi { reason }` 和 `XenonError::Workspace { reason }` 等使用 opaque `String` 的变体，`source()` 返回 `None`。`XenonError::TypeConversion` 的 `source()` 同样返回 `None`，除非内部保留了链式错误源（当前版本不保留）。
+对于所有 `XenonError` 变体，`source()` 返回 `None`，除非内部保留了链式错误源（当前版本不保留）。
 
 公开 API 统一使用 prelude 导出的 `crate::error::Result`（即 `Result<T, XenonError>` 别名）作为返回类型。
 
-模块可以为内部实现保留局部错误分类（例如 `FfiError`、`WorkspaceError`、`TypeConversionError`），以避免在模块内部丢失语义；但凡进入 Xenon 的公开 API 边界，必须统一包装为 `XenonError`。其中 `FfiError` 与 `WorkspaceError` 只能在模块内存在；对外只能暴露不携带私有类型名的 opaque 公开变体（如 `XenonError::Ffi { reason }`、`XenonError::Workspace { reason }`、`XenonError::TypeConversion(...)`）。
-
-`WorkspaceError` 与 `FfiError` 可以在模块内部实现 `std::error::Error` 以服务局部链路诊断，但公开 `XenonError` 不得因 `source()` 或公开变体签名而泄漏这些私有类型。
-
-> **内部错误说明：** `FfiError` 与 `WorkspaceError` 仍可保留结构化字段设计，具体字段定义分别参见 `23-ffi.md` 与 `24-workspace.md`；公开边界只要求把这些诊断压缩为稳定的 `reason` 文本。
+所有可恢复错误直接以 `XenonError` 结构化变体返回，不使用模块内部错误类型。每个变体携带适用的结构化字段，满足 `需求说明书 §27` 对公开诊断信息的要求。
 
 > **存储模式转换说明：** 存储模式转换失败统一使用 `XenonError::InvalidStorageMode`，并携带 `source_storage_mode`、`target_storage_mode`、`conversion_type` 字段；当某个调用点并不涉及显式存储模式转换时，这些字段可为 `None`。
 
-### 4.2.1 公开 API 边界映射
+### 4.2.1 公开 API 边界规则
 
-| 边界位置               | 规则                                                     |
-| ---------------------- | -------------------------------------------------------- |
-| Public API return type | `Result<_, XenonError>`                                  |
-| Internal mapping       | `WorkspaceError -> XenonError::Workspace { reason }`     |
-| Internal mapping       | `FfiError -> XenonError::Ffi { reason }`                 |
-| Internal mapping       | `TypeConversionError -> XenonError::TypeConversion(...)` |
+| 边界位置               | 规则                          |
+| ---------------------- | ----------------------------- |
+| Public API return type | `Result<_, XenonError>`       |
+| 错误构造方式           | 直接构造 `XenonError` 结构化变体，不经过中间错误类型映射 |
 
-该表为公开错误边界的唯一基线；其他设计文档若在公开 API 层直接暴露 `WorkspaceError`、`FfiError` 或独立的 `TypeConversionError`，均视为与本文冲突，必须以本文为准修正。
+该表为公开错误边界的唯一基线。
 
 ### 4.3 类型转换错误规范
 
 `cast()` 的错误模型须与 `21-type.md` 保持一致：
 
 - `cast<B>(&self)` 返回 `Result<Tensor<B, D>, XenonError>`
-- 任何被 `需求说明书 §23` 判定为有损的默认转换组合，都须返回 `XenonError::TypeConversion(TypeConversionError)`
+- 任何被 `需求说明书 §23` 判定为有损的默认转换组合，都须返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }`
 - 仅当需求显式给出附加成功前提时，满足前提后才可成功
-- `Complex -> Real` 不是编译期拒绝；当 `im == 0` 时允许继续转换，否则返回 `XenonError::TypeConversion(TypeConversionError)`
+- `Complex -> Real` 不是编译期拒绝；当 `im == 0` 时允许继续转换，否则返回 `XenonError::TypeConversion { ... }`
 - `bool` 不参与逐元素类型转换，因此不得用 `TypeConversion` 为 `bool` 扩大支持范围
 
-规范名称固定为 `XenonError::TypeConversion(TypeConversionError)`：
-
-- `TypeConversionError` 是模块内部载荷结构，不是公开错误边界上的独立错误类型
-- `03-element.md`、`04-complex.md` 及其他文档引用类型转换失败时，只能引用 `XenonError::TypeConversion(TypeConversionError)`
-- 不得再把独立 `TypeConversionError` 写成公开 API 可直接返回的错误类型
-
-> **可见性**：`TypeConversionError` 的字段为 `pub(crate)`，模块间通过 `new(source_type, target_type, reason, element_index)` 构造器和公开访问器方法操作。`convert` 模块等内部模块通过 `pub(crate)` 构造器创建实例，公开 API 返回此类型时用户通过访问器方法读取诊断信息。
+类型转换失败统一通过 `XenonError::TypeConversion { source_type, target_type, reason, element_index }` 返回，其中字段为公开字段，用户可直接通过模式匹配访问。
 
 ```rust,ignore
 pub trait CastTo<T> {
-    fn cast_to(self) -> Result<T, TypeConversionError>;
+    fn cast_to(self) -> Result<T, XenonError>;
 }
 
 // Good - cast is fallible and reports the failing element.
@@ -321,12 +298,18 @@ where
     let mut out = Vec::with_capacity(self.len());
     for (index, value) in self.iter().enumerate() {
         let converted = value.cast_to().map_err(|err| {
-            XenonError::TypeConversion(TypeConversionError::new(
-                err.source_type(),
-                err.target_type(),
-                err.reason(),
-                Some(index),
-            ))
+            // Preserve the conversion error, enriching with element index.
+            match err {
+                XenonError::TypeConversion { source_type, target_type, reason, .. } => {
+                    XenonError::TypeConversion {
+                        source_type,
+                        target_type,
+                        reason,
+                        element_index: Some(index),
+                    }
+                }
+                other => other,
+            }
         })?;
         out.push(converted);
     }
@@ -345,8 +328,6 @@ where
 }
 ```
 
-> **边界说明：** `Ffi` / `Workspace` 当前仍为 `reason: String` 的 opaque 公开包装；对应模块内部会先构造带结构化字段的 `FfiError` / `WorkspaceError`，再折叠成字符串。该设计与 `需求说明书 §27` 对公开结构化诊断的期望存在张力；若要把这些字段提升到 `XenonError` 的公开变体，必须作为统一错误枚举的独立设计变更评审，而非在局部模块文档中各自扩写。
-
 ### 4.4 结构化上下文字段要求
 
 所有错误变体都须带“错误类别 + 适用上下文”的结构化字段；仅字符串消息不足以满足要求。
@@ -362,10 +343,10 @@ where
 | `DimensionMismatch`                   | `operation`, `expected`, `actual`                                                                                                                                                      |
 | `InvalidArgument`                     | `operation`, `argument`, `expected`, `actual`, `axis?`, `axis_len?`, `start?`, `end?`, `shape?`；范围切片越界时必须额外携带 `axis`、`axis_len`、`start`、`end`，不得仅以字符串拼接描述 |
 | `InvalidStorageMode`                  | `operation`, `expected`, `actual`, `shape?`, `source_storage_mode?`, `target_storage_mode?`, `conversion_type?`                                                                        |
-| `Ffi { reason }`                      | 由内部 `FfiError` 归一化生成公开 `reason`；不得在公开 API 中暴露 `FfiError` 类型名                                                                                                     |
-| `Workspace { reason }`                | 由内部 `WorkspaceError` 归一化生成公开 `reason`；不得在公开 API 中暴露 `WorkspaceError` 类型名                                                                                         |
+| `Ffi`                                 | `operation`, `category`, `backend`, `precondition`, `actual`                                                                                                                           |
+| `Workspace`                           | `operation`, `category`, `size?`, `align?`, `split?`, `len?`, `reason?`                                                                                                                |
 | `IndexOutOfBounds`                    | `operation`, `attempted_index`, `axis`, `shape`；`attempted_index` 表示完整多维索引 tuple，`axis` 指出首个越界维度                                                                     |
-| `TypeConversion(TypeConversionError)` | `source_type`, `target_type`, `reason`, `element_index?`                                                                                                                               |
+| `TypeConversion`                      | `source_type`, `target_type`, `reason`, `element_index?`                                                                                                                               |
 
 > **分配成本说明：** `attempted_index: Vec<usize>`、`shape: Vec<usize>` 以及 `InvalidArgument` / `InvalidStorageMode` 中的可选 `Vec<usize>` 字段会带来少量堆分配成本；这是当前版本可接受的诊断开销，用于换取跨公开 API 的一致结构化上下文。
 
@@ -523,17 +504,54 @@ impl fmt::Display for XenonError {
                 target_storage_mode.as_deref().unwrap_or("<any>"),
                 conversion_type.as_deref().unwrap_or("<any>"),
             ),
-            Self::Ffi { reason } => write!(f, "ffi error: {}", reason),
-            Self::Workspace { reason } => write!(f, "workspace error: {}", reason),
-            Self::TypeConversion(err) => write!(
+            Self::Ffi {
+                operation,
+                category,
+                backend,
+                precondition,
+                actual,
+            } => write!(
                 f,
-                "type conversion failed at element {}: {} -> {} ({:?})",
-                err.element_index()
+                "ffi error in {}: {:?} (backend={}, precondition={}, actual={})",
+                operation,
+                category,
+                backend,
+                precondition,
+                actual,
+            ),
+            Self::Workspace {
+                operation,
+                category,
+                size,
+                align,
+                split,
+                len,
+                reason,
+            } => write!(
+                f,
+                "workspace error in {}: {:?}, size={}, align={}, split={}, len={}, reason={}",
+                operation,
+                category,
+                size.map(|v| v.to_string()).unwrap_or_else(|| "<any>".to_string()),
+                align.map(|v| v.to_string()).unwrap_or_else(|| "<any>".to_string()),
+                split.map(|v| v.to_string()).unwrap_or_else(|| "<any>".to_string()),
+                len.map(|v| v.to_string()).unwrap_or_else(|| "<any>".to_string()),
+                reason.as_deref().unwrap_or("<any>"),
+            ),
+            Self::TypeConversion {
+                source_type,
+                target_type,
+                reason,
+                element_index,
+            } => write!(
+                f,
+                "type conversion failed at element {}: {:?} -> {:?} ({:?})",
+                element_index
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "<any>".to_string()),
-                err.source_type(),
-                err.target_type(),
-                err.reason(),
+                source_type,
+                target_type,
+                reason,
             ),
             Self::IndexOutOfBounds {
                 operation,

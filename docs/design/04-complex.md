@@ -670,7 +670,7 @@ fn scalar_is_positive_zero<T: PositiveZero>(im: T) -> bool {
 
 > **统一转换入口说明：** `Complex` 类型的逐元素类型转换统一由 `03-element.md` 定义的 `CastTo<T>` trait 管理，trait 定义位于 `element` 模块，具体实现归入 `convert/` 模块；本节不再单独定义张量级转换入口。`From` 仅用于**不可能失败且不丢失精度**的标量级构造或 widening：`From<T> for Complex<T>`（实数到同精度复数，虚部补 `0`）与 `From<Complex<f32>> for Complex<f64>`（分量无损 widening）。其中 `From<T> for Complex<T>` 是当前版本**唯一**允许的显式实数到复数标量构造路径。
 
-> **错误边界说明：** `CastTo<T>` 是公开 sealed trait，其内部返回 `TypeConversionError` 是实现机制；最终用户通过公开 API（`cast()`）消费时，错误统一映射为 `XenonError::TypeConversion(TypeConversionError)`。
+> **错误边界说明：** `CastTo<T>` 直接返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }`。
 
 除上述 infallible 构造外，其余显式类型转换统一通过 `CastTo<T>` trait 实现（参见 `03-element.md` §5.9 和 `21-type.md`），包括 `Complex<f64> -> Complex<f32>`、`Complex<T> -> T` 以及其他跨精度/跨类型组合；其中有损窄化路径默认返回可恢复错误。
 
@@ -680,12 +680,12 @@ fn scalar_is_positive_zero<T: PositiveZero>(im: T) -> bool {
 
 | 源类型 | 目标类型 | 语义 | 默认行为 |
 |--------|----------|------|---------|
-| `Complex<f32>` | `f32` | 仅当虚部为 `0` 时返回实部 | `CastTo<T>` trait 级返回 `TypeConversionError`；公开 API 统一包装为 `XenonError::TypeConversion(...)` |
-| `Complex<f64>` | `f64` | 仅当虚部为 `0` 时返回实部 | `CastTo<T>` trait 级返回 `TypeConversionError`；公开 API 统一包装为 `XenonError::TypeConversion(...)` |
-| `Complex<f32>` | `f64` | 仅当虚部为 `0` 时，按 `f32→f64` 规则转换实部 | `CastTo<T>` trait 级返回 `TypeConversionError`；公开 API 统一包装为 `XenonError::TypeConversion(...)` |
-| `Complex<f64>` | `f32` | 仅当虚部为 `0` 时，按 `f64→f32` 规则转换实部 | `CastTo<T>` trait 级返回 `TypeConversionError`；公开 API 统一包装为 `XenonError::TypeConversion(...)` |
+| `Complex<f32>` | `f32` | 仅当虚部为 `0` 时返回实部 | `CastTo<T>` 返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }` |
+| `Complex<f64>` | `f64` | 仅当虚部为 `0` 时返回实部 | `CastTo<T>` 返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }` |
+| `Complex<f32>` | `f64` | 仅当虚部为 `0` 时，按 `f32→f64` 规则转换实部 | `CastTo<T>` 返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }` |
+| `Complex<f64>` | `f32` | 仅当虚部为 `0` 时，按 `f64→f32` 规则转换实部 | `CastTo<T>` 返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }` |
 
-> **实现片段省略：** `Complex -> Real` 的具体 `CastTo<T>` 实现同样位于 `convert/cast.rs`。`complex/` 仅保留“虚部必须为 `0`；trait 级失败返回 `TypeConversionError`，公开 API 统一映射为 `XenonError::TypeConversion(TypeConversionError)`”这一语义约束，字段模型以 `26-error.md §4.2` / `§4.4` 为准。
+> **实现片段省略：** `Complex -> Real` 的具体 `CastTo<T>` 实现同样位于 `convert/cast.rs`。`complex/` 仅保留“虚部必须为 `0`；失败返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }`”这一语义约束，字段模型以 `26-error.md §4.2` / `§4.4` 为准。
 
 > **`-0.0` 补充说明：** 复数到实数转换对“虚部是否为零”的判断遵循 IEEE 754 比较语义；因此 `-0.0` 视为零，`Complex::new(3.0, -0.0)` 允许按虚部为零的路径继续转换，不应被误判为非零虚部。
 
@@ -1096,7 +1096,7 @@ User constructs `Complex<f64>::new(re, im)`
 
 | 项目           | 内容 |
 | -------------- | ---- |
-| Recoverable error | `CastTo<T>` trait 级的有损窄化路径返回 `TypeConversionError`；跨公开 API 边界时统一包装为 `XenonError::TypeConversion(TypeConversionError)` |
+| Recoverable error | `CastTo<T>` trait 级的有损窄化路径返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }` |
 | Panic | 本模块常规复数运算与方法不以 panic 作为错误通道；若调用底层标准库浮点 API，遵循其既有语义 |
 | 路径一致性 | scalar 路径与普通标量实现必须一致；SIMD：不适用；parallel：不适用 |
 | 容差边界 | 复数数值测试采用显式容差；布局、格式化与类型边界测试不适用 |

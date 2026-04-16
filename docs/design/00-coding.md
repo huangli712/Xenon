@@ -743,9 +743,10 @@ src/
 
 ### 7.1 `lib.rs` 项目级 lint 基线
 
-`lib.rs` 必须声明项目级统一 lint 基线；其中 `#![warn(clippy::unwrap_used)]` 是整个项目库代码的统一要求，不得在其他模块或文档片段中弱化或省略。本节的 `lib.rs` lint 列表是权威来源。`01-architecture.md §8` 及其他文档中的 `lib.rs` 片段须与本节保持一致。
->
-> **CI 强制执行**：开发期间使用 `warn` 级别；CI 中应分别执行 `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps`（rustdoc 警告）、`cargo clippy -- -D warnings`（Clippy 警告），并在需要把常规编译警告也提升为错误时额外使用 `RUSTFLAGS="-D warnings" cargo check`。
+`lib.rs` 必须声明项目级统一 lint 基线。其中 `#![warn(clippy::unwrap_used)]` 是整个项目库代码的统一要求，不得在其他模块或文档片段中弱化或省略。开发期间使用 `warn` 级别。CI 中应分别执行 `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps`（rustdoc 警告）、`cargo clippy -- -D warnings`（Clippy 警告），并在需要把常规编译警告也提升为错误时额外使用 `RUSTFLAGS="-D warnings" cargo check`。
+
+本节的 `lib.rs` lint 列表是权威来源。`01-architecture.md §8` 及其他文档中的 `lib.rs` 片段须与本节保持一致。
+
 
 ```rust,ignore
 // src/lib.rs
@@ -872,9 +873,6 @@ mod tests {
 | 高维 `shape=[2,2,2,2,2,2]` | 正确计算偏移              |
 | 大张量 `shape=[10_000_000]` 或 GiB 级输入 | 不栈溢出，且边界检查保持可恢复错误语义 |
 | Subnormal 浮点数           | 不 flush to zero          |
-| 需求说明书 §28.4 占位：large-tensor   | 后续补充超大张量边界回归用例 |
-| 需求说明书 §28.4 占位：high-dim       | 后续补充高维 shape / stride / index 回归用例 |
-| 需求说明书 §28.4 占位：extreme-value  | 后续补充极值/特殊值数值回归用例 |
 
 ### 8.3 测试分类
 
@@ -887,13 +885,15 @@ mod tests {
 
 ### 8.4 测试覆盖率与数值精度
 
-**覆盖率与质量门槛**：
+覆盖率与质量门槛：
 
 - unsafe 代码块必须有对应测试
 - 每个公开 API 至少一个正向 + 一个负向测试
-- 如仓库后续引入覆盖率门槛，应作为可选 CI 质量信号维护，不得写成超出 `需求说明书 §28` 的硬性发布准入条件
 
-**浮点比较**：对存在舍入误差容差的数值路径，使用近似比较；对比较 API 自身、布尔结果、文档明确要求精确一致的场景，允许/要求精确断言。参见 `需求说明书 §12`（NaN 遵循 IEEE 754）和 `需求说明书 §28.3`。
+浮点比较：
+
+- 对存在舍入误差容差的数值路径，使用近似比较
+- 对比较 API 自身、布尔结果、文档明确要求精确一致的场景，允许/要求精确断言
 
 ```rust,ignore
 // Good - tolerance uses max(1 ULP, epsilon * |scalar_result|)
@@ -978,8 +978,6 @@ where
 [features]
 parallel = ["dep:rayon"]      # Additive: enables internal parallel execution backend
 simd = ["dep:pulp"]           # Additive: enables SIMD with std-backed intrinsics
-# Note: libm is NOT a dependency (see 01-architecture.md §1.4).
-# RealScalar math functions (sin/exp/ln) rely on Xenon's unconditional std baseline.
 ```
 
 ### 10.2 使用 `dep:` 语法声明可选依赖
@@ -992,7 +990,7 @@ pulp = { version = "0.18", optional = true }
 
 ### 10.3 `cfg_attr(docsrs, doc(cfg(...)))` 标注条件编译 API
 
-```rust
+```rust,ignore
 /// Internal parallel execution backend marker.
 #[cfg(feature = "parallel")]
 #[cfg_attr(docsrs, doc(cfg(feature = "parallel")))]
@@ -1011,11 +1009,11 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 ```
 
-## 平台与工程约束
+## 11. 平台与工程约束
 
 | 约束项     | 要求                                                             |
 | ---------- | ---------------------------------------------------------------- |
-| `std` only | 所有代码依赖 `std`，不讨论 `no_std`                              |
+| `std` only | 所有代码依赖 `std`                                               |
 | MSRV       | Rust 1.85+                                                       |
 | 单 crate   | 保持单 crate 边界，不引入额外 crate                              |
 | SemVer     | 遵循 SemVer，公开 API 变更须同步版本号                           |
@@ -1023,7 +1021,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 ---
 
-## 11. 实现任务拆分
+## 12. 实现任务拆分
 
 ### Wave 1: 规范基础设施
 
@@ -1058,8 +1056,6 @@ rustdoc-args = ["--cfg", "docsrs"]
   - 预计: 10 min
 
 > **CI 策略补充说明：** `cargo fmt --check`、`cargo test`、关键 compile-fail/文档检查哪些属于阻塞发布的 hard gate，哪些仅作为 advisory 信号，仍需项目级统一裁决；本规范只定义建议纳入的检查项，不越权替代仓库治理决策。
->
-> **工程治理说明：** 以下为工程治理建议，不构成 `需求说明书 §28` 当前版本的规范性基线。
 
 ### 并行执行分组图
 
@@ -1074,7 +1070,7 @@ Wave 2: [T4]
 
 ---
 
-## 验证与落地方式
+## 13. 验证与落地方式
 
 | 测试函数                    | 测试内容                  | 优先级 |
 | --------------------------- | ------------------------- | ------ |
@@ -1085,9 +1081,9 @@ Wave 2: [T4]
 
 > **覆盖补充：** 边界类（空张量/单元素/大张量/极值/高维/非法元素类型）、并行/SIMD 路径一致性、compile-fail 约束测试由对应模块文档（`27-benchmark.md §8`、`28-tests.md §8`）具体定义。
 
-## 12. 验证补充
+## 14. 验证补充
 
-### 12.1 Feature gate / 配置测试
+### 14.1 Feature gate / 配置测试
 
 | 配置        | 验证点                                           |
 | ----------- | ------------------------------------------------ |
@@ -1096,7 +1092,7 @@ Wave 2: [T4]
 | 启用并行    | 条件编译代码仍遵循相同错误语义、测试与注释要求    |
 | 全 feature  | 所有 feature 组合下格式、lint 与文档检查口径一致 |
 
-### 12.2 类型边界 / 编译期测试
+### 14.2 类型边界 / 编译期测试
 
 | 场景                         | 测试方式                                 |
 | ---------------------------- | ---------------------------------------- |
@@ -1110,13 +1106,7 @@ Wave 2: [T4]
 
 ---
 
-## 错误处理与语义边界
-
-本文档不直接定义错误类型，但要求所有受影响模块遵循 `26-error.md` 的错误语义边界；编码规范只约束 `Result`、panic、`unsafe` 注释与文档节的写法，不单独裁决公开 API 的错误分类。
-
----
-
-## 13. 设计决策记录
+## 15. 设计决策记录
 
 > **架构交叉引用**：F-order 单一布局、封闭元素类型集合与单一 `XenonError` 错误枚举的正式架构决策已记录于 `01-architecture.md §13`；本节仅保留这些决策对编码规范与实现约束的直接影响，便于在编码语境中引用。
 

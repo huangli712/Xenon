@@ -69,7 +69,7 @@ L5: ffi  <- current module
 src/
 └── ffi/
     ├── mod.rs         # Module root, re-exports
-    ├── types.rs       # FfiError and BlasInfo type definitions
+    ├── types.rs       # FfiErrorCategory and BlasInfo type definitions
     ├── ptr.rs         # Raw-pointer APIs (as_ptr, as_mut_ptr, from_raw_parts, from_raw_parts_mut, into_raw_parts)
     ├── blas.rs        # BLAS compatibility checks (is_blas_layout_compatible, blas_info, lda)
     └── offset.rs      # Multi-dimensional index to pointer offset (try_offset_of, try_ptr_at)
@@ -80,7 +80,7 @@ src/
 | 文件        | 职责                                                                                        |
 | ----------- | ------------------------------------------------------------------------------------------- |
 | `mod.rs`    | 模块入口，导出公共 API                                                                      |
-| `types.rs`  | `FfiError` 枚举、`BlasInfo` 结构体                                                          |
+| `types.rs`  | `FfiErrorCategory` 枚举、`BlasInfo` 结构体                                                  |
 | `ptr.rs`    | 原始指针访问（`as_ptr`/`as_mut_ptr`）和裸指针构造/解构（`from_raw_parts`/`into_raw_parts`） |
 | `blas.rs`   | BLAS 兼容性检查和参数查询（`is_blas_layout_compatible`/`blas_info`/`lda`）                  |
 | `offset.rs` | 多维索引到偏移量和指针转换（`try_offset_of`、`try_ptr_at`）                                 |
@@ -106,7 +106,7 @@ src/ffi/
 │   ├── crate::tensor        # TensorBase<S, D>
 │   ├── crate::storage       # Storage
 │   ├── crate::layout        # is_f_contiguous, has_zero_stride
-│   ├── super::types         # BlasInfo, FfiError
+│   ├── super::types         # BlasInfo, FfiErrorCategory
 │   └── super::ptr           # as_ptr
 └── offset.rs
     ├── crate::tensor        # TensorBase<S, D>
@@ -144,62 +144,13 @@ src/ffi/
 ### 5.1 辅助类型
 
 ```rust,ignore
-/// Internal error classification for FFI-specific failures.
-///
-/// # Diagnostics Design
-///
-/// `FfiError` uses `&'static str` for the `operation`, `backend`, and
-/// `precondition` fields to maintain zero-allocation, compile-time-known
-/// structured formatting. The `actual` field uses `Cow<'static, str>` to
-/// accommodate runtime dynamic context (e.g., actual ndim value, shape, etc.).
-/// This design satisfies `需求说明书 §27` diagnostics requirements: the error
-/// category is identified by the enum variant, and the triggering context is
-/// carried by `actual`.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum FfiError {
-    InvalidRank {
-        operation: &'static str,
-        backend: &'static str,
-        precondition: &'static str,
-        actual: alloc::borrow::Cow<'static, str>,
-    },
-    BlasIncompatibleLayout {
-        operation: &'static str,
-        backend: &'static str,
-        precondition: &'static str,
-        actual: alloc::borrow::Cow<'static, str>,
-    },
-    IntegerOverflow {
-        operation: &'static str,
-        backend: &'static str,
-        precondition: &'static str,
-        actual: alloc::borrow::Cow<'static, str>,
-    },
-}
+use crate::error::FfiErrorCategory;
 
-/// Internal ffi-module errors are converted to the public
-/// `XenonError::Ffi { reason: String }` variant before crossing
-/// Xenon's public API boundary.
-impl From<FfiError> for XenonError {
-    fn from(value: FfiError) -> Self {
-        XenonError::Ffi {
-            reason: value.to_string(),
-        }
-    }
-}
-
-impl core::fmt::Display for FfiError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl std::error::Error for FfiError {}
+/// FFI-specific recoverable errors are constructed directly as
+/// `XenonError::Ffi { operation, category, backend, precondition, actual }`.
+/// `FfiErrorCategory` identifies the failure class, while the remaining fields
+/// carry structured diagnostics required by `需求说明书 §27`.
 ```
-
-> **公开边界说明：** `FfiError` 是 `ffi` 模块内部使用的 `pub(crate)` 错误分类，不对 crate 外 re-export。所有公共 FFI 相关错误都必须先在模块内部构造 `FfiError`，再于公开边界统一转换为 `XenonError::Ffi { reason }` 返回；公开 API 不得出现 `FfiError` 类型名或 `XenonError::Ffi(FfiError)` 这类签名。
->
-> **诊断一致性说明：** `需求说明书 §27` 倾向公开恢复性错误携带结构化上下文；当前 `XenonError::Ffi { reason }` 仍是 opaque 包装，而结构化字段保留在模块内部 `FfiError`。是否把这些字段提升到公开 `XenonError` 变体属于统一错误枚举的设计变更，需与 `26-error.md` 一并评审，本次仅在文档中显式记录该边界。
 
 ### 5.2 原始指针 API
 
@@ -845,6 +796,8 @@ where
 ### 5.6 blas_info 和 BlasInfo 结构体
 
 ````rust,ignore
+use crate::error::FfiErrorCategory;
+
 /// BLAS/LAPACK matrix metadata.
 ///
 /// BLAS/LAPACK backends may use different integer widths. Xenon therefore keeps
@@ -867,12 +820,13 @@ impl<A> BlasInfo<A> {
     where
         I: TryFrom<usize>,
     {
-        value.try_into().map_err(|_| FfiError::IntegerOverflow {
+        value.try_into().map_err(|_| XenonError::Ffi {
             operation: "ffi::blas_info",
+            category: FfiErrorCategory::IntegerOverflow,
             backend: "blas/lapack",
             precondition: "BLAS/LAPACK integer parameter must fit target backend type",
             actual: alloc::format!("value={}", value).into(),
-        }.into())
+        })
     }
 }
 
@@ -887,8 +841,8 @@ where
     ///
     /// - `Ok(BlasInfo<A>)`: compatibility conditions met; `rows` / `cols` /
     ///   `leading_dim` are returned as raw `usize` metadata
-    /// - `Err(XenonError)`: wraps internal `FfiError` when not BLAS compatible,
-    ///   or not 2D
+    /// - `Err(XenonError::Ffi { .. })`: returned when the tensor is not 2D or
+    ///   not BLAS compatible
     ///
     /// BLAS/LAPACK 后端的整数宽度因实现而异。`blas_info()` 提供
     /// `rows`/`cols`/`leading_dim` 的原始 `usize` 值，并提供
@@ -911,20 +865,22 @@ where
     /// ```
     pub fn blas_info(&self) -> Result<BlasInfo<A>, XenonError> {
         if self.ndim() != 2 {
-            return Err(FfiError::InvalidRank {
+            return Err(XenonError::Ffi {
                 operation: "ffi::blas_info",
+                category: FfiErrorCategory::InvalidRank,
                 backend: "blas",
                 precondition: "tensor must be 2D",
                 actual: alloc::format!("ndim={}", self.ndim()).into(),
-            }.into());
+            });
         }
         if !self.is_blas_layout_compatible() {
-            return Err(FfiError::BlasIncompatibleLayout {
+            return Err(XenonError::Ffi {
                 operation: "ffi::blas_info",
+                category: FfiErrorCategory::BlasIncompatibleLayout,
                 backend: "blas",
                 precondition: "F-contiguous 2D tensor without zero strides",
                 actual: alloc::format!("shape={:?}, strides={:?}", self.shape(), self.strides()).into(),
-            }.into());
+            });
         }
 
         let data_ptr = self.as_ptr();
@@ -945,6 +901,8 @@ where
 ### 5.7 LDA 查询
 
 ````rust,ignore
+use crate::error::FfiErrorCategory;
+
 impl<S, D> TensorBase<S, D>
 where
     S: Storage,
@@ -962,7 +920,7 @@ where
     /// # Returns
     ///
     /// - `Ok(usize)`: LDA of a BLAS-compatible 2D array
-    /// - `Err(XenonError)`: wraps internal `FfiError` for non-BLAS-compatible 2D input
+    /// - `Err(XenonError::Ffi { .. })`: returned for non-BLAS-compatible 2D input
     ///
     /// # Example
     ///
@@ -973,20 +931,22 @@ where
     /// ```
     pub fn lda(&self) -> Result<usize, XenonError> {
         if self.ndim() != 2 {
-            return Err(FfiError::InvalidRank {
+            return Err(XenonError::Ffi {
                 operation: "ffi::lda",
+                category: FfiErrorCategory::InvalidRank,
                 backend: "blas",
                 precondition: "tensor must be 2D",
                 actual: alloc::format!("ndim={}", self.ndim()).into(),
-            }.into());
+            });
         }
         if !self.is_blas_layout_compatible() {
-            return Err(FfiError::BlasIncompatibleLayout {
+            return Err(XenonError::Ffi {
                 operation: "ffi::lda",
+                category: FfiErrorCategory::BlasIncompatibleLayout,
                 backend: "blas",
                 precondition: "F-contiguous 2D tensor without zero strides",
                 actual: alloc::format!("shape={:?}, strides={:?}", self.shape(), self.strides()).into(),
-            }.into());
+            });
         }
         if self.shape()[0] == 0 || self.shape()[1] == 0 {
             return Ok(1);
@@ -1214,8 +1174,8 @@ Additional caller-side checks:
 
 - [ ] **T1**: 创建 `src/ffi/` 模块骨架和辅助类型
   - 文件: `src/ffi/mod.rs`, `src/ffi/types.rs`
-  - 内容: 模块声明、re-exports、`FfiError`、`BlasInfo` 结构体
-  - 测试: `test_blas_info_f_order`, `test_ffi_error_mapping`
+  - 内容: 模块声明、re-exports、`FfiErrorCategory`、`BlasInfo` 结构体
+  - 测试: `test_blas_info_f_order`, `test_xenon_error_ffi_mapping`
   - 前置: 无
   - 预计: 10 min
 
@@ -1394,7 +1354,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 
 | 主题              | 内容                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Recoverable error | `blas_info()` / `lda()` 在 rank 或布局非法时返回 `XenonError::Ffi { reason }`；BLAS 整数宽度转换失败由 `BlasInfo::as_blas_int()` 返回同一公开 opaque 变体；`from_raw_parts_owned()` 在 owned 元数据非法时返回 `XenonError::InvalidLayout`；`try_offset_of()` / `try_ptr_at()` 在 rank / bounds / checked arithmetic 非法时返回 `XenonError`；`from_raw_parts_mut()` 在可写布局自别名时返回 `XenonError::InvalidLayout`。 |
+| Recoverable error | `blas_info()` / `lda()` 在 rank 或布局非法时返回 `XenonError::Ffi { operation, category, backend, precondition, actual }`；BLAS 整数宽度转换失败由 `BlasInfo::as_blas_int()` 返回同一结构化公开变体；`from_raw_parts_owned()` 在 owned 元数据非法时返回 `XenonError::InvalidLayout`；`try_offset_of()` / `try_ptr_at()` 在 rank / bounds / checked arithmetic 非法时返回 `XenonError`；`from_raw_parts_mut()` 在可写布局自别名时返回 `XenonError::InvalidLayout`。 |
 | Panic             | 不提供公开 panic-sugar 索引转换 API；`from_raw_parts*()` 中那些无法直接验证的不安全前提若被违反，仍属于 unsafe UB，而非 recoverable error。                                                                                                                                                                                                                                                                              |
 | 路径一致性        | 指针访问、BLAS 查询与 raw-parts roundtrip 必须共享同一 shape / strides / offset 解释；无 SIMD / 并行分支。                                                                                                                                                                                                                                                                                                               |
 | 容差边界          | 不适用。                                                                                                                                                                                                                                                                                                                                                                                                                 |

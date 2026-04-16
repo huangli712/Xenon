@@ -453,30 +453,31 @@ let c = &a + &b64;
 ```rust,ignore
 // src/element/mod.rs
 
-use crate::error::TypeConversionError;
+use crate::error::XenonError;
 
 /// Element-wise type conversion trait.
 ///
 /// Defines explicit conversion from `Self` to `T`.
 /// Lossless conversions return `Ok(T)`.
-/// Lossy conversions default to recoverable `TypeConversionError` unless a
-/// documented success precondition is satisfied (see `21-type.md §5.3`).
+/// Lossy conversions default to recoverable
+/// `XenonError::TypeConversion { source_type, target_type, reason, element_index }`
+/// unless a documented success precondition is satisfied (see `21-type.md §5.3`).
 ///
 /// This trait is implemented only inside Xenon for the supported source/target pairs.
 /// External crates cannot extend the conversion matrix.
 pub trait CastTo<T>: Element {
     /// Performs the type conversion.
-    fn cast_to(self) -> Result<T, TypeConversionError>;
+    fn cast_to(self) -> Result<T, XenonError>;
 }
 ```
 
-> **错误映射说明：** `CastTo<T>` 是公开 sealed trait，其内部返回 `TypeConversionError` 是实现机制；最终用户通过公开 API（`cast()`）消费时，错误统一映射为 `XenonError::TypeConversion(TypeConversionError)`。
+> **错误映射说明：** `CastTo<T>` 直接返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }`。
 >
 > **Bool 边界说明：** `bool` 不为任何目标类型实现 `CastTo<T>`；`bool` 张量调用 `.cast::<f32>()` 等转换必须在编译期失败。
 >
 > **无损/有损区分说明：** 同类型拷贝和无损转换虽然通过 `Result` 返回，但按契约语义上不可失败。调用方仍应按项目错误处理规范选择 `?` 或显式处理；实现层不应依赖 `unwrap` 作为常规路径。
 
-> **交叉引用：** `Complex<T> -> Real` 的条件成功语义、受支持矩阵与 `TypeConversionError` 字段约束，统一以 `21-type.md §5.3`、`§6.1` 以及 `26-error.md §4.3` 为准；本节不再重复给出详细 impl 或错误构造示例。
+> **交叉引用：** `Complex<T> -> Real` 的条件成功语义、受支持矩阵与 `XenonError::TypeConversion { source_type, target_type, reason, element_index }` 字段约束，统一以 `21-type.md §5.3`、`§6.1` 以及 `26-error.md §4.3` 为准；本节不再重复给出详细 impl 或错误构造示例。
 
 ### 5.10 Checked arithmetic traits（整数溢出检测）
 
@@ -954,7 +955,7 @@ Upstream modules declare element bounds
 
 | 项目              | 内容                                                                                                                                                |
 | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | 有损 `CastTo` 默认返回可恢复错误；`Complex<T> -> Real` 在虚部非零时也返回可恢复错误；对外统一使用 `XenonError::TypeConversion(TypeConversionError)` |
+| Recoverable error | 有损 `CastTo` 默认返回可恢复错误；`Complex<T> -> Real` 在虚部非零时也返回可恢复错误；对外统一使用 `XenonError::TypeConversion { source_type, target_type, reason, element_index }` |
 | Panic             | 本模块 trait 方法本身不以 panic 作为常规错误语义；若底层标准库数学实现遇到其自身前置条件，遵循标准库行为                                            |
 | 路径一致性        | scalar 路径必须与普通标量实现一致；SIMD：不适用；parallel：不适用                                                                                   |
 | 容差边界          | 浮点相关比较遵循 IEEE 754 与各测试中显式容差；整数与布尔类型不适用                                                                                  |

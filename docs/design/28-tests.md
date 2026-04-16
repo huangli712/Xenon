@@ -601,7 +601,7 @@ fn test_unique_non_contiguous() {
 | `test_workspace_split`                 | split 后子工作空间边界正确                                                 | 中     |
 | `test_workspace_ensure_capacity`       | 扩容不破坏已借用安全性                                                     | 高     |
 | `test_workspace_assume_init_prefix`    | `assume_init_*` 只允许访问调用方已证明初始化的前缀                         | 高     |
-| `test_workspace_error_boundary_mapping` | workspace 公开入口统一返回 `XenonError::Workspace { reason }`，不匹配私有 `WorkspaceError` 类型 | 中 |
+| `test_workspace_error_boundary_mapping` | workspace 公开入口返回 `XenonError::Workspace { operation, category, ... }`，验证结构化字段正确性 | 中 |
 | `test_workspace_not_send_not_sync`     | `Workspace` / `SplitBorrowMut` 的 `!Send + !Sync` 编译期验证               | 高     |
 
 ### 8.16 test_parallel.rs
@@ -1090,7 +1090,7 @@ fn test_bad_magic() {
 | `test_simd.rs`         | `simd`              | `08-simd.md`                    |
 | `test_error.rs`        | `error`             | `26-error.md`                   |
 
-> **说明**：workspace 模块可保留内部 `WorkspaceError` 分类，但集成测试只能通过 crate 公共 API 观察 `XenonError::Workspace { reason }`；`test_workspace.rs` 关注 workspace 语义与公开诊断文本，`test_error.rs` 关注统一公开错误边界。
+> **说明**：workspace 错误直接构造 `XenonError::Workspace { operation, category, ... }`，集成测试通过公共 API 验证结构化字段；`test_workspace.rs` 关注 workspace 语义与公开诊断文本，`test_error.rs` 关注统一公开错误边界。
 
 ### 9.1a 基础模块补充覆盖映射
 
@@ -1226,7 +1226,7 @@ Test files
 
 - [ ] **T10**: 实现 `tests/test_error.rs`
   - 文件: `tests/test_error.rs`
-  - 内容: `XenonError` 边界与 display 输出验证（其中 workspace 相关公开边界统一断言 `XenonError::Workspace { reason }`，不得匹配私有 `WorkspaceError` 载荷）
+- 内容: `XenonError` 边界与 display 输出验证（其中 workspace 相关公开边界断言 `XenonError::Workspace` 结构化字段）
   - 测试: `cargo test --test test_error`
   - 前置: T1
   - 预计: 10 min

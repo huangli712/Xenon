@@ -141,7 +141,7 @@ impl CastElement for Complex<f64> {}
 
 > **结果类型说明：** 公开 API 统一使用 `Result<T, XenonError>`，`crate::error::Result<_>` 为等价类型别名。
 
-> **注意**：`TypeConversionError` 的唯一权威定义见 `26-error.md §4.2`。模块间通过 `pub(crate) fn new(source_type, target_type, reason, element_index)` 构造器和公开访问器方法（`source_type()`、`target_type()`、`reason()`、`element_index()`）操作该类型。
+> **注意**：`XenonError::TypeConversion` 字段定义见 `26-error.md`。字段为公开字段，通过模式匹配访问。
 >
 > **注意**：`element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引。
 
@@ -163,7 +163,8 @@ where
     ///
     /// # Errors
     ///
-    /// Returns `XenonError::TypeConversion(TypeConversionError)` when any element cannot be converted
+    /// Returns `XenonError::TypeConversion { source_type, target_type, reason, element_index }`
+    /// when any element cannot be converted
     /// under the rules defined in `需求说明书 §23`.
     ///
     /// # Examples
@@ -181,13 +182,19 @@ where
     {
         let mut data: Vec<B> = Vec::with_capacity(self.len());
         for (index, x) in self.iter().enumerate() {
-            let value = (*x).cast_to().map_err(|err| {
-                XenonError::TypeConversion(TypeConversionError::new(
-                    err.source_type(),
-                    err.target_type(),
-                    err.reason(),
-                    Some(index),
-                ))
+            let value = (*x).cast_to().map_err(|err| match err {
+                XenonError::TypeConversion {
+                    source_type,
+                    target_type,
+                    reason,
+                    ..
+                } => XenonError::TypeConversion {
+                    source_type,
+                    target_type,
+                    reason,
+                    element_index: Some(index),
+                },
+                other => other,
             })?;
             data.push(value);
         }
@@ -249,7 +256,7 @@ where
 - 实数 → 复数：先按实数到目标复数实部分量类型的规则转换实部，再补 `0` 虚部
 - 复数 → 实数：仅当虚部为 `0` 时才可继续；但这只是必要条件而非充分条件。若实部到目标实数类型的内层转换按 `需求说明书 §23.1` 属于默认有损失败，则整体转换仍为默认错误并必须返回 `Err`
 - 复数 → 复数：实部和虚部分别按对应实数转换规则处理
-- 任一步为有损时，默认整体返回 `XenonError::TypeConversion(TypeConversionError)`
+- 任一步为有损时，默认整体返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }`
 
 > **实现闭合说明：** 上述闭合规则不是“人工补脑”的说明文字，而是实现矩阵的一部分；实际代码必须通过宏生成或 exhaustive enum dispatch 把所有受支持源/目标对闭合到完整集合。
 
@@ -344,7 +351,7 @@ where
 >
 > ```rust,ignore
 > pub trait CastTo<T> {
->     fn cast_to(self) -> Result<T, TypeConversionError>;
+>     fn cast_to(self) -> Result<T, XenonError>;
 > }
 > ```
 >
@@ -354,48 +361,50 @@ where
 >
 > ```rust,ignore
 > // Element index is tracked by the caller, not passed to CastTo
-> let converted: Result<T, TypeConversionError> = value.cast_to();
+> let converted: Result<T, XenonError> = value.cast_to();
 > ```
 
 ```rust,ignore
 use core::any::TypeId;
 
+use crate::error::XenonError;
+
 // === Lossy-by-default conversion ===
 impl CastTo<f32> for f64 {
     #[inline]
-    fn cast_to(self) -> Result<f32, TypeConversionError> {
-        Err(TypeConversionError::new(
-            TypeId::of::<f64>(),
-            TypeId::of::<f32>(),
-            ConversionFailureReason::LossyFloatNarrowing,
-            None,
-        ))
+    fn cast_to(self) -> Result<f32, XenonError> {
+        Err(XenonError::TypeConversion {
+            source_type: TypeId::of::<f64>(),
+            target_type: TypeId::of::<f32>(),
+            reason: ConversionFailureReason::LossyFloatNarrowing,
+            element_index: None,
+        })
     }
 }
 
 impl CastTo<f64> for f32 {
     #[inline]
-    fn cast_to(self) -> Result<f64, TypeConversionError> { Ok(self as f64) }
+    fn cast_to(self) -> Result<f64, XenonError> { Ok(self as f64) }
 }
 
 impl CastTo<i64> for i32 {
     #[inline]
-    fn cast_to(self) -> Result<i64, TypeConversionError> { Ok(self as i64) }
+    fn cast_to(self) -> Result<i64, XenonError> { Ok(self as i64) }
 }
 
 // === Conditionally successful conversions ===
 impl CastTo<f64> for Complex<f64> {
     #[inline]
-    fn cast_to(self) -> Result<f64, TypeConversionError> {
+    fn cast_to(self) -> Result<f64, XenonError> {
         if self.im == 0.0 {
             Ok(self.re)
         } else {
-            Err(TypeConversionError::new(
-                TypeId::of::<Complex<f64>>(),
-                TypeId::of::<f64>(),
-                ConversionFailureReason::NonZeroImaginaryPart,
-                None,
-            ))
+            Err(XenonError::TypeConversion {
+                source_type: TypeId::of::<Complex<f64>>(),
+                target_type: TypeId::of::<f64>(),
+                reason: ConversionFailureReason::NonZeroImaginaryPart,
+                element_index: None,
+            })
         }
     }
 }
@@ -403,20 +412,20 @@ impl CastTo<f64> for Complex<f64> {
 // === Lossy-by-default conversion ===
 impl CastTo<i32> for i64 {
     #[inline]
-    fn cast_to(self) -> Result<i32, TypeConversionError> {
-        Err(TypeConversionError::new(
-            TypeId::of::<i64>(),
-            TypeId::of::<i32>(),
-            ConversionFailureReason::LossyIntegerNarrowing,
-            None,
-        ))
+    fn cast_to(self) -> Result<i32, XenonError> {
+        Err(XenonError::TypeConversion {
+            source_type: TypeId::of::<i64>(),
+            target_type: TypeId::of::<i32>(),
+            reason: ConversionFailureReason::LossyIntegerNarrowing,
+            element_index: None,
+        })
     }
 }
 ```
 
 ### 6.2 溢出行为汇总
 
-> **错误语义约定：** `cast()` 是 fallible API。凡被 `需求说明书 §23` 判定为有损的转换，默认返回 `XenonError::TypeConversion(TypeConversionError)`；仅在该节明确给出额外成功前提时，满足前提后方可成功。
+> **错误语义约定：** `cast()` 是 fallible API。凡被 `需求说明书 §23` 判定为有损的转换，默认返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }`；仅在该节明确给出额外成功前提时，满足前提后方可成功。
 
 | 输入值/组合                    | 目标类型 | 结果                  | 说明                   |
 | ------------------------------ | -------- | --------------------- | ---------------------- |
@@ -593,7 +602,7 @@ User calls cast() / to_owned() / into_owned()
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `cast()` 在有损转换、虚部非零或其他规则不满足时返回 `XenonError::TypeConversion(TypeConversionError)`，携带源类型、目标类型、失败原因与元素索引。`element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引。 |
+| Recoverable error | `cast()` 在有损转换、虚部非零或其他规则不满足时返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }`，携带源类型、目标类型、失败原因与元素索引。`element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引。 |
 | Panic | 公开转换 API 不定义额外 panic 语义；有损场景统一返回可恢复错误。 |
 | 路径一致性 | `cast`、`to_owned`、`into_owned` 必须保持相同 shape 与逻辑元素顺序；其中 `to_owned` / `into_owned` 的 owned 结果固定为 canonical F-order。无 SIMD / 并行分支。 |
 | 容差边界 | 不适用。 |
@@ -606,7 +615,7 @@ User calls cast() / to_owned() / into_owned()
 
 | 属性     | 值                                                                        |
 | -------- | ------------------------------------------------------------------------- |
-| 决策     | 所有有损转换默认返回 `XenonError::TypeConversion(TypeConversionError)`    |
+| 决策     | 所有有损转换默认返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }` |
 | 理由     | 这是 `需求说明书 §23` 的强制要求；文档不得私自引入饱和、截断或 NaN→0 语义 |
 | 替代方案 | saturating / truncating — 放弃，与需求冲突                                |
 | 替代方案 | panic on overflow — 放弃，需求要求可恢复错误                              |
