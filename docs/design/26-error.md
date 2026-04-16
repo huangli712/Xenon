@@ -2,7 +2,7 @@
 
 > 文档编号: 26 | 适用范围: 所有公开 API | 阶段: Phase 1
 > 前置文档: `01-architecture.md`, `07-tensor.md`, `21-type.md`
-> 需求参考: 需求说明书 §8, §12-§26, §27, §28.2, §28.3, §28.5
+> 需求参考: `需求说明书 §8`, `需求说明书 §12`, `需求说明书 §13`, `需求说明书 §14`, `需求说明书 §15`, `需求说明书 §16`, `需求说明书 §17`, `需求说明书 §18`, `需求说明书 §19`, `需求说明书 §20`, `需求说明书 §21`, `需求说明书 §22`, `需求说明书 §23`, `需求说明书 §24`, `需求说明书 §25`, `需求说明书 §26`, `需求说明书 §27`, `需求说明书 §28.2`, `需求说明书 §28.3`, `需求说明书 §28.5`
 > 范围声明: 范围内
 
 ---
@@ -31,12 +31,12 @@
 
 ## 2. 需求映射与范围约束
 
-| 类型     | 内容                                                                                                             |
-| -------- | ---------------------------------------------------------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §8、§12、§13、§14、§16、§18、§21、§23、§25、§26、§27、§28.2、§28.3、§28.5、§6.2 |
-| 范围内   | 可恢复错误返回值、panic 分类、诊断字段、类型转换失败、索引失败、FFI 失败                                         |
-| 范围外   | 自定义日志、第三方错误包装器、跨进程序列化                                                                       |
-| 非目标   | 通过 `panic` 替代本应可恢复的用户输入错误                                                                        |
+| 类型     | 内容                                                                                                                                                                                                                                                                               |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 需求映射 | `需求说明书 §8`、`需求说明书 §12`、`需求说明书 §13`、`需求说明书 §14`、`需求说明书 §16`、`需求说明书 §18`、`需求说明书 §21`、`需求说明书 §23`、`需求说明书 §25`、`需求说明书 §26`、`需求说明书 §27`、`需求说明书 §28.2`、`需求说明书 §28.3`、`需求说明书 §28.5`、`需求说明书 §6.2` |
+| 范围内   | 可恢复错误返回值、panic 分类、诊断字段、类型转换失败、索引失败、FFI 失败                                                                                                                                                                                                           |
+| 范围外   | 自定义日志、第三方错误包装器、跨进程序列化                                                                                                                                                                                                                                         |
+| 非目标   | 通过 `panic` 替代本应可恢复的用户输入错误                                                                                                                                                                                                                                          |
 
 ### 2.1 关键约束
 
@@ -79,15 +79,15 @@
 
 ### 4.1 可恢复错误与 panic 的边界
 
-| 场景                                       | 处理方式                                     | 说明                                    |
-| ------------------------------------------ | -------------------------------------------- | --------------------------------------- |
-| 形状不兼容 / 广播失败                      | `Result::Err(XenonError)`                    | 运行时输入决定，可恢复                  |
-| 轴越界 / 参数非法 / FFI 前提失败           | `Result::Err(XenonError)`                    | 调用方可修正输入并重试                  |
-| `cast()` 有损或前提不满足                  | `Result::Err(XenonError::TypeConversion(_))` | 需求说明书 §23 强制要求                 |
-| 方法型索引失败                             | `Result::Err(XenonError::IndexOutOfBounds)`  | 需返回结构化索引上下文                  |
-| 语言级 `Index` 语法 `tensor[i]` 越界       | panic                                        | 属于 Rust 语法糖边界，非 `Result` API   |
-| 有符号整数算术溢出 / 除以零 / 结果不可表示 | panic                                        | 仅适用于 `i32` / `i64`，见需求说明书    |
-| `sqrt(negative)`、`ln(negative)`、`ln(0)`  | IEEE 754 返回 `NaN` / `-Inf`，不得 panic     | `f32` / `f64` 数学域边界                |
+| 场景                                       | 处理方式                                     | 说明                                  |
+| ------------------------------------------ | -------------------------------------------- | ------------------------------------- |
+| 形状不兼容 / 广播失败                      | `Result::Err(XenonError)`                    | 运行时输入决定，可恢复                |
+| 轴越界 / 参数非法 / FFI 前提失败           | `Result::Err(XenonError)`                    | 调用方可修正输入并重试                |
+| `cast()` 有损或前提不满足                  | `Result::Err(XenonError::TypeConversion(_))` | `需求说明书 §23` 强制要求             |
+| 方法型索引失败                             | `Result::Err(XenonError::IndexOutOfBounds)`  | 需返回结构化索引上下文                |
+| 语言级 `Index` 语法 `tensor[i]` 越界       | panic                                        | 属于 Rust 语法糖边界，非 `Result` API |
+| 有符号整数算术溢出 / 除以零 / 结果不可表示 | panic                                        | 仅适用于 `i32` / `i64`，见需求说明书  |
+| `sqrt(negative)`、`ln(negative)`、`ln(0)`  | IEEE 754 返回 `NaN` / `-Inf`，不得 panic     | `f32` / `f64` 数学域边界              |
 
 ### 4.1.1 安全 API 的 panic 边界
 
@@ -263,7 +263,7 @@ pub enum ConversionFailureReason {
 pub type Result<T> = core::result::Result<T, XenonError>;
 ```
 
-当前版本不定义 `EmptyArray` 公开错误变体。按需求说明书 §13-§14，空输入 `dot` 与 `sum` 返回加法单位元；若未来新增确需“至少一个元素”的 API，应在对应版本中单独裁定是否引入专门错误变体。
+当前版本不定义 `EmptyArray` 公开错误变体。按 `需求说明书 §13`、`需求说明书 §14`，空输入 `dot` 与 `sum` 返回加法单位元；若未来新增确需“至少一个元素”的 API，应在对应版本中单独裁定是否引入专门错误变体。
 
 `XenonError` 须实现 `std::error::Error` trait，提供 `source()` 方法用于链式错误追踪。
 
@@ -295,7 +295,7 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 `cast()` 的错误模型须与 `21-type.md` 保持一致：
 
 - `cast<B>(&self)` 返回 `Result<Tensor<B, D>, XenonError>`
-- 任何被需求说明书 §23 判定为有损的默认转换组合，都须返回 `XenonError::TypeConversion(TypeConversionError)`
+- 任何被 `需求说明书 §23` 判定为有损的默认转换组合，都须返回 `XenonError::TypeConversion(TypeConversionError)`
 - 仅当需求显式给出附加成功前提时，满足前提后才可成功
 - `Complex -> Real` 不是编译期拒绝；当 `im == 0` 时允许继续转换，否则返回 `XenonError::TypeConversion(TypeConversionError)`
 - `bool` 不参与逐元素类型转换，因此不得用 `TypeConversion` 为 `bool` 扩大支持范围
@@ -330,6 +330,7 @@ where
         })?;
         out.push(converted);
     }
+    // Internal helper, not a public API.
     Ok(Tensor::from_shape_vec_aligned(self.shape().clone(), out))
 }
 
@@ -339,29 +340,32 @@ where
     A: CastTo<B>,
 {
     let out = self.iter().map(|value| value.cast_to_lossy()).collect();
+    // Internal helper, not a public API.
     Tensor::from_shape_vec_aligned(self.shape().clone(), out)
 }
 ```
+
+> **边界说明：** `Ffi` / `Workspace` 当前仍为 `reason: String` 的 opaque 公开包装；对应模块内部会先构造带结构化字段的 `FfiError` / `WorkspaceError`，再折叠成字符串。该设计与 `需求说明书 §27` 对公开结构化诊断的期望存在张力；若要把这些字段提升到 `XenonError` 的公开变体，必须作为统一错误枚举的独立设计变更评审，而非在局部模块文档中各自扩写。
 
 ### 4.4 结构化上下文字段要求
 
 所有错误变体都须带“错误类别 + 适用上下文”的结构化字段；仅字符串消息不足以满足要求。
 
-| 变体                                  | 最小结构化字段                                                                     |
-| ------------------------------------- | ---------------------------------------------------------------------------------- |
-| `ShapeMismatch`                       | `operation`, `left_shape`, `right_shape`                                           |
-| `BroadcastError`                      | `operation`, `lhs_shape`, `rhs_shape`, `attempted_target_shape?`, `axis?`          |
-| `LayoutMismatch`                      | `operation`, `required_layout`, `actual_layout`, `shape`                           |
-| `InvalidLayout`                       | `operation`, `storage_kind`, `shape`, `strides`, `offset`, `storage_len`, `reason` |
-| `InvalidAxis`                         | `operation`, `axis`, `ndim`, `shape`                                               |
-| `InvalidShape`                        | `operation`, `shape`, `expected_elements`, `actual_elements`, `offending_dim?`, `reason?` |
-| `DimensionMismatch`                   | `operation`, `expected`, `actual`                                                  |
+| 变体                                  | 最小结构化字段                                                                                                                                                                         |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ShapeMismatch`                       | `operation`, `left_shape`, `right_shape`                                                                                                                                               |
+| `BroadcastError`                      | `operation`, `lhs_shape`, `rhs_shape`, `attempted_target_shape?`, `axis?`                                                                                                              |
+| `LayoutMismatch`                      | `operation`, `required_layout`, `actual_layout`, `shape`                                                                                                                               |
+| `InvalidLayout`                       | `operation`, `storage_kind`, `shape`, `strides`, `offset`, `storage_len`, `reason`                                                                                                     |
+| `InvalidAxis`                         | `operation`, `axis`, `ndim`, `shape`                                                                                                                                                   |
+| `InvalidShape`                        | `operation`, `shape`, `expected_elements`, `actual_elements`, `offending_dim?`, `reason?`                                                                                              |
+| `DimensionMismatch`                   | `operation`, `expected`, `actual`                                                                                                                                                      |
 | `InvalidArgument`                     | `operation`, `argument`, `expected`, `actual`, `axis?`, `axis_len?`, `start?`, `end?`, `shape?`；范围切片越界时必须额外携带 `axis`、`axis_len`、`start`、`end`，不得仅以字符串拼接描述 |
-| `InvalidStorageMode`                  | `operation`, `expected`, `actual`, `shape?`, `source_storage_mode?`, `target_storage_mode?`, `conversion_type?` |
-| `Ffi { reason }`                      | 由内部 `FfiError` 归一化生成公开 `reason`；不得在公开 API 中暴露 `FfiError` 类型名 |
-| `Workspace { reason }`                | 由内部 `WorkspaceError` 归一化生成公开 `reason`；不得在公开 API 中暴露 `WorkspaceError` 类型名 |
-| `IndexOutOfBounds`                    | `operation`, `attempted_index`, `axis`, `shape`；`attempted_index` 表示完整多维索引 tuple，`axis` 指出首个越界维度 |
-| `TypeConversion(TypeConversionError)` | `source_type`, `target_type`, `reason`, `element_index?`                           |
+| `InvalidStorageMode`                  | `operation`, `expected`, `actual`, `shape?`, `source_storage_mode?`, `target_storage_mode?`, `conversion_type?`                                                                        |
+| `Ffi { reason }`                      | 由内部 `FfiError` 归一化生成公开 `reason`；不得在公开 API 中暴露 `FfiError` 类型名                                                                                                     |
+| `Workspace { reason }`                | 由内部 `WorkspaceError` 归一化生成公开 `reason`；不得在公开 API 中暴露 `WorkspaceError` 类型名                                                                                         |
+| `IndexOutOfBounds`                    | `operation`, `attempted_index`, `axis`, `shape`；`attempted_index` 表示完整多维索引 tuple，`axis` 指出首个越界维度                                                                     |
+| `TypeConversion(TypeConversionError)` | `source_type`, `target_type`, `reason`, `element_index?`                                                                                                                               |
 
 > **分配成本说明：** `attempted_index: Vec<usize>`、`shape: Vec<usize>` 以及 `InvalidArgument` / `InvalidStorageMode` 中的可选 `Vec<usize>` 字段会带来少量堆分配成本；这是当前版本可接受的诊断开销，用于换取跨公开 API 的一致结构化上下文。
 
@@ -584,9 +588,9 @@ let value = lhs * rhs;
 
 | 场景             | `f32` / `f64` 行为 | 约束来源           |
 | ---------------- | ------------------ | ------------------ |
-| `sqrt(negative)` | 返回 `NaN`         | 需求说明书 §28.3 |
-| `ln(negative)`   | 返回 `NaN`         | 需求说明书 §28.3 |
-| `ln(0)`          | 返回 `-Inf`        | 需求说明书 §28.3 |
+| `sqrt(negative)` | 返回 `NaN`         | `需求说明书 §28.3` |
+| `ln(negative)`   | 返回 `NaN`         | `需求说明书 §28.3` |
+| `ln(0)`          | 返回 `-Inf`        | `需求说明书 §28.3` |
 
 这些情形遵循 IEEE 754 语义，属于数值结果边界，不属于 panic 边界。
 
@@ -600,7 +604,7 @@ let value = lhs * rhs;
 
 - 任一 worker 首次观察到 panic 或 `Err` 后，须终止该 worker 的当前执行路径并向 join 点报告失败
 - 其他 worker 可能在 join 检测到失败前完成自己已经领取的当前 chunk；这是 `rayon` work-stealing 调度的实际限制
-- 因此需求说明书 §27 中的“立即”含义是“as soon as practically detectable”，而不是“所有线程瞬时同步中止”
+- 因此 `需求说明书 §27` 中的“立即”含义是“as soon as practically detectable”，而不是“所有线程瞬时同步中止”
 
 ---
 
@@ -643,7 +647,7 @@ let value = lhs * rhs;
 
 错误处理规范须遵循项目统一工程约束：
 
-- 仅支持 `std` 环境（参见需求说明书 §1.3）
+- 仅支持 `std` 环境（参见 `需求说明书 §1.3`）
 - 保持单 crate 结构
 - 遵循 SemVer
 - 不引入额外第三方依赖来包装错误模型

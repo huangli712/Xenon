@@ -2,7 +2,7 @@
 
 > 文档编号: 14 | 模块: `src/set/` | 阶段: Phase 4
 > 前置文档: `03-element.md`, `04-complex.md`, `07-tensor.md`, `10-iterator.md`
-> 需求参考: 需求说明书 §4, §15, §28.2, §28.4
+> 需求参考: `需求说明书 §4`, `需求说明书 §15`, `需求说明书 §28.2`, `需求说明书 §28.4`
 > 范围声明: 范围内
 
 ---
@@ -11,11 +11,11 @@
 
 ### 1.1 职责边界
 
-| 职责        | 包含                                                                                             | 不包含                        |
-| ----------- | ------------------------------------------------------------------------------------------------ | ----------------------------- |
-| unique 操作 | 返回不重复元素组成的新 1D 张量；结果顺序不作要求                                                 | intersection/union/difference |
-| 支持类型    | i32, i64, f32, f64, Complex<f32>, Complex<f64>                                                   | bincount/histogram            |
-| 不支持类型  | bool（`[false, true]` 中两个元素彼此不同，但需求说明书 §15 明确将 bool 排除在 `unique` 之外） | argmin/argmax                 |
+| 职责        | 包含                                                                                            | 不包含                        |
+| ----------- | ----------------------------------------------------------------------------------------------- | ----------------------------- |
+| unique 操作 | 返回不重复元素组成的新 1D 张量；结果顺序不作要求                                                | intersection/union/difference |
+| 支持类型    | i32, i64, f32, f64, Complex<f32>, Complex<f64>                                                  | bincount/histogram            |
+| 不支持类型  | bool（`[false, true]` 中两个元素彼此不同，但 `需求说明书 §15` 明确将 bool 排除在 `unique` 之外） | argmin/argmax                 |
 
 > **注意**：当前版本仅支持 unique 操作！不包含 intersection/union/difference/bincount/histogram 等。
 
@@ -38,7 +38,7 @@ L1: dimension, element, complex
 L2: layout (depends on dimension)
 L3: storage (depends only on core/alloc, not on layout)
 L4: tensor (depends on storage, dimension)
-L5: set  ← current module
+L6: set  ← current module
 ```
 
 ---
@@ -47,7 +47,7 @@ L5: set  ← current module
 
 | 类型     | 内容                                                                              |
 | -------- | --------------------------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §4, §15, §28.2, §28.4                                                  |
+| 需求映射 | `需求说明书 §4`, `需求说明书 §15`, `需求说明书 §28.2`, `需求说明书 §28.4`         |
 | 范围内   | `unique()` 去重、NaN / `±0.0` 语义、复数按分量判等，以及 1D owned 结果构造。      |
 | 范围外   | sort、unique counts、bincount、intersection / union / difference 等其他集合操作。 |
 | 非目标   | 不引入排序契约、不新增第三方去重依赖，也不扩展到 histogram 类 API。               |
@@ -62,7 +62,7 @@ src/set/
 └── unique.rs           # set operations (this module)
 ```
 
-单文件设计理由：当前仅实现 unique，未来扩展时再拆分。
+双文件设计理由：当前范围由 `mod.rs` 承担模块入口、`unique.rs` 承担唯一公开集合操作实现，保持导出边界与语义实现分离。
 
 ---
 
@@ -82,14 +82,14 @@ src/set/unique.rs
 
 ### 4.2 类型级依赖
 
-| 来源模块    | 使用的类型/trait                                                                  |
-| ----------- | --------------------------------------------------------------------------------- |
+| 来源模块    | 使用的类型/trait                                                                                                                                         |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tensor`    | `TensorBase<S, D>`, `Tensor<A, Ix1>`（本文以此作为 1D 结果主类型；`Tensor1<A>` 仅作为等价别名出现在示例中）, `.iter()`, `.len()`，参见 `07-tensor.md` §5 |
-| `storage`   | `Storage` trait（consuming tensor storage for data access）                       |
-| `dimension` | `Dimension`, `Ix1`（output dimension type for flatten result）                    |
-| `element`   | `Element`, `ComplexScalar`，参见 `03-element.md` §5.1 / §5.4                      |
-| `complex`   | `Complex<f32>`, `Complex<f64>`，参见 `04-complex.md` §5                           |
-| `iter`      | `Elements`（遍历收集元素），参见 `10-iterator.md` §5.1                            |
+| `storage`   | `Storage<Elem = A>` trait（read-only element access via `Storage<Elem = A>`）                                                                            |
+| `dimension` | `Dimension`, `Ix1`（output dimension type for flatten result）                                                                                           |
+| `element`   | `Element`, `ComplexScalar`，参见 `03-element.md` §5.1 / §5.4                                                                                             |
+| `complex`   | `Complex<f32>`, `Complex<f64>`，参见 `04-complex.md` §5                                                                                                  |
+| `iter`      | `Elements`（遍历收集元素），参见 `10-iterator.md` §5.1                                                                                                   |
 
 ### 4.3 依赖方向
 
@@ -124,7 +124,7 @@ where
     ///
     /// # Unsupported types
     ///
-    /// - bool: `false` and `true` are still distinct values, but 需求说明书 §15
+    /// - bool: `false` and `true` are still distinct values, but `需求说明书 §15`
     ///   explicitly excludes bool from the current `unique` contract
     ///
     /// # Equality behavior
@@ -256,7 +256,7 @@ Complex-number equality strategy (component-wise equality):
 ///
 /// `UniqueElement` is a sealed trait. It is implemented only inside this crate
 /// for supported element types, so the closed element set required by
-/// 需求说明书 §4 is preserved.
+/// `需求说明书 §4` is preserved.
 pub trait UniqueElement: private::Sealed + Element {
     /// Equality check used by `unique`.
     fn unique_eq(&self, other: &Self) -> bool;
@@ -308,11 +308,11 @@ impl UniqueElement for Complex<f64> {
 
 ### 6.5 推荐实现策略
 
-| 场景              | 推荐策略            | 说明                                                                                                |
-| ----------------- | ------------------- | --------------------------------------------------------------------------------------------------- |
-| 小输入或原型实现  | 线性扫描            | 可直接复用 `unique_eq`，但最坏 O(N^2)，不宜作为大张量主路径。                                       |
-| 大输入主路径      | 哈希 / 索引辅助结构 | 在不改变需求说明书 §15 集合语义的前提下，用哈希表、索引表或等价辅助结构把重复检测降到近似 O(N)。 |
-| 浮点 / 复数特殊值 | 专门分支处理        | `NaN != NaN`，因此哈希或索引策略也必须显式保留每个 `NaN`，不得把它们合并。                          |
+| 场景              | 推荐策略            | 说明                                                                                               |
+| ----------------- | ------------------- | -------------------------------------------------------------------------------------------------- |
+| 小输入或原型实现  | 线性扫描            | 可直接复用 `unique_eq`，但最坏 O(N^2)，不宜作为大张量主路径。                                      |
+| 大输入主路径      | 哈希 / 索引辅助结构 | 在不改变 `需求说明书 §15` 集合语义的前提下，用哈希表、索引表或等价辅助结构把重复检测降到近似 O(N)。 |
+| 浮点 / 复数特殊值 | 专门分支处理        | `NaN != NaN`，因此哈希或索引策略也必须显式保留每个 `NaN`，不得把它们合并。                         |
 
 实现可以自由选择代表元保留顺序、桶顺序或其它内部组织方式；这些选择都不得被文档固化为稳定输出顺序契约。
 
@@ -390,29 +390,29 @@ Wave 4: [T5]
 
 ### 8.2 单元测试清单
 
-| 测试函数                            | 测试内容                                     | 优先级 |
-| ----------------------------------- | -------------------------------------------- | ------ |
-| `test_unique_basic_i32`             | 噪声去除后结果包含且仅包含 1/2/3；不要求顺序 | 高     |
-| `test_unique_basic_i64`             | i64 类型正确性                               | 高     |
-| `test_unique_basic_f32`             | f32 类型正确性                               | 高     |
-| `test_unique_basic_f64`             | f64 类型正确性                               | 高     |
-| `test_unique_basic_complex`         | Complex<f64> 类型正确性                      | 高     |
-| `test_unique_empty`                 | 空数组返回空 `Tensor<A, Ix1>`                | 高     |
-| `test_unique_single`                | 单元素返回自身                               | 中     |
-| `test_unique_all_same`              | 所有元素相同返回单元素                       | 中     |
-| `test_unique_nan_preserved_f32`     | 每个 f32 NaN 都被保留                        | 高     |
-| `test_unique_nan_preserved_f64`     | 每个 f64 NaN 都被保留                        | 高     |
-| `test_unique_signed_zero_equal_f32` | `-0.0` 与 `0.0` 视为同值                     | 高     |
-| `test_unique_signed_zero_equal_f64` | `-0.0` 与 `0.0` 视为同值                     | 高     |
-| `test_unique_complex_componentwise` | 复数按分量判等并沿用实数语义                 | 高     |
-| `test_unique_2d`                    | 2D 张量 unique 返回 1D                       | 中     |
-| `test_unique_non_contiguous_view`   | 切片视图输入仍按逻辑元素去重                 | 高     |
-| `test_unique_transposed_view`       | 转置视图输入仍按逻辑元素去重                 | 高     |
-| `test_unique_padded_tensor_ignores_padding` | padding 区域不应暴露到 unique 语义中 | 高     |
-| `test_unique_order_unspecified`     | 同一输入仅验证集合语义，不断言固定顺序       | 中     |
-| `test_unique_large_tensor_high_dup` | `10^7` 元素高重复输入主路径保持正确          | 中     |
-| `test_unique_high_rank_ixdyn`       | `IxDyn` rank 5+ 输入仍统一展平到 1D          | 中     |
-| `test_unique_extreme_i64_values`    | `i32` / `i64` 极值去重语义正确               | 中     |
+| 测试函数                                    | 测试内容                                     | 优先级 |
+| ------------------------------------------- | -------------------------------------------- | ------ |
+| `test_unique_basic_i32`                     | 噪声去除后结果包含且仅包含 1/2/3；不要求顺序 | 高     |
+| `test_unique_basic_i64`                     | i64 类型正确性                               | 高     |
+| `test_unique_basic_f32`                     | f32 类型正确性                               | 高     |
+| `test_unique_basic_f64`                     | f64 类型正确性                               | 高     |
+| `test_unique_basic_complex`                 | Complex<f64> 类型正确性                      | 高     |
+| `test_unique_empty`                         | 空数组返回空 `Tensor<A, Ix1>`                | 高     |
+| `test_unique_single`                        | 单元素返回自身                               | 中     |
+| `test_unique_all_same`                      | 所有元素相同返回单元素                       | 中     |
+| `test_unique_nan_preserved_f32`             | 每个 f32 NaN 都被保留                        | 高     |
+| `test_unique_nan_preserved_f64`             | 每个 f64 NaN 都被保留                        | 高     |
+| `test_unique_signed_zero_equal_f32`         | `-0.0` 与 `0.0` 视为同值                     | 高     |
+| `test_unique_signed_zero_equal_f64`         | `-0.0` 与 `0.0` 视为同值                     | 高     |
+| `test_unique_complex_componentwise`         | 复数按分量判等并沿用实数语义                 | 高     |
+| `test_unique_2d`                            | 2D 张量 unique 返回 1D                       | 中     |
+| `test_unique_non_contiguous_view`           | 切片视图输入仍按逻辑元素去重                 | 高     |
+| `test_unique_transposed_view`               | 转置视图输入仍按逻辑元素去重                 | 高     |
+| `test_unique_padded_tensor_ignores_padding` | padding 区域不应暴露到 unique 语义中         | 高     |
+| `test_unique_order_unspecified`             | 同一输入仅验证集合语义，不断言固定顺序       | 中     |
+| `test_unique_large_tensor_high_dup`         | `10^7` 元素高重复输入主路径保持正确          | 中     |
+| `test_unique_high_rank_ixdyn`               | `IxDyn` rank 5+ 输入仍统一展平到 1D          | 中     |
+| `test_unique_extreme_i64_values`            | `i32` / `i64` 极值去重语义正确               | 中     |
 
 ### 8.3 边界测试场景
 
@@ -430,7 +430,7 @@ Wave 4: [T5]
 | `i32::MIN` / `i32::MAX` / `i64::MIN` / `i64::MAX` | 极值按值语义去重，不发生额外归一化                         |
 | 非连续切片视图                                    | 仅基于逻辑元素去重，不遗漏或重复                           |
 | 转置视图                                          | 仅基于逻辑元素去重，不引入布局相关语义漂移                 |
-| 含 padding 的张量                                | padding 区域不参与 `unique()` 输入集合                     |
+| 含 padding 的张量                                 | padding 区域不参与 `unique()` 输入集合                     |
 
 ### 8.4 属性测试不变量
 
@@ -503,19 +503,19 @@ User calls unique()
 
 ### 决策 1：bool 排除理由
 
-| 属性     | 值                                                                                                                                                                                               |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 决策     | unique 不支持 bool 类型                                                                                                                                                                          |
-| 理由     | `bool` 的 `unique` 结果在集合语义上仍可定义（如输入同时包含 `false` 与 `true` 时可得到两个不同元素），但需求说明书 §15 已明确将 bool 排除在当前版本范围之外；因此本期不为 bool 建立额外契约。 |
-| 替代方案 | 支持 bool unique，返回 [false, true]                                                                                                                                                             |
-| 拒绝原因 | 增加维护负担，收益几乎为零；需求说明书 §15 "bool 不适用"                                                                                                                                         |
+| 属性     | 值                                                                                                                                                                                              |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | unique 不支持 bool 类型                                                                                                                                                                         |
+| 理由     | `bool` 的 `unique` 结果在集合语义上仍可定义（如输入同时包含 `false` 与 `true` 时可得到两个不同元素），但 `需求说明书 §15` 已明确将 bool 排除在当前版本范围之外；因此本期不为 bool 建立额外契约。 |
+| 替代方案 | 支持 bool unique，返回 [false, true]                                                                                                                                                            |
+| 拒绝原因 | 增加维护负担，收益几乎为零；`需求说明书 §15` "bool 不适用"                                                                                                                                      |
 
 ### 决策 2：NaN 处理策略
 
 | 属性     | 值                                                                      |
 | -------- | ----------------------------------------------------------------------- |
 | 决策     | `unique` 严格沿用 IEEE 754 / Rust 相等语义：`NaN != NaN`，`-0.0 == 0.0` |
-| 理由     | 直接满足需求说明书 §15，避免文档额外发明“canonical NaN”语义          |
+| 理由     | 直接满足 `需求说明书 §15`，避免文档额外发明“canonical NaN”语义           |
 | 替代方案 | 归并全部 NaN                                                            |
 | 替代方案 | 把 `-0.0` 与 `0.0` 视为不同值                                           |
 | 拒绝原因 | 均与需求说明书冲突                                                      |
@@ -525,7 +525,7 @@ User calls unique()
 | 属性     | 值                                                                    |
 | -------- | --------------------------------------------------------------------- |
 | 决策     | 复数去重仅按实部与虚部逐分量判等                                      |
-| 理由     | 需求说明书 §15 只要求 component-wise equality，并未授权任何排序语义 |
+| 理由     | `需求说明书 §15` 只要求 component-wise equality，并未授权任何排序语义 |
 | 替代方案 | lexicographic order                                                   |
 | 拒绝原因 | 会把排序错误地写入公开契约，并掩盖 NaN 分量应逐个保留的要求           |
 
@@ -547,10 +547,10 @@ User calls unique()
 
 ### 12.3 大数组性能（参考）
 
-| 说明       | 内容                                                         |
-| ---------- | ------------------------------------------------------------ |
-| 稳定契约   | 不对结果顺序和实现路径做性能承诺                             |
-| 实现自由度 | 可在满足需求说明书 §15 的前提下选择线性扫描或辅助索引结构 |
+| 说明       | 内容                                                        |
+| ---------- | ----------------------------------------------------------- |
+| 稳定契约   | 不对结果顺序和实现路径做性能承诺                            |
+| 实现自由度 | 可在满足 `需求说明书 §15` 的前提下选择线性扫描或辅助索引结构 |
 
 ---
 
@@ -558,7 +558,7 @@ User calls unique()
 
 集合操作模块须遵循项目统一工程约束，不单独定义 `no_std` 方案：
 
-- 仅支持 `std` 环境（参见需求说明书 §1.3）
+- 仅支持 `std` 环境（参见 `需求说明书 §1.3`）
 - MSRV: Rust 1.85+
 - 保持单 crate 结构
 - 遵循 SemVer

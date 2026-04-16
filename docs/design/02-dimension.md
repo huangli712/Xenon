@@ -2,7 +2,7 @@
 
 > 文档编号: 02 | 模块: `src/dimension/` | 阶段: Phase 1
 > 前置文档: `00-coding.md`, `01-architecture.md`
-> 需求参考: 需求说明书 §3、§16、§17
+> 需求参考: `需求说明书 §3`、`需求说明书 §16`、`需求说明书 §17`
 > 范围声明: 范围内
 
 ---
@@ -49,12 +49,12 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 ## 2. 需求映射与范围约束
 
-| 项目     | 内容                                                                                                                                                                                      |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §3、§11、§14、§16、§17、§18；其中内部 helper `BroadcastDim` 覆盖 §16 广播语义，内部 helper `Reverse` 覆盖 §17 转置语义，零维轴错误/降维输出/索引轴合法性分别对应 §11、§14、§18 |
-| 范围内   | 静态/动态维度类型、`Dimension`/`IntoDimension`/`RemoveAxis`、轴元数据                                                                                                                     |
-| 范围外   | 内存分配、布局标志计算、张量运算、C-order 支持                                                                                                                                            |
-| 非目标   | 引入开放维度扩展机制、负步长维度模型或新的存储后端                                                                                                                                        |
+| 项目     | 内容                                                                                                                                                                                                                                                                                                                                |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 需求映射 | `需求说明书 §3`、`需求说明书 §11`、`需求说明书 §14`、`需求说明书 §16`、`需求说明书 §17`、`需求说明书 §18`；其中公开 sealed trait `BroadcastDim` 覆盖 `需求说明书 §16` 广播语义，内部 helper `Reverse` 覆盖 `需求说明书 §17` 转置语义，零维轴错误/降维输出/索引轴合法性分别对应 `需求说明书 §11`、`需求说明书 §14`、`需求说明书 §18` |
+| 范围内   | 静态/动态维度类型、`Dimension`/`IntoDimension`/`RemoveAxis`、轴元数据                                                                                                                                                                                                                                                               |
+| 范围外   | 内存分配、布局标志计算、张量运算、C-order 支持                                                                                                                                                                                                                                                                                      |
+| 非目标   | 引入开放维度扩展机制、负步长维度模型或新的存储后端                                                                                                                                                                                                                                                                                  |
 
 ---
 
@@ -85,10 +85,10 @@ src/dimension/
 
 ### 4.2 依赖精确到类型级
 
-| 来源模块  | 使用的类型/trait                                      |
-| --------- | ----------------------------------------------------- |
-| `error`   | `XenonError::DimensionMismatch`（维度转换失败时返回） |
-| `private` | `Sealed`（`Dimension` trait 的 supertrait）           |
+| 来源模块  | 使用的类型/trait                                                                                                      |
+| --------- | --------------------------------------------------------------------------------------------------------------------- |
+| `error`   | `XenonError::DimensionMismatch`、`XenonError::InvalidAxis`、`XenonError::InvalidShape`、`XenonError::InvalidArgument` |
+| `private` | `Sealed`（`Dimension` trait 的 supertrait）                                                                           |
 
 ### 4.2a 依赖合法性与新增依赖说明
 
@@ -699,13 +699,15 @@ let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
 ### 5.9 BroadcastDim trait（广播层消费）
 
 `BroadcastDim<Other>` 用于编译期计算两个维度类型广播后的输出维度类型。  
-该 trait 由广播/运算符重载层消费（参见 `15-broadcast.md` 与 `19-overload.md`），
+该 trait 由广播/运算符重载层消费（参见 `11-math.md`、`15-broadcast.md` 与 `19-overload.md`），
 不属于维度系统的核心职责；`dimension` 模块仅在此记录它依赖静态/动态维度类型这一事实。
 
 > **实现建议：** 跨静态维度的 `BroadcastDim` 实现共计约 57 个（含自身广播 7 个 + 跨静态维度 42 个 + 与 IxDyn 混合 7 个（静态维度→IxDyn）+ 1 个（IxDyn→D 泛型 impl））。
 > 建议使用声明宏（`macro_rules!`）生成这些实现，避免手工编写导致的遗漏和错误。宏生成后须通过 compile-fail 测试验证全覆盖。
 
-> **公开性说明：** 以下 trait 为内部实现辅助，标记为 `pub(crate)`，不纳入稳定公开 API 面。
+> **公开性说明：** `BroadcastDim` 必须是公开 sealed trait，以保证 `math` / `broadcast` / `overload` 的公开签名与 trait bound 可命名；公开仅限命名和使用 crate 内既有实现，仍禁止外部实现。
+>
+> **Note:** "BroadcastDim is a public sealed trait used in broadcast output type inference. It appears in public API signatures of broadcast/math/overload modules."
 
 ```rust,ignore
 /// Trait for computing the output dimension type when broadcasting two arrays.
@@ -714,7 +716,7 @@ let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
 /// - `IxN BroadcastDim IxDyn` → `IxDyn`
 /// - `IxDyn BroadcastDim IxN` → `IxDyn`
 /// - `IxDyn BroadcastDim IxDyn` → `IxDyn`
-pub(crate) trait BroadcastDim<Other: Dimension>: Dimension {
+pub trait BroadcastDim<Other: Dimension>: Dimension + Sealed {
     /// The output dimension type after broadcasting.
     type Output: Dimension;
 }
@@ -898,9 +900,11 @@ impl Reverse for IxDyn {
 }
 ```
 
-> **范围说明：** 当前版本的形状操作只包含 transpose，但 transpose 语义本身须支持显式轴置换；默认的轴反转是 `transpose()` 的一种特例。参见 需求说明书 §17。
+> **范围说明：** 当前版本的形状操作只包含 `transpose()`。维度层保留 `PermuteAxes` 作为内部泛化能力，但公开 `transpose()` 契约当前仅承诺默认的轴反转（reverse-axis transpose）；显式轴置换保留为后续版本扩展，不构成当前版本公开 API 承诺。参见 `需求说明书 §17` 与 `16-shape.md §5.1.1`。
 
-> **静态维度补充说明：** 对静态维度 `Ix0`..`Ix6`，`PermuteAxes` 通过编译期常量泛型或宏生成实现；当前版本仅 `IxDyn` 提供完整的运行时轴置换。静态维度的 `transpose` 由 `16-shape.md` 定义，不依赖通用 `PermuteAxes` trait。其生成签名模式可写为：`impl PermuteAxes for Ix3 { fn permuted_axes(&self, permutation: &[Axis]) -> Result<Ix3, XenonError>; }`，更高/更低静态维度按同一模板展开。
+> **静态维度补充说明：** 对静态维度 `Ix0`..`Ix6`，`PermuteAxes` 若实现，仍属于内部辅助能力；当前版本公开 `transpose()` 由 `16-shape.md` 定义，不把通用显式轴置换提升为规范性 API。其生成签名模式可写为：`impl PermuteAxes for Ix3 { fn permuted_axes(&self, permutation: &[Axis]) -> Result<Ix3, XenonError>; }`，更高/更低静态维度按同一模板展开。
+
+> **静态维度最小契约：** 对 `IxN` 的 `PermuteAxes` 实现，输入 `permutation` 的长度必须恰好等于 `N`，并且必须是 `0..N-1` 上的双射；任何越界轴、重复轴或缺失轴都统一返回 `XenonError::InvalidAxis`，不引入额外错误类别。
 
 > **宏覆盖测试策略：** `BroadcastDim`、静态 `PermuteAxes` 等宏生成实现应至少通过三类测试覆盖：成功路径（每个静态 rank 至少一例）、compile-fail 边界（非法 rank/非法输入不暴露实现）、以及文档/trait 矩阵核对，防止某个 rank 在宏展开中遗漏。
 
@@ -1100,9 +1104,9 @@ Wave 5:  [T10] → [T11] → [T12]
 | 大维度 `Ix6(100,100,100,100,100,100)` | `checked_size()` 在溢出时返回带 `offending_dim` 的错误 |
 | `IxDyn::ones(0)`                      | 零维动态维度                                           |
 | `PermuteAxes` 重复/缺失轴             | 返回可恢复错误，不接受非双射排列                       |
-| §28.4 占位：large-tensor              | 后续补充超大 shape 元数据与溢出边界回归                |
-| §28.4 占位：high-dim                  | 后续补充高维 `IxDyn` / 广播 / 转置协同回归             |
-| §28.4 占位：extreme-value             | 后续补充 `usize` 极值与乘积溢出诊断回归                |
+| 需求说明书 §28.4 占位：large-tensor              | 后续补充超大 shape 元数据与溢出边界回归                |
+| 需求说明书 §28.4 占位：high-dim                  | 后续补充高维 `IxDyn` / 广播 / 转置协同回归             |
+| 需求说明书 §28.4 占位：extreme-value             | 后续补充 `usize` 极值与乘积溢出诊断回归                |
 
 ### 8.4 属性测试不变量
 
@@ -1187,12 +1191,12 @@ User provides shape / axis / dimension input
 
 ### 决策 2：IxDyn 使用 Vec 而非 SmallVec
 
-| 属性     | 值                                                                          |
-| -------- | --------------------------------------------------------------------------- |
-| 决策     | 使用 `Vec<usize>`，SmallVec 作为未来优化                                    |
-| 理由     | 保持简单、减少依赖；≤6 维场景堆分配开销可接受；未来可通过 feature gate 引入 |
-| 替代方案 | `SmallVec<[usize; 6]>` — 放弃，增加依赖                                     |
-| 替代方案 | `ArrayVec<usize, 6>` — 放弃，无溢出处理                                     |
+| 属性     | 值                                                                      |
+| -------- | ----------------------------------------------------------------------- |
+| 决策     | 使用 `Vec<usize>`；除非需求约束后续放宽依赖限制，否则不引入 SmallVec    |
+| 理由     | 保持简单、减少依赖；≤6 维场景堆分配开销可接受；当前无新增第三方依赖空间 |
+| 替代方案 | `SmallVec<[usize; 6]>` — 放弃，增加依赖                                 |
+| 替代方案 | `ArrayVec<usize, 6>` — 放弃，无溢出处理                                 |
 
 ### 决策 3：Ix0 的 checked_size() 返回 Ok(1)
 

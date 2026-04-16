@@ -124,9 +124,9 @@ src/math/
 | `element`      | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`, `OrderedCompareElement`（定义见 `03-element.md §5.4a`）         |
 | `complex`      | `Complex<f32>`, `Complex<f64>`（参见 `04-complex.md §5`）                              |
 | `broadcast`    | `broadcast_shape()`, `broadcast_to()` 返回的 `TensorView`（参见 `15-broadcast.md §5`） |
-| `dimension`    | `BroadcastDim<E>` trait（编译期维度推导，参见 `02-dimension.md §5.9`）                 |
+| `dimension`    | `BroadcastDim<E>` public sealed trait（对外可命名的公开 sealed trait，用于编译期维度推导，参见 `02-dimension.md §5.9`）                 |
 | `storage`      | `Storage<Elem = A>`, `StorageMut<Elem = A>`                                            |
-| `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`should_parallelize()`、`can_use_simd()` |
+| `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`should_parallelize()` |
 | `simd`（可选） | `pulp::Arch`（参见 `08-simd.md §5`）                                                   |
 | `parallel`（可选） | `par_zip_map()`（纯并行执行入口，不含串行回退，参见 `09-parallel.md §5` / `§6`） |
 | `error`        | `XenonError`（含 `BroadcastError` 变体，参见 `26-error.md §4`）                        |
@@ -153,7 +153,7 @@ src/math/
 
 ### 5.2 二元逐元素执行约定
 
-> **维度推导说明：** 二元逐元素方法统一使用 `BroadcastDim<DB>` 进行编译期维度推导，该 trait 定义于 `02-dimension.md §5.9`，详见该文档。
+> **维度推导说明：** 二元逐元素方法统一使用 `BroadcastDim<DB>` 进行编译期维度推导；`BroadcastDim` 是 public sealed trait，因此在公开 API 中可被外部稳定命名。该 trait 定义于 `02-dimension.md §5.9`，详见该文档。
 
 当前版本不承诺独立的通用二元逐元素 helper 公开函数。二元算术、比较与内部辅助路径统一采用“先广播，再直接遍历广播后视图并写入结果张量”的执行模型。调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。
 
@@ -282,10 +282,12 @@ where
 
 `abs` / `signum` 仅对具备自然顺序的数值类型开放：i32, i64, f32, f64。`neg` / `square` 对所有 `Numeric` 类型开放：i32, i64, f32, f64, Complex<f32>, Complex<f64>。
 
+> **`abs()` 约束说明：** `Numeric + PartialOrd` 只是简写，实际实现受 sealed 类型集合限制（仅 `i32` / `i64` / `f32` / `f64`）。
+
 > **`signum()` 语义拆分：**
 >
 > - 整数 `signum`：基于数值符号返回 `-1`、`0` 或 `1`。
-> - 浮点 `signum`：遵循 IEEE 754 语义：`NaN -> NaN`、`+0.0 -> 0.0`、`-0.0 -> -0.0`、正数 `-> 1.0`、负数 `-> -1.0`。这与 Rust 标准库 `f32::signum` / `f64::signum` 行为一致。
+> - 浮点 `signum`：遵循 IEEE 754 语义：`NaN -> NaN`、`+0.0 -> 1.0`、`-0.0 -> -1.0`、正数 `-> 1.0`、负数 `-> -1.0`。这与 Rust 标准库 `f32::signum` / `f64::signum` 行为一致。
 
 > **整数一元运算补充约束：** `abs` / `square` 在整数路径上必须使用 checked arithmetic。特别是最小负值取绝对值、平方溢出等情形，均须视为不可恢复错误并触发 panic。`signum` 仅做符号分类，不额外要求 checked arithmetic。
 
@@ -312,7 +314,7 @@ where
 > **数学函数精度约束：** `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 使用 Rust 提供的数学能力，不引入外部数学 crate。
 >
 > - 精确类（`floor` / `ceil`）：结果须与标量路径逐元素一致。
-> - 近似类（`sin` / `sqrt` / `exp` / `ln`）：容差与比较规则统一遵循 `00-coding.md §7.4` 的定义。
+> - 近似类（`sin` / `sqrt` / `exp` / `ln`）：以 `需求说明书 §28.3` 为权威基线；实现细节参见 `00-coding.md §7.4`。
 > - 同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。
 
 ### 5.6 复数运算（ComplexScalar 约束）
@@ -569,28 +571,28 @@ apply_binary(a, b, f):
   - 文件: `src/math/binary.rs`
   - 内容: 基于直接遍历广播视图的二元操作内部辅助路径
   - 测试: `test_binary_same_shape`, `test_binary_broadcast`
-  - 前置: 10-iterator.md, broadcast 模块
+  - 前置: T1, 10-iterator.md, broadcast 模块
   - 预计: 10 min
 
 - [ ] **T3**: 实现一元运算（abs/neg/signum/square）
   - 文件: `src/math/unary.rs`
   - 内容: 基于统一逐元素遍历骨架实现一元运算，并为整数路径补齐 checked arithmetic
   - 测试: `test_abs`, `test_neg`, `test_signum`, `test_square`
-  - 前置: 10-iterator.md
+  - 前置: T1, 10-iterator.md
   - 预计: 10 min
 
 - [ ] **T4**: 实现数学函数（sin/sqrt/exp/ln/floor/ceil）
   - 文件: `src/math/unary.rs`
   - 内容: RealScalar 约束的数学方法
   - 测试: `test_sin`, `test_sqrt`, `test_exp`, `test_floor_ceil`
-  - 前置: 10-iterator.md
+  - 前置: T1, 10-iterator.md
   - 预计: 10 min
 
 - [ ] **T5**: 实现复数操作（`conjugate`）与复数数学函数（`modulus`）
   - 文件: `src/math/unary.rs`
   - 内容: `conjugate` 与 `modulus` 的范围内实现
   - 测试: `test_modulus`, `test_conjugate`
-  - 前置: 10-iterator.md
+  - 前置: T1, 10-iterator.md
   - 预计: 10 min
 
 ### Wave 2: 算术与比较运算
@@ -620,7 +622,9 @@ apply_binary(a, b, f):
 
 ### 并行执行分组图
 
-```
+```text
+            [T1]
+              |
             +-------+--------+-------+
             |       |        |       |
             v       v        v       v
@@ -694,9 +698,9 @@ Wave 3:    [T8]
 | --------------------- | ------------------------------------------ |
 | 空张量 `shape=[0, 3]` | add 返回空张量                             |
 | 单元素张量            | 所有运算正确                               |
-| 空张量边界占位        | 预留 `test_math_empty_tensor_boundary`：覆盖空输入在一元/二元/比较路径上的 shape 与错误语义 |
-| 高维广播边界占位      | 预留 `test_math_high_dim_broadcast_boundary`：覆盖高 rank `IxDyn` 广播与逐元素对应关系 |
-| 大张量边界占位        | 预留 `test_math_large_tensor_boundary`：覆盖大输入在默认/`parallel` 配置下的路径一致性 |
+| 空张量 `shape=[0, 3]` 的一元/二元/比较运算 | `sin` / `add` / `eq` 均返回空张量，shape 保持为 `[0, 3]` |
+| rank-6 广播输入 `IxDyn([1,1,1,1,1,4])` 与 `IxDyn([2,1,3,1,1,4])` | 广播结果 shape 为 `IxDyn([2,1,3,1,1,4])`，逐元素对应关系正确 |
+| `10^7` 元素张量 `add` / `mul` | 默认与 `parallel` 配置下结果 shape、错误类别与数值语义一致 |
 | 大张量 `len ≈ 10^7`   | `add` / `mul` 在默认与 `parallel` 配置下均保持 shape、错误类别与数值语义一致 |
 | 高 rank `IxDyn` 输入  | 广播与逐元素结果 shape 正确，遍历不越界     |
 | NaN 输入（f32/f64）   | NaN 传播（sin(NaN)=NaN, 0\*NaN=NaN）       |
@@ -764,7 +768,7 @@ User calls add / unary op / comparison method
 | Recoverable error | 广播不兼容时返回 `XenonError::BroadcastError { operation, lhs_shape, rhs_shape, attempted_target_shape, axis }`。参数不满足公开前提时返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, axis_len: Option<usize>, start: Option<usize>, end: Option<usize>, shape: Option<Vec<usize>> }`。 |
 | Panic | 整数 `add/sub/mul/div`、标量版 `add_scalar/sub_scalar/mul_scalar/div_scalar`、`abs/neg/square` 的溢出、除零或结果不可表示均按需求触发 panic；`signum` 不新增 panic 约束。panic 信息至少包含 `operation`、`type`、`trigger`、`element_index`，并在适用时附带 `shape`。推荐格式：`Xenon: {operation} overflow for {type} at element_index={i}, shape={shape}, trigger={trigger}`。 |
 | 路径一致性 | 标量、SIMD 与并行路径必须保持相同 shape、错误类别、NaN/复数语义；不满足前提或 guard 失败时统一回退标量实现。 |
-| 容差边界 | 精确类（`floor` / `ceil`）结果须与标量路径逐元素一致。近似类（`sin` / `sqrt` / `exp` / `ln`）容差与比较规则统一遵循 `00-coding.md §7.4` 的定义。复数结果按实部、虚部分量分别应用对应实数规则；同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。 |
+| 容差边界 | 精确类（`floor` / `ceil`）结果须与标量路径逐元素一致。近似类（`sin` / `sqrt` / `exp` / `ln`）以 `需求说明书 §28.3` 为权威基线；实现细节参见 `00-coding.md §7.4`。复数结果按实部、虚部分量分别应用对应实数规则；同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。 |
 
 ---
 

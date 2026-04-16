@@ -2,7 +2,7 @@
 
 > 文档编号: 19 | 模块: `src/overload/` | 阶段: Phase 4
 > 前置文档: `11-math.md`, `15-broadcast.md`
-> 需求参考: 需求说明书 §20, §27, §28.4
+> 需求参考: `需求说明书 §12`, `需求说明书 §20`, `需求说明书 §27`, `需求说明书 §28.3`, `需求说明书 §28.4`
 > 范围声明: 范围内
 
 ---
@@ -40,7 +40,7 @@ L3: storage (independent of layout; tensor owns storage and consumes layout resu
 L4: tensor (depends on storage, dimension)
 L5: broadcast, iter
 L6: math (element-wise operations)
-L7: overload  <- current module (depends on broadcast, math)
+L6: overload  <- current module (depends on broadcast, math)
 ```
 
 ---
@@ -49,7 +49,7 @@ L7: overload  <- current module (depends on broadcast, math)
 
 | 类型     | 内容 |
 | -------- | ---- |
-| 需求映射 | 需求说明书 §20, §27, §28.4 |
+| 需求映射 | `需求说明书 §12`, `需求说明书 §20`, `需求说明书 §27`, `需求说明书 §28.3`, `需求说明书 §28.4` |
 | 范围内   | `+` / `-` / `*` / `/` 的张量×张量、张量×标量及常用左标量重载，含广播与 borrowed 组合。 |
 | 范围外   | 位运算、比较运算符、赋值运算符、原地运算与其他超出四则运算范围的 operator API。 |
 | 非目标   | 不把运算符层扩展为新的计算后端，不新增第三方依赖，也不在本文设计原地广播语义。 |
@@ -337,6 +337,8 @@ where
 
 > **说明**：当前稳定版本仅承诺 `TensorView` 参与张量×张量运算符；标量路径暂不扩展到 `TensorView`。`TensorViewMut` 若需使用运算符，同样必须先调用 `.view()` 转为只读 `TensorView`。
 
+> **补充说明**：当前版本标量运算符重载仅覆盖 owned `Tensor`；`TensorView` 的标量运算通过方法调用（如 `.add_scalar()`）实现，参见 `11-math.md §5.9`。后续版本可视需求扩展运算符覆盖到视图类型。
+
 > **设计决策：** 标量运算委托给 `add_scalar_impl()` / `sub_scalar_impl()` / `mul_scalar_impl()` / `div_scalar_impl()` 等内部 helper，
 > 其内部直接遍历输入与结果张量，而不是额外暴露通用 helper 作为稳定实现描述。
 
@@ -357,7 +359,7 @@ where
 ```
 
 > **除法语义补充：** 对整数类型，`Div` 路径中的除以零和结果不可表示（如最小负值除以 `-1`）
-> 均遵循需求说明书 §12 与 §27 的统一 panic 语义；运算符重载仅把广播不兼容报告为 `Result::Err`，不额外吞掉或包装这类不可恢复错误。
+> 均遵循 `需求说明书 §12` 与 `需求说明书 §27` 的统一 panic 语义；运算符重载仅把广播不兼容报告为 `Result::Err`，不额外吞掉或包装这类不可恢复错误。
 
 #### 5.4.1 标量重载覆盖矩阵
 
@@ -469,6 +471,8 @@ tensor + scalar:
   - 前置: `math` 完成、`broadcast` 完成
   - 预计: 5 min
 
+### Wave 2: Owned 张量运算符
+
 - [ ] **T2**: 实现 `Add` trait（张量×张量，所有权形式）
   - 文件: `src/overload/arithmetic.rs`
   - 内容: `Tensor + Tensor` impl
@@ -476,7 +480,7 @@ tensor + scalar:
   - 前置: T1
   - 预计: 10 min
 
-### Wave 2: 借用形式
+### Wave 3: 借用与标量形式
 
 - [ ] **T3**: 实现 `Add` trait（&张量×&张量、混合形式）
   - 文件: `src/overload/arithmetic.rs`
@@ -484,8 +488,6 @@ tensor + scalar:
   - 测试: `test_add_ref_ref`, `test_add_owned_ref`, `test_add_ref_owned`
   - 前置: T2
   - 预计: 10 min
-
-### Wave 3: 标量运算符
 
 - [ ] **T4**: 实现 `Add` trait（张量×标量、标量×张量）
   - 文件: `src/overload/arithmetic.rs`
@@ -515,15 +517,18 @@ tensor + scalar:
 ### 并行执行图
 
 ```
-Wave 1: [T1] → [T2]
+Wave 1: [T1]
+           │
+Wave 2: [T2]
+           │
+           ├──────────────┐
+           ▼              ▼
+Wave 3: [T3]           [T4]
+           └──────┬───────┘
+                  ▼
+Wave 4:          [T5]
                   │
-Wave 2:      [T3]
-                  │
-Wave 3:      [T4]
-                  │
-Wave 4:      [T5]
-                  │
-Wave 5:      [T6]
+Wave 5:          [T6]
 ```
 
 ---
@@ -571,13 +576,13 @@ Wave 5:      [T6]
 | 大张量 `[10000, 10000] + [10000, 10000]` | 返回 `Ok`，正确完成            |
 | `[2, 3] + [4, 5]`                        | 返回 `Err(XenonError::BroadcastError { .. })` |
 
-### 8.4 §28.4 边界测试占位
+### 8.4 §28.4 边界测试场景
 
-| 占位场景 | 说明 |
-| -------- | ---- |
-| 高维广播链 | 预留给需求说明书 §28.4 的高维广播边界用例（如 `Ix6` / `IxDyn` 混合广播） |
-| 大规模整数 panic 诊断 | 预留给需求说明书 §28.4 的整数溢出/除零诊断验证，断言 panic 消息包含操作类型、元素类型与首个失败索引 |
-| `ArcRepr` 只读参与 | 预留给需求说明书 §28.4 的共享只读张量参与四则运算边界用例 |
+| 场景 | 说明 |
+| ---- | ---- |
+| `Ix6` / `IxDyn` 混合高维广播链 | `&a + &b - &c` 在高维广播链上返回 `Ok(...)`，结果 shape 与逐元素对应关系正确 |
+| 大规模整数 panic 诊断 | `10^7` 量级整数张量触发溢出或除零时，panic 消息包含操作类型、元素类型与首个失败索引 |
+| `ArcRepr` 共享只读参与四则运算 | 仅在增强候选实现启用时适用：`&ArcRepr + &Owned` / `&ArcRepr * scalar` 返回新 owned 结果，且不暴露可写别名 |
 
 ### 8.5 属性测试不变量
 
@@ -645,10 +650,10 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | 项目级稳定的可恢复错误语义由运算符路径与显式方法路径共同承担；`+` / `-` / `*` / `/` 以及 `broadcast_with()`、方法型逐元素 API 均返回 `XenonError::BroadcastError { operation: &'static str, lhs_shape: Vec<usize>, rhs_shape: Vec<usize>, attempted_target_shape: Option<Vec<usize>>, axis: Option<usize> }`；若方法参数本身非法，则继续使用 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, shape: Option<Vec<usize>> }`。 |
+| Recoverable error | 项目级稳定的可恢复错误语义由运算符路径与显式方法路径共同承担；`+` / `-` / `*` / `/` 以及 `broadcast_with()`、方法型逐元素 API 均返回 `XenonError::BroadcastError { operation: &'static str, lhs_shape: Vec<usize>, rhs_shape: Vec<usize>, attempted_target_shape: Option<Vec<usize>>, axis: Option<usize> }`；若方法参数本身非法，则继续使用 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, axis_len: Option<usize>, start: Option<usize>, end: Option<usize>, shape: Option<Vec<usize>> }`。 |
 | Panic | 广播不兼容不再 panic；整数除零、溢出与结果不可表示继续沿用 `math` 的 panic 语义，且 panic 消息须包含操作类型、元素类型与第一个失败元素索引（若可确定）。 |
 | 路径一致性 | 借用 / owned / 标量以及由 `math` 触发的标量 / SIMD 路径必须保持相同输出 shape 与数值语义。 |
-| 容差边界 | 当前不引入额外容差；若底层 `math` 使用 SIMD，仍须与标量路径语义一致。 |
+| 容差边界 | 当前不引入额外容差；容差基线以 `需求说明书 §28.3` 为权威，`00-coding.md §7.4` 仅作为实现参考。若底层 `math` 使用 SIMD，仍须与该基线及标量路径语义一致。 |
 
 ---
 
@@ -662,7 +667,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | 属性     | 值                                                                                           |
 | -------- | -------------------------------------------------------------------------------------------- |
 | 决策     | 当前版本不提供 `+=`/`-=`/`*=`/`/=` 原地运算符                                                |
-| 理由     | 需求说明书 §20 明确"四则运算以外的运算符语法不在当前范围内"；原地运算符涉及 LHS 广播约束复杂 |
+| 理由     | `需求说明书 §20` 明确"四则运算以外的运算符语法不在当前范围内"；原地运算符涉及 LHS 广播约束复杂 |
 | 替代方案 | 提供 `AddAssign` 等 impl — 留待未来版本                                                      |
 | 拒绝原因 | 会把当前文档从纯表达式语法扩展到原地写入语义，增加广播别名与可变借用复杂度                    |
 
@@ -671,18 +676,18 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | 属性     | 值                                                                                        |
 | -------- | ----------------------------------------------------------------------------------------- |
 | 决策     | 运算符重载在广播不兼容时返回 `Result`；方法型 API 保持相同的 `Result` 返回                   |
-| 理由     | 为与需求说明书 §12 / §27 保持一致，广播错误必须以返回值形式报告；虽然这偏离 `std::ops` 的常见习惯，但 Xenon 的错误模型优先 |
+| 理由     | 为与 `需求说明书 §12` / `需求说明书 §27` 保持一致，广播错误必须以返回值形式报告；虽然这偏离 `std::ops` 的常见习惯，但 Xenon 的错误模型优先 |
 | 替代方案 | 保持“运算符 panic / 方法 Result”分离语义，或让方法型 API 也 panic                           |
 | 拒绝原因 | 前者直接违背需求约束；后者会抹掉 Xenon 公开 API 的可恢复错误通道                             |
 
-> **补充**：运算符与方法型 API 现在共享广播错误的恢复主路径；整数除零、整数溢出和结果不可表示等不可恢复错误则继续遵循需求说明书 §12 / §27 的 panic 语义。
+> **补充**：运算符与方法型 API 现在共享广播错误的恢复主路径；整数除零、整数溢出和结果不可表示等不可恢复错误则继续遵循 `需求说明书 §12` / `需求说明书 §27` 的 panic 语义。
 
 ### 决策 2a：运算符返回 Result
 
 | 属性     | 值 |
 | -------- | --- |
 | 决策     | 四则运算符的 `Output` 类型为 `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` |
-| 理由     | 广播不兼容时须返回可恢复错误（需求说明书 §20 / §27）；运算符是唯一的公开入口，不可静默 panic |
+| 理由     | 广播不兼容时须返回可恢复错误（`需求说明书 §20` / `需求说明书 §27`）；运算符是唯一的公开入口，不可静默 panic |
 | 替代方案 | 运算符 panic + 提供 `try_add` / `try_sub` 系列方法 — 放弃，因为需求明确要求广播不兼容为可恢复错误，panic 违反语义 |
 | 替代方案 | 运算符不返回 `Result`，广播失败由单独的 broadcast 步骤处理 — 放弃，增加调用复杂度 |
 | 确认     | 本决策经跨模块评审后确认，现作为项目级稳定 API 风格决策生效 |
@@ -694,7 +699,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | 链式表达式 | `a + b + c` 须改写为 `(a + b)? + c`，每层运算均需 `?` 传播 |
 | 泛型互操作 | `std::ops::Add<Output=Result<_,_>>` 与标准库运算符语义不兼容 |
 | 用户心智成本 | 所有张量运算表达式均需考虑错误处理路径 |
-| 设计理由 | 广播不兼容须返回可恢复错误（需求说明书 §20），运算符无法通过类型系统排除不兼容输入 |
+| 设计理由 | 广播不兼容须返回可恢复错误（`需求说明书 §20`），运算符无法通过类型系统排除不兼容输入 |
 
 > **决策**：接受上述代价，运算符统一返回 `Result`。这是在"运算符便利性"与"需求要求广播错误可恢复"之间的显式权衡。
 
@@ -703,7 +708,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | 属性     | 值 |
 | -------- | --- |
 | 决策     | 仅张量×张量/视图路径在广播失败时返回 `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>`；标量路径直接返回 `Tensor<A, D>` |
-| 理由     | 需求说明书 §20 只要求广播支持张量与标量之间的逐元素运算，但标量路径不存在形状不兼容分支；因此只把真正可能出现的广播错误保留在张量×张量路径，既满足需求说明书 §12 / §27 的可恢复错误约束，也避免为无错误分支的标量路径强加 `Result` |
+| 理由     | `需求说明书 §20` 只要求广播支持张量与标量之间的逐元素运算，但标量路径不存在形状不兼容分支；因此只把真正可能出现的广播错误保留在张量×张量路径，既满足 `需求说明书 §12` / `需求说明书 §27` 的可恢复错误约束，也避免为无错误分支的标量路径强加 `Result` |
 | 替代方案 | 所有运算符路径统一返回 `Result`，或让张量×张量路径也 panic |
 | 拒绝原因 | 前者会给无广播失败分支的标量路径引入无依据的错误包装；后者违反需求中“可恢复错误须以返回值形式报告”的约束 |
 

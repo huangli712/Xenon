@@ -2,7 +2,7 @@
 
 > 文档编号: 18 | 模块: `src/construct/` | 阶段: Phase 4
 > 前置文档: `07-tensor.md`, `05-storage.md`
-> 需求参考: 需求说明书 §7, §8, §19
+> 需求参考: `需求说明书 §7`, `需求说明书 §8`, `需求说明书 §19`, `需求说明书 §27`, `需求说明书 §28.2`, `需求说明书 §28.4`
 > 范围声明: 范围内
 
 ---
@@ -27,7 +27,7 @@
 
 | 原则         | 体现                                                                                                                                    |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| 合法性验证   | 所有构造路径须验证合法性，防止越界访问（需求说明书 §8）                                                                                 |
+| 合法性验证   | 所有构造路径须验证合法性，防止越界访问（`需求说明书 §8`）                                                                               |
 | F-order 默认 | 构造时数据按 F-order 存放，默认列优先布局                                                                                               |
 | 对齐分配     | `zeros`/`ones` 使用项目统一的对齐分配策略，满足拥有型连续存储的实现需求；具体对齐值不作为构造 API 的公开语义                            |
 | 对齐优先     | `from_shape_vec` 可复用项目统一的 owned 存储构造路径；是否复制输入 `Vec<A>`、以及采用何种对齐值，均属于内部实现选择，不单独形成公开承诺 |
@@ -42,7 +42,7 @@ L1: dimension, element, complex
 L2: layout (depends on dimension)
 L3: storage (independent of layout; owned by tensor and consumes layout results)
 L4: tensor (depends on storage, dimension)
-L5: construct  <- current module (depends on storage, layout, dimension, element)
+L7: construct  <- current module (depends on storage, layout, dimension, element)
 ```
 
 ---
@@ -51,12 +51,12 @@ L5: construct  <- current module (depends on storage, layout, dimension, element
 
 | 类型     | 内容                                                                                                                                                  |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §7, §8, §19                                                                                                                                |
+| 需求映射 | `需求说明书 §7`, `需求说明书 §8`, `需求说明书 §19`, `需求说明书 §27`, `需求说明书 §28.2`, `需求说明书 §28.4`                                          |
 | 范围内   | `zeros` / `ones` / `eye` / `from_shape_vec` / `from_shape_slice` / `from_array` / `from_scalar`，以及空张量 / 零维张量 / ZST 路径的合法性与错误语义。 |
 | 范围外   | arange、linspace、from_fn、随机构造器与其他序列生成 API。                                                                                             |
 | 非目标   | 不新增新的构造器家族，不改变 F-order / 对齐分配基线，也不引入第三方随机或数据加载依赖。                                                               |
 
-> **范围说明：** 当前版本将需求说明书 §19 中的“动态数组”解释为 `Vec<A>`。`Box<[A]>` 等其他持有容器不单独承诺。
+> **范围说明：** 当前版本将 `需求说明书 §19` 中的“动态数组”解释为 `Vec<A>`。`Box<[A]>` 等其他持有容器不单独承诺。
 
 > **固定数组范围说明：** 当前版本“固定数组构造”仅承诺线性数组入口 `[A; N]`。嵌套数组（如 `[[A; M]; N]`）自动推导 shape 不在范围内。
 
@@ -165,7 +165,7 @@ where
             offending_dim: None,
             reason: Some("element count overflow".into()),
         })?;
-        let strides = layout::f_order_strides(&dim);
+        let strides = layout::compute_f_strides(&dim)?;
         let storage = Owned::zeros(len);
         let flags = layout::flags_for_f_layout(storage.is_aligned(), false);
         Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags })
@@ -192,7 +192,7 @@ where
             offending_dim: None,
             reason: Some("element count overflow".into()),
         })?;
-        let strides = layout::f_order_strides(&dim);
+        let strides = layout::compute_f_strides(&dim)?;
         let storage = Owned::ones(len);
         let flags = layout::flags_for_f_layout(storage.is_aligned(), false);
         Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags })
@@ -200,10 +200,12 @@ where
 }
 ````
 
-> **范围决策：** `full()` 超出需求说明书 §19 的当前最小构造集合。
-> 如实现后续自愿提供 `from_vec()` 这类 1D 便捷包装，也仅属于非规范 convenience layer；本文的稳定承诺仍以需求说明书 §19 已覆盖的标准构造语义为准，不把该便捷入口纳入范围、任务或测试承诺。
+> **范围决策：** `full()` 超出 `需求说明书 §19` 的当前最小构造集合。
+> 如实现后续自愿提供 `from_vec()` 这类 1D 便捷包装，也仅属于非规范 convenience layer；本文的稳定承诺仍以 `需求说明书 §19` 已覆盖的标准构造语义为准，不把该便捷入口纳入范围、任务或测试承诺。
 
-> **`bool` 特殊值说明：** `zeros::<bool>()` 对应 `false`，`ones::<bool>()` 对应 `true`（需求说明书 §19）。
+> **helper 命名说明：** `06-layout.md` 的权威 stride API 名称为 `compute_f_strides()`；本节中“元素总数 checked helper”仍为示意性命名，具体 helper 名称与归属以 `06-layout.md` 的实现约定为准。
+
+> **`bool` 特殊值说明：** `zeros::<bool>()` 对应 `false`，`ones::<bool>()` 对应 `true`（`需求说明书 §19`）。
 
 ### 5.2 eye（单位矩阵）
 
@@ -215,7 +217,7 @@ where
 # use crate::storage::Owned;
 # use crate::tensor::{Tensor, TensorBase};
 # use crate::dimension::Ix2;
-# pub trait EyeElement: Element {}
+# pub trait EyeElement: crate::private::Sealed + Element {}
 # impl EyeElement for i32 {}
 # impl EyeElement for i64 {}
 # impl EyeElement for f32 {}
@@ -256,7 +258,7 @@ where
 ````
 
 ```rust,ignore
-pub trait EyeElement: Element {}
+pub trait EyeElement: crate::private::Sealed + Element {}
 
 impl EyeElement for i32 {}
 impl EyeElement for i64 {}
@@ -266,7 +268,7 @@ impl EyeElement for Complex<f32> {}
 impl EyeElement for Complex<f64> {}
 ```
 
-> **类型约束说明：** `eye()` 不对 `bool` 开放；其适用类型严格限定为 `i32`、`i64`、`f32`、`f64`、`Complex<f32>` 与 `Complex<f64>`，以符合需求说明书 §19。
+> **类型约束说明：** `eye()` 不对 `bool` 开放；其适用类型严格限定为 `i32`、`i64`、`f32`、`f64`、`Complex<f32>` 与 `Complex<f64>`，以符合 `需求说明书 §19`。`EyeElement` 必须保持 sealed，避免下游扩展突破 `需求说明书 §4` 对元素类型封闭集合的要求。
 
 > **范围说明：** 当前版本的 `eye()` 仅提供 `n×n` 方阵构造。矩形对角矩阵构造器不在范围内。
 
@@ -341,7 +343,7 @@ where
                 reason: None,
             });
         }
-        let strides = layout::f_order_strides(&dim);
+        let strides = layout::compute_f_strides(&dim)?;
         // from_vec_aligned stands for Xenon's internal owned construction path.
         // The public contract only requires validated F-order logical mapping and
         // an owned result; whether the implementation reuses the original Vec
@@ -449,7 +451,7 @@ where
 
 ````
 
-> **范围决策：** `from_fn()` 不在需求说明书 §19 当前版本强制集合中。
+> **范围决策：** `from_fn()` 不在 `需求说明书 §19` 当前版本强制集合中。
 > 若后续版本确需提供闭包驱动构造器，应另行评估其 API 粒度、性能模型与错误语义。
 
 ### 5.5 Good / Bad 对比
@@ -522,14 +524,14 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
   - 前置: `tensor` 模块完成
   - 预计: 10 min
 
+### Wave 2: 基础构造扩展与数据源构造入口
+
 - [ ] **T2**: 实现 `eye` 单位矩阵
   - 文件: `src/construct/eye.rs`
   - 内容: 单位矩阵构造
   - 测试: `test_eye`, `test_eye_zero_size`
   - 前置: T1
   - 预计: 5 min
-
-### Wave 2: 从数据源构造
 
 - [ ] **T3**: 实现 `from_shape_vec` 和 `from_shape_slice`
   - 文件: `src/construct/from_data.rs`
@@ -538,6 +540,8 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
   - 前置: T1
   - 预计: 10 min
 
+### Wave 3: 补齐剩余构造入口
+
 - [ ] **T4**: 实现 `from_array` 和 `from_scalar`
   - 文件: `src/construct/from_data.rs`, `src/construct/scalar.rs`
   - 内容: 从固定数组构造、零维张量
@@ -545,7 +549,7 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
   - 前置: T3
   - 预计: 5 min
 
-### Wave 3: 集成与测试
+### Wave 4: 集成与测试
 
 - [ ] **T5**: 编写综合测试
   - 文件: `tests/test_construction.rs`
@@ -557,11 +561,17 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 ### 并行执行图
 
 ```
-Wave 1: [T1] → [T2]
-                  │
-Wave 2:      [T3] → [T4]
-                      │
-Wave 3:            [T5]
+Wave 1: [T1]
+           │
+           ├──────────────┐
+           ▼              ▼
+Wave 2: [T2]           [T3]
+                          │
+                          ▼
+Wave 3:                 [T4]
+                          │
+                          ▼
+Wave 4:                 [T5]
 ```
 
 ---
@@ -606,7 +616,7 @@ Wave 3:            [T5]
 | `eye(0)`                      | 空 0×0 矩阵                                 |
 | `from_scalar(42)`             | 零维张量，`ndim() == 0`                     |
 | `from_shape_vec([0], vec![])` | 空 1D 张量                                  |
-| 大张量 `zeros([1000, 1000])`  | 分配成功，F-order 连续                      |
+| 大张量 `zeros([3162, 3162])`  | 分配成功，F-order 连续                      |
 | 极大 shape 导致元素总数溢出   | 返回 `InvalidShape`，不伪造 expected/actual |
 | 高 rank `IxDyn` shape         | 正确计算或拒绝 F-order stride               |
 | `eye(n)` 接近溢出边界         | 在 `n * n` 溢出前返回结构化错误             |
@@ -671,12 +681,12 @@ User calls zeros / from_shape_vec / eye
 
 ## 10. 错误处理与语义边界
 
-| 主题              | 内容                                                                                                                                                                                                                                            |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 主题              | 内容                                                                                                                                                                                                                                                                                        |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Recoverable error | shape 与长度基数不匹配、共享 checked helper 报告元素总数溢出等情况返回 `XenonError::InvalidShape`。所有 `InvalidShape` 示例都保持 `26-error.md` 的 canonical 字段集；长度不匹配时携带实际与期望元素数，元素总数溢出时额外以 `reason = Some("element count overflow".into())` 标识溢出原因。 |
-| Panic             | 公开构造 API 不定义额外 panic 语义；失败统一走 `Result`。                                                                                                                                                                                       |
-| 路径一致性        | 所有构造路径都必须产出 canonical F-order owned 张量，并保持一致的 shape / strides / flags 语义。                                                                                                                                                |
-| 容差边界          | 不适用。                                                                                                                                                                                                                                        |
+| Panic             | 公开构造 API 不定义额外 panic 语义；失败统一走 `Result`。                                                                                                                                                                                                                                   |
+| 路径一致性        | 所有构造路径都必须产出 canonical F-order owned 张量，并保持一致的 shape / strides / flags 语义。                                                                                                                                                                                            |
+| 容差边界          | 不适用。                                                                                                                                                                                                                                                                                    |
 
 ---
 
@@ -687,7 +697,7 @@ User calls zeros / from_shape_vec / eye
 | 属性     | 值                                                             |
 | -------- | -------------------------------------------------------------- |
 | 决策     | `from_fn` 留待后续版本单独设计，不在当前阶段承诺               |
-| 理由     | 需求说明书 §19 当前仅要求标准构造方法与从数据源/标量构造能力 |
+| 理由     | `需求说明书 §19` 当前仅要求标准构造方法与从数据源/标量构造能力 |
 | 替代方案 | 在本阶段继续纳入 `from_fn` — 放弃，会扩大当前版本范围          |
 
 ### ADR-2: eye 实现方式
@@ -719,7 +729,7 @@ User calls zeros / from_shape_vec / eye
 
 | 主题     | 说明                                                                                                  |
 | -------- | ----------------------------------------------------------------------------------------------------- |
-| 公共语义 | 需求说明书 §7 只要求支持对齐布局，并允许存在仅用于实现目的的填充区域；构造 API 不额外暴露具体对齐值 |
+| 公共语义 | `需求说明书 §7` 只要求支持对齐布局，并允许存在仅用于实现目的的填充区域；构造 API 不额外暴露具体对齐值 |
 | 实现选择 | `Owned` 存储可按 SIMD / FFI / allocator 约束选择合适的对齐策略                                        |
 | 兼容性   | 只要逻辑元素值、访问结果与 F-order 语义不变，更换具体对齐值不构成构造模块语义变化                     |
 
@@ -744,7 +754,7 @@ User calls zeros / from_shape_vec / eye
 | ---------- | ------------------------------------------------------------------- |
 | `std` only | Xenon 当前版本仅支持 `std` 环境，本文不再讨论 `no_std` 路径         |
 | 单 crate   | `construct` 设计保持在现有 crate 内，不引入额外 crate               |
-| SemVer     | 文档当前收敛到需求说明书 §19 的最小构造集合，不扩大公开 API 承诺 |
+| SemVer     | 文档当前收敛到 `需求说明书 §19` 的最小构造集合，不扩大公开 API 承诺 |
 | 最小依赖   | 本模块不新增第三方依赖                                              |
 
 ---

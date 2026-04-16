@@ -2,7 +2,7 @@
 
 > 文档编号: 07 | 模块: `src/tensor/` | 阶段: Phase 3
 > 前置文档: `01-architecture.md`, `02-dimension.md`, `05-storage.md`, `06-layout.md`
-> 需求参考: 需求说明书 §6、§7、§8、§10、§19、§22、§27、§28
+> 需求参考: `需求说明书 §6`、`需求说明书 §7`、`需求说明书 §8`、`需求说明书 §10`、`需求说明书 §19`、`需求说明书 §22`、`需求说明书 §27`、`需求说明书 §28`
 > 范围声明: 范围内
 
 ---
@@ -46,14 +46,14 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 ## 2. 需求映射与范围约束
 
-| 项目     | 内容                                                                  |
-| -------- | --------------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §6、§7、§8、§10、§19、§22、§27、§28                         |
-| 范围内   | `TensorBase<S, D>`、类型别名、基础查询、构造校验、视图与 raw-parts 契约 |
-| 范围外   | 广播、索引、reshape、归约与逐元素运算                                 |
-| 非目标   | 引入运行时动态张量类型系统、隐藏存储模式差异或跳过元数据合法性校验     |
+| 项目     | 内容                                                                                                                                        |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| 需求映射 | `需求说明书 §6`、`需求说明书 §7`、`需求说明书 §8`、`需求说明书 §10`、`需求说明书 §19`、`需求说明书 §22`、`需求说明书 §27`、`需求说明书 §28` |
+| 范围内   | `TensorBase<S, D>`、类型别名、基础查询、构造校验、视图与 raw-parts 契约                                                                     |
+| 范围外   | 广播、索引、reshape、归约与逐元素运算                                                                                                       |
+| 非目标   | 引入运行时动态张量类型系统、隐藏存储模式差异或跳过元数据合法性校验                                                                          |
 
-> **需求 §6 边界说明：** 存储模式转换矩阵与具体转换 API 由 `05-storage.md` 承载实现设计；本文档仅定义 `storage_kind()`、view/raw-parts 与张量查询接口，不重复展开转换细节。
+> **需求说明书 §6 边界说明：** 存储模式转换矩阵与具体转换 API 由 `05-storage.md` 承载实现设计；本文档仅定义 `storage_kind()`、view/raw-parts 与张量查询接口，不重复展开转换细节。
 
 ---
 
@@ -100,16 +100,16 @@ src/tensor/
 | 来源模块    | 使用的类型/trait                                                                                                                                       |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `storage`   | `Owned<A>`, `ViewRepr<'a, A>`, `ViewMutRepr<'a, A>`, `ArcRepr<A>`, `Storage`, `StorageMut`, `StorageOwned`, `StorageShared`（参见 `05-storage.md §5`） |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.checked_size()`, `.ndim()`（参见 `02-dimension.md §5`）                                              |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.checked_size()`, `.ndim()`（参见 `02-dimension.md §5`）                                               |
 | `layout`    | `LayoutFlags`, `compute_f_strides()`, `is_f_contiguous()`, `is_aligned()`（参见 `06-layout.md §5`）                                                    |
 
 ### 4.2a 依赖合法性
 
-| 项目           | 结论                           |
-| -------------- | ------------------------------ |
-| 新增第三方依赖 | 无                             |
-| 合法性结论     | 符合需求说明书最小依赖限制     |
-| 替代方案       | 不适用                         |
+| 项目           | 结论                       |
+| -------------- | -------------------------- |
+| 新增第三方依赖 | 无                         |
+| 合法性结论     | 符合需求说明书最小依赖限制 |
+| 替代方案       | 不适用                     |
 
 > 注意：`06-layout.md` 的当前结论是不再引入公开 `Layout` 结构体；`TensorBase` 直接内联 `offset` 与 `LayoutFlags` 等布局元数据。
 
@@ -175,12 +175,12 @@ pub struct TensorBase<S, D> {
 
 > **线程安全推导**: `TensorBase<S, D>` 的 `Send`/`Sync` 由存储模式 `S` 和元素类型 `A` 共同决定：`S` 提供 `Send`/`Sync`（参见 `05-storage.md §5.3`），`A` 须满足对应的线程安全约束（参见 `25-safety.md §4`）。
 
-| 张量存储模式 | `Send` 条件 | `Sync` 条件 | 说明 |
-| ------------ | ----------- | ----------- | ---- |
-| `Tensor<Owned<A>, D>` | 取决于 `Owned<A>: Send` | 取决于 `Owned<A>: Sync` | 拥有型规则与 `05-storage.md`、`25-safety.md` 一致 |
-| `TensorView<'a, A, D>` | 取决于 `ViewRepr<'a, A>: Send` | 取决于 `ViewRepr<'a, A>: Sync` | 只读借用可跨线程共享的前提由 storage 层定义 |
-| `TensorViewMut<'a, A, D>` | 取决于 `ViewMutRepr<'a, A>: Send` | 不成立 | 可变视图只允许独占传播 |
-| `ArcTensor<A, D>` | 取决于 `ArcRepr<A>: Send` | 取决于 `ArcRepr<A>: Sync` | 共享只读线程安全前提完全继承 storage 层 |
+| 张量存储模式              | `Send` 条件                       | `Sync` 条件                    | 说明                                              |
+| ------------------------- | --------------------------------- | ------------------------------ | ------------------------------------------------- |
+| `Tensor<Owned<A>, D>`     | 取决于 `Owned<A>: Send`           | 取决于 `Owned<A>: Sync`        | 拥有型规则与 `05-storage.md`、`25-safety.md` 一致 |
+| `TensorView<'a, A, D>`    | 取决于 `ViewRepr<'a, A>: Send`    | 取决于 `ViewRepr<'a, A>: Sync` | 只读借用可跨线程共享的前提由 storage 层定义       |
+| `TensorViewMut<'a, A, D>` | 取决于 `ViewMutRepr<'a, A>: Send` | 不成立                         | 可变视图只允许独占传播                            |
+| `ArcTensor<A, D>`         | 取决于 `ArcRepr<A>: Send`         | 取决于 `ArcRepr<A>: Sync`      | 共享只读线程安全前提完全继承 storage 层           |
 
 ### 5.2 Type aliases (full list)
 
@@ -360,12 +360,12 @@ pub enum DataLocation {
 
 > **权威约束：** 访问语义的权威查询入口是 `access_semantics()`；`storage_kind()` 只报告底层表示类型，不能替代访问语义判定。
 
-| 语义分类 | 对应表示类型 | 统一语义说明 | 查询结果 |
-| -------- | ------------ | ------------ | -------- |
-| 只读 | `ViewRepr<'_, A>`（普通非广播只读借用） | 只提供共享只读借用；不提供写访问；不持有底层存储 | `AccessSemantics::ReadOnly` |
-| 共享只读 | `ArcRepr<A>`，或带共享只读语义标记的 `ViewRepr<'_, A>`（广播结果 / `ViewMutRepr` 零拷贝降级结果） | 可被多个只读视图共享；不提供安全可写访问；可共享所有权或共享借用语义 | `AccessSemantics::SharedReadOnly` |
-| 可写 | `ViewMutRepr<'_, A>` | 提供独占可写借用；同时允许读取；不得与其他可写或共享只读访问并存 | `AccessSemantics::Writable` |
-| 拥有 | `Owned<A>` | 持有底层存储所有权；提供可读可写访问；可零拷贝借出视图或降级为共享只读 | `AccessSemantics::Owned` |
+| 语义分类 | 对应表示类型                                                                                      | 统一语义说明                                                           | 查询结果                          |
+| -------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------- |
+| 只读     | `ViewRepr<'_, A>`（普通非广播只读借用）                                                           | 只提供共享只读借用；不提供写访问；不持有底层存储                       | `AccessSemantics::ReadOnly`       |
+| 共享只读 | `ArcRepr<A>`，或带共享只读语义标记的 `ViewRepr<'_, A>`（广播结果 / `ViewMutRepr` 零拷贝降级结果） | 可被多个只读视图共享；不提供安全可写访问；可共享所有权或共享借用语义   | `AccessSemantics::SharedReadOnly` |
+| 可写     | `ViewMutRepr<'_, A>`                                                                              | 提供独占可写借用；同时允许读取；不得与其他可写或共享只读访问并存       | `AccessSemantics::Writable`       |
+| 拥有     | `Owned<A>`                                                                                        | 持有底层存储所有权；提供可读可写访问；可零拷贝借出视图或降级为共享只读 | `AccessSemantics::Owned`          |
 
 > `LayoutState` 使用 `crate::layout::LayoutState`（参见 `06-layout.md §5`）；
 > 本文档不再重复定义 `FContiguous`、`NonContiguous`、`BroadcastView` 三个变体。
@@ -499,7 +499,9 @@ where
     /// ```ignore
     /// let t = Tensor2::<f64>::from_shape_vec([3, 4], vec![1.0; 12])?;
     /// ```
-    pub fn from_shape_vec(shape: D, data: Vec<A>) -> Result<Self, XenonError>;
+    pub fn from_shape_vec<Sh>(shape: Sh, data: Vec<A>) -> Result<Self, XenonError>
+    where
+        Sh: IntoDimension<Dim = D>;
 
     /// Constructor-module APIs such as `zeros()` and `ones()` also return
     /// `Result<Self, XenonError>` and must be used with `?` in examples and
@@ -549,11 +551,14 @@ where
     /// - Pointer alignment and initialization requirements of `A` are satisfied
     /// - The access range implied by `shape`, `strides`, and `offset` is actually accessible within the backing storage
     ///
-    /// The constructor validates metadata that can be checked directly:
-    /// - `shape` and `strides` are combinable for this dimension type
-    /// - Element-count computation does not overflow
-    /// - The logical access range implied by `shape`, `strides`, and `offset`
-    ///   fits within `storage_len`
+/// The constructor validates metadata that can be checked directly:
+/// - `shape` and `strides` are combinable for this dimension type
+/// - Element-count computation does not overflow
+/// - Every stride is representable for pointer-offset calculations (`stride <= isize::MAX`)
+/// - The layout family is valid for the requested view kind (F-order/non-contiguous view,
+///   and broadcast-style zero-stride layouts only on read-only/shared-read-only paths)
+/// - The logical access range implied by `shape`, `strides`, and `offset`
+///   fits within `storage_len`
     ///
     /// If metadata validation fails, returns `Err(XenonError::InvalidLayout)`
     /// with context. The unsafe obligation is limited to pointer validity,
@@ -577,12 +582,13 @@ where
     ///
     /// # Safety
     ///
-    /// Same as `from_raw_parts`, including the rule that empty tensors only require
+    /// Same as `from_raw_parts`, including stride `<= isize::MAX` and layout-family
+    /// validation, as well as the rule that empty tensors only require
     /// `offset <= storage_len` and never perform actual pointer offsetting, with the
     /// additional requirement of exclusive access. In particular, mutable views must
-    /// not describe overlapping logical elements: if multiple logical indices map to
-    /// the same physical address, the constructor must reject the layout and return
-    /// an error.
+    /// not describe overlapping logical elements and must reject shared-read-only /
+    /// broadcast-style layout families: if multiple logical indices map to the same
+    /// physical address, the constructor must reject the layout and return an error.
     ///
     /// The constructor returns `Err(XenonError::InvalidLayout)` when directly
     /// checkable metadata validation fails; the unsafe obligation remains the
@@ -668,10 +674,10 @@ let t = unsafe {
 >
 > **实现方案：**
 >
-> | 层次                 | 类型         | 说明                                                                  |
-> | -------------------- | ------------ | --------------------------------------------------------------------- |
-> | `TensorBase.strides` | `Strides<D>` | 与 shape 维度数一致，显式保存 stride 元数据                           |
-> | `strides()` 返回值   | `&[usize]`   | 直接来自 `Strides<D>`（参见 `06-layout.md §5`）                       |
+> | 层次                 | 类型         | 说明                                                                           |
+> | -------------------- | ------------ | ------------------------------------------------------------------------------ |
+> | `TensorBase.strides` | `Strides<D>` | 与 shape 维度数一致，显式保存 stride 元数据                                    |
+> | `strides()` 返回值   | `&[usize]`   | 直接来自 `Strides<D>`（参见 `06-layout.md §5`）                                |
 > | layout 模块计算      | `usize`      | F-order、转置与零步长布局在 layout 层计算（参见 `06-layout.md §5.3` / `§5.7`） |
 >
 > **权衡：**
@@ -913,52 +919,52 @@ Wave 4:       [T10]
 
 ### 8.3 单元测试清单
 
-| 测试函数                            | 测试内容                                             | 优先级 |
-| ----------------------------------- | ---------------------------------------------------- | ------ |
-| `test_tensor_shape_2d`              | `Tensor2::from_shape_vec([3,4], data)` 后 shape 查询 | 高     |
-| `test_tensor_len`                   | `len()` 返回 shape 乘积                              | 高     |
-| `test_tensor_is_empty`              | 空数组 `is_empty()` 返回 true                        | 高     |
-| `test_tensor_ndim_static`           | `Tensor2` 的 `ndim()` == 2                           | 高     |
-| `test_tensor_ndim_dynamic`          | `TensorD` 的 `ndim()` 运行时                         | 中     |
-| `test_tensor_strides_f_order`       | F-order 步长正确 `[1, shape[0], ...]`                | 高     |
+| 测试函数                            | 测试内容                                                          | 优先级 |
+| ----------------------------------- | ----------------------------------------------------------------- | ------ |
+| `test_tensor_shape_2d`              | `Tensor2::from_shape_vec([3,4], data)` 后 shape 查询              | 高     |
+| `test_tensor_len`                   | `len()` 返回 shape 乘积                                           | 高     |
+| `test_tensor_is_empty`              | 空数组 `is_empty()` 返回 true                                     | 高     |
+| `test_tensor_ndim_static`           | `Tensor2` 的 `ndim()` == 2                                        | 高     |
+| `test_tensor_ndim_dynamic`          | `TensorD` 的 `ndim()` 运行时                                      | 中     |
+| `test_tensor_strides_f_order`       | F-order 步长正确 `[1, shape[0], ...]`                             | 高     |
 | `test_tensor_layout_state`          | 按 `crate::layout::LayoutState`（参见 `06-layout.md §5`）完成分类 | 高     |
-| `test_tensor_flags_f_contiguous`    | 新构造张量 F-连续                                    | 高     |
-| `test_tensor_flags_aligned`         | 新构造张量对齐                                       | 高     |
-| `test_tensor_as_ptr`                | 指针指向正确位置                                     | 高     |
-| `test_tensor_as_mut_ptr`            | 可变指针指向正确位置                                 | 高     |
-| `test_tensor_storage_kind`          | `Owned`/`View`/`ViewMut`/`Shared` 的存储位置查询正确 | 高     |
-| `test_tensor_view`                  | `view()` 创建正确视图                                | 高     |
-| `test_tensor_view_mut`              | `view_mut()` 创建正确可变视图                        | 高     |
-| `test_from_shape_vec_valid`         | 合法构造成功                                         | 高     |
-| `test_from_shape_vec_len_mismatch`  | 长度不匹配返回错误                                   | 高     |
-| `test_from_raw_parts_invalid_range` | raw-parts 越界访问范围被拒绝                         | 高     |
-| `test_type_aliases_compile`         | 所有类型别名编译通过                                 | 高     |
-| `test_tensor0_scalar`               | 0D 标量张量 `len()==1`                               | 中     |
-| `test_tensor_empty_dim`             | 含 0 维度的张量 `is_empty()`                         | 中     |
+| `test_tensor_flags_f_contiguous`    | 新构造张量 F-连续                                                 | 高     |
+| `test_tensor_flags_aligned`         | 新构造张量对齐                                                    | 高     |
+| `test_tensor_as_ptr`                | 指针指向正确位置                                                  | 高     |
+| `test_tensor_as_mut_ptr`            | 可变指针指向正确位置                                              | 高     |
+| `test_tensor_storage_kind`          | `Owned`/`View`/`ViewMut`/`Shared` 的存储位置查询正确              | 高     |
+| `test_tensor_view`                  | `view()` 创建正确视图                                             | 高     |
+| `test_tensor_view_mut`              | `view_mut()` 创建正确可变视图                                     | 高     |
+| `test_from_shape_vec_valid`         | 合法构造成功                                                      | 高     |
+| `test_from_shape_vec_len_mismatch`  | 长度不匹配返回错误                                                | 高     |
+| `test_from_raw_parts_invalid_range` | raw-parts 越界访问范围被拒绝                                      | 高     |
+| `test_type_aliases_compile`         | 所有类型别名编译通过                                              | 高     |
+| `test_tensor0_scalar`               | 0D 标量张量 `len()==1`                                            | 中     |
+| `test_tensor_empty_dim`             | 含 0 维度的张量 `is_empty()`                                      | 中     |
 
 ### 8.4 边界测试场景
 
-| 场景                  | 预期行为                       |
-| --------------------- | ------------------------------ |
-| 空张量 `shape=[0, 3]` | `len()==0`, `is_empty()==true` |
-| 单元素 `shape=[1, 1]` | `len()==1`, F-连续             |
-| 标量 `Tensor0<f64>`   | `ndim()==0`, `len()==1`        |
-| 高维 `Tensor6`        | `ndim()==6`, 步长正确          |
-| 动态维度 `TensorD`    | `ndim()` 运行时值正确          |
-| 大张量 `10^7` 元素    | 构造成功，长度与 flags 保持正确 |
+| 场景                  | 预期行为                                     |
+| --------------------- | -------------------------------------------- |
+| 空张量 `shape=[0, 3]` | `len()==0`, `is_empty()==true`               |
+| 单元素 `shape=[1, 1]` | `len()==1`, F-连续                           |
+| 标量 `Tensor0<f64>`   | `ndim()==0`, `len()==1`                      |
+| 高维 `Tensor6`        | `ndim()==6`, 步长正确                        |
+| 动态维度 `TensorD`    | `ndim()` 运行时值正确                        |
+| 大张量 `10^7` 元素    | 构造成功，长度与 flags 保持正确              |
 | 非连续转置视图        | 可构造 `view()`，但连续切片快路径返回 `None` |
-| 空张量 + 多种 offset  | 只要 `offset <= storage_len` 即合法 |
-| 非法元素类型编译失败  | compile-fail 测试拒绝不满足元素约束的类型 |
+| 空张量 + 多种 offset  | 只要 `offset <= storage_len` 即合法          |
+| 非法元素类型编译失败  | compile-fail 测试拒绝不满足元素约束的类型    |
 
-### 8.4a 需求说明书 §28.4 边界测试占位
+### 8.5 `需求说明书 §28.4` 边界测试占位
 
-| 占位项 | 说明 |
-| ------ | ---- |
-| 空张量边界 | 占位：覆盖 `as_ptr()` dangling sentinel、`as_slice()` / `as_mut_slice()` 返回空切片 |
-| 大张量边界 | 占位：覆盖超大 shape 的 `checked_size()`、stride 计算与构造错误传播 |
-| 高维张量边界 | 占位：覆盖高维 `TensorD` / `Tensor6` 的 shape、strides 与 `layout_state()` 查询 |
+| 占位项       | 说明                                                                                |
+| ------------ | ----------------------------------------------------------------------------------- |
+| 空张量边界   | 占位：覆盖 `as_ptr()` dangling sentinel、`as_slice()` / `as_mut_slice()` 返回空切片 |
+| 大张量边界   | 占位：覆盖超大 shape 的 `checked_size()`、stride 计算与构造错误传播                 |
+| 高维张量边界 | 占位：覆盖高维 `TensorD` / `Tensor6` 的 shape、strides 与 `layout_state()` 查询     |
 
-### 8.5 属性测试不变量
+### 8.6 属性测试不变量
 
 | 不变量                                            | 测试方法                                  |
 | ------------------------------------------------- | ----------------------------------------- |
@@ -967,7 +973,7 @@ Wave 4:       [T10]
 | `from_shape_vec` 后 `is_f_contiguous() == true`   | 随机合法形状                              |
 | 安全构造路径在访问范围不合法时返回错误            | 随机 shape/stride/offset/storage_len 组合 |
 
-### 8.6 集成测试
+### 8.7 集成测试
 
 | 测试文件               | 测试内容                                                                                                        |
 | ---------------------- | --------------------------------------------------------------------------------------------------------------- |
@@ -975,18 +981,18 @@ Wave 4:       [T10]
 
 ### 8.8 Feature gate / 配置测试
 
-| 配置项 | 覆盖方式                             | 说明                                         |
-| ------ | ------------------------------------ | -------------------------------------------- |
-| 默认配置 | 常规单元/集成测试路径                 | 本模块无独立 feature gate，默认配置即主路径  |
-| 非默认 feature | 不适用                             | 本模块未定义 feature gate，故无额外配置矩阵 |
+| 配置项         | 覆盖方式              | 说明                                        |
+| -------------- | --------------------- | ------------------------------------------- |
+| 默认配置       | 常规单元/集成测试路径 | 本模块无独立 feature gate，默认配置即主路径 |
+| 非默认 feature | 不适用                | 本模块未定义 feature gate，故无额外配置矩阵 |
 
 ### 8.9 类型边界 / 编译期测试
 
-| 测试类型 | 覆盖方式                                          | 说明                                                     |
-| -------- | ------------------------------------------------- | -------------------------------------------------------- |
-| 存储访问边界 | compile-fail 测试只读存储不暴露可写 API             | 验证 `Storage` / `StorageMut` 约束在 `TensorBase` 上正确投影 |
-| 别名边界 | 编译期验证 `Tensor{N}` / `TensorView{N}` / `ArcTensor{N}` 全部展开 | 验证便捷别名与核心类型实例化保持一致                     |
-| raw-parts 边界 | 编译期与运行时测试结合验证 `Strides<D>` / `D` / `offset` 契约 | 验证元数据契约不会被类型层或构造层打破                   |
+| 测试类型       | 覆盖方式                                                           | 说明                                                         |
+| -------------- | ------------------------------------------------------------------ | ------------------------------------------------------------ |
+| 存储访问边界   | compile-fail 测试只读存储不暴露可写 API                            | 验证 `Storage` / `StorageMut` 约束在 `TensorBase` 上正确投影 |
+| 别名边界       | 编译期验证 `Tensor{N}` / `TensorView{N}` / `ArcTensor{N}` 全部展开 | 验证便捷别名与核心类型实例化保持一致                         |
+| raw-parts 边界 | 编译期与运行时测试结合验证 `Strides<D>` / `D` / `offset` 契约      | 验证元数据契约不会被类型层或构造层打破                       |
 
 ---
 
@@ -1020,11 +1026,11 @@ User calls constructor-module API `Tensor::<f64, Ix2>::zeros([3, 4])?`
 
 ### 9.1 与 storage 模块的接口
 
-| 接口 | 方向 | 契约 |
-| ---- | ---- | ---- |
-| `Storage::as_ptr()` / `StorageMut::as_mut_ptr()` | `tensor` 消费 `storage` | storage 层返回 storage base pointer；`TensorBase` 负责叠加 `offset` 并形成 logical-first pointer |
-| `Owned::from_vec_aligned(data)` | `tensor` 消费 `storage` | 当前版本默认采用 64 字节对齐分配策略；若存在例外，须显式文档化，且不得改变 `需求说明书 §19` 规定的逻辑元素顺序 |
-| `Storage<Elem = A>` / `StorageMut<Elem = A>` | `tensor` 消费 `storage` trait | 元素类型、只读/可写访问能力完全由存储模式 trait 约束决定，`tensor` 不重复维护独立元素类型参数 |
+| 接口                                             | 方向                          | 契约                                                                                                           |
+| ------------------------------------------------ | ----------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `Storage::as_ptr()` / `StorageMut::as_mut_ptr()` | `tensor` 消费 `storage`       | storage 层返回 storage base pointer；`TensorBase` 负责叠加 `offset` 并形成 logical-first pointer               |
+| `Owned::from_vec_aligned(data)`                  | `tensor` 消费 `storage`       | 当前版本默认采用 64 字节对齐分配策略；若存在例外，须显式文档化，且不得改变 `需求说明书 §19` 规定的逻辑元素顺序 |
+| `Storage<Elem = A>` / `StorageMut<Elem = A>`     | `tensor` 消费 `storage` trait | 元素类型、只读/可写访问能力完全由存储模式 trait 约束决定，`tensor` 不重复维护独立元素类型参数                  |
 
 ```rust,ignore
 // TensorBase obtains element type via Storage trait's associated type
@@ -1059,11 +1065,11 @@ where
 
 ### 9.2 与 dimension 模块的接口
 
-| 接口 | 方向 | 契约 |
-| ---- | ---- | ---- |
-| `Dimension::slice()` | `tensor` 消费 `dimension` | `shape()` 返回的轴长切片与底层 `D` 保持一致，不复制逻辑元数据语义 |
+| 接口                        | 方向                      | 契约                                                                                                                     |
+| --------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `Dimension::slice()`        | `tensor` 消费 `dimension` | `shape()` 返回的轴长切片与底层 `D` 保持一致，不复制逻辑元数据语义                                                        |
 | `Dimension::checked_size()` | `tensor` 消费 `dimension` | `tensor` 基于已验证 shape 暴露 `len()`；凡直接消费 `shape: D` 做构造、分配或范围校验时必须先用 `checked_size()` 避免溢出 |
-| `Dimension` rank contract | `tensor` 消费 `dimension` | `shape` 与 `Strides<D>` 必须保持相同 rank，供 `simd` / `parallel` 继续消费同一布局契约 |
+| `Dimension` rank contract   | `tensor` 消费 `dimension` | `shape` 与 `Strides<D>` 必须保持相同 rank，供 `simd` / `parallel` 继续消费同一布局契约                                   |
 
 ```rust,ignore
 // Dimension trait provides shape operations
@@ -1087,11 +1093,11 @@ where
 
 ### 9.3 与 layout 模块的接口
 
-| 接口 | 方向 | 契约 |
-| ---- | ---- | ---- |
-| `layout::compute_f_strides(&shape)` | `tensor` 消费 `layout` | 安全构造拥有型连续张量时统一按 F-order 生成 stride |
-| `layout::compute_layout_flags(&shape, &strides, logical_ptr)` | `tensor` 消费 `layout` | `flags` 的计算必须基于 logical-first pointer 契约，与 `as_ptr()` / `as_slice()` 的可见语义一致 |
-| `LayoutState` / layout flags queries | `simd`、`parallel` 继续消费 `tensor` 暴露结果 | 上游加速模块只通过 `TensorBase` 查询连续性、对齐和广播状态，不绕过 `tensor` 直接重建布局判断 |
+| 接口                                                          | 方向                                          | 契约                                                                                           |
+| ------------------------------------------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `layout::compute_f_strides(&shape)`                           | `tensor` 消费 `layout`                        | 安全构造拥有型连续张量时统一按 F-order 生成 stride                                             |
+| `layout::compute_layout_flags(&shape, &strides, logical_ptr)` | `tensor` 消费 `layout`                        | `flags` 的计算必须基于 logical-first pointer 契约，与 `as_ptr()` / `as_slice()` 的可见语义一致 |
+| `LayoutState` / layout flags queries                          | `simd`、`parallel` 继续消费 `tensor` 暴露结果 | 上游加速模块只通过 `TensorBase` 查询连续性、对齐和广播状态，不绕过 `tensor` 直接重建布局判断   |
 
 ```rust,ignore
 // Layout module provides stride computation and contiguity checks
@@ -1101,7 +1107,11 @@ where
     A: Element,
     D: Dimension,
 {
-    pub fn from_shape_vec(shape: D, data: Vec<A>) -> Result<Self, XenonError> {
+    pub fn from_shape_vec<Sh>(shape: Sh, data: Vec<A>) -> Result<Self, XenonError>
+    where
+        Sh: IntoDimension<Dim = D>,
+    {
+        let shape = shape.into_dimension();
         let expected = shape.checked_size().map_err(|_| XenonError::InvalidShape {
             operation: "from_shape_vec",
             shape: shape.slice().to_vec(),
@@ -1142,12 +1152,12 @@ where
 
 ## 10. 错误处理与语义边界
 
-| 项目           | 内容 |
-| -------------- | ---- |
+| 项目              | 内容                                                                                                                                                    |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Recoverable error | `from_shape_vec()`、`from_raw_parts*()` 等构造校验失败返回 `XenonError`；上下文字段应包含操作名、shape、strides、offset、storage_len 或期望长度等元数据 |
-| Panic | 本模块公开安全构造不以 panic 作为常规错误通道；仅在内部已验证快捷路径或明显违背 `unsafe` 前提的后续使用中可能出现 panic/未定义行为风险 |
-| 路径一致性 | scalar、SIMD 快路径与 parallel 上游消费必须共享同一逻辑首元素与 flags 语义，不允许因路径差异改变结果 |
-| 容差边界 | 不适用 |
+| Panic             | 本模块公开安全构造不以 panic 作为常规错误通道；仅在内部已验证快捷路径或明显违背 `unsafe` 前提的后续使用中可能出现 panic/未定义行为风险                  |
+| 路径一致性        | scalar、SIMD 快路径与 parallel 上游消费必须共享同一逻辑首元素与 flags 语义，不允许因路径差异改变结果                                                    |
+| 容差边界          | 不适用                                                                                                                                                  |
 
 ---
 
@@ -1193,13 +1203,13 @@ where
 
 ## 12. 性能考量
 
-| 方面       | 设计决策                                          |
-| ---------- | ------------------------------------------------- |
-| 栈上元数据 | 静态维度（Ix0-Ix6）的 TensorBase 元数据完全在栈上 |
-| 零成本抽象 | 不同存储模式编译为不同类型，无虚调用              |
+| 方面       | 设计决策                                                     |
+| ---------- | ------------------------------------------------------------ |
+| 栈上元数据 | 静态维度（Ix0-Ix6）的 TensorBase 元数据完全在栈上            |
+| 零成本抽象 | 不同存储模式编译为不同类型，无虚调用                         |
 | 查询复杂度 | `shape()`/`ndim()`/`flags()` 为 O(1)，`len()` 当前为 O(ndim) |
-| 视图零拷贝 | `view()`/`view_mut()` 仅复制元数据                |
-| 单态化     | Dimension + Storage trait 在泛型上下文中单态化    |
+| 视图零拷贝 | `view()`/`view_mut()` 仅复制元数据                           |
+| 单态化     | Dimension + Storage trait 在泛型上下文中单态化               |
 
 **TensorBase 大小分析（参考）**：
 
@@ -1228,10 +1238,9 @@ where
 | 单 crate   | 保持单 crate 边界                       |
 | SemVer     | 张量元数据字段与构造契约变更遵循 SemVer |
 | 最小依赖   | 无新增第三方依赖                        |
-| MSRV       | Rust 1.85+                             |
+| MSRV       | Rust 1.85+                              |
 
 ---
-
 
 ## 附录 A：完整类型关系图
 

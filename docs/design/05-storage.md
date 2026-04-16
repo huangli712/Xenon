@@ -2,7 +2,7 @@
 
 > 文档编号: 05 | 模块: `src/storage/` | 阶段: Phase 2
 > 前置文档: `01-architecture.md`, `02-dimension.md`, `03-element.md`, `04-complex.md`
-> 需求参考: 需求说明书 §6, §8, §10, §16, §17, §21.2, §25, §26, §27, §28
+> 需求参考: `需求说明书 §6`, `需求说明书 §8`, `需求说明书 §10`, `需求说明书 §16`, `需求说明书 §17`, `需求说明书 §21.2`, `需求说明书 §25`, `需求说明书 §26`, `需求说明书 §27`, `需求说明书 §28`
 > 范围声明: 范围内
 
 ---
@@ -14,7 +14,7 @@
 | 职责     | 包含                                              | 不包含                             |
 | -------- | ------------------------------------------------- | ---------------------------------- |
 | 存储抽象 | 定义统一的 `Storage` trait 层次，支持多种存储模式 | 具体运算逻辑（由 `overload` 提供） |
-| 内存管理 | 拥有、借用（只读/可写）与共享只读四种存储模式    | 并行调度（由 `parallel` 模块提供） |
+| 内存管理 | 拥有、借用（只读/可写）与共享只读四种存储模式     | 并行调度（由 `parallel` 模块提供） |
 | 对齐分配 | 64 字节对齐的内存分配器，优化 SIMD 性能           | 高级线性代数（矩阵分解等）         |
 | 类型安全 | 通过 trait 约束在编译期保证访问权限正确性         | GPU 存储后端（当前仅 CPU）         |
 | 多级访问 | 只读、可写、共享只读、拥有四种访问/持有模式       | 迭代器实现（由 `iter`模块 提供）   |
@@ -37,7 +37,7 @@ L0: error, private
 L1: dimension, element, complex
 L2: layout (depends on dimension)
 L3: storage (independent from layout; exposed under a `std` environment)  ← current module
-L4: tensor (depends on storage, dimension)
+L4: tensor (depends on storage, dimension, layout)
 L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
 ```
 
@@ -45,12 +45,12 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 ## 2. 需求映射与范围约束
 
-| 项目     | 内容                                                              |
-| -------- | ----------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §6、§8、§10、§16、§17、§21.2、§25、§26、§27、§28     |
-| 范围内   | `Storage` trait 层次、拥有/借用/共享存储模式、对齐分配与 ZST 处理 |
-| 范围外   | GPU 后端、并行调度、张量运算逻辑、负步长布局解释                  |
-| 非目标   | 引入第三方分配器依赖、共享可写存储模式或运行时类型擦除存储层      |
+| 项目     | 内容                                                                                                                                                                               |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 需求映射 | `需求说明书 §6`、`需求说明书 §8`、`需求说明书 §10`、`需求说明书 §16`、`需求说明书 §17`、`需求说明书 §21.2`、`需求说明书 §25`、`需求说明书 §26`、`需求说明书 §27`、`需求说明书 §28` |
+| 范围内   | `Storage` trait 层次、拥有/借用/共享存储模式、对齐分配与 ZST 处理                                                                                                                  |
+| 范围外   | GPU 后端、并行调度、张量运算逻辑、负步长布局解释                                                                                                                                   |
+| 非目标   | 引入第三方分配器依赖、共享可写存储模式或运行时类型擦除存储层                                                                                                                       |
 
 ---
 
@@ -106,21 +106,21 @@ src/storage/
 
 ### 4.2 类型级依赖
 
-| 来源模块         | 使用的类型/trait                                     |
-| ---------------- | ---------------------------------------------------- |
-| `core`           | `*const T`, `*mut T`, `NonNull<T>`, `PhantomData<T>` |
-| `alloc`          | `Vec<A>`, `alloc`/`dealloc`                          |
+| 来源模块         | 使用的类型/trait                                                                   |
+| ---------------- | ---------------------------------------------------------------------------------- |
+| `core`           | `*const T`, `*mut T`, `NonNull<T>`, `PhantomData<T>`                               |
+| `alloc`          | `Vec<A>`, `alloc`/`dealloc`                                                        |
 | `std::sync`      | `Arc`（用于 `ArcRepr<A>` 的内部引用计数头；底层数据缓冲保持 `AlignedBuf<A>` 表示） |
-| `crate::error`   | `XenonError`（用于 `try_reserve` 等可恢复错误）      |
-| `crate::private` | `Sealed`（用于 marker trait 封闭实现）               |
+| `crate::error`   | `XenonError`（用于 `try_reserve` 等可恢复错误）                                    |
+| `crate::private` | `Sealed`（用于 marker trait 封闭实现）                                             |
 
 ### 4.2a 依赖合法性
 
-| 项目           | 结论                           |
-| -------------- | ------------------------------ |
-| 新增第三方依赖 | 无                             |
-| 合法性结论     | 符合需求说明书最小依赖限制     |
-| 替代方案       | 不适用                         |
+| 项目           | 结论                       |
+| -------------- | -------------------------- |
+| 新增第三方依赖 | 无                         |
+| 合法性结论     | 符合需求说明书最小依赖限制 |
+| 替代方案       | 不适用                     |
 
 ### 4.3 依赖方向声明
 
@@ -151,30 +151,30 @@ Storage mode taxonomy
 
 #### 访问级别与所有权矩阵
 
-| 存储模式             |   拥有数据    | 可读 |              可写              | 克隆语义            | 分配方式                        |
-| -------------------- | :-----------: | :--: | :----------------------------: | ------------------- | ------------------------------- |
+| 存储模式             |   拥有数据    | 可读 |              可写              | 克隆语义            | 分配方式                                               |
+| -------------------- | :-----------: | :--: | :----------------------------: | ------------------- | ------------------------------------------------------ |
 | `Owned<A>`           |      ✅       |  ✅  |               ✅               | 深拷贝              | 当前默认实现为 64 字节对齐堆分配（可配置；ZST 不分配） |
-| `ViewRepr<'a, A>`    |   ❌ (借用)   |  ✅  |               ❌               | O(1) 元数据拷贝     | 无分配                          |
-| `ViewMutRepr<'a, A>` | ❌ (独占借用) |  ✅  |               ✅               | 不可克隆            | 无分配                          |
-| `ArcRepr<A>`         |   ✅ (共享)   |  ✅  | 仅通过 CoW 生成独占 owned 数据 | 浅拷贝 (共享句柄+1) | 共享只读缓冲，写时按需深拷贝    |
+| `ViewRepr<'a, A>`    |   ❌ (借用)   |  ✅  |               ❌               | O(1) 元数据拷贝     | 无分配                                                 |
+| `ViewMutRepr<'a, A>` | ❌ (独占借用) |  ✅  |               ✅               | 不可克隆            | 无分配                                                 |
+| `ArcRepr<A>`         |   ✅ (共享)   |  ✅  | 仅通过 CoW 生成独占 owned 数据 | 浅拷贝 (共享句柄+1) | 共享只读缓冲，写时按需深拷贝                           |
 
 > **术语澄清：** `需求说明书` §6.2 的“共享只读引用”描述的是抽象访问语义，而不是唯一具体表示。对拥有型来源，Xenon 用 `ArcRepr<A>` 表达可共享底层缓冲区的只读结果；对 `ViewMutRepr<'a, A>` 的零拷贝降级，Xenon 用 `ViewRepr<'a, A>` 表达放弃写权限后的只读重借用。两者都满足“共享只读、不提供写访问”的语义，只是前者共享所有权，后者共享借用生命周期。任何写时复制逻辑都只能是 `arc.rs` 内部实现细节，不能作为 storage 层公开 API 暴露。
 
 #### 抽象模式 ↔ 具体表示 对照表
 
-| 抽象模式 | 具体表示 | 适用语境 / 说明 |
-| -------- | -------- | --------------- |
-| `Owned` | `Owned<A>` | 拥有底层分配，可零拷贝借出只读 / 可写视图，也可零拷贝降级为共享只读 |
-| `Writable` | `ViewMutRepr<'a, A>` | 基于独占借用的可写引用 |
-| `ReadOnly` | `ViewRepr<'a, A>` | 普通只读借用视图 |
-| `SharedReadOnly` | `ArcRepr<A>` | 来自拥有型来源时的共享只读表示，提供共享所有权 |
-| `SharedReadOnly` | `ViewRepr<'a, A>` | 来自 `ViewMutRepr<'a, A>` 零拷贝降级时的共享只读表示；共享的是借用生命周期而非所有权 |
+| 抽象模式         | 具体表示             | 适用语境 / 说明                                                                      |
+| ---------------- | -------------------- | ------------------------------------------------------------------------------------ |
+| `Owned`          | `Owned<A>`           | 拥有底层分配，可零拷贝借出只读 / 可写视图，也可零拷贝降级为共享只读                  |
+| `Writable`       | `ViewMutRepr<'a, A>` | 基于独占借用的可写引用                                                               |
+| `ReadOnly`       | `ViewRepr<'a, A>`    | 普通只读借用视图                                                                     |
+| `SharedReadOnly` | `ArcRepr<A>`         | 来自拥有型来源时的共享只读表示，提供共享所有权                                       |
+| `SharedReadOnly` | `ViewRepr<'a, A>`    | 来自 `ViewMutRepr<'a, A>` 零拷贝降级时的共享只读表示；共享的是借用生命周期而非所有权 |
 
 > **补充说明：** 只读引用（`ViewRepr`）和共享只读引用（`ArcRepr`）都提供只读访问语义，但所有权模型不同：`ViewRepr` 基于借用，`ArcRepr` 基于引用计数共享。从广播、转置、切片产生的只读视图统一使用 `ViewRepr`；从 `Owned` 零拷贝转换而来的共享只读结果使用 `ArcRepr`；`ViewMut` 的零拷贝降级仍使用 `ViewRepr`，但在抽象层同样满足 shared-readonly 语义。
 
 ### 访问语义查询
 
-为满足需求说明书 §6.1 对“显式区分所有权与可变性语义”的要求，张量层须提供稳定的访问语义查询接口：
+为满足 `需求说明书 §6.1` 对“显式区分所有权与可变性语义”的要求，张量层须提供稳定的访问语义查询接口：
 
 ```rust,ignore
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -186,24 +186,24 @@ pub enum AccessSemantics {
 }
 ```
 
-| 语义分类 | 对应表示类型 | 统一语义说明 | 查询结果 |
-| -------- | ------------ | ------------ | -------- |
-| 只读 | `ViewRepr<'_, A>`（普通非广播只读借用） | 只提供共享只读借用；不提供写访问；不持有底层存储 | `AccessSemantics::ReadOnly` |
-| 共享只读 | `ArcRepr<A>`，或带共享只读语义标记的 `ViewRepr<'_, A>`（广播结果 / `ViewMutRepr` 零拷贝降级结果） | 可被多个只读视图共享；不提供安全可写访问；可共享所有权或共享借用语义 | `AccessSemantics::SharedReadOnly` |
-| 可写 | `ViewMutRepr<'_, A>` | 提供独占可写借用；同时允许读取；不得与其他可写或共享只读访问并存 | `AccessSemantics::Writable` |
-| 拥有 | `Owned<A>` | 持有底层存储所有权；提供可读可写访问；可零拷贝借出视图或降级为共享只读 | `AccessSemantics::Owned` |
+| 语义分类 | 对应表示类型                                                                                      | 统一语义说明                                                           | 查询结果                          |
+| -------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------- |
+| 只读     | `ViewRepr<'_, A>`（普通非广播只读借用）                                                           | 只提供共享只读借用；不提供写访问；不持有底层存储                       | `AccessSemantics::ReadOnly`       |
+| 共享只读 | `ArcRepr<A>`，或带共享只读语义标记的 `ViewRepr<'_, A>`（广播结果 / `ViewMutRepr` 零拷贝降级结果） | 可被多个只读视图共享；不提供安全可写访问；可共享所有权或共享借用语义   | `AccessSemantics::SharedReadOnly` |
+| 可写     | `ViewMutRepr<'_, A>`                                                                              | 提供独占可写借用；同时允许读取；不得与其他可写或共享只读访问并存       | `AccessSemantics::Writable`       |
+| 拥有     | `Owned<A>`                                                                                        | 持有底层存储所有权；提供可读可写访问；可零拷贝借出视图或降级为共享只读 | `AccessSemantics::Owned`          |
 
 > **关键约束：** 当 `ViewRepr` 作为广播结果或从可写引用降级产生时，须通过额外的语义标记（而非仅表示类型）将其归类为 `AccessSemantics::SharedReadOnly`。该标记由张量层的 `access_semantics()` 方法统一提供，作为满足 §6.1 的权威判定来源。详见 `07-tensor.md` 的 `access_semantics()` 设计。
 
 #### 设计权衡对比
 
-| 考量         | Owned          | View         | ViewMut   | Arc                  |
-| ------------ | -------------- | ------------ | --------- | -------------------- |
-| **创建开销** | 高 (分配)      | 低 (借用)    | 低 (借用) | 中 (Arc 包装)        |
-| **克隆开销** | O(n)           | O(1)         | 不可克隆  | O(1)                 |
-| **写入开销** | 无             | 不可写       | 无        | 可能 O(n) (CoW)      |
+| 考量         | Owned                   | View             | ViewMut          | Arc                     |
+| ------------ | ----------------------- | ---------------- | ---------------- | ----------------------- |
+| **创建开销** | 高 (分配)               | 低 (借用)        | 低 (借用)        | 中 (Arc 包装)           |
+| **克隆开销** | O(n)                    | O(1)             | 不可克隆         | O(1)                    |
+| **写入开销** | 无                      | 不可写           | 无               | 可能 O(n) (CoW)         |
 | **线程安全** | 取决于 `A: Send + Sync` | 取决于 `A: Sync` | 取决于 `A: Send` | 取决于 `A: Send + Sync` |
-| **典型用途** | 创建、运算结果 | 切片、子数组 | 原地修改  | 跨线程共享、延迟复制 |
+| **典型用途** | 创建、运算结果          | 切片、子数组     | 原地修改         | 跨线程共享、延迟复制    |
 
 ### 5.2 Storage Trait 层次
 
@@ -257,6 +257,10 @@ pub unsafe trait RawStorage {
     }
 
     /// Checks if the pointer satisfies the specified alignment requirement.
+    ///
+    /// # Preconditions
+    ///
+    /// `align` must be greater than 0 and a power of 2.
     #[inline]
     fn is_aligned_to(&self, align: usize) -> bool {
         (self.as_ptr() as usize) % align == 0
@@ -547,24 +551,24 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
 
 ### 5.11.1 存储模式转换矩阵
 
-| From                 | To                   | 复杂度      | 说明                                     |
-| -------------------- | -------------------- | ----------- | ---------------------------------------- |
-| `Owned<A>`           | `Owned<A>`           | O(1) / O(n) | move 为 O(1)，`to_owned()` 深拷贝为 O(n) |
-| `Owned<A>`           | `ViewRepr<'_, A>`    | O(1)        | 借用视图，不转移所有权                   |
-| `Owned<A>`           | `ViewMutRepr<'_, A>` | O(1)        | 独占借用视图                             |
-| `Owned<A>`           | `ArcRepr<A>`         | O(1)        | 零拷贝降级为共享只读引用                 |
-| `ViewRepr<'_, A>`    | `Owned<A>`           | O(n)        | 复制逻辑元素到新的对齐缓冲               |
-| `ViewMutRepr<'_, A>` | `ViewRepr<'_, A>`    | O(1)        | 零拷贝只读重借用，放弃写权限             |
-| `ViewMutRepr<'_, A>` | `Owned<A>`           | O(n)        | 复制逻辑元素到新的对齐缓冲               |
-| `ArcRepr<A>`         | `ViewRepr<'_, A>`    | O(1)        | 共享只读借用                             |
+| From                 | To                   | 复杂度      | 说明                                             |
+| -------------------- | -------------------- | ----------- | ------------------------------------------------ |
+| `Owned<A>`           | `Owned<A>`           | O(1) / O(n) | move 为 O(1)，`to_owned()` 深拷贝为 O(n)         |
+| `Owned<A>`           | `ViewRepr<'_, A>`    | O(1)        | 借用视图，不转移所有权                           |
+| `Owned<A>`           | `ViewMutRepr<'_, A>` | O(1)        | 独占借用视图                                     |
+| `Owned<A>`           | `ArcRepr<A>`         | O(1)        | 零拷贝降级为共享只读引用                         |
+| `ViewRepr<'_, A>`    | `Owned<A>`           | O(n)        | 复制逻辑元素到新的对齐缓冲                       |
+| `ViewMutRepr<'_, A>` | `ViewRepr<'_, A>`    | O(1)        | 零拷贝只读重借用，放弃写权限                     |
+| `ViewMutRepr<'_, A>` | `Owned<A>`           | O(n)        | 复制逻辑元素到新的对齐缓冲                       |
+| `ArcRepr<A>`         | `ViewRepr<'_, A>`    | O(1)        | 共享只读借用                                     |
 | `ArcRepr<A>`         | `Owned<A>`           | O(n)        | 总是分配新的独占缓冲并复制数据；不提供条件零拷贝 |
 
-| 抽象源（具体表示） | `ReadOnly` | `SharedReadOnly` | `Writable` | `Owned` |
-| ------------------ | ------------- | ------------------- | ------------- | ------- |
-| `Owned` (`Owned<A>`) | `Owned<A> -> ViewRepr<'_, A>`：零拷贝 | `Owned<A> -> ArcRepr<A>`：零拷贝 | `Owned<A> -> ViewMutRepr<'_, A>`：零拷贝 | — |
-| `Writable` (`ViewMutRepr<'_, A>`) | `ViewMutRepr<'_, A> -> ViewRepr<'_, A>`：零拷贝 | `ViewMutRepr<'_, A> -> ViewRepr<'_, A>`：零拷贝；此处 `ViewRepr` 充当基于借用的 shared-readonly 表示，满足 `需求说明书` §6.2 | — | `ViewMutRepr<'_, A> -> Owned<A>`：须分配 |
-| `ReadOnly` (`ViewRepr<'_, A>`) | — | `ViewRepr<'_, A> -> ArcRepr<A>`：不可转换 | `ViewRepr<'_, A> -> ViewMutRepr<'_, A>`：不可转换 | `ViewRepr<'_, A> -> Owned<A>`：须分配 |
-| `SharedReadOnly` (`ArcRepr<A>` / 降级后的 `ViewRepr<'_, A>`) | `ArcRepr<A> -> ViewRepr<'_, A>`：零拷贝；若来源已是降级后的 `ViewRepr`，则为同一借用语义下的只读重借用 | — | `ArcRepr<A> -> ViewMutRepr<'_, A>`：不可转换；降级后的 `ViewRepr` 同样不可恢复写权限 | `ArcRepr<A> -> Owned<A>`：须分配；降级后的 `ViewRepr<'_, A>` 亦须分配 |
+| 抽象源（具体表示）                                           | `ReadOnly`                                                                                             | `SharedReadOnly`                                                                                                             | `Writable`                                                                           | `Owned`                                                               |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| `Owned` (`Owned<A>`)                                         | `Owned<A> -> ViewRepr<'_, A>`：零拷贝                                                                  | `Owned<A> -> ArcRepr<A>`：零拷贝                                                                                             | `Owned<A> -> ViewMutRepr<'_, A>`：零拷贝                                             | —                                                                     |
+| `Writable` (`ViewMutRepr<'_, A>`)                            | `ViewMutRepr<'_, A> -> ViewRepr<'_, A>`：零拷贝                                                        | `ViewMutRepr<'_, A> -> ViewRepr<'_, A>`：零拷贝；此处 `ViewRepr` 充当基于借用的 shared-readonly 表示，满足 `需求说明书` §6.2 | —                                                                                    | `ViewMutRepr<'_, A> -> Owned<A>`：须分配                              |
+| `ReadOnly` (`ViewRepr<'_, A>`)                               | —                                                                                                      | `ViewRepr<'_, A> -> ArcRepr<A>`：不可转换                                                                                    | `ViewRepr<'_, A> -> ViewMutRepr<'_, A>`：不可转换                                    | `ViewRepr<'_, A> -> Owned<A>`：须分配                                 |
+| `SharedReadOnly` (`ArcRepr<A>` / 降级后的 `ViewRepr<'_, A>`) | `ArcRepr<A> -> ViewRepr<'_, A>`：零拷贝；若来源已是降级后的 `ViewRepr`，则为同一借用语义下的只读重借用 | —                                                                                                                            | `ArcRepr<A> -> ViewMutRepr<'_, A>`：不可转换；降级后的 `ViewRepr` 同样不可恢复写权限 | `ArcRepr<A> -> Owned<A>`：须分配；降级后的 `ViewRepr<'_, A>` 亦须分配 |
 
 > **补充说明：** 上表逐格对应 `需求说明书` §6.2 的抽象转换矩阵，并把每个抽象格子落实为具体表示路径：零拷贝表示仅重借用、共享只读降级或降级访问权限；须分配表示需要分配新的 owned 缓冲并复制数据；不可转换表示 Rust 类型系统下无法在不违反所有权/独占借用约束的前提下完成该转换，例如 `ViewRepr<'_, A> -> ArcRepr<A>` 与 `ArcRepr<A> -> ViewMutRepr<'_, A>`。
 
@@ -572,37 +576,37 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
 
 #### 5.11.1a 转换成功/失败模型
 
-| 转换入口 | 成功条件 | 失败错误类型 |
-| -------- | -------- | ------------ |
-| `Owned<A> -> Owned<A>`（move） | 直接转移所有权 | 不失败 |
-| `Owned<A>::to_owned()` | `A: Clone`，深拷贝底层 buffer 成功 | 不新增公开转换错误；若底层分配失败，遵循分配器/运行时既有行为，不通过新的 `XenonError` 变体建模 |
-| `Owned<A> -> ViewRepr<'_, A>` | 借用源 owned，生命周期合法 | 不失败 |
-| `Owned<A> -> ViewMutRepr<'_, A>` | 独占借用源 owned，生命周期合法 | 不失败 |
-| `Owned<A> -> ArcRepr<A>` | 允许零拷贝降级为共享只读表示 | 不失败 |
-| `ViewRepr<'_, A> -> Owned<A>` | 成功复制底层 buffer 到新 owned | 不新增公开转换错误；若底层分配失败，遵循分配器/运行时既有行为，不通过新的 `XenonError` 变体建模 |
-| `ViewMutRepr<'_, A> -> ViewRepr<'_, A>` | 零拷贝只读重借用 | 不失败 |
-| `ViewMutRepr<'_, A> -> Owned<A>` | 成功复制底层 buffer 到新 owned | 不新增公开转换错误；若底层分配失败，遵循分配器/运行时既有行为，不通过新的 `XenonError` 变体建模 |
-| `ArcRepr<A> -> ViewRepr<'_, A>` | 成功借出共享只读视图 | 不失败 |
-| `ArcRepr<A> -> Owned<A>` | 成功分配新 owned 并复制整个 buffer | 不新增公开转换错误；若底层分配失败，遵循分配器/运行时既有行为，不通过新的 `XenonError` 变体建模 |
-| 任意只读/共享只读 -> `ViewMutRepr<'_, A>` | 不允许违反独占可写前提 | `XenonError::InvalidStorageMode { .. }` |
-| `ViewRepr<'_, A> -> ArcRepr<A>` | storage 层不具备共享所有权句柄，禁止运行时补造 | `XenonError::InvalidStorageMode { .. }` |
+| 转换入口                                  | 成功条件                                       | 失败错误类型                                                                                    |
+| ----------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `Owned<A> -> Owned<A>`（move）            | 直接转移所有权                                 | 不失败                                                                                          |
+| `Owned<A>::to_owned()`                    | `A: Clone`，深拷贝底层 buffer 成功             | 不新增公开转换错误；若底层分配失败，遵循分配器/运行时既有行为，不通过新的 `XenonError` 变体建模 |
+| `Owned<A> -> ViewRepr<'_, A>`             | 借用源 owned，生命周期合法                     | 不失败                                                                                          |
+| `Owned<A> -> ViewMutRepr<'_, A>`          | 独占借用源 owned，生命周期合法                 | 不失败                                                                                          |
+| `Owned<A> -> ArcRepr<A>`                  | 允许零拷贝降级为共享只读表示                   | 不失败                                                                                          |
+| `ViewRepr<'_, A> -> Owned<A>`             | 成功复制底层 buffer 到新 owned                 | 不新增公开转换错误；若底层分配失败，遵循分配器/运行时既有行为，不通过新的 `XenonError` 变体建模 |
+| `ViewMutRepr<'_, A> -> ViewRepr<'_, A>`   | 零拷贝只读重借用                               | 不失败                                                                                          |
+| `ViewMutRepr<'_, A> -> Owned<A>`          | 成功复制底层 buffer 到新 owned                 | 不新增公开转换错误；若底层分配失败，遵循分配器/运行时既有行为，不通过新的 `XenonError` 变体建模 |
+| `ArcRepr<A> -> ViewRepr<'_, A>`           | 成功借出共享只读视图                           | 不失败                                                                                          |
+| `ArcRepr<A> -> Owned<A>`                  | 成功分配新 owned 并复制整个 buffer             | 不新增公开转换错误；若底层分配失败，遵循分配器/运行时既有行为，不通过新的 `XenonError` 变体建模 |
+| 任意只读/共享只读 -> `ViewMutRepr<'_, A>` | 不允许违反独占可写前提                         | `XenonError::InvalidStorageMode { .. }`                                                         |
+| `ViewRepr<'_, A> -> ArcRepr<A>`           | storage 层不具备共享所有权句柄，禁止运行时补造 | `XenonError::InvalidStorageMode { .. }`                                                         |
 
 > **错误模型说明：** 上表与 `需求说明书` §6.2 的矩阵一致：违反存储模式/可变性前提的公开转换失败统一使用 `26-error.md` 定义的 `XenonError::InvalidStorageMode { .. }`；复制型成功路径本身不再额外引入新的公开转换错误类型。
 
-> **分配失败说明：** 涉及内存分配的转换操作，若分配失败则遵循运行时既有行为（如全局分配器 panic 或 OOM），不通过 `XenonError` 建模。此设计决策与需求说明书 §6.2 的“须分配”路径一致：该路径仅在目标为持有时可执行，分配失败不属于张量语义层的可恢复错误。
+> **分配失败说明：** 涉及内存分配的转换操作，若分配失败则遵循运行时既有行为（如全局分配器 panic 或 OOM），不通过 `XenonError` 建模。此设计决策与 `需求说明书 §6.2` 的“须分配”路径一致：该路径仅在目标为持有时可执行，分配失败不属于张量语义层的可恢复错误。
 
 > **类型安全论证**：`ViewMutRepr<'a, A>` 的零拷贝降级路径是只读重借用 `ViewRepr<'a, A>`，其语义与 `需求说明书` §6.2 对“可写引用 → 共享只读引用 = 零拷贝”的要求一致：结果显式放弃写权限，且在该只读结果存续期间不得再并发写入同一底层数据。相对地，`ViewMutRepr<'a, A>` 不持有底层分配所有权，因此仍不能在零拷贝前提下构造 `ArcRepr<A>` 所需的共享所有权句柄。
 
 #### 5.11.2 公开转换 API 对照表
 
-| From \ To | `ReadOnly` | `SharedReadOnly` | `Writable` | `Owned` |
-| --------- | ------------- | ------------------- | ------------- | ------- |
-| `Owned` | `view()` | convert to shared-reference-counted storage | `view_mut()` | move / `to_owned()` |
-| `Writable` | `view()` | `view()` | type-level only | `to_owned()` |
-| `ReadOnly` | type-level only | type-level only | type-level only | `to_owned()` |
-| `SharedReadOnly` | `view()` | type-level only | type-level only | `to_owned()` |
+| From \ To        | `ReadOnly`      | `SharedReadOnly`                            | `Writable`      | `Owned`             |
+| ---------------- | --------------- | ------------------------------------------- | --------------- | ------------------- |
+| `Owned`          | `view()`        | `into_shared()`                             | `view_mut()`    | move / `to_owned()` |
+| `Writable`       | `view()`        | `view()`                                    | type-level only | `to_owned()`        |
+| `ReadOnly`       | type-level only | type-level only                             | type-level only | `to_owned()`        |
+| `SharedReadOnly` | `view()`        | type-level only                             | type-level only | `to_owned()`        |
 
-> **说明：** 本表用于标注公开运行时 API 与纯类型层拒绝的边界。`type-level only` 表示该格子不提供运行时转换入口，而是由 Rust 类型系统直接拒绝；若同一抽象格子有多种具体表示，API 可用性以具体来源为准。`Owned -> SharedReadOnly` 这一格仅描述语义上的“转换为共享引用计数只读存储”；其具体公开 API 名称留待未来版本统一定稿。
+> **说明：** 本表用于标注公开运行时 API 与纯类型层拒绝的边界。`type-level only` 表示该格子不提供运行时转换入口，而是由 Rust 类型系统直接拒绝；若同一抽象格子有多种具体表示，API 可用性以具体来源为准。`Owned -> SharedReadOnly` 的 storage 层公开入口固定为 `Owned<A>::into_shared(self) -> ArcRepr<A>`；张量层在此基础上包装为对应的消费式共享只读转换 API。
 
 > **约束：** Xenon 当前元素类型集合是封闭且按值语义处理的集合；`Owned::from_vec` 保持 `Elem: Copy` 约束，并统一复制到内部 64B 对齐缓冲（参见 `06-layout.md §5.6`）。其它从迭代器或构造器进入 `Owned` 的路径由上层构造模块统一收敛。
 
@@ -789,7 +793,7 @@ impl AlignedAlloc {
 }
 ```
 
-**分配策略说明**：当前默认实现选择 64 字节对齐，以匹配 SIMD 友好的 owned 缓冲策略；这是一项实现选择，而不是 `require.md` 所要求的唯一对齐值。对齐值可配置。为保持文档与当前设计一致，`AlignedAlloc` 不提供“小数组回退到普通分配”的分支。除 ZST 与 `len == 0` 这两类显式跳过分配的情形外，当前默认实现的真实堆分配统一使用该默认对齐值。
+**分配策略说明**：当前默认实现选择 64 字节对齐，以匹配 SIMD 友好的 owned 缓冲策略；这是一项实现选择，而不是 `需求说明书 §10` 所要求的唯一对齐值。对齐值可配置。为保持文档与当前设计一致，`AlignedAlloc` 不提供“小数组回退到普通分配”的分支。除 ZST 与 `len == 0` 这两类显式跳过分配的情形外，当前默认实现的真实堆分配统一使用该默认对齐值。
 
 **可见性说明**：若后续没有把对齐分配器作为独立公共扩展点的计划，实现应默认使用 `pub(crate)`，避免把底层分配细节固化为公开 API。
 
@@ -933,7 +937,7 @@ where
 | `Owned<A>`           |    A: Send     |    A: Sync     | 拥有数据，Send/Sync 条件与 `Vec<A>` 一致（分别要求 A:Send 和 A:Sync） |
 | `ViewRepr<'a, A>`    |    A: Sync     |    A: Sync     | 共享借用需要 Sync 才能跨线程共享                                      |
 | `ViewMutRepr<'a, A>` |    A: Send     |   ❌ 永远不    | 独占借用可转移但不可共享                                              |
-| `ArcRepr<A>`         | A: Send + Sync | A: Send + Sync | 抽象共享所有权实现需保证线程安全                                          |
+| `ArcRepr<A>`         | A: Send + Sync | A: Send + Sync | 抽象共享所有权实现需保证线程安全                                      |
 
 ```rust,ignore
 // SAFETY: ViewRepr<'a, A> only allows shared (read-only) access.
@@ -1102,21 +1106,21 @@ Wave 4:              [T12] → [T13]
 
 ### 8.3 边界测试场景
 
-| 场景                                | 预期行为                              |
-| ----------------------------------- | ------------------------------------- |
-| 空数组 `Owned::new()`               | `len() == 0`, `is_empty() == true`    |
-| 单元素 `Owned::from_vec(vec![1.0])` | `len() == 1`, `get(0) == Some(&1.0)`  |
-| ZST 元素 `Owned::<()>::zeros(1000)` | 不分配内存，不引发 UB                 |
-| 大数组 16M 元素                     | 正常分配和访问                        |
+| 场景                                | 预期行为                                        |
+| ----------------------------------- | ----------------------------------------------- |
+| 空数组 `Owned::new()`               | `len() == 0`, `is_empty() == true`              |
+| 单元素 `Owned::from_vec(vec![1.0])` | `len() == 1`, `get(0) == Some(&1.0)`            |
+| ZST 元素 `Owned::<()>::zeros(1000)` | 不分配内存，不引发 UB                           |
+| 大数组 16M 元素                     | 正常分配和访问                                  |
 | 容量乘法接近 `usize::MAX`           | 返回 `XenonError::InvalidShape`，不发生整数回绕 |
 
-### 8.3a 需求说明书 §28.4 边界测试占位
+### 8.3a `需求说明书 §28.4` 边界测试占位
 
-| 占位项 | 说明 |
-| ------ | ---- |
-| 空存储边界 | 占位：覆盖 `len == 0` 时 dangling sentinel、空切片与 `offset <= storage_len` 契约 |
-| 大存储边界 | 占位：覆盖超大 `len` / `elem_size` 乘法接近上界时返回 `InvalidShape` |
-| ZST 存储边界 | 占位：覆盖 ZST + 空/非空存储不分配且不解引用哨兵指针 |
+| 占位项       | 说明                                                                              |
+| ------------ | --------------------------------------------------------------------------------- |
+| 空存储边界   | 占位：覆盖 `len == 0` 时 dangling sentinel、空切片与 `offset <= storage_len` 契约 |
+| 大存储边界   | 占位：覆盖超大 `len` / `elem_size` 乘法接近上界时返回 `InvalidShape`              |
+| ZST 存储边界 | 占位：覆盖 ZST + 空/非空存储不分配且不解引用哨兵指针                              |
 
 ### 8.4 属性测试不变量
 
@@ -1129,18 +1133,18 @@ Wave 4:              [T12] → [T13]
 
 ### 8.5 Feature gate / 配置测试
 
-| 配置项 | 覆盖方式                             | 说明                                         |
-| ------ | ------------------------------------ | -------------------------------------------- |
-| 默认配置 | 常规单元/集成测试路径                 | 本模块无独立 feature gate，默认配置即主路径  |
-| 非默认 feature | 不适用                             | 本模块未定义 feature gate，故无额外配置矩阵 |
+| 配置项         | 覆盖方式              | 说明                                        |
+| -------------- | --------------------- | ------------------------------------------- |
+| 默认配置       | 常规单元/集成测试路径 | 本模块无独立 feature gate，默认配置即主路径 |
+| 非默认 feature | 不适用                | 本模块未定义 feature gate，故无额外配置矩阵 |
 
 ### 8.6 类型边界 / 编译期测试
 
-| 测试类型 | 覆盖方式                                         | 说明                                                    |
-| -------- | ------------------------------------------------ | ------------------------------------------------------- |
-| 存储可变性边界 | compile-fail 测试 `ViewRepr` 不可写、`ViewMutRepr` 不可克隆 | 验证借用与独占语义在类型系统层成立                      |
-| trait 层次边界 | 编译期验证 `ArcRepr` 不实现 `StorageMut`           | 验证共享存储不会被误用为共享可写模式                    |
-| ZST 边界 | 编译期与单元测试结合验证 ZST 路径不要求真实分配      | 验证零大小类型不会打破 trait 契约                       |
+| 测试类型       | 覆盖方式                                                    | 说明                                 |
+| -------------- | ----------------------------------------------------------- | ------------------------------------ |
+| 存储可变性边界 | compile-fail 测试 `ViewRepr` 不可写、`ViewMutRepr` 不可克隆 | 验证借用与独占语义在类型系统层成立   |
+| trait 层次边界 | 编译期验证 `ArcRepr` 不实现 `StorageMut`                    | 验证共享存储不会被误用为共享可写模式 |
+| ZST 边界       | 编译期与单元测试结合验证 ZST 路径不要求真实分配             | 验证零大小类型不会打破 trait 契约    |
 
 ---
 
@@ -1148,12 +1152,12 @@ Wave 4:              [T12] → [T13]
 
 ### 9.0 接口约定
 
-| 方向 | 对方模块 | 接口/类型 | 约定 |
-| ---- | -------- | --------- | ---- |
-| 并列协作 | `layout` | `Strides` 及其辅助接口 | `Strides` 由 `06-layout.md` 定义并与 storage 在 `tensor` / `ffi` 上层组合使用；storage 本身不直接消费 layout API |
-| 产出（输出） | `tensor` | `Storage` / `StorageMut` / `StorageOwned` / `StorageShared`，以及 `Owned<A>` / `ViewRepr<'a, A>` / `ViewMutRepr<'a, A>` / `ArcRepr<A>` | `TensorBase<S, D>` 通过 `S: Storage` 或 `S: StorageMut` 消费底层存储；`TensorBase` 负责解释 `offset` / `shape` / `strides` |
-| 产出（输出） | `parallel` | `S: Storage + Sync` 或 `S: StorageMut + Send` | 并行路径只能在满足 Send/Sync 前提时消费 storage；不得突破共享只读 / 独占可写边界 |
-| 产出（输出） | `iter` / `ffi` | `as_ptr()` / `as_slice()` / `into_raw()` | 上层仅消费 storage-visible backing range；不得把 storage API 误解为逻辑张量切片 |
+| 方向         | 对方模块       | 接口/类型                                                                                                                              | 约定                                                                                                                       |
+| ------------ | -------------- | -------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| 并列协作     | `layout`       | `Strides` 及其辅助接口                                                                                                                 | `Strides` 由 `06-layout.md` 定义并与 storage 在 `tensor` / `ffi` 上层组合使用；storage 本身不直接消费 layout API           |
+| 产出（输出） | `tensor`       | `Storage` / `StorageMut` / `StorageOwned` / `StorageShared`，以及 `Owned<A>` / `ViewRepr<'a, A>` / `ViewMutRepr<'a, A>` / `ArcRepr<A>` | `TensorBase<S, D>` 通过 `S: Storage` 或 `S: StorageMut` 消费底层存储；`TensorBase` 负责解释 `offset` / `shape` / `strides` |
+| 产出（输出） | `parallel`     | `S: Storage + Sync` 或 `S: StorageMut + Send`                                                                                          | 并行路径只能在满足 Send/Sync 前提时消费 storage；不得突破共享只读 / 独占可写边界                                           |
+| 产出（输出） | `iter` / `ffi` | `as_ptr()` / `as_slice()` / `into_raw()`                                                                                               | 上层仅消费 storage-visible backing range；不得把 storage API 误解为逻辑张量切片                                            |
 
 ### 9.1 与 Tensor 模块
 
@@ -1202,19 +1206,19 @@ User calls `TensorBase::as_ptr()`
 
 ## 10. 错误处理与语义边界
 
-| 项目           | 内容 |
-| -------------- | ---- |
+| 项目              | 内容                                                                                                                               |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | Recoverable error | `try_reserve()`、显式运行时转换与 raw-parts 元数据校验失败返回 `XenonError`；上下文字段应包含操作名、存储模式、长度/容量或布局信息 |
-| Panic | 对齐分配器在 `align` 非 2 的幂、`size == 0` 或分配失败时 panic；已验证快捷路径中的整数溢出也可 panic |
-| 路径一致性 | scalar：不适用；SIMD 对齐与非对齐路径必须返回一致元素值；parallel 存储访问须与串行路径保持一致 |
-| 容差边界 | 不适用 |
+| Panic             | 对齐分配器在 `align` 非 2 的幂、`size == 0` 或分配失败时 panic；已验证快捷路径中的整数溢出也可 panic                               |
+| 路径一致性        | scalar：不适用；SIMD 对齐与非对齐路径必须返回一致元素值；parallel 存储访问须与串行路径保持一致                                     |
+| 容差边界          | 不适用                                                                                                                             |
 
 ### 10.1 ZST 和空数组处理
 
 | 场景           | 预期行为                                             | 安全性论证                                                            |
 | -------------- | ---------------------------------------------------- | --------------------------------------------------------------------- |
 | ZST 元素类型   | 使用非空悬挂哨兵指针，不调用分配器，len 正常计算     | ZST 不需要真实 backing storage，且禁止把 `size=0` 传给 `AlignedAlloc` |
-| 空数组 `len=0` | `as_ptr()` 返回非空悬垂指针，`as_slice()` 返回空切片 | `AlignedBuf::empty()` 为 owned 空缓冲提供非空悬垂哨兵指针语义          |
+| 空数组 `len=0` | `as_ptr()` 返回非空悬垂指针，`as_slice()` 返回空切片 | `AlignedBuf::empty()` 为 owned 空缓冲提供非空悬垂哨兵指针语义         |
 | ZST + 空数组   | 不引发分配，不引发 UB                                | ZST 不需要实际内存                                                    |
 
 ---
@@ -1225,26 +1229,26 @@ User calls `TensorBase::as_ptr()`
 
 | 属性     | 值                                                                                        |
 | -------- | ----------------------------------------------------------------------------------------- |
-| 决策     | 当前默认实现使用 64 字节作为默认对齐；该默认值可配置，且不构成需求层硬约束                 |
+| 决策     | 当前默认实现使用 64 字节作为默认对齐；该默认值可配置，且不构成需求层硬约束                |
 | 理由     | AVX-512 缓存行大小；现代 CPU 缓存行通常 64 字节；满足 SSE/AVX/AVX2/AVX-512 所有 SIMD 指令 |
 | 替代方案 | 16 字节 — 放弃，AVX-512 未对齐                                                            |
 | 替代方案 | 32 字节 — 放弃，AVX-512 未对齐                                                            |
 
 ### 决策 2：ArcRepr 不实现 StorageMut（CoW 策略）
 
-| 属性     | 值                                                                                                       |
-| -------- | -------------------------------------------------------------------------------------------------------- |
-| 决策     | `ArcRepr` 不实现 `StorageMut`；如需写入，公开路径只能先转为 `Owned`。任何 CoW 逻辑都仅限 `arc.rs` 内部 helper，不构成共享可写模式 |
+| 属性     | 值                                                                                                                                              |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | `ArcRepr` 不实现 `StorageMut`；如需写入，公开路径只能先转为 `Owned`。任何 CoW 逻辑都仅限 `arc.rs` 内部 helper，不构成共享可写模式               |
 | 理由     | 可变访问涉及潜在 O(n) 复制；把 CoW 限定在内部实现可以避免 storage 层直接暴露整缓冲 `&mut [T]`，并保持“当前版本不提供共享可写存储模式”的需求边界 |
-| 替代方案 | 实现 `StorageMut` — 放弃，隐藏 CoW 成本                                                                  |
+| 替代方案 | 实现 `StorageMut` — 放弃，隐藏 CoW 成本                                                                                                         |
 
 ### 决策 3：Owned 与 ArcRepr 共享底层缓冲表示
 
-| 属性     | 值 |
-| -------- | --- |
-| 决策     | `Owned<A>` 与 `ArcRepr<A>` 共享同一 `AlignedBuf<A>` 底层缓冲表示；`ArcRepr<A>` 仅在内部添加 `Arc` 引用计数头 |
+| 属性     | 值                                                                                                                |
+| -------- | ----------------------------------------------------------------------------------------------------------------- |
+| 决策     | `Owned<A>` 与 `ArcRepr<A>` 共享同一 `AlignedBuf<A>` 底层缓冲表示；`ArcRepr<A>` 仅在内部添加 `Arc` 引用计数头      |
 | 理由     | 明确支撑 `Owned<A> -> ArcRepr<A>` 的 O(1) 零拷贝转换；避免在 storage 设计中引入“语义上零拷贝、实现上重分配”的矛盾 |
-| 替代方案 | `ArcRepr<A>` 使用与 `Owned<A>` 不同的独立缓冲表示 — 放弃，会使 `Owned<A> -> ArcRepr<A>` 无法真实保持 O(1) 零拷贝 |
+| 替代方案 | `ArcRepr<A>` 使用与 `Owned<A>` 不同的独立缓冲表示 — 放弃，会使 `Owned<A> -> ArcRepr<A>` 无法真实保持 O(1) 零拷贝  |
 
 ### 决策 4：ArcRepr 作为统一 trait 体系的一部分
 
@@ -1258,25 +1262,25 @@ User calls `TensorBase::as_ptr()`
 
 ## 12. 性能描述
 
-| 方面         | 设计决策                                                            |
-| ------------ | ------------------------------------------------------------------- |
-| 对齐分配     | `Owned` 与 `ArcRepr` 统一保持 64 字节对齐语义；ZST 和空数组跳过分配 |
-| 视图克隆     | O(1)，仅复制指针和长度                                              |
-| Arc 克隆     | O(1)，仅增加引用计数                                                |
-| Arc internal CoW helper | 唯一时 O(1)，非唯一时 O(n) 深拷贝                         |
-| Owned 克隆   | O(n) 深拷贝                                                         |
-| 内联         | 所有 `as_ptr`/`len`/`get` 标注 `#[inline]`                          |
-| 单态化       | Storage trait 在泛型上下文中单态化，无虚调用开销                    |
+| 方面                    | 设计决策                                                            |
+| ----------------------- | ------------------------------------------------------------------- |
+| 对齐分配                | `Owned` 与 `ArcRepr` 统一保持 64 字节对齐语义；ZST 和空数组跳过分配 |
+| 视图克隆                | O(1)，仅复制指针和长度                                              |
+| Arc 克隆                | O(1)，仅增加引用计数                                                |
+| Arc internal CoW helper | 唯一时 O(1)，非唯一时 O(n) 深拷贝                                   |
+| Owned 克隆              | O(n) 深拷贝                                                         |
+| 内联                    | 所有 `as_ptr`/`len`/`get` 标注 `#[inline]`                          |
+| 单态化                  | Storage trait 在泛型上下文中单态化，无虚调用开销                    |
 
 **性能数据（参考）**:
 
-| 操作                                 | 开销 | 说明               |
-| ------------------------------------ | ---- | ------------------ |
-| `Owned::zeros(1M)`                   | ~1ms | 包含分配和零初始化 |
-| `View::clone()`                      | ~2ns | 仅复制 3 个字段    |
-| `Arc::clone()`                       | ~5ns | 原子引用计数增加   |
-| internal Arc CoW helper（唯一）      | ~2ns | 仅作为实现参考     |
-| internal Arc CoW helper（非唯一，1M 元素） | ~1ms | 深拷贝         |
+| 操作                                       | 开销 | 说明               |
+| ------------------------------------------ | ---- | ------------------ |
+| `Owned::zeros(1M)`                         | ~1ms | 包含分配和零初始化 |
+| `View::clone()`                            | ~2ns | 仅复制 3 个字段    |
+| `Arc::clone()`                             | ~5ns | 原子引用计数增加   |
+| internal Arc CoW helper（唯一）            | ~2ns | 仅作为实现参考     |
+| internal Arc CoW helper（非唯一，1M 元素） | ~1ms | 深拷贝             |
 
 ---
 
@@ -1288,7 +1292,7 @@ User calls `TensorBase::as_ptr()`
 | 单 crate   | 保持单 crate 边界                      |
 | SemVer     | 存储类型和 trait 变更遵循 SemVer       |
 | 最小依赖   | 无新增第三方依赖                       |
-| MSRV       | Rust 1.85+                            |
+| MSRV       | Rust 1.85+                             |
 
 ---
 

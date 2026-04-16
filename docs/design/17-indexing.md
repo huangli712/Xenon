@@ -2,7 +2,7 @@
 
 > 文档编号: 17 | 模块: `src/index/` | 阶段: Phase 3
 > 前置文档: `02-dimension.md`, `06-layout.md`, `07-tensor.md`, `26-error.md`
-> 需求参考: 需求说明书 §18
+> 需求参考: `需求说明书 §4`, `需求说明书 §6`, `需求说明书 §18`, `需求说明书 §27`, `需求说明书 §28.2`, `需求说明书 §28.4`
 > 范围声明: 范围内
 
 ---
@@ -35,7 +35,7 @@ L0: error, private
 L1: dimension, layout
 L2: storage
 L3: tensor
-L4: index  <- current module
+L6: index  <- current module
 ```
 
 索引模块位于 `tensor` 之上，消费张量的 shape、stride、storage mode 与只读/可写访问能力；它不定义新的存储模式，也不反向影响 `dimension`、`layout`、`storage` 的基础语义。
@@ -46,7 +46,7 @@ L4: index  <- current module
 
 | 类型     | 内容                                                                                                                     |
 | -------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 需求映射 | 需求说明书 §18；并受 §4（`usize` 元数据角色）与 §6（只读/共享只读存储约束）补充约束                                      |
+| 需求映射 | `需求说明书 §18`；并受 `需求说明书 §4`（`usize` 元数据角色）、`需求说明书 §6`（只读/共享只读存储约束）、`需求说明书 §27`（错误处理）、`需求说明书 §28.2`（测试交付）与 `需求说明书 §28.4`（边界覆盖）补充约束                                      |
 | 范围内   | `usize` 多维索引、范围索引（切片）、rank 一致性检查、越界 recoverable error、unsafe 未检查变体、切片后 shape/stride 更新 |
 | 范围外   | 负索引、负步长、布尔/整数数组高级索引、共享可写视图、额外索引语法；`Index`/`IndexMut` 运算符语法（panic 语义）不在当前版本的稳定 API 承诺范围内。 |
 | 非目标   | 不新增索引能力，不引入新的存储模式或复制语义                                                                              |
@@ -349,6 +349,8 @@ compute_slice(shape, strides, offset, slices):
   - 前置: `dimension`、`tensor` 基础能力已可用
   - 预计: 10 min
 
+### Wave 2: 只读访问与切片描述基础
+
 - [ ] **T2**: 实现 `try_at` / `get` / `get_unchecked`
   - 文件: `src/index/access.rs`
   - 内容: 统一安全与 unsafe 访问路径，保证错误边界一致
@@ -356,22 +358,20 @@ compute_slice(shape, strides, offset, slices):
   - 前置: T1
   - 预计: 10 min
 
-### Wave 2: 可写访问与 trait 约束
+- [ ] **T4**: 定义 `SliceInfoElem` 与 `SliceInfoIndices`
+  - 文件: `src/index/slice.rs`
+  - 内容: inline / dynamic 切片描述表示
+  - 测试: `test_slice_basic`
+  - 前置: T1
+  - 预计: 10 min
+
+### Wave 3: 可写访问与视图构造
 
 - [ ] **T3**: 实现 `try_at_mut` / `get_mut` / `get_unchecked_mut`
   - 文件: `src/index/access.rs`
   - 内容: 仅在 `StorageMut` trait 前提成立时暴露可写访问
   - 测试: `test_try_at_mut_requires_storage_mut`
   - 前置: T2
-  - 预计: 10 min
-
-### Wave 3: 切片描述与视图构造
-
-- [ ] **T4**: 定义 `SliceInfoElem` 与 `SliceInfoIndices`
-  - 文件: `src/index/slice.rs`
-  - 内容: inline / dynamic 切片描述表示
-  - 测试: `test_slice_basic`
-  - 前置: T1
   - 预计: 10 min
 
 - [ ] **T5**: 实现 `slice` 的 shape/stride 更新与布局重算
@@ -384,11 +384,14 @@ compute_slice(shape, strides, offset, slices):
 ### Wave 依赖图
 
 ```text
-Wave 1: [T1] -> [T2]
-                  │
-                  ├──────────────┐
-                  ▼              ▼
-Wave 2:         [T3]         Wave 3: [T4] -> [T5]
+Wave 1: [T1]
+           │
+           ├──────────────┐
+           ▼              ▼
+Wave 2: [T2]           [T4]
+           │              │
+           ▼              ▼
+Wave 3: [T3]           [T5]
 ```
 
 ---
@@ -401,7 +404,7 @@ Wave 2:         [T3]         Wave 3: [T4] -> [T5]
 | ----------------------- | ------------------------------ | ---------------------------------------------------------------- |
 | 单元测试                | `src/index/` 对应测试模块      | 验证单个访问/切片函数的语义与错误边界                            |
 | 集成测试                | 索引与张量交互测试             | 验证 `tensor` + `index` + `error` 的组合行为                     |
-| 边界测试                | 与单元/集成测试配套组织        | 覆盖 rank-0、广播视图、非连续切片、越界                          |
+| 边界测试                | 与单元/集成测试配套组织        | 覆盖 rank-0、广播视图、非连续切片、越界与 `10^7` 元素偏移边界    |
 | 属性测试（按需）        | 索引模块测试目录               | 验证 offset 计算与 shape/stride 更新不变量                       |
 | Feature gate / 配置测试 | 不适用                         | 当前模块不涉及 SIMD、并行或可选 feature                          |
 | 类型边界 / 编译期测试   | trait 约束测试或编译期失败测试 | 验证 `usize` 仅用于元数据角色，索引 trait 不放宽到负数或元素类型 |
@@ -419,6 +422,7 @@ Wave 2:         [T3]         Wave 3: [T4] -> [T5]
 | `test_slice_layout_recomputed`         | 切片后布局状态被重新计算                       | 高     |
 | `test_slice_high_rank_ixdyn`           | `IxDyn` 高 rank 输入的切片元数据正确           | 中     |
 | `test_slice_extreme_offset_checked`    | 大步长/大 shape 下偏移计算不溢出或返回错误     | 中     |
+| `test_index_large_tensor_offset_boundary` | `10^7` 元素张量末元素索引成功，溢出偏移返回错误 | 高     |
 | `test_index_panic_sugar_diagnostics`   | 非规范 `Index`/`IndexMut` 便利接口的 panic 诊断 | 中     |
 
 ### 8.3 边界测试场景表
@@ -430,6 +434,7 @@ Wave 2:         [T3]         Wave 3: [T4] -> [T5]
 | 非连续切片后的访问                    | 偏移量计算继续基于 stride，不假设连续                      |
 | 任一轴越界                            | 安全接口返回 recoverable error；非规范语法糖若存在可 panic |
 | 高 rank（静态上限附近或 `IxDyn`）切片 | rank 校验、输出 shape 与 stride 更新保持正确               |
+| `10^7` 元素张量 `[3162,3162]` 的末元素索引与极端 offset 组合 | 合法索引返回正确元素；会溢出的 offset 计算返回错误而非 panic |
 
 ### 8.4 属性测试不变量（按需）
 
@@ -505,11 +510,16 @@ User calls tensor.slice(info)
 错误实例须与 `26-error.md` 对齐：
 
 ```rust,ignore
-XenonError::InvalidAxis {
+XenonError::InvalidArgument {
     operation: "slice".into(),
-    axis,
-    ndim: self.ndim(),
-    shape: self.shape().to_vec(),
+    argument: "range".into(),
+    expected: "0 <= start <= end <= shape[axis]".into(),
+    actual: format!("start={}, end={}, axis_len={}", start, end, self.shape()[axis]).into(),
+    axis: Some(axis),
+    axis_len: Some(self.shape()[axis]),
+    start: Some(start),
+    end: Some(end),
+    shape: Some(self.shape().to_vec()),
 }
 
 XenonError::IndexOutOfBounds {
@@ -537,7 +547,7 @@ XenonError::IndexOutOfBounds {
 | 属性     | 值                                                                                                   |
 | -------- | ---------------------------------------------------------------------------------------------------- |
 | 决策     | `try_at()` / `get()` / `try_at_mut()` / `get_mut()` / `slice()` 作为规范安全接口，失败返回可恢复错误 |
-| 理由     | 符合需求说明书 §18 对安全接口的要求，并与 `26-error.md` 的统一诊断模型对齐                        |
+| 理由     | 符合 `需求说明书 §18` 对安全接口的要求，并与 `26-error.md` 的统一诊断模型对齐                        |
 | 替代方案 | 全部使用 `Index` / `IndexMut` panic 语法糖 — 放弃，错误恢复与上游组合能力不足                        |
 | 替代方案 | 统一返回 `Option` — 放弃，无法承载轴、shape、索引等诊断信息                                          |
 
@@ -546,7 +556,7 @@ XenonError::IndexOutOfBounds {
 | 属性     | 值                                                                |
 | -------- | ----------------------------------------------------------------- |
 | 决策     | 范围索引返回共享底层数据的只读或共享只读视图，不提供共享可写视图  |
-| 理由     | 符合需求说明书 §18 与 §6，对共享数据结果收敛到可验证的只读语义 |
+| 理由     | 符合 `需求说明书 §18` 与 `需求说明书 §6`，对共享数据结果收敛到可验证的只读语义 |
 | 替代方案 | 允许共享可写切片 — 放弃，超出当前版本范围且引入别名写入风险       |
 | 替代方案 | 切片总是复制生成独立张量 — 放弃，会破坏零拷贝视图语义并扩大成本   |
 

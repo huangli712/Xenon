@@ -2,7 +2,7 @@
 
 > 文档编号: 27 | 影响范围: `benches/`, benchmark CI 与性能回归流程 | 阶段: Phase 6
 > 前置文档: 所有前置文档（`00-coding.md` ~ `26-error.md`）
-> 需求参考: 需求说明书 §9.1, §9.2, §9.3, §28.2, §28.3, §28.4, §28.5
+> 需求参考: `需求说明书 §9.1`, `需求说明书 §9.2`, `需求说明书 §9.3`, `需求说明书 §28.2`, `需求说明书 §28.3`, `需求说明书 §28.4`, `需求说明书 §28.5`
 > 范围声明: 范围内
 > **格式豁免声明**：本文档为横切性的性能观测规范，按 `design.md` §3 豁免标准模块文档格式；允许围绕 benchmark 分类、观测流程、CI 分级与回归口径组织章节，而非严格套用单模块模板。
 
@@ -47,7 +47,7 @@ benches/  <- current module (dev-dependency, consumes only the crate's public AP
 
 | 类型     | 内容                                                                       |
 | -------- | -------------------------------------------------------------------------- |
-| 需求映射 | `需求说明书 §9.1`、`§9.2`、`§9.3`                                              |
+| 需求映射 | `需求说明书 §9.1`、`需求说明书 §9.2`、`需求说明书 §9.3`                                              |
 | 正确性映射 | `需求说明书 §28.2`：由 `28-tests.md` 负责验证，本文档不承接。<br>`需求说明书 §28.3`：引用的正确性前提，benchmark 不定义正确性容差。<br>`需求说明书 §28.4`：由 `28-tests.md` 负责验证，本文档不承接。<br>`需求说明书 §28.5`：由 `28-tests.md` 负责验证，本文档不承接。 |
 | 范围内   | benchmark 分类、参数矩阵、基准 harness 与结果汇总口径                      |
 | 范围外   | 生产运行时性能调优、跨语言基准、额外平台专用测量框架                       |
@@ -232,7 +232,9 @@ impl StridedFixture1D {
     pub fn view(&self) -> TensorView1<'_, f64> {
         self.owner
             .view()
-            .slice(s![1, ..])
+            .slice(SliceInfo::new(/* [Index(1), Range { start: 0, end: self.owner.shape()[1] }] */)
+                .expect("slice info must be valid"))
+            .expect("slice info must match owner shape")
     }
 }
 
@@ -317,7 +319,7 @@ Benchmark categories
 | `broadcast_col`            | 列向量广播到矩阵        | S/M/L | f64            | F-contiguous   | 列广播                                                                           |
 | `transpose_2d`             | 2D 转置（零拷贝）       | S/M/L | f64            | F-contiguous   | 转置视图创建                                                                     |
 | `simd_add_compare`         | `a + b` (SIMD vs 标量)  | M     | f32/f64        | F-contiguous   | SIMD 加速比（参见 `08-simd.md §12`）                                             |
-| `simd_sum_compare`         | sum (SIMD vs 标量)      | M     | i32/i64        | F-contiguous   | 仅对已验证启用的整数 SIMD reduction 路径建基准（参见 `08-simd.md §5.4a`）         |
+| `simd_sum_compare`         | sum (SIMD vs 标量)      | M     | i32            | F-contiguous   | 默认仅覆盖已验证启用的 i32 SIMD reduction 路径；i64 如需保留，须作为显式 opt-in 非默认基准（参见 `08-simd.md §5.4a`） |
 | `simd_dot_compare`         | dot (SIMD vs 标量)      | M     | f32/f64        | F-contiguous   | SIMD dot kernel 已在 `08-simd.md` 中设计，本基准仅对比 SIMD 与标量路径的性能差异 |
 | `par_sum_compare`          | sum (并行 vs 串行)      | L     | i64            | F-contiguous   | 并行加速比（参见 `09-parallel.md §12`）                                          |
 | `par_add_compare`          | `a + b` (并行 vs 串行)  | L     | f64            | F-contiguous   | 并行逐元素加速                                                                   |
@@ -325,6 +327,8 @@ Benchmark categories
 | `zeros_1d`                 | zeros 构造              | S/M/L | f64            | F-contiguous   | 构造开销                                                                         |
 
 ### 5.5.1 行为验证（归 28-tests.md）
+
+> **覆盖关系说明**：benchmark coverage 是 SIMD 正式覆盖的子集，不等于完整设计覆盖。
 
 以下场景为行为正确性验证，应由 `28-tests.md` 承担。benchmark 仅测量对应路径的性能表现。
 
@@ -760,7 +764,7 @@ benchmark files
 | 属性     | 值                                                             |
 | -------- | -------------------------------------------------------------- |
 | 决策     | 不包含 C-order benchmark，非连续通过切片视图产生               |
-| 理由     | Xenon 仅支持 F-order 布局（需求说明书 §7），C-order 不在范围内 |
+| 理由     | Xenon 仅支持 F-order 布局（`需求说明书 §7`），C-order 不在范围内 |
 | 替代方案 | 添加 C-order 测试 — 放弃，与需求矛盾                           |
 
 ---

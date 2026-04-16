@@ -2,7 +2,7 @@
 
 > 文档编号: 00 | 适用范围: 全局编码与工程约束 | 阶段: Phase 0
 > 前置文档: 无
-> 需求参考: 需求说明书 §1, §4, §7, §10, §27, §28
+> 需求参考: `需求说明书 §1`, `需求说明书 §4`, `需求说明书 §7`, `需求说明书 §10`, `需求说明书 §27`, `需求说明书 §28`
 > 范围声明: 范围内
 
 > **格式豁免声明**：本文档豁免 `design.md` §3.1 模块文档标准章节结构，但已按 §3.2 横切规范文档模板覆盖所有必需内容。
@@ -21,7 +21,7 @@
 
 | 类型     | 内容                                                                 |
 | -------- | -------------------------------------------------------------------- |
-| 需求映射 | `需求说明书 §1`, `§4`, `§7`, `§10`, `§18`, `§23`, `§25`, `§27`, `§28` |
+| 需求映射 | `需求说明书 §1`, `需求说明书 §4`, `需求说明书 §7`, `需求说明书 §10`, `需求说明书 §18`, `需求说明书 §23`, `需求说明书 §25`, `需求说明书 §27`, `需求说明书 §28` |
 | 范围内   | 命名、格式、类型系统、unsafe、文档、测试与 feature gate 的统一编码约束 |
 | 范围外   | 单个业务模块的算法细节、独立功能设计、额外平台适配策略               |
 | 非目标   | 通过本规范引入超出需求范围的新能力、第三方依赖或额外 crate 拆分      |
@@ -34,7 +34,7 @@
 
 模块名使用 `snake_case`。
 
-```rust
+```rust,ignore
 // Good
 mod tensor_base;
 mod layout;
@@ -308,9 +308,9 @@ use crate::storage::Storage;
 
 ### 3.1 限制 `as` 数值类型转换
 
-公开 API 和常规代码中禁止使用 `as` 进行数值类型转换。使用 `From`/`TryFrom`/`Into` trait。
+公开 API 和常规代码中，对数值 `as` 采用“启用针对数值 `as` 的 lint + 对例外场景做代码评审约束”策略。默认使用 `From`/`TryFrom`/`Into` trait。
 
-> **说明**：Rust 标准库不提供 `From<i32> for f64`。整数到浮点的转换须通过 Xenon 自身的显式转换 API 实现，参见 需求说明书 §23 和 `21-type.md §5.2`。
+> **说明**：Rust 标准库不提供 `From<i32> for f64`。整数到浮点的转换须通过 Xenon 自身的显式转换 API 实现，参见 `需求说明书 §23` 和 `21-type.md §5.2`。
 
 ```rust,ignore
 // Good
@@ -321,7 +321,7 @@ let x: i32 = value as i32;  // dangerous: may truncate or change sign
 let y: f64 = value as f64;  // dangerous: precision loss
 ```
 
-**例外**：以下情况允许 `as`：
+**例外（须在代码评审中显式确认）**：以下情况允许 `as`：
 
 ```rust,ignore
 // 1. Interacting with C FFI
@@ -339,7 +339,7 @@ let offset = ptr as usize;
 let truncated = float_val as i32;
 ```
 
-> **注意**：`as` 截断语义仅适用于已单独定义为 truncating/saturating 的专用内部路径。默认 `cast()` 语义不得使用该策略，须返回 `Result`。参见 需求说明书 §23。
+> **注意**：`as` 截断语义仅适用于已单独定义为 truncating/saturating 的专用内部路径。默认 `cast()` 语义不得使用该策略，须返回 `Result`。参见 `需求说明书 §23`。
 
 ### 3.2 泛型约束写法
 
@@ -423,7 +423,7 @@ pub struct Bad<A> {
 
 ### 3.4 Send/Sync 实现规范
 
-按存储模式声明 `unsafe impl Send/Sync`，须严格遵循以下规则（权威定义参见 `25-safety.md` §5.1；`05-storage.md` 中相关规则如有冲突，以 `require.md` 与 `25-safety.md` 为准）：
+按存储模式声明 `unsafe impl Send/Sync`，须严格遵循以下规则（权威定义参见 `25-safety.md` §5.1；`05-storage.md` 中相关规则如有冲突，以 `需求说明书 §25` 与 `25-safety.md` 为准）：
 
 | 存储模式             | Send | Sync   | 条件                                                 |
 | -------------------- | ---- | ------ | ---------------------------------------------------- |
@@ -576,33 +576,13 @@ pub enum XenonError {
     },
 }
 
-#[derive(Debug, Clone)]
-pub struct TypeConversionError {
-    source_type: Cow<'static, str>,
-    target_type: Cow<'static, str>,
-    pub(crate) reason: TypeConversionReason,
-    element_index: usize,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TypeConversionReason {
-    LossyIntegerNarrowing,
-    LossyFloatNarrowing,
-    FloatToInteger,
-    IntegerToFloatPrecisionLoss,
-    NonZeroImaginaryPart,
-    UnsupportedByRequirement,
-}
+// Public error boundary uses `XenonError`; see `26-error.md §4.2`
+// for the type-conversion failure payload definition.
 
 pub type Result<T> = std::result::Result<T, XenonError>;
 ```
 
-> **模块内部错误说明：** `FfiError`、`WorkspaceError`、`TypeConversionError` 可作为模块内部载荷结构存在；
-> 其中 `FfiError`、`WorkspaceError` 跨越公开边界时必须先映射为 `XenonError::Ffi { ... }`、`XenonError::Workspace { ... }` 的结构化字段，
-> `TypeConversionError` 则继续通过 `XenonError::TypeConversion(...)` 统一暴露，不得直接作为公开 API 返回类型暴露。
-
-> **内部辅助类型说明：** `TypeConversionReason` 是 `pub(crate)` 内部枚举载荷；
-> 公开错误边界固定为 `XenonError::TypeConversion(TypeConversionError)`。
+> **模块内部错误说明：** `FfiError`、`WorkspaceError`、`TypeConversionError` 可作为模块内部载荷结构存在；跨越公开边界时统一使用 `XenonError`。类型转换失败载荷定义见 `26-error.md §4.2`。
 
 ### 4.3 unwrap 限制
 
@@ -911,9 +891,9 @@ mod tests {
 | 高维 `shape=[2,2,2,2,2,2]` | 正确计算偏移              |
 | 大张量 `shape=[10_000_000]` 或 GiB 级输入 | 不栈溢出，且边界检查保持可恢复错误语义 |
 | Subnormal 浮点数           | 不 flush to zero          |
-| §28.4 占位：large-tensor   | 后续补充超大张量边界回归用例 |
-| §28.4 占位：high-dim       | 后续补充高维 shape / stride / index 回归用例 |
-| §28.4 占位：extreme-value  | 后续补充极值/特殊值数值回归用例 |
+| 需求说明书 §28.4 占位：large-tensor   | 后续补充超大张量边界回归用例 |
+| 需求说明书 §28.4 占位：high-dim       | 后续补充高维 shape / stride / index 回归用例 |
+| 需求说明书 §28.4 占位：extreme-value  | 后续补充极值/特殊值数值回归用例 |
 
 ### 7.3 测试分类
 
@@ -930,9 +910,9 @@ mod tests {
 
 - unsafe 代码块必须有对应测试
 - 每个公开 API 至少一个正向 + 一个负向测试
-- 如仓库后续引入覆盖率门槛，应作为可选 CI 质量信号维护，不得写成超出 `require.md` 的硬性发布准入条件
+- 如仓库后续引入覆盖率门槛，应作为可选 CI 质量信号维护，不得写成超出 `需求说明书 §28` 的硬性发布准入条件
 
-**浮点比较**：对存在舍入误差容差的数值路径，使用近似比较；对比较 API 自身、布尔结果、文档明确要求精确一致的场景，允许/要求精确断言。参见 需求说明书 §12（NaN 遵循 IEEE 754）和 §28.3。
+**浮点比较**：对存在舍入误差容差的数值路径，使用近似比较；对比较 API 自身、布尔结果、文档明确要求精确一致的场景，允许/要求精确断言。参见 `需求说明书 §12`（NaN 遵循 IEEE 754）和 `需求说明书 §28.3`。
 
 ```rust,ignore
 // Good - tolerance uses max(1 ULP, epsilon * |scalar_result|)
@@ -1082,7 +1062,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 - [ ] **T3**: 创建 `.clippy.toml` 或 `clippy` 配置
   - 文件: `.clippy.toml`
-  - 内容: disallow `as` casts、unwrap 限制
+  - 内容: 启用针对数值 `as` 的 lint + 对例外场景做代码评审约束（例外仅限 C FFI 指针转换、已验证的索引/长度到指针偏移转换、原始指针地址操作、以及已文档化语义的内部专用 cast 实现）以及 unwrap 限制
   - 测试: `cargo clippy` 通过
   - 前置: 无
   - 预计: 5 min
@@ -1098,7 +1078,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 > **CI 策略补充说明：** `cargo fmt --check`、`cargo test`、关键 compile-fail/文档检查哪些属于阻塞发布的 hard gate，哪些仅作为 advisory 信号，仍需项目级统一裁决；本规范只定义建议纳入的检查项，不越权替代仓库治理决策。
 >
-> **工程治理说明：** 以下为工程治理建议，不构成 `require.md` 当前版本的规范性基线。
+> **工程治理说明：** 以下为工程治理建议，不构成 `需求说明书 §28` 当前版本的规范性基线。
 
 ### 并行执行分组图
 
@@ -1145,7 +1125,7 @@ Wave 2: [T4]
 
 > **compile-fail 测试机制建议：** 对 sealed trait、feature gate 可见性、错误用法示例等编译期失败场景，建议使用 `trybuild` 或等价 compile-fail harness 统一维护；若项目后续选择其他机制，需保证失败快照与错误意图可审计。
 
-> **工程治理说明：** 以下为工程治理建议，不构成 `require.md` 当前版本的规范性基线。
+> **工程治理说明：** 以下为工程治理建议，不构成 `需求说明书 §28` 当前版本的规范性基线。
 
 ---
 

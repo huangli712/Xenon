@@ -2,7 +2,7 @@
 
 > 文档编号: 04 | 模块: `src/complex/` | 阶段: Phase 1
 > 前置文档: `00-coding.md`, `01-architecture.md`
-> 需求参考: 需求说明书 §4, §5, §12, §13, §15, §23, §24, §25, §28
+> 需求参考: `需求说明书 §4`, `需求说明书 §5`, `需求说明书 §12`, `需求说明书 §13`, `需求说明书 §15`, `需求说明书 §23`, `需求说明书 §24`, `需求说明书 §25`, `需求说明书 §28`
 > 范围声明: 范围内
 
 ---
@@ -61,7 +61,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 | 项目     | 内容                                                            |
 | -------- | --------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §4、§5、§12、§13、§15、§20、§23、§24、§25、§28      |
+| 需求映射 | `需求说明书 §4`、`需求说明书 §5`、`需求说明书 §12`、`需求说明书 §13`、`需求说明书 §15`、`需求说明书 §20`、`需求说明书 §23`、`需求说明书 §24`、`需求说明书 §25`、`需求说明书 §28`      |
 | 范围内   | `Complex<T>` 类型定义、同精度复数算术、`conj()` / `norm()` / `norm_sqr()`、格式化、类型转换、FFI 布局边界 |
 | 范围外   | `num-complex` 兼容层、跨精度混合运算、FFT 与高阶复数算法、额外公开复数数学函数 |
 | 非目标   | 引入第三方复数库依赖、开放任意 `T` 的公开实例化、把内部数学 helper 稳定化，或 `_Complex` ABI 保证 |
@@ -550,7 +550,7 @@ impl<T: ComplexFloat> core::ops::Neg for Complex<T> {
 }
 ```
 
-> **除法特殊值语义说明：** `Complex<T>` 除法遵循 **Smith 算法 + 底层 IEEE 754 标量运算的组合语义**。实现层使用 Smith 算法避免直接形成 `c² + d²`；当输入含 `0`、`NaN`、`Inf` 或中间结果出现上溢/下溢时，最终结果继续由底层 `f32` / `f64` 标量运算的 IEEE 754 传播规则决定，不额外返回可恢复错误，也不引入额外 panic。该约束适用于 `Complex<T> / Complex<T>` 公开运算符语义，并与 `需求说明书 §24` / `§28.3` 保持一致。
+> **除法特殊值语义说明：** `Complex<T>` 除法遵循 **Smith 算法 + 底层 IEEE 754 标量运算的组合语义**。实现层使用 Smith 算法避免直接形成 `c² + d²`；当输入含 `0`、`NaN`、`Inf` 或中间结果出现上溢/下溢时，最终结果继续由底层 `f32` / `f64` 标量运算的 IEEE 754 传播规则决定，不额外返回可恢复错误，也不引入额外 panic。该约束适用于 `Complex<T> / Complex<T>` 公开运算符语义，并与 `需求说明书 §13` / `需求说明书 §28.3` 保持一致。
 >
 > **规范性示例：**
 > - `Complex::new(1.0, 2.0) / Complex::new(0.0, 0.0)`：结果按 Smith 分支中的底层 IEEE 754 标量除法/乘加传播计算，允许产生 `Inf` / `NaN` 组合；文档不额外定义独立错误通道。
@@ -657,7 +657,7 @@ fn scalar_is_positive_zero<T: PositiveZero>(im: T) -> bool {
 
 > **实现归属说明：** 本节只保留语义矩阵。具体 `From` / `CastTo` 实现由 `convert/cast.rs` 统一承载；下列规则描述当前版本允许的语义，不再在 `complex/` 文档中重复大段实现片段。
 
-整数到复数的受支持路径按 `需求说明书 §23.1` 与 `§23.2` 的规则补充如下：
+整数到复数的受支持路径按 `需求说明书 §23.1` 与 `需求说明书 §23.2` 的规则补充如下：
 
 | 源类型 | 目标类型 | 语义 | 默认行为 |
 |--------|----------|------|---------|
@@ -670,20 +670,22 @@ fn scalar_is_positive_zero<T: PositiveZero>(im: T) -> bool {
 
 > **统一转换入口说明：** `Complex` 类型的逐元素类型转换统一由 `03-element.md` 定义的 `CastTo<T>` trait 管理，trait 定义位于 `element` 模块，具体实现归入 `convert/` 模块；本节不再单独定义张量级转换入口。`From` 仅用于**不可能失败且不丢失精度**的标量级构造或 widening：`From<T> for Complex<T>`（实数到同精度复数，虚部补 `0`）与 `From<Complex<f32>> for Complex<f64>`（分量无损 widening）。其中 `From<T> for Complex<T>` 是当前版本**唯一**允许的显式实数到复数标量构造路径。
 
+> **错误边界说明：** `CastTo<T>` 是公开 sealed trait，其内部返回 `TypeConversionError` 是实现机制；最终用户通过公开 API（`cast()`）消费时，错误统一映射为 `XenonError::TypeConversion(TypeConversionError)`。
+
 除上述 infallible 构造外，其余显式类型转换统一通过 `CastTo<T>` trait 实现（参见 `03-element.md` §5.9 和 `21-type.md`），包括 `Complex<f64> -> Complex<f32>`、`Complex<T> -> T` 以及其他跨精度/跨类型组合；其中有损窄化路径默认返回可恢复错误。
 
 > **禁止性约束：** 禁止为任何可能失败或可能丢失精度的转换实现 `From`。这类转换必须走 `21-type.md` 定义的 `CastTo<T>`。
 
-复杂到实数的受支持路径同样受 `需求说明书 §23.1` 与 `§23.2` 约束，且统一由 `03-element.md` §5.9 定义的 `CastTo<T>` trait 作为唯一 owner；`complex/` 模块文档仅声明其语义，不重复定义独立转换入口。
+复杂到实数的受支持路径同样受 `需求说明书 §23.1` 与 `需求说明书 §23.2` 约束，且统一由 `03-element.md` §5.9 定义的 `CastTo<T>` trait 作为唯一 owner；`complex/` 模块文档仅声明其语义，不重复定义独立转换入口。
 
 | 源类型 | 目标类型 | 语义 | 默认行为 |
 |--------|----------|------|---------|
-| `Complex<f32>` | `f32` | 仅当虚部为 `0` 时返回实部 | 虚部非零时返回 `XenonError::TypeConversion(TypeConversionError)` |
-| `Complex<f64>` | `f64` | 仅当虚部为 `0` 时返回实部 | 虚部非零时返回 `XenonError::TypeConversion(TypeConversionError)` |
-| `Complex<f32>` | `f64` | 仅当虚部为 `0` 时，按 `f32→f64` 规则转换实部 | 虚部非零时返回 `XenonError::TypeConversion(TypeConversionError)` |
-| `Complex<f64>` | `f32` | 仅当虚部为 `0` 时，按 `f64→f32` 规则转换实部 | 虚部非零时返回 `XenonError::TypeConversion(TypeConversionError)` |
+| `Complex<f32>` | `f32` | 仅当虚部为 `0` 时返回实部 | `CastTo<T>` trait 级返回 `TypeConversionError`；公开 API 统一包装为 `XenonError::TypeConversion(...)` |
+| `Complex<f64>` | `f64` | 仅当虚部为 `0` 时返回实部 | `CastTo<T>` trait 级返回 `TypeConversionError`；公开 API 统一包装为 `XenonError::TypeConversion(...)` |
+| `Complex<f32>` | `f64` | 仅当虚部为 `0` 时，按 `f32→f64` 规则转换实部 | `CastTo<T>` trait 级返回 `TypeConversionError`；公开 API 统一包装为 `XenonError::TypeConversion(...)` |
+| `Complex<f64>` | `f32` | 仅当虚部为 `0` 时，按 `f64→f32` 规则转换实部 | `CastTo<T>` trait 级返回 `TypeConversionError`；公开 API 统一包装为 `XenonError::TypeConversion(...)` |
 
-> **实现片段省略：** `Complex -> Real` 的具体 `CastTo<T>` 实现同样位于 `convert/cast.rs`。`complex/` 仅保留“虚部必须为 `0`，否则返回 `XenonError::TypeConversion(TypeConversionError)`”这一语义约束，字段模型以 `26-error.md §4.2` / `§4.4` 为准。
+> **实现片段省略：** `Complex -> Real` 的具体 `CastTo<T>` 实现同样位于 `convert/cast.rs`。`complex/` 仅保留“虚部必须为 `0`；trait 级失败返回 `TypeConversionError`，公开 API 统一映射为 `XenonError::TypeConversion(TypeConversionError)`”这一语义约束，字段模型以 `26-error.md §4.2` / `§4.4` 为准。
 
 > **`-0.0` 补充说明：** 复数到实数转换对“虚部是否为零”的判断遵循 IEEE 754 比较语义；因此 `-0.0` 视为零，`Complex::new(3.0, -0.0)` 允许按虚部为零的路径继续转换，不应被误判为非零虚部。
 
@@ -702,6 +704,8 @@ const _: () = {
 **安全性论证**: `#[repr(C)]` 仅用于固定字段顺序与 C 兼容结构体表示；安全前提建立在按 `re` / `im` 两个已知字段访问，而非依赖“无 padding”假设。
 
 > **字段偏移验证意图：** 除 size/align 静态断言外，测试计划还应补充 `re` 位于偏移 0、`im` 位于 `size_of::<T>()` 偏移处的验证意图，用于防止未来重构破坏两字段 C struct 的约定布局。
+>
+> **测试计划补充：** 在 `tests/complex/layout.rs` 中分别对 `Complex<f32>` 与 `Complex<f64>` 构造样例值，使用 `offset_of!` 或等价的 pointer offset 断言验证 `re` 的字段偏移为 `0`、`im` 的字段偏移等于 `core::mem::size_of::<T>()`；该测试只验证字段顺序与偏移，不额外扩大 ABI 承诺范围。
 
 ### 5.12 FFI 布局兼容性说明
 
@@ -710,7 +714,7 @@ const _: () = {
 | `struct { float re; float im; }`   | `[float, float]`   | `Complex<f32>` |
 | `struct { double re; double im; }` | `[double, double]` | `Complex<f64>` |
 
-Xenon 对需求说明书 §5 的裁决是：**公开 FFI 契约只保证 `#[repr(C)] struct { re: T, im: T }` 等价布局**。
+Xenon 对 `需求说明书 §5` 的裁决是：**公开 FFI 契约只保证 `#[repr(C)] struct { re: T, im: T }` 等价布局**。
 
 1. `Complex<T>` 在 Rust 侧始终保持双字段 `#[repr(C)]` 布局，作为最低层内存表示；
 2. 对外文档与测试只承诺其可按两字段 C 结构体解释；
@@ -722,7 +726,7 @@ FFI 示例：
 
 ```rust,ignore
 // Rust side
-#[unsafe(no_mangle)]
+#[no_mangle]
 pub unsafe extern "C" fn process_complex(
     z: *const Complex<f64>,
     out: *mut Complex<f64>,
@@ -827,7 +831,7 @@ hypot(a, b):
 | `impl Eq for Complex<T>`         | NaN 违反自反性                      |
 | `impl Ord for Complex<T>`        | 复数无自然全序                      |
 | `impl PartialOrd for Complex<T>` | 字典序无数学意义                    |
-| Serde 序列化                     | 不在当前范围（参见需求说明书 §2.2） |
+| Serde 序列化                     | 不在当前范围（参见 `需求说明书 §2.2`） |
 
 ---
 
@@ -1011,9 +1015,9 @@ assert!((result.re - 2.0).abs() < 1e-10 && result.im.abs() < 1e-10);
 | 极小值 norm                   | `Complex::new(1e-200, 1e-200).norm()` 正确               |
 | `Complex::new(1.0, 2.0) / Complex::new(0.0, 0.0)` | 遵循 Smith 算法 + IEEE 754 标量传播语义，不返回可恢复错误，也不额外 panic |
 | 连续字段布局                  | `Complex<f64>` 的 `re/im` 字段顺序稳定，可逐元素读取     |
-| §28.4 占位：large-tensor      | 后续补充大批量复数元素运算/格式化回归 |
-| §28.4 占位：high-dim          | 后续补充高维复数张量在 `math` / `matrix` / `ffi` 协同回归 |
-| §28.4 占位：extreme-value     | 后续补充 `NaN` / `Inf` / `-0.0` / subnormal 组合回归 |
+| 需求说明书 §28.4 占位：large-tensor      | 后续补充大批量复数元素运算/格式化回归 |
+| 需求说明书 §28.4 占位：high-dim          | 后续补充高维复数张量在 `math` / `matrix` / `ffi` 协同回归 |
+| 需求说明书 §28.4 占位：extreme-value     | 后续补充 `NaN` / `Inf` / `-0.0` / subnormal 组合回归 |
 
 ### 8.4 属性测试不变量
 
@@ -1092,7 +1096,7 @@ User constructs `Complex<f64>::new(re, im)`
 
 | 项目           | 内容 |
 | -------------- | ---- |
-| Recoverable error | `CastTo<T>` 承载的有损窄化路径返回可恢复错误；公开错误类型统一为 `XenonError::TypeConversion(TypeConversionError)` |
+| Recoverable error | `CastTo<T>` trait 级的有损窄化路径返回 `TypeConversionError`；跨公开 API 边界时统一包装为 `XenonError::TypeConversion(TypeConversionError)` |
 | Panic | 本模块常规复数运算与方法不以 panic 作为错误通道；若调用底层标准库浮点 API，遵循其既有语义 |
 | 路径一致性 | scalar 路径与普通标量实现必须一致；SIMD：不适用；parallel：不适用 |
 | 容差边界 | 复数数值测试采用显式容差；布局、格式化与类型边界测试不适用 |
@@ -1132,7 +1136,7 @@ User constructs `Complex<f64>::new(re, im)`
 | 属性     | 值                                                                                      |
 | -------- | --------------------------------------------------------------------------------------- |
 | 决策     | 当前版本不实现 `AddAssign`/`SubAssign`/`MulAssign`/`DivAssign`                          |
-| 理由     | 需求说明书 §20 指出"所有组合均产生新的独立张量"；运算符重载仅产生新张量，不需要原地修改 |
+| 理由     | `需求说明书 §20` 指出"所有组合均产生新的独立张量"；运算符重载仅产生新张量，不需要原地修改 |
 | 替代方案 | 实现全部复合赋值 — 放弃，超出当前需求                                                   |
 
 ---

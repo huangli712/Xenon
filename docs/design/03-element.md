@@ -2,7 +2,7 @@
 
 > 文档编号: 03 | 模块: `src/element/` | 阶段: Phase 1
 > 前置文档: `00-coding.md`, `01-architecture.md`
-> 需求参考: 需求说明书 §4、§5、§12、§13、§14、§15、§23
+> 需求参考: `需求说明书 §4`、`需求说明书 §5`、`需求说明书 §12`、`需求说明书 §13`、`需求说明书 §14`、`需求说明书 §15`、`需求说明书 §23`
 > 范围声明: 范围内
 
 ---
@@ -52,7 +52,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 
 | 项目     | 内容                                                                      |
 | -------- | ------------------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §4、§5、§12、§13、§14、§15、§20、§23、§24                      |
+| 需求映射 | `需求说明书 §4`、`需求说明书 §5`、`需求说明书 §12`、`需求说明书 §13`、`需求说明书 §14`、`需求说明书 §15`、`需求说明书 §20`、`需求说明书 §23`、`需求说明书 §24`                      |
 | 范围内   | `Element`/`Numeric`/`RealScalar`/`ComplexScalar` trait 与封闭元素类型集合 |
 | 范围外   | 张量存储、自动类型提升、开放外部元素扩展、具体类型转换执行逻辑            |
 | 非目标   | 引入新的基础数值类型集合、运行时类型擦除或动态分派元素系统                |
@@ -201,14 +201,14 @@ pub trait Numeric:
 
 ### 5.2a Signum trait
 
-> **公开性说明：** 以下 trait 为内部实现辅助，不纳入稳定公开 API 面。具体可见性由实现决定。
+> **公开性说明：** `Signum` 仅作为 crate 内部 sealed trait 使用，不纳入稳定公开 API；其实现集合固定为 `i32`、`i64`、`f32`、`f64`。
 
 ```rust,ignore
 /// Unified signum capability for the sealed signed scalar set.
 ///
 /// Implemented only for `i32`, `i64`, `f32`, and `f64`.
 /// Integer implementations return `-1`, `0`, or `1`.
-/// Floating-point implementations follow IEEE 754 sign-function semantics.
+/// Floating-point implementations follow the standard-library signum semantics.
 pub(crate) trait Signum: Numeric + Sealed {
     fn signum(self) -> Self;
 }
@@ -234,14 +234,14 @@ impl Signum for f64 {
 }
 ```
 
-> **适用范围说明：** 张量级 `signum()` 公开能力需覆盖 `i32`、`i64`、`f32`、`f64`（对应 `需求说明书 §12`）。因此本设计将 `signum` 收敛到独立的 sealed `Signum` 子 trait：整数通过 `-1/0/1` 语义实现，浮点继续服从 `RealScalar::signum()` 的 IEEE 754 契约；`Complex<T>` 与 `bool` 不实现该能力。
+> **适用范围说明：** 张量级 `signum()` 公开能力需覆盖 `i32`、`i64`、`f32`、`f64`（对应 `需求说明书 §12`）。因此本设计将 `signum` 收敛到独立的 sealed `Signum` 子 trait：整数通过 `-1/0/1` 语义实现，浮点继续服从 `RealScalar::signum()` 的标准库语义；`Complex<T>` 与 `bool` 不实现该能力。
 
 ### 5.3 RealScalar trait
 
 ```rust,ignore
 /// Real-valued scalar trait.
 ///
-/// Provides math functions, constants, and NaN detection.
+/// Provides stable real-valued math functions and NaN detection.
 /// Only f32 and f64 implement this trait.
 pub trait RealScalar: Numeric + PartialOrd + Sealed {
     // Sealed is already inherited via Element (which Numeric extends),
@@ -249,12 +249,12 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
     // at each trait level.
     // ========== Math functions ==========
     fn abs(self) -> Self;
-    /// Returns the IEEE 754 sign of the value.
+    /// Returns the standard-library sign of the value.
     ///
-    /// For finite non-zero inputs, the result is `1.0` or `-1.0` with the
-    /// same sign bit as the input. `signum(+0.0) == +0.0`,
-    /// `signum(-0.0) == -0.0`, `signum(+∞) == 1.0`, `signum(-∞) == -1.0`,
-    /// and `signum(NaN) == NaN`.
+    /// Finite non-NaN inputs return `1.0` or `-1.0`; specifically,
+    /// `signum(+0.0) == 1.0`, `signum(-0.0) == -1.0`,
+    /// `signum(+∞) == 1.0`, `signum(-∞) == -1.0`, and
+    /// `signum(NaN) == NaN`.
     fn signum(self) -> Self;
     fn sqrt(self) -> Self;
     fn sin(self) -> Self;
@@ -263,13 +263,24 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
     fn floor(self) -> Self;
     fn ceil(self) -> Self;
 
-    // ========== Stable public contract ==========
     fn is_nan(self) -> bool;
+}
+```
 
-    // ========== Internal helper methods (not stable public contract) ==========
-    // The following methods are reused by internal modules in the current version.
-    // They are not part of the current stable public API contract and may be
-    // promoted later only if future requirement specs explicitly require them.
+> **设计决策：** 公开 `RealScalar` trait 仅保留当前版本可稳定承诺的实数运算能力；常量访问器与 NaN/无穷辅助逻辑降为 crate 内部扩展 trait，避免把实现便利误暴露为公开契约。
+>
+> **`signum` 语义补充：** `RealScalar::signum()` 明确跟随标准库 `f32::signum()` / `f64::signum()` 语义：有限非 NaN 输入返回 `1.0` 或 `-1.0`，其中 `signum(+0.0) == 1.0`、`signum(-0.0) == -1.0`，`NaN` 传播为 `NaN`。`11-math.md` 中张量级 `signum()` 的浮点语义以此 trait 契约为权威基线；整数 `signum` 仍按比较结果返回 `-1/0/1`。
+
+### 5.3a RealScalarInternal trait
+
+> **公开性说明：** 以下 trait 为 crate 内部扩展，不纳入稳定公开 API 面。具体可见性固定为 `pub(crate)`。
+
+```rust,ignore
+/// Internal extension trait for sealed real scalars.
+///
+/// Contains implementation helpers that are intentionally excluded from the
+/// stable public `RealScalar` contract.
+pub(crate) trait RealScalarInternal: RealScalar + Sealed {
     fn epsilon() -> Self;
     fn min_positive() -> Self;
     fn max_value() -> Self;
@@ -283,18 +294,11 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
 }
 ```
 
-> **设计决策：** `min`/`max` 采用 NaN 传播语义（任一参数为 NaN → 返回 NaN）。Xenon 通过 `RealScalar` 自身的契约固定这一行为，不直接复用标准库 `f32::min` / `f64::min` 的全部语义细节。
+> **设计决策：** `epsilon()`、`infinity()`、`min()`、`max()` 以及同类辅助访问器只服务于当前 crate 内部实现，不构成公开稳定能力，因此统一收敛到 `RealScalarInternal`。
 >
-> **跨模块约束：** `math`、`reduction`、`format` 等任何需要依赖该语义的模块，必须调用 `RealScalar::min()` / `RealScalar::max()` 或与其完全等价的封装，不得直接退回标准库固有方法，否则会破坏 Xenon 在 NaN 传播上的统一契约。
+> **NaN 语义显式说明：** `RealScalarInternal::min()` / `RealScalarInternal::max()` 采用 NaN 传播语义（任一参数为 NaN → 返回 NaN），这与标准库 `f32::min` / `f64::min`、`f32::max` / `f64::max` 的语义不同，因此必须保持为内部 helper，不得进入公开 trait。
 >
-> **`signum` 语义补充：** `RealScalar::signum()` 明确采用 IEEE 754 sign-function 语义：保留带符号零，`NaN` 传播为 `NaN`，无穷值返回对应符号的单位值。`11-math.md` 中张量级 `signum()` 的浮点语义以此 trait 契约为权威基线；整数 `signum` 仍按比较结果返回 `-1/0/1`。
->
-> **注意**：以下 `RealScalar` 方法仅供库内部模块复用，不构成当前版本的公开稳定契约。仅当需求说明书后续版本显式要求时，方可提升为公开稳定能力。
-> 适用范围包括：`epsilon()`、`min_positive()`、`max_value()`、`infinity()`、`neg_infinity()`、`nan()`、`is_infinite()`、`is_finite()`、`min()`、`max()`。
->
-> **常量访问器说明：** `epsilon`、`min_positive`、`max_value`、`infinity`、`neg_infinity`、`nan` 为内部辅助方法，保留当前版本实际需要的最小集。以下常量访问器为实现便利，不构成稳定 API 承诺。
->
-> **NaN 语义显式说明：** 此方法采用 NaN 传播语义（任一参数为 NaN → 返回 NaN），与标准库 `f32::min` / `f64::min` 的 NaN 处理不同。命名为 `min` / `max` 而非 `minimum` / `maximum` 是为了 API 简洁性。
+> **跨模块约束：** `math`、`reduction`、`format` 等任何需要依赖上述辅助语义的模块，必须调用 `RealScalarInternal::min()` / `RealScalarInternal::max()` 或与其完全等价的封装，不得直接退回标准库固有方法，否则会破坏 Xenon 在 NaN 传播上的统一契约。
 
 ### 5.4 ComplexScalar trait
 
@@ -322,14 +326,15 @@ pub trait ComplexScalar: Numeric + Sealed {
 
 ### 5.4a OrderedCompareElement trait
 
-> **公开性说明：** 以下 trait 为内部实现辅助，不纳入稳定公开 API 面。具体可见性由实现决定。
+> **公开性说明：** `OrderedCompareElement` 需要作为公开 sealed trait 暴露，因为 `11-math` 的公开比较 API（`lt` / `gt`）直接使用它作为元素类型约束；但其实现集合仍限制为 Xenon 当前支持的有序比较元素类型。
 
 ```rust,ignore
 /// Ordered comparison element trait.
 ///
-/// Restricts public ordered comparisons (`lt` / `gt`) to element types with the
-/// current version's required ordering semantics.
-pub(crate) trait OrderedCompareElement: Element + PartialOrd + Sealed {}
+/// Publicly exposed for the `lt` / `gt` comparison API in the math module,
+/// while remaining sealed so only Xenon's supported ordered element types can
+/// implement it.
+pub trait OrderedCompareElement: Element + PartialOrd + Sealed {}
 
 impl OrderedCompareElement for i32 {}
 impl OrderedCompareElement for i64 {}
@@ -337,7 +342,7 @@ impl OrderedCompareElement for f32 {}
 impl OrderedCompareElement for f64 {}
 ```
 
-> **设计决策：** `OrderedCompareElement` 用于把有序比较能力显式收敛到 `i32`、`i64`、`f32`、`f64`。这与需求说明书 §12 的 `lt` / `gt` 适用类型保持一致，并避免 `bool` 或 `Complex<T>` 因泛化的 `PartialOrd` 约束误入公开比较 API。
+> **设计决策：** `OrderedCompareElement` 用于把有序比较能力显式收敛到 `i32`、`i64`、`f32`、`f64`。该 trait 虽然为配合 `11-math` 的公开 `lt` / `gt` API 而公开暴露，但仍通过 `Sealed` 保持 sealed，只允许 Xenon 为这四种类型提供实现，从而避免 `bool` 或 `Complex<T>` 因泛化的 `PartialOrd` 约束误入公开比较 API。
 
 ### 5.5 支持的类型与 trait 矩阵
 
@@ -465,7 +470,7 @@ pub trait CastTo<T>: Element {
 }
 ```
 
-> **错误映射说明：** `XenonError` 是唯一公开错误类型。类型转换错误对外统一表示为 `XenonError::TypeConversion(TypeConversionError)`；`CastTo<T>` 只返回内部载荷 `TypeConversionError`，由上层调用方在公开 API 边界统一包装。
+> **错误映射说明：** `CastTo<T>` 是公开 sealed trait，其内部返回 `TypeConversionError` 是实现机制；最终用户通过公开 API（`cast()`）消费时，错误统一映射为 `XenonError::TypeConversion(TypeConversionError)`。
 >
 > **Bool 边界说明：** `bool` 不为任何目标类型实现 `CastTo<T>`；`bool` 张量调用 `.cast::<f32>()` 等转换必须在编译期失败。
 >
@@ -642,6 +647,7 @@ impl Numeric for f64 {
 // RealScalar math functions are implemented in the `std` environment required by Xenon.
 impl RealScalar for f64 {
     fn abs(self) -> Self { self.abs() }
+    fn signum(self) -> Self { self.signum() }
     fn sqrt(self) -> Self { self.sqrt() }
     fn sin(self) -> Self { self.sin() }
     fn exp(self) -> Self { self.exp() }
@@ -649,6 +655,18 @@ impl RealScalar for f64 {
     fn floor(self) -> Self { self.floor() }
     fn ceil(self) -> Self { self.ceil() }
     fn is_nan(self) -> bool { self.is_nan() }
+    // `is_finite`, `min`, and `max` belong to `RealScalarInternal`.
+    // ...
+}
+
+impl RealScalarInternal for f64 {
+    fn epsilon() -> Self { f64::EPSILON }
+    fn min_positive() -> Self { f64::MIN_POSITIVE }
+    fn max_value() -> Self { f64::MAX }
+    fn infinity() -> Self { f64::INFINITY }
+    fn neg_infinity() -> Self { f64::NEG_INFINITY }
+    fn nan() -> Self { f64::NAN }
+    fn is_infinite(self) -> bool { self.is_infinite() }
     fn is_finite(self) -> bool { self.is_finite() }
     fn min(self, other: Self) -> Self {
         if self.is_nan() || other.is_nan() {
@@ -669,7 +687,6 @@ impl RealScalar for f64 {
             other
         }
     }
-    // ...
 }
 // Same pattern applies to f32.
 
@@ -714,7 +731,7 @@ impl ComplexScalar for Complex<f64> {
 
 - [ ] **T3**: 创建 `real.rs`，定义 RealScalar trait
   - 文件: `src/element/real.rs`
-  - 内容: `RealScalar` trait 定义（数学函数 + 常量 + NaN 检测，不含范围外接口）
+  - 内容: `RealScalar` 仅含公开数学函数与 `is_nan()`；常量、`infinity()`、`epsilon()`、`min()`/`max()` 等 helper 放入 `pub(crate) RealScalarInternal`
   - 测试: 编译通过
   - 前置: T2
   - 预计: 10 min
@@ -852,9 +869,9 @@ Wave 3: [T6]      [T9] ← ────┘
 | `Complex::new(f64::NAN, 0.0).norm().is_nan()` | 返回 `true`                                              |
 | `bool` 张量调用 `sum()`                       | 编译错误（Numeric 约束不满足）                           |
 | `bool` 张量调用 `.cast::<f32>()`              | 编译错误（未实现 `CastTo<f32>`）                         |
-| §28.4 占位：large-tensor                      | 后续补充大批量元素类型转换/归约边界回归                  |
-| §28.4 占位：high-dim                          | 后续补充高维张量在元素 trait 分发上的回归                |
-| §28.4 占位：extreme-value                     | 后续补充 `NaN` / `Inf` / `MIN` / `MAX` / `-0.0` 组合回归 |
+| 需求说明书 §28.4 占位：large-tensor                      | 后续补充大批量元素类型转换/归约边界回归                  |
+| 需求说明书 §28.4 占位：high-dim                          | 后续补充高维张量在元素 trait 分发上的回归                |
+| 需求说明书 §28.4 占位：extreme-value                     | 后续补充 `NaN` / `Inf` / `MIN` / `MAX` / `-0.0` 组合回归 |
 
 ### 8.4 属性测试不变量
 

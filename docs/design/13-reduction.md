@@ -1,7 +1,7 @@
 # 归约运算模块设计
 
 > 文档编号: 13 | 模块: `src/reduction/` | 阶段: Phase 4
-> 前置文档: `02-dimension.md`, `03-element.md`, `07-tensor.md`, `09-parallel.md`, `26-error.md`
+> 前置文档: `02-dimension.md`, `03-element.md`, `07-tensor.md`, `09-parallel.md`, `10-iterator.md`, `26-error.md`
 > 需求参考: `需求说明书 §9.1`, `需求说明书 §9.2`, `需求说明书 §9.3`, `需求说明书 §14`, `需求说明书 §27`, `需求说明书 §28.2`, `需求说明书 §28.3`, `需求说明书 §28.4`, `需求说明书 §28.5`
 > 范围声明: 范围内
 
@@ -11,23 +11,23 @@
 
 ### 1.1 职责边界
 
-| 职责 | 包含 | 不包含 |
-| ---- | ---- | ------ |
-| sum 归约 | 全局 `sum`、沿轴 `sum_axis`、保留轴版本 `sum_axis_keepdims` | `mean`、`var`、`prod`、`min`、`max`、`argmin`、`argmax` |
-| 数值语义 | 整数 checked arithmetic、浮点 `NaN` 传播、空数组返回加法单位元 | 自动类型提升、额外公开的近似/补偿求和算法（如 Kahan summation） |
-| 执行路径 | 标量基线路径，以及仅在满足 `需求说明书 §28.3` 数值语义约束时启用的 SIMD / 并行分派 | 为追求吞吐而放宽结果一致性的优化路径 |
-| 错误边界 | 轴越界返回 `XenonError::InvalidAxis`；整数溢出 panic | 为 axis 错误使用 `InvalidArgument` |
+| 职责     | 包含                                                                               | 不包含                                                          |
+| -------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| sum 归约 | 全局 `sum`、沿轴 `sum_axis`、保留轴版本 `sum_axis_keepdims`                        | `mean`、`var`、`prod`、`min`、`max`、`argmin`、`argmax`         |
+| 数值语义 | 整数 checked arithmetic、浮点 `NaN` 传播、空数组返回加法单位元                     | 自动类型提升、额外公开的近似/补偿求和算法（如 Kahan summation） |
+| 执行路径 | 标量基线路径，以及仅在满足 `需求说明书 §28.3` 数值语义约束时启用的 SIMD / 并行分派 | 为追求吞吐而放宽结果一致性的优化路径                            |
+| 错误边界 | 轴越界返回 `XenonError::InvalidAxis`；整数溢出 panic                               | 为 axis 错误使用 `InvalidArgument`                              |
 
 > **注意**：当前版本归约模块只支持 `sum` 家族，不扩展到其它归约操作。
 
 ### 1.2 设计原则
 
-| 原则 | 体现 |
-| ---- | ---- |
-| 最小范围 | 公开 API 只覆盖 `sum`、`sum_axis`、`sum_axis_keepdims`。 |
-| 语义优先 | 空数组返回加法单位元；浮点遵循 IEEE 754；整数溢出按不可恢复算术域错误处理。 |
-| 路径一致性 | SIMD 与并行只在满足 `需求说明书 §28.3` 定义的数值语义约束时参与，否则回退标量。 |
-| 错误统一 | 所有 axis 越界都统一为 `XenonError::InvalidAxis`，并携带 `operation`、`axis`、`ndim`、`shape`。 |
+| 原则       | 体现                                                                                            |
+| ---------- | ----------------------------------------------------------------------------------------------- |
+| 最小范围   | 公开 API 只覆盖 `sum`、`sum_axis`、`sum_axis_keepdims`。                                        |
+| 语义优先   | 空数组返回加法单位元；浮点遵循 IEEE 754；整数溢出按不可恢复算术域错误处理。                     |
+| 路径一致性 | SIMD 与并行只在满足 `需求说明书 §28.3` 定义的数值语义约束时参与，否则回退标量。                 |
+| 错误统一   | 所有 axis 越界都统一为 `XenonError::InvalidAxis`，并携带 `operation`、`axis`、`ndim`、`shape`。 |
 
 ### 1.3 在架构中的位置
 
@@ -46,18 +46,18 @@ L6: reduction  <- current module
 
 ## 2. 需求映射与范围约束
 
-| 类型 | 内容 |
-| ---- | ---- |
+| 类型     | 内容                                                                                                                                                                        |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 需求映射 | `需求说明书 §9.1`、`需求说明书 §9.2`、`需求说明书 §9.3`、`需求说明书 §14`、`需求说明书 §27`、`需求说明书 §28.2`、`需求说明书 §28.3`、`需求说明书 §28.4`、`需求说明书 §28.5` |
-| 范围内 | 全局 `sum`、沿轴 `sum_axis`、`sum_axis_keepdims`、空数组零语义、整数 checked arithmetic、浮点/复数 IEEE 754 语义、可选 SIMD/并行回退规则。 |
-| 范围外 | `mean`、`var`、`prod`、`min`、`max`、`argmin`、`argmax`、自定义 reducer、误差补偿求和。 |
-| 非目标 | 不新增第三方数值依赖，不改变 F-order 布局前提，不把 axis 错误扩展成额外局部错误类型。 |
+| 范围内   | 全局 `sum`、沿轴 `sum_axis`、`sum_axis_keepdims`、空数组零语义、整数 checked arithmetic、浮点/复数 IEEE 754 语义、可选 SIMD/并行回退规则。                                  |
+| 范围外   | `mean`、`var`、`prod`、`min`、`max`、`argmin`、`argmax`、自定义 reducer、误差补偿求和。                                                                                     |
+| 非目标   | 不新增第三方数值依赖，不改变 F-order 布局前提，不把 axis 错误扩展成额外局部错误类型。                                                                                       |
 
 ### 2.1 范围约束说明
 
 - 仅以下元素类型参与 `sum` 归约：`i32`、`i64`、`f32`、`f64`、`Complex<f32>`、`Complex<f64>`。
 - `bool` 不参与 `sum` 归约。
-- 对 0D 张量，`sum_axis()` 因 `D: RemoveAxis` 约束不可调用；`sum_axis_keepdims()` 仍会因任何轴索引均越界而返回 `XenonError::InvalidAxis` 可恢复错误。
+- `需求说明书 §14` 要求轴归约越界时返回可恢复错误。当前设计对 `sum_axis_keepdims()` 和动态 rank-0 输入满足该要求；但 `sum_axis()` 仍因 `D: RemoveAxis` 把一部分 0D 情形挡在公开签名之外，这与 `02-dimension.md §5.6` 的“公开张量方法不直接暴露 `RemoveAxis`”存在张力，需在后续 API 形状评审中统一。
 - 有符号整数归约溢出属于不可恢复错误，必须 panic。
 - 当输入为空，或沿轴归约的被归约轴长度为 `0` 时，结果须为对应元素类型的加法单位元。
 
@@ -87,7 +87,7 @@ src/reduction/
     ├── crate::tensor        # TensorBase<S, D>, Tensor<A, D>, shape/ndim helpers
     ├── crate::dimension     # Axis, Dimension, runtime axis projection helpers
     ├── crate::element       # Numeric, CheckedAdd, ComplexScalar
-    ├── crate::dispatch      # ExecPath, select_exec_path(), can_use_simd(), should_parallelize()
+    ├── crate::dispatch      # ExecPath, select_exec_path(), should_parallelize()
     ├── crate::error         # XenonError::InvalidAxis
     ├── crate::simd (opt.)   # Pure vectorized sum kernel (no scalar fallback)
     └── crate::parallel (opt.) # Pure parallel sum execution (no serial fallback)
@@ -95,15 +95,15 @@ src/reduction/
 
 ### 4.2 类型级依赖
 
-| 来源模块 | 使用的类型/trait |
-| -------- | ---------------- |
-| `tensor` | `TensorBase<S, D>`、`Tensor<A, D>`、`.shape()`、`.ndim()`、`.iter()`、`.indexed_iter()`、结果张量构造接口 |
-| `dimension` | `Axis`、`Dimension`、`RemoveAxis`、运行时 axis/shape 投影辅助 |
-| `element` | `Numeric`、`CheckedAdd`、`ComplexScalar`、`RealScalar`、`A::zero()` |
-| `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`should_parallelize()`、`can_use_simd()` |
-| `error` | `XenonError::InvalidAxis` |
-| `simd`（可选） | 仅在可证明与标量累加顺序和结果语义一致时通过纯向量化 kernel 参与 `sum` 实现 |
-| `parallel`（可选） | 仅在通过 dispatch.rs 路径裁决后提供纯并行执行，不含串行回退，并遵守无嵌套并行约束 |
+| 来源模块           | 使用的类型/trait                                                                                          |
+| ------------------ | --------------------------------------------------------------------------------------------------------- |
+| `tensor`           | `TensorBase<S, D>`、`Tensor<A, D>`、`.shape()`、`.ndim()`、`.iter()`、`.indexed_iter()`、结果张量构造接口 |
+| `dimension`        | `Axis`、`Dimension`、运行时 axis/shape 投影辅助，以及仅供内部结果维度投影使用的 `RemoveAxis`              |
+| `element`          | `Numeric`、`CheckedAdd`、`ComplexScalar`、`RealScalar`、`A::zero()`                                       |
+| `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`should_parallelize()`                                                  |
+| `error`            | `XenonError::InvalidAxis`                                                                                 |
+| `simd`（可选）     | 仅在可证明与标量累加顺序和结果语义一致时通过纯向量化 kernel 参与 `sum` 实现                               |
+| `parallel`（可选） | 仅在通过 dispatch.rs 路径裁决后提供纯并行执行，不含串行回退，并遵守无嵌套并行约束                         |
 
 ### 4.3 依赖方向
 
@@ -111,11 +111,11 @@ src/reduction/
 
 ### 4.4 依赖合法性与新增依赖说明
 
-| 项目 | 说明 |
-| ---- | ---- |
+| 项目           | 说明                                                                        |
+| -------------- | --------------------------------------------------------------------------- |
 | 新增第三方依赖 | 无；仅可使用需求中已允许的可选依赖 `pulp`、`rayon` 所对应的项目内能力边界。 |
-| 合法性结论 | 合法；符合最小依赖、单 crate、`std` 环境约束。 |
-| 替代方案 | 不适用；当前范围内无需新增额外归约框架或数值库。 |
+| 合法性结论     | 合法；符合最小依赖、单 crate、`std` 环境约束。                              |
+| 替代方案       | 不适用；当前范围内无需新增额外归约框架或数值库。                            |
 
 ---
 
@@ -123,7 +123,7 @@ src/reduction/
 
 ### 5.1 核心接口
 
-````rust,ignore
+```rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -140,7 +140,11 @@ where
     /// Reduces along `axis` and removes that axis from the output shape.
     ///
     /// Returns `XenonError::InvalidAxis` when `axis.index() >= self.ndim()`.
-    /// This API requires `D: RemoveAxis` because the output type removes one axis.
+    ///
+    /// Note: the current typed signature still uses `D::Smaller` and therefore
+    /// carries a `D: RemoveAxis` bound. This conflicts with the preferred public
+    /// direction recorded in `02-dimension.md §5.6`, but changing the return-type
+    /// modeling is a broader API decision and is not resolved in this patch.
     pub fn sum_axis(&self, axis: Axis) -> Result<Tensor<A, D::Smaller>, XenonError>
     where
         D: RemoveAxis;
@@ -151,9 +155,9 @@ where
     /// keepdims does not remove the reduced axis.
     pub fn sum_axis_keepdims(&self, axis: Axis) -> Result<Tensor<A, D>, XenonError>;
 }
-````
+```
 
-> **`sum_axis()` 类型约束说明：** `sum_axis()` 的返回类型为 `Tensor<A, D::Smaller>`，因此公开签名必须显式要求 `D: RemoveAxis`。这与 `D::Smaller` 的类型需求保持一致，也避免把“移除一个轴”写成仅靠实现细节兜底的隐式前提。对不满足 `RemoveAxis` 的维度类型（如零维张量）无法调用 `sum_axis()`；对满足 `RemoveAxis` 的输入，仍需在运行时校验 `axis < ndim`，越界时返回 `XenonError::InvalidAxis`。
+> **`sum_axis()` 类型约束说明：** 按 `需求说明书 §14` 与 `02-dimension.md §5.6`，更理想的公开语义是让 0D 轴归约统一走运行时 `InvalidAxis`。但当前返回类型仍使用 `Tensor<A, D::Smaller>`，因此文档暂时保留 `D: RemoveAxis` 约束，并把该冲突记录为待统一的 API 形状问题；对所有实际进入运行时路径的调用，仍必须校验 `axis < ndim` 并返回 `XenonError::InvalidAxis`。
 >
 > keepdims 不移除被归约轴，因此不需要 `RemoveAxis` 约束。输出维度类型与输入维度类型相同，被归约轴长度变为 `1`。但对 0D 张量而言不存在任何合法轴，因此 `sum_axis_keepdims()` 仍须返回 `InvalidAxis`，而不能定义为 no-op。
 
@@ -212,15 +216,15 @@ assert_eq!(empty.sum(), 0);
 
 ### 6.1 核心不变量
 
-| 不变量 | 说明 |
-| ------ | ---- |
-| 归约族范围 | 当前版本只实现 `sum`，不为其它归约预留公开入口。 |
-| 空输入语义 | `sum()` 对空数组返回 `A::zero()`；沿轴归约的被归约轴长度为 `0` 时，对每个输出槽写入 `A::zero()`。 |
-| axis 校验顺序 | `sum_axis_keepdims()` 的公开入口要求 `D: Dimension`，`sum_axis()` 的公开入口额外要求 `D: RemoveAxis`。对所有进入 axis 归约路径的调用，都必须先校验 `axis < ndim`；若越界则统一返回 `XenonError::InvalidAxis`。 |
-| 整数语义 | `i32` / `i64` 累加使用 checked arithmetic，任何溢出立即 panic。 |
-| 浮点/复数语义 | `f32` / `f64` / `Complex<_>` 遵循标量加法语义，`NaN` 按 IEEE 754 自动传播。 |
-| 执行路径约束 | SIMD / 并行若无法满足 `需求说明书 §28.3` 数值语义约束，则必须回退标量。 |
-| 布局前提 | 算法面向 Xenon 当前支持的 F-order 语义和合法 stride 视图，不得引入 C-order 假设。 |
+| 不变量        | 说明                                                                                                                                                                                                                                 |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 归约族范围    | 当前版本只实现 `sum`，不为其它归约预留公开入口。                                                                                                                                                                                     |
+| 空输入语义    | `sum()` 对空数组返回 `A::zero()`；沿轴归约的被归约轴长度为 `0` 时，对每个输出槽写入 `A::zero()`。                                                                                                                                    |
+| axis 校验顺序 | `sum_axis_keepdims()` 的公开入口要求 `D: Dimension`。`sum_axis()` 当前文档仍保留 `D: RemoveAxis`，但这已被记录为待统一问题；对所有进入 axis 归约路径的调用，都必须先校验 `axis < ndim`；若越界则统一返回 `XenonError::InvalidAxis`。 |
+| 整数语义      | `i32` / `i64` 累加使用 checked arithmetic，任何溢出立即 panic。                                                                                                                                                                      |
+| 浮点/复数语义 | `f32` / `f64` / `Complex<_>` 遵循标量加法语义，`NaN` 按 IEEE 754 自动传播。                                                                                                                                                          |
+| 执行路径约束  | SIMD / 并行若无法满足 `需求说明书 §28.3` 数值语义约束，则必须回退标量。                                                                                                                                                              |
+| 布局前提      | 算法面向 Xenon 当前支持的 F-order 语义和合法 stride 视图，不得引入 C-order 假设。                                                                                                                                                    |
 
 ### 6.2 算法描述
 
@@ -274,9 +278,9 @@ fn sum_floating_or_complex<A: Numeric + Copy>(iter: impl Iterator<Item = A>) -> 
 - 浮点路径：保持标量加法顺序；`NaN`、`Inf` 等行为沿用 IEEE 754。
 - 复数路径：对实部和虚部分量分别沿用对应实数加法语义，因此含 `NaN` 分量时同样传播。
 - 整数 SIMD fallback：整数归约默认优先标量/串行路径以保证 checked arithmetic 精确等价。仅当 SIMD 路径能证明与逐步 checked 加法完全一致时才启用优化。
-- SIMD 路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Simd` 时委托 `simd/` 纯向量化后端；浮点/复数路径允许不同合并顺序。容差与比较规则统一遵循 `00-coding.md §7.4` 的定义。
-- 并行路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Parallel` 时委托 `parallel/` 纯并行后端；整数路径必须保持与串行精确一致，浮点/复数路径允许不同合并顺序。容差与比较规则统一遵循 `00-coding.md §7.4` 的定义。
-- 同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。
+- SIMD 路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Simd` 时委托 `simd/` 纯向量化后端；浮点/复数路径允许不同合并顺序。以 `需求说明书 §28.3` 为权威基线；实现细节参见 `00-coding.md §7.4`。
+- 并行路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Parallel` 时委托 `parallel/` 纯并行后端；整数路径必须保持与串行精确一致，浮点/复数路径允许不同合并顺序。以 `需求说明书 §28.3` 为权威基线；实现细节参见 `00-coding.md §7.4`。
+- 同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用以 `需求说明书 §28.3` 为权威基线的文档化容差。
 
 ### 6.3.1 并行 axis 归约写回策略
 
@@ -286,12 +290,12 @@ fn sum_floating_or_complex<A: Numeric + Copy>(iter: impl Iterator<Item = A>) -> 
 
 归约模块不自定义新的阈值参数，而是通过 `dispatch.rs` 统一管理全局阈值与嵌套并行防护：
 
-| 项目 | 规则 |
-| ---- | ---- |
-| 阈值来源 | `sum()` 与 `sum_axis*()` 是否进入并行路径，由 `dispatch::select_exec_path()` 统一裁决。 |
-| 非连续惩罚 | 非连续视图沿用 `dispatch.rs` 的有效阈值翻倍策略。 |
-| 嵌套并行 | 在 `dispatch::ParallelGuard` 保护下不得嵌套并行，而是回退串行，不再开第二层并行。 |
-| 配置接口 | 阈值读写与重置由 `dispatch.rs` 统一提供；`reduction` 不额外暴露重复配置。 |
+| 项目       | 规则                                                                                    |
+| ---------- | --------------------------------------------------------------------------------------- |
+| 阈值来源   | `sum()` 与 `sum_axis*()` 是否进入并行路径，由 `dispatch::select_exec_path()` 统一裁决。 |
+| 非连续惩罚 | 非连续视图沿用 `dispatch.rs` 的有效阈值翻倍策略。                                       |
+| 嵌套并行   | 在 `dispatch::ParallelGuard` 保护下不得嵌套并行，而是回退串行，不再开第二层并行。       |
+| 配置接口   | 阈值读写与重置由 `dispatch.rs` 统一提供；`reduction` 不额外暴露重复配置。               |
 
 ### 6.4 安全性论证
 
@@ -306,7 +310,7 @@ fn sum_floating_or_complex<A: Numeric + Copy>(iter: impl Iterator<Item = A>) -> 
 
 ## 7. 实现任务拆分
 
-### Wave 1: 模块骨架与公共边界
+### Wave 1: 模块骨架与串行归约基线
 
 - [ ] **T1**: 整理 `src/reduction/mod.rs` 的导出边界
   - 文件: `src/reduction/mod.rs`
@@ -315,14 +319,14 @@ fn sum_floating_or_complex<A: Numeric + Copy>(iter: impl Iterator<Item = A>) -> 
   - 前置: `tensor`、`dimension`、`element` 模块完成
   - 预计: 5 min
 
-### Wave 2: 标量归约实现
-
 - [ ] **T2**: 实现全局 `sum()`
   - 文件: `src/reduction/sum.rs`
   - 内容: 完成全量遍历、整数 checked arithmetic、空数组零语义
   - 测试: `test_sum_i32`, `test_sum_empty`, `test_sum_nan`, `test_sum_complex_nan`
   - 前置: T1
   - 预计: 10 min
+
+### Wave 2: 按轴归约实现
 
 - [ ] **T3**: 实现 `sum_axis()`
   - 文件: `src/reduction/sum.rs`
@@ -359,13 +363,10 @@ fn sum_floating_or_complex<A: Numeric + Copy>(iter: impl Iterator<Item = A>) -> 
 ### 并行执行分组图
 
 ```text
-Wave 1: [T1]
-            │
-Wave 2: [T2] -> [T3] -> [T4]
-                           │
-Wave 3:                  [T5]
-                           │
-Wave 4:                  [T6]
+Wave 1: [T1] -> [T2]
+Wave 2: [T3] -> [T4]
+Wave 3: [T5]
+Wave 4: [T6]
 ```
 
 ---
@@ -374,79 +375,79 @@ Wave 4:                  [T6]
 
 ### 8.1 测试分类表
 
-| 测试分类 | 位置 | 说明 |
-| -------- | ---- | ---- |
-| 单元测试 | `#[cfg(test)] mod tests` 或 `tests/test_reduction.rs` | 验证 `sum` 家族正确性、错误返回与 panic 契约 |
-| 集成测试 | `tests/` | 验证 `reduction` 与 `tensor`、`dimension`、`simd`、`parallel`、`error` 的协同路径 |
-| 边界测试 | 同模块测试中标注 | 覆盖空数组、零长度轴、rank-0、单元素、非连续视图 |
-| 属性测试（按需） | `tests/property/` 或等效位置 | 验证空输入单位元、不同行布局视图的一致性、keepdims 形状不变量 |
-| Feature gate / 配置测试 | 配置矩阵 | 验证默认配置、`simd`、并行启用/关闭时的回退与一致性 |
-| 类型边界 / 编译期测试 | 编译期测试框架或 doctest | 验证 `bool` 不参与归约、`sum` 仅对受支持数值类型开放 |
+| 测试分类                | 位置                                                  | 说明                                                                              |
+| ----------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------- |
+| 单元测试                | `#[cfg(test)] mod tests` 或 `tests/test_reduction.rs` | 验证 `sum` 家族正确性、错误返回与 panic 契约                                      |
+| 集成测试                | `tests/`                                              | 验证 `reduction` 与 `tensor`、`dimension`、`simd`、`parallel`、`error` 的协同路径 |
+| 边界测试                | 同模块测试中标注                                      | 覆盖空数组、零长度轴、rank-0、单元素、非连续视图                                  |
+| 属性测试（按需）        | `tests/property/` 或等效位置                          | 验证空输入单位元、不同行布局视图的一致性、keepdims 形状不变量                     |
+| Feature gate / 配置测试 | 配置矩阵                                              | 验证默认配置、`simd`、并行启用/关闭时的回退与一致性                               |
+| 类型边界 / 编译期测试   | 编译期测试框架或 doctest                              | 验证 `bool` 不参与归约、`sum` 仅对受支持数值类型开放                              |
 
 ### 8.2 单元测试清单
 
-| 测试函数 | 测试内容 | 优先级 |
-| -------- | -------- | ------ |
-| `test_sum_i32` | 整数全局求和正确 | 高 |
-| `test_sum_overflow_panic` | 整数溢出触发 panic | 高 |
-| `test_sum_nan` | 浮点 `NaN` 传播 | 高 |
-| `test_sum_complex_nan` | 复数含 `NaN` 分量时按分量传播 | 高 |
-| `test_sum_empty` | 空数组返回加法单位元 | 高 |
-| `test_sum_axis_2d` | 二维按轴归约正确 | 高 |
-| `test_sum_axis_keepdims` | keepdims 保留 rank 且把目标轴长度置为 `1` | 高 |
-| `test_sum_axis_invalid_axis` | `sum_axis()` 越界返回 `InvalidAxis { operation: "sum_axis", ... }` | 高 |
-| `test_sum_axis_keepdims_invalid_axis` | `sum_axis_keepdims()` 越界返回 `InvalidAxis { operation: "sum_axis_keepdims", ... }` | 高 |
-| `test_sum_axis_zero_len_axis` | 被归约轴长度为 `0` 时输出槽全部为零 | 高 |
-| `test_sum_parallel_consistency` | 并行路径与标量结果、错误类别、panic 语义一致 | 高 |
-| `test_sum_simd_consistency` | SIMD 路径与标量结果一致，否则正确回退 | 高 |
-| `test_sum_large_tensor_parallel_threshold` | 大张量（`10^7` 量级元素）达到阈值后并行路径仍满足文档化语义 | 高 |
-| `test_sum_high_rank_ixdyn` | 高 rank 动态维输入上的 `sum_axis*` shape 与 keepdims 语义正确 | 高 |
-| `test_sum_inf` | `Inf` / `-Inf` 输入遵循 IEEE 754 语义 | 高 |
+| 测试函数                                   | 测试内容                                                                             | 优先级 |
+| ------------------------------------------ | ------------------------------------------------------------------------------------ | ------ |
+| `test_sum_i32`                             | 整数全局求和正确                                                                     | 高     |
+| `test_sum_overflow_panic`                  | 整数溢出触发 panic                                                                   | 高     |
+| `test_sum_nan`                             | 浮点 `NaN` 传播                                                                      | 高     |
+| `test_sum_complex_nan`                     | 复数含 `NaN` 分量时按分量传播                                                        | 高     |
+| `test_sum_empty`                           | 空数组返回加法单位元                                                                 | 高     |
+| `test_sum_axis_2d`                         | 二维按轴归约正确                                                                     | 高     |
+| `test_sum_axis_keepdims`                   | keepdims 保留 rank 且把目标轴长度置为 `1`                                            | 高     |
+| `test_sum_axis_invalid_axis`               | `sum_axis()` 越界返回 `InvalidAxis { operation: "sum_axis", ... }`                   | 高     |
+| `test_sum_axis_keepdims_invalid_axis`      | `sum_axis_keepdims()` 越界返回 `InvalidAxis { operation: "sum_axis_keepdims", ... }` | 高     |
+| `test_sum_axis_zero_len_axis`              | 被归约轴长度为 `0` 时输出槽全部为零                                                  | 高     |
+| `test_sum_parallel_consistency`            | 并行路径与标量结果、错误类别、panic 语义一致                                         | 高     |
+| `test_sum_simd_consistency`                | SIMD 路径与标量结果一致，否则正确回退                                                | 高     |
+| `test_sum_large_tensor_parallel_threshold` | 大张量（`10^7` 量级元素）达到阈值后并行路径仍满足文档化语义                          | 高     |
+| `test_sum_high_rank_ixdyn`                 | 高 rank 动态维输入上的 `sum_axis*` shape 与 keepdims 语义正确                        | 高     |
+| `test_sum_inf`                             | `Inf` / `-Inf` 输入遵循 IEEE 754 语义                                                | 高     |
 
 ### 8.3 边界测试场景
 
-| 场景 | 预期行为 |
-| ---- | -------- |
-| 空数组 `shape=[0]` | `sum()` 返回加法单位元 |
-| rank-0 输入 `shape=[]` | `sum()` 返回该标量元素本身 |
-| 被归约轴长度为 `0`，如 `shape=[0, 3]` 沿 `Axis(0)` | 每个输出位置返回零 |
-| 单元素数组 | 结果等于该元素本身 |
-| 空张量边界占位 | 预留 `test_sum_empty_tensor_boundary`：覆盖空输入在 `sum` / `sum_axis*` 上的单位元与输出 shape 语义 |
-| 高维 axis 边界占位 | 预留 `test_sum_high_dim_axis_boundary`：覆盖高 rank `IxDyn` 上 axis 投影、keepdims 与错误诊断 |
-| 大张量边界占位 | 预留 `test_sum_large_tensor_boundary`：覆盖大输入在默认/SIMD/并行配置下的容差与 panic 契约 |
-| 静态 rank-0 输入 `Ix0` 调用 `sum_axis()` | 编译期不可调用：`Ix0` 不满足 `RemoveAxis` |
-| 静态 rank-0 输入 `Ix0` 调用 `sum_axis_keepdims()` | 返回 `InvalidAxis`，因为 0D 上不存在合法轴 |
-| 动态 rank-0 输入 `IxDyn([])` 调用 `sum_axis*` | 返回 `InvalidAxis`，因运行时 `axis >= ndim` |
-| 非连续视图 | 结果与连续输入一致 |
-| 大张量 `len ≈ 10^7` | 可按阈值选择并行路径，结果仍满足文档化数值语义 |
-| 高 rank `IxDyn([1,1,1,1,1,1,1,1])` | `sum_axis*` 的输出 shape 与 keepdims 规则正确 |
-| `Inf` / `-Inf` 输入 | 浮点结果遵循 IEEE 754；不触发 panic |
+| 场景                                               | 预期行为                                                                                                                   |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| 空数组 `shape=[0]`                                 | `sum()` 返回加法单位元                                                                                                     |
+| rank-0 输入 `shape=[]`                             | `sum()` 返回该标量元素本身                                                                                                 |
+| 被归约轴长度为 `0`，如 `shape=[0, 3]` 沿 `Axis(0)` | 每个输出位置返回零                                                                                                         |
+| 单元素数组                                         | 结果等于该元素本身                                                                                                         |
+| 空张量 `shape=[0, 3]`                              | `sum()` 返回加法单位元；`sum_axis*` 输出 shape 与零长度轴语义正确                        |
+| rank-6 张量 `IxDyn([2,1,3,1,1,4])` 沿 `Axis(5)` 归约 | `sum_axis*` 的 axis 投影、keepdims 与错误诊断保持正确                              |
+| `10^7` 元素张量归约                                | 默认/SIMD/并行配置下满足文档化容差，且 panic 契约一致 |
+| 静态 rank-0 输入 `Ix0` 调用 `sum_axis()`           | 编译期不可调用：`Ix0` 不满足 `RemoveAxis`                                                                                  |
+| 静态 rank-0 输入 `Ix0` 调用 `sum_axis_keepdims()`  | 返回 `InvalidAxis`，因为 0D 上不存在合法轴                                                                                 |
+| 动态 rank-0 输入 `IxDyn([])` 调用 `sum_axis*`      | 返回 `InvalidAxis`，因运行时 `axis >= ndim`                                                                                |
+| 非连续视图                                         | 结果与连续输入一致                                                                                                         |
+| 大张量 `len ≈ 10^7`                                | 可按阈值选择并行路径，结果仍满足文档化数值语义                                                                             |
+| 高 rank `IxDyn([1,1,1,1,1,1,1,1])`                 | `sum_axis*` 的输出 shape 与 keepdims 规则正确                                                                              |
+| `Inf` / `-Inf` 输入                                | 浮点结果遵循 IEEE 754；不触发 panic                                                                                        |
 
 ### 8.4 属性测试不变量
 
-| 不变量 | 测试方法 |
-| ------ | -------- |
-| `sum(empty) == A::zero()` | 对所有受支持类型生成空输入验证 |
-| `sum_axis_keepdims(axis).shape()[axis] == 1` | 随机合法 shape 与 axis 验证 |
-| `sum_axis(axis)` 与 `sum_axis_keepdims(axis)` 在移除长度为 `1` 的目标轴后结果等价 | 随机输入验证 |
-| 连续/非连续视图上的 `sum` 结果一致 | 基于切片/转置生成视图后比较 |
+| 不变量                                                                            | 测试方法                       |
+| --------------------------------------------------------------------------------- | ------------------------------ |
+| `sum(empty) == A::zero()`                                                         | 对所有受支持类型生成空输入验证 |
+| `sum_axis_keepdims(axis).shape()[axis] == 1`                                      | 随机合法 shape 与 axis 验证    |
+| `sum_axis(axis)` 与 `sum_axis_keepdims(axis)` 在移除长度为 `1` 的目标轴后结果等价 | 随机输入验证                   |
+| 连续/非连续视图上的 `sum` 结果一致                                                | 基于切片/转置生成视图后比较    |
 
 ### 8.5 Feature gate / 配置测试
 
-| 配置 | 验证点 |
-| ---- | ------ |
-| 默认配置 | 仅标量路径也满足全部正确性与错误语义要求 |
-| 启用 `simd` | 只在可证明一致时使用 SIMD，否则回退标量 |
-| 启用并行 | 受全局阈值配置控制，不得嵌套并行，且结果/错误/panic 语义与标量路径一致 |
-| `simd = ["dep:pulp"]` | feature gate 约束保持不变 |
+| 配置                  | 验证点                                                                 |
+| --------------------- | ---------------------------------------------------------------------- |
+| 默认配置              | 仅标量路径也满足全部正确性与错误语义要求                               |
+| 启用 `simd`           | 只在可证明一致时使用 SIMD，否则回退标量                                |
+| 启用并行              | 受全局阈值配置控制，不得嵌套并行，且结果/错误/panic 语义与标量路径一致 |
+| `simd = ["dep:pulp"]` | feature gate 约束保持不变                                              |
 
 ### 8.6 类型边界 / 编译期测试
 
-| 场景 | 测试方式 |
-| ---- | -------- |
-| `bool` 不参与 `sum` 归约 | 编译期 trait 边界测试 |
-| `usize` 不属于归约元素类型 | 编译期 trait 边界测试 |
-| `sum` 仅支持 `i32`、`i64`、`f32`、`f64`、`Complex<f32>`、`Complex<f64>` | 编译期签名验证 |
+| 场景                                                                    | 测试方式              |
+| ----------------------------------------------------------------------- | --------------------- |
+| `bool` 不参与 `sum` 归约                                                | 编译期 trait 边界测试 |
+| `usize` 不属于归约元素类型                                              | 编译期 trait 边界测试 |
+| `sum` 仅支持 `i32`、`i64`、`f32`、`f64`、`Complex<f32>`、`Complex<f64>` | 编译期签名验证        |
 
 ---
 
@@ -454,13 +455,13 @@ Wave 4:                  [T6]
 
 ### 9.1 接口约定
 
-| 方向 | 对方模块 | 接口/类型 | 约定 |
-| ---- | -------- | --------- | ---- |
-| `reduction → tensor` | `tensor` | `TensorBase<S, D>`、结果张量构造接口 | 输入可为连续或合法非连续视图；归约只观察逻辑元素顺序与 shape/stride 元数据。归约操作接受广播只读视图作为输入，按逻辑元素读取并归约。 |
-| `reduction → dimension` | `dimension` | `Axis`、运行时 shape 投影辅助 | 按轴归约必须先验证 `axis < ndim`，再做维度投影。 |
-| `reduction → element` | `element` | `Numeric`、`CheckedAdd`、`ComplexScalar` | 依据元素类型分派整数、浮点、复数归约语义。 |
-| `reduction → error` | `error` | `XenonError::InvalidAxis` | axis 越界统一返回结构化错误，不再使用 `InvalidArgument`。 |
-| `reduction → simd/parallel` | `simd` / `parallel` | 可选加速入口 | 只有在可证明标量等价时才允许接入。 |
+| 方向                        | 对方模块            | 接口/类型                                | 约定                                                                                                                                 |
+| --------------------------- | ------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `reduction → tensor`        | `tensor`            | `TensorBase<S, D>`、结果张量构造接口     | 输入可为连续或合法非连续视图；归约只观察逻辑元素顺序与 shape/stride 元数据。归约操作接受广播只读视图作为输入，按逻辑元素读取并归约。 |
+| `reduction → dimension`     | `dimension`         | `Axis`、运行时 shape 投影辅助            | 按轴归约必须先验证 `axis < ndim`，再做维度投影。                                                                                     |
+| `reduction → element`       | `element`           | `Numeric`、`CheckedAdd`、`ComplexScalar` | 依据元素类型分派整数、浮点、复数归约语义。                                                                                           |
+| `reduction → error`         | `error`             | `XenonError::InvalidAxis`                | axis 越界统一返回结构化错误，不再使用 `InvalidArgument`。                                                                            |
+| `reduction → simd/parallel` | `simd` / `parallel` | 可选加速入口                             | 只有在可证明标量等价时才允许接入。                                                                                                   |
 
 ### 9.2 数据流描述
 
@@ -478,14 +479,14 @@ User calls sum / sum_axis / sum_axis_keepdims
 
 ## 10. 错误处理与语义边界
 
-| 主题 | 内容 |
-| ---- | ---- |
+| 主题              | 内容                                                                                                                                                                                                                                                                                                |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Recoverable error | 对所有需要运行时 axis 校验的 `sum_axis()` / `sum_axis_keepdims()` 调用，axis 越界统一返回 `XenonError::InvalidAxis { operation, axis, ndim, shape }`；其中 `operation` 必须分别为 `"sum_axis"` 和 `"sum_axis_keepdims"`。其中静态 rank-0 `sum_axis()` 因 `D: RemoveAxis` 约束不进入该公开调用路径。 |
-| Panic | `i32` / `i64` 归约中的累加溢出属于不可恢复错误，必须通过 checked arithmetic panic。 |
-| Panic 诊断 | panic 文本至少包含 `operation`、元素类型、触发位置（如 `axis`、`output_index` 或 `element_index`）以及适用 `shape`；推荐格式遵循 `26-error.md §4.6`。 |
-| 空输入语义 | 空数组 `sum()` 返回加法单位元；沿轴归约时若被归约轴长度为 `0`，结果张量对应槽位也返回加法单位元。 |
-| 数值边界 | 整数类型结果须逐元素精确一致。对浮点和复数类型，不同执行路径（标量/SIMD/并行）允许不同合并顺序。容差与比较规则统一遵循 `00-coding.md §7.4` 的定义；同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。`NaN` / `Inf` 仍按 IEEE 754 自动传播。 |
-| 路径一致性 | 标量、SIMD、并行路径在启用条件满足时必须返回相同 shape、相同错误类别，以及满足同一数值语义约束的结果；不能证明时必须回退。 |
+| Panic             | `i32` / `i64` 归约中的累加溢出属于不可恢复错误，必须通过 checked arithmetic panic。                                                                                                                                                                                                                 |
+| Panic 诊断        | panic 文本至少包含 `operation`、元素类型、触发位置（如 `axis`、`output_index` 或 `element_index`）以及适用 `shape`；推荐格式遵循 `26-error.md §4.6`。                                                                                                                                               |
+| 空输入语义        | 空数组 `sum()` 返回加法单位元；沿轴归约时若被归约轴长度为 `0`，结果张量对应槽位也返回加法单位元。                                                                                                                                                                                                   |
+| 数值边界          | 整数类型结果须逐元素精确一致。对浮点和复数类型，不同执行路径（标量/SIMD/并行）允许不同合并顺序。以 `需求说明书 §28.3` 为权威基线；实现细节参见 `00-coding.md §7.4`；同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。`NaN` / `Inf` 仍按 IEEE 754 自动传播。       |
+| 路径一致性        | 标量、SIMD、并行路径在启用条件满足时必须返回相同 shape、相同错误类别，以及满足同一数值语义约束的结果；不能证明时必须回退。                                                                                                                                                                          |
 
 ### 10.1 错误示例
 
@@ -525,48 +526,48 @@ Err(XenonError::InvalidArgument {
 
 ### 决策 1：当前版本只支持 `sum`
 
-| 属性 | 值 |
-| ---- | ---- |
-| 决策 | 归约模块当前版本只实现 `sum`、`sum_axis`、`sum_axis_keepdims`。 |
-| 理由 | 与 `需求说明书 §14` 保持一致，控制范围并优先保证语义闭合。 |
-| 替代方案 | 同期加入 `mean`、`prod`、`min/max` 等其它归约。 |
-| 拒绝原因 | 超出当前版本范围，会扩大类型约束、错误语义和测试面。 |
+| 属性     | 值                                                              |
+| -------- | --------------------------------------------------------------- |
+| 决策     | 归约模块当前版本只实现 `sum`、`sum_axis`、`sum_axis_keepdims`。 |
+| 理由     | 与 `需求说明书 §14` 保持一致，控制范围并优先保证语义闭合。      |
+| 替代方案 | 同期加入 `mean`、`prod`、`min/max` 等其它归约。                 |
+| 拒绝原因 | 超出当前版本范围，会扩大类型约束、错误语义和测试面。            |
 
 ### 决策 2：axis 越界统一为 `InvalidAxis`
 
-| 属性 | 值 |
-| ---- | ---- |
-| 决策 | `sum_axis` 与 `sum_axis_keepdims` 的 axis 越界只返回 `XenonError::InvalidAxis`。 |
-| 理由 | `26-error.md` 已为 axis 语义定义专门错误种类，且该错误能统一携带 `axis`、`ndim`、`shape`。 |
-| 替代方案 | 让部分入口使用 `InvalidArgument` 表达 axis 参数非法。 |
-| 拒绝原因 | 会破坏归约 API 的错误一致性，也弱化 axis 专用诊断字段语义。 |
+| 属性     | 值                                                                                         |
+| -------- | ------------------------------------------------------------------------------------------ |
+| 决策     | `sum_axis` 与 `sum_axis_keepdims` 的 axis 越界只返回 `XenonError::InvalidAxis`。           |
+| 理由     | `26-error.md` 已为 axis 语义定义专门错误种类，且该错误能统一携带 `axis`、`ndim`、`shape`。 |
+| 替代方案 | 让部分入口使用 `InvalidArgument` 表达 axis 参数非法。                                      |
+| 拒绝原因 | 会破坏归约 API 的错误一致性，也弱化 axis 专用诊断字段语义。                                |
 
 ### 决策 3：0D axis API 边界
 
-| 属性 | 值 |
-| ---- | ---- |
-| 决策 | 对 0D 张量，`sum_axis()` 通过 `D: RemoveAxis` 在类型层面拒绝；`sum_axis_keepdims()` 仍统一返回 `XenonError::InvalidAxis`。 |
-| 理由 | `sum_axis()` 的返回类型依赖 `D::Smaller`，零维不存在可移除轴；而 `sum_axis_keepdims()` 不移除轴，但仍需要通过运行时 axis 合法性校验。 |
-| 替代方案 | (1) 继续把 `sum_axis()` 写成仅 `D: Dimension` 并把约束藏到实现内部；(2) 为 0D keepdims 单独定义特殊返回语义。 |
-| 拒绝原因 | 前者会让公开签名与返回类型不一致；后者会让 0D 的 axis-based API 语义与其余维度不一致。 |
+| 属性     | 值                                                                                                                                                                                                        |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | 对 0D 张量，公开语义目标仍是统一返回 `XenonError::InvalidAxis`；但当前 typed 设计下，`sum_axis()` 暂保留 `D: RemoveAxis`，`sum_axis_keepdims()` 继续返回 `XenonError::InvalidAxis`。                      |
+| 理由     | `需求说明书 §14` 与 `02-dimension.md §5.6` 要求 0D 轴 API 保持 recoverable error 语义；同时 `sum_axis()` 的现有返回类型仍依赖 `D::Smaller`，短期内无法在不重塑返回类型的前提下完全消除公开 `RemoveAxis`。 |
+| 替代方案 | (1) 立刻把 `sum_axis()` 改成仅 `D: Dimension` 并重塑结果维度建模；(2) 继续维持当前签名但不记录该张力。                                                                                                    |
+| 拒绝原因 | 前者属于超出本次最小修正范围的 API 设计变更；后者会让文档继续掩盖与需求/维度文档的冲突。                                                                                                                  |
 
 ### 决策 4：整数溢出使用 panic 而非 `Result`
 
-| 属性 | 值 |
-| ---- | ---- |
-| 决策 | `i32` / `i64` 归约的累加溢出使用 checked arithmetic panic。 |
-| 理由 | `需求说明书 §14`、`需求说明书 §27` 将其定义为不可恢复算术域错误。 |
-| 替代方案 | 返回 `XenonError`。 |
+| 属性     | 值                                                                   |
+| -------- | -------------------------------------------------------------------- |
+| 决策     | `i32` / `i64` 归约的累加溢出使用 checked arithmetic panic。          |
+| 理由     | `需求说明书 §14`、`需求说明书 §27` 将其定义为不可恢复算术域错误。    |
+| 替代方案 | 返回 `XenonError`。                                                  |
 | 拒绝原因 | 与全局错误规范不一致，并会改变已有 API 的 panic / recoverable 边界。 |
 
 ### 决策 5：可选优化必须保持标量等价
 
-| 属性 | 值 |
-| ---- | ---- |
-| 决策 | SIMD / 并行仅在满足 `需求说明书 §28.3` 数值语义约束时启用，否则回退标量。 |
-| 理由 | 归约对累加顺序敏感，必须优先保持统一的对外语义。 |
-| 替代方案 | 无条件按数据规模选择 SIMD 或并行。 |
-| 拒绝原因 | 可能改变浮点/复数结果或 panic 时机，不满足路径一致性约束。 |
+| 属性     | 值                                                                        |
+| -------- | ------------------------------------------------------------------------- |
+| 决策     | SIMD / 并行仅在满足 `需求说明书 §28.3` 数值语义约束时启用，否则回退标量。 |
+| 理由     | 归约对累加顺序敏感，必须优先保持统一的对外语义。                          |
+| 替代方案 | 无条件按数据规模选择 SIMD 或并行。                                        |
+| 拒绝原因 | 可能改变浮点/复数结果或 panic 时机，不满足路径一致性约束。                |
 
 ---
 
@@ -574,19 +575,19 @@ Err(XenonError::InvalidArgument {
 
 ### 12.1 复杂度
 
-| 操作 | 时间复杂度 | 额外空间 |
-| ---- | ---------- | -------- |
-| `sum()` | O(n) | O(1) |
-| `sum_axis()` | O(n) | O(m)，其中 `m` 为输出元素数 |
-| `sum_axis_keepdims()` | O(n) | O(m)，其中 `m` 为 keepdims 输出元素数 |
+| 操作                  | 时间复杂度 | 额外空间                              |
+| --------------------- | ---------- | ------------------------------------- |
+| `sum()`               | O(n)       | O(1)                                  |
+| `sum_axis()`          | O(n)       | O(m)，其中 `m` 为输出元素数           |
+| `sum_axis_keepdims()` | O(n)       | O(m)，其中 `m` 为 keepdims 输出元素数 |
 
 ### 12.2 路径说明
 
-| 路径 | 说明 |
-| ---- | ---- |
-| 标量路径 | 语义基线；始终可用。 |
-| SIMD 路径 | 仅在满足等价性前提时启用；否则回退标量。 |
-| 并行路径 | 仅在满足等价性和无嵌套并行约束时启用；否则回退标量。 |
+| 路径      | 说明                                                 |
+| --------- | ---------------------------------------------------- |
+| 标量路径  | 语义基线；始终可用。                                 |
+| SIMD 路径 | 仅在满足等价性前提时启用；否则回退标量。             |
+| 并行路径  | 仅在满足等价性和无嵌套并行约束时启用；否则回退标量。 |
 
 ### 12.3 缓存与布局说明
 
@@ -598,21 +599,21 @@ Err(XenonError::InvalidArgument {
 
 ## 13. 平台与工程约束
 
-| 项目 | 约束 |
-| ---- | ---- |
-| 标准库环境 | Xenon 当前版本仅支持 `std`。 |
-| crate 结构 | 保持单 crate 结构，`reduction` 作为库内模块存在。 |
-| 依赖约束 | 不新增第三方依赖；仅可使用需求中已允许的 `rayon` / `pulp` 对应可选能力。 |
-| SemVer | `sum` 家族的空输入语义、`InvalidAxis` 错误类别、`sum_axis()` 的 `D: RemoveAxis` 约束、`sum_axis_keepdims()` 的公开入口要求 `D: Dimension`、0D 张量上的 keepdims axis API 统一返回 `InvalidAxis` 以及容差文档化结论均属于稳定契约；后续优化不得改变。 |
-| 平台语义 | 同平台、同编译配置、同执行路径下结果须确定；跨平台遵循 IEEE 754 语义约束。 |
-| API 稳定性 | 不改变当前 `sum` 家族公开接口与错误类别边界。 |
+| 项目       | 约束                                                                                                                                                                                                                                                                                   |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 标准库环境 | Xenon 当前版本仅支持 `std`。                                                                                                                                                                                                                                                           |
+| crate 结构 | 保持单 crate 结构，`reduction` 作为库内模块存在。                                                                                                                                                                                                                                      |
+| 依赖约束   | 不新增第三方依赖；仅可使用需求中已允许的 `rayon` / `pulp` 对应可选能力。                                                                                                                                                                                                               |
+| SemVer     | `sum` 家族的空输入语义、`InvalidAxis` 错误类别、`sum_axis()` 的 `D: RemoveAxis` 约束、`sum_axis_keepdims()` 的公开入口要求 `D: Dimension`、0D 张量上的 keepdims axis API 统一返回 `InvalidAxis` 以及以 `需求说明书 §28.3` 为权威基线的容差文档化结论均属于稳定契约；后续优化不得改变。 |
+| 平台语义   | 同平台、同编译配置、同执行路径下结果须确定；跨平台遵循 IEEE 754 语义约束。                                                                                                                                                                                                             |
+| API 稳定性 | 不改变当前 `sum` 家族公开接口与错误类别边界。                                                                                                                                                                                                                                          |
 
 ---
 
 ## 版本历史
 
-| 版本 | 日期 |
-| ---- | ---- |
+| 版本  | 日期       |
+| ----- | ---------- |
 | 1.0.0 | 2026-04-14 |
 | 1.0.1 | 2026-04-15 |
 | 1.0.2 | 2026-04-15 |
