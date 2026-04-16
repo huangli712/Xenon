@@ -481,7 +481,7 @@ User calls sum / sum_axis / sum_axis_keepdims
 | Panic | `i32` / `i64` 归约中的累加溢出属于不可恢复错误，必须通过 checked arithmetic panic。 |
 | Panic 诊断 | panic 文本至少包含 `operation`、元素类型、触发位置（如 `axis`、`output_index` 或 `element_index`）以及适用 `shape`；推荐格式遵循 `26-error.md §4.6`。 |
 | 空输入语义 | 空数组 `sum()` 返回加法单位元；沿轴归约时若被归约轴长度为 `0`，结果张量对应槽位也返回加法单位元。 |
-| 数值边界 | 整数类型结果须逐元素精确一致。对浮点和复数类型，不同执行路径（标量/SIMD/并行）允许不同合并顺序，但相对标量参考值每个实数分量必须满足 `max(1 ULP, epsilon * |scalar_result|)`；`NaN` / `Inf` 仍按 IEEE 754 自动传播。 |
+| 数值边界 | 整数类型结果须逐元素精确一致。对浮点和复数类型，不同执行路径（标量/SIMD/并行）允许不同合并顺序，但相对标量参考值每个实数分量必须满足 `max(1 ULP, epsilon * abs(scalar_result))`；`NaN` / `Inf` 仍按 IEEE 754 自动传播。 |
 | 路径一致性 | 标量、SIMD、并行路径在启用条件满足时必须返回相同 shape、相同错误类别，以及满足同一数值语义约束的结果；不能证明时必须回退。 |
 
 ### 10.1 错误示例
@@ -616,6 +616,7 @@ Err(XenonError::InvalidArgument {
 | 1.0.3 | 2026-04-15 |
 | 1.1.0 | 2026-04-15 |
 | 1.1.1 | 2026-04-15 |
+| 1.1.2 | 2026-04-16 |
 
 ---
 

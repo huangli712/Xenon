@@ -285,12 +285,10 @@ pub fn assert_tensor_close_real_cross_path<A, D>(
         "{}: shape mismatch: {:?} vs {:?}", msg, actual.shape(), expected.shape());
 
     for (idx, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
-        let a_f: f64 = (*a)
-            .cast::<f64>()
-            .expect("cross-path helper requires cast::<f64>() support");
-        let e_f: f64 = (*e)
-            .cast::<f64>()
-            .expect("cross-path helper requires cast::<f64>() support");
+        let a_f: f64 = CastTo::<f64>::cast_to(*a)
+            .expect("cross-path helper requires CastTo::<f64>::cast_to support");
+        let e_f: f64 = CastTo::<f64>::cast_to(*e)
+            .expect("cross-path helper requires CastTo::<f64>::cast_to support");
         let scale = a_f.abs().max(e_f.abs()).max(1.0);
         let relative_error = (a_f - e_f).abs() / scale;
         let relative_limit = match tolerance {
@@ -327,12 +325,10 @@ pub fn assert_tensor_close_real_math<A, D>(
         "{}: shape mismatch: {:?} vs {:?}", msg, actual.shape(), expected.shape());
 
     for (idx, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
-        let a_f: f64 = (*a)
-            .cast::<f64>()
-            .expect("math helper requires cast::<f64>() support");
-        let e_f: f64 = (*e)
-            .cast::<f64>()
-            .expect("math helper requires cast::<f64>() support");
+        let a_f: f64 = CastTo::<f64>::cast_to(*a)
+            .expect("math helper requires CastTo::<f64>::cast_to support");
+        let e_f: f64 = CastTo::<f64>::cast_to(*e)
+            .expect("math helper requires CastTo::<f64>::cast_to support");
 
         assert!(
             math_eq_f64(a_f, e_f, tolerance),
@@ -358,6 +354,8 @@ macro_rules! assert_xenon_error {
 ```
 
 > **说明**：精确比较须使用对应原生类型的位模式/ULP 比较，不依赖跨精度转换。`f32` 测试用 `f32` 比较，`f64` 测试用 `f64` 比较。
+
+> **标量转换 API 约定**：测试辅助中的标量类型转换必须使用 `CastTo::<f64>::cast_to(value)` 或等价的内部 helper（例如 `scalar_to_f64(value)`），而不是在标量上调用 `.cast::<f64>()` 方法语法。`.cast()` 保留给 `21-type.md` 中约定的张量级转换 API。
 
 ### 5.3 tests/common/generators.rs
 
@@ -602,12 +600,12 @@ fn test_unique_non_contiguous() {
 
 | 测试函数                               | 测试内容                                                                   | 优先级 |
 | -------------------------------------- | -------------------------------------------------------------------------- | ------ |
-| `test_workspace_new_invalid_alignment` | 非法对齐返回 `XenonError::Workspace(WorkspaceError::InvalidLayout { .. })` | 高     |
+| `test_workspace_new_invalid_alignment` | 非法对齐返回 `XenonError::Workspace { reason }`，仅断言公开 opaque 变体与诊断文本 | 高     |
 | `test_workspace_borrow_rules`          | 借用守卫与复借用约束                                                       | 高     |
 | `test_workspace_split`                 | split 后子工作空间边界正确                                                 | 中     |
 | `test_workspace_ensure_capacity`       | 扩容不破坏已借用安全性                                                     | 高     |
 | `test_workspace_assume_init_prefix`    | `assume_init_*` 只允许访问调用方已证明初始化的前缀                         | 高     |
-| `test_workspace_storage_mode_conversion_error_mapping` | 工作空间相关存储模式转换错误映射覆盖 §6.2 | 中 |
+| `test_workspace_error_boundary_mapping` | workspace 公开入口统一返回 `XenonError::Workspace { reason }`，不匹配私有 `WorkspaceError` 类型 | 中 |
 | `test_workspace_not_send_not_sync`     | `Workspace` / `SplitBorrowMut` 的 `!Send + !Sync` 编译期验证               | 高     |
 
 ### 8.16 test_parallel.rs
@@ -1165,7 +1163,7 @@ fn test_bad_magic() {
 | `test_simd.rs`         | `simd`              | `08-simd.md`                    |
 | `test_error.rs`        | `error`             | `26-error.md`                   |
 
-> **说明**：workspace 模块可保留内部 `WorkspaceError` 载荷，但公开 API 边界统一验证 `XenonError::Workspace(...)`；`test_workspace.rs` 关注 workspace 语义与内层载荷字段，`test_error.rs` 关注统一公开错误边界。
+> **说明**：workspace 模块可保留内部 `WorkspaceError` 分类，但集成测试只能通过 crate 公共 API 观察 `XenonError::Workspace { reason }`；`test_workspace.rs` 关注 workspace 语义与公开诊断文本，`test_error.rs` 关注统一公开错误边界。
 
 ### 9.2 数据流
 
@@ -1292,7 +1290,7 @@ Test files
 
 - [ ] **T10**: 实现 `tests/test_error.rs`
   - 文件: `tests/test_error.rs`
-  - 内容: `XenonError` 边界与 display 输出验证（其中 workspace 相关公开边界统一断言 `XenonError::Workspace(...)`，内层 `WorkspaceError` 载荷继续在 `tests/test_workspace.rs` 中覆盖）
+  - 内容: `XenonError` 边界与 display 输出验证（其中 workspace 相关公开边界统一断言 `XenonError::Workspace { reason }`，不得匹配私有 `WorkspaceError` 载荷）
   - 测试: `cargo test --test test_error`
   - 前置: T1
   - 预计: 10 min
@@ -1541,6 +1539,9 @@ fn compile_fail_harness() {
 | 1.2.6 | 2026-04-15 |
 | 1.2.7 | 2026-04-15 |
 | 1.2.8 | 2026-04-15 |
+| 1.2.9 | 2026-04-16 |
+| 1.3.0 | 2026-04-16 |
+| 1.3.1 | 2026-04-16 |
 
 ---
 

@@ -18,7 +18,7 @@
 | 张量×标量运算      | `tensor op scalar`、`Scalar(scalar) op tensor` 与常用原生左标量 `scalar op tensor` | 完全泛型的 `T op Tensor<T>` blanket impl         |
 | 广播支持           | 运算符语法内建支持广播                                                        | 比较运算符（在 `math` 提供）                     |
 | 新张量产生         | 所有组合产生新的独立张量                                                      | 原地修改运算                                     |
-| 借用形式           | `&Tensor op &Tensor`/`&Tensor op Tensor` 等组合                               | 索引运算符 `[]`（在 `index` 提供）               |
+| 借用形式           | `&Tensor op &Tensor`/`&Tensor op Tensor` 等组合                               | 若后续提供 `[]` 运算符，由 `index` 模块承接；当前不属稳定 API |
 
 ### 1.2 设计原则
 
@@ -85,12 +85,12 @@ src/overload/
 | 场景 | 对外语义 |
 | ---- | -------- |
 | 方法型 API 广播失败 | 返回 `XenonError::BroadcastError { operation: "add", lhs_shape: lhs.shape().into(), rhs_shape: rhs.shape().into(), attempted_target_shape: None, axis: None }`（`sub` / `mul` / `div` 同理）。当两个 shape 本身不兼容时，不人为伪造目标 shape。 |
-| 运算符路径广播失败 | 返回 `Err(XenonError::BroadcastError { ... })`；其模块级 ADR 定位见本节后文 `ADR-OVERLOAD-RESULT`。 |
+| 运算符路径广播失败 | 返回 `Err(XenonError::BroadcastError { ... })`；其项目级稳定 ADR 定位见本节后文 `ADR-OVERLOAD-RESULT`。 |
 | 整数除零、整数溢出、结果不可表示 | 沿用底层逐元素方法的 panic 语义，不包装为 `Result`；panic 消息须携带操作类型（`add` / `sub` / `mul` / `div`）、元素类型，以及触发位置（第一个溢出的元素索引，若可确定）。 |
 | 标量路径参数合法 | `tensor op scalar`、`Scalar(scalar) op tensor` 与常用原生左标量路径不产生广播错误，直接返回 `Tensor`；整数溢出仍遵循 panic 语义。 |
 
 > [!IMPORTANT]
-> **ADR-OVERLOAD-RESULT（模块级）**：张量×张量运算符返回 `Result<Tensor, XenonError>` 当前仅记录为 `overload` 模块的架构决策，用于满足广播失败的可恢复错误语义；它尚未被写定为项目级 API 风格结论，仍需跨模块评审确认。本文后续提及“运算符返回 `Result`”时，均指向此模块级 ADR。
+> **ADR-OVERLOAD-RESULT（项目级稳定）**：经过跨模块评审，张量×张量运算符返回 `Result<Tensor, XenonError>` 已确认为项目级稳定契约。规范实现路径为 `impl TensorBinOp for TensorBase<Owned<A>, D>` 返回 `Result<Tensor<A, D>, XenonError>`；本文后续提及“运算符返回 `Result`”时，均指向这一项目级稳定设计结论。
 
 ### 4.3 依赖图（ASCII）
 
@@ -127,7 +127,7 @@ src/overload/
 > **Numeric 隐含 Copy：** `Numeric` trait 继承自 `Element`，而 `Element: Copy`（见 `03-element.md` §5.1）。因此所有 `Numeric` 类型均满足 `Copy`，可以在标量运算中安全地按值传递而无需额外约束。
 
 > [!IMPORTANT]
-> 张量×张量运算符返回 `Result<Tensor, XenonError>` 的模块级 ADR 见 §4.2 `ADR-OVERLOAD-RESULT`；此处仅引用其当前结论：张量×张量 → `Result`（广播可能失败），张量×标量 → `Tensor`（标量总可广播）。
+> 张量×张量运算符返回 `Result<Tensor, XenonError>` 的项目级稳定 ADR 见 §4.2 `ADR-OVERLOAD-RESULT`；此处仅引用其当前结论：张量×张量 → `Result`（广播可能失败），张量×标量 → `Tensor`（标量总可广播）。
 
 ### 4.5 依赖方向声明
 
@@ -149,32 +149,36 @@ src/overload/
 
 完整的 `impl` 组合表（以 `Add` 为例，`Sub`/`Mul`/`Div` 同理）：
 
+> **稳定性分层说明：** 下表分为“当前稳定承诺”与“增强候选（implementation enhancement）”两组。稳定组对应当前对外 API 承诺；增强候选组用于记录已评审的扩展方向，是否落地仍以后续版本决议为准。
+
 | Lhs                  | Rhs                  | Output         | 广播     | impl 签名                                                                           |
 | -------------------- | -------------------- | -------------- | -------- | ----------------------------------------------------------------------------------- |
+| **稳定承诺（stable）** |                      |                |          |                                                                                     |
 | `Tensor<A, D>`       | `Tensor<A, E>`       | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>`                  |
 | `&Tensor<A, D>`      | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<Owned<A>,D>`                |
 | `Tensor<A, D>`       | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>`                 |
 | `&Tensor<A, D>`      | `Tensor<A, E>`       | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<TensorBase<Owned<A>,E>> for &TensorBase<Owned<A>,D>`                 |
-| `&ArcTensor<A, D>`   | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<ArcRepr<A>,D>`              |
-| `&Tensor<A, D>`      | `&ArcTensor<A, E>`   | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ArcRepr<A>,E>> for &TensorBase<Owned<A>,D>`              |
-| `&ArcTensor<A, D>`   | `&ArcTensor<A, E>`   | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ArcRepr<A>,E>> for &TensorBase<ArcRepr<A>,D>`            |
 | `Tensor<A, D>`       | `A`                  | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for TensorBase<Owned<A>,D>`                                       |
 | `&Tensor<A, D>`      | `A`                  | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for &TensorBase<Owned<A>,D>`                                      |
 | `Scalar<A>`          | `Tensor<A, D>`       | `Tensor<A, D>` | 标量广播 | `impl<...> Add<TensorBase<Owned<A>,D>> for Scalar<A>`                               |
 | `Scalar<A>`          | `&Tensor<A, D>`      | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&TensorBase<Owned<A>,D>> for Scalar<A>`                              |
-| `&TensorView<A, D>`  | `&TensorView<A, E>`  | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<ViewRepr<'a, A>,D>`  |
-| `&TensorView<A, D>`  | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<ViewRepr<'a, A>,D>`         |
-| `&Tensor<A, D>`      | `&TensorView<A, E>`  | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<Owned<A>,D>`         |
-| `&TensorView<A, D>`  | `&ArcTensor<A, E>`   | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ArcRepr<A>,E>> for &TensorBase<ViewRepr<'a, A>,D>`       |
-| `&ArcTensor<A, D>`   | `&TensorView<A, E>`  | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<ArcRepr<A>,D>`       |
+| **增强候选（implementation enhancement）** | | | | |
+| `&TensorView<A, D>`（增强候选） | `&TensorView<A, E>`（增强候选） | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<ViewRepr<'a, A>,D>`（增强候选） |
+| `&TensorView<A, D>`（增强候选） | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<ViewRepr<'a, A>,D>`（增强候选） |
+| `&Tensor<A, D>`      | `&TensorView<A, E>`（增强候选） | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<Owned<A>,D>`（增强候选） |
+| `&TensorView<A, D>`（增强候选） | `&ArcTensor<A, E>`（增强候选）  | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ArcRepr<A>,E>> for &TensorBase<ViewRepr<'a, A>,D>`（增强候选） |
+| `&ArcTensor<A, D>`（增强候选）  | `&TensorView<A, E>`（增强候选） | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<ArcRepr<A>,D>`（增强候选） |
+| `&ArcTensor<A, D>`（增强候选）  | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<ArcRepr<A>,D>`（增强候选） |
+| `&Tensor<A, D>`      | `&ArcTensor<A, E>`（增强候选）  | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ArcRepr<A>,E>> for &TensorBase<Owned<A>,D>`（增强候选） |
+| `&ArcTensor<A, D>`（增强候选）  | `&ArcTensor<A, E>`（增强候选）  | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ArcRepr<A>,E>> for &TensorBase<ArcRepr<A>,D>`（增强候选） |
 
 > **说明**：`F` 为广播后的维度类型，由 `<D as BroadcastDim<E>>::Output` 关联类型计算。
 > `BroadcastDim` 定义于 `02-dimension.md §5.9`。
 
-> **范围收敛说明：** 当前设计支持 `ArcTensor` / `TensorView` / `TensorViewMut` / `Scalar` / 原生左标量等组合，但这些组合属于实现增强，不写入当前版本强承诺。实现优先级：`Owned×Owned` > `Owned×Scalar` > `View×View`。
+> **范围收敛说明：** 当前稳定承诺聚焦 `Owned×Owned`、其借用变体以及标量路径；`ArcTensor` / `TensorView` 相关组合保留为增强候选（implementation enhancement），是否进入稳定面以后续版本决议为准。实现优先级：`Owned×Owned` > `Owned×Scalar` > `View×View`。
 
-> **说明**：当前设计支持 `TensorView`、`TensorViewMut` 与共享只读 `ArcRepr` 通过引用模式参与运算符重载（如 `&view + &tensor`、`&arc + &tensor`）。
-> `TensorViewMut` 通过 `&self` 重借用参与只读运算。运算符签名不直接接受 `ViewMutRepr`，而是通过 `Deref` 到 `ViewRepr` 间接支持。
+> **说明**：当前设计支持 `TensorView` 与共享只读 `ArcRepr` 通过引用模式参与运算符重载（如 `&view + &tensor`、`&arc + &tensor`）。
+> `TensorViewMut` **不**直接参与运算符重载。若要使用运算符，必须先调用 `.view()` 获取只读 `TensorView`，再对该只读视图应用运算符。
 > 张量×张量/视图路径在广播失败时返回 `Result<Tensor<A, F>, XenonError>`；标量路径无广播失败分支，直接返回 `Tensor<A, D>`。两类路径成功值都为 owned 结果，因为视图本身不拥有数据，无法作为运算结果的存储。
 
 ### 5.2 张量×张量运算符
@@ -208,7 +212,7 @@ where
     }
 }
 
-// &ArcTensor + &Tensor (shared read-only + owned reference)
+// Enhancement candidate: &ArcTensor + &Tensor (shared read-only + owned reference)
 impl<'a, 'b, A, D, E> Add<&'b TensorBase<Owned<A>, E>> for &'a TensorBase<ArcRepr<A>, D>
 where
     A: Numeric,
@@ -222,7 +226,7 @@ where
     }
 }
 
-// &ArcTensor + &ArcTensor (shared read-only + shared read-only)
+// Enhancement candidate: &ArcTensor + &ArcTensor (shared read-only + shared read-only)
 impl<'a, 'b, A, D, E> Add<&'b TensorBase<ArcRepr<A>, E>> for &'a TensorBase<ArcRepr<A>, D>
 where
     A: Numeric,
@@ -236,7 +240,7 @@ where
     }
 }
 
-// &Tensor + &ArcTensor (owned reference + shared read-only)
+// Enhancement candidate: &Tensor + &ArcTensor (owned reference + shared read-only)
 impl<'a, 'b, A, D, E> Add<&'b TensorBase<ArcRepr<A>, E>> for &'a TensorBase<Owned<A>, D>
 where
     A: Numeric,
@@ -251,18 +255,18 @@ where
 }
 ```
 
-> **设计决策引用：** 此处沿用 §4.2 `ADR-OVERLOAD-RESULT` 的模块级结论：`+` / `-` / `*` / `/` 在广播不兼容时返回 `Result<Tensor<A, F>, XenonError>`，而不是 panic。
+> **设计决策引用：** 此处沿用 §4.2 `ADR-OVERLOAD-RESULT` 的项目级稳定结论：`+` / `-` / `*` / `/` 在广播不兼容时返回 `Result<Tensor<A, F>, XenonError>`，而不是 panic。
 
 > **BroadcastDim 约束说明：** 与 `15-broadcast.md` 保持一致；对称张量×张量运算须同时满足 `D: BroadcastDim<E>` 与 `E: BroadcastDim<D>`，以保证输出维度类型可双向收敛到同一关联类型。
 
 > **实现说明：** 委托示例中的 `add_tensor_impl()` 代表与 trait 方法同名的内部/固有辅助入口，用于避免 `fn add(self, rhs) { self.add(&rhs) }` 这类写法产生对 trait 方法自身的递归歧义。
 
-> **语义边界说明：** 广播失败走 `Err(XenonError::BroadcastError { ... })` 的模块级定性见 §4.2 `ADR-OVERLOAD-RESULT`；整数除零、整数溢出与结果不可表示仍保持 panic。本文 §11 的决策 2a / ADR-2b 仅记录该 ADR 在本模块中的细化范围。
+> **语义边界说明：** 广播失败走 `Err(XenonError::BroadcastError { ... })` 的项目级稳定定性见 §4.2 `ADR-OVERLOAD-RESULT`；整数除零、整数溢出与结果不可表示仍保持 panic。本文 §11 的决策 2a / ADR-2b 仅记录该 ADR 在本模块中的细化范围。
 
 ### 5.2b 视图×视图/张量运算符
 
 ```rust,ignore
-// &TensorView + &TensorView (reference + reference)
+// Enhancement candidate: &TensorView + &TensorView (reference + reference)
 impl<'a, 'b, A, D, E> Add<&'b TensorBase<ViewRepr<'b, A>, E>>
     for &'a TensorBase<ViewRepr<'a, A>, D>
 where
@@ -277,7 +281,7 @@ where
     }
 }
 
-// &TensorView + &Tensor (view + owned reference)
+// Enhancement candidate: &TensorView + &Tensor (view + owned reference)
 impl<'a, 'b, A, D, E> Add<&'b TensorBase<Owned<A>, E>>
     for &'a TensorBase<ViewRepr<'a, A>, D>
 where
@@ -292,7 +296,7 @@ where
     }
 }
 
-// &TensorView + &ArcTensor (view + shared read-only reference)
+// Enhancement candidate: &TensorView + &ArcTensor (view + shared read-only reference)
 impl<'a, 'b, A, D, E> Add<&'b TensorBase<ArcRepr<A>, E>>
     for &'a TensorBase<ViewRepr<'a, A>, D>
 where
@@ -307,7 +311,7 @@ where
     }
 }
 
-// &ArcTensor + &TensorView (shared read-only + view reference)
+// Enhancement candidate: &ArcTensor + &TensorView (shared read-only + view reference)
 impl<'a, 'b, A, D, E> Add<&'b TensorBase<ViewRepr<'b, A>, E>>
     for &'a TensorBase<ArcRepr<A>, D>
 where
@@ -323,7 +327,7 @@ where
 }
 ```
 
-> **说明**：`Sub`/`Mul`/`Div` 的视图 / 共享只读组合模式与 `Add` 相同，仅替换运算符和闭包，并统一返回 `Result<Tensor<A, F>, XenonError>`。`ArcRepr<A>` 仅通过 `&self` 解引用为只读视图参与运算，不提供消费式写入语义。`TensorViewMut` 通过 `&self` 重借用参与这些组合，其共享视图类型记作 `TensorBase<ViewRepr<'a, A>, ...>`。
+> **说明**：`Sub`/`Mul`/`Div` 的视图 / 共享只读组合模式与 `Add` 相同，仅替换运算符和闭包，并统一返回 `Result<Tensor<A, F>, XenonError>`。`ArcRepr<A>` 仅通过 `&self` 解引用为只读视图参与运算，不提供消费式写入语义。`TensorViewMut` **不**直接参与这些组合；需要先调用 `.view()` 转为只读 `TensorView`。
 
 ### 5.3 张量×标量运算符
 
@@ -401,7 +405,7 @@ where
 
 > **说明**：当前版本**不**稳定承诺 `&A` 形式的标量运算符重载。公开契约仅保证值形式 `tensor + scalar`、`Scalar(scalar) + tensor`，以及常用原生左标量（如 `5.0 + tensor`）。若后续版本需要 `&A` 支持，应以独立议题评估。
 
-> **说明**：`Scalar<A>` 同样适用于 `TensorView` 和 `TensorViewMut` 的标量运算。
+> **说明**：`Scalar<A>` 同样适用于 `TensorView` 的标量运算。`TensorViewMut` 若需使用标量运算符，同样必须先调用 `.view()` 转为只读 `TensorView`。
 
 > **设计决策：** 标量运算委托给 `add_scalar_impl()` / `sub_scalar_impl()` / `mul_scalar_impl()` / `div_scalar_impl()` 等内部 helper，
 > 其内部直接遍历输入与结果张量，而不是额外暴露通用 helper 作为稳定实现描述。
@@ -626,6 +630,16 @@ Wave 5:      [T6]
 | `test_i32_tensor`                   | `i32` 类型张量运算返回 `Ok(...)`                                   | 中     |
 | `test_complex_tensor`               | `Complex<f64>` 类型张量运算返回 `Ok(...)`                          | 中     |
 
+### 8.2a 可选验证（enhancement candidates）
+
+| 测试函数                            | 测试内容                                                           | 优先级 |
+| ----------------------------------- | ------------------------------------------------------------------ | ------ |
+| `test_add_view_view`                | `&TensorView + &TensorView` 组合在增强候选实现启用时返回 `Ok(...)` | 中     |
+| `test_add_view_tensor`              | `&TensorView + &Tensor` 组合在增强候选实现启用时返回 `Ok(...)`     | 中     |
+| `test_add_arc_tensor`               | `&ArcTensor` 参与的组合在增强候选实现启用时返回 `Ok(...)`          | 中     |
+
+> **说明：** 本节仅用于增强候选的可选验证，不属于当前稳定 API 测试基线；若相应增强未实现或未进入稳定面，可不作为默认必过项。
+
 ### 8.3 边界测试场景
 
 | 场景                                     | 预期行为                       |
@@ -711,7 +725,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | 模块级可恢复错误由运算符路径与显式方法路径共同承担；`+` / `-` / `*` / `/` 以及 `broadcast_with()`、方法型逐元素 API 均返回 `XenonError::BroadcastError { operation: &'static str, lhs_shape: Vec<usize>, rhs_shape: Vec<usize>, attempted_target_shape: Option<Vec<usize>>, axis: Option<usize> }`；若方法参数本身非法，则继续使用 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, shape: Option<Vec<usize>> }`。 |
+| Recoverable error | 项目级稳定的可恢复错误语义由运算符路径与显式方法路径共同承担；`+` / `-` / `*` / `/` 以及 `broadcast_with()`、方法型逐元素 API 均返回 `XenonError::BroadcastError { operation: &'static str, lhs_shape: Vec<usize>, rhs_shape: Vec<usize>, attempted_target_shape: Option<Vec<usize>>, axis: Option<usize> }`；若方法参数本身非法，则继续使用 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, shape: Option<Vec<usize>> }`。 |
 | Panic | 广播不兼容不再 panic；整数除零、溢出与结果不可表示继续沿用 `math` 的 panic 语义，且 panic 消息须包含操作类型、元素类型与第一个失败元素索引（若可确定）。 |
 | 路径一致性 | 借用 / owned / 标量以及由 `math` 触发的标量 / SIMD 路径必须保持相同输出 shape 与数值语义。 |
 | 容差边界 | 当前不引入额外容差；若底层 `math` 使用 SIMD，仍须与标量路径语义一致。 |
@@ -721,7 +735,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 ## 11. 设计决策记录
 
 > [!WARNING]
-> 参见 §4.2 `ADR-OVERLOAD-RESULT`。本节只补充该模块级 ADR 的细化记录：`a + b` 需要 `?` 或 `unwrap()` 来获取结果，而 `a + scalar` 不需要；这一差异仍待跨模块评审确认是否上升为项目级风格约束。
+> 参见 §4.2 `ADR-OVERLOAD-RESULT`。本节补充该项目级稳定 ADR 的细化记录：`a + b` 需要 `?` 或 `unwrap()` 来获取结果，而 `a + scalar` 不需要；这一差异现已属于项目级 API 风格约束。
 
 ### 决策 1：是否支持 += 原地运算符
 
@@ -751,7 +765,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | 理由     | 广播不兼容时须返回可恢复错误（`require.md` §20 / §27）；运算符是唯一的公开入口，不可静默 panic |
 | 替代方案 | 运算符 panic + 提供 `try_add` / `try_sub` 系列方法 — 放弃，因为需求明确要求广播不兼容为可恢复错误，panic 违反语义 |
 | 替代方案 | 运算符不返回 `Result`，广播失败由单独的 broadcast 步骤处理 — 放弃，增加调用复杂度 |
-| 确认     | 本决策当前作为模块内 ADR 记录；若要上升为项目级 API 风格决策，仍需跨模块评审 |
+| 确认     | 本决策经跨模块评审后确认，现作为项目级稳定 API 风格决策生效 |
 
 ### ADR-2b：仅张量×张量路径共享 Result 边界
 
@@ -825,7 +839,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | `std` only | Xenon 当前版本仅支持 `std` 环境，本文不再讨论 `no_std` 路径 |
 | MSRV       | Rust 1.85+                                                  |
 | 单 crate   | `overload` 设计保持在现有 crate 内，不引入额外 crate        |
-| SemVer     | 当前文档记录了 §4.2 `ADR-OVERLOAD-RESULT` 这一模块级语义选择；若要上升为项目级稳定 API 边界，仍需跨模块评审确认 |
+| SemVer     | §4.2 `ADR-OVERLOAD-RESULT` 已确认项目级稳定 API 边界；张量×张量路径的规范 `Output` 类型为 `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` |
 | 最小依赖   | 本模块不新增第三方依赖                                      |
 
 ---
@@ -847,6 +861,9 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | 1.1.5 | 2026-04-15 |
 | 1.1.6 | 2026-04-15 |
 | 1.1.7 | 2026-04-15 |
+| 1.1.8 | 2026-04-16 |
+| 1.1.9 | 2026-04-16 |
+| 1.2.0 | 2026-04-16 |
 
 ---
 

@@ -200,7 +200,7 @@ where
 
 ### 5.2 fill 操作
 
-> **公开入口调整：** `try_fill()` 对所有张量实例公开可用。对可写存储执行填充并返回 `Ok(())`；对只读 / 共享只读存储返回 `XenonError::InvalidStorageMode { .. }`。`fill()` 保持 `S: StorageMut` 约束，仅作为可写张量的便捷入口。
+> **公开入口调整：** `try_fill()` 对所有张量实例公开可用。它依赖存储提供运行时 kind introspection（首选 `Storage::storage_kind()` 或等价机制）完成分派：对可写存储执行填充并返回 `Ok(())`；对只读 / 共享只读存储返回 `XenonError::InvalidStorageMode`。`fill()` 保持 `S: StorageMut` 约束，仅作为可写张量的便捷入口。
 
 ````rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -212,8 +212,10 @@ where
     /// Fill all logical elements with the specified value.
     ///
     /// Public fallible entry point for all tensor storage modes.
-    /// Writable storage performs the fill; read-only/shared read-only storage
-    /// returns `XenonError::InvalidStorageMode`.
+    /// Runtime dispatch uses `Storage::storage_kind()` (or an equivalent
+    /// storage-provided kind inspection hook). Writable storage performs the
+    /// fill via `fill_mut()`; read-only/shared read-only storage returns
+    /// `XenonError::InvalidStorageMode`.
     pub fn try_fill(&mut self, value: A) -> Result<(), XenonError>
     {
         fill_try_dispatch(self, value)
@@ -221,7 +223,7 @@ where
 }
 ````
 
-> 对于 `Owned` 与 `ViewMut` 等可写张量，`try_fill()` 成功后语义与 `fill()` 一致。对于 `View`、`Shared` 等只读 / 共享只读张量，`try_fill()` 返回 `XenonError::InvalidStorageMode { .. }`；该错误是公开契约的一部分，而不是内部占位语义。
+> 对于 `Owned` 与 `ViewMut` 等可写张量，`try_fill()` 成功后语义与 `fill()` 一致，并通过运行时 kind 判定进入 `fill_mut()` 路径。对于 `View`、`Shared` 等只读 / 共享只读张量，`try_fill()` 返回 `XenonError::InvalidStorageMode`；该错误是公开契约的一部分，而不是内部占位语义。
 
 ````rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -259,13 +261,14 @@ where
 }
 ````
 
-> **分层说明：** `try_fill()` 在 `S: Storage` 层公开，并通过内部 `fill_try_dispatch()` 执行“可写走直接写路径、只读返回 `InvalidStorageMode`”的运行时分派；`fill()` 继续通过 `S: StorageMut` 在类型层限制为可写张量 API。
+> **分层说明：** `try_fill()` 在 `S: Storage` 层公开，并通过内部 `fill_try_dispatch()` 基于 `Storage::storage_kind()`（或等价的运行时 kind introspection）执行“可写走 `fill_mut()` / 只读返回 `InvalidStorageMode`”的运行时分派；`fill()` 继续通过 `S: StorageMut` 在类型层限制为可写张量 API。
 
 #### 5.2.2 `fill_try_dispatch()` 分派准则
 
 `fill_try_dispatch()` 的内部判定标准固定为：
 
-- `Owned` / `ViewMut` / 其他满足 `StorageMut` 的存储：进入直接写入路径；
+- 先通过 `Storage::storage_kind()`（若该 API 尚未正式定义，则由 storage 层提供等价的运行时 kind introspection）判定当前存储是否支持可写路径；
+- `Owned` / `ViewMut` / 其他满足 `StorageMut` 的存储：进入 `fill_mut()` 直接写入路径；
 - `View` / `Shared` / 其他只读或共享只读存储：返回 `XenonError::InvalidStorageMode`；
 - 连续布局可走快路径，非连续或带 padding 布局必须退回“仅写逻辑元素”的 stride-aware 路径。
 
@@ -412,7 +415,7 @@ fill(tensor, value):
         write storage[offset] = clone(value)
 ```
 
-关键点：utility 层保留两层入口：`try_fill()` 是对所有张量开放的运行时检查入口，`fill()` 是仅对可写张量开放的直接写入路径。只读/广播结果在 `try_fill()` 上返回 `InvalidStorageMode`，而 `fill()` 继续通过 `S: StorageMut` 做编译期拒绝。可写存储仍必须遵守“只写逻辑元素”的契约：连续布局可走快路径，带 padding / 非连续布局必须按逻辑索引与 strides 写入，且不得触碰 padding bytes。
+关键点：utility 层保留两层入口：`try_fill()` 是对所有张量开放的运行时检查入口，并依赖 `Storage::storage_kind()` 或等价机制识别当前存储是否可写；`fill()` 是仅对可写张量开放的直接写入路径。只读/广播结果在 `try_fill()` 上返回 `InvalidStorageMode`，而 `fill()` 继续通过 `S: StorageMut` 做编译期拒绝。可写存储仍必须遵守“只写逻辑元素”的契约：连续布局可走快路径，带 padding / 非连续布局必须按逻辑索引与 strides 写入，且不得触碰 padding bytes。
 
 ### 6.3 to_contiguous 路径选择
 
@@ -455,8 +458,8 @@ into_contiguous(tensor):
 
 - [ ] **T1**: 实现 `fill` 方法
   - 文件: `src/util/fill.rs`
-  - 内容: 在 `S: StorageMut` 层实现 `fill(&mut self, value: A)` 核心 helper，并补上对所有张量开放的 `try_fill(&mut self, value: A) -> Result<(), XenonError>` 分发路径；只读张量返回 `InvalidStorageMode`
-  - 测试: `test_fill_basic`, `test_fill_non_contiguous`, `test_fill_padded_writes_logical_only`, `test_try_fill_read_only_returns_invalid_storage_mode`
+  - 内容: 在 `S: StorageMut` 层实现 `fill(&mut self, value: A)` 核心 helper，并补上对所有张量开放的 `try_fill(&mut self, value: A) -> Result<(), XenonError>` 分发路径；该分发依赖 `Storage::storage_kind()` 或等价的运行时 kind introspection，且只读张量返回 `InvalidStorageMode`
+  - 测试: `test_fill_basic`, `test_fill_non_contiguous`, `test_fill_padded_writes_logical_only`, `test_try_fill_read_only_returns_read_only_storage`
   - 前置: tensor 模块、iter 模块完成
   - 预计: 10 min
 
@@ -569,7 +572,7 @@ Wave 2:      [T3] → [T4]
 | 场景 | 测试方式 |
 | ---- | ---- |
 | `clip` 仅对 `ClipElement` 开放，拒绝 `bool` / `Complex` | 编译期测试。 |
-| `try_fill()` 对只读 / 共享只读 / 广播只读结果返回公开错误契约 | 运行时测试，断言返回 `XenonError::InvalidStorageMode { .. }`。 |
+| `try_fill()` 对只读 / 共享只读 / 广播只读结果返回公开错误契约 | 运行时测试，断言返回 `XenonError::InvalidStorageMode`。 |
 | `into_contiguous(self)` 仅对支持 owned 转换的存储模式开放 | 编译期测试。 |
 | sort / argsort / searchsorted 不属于当前 API | API 缺失断言。 |
 
@@ -603,7 +606,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `clip` 在 `min > max` 或边界为 `NaN` 时返回 `XenonError::InvalidArgument { operation, argument, expected, actual, axis, shape }`。`try_fill()` 对所有张量实例公开：可写存储成功返回 `Ok(())`，只读 / 共享只读存储返回 `XenonError::InvalidStorageMode { .. }`；`fill()` 仍仅对 `StorageMut` 路径可用。`XenonError` 是本模块唯一公开错误类型。 |
+| Recoverable error | `clip` 在 `min > max` 或边界为 `NaN` 时返回 `XenonError::InvalidArgument { operation, argument, expected, actual, axis, shape }`。`try_fill()` 对所有张量实例公开：运行时分发通过 `Storage::storage_kind()` 或等价 introspection 判定可写性；可写存储成功返回 `Ok(())`，只读 / 共享只读存储返回 `XenonError::InvalidStorageMode`；`fill()` 仍仅对 `StorageMut` 路径可用。`XenonError` 是本模块唯一公开错误类型。 |
 | Panic | 公开 utility API 不定义额外 panic 语义；连续化与裁剪失败统一走显式错误或正常返回。 |
 | 路径一致性 | 连续与非连续布局都必须通过同一逻辑元素语义工作；当前无独立 SIMD / 并行分支。 |
 | 容差边界 | `clip` 对浮点数遵循 IEEE 754 比较语义；不额外引入近似容差。 |
@@ -676,6 +679,8 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 | 1.1.3 | 2026-04-14 |
 | 1.1.4 | 2026-04-15 |
 | 1.1.5 | 2026-04-15 |
+| 1.1.6 | 2026-04-16 |
+| 1.1.7 | 2026-04-16 |
 
 ---
 

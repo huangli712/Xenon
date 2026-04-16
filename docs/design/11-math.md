@@ -755,7 +755,7 @@ User calls add / unary op / comparison method
 | Recoverable error | 广播不兼容时返回 `XenonError::BroadcastError { operation, lhs_shape, rhs_shape, attempted_target_shape, axis }`。参数不满足公开前提时返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, axis_len: Option<usize>, start: Option<usize>, end: Option<usize>, shape: Option<Vec<usize>> }`。 |
 | Panic | 整数 `add/sub/mul/div`、标量版 `add_scalar/sub_scalar/mul_scalar/div_scalar`、`abs/neg/square` 的溢出、除零或结果不可表示均按需求触发 panic；`signum` 不新增 panic 约束。panic 信息至少包含 `operation`、`type`、`trigger`、`element_index`，并在适用时附带 `shape`。推荐格式：`Xenon: {operation} overflow for {type} at element_index={i}, shape={shape}, trigger={trigger}`。 |
 | 路径一致性 | 标量、SIMD 与并行路径必须保持相同 shape、错误类别、NaN/复数语义；不满足前提或 guard 失败时统一回退标量实现。 |
-| 容差边界 | `floor` / `ceil` 的 SIMD/并行路径结果必须与标量路径逐元素完全一致；其余浮点数学结果统一采用 `max(1 ULP, epsilon * |scalar_result|)`。复数结果按实部、虚部分量分别应用对应实数容差规则；仅在可证明语义等价或满足文档化容差时启用 SIMD/并行，否则回退标量路径。 |
+| 容差边界 | `floor` / `ceil` 的 SIMD/并行路径结果必须与标量路径逐元素完全一致；其余浮点数学结果统一采用 `max(1 ULP, epsilon * abs(scalar_result))`。复数结果按实部、虚部分量分别应用对应实数容差规则；仅在可证明语义等价或满足文档化容差时启用 SIMD/并行，否则回退标量路径。 |
 
 ---
 
@@ -840,6 +840,7 @@ User calls add / unary op / comparison method
 | 1.2.4 | 2026-04-15 |
 | 1.2.5 | 2026-04-15 |
 | 1.3.0 | 2026-04-15 |
+| 1.3.1 | 2026-04-16 |
 
 ---
 

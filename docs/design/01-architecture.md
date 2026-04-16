@@ -271,7 +271,7 @@ xenon/
 | `dimension/`   | `Dimension` trait 和静态/动态维度类型（Ix0-Ix6, IxDyn）                                                            |
 | `element/`     | 元素类型 trait 层次（Element → Numeric → RealScalar/ComplexScalar；`usize` 仅作为索引/形状类型，不属于元素算术层） |
 | `complex/`     | 自定义 `Complex<T>` 类型，`#[repr(C)]` 兼容 C FFI                                                                  |
-| `storage/`     | 四种存储模式（Owned/ViewRepr/ViewMutRepr/ArcRepr）；`TensorView::storage_kind()` 可区分 broadcast→Shared、transpose→View、slice→View 等只读视图来源 |
+| `storage/`     | 四种存储模式（Owned/ViewRepr/ViewMutRepr/ArcRepr）；broadcast 结果表示为 `ViewRepr`（`storage_kind()` 返回 `View`），其访问语义为 `SharedReadOnly`；transpose / slice 等只读视图同样保持 `View` 表示 |
 | `layout/`      | F-order 布局函数、步长计算、连续性检查与验证入口                                                                   |
 | `tensor/`      | 核心 `TensorBase<S, D>` 结构体及类型别名                                                                           |
 | `iter/`        | 元素/轴/索引迭代器                                                                                                 |
@@ -884,6 +884,7 @@ Wave 5: [W5.1] [W5.2] [W5.3] [W5.4]
 | 1.2.3 | 2026-04-15 |
 | 1.2.4 | 2026-04-15 |
 | 1.3.0 | 2026-04-15 |
+| 1.3.1 | 2026-04-16 |
 
 ---
 

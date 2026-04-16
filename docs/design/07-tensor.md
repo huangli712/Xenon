@@ -482,8 +482,8 @@ where
     pub fn from_shape_vec(shape: D, data: Vec<A>) -> Result<Self, XenonError>;
 
     /// Constructor-module APIs such as `zeros()` and `ones()` also return
-    /// `Result<Self, XenonError>` and must be used with `?` or `.unwrap()` in
-    /// examples and calling code.
+    /// `Result<Self, XenonError>` and must be used with `?` in examples and
+    /// calling code.
     // NOTE: the default owned-storage path uses aligned allocation.
     // The concrete alignment policy belongs to the storage module.
 
@@ -1262,6 +1262,7 @@ User calls constructor-module API `Tensor::<f64, Ix2>::zeros([3, 4])?`
 | 1.1.3 | 2026-04-14 |
 | 1.1.4 | 2026-04-15 |
 | 1.1.5 | 2026-04-15 |
+| 1.1.6 | 2026-04-16 |
 
 ---
 

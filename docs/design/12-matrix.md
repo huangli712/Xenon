@@ -11,28 +11,28 @@
 
 ### 1.1 职责边界
 
-| 职责      | 包含                                         | 不包含         |
-| --------- | -------------------------------------------- | -------------- |
-| 向量内积  | dot product（实数内积：sum(a[i] \* b[i])）   | 矩阵乘法、外积 |
-| 复数内积  | 共轭线性定义（sum(conjugate(a[i]) \* b[i])） | 批量矩阵乘法   |
-| SIMD 状态 | dot 可选接入 `simd` 模块 kernel 做 SIMD 加速，并可选接入 `parallel` 模块执行并行归约 | BLAS 绑定      |
+| 职责      | 包含                                                                                                                         | 不包含         |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| 向量内积  | dot product（实数内积：sum(a[i] \* b[i])）                                                                                   | 矩阵乘法、外积 |
+| 复数内积  | 共轭线性定义（sum(conjugate(a[i]) \* b[i])）                                                                                 | 批量矩阵乘法   |
+| SIMD 状态 | dot 可选接入 `simd` 模块 kernel 做 SIMD 加速，并可选接入 `parallel` 模块执行并行归约                                         | BLAS 绑定      |
 | 错误处理  | 非 1D 输入返回 `XenonError::InvalidArgument`；长度不匹配返回 `XenonError::DimensionMismatch { operation, expected, actual }` | —              |
 
 > **注意**：当前版本仅支持向量内积（dot）。不包含：矩阵乘法、外积、批量矩阵乘法、BLAS 绑定。
 
 ### 1.2 设计原则
 
-| 原则      | 体现                                                  |
-| --------- | ----------------------------------------------------- |
-| 最小范围  | 当前仅实现向量内积，复杂线性代数由上游库通过 FFI 实现 |
-| 错误恢复  | 维度不匹配返回可恢复错误（`XenonError`）；整数溢出为不可恢复 panic |
-| 语义优先  | dot 先保证语义与错误契约一致，再按能力选择标量 / SIMD / 并行路径 |
-| 与上游 BLAS 集成预期的语义兼容前提 | 内存布局与内积语义保持可对接上游 BLAS 集成的预期前提 |
+| 原则                               | 体现                                                               |
+| ---------------------------------- | ------------------------------------------------------------------ |
+| 最小范围                           | 当前仅实现向量内积，复杂线性代数由上游库通过 FFI 实现              |
+| 错误恢复                           | 维度不匹配返回可恢复错误（`XenonError`）；整数溢出为不可恢复 panic |
+| 语义优先                           | dot 先保证语义与错误契约一致，再按能力选择标量 / SIMD / 并行路径   |
+| 与上游 BLAS 集成预期的语义兼容前提 | 内存布局与内积语义保持可对接上游 BLAS 集成的预期前提               |
 
 ### 1.3 在架构中的位置
 
 ```
-Dependency levels:
+依赖层级：
 L0: error, private
 L1: dimension, element, complex
 L2: layout (depends on dimension)
@@ -45,12 +45,12 @@ L5: matrix  <- current module
 
 ## 2. 需求映射与范围约束
 
-| 类型     | 内容 |
-| -------- | ---- |
-| 需求映射 | 需求说明书 §4, §9.1, §9.2, §9.3, §10, §13, §27, §28.2, §28.3, §28.4, §28.5 |
+| 类型     | 内容                                                                                     |
+| -------- | ---------------------------------------------------------------------------------------- |
+| 需求映射 | 需求说明书 §4, §9.1, §9.2, §9.3, §10, §13, §27, §28.2, §28.3, §28.4, §28.5               |
 | 范围内   | 向量内积 `dot`、复数共轭线性语义、形状检查、空向量单位元，以及可选 SIMD / 并行执行路径。 |
-| 范围外   | 矩阵-矩阵乘法、外积、批量矩阵乘法、矩阵分解以及 BLAS/LAPACK 绑定。 |
-| 非目标   | 不把 `matrix` 扩展为通用线性代数层，不新增第三方线性代数依赖。 |
+| 范围外   | 矩阵-矩阵乘法、外积、批量矩阵乘法、矩阵分解以及 BLAS/LAPACK 绑定。                       |
+| 非目标   | 不把 `matrix` 扩展为通用线性代数层，不新增第三方线性代数依赖。                           |
 
 ---
 
@@ -68,25 +68,25 @@ src/matrix/
 
 ## 4. 依赖关系与实现约束
 
-### 4.1 Invariants
+### 4.1 不变量
 
-| 不变量 | 说明 |
-| ------ | ---- |
-| 逻辑 rank | `dot(a, b)` 的两个输入都必须是逻辑 1D；若 `ndim != 1`，必须走可恢复错误路径，而不是静默降级或 panic。 |
-| 长度一致 | 两个输入在逻辑上一维时，`len(a) == len(b)` 才允许继续计算；否则返回 `DimensionMismatch { operation, expected, actual }`。 |
-| 复数语义 | 复数内积固定使用 `sum(conjugate(a[i]) * b[i])`；实数类型的 `conjugate()` 为恒等操作。 |
-| 执行路径 | `dot` 在语义检查后可按能力选择标量、`simd` 模块 kernel 或 `parallel` 模块并行归约；各路径必须保持一致的结果、错误类别与 panic 契约。 |
-| 溢出契约 | 整数 dot 的乘法溢出与累加溢出均为不可恢复错误，必须通过 checked arithmetic panic。 |
+| 不变量    | 说明                                                                                                                                 |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| 逻辑 rank | `dot(a, b)` 的两个输入都必须是逻辑 1D；若 `ndim != 1`，必须走可恢复错误路径，而不是静默降级或 panic。                                |
+| 长度一致  | 两个输入在逻辑上一维时，`len(a) == len(b)` 才允许继续计算；否则返回 `DimensionMismatch { operation, expected, actual }`。            |
+| 复数语义  | 复数内积固定使用 `sum(conjugate(a[i]) * b[i])`；实数类型的 `conjugate()` 为恒等操作。                                                |
+| 执行路径  | `dot` 在语义检查后可按能力选择标量、`simd` 模块 kernel 或 `parallel` 模块并行归约；各路径必须保持一致的结果、错误类别与 panic 契约。 |
+| 溢出契约  | 整数 dot 的乘法溢出与累加溢出均为不可恢复错误，必须通过 checked arithmetic panic。                                                   |
 
-### 4.2 Error Scenarios
+### 4.2 错误场景
 
-| 场景 | 对外语义 |
-| ---- | -------- |
-| 左输入不是逻辑 1D | 返回 `XenonError::InvalidArgument { operation: "dot".into(), argument: "lhs".into(), expected: "logical 1D tensor".into(), actual: format!("ndim={}", lhs.ndim()).into(), axis: None, axis_len: None, start: None, end: None, shape: Some(lhs.shape().to_vec()) }`。 |
-| 右输入不是逻辑 1D | 返回 `XenonError::InvalidArgument { operation: "dot".into(), argument: "rhs".into(), expected: "logical 1D tensor".into(), actual: format!("ndim={}", rhs.ndim()).into(), axis: None, axis_len: None, start: None, end: None, shape: Some(rhs.shape().to_vec()) }`。 |
-| 两个 1D 输入长度不一致 | 返回 `XenonError::DimensionMismatch { operation: "dot", expected: a.len(), actual: b.len() }`。 |
-| 整数乘法或累加溢出 | 触发 panic；这属于不可恢复算术域错误。 |
-| 空向量输入 | 合法，返回加法单位元 `A::zero()`。 |
+| 场景                   | 对外语义                                                                                                                                                                                                                                                             |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 左输入不是逻辑 1D      | 返回 `XenonError::InvalidArgument { operation: "dot".into(), argument: "lhs".into(), expected: "logical 1D tensor".into(), actual: format!("ndim={}", lhs.ndim()).into(), axis: None, axis_len: None, start: None, end: None, shape: Some(lhs.shape().to_vec()) }`。 |
+| 右输入不是逻辑 1D      | 返回 `XenonError::InvalidArgument { operation: "dot".into(), argument: "rhs".into(), expected: "logical 1D tensor".into(), actual: format!("ndim={}", rhs.ndim()).into(), axis: None, axis_len: None, start: None, end: None, shape: Some(rhs.shape().to_vec()) }`。 |
+| 两个 1D 输入长度不一致 | 返回 `XenonError::DimensionMismatch { operation: "dot", expected: a.len(), actual: b.len() }`。                                                                                                                                                                      |
+| 整数乘法或累加溢出     | 触发 panic；这属于不可恢复算术域错误。                                                                                                                                                                                                                               |
+| 空向量输入             | 合法，返回加法单位元 `A::zero()`。                                                                                                                                                                                                                                   |
 
 ### 4.3 依赖图
 
@@ -114,14 +114,14 @@ src/matrix/
 
 ### 4.4 类型级依赖
 
-| 来源模块       | 使用的类型/trait                                                                           |
-| -------------- | ------------------------------------------------------------------------------------------ |
-| `tensor`       | `TensorView<'a, A, D>`, `.ndim()`, `.shape()`, `.len()`, `.as_ptr()`, `.is_f_contiguous()` |
-| `element`      | `Numeric`, `ComplexScalar`                                                                 |
-| `iter`         | `Elements`, `.iter()`                                                                      |
-| `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`should_parallelize()`、`can_use_simd()` |
-| `error`        | `XenonError::InvalidArgument`, `XenonError::DimensionMismatch`                             |
-| `simd`（可选） | 为满足条件的输入提供 dot 的 SIMD kernel（参见 `08-simd.md`）                               |
+| 来源模块           | 使用的类型/trait                                                                           |
+| ------------------ | ------------------------------------------------------------------------------------------ |
+| `tensor`           | `TensorView<'a, A, D>`, `.ndim()`, `.shape()`, `.len()`, `.as_ptr()`, `.is_f_contiguous()` |
+| `element`          | `Numeric`, `ComplexScalar`                                                                 |
+| `iter`             | `Elements`, `.iter()`                                                                      |
+| `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`should_parallelize()`、`can_use_simd()`                 |
+| `error`            | `XenonError::InvalidArgument`, `XenonError::DimensionMismatch`                             |
+| `simd`（可选）     | 为满足条件的输入提供 dot 的 SIMD kernel（参见 `08-simd.md`）                               |
 | `parallel`（可选） | 为大输入提供 dot 的纯并行归约执行路径（不含串行回退），阈值与嵌套并行由 `dispatch.rs` 管理 |
 
 ### 4.5 依赖方向
@@ -130,11 +130,11 @@ src/matrix/
 
 ### 4.6 依赖合法性与替代方案
 
-| 项目           | 说明 |
-| -------------- | ---- |
-| 新增第三方依赖 | 无 |
+| 项目           | 说明                                                                          |
+| -------------- | ----------------------------------------------------------------------------- |
+| 新增第三方依赖 | 无                                                                            |
 | 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
-| 替代方案       | 不适用；当前范围内无需额外第三方依赖。 |
+| 替代方案       | 不适用；当前范围内无需额外第三方依赖。                                        |
 
 ---
 
@@ -278,12 +278,12 @@ dot_impl(a, b):
 
 `dot` 的并行路径必须直接复用 `09-parallel.md` 中的运行时裁决，而不是在 `matrix/` 内部复制一套独立阈值逻辑：
 
-| 约束 | 要求 |
-| ---- | ---- |
-| 阈值来源 | 是否进入并行路径由 `dispatch::should_parallelize(len, is_f_contiguous)` 与全局阈值配置决定。 |
-| 非连续惩罚 | 非连续视图沿用 `dispatch.rs` 的有效阈值翻倍策略；仅当收益明确时才进入并行。 |
+| 约束         | 要求                                                                                                                      |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| 阈值来源     | 是否进入并行路径由 `dispatch::should_parallelize(len, is_f_contiguous)` 与全局阈值配置决定。                              |
+| 非连续惩罚   | 非连续视图沿用 `dispatch.rs` 的有效阈值翻倍策略；仅当收益明确时才进入并行。                                               |
 | 禁止嵌套并行 | 若当前线程已处于库内部并行区域，则 `dispatch::ParallelGuard::enter()` 失败并强制回退标量/串行路径，不得再开启第二层并行。 |
-| 路径顺序 | 先做 rank/shape 校验，再做阈值与 guard 判定，最后在并行 chunk 内局部选择 SIMD 或标量。 |
+| 路径顺序     | 先做 rank/shape 校验，再做阈值与 guard 判定，最后在并行 chunk 内局部选择 SIMD 或标量。                                    |
 
 这满足 `require.md §9.2` / `§9.3` 对“支持阈值配置”和“库内部不得开启第二层并行”的要求。
 
@@ -435,46 +435,46 @@ Wave 4: [T4]
 
 ### 8.2 单元测试清单
 
-| 测试函数                    | 测试内容                          | 优先级 |
-| --------------------------- | --------------------------------- | ------ |
-| `test_dot_basic`            | 两个长度为 3 的向量内积正确       | 高     |
-| `test_dot_complex`          | 复数内积满足共轭线性              | 高     |
-| `test_dot_dimension_mismatch`   | 长度不匹配返回 DimensionMismatch 错误 | 高     |
-| `test_dot_int_overflow_mul` | 整数乘法溢出触发 panic            | 高     |
-| `test_dot_int_overflow_add` | 整数累加溢出触发 panic            | 高     |
-| `test_dot_empty`            | 两个空向量内积返回加法单位元      | 中     |
-| `test_dot_single_element`   | 单元素向量内积                    | 中     |
-| `test_dot_simd_path_with_feature` | 启用 `simd` 后 dot 可走 SIMD 路径且结果语义一致 | 高     |
-| `test_dot_parallel_path`          | 启用并行路径后结果与标量语义一致 | 高     |
-| `test_dot_large_vector_parallel_threshold` | 大向量达到阈值后可走并行路径，结果与标量一致 | 高     |
-| `test_dot_nested_parallel_falls_back` | 已处于库内并行区域时不得开启第二层并行 | 高     |
-| `test_dot_simd_parallel_combined_consistency` | SIMD+并行组合路径与标量串行结果一致 | 高     |
-| `test_dot_parallel_threshold_boundary` | 并行阈值边界两侧都保持正确路径选择与结果语义 | 高     |
-| `test_dot_high_rank_invalid_argument` | 高 rank 输入（如 6D/动态高维）调用 `dot` 返回 `InvalidArgument` | 高     |
-| `test_dot_float_tolerance_across_paths` | 浮点路径在标量/SIMD/并行之间满足文档化容差 | 高     |
+| 测试函数                                      | 测试内容                                                        | 优先级 |
+| --------------------------------------------- | --------------------------------------------------------------- | ------ |
+| `test_dot_basic`                              | 两个长度为 3 的向量内积正确                                     | 高     |
+| `test_dot_complex`                            | 复数内积满足共轭线性                                            | 高     |
+| `test_dot_dimension_mismatch`                 | 长度不匹配返回 DimensionMismatch 错误                           | 高     |
+| `test_dot_int_overflow_mul`                   | 整数乘法溢出触发 panic                                          | 高     |
+| `test_dot_int_overflow_add`                   | 整数累加溢出触发 panic                                          | 高     |
+| `test_dot_empty`                              | 两个空向量内积返回加法单位元                                    | 中     |
+| `test_dot_single_element`                     | 单元素向量内积                                                  | 中     |
+| `test_dot_simd_path_with_feature`             | 启用 `simd` 后 dot 可走 SIMD 路径且结果语义一致                 | 高     |
+| `test_dot_parallel_path`                      | 启用并行路径后结果与标量语义一致                                | 高     |
+| `test_dot_large_vector_parallel_threshold`    | 大向量达到阈值后可走并行路径，结果与标量一致                    | 高     |
+| `test_dot_nested_parallel_falls_back`         | 已处于库内并行区域时不得开启第二层并行                          | 高     |
+| `test_dot_simd_parallel_combined_consistency` | SIMD+并行组合路径与标量串行结果一致                             | 高     |
+| `test_dot_parallel_threshold_boundary`        | 并行阈值边界两侧都保持正确路径选择与结果语义                    | 高     |
+| `test_dot_high_rank_invalid_argument`         | 高 rank 输入（如 6D/动态高维）调用 `dot` 返回 `InvalidArgument` | 高     |
+| `test_dot_float_tolerance_across_paths`       | 浮点路径在标量/SIMD/并行之间满足文档化容差                      | 高     |
 
 ### 8.3 边界测试场景
 
-| 场景                 | 预期行为                 |
-| -------------------- | ------------------------ |
-| 空向量 `shape=[0]`   | 返回加法单位元（零）     |
-| 单元素向量           | 返回 a[0] \* b[0]        |
-| 空向量边界占位       | 预留 `test_dot_empty_vector_boundary`：覆盖空输入在标量/SIMD/并行配置下的单位元与错误语义 |
-| 高维输入边界占位     | 预留 `test_dot_high_dim_boundary`：覆盖高 rank `IxDyn` / 静态高维输入的 `InvalidArgument` 诊断 |
-| 大向量边界占位       | 预留 `test_dot_large_vector_boundary`：覆盖超大输入下阈值切换、容差与 panic 契约一致性 |
-| 阈值边界输入         | 覆盖低于/等于/高于并行阈值时的路径裁决与结果一致性 |
-| 大向量（`10^7` 量级元素） | 可按阈值选择并行 dot 路径，结果正确 |
-| 高维输入 `shape=[1,1,1,1,1,1]` | 返回 `InvalidArgument`，诊断中包含 `operation`、`argument`、`expected`、`actual`、`shape` |
-| 非连续向量（切片后） | 回退到标量路径，结果正确 |
-| `Inf` / `-Inf` 输入  | 遵循 IEEE 754；例如实数 `dot([Inf], [2.0]) == Inf` |
+| 场景                           | 预期行为                                                                                       |
+| ------------------------------ | ---------------------------------------------------------------------------------------------- |
+| 空向量 `shape=[0]`             | 返回加法单位元（零）                                                                           |
+| 单元素向量                     | 返回 a[0] \* b[0]                                                                              |
+| 空向量边界占位                 | 预留 `test_dot_empty_vector_boundary`：覆盖空输入在标量/SIMD/并行配置下的单位元与错误语义      |
+| 高维输入边界占位               | 预留 `test_dot_high_dim_boundary`：覆盖高 rank `IxDyn` / 静态高维输入的 `InvalidArgument` 诊断 |
+| 大向量边界占位                 | 预留 `test_dot_large_vector_boundary`：覆盖超大输入下阈值切换、容差与 panic 契约一致性         |
+| 阈值边界输入                   | 覆盖低于/等于/高于并行阈值时的路径裁决与结果一致性                                             |
+| 大向量（`10^7` 量级元素）      | 可按阈值选择并行 dot 路径，结果正确                                                            |
+| 高维输入 `shape=[1,1,1,1,1,1]` | 返回 `InvalidArgument`，诊断中包含 `operation`、`argument`、`expected`、`actual`、`shape`      |
+| 非连续向量（切片后）           | 回退到标量路径，结果正确                                                                       |
+| `Inf` / `-Inf` 输入            | 遵循 IEEE 754；例如实数 `dot([Inf], [2.0]) == Inf`                                             |
 
 ### 8.4 属性测试不变量
 
-| 不变量                                          | 测试方法                   |
-| ----------------------------------------------- | -------------------------- |
-| `dot([], []) == A::zero()`                      | 空向量对所有受支持类型成立 |
+| 不变量                                                              | 测试方法                   |
+| ------------------------------------------------------------------- | -------------------------- |
+| `dot([], []) == A::zero()`                                          | 空向量对所有受支持类型成立 |
 | `dot(a, b)` 与标量实现一致（整数严格一致，浮点/复数满足文档化容差） | 随机 1D 连续/非连续输入    |
-| 复数 `dot(a, b) == sum(conjugate(a[i]) * b[i])` | 随机复数向量               |
+| 复数 `dot(a, b) == sum(conjugate(a[i]) * b[i])`                     | 随机复数向量               |
 
 ### 8.5 集成测试
 
@@ -484,20 +484,20 @@ Wave 4: [T4]
 
 ### 8.6 Feature gate / 配置测试
 
-| 配置 | 验证点 |
-| ---- | ---- |
-| 默认配置 | `dot()` 通过标量路径满足实数/复数与错误语义契约。 |
-| 启用 `simd` | dot 可选择 SIMD 路径；结果与默认语义一致。 |
-| 启用并行 | dot 可选择并行归约路径；必须复用全局阈值配置并禁止嵌套并行，结果、错误类别与 panic 语义仍与标量路径一致。 |
-| 同时启用 `simd,parallel` | 并行 chunk 内可局部选择 SIMD 或标量，但整体结果仍须与标量串行基线一致，并遵守无二级并行约束。 |
+| 配置                     | 验证点                                                                                                    |
+| ------------------------ | --------------------------------------------------------------------------------------------------------- |
+| 默认配置                 | `dot()` 通过标量路径满足实数/复数与错误语义契约。                                                         |
+| 启用 `simd`              | dot 可选择 SIMD 路径；结果与默认语义一致。                                                                |
+| 启用并行                 | dot 可选择并行归约路径；必须复用全局阈值配置并禁止嵌套并行，结果、错误类别与 panic 语义仍与标量路径一致。 |
+| 同时启用 `simd,parallel` | 并行 chunk 内可局部选择 SIMD 或标量，但整体结果仍须与标量串行基线一致，并遵守无二级并行约束。             |
 
 ### 8.7 类型边界 / 编译期测试
 
-| 场景 | 测试方式 |
-| ---- | ---- |
-| `bool` / `usize` 不参与 `dot()` | 编译期测试。 |
-| `dot()` 仅接受逻辑 1D 输入 | 运行时错误测试与编译期签名检查结合。 |
-| matrix-matrix multiply 与 decomposition 不属于当前 API | API 缺失断言。 |
+| 场景                                                   | 测试方式                             |
+| ------------------------------------------------------ | ------------------------------------ |
+| `bool` / `usize` 不参与 `dot()`                        | 编译期测试。                         |
+| `dot()` 仅接受逻辑 1D 输入                             | 运行时错误测试与编译期签名检查结合。 |
+| matrix-matrix multiply 与 decomposition 不属于当前 API | API 缺失断言。                       |
 
 ---
 
@@ -505,14 +505,14 @@ Wave 4: [T4]
 
 ### 9.1 接口约定
 
-| 方向               | 对方模块  | 接口/类型                   | 约定                                                                             |
-| ------------------ | --------- | --------------------------- | -------------------------------------------------------------------------------- |
-| `matrix → tensor`  | `tensor`  | `TensorView<'_, A, D>`      | 消费任意维度张量视图，但在运行时检查其逻辑 rank 是否为 1，参见 `07-tensor.md` §5 |
-| `matrix → iter`    | `iter`    | `Elements`                  | 使用元素迭代器遍历输入，参见 `10-iterator.md` §5.1                               |
-| `matrix → element` | `element` | `Numeric` / `ComplexScalar` | 通过泛型约束区分实数与复数路径，参见 `03-element.md` §5                          |
-| `matrix → simd`    | `simd`    | dot kernel                  | 满足条件时委托给 `simd` 模块做内积加速，且保持统一语义                           |
-| `matrix → parallel`| `parallel`| parallel reduction          | 大输入时可委托给 `parallel` 模块做并行归约，且保持统一语义                       |
-| `matrix → error`   | `error`   | `XenonError::InvalidArgument`, `XenonError::DimensionMismatch` | 非 1D 输入或长度不匹配时返回可恢复错误，字段使用规范形式 |
+| 方向                | 对方模块   | 接口/类型                                                      | 约定                                                                             |
+| ------------------- | ---------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `matrix → tensor`   | `tensor`   | `TensorView<'_, A, D>`                                         | 消费任意维度张量视图，但在运行时检查其逻辑 rank 是否为 1，参见 `07-tensor.md` §5 |
+| `matrix → iter`     | `iter`     | `Elements`                                                     | 使用元素迭代器遍历输入，参见 `10-iterator.md` §5.1                               |
+| `matrix → element`  | `element`  | `Numeric` / `ComplexScalar`                                    | 通过泛型约束区分实数与复数路径，参见 `03-element.md` §5                          |
+| `matrix → simd`     | `simd`     | dot kernel                                                     | 满足条件时委托给 `simd` 模块做内积加速，且保持统一语义                           |
+| `matrix → parallel` | `parallel` | parallel reduction                                             | 大输入时可委托给 `parallel` 模块做并行归约，且保持统一语义                       |
+| `matrix → error`    | `error`    | `XenonError::InvalidArgument`, `XenonError::DimensionMismatch` | 非 1D 输入或长度不匹配时返回可恢复错误，字段使用规范形式                         |
 
 ### 9.2 数据流描述
 
@@ -529,12 +529,14 @@ User calls dot(a, b)
 
 ## 10. 错误处理与语义边界
 
-| 主题 | 内容 |
-| ---- | ---- |
+| 主题              | 内容                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Recoverable error | 左/右输入非 1D 时分别返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, axis_len: Option<usize>, start: Option<usize>, end: Option<usize>, shape: Option<Vec<usize>> }`，典型取值为 `argument: "lhs"` 或 `"rhs"`、`axis: None`、`axis_len: None`、`start: None`、`end: None`、`shape: Some(input.shape().to_vec())`；长度不匹配时返回 `XenonError::DimensionMismatch { operation: "dot", expected: usize, actual: usize }`。 |
-| Panic | 整数 dot 的乘法溢出与累加溢出均为不可恢复错误，按 checked arithmetic 触发 panic。panic 文本至少包含 `operation=dot`、元素类型、`trigger`（`multiply` / `accumulate`）、逻辑位置（如 `lane`）以及输入 shape。 |
-| 路径一致性 | `dot` 可选择标量、SIMD 或并行路径；任何可选路径都不得改变结果、错误类别或 panic 语义。 |
-| 容差边界 | 内积的浮点容差遵循 `08-simd.md` 定义。具体为：`max(1 ULP, epsilon * |scalar_result|)`。复数内积按实部、虚部分量分别比较。 |
+| Panic             | 整数 dot 的乘法溢出与累加溢出均为不可恢复错误，按 checked arithmetic 触发 panic。panic 文本至少包含 `operation=dot`、元素类型、`trigger`（`multiply` / `accumulate`）、逻辑位置（如 `lane`）以及输入 shape。                                                                                                                                                                                                                                                                                                                                          |
+| 路径一致性        | `dot` 可选择标量、SIMD 或并行路径；任何可选路径都不得改变结果、错误类别或 panic 语义。                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| 容差边界          | 内积的浮点容差遵循 `08-simd.md` 定义；复数内积按实部、虚部分量分别比较。                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+
+> **容差公式补充：** 内积对每个实数分量采用 `max(1 ULP, epsilon * abs(scalar_result))`。该规则与 `08-simd.md` 中按 `f32` / `f64` 分别定义的容差公式保持一致。
 
 ---
 
@@ -560,12 +562,12 @@ User calls dot(a, b)
 
 ### 决策 3：SIMD 优化策略
 
-| 属性     | 值                                                    |
-| -------- | ----------------------------------------------------- |
-| 决策     | `dot` 在满足条件时可接入 SIMD kernel 与并行归约，否则回退标量实现 |
+| 属性     | 值                                                                                           |
+| -------- | -------------------------------------------------------------------------------------------- |
+| 决策     | `dot` 在满足条件时可接入 SIMD kernel 与并行归约，否则回退标量实现                            |
 | 理由     | inner product 需要覆盖 SIMD / 并行能力，同时保持与标量路径一致的语义、错误模型和整数溢出契约 |
-| 替代方案 | 始终只使用标量实现                     |
-| 拒绝原因 | 与需求说明书对 inner product 的 SIMD / 并行覆盖要求不一致 |
+| 替代方案 | 始终只使用标量实现                                                                           |
+| 拒绝原因 | 与需求说明书对 inner product 的 SIMD / 并行覆盖要求不一致                                    |
 
 ---
 
@@ -575,11 +577,11 @@ User calls dot(a, b)
 
 以下性能表述是**非规范性目标**，用于说明路径选择意图；真正的公开契约仍是前文的语义、错误与容差边界。是否进入并行路径以 `parallel` 模块的全局阈值为准。
 
-| 操作                 | 当前路径 | 说明 |
-| -------------------- | -------- | ---- |
-| dot f32 (`len < threshold`) | 标量或 SIMD | 小输入避免并行调度开销；连续输入可优先尝试 SIMD |
-| dot f32 (`len >= threshold`) | SIMD / 并行优先，失败时回退标量 | 大输入优先尝试并行；chunk 内可局部选择 SIMD |
-| dot f64 (`len >= threshold`) | SIMD / 并行优先，失败时回退标量 | 与 f32 相同，但受 ISA 与对齐条件约束 |
+| 操作                                 | 当前路径                         | 说明                                                                 |
+| ------------------------------------ | -------------------------------- | -------------------------------------------------------------------- |
+| dot f32 (`len < threshold`)          | 标量或 SIMD                      | 小输入避免并行调度开销；连续输入可优先尝试 SIMD                      |
+| dot f32 (`len >= threshold`)         | SIMD / 并行优先，失败时回退标量  | 大输入优先尝试并行；chunk 内可局部选择 SIMD                          |
+| dot f64 (`len >= threshold`)         | SIMD / 并行优先，失败时回退标量  | 与 f32 相同，但受 ISA 与对齐条件约束                                 |
 | dot complex f64 (`len >= threshold`) | 视 kernel 支持情况选择并行或标量 | 复数内积同样必须保持共轭线性语义，并对每个实数分量满足文档化容差契约 |
 
 ### 12.2 复杂度标注
@@ -591,14 +593,14 @@ User calls dot(a, b)
 
 ## 13. 平台与工程约束
 
-| 项目       | 约束                                                           |
-| ---------- | -------------------------------------------------------------- |
-| 标准库环境 | Xenon 当前版本仅支持 `std`，本文档不再承诺 `no_std` 兼容性     |
-| MSRV       | Rust 1.85+                                                     |
-| crate 结构 | 保持单 crate 结构，`matrix` 作为库内模块存在                   |
+| 项目       | 约束                                                                                                                  |
+| ---------- | --------------------------------------------------------------------------------------------------------------------- |
+| 标准库环境 | Xenon 当前版本仅支持 `std`，本文档不再承诺 `no_std` 兼容性                                                            |
+| MSRV       | Rust 1.85+                                                                                                            |
+| crate 结构 | 保持单 crate 结构，`matrix` 作为库内模块存在                                                                          |
 | SemVer     | `dot()` 的输入维度前提、错误类别、复数共轭线性定义以及浮点/复数路径容差规则属于稳定契约；后续优化不得改变这些公开语义 |
-| 依赖约束   | 不引入额外线性代数第三方依赖；BLAS 绑定仍属范围外              |
-| API 边界   | `dot()` 仅对逻辑上一维输入开放，并通过运行时检查返回可恢复错误 |
+| 依赖约束   | 不引入额外线性代数第三方依赖；BLAS 绑定仍属范围外                                                                     |
+| API 边界   | `dot()` 仅对逻辑上一维输入开放，并通过运行时检查返回可恢复错误                                                        |
 
 ---
 
@@ -622,6 +624,8 @@ User calls dot(a, b)
 | 1.2.0 | 2026-04-15 |
 | 1.2.1 | 2026-04-15 |
 | 1.2.2 | 2026-04-15 |
+| 1.2.3 | 2026-04-16 |
+| 1.2.4 | 2026-04-16 |
 
 ---
 

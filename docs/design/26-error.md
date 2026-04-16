@@ -188,9 +188,13 @@ pub enum XenonError {
         conversion_type: Option<Cow<'static, str>>,
     },
 
-    Ffi(FfiError),
+    Ffi {
+        reason: String,
+    },
 
-    Workspace(WorkspaceError),
+    Workspace {
+        reason: String,
+    },
 
     IndexOutOfBounds {
         operation: Cow<'static, str>,
@@ -230,11 +234,11 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 
 公开 API 统一使用 prelude 导出的 `crate::error::Result`（即 `Result<T, XenonError>` 别名）作为返回类型。
 
-模块可以为内部实现保留局部错误分类（例如 `FfiError`、`WorkspaceError`、`TypeConversionError`），以避免在模块内部丢失语义；但凡进入 Xenon 的公开 API 边界，必须统一包装为 `XenonError`（如 `XenonError::Ffi(...)`、`XenonError::Workspace(...)`、`XenonError::TypeConversion(...)`），不得直接向外暴露模块私有错误类型。
+模块可以为内部实现保留局部错误分类（例如 `FfiError`、`WorkspaceError`、`TypeConversionError`），以避免在模块内部丢失语义；但凡进入 Xenon 的公开 API 边界，必须统一包装为 `XenonError`。其中 `FfiError` 与 `WorkspaceError` 只能在模块内存在；对外只能暴露不携带私有类型名的 opaque 公开变体（如 `XenonError::Ffi { reason }`、`XenonError::Workspace { reason }`、`XenonError::TypeConversion(...)`）。
 
-`WorkspaceError` 与 `FfiError` 都必须实现 `std::error::Error`，以便 `XenonError::source()` 暴露完整的内层错误链。
+`WorkspaceError` 与 `FfiError` 可以在模块内部实现 `std::error::Error` 以服务局部链路诊断，但公开 `XenonError` 不得因 `source()` 或公开变体签名而泄漏这些私有类型。
 
-> **FfiError 结构化说明：** `FfiError` 已采用结构化字段设计，具体字段定义参见 `23-ffi.md`。
+> **内部错误说明：** `FfiError` 与 `WorkspaceError` 仍可保留结构化字段设计，具体字段定义分别参见 `23-ffi.md` 与 `24-workspace.md`；公开边界只要求把这些诊断压缩为稳定的 `reason` 文本。
 
 > **存储模式转换说明：** 存储模式转换失败统一使用 `XenonError::InvalidStorageMode`，并携带 `source_storage_mode`、`target_storage_mode`、`conversion_type` 字段；当某个调用点并不涉及显式存储模式转换时，这些字段可为 `None`。
 
@@ -243,11 +247,11 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 | 边界位置               | 规则                                                     |
 | ---------------------- | -------------------------------------------------------- |
 | Public API return type | `Result<_, XenonError>`                                  |
-| Internal mapping       | `WorkspaceError -> XenonError::Workspace(...)`           |
-| Internal mapping       | `FfiError -> XenonError::Ffi(...)`                       |
+| Internal mapping       | `WorkspaceError -> XenonError::Workspace { reason }`     |
+| Internal mapping       | `FfiError -> XenonError::Ffi { reason }`                 |
 | Internal mapping       | `TypeConversionError -> XenonError::TypeConversion(...)` |
 
-该表为公开错误边界的唯一基线；其他设计文档若在公开 API 层直接暴露 `WorkspaceError` 或独立的 `TypeConversionError`，均视为与本文冲突，必须以本文为准修正。
+该表为公开错误边界的唯一基线；其他设计文档若在公开 API 层直接暴露 `WorkspaceError`、`FfiError` 或独立的 `TypeConversionError`，均视为与本文冲突，必须以本文为准修正。
 
 ### 4.3 类型转换错误规范
 
@@ -303,8 +307,8 @@ where
 | `DimensionMismatch`                   | `operation`, `expected`, `actual`                                                  |
 | `InvalidArgument`                     | `operation`, `argument`, `expected`, `actual`, `axis?`, `axis_len?`, `start?`, `end?`, `shape?`；范围切片越界时必须额外携带 `axis`、`axis_len`、`start`、`end`，不得仅以字符串拼接描述 |
 | `InvalidStorageMode`                  | `operation`, `expected`, `actual`, `shape?`, `source_storage_mode?`, `target_storage_mode?`, `conversion_type?` |
-| `Ffi(FfiError)`                       | 由 `FfiError` 提供 `operation`, `backend`, `precondition`, `actual`                |
-| `Workspace(...)`                      | 由 `WorkspaceError` 提供 `size`, `align`, `split`, `len` 等适用结构化字段          |
+| `Ffi { reason }`                      | 由内部 `FfiError` 归一化生成公开 `reason`；不得在公开 API 中暴露 `FfiError` 类型名 |
+| `Workspace { reason }`                | 由内部 `WorkspaceError` 归一化生成公开 `reason`；不得在公开 API 中暴露 `WorkspaceError` 类型名 |
 | `IndexOutOfBounds`                    | `operation`, `attempted_index`, `axis`, `shape`；`attempted_index` 表示完整多维索引 tuple，`axis` 指出首个越界维度 |
 | `TypeConversion(TypeConversionError)` | `source_type`, `target_type`, `reason`, `element_index`                            |
 
@@ -464,8 +468,8 @@ impl fmt::Display for XenonError {
                 target_storage_mode.as_deref().unwrap_or("<any>"),
                 conversion_type.as_deref().unwrap_or("<any>"),
             ),
-            Self::Ffi(err) => write!(f, "ffi error: {}", err),
-            Self::Workspace(err) => write!(f, "workspace error: {}", err),
+            Self::Ffi { reason } => write!(f, "ffi error: {}", reason),
+            Self::Workspace { reason } => write!(f, "workspace error: {}", reason),
             Self::TypeConversion(err) => write!(
                 f,
                 "type conversion failed at element {}: {} -> {} ({:?})",
@@ -616,6 +620,7 @@ let value = lhs * rhs;
 | 1.1.2 | 2026-04-14 |
 | 1.1.3 | 2026-04-15 |
 | 1.1.4 | 2026-04-15 |
+| 1.1.5 | 2026-04-16 |
 
 ---
 

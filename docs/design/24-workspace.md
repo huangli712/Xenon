@@ -97,8 +97,8 @@ src/
 
 ```
 src/workspace/
-├── mod.rs          # Re-exports: Workspace, WorkspaceBorrow, WorkspaceBorrowMut, SplitBorrowMut, WorkspaceError
-├── error.rs        # Defines WorkspaceError; consumed by workspace.rs/split.rs/expand.rs and mapped at the public boundary through crate::error
+├── mod.rs          # Re-exports: Workspace, WorkspaceBorrow, WorkspaceBorrowMut, SplitBorrowMut
+├── error.rs        # Defines internal WorkspaceError; consumed by workspace.rs/split.rs/expand.rs and mapped at the public boundary through crate::error
 ├── workspace.rs    # Depends on error
 ├── borrow.rs       # Depends on workspace (by reference)
 ├── split.rs        # Depends on workspace (by reference) and error
@@ -134,9 +134,9 @@ External dependencies:
 
 ### 4.5 WorkspaceError 的独立性
 
-`WorkspaceError` 保留为 workspace 模块内部与模块级 API 的错误分类，用于表达分配失败、借用冲突、分割越界等局部语义；当错误穿过 Xenon 的公开 API 边界时，须包装为 `XenonError::Workspace(WorkspaceError)`。因此本文档中的 `new()`、`borrow()`、`borrow_mut()`、`split_at_mut()`、`ensure_capacity()` 等公开入口在最终对外签名上统一使用 `crate::error::Result<_>`（即 `26-error.md` 定义的统一结果别名），而不是直接暴露 `WorkspaceError`。
+`WorkspaceError` 保留为 workspace 模块内部使用的错误分类，用于表达分配失败、借用冲突、分割越界等局部语义；`mod.rs` 不对外 re-export 该类型。当错误穿过 Xenon 的公开 API 边界时，须包装为 `XenonError::Workspace { reason }` 这样的 opaque 公开变体。因此本文档中的 `new()`、`borrow()`、`borrow_mut()`、`split_at_mut()`、`ensure_capacity()` 等公开入口在最终对外签名上统一使用 `crate::error::Result<_>`（即 `26-error.md` 定义的统一结果别名），而不是直接暴露 `WorkspaceError`。
 
-> **与 XenonError 的关系**: `WorkspaceError` 仍作为内部分类存在，以避免 workspace 模块内部丢失领域语义；但公开 Xenon API 不直接暴露它，而是统一返回包装后的 `XenonError`。参见 `26-error.md`。
+> **与 XenonError 的关系**: `WorkspaceError` 仍作为内部分类存在，以避免 workspace 模块内部丢失领域语义；但公开 Xenon API 不直接暴露它，`mod.rs` 的公共接口也不包含它，而是统一返回包装后的 `XenonError::Workspace { reason }`。参见 `26-error.md`。
 
 > **与线程安全需求的边界**: workspace 不是 `require.md §10` 中张量 storage mode 的一部分，而是独立的上游缓冲区工具。`!Send + !Sync` 为当前实现选择，非 `require.md §26` 的强制要求。采用此限制是为了简化借用安全性论证；未来版本可考虑放宽为 `Send`（需配合安全的跨线程借用检查）。
 
@@ -145,9 +145,9 @@ External dependencies:
 ```rust,ignore
 use alloc::borrow::Cow;
 
-/// Error type for workspace operations.
+/// Internal error type for workspace operations.
 #[derive(Debug, Clone, PartialEq)]
-pub enum WorkspaceError {
+pub(crate) enum WorkspaceError {
     /// Allocation failed (out of memory or invalid layout).
     AllocFailed { size: usize, align: usize },
     /// The requested alignment is not a power of 2.
@@ -283,8 +283,7 @@ impl Workspace {
     ///
     /// # Errors
     ///
-    /// - `XenonError::Workspace(WorkspaceError::AllocFailed)`: Memory allocation failed
-    /// - `XenonError::Workspace(WorkspaceError::InvalidLayout)`: Invalid layout parameters
+    /// - `XenonError::Workspace { reason }`: Memory allocation failed or layout parameters invalid
     ///
     /// # Example
     ///
@@ -294,26 +293,35 @@ impl Workspace {
     /// ```
     pub fn new(capacity: usize, alignment: usize) -> Result<Self> {
         if !alignment.is_power_of_two() || alignment < Self::MIN_ALIGNMENT {
-            return Err(XenonError::Workspace(WorkspaceError::InvalidLayout {
+            return Err(XenonError::Workspace {
+                reason: WorkspaceError::InvalidLayout {
                 size: capacity,
                 align: alignment,
                 reason: Cow::Borrowed("alignment must be a power of two and >= MIN_ALIGNMENT"),
-            }));
+                }
+                .to_string(),
+            });
         }
 
         let size = capacity.max(1);
         let layout = Layout::from_size_align(size, alignment)
-            .map_err(|_| XenonError::Workspace(WorkspaceError::InvalidLayout {
-                size,
-                align: alignment,
-                reason: Cow::Borrowed("Layout::from_size_align rejected the requested size/alignment"),
-            }))?;
+            .map_err(|_| XenonError::Workspace {
+                reason: WorkspaceError::InvalidLayout {
+                    size,
+                    align: alignment,
+                    reason: Cow::Borrowed("Layout::from_size_align rejected the requested size/alignment"),
+                }
+                .to_string(),
+            })?;
 
         let ptr = unsafe { alloc(layout) };
-        let ptr = NonNull::new(ptr).ok_or(XenonError::Workspace(WorkspaceError::AllocFailed {
-            size,
-            align: alignment,
-        }))?;
+        let ptr = NonNull::new(ptr).ok_or(XenonError::Workspace {
+            reason: WorkspaceError::AllocFailed {
+                size,
+                align: alignment,
+            }
+            .to_string(),
+        })?;
 
         Ok(Self {
             ptr,
@@ -383,7 +391,7 @@ impl Workspace {
     ///
     /// # Errors
     ///
-    /// `XenonError::Workspace(WorkspaceError::AlreadyBorrowed)`: Workspace is already borrowed.
+    /// `XenonError::Workspace { reason }`: Workspace is already borrowed.
     ///
     /// Note: the current design allows at most one active read guard at a time.
     /// This keeps the runtime state machine simple and matches the workspace's
@@ -394,7 +402,7 @@ impl Workspace {
     /// `borrow()`/`borrow_mut()` take `&self` rather than `&mut self` because
     /// exclusivity is enforced at runtime by the internal `AtomicU8` state
     /// machine. Concurrent or overlapping borrow attempts are rejected by
-    /// returning `WorkspaceError::AlreadyBorrowed`.
+    /// returning a `XenonError::Workspace { reason }` value.
     pub fn borrow(&self) -> Result<WorkspaceBorrow<'_>> {
         let prev = self.borrow_state.compare_exchange(
             Self::BORROW_NONE,
@@ -662,8 +670,7 @@ impl Workspace {
     ///
     /// # Errors
     ///
-    /// - `XenonError::Workspace(WorkspaceError::SplitOutOfBounds)`: `mid > capacity`
-    /// - `XenonError::Workspace(WorkspaceError::AlreadyBorrowed)`: Already borrowed
+    /// - `XenonError::Workspace { reason }`: `mid > capacity` or already borrowed
     ///
     /// # Example
     ///
@@ -823,8 +830,7 @@ impl Workspace {
     ///
     /// # Errors
     ///
-    /// - `XenonError::Workspace(WorkspaceError::AlreadyBorrowed)`: Workspace is already borrowed
-    /// - `XenonError::Workspace(WorkspaceError::AllocFailed)`: Memory allocation failed
+    /// - `XenonError::Workspace { reason }`: Workspace is already borrowed or memory allocation failed
     ///
     /// # Example
     ///
@@ -848,19 +854,25 @@ impl Workspace {
 
         // 1.5x growth
         // Growth-factor arithmetic must use checked_mul to avoid usize overflow.
-        // On overflow, return WorkspaceError::AllocFailed (wrapped as XenonError::Workspace
-        // at the public boundary) rather than panicking or silently wrapping.
+        // On overflow, return WorkspaceError::AllocFailed mapped to
+        // XenonError::Workspace { reason } at the public boundary rather than
+        // panicking or silently wrapping.
         let grown = self.capacity
             .checked_mul(Self::GROWTH_FACTOR_NUMERATOR)
-            .ok_or(XenonError::Workspace(WorkspaceError::AllocFailed {
-                size: min_capacity,
-                align: self.alignment,
-            }))?
+            .ok_or(XenonError::Workspace {
+                reason: WorkspaceError::AllocFailed {
+                    size: min_capacity,
+                    align: self.alignment,
+                }
+                .to_string(),
+            })?
             / Self::GROWTH_FACTOR_DENOMINATOR;
         let new_capacity = grown.max(min_capacity);
 
         self.reallocate(new_capacity)
-            .map_err(|e| XenonError::Workspace(e))
+            .map_err(|e| XenonError::Workspace {
+                reason: e.to_string(),
+            })
     }
 
     /// Internal reallocation.
@@ -910,7 +922,7 @@ impl Workspace {
 }
 ````
 
-> **错误映射说明：** `reallocate()` 使用统一的 `Result<()>` 别名作为模块内实现签名，内部 `WorkspaceError` 通过 `XenonError::Workspace(...)` 做统一包装；不得让 `WorkspaceError` 直接穿透公开 API。
+> **错误映射说明：** `reallocate()` 使用统一的 `Result<()>` 别名作为模块内实现签名，内部 `WorkspaceError` 通过 `XenonError::Workspace { reason }` 做统一包装；不得让 `WorkspaceError` 直接穿透公开 API。
 
 > **扩容语义说明：** `ensure_capacity()` / `reallocate()` 的公开契约仅保证扩容后容量不小于请求值且对齐保持不变。当前实现可能复制旧缓冲区中的字节，但调用方不得依赖内容被保留；扩容后所有旧视图与借用均失效，必须把整个 scratch 区域重新视为 unspecified 状态，并在重新初始化后再通过 `assume_init_*` 系列 API 解释为已初始化数据。
 
@@ -1141,7 +1153,7 @@ Wave 4:               [T7]            <- depends on T4, T5, and T6 all being com
 | ---------------------------------------------- | ---------------------------------------------- | ------ |
 | `test_workspace_new_basic`                     | 指定容量和对齐创建工作空间                     | 高     |
 | `test_workspace_new_default`                   | 默认参数创建                                   | 高     |
-| `test_workspace_new_invalid_alignment`         | 非法对齐值返回 `XenonError::Workspace(WorkspaceError::InvalidLayout)` | 高     |
+| `test_workspace_new_invalid_alignment`         | 非法对齐值返回 `XenonError::Workspace { reason }`，且 `reason` 提供可诊断文本 | 高     |
 | `test_workspace_drop_no_leak`                  | Drop 后内存正确释放                            | 中     |
 | `test_borrow_basic`                            | 不可变借用和 `MaybeUninit` 切片访问            | 高     |
 | `test_borrow_mut_basic`                        | 可变借用和 `MaybeUninit` 类型化访问            | 高     |
@@ -1191,15 +1203,15 @@ Wave 4:               [T7]            <- depends on T4, T5, and T6 all being com
 
 | 配置 | 验证点 |
 | ---- | ---- |
-| 默认配置 | workspace 在默认构建下采用 `!Send + !Sync` 这一当前实现选择，并保持 MaybeUninit 暴露与借用状态机语义。 |
+| 默认配置 | workspace 在默认构建下验证当前实现采用 `!Send + !Sync`，并保持 MaybeUninit 暴露与借用状态机语义；该约束仅验证现状，不构成未来版本的稳定保证。 |
 | 其他 feature 组合 | 不适用；当前模块无额外 feature gate。 |
 
 ### 8.7 类型边界 / 编译期测试
 
 | 场景 | 测试方式 |
 | ---- | ---- |
-| `Workspace` 不实现 `Send` / `Sync` | 编译期测试。 |
-| `SplitBorrowMut` 不实现 `Send` / `Sync` | 编译期测试。 |
+| `Workspace` 当前不实现 `Send` / `Sync` | 编译期测试，验证当前实现选择；若未来放宽，该测试基线可随版本调整。 |
+| `SplitBorrowMut` 当前不实现 `Send` / `Sync` | 编译期测试，验证当前实现选择；若未来放宽，该测试基线可随版本调整。 |
 | typed borrow 拒绝 ZST 与不对齐区域 | 编译期 / 运行时错误测试。 |
 | custom allocator 与 persistent allocation 不属于当前 API | API 缺失断言。 |
 
@@ -1239,7 +1251,7 @@ Upper-layer code requests temporary scratch space
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `new()` / `ensure_capacity()` / `borrow*()` / `split_at_mut()` 失败时统一返回 `XenonError::Workspace(WorkspaceError)`，携带容量、对齐、分割点或借用状态上下文；typed helper 的 ZST、长度和对齐输入错误也通过同一公开错误边界报告。 |
+| Recoverable error | `new()` / `ensure_capacity()` / `borrow*()` / `split_at_mut()` 失败时统一返回 `XenonError::Workspace { reason }`；`reason` 由内部 `WorkspaceError` 归一化生成，并保留容量、对齐、分割点或借用状态等诊断文本；typed helper 的 ZST、长度和对齐输入错误也通过同一公开错误边界报告。 |
 | Panic | 不为公开 API 输入校验引入 panic；`unsafe` 初始化前提若被违反，仍属于调用方责任范围内的 UB。 |
 | 路径一致性 | 当前仅有单一借用状态机与扩容路径；无 SIMD / 并行分支，所有 guard 释放规则必须保持一致。 |
 | 容差边界 | 不适用。 |
@@ -1285,8 +1297,8 @@ Upper-layer code requests temporary scratch space
 
 | 属性     | 值                                                                                                                                                                                                             |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | Workspace 当前实现不实现 Send 或 Sync                                                                                                                                                                           |
-| 理由     | `!Send + !Sync` 为当前实现选择，目的是简化借用安全性论证。即使存在运行时借用状态检查，也暂不将其建模为可跨线程传递或共享的基础类型；若调用方需要多线程临时缓冲区，应在线程边界外自行分配和管理独立工作空间。未来版本可在补充安全的跨线程借用检查后重新评估。 |
+| 决策     | Workspace 当前实现不实现 Send 或 Sync；该结论记录当前实现选择，而非冻结为长期稳定保证                                                                                                                            |
+| 理由     | `!Send + !Sync` 为当前实现选择，目的是简化借用安全性论证。即使存在运行时借用状态检查，也暂不将其建模为可跨线程传递或共享的基础类型；若调用方需要多线程临时缓冲区，应在线程边界外自行分配和管理独立工作空间。相关测试仅验证当前行为，未来版本可在补充安全的跨线程借用检查后重新评估并放宽。 |
 | 替代方案 | 放宽为 Send（并配套跨线程借用检查） — 未来可评估；仅依赖当前 AtomicU8 状态机不足以直接支持完整多线程语义                                                                                                     |
 
 ---
@@ -1338,6 +1350,9 @@ Upper-layer code requests temporary scratch space
 | 1.2.3 | 2026-04-14 |
 | 1.2.4 | 2026-04-14 |
 | 1.2.5 | 2026-04-15 |
+| 1.2.6 | 2026-04-16 |
+| 1.2.7 | 2026-04-16 |
+| 1.2.8 | 2026-04-16 |
 
 ---
 

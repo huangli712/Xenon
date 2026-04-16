@@ -570,12 +570,12 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
 
 | From \ To | `ReadOnlyRef` | `SharedReadOnlyRef` | `WritableRef` | `Owned` |
 | --------- | ------------- | ------------------- | ------------- | ------- |
-| `Owned` | `view()` | `to_shared()` | `view_mut()` | move / `to_owned()` |
+| `Owned` | `view()` | convert to shared-reference-counted storage | `view_mut()` | move / `to_owned()` |
 | `WritableRef` | `view()` | `view()` | type-level only | `to_owned()` |
 | `ReadOnlyRef` | type-level only | type-level only | type-level only | `to_owned()` |
 | `SharedReadOnlyRef` | `view()` | type-level only | type-level only | `to_owned()` |
 
-> **说明：** 本表用于标注公开运行时 API 与纯类型层拒绝的边界。`type-level only` 表示该格子不提供运行时转换入口，而是由 Rust 类型系统直接拒绝；若同一抽象格子有多种具体表示，API 可用性以具体来源为准。
+> **说明：** 本表用于标注公开运行时 API 与纯类型层拒绝的边界。`type-level only` 表示该格子不提供运行时转换入口，而是由 Rust 类型系统直接拒绝；若同一抽象格子有多种具体表示，API 可用性以具体来源为准。`Owned -> SharedReadOnlyRef` 这一格仅描述语义上的“转换为共享引用计数只读存储”；其具体公开 API 名称留待未来版本统一定稿。
 
 > **约束：** Xenon 当前元素类型集合是封闭且按值语义处理的集合；`Owned::from_vec` 保持 `Elem: Copy` 约束，并统一复制到内部 64B 对齐缓冲（参见 `06-layout.md §5.6`）。其它从迭代器或构造器进入 `Owned` 的路径由上层构造模块统一收敛。
 
@@ -1280,6 +1280,7 @@ User calls `TensorBase::as_ptr()`
 | 1.2.3 | 2026-04-14 |
 | 1.2.4 | 2026-04-15 |
 | 1.2.5 | 2026-04-15 |
+| 1.2.6 | 2026-04-16 |
 
 ---
 

@@ -149,11 +149,11 @@ pub(crate) struct ParallelPool {
 
 | 参数 | 类型 | 默认值 | 说明 |
 | ---- | ---- | ------ | ---- |
-| `parallel_threshold` | `usize` | 65536 | 元素数低于此值时使用串行路径 |
+| `parallel_threshold` | `usize` | 65536 | 元素数低于此值时使用串行路径；该值由 `dispatch.rs` 中的编译期常量定义，不属于 `ParallelExecStrategy` 运行时字段 |
 | `max_workers` | `Option<usize>` | `None`（使用线程池默认） | 最大并行工作线程数 |
 | `chunk_size` | `Option<usize>` | `None`（自动计算） | 每个 chunk 的元素数 |
 
-配置入口由 `dispatch.rs` 提供。`parallel/` 模块通过 `ParallelExecStrategy` 接收配置。
+配置入口由 `dispatch.rs` 提供。`parallel_threshold` 由 `dispatch.rs` 内部常量控制；`parallel/` 模块仅通过 `ParallelExecStrategy` 接收运行时策略字段（`chunk_size`、`max_workers`）。
 
 ### 5.2b `ParallelExecStrategy` 参数校验规则
 
@@ -358,10 +358,10 @@ where
 
 - `par_zip_map()` 是二元逐元素并行路径的统一设计入口，供 `math` 模块中的 `add` / `sub` / `mul` / `div` 广播运算消费，不直接暴露为公开用户 API。
 - `par_zip_map()` 接收的 `lhs`、`rhs` 与 `output_dim` 必须已由调用侧完成兼容性验证；广播裁决（含输出 rank/shape 计算）属于 `math` 模块职责，`parallel/` 不重复做形状推导。
-- 广播处理顺序固定为：先由 `math` 模块验证 `lhs` / `rhs` 广播兼容并产出 `output_dim`，再由 `parallel/` 按逻辑线性区间分块；默认 `chunk_size = max(1, (total_elements + num_threads - 1) / num_threads)`，其中 `num_threads = rayon::current_num_threads()`，并按固定左折叠顺序合并 chunk 结果。每个 chunk 为两个输入分别构造与该线性区间对应、且仍与 `output_dim` 兼容的只读 sub-view。若某一侧是广播轴（stride 为 `0` 或逻辑重复维），chunk 视图保持该广播语义，不做物理复制。`DL`、`DR`、`DO` 独立建模，以表达输入与输出 rank 可能不同的广播结果。
-- 线性区间到多维 broadcast sub-view 的映射草图：先把 chunk 的 `[linear_start, linear_end)` 按 `output_dim` 的 F-order 索引规则转换为多维区间；随后对 `lhs` / `rhs` 分别按广播规则投影该区间，得到只读 sub-view。对输出维中长度为 `1` 的广播轴，输入 sub-view 固定复用同一逻辑坐标；对非广播轴，sub-view 保持与输出相同的区间跨度。实现不得为广播轴做物理展开或额外分配。
+- 广播处理顺序固定为：先由 `math` 模块验证 `lhs` / `rhs` 广播兼容并产出 `output_dim`，再由 `parallel/` 按外轴/块状多维 tile 分块；默认 `chunk_size = max(1, (total_elements + num_threads - 1) / num_threads)` 仍作为 tile 目标工作量上界，其中 `num_threads = rayon::current_num_threads()`，并按固定左折叠顺序合并 chunk 结果。每个 chunk 为两个输入分别构造与该 tile 对应、且仍与 `output_dim` 兼容的只读 sub-view。若某一侧是广播轴（stride 为 `0` 或逻辑重复维），chunk 视图保持该广播语义，不做物理复制。`DL`、`DR`、`DO` 独立建模，以表达输入与输出 rank 可能不同的广播结果。
+- 广播 chunk 映射草图：优先按 `output_dim` 的外轴边界生成块状多维 tile，使 chunk 在输出空间内保持可直接切片的矩形子域；若某些退化形状无法形成理想矩形 tile，则实现可退化为“线性索引区间 + 逐元素广播投影”的内部执行形式，而不是要求把任意线性区间整体重建成单个 broadcast sub-view。对输出维中的广播轴，输入侧固定复用同一逻辑坐标；对非广播轴，chunk 保持对应 tile 的区间跨度。实现不得为广播轴做物理展开或额外分配。
 - `par_zip_map` 仅包含并行执行逻辑；若调用发生，表示 `dispatch.rs` 已确认当前输入适合走并行路径。
-- `par_zip_map()` 假定广播兼容性已由调用方验证。不兼容的形状将导致未定义行为或 panic。调用方须在调用前完成兼容性检查。并行操作中发生 panic 或返回 `Err` 时，错误不会被静默忽略。语义上，并行操作须至少传播一个错误，不保证传播“第一个”发生的错误。实现上，Rayon 的并行 collect/reduce 可能不会物理中断其他 worker，但错误信息会被收集并在最终结果中报告。
+- `par_zip_map()` 作为内部并行入口，假定广播兼容性已由调用方验证，不再额外定义单独的 checked 变体。若前置条件被破坏，debug 模式下可触发 panic，以便尽早暴露内部调用错误；release 模式下行为未指定但仍保持内存安全。并行操作中发生 panic 或返回 `Err` 时，错误不会被静默忽略。语义上，并行操作须至少传播一个错误，不保证传播“第一个”发生的错误。实现上，Rayon 的并行 collect/reduce 可能不会物理中断其他 worker，但错误信息会被收集并在最终结果中报告。
 
 ### 6.3a 轴向归约并行方案
 
@@ -754,6 +754,8 @@ XenonError::DimensionMismatch {
 | 1.3.0 | 2026-04-15 |
 | 1.3.1 | 2026-04-15 |
 | 1.3.2 | 2026-04-15 |
+| 1.3.3 | 2026-04-16 |
+| 1.3.4 | 2026-04-16 |
 
 ---
 

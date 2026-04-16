@@ -156,7 +156,7 @@ src/ffi/
 /// category is identified by the enum variant, and the triggering context is
 /// carried by `actual`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum FfiError {
+pub(crate) enum FfiError {
     InvalidRank {
         operation: &'static str,
         backend: &'static str,
@@ -177,10 +177,14 @@ pub enum FfiError {
     },
 }
 
-/// Public Xenon APIs wrap `FfiError` in `XenonError::Ffi` before returning.
+/// Internal ffi-module errors are converted to the public
+/// `XenonError::Ffi { reason: String }` variant before crossing
+/// Xenon's public API boundary.
 impl From<FfiError> for XenonError {
     fn from(value: FfiError) -> Self {
-        XenonError::Ffi(value)
+        XenonError::Ffi {
+            reason: value.to_string(),
+        }
     }
 }
 
@@ -193,7 +197,7 @@ impl core::fmt::Display for FfiError {
 impl std::error::Error for FfiError {}
 ```
 
-> **公开边界说明：** `FfiError` 为内部错误类型，通过 `From<FfiError> for XenonError` 转换后公开。`pub mod ffi` 不直接 re-export `FfiError`，对外稳定错误边界仍是 `XenonError`。
+> **公开边界说明：** `FfiError` 是 `ffi` 模块内部使用的 `pub(crate)` 错误分类，不对 crate 外 re-export。所有公共 FFI 相关错误都必须先在模块内部构造 `FfiError`，再于公开边界统一转换为 `XenonError::Ffi { reason }` 返回；公开 API 不得出现 `FfiError` 类型名或 `XenonError::Ffi(FfiError)` 这类签名。
 
 ### 5.2 原始指针 API
 
@@ -292,11 +296,11 @@ impl ElementType {
 | API | 基准 | 说明 |
 |-----|------|------|
 | `as_ptr()` / `as_mut_ptr()` | 逻辑首元素 | 对非空张量返回第一个逻辑元素的指针；空张量返回 dangling |
-| `TensorExport.data` | 存储基地址 | 底层分配的起始地址，不含 offset |
+| `TensorExport.data` | 逻辑首元素 | 非空张量时等于逻辑首元素地址；空张量时为有效对齐但不可解引用的指针 |
 | `BlasInfo.data_ptr` | 逻辑首元素 | 等价于 `as_ptr()` |
 | `try_ptr_at(indices)` | 指定逻辑位置 | 基于 `as_ptr() + offset` 计算 |
 
-> **语义拆分说明：** Xenon 在 FFI 边界同时保留“逻辑首元素指针”和“存储基地址 + offset 元数据”两种约定：前者便于只关心当前逻辑视图的调用方，后者便于做 raw-parts roundtrip 与跨语言重建视图。两者不得混用。
+> **语义统一说明：** Xenon 在 FFI 边界统一规定 `TensorExport*.data` 表示逻辑首元素指针。`offset` 与 `storage_len` 仍保留，用于跨语言校验底层可访问范围以及与 raw-parts 契约对齐；调用方不得再将 `data` 解释为独立的 storage base pointer。
 
 ````rust,ignore
 /// Raw tensor data export for FFI consumers.
@@ -308,16 +312,20 @@ impl ElementType {
 ///   source tensor is dropped.
 /// - C consumers must use `ndim` as the length of both the `shape` and `strides`
 ///   arrays. Do NOT use hardcoded lengths or any other source.
-/// - For `bool` element type, C consumers must use `_Bool` (C23 `bool`) to match
-///   Rust's `bool` ABI representation. Using `int` or `unsigned char` is
-///   undefined behavior.
+/// - For `bool` element type, interoperability with C `_Bool` / C23 `bool` is
+///   only documented for explicitly supported platforms/ABIs. This does not
+///   constitute a cross-language stable ABI promise across all targets.
 /// - `TensorExport` is the read-only export form and uses `*const A`.
 ///   `TensorExportMut` is the writable export form and uses `*mut A`.
 #[repr(C)]
 pub struct TensorExport<'a, A> {
-    /// Typed pointer to the storage base address.
+    /// Typed pointer to the logical first element.
     ///
-    /// `data`, `strides`, and `offset` all use element units of `A`.
+    /// For non-empty tensors this points at the first logical element.
+    /// For empty tensors (`len() == 0`), this is still a valid aligned pointer
+    /// but must not be dereferenced.
+    ///
+    /// `strides` and `offset` use element units of `A`.
     /// C consumers must cast `data` to the matching element type and interpret
     /// both `offset` and `strides` as element counts rather than byte counts.
     ///
@@ -337,17 +345,21 @@ pub struct TensorExport<'a, A> {
     pub strides: *const usize,
     /// Storage length in elements for safe view reconstruction.
     pub storage_len: usize,
-    /// Offset from the storage base pointer to the logical first element,
-    /// measured in elements.
+    /// Logical offset metadata in element units, preserved for raw-parts
+    /// roundtrip/reconstruction contracts.
     pub offset: usize,
 }
 
 /// Raw mutable tensor data export for FFI consumers.
 #[repr(C)]
 pub struct TensorExportMut<'a, A> {
-    /// Typed pointer to the storage base address.
+    /// Typed pointer to the logical first element.
     ///
-    /// `data`, `strides`, and `offset` all use element units of `A`.
+    /// For non-empty tensors this points at the first logical element.
+    /// For empty tensors (`len() == 0`), this is still a valid aligned pointer
+    /// but must not be dereferenced.
+    ///
+    /// `strides` and `offset` use element units of `A`.
     /// C consumers must cast `data` to the matching element type and interpret
     /// both `offset` and `strides` as element counts rather than byte counts.
     pub data: *mut A,
@@ -366,8 +378,8 @@ pub struct TensorExportMut<'a, A> {
     pub strides: *const usize,
     /// Storage length in elements for safe view reconstruction.
     pub storage_len: usize,
-    /// Offset from the storage base pointer to the logical first element,
-    /// measured in elements.
+    /// Logical offset metadata in element units, preserved for raw-parts
+    /// roundtrip/reconstruction contracts.
     pub offset: usize,
 }
 
@@ -383,9 +395,9 @@ where
     /// The consumer must ensure the tensor outlives the export.
     /// This method does not fail; it always returns a valid export.
     ///
-    /// Empty tensors are allowed: when `len() == 0`, `data` may be a
-    /// non-dereferenceable sentinel pointer. In that case `shape`, `strides`,
-    /// and `offset` must still correctly describe the empty tensor metadata.
+    /// Empty tensors are allowed: when `len() == 0`, `data` is a valid aligned
+    /// pointer that must not be dereferenced. `shape`, `strides`, and `offset`
+    /// still describe the empty tensor metadata.
     pub fn export(&self) -> TensorExport<'_, A>;
 }
 
@@ -412,13 +424,13 @@ where
 
 > **可写导出边界：** `export_mut()` 通过 `&mut self` 和 `S: StorageMut` 保证 Xenon 侧的独占可写访问；只读视图和共享只读存储则在 trait 边界上直接被拒绝。这与 `require.md §6` 的存储模式转换和 `§25` 的零拷贝导出要求保持一致。
 
-> **空张量约定：** 空张量上的 `as_ptr()` / `as_mut_ptr()` 必须返回悬垂但非解引用的 dangling 指针，而不是 storage base pointer。导出时 `TensorExport*.data` 仍表示 storage base pointer；此时 `shape`、`strides`、`offset` 仍须正确反映空张量元数据。C 调用方必须先基于长度判断是否可解引用。
+> **空张量约定：** 空张量上的 `as_ptr()` / `as_mut_ptr()` 必须返回有效对齐但不可解引用的 dangling 指针。导出时 `TensorExport*.data` 也遵循相同约定：它始终表示逻辑首元素位置；当 `len() == 0` 时该位置没有可解引用元素，因此调用方必须先基于长度判断是否可访问。
 
-> **指针语义补充：** `TensorExport<'_, A>::data` 是 `*const A`，`TensorExportMut<'_, A>::data` 是 `*mut A`，二者语义上都始终指向 storage base pointer。`offset` 与 `strides` 都以"元素个数"计量，而不是字节数。逻辑首元素地址等于 `data.add(offset)`（仅对非空张量成立）。
+> **指针语义补充：** `TensorExport<'_, A>::data` 是 `*const A`，`TensorExportMut<'_, A>::data` 是 `*mut A`，二者语义上都始终指向逻辑首元素。对非空张量，该地址与当前布局下的可访问首元素一致；若该张量同时满足 `offset == 0`，它也恰好等于 storage base。`offset` 与 `strides` 都以"元素个数"计量，而不是字节数。
 
 > **stride 约定：** `strides` 以"元素个数"而非字节数表示步长，类型为 `usize`。按照 `06-layout.md` §1.2 与 `require.md` §7，当前版本 Xenon 不支持负步长，因此 FFI 导出格式也不保留负 stride 语义。`from_raw_parts()` 允许零步长布局以表达广播只读视图；`from_raw_parts_mut()` 则拒绝所有非空零步长布局（即任何非单元素轴的 `stride == 0` 都会报错）。
 
-> **offset 约定：** `offset` 一律表示从 `data`（即导出的 storage base pointer）到逻辑首元素的**元素单位**位移，与 `07-tensor.md` 的 raw-parts 契约一致；不得将其解释为字节偏移。C 调用方必须先按元素单位应用这一次偏移，再把结果视为逻辑首元素地址。
+> **offset 约定：** `offset` 记录与 `07-tensor.md` raw-parts 契约一致的逻辑偏移元数据，单位始终是元素个数而不是字节数。即使导出结构中的 `data` 已直接指向逻辑首元素，C 调用方也不得把 `offset` 改写为新的指针基准；它仅用于视图重建、范围校验和与 Xenon 原始布局元数据对齐。
 
 > **ndim 一致性约定：** C 消费者须以 `ndim` 为 `shape` 和 `strides` 数组的长度，不得以硬编码长度或其它来源替代。`TensorExport` 的构造保证 `shape` 和 `strides` 指向的数组长度均等于 `ndim`。
 
@@ -449,11 +461,14 @@ pub struct Complex64 {
 
 #### 5.2.3 Bool FFI 布局契约
 
-> **Bool ABI 要求：** Rust `bool` 在 FFI 中等价于 C 的 `_Bool`（C23 起为 `bool`），大小为 1 字节，对齐为 1，合法值为 `0`（false）和 `1`（true）。C 消费者必须使用 `_Bool` 或 `bool`（C23）来匹配 `TensorExport<bool>` / `TensorExportMut<bool>` 中的 `data` 指针类型；使用 `int`、`unsigned char` 或其它整数类型会导致未定义行为。
+> **Bool ABI 约束：** `bool` 与 C `_Bool` / C23 `bool` 的互操作仅在文档明确支持的平台/ABI 下成立；它用于说明当前支持目标上的对接方式，不作为跨语言、跨目标的稳定 ABI 承诺。对这些已支持平台，C 消费者应使用 `_Bool` 或 `bool`（C23）来匹配 `TensorExport<bool>` / `TensorExportMut<bool>` 中的 `data` 指针类型，并避免使用 `int`、`unsigned char` 等其它整数类型。
 
 > **导出语义：** 导出 `bool` 张量时，`TensorExport<bool>` 中的 `data` 为 `*const bool`（C 侧 `const _Bool*`），`TensorExportMut<bool>` 中的 `data` 为 `*mut bool`（C 侧 `_Bool*`），`offset` 与 `strides` 按 `bool` 元素个数计量。`strides[i] == 1` 表示相邻逻辑元素在内存中连续排列（每个占 1 字节）。
 
-> **C 侧验证说明：** Xenon 侧只声明 Rust `bool` 与 C `_Bool` 的 ABI 约定；跨语言集成时，调用方仍应在 C 侧通过 `sizeof(_Bool) == 1`、`_Alignof(_Bool) == 1` 等静态断言验证目标工具链兼容性。
+> **C 侧验证说明：** Xenon 仅对文档明确支持的平台/ABI 给出 Rust `bool` 与 C `_Bool` 的互操作说明；跨语言集成时，调用方仍应在目标工具链侧通过 `sizeof(_Bool) == 1`、`_Alignof(_Bool) == 1` 等静态断言验证兼容性，不应把该文档表述解读为跨平台稳定 ABI 保证。
+
+> **测试边界说明：** 与上述 ABI 约束一致，`bool` FFI ABI 相关测试也只应在文档明确支持的 targets/ABI 上启用；其它目标上应通过 `#[cfg(...)]` 跳过，而不是把 `_Bool` 兼容性断言提升为无条件测试基线。
+
 ### 5.3 从裸指针构造张量
 
 ````rust,ignore
@@ -1266,8 +1281,8 @@ Wave 3: ┌────┴────┐
 | `test_export_contract`                   | `export()` 导出 `data/shape/strides/offset/ndim` 与源张量元数据一致 | 高     |
 | `test_export_mut_contract`               | `export_mut()` 仅对 `StorageMut` 路径开放，且返回可写导出描述符 | 高     |
 | `test_complex_ffi_abi`                   | `Complex32/Complex64` 的 `#[repr(C)]` 字段顺序、大小与对齐满足 ABI 约定 | 高     |
-| `test_bool_ffi_abi`                      | `bool` FFI 导出要求匹配 `_Bool` ABI（1-byte / align 1 / 值域 0/1） | 高     |
-| `test_export_empty_tensor_sentinel`      | 空张量导出时允许非解引用哨兵指针，且 shape/strides/offset 仍正确 | 高     |
+| `test_bool_ffi_abi`                      | 仅在文档明确支持的 targets/ABI 上验证 `bool` FFI 导出匹配 `_Bool` ABI（1-byte / align 1 / 值域 0/1）；其它目标通过 `#[cfg(...)]` 跳过 | 高     |
+| `test_export_empty_tensor_pointer`       | 空张量导出时返回有效对齐但不可解引用的指针，且 shape/strides/offset 仍正确 | 高     |
 | `test_try_offset_of_various`             | recoverable 索引转换返回正确偏移或错误             | 高     |
 | `test_try_offset_of_checked_overflow`    | 极端 stride/index 组合返回可恢复错误而非 panic     | 高     |
 | `test_try_ptr_at_various`                | recoverable 指针转换返回正确指针或错误             | 高     |
@@ -1276,7 +1291,7 @@ Wave 3: ┌────┴────┐
 
 | 场景       | 预期行为                                      |
 | ---------- | --------------------------------------------- |
-| 空张量     | `as_ptr()` 对空张量不保证返回可解引用指针；raw-parts 构造需跳过 `ptr.add(offset)`；`export()` / `export_mut()` 允许返回非解引用哨兵指针但必须保留正确元数据 |
+| 空张量     | `as_ptr()` 对空张量不保证返回可解引用指针；raw-parts 构造需跳过 `ptr.add(offset)`；`export()` / `export_mut()` 返回有效对齐但不可解引用的指针且必须保留正确元数据 |
 | 单元素张量 | `as_ptr()` 指向唯一元素                       |
 | 非连续切片 | `is_blas_layout_compatible()` 返回 `false`   |
 | 广播维度   | `is_blas_layout_compatible()` 返回 `false`   |
@@ -1371,7 +1386,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `blas_info()` / `lda()` 在 rank 或布局非法时返回 `XenonError::Ffi`；BLAS 整数宽度转换失败由 `BlasInfo::as_blas_int()` 返回 `XenonError::Ffi`；`from_raw_parts_owned()` 在 owned 元数据非法时返回 `XenonError::InvalidLayout`；`try_offset_of()` / `try_ptr_at()` 在 rank / bounds / checked arithmetic 非法时返回 `XenonError`；`from_raw_parts_mut()` 在可写布局自别名时返回 `XenonError::InvalidLayout`。 |
+| Recoverable error | `blas_info()` / `lda()` 在 rank 或布局非法时返回 `XenonError::Ffi { reason }`；BLAS 整数宽度转换失败由 `BlasInfo::as_blas_int()` 返回同一公开 opaque 变体；`from_raw_parts_owned()` 在 owned 元数据非法时返回 `XenonError::InvalidLayout`；`try_offset_of()` / `try_ptr_at()` 在 rank / bounds / checked arithmetic 非法时返回 `XenonError`；`from_raw_parts_mut()` 在可写布局自别名时返回 `XenonError::InvalidLayout`。 |
 | Panic | 不提供公开 panic-sugar 索引转换 API；`from_raw_parts*()` 中那些无法直接验证的不安全前提若被违反，仍属于 unsafe UB，而非 recoverable error。 |
 | 路径一致性 | 指针访问、BLAS 查询与 raw-parts roundtrip 必须共享同一 shape / strides / offset 解释；无 SIMD / 并行分支。 |
 | 容差边界 | 不适用。 |
@@ -1468,6 +1483,10 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | 1.2.0 | 2026-04-15 |
 | 1.2.1 | 2026-04-15 |
 | 1.2.2 | 2026-04-15 |
+| 1.2.3 | 2026-04-16 |
+| 1.2.4 | 2026-04-16 |
+| 1.2.5 | 2026-04-16 |
+| 1.2.6 | 2026-04-16 |
 
 ---
 
