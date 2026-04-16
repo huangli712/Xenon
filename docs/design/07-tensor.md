@@ -184,7 +184,7 @@ pub struct TensorBase<S, D> {
 
 ### 5.2 Type aliases (full list)
 
-```rust
+```rust,ignore
 // === Primary type aliases ===
 
 /// Owning multi-dimensional array.
@@ -283,6 +283,9 @@ where
     /// Returns the storage-location classification of the tensor payload.
     pub fn storage_kind(&self) -> StorageKind;
 
+    /// Query the access semantics of this tensor's data.
+    pub fn access_semantics(&self) -> AccessSemantics;
+
     /// Returns the physical data location of the tensor payload.
     pub fn data_location(&self) -> DataLocation;
 
@@ -326,6 +329,14 @@ pub enum StorageKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccessSemantics {
+    ReadOnly,
+    SharedReadOnly,
+    Writable,
+    Owned,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DataLocation {
     Cpu,
 }
@@ -333,7 +344,7 @@ pub enum DataLocation {
 
 > **`len` / storage 长度不变量：** `TensorBase::len()` 返回逻辑元素总数（由 `shape` 计算）；`Storage::len()` 返回底层存储的可见长度。对于视图类型，storage len 可能大于 logical len。所有 bounds check 基于 logical len，raw-parts 构造基于 storage len。
 
-> **数据位置查询说明：** 当前版本仅支持 CPU 内存，`data_location()` 恒返回 `DataLocation::Cpu`，用于满足 `require.md §8` 的存储位置查询接口。
+> **数据位置查询说明：** 当前版本仅支持 CPU 内存，`data_location()` 恒返回 `DataLocation::Cpu`，用于满足 `需求说明书 §8` 的存储位置查询接口。
 
 > **`storage_kind()` 语义说明：** `storage_kind()` 返回底层**实际存储表示类型**对应的 `Owned / View / ViewMut / Shared`，而不是高层语义分类。`OwnedRepr` 报告 `Owned`，`ViewRepr` 报告 `View`，`ViewMutRepr` 报告 `ViewMut`，`ArcRepr` 报告 `Shared`。因此广播结果若底层表示为 `ViewRepr`，其 `storage_kind()` 也必须返回 `View`，而不是 `Shared`。
 
@@ -342,10 +353,19 @@ pub enum DataLocation {
 > **三层语义模型：**
 >
 > 1. **存储表示层**：`Owned` / `View` / `ViewMut` / `Shared`，即 `storage_kind()` 的返回值，描述底层 representation。
-> 2. **访问语义层**：`ReadOnly` / `SharedReadOnly` / `Writable`，由存储表示与当前访问约束共同导出。
+> 2. **访问语义层**：`ReadOnly` / `SharedReadOnly` / `Writable` / `Owned`，由 `access_semantics()` 返回，描述当前张量对底层数据的访问语义。
 > 3. **布局状态层**：`FContiguous` / `NonContiguous` / `BroadcastView`，由 `LayoutFlags` / `LayoutState` 描述。
 >
 > 广播张量通常表现为“表示层 = `View`，访问语义层 = `SharedReadOnly`，布局状态层 = `BroadcastView`”。
+
+> **权威约束：** 访问语义的权威查询入口是 `access_semantics()`；`storage_kind()` 只报告底层表示类型，不能替代访问语义判定。
+
+| 语义分类 | 对应表示类型 | 统一语义说明 | 查询结果 |
+| -------- | ------------ | ------------ | -------- |
+| 只读 | `ViewRepr<'_, A>`（普通非广播只读借用） | 只提供共享只读借用；不提供写访问；不持有底层存储 | `AccessSemantics::ReadOnly` |
+| 共享只读 | `ArcRepr<A>`，或带共享只读语义标记的 `ViewRepr<'_, A>`（广播结果 / `ViewMutRepr` 零拷贝降级结果） | 可被多个只读视图共享；不提供安全可写访问；可共享所有权或共享借用语义 | `AccessSemantics::SharedReadOnly` |
+| 可写 | `ViewMutRepr<'_, A>` | 提供独占可写借用；同时允许读取；不得与其他可写或共享只读访问并存 | `AccessSemantics::Writable` |
+| 拥有 | `Owned<A>` | 持有底层存储所有权；提供可读可写访问；可零拷贝借出视图或降级为共享只读 | `AccessSemantics::Owned` |
 
 > `LayoutState` 使用 `crate::layout::LayoutState`（参见 `06-layout.md §5`）；
 > 本文档不再重复定义 `FContiguous`、`NonContiguous`、`BroadcastView` 三个变体。
@@ -446,7 +466,7 @@ where
     ///
     /// * `shape` - Length of each axis
     /// * `data` - Element data following logical-index correspondence semantics
-    ///   defined by `require.md §19`; the input order defines which element belongs
+///   defined by `需求说明书 §19`; the input order defines which element belongs
     ///   to each logical index, rather than requiring callers to pre-arrange bytes
     ///   in a specific physical layout
     ///
@@ -463,7 +483,7 @@ where
     /// derive canonical F-order strides, and failure to construct the underlying
     /// storage. Any unmet condition returns `XenonError`.
     ///
-    /// Xenon follows `require.md §19`: "the order of the input data defines the element-to-logical-index correspondence."
+/// Xenon follows `需求说明书 §19`: "the order of the input data defines the element-to-logical-index correspondence."
     /// The current version defaults to 64-byte-aligned allocation
     /// (for example via `Owned::from_vec_aligned`), consistent with `05-storage.md`.
     /// This aligned path is the default owned-storage policy; any exception must be
@@ -496,7 +516,7 @@ where
     /// - That product must be representable in `usize` without overflow
     /// - `shape` must be representable by the current dimension type
     /// - The default packed F-order stride derived from `shape` must be
-    ///   representable and consistent with `require.md §7`
+///   representable and consistent with `需求说明书 §7`
     /// - The constructor assumes no extra offset and therefore treats the input
     ///   buffer as the full logical tensor payload
     pub(crate) unsafe fn from_raw_vec_unchecked(data: Vec<A>, shape: D) -> Self {
@@ -601,7 +621,7 @@ where
 
 ### 5.8 Good/Bad 对比
 
-```rust
+```rust,ignore
 // Good - Use generic constraints to accept any readable tensor
 fn process<S, D, A>(tensor: &TensorBase<S, D>)
 where
@@ -622,7 +642,7 @@ where
 }
 ```
 
-```rust
+```rust,ignore
 // Good - Use from_shape_vec to validate correctness
 let t = Tensor2::<f64>::from_shape_vec([3, 4], vec![1.0; 12])?;
 
@@ -658,7 +678,7 @@ let t = unsafe {
 >
 > - `Strides<D>` 保证 strides 与 shape 维度数相同（编译期）
 > - 静态维度使用栈分配数组（性能）
-> - 当前版本仅覆盖非负步长与零步长（广播）；负步长布局不在当前版本范围内（参见 `require.md §7`）
+> - 当前版本仅覆盖非负步长与零步长（广播）；负步长布局不在当前版本范围内（参见 `需求说明书 §7`）
 
 ### 6.2 offset 字段设计
 
@@ -953,18 +973,6 @@ Wave 4:       [T10]
 | ---------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `tests/test_tensor.rs` | `from_shape_vec` / `view` / `view_mut` / `as_ptr` 与 `dimension`、`storage`、`layout`、`index` 的端到端协同路径 |
 
-### 8.7 数据流描述
-
-```text
-User calls constructors / `view()` / `view_mut()` / query APIs
-    │
-    ├── dimension provides shape metadata
-    ├── storage provides the backing buffer and ownership model
-    ├── tensor combines shape + strides + offset + flags
-    ├── layout computes contiguity / alignment / zero-stride flags
-    └── index / iter / math / ffi and other upper layers continue consuming `TensorBase` as the unified carrier
-```
-
 ### 8.8 Feature gate / 配置测试
 
 | 配置项 | 覆盖方式                             | 说明                                         |
@@ -984,12 +992,38 @@ User calls constructors / `view()` / `view_mut()` / query APIs
 
 ## 9. 与其他模块的交互
 
+### 9.0 核心数据流
+
+```text
+User calls constructors / `view()` / `view_mut()` / query APIs
+    │
+    ├── dimension provides shape metadata
+    ├── storage provides the backing buffer and ownership model
+    ├── tensor combines shape + strides + offset + flags
+    ├── layout computes contiguity / alignment / zero-stride flags
+    └── index / iter / math / ffi and other upper layers continue consuming `TensorBase` as the unified carrier
+```
+
+### 9.0a 典型构造数据流图
+
+```
+User calls constructor-module API `Tensor::<f64, Ix2>::zeros([3, 4])?`
+    │
+    ├── `Dimension::ndim()`          → 2
+    ├── `Dimension::slice()`         → [3, 4]
+    ├── compute element count        → 12
+    ├── compute strides (F-order)    → [1, 3]
+    ├── aligned allocation 12 * 8 = 96 bytes  → 64-byte aligned
+    ├── compute `LayoutFlags`        → F_CONTIGUOUS | ALIGNED
+    └── return `Result<TensorBase<Owned<f64>, Ix2>, XenonError>`
+```
+
 ### 9.1 与 storage 模块的接口
 
 | 接口 | 方向 | 契约 |
 | ---- | ---- | ---- |
 | `Storage::as_ptr()` / `StorageMut::as_mut_ptr()` | `tensor` 消费 `storage` | storage 层返回 storage base pointer；`TensorBase` 负责叠加 `offset` 并形成 logical-first pointer |
-| `Owned::from_vec_aligned(data)` | `tensor` 消费 `storage` | 当前版本默认采用 64 字节对齐分配策略；若存在例外，须显式文档化，且不得改变 `require.md §19` 规定的逻辑元素顺序 |
+| `Owned::from_vec_aligned(data)` | `tensor` 消费 `storage` | 当前版本默认采用 64 字节对齐分配策略；若存在例外，须显式文档化，且不得改变 `需求说明书 §19` 规定的逻辑元素顺序 |
 | `Storage<Elem = A>` / `StorageMut<Elem = A>` | `tensor` 消费 `storage` trait | 元素类型、只读/可写访问能力完全由存储模式 trait 约束决定，`tensor` 不重复维护独立元素类型参数 |
 
 ```rust,ignore
@@ -1230,22 +1264,6 @@ where
 | `TensorView{N}`    | `TensorView2<'a, A>`    | N 维不可变视图     |
 | `TensorViewMut{N}` | `TensorViewMut2<'a, A>` | N 维可变视图       |
 | `ArcTensor{N}`     | `ArcTensor2<A>`         | N 维 Arc 共享数组  |
-
-## 附录 C：数据流图
-
-```
-User calls constructor-module API `Tensor::<f64, Ix2>::zeros([3, 4])?`
-    │
-    ├── `Dimension::ndim()`          → 2
-    ├── `Dimension::slice()`         → [3, 4]
-    ├── compute element count        → 12
-    ├── compute strides (F-order)    → [1, 3]
-    ├── aligned allocation 12 * 8 = 96 bytes  → 64-byte aligned
-    ├── compute `LayoutFlags`        → F_CONTIGUOUS | ALIGNED
-    └── return `Result<TensorBase<Owned<f64>, Ix2>, XenonError>`
-```
-
----
 
 ## 版本历史
 

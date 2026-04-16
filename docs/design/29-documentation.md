@@ -54,14 +54,14 @@ Cross-cutting concern (global):
 
 | 类型     | 内容                                                         |
 | -------- | ------------------------------------------------------------ |
-| 需求映射 | `require.md §28.1` |
+| 需求映射 | `需求说明书 §28.1` |
 | 范围内   | pub API 文档、doctest、examples、docs.rs 配置、README        |
 | 范围外   | 第三方教程平台、自定义文档主题、交互式 notebook 或站点系统   |
 | 非目标   | 通过文档规范扩展产品能力、引入额外文档构建依赖或改变平台边界 |
 
-> **说明**：`CHANGELOG.md` 为工程辅助产物，不属于 `require.md §28.1` 的文档要求范围。
+> **说明**：`CHANGELOG.md` 为工程辅助产物，不属于 `需求说明书 §28.1` 的文档要求范围。
 
-> **范围注记：** `require.md §28.1` 的最低要求聚焦 pub API 文档、README 与示例交付。下文中的 `CHANGELOG.md`、版本号规则、docs.rs metadata、文档 CI / feature 验证矩阵、Wave 拆分与详细任务清单均为设计扩展，用于工程化落地，不构成对 `require.md §28.1` 的新增强制项。
+> **范围注记：** `需求说明书 §28.1` 的最低要求聚焦 pub API 文档、README 与示例交付。下文中的 `CHANGELOG.md`、版本号规则、docs.rs metadata、文档 CI / feature 验证矩阵、Wave 拆分与详细任务清单均为设计扩展，用于工程化落地，不构成对 `需求说明书 §28.1` 的新增强制项。
 
 ---
 
@@ -257,7 +257,7 @@ L3: Examples (examples/)
 //!
 //! ## Runtime Environment
 //!
-//! Xenon supports only the `std` environment (`require.md §1.3`).
+//! Xenon supports only the `std` environment (`需求说明书 §1.3`).
 //! It does not need or provide a `std` feature toggle.
 //! All documentation assumes a `std` environment.
 //!
@@ -293,6 +293,8 @@ L3: Examples (examples/)
 #![warn(rustdoc::missing_crate_level_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 ````
+
+以上仅列出文档相关 lint 增补，完整 `lib.rs` 基线见 `00-coding.md §6.1`。
 
 #### 5.4.2 文档节使用规则
 
@@ -342,6 +344,8 @@ L3: Examples (examples/)
 #![warn(clippy::missing_panics_doc)]      // Panicking functions need Panics section
 #![warn(clippy::missing_safety_doc)]      // Unsafe functions need Safety section
 ```
+
+以上仅列出文档相关 lint 增补，完整 `lib.rs` 基线见 `00-coding.md §6.1`。
 
 ---
 
@@ -495,11 +499,11 @@ MIT
 
 ### 5.9 CHANGELOG.md（可选工程整理，非默认交付）
 
-> **设计扩展说明：** 本节及后续涉及版本号规则、docs.rs metadata、文档 CI / feature 验证矩阵的内容，均属于超出 `require.md §28.1` 最低范围的工程化设计扩展。
+> **设计扩展说明：** 本节及后续涉及版本号规则、docs.rs metadata、文档 CI / feature 验证矩阵的内容，均属于超出 `需求说明书 §28.1` 最低范围的工程化设计扩展。
 
 #### 5.9.1 格式
 
-`CHANGELOG.md` 可遵循 [Keep a Changelog](https://keepachangelog.com/) 格式维护，但该文件属于可选工程整理项，不进入 `require.md §28.1` 的默认交付波次：
+`CHANGELOG.md` 可遵循 [Keep a Changelog](https://keepachangelog.com/) 格式维护，但该文件属于可选工程整理项，不进入 `需求说明书 §28.1` 的默认交付波次：
 
 ```markdown
 # Changelog
@@ -554,7 +558,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 1. **API gated by feature**：API 本身只在特定 feature 启用时出现，此时使用条件编译与必要的 `doc(cfg)`/可见性说明。
 2. **API always present but behavior varies by feature**：API 始终存在，只是启用 feature 后内部执行路径或性能特征变化；此时不得把该 API 误写成“仅在 feature 下可用”，而应在正文中说明行为差异。
 
-```rust
+```rust,ignore
 // lib.rs
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
@@ -576,7 +580,7 @@ pub fn sum(&self) -> A { ... }
 | 检查项 | 命令 | 失败条件 |
 | ------ | ---- | -------- |
 | Gate 1：rustdoc 文档门禁 | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps` | 任何 missing docs / broken intra-doc links / 其他 rustdoc warning |
-| Gate 2：文档节完整性门禁 | `cargo clippy --all-features -- -W clippy::missing_errors_doc -W clippy::missing_panics_doc -W clippy::missing_safety_doc` | 缺少 `# Errors` / `# Panics` / `# Safety` 文档节 |
+| Gate 2：文档节完整性门禁 | `cargo clippy --all-features -- -D clippy::missing_errors_doc -D clippy::missing_panics_doc -D clippy::missing_safety_doc` | 缺少 `# Errors` / `# Panics` / `# Safety` 文档节 |
 | Doctest | `cargo test --doc --all-features` | 任何失败 |
 | 示例验证 | `cargo build --examples --all-features` + 关键默认示例运行命令（当前为 `basic` / `broadcasting` / `workspace`） | 任何失败 |
 
@@ -592,7 +596,7 @@ docs:
       run: RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
     - name: Gate 2 - documentation section completeness
-      run: cargo clippy --all-features -- -W clippy::missing_errors_doc -W clippy::missing_panics_doc -W clippy::missing_safety_doc
+      run: cargo clippy --all-features -- -D clippy::missing_errors_doc -D clippy::missing_panics_doc -D clippy::missing_safety_doc
 
     - name: Run doctests
       run: cargo test --doc --all-features
@@ -791,7 +795,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 ### 7.1 unsafe API 权威清单
 
-须在实现阶段维护一份全项目 unsafe 公开函数清单，作为验证“所有 unsafe 函数均有 `# Safety` 文档”的基线。清单应至少包含：函数签名、所在模块、`# Safety` 文档是否就绪。
+须在实现阶段维护一份全项目 unsafe 公开函数清单，作为验证“所有 unsafe 函数均有 `# Safety` 文档”的基线。清单应至少包含：函数签名、所在模块、`# Safety` 文档是否就绪。最低基线至少覆盖 `23-ffi.md` 中的 `from_raw_parts*` / `from_raw_parts_mut` 系列，以及 `24-workspace.md` 中的 `assume_init_*` 系列高风险函数。
 
 ### 7.2 关键 API 示例矩阵
 
@@ -812,7 +816,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | 边界检查 | feature-gated/unsafe doctest 逐项编译 | 验证条件编译、unsafe 说明和 `std` 环境边界 |
 | 属性检查 | broken links / missing docs 不变量 | 验证“公开 API 均有文档、关键入口均可追踪” |
 | Gate 1：rustdoc 文档门禁 | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps` | 拦截 missing docs、broken intra-doc links 与其他 rustdoc warning |
-| Gate 2：文档节完整性门禁 | `cargo clippy --all-features -- -W clippy::missing_errors_doc -W clippy::missing_panics_doc -W clippy::missing_safety_doc` | 拦截缺少 `# Errors` / `# Panics` / `# Safety` 的公开 API 文档 |
+| Gate 2：文档节完整性门禁 | `cargo clippy --all-features -- -D clippy::missing_errors_doc -D clippy::missing_panics_doc -D clippy::missing_safety_doc` | 拦截缺少 `# Errors` / `# Panics` / `# Safety` 的公开 API 文档 |
 | Doctest | `cargo test --doc --all-features` | 验证文档中的代码示例可编译运行 |
 | 示例验证 | `cargo build --examples --all-features` + 关键默认示例运行命令 | 验证 examples/ 下程序可编译，关键默认示例可运行 |
 
@@ -855,7 +859,7 @@ docs:
       run: RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
     - name: Gate 2 - documentation section completeness
-      run: cargo clippy --all-features -- -W clippy::missing_errors_doc -W clippy::missing_panics_doc -W clippy::missing_safety_doc
+      run: cargo clippy --all-features -- -D clippy::missing_errors_doc -D clippy::missing_panics_doc -D clippy::missing_safety_doc
 
     - name: Run doctests
       run: cargo test --doc --all-features
@@ -954,7 +958,7 @@ Design docs (00-28)
 
 - [ ] **T4**: 可选维护 CHANGELOG.md
   - 文件: `CHANGELOG.md`
-  - 内容: Keep a Changelog 格式；仅作为可选工程整理项，不属于 `require.md §28.1` 的默认交付物
+  - 内容: Keep a Changelog 格式；仅作为可选工程整理项，不属于 `需求说明书 §28.1` 的默认交付物
   - 测试: 格式正确
   - 前置: 无
   - 预计: 5 min

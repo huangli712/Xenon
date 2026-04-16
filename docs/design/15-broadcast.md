@@ -111,7 +111,7 @@ src/broadcast/
 | 项目           | 说明                                                                                         |
 | -------------- | -------------------------------------------------------------------------------------------- |
 | 新增第三方依赖 | 无                                                                                           |
-| 合法性结论     | 合法；当前设计仅使用 Xenon 既有模块与标准库，符合 `require.md` 对最小依赖和单 crate 的限制。 |
+| 合法性结论     | 合法；当前设计仅使用 Xenon 既有模块与标准库，符合需求说明书对最小依赖和单 crate 的限制。 |
 | 替代方案       | 不适用；广播规则与只读视图构造可直接在现有模块边界内完成。                                   |
 
 ---
@@ -120,7 +120,7 @@ src/broadcast/
 
 ### 5.1 公共接口草案与关键签名
 
-```rust
+```rust,ignore
 pub fn broadcast_shape(shape_a: &[usize], shape_b: &[usize]) -> Result<IxDyn, XenonError>;
 
 pub fn can_broadcast(shape_a: &[usize], shape_b: &[usize]) -> bool;
@@ -165,7 +165,7 @@ where
 | `can_broadcast()`     | 仅回答兼容性，不分配、不生成中间结果。                                                                                                                                       |
 | `broadcast_shape()`   | 运行时计算公共 shape；不兼容时返回 `XenonError::BroadcastError`。                                                                                                            |
 | `broadcast_strides()` | 对齐原 shape 与目标 shape，广播轴写入 `0` 步长；输入长度非法时返回 `InvalidArgument`。                                                                                       |
-| `broadcast_to()`      | 显式广播入口；成功时返回共享底层数据的只读 `TensorView`。结果必须满足 `require.md` §6 对“共享只读引用”的约束：可在多个张量实例之间共享同一底层数据，但不提供可写访问权。     |
+| `broadcast_to()`      | 显式广播入口；成功时返回共享底层数据的只读 `TensorView`。结果必须满足需求说明书 §6 对“共享只读引用”的约束：可在多个张量实例之间共享同一底层数据，但不提供可写访问权。     |
 | `broadcast_with()`    | 面向两个张量输入的专用助手：先计算共同 shape，再分别构造两个只读广播视图。它不承担通用 shape 工具职责；仅需 shape 判定时应使用 `can_broadcast()` / `broadcast_shape()`。 |
 
 > **同形状快捷路径**：当两个输入形状完全相同时，`broadcast_with()` 可直接返回两个原始视图而不执行步长重写，因为目标 shape 与输入 shape 一致。
@@ -177,7 +177,7 @@ where
 
 ### 5.3 Good / Bad 对比
 
-```rust
+```rust,ignore
 // Good - explicit broadcast with recoverable error handling
 let a = lhs.view();
 let b = rhs.view();
@@ -190,7 +190,7 @@ let (a2, b2) = broadcast_with(&a, &b)
     .expect("broadcast must succeed for all shapes");
 ```
 
-```rust
+```rust,ignore
 // Good - zero-copy broadcast result stays read-only
 let view = tensor.view().broadcast_to([4, 3])?;
 assert_eq!(view.strides()[0], 0);
@@ -211,7 +211,7 @@ assert_eq!(view.strides()[0], 0);
 ### 6.1 广播不变式
 
 - 广播必须是零拷贝；不得复制底层数据。
-- 广播结果只能返回只读 `TensorView`，并按共享只读引用处理；这里的“共享只读引用”含义与 `require.md` §6 一致：结果可在多个张量实例之间共享同一底层数据，但不提供可写访问权。
+- 广播结果只能返回只读 `TensorView`，并按共享只读引用处理；这里的“共享只读引用”含义与需求说明书 §6 一致：结果可在多个张量实例之间共享同一底层数据，但不提供可写访问权。
 - 广播轴的 stride 必须写成 `0`，且 stride 类型保持为 `usize`。
 - 若结果存在零步长轴，则布局状态必须标记为 `LayoutState::BroadcastView`。
 - 广播不改变底层 storage、offset 与逻辑元素顺序语义。
@@ -457,7 +457,7 @@ User calls broadcast_to() or broadcast_with()
 
 ### 10.1 错误示例
 
-```rust
+```rust,ignore
 XenonError::BroadcastError {
     operation: "broadcast_to",
     lhs_shape: self.shape().to_vec(),
@@ -475,7 +475,7 @@ XenonError::BroadcastError {
 }
 ```
 
-```rust
+```rust,ignore
 XenonError::InvalidArgument {
     operation: "broadcast_strides".into(),
     argument: "orig_strides".into(),
@@ -497,7 +497,7 @@ XenonError::InvalidArgument {
 | 属性     | 值                                                                                                  |
 | -------- | --------------------------------------------------------------------------------------------------- |
 | 决策     | 广播成功后的结果统一视为共享只读引用，不提供可写广播视图。                                          |
-| 理由     | `require.md` §16 明确要求结果共享底层数据且作为共享只读引用对待；零步长布局也无法安全支持可变别名。 |
+| 理由     | 需求说明书 §16 明确要求结果共享底层数据且作为共享只读引用对待；零步长布局也无法安全支持可变别名。 |
 | 替代方案 | 保留源张量的可写权限 —— 放弃，会破坏别名和独占性约束。                                              |
 
 ### 决策 2：显式广播而非隐式广播

@@ -2,7 +2,7 @@
 
 > 文档编号: 11 | 模块: `src/math/` | 阶段: Phase 4
 > 前置文档: `03-element.md`, `08-simd.md`, `09-parallel.md`, `10-iterator.md`, `15-broadcast.md`, `26-error.md`
-> 需求参考: 需求说明书 §4, §9.1, §9.2, §9.3, §12, §27, §28.2, §28.3, §28.4, §28.5
+> 需求参考: `需求说明书 §4`, `需求说明书 §9.1`, `需求说明书 §9.2`, `需求说明书 §9.3`, `需求说明书 §12`, `需求说明书 §27`, `需求说明书 §28.2`, `需求说明书 §28.3`, `需求说明书 §28.4`, `需求说明书 §28.5`
 > 范围声明: 范围内
 
 ---
@@ -50,7 +50,7 @@ L6: math (element-wise operations) <- current module (depends on broadcast, iter
 
 | 类型     | 内容 |
 | -------- | ---- |
-| 需求映射 | 需求说明书 §4, §9.1, §9.2, §9.3, §12, §27, §28.2, §28.3, §28.4, §28.5 |
+| 需求映射 | `需求说明书 §4`, `需求说明书 §9.1`, `需求说明书 §9.2`, `需求说明书 §9.3`, `需求说明书 §12`, `需求说明书 §27`, `需求说明书 §28.2`, `需求说明书 §28.3`, `需求说明书 §28.4`, `需求说明书 §28.5` |
 | 范围内   | 逐元素算术、一元运算、数学函数、复数 `modulus` / `conjugate`、逻辑非、比较运算、标量-张量逐元素语义与广播语义。 |
 | 范围外   | 混合类型逐元素运算以及 `map` 系列公开 API。SIMD 与并行覆盖范围仅限本模块负责的逐元素运算；若当前类型/ISA/语义约束不满足，则自动回退标量。 |
 | 非目标   | 不新增新的数学库依赖，不在本文扩展 mixed-type API 或更通用的逐元素映射原语。 |
@@ -59,7 +59,7 @@ L6: math (element-wise operations) <- current module (depends on broadcast, iter
 
 | 需求 | 说明 |
 | ---- | ---- |
-| 需求说明书 §20 | 运算符重载由 `19-overload.md` 承载；本文档仅定义逐元素运算的语义实现、执行路径与错误边界。 |
+| `需求说明书 §20` | 运算符重载由 `19-overload.md` 承载；本文档仅定义逐元素运算的语义实现、执行路径与错误边界。 |
 
 ---
 
@@ -77,7 +77,7 @@ src/simd/               # optional SIMD backend consumed by math dispatch
 src/parallel/           # optional parallel backend consumed by math dispatch
 ```
 
-多文件设计理由：按操作元数分组（一元 vs 二元）可保持当前最小范围；更通用的逐元素映射基础设施不属于需求说明书 §12 的本期最小交付，暂不纳入当前版本。运算符重载（Add/Sub/Mul/Div trait 实现）保留在 `src/overload/arithmetic.rs`。SIMD 加速由独立 backend 模块 `src/simd/` 承载，`math/` 仅负责语义 API 与分发入口。
+多文件设计理由：按操作元数分组（一元 vs 二元）可保持当前最小范围；更通用的逐元素映射基础设施不属于 `需求说明书 §12` 的本期最小交付，暂不纳入当前版本。运算符重载（Add/Sub/Mul/Div trait 实现）保留在 `src/overload/arithmetic.rs`。SIMD 加速由独立 backend 模块 `src/simd/` 承载，`math/` 仅负责语义 API 与分发入口。
 
 ---
 
@@ -90,7 +90,7 @@ src/parallel/           # optional parallel backend consumed by math dispatch
 | 广播先决 | 所有二元逐元素运算与比较运算必须先验证广播兼容性，再遍历广播后的只读视图。 |
 | 输出形状稳定 | 二元运算返回张量的 shape 必须等于广播结果 shape；一元运算与标量运算保持输入 shape 不变。 |
 | 比较类型边界 | `lt` / `gt` 只对 `i32`、`i64`、`f32`、`f64` 开放；`bool` 与 `Complex` 不得通过公开 API 进入该路径。 |
-| SIMD 语义等价 | SIMD 覆盖范围见 `08-simd.md §5.4a`；在本模块内仅讨论需求说明书 §12 定义的逐元素运算。任一路径的 shape、NaN 语义和错误边界都必须与公开契约一致；不满足 SIMD 前提时统一回退标量。 |
+| SIMD 语义等价 | SIMD 覆盖范围见 `08-simd.md §5.4a`；在本模块内仅讨论 `需求说明书 §12` 定义的逐元素运算。任一路径的 shape、NaN 语义和错误边界都必须与公开契约一致；不满足 SIMD 前提时统一回退标量。 |
 
 ### 4.2 Error Scenarios
 
@@ -149,7 +149,7 @@ src/math/
 
 ### 5.1 范围边界说明
 
-更通用的逐元素映射基础设施不在需求说明书 §12 的当前最小范围内。当前版本文档不将其作为公开 API 承诺；如后续需要，应以独立议题重新评估与类型转换、就地修改、错误语义的边界关系。
+更通用的逐元素映射基础设施不在 `需求说明书 §12` 的当前最小范围内。当前版本文档不将其作为公开 API 承诺；如后续需要，应以独立议题重新评估与类型转换、就地修改、错误语义的边界关系。
 
 ### 5.2 二元逐元素执行约定
 
@@ -159,7 +159,7 @@ src/math/
 
 ### 5.3 算术运算（Numeric 约束）
 
-```rust
+```rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -206,11 +206,11 @@ where
 
 支持的类型：i32, i64, f32, f64, Complex\<f32\>, Complex\<f64\>。
 
-> **整数算术补充约束：** 对 `i32` / `i64` 的 `add` / `sub` / `mul` / `div`，实现必须使用 checked arithmetic；凡发生溢出、除以零或结果不可表示，均按需求说明书 §12 与 §27 走 panic 语义，不得回落为 wrapping 行为。
+> **整数算术补充约束：** 对 `i32` / `i64` 的 `add` / `sub` / `mul` / `div`，实现必须使用 checked arithmetic；凡发生溢出、除以零或结果不可表示，均按 `需求说明书 §12` 与 `需求说明书 §27` 走 panic 语义，不得回落为 wrapping 行为。
 
 > **checked arithmetic 实现约束：** 整数 checked arithmetic 通过内部 sealed trait 实现：
 
-```rust
+```rust,ignore
 /// Internal sealed trait for checked binary arithmetic.
 /// Only implemented for i32, i64.
 pub(crate) trait CheckedArith: Sized {
@@ -225,7 +225,7 @@ pub(crate) trait CheckedArith: Sized {
 
 ### 5.4 一元运算（分离 trait bounds）
 
-```rust
+```rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -293,7 +293,7 @@ where
 
 ### 5.5 数学函数（RealScalar 约束：仅 f32/f64）
 
-```rust
+```rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -311,12 +311,13 @@ where
 
 > **数学函数精度约束：** `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 使用 Rust 提供的数学能力，不引入外部数学 crate。
 >
-> - 精确类（`floor` / `ceil`）：结果须与标量路径逐元素一致，容差为 0 ULP。
-> - 近似类（`sin` / `sqrt` / `exp` / `ln`）：容差阈值为当前建议测试基线，待实现验证后定稿。最终容差以实现验证后的文档化结论为准。
+> - 精确类（`floor` / `ceil`）：结果须与标量路径逐元素一致。
+> - 近似类（`sin` / `sqrt` / `exp` / `ln`）：容差与比较规则统一遵循 `00-coding.md §7.4` 的定义。
+> - 同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。
 
 ### 5.6 复数运算（ComplexScalar 约束）
 
-```rust
+```rust,ignore
 impl<S, D, T> TensorBase<S, D>
 where
     S: Storage<Elem = Complex<T>>,
@@ -348,13 +349,13 @@ where
 
 > **命名说明：** 公开张量 API 统一使用 `conjugate()`（与 `Numeric::conjugate()` 保持一致）；`conj` 仅允许作为内部 `Complex` 方法名或实现细节出现，不构成公开 API 命名承诺。
 
-> **术语说明：** `modulus()` 对应需求说明书 §12 中的“模”运算。`Complex<f32> → f32`，`Complex<f64> → f64`。
+> **术语说明：** `modulus()` 对应 `需求说明书 §12` 中的“模”运算。`Complex<f32> → f32`，`Complex<f64> → f64`。
 
 > **类型一致性约束：** 参与逐元素运算或比较的双方元素类型须预先一致。因此，`Complex<T>` 与实数标量的混合张量 API（如 `add_real_scalar` / `mul_real_scalar`）不属于当前公开范围；若内部实现需要复用相应标量逻辑，也只能作为不对外承诺的内部辅助路径存在。
 
 ### 5.7 逻辑非（仅 bool）
 
-```rust
+```rust,ignore
 impl<S, D> TensorBase<S, D>
 where
     S: Storage<Elem = bool>,
@@ -369,7 +370,7 @@ where
 
 `eq` / `ne` 对所有元素类型可用（包括 `bool` 与 `Complex`）；`lt` / `gt` 的需求级支持范围固定为 `i32`、`i64`、`f32`、`f64`，返回 `Tensor<bool, _>`。`bool` 与 `Complex` 类型不支持 `lt` / `gt`。
 
-```rust
+```rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -424,9 +425,9 @@ where
 
 > **NaN 语义：** `eq(NaN, NaN)` 返回 `false`，`ne(NaN, NaN)` 返回 `true`，遵循 IEEE 754。
 
-> **标量比较入口：** 与 `require.md §12` 一致，比较运算也提供标量-张量入口；标量按可广播到目标全形状的零维输入处理，因此成功路径的形状与对应张量输入版本一致。
+> **标量比较入口：** 与 `需求说明书 §12` 一致，比较运算也提供标量-张量入口；标量按可广播到目标全形状的零维输入处理，因此成功路径的形状与对应张量输入版本一致。
 
-```rust
+```rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -450,7 +451,7 @@ where
 
 ### 5.9 标量与张量运算
 
-```rust
+```rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -536,7 +537,7 @@ apply_binary(a, b, f):
 
 ### 6.3 SIMD 加速路径
 
-> **SIMD/并行覆盖范围**：本文描述的逐元素运算功能范围以需求说明书 §12 为准。SIMD 和并行加速路径的当前正式支持子集以 `08-simd.md` 和 `09-parallel.md` 定义的能力边界为准，不在本文档中另行扩张覆盖承诺。
+> **SIMD/并行覆盖范围**：本文描述的逐元素运算功能范围以 `需求说明书 §12` 为准。SIMD 和并行加速路径的当前正式支持子集以 `08-simd.md` 和 `09-parallel.md` 定义的能力边界为准，不在本文档中另行扩张覆盖承诺。
 
 调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。SIMD 具体能力与后端细节参见 `08-simd.md §5.5`。未列出的运算、类型、ISA 或不满足语义约束的路径统一回退标量实现。
 
@@ -763,7 +764,7 @@ User calls add / unary op / comparison method
 | Recoverable error | 广播不兼容时返回 `XenonError::BroadcastError { operation, lhs_shape, rhs_shape, attempted_target_shape, axis }`。参数不满足公开前提时返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, axis_len: Option<usize>, start: Option<usize>, end: Option<usize>, shape: Option<Vec<usize>> }`。 |
 | Panic | 整数 `add/sub/mul/div`、标量版 `add_scalar/sub_scalar/mul_scalar/div_scalar`、`abs/neg/square` 的溢出、除零或结果不可表示均按需求触发 panic；`signum` 不新增 panic 约束。panic 信息至少包含 `operation`、`type`、`trigger`、`element_index`，并在适用时附带 `shape`。推荐格式：`Xenon: {operation} overflow for {type} at element_index={i}, shape={shape}, trigger={trigger}`。 |
 | 路径一致性 | 标量、SIMD 与并行路径必须保持相同 shape、错误类别、NaN/复数语义；不满足前提或 guard 失败时统一回退标量实现。 |
-| 容差边界 | 精确类（`floor` / `ceil`）结果须与标量路径逐元素一致，容差为 0 ULP。近似类（`sin` / `sqrt` / `exp` / `ln`）容差阈值为当前建议测试基线，待实现验证后定稿。最终容差以实现验证后的文档化结论为准。复数结果按实部、虚部分量分别应用对应实数规则；仅在可证明语义等价或满足文档化容差时启用 SIMD/并行，否则回退标量路径。 |
+| 容差边界 | 精确类（`floor` / `ceil`）结果须与标量路径逐元素一致。近似类（`sin` / `sqrt` / `exp` / `ln`）容差与比较规则统一遵循 `00-coding.md §7.4` 的定义。复数结果按实部、虚部分量分别应用对应实数规则；同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。 |
 
 ---
 
@@ -774,7 +775,7 @@ User calls add / unary op / comparison method
 | 属性     | 值                                                             |
 | -------- | -------------------------------------------------------------- |
 | 决策     | 当前版本不把更通用的逐元素映射基础设施纳入公开 API 承诺 |
-| 理由     | 需求说明书 §12 仅要求明确列出的逐元素运算，不要求额外的通用映射原语 |
+| 理由     | `需求说明书 §12` 仅要求明确列出的逐元素运算，不要求额外的通用映射原语 |
 | 替代方案 | 直接在本期暴露完整映射 helper 集合 |
 | 拒绝原因 | 会扩大 API 面且引入额外语义边界，不符合当前最小范围            |
 
@@ -827,7 +828,7 @@ User calls add / unary op / comparison method
 | SemVer     | 逐元素方法签名、支持类型集合、广播错误类别以及整数 panic 诊断字段均属于稳定契约；后续新增优化路径不得改变这些公开语义 |
 | 依赖约束   | 仅允许项目基线中的可选 SIMD / 并行依赖，不新增额外第三方数学库                                 |
 | 线程安全   | 所有逐元素运算接受 `&self`（一元/比较）或 `&self` + `&TensorBase`（二元）；这些调用能否在线程间安全共享或传递，取决于元素类型与底层存储模式是否满足相应 `Send` / `Sync` 前提。`get_unchecked` 等 unsafe 方法仍要求调用方保证独占访问。 |
-| 范围边界   | 当前版本仅覆盖需求说明书 §12 明确列出的逐元素运算；通用映射 helper 与实复混合公开 API 不在本期范围内 |
+| 范围边界   | 当前版本仅覆盖 `需求说明书 §12` 明确列出的逐元素运算；通用映射 helper 与实复混合公开 API 不在本期范围内 |
 
 ---
 

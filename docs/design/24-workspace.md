@@ -26,7 +26,7 @@
 | 单向增长     | 只扩容不缩容，避免内存抖动                                                           |
 | 未初始化感知 | 底层字节视为 `MaybeUninit<u8>`；只有调用方显式声明初始化完成后，才能获取已初始化视图 |
 | O(1) 分割    | 仅指针算术，无内存分配                                                               |
-| 显式生命周期 | 当前实现默认不可跨线程传递（`!Send + !Sync`）；这是为简化借用安全性论证采取的实现选择，而非 `require.md §26` 的强制要求 |
+| 显式生命周期 | 当前实现默认不可跨线程传递（`!Send + !Sync`）；这是为简化借用安全性论证采取的实现选择，而非需求说明书 §26 的强制要求 |
 
 ### 1.3 在架构中的位置
 
@@ -138,7 +138,7 @@ External dependencies:
 
 > **与 XenonError 的关系**: `WorkspaceError` 仍作为内部分类存在，以避免 workspace 模块内部丢失领域语义；但公开 Xenon API 不直接暴露它，`mod.rs` 的公共接口也不包含它，而是统一返回包装后的 `XenonError::Workspace { reason }`。参见 `26-error.md`。
 
-> **与线程安全需求的边界**: workspace 不是 `require.md §10` 中张量 storage mode 的一部分，而是独立的上游缓冲区工具。`!Send + !Sync` 为当前实现选择，非 `require.md §26` 的强制要求。采用此限制是为了简化借用安全性论证；未来版本可考虑放宽为 `Send`（需配合安全的跨线程借用检查）。
+> **与线程安全需求的边界**: workspace 不是需求说明书 §10 中张量 storage mode 的一部分，而是独立的上游缓冲区工具。`!Send + !Sync` 为当前实现选择，非需求说明书 §26 的强制要求。采用此限制是为了简化借用安全性论证；未来版本可考虑放宽为 `Send`（需配合安全的跨线程借用检查）。
 
 > **初始化语义约定**: Workspace 的底层缓冲区始终按“可能未初始化”建模。公共 API 默认只暴露 `MaybeUninit` 视图；只有调用方能够证明某一前缀或某一 typed region 已被完整写入时，才允许通过 `assume_init_*` 系列 unsafe API 将其解释为已初始化视图。
 
@@ -184,7 +184,7 @@ use crate::error::{Result, XenonError};
 /// - Can be reused after returning
 /// - The current implementation is not transferable across threads
 ///   (`!Send + !Sync`), which simplifies the borrow-safety argument around raw
-///   pointers. This is an implementation choice rather than a `require.md §26`
+///   pointers. This is an implementation choice rather than a 需求说明书 §26
 ///   mandate; future versions may relax it with safe cross-thread borrow checks.
 ///
 /// # Initialization Model

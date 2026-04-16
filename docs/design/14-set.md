@@ -15,7 +15,7 @@
 | ----------- | ------------------------------------------------------------------------------------------------ | ----------------------------- |
 | unique 操作 | 返回不重复元素组成的新 1D 张量；结果顺序不作要求                                                 | intersection/union/difference |
 | 支持类型    | i32, i64, f32, f64, Complex<f32>, Complex<f64>                                                   | bincount/histogram            |
-| 不支持类型  | bool（`[false, true]` 中两个元素彼此不同，但 `require.md §15` 明确将 bool 排除在 `unique` 之外） | argmin/argmax                 |
+| 不支持类型  | bool（`[false, true]` 中两个元素彼此不同，但需求说明书 §15 明确将 bool 排除在 `unique` 之外） | argmin/argmax                 |
 
 > **注意**：当前版本仅支持 unique 操作！不包含 intersection/union/difference/bincount/histogram 等。
 
@@ -84,7 +84,7 @@ src/set/unique.rs
 
 | 来源模块    | 使用的类型/trait                                                                  |
 | ----------- | --------------------------------------------------------------------------------- |
-| `tensor`    | `TensorBase<S, D>`, `Tensor<A, Ix1>`, `.iter()`, `.len()`，参见 `07-tensor.md` §5 |
+| `tensor`    | `TensorBase<S, D>`, `Tensor<A, Ix1>`（本文以此作为 1D 结果主类型；`Tensor1<A>` 仅作为等价别名出现在示例中）, `.iter()`, `.len()`，参见 `07-tensor.md` §5 |
 | `storage`   | `Storage` trait（consuming tensor storage for data access）                       |
 | `dimension` | `Dimension`, `Ix1`（output dimension type for flatten result）                    |
 | `element`   | `Element`, `ComplexScalar`，参见 `03-element.md` §5.1 / §5.4                      |
@@ -124,7 +124,7 @@ where
     ///
     /// # Unsupported types
     ///
-    /// - bool: `false` and `true` are still distinct values, but `require.md` §15
+    /// - bool: `false` and `true` are still distinct values, but 需求说明书 §15
     ///   explicitly excludes bool from the current `unique` contract
     ///
     /// # Equality behavior
@@ -139,7 +139,7 @@ where
     ///
     /// # Empty array behavior
     ///
-    /// Empty array returns an empty Tensor1.
+    /// Empty array returns an empty `Tensor<A, Ix1>`.
     ///
     /// # Multi-dimensional input
     ///
@@ -154,14 +154,14 @@ where
     ///
     /// # Examples
     ///
-    /// ```
-    /// let a = Tensor1::from_shape_vec(Ix1(6), vec![3, 1, 2, 1, 3, 2])?;
+    /// ```ignore
+    /// let a = Tensor::<i32, Ix1>::from_shape_vec(Ix1(6), vec![3, 1, 2, 1, 3, 2])?;
     /// let u = a.unique();
     /// assert_eq!(u.len(), 3);
     /// assert!(u.iter().all(|x| [1, 2, 3].contains(x)));
     ///
     /// // empty
-    /// let empty: Tensor1<i32> = Tensor1::zeros([0]);
+    /// let empty: Tensor<i32, Ix1> = Tensor::zeros([0])?;
     /// assert_eq!(empty.unique().len(), 0);
     /// ```
     pub fn unique(&self) -> Tensor<A, Ix1>;
@@ -172,16 +172,16 @@ where
 
 ```rust,ignore
 // Good - use unique to get unique elements with unspecified order
-let a = Tensor1::from_shape_vec(Ix1(5), vec![3, 1, 2, 1, 3])?;
+let a = Tensor::<i32, Ix1>::from_shape_vec(Ix1(5), vec![3, 1, 2, 1, 3])?;
 let u = a.unique();
 assert_eq!(u.len(), 3);
 
-// Good - empty array returns empty Tensor1
-let empty: Tensor1<i32> = Tensor1::zeros([0]);
+// Good - empty array returns empty `Tensor<A, Ix1>`
+let empty: Tensor<i32, Ix1> = Tensor::zeros([0])?;
 assert_eq!(empty.unique().len(), 0);
 
 // Bad - calling unique on a bool tensor (compile error)
-// let b = Tensor1::from_shape_vec(Ix1(3), vec![true, false, true])?;
+// let b = Tensor::<bool, Ix1>::from_shape_vec(Ix1(3), vec![true, false, true])?;
 // b.unique();  // compile error: bool does not implement UniqueElement trait
 
 ```
@@ -236,7 +236,7 @@ Complex-number equality strategy (component-wise equality):
 
 ### 6.4 类型排除实现
 
-```rust
+```rust,ignore
 /// Trait for types that support the unique operation.
 ///
 /// Provides the equality semantics required by `unique`.
@@ -256,7 +256,7 @@ Complex-number equality strategy (component-wise equality):
 ///
 /// `UniqueElement` is a sealed trait. It is implemented only inside this crate
 /// for supported element types, so the closed element set required by
-/// `require.md` §4 is preserved.
+/// 需求说明书 §4 is preserved.
 pub trait UniqueElement: private::Sealed + Element {
     /// Equality check used by `unique`.
     fn unique_eq(&self, other: &Self) -> bool;
@@ -311,7 +311,7 @@ impl UniqueElement for Complex<f64> {
 | 场景              | 推荐策略            | 说明                                                                                                |
 | ----------------- | ------------------- | --------------------------------------------------------------------------------------------------- |
 | 小输入或原型实现  | 线性扫描            | 可直接复用 `unique_eq`，但最坏 O(N^2)，不宜作为大张量主路径。                                       |
-| 大输入主路径      | 哈希 / 索引辅助结构 | 在不改变 `require.md` §15 集合语义的前提下，用哈希表、索引表或等价辅助结构把重复检测降到近似 O(N)。 |
+| 大输入主路径      | 哈希 / 索引辅助结构 | 在不改变需求说明书 §15 集合语义的前提下，用哈希表、索引表或等价辅助结构把重复检测降到近似 O(N)。 |
 | 浮点 / 复数特殊值 | 专门分支处理        | `NaN != NaN`，因此哈希或索引策略也必须显式保留每个 `NaN`，不得把它们合并。                          |
 
 实现可以自由选择代表元保留顺序、桶顺序或其它内部组织方式；这些选择都不得被文档固化为稳定输出顺序契约。
@@ -397,7 +397,7 @@ Wave 4: [T5]
 | `test_unique_basic_f32`             | f32 类型正确性                               | 高     |
 | `test_unique_basic_f64`             | f64 类型正确性                               | 高     |
 | `test_unique_basic_complex`         | Complex<f64> 类型正确性                      | 高     |
-| `test_unique_empty`                 | 空数组返回空 Tensor1                         | 高     |
+| `test_unique_empty`                 | 空数组返回空 `Tensor<A, Ix1>`                | 高     |
 | `test_unique_single`                | 单元素返回自身                               | 中     |
 | `test_unique_all_same`              | 所有元素相同返回单元素                       | 中     |
 | `test_unique_nan_preserved_f32`     | 每个 f32 NaN 都被保留                        | 高     |
@@ -418,7 +418,7 @@ Wave 4: [T5]
 
 | 场景                                              | 预期行为                                                   |
 | ------------------------------------------------- | ---------------------------------------------------------- |
-| 空张量 `shape=[0]`                                | 返回空 Tensor1                                             |
+| 空张量 `shape=[0]`                                | 返回空 `Tensor<A, Ix1>`                                    |
 | 单元素 `[42]`                                     | 返回单元素结果                                             |
 | 全部相同 `[5, 5, 5]`                              | 返回单个 `5`                                               |
 | NaN + 实数 `[1.0, NaN, 2.0]`                      | 返回长度为 3 的结果，且该 NaN 被保留                       |
@@ -506,7 +506,7 @@ User calls unique()
 | 属性     | 值                                                                                                                                                                                               |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 决策     | unique 不支持 bool 类型                                                                                                                                                                          |
-| 理由     | `bool` 的 `unique` 结果在集合语义上仍可定义（如输入同时包含 `false` 与 `true` 时可得到两个不同元素），但 `require.md §15` 已明确将 bool 排除在当前版本范围之外；因此本期不为 bool 建立额外契约。 |
+| 理由     | `bool` 的 `unique` 结果在集合语义上仍可定义（如输入同时包含 `false` 与 `true` 时可得到两个不同元素），但需求说明书 §15 已明确将 bool 排除在当前版本范围之外；因此本期不为 bool 建立额外契约。 |
 | 替代方案 | 支持 bool unique，返回 [false, true]                                                                                                                                                             |
 | 拒绝原因 | 增加维护负担，收益几乎为零；需求说明书 §15 "bool 不适用"                                                                                                                                         |
 
@@ -515,7 +515,7 @@ User calls unique()
 | 属性     | 值                                                                      |
 | -------- | ----------------------------------------------------------------------- |
 | 决策     | `unique` 严格沿用 IEEE 754 / Rust 相等语义：`NaN != NaN`，`-0.0 == 0.0` |
-| 理由     | 直接满足 `require.md §15`，避免文档额外发明“canonical NaN”语义          |
+| 理由     | 直接满足需求说明书 §15，避免文档额外发明“canonical NaN”语义          |
 | 替代方案 | 归并全部 NaN                                                            |
 | 替代方案 | 把 `-0.0` 与 `0.0` 视为不同值                                           |
 | 拒绝原因 | 均与需求说明书冲突                                                      |
@@ -525,7 +525,7 @@ User calls unique()
 | 属性     | 值                                                                    |
 | -------- | --------------------------------------------------------------------- |
 | 决策     | 复数去重仅按实部与虚部逐分量判等                                      |
-| 理由     | `require.md §15` 只要求 component-wise equality，并未授权任何排序语义 |
+| 理由     | 需求说明书 §15 只要求 component-wise equality，并未授权任何排序语义 |
 | 替代方案 | lexicographic order                                                   |
 | 拒绝原因 | 会把排序错误地写入公开契约，并掩盖 NaN 分量应逐个保留的要求           |
 
@@ -550,7 +550,7 @@ User calls unique()
 | 说明       | 内容                                                         |
 | ---------- | ------------------------------------------------------------ |
 | 稳定契约   | 不对结果顺序和实现路径做性能承诺                             |
-| 实现自由度 | 可在满足 `require.md §15` 的前提下选择线性扫描或辅助索引结构 |
+| 实现自由度 | 可在满足需求说明书 §15 的前提下选择线性扫描或辅助索引结构 |
 
 ---
 
@@ -558,7 +558,7 @@ User calls unique()
 
 集合操作模块须遵循项目统一工程约束，不单独定义 `no_std` 方案：
 
-- 仅支持 `std` 环境（参见 `require.md §1.3`）
+- 仅支持 `std` 环境（参见需求说明书 §1.3）
 - MSRV: Rust 1.85+
 - 保持单 crate 结构
 - 遵循 SemVer

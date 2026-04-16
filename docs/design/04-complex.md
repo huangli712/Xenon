@@ -66,7 +66,7 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 | 范围外   | `num-complex` 兼容层、跨精度混合运算、FFT 与高阶复数算法、额外公开复数数学函数 |
 | 非目标   | 引入第三方复数库依赖、开放任意 `T` 的公开实例化、把内部数学 helper 稳定化，或 `_Complex` ABI 保证 |
 
-> **当前版本范围声明**：当前版本仅保留 `Complex<T> op Complex<T>` 运算。根据 `require.md` §5，涉及实数与复数的张量逐元素运算、运算符重载及相关 API 组合时，参与运算双方的元素类型须预先一致；用户须先通过显式 `From<T> for Complex<T>` 构造把实数转换为匹配的复数元素类型，再进入后续运算。`Complex<T> op T` 与 `T op Complex<T>` 便捷运算符均不纳入当前版本公开 API。
+> **当前版本范围声明**：当前版本仅保留 `Complex<T> op Complex<T>` 运算。根据 `需求说明书 §5`，涉及实数与复数的张量逐元素运算、运算符重载及相关 API 组合时，参与运算双方的元素类型须预先一致；用户须先通过显式 `From<T> for Complex<T>` 构造把实数转换为匹配的复数元素类型，再进入后续运算。`Complex<T> op T` 与 `T op Complex<T>` 便捷运算符均不纳入当前版本公开 API。
 
 > **公开 API 收紧**：`to_polar()`、`arg` / `exp` / `ln` / `sqrt` / `from_polar` / `i` 仅作为 `complex/` 内部实现辅助能力存在，用于测试或后续上层模块实现，但**不作为当前版本对下游承诺的公开稳定 API**。本文档中的对应算法仅描述内部实现方案。
 
@@ -550,7 +550,12 @@ impl<T: ComplexFloat> core::ops::Neg for Complex<T> {
 }
 ```
 
-> **除法特殊值语义说明：** `Complex<T>` 除法使用 Smith 算法做数值稳定化，但不为 `NaN` / `Inf` / `±0.0` 引入额外分支裁决；所有特殊值行为都继续委托给底层 `f32` / `f64` 的 IEEE 754 运算传播。分母为 `0+0j`、分量含 `NaN`、或中间结果上溢/下溢时，可产生 `NaN` / `Inf` / `-0.0` 组合结果，但不额外返回可恢复错误，也不引入额外 panic。该约束适用于 `Complex<T> / Complex<T>` 公开运算符语义，并与 `require.md §24` / `§28.3` 保持一致。
+> **除法特殊值语义说明：** `Complex<T>` 除法遵循 **Smith 算法 + 底层 IEEE 754 标量运算的组合语义**。实现层使用 Smith 算法避免直接形成 `c² + d²`；当输入含 `0`、`NaN`、`Inf` 或中间结果出现上溢/下溢时，最终结果继续由底层 `f32` / `f64` 标量运算的 IEEE 754 传播规则决定，不额外返回可恢复错误，也不引入额外 panic。该约束适用于 `Complex<T> / Complex<T>` 公开运算符语义，并与 `需求说明书 §24` / `§28.3` 保持一致。
+>
+> **规范性示例：**
+> - `Complex::new(1.0, 2.0) / Complex::new(0.0, 0.0)`：结果按 Smith 分支中的底层 IEEE 754 标量除法/乘加传播计算，允许产生 `Inf` / `NaN` 组合；文档不额外定义独立错误通道。
+> - `Complex::new(f64::NAN, 1.0) / Complex::new(3.0, 4.0)`：结果分量遵循 `NaN` 传播，输出可含 `NaN` 分量。
+> - `Complex::new(f64::INFINITY, 1.0) / Complex::new(3.0, 4.0)`：结果分量遵循 `Inf` 参与的底层 IEEE 754 标量运算语义，可产生 `Inf`、有限值或 `NaN` 组合。
 
 ### 5.7 显式实数构造与混合运算边界
 
@@ -562,7 +567,7 @@ let sum = z + rhs;
 
 > **设计决策：** 当前版本不提供 `Complex<T> op T` 或 `T op Complex<T>` 便捷运算符。调用方若需要与实数混合运算，必须先通过显式 `From<T> for Complex<T>` 构造把实数提升为同元素类型的复数值，再参与 `Complex<T> op Complex<T>` 运算。
 
-> **边界说明：** `From<T> for Complex<T>` 是当前版本**唯一**允许的显式标量构造路径，不存在通过运算符触发的隐式实数到复数转换。张量级场景中，双方元素类型必须预先一致（见 `require.md` §5）；用户须先把实数显式构造成 `Complex<T>`，再参与张量运算。
+> **边界说明：** `From<T> for Complex<T>` 是当前版本**唯一**允许的显式标量构造路径，不存在通过运算符触发的隐式实数到复数转换。张量级场景中，双方元素类型必须预先一致（见 `需求说明书 §5`）；用户须先把实数显式构造成 `Complex<T>`，再参与张量运算。
 
 ### 5.8 PartialEq 实现
 
@@ -642,7 +647,7 @@ fn scalar_is_positive_zero<T: PositiveZero>(im: T) -> bool {
 | `Complex::new(3.0, 4.0)`  | `"3+4j"`     |
 | `Complex::new(3.0, -4.0)` | `"3-4j"`     |
 | `Complex::new(3.0, 0.0)`  | `"3"`        |
-| `Complex::new(3.0, -0.0)` | `"3-0j"` / 含虚部表示 |
+| `Complex::new(3.0, -0.0)` | `"3-0j"` |
 | `Complex::new(0.0, 4.0)`  | `"4j"`       |
 | `Complex::new(0.0, 0.0)`  | `"0"`        |
 
@@ -652,7 +657,7 @@ fn scalar_is_positive_zero<T: PositiveZero>(im: T) -> bool {
 
 > **实现归属说明：** 本节只保留语义矩阵。具体 `From` / `CastTo` 实现由 `convert/cast.rs` 统一承载；下列规则描述当前版本允许的语义，不再在 `complex/` 文档中重复大段实现片段。
 
-整数到复数的受支持路径按 `require.md` §23.1 与 §23.2 的规则补充如下：
+整数到复数的受支持路径按 `需求说明书 §23.1` 与 `§23.2` 的规则补充如下：
 
 | 源类型 | 目标类型 | 语义 | 默认行为 |
 |--------|----------|------|---------|
@@ -661,7 +666,7 @@ fn scalar_is_positive_zero<T: PositiveZero>(im: T) -> bool {
 | `i64` | `Complex<f64>` | 实部 `i64→f64` 有损，虚部为 `0` | 返回可恢复错误 |
 | `i64` | `Complex<f32>` | 实部 `i64→f32` 有损，虚部为 `0` | 返回可恢复错误 |
 
-其中语义遵循 `require.md` §23.2 的闭合规则：先按对应实数类型到目标复数实部分量类型的规则转换实部，再引入值为 `0` 的虚部。当前版本不额外扩展 `require.md` §23.1 之外的整数→复数组合。
+其中语义遵循 `需求说明书 §23.2` 的闭合规则：先按对应实数类型到目标复数实部分量类型的规则转换实部，再引入值为 `0` 的虚部。当前版本不额外扩展 `需求说明书 §23.1` 之外的整数→复数组合。
 
 > **统一转换入口说明：** `Complex` 类型的逐元素类型转换统一由 `03-element.md` 定义的 `CastTo<T>` trait 管理，trait 定义位于 `element` 模块，具体实现归入 `convert/` 模块；本节不再单独定义张量级转换入口。`From` 仅用于**不可能失败且不丢失精度**的标量级构造或 widening：`From<T> for Complex<T>`（实数到同精度复数，虚部补 `0`）与 `From<Complex<f32>> for Complex<f64>`（分量无损 widening）。其中 `From<T> for Complex<T>` 是当前版本**唯一**允许的显式实数到复数标量构造路径。
 
@@ -669,7 +674,7 @@ fn scalar_is_positive_zero<T: PositiveZero>(im: T) -> bool {
 
 > **禁止性约束：** 禁止为任何可能失败或可能丢失精度的转换实现 `From`。这类转换必须走 `21-type.md` 定义的 `CastTo<T>`。
 
-复杂到实数的受支持路径同样受 `require.md` §23.1 与 §23.2 约束，且统一由 `03-element.md` §5.9 定义的 `CastTo<T>` trait 作为唯一 owner；`complex/` 模块文档仅声明其语义，不重复定义独立转换入口。
+复杂到实数的受支持路径同样受 `需求说明书 §23.1` 与 `§23.2` 约束，且统一由 `03-element.md` §5.9 定义的 `CastTo<T>` trait 作为唯一 owner；`complex/` 模块文档仅声明其语义，不重复定义独立转换入口。
 
 | 源类型 | 目标类型 | 语义 | 默认行为 |
 |--------|----------|------|---------|
@@ -971,7 +976,7 @@ Wave 5: [T11] → [T12]
 | `test_sub_complex`               | `(5+7j) - (2+3j) == (3+4j)`                                 | 高     |
 | `test_mul_complex`               | `(1+2j) * (3+4j) == (-5+10j)`                               | 高     |
 | `test_div_complex`               | 使用容差断言验证 `(6+8j) / (3+4j)` 约等于 `(2+0j)`         | 高     |
-| `test_div_zero_propagates_ieee754` | `(1+2j) / (0+0j)` 产生 IEEE 754 传播结果且不返回错误/额外 panic | 高     |
+| `test_div_zero_propagates_ieee754` | `(1+2j) / (0+0j)` 遵循 Smith 算法 + IEEE 754 标量传播语义，且不返回错误/额外 panic | 高     |
 | `test_neg_complex`               | `-(1+2j) == (-1-2j)`                                        | 高     |
 | `test_real_to_complex_add`       | `Complex::from(3.0) + (1+2j) == (4+2j)`                     | 高     |
 | `test_norm_3_4_5`                | `Complex::new(3.0, 4.0).norm() == 5.0`                      | 高     |
@@ -982,7 +987,7 @@ Wave 5: [T11] → [T12]
 | `test_sqrt_impl_neg_one`         | `Complex::new(-1.0, 0.0).sqrt_impl() ≈ j`                   | 高     |
 | `test_from_polar_impl_i`         | `from_polar_impl(1.0, π/2) ≈ j`                             | 中     |
 | `test_eq_nan`                    | `Complex::new(NaN, 0.0) != self`                            | 高     |
-| `test_display_format`            | `"3+4j"`, `"3-4j"`, `"3"`, `"4j"`, `"0"`                    | 中     |
+| `test_display_format`            | `"3+4j"`, `"3-4j"`, `"3-0j"`, `"3"`, `"4j"`, `"0"`            | 中     |
 | `test_f32_to_f64_lossless`       | `Complex<f32>→Complex<f64>` 无损                            | 高     |
 | `test_f64_to_f32_precision_loss` | `Complex<f64>→Complex<f32>` 精度降低                        | 中     |
 | `test_real_to_complex`           | `f64→Complex<f64>` 虚部为 0                                 | 高     |
@@ -1004,7 +1009,7 @@ assert!((result.re - 2.0).abs() < 1e-10 && result.im.abs() < 1e-10);
 | Inf 参与                      | `Complex::new(Inf, 0.0).exp_impl()` 正确处理（内部回归测试） |
 | 极大值 norm                   | `Complex::new(1e200, 1e200).norm()` 不溢出（≈1.414e200） |
 | 极小值 norm                   | `Complex::new(1e-200, 1e-200).norm()` 正确               |
-| `Complex::new(1.0, 2.0) / Complex::new(0.0, 0.0)` | 遵循 IEEE 754 传播语义，不返回可恢复错误，也不额外 panic |
+| `Complex::new(1.0, 2.0) / Complex::new(0.0, 0.0)` | 遵循 Smith 算法 + IEEE 754 标量传播语义，不返回可恢复错误，也不额外 panic |
 | 连续字段布局                  | `Complex<f64>` 的 `re/im` 字段顺序稳定，可逐元素读取     |
 | §28.4 占位：large-tensor      | 后续补充大批量复数元素运算/格式化回归 |
 | §28.4 占位：high-dim          | 后续补充高维复数张量在 `math` / `matrix` / `ffi` 协同回归 |

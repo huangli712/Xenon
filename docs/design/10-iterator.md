@@ -2,7 +2,7 @@
 
 > 文档编号: 10 | 模块: `src/iter/` | 阶段: Phase 4
 > 前置文档: `02-dimension.md`, `05-storage.md`, `07-tensor.md`, `09-parallel.md`, `26-error.md`
-> 需求参考: 需求说明书 §6.1, §7, §8, §10, §11, §16, §17, §18, §21.2, §27, §28.2, §28.4, §28.5
+> 需求参考: `需求说明书 §6.1`, `需求说明书 §7`, `需求说明书 §8`, `需求说明书 §10`, `需求说明书 §11`, `需求说明书 §16`, `需求说明书 §17`, `需求说明书 §18`, `需求说明书 §21.2`, `需求说明书 §27`, `需求说明书 §28.2`, `需求说明书 §28.4`, `需求说明书 §28.5`
 > 范围声明: 范围内
 
 ---
@@ -51,7 +51,7 @@ L5: iter  <- current module
 
 | 类型     | 内容                                                                                                                       |
 | -------- | -------------------------------------------------------------------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §6.1, §7, §8, §10, §11, §16, §17, §18, §21.2, §27, §28.2, §28.4, §28.5                                          |
+| 需求映射 | `需求说明书 §6.1`, `需求说明书 §7`, `需求说明书 §8`, `需求说明书 §10`, `需求说明书 §11`, `需求说明书 §16`, `需求说明书 §17`, `需求说明书 §18`, `需求说明书 §21.2`, `需求说明书 §27`, `需求说明书 §28.2`, `需求说明书 §28.4`, `需求说明书 §28.5` |
 | 范围内   | 元素遍历、按轴遍历、带索引遍历、对连续/非连续/广播只读视图的统一逻辑遍历语义，以及供各运算模块直接实现的内部迭代分发约定。 |
 | 范围外   | 独立的多输入 lock-step 迭代抽象、`DoubleEndedIterator`、`Windows` / `LaneIter`、负步长布局以及并行公开迭代接口。           |
 | 非目标   | 不扩展当前公开迭代器集合，不新增第三方依赖，不放宽广播只读约束，也不在本文定义新的并行 API 契约。                          |
@@ -134,7 +134,7 @@ src/iter/
 
 ### 5.1 Elements 迭代器
 
-```rust
+```rust,ignore
 /// Flat element iterator, traverses all elements in logical F-order index order.
 pub struct Elements<'a, A, D: Dimension> {
     // Internal fields: view, pointer/index state, remaining count,
@@ -234,11 +234,11 @@ where
 
 > **Zip 能力说明：** 当前版本明确不支持 `Zip` 结构体、`zip_with`、`zip_apply` 或任何等价的公开 lock-step 迭代 API；如后续需要，应在独立设计文档中重新定义其错误语义、广播边界和别名约束。
 
-> **说明：** `Windows` 与 `LaneIter` 仍不属于需求说明书 §11 的当前范围；如后续引入，应在独立文档中重新定义窗口语义、1D 产出语义以及别名约束。
+> **说明：** `Windows` 与 `LaneIter` 仍不属于 `需求说明书 §11` 的当前范围；如后续引入，应在独立文档中重新定义窗口语义、1D 产出语义以及别名约束。
 
 ### 5.4 IndexedIter 带索引迭代器
 
-```rust
+```rust,ignore
 /// Element iterator with multi-dimensional indices.
 ///
 /// Yields (D, &'a A) tuples, indices increment in F-order.
@@ -279,11 +279,11 @@ impl<'a, A, D: Dimension> ExactSizeIterator for IndexedIterMut<'a, A, D> {}
 
 ### 5.5 LaneIter 延期到后续版本
 
-`LaneIter` / `LaneIterMut` 不属于需求说明书 §11 的必须项。当前版本先不设计该 API，避免与 `AxisIter`、`Windows`、`IndexedIter` 的职责边界重叠；如后续引入，应在独立文档中重新定义 1D 产出语义、轴方向约定与可变别名规则。
+`LaneIter` / `LaneIterMut` 不属于 `需求说明书 §11` 的必须项。当前版本先不设计该 API，避免与 `AxisIter`、`Windows`、`IndexedIter` 的职责边界重叠；如后续引入，应在独立文档中重新定义 1D 产出语义、轴方向约定与可变别名规则。
 
 ### 5.6 TensorBase 上的迭代器入口方法
 
-```rust
+```rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -380,7 +380,7 @@ increment_index_f(shape, index):
 
 ### 6.3 广播可变迭代禁止
 
-```rust
+```rust,ignore
 // SAFETY: broadcast_to() returns a TensorView with zero-stride dimensions,
 // multiple logical indices map to the same physical address; mutable writes
 // would create immediate mutable aliasing.
@@ -397,7 +397,7 @@ increment_index_f(shape, index):
 
 > **空轴行为：** 空轴（`shape[axis] == 0`）的 `AxisIter` / `AxisIterMut` 产出 0 个元素，与标准库空切片迭代器行为一致。
 
-> **ZST 迭代说明：** ZST（zero-sized type）迭代相关讨论仅用于说明边界情况处理，ZST 不是当前版本的张量元素类型（`require.md` §4）；若内部测试或辅助代码覆盖该路径，也不得把它扩展为公开元素类型承诺。
+> **ZST 迭代说明：** ZST（zero-sized type）迭代相关讨论仅用于说明边界情况处理，ZST 不是当前版本的张量元素类型（`需求说明书` §4）；若内部测试或辅助代码覆盖该路径，也不得把它扩展为公开元素类型承诺。
 
 ### 6.5 可变迭代器的正式安全论证
 
@@ -407,7 +407,7 @@ increment_index_f(shape, index):
 
 | 前提                | 说明                                                                                                                                       |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| shape/stride 已验证 | 输入必须来自 `tensor` 模块的合法构造路径；`shape`、`stride`、`offset` 与 `storage_len` 的组合已满足 `require.md` §8 的可表示性与边界约束。 |
+| shape/stride 已验证 | 输入必须来自 `tensor` 模块的合法构造路径；`shape`、`stride`、`offset` 与 `storage_len` 的组合已满足 `需求说明书` §8 的可表示性与边界约束。 |
 | 无负步长            | 当前版本不支持负步长布局，因此可变迭代器不需要处理“同一逻辑区间反向重叠”的别名情形。                                                       |
 | 广播可写被禁止      | 零步长广播视图永远不会形成 `TensorViewMut`，因此可变迭代不会落在“多个逻辑索引映射同一物理地址”的未定义行为路径。                           |
 | 逻辑元素不含填充区  | 即使底层存储存在对齐填充，迭代状态机也只覆盖逻辑元素坐标，不会把填充区当作可写元素暴露。                                                   |
@@ -600,7 +600,7 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
 
 ### 9.3 与 storage / dimension 模块
 
-```rust
+```rust,ignore
 // Iterators read data via the Storage trait (see 05-storage.md §5)
 // Index state is managed via the Dimension trait (see 02-dimension.md §5)
 ```

@@ -152,7 +152,7 @@ src/ffi/
 /// `precondition` fields to maintain zero-allocation, compile-time-known
 /// structured formatting. The `actual` field uses `Cow<'static, str>` to
 /// accommodate runtime dynamic context (e.g., actual ndim value, shape, etc.).
-/// This design satisfies `require.md` §27 diagnostics requirements: the error
+/// This design satisfies 需求说明书 §27 diagnostics requirements: the error
 /// category is identified by the enum variant, and the triggering context is
 /// carried by `actual`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -268,7 +268,7 @@ where
 /// Element type discriminant for FFI consumers.
 ///
 /// Each variant corresponds to one of Xenon's supported tensor element types
-/// (see `require.md` §4). C consumers use this to interpret the `data` pointer.
+/// (see 需求说明书 §4). C consumers use this to interpret the `data` pointer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(C)]
 pub enum ElementType {
@@ -426,19 +426,19 @@ where
 
 > **导出范围说明：** `export()` 提供只读结构化导出并返回 `TensorExport<'_, A>`，适用于任意 `TensorBase<S, D>` 且仅要求 `S: Storage`，因此覆盖 Owned、View、只读共享存储以及所有合法 stride 布局。`export_mut()` 直接返回 `TensorExportMut<'_, A>`，适用于任意满足 `S: StorageMut` 的 `TensorBase<S, D>`，因此同时覆盖 Owned 与 `ViewMut` 这两类可写存储。
 
-> **可写导出边界：** `export_mut()` 通过 `&mut self` 和 `S: StorageMut` 保证 Xenon 侧的独占可写访问；只读视图和共享只读存储则在 trait 边界上直接被拒绝。这与 `require.md §6` 的存储模式转换和 `§25` 的零拷贝导出要求保持一致。
+> **可写导出边界：** `export_mut()` 通过 `&mut self` 和 `S: StorageMut` 保证 Xenon 侧的独占可写访问；只读视图和共享只读存储则在 trait 边界上直接被拒绝。这与需求说明书 §6 的存储模式转换和 §25 的零拷贝导出要求保持一致。
 
 > **空张量约定：** 空张量上的 `as_ptr()` / `as_mut_ptr()` 必须返回有效对齐但不可解引用的 dangling 指针。导出时 `TensorExport*.data` 也遵循相同约定：它始终表示 storage base pointer；当 `len() == 0` 时该位置没有可解引用元素，因此调用方必须先基于长度判断是否可访问。
 
 > **指针语义补充：** `TensorExport<'_, A>::data` 是 `*const A`，`TensorExportMut<'_, A>::data` 是 `*mut A`，二者语义上都始终指向 storage base pointer。对非空张量，逻辑首元素地址需通过 `data.add(offset)` 计算；当 `offset == 0` 时，它与 storage base 重合。`offset` 与 `strides` 都以"元素个数"计量，而不是字节数。
 
-> **stride 约定：** `strides` 以"元素个数"而非字节数表示步长，类型为 `usize`。按照 `06-layout.md` §1.2 与 `require.md` §7，当前版本 Xenon 不支持负步长，因此 FFI 导出格式也不保留负 stride 语义。`from_raw_parts()` 允许零步长布局以表达广播只读视图；`from_raw_parts_mut()` 则拒绝所有非空零步长布局（即任何非单元素轴的 `stride == 0` 都会报错）。
+> **stride 约定：** `strides` 以"元素个数"而非字节数表示步长，类型为 `usize`。按照 `06-layout.md` §1.2 与需求说明书 §7，当前版本 Xenon 不支持负步长，因此 FFI 导出格式也不保留负 stride 语义。`from_raw_parts()` 允许零步长布局以表达广播只读视图；`from_raw_parts_mut()` 则拒绝所有非空零步长布局（即任何非单元素轴的 `stride == 0` 都会报错）。
 
 > **offset 约定：** `offset` 记录与 `07-tensor.md` raw-parts 契约一致的逻辑偏移元数据，单位始终是元素个数而不是字节数。导出结构中的 `data` 始终指向 storage base pointer，C 调用方应通过 `data + offset` 还原逻辑首元素地址；`offset` 本身仍仅用于视图重建、范围校验和与 Xenon 原始布局元数据对齐。
 
 > **ndim 一致性约定：** C 消费者须以 `ndim` 为 `shape` 和 `strides` 数组的长度，不得以硬编码长度或其它来源替代。`TensorExport` 的构造保证 `shape` 和 `strides` 指向的数组长度均等于 `ndim`。
 
-> **生命周期与借用语义：** 导出结果不拥有底层内存；一旦源张量被 drop，`TensorExport` 内的 `data`、`shape`、`strides` 全部立即失效。应将该导出结果视为对源张量当前元数据与指针状态的借用快照：`export()` 暴露只读快照，`export_mut()` 暴露独占可写快照；无论是否跨 FFI 边界缓存，该快照都不得超出源张量的生命周期，也不得绕过 `&mut self` 所表达的独占写语义。本文不额外指定 `TensorExport<'_, _>` / `TensorExportMut<'_, _>` 的 auto trait 组合，线程相关性质以其字段与 Rust auto-trait 推导结果为准。
+> **生命周期与借用语义：** 导出结果不拥有底层内存；一旦源张量被 drop，`TensorExport` 内的 `data`、`shape`、`strides` 全部立即失效。应将该导出结果视为对源张量当前元数据与指针状态的借用快照：`export()` 暴露只读快照，`export_mut()` 暴露独占可写快照；无论是否跨 FFI 边界缓存，该快照都不得超出源张量的生命周期，也不得绕过 `&mut self` 所表达的独占写语义。本文不额外指定 `TensorExport<'_, _>` / `TensorExportMut<'_, _>` 的 auto trait 组合，线程相关性质以其字段与 Rust auto-trait 推导结果为准；测试计划应通过编译期 `Send` / `Sync` 检查验证该自动推导结果。
 
 #### 5.2.2 Complex FFI 布局契约
 
@@ -1184,7 +1184,7 @@ validate_non_overlapping_layout(shape, strides, offset, storage_len):
     6. Otherwise return Ok(()).
 ```
 
-> 该校验与 `validate_access_range()` 分工不同：前者解决“会不会越界”，后者解决“会不会别名写入”。两者都属于 `require.md §8` 下可直接验证的安全构造前提，失败时都须返回可恢复错误。该保守算法允许拒绝一部分理论上合法但无法高效证明不重叠的 exotic stride 布局；当前版本不为这类布局提供可写 raw-parts 构造承诺。
+> 该校验与 `validate_access_range()` 分工不同：前者解决“会不会越界”，后者解决“会不会别名写入”。两者都属于需求说明书 §8 下可直接验证的安全构造前提，失败时都须返回可恢复错误。该保守算法允许拒绝一部分理论上合法但无法高效证明不重叠的 exotic stride 布局；当前版本不为这类布局提供可写 raw-parts 构造承诺。
 
 ### 6.4 BLAS 兼容性检查流程
 
@@ -1309,9 +1309,9 @@ Wave 3: ┌────┴────┐
 
 | 占位场景 | 说明 |
 | -------- | ---- |
-| 导出结构生命周期 | 预留给 `require.md §28.4` 的 `TensorExport<'a, _>` / `TensorExportMut<'a, _>` 生命周期边界测试 |
-| 广播零步长导入 | 预留给 `require.md §28.4` 的只读零步长布局导入 / 可写零步长拒绝测试 |
-| `storage_len` 重建 | 预留给 `require.md §28.4` 的导出后按 `storage_len` 重建视图边界测试 |
+| 导出结构生命周期 | 预留给需求说明书 §28.4 的 `TensorExport<'a, _>` / `TensorExportMut<'a, _>` 生命周期边界测试 |
+| 广播零步长导入 | 预留给需求说明书 §28.4 的只读零步长布局导入 / 可写零步长拒绝测试 |
+| `storage_len` 重建 | 预留给需求说明书 §28.4 的导出后按 `storage_len` 重建视图边界测试 |
 
 ### 8.5 属性测试不变量
 
@@ -1395,7 +1395,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | 路径一致性 | 指针访问、BLAS 查询与 raw-parts roundtrip 必须共享同一 shape / strides / offset 解释；无 SIMD / 并行分支。 |
 | 容差边界 | 不适用。 |
 
-> **错误语义对齐：** FFI 文档仅公开 `try_offset_of()` 与 `try_ptr_at()` 这类 `Result` 接口。索引越界、维度不匹配、偏移溢出和布局自别名都属于 `require.md §27` 下的可恢复错误，不再额外提供 `offset_of()` / `ptr_at()` 之类会把这些条件升级为 panic 的公开 sugar。
+> **错误语义对齐：** FFI 文档仅公开 `try_offset_of()` 与 `try_ptr_at()` 这类 `Result` 接口。索引越界、维度不匹配、偏移溢出和布局自别名都属于需求说明书 §27 下的可恢复错误，不再额外提供 `offset_of()` / `ptr_at()` 之类会把这些条件升级为 panic 的公开 sugar。
 
 ---
 
@@ -1462,7 +1462,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | MSRV        | Rust 1.85+                                                                                   |
 | 单 crate    | FFI 模块位于 `src/ffi/`，不引入额外 crate，保持 Xenon 单 crate 结构                           |
 | SemVer      | `TensorExport<'a, A>`、`TensorExportMut<'a, A>`、`OwnedRawParts<A, D>` 的字段布局和 `#[repr(C)]` 表示均为公开契约，变更须遵循 SemVer；新增公共 FFI 方法或枚举变体属于 minor 变更 |
-| 最小依赖    | 无新增第三方依赖，符合 `require.md` §1.3 对最小依赖的限制                                     |
+| 最小依赖    | 无新增第三方依赖，符合需求说明书 §1.3 对最小依赖的限制                                     |
 | 索引类型    | 逻辑索引统一使用 `usize`；BLAS/LAPACK 整数参数在边界处按目标后端转换为 `i32` 或 `i64`         |
 | stride 范围 | 当前版本只接受非负 stride；负步长导入不在范围内                                                |
 | 错误诊断    | `blas_info()` / `lda()` 返回 `Result`，保留失败原因                                            |

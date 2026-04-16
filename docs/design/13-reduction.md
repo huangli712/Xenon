@@ -2,7 +2,7 @@
 
 > 文档编号: 13 | 模块: `src/reduction/` | 阶段: Phase 4
 > 前置文档: `02-dimension.md`, `03-element.md`, `07-tensor.md`, `09-parallel.md`, `26-error.md`
-> 需求参考: 需求说明书 §9.1, §9.2, §9.3, §14, §27, §28.2, §28.3, §28.4, §28.5
+> 需求参考: `需求说明书 §9.1`, `需求说明书 §9.2`, `需求说明书 §9.3`, `需求说明书 §14`, `需求说明书 §27`, `需求说明书 §28.2`, `需求说明书 §28.3`, `需求说明书 §28.4`, `需求说明书 §28.5`
 > 范围声明: 范围内
 
 ---
@@ -15,7 +15,7 @@
 | ---- | ---- | ------ |
 | sum 归约 | 全局 `sum`、沿轴 `sum_axis`、保留轴版本 `sum_axis_keepdims` | `mean`、`var`、`prod`、`min`、`max`、`argmin`、`argmax` |
 | 数值语义 | 整数 checked arithmetic、浮点 `NaN` 传播、空数组返回加法单位元 | 自动类型提升、额外公开的近似/补偿求和算法（如 Kahan summation） |
-| 执行路径 | 标量基线路径，以及仅在满足 `require.md` §28.3 数值语义约束时启用的 SIMD / 并行分派 | 为追求吞吐而放宽结果一致性的优化路径 |
+| 执行路径 | 标量基线路径，以及仅在满足 `需求说明书 §28.3` 数值语义约束时启用的 SIMD / 并行分派 | 为追求吞吐而放宽结果一致性的优化路径 |
 | 错误边界 | 轴越界返回 `XenonError::InvalidAxis`；整数溢出 panic | 为 axis 错误使用 `InvalidArgument` |
 
 > **注意**：当前版本归约模块只支持 `sum` 家族，不扩展到其它归约操作。
@@ -26,7 +26,7 @@
 | ---- | ---- |
 | 最小范围 | 公开 API 只覆盖 `sum`、`sum_axis`、`sum_axis_keepdims`。 |
 | 语义优先 | 空数组返回加法单位元；浮点遵循 IEEE 754；整数溢出按不可恢复算术域错误处理。 |
-| 路径一致性 | SIMD 与并行只在满足 `require.md` §28.3 定义的数值语义约束时参与，否则回退标量。 |
+| 路径一致性 | SIMD 与并行只在满足 `需求说明书 §28.3` 定义的数值语义约束时参与，否则回退标量。 |
 | 错误统一 | 所有 axis 越界都统一为 `XenonError::InvalidAxis`，并携带 `operation`、`axis`、`ndim`、`shape`。 |
 
 ### 1.3 在架构中的位置
@@ -48,7 +48,7 @@ L6: reduction  <- current module
 
 | 类型 | 内容 |
 | ---- | ---- |
-| 需求映射 | 需求说明书 §9.1、§9.2、§9.3、§14、§27、§28.2、§28.3、§28.4、§28.5 |
+| 需求映射 | `需求说明书 §9.1`、`需求说明书 §9.2`、`需求说明书 §9.3`、`需求说明书 §14`、`需求说明书 §27`、`需求说明书 §28.2`、`需求说明书 §28.3`、`需求说明书 §28.4`、`需求说明书 §28.5` |
 | 范围内 | 全局 `sum`、沿轴 `sum_axis`、`sum_axis_keepdims`、空数组零语义、整数 checked arithmetic、浮点/复数 IEEE 754 语义、可选 SIMD/并行回退规则。 |
 | 范围外 | `mean`、`var`、`prod`、`min`、`max`、`argmin`、`argmax`、自定义 reducer、误差补偿求和。 |
 | 非目标 | 不新增第三方数值依赖，不改变 F-order 布局前提，不把 axis 错误扩展成额外局部错误类型。 |
@@ -159,11 +159,11 @@ where
 
 ### 5.2 对外错误契约
 
-> **`sum` 元素类型约束说明：** 布尔类型 (`bool`) 不参与 `sum` 归约（需求说明书 §14）。该约束由元素层 trait 边界保证，`sum` API 的元素类型约束应使用更精确的可求和元素 trait，而非仅依赖 `Numeric`。
+> **`sum` 元素类型约束说明：** 布尔类型 (`bool`) 不参与 `sum` 归约（`需求说明书 §14`）。该约束由元素层 trait 边界保证；当前版本以 `Numeric` 作为公开 API 的最终边界，不再额外引入更窄的公开 trait 名称。
 
 沿轴归约的 axis 越界错误必须统一为：
 
-```rust
+```rust,ignore
 XenonError::InvalidAxis {
     operation: "sum_axis",
     axis: axis.index(),
@@ -172,7 +172,7 @@ XenonError::InvalidAxis {
 }
 ```
 
-```rust
+```rust,ignore
 XenonError::InvalidAxis {
     operation: "sum_axis_keepdims",
     axis: axis.index(),
@@ -219,7 +219,7 @@ assert_eq!(empty.sum(), 0);
 | axis 校验顺序 | `sum_axis_keepdims()` 的公开入口要求 `D: Dimension`，`sum_axis()` 的公开入口额外要求 `D: RemoveAxis`。对所有进入 axis 归约路径的调用，都必须先校验 `axis < ndim`；若越界则统一返回 `XenonError::InvalidAxis`。 |
 | 整数语义 | `i32` / `i64` 累加使用 checked arithmetic，任何溢出立即 panic。 |
 | 浮点/复数语义 | `f32` / `f64` / `Complex<_>` 遵循标量加法语义，`NaN` 按 IEEE 754 自动传播。 |
-| 执行路径约束 | SIMD / 并行若无法满足 `require.md` §28.3 数值语义约束，则必须回退标量。 |
+| 执行路径约束 | SIMD / 并行若无法满足 `需求说明书 §28.3` 数值语义约束，则必须回退标量。 |
 | 布局前提 | 算法面向 Xenon 当前支持的 F-order 语义和合法 stride 视图，不得引入 C-order 假设。 |
 
 ### 6.2 算法描述
@@ -257,7 +257,7 @@ sum_axis_keepdims(tensor, axis):
 
 调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。执行路径由 `dispatch::select_exec_path()` 统一裁决（参见 `01-architecture.md`），本模块根据返回的 `ExecPath` 委托到对应后端或使用本模块串行实现。
 
-```rust
+```rust,ignore
 fn sum_int<I: Numeric + CheckedAdd>(iter: impl Iterator<Item = I>) -> I {
     iter.fold(I::zero(), |acc, x| {
         acc.checked_add(x)
@@ -274,8 +274,9 @@ fn sum_floating_or_complex<A: Numeric + Copy>(iter: impl Iterator<Item = A>) -> 
 - 浮点路径：保持标量加法顺序；`NaN`、`Inf` 等行为沿用 IEEE 754。
 - 复数路径：对实部和虚部分量分别沿用对应实数加法语义，因此含 `NaN` 分量时同样传播。
 - 整数 SIMD fallback：整数归约默认优先标量/串行路径以保证 checked arithmetic 精确等价。仅当 SIMD 路径能证明与逐步 checked 加法完全一致时才启用优化。
-- SIMD 路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Simd` 时委托 `simd/` 纯向量化后端；浮点/复数路径允许不同合并顺序。容差阈值为当前建议测试基线，待实现验证后定稿。最终容差以实现验证后的文档化结论为准。
-- 并行路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Parallel` 时委托 `parallel/` 纯并行后端；整数路径必须保持与串行精确一致，浮点/复数路径允许不同合并顺序。容差阈值为当前建议测试基线，待实现验证后定稿。最终容差以实现验证后的文档化结论为准。
+- SIMD 路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Simd` 时委托 `simd/` 纯向量化后端；浮点/复数路径允许不同合并顺序。容差与比较规则统一遵循 `00-coding.md §7.4` 的定义。
+- 并行路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Parallel` 时委托 `parallel/` 纯并行后端；整数路径必须保持与串行精确一致，浮点/复数路径允许不同合并顺序。容差与比较规则统一遵循 `00-coding.md §7.4` 的定义。
+- 同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。
 
 ### 6.3.1 并行 axis 归约写回策略
 
@@ -483,7 +484,7 @@ User calls sum / sum_axis / sum_axis_keepdims
 | Panic | `i32` / `i64` 归约中的累加溢出属于不可恢复错误，必须通过 checked arithmetic panic。 |
 | Panic 诊断 | panic 文本至少包含 `operation`、元素类型、触发位置（如 `axis`、`output_index` 或 `element_index`）以及适用 `shape`；推荐格式遵循 `26-error.md §4.6`。 |
 | 空输入语义 | 空数组 `sum()` 返回加法单位元；沿轴归约时若被归约轴长度为 `0`，结果张量对应槽位也返回加法单位元。 |
-| 数值边界 | 整数类型结果须逐元素精确一致。对浮点和复数类型，不同执行路径（标量/SIMD/并行）允许不同合并顺序。容差阈值为当前建议测试基线，待实现验证后定稿。最终容差以实现验证后的文档化结论为准。`NaN` / `Inf` 仍按 IEEE 754 自动传播。 |
+| 数值边界 | 整数类型结果须逐元素精确一致。对浮点和复数类型，不同执行路径（标量/SIMD/并行）允许不同合并顺序。容差与比较规则统一遵循 `00-coding.md §7.4` 的定义；同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。`NaN` / `Inf` 仍按 IEEE 754 自动传播。 |
 | 路径一致性 | 标量、SIMD、并行路径在启用条件满足时必须返回相同 shape、相同错误类别，以及满足同一数值语义约束的结果；不能证明时必须回退。 |
 
 ### 10.1 错误示例
@@ -527,7 +528,7 @@ Err(XenonError::InvalidArgument {
 | 属性 | 值 |
 | ---- | ---- |
 | 决策 | 归约模块当前版本只实现 `sum`、`sum_axis`、`sum_axis_keepdims`。 |
-| 理由 | 与需求说明书 §14 保持一致，控制范围并优先保证语义闭合。 |
+| 理由 | 与 `需求说明书 §14` 保持一致，控制范围并优先保证语义闭合。 |
 | 替代方案 | 同期加入 `mean`、`prod`、`min/max` 等其它归约。 |
 | 拒绝原因 | 超出当前版本范围，会扩大类型约束、错误语义和测试面。 |
 
@@ -554,7 +555,7 @@ Err(XenonError::InvalidArgument {
 | 属性 | 值 |
 | ---- | ---- |
 | 决策 | `i32` / `i64` 归约的累加溢出使用 checked arithmetic panic。 |
-| 理由 | 需求说明书 §14、§27 将其定义为不可恢复算术域错误。 |
+| 理由 | `需求说明书 §14`、`需求说明书 §27` 将其定义为不可恢复算术域错误。 |
 | 替代方案 | 返回 `XenonError`。 |
 | 拒绝原因 | 与全局错误规范不一致，并会改变已有 API 的 panic / recoverable 边界。 |
 
@@ -562,7 +563,7 @@ Err(XenonError::InvalidArgument {
 
 | 属性 | 值 |
 | ---- | ---- |
-| 决策 | SIMD / 并行仅在满足 `require.md` §28.3 数值语义约束时启用，否则回退标量。 |
+| 决策 | SIMD / 并行仅在满足 `需求说明书 §28.3` 数值语义约束时启用，否则回退标量。 |
 | 理由 | 归约对累加顺序敏感，必须优先保持统一的对外语义。 |
 | 替代方案 | 无条件按数据规模选择 SIMD 或并行。 |
 | 拒绝原因 | 可能改变浮点/复数结果或 panic 时机，不满足路径一致性约束。 |

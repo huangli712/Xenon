@@ -188,7 +188,7 @@ impl Default for FormatConfig {
 }
 ```
 
-> **扩展边界说明：** `precision` 和 `line_width` 为受控扩展，超出 `require.md §24` 的最小必要集。纳入稳定 API 面须遵守 SemVer。
+> **扩展边界说明：** `precision` 和 `line_width` 为受控扩展，超出需求说明书 §24 的最小必要集。纳入稳定 API 面须遵守 SemVer。
 
 ### 5.1b TensorDisplay 包装结构
 
@@ -242,7 +242,7 @@ where
 
 > **读取顺序约定**：格式化输出按**逻辑多维索引顺序**读取元素，而不是按底层物理内存顺序线性扫描。格式化层不得把 `iter()` 的顺序当作公共契约前提；若内部复用 `iter()`，那只应视为私有实现细节，必要时应改为显式逻辑索引或递归子视图遍历。
 
-> **内部访问说明**：内部实现可使用 `read_at(indices)` 之类的辅助函数访问逻辑位置元素；这只是实现细节，**不扩展 `require.md` §18 的公开索引契约**。`read_at(indices)` 的时间复杂度为 `O(ndim)`，前提为 `indices` 在合法范围内。
+> **内部访问说明**：内部实现可使用 `read_at(indices)` 之类的辅助函数访问逻辑位置元素；这只是实现细节，**不扩展需求说明书 §18 的公开索引契约**。`read_at(indices)` 的时间复杂度为 `O(ndim)`，前提为 `indices` 在合法范围内。
 
 > **注意**：`core::fmt::Display` 在 Rust 1.85 中对 f32/f64 无需 `std` 即可使用，因此此实现不加 `#[cfg(feature = "std")]` 门控。
 
@@ -284,7 +284,7 @@ where
 
 ### 5.3 Debug 实现
 
-> **Display / Debug 分工约定：** `Display` 只负责数据文本；当发生截断时，它在最外层右括号后追加 `shape=[...]`，用于满足 `require.md §24` 的“可识别 shape”要求。`Debug` 已在头部输出 `shape=`、`strides=`、`dtype=` 和 `layout=`，因此其数据段复用相同截断选点规则，但不再重复追加 `shape=[...]` 后缀。
+> **Display / Debug 分工约定：** `Display` 只负责数据文本；当发生截断时，它在最外层右括号后追加 `shape=[...]`，用于满足需求说明书 §24 的“可识别 shape”要求。`Debug` 已在头部输出 `shape=`、`strides=`、`dtype=` 和 `layout=`，因此其数据段复用相同截断选点规则，但不再重复追加 `shape=[...]` 后缀。
 
 ````rust,ignore
 // Debug should depend only on Debug for element rendering.
@@ -717,9 +717,9 @@ Wave 3:        [T5]
 
 | 占位场景 | 说明 |
 | -------- | ---- |
-| broadcast view 格式化 | 预留给 `require.md §28.4` 的零步长广播视图显示/调试边界测试 |
-| transposed view 格式化 | 预留给 `require.md §28.4` 的转置非连续视图显示顺序测试 |
-| 大维度窄行宽 | 预留给 `require.md §28.4` 的高维嵌套 + `line_width` 边界折行测试 |
+| broadcast view 格式化 | 预留给需求说明书 §28.4 的零步长广播视图显示/调试边界测试 |
+| transposed view 格式化 | 预留给需求说明书 §28.4 的转置非连续视图显示顺序测试 |
+| 大维度窄行宽 | 预留给需求说明书 §28.4 的高维嵌套 + `line_width` 边界折行测试 |
 
 ### 8.5 属性测试不变量
 
@@ -812,7 +812,7 @@ User calls format!("{}", tensor) / format!("{:?}", tensor)
 | 属性     | 值                                                             |
 | -------- | -------------------------------------------------------------- |
 | 决策     | 零维张量输出采用 `Tensor0(...)` 形式，而不是直接打印裸元素     |
-| 理由     | 满足 `require.md §24` 中“以可区分方式显示标量与零维张量”的要求 |
+| 理由     | 满足需求说明书 §24 中“以可区分方式显示标量与零维张量”的要求 |
 | 替代方案 | 直接输出裸标量 — 放弃，会与普通标量文本混淆                    |
 
 ---

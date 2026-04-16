@@ -2,7 +2,7 @@
 
 > 文档编号: 12 | 模块: `src/matrix/` | 阶段: Phase 4
 > 前置文档: `03-element.md`, `07-tensor.md`, `08-simd.md`, `09-parallel.md`, `10-iterator.md`, `13-reduction.md`, `26-error.md`
-> 需求参考: 需求说明书 §4, §9.1, §9.2, §9.3, §10, §13, §27, §28.2, §28.3, §28.4, §28.5
+> 需求参考: `需求说明书 §4`, `需求说明书 §9.1`, `需求说明书 §9.2`, `需求说明书 §9.3`, `需求说明书 §10`, `需求说明书 §13`, `需求说明书 §27`, `需求说明书 §28.2`, `需求说明书 §28.3`, `需求说明书 §28.4`, `需求说明书 §28.5`
 > 范围声明: 范围内
 
 ---
@@ -47,7 +47,7 @@ L5: matrix  <- current module
 
 | 类型     | 内容                                                                                     |
 | -------- | ---------------------------------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §4, §9.1, §9.2, §9.3, §10, §13, §27, §28.2, §28.3, §28.4, §28.5               |
+| 需求映射 | `需求说明书 §4`, `需求说明书 §9.1`, `需求说明书 §9.2`, `需求说明书 §9.3`, `需求说明书 §10`, `需求说明书 §13`, `需求说明书 §27`, `需求说明书 §28.2`, `需求说明书 §28.3`, `需求说明书 §28.4`, `需求说明书 §28.5` |
 | 范围内   | 向量内积 `dot`、复数共轭线性语义、形状检查、空向量单位元，以及可选 SIMD / 并行执行路径。 |
 | 范围外   | 矩阵-矩阵乘法、外积、批量矩阵乘法、矩阵分解以及 BLAS/LAPACK 绑定。                       |
 | 非目标   | 不把 `matrix` 扩展为通用线性代数层，不新增第三方线性代数依赖。                           |
@@ -214,7 +214,7 @@ where
 
 ### 5.2 复数内积语义
 
-```rust
+```rust,ignore
 // Complex dot product implements conjugate-linearity
 // dot(Complex{re: 1, im: 2}, Complex{re: 3, im: 4})
 // = conjugate(Complex{1,2}) * Complex{3,4}
@@ -285,7 +285,7 @@ dot_impl(a, b):
 | 禁止嵌套并行 | 若当前线程已处于库内部并行区域，则 `dispatch::ParallelGuard::enter()` 失败并强制回退标量/串行路径，不得再开启第二层并行。 |
 | 路径顺序     | 调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。 |
 
-这满足 `require.md §9.2` / `§9.3` 对“支持阈值配置”和“库内部不得开启第二层并行”的要求。
+这满足 `需求说明书 §9.2` / `§9.3` 对“支持阈值配置”和“库内部不得开启第二层并行”的要求。
 
 ### 6.2 标量实现
 
@@ -320,7 +320,7 @@ fn scalar_dot_float_or_complex<A, D>(
 - 实数类型（`f32`、`f64`、`i32`、`i64`）：`conjugate(x) == x`（恒等实现，直接返回 `self`）
 - 复数类型（`Complex<f32>`、`Complex<f64>`）：`conjugate(x)` 返回共轭复数
 
-```rust
+```rust,ignore
 // conjugate method in the Numeric trait (defined in 03-element.md §5.2)
 // Real types: fn conjugate(self) -> Self { self }
 // Complex types: fn conjugate(self) -> Self { Complex::conj(self) }
@@ -550,9 +550,9 @@ User calls dot(a, b)
 | Recoverable error | 左/右输入非 1D 时分别返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, axis_len: Option<usize>, start: Option<usize>, end: Option<usize>, shape: Option<Vec<usize>> }`，典型取值为 `argument: "lhs"` 或 `"rhs"`、`axis: None`、`axis_len: None`、`start: None`、`end: None`、`shape: Some(input.shape().to_vec())`；长度不匹配时返回 `XenonError::DimensionMismatch { operation: "dot", expected: usize, actual: usize }`。 |
 | Panic             | 整数 dot 的乘法溢出与累加溢出均为不可恢复错误，按 checked arithmetic 触发 panic。panic 文本至少包含 `operation=dot`、元素类型、`trigger`（`multiply` / `accumulate`）、逻辑位置（如 `lane`）以及输入 shape。                                                                                                                                                                                                                                                                                                                                          |
 | 路径一致性        | 调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。任何可选路径都不得改变结果、错误类别或 panic 语义。                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| 容差边界          | 容差阈值为当前建议测试基线，待实现验证后定稿。最终容差以实现验证后的文档化结论为准。                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 容差边界          | 容差与比较规则统一遵循 `00-coding.md §7.4` 的定义。同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
-> **容差说明：** 容差阈值为当前建议测试基线，待实现验证后定稿。最终容差以实现验证后的文档化结论为准。
+> **容差说明：** 容差与比较规则统一遵循 `00-coding.md §7.4` 的定义。同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。
 
 ---
 
@@ -574,7 +574,7 @@ User calls dot(a, b)
 | 决策     | 长度不匹配返回 `Result::Err(XenonError::DimensionMismatch)`                |
 | 理由     | 运行时形状检查失败属于可恢复错误；用户可能动态构造向量长度，应允许优雅处理 |
 | 替代方案 | panic                                                                      |
-| 拒绝原因 | 与需求说明书 §13 "维度或形状不匹配时须提供可恢复的错误处理路径" 不一致     |
+| 拒绝原因 | 与 `需求说明书 §13` “维度或形状不匹配时须提供可恢复的错误处理路径” 不一致 |
 
 ### 决策 3：SIMD 优化策略
 

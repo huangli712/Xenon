@@ -50,11 +50,11 @@ mod tensor-base;
 
 类型名（struct、enum、type alias）使用 `CamelCase`。
 
-```rust
+```rust,ignore
 // Good
 pub struct TensorBase<S, D> { /* ... */ }
-pub struct ViewRepr<A> { /* ... */ }
-pub struct ViewMutRepr<A> { /* ... */ }
+pub struct ViewRepr<'a, A> { /* ... */ }
+pub struct ViewMutRepr<'a, A> { /* ... */ }
 pub struct ArcRepr<A> { /* ... */ }
 pub struct IxDyn { /* ... */ }
 
@@ -83,7 +83,7 @@ pub struct TENSORBASE<S, D> { /* ... */ }
 
 Trait 名使用 `CamelCase`。标记 trait 使用描述性形容词。
 
-```rust
+```rust,ignore
 // Good
 pub trait Element: Copy + PartialEq + Debug + Display + Send + Sync { /* ... */ }
 pub trait Numeric: Element + Add<Output=Self> + Sub<Output=Self>
@@ -104,7 +104,7 @@ pub trait Has_Element { /* ... */ }
 
 函数和方法名使用 `snake_case`。
 
-```rust
+```rust,ignore
 // Good
 pub fn shape(&self) -> &[Ix];
 pub fn transpose(&self) -> TensorView<'_, A, D>;
@@ -148,7 +148,7 @@ pub const Max_Dimension: usize = 6;
 
 生命周期使用短名：`'a`、`'b`、`'c` 等。
 
-```rust
+```rust,ignore
 // Good
 pub struct View<'a, A, D> {
     ptr: NonNull<A>,
@@ -172,7 +172,7 @@ pub struct View<'DATA, A, D> { /* ... */ }
 | `is_`   | 布尔查询，无副作用     | 廉价     | `is_empty()`、`is_f_contiguous()` |
 | `with_` | 构建器模式，返回 Self  | 变化     | 通用命名示例：`with_shape()`、`with_capacity()` |
 
-```rust
+```rust,ignore
 // Good
 impl<A, D> TensorBase<Owned<A>, D> {
     pub fn as_slice(&self) -> &[A] { /* ... */ }
@@ -189,7 +189,7 @@ pub fn to_view(&self) -> View<'_, A, D> { /* ... */ }  // view conversion should
 
 ### 1.9 Getter 不加 `get_` 前缀
 
-```rust
+```rust,ignore
 // Good
 pub fn shape(&self) -> &[Ix] { self.dim.slice() }
 pub fn strides(&self) -> &[Ix] { &self.strides.slice() }
@@ -207,7 +207,7 @@ pub fn get_strides(&self) -> &[Ix] { /* ... */ }
 
 **例外**：当方法可能失败或需要参数时，使用 `try_` 前缀表达 fallible API：
 
-```rust
+```rust,ignore
 // Good - requires index parameter, may fail, returns XenonError::IndexOutOfBounds
 pub fn try_at(&self, index: &[Ix]) -> Result<&A> { /* ... */ }
 
@@ -256,7 +256,7 @@ format_code_in_doc_comments = true
 
 **行宽限制**：100 字符。超过时优先换行而非缩短变量名。
 
-```rust
+```rust,ignore
 // Good
 pub fn from_shape_vec_unchecked(
     shape: Shape,
@@ -277,7 +277,7 @@ pub fn from_shape_vec_unchecked(shape: Shape, data: Vec<A>) -> Self { /* ... */ 
 2. 外部 crate
 3. 本 crate 内部模块
 
-```rust
+```rust,ignore
 // Good
 use alloc::vec::Vec;
 use alloc::borrow::Cow;
@@ -310,9 +310,9 @@ use crate::storage::Storage;
 
 公开 API 和常规代码中禁止使用 `as` 进行数值类型转换。使用 `From`/`TryFrom`/`Into` trait。
 
-> **说明**：Rust 标准库不提供 `From<i32> for f64`。整数到浮点的转换须通过 Xenon 自身的显式转换 API 实现，参见 需求说明书 §23 和 `21-type.md`。
+> **说明**：Rust 标准库不提供 `From<i32> for f64`。整数到浮点的转换须通过 Xenon 自身的显式转换 API 实现，参见 需求说明书 §23 和 `21-type.md §5.2`。
 
-```rust
+```rust,ignore
 // Good
 let x: i32 = value.try_into().map_err(|_| ConversionError)?;
 
@@ -323,7 +323,7 @@ let y: f64 = value as f64;  // dangerous: precision loss
 
 **例外**：以下情况允许 `as`：
 
-```rust
+```rust,ignore
 // 1. Interacting with C FFI
 let ptr = slice.as_ptr() as *mut c_void;
 
@@ -347,7 +347,7 @@ let truncated = float_val as i32;
 
 **`where` 子句**用于：复杂约束（3+ trait），约束涉及关联类型，约束较长影响可读性，impl 块。
 
-```rust
+```rust,ignore
 // Good - complex constraint, where clause
 pub fn dot<A, D1, D2>(
     lhs: &Tensor<A, D1>,
@@ -394,7 +394,7 @@ pub fn bad<A: Numeric + Add<Output = A> + Sub<Output = A> + Mul<Output = A> + Cl
 | `PhantomData<fn(T) -> ()>` | 仅消费 T      | 逆变（contravariant） |
 | `PhantomData<Cell<T>>`     | 如需不变      | 不变（invariant）     |
 
-```rust
+```rust,ignore
 // Good - covariant borrow of element type
 pub struct ViewRepr<'a, A> {
     _marker: PhantomData<&'a A>,
@@ -434,7 +434,7 @@ pub struct Bad<A> {
 
 > **关键约束**：`ViewMutRepr` 永远不实现 `Sync`——独占借用语义要求同一时刻只有一个线程可访问。
 
-```rust
+```rust,ignore
 // Owned: Send+Sync when A: Send+Sync
 unsafe impl<A: Send> Send for Owned<A> {}
 unsafe impl<A: Sync> Sync for Owned<A> {}
@@ -471,7 +471,7 @@ unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 - 契约违反
 - 已证明前提下的内部快捷路径可使用 unchecked 或索引语法糖；公开安全索引 API 的越界与维度不匹配必须返回可恢复错误
 
-```rust
+```rust,ignore
 // Good - recoverable error
 pub fn broadcast_to<D2>(&self, shape: D2) -> Result<TensorView<'_, A, D2>>
 where
@@ -511,7 +511,7 @@ where
 
 ### 4.2 XenonError 设计
 
-> **架构交叉引用**：单一 `XenonError` 错误模型的架构决策已在 `01-architecture.md` 中定义；本节仅说明该决策在编码层面的公开 API、错误映射与文档写法约束。
+> **架构交叉引用**：单一 `XenonError` 错误模型的架构决策已在 `01-architecture.md §13` 中定义；本节仅说明该决策在编码层面的公开 API、错误映射与文档写法约束。
 
 统一错误类型 `XenonError`，覆盖所有可恢复错误场景：
 
@@ -521,7 +521,7 @@ where
 >
 > **说明：** 以下为字段形态示意，非权威定义。错误模型以 `26-error.md` 为准。
 
-> **FFI 边界**：Rust 内部的 fallible API 使用 `try_* -> Result` 模式。真正的 `extern "C"` FFI 边界必须使用 FFI-safe 状态码与输出参数，不得跨 ABI 返回 `Result`，也不得让 panic 穿越边界。公开架构不提供 `bare_*` / panic-sugar 形式的 FFI helper；需要偏移或指针计算时，仅保留 `try_offset_of()`、`try_ptr_at()` 这类可恢复错误入口。参见 `23-ffi.md`。
+> **FFI 边界**：Rust 内部的 fallible API 使用 `try_* -> Result` 模式。真正的 `extern "C"` FFI 边界必须使用 FFI-safe 状态码与输出参数，不得跨 ABI 返回 `Result`，也不得让 panic 穿越边界。公开架构不提供 `bare_*` / panic-sugar 形式的 FFI helper；需要偏移或指针计算时，仅保留 `try_offset_of()`、`try_ptr_at()` 这类可恢复错误入口。参见 `23-ffi.md §5`。
 
 ```rust,ignore
 #[derive(Debug, Clone)]
@@ -565,8 +565,15 @@ pub enum XenonError {
         shape: Vec<usize>,
     },
     TypeConversion(TypeConversionError),
-    Ffi(FfiError),
-    Workspace(WorkspaceError),
+    Ffi {
+        reason: Cow<'static, str>,
+        context: Option<Cow<'static, str>>,
+    },
+    Workspace {
+        operation: Cow<'static, str>,
+        path: Option<Cow<'static, str>>,
+        reason: Cow<'static, str>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -591,8 +598,8 @@ pub type Result<T> = std::result::Result<T, XenonError>;
 ```
 
 > **模块内部错误说明：** `FfiError`、`WorkspaceError`、`TypeConversionError` 可作为模块内部载荷结构存在；
-> 它们跨越公开边界时必须统一包装为 `XenonError::Ffi(...)`、`XenonError::Workspace(...)`、`XenonError::TypeConversion(...)`，
-> 不得直接作为公开 API 返回类型暴露。
+> 其中 `FfiError`、`WorkspaceError` 跨越公开边界时必须先映射为 `XenonError::Ffi { ... }`、`XenonError::Workspace { ... }` 的结构化字段，
+> `TypeConversionError` 则继续通过 `XenonError::TypeConversion(...)` 统一暴露，不得直接作为公开 API 返回类型暴露。
 
 > **内部辅助类型说明：** `TypeConversionReason` 是 `pub(crate)` 内部枚举载荷；
 > 公开错误边界固定为 `XenonError::TypeConversion(TypeConversionError)`。
@@ -601,7 +608,7 @@ pub type Result<T> = std::result::Result<T, XenonError>;
 
 库代码中禁止使用 `unwrap()`。`expect()` 仅允许用于断言已证明的不变量或前置条件，且消息必须说明为何此处不会失败。测试代码不受此限制。
 
-```rust
+```rust,ignore
 // Good - use ? and Result
 pub fn broadcast_to<D2>(&self, shape: D2) -> Result<TensorView<'_, A, D2>>
 where
@@ -775,11 +782,11 @@ src/
 
 `lib.rs` 必须声明项目级统一 lint 基线；其中 `#![warn(clippy::unwrap_used)]` 是整个项目库代码的统一要求，不得在其他模块或文档片段中弱化或省略。
 
-> **权威来源说明**：本节的 `lib.rs` lint 列表是权威来源。`01-architecture.md` 及其他文档中的 `lib.rs` 片段须与本节保持一致。
+> **权威来源说明**：本节的 `lib.rs` lint 列表是权威来源。`01-architecture.md §8` 及其他文档中的 `lib.rs` 片段须与本节保持一致。
 >
-> **CI 强制执行**：开发期间使用 `warn` 级别，CI 通过 `RUSTDOCFLAGS="-D warnings"` 将所有 lint 警告提升为错误，确保文档和代码质量。
+> **CI 强制执行**：开发期间使用 `warn` 级别；CI 中应分别执行 `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps`（rustdoc 警告）、`cargo clippy -- -D warnings`（Clippy 警告），并在需要把常规编译警告也提升为错误时额外使用 `RUSTFLAGS="-D warnings" cargo check`。
 
-```rust
+```rust,ignore
 // src/lib.rs
 
 //! Xenon: N-dimensional array library for Rust.
@@ -806,7 +813,7 @@ src/
 7. **# Safety**：unsafe 函数的前提条件
 8. **# Examples**：示例代码
 
-````rust
+````rust,ignore
 /// Returns a broadcasted read-only view for the requested shape.
 ///
 /// This operation reuses the original storage and only updates metadata.
@@ -836,7 +843,7 @@ where
 
 文档示例代码应使用 `?` 运算符处理错误：
 
-````rust
+````rust,ignore
 // Good
 /// # Examples
 /// ```rust
@@ -927,7 +934,7 @@ mod tests {
 
 **浮点比较**：对存在舍入误差容差的数值路径，使用近似比较；对比较 API 自身、布尔结果、文档明确要求精确一致的场景，允许/要求精确断言。参见 需求说明书 §12（NaN 遵循 IEEE 754）和 §28.3。
 
-```rust
+```rust,ignore
 // Good - tolerance uses max(1 ULP, epsilon * |scalar_result|)
 fn assert_close(a: f64, b: f64, epsilon: f64) {
     let diff = (a - b).abs();
@@ -966,7 +973,7 @@ assert_eq!(result[[0, 0]], 58.0);  // may fail due to rounding errors
 
 **`#[inline(always)]`** 仅用于经性能分析确认的关键热路径。
 
-```rust
+```rust,ignore
 // Good - small function
 #[inline]
 pub fn len(&self) -> usize {
@@ -1115,7 +1122,7 @@ Wave 2: [T4]
 | `test_std_default_check`    | 默认 `std` 配置编译通过   | 高     |
 | `test_compile_all_features` | `--all-features` 编译通过 | 高     |
 
-> **覆盖补充：** 边界类（空张量/单元素/大张量/极值/高维/非法元素类型）、并行/SIMD 路径一致性、compile-fail 约束测试由对应模块文档（`27-benchmark.md`、`28-tests.md`）具体定义。
+> **覆盖补充：** 边界类（空张量/单元素/大张量/极值/高维/非法元素类型）、并行/SIMD 路径一致性、compile-fail 约束测试由对应模块文档（`27-benchmark.md §8`、`28-tests.md §8`）具体定义。
 
 ## 11. 验证补充
 
@@ -1150,7 +1157,7 @@ Wave 2: [T4]
 
 ## 12. 设计决策记录
 
-> **架构交叉引用**：F-order 单一布局、封闭元素类型集合与单一 `XenonError` 错误枚举的正式架构决策已记录于 `01-architecture.md`；本节仅保留这些决策对编码规范与实现约束的直接影响，便于在编码语境中引用。
+> **架构交叉引用**：F-order 单一布局、封闭元素类型集合与单一 `XenonError` 错误枚举的正式架构决策已记录于 `01-architecture.md §13`；本节仅保留这些决策对编码规范与实现约束的直接影响，便于在编码语境中引用。
 
 ### 决策 1：F-order 单一布局
 

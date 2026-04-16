@@ -91,8 +91,8 @@ src/shape/
 
 | 来源模块    | 使用的类型/trait                                                                                                |
 | ----------- | --------------------------------------------------------------------------------------------------------------- |
-| `tensor`    | `TensorBase<S, D>`, `TensorView`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.offset()`，参见 `07-tensor.md` §5 |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `RemoveAxis`, `IntoDimension`，参见 `02-dimension.md` §3                     |
+| `tensor`    | `TensorBase<S, D>`, `TensorView<'_, A, D>`, `.shape()`, `.strides()`, `.offset()`，参见 `07-tensor.md` §5 |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`，参见 `02-dimension.md` §3                     |
 | `layout`    | `LayoutFlags`, `LayoutState`, `Strides<D>`，参见 `06-layout.md` §3, §4                                          |
 | `error`     | 无新增可恢复错误；规范性 `transpose()` 不走失败返回路径                                                         |
 
@@ -156,7 +156,7 @@ where
 
 > **范围说明：** 当前版本的 `transpose()` 定义为全轴顺序反转（reverse axis order），等价于矩阵转置。一般化的任意轴置换不在当前版本范围内。未来若引入 `permute_axes()`，`transpose()` 仍保持为 `reverse_axes()` 的便捷别名，不改变现有契约。
 >
-> **设计说明**：当前版本的 `transpose()` 固定执行全轴反转（reverse axis order），即 `shape' = shape[::-1]`，`strides' = strides[::-1]`。这是轴置换（permutation）的特例。一般的 `permute_axes()` API 不在当前版本范围内。`require.md` §17 所述的“轴置换规则”在本版本中等价于全轴反转。
+> **设计说明**：当前版本的 `transpose()` 固定执行全轴反转（reverse axis order），即 `shape' = shape[::-1]`，`strides' = strides[::-1]`。这是轴置换（permutation）的特例。一般的 `permute_axes()` API 不在当前版本范围内。需求说明书 §17 所述的“轴置换规则”在本版本中等价于全轴反转。
 >
 > **安全性论证：** 若内部通过 unchecked 视图构造返回转置结果，其安全前提为：1）转置仅重排轴顺序，不改变逻辑访问范围；2）反转后的 `shape` / `stride` 组合仍满足原 storage 的可见边界约束（由构造期验证保证）；3）`offset` 保持不变。因此转置无需新的存储分配，视图构造仍落在原验证范围内。
 
@@ -180,13 +180,13 @@ where
 
 > **显式设计决策（ADR）：** `transpose()` 的返回类型统一固定为 `TensorView<'_, A, D>`，因此结果始终是基于借用的只读视图，只能持有 `ViewRepr`。即使源张量底层使用 `ArcRepr`（共享只读存储），转置结果也不会保留共享所有权语义，而是降级为普通借用视图。这是有意为之：转置仅重写 shape/stride/flags 等元数据，不复制也不迁移底层存储；原张量自身继续保留其原有存储模式，`ArcRepr` 的共享所有权能力仍由源对象负责维持。统一返回 `TensorView` 可以避免为元数据操作引入额外表示类型或条件返回类型，保持 API 与实现的简单性和一致性。
 >
-> **共享语义补充：** 若源张量为 `ArcRepr`（共享只读），转置后 `storage_kind()` 返回 `StorageKind::View` 而非 `Shared`。这是有意设计：转置结果的生命周期绑定到调用时借用，而不是源张量的共享引用计数。这是允许的收窄：`require.md` §17 只要求结果落在只读引用或共享只读引用范围内。借用视图满足只读引用约束。对后续广播、格式化、线程共享的影响：转置结果的生命周期绑定到原始张量的借用期。
+> **共享语义补充：** 若源张量为 `ArcRepr`（共享只读），转置后 `storage_kind()` 返回 `StorageKind::View` 而非 `Shared`。这是有意设计：转置结果的生命周期绑定到调用时借用，而不是源张量的共享引用计数。这是允许的收窄：需求说明书 §17 只要求结果落在只读引用或共享只读引用范围内。借用视图满足只读引用约束。对后续广播、格式化、线程共享的影响：转置结果的生命周期绑定到原始张量的借用期。
 
 #### 5.1.3 Good / Bad 对比
 
 > **说明：** 以下为示意性伪实现，非稳定内部结构约定。
 
-```rust
+```rust,ignore
 // Good - use transpose() for zero-copy transpose
 let a = Tensor::<f64, _>::zeros([1000, 1000]);
 let b = a.transpose();  // O(1), zero-copy
@@ -207,7 +207,7 @@ for i in 0..1000 {
 
 ### 5.2 范围边界说明
 
-> **范围决策：** 根据 `require.md` §17，当前版本形状操作仅支持转置。
+> **范围决策：** 根据需求说明书 §17，当前版本形状操作仅支持转置。
 > 其他形状变换与连续性驱动的形状重解释不属于本文档覆盖范围，留待后续版本单独设计。
 
 ---
@@ -230,9 +230,9 @@ Transpose: shape=[3, 2], strides=[2, 1]  (strides reversed, not F-contiguous)
 
 ### 6.2 转置后的连续性标志处理
 
-转置操作不引入新步长值，仅交换现有 `usize` stride 顺序。由于 `require.md` §7 明确当前版本不支持负步长布局，因此这里无需讨论负 stride 或相关标志。连续性标志需要按结果布局重算：转置后连续性须根据结果的 shape 与 stride 重新计算；若结果仍满足 F-order 连续条件（如含长度为 1 的轴的转置），则保留 F-contiguous 标记。零步长等其他已存在标志仍按结果布局分类；若源视图为广播视图且转置后仍存在任一 `stride == 0` 的轴，则继续保留 `BroadcastView` 标记；对 0D/1D 输入，转置是元数据 no-op，应保留原有连续性标志。
+转置操作不引入新步长值，仅交换现有 `usize` stride 顺序。由于需求说明书 §7 明确当前版本不支持负步长布局，因此这里无需讨论负 stride 或相关标志。连续性标志需要按结果布局重算：转置后连续性须根据结果的 shape 与 stride 重新计算；若结果仍满足 F-order 连续条件（如含长度为 1 的轴的转置），则保留 F-contiguous 标记。零步长等其他已存在标志仍按结果布局分类；若源视图为广播视图且转置后仍存在任一 `stride == 0` 的轴，则继续保留 `BroadcastView` 标记；对 0D/1D 输入，转置是元数据 no-op，应保留原有连续性标志。
 
-```rust
+```rust,ignore
 fn update_flags_for_transpose(
     source_flags: LayoutFlags,
     new_shape: &[usize],
@@ -403,7 +403,7 @@ User calls transpose()
 | 属性     | 值                                                        |
 | -------- | --------------------------------------------------------- |
 | 决策     | 其他形状变换留待后续版本单独设计，不在当前文档承诺        |
-| 理由     | `require.md` §17 明确当前版本形状操作仅支持转置           |
+| 理由     | 需求说明书 §17 明确当前版本形状操作仅支持转置           |
 | 替代方案 | 在本阶段继续保留其他形状变换设计 — 放弃，超出当前需求范围 |
 
 ### 决策 3：当前版本交付边界仅包含 `transpose()`
@@ -411,7 +411,7 @@ User calls transpose()
 | 属性     | 值                                                                                |
 | -------- | --------------------------------------------------------------------------------- |
 | 决策     | Phase 4 仅把 `transpose()` 纳入当前版本交付                                       |
-| 理由     | `require.md` §17 明确当前版本只要求转置操作本身，文档不应把别名扩写成当前交付承诺 |
+| 理由     | 需求说明书 §17 明确当前版本只要求转置操作本身，文档不应把别名扩写成当前交付承诺 |
 | 替代方案 | 在当前版本同时承诺其他形状操作 — 放弃，超出规范性 API 边界                        |
 
 ### 决策 4：`transpose()` 不保留 `ArcRepr` 共享所有权语义

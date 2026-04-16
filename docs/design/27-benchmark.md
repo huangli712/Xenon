@@ -47,8 +47,8 @@ benches/  <- current module (dev-dependency, consumes only the crate's public AP
 
 | 类型     | 内容                                                                       |
 | -------- | -------------------------------------------------------------------------- |
-| 需求映射 | `require.md §9.1`, `§9.2`, `§9.3`                                              |
-| 正确性映射 | `require.md §28.2`：由 `28-tests.md` 负责验证，本文档不承接。<br>`require.md §28.3`：引用的正确性前提，benchmark 不定义正确性容差。<br>`require.md §28.4`：由 `28-tests.md` 负责验证，本文档不承接。<br>`require.md §28.5`：由 `28-tests.md` 负责验证，本文档不承接。 |
+| 需求映射 | `需求说明书 §9.1`、`§9.2`、`§9.3`                                              |
+| 正确性映射 | `需求说明书 §28.2`：由 `28-tests.md` 负责验证，本文档不承接。<br>`需求说明书 §28.3`：引用的正确性前提，benchmark 不定义正确性容差。<br>`需求说明书 §28.4`：由 `28-tests.md` 负责验证，本文档不承接。<br>`需求说明书 §28.5`：由 `28-tests.md` 负责验证，本文档不承接。 |
 | 范围内   | benchmark 分类、参数矩阵、基准 harness 与结果汇总口径                      |
 | 范围外   | 生产运行时性能调优、跨语言基准、额外平台专用测量框架                       |
 | 非目标   | 通过 benchmark 文档扩展 crate 公共 API、引入非必要运行时依赖或改变需求边界 |
@@ -64,7 +64,7 @@ benches/  <- current module (dev-dependency, consumes only the crate's public AP
 | 前提项 | 说明 |
 | ------ | ---- |
 | 平台前提 | 仅面向 `std` 环境，且保持单 crate 结构，不引入 benchmark 专用第三方依赖 |
-| 能力前提 | 被测公开 API 已按 `require.md` 范围落地：逐元素运算、归约、内积、广播、转置、构造、集合操作 |
+| 能力前提 | 被测公开 API 已按 `需求说明书` 范围落地：逐元素运算、归约、内积、广播、转置、构造、集合操作 |
 | feature 前提 | `simd` / `parallel` 默认关闭，仅在显式启用对应 feature 时进入对比基准 |
 | 布局前提 | 拥有型连续布局仅覆盖 F-order；非连续输入仅通过切片/转置等合法视图产生 |
 | 数据前提 | benchmark 输入在计时前预生成并固定，必要时使用固定随机种子或确定性序列 |
@@ -186,7 +186,7 @@ harness = false
 
 ### 5.2 共享工具模块
 
-```rust
+```rust,ignore
 // benches/utils/mod.rs
 pub mod data_gen;
 
@@ -204,7 +204,7 @@ pub const SIZES_3D: &[(usize, usize, usize)] = &[
 ];
 ```
 
-```rust
+```rust,ignore
 // benches/utils/data_gen.rs
 use xenon::prelude::*;
 
@@ -317,7 +317,7 @@ Benchmark categories
 | `broadcast_col`            | 列向量广播到矩阵        | S/M/L | f64            | F-contiguous   | 列广播                                                                           |
 | `transpose_2d`             | 2D 转置（零拷贝）       | S/M/L | f64            | F-contiguous   | 转置视图创建                                                                     |
 | `simd_add_compare`         | `a + b` (SIMD vs 标量)  | M     | f32/f64        | F-contiguous   | SIMD 加速比（参见 `08-simd.md §12`）                                             |
-| `simd_sum_compare`         | sum (SIMD vs 标量)      | M     | i32/i64        | F-contiguous   | 仅测当前已覆盖的整数 SIMD 归约加速                                               |
+| `simd_sum_compare`         | sum (SIMD vs 标量)      | M     | i32/i64        | F-contiguous   | 仅对已验证启用的整数 SIMD reduction 路径建基准（参见 `08-simd.md §5.4a`）         |
 | `simd_dot_compare`         | dot (SIMD vs 标量)      | M     | f32/f64        | F-contiguous   | SIMD dot kernel 已在 `08-simd.md` 中设计，本基准仅对比 SIMD 与标量路径的性能差异 |
 | `par_sum_compare`          | sum (并行 vs 串行)      | L     | i64            | F-contiguous   | 并行加速比（参见 `09-parallel.md §12`）                                          |
 | `par_add_compare`          | `a + b` (并行 vs 串行)  | L     | f64            | F-contiguous   | 并行逐元素加速                                                                   |
@@ -401,7 +401,7 @@ cargo bench --bench construction -- "zeros_1d" --quick
 
 ### 5.8 Benchmark 模板
 
-```rust
+```rust,ignore
 // benches/math.rs
 use std::hint::black_box;
 use std::time::Instant;
@@ -436,7 +436,7 @@ fn main() {
 
 #### 5.9.1 Good — 正确的 benchmark 模式
 
-```rust
+```rust,ignore
 // Good: Use black_box and a dedicated timing loop
 fn bench_sum() {
     let data = data_gen::sequential_1d(65_536);
@@ -450,7 +450,7 @@ fn bench_sum() {
 
 #### 5.9.2 Bad — 错误的 benchmark 模式
 
-```rust
+```rust,ignore
 // Bad: Not using black_box, compiler may eliminate the operation
 fn bench_sum_bad() {
     let data = data_gen::sequential_1d(65_536);
@@ -508,7 +508,7 @@ fn bench_sum_bad2() {
 
 ### 6.3 black_box 使用规范
 
-```rust
+```rust,ignore
 // Good: black_box wraps the entire expression to prevent dead code elimination
 let _result = black_box((&a + &b).unwrap());
 
@@ -532,7 +532,7 @@ let _result = (&a + &b).unwrap();
 
 benchmark 不定义正确性容差，也不在本文件内重复维护 `atol` / `rtol` 或其他比较表。所有数值正确性判断统一引用 `28-tests.md` 中冻结的数值契约：默认比较遵循 ULP-based contract，仅在文档明确允许的数学函数场景使用单独容差规则。
 
-benchmark 侧只允许复用这些契约来说明“性能观测建立在既有正确性测试之上”，不得把 benchmark 结果或阈值升级为新的正确性门禁。参见 `require.md §28.3`。
+benchmark 侧只允许复用这些契约来说明“性能观测建立在既有正确性测试之上”，不得把 benchmark 结果或阈值升级为新的正确性门禁。参见 `需求说明书 §28.3`。
 
 ---
 
@@ -750,7 +750,7 @@ benchmark files
 | 属性     | 值                                                                    |
 | -------- | --------------------------------------------------------------------- |
 | 决策     | 若仓库后续启用 Regression Check，可采用 >5% warning、>20% fail、>5% 改善记录 的工程门限 |
-| 理由     | 该门限有助于持续观察性能趋势，但属于 CI/维护流程增强，不是 `require.md` 当前版本的必需交付 |
+| 理由     | 该门限有助于持续观察性能趋势，但属于 CI/维护流程增强，不是 `需求说明书` 当前版本的必需交付 |
 | 替代方案 | 完全不设门限 — 允许，当前版本至少需保留可重复 benchmark 方案与结果汇总口径 |
 
 > **补充**：Regression Check、baseline 更新与 5% / 20% 门限均属于可选工程增强；当前版本必需交付的是 benchmark 分组、输入矩阵、feature 组合与可重复测量方法，Smoke Test 只验证 benchmark 可运行性，不应阻塞合并。
@@ -772,7 +772,7 @@ benchmark files
 | 覆盖范围 | 重点观察逐元素运算、归约、内积、广播、转置、构造等当前版本范围内的性能关键路径 |
 | 对比口径 | 默认记录 wall time 与相对变化；SIMD / 并行仅在对应 feature 启用时进行对比 |
 | 非目标 | 不把 CI 回归阈值、baseline 门禁或固定硬件流程视为当前版本必需交付 |
-| 语义边界 | benchmark 结果只描述性能表现，不改变 `require.md` 规定的公开 API 语义与正确性契约 |
+| 语义边界 | benchmark 结果只描述性能表现，不改变 `需求说明书` 规定的公开 API 语义与正确性契约 |
 
 ---
 

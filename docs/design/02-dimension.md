@@ -109,7 +109,7 @@ src/dimension/
 
 ### 5.1 Dimension trait 完整定义
 
-```rust
+```rust,ignore
 use core::fmt::Debug;
 use crate::private::Sealed;
 use crate::error::XenonError;
@@ -172,7 +172,7 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
 
 > **公开面收缩说明：** `Dimension` 稳定公开面仅保留 `ndim`、`slice`、`checked_size`、`checked`、`into_dyn`、`try_from_dyn`、`try_from_slice` 与只读 `axis` 查询等核心契约；以下可变访问与便捷遍历能力不要求保留在稳定主 trait 中。
 
-```rust
+```rust,ignore
 /// Internal/helper extension methods for dimension manipulation.
 ///
 /// These methods may be provided via an extension trait, `pub(crate)` helper,
@@ -284,7 +284,7 @@ pub struct Ix6(pub usize, pub usize, pub usize, pub usize, pub usize, pub usize)
 
 #### Ix1-Ix6 实现模式（以 Ix3 为例）
 
-```rust
+```rust,ignore
 impl Dimension for Ix3 {
     const NDIM: Option<usize> = Some(3);
 
@@ -375,7 +375,7 @@ impl DimensionExt for Ix3 {
 
 ### 5.3 动态维度 IxDyn
 
-```rust
+```rust,ignore
 /// Dynamic dimension type. Dimension count determined at runtime.
 /// Dynamic rank is bounded only by `usize` representability and available memory.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
@@ -458,7 +458,7 @@ impl DimensionExt for IxDyn {
 
 ### 5.4 IntoDimension trait
 
-```rust
+```rust,ignore
 /// Trait for converting types into dimension types.
 pub trait IntoDimension {
     type Dim: Dimension;
@@ -544,7 +544,7 @@ impl Axis {
 
 ### 5.6 RemoveAxis trait
 
-```rust
+```rust,ignore
 /// Trait for dimension types that support removing an axis.
 ///
 /// Implemented for `Ix0`-`Ix6` and `IxDyn`.
@@ -652,7 +652,7 @@ impl RemoveAxis for IxDyn {
 
 ### 5.7 Sealed trait 策略
 
-```rust
+```rust,ignore
 // src/private.rs
 pub trait Sealed {}
 
@@ -668,7 +668,7 @@ impl Sealed for IxDyn {}
 
 ### 5.8 Good / Bad 对比示例
 
-```rust
+```rust,ignore
 // Good - unified interface via IntoDimension, clear type inference
 fn create_tensor<A, Sh>(shape: Sh) -> Tensor<A, Sh::Dim>
 where
@@ -686,7 +686,7 @@ fn create_tensor_3d<A>(d1: usize, d2: usize, d3: usize) -> Tensor<A, Ix3> { /* .
 // Every dimension count requires a new function
 ```
 
-```rust
+```rust,ignore
 // Good - use Result for dimension conversion
 let dim: Ix3 = Ix3::try_from_dyn(dyn_dim)?;
 
@@ -707,7 +707,7 @@ let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
 
 > **公开性说明：** 以下 trait 为内部实现辅助，标记为 `pub(crate)`，不纳入稳定公开 API 面。
 
-```rust
+```rust,ignore
 /// Trait for computing the output dimension type when broadcasting two arrays.
 ///
 /// - `IxN BroadcastDim IxN` → `IxN` (same static dimension)
@@ -805,7 +805,7 @@ impl<D: Dimension> BroadcastDim<D> for IxDyn { type Output = IxDyn; }
 
 > **公开性说明：** 以下 trait 为内部实现辅助，标记为 `pub(crate)`，不纳入稳定公开 API 面。
 
-```rust
+```rust,ignore
 /// Trait for permuting the axis order of a dimension.
 ///
 /// Used by `transpose()` in `shape` (see `16-shape.md` §5.1).
@@ -898,7 +898,7 @@ impl Reverse for IxDyn {
 }
 ```
 
-> **范围说明：** 当前版本的形状操作只包含 transpose，但 transpose 语义本身须支持显式轴置换；默认的轴反转是 `transpose()` 的一种特例。参见 `require.md` §17。
+> **范围说明：** 当前版本的形状操作只包含 transpose，但 transpose 语义本身须支持显式轴置换；默认的轴反转是 `transpose()` 的一种特例。参见 需求说明书 §17。
 
 > **静态维度补充说明：** 对静态维度 `Ix0`..`Ix6`，`PermuteAxes` 通过编译期常量泛型或宏生成实现；当前版本仅 `IxDyn` 提供完整的运行时轴置换。静态维度的 `transpose` 由 `16-shape.md` 定义，不依赖通用 `PermuteAxes` trait。其生成签名模式可写为：`impl PermuteAxes for Ix3 { fn permuted_axes(&self, permutation: &[Axis]) -> Result<Ix3, XenonError>; }`，更高/更低静态维度按同一模板展开。
 

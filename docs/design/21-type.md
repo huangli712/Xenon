@@ -23,8 +23,8 @@
 | ---------- | -------------------------------------------------------------------------- |
 | 显式转换   | 所有类型转换须显式调用 `cast()`，无隐式提升                                |
 | 失败可诊断 | 有损转换默认返回可恢复错误，错误上下文由 `XenonError::TypeConversion` 承载 |
-| 存储约束   | `cast` 面向所有可读存储开放，但结果统一物化为 owned 张量                                           |
-| 需求闭合   | 仅支持 `require.md §23.1` 与 `§23.2` 定义的类型对及其成功前提              |
+| 存储约束   | `cast` 面向所有可读存储开放，但结果统一物化为 owned 张量                   |
+| 需求闭合   | 仅支持需求说明书 §23.1 与 §23.2 定义的类型对及其成功前提                   |
 
 ### 1.3 在架构中的位置
 
@@ -140,7 +140,7 @@ impl CastElement for Complex<f64> {}
 
 ### 5.2 cast 方法
 
-> **注意**：`TypeConversionError` 的字段为 `pub(crate)` 可见性。模块间通过 `pub(crate) fn new(...)` 构造器和公开访问器方法（`source_type()`、`target_type()`、`reason()`、`element_index()`）操作该类型。详见 `26-error.md`。
+> **注意**：`TypeConversionError` 的唯一权威定义见 `26-error.md §4.2`。模块间通过 `pub(crate) fn new(source_type, target_type, reason, element_index)` 构造器和公开访问器方法（`source_type()`、`target_type()`、`reason()`、`element_index()`）操作该类型。
 >
 > **注意**：`element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引。
 
@@ -163,7 +163,7 @@ where
     /// # Errors
     ///
     /// Returns `XenonError::TypeConversion(TypeConversionError)` when any element cannot be converted
-    /// under the rules defined in `require.md §23`.
+    /// under the rules defined in 需求说明书 §23.
     ///
     /// # Examples
     ///
@@ -185,7 +185,7 @@ where
                     err.source_type(),
                     err.target_type(),
                     err.reason(),
-                    index,
+                    Some(index),
                 ))
             })?;
             data.push(value);
@@ -195,7 +195,7 @@ where
 }
 ````
 
-> **设计决策（修订）：** `require.md §23` 要求的是逐元素转换语义，而不是“仅限 Owned 输入”。因此 `cast()` 面向所有可读存储开放；无论输入是 `Owned`、`ViewRepr`、`ViewMutRepr` 还是 `ArcRepr`，结果统一物化为新的 owned 张量，以保持返回类型与所有权语义一致。源类型与目标类型都进一步收缩为 `CastElement`，从签名层面排除 `bool`。
+> **设计决策（修订）：** 需求说明书 §23 要求的是逐元素转换语义，而不是“仅限 Owned 输入”。因此 `cast()` 面向所有可读存储开放；无论输入是 `Owned`、`ViewRepr`、`ViewMutRepr` 还是 `ArcRepr`，结果统一物化为新的 owned 张量，以保持返回类型与所有权语义一致。源类型与目标类型都进一步收缩为 `CastElement`，从签名层面排除 `bool`。
 
 > **bool 源类型边界：** `cast<B>()` 仅在 `A: CastElement + CastTo<B>` 时可用。`bool` 不实现 `CastElement`，因此 `Tensor<bool, _>` 上 `cast()` 在编译期不可调用，而不是落到运行时 `TypeConversion`。
 
@@ -242,10 +242,10 @@ where
 
 凡 `§23.1` 已逐项列出的组合，其默认语义与附加成功前提以 `§23.1` 表格为准；闭合规则仅用于补足未逐项列出的受支持组合，不得覆盖或重新解释已列组合的语义。
 
-未在上表逐项展开、但属于受支持源/目标集合的组合，按 `require.md §23.2` 闭合：
+未在上表逐项展开、但属于受支持源/目标集合的组合，按需求说明书 §23.2 闭合：
 
 - 实数 → 复数：先按实数到目标复数实部分量类型的规则转换实部，再补 `0` 虚部
-- 复数 → 实数：仅当虚部为 `0` 时才可继续；但这只是必要条件而非充分条件。若实部到目标实数类型的内层转换按 `require.md §23.1` 属于默认有损失败，则整体转换仍为默认错误并必须返回 `Err`
+- 复数 → 实数：仅当虚部为 `0` 时才可继续；但这只是必要条件而非充分条件。若实部到目标实数类型的内层转换按需求说明书 §23.1 属于默认有损失败，则整体转换仍为默认错误并必须返回 `Err`
 - 复数 → 复数：实部和虚部分别按对应实数转换规则处理
 - 任一步为有损时，默认整体返回 `XenonError::TypeConversion(TypeConversionError)`
 
@@ -273,7 +273,7 @@ let ints: Tensor<i32, Ix1> = floats.cast().unwrap();  // forbidden: returns Type
 
 ### 5.6 to_owned / into_owned
 
-> **跨模块协作说明：** 本节保留 `to_owned()` / `into_owned()` 的实现细节，是因为 `require.md §23` 明确将同类型拷贝纳入本节约束；其中与具体存储表示相关的路径选择仍以 `tensor` / `storage` 模块为主责。
+> **跨模块协作说明：** 本节保留 `to_owned()` / `into_owned()` 的实现细节，是因为需求说明书 §23 明确将同类型拷贝纳入本节约束；其中与具体存储表示相关的路径选择仍以 `tensor` / `storage` 模块为主责。
 
 > **归属声明：** `to_owned()` / `into_owned()` 的公开语义只在本文维护；它们返回的 owned 结果固定为 Xenon 的 canonical F-order。`20-utility.md` 可引用它们作为 `to_contiguous()` 的实现依赖，但不再重复定义其契约。
 
@@ -356,15 +356,17 @@ where
 > ```
 
 ```rust,ignore
+use core::any::TypeId;
+
 // === Lossy-by-default conversion ===
 impl CastTo<f32> for f64 {
     #[inline]
     fn cast_to(self) -> Result<f32, TypeConversionError> {
         Err(TypeConversionError::new(
-            "f64",
-            "f32",
-            TypeConversionReason::LossyFloatNarrowing,
-            0,
+            TypeId::of::<f64>(),
+            TypeId::of::<f32>(),
+            ConversionFailureReason::LossyFloatNarrowing,
+            None,
         ))
     }
 }
@@ -387,10 +389,10 @@ impl CastTo<f64> for Complex<f64> {
             Ok(self.re)
         } else {
             Err(TypeConversionError::new(
-                "Complex<f64>",
-                "f64",
-                TypeConversionReason::NonZeroImaginaryPart,
-                0,
+                TypeId::of::<Complex<f64>>(),
+                TypeId::of::<f64>(),
+                ConversionFailureReason::NonZeroImaginaryPart,
+                None,
             ))
         }
     }
@@ -401,10 +403,10 @@ impl CastTo<i32> for i64 {
     #[inline]
     fn cast_to(self) -> Result<i32, TypeConversionError> {
         Err(TypeConversionError::new(
-            "i64",
-            "i32",
-            TypeConversionReason::LossyIntegerNarrowing,
-            0,
+            TypeId::of::<i64>(),
+            TypeId::of::<i32>(),
+            ConversionFailureReason::LossyIntegerNarrowing,
+            None,
         ))
     }
 }
@@ -412,7 +414,7 @@ impl CastTo<i32> for i64 {
 
 ### 6.2 溢出行为汇总
 
-> **错误语义约定：** `cast()` 是 fallible API。凡被 `require.md §23` 判定为有损的转换，默认返回 `XenonError::TypeConversion(TypeConversionError)`；仅在该节明确给出额外成功前提时，满足前提后方可成功。
+> **错误语义约定：** `cast()` 是 fallible API。凡被需求说明书 §23 判定为有损的转换，默认返回 `XenonError::TypeConversion(TypeConversionError)`；仅在该节明确给出额外成功前提时，满足前提后方可成功。
 
 | 输入值/组合                    | 目标类型 | 结果                  | 说明                   |
 | ------------------------------ | -------- | --------------------- | ---------------------- |
@@ -460,7 +462,7 @@ impl CastTo<i32> for i64 {
 
 - [ ] **T5**: 扩展 CastTo 实现（整数↔整数、实数↔复数、复数↔复数）
   - 文件: `src/convert/cast.rs`
-  - 内容: 补齐 `require.md §23.1` 与 `§23.2` 定义的全部组合；`bool` 不参与
+  - 内容: 补齐需求说明书 §23.1 与 §23.2 定义的全部组合；`bool` 不参与
   - 测试: `test_cast_real_to_complex`, `test_cast_complex_to_real_requires_zero_imag`, `test_cast_complex_f64_to_complex_f32_returns_error`
   - 前置: T1
   - 预计: 10 min
@@ -520,9 +522,9 @@ Wave 2: [T3] [T4] [T5]  (parallel)
 
 | 占位场景 | 说明 |
 | -------- | ---- |
-| 高维非连续输入 | 预留给 `require.md §28.4` 的高维 view / arc 输入 `cast()` 边界用例 |
-| 大张量逐元素失败定位 | 预留给 `require.md §28.4` 的大张量转换错误索引定位验证 |
-| `usize` 拒绝路径 | 预留给 `require.md §28.4` 的 `Tensor<usize, _>` 目标/源类型拒绝验证 |
+| 高维非连续输入 | 预留给需求说明书 §28.4 的高维 view / arc 输入 `cast()` 边界用例 |
+| 大张量逐元素失败定位 | 预留给需求说明书 §28.4 的大张量转换错误索引定位验证 |
+| `usize` 拒绝路径 | 预留给需求说明书 §28.4 的 `Tensor<usize, _>` 目标/源类型拒绝验证 |
 
 ### 8.5 属性测试不变量
 
@@ -603,7 +605,7 @@ User calls cast() / to_owned() / into_owned()
 | 属性     | 值                                                                        |
 | -------- | ------------------------------------------------------------------------- |
 | 决策     | 所有有损转换默认返回 `XenonError::TypeConversion(TypeConversionError)`    |
-| 理由     | 这是 `require.md §23` 的强制要求；文档不得私自引入饱和、截断或 NaN→0 语义 |
+| 理由     | 这是需求说明书 §23 的强制要求；文档不得私自引入饱和、截断或 NaN→0 语义 |
 | 替代方案 | saturating / truncating — 放弃，与需求冲突                                |
 | 替代方案 | panic on overflow — 放弃，需求要求可恢复错误                              |
 
@@ -612,8 +614,8 @@ User calls cast() / to_owned() / into_owned()
 | 属性     | 值                                                                                                                                                           |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 决策     | `cast()` 对所有可读存储开放，并统一返回 owned tensor                                                                                                          |
-| 理由     | 这与 `require.md §23` 的逐元素转换要求一致，同时避免把“能否读取输入”与“结果是否拥有数据”混为一谈；输入可借用，结果仍统一 owned，API 语义保持单一。             |
-| 替代方案 | 仅在 `Owned` 上实现 — 放弃，会无依据地缩小 `require.md §23` 的适用范围                                                                                         |
+| 理由     | 这与需求说明书 §23 的逐元素转换要求一致，同时避免把“能否读取输入”与“结果是否拥有数据”混为一谈；输入可借用，结果仍统一 owned，API 语义保持单一。                   |
+| 替代方案 | 仅在 `Owned` 上实现 — 放弃，会无依据地缩小需求说明书 §23 的适用范围                                                                                             |
 | 替代方案 | 按输入存储模式返回不同结果类型 — 放弃，会引入生命周期与所有权分歧，破坏公开 API 一致性                                                                        |
 
 ### 决策 3：收缩 convert 模块边界到当前需求集合
@@ -621,7 +623,7 @@ User calls cast() / to_owned() / into_owned()
 | 属性     | 值                                                                           |
 | -------- | ---------------------------------------------------------------------------- |
 | 决策     | convert 模块仅覆盖 `cast()`、`to_owned()`、`into_owned()`；其余存储模式互转仅作跨文档引用，不在本文展开 |
-| 理由     | 当前 `require.md §23` 只要求逐元素类型转换与同类型拷贝；继续讨论 `view` / `view_mut` / `into_shared` 会超出收缩后的边界 |
+| 理由     | 当前需求说明书 §23 只要求逐元素类型转换与同类型拷贝；继续讨论 `view` / `view_mut` / `into_shared` 会超出收缩后的边界 |
 | 替代方案 | 在本文继续完整展开所有存储模式互转 — 放弃，会把 convert 文档扩展到非本节需求范围 |
 
 ---
@@ -642,7 +644,7 @@ User calls cast() / to_owned() / into_owned()
 
 本模块须遵循项目统一工程约束，不单独定义 `no_std` 目标：
 
-- 仅支持 `std` 环境（参见 `require.md §1.3`）
+- 仅支持 `std` 环境（参见需求说明书 §1.3）
 - 保持单 crate 结构
 - 遵循 SemVer
 - 不新增超出项目基线的第三方依赖

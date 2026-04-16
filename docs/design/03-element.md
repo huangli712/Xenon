@@ -120,7 +120,7 @@ src/element/
 
 ### 5.1 Element trait
 
-```rust
+```rust,ignore
 /// Base trait for all tensor element types.
 ///
 /// Sealed: cannot be implemented outside this crate.
@@ -156,7 +156,7 @@ pub trait Element:
 
 ### 5.2 Numeric trait
 
-```rust
+```rust,ignore
 /// Numeric element trait.
 ///
 /// Adds arithmetic operations on top of Element.
@@ -168,7 +168,7 @@ pub trait Element:
 /// The native operator supertraits describe syntax availability only.
 /// Overflow-sensitive integer paths must additionally follow Xenon's checked
 /// arithmetic contracts in operation modules so that recoverable vs panic
-/// behavior remains consistent with `require.md`.
+/// behavior remains consistent with `需求说明书`.
 ///
 /// Note: `Sealed` is not listed as a separate supertrait here because
 /// `Element` already inherits `Sealed`.
@@ -203,7 +203,7 @@ pub trait Numeric:
 
 > **公开性说明：** 以下 trait 为内部实现辅助，不纳入稳定公开 API 面。具体可见性由实现决定。
 
-```rust
+```rust,ignore
 /// Unified signum capability for the sealed signed scalar set.
 ///
 /// Implemented only for `i32`, `i64`, `f32`, and `f64`.
@@ -234,11 +234,11 @@ impl Signum for f64 {
 }
 ```
 
-> **适用范围说明：** 张量级 `signum()` 公开能力需覆盖 `i32`、`i64`、`f32`、`f64`（对应 `require.md §12`）。因此本设计将 `signum` 收敛到独立的 sealed `Signum` 子 trait：整数通过 `-1/0/1` 语义实现，浮点继续服从 `RealScalar::signum()` 的 IEEE 754 契约；`Complex<T>` 与 `bool` 不实现该能力。
+> **适用范围说明：** 张量级 `signum()` 公开能力需覆盖 `i32`、`i64`、`f32`、`f64`（对应 `需求说明书 §12`）。因此本设计将 `signum` 收敛到独立的 sealed `Signum` 子 trait：整数通过 `-1/0/1` 语义实现，浮点继续服从 `RealScalar::signum()` 的 IEEE 754 契约；`Complex<T>` 与 `bool` 不实现该能力。
 
 ### 5.3 RealScalar trait
 
-```rust
+```rust,ignore
 /// Real-valued scalar trait.
 ///
 /// Provides math functions, constants, and NaN detection.
@@ -298,7 +298,7 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
 
 ### 5.4 ComplexScalar trait
 
-```rust
+```rust,ignore
 /// Complex scalar trait.
 ///
 /// Provides the minimal complex-specific operations required by the current
@@ -324,7 +324,7 @@ pub trait ComplexScalar: Numeric + Sealed {
 
 > **公开性说明：** 以下 trait 为内部实现辅助，不纳入稳定公开 API 面。具体可见性由实现决定。
 
-```rust
+```rust,ignore
 /// Ordered comparison element trait.
 ///
 /// Restricts public ordered comparisons (`lt` / `gt`) to element types with the
@@ -359,7 +359,7 @@ impl OrderedCompareElement for f64 {}
 
 > **公开性说明：** 以下 trait 为内部实现辅助，不纳入稳定公开 API 面。具体可见性由实现决定。
 
-```rust
+```rust,ignore
 /// Bool-specific element capability.
 ///
 /// Provides logical NOT for `bool` tensors without making `bool` part of `Numeric`.
@@ -379,7 +379,7 @@ impl BoolElement for bool {
 
 > **sealed 模式声明：** `Element`、`Numeric`、`RealScalar`、`ComplexScalar` 全部通过共享的 `private::Sealed` 基础设施实现 sealed trait 模式。下游 crate 只能使用 Xenon 已声明的元素类型，不能为自定义类型补充这些 trait 实现。
 
-```rust
+```rust,ignore
 // src/element/mod.rs
 // Uses the shared Sealed trait from crate::private
 // (see src/private.rs, referenced in 01-architecture.md §3)
@@ -397,7 +397,7 @@ impl Sealed for bool {}
 
 外部 crate 尝试实现时编译错误：
 
-```rust
+```rust,ignore
 // External crate attempt:
 use xenon::element::Element;
 struct MyType;
@@ -406,7 +406,7 @@ impl Element for MyType { /* error[E0277]: Sealed not satisfied */ }
 
 ### 5.8 Good / Bad 对比示例
 
-```rust
+```rust,ignore
 // Good - Numeric constraint automatically excludes bool and non-Numeric types
 fn sum<'a, A, D>(tensor: &TensorView<'a, A, D>) -> A
 where
@@ -428,7 +428,7 @@ where
 }
 ```
 
-```rust
+```rust,ignore
 // Good - explicit type conversion, no automatic promotion
 let a: Tensor<f64, Ix2> = Tensor::zeros((3, 4));
 let b: Tensor<i32, Ix2> = Tensor::zeros((3, 4));
@@ -441,184 +441,37 @@ let c = &a + &b64;
 
 ### 5.9 CastTo\<T\> trait（类型转换）
 
-`CastTo<T>` 的 trait 定义位于 `src/element/mod.rs`，具体 impl 与错误构造示例统一放在 `src/convert/cast.rs`；`convert/` 负责消费该 trait 并承载受支持转换矩阵的实现（参见 `21-type.md §5.1`），不在其他模块重复定义或分散实现。
+`CastTo<T>` 的 trait 定义位于 `src/element/mod.rs`，具体 impl 统一放在 `src/convert/cast.rs`；`convert/` 负责消费该 trait 并承载受支持转换矩阵的实现（参见 `21-type.md §5.1`），不在其他模块重复定义或分散实现。
 
-> **位置说明：** `CastTo<T>` 的语义定义和转换规则详见 `21-type.md`，本节仅定义其在元素层 trait 体系中的位置。
+> **位置说明：** 类型转换错误载荷的完整定义见 `26-error.md §4.2`，`CastTo<T>` 的转换矩阵与实现约束见 `21-type.md §5.2`、`§6.1`。本节仅保留元素层 trait 骨架。
 
-```rust
+```rust,ignore
 // src/element/mod.rs
+
+use crate::error::TypeConversionError;
 
 /// Element-wise type conversion trait.
 ///
 /// Defines explicit conversion from `Self` to `T`.
 /// Lossless conversions return `Ok(T)`.
-/// Lossy conversions default to recoverable `XenonError` unless a documented
-/// success precondition is satisfied (see `21-type.md §5.3`).
+/// Lossy conversions default to recoverable `TypeConversionError` unless a
+/// documented success precondition is satisfied (see `21-type.md §5.3`).
 ///
 /// This trait is implemented only inside Xenon for the supported source/target pairs.
 /// External crates cannot extend the conversion matrix.
 pub trait CastTo<T>: Element {
     /// Performs the type conversion.
-    fn cast_to(self) -> Result<T, XenonError>;
+    fn cast_to(self) -> Result<T, TypeConversionError>;
 }
-
-// Implemented for all supported source → target type pairs.
-// See 21-type.md §5.3 for full implementation table.
-// Examples:
-//   impl CastTo<f64> for f32  -- lossless upcast
-//   impl CastTo<f32> for f64  -- Result, may fail on precision loss
-//   impl CastTo<i32> for f64  -- Result, may fail on fractional or out-of-range input
-//   impl CastTo<i32> for i64  -- Result, may fail on narrowing overflow
-//   impl CastTo<Complex<f64>> for f64  -- lossless
-//   impl CastTo<f64> for Complex<f64>  -- Result, requires zero imaginary part
 ```
 
-> **错误映射说明：** `XenonError` 是唯一公开错误类型。类型转换错误对外统一表示为 `XenonError::TypeConversion(TypeConversionError)`；若实现内部保留 `TypeConversionReason` 等细节类型，也只能作为 `TypeConversionError` 的内部载荷，不能成为公开 API 的错误返回类型。
+> **错误映射说明：** `XenonError` 是唯一公开错误类型。类型转换错误对外统一表示为 `XenonError::TypeConversion(TypeConversionError)`；`CastTo<T>` 只返回内部载荷 `TypeConversionError`，由上层调用方在公开 API 边界统一包装。
 >
 > **Bool 边界说明：** `bool` 不为任何目标类型实现 `CastTo<T>`；`bool` 张量调用 `.cast::<f32>()` 等转换必须在编译期失败。
 >
 > **无损/有损区分说明：** 同类型拷贝和无损转换虽然通过 `Result` 返回，但按契约语义上不可失败。调用方仍应按项目错误处理规范选择 `?` 或显式处理；实现层不应依赖 `unwrap` 作为常规路径。
 
-`Complex<T> → Real` 转换已纳入 `CastTo<T>` 的支持矩阵，但采用条件成功语义：仅当虚部为 `0` 时才继续执行对应的实数目标转换；若虚部非零，则返回可恢复错误。具体规则如下：
-
-| 转换示例                                | 默认语义                                                             |
-| --------------------------------------- | -------------------------------------------------------------------- |
-| `impl CastTo<f32> for Complex<f32>`     | 虚部必须为 `0`；满足时按 `f32 -> f32` 恒等转换，否则返回可恢复错误   |
-| `impl CastTo<f64> for Complex<f64>`     | 虚部必须为 `0`；满足时按 `f64 -> f64` 恒等转换，否则返回可恢复错误   |
-| `impl CastTo<f32> for Complex<f64>`     | 虚部必须为 `0`；满足时按 `f64 -> f32` 有损转换，否则返回可恢复错误   |
-| `impl CastTo<f64> for Complex<f32>`     | 虚部必须为 `0`；满足时按 `f32 -> f64` 无损转换，否则返回可恢复错误   |
-| `impl CastTo<i32> for Complex<f32/f64>` | 虚部必须为 `0`；满足时按 `float -> i32` 规则转换，否则返回可恢复错误 |
-| `impl CastTo<i64> for Complex<f32/f64>` | 虚部必须为 `0`；满足时按 `float -> i64` 规则转换，否则返回可恢复错误 |
-
-```rust
-// src/convert/cast.rs
-
-use crate::error::{TypeConversionError, TypeConversionReason, XenonError};
-
-impl CastTo<f32> for Complex<f32> {
-    fn cast_to(self) -> Result<f32, XenonError> {
-        if self.im != 0.0 {
-            return Err(XenonError::TypeConversion(TypeConversionError {
-                source_type: "Complex<f32>".into(),
-                target_type: "f32".into(),
-                reason: TypeConversionReason::NonZeroImaginaryPart,
-                element_index: 0,
-            }));
-        }
-        Ok(self.re)
-    }
-}
-
-impl CastTo<f64> for Complex<f64> {
-    fn cast_to(self) -> Result<f64, XenonError> {
-        if self.im != 0.0 {
-            return Err(XenonError::TypeConversion(TypeConversionError {
-                source_type: "Complex<f64>".into(),
-                target_type: "f64".into(),
-                reason: TypeConversionReason::NonZeroImaginaryPart,
-                element_index: 0,
-            }));
-        }
-        Ok(self.re)
-    }
-}
-
-impl CastTo<f32> for Complex<f64> {
-    fn cast_to(self) -> Result<f32, XenonError> {
-        if self.im != 0.0 {
-            return Err(XenonError::TypeConversion(TypeConversionError {
-                source_type: "Complex<f64>".into(),
-                target_type: "f32".into(),
-                reason: TypeConversionReason::NonZeroImaginaryPart,
-                element_index: 0,
-            }));
-        }
-        CastTo::<f32>::cast_to(self.re)
-    }
-}
-
-impl CastTo<f64> for Complex<f32> {
-    fn cast_to(self) -> Result<f64, XenonError> {
-        if self.im != 0.0 {
-            return Err(XenonError::TypeConversion(TypeConversionError {
-                source_type: "Complex<f32>".into(),
-                target_type: "f64".into(),
-                reason: TypeConversionReason::NonZeroImaginaryPart,
-                element_index: 0,
-            }));
-        }
-        CastTo::<f64>::cast_to(self.re)
-    }
-}
-
-impl CastTo<i32> for Complex<f32> {
-    fn cast_to(self) -> Result<i32, XenonError> {
-        if self.im != 0.0 {
-            return Err(XenonError::TypeConversion(TypeConversionError {
-                source_type: "Complex<f32>".into(),
-                target_type: "i32".into(),
-                reason: TypeConversionReason::NonZeroImaginaryPart,
-                element_index: 0,
-            }));
-        }
-        CastTo::<i32>::cast_to(self.re)
-    }
-}
-
-impl CastTo<i64> for Complex<f64> {
-    fn cast_to(self) -> Result<i64, XenonError> {
-        if self.im != 0.0 {
-            return Err(XenonError::TypeConversion(TypeConversionError {
-                source_type: "Complex<f64>".into(),
-                target_type: "i64".into(),
-                reason: TypeConversionReason::NonZeroImaginaryPart,
-                element_index: 0,
-            }));
-        }
-        CastTo::<i64>::cast_to(self.re)
-    }
-}
-
-impl CastTo<i32> for Complex<f64> {
-    fn cast_to(self) -> Result<i32, XenonError> {
-        if self.im != 0.0 {
-            return Err(XenonError::TypeConversion(TypeConversionError {
-                source_type: "Complex<f64>".into(),
-                target_type: "i32".into(),
-                reason: TypeConversionReason::NonZeroImaginaryPart,
-                element_index: 0,
-            }));
-        }
-        CastTo::<i32>::cast_to(self.re)
-    }
-}
-
-impl CastTo<i64> for Complex<f32> {
-    fn cast_to(self) -> Result<i64, XenonError> {
-        if self.im != 0.0 {
-            return Err(XenonError::TypeConversion(TypeConversionError {
-                source_type: "Complex<f32>".into(),
-                target_type: "i64".into(),
-                reason: TypeConversionReason::NonZeroImaginaryPart,
-                element_index: 0,
-            }));
-        }
-        CastTo::<i64>::cast_to(self.re)
-    }
-}
-```
-
-> **实现约束：** `Complex<T> -> Real` 的所有 `CastTo` 实现都必须先检查虚部是否为 `0`。检查通过后，再复用对应实部的标量转换规则；检查失败时统一返回 `XenonError::TypeConversion(TypeConversionError)`。`TypeConversionError::element_index` 是必填字段：标量级示例使用 `0` 作为当前位置，占位表示“当前唯一元素”；张量级批量转换则必须填写实际失败元素索引。
-
-> **类型级能力说明：** 理论上可进一步把 `CastTo<T>` 拆为 lossless / lossy 两组 trait，以在类型层编码“绝不失败”与“可能失败”的差异；但当前版本仍统一返回 `Result<T, XenonError>`，以保持转换入口单一、错误载荷一致，并避免为有限封闭类型集合引入第二套 trait 维度与额外泛型分支。
-
-| 转换示例                   | 默认语义                                        |
-| -------------------------- | ----------------------------------------------- |
-| `impl CastTo<i64> for i32` | 无损，`Result<i64, XenonError>`（实际不会失败） |
-| `impl CastTo<f64> for f32` | 无损，`Result<f64, XenonError>`（实际不会失败） |
-| `impl CastTo<f32> for f64` | 有损，默认返回可恢复错误                        |
-| `impl CastTo<i32> for f64` | 有损，默认返回可恢复错误                        |
-| `impl CastTo<i32> for i64` | 有损，默认返回可恢复错误                        |
+> **交叉引用：** `Complex<T> -> Real` 的条件成功语义、受支持矩阵与 `TypeConversionError` 字段约束，统一以 `21-type.md §5.3`、`§6.1` 以及 `26-error.md §4.3` 为准；本节不再重复给出详细 impl 或错误构造示例。
 
 ### 5.10 Checked arithmetic traits（整数溢出检测）
 
@@ -626,7 +479,7 @@ impl CastTo<i64> for Complex<f32> {
 
 > **公开性说明：** 以下 trait 为内部实现辅助，不纳入稳定公开 API 面。具体可见性由实现决定。
 
-```rust
+```rust,ignore
 // src/element/mod.rs
 
 /// Checked addition for types that support it.
@@ -718,7 +571,7 @@ impl CheckedNeg for i64 {
 
 `bool` 仅实现 `Element`，不实现 `Numeric`：
 
-```rust
+```rust,ignore
 // primitives.rs
 impl Element for bool {
     fn zero() -> Self { false }
@@ -742,7 +595,7 @@ impl BoolElement for bool {
 
 **Xenon 不支持自动类型提升。** 所有跨类型运算须显式转换：
 
-```rust
+```rust,ignore
 // Implicit conversion not supported
 // let a: f64 = 1.0;
 // let b: i32 = 2;
@@ -765,7 +618,7 @@ let c = a + b.cast_to()?;
 
 ### 6.5 RealScalar 实现（以 f64 为例）
 
-```rust
+```rust,ignore
 impl Numeric for i32 {
     #[inline]
     fn conjugate(self) -> Self { self }

@@ -158,17 +158,17 @@ Storage mode taxonomy
 | `ViewMutRepr<'a, A>` | ❌ (独占借用) |  ✅  |               ✅               | 不可克隆            | 无分配                          |
 | `ArcRepr<A>`         |   ✅ (共享)   |  ✅  | 仅通过 CoW 生成独占 owned 数据 | 浅拷贝 (共享句柄+1) | 共享只读缓冲，写时按需深拷贝    |
 
-> **术语澄清：** `require.md` §6.2 的“共享只读引用”描述的是抽象访问语义，而不是唯一具体表示。对拥有型来源，Xenon 用 `ArcRepr<A>` 表达可共享底层缓冲区的只读结果；对 `ViewMutRepr<'a, A>` 的零拷贝降级，Xenon 用 `ViewRepr<'a, A>` 表达放弃写权限后的只读重借用。两者都满足“共享只读、不提供写访问”的语义，只是前者共享所有权，后者共享借用生命周期。任何写时复制逻辑都只能是 `arc.rs` 内部实现细节，不能作为 storage 层公开 API 暴露。
+> **术语澄清：** `需求说明书` §6.2 的“共享只读引用”描述的是抽象访问语义，而不是唯一具体表示。对拥有型来源，Xenon 用 `ArcRepr<A>` 表达可共享底层缓冲区的只读结果；对 `ViewMutRepr<'a, A>` 的零拷贝降级，Xenon 用 `ViewRepr<'a, A>` 表达放弃写权限后的只读重借用。两者都满足“共享只读、不提供写访问”的语义，只是前者共享所有权，后者共享借用生命周期。任何写时复制逻辑都只能是 `arc.rs` 内部实现细节，不能作为 storage 层公开 API 暴露。
 
 #### 抽象模式 ↔ 具体表示 对照表
 
 | 抽象模式 | 具体表示 | 适用语境 / 说明 |
 | -------- | -------- | --------------- |
 | `Owned` | `Owned<A>` | 拥有底层分配，可零拷贝借出只读 / 可写视图，也可零拷贝降级为共享只读 |
-| `WritableRef` | `ViewMutRepr<'a, A>` | 基于独占借用的可写引用 |
-| `ReadOnlyRef` | `ViewRepr<'a, A>` | 普通只读借用视图 |
-| `SharedReadOnlyRef` | `ArcRepr<A>` | 来自拥有型来源时的共享只读表示，提供共享所有权 |
-| `SharedReadOnlyRef` | `ViewRepr<'a, A>` | 来自 `ViewMutRepr<'a, A>` 零拷贝降级时的共享只读表示；共享的是借用生命周期而非所有权 |
+| `Writable` | `ViewMutRepr<'a, A>` | 基于独占借用的可写引用 |
+| `ReadOnly` | `ViewRepr<'a, A>` | 普通只读借用视图 |
+| `SharedReadOnly` | `ArcRepr<A>` | 来自拥有型来源时的共享只读表示，提供共享所有权 |
+| `SharedReadOnly` | `ViewRepr<'a, A>` | 来自 `ViewMutRepr<'a, A>` 零拷贝降级时的共享只读表示；共享的是借用生命周期而非所有权 |
 
 > **补充说明：** 只读引用（`ViewRepr`）和共享只读引用（`ArcRepr`）都提供只读访问语义，但所有权模型不同：`ViewRepr` 基于借用，`ArcRepr` 基于引用计数共享。从广播、转置、切片产生的只读视图统一使用 `ViewRepr`；从 `Owned` 零拷贝转换而来的共享只读结果使用 `ArcRepr`；`ViewMut` 的零拷贝降级仍使用 `ViewRepr`，但在抽象层同样满足 shared-readonly 语义。
 
@@ -176,14 +176,24 @@ Storage mode taxonomy
 
 为满足需求说明书 §6.1 对“显式区分所有权与可变性语义”的要求，张量层须提供稳定的访问语义查询接口：
 
-| 语义分类 | 对应表示类型 | 查询结果 |
-| -------- | ------------ | -------- |
-| 只读引用 | `ViewRepr<'_, A>`（非广播来源） | `AccessSemantics::ReadOnlyRef` |
-| 共享只读引用 | `ArcRepr<A>` 或 `ViewRepr<'_, A>`（广播来源或可写降级来源） | `AccessSemantics::SharedReadOnlyRef` |
-| 可写引用 | `ViewMutRepr<'_, A>` | `AccessSemantics::WritableRef` |
-| 拥有 | `Owned<A>` | `AccessSemantics::Owned` |
+```rust,ignore
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccessSemantics {
+    ReadOnly,
+    SharedReadOnly,
+    Writable,
+    Owned,
+}
+```
 
-> **关键约束：** 当 `ViewRepr` 作为广播结果或从可写引用降级产生时，须通过额外的语义标记（而非仅表示类型）将其归类为共享只读引用。该标记由张量层的 `access_semantics()` 方法统一提供，作为满足 §6.1 的权威判定来源。详见 `07-tensor.md` 的 `access_semantics()` 设计。
+| 语义分类 | 对应表示类型 | 统一语义说明 | 查询结果 |
+| -------- | ------------ | ------------ | -------- |
+| 只读 | `ViewRepr<'_, A>`（普通非广播只读借用） | 只提供共享只读借用；不提供写访问；不持有底层存储 | `AccessSemantics::ReadOnly` |
+| 共享只读 | `ArcRepr<A>`，或带共享只读语义标记的 `ViewRepr<'_, A>`（广播结果 / `ViewMutRepr` 零拷贝降级结果） | 可被多个只读视图共享；不提供安全可写访问；可共享所有权或共享借用语义 | `AccessSemantics::SharedReadOnly` |
+| 可写 | `ViewMutRepr<'_, A>` | 提供独占可写借用；同时允许读取；不得与其他可写或共享只读访问并存 | `AccessSemantics::Writable` |
+| 拥有 | `Owned<A>` | 持有底层存储所有权；提供可读可写访问；可零拷贝借出视图或降级为共享只读 | `AccessSemantics::Owned` |
+
+> **关键约束：** 当 `ViewRepr` 作为广播结果或从可写引用降级产生时，须通过额外的语义标记（而非仅表示类型）将其归类为 `AccessSemantics::SharedReadOnly`。该标记由张量层的 `access_semantics()` 方法统一提供，作为满足 §6.1 的权威判定来源。详见 `07-tensor.md` 的 `access_semantics()` 设计。
 
 #### 设计权衡对比
 
@@ -213,7 +223,7 @@ RawStorage                    (lowest layer, raw pointer access)
 
 ### 5.3 RawStorage Trait
 
-```rust
+```rust,ignore
 use core::ptr::NonNull;
 
 /// Raw pointer access to underlying storage.
@@ -406,7 +416,7 @@ pub unsafe trait StorageMut: Storage + RawStorageMut {
     ///
     /// This is a storage-layer API and therefore has `fill_all()` semantics.
     /// It is **not** the tensor-level logical `fill()` required by
-    /// `require.md §21.2`; tensor-level fill must only visit writable logical
+    /// `需求说明书 §21.2`; tensor-level fill must only visit writable logical
     /// elements after applying `shape` / `strides` / `offset`.
     #[inline]
     fn fill(&mut self, value: Self::Elem)
@@ -470,7 +480,7 @@ pub unsafe trait StorageOwned: StorageMut + Clone {
 
 ### 5.8 StorageShared Trait
 
-```rust
+```rust,ignore
 /// Special operations for shared storage.
 ///
 /// Types implementing `StorageShared` allow multiple owners to share the same
@@ -492,7 +502,7 @@ pub unsafe trait StorageShared: Storage + Clone {
 
 > **语义边界说明：** `StorageIntoOwned` 仅提供底层 buffer 复制能力，不感知 `shape` / `strides` / `offset`。逻辑张量物化（`into_owned()`）的完整语义须在 tensor 层实现。storage 层仅提供 `copy_buffer()` 等内部 helper；若示例展示 `into_owned()`，应理解为对应张量层 API，详见 `07-tensor.md`。
 
-```rust
+```rust,ignore
 /// Storage types that can be converted into an owned tensor by consuming self.
 ///
 /// - `Owned<A>` → O(1), returns self directly
@@ -510,7 +520,7 @@ pub unsafe trait StorageIntoOwned: Storage {
 
 消耗式解构为裸指针，用于 `into_raw_parts()`（参见 `23-ffi.md §5.4`）。
 
-```rust
+```rust,ignore
 /// Storage types that can be destructured into raw parts.
 ///
 /// Only `Owned<A>` implements this trait (other storage modes cannot transfer ownership of raw memory).
@@ -549,16 +559,16 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
 | `ArcRepr<A>`         | `ViewRepr<'_, A>`    | O(1)        | 共享只读借用                             |
 | `ArcRepr<A>`         | `Owned<A>`           | O(n)        | 总是分配新的独占缓冲并复制数据；不提供条件零拷贝 |
 
-| 抽象源（具体表示） | `ReadOnlyRef` | `SharedReadOnlyRef` | `WritableRef` | `Owned` |
+| 抽象源（具体表示） | `ReadOnly` | `SharedReadOnly` | `Writable` | `Owned` |
 | ------------------ | ------------- | ------------------- | ------------- | ------- |
 | `Owned` (`Owned<A>`) | `Owned<A> -> ViewRepr<'_, A>`：零拷贝 | `Owned<A> -> ArcRepr<A>`：零拷贝 | `Owned<A> -> ViewMutRepr<'_, A>`：零拷贝 | — |
-| `WritableRef` (`ViewMutRepr<'_, A>`) | `ViewMutRepr<'_, A> -> ViewRepr<'_, A>`：零拷贝 | `ViewMutRepr<'_, A> -> ViewRepr<'_, A>`：零拷贝；此处 `ViewRepr` 充当基于借用的 shared-readonly 表示，满足 `require.md` §6.2 | — | `ViewMutRepr<'_, A> -> Owned<A>`：须分配 |
-| `ReadOnlyRef` (`ViewRepr<'_, A>`) | — | `ViewRepr<'_, A> -> ArcRepr<A>`：不可转换 | `ViewRepr<'_, A> -> ViewMutRepr<'_, A>`：不可转换 | `ViewRepr<'_, A> -> Owned<A>`：须分配 |
-| `SharedReadOnlyRef` (`ArcRepr<A>` / 降级后的 `ViewRepr<'_, A>`) | `ArcRepr<A> -> ViewRepr<'_, A>`：零拷贝；若来源已是降级后的 `ViewRepr`，则为同一借用语义下的只读重借用 | — | `ArcRepr<A> -> ViewMutRepr<'_, A>`：不可转换；降级后的 `ViewRepr` 同样不可恢复写权限 | `ArcRepr<A> -> Owned<A>`：须分配；降级后的 `ViewRepr<'_, A>` 亦须分配 |
+| `Writable` (`ViewMutRepr<'_, A>`) | `ViewMutRepr<'_, A> -> ViewRepr<'_, A>`：零拷贝 | `ViewMutRepr<'_, A> -> ViewRepr<'_, A>`：零拷贝；此处 `ViewRepr` 充当基于借用的 shared-readonly 表示，满足 `需求说明书` §6.2 | — | `ViewMutRepr<'_, A> -> Owned<A>`：须分配 |
+| `ReadOnly` (`ViewRepr<'_, A>`) | — | `ViewRepr<'_, A> -> ArcRepr<A>`：不可转换 | `ViewRepr<'_, A> -> ViewMutRepr<'_, A>`：不可转换 | `ViewRepr<'_, A> -> Owned<A>`：须分配 |
+| `SharedReadOnly` (`ArcRepr<A>` / 降级后的 `ViewRepr<'_, A>`) | `ArcRepr<A> -> ViewRepr<'_, A>`：零拷贝；若来源已是降级后的 `ViewRepr`，则为同一借用语义下的只读重借用 | — | `ArcRepr<A> -> ViewMutRepr<'_, A>`：不可转换；降级后的 `ViewRepr` 同样不可恢复写权限 | `ArcRepr<A> -> Owned<A>`：须分配；降级后的 `ViewRepr<'_, A>` 亦须分配 |
 
-> **补充说明：** 上表逐格对应 `require.md` §6.2 的抽象转换矩阵，并把每个抽象格子落实为具体表示路径：零拷贝表示仅重借用、共享只读降级或降级访问权限；须分配表示需要分配新的 owned 缓冲并复制数据；不可转换表示 Rust 类型系统下无法在不违反所有权/独占借用约束的前提下完成该转换，例如 `ViewRepr<'_, A> -> ArcRepr<A>` 与 `ArcRepr<A> -> ViewMutRepr<'_, A>`。
+> **补充说明：** 上表逐格对应 `需求说明书` §6.2 的抽象转换矩阵，并把每个抽象格子落实为具体表示路径：零拷贝表示仅重借用、共享只读降级或降级访问权限；须分配表示需要分配新的 owned 缓冲并复制数据；不可转换表示 Rust 类型系统下无法在不违反所有权/独占借用约束的前提下完成该转换，例如 `ViewRepr<'_, A> -> ArcRepr<A>` 与 `ArcRepr<A> -> ViewMutRepr<'_, A>`。
 
-> **语义判定补充：** `WritableRef -> SharedReadOnlyRef` 的零拷贝结果虽然仍是 `ViewRepr<'_, A>`，但必须在张量查询层被标记为 `AccessSemantics::SharedReadOnlyRef`，不能按普通 `ReadOnlyRef` 处理。也就是说，该转换的“共享只读”判定来源于 `access_semantics()` 返回值，而不是 `ViewRepr` 这一表示类型本身。
+> **语义判定补充：** `Writable -> SharedReadOnly` 的零拷贝结果虽然仍是 `ViewRepr<'_, A>`，但必须在张量查询层被标记为 `AccessSemantics::SharedReadOnly`，不能按普通 `AccessSemantics::ReadOnly` 处理。也就是说，该转换的“共享只读”判定来源于 `access_semantics()` 返回值，而不是 `ViewRepr` 这一表示类型本身。
 
 #### 5.11.1a 转换成功/失败模型
 
@@ -577,30 +587,30 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
 | 任意只读/共享只读 -> `ViewMutRepr<'_, A>` | 不允许违反独占可写前提 | `XenonError::InvalidStorageMode { .. }` |
 | `ViewRepr<'_, A> -> ArcRepr<A>` | storage 层不具备共享所有权句柄，禁止运行时补造 | `XenonError::InvalidStorageMode { .. }` |
 
-> **错误模型说明：** 上表与 `require.md` §6.2 的矩阵一致：违反存储模式/可变性前提的公开转换失败统一使用 `26-error.md` 定义的 `XenonError::InvalidStorageMode { .. }`；复制型成功路径本身不再额外引入新的公开转换错误类型。
+> **错误模型说明：** 上表与 `需求说明书` §6.2 的矩阵一致：违反存储模式/可变性前提的公开转换失败统一使用 `26-error.md` 定义的 `XenonError::InvalidStorageMode { .. }`；复制型成功路径本身不再额外引入新的公开转换错误类型。
 
 > **分配失败说明：** 涉及内存分配的转换操作，若分配失败则遵循运行时既有行为（如全局分配器 panic 或 OOM），不通过 `XenonError` 建模。此设计决策与需求说明书 §6.2 的“须分配”路径一致：该路径仅在目标为持有时可执行，分配失败不属于张量语义层的可恢复错误。
 
-> **类型安全论证**：`ViewMutRepr<'a, A>` 的零拷贝降级路径是只读重借用 `ViewRepr<'a, A>`，其语义与 `require.md` §6.2 对“可写引用 → 共享只读引用 = 零拷贝”的要求一致：结果显式放弃写权限，且在该只读结果存续期间不得再并发写入同一底层数据。相对地，`ViewMutRepr<'a, A>` 不持有底层分配所有权，因此仍不能在零拷贝前提下构造 `ArcRepr<A>` 所需的共享所有权句柄。
+> **类型安全论证**：`ViewMutRepr<'a, A>` 的零拷贝降级路径是只读重借用 `ViewRepr<'a, A>`，其语义与 `需求说明书` §6.2 对“可写引用 → 共享只读引用 = 零拷贝”的要求一致：结果显式放弃写权限，且在该只读结果存续期间不得再并发写入同一底层数据。相对地，`ViewMutRepr<'a, A>` 不持有底层分配所有权，因此仍不能在零拷贝前提下构造 `ArcRepr<A>` 所需的共享所有权句柄。
 
 #### 5.11.2 公开转换 API 对照表
 
-| From \ To | `ReadOnlyRef` | `SharedReadOnlyRef` | `WritableRef` | `Owned` |
+| From \ To | `ReadOnly` | `SharedReadOnly` | `Writable` | `Owned` |
 | --------- | ------------- | ------------------- | ------------- | ------- |
 | `Owned` | `view()` | convert to shared-reference-counted storage | `view_mut()` | move / `to_owned()` |
-| `WritableRef` | `view()` | `view()` | type-level only | `to_owned()` |
-| `ReadOnlyRef` | type-level only | type-level only | type-level only | `to_owned()` |
-| `SharedReadOnlyRef` | `view()` | type-level only | type-level only | `to_owned()` |
+| `Writable` | `view()` | `view()` | type-level only | `to_owned()` |
+| `ReadOnly` | type-level only | type-level only | type-level only | `to_owned()` |
+| `SharedReadOnly` | `view()` | type-level only | type-level only | `to_owned()` |
 
-> **说明：** 本表用于标注公开运行时 API 与纯类型层拒绝的边界。`type-level only` 表示该格子不提供运行时转换入口，而是由 Rust 类型系统直接拒绝；若同一抽象格子有多种具体表示，API 可用性以具体来源为准。`Owned -> SharedReadOnlyRef` 这一格仅描述语义上的“转换为共享引用计数只读存储”；其具体公开 API 名称留待未来版本统一定稿。
+> **说明：** 本表用于标注公开运行时 API 与纯类型层拒绝的边界。`type-level only` 表示该格子不提供运行时转换入口，而是由 Rust 类型系统直接拒绝；若同一抽象格子有多种具体表示，API 可用性以具体来源为准。`Owned -> SharedReadOnly` 这一格仅描述语义上的“转换为共享引用计数只读存储”；其具体公开 API 名称留待未来版本统一定稿。
 
 > **约束：** Xenon 当前元素类型集合是封闭且按值语义处理的集合；`Owned::from_vec` 保持 `Elem: Copy` 约束，并统一复制到内部 64B 对齐缓冲（参见 `06-layout.md §5.6`）。其它从迭代器或构造器进入 `Owned` 的路径由上层构造模块统一收敛。
 
-> **错误语义补充：** 上表中的复杂度只描述成功路径。凡转换违反 `require.md` §6.2 的可变性或独占性前提（例如试图把共享只读结果继续当作可写存储传播），已公开的运行时转换 API 须返回可恢复错误，而不是隐式降级为别的存储模式。
+> **错误语义补充：** 上表中的复杂度只描述成功路径。凡转换违反 `需求说明书` §6.2 的可变性或独占性前提（例如试图把共享只读结果继续当作可写存储传播），已公开的运行时转换 API 须返回可恢复错误，而不是隐式降级为别的存储模式。
 
 ### 5.12 Good/Bad 对比
 
-```rust
+```rust,ignore
 // Good - Use Storage trait bound to accept any readable storage
 fn process<S: Storage<Elem = f64>>(storage: &S) {
     let slice = storage.as_slice();
@@ -614,7 +624,7 @@ fn process_bad(storage: &Owned<f64>) {
 }
 ```
 
-```rust
+```rust,ignore
 // Good - materialize an owned buffer before mutation
 fn modify_shared(arc: ArcRepr<f64>) -> Owned<f64> {
     // Note: tensor-level `into_owned()` semantics live in 07-tensor.md.
@@ -787,7 +797,7 @@ impl AlignedAlloc {
 
 ### 6.3 ViewRepr\<'a, A\> 结构体
 
-```rust
+```rust,ignore
 /// Immutable view storage.
 #[derive(Debug)]
 pub struct ViewRepr<'a, A> {
@@ -812,7 +822,7 @@ impl<'a, A> Copy for ViewRepr<'a, A> {}
 
 ### 6.4 ViewMutRepr\<'a, A\> 结构体
 
-```rust
+```rust,ignore
 /// Mutable view storage.
 ///
 /// **Not cloneable**: exclusive semantics mean only one mutable reference can exist at a time.
@@ -831,7 +841,7 @@ pub type ViewMut<'a, A> = ViewMutRepr<'a, A>;
 
 ### 6.5 ArcRepr\<A\> 结构体
 
-```rust
+```rust,ignore
 /// Shared read-only storage.
 ///
 /// `ArcRepr<A>` is an abstract shared read-only buffer representation.
@@ -879,7 +889,7 @@ return internal unique buffer
 
 ### 6.6 Marker Traits
 
-```rust
+```rust,ignore
 /// Marker trait for storage types that own data.
 pub unsafe trait IsOwned: RawStorage {}
 
@@ -925,7 +935,7 @@ where
 | `ViewMutRepr<'a, A>` |    A: Send     |   ❌ 永远不    | 独占借用可转移但不可共享                                              |
 | `ArcRepr<A>`         | A: Send + Sync | A: Send + Sync | 抽象共享所有权实现需保证线程安全                                          |
 
-```rust
+```rust,ignore
 // SAFETY: ViewRepr<'a, A> only allows shared (read-only) access.
 // It is safe to send between threads if A: Sync (shared refs are Send when T: Sync).
 unsafe impl<'a, A: Sync> Send for ViewRepr<'a, A> {}
@@ -1149,7 +1159,7 @@ Wave 4:              [T12] → [T13]
 
 `TensorBase<S, D>` 的 `S` 参数约束为 `Storage` 或 `StorageMut`，通过关联类型 `Elem` 获取元素类型（参见 `07-tensor.md` §5）：
 
-```rust
+```rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,

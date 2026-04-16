@@ -137,7 +137,7 @@ ZER = HAS_ZERO_STRIDE (0b01000)  contains broadcast zero stride
 
 > **注意**：Xenon 不需要 `C_CONTIGUOUS` 标志位（不支持 C-order）。1D 和 0D 数组天然 F-连续。
 
-```rust
+```rust,ignore
 /// A set of layout flags.
 ///
 /// Uses a bitfield to store multiple layout properties with O(1) queries.
@@ -228,7 +228,7 @@ pub(crate) const fn flags_for_f_layout(aligned: bool, has_zero_stride: bool) -> 
 
 > **权威计算入口声明**：`LayoutFlags` 的唯一权威计算入口为 `compute_layout_flags(shape, strides, ptr)`。其他模块查询布局状态时须引用本模块的结果，不得各自复算或绕过本模块自行裁定 `F_CONTIGUOUS` / `ALIGNED` / `HAS_ZERO_STRIDE`。
 
-```rust
+```rust,ignore
 /// Classification of tensor memory layout contiguity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LayoutState {
@@ -259,7 +259,7 @@ pub enum LayoutState {
 
 步长使用 `usize` 存储；当前版本仅接受非负步长与零步长：
 
-```rust
+```rust,ignore
 /// Each element in the stride array represents the memory offset change
 /// (in elements) when moving one index along that axis.
 ///
@@ -271,7 +271,7 @@ pub enum LayoutState {
 
 `Strides<D>` 是 layout 模块拥有的正式步长类型，用于把“每个轴前进一步需要跨过多少个元素”从 `Dimension` 的形状语义中独立出来。
 
-```rust
+```rust,ignore
 /// Strides describe the element-offset along each dimension.
 /// For a tensor with shape [n0, n1, ..., nk], stride[i] gives the number of
 /// elements to skip to advance one position along dimension i.
@@ -357,7 +357,7 @@ Result: Ok(strides = [1, 3, 12])
 
 **API**：
 
-```rust
+```rust,ignore
 /// Computes strides for an F-order contiguous layout from the given shape.
 ///
 /// # Arguments
@@ -410,11 +410,11 @@ Result: false (not F-contiguous)
 
 - **F-order contiguous**：对所有轴满足 `strides[i] == product(shape[0..i])`；对 `shape[i] == 1` 的轴，可按 §5.4 的连续性规则放宽判定；若零步长来自广播语义，则不得归类为 `F_CONTIGUOUS`，但空数组在退化 metadata 表示下出现的零步长不自动破坏 `F_CONTIGUOUS`。
 - **转置视图（non-contiguous）**：`strides` 是对应 F-order contiguous stride 集合的轴置换结果，且所有 stride 都为正。
-- **切片派生的正步长非连续视图**：由范围切片等操作产生，所有 stride 都为正，但不满足 F-order 连续条件；例如在已有非连续视图上继续切片后得到的正步长布局仍属合法。
+- **切片派生的正步长非连续视图**：仅指由 Xenon 内部张量切片 API 产生的布局；所有 stride 都为正，但不满足 F-order 连续条件；例如在已验证父布局上继续切片后得到的正步长布局仍属合法。
 - **广播视图**：广播轴允许 stride 为 `0`；是否为广播轴由广播语义决定（源维度为 1 且目标维度 > 1），而非由结果张量的 `shape[i] == 1` 判定。其余非广播轴必须保持 F-order 或转置后的正 stride 模式。
 - **单元素或 0-D**：只要 metadata 可表示且访问范围合法，任意有效 stride 都视为合法。
 
-> **校验口径说明：** 上述“合法 stride 布局族”同时定义当前版本 safe 构造可接受的布局边界。safe 构造仅接受当前版本支持的布局族：F-order、转置 F-order、切片 F-order、广播 F-order；除这些布局族之外的任意 stride 模式，即使在某些情况下可满足基本内存范围约束，也不属于当前版本 safe API 的接受范围，必须使用 unsafe 构造路径并由调用方承担额外正确性责任。该口径与 `require.md` §8 保持一致。
+> **校验口径说明：** 上述“合法 stride 布局族”同时定义当前版本 safe 构造可接受的布局边界。safe 构造只接受能够**仅凭 metadata** 验证正确性的布局：`shape + strides + offset + storage_len` 必须足以证明访问范围不越界，且布局须落在当前版本支持的布局族内。这里的“切片派生”只指 Xenon 内部张量切片 API 产出的布局，不接受外部 raw-parts 输入仅凭“它看起来像切片结果”就走 safe 路径。任何 raw-parts 构造即使 metadata 恰好匹配切片结果，也只能走 unsafe 构造路径并由调用方承担额外正确性责任。该口径与 `需求说明书` §8 保持一致。
 
 #### 非法 stride 组合
 
@@ -446,8 +446,8 @@ Result: false (not F-contiguous)
 
 #### safe vs unsafe 构造的责任分工
 
-- **Safe constructors**：必须检查以上全部规则；任一条件不满足时返回 `Result::Err`。
-- **Unsafe constructors**：至少检查可验证的 metadata 约束（如 shape/stride 一致性、元素总数与访问范围公式）；指针有效性、生命周期与实际可访问内存范围由调用方保证。
+- **Safe constructors**：只接受可由 metadata 单独证明正确的布局；必须检查以上全部规则，且 `shape + strides + offset + storage_len` 足以证明所有逻辑访问都在 backing storage 范围内；任一条件不满足时返回 `Result::Err`。
+- **Unsafe constructors**：至少检查可验证的 metadata 约束（如 shape/stride 一致性、元素总数与访问范围公式）；指针有效性、生命周期与实际可访问内存范围由调用方保证。即使外部传入的 raw-parts metadata 与某个“切片派生”布局一致，也不得因此提升为 safe。
 
 ### 5.5 对齐检查
 
@@ -469,7 +469,7 @@ pub fn is_aligned(ptr: *const u8) -> bool {
 }
 ```
 
-> **空张量对齐规则：** 空张量（元素数为 0）的 `ALIGNED` flag 统一设为 `true`，不依赖逻辑首指针是否可观测地满足 64 字节对齐。`compute_layout_flags()` 在空张量分支上应直接写入该约定，以保持 `require.md` 的空布局查询稳定语义。
+> **空张量对齐规则：** 空张量（元素数为 0）的 `ALIGNED` flag 统一设为 `true`，不依赖逻辑首指针是否可观测地满足 64 字节对齐。`compute_layout_flags()` 在空张量分支上应直接写入该约定，以保持 `需求说明书` 的空布局查询稳定语义。
 
 ### 5.6 对齐与数据一致性
 
@@ -498,7 +498,7 @@ Indices [0, 0], [0, 1], [0, 2], and [0, 3] access the same physical element
 
 ### 5.9 compute_layout_flags 内部函数
 
-```rust
+```rust,ignore
 /// Computes layout flags from shape, strides, and data pointer.
 ///
 /// This is the central function that determines all layout properties
@@ -581,12 +581,12 @@ function compute_flags(shape, strides, ptr):
 
 ### 6.2a 内部 stride 校验规则
 
-当前版本内部实现与 safe 构造的接受边界保持一致：safe 构造只接受 packed F-order、其轴置换、广播零步长以及正步长切片派生这四类 stride 布局族；校验不仅要求 stride 非负、可表示且访问范围不越界，还要求该布局能够被判定落在这四类受支持族内。超出这些布局族的更宽正 stride 组合，即使在某些情况下满足基本内存安全充分条件，也不属于当前版本 safe API 的接受范围，必须走 unsafe 构造路径。
+当前版本内部实现与 safe 构造的接受边界保持一致：safe 构造只接受 packed F-order、其轴置换、广播零步长以及正步长切片派生这四类 stride 布局族；校验不仅要求 stride 非负、可表示且访问范围不越界，还要求该布局能够被判定落在这四类受支持族内，并且这些结论能由 metadata 单独机械验证。超出这些布局族的更宽正 stride 组合，即使在某些情况下满足基本内存安全充分条件，也不属于当前版本 safe API 的接受范围，必须走 unsafe 构造路径。
 
 - F-order 连续布局：`stride[i] = product(shape[0..i])`
 - 转置派生布局：stride 必须是某个 F-order 连续 stride 集合的轴置换，且全部为正
 - 广播派生布局：仅广播轴允许 `stride = 0`；是否为广播轴由广播语义决定（源维度为 1 且目标维度 > 1），而非由结果张量的 `shape[i] == 1` 判定
-- 切片派生布局：仅允许正步长子范围；stride 保持原值，通过 `offset` 表示起点移动
+- 切片派生布局：仅允许 Xenon 内部张量切片 API 产出的正步长子范围；其判定必须满足以下可检查条件：父布局已验证合法、切片不改写非广播轴 stride、`offset` 仅按切片起点单调增加、结果 `shape` 与新 `offset` 仍满足访问范围不越界；外部 raw-parts 输入即使满足同样 metadata 形状，也只能走 unsafe 路径
 
 ### 6.3 标志位更新规则
 
@@ -858,8 +858,8 @@ Upper layers create or transform tensor metadata
 
 | 属性     | 值 |
 | -------- | --- |
-| 决策     | 当前版本中，`require.md` §7 提到的“padding”仅指分配层面的尾部容量/对齐冗余（例如分配器为满足对齐返回多于请求值的字节数）；拥有型张量的逻辑布局元数据（`shape`、`strides`）仍保持规范化 packed F-order，即 `stride[i] = product(shape[0..i])`。当前版本**不支持**轴间 padding（例如 padded leading dimension）。 |
-| 决策补充 | `require.md` §7 所指的“填充区域”在本设计中解释为仅用于分配层对齐目的的尾部冗余空间（tail padding），不包含轴间填充（inter-axis padding）或 padded leading dimension。该收紧解释不改变逻辑元素值及其访问结果，因此保持与需求兼容。 |
+| 决策     | 当前版本中，`需求说明书` §7 提到的“padding”仅指分配层面的尾部容量/对齐冗余（例如分配器为满足对齐返回多于请求值的字节数）；拥有型张量的逻辑布局元数据（`shape`、`strides`）仍保持规范化 packed F-order，即 `stride[i] = product(shape[0..i])`。当前版本**不支持**轴间 padding（例如 padded leading dimension）。 |
+| 决策补充 | `需求说明书` §7 所指的“填充区域”在本设计中解释为仅用于分配层对齐目的的尾部冗余空间（tail padding），不包含轴间填充（inter-axis padding）或 padded leading dimension。该收紧解释不改变逻辑元素值及其访问结果，因此保持与需求兼容。 |
 | 理由     | 规范化 packed F-order 可简化布局校验与 FFI 导出；轴间 padding 将引入 `leading_dim` 一类概念，显著增加类型系统复杂度；分配级对齐由 `storage` 层的 `AlignedBuf` 处理，而非 `layout` 层。 |
 | 替代方案 | 在 `layout` 元数据中显式支持轴间 padding / padded leading dimension — 放弃，会扩大布局状态空间并增加验证、类型表达与 FFI 映射复杂度。 |
 

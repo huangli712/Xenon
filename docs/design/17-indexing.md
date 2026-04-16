@@ -129,7 +129,7 @@ src/
 
 ### 5.1 核心接口草案
 
-```rust
+```rust,ignore
 use crate::private::Sealed;
 
 pub trait NdIndex<D: Dimension>: Sealed {
@@ -178,7 +178,7 @@ where
     I: Dimension,
     D: Dimension,
 {
-    pub(crate) fn new(indices: SliceInfoIndices, in_dim: D, out_dim: I) -> Result<Self, XenonError>;
+    pub fn new(indices: SliceInfoIndices, in_dim: D, out_dim: I) -> Result<Self, XenonError>;
 
     pub fn indices(&self) -> &SliceInfoIndices;
 
@@ -190,11 +190,11 @@ where
 
 设计说明：为支持 `XenonError::IndexOutOfBounds { attempted_index: Vec<usize>, .. }` 与 `26-error.md` 的规范对齐，`NdIndex<D>` 将提供 `fn to_index_vec(&self) -> Vec<usize>`（或等价 helper）用于把任意合法索引表示统一转换为 `Vec<usize>`。这样 tuple-based `Ix0`~`Ix6` 与切片形式索引都能在错误上报路径中生成一致的结构化诊断数据。
 
-`SliceInfo<I, D>` 是切片描述符的公开包装类型：`D` 表示输入维度，`I` 表示切片后的输出维度；其内部字段保持私有，必须通过带校验的构造器建立，以避免手工拼出“索引长度、输入维度、输出维度彼此矛盾”的无效状态。`SliceInfo::new` 作为 crate-private 构造器存在，对外提供自动推导输出维度的包装接口。调用方不应手动构造 `out_dim`。范围语法中的省略边界应在进入 `SliceInfoElem::Range` 前先被规范化为显式 `start` / `end`。
+`SliceInfo<I, D>` 是切片描述符的公开包装类型：`D` 表示输入维度，`I` 表示切片后的输出维度；其内部字段保持私有，必须通过带校验的公开构造器建立，以避免手工拼出“索引长度、输入维度、输出维度彼此矛盾”的无效状态。`SliceInfo::new` 属于稳定公共 API，并负责校验索引描述长度、`in_dim` 与 `out_dim` 的对应关系；校验失败时返回 `XenonError`。这为当前版本的 `slice()` 提供了稳定、可验证的编程式入口。`s![]` 宏仍保留在附录中，作为未来版本的便利语法增强，不影响当前稳定 API 的可用性。范围语法中的省略边界应在进入 `SliceInfoElem::Range` 前先被规范化为显式 `start` / `end`。
 
 ### 5.2 张量访问与切片 API
 
-```rust
+```rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -241,9 +241,11 @@ where
 
 > **非规范便利接口说明：** 若实现内部或实验性配置中保留 `Index` / `IndexMut`（`[]` / `[]=`）语法糖，其 panic 行为仅属于非规范便利接口，不列入本节稳定接口草案。稳定语义以 `try_at()` / `try_at_mut()` 为准。
 
+> **`SliceInfo` 稳定构造入口：** 调用方可通过 `SliceInfo::new(indices, in_dim, out_dim)` 直接构造切片描述符；该构造器是公开且带校验的稳定 API。`slice()` 不依赖 `s![]` 宏，用户即使不使用未来的便利语法，也始终可以通过该入口构造合法的 `SliceInfo`。
+
 ### 5.3 Good / Bad 对比
 
-```rust
+```rust,ignore
 // Good - checked indexing keeps recoverable errors on the main path.
 let value = tensor.try_at((2, 1))?;
 let value2 = tensor.get(&[2, 1])?;
@@ -253,7 +255,7 @@ let value = tensor.try_at((2, 1)).expect("index already validated");
 ```
 
 
-```rust
+```rust,ignore
 // Good - unsafe path is only used when the caller already proved validity.
 let value = unsafe { tensor.get_unchecked(&[1, 2, 0]) };
 
@@ -271,7 +273,7 @@ let value = unsafe { tensor.get_unchecked(user_index.as_slice()) };
 
 ### 6.2 偏移量计算
 
-```rust
+```rust,ignore
 fn compute_offset_f<D: Dimension>(index: &[usize], strides: &Strides<D>) -> Option<usize> {
     let mut offset = 0usize;
     for (&idx, &stride) in index.iter().zip(strides.iter()) {
@@ -311,9 +313,9 @@ compute_slice(shape, strides, offset, slices):
 - `Range` 会按起止边界更新 shape 和 stride。
 - 切片结果与源张量共享底层数据时，仅可落在只读或共享只读范围内，不提供共享可写视图。
 - 布局状态只能重新落在 `FContiguous`、`NonContiguous`、`BroadcastView` 三种之一。
-- `SliceInfo::new(...)` 必须校验索引描述长度、`in_dim` 与 `out_dim` 的对应关系，拒绝构造内部自相矛盾的描述符。
+- `SliceInfo::new(...)` 作为稳定公共构造器，必须校验索引描述长度、`in_dim` 与 `out_dim` 的对应关系，拒绝构造内部自相矛盾的描述符。
 
-> **`out_dim` 入口收敛：** `SliceInfo::new` 收敛为 crate-private 内部构造器，对外提供自动推导输出维度的包装接口。当前公开文档不鼓励调用方手动传入 `out_dim`。
+> **`SliceInfo` 构造语义：** `SliceInfo::new` 是当前版本稳定公开的低层编程式构造入口；它保留显式 `out_dim` 参数，以便与 `SliceInfo<I, D>` 的类型级输出维度约束保持一致，同时通过构造期校验保证该参数不能与切片描述矛盾。
 
 > **切片布局标志规则：** 切片结果的 layout flags 根据新的 `shape` / `stride` 组合重新计算。若源视图带有 `BroadcastView`，且切片后仍存在任一零步长轴，则继续保留 `BroadcastView` flag；否则按普通 F-order / non-contiguous 规则重分类。
 
@@ -502,7 +504,7 @@ User calls tensor.slice(info)
 
 错误实例须与 `26-error.md` 对齐：
 
-```rust
+```rust,ignore
 XenonError::InvalidAxis {
     operation: "slice".into(),
     axis,
@@ -535,7 +537,7 @@ XenonError::IndexOutOfBounds {
 | 属性     | 值                                                                                                   |
 | -------- | ---------------------------------------------------------------------------------------------------- |
 | 决策     | `try_at()` / `get()` / `try_at_mut()` / `get_mut()` / `slice()` 作为规范安全接口，失败返回可恢复错误 |
-| 理由     | 符合 `require.md` §18 对安全接口的要求，并与 `26-error.md` 的统一诊断模型对齐                        |
+| 理由     | 符合需求说明书 §18 对安全接口的要求，并与 `26-error.md` 的统一诊断模型对齐                        |
 | 替代方案 | 全部使用 `Index` / `IndexMut` panic 语法糖 — 放弃，错误恢复与上游组合能力不足                        |
 | 替代方案 | 统一返回 `Option` — 放弃，无法承载轴、shape、索引等诊断信息                                          |
 
@@ -544,7 +546,7 @@ XenonError::IndexOutOfBounds {
 | 属性     | 值                                                                |
 | -------- | ----------------------------------------------------------------- |
 | 决策     | 范围索引返回共享底层数据的只读或共享只读视图，不提供共享可写视图  |
-| 理由     | 符合 `require.md` §18 与 §6，对共享数据结果收敛到可验证的只读语义 |
+| 理由     | 符合需求说明书 §18 与 §6，对共享数据结果收敛到可验证的只读语义 |
 | 替代方案 | 允许共享可写切片 — 放弃，超出当前版本范围且引入别名写入风险       |
 | 替代方案 | 切片总是复制生成独立张量 — 放弃，会破坏零拷贝视图语义并扩大成本   |
 
