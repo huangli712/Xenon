@@ -17,7 +17,7 @@
 
 本文档适用于 Xenon 项目的所有源码文件、测试文件、基准测试和 CI 配置。
 
-受影响的模块包括 `src/` 下所有子模块以及 `tests/`、`benches/` 目录。
+受影响的模块包括 `src/` 下所有子模块以及 `tests/`、`benches/`、`docs/` 目录。
 
 ### 1.2 需求映射与范围约束
 
@@ -116,7 +116,7 @@ pub type Ix = usize;
 // Good
 pub fn shape(&self) -> &[Ix];
 pub fn transpose(&self) -> TensorView<'_, A, D>;
-fn compute_f_strides(shape: &[Ix]) -> Result<Vec<Ix>, XenonError>;
+fn compute_f_strides(shape: &[Ix]) -> Result<Vec<Ix>>;
 
 // Bad
 pub fn Shape(&self) -> &[Ix];
@@ -222,12 +222,7 @@ pub fn get_strides(&self) -> &[Ix] { /* ... */ }
 pub fn try_at(&self, index: &[Ix]) -> Result<&A> { /* ... */ }
 
 // Good - may fail, returns XenonError::IndexOutOfBounds
-pub fn try_at_mut(&mut self, index: &[Ix]) -> Result<&mut A, XenonError> { /* ... */ }
-
-// `[]` remains a separate restricted panic sugar for already-validated paths.
-// The corresponding docs must include a `# Panics` section, and internal
-// validated builders such as `eye()` may use unchecked indexing only with a
-// localized `SAFETY (§8.2): ...` argument.
+pub fn try_at_mut(&mut self, index: &[Ix]) -> Result<&mut A> { /* ... */ }
 ```
 
 ---
@@ -327,7 +322,7 @@ let x: i32 = value as i32;  // dangerous: may truncate or change sign
 let y: f64 = value as f64;  // dangerous: precision loss
 ```
 
-**例外（须在代码评审中显式确认）**：以下情况允许 `as`：
+**例外**：以下情况允许 `as`：
 
 ```rust,ignore
 // 1. Interacting with C FFI
@@ -430,7 +425,7 @@ pub struct Bad<A> {
 
 ### 4.4 Send/Sync 实现规范
 
-按存储模式声明 `unsafe impl Send/Sync`，须严格遵循以下规则（权威定义参见 `25-safety.md §5.1`，以及 `需求说明书 §25`）：
+按存储模式声明 `unsafe impl Send/Sync`，须遵循以下规则（权威定义参见 `25-safety.md §5.1`，以及 `需求说明书 §25`）：
 
 | 存储模式             | Send | Sync   | 条件                                                 |
 | -------------------- | ---- | ------ | ---------------------------------------------------- |
@@ -531,37 +526,7 @@ pub enum XenonError {
         attempted_target_shape: Option<Vec<usize>>,
         axis: Option<usize>,
     },
-    InvalidArgument {
-        operation: Cow<'static, str>,
-        argument: Cow<'static, str>,
-        expected: Cow<'static, str>,
-        actual: Cow<'static, str>,
-        axis: Option<usize>,
-        axis_len: Option<usize>,
-        start: Option<usize>,
-        end: Option<usize>,
-        shape: Option<Vec<usize>>,
-    },
-    InvalidShape {
-        operation: Cow<'static, str>,
-        shape: Vec<usize>,
-        expected_elements: usize,
-        actual_elements: usize,
-        offending_dim: Option<usize>,
-        reason: Option<Cow<'static, str>>,
-    },
-    IndexOutOfBounds {
-        operation: Cow<'static, str>,
-        attempted_index: Vec<usize>,
-        axis: usize,
-        shape: Vec<usize>,
-    },
-    InvalidAxis {
-        operation: Cow<'static, str>,
-        axis: usize,
-        ndim: usize,
-        shape: Vec<usize>,
-    },
+    // ...
 }
 
 pub type Result<T> = std::result::Result<T, XenonError>;
@@ -620,7 +585,7 @@ where
     pub fn try_at(&self, index: &[Ix]) -> Result<&A> {
         if !self.is_index_valid(index) {
             return Err(XenonError::IndexOutOfBounds {
-                operation: "try_at".into(),
+                operation: "try_at",
                 attempted_index: index.into(),
                 axis: 0,
                 shape: self.shape().into(),
@@ -632,7 +597,7 @@ where
 
     /// `[]` indexing sugar for already-validated internal paths.
     /// Public safe APIs should use `try_at()` / `try_at_mut()` and return recoverable errors.
-    // Note: `[]` remains restricted panic sugar outside Xenon's stable safe API contract.
+    /// Note: `[]` remains restricted panic sugar outside Xenon's stable safe API contract.
 
     /// Unchecked indexing — UB on out of bounds.
     ///
@@ -743,10 +708,16 @@ src/
 
 ### 7.1 `lib.rs` 项目级 lint 基线
 
-`lib.rs` 必须声明项目级统一 lint 基线。其中 `#![warn(clippy::unwrap_used)]` 是整个项目库代码的统一要求，不得在其他模块或文档片段中弱化或省略。开发期间使用 `warn` 级别。CI 中应分别执行 `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps`（rustdoc 警告）、`cargo clippy -- -D warnings`（Clippy 警告），并在需要把常规编译警告也提升为错误时额外使用 `RUSTFLAGS="-D warnings" cargo check`。
+`lib.rs` 必须声明项目级统一 lint 基线。其中 `#![warn(clippy::unwrap_used)]` 是整个项目库代码的统一要求，不得在其他模块或文档片段中弱化或省略。开发期间使用 `warn` 级别。CI 中应分别执行:
+ 
+- `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps`（rustdoc 警告）
+- `cargo clippy -- -D warnings`（Clippy 警告）
+
+并在需要把常规编译警告也提升为错误时额外使用:
+
+- `RUSTFLAGS="-D warnings" cargo check`
 
 本节的 `lib.rs` lint 列表是权威来源。`01-architecture.md §8` 及其他文档中的 `lib.rs` 片段须与本节保持一致。
-
 
 ```rust,ignore
 // src/lib.rs
@@ -828,7 +799,7 @@ where
 
 ### 8.1 测试命名规范
 
-测试函数命名格式：`test_<function>_<scenario>_<expected>`。其中 `Index` / `IndexMut` 的 `[]` 语法仅作为已验证路径的受限人体工学 panic sugar；公开安全 API 必须优先通过 `try_at()` / `try_at_mut()` 暴露可恢复错误语义。
+测试函数命名格式：`test_<function>_<scenario>_<expected>`。其中 `Index` / `IndexMut` 的 `[]` 语法仅作为已验证路径的受限人体工学 panic sugar。公开安全 API 必须优先通过 `try_at()` / `try_at_mut()` 暴露可恢复错误语义。
 
 ```rust,ignore
 #[cfg(test)]
@@ -862,7 +833,7 @@ mod tests {
 }
 ```
 
-### 8.2 边界覆盖必须覆盖
+### 8.2 边界情况必须覆盖
 
 | 场景                       | 预期行为                  |
 | -------------------------- | ------------------------- |
@@ -907,14 +878,6 @@ fn assert_close(a: f64, b: f64, epsilon: f64) {
 // Bad - direct float comparison
 assert_eq!(result[[0, 0]], 58.0);  // may fail due to rounding errors
 ```
-
-### 8.5 归约操作溢出行为
-
-| 类型       | 行为                                               |
-| ---------- | -------------------------------------------------- |
-| 整数类型   | debug 和 release 均使用 checked 算术，溢出时 panic |
-| 浮点类型   | 返回 `±Infinity`（IEEE 754 语义）                  |
-| 空数组 sum | 返回加法单位元 `zero()`                            |
 
 ---
 
@@ -972,7 +935,7 @@ where
 | `simd`     | `dep:pulp`  | SIMD 加速，默认关闭    |
 | `parallel` | `dep:rayon` | 并行计算，默认关闭     |
 
-其中 `simd` 与 `parallel` 都建立在 Xenon 的 `std` 前提之上；`std` 是无条件工程基线，不单独建模为 feature。
+其中 `simd` 与 `parallel` 都建立在 Xenon 的 `std` 前提之上。`std` 是无条件工程基线，不单独建模为 feature。
 
 ```toml
 [features]
@@ -1008,6 +971,8 @@ pub(crate) trait ParallelBackend {
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 ```
+
+---
 
 ## 11. 平台与工程约束
 
@@ -1055,22 +1020,22 @@ rustdoc-args = ["--cfg", "docsrs"]
   - 前置: T2
   - 预计: 10 min
 
-> **CI 策略补充说明：** `cargo fmt --check`、`cargo test`、关键 compile-fail/文档检查哪些属于阻塞发布的 hard gate，哪些仅作为 advisory 信号，仍需项目级统一裁决；本规范只定义建议纳入的检查项，不越权替代仓库治理决策。
-
 ### 并行执行分组图
 
 ```
 Wave 1: [T1] [T2] [T3]
-            │   │   │
-            └───┴───┘
-                │
-                ▼
-Wave 2: [T4]
+         │    │    │
+         └────┴────┘
+              │
+              ▼
+Wave 2:     [T4]
 ```
 
 ---
 
 ## 13. 验证与落地方式
+
+### 13.1 测试函数
 
 | 测试函数                    | 测试内容                  | 优先级 |
 | --------------------------- | ------------------------- | ------ |
@@ -1079,20 +1044,16 @@ Wave 2: [T4]
 | `test_std_default_check`    | 默认 `std` 配置编译通过   | 高     |
 | `test_compile_all_features` | `--all-features` 编译通过 | 高     |
 
-> **覆盖补充：** 边界类（空张量/单元素/大张量/极值/高维/非法元素类型）、并行/SIMD 路径一致性、compile-fail 约束测试由对应模块文档（`27-benchmark.md §8`、`28-tests.md §8`）具体定义。
-
-## 14. 验证补充
-
-### 14.1 Feature gate / 配置测试
+### 13.2 Feature gate / 配置测试
 
 | 配置        | 验证点                                           |
 | ----------- | ------------------------------------------------ |
 | 默认配置    | 编码规范对应 lint、格式与文档约束默认生效        |
-| 启用 `simd` | 条件编译代码仍遵循相同命名、文档与 unsafe 规范    |
-| 启用并行    | 条件编译代码仍遵循相同错误语义、测试与注释要求    |
+| 启用 `simd` | 条件编译代码仍遵循相同命名、文档与 unsafe 规范   |
+| 启用 `parallel` | 条件编译代码仍遵循相同错误语义、测试与注释要求 |
 | 全 feature  | 所有 feature 组合下格式、lint 与文档检查口径一致 |
 
-### 14.2 类型边界 / 编译期测试
+### 13.3 类型边界 / 编译期测试
 
 | 场景                         | 测试方式                                 |
 | ---------------------------- | ---------------------------------------- |
@@ -1100,15 +1061,9 @@ Wave 2: [T4]
 | `unwrap()` / `as` 使用边界   | `cargo clippy` 与仓库 lint 配置校验      |
 | feature gate 可见性与导出边界 | `cargo check` / `cargo test` 配置矩阵验证 |
 
-> **compile-fail 测试机制建议：** 对 sealed trait、feature gate 可见性、错误用法示例等编译期失败场景，建议使用 `trybuild` 或等价 compile-fail harness 统一维护；若项目后续选择其他机制，需保证失败快照与错误意图可审计。
-
-> **工程治理说明：** 以下为工程治理建议，不构成 `需求说明书 §28` 当前版本的规范性基线。
-
 ---
 
-## 15. 设计决策记录
-
-> **架构交叉引用**：F-order 单一布局、封闭元素类型集合与单一 `XenonError` 错误枚举的正式架构决策已记录于 `01-architecture.md §13`；本节仅保留这些决策对编码规范与实现约束的直接影响，便于在编码语境中引用。
+## 14. 设计决策记录
 
 ### 决策 1：F-order 单一布局
 
@@ -1121,20 +1076,20 @@ Wave 2: [T4]
 
 ### 决策 2：封闭元素类型集合
 
-| 属性     | 值                                                                                                                                     |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | 元素类型为封闭集合（i32, i64, f32, f64, Complex\<f32\>, Complex\<f64\>, bool），不支持下游扩展；`usize` 仅作为索引与形状元数据类型使用 |
-| 理由     | 允许穷举匹配优化；SIMD 路径可针对每种类型特化；避免泛型膨胀                                                                            |
-| 替代方案 | 开放 Element trait 允许用户实现 — 放弃，无法保证 SIMD 行为一致性                                                                       |
+| 属性     | 值                                                             |
+| -------- | -------------------------------------------------------------- |
+| 决策     | 元素类型为封闭集合（i32, i64, f32, f64, Complex<f32>, Complex<f64>, bool），不支持下游扩展 |
+| 理由     | 允许穷举匹配优化；SIMD 路径可针对每种类型特化；避免泛型膨胀    |
+| 替代方案 | 开放 Element trait 允许用户实现 — 放弃，无法保证 SIMD 行为一致性 |
 
 ### 决策 3：单一错误枚举
 
-| 属性     | 值                                                                              |
-| -------- | ------------------------------------------------------------------------------- |
-| 决策     | 使用单一 `XenonError` 枚举覆盖所有公开可恢复错误                                |
-| 理由     | API 简单、模式匹配完整，并能集中承载索引、广播、类型转换与 FFI 的结构化诊断信息 |
-| 替代方案 | 多个错误类型 — 放弃，增加 API 复杂度                                            |
-| 替代方案 | 使用 thiserror — 放弃，引入外部依赖                                             |
+| 属性     | 值                                                             |
+| -------- | -------------------------------------------------------------- |
+| 决策     | 使用单一 `XenonError` 枚举覆盖所有公开可恢复错误               |
+| 理由     | API 简单、模式匹配完整，并能集中承载索引、广播等的结构化诊断信息 |
+| 替代方案 | 多个错误类型 — 放弃，增加 API 复杂度                           |
+| 替代方案 | 使用 thiserror — 放弃，引入外部依赖                            |
 
 ### 决策 4：仅 rayon + pulp 依赖
 
@@ -1161,6 +1116,7 @@ Wave 2: [T4]
 | 1.2.2 | 2026-04-14 |
 | 1.2.3 | 2026-04-15 |
 | 1.2.4 | 2026-04-15 |
+| 1.2.5 | 2026-04-17 |
 
 ---
 
