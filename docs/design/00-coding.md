@@ -1,36 +1,38 @@
 # 通用编码规范
 
-> 文档编号: 00 | 适用范围: 全局编码与工程约束 | 阶段: Phase 0
+> 文档编号: 00
+> 适用范围: 全局编码与工程约束
+> 任务阶段: Phase 0
 > 前置文档: 无
-> 需求参考: `需求说明书 §1`, `需求说明书 §4`, `需求说明书 §7`, `需求说明书 §10`, `需求说明书 §27`, `需求说明书 §28`
+> 需求参考: 需求说明书 §1, §4, §7, §10, §18, §23, §25, §27, §28
 > 范围声明: 范围内
-
-> **格式豁免声明**：本文档豁免 `design.md` §3.1 模块文档标准章节结构，但已按 §3.2 横切规范文档模板覆盖所有必需内容。
 
 ---
 
-## 0. 主题定位与适用范围
+## 1. 主题定位与适用范围
 
-本文档是 Xenon 的横切编码规范，约束命名、格式、类型系统、unsafe、文档、测试与 feature gate 的统一写法，适用于所有源码模块、测试目录、基准目录与 CI 相关工程配置。
+本文档是 Xenon 的横切编码规范，约束命名、格式、类型系统、unsafe、文档、测试与 feature gate 的统一写法。
 
-## 0.1 影响范围
+### 1.1 影响范围
 
-本文档适用于 Xenon 项目的所有源码文件、测试文件、基准测试和 CI 配置。受影响的模块包括 `src/` 下所有子模块以及 `tests/`、`benches/` 目录。
+本文档适用于 Xenon 项目的所有源码文件、测试文件、基准测试和 CI 配置。
 
-## 需求映射与范围约束
+受影响的模块包括 `src/` 下所有子模块以及 `tests/`、`benches/` 目录。
+
+### 1.2 需求映射与范围约束
 
 | 类型     | 内容                                                                 |
 | -------- | -------------------------------------------------------------------- |
-| 需求映射 | `需求说明书 §1`, `需求说明书 §4`, `需求说明书 §7`, `需求说明书 §10`, `需求说明书 §18`, `需求说明书 §23`, `需求说明书 §25`, `需求说明书 §27`, `需求说明书 §28` |
+| 需求映射 | 需求说明书 §1, §4, §7, §10, §18, §23, §25, §27, §28                  |
 | 范围内   | 命名、格式、类型系统、unsafe、文档、测试与 feature gate 的统一编码约束 |
 | 范围外   | 单个业务模块的算法细节、独立功能设计、额外平台适配策略               |
 | 非目标   | 通过本规范引入超出需求范围的新能力、第三方依赖或额外 crate 拆分      |
 
 ---
 
-## 1. 命名规范
+## 2. 命名规范
 
-### 1.1 模块名
+### 2.1 模块名
 
 模块名使用 `snake_case`。
 
@@ -46,7 +48,7 @@ mod TensorBase;
 mod tensor-base;
 ```
 
-### 1.2 类型名
+### 2.2 类型名
 
 类型名（struct、enum、type alias）使用 `CamelCase`。
 
@@ -79,7 +81,7 @@ pub struct tensor_base<S, D> { /* ... */ }
 pub struct TENSORBASE<S, D> { /* ... */ }
 ```
 
-### 1.3 Trait 名
+### 2.3 Trait 名
 
 Trait 名使用 `CamelCase`。标记 trait 使用描述性形容词。
 
@@ -98,9 +100,15 @@ pub trait ELEMENT { /* ... */ }
 pub trait Has_Element { /* ... */ }
 ```
 
-> **索引类型别名**：`Ix` 为 `usize` 的别名，用于维度值和索引：`pub type Ix = usize;`
+### 2.4 索引类型别名
 
-### 1.4 函数和方法名
+`Ix` 为 `usize` 的别名，用于维度值和索引：
+
+```rust
+pub type Ix = usize;
+```
+
+### 2.5 函数和方法名
 
 函数和方法名使用 `snake_case`。
 
@@ -116,7 +124,7 @@ pub fn getShape(&self) -> &[Ix];
 pub fn computeStrides(shape: &[Ix]) -> Vec<Ix>;
 ```
 
-### 1.5 常量
+### 2.6 常量名
 
 常量使用 `SCREAMING_SNAKE_CASE`。
 
@@ -131,7 +139,7 @@ pub const maxDimension: usize = 100;
 pub const Max_Dimension: usize = 6;
 ```
 
-### 1.6 类型参数
+### 2.7 类型参数
 
 类型参数使用单字母大写，选择有语义的字母。
 
@@ -144,7 +152,7 @@ pub const Max_Dimension: usize = 6;
 | `T`  | 通用类型参数                         |
 | `E`  | Error type（错误类型）               |
 
-### 1.7 生命周期
+### 2.8 生命周期
 
 生命周期使用短名：`'a`、`'b`、`'c` 等。
 
@@ -162,7 +170,7 @@ pub struct View<'data, A, D> { /* ... */ }
 pub struct View<'DATA, A, D> { /* ... */ }
 ```
 
-### 1.8 方法前缀约定
+### 2.9 方法前缀约定
 
 | 前缀    | 语义                   | 复杂度   | 示例                              |
 | ------- | ---------------------- | -------- | --------------------------------- |
@@ -170,7 +178,7 @@ pub struct View<'DATA, A, D> { /* ... */ }
 | `to_`   | 克隆转换，可能分配     | 可能昂贵 | `to_vec()`、`to_owned()`          |
 | `into_` | 消耗 self，转换所有权  | 变化     | `into_raw_vec()`、`into_owned()`  |
 | `is_`   | 布尔查询，无副作用     | 廉价     | `is_empty()`、`is_f_contiguous()` |
-| `with_` | 构建器模式，返回 Self  | 变化     | 通用命名示例：`with_shape()`、`with_capacity()` |
+| `with_` | 构建器模式，返回 Self  | 变化     | `with_shape()`、`with_capacity()` |
 
 ```rust,ignore
 // Good
@@ -187,7 +195,9 @@ pub fn get_slice(&self) -> &[A] { /* ... */ }  // no need for get_ prefix
 pub fn to_view(&self) -> View<'_, A, D> { /* ... */ }  // view conversion should use as_
 ```
 
-### 1.9 Getter 不加 `get_` 前缀
+### 2.10 Getter类方法约定
+
+不加 `get_` 前缀。
 
 ```rust,ignore
 // Good
@@ -222,13 +232,13 @@ pub fn try_at_mut(&mut self, index: &[Ix]) -> Result<&mut A, XenonError> { /* ..
 
 ---
 
-## 2. 代码格式
+## 3. 代码格式
 
-### 2.1 缩进
+### 3.1 缩进
 
 使用 4 空格缩进，不使用 tab。
 
-### 2.2 rustfmt 配置
+### 3.2 rustfmt 配置
 
 项目根目录放置 `rustfmt.toml`：
 
@@ -250,11 +260,9 @@ wrap_comments = true
 format_code_in_doc_comments = true
 ```
 
-`imports_granularity` 和 `group_imports` 在 Rust 1.85 对应稳定版 rustfmt 中可用，可按上表直接纳入项目默认格式配置。
+### 3.3 行宽限制
 
-若本地工具链的 rustfmt 版本暂未稳定支持上述键，则应保留 4 空格缩进、100 列行宽与导入分组意图，并以可识别的最接近稳定配置回退；回退方案不得改变项目对格式结果的语义预期，待工具链升级后再恢复完整配置。
-
-**行宽限制**：100 字符。超过时优先换行而非缩短变量名。
+每行最大宽度为100 字符。超过时优先换行而非缩短变量名。
 
 ```rust,ignore
 // Good
@@ -269,7 +277,7 @@ pub fn from_shape_vec_unchecked(
 pub fn from_shape_vec_unchecked(shape: Shape, data: Vec<A>) -> Self { /* ... */ }
 ```
 
-### 2.3 导入分组规则
+### 3.4 导入分组规则
 
 导入按以下顺序分组，每组之间空一行：
 
@@ -304,13 +312,11 @@ use crate::storage::Storage;
 
 ---
 
-## 3. 类型系统规范
+## 4. 类型系统规范
 
-### 3.1 限制 `as` 数值类型转换
+### 4.1 限制 `as` 数值类型转换
 
 公开 API 和常规代码中，对数值 `as` 采用“启用针对数值 `as` 的 lint + 对例外场景做代码评审约束”策略。默认使用 `From`/`TryFrom`/`Into` trait。
-
-> **说明**：Rust 标准库不提供 `From<i32> for f64`。整数到浮点的转换须通过 Xenon 自身的显式转换 API 实现，参见 `需求说明书 §23` 和 `21-type.md §5.2`。
 
 ```rust,ignore
 // Good
@@ -339,13 +345,11 @@ let offset = ptr as usize;
 let truncated = float_val as i32;
 ```
 
-> **注意**：`as` 截断语义仅适用于已单独定义为 truncating/saturating 的专用内部路径。默认 `cast()` 语义不得使用该策略，须返回 `Result`。参见 `需求说明书 §23`。
+### 4.2 泛型约束写法
 
-### 3.2 泛型约束写法
+**内联约束**：用于简单约束（1-2 个 trait），约束仅在类型定义中使用。
 
-**内联约束**用于：简单约束（1-2 个 trait），约束仅在类型定义中使用。
-
-**`where` 子句**用于：复杂约束（3+ trait），约束涉及关联类型，约束较长影响可读性，impl 块。
+**`where` 子句**：用于复杂约束（3+ trait），约束涉及关联类型，约束较长影响可读性，impl 块。
 
 ```rust,ignore
 // Good - complex constraint, where clause
@@ -378,7 +382,7 @@ pub fn bad<A: Numeric + Add<Output = A> + Sub<Output = A> + Mul<Output = A> + Cl
 }
 ```
 
-### 3.3 PhantomData 使用规范
+### 4.3 PhantomData 使用规范
 
 使用 `PhantomData` 表示逻辑上存在但运行时不占用的类型关系。
 
@@ -417,13 +421,16 @@ pub struct Bad<A> {
 }
 ```
 
-> **约定**：只读视图使用 `PhantomData<&'a A>` 表达借用语义；可变视图使用
-> `PhantomData<&'a mut A>` 表达独占借用与不变性；只有真实拥有元素所有权的类型才使用
-> `PhantomData<A>`。不要在视图类型上用 `PhantomData<A>` 冒充借用关系。
+**约定**：
 
-### 3.4 Send/Sync 实现规范
+- 只读视图使用 `PhantomData<&'a A>` 表达借用语义
+- 可变视图使用 `PhantomData<&'a mut A>` 表达独占借用与不变性
+- 只有真实拥有元素所有权的类型才使用`PhantomData<A>`
+- 不要在视图类型上用 `PhantomData<A>` 冒充借用关系。
 
-按存储模式声明 `unsafe impl Send/Sync`，须严格遵循以下规则（权威定义参见 `25-safety.md` §5.1；`05-storage.md` 中相关规则如有冲突，以 `需求说明书 §25` 与 `25-safety.md` 为准）：
+### 4.4 Send/Sync 实现规范
+
+按存储模式声明 `unsafe impl Send/Sync`，须严格遵循以下规则（权威定义参见 `25-safety.md §5.1`，以及 `需求说明书 §25`）：
 
 | 存储模式             | Send | Sync   | 条件                                                 |
 | -------------------- | ---- | ------ | ---------------------------------------------------- |
@@ -432,7 +439,7 @@ pub struct Bad<A> {
 | `ViewMutRepr<'a, A>` | 是   | **否** | `A: Send`（独占借用不可共享）                        |
 | `ArcRepr<A>`         | 是   | 是     | `A: Send + Sync`                                     |
 
-> **关键约束**：`ViewMutRepr` 永远不实现 `Sync`——独占借用语义要求同一时刻只有一个线程可访问。
+**关键约束**：`ViewMutRepr` 永远不实现 `Sync`——独占借用语义要求同一时刻只有一个线程可访问。
 
 ```rust,ignore
 // Owned: Send+Sync when A: Send+Sync
@@ -454,22 +461,23 @@ unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 
 ---
 
-## 4. 错误处理规范
+## 5. 错误处理规范
 
-### 4.1 Result vs panic
+### 5.1 Result vs panic
 
 **使用 `Result`**（可恢复错误）：
 
 - 运行时约束违反（形状不匹配、广播失败）
 - 用户输入无效
 - 方法型 API 中可恢复的边界检查失败（例如 `broadcast_to()` / `slice()` / `try_offset_of()`）
+- 公开安全索引 API 的越界与维度不匹配必须返回可恢复错误
 
-**使用 `panic!`**（编程错误）：
+**使用 `panic!`**（不可恢复错误）：
 
 - 前置条件违反（不变量被破坏）
 - 逻辑错误（不可能的状态）
 - 契约违反
-- 已证明前提下的内部快捷路径可使用 unchecked 或索引语法糖；公开安全索引 API 的越界与维度不匹配必须返回可恢复错误
+- 已证明前提下的内部快捷路径可使用 unchecked 或索引语法糖
 
 ```rust,ignore
 // Good - recoverable error
@@ -509,19 +517,9 @@ where
 }
 ```
 
-### 4.2 XenonError 设计
+### 5.2 XenonError 设计
 
-> **架构交叉引用**：单一 `XenonError` 错误模型的架构决策已在 `01-architecture.md §13` 中定义；本节仅说明该决策在编码层面的公开 API、错误映射与文档写法约束。
-
-统一错误类型 `XenonError`，覆盖所有可恢复错误场景：
-
-> **注意**：公开安全索引 API（如 `try_at(...)`、`try_at_mut(...)`、`try_offset_of(...)`）在索引越界或维度不匹配时都须返回 `Result<_, XenonError>`。`[]` 语法糖需单独说明为受限 panic sugar，只用于内部或调用前已验证索引的快捷路径，不单独作为公开安全 API 契约。
-> 本文档中的错误枚举示例统一使用结构化字段承载诊断上下文；即使某个模块内部保留局部错误类型，也必须在公开 API 边界映射为 `XenonError` 的结构化变体，而不是直接暴露模块私有错误类型。
-> 错误模型以 `26-error.md §4.2` / `§4.4` 为准；此处仅保留最小示意。
->
-> **说明：** 以下为字段形态示意，非权威定义。错误模型以 `26-error.md` 为准。
-
-> **FFI 边界**：Rust 内部的 fallible API 使用 `try_* -> Result` 模式。真正的 `extern "C"` FFI 边界必须使用 FFI-safe 状态码与输出参数，不得跨 ABI 返回 `Result`，也不得让 panic 穿越边界。公开架构不提供 `bare_*` / panic-sugar 形式的 FFI helper；需要偏移或指针计算时，仅保留 `try_offset_of()`、`try_ptr_at()` 这类可恢复错误入口。参见 `23-ffi.md §5`。
+单一 `XenonError` 错误模型的架构决策已在 `01-architecture.md §13` 中定义。本节仅说明该决策在编码层面的公开 API、错误映射与文档写法约束。统一错误类型 `XenonError`，覆盖所有可恢复错误场景，以下为字段形态示意，非权威定义。错误模型以 `26-error.md` 为准。
 
 ```rust,ignore
 #[derive(Debug, Clone)]
@@ -564,27 +562,12 @@ pub enum XenonError {
         ndim: usize,
         shape: Vec<usize>,
     },
-    TypeConversion(TypeConversionError),
-    Ffi {
-        reason: Cow<'static, str>,
-        context: Option<Cow<'static, str>>,
-    },
-    Workspace {
-        operation: Cow<'static, str>,
-        path: Option<Cow<'static, str>>,
-        reason: Cow<'static, str>,
-    },
 }
-
-// Public error boundary uses `XenonError`; see `26-error.md §4.2`
-// for the type-conversion failure payload definition.
 
 pub type Result<T> = std::result::Result<T, XenonError>;
 ```
 
-> **模块内部错误说明：** `FfiError`、`WorkspaceError`、`TypeConversionError` 可作为模块内部载荷结构存在；跨越公开边界时统一使用 `XenonError`。类型转换失败载荷定义见 `26-error.md §4.2`。
-
-### 4.3 unwrap 限制
+### 5.3 unwrap 限制
 
 库代码中禁止使用 `unwrap()`。`expect()` 仅允许用于断言已证明的不变量或前置条件，且消息必须说明为何此处不会失败。测试代码不受此限制。
 
@@ -624,7 +607,7 @@ mod tests {
 }
 ```
 
-### 4.4 checked + unchecked 变体
+### 5.4 checked + unchecked 变体
 
 对于性能关键的边界检查操作，提供 checked 和 unchecked 两个版本：
 
@@ -667,9 +650,9 @@ where
 
 ---
 
-## 5. unsafe 规范
+## 6. unsafe 规范
 
-### 5.1 最小化 unsafe 块范围
+### 6.1 最小化 unsafe 块范围
 
 ```rust,ignore
 // Good - minimal scope
@@ -687,7 +670,7 @@ pub fn get_unchecked_bad(&self, index: usize) -> &A {
 }
 ```
 
-### 5.2 unsafe fn 必须有 # Safety 文档节
+### 6.2 unsafe fn 必须有 # Safety 文档节
 
 每个 `unsafe fn` 必须在文档中包含 `# Safety` 节，列出所有前提条件。
 
@@ -710,7 +693,7 @@ pub unsafe fn from_raw_parts<'a>(
 }
 ```
 
-### 5.3 unsafe 块必须有 // SAFETY: 注释
+### 6.3 unsafe 块必须有 // SAFETY: 注释
 
 ```rust,ignore
 pub fn set(&mut self, index: &[Ix], value: A) -> Result<()> {
@@ -725,7 +708,7 @@ pub fn set(&mut self, index: &[Ix], value: A) -> Result<()> {
 }
 ```
 
-### 5.4 ZST 与空数组安全
+### 6.4 ZST 与空数组安全
 
 涉及零大小类型（ZST）和空数组的 unsafe 操作，须确保不引发未定义行为，包括但不限于空切片指针运算和零长度偏移计算。实现中必须先证明指针来源、对齐、可达范围与偏移语义在 `len == 0` 或 `size_of::<T>() == 0` 时仍然成立，不得把“不会解引用”当作可跳过前提校验的理由。
 
@@ -737,7 +720,7 @@ pub unsafe fn ptr_at_unchecked<T>(ptr: *const T, len: usize, index: usize) -> *c
 }
 ```
 
-### 5.5 unsafe 封装在安全抽象内部
+### 6.5 unsafe 封装在安全抽象内部
 
 所有 `unsafe` 代码应封装在安全抽象内部，对外暴露安全 API：
 
@@ -756,13 +739,11 @@ src/
 
 ---
 
-## 6. 文档规范
+## 7. 文档规范
 
-### 6.1 `lib.rs` 项目级 lint 基线
+### 7.1 `lib.rs` 项目级 lint 基线
 
-`lib.rs` 必须声明项目级统一 lint 基线；其中 `#![warn(clippy::unwrap_used)]` 是整个项目库代码的统一要求，不得在其他模块或文档片段中弱化或省略。
-
-> **权威来源说明**：本节的 `lib.rs` lint 列表是权威来源。`01-architecture.md §8` 及其他文档中的 `lib.rs` 片段须与本节保持一致。
+`lib.rs` 必须声明项目级统一 lint 基线；其中 `#![warn(clippy::unwrap_used)]` 是整个项目库代码的统一要求，不得在其他模块或文档片段中弱化或省略。本节的 `lib.rs` lint 列表是权威来源。`01-architecture.md §8` 及其他文档中的 `lib.rs` 片段须与本节保持一致。
 >
 > **CI 强制执行**：开发期间使用 `warn` 级别；CI 中应分别执行 `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps`（rustdoc 警告）、`cargo clippy -- -D warnings`（Clippy 警告），并在需要把常规编译警告也提升为错误时额外使用 `RUSTFLAGS="-D warnings" cargo check`。
 
@@ -778,11 +759,11 @@ src/
 #![warn(clippy::unwrap_used)]
 ```
 
-### 6.2 所有 pub 项必须有 doc comment
+### 7.2 所有 pub 项必须有 doc comment
 
 所有 `pub` 项（函数、结构体、trait、模块、常量）必须有文档注释。
 
-### 6.3 函数文档结构
+### 7.3 函数文档结构
 
 1. **简述**（第一行）：一句话描述功能
 2. **详述**：详细说明行为
@@ -819,7 +800,7 @@ where
 }
 ````
 
-### 6.4 示例代码使用 `?` 而非 `unwrap()`
+### 7.4 示例代码使用 `?` 而非 `unwrap()`
 
 文档示例代码应使用 `?` 运算符处理错误：
 
@@ -842,9 +823,9 @@ where
 
 ---
 
-## 7. 测试规范
+## 8. 测试规范
 
-### 7.1 测试命名规范
+### 8.1 测试命名规范
 
 测试函数命名格式：`test_<function>_<scenario>_<expected>`。其中 `Index` / `IndexMut` 的 `[]` 语法仅作为已验证路径的受限人体工学 panic sugar；公开安全 API 必须优先通过 `try_at()` / `try_at_mut()` 暴露可恢复错误语义。
 
@@ -880,7 +861,7 @@ mod tests {
 }
 ```
 
-### 7.2 边界覆盖必须覆盖
+### 8.2 边界覆盖必须覆盖
 
 | 场景                       | 预期行为                  |
 | -------------------------- | ------------------------- |
@@ -895,7 +876,7 @@ mod tests {
 | 需求说明书 §28.4 占位：high-dim       | 后续补充高维 shape / stride / index 回归用例 |
 | 需求说明书 §28.4 占位：extreme-value  | 后续补充极值/特殊值数值回归用例 |
 
-### 7.3 测试分类
+### 8.3 测试分类
 
 | 类型     | 位置                     | 目的                            |
 | -------- | ------------------------ | ------------------------------- |
@@ -904,7 +885,7 @@ mod tests {
 | 边界测试 | 集成测试中标注           | 空数组、单元素、NaN/Inf、非连续 |
 | 属性测试 | `tests/property/`        | 随机生成验证不变量              |
 
-### 7.4 测试覆盖率与数值精度
+### 8.4 测试覆盖率与数值精度
 
 **覆盖率与质量门槛**：
 
@@ -927,7 +908,7 @@ fn assert_close(a: f64, b: f64, epsilon: f64) {
 assert_eq!(result[[0, 0]], 58.0);  // may fail due to rounding errors
 ```
 
-### 7.5 归约操作溢出行为
+### 8.5 归约操作溢出行为
 
 | 类型       | 行为                                               |
 | ---------- | -------------------------------------------------- |
@@ -937,7 +918,7 @@ assert_eq!(result[[0, 0]], 58.0);  // may fail due to rounding errors
 
 ---
 
-## 8. #[inline] 使用规范
+## 9. #[inline] 使用规范
 
 **使用 `#[inline]`**：
 
@@ -980,9 +961,9 @@ where
 
 ---
 
-## 9. Feature Gate 规范
+## 10. Feature Gate 规范
 
-### 9.1 Feature 必须是 additive
+### 10.1 Feature 必须是 additive
 
 启用 feature 不能移除功能。所有 feature 组合必须能正确编译。
 
@@ -1001,7 +982,7 @@ simd = ["dep:pulp"]           # Additive: enables SIMD with std-backed intrinsic
 # RealScalar math functions (sin/exp/ln) rely on Xenon's unconditional std baseline.
 ```
 
-### 9.2 使用 `dep:` 语法声明可选依赖
+### 10.2 使用 `dep:` 语法声明可选依赖
 
 ```toml
 [dependencies]
@@ -1009,7 +990,7 @@ rayon = { version = "1.10", optional = true }
 pulp = { version = "0.18", optional = true }
 ```
 
-### 9.3 `cfg_attr(docsrs, doc(cfg(...)))` 标注条件编译 API
+### 10.3 `cfg_attr(docsrs, doc(cfg(...)))` 标注条件编译 API
 
 ```rust
 /// Internal parallel execution backend marker.
@@ -1042,13 +1023,13 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 ---
 
-## 10. 实现任务拆分
+## 11. 实现任务拆分
 
 ### Wave 1: 规范基础设施
 
 - [ ] **T1**: 创建 `rustfmt.toml` 配置文件
   - 文件: `rustfmt.toml`
-  - 内容: §2.2 中的完整配置
+  - 内容: §3.2 中的完整配置
   - 测试: `cargo fmt --check` 通过
   - 前置: 无
   - 预计: 5 min
@@ -1104,9 +1085,9 @@ Wave 2: [T4]
 
 > **覆盖补充：** 边界类（空张量/单元素/大张量/极值/高维/非法元素类型）、并行/SIMD 路径一致性、compile-fail 约束测试由对应模块文档（`27-benchmark.md §8`、`28-tests.md §8`）具体定义。
 
-## 11. 验证补充
+## 12. 验证补充
 
-### 11.1 Feature gate / 配置测试
+### 12.1 Feature gate / 配置测试
 
 | 配置        | 验证点                                           |
 | ----------- | ------------------------------------------------ |
@@ -1115,7 +1096,7 @@ Wave 2: [T4]
 | 启用并行    | 条件编译代码仍遵循相同错误语义、测试与注释要求    |
 | 全 feature  | 所有 feature 组合下格式、lint 与文档检查口径一致 |
 
-### 11.2 类型边界 / 编译期测试
+### 12.2 类型边界 / 编译期测试
 
 | 场景                         | 测试方式                                 |
 | ---------------------------- | ---------------------------------------- |
@@ -1135,7 +1116,7 @@ Wave 2: [T4]
 
 ---
 
-## 12. 设计决策记录
+## 13. 设计决策记录
 
 > **架构交叉引用**：F-order 单一布局、封闭元素类型集合与单一 `XenonError` 错误枚举的正式架构决策已记录于 `01-architecture.md §13`；本节仅保留这些决策对编码规范与实现约束的直接影响，便于在编码语境中引用。
 
