@@ -80,7 +80,7 @@ benches/  <- current module (dev-dependency, consumes only the crate's public AP
 benches/
 ├── utils/
 │   ├── mod.rs              # Shared constants and utility exports
-│   └── data_gen.rs         # Test data generators
+│   └── generators.rs         # Test data generators
 ├── math.rs                 # Element-wise operation benchmarks
 ├── reduction.rs            # Reduction benchmarks (sum)
 ├── dot.rs                  # Vector dot-product benchmarks
@@ -188,7 +188,7 @@ harness = false
 
 ```rust,ignore
 // benches/utils/mod.rs
-pub mod data_gen;
+pub mod generators;
 
 /// Standard benchmark sizes: Small / Medium / Large (1D).
 pub const SIZES_1D: &[usize] = &[64, 65_536, 16_777_216];
@@ -205,7 +205,7 @@ pub const SIZES_3D: &[(usize, usize, usize)] = &[
 ```
 
 ```rust,ignore
-// benches/utils/data_gen.rs
+// benches/utils/generators.rs
 use xenon::prelude::*;
 
 /// Generate a 1D tensor with sequential f64 values.
@@ -410,14 +410,14 @@ cargo bench --bench construction -- "zeros_1d" --quick
 use std::hint::black_box;
 use std::time::Instant;
 mod utils;
-use utils::{SIZES_1D, data_gen};
+use utils::{SIZES_1D, generators};
 
 const WARMUP_ITERATIONS: usize = 10;
 
 fn bench_elem_add() {
     for &size in SIZES_1D {
-        let a = data_gen::sequential_1d(size);
-        let b = data_gen::sequential_1d(size);
+        let a = generators::sequential_1d(size);
+        let b = generators::sequential_1d(size);
         for _ in 0..WARMUP_ITERATIONS {
             black_box((&a + &b).unwrap());
         }
@@ -443,7 +443,7 @@ fn main() {
 ```rust,ignore
 // Good: Use black_box and a dedicated timing loop
 fn bench_sum() {
-    let data = data_gen::sequential_1d(65_536);
+    let data = generators::sequential_1d(65_536);
     let started_at = Instant::now();
     for _iteration in 0..100 {
         let _result = black_box(data.sum());
@@ -457,7 +457,7 @@ fn bench_sum() {
 ```rust,ignore
 // Bad: Not using black_box, compiler may eliminate the operation
 fn bench_sum_bad() {
-    let data = data_gen::sequential_1d(65_536);
+    let data = generators::sequential_1d(65_536);
     for _iteration in 0..100 {
         let _result = data.sum();  // Compiler may optimize this away
         let _ = _result;
@@ -468,7 +468,7 @@ fn bench_sum_bad() {
 fn bench_sum_bad2() {
     let started_at = Instant::now();
     for _iteration in 0..100 {
-        let data = data_gen::sequential_1d(65_536);  // Construction overhead mixed in
+        let data = generators::sequential_1d(65_536);  // Construction overhead mixed in
         let _result = data.sum();
         let _ = _result;
     }
@@ -551,8 +551,8 @@ benchmark 侧只允许复用这些契约来说明“性能观测建立在既有�
   - 前置: 无
   - 预计: 5 min
 
-- [ ] **T2**: 实现 `benches/utils/mod.rs` 和 `benches/utils/data_gen.rs`
-  - 文件: `benches/utils/mod.rs`, `benches/utils/data_gen.rs`
+- [ ] **T2**: 实现 `benches/utils/mod.rs` 和 `benches/utils/generators.rs`
+  - 文件: `benches/utils/mod.rs`, `benches/utils/generators.rs`
   - 内容: 共享常量（`SIZES_1D/2D/3D`），数据生成函数
   - 测试: 编译通过
   - 前置: T1

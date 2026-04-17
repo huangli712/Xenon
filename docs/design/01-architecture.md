@@ -230,7 +230,7 @@ xenon/
 │   │   ├── config.rs          # FormatConfig
 │   │   ├── display.rs         # Display implementation
 │   │   ├── debug.rs           # Debug implementation
-│   │   └── pretty.rs          # NumPy-style formatting helpers
+│   │   └── pretty.rs          # Numpy-style formatting helpers
 │   │
 │   ├── ffi/                   # FFI interface
 │   │   ├── mod.rs             # Module root and re-exports
@@ -292,7 +292,7 @@ xenon/
 ├── benches/                   # Performance benchmarks
 │   ├── utils/
 │   │   ├── mod.rs             # Shared constants and utility exports
-│   │   └── data_gen.rs        # Test data generators
+│   │   └── generators.rs      # Test data generators
 │   ├── math.rs                # Element-wise operations
 │   ├── reduction.rs           # Reduction operations
 │   ├── dot.rs                 # Vector inner product
@@ -305,9 +305,9 @@ xenon/
 │
 └── examples/                  # Usage examples
     ├── basic.rs               # Basic-operations example
-    ├── complex.rs              # Complex-number operations example
+    ├── complex.rs             # Complex-number operations example
     ├── broadcasting.rs        # Broadcasting example
-    ├── features.rs             # Optional-feature behavior example (simd/parallel effects)
+    ├── features.rs            # Optional-feature behavior example (simd/parallel effects)
     ├── simd.rs                # SIMD-acceleration example (requires simd feature)
     ├── ffi.rs                 # FFI integration example
     └── workspace.rs           # Workspace borrow/split/growth example
