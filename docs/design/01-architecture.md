@@ -462,36 +462,36 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 ### 5.3 依赖图（ASCII）
 
 ```
-L0  ┌───────┐  ┌─────────┐
-    │ error │  │ private │
-    └───────┘  └─────────┘
-         │
-L1  ┌───────────┐  ┌─────────┐
-    │ dimension │  │ complex │
-    └───────────┘  └─────────┘
-         │
-L2  ┌─────────┐  ┌────────┐  ┌───────────┐  ┌─────────┐
-    │ element │  │ layout │  │ workspace │  │ storage │
-    └─────────┘  └────────┘  └───────────┘  └─────────┘
-         │
-L3  ┌─────────────────────────────────────────────────┐
-    │                     tensor                      │
-    └─────────────────────────────────────────────────┘
-         │
-L4  ┌───────────┐  ┌──────┐  ┌─────┐  ┌──────────┐
-    │ broadcast │  │ iter │  │ ffi │  │ dispatch │
-    └───────────┘  └──────┘  └─────┘  └──────────┘
-         │
-L5  ┌──────────┐  ┌──────┐  ┌──────┐  ┌─────┐  ┌────────┐  ┌───────────┐
-    │ parallel │  │ simd │  │ math │  │ set │  │ matrix │  │ reduction │
-    └──────────┘  └──────┘  └──────┘  └─────┘  └────────┘  └───────────┘
-    ┌───────┐  ┌───────┐  ┌──────┐  ┌───────────┐  ┌────────┐  ┌─────────┐
-    │ shape │  │ index │  │ util │  │ construct │  │ format │  │ convert │
-    └───────┘  └───────┘  └──────┘  └───────────┘  └────────┘  └─────────┘
-         │
-L6  ┌──────────┐
-    │ overload │
-    └──────────┘
+L0  +---------+  +---------+
+    |  error  |  | private |
+    +---------+  +---------+
+          |
+L1  +---------+  +---------+
+    |dimension|  | complex |
+    +---------+  +---------+
+          |
+L2  +---------+  +---------+  +---------+  +---------+
+    | element |  | layout  |  |workspace|  | storage |
+    +---------+  +---------+  +---------+  +---------+
+          |
+L3  +------------------------------------------------+
+    |                     tensor                      |
+    +------------------------------------------------+
+          |
+L4  +---------+  +---------+  +---------+  +---------+
+    |broadcast|  |  iter   |  |   ffi   |  |dispatch |
+    +---------+  +---------+  +---------+  +---------+
+          |
+L5  +---------+  +---------+  +---------+  +---------+  +---------+  +---------+
+    |parallel |  |  simd   |  |  math   |  |   set   |  | matrix  |  |reduction|
+    +---------+  +---------+  +---------+  +---------+  +---------+  +---------+
+    +---------+  +---------+  +---------+  +---------+  +---------+  +---------+
+    |  shape  |  |  index  |  |  util   |  |construct|  | format  |  | convert |
+    +---------+  +---------+  +---------+  +---------+  +---------+  +---------+
+          |
+L6  +---------+
+    | overload |
+    +---------+
 ```
 
 ### 5.4 新增依赖说明
@@ -659,27 +659,27 @@ pub use error::XenonError;
 
 ---
 
-## 10. 公开 API 暴露方式
+## 10. 重点 API 暴露方式
 
-| API | 暴露方式 | 说明 |
-| --- | --- | --- |
-| `sum` / `sum_axis` | `TensorBase` 固有方法 | 归约语义由张量实例直接触发 |
-| `dot` | 自由函数 | 位于 `matrix` 模块的独立 API，而非 `TensorBase` 固有方法 |
-| `transpose` | `TensorBase` 固有方法 | 形状变换直接挂载在张量实例上 |
-| `broadcast_to` | `TensorBase` 固有方法 | 广播视图构造由张量实例发起 |
-| `clip` | `TensorBase` 固有方法 | 逐元素裁剪作为张量实用操作暴露 |
-| `fill` | `TensorBase` 固有方法（仅可写张量） | 仅 `TensorViewMut` / 可变存储路径可调用 |
-| `cast` | `TensorBase` 固有方法 | 类型转换保持实例方法风格 |
-| `unique` | `TensorBase` 固有方法 | 集合操作直接从张量实例触发 |
-| `iter` / `axis_iter` | `TensorBase` 固有方法 | 迭代器入口保持实例方法风格 |
+| API                  | 暴露方式              | 说明                         |
+| -------------------- | --------------------- | ---------------------------- |
+| `sum` / `sum_axis`   | `TensorBase` 固有方法 | 归约语义由张量实例直接触发   |
+| `dot`                | 自由函数              | 位于 `matrix` 模块的独立 API |
+| `transpose`          | `TensorBase` 固有方法 | 形状变换直接挂载在张量实例上 |
+| `broadcast_to`       | `TensorBase` 固有方法 | 广播视图构造由张量实例发起   |
+| `clip`               | `TensorBase` 固有方法 | 逐元素裁剪作为张量实用操作暴露 |
+| `fill`               | `TensorBase` 固有方法 | 仅 `TensorViewMut` / 可变存储路径可调用 |
+| `cast`               | `TensorBase` 固有方法 | 类型转换保持实例方法风格     |
+| `unique`             | `TensorBase` 固有方法 | 集合操作直接从张量实例触发   |
+| `iter` / `axis_iter` | `TensorBase` 固有方法 | 迭代器入口保持实例方法风格   |
 
-> **说明**：Xenon 的公开 API 以 `TensorBase` 固有方法为主；`parallel` / `simd` 仅影响这些公开 API 的内部执行路径，不额外暴露稳定的并行或 SIMD 用户侧入口。
-
-> **组织边界说明：** `dispatch.rs`、`prelude` 中的重导出布局、以及 `construct` 模块自由函数/便捷包装的存在方式，均属于当前实现组织建议，不属于 `需求说明书 §27` 的稳定 API 承诺。
-
-> **构造补充**：构造操作统一通过 `TensorBase` 固有方法暴露；`prelude` 仅重导出少量委托到这些固有方法的便捷自由函数（例如 `from_shape_vec`）。
-
-> **构造约定细化：** 面向最终用户的规范化构造入口以 `TensorBase`/类型别名上的固有方法为主（如 `Tensor::zeros(...)`、`Tensor::from_shape_vec(...)`）；`construct` 模块中的自由函数只作为薄包装或预导出便捷层，不单独扩展第二套构造语义。
+- Xenon 的公开 API 以 `TensorBase` 固有方法为主。
+- `parallel` / `simd` 仅影响这些公开 API 的内部执行路径，不额外暴露稳定的并行或 SIMD 用户侧入口。
+- `dispatch.rs`、`prelude` 中的重导出布局，属于当前实现组织建议。
+- `construct` 模块自由函数/便捷包装的存在方式，属于当前实现组织建议。
+- 构造操作统一通过 `TensorBase` 固有方法暴露，`prelude` 仅重导出少量委托到这些固有方法的便捷自由函数。
+- 面向最终用户的规范化构造入口以 `TensorBase`/类型别名上的固有方法为主。
+- `construct` 模块中的自由函数只作为薄包装或预导出便捷层，不单独扩展第二套构造语义。
 
 ---
 
@@ -711,18 +711,19 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
     └── ComplexScalar          // Complex: complex-specific modulus/re/im helpers; conjugation is unified by `Numeric::conjugate()`
 ```
 
-| 名称 | 分类 | 稳定性说明 |
-| --- | --- | --- |
-| `BroadcastDim` | 公开 sealed trait | 出现在 `broadcast` / `math` / `overload` 的公开签名中；允许命名但禁止外部实现 |
-| `PermuteAxes` | 模块内部辅助 trait | 非稳定公开面；供转置实现内部辅助 |
-| `BoolElement` | 模块内部辅助 trait | 非稳定公开面；布尔专用 helper |
-| `CheckedAdd` / `CheckedSub` / `CheckedMul` / `CheckedNeg` | 模块内部辅助 trait | 非稳定公开面；整数 checked 原语 |
-| `CastTo<T>` | 公开 trait | 受 `convert/` 模块消费的显式转换契约 |
-| `OrderedCompareElement` | 公开 sealed trait | 出现在有序比较相关的公开签名中；允许命名但禁止外部实现 |
+| 名称                    | 分类               | 稳定性说明                       |
+| ----------------------- | ------------------ | -------------------------------- |
+| `BroadcastDim`          | 公开 sealed trait  | 允许命名但禁止外部实现           |
+| `PermuteAxes`           | 模块内部辅助 trait | 非稳定公开面；供转置实现内部辅助 |
+| `BoolElement`           | 模块内部辅助 trait | 非稳定公开面；布尔专用 helper    |
+| `CheckedAdd`            | 模块内部辅助 trait | 非稳定公开面；整数 checked 原语  |
+| `CheckedSub`            | 模块内部辅助 trait | 非稳定公开面；整数 checked 原语  |
+| `CheckedMul`            | 模块内部辅助 trait | 非稳定公开面；整数 checked 原语  |
+| `CheckedNeg`            | 模块内部辅助 trait | 非稳定公开面；整数 checked 原语  |
+| `CastTo<T>`             | 公开 trait         | 受 `convert/` 模块消费的显式转换契约 |
+| `OrderedCompareElement` | 公开 sealed trait  | 出现在有序比较相关的公开签名中；允许命名但禁止外部实现 |
 
-上述公开元素能力 trait（`Element`、`Numeric`、`RealScalar`、`ComplexScalar`、`CastTo`）均通过 `private::Sealed` 实现 sealed trait 模式，禁止下游 crate 自行实现。
-
-其中 `Numeric` 不仅表示 `Add + Sub + Mul + Div + Neg` 语法可用，还要求：
+上述公开元素能力 trait（`Element`、`Numeric`、`RealScalar`、`ComplexScalar`、`CastTo`）均通过 `private::Sealed` 实现 sealed trait 模式，禁止下游 crate 自行实现。其中 `Numeric` 不仅表示 `Add + Sub + Mul + Div + Neg` 语法可用，还要求：
 
 - 对整数路径，具体运算模块必须落实 checked overflow / divide-by-zero / unrepresentable-result contract；
 - 对实数类型，`conjugate(self)` 为恒等；对复数类型，`conjugate(self)` 执行数学共轭；
@@ -742,7 +743,7 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 | W1.4 static dimensions | W1.3       | 中         | `Ix0`-`Ix6`                        |
 | W1.5 dynamic dimension | W1.3       | 中         | `IxDyn`                            |
 | W1.6 element traits    | W1.1       | 中         | `Element`, `Numeric`, `RealScalar` |
-| W1.7 Complex\<T\>      | W1.6       | 高         | 自定义复数类型                     |
+| W1.7 Complex<T>        | W1.6       | 高         | 自定义复数类型                     |
 | W1.8 layout helpers    | W1.1       | 低         | 模块级布局函数与判定入口          |
 | W1.9 F-order strides   | W1.1, W1.3 | 中         | F-order 步长计算                   |
 
