@@ -445,8 +445,8 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | L4     | iter      | tensor, storage, dimension, error   | 10-iterator.md      |
 | L4     | ffi       | tensor, layout, storage, dimension  | 23-ffi.md           |
 | L4     | dispatch  | tensor                              | 01-architecture.md  |
-| L5     | parallel  | tensor, dimension, error, dispatch  | 09-parallel.md      |
-| L5     | simd      | tensor, layout, element, storage, dispatch | 08-simd.md   |
+| L5     | parallel  | tensor, dimension, error            | 09-parallel.md      |
+| L5     | simd      | tensor, layout, element, storage    | 08-simd.md          |
 | L5     | math      | tensor, broadcast, element, iter    | 11-math.md          |
 | L5     | set       | tensor, element, complex, iter      | 14-set.md           |
 | L5     | matrix    | tensor, element                     | 12-matrix.md        |
@@ -668,7 +668,7 @@ pub use error::XenonError;
 
 | API                  | 暴露方式              | 说明                         |
 | -------------------- | --------------------- | ---------------------------- |
-| `sum` / `sum_axis`   | `TensorBase` 固有方法 | 归约语义由张量实例直接触发   |
+| `sum`                | `TensorBase` 固有方法 | 归约语义由张量实例直接触发   |
 | `dot`                | 自由函数              | 位于 `matrix` 模块的独立 API |
 | `transpose`          | `TensorBase` 固有方法 | 形状变换直接挂载在张量实例上 |
 | `broadcast_to`       | `TensorBase` 固有方法 | 广播视图构造由张量实例发起   |
@@ -679,6 +679,7 @@ pub use error::XenonError;
 | `iter` / `axis_iter` | `TensorBase` 固有方法 | 迭代器入口保持实例方法风格   |
 
 - Xenon 的公开 API 以 `TensorBase` 固有方法为主。
+- `dot` 实际上是双入口函数，一个是自由函数，一个是 `TensorBase` 固有方法。
 - `parallel` / `simd` 仅影响这些公开 API 的内部执行路径，不额外暴露稳定的并行或 SIMD 用户侧入口。
 - `dispatch.rs`、`prelude` 中的重导出布局，属于当前实现组织建议。
 - `construct` 模块自由函数/便捷包装的存在方式，属于当前实现组织建议。
@@ -772,7 +773,7 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 | W3.2 Axis iterator       | W2.6       | 中         | 沿轴迭代           |
 | W3.3 Math                | W3.1       | 中         | unary, binary, comparison |
 | W3.4 Arithmetic          | W3.3       | 中         | Add, Sub, Mul, Div |
-| W3.5 Reduction (sum)     | W3.1       | 中         | sum, sum_axis      |
+| W3.5 Reduction (sum)     | W3.1       | 中         | sum                |
 | W3.6 Dot (inner product) | W2.6       | 中         | 向量内积           |
 | W3.7 Broadcast           | W2.6       | 高         | 广播规则           |
 | W3.8 Transpose           | W2.6       | 中         | transpose          |
@@ -861,7 +862,7 @@ Wave 5: [W5.1] [W5.2] [W5.3] [W5.4]
 
 | 属性     | 值                                          |
 | -------- | ------------------------------------------- |
-| 决策     | 模块依赖严格按 L0→L7 层级单向，禁止循环依赖 |
+| 决策     | 模块依赖严格按 L0→L6 层级单向，禁止循环依赖 |
 | 理由     | 确保编译时间可预测；依赖关系清晰可维护      |
 | 替代方案 | 允许跨层引用 — 放弃，维护成本高             |
 
