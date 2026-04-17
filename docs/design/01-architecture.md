@@ -438,26 +438,26 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | L1     | complex   | error                               | 04-complex.md       |
 | L2     | element   | error, complex                      | 03-element.md       |
 | L2     | layout    | error, dimension                    | 06-layout.md        |
-| L2     | workspace | std                                 | 24-workspace.md     |
-| L3     | storage   | core, alloc, std, error             | 05-storage.md       |
-| L4     | tensor    | storage, dimension, layout, element | 07-tensor.md        |
-| L5     | broadcast | tensor, dimension, layout, error    | 15-broadcast.md     |
-| L5     | iter      | tensor, storage, dimension, error   | 10-iterator.md      |
-| L5     | ffi       | tensor, layout, storage, dimension  | 23-ffi.md           |
-| L5     | dispatch  | tensor                              | 01-architecture.md  |
-| L6     | parallel  | tensor, dimension, error            | 09-parallel.md      |
-| L6     | simd      | tensor, layout, element, storage    | 08-simd.md          |
-| L6     | math      | tensor, broadcast, element, iter    | 11-math.md          |
-| L6     | set       | tensor, element, complex, iter      | 14-set.md           |
-| L6     | matrix    | tensor, element                     | 12-matrix.md        |
-| L6     | reduction | tensor, dimension, element, error   | 13-reduction.md     |
-| L6     | shape     | tensor, layout                      | 16-shape.md         |
-| L6     | index     | tensor, dimension, layout, error    | 17-indexing.md      |
-| L6     | util      | tensor, dimension, storage, layout, iter | 20-utility.md  |
-| L7     | overload  | tensor, broadcast, math             | 19-overload.md      |
-| L7     | construct | tensor, storage, layout, dimension, element | 18-construction.md |
-| L7     | convert   | tensor, element                     | 21-type.md          |
-| L7     | format    | tensor, storage, layout             | 22-output.md        |
+| L2     | workspace | std, error                          | 24-workspace.md     |
+| L2     | storage   | core, alloc, std, error             | 05-storage.md       |
+| L3     | tensor    | storage, dimension, layout, element | 07-tensor.md        |
+| L4     | broadcast | tensor, dimension, layout, error    | 15-broadcast.md     |
+| L4     | iter      | tensor, storage, dimension, error   | 10-iterator.md      |
+| L4     | ffi       | tensor, layout, storage, dimension  | 23-ffi.md           |
+| L4     | dispatch  | tensor                              | 01-architecture.md  |
+| L5     | parallel  | tensor, dimension, error, dispatch  | 09-parallel.md      |
+| L5     | simd      | tensor, layout, element, storage, dispatch | 08-simd.md   |
+| L5     | math      | tensor, broadcast, element, iter    | 11-math.md          |
+| L5     | set       | tensor, element, complex, iter      | 14-set.md           |
+| L5     | matrix    | tensor, element                     | 12-matrix.md        |
+| L5     | reduction | tensor, dimension, element, error   | 13-reduction.md     |
+| L5     | shape     | tensor, layout                      | 16-shape.md         |
+| L5     | index     | tensor, dimension, layout, error    | 17-indexing.md      |
+| L5     | util      | tensor, dimension, storage, layout, iter | 20-utility.md  |
+| L5     | construct | tensor, storage, layout, dimension, element | 18-construction.md |
+| L5     | format    | tensor, storage, layout             | 22-output.md        |
+| L5     | convert   | tensor, element                     | 21-type.md          |
+| L6     | overload  | tensor, broadcast, math             | 19-overload.md      |
 
 ### 5.3 依赖图（ASCII）
 
@@ -481,7 +481,7 @@ L6:        math   overload   set   matrix   reduction   shape   index   util
 L7:                 construct   convert   format
 ```
 
-> **L5/L6 模块说明**：`simd` 与 `parallel` 同属 **L5 backend 模块**，因为它们都只提供可复用的纯执行能力（向量化/并行），不直接定义用户可见语义，也不承载串行回退。`dispatch.rs` 是内部执行路径裁决层，统一承载并行阈值判断与嵌套并行防护；各 L6 语义模块先经 `dispatch::select_exec_path()` 决定串行或并行，再在对应实现内部按需使用 `simd/` 或保持模块内串行实现。`dispatch.rs` 不属于稳定公开模块面。
+`simd` 与 `parallel` 同属 **L5 backend 模块**，因为它们都只提供可复用的纯执行能力（向量化/并行），不直接定义用户可见语义，也不承载串行回退。`dispatch.rs` 是内部执行路径裁决层，统一承载并行阈值判断与嵌套并行防护；各 L6 语义模块先经 `dispatch::select_exec_path()` 决定串行或并行，再在对应实现内部按需使用 `simd/` 或保持模块内串行实现。`dispatch.rs` 不属于稳定公开模块面。
 
 ### 5.5 依赖合法性与新增依赖说明
 
