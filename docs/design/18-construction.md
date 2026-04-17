@@ -70,7 +70,7 @@ src/
     ├── mod.rs               # module root, re-exports all public APIs
     ├── init.rs              # zeros, ones (basic initialization constructors)
     ├── eye.rs               # eye (identity matrix)
-    ├── from_data.rs         # from_shape_vec, from_shape_slice, from_array (construction from data sources)
+    ├── from.rs         # from_shape_vec, from_shape_slice, from_array (construction from data sources)
     └── scalar.rs            # from_scalar (scalar construction)
 ```
 
@@ -534,7 +534,7 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
   - 预计: 5 min
 
 - [ ] **T3**: 实现 `from_shape_vec` 和 `from_shape_slice`
-  - 文件: `src/construct/from_data.rs`
+  - 文件: `src/construct/from.rs`
   - 内容: 消费输入 Vec 进入共享 owned 构造路径；是否复用或重打包底层缓冲区由内部决定；从切片拷贝
   - 测试: `test_from_shape_vec`, `test_from_shape_vec_mismatch`, `test_from_shape_slice`
   - 前置: T1
@@ -543,7 +543,7 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 ### Wave 3: 补齐剩余构造入口
 
 - [ ] **T4**: 实现 `from_array` 和 `from_scalar`
-  - 文件: `src/construct/from_data.rs`, `src/construct/scalar.rs`
+  - 文件: `src/construct/from.rs`, `src/construct/scalar.rs`
   - 内容: 从固定数组构造、零维张量
   - 测试: `test_from_array`, `test_from_scalar`
   - 前置: T3

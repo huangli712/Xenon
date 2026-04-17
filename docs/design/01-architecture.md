@@ -166,7 +166,7 @@ xenon/
 │   │
 │   ├── parallel/              # Parallel backend (feature = "parallel")
 │   │   ├── mod.rs             # Module entry, re-exports, pub(crate) ParallelPool internals
-│   │   ├── par_iter.rs        # Internal parallel iteration helpers (pub(crate))
+│   │   ├── iter.rs            # Internal parallel iteration helpers (pub(crate))
 │   │   ├── map.rs             # par_map, par_zip_map (threshold selection is handled by dispatch.rs)
 │   │   ├── reduce.rs          # par_reduce_impl, par_sum, par_dot
 │   │   └── checked.rs         # par_map_checked and error/panic propagation
@@ -178,8 +178,8 @@ xenon/
 │   │
 │   ├── math/                  # Element-wise math
 │   │   ├── mod.rs             # Module entry and re-exports
-│   │   ├── unary.rs           # Unary ops (abs, neg, signum, square, sin, sqrt, exp, ln, floor, ceil, modulus, conj, not)
-│   │   ├── binary.rs          # Binary arithmetic methods (add, sub, mul, div, add_scalar, sub_scalar, mul_scalar, div_scalar)
+│   │   ├── unary.rs           # Unary ops (abs, neg, signum, square, sin, modulus, conj, etc)
+│   │   ├── binary.rs          # Binary arithmetic methods (add, sub, mul, div, add_scalar, etc)
 │   │   └── comparison.rs      # Comparison ops (eq, ne, lt, gt)
 │   │
 │   ├── overload/              # Operator overloading
@@ -198,7 +198,7 @@ xenon/
 │   │
 │   ├── matrix/                # Matrix operations
 │   │   ├── mod.rs             # Module entry, re-exports, dot() API
-│   │   └── dot.rs             # Vector inner product, may delegate to `simd/`
+│   │   └── dot.rs             # Vector inner product, may delegate to `simd/` or `parallel/`
 │   │
 │   ├── reduction/             # Reduction operations
 │   │   ├── mod.rs             # Module root and re-exports
@@ -218,7 +218,7 @@ xenon/
 │   │   ├── mod.rs             # Module root and re-exports
 │   │   ├── init.rs            # zeros, ones
 │   │   ├── eye.rs             # eye
-│   │   ├── from_data.rs       # from_shape_vec, from_shape_slice, from_array, from_vec (non-normative convenience)
+│   │   ├── from.rs            # from_shape_vec, from_shape_slice, from_array, from_vec
 │   │   └── scalar.rs          # from_scalar
 │   │
 │   ├── convert/               # Type conversion
@@ -237,7 +237,7 @@ xenon/
 │   │   ├── types.rs           # BlasLayout, BlasTrans, BlasInfo definitions
 │   │   ├── ptr.rs             # Raw pointer API (export/export_mut, from_raw_parts, into_raw_parts)
 │   │   ├── blas.rs            # BLAS compatibility checks (is_blas_compatible, blas_info, lda)
-│   │   └── offset.rs          # Index-to-pointer offset (export/export_mut helpers rely on checked arithmetic)
+│   │   └── offset.rs          # Index-to-pointer offset
 │   │
 │   ├── workspace/             # Temporary workspace
 │       ├── mod.rs             # Module root and re-exports
@@ -269,8 +269,6 @@ xenon/
 └── examples/                  # Usage examples
     └── basic.rs               # Basic usage
 ```
-
-> 所有公开元素能力 trait（Element、Numeric、RealScalar、ComplexScalar、CastTo）均通过 `private::Sealed` 实现 sealed trait 模式，禁止下游 crate 实现。
 
 ### 模块职责速览
 

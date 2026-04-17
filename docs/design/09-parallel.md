@@ -57,7 +57,7 @@ L5: iter, dispatch, parallel  <- current module (optional, feature = "parallel")
 ```text
 src/parallel/
 ├── mod.rs         # Module entry, re-exports, ParallelPool
-├── par_iter.rs    # ParElements and TensorBase::par_iter()
+├── iter.rs    # ParElements and TensorBase::par_iter()
 ├── map.rs         # par_map, par_zip_map
 ├── reduce.rs      # par_reduce_impl, par_sum, par_dot
 └── checked.rs     # par_map_checked and error/panic propagation
@@ -66,7 +66,7 @@ src/parallel/
 多文件职责划分：
 
 - `mod.rs`：模块声明、re-exports、`ParallelPool` 线程池包装、feature gate 入口。
-- `par_iter.rs`：`ParElements` 结构体与 `TensorBase::par_iter()` 单输入元素级并行遍历入口。
+- `iter.rs`：`ParElements` 结构体与 `TensorBase::par_iter()` 单输入元素级并行遍历入口。
 - `map.rs`：`par_map`、`par_zip_map` 逐元素映射与二元广播并行入口。
 - `reduce.rs`：`par_reduce_impl`、`par_sum`、`par_dot` 并行归约与内积。
 - `checked.rs`：`par_map_checked` 及统一的错误/panic 传播逻辑。
@@ -428,7 +428,7 @@ where
 ### Wave 2: 并行入口与执行内核
 
 - [ ] **T4**: 实现 `ParElements` 与 `TensorBase::par_iter()`
-  - 文件: `src/parallel/par_iter.rs`
+  - 文件: `src/parallel/iter.rs`
   - 内容: 单输入元素级并行遍历入口
   - 测试: `test_par_iter_len_matches_tensor_len`
   - 前置: `dispatch.rs` 执行路径裁决已可用，`10-iterator.md` 中只读迭代语义已确定
