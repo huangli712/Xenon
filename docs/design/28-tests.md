@@ -70,16 +70,15 @@ tests/
 │   └── generators.rs           # Test data generators
 │
 ├── compile_fail_tests.rs       # Repository-local compile-fail harness（top-level for Cargo discovery）
-├── compile-fail/
-│   └── ui/
-│       ├── wrong_dimension_type.rs
-│       ├── missing_element_bound.rs
-│       ├── mismatched_storage_type.rs
-│       ├── unsigned_tensor_element_rejected.rs
-│       ├── invalid_unsigned_element_rejected.rs
-│       ├── ui_bool_sum_rejected.rs
-│       ├── ui_bool_unique_rejected.rs
-│       └── ui_bool_arithmetic_rejected.rs
+└── compile-fail/
+    ├── wrong_dimension_type.rs
+    ├── missing_element_bound.rs
+    ├── mismatched_storage_type.rs
+    ├── unsigned_tensor_element_rejected.rs
+    ├── invalid_unsigned_element_rejected.rs
+    ├── ui_bool_sum_rejected.rs
+    ├── ui_bool_unique_rejected.rs
+    └── ui_bool_arithmetic_rejected.rs
 │
 ├── test_tensor.rs              # Tensor core functionality (creation/query/type aliases)
 ├── test_math.rs                # Element-wise operations (arithmetic/math/comparison/logic)
@@ -100,7 +99,7 @@ tests/
 ├── test_simd.rs                # SIMD computation (result consistency)
 ├── test_error.rs               # Error handling (all error types)
 │
-├── property.rs                # Property-test entry point (integration test target)
+├── property_tests.rs          # Property-test entry point (integration test target)
 └── property/
     ├── tensor_props.rs         # Tensor invariants (transpose involution, unique boundaries, etc.)
     ├── ops_props.rs            # Operation invariants (commutativity/associativity, etc.)
@@ -637,7 +636,7 @@ fn test_unique_non_contiguous() {
 | `ui_bool_unique_rejected`              | `bool` 不参与 unique 操作                                        | 高     |
 | `ui_bool_arithmetic_rejected`          | `bool` 不参与四则运算                                            | 高     |
 
-### 8.19 property.rs
+### 8.19 property_tests.rs
 
 | 测试函数                    | 测试内容                               | 优先级 |
 | --------------------------- | -------------------------------------- | ------ |
@@ -1264,9 +1263,9 @@ Test files
 ### Wave 4: 属性测试
 
 - [ ] **T15**: 实现 `tests/property` 属性测试模块
-  - 文件: `tests/property.rs`, `tests/property/tensor_props.rs`, `tests/property/ops_props.rs`, `tests/property/shape_props.rs`
+  - 文件: `tests/property_tests.rs`, `tests/property/tensor_props.rs`, `tests/property/ops_props.rs`, `tests/property/shape_props.rs`
   - 内容: transpose 自反/加法交换律/unique 不含重复
-  - 测试: `cargo test --test property`
+  - 测试: `cargo test --test property_tests`
   - 前置: T3, T7, T8
   - 预计: 10 min
 

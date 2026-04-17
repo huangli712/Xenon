@@ -964,7 +964,7 @@ Wave 5: [T11] → [T12]
 | 单元测试 | `#[cfg(test)] mod tests`                       | 验证复数结构、运算、格式化与布局                                |
 | 集成测试 | `tests/test_complex.rs`                        | 验证 `complex` 与 `element`、`math`、`matrix`、`ffi` 的协同路径 |
 | 边界测试 | 同模块测试中标注                               | 覆盖 NaN/Inf、极大/极小值与 FFI 布局前提                        |
-| 属性测试 | `tests/test_complex.rs` 或 `tests/property.rs` | 验证共轭、模长、指数对数与极坐标不变量                          |
+| 属性测试 | `tests/test_complex.rs` 或 `tests/property_tests.rs` | 验证共轭、模长、指数对数与极坐标不变量                          |
 
 ### 8.2 单元测试清单
 

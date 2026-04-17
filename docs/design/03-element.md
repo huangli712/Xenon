@@ -834,7 +834,7 @@ Wave 3: [T6]      [T9] ← ────┘
 | 单元测试 | `#[cfg(test)] mod tests`                       | 验证各 trait 和基础类型实现                                           |
 | 集成测试 | `tests/test_element.rs`                        | 验证 `element` 与 `tensor`、`math`、`reduction`、`convert` 的协同路径 |
 | 边界测试 | 同模块测试中标注                               | 覆盖 NaN/Inf、bool 限制与 sealed 行为                                 |
-| 属性测试 | `tests/test_element.rs` 或 `tests/property.rs` | 验证零元、单位元与数学函数不变量                                      |
+| 属性测试 | `tests/test_element.rs` 或 `tests/property_tests.rs` | 验证零元、单位元与数学函数不变量                                      |
 
 ### 8.2 单元测试清单
 

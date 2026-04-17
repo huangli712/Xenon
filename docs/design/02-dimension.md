@@ -1065,7 +1065,7 @@ Wave 5:  [T10] → [T11] → [T12]
 | 单元测试 | `#[cfg(test)] mod tests`                         | 验证各维度类型、形状/rank API 和辅助 trait                          |
 | 集成测试 | `tests/test_dimension.rs`                        | 验证 `dimension` 与 `tensor`、`layout`、`shape`、`index` 的协同路径 |
 | 边界测试 | 同模块测试中标注                                 | 覆盖 Ix0、零长度轴、大维度与溢出路径                                |
-| 属性测试 | `tests/test_dimension.rs` 或 `tests/property.rs` | 验证 size/维度互转不变量                                            |
+| 属性测试 | `tests/test_dimension.rs` 或 `tests/property_tests.rs` | 验证 size/维度互转不变量                                            |
 
 ### 8.2 单元测试清单
 

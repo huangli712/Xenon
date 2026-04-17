@@ -1227,7 +1227,7 @@ Wave 3: ┌────┴────┐
 | 单元测试 | `#[cfg(test)] mod tests`                   | 验证指针访问、BLAS 兼容检查与 raw-parts 语义                     |
 | 集成测试 | `tests/`                                   | 验证 `ffi` 与 `tensor`、`layout`、`storage` 的协同路径           |
 | 边界测试 | 同模块测试中标注                           | 覆盖空张量、广播维度、未对齐指针和 BLAS 不兼容布局等边界         |
-| 属性测试 | `tests/test_ffi.rs` 或 `tests/property.rs` | 验证 `try_offset_of` / `try_ptr_at` / raw-parts roundtrip 不变量 |
+| 属性测试 | `tests/test_ffi.rs` 或 `tests/property_tests.rs` | 验证 `try_offset_of` / `try_ptr_at` / raw-parts roundtrip 不变量 |
 
 ### 8.2 单元测试清单
 

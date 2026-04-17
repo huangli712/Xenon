@@ -249,13 +249,50 @@ xenon/
 │
 ├── tests/                     # Integration tests
 │   ├── common/
-│   │   └── mod.rs             # Shared test helpers
-│   ├── test_tensor.rs         # Tensor core tests
-│   ├── test_math.rs           # Math operation tests
-│   ├── test_broadcast.rs      # Broadcast tests
-│   └── test_index.rs          # Indexing tests
+│   │   ├── mod.rs             # Shared utility exports
+│   │   ├── assertions.rs      # Custom assertion helpers and macros
+│   │   └── generators.rs      # Test data generators
+│   │
+│   ├── test_tensor.rs         # Tensor core functionality (creation/query/type aliases)
+│   ├── test_math.rs           # Element-wise operations (arithmetic/math/comparison/logic)
+│   ├── test_broadcast.rs      # Broadcasting (scalar/vector/matrix broadcasting)
+│   ├── test_index.rs          # Indexing operations (multi-dimensional indexing/range slicing)
+│   ├── test_construction.rs   # Constructors (zeros/ones/eye/from_shape_vec/...)
+│   ├── test_iterator.rs       # Iterators (elements/by-axis/by-index)
+│   ├── test_reduction.rs      # Reduction operations (sum/sum along axis)
+│   ├── test_matrix.rs         # Vector dot product (dot)
+│   ├── test_set.rs            # Set operations (unique)
+│   ├── test_shape.rs          # Shape operations (transpose)
+│   ├── test_conversion.rs     # Type conversion (cast)
+│   ├── test_utility.rs        # Utility operations (fill/clip/to_contiguous)
+│   ├── test_output.rs         # NumPy-style formatted output (Display/Debug/truncation)
+│   ├── test_ffi.rs            # FFI integration (raw pointers/BLAS compatibility)
+│   ├── test_workspace.rs      # Workspace-specific errors and borrow/split/growth
+│   ├── test_parallel.rs       # Parallel computation (consistency/data races)
+│   ├── test_simd.rs           # SIMD computation (result consistency)
+│   ├── test_error.rs          # Error handling (all error types)
+│   │
+│   ├── compile_fail_tests.rs  # Repository-local compile-fail harness
+│   └── compile-fail/
+│       ├── wrong_dimension_type.rs
+│       ├── missing_element_bound.rs
+│       ├── mismatched_storage_type.rs
+│       ├── unsigned_tensor_element_rejected.rs
+│       ├── invalid_unsigned_element_rejected.rs
+│       ├── ui_bool_sum_rejected.rs
+│       ├── ui_bool_unique_rejected.rs
+│       └── ui_bool_arithmetic_rejected.rs
+│   │
+│   ├── property_tests.rs      # Property-test entry point (integration test target)
+│   └── property/
+│       ├── tensor_props.rs    # Tensor invariants (transpose involution, unique boundaries, etc.)
+│       ├── ops_props.rs       # Operation invariants (commutativity/associativity, etc.)
+│       └── shape_props.rs     # Shape invariants (transpose involution, etc.)
 │
 ├── benches/                   # Performance benchmarks
+│   ├── utils/
+│   │   ├── mod.rs             # Shared constants and utility exports
+│   │   └── data_gen.rs        # Test data generators
 │   ├── math.rs                # Element-wise operations
 │   ├── reduction.rs           # Reduction operations
 │   ├── dot_product.rs         # Vector inner product
@@ -267,7 +304,13 @@ xenon/
 │   └── construction.rs        # Tensor construction
 │
 └── examples/                  # Usage examples
-    └── basic.rs               # Basic usage
+    ├── basic.rs               # Basic-operations example
+    ├── complex_numbers.rs     # Complex-number operations example
+    ├── broadcasting.rs        # Broadcasting example
+    ├── feature_flags.rs       # Optional-feature behavior example (simd/parallel effects)
+    ├── simd.rs                # SIMD-acceleration example (requires simd feature)
+    ├── ffi.rs                 # FFI integration example
+    └── workspace.rs           # Workspace borrow/split/growth example
 ```
 
 ### 模块职责速览

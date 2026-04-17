@@ -335,7 +335,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 ### Wave 3: 综合验证
 
 - [ ] **T5**: 编写单元与集成测试
-  - 文件: `tests/test_broadcast.rs`, `tests/property.rs`, `tests/property/shape_props.rs`
+  - 文件: `tests/test_broadcast.rs`, `tests/property_tests.rs`, `tests/property/shape_props.rs`
   - 内容: 兼容性规则、零步长语义、共享只读边界、属性测试
   - 测试: 覆盖范围内所有公开 API
   - 前置: T3b, T4
@@ -365,7 +365,7 @@ Wave 3:                                 [T5]
 | 单元测试 | `src/broadcast/*` 的 `#[cfg(test)]`                  | 验证 shape 兼容性、零步长生成和错误结构。                      |
 | 集成测试 | `tests/test_broadcast.rs`                            | 验证广播与 `tensor`、`layout`、`overload`、`iter` 的协同路径。 |
 | 边界测试 | 同模块测试中标注                                     | 覆盖标量、空数组、再次广播、高维广播和 `10^7` 元素大张量广播。 |
-| 属性测试 | `tests/property.rs`, `tests/property/shape_props.rs` | 验证广播 shape/stride 不变量和零拷贝语义。                     |
+| 属性测试 | `tests/property_tests.rs`, `tests/property/shape_props.rs` | 验证广播 shape/stride 不变量和零拷贝语义。                     |
 
 ### 8.2 单元测试清单
 
