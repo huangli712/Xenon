@@ -273,15 +273,15 @@ xenon/
 │   ├── test_error.rs          # Error handling (all error types)
 │   │
 │   ├── compile_fail_tests.rs  # Repository-local compile-fail harness
-│   └── compile-fail/
-│       ├── wrong_dimension_type.rs
-│       ├── missing_element_bound.rs
-│       ├── mismatched_storage_type.rs
-│       ├── unsigned_tensor_element_rejected.rs
-│       ├── invalid_unsigned_element_rejected.rs
-│       ├── ui_bool_sum_rejected.rs
-│       ├── ui_bool_unique_rejected.rs
-│       └── ui_bool_arithmetic_rejected.rs
+│   ├── compile-fail/
+│   │   ├── wrong_dimension_type.rs
+│   │   ├── missing_element_bound.rs
+│   │   ├── mismatched_storage_type.rs
+│   │   ├── unsigned_tensor_element_rejected.rs
+│   │   ├── invalid_unsigned_element_rejected.rs
+│   │   ├── ui_bool_sum_rejected.rs
+│   │   ├── ui_bool_unique_rejected.rs
+│   │   └── ui_bool_arithmetic_rejected.rs
 │   │
 │   ├── property_tests.rs      # Property-test entry point (integration test target)
 │   └── property/
@@ -295,7 +295,7 @@ xenon/
 │   │   └── data_gen.rs        # Test data generators
 │   ├── math.rs                # Element-wise operations
 │   ├── reduction.rs           # Reduction operations
-│   ├── dot_product.rs         # Vector inner product
+│   ├── dot.rs                 # Vector inner product
 │   ├── set.rs                 # Set operations
 │   ├── broadcast.rs           # Broadcast operations
 │   ├── shape.rs               # Shape operations
@@ -305,9 +305,9 @@ xenon/
 │
 └── examples/                  # Usage examples
     ├── basic.rs               # Basic-operations example
-    ├── complex_numbers.rs     # Complex-number operations example
+    ├── complex.rs              # Complex-number operations example
     ├── broadcasting.rs        # Broadcasting example
-    ├── feature_flags.rs       # Optional-feature behavior example (simd/parallel effects)
+    ├── features.rs             # Optional-feature behavior example (simd/parallel effects)
     ├── simd.rs                # SIMD-acceleration example (requires simd feature)
     ├── ffi.rs                 # FFI integration example
     └── workspace.rs           # Workspace borrow/split/growth example
@@ -383,7 +383,7 @@ name = "reduction"
 harness = false
 
 [[bench]]
-name = "dot_product"
+name = "dot"
 harness = false
 
 [[bench]]

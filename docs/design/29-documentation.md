@@ -118,9 +118,9 @@ src/
 
 examples/
 ├── basic.rs                  # Basic-operations example
-├── complex_numbers.rs        # Complex-number operations example
+├── complex.rs                  # Complex-number operations example
 ├── broadcasting.rs           # Broadcasting example
-├── feature_flags.rs          # Optional-feature behavior example (`simd` / internal parallel execution effects)
+├── features.rs                # Optional-feature behavior example (`simd` / internal parallel execution effects)
 ├── simd.rs                   # SIMD-acceleration example (requires `simd` feature)
 ├── ffi.rs                    # FFI integration example
 └── workspace.rs              # Workspace borrow/split/growth example
@@ -416,9 +416,9 @@ pub fn sum(&self) -> A { ... }
 | 文件                 | 内容                                               | Feature            | 目标用户                                              |
 | -------------------- | -------------------------------------------------- | ------------------ | ----------------------------------------------------- |
 | `basic.rs`           | 创建、运算、归约、打印                             | 默认               | 新用户                                                |
-| `complex_numbers.rs` | 复数构造、同类型复数运算、显式转换后的运算         | 默认               | 科学计算                                              |
+| `complex.rs`         | 复数构造、同类型复数运算、显式转换后的运算         | 默认               | 科学计算                                              |
 | `broadcasting.rs`    | 广播规则、行/列/标量广播                           | 默认               | 日常使用                                              |
-| `feature_flags.rs`   | 可选 feature 对公开 API 语义/性能路径的影响        | `parallel`, `simd` | 性能优化（参见 `08-simd.md §5`、`09-parallel.md §5`） |
+| `features.rs`        | 可选 feature 对公开 API 语义/性能路径的影响        | `parallel`, `simd` | 性能优化（参见 `08-simd.md §5`、`09-parallel.md §5`） |
 | `simd.rs`            | `simd` feature 对公开运算路径的影响与回退策略      | `simd`             | 性能优化（参见 `08-simd.md §5`）                      |
 | `ffi.rs`             | 为上游 C/BLAS-LAPACK 集成提供辅助 API 与兼容性判断 | 默认               | 库开发者                                              |
 | `workspace.rs`       | 工作空间借用、split 与扩容语义示例                 | 默认               | 上游 scratch-buffer 使用者                            |
@@ -616,8 +616,8 @@ docs:
 | 配置                  | 文档检查（docs）                                                                                                 | Doctest 检查                                                                                            | examples 检查                                                                                        |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | 默认配置              | `cargo doc --no-deps`：验证默认 `std` 文档、README 引导与未 gated API 的文档可生成                               | `cargo test --doc`：验证默认配置下的文档示例                                                            | `cargo build --examples`，并运行关键默认示例（如 `basic`、`broadcasting`）                           |
-| `--features simd`     | `cargo doc --features simd --no-deps`：额外验证 `simd` feature 对公开 API 行为/性能路径的说明与 docs.rs 展示口径 | `cargo test --doc --features simd`：验证公开 API 在启用 `simd` 时的相关 doctest 与默认 doctest 共同通过 | `cargo build --examples --features simd`，并验证 `simd`、`feature_flags` 等相关示例                  |
-| `--features parallel` | `cargo doc --features parallel --no-deps`：验证并行 feature 对公开 API 行为说明与性能路径注记                    | `cargo test --doc --features parallel`：验证并行相关 doctest 与默认 doctest 共同通过                    | `cargo build --examples --features parallel`，并验证 `feature_flags` 等相关示例                      |
+| `--features simd`     | `cargo doc --features simd --no-deps`：额外验证 `simd` feature 对公开 API 行为/性能路径的说明与 docs.rs 展示口径 | `cargo test --doc --features simd`：验证公开 API 在启用 `simd` 时的相关 doctest 与默认 doctest 共同通过 | `cargo build --examples --features simd`，并验证 `simd`、`features` 等相关示例                  |
+| `--features parallel` | `cargo doc --features parallel --no-deps`：验证并行 feature 对公开 API 行为说明与性能路径注记                    | `cargo test --doc --features parallel`：验证并行相关 doctest 与默认 doctest 共同通过                    | `cargo build --examples --features parallel`，并验证 `features` 等相关示例                      |
 | `--all-features`      | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`：验证组合配置下完整文档、链接与 docs.rs 口径     | `cargo test --doc --all-features`：验证所有 feature 组合后的 doctest                                    | `cargo build --examples --all-features`，并运行关键组合示例，确认默认/feature 示例在全集配置下仍成立 |
 
 ---
@@ -1088,10 +1088,10 @@ Design docs (00-28)
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T11**: 编写 examples/complex_numbers.rs
-  - 文件: `examples/complex_numbers.rs`
+- [ ] **T11**: 编写 examples/complex.rs
+  - 文件: `examples/complex.rs`
   - 内容: 复数构造、同类型复数算术、显式转换后的运算
-  - 测试: `cargo run --example complex_numbers`
+  - 测试: `cargo run --example complex`
   - 前置: T1
   - 预计: 10 min
 
@@ -1102,10 +1102,10 @@ Design docs (00-28)
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T13**: 编写 examples/feature_flags.rs
-  - 文件: `examples/feature_flags.rs`
+- [ ] **T13**: 编写 examples/features.rs
+  - 文件: `examples/features.rs`
   - 内容: 可选 feature 启用方式，以及 `parallel` / `simd` 对公开 API 执行路径和文档可见性的影响
-  - 测试: `cargo run --example feature_flags --features parallel`
+  - 测试: `cargo run --example features --features parallel`
   - 前置: T1
   - 预计: 10 min
 
@@ -1195,7 +1195,7 @@ Wave 6: [T17]
 
 | 属性     | 值                                                              |
 | -------- | --------------------------------------------------------------- |
-| 决策     | examples/ 按使用场景（basic/broadcasting/feature_flags 等）组织 |
+| 决策     | examples/ 按使用场景（basic/broadcasting/features 等）组织 |
 | 理由     | 用户按需求查找示例，而非按源码模块                              |
 | 替代方案 | 按源码模块组织 — 放弃，不便于用户理解实际用法                   |
 
