@@ -430,17 +430,34 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 
 各模块的详细设计参见对应编号文档。层级关系如下：
 
-| 层级   | 模块                                                       | 依赖                                                                     | 参见                                                                                                                             |
-| ------ | ---------------------------------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| **L0** | error, private                                             | 无                                                                       | `26-error.md`                                                                                                                    |
-| **L1** | dimension, element, complex                                | error                                        | `02-dimension.md`、`03-element.md`、`04-complex.md`                                                                              |
-| **L2** | layout                                                     | error, dimension | `06-layout.md`                                                                                                                   |
-| **L2** | workspace                                                  | std  | `24-workspace.md`                                                                                                                |
-| **L3** | storage                                                    | core, alloc, std, error | `05-storage.md`                                                                                                                  |
-| **L4** | tensor                                                     | storage, dimension, layout, element                                      | `07-tensor.md`                                                                                                                   |
-| **L5** | broadcast, iter, ffi, simd, dispatch, parallel             | tensor | `15-broadcast.md`、`10-iterator.md`、`23-ffi.md`、`08-simd.md`、`09-parallel.md`、`01-architecture.md`                           |
-| **L6** | math, overload, set, matrix, reduction, shape, index, util | tensor, broadcast | `11-math.md`、`12-matrix.md`、`13-reduction.md`、`14-set.md`、`16-shape.md`、`17-indexing.md`、`19-overload.md`、`20-utility.md` |
-| **L7** | construct, convert, format                                 | tensor, shape, element, complex, storage                                 | `18-construction.md`、`21-type.md`、`22-output.md`                                                                               |
+| 层级   | 模块      | 依赖                                | 参见                  |
+| ------ | --------- | ----------------------------------- | --------------------- |
+| **L0** | error     | 无                                  | `26-error.md`         |
+| **L0** | private   | 无                                  |                       |
+| **L1** | dimension | error                               | `02-dimension.md`     |
+| **L1** | element   | error                               | `03-element.md`       |
+| **L1** | complex   | error                               | `04-complex.md`       |
+| **L2** | layout    | error, dimension                    | `06-layout.md`        |
+| **L2** | workspace | std                                 | `24-workspace.md`     |
+| **L3** | storage   | core, alloc, std, error             | `05-storage.md`       |
+| **L4** | tensor    | storage, dimension, layout, element | `07-tensor.md`        |
+| **L5** | broadcast | tensor                              | `15-broadcast.md`     |
+| **L5** | iter      | tensor                              | `10-iterator.md`      |
+| **L5** | ffi       | tensor                              | `23-ffi.md`           |
+| **L5** | simd      | tensor                              | `08-simd.md`          |
+| **L5** | dispatch  | tensor                              | `01-architecture.md`  |
+| **L5** | parallel  | tensor                              | `09-parallel.md`      |
+| **L6** | math      | tensor, broadcast                   | `11-math.md`          |
+| **L6** | overload  | tensor, broadcast                   | `19-overload.md`      |
+| **L6** | set       | tensor, broadcast                   | `14-set.md`           |
+| **L6** | matrix    | tensor, broadcast                   | `12-matrix.md`        |
+| **L6** | reduction | tensor, broadcast                   | `13-reduction.md`     |
+| **L6** | shape     | tensor, broadcast                   | `16-shape.md`         |
+| **L6** | index     | tensor, broadcast                   | `17-indexing.md`      |
+| **L6** | util      | tensor, broadcast                   | `20-utility.md`       |
+| **L7** | construct | tensor, shape, element, complex, storage | `18-construction.md` |
+| **L7** | convert   | tensor, shape, element, complex, storage | `21-type.md`         |
+| **L7** | format    | tensor, shape, element, complex, storage | `22-output.md`       |
 
 ### 5.3 类型级依赖表
 
