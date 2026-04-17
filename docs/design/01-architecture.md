@@ -517,7 +517,7 @@ L7:                 construct   convert   format
 
 ## 7. prelude.rs 导出清单
 
-> **稳定性说明：** 以下为当前实现组织建议，不属于 `需求说明书 §27` 的稳定 API 承诺；真正稳定的公开面以本节导出清单和 `需求说明书 §27` 已授权项为准。
+以下为当前实现组织建议，不属于 `需求说明书 §27` 的稳定 API 承诺。
 
 ```rust,ignore
 // src/prelude.rs
@@ -560,8 +560,6 @@ pub use crate::construct::{
     from_shape_vec,
 };
 ```
-
-> **注**：当前版本 `prelude` 仅导出 `需求说明书 §27` 已授权的稳定公开项；`s!` 之类便捷宏不纳入默认导出面。
 
 ---
 
@@ -630,7 +628,7 @@ pub use prelude::*;
 pub use error::XenonError;
 ```
 
-> 本片段须与 `00-coding.md` 编码规范中的 lint 配置保持一致。
+本片段须与 `00-coding.md` 编码规范中的 lint 配置保持一致。
 
 ---
 
