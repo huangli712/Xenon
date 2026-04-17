@@ -61,7 +61,7 @@ src/storage/
 ├── mod.rs             # Storage trait hierarchy and module exports
 ├── owned.rs           # Owned<A> owning storage
 ├── view.rs            # ViewRepr<'a, A> immutable view
-├── view_mut.rs        # ViewMutRepr<'a, A> mutable view
+├── viewmut.rs        # ViewMutRepr<'a, A> mutable view
 ├── arc.rs             # ArcRepr<A> shared read-only storage
 ├── alloc.rs           # 64-byte aligned allocator
 └── traits.rs          # marker traits such as IsOwned and IsView
@@ -1026,7 +1026,7 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
   - 预计: 10 min
 
 - [ ] **T10**: 实现 `ViewMutRepr<'a, A>`
-  - 文件: `src/storage/view_mut.rs`
+  - 文件: `src/storage/viewmut.rs`
   - 内容: 结构定义、`from_raw_parts_mut`/`from_mut_slice`/`from_owned`/`as_view`、不实现 Clone、`RawStorage`/`RawStorageMut`/`Storage`/`StorageMut` 实现
   - 测试: `test_view_mut_no_clone`, `test_view_mut_exclusive`
   - 前置: T5

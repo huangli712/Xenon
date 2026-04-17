@@ -63,9 +63,9 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 ```
 src/dimension/
 ├── mod.rs             # Dimension trait definition, module exports, MAX_DIMENSION constant
-├── static_dims.rs     # Ix0, Ix1, ..., Ix6 static dimensions and Dimension impls
+├── static.rs     # Ix0, Ix1, ..., Ix6 static dimensions and Dimension impls
 ├── dynamic.rs         # IxDyn dynamic dimension and Dimension impl
-├── into_dimension.rs  # IntoDimension trait and its impls
+├── into.rs  # IntoDimension trait and its impls
 └── axes.rs            # Axis newtype and axis helper methods
 ```
 
@@ -943,7 +943,7 @@ impl Reverse for IxDyn {
 ### Wave 1: 基础设施
 
 - [ ] **T1**: 创建模块文件结构
-  - 文件: `src/dimension/mod.rs`, `static_dims.rs`, `dynamic.rs`, `into_dimension.rs`, `axes.rs`
+  - 文件: `src/dimension/mod.rs`, `static.rs`, `dynamic.rs`, `into.rs`, `axes.rs`
   - 内容: 模块声明、子模块占位、公共导出声明
   - 测试: 编译通过
   - 前置: 无
@@ -959,21 +959,21 @@ impl Reverse for IxDyn {
 ### Wave 2: 静态维度
 
 - [ ] **T3**: 实现 `Ix0` 零维标量
-  - 文件: `src/dimension/static_dims.rs`
+  - 文件: `src/dimension/static.rs`
   - 内容: `Ix0` 结构体 + `Dimension` impl（`checked_size()=Ok(1)`, `slice()=&[]`）
   - 测试: `test_ix0_size_is_one`, `test_ix0_ndim_is_zero`
   - 前置: T2
   - 预计: 10 min
 
 - [ ] **T4**: 实现 `Ix1`-`Ix2`
-  - 文件: `src/dimension/static_dims.rs`
+  - 文件: `src/dimension/static.rs`
   - 内容: `Ix1`, `Ix2` 结构体 + `Dimension` impl + `Index<usize>` impl
   - 测试: `test_ix1_slice`, `test_ix2_slice`
   - 前置: T3
   - 预计: 10 min
 
 - [ ] **T5**: 实现 `Ix3`-`Ix6`
-  - 文件: `src/dimension/static_dims.rs`
+  - 文件: `src/dimension/static.rs`
   - 内容: `Ix3`-`Ix6` 结构体 + `Dimension` impl + `From<tuple>` impl
   - 测试: `test_ix3_size_calculation`, `test_ix6_max_dimensions`
   - 前置: T4
@@ -989,7 +989,7 @@ impl Reverse for IxDyn {
   - 预计: 10 min
 
 - [ ] **T7**: 实现维度互转 + 错误类型
-  - 文件: `src/dimension/static_dims.rs`, `dynamic.rs`, `src/error.rs`
+  - 文件: `src/dimension/static.rs`, `dynamic.rs`, `src/error.rs`
   - 内容: `into_dyn()`, `try_from_dyn()` + `XenonError::DimensionMismatch` 错误
   - 测试: `test_static_to_dyn`, `test_dyn_to_static_success`, `test_dyn_to_static_failure`
   - 前置: T5, T6
@@ -998,7 +998,7 @@ impl Reverse for IxDyn {
 ### Wave 4: 辅助 trait
 
 - [ ] **T8**: 实现 `IntoDimension` trait
-  - 文件: `src/dimension/into_dimension.rs`
+  - 文件: `src/dimension/into.rs`
   - 内容: trait 定义 + tuple/array/slice/Vec 实现
   - 测试: `test_tuple_to_ix3`, `test_slice_to_ixdyn`
   - 前置: T7
