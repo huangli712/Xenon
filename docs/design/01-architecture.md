@@ -430,48 +430,36 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 
 各模块的详细设计参见对应编号文档。层级关系如下：
 
-| 层级   | 模块      | 依赖                                | 参见                  |
-| ------ | --------- | ----------------------------------- | --------------------- |
-| **L0** | error     | 无                                  | `26-error.md`         |
-| **L0** | private   | 无                                  |                       |
-| **L1** | dimension | error                               | `02-dimension.md`     |
-| **L1** | element   | error                               | `03-element.md`       |
-| **L1** | complex   | error                               | `04-complex.md`       |
-| **L2** | layout    | error, dimension                    | `06-layout.md`        |
-| **L2** | workspace | std                                 | `24-workspace.md`     |
-| **L3** | storage   | core, alloc, std, error             | `05-storage.md`       |
-| **L4** | tensor    | storage, dimension, layout, element | `07-tensor.md`        |
-| **L5** | broadcast | tensor                              | `15-broadcast.md`     |
-| **L5** | iter      | tensor                              | `10-iterator.md`      |
-| **L5** | ffi       | tensor                              | `23-ffi.md`           |
-| **L5** | simd      | tensor                              | `08-simd.md`          |
-| **L5** | dispatch  | tensor                              | `01-architecture.md`  |
-| **L5** | parallel  | tensor                              | `09-parallel.md`      |
-| **L6** | math      | tensor, broadcast                   | `11-math.md`          |
-| **L6** | overload  | tensor, broadcast                   | `19-overload.md`      |
-| **L6** | set       | tensor, broadcast                   | `14-set.md`           |
-| **L6** | matrix    | tensor, broadcast                   | `12-matrix.md`        |
-| **L6** | reduction | tensor, broadcast                   | `13-reduction.md`     |
-| **L6** | shape     | tensor, broadcast                   | `16-shape.md`         |
-| **L6** | index     | tensor, broadcast                   | `17-indexing.md`      |
-| **L6** | util      | tensor, broadcast                   | `20-utility.md`       |
-| **L7** | construct | tensor, shape, element, complex, storage | `18-construction.md` |
-| **L7** | convert   | tensor, shape, element, complex, storage | `21-type.md`         |
-| **L7** | format    | tensor, shape, element, complex, storage | `22-output.md`       |
+| 层级   | 模块      | 依赖                                | 参见                |
+| ------ | --------- | ----------------------------------- | ------------------- |
+| L0     | error     | 无                                  | 26-error.md         |
+| L0     | private   | 无                                  |                     |
+| L1     | dimension | error                               | 02-dimension.md     |
+| L1     | complex   | error                               | 04-complex.md       |
+| L2     | element   | error, complex                      | 03-element.md       |
+| L2     | layout    | error, dimension                    | 06-layout.md        |
+| L2     | workspace | std                                 | 24-workspace.md     |
+| L3     | storage   | core, alloc, std, error             | 05-storage.md       |
+| L4     | tensor    | storage, dimension, layout, element | 07-tensor.md        |
+| L5     | broadcast | tensor, dimension, layout, error    | 15-broadcast.md     |
+| L5     | iter      | tensor, storage, dimension, error   | 10-iterator.md      |
+| L5     | ffi       | tensor, layout, storage, dimension  | 23-ffi.md           |
+| L5     | dispatch  | tensor                              | 01-architecture.md  |
+| L6     | parallel  | tensor, dimension, error            | 09-parallel.md      |
+| L6     | simd      | tensor, layout, element, storage    | 08-simd.md          |
+| L6     | math      | tensor, broadcast, element, iter    | 11-math.md          |
+| L6     | set       | tensor, element, complex, iter      | 14-set.md           |
+| L6     | matrix    | tensor, element                     | 12-matrix.md        |
+| L6     | reduction | tensor, dimension, element, error   | 13-reduction.md     |
+| L6     | shape     | tensor, layout                      | 16-shape.md         |
+| L6     | index     | tensor, dimension, layout, error    | 17-indexing.md      |
+| L6     | util      | tensor, dimension, storage, layout, iter | 20-utility.md  |
+| L7     | overload  | tensor, broadcast, math             | 19-overload.md      |
+| L7     | construct | tensor, storage, layout, dimension, element | 18-construction.md |
+| L7     | convert   | tensor, element                     | 21-type.md          |
+| L7     | format    | tensor, storage, layout             | 22-output.md        |
 
-### 5.3 类型级依赖表
-
-| 模块 | 直接消费的类型/trait | 用途 |
-| ---- | -------------------- | ---- |
-| `dimension` | `Dimension`, `IntoDimension`, `Axis`, `RemoveAxis`, `Reverse` | 形状/rank/轴元数据与转置轴语义 |
-| `element` | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`, `BoolElement` | 元素能力分层与泛型约束 |
-| `complex` | `Complex<f32>`, `Complex<f64>` | 复数值类型与 `#[repr(C)]` FFI 基础布局 |
-| `storage` | `Owned`, `ViewRepr`, `ViewMutRepr`, `ArcRepr` | 所有权/借用/共享存储模式 |
-| `layout` | `compute_f_strides`, `validate_layout`, `classify_layout` | F-order 步长与布局合法性判断 |
-| `tensor` | `TensorBase`, `Tensor`, `TensorView`, `TensorViewMut`, `ArcTensor` | 核心张量 API 与别名 |
-| `ffi` | `export`, `export_mut`, `try_offset_of`, `try_ptr_at`, `BlasInfo` | FFI 导出与 checked 偏移查询 |
-
-### 5.4 依赖图（ASCII）
+### 5.3 依赖图（ASCII）
 
 ```
 L0:  error, private
