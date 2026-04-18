@@ -234,14 +234,14 @@ xenon/
 │   │
 │   ├── ffi/                   # FFI interface
 │   │   ├── mod.rs             # Module root and re-exports
-│   │   ├── types.rs           # BlasLayout, BlasTrans, BlasInfo definitions
+│   │   ├── types.rs           # BlasInfo definition
 │   │   ├── ptr.rs             # Raw pointer API (export/export_mut, from_raw_parts, into_raw_parts)
 │   │   ├── blas.rs            # BLAS compatibility checks (is_blas_compatible, blas_info, lda)
 │   │   └── offset.rs          # Index-to-pointer offset
 │   │
 │   ├── workspace/             # Temporary workspace
 │       ├── mod.rs             # Module root and re-exports
-│       ├── error.rs           # Internal workspace error type
+│       ├── error.rs           # WorkspaceErrorCategory definitions
 │       ├── workspace.rs       # Workspace struct, constants, construction, destruction
 │       ├── borrow.rs          # WorkspaceBorrow, WorkspaceBorrowMut guards
 │       ├── split.rs           # SplitBorrowMut guard
@@ -312,6 +312,8 @@ xenon/
     ├── ffi.rs                 # FFI integration example
     └── workspace.rs           # Workspace borrow/split/growth example
 ```
+
+说明：测试文件仅列代表性子集。
 
 ---
 
@@ -416,14 +418,14 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | `util/`        | 实用操作（clip 裁剪、fill 填充、to_contiguous 连续性保证的公共入口）|
 | `set/`         | 集合操作（unique 去重）                                             |
 | `broadcast/`   | NumPy 广播规则与只读广播视图构造                                    |
-| `matrix/`      | 向量内积 dot，必要时委托 `simd/`                                    |
+| `matrix/`      | 向量内积 dot，必要时委托 `simd/` 或 `parallel`                      |
 | `reduction/`   | 归约操作（sum）                                                     |
 | `shape/`       | 转置操作（transpose）                                               |
 | `index/`       | 多维整数索引、范围切片索引                                          |
 | `construct/`   | 张量构造（`zeros`、`ones`、`eye` 等）                               |
 | `convert/`     | 类型转换                                                            |
 | `format/`      | Numpy 风格格式化输出                                                |
-| `ffi/`         | 原始指针 API、BLAS 兼容性检查、多维索引偏移                         |
+| `ffi/`         | 原始指针 API 导出、BLAS 兼容性检查、多维索引偏移                    |
 | `workspace/`   | 临时工作空间（对齐分配、借用守卫、分割、扩容）                      |
 
 ### 5.2 依赖层级
@@ -435,7 +437,7 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | L0     | error     | 无                                  | 26-error.md         |
 | L0     | private   | 无                                  |                     |
 | L1     | dimension | error                               | 02-dimension.md     |
-| L1     | complex   | error                               | 04-complex.md       |
+| L1     | complex   | private                             | 04-complex.md       |
 | L2     | element   | error, complex                      | 03-element.md       |
 | L2     | layout    | error, dimension                    | 06-layout.md        |
 | L2     | workspace | std, error                          | 24-workspace.md     |
@@ -455,7 +457,7 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | L5     | index     | tensor, dimension, layout, error    | 17-indexing.md      |
 | L5     | util      | tensor, dimension, storage, layout, iter | 20-utility.md  |
 | L5     | construct | tensor, storage, layout, dimension, element | 18-construction.md |
-| L5     | format    | tensor, storage, layout             | 22-output.md        |
+| L5     | format    | tensor, storage, dimension, element | 22-output.md        |
 | L5     | convert   | tensor, element                     | 21-type.md          |
 | L6     | overload  | tensor, broadcast, math             | 19-overload.md      |
 
@@ -669,7 +671,7 @@ pub use error::XenonError;
 | API                  | 暴露方式              | 说明                         |
 | -------------------- | --------------------- | ---------------------------- |
 | `sum`                | `TensorBase` 固有方法 | 归约语义由张量实例直接触发   |
-| `dot`                | 自由函数              | 位于 `matrix` 模块的独立 API |
+| `dot`                | 双入口                | 位于 `matrix` 模块的 API     |
 | `transpose`          | `TensorBase` 固有方法 | 形状变换直接挂载在张量实例上 |
 | `broadcast_to`       | `TensorBase` 固有方法 | 广播视图构造由张量实例发起   |
 | `clip`               | `TensorBase` 固有方法 | 逐元素裁剪作为张量实用操作暴露 |
