@@ -766,6 +766,7 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 | W2.5 Arc storage     | W2.1                 | 高         | `ArcRepr<A>`                  |
 | W2.6 TensorBase      | W2.1-W2.5, W1.3-W1.9 | 高         | 核心结构体                    |
 | W2.7 Type aliases    | W2.6                 | 低         | `Tensor`, `TensorView` 等     |
+| W2.8 Workspace       | W1.1                 | 中         | 临时缓冲区                    |
 
 ### Wave 3: 操作（依赖 Wave 2）
 
@@ -781,19 +782,18 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 | W3.8 Transpose        | W2.6       | 中         | transpose          |
 | W3.9 Multi-dim index  | W2.6       | 中         | [i, j, k] 索引     |
 | W3.10 Slice index     | W2.6       | 高         | 范围切片           |
-| W3.11 Set             | W2.6       | 高         | unique             |
-| W3.12 Util            | W2.6       | 高         | clip, fill         |
+| W3.11 Set             | W2.6, W3.1 | 高         | unique             |
+| W3.12 Util            | W2.6, W3.1 | 高         | clip, fill         |
 
 ### Wave 4: 集成（依赖 Wave 3）
 
-| 任务            | 依赖        | 预估复杂度 | 产出                        |
-| --------------- | ----------- | ---------- | --------------------------- |
-| W4.1 Construct  | W2.6, W3.10 | 中         | zeros, ones, eye, from_vec  |
-| W4.2 Convert    | W2.6        | 中         | cast, to_owned              |
-| W4.3 Format     | W2.6        | 低         | Display/Debug               |
-| W4.4 Ffi        | W2.6        | 中         | 原始指针 API                |
-| W4.5 Workspace  | W1.1        | 中         | 临时缓冲区                  |
-| W4.6 Comparison integration/tests | W3.3   | 低 | comparison integration/tests |
+| 任务            | 依赖  | 预估复杂度 | 产出                        |
+| --------------- | ----- | ---------- | --------------------------- |
+| W4.1 Construct  | W2.6  | 中         | zeros, ones, eye, from_vec  |
+| W4.2 Convert    | W2.6  | 中         | cast, to_owned              |
+| W4.3 Format     | W2.6  | 低         | Display/Debug               |
+| W4.4 Ffi        | W2.6  | 中         | 原始指针 API                |
+| W4.5 Comparison integration/tests | W3.4   | 低 | comparison integration/tests |
 
 ### Wave 5: 性能（依赖 Wave 4）
 
@@ -801,9 +801,9 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 | ------------------| ---------- | ---------- | -------------- |
 | W5.1 Dispatch     | W2.6       | 高         | 纯并行执行后端 |
 | W5.2 Parallel     | W3.1, W3.2 | 高         | 纯并行执行后端 |
-| W5.3 parallel sum | W3.5, W5.2 | 高         | 并行 sum       |
-| W5.4 SIMD math    | W3.3       | 高         | 纯向量化逐元素 |
-| W5.5 SIMD sum     | W3.5       | 高         | 纯向量化 sum   |
+| W5.3 parallel sum | W3.6, W5.2 | 高         | 并行 sum       |
+| W5.4 SIMD math    | W3.4       | 高         | 纯向量化逐元素 |
+| W5.5 SIMD sum     | W3.6       | 高         | 纯向量化 sum   |
 
 ### 并行执行分组图  
 
