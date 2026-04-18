@@ -750,59 +750,62 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 | W1.3 dimension traits  | W1.1       | 中         | `Dimension`, `IntoDimension`       |
 | W1.4 static dimensions | W1.3       | 中         | `Ix0`-`Ix6`                        |
 | W1.5 dynamic dimension | W1.3       | 中         | `IxDyn`                            |
-| W1.6 element traits    | W1.1       | 中         | `Element`, `Numeric`, `RealScalar` |
-| W1.7 Complex<T>        | W1.6       | 高         | 自定义复数类型                     |
-| W1.8 layout helpers    | W1.1       | 低         | 模块级布局函数与判定入口          |
+| W1.6 Complex<T>        | W1.2       | 高         | 自定义复数类型                     |
+| W1.7 element traits    | W1.6, W1.1 | 中         | `Element`, `Numeric`, `RealScalar` |
+| W1.8 layout helpers    | W1.1, W1.3 | 低         | 模块级布局函数与判定入口           |
 | W1.9 F-order strides   | W1.1, W1.3 | 中         | F-order 步长计算                   |
 
 ### Wave 2: 核心（依赖 Wave 1）
 
-| 任务                 | 依赖                 | 预估复杂度 | 产出                                         |
-| -------------------- | -------------------- | ---------- | -------------------------------------------- |
-| W2.1 Storage trait   | 无                   | 高         | `Storage`, `RawStorage`（依赖 `std`，含 `Arc`、allocator API 等） |
-| W2.2 Owned storage   | W2.1                 | 中         | `Owned<A>` + 64 字节对齐分配                 |
-| W2.3 View storage    | W2.1                 | 中         | `ViewRepr<'a, A>`                            |
-| W2.4 ViewMut storage | W2.1                 | 中         | `ViewMutRepr<'a, A>`                         |
-| W2.5 Arc storage     | W2.1                 | 高         | `ArcRepr<A>`                                 |
-| W2.6 TensorBase      | W2.1-W2.5, W1.3-W1.5 | 高         | 核心结构体                                   |
-| W2.7 Type aliases    | W2.6                 | 低         | `Tensor`, `TensorView` 等                    |
+| 任务                 | 依赖                 | 预估复杂度 | 产出                          |
+| -------------------- | -------------------- | ---------- | ----------------------------- |
+| W2.1 Storage trait   | W1.1                 | 高         | `Storage`, `RawStorage`       |
+| W2.2 Owned storage   | W2.1                 | 中         | `Owned<A>` + 64 字节对齐分配  |
+| W2.3 View storage    | W2.1                 | 中         | `ViewRepr<'a, A>`             |
+| W2.4 ViewMut storage | W2.1                 | 中         | `ViewMutRepr<'a, A>`          |
+| W2.5 Arc storage     | W2.1                 | 高         | `ArcRepr<A>`                  |
+| W2.6 TensorBase      | W2.1-W2.5, W1.3-W1.9 | 高         | 核心结构体                    |
+| W2.7 Type aliases    | W2.6                 | 低         | `Tensor`, `TensorView` 等     |
 
 ### Wave 3: 操作（依赖 Wave 2）
 
-| 任务                     | 依赖       | 预估复杂度 | 产出               |
-| ------------------------ | ---------- | ---------- | ------------------ |
-| W3.1 Elements iterator   | W2.6       | 中         | 扁平元素迭代       |
-| W3.2 Axis iterator       | W2.6       | 中         | 沿轴迭代           |
-| W3.3 Math                | W3.1       | 中         | unary, binary, comparison |
-| W3.4 Arithmetic          | W3.3       | 中         | Add, Sub, Mul, Div |
-| W3.5 Reduction (sum)     | W3.1       | 中         | sum                |
-| W3.6 Dot (inner product) | W2.6       | 中         | 向量内积           |
-| W3.7 Broadcast           | W2.6       | 高         | 广播规则           |
-| W3.8 Transpose           | W2.6       | 中         | transpose          |
-| W3.9 Multi-dim index     | W2.6       | 中         | [i, j, k] 索引     |
-| W3.10 Slice index        | W2.6       | 高         | 范围切片           |
+| 任务                  | 依赖       | 预估复杂度 | 产出               |
+| --------------------- | ---------- | ---------- | ------------------ |
+| W3.1 Iterator         | W2.6       | 中         | 扁平元素迭代       |
+| W3.2 Axis iterator    | W2.6       | 中         | 沿轴迭代           |
+| W3.3 Broadcast        | W2.6       | 高         | 广播规则           |
+| W3.4 Math             | W3.1, W1.7 | 中         | unary, binary, comparison |
+| W3.5 Arithmetic       | W3.3, W3.4 | 中         | Add, Sub, Mul, Div |
+| W3.6 Reduction (sum)  | W3.1       | 中         | sum                |
+| W3.7 Dot              | W2.6       | 中         | 向量内积           |
+| W3.8 Transpose        | W2.6       | 中         | transpose          |
+| W3.9 Multi-dim index  | W2.6       | 中         | [i, j, k] 索引     |
+| W3.10 Slice index     | W2.6       | 高         | 范围切片           |
+| W3.11 Set             | W2.6       | 高         | unique             |
+| W3.12 Util            | W2.6       | 高         | clip, fill         |
 
 ### Wave 4: 集成（依赖 Wave 3）
 
-| 任务            | 依赖        | 预估复杂度 | 产出                            |
-| --------------- | ----------- | ---------- | ------------------------------- |
-| W4.1 construct  | W2.6, W3.10 | 中         | zeros, ones, eye, from_vec（非规范便捷层） |
-| W4.2 convert    | W2.6        | 中         | cast, to_owned                  |
-| W4.3 format     | W2.6        | 低         | Display/Debug                   |
-| W4.4 ffi        | W2.6        | 中         | 原始指针 API                    |
-| W4.5 workspace  | 无          | 中         | 临时缓冲区                      |
-| W4.6 comparison integration/tests | W3.3        | 低         | comparison integration/tests |
+| 任务            | 依赖        | 预估复杂度 | 产出                        |
+| --------------- | ----------- | ---------- | --------------------------- |
+| W4.1 Construct  | W2.6, W3.10 | 中         | zeros, ones, eye, from_vec  |
+| W4.2 Convert    | W2.6        | 中         | cast, to_owned              |
+| W4.3 Format     | W2.6        | 低         | Display/Debug               |
+| W4.4 Ffi        | W2.6        | 中         | 原始指针 API                |
+| W4.5 Workspace  | W1.1        | 中         | 临时缓冲区                  |
+| W4.6 Comparison integration/tests | W3.3   | 低 | comparison integration/tests |
 
 ### Wave 5: 性能（依赖 Wave 4）
 
-| 任务                | 依赖       | 预估复杂度 | 产出        |
-| ------------------- | ---------- | ---------- | ----------- |
-| W5.1 parallel dispatch | W3.1-W3.2  | 高         | 纯并行执行后端（不含串行回退） |
-| W5.2 par_reduction  | W3.5, W5.1 | 高         | 并行 sum    |
-| W5.3 simd math      | W3.3       | 高         | 纯向量化逐元素（不含标量回退） |
-| W5.4 simd reduction | W3.5       | 高         | 纯向量化 sum |
+| 任务              | 依赖       | 预估复杂度 | 产出           |
+| ------------------| ---------- | ---------- | -------------- |
+| W5.1 Dispatch     | W2.6       | 高         | 纯并行执行后端 |
+| W5.2 Parallel     | W3.1, W3.2 | 高         | 纯并行执行后端 |
+| W5.3 parallel sum | W3.5, W5.2 | 高         | 并行 sum       |
+| W5.4 SIMD math    | W3.3       | 高         | 纯向量化逐元素 |
+| W5.5 SIMD sum     | W3.5       | 高         | 纯向量化 sum   |
 
-### 并行执行分组图
+### 并行执行分组图  
 
 ```
 Wave 1: [W1.1] [W1.2] [W1.3] [W1.6] [W1.8]
