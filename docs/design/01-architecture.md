@@ -775,7 +775,7 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 | W3.1 Iterator         | W2.6       | 中         | 扁平元素迭代       |
 | W3.2 Axis iterator    | W2.6       | 中         | 沿轴迭代           |
 | W3.3 Broadcast        | W2.6       | 高         | 广播规则           |
-| W3.4 Math             | W3.1, W1.7 | 中         | unary, binary, comparison |
+| W3.4 Math             | W3.1, W1.7, W3.3 | 中   | unary, binary, comparison |
 | W3.5 Arithmetic       | W3.3, W3.4 | 中         | Add, Sub, Mul, Div |
 | W3.6 Reduction (sum)  | W3.1       | 中         | sum                |
 | W3.7 Dot              | W2.6       | 中         | 向量内积           |
