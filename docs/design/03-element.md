@@ -234,7 +234,7 @@ impl Signum for f64 {
 - 浮点继续服从 `RealScalar::signum()` 的标准库语义。
 - `Complex<T>` 与 `bool` 不实现该能力。
 
-### 5.3 RealScalar trait
+### 5.4 RealScalar trait
 
 ```rust,ignore
 /// Real-valued scalar trait.
@@ -265,40 +265,11 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
 }
 ```
 
-> **设计决策：** 公开 `RealScalar` trait 仅保留当前版本可稳定承诺的实数运算能力；常量访问器与 NaN/无穷辅助逻辑降为 crate 内部扩展 trait，避免把实现便利误暴露为公开契约。
->
-> **`signum` 语义补充：** `RealScalar::signum()` 明确跟随标准库 `f32::signum()` / `f64::signum()` 语义：有限非 NaN 输入返回 `1.0` 或 `-1.0`，其中 `signum(+0.0) == 1.0`、`signum(-0.0) == -1.0`，`NaN` 传播为 `NaN`。`11-math.md` 中张量级 `signum()` 的浮点语义以此 trait 契约为权威基线；整数 `signum` 仍按比较结果返回 `-1/0/1`。
+- 公开 `RealScalar` trait 仅保留当前版本可稳定承诺的实数运算能力。
+- 常量访问器与 NaN/无穷辅助逻辑降为 crate 内部扩展 trait，避免把实现便利误暴露为公开契约。
+- `RealScalar::signum()` 明确跟随标准库 `f32::signum()` / `f64::signum()` 语义。有限非 NaN 输入返回 `1.0` 或 `-1.0`，其中 `signum(+0.0) == 1.0`、`signum(-0.0) == -1.0`，`NaN` 传播为 `NaN`。`11-math.md` 中张量级 `signum()` 的浮点语义以此 trait 契约为权威基线。
 
-### 5.3a RealScalarInternal trait
-
-> **公开性说明：** 以下 trait 为 crate 内部扩展，不纳入稳定公开 API 面。具体可见性固定为 `pub(crate)`。
-
-```rust,ignore
-/// Internal extension trait for sealed real scalars.
-///
-/// Contains implementation helpers that are intentionally excluded from the
-/// stable public `RealScalar` contract.
-pub(crate) trait RealScalarInternal: RealScalar + Sealed {
-    fn epsilon() -> Self;
-    fn min_positive() -> Self;
-    fn max_value() -> Self;
-    fn infinity() -> Self;
-    fn neg_infinity() -> Self;
-    fn nan() -> Self;
-    fn is_infinite(self) -> bool;
-    fn is_finite(self) -> bool;
-    fn min(self, other: Self) -> Self;
-    fn max(self, other: Self) -> Self;
-}
-```
-
-> **设计决策：** `epsilon()`、`infinity()`、`min()`、`max()` 以及同类辅助访问器只服务于当前 crate 内部实现，不构成公开稳定能力，因此统一收敛到 `RealScalarInternal`。
->
-> **NaN 语义显式说明：** `RealScalarInternal::min()` / `RealScalarInternal::max()` 采用 NaN 传播语义（任一参数为 NaN → 返回 NaN），这与标准库 `f32::min` / `f64::min`、`f32::max` / `f64::max` 的语义不同，因此必须保持为内部 helper，不得进入公开 trait。
->
-> **跨模块约束：** `math`、`reduction`、`format` 等任何需要依赖上述辅助语义的模块，必须调用 `RealScalarInternal::min()` / `RealScalarInternal::max()` 或与其完全等价的封装，不得直接退回标准库固有方法，否则会破坏 Xenon 在 NaN 传播上的统一契约。
-
-### 5.4 ComplexScalar trait
+### 5.5 ComplexScalar trait
 
 ```rust,ignore
 /// Complex scalar trait.
@@ -318,13 +289,10 @@ pub trait ComplexScalar: Numeric + Sealed {
 }
 ```
 
-> **设计说明：** `Numeric::conjugate()` 是全体数值元素唯一的统一共轭入口：实数路径返回恒等，复数路径返回数学共轭。`ComplexScalar` 只保留 `re` / `im` / `norm` 这类复数专用能力，不再重复声明 `conjugate()`，从而避免两个公开 trait 暴露同名契约。
->
-> **范围说明：** `ComplexScalar` 公开面仅保留当前范围内真正需要的复数能力。`arg`/`exp`/`ln`/`sqrt`/`from_polar`/`i` 等超出当前张量 API 范围的方法若实现需要，降为 `complex` 模块内部 helper，不放入本公开 trait。
+- `Numeric::conjugate()` 是全体数值元素唯一的统一共轭入口：实数路径返回恒等，复数路径返回数学共轭。
+- `ComplexScalar` 只保留 `re` / `im` / `norm` 这类复数专用能力，不再重复声明 `conjugate()`。
 
-### 5.4a OrderedCompareElement trait
-
-> **公开性说明：** `OrderedCompareElement` 需要作为公开 sealed trait 暴露，因为 `11-math` 的公开比较 API（`lt` / `gt`）直接使用它作为元素类型约束；但其实现集合仍限制为 Xenon 当前支持的有序比较元素类型。
+### 5.6 OrderedCompareElement trait
 
 ```rust,ignore
 /// Ordered comparison element trait.
