@@ -518,9 +518,7 @@ impl BoolElement for bool {
 }
 ```
 
-编译时阻止无效泛型实例化：`fn sum<A: Numeric>` 无法接受 `bool` 张量；需要布尔专用逐元素逻辑非时，使用 `BoolElement::logical_not()` 或 `!`。
-
-此外，`bool` 不实现任何 `CastTo<T>`；`bool_tensor.cast::<f32>()` 必须在编译期失败，而不是返回运行时类型转换错误。
+编译时阻止无效泛型实例化：`fn sum<A: Numeric>` 无法接受 `bool` 张量；需要布尔专用逐元素逻辑非时，使用 `!`。此外，`bool` 不实现任何 `CastTo<T>`；`bool_tensor.cast::<f32>()` 必须在编译期失败，而不是返回运行时类型转换错误。
 
 ### 6.2 usize 语义边界
 
@@ -528,7 +526,7 @@ impl BoolElement for bool {
 
 ### 6.3 类型提升规则
 
-**Xenon 不支持自动类型提升。** 所有跨类型运算须显式转换：
+Xenon 不支持自动类型提升。 所有跨类型运算须显式转换：
 
 ```rust,ignore
 // Implicit conversion not supported
@@ -551,24 +549,11 @@ let c = a + b.cast_to()?;
 | `min(a, b)` 含 NaN    | NaN      | 正常比较 |
 | `partial_cmp(NaN, _)` | None     | 正常比较 |
 
-### 6.5 RealScalar 实现（以 f64 为例）
+### 6.5 RealScalar 实现
+
+以 f64 为例：
 
 ```rust,ignore
-impl Numeric for i32 {
-    #[inline]
-    fn conjugate(self) -> Self { self }
-}
-
-impl Numeric for i64 {
-    #[inline]
-    fn conjugate(self) -> Self { self }
-}
-
-impl Numeric for f32 {
-    #[inline]
-    fn conjugate(self) -> Self { self }
-}
-
 impl Numeric for f64 {
     #[inline]
     fn conjugate(self) -> Self { self }
@@ -585,57 +570,14 @@ impl RealScalar for f64 {
     fn floor(self) -> Self { self.floor() }
     fn ceil(self) -> Self { self.ceil() }
     fn is_nan(self) -> bool { self.is_nan() }
-    // `is_finite`, `min`, and `max` belong to `RealScalarInternal`.
     // ...
 }
 
-impl RealScalarInternal for f64 {
-    fn epsilon() -> Self { f64::EPSILON }
-    fn min_positive() -> Self { f64::MIN_POSITIVE }
-    fn max_value() -> Self { f64::MAX }
-    fn infinity() -> Self { f64::INFINITY }
-    fn neg_infinity() -> Self { f64::NEG_INFINITY }
-    fn nan() -> Self { f64::NAN }
-    fn is_infinite(self) -> bool { self.is_infinite() }
-    fn is_finite(self) -> bool { self.is_finite() }
-    fn min(self, other: Self) -> Self {
-        if self.is_nan() || other.is_nan() {
-            Self::nan()
-        } else if self <= other {
-            self
-        } else {
-            other
-        }
-    }
-
-    fn max(self, other: Self) -> Self {
-        if self.is_nan() || other.is_nan() {
-            Self::nan()
-        } else if self >= other {
-            self
-        } else {
-            other
-        }
-    }
-}
 // Same pattern applies to f32.
-
-impl Numeric for Complex<f64> {
-    #[inline]
-    fn conjugate(self) -> Self { Self::conj(self) }
-}
-
-impl ComplexScalar for Complex<f64> {
-    type Real = f64;
-
-    fn re(self) -> Self::Real { self.re }
-    fn im(self) -> Self::Real { self.im }
-    fn norm(self) -> Self::Real { self.norm() }
-}
-// Same pattern applies to Complex<f32>.
 ```
 
-> **补充说明：** `i32`/`i64`/`f32`/`f64` 作为实数路径上的 `Numeric` 实现，`conjugate()` 一律为恒等操作；`Complex<f32>`/`Complex<f64>` 的数学共轭也统一通过 `Numeric::conjugate()` 暴露，`ComplexScalar` 实现只补充复数特有的 `re`/`im`/`norm`。
+- `i32`/`i64`/`f32`/`f64` 作为实数路径上的 `Numeric` 实现，`conjugate()` 一律为恒等操作
+- `Complex<f32>`/`Complex<f64>` 的数学共轭也统一通过 `Numeric::conjugate()` 暴露，`ComplexScalar` 实现只补充复数特有的 `re`/`im`/`norm`。
 
 ---
 
@@ -661,7 +603,7 @@ impl ComplexScalar for Complex<f64> {
 
 - [ ] **T3**: 创建 `real.rs`，定义 RealScalar trait
   - 文件: `src/element/real.rs`
-  - 内容: `RealScalar` 仅含公开数学函数与 `is_nan()`；常量、`infinity()`、`epsilon()`、`min()`/`max()` 等 helper 放入 `pub(crate) RealScalarInternal`
+  - 内容: `RealScalar` 仅含公开数学函数与 `is_nan()`
   - 测试: 编译通过
   - 前置: T2
   - 预计: 10 min
@@ -691,7 +633,7 @@ impl ComplexScalar for Complex<f64> {
 
 - [ ] **T7**: 为 bool 实现 Element（仅此）
   - 文件: `src/element/primitives.rs`
-  - 内容: `Element` impl（`zero()=false`, `one()=true`）+ `BoolElement::logical_not()`，不实现 Numeric
+  - 内容: `Element` impl（`zero()=false`, `one()=true`，不实现 Numeric
   - 测试: `test_bool_element_only`
   - 前置: T1
   - 预计: 5 min
@@ -758,8 +700,8 @@ Wave 3: [T6]      [T9] ← ────┘
 
 ### 8.1 测试分类表
 
-| 测试分类 | 位置                                           | 说明                                                                  |
-| -------- | ---------------------------------------------- | --------------------------------------------------------------------- |
+| 测试分类 | 位置                                           | 说明                                       |
+| -------- | ---------------------------------------------- | ------------------------------------------ |
 | 单元测试 | `#[cfg(test)] mod tests`                       | 验证各 trait 和基础类型实现                                           |
 | 集成测试 | `tests/test_element.rs`                        | 验证 `element` 与 `tensor`、`math`、`reduction`、`convert` 的协同路径 |
 | 边界测试 | 同模块测试中标注                               | 覆盖 NaN/Inf、bool 限制与 sealed 行为                                 |
