@@ -601,13 +601,11 @@ impl RemoveAxis for IxDyn {
 }
 ```
 
-> **公开 API 约束：** `RemoveAxis` 是维度层内部/泛型辅助能力，公开张量方法不直接把该 trait 暴露给用户；对 `Ix0` 的移轴请求统一在运行时返回 `XenonError::InvalidAxis`，而不是通过公开 API 暴露 `RemoveAxis` 细节或要求用户理解零维 `Smaller` 类型。
+- `RemoveAxis` 是维度层内部/泛型辅助能力，公开张量方法不直接把该 trait 暴露给用户。
+- `RemoveAxis` 作为独立 trait 而非 `Dimension` 的关联类型。它负责描述“可移除一条轴后的结果维度类型”，但零维轴操作不应依赖编译期拒绝。标量场景若进入统一轴操作入口，仍须返回运行时可恢复错误。
+- 对 `Ix0` 的移轴请求统一在运行时返回 `XenonError::InvalidAxis`，而不是通过公开 API 暴露 `RemoveAxis` 细节或要求用户理解零维 `Smaller` 类型。
 
-> **设计决策：** `RemoveAxis` 作为独立 trait 而非 `Dimension` 的关联类型。
-> 它负责描述“可移除一条轴后的结果维度类型”，但零维轴操作不应依赖编译期拒绝；
-> 标量场景若进入统一轴操作入口，仍须返回运行时可恢复错误。
-
-### 5.7 Sealed trait 策略
+### 5.9 Sealed trait 策略
 
 ```rust,ignore
 // src/private.rs
@@ -623,48 +621,18 @@ impl Sealed for Ix6 {}
 impl Sealed for IxDyn {}
 ```
 
-### 5.8 Good / Bad 对比示例
+### 5.10 BroadcastDim trait（广播层消费）
 
-```rust,ignore
-// Good - unified interface via IntoDimension, clear type inference
-fn create_tensor<A, Sh>(shape: Sh) -> Tensor<A, Sh::Dim>
-where
-    Sh: IntoDimension,
-{
-    let dim = shape.into_dimension();
-    // ...
-}
-let t = create_tensor::<f64, _>((3, 4));     // Ix2
-let t = create_tensor::<f64, _>(&[2, 3, 4]); // IxDyn
+`BroadcastDim<Other>` 用于编译期计算两个维度类型广播后的输出维度类型。该 trait 由广播/运算符重载层消费（参见 `11-math.md`、`15-broadcast.md` 与 `19-overload.md`），不属于维度系统的核心职责；`dimension` 模块仅在此记录它依赖静态/动态维度类型这一事实。
 
-// Bad - hardcoded dimension types, not reusable
-fn create_tensor_2d<A>(rows: usize, cols: usize) -> Tensor<A, Ix2> { /* ... */ }
-fn create_tensor_3d<A>(d1: usize, d2: usize, d3: usize) -> Tensor<A, Ix3> { /* ... */ }
-// Every dimension count requires a new function
-```
+**实现建议：** 
 
-```rust,ignore
-// Good - use Result for dimension conversion
-let dim: Ix3 = Ix3::try_from_dyn(dyn_dim)?;
-
-// Bad - unwrap a fallible conversion and turn a recoverable error into a panic
-let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
-```
-
----
-
-### 5.9 BroadcastDim trait（广播层消费）
-
-`BroadcastDim<Other>` 用于编译期计算两个维度类型广播后的输出维度类型。  
-该 trait 由广播/运算符重载层消费（参见 `11-math.md`、`15-broadcast.md` 与 `19-overload.md`），
-不属于维度系统的核心职责；`dimension` 模块仅在此记录它依赖静态/动态维度类型这一事实。
-
-> **实现建议：** 跨静态维度的 `BroadcastDim` 实现共计约 57 个（含自身广播 7 个 + 跨静态维度 42 个 + 与 IxDyn 混合 7 个（静态维度→IxDyn）+ 1 个（IxDyn→D 泛型 impl））。
-> 建议使用声明宏（`macro_rules!`）生成这些实现，避免手工编写导致的遗漏和错误。宏生成后须通过 compile-fail 测试验证全覆盖。
-
-> **公开性说明：** `BroadcastDim` 必须是公开 sealed trait，以保证 `math` / `broadcast` / `overload` 的公开签名与 trait bound 可命名；公开仅限命名和使用 crate 内既有实现，仍禁止外部实现。
->
-> **Note:** "BroadcastDim is a public sealed trait used in broadcast output type inference. It appears in public API signatures of broadcast/math/overload modules."
+- 跨静态维度的 `BroadcastDim` 实现共计约 57 个（含自身广播 7 个 + 跨静态维度 42 个 + 与 IxDyn 混合 7 个（静态维度→IxDyn）+ 1 个（IxDyn→D 泛型 impl））。
+- 建议使用声明宏（`macro_rules!`）生成这些实现，避免手工编写导致的遗漏和错误。宏生成后须通过 compile-fail 测试验证全覆盖。
+- `BroadcastDim` 必须是公开 sealed trait，以保证 `math` / `broadcast` / `overload` 的公开签名与 trait bound 可命名；公开仅限命名和使用 crate 内既有实现，仍禁止外部实现。
+- 跨静态维度广播（如 `Ix2 + Ix1`）时，输出类型为维度数较大的静态类型（`Ix2`）。这遵循 NumPy 广播规则：低维数组在左侧补 1，结果维度数 = max(ndim_a, ndim_b)。
+- 运行时兼容性由 `broadcast_shape()` 在调用处验证。  
+- 与 `IxDyn` 混合时始终返回 `IxDyn` 以保证类型安全。
 
 ```rust,ignore
 /// Trait for computing the output dimension type when broadcasting two arrays.
@@ -753,16 +721,9 @@ impl BroadcastDim<IxDyn> for Ix6 { type Output = IxDyn; }
 impl<D: Dimension> BroadcastDim<D> for IxDyn { type Output = IxDyn; }
 ```
 
-> **设计决策：** 跨静态维度广播（如 `Ix2 + Ix1`）时，输出类型为维度数较大的静态类型（`Ix2`）。
-> 这遵循 NumPy 广播规则：低维数组在左侧补 1，结果维度数 = max(ndim_a, ndim_b)。
-> 运行时兼容性由 `broadcast_shape()` 在调用处验证。  
-> 与 `IxDyn` 混合时始终返回 `IxDyn` 以保证类型安全。
+### 5.11 PermuteAxes / Reverse trait
 
-### 5.10 PermuteAxes / Reverse trait
-
-`PermuteAxes` 为转置操作提供通用轴置换语义；`Reverse` 仅作为 `transpose()` 默认轴反转形式的便捷层：
-
-> **公开性说明：** 以下 trait 为内部实现辅助，标记为 `pub(crate)`，不纳入稳定公开 API 面。
+`PermuteAxes` 为转置操作提供通用轴置换语义；`Reverse` 仅作为 `transpose()` 默认轴反转形式的便捷层。以下 trait 为内部实现辅助，标记为 `pub(crate)`，不纳入稳定公开 API 面。
 
 ```rust,ignore
 /// Trait for permuting the axis order of a dimension.
@@ -857,13 +818,38 @@ impl Reverse for IxDyn {
 }
 ```
 
-> **范围说明：** 当前版本的形状操作只包含 `transpose()`。维度层保留 `PermuteAxes` 作为内部泛化能力，但公开 `transpose()` 契约当前仅承诺默认的轴反转（reverse-axis transpose）；显式轴置换保留为后续版本扩展，不构成当前版本公开 API 承诺。参见 `需求说明书 §17` 与 `16-shape.md §5.1.1`。
+- 当前版本的形状操作只包含 `transpose()`。维度层保留 `PermuteAxes` 作为内部泛化能力，但公开 `transpose()` 契约当前仅承诺默认的轴反转（reverse-axis transpose）；显式轴置换保留为后续版本扩展，不构成当前版本公开 API 承诺。参见 `需求说明书 §17` 与 `16-shape.md §5.1.1`。
+- ** 对静态维度 `Ix0`..`Ix6`，`PermuteAxes` 若实现，仍属于内部辅助能力；当前版本公开 `transpose()` 由 `16-shape.md` 定义，不把通用显式轴置换提升为规范性 API。其生成签名模式可写为：`impl PermuteAxes for Ix3 { fn permuted_axes(&self, permutation: &[Axis]) -> Result<Ix3, XenonError>; }`，更高/更低静态维度按同一模板展开。
+- 对 `IxN` 的 `PermuteAxes` 实现，输入 `permutation` 的长度必须恰好等于 `N`，并且必须是 `0..N-1` 上的双射；任何越界轴、重复轴或缺失轴都统一返回 `XenonError::InvalidAxis`，不引入额外错误类别。
+- `BroadcastDim`、静态 `PermuteAxes` 等宏生成实现应至少通过三类测试覆盖：成功路径（每个静态 rank 至少一例）、compile-fail 边界（非法 rank/非法输入不暴露实现）、以及文档/trait 矩阵核对，防止某个 rank 在宏展开中遗漏。
 
-> **静态维度补充说明：** 对静态维度 `Ix0`..`Ix6`，`PermuteAxes` 若实现，仍属于内部辅助能力；当前版本公开 `transpose()` 由 `16-shape.md` 定义，不把通用显式轴置换提升为规范性 API。其生成签名模式可写为：`impl PermuteAxes for Ix3 { fn permuted_axes(&self, permutation: &[Axis]) -> Result<Ix3, XenonError>; }`，更高/更低静态维度按同一模板展开。
+### 5.12 Good / Bad 对比示例
 
-> **静态维度最小契约：** 对 `IxN` 的 `PermuteAxes` 实现，输入 `permutation` 的长度必须恰好等于 `N`，并且必须是 `0..N-1` 上的双射；任何越界轴、重复轴或缺失轴都统一返回 `XenonError::InvalidAxis`，不引入额外错误类别。
+```rust,ignore
+// Good - unified interface via IntoDimension, clear type inference
+fn create_tensor<A, Sh>(shape: Sh) -> Tensor<A, Sh::Dim>
+where
+    Sh: IntoDimension,
+{
+    let dim = shape.into_dimension();
+    // ...
+}
+let t = create_tensor::<f64, _>((3, 4));     // Ix2
+let t = create_tensor::<f64, _>(&[2, 3, 4]); // IxDyn
 
-> **宏覆盖测试策略：** `BroadcastDim`、静态 `PermuteAxes` 等宏生成实现应至少通过三类测试覆盖：成功路径（每个静态 rank 至少一例）、compile-fail 边界（非法 rank/非法输入不暴露实现）、以及文档/trait 矩阵核对，防止某个 rank 在宏展开中遗漏。
+// Bad - hardcoded dimension types, not reusable
+fn create_tensor_2d<A>(rows: usize, cols: usize) -> Tensor<A, Ix2> { /* ... */ }
+fn create_tensor_3d<A>(d1: usize, d2: usize, d3: usize) -> Tensor<A, Ix3> { /* ... */ }
+// Every dimension count requires a new function
+```
+
+```rust,ignore
+// Good - use Result for dimension conversion
+let dim: Ix3 = Ix3::try_from_dyn(dyn_dim)?;
+
+// Bad - unwrap a fallible conversion and turn a recoverable error into a panic
+let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
+```
 
 ---
 
