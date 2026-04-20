@@ -459,15 +459,13 @@ impl Axis {
     #[inline]
     pub fn checked_next(self) -> Option<Self> { self.0.checked_add(1).map(Axis) }
 
-    #[inline]
-    /// Caller must guarantee `self.0 < usize::MAX`.
+    /// Returns the next axis, or `None` if `self.0 == usize::MAX`.
     ///
-    /// This helper is intentionally checked: wraparound is treated as a bug and
-    /// panics in all build modes. Use `checked_next()` if overflow is part of the
-    /// normal control flow.
-    pub fn next(self) -> Self {
-        Axis(self.0.checked_add(1).expect("Axis::next overflow"))
-    }
+    /// Equivalent to `checked_next()`; both share the same non-panicking
+    /// contract. Prefer `next()` in iterator-like contexts and
+    /// `checked_next()` when the name makes intent clearer.
+    #[inline]
+    pub fn next(self) -> Option<Self> { self.0.checked_add(1).map(Axis) }
 
     #[inline]
     pub fn prev(self) -> Option<Self> { self.0.checked_sub(1).map(Axis) }
@@ -481,8 +479,7 @@ impl Axis {
 ```
 
 - 当 `ndim == 0`（标量、无轴）时，`is_last()` 返回 `false`。这一定义避免了把“无轴”误判为“最后一轴”，调用方若在轴语义上区分标量场景，应先检查 `ndim > 0`。
--  `checked_next()` 通过 `checked_add(1)` 返回 `Option<Axis>`，在 `axis == usize::MAX` 时返回 `None`。
-- `next()` 仍保留为快捷方法，但内部同样使用 checked 加法；若调用方未先保证 `axis < usize::MAX`，则统一 panic，而不是在 release 构建中静默回绕。
+- `next()` 与 `checked_next()` 行为完全一致，均通过 `checked_add(1)` 返回 `Option<Axis>`，在 `axis == usize::MAX` 时返回 `None`。两者均不 panic。
 
 ### 5.8 RemoveAxis trait
 
@@ -495,7 +492,7 @@ impl Axis {
 ///
 /// Used by:
 /// - `AxisIter` (see `10-iterator.md §5.2`): `Item = TensorView<'a, A, D::Smaller>`
-/// - `sum_axis` (see `13-reduction.md §5.2`): result dimension is `D::Smaller`
+/// - `sum_axis` (see `13-reduction.md §5.1`): result dimension is `D::Smaller`
 pub trait RemoveAxis: Dimension {
     /// The dimension type with one fewer axis.
     type Smaller: Dimension;
@@ -1014,7 +1011,7 @@ Wave 5:  [T10] → [T11] → [T12]
 | `test_dyn_to_static_failure`              | `Ix3::try_from_dyn(IxDyn::from_slice(&[2,3,4,5]))` → Err                       | 高     |
 | `test_tuple_into_dimension`               | `(2,3,4).into_dimension()` → `Ix3(2,3,4)`                                      | 中     |
 | `test_slice_to_ixdyn`                     | `(&[2,3,4][..]).into_dimension()` → `IxDyn`                                    | 中     |
-| `test_axis_next_prev`                     | `Axis(2).next() == Axis(3)`, `Axis(0).prev() == None`                          | 中     |
+| `test_axis_next_prev`                     | `Axis(2).next() == Some(Axis(3))`, `Axis(0).prev() == None`                    | 中     |
 | `test_axis_checked_next`                  | `Axis(usize::MAX).checked_next() == None`                                      | 中     |
 | `test_axis_is_first_last`                 | `Axis(0).is_first()`, `Axis(2).is_last(3)`                                     | 中     |
 | `test_size_overflow`                      | 大值维度 `checked_size()` 返回含 `offending_dim` 的 `XenonError::InvalidShape` | 低     |
