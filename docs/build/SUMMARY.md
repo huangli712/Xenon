@@ -29,8 +29,8 @@
 | W17 | Reduction Operations | L5 | 7 | sum, sum_axis, sum_axis_keepdims + SIMD dispatch + parallel dispatch + error handling + tests |
 | W18 | Set Operations | L5 | 5 | unique, NaN/±0 handling, complex unique |
 | W19 | Shape Operations | L5 | 3 | transpose |
-| W20 | Indexing | L5 | 5 | NdIndex, try_at/get, SliceInfo, try_at_mut, slice |
-| W21 | Tensor Construction | L5 | 5 | zeros/ones, eye, from_shape_vec, from_array/scalar |
+| W20 | Indexing | L5 | 6 | NdIndex, try_at/get, SliceInfo, try_at_mut, slice |
+| W21 | Tensor Construction | L5 | 7 | zeros/ones, eye, from_shape_vec, from_array/scalar |
 | W22 | Operator Overloading | L6 | 6 | Add/Sub/Mul/Div for owned/ref/mixed/scalar |
 | W23 | Utility Operations | L5 | 4 | fill, clip, to_contiguous |
 | W24 | Type Conversion | L5 | 5 | CastTo trait, module skeleton, to_owned/into_owned, cast(), extended CastTo impls |
@@ -40,7 +40,7 @@
 | W28 | Benchmarks | — | 12 | Cargo.toml bench config, bench utils, math/reduction/dot/set/broadcast/shape/construction benches, SIMD/parallel comparison, CI |
 | W29 | Integration Tests | — | 21 | test infra, 15 module test files, parallel/simd feature tests, std env check, property tests, CI matrix |
 | W30 | Documentation | — | 26 | crate docs, missing_docs lint, README, CHANGELOG, core/tensor/infra module docs, type/function docs per module, 6 example files, CI docs |
-| | **Total** | | **220** | |
+| | **Total** | | **225** | |
 
 ---
 
@@ -160,7 +160,7 @@
 | W10T02 | `src/broadcast/shape.rs` | can_broadcast function (shape compatibility check) | W10T01, W03T01 | 15-broadcast §2 |
 | W10T03 | `src/broadcast/shape.rs` | broadcast_shape function (compute output shape) | W10T02 | 15-broadcast §3 |
 | W10T04 | `src/broadcast/view.rs` | broadcast_to method (create broadcast view) | W10T03, W06T04 | 15-broadcast §4 |
-| W10T05 | `src/broadcast/view.rs` | broadcast_with method + module re-exports + tests | W10T04 | 15-broadcast §5 |
+| W10T05 | `src/broadcast/view.rs` | broadcast_with method + module re-exports | W10T04 | 15-broadcast §5 |
 
 ### Wave 11: Iterators (L4)
 
@@ -171,7 +171,7 @@
 | W11T03 | `src/iter/axis.rs` | AxisIter (iteration along one axis) | W11T01 | 10-iterator §4 |
 | W11T04 | `src/iter/indexed.rs` | IndexedIter (elements with indices) | W11T02 | 10-iterator §5 |
 | W11T05 | `src/tensor/impls.rs` | Tensor entry methods for iteration (iter, iter_mut, axis_iter, indexed_iter) | W11T02–W11T04 | 10-iterator §6 |
-| W11T06 | `src/iter/mod.rs` | Module re-exports + iter tests | W11T02–W11T04 | 10-iterator |
+| W11T06 | `src/iter/mod.rs` | Module re-exports| W11T02–W11T04 | 10-iterator |
 
 ### Wave 12: FFI Helpers (L4)
 
@@ -182,7 +182,7 @@
 | W12T03 | `src/ffi/ptr.rs` | export / export_mut + into_raw_parts / from_raw_parts | W12T01 | 23-ffi §3 |
 | W12T04 | `src/ffi/blas.rs` | is_blas_compatible + blas_info + lda | W12T02 | 23-ffi §4 |
 | W12T05 | `src/ffi/offset.rs` | try_offset_of / try_ptr_at (checked pointer arithmetic) | W12T01 | 23-ffi §5 |
-| W12T06 | `src/ffi/mod.rs` | Module re-exports + FFI tests | W12T02–W12T05 | 23-ffi |
+| W12T06 | `src/ffi/mod.rs` | Module re-exports | W12T02–W12T05 | 23-ffi |
 
 ### Wave 13: SIMD Backend (L5)
 
@@ -218,7 +218,7 @@
 | W15T04 | `src/math/unary.rs` | Math functions: sin, sqrt, exp, ln, floor, ceil | W15T03 | 11-math §7 |
 | W15T05 | `src/math/unary.rs` | Complex ops: conjugate, modulus | W15T03 | 11-math §7  |
 | W15T06 | `src/math/comparison.rs` | Comparison ops (eq, ne, lt, le, gt, ge element-wise) + not | W15T01 | 11-math §7  |
-| W15T07 | `src/math/mod.rs` | SIMD-accelerated math dispatch + module integration tests | W15T02–W15T06, W13T05 | 11-math §7  |
+| W15T07 | `src/math/mod.rs` | SIMD-accelerated math dispatch | W15T02–W15T06, W13T05 | 11-math §7  |
 
 ### Wave 16: Matrix Operations (L5)
 
@@ -228,7 +228,7 @@
 | W16T02 | `src/matrix/dot.rs` | dot() scalar implementation (1D vector inner product) | W16T01 | 12-matrix §7 |
 | W16T03 | `src/matrix/dot.rs` | SIMD dot product integration | W16T02, W13T04 | 12-matrix §7 (T3b) |
 | W16T04 | `src/matrix/dot.rs` | Parallel dot product integration | W16T02, W14T04 | 12-matrix §7 |
-| W16T05 | `src/matrix/mod.rs` | Module re-exports + matrix tests | W16T02 | 12-matrix §7  |
+| W16T05 | `src/matrix/mod.rs` | Module re-exports | W16T02 | 12-matrix §7  |
 
 ### Wave 17: Reduction Operations (L5)
 
@@ -250,7 +250,7 @@
 | W18T02 | `src/set/unique.rs` | unique() function (real types) | W18T01, W11T02 | 14-set §7  |
 | W18T03 | `src/set/unique.rs` | NaN/±0 handling | W18T02 | 14-set §7  |
 | W18T04 | `src/set/unique.rs` | Complex unique | W18T02 | 14-set §7  |
-| W18T05 | `src/set/mod.rs` | TensorBase entry method + module re-exports + tests | W18T02 | 14-set §7  |
+| W18T05 | `src/set/mod.rs` | TensorBase entry method + module re-exports| W18T02 | 14-set §7  |
 
 ### Wave 19: Shape Operations (L5)
 
@@ -258,27 +258,30 @@
 |------|------|------|-------------|-------------|
 | W19T01 | `src/shape/mod.rs` | Module skeleton | W08T02 | 16-shape |
 | W19T02 | `src/shape/transpose.rs` | transpose() implementation (axes swap) | W19T01, W06T03 | 16-shape §2 |
-| W19T03 | `src/shape/mod.rs` | Module re-exports + shape tests | W19T02 | 16-shape |
+| W19T03 | `src/shape/mod.rs` | Module re-exports | W19T02 | 16-shape |
 
 ### Wave 20: Indexing (L5)
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W20T01 | `src/index/mod.rs` + `ndindex.rs` | NdIndex trait definition + tuple/slice impls | W08T02, W03T01 | 17-indexing §2 |
-| W20T02 | `src/index/access.rs` | try_at / get / get_unchecked methods | W20T01 | 17-indexing §3 |
-| W20T03 | `src/index/slice.rs` | SliceInfo struct + slice_shape/stride computation | W20T01 | 17-indexing §4 |
-| W20T04 | `src/index/access.rs` | try_at_mut / get_mut / get_unchecked_mut | W20T02 | 17-indexing §5 |
-| W20T05 | `src/index/slice.rs` | slice update methods + module re-exports + index tests | W20T03 | 17-indexing §6 |
+| W20T01 | `src/index/mod.rs` | Module skeleton | W08T02 | 17-indexing §3 |
+| W20T02 | `src/index/ndindex.rs` | NdIndex trait definition + tuple/slice impls | W20T01, W03T01 | 17-indexing §2 |
+| W20T03 | `src/index/access.rs` | try_at / get / get_unchecked methods | W20T02 | 17-indexing §3 |
+| W20T04 | `src/index/slice.rs` | SliceInfoElem + SliceInfoIndices + SliceInfo struct | W20T02 | 17-indexing §4 |
+| W20T05 | `src/index/access.rs` | try_at_mut / get_mut / get_unchecked_mut | W20T03 | 17-indexing §5 |
+| W20T06 | `src/index/slice.rs` | Slice shape/stride update + layout recomputation + module re-exports | W20T04 | 17-indexing §6 |
 
 ### Wave 21: Tensor Construction (L5)
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W21T01 | `src/construct/mod.rs` + `init.rs` | Module skeleton + zeros() + ones() | W08T02 | 18-construction §2 |
-| W21T02 | `src/construct/eye.rs` | eye() constructor | W21T01 | 18-construction §3 |
-| W21T03 | `src/construct/from.rs` | from_shape_vec + from_shape_slice | W21T01 | 18-construction §4 |
-| W21T04 | `src/construct/from.rs` + `scalar.rs` | from_array + from_vec + from_scalar | W21T03 | 18-construction §5 |
-| W21T05 | `src/construct/mod.rs` | Module re-exports + construction tests | W21T01–W21T04 | 18-construction |
+| W21T01 | `src/construct/mod.rs` | Module skeleton | W08T02 | 18-construction §3 |
+| W21T02 | `src/construct/init.rs` | zeros() + ones() constructors | W21T01 | 18-construction §2 |
+| W21T03 | `src/construct/eye.rs` | eye() identity matrix constructor | W21T02 | 18-construction §3 |
+| W21T04 | `src/construct/from.rs` | from_shape_vec + from_shape_slice | W21T02 | 18-construction §4 |
+| W21T05 | `src/construct/from.rs` | from_array + from_vec constructors | W21T04 | 18-construction §5 |
+| W21T06 | `src/construct/scalar.rs` | from_scalar | W21T02 | 18-construction §5 |
+| W21T07 | `src/construct/mod.rs` | Module re-exports | W21T01–W21T06 | 18-construction |
 
 ### Wave 22: Operator Overloading (L6)
 
@@ -289,7 +292,7 @@
 | W22T03 | `src/overload/arithmetic.rs` | Add for ref/mixed (TensorView, &Tensor, etc.) | W22T02 | 19-overload §3 |
 | W22T04 | `src/overload/arithmetic.rs` | Add with scalar (Tensor + f64, etc.) | W22T02 | 19-overload §4 |
 | W22T05 | `src/overload/arithmetic.rs` | Sub/Mul/Div operators (owned, ref, mixed, scalar) | W22T02–W22T04 | 19-overload §5 |
-| W22T06 | `src/overload/mod.rs` | Module re-exports + overload tests | W22T02–W22T05 | 19-overload |
+| W22T06 | `src/overload/mod.rs` | Module re-exports | W22T02–W22T05 | 19-overload |
 
 ### Wave 23: Utility Operations (L5)
 
