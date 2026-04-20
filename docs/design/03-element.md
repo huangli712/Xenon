@@ -351,7 +351,7 @@ pub trait CastTo<T>: Element {
 ///
 /// Used by integer `sum()` reduction to guarantee overflow is detected
 /// in both debug and release builds (per requirement §14).
-pub(crate) trait CheckedAdd: Numeric {
+pub(crate) trait CheckedAdd: Numeric + Sealed {
     /// Returns `Some(self + rhs)` if no overflow, `None` otherwise.
     fn checked_add(self, rhs: Self) -> Option<Self>;
 }
@@ -470,10 +470,6 @@ let c = &a + &b64;
 impl Element for bool {
     fn zero() -> Self { false }
     fn one() -> Self { true }
-}
-// No `impl Numeric for bool` — bool arithmetic has no mathematical meaning
-impl BoolElement for bool {
-    fn logical_not(self) -> Self { !self }
 }
 ```
 
