@@ -588,7 +588,7 @@ impl RealScalar for f64 {
 
 - [ ] **T7**: 为 bool 实现 Element（仅此）
   - 文件: `src/element/primitives.rs`
-  - 内容: `Element` impl（`zero()=false`, `one()=true`，不实现 Numeric
+  - 内容: `Element` impl（`zero()=false`, `one()=true`，不实现 Numeric）
   - 测试: `test_bool_element_only`
   - 前置: T1
   - 预计: 5 min
