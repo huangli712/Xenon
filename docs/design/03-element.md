@@ -781,33 +781,17 @@ Wave 3: [T6]      [T9] ← ────┘
 
 ### 9.1 接口约定
 
-| 模块           | 使用的 trait                | 用途                   |
-| -------------- | --------------------------- | ---------------------- |
-| `overload`     | `Numeric`                   | 逐元素运算泛型约束     |
-| `reduction`    | `Numeric`（sum）            | 归约运算泛型约束       |
-| `tensor`       | `Element`                   | Tensor<A, D> 的 A 约束 |
-| `matrix`       | `Numeric` / `ComplexScalar` | 内积运算               |
-| `cast/convert` | `Element`                   | 类型转换               |
+| 模块         | 使用的 trait                | 用途                   |
+| ------------ | --------------------------- | ---------------------- |
+| `overload`   | `Numeric`                   | 逐元素运算泛型约束     |
+| `reduction`  | `Numeric`                   | 归约运算泛型约束       |
+| `tensor`     | `Element`                   | Tensor<A, D> 的 A 约束 |
+| `matrix`     | `Numeric` / `ComplexScalar` | 内积运算               |
+| `convert`    | `Element`                   | 类型转换               |
 
-> 各模块的详细接口约定参见对应设计文档（`11-math.md` §4、`13-reduction.md` §4、`21-type.md` §4）。
+各模块的详细接口约定参见对应设计文档（`11-math.md` §4、`13-reduction.md` §4、`21-type.md` §4）。
 
-### 9.2 接口边界
-
-```
-┌───────────────────────────────────────────────────────────────┐
-│  math / reduction / matrix (consume Element/Numeric bounds)  │
-└──────────────────────┬────────────────────────────────────────┘
-                       │ generic bounds
-┌──────────────────────▼────────────────────────────────────────┐
-│  element (defines traits)                                    │
-└──────────────────────┬────────────────────────────────────────┘
-                       │ type dependency
-┌──────────────────────▼────────────────────────────────────────┐
-│  complex (defines Complex<T>)                                │
-└───────────────────────────────────────────────────────────────┘
-```
-
-### 9.3 数据流描述
+### 9.2 数据流描述
 
 ```text
 Upstream modules declare element bounds
