@@ -4,7 +4,7 @@
 > 模块目录: src/dimension/
 > 任务阶段: Phase 1
 > 前置文档: 00-coding.md, 01-architecture.md
-> 需求参考: 需求说明书 §3、§16、§17
+> 需求参考: 需求说明书 §3, §11, §14, §16 - §18
 > 范围声明: 范围内
 
 ---
@@ -28,6 +28,7 @@
 | 职责                | 不包含                                                      |
 | ------------------- | ----------------------------------------------------------- |
 | 静态维度类型        | 运行时动态维度选择                                          |
+| 动态维度类型        | -                                                           |
 | Dimension trait     | stride 计算、logical-first pointer、布局标志计算            |
 | IntoDimension trait | 用户自定义维度源                                            |
 | Axis 类型           | 轴上的切片/迭代操作（由 tensor 方法提供）                   |
@@ -316,18 +317,6 @@ impl Dimension for Ix3 {
 
     // Remaining helper methods follow the same pattern.
 }
-
-impl DimensionExt for Ix3 {
-    #[inline]
-    fn slice_mut(&mut self) -> &mut [usize] {
-        // SAFETY (§8.2): Same argument as `slice()`: `#[repr(C)]` guarantees the
-        // three `usize` fields are laid out contiguously with compatible alignment,
-        // so forming a mutable slice over exactly 3 elements is sound.
-        unsafe {
-            core::slice::from_raw_parts_mut(self as *mut Self as *mut usize, 3)
-        }
-    }
-}
 ```
 
 ### 5.5 动态维度 IxDyn
@@ -406,10 +395,6 @@ impl Dimension for IxDyn {
     }
 
     // ...
-}
-
-impl DimensionExt for IxDyn {
-    fn slice_mut(&mut self) -> &mut [usize] { &mut self.dims }
 }
 ```
 
@@ -623,7 +608,7 @@ impl Sealed for IxDyn {}
 
 ### 5.10 BroadcastDim trait（广播层消费）
 
-`BroadcastDim<Other>` 用于编译期计算两个维度类型广播后的输出维度类型。该 trait 由广播/运算符重载层消费（参见 `11-math.md`、`15-broadcast.md` 与 `19-overload.md`），不属于维度系统的核心职责；`dimension` 模块仅在此记录它依赖静态/动态维度类型这一事实。
+`BroadcastDim<Other>` 用于编译期计算两个维度类型广播后的输出维度类型。该 trait 定义在`dimension`模块中，由广播/运算符重载层消费（参见 `11-math.md`、`15-broadcast.md` 与 `19-overload.md`）。
 
 **实现建议：** 
 
