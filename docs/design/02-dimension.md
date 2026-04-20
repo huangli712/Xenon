@@ -603,7 +603,7 @@ impl Sealed for Ix6 {}
 impl Sealed for IxDyn {}
 ```
 
-### 5.10 BroadcastDim trait（广播层消费）
+### 5.10 BroadcastDim trait
 
 `BroadcastDim<Other>` 用于编译期计算两个维度类型广播后的输出维度类型。该 trait 定义在`dimension`模块中，由广播/运算符重载层消费（参见 `11-math.md`、`15-broadcast.md` 与 `19-overload.md`）。
 

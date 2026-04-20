@@ -17,7 +17,6 @@
 | ------------------- | ----------------------------------------------------------------- |
 | Element trait       | 基础约束（Copy+Clone+...）+ zero()/one()                          |
 | Numeric trait       | Element + Add+Sub+Mul+Div+Neg + conjugate（通用数值运算能力标记） |
-| Signum trait        | 为 `i32`/`i64`/`f32`/`f64` 提供统一 `signum()` 能力               |
 | RealScalar trait    | Numeric + PartialOrd + abs/sqrt/sin/exp/ln/floor/ceil + NaN 检测  |
 | ComplexScalar trait | Numeric + re/im/norm（复数专用只读能力）                          |
 | 基础类型实现        | 为 i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool 实现上述 trait  |
@@ -27,7 +26,6 @@
 | ------------------- | --------------------------------------------------------------- |
 | Element trait       | -                                                               |
 | Numeric trait       | 运算实现本身（委托给 core::ops）                                |
-| Signum trait        | 复数 signum 或开放类型扩展                                      |
 | RealScalar trait    | 复数运算                                                        |
 | ComplexScalar trait | 复数类型定义（在 `src/complex/` 模块，参见 `04-complex.md` §5） |
 | 基础类型实现        | 类型转换逻辑（在 `src/convert/` 模块）                          |
@@ -195,46 +193,7 @@ pub trait Numeric:
 
 **整数算术契约**：`Add/Sub/Mul/Div/Neg` 只表达运算符可用性，不单独定义 Xenon 的溢出语义。凡需求文档要求“溢出/除零/结果不可表示即 panic”的整数运算路径，具体模块必须通过 checked 标量原语或等价显式检查落实，不得仅凭原生运算符 trait 假定语义成立。
 
-### 5.3 Signum trait
-
-```rust,ignore
-/// Unified signum capability for the sealed signed scalar set.
-///
-/// Implemented only for `i32`, `i64`, `f32`, and `f64`.
-/// Integer implementations return `-1`, `0`, or `1`.
-/// Floating-point implementations follow the standard-library signum semantics.
-pub(crate) trait Signum: Numeric + Sealed {
-    fn signum(self) -> Self;
-}
-
-impl Signum for i32 {
-    #[inline]
-    fn signum(self) -> Self { i32::signum(self) }
-}
-
-impl Signum for i64 {
-    #[inline]
-    fn signum(self) -> Self { i64::signum(self) }
-}
-
-impl Signum for f32 {
-    #[inline]
-    fn signum(self) -> Self { f32::signum(self) }
-}
-
-impl Signum for f64 {
-    #[inline]
-    fn signum(self) -> Self { f64::signum(self) }
-}
-```
-
-- `Signum` 仅作为 crate 内部 sealed trait 使用，不纳入稳定公开 API。
-- 实现集合固定为 `i32`、`i64`、`f32`、`f64`。
-- 整数通过 `-1/0/1` 语义实现。
-- 浮点继续服从 `RealScalar::signum()` 的标准库语义。
-- `Complex<T>` 与 `bool` 不实现该能力。
-
-### 5.4 RealScalar trait
+### 5.3 RealScalar trait
 
 ```rust,ignore
 /// Real-valued scalar trait.
@@ -269,7 +228,7 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
 - 常量访问器与 NaN/无穷辅助逻辑降为 crate 内部扩展 trait，避免把实现便利误暴露为公开契约。
 - `RealScalar::signum()` 明确跟随标准库 `f32::signum()` / `f64::signum()` 语义。有限非 NaN 输入返回 `1.0` 或 `-1.0`，其中 `signum(+0.0) == 1.0`、`signum(-0.0) == -1.0`，`NaN` 传播为 `NaN`。`11-math.md` 中张量级 `signum()` 的浮点语义以此 trait 契约为权威基线。
 
-### 5.5 ComplexScalar trait
+### 5.4 ComplexScalar trait
 
 ```rust,ignore
 /// Complex scalar trait.
@@ -292,7 +251,7 @@ pub trait ComplexScalar: Numeric + Sealed {
 - `Numeric::conjugate()` 是全体数值元素唯一的统一共轭入口：实数路径返回恒等，复数路径返回数学共轭。
 - `ComplexScalar` 只保留 `re` / `im` / `norm` 这类复数专用能力，不再重复声明 `conjugate()`。
 
-### 5.6 OrderedCompareElement trait
+### 5.5 OrderedCompareElement trait
 
 ```rust,ignore
 /// Ordered comparison element trait.
@@ -311,7 +270,7 @@ impl OrderedCompareElement for f64 {}
 - `OrderedCompareElement` 需要作为公开 sealed trait 暴露，因为 `11-math` 的公开比较 API（`lt` / `gt`）直接使用它作为元素类型约束；但其实现集合仍限制为 Xenon 当前支持的有序比较元素类型。
 - `OrderedCompareElement` 用于把有序比较能力显式收敛到 `i32`、`i64`、`f32`、`f64`。该 trait 虽然为配合 `11-math` 的公开 `lt` / `gt` API 而公开暴露，但仍通过 `Sealed` 保持 sealed，只允许 Xenon 为这四种类型提供实现。
 
-### 5.7 支持的类型与 trait 矩阵
+### 5.6 支持的类型与 trait 矩阵
 
 | 类型           | Element | Numeric | RealScalar | ComplexScalar |
 | -------------- | :-----: | :-----: | :--------: | :-----------: |
@@ -327,9 +286,9 @@ impl OrderedCompareElement for f64 {}
 - 不支持 `usize`、u8/u16/u32/i8/i16 等其他整数类型。
 - `usize` 仅作为索引和形状元数据使用。
 
-### 5.8 Sealed trait 策略
+### 5.7 Sealed trait 策略
 
-`Element`、`Numeric`、`RealScalar`、`ComplexScalar` 全部通过共享的 `private::Sealed` 基础设施实现 sealed trait 模式。下游 crate 只能使用 Xenon 已声明的元素类型，不能为自定义类型补充这些 trait 实现。
+`Element`、`Numeric`、`RealScalar`、`ComplexScalar`、`CastTo<T>`、 `OrderedCompareElement` 全部通过共享的 `private::Sealed` 基础设施实现 sealed trait 模式。下游 crate 只能使用 Xenon 已声明的元素类型，不能为自定义类型补充这些 trait 实现。
 
 ```rust,ignore
 // src/element/mod.rs
@@ -347,42 +306,7 @@ impl Sealed for Complex<f64> {}
 impl Sealed for bool {}
 ```
 
-### 5.9 Good / Bad 对比示例
-
-```rust,ignore
-// Good - Numeric constraint automatically excludes bool and non-Numeric types
-fn sum<'a, A, D>(tensor: &TensorView<'a, A, D>) -> A
-where
-    A: Numeric,
-    D: Dimension,
-{
-    tensor.iter().fold(A::zero(), |acc, &x| acc + x)
-}
-// sum(&bool_tensor);   // Compile error: bool does not satisfy Numeric
-
-// Bad - Element constraint cannot exclude non-arithmetic element types
-fn sum_bad<'a, A, D>(tensor: &TensorView<'a, A, D>) -> A
-where
-    A: Element,
-    D: Dimension,
-{
-    // Cannot use + operator, Element has no Add bound
-    todo!()
-}
-```
-
-```rust,ignore
-// Good - explicit type conversion, no automatic promotion
-let a: Tensor<f64, Ix2> = Tensor::zeros((3, 4));
-let b: Tensor<i32, Ix2> = Tensor::zeros((3, 4));
-let b64 = b.cast::<f64>()?;
-let c = &a + &b64;
-
-// Bad - expecting automatic type promotion (not supported in Xenon)
-// let c = &a + &b;  // Compile error: no matching impl for f64 + i32
-```
-
-### 5.10 CastTo<T> trait
+### 5.8 CastTo<T> trait
 
 `CastTo<T>` 的 trait 定义位于 `src/element/mod.rs`，具体 impl 统一放在 `src/convert/cast.rs`；`convert/` 负责消费该 trait 并承载受支持转换矩阵的实现（参见 `21-type.md §5.1`），不在其他模块重复定义或分散实现。
 
@@ -412,7 +336,7 @@ pub trait CastTo<T>: Element {
 - `bool` 不为任何目标类型实现 `CastTo<T>`。
 - `Complex<T> -> Real` 的条件成功语义、受支持矩阵与 `XenonError::TypeConversion` 字段约束，统一以 `21-type.md §5.3`、`§6.1` 以及 `26-error.md §4.3` 为准。
 
-### 5.11 Checked arithmetic traits（整数溢出检测）
+### 5.9 Checked arithmetic traits
 
 `CheckedAdd` 为整数类型提供 checked 加法，供 `sum` 归约操作在整数溢出时 panic（参见 `13-reduction.md §5.1`）。
 
@@ -497,6 +421,41 @@ impl CheckedNeg for i64 {
 - 此 trait 为内部实现辅助，不纳入稳定公开 API 面。具体可见性由实现决定。
 - `CheckedAdd` 仅覆盖整数加法（`i32`/`i64`），用于归约等必须精确检测溢出的路径。
 - 当前元素层统一提供 `CheckedAdd` / `CheckedSub` / `CheckedMul` / `CheckedNeg` 四类整数 checked 原语，供 `math`、`matrix`、`reduction` 等模块复用；除法、余数与更高阶组合检查仍由具体运算模块在实现层完成（参见 `11-math.md`、`12-matrix.md`）。
+
+### 5.10 Good / Bad 对比示例
+
+```rust,ignore
+// Good - Numeric constraint automatically excludes bool and non-Numeric types
+fn sum<'a, A, D>(tensor: &TensorView<'a, A, D>) -> A
+where
+    A: Numeric,
+    D: Dimension,
+{
+    tensor.iter().fold(A::zero(), |acc, &x| acc + x)
+}
+// sum(&bool_tensor);   // Compile error: bool does not satisfy Numeric
+
+// Bad - Element constraint cannot exclude non-arithmetic element types
+fn sum_bad<'a, A, D>(tensor: &TensorView<'a, A, D>) -> A
+where
+    A: Element,
+    D: Dimension,
+{
+    // Cannot use + operator, Element has no Add bound
+    todo!()
+}
+```
+
+```rust,ignore
+// Good - explicit type conversion, no automatic promotion
+let a: Tensor<f64, Ix2> = Tensor::zeros((3, 4));
+let b: Tensor<i32, Ix2> = Tensor::zeros((3, 4));
+let b64 = b.cast::<f64>()?;
+let c = &a + &b64;
+
+// Bad - expecting automatic type promotion (not supported in Xenon)
+// let c = &a + &b;  // Compile error: no matching impl for f64 + i32
+```
 
 ---
 
@@ -806,12 +765,12 @@ Upstream modules declare element bounds
 
 ## 10. 错误处理与语义边界
 
-| 项目              | 内容                                                                                                                                                |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | 有损 `CastTo` 默认返回可恢复错误；`Complex<T> -> Real` 在虚部非零时也返回可恢复错误；对外统一使用 `XenonError::TypeConversion { source_type, target_type, reason, element_index }` |
-| Panic             | 本模块 trait 方法本身不以 panic 作为常规错误语义；若底层标准库数学实现遇到其自身前置条件，遵循标准库行为                                            |
-| 路径一致性        | scalar 路径必须与普通标量实现一致；SIMD：不适用；parallel：不适用                                                                                   |
-| 容差边界          | 浮点相关比较遵循 IEEE 754 与各测试中显式容差；整数与布尔类型不适用                                                                                  |
+| 项目              | 内容                                                                                                                           |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Recoverable error | 有损 `CastTo` 默认返回可恢复错误；`Complex<T> -> Real` 在虚部非零时也返回可恢复错误；对外统一使用 `XenonError::TypeConversion` |
+| Panic             | 本模块 trait 方法本身不以 panic 作为常规错误语义；若底层标准库数学实现遇到其自身前置条件，遵循标准库行为                       |
+| 路径一致性        | scalar 路径必须与普通标量实现一致；SIMD：不适用；parallel：不适用                                                              |
+| 容差边界          | 浮点相关比较遵循 IEEE 754 与各测试中显式容差；整数与布尔类型不适用                                                             |
 
 ---
 
