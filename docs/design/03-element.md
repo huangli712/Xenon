@@ -308,9 +308,10 @@ impl OrderedCompareElement for f32 {}
 impl OrderedCompareElement for f64 {}
 ```
 
-> **设计决策：** `OrderedCompareElement` 用于把有序比较能力显式收敛到 `i32`、`i64`、`f32`、`f64`。该 trait 虽然为配合 `11-math` 的公开 `lt` / `gt` API 而公开暴露，但仍通过 `Sealed` 保持 sealed，只允许 Xenon 为这四种类型提供实现，从而避免 `bool` 或 `Complex<T>` 因泛化的 `PartialOrd` 约束误入公开比较 API。
+- `OrderedCompareElement` 需要作为公开 sealed trait 暴露，因为 `11-math` 的公开比较 API（`lt` / `gt`）直接使用它作为元素类型约束；但其实现集合仍限制为 Xenon 当前支持的有序比较元素类型。
+- `OrderedCompareElement` 用于把有序比较能力显式收敛到 `i32`、`i64`、`f32`、`f64`。该 trait 虽然为配合 `11-math` 的公开 `lt` / `gt` API 而公开暴露，但仍通过 `Sealed` 保持 sealed，只允许 Xenon 为这四种类型提供实现。
 
-### 5.5 支持的类型与 trait 矩阵
+### 5.7 支持的类型与 trait 矩阵
 
 | 类型           | Element | Numeric | RealScalar | ComplexScalar |
 | -------------- | :-----: | :-----: | :--------: | :-----------: |
@@ -322,11 +323,11 @@ impl OrderedCompareElement for f64 {}
 | `Complex<f64>` |    ✓    |    ✓    |     ✗      |       ✓       |
 | `bool`         |    ✓    |    ✗    |     ✗      |       ✗       |
 
-> **OrderedCompareElement 适用类型：** `i32`、`i64`、`f32`、`f64`。
+- 仅支持上表列出的 7 种元素类型。
+- 不支持 `usize`、u8/u16/u32/i8/i16 等其他整数类型。
+- `usize` 仅作为索引和形状元数据使用。
 
-> **Xenon 特定约束：** 仅支持上表列出的 7 种元素类型。不支持 `usize`、u8/u16/u32/i8/i16 等其他整数类型；`usize` 仅作为索引和形状元数据使用。
-
-### 5.6 BoolElement trait
+### 5.8 BoolElement trait
 
 > **公开性说明：** 以下 trait 为内部实现辅助，不纳入稳定公开 API 面。具体可见性由实现决定。
 
