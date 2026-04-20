@@ -1,8 +1,10 @@
 # 维度系统模块设计
 
-> 文档编号: 02 | 模块: `src/dimension/` | 阶段: Phase 1
-> 前置文档: `00-coding.md`, `01-architecture.md`
-> 需求参考: `需求说明书 §3`、`需求说明书 §16`、`需求说明书 §17`
+> 文档编号: 02
+> 模块目录: src/dimension/
+> 任务阶段: Phase 1
+> 前置文档: 00-coding.md, 01-architecture.md
+> 需求参考: 需求说明书 §3、§16、§17
 > 范围声明: 范围内
 
 ---
@@ -11,17 +13,32 @@
 
 ### 1.1 职责边界
 
-| 职责                | 包含                                                                          | 不包含                                                             |
-| ------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| 静态维度类型        | `Ix0`-`Ix6` 元组结构体，编译期确定维度数                                      | 运行时动态维度选择                                                 |
-| 动态维度类型        | `IxDyn`（`Vec<usize>`），运行时维度数                                         | —                                                                  |
-| Dimension trait     | 维度形状与 rank 接口（ndim/slice/checked/checked_size/into_dyn/try_from_dyn） | stride 计算、logical-first pointer、布局标志计算                   |
-| IntoDimension trait | 从元组、数组、切片、Vec 构造维度                                              | 用户自定义维度源                                                   |
-| Axis 类型           | 轴标记新类型（index/checked_next/next/prev/is_first/is_last）                 | 轴上的切片/迭代操作（由 tensor 方法提供）                          |
-| RemoveAxis trait    | 移除指定轴降维（Ix1→Ix0, ..., Ix6→Ix5, IxDyn→IxDyn）                          | 不负责把标量轴错误建模为编译期拒绝；零维场景统一走运行时可恢复错误 |
-| 维度互转            | 静态→动态（总是成功）、动态→静态（需维度匹配）                                | 隐式维度转换                                                       |
-| 形状元数据          | 维度层仅保存无符号形状与 rank，供 layout/tensor 读取                          | stride 元数据及其合法性判定                                        |
-| 内存分配            | 为 `IxDyn` 动态维度与维度转换进行少量元数据分配                               | 不负责张量数据分配                                                 |
+**包含**
+
+| 职责                | 说明                                                                        |
+| ------------------- | --------------------------------------------------------------------------- |
+| 静态维度类型        | `Ix0`-`Ix6` 元组结构体，编译期确定维度数                                    |
+| 动态维度类型        | `IxDyn`（`Vec<usize>`），运行时维度数                                       |
+| Dimension trait     | 维度形状与 rank 接口（ndim/slice/checked/checked_size/into_dyn/try_from_dyn） |
+| IntoDimension trait | 从元组、数组、切片、Vec 构造维度                                            |
+| Axis 类型           | 轴标记新类型（index/checked_next/next/prev/is_first/is_last）               |
+| RemoveAxis trait    | 移除指定轴降维（Ix1→Ix0, ..., Ix6→Ix5, IxDyn→IxDyn）                       |
+| 维度互转            | 静态→动态（总是成功）、动态→静态（需维度匹配）                              |
+| 形状元数据          | 维度层仅保存无符号形状与 rank，供 layout/tensor 读取                        |
+| 内存分配            | 为 `IxDyn` 动态维度与维度转换进行少量元数据分配                             |
+
+**不包含**
+
+| 职责                | 说明                                                                   |
+| ------------------- | ---------------------------------------------------------------------- |
+| 静态维度类型        | 运行时动态维度选择                                                     |
+| Dimension trait     | stride 计算、logical-first pointer、布局标志计算                       |
+| IntoDimension trait | 用户自定义维度源                                                       |
+| Axis 类型           | 轴上的切片/迭代操作（由 tensor 方法提供）                              |
+| RemoveAxis trait    | 标量轴错误建模为编译期拒绝；零维场景统一走运行时可恢复错误             |
+| 维度互转            | 隐式维度转换                                                           |
+| 形状元数据          | stride 元数据及其合法性判定                                            |
+| 内存分配            | 张量数据分配                                                           |
 
 ### 1.2 设计原则
 
@@ -32,18 +49,6 @@
 | 封闭集合   | `Dimension` trait 继承 `Sealed`，禁止外部实现 |
 | 最小依赖   | 仅依赖 `error` 模块和 `private::Sealed`       |
 | `std` only | 本模块依赖 `std` 环境，不讨论 `no_std`        |
-
-### 1.3 在架构中的位置
-
-```
-Dependency layers:
-L0: error, private
-L1: dimension  ← current module
-L2: layout (depends on dimension)
-L3: storage (depends only on core/alloc)
-L4: tensor (depends on storage, dimension)
-L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
-```
 
 ---
 
