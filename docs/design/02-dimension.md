@@ -1,8 +1,10 @@
 # 维度系统模块设计
 
-> 文档编号: 02 | 模块: `src/dimension/` | 阶段: Phase 1
-> 前置文档: `00-coding.md`, `01-architecture.md`
-> 需求参考: `需求说明书 §3`、`需求说明书 §16`、`需求说明书 §17`
+> 文档编号: 02
+> 模块目录: src/dimension/
+> 任务阶段: Phase 1
+> 前置文档: 00-coding.md, 01-architecture.md
+> 需求参考: 需求说明书 §3, §11, §14, §16 - §18
 > 范围声明: 范围内
 
 ---
@@ -11,17 +13,29 @@
 
 ### 1.1 职责边界
 
-| 职责                | 包含                                                                          | 不包含                                                             |
-| ------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| 静态维度类型        | `Ix0`-`Ix6` 元组结构体，编译期确定维度数                                      | 运行时动态维度选择                                                 |
-| 动态维度类型        | `IxDyn`（`Vec<usize>`），运行时维度数                                         | —                                                                  |
-| Dimension trait     | 维度形状与 rank 接口（ndim/slice/checked/checked_size/into_dyn/try_from_dyn） | stride 计算、logical-first pointer、布局标志计算                   |
-| IntoDimension trait | 从元组、数组、切片、Vec 构造维度                                              | 用户自定义维度源                                                   |
-| Axis 类型           | 轴标记新类型（index/checked_next/next/prev/is_first/is_last）                 | 轴上的切片/迭代操作（由 tensor 方法提供）                          |
-| RemoveAxis trait    | 移除指定轴降维（Ix1→Ix0, ..., Ix6→Ix5, IxDyn→IxDyn）                          | 不负责把标量轴错误建模为编译期拒绝；零维场景统一走运行时可恢复错误 |
-| 维度互转            | 静态→动态（总是成功）、动态→静态（需维度匹配）                                | 隐式维度转换                                                       |
-| 形状元数据          | 维度层仅保存无符号形状与 rank，供 layout/tensor 读取                          | stride 元数据及其合法性判定                                        |
-| 内存分配            | 为 `IxDyn` 动态维度与维度转换进行少量元数据分配                               | 不负责张量数据分配                                                 |
+| 职责                | 包含                                                  |
+| ------------------- | ----------------------------------------------------- |
+| 静态维度类型        | `Ix0`-`Ix6` 元组结构体，编译期确定维度数              |
+| 动态维度类型        | `IxDyn`（`Vec<usize>`），运行时维度数                 |
+| Dimension trait     | 维度形状与 rank 接口（ndim/slice/checked/等）         |
+| IntoDimension trait | 从元组、数组、切片、Vec 构造维度                      |
+| Axis 类型           | 轴标记新类型（index/checked_next/next/prev/等）       |
+| RemoveAxis trait    | 移除指定轴降维（Ix1→Ix0, ..., Ix6→Ix5, IxDyn→IxDyn）  |
+| 维度互转            | 静态→动态（总是成功）、动态→静态（需维度匹配）        |
+| 形状元数据          | 维度层仅保存无符号形状与 rank，供 layout/tensor 读取  |
+| 内存分配            | 为 `IxDyn` 动态维度与维度转换进行少量元数据分配       |
+
+| 职责                | 不包含                                                      |
+| ------------------- | ----------------------------------------------------------- |
+| 静态维度类型        | 运行时动态维度选择                                          |
+| 动态维度类型        | -                                                           |
+| Dimension trait     | stride 计算、logical-first pointer、布局标志计算            |
+| IntoDimension trait | 用户自定义维度源                                            |
+| Axis 类型           | 轴上的切片/迭代操作（由 tensor 方法提供）                   |
+| RemoveAxis trait    | 标量轴错误建模为编译期拒绝；零维场景统一走运行时可恢复错误  |
+| 维度互转            | 隐式维度转换                                                |
+| 形状元数据          | stride 元数据及其合法性判定                                 |
+| 内存分配            | 张量数据分配                                                |
 
 ### 1.2 设计原则
 
@@ -33,28 +47,16 @@
 | 最小依赖   | 仅依赖 `error` 模块和 `private::Sealed`       |
 | `std` only | 本模块依赖 `std` 环境，不讨论 `no_std`        |
 
-### 1.3 在架构中的位置
-
-```
-Dependency layers:
-L0: error, private
-L1: dimension  ← current module
-L2: layout (depends on dimension)
-L3: storage (depends only on core/alloc)
-L4: tensor (depends on storage, dimension)
-L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
-```
-
 ---
 
 ## 2. 需求映射与范围约束
 
-| 项目     | 内容                                                                                                                                                                                                                                                                                                                                |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 需求映射 | `需求说明书 §3`、`需求说明书 §11`、`需求说明书 §14`、`需求说明书 §16`、`需求说明书 §17`、`需求说明书 §18`；其中公开 sealed trait `BroadcastDim` 覆盖 `需求说明书 §16` 广播语义，内部 helper `Reverse` 覆盖 `需求说明书 §17` 转置语义，零维轴错误/降维输出/索引轴合法性分别对应 `需求说明书 §11`、`需求说明书 §14`、`需求说明书 §18` |
-| 范围内   | 静态/动态维度类型、`Dimension`/`IntoDimension`/`RemoveAxis`、轴元数据                                                                                                                                                                                                                                                               |
-| 范围外   | 内存分配、布局标志计算、张量运算、C-order 支持                                                                                                                                                                                                                                                                                      |
-| 非目标   | 引入开放维度扩展机制、负步长维度模型或新的存储后端                                                                                                                                                                                                                                                                                  |
+| 项目     | 内容                                                                   |
+| -------- | ---------------------------------------------------------------------- |
+| 需求映射 | 需求说明书 §3、§11、§14、§16 - §18                                     |
+| 范围内   | 静态/动态维度类型、`Dimension`/`IntoDimension`/`RemoveAxis`、轴元数据  |
+| 范围外   | 内存分配、布局标志计算、张量运算、C-order 支持                         |
+| 非目标   | 引入开放维度扩展机制、负步长维度模型或新的存储后端                     |
 
 ---
 
@@ -63,13 +65,11 @@ L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format
 ```
 src/dimension/
 ├── mod.rs             # Dimension trait definition, module exports, MAX_DIMENSION constant
-├── static.rs     # Ix0, Ix1, ..., Ix6 static dimensions and Dimension impls
+├── static.rs          # Ix0, Ix1, ..., Ix6 static dimensions and Dimension impls
 ├── dynamic.rs         # IxDyn dynamic dimension and Dimension impl
-├── into.rs  # IntoDimension trait and its impls
+├── into.rs            # IntoDimension trait and its impls
 └── axes.rs            # Axis newtype and axis helper methods
 ```
-
-单目录设计：维度类型之间高度相关（互转、公共 trait），集中管理减少耦合复杂度。
 
 ---
 
@@ -85,12 +85,12 @@ src/dimension/
 
 ### 4.2 依赖精确到类型级
 
-| 来源模块  | 使用的类型/trait                                                                                                      |
-| --------- | --------------------------------------------------------------------------------------------------------------------- |
-| `error`   | `XenonError::DimensionMismatch`、`XenonError::InvalidAxis`、`XenonError::InvalidShape`、`XenonError::InvalidArgument` |
-| `private` | `Sealed`（`Dimension` trait 的 supertrait）                                                                           |
+| 来源模块  | 使用的类型/trait                           |
+| --------- | ------------------------------------------ |
+| `error`   | `XenonError::DimensionMismatch` 等         |
+| `private` | `Sealed`（`Dimension` trait 的 supertrait）|
 
-### 4.2a 依赖合法性与新增依赖说明
+### 4.3 依赖合法性与新增依赖说明
 
 | 项目           | 结论                       |
 | -------------- | -------------------------- |
@@ -98,10 +98,9 @@ src/dimension/
 | 合法性结论     | 符合需求说明书最小依赖限制 |
 | 替代方案       | 不适用                     |
 
-### 4.3 依赖方向声明
+### 4.4 依赖方向声明
 
-> **依赖方向：单向向上。** `dimension/` 仅消费 `error` 和 `private`，不被它们反向依赖。
-> 被下游模块消费：`layout`（参见 `06-layout.md` §5）、`tensor`（参见 `07-tensor.md` §5）、`shape`（参见 `16-shape.md` §5）、`iter`（参见 `10-iterator.md` §5）、`math`（参见 `11-math.md` §5）、`index`（参见 `17-indexing.md` §5）。`storage` 不消费 `Dimension`；它只持有底层连续缓冲区。
+**依赖方向：单向向上。** `dimension/` 仅消费 `error` 和 `private`，不被它们反向依赖。
 
 ---
 
@@ -170,48 +169,7 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
 }
 ```
 
-> **公开面收缩说明：** `Dimension` 稳定公开面仅保留 `ndim`、`slice`、`checked_size`、`checked`、`into_dyn`、`try_from_dyn`、`try_from_slice` 与只读 `axis` 查询等核心契约；以下可变访问与便捷遍历能力不要求保留在稳定主 trait 中。
-
-```rust,ignore
-/// Internal/helper extension methods for dimension manipulation.
-///
-/// These methods may be provided via an extension trait, `pub(crate)` helper,
-/// or standalone functions. They are not part of Xenon's stable public API surface.
-pub(crate) trait DimensionExt: Dimension {
-    fn slice_mut(&mut self) -> &mut [usize];
-
-    fn set_axis(&mut self, axis: Axis, value: usize) -> Result<(), XenonError> {
-        let ndim = self.ndim();
-        let shape = self.slice().to_vec();
-        let slot = self.slice_mut().get_mut(axis.0).ok_or(XenonError::InvalidAxis {
-            operation: "DimensionExt::set_axis".into(),
-            axis: axis.index(),
-            ndim,
-            shape,
-        })?;
-        *slot = value;
-        Ok(())
-    }
-
-    fn last_axis(&self) -> Option<Axis> {
-        self.ndim().checked_sub(1).map(Axis)
-    }
-
-    fn first_axis(&self) -> Option<Axis> {
-        (self.ndim() > 0).then_some(Axis(0))
-    }
-
-    fn contains_zero(&self) -> bool {
-        self.slice().iter().any(|&d| d == 0)
-    }
-
-    fn iter(&self) -> core::slice::Iter<'_, usize> {
-        self.slice().iter()
-    }
-}
-```
-
-> **说明：** 以下方法为内部辅助，可考虑通过扩展 trait 或独立函数提供：`slice_mut`、`set_axis`、`iter`、`first_axis`、`last_axis`、`contains_zero`。
+**公开面收缩说明：** `Dimension` 稳定公开面仅保留 `ndim`、`slice`、`checked_size`、`checked`、`into_dyn`、`try_from_dyn`、`try_from_slice` 与只读 `axis` 查询等核心契约。
 
 ### 5.2 静态维度类型 Ix0-Ix6
 
@@ -269,9 +227,9 @@ pub struct Ix5(pub usize, pub usize, pub usize, pub usize, pub usize);
 pub struct Ix6(pub usize, pub usize, pub usize, pub usize, pub usize, pub usize);
 ```
 
-> **说明：** `MAX_DIMENSION` 是哨兵值，表示动态维度类型 `IxDyn` 不设人工上限，而非表示系统支持的最大维度数。
+**说明：** `MAX_DIMENSION` 是哨兵值，表示动态维度类型 `IxDyn` 不设人工上限，而非表示系统支持的最大维度数。
 
-#### Ix0 特殊语义
+### 5.3 Ix0 特殊语义
 
 | 属性             | 值        | 说明                |
 | ---------------- | --------- | ------------------- |
@@ -280,9 +238,9 @@ pub struct Ix6(pub usize, pub usize, pub usize, pub usize, pub usize, pub usize)
 | `checked_size()` | `Ok(1)`   | 一个元素（标量）    |
 | 内存大小         | `0` bytes | ZST，编译器完全消除 |
 
-> **Ix0 轴语义警告：** `first_axis()` / `last_axis()` 在本设计中统一返回 `Option<Axis>`；对 `Ix0` 必须返回 `None`，以避免把“无轴”误判为“存在一个长度为 1 的轴”。
+### 5.4 Ix1-Ix6 实现模式
 
-#### Ix1-Ix6 实现模式（以 Ix3 为例）
+以 Ix3 为例：
 
 ```rust,ignore
 impl Dimension for Ix3 {
@@ -359,21 +317,9 @@ impl Dimension for Ix3 {
 
     // Remaining helper methods follow the same pattern.
 }
-
-impl DimensionExt for Ix3 {
-    #[inline]
-    fn slice_mut(&mut self) -> &mut [usize] {
-        // SAFETY (§8.2): Same argument as `slice()`: `#[repr(C)]` guarantees the
-        // three `usize` fields are laid out contiguously with compatible alignment,
-        // so forming a mutable slice over exactly 3 elements is sound.
-        unsafe {
-            core::slice::from_raw_parts_mut(self as *mut Self as *mut usize, 3)
-        }
-    }
-}
 ```
 
-### 5.3 动态维度 IxDyn
+### 5.5 动态维度 IxDyn
 
 ```rust,ignore
 /// Dynamic dimension type. Dimension count determined at runtime.
@@ -450,13 +396,9 @@ impl Dimension for IxDyn {
 
     // ...
 }
-
-impl DimensionExt for IxDyn {
-    fn slice_mut(&mut self) -> &mut [usize] { &mut self.dims }
-}
 ```
 
-### 5.4 IntoDimension trait
+### 5.6 IntoDimension trait
 
 ```rust,ignore
 /// Trait for converting types into dimension types.
@@ -497,9 +439,9 @@ impl IntoDimension for [usize; 6] { type Dim = Ix6; /* ... */ }
 // Dynamic arrays remain explicitly dynamic via slices/Vec/IxDyn.
 ```
 
-> **固定数组范围说明：** 固定数组 `[usize; N]` 当 `N > 6` 时须先转为切片或 `Vec`，再通过 `IxDyn` 构造。当前版本仅支持 `[usize; 0]` 到 `[usize; 6]` 的直接转换。
+**固定数组范围说明：** 固定数组 `[usize; N]` 当 `N > 6` 时须先转为切片或 `Vec`，再通过 `IxDyn` 构造。当前版本仅支持 `[usize; 0]` 到 `[usize; 6]` 的直接转换。
 
-### 5.5 Axis 新类型
+### 5.7 Axis 类型
 
 ```rust
 /// Axis marker type. Provides type safety over raw `usize`.
@@ -517,15 +459,13 @@ impl Axis {
     #[inline]
     pub fn checked_next(self) -> Option<Self> { self.0.checked_add(1).map(Axis) }
 
-    #[inline]
-    /// Caller must guarantee `self.0 < usize::MAX`.
+    /// Returns the next axis, or `None` if `self.0 == usize::MAX`.
     ///
-    /// This helper is intentionally checked: wraparound is treated as a bug and
-    /// panics in all build modes. Use `checked_next()` if overflow is part of the
-    /// normal control flow.
-    pub fn next(self) -> Self {
-        Axis(self.0.checked_add(1).expect("Axis::next overflow"))
-    }
+    /// Equivalent to `checked_next()`; both share the same non-panicking
+    /// contract. Prefer `next()` in iterator-like contexts and
+    /// `checked_next()` when the name makes intent clearer.
+    #[inline]
+    pub fn next(self) -> Option<Self> { self.0.checked_add(1).map(Axis) }
 
     #[inline]
     pub fn prev(self) -> Option<Self> { self.0.checked_sub(1).map(Axis) }
@@ -538,11 +478,10 @@ impl Axis {
 }
 ```
 
-> **说明：** 当 `ndim == 0`（标量、无轴）时，`is_last()` 返回 `false`。这一定义避免了把“无轴”误判为“最后一轴”，调用方若在轴语义上区分标量场景，应先检查 `ndim > 0`。
+- 当 `ndim == 0`（标量、无轴）时，`is_last()` 返回 `false`。这一定义避免了把“无轴”误判为“最后一轴”，调用方若在轴语义上区分标量场景，应先检查 `ndim > 0`。
+- `next()` 与 `checked_next()` 行为完全一致，均通过 `checked_add(1)` 返回 `Option<Axis>`，在 `axis == usize::MAX` 时返回 `None`。两者均不 panic。
 
-> **补充说明：** `checked_next()` 通过 `checked_add(1)` 返回 `Option<Axis>`，在 `axis == usize::MAX` 时返回 `None`。`next()` 仍保留为快捷方法，但内部同样使用 checked 加法；若调用方未先保证 `axis < usize::MAX`，则统一 panic，而不是在 release 构建中静默回绕。
-
-### 5.6 RemoveAxis trait
+### 5.8 RemoveAxis trait
 
 ```rust,ignore
 /// Trait for dimension types that support removing an axis.
@@ -553,7 +492,7 @@ impl Axis {
 ///
 /// Used by:
 /// - `AxisIter` (see `10-iterator.md §5.2`): `Item = TensorView<'a, A, D::Smaller>`
-/// - `sum_axis` (see `13-reduction.md §5.2`): result dimension is `D::Smaller`
+/// - `sum_axis` (see `13-reduction.md §5.1`): result dimension is `D::Smaller`
 pub trait RemoveAxis: Dimension {
     /// The dimension type with one fewer axis.
     type Smaller: Dimension;
@@ -644,13 +583,11 @@ impl RemoveAxis for IxDyn {
 }
 ```
 
-> **公开 API 约束：** `RemoveAxis` 是维度层内部/泛型辅助能力，公开张量方法不直接把该 trait 暴露给用户；对 `Ix0` 的移轴请求统一在运行时返回 `XenonError::InvalidAxis`，而不是通过公开 API 暴露 `RemoveAxis` 细节或要求用户理解零维 `Smaller` 类型。
+- `RemoveAxis` 是维度层内部/泛型辅助能力，公开张量方法不直接把该 trait 暴露给用户。
+- `RemoveAxis` 作为独立 trait 而非 `Dimension` 的关联类型。它负责描述“可移除一条轴后的结果维度类型”，但零维轴操作不应依赖编译期拒绝。标量场景若进入统一轴操作入口，仍须返回运行时可恢复错误。
+- 对 `Ix0` 的移轴请求统一在运行时返回 `XenonError::InvalidAxis`，而不是通过公开 API 暴露 `RemoveAxis` 细节或要求用户理解零维 `Smaller` 类型。
 
-> **设计决策：** `RemoveAxis` 作为独立 trait 而非 `Dimension` 的关联类型。
-> 它负责描述“可移除一条轴后的结果维度类型”，但零维轴操作不应依赖编译期拒绝；
-> 标量场景若进入统一轴操作入口，仍须返回运行时可恢复错误。
-
-### 5.7 Sealed trait 策略
+### 5.9 Sealed trait 策略
 
 ```rust,ignore
 // src/private.rs
@@ -666,48 +603,18 @@ impl Sealed for Ix6 {}
 impl Sealed for IxDyn {}
 ```
 
-### 5.8 Good / Bad 对比示例
+### 5.10 BroadcastDim trait
 
-```rust,ignore
-// Good - unified interface via IntoDimension, clear type inference
-fn create_tensor<A, Sh>(shape: Sh) -> Tensor<A, Sh::Dim>
-where
-    Sh: IntoDimension,
-{
-    let dim = shape.into_dimension();
-    // ...
-}
-let t = create_tensor::<f64, _>((3, 4));     // Ix2
-let t = create_tensor::<f64, _>(&[2, 3, 4]); // IxDyn
+`BroadcastDim<Other>` 用于编译期计算两个维度类型广播后的输出维度类型。该 trait 定义在`dimension`模块中，由广播/运算符重载层消费（参见 `11-math.md`、`15-broadcast.md` 与 `19-overload.md`）。
 
-// Bad - hardcoded dimension types, not reusable
-fn create_tensor_2d<A>(rows: usize, cols: usize) -> Tensor<A, Ix2> { /* ... */ }
-fn create_tensor_3d<A>(d1: usize, d2: usize, d3: usize) -> Tensor<A, Ix3> { /* ... */ }
-// Every dimension count requires a new function
-```
+**实现建议：** 
 
-```rust,ignore
-// Good - use Result for dimension conversion
-let dim: Ix3 = Ix3::try_from_dyn(dyn_dim)?;
-
-// Bad - unwrap a fallible conversion and turn a recoverable error into a panic
-let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
-```
-
----
-
-### 5.9 BroadcastDim trait（广播层消费）
-
-`BroadcastDim<Other>` 用于编译期计算两个维度类型广播后的输出维度类型。  
-该 trait 由广播/运算符重载层消费（参见 `11-math.md`、`15-broadcast.md` 与 `19-overload.md`），
-不属于维度系统的核心职责；`dimension` 模块仅在此记录它依赖静态/动态维度类型这一事实。
-
-> **实现建议：** 跨静态维度的 `BroadcastDim` 实现共计约 57 个（含自身广播 7 个 + 跨静态维度 42 个 + 与 IxDyn 混合 7 个（静态维度→IxDyn）+ 1 个（IxDyn→D 泛型 impl））。
-> 建议使用声明宏（`macro_rules!`）生成这些实现，避免手工编写导致的遗漏和错误。宏生成后须通过 compile-fail 测试验证全覆盖。
-
-> **公开性说明：** `BroadcastDim` 必须是公开 sealed trait，以保证 `math` / `broadcast` / `overload` 的公开签名与 trait bound 可命名；公开仅限命名和使用 crate 内既有实现，仍禁止外部实现。
->
-> **Note:** "BroadcastDim is a public sealed trait used in broadcast output type inference. It appears in public API signatures of broadcast/math/overload modules."
+- 跨静态维度的 `BroadcastDim` 实现共计约 57 个（含自身广播 7 个 + 跨静态维度 42 个 + 与 IxDyn 混合 7 个（静态维度→IxDyn）+ 1 个（IxDyn→D 泛型 impl））。
+- 建议使用声明宏（`macro_rules!`）生成这些实现，避免手工编写导致的遗漏和错误。宏生成后须通过 compile-fail 测试验证全覆盖。
+- `BroadcastDim` 必须是公开 sealed trait，以保证 `math` / `broadcast` / `overload` 的公开签名与 trait bound 可命名；公开仅限命名和使用 crate 内既有实现，仍禁止外部实现。
+- 跨静态维度广播（如 `Ix2 + Ix1`）时，输出类型为维度数较大的静态类型（`Ix2`）。这遵循 NumPy 广播规则：低维数组在左侧补 1，结果维度数 = max(ndim_a, ndim_b)。
+- 运行时兼容性由 `broadcast_shape()` 在调用处验证。  
+- 与 `IxDyn` 混合时始终返回 `IxDyn` 以保证类型安全。
 
 ```rust,ignore
 /// Trait for computing the output dimension type when broadcasting two arrays.
@@ -796,16 +703,9 @@ impl BroadcastDim<IxDyn> for Ix6 { type Output = IxDyn; }
 impl<D: Dimension> BroadcastDim<D> for IxDyn { type Output = IxDyn; }
 ```
 
-> **设计决策：** 跨静态维度广播（如 `Ix2 + Ix1`）时，输出类型为维度数较大的静态类型（`Ix2`）。
-> 这遵循 NumPy 广播规则：低维数组在左侧补 1，结果维度数 = max(ndim_a, ndim_b)。
-> 运行时兼容性由 `broadcast_shape()` 在调用处验证。  
-> 与 `IxDyn` 混合时始终返回 `IxDyn` 以保证类型安全。
+### 5.11 PermuteAxes / Reverse trait
 
-### 5.10 PermuteAxes / Reverse trait
-
-`PermuteAxes` 为转置操作提供通用轴置换语义；`Reverse` 仅作为 `transpose()` 默认轴反转形式的便捷层：
-
-> **公开性说明：** 以下 trait 为内部实现辅助，标记为 `pub(crate)`，不纳入稳定公开 API 面。
+`PermuteAxes` 为转置操作提供通用轴置换语义；`Reverse` 仅作为 `transpose()` 默认轴反转形式的便捷层。以下 trait 为内部实现辅助，标记为 `pub(crate)`，不纳入稳定公开 API 面。
 
 ```rust,ignore
 /// Trait for permuting the axis order of a dimension.
@@ -900,13 +800,38 @@ impl Reverse for IxDyn {
 }
 ```
 
-> **范围说明：** 当前版本的形状操作只包含 `transpose()`。维度层保留 `PermuteAxes` 作为内部泛化能力，但公开 `transpose()` 契约当前仅承诺默认的轴反转（reverse-axis transpose）；显式轴置换保留为后续版本扩展，不构成当前版本公开 API 承诺。参见 `需求说明书 §17` 与 `16-shape.md §5.1.1`。
+- 当前版本的形状操作只包含 `transpose()`。维度层保留 `PermuteAxes` 作为内部泛化能力，但公开 `transpose()` 契约当前仅承诺默认的轴反转（reverse-axis transpose）；显式轴置换保留为后续版本扩展，不构成当前版本公开 API 承诺。参见 `需求说明书 §17` 与 `16-shape.md §5.1.1`。
+- ** 对静态维度 `Ix0`..`Ix6`，`PermuteAxes` 若实现，仍属于内部辅助能力；当前版本公开 `transpose()` 由 `16-shape.md` 定义，不把通用显式轴置换提升为规范性 API。其生成签名模式可写为：`impl PermuteAxes for Ix3 { fn permuted_axes(&self, permutation: &[Axis]) -> Result<Ix3, XenonError>; }`，更高/更低静态维度按同一模板展开。
+- 对 `IxN` 的 `PermuteAxes` 实现，输入 `permutation` 的长度必须恰好等于 `N`，并且必须是 `0..N-1` 上的双射；任何越界轴、重复轴或缺失轴都统一返回 `XenonError::InvalidAxis`，不引入额外错误类别。
+- `BroadcastDim`、静态 `PermuteAxes` 等宏生成实现应至少通过三类测试覆盖：成功路径（每个静态 rank 至少一例）、compile-fail 边界（非法 rank/非法输入不暴露实现）、以及文档/trait 矩阵核对，防止某个 rank 在宏展开中遗漏。
 
-> **静态维度补充说明：** 对静态维度 `Ix0`..`Ix6`，`PermuteAxes` 若实现，仍属于内部辅助能力；当前版本公开 `transpose()` 由 `16-shape.md` 定义，不把通用显式轴置换提升为规范性 API。其生成签名模式可写为：`impl PermuteAxes for Ix3 { fn permuted_axes(&self, permutation: &[Axis]) -> Result<Ix3, XenonError>; }`，更高/更低静态维度按同一模板展开。
+### 5.12 Good / Bad 对比示例
 
-> **静态维度最小契约：** 对 `IxN` 的 `PermuteAxes` 实现，输入 `permutation` 的长度必须恰好等于 `N`，并且必须是 `0..N-1` 上的双射；任何越界轴、重复轴或缺失轴都统一返回 `XenonError::InvalidAxis`，不引入额外错误类别。
+```rust,ignore
+// Good - unified interface via IntoDimension, clear type inference
+fn create_tensor<A, Sh>(shape: Sh) -> Tensor<A, Sh::Dim>
+where
+    Sh: IntoDimension,
+{
+    let dim = shape.into_dimension();
+    // ...
+}
+let t = create_tensor::<f64, _>((3, 4));     // Ix2
+let t = create_tensor::<f64, _>(&[2, 3, 4]); // IxDyn
 
-> **宏覆盖测试策略：** `BroadcastDim`、静态 `PermuteAxes` 等宏生成实现应至少通过三类测试覆盖：成功路径（每个静态 rank 至少一例）、compile-fail 边界（非法 rank/非法输入不暴露实现）、以及文档/trait 矩阵核对，防止某个 rank 在宏展开中遗漏。
+// Bad - hardcoded dimension types, not reusable
+fn create_tensor_2d<A>(rows: usize, cols: usize) -> Tensor<A, Ix2> { /* ... */ }
+fn create_tensor_3d<A>(d1: usize, d2: usize, d3: usize) -> Tensor<A, Ix3> { /* ... */ }
+// Every dimension count requires a new function
+```
+
+```rust,ignore
+// Good - use Result for dimension conversion
+let dim: Ix3 = Ix3::try_from_dyn(dyn_dim)?;
+
+// Bad - unwrap a fallible conversion and turn a recoverable error into a panic
+let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
+```
 
 ---
 
@@ -1037,18 +962,18 @@ impl Reverse for IxDyn {
 ### 并行执行分组图
 
 ```
-Wave 1: [T1] → [T2]
+Wave 1:      [T1] → [T2]
                       │
          ┌────────────┼────────────┐
          ▼            ▼            ▼
-Wave 2: [T3] → [T4] → [T5]     [T9]
+Wave 2: [T3] → [T4] → [T5]        [T9]
                                     │
                   ┌─────────────────┘
                   ▼
 Wave 3:         [T6] → [T7]
                          │
                          ▼
-Wave 4:               [T8]
+Wave 4:                [T8]
                          │
                          ▼
 Wave 5:  [T10] → [T11] → [T12]
@@ -1060,12 +985,12 @@ Wave 5:  [T10] → [T11] → [T12]
 
 ### 8.1 测试分类表
 
-| 测试分类 | 位置                                             | 说明                                                                |
-| -------- | ------------------------------------------------ | ------------------------------------------------------------------- |
-| 单元测试 | `#[cfg(test)] mod tests`                         | 验证各维度类型、形状/rank API 和辅助 trait                          |
-| 集成测试 | `tests/test_dimension.rs`                        | 验证 `dimension` 与 `tensor`、`layout`、`shape`、`index` 的协同路径 |
-| 边界测试 | 同模块测试中标注                                 | 覆盖 Ix0、零长度轴、大维度与溢出路径                                |
-| 属性测试 | `tests/test_dimension.rs` 或 `tests/property_tests.rs` | 验证 size/维度互转不变量                                            |
+| 测试分类 | 位置                      | 说明                                                                |
+| -------- | ------------------------- | ------------------------------------------------------------------- |
+| 单元测试 | `#[cfg(test)] mod tests`  | 验证各维度类型、形状/rank API 和辅助 trait                          |
+| 集成测试 | `tests/test_dimension.rs` | 验证 `dimension` 与 `tensor`、`layout`、`shape`、`index` 的协同路径 |
+| 边界测试 | 同模块测试中标注          | 覆盖 Ix0、零长度轴、大维度与溢出路径                                |
+| 属性测试 | `tests/test_dimension.rs` 或 `tests/property_tests.rs` | 验证 size/维度互转不变量               |
 
 ### 8.2 单元测试清单
 
@@ -1086,7 +1011,7 @@ Wave 5:  [T10] → [T11] → [T12]
 | `test_dyn_to_static_failure`              | `Ix3::try_from_dyn(IxDyn::from_slice(&[2,3,4,5]))` → Err                       | 高     |
 | `test_tuple_into_dimension`               | `(2,3,4).into_dimension()` → `Ix3(2,3,4)`                                      | 中     |
 | `test_slice_to_ixdyn`                     | `(&[2,3,4][..]).into_dimension()` → `IxDyn`                                    | 中     |
-| `test_axis_next_prev`                     | `Axis(2).next() == Axis(3)`, `Axis(0).prev() == None`                          | 中     |
+| `test_axis_next_prev`                     | `Axis(2).next() == Some(Axis(3))`, `Axis(0).prev() == None`                    | 中     |
 | `test_axis_checked_next`                  | `Axis(usize::MAX).checked_next() == None`                                      | 中     |
 | `test_axis_is_first_last`                 | `Axis(0).is_first()`, `Axis(2).is_last(3)`                                     | 中     |
 | `test_size_overflow`                      | 大值维度 `checked_size()` 返回含 `offending_dim` 的 `XenonError::InvalidShape` | 低     |
@@ -1104,9 +1029,6 @@ Wave 5:  [T10] → [T11] → [T12]
 | 大维度 `Ix6(100,100,100,100,100,100)` | `checked_size()` 在溢出时返回带 `offending_dim` 的错误 |
 | `IxDyn::ones(0)`                      | 零维动态维度                                           |
 | `PermuteAxes` 重复/缺失轴             | 返回可恢复错误，不接受非双射排列                       |
-| 需求说明书 §28.4 占位：large-tensor              | 后续补充超大 shape 元数据与溢出边界回归                |
-| 需求说明书 §28.4 占位：high-dim                  | 后续补充高维 `IxDyn` / 广播 / 转置协同回归             |
-| 需求说明书 §28.4 占位：extreme-value             | 后续补充 `usize` 极值与乘积溢出诊断回归                |
 
 ### 8.4 属性测试不变量
 
@@ -1152,7 +1074,7 @@ Wave 5:  [T10] → [T11] → [T12]
 | `math`    | `Dimension`                  | 运算泛型参数                                 |
 | `index`   | `Dimension`, `Axis`          | 索引操作                                     |
 
-> 各模块的详细接口约定参见对应设计文档（`05-storage.md` §5、`07-tensor.md` §5、`16-shape.md` §5、`17-indexing.md` §5）。当前版本 `shape` 模块仅覆盖 transpose；reshape 超出当前版本范围。
+各模块的详细接口约定参见对应设计文档（`05-storage.md` §5、`07-tensor.md` §5、`16-shape.md` §5、`17-indexing.md` §5）。当前版本 `shape` 模块仅覆盖 transpose；reshape 超出当前版本范围。
 
 ### 9.2 数据流描述
 
@@ -1169,25 +1091,23 @@ User provides shape / axis / dimension input
 
 ## 10. 错误处理与语义边界
 
-| 项目              | 内容                                                                                                                                                                                                                         |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | 动态转静态维度数不匹配时返回 `XenonError::DimensionMismatch { operation, expected, actual }`；`checked()`、`checked_size()`、`try_from_slice()`、`axis()`、`set_axis()`、`remove_axis()` 在失败时统一返回结构化 `XenonError` |
-| Panic             | 本模块公开设计不再把维度溢出、轴越界或切片长度不匹配建模为 panic；若内部已验证快捷路径保留 unwrap/expect，也不得穿透公开 API                                                                                                 |
-| 路径一致性        | scalar 路径与普通标量化实现必须保持一致；SIMD：不适用；parallel：不适用                                                                                                                                                      |
-| 容差边界          | 不适用                                                                                                                                                                                                                       |
-
----
+| 项目              | 内容                                                                     |
+| ----------------- | ------------------------------------------------------------------------ |
+| Recoverable error | 动态转静态维度数不匹配时返回结构化 `XenonError`                          |
+| Panic             | 本模块公开设计不再把维度溢出、轴越界或切片长度不匹配建模为 panic         |
+| 路径一致性        | scalar 路径与普通标量化实现必须保持一致；SIMD：不适用；parallel：不适用  |
+| 容差边界          | 不适用                                                                   |
 
 ## 11. 设计决策记录
 
 ### 决策 1：静态维度数上限为 6
 
-| 属性     | 值                                                                                                                         |
-| -------- | -------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | 静态维度类型固定覆盖 `Ix0` 到 `Ix6`；动态维度 `IxDyn` 不施加额外 rank 上限                                                 |
-| 理由     | 0-6 维静态类型已经覆盖常见高频路径并保留编译期优化；更高 rank 统一由 `IxDyn` 承担，边界仅受 `usize` 表示能力与可用内存限制 |
-| 替代方案 | 所有维度都做成无限静态族 — 放弃，类型数量和实现复杂度不可控                                                                |
-| 替代方案 | 可配置（宏或 const generic）— 放弃，增加维护成本                                                                           |
+| 属性     | 值                                                                                |
+| -------- | --------------------------------------------------------------------------------- |
+| 决策     | 静态维度类型固定覆盖 `Ix0` 到 `Ix6`；动态维度 `IxDyn` 不施加额外 rank 上限        |
+| 理由     | 0-6 维静态类型已经覆盖常见高频路径并保留编译期优化；更高 rank 统一由 `IxDyn` 承担 |
+| 替代方案 | 所有维度都做成无限静态族 — 放弃，类型数量和实现复杂度不可控                       |
+| 替代方案 | 可配置（宏或 const generic）— 放弃，增加维护成本                                  |
 
 ### 决策 2：IxDyn 使用 Vec 而非 SmallVec
 
