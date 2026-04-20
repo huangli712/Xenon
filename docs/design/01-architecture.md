@@ -436,7 +436,7 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | ------ | --------- | ----------------------------------- | ------------------- |
 | L0     | error     | 无                                  | 26-error.md         |
 | L0     | private   | 无                                  |                     |
-| L1     | dimension | error                               | 02-dimension.md     |
+| L1     | dimension | error, private                      | 02-dimension.md     |
 | L1     | complex   | private                             | 04-complex.md       |
 | L2     | element   | error, complex                      | 03-element.md       |
 | L2     | layout    | error, dimension                    | 06-layout.md        |

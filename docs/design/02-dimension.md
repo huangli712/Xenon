@@ -13,32 +13,28 @@
 
 ### 1.1 职责边界
 
-**包含**
+| 职责                | 包含                                                  |
+| ------------------- | ----------------------------------------------------- |
+| 静态维度类型        | `Ix0`-`Ix6` 元组结构体，编译期确定维度数              |
+| 动态维度类型        | `IxDyn`（`Vec<usize>`），运行时维度数                 |
+| Dimension trait     | 维度形状与 rank 接口（ndim/slice/checked/等）         |
+| IntoDimension trait | 从元组、数组、切片、Vec 构造维度                      |
+| Axis 类型           | 轴标记新类型（index/checked_next/next/prev/等）       |
+| RemoveAxis trait    | 移除指定轴降维（Ix1→Ix0, ..., Ix6→Ix5, IxDyn→IxDyn）  |
+| 维度互转            | 静态→动态（总是成功）、动态→静态（需维度匹配）        |
+| 形状元数据          | 维度层仅保存无符号形状与 rank，供 layout/tensor 读取  |
+| 内存分配            | 为 `IxDyn` 动态维度与维度转换进行少量元数据分配       |
 
-| 职责                | 说明                                                                        |
-| ------------------- | --------------------------------------------------------------------------- |
-| 静态维度类型        | `Ix0`-`Ix6` 元组结构体，编译期确定维度数                                    |
-| 动态维度类型        | `IxDyn`（`Vec<usize>`），运行时维度数                                       |
-| Dimension trait     | 维度形状与 rank 接口（ndim/slice/checked/checked_size/into_dyn/try_from_dyn） |
-| IntoDimension trait | 从元组、数组、切片、Vec 构造维度                                            |
-| Axis 类型           | 轴标记新类型（index/checked_next/next/prev/is_first/is_last）               |
-| RemoveAxis trait    | 移除指定轴降维（Ix1→Ix0, ..., Ix6→Ix5, IxDyn→IxDyn）                       |
-| 维度互转            | 静态→动态（总是成功）、动态→静态（需维度匹配）                              |
-| 形状元数据          | 维度层仅保存无符号形状与 rank，供 layout/tensor 读取                        |
-| 内存分配            | 为 `IxDyn` 动态维度与维度转换进行少量元数据分配                             |
-
-**不包含**
-
-| 职责                | 说明                                                                   |
-| ------------------- | ---------------------------------------------------------------------- |
-| 静态维度类型        | 运行时动态维度选择                                                     |
-| Dimension trait     | stride 计算、logical-first pointer、布局标志计算                       |
-| IntoDimension trait | 用户自定义维度源                                                       |
-| Axis 类型           | 轴上的切片/迭代操作（由 tensor 方法提供）                              |
-| RemoveAxis trait    | 标量轴错误建模为编译期拒绝；零维场景统一走运行时可恢复错误             |
-| 维度互转            | 隐式维度转换                                                           |
-| 形状元数据          | stride 元数据及其合法性判定                                            |
-| 内存分配            | 张量数据分配                                                           |
+| 职责                | 不包含                                                      |
+| ------------------- | ----------------------------------------------------------- |
+| 静态维度类型        | 运行时动态维度选择                                          |
+| Dimension trait     | stride 计算、logical-first pointer、布局标志计算            |
+| IntoDimension trait | 用户自定义维度源                                            |
+| Axis 类型           | 轴上的切片/迭代操作（由 tensor 方法提供）                   |
+| RemoveAxis trait    | 标量轴错误建模为编译期拒绝；零维场景统一走运行时可恢复错误  |
+| 维度互转            | 隐式维度转换                                                |
+| 形状元数据          | stride 元数据及其合法性判定                                 |
+| 内存分配            | 张量数据分配                                                |
 
 ### 1.2 设计原则
 
@@ -54,12 +50,12 @@
 
 ## 2. 需求映射与范围约束
 
-| 项目     | 内容                                                                                                                                                                                                                                                                                                                                |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 需求映射 | `需求说明书 §3`、`需求说明书 §11`、`需求说明书 §14`、`需求说明书 §16`、`需求说明书 §17`、`需求说明书 §18`；其中公开 sealed trait `BroadcastDim` 覆盖 `需求说明书 §16` 广播语义，内部 helper `Reverse` 覆盖 `需求说明书 §17` 转置语义，零维轴错误/降维输出/索引轴合法性分别对应 `需求说明书 §11`、`需求说明书 §14`、`需求说明书 §18` |
-| 范围内   | 静态/动态维度类型、`Dimension`/`IntoDimension`/`RemoveAxis`、轴元数据                                                                                                                                                                                                                                                               |
-| 范围外   | 内存分配、布局标志计算、张量运算、C-order 支持                                                                                                                                                                                                                                                                                      |
-| 非目标   | 引入开放维度扩展机制、负步长维度模型或新的存储后端                                                                                                                                                                                                                                                                                  |
+| 项目     | 内容                                                                   |
+| -------- | ---------------------------------------------------------------------- |
+| 需求映射 | 需求说明书 §3、§11、§14、§16 - §18                                     |
+| 范围内   | 静态/动态维度类型、`Dimension`/`IntoDimension`/`RemoveAxis`、轴元数据  |
+| 范围外   | 内存分配、布局标志计算、张量运算、C-order 支持                         |
+| 非目标   | 引入开放维度扩展机制、负步长维度模型或新的存储后端                     |
 
 ---
 
@@ -68,13 +64,11 @@
 ```
 src/dimension/
 ├── mod.rs             # Dimension trait definition, module exports, MAX_DIMENSION constant
-├── static.rs     # Ix0, Ix1, ..., Ix6 static dimensions and Dimension impls
+├── static.rs          # Ix0, Ix1, ..., Ix6 static dimensions and Dimension impls
 ├── dynamic.rs         # IxDyn dynamic dimension and Dimension impl
-├── into.rs  # IntoDimension trait and its impls
+├── into.rs            # IntoDimension trait and its impls
 └── axes.rs            # Axis newtype and axis helper methods
 ```
-
-单目录设计：维度类型之间高度相关（互转、公共 trait），集中管理减少耦合复杂度。
 
 ---
 
@@ -90,12 +84,12 @@ src/dimension/
 
 ### 4.2 依赖精确到类型级
 
-| 来源模块  | 使用的类型/trait                                                                                                      |
-| --------- | --------------------------------------------------------------------------------------------------------------------- |
-| `error`   | `XenonError::DimensionMismatch`、`XenonError::InvalidAxis`、`XenonError::InvalidShape`、`XenonError::InvalidArgument` |
-| `private` | `Sealed`（`Dimension` trait 的 supertrait）                                                                           |
+| 来源模块  | 使用的类型/trait                           |
+| --------- | ------------------------------------------ |
+| `error`   | `XenonError::DimensionMismatch` 等         |
+| `private` | `Sealed`（`Dimension` trait 的 supertrait）|
 
-### 4.2a 依赖合法性与新增依赖说明
+### 4.3 依赖合法性与新增依赖说明
 
 | 项目           | 结论                       |
 | -------------- | -------------------------- |
@@ -103,10 +97,9 @@ src/dimension/
 | 合法性结论     | 符合需求说明书最小依赖限制 |
 | 替代方案       | 不适用                     |
 
-### 4.3 依赖方向声明
+### 4.4 依赖方向声明
 
-> **依赖方向：单向向上。** `dimension/` 仅消费 `error` 和 `private`，不被它们反向依赖。
-> 被下游模块消费：`layout`（参见 `06-layout.md` §5）、`tensor`（参见 `07-tensor.md` §5）、`shape`（参见 `16-shape.md` §5）、`iter`（参见 `10-iterator.md` §5）、`math`（参见 `11-math.md` §5）、`index`（参见 `17-indexing.md` §5）。`storage` 不消费 `Dimension`；它只持有底层连续缓冲区。
+**依赖方向：单向向上。** `dimension/` 仅消费 `error` 和 `private`，不被它们反向依赖。
 
 ---
 
