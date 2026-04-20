@@ -1,8 +1,10 @@
 # 元素类型体系模块设计
 
-> 文档编号: 03 | 模块: `src/element/` | 阶段: Phase 1
-> 前置文档: `00-coding.md`, `01-architecture.md`
-> 需求参考: `需求说明书 §4`、`需求说明书 §5`、`需求说明书 §12`、`需求说明书 §13`、`需求说明书 §14`、`需求说明书 §15`、`需求说明书 §23`
+> 文档编号: 03
+> 模块目录: src/element/
+> 任务阶段: Phase 1
+> 前置文档: 00-coding.md, 01-architecture.md
+> 需求参考: 需求说明书 §4、§5、§12 - §15、§23
 > 范围声明: 范围内
 
 ---
@@ -11,51 +13,46 @@
 
 ### 1.1 职责边界
 
-| 职责                | 包含                                                                                            | 不包含                                                          |
-| ------------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| Element trait       | 基础约束（Copy+Clone+PartialEq+Debug+Display+Send+Sync+Sealed）+ zero()/one()                   | —                                                               |
-| Numeric trait       | Element + Add+Sub+Mul+Div+Neg + conjugate（通用数值运算能力标记）                               | 运算实现本身（委托给 core::ops）                                |
-| Signum trait        | 为 `i32`/`i64`/`f32`/`f64` 提供统一 `signum()` 能力                                             | 复数 signum 或开放类型扩展                                      |
-| RealScalar trait    | Numeric + PartialOrd + abs/sqrt/sin/exp/ln/floor/ceil + NaN 检测                                | 复数运算                                                        |
-| ComplexScalar trait | Numeric + re/im/norm（复数专用只读能力）                                                        | 复数类型定义（在 `src/complex/` 模块，参见 `04-complex.md` §5） |
-| 基础类型实现        | 为 i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool 实现上述 trait；`usize` 仅用于索引/形状元数据 | 类型转换逻辑（在 `src/convert/` 模块）                          |
-| Sealed trait        | 封闭集合，禁止外部 crate 实现                                                                   | 开放扩展                                                        |
+| 职责                | 包含                                                              |
+| ------------------- | ----------------------------------------------------------------- |
+| Element trait       | 基础约束（Copy+Clone+...）+ zero()/one()                          |
+| Numeric trait       | Element + Add+Sub+Mul+Div+Neg + conjugate（通用数值运算能力标记） |
+| Signum trait        | 为 `i32`/`i64`/`f32`/`f64` 提供统一 `signum()` 能力               |
+| RealScalar trait    | Numeric + PartialOrd + abs/sqrt/sin/exp/ln/floor/ceil + NaN 检测  |
+| ComplexScalar trait | Numeric + re/im/norm（复数专用只读能力）                          |
+| 基础类型实现        | 为 i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool 实现上述 trait  |
+| Sealed trait        | 封闭集合，禁止外部 crate 实现                                     |
+
+| 职责                | 不包含                                                          |
+| ------------------- | --------------------------------------------------------------- |
+| Element trait       | -                                                               |
+| Numeric trait       | 运算实现本身（委托给 core::ops）                                |
+| Signum trait        | 复数 signum 或开放类型扩展                                      |
+| RealScalar trait    | 复数运算                                                        |
+| ComplexScalar trait | 复数类型定义（在 `src/complex/` 模块，参见 `04-complex.md` §5） |
+| 基础类型实现        | 类型转换逻辑（在 `src/convert/` 模块）                          |
+| Sealed trait        | 开放扩展                                                        |
 
 ### 1.2 设计原则
 
-| 原则          | 体现                                                                           |
-| ------------- | ------------------------------------------------------------------------------ |
-| 能力最小化    | 每层 trait 仅声明必要约束，避免过度限制泛型                                    |
-| 正交性        | 数值运算（Numeric）、实数函数（RealScalar）、复数运算（ComplexScalar）职责分离 |
-| 零运行时开销  | 所有约束为编译期静态分派                                                       |
-| 封闭集合      | Sealed trait 阻止下游 crate 扩展类型集                                         |
-| IEEE 754 兼容 | 浮点特殊值（NaN、Inf）处理遵循标准语义                                         |
-
-### 1.3 在架构中的位置
-
-```
-Dependency layers:
-L0: error, private
-L1: element  ← current module
-L1: complex (element depends on complex type definitions; complex does not depend on element)
-L2: layout (depends on dimension)
-L3: storage (depends only on core/alloc)
-L4: tensor (depends on storage, dimension)
-L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
-```
-
-> **说明**：`element` 模块位于 L1 层级，但内部依赖同级的 `complex` 模块（`complex` 不依赖 `element`）。这是 L1 内部的单向依赖，`element` 使用 `Complex<T>` 类型作为 trait 实现目标，`complex` 仅提供类型定义和基础运算，不涉及 `Element`/`Numeric` 等 trait。这种单向依赖是合理的。
+| 原则          | 体现                                         |
+| ------------- | -------------------------------------------- |
+| 能力最小化    | 每层 trait 仅声明必要约束，避免过度限制泛型  |
+| 正交性        | 数值运算、实数函数、复数运算职责分离         |
+| 零运行时开销  | 所有约束为编译期静态分派                     |
+| 封闭集合      | Sealed trait 阻止下游 crate 扩展类型集       |
+| IEEE 754 兼容 | 浮点特殊值（NaN、Inf）处理遵循标准语义       |
 
 ---
 
 ## 2. 需求映射与范围约束
 
-| 项目     | 内容                                                                      |
-| -------- | ------------------------------------------------------------------------- |
-| 需求映射 | `需求说明书 §4`、`需求说明书 §5`、`需求说明书 §12`、`需求说明书 §13`、`需求说明书 §14`、`需求说明书 §15`、`需求说明书 §20`、`需求说明书 §23`、`需求说明书 §24`                      |
-| 范围内   | `Element`/`Numeric`/`RealScalar`/`ComplexScalar` trait 与封闭元素类型集合 |
-| 范围外   | 张量存储、自动类型提升、开放外部元素扩展、具体类型转换执行逻辑            |
-| 非目标   | 引入新的基础数值类型集合、运行时类型擦除或动态分派元素系统                |
+| 项目     | 内容                                                              |
+| -------- | ----------------------------------------------------------------- |
+| 需求映射 | 需求说明书 §4、§5、§12 - §15、§23                                 |
+| 范围内   | Element/Numeric/RealScalar/ComplexScalar trait 与封闭元素类型集合 |
+| 范围外   | 张量存储、自动类型提升、开放外部元素扩展、具体类型转换执行逻辑    |
+| 非目标   | 引入新的基础数值类型集合、运行时类型擦除或动态分派元素系统        |
 
 ---
 
@@ -99,7 +96,7 @@ src/element/
 | `core::fmt`      | `Debug`, `Display`（Element supertrait）                   |
 | `core::cmp`      | `PartialEq`, `PartialOrd`（Element/RealScalar supertrait） |
 
-### 4.2a 依赖合法性与新增依赖说明
+### 4.3 依赖合法性与新增依赖说明
 
 | 项目           | 结论                       |
 | -------------- | -------------------------- |
@@ -107,10 +104,9 @@ src/element/
 | 合法性结论     | 符合需求说明书最小依赖限制 |
 | 替代方案       | 不适用                     |
 
-### 4.3 依赖方向声明
+### 4.4 依赖方向声明
 
-> **依赖方向：单向向上。** `element/` 消费 `complex` 的类型定义（即 `element` 依赖 `complex`），`complex` 不反向依赖 `element`。
-> 被下游消费：`math`（参见 `11-math.md` §4）、`reduction`（参见 `13-reduction.md` §4）、`tensor`（参见 `07-tensor.md` §5）等模块使用 Element/Numeric/RealScalar/ComplexScalar 作为泛型约束。
+**依赖方向：单向向上。** `element/` 消费 `complex` 的类型定义（即 `element` 依赖 `complex`），`complex` 不反向依赖 `element`。
 
 ---
 
