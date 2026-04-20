@@ -133,16 +133,16 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W08T01 | `src/tensor/mod.rs` | Module skeleton (sub-module declarations, public exports) | W07T08, W03T01, W06T04, W04T02 | 07-tensor §7 (T1) |
-| W08T02 | `src/tensor/mod.rs` | TensorBase<S, D> struct definition (5 fields: storage, shape, strides, offset, flags) | W08T01 | 07-tensor §7 (T2) |
-| W08T03 | `src/tensor/aliases.rs` | Type aliases (Tensor, TensorView, TensorViewMut, ArcTensor + 32 dimension convenience aliases) | W08T02 | 07-tensor §7 (T3) |
-| W08T04 | `src/tensor/impls.rs` | Shape & stride query methods: shape()/strides()/ndim()/len()/is_empty()/offset()/raw_dim()/flags()/storage_kind() | W08T02 | 07-tensor §7 (T4) |
-| W08T05 | `src/tensor/impls.rs` | Layout query delegate methods: layout_state()/is_f_contiguous()/is_aligned()/has_zero_stride() | W08T04 | 07-tensor §7 (T5) |
-| W08T06 | `src/tensor/impls.rs` | Pointer access methods: as_ptr()/as_storage_ptr()/as_mut_ptr() | W08T04 | 07-tensor §7 (T6) |
-| W08T07 | `src/tensor/construct.rs` | from_raw_parts (immutable) + from_raw_parts_mut (mutable) with validate_access_range | W08T02 | 07-tensor §7 (T7) |
-| W08T08 | `src/tensor/construct.rs` | Safe constructors: from_shape_vec + from_raw_vec_unchecked (internal) | W08T05, W08T07 | 07-tensor §7 (T8) |
-| W08T09 | `src/tensor/impls.rs` | View creation methods: view() + view_mut() | W08T06 | 07-tensor §7 (T9) |
-| W08T10 | `src/tensor/mod.rs` | Module re-exports + type alias compilation verification | W08T03, W08T09 | 07-tensor §7 (T10) |
+| W08T01 | `src/tensor/mod.rs` | Module skeleton (sub-module declarations, public exports) | W07T08, W03T01, W06T04, W04T02 | 07-tensor §7 |
+| W08T02 | `src/tensor/mod.rs` | TensorBase<S, D> struct definition | W08T01 | 07-tensor §7 |
+| W08T03 | `src/tensor/aliases.rs` | Type aliases | W08T02 | 07-tensor §7 |
+| W08T04 | `src/tensor/impls.rs` | Shape & stride query methods | W08T02 | 07-tensor §7 |
+| W08T05 | `src/tensor/impls.rs` | Layout query delegate methods | W08T04 | 07-tensor §7 |
+| W08T06 | `src/tensor/impls.rs` | Pointer access methods | W08T04 | 07-tensor §7 |
+| W08T07 | `src/tensor/construct.rs` | from_raw_parts + from_raw_parts_mut | W08T02 | 07-tensor §7 |
+| W08T08 | `src/tensor/construct.rs` | from_shape_vec + from_raw_vec_unchecked | W08T05, W08T07 | 07-tensor §7 |
+| W08T09 | `src/tensor/impls.rs` | View creation methods: view + view_mut | W08T06 | 07-tensor §7 |
+| W08T10 | `src/tensor/mod.rs` | Module re-exports + type alias compilation verification | W08T03, W08T09 | 07-tensor §7 |
 
 ### Wave 09: Dispatch (L4)
 
