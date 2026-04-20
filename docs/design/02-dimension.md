@@ -168,48 +168,7 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
 }
 ```
 
-> **公开面收缩说明：** `Dimension` 稳定公开面仅保留 `ndim`、`slice`、`checked_size`、`checked`、`into_dyn`、`try_from_dyn`、`try_from_slice` 与只读 `axis` 查询等核心契约；以下可变访问与便捷遍历能力不要求保留在稳定主 trait 中。
-
-```rust,ignore
-/// Internal/helper extension methods for dimension manipulation.
-///
-/// These methods may be provided via an extension trait, `pub(crate)` helper,
-/// or standalone functions. They are not part of Xenon's stable public API surface.
-pub(crate) trait DimensionExt: Dimension {
-    fn slice_mut(&mut self) -> &mut [usize];
-
-    fn set_axis(&mut self, axis: Axis, value: usize) -> Result<(), XenonError> {
-        let ndim = self.ndim();
-        let shape = self.slice().to_vec();
-        let slot = self.slice_mut().get_mut(axis.0).ok_or(XenonError::InvalidAxis {
-            operation: "DimensionExt::set_axis".into(),
-            axis: axis.index(),
-            ndim,
-            shape,
-        })?;
-        *slot = value;
-        Ok(())
-    }
-
-    fn last_axis(&self) -> Option<Axis> {
-        self.ndim().checked_sub(1).map(Axis)
-    }
-
-    fn first_axis(&self) -> Option<Axis> {
-        (self.ndim() > 0).then_some(Axis(0))
-    }
-
-    fn contains_zero(&self) -> bool {
-        self.slice().iter().any(|&d| d == 0)
-    }
-
-    fn iter(&self) -> core::slice::Iter<'_, usize> {
-        self.slice().iter()
-    }
-}
-```
-
-> **说明：** 以下方法为内部辅助，可考虑通过扩展 trait 或独立函数提供：`slice_mut`、`set_axis`、`iter`、`first_axis`、`last_axis`、`contains_zero`。
+**公开面收缩说明：** `Dimension` 稳定公开面仅保留 `ndim`、`slice`、`checked_size`、`checked`、`into_dyn`、`try_from_dyn`、`try_from_slice` 与只读 `axis` 查询等核心契约。
 
 ### 5.2 静态维度类型 Ix0-Ix6
 
@@ -267,9 +226,9 @@ pub struct Ix5(pub usize, pub usize, pub usize, pub usize, pub usize);
 pub struct Ix6(pub usize, pub usize, pub usize, pub usize, pub usize, pub usize);
 ```
 
-> **说明：** `MAX_DIMENSION` 是哨兵值，表示动态维度类型 `IxDyn` 不设人工上限，而非表示系统支持的最大维度数。
+**说明：** `MAX_DIMENSION` 是哨兵值，表示动态维度类型 `IxDyn` 不设人工上限，而非表示系统支持的最大维度数。
 
-#### Ix0 特殊语义
+### 5.3 Ix0 特殊语义
 
 | 属性             | 值        | 说明                |
 | ---------------- | --------- | ------------------- |
@@ -278,9 +237,9 @@ pub struct Ix6(pub usize, pub usize, pub usize, pub usize, pub usize, pub usize)
 | `checked_size()` | `Ok(1)`   | 一个元素（标量）    |
 | 内存大小         | `0` bytes | ZST，编译器完全消除 |
 
-> **Ix0 轴语义警告：** `first_axis()` / `last_axis()` 在本设计中统一返回 `Option<Axis>`；对 `Ix0` 必须返回 `None`，以避免把“无轴”误判为“存在一个长度为 1 的轴”。
+### 5.4 Ix1-Ix6 实现模式
 
-#### Ix1-Ix6 实现模式（以 Ix3 为例）
+以 Ix3 为例：
 
 ```rust,ignore
 impl Dimension for Ix3 {
@@ -371,7 +330,7 @@ impl DimensionExt for Ix3 {
 }
 ```
 
-### 5.3 动态维度 IxDyn
+### 5.5 动态维度 IxDyn
 
 ```rust,ignore
 /// Dynamic dimension type. Dimension count determined at runtime.
@@ -454,7 +413,7 @@ impl DimensionExt for IxDyn {
 }
 ```
 
-### 5.4 IntoDimension trait
+### 5.6 IntoDimension trait
 
 ```rust,ignore
 /// Trait for converting types into dimension types.
@@ -495,9 +454,9 @@ impl IntoDimension for [usize; 6] { type Dim = Ix6; /* ... */ }
 // Dynamic arrays remain explicitly dynamic via slices/Vec/IxDyn.
 ```
 
-> **固定数组范围说明：** 固定数组 `[usize; N]` 当 `N > 6` 时须先转为切片或 `Vec`，再通过 `IxDyn` 构造。当前版本仅支持 `[usize; 0]` 到 `[usize; 6]` 的直接转换。
+**固定数组范围说明：** 固定数组 `[usize; N]` 当 `N > 6` 时须先转为切片或 `Vec`，再通过 `IxDyn` 构造。当前版本仅支持 `[usize; 0]` 到 `[usize; 6]` 的直接转换。
 
-### 5.5 Axis 新类型
+### 5.7 Axis 类型
 
 ```rust
 /// Axis marker type. Provides type safety over raw `usize`.
@@ -536,11 +495,11 @@ impl Axis {
 }
 ```
 
-> **说明：** 当 `ndim == 0`（标量、无轴）时，`is_last()` 返回 `false`。这一定义避免了把“无轴”误判为“最后一轴”，调用方若在轴语义上区分标量场景，应先检查 `ndim > 0`。
+- 当 `ndim == 0`（标量、无轴）时，`is_last()` 返回 `false`。这一定义避免了把“无轴”误判为“最后一轴”，调用方若在轴语义上区分标量场景，应先检查 `ndim > 0`。
+-  `checked_next()` 通过 `checked_add(1)` 返回 `Option<Axis>`，在 `axis == usize::MAX` 时返回 `None`。
+- `next()` 仍保留为快捷方法，但内部同样使用 checked 加法；若调用方未先保证 `axis < usize::MAX`，则统一 panic，而不是在 release 构建中静默回绕。
 
-> **补充说明：** `checked_next()` 通过 `checked_add(1)` 返回 `Option<Axis>`，在 `axis == usize::MAX` 时返回 `None`。`next()` 仍保留为快捷方法，但内部同样使用 checked 加法；若调用方未先保证 `axis < usize::MAX`，则统一 panic，而不是在 release 构建中静默回绕。
-
-### 5.6 RemoveAxis trait
+### 5.8 RemoveAxis trait
 
 ```rust,ignore
 /// Trait for dimension types that support removing an axis.
