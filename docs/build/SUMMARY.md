@@ -91,7 +91,7 @@
 | W04T06 | `src/element/numeric.rs` | Numeric trait + impls for i32/i64/f32/f64 | W04T04 | 03-element §6 |
 | W04T07 | `src/element/real.rs` | RealScalar trait + impls for f32/f64 | W04T06 | 03-element §7 |
 | W04T08 | `src/element/complex.rs` | ComplexScalar trait + impl for Complex<T> | W04T06 | 03-element §8 |
-| W04T09 | `src/element/mod.rs` | Module re-exports + prelude integration | W04T1–W04T08 | 03-element |
+| W04T09 | `src/element/mod.rs` | Module re-exports + prelude integration | W04T01–W04T08 | 03-element |
 
 ### Wave 05: Complex Type (L1)
 
