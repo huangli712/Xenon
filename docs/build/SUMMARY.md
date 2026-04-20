@@ -26,7 +26,7 @@
 | W14 | Parallel Backend | L5 | 9 | ParallelPool, par_map, par_zip_map, par_sum, par_dot, iter, checked, feature gate tests |
 | W15 | Math Operations | L5 | 7 | Binary/unary/comparison element-wise ops + SIMD dispatch + integration tests |
 | W16 | Matrix Operations | L5 | 5 | dot product (scalar + SIMD + parallel) |
-| W17 | Reduction Operations | L5 | 6 | sum, sum_axis, sum_axis_keepdims + SIMD/parallel + error handling + tests |
+| W17 | Reduction Operations | L5 | 7 | sum, sum_axis, sum_axis_keepdims + SIMD dispatch + parallel dispatch + error handling + tests |
 | W18 | Set Operations | L5 | 5 | unique, NaN/±0 handling, complex unique |
 | W19 | Shape Operations | L5 | 3 | transpose |
 | W20 | Indexing | L5 | 5 | NdIndex, try_at/get, SliceInfo, try_at_mut, slice |
@@ -213,7 +213,7 @@
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
 | W15T01 | `src/math/mod.rs` | Module skeleton + re-exports | W08T02, W10T05 | 11-math §7  |
-| W15T02 | `src/math/binary.rs` | Binary element-wise ops (add, sub, mul, div, add_scalar, sub_scalar, etc.) | W15T01 | 11-math §7  |
+| W15T02 | `src/math/binary.rs` | Binary element-wise ops (add, sub, mul, div, add_scalar, etc.) | W15T01 | 11-math §7  |
 | W15T03 | `src/math/unary.rs` | Basic unary ops: abs, neg, signum, square | W15T01 | 11-math §7  |
 | W15T04 | `src/math/unary.rs` | Math functions: sin, sqrt, exp, ln, floor, ceil | W15T03 | 11-math §7 |
 | W15T05 | `src/math/unary.rs` | Complex ops: conjugate, modulus | W15T03 | 11-math §7  |
@@ -238,8 +238,9 @@
 | W17T02 | `src/reduction/sum.rs` | Global sum() function | W17T01 | 13-reduction §7  |
 | W17T03 | `src/reduction/sum.rs` | sum_axis() function | W17T02 | 13-reduction §7  |
 | W17T04 | `src/reduction/sum.rs` | sum_axis_keepdims() function | W17T03 | 13-reduction §7  |
-| W17T05 | `src/reduction/mod.rs` | SIMD/parallel reduction dispatch | W17T02, W13T03, W14T04 | 13-reduction §7  |
-| W17T06 | `src/reduction/mod.rs` | Error handling + panic convergence + module re-exports + tests | W17T05 | 13-reduction §7  |
+| W17T05 | `src/reduction/sum.rs` | SIMD reduction dispatch | W17T02, W13T03 | 13-reduction §7 |
+| W17T06 | `src/reduction/sum.rs` | Parallel reduction dispatch | W17T05, W14T04 | 13-reduction §7 |
+| W17T07 | `src/reduction/mod.rs` | Error handling + panic convergence + module re-exports | W17T06 | 13-reduction §7 |
 
 ### Wave 18: Set Operations (L5)
 
