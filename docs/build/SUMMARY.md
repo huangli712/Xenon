@@ -12,12 +12,12 @@
 |------|------|-------|------------|-------------|
 | W01 | Project Setup & Error | L0 | 4 | Cargo.toml, lib.rs skeleton, XenonError, Sealed trait |
 | W02 | Fixed Dimension Types | L1 | 8 | dimension/mod.rs + Ix0–Ix6 types |
-| W03 | Dimension Traits | L1 | 6 | Dimension trait, IxDyn, IntoDimension, Axis, RemoveAxis, BroadcastDim |
+| W03 | Dimension Traits | L1 | 9 | Dimension trait, IxDyn struct+impl, into_dyn/try_from_dyn, IntoDimension, Axis, RemoveAxis, BroadcastDim |
 | W04 | Element Trait Hierarchy | L2 | 9 | Element/Numeric/RealScalar/ComplexScalar traits + sealed + impls |
 | W05 | Complex Type | L1 | 6 | Complex<T> struct, arithmetic, Display, math methods, FFI layout |
 | W06 | Layout System | L2 | 4 | LayoutFlags, Strides<D>, contiguity checks |
-| W07 | Storage System | L2 | 7 | RawStorage/Storage/StorageMut + Owned/View/ViewMut/Arc reprs + allocator |
-| W08 | Tensor Core | L3 | 6 | TensorBase<S,D>, type aliases, constructors, view methods, accessors |
+| W07 | Storage System | L2 | 8 | RawStorage/Storage/StorageMut + Owned/View/ViewMut/Arc reprs + allocator |
+| W08 | Tensor Core | L3 | 10 | TensorBase struct, type aliases, shape/layout/ptr queries, constructors, view, raw_parts, tests |
 | W09 | Dispatch | L4 | 3 | ExecPath, ParallelGuard, parallel thresholds |
 | W10 | Broadcasting | L4 | 5 | can_broadcast, broadcast_shape, broadcast_to, broadcast_with |
 | W11 | Iterators | L4 | 6 | StrideState, Elements, AxisIter, IndexedIter |
@@ -40,7 +40,7 @@
 | W28 | Benchmarks | — | 12 | Cargo.toml bench config, bench utils, math/reduction/dot/set/broadcast/shape/construction benches, SIMD/parallel comparison, CI |
 | W29 | Integration Tests | — | 21 | test infra, 15 module test files, parallel/simd feature tests, std env check, property tests, CI matrix |
 | W30 | Documentation | — | 26 | crate docs, missing_docs lint, README, CHANGELOG, core/tensor/infra module docs, type/function docs per module, 6 example files, CI docs |
-| | **Total** | | **212** | |
+| | **Total** | | **220** | |
 
 ---
 
@@ -73,11 +73,14 @@
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
 | W03T01 | `src/dimension/mod.rs` | Dimension trait definition (full) | W02T08 | 02-dimension §3 |
-| W03T02 | `src/dimension/dynamic.rs` | IxDyn type + Dimension impl | W03T01 | 02-dimension §4 |
-| W03T03 | `src/dimension/into.rs` | IntoDimension trait + all impls | W03T01 | 02-dimension §5 |
-| W03T04 | `src/dimension/axes.rs` | Axis struct + axis operations | W03T01 | 02-dimension §6 |
-| W03T05 | `src/dimension/axes.rs` | RemoveAxis trait + impls | W03T04 | 02-dimension §7 |
-| W03T06 | `src/dimension/mod.rs` | BroadcastDim helper trait/func | W03T01 | 02-dimension §8 |
+| W03T02 | `src/dimension/dynamic.rs` | IxDyn struct + constructors (from_slice, from_vec, ones) | W03T01 | 02-dimension §5.5 |
+| W03T03 | `src/dimension/dynamic.rs` | Dimension trait impl for IxDyn (incl. into_dyn/try_from_dyn trivial impls) | W03T02 | 02-dimension §5.5 |
+| W03T04 | `src/dimension/static.rs` | into_dyn() impl for Ix0–Ix6 (static → dynamic) | W03T03, W02T08 | 02-dimension §5.5 |
+| W03T05 | `src/dimension/static.rs` | try_from_dyn() impl for Ix0–Ix6 (dynamic → static) | W03T04 | 02-dimension §5.5 |
+| W03T06 | `src/dimension/into.rs` | IntoDimension trait + all impls (tuple/array/slice/Vec) | W03T01 | 02-dimension §5 |
+| W03T07 | `src/dimension/axes.rs` | Axis struct + axis operations | W03T01 | 02-dimension §6 |
+| W03T08 | `src/dimension/axes.rs` | RemoveAxis trait + impls | W03T06 | 02-dimension §7 |
+| W03T09 | `src/dimension/mod.rs` | BroadcastDim helper trait/func | W03T01 | 02-dimension §8 |
 
 ### Wave 04: Element Trait Hierarchy (L1–L2)
 
@@ -121,26 +124,31 @@
 | W07T02 | `src/storage/mod.rs` | Storage trait (extends RawStorage) | W07T01 | 05-storage §4 |
 | W07T03 | `src/storage/mod.rs` | StorageMut trait (extends Storage) | W07T02 | 05-storage §5 |
 | W07T04 | `src/storage/owned.rs` | Owned<A> repr + IsOwned marker | W07T03 | 05-storage §6 |
-| W07T05 | `src/storage/view.rs` + `viewmut.rs` | ViewRepr<'a, A> + ViewMutRepr<'a, A> + IsView marker | W07T03 | 05-storage §7–8 |
-| W07T06 | `src/storage/arc.rs` | ArcRepr<A> shared storage | W07T03 | 05-storage §9 |
-| W07T07 | `src/storage/alloc.rs` | 64-byte aligned allocator + module re-exports | W07T04 | 05-storage §10 |
+| W07T05 | `src/storage/view.rs` | ViewRepr<'a, A> + IsView marker | W07T03 | 05-storage §7 |
+| W07T06 | `src/storage/viewmut.rs` | ViewMutRepr<'a, A> | W07T05 | 05-storage §8 |
+| W07T07 | `src/storage/arc.rs` | ArcRepr<A> shared storage | W07T03 | 05-storage §9 |
+| W07T08 | `src/storage/alloc.rs` | 64-byte aligned allocator + module re-exports | W07T04 | 05-storage §10 |
 
 ### Wave 08: Tensor Core (L3)
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W08T01 | `src/tensor/mod.rs` | TensorBase<S, D> struct definition | W07T07, W03T01, W06T04, W04T02 | 07-tensor §2 |
-| W08T02 | `src/tensor/aliases.rs` | Type aliases (Tensor, TensorView, TensorViewMut, ArcTensor) | W08T01 | 07-tensor §3 |
-| W08T03 | `src/tensor/construct.rs` | Internal constructors (new, uninit, from_shape_vec) | W08T01 | 07-tensor §4 |
-| W08T04 | `src/tensor/impls.rs` | View methods (view, view_mut, reshape, to_owned) | W08T01 | 07-tensor §5 |
-| W08T05 | `src/tensor/impls.rs` | Accessor methods (shape, strides, len, rank, data_ptr, is_contiguous) | W08T01 | 07-tensor §6 |
-| W08T06 | `src/tensor/mod.rs` | into_raw / from_raw_parts + module re-exports | W08T01 | 07-tensor §7 |
+| W08T01 | `src/tensor/mod.rs` | Module skeleton (sub-module declarations, public exports) | W07T08, W03T01, W06T04, W04T02 | 07-tensor §7 (T1) |
+| W08T02 | `src/tensor/mod.rs` | TensorBase<S, D> struct definition (5 fields: storage, shape, strides, offset, flags) | W08T01 | 07-tensor §7 (T2) |
+| W08T03 | `src/tensor/aliases.rs` | Type aliases (Tensor, TensorView, TensorViewMut, ArcTensor + 32 dimension convenience aliases) | W08T02 | 07-tensor §7 (T3) |
+| W08T04 | `src/tensor/impls.rs` | Shape & stride query methods: shape()/strides()/ndim()/len()/is_empty()/offset()/raw_dim()/flags()/storage_kind() | W08T02 | 07-tensor §7 (T4) |
+| W08T05 | `src/tensor/impls.rs` | Layout query delegate methods: layout_state()/is_f_contiguous()/is_aligned()/has_zero_stride() | W08T04 | 07-tensor §7 (T5) |
+| W08T06 | `src/tensor/impls.rs` | Pointer access methods: as_ptr()/as_storage_ptr()/as_mut_ptr() | W08T04 | 07-tensor §7 (T6) |
+| W08T07 | `src/tensor/construct.rs` | from_raw_parts (immutable) + from_raw_parts_mut (mutable) with validate_access_range | W08T02 | 07-tensor §7 (T7) |
+| W08T08 | `src/tensor/construct.rs` | Safe constructors: from_shape_vec + from_raw_vec_unchecked (internal) | W08T05, W08T07 | 07-tensor §7 (T8) |
+| W08T09 | `src/tensor/impls.rs` | View creation methods: view() + view_mut() | W08T06 | 07-tensor §7 (T9) |
+| W08T10 | `src/tensor/mod.rs` | Module re-exports + type alias compilation verification | W08T03, W08T09 | 07-tensor §7 (T10) |
 
 ### Wave 09: Dispatch (L4)
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W09T01 | `src/dispatch.rs` | ExecPath enum + dispatch selection logic | W08T01 | 01-architecture §5.5 |
+| W09T01 | `src/dispatch.rs` | ExecPath enum + dispatch selection logic | W08T02 | 01-architecture §5.5 |
 | W09T02 | `src/dispatch.rs` | ParallelGuard (nested parallelism protection) | W09T01 | 01-architecture §5.5 |
 | W09T03 | `src/dispatch.rs` | Parallel threshold constants + integration | W09T02 | 01-architecture §5.5 |
 
@@ -148,7 +156,7 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W10T01 | `src/broadcast/mod.rs` | Module skeleton | W08T01 | 15-broadcast |
+| W10T01 | `src/broadcast/mod.rs` | Module skeleton | W08T02 | 15-broadcast |
 | W10T02 | `src/broadcast/shape.rs` | can_broadcast function (shape compatibility check) | W10T01, W03T01 | 15-broadcast §2 |
 | W10T03 | `src/broadcast/shape.rs` | broadcast_shape function (compute output shape) | W10T02 | 15-broadcast §3 |
 | W10T04 | `src/broadcast/view.rs` | broadcast_to method (create broadcast view) | W10T03, W06T04 | 15-broadcast §4 |
@@ -158,7 +166,7 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W11T01 | `src/iter/mod.rs` | Module skeleton + StrideState struct | W08T01 | 10-iterator §2 |
+| W11T01 | `src/iter/mod.rs` | Module skeleton + StrideState struct | W08T02 | 10-iterator §2 |
 | W11T02 | `src/iter/elements.rs` | Elements iterator (flat traversal) | W11T01 | 10-iterator §3 |
 | W11T03 | `src/iter/axis.rs` | AxisIter (iteration along one axis) | W11T01 | 10-iterator §4 |
 | W11T04 | `src/iter/indexed.rs` | IndexedIter (elements with indices) | W11T02 | 10-iterator §5 |
@@ -169,7 +177,7 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W12T01 | `src/ffi/mod.rs` | Module skeleton | W08T01 | 23-ffi |
+| W12T01 | `src/ffi/mod.rs` | Module skeleton | W08T02 | 23-ffi |
 | W12T02 | `src/ffi/types.rs` | BlasInfo struct definition | W12T01 | 23-ffi §2 |
 | W12T03 | `src/ffi/ptr.rs` | export() / export_mut() + into_raw_parts / from_raw_parts | W12T01 | 23-ffi §3 |
 | W12T04 | `src/ffi/blas.rs` | is_blas_compatible + blas_info + lda() | W12T02 | 23-ffi §4 |
@@ -180,7 +188,7 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W13T01 | `src/simd/mod.rs` | Module skeleton + SimdKernel trait definition | W08T01 | 08-simd §2 |
+| W13T01 | `src/simd/mod.rs` | Module skeleton + SimdKernel trait definition | W08T02 | 08-simd §2 |
 | W13T02 | `src/simd/vector.rs` | Element-wise SIMD operations (add, sub, mul, div, abs, neg) | W13T01 | 08-simd §3 |
 | W13T03 | `src/simd/vector.rs` | SIMD reduction (sum) + SIMD dot product | W13T02 | 08-simd §4 |
 | W13T04 | `src/simd/mod.rs` | Runtime dispatch facade + module re-exports | W13T01 | 08-simd §5 |
@@ -189,7 +197,7 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W14T01 | `src/parallel/mod.rs` | Module skeleton + re-exports + feature gate entry | W08T01, W09T03 | 09-parallel §3 |
+| W14T01 | `src/parallel/mod.rs` | Module skeleton + re-exports + feature gate entry | W08T02, W09T03 | 09-parallel §3 |
 | W14T02 | `src/parallel/iter.rs` | ParElements struct + TensorBase::par_iter() | W14T01 | 09-parallel §5 (T4) |
 | W14T03 | `src/parallel/map.rs` | par_map: parallel element-wise mapping | W14T02 | 09-parallel §5 (T5) |
 | W14T04 | `src/parallel/map.rs` | par_zip_map: binary broadcast parallel mapping | W14T03 | 09-parallel §5 (T5a) |
@@ -203,7 +211,7 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W15T01 | `src/math/mod.rs` | Module skeleton + re-exports | W08T01, W10T05 | 11-math §7 (T1) |
+| W15T01 | `src/math/mod.rs` | Module skeleton + re-exports | W08T02, W10T05 | 11-math §7 (T1) |
 | W15T02 | `src/math/binary.rs` | Binary element-wise ops (add, sub, mul, div, add_scalar, sub_scalar, etc.) | W15T01 | 11-math §7 (T2) |
 | W15T03 | `src/math/unary.rs` | Basic unary ops: abs, neg, signum, square | W15T01 | 11-math §7 (T3) |
 | W15T04 | `src/math/unary.rs` | Math functions: sin, sqrt, exp, ln, floor, ceil | W15T03 | 11-math §7 (T4) |
@@ -215,7 +223,7 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W16T01 | `src/matrix/mod.rs` | Module skeleton | W08T01 | 12-matrix §7 (T1) |
+| W16T01 | `src/matrix/mod.rs` | Module skeleton | W08T02 | 12-matrix §7 (T1) |
 | W16T02 | `src/matrix/dot.rs` | dot() scalar implementation (1D vector inner product) | W16T01 | 12-matrix §7 (T2) |
 | W16T03 | `src/matrix/dot.rs` | SIMD dot product integration | W16T02, W13T03 | 12-matrix §7 (T3b) |
 | W16T04 | `src/matrix/dot.rs` | Parallel dot product integration | W16T02, W14T04 | 12-matrix §7 (T3c) |
@@ -225,7 +233,7 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W17T01 | `src/reduction/mod.rs` | Module skeleton + public API exports | W08T01 | 13-reduction §7 (T1) |
+| W17T01 | `src/reduction/mod.rs` | Module skeleton + public API exports | W08T02 | 13-reduction §7 (T1) |
 | W17T02 | `src/reduction/sum.rs` | Global sum() function | W17T01 | 13-reduction §7 (T2) |
 | W17T03 | `src/reduction/sum.rs` | sum_axis() function | W17T02 | 13-reduction §7 (T3) |
 | W17T04 | `src/reduction/sum.rs` | sum_axis_keepdims() function | W17T03 | 13-reduction §7 (T4) |
@@ -236,7 +244,7 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W18T01 | `src/set/mod.rs` | Module skeleton | W08T01 | 14-set §7 (T1) |
+| W18T01 | `src/set/mod.rs` | Module skeleton | W08T02 | 14-set §7 (T1) |
 | W18T02 | `src/set/unique.rs` | unique() function (real types) | W18T01, W11T02 | 14-set §7 (T2) |
 | W18T03 | `src/set/unique.rs` | NaN/±0 handling | W18T02 | 14-set §7 (T3) |
 | W18T04 | `src/set/unique.rs` | Complex unique | W18T02 | 14-set §7 (T4) |
@@ -246,7 +254,7 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W19T01 | `src/shape/mod.rs` | Module skeleton | W08T01 | 16-shape |
+| W19T01 | `src/shape/mod.rs` | Module skeleton | W08T02 | 16-shape |
 | W19T02 | `src/shape/transpose.rs` | transpose() implementation (axes swap) | W19T01, W06T03 | 16-shape §2 |
 | W19T03 | `src/shape/mod.rs` | Module re-exports + shape tests | W19T02 | 16-shape |
 
@@ -254,7 +262,7 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W20T01 | `src/index/mod.rs` + `ndindex.rs` | NdIndex trait definition + tuple/slice impls | W08T01, W03T01 | 17-indexing §2 |
+| W20T01 | `src/index/mod.rs` + `ndindex.rs` | NdIndex trait definition + tuple/slice impls | W08T02, W03T01 | 17-indexing §2 |
 | W20T02 | `src/index/access.rs` | try_at / get / get_unchecked methods | W20T01 | 17-indexing §3 |
 | W20T03 | `src/index/slice.rs` | SliceInfo struct + slice_shape/stride computation | W20T01 | 17-indexing §4 |
 | W20T04 | `src/index/access.rs` | try_at_mut / get_mut / get_unchecked_mut | W20T02 | 17-indexing §5 |
@@ -264,7 +272,7 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W21T01 | `src/construct/mod.rs` + `init.rs` | Module skeleton + zeros() + ones() | W08T01 | 18-construction §2 |
+| W21T01 | `src/construct/mod.rs` + `init.rs` | Module skeleton + zeros() + ones() | W08T02 | 18-construction §2 |
 | W21T02 | `src/construct/eye.rs` | eye() constructor | W21T01 | 18-construction §3 |
 | W21T03 | `src/construct/from.rs` | from_shape_vec + from_shape_slice | W21T01 | 18-construction §4 |
 | W21T04 | `src/construct/from.rs` + `scalar.rs` | from_array + from_vec + from_scalar | W21T03 | 18-construction §5 |
@@ -274,7 +282,7 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W22T01 | `src/overload/mod.rs` | Module skeleton | W08T01 | 19-overload |
+| W22T01 | `src/overload/mod.rs` | Module skeleton | W08T02 | 19-overload |
 | W22T02 | `src/overload/arithmetic.rs` | Add\<Tensor, Tensor\> for owned | W22T01, W10T05, W15T02 | 19-overload §2 |
 | W22T03 | `src/overload/arithmetic.rs` | Add for ref/mixed (TensorView, &Tensor, etc.) | W22T02 | 19-overload §3 |
 | W22T04 | `src/overload/arithmetic.rs` | Add with scalar (Tensor + f64, etc.) | W22T02 | 19-overload §4 |
@@ -285,7 +293,7 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W23T01 | `src/util/mod.rs` + `fill.rs` | Module skeleton + fill() operation | W08T01 | 20-utility §2 |
+| W23T01 | `src/util/mod.rs` + `fill.rs` | Module skeleton + fill() operation | W08T02 | 20-utility §2 |
 | W23T02 | `src/util/clip.rs` | clip() operation | W23T01 | 20-utility §3 |
 | W23T03 | `src/util/contiguous.rs` | to_contiguous() operation | W23T01, W06T04 | 20-utility §4 |
 | W23T04 | `src/util/mod.rs` | Module re-exports + util tests | W23T01–W23T03 | 20-utility |
@@ -294,7 +302,7 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W24T01 | `src/convert/cast.rs` | CastTo trait core conversion path (lossless + default error path) | W04T02, W08T01 | 21-type §7 (T1) |
+| W24T01 | `src/convert/cast.rs` | CastTo trait core conversion path (lossless + default error path) | W04T02, W08T02 | 21-type §7 (T1) |
 | W24T02 | `src/convert/mod.rs` + `src/lib.rs` | Module skeleton + pub use re-exports | W24T01 | 21-type §7 (T2) |
 | W24T03 | `src/convert/cast.rs` | to_owned() clone + into_owned() consume (view/arc → owned) | W24T02 | 21-type §7 (T3) |
 | W24T04 | `src/convert/cast.rs` | cast<B>(&self) → Result<Tensor<B, D>, XenonError> method | W24T02 | 21-type §7 (T4) |
@@ -304,7 +312,7 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W25T01 | `src/format/mod.rs` + `config.rs` | Module skeleton + FormatConfig struct | W08T01 | 22-output §7 (T1) |
+| W25T01 | `src/format/mod.rs` + `config.rs` | Module skeleton + FormatConfig struct | W08T02 | 22-output §7 (T1) |
 | W25T02 | `src/format/display.rs` | Display impl for tensor (NumPy-style) | W25T01 | 22-output §7 (T3) |
 | W25T03 | `src/format/debug.rs` | Debug impl for tensor | W25T01 | 22-output §7 (T4) |
 | W25T04 | `src/format/pretty.rs` + `mod.rs` | Pretty formatting helpers + module re-exports + tests | W25T02 | 22-output §7 (T2, T5) |
@@ -328,8 +336,8 @@
 |------|------|------|-------------|-------------|
 | W27T01 | `src/storage/owned.rs` | `unsafe impl<A: Send> Send for Owned<A>` + `unsafe impl<A: Sync> Sync for Owned<A>` + full SAFETY comments | W07T04 | 25-safety §5.3 |
 | W27T02 | `src/storage/view.rs` | `unsafe impl<'a, A: Sync> Send for ViewRepr<'a, A>` + `unsafe impl<'a, A: Sync> Sync for ViewRepr<'a, A>` + full SAFETY comments | W07T05 | 25-safety §5.4 |
-| W27T03 | `src/storage/viewmut.rs` | `unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A>` + `!Sync` via PhantomData + SAFETY comments | W07T05 | 25-safety §5.5 |
-| W27T04 | `src/storage/arc.rs` | `unsafe impl<A: Send + Sync> Send for ArcRepr<A>` + `unsafe impl<A: Send + Sync> Sync for ArcRepr<A>` + SAFETY comments | W07T06 | 25-safety §5.6 |
+| W27T03 | `src/storage/viewmut.rs` | `unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A>` + `!Sync` via PhantomData + SAFETY comments | W07T06 | 25-safety §5.5 |
+| W27T04 | `src/storage/arc.rs` | `unsafe impl<A: Send + Sync> Send for ArcRepr<A>` + `unsafe impl<A: Send + Sync> Sync for ArcRepr<A>` + SAFETY comments | W07T07 | 25-safety §5.6 |
 | W27T05 | `src/parallel/iter.rs` | Parallel chunk safety verification: chunk coverage + non-overlap tests | W27T01–W27T04, W14T05 | 25-safety §6.2 |
 | W27T06 | `tests/test_parallel.rs` + `tests/test_error.rs` | Thread safety integration tests: cross-thread move, concurrent access | W27T05 | 25-safety §8.7 |
 | W27T07 | `src/storage/mod.rs` | Module-level thread-safety docs + Send/Sync matrix | W27T01–W27T04 | 25-safety §5.1 |
