@@ -22,7 +22,7 @@
 | W10 | Broadcasting | L4 | 5 | can_broadcast, broadcast_shape, broadcast_to, broadcast_with |
 | W11 | Iterators | L4 | 6 | StrideState, Elements, AxisIter, IndexedIter |
 | W12 | FFI Helpers | L4 | 6 | BlasInfo, as_ptr/as_mut_ptr, lda, export/export_mut, from_raw_parts |
-| W13 | SIMD Backend | L5 | 4 | SimdKernel trait, element ops, reduction/dot |
+| W13 | SIMD Backend | L5 | 5 | SimdKernel trait, element ops, reduction sum, dot product, runtime dispatch |
 | W14 | Parallel Backend | L5 | 9 | ParallelPool, par_map, par_zip_map, par_sum, par_dot, iter, checked, feature gate tests |
 | W15 | Math Operations | L5 | 7 | Binary/unary/comparison element-wise ops + SIMD dispatch + integration tests |
 | W16 | Matrix Operations | L5 | 5 | dot product (scalar + SIMD + parallel) |
@@ -179,8 +179,8 @@
 |------|------|------|-------------|-------------|
 | W12T01 | `src/ffi/mod.rs` | Module skeleton | W08T02 | 23-ffi |
 | W12T02 | `src/ffi/types.rs` | BlasInfo struct definition | W12T01 | 23-ffi §2 |
-| W12T03 | `src/ffi/ptr.rs` | export() / export_mut() + into_raw_parts / from_raw_parts | W12T01 | 23-ffi §3 |
-| W12T04 | `src/ffi/blas.rs` | is_blas_compatible + blas_info + lda() | W12T02 | 23-ffi §4 |
+| W12T03 | `src/ffi/ptr.rs` | export / export_mut + into_raw_parts / from_raw_parts | W12T01 | 23-ffi §3 |
+| W12T04 | `src/ffi/blas.rs` | is_blas_compatible + blas_info + lda | W12T02 | 23-ffi §4 |
 | W12T05 | `src/ffi/offset.rs` | try_offset_of / try_ptr_at (checked pointer arithmetic) | W12T01 | 23-ffi §5 |
 | W12T06 | `src/ffi/mod.rs` | Module re-exports + FFI tests | W12T02–W12T05 | 23-ffi |
 
@@ -190,65 +190,66 @@
 |------|------|------|-------------|-------------|
 | W13T01 | `src/simd/mod.rs` | Module skeleton + SimdKernel trait definition | W08T02 | 08-simd §2 |
 | W13T02 | `src/simd/vector.rs` | Element-wise SIMD operations (add, sub, mul, div, abs, neg) | W13T01 | 08-simd §3 |
-| W13T03 | `src/simd/vector.rs` | SIMD reduction (sum) + SIMD dot product | W13T02 | 08-simd §4 |
-| W13T04 | `src/simd/mod.rs` | Runtime dispatch facade + module re-exports | W13T01 | 08-simd §5 |
+| W13T03 | `src/simd/vector.rs` | SIMD reduction: sum() kernel (float/complex/int) | W13T02 | 08-simd §4 |
+| W13T04 | `src/simd/vector.rs` | SIMD dot product kernel (float/complex/int) | W13T03 | 08-simd §4 |
+| W13T05 | `src/simd/mod.rs` | Runtime dispatch facade + module re-exports | W13T01 | 08-simd §5 |
 
 ### Wave 14: Parallel Backend (L5)
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
 | W14T01 | `src/parallel/mod.rs` | Module skeleton + re-exports + feature gate entry | W08T02, W09T03 | 09-parallel §3 |
-| W14T02 | `src/parallel/iter.rs` | ParElements struct + TensorBase::par_iter() | W14T01 | 09-parallel §5 (T4) |
-| W14T03 | `src/parallel/map.rs` | par_map: parallel element-wise mapping | W14T02 | 09-parallel §5 (T5) |
-| W14T04 | `src/parallel/map.rs` | par_zip_map: binary broadcast parallel mapping | W14T03 | 09-parallel §5 (T5a) |
-| W14T05 | `src/parallel/reduce.rs` | par_reduce_impl + par_sum | W14T02 | 09-parallel §5 (T6) |
-| W14T06 | `src/parallel/reduce.rs` | par_dot: parallel inner product | W14T05 | 09-parallel §5 (T7) |
-| W14T07 | `src/parallel/mod.rs` | ParallelPool: rayon ThreadPool wrapper | W14T03, W14T05, W14T06 | 09-parallel §5 (T8) |
-| W14T08 | `src/parallel/checked.rs` | Error/panic propagation (XenonError passthrough, no panic swallow) | W14T03, W14T05, W14T06 | 09-parallel §5 (T9) |
-| W14T09 | `src/parallel/` + `tests/` | Feature gate + config matrix tests (default off, --features parallel) | W14T02–W14T08 | 09-parallel §5 (T10) |
+| W14T02 | `src/parallel/iter.rs` | ParElements struct + TensorBase::par_iter() | W14T01 | 09-parallel §5 |
+| W14T03 | `src/parallel/map.rs` | par_map: parallel element-wise mapping | W14T02 | 09-parallel §5 |
+| W14T04 | `src/parallel/map.rs` | par_zip_map: binary broadcast parallel mapping | W14T03 | 09-parallel §5 |
+| W14T05 | `src/parallel/reduce.rs` | par_reduce_impl + par_sum | W14T02 | 09-parallel §5 |
+| W14T06 | `src/parallel/reduce.rs` | par_dot: parallel inner product | W14T05 | 09-parallel §5 |
+| W14T07 | `src/parallel/mod.rs` | ParallelPool: rayon ThreadPool wrapper | W14T03, W14T05, W14T06 | 09-parallel §5 |
+| W14T08 | `src/parallel/checked.rs` | Error/panic propagation (XenonError passthrough, no panic swallow) | W14T03, W14T05, W14T06 | 09-parallel §5 |
+| W14T09 | `src/parallel/` + `tests/` | Feature gate + config matrix tests (default off, --features parallel) | W14T02–W14T08 | 09-parallel §5 |
 
 ### Wave 15: Math Operations (L5)
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W15T01 | `src/math/mod.rs` | Module skeleton + re-exports | W08T02, W10T05 | 11-math §7 (T1) |
-| W15T02 | `src/math/binary.rs` | Binary element-wise ops (add, sub, mul, div, add_scalar, sub_scalar, etc.) | W15T01 | 11-math §7 (T2) |
-| W15T03 | `src/math/unary.rs` | Basic unary ops: abs, neg, signum, square | W15T01 | 11-math §7 (T3) |
-| W15T04 | `src/math/unary.rs` | Math functions: sin, sqrt, exp, ln, floor, ceil | W15T03 | 11-math §7 (T4) |
-| W15T05 | `src/math/unary.rs` | Complex ops: conjugate, modulus | W15T03 | 11-math §7 (T5) |
-| W15T06 | `src/math/comparison.rs` | Comparison ops (eq, ne, lt, le, gt, ge element-wise) + not | W15T01 | 11-math §7 (T7) |
-| W15T07 | `src/math/mod.rs` | SIMD-accelerated math dispatch + module integration tests | W15T02–W15T06, W13T04 | 11-math §7 (T8) |
+| W15T01 | `src/math/mod.rs` | Module skeleton + re-exports | W08T02, W10T05 | 11-math §7  |
+| W15T02 | `src/math/binary.rs` | Binary element-wise ops (add, sub, mul, div, add_scalar, sub_scalar, etc.) | W15T01 | 11-math §7  |
+| W15T03 | `src/math/unary.rs` | Basic unary ops: abs, neg, signum, square | W15T01 | 11-math §7  |
+| W15T04 | `src/math/unary.rs` | Math functions: sin, sqrt, exp, ln, floor, ceil | W15T03 | 11-math §7 |
+| W15T05 | `src/math/unary.rs` | Complex ops: conjugate, modulus | W15T03 | 11-math §7  |
+| W15T06 | `src/math/comparison.rs` | Comparison ops (eq, ne, lt, le, gt, ge element-wise) + not | W15T01 | 11-math §7  |
+| W15T07 | `src/math/mod.rs` | SIMD-accelerated math dispatch + module integration tests | W15T02–W15T06, W13T05 | 11-math §7  |
 
 ### Wave 16: Matrix Operations (L5)
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W16T01 | `src/matrix/mod.rs` | Module skeleton | W08T02 | 12-matrix §7 (T1) |
-| W16T02 | `src/matrix/dot.rs` | dot() scalar implementation (1D vector inner product) | W16T01 | 12-matrix §7 (T2) |
-| W16T03 | `src/matrix/dot.rs` | SIMD dot product integration | W16T02, W13T03 | 12-matrix §7 (T3b) |
-| W16T04 | `src/matrix/dot.rs` | Parallel dot product integration | W16T02, W14T04 | 12-matrix §7 (T3c) |
-| W16T05 | `src/matrix/mod.rs` | Module re-exports + matrix tests | W16T02 | 12-matrix §7 (T4) |
+| W16T01 | `src/matrix/mod.rs` | Module skeleton | W08T02 | 12-matrix §7 |
+| W16T02 | `src/matrix/dot.rs` | dot() scalar implementation (1D vector inner product) | W16T01 | 12-matrix §7 |
+| W16T03 | `src/matrix/dot.rs` | SIMD dot product integration | W16T02, W13T04 | 12-matrix §7 (T3b) |
+| W16T04 | `src/matrix/dot.rs` | Parallel dot product integration | W16T02, W14T04 | 12-matrix §7 |
+| W16T05 | `src/matrix/mod.rs` | Module re-exports + matrix tests | W16T02 | 12-matrix §7  |
 
 ### Wave 17: Reduction Operations (L5)
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W17T01 | `src/reduction/mod.rs` | Module skeleton + public API exports | W08T02 | 13-reduction §7 (T1) |
-| W17T02 | `src/reduction/sum.rs` | Global sum() function | W17T01 | 13-reduction §7 (T2) |
-| W17T03 | `src/reduction/sum.rs` | sum_axis() function | W17T02 | 13-reduction §7 (T3) |
-| W17T04 | `src/reduction/sum.rs` | sum_axis_keepdims() function | W17T03 | 13-reduction §7 (T4) |
-| W17T05 | `src/reduction/mod.rs` | SIMD/parallel reduction dispatch | W17T02, W13T03, W14T04 | 13-reduction §7 (T5) |
-| W17T06 | `src/reduction/mod.rs` | Error handling + panic convergence + module re-exports + tests | W17T05 | 13-reduction §7 (T6) |
+| W17T01 | `src/reduction/mod.rs` | Module skeleton + public API exports | W08T02 | 13-reduction §7  |
+| W17T02 | `src/reduction/sum.rs` | Global sum() function | W17T01 | 13-reduction §7  |
+| W17T03 | `src/reduction/sum.rs` | sum_axis() function | W17T02 | 13-reduction §7  |
+| W17T04 | `src/reduction/sum.rs` | sum_axis_keepdims() function | W17T03 | 13-reduction §7  |
+| W17T05 | `src/reduction/mod.rs` | SIMD/parallel reduction dispatch | W17T02, W13T03, W14T04 | 13-reduction §7  |
+| W17T06 | `src/reduction/mod.rs` | Error handling + panic convergence + module re-exports + tests | W17T05 | 13-reduction §7  |
 
 ### Wave 18: Set Operations (L5)
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W18T01 | `src/set/mod.rs` | Module skeleton | W08T02 | 14-set §7 (T1) |
-| W18T02 | `src/set/unique.rs` | unique() function (real types) | W18T01, W11T02 | 14-set §7 (T2) |
-| W18T03 | `src/set/unique.rs` | NaN/±0 handling | W18T02 | 14-set §7 (T3) |
-| W18T04 | `src/set/unique.rs` | Complex unique | W18T02 | 14-set §7 (T4) |
-| W18T05 | `src/set/mod.rs` | TensorBase entry method + module re-exports + tests | W18T02 | 14-set §7 (T5) |
+| W18T01 | `src/set/mod.rs` | Module skeleton | W08T02 | 14-set §7  |
+| W18T02 | `src/set/unique.rs` | unique() function (real types) | W18T01, W11T02 | 14-set §7  |
+| W18T03 | `src/set/unique.rs` | NaN/±0 handling | W18T02 | 14-set §7  |
+| W18T04 | `src/set/unique.rs` | Complex unique | W18T02 | 14-set §7  |
+| W18T05 | `src/set/mod.rs` | TensorBase entry method + module re-exports + tests | W18T02 | 14-set §7  |
 
 ### Wave 19: Shape Operations (L5)
 
@@ -302,33 +303,33 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W24T01 | `src/convert/cast.rs` | CastTo trait core conversion path (lossless + default error path) | W04T02, W08T02 | 21-type §7 (T1) |
-| W24T02 | `src/convert/mod.rs` + `src/lib.rs` | Module skeleton + pub use re-exports | W24T01 | 21-type §7 (T2) |
-| W24T03 | `src/convert/cast.rs` | to_owned() clone + into_owned() consume (view/arc → owned) | W24T02 | 21-type §7 (T3) |
-| W24T04 | `src/convert/cast.rs` | cast<B>(&self) → Result<Tensor<B, D>, XenonError> method | W24T02 | 21-type §7 (T4) |
-| W24T05 | `src/convert/cast.rs` | Extended CastTo impls: int↔int, real↔complex, complex↔complex (bool excluded) | W24T01 | 21-type §7 (T5) |
+| W24T01 | `src/convert/cast.rs` | CastTo trait core conversion path (lossless + default error path) | W04T02, W08T02 | 21-type §7  |
+| W24T02 | `src/convert/mod.rs` + `src/lib.rs` | Module skeleton + pub use re-exports | W24T01 | 21-type §7  |
+| W24T03 | `src/convert/cast.rs` | to_owned() clone + into_owned() consume (view/arc → owned) | W24T02 | 21-type §7  |
+| W24T04 | `src/convert/cast.rs` | cast<B>(&self) → Result<Tensor<B, D>, XenonError> method | W24T02 | 21-type §7  |
+| W24T05 | `src/convert/cast.rs` | Extended CastTo impls: int↔int, real↔complex, complex↔complex (bool excluded) | W24T01 | 21-type §7  |
 
 ### Wave 25: Output Formatting (L5)
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W25T01 | `src/format/mod.rs` + `config.rs` | Module skeleton + FormatConfig struct | W08T02 | 22-output §7 (T1) |
-| W25T02 | `src/format/display.rs` | Display impl for tensor (NumPy-style) | W25T01 | 22-output §7 (T3) |
-| W25T03 | `src/format/debug.rs` | Debug impl for tensor | W25T01 | 22-output §7 (T4) |
+| W25T01 | `src/format/mod.rs` + `config.rs` | Module skeleton + FormatConfig struct | W08T02 | 22-output §7  |
+| W25T02 | `src/format/display.rs` | Display impl for tensor (Numpy-style) | W25T01 | 22-output §7  |
+| W25T03 | `src/format/debug.rs` | Debug impl for tensor | W25T01 | 22-output §7  |
 | W25T04 | `src/format/pretty.rs` + `mod.rs` | Pretty formatting helpers + module re-exports + tests | W25T02 | 22-output §7 (T2, T5) |
-| W25T05 | `src/format/mod.rs` | Module-level documentation + usage examples | W25T02, W25T03 | 22-output §7 (T5) |
+| W25T05 | `src/format/mod.rs` | Module-level documentation + usage examples | W25T02, W25T03 | 22-output §7  |
 
 ### Wave 26: Workspace (L2)
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W26T01 | `src/workspace/error.rs` | WorkspaceErrorCategory + integrate into XenonError::Workspace | W01T03 | 24-workspace §7 (T1) |
-| W26T02 | `src/workspace/workspace.rs` | Workspace struct + constants + new() + with_default_capacity() + Drop | W26T01 | 24-workspace §7 (T2) |
-| W26T03 | `src/workspace/mod.rs` | Module skeleton + sub-module declarations + re-exports | W26T01 | 24-workspace §7 (T3) |
-| W26T04 | `src/workspace/borrow.rs` | WorkspaceBorrow + WorkspaceBorrowMut guards + MaybeUninit access methods | W26T02 | 24-workspace §7 (T4) |
-| W26T05 | `src/workspace/split.rs` | split_at_mut() + SplitBorrowMut + recursive split + Drop | W26T02 | 24-workspace §7 (T5) |
-| W26T06 | `src/workspace/expand.rs` | ensure_capacity() + reallocate() | W26T02 | 24-workspace §7 (T6) |
-| W26T07 | `src/workspace/mod.rs` + sub-modules | Complete public exports + doc comments | W26T04, W26T05, W26T06 | 24-workspace §7 (T7) |
+| W26T01 | `src/workspace/error.rs` | WorkspaceErrorCategory + integrate into XenonError::Workspace | W01T03 | 24-workspace §7  |
+| W26T02 | `src/workspace/workspace.rs` | Workspace struct + constants + new() + with_default_capacity() + Drop | W26T01 | 24-workspace §7  |
+| W26T03 | `src/workspace/mod.rs` | Module skeleton + sub-module declarations + re-exports | W26T01 | 24-workspace §7  |
+| W26T04 | `src/workspace/borrow.rs` | WorkspaceBorrow + WorkspaceBorrowMut guards + MaybeUninit access methods | W26T02 | 24-workspace §7  |
+| W26T05 | `src/workspace/split.rs` | split_at_mut() + SplitBorrowMut + recursive split + Drop | W26T02 | 24-workspace §7  |
+| W26T06 | `src/workspace/expand.rs` | ensure_capacity() + reallocate() | W26T02 | 24-workspace §7  |
+| W26T07 | `src/workspace/mod.rs` + sub-modules | Complete public exports + doc comments | W26T04, W26T05, W26T06 | 24-workspace §7  |
 
 ### Wave 27: Safety Audit (cross-cutting)
 
@@ -346,75 +347,75 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W28T01 | `Cargo.toml` | Add 9 [[bench]] entries, no new benchmark dependencies | None | 27-benchmark §7 (T1) |
-| W28T02 | `benches/utils/mod.rs` + `generators.rs` | Shared constants (SIZES_1D/2D/3D) + data generation functions | W28T01 | 27-benchmark §7 (T2) |
-| W28T03 | `benches/math.rs` | add/sub/mul/div/sin/exp/abs benches (f32/f64/Complex<f64> + non-contiguous) | W28T02 | 27-benchmark §7 (T3) |
-| W28T04 | `benches/reduction.rs` | sum_1d/sum_2d_axis0/sum_2d_axis1/sum_sliced benches | W28T02 | 27-benchmark §7 (T4) |
-| W28T05 | `benches/dot.rs` | dot_1d_f64/dot_1d_complex benches | W28T02 | 27-benchmark §7 (T5) |
-| W28T06 | `benches/set.rs` | unique_1d benches (various sizes, uniqueness ratios) | W28T02 | 27-benchmark §7 (T6) |
-| W28T07 | `benches/broadcast.rs` | broadcast_scalar/broadcast_row/broadcast_col benches | W28T02 | 27-benchmark §7 (T7) |
-| W28T08 | `benches/shape.rs` | transpose_2d bench | W28T02 | 27-benchmark §7 (T8) |
-| W28T09 | `benches/construction.rs` | zeros_1d/from_shape_vec_1d benches | W28T02 | 27-benchmark §7 (T9) |
-| W28T10 | `benches/simd_comparison.rs` | add/sum/dot with --features simd on/off comparison | W28T03, W28T04 | 27-benchmark §7 (T10) |
-| W28T11 | `benches/parallel_comparison.rs` | sum/add/dot with --features parallel on/off comparison | W28T03, W28T04 | 27-benchmark §7 (T11) |
-| W28T12 | `.github/workflows/bench.yml` | Optional CI benchmark workflow (Smoke/Regression/Full tiers) | W28T03–W28T11 | 27-benchmark §7 (T12) |
+| W28T01 | `Cargo.toml` | Add 9 [[bench]] entries, no new benchmark dependencies | None | 27-benchmark §7  |
+| W28T02 | `benches/utils/mod.rs` + `generators.rs` | Shared constants (SIZES_1D/2D/3D) + data generation functions | W28T01 | 27-benchmark §7  |
+| W28T03 | `benches/math.rs` | add/sub/mul/div/sin/exp/abs benches (f32/f64/Complex<f64> + non-contiguous) | W28T02 | 27-benchmark §7  |
+| W28T04 | `benches/reduction.rs` | sum_1d/sum_2d_axis0/sum_2d_axis1/sum_sliced benches | W28T02 | 27-benchmark §7  |
+| W28T05 | `benches/dot.rs` | dot_1d_f64/dot_1d_complex benches | W28T02 | 27-benchmark §7  |
+| W28T06 | `benches/set.rs` | unique_1d benches (various sizes, uniqueness ratios) | W28T02 | 27-benchmark §7  |
+| W28T07 | `benches/broadcast.rs` | broadcast_scalar/broadcast_row/broadcast_col benches | W28T02 | 27-benchmark §7  |
+| W28T08 | `benches/shape.rs` | transpose_2d bench | W28T02 | 27-benchmark §7  |
+| W28T09 | `benches/construction.rs` | zeros_1d/from_shape_vec_1d benches | W28T02 | 27-benchmark §7  |
+| W28T10 | `benches/simd_comparison.rs` | add/sum/dot with --features simd on/off comparison | W28T03, W28T04 | 27-benchmark §7  |
+| W28T11 | `benches/parallel_comparison.rs` | sum/add/dot with --features parallel on/off comparison | W28T03, W28T04 | 27-benchmark §7  |
+| W28T12 | `.github/workflows/bench.yml` | Optional CI benchmark workflow (Smoke/Regression/Full tiers) | W28T03–W28T11 | 27-benchmark §7  |
 
 ### Wave 29: Integration Tests
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W29T01 | `tests/common/mod.rs` + `assertions.rs` + `generators.rs` | Test infra: assertion helpers, tolerance helpers, shape constants, data generators | None | 28-tests §7 (T1) |
-| W29T02 | `tests/test_tensor.rs` | Tensor core tests (shape/strides/view/to_owned/type_aliases/debug_display/arc) | W29T01 | 28-tests §7 (T2) |
-| W29T03 | `tests/test_math.rs` | Element-wise ops tests (arithmetic/math/comparison/logic) | W29T01 | 28-tests §7 (T3) |
-| W29T04 | `tests/test_broadcast.rs` | Broadcast tests (scalar/row/col/incompatible/read-only) | W29T01 | 28-tests §7 (T4) |
-| W29T05 | `tests/test_index.rs` | Indexing tests (multi-dim/OOB error/slicing/strides) | W29T01 | 28-tests §7 (T5) |
-| W29T06 | `tests/test_construction.rs` | Construction tests (zeros/ones/eye/from_shape_vec/from_scalar/from_array) | W29T01 | 28-tests §7 (T6) |
-| W29T07 | `tests/test_reduction.rs` | Reduction tests (sum/sum_axis/keepdims/empty/NaN/overflow) | W29T01 | 28-tests §7 (T7) |
-| W29T08 | `tests/test_iterator.rs` | Iterator tests (elements/axis/indexed) | W29T01 | 28-tests §7 (T7a) |
-| W29T09 | `tests/test_matrix.rs` | Matrix tests (dot/complex/shape mismatch) | W29T01 | 28-tests §7 (T7b) |
-| W29T10 | `tests/test_set.rs` | Set tests (unique/integers/complex/NaN/±0.0) | W29T01 | 28-tests §7 (T7c) |
-| W29T11 | `tests/test_shape.rs` | Shape tests (transpose/high-dim) | W29T01 | 28-tests §7 (T8) |
-| W29T12 | `tests/test_conversion.rs` | Type conversion tests (cast/to_owned/into_owned) | W29T01 | 28-tests §7 (T9) |
-| W29T13 | `tests/test_utility.rs` | Utility tests (fill/clip/to_contiguous) | W29T01 | 28-tests §7 (T9a) |
-| W29T14 | `tests/test_output.rs` | Output formatting tests (Display/Debug/truncation/complex) | W29T01 | 28-tests §7 (T9b) |
-| W29T15 | `tests/test_error.rs` | XenonError boundary + display output tests | W29T01 | 28-tests §7 (T10) |
-| W29T16 | `tests/test_ffi.rs` | FFI tests (pointer/BLAS compat/export/export_mut/offset) | W29T02 | 28-tests §7 (T11) |
-| W29T17 | `tests/test_parallel.rs` | Parallel feature tests (sum/add consistency, concurrent read, nested prevention) | W29T03, W29T07 | 28-tests §7 (T12) |
-| W29T18 | `tests/test_simd.rs` | SIMD result consistency tests (add/sum/fallback) | W29T03, W29T07 | 28-tests §7 (T13) |
-| W29T19 | `.github/workflows/test.yml` | Verify test matrix only covers std environment | W29T02 | 28-tests §7 (T14) |
-| W29T20 | `tests/property_tests.rs` + `tests/property/` | Property-based tests (transpose involutive, addition commutative, unique no dupes) | W29T03, W29T07, W29T11 | 28-tests §7 (T15) |
-| W29T21 | `.github/workflows/test.yml` | CI test matrix (default/parallel/simd/all-features) | W29T01–W29T20 | 28-tests §7 (T16) |
+| W29T01 | `tests/common/mod.rs` + `assertions.rs` + `generators.rs` | Test infra: assertion helpers, tolerance helpers, shape constants, data generators | None | 28-tests §7 |
+| W29T02 | `tests/test_tensor.rs` | Tensor core tests (shape/strides/view/to_owned/type_aliases/debug_display/arc) | W29T01 | 28-tests §7 |
+| W29T03 | `tests/test_math.rs` | Element-wise ops tests (arithmetic/math/comparison/logic) | W29T01 | 28-tests §7 |
+| W29T04 | `tests/test_broadcast.rs` | Broadcast tests (scalar/row/col/incompatible/read-only) | W29T01 | 28-tests §7 |
+| W29T05 | `tests/test_index.rs` | Indexing tests (multi-dim/OOB error/slicing/strides) | W29T01 | 28-tests §7 |
+| W29T06 | `tests/test_construction.rs` | Construction tests (zeros/ones/eye/from_shape_vec/from_scalar/from_array) | W29T01 | 28-tests §7 |
+| W29T07 | `tests/test_reduction.rs` | Reduction tests (sum/sum_axis/keepdims/empty/NaN/overflow) | W29T01 | 28-tests §7 |
+| W29T08 | `tests/test_iterator.rs` | Iterator tests (elements/axis/indexed) | W29T01 | 28-tests §7 |
+| W29T09 | `tests/test_matrix.rs` | Matrix tests (dot/complex/shape mismatch) | W29T01 | 28-tests §7 |
+| W29T10 | `tests/test_set.rs` | Set tests (unique/integers/complex/NaN/±0.0) | W29T01 | 28-tests §7 |
+| W29T11 | `tests/test_shape.rs` | Shape tests (transpose/high-dim) | W29T01 | 28-tests §7 |
+| W29T12 | `tests/test_conversion.rs` | Type conversion tests (cast/to_owned/into_owned) | W29T01 | 28-tests §7 |
+| W29T13 | `tests/test_utility.rs` | Utility tests (fill/clip/to_contiguous) | W29T01 | 28-tests §7 |
+| W29T14 | `tests/test_output.rs` | Output formatting tests (Display/Debug/truncation/complex) | W29T01 | 28-tests §7 |
+| W29T15 | `tests/test_error.rs` | XenonError boundary + display output tests | W29T01 | 28-tests §7 |
+| W29T16 | `tests/test_ffi.rs` | FFI tests (pointer/BLAS compat/export/export_mut/offset) | W29T02 | 28-tests §7 |
+| W29T17 | `tests/test_parallel.rs` | Parallel feature tests (sum/add consistency, concurrent read, nested prevention) | W29T03, W29T07 | 28-tests §7 |
+| W29T18 | `tests/test_simd.rs` | SIMD result consistency tests (add/sum/fallback) | W29T03, W29T07 | 28-tests §7 |
+| W29T19 | `.github/workflows/test.yml` | Verify test matrix only covers std environment | W29T02 | 28-tests §7 |
+| W29T20 | `tests/property_tests.rs` + `tests/property/` | Property-based tests (transpose involutive, addition commutative, unique no dupes) | W29T03, W29T07, W29T11 | 28-tests §7  |
+| W29T21 | `.github/workflows/test.yml` | CI test matrix (default/parallel/simd/all-features) | W29T01–W29T20 | 28-tests §7 |
 
 ### Wave 30: Documentation
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W30T01 | `src/lib.rs` | Crate-level docs (overview, Quick Start, Features table, element types, memory layout) | W21 | 29-documentation §7 (T1) |
-| W30T02 | `src/lib.rs` + `Cargo.toml` | #![warn(missing_docs)] lint + docs.rs metadata + cfg_attr(docsrs, ...) | W30T01 | 29-documentation §7 (T2) |
-| W30T03 | `README.md` | Project intro, Features, Quick Start, install, doc links, license | W30T01 | 29-documentation §7 (T3) |
-| W30T04 | `CHANGELOG.md` | Optional Keep a Changelog format (engineering aid, not required deliverable) | None | 29-documentation §7 (T4) |
-| W30T05 | Core module mod.rs files | Core module docs: dimension, element, complex, storage, layout | W30T02 | 29-documentation §7 (T5) |
-| W30T06 | Tensor/ops module mod.rs files | Tensor & ops module docs: tensor, iter, math, overload, broadcast, reduction, matrix, shape, index, construct, set | W30T02 | 29-documentation §7 (T6) |
-| W30T07 | Infra module mod.rs files | Infrastructure module docs: ffi, workspace, error, prelude, convert, format, simd/parallel internal | W30T02 | 29-documentation §7 (T7) |
-| W30T08 | `src/tensor/` | Tensor module public API docs (TensorBase, Tensor, TensorView, TensorViewMut, ArcTensor) | W30T05–W30T07 | 29-documentation §7 (T8a) |
-| W30T09 | `src/dimension/mod.rs` | Dimension module type docs (Ix0–Ix6, IxDyn, Dimension trait) | W30T05–W30T07 | 29-documentation §7 (T8b) |
-| W30T10 | `src/element/mod.rs` | Element module trait docs (Element, Numeric, RealScalar, ComplexScalar) | W30T05–W30T07 | 29-documentation §7 (T8c) |
-| W30T11 | `src/storage/mod.rs` | Storage module type docs (Owned, ViewRepr, StorageMut traits) | W30T05–W30T07 | 29-documentation §7 (T8d) |
-| W30T12 | `src/layout/mod.rs` | Layout module docs (LayoutFlags, compute_f_strides) | W30T05–W30T07 | 29-documentation §7 (T8e) |
-| W30T13 | `src/math/` | Math ops docs (add/sub/mul/div/sin/sqrt/exp/ln/abs) + doctests | W30T05–W30T07 | 29-documentation §7 (T9a) |
-| W30T14 | `src/reduction/` + `src/matrix/` | Reduction & matrix docs (sum, sum_axis, dot) + doctests | W30T05–W30T07 | 29-documentation §7 (T9b) |
-| W30T15 | `src/broadcast/` + `src/shape/` | Broadcast & shape docs (broadcast_shape, transpose) + doctests | W30T05–W30T07 | 29-documentation §7 (T9c) |
-| W30T16 | `src/construct/` + `src/set/` | Construct & set docs (zeros, ones, eye, from_shape_vec, unique) + doctests | W30T05–W30T07 | 29-documentation §7 (T9d) |
-| W30T17 | `src/ffi/` + `src/workspace/` + `src/error.rs` | FFI (incl. Safety sections), workspace, XenonError docs + doctests | W30T05–W30T07 | 29-documentation §7 (T9e) |
-| W30T18 | `src/iter/` + `src/convert/` + `src/format/` + `src/overload/` | Iter, convert, format, overload module docs + doctests | W30T05–W30T07 | 29-documentation §7 (T9f) |
-| W30T19 | `examples/basic.rs` | Basic example: create, compute, reduce, print | W30T01 | 29-documentation §7 (T10) |
-| W30T20 | `examples/complex.rs` | Complex example: complex construction, arithmetic, cast | W30T01 | 29-documentation §7 (T11) |
-| W30T21 | `examples/broadcasting.rs` | Broadcasting example: rules, row/col/scalar broadcast | W30T01 | 29-documentation §7 (T12) |
-| W30T22 | `examples/features.rs` | Features example: optional features, parallel/simd execution paths | W30T01 | 29-documentation §7 (T13) |
-| W30T23 | `examples/simd.rs` | SIMD example: acceleration, fallback strategy | W30T01 | 29-documentation §7 (T14) |
-| W30T24 | `examples/ffi.rs` | FFI example: upstream C/BLAS integration helper API | W30T01 | 29-documentation §7 (T15) |
-| W30T25 | `src/lib.rs` + `README.md` + `examples/` | Verify examples & crate docs only declare std environment | W30T01 | 29-documentation §7 (T16) |
-| W30T26 | `.github/workflows/docs.yml` | CI docs workflow: missing docs check, doctest, example compilation | W30T01–W30T25 | 29-documentation §7 (T17) |
+| W30T01 | `src/lib.rs` | Crate-level docs (overview, Quick Start, Features table, element types, memory layout) | W21 | 29-documentation §7  |
+| W30T02 | `src/lib.rs` + `Cargo.toml` | #![warn(missing_docs)] lint + docs.rs metadata + cfg_attr(docsrs, ...) | W30T01 | 29-documentation §7  |
+| W30T03 | `README.md` | Project intro, Features, Quick Start, install, doc links, license | W30T01 | 29-documentation §7  |
+| W30T04 | `CHANGELOG.md` | Optional Keep a Changelog format (engineering aid, not required deliverable) | None | 29-documentation §7  |
+| W30T05 | Core module mod.rs files | Core module docs: dimension, element, complex, storage, layout | W30T02 | 29-documentation §7  |
+| W30T06 | Tensor/ops module mod.rs files | Tensor & ops module docs: tensor, iter, math, overload, broadcast, reduction, matrix, shape, index, construct, set | W30T02 | 29-documentation §7 |
+| W30T07 | Infra module mod.rs files | Infrastructure module docs: ffi, workspace, error, prelude, convert, format, simd/parallel internal | W30T02 | 29-documentation §7  |
+| W30T08 | `src/tensor/` | Tensor module public API docs (TensorBase, Tensor, TensorView, TensorViewMut, ArcTensor) | W30T05–W30T07 | 29-documentation §7 |
+| W30T09 | `src/dimension/mod.rs` | Dimension module type docs (Ix0–Ix6, IxDyn, Dimension trait) | W30T05–W30T07 | 29-documentation §7 |
+| W30T10 | `src/element/mod.rs` | Element module trait docs (Element, Numeric, RealScalar, ComplexScalar) | W30T05–W30T07 | 29-documentation §7 |
+| W30T11 | `src/storage/mod.rs` | Storage module type docs (Owned, ViewRepr, StorageMut traits) | W30T05–W30T07 | 29-documentation §7 |
+| W30T12 | `src/layout/mod.rs` | Layout module docs (LayoutFlags, compute_f_strides) | W30T05–W30T07 | 29-documentation §7 |
+| W30T13 | `src/math/` | Math ops docs (add/sub/mul/div/sin/sqrt/exp/ln/abs) + doctests | W30T05–W30T07 | 29-documentation §7 |
+| W30T14 | `src/reduction/` + `src/matrix/` | Reduction & matrix docs (sum, sum_axis, dot) + doctests | W30T05–W30T07 | 29-documentation §7 |
+| W30T15 | `src/broadcast/` + `src/shape/` | Broadcast & shape docs (broadcast_shape, transpose) + doctests | W30T05–W30T07 | 29-documentation §7 |
+| W30T16 | `src/construct/` + `src/set/` | Construct & set docs (zeros, ones, eye, from_shape_vec, unique) + doctests | W30T05–W30T07 | 29-documentation §7 |
+| W30T17 | `src/ffi/` + `src/workspace/` + `src/error.rs` | FFI (incl. Safety sections), workspace, XenonError docs + doctests | W30T05–W30T07 | 29-documentation §7 |
+| W30T18 | `src/iter/` + `src/convert/` + `src/format/` + `src/overload/` | Iter, convert, format, overload module docs + doctests | W30T05–W30T07 | 29-documentation §7 |
+| W30T19 | `examples/basic.rs` | Basic example: create, compute, reduce, print | W30T01 | 29-documentation §7 |
+| W30T20 | `examples/complex.rs` | Complex example: complex construction, arithmetic, cast | W30T01 | 29-documentation §7 |
+| W30T21 | `examples/broadcasting.rs` | Broadcasting example: rules, row/col/scalar broadcast | W30T01 | 29-documentation §7 |
+| W30T22 | `examples/features.rs` | Features example: optional features, parallel/simd execution paths | W30T01 | 29-documentation §7 |
+| W30T23 | `examples/simd.rs` | SIMD example: acceleration, fallback strategy | W30T01 | 29-documentation §7  |
+| W30T24 | `examples/ffi.rs` | FFI example: upstream C/BLAS integration helper API | W30T01 | 29-documentation §7 |
+| W30T25 | `src/lib.rs` + `README.md` + `examples/` | Verify examples & crate docs only declare std environment | W30T01 | 29-documentation §7 |
+| W30T26 | `.github/workflows/docs.yml` | CI docs workflow: missing docs check, doctest, example compilation | W30T01–W30T25 | 29-documentation §7 |
 
 ---
 
