@@ -980,18 +980,18 @@ let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
 ### 并行执行分组图
 
 ```
-Wave 1: [T1] → [T2]
+Wave 1:      [T1] → [T2]
                       │
          ┌────────────┼────────────┐
          ▼            ▼            ▼
-Wave 2: [T3] → [T4] → [T5]     [T9]
+Wave 2: [T3] → [T4] → [T5]        [T9]
                                     │
                   ┌─────────────────┘
                   ▼
 Wave 3:         [T6] → [T7]
                          │
                          ▼
-Wave 4:               [T8]
+Wave 4:                [T8]
                          │
                          ▼
 Wave 5:  [T10] → [T11] → [T12]
@@ -1003,12 +1003,12 @@ Wave 5:  [T10] → [T11] → [T12]
 
 ### 8.1 测试分类表
 
-| 测试分类 | 位置                                             | 说明                                                                |
-| -------- | ------------------------------------------------ | ------------------------------------------------------------------- |
-| 单元测试 | `#[cfg(test)] mod tests`                         | 验证各维度类型、形状/rank API 和辅助 trait                          |
-| 集成测试 | `tests/test_dimension.rs`                        | 验证 `dimension` 与 `tensor`、`layout`、`shape`、`index` 的协同路径 |
-| 边界测试 | 同模块测试中标注                                 | 覆盖 Ix0、零长度轴、大维度与溢出路径                                |
-| 属性测试 | `tests/test_dimension.rs` 或 `tests/property_tests.rs` | 验证 size/维度互转不变量                                            |
+| 测试分类 | 位置                      | 说明                                                                |
+| -------- | ------------------------- | ------------------------------------------------------------------- |
+| 单元测试 | `#[cfg(test)] mod tests`  | 验证各维度类型、形状/rank API 和辅助 trait                          |
+| 集成测试 | `tests/test_dimension.rs` | 验证 `dimension` 与 `tensor`、`layout`、`shape`、`index` 的协同路径 |
+| 边界测试 | 同模块测试中标注          | 覆盖 Ix0、零长度轴、大维度与溢出路径                                |
+| 属性测试 | `tests/test_dimension.rs` 或 `tests/property_tests.rs` | 验证 size/维度互转不变量               |
 
 ### 8.2 单元测试清单
 
@@ -1047,9 +1047,6 @@ Wave 5:  [T10] → [T11] → [T12]
 | 大维度 `Ix6(100,100,100,100,100,100)` | `checked_size()` 在溢出时返回带 `offending_dim` 的错误 |
 | `IxDyn::ones(0)`                      | 零维动态维度                                           |
 | `PermuteAxes` 重复/缺失轴             | 返回可恢复错误，不接受非双射排列                       |
-| 需求说明书 §28.4 占位：large-tensor              | 后续补充超大 shape 元数据与溢出边界回归                |
-| 需求说明书 §28.4 占位：high-dim                  | 后续补充高维 `IxDyn` / 广播 / 转置协同回归             |
-| 需求说明书 §28.4 占位：extreme-value             | 后续补充 `usize` 极值与乘积溢出诊断回归                |
 
 ### 8.4 属性测试不变量
 
