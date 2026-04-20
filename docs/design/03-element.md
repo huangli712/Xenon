@@ -327,29 +327,9 @@ impl OrderedCompareElement for f64 {}
 - 不支持 `usize`、u8/u16/u32/i8/i16 等其他整数类型。
 - `usize` 仅作为索引和形状元数据使用。
 
-### 5.8 BoolElement trait
+### 5.8 Sealed trait 策略
 
-> **公开性说明：** 以下 trait 为内部实现辅助，不纳入稳定公开 API 面。具体可见性由实现决定。
-
-```rust,ignore
-/// Bool-specific element capability.
-///
-/// Provides logical NOT for `bool` tensors without making `bool` part of `Numeric`.
-pub(crate) trait BoolElement: Element + core::ops::Not<Output = Self> {
-    fn logical_not(self) -> Self;
-}
-
-impl BoolElement for bool {
-    #[inline]
-    fn logical_not(self) -> Self {
-        !self
-    }
-}
-```
-
-### 5.7 Sealed trait 策略
-
-> **sealed 模式声明：** `Element`、`Numeric`、`RealScalar`、`ComplexScalar` 全部通过共享的 `private::Sealed` 基础设施实现 sealed trait 模式。下游 crate 只能使用 Xenon 已声明的元素类型，不能为自定义类型补充这些 trait 实现。
+`Element`、`Numeric`、`RealScalar`、`ComplexScalar` 全部通过共享的 `private::Sealed` 基础设施实现 sealed trait 模式。下游 crate 只能使用 Xenon 已声明的元素类型，不能为自定义类型补充这些 trait 实现。
 
 ```rust,ignore
 // src/element/mod.rs
@@ -367,16 +347,7 @@ impl Sealed for Complex<f64> {}
 impl Sealed for bool {}
 ```
 
-外部 crate 尝试实现时编译错误：
-
-```rust,ignore
-// External crate attempt:
-use xenon::element::Element;
-struct MyType;
-impl Element for MyType { /* error[E0277]: Sealed not satisfied */ }
-```
-
-### 5.8 Good / Bad 对比示例
+### 5.9 Good / Bad 对比示例
 
 ```rust,ignore
 // Good - Numeric constraint automatically excludes bool and non-Numeric types
@@ -411,11 +382,9 @@ let c = &a + &b64;
 // let c = &a + &b;  // Compile error: no matching impl for f64 + i32
 ```
 
-### 5.9 CastTo\<T\> trait（类型转换）
+### 5.10 CastTo<T> trait
 
 `CastTo<T>` 的 trait 定义位于 `src/element/mod.rs`，具体 impl 统一放在 `src/convert/cast.rs`；`convert/` 负责消费该 trait 并承载受支持转换矩阵的实现（参见 `21-type.md §5.1`），不在其他模块重复定义或分散实现。
-
-> **位置说明：** 类型转换错误载荷的完整定义见 `26-error.md §4.2`，`CastTo<T>` 的转换矩阵与实现约束见 `21-type.md §5.2`、`§6.1`。本节仅保留元素层 trait 骨架。
 
 ```rust,ignore
 // src/element/mod.rs
@@ -438,19 +407,14 @@ pub trait CastTo<T>: Element {
 }
 ```
 
-> **错误映射说明：** `CastTo<T>` 直接返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }`。
->
-> **Bool 边界说明：** `bool` 不为任何目标类型实现 `CastTo<T>`；`bool` 张量调用 `.cast::<f32>()` 等转换必须在编译期失败。
->
-> **无损/有损区分说明：** 同类型拷贝和无损转换虽然通过 `Result` 返回，但按契约语义上不可失败。调用方仍应按项目错误处理规范选择 `?` 或显式处理；实现层不应依赖 `unwrap` 作为常规路径。
+- 类型转换错误载荷的完整定义见 `26-error.md §4.2`，`CastTo<T>` 的转换矩阵与实现约束见 `21-type.md §5.2`、`§6.1`。本节仅保留元素层 trait 骨架。
+- `CastTo<T>` 直接返回 `XenonError::TypeConversion`。
+- `bool` 不为任何目标类型实现 `CastTo<T>`。
+- `Complex<T> -> Real` 的条件成功语义、受支持矩阵与 `XenonError::TypeConversion` 字段约束，统一以 `21-type.md §5.3`、`§6.1` 以及 `26-error.md §4.3` 为准。
 
-> **交叉引用：** `Complex<T> -> Real` 的条件成功语义、受支持矩阵与 `XenonError::TypeConversion { source_type, target_type, reason, element_index }` 字段约束，统一以 `21-type.md §5.3`、`§6.1` 以及 `26-error.md §4.3` 为准；本节不再重复给出详细 impl 或错误构造示例。
-
-### 5.10 Checked arithmetic traits（整数溢出检测）
+### 5.11 Checked arithmetic traits（整数溢出检测）
 
 `CheckedAdd` 为整数类型提供 checked 加法，供 `sum` 归约操作在整数溢出时 panic（参见 `13-reduction.md §5.1`）。
-
-> **公开性说明：** 以下 trait 为内部实现辅助，不纳入稳定公开 API 面。具体可见性由实现决定。
 
 ```rust,ignore
 // src/element/mod.rs
@@ -530,11 +494,9 @@ impl CheckedNeg for i64 {
 }
 ```
 
-> **设计决策：** `CheckedAdd` 仅覆盖整数加法（`i32`/`i64`），用于归约等必须精确检测溢出的路径。逐元素整数乘法不通过 `CheckedAdd` 约束暴露，具体溢出策略由对应运算模块单独规定。
->
-> **补充说明：** 当前元素层统一提供 `CheckedAdd` / `CheckedSub` / `CheckedMul` / `CheckedNeg` 四类整数 checked 原语，供 `math`、`matrix`、`reduction` 等模块复用；除法、余数与更高阶组合检查仍由具体运算模块在实现层完成（参见 `11-math.md`、`12-matrix.md`）。
-
-> **架构同步说明：** 本文新增的 `BoolElement`、`OrderedCompareElement`、`Checked*`、`CastTo` 等 trait 须与 `01-architecture.md` 的核心类型速查表保持同步。
+- 此 trait 为内部实现辅助，不纳入稳定公开 API 面。具体可见性由实现决定。
+- `CheckedAdd` 仅覆盖整数加法（`i32`/`i64`），用于归约等必须精确检测溢出的路径。
+- 当前元素层统一提供 `CheckedAdd` / `CheckedSub` / `CheckedMul` / `CheckedNeg` 四类整数 checked 原语，供 `math`、`matrix`、`reduction` 等模块复用；除法、余数与更高阶组合检查仍由具体运算模块在实现层完成（参见 `11-math.md`、`12-matrix.md`）。
 
 ---
 
