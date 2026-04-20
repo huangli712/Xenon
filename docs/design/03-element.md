@@ -106,13 +106,13 @@ src/element/
 
 ### 4.4 依赖方向声明
 
-**依赖方向：单向向上。** `element/` 消费 `complex` 的类型定义（即 `element` 依赖 `complex`），`complex` 不反向依赖 `element`。
+**依赖方向**：单向向上。 `element/` 消费 `complex` 的类型定义（即 `element` 依赖 `complex`），`complex` 不反向依赖 `element`。
 
 ---
 
 ## 5. 公共 API 设计
 
-> **sealed 约束说明：** 以上所有公开 trait 均通过 `private::Sealed` 实现 sealed trait 模式，禁止下游 crate 为自定义类型实现这些 trait。元素类型集合为封闭集合，不支持外部扩展。
+**sealed 约束说明**：以下所有公开 trait 均通过 `private::Sealed` 实现 sealed trait 模式，禁止下游 crate 为自定义类型实现这些 trait。元素类型集合为封闭集合，不支持外部扩展。
 
 ### 5.1 Element trait
 
@@ -189,15 +189,13 @@ pub trait Numeric:
 | `Add/Sub/Mul/Div/Neg` | 提供通用数值四则运算与取负能力                              |
 | `conjugate(self)`     | 统一提供共轭语义：实数类型返回 `self`，复数类型返回数学共轭 |
 
-> **设计决策：** `Numeric` 在保留通用算术分层的同时，通过 `Numeric::conjugate()` 统一提供共轭语义：实数类型为恒等操作，复数类型执行数学共轭。`ComplexScalar` 保留复数专用能力（`re`/`im`/`norm`），不再单独承担 `conjugate` 的唯一 trait 入口角色。这与 `01-architecture.md`、`11-math.md`、`12-matrix.md` 的泛型约定保持一致。
->
-> **`conjugate()` 语义说明：** `conjugate()` 为泛型算法统一入口；对实数类型返回恒等值（自身），对复数类型返回共轭。此方法不代表所有 `Numeric` 类型均具备复数运算能力。
->
-> **整数算术契约**：`Add/Sub/Mul/Div/Neg` 只表达运算符可用性，不单独定义 Xenon 的溢出语义。凡需求文档要求“溢出/除零/结果不可表示即 panic”的整数运算路径，具体模块必须通过 checked 标量原语或等价显式检查落实，不得仅凭原生运算符 trait 假定语义成立。
+**设计决策：** `Numeric` 在保留通用算术分层的同时，通过 `Numeric::conjugate()` 统一提供共轭语义：实数类型为恒等操作，复数类型执行数学共轭。`ComplexScalar` 保留复数专用能力（`re`/`im`/`norm`），不再单独承担 `conjugate` 的唯一 trait 入口角色。这与 `01-architecture.md`、`11-math.md`、`12-matrix.md` 的泛型约定保持一致。
 
-### 5.2a Signum trait
+**`conjugate()` 语义说明：** `conjugate()` 为泛型算法统一入口；对实数类型返回恒等值（自身），对复数类型返回共轭。此方法不代表所有 `Numeric` 类型均具备复数运算能力。
 
-> **公开性说明：** `Signum` 仅作为 crate 内部 sealed trait 使用，不纳入稳定公开 API；其实现集合固定为 `i32`、`i64`、`f32`、`f64`。
+**整数算术契约**：`Add/Sub/Mul/Div/Neg` 只表达运算符可用性，不单独定义 Xenon 的溢出语义。凡需求文档要求“溢出/除零/结果不可表示即 panic”的整数运算路径，具体模块必须通过 checked 标量原语或等价显式检查落实，不得仅凭原生运算符 trait 假定语义成立。
+
+### 5.3 Signum trait
 
 ```rust,ignore
 /// Unified signum capability for the sealed signed scalar set.
@@ -230,7 +228,11 @@ impl Signum for f64 {
 }
 ```
 
-> **适用范围说明：** 张量级 `signum()` 公开能力需覆盖 `i32`、`i64`、`f32`、`f64`（对应 `需求说明书 §12`）。因此本设计将 `signum` 收敛到独立的 sealed `Signum` 子 trait：整数通过 `-1/0/1` 语义实现，浮点继续服从 `RealScalar::signum()` 的标准库语义；`Complex<T>` 与 `bool` 不实现该能力。
+- `Signum` 仅作为 crate 内部 sealed trait 使用，不纳入稳定公开 API。
+- 实现集合固定为 `i32`、`i64`、`f32`、`f64`。
+- 整数通过 `-1/0/1` 语义实现。
+- 浮点继续服从 `RealScalar::signum()` 的标准库语义。
+- `Complex<T>` 与 `bool` 不实现该能力。
 
 ### 5.3 RealScalar trait
 
