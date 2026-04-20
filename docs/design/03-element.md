@@ -742,6 +742,7 @@ Wave 3: [T6]      [T9] ← ────┘
 | `tensor`     | `Element`                   | Tensor<A, D> 的 A 约束 |
 | `matrix`     | `Numeric` / `ComplexScalar` | 内积运算               |
 | `convert`    | `Element`                   | 类型转换               |
+| `math`       | 全部Traits                  | 数学运算               |
 
 各模块的详细接口约定参见对应设计文档（`11-math.md` §4、`13-reduction.md` §4、`21-type.md` §4）。
 
