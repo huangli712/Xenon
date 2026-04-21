@@ -142,11 +142,9 @@ pub struct Complex<T: ComplexFloat> {
 }
 ```
 
-> **公开边界约束：** `Complex<T>` 保持公开泛型形式，但其公开 bound 使用 `pub trait ComplexFloat`。
-> 该 trait 通过 `private::Sealed` 超 trait 封闭实现范围，因此下游只能使用 `Complex<f32>` 与
-> `Complex<f64>`，不能为其他类型自行实现 `ComplexFloat`。
-
-> **rustdoc 呈现补充说明：** rustdoc 会把 `Complex<T: ComplexFloat>` 渲染成一般泛型类型，容易让读者误以为任意 `T` 都可实例化。文档、示例与导出注释必须反复强调：公开可构造实例实际上只包含 `Complex<f32>` 与 `Complex<f64>` 两种 sealed 组件类型。
+- `Complex<T>` 保持公开泛型形式，但其公开 bound 使用 `pub trait ComplexFloat`。
+- 该 trait 通过 `private::Sealed` supertrait 封闭实现范围。
+- 下游只能使用 `Complex<f32>` 与`Complex<f64>`，不能为其他类型自行实现 `ComplexFloat`。
 
 ### 5.2 泛型约束
 
@@ -185,9 +183,7 @@ impl ComplexFloat for f64 {
 }
 ```
 
-> **API 边界说明**：`ComplexFloat` 是用于表达 `Complex<T>` 公开 bound 的 `pub` trait，但其实现范围由 `private::Sealed` 封闭到 `f32`/`f64`；它不是面向下游的公开扩展点。此 trait 实际上是 `Complex<f32>` / `Complex<f64>` 的内部抽象，公开文档必须明确：当前版本唯一受支持实例只有 `Complex<f32>` 与 `Complex<f64>`。`Float` 则保持内部实现细节。公开能力仍主要通过 `Element`/`Numeric`/`ComplexScalar` 等更高层 trait 暴露。
-
-内部实现细节：
+`ComplexFloat` 是用于表达 `Complex<T>` 公开 bound 的 `pub` trait，但其实现范围由 `private::Sealed` 封闭到 `f32`/`f64`；它不是面向下游的公开扩展点。此 trait 实际上是 `Complex<f32>` / `Complex<f64>` 的内部抽象。内部实现细节：
 
 ```rust,ignore
 /// Internal trait for floating-point types used in Complex<T>.
@@ -346,9 +342,7 @@ impl Complex<f64> {
 
 ### 5.5 数学方法
 
-> **注意**：数学方法通过具体的 `impl Complex<f32>` 和 `impl Complex<f64>` 块提供，而非泛型 `impl<T: Float>`。这避免了 `Float` trait（`pub(crate)`）暴露到公共 API。
-
-> **内部 helper 说明**：以下为内部实现 helper，仅作实现参考。当前版本需求不要求这些 helper 的稳定化设计。
+数学方法通过具体的 `impl Complex<f32>` 和 `impl Complex<f64>` 块提供，而非泛型 `impl<T: Float>`。这避免了 `Float` trait（`pub(crate)`）暴露到公共 API。以下为内部实现 helper，仅作实现参考。当前版本需求不要求这些 helper 的稳定化设计。
 
 ````rust,ignore
 // Concrete impl for Complex<f32> — public stable methods plus internal helpers.
@@ -470,8 +464,6 @@ impl Complex<f64> {
 }
 ````
 
-> **精度说明：** 对于实部为负的复数，标准 sqrt 算法可能在分支割线附近产生灾难性消去（catastrophic cancellation）。这是已知的精度限制。对精度要求极高的场景，可考虑使用更稳定的数值算法。
-
 ### 5.6 算术运算实现
 
 ```rust,ignore
@@ -538,12 +530,12 @@ impl<T: ComplexFloat> core::ops::Neg for Complex<T> {
 }
 ```
 
-> **除法特殊值语义说明：** `Complex<T>` 除法遵循 **Smith 算法 + 底层 IEEE 754 标量运算的组合语义**。实现层使用 Smith 算法避免直接形成 `c² + d²`；当输入含 `0`、`NaN`、`Inf` 或中间结果出现上溢/下溢时，最终结果继续由底层 `f32` / `f64` 标量运算的 IEEE 754 传播规则决定，不额外返回可恢复错误，也不引入额外 panic。该约束适用于 `Complex<T> / Complex<T>` 公开运算符语义，并与 `需求说明书 §13` / `需求说明书 §28.3` 保持一致。
->
-> **规范性示例：**
-> - `Complex::new(1.0, 2.0) / Complex::new(0.0, 0.0)`：结果按 Smith 分支中的底层 IEEE 754 标量除法/乘加传播计算，允许产生 `Inf` / `NaN` 组合；文档不额外定义独立错误通道。
-> - `Complex::new(f64::NAN, 1.0) / Complex::new(3.0, 4.0)`：结果分量遵循 `NaN` 传播，输出可含 `NaN` 分量。
-> - `Complex::new(f64::INFINITY, 1.0) / Complex::new(3.0, 4.0)`：结果分量遵循 `Inf` 参与的底层 IEEE 754 标量运算语义，可产生 `Inf`、有限值或 `NaN` 组合。
+`Complex<T>` 除法遵循 **Smith 算法 + 底层 IEEE 754 标量运算的组合语义**。实现层使用 Smith 算法避免直接形成 `c² + d²`；当输入含 `0`、`NaN`、`Inf` 或中间结果出现上溢/下溢时，最终结果继续由底层 `f32` / `f64` 标量运算的 IEEE 754 传播规则决定，不额外返回可恢复错误，也不引入额外 panic。该约束适用于 `Complex<T> / Complex<T>` 公开运算符语义，并与 `需求说明书 §13` / `需求说明书 §28.3` 保持一致。
+
+规范性示例：
+- `Complex::new(1.0, 2.0) / Complex::new(0.0, 0.0)`：结果按 Smith 分支中的底层 IEEE 754 标量除法/乘加传播计算，允许产生 `Inf` / `NaN` 组合；文档不额外定义独立错误通道。
+- `Complex::new(f64::NAN, 1.0) / Complex::new(3.0, 4.0)`：结果分量遵循 `NaN` 传播，输出可含 `NaN` 分量。
+- `Complex::new(f64::INFINITY, 1.0) / Complex::new(3.0, 4.0)`：结果分量遵循 `Inf` 参与的底层 IEEE 754 标量运算语义，可产生 `Inf`、有限值或 `NaN` 组合。
 
 ### 5.7 显式实数构造与混合运算边界
 
