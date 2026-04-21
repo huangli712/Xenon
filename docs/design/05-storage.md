@@ -823,7 +823,7 @@ pub type ViewMut<'a, A> = ViewMutRepr<'a, A>;
 // Intentionally no Clone impl — Rust borrowing rules require mutable references to be exclusive
 ```
 
-### 6.5 ArcRepr\<A\> 结构体
+### 6.5 ArcRepr<A> 结构体
 
 ```rust,ignore
 /// Shared read-only storage.
