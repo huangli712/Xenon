@@ -18,7 +18,7 @@
 | 类型定义     | `Complex<T>` 结构体（`#[repr(C)]`，re/im 字段）                                  |
 | 构造方法     | `new(re, im)`                                                                    |
 | 基础方法     | `re()`, `im()`, `conj()`, `is_real()`, `is_imaginary()`                          |
-| 数学方法     | `norm()`（hypot）, `norm_sqr()`                                                  |
+| 数学方法     | `norm()`, `norm_sqr()`                                                           |
 | 算术运算     | Complex±Complex, Complex×Complex, Complex÷Complex, 一元负号                      |
 | 实数构造     | `From<T> for Complex<T>` 的显式标量构造                                          |
 | 混合运算边界 | `Complex<T> op Complex<T>` 前须先完成显式构造                                    |
@@ -159,7 +159,7 @@ Xenon 公开使用 sealed 的 `ComplexFloat` 约束把 `Complex<T>` 封闭到 `f
 ```rust,ignore
 /// Public bound for `Complex<T>`.
 ///
-/// This trait is an internal abstraction for `Complex<f32>` / `Complex<f64>`.
+/// This trait is a pure sealing mechanism — it carries no methods.
 /// It is sealed via `private::Sealed`, so downstream crates must not
 /// implement it. Xenon only supports `f32` and `f64` as complex components.
 pub trait ComplexFloat: private::Sealed + Copy + Default + Debug + PartialEq + PartialOrd
@@ -168,22 +168,13 @@ pub trait ComplexFloat: private::Sealed + Copy + Default + Debug + PartialEq + P
     + core::ops::Mul<Output = Self>
     + core::ops::Div<Output = Self>
     + core::ops::Neg<Output = Self>
-{
-    fn abs(self) -> Self;
-}
+{}
 
-impl ComplexFloat for f32 {
-    #[inline]
-    fn abs(self) -> Self { self.abs() }
-}
-
-impl ComplexFloat for f64 {
-    #[inline]
-    fn abs(self) -> Self { self.abs() }
-}
+impl ComplexFloat for f32 {}
+impl ComplexFloat for f64 {}
 ```
 
-`ComplexFloat` 是用于表达 `Complex<T>` 公开 bound 的 `pub` trait，但其实现范围由 `private::Sealed` 封闭到 `f32`/`f64`；它不是面向下游的公开扩展点。此 trait 实际上是 `Complex<f32>` / `Complex<f64>` 的内部抽象。
+`ComplexFloat` 是用于表达 `Complex<T>` 公开 bound 的 `pub` trait，但其实现范围由 `private::Sealed` 封闭到 `f32`/`f64`；它不是面向下游的公开扩展点。此 trait 实际上是 `Complex<f32>` / `Complex<f64>` 的内部抽象。`ComplexFloat` 不携带任何方法，仅作类型封闭之用。
 
 ### 5.3 构造方法
 
@@ -351,7 +342,31 @@ impl<T: ComplexFloat> core::ops::Mul for Complex<T> {
 }
 
 // Complex / Complex: Smith's algorithm for better numerical stability
-impl<T: ComplexFloat> core::ops::Div for Complex<T> {
+// Concrete impls are required because the branch selection uses T::abs(),
+// which is not part of ComplexFloat (the trait is a pure sealing mechanism).
+impl core::ops::Div for Complex<f32> {
+    type Output = Self;
+    #[inline]
+    fn div(self, rhs: Self) -> Self {
+        if rhs.re.abs() >= rhs.im.abs() {
+            let r = rhs.im / rhs.re;
+            let denom = rhs.re + rhs.im * r;
+            Self::new(
+                (self.re + self.im * r) / denom,
+                (self.im - self.re * r) / denom,
+            )
+        } else {
+            let r = rhs.re / rhs.im;
+            let denom = rhs.re * r + rhs.im;
+            Self::new(
+                (self.re * r + self.im) / denom,
+                (self.im * r - self.re) / denom,
+            )
+        }
+    }
+}
+
+impl core::ops::Div for Complex<f64> {
     type Output = Self;
     #[inline]
     fn div(self, rhs: Self) -> Self {
@@ -665,7 +680,7 @@ hypot(a, b):
 
 - [ ] **T1**: 定义 `Complex<T>` 结构体和 `new()` 构造方法
   - 文件: `src/complex/mod.rs`
-  - 内容: 结构体定义 + `new()` + `ComplexFloat`/`Float` trait 定义 + 对 `f32`/`f64` 的实现
+  - 内容: 结构体定义 + `new()` + `ComplexFloat` trait 定义 + 对 `f32`/`f64` 的实现
   - 测试: `test_complex_new`, 编译通过
   - 前置: private 模块已经就绪
   - 预计: 10 min
