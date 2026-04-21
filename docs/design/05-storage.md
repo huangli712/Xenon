@@ -908,14 +908,14 @@ where
 
 ### 6.8 Send/Sync 实现规则
 
-> **线程安全权威源**：存储类型的 `Send`/`Sync` 实现规则由 `25-safety.md` §4 定义。本文档仅做概要说明；若与 `25-safety.md` 存在冲突，以 `25-safety.md` 为准。
+存储类型的 `Send`/`Sync` 实现规则由 `25-safety.md` §4 定义。本文档仅做概要说明；若与 `25-safety.md` 存在冲突，以 `25-safety.md` 为准。
 
-| 存储类型             |      Send      |      Sync      | 原因                                                                  |
-| -------------------- | :------------: | :------------: | --------------------------------------------------------------------- |
-| `Owned<A>`           |    A: Send     |    A: Sync     | 拥有数据，Send/Sync 条件与 `Vec<A>` 一致（分别要求 A:Send 和 A:Sync） |
-| `ViewRepr<'a, A>`    |    A: Sync     |    A: Sync     | 共享借用需要 Sync 才能跨线程共享                                      |
-| `ViewMutRepr<'a, A>` |    A: Send     |   ❌ 永远不    | 独占借用可转移但不可共享                                              |
-| `ArcRepr<A>`         | A: Send + Sync | A: Send + Sync | 抽象共享所有权实现需保证线程安全                                      |
+| 存储类型             |    Send   |    Sync   | 原因                                                                  |
+| -------------------- | --------- | --------- | ------------------------------------------ |
+| `Owned<A>`           |  A: Send  |  A: Sync  | 拥有数据，Send/Sync 条件与 `Vec<A>` 一致   |
+| `ViewRepr<'a, A>`    |  A: Sync  |  A: Sync  | 共享借用需要 Sync 才能跨线程共享           |
+| `ViewMutRepr<'a, A>` |  A: Send  |  永远不   | 独占借用可转移但不可共享                   |
+| `ArcRepr<A>`         | A: Send + Sync | A: Send + Sync | 抽象共享所有权实现需保证线程安全 |
 
 ```rust,ignore
 // SAFETY: ViewRepr<'a, A> only allows shared (read-only) access.
