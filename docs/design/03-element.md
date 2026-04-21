@@ -632,23 +632,6 @@ impl RealScalar for f64 {
   - 前置: T10, T11
   - 预计: 10 min
 
-### 并行执行分组图
-
-```
-Wave 1: [T1] → [T2]
-                    │
-        ┌───────────┼───────────┐
-        ▼           ▼           ▼
-Wave 2: [T3]      [T4]       [T5]
-        │           │           │
-        │           │           ▼
-Wave 3: [T6]      [T9] ← ────┘
-         │          │
-        [T10]      [T11] → [T12]
-
-(T7, T8 are independent of Wave 2-3 and can run in parallel with T3/T4/T5)
-```
-
 ---
 
 ## 8. 测试计划
