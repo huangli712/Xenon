@@ -681,10 +681,7 @@ const _: () = {
 ```
 
 - `#[repr(C)]` 仅用于固定字段顺序与 C 兼容结构体表示；安全前提建立在按 `re` / `im` 两个已知字段访问，而非依赖“无 padding”假设。
-
-> **字段偏移验证意图：** 除 size/align 静态断言外，测试计划还应补充 `re` 位于偏移 0、`im` 位于 `size_of::<T>()` 偏移处的验证意图，用于防止未来重构破坏两字段 C struct 的约定布局。
->
-> **测试计划补充：** 在 `tests/complex/layout.rs` 中分别对 `Complex<f32>` 与 `Complex<f64>` 构造样例值，使用 `offset_of!` 或等价的 pointer offset 断言验证 `re` 的字段偏移为 `0`、`im` 的字段偏移等于 `core::mem::size_of::<T>()`；该测试只验证字段顺序与偏移，不额外扩大 ABI 承诺范围。
+-  除 size/align 静态断言外，测试计划还应补充 `re` 位于偏移 0、`im` 位于 `size_of::<T>()` 偏移处的验证意图，用于防止未来重构破坏两字段 C struct 的约定布局。
 
 ### 5.12 FFI 布局兼容性说明
 
@@ -693,15 +690,10 @@ const _: () = {
 | `struct { float re; float im; }`   | `[float, float]`   | `Complex<f32>` |
 | `struct { double re; double im; }` | `[double, double]` | `Complex<f64>` |
 
-Xenon 对 `需求说明书 §5` 的裁决是：**公开 FFI 契约只保证 `#[repr(C)] struct { re: T, im: T }` 等价布局**。
-
-1. `Complex<T>` 在 Rust 侧始终保持双字段 `#[repr(C)]` 布局，作为最低层内存表示；
-2. 对外文档与测试只承诺其可按两字段 C 结构体解释；
-3. **不保证** 与 C99 `_Complex` 的 ABI 或调用约定兼容，相关互操作若有需要，应由上游按目标平台单独验证并适配。
+- 公开 FFI 契约只保证 `#[repr(C)] struct { re: T, im: T }` 等价布局。
+- `Complex<T>` 在 Rust 侧始终保持双字段 `#[repr(C)]` 布局，作为最低层内存表示；
 
 FFI 示例：
-
-> **ABI 范围说明：** 示例仅针对等价两字段 struct ABI，不保证与 C99 `_Complex` ABI 或所有平台 ABI 兼容。
 
 ```rust,ignore
 // Rust side
