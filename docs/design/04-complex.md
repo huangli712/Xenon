@@ -530,7 +530,7 @@ impl<T: ComplexFloat> core::ops::Neg for Complex<T> {
 }
 ```
 
-`Complex<T>` 除法遵循 **Smith 算法 + 底层 IEEE 754 标量运算的组合语义**。实现层使用 Smith 算法避免直接形成 `c² + d²`；当输入含 `0`、`NaN`、`Inf` 或中间结果出现上溢/下溢时，最终结果继续由底层 `f32` / `f64` 标量运算的 IEEE 754 传播规则决定，不额外返回可恢复错误，也不引入额外 panic。该约束适用于 `Complex<T> / Complex<T>` 公开运算符语义，并与 `需求说明书 §13` / `需求说明书 §28.3` 保持一致。
+`Complex<T>` 除法遵循 Smith 算法 + 底层 IEEE 754 标量运算的组合语义。实现层使用 Smith 算法避免直接形成 `c² + d²`；当输入含 `0`、`NaN`、`Inf` 或中间结果出现上溢/下溢时，最终结果继续由底层 `f32` / `f64` 标量运算的 IEEE 754 传播规则决定，不额外返回可恢复错误，也不引入额外 panic。该约束适用于 `Complex<T> / Complex<T>` 公开运算符语义，并与 `需求说明书 §13` / `需求说明书 §28.3` 保持一致。
 
 规范性示例：
 - `Complex::new(1.0, 2.0) / Complex::new(0.0, 0.0)`：结果按 Smith 分支中的底层 IEEE 754 标量除法/乘加传播计算，允许产生 `Inf` / `NaN` 组合；文档不额外定义独立错误通道。
@@ -619,8 +619,6 @@ fn scalar_is_positive_zero<T: PositiveZero>(im: T) -> bool {
 }
 ```
 
-> **实现要点：** `scalar_is_positive_zero()` 只识别正零 bit pattern；`-0.0` 会落入“保留虚部表示”的分支，因此 `Complex::new(re, -0.0)` 不再被错误折叠为纯实数输出。
-
 | 输入                      | Display 输出 |
 | ------------------------- | ------------ |
 | `Complex::new(3.0, 4.0)`  | `"3+4j"`     |
@@ -630,11 +628,17 @@ fn scalar_is_positive_zero<T: PositiveZero>(im: T) -> bool {
 | `Complex::new(0.0, 4.0)`  | `"4j"`       |
 | `Complex::new(0.0, 0.0)`  | `"0"`        |
 
-> **Display 稳定性规则：** `-0.0` 必须保留其符号信息；当虚部为 `-0.0` 时，输出须包含虚部表示，不能落入“仅输出实部”的 `im == 0` 折叠路径。实现上须显式区分 `+0.0` 与 `-0.0`：例如通过 `im.to_bits() == 0.0f32.to_bits()` / 对应 `f64` 正零 bit pattern 判断正零，并单独识别负零 bit pattern。`NaN` 的 payload / sign bit 不作为稳定输出契约的一部分；`Inf` / `-Inf` 直接沿用分量标量的 `Display` 结果。复数字符串层只保证组合规则稳定，不承诺超出底层浮点 `Display` 的额外 canonicalization。
+**稳定性规则**： 
+
+- `-0.0` 必须保留其符号信息。
+- 当虚部为 `-0.0` 时，输出须包含虚部表示，不能落入“仅输出实部”的 `im == 0` 折叠路径。
+- 实现上须显式区分 `+0.0` 与 `-0.0`。
+- `NaN` 的 payload / sign bit 不作为稳定输出契约的一部分。
+- `Inf` / `-Inf` 直接沿用分量标量的 `Display` 结果。
 
 ### 5.10 类型转换
 
-> **实现归属说明：** 本节只保留语义矩阵。具体 `From` / `CastTo` 实现由 `convert/cast.rs` 统一承载；下列规则描述当前版本允许的语义，不再在 `complex/` 文档中重复大段实现片段。
+本节只保留语义矩阵。具体 `From` / `CastTo` 实现由 `convert/cast.rs` 统一承载。
 
 整数到复数的受支持路径按 `需求说明书 §23.1` 与 `需求说明书 §23.2` 的规则补充如下：
 
@@ -647,26 +651,22 @@ fn scalar_is_positive_zero<T: PositiveZero>(im: T) -> bool {
 
 其中语义遵循 `需求说明书 §23.2` 的闭合规则：先按对应实数类型到目标复数实部分量类型的规则转换实部，再引入值为 `0` 的虚部。当前版本不额外扩展 `需求说明书 §23.1` 之外的整数→复数组合。
 
-> **统一转换入口说明：** `Complex` 类型的逐元素类型转换统一由 `03-element.md` 定义的 `CastTo<T>` trait 管理，trait 定义位于 `element` 模块，具体实现归入 `convert/` 模块；本节不再单独定义张量级转换入口。`From` 仅用于**不可能失败且不丢失精度**的标量级构造或 widening：`From<T> for Complex<T>`（实数到同精度复数，虚部补 `0`）与 `From<Complex<f32>> for Complex<f64>`（分量无损 widening）。其中 `From<T> for Complex<T>` 是当前版本**唯一**允许的显式实数到复数标量构造路径。
-
-> **错误边界说明：** `CastTo<T>` 直接返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }`。
-
-除上述 infallible 构造外，其余显式类型转换统一通过 `CastTo<T>` trait 实现（参见 `03-element.md` §5.9 和 `21-type.md`），包括 `Complex<f64> -> Complex<f32>`、`Complex<T> -> T` 以及其他跨精度/跨类型组合；其中有损窄化路径默认返回可恢复错误。
-
-> **禁止性约束：** 禁止为任何可能失败或可能丢失精度的转换实现 `From`。这类转换必须走 `21-type.md` 定义的 `CastTo<T>`。
+- `Complex` 类型的逐元素类型转换统一由 `03-element.md` 定义的 `CastTo<T>` trait 管理，trait 定义位于 `element` 模块，具体实现归入 `convert/` 模块；本节不再单独定义张量级转换入口。`From` 仅用于**不可能失败且不丢失精度**的标量级构造或 widening：`From<T> for Complex<T>`（实数到同精度复数，虚部补 `0`）与 `From<Complex<f32>> for Complex<f64>`（分量无损 widening）。其中 `From<T> for Complex<T>` 是当前版本**唯一**允许的显式实数到复数标量构造路径。
+- `CastTo<T>` 直接返回 `XenonError::TypeConversion`。
+- 除上述 infallible 构造外，其余显式类型转换统一通过 `CastTo<T>` trait 实现（参见 `03-element.md` §5.9 和 `21-type.md`），包括 `Complex<f64> -> Complex<f32>`、`Complex<T> -> T` 以及其他跨精度/跨类型组合；其中有损窄化路径默认返回可恢复错误。
+- 禁止为任何可能失败或可能丢失精度的转换实现 `From`。这类转换必须走 `21-type.md` 定义的 `CastTo<T>`。
 
 复杂到实数的受支持路径同样受 `需求说明书 §23.1` 与 `需求说明书 §23.2` 约束，且统一由 `03-element.md` §5.9 定义的 `CastTo<T>` trait 作为唯一 owner；`complex/` 模块文档仅声明其语义，不重复定义独立转换入口。
 
 | 源类型 | 目标类型 | 语义 | 默认行为 |
 |--------|----------|------|---------|
-| `Complex<f32>` | `f32` | 仅当虚部为 `0` 时返回实部 | `CastTo<T>` 返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }` |
-| `Complex<f64>` | `f64` | 仅当虚部为 `0` 时返回实部 | `CastTo<T>` 返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }` |
-| `Complex<f32>` | `f64` | 仅当虚部为 `0` 时，按 `f32→f64` 规则转换实部 | `CastTo<T>` 返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }` |
-| `Complex<f64>` | `f32` | 仅当虚部为 `0` 时，按 `f64→f32` 规则转换实部 | `CastTo<T>` 返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }` |
+| `Complex<f32>` | `f32` | 仅当虚部为 `0` 时返回实部 | `CastTo<T>` 返回 `XenonError::TypeConversion` |
+| `Complex<f64>` | `f64` | 仅当虚部为 `0` 时返回实部 | `CastTo<T>` 返回 `XenonError::TypeConversion` |
+| `Complex<f32>` | `f64` | 仅当虚部为 `0` 时，按 `f32→f64` 规则转换实部 | `CastTo<T>` 返回 `XenonError::TypeConversion` |
+| `Complex<f64>` | `f32` | 仅当虚部为 `0` 时，按 `f64→f32` 规则转换实部 | `CastTo<T>` 返回 `XenonError::TypeConversion` |
 
-> **实现片段省略：** `Complex -> Real` 的具体 `CastTo<T>` 实现同样位于 `convert/cast.rs`。`complex/` 仅保留“虚部必须为 `0`；失败返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }`”这一语义约束，字段模型以 `26-error.md §4.2` / `§4.4` 为准。
-
-> **`-0.0` 补充说明：** 复数到实数转换对“虚部是否为零”的判断遵循 IEEE 754 比较语义；因此 `-0.0` 视为零，`Complex::new(3.0, -0.0)` 允许按虚部为零的路径继续转换，不应被误判为非零虚部。
+- `Complex -> Real` 的具体 `CastTo<T>` 实现同样位于 `convert/cast.rs`。`complex/` 仅保留“虚部必须为 `0`；失败返回 `XenonError::TypeConversion`”这一语义约束，字段模型以 `26-error.md §4.2` / `§4.4` 为准。
+- `-0.0` 补充说明： 复数到实数转换对“虚部是否为零”的判断遵循 IEEE 754 比较语义；因此 `-0.0` 视为零，`Complex::new(3.0, -0.0)` 允许按虚部为零的路径继续转换，不应被误判为非零虚部。
 
 ### 5.11 内存布局静态断言
 
@@ -680,7 +680,7 @@ const _: () = {
 };
 ```
 
-**安全性论证**: `#[repr(C)]` 仅用于固定字段顺序与 C 兼容结构体表示；安全前提建立在按 `re` / `im` 两个已知字段访问，而非依赖“无 padding”假设。
+- `#[repr(C)]` 仅用于固定字段顺序与 C 兼容结构体表示；安全前提建立在按 `re` / `im` 两个已知字段访问，而非依赖“无 padding”假设。
 
 > **字段偏移验证意图：** 除 size/align 静态断言外，测试计划还应补充 `re` 位于偏移 0、`im` 位于 `size_of::<T>()` 偏移处的验证意图，用于防止未来重构破坏两字段 C struct 的约定布局。
 >
