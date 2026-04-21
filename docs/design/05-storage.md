@@ -1080,14 +1080,6 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 | 大数组 16M 元素                     | 正常分配和访问                                  |
 | 容量乘法接近 `usize::MAX`           | 返回 `XenonError::InvalidShape`，不发生整数回绕 |
 
-### 8.3a `需求说明书 §28.4` 边界测试占位
-
-| 占位项       | 说明                                                                              |
-| ------------ | --------------------------------------------------------------------------------- |
-| 空存储边界   | 占位：覆盖 `len == 0` 时 dangling sentinel、空切片与 `offset <= storage_len` 契约 |
-| 大存储边界   | 占位：覆盖超大 `len` / `elem_size` 乘法接近上界时返回 `InvalidShape`              |
-| ZST 存储边界 | 占位：覆盖 ZST + 空/非空存储不分配且不解引用哨兵指针                              |
-
 ### 8.4 属性测试不变量
 
 | 不变量                                            | 测试方法           |
@@ -1114,18 +1106,18 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 
 ---
 
-## 9. 模块交互设计
+## 9. 与其他模块的交互
 
-### 9.0 接口约定
+### 9.1 接口约定
 
-| 方向         | 对方模块       | 接口/类型                                                                                                                              | 约定                                                                                                                       |
-| ------------ | -------------- | -------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| 并列协作     | `layout`       | `Strides` 及其辅助接口                                                                                                                 | `Strides` 由 `06-layout.md` 定义并与 storage 在 `tensor` / `ffi` 上层组合使用；storage 本身不直接消费 layout API           |
-| 产出（输出） | `tensor`       | `Storage` / `StorageMut` / `StorageOwned` / `StorageShared`，以及 `Owned<A>` / `ViewRepr<'a, A>` / `ViewMutRepr<'a, A>` / `ArcRepr<A>` | `TensorBase<S, D>` 通过 `S: Storage` 或 `S: StorageMut` 消费底层存储；`TensorBase` 负责解释 `offset` / `shape` / `strides` |
-| 产出（输出） | `parallel`     | `S: Storage + Sync` 或 `S: StorageMut + Send`                                                                                          | 并行路径只能在满足 Send/Sync 前提时消费 storage；不得突破共享只读 / 独占可写边界                                           |
-| 产出（输出） | `iter` / `ffi` | `as_ptr()` / `as_slice()` / `into_raw()`                                                                                               | 上层仅消费 storage-visible backing range；不得把 storage API 误解为逻辑张量切片                                            |
+| 方向         | 对方模块       | 接口/类型         | 约定                                         |
+| ------------ | -------------- | ----------------- | -------------------------------------------- |
+| 并列协作     | `layout`       | `Strides` 及其辅助接口 | `Strides` 由 `06-layout.md` 定义并与 storage 在 `tensor` / `ffi` 上层组合使用；storage 本身不直接消费 layout API           |
+| 输出 | `tensor`       | `Storage` / `StorageMut` / `StorageOwned` / `StorageShared`，以及 `Owned<A>` / `ViewRepr<'a, A>` / `ViewMutRepr<'a, A>` / `ArcRepr<A>` | `TensorBase<S, D>` 通过 `S: Storage` 或 `S: StorageMut` 消费底层存储；`TensorBase` 负责解释 `offset` / `shape` / `strides` |
+| 输出 | `parallel`     | `S: Storage + Sync` 或 `S: StorageMut + Send` | 并行路径只能在满足 Send/Sync 前提时消费 storage；不得突破共享只读 / 独占可写边界 |
+| 输出 | `iter` / `ffi` | `as_ptr()` / `as_slice()` / `into_raw()`  | 上层仅消费 storage-visible backing range；不得把 storage API 误解为逻辑张量切片 |
 
-### 9.1 与 Tensor 模块
+### 9.2 与 Tensor 模块
 
 `TensorBase<S, D>` 的 `S` 参数约束为 `Storage` 或 `StorageMut`，通过关联类型 `Elem` 获取元素类型（参见 `07-tensor.md` §5）：
 
@@ -1146,15 +1138,15 @@ where
 }
 ```
 
-### 9.2 与 Layout 模块
+### 9.3 与 Layout 模块
 
 `LayoutFlags::ALIGNED` 的唯一权威计算入口是 `layout::compute_layout_flags(shape, strides, ptr)`（参见 `06-layout.md` §5）。storage 提供的 `is_aligned()` 仅用于查询底层分配/指针的对齐信息，不直接决定 layout flag。
 
-### 9.3 与 Parallel 模块
+### 9.4 与 Parallel 模块
 
 并行迭代要求 `S: Storage + Sync`（读）或 `S: StorageMut + Send`（写），由 storage 的 Send/Sync 实现保证（参见 `09-parallel.md` §4）。
 
-### 9.4 数据流描述
+### 9.5 数据流描述
 
 ```
 User calls `TensorBase::as_ptr()`
@@ -1172,20 +1164,18 @@ User calls `TensorBase::as_ptr()`
 
 ## 10. 错误处理与语义边界
 
-| 项目              | 内容                                                                                                                               |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| 项目              | 内容                                                                  |
+| ----------------- | ----------------------------------------------------------------------|
 | Recoverable error | `try_reserve()`、显式运行时转换与 raw-parts 元数据校验失败返回 `XenonError`；上下文字段应包含操作名、存储模式、长度/容量或布局信息 |
-| Panic             | 对齐分配器在 `align` 非 2 的幂、`size == 0` 或分配失败时 panic；已验证快捷路径中的整数溢出也可 panic                               |
-| 路径一致性        | scalar：不适用；SIMD 对齐与非对齐路径必须返回一致元素值；parallel 存储访问须与串行路径保持一致                                     |
-| 容差边界          | 不适用                                                                                                                             |
+| Panic             | 对齐分配器在 `align` 非 2 的幂、`size == 0` 或分配失败时 panic；已验证快捷路径中的整数溢出也可 panic  |
+| 路径一致性        | scalar：不适用；SIMD 对齐与非对齐路径必须返回一致元素值；parallel 存储访问须与串行路径保持一致        |
+| 容差边界          | 不适用                                                                |
 
-### 10.1 ZST 和空数组处理
-
-| 场景           | 预期行为                                             | 安全性论证                                                            |
-| -------------- | ---------------------------------------------------- | --------------------------------------------------------------------- |
+| 场景           | 预期行为                                             | 安全性论证         |
+| -------------- | ---------------------------------------------------- | ------------------ |
 | ZST 元素类型   | 使用非空悬挂哨兵指针，不调用分配器，len 正常计算     | ZST 不需要真实 backing storage，且禁止把 `size=0` 传给 `AlignedAlloc` |
 | 空数组 `len=0` | `as_ptr()` 返回非空悬垂指针，`as_slice()` 返回空切片 | `AlignedBuf::empty()` 为 owned 空缓冲提供非空悬垂哨兵指针语义         |
-| ZST + 空数组   | 不引发分配，不引发 UB                                | ZST 不需要实际内存                                                    |
+| ZST + 空数组   | 不引发分配，不引发 UB                                | ZST 不需要实际内存 |
 
 ---
 
@@ -1202,11 +1192,11 @@ User calls `TensorBase::as_ptr()`
 
 ### 决策 2：ArcRepr 不实现 StorageMut（CoW 策略）
 
-| 属性     | 值                                                                                                                                              |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 属性     | 值                                                                                        |
+| -------- | ----------------------------------------------------------------------------------------- |
 | 决策     | `ArcRepr` 不实现 `StorageMut`；如需写入，公开路径只能先转为 `Owned`。任何 CoW 逻辑都仅限 `arc.rs` 内部 helper，不构成共享可写模式               |
 | 理由     | 可变访问涉及潜在 O(n) 复制；把 CoW 限定在内部实现可以避免 storage 层直接暴露整缓冲 `&mut [T]`，并保持“当前版本不提供共享可写存储模式”的需求边界 |
-| 替代方案 | 实现 `StorageMut` — 放弃，隐藏 CoW 成本                                                                                                         |
+| 替代方案 | 实现 `StorageMut` — 放弃，隐藏 CoW 成本                                                   |
 
 ### 决策 3：Owned 与 ArcRepr 共享底层缓冲表示
 
@@ -1226,7 +1216,7 @@ User calls `TensorBase::as_ptr()`
 
 ---
 
-## 12. 性能描述
+## 12. 性能考量
 
 | 方面                    | 设计决策                                                            |
 | ----------------------- | ------------------------------------------------------------------- |
@@ -1238,16 +1228,6 @@ User calls `TensorBase::as_ptr()`
 | 内联                    | 所有 `as_ptr`/`len`/`get` 标注 `#[inline]`                          |
 | 单态化                  | Storage trait 在泛型上下文中单态化，无虚调用开销                    |
 
-**性能数据（参考）**:
-
-| 操作                                       | 开销 | 说明               |
-| ------------------------------------------ | ---- | ------------------ |
-| `Owned::zeros(1M)`                         | ~1ms | 包含分配和零初始化 |
-| `View::clone()`                            | ~2ns | 仅复制 3 个字段    |
-| `Arc::clone()`                             | ~5ns | 原子引用计数增加   |
-| internal Arc CoW helper（唯一）            | ~2ns | 仅作为实现参考     |
-| internal Arc CoW helper（非唯一，1M 元素） | ~1ms | 深拷贝             |
-
 ---
 
 ## 13. 平台与工程约束
@@ -1256,9 +1236,9 @@ User calls `TensorBase::as_ptr()`
 | ---------- | -------------------------------------- |
 | `std` only | 本模块依赖 `std` 环境，不讨论 `no_std` |
 | 单 crate   | 保持单 crate 边界                      |
+| MSRV       | Rust 1.85+                             |
 | SemVer     | 存储类型和 trait 变更遵循 SemVer       |
 | 最小依赖   | 无新增第三方依赖                       |
-| MSRV       | Rust 1.85+                             |
 
 ---
 
