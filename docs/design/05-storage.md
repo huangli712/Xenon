@@ -731,7 +731,7 @@ impl<A> Owned<A> {
 }
 ```
 
-### 6.2 当前默认 64 字节对齐分配器
+### 6.2 对齐分配器
 
 ```rust,ignore
 /// Aligned memory allocator.
@@ -755,7 +755,9 @@ impl AlignedAlloc {
     /// - `size` is 0
     /// - Memory allocation fails
     ///
-    /// For zero-sized types (ZST, `size_of::<A>() == 0`), this allocator must not be called; use `NonNull::dangling()` directly and return a dangling pointer instead. Callers (such as `Owned::new`) are responsible for skipping allocation when size == 0.
+    /// For zero-sized types (ZST, `size_of::<A>() == 0`), this allocator must not be called; 
+    /// Use `NonNull::dangling()` directly and return a dangling pointer instead.
+    /// Callers (such as `Owned::new`) are responsible for skipping allocation when size == 0.
     pub fn alloc(size: usize, align: usize) -> NonNull<u8>;
 
     /// Allocates and zero-initializes.
@@ -772,13 +774,12 @@ impl AlignedAlloc {
 }
 ```
 
-**分配策略说明**：当前默认实现选择 64 字节对齐，以匹配 SIMD 友好的 owned 缓冲策略；这是一项实现选择，而不是 `需求说明书 §10` 所要求的唯一对齐值。对齐值可配置。为保持文档与当前设计一致，`AlignedAlloc` 不提供“小数组回退到普通分配”的分支。除 ZST 与 `len == 0` 这两类显式跳过分配的情形外，当前默认实现的真实堆分配统一使用该默认对齐值。
+- 当前默认实现选择 64 字节对齐，以匹配 SIMD 友好的 owned 缓冲策略；这是一项实现选择，而不是 `需求说明书 §10` 所要求的唯一对齐值。对齐值可配置。
+- 为保持文档与当前设计一致，`AlignedAlloc` 不提供“小数组回退到普通分配”的分支。除 ZST 与 `len == 0` 这两类显式跳过分配的情形外，当前默认实现的真实堆分配统一使用该默认对齐值。
+- 若后续没有把对齐分配器作为独立公共扩展点的计划，实现应默认使用 `pub(crate)`，避免把底层分配细节固化为公开 API。
+- `AlignedAlloc` 使用 `alloc::alloc::Layout` 确保对齐值是 2 的幂且总大小合法。分配失败时调用 `handle_alloc_error` 而非返回空指针，避免 UB。
 
-**可见性说明**：若后续没有把对齐分配器作为独立公共扩展点的计划，实现应默认使用 `pub(crate)`，避免把底层分配细节固化为公开 API。
-
-**安全性论证**：`AlignedAlloc` 使用 `alloc::alloc::Layout` 确保对齐值是 2 的幂且总大小合法。分配失败时调用 `handle_alloc_error` 而非返回空指针，避免 UB。
-
-### 6.3 ViewRepr\<'a, A\> 结构体
+### 6.3 ViewRepr<'a, A> 结构体
 
 ```rust,ignore
 /// Immutable view storage.
@@ -803,7 +804,7 @@ impl<'a, A> Clone for ViewRepr<'a, A> {
 impl<'a, A> Copy for ViewRepr<'a, A> {}
 ```
 
-### 6.4 ViewMutRepr\<'a, A\> 结构体
+### 6.4 ViewMutRepr<'a, A> 结构体
 
 ```rust,ignore
 /// Mutable view storage.
