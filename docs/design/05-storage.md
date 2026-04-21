@@ -770,11 +770,11 @@ impl AlignedAlloc {
     /// - `ptr` must have been returned by `alloc` or `alloc_zeroed`
     /// - `size` and `align` must be the same as during allocation
     pub unsafe fn dealloc(ptr: NonNull<u8>, size: usize, align: usize);
-
 }
 ```
 
 - 当前默认实现选择 64 字节对齐，以匹配 SIMD 友好的 owned 缓冲策略；这是一项实现选择，而不是 `需求说明书 §10` 所要求的唯一对齐值。对齐值可配置。
+
 - 为保持文档与当前设计一致，`AlignedAlloc` 不提供“小数组回退到普通分配”的分支。除 ZST 与 `len == 0` 这两类显式跳过分配的情形外，当前默认实现的真实堆分配统一使用该默认对齐值。
 - 若后续没有把对齐分配器作为独立公共扩展点的计划，实现应默认使用 `pub(crate)`，避免把底层分配细节固化为公开 API。
 - `AlignedAlloc` 使用 `alloc::alloc::Layout` 确保对齐值是 2 的幂且总大小合法。分配失败时调用 `handle_alloc_error` 而非返回空指针，避免 UB。
@@ -845,11 +845,9 @@ struct SharedBuf<A> {
 }
 ```
 
-> **设计决策：** `ArcRepr<A>` 不承诺公开可见的内部字段，但其底层数据表示与 `Owned<A>` 保持一致：二者都以 `AlignedBuf<A>` 作为连续缓冲区表示，`ArcRepr<A>` 仅在 `arc.rs` 内部额外附着 `Arc` 引用计数头。偏移量与切片范围由外层 `TensorBase` 元数据管理（见 `07-tensor.md §5.1`），而 `ArcRepr` 只抽象表示共享只读语义下的底层连续缓冲区。该共享表示保证 `Owned<A> -> ArcRepr<A>` 可以按 O(1) 零拷贝完成：不发生数据复制，也不发生布局变换。任何写时复制 helper 都仅能在 `arc.rs` 内部针对整个底层缓冲区执行，不负责解释张量视图的 `offset` / `shape` / `strides`，也不把 `ArcRepr` 提升为共享可写存储模式，更不构成公开的 `ArcRepr<A> -> Owned<A>` 零拷贝转换。
-
-> **CoW 语义边界：** `ArcRepr` 的 CoW 能力仅为内部实现优化，不作为公开语义承诺。对外始终表现为共享只读存储。
-
-> **API 边界补充：** `ArcRepr<A>` 永不通过公开 API 暴露内部缓冲区的 `&mut A` 或 `&mut [A]`。即便内部 CoW helper 在唯一引用场景下暂时取得独占缓冲，该能力也必须停留在 `arc.rs` 私有边界内；公开层可写访问唯一合法路径仍是先物化为 `Owned<A>`。
+- `ArcRepr<A>` 不承诺公开可见的内部字段，但其底层数据表示与 `Owned<A>` 保持一致：二者都以 `AlignedBuf<A>` 作为连续缓冲区表示，`ArcRepr<A>` 仅在 `arc.rs` 内部额外附着 `Arc` 引用计数头。偏移量与切片范围由外层 `TensorBase` 元数据管理（见 `07-tensor.md §5.1`），而 `ArcRepr` 只抽象表示共享只读语义下的底层连续缓冲区。该共享表示保证 `Owned<A> -> ArcRepr<A>` 可以按 O(1) 零拷贝完成：不发生数据复制，也不发生布局变换。任何写时复制 helper 都仅能在 `arc.rs` 内部针对整个底层缓冲区执行，不负责解释张量视图的 `offset` / `shape` / `strides`，也不把 `ArcRepr` 提升为共享可写存储模式，更不构成公开的 `ArcRepr<A> -> Owned<A>` 零拷贝转换。
+- `ArcRepr` 的 CoW 能力仅为内部实现优化，不作为公开语义承诺。对外始终表现为共享只读存储。
+- `ArcRepr<A>` 永不通过公开 API 暴露内部缓冲区的 `&mut A` 或 `&mut [A]`。即便内部 CoW helper 在唯一引用场景下暂时取得独占缓冲，该能力也必须停留在 `arc.rs` 私有边界内；公开层可写访问唯一合法路径仍是先物化为 `Owned<A>`。
 
 **内部写时复制流程**：
 
@@ -889,7 +887,7 @@ pub unsafe trait IsArc: RawStorage {}
 
 使用 Sealed trait 模式防止外部类型实现。
 
-### 6.5a `as_ptr()` / 空张量偏移规则
+### 6.7 `as_ptr()` / 空张量偏移规则
 
 storage 层返回的是 storage base pointer，不预先叠加张量逻辑 `offset`。与 `07-tensor.md` 保持一致：对空张量（`len() == 0`），张量层指针 API 必须直接返回 `NonNull::dangling().as_ptr()`，不对 storage base pointer 做 `add(offset)` 操作。
 
@@ -908,7 +906,7 @@ where
 }
 ```
 
-### 6.7 Send/Sync 实现规则
+### 6.8 Send/Sync 实现规则
 
 > **线程安全权威源**：存储类型的 `Send`/`Sync` 实现规则由 `25-safety.md` §4 定义。本文档仅做概要说明；若与 `25-safety.md` 存在冲突，以 `25-safety.md` 为准。
 
