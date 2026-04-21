@@ -97,7 +97,7 @@ src/layout/
 
 ### 4.4 依赖方向声明
 
-依赖方向：单向向上。 `layout/` 仅消费 `dimension` 的 trait 和类型，不被其依赖。`tensor/`、`math/`、`simd/` 等上层模块消费 layout 的类型和函数。对齐检查（`is_aligned`）接受原始指针 `*const u8`，无需依赖 `storage` 模块。
+依赖方向：单向向上。`layout/` 仅消费 `dimension` 的 trait 和类型，不被其依赖。`tensor/`、`math/`、`simd/` 等上层模块消费 layout 的类型和函数。对齐检查（`is_aligned`）接受原始指针 `*const u8`，无需依赖 `storage` 模块。
 
 `Dimension` 只拥有 shape/rank 语义；所有 stride 计算与保存（包括其它文档中曾出现的 `strides_for_f_order` 一类能力）统一收敛到 `layout/` 的 `Strides<D>` 与 `compute_f_strides()`，避免跨模块重复承载 stride 语义。
 
@@ -105,7 +105,7 @@ src/layout/
 
 ## 5. 公共 API 设计
 
-### 5.1 LayoutFlags（u8 bitflags）
+### 5.1 LayoutFlags
 
 使用 `u8` 类型存储布局标志位，占用 1 字节：
 
@@ -123,7 +123,7 @@ ZER = HAS_ZERO_STRIDE (0b01000)  contains broadcast zero stride
 -   = reserved bits
 ```
 
-> **注意**：Xenon 不需要 `C_CONTIGUOUS` 标志位（不支持 C-order）。1D 和 0D 数组天然 F-连续。
+Xenon 不需要 `C_CONTIGUOUS` 标志位（不支持 C-order）。1D 和 0D 数组天然 F-连续。
 
 ```rust,ignore
 /// A set of layout flags.
@@ -137,10 +137,10 @@ impl LayoutFlags {
     pub const EMPTY: Self = Self(0b0000_0000);
 
     /// F-order contiguity flag
-    pub const F_CONTIGUOUS: Self = Self(0b0000_0001);  // 0x01
+    pub const F_CONTIGUOUS: Self = Self(0b0000_0001);    // 0x01
 
     /// SIMD alignment flag (64-byte)
-    pub const ALIGNED: Self = Self(0b0000_0100);        // 0x04
+    pub const ALIGNED: Self = Self(0b0000_0100);         // 0x04
 
     /// Zero stride flag (broadcast dimension)
     pub const HAS_ZERO_STRIDE: Self = Self(0b0000_1000); // 0x08
@@ -191,7 +191,7 @@ impl LayoutFlags {
 }
 ```
 
-### 5.1b 纯函数式布局接口
+### 5.2 纯函数式布局接口
 
 当前版本仅支持 F-order，因此布局接口保持纯函数式：由 `shape`、`strides`、对齐信息等输入直接计算标志与分类结果，不额外承诺任何顺序枚举或基于顺序值的公开构造约定。
 
@@ -206,15 +206,13 @@ pub(crate) const fn flags_for_f_layout(aligned: bool, has_zero_stride: bool) -> 
 }
 ```
 
-### 5.1c LayoutState 布局分类 API
+### 5.3 LayoutState 布局分类 API
 
 除底层 `LayoutFlags` 外，张量层还需要一个更直接的布局分类结果，便于上层 API、诊断输出和跨模块分支选择表达“当前这块逻辑数据在内存中的连续性状态”。
 
-> **说明：** Xenon 的原生构造路径仍以 F-order 为准；`LayoutState` 是一个**分类结果**，用于描述某个 `shape + strides` 组合所呈现的布局状态，而不是放宽当前版本的 F-order only 设计边界。
-
-> **权威定义声明**：`LayoutState` 由本模块（`layout/`）定义并持有。`07-tensor.md` 中的 `TensorBase::layout_state()` 方法返回本模块定义的 `LayoutState`，不再重复定义该枚举。若后续版本需扩展布局状态分类，须在本模块中修改并通过模块间接口暴露。
-
-> **权威计算入口声明**：`LayoutFlags` 的唯一权威计算入口为 `compute_layout_flags(shape, strides, ptr)`。其他模块查询布局状态时须引用本模块的结果，不得各自复算或绕过本模块自行裁定 `F_CONTIGUOUS` / `ALIGNED` / `HAS_ZERO_STRIDE`。
+- Xenon 的原生构造路径以 F-order 为准；`LayoutState` 是一个分类结果，用于描述某个 `shape + strides` 组合所呈现的布局状态，而不是放宽当前版本的 F-order only 设计边界。
+- `LayoutState` 由本模块（`layout/`）定义并持有。`07-tensor.md` 中的 `TensorBase::layout_state()` 方法返回本模块定义的 `LayoutState`，不再重复定义该枚举。若后续版本需扩展布局状态分类，须在本模块中修改并通过模块间接口暴露。
+- `LayoutFlags` 的唯一权威计算入口为 `compute_layout_flags(shape, strides, ptr)`。其他模块查询布局状态时须引用本模块的结果，不得各自复算或绕过本模块自行裁定 `F_CONTIGUOUS` / `ALIGNED` / `HAS_ZERO_STRIDE`。
 
 ```rust,ignore
 /// Classification of tensor memory layout contiguity.
@@ -243,7 +241,7 @@ pub enum LayoutState {
 
 `layout_state()` 与 `is_f_contiguous()` 等张量层公开方法定义见 `07-tensor.md`；本模块只定义布局分类与判定规则，不承载 `TensorBase` 的方法声明。
 
-### 5.2 步长类型：usize
+### 5.4 步长类型：usize
 
 步长使用 `usize` 存储；当前版本仅接受非负步长与零步长：
 
@@ -255,7 +253,7 @@ pub enum LayoutState {
 /// - Zero stride: broadcast dimension (repeats the same element)
 ```
 
-### 5.2a `Strides<D>` 正式定义
+### 5.5 `Strides<D>` 正式定义
 
 `Strides<D>` 是 layout 模块拥有的正式步长类型，用于把“每个轴前进一步需要跨过多少个元素”从 `Dimension` 的形状语义中独立出来。
 
@@ -313,7 +311,7 @@ impl<D: Dimension> Strides<D> {
 
 负步长布局不在当前版本范围内（参见 `需求说明书 §7`）。当前文档仅讨论由 F-order、转置、切片派生的正步长非连续视图与广播产生的合法布局。
 
-### 5.3 F-order 步长计算
+### 5.6 F-order 步长计算
 
 > **Padding 说明**：`compute_f_strides()` 产出的仍是规范化 packed F-order stride（`stride[i] = product(shape[0..i])`）。`需求说明书 §7` 提到的“padding”在当前版本不进入逻辑布局元数据；同时需满足 `需求说明书 §11` 关于“带填充区域的数组迭代须仅遍历逻辑元素，不得暴露为对齐或实现目的引入的填充区域”的要求。
 
@@ -357,7 +355,7 @@ Result: Ok(strides = [1, 3, 12])
 pub fn compute_f_strides<D: Dimension>(shape: &D) -> Result<Strides<D>, XenonError>;
 ```
 
-### 5.4 连续性检查算法
+### 5.7 连续性检查算法
 
 **F-连续条件**：
 
