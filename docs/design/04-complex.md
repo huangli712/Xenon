@@ -545,9 +545,8 @@ let rhs = Complex::from(3.0_f64);
 let sum = z + rhs;
 ```
 
-> **设计决策：** 当前版本不提供 `Complex<T> op T` 或 `T op Complex<T>` 便捷运算符。调用方若需要与实数混合运算，必须先通过显式 `From<T> for Complex<T>` 构造把实数提升为同元素类型的复数值，再参与 `Complex<T> op Complex<T>` 运算。
-
-> **边界说明：** `From<T> for Complex<T>` 是当前版本**唯一**允许的显式标量构造路径，不存在通过运算符触发的隐式实数到复数转换。张量级场景中，双方元素类型必须预先一致（见 `需求说明书 §5`）；用户须先把实数显式构造成 `Complex<T>`，再参与张量运算。
+- 当前版本不提供 `Complex<T> op T` 或 `T op Complex<T>` 便捷运算符。调用方若需要与实数混合运算，必须先通过显式 `From<T> for Complex<T>` 构造把实数提升为同元素类型的复数值，再参与 `Complex<T> op Complex<T>` 运算。
+- `From<T> for Complex<T>` 是当前版本**唯一**允许的显式标量构造路径，不存在通过运算符触发的隐式实数到复数转换。张量级场景中，双方元素类型必须预先一致（见 `需求说明书 §5`）；用户须先把实数显式构造成 `Complex<T>`，再参与张量运算。
 
 ### 5.8 PartialEq 实现
 
