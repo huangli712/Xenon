@@ -558,7 +558,7 @@ function compute_flags(shape, strides, ptr):
 | 含 size=1 轴    |  检查其他轴  | size=1 轴的步长不影响连续性                                        |
 | 广播零步长轴    |    false     | 广播视图不得带 `F_CONTIGUOUS`                                      |
 
-### 6.2a 内部 stride 校验规则
+### 6.3 内部 stride 校验规则
 
 当前版本内部实现与 safe 构造的接受边界保持一致：safe 构造只接受 packed F-order、其轴置换、广播零步长以及正步长切片派生这四类 stride 布局族；校验不仅要求 stride 非负、可表示且访问范围不越界，还要求该布局能够被判定落在这四类受支持族内，并且这些结论能由 metadata 单独机械验证。超出这些布局族的更宽正 stride 组合，即使在某些情况下满足基本内存安全充分条件，也不属于当前版本 safe API 的接受范围，必须走 unsafe 构造路径。
 
@@ -567,9 +567,9 @@ function compute_flags(shape, strides, ptr):
 - 广播派生布局：仅广播轴允许 `stride = 0`；是否为广播轴由广播语义决定（源维度为 1 且目标维度 > 1），而非由结果张量的 `shape[i] == 1` 判定
 - 切片派生布局：仅允许 Xenon 内部张量切片 API 产出的正步长子范围；其判定必须满足以下可检查条件：父布局已验证合法、切片不改写非广播轴 stride、`offset` 仅按切片起点单调增加、结果 `shape` 与新 `offset` 仍满足访问范围不越界；外部 raw-parts 输入即使满足同样 metadata 形状，也只能走 unsafe 路径
 
-### 6.3 标志位更新规则
+### 6.4 标志位更新规则
 
-> 所有 flags 更新规则统一通过 `compute_layout_flags()` 入口执行（参见 §5.9）。
+所有 flags 更新规则统一通过 `compute_layout_flags()` 入口执行（参见 §5.9）。
 
 | 操作     | 标志位更新方式                                                         |
 | -------- | ---------------------------------------------------------------------- |
@@ -578,13 +578,13 @@ function compute_flags(shape, strides, ptr):
 | 转置     | 调用 `compute_layout_flags()` 统一重新计算                             |
 | 视图创建 | 调用 `compute_layout_flags()` 统一重新计算                             |
 | 广播     | 调用 `compute_layout_flags()` 统一重新计算                             |
-| reshape  | **不在当前版本范围内**（`需求说明书 §17` 当前仅允许 transpose）        |
+| reshape  | 不在当前版本范围内（`需求说明书 §17` 当前仅允许 transpose）        |
 
-### 6.4 安全性论证
+### 6.5 安全性论证
 
 Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的只读查询，结果缓存在 `LayoutFlags` 中。
 
-### 6.5 与 Dimension 模块的接口
+### 6.6 与 Dimension 模块的接口
 
 步长不再存储在 `D` 中。`layout` 模块通过 `Strides<D>` 保持与 shape 同维度数量的显式 `usize` 元数据，直接表达当前版本允许的非负步长与零步长广播。
 
@@ -650,16 +650,6 @@ Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的
   - 测试: 完整集成测试
   - 前置: T3, T4, T5, T7
   - 预计: 10 min
-
-### 并行执行图
-
-```
-Wave 1: [T1] → [T2]
-              ↓
-Wave 2: [T3] [T4] [T5] [T7]   (parallelizable)
-              ↓
-Wave 3:       [T8]
-```
 
 ---
 
