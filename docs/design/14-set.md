@@ -85,17 +85,17 @@ src/set/unique.rs
 | `complex`   | `Complex<f32>`, `Complex<f64>`，参见 `04-complex.md` §5                            |
 | `iter`      | `Elements`（遍历收集元素），参见 `10-iterator.md` §5.1                             |
 
-### 4.3 依赖方向
-
-> **依赖方向：单向向上。** `set` 仅消费 `tensor`、`storage`、`dimension`、`element`、`complex`、`iter` 模块。
-
-### 4.4 依赖合法性与替代方案
+### 4.3 依赖合法性
 
 | 项目           | 说明                                                                          |
 | -------------- | ----------------------------------------------------------------------------- |
 | 新增第三方依赖 | 无                                                                            |
 | 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
 | 替代方案       | 不适用；当前范围内无需额外第三方依赖。                                        |
+
+### 4.4 依赖方向
+
+依赖方向：单向向上。`set` 仅消费 `tensor`、`storage`、`dimension`、`element`、`complex`、`iter` 模块。
 
 ---
 
@@ -177,7 +177,6 @@ assert_eq!(empty.unique().len(), 0);
 // Bad - calling unique on a bool tensor (compile error)
 // let b = Tensor::<bool, Ix1>::from_shape_vec(Ix1(3), vec![true, false, true])?;
 // b.unique();  // compile error: bool does not implement UniqueElement trait
-
 ```
 
 ---
