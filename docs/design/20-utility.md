@@ -72,9 +72,10 @@ src/util/
 ├── crate::tensor        # TensorBase<S, D>, Tensor, type aliases
 ├── crate::dimension     # Dimension trait
 ├── crate::storage       # Storage, StorageMut trait
-├── crate::element       # Element, RealScalar trait
+├── crate::element       # Element, OrderedCompareElement trait
 ├── crate::layout        # is_f_contiguous query
-└── crate::iter          # Elements iterator for fill / clip internals
+├── crate::iter          # Elements iterator for fill / clip internals
+└── crate::error         # XenonError (clip / try_fill recoverable errors)
 ```
 
 ### 4.2 类型级依赖
@@ -85,7 +86,7 @@ src/util/
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §5）                   |
 | `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, `StorageIntoOwned<Elem=A>`（参见 `05-storage.md` §5）            |
 | `element`   | `Element`，`OrderedCompareElement`（clip 复用，参见 `03-element.md` §5.5）       |
-| `layout`    | `is_f_contiguous()`（参见 `06-layout.md` §5）                                    |
+| `layout`    | `is_f_contiguous()`（张量层方法参见 `07-tensor.md` §5.3，算法定义参见 `06-layout.md` §5.7） |
 | `iter`      | `iter()`, `iter_mut()`（参见 `10-iterator.md` §5）                               |
 | `tensor`    | `Tensor<A, D>` 的结果构造路径；`clip` 分配新的 owned 结果张量并通过 `iter()` / `iter_mut()` 写入逻辑元素  |
 
@@ -127,8 +128,6 @@ where
     /// **Not available for `Complex<f32>`/`Complex<f64>`** because complex numbers
     /// have no natural total ordering (`Complex` does not implement `PartialOrd`,
     /// see `04-complex.md §5`).
-    /// **Not available for `bool` / `Complex<_>`** because clip requires an ordered scalar domain.
-    /// (see `03-element.md §5.5`).
     ///
     /// # Arguments
     ///
@@ -181,7 +180,7 @@ where
 
 - 浮点参数非法时：`min > max` 或任一边界为 `NaN` 时返回可恢复错误。
 - `clip` 总是返回新的 owned 张量，但本文不再把“先 `zeros()` 再逐元素覆写”写成稳定实现承诺；实现可使用 `MaybeUninit` 或等价的内部未初始化 owned 缓冲区，一次写入最终值，避免无意义的零填充后再覆写。
-- `clip()` 的实现可能依赖内部未初始化构造能力（如 `uninit_like`、`iter_uninit_mut`、`assume_init` 或等价 helper）；这些内部 helper 归属 `tensor/construct.rs`（`pub(crate)` 级别），由 `18-construction.md` 定义其语义，不属于稳定公共 API。
+- `clip()` 的实现可能依赖内部未初始化构造能力（如 `uninit_like`、`iter_uninit_mut`、`assume_init` 或等价 helper）；这些内部 helper 不属于稳定公共 API。
 - `clip_inplace` 不属于 `需求说明书 §21.1` 的强制公共接口。若实现上需要原地 clamp helper，可仅作为 `src/util/clip.rs` 的内部辅助，不纳入稳定 API 承诺与测试矩阵。
 - `InvalidArgument` 的诊断字段须与 `15-broadcast.md`、`17-indexing.md` 中的同变体保持一致，至少包含 `operation`（操作名称）和具体参数字段。
 
@@ -451,7 +450,7 @@ into_contiguous(tensor):
   - 文件: `src/util/clip.rs`
   - 内容: `clip(&self, min: A, max: A) -> Result<Tensor<A, D>, XenonError>`；内部可复用非公开 clamp helper
   - 测试: `test_clip_basic`, `test_clip_nan`, `test_clip_nan_bound`, `test_clip_integers`
-  - 前置: T1
+  - 前置: 无
   - 预计: 10 min
 
 ### Wave 3: 连续性保证
@@ -557,10 +556,10 @@ into_contiguous(tensor):
 
 | 方向               | 对方模块 | 接口/类型      | 约定                   |
 | ------------------ | -------- | -------------- | ---------------------- |
-| `utility → iter`   | `iter`   | `iter_mut()`   | `fill` 通过可变迭代器遍历逻辑元素，参见 `10-iterator.md` §5.6 |
+| `utility → iter`   | `iter`   | `iter_mut()`   | `fill` 通过 storage 层 helper 直接写入逻辑元素（参见 §5.4），参见 `10-iterator.md` §5.6 |
 | `utility → iter`   | `iter`   | `iter()`       | `clip` 通过只读迭代器读取并写入新张量，参见 `10-iterator.md` §5.6 |
-| `utility → layout` | `layout` | 连续性查询     | `to_contiguous` 先查询当前布局是否已经连续，参见 `06-layout.md` §5.7  |
-| `utility → tensor` | `tensor` | `to_owned()` / `into_owned()` / owned 构造路径 | `to_contiguous` 与 `into_contiguous` 复用张量 owned 化与连续化路径；`clip` 通过 owned 结果张量构造返回新值；跨文档连续化归属统一在 utility |
+| `utility → layout` | `layout` | 连续性查询     | `to_contiguous` 先查询当前布局是否已经连续，张量层方法参见 `07-tensor.md` §5.3，算法定义参见 `06-layout.md` §5.7 |
+| `utility → tensor` | `tensor` | `to_owned()` / `into_owned()` / owned 构造路径 | `to_contiguous` 与 `into_contiguous` 复用张量 owned 化与连续化路径（`to_owned`/`into_owned` 定义参见 `21-type.md` §5.6）；`clip` 通过 owned 结果张量构造返回新值；跨文档连续化归属统一在 utility |
 
 ### 9.2 数据流描述
 
