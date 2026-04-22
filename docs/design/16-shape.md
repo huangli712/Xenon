@@ -165,7 +165,7 @@ where
 
 ### 5.5 Good / Bad 对比
 
-> **说明：** 以下为示意性伪实现，非稳定内部结构约定。
+以下为示意性伪实现，非稳定内部结构约定。
 
 ```rust,ignore
 // Good - use transpose() for zero-copy transpose
@@ -197,10 +197,11 @@ Source: shape=[2, 3], strides=[1, 2]  (F-order, F-contiguous)
 Transpose: shape=[3, 2], strides=[2, 1]  (strides reversed, not F-contiguous)
 ```
 
-> **注意**：Xenon 只支持 F-order 布局，不维护单独的行优先连续性状态。转置后连续性须根据结果的
-> shape 与 stride 重新计算；若结果仍满足 F-order 连续条件（如含长度为 1 的轴的转置），则保留
-> `F-contiguous` 标记；广播视图仍按零步长语义分类为 `LayoutState::BroadcastView`。
-> 若需恢复连续内存，使用 `to_contiguous()`。
+- Xenon 只支持 F-order 布局，不维护单独的行优先连续性状态。
+- 转置后连续性须根据结果的shape 与 stride 重新计算。
+- 若结果仍满足 F-order 连续条件（如含长度为 1 的轴的转置），则保留`F-contiguous` 标记。
+- 广播视图仍按零步长语义分类为 `LayoutState::BroadcastView`。
+- 若需恢复连续内存，使用 `to_contiguous()`。
 
 ### 6.2 转置后的连续性标志处理
 
@@ -215,10 +216,6 @@ fn update_flags_for_transpose(
     recompute_layout_flags(source_flags, new_shape, new_strides)
 }
 ```
-
-### 6.3 范围外能力记录
-
-其他形状变换 API 与自动推断维度当前均不在范围内，因此本文不再为它们设计连续性检查逻辑、错误语义或实现任务。
 
 ---
 
