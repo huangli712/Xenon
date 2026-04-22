@@ -307,21 +307,21 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 
 所有错误变体都须带"错误类别 + 适用上下文"的结构化字段；仅字符串消息不足以满足要求。
 
-| 变体                                  | 最小结构化字段                                                                                                                                                                         |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ShapeMismatch`                       | `operation`, `left_shape`, `right_shape`                                                                                                                                               |
-| `BroadcastError`                      | `operation`, `lhs_shape`, `rhs_shape`, `attempted_target_shape?`, `axis?`                                                                                                              |
-| `LayoutMismatch`                      | `operation`, `required_layout`, `actual_layout`, `shape`                                                                                                                               |
-| `InvalidLayout`                       | `operation`, `storage_kind`, `shape`, `strides`, `offset`, `storage_len`, `reason`                                                                                                     |
-| `InvalidAxis`                         | `operation`, `axis`, `ndim`, `shape`                                                                                                                                                   |
-| `InvalidShape`                        | `operation`, `shape`, `expected_elements`, `actual_elements`, `offending_dim?`, `reason?`                                                                                              |
-| `DimensionMismatch`                   | `operation`, `expected`, `actual`                                                                                                                                                      |
-| `InvalidArgument`                     | `operation`, `argument`, `expected`, `actual`, `axis?`, `axis_len?`, `start?`, `end?`, `shape?`；范围切片越界时必须额外携带 `axis`、`axis_len`、`start`、`end`，不得仅以字符串拼接描述 |
-| `InvalidStorageMode`                  | `operation`, `expected`, `actual`, `shape?`, `source_storage_mode?`, `target_storage_mode?`, `conversion_type?`                                                                        |
-| `Ffi`                                 | `operation`, `category`, `backend`, `precondition`, `actual`                                                                                                                           |
-| `Workspace`                           | `operation`, `category`, `size?`, `align?`, `split?`, `len?`, `reason?`                                                                                                                |
-| `IndexOutOfBounds`                    | `operation`, `attempted_index`, `axis`, `shape`；`attempted_index` 表示完整多维索引 tuple，`axis` 指出首个越界维度                                                                     |
-| `TypeConversion`                      | `source_type`, `target_type`, `reason`, `element_index?`                                                                                                                               |
+| 变体                  | 最小结构化字段                             |
+| --------------------- | ------------------------------------------ |
+| `ShapeMismatch`       | `operation`, `left_shape`, `right_shape`   |
+| `BroadcastError`      | `operation`, `lhs_shape`, `rhs_shape`, `attempted_target_shape?`, `axis?` |
+| `LayoutMismatch`      | `operation`, `required_layout`, `actual_layout`, `shape`                  |
+| `InvalidLayout`       | `operation`, `storage_kind`, `shape`, `strides`, `offset`, `storage_len`, `reason` |
+| `InvalidAxis`         | `operation`, `axis`, `ndim`, `shape`       |
+| `InvalidShape`        | `operation`, `shape`, `expected_elements`, `actual_elements`, `offending_dim?`, `reason?` |
+| `DimensionMismatch`   | `operation`, `expected`, `actual`          |
+| `InvalidArgument`     | `operation`, `argument`, `expected`, `actual`, `axis?`, `axis_len?`, `start?`, `end?`, `shape?`；范围切片越界时必须额外携带 `axis`、`axis_len`、`start`、`end`，不得仅以字符串拼接描述 |
+| `InvalidStorageMode`  | `operation`, `expected`, `actual`, `shape?`, `source_storage_mode?`, `target_storage_mode?`, `conversion_type?` |
+| `Ffi`                 | `operation`, `category`, `backend`, `precondition`, `actual` |
+| `Workspace`           | `operation`, `category`, `size?`, `align?`, `split?`, `len?`, `reason?` |
+| `IndexOutOfBounds`    | `operation`, `attempted_index`, `axis`, `shape`；`attempted_index` 表示完整多维索引 tuple，`axis` 指出首个越界维度 |
+| `TypeConversion`      | `source_type`, `target_type`, `reason`, `element_index?` |
 
 分配成本说明：`attempted_index: Vec<usize>`、`shape: Vec<usize>` 以及 `InvalidArgument` / `InvalidStorageMode` 中的可选 `Vec<usize>` 字段会带来少量堆分配成本；这是当前版本可接受的诊断开销，用于换取跨公开 API 的一致结构化上下文。
 
@@ -333,6 +333,31 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 - `None` 统一显示为 `<any>`，不得直接打印 `Some(...)` / `None` 调试文本。
 
 ```rust,ignore
+/// Display wrapper: Some(v) -> write v, None -> write "<any>".
+struct OrAny<T>(Option<T>);
+
+impl<T: fmt::Display> fmt::Display for OrAny<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.0 {
+            Some(v) => v.fmt(f),
+            None => write!(f, "<any>"),
+        }
+    }
+}
+
+/// Display wrapper for shape/slices: comma-separated dimensions.
+struct FmtShape<'a>(&'a [usize]);
+
+impl<'a> fmt::Display for FmtShape<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (i, dim) in self.0.iter().enumerate() {
+            if i > 0 { write!(f, ", ")?; }
+            write!(f, "{}", dim)?;
+        }
+        Ok(())
+    }
+}
+
 impl fmt::Display for XenonError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -344,8 +369,8 @@ impl fmt::Display for XenonError {
                 f,
                 "shape mismatch in {}: left [{}], right [{}]",
                 operation,
-                fmt_shape(left_shape),
-                fmt_shape(right_shape),
+                FmtShape(left_shape),
+                FmtShape(right_shape),
             ),
             Self::BroadcastError {
                 operation,
@@ -357,13 +382,10 @@ impl fmt::Display for XenonError {
                 f,
                 "broadcast error in {}: lhs [{}], rhs [{}], attempted_target {}, axis {}",
                 operation,
-                fmt_shape(lhs_shape),
-                fmt_shape(rhs_shape),
-                attempted_target_shape
-                    .as_ref()
-                    .map(|value| fmt_shape(value))
-                    .unwrap_or_else(|| "<any>".to_string()),
-                axis.map(|value| value.to_string()).unwrap_or_else(|| "<any>".to_string()),
+                FmtShape(lhs_shape),
+                FmtShape(rhs_shape),
+                OrAny(attempted_target_shape.as_deref().map(FmtShape)),
+                OrAny(*axis),
             ),
             Self::LayoutMismatch {
                 operation,
@@ -376,7 +398,7 @@ impl fmt::Display for XenonError {
                 operation,
                 required_layout,
                 actual_layout,
-                fmt_shape(shape),
+                FmtShape(shape),
             ),
             Self::InvalidLayout {
                 operation,
@@ -391,8 +413,8 @@ impl fmt::Display for XenonError {
                 "invalid layout in {}: storage_kind={}, shape [{}], strides [{}], offset {}, storage_len {}, reason: {}",
                 operation,
                 storage_kind,
-                fmt_shape(shape),
-                fmt_strides(strides),
+                FmtShape(shape),
+                FmtShape(strides),
                 offset,
                 storage_len,
                 reason,
@@ -408,7 +430,7 @@ impl fmt::Display for XenonError {
                 operation,
                 axis,
                 ndim,
-                fmt_shape(shape),
+                FmtShape(shape),
             ),
             Self::InvalidShape {
                 operation,
@@ -421,11 +443,11 @@ impl fmt::Display for XenonError {
                 f,
                 "invalid shape in {}: shape [{}], expected_elements {}, actual_elements {}, offending_dim {}, reason {}",
                 operation,
-                fmt_shape(shape),
+                FmtShape(shape),
                 expected_elements,
                 actual_elements,
-                offending_dim.map(|value| value.to_string()).unwrap_or_else(|| "<any>".to_string()),
-                reason.as_deref().unwrap_or("<any>"),
+                OrAny(*offending_dim),
+                OrAny(reason.as_deref()),
             ),
             Self::DimensionMismatch {
                 operation,
@@ -455,11 +477,11 @@ impl fmt::Display for XenonError {
                 argument,
                 expected,
                 actual,
-                axis.map(|value| value.to_string()).unwrap_or_else(|| "<any>".to_string()),
-                axis_len.map(|value| value.to_string()).unwrap_or_else(|| "<any>".to_string()),
-                start.map(|value| value.to_string()).unwrap_or_else(|| "<any>".to_string()),
-                end.map(|value| value.to_string()).unwrap_or_else(|| "<any>".to_string()),
-                shape.as_ref().map(|value| fmt_shape(value)).unwrap_or_else(|| "<any>".to_string()),
+                OrAny(*axis),
+                OrAny(*axis_len),
+                OrAny(*start),
+                OrAny(*end),
+                OrAny(shape.as_deref().map(FmtShape)),
             ),
             Self::InvalidStorageMode {
                 operation,
@@ -475,10 +497,10 @@ impl fmt::Display for XenonError {
                 operation,
                 expected,
                 actual,
-                shape.as_ref().map(|value| fmt_shape(value)).unwrap_or_else(|| "<any>".to_string()),
-                source_storage_mode.as_deref().unwrap_or("<any>"),
-                target_storage_mode.as_deref().unwrap_or("<any>"),
-                conversion_type.as_deref().unwrap_or("<any>"),
+                OrAny(shape.as_deref().map(FmtShape)),
+                OrAny(source_storage_mode.as_deref()),
+                OrAny(target_storage_mode.as_deref()),
+                OrAny(conversion_type.as_deref()),
             ),
             Self::Ffi {
                 operation,
@@ -508,11 +530,11 @@ impl fmt::Display for XenonError {
                 "workspace error in {}: {:?}, size={}, align={}, split={}, len={}, reason={}",
                 operation,
                 category,
-                size.map(|v| v.to_string()).unwrap_or_else(|| "<any>".to_string()),
-                align.map(|v| v.to_string()).unwrap_or_else(|| "<any>".to_string()),
-                split.map(|v| v.to_string()).unwrap_or_else(|| "<any>".to_string()),
-                len.map(|v| v.to_string()).unwrap_or_else(|| "<any>".to_string()),
-                reason.as_deref().unwrap_or("<any>"),
+                OrAny(*size),
+                OrAny(*align),
+                OrAny(*split),
+                OrAny(*len),
+                OrAny(reason.as_deref()),
             ),
             Self::TypeConversion {
                 source_type,
@@ -522,9 +544,7 @@ impl fmt::Display for XenonError {
             } => write!(
                 f,
                 "type conversion failed at element {}: {:?} -> {:?} ({:?})",
-                element_index
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| "<any>".to_string()),
+                OrAny(*element_index),
                 source_type,
                 target_type,
                 reason,
@@ -538,9 +558,9 @@ impl fmt::Display for XenonError {
                 f,
                 "index out of bounds in {}: index [{}], axis {}, shape [{}]",
                 operation,
-                fmt_shape(attempted_index),
+                FmtShape(attempted_index),
                 axis,
-                fmt_shape(shape),
+                FmtShape(shape),
             ),
         }
     }
@@ -683,7 +703,7 @@ fmt_display(error, formatter):
 
 - [ ] **T3**: 实现 `fmt::Display` for `XenonError`
   - 文件: `src/error.rs`
-  - 内容: 各变体的 Display 格式化实现，包含辅助函数 `fmt_shape`、`fmt_strides`
+  - 内容: 各变体的 Display 格式化实现，包含辅助类型 `OrAny<T>`、`FmtShape<'a>`
   - 测试: `test_display_*` 系列
   - 前置: T2
   - 预计: 15 min
