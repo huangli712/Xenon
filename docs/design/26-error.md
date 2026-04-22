@@ -114,7 +114,6 @@ pub enum XenonError {
         right_shape: Vec<usize>,
     },
 
-    // 本定义为 BroadcastError 的唯一权威源；其他文档引用时须与此一致。
     BroadcastError {
         operation: &'static str,
         lhs_shape: Vec<usize>,
@@ -147,7 +146,6 @@ pub enum XenonError {
         shape: Vec<usize>,
     },
 
-    // 本定义为 InvalidShape 的唯一权威源；其他文档不得增删字段，除非先同步更新此处。
     InvalidShape {
         operation: Cow<'static, str>,
         shape: Vec<usize>,
