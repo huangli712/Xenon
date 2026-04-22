@@ -188,7 +188,7 @@ src/iter/
 └── crate::broadcast     # broadcast_shape() and compatibility checks
 ```
 
-### 6.2 依赖精确到类型级（必须）
+### 6.2 类型级依赖（必须）
 
 不仅列出依赖哪些模块，还须列出**具体消费了哪些类型/trait**：
 

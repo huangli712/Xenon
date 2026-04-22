@@ -29,25 +29,12 @@
 
 ### 1.2 设计原则
 
-| 原则     | 体现                                                                                             |
-| -------- | ------------------------------------------------------------------------------------------------ |
-| 步长感知 | `fill`/`clip` 通过迭代器正确处理非连续内存布局                                                   |
-| 原地优先 | `fill` 为原地操作（`&mut self`），避免额外分配                                                   |
-| 类型安全 | `clip` 限制为有序标量类型（`i32`、`i64`、`f32`、`f64`），编译期拒绝 `bool`、`Complex` 和 `usize` |
-| 语义清晰 | `to_contiguous` 返回 `Tensor<A, D>`，调用方可预测生命周期                                        |
-
-### 1.3 在架构中的位置
-
-```
-Dependency layers:
-L0: error, private
-L1: dimension, element, complex
-L2: layout (depends on dimension)
-L3: storage (independent from layout; owned by tensor and consumes layout results)
-L4: tensor (depends on storage, dimension)
-L5: broadcast, iter, ffi
-L6: util  <- current module (depends on tensor, dimension, storage, layout, iter)
-```
+| 原则     | 体现                                                                        |
+| -------- | --------------------------------------------------------------------------- |
+| 步长感知 | `fill`/`clip` 通过迭代器正确处理非连续内存布局                              |
+| 原地优先 | `fill` 为原地操作（`&mut self`），避免额外分配                              |
+| 类型安全 | `clip` 限制为有序标量类型（`i32`、`i64`、`f32`、`f64`），编译期拒绝其它类型 |
+| 语义清晰 | `to_contiguous` 返回 `Tensor<A, D>`，调用方可预测生命周期                   |
 
 ---
 
@@ -55,7 +42,7 @@ L6: util  <- current module (depends on tensor, dimension, storage, layout, iter
 
 | 类型     | 内容                                                                                       |
 | -------- | ------------------------------------------------------------------------------------------ |
-| 需求映射 | `需求说明书 §21`, `需求说明书 §22`, `需求说明书 §27`, `需求说明书 §28.4`                                                          |
+| 需求映射 | 需求说明书 §21、§22、§27、§28                                                              |
 | 范围内   | `clip`、`try_fill` / `fill`、`to_contiguous` / `into_contiguous`。                         |
 | 范围外   | sort、argsort、searchsorted，以及除 clip / fill / contiguous 之外的其他 utility 操作。     |
 | 非目标   | 不把 `util` 扩展为通用算法杂项集合，不新增第三方依赖，也不重定义 convert / layout 的职责。 |
@@ -65,23 +52,20 @@ L6: util  <- current module (depends on tensor, dimension, storage, layout, iter
 ## 3. 文件位置
 
 ```
-src/
-└── util/
-    ├── mod.rs           # Module root, re-exports
-    ├── clip.rs          # clip (range clamping) and internal clamp helpers
-    ├── fill.rs          # fill (in-place fill)
-    └── contiguous.rs    # to_contiguous (contiguity guarantee)
+src/util/
+├── mod.rs           # Module root, re-exports
+├── clip.rs          # clip (range clamping) and internal clamp helpers
+├── fill.rs          # fill (in-place fill)
+└── contiguous.rs    # to_contiguous (contiguity guarantee)
 ```
 
 多文件设计：三个操作（clip、fill、to_contiguous）按职责分离，通过 `mod.rs` 统一 re-export。
-
-> **注意**：`to_contiguous()` 的公共 API 与语义边界都属于 `util` 模块。若实现上复用内部连续化路径，也只把它视为 `util` 的内部实现细节，不再把连续性保证语义归到 `convert`。
 
 ---
 
 ## 4. 依赖关系
 
-### 4.1 依赖图
+### 4.1 依赖图（ASCII）
 
 ```
 src/util/
@@ -105,17 +89,17 @@ src/util/
 | `iter`      | `iter()`, `iter_mut()`（参见 `10-iterator.md` §5）                                                        |
 | `tensor`    | `Tensor<A, D>` 的结果构造路径；`clip` 分配新的 owned 结果张量并通过 `iter()` / `iter_mut()` 写入逻辑元素  |
 
-### 4.3 依赖方向声明
-
-> **依赖方向：单向向上。** `util` 仅消费 `tensor`、`iter` 等核心模块，不被它们依赖。
-
-### 4.4 依赖合法性与替代方案
+### 4.3 依赖合法性
 
 | 项目           | 说明                                                                          |
 | -------------- | ----------------------------------------------------------------------------- |
 | 新增第三方依赖 | 无                                                                            |
 | 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
 | 替代方案       | 不适用；当前范围内无需额外第三方依赖。                                        |
+
+### 4.3 依赖方向声明
+
+> **依赖方向：单向向上。** `util` 仅消费 `tensor`、`iter` 等核心模块，不被它们依赖。
 
 ---
 

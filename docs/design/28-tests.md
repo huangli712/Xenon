@@ -136,7 +136,7 @@ tests/
 └── public API feature effects (`simd` / `parallel`)    # Internal backends are verified indirectly through observable public behavior
 ```
 
-### 4.2 依赖精确到类型级
+### 4.2 类型级依赖
 
 | 来源模块    | 使用的类型/trait                                                                                               |
 | ----------- | -------------------------------------------------------------------------------------------------------------- |
