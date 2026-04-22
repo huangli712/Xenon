@@ -4,7 +4,7 @@
 > 模块目录: src/shape/
 > 任务阶段: Phase 4
 > 前置文档: 07-tensor.md, 06-layout.md, 02-dimension.md
-> 需求参考: 需求说明书 §6、§7、§17、§28
+> 需求参考: 需求说明书 §6 - §8、§17、§28
 > 范围声明: 范围内
 
 ---
@@ -41,7 +41,7 @@
 
 | 类型     | 内容                                                                             |
 | -------- | -------------------------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §6、§7、§17、§28                                                      |
+| 需求映射 | 需求说明书 §6 - §8、§17、§28                                                      |
 | 范围内   | `transpose()`、轴反转后的 shape / strides / flags 重算，以及零拷贝只读视图语义。 |
 | 范围外   | 其他形状变换。                                                                   |
 | 非目标   | 不在本文讨论连续性重排 API、动态维推断或额外形状 DSL。                           |
@@ -116,13 +116,15 @@ where
     /// assert_eq!(b.shape(), &[3, 2]);
     /// ```
     pub fn transpose(&self) -> TensorView<'_, A, D> {
-        let new_shape = reverse_axes(self.shape());
-        let new_strides = reverse_axes(self.strides());
+        // Reverse trait (02-dimension.md): reverses axis order
+        let new_shape = self.shape().reverse();
+        let new_strides = self.strides().reverse();
         let new_flags = compute_layout_flags::<A, D>(&new_shape, &new_strides, self.as_ptr());
 
         // actual construction uses TensorView::new_unchecked() or similar
         // internal constructor, see 07-tensor.md
         TensorView {
+            // Pseudocode: create ViewRepr by borrowing source storage
             storage: ViewRepr::from(&self.storage),
             shape: new_shape,
             strides: new_strides,
@@ -235,7 +237,7 @@ let new_flags = compute_layout_flags::<A, D>(
 
 - [ ] **T2**: 实现 `transpose()`
   - 文件: `src/shape/transpose.rs`
-  - 内容: `TensorBase::transpose()`, `LayoutFlags::update_for_transpose()`
+  - 内容: `TensorBase::transpose()`
   - 测试: `test_transpose_2d`, `test_transpose_3d`, `test_transpose_contiguity_swap`, `test_transpose_0d_1d_preserves_contiguity`
   - 前置: T1
   - 预计: 10 min
