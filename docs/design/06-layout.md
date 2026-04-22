@@ -637,7 +637,7 @@ Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的
 
 ### Wave 3: 集成
 
-- [ ] **T7**: 实现对齐检查
+- [ ] **T6**: 实现对齐检查
   - 文件: `src/layout/strides.rs`
   - 内容: `is_aligned_to`/`is_aligned` 函数
   - 测试: `test_alignment_check`
@@ -646,11 +646,11 @@ Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的
 
 ### Wave 4: 测试和文档
 
-- [ ] **T8**: 集成测试和文档完善
+- [ ] **T7**: 集成测试和文档完善
   - 文件: `tests/test_layout.rs`
   - 内容: 综合测试套件：步长计算、连续性检查、零步长、对齐检查
   - 测试: 完整集成测试
-  - 前置: T3, T4, T5, T7
+  - 前置: T3, T4, T5, T6
   - 预计: 10 min
 
 ---
