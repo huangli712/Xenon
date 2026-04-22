@@ -453,7 +453,7 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | L5     | set       | tensor, element, complex, iter      | 14-set.md           |
 | L5     | matrix    | tensor, element                     | 12-matrix.md        |
 | L5     | reduction | tensor, dimension, element, error   | 13-reduction.md     |
-| L5     | shape     | tensor, layout                      | 16-shape.md         |
+| L5     | shape     | tensor, dimension, layout           | 16-shape.md         |
 | L5     | index     | tensor, dimension, layout, error    | 17-indexing.md      |
 | L5     | util      | tensor, dimension, storage, layout, iter | 20-utility.md  |
 | L5     | construct | tensor, storage, layout, dimension, element | 18-construction.md |

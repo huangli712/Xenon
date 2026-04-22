@@ -3,7 +3,7 @@
 > 文档编号: 16
 > 模块目录: src/shape/
 > 任务阶段: Phase 4
-> 前置文档: 07-tensor.md, 06-layout.md
+> 前置文档: 07-tensor.md, 06-layout.md, 02-dimension.md
 > 需求参考: 需求说明书 §6、§7、§17、§28
 > 范围声明: 范围内
 
@@ -74,7 +74,7 @@ src/shape/
 | 来源模块    | 使用的类型/trait                                                                  |
 | ----------- | --------------------------------------------------------------------------------- |
 | `tensor`    | `TensorBase<S, D>`, `TensorView<'_, A, D>`, `.shape()`, `.strides()`, `.offset()` |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`                                                 |
+| `dimension` | `Dimension`                                                                       |
 | `layout`    | `LayoutFlags`, `LayoutState`, `Strides<D>`                                        |
 | `error`     | 无新增可恢复错误；规范性 `transpose()` 不走失败返回路径                           |
 
@@ -118,7 +118,7 @@ where
     pub fn transpose(&self) -> TensorView<'_, A, D> {
         let new_shape = reverse_axes(self.shape());
         let new_strides = reverse_axes(self.strides());
-        let new_flags = update_flags_for_transpose(self.flags(), new_shape.slice(), new_strides.as_slice());
+        let new_flags = compute_layout_flags::<A, D>(&new_shape, &new_strides, self.as_ptr());
 
         // actual construction uses TensorView::new_unchecked() or similar
         // internal constructor, see 07-tensor.md
@@ -138,8 +138,7 @@ where
 
 - 根据 `需求说明书 §17`，当前版本形状操作仅支持转置。
 - 其他形状变换与连续性驱动的形状重解释不属于本文档覆盖范围，留待后续版本单独设计。
-- 当前版本的 `transpose()` 定义为全轴顺序反转（reverse axis order），等价于矩阵转置。一般化的任意轴置换不在当前版本范围内。未来若引入 `permute_axes()`，`transpose()` 仍保持为 `reverse_axes()` 的便捷别名，不改变现有契约。
-- 当前版本的 `transpose()` 固定执行全轴反转（reverse axis order），即 `shape' = shape[::-1]`，`strides' = strides[::-1]`。这是轴置换（permutation）的特例。一般的 `permute_axes()` API 不在当前版本范围内。`需求说明书 §17` 所述的“轴置换规则”在本版本中等价于全轴反转。
+- 当前版本的 `transpose()` 定义为全轴顺序反转（reverse axis order），即 `shape' = shape[::-1]`，`strides' = strides[::-1]`，等价于矩阵转置。`需求说明书 §17` 所述的“轴置换规则”在本版本中等价于全轴反转。一般化的 `permute_axes()` API 不在当前版本范围内；未来若引入，`transpose()` 仍保持为 `reverse_axes()` 的便捷别名，不改变现有契约。
 - 若内部通过 unchecked 视图构造返回转置结果，其安全前提为：（1）转置仅重排轴顺序，不改变逻辑访问范围；（2）反转后的 `shape` / `stride` 组合仍满足原 storage 的可见边界约束（由构造期验证保证）；（3）`offset` 保持不变。因此转置无需新的存储分配，视图构造仍落在原验证范围内。
 
 | 属性     | 行为                                                                                                   |
@@ -163,7 +162,7 @@ where
 - `transpose()` 的返回类型统一固定为 `TensorView<'_, A, D>`，因此结果始终是基于借用的只读视图，只能持有 `ViewRepr`。即使源张量底层使用 `ArcRepr`（共享只读存储），转置结果也不会保留共享所有权语义，而是降级为普通借用视图。这是有意为之：转置仅重写 shape/stride/flags 等元数据，不复制也不迁移底层存储；原张量自身继续保留其原有存储模式，`ArcRepr` 的共享所有权能力仍由源对象负责维持。统一返回 `TensorView` 可以避免为元数据操作引入额外表示类型或条件返回类型，保持 API 与实现的简单性和一致性。
 - 若源张量为 `ArcRepr`（共享只读），转置后 `storage_kind()` 返回 `StorageKind::View` 而非 `Shared`。这是有意设计：转置结果的生命周期绑定到调用时借用，而不是源张量的共享引用计数。这是允许的收窄：`需求说明书 §17` 只要求结果落在只读引用或共享只读引用范围内。借用视图满足只读引用约束。对后续广播、格式化、线程共享的影响：转置结果的生命周期绑定到原始张量的借用期。
 
-### 5.5 Good / Bad 对比
+### 5.4 Good / Bad 对比
 
 以下为示意性伪实现，非稳定内部结构约定。
 
@@ -208,13 +207,15 @@ Transpose: shape=[3, 2], strides=[2, 1]  (strides reversed, not F-contiguous)
 转置操作不引入新步长值，仅交换现有 `usize` stride 顺序。由于 `需求说明书 §7` 明确当前版本不支持负步长布局，因此这里无需讨论负 stride 或相关标志。连续性标志需要按结果布局重算：转置后连续性须根据结果的 shape 与 stride 重新计算；若结果仍满足 F-order 连续条件（如含长度为 1 的轴的转置），则保留 F-contiguous 标记。零步长等其他已存在标志仍按结果布局分类；若源视图为广播视图且转置后仍存在任一 `stride == 0` 的轴，则继续保留 `BroadcastView` 标记；对 0D/1D 输入，转置是元数据 no-op，应保留原有连续性标志。
 
 ```rust,ignore
-fn update_flags_for_transpose(
-    source_flags: LayoutFlags,
-    new_shape: &[usize],
-    new_strides: &[usize],
-) -> LayoutFlags {
-    recompute_layout_flags(source_flags, new_shape, new_strides)
-}
+// Per 06-layout.md §5.12, transpose delegates flag computation to
+// compute_layout_flags(shape, strides, ptr).
+// Transpose does not change offset, so the logical-first pointer
+// remains unchanged.
+let new_flags = compute_layout_flags::<A, D>(
+    &new_shape,
+    &new_strides,
+    self.as_ptr(),
+);
 ```
 
 ---
@@ -272,6 +273,9 @@ fn update_flags_for_transpose(
 | `test_transpose_0d_noop`                    | 0D 标量转置后不变                                          | 中     |
 | `test_transpose_0d_1d_preserves_contiguity` | 0D/1D 转置保留原连续性标志                                 | 高     |
 | `test_transpose_broadcast_view_keeps_flag`  | 广播视图转置后零步长仍保留 `BroadcastView`                 | 中     |
+| `test_transpose_owned_returns_view_kind`    | Owned 张量转置后 `storage_kind()` 返回 `StorageKind::View` | 中     |
+| `test_transpose_view_mut_returns_view_kind` | ViewMut 张量转置后 `storage_kind()` 返回 `StorageKind::View` | 中   |
+| `test_transpose_arc_tensor_returns_view_kind` | ArcRepr 张量转置后 `storage_kind()` 返回 `StorageKind::View` | 高 |
 
 ### 8.3 边界测试场景
 
@@ -290,6 +294,7 @@ fn update_flags_for_transpose(
 | ----------------------------------- | ------------------ |
 | `transpose().len() == tensor.len()` | 随机形状           |
 | 转置后数据不变                      | 转置前后逐元素对比 |
+| `t.transpose().transpose()` ≡ `t`   | shape、strides 完全一致 |
 
 ### 8.5 集成测试
 
@@ -371,7 +376,7 @@ User calls transpose()
 
 | 属性     | 值                                                                                |
 | -------- | --------------------------------------------------------------------------------- |
-| 决策     | Phase 4 仅把 `transpose()` 纳入当前版本交付                                       |
+| 决策     | 仅把 `transpose()` 纳入当前版本交付                                               |
 | 理由     | `需求说明书 §17` 明确当前版本只要求转置操作本身，文档不应把别名扩写成当前交付承诺 |
 | 替代方案 | 在当前版本同时承诺其他形状操作 — 放弃，超出规范性 API 边界                        |
 
@@ -380,8 +385,8 @@ User calls transpose()
 | 属性     | 值                                                                                |
 | -------- | --------------------------------------------------------------------------------- |
 | 决策     | `transpose()` 始终返回 `TensorView<'_, A, D>`；无论源存储是 `Owned`、`ViewMutRepr`、`ViewRepr` 还是 `ArcRepr`，结果统一使用只读借用视图 `ViewRepr` |
-| 理由     | `ArcRepr` 降级为借用视图的详细说明见 §5.1.2 存储模式降级表后的 ArcRepr 降级说明；这里仅重复其规范性结论，不再展开重复论证 |
-| 替代方案 | 让 `ArcRepr` 输入返回保留共享所有权的新视图类型 — 放弃，详见 §5.1.2 中关于统一返回类型与复杂度权衡的说明 |
+| 理由     | `ArcRepr` 降级为借用视图的详细说明见 §5.3 存储模式降级表后的 ArcRepr 降级说明；这里仅重复其规范性结论，不再展开重复论证 |
+| 替代方案 | 让 `ArcRepr` 输入返回保留共享所有权的新视图类型 — 放弃，详见 §5.3 中关于统一返回类型与复杂度权衡的说明 |
 
 ---
 
