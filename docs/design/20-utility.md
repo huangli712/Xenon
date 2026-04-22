@@ -82,13 +82,12 @@ src/util/
 
 | 来源模块    | 使用的类型/trait                                                                 |
 | ----------- | -------------------------------------------------------------------------------- |
-| `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`（参见 `07-tensor.md` §5） |
+| `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`；`clip` 通过 `iter()` 读取源数据并构造新的 owned 结果张量（参见 `07-tensor.md` §5） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §5）                   |
-| `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, `StorageIntoOwned<Elem=A>`（参见 `05-storage.md` §5）            |
+| `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, `StorageIntoOwned<Elem=A>`（参见 `05-storage.md` §5）|
 | `element`   | `Element`，`OrderedCompareElement`（clip 复用，参见 `03-element.md` §5.5）       |
 | `layout`    | `is_f_contiguous()`（张量层方法参见 `07-tensor.md` §5.3，算法定义参见 `06-layout.md` §5.7） |
 | `iter`      | `iter()`, `iter_mut()`（参见 `10-iterator.md` §5）                               |
-| `tensor`    | `Tensor<A, D>` 的结果构造路径；`clip` 分配新的 owned 结果张量并通过 `iter()` / `iter_mut()` 写入逻辑元素  |
 
 ### 4.3 依赖合法性
 
@@ -497,7 +496,7 @@ into_contiguous(tensor):
 | `test_fill_non_contiguous`                | 非连续布局正确填充所有逻辑元素                 | 高     |
 | `test_fill_padded_writes_logical_only`    | 带 padding 的可写张量仅覆写逻辑元素            | 高     |
 | `test_try_fill_writable_matches_fill`     | `try_fill()` 在可写张量上与 `fill()` 语义一致  | 高     |
-| `test_try_fill_public_error_contract`     | `try_fill()` 作为公共 API 在广播只读结果 / 只读存储上返回公开错误契约 | 高     |
+| `test_try_fill_read_only_returns_error`   | `try_fill()` 在只读 / 共享只读 / 广播只读张量上返回 `InvalidStorageMode` | 高     |
 | `test_fill_empty`                         | 空数组 fill 不 panic                           | 中     |
 | `test_to_contiguous_f_order`              | F-order 连续输入返回 owned 拷贝                | 高     |
 | `test_into_contiguous_reuses_owned_data`  | F-order owned 输入消费后复用原数据             | 高     |
@@ -559,7 +558,8 @@ into_contiguous(tensor):
 | `utility → iter`   | `iter`   | `iter_mut()`   | `fill` 通过 storage 层 helper 直接写入逻辑元素（参见 §5.4），参见 `10-iterator.md` §5.6 |
 | `utility → iter`   | `iter`   | `iter()`       | `clip` 通过只读迭代器读取并写入新张量，参见 `10-iterator.md` §5.6 |
 | `utility → layout` | `layout` | 连续性查询     | `to_contiguous` 先查询当前布局是否已经连续，张量层方法参见 `07-tensor.md` §5.3，算法定义参见 `06-layout.md` §5.7 |
-| `utility → tensor` | `tensor` | `to_owned()` / `into_owned()` / owned 构造路径 | `to_contiguous` 与 `into_contiguous` 复用张量 owned 化与连续化路径（`to_owned`/`into_owned` 定义参见 `21-type.md` §5.6）；`clip` 通过 owned 结果张量构造返回新值；跨文档连续化归属统一在 utility |
+| `utility → tensor` | `tensor` | `to_owned()` / `into_owned()` | `to_contiguous` 与 `into_contiguous` 复用张量 owned 化路径（定义参见 `21-type.md` §5.6）；跨文档连续化归属统一在 utility |
+| `utility → tensor` | `tensor` | owned 结果张量构造 | `clip` 分配新的 owned 结果张量，通过 `iter()` 读取源数据并写入 |
 
 ### 9.2 数据流描述
 
