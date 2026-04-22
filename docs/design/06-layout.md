@@ -291,17 +291,12 @@ impl<D: Dimension> Strides<D> {
 }
 ```
 
-不变量：
-
 - 所有 stride 值必须为非负；零表示广播维度。
 - `Strides<D>` 的维度数必须与对应 `shape: D` 完全一致。
 - 对于 F-contiguous 布局：`stride[0] = 1`，且 `stride[i] = stride[i-1] * shape[i-1]`。
-
-拥有型存储的 stride 必须满足 F-order 连续条件（即 `strides[i] = product of shape[0..i]`）；若传入非 F-order stride，构造须返回 `XenonError::InvalidLayout`。
-
-> **需求说明书 §7 收紧解释：** 本设计对需求说明书 §7 中“仅用于对齐或实现目的的填充区域”做收紧解释：当前版本仅允许 tail padding，不允许 inter-axis padding（例如 padded leading dimension）。这一收紧不影响需求兼容性，因为逻辑元素值及其访问结果与不存在填充区域时保持一致。
-
-补充说明：`Strides::new()` 仅构造承载对象，不执行完整合法性验证。布局合法性由构造器/validator 入口统一负责。
+- 拥有型存储的 stride 必须满足 F-order 连续条件（即 `strides[i] = product of shape[0..i]`）；若传入非 F-order stride，构造须返回 `XenonError::InvalidLayout`。
+- `Strides::new()` 仅构造承载对象，不执行完整合法性验证。
+- 布局合法性由构造器/validator 入口统一负责。
 
 与 `Dimension`/`TensorBase` 的职责边界如下：
 
@@ -309,11 +304,9 @@ impl<D: Dimension> Strides<D> {
 - `Strides<D>` 负责保存与 shape 同 rank 的步长元数据。
 - `07-tensor.md` 中的 `TensorBase` 通过 `strides: Strides<D>` 持有这部分元数据，并交由 layout 层推导连续性与布局标志。
 
-负步长布局不在当前版本范围内（参见 `需求说明书 §7`）。当前文档仅讨论由 F-order、转置、切片派生的正步长非连续视图与广播产生的合法布局。
-
 ### 5.6 F-order 步长计算
 
-> **Padding 说明**：`compute_f_strides()` 产出的仍是规范化 packed F-order stride（`stride[i] = product(shape[0..i])`）。`需求说明书 §7` 提到的“padding”在当前版本不进入逻辑布局元数据；同时需满足 `需求说明书 §11` 关于“带填充区域的数组迭代须仅遍历逻辑元素，不得暴露为对齐或实现目的引入的填充区域”的要求。
+`compute_f_strides()` 产出的仍是规范化 packed F-order stride（`stride[i] = product(shape[0..i])`）。`需求说明书 §7` 提到的“padding”在当前版本不进入逻辑布局元数据；同时需满足 `需求说明书 §11` 关于“带填充区域的数组迭代须仅遍历逻辑元素，不得暴露为对齐或实现目的引入的填充区域”的要求。
 
 **算法**：
 
@@ -388,11 +381,11 @@ i=0: shape[0]=2, stride[0]=3, expected=1 ✗
 Result: false (not F-contiguous)
 ```
 
-### 5.4a 布局合法性与校验规则
+### 5.8 布局合法性与校验规则
 
 当前版本支持的 stride/layout 组合按以下闭合规则判定：
 
-#### 合法 stride 布局族
+#### 5.8.1 合法 stride 布局族
 
 - **F-order contiguous**：对所有轴满足 `strides[i] == product(shape[0..i])`；对 `shape[i] == 1` 的轴，可按 §5.4 的连续性规则放宽判定；若零步长来自广播语义，则不得归类为 `F_CONTIGUOUS`，但空数组在退化 metadata 表示下出现的零步长不自动破坏 `F_CONTIGUOUS`。
 - **转置视图（non-contiguous）**：`strides` 是对应 F-order contiguous stride 集合的轴置换结果，且所有 stride 都为正。
@@ -400,44 +393,44 @@ Result: false (not F-contiguous)
 - **广播视图**：广播轴允许 stride 为 `0`；是否为广播轴由广播语义决定（源维度为 1 且目标维度 > 1），而非由结果张量的 `shape[i] == 1` 判定。其余非广播轴必须保持 F-order 或转置后的正 stride 模式。
 - **单元素或 0-D**：可放宽连续性判定，但 stride 仍须落在当前版本支持的布局族内；其中零步长只允许来自广播语义或空数组退化 metadata，不能把“任意零步长”视为一般合法布局。
 
-> **校验口径说明：** 上述“合法 stride 布局族”同时定义当前版本 safe 构造可接受的布局边界。safe 构造只接受能够**仅凭 metadata** 验证正确性的布局：`shape + strides + offset + storage_len` 必须足以证明访问范围不越界，且布局须落在当前版本支持的布局族内。这里的“切片派生”只指 Xenon 内部张量切片 API 产出的布局，不接受外部 raw-parts 输入仅凭“它看起来像切片结果”就走 safe 路径。任何 raw-parts 构造即使 metadata 恰好匹配切片结果，也只能走 unsafe 构造路径并由调用方承担额外正确性责任。该口径与 `需求说明书` §8 保持一致。
+**校验口径说明**： 上述“合法 stride 布局族”同时定义当前版本 safe 构造可接受的布局边界。safe 构造只接受能够**仅凭 metadata** 验证正确性的布局：`shape + strides + offset + storage_len` 必须足以证明访问范围不越界，且布局须落在当前版本支持的布局族内。这里的“切片派生”只指 Xenon 内部张量切片 API 产出的布局，不接受外部 raw-parts 输入仅凭“它看起来像切片结果”就走 safe 路径。任何 raw-parts 构造即使 metadata 恰好匹配切片结果，也只能走 unsafe 构造路径并由调用方承担额外正确性责任。该口径与 `需求说明书` §8 保持一致。
 
-#### 非法 stride 组合
+#### 5.8.2 非法 stride 组合
 
 - **负步长**：当前版本不支持。
 - **可写上下文中的重叠访问**：若多个逻辑索引会写入同一物理位置，则该布局非法；广播视图因此只能作为只读/共享只读视图暴露。
 
-#### 校验规则
+#### 5.8.3 校验规则
 
 - `total_elements = product(shape)`，且计算过程不得溢出 `usize`。
 - 访问范围校验必须显式纳入 `offset`。当 `total_elements == 0` 时，要求 `offset <= storage_len`，且不得计算 `shape[i] - 1`；当 `total_elements > 0` 时，
   `max_accessed_offset = offset + sum(stride[i] * (shape[i] - 1) for all i where shape[i] > 0)`（逐轴累加且使用 checked arithmetic）必须满足 `max_accessed_offset < storage_len`。
 - 每个 `stride[i]` 都必须可表示为 `isize`，不得发生表示溢出。
 
-> **当前版本的具体校验口径：**
->
-> 合法 stride 族：
->
-> 1. F-order 连续：`strides[i] = product(shape[0..i])`
-> 2. 转置衍生：对 F-order 连续布局的轴置换结果，`stride[i]` 仍为正且与原始轴的 stride 对应
-> 3. 广播衍生：部分轴 `stride = 0`
-> 4. 切片衍生：正步长子范围，`stride` 不变，`offset` 调整
->
-> 验证规则：
->
-> - 所有 `stride[i] >= 0`（非负）
-> - 所有 `stride[i] <= isize::MAX`
-> - 当 `total_elements == 0` 时，仅要求 `offset <= storage_len`
-> - 当 `total_elements > 0` 时，`max_accessed_offset = offset + sum((shape[i] - 1) * stride[i]) < storage_len`
-> - 广播视图：广播轴的 `stride[i]` 可为 `0`；是否为广播轴由广播语义决定（源维度为 1 且目标维度 > 1），而非由结果张量的 `shape[i] == 1` 判定
-> - 单元素轴 `shape[i] == 1` 时 `stride[i]` 不受连续性约束
+**当前版本的具体校验口径**：
 
-#### safe vs unsafe 构造的责任分工
+**合法 stride 族**：
+
+1. F-order 连续：`strides[i] = product(shape[0..i])`
+2. 转置衍生：对 F-order 连续布局的轴置换结果，`stride[i]` 仍为正且与原始轴的 stride 对应
+3. 广播衍生：部分轴 `stride = 0`
+4. 切片衍生：正步长子范围，`stride` 不变，`offset` 调整
+
+**验证规则**：
+
+- 所有 `stride[i] >= 0`（非负）
+- 所有 `stride[i] <= isize::MAX`
+- 当 `total_elements == 0` 时，仅要求 `offset <= storage_len`
+- 当 `total_elements > 0` 时，`max_accessed_offset = offset + sum((shape[i] - 1) * stride[i]) < storage_len`
+- 广播视图：广播轴的 `stride[i]` 可为 `0`；是否为广播轴由广播语义决定（源维度为 1 且目标维度 > 1），而非由结果张量的 `shape[i] == 1` 判定
+- 单元素轴 `shape[i] == 1` 时 `stride[i]` 不受连续性约束
+
+#### 5.8.4 safe vs unsafe 构造的责任分工
 
 - **Safe constructors**：只接受可由 metadata 单独证明正确的布局；必须检查以上全部规则，且 `shape + strides + offset + storage_len` 足以证明所有逻辑访问都在 backing storage 范围内；任一条件不满足时返回 `Result::Err`。
 - **Unsafe constructors**：至少检查可验证的 metadata 约束（如 shape/stride 一致性、元素总数与访问范围公式）；指针有效性、生命周期与实际可访问内存范围由调用方保证。即使外部传入的 raw-parts metadata 与某个“切片派生”布局一致，也不得因此提升为 safe。
 
-### 5.5 对齐检查
+### 5.9 对齐检查
 
 ```rust,ignore
 /// Checks whether the logical-first pointer satisfies the alignment requirement.
@@ -457,15 +450,15 @@ pub fn is_aligned(ptr: *const u8) -> bool {
 }
 ```
 
-> **空张量对齐规则：** 空张量（元素数为 0）的 `ALIGNED` flag 统一设为 `true`，不依赖逻辑首指针是否可观测地满足 64 字节对齐。`compute_layout_flags()` 在空张量分支上应直接写入该约定，以保持 `需求说明书` 的空布局查询稳定语义。
+**空张量对齐规则**： 空张量（元素数为 0）的 `ALIGNED` flag 统一设为 `true`，不依赖逻辑首指针是否可观测地满足 64 字节对齐。`compute_layout_flags()` 在空张量分支上应直接写入该约定，以保持 `需求说明书` 的空布局查询稳定语义。
 
-### 5.6 对齐与数据一致性
+### 5.10 对齐与数据一致性
 
 > **数据一致性保证：** 对齐布局（64 字节对齐）与非对齐布局必须产生相同的元素值。对齐仅影响 SIMD 访问性能，不改变数据语义。当前设计中 `Owned::from_vec(data)` 统一委托到对齐分配路径，因此与 `Owned::from_vec_aligned(data)` 在逻辑语义上完全等价；`is_aligned()` 标志仅用于指导 SIMD 路径选择，而不是区分两套用户可见的构造语义。
 
 > **Strides 归属约定：** `Strides<D>` 由 layout 模块定义并拥有；`dimension` 只提供 `checked_size()` 和无符号 F-order 形状推导，绝不保存 stride 或 logical-first pointer 语义。`tensor` 持有 `Strides<D>` 实例并把它交给 layout 计算标志位。
 
-### 5.7 零步长语义
+### 5.11 零步长语义
 
 零步长需要区分两类来源：
 
@@ -480,11 +473,11 @@ shape = [3, 4], strides = [1, 0]  // axis 1 is broadcast
 Indices [0, 0], [0, 1], [0, 2], and [0, 3] access the same physical element
 ```
 
-### 5.8 当前任务边界
+### 5.12 当前任务边界
 
 > **任务收缩：** 当前版本的 layout 设计不再单独引入 `Layout` 结构体。`TensorBase` 直接缓存 `LayoutFlags`，layout 模块对外只提供 `LayoutFlags`、`LayoutState`、`Strides<D>` 与相关计算/校验函数。若后续版本确需额外布局描述对象，须以新需求为前提单独设计。
 
-### 5.9 compute_layout_flags 内部函数
+### 5.13 compute_layout_flags 内部函数
 
 ```rust,ignore
 /// Computes layout flags from shape, strides, and data pointer.
@@ -511,7 +504,7 @@ pub(crate) fn compute_layout_flags<A, D: Dimension>(
 
 > **命名约定：** 当前文档统一使用 `compute_layout_flags` 表示“从 `shape + strides + ptr` 计算 `LayoutFlags`”的主函数；若实现中存在更细粒度辅助函数，应在文档中明确其仅为内部步骤。
 
-### 5.10 Good/Bad 对比
+### 5.14 Good/Bad 对比
 
 ```rust,ignore
 // Good - checked F-order stride computation
