@@ -400,7 +400,7 @@ clip(tensor, min, max):
     return result
 ```
 
-### 6.2 fill 算法（非连续布局支持）
+### 6.2 fill 算法
 
 ```
 fill(tensor, value):
@@ -409,7 +409,10 @@ fill(tensor, value):
         write storage[offset] = clone(value)
 ```
 
-关键点：utility 层保留两层入口：`fill()` 是仅对可写张量开放的主公开入口；`try_fill()` 是在调用方仅持有通用张量句柄时使用的次级运行时便捷入口，并依赖 `Storage` trait 提供的可选可变句柄接口或等价机制识别当前存储是否可写。若 storage 层未暴露该能力，`try_fill()` 也必须返回 `InvalidStorageMode`。只读/广播结果在 `try_fill()` 上返回 `InvalidStorageMode`，而 `fill()` 继续通过 `S: StorageMut` 做编译期拒绝。可写存储仍必须遵守“只写逻辑元素”的契约：连续布局可走快路径，带 padding / 非连续布局必须按逻辑索引与 strides 写入，且不得触碰 padding bytes。
+- utility 层保留两层入口：`fill()` 是仅对可写张量开放的主公开入口；`try_fill()` 是在调用方仅持有通用张量句柄时使用的次级运行时便捷入口，并依赖 `Storage` trait 提供的可选可变句柄接口或等价机制识别当前存储是否可写。若 storage 层未暴露该能力，`try_fill()` 也必须返回 `InvalidStorageMode`。
+- 只读/广播结果在 `try_fill()` 上返回 `InvalidStorageMode`，而 `fill()` 继续通过 `S: StorageMut` 做编译期拒绝。
+- 可写存储仍必须遵守“只写逻辑元素”的契约：连续布局可走快路径，带 padding / 非连续布局必须按逻辑索引与 strides 写入，且不得触碰 padding bytes。
+
 
 ### 6.3 to_contiguous 路径选择
 
@@ -429,7 +432,7 @@ into_contiguous(tensor):
         return util_internal_to_f_contiguous(&tensor)
 ```
 
-> 若输入已是 F-contiguous 但底层存储包含 tail padding，`into_contiguous()` 仍可复用该 owned 存储；`to_contiguous()` 则必须生成新的 canonical F-order owned 拷贝，结果不保留 inter-axis padding，且不依赖原始 tail padding 形态。
+若输入已是 F-contiguous 但底层存储包含 tail padding，`into_contiguous()` 仍可复用该 owned 存储；`to_contiguous()` 则必须生成新的 canonical F-order owned 拷贝，结果不保留 inter-axis padding，且不依赖原始 tail padding 形态。
 
 ### 6.4 NaN 处理语义
 
@@ -440,9 +443,8 @@ into_contiguous(tensor):
 | 高于上界  | `2.0`  | `0.0` | `1.0` | `1.0` | 钳位到 max                                    |
 | NaN 输入  | `NaN`  | `0.0` | `1.0` | `NaN` | NaN 不满足 `< min` 也不满足 `> max`，保持 NaN |
 
-> 对浮点数，NaN 的 clip 行为遵循 IEEE 754 比较语义：`NaN < x` 和 `NaN > x` 均为 false，
-> 因此 NaN 值在 clip 中保持不变。这与 NumPy 的 `np.clip` 行为一致。
-> 另一方面，`min`/`max` 作为边界参数必须是已定义的可比较标量值；若任一边界为 `NaN`，则返回 `InvalidArgument`，避免把无效边界静默当成合法区间。
+- 对浮点数，NaN 的 clip 行为遵循 IEEE 754 比较语义：`NaN < x` 和 `NaN > x` 均为 false，> 因此 NaN 值在 clip 中保持不变。这与 Numpy 的 `np.clip` 行为一致。
+- 另一方面，`min`/`max` 作为边界参数必须是已定义的可比较标量值；若任一边界为 `NaN`，则返回 `InvalidArgument`，避免把无效边界静默当成合法区间。
 
 ---
 
@@ -483,18 +485,6 @@ into_contiguous(tensor):
   - 测试: `test_clip_empty`, `test_clip_single_element`, `test_clip_non_contiguous`, `test_fill_zero_dim`
   - 前置: T1, T2, T3
   - 预计: 10 min
-
-### 并行执行分组图
-
-```
-Wave 1: [T1]
-           │
-Wave 2: [T2]
-           │
-Wave 3: [T3]
-           │
-Wave 4: [T4]
-```
 
 ---
 
