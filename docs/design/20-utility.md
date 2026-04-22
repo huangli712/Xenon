@@ -79,14 +79,14 @@ src/util/
 
 ### 4.2 类型级依赖
 
-| 来源模块    | 使用的类型/trait                                                                                          |
-| ----------- | --------------------------------------------------------------------------------------------------------- |
+| 来源模块    | 使用的类型/trait                                                                 |
+| ----------- | -------------------------------------------------------------------------------- |
 | `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.storage_kind()`（参见 `07-tensor.md` §5） |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §5）                                            |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §5）                   |
 | `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, `StorageIntoOwned<Elem=A>`（参见 `05-storage.md` §5）            |
-| `element`   | `Element`，以及 utility 层定义的 operation-specific `ClipElement` 约束                                    |
-| `layout`    | `is_f_contiguous()`（参见 `06-layout.md` §5）                                                             |
-| `iter`      | `iter()`, `iter_mut()`（参见 `10-iterator.md` §5）                                                        |
+| `element`   | `Element`，以及 utility 层定义的 operation-specific `ClipElement` 约束           |
+| `layout`    | `is_f_contiguous()`（参见 `06-layout.md` §5）                                    |
+| `iter`      | `iter()`, `iter_mut()`（参见 `10-iterator.md` §5）                               |
 | `tensor`    | `Tensor<A, D>` 的结果构造路径；`clip` 分配新的 owned 结果张量并通过 `iter()` / `iter_mut()` 写入逻辑元素  |
 
 ### 4.3 依赖合法性
@@ -97,9 +97,9 @@ src/util/
 | 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
 | 替代方案       | 不适用；当前范围内无需额外第三方依赖。                                        |
 
-### 4.3 依赖方向声明
+### 4.4 依赖方向声明
 
-> **依赖方向：单向向上。** `util` 仅消费 `tensor`、`iter` 等核心模块，不被它们依赖。
+依赖方向：单向向上。`util` 仅消费 `tensor`、`iter` 等核心模块，不被它们依赖。
 
 ---
 
@@ -130,8 +130,8 @@ where
     /// Available for types implementing `ClipElement`: i32, i64, f32, f64.
     /// **Not available for `Complex<f32>`/`Complex<f64>`** because complex numbers
     /// have no natural total ordering (`Complex` does not implement `PartialOrd`,
-/// see `04-complex.md §5`).
-/// **Not available for `bool` / `Complex<_>`** because clip requires an ordered scalar domain.
+    /// see `04-complex.md §5`).
+    /// **Not available for `bool` / `Complex<_>`** because clip requires an ordered scalar domain.
     /// (see `03-element.md §5.3`).
     ///
     /// # Arguments
@@ -183,19 +183,15 @@ where
 }
 ````
 
-> 浮点参数非法时：`min > max` 或任一边界为 `NaN` 时返回可恢复错误。
->
-> `clip` 总是返回新的 owned 张量，但本文不再把“先 `zeros()` 再逐元素覆写”写成稳定实现承诺；实现可使用 `MaybeUninit` 或等价的内部未初始化 owned 缓冲区，一次写入最终值，避免无意义的零填充后再覆写。
-
-> **内部依赖说明：** `clip()` 的实现可能依赖内部未初始化构造能力（如 `uninit_like`、`iter_uninit_mut`、`assume_init` 或等价 helper）；这些内部 helper 的权威定义与归属待在实现阶段明确，当前伪代码仅示意实现思路。
-
-> **边界收缩：** `clip_inplace` 不属于 `需求说明书 §21.1` 的强制公共接口。若实现上需要原地 clamp helper，可仅作为 `src/util/clip.rs` 的内部辅助，不纳入稳定 API 承诺与测试矩阵。
-
-> **错误字段规范**：`InvalidArgument` 的诊断字段须与 `15-broadcast.md`、`17-indexing.md` 中的同变体保持一致，至少包含 `operation`（操作名称）和具体参数字段。
+- 浮点参数非法时：`min > max` 或任一边界为 `NaN` 时返回可恢复错误。
+- `clip` 总是返回新的 owned 张量，但本文不再把“先 `zeros()` 再逐元素覆写”写成稳定实现承诺；实现可使用 `MaybeUninit` 或等价的内部未初始化 owned 缓冲区，一次写入最终值，避免无意义的零填充后再覆写。
+- `clip()` 的实现可能依赖内部未初始化构造能力（如 `uninit_like`、`iter_uninit_mut`、`assume_init` 或等价 helper）；这些内部 helper 的权威定义与归属待在实现阶段明确，当前伪代码仅示意实现思路。
+- `clip_inplace` 不属于 `需求说明书 §21.1` 的强制公共接口。若实现上需要原地 clamp helper，可仅作为 `src/util/clip.rs` 的内部辅助，不纳入稳定 API 承诺与测试矩阵。
+- `InvalidArgument` 的诊断字段须与 `15-broadcast.md`、`17-indexing.md` 中的同变体保持一致，至少包含 `operation`（操作名称）和具体参数字段。
 
 ### 5.2 fill 操作
 
-> **公开入口调整：** `fill()` 是填充操作的主公开 API，但仅适用于提供可写访问权的张量（`S: StorageMut`）。`try_fill()` 是次级便捷入口：当调用方只有通用张量句柄、需要以运行时方式尝试填充时，可通过 storage 层提供的可选可变句柄接口（或等价能力）分派；对可写存储执行填充并返回 `Ok(())`，对只读 / 共享只读存储返回 `XenonError::InvalidStorageMode`。
+- `fill()` 是填充操作的主公开 API，但仅适用于提供可写访问权的张量（`S: StorageMut`）。`try_fill()` 是次级便捷入口：当调用方只有通用张量句柄、需要以运行时方式尝试填充时，可通过 storage 层提供的可选可变句柄接口（或等价能力）分派；对可写存储执行填充并返回 `Ok(())`，对只读 / 共享只读存储返回 `XenonError::InvalidStorageMode`。
 >
 > **设计约束**：`fill()` 的主入口仅适用于提供可写访问权的张量（`StorageMut`）。对只读/共享只读张量，`try_fill()` 返回可恢复错误。`需求说明书 §21.2` 要求只读引用和共享只读引用须拒绝填充请求。
 >
