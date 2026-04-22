@@ -105,6 +105,8 @@ src/layout/
 
 ## 5. 公共 API 设计
 
+当前版本的 layout 设计不再单独引入 `Layout` 结构体。`TensorBase` 直接缓存 `LayoutFlags`，layout 模块对外只提供 `LayoutFlags`、`LayoutState`、`Strides<D>` 与相关计算/校验函数。若后续版本确需额外布局描述对象，须以新需求为前提单独设计。
+
 ### 5.1 LayoutFlags
 
 使用 `u8` 类型存储布局标志位，占用 1 字节：
@@ -473,11 +475,7 @@ shape = [3, 4], strides = [1, 0]  // axis 1 is broadcast
 Indices [0, 0], [0, 1], [0, 2], and [0, 3] access the same physical element
 ```
 
-### 5.12 当前任务边界
-
-当前版本的 layout 设计不再单独引入 `Layout` 结构体。`TensorBase` 直接缓存 `LayoutFlags`，layout 模块对外只提供 `LayoutFlags`、`LayoutState`、`Strides<D>` 与相关计算/校验函数。若后续版本确需额外布局描述对象，须以新需求为前提单独设计。
-
-### 5.13 compute_layout_flags 内部函数
+### 5.12 compute_layout_flags 内部函数
 
 ```rust,ignore
 /// Computes layout flags from shape, strides, and data pointer.
@@ -502,9 +500,9 @@ pub(crate) fn compute_layout_flags<A, D: Dimension>(
 ) -> LayoutFlags
 ```
 
-> **命名约定：** 当前文档统一使用 `compute_layout_flags` 表示“从 `shape + strides + ptr` 计算 `LayoutFlags`”的主函数；若实现中存在更细粒度辅助函数，应在文档中明确其仅为内部步骤。
+当前文档统一使用 `compute_layout_flags` 表示“从 `shape + strides + ptr` 计算 `LayoutFlags`”的主函数。
 
-### 5.14 Good/Bad 对比
+### 5.13 Good/Bad 对比
 
 ```rust,ignore
 // Good - checked F-order stride computation
