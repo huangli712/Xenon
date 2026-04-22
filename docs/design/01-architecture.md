@@ -708,9 +708,9 @@ Ix0, Ix1, Ix2, ..., Ix6       // Static dimensions (0-6 dimensions)
 IxDyn                         // Dynamic dimension
 
 // Layout helpers (F-order only)
-compute_f_strides(shape)       // Compute canonical F-order strides
-validate_layout(shape, strides, offset, storage_len)
-classify_layout(shape, strides) // Internal classification helper
+compute_f_strides(shape)             // Compute canonical F-order strides
+compute_layout_flags(shape, strides, ptr) // Central function for all layout flags
+LayoutState                          // FContiguous / NonContiguous / BroadcastView
 
 // Element trait hierarchy
 Element                        // Base: Copy + PartialEq + Debug + Display + Send + Sync

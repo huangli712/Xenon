@@ -199,6 +199,11 @@ impl LayoutFlags {
 
 ```rust
 /// Computes the canonical flags for a validated F-order layout.
+///
+/// Fast path: use only when the caller has already established that the
+/// layout is F-order (e.g., immediately after a successful
+/// `compute_f_strides()` call). For the general case, use
+/// `compute_layout_flags(shape, strides, ptr)` (§5.12) instead.
 #[inline]
 pub(crate) const fn flags_for_f_layout(aligned: bool, has_zero_stride: bool) -> LayoutFlags {
     LayoutFlags::EMPTY
@@ -231,7 +236,7 @@ pub enum LayoutState {
 
 分类语义约定如下：
 
-- `LayoutState::FContiguous`：满足当前文档 §5.4 的 F-order 连续性判定；广播引入的零步长轴不得归入该类，但空数组在退化表示下出现的零步长可继续保持 `FContiguous`。
+- `LayoutState::FContiguous`：满足当前文档 §5.7 的 F-order 连续性判定；广播引入的零步长轴不得归入该类，但空数组在退化表示下出现的零步长可继续保持 `FContiguous`。
 - `LayoutState::NonContiguous`：表示任意其它非广播 stride 模式，例如转置后布局或切片后非连续布局。
 - `LayoutState::BroadcastView`：表示至少包含一个零步长轴的广播视图，用于与一般非连续视图区分。
 
@@ -240,6 +245,20 @@ pub enum LayoutState {
 1. 若 `HAS_ZERO_STRIDE == true`，返回 `LayoutState::BroadcastView`
 2. 否则若 `F_CONTIGUOUS == true`，返回 `LayoutState::FContiguous`
 3. 否则返回 `LayoutState::NonContiguous`
+
+```rust,ignore
+impl LayoutFlags {
+    /// Classifies the current layout into a `LayoutState` variant.
+    ///
+    /// Deterministic mapping: BroadcastView → FContiguous → NonContiguous.
+    #[inline]
+    pub const fn classify(self) -> LayoutState {
+        if self.has_zero_stride() { LayoutState::BroadcastView }
+        else if self.is_f_contiguous() { LayoutState::FContiguous }
+        else { LayoutState::NonContiguous }
+    }
+}
+```
 
 `layout_state()` 与 `is_f_contiguous()` 等张量层公开方法定义见 `07-tensor.md`；本模块只定义布局分类与判定规则，不承载 `TensorBase` 的方法声明。
 
@@ -296,7 +315,6 @@ impl<D: Dimension> Strides<D> {
 - 所有 stride 值必须为非负；零表示广播维度。
 - `Strides<D>` 的维度数必须与对应 `shape: D` 完全一致。
 - 对于 F-contiguous 布局：`stride[0] = 1`，且 `stride[i] = stride[i-1] * shape[i-1]`。
-- 拥有型存储的 stride 必须满足 F-order 连续条件（即 `strides[i] = product of shape[0..i]`）；若传入非 F-order stride，构造须返回 `XenonError::InvalidLayout`。
 - `Strides::new()` 仅构造承载对象，不执行完整合法性验证。
 - 布局合法性由构造器/validator 入口统一负责。
 
@@ -389,7 +407,7 @@ Result: false (not F-contiguous)
 
 #### 5.8.1 合法 stride 布局族
 
-- **F-order contiguous**：对所有轴满足 `strides[i] == product(shape[0..i])`；对 `shape[i] == 1` 的轴，可按 §5.4 的连续性规则放宽判定；若零步长来自广播语义，则不得归类为 `F_CONTIGUOUS`，但空数组在退化 metadata 表示下出现的零步长不自动破坏 `F_CONTIGUOUS`。
+- **F-order contiguous**：对所有轴满足 `strides[i] == product(shape[0..i])`；对 `shape[i] == 1` 的轴，可按 §5.7 的连续性规则放宽判定；若零步长来自广播语义，则不得归类为 `F_CONTIGUOUS`，但空数组在退化 metadata 表示下出现的零步长不自动破坏 `F_CONTIGUOUS`。
 - **转置视图（non-contiguous）**：`strides` 是对应 F-order contiguous stride 集合的轴置换结果，且所有 stride 都为正。
 - **切片派生的正步长非连续视图**：仅指由 Xenon 内部张量切片 API 产生的布局；所有 stride 都为正，但不满足 F-order 连续条件；例如在已验证父布局上继续切片后得到的正步长布局仍属合法。
 - **广播视图**：广播轴允许 stride 为 `0`；是否为广播轴由广播语义决定（源维度为 1 且目标维度 > 1），而非由结果张量的 `shape[i] == 1` 判定。其余非广播轴必须保持 F-order 或转置后的正 stride 模式。
@@ -409,23 +427,7 @@ Result: false (not F-contiguous)
   `max_accessed_offset = offset + sum(stride[i] * (shape[i] - 1) for all i where shape[i] > 0)`（逐轴累加且使用 checked arithmetic）必须满足 `max_accessed_offset < storage_len`。
 - 每个 `stride[i]` 都必须可表示为 `isize`，不得发生表示溢出。
 
-**当前版本的具体校验口径**：
-
-**合法 stride 族**：
-
-1. F-order 连续：`strides[i] = product(shape[0..i])`
-2. 转置衍生：对 F-order 连续布局的轴置换结果，`stride[i]` 仍为正且与原始轴的 stride 对应
-3. 广播衍生：部分轴 `stride = 0`
-4. 切片衍生：正步长子范围，`stride` 不变，`offset` 调整
-
-**验证规则**：
-
-- 所有 `stride[i] >= 0`（非负）
-- 所有 `stride[i] <= isize::MAX`
-- 当 `total_elements == 0` 时，仅要求 `offset <= storage_len`
-- 当 `total_elements > 0` 时，`max_accessed_offset = offset + sum((shape[i] - 1) * stride[i]) < storage_len`
-- 广播视图：广播轴的 `stride[i]` 可为 `0`；是否为广播轴由广播语义决定（源维度为 1 且目标维度 > 1），而非由结果张量的 `shape[i] == 1` 判定
-- 单元素轴 `shape[i] == 1` 时 `stride[i]` 不受连续性约束
+合法 stride 布局族的定义及各类别的判定条件见 §5.8.1；上述校验规则的参数约束（非负、可表示、访问范围不越界）涵盖 §5.8.1 所列全部类别的公共边界条件。
 
 #### 5.8.4 safe vs unsafe 构造的责任分工
 
@@ -542,8 +544,13 @@ function compute_flags(shape, strides, ptr):
     // 2. Contiguity
     flags = flags.set_f_contiguous(!is_broadcast_zero_stride && is_f_contiguous(shape, strides))
 
-    // 3. Alignment (based on the logical-first-element pointer, not the backing allocation base)
-    flags = flags.set_aligned(is_aligned(ptr))
+    // 3. Alignment
+    //    Empty tensors always report ALIGNED = true per §5.9,
+    //    regardless of the dangling pointer value.
+    if product(shape) == 0:
+        flags = flags.set_aligned(true)
+    else:
+        flags = flags.set_aligned(is_aligned(ptr))
 
     return flags
 ```
@@ -560,16 +567,11 @@ function compute_flags(shape, strides, ptr):
 
 ### 6.3 内部 stride 校验规则
 
-当前版本内部实现与 safe 构造的接受边界保持一致：safe 构造只接受 packed F-order、其轴置换、广播零步长以及正步长切片派生这四类 stride 布局族；校验不仅要求 stride 非负、可表示且访问范围不越界，还要求该布局能够被判定落在这四类受支持族内，并且这些结论能由 metadata 单独机械验证。超出这些布局族的更宽正 stride 组合，即使在某些情况下满足基本内存安全充分条件，也不属于当前版本 safe API 的接受范围，必须走 unsafe 构造路径。
-
-- F-order 连续布局：`stride[i] = product(shape[0..i])`
-- 转置派生布局：stride 必须是某个 F-order 连续 stride 集合的轴置换，且全部为正
-- 广播派生布局：仅广播轴允许 `stride = 0`；是否为广播轴由广播语义决定（源维度为 1 且目标维度 > 1），而非由结果张量的 `shape[i] == 1` 判定
-- 切片派生布局：仅允许 Xenon 内部张量切片 API 产出的正步长子范围；其判定必须满足以下可检查条件：父布局已验证合法、切片不改写非广播轴 stride、`offset` 仅按切片起点单调增加、结果 `shape` 与新 `offset` 仍满足访问范围不越界；外部 raw-parts 输入即使满足同样 metadata 形状，也只能走 unsafe 路径
+当前版本内部实现与 safe 构造的接受边界保持一致：safe 构造只接受合法 stride 布局族（定义见 §5.8.1）内的布局，且校验结论能由 metadata 单独机械验证（规则见 §5.8.3）。超出这些布局族的更宽正 stride 组合，即使在某些情况下满足基本内存安全充分条件，也不属于当前版本 safe API 的接受范围，必须走 unsafe 构造路径。
 
 ### 6.4 标志位更新规则
 
-所有 flags 更新规则统一通过 `compute_layout_flags()` 入口执行（参见 §5.9）。
+所有 flags 更新规则统一通过 `compute_layout_flags()` 入口执行（参见 §5.12）。
 
 | 操作     | 标志位更新方式                                                         |
 | -------- | ---------------------------------------------------------------------- |
@@ -748,8 +750,9 @@ Upper layers create or transform tensor metadata
 | 方向              | 对方模块 | 接口/类型                     | 约定                                              |
 | ----------------- | -------- | ----------------------------- | ------------------------------------------------- |
 | `layout ← tensor` | `tensor` | `LayoutFlags`                 | `TensorBase` 直接内联 `LayoutFlags` 作为计算字段，并结合 `LayoutState` / `Strides<D>` 表达布局元数据（参见 `07-tensor.md` §5.1）。 |
-| `tensor → layout` | `tensor` | 切片后的 flags 更新           | 切片时统一调用 `compute_layout_flags()` 更新连续性与对齐标志（参见 §5.9、`17-indexing.md` §5）|
-| `tensor → layout` | `tensor` | transpose 后的步长/flags 重算 | transpose 后统一调用 `compute_layout_flags()` 重算 layout state 与 flags（参见 §5.9、`16-shape.md` §5.1）|
+| `tensor → layout` | `tensor` | 拥有型张量的 stride 约束     | 拥有型存储的 stride 必须满足 F-order 连续条件（即 `strides[i] = product of shape[0..i]`）；若传入非 F-order stride，构造须返回 `XenonError::InvalidLayout`。 |
+| `tensor → layout` | `tensor` | 切片后的 flags 更新           | 切片时统一调用 `compute_layout_flags()` 更新连续性与对齐标志（参见 §5.12、`17-indexing.md` §5）|
+| `tensor → layout` | `tensor` | transpose 后的步长/flags 重算 | transpose 后统一调用 `compute_layout_flags()` 重算 layout state 与 flags（参见 §5.12、`16-shape.md` §5.1）|
 
 ### 9.4 与 SIMD 模块
 
