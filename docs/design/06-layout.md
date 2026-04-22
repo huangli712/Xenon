@@ -454,9 +454,9 @@ pub fn is_aligned(ptr: *const u8) -> bool {
 
 ### 5.10 对齐与数据一致性
 
-> **数据一致性保证：** 对齐布局（64 字节对齐）与非对齐布局必须产生相同的元素值。对齐仅影响 SIMD 访问性能，不改变数据语义。当前设计中 `Owned::from_vec(data)` 统一委托到对齐分配路径，因此与 `Owned::from_vec_aligned(data)` 在逻辑语义上完全等价；`is_aligned()` 标志仅用于指导 SIMD 路径选择，而不是区分两套用户可见的构造语义。
+**数据一致性保证**： 对齐布局（64 字节对齐）与非对齐布局必须产生相同的元素值。对齐仅影响 SIMD 访问性能，不改变数据语义。当前设计中 `Owned::from_vec(data)` 统一委托到对齐分配路径，因此与 `Owned::from_vec_aligned(data)` 在逻辑语义上完全等价；`is_aligned()` 标志仅用于指导 SIMD 路径选择，而不是区分两套用户可见的构造语义。
 
-> **Strides 归属约定：** `Strides<D>` 由 layout 模块定义并拥有；`dimension` 只提供 `checked_size()` 和无符号 F-order 形状推导，绝不保存 stride 或 logical-first pointer 语义。`tensor` 持有 `Strides<D>` 实例并把它交给 layout 计算标志位。
+**Strides 归属约定**： `Strides<D>` 由 layout 模块定义并拥有；`dimension` 只提供 `checked_size()` 和无符号 F-order 形状推导，绝不保存 stride 或 logical-first pointer 语义。`tensor` 持有 `Strides<D>` 实例并把它交给 layout 计算标志位。
 
 ### 5.11 零步长语义
 
@@ -475,7 +475,7 @@ Indices [0, 0], [0, 1], [0, 2], and [0, 3] access the same physical element
 
 ### 5.12 当前任务边界
 
-> **任务收缩：** 当前版本的 layout 设计不再单独引入 `Layout` 结构体。`TensorBase` 直接缓存 `LayoutFlags`，layout 模块对外只提供 `LayoutFlags`、`LayoutState`、`Strides<D>` 与相关计算/校验函数。若后续版本确需额外布局描述对象，须以新需求为前提单独设计。
+当前版本的 layout 设计不再单独引入 `Layout` 结构体。`TensorBase` 直接缓存 `LayoutFlags`，layout 模块对外只提供 `LayoutFlags`、`LayoutState`、`Strides<D>` 与相关计算/校验函数。若后续版本确需额外布局描述对象，须以新需求为前提单独设计。
 
 ### 5.13 compute_layout_flags 内部函数
 
