@@ -197,35 +197,30 @@ Note:
     - Output order is not part of the contract and may vary between implementations or runs.
 ```
 
-> **实现约束（float / complex unique）**
->
-> 对 `f32` / `f64` 及 `Complex<f32>` / `Complex<f64>` 的 `unique` 实现，**不得**直接依赖标准 Rust `Hash` / `Eq` 语义，也**不得**直接建立在 `BTreeSet` / `HashSet` 这类标准集合之上；必须使用线性扫描或自定义哈希键策略，以严格满足本文档定义的判等规则：
->
-> 1. `NaN != NaN`，因此每个 `NaN` 都必须单独保留，不能因为“同为 NaN”而被合并。
-> 2. `-0.0 == 0.0`，因此两者必须视为同一个 unique 值。
-> 3. 复数按分量比较，且每个分量分别沿用对应实数的上述语义。
-> 4. 若实现采用哈希优化，键规范固定如下：NaN 元素不进入普通去重键路径。实现须对 NaN 单独旁路处理，保证输入中的每个 NaN（无论位模式是否相同）均被保留。普通哈希键仅用于非 NaN 元素；其中 `i32` / `i64` 直接以数值作为键，`f32` / `f64` 对所有 `+0.0` / `-0.0` 归一到同一键，`Complex<T>` 的键为 `(re_key, im_key)`，并对含 NaN 的分量同样走旁路保留逻辑。
->
-> 换言之，若实现采用哈希优化，则键设计必须显式编码这些语义；若无法保证，则应退回线性扫描，禁止使用与本文档语义不一致的默认集合判重行为。
+ **实现约束**:
+
+ 对 `f32` / `f64` 及 `Complex<f32>` / `Complex<f64>` 的 `unique` 实现，**不得**直接依赖标准 Rust `Hash` / `Eq` 语义，也**不得**直接建立在 `BTreeSet` / `HashSet` 这类标准集合之上；必须使用线性扫描或自定义哈希键策略，以严格满足本文档定义的判等规则：
+
+ 1. `NaN != NaN`，因此每个 `NaN` 都必须单独保留，不能因为“同为 NaN”而被合并。
+ 2. `-0.0 == 0.0`，因此两者必须视为同一个 unique 值。
+ 3. 复数按分量比较，且每个分量分别沿用对应实数的上述语义。
+ 4. 若实现采用哈希优化，键规范固定如下：NaN 元素不进入普通去重键路径。实现须对 NaN 单独旁路处理，保证输入中的每个 NaN（无论位模式是否相同）均被保留。普通哈希键仅用于非 NaN 元素；其中 `i32` / `i64` 直接以数值作为键，`f32` / `f64` 对所有 `+0.0` / `-0.0` 归一到同一键，`Complex<T>` 的键为 `(re_key, im_key)`，并对含 NaN 的分量同样走旁路保留逻辑。
+
+换言之，若实现采用哈希优化，则键设计必须显式编码这些语义；若无法保证，则应退回线性扫描，禁止使用与本文档语义不一致的默认集合判重行为。
 
 ### 6.2 浮点判等处理
 
-```
-- For non-NaN floating-point values, equality follows Rust / IEEE 754 `==` semantics
-- `NaN != NaN`，therefore each `NaN` in the input must be preserved independently and is not deduplicated
-- `+0.0 == -0.0`，therefore the two are treated as the same unique value
-- The document constrains only equality semantics, not whether the implementation uses hashing, linear scans, or other deduplication strategies
-```
+- 非 NaN 浮点值的相等判定遵循 Rust / IEEE 754 `==` 语义
+- `NaN != NaN`，因此输入中的每个 `NaN` 必须独立保留，不参与去重
+- `+0.0 == -0.0`，因此两者视为同一个 unique 值
+- 本文档仅约束相等语义，不限制实现使用哈希、线性扫描或其他去重策略
 
 ### 6.3 复数判等规则
 
-```
-Complex-number equality strategy (component-wise equality):
-- Two complex numbers are equal iff both `re` and `im` components are equal respectively
-- Component comparison follows the corresponding real-number semantics: `NaN != NaN`, `-0.0 == 0.0`
-- Therefore, complex numbers with NaN components are not deduplicated merely because they are “both NaN”
-- The document does not define any lexicographic order, magnitude order, or other ordering relation
-```
+- 两个复数相等当且仅当 `re` 和 `im` 分量分别相等
+- 分量比较沿用对应实数语义：`NaN != NaN`，`-0.0 == 0.0`
+- 因此，含 NaN 分量的复数不会仅因为"都是 NaN"而被去重合并
+- 本文档不定义任何字典序、模长序或其他排序关系
 
 ### 6.4 类型排除实现
 
@@ -248,8 +243,7 @@ Complex-number equality strategy (component-wise equality):
 /// # Sealing
 ///
 /// `UniqueElement` is a sealed trait. It is implemented only inside this crate
-/// for supported element types, so the closed element set required by
-/// `需求说明书 §4` is preserved.
+/// for supported element types, so the closed element set is preserved.
 pub trait UniqueElement: private::Sealed + Element {
     /// Equality check used by `unique`.
     fn unique_eq(&self, other: &Self) -> bool;
@@ -301,13 +295,11 @@ impl UniqueElement for Complex<f64> {
 
 ### 6.5 推荐实现策略
 
-| 场景              | 推荐策略            | 说明                                                                                               |
-| ----------------- | ------------------- | -------------------------------------------------------------------------------------------------- |
-| 小输入或原型实现  | 线性扫描            | 可直接复用 `unique_eq`，但最坏 O(N^2)，不宜作为大张量主路径。                                      |
-| 大输入主路径      | 哈希 / 索引辅助结构 | 在不改变 `需求说明书 §15` 集合语义的前提下，用哈希表、索引表或等价辅助结构把重复检测降到近似 O(N)。 |
-| 浮点 / 复数特殊值 | 专门分支处理        | `NaN != NaN`，因此哈希或索引策略也必须显式保留每个 `NaN`，不得把它们合并。                         |
-
-实现可以自由选择代表元保留顺序、桶顺序或其它内部组织方式；这些选择都不得被文档固化为稳定输出顺序契约。
+| 场景              | 推荐策略          | 说明                                                                      |
+| ----------------- | ----------------- | ------------------------------------------------------------------------- |
+| 小输入或原型实现  | 线性扫描          | 可直接复用 `unique_eq`，但最坏 O(N^2)，不宜作为大张量主路径。             |
+| 大输入主路径      | 哈希/索引辅助结构 | 不改变集合语义，用哈希表、索引表或等价辅助结构把重复检测降到近似 O(N)。   |
+| 浮点/复数特殊值 | 专门分支处理        | `NaN != NaN`，因此哈希或索引策略也必须显式保留每个 `NaN`，不得把它们合并。|
 
 ---
 
