@@ -255,27 +255,32 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 
 ### 5.2 可恢复错误与 panic 的边界
 
-| 场景                                       | 处理方式                                     | 说明                                  |
-| ------------------------------------------ | -------------------------------------------- | ------------------------------------- |
-| 形状不兼容 / 广播失败                      | `Result::Err(XenonError)`                    | 运行时输入决定，可恢复                |
-| 轴越界 / 参数非法 / FFI 前提失败           | `Result::Err(XenonError)`                    | 调用方可修正输入并重试                |
-| `cast()` 有损或前提不满足                  | `Result::Err(XenonError::TypeConversion(_))` | `需求说明书 §23` 强制要求             |
-| 方法型索引失败                             | `Result::Err(XenonError::IndexOutOfBounds)`  | 需返回结构化索引上下文                |
-| 语言级 `Index` 语法 `tensor[i]` 越界       | panic                                        | 属于 Rust 语法糖边界，非 `Result` API |
-| 有符号整数算术溢出 / 除以零 / 结果不可表示 | panic                                        | 仅适用于 `i32` / `i64`，见需求说明书  |
-| `sqrt(negative)`、`ln(negative)`、`ln(0)`  | IEEE 754 返回 `NaN` / `-Inf`，不得 panic     | `f32` / `f64` 数学域边界              |
+| 场景                              | 处理方式                                     | 说明                                  |
+| --------------------------------- | -------------------------------------------- | ------------------------------------- |
+| 形状不兼容 / 广播失败             | `Result::Err(XenonError)`                    | 运行时输入决定，可恢复                |
+| 轴越界 / 参数非法 / FFI 前提失败  | `Result::Err(XenonError)`                    | 调用方可修正输入并重试                |
+| `cast()` 有损或前提不满足         | `Result::Err(XenonError::TypeConversion(_))` | `需求说明书 §23` 强制要求             |
+| 方法型索引失败                    | `Result::Err(XenonError::IndexOutOfBounds)`  | 需返回结构化索引上下文                |
+| `Index` 语法 `tensor[i]` 越界     | panic                                        | 属于 Rust 语法糖边界，非 `Result` API |
+| 有符号整数算术溢出 / 除以零       | panic                                        | 仅适用于 `i32` / `i64`，见需求说明书  |
+| 有符号整数算术结果不可表示        | panic                                        | 仅适用于 `i32` / `i64`，见需求说明书  |
+| `sqrt(negative)`                  | IEEE 754 返回 `NaN` / `-Inf`，不得 panic     | `f32` / `f64` 数学域边界              |
+| `ln(negative)`                    | IEEE 754 返回 `NaN` / `-Inf`，不得 panic     | `f32` / `f64` 数学域边界              |
+| `ln(0)`                           | IEEE 754 返回 `NaN` / `-Inf`，不得 panic     | `f32` / `f64` 数学域边界              |
 
 ### 5.3 安全 API 的 panic 边界
 
-> **总原则：** 所有安全公开 API 对非法输入须返回可恢复错误（`Result`）；仅 `unsafe` 函数的前提违反和内部 helper 可使用 panic。
+总原则： 
+- 所有安全公开 API 对非法输入须返回可恢复错误（`Result`）。
+- 仅 `unsafe` 函数的前提违反和内部 helper 可使用 panic。
 
-| 类别                          | 允许 panic 的边界                                               | 约束                                                              |
-| ----------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------- |
-| 语言级语法边界                | `tensor[i]` / `tensor[i] = value`                               | 仅指 `Index`/`IndexMut` 语法糖；越界时可 panic                    |
-| 需求明确定义的算术域边界      | `i32` / `i64` 的逐元素算术、归约、内积                          | 溢出、除以零、结果不可表示时 panic                                |
+除下表外，其余安全公开 API 遇到错误条件时都必须返回 `Result<_, XenonError>`，不得以 panic 代替可恢复错误；即使是 FFI convenience helper，只要属于安全公开 API，也必须遵循这一规则。
+
+| 类别                      | 允许 panic 的边界                        | 约束                                            |
+| ------------------------- | ---------------------------------------- | ----------------------------------------------- |
+| 语言级语法边界            | `tensor[i]` / `tensor[i] = value`        | 仅指 `Index`/`IndexMut` 语法糖；越界时可 panic  |
+| 需求明确定义的算术域边界  | `i32` / `i64` 的逐元素算术、归约、内积   | 溢出、除以零、结果不可表示时 panic              |
 | internal / unsafe helper 边界 | private helper、`unsafe fn` 前提检查、未对外公开的 typed helper | 仅限实现内部或不安全前提；不得作为安全公开 API 的用户输入错误出口 |
-
-除上表外，其余安全公开 API 遇到错误条件时都必须返回 `Result<_, XenonError>`，不得以 panic 代替可恢复错误；即使是 FFI convenience helper，只要属于安全公开 API，也必须遵循这一规则。
 
 ### 5.4 公开 API 边界规则
 
@@ -291,12 +296,12 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 `cast()` 的错误模型须与 `21-type.md` 保持一致：
 
 - `cast<B>(&self)` 返回 `Result<Tensor<B, D>, XenonError>`
-- 任何被 `需求说明书 §23` 判定为有损的默认转换组合，都须返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }`
+- 任何被 `需求说明书 §23` 判定为有损的默认转换组合，都须返回 `XenonError::TypeConversion`
 - 仅当需求显式给出附加成功前提时，满足前提后才可成功
-- `Complex -> Real` 不是编译期拒绝；当 `im == 0` 时允许继续转换，否则返回 `XenonError::TypeConversion { ... }`
+- `Complex -> Real` 不是编译期拒绝；当 `im == 0` 时允许继续转换，否则返回 `XenonError::TypeConversion`
 - `bool` 不参与逐元素类型转换，因此不得用 `TypeConversion` 为 `bool` 扩大支持范围
 
-类型转换失败统一通过 `XenonError::TypeConversion { source_type, target_type, reason, element_index }` 返回，其中字段为公开字段，用户可直接通过模式匹配访问。
+类型转换失败统一通过 `XenonError::TypeConversion` 返回，其中字段为公开字段，用户可直接通过模式匹配访问。
 
 ### 5.6 结构化上下文字段要求
 
@@ -318,13 +323,14 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 | `IndexOutOfBounds`                    | `operation`, `attempted_index`, `axis`, `shape`；`attempted_index` 表示完整多维索引 tuple，`axis` 指出首个越界维度                                                                     |
 | `TypeConversion`                      | `source_type`, `target_type`, `reason`, `element_index?`                                                                                                                               |
 
-> **分配成本说明：** `attempted_index: Vec<usize>`、`shape: Vec<usize>` 以及 `InvalidArgument` / `InvalidStorageMode` 中的可选 `Vec<usize>` 字段会带来少量堆分配成本；这是当前版本可接受的诊断开销，用于换取跨公开 API 的一致结构化上下文。
+分配成本说明：`attempted_index: Vec<usize>`、`shape: Vec<usize>` 以及 `InvalidArgument` / `InvalidStorageMode` 中的可选 `Vec<usize>` 字段会带来少量堆分配成本；这是当前版本可接受的诊断开销，用于换取跨公开 API 的一致结构化上下文。
 
 ### 5.7 Display 与 panic 信息要求
 
-Display 输出和 panic 文本都必须能让调用方定位问题来源；最少应包含操作名、错误类别以及适用上下文。
-
-**正式规则：** panic 信息必须包含 `operation` + error kind + 至少一个关键上下文字段（如 `axis`、`shape`、`index`、类型等）。
+- Display 输出和 panic 文本都必须能让调用方定位问题来源；最少应包含操作名、错误类别以及适用上下文。
+- panic 信息必须包含 `operation` + error kind + 至少一个关键上下文字段（如 `axis`、`shape`、`index`、类型等）。
+- 对 `Option<Vec<usize>>` 等可选结构化字段，`Display` 实现必须做人性化格式化。
+- `None` 统一显示为 `<any>`，不得直接打印 `Some(...)` / `None` 调试文本。
 
 ```rust,ignore
 impl fmt::Display for XenonError {
@@ -540,8 +546,6 @@ impl fmt::Display for XenonError {
     }
 }
 ```
-
-> **Display 约束：** 对 `Option<Vec<usize>>` 等可选结构化字段，`Display` 实现必须做人性化格式化；`None` 统一显示为 `<any>`，不得直接打印 `Some(...)` / `None` 调试文本。
 
 ### 5.8 统一 panic 类别
 
