@@ -1237,8 +1237,8 @@ User calls `TensorBase::as_ptr()`
 | 约束       | 说明                                   |
 | ---------- | -------------------------------------- |
 | `std` only | 本模块依赖 `std` 环境，不讨论 `no_std` |
-| 单 crate   | 保持单 crate 边界                      |
 | MSRV       | Rust 1.85+                             |
+| 单 crate   | 保持单 crate 边界                      |
 | SemVer     | 存储类型和 trait 变更遵循 SemVer       |
 | 最小依赖   | 无新增第三方依赖                       |
 
