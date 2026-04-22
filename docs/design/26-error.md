@@ -568,7 +568,7 @@ impl fmt::Display for XenonError {
 
 ### 5.9 Good / Bad 对比式代码示例
 
-#### 类型转换
+类型转换：
 
 ```rust,ignore
 // Good - cast is fallible and reports the failing element.
@@ -609,7 +609,7 @@ where
 }
 ```
 
-#### 整数算术溢出
+整数算术溢出：
 
 ```rust,ignore
 // Good - checked arithmetic with explicit panic message.
