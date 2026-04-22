@@ -1,8 +1,10 @@
 # 集合操作模块设计
 
-> 文档编号: 14 | 模块: `src/set/` | 阶段: Phase 4
-> 前置文档: `03-element.md`, `04-complex.md`, `07-tensor.md`, `10-iterator.md`
-> 需求参考: `需求说明书 §4`, `需求说明书 §15`, `需求说明书 §28.2`, `需求说明书 §28.4`
+> 文档编号: 14
+> 模块目录: src/set/
+> 任务阶段: Phase 4
+> 前置文档: 03-element.md, 04-complex.md, 07-tensor.md, 10-iterator.md
+> 需求参考: 需求说明书 §4、§15、§28
 > 范围声明: 范围内
 
 ---
@@ -11,13 +13,17 @@
 
 ### 1.1 职责边界
 
-| 职责        | 包含                                                                                            | 不包含                        |
-| ----------- | ----------------------------------------------------------------------------------------------- | ----------------------------- |
-| unique 操作 | 返回不重复元素组成的新 1D 张量；结果顺序不作要求                                                | intersection/union/difference |
-| 支持类型    | i32, i64, f32, f64, Complex<f32>, Complex<f64>                                                  | bincount/histogram            |
-| 不支持类型  | bool（`[false, true]` 中两个元素彼此不同，但 `需求说明书 §15` 明确将 bool 排除在 `unique` 之外） | argmin/argmax                 |
+| 职责         | 包含                                                      |
+| ------------ | --------------------------------------------------------- |
+| 集合操作     | unique: 返回不重复元素组成的新 1D 张量；结果顺序不作要求  |
+| 支持类型     | i32, i64, f32, f64, Complex<f32>, Complex<f64>            |
 
-> **注意**：当前版本仅支持 unique 操作！不包含 intersection/union/difference/bincount/histogram 等。
+| 职责         | 不包含                                              |
+| ------------ | --------------------------------------------------- |
+| 集合操作     | intersection / union / difference                   |
+| 统计操作     | bincount / histogram                                |
+| 归约索引     | argmin / argmax                                     |
+| 支持类型     | `需求说明书 §15` 明确将 bool 排除在 `unique` 之外） |
 
 ### 1.2 设计原则
 
@@ -29,25 +35,13 @@
 | IEEE 754 一致  | `NaN != NaN`，因此每个 `NaN` 单独保留；`-0.0 == 0.0` 视为同值 |
 | 复数按分量判等 | 复数去重按实部/虚部分别比较，并沿用对应实数语义               |
 
-### 1.3 在架构中的位置
-
-```
-Dependency layers:
-L0: error, private
-L1: dimension, element, complex
-L2: layout (depends on dimension)
-L3: storage (depends only on core/alloc, not on layout)
-L4: tensor (depends on storage, dimension)
-L6: set  ← current module
-```
-
 ---
 
 ## 2. 需求映射与范围约束
 
 | 类型     | 内容                                                                              |
 | -------- | --------------------------------------------------------------------------------- |
-| 需求映射 | `需求说明书 §4`, `需求说明书 §15`, `需求说明书 §28.2`, `需求说明书 §28.4`         |
+| 需求映射 | 需求说明书 §4、§15、§28                                                           |
 | 范围内   | `unique()` 去重、NaN / `±0.0` 语义、复数按分量判等，以及 1D owned 结果构造。      |
 | 范围外   | sort、unique counts、bincount、intersection / union / difference 等其他集合操作。 |
 | 非目标   | 不引入排序契约、不新增第三方去重依赖，也不扩展到 histogram 类 API。               |
@@ -80,16 +74,16 @@ src/set/unique.rs
 └── crate::iter          # Elements for collection
 ```
 
-### 4.2 类型级依赖
+### 4.2 依赖精确到类型级
 
-| 来源模块    | 使用的类型/trait                                                                                                                                         |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tensor`    | `TensorBase<S, D>`, `Tensor<A, Ix1>`（本文以此作为 1D 结果主类型；`Tensor1<A>` 仅作为等价别名出现在示例中）, `.iter()`, `.len()`，参见 `07-tensor.md` §5 |
-| `storage`   | `Storage<Elem = A>` trait（read-only element access via `Storage<Elem = A>`）                                                                            |
-| `dimension` | `Dimension`, `Ix1`（output dimension type for flatten result）                                                                                           |
-| `element`   | `Element`, `ComplexScalar`，参见 `03-element.md` §5.1 / §5.4                                                                                             |
-| `complex`   | `Complex<f32>`, `Complex<f64>`，参见 `04-complex.md` §5                                                                                                  |
-| `iter`      | `Elements`（遍历收集元素），参见 `10-iterator.md` §5.1                                                                                                   |
+| 来源模块    | 使用的类型/trait                                                                   |
+| ----------- | ---------------------------------------------------------------------------------- |
+| `tensor`    | `TensorBase<S, D>`, `Tensor<A, Ix1>`, `.iter()`, `.len()`，参见 `07-tensor.md` §5  |
+| `storage`   | `Storage<Elem = A>` trait（read-only element access via `Storage<Elem = A>`）      |
+| `dimension` | `Dimension`, `Ix1`（output dimension type for flatten result）                     |
+| `element`   | `Element`, `ComplexScalar`，参见 `03-element.md` §5.1 / §5.4                       |
+| `complex`   | `Complex<f32>`, `Complex<f64>`，参见 `04-complex.md` §5                            |
+| `iter`      | `Elements`（遍历收集元素），参见 `10-iterator.md` §5.1                             |
 
 ### 4.3 依赖方向
 
@@ -362,18 +356,6 @@ impl UniqueElement for Complex<f64> {
   - 测试: `test_unique_integration`
   - 前置: T2, T3, T4
   - 预计: 5 min
-
-### 并行执行分组图
-
-```
-Wave 1: [T1]
-           │
-Wave 2: [T2]
-         │ │
-Wave 3: [T3] [T4]
-           │
-Wave 4: [T5]
-```
 
 ---
 
