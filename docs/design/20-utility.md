@@ -84,7 +84,7 @@ src/util/
 | `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.storage_kind()`（参见 `07-tensor.md` §5） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §5）                   |
 | `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, `StorageIntoOwned<Elem=A>`（参见 `05-storage.md` §5）            |
-| `element`   | `Element`，以及 utility 层定义的 operation-specific `ClipElement` 约束           |
+| `element`   | `Element`，`OrderedCompareElement`（clip 复用，参见 `03-element.md` §5.5）       |
 | `layout`    | `is_f_contiguous()`（参见 `06-layout.md` §5）                                    |
 | `iter`      | `iter()`, `iter_mut()`（参见 `10-iterator.md` §5）                               |
 | `tensor`    | `Tensor<A, D>` 的结果构造路径；`clip` 分配新的 owned 结果张量并通过 `iter()` / `iter_mut()` 写入逻辑元素  |
@@ -108,18 +108,14 @@ src/util/
 ### 5.1 clip 操作
 
 ````rust,ignore
-pub trait ClipElement: Element + PartialOrd {}
-
-impl ClipElement for i32 {}
-impl ClipElement for i64 {}
-impl ClipElement for f32 {}
-impl ClipElement for f64 {}
+// clip reuses OrderedCompareElement (see 03-element.md §5.5) as element bound,
+// no separate ClipElement trait needed.
 
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: ClipElement,
+    A: OrderedCompareElement,
 {
     /// Clamp each element to the [min, max] range.
     ///
@@ -127,12 +123,12 @@ where
     ///
     /// # Supported Types
     ///
-    /// Available for types implementing `ClipElement`: i32, i64, f32, f64.
+    /// Available for types implementing `OrderedCompareElement`: i32, i64, f32, f64.
     /// **Not available for `Complex<f32>`/`Complex<f64>`** because complex numbers
     /// have no natural total ordering (`Complex` does not implement `PartialOrd`,
     /// see `04-complex.md §5`).
     /// **Not available for `bool` / `Complex<_>`** because clip requires an ordered scalar domain.
-    /// (see `03-element.md §5.3`).
+    /// (see `03-element.md §5.5`).
     ///
     /// # Arguments
     ///
@@ -191,9 +187,7 @@ where
 
 ### 5.2 fill 操作
 
-- `fill()` 是填充操作的主公开 API，但仅适用于提供可写访问权的张量（`S: StorageMut`）。`try_fill()` 是次级便捷入口：当调用方只有通用张量句柄、需要以运行时方式尝试填充时，可通过 storage 层提供的可选可变句柄接口（或等价能力）分派；对可写存储执行填充并返回 `Ok(())`，对只读 / 共享只读存储返回 `XenonError::InvalidStorageMode`。
-- `fill()` 的主入口仅适用于提供可写访问权的张量（`StorageMut`）。对只读/共享只读张量，`try_fill()` 返回可恢复错误。`需求说明书 §21.2` 要求只读引用和共享只读引用须拒绝填充请求。
-- `try_fill()` 的可写性判定依赖于 `Storage` trait 提供的可选可变句柄接口（详见 `05-storage.md` §5）。当前版本仅 `Owned` 和 `ViewMut` 模式支持 `fill`；`View` 和 `SharedReadOnly` 模式调用 `try_fill()` 返回 `Err(InvalidStorageMode)`。
+- `fill()` 是 `S: StorageMut` 层的主公开入口；`try_fill()` 是 `S: Storage` 层的次级便捷入口，运行时判定可写性。两层入口的分派规则见 §5.3。
 
 ```rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -254,8 +248,7 @@ where
 }
 ```
 
-- 对于 `Owned` 与 `ViewMut` 等可写张量，`fill()` 是首选公开入口；`try_fill()` 成功后语义与 `fill()` 一致，并通过 storage 层的可选可变句柄能力进入 `fill_mut()` 路径。对于 `View`、`SharedReadOnly` 等只读 / 共享只读张量，或 storage 层未暴露该能力的情况，`try_fill()` 返回 `XenonError::InvalidStorageMode`；该错误是公开契约的一部分，而不是内部占位语义。
-- `fill()` 是 `S: StorageMut` 层的主公开 API；`try_fill()` 仅作为 `S: Storage` 层的次级便捷入口，通过内部 `fill_try_dispatch()` 基于 storage 层暴露的可选可变句柄能力执行“可写走 `fill_mut()` / 只读或无句柄能力返回 `InvalidStorageMode`”的运行时分派。
+- 需求来源：`需求说明书 §21.2` 要求只读引用和共享只读引用须拒绝填充请求。
 
 ### 5.3 `fill_try_dispatch()` 分派准则
 
@@ -285,7 +278,7 @@ fill_logical_only(storage, shape, strides, offset, flags, value):
 
 ### 5.5 连续性保证（to_contiguous）
 
-`to_contiguous()` 是本模块（20-utility.md §5.3）定义的公共 API。内部可复用连续化实现，但这不构成 `convert` 模块的独立公共能力。
+`to_contiguous()` 是本模块定义的公共 API。内部可复用连续化实现，但这不构成 `convert` 模块的独立公共能力。
 - `to_contiguous()` 由 utility 模块暴露。
 - 若非连续路径需要额外实现步骤，也仅属于 utility 的内部细节。
 - 类型转换语义仍归 convert，连续性保证语义仍归 utility。
@@ -359,7 +352,7 @@ where
 - `to_contiguous()` / `into_contiguous()` 专注于连续性保证：仅在输入已是 canonical F-contiguous `Owned` 时，`into_contiguous()` 才可 O(1) 复用。`to_owned()` / `into_owned()`（见 `21-type.md`）专注于独立拷贝：无论原始布局如何，始终产出独立的拥有型存储。二者可能产生相同结果（非连续输入 → 连续 owned），但语义主语不同。
 - `util_internal_to_f_contiguous()` 只接受“逻辑索引语义已验证、shape / strides / offset 自洽”的输入张量；调用方须先完成这些张量不变量检查。该 helper 的职责仅限于把当前逻辑元素重排并物化为 canonical F-order owned 结果，不再重复承担布局合法性验证。
 
-### 5.4 Good / Bad 对比
+### 5.6 Good / Bad 对比
 
 ```rust,ignore
 // Good - use fill for in-place filling, zero extra allocation
@@ -402,16 +395,9 @@ clip(tensor, min, max):
 
 ### 6.2 fill 算法
 
-```
-fill(tensor, value):
-    for each logical index in layout order:
-        offset = offset_for_logical_index(layout, logical index)
-        write storage[offset] = clone(value)
-```
+写入契约与伪代码见 §5.4；分派规则见 §5.3。
 
-- utility 层保留两层入口：`fill()` 是仅对可写张量开放的主公开入口；`try_fill()` 是在调用方仅持有通用张量句柄时使用的次级运行时便捷入口，并依赖 `Storage` trait 提供的可选可变句柄接口或等价机制识别当前存储是否可写。若 storage 层未暴露该能力，`try_fill()` 也必须返回 `InvalidStorageMode`。
-- 只读/广播结果在 `try_fill()` 上返回 `InvalidStorageMode`，而 `fill()` 继续通过 `S: StorageMut` 做编译期拒绝。
-- 可写存储仍必须遵守“只写逻辑元素”的契约：连续布局可走快路径，带 padding / 非连续布局必须按逻辑索引与 strides 写入，且不得触碰 padding bytes。
+- 连续布局可走快路径（直接 memset 或逐元素写入）；带 padding / 非连续布局必须按逻辑索引与 strides 写入，且不得触碰 padding bytes。
 
 
 ### 6.3 to_contiguous 路径选择
@@ -474,7 +460,7 @@ into_contiguous(tensor):
   - 文件: `src/util/contiguous.rs`
   - 内容: 实现 `to_contiguous(&self)` 与 `into_contiguous(self)`；非 F-contiguous 输入始终转为 F-order，连续 owned 输入允许复用数据
   - 测试: `test_to_contiguous_f_order`, `test_into_contiguous_reuses_owned_data`, `test_to_contiguous_transposed_becomes_f`, `test_to_contiguous_non_contiguous`
-  - 前置: T2, layout 模块的 `is_f_contiguous` 完成
+  - 前置: layout 模块的 `is_f_contiguous` 完成
   - 预计: 10 min
 
 ### Wave 4: 综合测试
@@ -500,24 +486,24 @@ into_contiguous(tensor):
 
 ### 8.2 单元测试清单
 
-| 测试函数                                  | 测试内容                                                              | 优先级 |
-| ----------------------------------------- | --------------------------------------------------------------------- | ------ |
-| `test_clip_basic`                         | 基本裁剪：元素限制在 [0, 2] 范围                                      | 高     |
-| `test_clip_no_change`                     | 所有元素在范围内，无变化                                              | 高     |
-| `test_clip_nan`                           | NaN 输入保持 NaN                                                      | 高     |
-| `test_clip_nan_bound`                     | NaN 作为 min/max 返回 `InvalidArgument`                               | 高     |
-| `test_clip_integers`                      | i32/i64 整数裁剪                                                      | 中     |
-| `test_clip_non_contiguous`                | 非连续布局返回正确裁剪结果                                            | 高     |
-| `test_fill_basic`                         | 基本填充所有元素为指定值                                              | 高     |
-| `test_fill_non_contiguous`                | 非连续布局正确填充所有逻辑元素                                        | 高     |
-| `test_fill_padded_writes_logical_only`    | 带 padding 的可写张量仅覆写逻辑元素                                   | 高     |
-| `test_try_fill_writable_matches_fill`     | `try_fill()` 在可写张量上与 `fill()` 语义一致                         | 高     |
+| 测试函数                                  | 测试内容                                       | 优先级 |
+| ----------------------------------------- | ---------------------------------------------- | ------ |
+| `test_clip_basic`                         | 基本裁剪：元素限制在 [0, 2] 范围               | 高     |
+| `test_clip_no_change`                     | 所有元素在范围内，无变化                       | 高     |
+| `test_clip_nan`                           | NaN 输入保持 NaN                               | 高     |
+| `test_clip_nan_bound`                     | NaN 作为 min/max 返回 `InvalidArgument`        | 高     |
+| `test_clip_integers`                      | i32/i64 整数裁剪                               | 中     |
+| `test_clip_non_contiguous`                | 非连续布局返回正确裁剪结果                     | 高     |
+| `test_fill_basic`                         | 基本填充所有元素为指定值                       | 高     |
+| `test_fill_non_contiguous`                | 非连续布局正确填充所有逻辑元素                 | 高     |
+| `test_fill_padded_writes_logical_only`    | 带 padding 的可写张量仅覆写逻辑元素            | 高     |
+| `test_try_fill_writable_matches_fill`     | `try_fill()` 在可写张量上与 `fill()` 语义一致  | 高     |
 | `test_try_fill_public_error_contract`     | `try_fill()` 作为公共 API 在广播只读结果 / 只读存储上返回公开错误契约 | 高     |
-| `test_fill_empty`                         | 空数组 fill 不 panic                                                  | 中     |
-| `test_to_contiguous_f_order`              | F-order 连续输入返回 owned 拷贝                                       | 高     |
-| `test_into_contiguous_reuses_owned_data`  | F-order owned 输入消费后复用原数据                                    | 高     |
-| `test_to_contiguous_transposed_becomes_f` | 转置视图转为 F-order owned                                            | 高     |
-| `test_to_contiguous_non_contiguous`       | 非连续输入返回 F-order owned                                          | 高     |
+| `test_fill_empty`                         | 空数组 fill 不 panic                           | 中     |
+| `test_to_contiguous_f_order`              | F-order 连续输入返回 owned 拷贝                | 高     |
+| `test_into_contiguous_reuses_owned_data`  | F-order owned 输入消费后复用原数据             | 高     |
+| `test_to_contiguous_transposed_becomes_f` | 转置视图转为 F-order owned                     | 高     |
+| `test_to_contiguous_non_contiguous`       | 非连续输入返回 F-order owned                   | 高     |
 
 ### 8.3 边界测试场景
 
@@ -529,16 +515,11 @@ into_contiguous(tensor):
 | 非连续切片            | `fill`/`clip` 通过迭代器正确处理所有逻辑元素                      |
 | 带 padding 的可写布局 | `fill` 只修改逻辑元素，对 padding bytes 保持不变                  |
 | NaN 边界              | `clip(x, NaN, 1.0)` 或 `clip(x, 0.0, NaN)` 返回 `InvalidArgument` |
+| 高维非连续布局        | rank-6 切片 / 转置 / 广播混合输入调用 `to_contiguous()` 后返回 F-order owned，元素顺序正确 |
+| 超大张量连续化        | `10^7` 量级张量调用 `to_contiguous()` / `into_contiguous()` 后保持 shape 正确且不越界 |
+| 可写 / 只读分派边界   | `fill()` 仅对可写存储成功；`try_fill()` 在只读 / 广播只读输入上返回 `InvalidStorageMode` |
 
-### 8.4 §28.4 边界测试场景
-
-| 场景            | 说明                                                                               |
-| --------------- | ---------------------------------------------------------------------------------- |
-| 高维非连续布局  | rank-6 切片 / 转置 / 广播混合输入调用 `to_contiguous()` 后返回 F-order owned，元素顺序正确 |
-| 超大张量连续化  | `10^7` 量级张量调用 `to_contiguous()` / `into_contiguous()` 后保持 shape 正确且不越界 |
-| 可写 / 只读分派边界 | `fill()` 仅对可写存储成功；`try_fill()` 在只读 / 广播只读输入上返回 `InvalidStorageMode` |
-
-### 8.5 属性测试不变量
+### 8.4 属性测试不变量
 
 | 不变量                                                                         | 测试方法                |
 | ------------------------------------------------------------------------------ | ----------------------- |
@@ -546,24 +527,24 @@ into_contiguous(tensor):
 | `fill(v)` 后 `iter().all(\|x\| *x == v)`                                       | 随机形状 + 随机值       |
 | `to_contiguous()` / `into_contiguous()` 返回的张量 `is_f_contiguous() == true` | 随机非连续布局          |
 
-### 8.6 集成测试
+### 8.5 集成测试
 
 | 测试文件                | 测试内容                                                               |
 | ----------------------- | ---------------------------------------------------------------------- |
 | `tests/test_utility.rs` | `clip`/`fill`/`to_contiguous` 与 `tensor`、`iter`、`layout` 的协同路径 |
 
-### 8.7 Feature gate / 配置测试
+### 8.6 Feature gate / 配置测试
 
 | 配置              | 验证点                                                                          |
 | ----------------- | ------------------------------------------------------------------------------- |
 | 默认配置          | `clip` / `fill` / `to_contiguous` 在默认构建下保持错误分层与 F-order 输出语义。 |
 | 其他 feature 组合 | 不适用；当前模块无额外 feature gate。                                           |
 
-### 8.8 类型边界 / 编译期测试
+### 8.7 类型边界 / 编译期测试
 
 | 场景                                                          | 测试方式                                                |
 | ------------------------------------------------------------- | ------------------------------------------------------- |
-| `clip` 仅对 `ClipElement` 开放，拒绝 `bool` / `Complex`       | 编译期测试。                                            |
+| `clip` 仅对 `OrderedCompareElement` 开放，拒绝 `bool` / `Complex` | 编译期测试。                                        |
 | `try_fill()` 对只读 / 共享只读 / 广播只读结果返回公开错误契约 | 运行时测试，断言返回 `XenonError::InvalidStorageMode`。 |
 | `into_contiguous(self)` 仅对支持 owned 转换的存储模式开放     | 编译期测试。                                            |
 | sort / argsort / searchsorted 不属于当前 API                  | API 缺失断言。                                          |
@@ -574,11 +555,11 @@ into_contiguous(tensor):
 
 ### 9.1 接口约定
 
-| 方向               | 对方模块 | 接口/类型                                      | 约定                                                                                                                                       |
-| ------------------ | -------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `utility → iter`   | `iter`   | `iter_mut()`                                   | `fill` 通过可变迭代器遍历逻辑元素，参见 `10-iterator.md` §5.6                                                                              |
-| `utility → iter`   | `iter`   | `iter()`                                       | `clip` 通过只读迭代器读取并写入新张量，参见 `10-iterator.md` §5.6                                                                          |
-| `utility → layout` | `layout` | 连续性查询                                     | `to_contiguous` 先查询当前布局是否已经连续，参见 `06-layout.md` §5.4                                                                       |
+| 方向               | 对方模块 | 接口/类型      | 约定                   |
+| ------------------ | -------- | -------------- | ---------------------- |
+| `utility → iter`   | `iter`   | `iter_mut()`   | `fill` 通过可变迭代器遍历逻辑元素，参见 `10-iterator.md` §5.6         |
+| `utility → iter`   | `iter`   | `iter()`       | `clip` 通过只读迭代器读取并写入新张量，参见 `10-iterator.md` §5.6     |
+| `utility → layout` | `layout` | 连续性查询     | `to_contiguous` 先查询当前布局是否已经连续，参见 `06-layout.md` §5.7  |
 | `utility → tensor` | `tensor` | `to_owned()` / `into_owned()` / owned 构造路径 | `to_contiguous` 与 `into_contiguous` 复用张量 owned 化与连续化路径；`clip` 通过 owned 结果张量构造返回新值；跨文档连续化归属统一在 utility |
 
 ### 9.2 数据流描述
@@ -596,18 +577,18 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 
 ## 10. 错误处理与语义边界
 
-| 主题              | 内容                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Recoverable error | `clip` 在 `min > max` 或边界为 `NaN` 时返回 `XenonError::InvalidArgument { operation, argument, expected, actual, axis, axis_len: None, start: None, end: None, shape }`。`fill()` 是仅对 `StorageMut` 路径开放的主公开入口；`try_fill()` 是次级便捷入口：运行时分发通过 `Storage` trait 提供的可选可变句柄接口或等价 introspection 判定可写性，可写存储成功返回 `Ok(())`，只读 / 共享只读存储或缺失该能力的存储返回 `XenonError::InvalidStorageMode`。`XenonError` 是本模块唯一公开错误类型。 |
-| Panic             | 公开 utility API 不定义额外 panic 语义；连续化与裁剪失败统一走显式错误或正常返回。                                                                                                                                                                                                                                                                                                                                                                     |
-| 路径一致性        | 连续与非连续布局都必须通过同一逻辑元素语义工作；当前无独立 SIMD / 并行分支。                                                                                                                                                                                                                                                                                                                                                                           |
-| 容差边界          | `clip` 对浮点数遵循 IEEE 754 比较语义；不额外引入近似容差。                                                                                                                                                                                                                                                                                                                                                                                            |
+| 主题              | 内容                                                                                 |
+| ----------------- | ------------------------------------------------------------------------------------ |
+| Recoverable error | `clip` 在 `min > max` 或边界为 `NaN` 时返回 `XenonError::InvalidArgument`。`fill()` / `try_fill()` 的错误分派见 §5.3。`XenonError` 是本模块唯一公开错误类型。 |
+| Panic             | 公开 utility API 不定义额外 panic 语义；连续化与裁剪失败统一走显式错误或正常返回。   |
+| 路径一致性        | 连续与非连续布局都必须通过同一逻辑元素语义工作；当前无独立 SIMD / 并行分支。         |
+| 容差边界          | `clip` 对浮点数遵循 IEEE 754 比较语义；不额外引入近似容差。                          |
 
 ---
 
 ## 11. 设计决策记录
 
-### ADR-1：NaN 的 clip 行为
+### 决策 1：NaN 的 clip 行为
 
 | 属性     | 值                                                                                          |
 | -------- | ------------------------------------------------------------------------------------------- |
@@ -616,14 +597,14 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 | 替代方案 | NaN 裁剪到 min — 放弃，与 IEEE 754 和 NumPy 不一致                                          |
 | 替代方案 | NaN 裁剪到 max — 放弃，同上                                                                 |
 
-### ADR-2：to_contiguous 返回类型
+### 决策 2：to_contiguous 返回类型
 
-| 属性     | 值                                                                                                                                        |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | 返回 `Tensor<A, D>`（Owned），不使用 `Cow`                                                                                                |
+| 属性     | 值                                                                                          |
+| -------- | ------------------------------------------------------------------------------------------- |
+| 决策     | 返回 `Tensor<A, D>`（Owned），不使用 `Cow`                                                  |
 | 理由     | API 简洁（无生命周期参数）、调用方可预测行为、与 ndarray 设计一致；同时补充消费式 `into_contiguous(self)` 以在已连续 owned 输入上复用数据 |
-| 替代方案 | 返回 `Cow<TensorBase<S, D>>` — 放弃，引入生命周期复杂度，调用方难以处理                                                                   |
-| 替代方案 | 已连续时返回视图（借引用） — 放弃，返回类型不确定，违反直觉                                                                               |
+| 替代方案 | 返回 `Cow<TensorBase<S, D>>` — 放弃，引入生命周期复杂度，调用方难以处理                     |
+| 替代方案 | 已连续时返回视图（借引用） — 放弃，返回类型不确定，违反直觉                                 |
 
 ---
 
@@ -634,10 +615,8 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 | `clip`                            | O(n)       | O(n)       | 新分配一个张量                                                       |
 | `fill`                            | O(n)       | O(1)       | 原地修改；utility 核心 helper 仅在可写层执行，`Clone` 开销取决于类型 |
 | `to_contiguous`（已连续）         | O(n)       | O(n)       | 借用入口拷贝到新 owned                                               |
-| `into_contiguous`（已连续 owned） | O(1)       | O(1)       | 直接复用现有 F-order owned 数据                                      |
 | `to_contiguous`（非连续）         | O(n)       | O(n)       | 拷贝 + 重新排列                                                      |
-
-**优化提示**：
+| `into_contiguous`（已连续 owned） | O(1)       | O(1)       | 直接复用现有 F-order owned 数据                                      |
 
 - 连续布局的 `fill` 仅在填充值是全零 bit-pattern 时才可使用 `ptr::write_bytes(0)` 优化；一般情况仍应逐元素写入，避免把任意 `Copy` 值错误地按字节复制
 - `clip` 的热点路径可考虑 SIMD 加速（参见 `08-simd.md` §5）
