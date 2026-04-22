@@ -248,16 +248,6 @@ fn update_flags_for_transpose(
   - 前置: T2
   - 预计: 10 min
 
-### 并行执行图
-
-```
-Wave 1: [T1]
-            │
-Wave 2: [T2]
-            │
-Wave 3: [T3]
-```
-
 ---
 
 ## 8. 测试计划
