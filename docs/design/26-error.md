@@ -715,9 +715,9 @@ fmt_display(error, formatter):
 | 单元测试                | `src/error.rs` 内  | 验证 `XenonError` 各变体的 Display、Clone、PartialEq       |
 | 集成测试                | 集成测试目录       | 验证跨模块 API 的错误映射正确性                            |
 | 边界测试                | 与集成测试配套     | 空形状、非法轴、越界索引、复数虚部非零、整数极值、NaN/Inf  |
-| panic 测试              | 集成测试目录       | 验证逐元素整数溢出、除以零、`abs(MIN)`、dot overflow        |
+| panic 测试              | 集成测试目录       | 验证逐元素整数溢出、除以零、`abs(MIN)`、dot overflow       |
 | 并行测试                | 集成测试目录       | 验证 `Err` 与 panic 在并行路径中的传播一致性               |
-| Feature gate / 配置测试 | 配置矩阵          | 验证可选 SIMD/并行路径与标量路径的错误类别一致             |
+| Feature gate / 配置测试 | 配置矩阵           | 验证可选 SIMD/并行路径与标量路径的错误类别一致             |
 | 类型边界 / 编译期测试   | 编译期测试框架     | 验证 `TypeId` 字段在 `const` 上下文中的可用性              |
 
 ### 8.2 单元测试清单
@@ -732,28 +732,28 @@ fmt_display(error, formatter):
 | `test_index_error_reports_axis_and_shape`      | 索引错误包含 `attempted_index`、`axis`、`shape` | 高     |
 | `test_integer_division_by_zero_panics`         | 除以零走统一 panic                              | 高     |
 | `test_dot_overflow_panics`                     | 内积溢出走统一 panic                            | 高     |
-| `test_display_shape_mismatch`                  | `ShapeMismatch` 的 Display 输出格式            | 中     |
-| `test_display_option_fields_render_any`        | `None` 字段显示为 `<any>`                      | 中     |
-| `test_error_trait_source_none`                 | `std::error::Error` 的 `source()` 返回 `None`  | 中     |
-| `test_clone_eq_roundtrip`                      | `Clone` + `PartialEq` 往返一致                 | 中     |
+| `test_display_shape_mismatch`                  | `ShapeMismatch` 的 Display 输出格式             | 中     |
+| `test_display_option_fields_render_any`        | `None` 字段显示为 `<any>`                       | 中     |
+| `test_error_trait_source_none`                 | `std::error::Error` 的 `source()` 返回 `None`   | 中     |
+| `test_clone_eq_roundtrip`                      | `Clone` + `PartialEq` 往返一致                  | 中     |
 
-### 8.3 边界测试场景表
+### 8.3 边界测试场景
 
-| 场景                              | 预期行为                                         |
-| --------------------------------- | ------------------------------------------------ |
-| 空形状 `shape=[0, 3]`            | 返回 `InvalidShape` 或加法单位元（视 API 而定）  |
-| 非法轴 `axis=5, ndim=2`          | 返回 `InvalidAxis` 结构化错误                    |
-| 越界索引 `index=[9], shape=[4]`   | 返回 `IndexOutOfBounds` 结构化错误               |
-| 复数虚部非零 `Complex(1, 2)`     | 转换为实数类型返回 `TypeConversion { NonZeroImaginaryPart }` |
+| 场景                             | 预期行为                                        |
+| -------------------------------- | ----------------------------------------------- |
+| 空形状 `shape=[0, 3]`            | 返回 `InvalidShape` 或加法单位元（视 API 而定） |
+| 非法轴 `axis=5, ndim=2`          | 返回 `InvalidAxis` 结构化错误                   |
+| 越界索引 `index=[9], shape=[4]`  | 返回 `IndexOutOfBounds` 结构化错误              |
+| 复数虚部非零 `Complex(1, 2)`     | 转换为实数类型返回 `TypeConversion`             |
 | 整数极值 `i32::MIN`              | `abs(i32::MIN)` 走 panic                        |
-| NaN/Inf 转换                      | `f64::NaN` → `i32` 返回 `TypeConversion` 错误   |
+| NaN/Inf 转换                     | `f64::NaN` → `i32` 返回 `TypeConversion` 错误   |
 
 ### 8.4 Feature gate / 配置测试
 
 | 配置      | 验证点                                         |
 | --------- | ---------------------------------------------- |
-| 默认配置  | SIMD/并行关闭时错误类别与结构化字段一致         |
-| 启用 SIMD | SIMD 路径错误类别与标量路径相同                 |
+| 默认配置  | SIMD/并行关闭时错误类别与结构化字段一致        |
+| 启用 SIMD | SIMD 路径错误类别与标量路径相同                |
 | 启用并行  | 并行路径错误传播与串行路径一致，不静默吞掉错误 |
 
 ### 8.5 评审要求
