@@ -1,8 +1,10 @@
 # 形状操作模块设计
 
-> 文档编号: 16 | 模块: `src/shape/` | 阶段: Phase 4
-> 前置文档: `07-tensor.md`, `06-layout.md`
-> 需求参考: `需求说明书 §6`, `需求说明书 §7`, `需求说明书 §17`, `需求说明书 §28.2`, `需求说明书 §28.4`
+> 文档编号: 16
+> 模块目录: src/shape/
+> 任务阶段: Phase 4
+> 前置文档: 07-tensor.md, 06-layout.md
+> 需求参考: 需求说明书 §6、§7、§17、§28
 > 范围声明: 范围内
 
 ---
@@ -11,12 +13,18 @@
 
 ### 1.1 职责边界
 
-| 职责           | 包含                                             | 不包含                                                       |
-| -------------- | ------------------------------------------------ | ------------------------------------------------------------ |
-| 转置操作       | `transpose()` 交换步长和形状返回只读视图（O(1)） | 其他形状变换（当前版本不提供）                               |
-| 连续性标志更新 | 转置后按结果 shape/stride 重新计算连续性标志     | pad / repeat / split（当前版本不提供）                       |
-| 形状操作边界   | 当前版本只规范 `transpose()` 这一公开 API        | `permute_axes()` / `swap_axes()` / `moveaxis()` 留待后续版本 |
-| 未来形状操作   | —                                                | 其他形状变换与自动推断维度留待后续版本                       |
+| 职责           | 包含                                             |
+| -------------- | ------------------------------------------------ |
+| 转置操作       | `transpose()` 交换步长和形状返回只读视图（O(1)） |
+| 连续性标志更新 | 转置后按结果 shape/stride 重新计算连续性标志     |
+| 形状操作边界   | 当前版本只规范 `transpose()` 这一公开 API        |
+
+| 职责           | 不包含                                           |
+| -------------- | ------------------------------------------------ |
+| 转置操作       | 其他形状变换（当前版本不提供）                   |
+| 连续性标志更新 | pad / repeat / split（当前版本不提供）           |
+| 形状操作边界   | `permute_axes()` / `swap_axes()` / `moveaxis()` （当前版本不提供）|
+| 未来形状操作   |其他形状变换与自动推断维度留待后续版本            |
 
 ### 1.2 设计原则
 
@@ -27,26 +35,13 @@
 | BLAS 友好  | 正确处理转置产生的非连续布局，确保 shape/stride 元数据一致     |
 | 维度安全   | 转置仅做轴反转，不改变逻辑元素值与元素总数                     |
 
-### 1.3 在架构中的位置
-
-```
-Dependency layers:
-L0: error, private
-L1: dimension, element, complex
-L2: layout (depends on dimension)
-L3: storage (independent from layout; owned by tensor and consumed via layout results)
-L4: tensor (depends on storage, dimension)
-L5: broadcast (depends on tensor, dimension)
-L6: shape  <- current module
-```
-
 ---
 
 ## 2. 需求映射与范围约束
 
 | 类型     | 内容                                                                             |
 | -------- | -------------------------------------------------------------------------------- |
-| 需求映射 | `需求说明书 §6`, `需求说明书 §7`, `需求说明书 §17`, `需求说明书 §28.2`, `需求说明书 §28.4`                                                           |
+| 需求映射 | 需求说明书 §6、§7、§17、§28                                                      |
 | 范围内   | `transpose()`、轴反转后的 shape / strides / flags 重算，以及零拷贝只读视图语义。 |
 | 范围外   | 其他形状变换。                                                                   |
 | 非目标   | 不在本文讨论连续性重排 API、动态维推断或额外形状 DSL。                           |
@@ -61,8 +56,6 @@ src/shape/
 └── transpose.rs       # transpose implementation
 ```
 
-文件划分理由：当前版本仅支持转置，因此保留单一实现文件即可覆盖范围内能力。
-
 ---
 
 ## 4. 依赖关系
@@ -70,37 +63,22 @@ src/shape/
 ### 4.1 依赖图（ASCII）
 
 ```
-                    ┌──────────────┐
-                    │    tensor    │
-                    │ TensorBase   │
-                    └──────┬───────┘
-                           │ uses
-              ┌────────────┼────────────────┐
-              │   shape                     │
-              │   transpose.rs              │
-              └──┬───────────┬──────────────┘
-                 │ uses      │ uses
-          ┌──────▼───┐ ┌─────▼────────────┐
-          │ dimension│ │ layout           │
-          │ Dimension│ │ LayoutFlags      │
-          │ Ix0~IxDyn│ │ LayoutState      │
-          └──────────┘ └──────────────────┘
+src/shape/
+├── crate::tensor     # TensorBase<S, D>, TensorView<'_, A, D>, .shape(), .strides(), .offset()
+├── crate::dimension  # Dimension, Ix0~Ix6, IxDyn
+└── crate::layout     # LayoutFlags, LayoutState, Strides<D>
 ```
 
-### 4.2 类型级依赖
+### 4.2 依赖精确到类型级
 
-| 来源模块    | 使用的类型/trait                                                                                                |
-| ----------- | --------------------------------------------------------------------------------------------------------------- |
-| `tensor`    | `TensorBase<S, D>`, `TensorView<'_, A, D>`, `.shape()`, `.strides()`, `.offset()`，参见 `07-tensor.md` §5 |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`，参见 `02-dimension.md` §3                     |
-| `layout`    | `LayoutFlags`, `LayoutState`, `Strides<D>`，参见 `06-layout.md` §3, §4                                          |
-| `error`     | 无新增可恢复错误；规范性 `transpose()` 不走失败返回路径                                                         |
+| 来源模块    | 使用的类型/trait                                                                  |
+| ----------- | --------------------------------------------------------------------------------- |
+| `tensor`    | `TensorBase<S, D>`, `TensorView<'_, A, D>`, `.shape()`, `.strides()`, `.offset()` |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`                                                 |
+| `layout`    | `LayoutFlags`, `LayoutState`, `Strides<D>`                                        |
+| `error`     | 无新增可恢复错误；规范性 `transpose()` 不走失败返回路径                           |
 
-### 4.3 依赖方向声明
-
-> **依赖方向：单向向上。** `shape/` 消费 `tensor`、`dimension`、`layout` 的 trait 和类型，不被它们依赖。
-
-### 4.4 依赖合法性与替代方案
+### 4.3 依赖合法性
 
 | 项目           | 说明                                                                          |
 | -------------- | ----------------------------------------------------------------------------- |
@@ -108,13 +86,17 @@ src/shape/
 | 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
 | 替代方案       | 不适用；当前范围内无需额外第三方依赖。                                        |
 
+### 4.4 依赖方向声明
+
+依赖方向：单向向上。`shape/` 消费 `tensor`、`dimension`、`layout` 的 trait 和类型，不被它们依赖。
+
 ---
 
 ## 5. 公共 API 设计
 
 ### 5.1 转置操作
 
-> **说明：** 以下为示意性伪实现，非稳定内部结构约定。
+以下为示意性伪实现，非稳定内部结构约定。
 
 ````rust,ignore
 impl<S, A, D> TensorBase<S, D>
