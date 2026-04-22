@@ -246,17 +246,12 @@ pub enum ConversionFailureReason {
 pub type Result<T> = core::result::Result<T, XenonError>;
 ```
 
-当前版本不定义 `EmptyArray` 公开错误变体。按 `需求说明书 §13`、`需求说明书 §14`，空输入 `dot` 与 `sum` 返回加法单位元；若未来新增确需"至少一个元素"的 API，应在对应版本中单独裁定是否引入专门错误变体。
-
-`XenonError` 须实现 `std::error::Error` trait，提供 `source()` 方法用于链式错误追踪。
-
-对于所有 `XenonError` 变体，`source()` 返回 `None`，除非内部保留了链式错误源（当前版本不保留）。
-
-公开 API 统一使用 prelude 导出的 `crate::error::Result`（即 `Result<T, XenonError>` 别名）作为返回类型。
-
-所有可恢复错误直接以 `XenonError` 结构化变体返回，不使用模块内部错误类型。每个变体携带适用的结构化字段，满足 `需求说明书 §27` 对公开诊断信息的要求。
-
-> **存储模式转换说明：** 存储模式转换失败统一使用 `XenonError::InvalidStorageMode`，并携带 `source_storage_mode`、`target_storage_mode`、`conversion_type` 字段；当某个调用点并不涉及显式存储模式转换时，这些字段可为 `None`。
+- 当前版本不定义 `EmptyArray` 公开错误变体。
+- `XenonError` 须实现 `std::error::Error` trait，提供 `source()` 方法用于链式错误追踪。
+- 对于所有 `XenonError` 变体，`source()` 返回 `None`，除非内部保留了链式错误源（当前版本不保留）。
+- 公开 API 统一使用 prelude 导出的 `crate::error::Result`（即 `Result<T, XenonError>` 别名）作为返回类型。
+- 所有可恢复错误直接以 `XenonError` 结构化变体返回，不使用模块内部错误类型。
+- 每个变体携带适用的结构化字段，满足 `需求说明书 §27` 对公开诊断信息的要求。
 
 ### 5.2 可恢复错误与 panic 的边界
 
