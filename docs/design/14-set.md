@@ -108,7 +108,7 @@ impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: UniqueElement + Copy,
+    A: UniqueElement,
 {
     /// Returns unique elements; order is unspecified and may vary between calls.
     ///
@@ -242,26 +242,20 @@ Note:
 ///
 /// # Sealing
 ///
-/// `UniqueElement` is a sealed trait. It is implemented only inside this crate
-/// for supported element types, so the closed element set is preserved.
-pub trait UniqueElement: private::Sealed + Element {
+/// `UniqueElement` is a sealed trait. It reuses the shared `crate::private::Sealed`
+/// infrastructure, consistent with all other public element capability traits.
+/// It is implemented only inside this crate for supported element types,
+/// so the closed element set is preserved.
+pub trait UniqueElement: crate::private::Sealed + Element {
     /// Equality check used by `unique`.
     fn unique_eq(&self, other: &Self) -> bool;
 }
 
-mod private {
-    pub trait Sealed {}
-}
-
-// Sealed implementation list for the current closed set:
-// i32, i64, f32, f64, Complex<f32>, Complex<f64>
-
-impl private::Sealed for i32 {}
-impl private::Sealed for i64 {}
-impl private::Sealed for f32 {}
-impl private::Sealed for f64 {}
-impl private::Sealed for Complex<f32> {}
-impl private::Sealed for Complex<f64> {}
+// No local `mod private` needed — `UniqueElement` reuses the shared
+// `crate::private::Sealed` already implemented for all seven element types
+// (i32, i64, f32, f64, Complex<f32>, Complex<f64>, bool).
+// `UniqueElement` is simply not implemented for `bool`, which excludes it
+// at compile time without requiring a separate sealing mechanism.
 
 impl UniqueElement for i32 {
     fn unique_eq(&self, other: &Self) -> bool { self == other }
