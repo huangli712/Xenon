@@ -81,7 +81,7 @@ src/util/
 
 | 来源模块    | 使用的类型/trait                                                                 |
 | ----------- | -------------------------------------------------------------------------------- |
-| `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.storage_kind()`（参见 `07-tensor.md` §5） |
+| `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`（参见 `07-tensor.md` §5） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §5）                   |
 | `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, `StorageIntoOwned<Elem=A>`（参见 `05-storage.md` §5）            |
 | `element`   | `Element`，`OrderedCompareElement`（clip 复用，参见 `03-element.md` §5.5）       |
@@ -181,7 +181,7 @@ where
 
 - 浮点参数非法时：`min > max` 或任一边界为 `NaN` 时返回可恢复错误。
 - `clip` 总是返回新的 owned 张量，但本文不再把“先 `zeros()` 再逐元素覆写”写成稳定实现承诺；实现可使用 `MaybeUninit` 或等价的内部未初始化 owned 缓冲区，一次写入最终值，避免无意义的零填充后再覆写。
-- `clip()` 的实现可能依赖内部未初始化构造能力（如 `uninit_like`、`iter_uninit_mut`、`assume_init` 或等价 helper）；这些内部 helper 的权威定义与归属待在实现阶段明确，当前伪代码仅示意实现思路。
+- `clip()` 的实现可能依赖内部未初始化构造能力（如 `uninit_like`、`iter_uninit_mut`、`assume_init` 或等价 helper）；这些内部 helper 归属 `tensor/construct.rs`（`pub(crate)` 级别），由 `18-construction.md` 定义其语义，不属于稳定公共 API。
 - `clip_inplace` 不属于 `需求说明书 §21.1` 的强制公共接口。若实现上需要原地 clamp helper，可仅作为 `src/util/clip.rs` 的内部辅助，不纳入稳定 API 承诺与测试矩阵。
 - `InvalidArgument` 的诊断字段须与 `15-broadcast.md`、`17-indexing.md` 中的同变体保持一致，至少包含 `operation`（操作名称）和具体参数字段。
 
@@ -255,7 +255,7 @@ where
 `fill_try_dispatch()` 的内部判定标准固定为：
 
 - 先通过 `Storage` trait 提供的可选可变句柄接口（若命名尚未最终确定，则由 storage 层提供等价能力）判定当前存储是否支持可写路径；
-- `Owned` / `ViewMut` / 其他满足 `StorageMut` 的存储：进入 `fill_mut()` 直接写入路径；
+- `Owned` / `ViewMut` / 其他满足 `StorageMut` 的存储：进入 `fill_storage_mut()` 直接写入路径；
 - `View` / `SharedReadOnly` / 其他只读或共享只读存储：返回 `XenonError::InvalidStorageMode`；
 - 连续布局可走快路径，非连续或带 padding 布局必须退回“仅写逻辑元素”的 stride-aware 路径。
 
@@ -557,8 +557,8 @@ into_contiguous(tensor):
 
 | 方向               | 对方模块 | 接口/类型      | 约定                   |
 | ------------------ | -------- | -------------- | ---------------------- |
-| `utility → iter`   | `iter`   | `iter_mut()`   | `fill` 通过可变迭代器遍历逻辑元素，参见 `10-iterator.md` §5.6         |
-| `utility → iter`   | `iter`   | `iter()`       | `clip` 通过只读迭代器读取并写入新张量，参见 `10-iterator.md` §5.6     |
+| `utility → iter`   | `iter`   | `iter_mut()`   | `fill` 通过可变迭代器遍历逻辑元素，参见 `10-iterator.md` §5.6 |
+| `utility → iter`   | `iter`   | `iter()`       | `clip` 通过只读迭代器读取并写入新张量，参见 `10-iterator.md` §5.6 |
 | `utility → layout` | `layout` | 连续性查询     | `to_contiguous` 先查询当前布局是否已经连续，参见 `06-layout.md` §5.7  |
 | `utility → tensor` | `tensor` | `to_owned()` / `into_owned()` / owned 构造路径 | `to_contiguous` 与 `into_contiguous` 复用张量 owned 化与连续化路径；`clip` 通过 owned 结果张量构造返回新值；跨文档连续化归属统一在 utility |
 
