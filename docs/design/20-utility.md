@@ -192,10 +192,8 @@ where
 ### 5.2 fill 操作
 
 - `fill()` 是填充操作的主公开 API，但仅适用于提供可写访问权的张量（`S: StorageMut`）。`try_fill()` 是次级便捷入口：当调用方只有通用张量句柄、需要以运行时方式尝试填充时，可通过 storage 层提供的可选可变句柄接口（或等价能力）分派；对可写存储执行填充并返回 `Ok(())`，对只读 / 共享只读存储返回 `XenonError::InvalidStorageMode`。
->
-> **设计约束**：`fill()` 的主入口仅适用于提供可写访问权的张量（`StorageMut`）。对只读/共享只读张量，`try_fill()` 返回可恢复错误。`需求说明书 §21.2` 要求只读引用和共享只读引用须拒绝填充请求。
->
-> **显式说明：** `try_fill()` 的可写性判定依赖于 `Storage` trait 提供的可选可变句柄接口（详见 `05-storage.md` §5）。当前版本仅 `Owned` 和 `ViewMut` 模式支持 `fill`；`View` 和 `SharedReadOnly` 模式调用 `try_fill()` 返回 `Err(InvalidStorageMode)`。
+- `fill()` 的主入口仅适用于提供可写访问权的张量（`StorageMut`）。对只读/共享只读张量，`try_fill()` 返回可恢复错误。`需求说明书 §21.2` 要求只读引用和共享只读引用须拒绝填充请求。
+- `try_fill()` 的可写性判定依赖于 `Storage` trait 提供的可选可变句柄接口（详见 `05-storage.md` §5）。当前版本仅 `Owned` 和 `ViewMut` 模式支持 `fill`；`View` 和 `SharedReadOnly` 模式调用 `try_fill()` 返回 `Err(InvalidStorageMode)`。
 
 ```rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -220,9 +218,7 @@ where
 }
 ```
 
-> 对于 `Owned` 与 `ViewMut` 等可写张量，`fill()` 是首选公开入口；`try_fill()` 成功后语义与 `fill()` 一致，并通过 storage 层的可选可变句柄能力进入 `fill_mut()` 路径。对于 `View`、`SharedReadOnly` 等只读 / 共享只读张量，或 storage 层未暴露该能力的情况，`try_fill()` 返回 `XenonError::InvalidStorageMode`；该错误是公开契约的一部分，而不是内部占位语义。
-
-````rust,ignore
+```rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
     S: StorageMut<Elem = A>,
@@ -256,11 +252,12 @@ where
         )
     }
 }
-````
+```
 
-> **分层说明：** `fill()` 是 `S: StorageMut` 层的主公开 API；`try_fill()` 仅作为 `S: Storage` 层的次级便捷入口，通过内部 `fill_try_dispatch()` 基于 storage 层暴露的可选可变句柄能力执行“可写走 `fill_mut()` / 只读或无句柄能力返回 `InvalidStorageMode`”的运行时分派。
+- 对于 `Owned` 与 `ViewMut` 等可写张量，`fill()` 是首选公开入口；`try_fill()` 成功后语义与 `fill()` 一致，并通过 storage 层的可选可变句柄能力进入 `fill_mut()` 路径。对于 `View`、`SharedReadOnly` 等只读 / 共享只读张量，或 storage 层未暴露该能力的情况，`try_fill()` 返回 `XenonError::InvalidStorageMode`；该错误是公开契约的一部分，而不是内部占位语义。
+- `fill()` 是 `S: StorageMut` 层的主公开 API；`try_fill()` 仅作为 `S: Storage` 层的次级便捷入口，通过内部 `fill_try_dispatch()` 基于 storage 层暴露的可选可变句柄能力执行“可写走 `fill_mut()` / 只读或无句柄能力返回 `InvalidStorageMode`”的运行时分派。
 
-#### 5.2.2 `fill_try_dispatch()` 分派准则
+### 5.3 `fill_try_dispatch()` 分派准则
 
 `fill_try_dispatch()` 的内部判定标准固定为：
 
