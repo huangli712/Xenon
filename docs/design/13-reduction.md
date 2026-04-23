@@ -82,15 +82,15 @@ src/reduction/
 
 ### 4.2 类型级依赖
 
-| 来源模块           | 使用的类型/trait                                                                                          |
-| ------------------ | --------------------------------------------------------------------------------------------------------- |
-| `tensor`           | `TensorBase<S, D>`、`Tensor<A, D>`、`.shape()`、`.ndim()`、`.iter()`、`.indexed_iter()`、结果张量构造接口 |
-| `dimension`        | `Axis`、`Dimension`、运行时 axis/shape 投影辅助，以及仅供内部结果维度投影使用的 `RemoveAxis`              |
-| `element`          | `Numeric`、`CheckedAdd`、`ComplexScalar`、`RealScalar`、`A::zero()`                                       |
-| `dispatch`（内部） | `select_exec_path()`、`ExecPath`                                                                          |
-| `error`            | `XenonError::InvalidAxis`                                                                                 |
-| `simd`（可选）     | 仅在可证明与标量累加顺序和结果语义一致时通过纯向量化 kernel 参与 `sum` 实现                               |
-| `parallel`（可选） | 仅在通过 dispatch.rs 路径裁决后提供纯并行执行，不含串行回退，并遵守无嵌套并行约束                         |
+| 来源模块           | 使用的类型/trait                                                                              |
+| ------------------ | --------------------------------------------------------------------------------------------- |
+| `tensor`           | `TensorBase<S, D>`、`Tensor<A, D>`、`.shape()`、`.ndim()`、`.iter()`、结果张量构造接口        |
+| `dimension`        | `Axis`、`Dimension`、运行时 axis/shape 投影辅助，以及仅供内部结果维度投影使用的 `RemoveAxis`  |
+| `element`          | `Numeric`、`CheckedAdd`、`ComplexScalar`、`RealScalar`、`A::zero()`                           |
+| `dispatch`（内部） | `select_exec_path()`、`ExecPath`                                                              |
+| `error`            | `XenonError::InvalidAxis`                                                                     |
+| `simd`（可选）     | 仅在可证明与标量累加顺序和结果语义一致时通过纯向量化 kernel 参与 `sum` 实现                   |
+| `parallel`（可选） | 仅在通过 dispatch.rs 路径裁决后提供纯并行执行，不含串行回退，并遵守无嵌套并行约束             |
 
 ### 4.3 依赖合法性与新增依赖说明
 
@@ -436,13 +436,13 @@ fn sum_floating_or_complex<A: Numeric + Copy>(iter: impl Iterator<Item = A>) -> 
 
 ### 9.1 接口约定
 
-| 方向                        | 对方模块            | 接口/类型                                | 约定                                                                                                                                 |
-| --------------------------- | ------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `reduction → tensor`        | `tensor`            | `TensorBase<S, D>`、结果张量构造接口     | 输入可为连续或合法非连续视图；归约只观察逻辑元素顺序与 shape/stride 元数据。归约操作接受广播只读视图作为输入，按逻辑元素读取并归约。 |
-| `reduction → dimension`     | `dimension`         | `Axis`、运行时 shape 投影辅助            | 按轴归约必须先验证 `axis < ndim`，再做维度投影。                                                                                     |
-| `reduction → element`       | `element`           | `Numeric`、`CheckedAdd`、`ComplexScalar` | 依据元素类型分派整数、浮点、复数归约语义。                                                                                           |
-| `reduction → error`         | `error`             | `XenonError::InvalidAxis`                | axis 越界统一返回结构化错误，不再使用 `InvalidArgument`。                                                                            |
-| `reduction → simd/parallel` | `simd` / `parallel` | 可选加速入口                             | 只有在可证明标量等价时才允许接入。                                                                                                   |
+| 方向                        | 对方模块            | 接口/类型                                | 约定                                                                                                                             |
+| --------------------------- | ------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `reduction → tensor`        | `tensor`            | `TensorBase<S, D>`、结果张量构造接口     | 输入可为连续或合法非连续视图；归约只观察逻辑元素顺序与 shape/stride 元数据。归约操作接受只读视图作为输入，按逻辑元素读取并归约。 |
+| `reduction → dimension`     | `dimension`         | `Axis`、运行时 shape 投影辅助            | 按轴归约必须先验证 `axis < ndim`，再做维度投影。                                                                                 |
+| `reduction → element`       | `element`           | `Numeric`、`CheckedAdd`、`ComplexScalar` | 依据元素类型分派整数、浮点、复数归约语义。                                                                                       |
+| `reduction → error`         | `error`             | `XenonError::InvalidAxis`                | axis 越界统一返回结构化错误，不再使用 `InvalidArgument`。                                                                        |
+| `reduction → simd/parallel` | `simd` / `parallel` | 可选加速入口                             | 只有在可证明标量等价时才允许接入。                                                                                               |
 
 ### 9.2 数据流描述
 
