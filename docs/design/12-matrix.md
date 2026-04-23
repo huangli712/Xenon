@@ -197,9 +197,8 @@ where
 // = Complex{11, -2}
 ```
 
-> **SIMD 覆盖说明：** 复数内积的 SIMD 加速参见 `08-simd.md` 覆盖矩阵。目标是对 `Complex<f32>` / `Complex<f64>` 内积提供 SIMD 路径。
-
-> **方法式 API 说明：** `TensorBase::dot<S2, D2>(&self, other: &TensorBase<S2, D2>) -> Result<A, XenonError>` 是稳定的 method-style API；它与自由函数 `dot(&TensorView<'_, A, D1>, &TensorView<'_, A, D2>)` 一样，允许两侧使用不同的维度类型，只在运行时检查双方是否都为逻辑 1D。两者必须共享相同的错误类别、复数共轭线性定义，以及以 `需求说明书 §28.3` 为权威基线的容差规则。
+- 复数内积的 SIMD 加速参见 `08-simd.md` 覆盖矩阵。目标是对 `Complex<f32>` / `Complex<f64>` 内积提供 SIMD 路径。
+- `TensorBase::dot<S2, D2>(&self, other: &TensorBase<S2, D2>) -> Result<A, XenonError>` 是稳定的 method-style API；它与自由函数 `dot(&TensorView<'_, A, D1>, &TensorView<'_, A, D2>)` 一样，允许两侧使用不同的维度类型，只在运行时检查双方是否都为逻辑 1D。两者必须共享相同的错误类别、复数共轭线性定义，以及以 `需求说明书 §28.3` 为权威基线的容差规则。
 
 ### 5.3 Good / Bad 对比示例
 
@@ -245,22 +244,26 @@ dot_impl(a, b):
         ExecPath::Serial  => scalar::dot_impl(a, b)
 ```
 
-> **执行路径约束：** `dot` 必须先完成逻辑 1D 与长度一致性检查。调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。SIMD 路径要求 `a` 和 `b` **均**为 F-contiguous 且满足对齐前提；若任一输入不满足条件，必须回退到标量或并行中的标量 chunk 路径。`par_dot()` 自身的 API 契约仍与 `09-parallel.md` 一致，保持对泛型 `D: Dimension` 输入开放，并在实现内部执行运行时 1D 校验；这里“只接受 `Ix1`”描述的是 `matrix::dot()` 进入并行后端前的私有桥接约束，而不是 `par_dot()` 的公开函数签名。也就是说，`matrix::dot()` 在确认 `a.ndim() == 1` 且 `b.ndim() == 1` 后，必须先通过私有桥接 helper 把泛型 `TensorView<'_, A, D1/D2>` 安全收窄为 `TensorView<'_, A, Ix1>`，再把这个已收窄视图传给 `par_dot()`；不得在未完成运行时 rank 校验前直接调用并行实现。桥接 helper 只做“已验证 1D 视图 -> `Ix1` 视图”的 reborrow / dimensionality narrowing，不改变借用范围、shape 数据或布局元数据。所有路径都必须保持一致的结果、错误模型与整数溢出 panic 语义。
+- `dot` 必须先完成逻辑 1D 与长度一致性检查。
+- 调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径。
+- 若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。
+- SIMD 路径要求 `a` 和 `b` **均为** F-contiguous 且满足对齐前提；若任一输入不满足条件，必须回退到标量或并行中的标量 chunk 路径。
+- `par_dot()` 自身的 API 契约仍与 `09-parallel.md` 一致，保持对泛型 `D: Dimension` 输入开放，并在实现内部执行运行时 1D 校验。这里“只接受 `Ix1`”描述的是 `matrix::dot()` 进入并行后端前的私有桥接约束，而不是 `par_dot()` 的公开函数签名。也就是说，`matrix::dot()` 在确认 `a.ndim() == 1` 且 `b.ndim() == 1` 后，必须先通过私有桥接 helper 把泛型 `TensorView<'_, A, D1/D2>` 安全收窄为 `TensorView<'_, A, Ix1>`，再把这个已收窄视图传给 `par_dot()`；不得在未完成运行时 rank 校验前直接调用并行实现。桥接 helper 只做“已验证 1D 视图 -> `Ix1` 视图”的 reborrow / dimensionality narrowing，不改变借用范围、shape 数据或布局元数据。所有路径都必须保持一致的结果、错误模型与整数溢出 panic 语义。
 
-### 6.1.1 并行阈值与禁止嵌套并行
+### 6.2 并行阈值与禁止嵌套并行
 
 `dot` 的并行路径必须直接复用 `09-parallel.md` 中的运行时裁决，而不是在 `matrix/` 内部复制一套独立阈值逻辑：
 
-| 约束         | 要求                                                                                                                      |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| 阈值来源     | 是否进入并行路径由 `dispatch::should_parallelize(len, is_f_contiguous)` 与全局阈值配置决定。                              |
-| 非连续惩罚   | 非连续视图沿用 `dispatch.rs` 的有效阈值翻倍策略；仅当收益明确时才进入并行。                                               |
+| 约束         | 要求                                                                                                |
+| ------------ | --------------------------------------------------------------------------------------------------- |
+| 阈值来源     | 是否进入并行路径由 `dispatch::should_parallelize(len, is_f_contiguous)` 与全局阈值配置决定。        |
+| 非连续惩罚   | 非连续视图沿用 `dispatch.rs` 的有效阈值翻倍策略；仅当收益明确时才进入并行。                         |
 | 禁止嵌套并行 | 若当前线程已处于库内部并行区域，则 `dispatch::ParallelGuard::enter()` 失败并强制回退标量/串行路径，不得再开启第二层并行。 |
 | 路径顺序     | 调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。 |
 
 这满足 `需求说明书 §9.2` / `需求说明书 §9.3` 对“支持阈值配置”和“库内部不得开启第二层并行”的要求。
 
-### 6.2 标量实现
+### 6.3 标量实现
 
 ```rust,ignore
 fn scalar_dot_int<I, D>(
@@ -286,7 +289,7 @@ fn scalar_dot_float_or_complex<A, D>(
 }
 ```
 
-### 6.3 统一内积实现（实数与复数分派）
+### 6.4 统一内积实现（实数与复数分派）
 
 `dot()` 内部统一使用 `x.conjugate() * y` 的乘积生成规则，再按元素类型分派累加策略：整数路径需要同时对**乘法**和**累加**做 checked arithmetic，浮点/复数路径使用普通加法。这通过 `Numeric` trait 中的 `fn conjugate(self) -> Self` 方法实现。`Numeric::conjugate()` 为泛型算法统一入口；对实数类型返回恒等值，对复数类型返回共轭。整数路径仍须走 checked arithmetic，不得因 identity conjugate 而绕过溢出检查：
 
@@ -332,15 +335,10 @@ fn dot_impl<A, D1, D2>(
 }
 ```
 
-> **非连续 1D 视图说明：** `as_ix1_view()` 只在已验证 `ndim == 1` 后做维度收窄，不重排元素，也不强制把视图转为连续布局。若输入本身是合法的非连续 1D 视图，则返回的 `TensorView<'_, A, Ix1>` 保留原始 stride；后续是否可进入 SIMD 路径，仍由连续性与对齐检查单独决定。
-
-> **并行桥接说明：** 推荐桥接形式是对已通过校验的视图执行 `.view().into_dimensionality::<Ix1>()`（或等价的私有 reborrow helper），把 `TensorView<'_, A, D>` 收窄为 `TensorView<'_, A, Ix1>` 后再调用 `parallel::par_dot()`。该步骤只重用原有 view 的 shape/stride/offset/storage 借用，不重新分配也不复制元素；若未来为性能保留 `unsafe` 快路径，也只能放在这个私有 helper 内，并以先前的 `ndim == 1` 运行时断言为前提，而不能暴露成公开 API 契约。若 rank 校验失败，`dot()` 必须在桥接前直接返回 `XenonError::InvalidArgument`。
-
-> **设计决策：** 通过 `Numeric::conjugate()` 方法实现实数与复数的统一分派，避免为复数类型单独实现 `complex_dot` 函数。
-> `Numeric::conjugate()` 为泛型算法统一入口；对实数类型返回恒等值，对复数类型返回共轭。整数路径仍须走 checked arithmetic，不得因 identity conjugate 而绕过溢出检查。
-> 实数类型的 `conjugate()` 为零开销（内联后等价于直接使用 `x * y`），不引入额外运行时成本。
-
-> **整数溢出补充：** 对整数 dot，乘法和累加都属于需求层面的不可恢复溢出路径；文档不得只对累加做 checked 处理而把乘法留给 release wrapping 语义。panic 信息至少包含 `operation=dot`、元素类型、触发阶段（`multiply` / `accumulate`）、逻辑位置（如 `lane` 或 `element_index`）以及适用 `shape`。
+- `as_ix1_view()` 只在已验证 `ndim == 1` 后做维度收窄，不重排元素，也不强制把视图转为连续布局。若输入本身是合法的非连续 1D 视图，则返回的 `TensorView<'_, A, Ix1>` 保留原始 stride；后续是否可进入 SIMD 路径，仍由连续性与对齐检查单独决定。
+- 推荐桥接形式是对已通过校验的视图执行 `.view().into_dimensionality::<Ix1>()`（或等价的私有 reborrow helper），把 `TensorView<'_, A, D>` 收窄为 `TensorView<'_, A, Ix1>` 后再调用 `parallel::par_dot()`。该步骤只重用原有 view 的 shape/stride/offset/storage 借用，不重新分配也不复制元素；若未来为性能保留 `unsafe` 快路径，也只能放在这个私有 helper 内，并以先前的 `ndim == 1` 运行时断言为前提，而不能暴露成公开 API 契约。若 rank 校验失败，`dot()` 必须在桥接前直接返回 `XenonError::InvalidArgument`。
+- 通过 `Numeric::conjugate()` 方法实现实数与复数的统一分派，避免为复数类型单独实现 `complex_dot` 函数。`Numeric::conjugate()` 为泛型算法统一入口；对实数类型返回恒等值，对复数类型返回共轭。整数路径仍须走 checked arithmetic，不得因 identity conjugate 而绕过溢出检查。实数类型的 `conjugate()` 为零开销（内联后等价于直接使用 `x * y`），不引入额外运行时成本。
+- 对整数 dot，乘法和累加都属于需求层面的不可恢复溢出路径；文档不得只对累加做 checked 处理而把乘法留给 release wrapping 语义。panic 信息至少包含 `operation=dot`、元素类型、触发阶段（`multiply` / `accumulate`）、逻辑位置（如 `lane` 或 `element_index`）以及适用 `shape`。
 
 ---
 
@@ -388,11 +386,9 @@ fn dot_impl<A, D1, D2>(
   - 前置: T3a, parallel 模块
   - 预计: 5 min
 
-> T3 涉及跨模块集成，实际实现时应拆分为：T3a（标量路径）、T3b（SIMD 路径集成）、T3c（并行路径集成），各自由对应模块负责。
-
 ### Wave 5: 测试
 
-- [ ] **T4**: 编写测试
+- [ ] **T6**: 编写测试
   - 文件: `tests/test_matrix.rs`
   - 内容: 正确性/维度不匹配/复数/feature-gate 回退测试
   - 测试: 所有矩阵测试
