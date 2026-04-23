@@ -660,7 +660,7 @@ User calls cast() / to_owned() / into_owned()
 | 平台       | 仅 `std`                                                  |
 | MSRV       | Rust 1.85+                                                |
 | crate 结构 | 单 crate                                                  |
-| 依赖       | 不新增第三方依赖                                          |
+| 最小依赖   | 不新增第三方依赖                                          |
 | 错误语义   | 所有执行路径都须保持同一 `Result` / `TypeConversion` 契约 |
 
 ---
