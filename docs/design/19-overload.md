@@ -144,7 +144,7 @@ where
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
 
     fn add(self, rhs: TensorBase<Owned<A>, E>) -> Self::Output {
-        self.add_tensor_impl(&rhs)
+        self.add(&rhs)
     }
 }
 
@@ -158,7 +158,7 @@ where
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
 
     fn add(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
-        self.add_tensor_impl(rhs)
+        self.add(rhs)
     }
 }
 
@@ -173,7 +173,7 @@ where
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
 
     fn add(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
-        self.add_tensor_impl(rhs)
+        self.add(rhs)
     }
 }
 
@@ -187,7 +187,7 @@ where
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
 
     fn add(self, rhs: &'b TensorBase<Owned<A>, E>) -> Self::Output {
-        self.add_tensor_impl(rhs)
+        self.add(rhs)
     }
 }
 
@@ -201,13 +201,13 @@ where
     type Output = Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>;
 
     fn add(self, rhs: &'b TensorBase<ViewRepr<'b, A>, E>) -> Self::Output {
-        self.add_tensor_impl(rhs)
+        self.add(rhs)
     }
 }
 ```
 
 - 与 `15-broadcast.md` 保持一致；对称张量×张量运算须同时满足 `D: BroadcastDim<E>` 与 `E: BroadcastDim<D>`，以保证输出维度类型可双向收敛到同一关联类型。
-- 委托示例中的 `add_tensor_impl()` 代表与 trait 方法同名的内部/固有辅助入口，用于避免 `fn add(self, rhs) { self.add(&rhs) }` 这类写法产生对 trait 方法自身的递归歧义。
+- 张量×张量运算符直接委托给 `11-math.md §5` 的方法型逐元素 API（`TensorBase::add()` / `TensorBase::sub()` / `TensorBase::mul()` / `TensorBase::div()`）。运算符 impl 中的 `self.add(rhs)` 不会产生递归：Rust 的方法解析规则优先匹配固有方法（`math` 模块提供的 `pub fn add(&self, ...)`），而非 `Add` trait 自身的 `fn add(self, ...)`。
 - 广播失败走 `Err(XenonError::BroadcastError)` ；整数除零、整数溢出与结果不可表示仍保持 panic。本文 §11 的决策 3 / 决策 4 仅记录该 ADR 在本模块中的细化范围。
 - 当前稳定承诺覆盖 `Owned×Owned`、`TensorView×TensorView`、`TensorView×Tensor`、`Tensor×TensorView` 以及标量路径。实现优先级：`Owned×Owned` > `Owned/View` 混合路径。
 - 当前稳定 API 直接承诺只读 `TensorView` 参与运算符重载，这样 `broadcast_to()`、`transpose()`、`slice()` 等返回视图的操作结果可以继续参与四则运算；`ArcRepr` 相关组合若后续需要，统一参考文末附录。
@@ -241,7 +241,7 @@ where
     type Output = Tensor<A, D>;
 
     fn add(self, rhs: A) -> Self::Output {
-        self.add_scalar_impl(rhs)
+        self.add_scalar(rhs)
     }
 }
 
@@ -254,7 +254,7 @@ where
     type Output = Tensor<A, D>;
 
     fn add(self, rhs: A) -> Self::Output {
-        self.add_scalar_impl(rhs)
+        self.add_scalar(rhs)
     }
 }
 
@@ -267,7 +267,7 @@ where
     type Output = Tensor<A, D>;
 
     fn add(self, rhs: TensorBase<Owned<A>, D>) -> Self::Output {
-        rhs.add_scalar_impl(self.0)
+        rhs.add_scalar(self.0)
     }
 }
 
@@ -280,7 +280,7 @@ where
     type Output = Tensor<A, D>;
 
     fn add(self, rhs: &'a TensorBase<Owned<A>, D>) -> Self::Output {
-        rhs.add_scalar_impl(self.0)
+        rhs.add_scalar(self.0)
     }
 }
 ```
@@ -291,13 +291,13 @@ where
 - 标量路径无形状不兼容风险，不返回 `Result`；运算符返回 `Tensor` 直接。整数溢出仍遵循 panic 语义。
 - 当前版本**不**稳定承诺 `&A` 形式的标量运算符重载。公开契约仅保证值形式 `tensor + scalar`、`Scalar(scalar) + tensor`，以及常用原生左标量（如 `5.0 + tensor`）。若后续版本需要 `&A` 支持，应以独立议题评估。
 - 标量运算符重载仅覆盖 owned `Tensor`；`TensorView` 的标量运算通过方法调用（如 `.add_scalar()`）实现，参见 `11-math.md §5.9`。`TensorViewMut` 若需使用运算符，同样必须先调用 `.view()` 转为只读 `TensorView`。
-- 标量运算委托给 `add_scalar_impl()` / `sub_scalar_impl()` / `mul_scalar_impl()` / `div_scalar_impl()` 等内部 helper，其内部直接遍历输入与结果张量，而不是额外暴露通用 helper 作为稳定实现描述。
+- 右标量路径（`tensor op scalar`）与交换性左标量路径（`scalar + tensor`、`scalar * tensor`）直接委托给 `11-math.md §5.9` 的公开标量方法（`.add_scalar()` / `.sub_scalar()` / `.mul_scalar()` / `.div_scalar()`），不重复实现。非交换左标量路径（`scalar - tensor`、`scalar / tensor`）使用本模块新增的内部 helper `sub_scalar_left_impl` / `div_scalar_left_impl`，因 `11-math.md` 未提供对应方法。
 
 对左标量的非交换运算，需显式区分 helper：
 
 - `scalar - tensor`：使用 `sub_scalar_left_impl(scalar, tensor)`，逐元素计算 `scalar - each_element`
 - `scalar / tensor`：使用 `div_scalar_left_impl(scalar, tensor)`，逐元素计算 `scalar / each_element`
-- 这两条路径不能复用现有 `tensor.sub_scalar_impl(scalar)` / `tensor.div_scalar_impl(scalar)`，因为减法与除法不满足交换律
+- 这两条路径不能复用现有 `tensor.sub_scalar(scalar)` / `tensor.div_scalar(scalar)`，因为减法与除法不满足交换律
 
 ### 5.4 Sub / Mul / Div
 
@@ -317,30 +317,30 @@ where
 
 | 算术类型 | 运算符 | `tensor op scalar` | `scalar op tensor` |
 | -------- | ------ | ------------------ | ------------------ |
-| `i32` | `+` | `add_scalar_impl` | 原生左标量 / `Scalar<A>` → `add_scalar_impl` |
-| `i32` | `-` | `sub_scalar_impl` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
-| `i32` | `*` | `mul_scalar_impl` | 原生左标量 / `Scalar<A>` → `mul_scalar_impl` |
-| `i32` | `/` | `div_scalar_impl` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
-| `i64` | `+` | `add_scalar_impl` | 原生左标量 / `Scalar<A>` → `add_scalar_impl` |
-| `i64` | `-` | `sub_scalar_impl` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
-| `i64` | `*` | `mul_scalar_impl` | 原生左标量 / `Scalar<A>` → `mul_scalar_impl` |
-| `i64` | `/` | `div_scalar_impl` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
-| `f32` | `+` | `add_scalar_impl` | 原生左标量 / `Scalar<A>` → `add_scalar_impl` |
-| `f32` | `-` | `sub_scalar_impl` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
-| `f32` | `*` | `mul_scalar_impl` | 原生左标量 / `Scalar<A>` → `mul_scalar_impl` |
-| `f32` | `/` | `div_scalar_impl` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
-| `f64` | `+` | `add_scalar_impl` | 原生左标量 / `Scalar<A>` → `add_scalar_impl` |
-| `f64` | `-` | `sub_scalar_impl` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
-| `f64` | `*` | `mul_scalar_impl` | 原生左标量 / `Scalar<A>` → `mul_scalar_impl` |
-| `f64` | `/` | `div_scalar_impl` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
-| `Complex<f32>` | `+` | `add_scalar_impl` | 原生左标量 / `Scalar<A>` → `add_scalar_impl` |
-| `Complex<f32>` | `-` | `sub_scalar_impl` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
-| `Complex<f32>` | `*` | `mul_scalar_impl` | 原生左标量 / `Scalar<A>` → `mul_scalar_impl` |
-| `Complex<f32>` | `/` | `div_scalar_impl` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
-| `Complex<f64>` | `+` | `add_scalar_impl` | 原生左标量 / `Scalar<A>` → `add_scalar_impl` |
-| `Complex<f64>` | `-` | `sub_scalar_impl` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
-| `Complex<f64>` | `*` | `mul_scalar_impl` | 原生左标量 / `Scalar<A>` → `mul_scalar_impl` |
-| `Complex<f64>` | `/` | `div_scalar_impl` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
+| `i32` | `+` | `add_scalar` | 原生左标量 / `Scalar<A>` → `add_scalar` |
+| `i32` | `-` | `sub_scalar` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
+| `i32` | `*` | `mul_scalar` | 原生左标量 / `Scalar<A>` → `mul_scalar` |
+| `i32` | `/` | `div_scalar` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
+| `i64` | `+` | `add_scalar` | 原生左标量 / `Scalar<A>` → `add_scalar` |
+| `i64` | `-` | `sub_scalar` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
+| `i64` | `*` | `mul_scalar` | 原生左标量 / `Scalar<A>` → `mul_scalar` |
+| `i64` | `/` | `div_scalar` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
+| `f32` | `+` | `add_scalar` | 原生左标量 / `Scalar<A>` → `add_scalar` |
+| `f32` | `-` | `sub_scalar` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
+| `f32` | `*` | `mul_scalar` | 原生左标量 / `Scalar<A>` → `mul_scalar` |
+| `f32` | `/` | `div_scalar` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
+| `f64` | `+` | `add_scalar` | 原生左标量 / `Scalar<A>` → `add_scalar` |
+| `f64` | `-` | `sub_scalar` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
+| `f64` | `*` | `mul_scalar` | 原生左标量 / `Scalar<A>` → `mul_scalar` |
+| `f64` | `/` | `div_scalar` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
+| `Complex<f32>` | `+` | `add_scalar` | 原生左标量 / `Scalar<A>` → `add_scalar` |
+| `Complex<f32>` | `-` | `sub_scalar` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
+| `Complex<f32>` | `*` | `mul_scalar` | 原生左标量 / `Scalar<A>` → `mul_scalar` |
+| `Complex<f32>` | `/` | `div_scalar` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
+| `Complex<f64>` | `+` | `add_scalar` | 原生左标量 / `Scalar<A>` → `add_scalar` |
+| `Complex<f64>` | `-` | `sub_scalar` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
+| `Complex<f64>` | `*` | `mul_scalar` | 原生左标量 / `Scalar<A>` → `mul_scalar` |
+| `Complex<f64>` | `/` | `div_scalar` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
 
 上表由宏展开后的规范化结果表示；实际实现中，标量运算符的 LHS/RHS 组合通过宏生成，覆盖矩阵参见 §5.3-5.4。
 
@@ -402,7 +402,7 @@ Broadcast module (broadcast.rs) -- memory access (storage)
 
 ```
 tensor + scalar:
-    tensor.add_scalar_impl(scalar)
+    tensor.add_scalar(scalar)
 
     Advantages:
     1. No broadcast view allocation
@@ -517,7 +517,7 @@ tensor + scalar:
 | ---------------------------------------------------------- | ---------------------------- |
 | `(a + b).unwrap().shape() == broadcast_shape(a.shape(), b.shape())` | 随机形状对（仅对可广播输入） |
 | `(&a + &b) == (a.clone() + b.clone())`                     | 借用与所有权 `Result` 一致   |
-| `(a + scalar) == a.add_scalar_impl(scalar)`                | 标量路径结果等价             |
+| `(a + scalar) == a.add_scalar(scalar)`                | 标量路径结果等价             |
 | `Scalar(s) + tensor == tensor + s`                         | 包装器左标量与右标量路径等价 |
 | 结果张量与输入张量不共享内存（`ptr` 不同）                 | 对 `Ok` 结果做指针比较       |
 
