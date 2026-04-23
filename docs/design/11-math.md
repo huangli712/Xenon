@@ -283,11 +283,10 @@ where
 }
 ```
 
-> **数学函数精度约束：** `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 使用 Rust 提供的数学能力，不引入外部数学 crate。
->
-> - 精确类（`floor` / `ceil`）：结果须与标量路径逐元素一致。
-> - 近似类（`sin` / `sqrt` / `exp` / `ln`）：以 `需求说明书 §28.3` 为权威基线；实现细节参见 `00-coding.md §7.4`。
-> - 同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。
+- `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 使用 Rust 提供的数学能力，不引入外部数学 crate。
+- 精确类（`floor` / `ceil`）：结果须与标量路径逐元素一致。
+- 近似类（`sin` / `sqrt` / `exp` / `ln`）：以 `需求说明书 §28.3` 为权威基线；实现细节参见 `00-coding.md §7.4`。
+- 同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。
 
 ### 5.6 复数运算（ComplexScalar 约束）
 
@@ -321,11 +320,9 @@ where
 }
 ```
 
-> **命名说明：** 公开张量 API 统一使用 `conjugate()`（与 `Numeric::conjugate()` 保持一致）；`conj` 仅允许作为内部 `Complex` 方法名或实现细节出现，不构成公开 API 命名承诺。
-
-> **术语说明：** `modulus()` 对应 `需求说明书 §12` 中的“模”运算。`Complex<f32> → f32`，`Complex<f64> → f64`。
-
-> **类型一致性约束：** 参与逐元素运算或比较的双方元素类型须预先一致。因此，`Complex<T>` 与实数标量的混合张量 API（如 `add_real_scalar` / `mul_real_scalar`）不属于当前公开范围；若内部实现需要复用相应标量逻辑，也只能作为不对外承诺的内部辅助路径存在。
+- 公开张量 API 统一使用 `conjugate()`（与 `Numeric::conjugate()` 保持一致）；`conj` 仅允许作为内部 `Complex` 方法名或实现细节出现，不构成公开 API 命名承诺。
+- `modulus()` 对应 `需求说明书 §12` 中的“模”运算。`Complex<f32> → f32`，`Complex<f64> → f64`。
+- 参与逐元素运算或比较的双方元素类型须预先一致。因此，`Complex<T>` 与实数标量的混合张量 API（如 `add_real_scalar` / `mul_real_scalar`）不属于当前公开范围；若内部实现需要复用相应标量逻辑，也只能作为不对外承诺的内部辅助路径存在。
 
 ### 5.7 逻辑非（仅 bool）
 
@@ -342,7 +339,9 @@ where
 
 ### 5.8 比较运算
 
-`eq` / `ne` 对所有元素类型可用（包括 `bool` 与 `Complex`）；`lt` / `gt` 的需求级支持范围固定为 `i32`、`i64`、`f32`、`f64`，返回 `Tensor<bool, _>`。`bool` 与 `Complex` 类型不支持 `lt` / `gt`。
+- `eq` / `ne` 对所有元素类型可用（包括 `bool` 与 `Complex`）。
+- `lt` / `gt` 的需求级支持范围固定为 `i32`、`i64`、`f32`、`f64`，返回 `Tensor<bool, _>`。
+- `bool` 与 `Complex` 类型不支持 `lt` / `gt`。
 
 ```rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -395,11 +394,9 @@ where
 }
 ```
 
-> **类型边界说明：** `lt` / `gt` 不再复用 `RealScalar` 或更宽泛的 `Numeric + PartialOrd` 约束；公开 API 以 `OrderedCompareElement` 明确收敛到 `i32`、`i64`、`f32`、`f64` 四类元素类型。该 trait 定义见 `03-element.md §5.4a`。
-
-> **NaN 语义：** `eq(NaN, NaN)` 返回 `false`，`ne(NaN, NaN)` 返回 `true`，遵循 IEEE 754。
-
-> **标量比较入口：** 与 `需求说明书 §12` 一致，比较运算也提供标量-张量入口；标量按可广播到目标全形状的零维输入处理，因此成功路径的形状与对应张量输入版本一致。
+- `lt` / `gt` 不再复用 `RealScalar` 或更宽泛的 `Numeric + PartialOrd` 约束；公开 API 以 `OrderedCompareElement` 明确收敛到 `i32`、`i64`、`f32`、`f64` 四类元素类型。该 trait 定义见 `03-element.md §5.4a`。
+- `eq(NaN, NaN)` 返回 `false`，`ne(NaN, NaN)` 返回 `true`，遵循 IEEE 754。
+- 标量比较入口与 `需求说明书 §12` 一致，比较运算也提供标量-张量入口；标量按可广播到目标全形状的零维输入处理，因此成功路径的形状与对应张量输入版本一致。
 
 ```rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -446,9 +443,8 @@ where
 }
 ```
 
-> **标量算术语义：** 标量版算术方法与张量-张量运算遵循相同的 checked arithmetic 语义：有符号整数溢出、除以零、结果不可表示均遵循 panic 语义。
-
-> **标量广播语义：** 标量与张量之间的逐元素运算，标量按可广播到目标张量全形状的零维输入语义处理，统一经由广播路径实现，不另起独立语义。
+- 标量版算术方法与张量-张量运算遵循相同的 checked arithmetic 语义：有符号整数溢出、除以零、结果不可表示均遵循 panic 语义。
+- 标量与张量之间的逐元素运算，标量按可广播到目标张量全形状的零维输入语义处理，统一经由广播路径实现，不另起独立语义。
 
 ### 5.10 Good / Bad 对比示例
 
@@ -487,7 +483,7 @@ apply_unary(view, f):
     return result
 ```
 
-> **`modulus()` 特殊执行骨架：** `modulus()` 的内部执行骨架与标准一元运算不同：输入元素类型为 `Complex<T>`，输出为 `T`。因此它不能直接复用 `apply_unary(view, f)` 这类“输入/输出同类型”的骨架，而需要独立的执行骨架处理类型变化。
+`modulus()` 特殊执行骨架：** `modulus()` 的内部执行骨架与标准一元运算不同：输入元素类型为 `Complex<T>`，输出为 `T`。因此它不能直接复用 `apply_unary(view, f)` 这类“输入/输出同类型”的骨架，而需要独立的执行骨架处理类型变化。
 
 ### 6.2 二元逐元素实现（含广播）
 
