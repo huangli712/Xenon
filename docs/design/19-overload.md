@@ -111,25 +111,26 @@ src/overload/
 
 完整的 `impl` 组合表（以 `Add` 为例，`Sub`/`Mul`/`Div` 同理）：
 
-> **稳定性分层说明：** 下表仅列出当前稳定承诺；`TensorView` 相关组合已纳入当前稳定范围，与 `broadcast_to()` / `transpose()` / `slice()` 返回视图的既有设计保持一致。`ArcTensor` 相关组合仍保留在文末“附录：增强候选”。
 
 | Lhs                  | Rhs                  | Output         | 广播     | impl 签名                                                                           |
 | -------------------- | -------------------- | -------------- | -------- | ----------------------------------------------------------------------------------- |
-| `Tensor<A, D>`       | `Tensor<A, E>`       | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>`                  |
-| `&Tensor<A, D>`      | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<Owned<A>,D>`                |
-| `Tensor<A, D>`       | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>`                 |
-| `&Tensor<A, D>`      | `Tensor<A, E>`       | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<TensorBase<Owned<A>,E>> for &TensorBase<Owned<A>,D>`                 |
-| `&TensorView<A, D>`  | `&TensorView<A, E>`  | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<ViewRepr<'a, A>,D>` |
-| `&TensorView<A, D>`  | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<ViewRepr<'a, A>,D>`        |
-| `&Tensor<A, D>`      | `&TensorView<A, E>`  | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓        | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<Owned<A>,D>`        |
+| `Tensor<A, D>`       | `Tensor<A, E>`       | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓ | `impl<...> Add<TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>`                  |
+| `&Tensor<A, D>`      | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓ | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<Owned<A>,D>`                |
+| `Tensor<A, D>`       | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓ | `impl<...> Add<&TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>`                 |
+| `&Tensor<A, D>`      | `Tensor<A, E>`       | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓ | `impl<...> Add<TensorBase<Owned<A>,E>> for &TensorBase<Owned<A>,D>`                 |
+| `&TensorView<A, D>`  | `&TensorView<A, E>`  | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓ | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<ViewRepr<'a, A>,D>` |
+| `&TensorView<A, D>`  | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓ | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<ViewRepr<'a, A>,D>`        |
+| `&Tensor<A, D>`      | `&TensorView<A, E>`  | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓ | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<Owned<A>,D>`        |
 | `Tensor<A, D>`       | `A`                  | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for TensorBase<Owned<A>,D>`                                       |
 | `&Tensor<A, D>`      | `A`                  | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for &TensorBase<Owned<A>,D>`                                      |
 | `Scalar<A>`          | `Tensor<A, D>`       | `Tensor<A, D>` | 标量广播 | `impl<...> Add<TensorBase<Owned<A>,D>> for Scalar<A>`                               |
 | `Scalar<A>`          | `&Tensor<A, D>`      | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&TensorBase<Owned<A>,D>> for Scalar<A>`                              |
 
-> **说明**：`F` 为广播后的维度类型，由 `<D as BroadcastDim<E>>::Output` 关联类型计算。
-> `BroadcastDim` 定义于 `02-dimension.md §5.9`。
-> **可见性说明**：虽然 `02-dimension.md` 将 `BroadcastDim` 记为“内部辅助”，但由于它出现在 `broadcast` / `overload` 的公开签名与 trait bound 中，因此实现上必须对这些公开签名保持可命名；稳定承诺仅要求用户可使用这些签名，不要求用户自行实现该 trait。
+- 上表仅列出当前稳定承诺。
+- `TensorView` 相关组合已纳入当前稳定范围，与 `broadcast_to()` / `transpose()` / `slice()` 返回视图的既有设计保持一致。
+- `ArcTensor` 相关组合仍保留在文末“附录：增强候选”。
+- `F` 为广播后的维度类型，由 `<D as BroadcastDim<E>>::Output` 关联类型计算。
+- `BroadcastDim` 定义于 `02-dimension.md §5.9`。虽然 `02-dimension.md` 将 `BroadcastDim` 记为“内部辅助”，但由于它出现在 `broadcast` / `overload` 的公开签名与 trait bound 中，因此实现上必须对这些公开签名保持可命名；稳定承诺仅要求用户可使用这些签名，不要求用户自行实现该 trait。
 
 ### 5.2 张量×张量运算符
 
@@ -206,20 +207,15 @@ where
 }
 ```
 
-> **设计决策引用：** 此处沿用 §4.2 `ADR-OVERLOAD-RESULT` 的项目级稳定结论：`+` / `-` / `*` / `/` 在广播不兼容时返回 `Result<Tensor<A, F>, XenonError>`，而不是 panic。
-
-> **BroadcastDim 约束说明：** 与 `15-broadcast.md` 保持一致；对称张量×张量运算须同时满足 `D: BroadcastDim<E>` 与 `E: BroadcastDim<D>`，以保证输出维度类型可双向收敛到同一关联类型。
-
-> **实现说明：** 委托示例中的 `add_tensor_impl()` 代表与 trait 方法同名的内部/固有辅助入口，用于避免 `fn add(self, rhs) { self.add(&rhs) }` 这类写法产生对 trait 方法自身的递归歧义。
-
-> **语义边界说明：** 广播失败走 `Err(XenonError::BroadcastError { ... })` 的项目级稳定定性见 §4.2 `ADR-OVERLOAD-RESULT`；整数除零、整数溢出与结果不可表示仍保持 panic。本文 §11 的决策 2a / ADR-2b 仅记录该 ADR 在本模块中的细化范围。
-
-> **范围收敛说明：** 当前稳定承诺覆盖 `Owned×Owned`、`TensorView×TensorView`、`TensorView×Tensor`、`Tensor×TensorView` 以及标量路径；仅 `ArcTensor` 相关组合继续保留为增强候选。实现优先级：`Owned×Owned` > `Owned/View` 混合路径 > `ArcTensor` 候选。
-
-> **说明**：当前稳定 API 直接承诺只读 `TensorView` 参与运算符重载，这样 `broadcast_to()`、`transpose()`、`slice()` 等返回视图的操作结果可以继续参与四则运算；`ArcRepr` 相关组合若后续需要，统一参考文末附录。
-> `TensorViewMut` **不**直接参与运算符重载。若要使用运算符，必须先调用 `.view()` 获取只读 `TensorView`，再对该只读视图应用运算符。
-> 视图参与的稳定组合也沿用相同的 `Result<Tensor<A, F>, XenonError>` 边界；无论输入是否为视图，成功结果都分配新的 owned 张量，不提供原地写回或视图就地更新。
-> 张量×张量路径在广播失败时返回 `Result<Tensor<A, F>, XenonError>`；标量路径无广播失败分支，直接返回 `Tensor<A, D>`。两类路径成功值都为 owned 结果，因为视图本身不拥有数据，无法作为运算结果的存储。
+- `+` / `-` / `*` / `/` 在广播不兼容时返回 `Result<Tensor<A, F>, XenonError>`，而不是 panic。
+- 与 `15-broadcast.md` 保持一致；对称张量×张量运算须同时满足 `D: BroadcastDim<E>` 与 `E: BroadcastDim<D>`，以保证输出维度类型可双向收敛到同一关联类型。
+- 委托示例中的 `add_tensor_impl()` 代表与 trait 方法同名的内部/固有辅助入口，用于避免 `fn add(self, rhs) { self.add(&rhs) }` 这类写法产生对 trait 方法自身的递归歧义。
+- 广播失败走 `Err(XenonError::BroadcastError)` ；整数除零、整数溢出与结果不可表示仍保持 panic。本文 §11 的决策 2a / ADR-2b 仅记录该 ADR 在本模块中的细化范围。
+- 当前稳定承诺覆盖 `Owned×Owned`、`TensorView×TensorView`、`TensorView×Tensor`、`Tensor×TensorView` 以及标量路径；仅 `ArcTensor` 相关组合继续保留为增强候选。实现优先级：`Owned×Owned` > `Owned/View` 混合路径 > `ArcTensor` 候选。
+- 当前稳定 API 直接承诺只读 `TensorView` 参与运算符重载，这样 `broadcast_to()`、`transpose()`、`slice()` 等返回视图的操作结果可以继续参与四则运算；`ArcRepr` 相关组合若后续需要，统一参考文末附录。
+- `TensorViewMut` **不**直接参与运算符重载。若要使用运算符，必须先调用 `.view()` 获取只读 `TensorView`，再对该只读视图应用运算符。
+- 视图参与的稳定组合也沿用相同的 `Result<Tensor<A, F>, XenonError>` 边界；无论输入是否为视图，成功结果都分配新的 owned 张量，不提供原地写回或视图就地更新。
+- 张量×张量路径在广播失败时返回 `Result<Tensor<A, F>, XenonError>`；标量路径无广播失败分支，直接返回 `Tensor<A, D>`。两类路径成功值都为 owned 结果，因为视图本身不拥有数据，无法作为运算结果的存储。
 
 ### 5.3 张量×标量运算符
 
@@ -286,23 +282,13 @@ where
 }
 ```
 
-> **说明**：`Scalar<A>` 包装器是实现“泛型左标量 + 张量”时的工程性折中，而不是原生
-> `scalar + tensor` 整体不可行的证明。对 Xenon 支持的具体标量类型（`i32`、`i64`、`f32`、`f64`、`Complex<f32>`、`Complex<f64>`），
-> 可以逐类型生成 `impl Add<TensorBase<...>> for T`；真正不可行的是 `impl<T> Add<TensorBase<...>> for T` 这种 blanket impl。
-> 因此“常用原生标量”在本文中明确指上述 6 个受支持算术元素类型，而不包括 `bool`、`usize` 或其他范围外类型。
-
-> **宏生成说明：** 标量运算符的 LHS/RHS 组合通过宏生成，覆盖矩阵参见 §5.3-5.4。
-
-> **标量路径返回说明：** 标量路径无形状不兼容风险，不返回 `Result`；运算符返回 `Tensor` 直接。整数溢出仍遵循 panic 语义。
-
-> **说明**：当前版本**不**稳定承诺 `&A` 形式的标量运算符重载。公开契约仅保证值形式 `tensor + scalar`、`Scalar(scalar) + tensor`，以及常用原生左标量（如 `5.0 + tensor`）。若后续版本需要 `&A` 支持，应以独立议题评估。
-
-> **说明**：当前稳定版本仅承诺 `TensorView` 参与张量×张量运算符；标量路径暂不扩展到 `TensorView`。`TensorViewMut` 若需使用运算符，同样必须先调用 `.view()` 转为只读 `TensorView`。
-
-> **补充说明**：当前版本标量运算符重载仅覆盖 owned `Tensor`；`TensorView` 的标量运算通过方法调用（如 `.add_scalar()`）实现，参见 `11-math.md §5.9`。后续版本可视需求扩展运算符覆盖到视图类型。
-
-> **设计决策：** 标量运算委托给 `add_scalar_impl()` / `sub_scalar_impl()` / `mul_scalar_impl()` / `div_scalar_impl()` 等内部 helper，
-> 其内部直接遍历输入与结果张量，而不是额外暴露通用 helper 作为稳定实现描述。
+- `Scalar<A>` 包装器是实现“泛型左标量 + 张量”时的工程性折中，而不是原生`scalar + tensor` 整体不可行的证明。对 Xenon 支持的具体标量类型（`i32`、`i64`、`f32`、`f64`、`Complex<f32>`、`Complex<f64>`），可以逐类型生成 `impl Add<TensorBase<...>> for T`；真正不可行的是 `impl<T> Add<TensorBase<...>> for T` 这种 blanket impl。因此“常用原生标量”在本文中明确指上述 6 个受支持算术元素类型，而不包括 `bool`、`usize` 或其他范围外类型。
+- 标量运算符的 LHS/RHS 组合通过宏生成，覆盖矩阵参见 §5.3-5.4。
+- 标量路径无形状不兼容风险，不返回 `Result`；运算符返回 `Tensor` 直接。整数溢出仍遵循 panic 语义。
+- 当前版本**不**稳定承诺 `&A` 形式的标量运算符重载。公开契约仅保证值形式 `tensor + scalar`、`Scalar(scalar) + tensor`，以及常用原生左标量（如 `5.0 + tensor`）。若后续版本需要 `&A` 支持，应以独立议题评估。
+- 当前稳定版本仅承诺 `TensorView` 参与张量×张量运算符；标量路径暂不扩展到 `TensorView`。`TensorViewMut` 若需使用运算符，同样必须先调用 `.view()` 转为只读 `TensorView`。
+- 当前版本标量运算符重载仅覆盖 owned `Tensor`；`TensorView` 的标量运算通过方法调用（如 `.add_scalar()`）实现，参见 `11-math.md §5.9`。后续版本可视需求扩展运算符覆盖到视图类型。
+- 标量运算委托给 `add_scalar_impl()` / `sub_scalar_impl()` / `mul_scalar_impl()` / `div_scalar_impl()` 等内部 helper，其内部直接遍历输入与结果张量，而不是额外暴露通用 helper 作为稳定实现描述。
 
 对左标量的非交换运算，需显式区分 helper：
 
@@ -320,8 +306,8 @@ where
 // Div: |a, b| a / b   (constraint A: Numeric + Div<Output = A>)
 ```
 
-> **除法语义补充：** 对整数类型，`Div` 路径中的除以零和结果不可表示（如最小负值除以 `-1`）
-> 均遵循 `需求说明书 §12` 与 `需求说明书 §27` 的统一 panic 语义；运算符重载仅把广播不兼容报告为 `Result::Err`，不额外吞掉或包装这类不可恢复错误。
+**除法语义补充：** 对整数类型，`Div` 路径中的除以零和结果不可表示（如最小负值除以 `-1`）
+均遵循 `需求说明书 §12` 与 `需求说明书 §27` 的统一 panic 语义；运算符重载仅把广播不兼容报告为 `Result::Err`，不额外吞掉或包装这类不可恢复错误。
 
 #### 5.4.1 标量重载覆盖矩阵
 

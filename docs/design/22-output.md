@@ -293,13 +293,11 @@ where
             self.strides(),
             dtype_name::<A>()
         )?;
-        // Layout information
-        if self.strides().iter().any(|&stride| stride == 0) {
-            write!(f, "broadcast")?;
-        } else if self.is_f_contiguous() {
-            write!(f, "f-contiguous")?;
-        } else {
-            write!(f, "non-contiguous")?;
+        // Layout information — reuse LayoutState from layout module
+        match self.layout_state() {
+            LayoutState::FContiguous => write!(f, "f-contiguous")?,
+            LayoutState::BroadcastView => write!(f, "broadcast")?,
+            LayoutState::NonContiguous => write!(f, "non-contiguous")?,
         }
         write!(f, ")\n")?;
         // Data section (shares the same truncation/layout rules as Display, but
@@ -695,7 +693,7 @@ Debug 输出的 `dtype=` 字段应通过内部 `dtype_name()` 映射获得稳定
 | ----------------------- | ----------------- | ---------------------------------- | ------------------------------------------------------------ |
 | `format → tensor`       | `tensor`          | `.shape()` / `.ndim()` / `.len()`  | `Display` 路径读取基础张量元数据，参见 `07-tensor.md` §5     |
 | `format → tensor`       | `tensor`          | `.strides()` / `is_f_contiguous()` | `Debug` 额外输出布局相关元数据，参见 `06-layout.md` §5       |
-| `format → tensor/index` | `tensor`, `index` | `shape()`, 内部 `read_at(indices)` | 按逻辑行/列结构读取元素；不依赖 `iter()` 的 F-order 内存顺序，且不扩展公开索引契约 |
+| `format → tensor`       | `tensor`          | `shape()`, 内部 `read_at(indices)` | 按逻辑行/列结构读取元素；不依赖 `iter()` 的 F-order 内存顺序，且不扩展公开索引契约 |
 | `format → element`      | `element`         | 内部 `dtype_name::<A>()`           | 输出稳定 dtype 名称与元素类型信息，参见本文 §6.2             |
 
 ### 9.2 数据流描述
