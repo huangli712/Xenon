@@ -263,7 +263,7 @@ fn sum_floating_or_complex<A: Numeric + Copy>(iter: impl Iterator<Item = A>) -> 
 - 复数路径：对实部和虚部分量分别沿用对应实数加法语义，因此含 `NaN` 分量时同样传播。
 - 整数 SIMD fallback：整数归约默认优先标量/串行路径以保证 checked arithmetic 精确等价。仅当 SIMD 路径能证明与逐步 checked 加法完全一致时才启用优化。
 - SIMD 路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Simd` 时委托 `simd/` 纯向量化后端；浮点/复数路径允许不同合并顺序。以 `需求说明书 §28.3` 为权威基线。
-- 并行路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Parallel` 时委托 `parallel/` 纯并行后端；整数路径必须保持与串行精确一致，浮点/复数路径允许不同合并顺序。以 `需求说明书 §28.3` 为权威基线；实现细节参见 `00-coding.md §7.4`。
+- 并行路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Parallel` 时委托 `parallel/` 纯并行后端；整数路径必须保持与串行精确一致，浮点/复数路径允许不同合并顺序。以 `需求说明书 §28.3` 为权威基线。
 - 同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用以 `需求说明书 §28.3` 为权威基线的文档化容差。
 
 ### 6.4 并行 axis 归约写回策略
@@ -406,6 +406,12 @@ fn sum_floating_or_complex<A: Numeric + Copy>(iter: impl Iterator<Item = A>) -> 
 | `sum_axis_keepdims(axis).shape()[axis] == 1`                                      | 随机合法 shape 与 axis 验证    |
 | `sum_axis(axis)` 与 `sum_axis_keepdims(axis)` 在移除长度为 `1` 的目标轴后结果等价 | 随机输入验证                   |
 | 连续/非连续视图上的 `sum` 结果一致                                                | 基于切片/转置生成视图后比较    |
+
+### 8.5 集成测试
+
+| 测试文件                  | 测试内容                                                                 |
+| ------------------------- | ------------------------------------------------------------------------ |
+| `tests/test_reduction.rs` | `sum` / `sum_axis` / `sum_axis_keepdims` 与 tensor 创建、维度变换、元素类型的端到端协同验证 |
 
 ### 8.6 Feature gate / 配置测试
 
