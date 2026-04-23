@@ -229,8 +229,9 @@ where
 
 ### 5.5 to_owned / into_owned
 
-`to_owned()` / `into_owned()` 的公开语义只在本文维护；它们返回的 owned 结果固定为 Xenon 的 canonical F-order。`20-utility.md` 可引用它们作为 `to_contiguous()` 的实现依赖，但不再重复定义其契约。
-同类型拷贝（`to_owned()`/`into_owned()`）不通过 fallible `cast()` 建模，而是始终成功的基础操作。`cast::<A>()` 不适用于同类型拷贝场景。
+- `to_owned()` / `into_owned()` 的公开语义只在本文维护；它们返回的 owned 结果固定为 Xenon 的 canonical F-order。`20-utility.md` 可引用它们作为 `to_contiguous()` 的实现依赖，但不再重复定义其契约。
+- 同类型拷贝（`to_owned()`/`into_owned()`）不通过 fallible `cast()` 建模，而是始终成功的基础操作。`cast::<A>()` 不适用于同类型拷贝场景。
+- `ArcRepr → Owned` 始终分配并复制（O(n)），与引用计数无关。
 
 ````rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -257,7 +258,9 @@ where
         for elem in self.iter().cloned() {
             data.push(elem);
         }
-        // from_shape_vec is the normative construction path; this aligned variant stays an internal helper, not a public API (see 05-storage.md §5.1)
+        // from_shape_vec is the normative construction path; 
+        // this aligned variant stays an internal helper,
+        // not a public API (see 05-storage.md §5.1)
         Tensor::from_shape_vec_aligned(self.raw_dim(), data)
     }
 }
@@ -279,9 +282,8 @@ where
 
 ### 5.6 内部构造辅助边界
 
-> `cast()` / `to_owned()` 在实现上可以复用张量或存储层的内部构造 helper，但这些 helper 的命名、文件布局、是否存在 unchecked 变体以及具体对齐策略，都不属于 convert 模块的稳定文档面。
-
-> 若内部保留类似 `from_shape_vec_aligned_unchecked` 的便捷路径，它也只属于内部 helper、非公开 API；其 `# Safety` 只能要求调用方保证：`shape` 的已验证元素总数与 `data.len()` 一致，且由 `shape` 推导出的 F-order 元数据在当前版本范围内合法。底层使用哪一种分配器或对齐值，不应写入该 safety 契约。
+- `cast()` / `to_owned()` 在实现上可以复用张量或存储层的内部构造 helper，但这些 helper 的命名、文件布局、是否存在 unchecked 变体以及具体对齐策略，都不属于 convert 模块的稳定文档面。
+- 若内部保留类似 `from_shape_vec_aligned_unchecked` 的便捷路径，它也只属于内部 helper、非公开 API；其 `# Safety` 只能要求调用方保证：`shape` 的已验证元素总数与 `data.len()` 一致，且由 `shape` 推导出的 F-order 元数据在当前版本范围内合法。底层使用哪一种分配器或对齐值，不应写入该 safety 契约。
 
 ### 5.7 Good / Bad 对比
 
@@ -309,22 +311,22 @@ let ints: Tensor<i32, Ix1> = floats.cast().unwrap();  // forbidden: returns Type
 
 ### 6.1 CastTo 实现（核心转换路径）
 
-> `CastTo` 的规范签名统一为：
->
-> ```rust,ignore
-> pub trait CastTo<T> {
->     fn cast_to(self) -> Result<T, XenonError>;
-> }
-> ```
->
-> 调用形态为 `value.cast_to()`；`element_index` 由调用方在逐元素遍历时单独跟踪，而不是作为 `CastTo` 的参数传入。
->
-> **注意**：`element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引。
->
-> ```rust,ignore
-> // Element index is tracked by the caller, not passed to CastTo
-> let converted: Result<T, XenonError> = value.cast_to();
-> ```
+`CastTo` 的规范签名统一为：
+
+```rust,ignore
+pub trait CastTo<T> {
+    fn cast_to(self) -> Result<T, XenonError>;
+}
+```
+
+调用形态为 `value.cast_to()`；`element_index` 由调用方在逐元素遍历时单独跟踪，而不是作为 `CastTo` 的参数传入。
+
+**注意**：`element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引。
+
+```rust,ignore
+// Element index is tracked by the caller, not passed to CastTo
+let converted: Result<T, XenonError> = value.cast_to();
+```
 
 ```rust,ignore
 use core::any::TypeId;
