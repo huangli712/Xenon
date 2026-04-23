@@ -86,13 +86,13 @@ src/reduction/
 | ------------------ | --------------------------------------------------------------------------------------------- |
 | `tensor`           | `TensorBase<S, D>`、`Tensor<A, D>`、`.shape()`、`.ndim()`、`.iter()`、结果张量构造接口        |
 | `dimension`        | `Axis`、`Dimension`、运行时 axis/shape 投影辅助，以及仅供内部结果维度投影使用的 `RemoveAxis`  |
-| `element`          | `Numeric`、`CheckedAdd`、`ComplexScalar`、`RealScalar`、`A::zero()`                           |
+| `element`          | `Numeric`、`CheckedAdd`、`A::zero()`                                                          |
 | `dispatch`（内部） | `select_exec_path()`、`ExecPath`                                                              |
 | `error`            | `XenonError::InvalidAxis`                                                                     |
 | `simd`（可选）     | 仅在可证明与标量累加顺序和结果语义一致时通过纯向量化 kernel 参与 `sum` 实现                   |
 | `parallel`（可选） | 仅在通过 dispatch.rs 路径裁决后提供纯并行执行，不含串行回退，并遵守无嵌套并行约束             |
 
-### 4.3 依赖合法性与新增依赖说明
+### 4.3 依赖合法性
 
 | 项目           | 说明                                                                        |
 | -------------- | --------------------------------------------------------------------------- |
@@ -191,7 +191,7 @@ assert_eq!(empty.sum(), 0);
 // Err(XenonError::InvalidArgument { operation: "sum_axis", argument: "axis", .. })
 
 // Bad - do not replace integer overflow panic with a recoverable error
-// return Err(XenonError::InvalidAxis { .. });
+// Ok(0) or Err(XenonError::InvalidShape { .. }) — overflow must panic, not return
 ```
 
 ---
@@ -253,7 +253,7 @@ fn sum_int<I: Numeric + CheckedAdd>(iter: impl Iterator<Item = I>) -> I {
     })
 }
 
-fn sum_floating_or_complex<A: Numeric + Copy>(iter: impl Iterator<Item = A>) -> A {
+fn sum_floating_or_complex<A: Numeric>(iter: impl Iterator<Item = A>) -> A {
     iter.fold(A::zero(), |acc, x| acc + x)
 }
 ```
@@ -377,6 +377,7 @@ fn sum_floating_or_complex<A: Numeric + Copy>(iter: impl Iterator<Item = A>) -> 
 | `test_sum_simd_consistency`                | SIMD 路径与标量结果一致，否则正确回退                           | 高     |
 | `test_sum_large_tensor_parallel_threshold` | 大张量（`10^7` 量级元素）达到阈值后并行路径仍满足文档化语义     | 高     |
 | `test_sum_high_rank_ixdyn`                 | 高 rank 动态维输入上的 `sum_axis*` shape 与 keepdims 语义正确   | 高     |
+| `test_sum_scalar_rank0`                      | rank-0 张量 `sum()` 返回其唯一元素                               | 高     |
 | `test_sum_inf`                             | `Inf` / `-Inf` 输入遵循 IEEE 754 语义                           | 高     |
 
 ### 8.3 边界测试场景

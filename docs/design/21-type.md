@@ -1,23 +1,23 @@
 # 类型转换模块设计
 
-> 文档编号: 21 | 模块: `src/convert/` | 阶段: Phase 4
-> 前置文档: `07-tensor.md`, `03-element.md`
-> 需求参考: `需求说明书 §23`, `需求说明书 §27`, `需求说明书 §28.4`
+> 文档编号: 21
+> 模块目录: src/convert/
+> 任务阶段: Phase 4
+> 前置文档: 07-tensor.md, 03-element.md
+> 需求参考: 需求说明书 §23、§27、§28
 > 范围声明: 范围内
 
 ---
 
 ## 1. 模块定位
 
-> **范围说明：** 本文档核心覆盖 `cast` / `CastTo` 转换；`to_owned()` / `into_owned()` 仅作为同模块便利 API 保留，并与 `cast()` 共享转换矩阵基础设施。
-
 ### 1.1 职责边界
 
-| 职责           | 包含                                                 | 不包含                                                 |
-| -------------- | ---------------------------------------------------- | ------------------------------------------------------ |
-| 逐元素类型转换 | `cast<B: CastElement>(&self) -> Result<Tensor<B, D>, XenonError>` | 隐式类型提升（需显式调用）                             |
-| 同类型拷贝     | `to_owned`、`into_owned`                             | 标准库 `From`/`Into` 实现（归构造模块）                |
-| 范围边界       | `需求说明书 §23` 要求的逐元素类型转换与同类型拷贝                 | 存储模式互转（归 `storage` / `tensor`）、连续化 helper（归 `utility`） |
+| 职责           | 包含                                                 | 不包含                                       |
+| -------------- | ---------------------------------------------------- | -------------------------------------------- |
+| 逐元素类型转换 | `cast<B: CastElement>(&self) -> Result<Tensor<B, D>, XenonError>` | 隐式类型提升（需显式调用）      |
+| 同类型拷贝     | `to_owned`、`into_owned`                             | 标准库 `From`/`Into` 实现（归构造模块）      |
+| 范围边界       | 逐元素类型转换与同类型拷贝 | 存储模式互转（归 `storage` / `tensor`）、连续化 helper（归 `utility`） |
 
 ### 1.2 设计原则
 
@@ -26,21 +26,7 @@
 | 显式转换   | 所有类型转换须显式调用 `cast()`，无隐式提升                                |
 | 失败可诊断 | 有损转换默认返回可恢复错误，错误上下文由 `XenonError::TypeConversion` 承载 |
 | 存储约束   | `cast` 面向所有可读存储开放，但结果统一物化为 owned 张量                   |
-| 需求闭合   | 仅支持 `需求说明书 §23.1` 与 `需求说明书 §23.2` 定义的类型对及其成功前提                   |
-
-### 1.3 在架构中的位置
-
-```
-Dependency layers:
-L0: error, private
-L1: dimension, element, complex
-L2: layout (depends on dimension)
-L3: storage (independent of layout; owned and consumed by tensor)
-L4: tensor (depends on storage, dimension)
-L5: broadcast, iter, ffi
-L6: math, matrix, reduction, shape, index, util
-L7: convert  ← current module
-```
+| 需求闭合   | 仅支持 `需求说明书 §23.1` 与 `需求说明书 §23.2` 定义的类型对及其成功前提   |
 
 ---
 
@@ -48,10 +34,10 @@ L7: convert  ← current module
 
 | 类型     | 内容 |
 | -------- | ---- |
-| 需求映射 | `需求说明书 §23`, `需求说明书 §27`, `需求说明书 §28.4` |
+| 需求映射 | 需求说明书 §23、§27、§28.4 |
 | 范围内   | `cast()` / `CastTo` 为核心公开转换面；`to_owned()` / `into_owned()` 作为同模块便利 API 保留。 |
-| 范围外   | 存储模式互转（归 `storage` / `tensor`）、标准库 `From` / `TryFrom` 实现（归构造模块）、连续化 helper（归 `utility`），以及超出需求矩阵的隐式转换。 |
-| 非目标   | 不默认放宽有损转换规则，不新增第三方转换库，也不把 `convert/` 扩展为独立的非 cast 存储转换层。 |
+| 范围外   | 存储模式互转（归 `storage` / `tensor`）、标准库 `From` / `TryFrom` 实现（归构造模块）、连续化 helper（归 `utility`）。|
+| 非目标   | 不默认放宽有损转换规则，不新增第三方转换库，也不把 `convert/` 扩展为独立的非 cast 存储转换层。|
 
 ---
 
@@ -64,20 +50,11 @@ src/
     └── cast.rs              # cast() core plus colocated convenience APIs backed by the same matrix
 ```
 
-多文件设计：`convert/` 收敛为 cast-focused 布局；`to_owned()` / `into_owned()` 若保留于本模块，也与 `cast()` 共置于同一实现文件或同一导出面，不再单列非 cast 子文件。
-
-### 3.1 文件职责
-
-| 文件            | 职责                                                                      | 预估行数 |
-| --------------- | ------------------------------------------------------------------------- | -------- |
-| `mod.rs`        | 模块根，re-exports 所有公共类型                                           | ~20      |
-| `cast.rs`       | 消费 `CastTo<T>` trait，提供 `cast()` 核心路径，并容纳同模块便利 API 语义 | ~250     |
-
 ---
 
 ## 4. 依赖关系
 
-### 4.1 依赖图
+### 4.1 依赖图（ASCII）
 
 ```
 src/convert/
@@ -104,17 +81,17 @@ External dependencies:
 | `layout`    | `is_f_contiguous()`（参见 `06-layout.md` §5）                                                                |
 | `error`     | `XenonError`, `Result<T>`（参见 `26-error.md` §5）                                                           |
 
-### 4.3 依赖方向声明
-
-> **依赖方向：单向向上。** `convert` 仅消费 `tensor`、`storage` 等核心模块，不被它们依赖。
-
-### 4.4 依赖合法性与替代方案
+### 4.3 依赖合法性与替代方案
 
 | 项目           | 说明 |
 | -------------- | ---- |
 | 新增第三方依赖 | 无 |
 | 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
 | 替代方案       | 不适用；当前范围内无需额外第三方依赖。 |
+
+### 4.4 依赖方向声明
+
+依赖方向：单向向上。`convert` 仅消费 `tensor`、`storage` 等核心模块，不被它们依赖。
 
 ---
 
@@ -478,14 +455,6 @@ impl CastTo<i32> for i64 {
   - 前置: T1
   - 预计: 10 min
 
-### 并行执行图
-
-```
-Wave 1: [T1] ──▶ [T2]
-                    │
-Wave 2: [T3] [T4] [T5]  (parallel)
-```
-
 ---
 
 ## 8. 测试计划
@@ -529,15 +498,7 @@ Wave 2: [T3] [T4] [T5]  (parallel)
 | `Complex { re: 1.0, im: 0.0 } → f64` | 成功                                            |
 | `Complex { re: 1.0, im: 2.0 } → f64` | 返回 `TypeConversion`                           |
 
-### 8.4 `需求说明书 §28.4` 边界测试场景
-
-| 场景 | 说明 |
-| ---- | ---- |
-| 高维非连续输入 | rank-6 view / `Arc` 输入执行 `cast()` 后结果 shape 正确，非连续布局不改变转换规则 |
-| 大张量逐元素失败定位 | `10^7` 量级张量中首个非法元素触发 `TypeConversion`，错误携带首个失败索引 |
-| `usize` 拒绝路径 | `Tensor<usize, _>.cast::<T>()` 与 `Tensor<T, _>.cast::<usize>()` 均在编译期拒绝 |
-
-### 8.5 属性测试不变量
+### 8.4 属性测试不变量
 
 | 不变量                                | 测试方法         |
 | ------------------------------------- | ---------------- |
@@ -546,20 +507,20 @@ Wave 2: [T3] [T4] [T5]  (parallel)
 | 所有有损组合默认失败                  | 按类型对枚举验证 |
 | `to_owned().shape() == view.shape()`  | 随机形状         |
 
-### 8.6 集成测试
+### 8.5 集成测试
 
 | 测试文件                   | 测试内容                                                                                                   |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `tests/test_conversion.rs` | `cast` / `to_owned` / `into_owned` 与 `tensor`、`element`、`storage`、`layout`、`complex` 的端到端协同路径 |
 
-### 8.7 Feature gate / 配置测试
+### 8.6 Feature gate / 配置测试
 
 | 配置 | 验证点 |
 | ---- | ---- |
 | 默认配置 | `cast` / `to_owned` / `into_owned` 在默认构建下保持显式转换与错误诊断契约。 |
 | 其他 feature 组合 | 不适用；当前模块无额外 feature gate。 |
 
-### 8.8 类型边界 / 编译期测试
+### 8.7 类型边界 / 编译期测试
 
 | 场景 | 测试方式 |
 | ---- | ---- |
@@ -652,13 +613,6 @@ User calls cast() / to_owned() / into_owned()
 ---
 
 ## 13. 平台与工程约束
-
-本模块须遵循项目统一工程约束，不单独定义 `no_std` 目标：
-
-- 仅支持 `std` 环境（参见 `需求说明书 §1.3`）
-- 保持单 crate 结构
-- 遵循 SemVer
-- 不新增超出项目基线的第三方依赖
 
 | 项目       | 约束                                                      |
 | ---------- | --------------------------------------------------------- |
