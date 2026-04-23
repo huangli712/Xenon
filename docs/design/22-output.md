@@ -489,7 +489,9 @@ println!("strides: {:?}", tensor.strides());
 
 ### 6.1 格式化算法
 
-**精度控制**：如果 `FormatConfig::precision` 为 `Some(p)`，浮点数格式化使用 `write!(f, "{:.prec$}", value, prec = p)`；为 `None` 时使用默认精度（即 `write!(f, "{}", value)`）。对 `Complex<T>` 而言，`precision` 分别作用于 `re` 和 `im` 两个分量，再按 `a+bj` / `a-bj` 规则拼接，不共享额外的整体舍入层。
+如果 `FormatConfig::precision` 为 `Some(p)`，浮点数格式化使用 `write!(f, "{:.prec$}", value, prec = p)`；为 `None` 时使用默认精度（即 `write!(f, "{}", value)`）。对 `Complex<T>` 而言，`precision` 分别作用于 `re` 和 `im` 两个分量，再按 `a+bj` / `a-bj` 规则拼接，不共享额外的整体舍入层。
+
+对 F-order 张量，格式化必须按**逻辑索引**而不是物理线性内存顺序展开。以 `shape=[3, 3]` 为例，显示位置 `[i, j]` 对应逻辑索引 `[i, j]`，其线性位置为 `i + j * 3`；因此输出为 `[[1, 4, 7], [2, 5, 8], [3, 6, 9]]`，而不是按物理连续内存直接切成 `[[1, 2, 3], [4, 5, 6], [7, 8, 9]]`。内部若使用 `read_at(indices)` 等辅助函数，仅表示实现通过逻辑坐标取值，不构成新的公开索引承诺；该 helper 的前提为索引已通过范围检查，单次读取复杂度为 `O(ndim)`。
 
 ```
 fmt_1d(tensor, f):
@@ -539,8 +541,6 @@ fmt_nd(tensor, f, prefix):
         write "]"
 ```
 
-> 对 F-order 张量，格式化必须按**逻辑索引**而不是物理线性内存顺序展开。以 `shape=[3, 3]` 为例，显示位置 `[i, j]` 对应逻辑索引 `[i, j]`，其线性位置为 `i + j * 3`；因此输出为 `[[1, 4, 7], [2, 5, 8], [3, 6, 9]]`，而不是按物理连续内存直接切成 `[[1, 2, 3], [4, 5, 6], [7, 8, 9]]`。内部若使用 `read_at(indices)` 等辅助函数，仅表示实现通过逻辑坐标取值，不构成新的公开索引承诺；该 helper 的前提为索引已通过范围检查，单次读取复杂度为 `O(ndim)`。
-
 ### 6.2 dtype 名称映射
 
 ```rust,ignore
@@ -558,7 +558,7 @@ fn dtype_name<A: Element + 'static>() -> &'static str {
 }
 ```
 
-> Debug 输出的 `dtype=` 字段应通过内部 `dtype_name()` 映射获得稳定、紧凑的展示名，而不是直接暴露编译器的完整类型路径。
+Debug 输出的 `dtype=` 字段应通过内部 `dtype_name()` 映射获得稳定、紧凑的展示名，而不是直接暴露编译器的完整类型路径。
 
 ---
 
@@ -573,7 +573,7 @@ fn dtype_name<A: Element + 'static>() -> &'static str {
   - 前置: tensor 模块完成
   - 预计: 5 min
 
-- [ ] **T2**: 实现 NumPy 风格格式化辅助函数
+- [ ] **T2**: 实现 Numpy 风格格式化辅助函数
   - 文件: `src/format/pretty.rs`
   - 内容: `fmt_1d_display`, `fmt_1d_debug`, `fmt_nd_display`, `fmt_nd_debug`，一维/多维完整输出和截断输出
   - 测试: `test_fmt_1d_full`, `test_fmt_1d_truncated`
