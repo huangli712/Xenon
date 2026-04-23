@@ -364,7 +364,7 @@ fn dot_impl<A, D1, D2>(
 
 ### Wave 3: 标量路径收口
 
-- [ ] **T3a**: 接入并校验标量路径收口
+- [ ] **T3**: 接入并校验标量路径收口
   - 文件: `src/matrix/dot.rs`
   - 内容: 固化 rank/shape 校验后的标量路径收口，并把 `dispatch.rs` 的串行 vs 并行决策接到 dot
   - 测试: `test_dot_basic`, `test_dot_complex`
@@ -373,17 +373,17 @@ fn dot_impl<A, D1, D2>(
 
 ### Wave 4: SIMD / 并行路径校验
 
-- [ ] **T3b**: 接入并校验 SIMD 路径集成
+- [ ] **T4**: 接入并校验 SIMD 路径集成
   - 文件: `src/matrix/dot.rs`, `src/simd/mod.rs`
   - 内容: 在不进入并行路径时接入 SIMD kernel，并确保不满足条件时回退标量
   - 测试: `test_dot_simd_path_with_feature`
-  - 前置: T3a, simd 模块
+  - 前置: T3, simd 模块
   - 预计: 5 min
-- [ ] **T3c**: 接入并校验并行路径集成
+- [ ] **T5**: 接入并校验并行路径集成
   - 文件: `src/matrix/dot.rs`, `src/parallel/mod.rs`
   - 内容: 复用 `dispatch.rs` 决定并行路径，确保禁止嵌套并行，且 worker 内局部路径选择不触发第二层并行
   - 测试: `test_dot_parallel_path`
-  - 前置: T3a, parallel 模块
+  - 前置: T3, parallel 模块
   - 预计: 5 min
 
 ### Wave 5: 测试
@@ -392,7 +392,7 @@ fn dot_impl<A, D1, D2>(
   - 文件: `tests/test_matrix.rs`
   - 内容: 正确性/维度不匹配/复数/feature-gate 回退测试
   - 测试: 所有矩阵测试
-  - 前置: T2, T3a, T3b, T3c
+  - 前置: T2, T3, T4, T5
   - 预计: 10 min
 
 ---
@@ -426,7 +426,7 @@ fn dot_impl<A, D1, D2>(
 | `test_dot_simd_parallel_combined_consistency` | SIMD+并行组合路径与标量串行结果一致                             | 高     |
 | `test_dot_parallel_threshold_boundary`        | 并行阈值边界两侧都保持正确路径选择与结果语义                    | 高     |
 | `test_dot_high_rank_invalid_argument`         | 高 rank 输入（如 6D/动态高维）调用 `dot` 返回 `InvalidArgument` | 高     |
-| `test_dot_nan_input`                          | 实数 `dot` 任一输入含 `NaN` 时结果为 `NaN`                     | 高     |
+| `test_dot_nan_input`                          | 实数 `dot` 任一输入含 `NaN` 时结果为 `NaN`                      | 高     |
 | `test_dot_float_tolerance_across_paths`       | 浮点路径在标量/SIMD/并行之间满足以 `需求说明书 §28.3` 为权威基线的文档化容差 | 高     |
 
 ### 8.3 边界测试场景
