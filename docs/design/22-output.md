@@ -210,13 +210,10 @@ where
 
 ### 5.3 Display 实现
 
-> **读取顺序约定**：格式化输出按**逻辑多维索引顺序**读取元素，而不是按底层物理内存顺序线性扫描。格式化层不得把 `iter()` 的顺序当作公共契约前提；若内部复用 `iter()`，那只应视为私有实现细节，必要时应改为显式逻辑索引或递归子视图遍历。
-
-> **内部访问说明**：内部实现可使用 `read_at(indices)` 之类的辅助函数访问逻辑位置元素；这只是实现细节，**不扩展 `需求说明书 §18` 的公开索引契约**。`read_at(indices)` 的时间复杂度为 `O(ndim)`，前提为 `indices` 在合法范围内。
-
-> **注意**：`core::fmt::Display` 在 Rust 1.85 中对 f32/f64 无需 `std` 即可使用，因此此实现不加 `#[cfg(feature = "std")]` 门控。
-
-> **默认配置绑定**：`Display for TensorBase` 默认使用 `FormatConfig::default()` 配置；如需自定义，请使用 `display_with(config)` 方法。
+- 格式化输出按**逻辑多维索引顺序**读取元素，而不是按底层物理内存顺序线性扫描。格式化层不得把 `iter()` 的顺序当作公共契约前提；若内部复用 `iter()`，那只应视为私有实现细节，必要时应改为显式逻辑索引或递归子视图遍历。
+- 内部实现可使用 `read_at(indices)` 之类的辅助函数访问逻辑位置元素；这只是实现细节，**不扩展 `需求说明书 §18` 的公开索引契约**。`read_at(indices)` 的时间复杂度为 `O(ndim)`，前提为 `indices` 在合法范围内。
+- `core::fmt::Display` 在 Rust 1.85 中对 f32/f64 无需 `std` 即可使用，因此此实现不加 `#[cfg(feature = "std")]` 门控。
+- `Display for TensorBase` 默认使用 `FormatConfig::default()` 配置；如需自定义，请使用 `display_with(config)` 方法。
 
 ```rust,ignore
 // Display uses core::fmt and stays available in the std-only baseline.
@@ -252,11 +249,15 @@ where
 }
 ```
 
-### 5.3 Debug 实现
+### 5.4 Debug 实现
 
-> **Display / Debug 分工约定：** `Display` 只负责数据文本；当发生截断时，它在最外层右括号后追加 `shape=[...]`，用于满足 `需求说明书 §24` 的“可识别 shape”要求。`Debug` 已在头部输出 `shape=`、`strides=`、`dtype=` 和 `layout=`，因此其数据段复用相同截断选点规则，但不再重复追加 `shape=[...]` 后缀。
+- `Display` 只负责数据文本；当发生截断时，它在最外层右括号后追加 `shape=[...]`，用于满足 `需求说明书 §24` 的“可识别 shape”要求。
+- `Debug` 已在头部输出 `shape=`、`strides=`、`dtype=` 和 `layout=`，因此其数据段复用相同截断选点规则，但不再重复追加 `shape=[...]` 后缀。
+- `Debug` impl 应仅依赖 `A: Debug`。若内部复用 Display helper，应通过独立内部 trait 抽象，避免在公开约束中引入 Display 依赖。
+- `Debug` 输出包含完整的元信息（形状/步长/类型/布局），方便开发调试。Display 只输出数据，面向最终用户；其中零维张量使用显式标记，避免与裸标量文本混淆。
+- `Debug` 至少区分三类布局：`layout=f-contiguous`、`layout=broadcast`（存在零步长）、`layout=non-contiguous`（如转置、切片等非广播非连续布局）。
 
-````rust,ignore
+```rust,ignore
 // Debug should depend only on Debug for element rendering.
 // Shared formatting logic, if any, must be routed through an internal helper
 // abstraction rather than a public Display bound.
@@ -306,15 +307,9 @@ where
         fmt_debug_data(f, self)
     }
 }
-````
+```
 
-> **实现约束说明：** Debug impl 应仅依赖 `A: Debug`。若内部复用 Display helper，应通过独立内部 trait 抽象，避免在公开约束中引入 Display 依赖。
-
-> **设计决策：** Debug 输出包含完整的元信息（形状/步长/类型/布局），方便开发调试。Display 只输出数据，面向最终用户；其中零维张量使用显式标记，避免与裸标量文本混淆。
-
-> **布局分类约定：** Debug 至少区分三类布局：`layout=f-contiguous`、`layout=broadcast`（存在零步长）、`layout=non-contiguous`（如转置、切片等非广播非连续布局）。
-
-### 5.4 NumPy 风格输出示例
+### 5.5 Numpy 风格输出示例
 
 **1D（完整）**:
 
@@ -365,8 +360,6 @@ Tensor(shape=[3, 4], strides=[4, 1], dtype=f64, layout=non-contiguous)
  [100, 200, 300, ..., 9800, 9900, 10000]] ... (9964 elements omitted)  shape=[100, 100]
 ```
 
-> 当任意维度触发截断时，输出主体仍保持 NumPy 风格的局部预览，但必须在最外层右括号后追加 `shape=[...]`，以暴露完整维度信息。
-
 **Complex<f64> 类型**:
 
 ```
@@ -374,19 +367,18 @@ Tensor(shape=[3, 4], strides=[4, 1], dtype=f64, layout=non-contiguous)
  [3.0+4.0j, 7.0+8.0j]]
 ```
 
-> 复数显示规则补充：负虚部必须紧跟实部输出，例如 `1.0-2.0j`（`-` 前不插入空格）；若配置 `FormatConfig::precision = Some(p)`，则 `precision` 分别作用于实部和虚部，各自按同一精度格式化。
-
-> 浮点特殊值沿用 Rust 默认文本格式：`-0.0` 显示为 `"-0.0"`，`NaN` 显示为 `"NaN"`，正无穷显示为 `"inf"`；复数中的实部/虚部若出现这些值，也分别按各自分量的 Rust 默认格式输出。
-
 **零维张量**:
 
 ```
 Tensor0(42)
 ```
 
-### 5.5 截断规则
+- 当任意维度触发截断时，输出主体仍保持 Numpy 风格的局部预览，但必须在最外层右括号后追加 `shape=[...]`，以暴露完整维度信息。
+- 复数显示规则补充：负虚部必须紧跟实部输出，例如 `1.0-2.0j`（`-` 前不插入空格）；若配置 `FormatConfig::precision = Some(p)`，则 `precision` 分别作用于实部和虚部，各自按同一精度格式化。
+- 浮点特殊值沿用 Rust 默认文本格式：`-0.0` 显示为 `"-0.0"`，`NaN` 显示为 `"NaN"`，正无穷显示为 `"inf"`；复数中的实部/虚部若出现这些值，也分别按各自分量的 Rust 默认格式输出。
 
-#### 5.5.1 形式化截断算法
+
+### 5.6 截断规则
 
 1. 截断决策仅由 `threshold` 决定：当 `tensor.len() <= threshold` 时，输出全部逻辑元素；当 `tensor.len() > threshold` 时，进入截断模式。
 2. 截断模式下，每一层轴只使用一个局部规则：
@@ -398,10 +390,8 @@ Tensor0(42)
    - `Display` 只输出数据文本；若 `omitted > 0`，则在最外层右括号后追加 ` ... (N elements omitted)  shape=[...]`；
    - `Debug` 先输出 `shape=` / `strides=` / `dtype=` / `layout=` 头部；若 `omitted > 0`，则只在数据段末尾追加 ` ... (N elements omitted)`，不重复追加 `shape=[...]`。
 6. `line_width` 仅影响换行位置；它不得改变是否截断、每层保留的头尾项数量、`visible_elements` 或 `omitted`。
-
-> **稳定排版规则：** 缩进规则：每增加一层维度嵌套，缩进增加 2 个空格。元素间分隔符固定为 `, `。换行阈值由 `line_width` 参数控制；达到阈值时，只允许在元素边界或轴边界处换行，不得改变元素顺序。
-
-> **单一执行规范：** 当前版本不定义 `max_display_elements`、`max_rows` 或其他额外截断阈值；所有截断行为都只由 `threshold` 与 `edge_items` 共同决定。
+7. 缩进规则：每增加一层维度嵌套，缩进增加 2 个空格。元素间分隔符固定为 `, `。换行阈值由 `line_width` 参数控制；达到阈值时，只允许在元素边界或轴边界处换行，不得改变元素顺序。
+8. 当前版本不定义 `max_display_elements`、`max_rows` 或其他额外截断阈值；所有截断行为都只由 `threshold` 与 `edge_items` 共同决定。
 
 ```
 truncation_rule(tensor, config, mode):
@@ -446,11 +436,7 @@ render_axis(tensor, config, axis, prefix, truncated):
     return rendered, visible
 ```
 
-在该规则下，若 rank 为 `n` 且截断模式下第 `i` 个轴实际显示 `shown_i` 个索引位置（`shown_i = axis_len_i` 或 `2 * edge_items`），则：
-
-`visible_elements = Π shown_i`（对所有轴求乘积）。
-
-因此 `shape=[100, 100]`、`edge_items=3`、`threshold=1000` 时：
+在该规则下，若 rank 为 `n` 且截断模式下第 `i` 个轴实际显示 `shown_i` 个索引位置（`shown_i = axis_len_i` 或 `2 * edge_items`），则：`visible_elements = Π shown_i`（对所有轴求乘积）。因此 `shape=[100, 100]`、`edge_items=3`、`threshold=1000` 时：
 
 - 每个轴都显示 `6` 个索引位置；
 - `visible_elements = 6 × 6 = 36`；
@@ -458,14 +444,14 @@ render_axis(tensor, config, axis, prefix, truncated):
 
 `line_width` 行为：当一行输出超过 `line_width` 字符时，在元素之间插入换行，优先在轴边界处折行。
 
-| 参数         | 默认值 | 说明                        |
-| ------------ | ------ | --------------------------- |
-| `edge_items` | 3      | 每层轴在截断时保留的头/尾项数 |
+| 参数         | 默认值 | 说明                           |
+| ------------ | ------ | ------------------------------ |
+| `edge_items` | 3      | 每层轴在截断时保留的头/尾项数  |
 | `threshold`  | 1000   | 元素总数严格大于该值时触发截断 |
-| `precision`  | `None` | 浮点精度（None = 类型默认） |
-| `line_width` | 80     | 每行最大字符数（用于换行）  |
+| `precision`  | `None` | 浮点精度（None = 类型默认）    |
+| `line_width` | 80     | 每行最大字符数（用于换行）     |
 
-### 5.6 Good/Bad 对比
+### 5.7 Good/Bad 对比
 
 ```rust,ignore
 // Good - Use Display for readable output
