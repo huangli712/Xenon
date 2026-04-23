@@ -309,7 +309,7 @@ let ints: Tensor<i32, Ix1> = floats.cast().unwrap();  // forbidden: returns Type
 
 ## 6. 内部实现设计
 
-### 6.1 CastTo 实现（核心转换路径）
+### 6.1 CastTo 实现
 
 `CastTo` 的规范签名统一为：
 
@@ -319,9 +319,7 @@ pub trait CastTo<T> {
 }
 ```
 
-调用形态为 `value.cast_to()`；`element_index` 由调用方在逐元素遍历时单独跟踪，而不是作为 `CastTo` 的参数传入。
-
-**注意**：`element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引。
+调用形态为 `value.cast_to()`；`element_index` 由调用方在逐元素遍历时单独跟踪，而不是作为 `CastTo` 的参数传入。`element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引。
 
 ```rust,ignore
 // Element index is tracked by the caller, not passed to CastTo
@@ -389,7 +387,7 @@ impl CastTo<i32> for i64 {
 
 ### 6.2 溢出行为汇总
 
-> **错误语义约定：** `cast()` 是 fallible API。凡被 `需求说明书 §23` 判定为有损的转换，默认返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }`；仅在该节明确给出额外成功前提时，满足前提后方可成功。
+`cast()` 是 fallible API。凡被 `需求说明书 §23` 判定为有损的转换，默认返回 `XenonError::TypeConversion`；仅在该节明确给出额外成功前提时，满足前提后方可成功。
 
 | 输入值/组合                    | 目标类型 | 结果                  | 说明                   |
 | ------------------------------ | -------- | --------------------- | ---------------------- |
