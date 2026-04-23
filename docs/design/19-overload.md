@@ -492,7 +492,7 @@ tensor + scalar:
 | `test_sub_basic`                    | `a - b` 返回 `Ok(...)` 且结果正确                                  | 高     |
 | `test_mul_basic`                    | `a * b` 返回 `Ok(...)` 且结果正确                                  | 高     |
 | `test_div_basic`                    | `a / b` 返回 `Ok(...)` 且结果正确                                  | 高     |
-| `test_broadcast_incompatible`       | 不兼容形状时运算符与方法路径都返回 `Result::Err(XenonError::BroadcastError { .. })` | 中     |
+| `test_broadcast_incompatible`       | 不兼容形状时运算符与方法路径都返回 `Result::Err(XenonError::BroadcastError)` | 中     |
 | `test_result_ownership`             | `Ok` 中结果张量与输入不共享内存                                    | 高     |
 | `test_i32_tensor`                   | `i32` 类型张量运算返回 `Ok(...)`                                   | 中     |
 | `test_complex_tensor`               | `Complex<f64>` 类型张量运算返回 `Ok(...)`                          | 中     |
@@ -506,7 +506,7 @@ tensor + scalar:
 | `[1, 1000] + [1000, 1]`                  | 返回 `Ok`，广播到 `[1000, 1000]` |
 | 标量 + 0 维张量                          | 直接返回 `Tensor`，正常运算    |
 | 大张量 `[10000, 10000] + [10000, 10000]` | 返回 `Ok`，正确完成            |
-| `[2, 3] + [4, 5]`                        | 返回 `Err(XenonError::BroadcastError { .. })` |
+| `[2, 3] + [4, 5]`                        | 返回 `Err(XenonError::BroadcastError)` |
 
 ### 8.4 属性测试不变量
 
@@ -514,7 +514,7 @@ tensor + scalar:
 | ---------------------------------------------------------- | ---------------------------- |
 | `(a + b).unwrap().shape() == broadcast_shape(a.shape(), b.shape())` | 随机形状对（仅对可广播输入） |
 | `(&a + &b) == (a.clone() + b.clone())`                     | 借用与所有权 `Result` 一致   |
-| `(a + scalar) == a.add_scalar_impl(scalar)`                | 标量路径结果等价            |
+| `(a + scalar) == a.add_scalar_impl(scalar)`                | 标量路径结果等价             |
 | `Scalar(s) + tensor == tensor + s`                         | 包装器左标量与右标量路径等价 |
 | 结果张量与输入张量不共享内存（`ptr` 不同）                 | 对 `Ok` 结果做指针比较       |
 
@@ -527,7 +527,7 @@ tensor + scalar:
 ### 8.6 Feature gate / 配置测试
 
 | 配置 | 验证点 |
-| ---- | ---- |
+| ---- | ------ |
 | 默认配置 | 运算符语法在纯标量后端下与方法型 API 语义保持一致，包括广播失败返回 `Result::Err`。 |
 | 启用 `simd` | 通过 `math` 委托的 SIMD 路径不改变广播、`Result` 与结果所有权语义。 |
 | 启用并行 | 通过 `math` 委托的并行路径不改变广播、错误边界与结果所有权语义。 |
@@ -574,7 +574,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | 项目级稳定的可恢复错误语义由运算符路径与显式方法路径共同承担；`+` / `-` / `*` / `/` 以及 `broadcast_with()`、方法型逐元素 API 均返回 `XenonError::BroadcastError { operation: Cow<'static, str>, lhs_shape: Vec<usize>, rhs_shape: Vec<usize>, attempted_target_shape: Option<Vec<usize>>, axis: Option<usize> }`；若方法参数本身非法，则继续使用 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, axis_len: Option<usize>, start: Option<usize>, end: Option<usize>, shape: Option<Vec<usize>> }`。 |
+| Recoverable error | 项目级稳定的可恢复错误语义由运算符路径与显式方法路径共同承担；`+` / `-` / `*` / `/` 以及 `broadcast_with()`、方法型逐元素 API 均返回 `XenonError::BroadcastError`；若方法参数本身非法，则继续使用 `XenonError::InvalidArgument`。 |
 | Panic | 广播不兼容不再 panic；整数除零、溢出与结果不可表示继续沿用 `math` 的 panic 语义，且 panic 消息须包含操作类型、元素类型与第一个失败元素索引（若可确定）。 |
 | 路径一致性 | 借用 / owned / 标量以及由 `math` 触发的标量 / SIMD 路径必须保持相同输出 shape 与数值语义。 |
 | 容差边界 | 当前不引入额外容差；容差基线以 `需求说明书 §28.3` 为权威，`00-coding.md §7.4` 仅作为实现参考。若底层 `math` 使用 SIMD，仍须与该基线及标量路径语义一致。 |
@@ -582,9 +582,6 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 ---
 
 ## 11. 设计决策记录
-
-> [!WARNING]
-> 参见 §4.2 `ADR-OVERLOAD-RESULT`。本节补充该项目级稳定 ADR 的细化记录：`a + b` 需要 `?` 或 `unwrap()` 来获取结果，而 `a + scalar` 不需要；这一差异现已属于项目级 API 风格约束。
 
 ### 决策 1：是否支持 += 原地运算符
 
