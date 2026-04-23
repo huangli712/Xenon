@@ -230,6 +230,7 @@ where
 ### 5.5 to_owned / into_owned
 
 `to_owned()` / `into_owned()` 的公开语义只在本文维护；它们返回的 owned 结果固定为 Xenon 的 canonical F-order。`20-utility.md` 可引用它们作为 `to_contiguous()` 的实现依赖，但不再重复定义其契约。
+同类型拷贝（`to_owned()`/`into_owned()`）不通过 fallible `cast()` 建模，而是始终成功的基础操作。`cast::<A>()` 不适用于同类型拷贝场景。
 
 ````rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -275,10 +276,6 @@ where
     pub fn into_owned(self) -> Tensor<A, D>;
 }
 ````
-
-同类型拷贝（`to_owned()`/`into_owned()`）不通过 fallible `cast()` 建模，而是始终成功的基础操作。`cast::<A>()` 不适用于同类型拷贝场景。
->
-> **统一规则（Wave 1）：** `ArcRepr → Owned` 始终分配并复制（O(n)），与引用计数无关。
 
 ### 5.6 内部构造辅助边界
 
