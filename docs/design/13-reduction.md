@@ -74,7 +74,7 @@ src/reduction/
     ├── crate::tensor        # TensorBase<S, D>, Tensor<A, D>, shape/ndim helpers
     ├── crate::dimension     # Axis, Dimension, runtime axis projection helpers
     ├── crate::element       # Numeric, CheckedAdd, ComplexScalar
-    ├── crate::dispatch      # ExecPath, select_exec_path(), should_parallelize()
+    ├── crate::dispatch      # ExecPath, select_exec_path()
     ├── crate::error         # XenonError::InvalidAxis
     ├── crate::simd (opt.)   # Pure vectorized sum kernel (no scalar fallback)
     └── crate::parallel (opt.) # Pure parallel sum execution (no serial fallback)
@@ -87,7 +87,7 @@ src/reduction/
 | `tensor`           | `TensorBase<S, D>`、`Tensor<A, D>`、`.shape()`、`.ndim()`、`.iter()`、`.indexed_iter()`、结果张量构造接口 |
 | `dimension`        | `Axis`、`Dimension`、运行时 axis/shape 投影辅助，以及仅供内部结果维度投影使用的 `RemoveAxis`              |
 | `element`          | `Numeric`、`CheckedAdd`、`ComplexScalar`、`RealScalar`、`A::zero()`                                       |
-| `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`should_parallelize()`                                                  |
+| `dispatch`（内部） | `select_exec_path()`、`ExecPath`                                                                          |
 | `error`            | `XenonError::InvalidAxis`                                                                                 |
 | `simd`（可选）     | 仅在可证明与标量累加顺序和结果语义一致时通过纯向量化 kernel 参与 `sum` 实现                               |
 | `parallel`（可选） | 仅在通过 dispatch.rs 路径裁决后提供纯并行执行，不含串行回退，并遵守无嵌套并行约束                         |
@@ -130,7 +130,7 @@ where
     ///
     /// Note: the current typed signature still uses `D::Smaller` and therefore
     /// carries a `D: RemoveAxis` bound. This conflicts with the preferred public
-    /// direction recorded in `02-dimension.md §5.6`, but changing the return-type
+    /// direction recorded in `02-dimension.md §5.8`, but changing the return-type
     /// modeling is a broader API decision and is not resolved in this patch.
     pub fn sum_axis(&self, axis: Axis) -> Result<Tensor<A, D::Smaller>, XenonError>
     where
@@ -144,7 +144,7 @@ where
 }
 ```
 
-- 按 `需求说明书 §14` 与 `02-dimension.md §5.6`，更理想的公开语义是让 0D 轴归约统一走运行时 `InvalidAxis`。但当前返回类型仍使用 `Tensor<A, D::Smaller>`，因此文档暂时保留 `D: RemoveAxis` 约束，并把该冲突记录为待统一的 API 形状问题；对所有实际进入运行时路径的调用，仍必须校验 `axis < ndim` 并返回 `XenonError::InvalidAxis`。
+- 按 `需求说明书 §14` 与 `02-dimension.md §5.8`，更理想的公开语义是让 0D 轴归约统一走运行时 `InvalidAxis`。但当前返回类型仍使用 `Tensor<A, D::Smaller>`，因此文档暂时保留 `D: RemoveAxis` 约束，并把该冲突记录为待统一的 API 形状问题；对所有实际进入运行时路径的调用，仍必须校验 `axis < ndim` 并返回 `XenonError::InvalidAxis`。
 - keepdims 不移除被归约轴，因此不需要 `RemoveAxis` 约束。输出维度类型与输入维度类型相同，被归约轴长度变为 `1`。但对 0D 张量而言不存在任何合法轴，因此 `sum_axis_keepdims()` 仍须返回 `InvalidAxis`，而不能定义为 no-op。
 
 ### 5.2 对外错误契约
@@ -262,7 +262,7 @@ fn sum_floating_or_complex<A: Numeric + Copy>(iter: impl Iterator<Item = A>) -> 
 - 浮点路径：保持标量加法顺序；`NaN`、`Inf` 等行为沿用 IEEE 754。
 - 复数路径：对实部和虚部分量分别沿用对应实数加法语义，因此含 `NaN` 分量时同样传播。
 - 整数 SIMD fallback：整数归约默认优先标量/串行路径以保证 checked arithmetic 精确等价。仅当 SIMD 路径能证明与逐步 checked 加法完全一致时才启用优化。
-- SIMD 路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Simd` 时委托 `simd/` 纯向量化后端；浮点/复数路径允许不同合并顺序。以 `需求说明书 §28.3` 为权威基线；实现细节参见 `00-coding.md §7.4`。
+- SIMD 路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Simd` 时委托 `simd/` 纯向量化后端；浮点/复数路径允许不同合并顺序。以 `需求说明书 §28.3` 为权威基线。
 - 并行路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Parallel` 时委托 `parallel/` 纯并行后端；整数路径必须保持与串行精确一致，浮点/复数路径允许不同合并顺序。以 `需求说明书 §28.3` 为权威基线；实现细节参见 `00-coding.md §7.4`。
 - 同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用以 `需求说明书 §28.3` 为权威基线的文档化容差。
 
@@ -490,7 +490,7 @@ User calls sum / sum_axis / sum_axis_keepdims
 | 属性     | 值                                                                                                                                                                                                        |
 | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 决策     | 对 0D 张量，公开语义目标仍是统一返回 `XenonError::InvalidAxis`；但当前 typed 设计下，`sum_axis()` 暂保留 `D: RemoveAxis`，`sum_axis_keepdims()` 继续返回 `XenonError::InvalidAxis`。                      |
-| 理由     | `需求说明书 §14` 与 `02-dimension.md §5.6` 要求 0D 轴 API 保持 recoverable error 语义；同时 `sum_axis()` 的现有返回类型仍依赖 `D::Smaller`，短期内无法在不重塑返回类型的前提下完全消除公开 `RemoveAxis`。 |
+| 理由     | `需求说明书 §14` 与 `02-dimension.md §5.8` 要求 0D 轴 API 保持 recoverable error 语义；同时 `sum_axis()` 的现有返回类型仍依赖 `D::Smaller`，短期内无法在不重塑返回类型的前提下完全消除公开 `RemoveAxis`。 |
 | 替代方案 | (1) 立刻把 `sum_axis()` 改成仅 `D: Dimension` 并重塑结果维度建模；(2) 继续维持当前签名但不记录该张力。                                                                                                    |
 | 拒绝原因 | 前者属于超出本次最小修正范围的 API 设计变更；后者会让文档继续掩盖与需求/维度文档的冲突。                                                                                                                  |
 
