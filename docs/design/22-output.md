@@ -1,8 +1,10 @@
 # 格式化输出模块设计
 
-> 文档编号: 22 | 模块: `src/format/` | 阶段: Phase 4
-> 前置文档: `05-storage.md`, `06-layout.md`, `07-tensor.md`
-> 需求参考: `需求说明书 §4`, `需求说明书 §5`, `需求说明书 §8`, `需求说明书 §24`, `需求说明书 §28.1`, `需求说明书 §28.4`
+> 文档编号: 22
+> 模块目录: src/format/
+> 任务阶段: Phase 4
+> 前置文档: 05-storage.md, 06-layout.md, 07-tensor.md
+> 需求参考: 需求说明书 §4、§5、§8、§24、§28
 > 范围声明: 范围内
 
 ---
@@ -27,38 +29,16 @@
 | 平台一致性 | `Display` 和 `Debug` 在当前 `std` 环境下保持一致格式语义 |
 | 零拷贝     | 格式化过程不修改原始数据                                 |
 
-### 1.3 在架构中的位置
-
-```
-Dependency layers:
-L0: error, private
-L1: dimension, element, complex
-L2: layout (depends on dimension)
-L3: storage (independent of layout; owned by tensor and consumes layout results)
-L4: tensor (depends on storage, dimension)
-L5: broadcast, iter, ffi
-L6: math, matrix, reduction, shape, index, util
-L7: format  <- current module
-```
-
 ---
 
 ## 2. 需求映射与范围约束
 
 | 类型     | 内容 |
 | -------- | ---- |
-| 需求映射 | `需求说明书 §4`, `需求说明书 §5`, `需求说明书 §8`, `需求说明书 §24`, `需求说明书 §28.1`, `需求说明书 §28.4` |
-| 范围内   | `Display` / `Debug`、`FormatConfig`、NumPy 风格多维输出、截断规则与零维张量显式标记。 |
+| 需求映射 | 需求说明书 §4、§5、§8、§24、§28 |
+| 范围内   | `Display` / `Debug`、`FormatConfig`、Numpy 风格多维输出、截断规则与零维张量显式标记。 |
 | 范围外   | 二进制序列化、JSON 输出、自定义 formatter 注册与 HTML / 富文本渲染。 |
 | 非目标   | 不把格式化模块扩展为序列化层，不新增第三方格式化依赖，也不改变 tensor 数据本身。 |
-
-| 需求条款 | 本文承接方式 |
-| -------- | ------------ |
-| 需求说明书 §4 元素类型 | `Display` / `Debug` 覆盖全部受支持元素类型，包括 `bool` 与复数。 |
-| 需求说明书 §5 复数类型 | 复数文本表示采用稳定、可读且可区分实部/虚部的输出格式。 |
-| 需求说明书 §8 张量类型 | 输出可读取 shape / strides / layout / dtype 等元数据，并明确区分标量与零维张量。 |
-| 需求说明书 §24 格式化输出 | 采用稳定的 NumPy 风格文本表示与统一截断规则。 |
-| 需求说明书 §28.1 文档 | 关键格式化 API 提供使用示例；示例代码若非完整可编译上下文则标记为 `ignore`。 |
 
 ---
 
@@ -74,21 +54,11 @@ src/
     └── pretty.rs      # NumPy-style formatting helpers (fmt_1d, fmt_nd, truncation rules)
 ```
 
-多文件设计：将格式化输出按职责拆分为多个文件，便于后期拓展和维护。
-
-| 文件         | 职责                                                                     |
-| ------------ | ------------------------------------------------------------------------ |
-| `mod.rs`     | 模块入口，导出公共 API，cfg 门控                                         |
-| `config.rs`  | `FormatConfig` 结构体及 `Default` 实现                                   |
-| `display.rs` | `Display` trait 实现（1D/ND 格式化入口）                                 |
-| `debug.rs`   | `Debug` trait 实现（含元信息）                                           |
-| `pretty.rs`  | NumPy 风格格式化辅助函数（`fmt_1d_display`, `fmt_nd_display`, 截断逻辑） |
-
 ---
 
 ## 4. 依赖关系
 
-### 4.1 依赖图
+### 4.1 依赖图（ASCII）
 
 ```
 src/format/
@@ -122,24 +92,24 @@ src/format/
 
 ### 4.2 类型级依赖
 
-| 来源模块    | 使用的类型/trait                                                              | 使用者                                |
-| ----------- | ----------------------------------------------------------------------------- | ------------------------------------- |
-| `tensor`    | `TensorBase<S, D>`, `.shape()`, `.ndim()`, `.len()`（参见 `07-tensor.md` §5） | `display.rs`, `debug.rs`, `pretty.rs` |
-| `dimension` | `Dimension`（参见 `02-dimension.md` §5）                                      | `display.rs`, `pretty.rs`             |
-| `storage`   | `Storage<Elem=A>`（参见 `05-storage.md` §5）                                  | `display.rs`, `debug.rs`, `pretty.rs` |
-| `element`   | `Element`, `type_name::<A>()`（参见 `03-element.md` §5.1）                    | `display.rs`, `debug.rs`              |
+| 来源模块    | 使用的类型/trait                                                              | 
+| ----------- | ----------------------------------------------------------------------------- | 
+| `tensor`    | `TensorBase<S, D>`, `.shape()`, `.ndim()`, `.len()`（参见 `07-tensor.md` §5） | 
+| `dimension` | `Dimension`（参见 `02-dimension.md` §5）                                      | 
+| `storage`   | `Storage<Elem=A>`（参见 `05-storage.md` §5）                                  | 
+| `element`   | `Element`, `type_name::<A>()`（参见 `03-element.md` §5.1）                    | 
 
-### 4.3 依赖方向声明
-
-> **依赖方向：单向向上。** `format` 仅消费 `tensor` 等核心模块，不被它们依赖。
-
-### 4.4 依赖合法性与替代方案
+### 4.3 依赖合法性
 
 | 项目           | 说明 |
 | -------------- | ---- |
 | 新增第三方依赖 | 无 |
 | 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
 | 替代方案       | 不适用；当前范围内无需额外第三方依赖。 |
+
+### 4.4 依赖方向声明
+
+依赖方向：单向向上。`format` 仅消费 `tensor` 等核心模块，不被它们依赖。
 
 ---
 
@@ -188,9 +158,9 @@ impl Default for FormatConfig {
 }
 ```
 
-> **扩展边界说明：** `precision` 和 `line_width` 为受控扩展，超出 `需求说明书 §24` 的最小必要集。纳入稳定 API 面须遵守 SemVer。
+`precision` 和 `line_width` 为受控扩展，超出 `需求说明书 §24` 的最小必要集。纳入稳定 API 面须遵守 SemVer。
 
-### 5.1b TensorDisplay 包装结构
+### 5.2 TensorDisplay 包装结构
 
 ````rust,ignore
 /// A wrapper for formatting a tensor with a specific config.
@@ -238,7 +208,7 @@ where
 }
 ````
 
-### 5.2 Display 实现
+### 5.3 Display 实现
 
 > **读取顺序约定**：格式化输出按**逻辑多维索引顺序**读取元素，而不是按底层物理内存顺序线性扫描。格式化层不得把 `iter()` 的顺序当作公共契约前提；若内部复用 `iter()`，那只应视为私有实现细节，必要时应改为显式逻辑索引或递归子视图遍历。
 
@@ -648,20 +618,6 @@ fn dtype_name<A: Element + 'static>() -> &'static str {
   - 测试: `test_display_compile`
   - 前置: T3, T4
   - 预计: 5 min
-
-### 并行执行图
-
-```
-Wave 1: [T1] → [T2]
-                 │
-Wave 2:    ┌─────┴─────┐
-           │           │
-          [T3]        [T4]   (can run in parallel)
-           │           │
-           └─────┬─────┘
-                 │
-Wave 3:        [T5]
-```
 
 ---
 

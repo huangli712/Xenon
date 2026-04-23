@@ -81,7 +81,7 @@ External dependencies:
 | `layout`    | `is_f_contiguous()`（参见 `06-layout.md` §5）                                                                |
 | `error`     | `XenonError`, `Result<T>`（参见 `26-error.md` §5）                                                           |
 
-### 4.3 依赖合法性与替代方案
+### 4.3 依赖合法性
 
 | 项目           | 说明 |
 | -------------- | ---- |
