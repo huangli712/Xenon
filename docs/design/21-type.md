@@ -77,7 +77,7 @@ External dependencies:
 | `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.is_f_contiguous()`（参见 `07-tensor.md` §5） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §5）                                               |
 | `storage`   | `Storage<Elem=A>`, `StorageMut`, `Owned<A>`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`（参见 `05-storage.md` §5） |
-| `element`   | `Element`, `CastTo<B>`（参见 `03-element.md` §5.9；convert 只消费该 trait，不重新定义）                      |
+| `element`   | `Element`, `CastTo<B>`（参见 `03-element.md` §5.8；convert 只消费该 trait，不重新定义）                      |
 | `layout`    | `is_f_contiguous()`（参见 `06-layout.md` §5）                                                                |
 | `error`     | `XenonError`, `Result<T>`（参见 `26-error.md` §5）                                                           |
 
@@ -99,7 +99,7 @@ External dependencies:
 
 ### 5.1 CastTo trait
 
-- `CastTo<T>` trait 的唯一 owner 是 `03-element.md §5.9`。`convert` 模块只消费该 trait，并在受支持的源/目标类型矩阵上提供 `cast()` 路径，不重新定义 trait。
+- `CastTo<T>` trait 的唯一 owner 是 `03-element.md §5.8`。`convert` 模块只消费该 trait，并在受支持的源/目标类型矩阵上提供 `cast()` 路径，不重新定义 trait。
 - `CastElement` 为封闭 trait，下游不得扩展。`bool` 不属于 `CastElement`，因此 `cast::<bool>()` 在编译期被拒绝。
 
 ````rust,ignore
@@ -155,6 +155,9 @@ where
     where
         A: CastTo<B>,
     {
+        // iter() traverses elements in logical (F-order) linear order;
+        // the enumerated `index` is thus the 0-based logical element index
+        // used in `element_index` of XenonError::TypeConversion (see §10).
         let mut data: Vec<B> = Vec::with_capacity(self.len());
         for (index, x) in self.iter().enumerate() {
             let value = (*x).cast_to().map_err(|err| match err {
@@ -222,6 +225,8 @@ where
 
 - 凡 `需求说明书 §23.1` 已逐项列出的组合，其默认语义与附加成功前提以 `需求说明书 §23.1` 表格为准；闭合规则仅用于补足未逐项列出的受支持组合，不得覆盖或重新解释已列组合的语义。
 - 未在上表逐项展开、但属于受支持源/目标集合的组合，按 `需求说明书 §23.2` 闭合：
+  - 实数 → 整数：一律默认为 `FloatToInteger` 错误（浮点值域与整数表示不兼容，包括 NaN/Inf 场景）
+  - 整数 → 浮点（窄精度）：一律默认为有损失败（如 `i64 → f32`、`i64 → f64`、`i32 → f32`），返回 `IntegerToFloatPrecisionLoss`
   - 实数 → 复数：先按实数到目标复数实部分量类型的规则转换实部，再补 `0` 虚部
   - 复数 → 实数：仅当虚部为 `0` 时才可继续；但这只是必要条件而非充分条件。若实部到目标实数类型的内层转换按 `需求说明书 §23.1` 属于默认有损失败，则整体转换仍为默认错误并必须返回 `Err`
   - 复数 → 复数：实部和虚部分别按对应实数转换规则处理
@@ -238,7 +243,7 @@ impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: Element + Clone,
+    A: Element,
 {
     /// Clones data into a new owned tensor.
     ///
@@ -260,7 +265,7 @@ where
         }
         // from_shape_vec is the normative construction path; 
         // this aligned variant stays an internal helper,
-        // not a public API (see 05-storage.md §5.1)
+        // not a public API (see 05-storage.md §6.1)
         Tensor::from_shape_vec_aligned(self.raw_dim(), data)
     }
 }
@@ -276,7 +281,22 @@ where
     /// - `Tensor`: returned directly, O(1)
     /// - `TensorView`/`TensorViewMut`: allocates and copies into canonical F-order, O(n)
     /// - `ArcTensor`: always allocates and copies into canonical F-order, O(n), regardless of ref count
-    pub fn into_owned(self) -> Tensor<A, D>;
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let tensor: Tensor<f64, Ix1> = Tensor::from_shape_vec(Ix1(2), vec![1.0, 2.0])?;
+    /// let owned: Tensor<f64, Ix1> = tensor.into_owned(); // O(1), same data
+    ///
+    /// let view: TensorView<f64, Ix1> = tensor.view();
+    /// let owned_from_view: Tensor<f64, Ix1> = view.into_owned(); // O(n), new allocation
+    /// ```
+    pub fn into_owned(self) -> Tensor<A, D> {
+        // StorageIntoOwned dispatches by storage mode:
+        //   Owned    → O(1) direct return (see 05-storage.md §5.x)
+        //   View/ViewMut/Arc → O(n) allocate + copy into canonical F-order
+        S::into_owned(self.storage, self.shape, self.strides, self.offset)
+    }
 }
 ````
 
@@ -344,6 +364,7 @@ impl CastTo<f32> for f64 {
     }
 }
 
+// === Lossless widening ===
 impl CastTo<f64> for f32 {
     #[inline]
     fn cast_to(self) -> Result<f64, XenonError> { Ok(self as f64) }
@@ -352,6 +373,41 @@ impl CastTo<f64> for f32 {
 impl CastTo<i64> for i32 {
     #[inline]
     fn cast_to(self) -> Result<i64, XenonError> { Ok(self as i64) }
+}
+
+// === Integer → float (lossless widening) ===
+impl CastTo<f64> for i32 {
+    #[inline]
+    fn cast_to(self) -> Result<f64, XenonError> { Ok(self as f64) }
+}
+
+// === Float → integer (lossy-by-default) ===
+impl CastTo<i32> for f64 {
+    #[inline]
+    fn cast_to(self) -> Result<i32, XenonError> {
+        Err(XenonError::TypeConversion {
+            source_type: TypeId::of::<f64>(),
+            target_type: TypeId::of::<i32>(),
+            reason: ConversionFailureReason::FloatToInteger,
+            element_index: None,
+        })
+    }
+}
+
+// === Real → complex (lossless, zero imaginary) ===
+impl CastTo<Complex<f32>> for f32 {
+    #[inline]
+    fn cast_to(self) -> Result<Complex<f32>, XenonError> {
+        Ok(Complex::new(self, 0.0))
+    }
+}
+
+// === Complex → complex (lossless widening) ===
+impl CastTo<Complex<f64>> for Complex<f32> {
+    #[inline]
+    fn cast_to(self) -> Result<Complex<f64>, XenonError> {
+        Ok(Complex::new(self.re as f64, self.im as f64))
+    }
 }
 
 // === Conditionally successful conversions ===
@@ -548,7 +604,7 @@ User calls cast() / to_owned() / into_owned()
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `cast()` 在有损转换、虚部非零或其他规则不满足时返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }`，携带源类型、目标类型、失败原因与元素索引。`element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引。 |
+| Recoverable error | `cast()` 在有损转换、虚部非零或其他规则不满足时返回 `XenonError::TypeConversion`，携带源类型、目标类型、失败原因与元素索引。`element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引。 |
 | Panic | 公开转换 API 不定义额外 panic 语义；有损场景统一返回可恢复错误。 |
 | 路径一致性 | `cast`、`to_owned`、`into_owned` 必须保持相同 shape 与逻辑元素顺序；其中 `to_owned` / `into_owned` 的 owned 结果固定为 canonical F-order。无 SIMD / 并行分支。 |
 | 容差边界 | 不适用。 |
@@ -561,19 +617,19 @@ User calls cast() / to_owned() / into_owned()
 
 | 属性     | 值                                                                        |
 | -------- | ------------------------------------------------------------------------- |
-| 决策     | 所有有损转换默认返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index }` |
+| 决策     | 所有有损转换默认返回 `XenonError::TypeConversion`                         |
 | 理由     | 这是 `需求说明书 §23` 的强制要求；文档不得私自引入饱和、截断或 NaN→0 语义 |
 | 替代方案 | saturating / truncating — 放弃，与需求冲突                                |
 | 替代方案 | panic on overflow — 放弃，需求要求可恢复错误                              |
 
 ### 决策 2：cast() 对所有可读存储开放
 
-| 属性     | 值                                                                                                                                                           |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 决策     | `cast()` 对所有可读存储开放，并统一返回 owned tensor                                                                                                          |
-| 理由     | 这与 `需求说明书 §23` 的逐元素转换要求一致，同时避免把“能否读取输入”与“结果是否拥有数据”混为一谈；输入可借用，结果仍统一 owned，API 语义保持单一。                   |
-| 替代方案 | 仅在 `Owned` 上实现 — 放弃，会无依据地缩小 `需求说明书 §23` 的适用范围                                                                                             |
-| 替代方案 | 按输入存储模式返回不同结果类型 — 放弃，会引入生命周期与所有权分歧，破坏公开 API 一致性                                                                        |
+| 属性     | 值                                                                                                                                                |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | `cast()` 对所有可读存储开放，并统一返回 owned tensor                                                                                              |
+| 理由     | 这与 `需求说明书 §23` 的逐元素转换要求一致，同时避免把“能否读取输入”与“结果是否拥有数据”混为一谈；输入可借用，结果仍统一 owned，API 语义保持单一。|
+| 替代方案 | 仅在 `Owned` 上实现 — 放弃，会无依据地缩小 `需求说明书 §23` 的适用范围                                                                            |
+| 替代方案 | 按输入存储模式返回不同结果类型 — 放弃，会引入生命周期与所有权分歧，破坏公开 API 一致性                                                            |
 
 ### 决策 3：收缩 convert 模块边界到当前需求集合
 
