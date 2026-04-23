@@ -1,8 +1,10 @@
 # 矩阵运算模块设计
 
-> 文档编号: 12 | 模块: `src/matrix/` | 阶段: Phase 4
-> 前置文档: `03-element.md`, `07-tensor.md`, `08-simd.md`, `09-parallel.md`, `10-iterator.md`, `13-reduction.md`, `26-error.md`
-> 需求参考: `需求说明书 §4`, `需求说明书 §9.1`, `需求说明书 §9.2`, `需求说明书 §9.3`, `需求说明书 §10`, `需求说明书 §13`, `需求说明书 §27`, `需求说明书 §28.2`, `需求说明书 §28.3`, `需求说明书 §28.4`, `需求说明书 §28.5`
+> 文档编号: 12
+> 模块目录: src/matrix/
+> 任务阶段: Phase 4
+> 前置文档: 03-element.md, 07-tensor.md, 08-simd.md, 09-parallel.md, 10-iterator.md, 13-reduction.md, 26-error.md
+> 需求参考: 需求说明书 §4、§9、§10、§13、§27、§28
 > 范围声明: 范围内
 
 ---
@@ -11,14 +13,19 @@
 
 ### 1.1 职责边界
 
-| 职责      | 包含                                                                                                                         | 不包含         |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------- | -------------- |
-| 向量内积  | dot product（实数内积：sum(a[i] \* b[i])）                                                                                   | 矩阵乘法、外积 |
-| 复数内积  | 共轭线性定义（sum(conjugate(a[i]) \* b[i])）                                                                                 | 批量矩阵乘法   |
-| SIMD 状态 | dot 可选接入 `simd` / `parallel` 能力；调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。 | BLAS 绑定      |
-| 错误处理  | 非 1D 输入返回 `XenonError::InvalidArgument`；长度不匹配返回 `XenonError::DimensionMismatch { operation, expected, actual }` | —              |
+| 职责      | 包含                                                                                         |
+| --------- | -------------------------------------------------------------------------------------------- |
+| 向量内积  | dot product（实数内积：sum(a[i] \* b[i])）                                                   |
+| 复数内积  | 共轭线性定义（sum(conjugate(a[i]) \* b[i])）                                                 |
+| SIMD 状态 | dot 可选接入 `simd` / `parallel` 能力                                                        |
+| 错误处理  | 非 1D 输入返回 `XenonError::InvalidArgument`；长度不匹配返回 `XenonError::DimensionMismatch` |
 
-> **注意**：当前版本仅支持向量内积（dot）。不包含：矩阵乘法、外积、批量矩阵乘法、BLAS 绑定。
+| 职责      | 不包含         |
+|---------- | -------------- |
+| 向量内积  | 矩阵乘法、外积 |
+| 复数内积  | 批量矩阵乘法   |
+| SIMD 状态 | BLAS 绑定      |
+| 错误处理  |  —             |
 
 ### 1.2 设计原则
 
@@ -26,20 +33,8 @@
 | ---------------------------------- | ------------------------------------------------------------------ |
 | 最小范围                           | 当前仅实现向量内积，复杂线性代数由上游库通过 FFI 实现              |
 | 错误恢复                           | 维度不匹配返回可恢复错误（`XenonError`）；整数溢出为不可恢复 panic |
-| 语义优先                           | dot 先保证语义与错误契约一致；调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。 |
+| 语义优先                           | dot 先保证语义与错误契约一 致                                      |
 | 与上游 BLAS 集成预期的语义兼容前提 | 内存布局与内积语义保持可对接上游 BLAS 集成的预期前提               |
-
-### 1.3 在架构中的位置
-
-```
-依赖层级：
-L0: error, private
-L1: dimension, element, complex
-L2: layout (depends on dimension)
-L3: storage (independent of layout; tensor owns storage and consumes layout results)
-L4: tensor (depends on storage, dimension)
-L6: matrix  <- current module
-```
 
 ---
 
@@ -47,7 +42,7 @@ L6: matrix  <- current module
 
 | 类型     | 内容                                                                                     |
 | -------- | ---------------------------------------------------------------------------------------- |
-| 需求映射 | `需求说明书 §4`, `需求说明书 §9.1`, `需求说明书 §9.2`, `需求说明书 §9.3`, `需求说明书 §10`, `需求说明书 §13`, `需求说明书 §27`, `需求说明书 §28.2`, `需求说明书 §28.3`, `需求说明书 §28.4`, `需求说明书 §28.5` |
+| 需求映射 | 需求说明书 §4、§9、§10、§13、§27、§28                                                    |
 | 范围内   | 向量内积 `dot`、复数共轭线性语义、形状检查、空向量单位元，以及可选 SIMD / 并行执行路径。 |
 | 范围外   | 矩阵-矩阵乘法、外积、批量矩阵乘法、矩阵分解以及 BLAS/LAPACK 绑定。                       |
 | 非目标   | 不把 `matrix` 扩展为通用线性代数层，不新增第三方线性代数依赖。                           |
@@ -62,33 +57,11 @@ src/matrix/
 └── dot.rs              # vector dot-product implementation (scalar / SIMD / parallel dispatch)
 ```
 
-多文件设计理由：`matrix/` 保持最小语义层，只暴露 dot API 与执行路径分派；`src/simd/` 提供可选的 SIMD kernel，`parallel` 模块提供可选的并行执行能力。调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。默认路径仍可回退到纯标量实现，以保持统一语义与错误契约。
-
 ---
 
-## 4. 依赖关系与实现约束
+## 4. 依赖关系
 
-### 4.1 不变量
-
-| 不变量    | 说明                                                                                                                                 |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| 逻辑 rank | `dot(a, b)` 的两个输入都必须是逻辑 1D；若 `ndim != 1`，必须走可恢复错误路径，而不是静默降级或 panic。                                |
-| 长度一致  | 两个输入在逻辑上一维时，`len(a) == len(b)` 才允许继续计算；否则返回 `DimensionMismatch { operation, expected, actual }`。            |
-| 复数语义  | 复数内积固定使用 `sum(conjugate(a[i]) * b[i])`；`Numeric::conjugate()` 为泛型算法统一入口；对实数类型返回恒等值，对复数类型返回共轭。整数路径仍须走 checked arithmetic，不得因 identity conjugate 而绕过溢出检查。 |
-| 执行路径  | 调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。各路径必须保持一致的结果、错误类别与 panic 契约。 |
-| 溢出契约  | 整数 dot 的乘法溢出与累加溢出均为不可恢复错误，必须通过 checked arithmetic panic。                                                   |
-
-### 4.2 错误场景
-
-| 场景                   | 对外语义                                                                                                                                                                                                                                                             |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 左输入不是逻辑 1D      | 返回 `XenonError::InvalidArgument { operation: "dot".into(), argument: "lhs".into(), expected: "logical 1D tensor".into(), actual: format!("ndim={}", lhs.ndim()).into(), axis: None, axis_len: None, start: None, end: None, shape: Some(lhs.shape().to_vec()) }`。 |
-| 右输入不是逻辑 1D      | 返回 `XenonError::InvalidArgument { operation: "dot".into(), argument: "rhs".into(), expected: "logical 1D tensor".into(), actual: format!("ndim={}", rhs.ndim()).into(), axis: None, axis_len: None, start: None, end: None, shape: Some(rhs.shape().to_vec()) }`。 |
-| 两个 1D 输入长度不一致 | 返回 `XenonError::DimensionMismatch { operation: "dot", expected: a.len(), actual: b.len() }`。                                                                                                                                                                      |
-| 整数乘法或累加溢出     | 触发 panic；这属于不可恢复算术域错误。                                                                                                                                                                                                                               |
-| 空向量输入             | 合法，返回加法单位元 `A::zero()`。                                                                                                                                                                                                                                   |
-
-### 4.3 依赖图
+### 4.1 依赖图（ASCII）
 
 ```
 src/matrix/
@@ -112,29 +85,29 @@ src/matrix/
 └── crate::parallel (opt.)   # Pure parallel dot execution
 ```
 
-### 4.4 类型级依赖
+### 4.2 类型级依赖
 
 | 来源模块           | 使用的类型/trait                                                                           |
 | ------------------ | ------------------------------------------------------------------------------------------ |
 | `tensor`           | `TensorView<'a, A, D>`, `.ndim()`, `.shape()`, `.len()`, `.as_ptr()`, `.is_f_contiguous()` |
 | `element`          | `Numeric`, `ComplexScalar`                                                                 |
 | `iter`             | `Elements`, `.iter()`                                                                      |
-| `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`should_parallelize()` |
+| `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`should_parallelize()`                                   |
 | `error`            | `XenonError::InvalidArgument`, `XenonError::DimensionMismatch`                             |
 | `simd`（可选）     | 为满足条件的输入提供 dot 的 SIMD kernel（参见 `08-simd.md`）                               |
-| `parallel`（可选） | 为 dot 提供并行执行能力；调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。 |
+| `parallel`（可选） | 为 dot 提供并行执行能力                                                                    |
 
-### 4.5 依赖方向
-
-> **依赖方向：单向向上。** `matrix` 模块仅消费 `tensor`、`element`、`iter`、`error`、`simd`、`parallel` 模块。
-
-### 4.6 依赖合法性与替代方案
+### 4.3 依赖合法性
 
 | 项目           | 说明                                                                          |
 | -------------- | ----------------------------------------------------------------------------- |
 | 新增第三方依赖 | 无                                                                            |
 | 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
 | 替代方案       | 不适用；当前范围内无需额外第三方依赖。                                        |
+
+### 4.4 依赖方向
+
+依赖方向：单向向上。`matrix` 模块仅消费 `tensor`、`element`、`iter`、`error`、`simd`、`parallel` 模块。
 
 ---
 
@@ -210,7 +183,7 @@ where
 }
 ````
 
-> **整数 checked accumulation 说明：** 整数内积使用 checked arithmetic 进行中间乘积和累加。泛型约束 `A: Numeric + Copy` 在实现层通过 sealed trait `CheckedArith` 确保 `i32` / `i64` 路径使用 checked `mul` / `add`。
+整数内积使用 checked arithmetic 进行中间乘积和累加。泛型约束 `A: Numeric + Copy` 在实现层通过 sealed trait `CheckedArith` 确保 `i32` / `i64` 路径使用 checked `mul` / `add`。
 
 ### 5.2 复数内积语义
 
@@ -425,21 +398,6 @@ fn dot_impl<A, D1, D2>(
   - 测试: 所有矩阵测试
   - 前置: T2, T3a, T3b, T3c
   - 预计: 10 min
-
-### 并行执行分组图
-
-```text
-Wave 1: [T1]
-            │
-Wave 2: [T2]
-            │
-Wave 3: [T3a]
-            │
-Wave 4: [T3b]    [T3c]
-             └──────┬──────┘
-                    │
-Wave 5:            [T4]
-```
 
 ---
 

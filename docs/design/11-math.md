@@ -26,7 +26,7 @@
 
 | 职责     | 不包含                                                  |
 | -------- | ------------------------------------------------------- |
-| 算术运算 | 归约运算（sum/prod/min/max，参见 `13-reduction.md §1`） |
+| 算术运算 | 归约运算（参见 `13-reduction.md §1`） |
 | 一元运算 | 筛选/排序                                               |
 | 数学函数 | 运算符重载（参见 `19-overload.md §1`）                  |
 | 复数运算 | 比较运算（eq/ne/lt/gt）                                 |
@@ -97,10 +97,10 @@ src/math/
 | -------------- | -------------------------------------------------------------------------------------- |
 | `tensor`       | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.shape()`（参见 `07-tensor.md §5`） |
 | `iter`         | `Elements`, `ElementsMut`（参见 `10-iterator.md §5`）                                  |
-| `element`      | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`, `OrderedCompareElement`（定义见 `03-element.md §5.4a`）|
+| `element`      | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`, `OrderedCompareElement`（定义见 `03-element.md §5.5`）|
 | `complex`      | `Complex<f32>`, `Complex<f64>`（参见 `04-complex.md §5`）                              |
 | `broadcast`    | `broadcast_shape()`, `broadcast_to()` 返回的 `TensorView`（参见 `15-broadcast.md §5`） |
-| `dimension`    | `BroadcastDim<E>` public sealed trait（对外可命名的公开 sealed trait，用于编译期维度推导，参见 `02-dimension.md §5.9`）|
+| `dimension`    | `BroadcastDim<E>` public sealed trait（对外可命名的公开 sealed trait，用于编译期维度推导，参见 `02-dimension.md §5.10`）|
 | `storage`      | `Storage<Elem = A>`, `StorageMut<Elem = A>`                                            |
 | `error`        | `XenonError`（含 `BroadcastError` 变体，参见 `26-error.md §5`）                        |
 | `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`should_parallelize()`                           |
@@ -129,7 +129,7 @@ src/math/
 
 ### 5.2 二元逐元素执行约定
 
-二元逐元素方法统一使用 `BroadcastDim<DB>` 进行编译期维度推导；`BroadcastDim` 是 public sealed trait，因此在公开 API 中可被外部稳定命名。该 trait 定义于 `02-dimension.md §5.9`，详见该文档。
+二元逐元素方法统一使用 `BroadcastDim<DB>` 进行编译期维度推导；`BroadcastDim` 是 public sealed trait，因此在公开 API 中可被外部稳定命名。该 trait 定义于 `02-dimension.md §5.10`，详见该文档。
 
 当前版本不承诺独立的通用二元逐元素 helper 公开函数。二元算术、比较与内部辅助路径统一采用“先广播，再直接遍历广播后视图并写入结果张量”的执行模型。调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。
 
@@ -285,7 +285,7 @@ where
 
 - `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` 使用 Rust 提供的数学能力，不引入外部数学 crate。
 - 精确类（`floor` / `ceil`）：结果须与标量路径逐元素一致。
-- 近似类（`sin` / `sqrt` / `exp` / `ln`）：以 `需求说明书 §28.3` 为权威基线；实现细节参见 `00-coding.md §7.4`。
+- 近似类（`sin` / `sqrt` / `exp` / `ln`）：以 `需求说明书 §28.3` 为权威基线；实现细节参见 `00-coding.md §8.4`。
 - 同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。
 
 ### 5.6 复数运算（ComplexScalar 约束）
@@ -394,7 +394,7 @@ where
 }
 ```
 
-- `lt` / `gt` 不再复用 `RealScalar` 或更宽泛的 `Numeric + PartialOrd` 约束；公开 API 以 `OrderedCompareElement` 明确收敛到 `i32`、`i64`、`f32`、`f64` 四类元素类型。该 trait 定义见 `03-element.md §5.4a`。
+- `lt` / `gt` 不再复用 `RealScalar` 或更宽泛的 `Numeric + PartialOrd` 约束；公开 API 以 `OrderedCompareElement` 明确收敛到 `i32`、`i64`、`f32`、`f64` 四类元素类型。该 trait 定义见 `03-element.md §5.5`。
 - `eq(NaN, NaN)` 返回 `false`，`ne(NaN, NaN)` 返回 `true`，遵循 IEEE 754。
 - 标量比较入口与 `需求说明书 §12` 一致，比较运算也提供标量-张量入口；标量按可广播到目标全形状的零维输入处理，因此成功路径的形状与对应张量输入版本一致。
 
@@ -687,10 +687,10 @@ apply_binary(a, b, f):
 
 | 方向               | 对方模块    | 接口/类型                                  | 约定                                   |
 | ------------------ | ----------- | ------------------------------------------ | -------------------------------------- |
-| `math → iter`      | `iter`      | `Elements`, `ElementsMut`                  | 逐元素运算复用 `iter()` / `iter_mut()` 及相关遍历入口；二元路径直接遍历广播后的视图（参见 `10-iterator.md` §4）|
-| `math → broadcast` | `broadcast` | `broadcast_shape()`                        | 二元运算先调用广播模块推导兼容视图（参见 `15-broadcast.md` §4）|
-| `math → element`   | `element`   | `Numeric` / `RealScalar` / `ComplexScalar` | 通过元素约束区分数值与复数运算语义（参见 `03-element.md` §4）|
-| `math → simd`      | `simd`      | SIMD backend dispatch facade               | 连续数组且 feature 开启时通过稳定的 backend facade 分发到 SIMD 或标量路径，`math` 不直接依赖具体 vector kernel 名称（参见 `08-simd.md` §4.5） |
+| `math → iter`      | `iter`      | `Elements`, `ElementsMut`                  | 逐元素运算复用 `iter()` / `iter_mut()` 及相关遍历入口；二元路径直接遍历广播后的视图（参见 `10-iterator.md` §5）|
+| `math → broadcast` | `broadcast` | `broadcast_shape()`                        | 二元运算先调用广播模块推导兼容视图（参见 `15-broadcast.md` §5）|
+| `math → element`   | `element`   | `Numeric` / `RealScalar` / `ComplexScalar` | 通过元素约束区分数值与复数运算语义（参见 `03-element.md` §5）|
+| `math → simd`      | `simd`      | SIMD backend dispatch facade               | 连续数组且 feature 开启时通过稳定的 backend facade 分发到 SIMD 或标量路径，`math` 不直接依赖具体 vector kernel 名称（参见 `08-simd.md` §5） |
 | `math → parallel`  | `parallel`  | `par_zip_map()` / threshold / guard        | `dispatch.rs` 统一决定串行 vs 并行；进入并行路径后各 worker 在无第二层并行前提下可局部选择 SIMD 或标量（参见 `09-parallel.md` §5 / `§6`） |
 
 ### 9.2 数据流描述
@@ -715,7 +715,7 @@ User calls add / unary op / comparison method
 | Recoverable error | 广播不兼容时返回 `XenonError::BroadcastError`。参数不满足公开前提时返回 `XenonError::InvalidArgument`。 |
 | Panic | 整数 `add/sub/mul/div`、标量版 `add_scalar/sub_scalar/mul_scalar/div_scalar`、`abs/neg/square` 的溢出、除零或结果不可表示均按需求触发 panic；`signum` 不新增 panic 约束。panic 信息至少包含 `operation`、`type`、`trigger`、`element_index`，并在适用时附带 `shape`。 |
 | 路径一致性 | 标量、SIMD 与并行路径必须保持相同 shape、错误类别、NaN/复数语义；不满足前提或 guard 失败时统一回退标量实现。 |
-| 容差边界 | 精确类（`floor` / `ceil`）结果须与标量路径逐元素一致。近似类（`sin` / `sqrt` / `exp` / `ln`）以 `需求说明书 §28.3` 为权威基线；实现细节参见 `00-coding.md §7.4`。复数结果按实部、虚部分量分别应用对应实数规则；同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。 |
+| 容差边界 | 精确类（`floor` / `ceil`）结果须与标量路径逐元素一致。近似类（`sin` / `sqrt` / `exp` / `ln`）以 `需求说明书 §28.3` 为权威基线；实现细节参见 `00-coding.md §8.4`。复数结果按实部、虚部分量分别应用对应实数规则；同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。 |
 
 ---
 
