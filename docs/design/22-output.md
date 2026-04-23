@@ -630,7 +630,7 @@ Debug 输出的 `dtype=` 字段应通过内部 `dtype_name()` 映射获得稳定
 | `test_fmt_3d`                 | 3D 嵌套括号输出                             | 中     |
 | `test_fmt_float_precision`    | 浮点精度格式化                              | 中     |
 | `test_display_complex_f64`    | 复数格式化输出（如 `1.0+2.0j`）             | 中     |
-| `test_display_complex_negative_imag` | 复数负虚部格式化                       | 中     |
+| `test_display_complex_negative_imag` | 复数负虚部格式化                     | 中     |
 | `test_fmt_i32`                | 整数类型格式化                              | 中     |
 | `test_fmt_bool`               | bool 类型格式化 `[true, false]`             | 低     |
 | `test_display_tensor`         | Display trait 完整流程                      | 高     |
@@ -655,35 +655,27 @@ Debug 输出的 `dtype=` 字段应通过内部 `dtype_name()` 映射获得稳定
 | broadcast view     | 按逻辑索引顺序格式化，不因零步长重复存储表示而改变展示顺序 |
 | transposed view    | 按逻辑行列结构输出，并标记 `layout=non-contiguous` |
 
-### 8.4 `需求说明书 §28.4` 边界测试场景
-
-| 场景 | 说明 |
-| ---- | ---- |
-| broadcast view 格式化 | 零步长 broadcast view 的 `Display` / `Debug` 按逻辑索引顺序输出，不重复底层存储布局 |
-| transposed view 格式化 | 转置非连续视图按逻辑行列顺序输出，并保留 `layout=non-contiguous` 元信息 |
-| 大维度窄行宽 | 高维嵌套张量在极窄 `line_width` 下稳定换行，截断后缀与 shape 标记保持完整 |
-
-### 8.5 属性测试不变量
+### 8.4 属性测试不变量
 
 | 不变量                                              | 测试方法 |
 | --------------------------------------------------- | -------- |
 | `debug(tensor)` 包含 shape / strides / dtype 元信息 | 随机形状 |
 | 截断输出包含统一后缀 `... (N elements omitted)  shape=[...]` | 大数组 |
 
-### 8.6 集成测试
+### 8.5 集成测试
 
 | 测试文件               | 测试内容                                                                                  |
 | ---------------------- | ----------------------------------------------------------------------------------------- |
 | `tests/test_output.rs` | `Display` / `Debug` 与 `tensor` 元数据查询、`iter` 遍历、复数与浮点格式化路径的端到端集成 |
 
-### 8.7 Feature gate / 配置测试
+### 8.6 Feature gate / 配置测试
 
 | 配置 | 验证点 |
 | ---- | ---- |
 | 默认配置 | `Display` / `Debug` / `FormatConfig::default()` 输出满足 NumPy 风格与零维区分契约。 |
 | 其他 feature 组合 | 不适用；当前模块无额外 feature gate。 |
 
-### 8.8 类型边界 / 编译期测试
+### 8.7 类型边界 / 编译期测试
 
 | 场景 | 测试方式 |
 | ---- | ---- |
