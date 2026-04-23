@@ -129,7 +129,7 @@ src/math/
 
 ### 5.2 二元逐元素执行约定
 
-> **维度推导说明：** 二元逐元素方法统一使用 `BroadcastDim<DB>` 进行编译期维度推导；`BroadcastDim` 是 public sealed trait，因此在公开 API 中可被外部稳定命名。该 trait 定义于 `02-dimension.md §5.9`，详见该文档。
+二元逐元素方法统一使用 `BroadcastDim<DB>` 进行编译期维度推导；`BroadcastDim` 是 public sealed trait，因此在公开 API 中可被外部稳定命名。该 trait 定义于 `02-dimension.md §5.9`，详见该文档。
 
 当前版本不承诺独立的通用二元逐元素 helper 公开函数。二元算术、比较与内部辅助路径统一采用“先广播，再直接遍历广播后视图并写入结果张量”的执行模型。调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。
 
@@ -180,11 +180,11 @@ where
 }
 ```
 
-支持的类型：i32, i64, f32, f64, Complex\<f32\>, Complex\<f64\>。
+所有整数逐元素运算在实现层使用此 trait，确保 debug 和 release 均在溢出/除零时 panic。浮点和复数使用标准算术运算符。
 
-> **整数算术补充约束：** 对 `i32` / `i64` 的 `add` / `sub` / `mul` / `div`，实现必须使用 checked arithmetic；凡发生溢出、除以零或结果不可表示，均按 `需求说明书 §12` 与 `需求说明书 §27` 走 panic 语义，不得回落为 wrapping 行为。
-
-> **checked arithmetic 实现约束：** 整数 checked arithmetic 通过内部 sealed trait 实现：
+- 支持的类型：i32, i64, f32, f64, Complex<f32>, Complex<f64>。
+- 对 `i32` / `i64` 的 `add` / `sub` / `mul` / `div`，实现必须使用 checked arithmetic；凡发生溢出、除以零或结果不可表示，均按 `需求说明书 §12` 与 `需求说明书 §27` 走 panic 语义，不得回落为 wrapping 行为。
+- 整数 checked arithmetic 通过内部 sealed trait 实现：
 
 ```rust,ignore
 /// Internal sealed trait for checked binary arithmetic.
@@ -196,8 +196,6 @@ pub(crate) trait CheckedArith: Sized {
     fn checked_div(a: Self, b: Self) -> Self; // panics on div-by-zero
 }
 ```
-
-所有整数逐元素运算在实现层使用此 trait，确保 debug 和 release 均在溢出/除零时 panic。浮点和复数使用标准算术运算符。
 
 ### 5.4 一元运算（分离 trait bounds）
 
@@ -256,18 +254,16 @@ where
 }
 ```
 
-`abs` / `signum` 仅对具备自然顺序的数值类型开放：i32, i64, f32, f64。`neg` / `square` 对所有 `Numeric` 类型开放：i32, i64, f32, f64, Complex<f32>, Complex<f64>。
+- `abs` / `signum` 仅对具备自然顺序的数值类型开放：i32, i64, f32, f64。
+- `neg` / `square` 对所有 `Numeric` 类型开放：i32, i64, f32, f64, Complex<f32>, Complex<f64>。
+- `abs()` 约束说明：`Numeric + PartialOrd` 只是简写，实际实现受 sealed 类型集合限制（仅 `i32` / `i64` / `f32` / `f64`）。
+- 对有符号整数，`neg(i32::MIN)` / `neg(i64::MIN)` 等不可表示情形视为不可恢复错误，遵循 panic 语义。
+- `abs` / `square` 在整数路径上必须使用 checked arithmetic。特别是最小负值取绝对值、平方溢出等情形，均须视为不可恢复错误并触发 panic。`signum` 仅做符号分类，不额外要求 checked arithmetic。
 
-> **`abs()` 约束说明：** `Numeric + PartialOrd` 只是简写，实际实现受 sealed 类型集合限制（仅 `i32` / `i64` / `f32` / `f64`）。
+`signum()` 语义拆分：
 
-> **`signum()` 语义拆分：**
->
-> - 整数 `signum`：基于数值符号返回 `-1`、`0` 或 `1`。
-> - 浮点 `signum`：遵循 IEEE 754 语义：`NaN -> NaN`、`+0.0 -> 1.0`、`-0.0 -> -1.0`、正数 `-> 1.0`、负数 `-> -1.0`。这与 Rust 标准库 `f32::signum` / `f64::signum` 行为一致。
-
-> **整数一元运算补充约束：** `abs` / `square` 在整数路径上必须使用 checked arithmetic。特别是最小负值取绝对值、平方溢出等情形，均须视为不可恢复错误并触发 panic。`signum` 仅做符号分类，不额外要求 checked arithmetic。
-
-> **`neg()` 整数边界：** 对有符号整数，`neg(i32::MIN)` / `neg(i64::MIN)` 等不可表示情形视为不可恢复错误，遵循 panic 语义。
+- 整数 `signum`：基于数值符号返回 `-1`、`0` 或 `1`。
+- 浮点 `signum`：遵循 IEEE 754 语义：`NaN -> NaN`、`+0.0 -> 1.0`、`-0.0 -> -1.0`、正数 `-> 1.0`、负数 `-> -1.0`。这与 Rust 标准库 `f32::signum` / `f64::signum` 行为一致。
 
 ### 5.5 数学函数（RealScalar 约束：仅 f32/f64）
 
