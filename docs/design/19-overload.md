@@ -101,7 +101,7 @@ src/overload/
 
 ### 4.4 依赖方向声明
 
-依赖方向：单向向上。`overload` 仅消费 `math`、`broadcast`、`tensor`、`element` 的 trait 和类型，不被它们依赖。`overload` 是最上层的用户 API 模块。
+依赖方向：单向向上。`overload` 仅消费 `math`、`broadcast`、`tensor`、`element`、`dimension` 的 trait 和类型，不被它们依赖。`overload` 是最上层的用户 API 模块。
 
 ---
 

@@ -428,7 +428,7 @@ where
 
 ### 5.4 from_scalar
 
-````rust,ignore
+```rust,ignore
 # use crate::dimension::Ix0;
 # use crate::element::Element;
 # use crate::layout::{self, Strides};
@@ -458,7 +458,7 @@ where
     }
 }
 
-````
+```
 
 ### 5.5 Good / Bad 对比
 
@@ -671,12 +671,12 @@ User calls zeros / from_shape_vec / eye
 
 ## 10. 错误处理与语义边界
 
-| 主题              | 内容                                                                                                                                                                                                                                                                                        |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 主题              | 内容                                                                     |
+| ----------------- | ------------------------------------------------------------------------ |
 | Recoverable error | shape 与长度基数不匹配、共享 checked helper 报告元素总数溢出等情况返回 `XenonError::InvalidShape`。所有 `InvalidShape` 示例都保持 `26-error.md` 的 canonical 字段集；长度不匹配时携带实际与期望元素数，元素总数溢出时额外以 `reason = Some("element count overflow".into())` 标识溢出原因。 |
-| Panic             | 公开构造 API 不定义额外 panic 语义；失败统一走 `Result`。                                                                                                                                                                                                                                   |
-| 路径一致性        | 所有构造路径都必须产出 canonical F-order owned 张量，并保持一致的 shape / strides / flags 语义。                                                                                                                                                                                            |
-| 容差边界          | 不适用。                                                                                                                                                                                                                                                                                    |
+| Panic             | 公开构造 API 不定义额外 panic 语义；失败统一走 `Result`。                |
+| 路径一致性        | 所有构造路径都必须产出 canonical F-order owned 张量，并保持一致的 shape / strides / flags 语义。 |
+| 容差边界          | 不适用。                                                                 |
 
 ---
 
@@ -723,8 +723,6 @@ User calls zeros / from_shape_vec / eye
 | 实现选择 | `Owned` 存储可按 SIMD / FFI / allocator 约束选择合适的对齐策略                                        |
 | 兼容性   | 只要逻辑元素值、访问结果与 F-order 语义不变，更换具体对齐值不构成构造模块语义变化                     |
 
-> **对齐策略说明：** 文档只要求构造结果遵守 Xenon 的 owned/F-order/合法布局语义；实际对齐值由 storage 层统一决定，可随实现演进而调整，无需成为构造 API 的稳定承诺。
-
 ### 12.3 批量初始化优化
 
 | 场景             | 优化方式                 | 预期性能                           |
@@ -734,8 +732,6 @@ User calls zeros / from_shape_vec / eye
 | `from_shape_vec` | 共享 owned 构造路径      | O(n)                               |
 | `eye` 大矩阵     | 先零后对角               | n 次 `write` + n² 次 `write_bytes` |
 
-> **注意**：`from_array` 当前存在双重拷贝（源数组 → Vec → 对齐分配），未来版本可优化为直接构建。
-
 ---
 
 ## 13. 平台与工程约束
@@ -743,6 +739,7 @@ User calls zeros / from_shape_vec / eye
 | 约束       | 说明                                                                |
 | ---------- | ------------------------------------------------------------------- |
 | `std` only | Xenon 当前版本仅支持 `std` 环境，本文不再讨论 `no_std` 路径         |
+| MSRV       | Rust 1.85+                                                          |
 | 单 crate   | `construct` 设计保持在现有 crate 内，不引入额外 crate               |
 | SemVer     | 文档当前收敛到 `需求说明书 §19` 的最小构造集合，不扩大公开 API 承诺 |
 | 最小依赖   | 本模块不新增第三方依赖                                              |
