@@ -115,7 +115,7 @@ pub enum XenonError {
     },
 
     BroadcastError {
-        operation: &'static str,
+        operation: Cow<'static, str>,
         lhs_shape: Vec<usize>,
         rhs_shape: Vec<usize>,
         attempted_target_shape: Option<Vec<usize>>,
@@ -184,10 +184,10 @@ pub enum XenonError {
     },
 
     Ffi {
-        operation: &'static str,
+        operation: Cow<'static, str>,
         category: FfiErrorCategory,
-        backend: &'static str,
-        precondition: &'static str,
+        backend: Cow<'static, str>,
+        precondition: Cow<'static, str>,
         actual: Cow<'static, str>,
     },
 
@@ -240,7 +240,6 @@ pub enum ConversionFailureReason {
     FloatToInteger,
     IntegerToFloatPrecisionLoss,
     NonZeroImaginaryPart,
-    UnsupportedByRequirement,
 }
 
 pub type Result<T> = core::result::Result<T, XenonError>;
@@ -592,7 +591,7 @@ impl fmt::Display for XenonError {
 
 ```rust,ignore
 // Good - cast is fallible and reports the failing element.
-pub fn cast<B: Element>(&self) -> Result<Tensor<B, D>, XenonError>
+pub fn cast<B: CastElement>(&self) -> Result<Tensor<B, D>, XenonError>
 where
     A: CastTo<B>,
 {
@@ -788,15 +787,21 @@ fmt_display(error, formatter):
 
 ### 9.1 接口约定
 
-| 方向    | 对方模块             | 接口/类型                       | 约定                              |
-| ------- | -------------------- | ------------------------------- | --------------------------------- |
-| 被消费  | `tensor` / `shape`   | `XenonError::ShapeMismatch`     | 形状校验失败时构造并返回          |
-| 被消费  | `index`              | `XenonError::IndexOutOfBounds`  | 方法型索引越界时构造并返回        |
-| 被消费  | `broadcast` / `math` | `XenonError::BroadcastError`    | 广播不兼容时构造并返回            |
-| 被消费  | `reduction`          | `XenonError::InvalidAxis`       | 轴越界时构造并返回；溢出走 panic  |
-| 被消费  | `convert`            | `XenonError::TypeConversion`    | 有损转换失败时构造并返回          |
-| 被消费  | `ffi`                | `XenonError::Ffi`               | FFI 前提不满足时构造并返回        |
-| 被消费  | 所有模块             | `Result<T>`                     | 公开 API 返回类型统一使用此别名   |
+| 方向    | 对方模块                       | 接口/类型                       | 约定                              |
+| ------- | ------------------------------ | ------------------------------- | --------------------------------- |
+| 被消费  | `tensor` / `shape`             | `XenonError::ShapeMismatch`     | 非广播的双输入形状冲突时构造并返回 |
+| 被消费  | `index`                        | `XenonError::IndexOutOfBounds`  | 方法型索引越界时构造并返回        |
+| 被消费  | `broadcast` / `math`           | `XenonError::BroadcastError`    | 广播不兼容时构造并返回            |
+| 被消费  | `reduction`                    | `XenonError::InvalidAxis`       | 轴越界时构造并返回；溢出走 panic  |
+| 被消费  | `convert`                      | `XenonError::TypeConversion`    | 有损转换失败时构造并返回          |
+| 被消费  | `ffi`                          | `XenonError::Ffi`               | FFI 前提不满足时构造并返回        |
+| 被消费  | `tensor` / `ffi`               | `XenonError::InvalidLayout`     | 元数据校验失败时构造并返回        |
+| 被消费  | `index` / `math` / `overload`  | `XenonError::InvalidArgument`   | 参数非法时构造并返回              |
+| 被消费  | `construction` / `math` / `parallel` | `XenonError::InvalidShape` | 形状/长度不匹配时构造并返回       |
+| 被消费  | `dimension` / `parallel` / `matrix` / `index` / `ffi` | `XenonError::DimensionMismatch` | 维度不匹配时构造并返回 |
+| 被消费  | `storage` / `utility`          | `XenonError::InvalidStorageMode`| 存储模式不支持时构造并返回        |
+| 被消费  | `workspace`                    | `XenonError::Workspace`         | 工作区分配/借用/分割失败时构造并返回 |
+| 被消费  | 所有模块                       | `Result<T>`                     | 公开 API 返回类型统一使用此别名   |
 
 ### 9.2 数据流描述
 
@@ -861,15 +866,19 @@ Caller invokes public API (e.g., tensor.broadcast_to(shape))
 
 ### 10.3 受影响模块
 
-| 模块/能力            | 影响内容                                   |
-| -------------------- | ------------------------------------------ |
-| `tensor` / `shape`   | 形状校验、布局前提、元素总数校验           |
-| `index`              | 越界索引、按轴索引、切片边界诊断           |
-| `broadcast` / `math` | 广播失败、形状不兼容、参数非法             |
-| `reduction`          | 非法轴、空输入单位元语义、整数溢出 panic   |
-| `convert`            | 类型转换失败的元素索引定位                 |
-| `ffi`                | FFI 前提失败与后端约束诊断                 |
-| `parallel`           | panic / `Err` 的尽快传播，不得静默吞掉     |
+| 模块/能力            | 影响内容                                            |
+| -------------------- | --------------------------------------------------- |
+| `tensor` / `shape`   | 形状校验、布局前提、元素总数校验                    |
+| `index`              | 越界索引、按轴索引、切片边界诊断                    |
+| `broadcast` / `math` | 广播失败、形状不兼容、参数非法                      |
+| `reduction`          | 非法轴、空输入单位元语义、整数溢出 panic            |
+| `convert`            | 类型转换失败的元素索引定位                          |
+| `ffi`                | FFI 前提失败与后端约束诊断                          |
+| `parallel`           | panic / `Err` 的尽快传播，不得静默吞掉              |
+| `storage` / `utility`| 存储模式不支持时返回 `InvalidStorageMode`           |
+| `workspace`          | 工作区分配失败、布局非法、借用冲突、分割越界        |
+| `dimension`          | 静态/动态维度转换不匹配时返回 `DimensionMismatch`   |
+| `construction`       | 构造时形状/长度不匹配返回 `InvalidShape`            |
 
 ---
 

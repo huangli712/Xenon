@@ -102,7 +102,7 @@ External dependencies:
 | `storage`   | `Storage<Elem=A>`, `StorageMut`, `Owned<A>`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`（参见 `05-storage.md` §5） |
 | `element`   | `Element`, `CastTo<B>`（参见 `03-element.md` §5.9；convert 只消费该 trait，不重新定义）                      |
 | `layout`    | `is_f_contiguous()`（参见 `06-layout.md` §5）                                                                |
-| `error`     | `XenonError`, `Result<T>`（参见 `26-error.md` §4）                                                           |
+| `error`     | `XenonError`, `Result<T>`（参见 `26-error.md` §5）                                                           |
 
 ### 4.3 依赖方向声明
 

@@ -146,7 +146,7 @@ tests/
 | `complex`   | `Complex<f32>`, `Complex<f64>`（参见 `04-complex.md §5`）                                                      |
 | `storage`   | `Owned`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`, `Storage`（参见 `05-storage.md §5`）                            |
 | `layout`    | `LayoutFlags`（参见 `06-layout.md §5`）                                                                        |
-| `error`     | `XenonError`, `Result<T>`（参见 `26-error.md §4`）                                                             |
+| `error`     | `XenonError`, `Result<T>`（参见 `26-error.md §5`）                                                             |
 
 ### 4.3 依赖方向声明
 

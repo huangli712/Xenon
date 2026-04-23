@@ -331,10 +331,10 @@ pub trait CastTo<T>: Element {
 }
 ```
 
-- 类型转换错误载荷的完整定义见 `26-error.md §4.2`，`CastTo<T>` 的转换矩阵与实现约束见 `21-type.md §5.2`、`§6.1`。本节仅保留元素层 trait 骨架。
+- 类型转换错误载荷的完整定义见 `26-error.md §5.1`，`CastTo<T>` 的转换矩阵与实现约束见 `21-type.md §5.2`、`§6.1`。本节仅保留元素层 trait 骨架。
 - `CastTo<T>` 直接返回 `XenonError::TypeConversion`。
 - `bool` 不为任何目标类型实现 `CastTo<T>`。
-- `Complex<T> -> Real` 的条件成功语义、受支持矩阵与 `XenonError::TypeConversion` 字段约束，统一以 `21-type.md §5.3`、`§6.1` 以及 `26-error.md §4.3` 为准。
+- `Complex<T> -> Real` 的条件成功语义、受支持矩阵与 `XenonError::TypeConversion` 字段约束，统一以 `21-type.md §5.3`、`§6.1` 以及 `26-error.md §5.6` 为准。
 
 ### 5.9 Checked arithmetic traits
 

@@ -533,7 +533,7 @@ fn scalar_is_positive_zero<T: PositiveZero>(im: T) -> bool {
 | `Complex<f32>` | `f64` | 仅当虚部为 `0` 时，按 `f32→f64` 规则转换实部 | 默认返回 `XenonError::TypeConversion` |
 | `Complex<f64>` | `f32` | 仅当虚部为 `0` 时，按 `f64→f32` 规则转换实部 | 默认返回 `XenonError::TypeConversion` |
 
-- `Complex -> Real` 的具体 `CastTo<T>` 实现同样位于 `convert/cast.rs`。`complex/` 仅保留“虚部必须为 `0`；失败返回 `XenonError::TypeConversion`”这一语义约束，字段模型以 `26-error.md §4.2` / `§4.4` 为准。
+- `Complex -> Real` 的具体 `CastTo<T>` 实现同样位于 `convert/cast.rs`。`complex/` 仅保留“虚部必须为 `0`；失败返回 `XenonError::TypeConversion`”这一语义约束，字段模型以 `26-error.md §5.1` / `§5.6` 为准。
 - `-0.0` 补充说明： 复数到实数转换对“虚部是否为零”的判断遵循 IEEE 754 比较语义；因此 `-0.0` 视为零，`Complex::new(3.0, -0.0)` 允许按虚部为零的路径继续转换，不应被误判为非零虚部。
 
 ### 5.11 内存布局静态断言

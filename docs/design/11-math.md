@@ -1,8 +1,10 @@
 # 逐元素运算模块设计
 
-> 文档编号: 11 | 模块: `src/math/` | 阶段: Phase 4
-> 前置文档: `03-element.md`, `08-simd.md`, `09-parallel.md`, `10-iterator.md`, `15-broadcast.md`, `26-error.md`
-> 需求参考: `需求说明书 §4`, `需求说明书 §9.1`, `需求说明书 §9.2`, `需求说明书 §9.3`, `需求说明书 §12`, `需求说明书 §27`, `需求说明书 §28.2`, `需求说明书 §28.3`, `需求说明书 §28.4`, `需求说明书 §28.5`
+> 文档编号: 11
+> 模块目录: src/math/
+> 任务阶段: Phase 4
+> 前置文档: 03-element.md, 08-simd.md, 09-parallel.md, 10-iterator.md, 15-broadcast.md, 26-error.md
+> 需求参考: 需求说明书 §4、§9、§12、§27、§28
 > 范围声明: 范围内
 
 ---
@@ -11,16 +13,27 @@
 
 ### 1.1 职责边界
 
-| 职责     | 包含                                                                  | 不包含                                                  |
-| -------- | --------------------------------------------------------------------- | ------------------------------------------------------- |
-| 算术运算 | add/sub/mul/div，数值类型：i32/i64/f32/f64/Complex                    | 归约运算（sum/prod/min/max，参见 `13-reduction.md §1`） |
-| 一元运算 | abs（有序数值）；signum（浮点按符号位、整数按比较）；neg/square（Numeric）；数学函数（RealScalar） | 篮选/排序                                               |
-| 数学函数 | sin/sqrt/exp/ln/floor/ceil，仅 f32/f64                                | 运算符重载（参见 `19-overload.md §1`）                  |
-| 复数运算 | modulus/模（返回实数类型）/conjugate（公开 API；内部 Complex 方法名可记为 conj），仅 Complex | 比较运算（eq/ne/lt/gt）                                 |
-| 逻辑非   | `!`，仅 bool                                                          | 位运算                                                  |
-| 比较运算 | eq/ne 对所有 Element 可用；lt/gt 对 i32/i64/f32/f64 可用，返回 bool 张量，NaN 遵循 IEEE 754 | 搜索/排序                                               |
-| 标量运算 | 标量与张量的逐元素运算                                                | 矩阵运算（dot/matmul）                                  |
-| 广播支持 | 所有二元运算和比较运算支持广播                                        | 批量运算                                                |
+| 职责     | 包含                                                                  |
+| -------- | --------------------------------------------------------------------- |
+| 算术运算 | add/sub/mul/div，数值类型：i32/i64/f32/f64/Complex                    |
+| 一元运算 | abs（有序数值）；signum（浮点按符号位、整数按比较）；neg/square（Numeric）；数学函数（RealScalar） |
+| 数学函数 | sin/sqrt/exp/ln/floor/ceil，仅 f32/f64                                |
+| 复数运算 | modulus/模（返回实数类型）/conjugate（公开 API；内部 Complex 方法名可记为 conj），仅 Complex |
+| 逻辑非   | `!`，仅 bool                                                          |
+| 比较运算 | eq/ne 对所有 Element 可用；lt/gt 对 i32/i64/f32/f64 可用，返回 bool 张量，NaN 遵循 IEEE 754 |
+| 标量运算 | 标量与张量的逐元素运算                                                |
+| 广播支持 | 所有二元运算和比较运算支持广播                                        |
+
+| 职责     | 不包含                                                  |
+| -------- | ------------------------------------------------------- |
+| 算术运算 | 归约运算（sum/prod/min/max，参见 `13-reduction.md §1`） |
+| 一元运算 | 筛选/排序                                               |
+| 数学函数 | 运算符重载（参见 `19-overload.md §1`）                  |
+| 复数运算 | 比较运算（eq/ne/lt/gt）                                 |
+| 逻辑非   | 位运算                                                  |
+| 比较运算 | 搜索/排序                                               |
+| 标量运算 | 矩阵运算（dot/matmul）                                  |
+| 广播支持 | 批量运算                                                |
 
 ### 1.2 设计原则
 
@@ -31,35 +44,16 @@
 | 存储模式无关 | 对 Tensor、TensorView、TensorViewMut 统一工作 |
 | NaN 语义明确 | IEEE 754 NaN 传播规则                         |
 
-### 1.3 在架构中的位置
-
-```
-Dependency levels:
-L0: error, private
-L1: dimension, element, complex
-L2: layout (depends on dimension)
-L3: storage (independent of layout; tensor owns storage and consumes layout results)
-L4: tensor (depends on storage, dimension)
-L5: broadcast (depends on tensor, dimension)
-L6: math (element-wise operations) <- current module (depends on broadcast, iter, element)
-```
-
 ---
 
 ## 2. 需求映射与范围约束
 
-| 类型     | 内容 |
+| 项目     | 内容 |
 | -------- | ---- |
-| 需求映射 | `需求说明书 §4`, `需求说明书 §9.1`, `需求说明书 §9.2`, `需求说明书 §9.3`, `需求说明书 §12`, `需求说明书 §27`, `需求说明书 §28.2`, `需求说明书 §28.3`, `需求说明书 §28.4`, `需求说明书 §28.5` |
+| 需求映射 | 需求说明书 §4、§9、§12、§27、§28 |
 | 范围内   | 逐元素算术、一元运算、数学函数、复数 `modulus` / `conjugate`、逻辑非、比较运算、标量-张量逐元素语义与广播语义。 |
 | 范围外   | 混合类型逐元素运算以及 `map` 系列公开 API。SIMD 与并行覆盖范围仅限本模块负责的逐元素运算；若当前类型/ISA/语义约束不满足，则自动回退标量。 |
 | 非目标   | 不新增新的数学库依赖，不在本文扩展 mixed-type API 或更通用的逐元素映射原语。 |
-
-### 2.1 关联需求
-
-| 需求 | 说明 |
-| ---- | ---- |
-| `需求说明书 §20` | 运算符重载由 `19-overload.md` 承载；本文档仅定义逐元素运算的语义实现、执行路径与错误边界。 |
 
 ---
 
@@ -83,25 +77,7 @@ src/parallel/           # optional parallel backend consumed by math dispatch
 
 ## 4. 依赖关系
 
-### 4.1 Invariants
-
-| 不变量 | 说明 |
-| ---- | ---- |
-| 广播先决 | 所有二元逐元素运算与比较运算必须先验证广播兼容性，再遍历广播后的只读视图。 |
-| 输出形状稳定 | 二元运算返回张量的 shape 必须等于广播结果 shape；一元运算与标量运算保持输入 shape 不变。 |
-| 比较类型边界 | `lt` / `gt` 只对 `i32`、`i64`、`f32`、`f64` 开放；`bool` 与 `Complex` 不得通过公开 API 进入该路径。 |
-| SIMD 语义等价 | SIMD 覆盖范围见 `08-simd.md §5.4a`；在本模块内仅讨论 `需求说明书 §12` 定义的逐元素运算。任一路径的 shape、NaN 语义和错误边界都必须与公开契约一致；不满足 SIMD 前提时统一回退标量。 |
-
-### 4.2 Error Scenarios
-
-| 场景 | 错误 |
-| ---- | ---- |
-| 二元运算广播失败 | 返回 `XenonError::BroadcastError { operation, lhs_shape, rhs_shape, attempted_target_shape, axis }`，分别记录操作名、左右输入 shape、本次尝试构造的目标广播 shape 以及适用轴上下文。 |
-| 构造结果张量时元素总数与 shape 不一致 | 返回 `XenonError::InvalidShape { operation: Cow<'static, str>, shape: Vec<usize>, expected_elements: usize, actual_elements: usize, offending_dim: Option<usize>, reason: Option<Cow<'static, str>> }`。 |
-| 公开 API 收到不满足前提的参数 | 返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, axis_len: Option<usize>, start: Option<usize>, end: Option<usize>, shape: Option<Vec<usize>> }`。 |
-| 整数算术溢出、除零或结果不可表示 | 属于 panic 语义，不进入 `XenonError`。 |
-
-### 4.3 依赖图
+### 4.1 依赖图（ASCII）
 
 ```
 src/math/
@@ -115,33 +91,33 @@ src/math/
 └── crate::error         # XenonError
 ```
 
-### 4.4 类型级依赖
+### 4.2 类型级依赖
 
 | 来源模块       | 使用的类型/trait                                                                       |
 | -------------- | -------------------------------------------------------------------------------------- |
 | `tensor`       | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.shape()`（参见 `07-tensor.md §5`） |
 | `iter`         | `Elements`, `ElementsMut`（参见 `10-iterator.md §5`）                                  |
-| `element`      | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`, `OrderedCompareElement`（定义见 `03-element.md §5.4a`）         |
+| `element`      | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`, `OrderedCompareElement`（定义见 `03-element.md §5.4a`）|
 | `complex`      | `Complex<f32>`, `Complex<f64>`（参见 `04-complex.md §5`）                              |
 | `broadcast`    | `broadcast_shape()`, `broadcast_to()` 返回的 `TensorView`（参见 `15-broadcast.md §5`） |
-| `dimension`    | `BroadcastDim<E>` public sealed trait（对外可命名的公开 sealed trait，用于编译期维度推导，参见 `02-dimension.md §5.9`）                 |
+| `dimension`    | `BroadcastDim<E>` public sealed trait（对外可命名的公开 sealed trait，用于编译期维度推导，参见 `02-dimension.md §5.9`）|
 | `storage`      | `Storage<Elem = A>`, `StorageMut<Elem = A>`                                            |
-| `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`should_parallelize()` |
+| `error`        | `XenonError`（含 `BroadcastError` 变体，参见 `26-error.md §5`）                        |
+| `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`should_parallelize()`                           |
 | `simd`（可选） | `pulp::Arch`（参见 `08-simd.md §5`）                                                   |
-| `parallel`（可选） | `par_zip_map()`（纯并行执行入口，不含串行回退，参见 `09-parallel.md §5` / `§6`） |
-| `error`        | `XenonError`（含 `BroadcastError` 变体，参见 `26-error.md §4`）                        |
+| `parallel`（可选） | `par_zip_map()`（纯并行执行入口，不含串行回退，参见 `09-parallel.md §5` / `§6`）   |
 
-### 4.5 依赖方向
-
-> **依赖方向：单向向上。** `math` 模块消费 `iter`、`tensor`、`element`、`broadcast` 模块，不被它们依赖。
-
-### 4.6 依赖合法性与替代方案
+### 4.3 依赖合法性
 
 | 项目           | 说明 |
 | -------------- | ---- |
-| 新增第三方依赖 | 无 |
+| 新增第三方依赖 | 无   |
 | 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
 | 替代方案       | 不适用；当前范围内无需额外第三方依赖。 |
+
+### 4.4 依赖方向声明
+
+依赖方向：单向向上。`math` 模块消费 `iter`、`tensor`、`element`、`broadcast` 模块，不被它们依赖。
 
 ---
 
@@ -619,25 +595,6 @@ apply_binary(a, b, f):
   - 测试: `test_add_simd_vs_scalar`, `test_mul_simd_vs_scalar`
   - 前置: T3, 08-simd.md
   - 预计: 10 min
-
-### 并行执行分组图
-
-```text
-            [T1]
-              |
-            +-------+--------+-------+
-            |       |        |       |
-            v       v        v       v
-Wave 1:    [T2]    [T3]     [T4]    [T5]
-            |
-         +--+-----+
-         |        |
-         v        v
-Wave 2: [T6]    [T7]
-            |
-            v
-Wave 3:    [T8]
-```
 
 ---
 
