@@ -483,7 +483,7 @@ apply_unary(view, f):
     return result
 ```
 
-`modulus()` 特殊执行骨架：** `modulus()` 的内部执行骨架与标准一元运算不同：输入元素类型为 `Complex<T>`，输出为 `T`。因此它不能直接复用 `apply_unary(view, f)` 这类“输入/输出同类型”的骨架，而需要独立的执行骨架处理类型变化。
+`modulus()` 的内部执行骨架与标准一元运算不同：输入元素类型为 `Complex<T>`，输出为 `T`。因此它不能直接复用 `apply_unary(view, f)` 这类“输入/输出同类型”的骨架，而需要独立的执行骨架处理类型变化。
 
 ### 6.2 二元逐元素实现（含广播）
 
@@ -507,7 +507,7 @@ apply_binary(a, b, f):
 
 ### 6.3 SIMD 加速路径
 
-> **SIMD/并行覆盖范围**：本文描述的逐元素运算功能范围以 `需求说明书 §12` 为准。SIMD 和并行加速路径的当前正式支持子集以 `08-simd.md` 和 `09-parallel.md` 定义的能力边界为准，不在本文档中另行扩张覆盖承诺。
+本文描述的逐元素运算功能范围以 `需求说明书 §12` 为准。SIMD 和并行加速路径的当前正式支持子集以 `08-simd.md` 和 `09-parallel.md` 定义的能力边界为准，不在本文档中另行扩张覆盖承诺。
 
 调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。SIMD 具体能力与后端细节参见 `08-simd.md §5.5`。未列出的运算、类型、ISA 或不满足语义约束的路径统一回退标量实现。
 
@@ -519,8 +519,6 @@ apply_binary(a, b, f):
 | 数学（`sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil`） | 覆盖：仅在 `08-simd.md` 定义的正式支持子集内尝试 SIMD，否则回退标量 | 覆盖：仅在 `09-parallel.md` 定义的正式支持子集内尝试并行；进入并行路径后每个 worker 可局部选择 SIMD 或标量 |
 | 复数（`modulus` / `conjugate`） | 覆盖：仅在 `08-simd.md` 定义的正式支持子集内尝试 SIMD；其余情况回退标量 | 覆盖：仅在 `09-parallel.md` 定义的正式支持子集内尝试并行；其余情况回退串行 |
 | 逻辑（`not`） | 覆盖：仅在 `08-simd.md` 定义的正式支持子集内尝试 SIMD；其余情况回退标量 | 覆盖：仅在 `09-parallel.md` 定义的正式支持子集内尝试并行；其余情况回退串行 |
-
-> **并行路径：** 调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。并行模块不含串行回退，串行路径由本模块串行实现承担。
 
 ---
 
@@ -592,23 +590,14 @@ apply_binary(a, b, f):
 
 ## 8. 测试计划
 
-### 8.1 测试分类总表
+### 8.1 测试分类表
 
-| 测试分类 | 说明                                      | 包含的测试                                                                                                                                                                                                                                                                                                                                                                              |
-| -------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 单元测试 | 验证单个运算函数的基本正确性              | `test_add_i32`, `test_add_f64`, `test_add_complex`, `test_add_broadcast`, `test_mul_scalar`, `test_abs`, `test_neg`, `test_signum`, `test_square_checked_overflow`, `test_sin`, `test_sqrt`, `test_exp_ln_roundtrip`, `test_floor_ceil`, `test_modulus`, `test_conjugate`, `test_not_bool`, `test_eq_f64`, `test_lt_i32`, `test_nan_comparison`, `test_empty_tensor`, `test_add_simd_vs_scalar` |
-| 集成测试 | 验证运算模块与迭代器/广播模块的端到端集成 | `test_binary_same_shape`, `test_binary_broadcast`（参见 §6 T2）                                                                                                                                                                                                                                                                                                                         |
-| 边界测试 | 空张量、大张量、高维、NaN/Inf、非连续输入以及整数 panic 场景 | `test_empty_tensor`, `test_large_tensor_add_parallel`, `test_high_rank_broadcast`, `test_nan_comparison`, `test_inf_math_functions`, `test_add_simd_vs_scalar`, `test_div_i32_by_zero_panics`, `test_abs_i32_min_panics`（详见 §8.3） |
-| 属性测试 | 通过随机输入验证数学不变量                | 详见下方属性测试不变量表                                                                                                                                                                                                                                                                                                                                                                |
-
-**属性测试不变量**
-
-| 不变量                                                                  | 测试方法                                                  |
-| ----------------------------------------------------------------------- | --------------------------------------------------------- |
-| 加法交换律（整数与无 NaN 实数输入）                                     | 对随机 i32/i64 与有限 f32/f64 张量验证 `a.add(&b) == b.add(&a)` |
-| NaN 传播：数值型逐元素运算遇到 NaN 输入时输出按 IEEE 754 传播 NaN         | 构造含 NaN 的张量，验证 sin/sqrt/add/mul 等数值型逐元素运算结果含 NaN |
-| 标量运算逆元：`a.add_scalar(k).sub_scalar(k) == a`                      | 对整数与有限浮点随机张量和标量值验证                      |
-| 取反对合：`a.neg().neg() == a`                                          | 对所有 `Numeric` 支持类型验证                             |
+| 测试分类 | 位置                      | 说明                                     |
+| -------- | ------------------------- | ---------------------------------------- |
+| 单元测试 | `#[cfg(test)] mod tests`  | 验证逐元素算术、一元运算、数学函数、比较运算与复数运算 |
+| 集成测试 | `tests/test_math.rs`      | 验证 `math` 与 `iter`、`broadcast`、`tensor`、`simd` backend 的端到端集成 |
+| 边界测试 | 同模块测试中标注          | 覆盖空张量、大张量、高维广播、NaN/Inf、非连续输入及整数 panic 场景 |
+| 属性测试 | `tests/property_tests.rs` | 验证加法交换律、NaN 传播、标量逆元与取反对合不变量 |
 
 ### 8.2 单元测试清单
 
@@ -651,20 +640,29 @@ apply_binary(a, b, f):
 | rank-6 广播输入 `IxDyn([1,1,1,1,1,4])` 与 `IxDyn([2,1,3,1,1,4])` | 广播结果 shape 为 `IxDyn([2,1,3,1,1,4])`，逐元素对应关系正确 |
 | `10^7` 元素张量 `add` / `mul` | 默认与 `parallel` 配置下结果 shape、错误类别与数值语义一致 |
 | 大张量 `len ≈ 10^7`   | `add` / `mul` 在默认与 `parallel` 配置下均保持 shape、错误类别与数值语义一致 |
-| 高 rank `IxDyn` 输入  | 广播与逐元素结果 shape 正确，遍历不越界     |
+| 高 rank `IxDyn` 输入  | 广播与逐元素结果 shape 正确，遍历不越界    |
 | NaN 输入（f32/f64）   | NaN 传播（sin(NaN)=NaN, 0\*NaN=NaN）       |
 | Inf 输入              | exp(Inf)=Inf, ln(0)=-Inf                   |
-| 广播形状不兼容        | 返回 `XenonError::BroadcastError { operation, lhs_shape, rhs_shape, attempted_target_shape, axis }` |
+| 广播形状不兼容        | 返回 `XenonError::BroadcastError`          |
 | 非连续输入（切片后）  | 运算结果与连续输入一致                     |
 | 整数除零 / 最小值绝对值 | panic 信息至少包含 `operation`、`type`、`trigger`、`element_index` 与适用 `shape` |
 
-### 8.4 集成测试
+### 8.4 属性测试不变量
+
+| 不变量                                                  | 测试方法                                                  |
+| ------------------------------------------------------- | --------------------------------------------------------- |
+| 加法交换律（整数与无 NaN 实数输入）                     | 对随机 i32/i64 与有限 f32/f64 张量验证 `a.add(&b) == b.add(&a)` |
+| 数值型逐元素运算遇到 NaN 输入时输出按 IEEE 754 传播 NaN | 构造含 NaN 的张量，验证 sin/sqrt/add/mul 等数值型逐元素运算结果含 NaN |
+| 标量运算逆元：`a.add_scalar(k).sub_scalar(k) == a`      | 对整数与有限浮点随机张量和标量值验证                      |
+| 取反对合：`a.neg().neg() == a`                          | 对所有 `Numeric` 支持类型验证                             |
+
+### 8.5 集成测试
 
 | 测试文件             | 测试内容                                                                           |
 | -------------------- | ---------------------------------------------------------------------------------- |
 | `tests/test_math.rs` | 二元逐元素辅助路径 / 标量路径与 `iter`、`broadcast`、`tensor`、`simd` backend 的端到端集成 |
 
-### 8.5 Feature gate / 配置测试
+### 8.6 Feature gate / 配置测试
 
 | 配置 | 验证点 |
 | ---- | ---- |
@@ -673,7 +671,7 @@ apply_binary(a, b, f):
 | 启用 `parallel`（`parallel = ["dep:rayon"]`） | 大输入上的并行逐元素路径与默认配置保持相同 shape、错误类别与数值语义，并遵守阈值与无嵌套并行约束。 |
 | 同时启用 `simd,parallel` | 并行 chunk 内可局部选择 SIMD 或标量，但对外语义仍与默认配置一致。 |
 
-### 8.6 类型边界 / 编译期测试
+### 8.7 类型边界 / 编译期测试
 
 | 场景 | 测试方式 |
 | ---- | ---- |
