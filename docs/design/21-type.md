@@ -34,7 +34,7 @@
 
 | 类型     | 内容 |
 | -------- | ---- |
-| 需求映射 | 需求说明书 §23、§27、§28.4 |
+| 需求映射 | 需求说明书 §23、§27、§28 |
 | 范围内   | `cast()` / `CastTo` 为核心公开转换面；`to_owned()` / `into_owned()` 作为同模块便利 API 保留。 |
 | 范围外   | 存储模式互转（归 `storage` / `tensor`）、标准库 `From` / `TryFrom` 实现（归构造模块）、连续化 helper（归 `utility`）。|
 | 非目标   | 不默认放宽有损转换规则，不新增第三方转换库，也不把 `convert/` 扩展为独立的非 cast 存储转换层。|
@@ -99,7 +99,8 @@ External dependencies:
 
 ### 5.1 CastTo trait
 
-> `CastTo<T>` trait 的唯一 owner 是 `03-element.md §5.9`。`convert` 模块只消费该 trait，并在受支持的源/目标类型矩阵上提供 `cast()` 路径，不重新定义 trait。
+- `CastTo<T>` trait 的唯一 owner 是 `03-element.md §5.9`。`convert` 模块只消费该 trait，并在受支持的源/目标类型矩阵上提供 `cast()` 路径，不重新定义 trait。
+- `CastElement` 为封闭 trait，下游不得扩展。`bool` 不属于 `CastElement`，因此 `cast::<bool>()` 在编译期被拒绝。
 
 ````rust,ignore
 pub trait CastElement: Element + private::Sealed {}
@@ -112,15 +113,12 @@ impl CastElement for Complex<f32> {}
 impl CastElement for Complex<f64> {}
 ````
 
-> `CastElement` 为封闭 trait，下游不得扩展。`bool` 不属于 `CastElement`，因此 `cast::<bool>()` 在编译期被拒绝。
-
 ### 5.2 cast 方法
 
-> **结果类型说明：** 公开 API 统一使用 `Result<T, XenonError>`，`crate::error::Result<_>` 为等价类型别名。
-
-> **注意**：`XenonError::TypeConversion` 字段定义见 `26-error.md`。字段为公开字段，通过模式匹配访问。
->
-> **注意**：`element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引。
+- 公开 API 统一使用 `Result<T, XenonError>`，`crate::error::Result<_>` 为等价类型别名。
+- `element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引。
+- `cast()` 面向所有可读存储开放；无论输入是 `Owned`、`ViewRepr`、`ViewMutRepr` 还是 `ArcRepr`，结果统一物化为新的 owned 张量，以保持返回类型与所有权语义一致。源类型与目标类型都进一步收缩为 `CastElement`，从签名层面排除 `bool`。
+- `cast<B>()` 仅在 `A: CastElement + CastTo<B>` 时可用。`bool` 不实现 `CastElement`，因此 `Tensor<bool, _>` 上 `cast()` 在编译期不可调用，而不是落到运行时 `TypeConversion`。
 
 ````rust,ignore
 impl<S, A, D> TensorBase<S, D>
@@ -147,10 +145,10 @@ where
     /// # Examples
     ///
     /// ```ignore
-/// let a = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3])?;
+    /// let a = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3])?;
     /// let b: Tensor1<f64> = a.cast()?;
     ///
-/// let c = Tensor1::from_shape_vec(Ix1(1), vec![Complex::new(1.0_f64, 0.0)])?;
+    /// let c = Tensor1::from_shape_vec(Ix1(1), vec![Complex::new(1.0_f64, 0.0)])?;
     /// let d: Tensor1<f64> = c.cast()?;
     /// ```
     pub fn cast<B: CastElement>(&self) -> Result<Tensor<B, D>, XenonError>
@@ -180,10 +178,6 @@ where
     }
 }
 ````
-
-> **设计决策（修订）：** `需求说明书 §23` 要求的是逐元素转换语义，而不是“仅限 Owned 输入”。因此 `cast()` 面向所有可读存储开放；无论输入是 `Owned`、`ViewRepr`、`ViewMutRepr` 还是 `ArcRepr`，结果统一物化为新的 owned 张量，以保持返回类型与所有权语义一致。源类型与目标类型都进一步收缩为 `CastElement`，从签名层面排除 `bool`。
-
-> **bool 源类型边界：** `cast<B>()` 仅在 `A: CastElement + CastTo<B>` 时可用。`bool` 不实现 `CastElement`，因此 `Tensor<bool, _>` 上 `cast()` 在编译期不可调用，而不是落到运行时 `TypeConversion`。
 
 ### 5.3 类型转换路径表
 
@@ -237,27 +231,7 @@ where
 
 > **实现闭合说明：** 上述闭合规则不是“人工补脑”的说明文字，而是实现矩阵的一部分；实际代码必须通过宏生成或 exhaustive enum dispatch 把所有受支持源/目标对闭合到完整集合。
 
-### 5.5 Good / Bad 对比
-
-```rust,ignore
-// Good - explicit and fallible cast
-let a: Tensor<i32, Ix1> = Tensor::from_shape_vec(Ix1(2), vec![1, 2])?;
-let b: Tensor<f64, Ix1> = a.cast()?;
-
-// Bad - implicit type promotion (Xenon does not support this)
-let floats: Tensor<f64, Ix1> = Tensor::from_shape_vec(Ix1(2), vec![1.0, 2.0])?;
-let ints: Tensor<i32, Ix1> = floats + 1.0;  // Compile error: type mismatch
-
-// Good - complex to real is allowed only when imag == 0
-let complex_t: Tensor<Complex<f64>, Ix1> = Tensor::from_shape_vec(Ix1(1), vec![Complex::new(3.0, 0.0)])?;
-let re_parts: Tensor<f64, Ix1> = complex_t.cast()?;
-
-// Bad - assuming lossy conversion succeeds by default
-let floats: Tensor<f64, Ix1> = Tensor::from_shape_vec(Ix1(2), vec![1.5, 2.7])?;
-let ints: Tensor<i32, Ix1> = floats.cast().unwrap();  // forbidden: returns TypeConversion error
-```
-
-### 5.6 to_owned / into_owned
+### 5.5 to_owned / into_owned
 
 > **跨模块协作说明：** 本节保留 `to_owned()` / `into_owned()` 的实现细节，是因为 `需求说明书 §23` 明确将同类型拷贝纳入本节约束；其中与具体存储表示相关的路径选择仍以 `tensor` / `storage` 模块为主责。
 
@@ -312,11 +286,31 @@ where
 >
 > **统一规则（Wave 1）：** `ArcRepr → Owned` 始终分配并复制（O(n)），与引用计数无关。
 
-### 5.7 内部构造辅助边界
+### 5.6 内部构造辅助边界
 
 > `cast()` / `to_owned()` 在实现上可以复用张量或存储层的内部构造 helper，但这些 helper 的命名、文件布局、是否存在 unchecked 变体以及具体对齐策略，都不属于 convert 模块的稳定文档面。
 
 > 若内部保留类似 `from_shape_vec_aligned_unchecked` 的便捷路径，它也只属于内部 helper、非公开 API；其 `# Safety` 只能要求调用方保证：`shape` 的已验证元素总数与 `data.len()` 一致，且由 `shape` 推导出的 F-order 元数据在当前版本范围内合法。底层使用哪一种分配器或对齐值，不应写入该 safety 契约。
+
+### 5.7 Good / Bad 对比
+
+```rust,ignore
+// Good - explicit and fallible cast
+let a: Tensor<i32, Ix1> = Tensor::from_shape_vec(Ix1(2), vec![1, 2])?;
+let b: Tensor<f64, Ix1> = a.cast()?;
+
+// Bad - implicit type promotion (Xenon does not support this)
+let floats: Tensor<f64, Ix1> = Tensor::from_shape_vec(Ix1(2), vec![1.0, 2.0])?;
+let ints: Tensor<i32, Ix1> = floats + 1.0;  // Compile error: type mismatch
+
+// Good - complex to real is allowed only when imag == 0
+let complex_t: Tensor<Complex<f64>, Ix1> = Tensor::from_shape_vec(Ix1(1), vec![Complex::new(3.0, 0.0)])?;
+let re_parts: Tensor<f64, Ix1> = complex_t.cast()?;
+
+// Bad - assuming lossy conversion succeeds by default
+let floats: Tensor<f64, Ix1> = Tensor::from_shape_vec(Ix1(2), vec![1.5, 2.7])?;
+let ints: Tensor<i32, Ix1> = floats.cast().unwrap();  // forbidden: returns TypeConversion error
+```
 
 ---
 
