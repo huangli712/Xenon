@@ -78,6 +78,7 @@ src/format/
 |
 ├── debug.rs
 │   ├── crate::tensor        # TensorBase<S, D>, shape(), strides()
+│   ├── crate::dimension     # Dimension trait
 │   ├── crate::storage       # Storage trait
 │   ├── crate::element       # Element trait, type_name()
 │   └── super::pretty        # fmt_1d_display, fmt_nd_display
@@ -97,7 +98,7 @@ src/format/
 | `tensor`    | `TensorBase<S, D>`, `.shape()`, `.ndim()`, `.len()`（参见 `07-tensor.md` §5） | 
 | `dimension` | `Dimension`（参见 `02-dimension.md` §5）                                      | 
 | `storage`   | `Storage<Elem=A>`（参见 `05-storage.md` §5）                                  | 
-| `element`   | `Element`, `type_name::<A>()`（参见 `03-element.md` §5.1）                    | 
+| `element`   | `Element`（参见 `03-element.md` §5.1）；`dtype_name()` 内部还使用 `core::any::TypeId` / `core::any::type_name`，属于标准库 | 
 
 ### 4.3 依赖合法性
 
@@ -253,7 +254,7 @@ where
 
 - `Display` 只负责数据文本；当发生截断时，它在最外层右括号后追加 `shape=[...]`，用于满足 `需求说明书 §24` 的“可识别 shape”要求。
 - `Debug` 已在头部输出 `shape=`、`strides=`、`dtype=` 和 `layout=`，因此其数据段复用相同截断选点规则，但不再重复追加 `shape=[...]` 后缀。
-- `Debug` impl 应仅依赖 `A: Debug`。若内部复用 Display helper，应通过独立内部 trait 抽象，避免在公开约束中引入 Display 依赖。
+- `Debug` impl 的元素渲染仅依赖 `A: Debug`。若内部复用 Display helper，应通过独立内部 trait 抽象，避免在公开约束中引入 Display 依赖。注意：完整 trait bound 包含 `Element + 'static`，其中 `'static` 用于 `dtype_name()` 内部的 `core::any::TypeId` 分发。
 - `Debug` 输出包含完整的元信息（形状/步长/类型/布局），方便开发调试。Display 只输出数据，面向最终用户；其中零维张量使用显式标记，避免与裸标量文本混淆。
 - `Debug` 至少区分三类布局：`layout=f-contiguous`、`layout=broadcast`（存在零步长）、`layout=non-contiguous`（如转置、切片等非广播非连续布局）。
 
@@ -455,11 +456,11 @@ render_axis(tensor, config, axis, prefix, truncated):
 
 ```rust,ignore
 // Good - Use Display for readable output
-let tensor = Tensor2::<f64>::zeros([3, 4]);
+let tensor = Tensor2::<f64>::zeros([3, 4])?;
 println!("{}", tensor);  // NumPy style output
 
 // Bad - Manual string concatenation
-let tensor = Tensor2::<f64>::zeros([3, 4]);
+let tensor = Tensor2::<f64>::zeros([3, 4])?;
 for i in 0..3 {
     for j in 0..4 {
         print!("{} ", tensor[[i, j]]);  // unreadable, no truncation
@@ -470,7 +471,7 @@ for i in 0..3 {
 
 ```rust,ignore
 // Good - Use Debug for debug information
-let tensor = Tensor2::<f64>::zeros([3, 4]);
+let tensor = Tensor2::<f64>::zeros([3, 4])?;
 println!("{:?}", tensor);
 // Tensor(shape=[3, 4], strides=[1, 3], dtype=f64, layout=f-contiguous)
 // [[0.0, 0.0, 0.0, 0.0],
@@ -505,7 +506,8 @@ fmt_1d(tensor, f):
         for i in (len - edge_items)..len:
             write read_at([i])
             if i < len - 1: write ", "
-        omitted = total - 2 * edge_items
+        visible_elements = 2 * edge_items
+        omitted = total - visible_elements
         write "] ... (" + omitted + " elements omitted)  shape=" + tensor.shape()
     else:
         write "["
