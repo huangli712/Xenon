@@ -68,51 +68,40 @@ src/overload/
 ### 4.1 依赖图（ASCII）
 
 ```
-                    ┌───────────────────┐
-                    │      math         │
-                    │ add/sub/mul/div   │
-                    └─────────┬─────────┘
-                              │ uses
-                    ┌─────────▼─────────┐
-                    │    arithmetic     │
-                    │   arithmetic.rs   │
-                    └─────────┬─────────┘
-                              │ uses
-              ┌───────────────┼───────────────┐
-              │               │               │
-              ▼               ▼               ▼
-      ┌───────────────┐ ┌───────────────┐ ┌───────────────┐
-      │   broadcast   │ │    tensor     │ │   element     │
-      │ broadcast_*   │ │ TensorBase    │ │ Numeric trait │
-      └───────────────┘ └───────────────┘ └───────────────┘
+src/overload/
+|
+├── mod.rs
+│   └── re-exports from arithmetic
+|
+└── arithmetic.rs
+    ├── crate::math        # add() / sub() / mul() / div()
+    ├── crate::broadcast   # broadcast_shape(), broadcast_with(), can_broadcast()
+    ├── crate::tensor      # TensorBase<S, D>, Tensor<A, D>, TensorView, .view()
+    ├── crate::element     # Numeric trait
+    └── crate::dimension   # Dimension, Ix0~Ix6, IxDyn, BroadcastDim<E>
 ```
 
 ### 4.2 类型级依赖
 
-| 来源模块    | 使用的类型/trait                                                                                                     |
-| ----------- | -------------------------------------------------------------------------------------------------------------------- |
-| `math`      | `add()` / `sub()` / `mul()` / `div()` 等方法型逐元素运算（参见 `11-math.md` §5）                                     |
-| `broadcast` | `broadcast_shape()`, `broadcast_with()`, `can_broadcast()`（参见 `15-broadcast.md` §5）                              |
-| `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.view()`（参见 `07-tensor.md` §5）                                |
-| `element`   | `Numeric` trait 约束（排除 `bool` 与 `usize`）（参见 `03-element.md` §5.2）                                          |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<E>`（该 trait 定义于 `02-dimension.md §5.9`，计算广播后的维度类型） |
-
-> **Numeric 隐含 Copy：** `Numeric` trait 继承自 `Element`，而 `Element: Copy`（见 `03-element.md` §5.1）。因此所有 `Numeric` 类型均满足 `Copy`，可以在标量运算中安全地按值传递而无需额外约束。
-
-> [!IMPORTANT]
-> 张量×张量运算符返回 `Result<Tensor, XenonError>` 的项目级稳定 ADR 见 §4.2 `ADR-OVERLOAD-RESULT`；此处仅引用其当前结论：张量×张量 → `Result`（广播可能失败），张量×标量 → `Tensor`（标量总可广播）。
+| 来源模块    | 使用的类型/trait                                                                        |
+| ----------- | --------------------------------------------------------------------------------------- |
+| `math`      | `add()` / `sub()` / `mul()` / `div()` 等方法型逐元素运算（参见 `11-math.md` §5）        |
+| `broadcast` | `broadcast_shape()`, `broadcast_with()`, `can_broadcast()`（参见 `15-broadcast.md` §5） |
+| `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.view()`（参见 `07-tensor.md` §5）   |
+| `element`   | `Numeric` trait 约束（排除 `bool` 与 `usize`）（参见 `03-element.md` §5.2）             |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<E>`（参见 `02-dimension.md §5.9`）     |
 
 ### 4.3 依赖合法性
 
-| 项目           | 说明 |
-| -------------- | ---- |
-| 新增第三方依赖 | 无 |
+| 项目           | 说明                                                                          |
+| -------------- | ----------------------------------------------------------------------------- |
+| 新增第三方依赖 | 无                                                                            |
 | 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
-| 替代方案       | 不适用；当前范围内无需额外第三方依赖。 |
+| 替代方案       | 不适用；当前范围内无需额外第三方依赖。                                        |
 
 ### 4.4 依赖方向声明
 
-依赖方向：单向向上。`arithmetic` 仅消费 `math`、`broadcast`、`tensor`、`element` 的 trait 和类型，不被它们依赖。`arithmetic` 是最上层的用户 API 模块。
+依赖方向：单向向上。`overload` 仅消费 `math`、`broadcast`、`tensor`、`element` 的 trait 和类型，不被它们依赖。`overload` 是最上层的用户 API 模块。
 
 ---
 
