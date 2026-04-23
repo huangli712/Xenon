@@ -33,7 +33,7 @@
 | ---------------------------------- | ------------------------------------------------------------------ |
 | 最小范围                           | 当前仅实现向量内积，复杂线性代数由上游库通过 FFI 实现              |
 | 错误恢复                           | 维度不匹配返回可恢复错误（`XenonError`）；整数溢出为不可恢复 panic |
-| 语义优先                           | dot 先保证语义与错误契约一 致                                      |
+| 语义优先                           | dot 先保证语义与错误契约一致                                       |
 | 与上游 BLAS 集成预期的语义兼容前提 | 内存布局与内积语义保持可对接上游 BLAS 集成的预期前提               |
 
 ---
@@ -118,9 +118,7 @@ src/matrix/
 ````rust,ignore
 /// Vector dot product: result = sum(a[i] * b[i])
 ///
-/// For complex numbers, the conjugate-linear definition is used:
-/// result = sum(conjugate(a[i]) * b[i])
-///
+/// For complex numbers, the conjugate-linear definition is used (§1.1).
 /// For real types, `A::conjugate()` is a no-op identity (returns `self`),
 /// so this naturally handles both real and complex dot products.
 ///
@@ -183,12 +181,12 @@ where
 }
 ````
 
-整数内积使用 checked arithmetic 进行中间乘积和累加。泛型约束 `A: Numeric + Copy` 在实现层通过 sealed trait `CheckedArith` 确保 `i32` / `i64` 路径使用 checked `mul` / `add`。
+整数内积使用 checked arithmetic 进行中间乘积和累加。泛型约束 `A: Numeric + Copy` 在实现层通过 sealed trait `CheckedArith`（定义见 `11-math.md`）确保 `i32` / `i64` 路径使用 checked `mul` / `add`。
 
 ### 5.2 复数内积语义
 
 ```rust,ignore
-// Complex dot product implements conjugate-linearity
+// Complex dot product worked example (definition in §1.1):
 // dot(Complex{re: 1, im: 2}, Complex{re: 3, im: 4})
 // = conjugate(Complex{1,2}) * Complex{3,4}
 // = Complex{1,-2} * Complex{3,4}
@@ -240,7 +238,7 @@ dot_impl(a, b):
 
     match dispatch::select_exec_path(a.len(), a.is_f_contiguous() && b.is_f_contiguous(), alignment_ok):
         ExecPath::Parallel => parallel::par_dot(as_ix1_view(a)?, as_ix1_view(b)?)
-        ExecPath::Simd    => simd::vector_dot(a, b)
+        ExecPath::Simd    => simd::SimdKernel::dot(a, b)
         ExecPath::Serial  => scalar::dot_impl(a, b)
 ```
 
@@ -259,7 +257,7 @@ dot_impl(a, b):
 | 阈值来源     | 是否进入并行路径由 `dispatch::should_parallelize(len, is_f_contiguous)` 与全局阈值配置决定。        |
 | 非连续惩罚   | 非连续视图沿用 `dispatch.rs` 的有效阈值翻倍策略；仅当收益明确时才进入并行。                         |
 | 禁止嵌套并行 | 若当前线程已处于库内部并行区域，则 `dispatch::ParallelGuard::enter()` 失败并强制回退标量/串行路径，不得再开启第二层并行。 |
-| 路径顺序     | 调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。 |
+| 路径顺序     | 同 §6.1 执行路径选择。                                                     |
 
 这满足 `需求说明书 §9.2` / `需求说明书 §9.3` 对“支持阈值配置”和“库内部不得开启第二层并行”的要求。
 
@@ -291,10 +289,7 @@ fn scalar_dot_float_or_complex<A, D>(
 
 ### 6.4 统一内积实现（实数与复数分派）
 
-`dot()` 内部统一使用 `x.conjugate() * y` 的乘积生成规则，再按元素类型分派累加策略：整数路径需要同时对**乘法**和**累加**做 checked arithmetic，浮点/复数路径使用普通加法。这通过 `Numeric` trait 中的 `fn conjugate(self) -> Self` 方法实现。`Numeric::conjugate()` 为泛型算法统一入口；对实数类型返回恒等值，对复数类型返回共轭。整数路径仍须走 checked arithmetic，不得因 identity conjugate 而绕过溢出检查：
-
-- 实数类型（`f32`、`f64`、`i32`、`i64`）：`conjugate(x) == x`（恒等实现，直接返回 `self`）
-- 复数类型（`Complex<f32>`、`Complex<f64>`）：`conjugate(x)` 返回共轭复数
+`dot()` 内部统一使用 `x.conjugate() * y` 的乘积生成规则（共轭线性定义见 §1.1，`Numeric::conjugate()` 详见 `03-element.md §5.2`），再按元素类型分派累加策略：整数路径需要同时对**乘法**和**累加**做 checked arithmetic，浮点/复数路径使用普通加法。整数路径不得因 identity conjugate 而绕过溢出检查。
 
 ```rust,ignore
 // conjugate method in the Numeric trait (defined in 03-element.md §5.2)
@@ -337,7 +332,7 @@ fn dot_impl<A, D1, D2>(
 
 - `as_ix1_view()` 只在已验证 `ndim == 1` 后做维度收窄，不重排元素，也不强制把视图转为连续布局。若输入本身是合法的非连续 1D 视图，则返回的 `TensorView<'_, A, Ix1>` 保留原始 stride；后续是否可进入 SIMD 路径，仍由连续性与对齐检查单独决定。
 - 推荐桥接形式是对已通过校验的视图执行 `.view().into_dimensionality::<Ix1>()`（或等价的私有 reborrow helper），把 `TensorView<'_, A, D>` 收窄为 `TensorView<'_, A, Ix1>` 后再调用 `parallel::par_dot()`。该步骤只重用原有 view 的 shape/stride/offset/storage 借用，不重新分配也不复制元素；若未来为性能保留 `unsafe` 快路径，也只能放在这个私有 helper 内，并以先前的 `ndim == 1` 运行时断言为前提，而不能暴露成公开 API 契约。若 rank 校验失败，`dot()` 必须在桥接前直接返回 `XenonError::InvalidArgument`。
-- 通过 `Numeric::conjugate()` 方法实现实数与复数的统一分派，避免为复数类型单独实现 `complex_dot` 函数。`Numeric::conjugate()` 为泛型算法统一入口；对实数类型返回恒等值，对复数类型返回共轭。整数路径仍须走 checked arithmetic，不得因 identity conjugate 而绕过溢出检查。实数类型的 `conjugate()` 为零开销（内联后等价于直接使用 `x * y`），不引入额外运行时成本。
+- 统一使用 `Numeric::conjugate()` 实现 `x.conjugate() * y` 乘积生成规则（定义见 §1.1），避免为复数类型单独实现 `complex_dot` 函数。实数类型的 `conjugate()` 为零开销（内联后等价于直接使用 `x * y`），不引入额外运行时成本。
 - 对整数 dot，乘法和累加都属于需求层面的不可恢复溢出路径；文档不得只对累加做 checked 处理而把乘法留给 release wrapping 语义。panic 信息至少包含 `operation=dot`、元素类型、触发阶段（`multiply` / `accumulate`）、逻辑位置（如 `lane` 或 `element_index`）以及适用 `shape`。
 
 ---
@@ -431,19 +426,16 @@ fn dot_impl<A, D1, D2>(
 
 ### 8.3 边界测试场景
 
-| 场景                           | 预期行为                                                                       |
-| ------------------------------ | ------------------------------------------------------------------------------ |
-| 空向量 `shape=[0]`             | 返回加法单位元（零）                                                           |
-| 单元素向量                     | 返回 a[0] \* b[0]                                                              |
-| 空向量 `shape=[0]` 在标量/SIMD/并行配置下 | 均返回加法单位元，不引入额外错误语义                                |
-| rank-6 输入 `shape=[1,1,1,1,1,1]` 调用 `dot` | 返回 `InvalidArgument`，诊断字段完整                             |
-| `10^7` 元素向量 `dot`          | 阈值切换、文档化容差与 panic 契约在标量/SIMD/并行路径上一致                    |
-| 阈值边界输入                   | 覆盖低于/等于/高于并行阈值时的路径裁决与结果一致性                             |
-| 大向量（`10^7` 量级元素）      | 可按阈值选择并行 dot 路径，结果正确                                            |
-| 高维输入 `shape=[1,1,1,1,1,1]` | 返回 `InvalidArgument`，诊断中包含 `operation`、`argument`、`expected`、etc.   |
-| 非连续向量（切片后）           | 回退到标量路径，结果正确                                                       |
-| `NaN` 输入                     | 实数 `dot([NaN], [1.0])` 或 `dot([1.0], [NaN])` 返回 `NaN`                     |
-| `Inf` / `-Inf` 输入            | 遵循 IEEE 754；例如实数 `dot([Inf], [2.0]) == Inf`                             |
+| 场景                                       | 预期行为                                                                                          |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| 空向量 `shape=[0]`（标量/SIMD/并行配置下） | 均返回加法单位元，不引入额外错误语义                                                              |
+| 单元素向量                                 | 返回 a[0] \* b[0]                                                                                 |
+| 高维输入 `shape=[1,1,1,1,1,1]` 调用 `dot`  | 返回 `InvalidArgument`，诊断字段完整（含 `operation`、`argument`、`expected` 等）                |
+| `10^7` 量级元素向量 `dot`                  | 阈值切换、文档化容差与 panic 契约在标量/SIMD/并行路径上一致                                       |
+| 阈值边界输入                               | 覆盖低于/等于/高于并行阈值时的路径裁决与结果一致性                                                |
+| 非连续向量（切片后）                       | 回退到标量路径，结果正确                                                                          |
+| `NaN` 输入                                 | 实数 `dot([NaN], [1.0])` 或 `dot([1.0], [NaN])` 返回 `NaN`                                        |
+| `Inf` / `-Inf` 输入                        | 遵循 IEEE 754；例如实数 `dot([Inf], [2.0]) == Inf`                                                |
 
 ### 8.4 属性测试不变量
 
@@ -451,7 +443,7 @@ fn dot_impl<A, D1, D2>(
 | ------------------------------------------------------------------- | -------------------------- |
 | `dot([], []) == A::zero()`                                          | 空向量对所有受支持类型成立 |
 | `dot(a, b)` 与标量实现一致（整数严格一致，浮点/复数满足文档化容差） | 随机 1D 连续/非连续输入    |
-| 复数 `dot(a, b) == sum(conjugate(a[i]) * b[i])`                     | 随机复数向量               |
+| 复数 `dot(a, b)` 满足共轭线性定义（§1.1）                              | 随机复数向量               |
 
 ### 8.5 集成测试
 
@@ -466,7 +458,7 @@ fn dot_impl<A, D1, D2>(
 | 默认配置                 | `dot()` 通过标量路径满足实数/复数与错误语义契约。                          |
 | 启用 `simd`              | dot 可选择 SIMD 路径；结果与默认语义一致。                                 |
 | 启用并行                 | dot 可选择并行归约路径；结果、错误类别与 panic 语义仍与标量路径一致。      |
-| 同时启用 `simd,parallel` | 由 `dispatch.rs` 统一决定串行 vs 并行路径；整体结果须与标量串行基线一致。  |
+| 同时启用 `simd,parallel` | 路径选择同 §6.1；整体结果须与标量串行基线一致。                           |
 
 ### 8.7 类型边界 / 编译期测试
 
@@ -510,8 +502,8 @@ User calls dot(a, b)
 | ----------------- | ------------------------------------------------------------------------- |
 | Recoverable error | 左/右输入非 1D 时分别返回 `XenonError::InvalidArgument`；长度不匹配时返回 `XenonError::DimensionMismatch`。 |
 | Panic             | 整数 dot 的乘法溢出与累加溢出均为不可恢复错误，按 checked arithmetic 触发 panic。|
-| 路径一致性        | 调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。任何可选路径都不得改变结果、错误类别或 panic 语义。|
-| 容差边界          | 以 `需求说明书 §28.3` 为权威基线；实现细节参见 `00-coding.md §7.4`。同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。|
+| 路径一致性        | 执行路径选择参见 §6.1；任何可选路径都不得改变结果、错误类别或 panic 语义。|
+| 容差边界          | 以 `需求说明书 §28.3` 为权威基线；实现细节参见 `00-coding.md §8.4`。同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。|
 
 ---
 
@@ -521,7 +513,7 @@ User calls dot(a, b)
 
 | 属性     | 值                                                                   |
 | -------- | -------------------------------------------------------------------- |
-| 决策     | 复数内积采用共轭线性定义：sum(conjugate(a[i]) \* b[i])               |
+| 决策     | 复数内积采用共轭线性定义（§1.1）                                       |
 | 理由     | 这是数学和物理学中的标准定义；与 NumPy（np.vdot）、BLAS（zdotc）一致 |
 | 替代方案 | 简单内积：sum(a[i] \* b[i])（不共轭）                                |
 | 拒绝原因 | 不符合共轭线性空间的数学定义，与主流库行为不一致                     |
@@ -539,7 +531,7 @@ User calls dot(a, b)
 
 | 属性     | 值                                                                                           |
 | -------- | -------------------------------------------------------------------------------------------- |
-| 决策     | 调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。 |
+| 决策     | dot 接入 SIMD / 并行可选路径，执行路径选择参见 §6.1。                      |
 | 理由     | inner product 需要覆盖 SIMD / 并行能力，同时保持与标量路径一致的语义、错误模型和整数溢出契约 |
 | 替代方案 | 始终只使用标量实现                                                                           |
 | 拒绝原因 | 与需求说明书对 inner product 的 SIMD / 并行覆盖要求不一致                                    |
@@ -553,7 +545,7 @@ User calls dot(a, b)
 | 操作                                 | 当前路径                | 说明                                                                     |
 | ------------------------------------ | ----------------------- | ------------------------------------------------------------------------ |
 | dot f32 (`len < threshold`)          | 串行路径（SIMD 或标量） | 小输入避免并行调度开销；串行路径可按局部条件选择 SIMD 或标量             |
-| dot f32 (`len >= threshold`)         | 由 `dispatch.rs` 决定   | 若进入并行路径，各 worker 可在不触发第二层并行前提下局部选择 SIMD 或标量 |
+| dot f32 (`len >= threshold`)         | 由 `dispatch.rs` 决定   | 路径选择参见 §6.1 |
 | dot f64 (`len >= threshold`)         | 由 `dispatch.rs` 决定   | 与 f32 相同，但仍受 ISA、对齐与并行阈值条件约束                          |
 | dot complex f64 (`len >= threshold`) | 由 `dispatch.rs` 决定   | 复数内积必须保持共轭线性语义，容差以 `需求说明书 §28.3` 为权威基线       |
 
