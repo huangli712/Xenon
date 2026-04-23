@@ -685,11 +685,11 @@ apply_binary(a, b, f):
 
 ### 9.1 接口约定
 
-| 方向               | 对方模块    | 接口/类型                                  | 约定                                                                                                                                          |
-| ------------------ | ----------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `math → iter`      | `iter`      | `Elements`, `ElementsMut`                  | 逐元素运算复用 `iter()` / `iter_mut()` 及相关遍历入口；二元路径直接遍历广播后的视图（参见 `10-iterator.md` §4）                               |
-| `math → broadcast` | `broadcast` | `broadcast_shape()`                        | 二元运算先调用广播模块推导兼容视图（参见 `15-broadcast.md` §4）                                                                               |
-| `math → element`   | `element`   | `Numeric` / `RealScalar` / `ComplexScalar` | 通过元素约束区分数值与复数运算语义（参见 `03-element.md` §4）                                                                                 |
+| 方向               | 对方模块    | 接口/类型                                  | 约定                                   |
+| ------------------ | ----------- | ------------------------------------------ | -------------------------------------- |
+| `math → iter`      | `iter`      | `Elements`, `ElementsMut`                  | 逐元素运算复用 `iter()` / `iter_mut()` 及相关遍历入口；二元路径直接遍历广播后的视图（参见 `10-iterator.md` §4）|
+| `math → broadcast` | `broadcast` | `broadcast_shape()`                        | 二元运算先调用广播模块推导兼容视图（参见 `15-broadcast.md` §4）|
+| `math → element`   | `element`   | `Numeric` / `RealScalar` / `ComplexScalar` | 通过元素约束区分数值与复数运算语义（参见 `03-element.md` §4）|
 | `math → simd`      | `simd`      | SIMD backend dispatch facade               | 连续数组且 feature 开启时通过稳定的 backend facade 分发到 SIMD 或标量路径，`math` 不直接依赖具体 vector kernel 名称（参见 `08-simd.md` §4.5） |
 | `math → parallel`  | `parallel`  | `par_zip_map()` / threshold / guard        | `dispatch.rs` 统一决定串行 vs 并行；进入并行路径后各 worker 在无第二层并行前提下可局部选择 SIMD 或标量（参见 `09-parallel.md` §5 / `§6`） |
 
@@ -712,20 +712,20 @@ User calls add / unary op / comparison method
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | 广播不兼容时返回 `XenonError::BroadcastError { operation, lhs_shape, rhs_shape, attempted_target_shape, axis }`。参数不满足公开前提时返回 `XenonError::InvalidArgument { operation: Cow<'static, str>, argument: Cow<'static, str>, expected: Cow<'static, str>, actual: Cow<'static, str>, axis: Option<usize>, axis_len: Option<usize>, start: Option<usize>, end: Option<usize>, shape: Option<Vec<usize>> }`。 |
-| Panic | 整数 `add/sub/mul/div`、标量版 `add_scalar/sub_scalar/mul_scalar/div_scalar`、`abs/neg/square` 的溢出、除零或结果不可表示均按需求触发 panic；`signum` 不新增 panic 约束。panic 信息至少包含 `operation`、`type`、`trigger`、`element_index`，并在适用时附带 `shape`。推荐格式：`Xenon: {operation} overflow for {type} at element_index={i}, shape={shape}, trigger={trigger}`。 |
+| Recoverable error | 广播不兼容时返回 `XenonError::BroadcastError`。参数不满足公开前提时返回 `XenonError::InvalidArgument`。 |
+| Panic | 整数 `add/sub/mul/div`、标量版 `add_scalar/sub_scalar/mul_scalar/div_scalar`、`abs/neg/square` 的溢出、除零或结果不可表示均按需求触发 panic；`signum` 不新增 panic 约束。panic 信息至少包含 `operation`、`type`、`trigger`、`element_index`，并在适用时附带 `shape`。 |
 | 路径一致性 | 标量、SIMD 与并行路径必须保持相同 shape、错误类别、NaN/复数语义；不满足前提或 guard 失败时统一回退标量实现。 |
 | 容差边界 | 精确类（`floor` / `ceil`）结果须与标量路径逐元素一致。近似类（`sin` / `sqrt` / `exp` / `ln`）以 `需求说明书 §28.3` 为权威基线；实现细节参见 `00-coding.md §7.4`。复数结果按实部、虚部分量分别应用对应实数规则；同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。 |
 
 ---
 
-## 11. 设计决策记录（ADR）
+## 11. 设计决策记录
 
 ### 决策 1：不在当前版本公开通用映射 helper
 
 | 属性     | 值                                                             |
 | -------- | -------------------------------------------------------------- |
-| 决策     | 当前版本不把更通用的逐元素映射基础设施纳入公开 API 承诺 |
+| 决策     | 当前版本不把更通用的逐元素映射基础设施纳入公开 API 承诺        |
 | 理由     | `需求说明书 §12` 仅要求明确列出的逐元素运算，不要求额外的通用映射原语 |
 | 替代方案 | 直接在本期暴露完整映射 helper 集合 |
 | 拒绝原因 | 会扩大 API 面且引入额外语义边界，不符合当前最小范围            |
@@ -748,7 +748,7 @@ User calls add / unary op / comparison method
 | 替代方案 | 所有路径都用标量                                          |
 | 拒绝原因 | 性能差距显著（2-4x），科学计算用户期望高性能              |
 
-> **补充**：SIMD 实现位于独立 backend 模块 `src/simd/`，`math/` 仅按连续性和 feature gate 决定是否委托该 backend；逐元素运算的 SIMD 设计细节见 `08-simd.md`。若某个操作在当前类型或 ISA 上尚无满足语义约束的 SIMD kernel，则自动回退标量实现。
+SIMD 实现位于独立 backend 模块 `src/simd/`，`math/` 仅按连续性和 feature gate 决定是否委托该 backend；逐元素运算的 SIMD 设计细节见 `08-simd.md`。若某个操作在当前类型或 ISA 上尚无满足语义约束的 SIMD kernel，则自动回退标量实现。
 
 ---
 
@@ -773,13 +773,11 @@ User calls add / unary op / comparison method
 
 | 项目       | 约束                                                                                           |
 | ---------- | ---------------------------------------------------------------------------------------------- |
-| 标准库环境 | Xenon 当前版本仅支持 `std`，本文档不再承诺 `no_std` 兼容性                                     |
+| `std` only | Xenon 当前版本仅支持 `std`，本文档不再承诺 `no_std` 兼容性                                     |
 | MSRV       | Rust 1.85+                                                                                     |
-| crate 结构 | 保持单 crate 结构，不拆分独立 math crate                                                       |
+| 单 crate   | 保持单 crate 结构，不拆分独立 math crate                                                       |
 | SemVer     | 逐元素方法签名、支持类型集合、广播错误类别以及整数 panic 诊断字段均属于稳定契约；后续新增优化路径不得改变这些公开语义 |
-| 依赖约束   | 仅允许项目基线中的可选 SIMD / 并行依赖，不新增额外第三方数学库                                 |
-| 线程安全   | 所有逐元素运算接受 `&self`（一元/比较）或 `&self` + `&TensorBase`（二元）；这些调用能否在线程间安全共享或传递，取决于元素类型与底层存储模式是否满足相应 `Send` / `Sync` 前提。`get_unchecked` 等 unsafe 方法仍要求调用方保证独占访问。 |
-| 范围边界   | 当前版本仅覆盖 `需求说明书 §12` 明确列出的逐元素运算；通用映射 helper 与实复混合公开 API 不在本期范围内 |
+| 最小依赖   | 仅允许项目基线中的可选 SIMD / 并行依赖，不新增额外第三方数学库                                 |
 
 ---
 
