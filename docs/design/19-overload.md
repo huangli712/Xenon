@@ -224,6 +224,12 @@ where
 /// appears before the first local type. However, concrete primitive left-hand
 /// sides like `impl Add<Tensor<f32, D>> for f32` remain legal and should be
 /// provided for Xenon's supported scalar set when stable syntax requires it.
+///
+/// Exported via `xenon::overload::Scalar` only — intentionally excluded from
+/// the prelude and top-level re-exports. Most users should prefer the direct
+/// native left-scalar forms (`5.0 + tensor`) or the right-scalar path
+/// (`tensor + scalar`); `Scalar(x)` is only needed in generic code where the
+/// concrete scalar type is a type parameter.
 pub struct Scalar<A>(pub A);
 
 // Tensor + scalar
@@ -280,6 +286,7 @@ where
 ```
 
 - `Scalar<A>` 包装器是实现“泛型左标量 + 张量”时的工程性折中，而不是原生`scalar + tensor` 整体不可行的证明。对 Xenon 支持的具体标量类型（`i32`、`i64`、`f32`、`f64`、`Complex<f32>`、`Complex<f64>`），可以逐类型生成 `impl Add<TensorBase<...>> for T`；真正不可行的是 `impl<T> Add<TensorBase<...>> for T` 这种 blanket impl。因此“常用原生标量”在本文中明确指上述 6 个受支持算术元素类型，而不包括 `bool`、`usize` 或其他范围外类型。
+- `Scalar<A>` 保持 `pub` 可见以满足泛型左标量路径的编译需求，但**不通过 prelude 或 crate 根导出**，仅通过 `xenon::overload::Scalar` 可访问。其定位是孤儿规则下的工程设施，非核心抽象——绝大多数场景下用户应使用 `tensor + scalar`、`scalar + tensor`（原生类型）或方法调用 `.add_scalar()` 等更直接的路径，仅在编写泛型函数 `fn foo<A: Numeric>(a: A, t: Tensor<A, D>)` 且需要 `a + t` 语法时才需引入 `Scalar(a)`。
 - 标量运算符的 LHS/RHS 组合通过宏生成，覆盖矩阵参见 §5.3-5.4。
 - 标量路径无形状不兼容风险，不返回 `Result`；运算符返回 `Tensor` 直接。整数溢出仍遵循 panic 语义。
 - 当前版本**不**稳定承诺 `&A` 形式的标量运算符重载。公开契约仅保证值形式 `tensor + scalar`、`Scalar(scalar) + tensor`，以及常用原生左标量（如 `5.0 + tensor`）。若后续版本需要 `&A` 支持，应以独立议题评估。
@@ -548,10 +555,10 @@ tensor + scalar:
 | 方向                     | 对方模块    | 接口/类型                  | 约定                                                            |
 | ------------------------ | ----------- | -------------------------- | --------------------------------------------------------------- |
 | `arithmetic → math`      | `math`      | `add()` / `sub()` / `mul()` / `div()` / scalar helpers | 张量路径走方法型逐元素运算，标量路径走内部 scalar helper，参见 `11-math.md` §5 |
-| `arithmetic → broadcast` | `broadcast` | `broadcast_with()`                  | 先把两个操作数广播到公共形状，参见 `15-broadcast.md` §5         |
-| `arithmetic → tensor`    | `tensor`    | `Tensor<A, D>` / `.view()`          | 构造 owned 结果并在需要时创建视图，参见 `07-tensor.md` §5       |
-| `arithmetic → element`   | `element`   | `Numeric`                           | 通过元素约束排除不支持的类型，参见 `03-element.md` §5.2         |
-| `arithmetic → dimension` | `dimension` | `<D as BroadcastDim<E>>::Output`    | 通过维度级关联类型推导广播输出形状，参见 `02-dimension.md` §5.9 |
+| `arithmetic → broadcast` | `broadcast` | `broadcast_with()`                  | 先把两个操作数广播到公共形状，参见 `15-broadcast.md` §5          |
+| `arithmetic → tensor`    | `tensor`    | `Tensor<A, D>` / `.view()`          | 构造 owned 结果并在需要时创建视图，参见 `07-tensor.md` §5        |
+| `arithmetic → element`   | `element`   | `Numeric`                           | 通过元素约束排除不支持的类型，参见 `03-element.md` §5.2          |
+| `arithmetic → dimension` | `dimension` | `<D as BroadcastDim<E>>::Output`    | 通过维度级关联类型推导广播输出形状，参见 `02-dimension.md` §5.10 |
 
 ### 9.2 数据流描述
 
@@ -573,7 +580,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | Recoverable error | 项目级稳定的可恢复错误语义由运算符路径与显式方法路径共同承担；`+` / `-` / `*` / `/` 以及 `broadcast_with()`、方法型逐元素 API 均返回 `XenonError::BroadcastError`；若方法参数本身非法，则继续使用 `XenonError::InvalidArgument`。 |
 | Panic | 广播不兼容不再 panic；整数除零、溢出与结果不可表示继续沿用 `math` 的 panic 语义，且 panic 消息须包含操作类型、元素类型与第一个失败元素索引（若可确定）。 |
 | 路径一致性 | 借用 / owned / 标量以及由 `math` 触发的标量 / SIMD 路径必须保持相同输出 shape 与数值语义。 |
-| 容差边界 | 当前不引入额外容差；容差基线以 `需求说明书 §28.3` 为权威，`00-coding.md §7.4` 仅作为实现参考。若底层 `math` 使用 SIMD，仍须与该基线及标量路径语义一致。 |
+| 容差边界 | 当前不引入额外容差；容差基线以 `需求说明书 §28.3` 为权威。若底层 `math` 使用 SIMD，仍须与该基线及标量路径语义一致。 |
 
 ---
 
@@ -638,16 +645,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | 张量 + 标量           | O(n)        | O(n)        | `*_scalar` 直接迭代 |
 | 标量 + 张量           | O(n)        | O(n)        | `*_scalar` 直接迭代 |
 
-### 12.2 性能数据
-
-| 场景                                        | 路径          | 预计性能 |
-| ------------------------------------------- | ------------- | -------- |
-| `[1000, 1000] + [1000, 1000]` (f64)         | 方法分发 + SIMD | ~1ms   |
-| `[1000, 1000] + [1, 1000]` (广播)           | 方法分发 + 广播 | ~1.2ms |
-| `[1000, 1000] + 5.0` (标量)                 | `add_scalar`    | ~0.8ms |
-| `[1000, 1000] + [1000, 1000]` (f64, 非SIMD) | 方法分发 + 标量 | ~4ms   |
-
-### 12.3 SIMD 路径
+### 12.2 SIMD 路径
 
 当 SIMD feature 启用时，方法型逐元素运算与标量方法会在满足前提时自动选择 SIMD 路径（参见 `08-simd.md` §5）：
 
@@ -658,7 +656,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | `*` (f32) | `AVX _mm256_mul_ps` | 4-8x   |
 | `/` (f64) | `AVX _mm256_div_pd` | 2-4x   |
 
-### 12.4 借用引用优化
+### 12.3 借用引用优化
 
 ```rust,ignore
 // &a + &b: no ownership transfer, borrow only

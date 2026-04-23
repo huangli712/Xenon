@@ -79,21 +79,40 @@ src/
 ### 4.1 依赖图（ASCII）
 
 ```
-                    ┌──────────────┐
-                    │    tensor    │
-                    │ TensorBase   │
-                    └──────┬───────┘
-                           │ uses
-              ┌────────────▼───────────┐
-              │   construct/           │
-              │   mod.rs (re-exports)  │
-              └──┬───────────┬─────────┘
-                 │ uses      │ uses
-          ┌──────▼───┐ ┌──────▼────────┐
-          │ storage  │ │ layout              │
-          │ Owned<A> │ │ LayoutFlags         │
-          │ Storage  │ │ flags_for_f_layout  │
-          └──────────┘ └───────────────┘
+src/construct/
+|
+├── mod.rs
+│   └── re-exports from init, eye, from, scalar
+|
+├── init.rs
+│   ├── crate::tensor      # TensorBase<S, D>, Tensor<A, D>
+│   ├── crate::storage     # Owned<A>, Storage, from_vec_aligned()
+│   ├── crate::layout      # LayoutFlags, flags_for_f_layout
+│   ├── crate::dimension   # Dimension, Ix0~Ix6, IxDyn, IntoDimension
+│   ├── crate::element     # Element (zero() / one())
+│   └── crate::error       # XenonError::InvalidShape
+|
+├── eye.rs
+│   ├── crate::tensor      # TensorBase<Owned<A>, Ix2>
+│   ├── crate::storage     # Owned<A>
+│   ├── crate::layout      # LayoutFlags, flags_for_f_layout
+│   ├── crate::element     # Element, EyeElement
+│   └── crate::error       # XenonError::InvalidShape
+|
+├── from.rs
+│   ├── crate::tensor      # TensorBase<S, D>, Tensor<A, D>
+│   ├── crate::storage     # Owned<A>, Storage, from_vec_aligned()
+│   ├── crate::layout      # LayoutFlags, flags_for_f_layout, Strides<D>
+│   ├── crate::dimension   # Dimension, IntoDimension
+│   ├── crate::element     # Element
+│   └── crate::error       # XenonError::InvalidShape
+|
+└── scalar.rs
+    ├── crate::tensor      # TensorBase<Owned<A>, Ix0>
+    ├── crate::storage     # Owned<A>, from_vec_aligned()
+    ├── crate::layout      # LayoutFlags, flags_for_f_layout, Strides<Ix0>
+    ├── crate::dimension   # Ix0
+    └── crate::element     # Element
 ```
 
 ### 4.2 类型级依赖
@@ -117,7 +136,7 @@ src/
 
 ### 4.4 依赖方向声明
 
-> **依赖方向：单向向上。** `construct` 消费 `tensor`、`storage`、`layout`、`dimension`、`element` 的 trait 和类型，不被它们依赖。
+依赖方向：单向向上。`construct` 消费 `tensor`、`storage`、`layout`、`dimension`、`element` 的 trait 和类型，不被它们依赖。
 
 ---
 
@@ -125,7 +144,7 @@ src/
 
 ### 5.1 zeros / ones
 
-````rust,ignore
+```rust,ignore
 # use crate::dimension::{Dimension, IntoDimension};
 # use crate::element::Element;
 # use crate::error::XenonError;
@@ -192,18 +211,15 @@ where
         Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags })
     }
 }
-````
+```
 
-> **范围决策：** `full()` 超出 `需求说明书 §19` 的当前最小构造集合。
-> 如实现后续自愿提供 `from_vec()` 这类 1D 便捷包装，也仅属于非规范 convenience layer；本文的稳定承诺仍以 `需求说明书 §19` 已覆盖的标准构造语义为准，不把该便捷入口纳入范围、任务或测试承诺。
-
-> **helper 命名说明：** `06-layout.md` 的权威 stride API 名称为 `compute_f_strides()`；本节中“元素总数 checked helper”仍为示意性命名，具体 helper 名称与归属以 `06-layout.md` 的实现约定为准。
-
-> **`bool` 特殊值说明：** `zeros::<bool>()` 对应 `false`，`ones::<bool>()` 对应 `true`（`需求说明书 §19`）。
+- `full()` 超出 `需求说明书 §19` 的当前最小构造集合。
+- 本节中“元素总数 checked helper”仍为示意性命名，具体 helper 名称与归属以 `06-layout.md` 的实现约定为准。
+- `zeros::<bool>()` 对应 `false`，`ones::<bool>()` 对应 `true`（`需求说明书 §19`）。
 
 ### 5.2 eye
 
-````rust,ignore
+```rust,ignore
 # use crate::complex::Complex;
 # use crate::element::Element;
 # use crate::error::XenonError;
@@ -249,7 +265,7 @@ where
         Ok(result)
     }
 }
-````
+```
 
 ```rust,ignore
 pub trait EyeElement: crate::private::Sealed + Element {}
@@ -262,13 +278,12 @@ impl EyeElement for Complex<f32> {}
 impl EyeElement for Complex<f64> {}
 ```
 
-> **类型约束说明：** `eye()` 不对 `bool` 开放；其适用类型严格限定为 `i32`、`i64`、`f32`、`f64`、`Complex<f32>` 与 `Complex<f64>`，以符合 `需求说明书 §19`。`EyeElement` 必须保持 sealed，避免下游扩展突破 `需求说明书 §4` 对元素类型封闭集合的要求。
-
-> **范围说明：** 当前版本的 `eye()` 仅提供 `n×n` 方阵构造。矩形对角矩阵构造器不在范围内。
+- `eye()` 不对 `bool` 开放；其适用类型严格限定为 `i32`、`i64`、`f32`、`f64`、`Complex<f32>` 与 `Complex<f64>`，以符合 `需求说明书 §19`。`EyeElement` 必须保持 sealed，避免下游扩展突破 `需求说明书 §4` 对元素类型封闭集合的要求。
+- 当前版本的 `eye()` 仅提供 `n×n` 方阵构造。矩形对角矩阵构造器不在范围内。
 
 ### 5.3 from_shape_vec / from_shape_slice / from_array
 
-````rust,ignore
+```rust,ignore
 # use crate::dimension::{Dimension, IntoDimension};
 # use crate::element::Element;
 # use crate::error::XenonError;
@@ -409,7 +424,7 @@ where
     }
 }
 
-````
+```
 
 ### 5.4 from_scalar
 
