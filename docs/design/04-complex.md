@@ -492,7 +492,7 @@ fn scalar_is_positive_zero<T: PositiveZero>(im: T) -> bool {
 | `Complex::new(3.0, 4.0)`  | `"3+4j"`     |
 | `Complex::new(3.0, -4.0)` | `"3-4j"`     |
 | `Complex::new(3.0, 0.0)`  | `"3"`        |
-| `Complex::new(3.0, -0.0)` | `"3-0j"` |
+| `Complex::new(3.0, -0.0)` | `"3-0j"`     |
 | `Complex::new(0.0, 4.0)`  | `"4j"`       |
 | `Complex::new(0.0, 0.0)`  | `"0"`        |
 
@@ -512,7 +512,7 @@ fn scalar_is_positive_zero<T: PositiveZero>(im: T) -> bool {
 
 | 源类型 | 目标类型 | 语义 | 默认行为 |
 |--------|----------|------|---------|
-| `i32` | `Complex<f64>` | 实部 `i32→f64` 无损，虚部为 `0` | 成功 |
+| `i32` | `Complex<f64>` | 实部 `i32→f64` 无损，虚部为 `0` | 成功           |
 | `i32` | `Complex<f32>` | 实部 `i32→f32` 有损，虚部为 `0` | 返回可恢复错误 |
 | `i64` | `Complex<f64>` | 实部 `i64→f64` 有损，虚部为 `0` | 返回可恢复错误 |
 | `i64` | `Complex<f32>` | 实部 `i64→f32` 有损，虚部为 `0` | 返回可恢复错误 |
