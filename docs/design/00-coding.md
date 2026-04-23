@@ -520,7 +520,7 @@ where
 #[derive(Debug, Clone)]
 pub enum XenonError {
     BroadcastError {
-        operation: &'static str,
+        operation: Cow<'static, str>,
         lhs_shape: Vec<usize>,
         rhs_shape: Vec<usize>,
         attempted_target_shape: Option<Vec<usize>>,
