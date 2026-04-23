@@ -79,10 +79,6 @@ src/matrix/
 │   ├── crate::error         # XenonError
 │   ├── crate::simd (opt.)   # Pure vectorized dot kernel
 │   └── crate::parallel (opt.) # Pure parallel dot execution
-├── crate::iter              # Element iteration helpers
-├── crate::dispatch          # Execution path decision
-├── crate::simd (opt.)       # Pure vectorized dot kernel
-└── crate::parallel (opt.)   # Pure parallel dot execution
 ```
 
 ### 4.2 类型级依赖
@@ -159,7 +155,7 @@ pub fn dot<A, D1, D2>(
     b: &TensorView<'_, A, D2>,
 ) -> Result<A, XenonError>
 where
-    A: Numeric + Copy,
+    A: Numeric,
     D1: Dimension,
     D2: Dimension;
 // Note: Numeric (defined in 03-element.md) already implies
