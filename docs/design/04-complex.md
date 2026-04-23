@@ -774,7 +774,7 @@ hypot(a, b):
 | 单元测试 | `#[cfg(test)] mod tests`  | 验证复数结构、运算、格式化与布局         |
 | 集成测试 | `tests/test_complex.rs`   | 验证 `complex` 与 `element`、`math`、`matrix`、`ffi` 的协同路径 |
 | 边界测试 | 同模块测试中标注          | 覆盖 NaN/Inf、极大/极小值与 FFI 布局前提 |
-| 属性测试 | `tests/property_tests.rs` | 验证共轭、模长不变量                         |
+| 属性测试 | `tests/property_tests.rs` | 验证共轭、模长不变量                     |
 
 ### 8.2 单元测试清单
 
@@ -813,9 +813,9 @@ assert!((result.re - 2.0).abs() < 1e-10 && result.im.abs() < 1e-10);
 
 | 场景                          | 预期行为                                                 |
 | ----------------------------- | -------------------------------------------------------- |
-| 零 `Complex::new(0.0, 0.0)`   | `norm()==0`                                                  |
+| 零 `Complex::new(0.0, 0.0)`   | `norm()==0`                                              |
 | NaN 参与                      | `Complex::new(NaN, 0.0).norm().is_nan()`                 |
-| Inf 参与                      | `Complex::new(Inf, 1.0).norm().is_finite()==false`          |
+| Inf 参与                      | `Complex::new(Inf, 1.0).norm().is_finite()==false`       |
 | 极大值 norm                   | `Complex::new(1e200, 1e200).norm()` 不溢出（≈1.414e200） |
 | 极小值 norm                   | `Complex::new(1e-200, 1e-200).norm()` 正确               |
 | `Complex::new(1.0, 2.0) / Complex::new(0.0, 0.0)` | 遵循 Smith 算法 + IEEE 754 标量传播语义，不返回可恢复错误，也不额外 panic |
@@ -823,10 +823,10 @@ assert!((result.re - 2.0).abs() < 1e-10 && result.im.abs() < 1e-10);
 
 ### 8.4 属性测试不变量
 
-| 不变量                                                           | 测试方法                                |
-| ---------------------------------------------------------------- | --------------------------------------- |
-| `(z * z.conj()).re == z.norm_sqr()` 且 `(z * z.conj()).im == 0`  | 随机 z                                  |
-| `(z / w) * w ≈ z`                                                | 随机 z, w（w ≠ 0）                      |
+| 不变量                                                           | 测试方法           |
+| ---------------------------------------------------------------- | ------------------ |
+| `(z * z.conj()).re == z.norm_sqr()` 且 `(z * z.conj()).im == 0`  | 随机 z             |
+| `(z / w) * w ≈ z`                                                | 随机 z, w（w ≠ 0） |
 
 ### 8.5 集成测试
 
