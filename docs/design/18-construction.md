@@ -1,8 +1,10 @@
 # 构造操作模块设计
 
-> 文档编号: 18 | 模块: `src/construct/` | 阶段: Phase 4
-> 前置文档: `07-tensor.md`, `05-storage.md`
-> 需求参考: `需求说明书 §7`, `需求说明书 §8`, `需求说明书 §19`, `需求说明书 §27`, `需求说明书 §28.2`, `需求说明书 §28.4`
+> 文档编号: 18
+> 模块目录: src/construct/
+> 任务阶段: Phase 4
+> 前置文档: 07-tensor.md, 05-storage.md
+> 需求参考: 需求说明书 §7、§8、§19、§27、§28
 > 范围声明: 范围内
 
 ---
@@ -11,17 +13,29 @@
 
 ### 1.1 职责边界
 
-| 职责           | 包含                                                 | 不包含                                                         |
-| -------------- | ---------------------------------------------------- | -------------------------------------------------------------- |
-| 零初始化构造   | `zeros<A, D>(shape)` 全零张量                        | arange / linspace / logspace 序列生成（当前版本不提供）        |
-| 常量构造       | `ones<A, D>(shape)` 全一张量                         | `full<A, D>(shape, scalar)` 与随机数构造（当前版本不提供）     |
-| 单位矩阵       | `eye<A>(n)` 单位矩阵                                 | 从文件加载（当前版本不提供）                                   |
-| 从 Vec 构造    | `from_shape_vec(shape, vec)` 消费输入 Vec 并构造张量 | 从迭代器/生成器构造（当前版本不提供）                          |
-| 从切片构造     | `from_shape_slice(shape, slice)` 从切片拷贝数据      | 从文件/网络加载（当前版本不提供）                              |
-| 从固定数组构造 | `from_array<A, N>(shape, arr)` 从固定大小数组构造    | 从文件加载（当前版本不提供）                                   |
-| 从标量构造     | `from_scalar<A>(scalar)` 零维张量                    | —                                                              |
-| 未来扩展构造   | —                                                    | `from_fn<A, D, F>(shape, f)` 与从迭代器/生成器构造留待后续版本 |
-| 合法性验证     | 所有构造路径验证形状/大小合法性                      | 隐式类型转换（由 `convert` 模块提供）                          |
+| 职责           | 包含                                                 |
+| -------------- | ---------------------------------------------------- |
+| 零初始化构造   | `zeros<A, D>(shape)` 全零张量                        |
+| 常量构造       | `ones<A, D>(shape)` 全一张量                         |
+| 单位矩阵       | `eye<A>(n)` 单位矩阵                                 |
+| 从 Vec 构造    | `from_shape_vec(shape, vec)` 消费输入 Vec 并构造张量 |
+| 从切片构造     | `from_shape_slice(shape, slice)` 从切片拷贝数据      |
+| 从固定数组构造 | `from_array<A, N>(shape, arr)` 从固定大小数组构造    |
+| 从标量构造     | `from_scalar<A>(scalar)` 零维张量                    |
+| 未来扩展构造   | —                                                    |
+| 合法性验证     | 所有构造路径验证形状/大小合法性                      |
+
+| 职责           | 不包含                                                         |
+| -------------- | -------------------------------------------------------------- |
+| 零初始化构造   | arange / linspace / logspace 序列生成（当前版本不提供）        |
+| 常量构造       | `full<A, D>(shape, scalar)` 与随机数构造（当前版本不提供）     |
+| 单位矩阵       | 从文件加载（当前版本不提供）                                   |
+| 从 Vec 构造    | 从迭代器/生成器构造（当前版本不提供）                          |
+| 从切片构造     | 从文件/网络加载（当前版本不提供）                              |
+| 从固定数组构造 | 从文件加载（当前版本不提供）                                   |
+| 从标量构造     | —                                                              |
+| 未来扩展构造   | `from_fn<A, D, F>(shape, f)` 与从迭代器/生成器构造留待后续版本 |
+| 合法性验证     | 隐式类型转换（由 `convert` 模块提供）                          |
 
 ### 1.2 设计原则
 
@@ -33,32 +47,16 @@
 | 对齐优先     | `from_shape_vec` 可复用项目统一的 owned 存储构造路径；是否复制输入 `Vec<A>`、以及采用何种对齐值，均属于内部实现选择，不单独形成公开承诺 |
 | 类型安全     | 形状和元素类型通过泛型约束在编译期检查                                                                                                  |
 
-### 1.3 在架构中的位置
-
-```
-Dependency layers:
-L0: error, private
-L1: dimension, element, complex
-L2: layout (depends on dimension)
-L3: storage (independent of layout; owned by tensor and consumes layout results)
-L4: tensor (depends on storage, dimension)
-L7: construct  <- current module (depends on storage, layout, dimension, element)
-```
-
 ---
 
 ## 2. 需求映射与范围约束
 
 | 类型     | 内容                                                                                                                                                  |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 需求映射 | `需求说明书 §7`, `需求说明书 §8`, `需求说明书 §19`, `需求说明书 §27`, `需求说明书 §28.2`, `需求说明书 §28.4`                                          |
+| 需求映射 | 需求说明书 §7、§8、§19、§27、§28                                                                                                                      |
 | 范围内   | `zeros` / `ones` / `eye` / `from_shape_vec` / `from_shape_slice` / `from_array` / `from_scalar`，以及空张量 / 零维张量 / ZST 路径的合法性与错误语义。 |
 | 范围外   | arange、linspace、from_fn、随机构造器与其他序列生成 API。                                                                                             |
 | 非目标   | 不新增新的构造器家族，不改变 F-order / 对齐分配基线，也不引入第三方随机或数据加载依赖。                                                               |
-
-> **范围说明：** 当前版本将 `需求说明书 §19` 中的“动态数组”解释为 `Vec<A>`。`Box<[A]>` 等其他持有容器不单独承诺。
-
-> **固定数组范围说明：** 当前版本“固定数组构造”仅承诺线性数组入口 `[A; N]`。嵌套数组（如 `[[A; M]; N]`）自动推导 shape 不在范围内。
 
 ---
 
@@ -70,13 +68,9 @@ src/
     ├── mod.rs               # module root, re-exports all public APIs
     ├── init.rs              # zeros, ones (basic initialization constructors)
     ├── eye.rs               # eye (identity matrix)
-    ├── from.rs         # from_shape_vec, from_shape_slice, from_array (construction from data sources)
+    ├── from.rs              # from_shape_vec, from_shape_slice, from_array (construction from data sources)
     └── scalar.rs            # from_scalar (scalar construction)
 ```
-
-多文件设计：每个子文件对应一类构造方式，便于后期扩展（如新增 `from_diag.rs` 等）。`mod.rs` 负责统一 re-exports，对外保持单一模块接口。
-
-> 注：`fill()` 不属于 construction 模块；该能力由 `20-utility.md` 定义，对应 `src/util/fill.rs`。
 
 ---
 
@@ -113,17 +107,17 @@ src/
 | `element`   | `Element`（`zero()` / `one()` 由 `Element` 提供，参见 `03-element.md` §5.1）                                      |
 | `error`     | `XenonError::InvalidShape`（用于构造时的 shape/length 基数不匹配，参见 `26-error.md` §4）                         |
 
-### 4.3 依赖方向声明
-
-> **依赖方向：单向向上。** `construct` 消费 `tensor`、`storage`、`layout`、`dimension`、`element` 的 trait 和类型，不被它们依赖。
-
-### 4.4 依赖合法性与替代方案
+### 4.3 依赖合法性
 
 | 项目           | 说明                                                                          |
 | -------------- | ----------------------------------------------------------------------------- |
 | 新增第三方依赖 | 无                                                                            |
 | 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
 | 替代方案       | 不适用；当前范围内无需额外第三方依赖。                                        |
+
+### 4.4 依赖方向声明
+
+> **依赖方向：单向向上。** `construct` 消费 `tensor`、`storage`、`layout`、`dimension`、`element` 的 trait 和类型，不被它们依赖。
 
 ---
 
@@ -207,7 +201,7 @@ where
 
 > **`bool` 特殊值说明：** `zeros::<bool>()` 对应 `false`，`ones::<bool>()` 对应 `true`（`需求说明书 §19`）。
 
-### 5.2 eye（单位矩阵）
+### 5.2 eye
 
 ````rust,ignore
 # use crate::complex::Complex;
@@ -558,22 +552,6 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
   - 前置: T1-T4
   - 预计: 10 min
 
-### 并行执行图
-
-```
-Wave 1: [T1]
-           │
-           ├──────────────┐
-           ▼              ▼
-Wave 2: [T2]           [T3]
-                          │
-                          ▼
-Wave 3:                 [T4]
-                          │
-                          ▼
-Wave 4:                 [T5]
-```
-
 ---
 
 ## 8. 测试计划
@@ -692,7 +670,7 @@ User calls zeros / from_shape_vec / eye
 
 ## 11. 设计决策记录
 
-### ADR-1: 当前版本不纳入 `from_fn`
+### 决策 1: 当前版本不纳入 `from_fn`
 
 | 属性     | 值                                                             |
 | -------- | -------------------------------------------------------------- |
@@ -700,7 +678,7 @@ User calls zeros / from_shape_vec / eye
 | 理由     | `需求说明书 §19` 当前仅要求标准构造方法与从数据源/标量构造能力 |
 | 替代方案 | 在本阶段继续纳入 `from_fn` — 放弃，会扩大当前版本范围          |
 
-### ADR-2: eye 实现方式
+### 决策 2: eye 实现方式
 
 | 属性     | 值                                                                   |
 | -------- | -------------------------------------------------------------------- |
