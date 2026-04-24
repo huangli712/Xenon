@@ -120,6 +120,7 @@ src/overload/
 | `&TensorView<A, D>`  | `&TensorView<A, E>`  | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓ | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<ViewRepr<'a, A>,D>` |
 | `&TensorView<A, D>`  | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓ | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<ViewRepr<'a, A>,D>`        |
 | `&Tensor<A, D>`      | `&TensorView<A, E>`  | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓ | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<Owned<A>,D>`        |
+| | | | | |
 | `Tensor<A, D>`       | `A`                  | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for TensorBase<Owned<A>,D>`                                       |
 | `&Tensor<A, D>`      | `A`                  | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for &TensorBase<Owned<A>,D>`                                      |
 | `Scalar<A>`          | `Tensor<A, D>`       | `Tensor<A, D>` | 标量广播 | `impl<...> Add<TensorBase<Owned<A>,D>> for Scalar<A>`                               |
@@ -127,8 +128,8 @@ src/overload/
 | `f32`/`f64`/`i32`/`i64`/`Complex<..>` | `Tensor<A, D>` | `Tensor<A, D>` | 标量广播 | `impl Add<TensorBase<Owned<A>,D>> for T`（逐类型生成）                   |
 | `f32`/`f64`/`i32`/`i64`/`Complex<..>` | `&Tensor<A, D>` | `Tensor<A, D>` | 标量广播 | `impl Add<&TensorBase<Owned<A>,D>> for T`（逐类型生成）                 |
 
-- 上表仅列出当前稳定承诺。
-- `TensorView` 相关组合已纳入当前稳定范围，与 `broadcast_to()` / `transpose()` / `slice()` 返回视图的既有设计保持一致。
+- 上表仅列出当前稳定承诺。张量×张量/视图路径（前 7 行）与标量路径（后 6 行）通过空行分隔。
+- `TensorView` 相关组合已纳入当前稳定范围，与 `broadcast_to()` / `transpose()` / `slice()` 返回视图的既有设计保持一致。**注意**：`TensorView` 仅参与张量×张量/视图路径的运算符重载；标量运算符重载（`tensor + scalar`、`Scalar(s) + tensor`、原生左标量）仅覆盖 owned `Tensor`，不覆盖 `TensorView`。`TensorView` 的标量运算须通过方法调用（如 `.add_scalar()`）实现。
 - `F` 为广播后的维度类型，由 `<D as BroadcastDim<E>>::Output` 关联类型计算。
 - `BroadcastDim` 定义于 `02-dimension.md §5.10`，被 `01-architecture.md §11` 记为“公开 sealed trait”（允许命名但禁止外部实现）。由于它出现在 `broadcast` / `overload` 的公开签名与 trait bound 中，稳定承诺要求用户可在签名中命名该 trait，但不要求用户自行实现它。
 

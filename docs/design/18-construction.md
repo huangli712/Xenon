@@ -121,8 +121,8 @@ src/construct/
 | ----------- | ----------------------------------------------------------------------------------------------------------------- |
 | `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, 类型别名 `Tensor0`~`Tensor6`（参见 `07-tensor.md` §5）                        |
 | `storage`   | `Owned<A>`, `Storage<Elem = A>`, `from_vec_aligned()`（参见 `05-storage.md` §6.1）                                  |
-| `layout`    | `LayoutFlags`, `Strides<D>`, 共享 checked/layout helper（元素总数与 F-order stride 计算，参见 `06-layout.md` §3） |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`（参见 `02-dimension.md` §5）                                   |
+| `layout`    | `LayoutFlags`, `Strides<D>`, `compute_f_strides`, `flags_for_f_layout`（F-order stride 计算与布局标志，参见 `06-layout.md` §3-4） |
+| `dimension` | `Dimension::checked_size()`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`（元素总数验证与形状归一化，参见 `02-dimension.md` §5） |
 | `element`   | `Element`（`zero()` / `one()` 由 `Element` 提供，参见 `03-element.md` §5.1）                                      |
 | `error`     | `XenonError`（`InvalidShape` 用于 shape/length 基数不匹配与元素总数溢出；`compute_f_strides` 步长溢出错误以 `06-layout.md` §5.6 为准直接传播） |
 
@@ -166,13 +166,13 @@ where
     /// ```
     pub fn zeros<Sh>(shape: Sh) -> Result<Self, XenonError>
     where
-        A: Element,  // A::zero() is provided by the Element trait (see 03-element.md §5.1)
+        A: Element + Clone,  // A::zero() from Element; Clone required by StorageOwned::from_elem (see 05-storage.md §5.7)
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();
         let len = dim.checked_size()?;
         let strides = layout::compute_f_strides(&dim)?;
-        let storage = Owned::zeros(len);
+        let storage = Owned::from_elem(len, A::zero());
         let flags = layout::flags_for_f_layout(storage.is_aligned(), false);
         Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags })
     }
@@ -186,13 +186,13 @@ where
     /// ```
     pub fn ones<Sh>(shape: Sh) -> Result<Self, XenonError>
     where
-        A: Element,  // A::one() is provided by the Element trait (see 03-element.md §5.1)
+        A: Element + Clone,  // A::one() from Element; Clone required by StorageOwned::from_elem (see 05-storage.md §5.7)
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();
         let len = dim.checked_size()?;
         let strides = layout::compute_f_strides(&dim)?;
-        let storage = Owned::ones(len);
+        let storage = Owned::from_elem(len, A::one());
         let flags = layout::flags_for_f_layout(storage.is_aligned(), false);
         Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags })
     }
@@ -200,7 +200,6 @@ where
 ```
 
 - `full()` 超出 `需求说明书 §19` 的当前最小构造集合。
-- 本节中“元素总数 checked helper”仍为示意性命名，具体 helper 名称与归属以 `06-layout.md` 的实现约定为准。
 - `zeros::<bool>()` 对应 `false`，`ones::<bool>()` 对应 `true`（`需求说明书 §19`）。
 
 ### 5.2 eye
@@ -258,6 +257,7 @@ impl EyeElement for Complex<f64> {}
 ```
 
 - `eye()` 不对 `bool` 开放；其适用类型严格限定为 `i32`、`i64`、`f32`、`f64`、`Complex<f32>` 与 `Complex<f64>`，以符合 `需求说明书 §19`。`EyeElement` 必须保持 sealed，避免下游扩展突破 `需求说明书 §4` 对元素类型封闭集合的要求。
+- `EyeElement` 定义在 `construct/eye.rs` 而非 `element` 模块中，因为它是构造特定的类型约束——仅 `eye()` 构造器需要限制可用元素类型（`bool` 被排除），而 `Element` trait 适用于所有构造器。将其放在构造模块内部保持了 `element` 模块的通用性，也使 `eye()` 的类型限制与构造逻辑局部化。
 - 当前版本的 `eye()` 仅提供 `n×n` 方阵构造。矩形对角矩阵构造器不在范围内。
 
 ### 5.3 from_shape_vec / from_shape_slice / from_array
@@ -271,7 +271,7 @@ impl EyeElement for Complex<f64> {}
 # use crate::tensor::{Tensor, TensorBase};
 impl<A, D> TensorBase<Owned<A>, D>
 where
-    A: Element,
+    A: Element + Copy,
     D: Dimension,
 {
     /// Construct a tensor from a Vec with explicit shape.
@@ -330,7 +330,7 @@ where
         // an owned result; whether the implementation reuses the original Vec
         // allocation or materializes a new aligned allocation is intentionally
         // left as an internal choice.
-        let storage = Owned::from_vec_aligned(data);
+        let storage = Owned::from_vec_aligned(data)?;
         let flags = layout::flags_for_f_layout(storage.is_aligned(), false);
         Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags })
     }
@@ -401,25 +401,28 @@ where
 # use crate::tensor::{Tensor, TensorBase};
 impl<A> TensorBase<Owned<A>, Ix0>
 where
-    A: Element,
+    A: Element + Copy,
 {
     /// Construct a zero-dimensional tensor from a scalar.
     ///
+    /// # Errors
+    /// Returns an error if the underlying owned storage allocation fails.
+    ///
     /// # Examples
     /// ```
-    /// let t = Tensor::<f64, Ix0>::from_scalar(3.14);
+    /// let t = Tensor::<f64, Ix0>::from_scalar(3.14)?;
     /// assert_eq!(*t.get(&[]).unwrap(), 3.14);
     /// ```
-    pub fn from_scalar(scalar: A) -> Self {
-        let storage = Owned::from_vec_aligned(vec![scalar]);
+    pub fn from_scalar(scalar: A) -> Result<Self, XenonError> {
+        let storage = Owned::from_vec_aligned(vec![scalar])?;
         let flags = layout::flags_for_f_layout(storage.is_aligned(), false);
-        TensorBase {
+        Ok(TensorBase {
             storage,
             shape: Ix0,
             strides: Strides::<Ix0>::from_slice(&[]),
             offset: 0,
             flags,
-        }
+        })
     }
 }
 
@@ -477,9 +480,9 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 
 - `zeros`: 全零字节初始化仅对当前封闭元素集合合法：`i32` / `i64` 的 `0`、`f32` / `f64` 的 `+0.0`（IEEE 754）、`bool` 的 `false`、`Complex<T>` 的 `(0 + 0i)`。若未来新增元素类型，必须重新验证“全零字节可表示合法值”这一不变量。
 - `ones`: 逐元素写入过程中，若 `A::one()` 的 copy 在理论上发生 panic（当前封闭类型集合中不预期出现），未初始化内存仍须由 `Owned` 析构路径基于“已初始化长度跟踪”正确回收。
-- `from_shape_vec`: 先通过 layout 层共享 checked helper 验证元素总数，再验证 `data.len() == expected`；通过后进入共享 owned 构造路径。是否复用原始 `Vec` 分配、是否进行额外重打包，均属于内部实现选择，不影响公开语义
-- `from_shape_slice`: 先通过 layout 层共享 checked helper 验证元素总数，长度匹配后先把切片物化为 owned 缓冲区，再委托给 `from_shape_vec`；这样把 F-order 映射、长度约束与 owned 结果语义统一收敛到单一路径
-- 元素总数溢出：构造路径须在共享的 layout checked helper 中统一转为 `XenonError::InvalidShape`，不得把这些职责下沉到 `Dimension` trait。ZST、空张量路径与 `05-storage.md` 约束保持一致
+- `from_shape_vec`: 先通过 `dim.checked_size()` 验证元素总数（`Dimension::checked_size`，参见 `02-dimension.md`），再验证 `data.len() == expected`；通过后进入共享 owned 构造路径。是否复用原始 `Vec` 分配、是否进行额外重打包，均属于内部实现选择，不影响公开语义
+- `from_shape_slice`: 先通过 `dim.checked_size()` 验证元素总数，长度匹配后先把切片物化为 owned 缓冲区，再委托给 `from_shape_vec`；这样把 F-order 映射、长度约束与 owned 结果语义统一收敛到单一路径
+- 元素总数溢出：`dim.checked_size()` 在溢出时直接返回 `InvalidShape` 错误（参见 `02-dimension.md`）。ZST、空张量路径与 `05-storage.md` 约束保持一致
 - F-order stride 计算溢出：`compute_f_strides` 通过 `?` 直接传播错误，错误类别以 `06-layout.md` §5.6 为准（整数溢出时返回 `InvalidLayout` 或等效错误类别）。构造路径不再将其二次转换为 `InvalidShape`
 - `eye`: 内部使用已验证的 `zeros` 与 unchecked 写入；因为循环变量满足 `0 <= i < n`，所以 `[i, i]` 索引必然合法，不依赖公开 `IndexMut` panic 语法糖
 
