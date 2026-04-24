@@ -453,7 +453,7 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | L5     | set       | tensor, element, complex, iter      | 14-set.md           |
 | L5     | matrix    | tensor, element                     | 12-matrix.md        |
 | L5     | reduction | tensor, dimension, element, error   | 13-reduction.md     |
-| L5     | shape     | tensor, layout                      | 16-shape.md         |
+| L5     | shape     | tensor, dimension, layout           | 16-shape.md         |
 | L5     | index     | tensor, dimension, layout, error    | 17-indexing.md      |
 | L5     | util      | tensor, dimension, storage, layout, iter | 20-utility.md  |
 | L5     | construct | tensor, storage, layout, dimension, element | 18-construction.md |
@@ -708,9 +708,9 @@ Ix0, Ix1, Ix2, ..., Ix6       // Static dimensions (0-6 dimensions)
 IxDyn                         // Dynamic dimension
 
 // Layout helpers (F-order only)
-compute_f_strides(shape)       // Compute canonical F-order strides
-validate_layout(shape, strides, offset, storage_len)
-classify_layout(shape, strides) // Internal classification helper
+compute_f_strides(shape)             // Compute canonical F-order strides
+compute_layout_flags(shape, strides, ptr) // Central function for all layout flags
+LayoutState                          // FContiguous / NonContiguous / BroadcastView
 
 // Element trait hierarchy
 Element                        // Base: Copy + PartialEq + Debug + Display + Send + Sync

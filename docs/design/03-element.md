@@ -83,7 +83,7 @@ src/element/
 └── core::cmp         # PartialEq/PartialOrd comparisons
 ```
 
-### 4.2 依赖精确到类型级
+### 4.2 类型级依赖
 
 | 来源模块         | 使用的类型/trait                                           |
 | ---------------- | ---------------------------------------------------------- |
@@ -331,10 +331,10 @@ pub trait CastTo<T>: Element {
 }
 ```
 
-- 类型转换错误载荷的完整定义见 `26-error.md §4.2`，`CastTo<T>` 的转换矩阵与实现约束见 `21-type.md §5.2`、`§6.1`。本节仅保留元素层 trait 骨架。
+- 类型转换错误载荷的完整定义见 `26-error.md §5.1`，`CastTo<T>` 的转换矩阵与实现约束见 `21-type.md §5.2`、`§6.1`。本节仅保留元素层 trait 骨架。
 - `CastTo<T>` 直接返回 `XenonError::TypeConversion`。
 - `bool` 不为任何目标类型实现 `CastTo<T>`。
-- `Complex<T> -> Real` 的条件成功语义、受支持矩阵与 `XenonError::TypeConversion` 字段约束，统一以 `21-type.md §5.3`、`§6.1` 以及 `26-error.md §4.3` 为准。
+- `Complex<T> -> Real` 的条件成功语义、受支持矩阵与 `XenonError::TypeConversion` 字段约束，统一以 `21-type.md §5.3`、`§6.1` 以及 `26-error.md §5.6` 为准。
 
 ### 5.9 Checked arithmetic traits
 
@@ -631,23 +631,6 @@ impl RealScalar for f64 {
   - 测试: 见测试计划 §8
   - 前置: T10, T11
   - 预计: 10 min
-
-### 并行执行分组图
-
-```
-Wave 1: [T1] → [T2]
-                    │
-        ┌───────────┼───────────┐
-        ▼           ▼           ▼
-Wave 2: [T3]      [T4]       [T5]
-        │           │           │
-        │           │           ▼
-Wave 3: [T6]      [T9] ← ────┘
-         │          │
-        [T10]      [T11] → [T12]
-
-(T7, T8 are independent of Wave 2-3 and can run in parallel with T3/T4/T5)
-```
 
 ---
 

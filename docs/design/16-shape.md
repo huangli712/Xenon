@@ -1,8 +1,10 @@
 # 形状操作模块设计
 
-> 文档编号: 16 | 模块: `src/shape/` | 阶段: Phase 4
-> 前置文档: `07-tensor.md`, `06-layout.md`
-> 需求参考: `需求说明书 §6`, `需求说明书 §7`, `需求说明书 §17`, `需求说明书 §28.2`, `需求说明书 §28.4`
+> 文档编号: 16
+> 模块目录: src/shape/
+> 任务阶段: Phase 4
+> 前置文档: 07-tensor.md, 06-layout.md, 02-dimension.md
+> 需求参考: 需求说明书 §6 - §8、§17、§28
 > 范围声明: 范围内
 
 ---
@@ -11,12 +13,18 @@
 
 ### 1.1 职责边界
 
-| 职责           | 包含                                             | 不包含                                                       |
-| -------------- | ------------------------------------------------ | ------------------------------------------------------------ |
-| 转置操作       | `transpose()` 交换步长和形状返回只读视图（O(1)） | 其他形状变换（当前版本不提供）                               |
-| 连续性标志更新 | 转置后按结果 shape/stride 重新计算连续性标志     | pad / repeat / split（当前版本不提供）                       |
-| 形状操作边界   | 当前版本只规范 `transpose()` 这一公开 API        | `permute_axes()` / `swap_axes()` / `moveaxis()` 留待后续版本 |
-| 未来形状操作   | —                                                | 其他形状变换与自动推断维度留待后续版本                       |
+| 职责           | 包含                                             |
+| -------------- | ------------------------------------------------ |
+| 转置操作       | `transpose()` 交换步长和形状返回只读视图（O(1)） |
+| 连续性标志更新 | 转置后按结果 shape/stride 重新计算连续性标志     |
+| 形状操作边界   | 当前版本只规范 `transpose()` 这一公开 API        |
+
+| 职责           | 不包含                                           |
+| -------------- | ------------------------------------------------ |
+| 转置操作       | 其他形状变换（当前版本不提供）                   |
+| 连续性标志更新 | pad / repeat / split（当前版本不提供）           |
+| 形状操作边界   | `permute_axes()` / `swap_axes()` / `moveaxis()` （当前版本不提供）|
+| 未来形状操作   |其他形状变换与自动推断维度留待后续版本            |
 
 ### 1.2 设计原则
 
@@ -27,26 +35,13 @@
 | BLAS 友好  | 正确处理转置产生的非连续布局，确保 shape/stride 元数据一致     |
 | 维度安全   | 转置仅做轴反转，不改变逻辑元素值与元素总数                     |
 
-### 1.3 在架构中的位置
-
-```
-Dependency layers:
-L0: error, private
-L1: dimension, element, complex
-L2: layout (depends on dimension)
-L3: storage (independent from layout; owned by tensor and consumed via layout results)
-L4: tensor (depends on storage, dimension)
-L5: broadcast (depends on tensor, dimension)
-L6: shape  <- current module
-```
-
 ---
 
 ## 2. 需求映射与范围约束
 
 | 类型     | 内容                                                                             |
 | -------- | -------------------------------------------------------------------------------- |
-| 需求映射 | `需求说明书 §6`, `需求说明书 §7`, `需求说明书 §17`, `需求说明书 §28.2`, `需求说明书 §28.4`                                                           |
+| 需求映射 | 需求说明书 §6 - §8、§17、§28                                                      |
 | 范围内   | `transpose()`、轴反转后的 shape / strides / flags 重算，以及零拷贝只读视图语义。 |
 | 范围外   | 其他形状变换。                                                                   |
 | 非目标   | 不在本文讨论连续性重排 API、动态维推断或额外形状 DSL。                           |
@@ -61,8 +56,6 @@ src/shape/
 └── transpose.rs       # transpose implementation
 ```
 
-文件划分理由：当前版本仅支持转置，因此保留单一实现文件即可覆盖范围内能力。
-
 ---
 
 ## 4. 依赖关系
@@ -70,37 +63,22 @@ src/shape/
 ### 4.1 依赖图（ASCII）
 
 ```
-                    ┌──────────────┐
-                    │    tensor    │
-                    │ TensorBase   │
-                    └──────┬───────┘
-                           │ uses
-              ┌────────────┼────────────────┐
-              │   shape                     │
-              │   transpose.rs              │
-              └──┬───────────┬──────────────┘
-                 │ uses      │ uses
-          ┌──────▼───┐ ┌─────▼────────────┐
-          │ dimension│ │ layout           │
-          │ Dimension│ │ LayoutFlags      │
-          │ Ix0~IxDyn│ │ LayoutState      │
-          └──────────┘ └──────────────────┘
+src/shape/
+├── crate::tensor     # TensorBase<S, D>, TensorView<'_, A, D>, .shape(), .strides(), .offset()
+├── crate::dimension  # Dimension, Ix0~Ix6, IxDyn
+└── crate::layout     # LayoutFlags, LayoutState, Strides<D>
 ```
 
 ### 4.2 类型级依赖
 
-| 来源模块    | 使用的类型/trait                                                                                                |
-| ----------- | --------------------------------------------------------------------------------------------------------------- |
-| `tensor`    | `TensorBase<S, D>`, `TensorView<'_, A, D>`, `.shape()`, `.strides()`, `.offset()`，参见 `07-tensor.md` §5 |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`，参见 `02-dimension.md` §3                     |
-| `layout`    | `LayoutFlags`, `LayoutState`, `Strides<D>`，参见 `06-layout.md` §3, §4                                          |
-| `error`     | 无新增可恢复错误；规范性 `transpose()` 不走失败返回路径                                                         |
+| 来源模块    | 使用的类型/trait                                                                  |
+| ----------- | --------------------------------------------------------------------------------- |
+| `tensor`    | `TensorBase<S, D>`, `TensorView<'_, A, D>`, `.shape()`, `.strides()`, `.offset()` |
+| `dimension` | `Dimension`                                                                       |
+| `layout`    | `LayoutFlags`, `LayoutState`, `Strides<D>`                                        |
+| `error`     | 无新增可恢复错误；规范性 `transpose()` 不走失败返回路径                           |
 
-### 4.3 依赖方向声明
-
-> **依赖方向：单向向上。** `shape/` 消费 `tensor`、`dimension`、`layout` 的 trait 和类型，不被它们依赖。
-
-### 4.4 依赖合法性与替代方案
+### 4.3 依赖合法性
 
 | 项目           | 说明                                                                          |
 | -------------- | ----------------------------------------------------------------------------- |
@@ -108,13 +86,17 @@ src/shape/
 | 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
 | 替代方案       | 不适用；当前范围内无需额外第三方依赖。                                        |
 
+### 4.4 依赖方向声明
+
+依赖方向：单向向上。`shape/` 消费 `tensor`、`dimension`、`layout` 的 trait 和类型，不被它们依赖。
+
 ---
 
 ## 5. 公共 API 设计
 
 ### 5.1 转置操作
 
-> **说明：** 以下为示意性伪实现，非稳定内部结构约定。
+以下为示意性伪实现，非稳定内部结构约定。
 
 ````rust,ignore
 impl<S, A, D> TensorBase<S, D>
@@ -134,13 +116,15 @@ where
     /// assert_eq!(b.shape(), &[3, 2]);
     /// ```
     pub fn transpose(&self) -> TensorView<'_, A, D> {
-        let new_shape = reverse_axes(self.shape());
-        let new_strides = reverse_axes(self.strides());
-        let new_flags = update_flags_for_transpose(self.flags(), new_shape.slice(), new_strides.as_slice());
+        // Reverse trait (02-dimension.md): reverses axis order
+        let new_shape = self.shape().reverse();
+        let new_strides = self.strides().reverse();
+        let new_flags = compute_layout_flags::<A, D>(&new_shape, &new_strides, self.as_ptr());
 
         // actual construction uses TensorView::new_unchecked() or similar
         // internal constructor, see 07-tensor.md
         TensorView {
+            // Pseudocode: create ViewRepr by borrowing source storage
             storage: ViewRepr::from(&self.storage),
             shape: new_shape,
             strides: new_strides,
@@ -152,24 +136,23 @@ where
 }
 ````
 
-#### 5.1.1 转置语义
+### 5.2 转置语义
 
-> **范围说明：** 当前版本的 `transpose()` 定义为全轴顺序反转（reverse axis order），等价于矩阵转置。一般化的任意轴置换不在当前版本范围内。未来若引入 `permute_axes()`，`transpose()` 仍保持为 `reverse_axes()` 的便捷别名，不改变现有契约。
->
-> **设计说明**：当前版本的 `transpose()` 固定执行全轴反转（reverse axis order），即 `shape' = shape[::-1]`，`strides' = strides[::-1]`。这是轴置换（permutation）的特例。一般的 `permute_axes()` API 不在当前版本范围内。`需求说明书 §17` 所述的“轴置换规则”在本版本中等价于全轴反转。
->
-> **安全性论证：** 若内部通过 unchecked 视图构造返回转置结果，其安全前提为：1）转置仅重排轴顺序，不改变逻辑访问范围；2）反转后的 `shape` / `stride` 组合仍满足原 storage 的可见边界约束（由构造期验证保证）；3）`offset` 保持不变。因此转置无需新的存储分配，视图构造仍落在原验证范围内。
+- 根据 `需求说明书 §17`，当前版本形状操作仅支持转置。
+- 其他形状变换与连续性驱动的形状重解释不属于本文档覆盖范围，留待后续版本单独设计。
+- 当前版本的 `transpose()` 定义为全轴顺序反转（reverse axis order），即 `shape' = shape[::-1]`，`strides' = strides[::-1]`，等价于矩阵转置。`需求说明书 §17` 所述的“轴置换规则”在本版本中等价于全轴反转。一般化的 `permute_axes()` API 不在当前版本范围内；未来若引入，`transpose()` 仍保持为 `reverse_axes()` 的便捷别名，不改变现有契约。
+- 若内部通过 unchecked 视图构造返回转置结果，其安全前提为：（1）转置仅重排轴顺序，不改变逻辑访问范围；（2）反转后的 `shape` / `stride` 组合仍满足原 storage 的可见边界约束（由构造期验证保证）；（3）`offset` 保持不变。因此转置无需新的存储分配，视图构造仍落在原验证范围内。
 
-| 属性     | 行为                                                                                                                                                                                                                           |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 零拷贝   | 始终零拷贝（O(1)），仅调整步长和形状                                                                                                                                                                                           |
-| 形状变化 | `shape[i]` → `shape[ndim-1-i]`（全反转）                                                                                                                                                                                       |
-| 步长变化 | `strides[i]` → `strides[ndim-1-i]`（全反转）                                                                                                                                                                                   |
+| 属性     | 行为                                                                                                   |
+| -------- | ------------------------------------------------------------------------------------------------------ |
+| 零拷贝   | 始终零拷贝（O(1)），仅调整步长和形状                                                                   |
+| 形状变化 | `shape[i]` → `shape[ndim-1-i]`（全反转）                                                               |
+| 步长变化 | `strides[i]` → `strides[ndim-1-i]`（全反转）                                                           |
 | 连续性   | 按结果布局重分类：转置可能产生 `NonContiguous`；实际布局状态由结果 shape/stride 是否满足 F-order 条件决定。若至少一个被交换轴长度为 1，则仍可保留 `F-contiguous`；带零步长的转置视图仍为 `BroadcastView`；0D/1D 保留原布局状态 |
-| 偏移量   | 保持不变                                                                                                                                                                                                                       |
-| 1D 数组  | 转置后形状不变（1D 无轴顺序概念）                                                                                                                                                                                              |
+| 偏移量   | 保持不变                                                                                               |
+| 1D 数组  | 转置后形状不变（1D 无轴顺序概念）                                                                      |
 
-#### 5.1.2 存储模式降级表
+### 5.3 存储模式降级表
 
 | 源存储模式            | 转置结果存储模式   |
 | --------------------- | ------------------ |
@@ -178,13 +161,12 @@ where
 | 只读引用(ViewRepr)    | 只读引用(ViewRepr) |
 | 共享只读(ArcRepr)     | 只读引用(ViewRepr) |
 
-> **显式设计决策（ADR）：** `transpose()` 的返回类型统一固定为 `TensorView<'_, A, D>`，因此结果始终是基于借用的只读视图，只能持有 `ViewRepr`。即使源张量底层使用 `ArcRepr`（共享只读存储），转置结果也不会保留共享所有权语义，而是降级为普通借用视图。这是有意为之：转置仅重写 shape/stride/flags 等元数据，不复制也不迁移底层存储；原张量自身继续保留其原有存储模式，`ArcRepr` 的共享所有权能力仍由源对象负责维持。统一返回 `TensorView` 可以避免为元数据操作引入额外表示类型或条件返回类型，保持 API 与实现的简单性和一致性。
->
-> **共享语义补充：** 若源张量为 `ArcRepr`（共享只读），转置后 `storage_kind()` 返回 `StorageKind::View` 而非 `Shared`。这是有意设计：转置结果的生命周期绑定到调用时借用，而不是源张量的共享引用计数。这是允许的收窄：`需求说明书 §17` 只要求结果落在只读引用或共享只读引用范围内。借用视图满足只读引用约束。对后续广播、格式化、线程共享的影响：转置结果的生命周期绑定到原始张量的借用期。
+- `transpose()` 的返回类型统一固定为 `TensorView<'_, A, D>`，因此结果始终是基于借用的只读视图，只能持有 `ViewRepr`。即使源张量底层使用 `ArcRepr`（共享只读存储），转置结果也不会保留共享所有权语义，而是降级为普通借用视图。这是有意为之：转置仅重写 shape/stride/flags 等元数据，不复制也不迁移底层存储；原张量自身继续保留其原有存储模式，`ArcRepr` 的共享所有权能力仍由源对象负责维持。统一返回 `TensorView` 可以避免为元数据操作引入额外表示类型或条件返回类型，保持 API 与实现的简单性和一致性。
+- 若源张量为 `ArcRepr`（共享只读），转置后 `storage_kind()` 返回 `StorageKind::View` 而非 `Shared`。这是有意设计：转置结果的生命周期绑定到调用时借用，而不是源张量的共享引用计数。这是允许的收窄：`需求说明书 §17` 只要求结果落在只读引用或共享只读引用范围内。借用视图满足只读引用约束。对后续广播、格式化、线程共享的影响：转置结果的生命周期绑定到原始张量的借用期。
 
-#### 5.1.3 Good / Bad 对比
+### 5.4 Good / Bad 对比
 
-> **说明：** 以下为示意性伪实现，非稳定内部结构约定。
+以下为示意性伪实现，非稳定内部结构约定。
 
 ```rust,ignore
 // Good - use transpose() for zero-copy transpose
@@ -205,13 +187,6 @@ for i in 0..1000 {
 
 ---
 
-### 5.2 范围边界说明
-
-> **范围决策：** 根据 `需求说明书 §17`，当前版本形状操作仅支持转置。
-> 其他形状变换与连续性驱动的形状重解释不属于本文档覆盖范围，留待后续版本单独设计。
-
----
-
 ## 6. 内部实现设计
 
 ### 6.1 转置布局变化
@@ -223,28 +198,27 @@ Source: shape=[2, 3], strides=[1, 2]  (F-order, F-contiguous)
 Transpose: shape=[3, 2], strides=[2, 1]  (strides reversed, not F-contiguous)
 ```
 
-> **注意**：Xenon 只支持 F-order 布局，不维护单独的行优先连续性状态。转置后连续性须根据结果的
-> shape 与 stride 重新计算；若结果仍满足 F-order 连续条件（如含长度为 1 的轴的转置），则保留
-> `F-contiguous` 标记；广播视图仍按零步长语义分类为 `LayoutState::BroadcastView`。
-> 若需恢复连续内存，使用 `to_contiguous()`。
+- Xenon 只支持 F-order 布局，不维护单独的行优先连续性状态。
+- 转置后连续性须根据结果的shape 与 stride 重新计算。
+- 若结果仍满足 F-order 连续条件（如含长度为 1 的轴的转置），则保留`F-contiguous` 标记。
+- 广播视图仍按零步长语义分类为 `LayoutState::BroadcastView`。
+- 若需恢复连续内存，使用 `to_contiguous()`。
 
 ### 6.2 转置后的连续性标志处理
 
 转置操作不引入新步长值，仅交换现有 `usize` stride 顺序。由于 `需求说明书 §7` 明确当前版本不支持负步长布局，因此这里无需讨论负 stride 或相关标志。连续性标志需要按结果布局重算：转置后连续性须根据结果的 shape 与 stride 重新计算；若结果仍满足 F-order 连续条件（如含长度为 1 的轴的转置），则保留 F-contiguous 标记。零步长等其他已存在标志仍按结果布局分类；若源视图为广播视图且转置后仍存在任一 `stride == 0` 的轴，则继续保留 `BroadcastView` 标记；对 0D/1D 输入，转置是元数据 no-op，应保留原有连续性标志。
 
 ```rust,ignore
-fn update_flags_for_transpose(
-    source_flags: LayoutFlags,
-    new_shape: &[usize],
-    new_strides: &[usize],
-) -> LayoutFlags {
-    recompute_layout_flags(source_flags, new_shape, new_strides)
-}
+// Per 06-layout.md §5.12, transpose delegates flag computation to
+// compute_layout_flags(shape, strides, ptr).
+// Transpose does not change offset, so the logical-first pointer
+// remains unchanged.
+let new_flags = compute_layout_flags::<A, D>(
+    &new_shape,
+    &new_strides,
+    self.as_ptr(),
+);
 ```
-
-### 6.3 范围外能力记录
-
-其他形状变换 API 与自动推断维度当前均不在范围内，因此本文不再为它们设计连续性检查逻辑、错误语义或实现任务。
 
 ---
 
@@ -263,7 +237,7 @@ fn update_flags_for_transpose(
 
 - [ ] **T2**: 实现 `transpose()`
   - 文件: `src/shape/transpose.rs`
-  - 内容: `TensorBase::transpose()`, `LayoutFlags::update_for_transpose()`
+  - 内容: `TensorBase::transpose()`
   - 测试: `test_transpose_2d`, `test_transpose_3d`, `test_transpose_contiguity_swap`, `test_transpose_0d_1d_preserves_contiguity`
   - 前置: T1
   - 预计: 10 min
@@ -276,16 +250,6 @@ fn update_flags_for_transpose(
   - 测试: 覆盖范围内公共 API
   - 前置: T2
   - 预计: 10 min
-
-### 并行执行图
-
-```
-Wave 1: [T1]
-            │
-Wave 2: [T2]
-            │
-Wave 3: [T3]
-```
 
 ---
 
@@ -311,6 +275,9 @@ Wave 3: [T3]
 | `test_transpose_0d_noop`                    | 0D 标量转置后不变                                          | 中     |
 | `test_transpose_0d_1d_preserves_contiguity` | 0D/1D 转置保留原连续性标志                                 | 高     |
 | `test_transpose_broadcast_view_keeps_flag`  | 广播视图转置后零步长仍保留 `BroadcastView`                 | 中     |
+| `test_transpose_owned_returns_view_kind`    | Owned 张量转置后 `storage_kind()` 返回 `StorageKind::View` | 中     |
+| `test_transpose_view_mut_returns_view_kind` | ViewMut 张量转置后 `storage_kind()` 返回 `StorageKind::View` | 中   |
+| `test_transpose_arc_tensor_returns_view_kind` | ArcRepr 张量转置后 `storage_kind()` 返回 `StorageKind::View` | 高 |
 
 ### 8.3 边界测试场景
 
@@ -329,6 +296,7 @@ Wave 3: [T3]
 | ----------------------------------- | ------------------ |
 | `transpose().len() == tensor.len()` | 随机形状           |
 | 转置后数据不变                      | 转置前后逐元素对比 |
+| `t.transpose().transpose()` ≡ `t`   | shape、strides 完全一致 |
 
 ### 8.5 集成测试
 
@@ -357,13 +325,13 @@ Wave 3: [T3]
 
 ### 9.1 接口约定
 
-| 方向                | 对方模块    | 接口/类型                   | 约定                                                                                          |
-| ------------------- | ----------- | --------------------------- | --------------------------------------------------------------------------------------------- |
-| `shape → tensor`    | `tensor`    | `TensorBase` / `TensorView` | 依赖张量结构与视图创建入口，参见 `07-tensor.md` §5                                            |
-| `shape → dimension` | `dimension` | `Dimension` trait           | 使用维度 trait 完成形状变换与校验，参见 `02-dimension.md` §3                                  |
-| `shape → layout`    | `layout`    | 连续性与步长查询            | 转置后按结果步长重算连续性标志，参见 `06-layout.md` §3                                        |
-| `shape ← broadcast` | `broadcast` | 广播视图语义                | 广播视图因零步长而只读且非连续，转置后仍保持共享底层数据的只读语义，参见 `15-broadcast.md` §5 |
-| `shape ← index`     | `index`     | 切片结果视图                | 索引/切片结果可继续参与转置；共享底层数据时仍只返回只读视图                                   |
+| 方向                | 对方模块    | 接口/类型                   | 约定                                            |
+| ------------------- | ----------- | --------------------------- | ----------------------------------------------- |
+| `shape → tensor`    | `tensor`    | `TensorBase` / `TensorView` | 依赖张量结构与视图创建入口                      |
+| `shape → dimension` | `dimension` | `Dimension` trait           | 使用维度 trait 完成形状变换与校验               |
+| `shape → layout`    | `layout`    | 连续性与步长查询            | 转置后按结果步长重算连续性标志                  |
+| `shape ← broadcast` | `broadcast` | 广播视图语义                | 广播视图因零步长而只读且非连续，转置后仍保持共享底层数据的只读语义 |
+| `shape ← index`     | `index`     | 切片结果视图                | 索引/切片结果可继续参与转置；共享底层数据时仍只返回只读视图 |
 
 ### 9.2 数据流描述
 
@@ -410,21 +378,21 @@ User calls transpose()
 
 | 属性     | 值                                                                                |
 | -------- | --------------------------------------------------------------------------------- |
-| 决策     | Phase 4 仅把 `transpose()` 纳入当前版本交付                                       |
+| 决策     | 仅把 `transpose()` 纳入当前版本交付                                               |
 | 理由     | `需求说明书 §17` 明确当前版本只要求转置操作本身，文档不应把别名扩写成当前交付承诺 |
 | 替代方案 | 在当前版本同时承诺其他形状操作 — 放弃，超出规范性 API 边界                        |
 
 ### 决策 4：`transpose()` 不保留 `ArcRepr` 共享所有权语义
 
-| 属性     | 值                                                                                                                                      |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 属性     | 值                                                                                |
+| -------- | --------------------------------------------------------------------------------- |
 | 决策     | `transpose()` 始终返回 `TensorView<'_, A, D>`；无论源存储是 `Owned`、`ViewMutRepr`、`ViewRepr` 还是 `ArcRepr`，结果统一使用只读借用视图 `ViewRepr` |
-| 理由     | `ArcRepr` 降级为借用视图的详细说明见 §5.1.2 存储模式降级表后的 ArcRepr 降级说明；这里仅重复其规范性结论，不再展开重复论证                           |
-| 替代方案 | 让 `ArcRepr` 输入返回保留共享所有权的新视图类型 — 放弃，详见 §5.1.2 中关于统一返回类型与复杂度权衡的说明                                           |
+| 理由     | `ArcRepr` 降级为借用视图的详细说明见 §5.3 存储模式降级表后的 ArcRepr 降级说明；这里仅重复其规范性结论，不再展开重复论证 |
+| 替代方案 | 让 `ArcRepr` 输入返回保留共享所有权的新视图类型 — 放弃，详见 §5.3 中关于统一返回类型与复杂度权衡的说明 |
 
 ---
 
-## 12. 性能描述
+## 12. 性能考量
 
 ### 12.1 复杂度
 

@@ -1,8 +1,10 @@
 # 集合操作模块设计
 
-> 文档编号: 14 | 模块: `src/set/` | 阶段: Phase 4
-> 前置文档: `03-element.md`, `04-complex.md`, `07-tensor.md`, `10-iterator.md`
-> 需求参考: `需求说明书 §4`, `需求说明书 §15`, `需求说明书 §28.2`, `需求说明书 §28.4`
+> 文档编号: 14
+> 模块目录: src/set/
+> 任务阶段: Phase 4
+> 前置文档: 03-element.md, 04-complex.md, 07-tensor.md, 10-iterator.md
+> 需求参考: 需求说明书 §4、§15、§28
 > 范围声明: 范围内
 
 ---
@@ -11,13 +13,17 @@
 
 ### 1.1 职责边界
 
-| 职责        | 包含                                                                                            | 不包含                        |
-| ----------- | ----------------------------------------------------------------------------------------------- | ----------------------------- |
-| unique 操作 | 返回不重复元素组成的新 1D 张量；结果顺序不作要求                                                | intersection/union/difference |
-| 支持类型    | i32, i64, f32, f64, Complex<f32>, Complex<f64>                                                  | bincount/histogram            |
-| 不支持类型  | bool（`[false, true]` 中两个元素彼此不同，但 `需求说明书 §15` 明确将 bool 排除在 `unique` 之外） | argmin/argmax                 |
+| 职责         | 包含                                                      |
+| ------------ | --------------------------------------------------------- |
+| 集合操作     | unique: 返回不重复元素组成的新 1D 张量；结果顺序不作要求  |
+| 支持类型     | i32, i64, f32, f64, Complex<f32>, Complex<f64>            |
 
-> **注意**：当前版本仅支持 unique 操作！不包含 intersection/union/difference/bincount/histogram 等。
+| 职责         | 不包含                                              |
+| ------------ | --------------------------------------------------- |
+| 集合操作     | intersection / union / difference                   |
+| 统计操作     | bincount / histogram                                |
+| 归约索引     | argmin / argmax                                     |
+| 支持类型     | `需求说明书 §15` 明确将 bool 排除在 `unique` 之外） |
 
 ### 1.2 设计原则
 
@@ -29,25 +35,13 @@
 | IEEE 754 一致  | `NaN != NaN`，因此每个 `NaN` 单独保留；`-0.0 == 0.0` 视为同值 |
 | 复数按分量判等 | 复数去重按实部/虚部分别比较，并沿用对应实数语义               |
 
-### 1.3 在架构中的位置
-
-```
-Dependency layers:
-L0: error, private
-L1: dimension, element, complex
-L2: layout (depends on dimension)
-L3: storage (depends only on core/alloc, not on layout)
-L4: tensor (depends on storage, dimension)
-L6: set  ← current module
-```
-
 ---
 
 ## 2. 需求映射与范围约束
 
 | 类型     | 内容                                                                              |
 | -------- | --------------------------------------------------------------------------------- |
-| 需求映射 | `需求说明书 §4`, `需求说明书 §15`, `需求说明书 §28.2`, `需求说明书 §28.4`         |
+| 需求映射 | 需求说明书 §4、§15、§28                                                           |
 | 范围内   | `unique()` 去重、NaN / `±0.0` 语义、复数按分量判等，以及 1D owned 结果构造。      |
 | 范围外   | sort、unique counts、bincount、intersection / union / difference 等其他集合操作。 |
 | 非目标   | 不引入排序契约、不新增第三方去重依赖，也不扩展到 histogram 类 API。               |
@@ -82,26 +76,26 @@ src/set/unique.rs
 
 ### 4.2 类型级依赖
 
-| 来源模块    | 使用的类型/trait                                                                                                                                         |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tensor`    | `TensorBase<S, D>`, `Tensor<A, Ix1>`（本文以此作为 1D 结果主类型；`Tensor1<A>` 仅作为等价别名出现在示例中）, `.iter()`, `.len()`，参见 `07-tensor.md` §5 |
-| `storage`   | `Storage<Elem = A>` trait（read-only element access via `Storage<Elem = A>`）                                                                            |
-| `dimension` | `Dimension`, `Ix1`（output dimension type for flatten result）                                                                                           |
-| `element`   | `Element`, `ComplexScalar`，参见 `03-element.md` §5.1 / §5.4                                                                                             |
-| `complex`   | `Complex<f32>`, `Complex<f64>`，参见 `04-complex.md` §5                                                                                                  |
-| `iter`      | `Elements`（遍历收集元素），参见 `10-iterator.md` §5.1                                                                                                   |
+| 来源模块    | 使用的类型/trait                                                                   |
+| ----------- | ---------------------------------------------------------------------------------- |
+| `tensor`    | `TensorBase<S, D>`, `Tensor<A, Ix1>`, `.iter()`, `.len()`，参见 `07-tensor.md` §5  |
+| `storage`   | `Storage<Elem = A>` trait（read-only element access via `Storage<Elem = A>`）      |
+| `dimension` | `Dimension`, `Ix1`（output dimension type for flatten result）                     |
+| `element`   | `Element`, `ComplexScalar`，参见 `03-element.md` §5.1 / §5.4                       |
+| `complex`   | `Complex<f32>`, `Complex<f64>`，参见 `04-complex.md` §5                            |
+| `iter`      | `Elements`（遍历收集元素），参见 `10-iterator.md` §5.1                             |
 
-### 4.3 依赖方向
-
-> **依赖方向：单向向上。** `set` 仅消费 `tensor`、`storage`、`dimension`、`element`、`complex`、`iter` 模块。
-
-### 4.4 依赖合法性与替代方案
+### 4.3 依赖合法性
 
 | 项目           | 说明                                                                          |
 | -------------- | ----------------------------------------------------------------------------- |
 | 新增第三方依赖 | 无                                                                            |
 | 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
 | 替代方案       | 不适用；当前范围内无需额外第三方依赖。                                        |
+
+### 4.4 依赖方向
+
+依赖方向：单向向上。`set` 仅消费 `tensor`、`storage`、`dimension`、`element`、`complex`、`iter` 模块。
 
 ---
 
@@ -114,7 +108,7 @@ impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: UniqueElement + Copy,
+    A: UniqueElement,
 {
     /// Returns unique elements; order is unspecified and may vary between calls.
     ///
@@ -183,7 +177,6 @@ assert_eq!(empty.unique().len(), 0);
 // Bad - calling unique on a bool tensor (compile error)
 // let b = Tensor::<bool, Ix1>::from_shape_vec(Ix1(3), vec![true, false, true])?;
 // b.unique();  // compile error: bool does not implement UniqueElement trait
-
 ```
 
 ---
@@ -204,35 +197,30 @@ Note:
     - Output order is not part of the contract and may vary between implementations or runs.
 ```
 
-> **实现约束（float / complex unique）**
->
-> 对 `f32` / `f64` 及 `Complex<f32>` / `Complex<f64>` 的 `unique` 实现，**不得**直接依赖标准 Rust `Hash` / `Eq` 语义，也**不得**直接建立在 `BTreeSet` / `HashSet` 这类标准集合之上；必须使用线性扫描或自定义哈希键策略，以严格满足本文档定义的判等规则：
->
-> 1. `NaN != NaN`，因此每个 `NaN` 都必须单独保留，不能因为“同为 NaN”而被合并。
-> 2. `-0.0 == 0.0`，因此两者必须视为同一个 unique 值。
-> 3. 复数按分量比较，且每个分量分别沿用对应实数的上述语义。
-> 4. 若实现采用哈希优化，键规范固定如下：NaN 元素不进入普通去重键路径。实现须对 NaN 单独旁路处理，保证输入中的每个 NaN（无论位模式是否相同）均被保留。普通哈希键仅用于非 NaN 元素；其中 `i32` / `i64` 直接以数值作为键，`f32` / `f64` 对所有 `+0.0` / `-0.0` 归一到同一键，`Complex<T>` 的键为 `(re_key, im_key)`，并对含 NaN 的分量同样走旁路保留逻辑。
->
-> 换言之，若实现采用哈希优化，则键设计必须显式编码这些语义；若无法保证，则应退回线性扫描，禁止使用与本文档语义不一致的默认集合判重行为。
+ **实现约束**:
+
+ 对 `f32` / `f64` 及 `Complex<f32>` / `Complex<f64>` 的 `unique` 实现，**不得**直接依赖标准 Rust `Hash` / `Eq` 语义，也**不得**直接建立在 `BTreeSet` / `HashSet` 这类标准集合之上；必须使用线性扫描或自定义哈希键策略，以严格满足本文档定义的判等规则：
+
+ 1. `NaN != NaN`，因此每个 `NaN` 都必须单独保留，不能因为“同为 NaN”而被合并。
+ 2. `-0.0 == 0.0`，因此两者必须视为同一个 unique 值。
+ 3. 复数按分量比较，且每个分量分别沿用对应实数的上述语义。
+ 4. 若实现采用哈希优化，键规范固定如下：NaN 元素不进入普通去重键路径。实现须对 NaN 单独旁路处理，保证输入中的每个 NaN（无论位模式是否相同）均被保留。普通哈希键仅用于非 NaN 元素；其中 `i32` / `i64` 直接以数值作为键，`f32` / `f64` 对所有 `+0.0` / `-0.0` 归一到同一键，`Complex<T>` 的键为 `(re_key, im_key)`，并对含 NaN 的分量同样走旁路保留逻辑。
+
+换言之，若实现采用哈希优化，则键设计必须显式编码这些语义；若无法保证，则应退回线性扫描，禁止使用与本文档语义不一致的默认集合判重行为。
 
 ### 6.2 浮点判等处理
 
-```
-- For non-NaN floating-point values, equality follows Rust / IEEE 754 `==` semantics
-- `NaN != NaN`，therefore each `NaN` in the input must be preserved independently and is not deduplicated
-- `+0.0 == -0.0`，therefore the two are treated as the same unique value
-- The document constrains only equality semantics, not whether the implementation uses hashing, linear scans, or other deduplication strategies
-```
+- 非 NaN 浮点值的相等判定遵循 Rust / IEEE 754 `==` 语义
+- `NaN != NaN`，因此输入中的每个 `NaN` 必须独立保留，不参与去重
+- `+0.0 == -0.0`，因此两者视为同一个 unique 值
+- 本文档仅约束相等语义，不限制实现使用哈希、线性扫描或其他去重策略
 
 ### 6.3 复数判等规则
 
-```
-Complex-number equality strategy (component-wise equality):
-- Two complex numbers are equal iff both `re` and `im` components are equal respectively
-- Component comparison follows the corresponding real-number semantics: `NaN != NaN`, `-0.0 == 0.0`
-- Therefore, complex numbers with NaN components are not deduplicated merely because they are “both NaN”
-- The document does not define any lexicographic order, magnitude order, or other ordering relation
-```
+- 两个复数相等当且仅当 `re` 和 `im` 分量分别相等
+- 分量比较沿用对应实数语义：`NaN != NaN`，`-0.0 == 0.0`
+- 因此，含 NaN 分量的复数不会仅因为"都是 NaN"而被去重合并
+- 本文档不定义任何字典序、模长序或其他排序关系
 
 ### 6.4 类型排除实现
 
@@ -254,27 +242,20 @@ Complex-number equality strategy (component-wise equality):
 ///
 /// # Sealing
 ///
-/// `UniqueElement` is a sealed trait. It is implemented only inside this crate
-/// for supported element types, so the closed element set required by
-/// `需求说明书 §4` is preserved.
-pub trait UniqueElement: private::Sealed + Element {
+/// `UniqueElement` is a sealed trait. It reuses the shared `crate::private::Sealed`
+/// infrastructure, consistent with all other public element capability traits.
+/// It is implemented only inside this crate for supported element types,
+/// so the closed element set is preserved.
+pub trait UniqueElement: crate::private::Sealed + Element {
     /// Equality check used by `unique`.
     fn unique_eq(&self, other: &Self) -> bool;
 }
 
-mod private {
-    pub trait Sealed {}
-}
-
-// Sealed implementation list for the current closed set:
-// i32, i64, f32, f64, Complex<f32>, Complex<f64>
-
-impl private::Sealed for i32 {}
-impl private::Sealed for i64 {}
-impl private::Sealed for f32 {}
-impl private::Sealed for f64 {}
-impl private::Sealed for Complex<f32> {}
-impl private::Sealed for Complex<f64> {}
+// No local `mod private` needed — `UniqueElement` reuses the shared
+// `crate::private::Sealed` already implemented for all seven element types
+// (i32, i64, f32, f64, Complex<f32>, Complex<f64>, bool).
+// `UniqueElement` is simply not implemented for `bool`, which excludes it
+// at compile time without requiring a separate sealing mechanism.
 
 impl UniqueElement for i32 {
     fn unique_eq(&self, other: &Self) -> bool { self == other }
@@ -308,13 +289,11 @@ impl UniqueElement for Complex<f64> {
 
 ### 6.5 推荐实现策略
 
-| 场景              | 推荐策略            | 说明                                                                                               |
-| ----------------- | ------------------- | -------------------------------------------------------------------------------------------------- |
-| 小输入或原型实现  | 线性扫描            | 可直接复用 `unique_eq`，但最坏 O(N^2)，不宜作为大张量主路径。                                      |
-| 大输入主路径      | 哈希 / 索引辅助结构 | 在不改变 `需求说明书 §15` 集合语义的前提下，用哈希表、索引表或等价辅助结构把重复检测降到近似 O(N)。 |
-| 浮点 / 复数特殊值 | 专门分支处理        | `NaN != NaN`，因此哈希或索引策略也必须显式保留每个 `NaN`，不得把它们合并。                         |
-
-实现可以自由选择代表元保留顺序、桶顺序或其它内部组织方式；这些选择都不得被文档固化为稳定输出顺序契约。
+| 场景              | 推荐策略          | 说明                                                                      |
+| ----------------- | ----------------- | ------------------------------------------------------------------------- |
+| 小输入或原型实现  | 线性扫描          | 可直接复用 `unique_eq`，但最坏 O(N^2)，不宜作为大张量主路径。             |
+| 大输入主路径      | 哈希/索引辅助结构 | 不改变集合语义，用哈希表、索引表或等价辅助结构把重复检测降到近似 O(N)。   |
+| 浮点/复数特殊值 | 专门分支处理        | `NaN != NaN`，因此哈希或索引策略也必须显式保留每个 `NaN`，不得把它们合并。|
 
 ---
 
@@ -362,18 +341,6 @@ impl UniqueElement for Complex<f64> {
   - 测试: `test_unique_integration`
   - 前置: T2, T3, T4
   - 预计: 5 min
-
-### 并行执行分组图
-
-```
-Wave 1: [T1]
-           │
-Wave 2: [T2]
-         │ │
-Wave 3: [T3] [T4]
-           │
-Wave 4: [T5]
-```
 
 ---
 
@@ -468,8 +435,8 @@ Wave 4: [T5]
 
 ### 9.1 接口约定
 
-| 方向            | 对方模块  | 接口/类型                             | 约定                                                                      |
-| --------------- | --------- | ------------------------------------- | ------------------------------------------------------------------------- |
+| 方向            | 对方模块  | 接口/类型                             | 约定                                         |
+| --------------- | --------- | ------------------------------------- | -------------------------------------------- |
 | `set → tensor`  | `tensor`  | `TensorBase<S, D>` / `Tensor<A, Ix1>` | 消费输入张量并返回 1D owned 结果，参见 `07-tensor.md` §5                  |
 | `set → iter`    | `iter`    | `Elements`                            | 使用元素迭代器收集逻辑元素，参见 `10-iterator.md` §5.1                    |
 | `set → element` | `element` | `Element`, `ComplexScalar`            | 复用元素类型边界与复数标量语义，参见 `03-element.md` §5.1 / §5.4          |
@@ -503,19 +470,19 @@ User calls unique()
 
 ### 决策 1：bool 排除理由
 
-| 属性     | 值                                                                                                                                                                                              |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | unique 不支持 bool 类型                                                                                                                                                                         |
-| 理由     | `bool` 的 `unique` 结果在集合语义上仍可定义（如输入同时包含 `false` 与 `true` 时可得到两个不同元素），但 `需求说明书 §15` 已明确将 bool 排除在当前版本范围之外；因此本期不为 bool 建立额外契约。 |
-| 替代方案 | 支持 bool unique，返回 [false, true]                                                                                                                                                            |
-| 拒绝原因 | 增加维护负担，收益几乎为零；`需求说明书 §15` "bool 不适用"                                                                                                                                      |
+| 属性     | 值                                                                      |
+| -------- | ----------------------------------------------------------------------- |
+| 决策     | unique 不支持 bool 类型                                                 |
+| 理由     | `需求说明书 §15` 已明确将 bool 排除在当前版本范围之外                   |
+| 替代方案 | 支持 bool unique，返回 [false, true]                                    |
+| 拒绝原因 | 增加维护负担，收益几乎为零；`需求说明书 §15` "bool 不适用"              |
 
 ### 决策 2：NaN 处理策略
 
 | 属性     | 值                                                                      |
 | -------- | ----------------------------------------------------------------------- |
 | 决策     | `unique` 严格沿用 IEEE 754 / Rust 相等语义：`NaN != NaN`，`-0.0 == 0.0` |
-| 理由     | 直接满足 `需求说明书 §15`，避免文档额外发明“canonical NaN”语义           |
+| 理由     | 直接满足 `需求说明书 §15`，避免文档额外发明“canonical NaN”语义          |
 | 替代方案 | 归并全部 NaN                                                            |
 | 替代方案 | 把 `-0.0` 与 `0.0` 视为不同值                                           |
 | 拒绝原因 | 均与需求说明书冲突                                                      |
@@ -531,7 +498,7 @@ User calls unique()
 
 ---
 
-## 12. 性能描述
+## 12. 性能考量
 
 ### 12.1 复杂度
 
@@ -545,32 +512,18 @@ User calls unique()
 - 去重辅助状态: 取决于具体实现，可为 O(1) 到 O(N)
 - 结果: O(U) 其中 U 为保留后的元素数量（含每个被保留的 NaN）
 
-### 12.3 大数组性能（参考）
-
-| 说明       | 内容                                                        |
-| ---------- | ----------------------------------------------------------- |
-| 稳定契约   | 不对结果顺序和实现路径做性能承诺                            |
-| 实现自由度 | 可在满足 `需求说明书 §15` 的前提下选择线性扫描或辅助索引结构 |
-
 ---
 
 ## 13. 平台与工程约束
 
-集合操作模块须遵循项目统一工程约束，不单独定义 `no_std` 方案：
-
-- 仅支持 `std` 环境（参见 `需求说明书 §1.3`）
-- MSRV: Rust 1.85+
-- 保持单 crate 结构
-- 遵循 SemVer
-- 不引入超出项目基线的第三方依赖
-
-| 项目       | 约束                                              |
-| ---------- | ------------------------------------------------- |
-| 平台       | 仅 `std`                                          |
-| MSRV       | Rust 1.85+                                        |
-| crate 结构 | 单 crate                                          |
-| 依赖       | 不新增第三方依赖                                  |
-| 语义一致性 | SIMD / 并行等执行路径不得改变 `unique` 的外部语义 |
+| 约束       | 说明                                                                   |
+| ---------- | ---------------------------------------------------------------------- |
+| `std` only | Xenon 当前版本仅支持 `std` 环境，本文不再讨论 `no_std` 路径            |
+| MSRV       | Rust 1.85+                                                             |
+| 单 crate   | `set` 设计保持在现有 crate 内，不引入额外 crate                        |
+| SemVer     | 遵循SemVer                                                             |
+| 最小依赖   | 本模块不新增第三方依赖                                                 |
+| 语义一致性 | SIMD / 并行等执行路径不得改变 `unique` 的外部语义                      |
 
 ---
 

@@ -520,7 +520,7 @@ where
 #[derive(Debug, Clone)]
 pub enum XenonError {
     BroadcastError {
-        operation: &'static str,
+        operation: Cow<'static, str>,
         lhs_shape: Vec<usize>,
         rhs_shape: Vec<usize>,
         attempted_target_shape: Option<Vec<usize>>,
@@ -1019,17 +1019,6 @@ rustdoc-args = ["--cfg", "docsrs"]
   - 测试: CI 绿灯
   - 前置: T2
   - 预计: 10 min
-
-### 并行执行分组图
-
-```
-Wave 1: [T1] [T2] [T3]
-         │    │    │
-         └────┴────┘
-              │
-              ▼
-Wave 2:     [T4]
-```
 
 ---
 

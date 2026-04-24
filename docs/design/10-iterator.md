@@ -111,7 +111,7 @@ src/iter/
 | `tensor`    | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `TensorViewMut<'a, A, D>`, `.shape()`, `.strides()`, `.as_ptr()`, `.len()`（参见 `07-tensor.md §5.3` / `§5.4` / `§5.7`） |
 | `dimension` | `Dimension`, `Axis`, `Ix0`~`Ix6`, `IxDyn`，以及仅供内部轴迭代实现使用的 `RemoveAxis` / `D::Smaller`（参见 `02-dimension.md §5`）                                     |
 | `storage`   | `Storage<Elem = A>`, `StorageMut<Elem = A>`, `Owned<A>`（参见 `05-storage.md §5`）                                                                                   |
-| `error`     | `XenonError::InvalidAxis`（参见 `26-error.md §4.2` / `§4.4`）                                                                                                        |
+| `error`     | `XenonError::InvalidAxis`（参见 `26-error.md §5.1` / `§5.6`）                                                                                                        |
 | `tensor`    | `.is_f_contiguous()`, 布局标志查询（参见 `07-tensor.md §5.3`）                                                                                                       |
 
 ### 4.5 依赖方向
