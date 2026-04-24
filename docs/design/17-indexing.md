@@ -1,8 +1,10 @@
 # 索引操作模块设计
 
-> 文档编号: 17 | 模块: `src/index/` | 阶段: Phase 3
-> 前置文档: `02-dimension.md`, `06-layout.md`, `07-tensor.md`, `26-error.md`
-> 需求参考: `需求说明书 §4`, `需求说明书 §6`, `需求说明书 §18`, `需求说明书 §27`, `需求说明书 §28.2`, `需求说明书 §28.4`
+> 文档编号: 17
+> 模块目录: src/index/
+> 任务阶段: Phase 3
+> 前置文档: 02-dimension.md, 06-layout.md, 07-tensor.md, 26-error.md
+> 需求参考: 需求说明书 §4、§6、§18、§27、§28
 > 范围声明: 范围内
 
 ---
@@ -27,19 +29,6 @@
 | 零拷贝视图         | 切片优先共享底层数据，仅返回只读或共享只读结果                  |
 | 安全/不安全分层    | 安全接口显式验证 rank 与边界；unsafe 路径仅跳过检查，不改变语义 |
 
-### 1.3 在架构中的位置
-
-```text
-Dependency layers:
-L0: error, private
-L1: dimension, layout
-L2: storage
-L3: tensor
-L6: index  <- current module
-```
-
-索引模块位于 `tensor` 之上，消费张量的 shape、stride、storage mode 与只读/可写访问能力；它不定义新的存储模式，也不反向影响 `dimension`、`layout`、`storage` 的基础语义。
-
 ---
 
 ## 2. 需求映射与范围约束
@@ -54,9 +43,6 @@ L6: index  <- current module
 > **范围决策：** 当前版本只承诺“`usize` 多维索引 + 范围切片”两类能力，仅提供 `slice()` 的编程式切片接口。
 
 > **范围补充：** `Index`/`IndexMut` 运算符语法（panic 语义）不在当前版本的稳定 API 承诺范围内。主索引路径为 `try_at` / `try_at_mut`（返回 `Result`）。若未来版本需要运算符语法糖，须在需求层获得明确豁免。
-
-> [!IMPORTANT]
-> **范围说明：** 步长切片（step slicing）不在当前版本范围内，未来版本可另行设计。
 
 ---
 
@@ -79,25 +65,31 @@ src/
 
 ### 4.1 依赖图（ASCII）
 
-```text
-                 ┌────────────┐
-                 │   error    │
-                 └─────┬──────┘
-                       │
-      ┌────────────────┼────────────────┐
-      │                │                │
-┌─────▼─────┐    ┌─────▼─────┐    ┌─────▼─────┐
-│ dimension │    │  layout   │    │  storage  │
-└─────┬─────┘    └─────┬─────┘    └─────┬─────┘
-      └────────────┬───┴───────────────┘
-                   │
-              ┌────▼────┐
-              │ tensor  │
-              └────┬────┘
-                   │
-              ┌────▼────┐
-              │ index   │
-              └─────────┘
+```
+src/index/
+|
+├── mod.rs
+│   └── re-exports from ndindex, access, slice
+|
+├── ndindex.rs
+│   ├── crate::dimension   # Dimension, Ix0~Ix6, IxDyn, rank / axis metadata
+│   ├── crate::layout      # Strides<D>, F-order offset interpretation
+│   ├── crate::error       # XenonError::InvalidAxis, IndexOutOfBounds, DimensionMismatch
+│   └── crate::private     # Sealed (closes NdIndex from external implementation)
+|
+├── access.rs
+│   ├── crate::tensor      # TensorBase<S, D>, .shape(), .strides(), .ndim(), storage mode query
+│   ├── crate::dimension   # Dimension
+│   ├── crate::layout      # Strides<D>
+│   ├── crate::storage     # Storage, StorageMut, read-only / writable storage capability
+│   └── crate::error       # XenonError::IndexOutOfBounds, DimensionMismatch
+|
+└── slice.rs
+    ├── crate::tensor      # TensorBase<S, D>, TensorView<'a, A, I>
+    ├── crate::dimension   # Dimension, Ix0~Ix6, IxDyn
+    ├── crate::layout      # Strides<D>, layout flags
+    ├── crate::storage     # Storage, read-only / writable storage capability
+    └── crate::error       # XenonError::InvalidArgument, IndexOutOfBounds
 ```
 
 ### 4.2 类型级依赖表
@@ -111,17 +103,17 @@ src/
 | `error`     | `XenonError::InvalidAxis`, `InvalidArgument`, `IndexOutOfBounds`, `DimensionMismatch`               |
 | `private`   | `Sealed`，用于封闭 `NdIndex` 的外部实现面                                                           |
 
-### 4.3 依赖方向声明
-
-> **依赖方向：单向向上。** `index` 仅消费 `tensor`、`dimension`、`layout`、`storage`、`error` 的既有能力，不被这些底层模块反向依赖。
-
-### 4.4 依赖合法性与新增依赖说明
+### 4.3 依赖合法性
 
 | 项目           | 说明                                                       |
 | -------------- | ---------------------------------------------------------- |
 | 新增第三方依赖 | 无                                                         |
 | 合法性结论     | 合法；当前设计仅复用项目内既有模块与标准库                 |
 | 替代方案       | 不适用；索引能力无需额外 crate，也不应因文档重写扩展依赖面 |
+
+### 4.4 依赖方向声明
+
+依赖方向：单向向上。`index` 仅消费 `tensor`、`dimension`、`layout`、`storage`、`error` 的既有能力，不被这些底层模块反向依赖。
 
 ---
 
@@ -381,19 +373,6 @@ compute_slice(shape, strides, offset, slices):
   - 前置: T4
   - 预计: 10 min
 
-### Wave 依赖图
-
-```text
-Wave 1: [T1]
-           │
-           ├──────────────┐
-           ▼              ▼
-Wave 2: [T2]           [T4]
-           │              │
-           ▼              ▼
-Wave 3: [T3]           [T5]
-```
-
 ---
 
 ## 8. 测试计划
@@ -436,7 +415,7 @@ Wave 3: [T3]           [T5]
 | 高 rank（静态上限附近或 `IxDyn`）切片 | rank 校验、输出 shape 与 stride 更新保持正确               |
 | `10^7` 元素张量 `[3162,3162]` 的末元素索引与极端 offset 组合 | 合法索引返回正确元素；会溢出的 offset 计算返回错误而非 panic |
 
-### 8.4 属性测试不变量（按需）
+### 8.4 属性测试不变量
 
 | 不变量                                               | 测试方法                                            |
 | ---------------------------------------------------- | --------------------------------------------------- |
@@ -444,7 +423,7 @@ Wave 3: [T3]           [T5]
 | `slice.len()` 与更新后的 shape 一致                  | 随机合法范围输入，验证逻辑元素数量守恒              |
 | 切片保持逻辑顺序                                     | 对合法基础范围切片比较视图遍历序列与参考实现        |
 
-### 8.5 Feature gate / 配置测试
+### 8.6 Feature gate / 配置测试
 
 | 配置     | 验证点               |
 | -------- | -------------------- |
@@ -452,7 +431,7 @@ Wave 3: [T3]           [T5]
 | SIMD     | 不适用               |
 | 并行     | 不适用               |
 
-### 8.6 类型边界与编译期测试
+### 8.7 类型边界与编译期测试
 
 | 场景                               | 测试方式                        |
 | ---------------------------------- | ------------------------------- |
@@ -542,7 +521,7 @@ XenonError::IndexOutOfBounds {
 
 ## 11. 设计决策记录
 
-### ADR-1: 安全主路径使用 recoverable error
+### 决策 1: 安全主路径使用 recoverable error
 
 | 属性     | 值                                                                                                   |
 | -------- | ---------------------------------------------------------------------------------------------------- |
@@ -551,7 +530,7 @@ XenonError::IndexOutOfBounds {
 | 替代方案 | 全部使用 `Index` / `IndexMut` panic 语法糖 — 放弃，错误恢复与上游组合能力不足                        |
 | 替代方案 | 统一返回 `Option` — 放弃，无法承载轴、shape、索引等诊断信息                                          |
 
-### ADR-2: 切片结果保持共享只读语义
+### 决策 2: 切片结果保持共享只读语义
 
 | 属性     | 值                                                                |
 | -------- | ----------------------------------------------------------------- |
@@ -597,17 +576,6 @@ XenonError::IndexOutOfBounds {
 | 单 crate   | 索引设计保持在现有 crate 内，不引入额外 crate 或拆分子包     |
 | SemVer     | 文档仅把旧结构重写为标准模板，不新增索引能力或改变已承诺语义 |
 | 最小依赖   | 不新增第三方依赖；继续复用仓库既有模块                       |
-
----
-
-## 附录 A. 未来规划（非规范）
-
-> **注**：`s![]` 宏为便利语法层设计，当前版本仅提供编程式切片接口。宏设计保留作为未来版本的增强候选。
-
-> **注**：步长切片（step slicing）不在当前版本范围内，未来版本可另行设计。
-
-- 若未来恢复 `s![]` 宏，应仅包装既有 `SliceInfo` / `slice()` 能力，不引入新语义。
-- 若未来设计步长切片，应单独补充 `SliceInfoElem::Range` 扩展、错误语义与测试矩阵；本版不作规范承诺。
 
 ---
 

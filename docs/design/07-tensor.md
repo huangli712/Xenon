@@ -1112,14 +1112,9 @@ where
         Sh: IntoDimension<Dim = D>,
     {
         let shape = shape.into_dimension();
-        let expected = shape.checked_size().map_err(|_| XenonError::InvalidShape {
-            operation: "from_shape_vec",
-            shape: shape.slice().to_vec(),
-            expected_elements: 0,
-            actual_elements: data.len(),
-            offending_dim: None,
-            reason: Some("element count overflow".into()),
-        })?;
+        // Propagate checked_size() error directly; see 18-construction.md §5.3
+        // for the authoritative from_shape_vec construction contract.
+        let expected = shape.checked_size()?;
         if data.len() != expected {
             return Err(XenonError::InvalidShape {
                 operation: "from_shape_vec",
