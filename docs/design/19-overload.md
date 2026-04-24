@@ -3,7 +3,7 @@
 > 文档编号: 19
 > 模块目录: src/overload/
 > 任务阶段: Phase 4
-> 前置文档: 11-math.md, 15-broadcast.md
+> 前置文档: 07-tensor.md, 11-math.md, 15-broadcast.md
 > 需求参考: 需求说明书 §12、§20、§27、§28
 > 范围声明: 范围内
 
@@ -29,7 +29,6 @@
 | 张量×标量运算      | 完全泛型的 `T op Tensor<T>` blanket impl         |
 | 广播支持           | 比较运算符（在 `math` 提供）                     |
 | 新张量产生         | 原地修改运算                                     |
-| 借用形式           | 若后续提供 `[]` 运算符，由 `index` 模块承接；当前不属稳定 API |
 
 ### 1.2 设计原则
 
@@ -78,7 +77,8 @@ src/overload/
     ├── crate::broadcast   # broadcast_shape(), broadcast_with(), can_broadcast()
     ├── crate::tensor      # TensorBase<S, D>, Tensor<A, D>, TensorView, .view()
     ├── crate::element     # Numeric trait
-    └── crate::dimension   # Dimension, Ix0~Ix6, IxDyn, BroadcastDim<E>
+    ├── crate::dimension   # Dimension, Ix0~Ix6, IxDyn, BroadcastDim<E>
+    └── crate::error       # XenonError (used in impl Output = Result<..., XenonError>)
 ```
 
 ### 4.2 类型级依赖
@@ -89,6 +89,7 @@ src/overload/
 | `broadcast` | `broadcast_shape()`, `broadcast_with()`, `can_broadcast()`（参见 `15-broadcast.md` §5） |
 | `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.view()`（参见 `07-tensor.md` §5）   |
 | `element`   | `Numeric` trait 约束（排除 `bool` 与 `usize`）（参见 `03-element.md` §5.2）             |
+| `error`     | `XenonError`（运算符 impl 的 `Output = Result<..., XenonError>` 关联类型中使用，参见 `26-error.md §5`） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<E>`（参见 `02-dimension.md §5.10`）    |
 
 ### 4.3 依赖合法性
@@ -101,7 +102,7 @@ src/overload/
 
 ### 4.4 依赖方向声明
 
-依赖方向：单向向上。`overload` 仅消费 `math`、`broadcast`、`tensor`、`element`、`dimension` 的 trait 和类型，不被它们依赖。`overload` 是最上层的用户 API 模块。
+依赖方向：单向向上。`overload` 仅消费 `math`、`broadcast`、`tensor`、`element`、`dimension`、`error` 的 trait 和类型，不被它们依赖。`overload` 是最上层的用户 API 模块。
 
 ---
 
@@ -114,10 +115,10 @@ src/overload/
 
 | Lhs                  | Rhs                  | Output         | 广播     | impl 签名                                                                           |
 | -------------------- | -------------------- | -------------- | -------- | ----------------------------------------------------------------------------------- |
-| `Tensor<A, D>`       | `Tensor<A, E>`       | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓ | `impl<...> Add<TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>`                  |
-| `&Tensor<A, D>`      | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓ | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<Owned<A>,D>`                |
-| `Tensor<A, D>`       | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓ | `impl<...> Add<&TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>`                 |
-| `&Tensor<A, D>`      | `Tensor<A, E>`       | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓ | `impl<...> Add<TensorBase<Owned<A>,E>> for &TensorBase<Owned<A>,D>`                 |
+| `Tensor<A, D>`       | `Tensor<A, E>`       | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓ | `impl<...> Add<TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>`                 |
+| `&Tensor<A, D>`      | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓ | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<Owned<A>,D>`               |
+| `Tensor<A, D>`       | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓ | `impl<...> Add<&TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>`                |
+| `&Tensor<A, D>`      | `Tensor<A, E>`       | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓ | `impl<...> Add<TensorBase<Owned<A>,E>> for &TensorBase<Owned<A>,D>`                |
 | `&TensorView<A, D>`  | `&TensorView<A, E>`  | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓ | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<ViewRepr<'a, A>,D>` |
 | `&TensorView<A, D>`  | `&Tensor<A, E>`      | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓ | `impl<...> Add<&TensorBase<Owned<A>,E>> for &TensorBase<ViewRepr<'a, A>,D>`        |
 | `&Tensor<A, D>`      | `&TensorView<A, E>`  | `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>` | ✓ | `impl<...> Add<&TensorBase<ViewRepr<'b, A>,E>> for &TensorBase<Owned<A>,D>`        |
@@ -125,11 +126,13 @@ src/overload/
 | `&Tensor<A, D>`      | `A`                  | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for &TensorBase<Owned<A>,D>`                                      |
 | `Scalar<A>`          | `Tensor<A, D>`       | `Tensor<A, D>` | 标量广播 | `impl<...> Add<TensorBase<Owned<A>,D>> for Scalar<A>`                               |
 | `Scalar<A>`          | `&Tensor<A, D>`      | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&TensorBase<Owned<A>,D>> for Scalar<A>`                              |
+| `f32`/`f64`/`i32`/`i64`/`Complex<..>` | `Tensor<A, D>` | `Tensor<A, D>` | 标量广播 | `impl Add<TensorBase<Owned<A>,D>> for T`（逐类型生成）                              |
+| `f32`/`f64`/`i32`/`i64`/`Complex<..>` | `&Tensor<A, D>` | `Tensor<A, D>` | 标量广播 | `impl Add<&TensorBase<Owned<A>,D>> for T`（逐类型生成）                             |
 
 - 上表仅列出当前稳定承诺。
 - `TensorView` 相关组合已纳入当前稳定范围，与 `broadcast_to()` / `transpose()` / `slice()` 返回视图的既有设计保持一致。
 - `F` 为广播后的维度类型，由 `<D as BroadcastDim<E>>::Output` 关联类型计算。
-- `BroadcastDim` 定义于 `02-dimension.md §5.10`。虽然 `02-dimension.md` 将 `BroadcastDim` 记为“内部辅助”，但由于它出现在 `broadcast` / `overload` 的公开签名与 trait bound 中，因此实现上必须对这些公开签名保持可命名；稳定承诺仅要求用户可使用这些签名，不要求用户自行实现该 trait。
+- `BroadcastDim` 定义于 `02-dimension.md §5.10`，被 `01-architecture.md §11` 记为“公开 sealed trait”（允许命名但禁止外部实现）。由于它出现在 `broadcast` / `overload` 的公开签名与 trait bound 中，稳定承诺要求用户可在签名中命名该 trait，但不要求用户自行实现它。
 
 ### 5.2 张量×张量运算符
 
@@ -374,19 +377,20 @@ fn compute_bad(a: Tensor<f64, Ix2>, b: &Tensor<f64, Ix2>) -> Result<Tensor<f64, 
 ```
 Operator syntax (arithmetic.rs)
      |
-     | delegates to
+     | delegates to TensorBase::add() / sub() / mul() / div() (math methods)
      v
 Element-wise math (math methods)
      |
-     | uses
+     | internally calls broadcast_with() to handle shape alignment
      v
-Broadcast module (broadcast.rs) -- memory access (storage)
+Broadcast module (broadcast.rs) -- iterate broadcast views, write result
 ```
 
 运算符 `a + b` 展开为：
 
-1. `broadcast_with(&a.view(), &b.view())` — 广播两个张量
-2. `add()` / `sub()` / `mul()` / `div()` — 直接逐元素遍历广播后视图并写入新结果张量
+1. 运算符 impl 中调用 `self.add(rhs)`，委托给 `TensorBase::add()`（`11-math.md §5.3`）
+2. `TensorBase::add()` 内部调用 `broadcast_with(&a.view(), &b.view())` 完成广播
+3. 逐元素遍历广播后视图并写入新结果张量
 
 ### 6.2 深拷贝保证
 
@@ -517,7 +521,7 @@ tensor + scalar:
 | ---------------------------------------------------------- | ---------------------------- |
 | `(a + b).unwrap().shape() == broadcast_shape(a.shape(), b.shape())` | 随机形状对（仅对可广播输入） |
 | `(&a + &b) == (a.clone() + b.clone())`                     | 借用与所有权 `Result` 一致   |
-| `(a + scalar) == a.add_scalar(scalar)`                | 标量路径结果等价             |
+| `(a + scalar) == a.add_scalar(scalar)`                     | 标量路径结果等价             |
 | `Scalar(s) + tensor == tensor + s`                         | 包装器左标量与右标量路径等价 |
 | 结果张量与输入张量不共享内存（`ptr` 不同）                 | 对 `Ok` 结果做指针比较       |
 
@@ -555,10 +559,10 @@ tensor + scalar:
 | 方向                     | 对方模块    | 接口/类型                  | 约定                                                            |
 | ------------------------ | ----------- | -------------------------- | --------------------------------------------------------------- |
 | `arithmetic → math`      | `math`      | `add()` / `sub()` / `mul()` / `div()` / scalar helpers | 张量路径走方法型逐元素运算，标量路径走内部 scalar helper，参见 `11-math.md` §5 |
-| `arithmetic → broadcast` | `broadcast` | `broadcast_with()`                  | 先把两个操作数广播到公共形状，参见 `15-broadcast.md` §5          |
-| `arithmetic → tensor`    | `tensor`    | `Tensor<A, D>` / `.view()`          | 构造 owned 结果并在需要时创建视图，参见 `07-tensor.md` §5        |
-| `arithmetic → element`   | `element`   | `Numeric`                           | 通过元素约束排除不支持的类型，参见 `03-element.md` §5.2          |
-| `arithmetic → dimension` | `dimension` | `<D as BroadcastDim<E>>::Output`    | 通过维度级关联类型推导广播输出形状，参见 `02-dimension.md` §5.10 |
+| `arithmetic → broadcast` | `broadcast` | `broadcast_with()`                | 先把两个操作数广播到公共形状，参见 `15-broadcast.md` §5          |
+| `arithmetic → tensor`    | `tensor`    | `Tensor<A, D>` / `.view()`        | 构造 owned 结果并在需要时创建视图，参见 `07-tensor.md` §5        |
+| `arithmetic → element`   | `element`   | `Numeric`                         | 通过元素约束排除不支持的类型，参见 `03-element.md` §5.2          |
+| `arithmetic → dimension` | `dimension` | `<D as BroadcastDim<E>>::Output`  | 通过维度级关联类型推导广播输出形状，参见 `02-dimension.md` §5.10 |
 
 ### 9.2 数据流描述
 
@@ -599,10 +603,10 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 
 | 属性     | 值                                                                                        |
 | -------- | ----------------------------------------------------------------------------------------- |
-| 决策     | 运算符重载在广播不兼容时返回 `Result`；方法型 API 保持相同的 `Result` 返回                   |
+| 决策     | 运算符重载在广播不兼容时返回 `Result`；方法型 API 保持相同的 `Result` 返回                |
 | 理由     | 为与 `需求说明书 §12` / `需求说明书 §27` 保持一致，广播错误必须以返回值形式报告；虽然这偏离 `std::ops` 的常见习惯，但 Xenon 的错误模型优先 |
-| 替代方案 | 保持“运算符 panic / 方法 Result”分离语义，或让方法型 API 也 panic                           |
-| 拒绝原因 | 前者直接违背需求约束；后者会抹掉 Xenon 公开 API 的可恢复错误通道                             |
+| 替代方案 | 保持“运算符 panic / 方法 Result”分离语义，或让方法型 API 也 panic                         |
+| 拒绝原因 | 前者直接违背需求约束；后者会抹掉 Xenon 公开 API 的可恢复错误通道                          |
 
 ### 决策 3：运算符返回 Result
 
@@ -638,10 +642,10 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 
 ### 12.1 复杂度
 
-| 操作                  | 时间复杂度  | 空间复杂度  | 说明               |
-| --------------------- | ----------- | ----------- | ------------------ |
-| 张量 + 张量（同形状） | O(n)        | O(n)        | 无广播开销         |
-| 张量 + 张量（广播）   | O(output_n) | O(output_n) | 广播视图 O(1) 创建 |
+| 操作                  | 时间复杂度  | 空间复杂度  | 说明                |
+| --------------------- | ----------- | ----------- | ------------------- |
+| 张量 + 张量（同形状） | O(n)        | O(n)        | 无广播开销          |
+| 张量 + 张量（广播）   | O(output_n) | O(output_n) | 广播视图 O(1) 创建  |
 | 张量 + 标量           | O(n)        | O(n)        | `*_scalar` 直接迭代 |
 | 标量 + 张量           | O(n)        | O(n)        | `*_scalar` 直接迭代 |
 
