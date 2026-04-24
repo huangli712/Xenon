@@ -90,14 +90,14 @@ src/construct/
 │   ├── crate::layout      # LayoutFlags, flags_for_f_layout
 │   ├── crate::dimension   # Dimension, Ix0~Ix6, IxDyn, IntoDimension
 │   ├── crate::element     # Element (zero() / one())
-│   └── crate::error       # XenonError::InvalidShape
+│   └── crate::error       # XenonError (InvalidShape + compute_f_strides 传播的错误)
 |
 ├── eye.rs
 │   ├── crate::tensor      # TensorBase<Owned<A>, Ix2>
 │   ├── crate::storage     # Owned<A>
 │   ├── crate::layout      # LayoutFlags, flags_for_f_layout
 │   ├── crate::element     # Element, EyeElement
-│   └── crate::error       # XenonError::InvalidShape
+│   └── crate::error       # XenonError::InvalidShape (经由 zeros 间接传播)
 |
 ├── from.rs
 │   ├── crate::tensor      # TensorBase<S, D>, Tensor<A, D>
@@ -105,7 +105,7 @@ src/construct/
 │   ├── crate::layout      # LayoutFlags, flags_for_f_layout, Strides<D>
 │   ├── crate::dimension   # Dimension, IntoDimension
 │   ├── crate::element     # Element
-│   └── crate::error       # XenonError::InvalidShape
+│   └── crate::error       # XenonError (InvalidShape + compute_f_strides 传播的错误)
 |
 └── scalar.rs
     ├── crate::tensor      # TensorBase<Owned<A>, Ix0>
@@ -120,11 +120,11 @@ src/construct/
 | 来源模块    | 使用的类型/trait                                                                                                  |
 | ----------- | ----------------------------------------------------------------------------------------------------------------- |
 | `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, 类型别名 `Tensor0`~`Tensor6`（参见 `07-tensor.md` §5）                        |
-| `storage`   | `Owned<A>`, `Storage<Elem = A>`, `from_vec_aligned()`（参见 `05-storage.md` §5）                                  |
+| `storage`   | `Owned<A>`, `Storage<Elem = A>`, `from_vec_aligned()`（参见 `05-storage.md` §6.1）                                  |
 | `layout`    | `LayoutFlags`, `Strides<D>`, 共享 checked/layout helper（元素总数与 F-order stride 计算，参见 `06-layout.md` §3） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`（参见 `02-dimension.md` §5）                                   |
 | `element`   | `Element`（`zero()` / `one()` 由 `Element` 提供，参见 `03-element.md` §5.1）                                      |
-| `error`     | `XenonError::InvalidShape`（用于构造时的 shape/length 基数不匹配，参见 `26-error.md` §4）                         |
+| `error`     | `XenonError`（`InvalidShape` 用于 shape/length 基数不匹配与元素总数溢出；`compute_f_strides` 步长溢出错误以 `06-layout.md` §5.6 为准直接传播） |
 
 ### 4.3 依赖合法性
 
@@ -227,13 +227,6 @@ where
 # use crate::storage::Owned;
 # use crate::tensor::{Tensor, TensorBase};
 # use crate::dimension::Ix2;
-# pub trait EyeElement: crate::private::Sealed + Element {}
-# impl EyeElement for i32 {}
-# impl EyeElement for i64 {}
-# impl EyeElement for f32 {}
-# impl EyeElement for f64 {}
-# impl EyeElement for Complex<f32> {}
-# impl EyeElement for Complex<f64> {}
 impl<A> TensorBase<Owned<A>, Ix2>
 where
     A: EyeElement,
@@ -514,7 +507,8 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 - `ones`: 逐元素写入过程中，若 `A::one()` 的 copy 在理论上发生 panic（当前封闭类型集合中不预期出现），未初始化内存仍须由 `Owned` 析构路径基于“已初始化长度跟踪”正确回收。
 - `from_shape_vec`: 先通过 layout 层共享 checked helper 验证元素总数，再验证 `data.len() == expected`；通过后进入共享 owned 构造路径。是否复用原始 `Vec` 分配、是否进行额外重打包，均属于内部实现选择，不影响公开语义
 - `from_shape_slice`: 先通过 layout 层共享 checked helper 验证元素总数，长度匹配后先把切片物化为 owned 缓冲区，再委托给 `from_shape_vec`；这样把 F-order 映射、长度约束与 owned 结果语义统一收敛到单一路径
-- 元素总数 / F-order stride 计算溢出：构造路径须在共享的 layout checked helper 中统一转为 `XenonError::InvalidShape`，不得把这些职责下沉到 `Dimension` trait。具体到 F-order stride，必须逐步验证 `stride[i] = product(shape[0..i])` 的乘积不会溢出 `usize`。ZST、空张量路径与 `05-storage.md` 约束保持一致
+- 元素总数溢出：构造路径须在共享的 layout checked helper 中统一转为 `XenonError::InvalidShape`，不得把这些职责下沉到 `Dimension` trait。ZST、空张量路径与 `05-storage.md` 约束保持一致
+- F-order stride 计算溢出：`compute_f_strides` 通过 `?` 直接传播错误，错误类别以 `06-layout.md` §5.6 为准（整数溢出时返回 `InvalidLayout` 或等效错误类别）。构造路径不再将其二次转换为 `InvalidShape`
 - `eye`: 内部使用已验证的 `zeros` 与 unchecked 写入；因为循环变量满足 `0 <= i < n`，所以 `[i, i]` 索引必然合法，不依赖公开 `IndexMut` panic 语法糖
 
 ---
@@ -653,7 +647,7 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 | `construct → layout`    | `layout`    | F-order 步长                         | 构造阶段计算 F-order 步长，参见 `06-layout.md` §4                                                  |
 | `construct → dimension` | `dimension` | `IntoDimension`                      | 接受灵活形状参数并归一化，参见 `02-dimension.md` §5.4                                              |
 | `construct → element`   | `element`   | `Element`                            | 通过 `Element::zero()` / `Element::one()` 约束构造 API，参见 `03-element.md` §5.1                  |
-| `construct → error`     | `error`     | `XenonError::InvalidShape`           | shape 与长度基数不匹配时返回错误，参见 `26-error.md` §4                                            |
+| `construct → error`     | `error`     | `XenonError`                         | `InvalidShape` 用于 shape/length 不匹配与元素总数溢出；`compute_f_strides` 步长溢出错误以 `06-layout.md` §5.6 为准直接传播 |
 | `construct → index`     | `index`     | 索引访问语义                         | 构造后的张量继续复用索引路径，参见 `17-indexing.md` §4                                             |
 
 ### 9.2 数据流描述
@@ -673,7 +667,7 @@ User calls zeros / from_shape_vec / eye
 
 | 主题              | 内容                                                                     |
 | ----------------- | ------------------------------------------------------------------------ |
-| Recoverable error | shape 与长度基数不匹配、共享 checked helper 报告元素总数溢出等情况返回 `XenonError::InvalidShape`。所有 `InvalidShape` 示例都保持 `26-error.md` 的 canonical 字段集；长度不匹配时携带实际与期望元素数，元素总数溢出时额外以 `reason = Some("element count overflow".into())` 标识溢出原因。 |
+| Recoverable error | 构造路径可返回两类错误：(1) shape 与长度基数不匹配、元素总数溢出等情况返回 `XenonError::InvalidShape`，所有 `InvalidShape` 示例都保持 `26-error.md` 的 canonical 字段集（长度不匹配时携带实际与期望元素数，元素总数溢出时以 `reason = Some("element count overflow".into())` 标识）；(2) `compute_f_strides` 的步长计算溢出错误通过 `?` 直接传播，错误类别以 `06-layout.md` §5.6 为准。 |
 | Panic             | 公开构造 API 不定义额外 panic 语义；失败统一走 `Result`。                |
 | 路径一致性        | 所有构造路径都必须产出 canonical F-order owned 张量，并保持一致的 shape / strides / flags 语义。 |
 | 容差边界          | 不适用。                                                                 |
