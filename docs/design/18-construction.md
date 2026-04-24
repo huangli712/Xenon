@@ -285,7 +285,7 @@ where
     /// F-order contiguous storage.
     ///
     /// # Errors
-    /// Returns `XenonError::InvalidShape` if the shared checked helper reports
+    /// Returns `XenonError::InvalidShape` if `dim.checked_size()` reports
     /// element-count overflow or `data.len()` does not match the validated count.
     ///
     /// # Examples
@@ -338,7 +338,7 @@ where
     /// Construct a tensor from a slice (copies data).
     ///
     /// # Errors
-    /// Returns `XenonError::InvalidShape` if the shared checked helper reports
+    /// Returns `XenonError::InvalidShape` if `dim.checked_size()` reports
     /// element-count overflow or `slice.len()` does not match the validated count.
     ///
     /// # Examples
@@ -618,9 +618,9 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 | 方向                    | 对方模块    | 接口/类型                            | 约定                                                                                               |
 | ----------------------- | ----------- | ------------------------------------ | -------------------------------------------------------------------------------------------------- |
 | `construct → tensor`    | `tensor`    | `TensorBase`                         | 构造张量实例，参见 `07-tensor.md` §5.1                                                             |
-| `construct → storage`   | `storage`   | `Owned::zeros()` / owned 构造 helper | 使用项目统一的 owned 存储构造路径完成底层分配；具体对齐值、是否重打包输入缓冲区由 storage 内部负责 |
+| `construct → storage`   | `storage`   | `Owned::from_elem()` / `Owned::from_vec_aligned()` | 使用项目统一的 owned 存储构造路径完成底层分配；具体对齐值、是否重打包输入缓冲区由 storage 内部负责 |
 | `construct → layout`    | `layout`    | F-order 步长                         | 构造阶段计算 F-order 步长，参见 `06-layout.md` §4                                                  |
-| `construct → dimension` | `dimension` | `IntoDimension`                      | 接受灵活形状参数并归一化，参见 `02-dimension.md` §5.4                                              |
+| `construct → dimension` | `dimension` | `IntoDimension`, `checked_size()`     | 接受灵活形状参数并归一化；通过 `checked_size()` 验证元素总数，参见 `02-dimension.md` §5 |
 | `construct → element`   | `element`   | `Element`                            | 通过 `Element::zero()` / `Element::one()` 约束构造 API，参见 `03-element.md` §5.1                  |
 | `construct → error`     | `error`     | `XenonError`                         | `InvalidShape` 用于 shape/length 不匹配与元素总数溢出；`compute_f_strides` 步长溢出错误以 `06-layout.md` §5.6 为准直接传播 |
 | `construct → index`     | `index`     | 索引访问语义                         | 构造后的张量继续复用索引路径，参见 `17-indexing.md` §4                                             |
@@ -630,9 +630,9 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 ```text
 User calls zeros / from_shape_vec / eye
     │
-    ├── dimension normalizes the input shape only
-    ├── layout shared checked helpers validate element count and compute F-order strides / initial flags
-    ├── storage allocates owned memory and writes data according to Xenon's internal policy
+    ├── dimension normalizes the input shape via IntoDimension, then checked_size() validates element count
+    ├── layout computes F-order strides via compute_f_strides and produces initial LayoutFlags
+    ├── storage allocates owned memory and writes data via from_elem / from_vec_aligned
     └── tensor wraps the result as TensorBase<Owned<_>, D> for later use
 ```
 
@@ -642,7 +642,7 @@ User calls zeros / from_shape_vec / eye
 
 | 主题              | 内容                                                                     |
 | ----------------- | ------------------------------------------------------------------------ |
-| Recoverable error | 构造路径可返回两类错误：(1) shape 与长度基数不匹配、元素总数溢出等情况返回 `XenonError::InvalidShape`，所有 `InvalidShape` 示例都保持 `26-error.md` 的 canonical 字段集（长度不匹配时携带实际与期望元素数，元素总数溢出时以 `reason = Some("element count overflow".into())` 标识）；(2) `compute_f_strides` 的步长计算溢出错误通过 `?` 直接传播，错误类别以 `06-layout.md` §5.6 为准。 |
+| Recoverable error | 构造路径可返回两类错误：(1) 元素总数溢出（由 `dim.checked_size()` 直接返回 `InvalidShape`，参见 `02-dimension.md`）以及 shape 与数据长度不匹配时由构造方法自身构造的 `InvalidShape`，所有 `InvalidShape` 示例都保持 `26-error.md` 的 canonical 字段集；(2) `compute_f_strides` 的步长计算溢出错误通过 `?` 直接传播，错误类别以 `06-layout.md` §5.6 为准。 |
 | Panic             | 公开构造 API 不定义额外 panic 语义；失败统一走 `Result`。                |
 | 路径一致性        | 所有构造路径都必须产出 canonical F-order owned 张量，并保持一致的 shape / strides / flags 语义。 |
 | 容差边界          | 不适用。                                                                 |

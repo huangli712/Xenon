@@ -130,7 +130,6 @@ src/overload/
 
 - 上表仅列出当前稳定承诺。张量×张量/视图路径（前 7 行）与标量路径（后 6 行）通过空行分隔。
 - `TensorView` 相关组合已纳入当前稳定范围，与 `broadcast_to()` / `transpose()` / `slice()` 返回视图的既有设计保持一致。**注意**：`TensorView` 仅参与张量×张量/视图路径的运算符重载；标量运算符重载（`tensor + scalar`、`Scalar(s) + tensor`、原生左标量）仅覆盖 owned `Tensor`，不覆盖 `TensorView`。`TensorView` 的标量运算须通过方法调用（如 `.add_scalar()`）实现。
-- `F` 为广播后的维度类型，由 `<D as BroadcastDim<E>>::Output` 关联类型计算。
 - `BroadcastDim` 定义于 `02-dimension.md §5.10`，被 `01-architecture.md §11` 记为“公开 sealed trait”（允许命名但禁止外部实现）。由于它出现在 `broadcast` / `overload` 的公开签名与 trait bound 中，稳定承诺要求用户可在签名中命名该 trait，但不要求用户自行实现它。
 
 ### 5.2 张量×张量运算符
@@ -289,7 +288,7 @@ where
 
 - `Scalar<A>` 包装器是实现“泛型左标量 + 张量”时的工程性折中，而不是原生`scalar + tensor` 整体不可行的证明。对 Xenon 支持的具体标量类型（`i32`、`i64`、`f32`、`f64`、`Complex<f32>`、`Complex<f64>`），可以逐类型生成 `impl Add<TensorBase<...>> for T`；真正不可行的是 `impl<T> Add<TensorBase<...>> for T` 这种 blanket impl。因此“常用原生标量”在本文中明确指上述 6 个受支持算术元素类型，而不包括 `bool`、`usize` 或其他范围外类型。
 - `Scalar<A>` 保持 `pub` 可见以满足泛型左标量路径的编译需求，但**不通过 prelude 或 crate 根导出**，仅通过 `xenon::overload::Scalar` 可访问。其定位是孤儿规则下的工程设施，非核心抽象——绝大多数场景下用户应使用 `tensor + scalar`、`scalar + tensor`（原生类型）或方法调用 `.add_scalar()` 等更直接的路径，仅在编写泛型函数 `fn foo<A: Numeric>(a: A, t: Tensor<A, D>)` 且需要 `a + t` 语法时才需引入 `Scalar(a)`。
-- 标量运算符的 LHS/RHS 组合通过宏生成，覆盖矩阵参见 §5.3-5.4。
+- 标量运算符的 LHS/RHS 组合通过宏生成，覆盖矩阵参见 §5.4。
 - 标量路径无形状不兼容风险，不返回 `Result`；运算符返回 `Tensor` 直接。整数溢出仍遵循 panic 语义。
 - 当前版本**不**稳定承诺 `&A` 形式的标量运算符重载。公开契约仅保证值形式 `tensor + scalar`、`Scalar(scalar) + tensor`，以及常用原生左标量（如 `5.0 + tensor`）。若后续版本需要 `&A` 支持，应以独立议题评估。
 - 标量运算符重载仅覆盖 owned `Tensor`；`TensorView` 的标量运算通过方法调用（如 `.add_scalar()`）实现，参见 `11-math.md §5.9`。`TensorViewMut` 若需使用运算符，同样必须先调用 `.view()` 转为只读 `TensorView`。
@@ -304,7 +303,7 @@ where
 ```rust,ignore
 // Sub: |a, b| a - b
 // Mul: |a, b| a * b
-// Div: |a, b| a / b   (constraint A: Numeric + Div<Output = A>)
+// Div: |a, b| a / b
 ```
 
 **除法语义补充**： 
