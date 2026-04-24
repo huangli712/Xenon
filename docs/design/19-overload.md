@@ -73,8 +73,7 @@ src/overload/
 │   └── re-exports from arithmetic
 |
 └── arithmetic.rs
-    ├── crate::math        # add() / sub() / mul() / div()
-    ├── crate::broadcast   # broadcast_shape(), broadcast_with(), can_broadcast()
+    ├── crate::math        # add() / sub() / mul() / div() / scalar helpers
     ├── crate::tensor      # TensorBase<S, D>, Tensor<A, D>, TensorView, .view()
     ├── crate::element     # Numeric trait
     ├── crate::dimension   # Dimension, Ix0~Ix6, IxDyn, BroadcastDim<E>
@@ -85,8 +84,7 @@ src/overload/
 
 | 来源模块    | 使用的类型/trait                                                                        |
 | ----------- | --------------------------------------------------------------------------------------- |
-| `math`      | `add()` / `sub()` / `mul()` / `div()` 等方法型逐元素运算（参见 `11-math.md` §5）        |
-| `broadcast` | `broadcast_shape()`, `broadcast_with()`, `can_broadcast()`（参见 `15-broadcast.md` §5） |
+| `math`      | `add()` / `sub()` / `mul()` / `div()` / `*_scalar()` 等方法型逐元素运算（参见 `11-math.md` §5） |
 | `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.view()`（参见 `07-tensor.md` §5）   |
 | `element`   | `Numeric` trait 约束（排除 `bool` 与 `usize`）（参见 `03-element.md` §5.2）             |
 | `error`     | `XenonError`（运算符 impl 的 `Output = Result<..., XenonError>` 关联类型中使用，参见 `26-error.md §5`） |
@@ -102,7 +100,7 @@ src/overload/
 
 ### 4.4 依赖方向声明
 
-依赖方向：单向向上。`overload` 仅消费 `math`、`broadcast`、`tensor`、`element`、`dimension`、`error` 的 trait 和类型，不被它们依赖。`overload` 是最上层的用户 API 模块。
+依赖方向：单向向上。`overload` 仅消费 `math`、`tensor`、`element`、`dimension`、`error` 的 trait 和类型，不被它们依赖。`broadcast` 为传递依赖（通过 `math` 间接使用）。`overload` 是最上层的用户 API 模块。
 
 ---
 
@@ -213,7 +211,7 @@ where
 - 张量×张量运算符直接委托给 `11-math.md §5` 的方法型逐元素 API（`TensorBase::add()` / `TensorBase::sub()` / `TensorBase::mul()` / `TensorBase::div()`）。运算符 impl 中的 `self.add(rhs)` 不会产生递归：Rust 的方法解析规则优先匹配固有方法（`math` 模块提供的 `pub fn add(&self, ...)`），而非 `Add` trait 自身的 `fn add(self, ...)`。
 - 广播失败走 `Err(XenonError::BroadcastError)` ；整数除零、整数溢出与结果不可表示仍保持 panic。本文 §11 的决策 3 / 决策 4 仅记录该 ADR 在本模块中的细化范围。
 - 当前稳定承诺覆盖 `Owned×Owned`、`TensorView×TensorView`、`TensorView×Tensor`、`Tensor×TensorView` 以及标量路径。实现优先级：`Owned×Owned` > `Owned/View` 混合路径。
-- 当前稳定 API 直接承诺只读 `TensorView` 参与运算符重载，这样 `broadcast_to()`、`transpose()`、`slice()` 等返回视图的操作结果可以继续参与四则运算；`ArcRepr` 相关组合若后续需要，统一参考文末附录。
+- 当前稳定 API 直接承诺只读 `TensorView` 参与运算符重载，这样 `broadcast_to()`、`transpose()`、`slice()` 等返回视图的操作结果可以继续参与四则运算。
 - `TensorViewMut` **不**直接参与运算符重载。若要使用运算符，必须先调用 `.view()` 获取只读 `TensorView`，再对该只读视图应用运算符。
 - 无论输入组合如何，成功结果都分配新的 owned 张量，不提供原地写回或视图就地更新。
 
@@ -294,13 +292,9 @@ where
 - 标量路径无形状不兼容风险，不返回 `Result`；运算符返回 `Tensor` 直接。整数溢出仍遵循 panic 语义。
 - 当前版本**不**稳定承诺 `&A` 形式的标量运算符重载。公开契约仅保证值形式 `tensor + scalar`、`Scalar(scalar) + tensor`，以及常用原生左标量（如 `5.0 + tensor`）。若后续版本需要 `&A` 支持，应以独立议题评估。
 - 标量运算符重载仅覆盖 owned `Tensor`；`TensorView` 的标量运算通过方法调用（如 `.add_scalar()`）实现，参见 `11-math.md §5.9`。`TensorViewMut` 若需使用运算符，同样必须先调用 `.view()` 转为只读 `TensorView`。
-- 右标量路径（`tensor op scalar`）与交换性左标量路径（`scalar + tensor`、`scalar * tensor`）直接委托给 `11-math.md §5.9` 的公开标量方法（`.add_scalar()` / `.sub_scalar()` / `.mul_scalar()` / `.div_scalar()`），不重复实现。非交换左标量路径（`scalar - tensor`、`scalar / tensor`）使用本模块新增的内部 helper `sub_scalar_left_impl` / `div_scalar_left_impl`，因 `11-math.md` 未提供对应方法。
-
-对左标量的非交换运算，需显式区分 helper：
-
-- `scalar - tensor`：使用 `sub_scalar_left_impl(scalar, tensor)`，逐元素计算 `scalar - each_element`
-- `scalar / tensor`：使用 `div_scalar_left_impl(scalar, tensor)`，逐元素计算 `scalar / each_element`
-- 这两条路径不能复用现有 `tensor.sub_scalar(scalar)` / `tensor.div_scalar(scalar)`，因为减法与除法不满足交换律
+- 标量路径的委托分为两类：
+  - **委托 math**：右标量路径（`tensor op scalar`）与交换性左标量路径（`scalar + tensor`、`scalar * tensor`）直接调用 `11-math.md §5.9` 的公开标量方法（`.add_scalar()` / `.sub_scalar()` / `.mul_scalar()` / `.div_scalar()`），不重复实现。
+  - **本模块新增**：非交换左标量路径（`scalar - tensor`、`scalar / tensor`）需要本模块内部 helper `sub_scalar_left_impl` / `div_scalar_left_impl`，逐元素计算 `scalar - each_element` / `scalar / each_element`。这两条路径不能复用现有 `tensor.sub_scalar(scalar)` / `tensor.div_scalar(scalar)`，因为减法与除法不满足交换律。`11-math.md` 当前未提供对应的 `_left` 方法。
 
 ### 5.4 Sub / Mul / Div
 
@@ -316,36 +310,17 @@ where
 
 对整数类型，`Div` 路径中的除以零和结果不可表示（如最小负值除以 `-1`）均遵循 `需求说明书 §12` 与 `需求说明书 §27` 的统一 panic 语义；运算符重载仅把广播不兼容报告为 `Result::Err`，不额外吞掉或包装这类不可恢复错误。
 
-**标量重载覆盖矩阵**：
+**标量重载委托路径**（覆盖全部 `Numeric` 类型：`i32`、`i64`、`f32`、`f64`、`Complex<f32>`、`Complex<f64>`）：
 
-| 算术类型 | 运算符 | `tensor op scalar` | `scalar op tensor` |
-| -------- | ------ | ------------------ | ------------------ |
-| `i32` | `+` | `add_scalar` | 原生左标量 / `Scalar<A>` → `add_scalar` |
-| `i32` | `-` | `sub_scalar` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
-| `i32` | `*` | `mul_scalar` | 原生左标量 / `Scalar<A>` → `mul_scalar` |
-| `i32` | `/` | `div_scalar` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
-| `i64` | `+` | `add_scalar` | 原生左标量 / `Scalar<A>` → `add_scalar` |
-| `i64` | `-` | `sub_scalar` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
-| `i64` | `*` | `mul_scalar` | 原生左标量 / `Scalar<A>` → `mul_scalar` |
-| `i64` | `/` | `div_scalar` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
-| `f32` | `+` | `add_scalar` | 原生左标量 / `Scalar<A>` → `add_scalar` |
-| `f32` | `-` | `sub_scalar` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
-| `f32` | `*` | `mul_scalar` | 原生左标量 / `Scalar<A>` → `mul_scalar` |
-| `f32` | `/` | `div_scalar` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
-| `f64` | `+` | `add_scalar` | 原生左标量 / `Scalar<A>` → `add_scalar` |
-| `f64` | `-` | `sub_scalar` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
-| `f64` | `*` | `mul_scalar` | 原生左标量 / `Scalar<A>` → `mul_scalar` |
-| `f64` | `/` | `div_scalar` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
-| `Complex<f32>` | `+` | `add_scalar` | 原生左标量 / `Scalar<A>` → `add_scalar` |
-| `Complex<f32>` | `-` | `sub_scalar` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
-| `Complex<f32>` | `*` | `mul_scalar` | 原生左标量 / `Scalar<A>` → `mul_scalar` |
-| `Complex<f32>` | `/` | `div_scalar` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
-| `Complex<f64>` | `+` | `add_scalar` | 原生左标量 / `Scalar<A>` → `add_scalar` |
-| `Complex<f64>` | `-` | `sub_scalar` | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
-| `Complex<f64>` | `*` | `mul_scalar` | 原生左标量 / `Scalar<A>` → `mul_scalar` |
-| `Complex<f64>` | `/` | `div_scalar` | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
+| 运算符 | `tensor op scalar` | `scalar op tensor`（交换性） | `scalar op tensor`（非交换性） |
+| ------ | ------------------ | ---------------------------- | ------------------------------ |
+| `+`    | → `.add_scalar()`  | 原生左标量 / `Scalar<A>` → `.add_scalar()` | — |
+| `-`    | → `.sub_scalar()`  | —                            | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
+| `*`    | → `.mul_scalar()`  | 原生左标量 / `Scalar<A>` → `.mul_scalar()` | — |
+| `/`    | → `.div_scalar()`  | —                            | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
 
-上表由宏展开后的规范化结果表示；实际实现中，标量运算符的 LHS/RHS 组合通过宏生成，覆盖矩阵参见 §5.3-5.4。
+- "交换性"指运算满足交换律，左标量可复用右标量的 math 方法（如 `scalar + tensor` → `tensor.add_scalar(scalar)`）。"非交换性"指减法/除法不满足交换律，需要本模块内部 helper（`sub_scalar_left_impl` / `div_scalar_left_impl`），参见 §5.3。
+- 实际实现中，标量运算符的 LHS/RHS 组合通过宏按上表规则生成。
 
 ### 5.5 Good / Bad 对比
 

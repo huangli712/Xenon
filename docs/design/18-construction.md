@@ -170,14 +170,7 @@ where
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();
-        let len = layout::checked_element_count(&dim).ok_or(XenonError::InvalidShape {
-            operation: "zeros",
-            shape: dim.slice().to_vec(),
-            expected_elements: 0,
-            actual_elements: 0,
-            offending_dim: None,
-            reason: Some("element count overflow".into()),
-        })?;
+        let len = dim.checked_size()?;
         let strides = layout::compute_f_strides(&dim)?;
         let storage = Owned::zeros(len);
         let flags = layout::flags_for_f_layout(storage.is_aligned(), false);
@@ -197,14 +190,7 @@ where
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();
-        let len = layout::checked_element_count(&dim).ok_or(XenonError::InvalidShape {
-            operation: "ones",
-            shape: dim.slice().to_vec(),
-            expected_elements: 0,
-            actual_elements: 0,
-            offending_dim: None,
-            reason: Some("element count overflow".into()),
-        })?;
+        let len = dim.checked_size()?;
         let strides = layout::compute_f_strides(&dim)?;
         let storage = Owned::ones(len);
         let flags = layout::flags_for_f_layout(storage.is_aligned(), false);
@@ -327,14 +313,7 @@ where
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();
-        let expected = layout::checked_element_count(&dim).ok_or(XenonError::InvalidShape {
-            operation: "from_shape_vec",
-            shape: dim.slice().to_vec(),
-            expected_elements: 0,
-            actual_elements: 0,
-            offending_dim: None,
-            reason: Some("element count overflow".into()),
-        })?;
+        let expected = dim.checked_size()?;
         if data.len() != expected {
             return Err(XenonError::InvalidShape {
                 operation: "from_shape_vec",
@@ -373,14 +352,7 @@ where
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();
-        let expected = layout::checked_element_count(&dim).ok_or(XenonError::InvalidShape {
-            operation: "from_shape_slice",
-            shape: dim.slice().to_vec(),
-            expected_elements: 0,
-            actual_elements: 0,
-            offending_dim: None,
-            reason: Some("element count overflow".into()),
-        })?;
+        let expected = dim.checked_size()?;
         if slice.len() != expected {
             return Err(XenonError::InvalidShape {
                 operation: "from_shape_slice",
