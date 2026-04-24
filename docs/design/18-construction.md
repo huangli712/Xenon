@@ -18,7 +18,7 @@
 | 零初始化构造   | `zeros<A, D>(shape)` 全零张量                        |
 | 常量构造       | `ones<A, D>(shape)` 全一张量                         |
 | 单位矩阵       | `eye<A>(n)` 单位矩阵                                 |
-| 从 Vec 构造    | `from_shape_vec(shape, vec)` 消费输入 Vec 并构造张量 |
+| 从 Vec 构造    | `from_shape_vec(shape, vec)` 消费输入 Vec 并构造张量；`from_vec(vec)` 一维便捷构造 |
 | 从切片构造     | `from_shape_slice(shape, slice)` 从切片拷贝数据      |
 | 从固定数组构造 | `from_array<A, N>(shape, arr)` 从固定大小数组构造    |
 | 从标量构造     | `from_scalar<A>(scalar)` 零维张量                    |
@@ -54,7 +54,7 @@
 | 类型     | 内容                                                                                                                                                  |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 需求映射 | 需求说明书 §7、§8、§19、§27、§28                                                                                                                      |
-| 范围内   | `zeros` / `ones` / `eye` / `from_shape_vec` / `from_shape_slice` / `from_array` / `from_scalar`，以及空张量 / 零维张量 / ZST 路径的合法性与错误语义。 |
+| 范围内   | `zeros` / `ones` / `eye` / `from_shape_vec` / `from_vec` / `from_shape_slice` / `from_array` / `from_scalar`，以及空张量 / 零维张量 / ZST 路径的合法性与错误语义。 |
 | 范围外   | arange、linspace、from_fn、随机构造器与其他序列生成 API。                                                                                             |
 | 非目标   | 不新增新的构造器家族，不改变 F-order / 对齐分配基线，也不引入第三方随机或数据加载依赖。                                                               |
 
@@ -68,7 +68,7 @@ src/
     ├── mod.rs               # module root, re-exports all public APIs
     ├── init.rs              # zeros, ones (basic initialization constructors)
     ├── eye.rs               # eye (identity matrix)
-    ├── from.rs              # from_shape_vec, from_shape_slice, from_array (construction from data sources)
+    ├── from.rs              # from_shape_vec, from_shape_slice, from_array, from_vec (construction from data sources)
     └── scalar.rs            # from_scalar (scalar construction)
 ```
 
@@ -87,7 +87,7 @@ src/construct/
 ├── init.rs
 │   ├── crate::tensor      # TensorBase<S, D>, Tensor<A, D>
 │   ├── crate::storage     # Owned<A>, Storage, from_vec_aligned()
-│   ├── crate::layout      # LayoutFlags, flags_for_f_layout
+│   ├── crate::layout      # LayoutFlags, compute_layout_flags
 │   ├── crate::dimension   # Dimension, Ix0~Ix6, IxDyn, IntoDimension
 │   ├── crate::element     # Element (zero() / one())
 │   └── crate::error       # XenonError (InvalidShape + compute_f_strides 传播的错误)
@@ -95,14 +95,15 @@ src/construct/
 ├── eye.rs
 │   ├── crate::tensor      # TensorBase<Owned<A>, Ix2>
 │   ├── crate::storage     # Owned<A>
-│   ├── crate::layout      # LayoutFlags, flags_for_f_layout
+│   ├── crate::index       # get_unchecked_mut (对角线元素写入)
+│   ├── crate::layout      # LayoutFlags
 │   ├── crate::element     # Element, EyeElement
 │   └── crate::error       # XenonError::InvalidShape (经由 zeros 间接传播)
 |
 ├── from.rs
 │   ├── crate::tensor      # TensorBase<S, D>, Tensor<A, D>
 │   ├── crate::storage     # Owned<A>, Storage, from_vec_aligned()
-│   ├── crate::layout      # LayoutFlags, flags_for_f_layout, Strides<D>
+│   ├── crate::layout      # LayoutFlags, compute_layout_flags, Strides<D>
 │   ├── crate::dimension   # Dimension, IntoDimension
 │   ├── crate::element     # Element
 │   └── crate::error       # XenonError (InvalidShape + compute_f_strides 传播的错误)
@@ -110,7 +111,7 @@ src/construct/
 └── scalar.rs
     ├── crate::tensor      # TensorBase<Owned<A>, Ix0>
     ├── crate::storage     # Owned<A>, from_vec_aligned()
-    ├── crate::layout      # LayoutFlags, flags_for_f_layout, Strides<Ix0>
+    ├── crate::layout      # LayoutFlags, compute_layout_flags, Strides<Ix0>
     ├── crate::dimension   # Ix0
     └── crate::element     # Element
 ```
@@ -121,7 +122,7 @@ src/construct/
 | ----------- | ----------------------------------------------------------------------------------------------------------------- |
 | `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, 类型别名 `Tensor0`~`Tensor6`（参见 `07-tensor.md` §5）                        |
 | `storage`   | `Owned<A>`, `Storage<Elem = A>`, `from_vec_aligned()`（参见 `05-storage.md` §6.1）                                  |
-| `layout`    | `LayoutFlags`, `Strides<D>`, `compute_f_strides`, `flags_for_f_layout`（F-order stride 计算与布局标志，参见 `06-layout.md` §3-4） |
+| `layout`    | `LayoutFlags`, `Strides<D>`, `compute_f_strides`, `compute_layout_flags`（F-order stride 计算与权威布局标志计算入口，参见 `06-layout.md` §4, §5.12） |
 | `dimension` | `Dimension::checked_size()`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`（元素总数验证与形状归一化，参见 `02-dimension.md` §5） |
 | `element`   | `Element`（`zero()` / `one()` 由 `Element` 提供，参见 `03-element.md` §5.1）                                      |
 | `error`     | `XenonError`（`InvalidShape` 用于 shape/length 基数不匹配与元素总数溢出；`compute_f_strides` 步长溢出错误以 `06-layout.md` §5.6 为准直接传播） |
@@ -173,7 +174,7 @@ where
         let len = dim.checked_size()?;
         let strides = layout::compute_f_strides(&dim)?;
         let storage = Owned::from_elem(len, A::zero());
-        let flags = layout::flags_for_f_layout(storage.is_aligned(), false);
+        let flags = layout::compute_layout_flags(&dim, &strides, storage.as_ptr());
         Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags })
     }
 
@@ -193,7 +194,7 @@ where
         let len = dim.checked_size()?;
         let strides = layout::compute_f_strides(&dim)?;
         let storage = Owned::from_elem(len, A::one());
-        let flags = layout::flags_for_f_layout(storage.is_aligned(), false);
+        let flags = layout::compute_layout_flags(&dim, &strides, storage.as_ptr());
         Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags })
     }
 }
@@ -262,8 +263,10 @@ impl EyeElement for Complex<f64> {}
 
 ### 5.3 from_shape_vec / from_shape_slice / from_array
 
+> **与 `07-tensor.md` 的关系：** `from_shape_vec` 的公开签名作为 `TensorBase<Owned<A>, D>` 的固有方法列于 `07-tensor.md` §5.5；本节是其权威实现设计，实际代码位于 `src/construct/from.rs`。`07-tensor.md` §9 中的示例实现仅用于展示 `tensor` 与 `layout` 模块的交互方式，以本节为准。
+
 ```rust,ignore
-# use crate::dimension::{Dimension, IntoDimension};
+# use crate::dimension::{Dimension, IntoDimension, Ix1};
 # use crate::element::Element;
 # use crate::error::XenonError;
 # use crate::layout;
@@ -331,7 +334,7 @@ where
         // allocation or materializes a new aligned allocation is intentionally
         // left as an internal choice.
         let storage = Owned::from_vec_aligned(data)?;
-        let flags = layout::flags_for_f_layout(storage.is_aligned(), false);
+        let flags = layout::compute_layout_flags(&dim, &strides, storage.as_ptr());
         Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags })
     }
 
@@ -389,6 +392,26 @@ where
     }
 }
 
+impl<A> TensorBase<Owned<A>, Ix1>
+where
+    A: Element + Copy,
+{
+    /// Construct a 1D tensor from a Vec.
+    ///
+    /// Convenience wrapper around `from_shape_vec` with shape inferred as `[data.len()]`.
+    ///
+    /// # Errors
+    /// Returns an error if the underlying allocation fails.
+    ///
+    /// # Examples
+    /// ```
+    /// let t = Tensor::<f64, Ix1>::from_vec(vec![1.0, 2.0, 3.0])?;
+    /// assert_eq!(t.shape(), &[3]);
+    /// ```
+    pub fn from_vec(data: Vec<A>) -> Result<Self, XenonError> {
+        Self::from_shape_vec([data.len()], data)
+    }
+}
 ```
 
 ### 5.4 from_scalar
@@ -415,11 +438,13 @@ where
     /// ```
     pub fn from_scalar(scalar: A) -> Result<Self, XenonError> {
         let storage = Owned::from_vec_aligned(vec![scalar])?;
-        let flags = layout::flags_for_f_layout(storage.is_aligned(), false);
+        let shape = Ix0;
+        let strides = Strides::<Ix0>::from_slice(&[]);
+        let flags = layout::compute_layout_flags(&shape, &strides, storage.as_ptr());
         Ok(TensorBase {
             storage,
-            shape: Ix0,
-            strides: Strides::<Ix0>::from_slice(&[]),
+            shape,
+            strides,
             offset: 0,
             flags,
         })
@@ -510,7 +535,7 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 
 - [ ] **T3**: 实现 `from_shape_vec` 和 `from_shape_slice`
   - 文件: `src/construct/from.rs`
-  - 内容: 消费输入 Vec 进入共享 owned 构造路径；是否复用或重打包底层缓冲区由内部决定；从切片拷贝
+  - 内容: 消费输入 Vec 进入共享 owned 构造路径；是否复用或重打包底层缓冲区由内部决定；从切片拷贝；一维便捷构造
   - 测试: `test_from_shape_vec`, `test_from_shape_vec_mismatch`, `test_from_shape_slice`
   - 前置: T1
   - 预计: 10 min
@@ -623,7 +648,7 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 | `construct → dimension` | `dimension` | `IntoDimension`, `checked_size()`     | 接受灵活形状参数并归一化；通过 `checked_size()` 验证元素总数，参见 `02-dimension.md` §5 |
 | `construct → element`   | `element`   | `Element`                            | 通过 `Element::zero()` / `Element::one()` 约束构造 API，参见 `03-element.md` §5.1                  |
 | `construct → error`     | `error`     | `XenonError`                         | `InvalidShape` 用于 shape/length 不匹配与元素总数溢出；`compute_f_strides` 步长溢出错误以 `06-layout.md` §5.6 为准直接传播 |
-| `construct → index`     | `index`     | 索引访问语义                         | 构造后的张量继续复用索引路径，参见 `17-indexing.md` §4                                             |
+| `construct → index`     | `index`     | 索引访问语义                         | `eye()` 内部通过 `get_unchecked_mut` 写入对角线元素；构造后的张量继续复用索引路径，参见 `17-indexing.md` §4 |
 
 ### 9.2 数据流描述
 

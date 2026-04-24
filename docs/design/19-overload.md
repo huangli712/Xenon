@@ -534,7 +534,6 @@ tensor + scalar:
 | 方向                     | 对方模块    | 接口/类型                  | 约定                                                            |
 | ------------------------ | ----------- | -------------------------- | --------------------------------------------------------------- |
 | `arithmetic → math`      | `math`      | `add()` / `sub()` / `mul()` / `div()` / scalar helpers | 张量路径走方法型逐元素运算，标量路径走内部 scalar helper，参见 `11-math.md` §5 |
-| `arithmetic → broadcast` | `broadcast` | `broadcast_with()`                | 先把两个操作数广播到公共形状，参见 `15-broadcast.md` §5          |
 | `arithmetic → tensor`    | `tensor`    | `Tensor<A, D>` / `.view()`        | 构造 owned 结果并在需要时创建视图，参见 `07-tensor.md` §5        |
 | `arithmetic → element`   | `element`   | `Numeric`                         | 通过元素约束排除不支持的类型，参见 `03-element.md` §5.2          |
 | `arithmetic → dimension` | `dimension` | `<D as BroadcastDim<E>>::Output`  | 通过维度级关联类型推导广播输出形状，参见 `02-dimension.md` §5.10 |
