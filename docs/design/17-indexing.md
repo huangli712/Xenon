@@ -91,7 +91,7 @@ src/index/
     ├── crate::tensor      # TensorBase<S, D>, TensorView<'a, A, I>
     ├── crate::dimension   # Dimension, Ix0~Ix6, IxDyn
     ├── crate::layout      # Strides<D>, layout flags
-    ├── crate::storage     # Storage, read-only / writable storage capability
+    ├── crate::storage     # Storage, read-only storage capability
     └── crate::error       # XenonError::InvalidArgument, IndexOutOfBounds
 ```
 
@@ -137,6 +137,13 @@ pub trait NdIndex<D: Dimension>: Sealed {
     /// - Each index component is within bounds for the corresponding axis
     /// - The resulting offset does not overflow `usize`
     unsafe fn index_unchecked(&self, strides: &Strides<D>) -> usize;
+
+    /// Converts this index into a `Vec<usize>` for error reporting.
+    ///
+    /// Guarantees all `NdIndex` implementors can produce a uniform diagnostic
+    /// representation regardless of whether the index originates from a tuple
+    /// or a slice.
+    fn to_index_vec(&self) -> Vec<usize>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -292,7 +299,7 @@ compute_slice(shape, strides, offset, slices):
     2. For Index(idx), check bounds and fold into the new offset with checked arithmetic.
     3. For Range { start, end }, validate `0 <= start <= end <= shape[axis]`.
     4. Update the resulting axis length as `end - start` and keep stride semantics unchanged.
-    5. Recompute layout flags from the new shape and strides.
+    5. Recompute layout flags via compute_layout_flags(&new_shape, &new_strides, data_ptr().add(offset)).
     6. Return a read-only TensorView.
 ```
 
@@ -392,7 +399,6 @@ unsafe 变体只省略检查，不改变偏移量公式、shape/stride 解释或
 | `test_slice_high_rank_ixdyn`           | `IxDyn` 高 rank 输入的切片元数据正确           | 中     |
 | `test_slice_extreme_offset_checked`    | 大步长/大 shape 下偏移计算不溢出或返回错误     | 中     |
 | `test_index_large_tensor_offset_boundary` | `10^7` 元素张量末元素索引成功，溢出偏移返回错误 | 高 |
-| `test_index_panic_sugar_diagnostics`   | 非规范 `Index`/`IndexMut` 便利接口的 panic 诊断 | 中    |
 
 ### 8.3 边界测试场景
 
@@ -446,6 +452,7 @@ unsafe 变体只省略检查，不改变偏移量公式、shape/stride 解释或
 | 消费（输入） | `tensor`    | `TensorBase<S, D>`                     | 索引前读取 shape、stride、offset 与存储模式      |
 | 消费（输入） | `dimension` | `Dimension`                            | 用于 rank 与轴边界验证                           |
 | 消费（输入） | `layout`    | `Strides<D>`, layout flags             | 偏移量解释与切片后布局重算                       |
+| 消费（输入） | `storage`   | `Storage`, `StorageMut`                | 区分只读访问与可写访问的 trait 约束边界          |
 | 产出（输出） | `tensor`    | `&A`, `&mut A`, `TensorView<'a, A, I>` | 返回值生命周期绑定到源张量；切片结果共享底层数据 |
 | 产出（输出） | `error`     | `XenonError`                           | 安全路径对外暴露统一错误类型                     |
 

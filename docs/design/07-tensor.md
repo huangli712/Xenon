@@ -45,14 +45,15 @@
 
 ## 2. 需求映射与范围约束
 
-| 项目     | 内容                                                                                                                                        |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| 需求映射 | `需求说明书 §6`、`需求说明书 §7`、`需求说明书 §8`、`需求说明书 §10`、`需求说明书 §19`、`需求说明书 §22`、`需求说明书 §27`、`需求说明书 §28` |
-| 范围内   | `TensorBase<S, D>`、类型别名、基础查询、构造校验、视图与 raw-parts 契约                                                                     |
-| 范围外   | 广播、索引、reshape、归约与逐元素运算                                                                                                       |
-| 非目标   | 引入运行时动态张量类型系统、隐藏存储模式差异或跳过元数据合法性校验                                                                          |
+| 项目     | 内容                                                                     |
+| -------- | -------------------------------------------------------------------------|
+| 需求映射 | 需求说明书 §6 - §8、§10、§19、§22、§27、§28                              |
+| 范围内   | `TensorBase<S, D>`、类型别名、基础查询、构造校验、视图与 raw-parts 契约  |
+| 范围外   | 广播、索引、reshape、归约与逐元素运算                                    |
+| 非目标   | 引入运行时动态张量类型系统、隐藏存储模式差异或跳过元数据合法性校验       |
 
-> **需求说明书 §6 边界说明：** 存储模式转换矩阵与具体转换 API 由 `05-storage.md` 承载实现设计；本文档仅定义 `storage_kind()`、view/raw-parts 与张量查询接口，不重复展开转换细节。
+- 存储模式转换矩阵与具体转换 API 由 `05-storage.md` 承载实现设计。
+- 本文档仅定义 `storage_kind()`、view/raw-parts 与张量查询接口，不重复展开转换细节。
 
 ---
 
@@ -68,7 +69,8 @@ src/tensor/
 
 文件划分理由：结构体定义、方法实现、类型别名、构造方法各自独立且职责清晰。
 
-> **安全构造职责划分：** 公开安全构造方法（`from_shape_vec`、`zeros`、`ones`、`eye` 等）的实现位于独立的上层模块 `src/construct/`（参见 `18-construction.md`）；本目录下的 `construct.rs` 仅负责内部 unsafe 低级构造（`from_raw_parts`、`from_raw_vec_unchecked`）。
+- 公开安全构造方法（`from_shape_vec`、`zeros`、`ones`、`eye` 等）的实现位于独立的上层模块 `src/construct/`（参见 `18-construction.md`）。
+- 本目录下的 `construct.rs` 仅负责内部 unsafe 低级构造（`from_raw_parts`、`from_raw_vec_unchecked`）。
 
 ---
 
@@ -77,32 +79,33 @@ src/tensor/
 ### 4.1 依赖图（ASCII）
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     TensorBase<S, D>                        │
-│                   (src/tensor/mod.rs)                       │
-└────────────────────────┬────────────────────────────────────┘
-                         │ uses
-         ┌───────────────┼───────────────┐
-         │               │               │
-         ▼               ▼               ▼
-┌───────────────┐ ┌───────────────┐ ┌───────────────┐
-│   storage     │ │   dimension   │ │    layout     │
-│ - Owned<A>    │ │ - Ix0-Ix6     │ │ - LayoutFlags │
-│ - ViewRepr    │ │ - IxDyn       │ │ - is_f_contig │
-│ - ViewMutRepr │ │ - Dimension   │ │ - strides     │
-│ - ArcRepr     │ │   trait       │ │   compute     │
-│ - Storage     │ │               │ │               │
-│   trait       │ │               │ │               │
-└───────────────┘ └───────────────┘ └───────────────┘
+src/tensor/
+|
+├── mod.rs
+│   └── TensorBase<S, D> struct definition and public exports
+|
+├── impls.rs
+│   ├── crate::storage    # Owned, ViewRepr, ViewMutRepr, ArcRepr, Storage, StorageMut, StorageOwned, StorageShared
+│   ├── crate::dimension  # Dimension, Ix0~Ix6, IxDyn, .slice(), .checked_size(), .ndim()
+│   └── crate::layout     # LayoutFlags, compute_f_strides(), is_f_contiguous(), is_aligned()
+|
+├── aliases.rs
+│   └── (no external crate dependency; references TensorBase and dimension types from mod.rs)
+|
+└── construct.rs
+    ├── crate::storage    # Owned<A>, from_raw_parts storage access
+    ├── crate::dimension  # Dimension, checked_size()
+    ├── crate::layout     # Strides<D>, LayoutFlags, compute_f_strides()
+    └── crate::error      # XenonError::InvalidLayout
 ```
 
 ### 4.2 类型级依赖
 
-| 来源模块    | 使用的类型/trait                                                                                                                                       |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `storage`   | `Owned<A>`, `ViewRepr<'a, A>`, `ViewMutRepr<'a, A>`, `ArcRepr<A>`, `Storage`, `StorageMut`, `StorageOwned`, `StorageShared`（参见 `05-storage.md §5`） |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.checked_size()`, `.ndim()`（参见 `02-dimension.md §5`）                                               |
-| `layout`    | `LayoutFlags`, `compute_f_strides()`, `is_f_contiguous()`, `is_aligned()`（参见 `06-layout.md §5`）                                                    |
+| 来源模块    | 使用的类型/trait                                                                                                                   |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `storage`   | `Owned`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`, `Storage`, `StorageMut`, `StorageOwned`, `StorageShared`（参见 `05-storage.md §5`） |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.checked_size()`, `.ndim()`（参见 `02-dimension.md §5`）                           |
+| `layout`    | `LayoutFlags`, `compute_f_strides()`, `is_f_contiguous()`, `is_aligned()`（参见 `06-layout.md §5`）                                |
 
 ### 4.3 依赖合法性
 
