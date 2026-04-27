@@ -442,7 +442,7 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | L2     | layout    | error, dimension                    | 06-layout.md        |
 | L2     | workspace | std, error                          | 24-workspace.md     |
 | L2     | storage   | core, alloc, std, error             | 05-storage.md       |
-| L3     | tensor    | storage, dimension, layout, element | 07-tensor.md        |
+| L3     | tensor    | storage, dimension, layout, element, error | 07-tensor.md        |
 | L4     | broadcast | tensor, dimension, layout, error    | 15-broadcast.md     |
 | L4     | iter      | tensor, storage, dimension, error   | 10-iterator.md      |
 | L4     | ffi       | tensor, layout, storage, dimension  | 23-ffi.md           |
@@ -711,6 +711,11 @@ IxDyn                         // Dynamic dimension
 compute_f_strides(shape)             // Compute canonical F-order strides
 compute_layout_flags(shape, strides, ptr) // Central function for all layout flags
 LayoutState                          // FContiguous / NonContiguous / BroadcastView
+
+// Tensor semantic query enums
+StorageKind                          // Owned / View / ViewMut / Shared
+AccessSemantics                      // ReadOnly / SharedReadOnly / Writable / Owned
+DataLocation                         // Cpu (current version only supports CPU)
 
 // Element trait hierarchy
 Element                        // Base: Copy + PartialEq + Debug + Display + Send + Sync
