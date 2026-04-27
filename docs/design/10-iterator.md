@@ -109,8 +109,6 @@ src/iter/
 
 ## 5. 公共 API 设计
 
-> **DoubleEndedIterator 说明：** 当前版本所有迭代器不实现 `DoubleEndedIterator`，因为 F-order 遍历的反向语义在高维情况下不明确，且需求未要求此功能。
-
 ### 5.1 Elements 迭代器
 
 ```rust,ignore
@@ -203,17 +201,12 @@ where
 {}
 ```
 
-> **设计说明：** `需求说明书 §11` 与 `02-dimension.md §5.6` 更偏向“0D 按轴遍历通过运行时 `InvalidAxis` 拒绝，且公开张量方法不直接暴露 `RemoveAxis`”。当前文档仍保留 `D: RemoveAxis` 的公开签名，是因为 `Iterator::Item = TensorView<'a, A, D::Smaller>` 的静态返回类型尚未找到同样简洁的公开建模方式。该差异已记录为待统一的 API 形状问题；在当前设计下，所有进入运行时路径的按轴迭代仍必须对 `axis < ndim`（含动态 rank-0）返回 `XenonError::InvalidAxis { operation, axis, ndim, shape }`。
-
-> **`ExactSizeIterator` 契约说明：** `AxisIter` / `AxisIterMut` 的 `len()` 返回 `shape[axis]`；因此 `size_hint()` 的上下界必须始终相等，并与剩余未产出的轴切片数量一致。空轴（`shape[axis] == 0`）时，`len() == 0`。
+- `需求说明书 §11` 与 `02-dimension.md §5.6` 更偏向“0D 按轴遍历通过运行时 `InvalidAxis` 拒绝，且公开张量方法不直接暴露 `RemoveAxis`”。当前文档仍保留 `D: RemoveAxis` 的公开签名，是因为 `Iterator::Item = TensorView<'a, A, D::Smaller>` 的静态返回类型尚未找到同样简洁的公开建模方式。在当前设计下，所有进入运行时路径的按轴迭代仍必须对 `axis < ndim`（含动态 rank-0）返回 `XenonError::InvalidAxis`。
+- **`ExactSizeIterator` 契约说明：** `AxisIter` / `AxisIterMut` 的 `len()` 返回 `shape[axis]`；因此 `size_hint()` 的上下界必须始终相等，并与剩余未产出的轴切片数量一致。空轴（`shape[axis] == 0`）时，`len() == 0`。
 
 ### 5.3 内部迭代分发说明
 
 当前版本不在 `iter` 模块中设计统一的多输入 lock-step 结构体或配套方法。逐元素运算、广播、归约等需要多输入同步遍历的模块，应直接基于 `Elements` / `ElementsMut`、广播视图和各自的内部状态机完成迭代分发。这样可以避免在 `iter` 模块额外引入一个被误解为稳定能力边界的中间抽象。
-
-> **Zip 能力说明：** 当前版本明确不支持 `Zip` 结构体、`zip_with`、`zip_apply` 或任何等价的公开 lock-step 迭代 API；如后续需要，应在独立设计文档中重新定义其错误语义、广播边界和别名约束。
-
-> **说明：** `Windows` 与 `LaneIter` 仍不属于 `需求说明书 §11` 的当前范围；如后续引入，应在独立文档中重新定义窗口语义、1D 产出语义以及别名约束。
 
 ### 5.4 IndexedIter 带索引迭代器
 
