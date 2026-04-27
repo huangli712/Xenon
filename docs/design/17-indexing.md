@@ -183,9 +183,9 @@ where
 }
 ```
 
-设计说明：为支持 `XenonError::IndexOutOfBounds { attempted_index: Vec<usize>, .. }` 与 `26-error.md` 的规范对齐，`NdIndex<D>` 将提供 `fn to_index_vec(&self) -> Vec<usize>`（或等价 helper）用于把任意合法索引表示统一转换为 `Vec<usize>`。这样 tuple-based `Ix0`~`Ix6` 与切片形式索引都能在错误上报路径中生成一致的结构化诊断数据。
+设计说明：为支持 `XenonError::IndexOutOfBounds` 与 `26-error.md` 的规范对齐，`NdIndex<D>` 将提供 `fn to_index_vec(&self) -> Vec<usize>`（或等价 helper）用于把任意合法索引表示统一转换为 `Vec<usize>`。这样 tuple-based `Ix0`~`Ix6` 与切片形式索引都能在错误上报路径中生成一致的结构化诊断数据。
 
-`SliceInfo<I, D>` 是切片描述符的公开包装类型：`D` 表示输入维度，`I` 表示切片后的输出维度；其内部字段保持私有，必须通过带校验的公开构造器建立，以避免手工拼出“索引长度、输入维度、输出维度彼此矛盾”的无效状态。`SliceInfo::new` 属于稳定公共 API，并负责校验索引描述长度、`in_dim` 与 `out_dim` 的对应关系；校验失败时返回 `XenonError`。这为当前版本的 `slice()` 提供了稳定、可验证的编程式入口。`s![]` 宏仍保留在附录中，作为未来版本的便利语法增强，不影响当前稳定 API 的可用性。范围语法中的省略边界应在进入 `SliceInfoElem::Range` 前先被规范化为显式 `start` / `end`。
+`SliceInfo<I, D>` 是切片描述符的公开包装类型：`D` 表示输入维度，`I` 表示切片后的输出维度；其内部字段保持私有，必须通过带校验的公开构造器建立，以避免手工拼出“索引长度、输入维度、输出维度彼此矛盾”的无效状态。`SliceInfo::new` 属于稳定公共 API，并负责校验索引描述长度、`in_dim` 与 `out_dim` 的对应关系；校验失败时返回 `XenonError`。这为当前版本的 `slice()` 提供了稳定、可验证的编程式入口。范围语法中的省略边界应在进入 `SliceInfoElem::Range` 前先被规范化为显式 `start` / `end`。
 
 ### 5.2 张量访问与切片 API
 
@@ -232,11 +232,8 @@ where
 
 ```
 
-> **设计决策：** 当前版本把 `try_at()` / `get()` / `try_at_mut()` / `get_mut()` 与 `slice()` 作为对外规范的主恢复路径。此前草案中的 `try_slice()` 与当前 `slice()` 具有相同签名且同样返回 `Result`，没有额外语义，因此移除以避免冗余接口。
-
-> **非规范便利接口说明：** 若实现内部或实验性配置中保留 `Index` / `IndexMut`（`[]` / `[]=`）语法糖，其 panic 行为仅属于非规范便利接口，不列入本节稳定接口草案。稳定语义以 `try_at()` / `try_at_mut()` 为准。
-
-> **`SliceInfo` 稳定构造入口：** 调用方可通过 `SliceInfo::new(indices, in_dim, out_dim)` 直接构造切片描述符；该构造器是公开且带校验的稳定 API。`slice()` 不依赖 `s![]` 宏，用户即使不使用未来的便利语法，也始终可以通过该入口构造合法的 `SliceInfo`。
+- 当前版本把 `try_at()` / `get()` / `try_at_mut()` / `get_mut()` 与 `slice()` 作为对外规范的主恢复路径。
+- `SliceInfo` 稳定构造入口： 调用方可通过 `SliceInfo::new(indices, in_dim, out_dim)` 直接构造切片描述符；该构造器是公开且带校验的稳定 API。
 
 ### 5.3 Good / Bad 对比
 

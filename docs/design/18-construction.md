@@ -111,9 +111,10 @@ src/construct/
 └── scalar.rs
     ├── crate::tensor      # TensorBase<Owned<A>, Ix0>
     ├── crate::storage     # Owned<A>, from_vec_aligned()
-    ├── crate::layout      # LayoutFlags, compute_layout_flags, Strides<Ix0>
+    ├── crate::layout      # LayoutFlags, compute_layout_flags, compute_f_strides
     ├── crate::dimension   # Ix0
-    └── crate::element     # Element
+    ├── crate::element     # Element
+    └── crate::error       # XenonError (from_vec_aligned + compute_f_strides 传播的错误)
 ```
 
 ### 4.2 类型级依赖
@@ -228,10 +229,7 @@ where
     /// assert_eq!(*e.get(&[0, 1]).unwrap(), 0.0);
     /// assert_eq!(*e.get(&[1, 1]).unwrap(), 1.0);
     /// ```
-    pub fn eye(n: usize) -> Result<Self, XenonError>
-    where
-        A: EyeElement,
-    {
+    pub fn eye(n: usize) -> Result<Self, XenonError> {
         let mut result = Self::zeros([n, n])?;
         for i in 0..n {
             // SAFETY: `i < n`, so `[i, i]` is always in-bounds for the validated
@@ -274,7 +272,7 @@ impl EyeElement for Complex<f64> {}
 # use crate::tensor::{Tensor, TensorBase};
 impl<A, D> TensorBase<Owned<A>, D>
 where
-    A: Element + Copy,
+    A: Element,
     D: Dimension,
 {
     /// Construct a tensor from a Vec with explicit shape.
@@ -319,7 +317,7 @@ where
         let expected = dim.checked_size()?;
         if data.len() != expected {
             return Err(XenonError::InvalidShape {
-                operation: "from_shape_vec",
+                operation: "from_shape_vec".into(),
                 shape: dim.slice().to_vec(),
                 expected_elements: expected,
                 actual_elements: data.len(),
@@ -358,7 +356,7 @@ where
         let expected = dim.checked_size()?;
         if slice.len() != expected {
             return Err(XenonError::InvalidShape {
-                operation: "from_shape_slice",
+                operation: "from_shape_slice".into(),
                 shape: dim.slice().to_vec(),
                 expected_elements: expected,
                 actual_elements: slice.len(),
@@ -394,7 +392,7 @@ where
 
 impl<A> TensorBase<Owned<A>, Ix1>
 where
-    A: Element + Copy,
+    A: Element,
 {
     /// Construct a 1D tensor from a Vec.
     ///
@@ -419,12 +417,12 @@ where
 ```rust,ignore
 # use crate::dimension::Ix0;
 # use crate::element::Element;
-# use crate::layout::{self, Strides};
+# use crate::layout;
 # use crate::storage::Owned;
 # use crate::tensor::{Tensor, TensorBase};
 impl<A> TensorBase<Owned<A>, Ix0>
 where
-    A: Element + Copy,
+    A: Element,
 {
     /// Construct a zero-dimensional tensor from a scalar.
     ///
@@ -439,8 +437,7 @@ where
     pub fn from_scalar(scalar: A) -> Result<Self, XenonError> {
         let storage = Owned::from_vec_aligned(vec![scalar])?;
         let shape = Ix0;
-        // from_slice returns Result (see 06-layout.md §5.5); empty slice for Ix0 always succeeds
-        let strides = Strides::<Ix0>::from_slice(&[])?;  
+        let strides = layout::compute_f_strides(&shape)?;
         let flags = layout::compute_layout_flags(&shape, &strides, storage.as_ptr());
         Ok(TensorBase {
             storage,
@@ -465,7 +462,7 @@ fn create_matrix(data: Vec<f64>) -> Result<Tensor<f64, Ix2>, XenonError> {
     let n = (data.len() as f64).sqrt() as usize;
     if n * n != data.len() {
         return Err(XenonError::InvalidShape {
-            operation: "create_matrix",
+            operation: "create_matrix".into(),
             shape: vec![n, n],
             expected_elements: n * n,
             actual_elements: data.len(),

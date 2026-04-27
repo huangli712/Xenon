@@ -69,6 +69,8 @@ src/tensor/
 
 文件划分理由：结构体定义、方法实现、类型别名、构造方法各自独立且职责清晰。
 
+> **安全构造职责划分：** 公开安全构造方法（`from_shape_vec`、`zeros`、`ones`、`eye` 等）的实现位于独立的上层模块 `src/construct/`（参见 `18-construction.md`）；本目录下的 `construct.rs` 仅负责内部 unsafe 低级构造（`from_raw_parts`、`from_raw_vec_unchecked`）。
+
 ---
 
 ## 4. 依赖关系
@@ -856,9 +858,9 @@ Logical view:
   - 前置: T2
   - 预计: 10 min
 
-- [ ] **T8**: 实现安全构造方法 (construct.rs)
+- [ ] **T8**: 实现内部 unsafe 构造方法 (construct.rs)
   - 文件: `src/tensor/construct.rs`
-  - 内容: `from_shape_vec`/`from_raw_vec_unchecked`(内部方法)
+  - 内容: `from_raw_vec_unchecked`(内部 unsafe 方法)；公开安全构造方法 `from_shape_vec` 的实现位于 `src/construct/from.rs`（参见 `18-construction.md §5.3`，本文件 §5.5 仅列其公开签名）
   - 测试: `test_from_shape_vec_valid`, `test_from_shape_vec_invalid`
   - 前置: T5, T7
   - 预计: 10 min
