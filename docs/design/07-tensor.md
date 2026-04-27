@@ -445,7 +445,7 @@ where
 
 ### 5.6 安全构造方法
 
-> **构造责任边界：** 安全构造路径必须验证全部可验证元数据约束，至少包括 shape/stride 可表示性、元素总数计算不溢出、以及逻辑访问范围不越界。`from_shape_vec` 这类 API 不得把这些前提留给调用方；safe 构造负责兜底全部可检查元数据条件。
+安全构造路径必须验证全部可验证元数据约束，至少包括 shape/stride 可表示性、元素总数计算不溢出、以及逻辑访问范围不越界。`from_shape_vec` 这类 API 不得把这些前提留给调用方；safe 构造负责兜底全部可检查元数据条件。
 
 ````rust,ignore
 impl<A, D> TensorBase<Owned<A>, D>
@@ -459,7 +459,7 @@ where
     ///
     /// * `shape` - Length of each axis
     /// * `data` - Element data following logical-index correspondence semantics
-///   defined by `需求说明书 §19`; the input order defines which element belongs
+    ///   defined by `需求说明书 §19`; the input order defines which element belongs
     ///   to each logical index, rather than requiring callers to pre-arrange bytes
     ///   in a specific physical layout
     ///
@@ -476,7 +476,6 @@ where
     /// derive canonical F-order strides, and failure to construct the underlying
     /// storage. Any unmet condition returns `XenonError`.
     ///
-/// Xenon follows `需求说明书 §19`: "the order of the input data defines the element-to-logical-index correspondence."
     /// The current version defaults to 64-byte-aligned allocation
     /// (for example via `Owned::from_vec_aligned`), consistent with `05-storage.md`.
     /// This aligned path is the default owned-storage policy; any exception must be
@@ -511,7 +510,7 @@ where
     /// - That product must be representable in `usize` without overflow
     /// - `shape` must be representable by the current dimension type
     /// - The default packed F-order stride derived from `shape` must be
-///   representable and consistent with `需求说明书 §7`
+    ///   representable and consistent with `需求说明书 §7`
     /// - The constructor assumes no extra offset and therefore treats the input
     ///   buffer as the full logical tensor payload
     pub(crate) unsafe fn from_raw_vec_unchecked(data: Vec<A>, shape: D) -> Self {
@@ -523,7 +522,7 @@ where
 
 ### 5.7 unsafe 构造方法
 
-> **unsafe 构造责任边界：** `from_raw_parts*()` 这类接口只验证能够基于输入元数据直接检查的条件；safe 构造会兜底验证全部可检查元数据，而 unsafe 构造仅拒绝明显非法的 shape/stride/offset/storage_len 组合。若这些元数据校验失败，构造器返回 `Err(XenonError::InvalidLayout)`（附带上下文）。调用方仍负责保证指针有效性、对齐、可访问范围和生命周期等库无法自行证明的内存前提。文档中的 `# Safety` 说明必须与这一分工保持一致。
+`from_raw_parts*()` 这类接口只验证能够基于输入元数据直接检查的条件；safe 构造会兜底验证全部可检查元数据，而 unsafe 构造仅拒绝明显非法的 shape/stride/offset/storage_len 组合。若这些元数据校验失败，构造器返回 `Err(XenonError::InvalidLayout)`（附带上下文）。调用方仍负责保证指针有效性、对齐、可访问范围和生命周期等库无法自行证明的内存前提。文档中的 `# Safety` 说明必须与这一分工保持一致。
 
 ```rust,ignore
 impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D>
@@ -544,14 +543,14 @@ where
     /// - Pointer alignment and initialization requirements of `A` are satisfied
     /// - The access range implied by `shape`, `strides`, and `offset` is actually accessible within the backing storage
     ///
-/// The constructor validates metadata that can be checked directly:
-/// - `shape` and `strides` are combinable for this dimension type
-/// - Element-count computation does not overflow
-/// - Every stride is representable for pointer-offset calculations (`stride <= isize::MAX`)
-/// - The layout family is valid for the requested view kind (F-order/non-contiguous view,
-///   and broadcast-style zero-stride layouts only on read-only/shared-read-only paths)
-/// - The logical access range implied by `shape`, `strides`, and `offset`
-///   fits within `storage_len`
+    /// The constructor validates metadata that can be checked directly:
+    /// - `shape` and `strides` are combinable for this dimension type
+    /// - Element-count computation does not overflow
+    /// - Every stride is representable for pointer-offset calculations (`stride <= isize::MAX`)
+    /// - The layout family is valid for the requested view kind (F-order/non-contiguous view,
+    ///   and broadcast-style zero-stride layouts only on read-only/shared-read-only paths)
+    /// - The logical access range implied by `shape`, `strides`, and `offset`
+    ///   fits within `storage_len`
     ///
     /// If metadata validation fails, returns `Err(XenonError::InvalidLayout)`
     /// with context. The unsafe obligation is limited to pointer validity,
@@ -663,21 +662,21 @@ let t = unsafe {
 
 ### 6.1 步长存储策略
 
-> **设计决策：** `shape` 与 `strides` 分离建模：`shape` 字段类型为 `D`，`strides` 字段类型为 `Strides<D>`。
->
-> **实现方案：**
->
-> | 层次                 | 类型         | 说明                                                                           |
-> | -------------------- | ------------ | ------------------------------------------------------------------------------ |
-> | `TensorBase.strides` | `Strides<D>` | 与 shape 维度数一致，显式保存 stride 元数据                                    |
-> | `strides()` 返回值   | `&[usize]`   | 直接来自 `Strides<D>`（参见 `06-layout.md §5`）                                |
-> | layout 模块计算      | `usize`      | F-order、转置与零步长布局在 layout 层计算（参见 `06-layout.md §5.3` / `§5.7`） |
->
-> **权衡：**
->
-> - `Strides<D>` 保证 strides 与 shape 维度数相同（编译期）
-> - 静态维度使用栈分配数组（性能）
-> - 当前版本仅覆盖非负步长与零步长（广播）；负步长布局不在当前版本范围内（参见 `需求说明书 §7`）
+**设计决策：** `shape` 与 `strides` 分离建模：`shape` 字段类型为 `D`，`strides` 字段类型为 `Strides<D>`。
+
+**实现方案：**
+
+| 层次                 | 类型         | 说明                                                                           |
+| -------------------- | ------------ | ------------------------------------------------------------------------------ |
+| `TensorBase.strides` | `Strides<D>` | 与 shape 维度数一致，显式保存 stride 元数据                                    |
+| `strides()` 返回值   | `&[usize]`   | 直接来自 `Strides<D>`（参见 `06-layout.md §5`）                                |
+| layout 模块计算      | `usize`      | F-order、转置与零步长布局在 layout 层计算（参见 `06-layout.md §5.3` / `§5.7`） |
+
+**权衡：**
+
+- `Strides<D>` 保证 strides 与 shape 维度数相同（编译期）
+- 静态维度使用栈分配数组（性能）
+- 当前版本仅覆盖非负步长与零步长（广播）；负步长布局不在当前版本范围内（参见 `需求说明书 §7`）
 
 ### 6.2 offset 字段设计
 
