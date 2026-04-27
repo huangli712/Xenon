@@ -52,7 +52,9 @@
 | 范围外   | 独立的多输入 lock-step 迭代抽象、`DoubleEndedIterator`、`Windows` / `LaneIter`、负步长布局以及并行公开迭代接口。           |
 | 非目标   | 不扩展当前公开迭代器集合，不新增第三方依赖，不放宽广播只读约束，也不在本文定义新的并行 API 契约。                          |
 
-> **§10 线程安全映射说明：** 迭代器类型的 `Send` / `Sync` 由其持有的引用类型和元素类型共同决定。`Elements<'a, A, D>` 实现 `Send` / `Sync` 当且仅当 `&'a A` 分别满足 `Send` / `Sync`；`AxisIter`、`IndexedIter` 及对应可变版本同理，不额外放宽或收紧张量/视图本身的线程安全边界。
+- 迭代器类型的 `Send` / `Sync` 由其持有的引用类型和元素类型共同决定。
+- `Elements<'a, A, D>` 实现 `Send` / `Sync` 当且仅当 `&'a A` 分别满足 `Send` / `Sync`。
+- `AxisIter`、`IndexedIter` 及对应可变版本同理，不额外放宽或收紧张量/视图本身的线程安全边界。
 
 ---
 
