@@ -30,18 +30,6 @@
 | 最小核心   | 核心结构仅包含必要字段，功能通过扩展方法提供 |
 | 栈上元数据 | 静态维度的 TensorBase 元数据完全在栈上       |
 
-### 1.3 在架构中的位置
-
-```
-Dependency layers:
-L0: error, private
-L1: dimension, element, complex
-L2: layout (depends on dimension)
-L3: storage (independent from layout)
-L4: tensor (depends on storage, dimension, layout)  ← current module
-L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
-```
-
 ---
 
 ## 2. 需求映射与范围约束
@@ -105,7 +93,7 @@ src/tensor/
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.checked_size()`, `.ndim()`（参见 `02-dimension.md §5`）                                               |
 | `layout`    | `LayoutFlags`, `compute_f_strides()`, `is_f_contiguous()`, `is_aligned()`（参见 `06-layout.md §5`）                                                    |
 
-### 4.2a 依赖合法性
+### 4.3 依赖合法性
 
 | 项目           | 结论                       |
 | -------------- | -------------------------- |
@@ -115,7 +103,7 @@ src/tensor/
 
 > 注意：`06-layout.md` 的当前结论是不再引入公开 `Layout` 结构体；`TensorBase` 直接内联 `offset` 与 `LayoutFlags` 等布局元数据。
 
-### 4.3 依赖方向声明
+### 4.4 依赖方向声明
 
 > **依赖方向：单向向上。** `tensor/` 消费 `storage`、`dimension`、`layout` 的 trait 和类型，不被它们依赖。`math/`、`iter/` 等上层模块消费 `tensor`。
 
@@ -184,7 +172,7 @@ pub struct TensorBase<S, D> {
 | `TensorViewMut<'a, A, D>` | 取决于 `ViewMutRepr<'a, A>: Send` | 不成立                         | 可变视图只允许独占传播                            |
 | `ArcTensor<A, D>`         | 取决于 `ArcRepr<A>: Send`         | 取决于 `ArcRepr<A>: Sync`      | 共享只读线程安全前提完全继承 storage 层           |
 
-### 5.2 Type aliases (full list)
+### 5.2 Type aliases
 
 ```rust,ignore
 // === Primary type aliases ===
@@ -413,7 +401,7 @@ where
 }
 ```
 
-### 5.4a 连续切片访问方法
+### 5.5 连续切片访问方法
 
 ```rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -452,7 +440,7 @@ where
 }
 ```
 
-### 5.5 安全构造方法
+### 5.6 安全构造方法
 
 > **构造责任边界：** 安全构造路径必须验证全部可验证元数据约束，至少包括 shape/stride 可表示性、元素总数计算不溢出、以及逻辑访问范围不越界。`from_shape_vec` 这类 API 不得把这些前提留给调用方；safe 构造负责兜底全部可检查元数据条件。
 
@@ -530,7 +518,7 @@ where
 }
 ````
 
-### 5.6 unsafe 构造方法
+### 5.7 unsafe 构造方法
 
 > **unsafe 构造责任边界：** `from_raw_parts*()` 这类接口只验证能够基于输入元数据直接检查的条件；safe 构造会兜底验证全部可检查元数据，而 unsafe 构造仅拒绝明显非法的 shape/stride/offset/storage_len 组合。若这些元数据校验失败，构造器返回 `Err(XenonError::InvalidLayout)`（附带上下文）。调用方仍负责保证指针有效性、对齐、可访问范围和生命周期等库无法自行证明的内存前提。文档中的 `# Safety` 说明必须与这一分工保持一致。
 
@@ -605,7 +593,7 @@ where
 }
 ```
 
-### 5.7 视图方法
+### 5.8 视图方法
 
 ```rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -627,7 +615,7 @@ where
 }
 ```
 
-### 5.8 Good/Bad 对比
+### 5.9 Good/Bad 对比
 
 ```rust,ignore
 // Good - Use generic constraints to accept any readable tensor
@@ -881,20 +869,6 @@ Logical view:
   - 前置: T3, T9
   - 预计: 10 min
 
-### 并行执行图
-
-```
-Wave 1: [T1] → [T2] → [T3]
-                ↓
-Wave 2:        [T4] → [T5]
-                ↓      ↓
-               [T6]   [T7]
-                ↓      ↓
-Wave 3:       [T8] → [T9]
-                ↓
-Wave 4:       [T10]
-```
-
 ---
 
 ## 8. 测试计划
@@ -909,17 +883,7 @@ Wave 4:       [T10]
 | 编译测试 | `tests compile_fail`     | 验证类型约束                                    |
 | 属性测试 | `tests/property/`        | 验证长度、shape/stride 与 view/raw-parts 不变量 |
 
-### 8.2 集成测试函数列表
-
-以下集成测试函数验证 TensorBase 跨模块边界的正确性：
-
-| 测试函数                                 | 测试内容                                                                              |
-| ---------------------------------------- | ------------------------------------------------------------------------------------- |
-| `test_tensor_cross_dim_interop`          | TensorBase 与 Dimension 模块交互：验证 Ix0~Ix6 和 IxDyn 的 shape/strides 查询         |
-| `test_tensor_storage_layout_integration` | TensorBase 与 Storage/Layout 模块交互：验证 from_shape_vec 后的标志位计算和指针正确性 |
-| `test_tensor_view_mut_roundtrip`         | 验证 `view_mut()` 可直接获取零拷贝可变视图并回写到底层数据                            |
-
-### 8.3 单元测试清单
+### 8.2 单元测试清单
 
 | 测试函数                            | 测试内容                                                          | 优先级 |
 | ----------------------------------- | ----------------------------------------------------------------- | ------ |
@@ -944,7 +908,7 @@ Wave 4:       [T10]
 | `test_tensor0_scalar`               | 0D 标量张量 `len()==1`                                            | 中     |
 | `test_tensor_empty_dim`             | 含 0 维度的张量 `is_empty()`                                      | 中     |
 
-### 8.4 边界测试场景
+### 8.3 边界测试场景
 
 | 场景                  | 预期行为                                     |
 | --------------------- | -------------------------------------------- |
@@ -958,15 +922,7 @@ Wave 4:       [T10]
 | 空张量 + 多种 offset  | 只要 `offset <= storage_len` 即合法          |
 | 非法元素类型编译失败  | compile-fail 测试拒绝不满足元素约束的类型    |
 
-### 8.5 `需求说明书 §28.4` 边界测试占位
-
-| 占位项       | 说明                                                                                |
-| ------------ | ----------------------------------------------------------------------------------- |
-| 空张量边界   | 占位：覆盖 `as_ptr()` dangling sentinel、`as_slice()` / `as_mut_slice()` 返回空切片 |
-| 大张量边界   | 占位：覆盖超大 shape 的 `checked_size()`、stride 计算与构造错误传播                 |
-| 高维张量边界 | 占位：覆盖高维 `TensorD` / `Tensor6` 的 shape、strides 与 `layout_state()` 查询     |
-
-### 8.6 属性测试不变量
+### 8.4 属性测试不变量
 
 | 不变量                                            | 测试方法                                  |
 | ------------------------------------------------- | ----------------------------------------- |
@@ -975,20 +931,20 @@ Wave 4:       [T10]
 | `from_shape_vec` 后 `is_f_contiguous() == true`   | 随机合法形状                              |
 | 安全构造路径在访问范围不合法时返回错误            | 随机 shape/stride/offset/storage_len 组合 |
 
-### 8.7 集成测试
+### 8.5 集成测试
 
 | 测试文件               | 测试内容                                                                                                        |
 | ---------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `tests/test_tensor.rs` | `from_shape_vec` / `view` / `view_mut` / `as_ptr` 与 `dimension`、`storage`、`layout`、`index` 的端到端协同路径 |
 
-### 8.8 Feature gate / 配置测试
+### 8.6 Feature gate / 配置测试
 
 | 配置项         | 覆盖方式              | 说明                                        |
 | -------------- | --------------------- | ------------------------------------------- |
 | 默认配置       | 常规单元/集成测试路径 | 本模块无独立 feature gate，默认配置即主路径 |
 | 非默认 feature | 不适用                | 本模块未定义 feature gate，故无额外配置矩阵 |
 
-### 8.9 类型边界 / 编译期测试
+### 8.7 类型边界 / 编译期测试
 
 | 测试类型       | 覆盖方式                                                           | 说明                                                         |
 | -------------- | ------------------------------------------------------------------ | ------------------------------------------------------------ |
@@ -1000,7 +956,7 @@ Wave 4:       [T10]
 
 ## 9. 与其他模块的交互
 
-### 9.0 核心数据流
+### 9.1 核心数据流
 
 ```text
 User calls constructors / `view()` / `view_mut()` / query APIs
@@ -1012,7 +968,7 @@ User calls constructors / `view()` / `view_mut()` / query APIs
     └── index / iter / math / ffi and other upper layers continue consuming `TensorBase` as the unified carrier
 ```
 
-### 9.0a 典型构造数据流图
+### 9.2 典型构造数据流图
 
 ```
 User calls constructor-module API `Tensor::<f64, Ix2>::zeros([3, 4])?`
@@ -1026,7 +982,7 @@ User calls constructor-module API `Tensor::<f64, Ix2>::zeros([3, 4])?`
     └── return `Result<TensorBase<Owned<f64>, Ix2>, XenonError>`
 ```
 
-### 9.1 与 storage 模块的接口
+### 9.3 与 storage 模块的接口
 
 | 接口                                             | 方向                          | 契约                                                                                                           |
 | ------------------------------------------------ | ----------------------------- | -------------------------------------------------------------------------------------------------------------- |
@@ -1065,7 +1021,7 @@ where
 }
 ```
 
-### 9.2 与 dimension 模块的接口
+### 9.4 与 dimension 模块的接口
 
 | 接口                        | 方向                      | 契约                                                                                                                     |
 | --------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -1093,7 +1049,7 @@ where
 
 > **实现约束重申：** `len()` 的返回值始终来源于逻辑 `shape`，不允许退化为读取 `storage.len()`；后者仅用于 raw-parts 与底层访问范围校验。
 
-### 9.3 与 layout 模块的接口
+### 9.5 与 layout 模块的接口
 
 | 接口                                                          | 方向                                          | 契约                                                                                           |
 | ------------------------------------------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------- |
@@ -1160,7 +1116,7 @@ where
 
 ## 11. 设计决策记录
 
-### 决策 1：TensorBase\<S, D\> 双参数泛型设计
+### 决策 1：TensorBase<S, D> 双参数泛型设计
 
 | 属性     | 值                                                                                           |
 | -------- | -------------------------------------------------------------------------------------------- |
@@ -1188,7 +1144,7 @@ where
 | 理由     | 切片操作 O(1)（仅修改元数据）；无数据复制；统一机制适用所有存储模式；BLAS 兼容 |
 | 替代方案 | 无 offset，切片时调整 storage 指针 — 放弃，Owned 无法调整指针                  |
 
-### 决策 4：不实现 Deref\<Target=TensorView\>
+### 决策 4：不实现 Deref<Target=TensorView>
 
 | 属性     | 值                                                                            |
 | -------- | ----------------------------------------------------------------------------- |
