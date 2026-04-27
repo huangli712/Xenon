@@ -97,7 +97,7 @@ src/construct/
 │   ├── crate::storage     # Owned<A>
 │   ├── crate::index       # get_unchecked_mut (对角线元素写入)
 │   ├── crate::layout      # LayoutFlags
-│   ├── crate::element     # Element, EyeElement
+│   ├── crate::element     # Element
 │   └── crate::error       # XenonError::InvalidShape (经由 zeros 间接传播)
 |
 ├── from.rs
@@ -122,7 +122,7 @@ src/construct/
 | ----------- | ----------------------------------------------------------------------------------------------------------------- |
 | `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, 类型别名 `Tensor0`~`Tensor6`（参见 `07-tensor.md` §5）                        |
 | `storage`   | `Owned<A>`, `Storage<Elem = A>`, `from_vec_aligned()`（参见 `05-storage.md` §6.1）                                  |
-| `layout`    | `LayoutFlags`, `Strides<D>`, `compute_f_strides`, `compute_layout_flags`（F-order stride 计算与权威布局标志计算入口，参见 `06-layout.md` §4, §5.12） |
+| `layout`    | `LayoutFlags`, `Strides<D>`, `compute_f_strides`, `compute_layout_flags`（F-order stride 计算与权威布局标志计算入口，参见 `06-layout.md` §5.6, §5.12） |
 | `dimension` | `Dimension::checked_size()`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`（元素总数验证与形状归一化，参见 `02-dimension.md` §5） |
 | `element`   | `Element`（`zero()` / `one()` 由 `Element` 提供，参见 `03-element.md` §5.1）                                      |
 | `error`     | `XenonError`（`InvalidShape` 用于 shape/length 基数不匹配与元素总数溢出；`compute_f_strides` 步长溢出错误以 `06-layout.md` §5.6 为准直接传播） |
@@ -167,7 +167,7 @@ where
     /// ```
     pub fn zeros<Sh>(shape: Sh) -> Result<Self, XenonError>
     where
-        A: Element + Clone,  // A::zero() from Element; Clone required by StorageOwned::from_elem (see 05-storage.md §5.7)
+        A: Element,  // A::zero() from Element; Clone implied by Element (see 03-element.md §5.1). StorageOwned::from_elem requires Clone (see 05-storage.md §5.7)
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();
@@ -187,7 +187,7 @@ where
     /// ```
     pub fn ones<Sh>(shape: Sh) -> Result<Self, XenonError>
     where
-        A: Element + Clone,  // A::one() from Element; Clone required by StorageOwned::from_elem (see 05-storage.md §5.7)
+        A: Element,  // A::one() from Element; Clone implied by Element (see 03-element.md §5.1). StorageOwned::from_elem requires Clone (see 05-storage.md §5.7)
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();
@@ -263,7 +263,7 @@ impl EyeElement for Complex<f64> {}
 
 ### 5.3 from_shape_vec / from_shape_slice / from_array
 
-> **与 `07-tensor.md` 的关系：** `from_shape_vec` 的公开签名作为 `TensorBase<Owned<A>, D>` 的固有方法列于 `07-tensor.md` §5.5；本节是其权威实现设计，实际代码位于 `src/construct/from.rs`。`07-tensor.md` §9 中的示例实现仅用于展示 `tensor` 与 `layout` 模块的交互方式，以本节为准。
+> **与 `07-tensor.md` 的关系：** `from_shape_vec` 的公开签名作为 `TensorBase<Owned<A>, D>` 的固有方法列于 `07-tensor.md` §5.5；本节是其权威实现设计，实际代码位于 `src/construct/from.rs`。`07-tensor.md` §9 中的数据流图仅用于展示 `tensor` 与 `layout` 模块的交互方式，以本节为准。
 
 ```rust,ignore
 # use crate::dimension::{Dimension, IntoDimension, Ix1};
@@ -439,7 +439,8 @@ where
     pub fn from_scalar(scalar: A) -> Result<Self, XenonError> {
         let storage = Owned::from_vec_aligned(vec![scalar])?;
         let shape = Ix0;
-        let strides = Strides::<Ix0>::from_slice(&[]);
+        // from_slice returns Result (see 06-layout.md §5.5); empty slice for Ix0 always succeeds
+        let strides = Strides::<Ix0>::from_slice(&[])?;  
         let flags = layout::compute_layout_flags(&shape, &strides, storage.as_ptr());
         Ok(TensorBase {
             storage,
@@ -644,11 +645,11 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 | ----------------------- | ----------- | ------------------------------------ | -------------------------------------------------------------------------------------------------- |
 | `construct → tensor`    | `tensor`    | `TensorBase`                         | 构造张量实例，参见 `07-tensor.md` §5.1                                                             |
 | `construct → storage`   | `storage`   | `Owned::from_elem()` / `Owned::from_vec_aligned()` | 使用项目统一的 owned 存储构造路径完成底层分配；具体对齐值、是否重打包输入缓冲区由 storage 内部负责 |
-| `construct → layout`    | `layout`    | F-order 步长                         | 构造阶段计算 F-order 步长，参见 `06-layout.md` §4                                                  |
+| `construct → layout`    | `layout`    | F-order 步长                         | 构造阶段计算 F-order 步长，参见 `06-layout.md` §5.6                                                |
 | `construct → dimension` | `dimension` | `IntoDimension`, `checked_size()`     | 接受灵活形状参数并归一化；通过 `checked_size()` 验证元素总数，参见 `02-dimension.md` §5 |
 | `construct → element`   | `element`   | `Element`                            | 通过 `Element::zero()` / `Element::one()` 约束构造 API，参见 `03-element.md` §5.1                  |
 | `construct → error`     | `error`     | `XenonError`                         | `InvalidShape` 用于 shape/length 不匹配与元素总数溢出；`compute_f_strides` 步长溢出错误以 `06-layout.md` §5.6 为准直接传播 |
-| `construct → index`     | `index`     | 索引访问语义                         | `eye()` 内部通过 `get_unchecked_mut` 写入对角线元素；构造后的张量继续复用索引路径，参见 `17-indexing.md` §4 |
+| `construct → index`     | `index`     | 索引访问语义                         | `eye()` 内部通过 `get_unchecked_mut` 写入对角线元素；构造后的张量继续复用索引路径，参见 `17-indexing.md` §5.2 |
 
 ### 9.2 数据流描述
 
