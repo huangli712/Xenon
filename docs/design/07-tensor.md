@@ -1065,48 +1065,19 @@ where
 | `layout::compute_layout_flags(&shape, &strides, logical_ptr)` | `tensor` 消费 `layout`           | `flags` 的计算必须基于 logical-first pointer 契约，与 `as_ptr()` / `as_slice()` 的可见语义一致 |
 | `LayoutState` / layout flags queries                          | `simd`、`parallel` 消费 `tensor` | 上游加速模块只通过 `TensorBase` 查询连续性、对齐和广播状态，不绕过 `tensor` 直接重建布局判断   |
 
-```rust,ignore
-// Layout module provides stride computation and contiguity checks
-// TensorBase computes LayoutFlags during construction
-impl<A, D> TensorBase<Owned<A>, D>
-where
-    A: Element,
-    D: Dimension,
-{
-    pub fn from_shape_vec<Sh>(shape: Sh, data: Vec<A>) -> Result<Self, XenonError>
-    where
-        Sh: IntoDimension<Dim = D>,
-    {
-        let shape = shape.into_dimension();
-        // Propagate checked_size() error directly; see 18-construction.md §5.3
-        // for the authoritative from_shape_vec construction contract.
-        let expected = shape.checked_size()?;
-        if data.len() != expected {
-            return Err(XenonError::InvalidShape {
-                operation: "from_shape_vec",
-                shape: shape.slice().to_vec(),
-                expected_elements: expected,
-                actual_elements: data.len(),
-                offending_dim: None,
-                reason: Some("data length does not match shape element count".into()),
-            });
-        }
-        let strides = layout::compute_f_strides(&shape)?;
-        // The current version defaults to a fresh 64-byte aligned allocation.
-        // Any exception must be explicitly documented by the corresponding
-        // constructor path. See 05-storage.md §5 and 18-construction.md §5.3.
-        let storage = Owned::from_vec_aligned(data)?;
-        let logical_ptr = storage.as_ptr();
-        let flags = layout::compute_layout_flags(&shape, &strides, logical_ptr);
-        Ok(Self {
-            storage,
-            shape,
-            strides,
-            offset: 0,
-            flags,
-        })
-    }
-}
+```text
+from_shape_vec construction call chain (logical illustration;
+authoritative implementation resides in src/construct/, see 18-construction.md §5.3):
+
+    shape.into_dimension()
+         │
+         ├─ shape.checked_size()            → element count (or InvalidShape)
+         ├─ data.len() != expected          → InvalidShape
+         ├─ layout::compute_f_strides(&shape) → F-order strides (or InvalidLayout)
+         ├─ Owned::from_vec_aligned(data)   → 64-byte aligned storage
+         ├─ compute_layout_flags(&shape, &strides, logical_ptr)
+         │                                  → LayoutFlags
+         └─ Ok(TensorBase { storage, shape, strides, offset: 0, flags })
 ```
 
 ---
