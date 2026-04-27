@@ -54,6 +54,7 @@
 
 - 存储模式转换矩阵与具体转换 API 由 `05-storage.md` 承载实现设计。
 - 本文档仅定义 `storage_kind()`、view/raw-parts 与张量查询接口，不重复展开转换细节。
+- 不引入公开 `Layout` 结构体；`TensorBase` 直接内联 `offset` 与 `LayoutFlags` 等布局元数据。
 
 ---
 
@@ -115,17 +116,15 @@ src/tensor/
 | 合法性结论     | 符合需求说明书最小依赖限制 |
 | 替代方案       | 不适用                     |
 
-> 注意：`06-layout.md` 的当前结论是不再引入公开 `Layout` 结构体；`TensorBase` 直接内联 `offset` 与 `LayoutFlags` 等布局元数据。
-
 ### 4.4 依赖方向声明
 
-> **依赖方向：单向向上。** `tensor/` 消费 `storage`、`dimension`、`layout` 的 trait 和类型，不被它们依赖。`math/`、`iter/` 等上层模块消费 `tensor`。
+依赖方向：单向向上。`tensor` 消费 `storage`、`dimension`、`layout` 的 trait 和类型，不被它们依赖。`math`、`iter` 等上层模块消费 `tensor`。
 
 ---
 
 ## 5. 公共 API 设计
 
-### 5.1 TensorBase\<S, D\> 核心结构体
+### 5.1 TensorBase<S, D> 核心结构体
 
 ```rust,ignore
 /// Core abstraction for multi-dimensional arrays.
