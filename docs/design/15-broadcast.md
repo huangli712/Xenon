@@ -2,7 +2,7 @@
 
 > 文档编号: 15 | 模块: `src/broadcast/` | 阶段: Phase 3
 > 前置文档: `02-dimension.md`, `06-layout.md`, `07-tensor.md`, `26-error.md`
-> 需求参考: `需求说明书 §6`, `需求说明书 §7`, `需求说明书 §11`, `需求说明书 §16`, `需求说明书 §20`, `需求说明书 §27`, `需求说明书 §28.2`, `需求说明书 §28.4`
+> 需求参考: `需求说明书 §6§7§11§16§20§27§28
 > 范围声明: 范围内
 
 ---
@@ -28,21 +28,6 @@
 | 共享只读         | 广播结果始终降级为只读视图；任何可变访问都必须在类型层或运行时显式拒绝。                 |
 | 步长显式化       | 广播轴使用 `usize` 零步长表达，与 `06-layout.md` 中的 `BroadcastView` 布局状态保持一致。 |
 | 类型与运行时分层 | `BroadcastDim` 作为 public sealed trait 负责输出维度类型推导，`broadcast_shape()` 负责实际兼容性裁决。            |
-
-### 1.3 在架构中的位置
-
-```text
-Dependency layers:
-L0: error, private
-L1: dimension, element, complex
-L2: layout
-L3: storage
-L4: tensor
-L5: broadcast  ← current module
-L6: shape, index, iter, math, overload
-```
-
-广播位于 `tensor` 之上、逐元素运算/形状操作之下：它消费张量元数据并产出只读广播视图，为运算符重载、逐元素运算和迭代路径提供统一的广播前置语义。
 
 ---
 
@@ -93,7 +78,7 @@ src/broadcast/
           └──────────┘ └──────────┘ └─────────────┘
 ```
 
-### 4.2 类型级依赖表
+### 4.2 类型级依赖
 
 | 来源模块    | 使用的类型/trait                                                                                                                                    |
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -102,17 +87,17 @@ src/broadcast/
 | `layout`    | `Strides<D>`, `LayoutFlags`, `LayoutState::FContiguous`, `LayoutState::NonContiguous`, `LayoutState::BroadcastView`。                               |
 | `error`     | `XenonError::BroadcastError`, `XenonError::InvalidArgument`。                                                                                       |
 
-### 4.3 依赖方向声明
-
-> **依赖方向：单向向上。** `broadcast/` 消费 `tensor`、`dimension`、`layout` 与 `error` 的既有能力，不反向定义这些核心模块的语义。
-
-### 4.4 依赖合法性与新增依赖说明
+### 4.3 依赖合法性与新增依赖说明
 
 | 项目           | 说明                                                                                         |
 | -------------- | -------------------------------------------------------------------------------------------- |
 | 新增第三方依赖 | 无                                                                                           |
 | 合法性结论     | 合法；当前设计仅使用 Xenon 既有模块与标准库，符合本文前述需求映射以及最小依赖、单 crate 约束。 |
 | 替代方案       | 不适用；广播规则与只读视图构造可直接在现有模块边界内完成。                                   |
+
+### 4.4 依赖方向声明
+
+> **依赖方向：单向向上。** `broadcast/` 消费 `tensor`、`dimension`、`layout` 与 `error` 的既有能力，不反向定义这些核心模块的语义。
 
 ---
 
@@ -201,10 +186,6 @@ assert_eq!(view.strides()[0], 0);
 // Forbidden: broadcast results must not expose mutable access.
 ```
 
-### 5.4 设计决策内联标注
-
-> **设计决策：** 当前版本不承诺多输入同步迭代接口；广播模块只负责 shape 判定、零步长生成和共享只读视图构造。
-
 ---
 
 ## 6. 内部实现设计
@@ -267,7 +248,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 
 它不负责判定具体 shape 值是否兼容；例如两个 `Ix2` 仍可能因 `[2, 3]` 与 `[4, 3]` 不兼容而在运行时失败。运行时裁决始终由 `broadcast_shape()` / `broadcast_with()` 完成。
 
-### 6.6 与 §6 存储系统的对接
+### 6.6 与存储系统的对接
 
 - **查询：** 广播结果内部使用 `ViewRepr<'a, A>`，因此 `storage_kind()` 返回 `StorageKind::View`；是否为广播结果由 layout flags 中的 `LayoutFlags::HAS_ZERO_STRIDE` / `LayoutState::BroadcastView` 指示。
 - **转换：** 广播结果可通过显式分配转成 `Owned` 连续张量（如 `to_owned()` / `to_contiguous()` 一类路径）；由于广播视图存在零步长别名，当前版本不允许把它转换为 `ViewMut`，也不提供 `into_mut()`。
@@ -277,7 +258,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 
 ## 7. 实现任务拆分
 
-### 基础前提：规则函数与类型边界
+### Wave 1：规则函数与类型边界
 
 - [ ] **T1**: 建立 `src/broadcast/mod.rs` 骨架与公共导出
   - 文件: `src/broadcast/mod.rs`, `src/broadcast/shape.rs`, `src/broadcast/view.rs`
@@ -286,73 +267,60 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
   - 前置: `dimension`、`layout`、`tensor`、`error` 模块完成
   - 预计: 10 min
 
-- [ ] **T2a**: 实现 `can_broadcast()`
+- [ ] **T2**: 实现 `can_broadcast()`
   - 文件: `src/broadcast/shape.rs`
   - 内容: 尾轴对齐兼容性判定
   - 测试: `test_can_broadcast_compatible`
   - 前置: T1
   - 预计: 5 min
 
-- [ ] **T2b**: 实现 `broadcast_shape()`
+- [ ] **T3**: 实现 `broadcast_shape()`
   - 文件: `src/broadcast/shape.rs`
   - 内容: 公共 shape 推导与结构化广播错误填充
   - 测试: `test_broadcast_shape_error`
-  - 前置: T2a
+  - 前置: T2
   - 预计: 5 min
 
-- [ ] **T2c**: 实现 `broadcast_strides()`
+- [ ] **T4**: 实现 `broadcast_strides()`
   - 文件: `src/broadcast/shape.rs`
   - 内容: 零步长写入与参数前提校验
   - 测试: `test_broadcast_strides_zero_stride`
-  - 前置: T2b
+  - 前置: T3
   - 预计: 10 min
 
-### Wave 1: 视图构造基础
+### Wave 2: 视图构造基础
 
-- [ ] **T3a**: 实现 `broadcast_to()` 基本路径
+- [ ] *T5**: 实现 `broadcast_to()` 基本路径
   - 文件: `src/broadcast/view.rs`
   - 内容: 目标 shape 校验与只读视图构造
   - 测试: `test_broadcast_to_basic`
-  - 前置: T2c
+  - 前置: T4
   - 预计: 10 min
 
-### Wave 2: 视图构造补全
+### Wave 3: 视图构造补全
 
-- [ ] **T3b**: 实现 `broadcast_to()` 错误路径与布局更新
+- [ ] **T6**: 实现 `broadcast_to()` 错误路径与布局更新
   - 文件: `src/broadcast/view.rs`
   - 内容: 非法目标 shape 错误返回与 `BroadcastView` 布局状态更新
   - 测试: `test_broadcast_to_error`, `test_broadcast_read_only`
-  - 前置: T3a
+  - 前置: T5
   - 预计: 10 min
 
-- [ ] **T4**: 实现 `broadcast_with()`
+- [ ] **T7**: 实现 `broadcast_with()`
   - 文件: `src/broadcast/view.rs`
   - 内容: 公共 shape 推导、双输入广播、`BroadcastDim` 输出类型对齐
   - 测试: `test_broadcast_with_same_shape`, `test_broadcast_scalar_and_tensor`, `test_broadcast_with_incompatible_shapes`
-  - 前置: T2c
+  - 前置: T4
   - 预计: 15 min
 
-### Wave 3: 综合验证
+### Wave 4: 综合验证
 
-- [ ] **T5**: 编写单元与集成测试
+- [ ] **T8**: 编写单元与集成测试
   - 文件: `tests/test_broadcast.rs`, `tests/property_tests.rs`, `tests/property/shape_props.rs`
   - 内容: 兼容性规则、零步长语义、共享只读边界、属性测试
   - 测试: 覆盖范围内所有公开 API
-  - 前置: T3b, T4
+  - 前置: T6, T7
   - 预计: 20 min
-
-### 并行执行图
-
-```text
-基础前提: [T1] -> [T2a] -> [T2b] -> [T2c]
-                                       │
-Wave 1:                      [T3a]      [T4]
-                                       │   │
-Wave 2:                               [T3b]
-                                       └─┬─┘
-                                         │
-Wave 3:                                 [T5]
-```
 
 ---
 
