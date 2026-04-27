@@ -109,6 +109,7 @@ src/tensor/
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.checked_size()`, `.ndim()`（参见 `02-dimension.md §5`）                           |
 | `layout`    | `LayoutFlags`, `compute_f_strides()`, `is_f_contiguous()`, `is_aligned()`（参见 `06-layout.md §5`）                                |
 | `element`   | `Element`（构造方法中 `A: Element` 约束；参见 `03-element.md §5`）                                                                  |
+| `error`     | `XenonError`（`InvalidLayout` / `InvalidShape`；构造校验与 `validate_access_range`；参见 `26-error.md`）                            |
 
 ### 4.3 依赖合法性
 
