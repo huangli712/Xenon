@@ -417,7 +417,7 @@ unsafe 变体只省略检查，不改变偏移量公式、shape/stride 解释或
 
 | 测试文件                | 测试内容                                                                           |
 | ----------------------- | ---------------------------------------------------------------------------------- |
-| `tests/test_indexing.rs` | 索引 API 与 `tensor`、`dimension`、`layout`、`storage`、`error` 的端到端集成测试 |
+| `tests/test_index.rs` | 索引 API 与 `tensor`、`dimension`、`layout`、`storage`、`error` 的端到端集成测试 |
 
 ### 8.6 Feature gate / 配置测试
 

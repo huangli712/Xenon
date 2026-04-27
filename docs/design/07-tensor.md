@@ -1,8 +1,10 @@
 # 张量类型模块设计
 
-> 文档编号: 07 | 模块: `src/tensor/` | 阶段: Phase 3
-> 前置文档: `01-architecture.md`, `02-dimension.md`, `05-storage.md`, `06-layout.md`
-> 需求参考: `需求说明书 §6`、`需求说明书 §7`、`需求说明书 §8`、`需求说明书 §10`、`需求说明书 §19`、`需求说明书 §22`、`需求说明书 §27`、`需求说明书 §28`
+> 文档编号: 07
+> 模块目录: src/tensor/
+> 任务阶段: Phase 3
+> 前置文档: 01-architecture.md, 02-dimension.md, 05-storage.md, 06-layout.md
+> 需求参考: 需求说明书 §6 - §8、§10、§19、§22、§27、§28
 > 范围声明: 范围内
 
 ---
@@ -11,14 +13,23 @@
 
 ### 1.1 职责边界
 
-| 职责        | 包含                                                                          | 不包含                                                   |
-| ----------- | ----------------------------------------------------------------------------- | -------------------------------------------------------- |
-| 核心结构体  | `TensorBase<S, D>` 双参数泛型结构体定义                                       | 逐元素与归约逻辑（参见 `11-math.md`、`13-reduction.md`） |
-| 类型别名    | `Tensor`/`TensorView`/`TensorViewMut`/`ArcTensor` 及维度便捷别名              | 广播规则（参见 `15-broadcast.md §3`）                    |
-| 基础查询    | shape/ndim/len/strides/is_empty/is_f_contiguous/is_aligned/存储位置查询等方法 | 形状操作（当前仅 transpose，参见 `16-shape.md §5.1`）    |
-| 安全构造    | 从形状和数据构造，验证合法性                                                  | 索引操作（参见 `17-indexing.md §1`）                     |
-| unsafe 构造 | `from_raw_parts`，用于 FFI                                                    | 切片操作（参见 `17-indexing.md §5`）                     |
-| 视图方法    | view/view_mut                                                                 | 集合操作（参见 `14-set.md §1`）                          |
+| 职责        | 包含                                                                          |
+| ----------- | ----------------------------------------------------------------------------- |
+| 核心结构体  | `TensorBase<S, D>` 双参数泛型结构体定义                                       |
+| 类型别名    | `Tensor`/`TensorView`/`TensorViewMut`/`ArcTensor` 及维度便捷别名              |
+| 基础查询    | shape/ndim/len/strides/is_empty/is_f_contiguous/is_aligned/存储位置查询等方法 |
+| 安全构造    | 从形状和数据构造，验证合法性                                                  |
+| unsafe 构造 | `from_raw_parts`，用于 FFI                                                    |
+| 视图方法    | view/view_mut                                                                 |
+
+| 职责        | 不包含                                                   |
+| ----------- | -------------------------------------------------------- |
+| 核心结构体  | 逐元素与归约逻辑（参见 `11-math.md`、`13-reduction.md`） |
+| 类型别名    | 广播规则（参见 `15-broadcast.md §3`）                    |
+| 基础查询    | 形状操作（参见 `16-shape.md §5.1`）                      |
+| 安全构造    | 索引操作（参见 `17-indexing.md §1`）                     |
+| unsafe 构造 | 切片操作（参见 `17-indexing.md §5`）                     |
+| 视图方法    | 集合操作（参见 `14-set.md §1`）                          |
 
 ### 1.2 设计原则
 
