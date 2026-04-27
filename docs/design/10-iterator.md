@@ -247,13 +247,9 @@ impl<'a, A, D: Dimension> Iterator for IndexedIterMut<'a, A, D> {
 impl<'a, A, D: Dimension> ExactSizeIterator for IndexedIterMut<'a, A, D> {}
 ```
 
-> **索引所有权说明：** 索引值直接使用维度类型 `D` 本身承载（如 `Ix2` 或 `IxDyn`），而不是借用切片。这样与 `Dimension` trait 的权威定义保持一致，也符合按索引迭代“产出同 rank 的拥有型索引值”这一语义。
+**索引所有权说明：** 索引值直接使用维度类型 `D` 本身承载（如 `Ix2` 或 `IxDyn`），而不是借用切片。这样与 `Dimension` trait 的权威定义保持一致，也符合按索引迭代“产出同 rank 的拥有型索引值”这一语义。
 
-### 5.5 LaneIter 延期到后续版本
-
-`LaneIter` / `LaneIterMut` 不属于 `需求说明书 §11` 的必须项。当前版本先不设计该 API，避免与 `AxisIter`、`Windows`、`IndexedIter` 的职责边界重叠；如后续引入，应在独立文档中重新定义 1D 产出语义、轴方向约定与可变别名规则。
-
-### 5.6 TensorBase 上的迭代器入口方法
+### 5.5 TensorBase 上的迭代器入口方法
 
 ```rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -293,7 +289,7 @@ where
 }
 ```
 
-### 5.7 Good / Bad 对比示例
+### 5.6 Good / Bad 对比示例
 
 ```rust,ignore
 // Good - safely iterate elements using iter()
@@ -348,7 +344,7 @@ increment_index_f(shape, index):
         index[i] = 0  // carry to next dimension
 ```
 
-> **偏移量计算边界：** 当前版本仅处理需求允许的合法 stride 布局：连续 F-order、转置产生的非连续视图，以及广播产生的零步长视图。元素偏移量计算仍为 `offset = base_offset + Σ(stride[i] * index[i])`，但不接受负步长输入。
+**偏移量计算边界：** 当前版本仅处理需求允许的合法 stride 布局：连续 F-order、转置产生的非连续视图，以及广播产生的零步长视图。元素偏移量计算仍为 `offset = base_offset + Σ(stride[i] * index[i])`，但不接受负步长输入。
 
 ### 6.3 广播可变迭代禁止
 
@@ -359,7 +355,7 @@ increment_index_f(shape, index):
 // Therefore broadcast_to() only returns an immutable view.
 ```
 
-> **编译期防护机制：** 广播结果返回 `TensorView`（不可变视图），而非 `TensorViewMut`。由于 `TensorView` 不提供 `iter_mut()` 方法（`iter_mut()` 要求 `StorageMut` 约束，仅 `TensorViewMut` 和 `Tensor` 满足），对广播结果调用 `iter_mut()` 会在编译期被类型系统拒绝，无需运行时检查。参见 `07-tensor.md §5.7` 中视图方法的约束差异。
+**编译期防护机制：** 广播结果返回 `TensorView`（不可变视图），而非 `TensorViewMut`。由于 `TensorView` 不提供 `iter_mut()` 方法（`iter_mut()` 要求 `StorageMut` 约束，仅 `TensorViewMut` 和 `Tensor` 满足），对广播结果调用 `iter_mut()` 会在编译期被类型系统拒绝，无需运行时检查。参见 `07-tensor.md §5.7` 中视图方法的约束差异。
 
 ### 6.4 填充数组迭代
 
