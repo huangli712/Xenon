@@ -192,7 +192,14 @@ where
 
 设计说明：为支持 `XenonError::IndexOutOfBounds` 与 `26-error.md` 的规范对齐，`NdIndex<D>` 将提供 `fn to_index_vec(&self) -> Vec<usize>`（或等价 helper）用于把任意合法索引表示统一转换为 `Vec<usize>`。这样 tuple-based `Ix0`~`Ix6` 与切片形式索引都能在错误上报路径中生成一致的结构化诊断数据。
 
-`SliceInfo<I, D>` 是切片描述符的公开包装类型：`D` 表示输入维度，`I` 表示切片后的输出维度；其内部字段保持私有，必须通过带校验的公开构造器建立，以避免手工拼出“索引长度、输入维度、输出维度彼此矛盾”的无效状态。`SliceInfo::new` 属于稳定公共 API，并负责校验索引描述长度、`in_dim` 与 `out_dim` 的对应关系；校验失败时返回 `XenonError`。这为当前版本的 `slice()` 提供了稳定、可验证的编程式入口。范围语法中的省略边界应在进入 `SliceInfoElem::Range` 前先被规范化为显式 `start` / `end`。
+`SliceInfo<I, D>` 是切片描述符的公开包装类型：`D` 表示输入维度，`I` 表示切片后的输出维度；其内部字段保持私有，必须通过带校验的公开构造器建立，以避免手工拼出“索引长度、输入维度、输出维度彼此矛盾”的无效状态。`SliceInfo::new` 属于稳定公共 API，校验失败时返回 `XenonError`，具体校验规则如下：
+
+1. **indices 长度 == in_dim.ndim()**：切片描述符的元素数量必须精确匹配输入维度数。
+2. **out_dim.ndim() == count_of(Range)**：每个 `Range` 元素保留一个输出轴，每个 `Index(usize)` 折叠一个轴；输出维度数必须等于 `Range` 元素的计数。
+3. **每个 Range 的 `start ≤ end ≤ shape[axis]`**：范围边界不得超出对应轴长度。
+4. **每个 Index 的值 < shape[axis]**：单轴索引不得越界。
+
+这为当前版本的 `slice()` 提供了稳定、可验证的编程式入口。范围语法中的省略边界应在进入 `SliceInfoElem::Range` 前先被规范化为显式 `start` / `end`。
 
 ### 5.2 张量访问与切片 API
 
@@ -215,7 +222,7 @@ where
 
     pub fn slice<I>(&self, info: SliceInfo<I, D>) -> Result<TensorView<'_, A, I>, XenonError>
     where
-        I: Dimension;
+        I: Dimension;    // I = output dimension after slicing; corresponds to D in TensorView<'a, A, D> defined in 07-tensor.md
 
 }
 
@@ -240,6 +247,7 @@ where
 ```
 
 - 当前版本把 `try_at()` / `get()` / `try_at_mut()` / `get_mut()` 与 `slice()` 作为对外规范的主恢复路径。
+- `get(&[usize])` / `get_mut(&[usize])` 是 `try_at` / `try_at_mut` 的便利包装：内部将 `&[usize]` 转换为 `IxDyn` 后委托给对应的 `try_at` / `try_at_mut`，保证两条路径的偏移计算逻辑一致。
 - `SliceInfo` 稳定构造入口： 调用方可通过 `SliceInfo::new(indices, in_dim, out_dim)` 直接构造切片描述符；该构造器是公开且带校验的稳定 API。
 
 ### 5.3 Good / Bad 对比
@@ -307,7 +315,7 @@ compute_slice(shape, strides, offset, slices):
 
 - 结果须保持原有逻辑元素顺序。
 - `Index(usize)` 会折叠对应轴并以 checked arithmetic 累加 offset。
-- `Range` 会按起止边界更新 shape 和 stride。
+- `Range` 会按起止边界更新 shape；对应轴的 stride 值保持不变。
 - 切片结果与源张量共享底层数据时，仅可落在只读或共享只读范围内，不提供共享可写视图。
 - 布局状态只能重新落在 `FContiguous`、`NonContiguous`、`BroadcastView` 三种之一。
 - `SliceInfo::new(...)` 作为稳定公共构造器，必须校验索引描述长度、`in_dim` 与 `out_dim` 的对应关系，拒绝构造内部自相矛盾的描述符。
@@ -423,7 +431,7 @@ unsafe 变体只省略检查，不改变偏移量公式、shape/stride 解释或
 
 | 测试文件                | 测试内容                                                                           |
 | ----------------------- | ---------------------------------------------------------------------------------- |
-| `tests/test_index.rs` | 索引 API 与 `tensor`、`dimension`、`layout`、`storage`、`error` 的端到端集成测试 |
+| `tests/test_index.rs` | 索引 API 与 `tensor`、`dimension`、`layout`、`storage`、`error` 的端到端集成测试     |
 
 ### 8.6 Feature gate / 配置测试
 
@@ -468,7 +476,7 @@ User calls tensor.try_at(index)
 User calls tensor.slice(info)
     │
     ├── index/ validates each SliceInfoElem
-    ├── index/ updates offset, shape, and strides
+    ├── index/ updates offset and shape (strides per-axis values unchanged; Index removes axis + stride slot, Range keeps stride)
     ├── index/ recomputes layout flags
     └── tensor returns read-only TensorView sharing source data
 ```
