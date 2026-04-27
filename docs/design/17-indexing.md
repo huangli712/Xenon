@@ -296,8 +296,6 @@ compute_slice(shape, strides, offset, slices):
     6. Return a read-only TensorView.
 ```
 
-> **说明：** 步长切片（step slicing）不在当前版本范围内，未来版本可另行设计。
-
 切片后的语义约束如下：
 
 - 结果须保持原有逻辑元素顺序。
@@ -307,9 +305,9 @@ compute_slice(shape, strides, offset, slices):
 - 布局状态只能重新落在 `FContiguous`、`NonContiguous`、`BroadcastView` 三种之一。
 - `SliceInfo::new(...)` 作为稳定公共构造器，必须校验索引描述长度、`in_dim` 与 `out_dim` 的对应关系，拒绝构造内部自相矛盾的描述符。
 
-> **`SliceInfo` 构造语义：** `SliceInfo::new` 是当前版本稳定公开的低层编程式构造入口；它保留显式 `out_dim` 参数，以便与 `SliceInfo<I, D>` 的类型级输出维度约束保持一致，同时通过构造期校验保证该参数不能与切片描述矛盾。
+`SliceInfo` 构造语义： `SliceInfo::new` 是当前版本稳定公开的低层编程式构造入口；它保留显式 `out_dim` 参数，以便与 `SliceInfo<I, D>` 的类型级输出维度约束保持一致，同时通过构造期校验保证该参数不能与切片描述矛盾。
 
-> **切片布局标志规则：** 切片结果的 layout flags 根据新的 `shape` / `stride` 组合重新计算。若源视图带有 `BroadcastView`，且切片后仍存在任一零步长轴，则继续保留 `BroadcastView` flag；否则按普通 F-order / non-contiguous 规则重分类。
+切片布局标志规则：切片结果的 layout flags 根据新的 `shape` / `stride` 组合重新计算。若源视图带有 `BroadcastView`，且切片后仍存在任一零步长轴，则继续保留 `BroadcastView` flag；否则按普通 F-order / non-contiguous 规则重分类。
 
 ### 6.4 安全性论证
 
@@ -318,15 +316,7 @@ compute_slice(shape, strides, offset, slices):
 | `NdIndex::index_unchecked`            | 调用方已保证 rank 匹配且每个分量有效 | 为内部已验证路径消除重复检查       |
 | `get_unchecked` / `get_unchecked_mut` | 调用方已保证索引合法且可写性前提成立 | 为热点访问路径提供零额外分支的能力 |
 
-**安全性论证：** unsafe 变体只省略检查，不改变偏移量公式、shape/stride 解释或引用别名规则。若输入索引非法，责任由调用方承担；若输入合法，unsafe 与安全路径的结果必须一致。
-
-### 6.5 内部性能考量
-
-| 方面     | 设计决策                                                  |
-| -------- | --------------------------------------------------------- |
-| 偏移计算 | 对 rank 做线性遍历，时间复杂度 O(rank)                    |
-| 切片创建 | 仅更新元数据并返回视图，正常路径 O(rank) 且不分配底层数据 |
-| 布局重算 | 依据新 shape/stride 重新标记布局，不复制元素              |
+unsafe 变体只省略检查，不改变偏移量公式、shape/stride 解释或引用别名规则。若输入索引非法，责任由调用方承担；若输入合法，unsafe 与安全路径的结果必须一致。
 
 ---
 
@@ -447,7 +437,7 @@ compute_slice(shape, strides, offset, slices):
 
 ---
 
-## 9. 模块交互设计
+## 9. 与其他模块的交互
 
 ### 9.1 接口约定
 
@@ -480,44 +470,13 @@ User calls tensor.slice(info)
 
 ## 10. 错误处理与语义边界
 
-| 主题              | 说明                                                                                                                                                                                                                         |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | `try_at()` / `get()` / `slice()` 在 rank 不匹配、轴非法、越界时返回 `XenonError`。其中索引长度与张量 `ndim` 不匹配时，错误类型固定为 `XenonError::DimensionMismatch { operation: 按 API 分别填写对应 operation, expected, actual }` |
-| Trait-bound 边界  | `try_at_mut()` / `get_mut()` / `get_unchecked_mut()` 仅在 `S: StorageMut` 前提成立时存在；不再为“只读存储上的可写索引”设计运行时 `InvalidStorageMode` 分支                                                                   |
-| Panic             | 当前版本稳定 API 不承诺 `Index` / `IndexMut` panic 语法糖；若实现保留该便利接口，其行为不属于规范契约。规范安全主路径仍是返回 `Result` 的 checked API                                                                          |
-| 路径一致性        | 对同一合法输入，checked 与 unchecked 路径必须给出同一偏移和同一逻辑结果；unsafe 只省略检查                                                                                                                                   |
-| 容差边界          | 不适用；本模块不涉及浮点容差、SIMD 误差或并行归约差异                                                                                                                                                                        |
-
-错误实例须与 `26-error.md` 对齐：
-
-```rust,ignore
-XenonError::InvalidArgument {
-    operation: "slice".into(),
-    argument: "range".into(),
-    expected: "0 <= start <= end <= shape[axis]".into(),
-    actual: format!("start={}, end={}, axis_len={}", start, end, self.shape()[axis]).into(),
-    axis: Some(axis),
-    axis_len: Some(self.shape()[axis]),
-    start: Some(start),
-    end: Some(end),
-    shape: Some(self.shape().to_vec()),
-}
-
-XenonError::IndexOutOfBounds {
-    operation: "try_at".into(),
-    attempted_index: index.to_vec(),
-    axis,
-    shape: self.shape().to_vec(),
-}
-
-```
-
-显式边界：
-
-- 不再使用缺少 `ndim` / `shape` 的旧 `InvalidAxis` 形式。
-- 不引入单独公开的 `InvalidSliceStep` 私有错误名。
-- `get()` / `get_mut()` 与 `try_at()` / `try_at_mut()` 在各自存在的前提下都返回结构化可恢复错误；越界时使用 `XenonError::IndexOutOfBounds`。
-- 可写访问能力由 `StorageMut` trait-bound 决定，而不是在运行时回退为 `InvalidStorageMode`。
+| 主题              | 说明                                                                                                                                                                 |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Recoverable error | `try_at()` / `get()` / `slice()` 在 rank 不匹配、轴非法、越界时返回 `XenonError`。其中索引长度与张量 `ndim` 不匹配时，错误类型固定为 `XenonError::DimensionMismatch` |
+| Trait-bound 边界  | `try_at_mut()` / `get_mut()` / `get_unchecked_mut()` 仅在 `S: StorageMut` 前提成立时存在；不再为“只读存储上的可写索引”设计运行时 `InvalidStorageMode` 分支           |
+| Panic             | 当前版本稳定 API 不承诺 `Index` / `IndexMut` panic 语法糖；若实现保留该便利接口，其行为不属于规范契约。规范安全主路径仍是返回 `Result` 的 checked API                |
+| 路径一致性        | 对同一合法输入，checked 与 unchecked 路径必须给出同一偏移和同一逻辑结果；unsafe 只省略检查                                                                           |
+| 容差边界          | 不适用；本模块不涉及浮点容差、SIMD 误差或并行归约差异                                                                                                                |
 
 ---
 
