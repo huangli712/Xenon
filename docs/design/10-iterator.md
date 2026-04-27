@@ -68,13 +68,11 @@ src/iter/
 └── indexed.rs     # IndexedIter / IndexedIterMut indexed iteration
 ```
 
-单文件划分理由：当前版本公开范围仅覆盖元素、按轴、按索引三类迭代器，拆分文件降低单文件复杂度并保持职责清晰。逐元素运算、广播与归约如需 lock-step 遍历，由各操作模块在自身内部直接组织遍历逻辑；`windows.rs`、`lanes.rs` 暂不纳入当前版本。
-
 ---
 
 ## 4. 依赖关系
 
-### 4.1 依赖图
+### 4.1 依赖图（ASCII）
 
 ```
 src/iter/
@@ -87,17 +85,13 @@ src/iter/
 
 ### 4.2 类型级依赖
 
-| 来源模块    | 使用的类型/trait                                                                                                                                                     |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tensor`    | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `TensorViewMut<'a, A, D>`, `.shape()`, `.strides()`, `.as_ptr()`, `.len()`（参见 `07-tensor.md §5.3` / `§5.4` / `§5.7`） |
-| `dimension` | `Dimension`, `Axis`, `Ix0`~`Ix6`, `IxDyn`，以及仅供内部轴迭代实现使用的 `RemoveAxis` / `D::Smaller`（参见 `02-dimension.md §5`）                                     |
-| `storage`   | `Storage<Elem = A>`, `StorageMut<Elem = A>`, `Owned<A>`（参见 `05-storage.md §5`）                                                                                   |
-| `error`     | `XenonError::InvalidAxis`（参见 `26-error.md §5.1` / `§5.6`）                                                                                                        |
-| `tensor`    | `.is_f_contiguous()`, 布局标志查询（参见 `07-tensor.md §5.3`）                                                                                                       |
-
-### 4.4 依赖方向
-
-> **依赖方向：单向向上。** `iter/` 仅消费 `tensor`、`dimension`、`storage` 等核心模块，不被它们依赖。布局/连续性判断通过 `TensorBase` 暴露的查询接口完成。
+| 来源模块    | 使用的类型/trait                                                                                                                                  |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tensor`    | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `TensorViewMut<'a, A, D>`, `.shape()`, `.strides()`, `.as_ptr()`, `.len()`（参见 `07-tensor.md §5` ） |
+| `dimension` | `Dimension`, `Axis`, `Ix0`~`Ix6`, `IxDyn`，以及仅供内部轴迭代实现使用的 `RemoveAxis` / `D::Smaller`（参见 `02-dimension.md §5`）                  |
+| `storage`   | `Storage<Elem = A>`, `StorageMut<Elem = A>`, `Owned<A>`（参见 `05-storage.md §5`）                                                                |
+| `error`     | `XenonError::InvalidAxis`（参见 `26-error.md §5`）                                                                                                |
+| `tensor`    | `.is_f_contiguous()`, 布局标志查询（参见 `07-tensor.md §5`）                                                                                      |
 
 ### 4.3 依赖合法性
 
@@ -106,6 +100,10 @@ src/iter/
 | 新增第三方依赖 | 无                                                                            |
 | 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
 | 替代方案       | 不适用；当前范围内无需额外第三方依赖。                                        |
+
+### 4.4 依赖方向声明
+
+依赖方向：单向向上。`iter` 仅消费 `tensor`、`dimension`、`storage` 等核心模块，不被它们依赖。布局/连续性判断通过 `TensorBase` 暴露的查询接口完成。
 
 ---
 
