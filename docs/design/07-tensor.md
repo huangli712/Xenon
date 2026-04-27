@@ -167,16 +167,11 @@ pub struct TensorBase<S, D> {
 }
 ```
 
-> **FFI 布局说明：** `TensorBase` 不对外承诺稳定的结构体内存布局，也不作为 FFI 边界类型。FFI 消费者应优先使用 `23-ffi.md` 的 `TensorExport`，而非直接依赖 `TensorBase` 的字段顺序或 ABI 表示。
+- `TensorBase` 直接嵌入 `offset` 和 `flags` 字段。这是因为 `offset` 与存储指针配合进行偏移计算，属于张量实例的固有属性。
+- `TensorBase` 不对外承诺稳定的结构体内存布局，也不作为 FFI 边界类型。FFI 消费者应优先使用 `23-ffi.md` 的 `TensorExport`，而非直接依赖 `TensorBase` 的字段顺序或 ABI 表示。
+- `from_raw_parts*()` 系列中的 `ptr` 一律表示 storage base pointer，`offset` 一律表示从 storage base 到逻辑首元素的非负位移。`TensorBase::as_ptr()` / `TensorBase::as_mut_ptr()` 负责应用这一次偏移。`ffi` 文档中的示例与 Safety 说明必须遵循同一语义。
 
-> **设计说明：** `TensorBase` 直接嵌入 `offset` 和 `flags` 字段。
-> 这是因为 `offset` 与存储指针配合进行偏移计算，属于张量实例的固有属性；直接内联这些布局元数据可以避免额外的间接层，并保持与 `06-layout.md` 的当前结论一致。
-
-> **raw-parts 契约：** `from_raw_parts*()` 系列中的 `ptr` 一律表示 storage base pointer，
-> `offset` 一律表示从 storage base 到逻辑首元素的非负位移；`TensorBase::as_ptr()` /
-> `TensorBase::as_mut_ptr()` 负责应用这一次偏移。`ffi` 文档中的示例与 Safety 说明必须遵循同一语义。
-
-> **线程安全推导**: `TensorBase<S, D>` 的 `Send`/`Sync` 由存储模式 `S` 和元素类型 `A` 共同决定：`S` 提供 `Send`/`Sync`（参见 `05-storage.md §5.3`），`A` 须满足对应的线程安全约束（参见 `25-safety.md §4`）。
+**线程安全推导**: `TensorBase<S, D>` 的 `Send`/`Sync` 由存储模式 `S` 和元素类型 `A` 共同决定：`S` 提供 `Send`/`Sync`（参见 `05-storage.md §5.3`），`A` 须满足对应的线程安全约束（参见 `25-safety.md §4`）。
 
 | 张量存储模式              | `Send` 条件                       | `Sync` 条件                    | 说明                                              |
 | ------------------------- | --------------------------------- | ------------------------------ | ------------------------------------------------- |
@@ -345,23 +340,21 @@ pub enum DataLocation {
 }
 ```
 
-> **`len` / storage 长度不变量：** `TensorBase::len()` 返回逻辑元素总数（由 `shape` 计算）；`Storage::len()` 返回底层存储的可见长度。对于视图类型，storage len 可能大于 logical len。所有 bounds check 基于 logical len，raw-parts 构造基于 storage len。
+- **`len` / storage 长度不变量：** `TensorBase::len()` 返回逻辑元素总数（由 `shape` 计算）；`Storage::len()` 返回底层存储的可见长度。对于视图类型，storage len 可能大于 logical len。所有 bounds check 基于 logical len，raw-parts 构造基于 storage len。
+- **数据位置查询说明：** 当前版本仅支持 CPU 内存，`data_location()` 恒返回 `DataLocation::Cpu`，用于满足 `需求说明书 §8` 的存储位置查询接口。
+- **`storage_kind()` 语义说明：** `storage_kind()` 返回底层**实际存储表示类型**对应的 `Owned / View / ViewMut / Shared`，而不是高层语义分类。`OwnedRepr` 报告 `Owned`，`ViewRepr` 报告 `View`，`ViewMutRepr` 报告 `ViewMut`，`ArcRepr` 报告 `Shared`。因此广播结果若底层表示为 `ViewRepr`，其 `storage_kind()` 也必须返回 `View`，而不是 `Shared`。
+- **广播语义补充：** 广播结果的只读共享语义通过 layout flags 和访问控制表达，而非通过 `storage_kind()` 伪装。详见 `15-broadcast.md`。
+- **权威约束：** 访问语义的权威查询入口是 `access_semantics()`；`storage_kind()` 只报告底层表示类型，不能替代访问语义判定。
+- `LayoutState` 使用 `crate::layout::LayoutState`（参见 `06-layout.md §5`）；
+- 本文档不再重复定义 `FContiguous`、`NonContiguous`、`BroadcastView` 三个变体。
 
-> **数据位置查询说明：** 当前版本仅支持 CPU 内存，`data_location()` 恒返回 `DataLocation::Cpu`，用于满足 `需求说明书 §8` 的存储位置查询接口。
+**三层语义模型：**
 
-> **`storage_kind()` 语义说明：** `storage_kind()` 返回底层**实际存储表示类型**对应的 `Owned / View / ViewMut / Shared`，而不是高层语义分类。`OwnedRepr` 报告 `Owned`，`ViewRepr` 报告 `View`，`ViewMutRepr` 报告 `ViewMut`，`ArcRepr` 报告 `Shared`。因此广播结果若底层表示为 `ViewRepr`，其 `storage_kind()` 也必须返回 `View`，而不是 `Shared`。
+1. **存储表示层**：`Owned` / `View` / `ViewMut` / `Shared`，即 `storage_kind()` 的返回值，描述底层 representation。
+2. **访问语义层**：`ReadOnly` / `SharedReadOnly` / `Writable` / `Owned`，由 `access_semantics()` 返回，描述当前张量对底层数据的访问语义。
+3. **布局状态层**：`FContiguous` / `NonContiguous` / `BroadcastView`，由 `LayoutFlags` / `LayoutState` 描述。
 
-> **广播语义补充：** 广播结果的只读共享语义通过 layout flags 和访问控制表达，而非通过 `storage_kind()` 伪装。详见 `15-broadcast.md`。
-
-> **三层语义模型：**
->
-> 1. **存储表示层**：`Owned` / `View` / `ViewMut` / `Shared`，即 `storage_kind()` 的返回值，描述底层 representation。
-> 2. **访问语义层**：`ReadOnly` / `SharedReadOnly` / `Writable` / `Owned`，由 `access_semantics()` 返回，描述当前张量对底层数据的访问语义。
-> 3. **布局状态层**：`FContiguous` / `NonContiguous` / `BroadcastView`，由 `LayoutFlags` / `LayoutState` 描述。
->
-> 广播张量通常表现为“表示层 = `View`，访问语义层 = `SharedReadOnly`，布局状态层 = `BroadcastView`”。
-
-> **权威约束：** 访问语义的权威查询入口是 `access_semantics()`；`storage_kind()` 只报告底层表示类型，不能替代访问语义判定。
+广播张量通常表现为“表示层 = `View`，访问语义层 = `SharedReadOnly`，布局状态层 = `BroadcastView`”。
 
 | 语义分类 | 对应表示类型                                                                                      | 统一语义说明                                                           | 查询结果                          |
 | -------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------- |
@@ -369,9 +362,6 @@ pub enum DataLocation {
 | 共享只读 | `ArcRepr<A>`，或带共享只读语义标记的 `ViewRepr<'_, A>`（广播结果 / `ViewMutRepr` 零拷贝降级结果） | 可被多个只读视图共享；不提供安全可写访问；可共享所有权或共享借用语义   | `AccessSemantics::SharedReadOnly` |
 | 可写     | `ViewMutRepr<'_, A>`                                                                              | 提供独占可写借用；同时允许读取；不得与其他可写或共享只读访问并存       | `AccessSemantics::Writable`       |
 | 拥有     | `Owned<A>`                                                                                        | 持有底层存储所有权；提供可读可写访问；可零拷贝借出视图或降级为共享只读 | `AccessSemantics::Owned`          |
-
-> `LayoutState` 使用 `crate::layout::LayoutState`（参见 `06-layout.md §5`）；
-> 本文档不再重复定义 `FContiguous`、`NonContiguous`、`BroadcastView` 三个变体。
 
 ### 5.4 指针访问方法
 
