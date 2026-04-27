@@ -456,12 +456,13 @@ increment_index_f(shape, index):
 
 ### 8.1 测试分类表
 
-| 测试分类 | 说明                                                               | 包含的测试                                                                                                                                                                                                                                                            |
-| -------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 单元测试 | 验证单个迭代器类型的基本功能                                       | `test_elements_f_contig`, `test_elements_non_contiguous`, `test_elements_empty`, `test_elements_ix0`, `test_elements_mut_write`, `test_axis_iter_count`, `test_axis_iter_shape`, `test_axis_iter_dyn_rank0_error`, `test_indexed_iter_order`, `test_indexed_iter_ix0` |
-| 集成测试 | 验证迭代器与 TensorBase 入口方法的集成                             | `test_tensor_iter_integration`                                                                                                                                                                                                                                        |
-| 边界测试 | 空数组、零维张量、非连续内存、大张量/高维/极端索引元数据等边界条件 | `test_elements_empty`, `test_elements_ix0`, `test_axis_iter_dyn_rank0_error`, `test_elements_large_tensor_count`, `test_indexed_iter_high_rank_ixdyn`, `test_axis_iter_large_axis_index_error`（详见 §8.3）                                                           |
-| 属性测试 | 通过随机输入验证不变量                                             | `iter().count() == tensor.len()`, `axis_iter(Axis(i)).count() == shape[i]`, `ExactSizeIterator` 递减不变量（详见 §8.4）                                                                                                                                               |
+| 类型     | 位置                     | 目的                                              |
+| -------- | ------------------------ | ------------------------------------------------- |
+| 单元测试 | `#[cfg(test)] mod tests` | 验证单个迭代器类型的基本功能                      |
+| 集成测试 | `tests/`                 | 验证迭代器与 TensorBase 入口方法的集成            |
+| 边界测试 | 集成测试中标注           | 空数组、零维张量、非连续内存、大张量/高维等边界   |
+| 编译测试 | `tests compile_fail`     | 验证广播只读约束与 trait 边界                     |
+| 属性测试 | `tests/property/`        | 验证元素覆盖、轴计数与 ExactSizeIterator 不变量   |
 
 ### 8.2 单元测试清单
 
@@ -484,20 +485,20 @@ increment_index_f(shape, index):
 
 ### 8.3 边界测试场景
 
-| 场景                                           | 预期行为                                                                                                                                                                                      |
-| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 空数组 `shape=[0, 3]`                          | `iter()` 立即结束，`count() == 0`                                                                                                                                                             |
-| 单元素 `shape=[1, 1]`                          | `iter()` 产出 1 项                                                                                                                                                                            |
-| 零维张量 `Ix0` / rank-0 `IxDyn`                | `iter()` 产出 1 项；rank-0 运行时路径上的 `axis_iter()` / `axis_iter_mut()` 统一返回 `InvalidAxis`。静态 `Ix0` 仍受当前 `RemoveAxis` 公开签名约束，后续需与 `02-dimension.md §5.6` 一并收敛。 |
-| 通过 `SliceInfo::new(...)` 构造的非连续切片视图 | `iter()` 正确处理步长跳转                                                                                                                                                                     |
-| 广播视图 `shape=[1, 4]`                        | `iter()` 遍历逻辑元素，`iter_mut()` 编译拒绝                                                                                                                                                  |
-| 填充数组                                       | 仅遍历逻辑元素                                                                                                                                                                                |
-| 空张量 `IxDyn([])` 上调用 `axis_iter(Axis(0))` | 返回 `InvalidAxis`；同一输入上的 `iter()` / `indexed_iter()` 长度分别保持为 `1`                                                                                                                |
-| rank-6 张量 `IxDyn([1,1,1,1,1,4])` 沿 `Axis(5)` 迭代 | `axis_iter()` 产出 4 个子视图，子视图 shape 与元素数量保持一致                                                                                                                               |
-| `10^7` 元素张量沿轴迭代                        | `axis_iter()` 在大输入上保持 `count()` / `len()` 一致，并记录性能基线且不越界                                                                                                                  |
-| 大张量 `len ≈ 10^7`                            | `ExactSizeIterator` 长度、`count()` 与 `len()` 保持一致                                                                                                                                       |
-| 高维动态张量 `IxDyn([1, 1, 1, 1, 1, 1, 1, 1])` | `indexed_iter()` 产出数量正确，索引按 F-order 递增                                                                                                                                            |
-| 极端 axis 值 `Axis(usize::MAX)`                | `axis_iter()` / `axis_iter_mut()` 返回 `InvalidAxis`，诊断字段包含 `operation`、`axis`、`ndim`、`shape`                                                                                       |
+| 场景                                           | 预期行为                                                                                                                                    |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| 空数组 `shape=[0, 3]`                          | `iter()` 立即结束，`count() == 0`                                                                                                           |
+| 单元素 `shape=[1, 1]`                          | `iter()` 产出 1 项                                                                                                                          |
+| 零维张量 `Ix0` / rank-0 `IxDyn`                | `iter()` 产出 1 项；rank-0 运行时路径上的 `axis_iter()` / `axis_iter_mut()` 统一返回 `InvalidAxis`。静态 `Ix0` 仍受当前 `RemoveAxis` 约束。 |
+| 通过 `SliceInfo::new(...)` 构造的非连续切片视图 | `iter()` 正确处理步长跳转                                                                                                                  |
+| 广播视图 `shape=[1, 4]`                        | `iter()` 遍历逻辑元素，`iter_mut()` 编译拒绝                                                                                                |
+| 填充数组                                       | 仅遍历逻辑元素                                                                                                                              |
+| 空张量 `IxDyn([])` 上调用 `axis_iter(Axis(0))` | 返回 `InvalidAxis`；同一输入上的 `iter()` / `indexed_iter()` 长度分别保持为 `1`                                                             |
+| rank-6 张量 `IxDyn([1,1,1,1,1,4])` 沿 `Axis(5)` 迭代 | `axis_iter()` 产出 4 个子视图，子视图 shape 与元素数量保持一致                                                                        |
+| `10^7` 元素张量沿轴迭代                        | `axis_iter()` 在大输入上保持 `count()` / `len()` 一致，并记录性能基线且不越界                                                               |
+| 大张量 `len ≈ 10^7`                            | `ExactSizeIterator` 长度、`count()` 与 `len()` 保持一致                                                                                     |
+| 高维动态张量 `IxDyn([1, 1, 1, 1, 1, 1, 1, 1])` | `indexed_iter()` 产出数量正确，索引按 F-order 递增                                                                                          |
+| 极端 axis 值 `Axis(usize::MAX)`                | `axis_iter()` / `axis_iter_mut()` 返回 `InvalidAxis`，诊断字段包含 `operation`、`axis`、`ndim`、`shape`                                     |
 
 ### 8.4 属性测试不变量
 
@@ -552,21 +553,14 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
     └── iter yields elements or sub-views for math / reduction / overload
 ```
 
-### 9.3 与 storage / dimension 模块
-
-```rust,ignore
-// Iterators read data via the Storage trait (see 05-storage.md §5)
-// Index state is managed via the Dimension trait (see 02-dimension.md §5)
-```
-
 ## 10. 错误处理与语义边界
 
-| 主题              | 内容                                                                                                                                                                                                                                                   |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Recoverable error | `axis_iter()` / `axis_iter_mut()` 在 `axis` 越界或运行时 rank-0 动态维输入上返回 `XenonError::InvalidAxis { operation: Cow<'static, str>, axis: usize, ndim: usize, shape: Vec<usize> }`；静态零维 `Ix0` 因 `D: RemoveAxis` 约束不进入该公开调用路径。 |
-| Panic             | 公开迭代器 API 不引入新的 panic 语义；仅内部 producer 分块等不变量破坏可使用断言。                                                                                                                                                                     |
-| 路径一致性        | 连续、非连续、零步长广播视图及并行 producer 的外部迭代顺序与长度语义必须一致。                                                                                                                                                                         |
-| 容差边界          | 不适用。                                                                                                                                                                                                                                               |
+| 主题              | 内容                                                                                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Recoverable error | `axis_iter()` / `axis_iter_mut()` 在 `axis` 越界或运行时 rank-0 动态维输入上返回 `XenonError::InvalidAxis`；静态零维 `Ix0` 不进入该公开调用路径。 |
+| Panic             | 公开迭代器 API 不引入新的 panic 语义；仅内部 producer 分块等不变量破坏可使用断言。                                                                |
+| 路径一致性        | 连续、非连续、零步长广播视图及并行 producer 的外部迭代顺序与长度语义必须一致。                                                                    |
+| 容差边界          | 不适用。                                                                                                                                          |
 
 ---
 
@@ -641,6 +635,14 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
 | SemVer     | 公开迭代顺序、`ExactSizeIterator` 精确长度、广播只读限制以及 `InvalidAxis` 错误字段均属于稳定契约；后续只能在新增能力时扩展，不能破坏既有语义 |
 | 依赖约束   | 不新增第三方依赖；仅复用项目既有核心模块                                                                                                      |
 | 范围边界   | 当前版本公开范围仅覆盖元素、按轴、按索引迭代；内部多输入遍历由各操作模块直接实现，`Windows` / `LaneIter` 保留为后续议题                       |
+
+| 约束       | 说明                                    |
+| ---------- | --------------------------------------- |
+| `std` only | 本模块依赖 `std` 环境，不讨论 `no_std`  |
+| MSRV       | Rust 1.85+                              |
+| 单 crate   | 保持单 crate 边界                       |
+| SemVer     | 张量元数据字段与构造契约变更遵循 SemVer |
+| 最小依赖   | 无新增第三方依赖                        |
 
 ---
 
