@@ -321,12 +321,31 @@ where
     pub fn raw_dim(&self) -> D;
 }
 
-// Enum definitions reside in 01-architecture.md §11.
-// Repeated here for API readability only; authoritative definitions are there.
-// See below for tensor-layer semantic rules governing each enum's values.
+// Semantic query enums — authoritative definition resides in this module.
+// 01-architecture.md §11 provides a quick-reference summary of these types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StorageKind {
+    Owned,
+    View,
+    ViewMut,
+    Shared,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccessSemantics {
+    ReadOnly,
+    SharedReadOnly,
+    Writable,
+    Owned,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DataLocation {
+    Cpu,
+}
 ```
 
-- **`StorageKind` / `AccessSemantics` / `DataLocation` 定义位置：** 权威定义在 `01-architecture.md §11`，本文档不重复列出变体。以下为语义规则说明。 `TensorBase::len()` 返回逻辑元素总数（由 `shape` 计算）；`Storage::len()` 返回底层存储的可见长度。对于视图类型，storage len 可能大于 logical len。所有 bounds check 基于 logical len，raw-parts 构造基于 storage len。
+- **`len` / storage 长度不变量：** `TensorBase::len()` 返回逻辑元素总数（由 `shape` 计算）；`Storage::len()` 返回底层存储的可见长度。对于视图类型，storage len 可能大于 logical len。所有 bounds check 基于 logical len，raw-parts 构造基于 storage len。
 - **数据位置查询说明：** 当前版本仅支持 CPU 内存，`data_location()` 恒返回 `DataLocation::Cpu`，用于满足 `需求说明书 §8` 的存储位置查询接口。
 - **`storage_kind()` 语义说明：** `storage_kind()` 返回底层**实际存储表示类型**对应的 `Owned / View / ViewMut / Shared`，而不是高层语义分类。`Owned` 报告 `Owned`，`ViewRepr` 报告 `View`，`ViewMutRepr` 报告 `ViewMut`，`ArcRepr` 报告 `Shared`。因此广播结果若底层表示为 `ViewRepr`，其 `storage_kind()` 也必须返回 `View`，而不是 `Shared`。
 - **广播语义补充：** 广播结果的只读共享语义通过 layout flags 和访问控制表达，而非通过 `storage_kind()` 伪装。详见 `15-broadcast.md`。
