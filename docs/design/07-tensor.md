@@ -180,7 +180,7 @@ pub struct TensorBase<S, D> {
 | ------------------------- | --------------------------------- | ------------------------------ | ------------------------------------------------- |
 | `Tensor<Owned<A>, D>`     | 取决于 `Owned<A>: Send`           | 取决于 `Owned<A>: Sync`        | 拥有型规则与 `05-storage.md`、`25-safety.md` 一致 |
 | `TensorView<'a, A, D>`    | 取决于 `ViewRepr<'a, A>: Send`    | 取决于 `ViewRepr<'a, A>: Sync` | 只读借用可跨线程共享的前提由 storage 层定义       |
-| `TensorViewMut<'a, A, D>` | 取决于 `ViewMutRepr<'a, A>: Send` | 不成立                         | 可变视图只允许独占传播                            |
+| `TensorViewMut<'a, A, D>` | 取决于 `ViewMutRepr<'a, A>: Send` | 取决于 `ViewMutRepr<'a, A>: Sync`（通常不满足） | 可变视图只允许独占传播                            |
 | `ArcTensor<A, D>`         | 取决于 `ArcRepr<A>: Send`         | 取决于 `ArcRepr<A>: Sync`      | 共享只读线程安全前提完全继承 storage 层           |
 
 ### 5.2 Type aliases
@@ -321,29 +321,12 @@ where
     pub fn raw_dim(&self) -> D;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StorageKind {
-    Owned,
-    View,
-    ViewMut,
-    Shared,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AccessSemantics {
-    ReadOnly,
-    SharedReadOnly,
-    Writable,
-    Owned,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DataLocation {
-    Cpu,
-}
+// Enum definitions reside in 01-architecture.md §11.
+// Repeated here for API readability only; authoritative definitions are there.
+// See below for tensor-layer semantic rules governing each enum's values.
 ```
 
-- **`len` / storage 长度不变量：** `TensorBase::len()` 返回逻辑元素总数（由 `shape` 计算）；`Storage::len()` 返回底层存储的可见长度。对于视图类型，storage len 可能大于 logical len。所有 bounds check 基于 logical len，raw-parts 构造基于 storage len。
+- **`StorageKind` / `AccessSemantics` / `DataLocation` 定义位置：** 权威定义在 `01-architecture.md §11`，本文档不重复列出变体。以下为语义规则说明。 `TensorBase::len()` 返回逻辑元素总数（由 `shape` 计算）；`Storage::len()` 返回底层存储的可见长度。对于视图类型，storage len 可能大于 logical len。所有 bounds check 基于 logical len，raw-parts 构造基于 storage len。
 - **数据位置查询说明：** 当前版本仅支持 CPU 内存，`data_location()` 恒返回 `DataLocation::Cpu`，用于满足 `需求说明书 §8` 的存储位置查询接口。
 - **`storage_kind()` 语义说明：** `storage_kind()` 返回底层**实际存储表示类型**对应的 `Owned / View / ViewMut / Shared`，而不是高层语义分类。`Owned` 报告 `Owned`，`ViewRepr` 报告 `View`，`ViewMutRepr` 报告 `ViewMut`，`ArcRepr` 报告 `Shared`。因此广播结果若底层表示为 `ViewRepr`，其 `storage_kind()` 也必须返回 `View`，而不是 `Shared`。
 - **广播语义补充：** 广播结果的只读共享语义通过 layout flags 和访问控制表达，而非通过 `storage_kind()` 伪装。详见 `15-broadcast.md`。
@@ -376,8 +359,9 @@ where
 {
     /// Returns a raw pointer to the logical first element.
     ///
-    /// For empty tensors, this returns `NonNull::dangling().as_ptr()` and does
-    /// not perform pointer arithmetic on the storage base pointer.
+    /// For empty tensors, this returns `NonNull::dangling().as_ptr()` (which
+    /// yields `*mut A`, implicitly coerced to `*const A`) and does not perform
+    /// pointer arithmetic on the storage base pointer.
     pub fn as_ptr(&self) -> *const A;
 
     /// Returns the raw storage base pointer WITHOUT adding the offset.
@@ -402,7 +386,9 @@ where
     /// Returns a mutable raw pointer to the data start.
     ///
     /// For empty tensors, this returns `NonNull::dangling().as_ptr()` and does
-    /// not perform pointer arithmetic on the storage base pointer.
+    /// not perform pointer arithmetic on the storage base pointer. Note:
+    /// `NonNull::dangling().as_ptr()` returns `*mut A`, matching this method's
+    /// return type exactly.
     pub fn as_mut_ptr(&mut self) -> *mut A;
 }
 ```
@@ -415,8 +401,12 @@ where
     S: Storage<Elem = A>,
     D: Dimension,
 {
-    /// Returns a shared slice when the logical tensor is F-contiguous and the
-    /// logical-first pointer contract is satisfied.
+    /// Returns a shared slice when all of the following preconditions hold:
+    ///
+    /// 1. `flags.is_f_contiguous()` is true (F-order contiguous layout)
+    /// 2. `!flags.has_zero_stride()` (no broadcast dimensions)
+    /// 3. `as_ptr()` points at the logical first element (logical-first
+    ///    pointer contract; see §6.2)
     ///
     /// This is the zero-copy fast path consumed by `simd/`, `parallel/`, and
     /// convenience APIs such as `set::unique()` examples. Non-contiguous views
@@ -506,6 +496,12 @@ where
 
     /// Construct a tensor from a Vec without validating shape/stride consistency.
     ///
+    /// Despite the `_unchecked` name, this method still validates that
+    /// `shape.checked_size()` succeeds (i.e. the product does not overflow) so
+    /// that subsequent `len()` calls via the `expect` path remain safe. The
+    /// caller's unsafe obligation is limited to pointer validity, alignment, and
+    /// the data-length-matches-shape-product invariant.
+    ///
     /// # Safety
     /// - `data.as_ptr()` must remain valid for the duration of construction, and
     ///   `Vec<A>` must satisfy the alignment requirements of `A`
@@ -517,6 +513,9 @@ where
     /// - The constructor assumes no extra offset and therefore treats the input
     ///   buffer as the full logical tensor payload
     pub(crate) unsafe fn from_raw_vec_unchecked(data: Vec<A>, shape: D) -> Self {
+        // Validates shape.checked_size() to protect the len() expect path.
+        // Remaining invariants (pointer validity, alignment, data length) are
+        // the caller's responsibility.
         // computes F-order strides internally
         // ...
     }
@@ -849,10 +848,14 @@ Logical view:
 
 - [ ] **T8**: 实现内部 unsafe 构造方法 (construct.rs)
   - 文件: `src/tensor/construct.rs`
-  - 内容: `from_raw_vec_unchecked`(内部 unsafe 方法)；公开安全构造方法 `from_shape_vec` 的实现位于 `src/construct/from.rs`（参见 `18-construction.md §5.3`，本文件 §5.6 仅列其公开签名）
-  - 测试: `test_from_shape_vec_valid`, `test_from_shape_vec_invalid`
+  - 内容: `from_raw_vec_unchecked`（pub(crate) unsafe 内部方法）
+  - 测试: `test_from_raw_vec_unchecked_valid`, `test_from_raw_vec_unchecked_invalid_shape`
   - 前置: T5, T7
-  - 预计: 10 min
+  - 预计: 5 min
+
+> **注意**：公开安全构造方法 `from_shape_vec` 的实现位于 `src/construct/from.rs`（参见
+> `18-construction.md §5.3`），本文件 §5.6 仅列其公开签名，不属于本目录任务。对应测试
+> `test_from_shape_vec_valid` / `test_from_shape_vec_invalid` 应在构造模块的测试文件中。
 
 - [ ] **T9**: 实现视图创建方法
   - 文件: `src/tensor/impls.rs`
@@ -926,8 +929,9 @@ Logical view:
 | 高维 `Tensor6`        | `ndim()==6`, 步长正确                        |
 | 动态维度 `TensorD`    | `ndim()` 运行时值正确                        |
 | 大张量 `10^7` 元素    | 构造成功，长度与 flags 保持正确              |
-| 非连续转置视图        | 可构造 `view()`，但连续切片快路径返回 `None` |
-| 空张量 + 多种 offset  | 只要 `offset <= storage_len` 即合法          |
+| 非连续转置视图        | 可构造 `view()`，但连续切片快路径返回 `None`                          |
+| 非零 offset 视图      | `as_storage_ptr() != as_ptr()`，差值等于 `offset`                     |
+| 空张量 + 多种 offset  | 只要 `offset <= storage_len` 即合法                                    |
 | 非法元素类型编译失败  | compile-fail 测试拒绝不满足元素约束的类型    |
 
 ### 8.4 属性测试不变量
@@ -1050,6 +1054,8 @@ where
     pub fn len(&self) -> usize {
         // TensorBase only reaches this query path after construction-time shape
         // validation, so checked_size() must already succeed here.
+        // from_raw_vec_unchecked also validates shape via checked_size() internally,
+        // ensuring this expect never fires in sound code.
         self.shape.checked_size().expect("tensor shape must be validated before len()")
     }
 }
