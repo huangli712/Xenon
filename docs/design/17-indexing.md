@@ -273,7 +273,7 @@ let value = unsafe { tensor.get_unchecked(user_index.as_slice()) };
 ### 6.2 偏移量计算
 
 ```rust,ignore
-fn compute_offset_f<D: Dimension>(index: &[usize], strides: &Strides<D>) -> Option<usize> {
+fn compute_offset<D: Dimension>(index: &[usize], strides: &Strides<D>) -> Option<usize> {
     let mut offset = 0usize;
     for (&idx, &stride) in index.iter().zip(strides.iter()) {
         let term = idx.checked_mul(stride)?;
