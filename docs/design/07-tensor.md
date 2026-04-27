@@ -982,11 +982,11 @@ User calls constructor-module API `Tensor::<f64, Ix2>::zeros([3, 4])?`
 
 ### 9.3 与 storage 模块的接口
 
-| 接口                                             | 方向                          | 契约                                                                                                           |
-| ------------------------------------------------ | ----------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `Storage::as_ptr()` / `StorageMut::as_mut_ptr()` | `tensor` 消费 `storage`       | storage 层返回 storage base pointer；`TensorBase` 负责叠加 `offset` 并形成 logical-first pointer               |
-| `Owned::from_vec_aligned(data)`                  | `tensor` 消费 `storage`       | 当前版本默认采用 64 字节对齐分配策略；若存在例外，须显式文档化，且不得改变 `需求说明书 §19` 规定的逻辑元素顺序 |
-| `Storage<Elem = A>` / `StorageMut<Elem = A>`     | `tensor` 消费 `storage` trait | 元素类型、只读/可写访问能力完全由存储模式 trait 约束决定，`tensor` 不重复维护独立元素类型参数                  |
+| 接口                                             | 方向                     | 契约                                                                                                           |
+| ------------------------------------------------ | ------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `Storage::as_ptr()` / `StorageMut::as_mut_ptr()` | `tensor` 消费 `storage`  | storage 层返回 storage base pointer；`TensorBase` 负责叠加 `offset` 并形成 logical-first pointer               |
+| `Owned::from_vec_aligned(data)`                  | `tensor` 消费 `storage`  | 当前版本默认采用 64 字节对齐分配策略；若存在例外，须显式文档化，且不得改变 `需求说明书 §19` 规定的逻辑元素顺序 |
+| `Storage<Elem = A>` / `StorageMut<Elem = A>`     | `tensor` 消费 `storage`  | 元素类型、只读/可写访问能力完全由存储模式 trait 约束决定，`tensor` 不重复维护独立元素类型参数                  |
 
 ```rust,ignore
 // TensorBase obtains element type via Storage trait's associated type
@@ -1045,15 +1045,15 @@ where
 }
 ```
 
-> **实现约束重申：** `len()` 的返回值始终来源于逻辑 `shape`，不允许退化为读取 `storage.len()`；后者仅用于 raw-parts 与底层访问范围校验。
+`len()` 的返回值始终来源于逻辑 `shape`，不允许退化为读取 `storage.len()`；后者仅用于 raw-parts 与底层访问范围校验。
 
 ### 9.5 与 layout 模块的接口
 
-| 接口                                                          | 方向                                          | 契约                                                                                           |
-| ------------------------------------------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `layout::compute_f_strides(&shape)`                           | `tensor` 消费 `layout`                        | 安全构造拥有型连续张量时统一按 F-order 生成 stride                                             |
-| `layout::compute_layout_flags(&shape, &strides, logical_ptr)` | `tensor` 消费 `layout`                        | `flags` 的计算必须基于 logical-first pointer 契约，与 `as_ptr()` / `as_slice()` 的可见语义一致 |
-| `LayoutState` / layout flags queries                          | `simd`、`parallel` 继续消费 `tensor` 暴露结果 | 上游加速模块只通过 `TensorBase` 查询连续性、对齐和广播状态，不绕过 `tensor` 直接重建布局判断   |
+| 接口                                                          | 方向                             | 契约                                                                                           |
+| ------------------------------------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `layout::compute_f_strides(&shape)`                           | `tensor` 消费 `layout`           | 安全构造拥有型连续张量时统一按 F-order 生成 stride                                             |
+| `layout::compute_layout_flags(&shape, &strides, logical_ptr)` | `tensor` 消费 `layout`           | `flags` 的计算必须基于 logical-first pointer 契约，与 `as_ptr()` / `as_slice()` 的可见语义一致 |
+| `LayoutState` / layout flags queries                          | `simd`、`parallel` 消费 `tensor` | 上游加速模块只通过 `TensorBase` 查询连续性、对齐和广播状态，不绕过 `tensor` 直接重建布局判断   |
 
 ```rust,ignore
 // Layout module provides stride computation and contiguity checks
@@ -1162,23 +1162,6 @@ where
 | 视图零拷贝 | `view()`/`view_mut()` 仅复制元数据                           |
 | 单态化     | Dimension + Storage trait 在泛型上下文中单态化               |
 
-**TensorBase 大小分析（参考）**：
-
-| 实例化             | 大小（估算） | 说明                                                                                                       |
-| ------------------ | ------------ | ---------------------------------------------------------------------------------------------------------- |
-| `Tensor2<f64>`     | ~72 bytes    | Owned(24) + Ix2(16) + Strides<Ix2>(16) + usize(8) + u8(1) + padding(7) = 72 bytes                          |
-| `TensorView2<f64>` | ~56 bytes    | ViewRepr<'a, f64>(metadata + pointer) + Ix2(16) + Strides<Ix2>(16) + usize(8) + u8(1) + padding ≈ 56 bytes |
-| `TensorD<f64>`     | ~96 bytes    | Owned(24) + IxDyn(24×2) + usize(8) + u8(1) + padding                                                       |
-
-**性能数据（参考）**：
-
-| 操作               | 开销         | 说明               |
-| ------------------ | ------------ | ------------------ |
-| `shape()`          | ~1ns         | 切片返回           |
-| `len()`            | ~2ns         | 乘积计算           |
-| `view()`           | ~5ns         | 元数据复制         |
-| `from_shape_vec()` | ~1μs + alloc | 包含验证和步长计算 |
-
 ---
 
 ## 13. 平台与工程约束
@@ -1186,10 +1169,10 @@ where
 | 约束       | 说明                                    |
 | ---------- | --------------------------------------- |
 | `std` only | 本模块依赖 `std` 环境，不讨论 `no_std`  |
+| MSRV       | Rust 1.85+                              |
 | 单 crate   | 保持单 crate 边界                       |
 | SemVer     | 张量元数据字段与构造契约变更遵循 SemVer |
 | 最小依赖   | 无新增第三方依赖                        |
-| MSRV       | Rust 1.85+                              |
 
 ---
 
