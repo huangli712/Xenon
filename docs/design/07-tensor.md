@@ -3,7 +3,7 @@
 > 文档编号: 07
 > 模块目录: src/tensor/
 > 任务阶段: Phase 3
-> 前置文档: 01-architecture.md, 02-dimension.md, 05-storage.md, 06-layout.md
+> 前置文档: 01-architecture.md, 02-dimension.md, 03-element.md, 05-storage.md, 06-layout.md
 > 需求参考: 需求说明书 §6 - §8、§10、§19、§22、§27、§28
 > 范围声明: 范围内
 
@@ -88,7 +88,8 @@ src/tensor/
 ├── impls.rs
 │   ├── crate::storage    # Owned, ViewRepr, ViewMutRepr, ArcRepr, Storage, StorageMut, StorageOwned, StorageShared
 │   ├── crate::dimension  # Dimension, Ix0~Ix6, IxDyn, .slice(), .checked_size(), .ndim()
-│   └── crate::layout     # LayoutFlags, compute_f_strides(), is_f_contiguous(), is_aligned()
+│   ├── crate::layout     # LayoutFlags, compute_f_strides(), is_f_contiguous(), is_aligned()
+│   └── crate::element    # Element
 |
 ├── aliases.rs
 │   └── (no external crate dependency; references TensorBase and dimension types from mod.rs)
@@ -107,6 +108,7 @@ src/tensor/
 | `storage`   | `Owned`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`, `Storage`, `StorageMut`, `StorageOwned`, `StorageShared`（参见 `05-storage.md §5`） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.checked_size()`, `.ndim()`（参见 `02-dimension.md §5`）                           |
 | `layout`    | `LayoutFlags`, `compute_f_strides()`, `is_f_contiguous()`, `is_aligned()`（参见 `06-layout.md §5`）                                |
+| `element`   | `Element`（构造方法中 `A: Element` 约束；参见 `03-element.md §5`）                                                                  |
 
 ### 4.3 依赖合法性
 
@@ -816,8 +818,8 @@ Logical view:
 
 - [ ] **T4**: 实现形状与步长查询方法
   - 文件: `src/tensor/impls.rs`
-  - 内容: `shape()`/`strides()`/`ndim()`/`len()`/`is_empty()`/`offset()`/`raw_dim()`/`flags()`/`storage_kind()`
-  - 测试: `test_shape_query`, `test_len_empty`
+  - 内容: `shape()`/`strides()`/`ndim()`/`len()`/`is_empty()`/`offset()`/`raw_dim()`/`flags()`/`storage_kind()`/`access_semantics()`/`data_location()`
+  - 测试: `test_shape_query`, `test_len_empty`, `test_access_semantics`, `test_data_location`
   - 前置: T2
   - 预计: 10 min
 
@@ -828,10 +830,10 @@ Logical view:
   - 前置: T4
   - 预计: 10 min
 
-- [ ] **T6**: 实现指针访问方法
+- [ ] **T6**: 实现指针访问与连续切片方法
   - 文件: `src/tensor/impls.rs`
-  - 内容: `as_ptr()`/`as_storage_ptr()`/`as_mut_ptr()`
-  - 测试: `test_as_ptr`, `test_as_mut_ptr`
+  - 内容: `as_ptr()`/`as_storage_ptr()`/`as_mut_ptr()`/`as_slice()`/`as_mut_slice()`
+  - 测试: `test_as_ptr`, `test_as_mut_ptr`, `test_as_storage_ptr`, `test_as_slice`, `test_as_mut_slice`
   - 前置: T4
   - 预计: 10 min
 
@@ -846,7 +848,7 @@ Logical view:
 
 - [ ] **T8**: 实现内部 unsafe 构造方法 (construct.rs)
   - 文件: `src/tensor/construct.rs`
-  - 内容: `from_raw_vec_unchecked`(内部 unsafe 方法)；公开安全构造方法 `from_shape_vec` 的实现位于 `src/construct/from.rs`（参见 `18-construction.md §5.3`，本文件 §5.5 仅列其公开签名）
+  - 内容: `from_raw_vec_unchecked`(内部 unsafe 方法)；公开安全构造方法 `from_shape_vec` 的实现位于 `src/construct/from.rs`（参见 `18-construction.md §5.3`，本文件 §5.6 仅列其公开签名）
   - 测试: `test_from_shape_vec_valid`, `test_from_shape_vec_invalid`
   - 前置: T5, T7
   - 预计: 10 min
@@ -897,6 +899,13 @@ Logical view:
 | `test_tensor_as_ptr`                | 指针指向正确位置                                                  | 高     |
 | `test_tensor_as_mut_ptr`            | 可变指针指向正确位置                                              | 高     |
 | `test_tensor_storage_kind`          | `Owned`/`View`/`ViewMut`/`Shared` 的存储位置查询正确              | 高     |
+| `test_tensor_access_semantics`      | 各存储模式返回正确的 `AccessSemantics`                           | 高     |
+| `test_tensor_data_location`         | `data_location()` 返回 `DataLocation::Cpu`                       | 中     |
+| `test_tensor_as_storage_ptr`        | `as_storage_ptr()` 返回 storage 基指针而非逻辑首元素指针         | 高     |
+| `test_tensor_has_zero_stride`       | 广播视图 `has_zero_stride()` 返回 true                           | 中     |
+| `test_tensor_as_slice`              | 连续张量 `as_slice()` 返回 `Some`，非连续返回 `None`             | 高     |
+| `test_tensor_as_slice_empty`        | 空张量 `as_slice()` 返回 `Some(&[])`                             | 中     |
+| `test_tensor_as_mut_slice`          | 可写连续张量 `as_mut_slice()` 返回 `Some`                        | 高     |
 | `test_tensor_view`                  | `view()` 创建正确视图                                             | 高     |
 | `test_tensor_view_mut`              | `view_mut()` 创建正确可变视图                                     | 高     |
 | `test_from_shape_vec_valid`         | 合法构造成功                                                      | 高     |
