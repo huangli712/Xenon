@@ -1179,23 +1179,31 @@ where
 ## 附录 A：完整类型关系图
 
 ```
-                        TensorBase<S, D>
-                              │
-          ┌───────────────────┼───────────────────┐
-          │                   │                   │
-          ▼                   ▼                   ▼
-    TensorBase<        TensorBase<          TensorBase<
-      Owned<A>,         ViewRepr<'a, A>,    ViewMutRepr<'a, A>,
-         D>                    D>                    D>
-          │                   │                   │
-          ▼                   ▼                   ▼
-      Tensor<A,D>      TensorView<'a,A,D>  TensorViewMut<'a,A,D>
-          │                   │                   │
-    ┌─────┴─────┐       ┌─────┴─────┐       ┌─────┴─────┐
-    │           │       │           │       │           │
- Tensor1<A> TensorD<A> TensorView1 TensorViewD TensorViewMut1 TensorViewMutD
-    │           │       │           │       │           │
-   ...         ...     ...         ...     ...         ...
+TensorBase<S, D>
+├── TensorBase<Owned<A>, D>          →  Tensor<A, D>
+│   ├── Tensor0<A>                      (Ix0)
+│   ├── Tensor1<A>                      (Ix1)
+│   ├── ...
+│   ├── Tensor6<A>                      (Ix6)
+│   └── TensorD<A>                      (IxDyn)
+├── TensorBase<ViewRepr<'a, A>, D>   →  TensorView<'a, A, D>
+│   ├── TensorView0<'a, A>              (Ix0)
+│   ├── TensorView1<'a, A>              (Ix1)
+│   ├── ...
+│   ├── TensorView6<'a, A>              (Ix6)
+│   └── TensorViewD<'a, A>             (IxDyn)
+├── TensorBase<ViewMutRepr<'a, A>, D>→  TensorViewMut<'a, A, D>
+│   ├── TensorViewMut0<'a, A>           (Ix0)
+│   ├── TensorViewMut1<'a, A>           (Ix1)
+│   ├── ...
+│   ├── TensorViewMut6<'a, A>           (Ix6)
+│   └── TensorViewMutD<'a, A>          (IxDyn)
+└── TensorBase<ArcRepr<A>, D>        →  ArcTensor<A, D>
+    ├── ArcTensor0<A>                    (Ix0)
+    ├── ArcTensor1<A>                    (Ix1)
+    ├── ...
+    ├── ArcTensor6<A>                    (Ix6)
+    └── ArcTensorD<A>                    (IxDyn)
 ```
 
 ## 附录 B：命名约定速查
