@@ -485,7 +485,7 @@ increment_index_f(shape, index):
 
 | 场景                                           | 预期行为                                                                                                                                    |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| 空数组 `shape=[0, 3]`                          | `iter()` 立即结束，`count() == 0`                                                                                                           |
+| 空数组 `shape=[0, 3]`                          | `iter()` 立即结束，`count() == 0`；`axis_iter(Axis(0))` 返回空 `AxisIter`（`len() == 0`），不 panic；`axis_iter(Axis(1))` 产出 3 个 shape 为 `[0]` 的子视图 |
 | 单元素 `shape=[1, 1]`                          | `iter()` 产出 1 项                                                                                                                          |
 | 零维张量 `Ix0` / rank-0 `IxDyn`                | `iter()` 产出 1 项；rank-0 运行时路径上的 `axis_iter()` / `axis_iter_mut()` 统一返回 `InvalidAxis`。静态 `Ix0` 仍受当前 `RemoveAxis` 约束。 |
 | 通过 `SliceInfo::new(...)` 构造的非连续切片视图 | `iter()` 正确处理步长跳转                                                                                                                  |
@@ -555,7 +555,7 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
 
 | 主题              | 内容                                                                                                                                              |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | `axis_iter()` / `axis_iter_mut()` 在 `axis` 越界或运行时 rank-0 动态维输入上返回 `XenonError::InvalidAxis`；静态零维 `Ix0` 不进入该公开调用路径。 |
+| Recoverable error | `axis_iter()` / `axis_iter_mut()` 在 `axis` 越界（含 `ndim == 0` 的静态 `Ix0` 与动态 `IxDyn` 输入）上返回 `XenonError::InvalidAxis`。静态 `Ix0` 虽满足 `RemoveAxis` 约束（参见 `02-dimension.md §5.8`），但因其 `ndim == 0`，任意 `Axis(n)` 均触发 `n >= ndim` 检查，统一返回 `InvalidAxis`。 |
 | Panic             | 公开迭代器 API 不引入新的 panic 语义；仅内部 producer 分块等不变量破坏可使用断言。                                                                |
 | 路径一致性        | 连续、非连续、零步长广播视图及并行 producer 的外部迭代顺序与长度语义必须一致。                                                                    |
 | 容差边界          | 不适用。                                                                                                                                          |
