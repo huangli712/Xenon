@@ -187,7 +187,7 @@ where
 }
 ````
 
-#### C 侧结构化导出格式
+### 5.3 C 侧结构化导出格式
 
 ```rust,ignore
 /// Element type discriminant for FFI consumers.
@@ -216,7 +216,7 @@ impl ElementType {
 
 > **实现基础说明：** 可在 `Element` sealed trait 中引入 `const ELEMENT_TYPE: ElementType` 关联常量作为 `ElementType::of::<A>()` 的实现基础。若当前 Rust 版本不支持所需 const 机制，可将该 API 降为普通 `fn`，保持语义不变。
 
-### 5.2.1 指针约定对照
+### 5.4 指针约定对照
 
 | API                         | 基准                 | 说明                                                                 |
 | --------------------------- | -------------------- | -------------------------------------------------------------------- |
@@ -365,7 +365,7 @@ where
 
 > **生命周期与借用语义：** 导出结果不拥有底层内存；一旦源张量被 drop，`TensorExport` 内的 `data`、`shape`、`strides` 全部立即失效。应将该导出结果视为对源张量当前元数据与指针状态的借用快照：`export()` 暴露只读快照，`export_mut()` 暴露独占可写快照；无论是否跨 FFI 边界缓存，该快照都不得超出源张量的生命周期，也不得绕过 `&mut self` 所表达的独占写语义。本文不额外指定 `TensorExport<'_, _>` / `TensorExportMut<'_, _>` 的 auto trait 组合，线程相关性质以其字段与 Rust auto-trait 推导结果为准；测试计划应通过编译期 `Send` / `Sync` 检查验证该自动推导结果。
 
-#### 5.2.2 Complex FFI 布局契约
+### 5.5 Complex FFI 布局契约
 
 ```rust,ignore
 #[repr(C)]
@@ -387,7 +387,7 @@ pub struct Complex64 {
 
 > **导出语义：** 导出复数张量时，`TensorExport<Complex<f32>>` / `TensorExport<Complex<f64>>` 和 `TensorExportMut<Complex<f32>>` / `TensorExportMut<Complex<f64>>` 中的 `data` 仍是“复数元素指针”，`offset` 与 `strides` 仍按“复数元素个数”计量，而不是按标量 `re/im` 分量或字节计量。C 侧看到的是 `Complex32*` / `Complex64*` 加上相同的 shape/stride 元数据。
 
-#### 5.2.3 Bool FFI 布局契约
+### 5.6 Bool FFI 布局契约
 
 > **Bool ABI 约束：** `bool` 与 C `_Bool` / C23 `bool` 的互操作仅在文档明确支持的平台/ABI 下成立；它用于说明当前支持目标上的对接方式，不作为跨语言、跨目标的稳定 ABI 承诺。对这些已支持平台，C 消费者应使用 `_Bool` 或 `bool`（C23）来匹配 `TensorExport<bool>` / `TensorExportMut<bool>` 中的 `data` 指针类型，并避免使用 `int`、`unsigned char` 等其它整数类型。
 
@@ -397,7 +397,7 @@ pub struct Complex64 {
 
 > **测试边界说明：** 与上述 ABI 约束一致，`bool` FFI ABI 相关测试也只应在文档明确支持的 targets/ABI 上启用；其它目标上应通过 `#[cfg(...)]` 跳过，而不是把 `_Bool` 兼容性断言提升为无条件测试基线。
 
-### 5.3 从裸指针构造张量
+### 5.7 从裸指针构造张量
 
 ````rust,ignore
 impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D>
@@ -556,7 +556,7 @@ where
 
 > **可写视图补充：** `from_raw_parts_mut()` 不仅必须拒绝所有非空零步长布局（任何非单元素轴的 `stride == 0`），还必须拒绝一切能被高效保守判定为潜在自别名的布局。实现上先用 `validate_access_range()` 验证越界与可表示性，再用 `validate_non_overlapping_layout(shape, strides, offset, storage_len)` 对受支持的正步长布局做保守非重叠判定；若布局超出该高效判定范围，也必须返回可恢复错误，而不是枚举全部可达 offset。
 
-### 5.4 将张量解构为裸指针
+### 5.8 将张量解构为裸指针
 
 ````rust,ignore
 pub struct OwnedRawParts<A, D> {
@@ -604,7 +604,7 @@ where
 
 > **设计决策：** `into_raw_parts` 仅适用于 Owned 存储，且导出的内存布局必须满足 Xenon 的 owned 不变量：F-order contiguous、`offset == 0`、canonical F-order strides。若调用方持有的是 view 或带 offset 的逻辑子视图，必须先显式物化为新的 owned contiguous tensor，再跨越 FFI 边界导出裸指针。如需将 View 转为 Owned 再解构，参见 `21-type.md` §5.6。
 
-#### 内存管理
+### 5.9 内存管理
 
 `into_raw_parts()` 返回的是 Xenon 分配器元信息的完整快照。回收必须遵守 Xenon 的分配契约：要么通过 `Tensor::from_raw_parts_owned(raw)` 重建后交由 Xenon 的 Drop 释放，要么仅使用与该契约等价、且明确以 Xenon 分配器元数据为前提的回收路径；不得把该指针交给系统 `free`、C 侧默认释放器或其他不知晓 `cap` / `align` 的 foreign allocator。正确回收内存的方式如下：
 
@@ -718,7 +718,7 @@ unsafe {
 }
 ```
 
-### 5.5 BLAS 兼容性 API
+### 5.10 BLAS 兼容性 API
 
 ````rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -763,7 +763,7 @@ where
 }
 ````
 
-### 5.6 blas_info 和 BlasInfo 结构体
+### 5.11 blas_info 和 BlasInfo 结构体
 
 ````rust,ignore
 use crate::error::FfiErrorCategory;
@@ -868,7 +868,7 @@ where
 }
 ````
 
-### 5.7 LDA 查询
+### 5.12 LDA 查询
 
 ````rust,ignore
 use crate::error::FfiErrorCategory;
@@ -927,7 +927,7 @@ where
 }
 ````
 
-### 5.8 多维索引到指针偏移
+### 5.13 多维索引到指针偏移
 
 ````rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -1013,7 +1013,7 @@ where
 }
 ````
 
-### 5.9 Good/Bad 对比
+### 5.14 Good/Bad 对比
 
 ```rust,ignore
 // Good - Check BLAS layout compatibility before passing
@@ -1158,7 +1158,7 @@ Additional caller-side checks:
   - 前置: T1
   - 预计: 10 min
 
-### Wave 3: BLAS 和索引（可并行）
+### Wave 3: BLAS 和索引
 
 - [ ] **T3**: 实现 BLAS 兼容性 API
   - 文件: `src/ffi/blas.rs`
