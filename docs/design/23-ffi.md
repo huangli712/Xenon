@@ -96,12 +96,12 @@ src/ffi/
 
 ### 4.2 类型级依赖
 
-| 来源模块    | 使用的类型/trait                                                                                        | 参考                 | 使用者                           |
-| ----------- | ------------------------------------------------------------------------------------------------------- | -------------------- | -------------------------------- |
-| `tensor`    | `TensorBase<S, D>`, `.shape()`, `.strides()`, `.offset()`                                               | `07-tensor.md` §5    | `ptr.rs`, `blas.rs`, `offset.rs` |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`                                                                       | `02-dimension.md` §5 | `ptr.rs`, `offset.rs`            |
-| `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, owned allocator metadata（供 `OwnedRawParts<A, D>` 导出/重建） | `05-storage.md` §5   | `ptr.rs`, `blas.rs`, `offset.rs` |
-| `layout`    | `is_f_contiguous()`, `has_zero_stride()`                                                                | `06-layout.md` §5    | `ptr.rs`, `blas.rs`              |
+| 来源模块    | 使用的类型/trait                                                                                        |
+| ----------- | ------------------------------------------------------------------------------------------------------- |
+| `tensor`    | `TensorBase<S, D>`, `.shape()`, `.strides()`, `.offset()`                                               |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`                                                                       |
+| `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, owned allocator metadata（供 `OwnedRawParts<A, D>` 导出/重建） |
+| `layout`    | `is_f_contiguous()`, `has_zero_stride()`                                                                |
 
 ### 4.3 依赖合法性
 
@@ -111,9 +111,9 @@ src/ffi/
 | 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
 | 替代方案       | 不适用；当前范围内无需额外第三方依赖。                                        |
 
-### 4.4 依赖方向声明
+### 4.4 依赖方向
 
-> **依赖方向：单向向上。** `ffi` 仅消费 `tensor`、`storage` 等核心模块，为上游库提供接口。
+依赖方向：单向向上。`ffi` 仅消费 `tensor`、`storage` 等核心模块，为上游库提供接口。
 
 > **owner 约定：** `as_ptr()` / `as_mut_ptr()` 的核心定义在 `07-tensor.md`（tensor 核心层）；`ffi` 模块负责指针导出格式（`TensorExport`）、BLAS 辅助 API 和裸指针构造。本文聚焦这些能力在 FFI 边界的公开形态，因此依赖表中仍把相关实现文件归入 `ffi` 模块文档范围，而不把它写成反向依赖。
 
