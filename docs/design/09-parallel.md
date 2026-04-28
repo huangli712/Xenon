@@ -3,7 +3,7 @@
 > 文档编号: 09
 > 模块目录: src/parallel/
 > 任务阶段: Phase 5
-> 前置文档: 01-architecture.md, 07-tensor.md, 26-error.md
+> 前置文档: 01-architecture.md, 03-element.md, 07-tensor.md, 26-error.md
 > 需求参考: 需求说明书 §1、§9、§12 - §14、§27、§28
 > 范围声明: 范围内
 
@@ -63,6 +63,7 @@ src/parallel/
 src/parallel/
 ├── rayon (optional)         # ThreadPool, ParallelIterator, current_num_threads
 ├── crate::tensor            # Tensor, TensorBase, TensorView
+├── crate::element           # Element, Numeric
 ├── crate::dimension         # Dimension
 ├── crate::dispatch          # ParallelExecStrategy (defined in dispatch.rs)
 ├── (module-owned)           # ParElements and par_iter() entry belong to parallel/
@@ -75,10 +76,11 @@ src/parallel/
 | ----------- | -------------------------------------------------------------------------------------------------------- |
 | `rayon`     | `rayon::ThreadPool`, `rayon::current_num_threads`, `rayon::iter::ParallelIterator`                       |
 | `tensor`    | `Tensor<A, D>`, `TensorBase<S, D>`, `TensorView<'a, A, D>`, `.len()`, `.raw_dim()`, `.is_f_contiguous()` |
+| `element`   | `Element`, `Numeric`                                                                                     |
 | `dimension` | `Dimension`                                                                                              |
 | `dispatch`  | `ParallelExecStrategy`                                                                                   |
 | `parallel`  | `ParElements<'a, A, D>`, `TensorBase::par_iter()`, `par_zip_map()`                                       |
-| `error`     | `XenonError`, `XenonError::DimensionMismatch`, `XenonError::InvalidShape`, `XenonError::InvalidArgument` |
+| `error`     | `XenonError`, `XenonError::DimensionMismatch`, `XenonError::InvalidArgument` |
 
 ### 4.3 依赖合法性
 
@@ -129,9 +131,7 @@ pub(crate) struct ParallelPool {
 | `max_workers`        | `Option<usize>` | `None`（使用线程池默认） | 最大并行工作线程数   |
 | `chunk_size`         | `Option<usize>` | `None`（自动计算）       | 每个 chunk 的元素数  |
 
-- 配置入口不对外暴露。
-- `parallel_threshold` 的权威入口位于 `dispatch.rs`：其内部保留编译期默认值，同时允许配置层覆写。
-- `parallel` 模块仅通过 `ParallelExecStrategy` 接收 dispatch 已裁决完成的执行阶段参数字段。
+- 配置入口不对外暴露。`parallel` 模块仅通过 `ParallelExecStrategy` 接收 dispatch 已裁决完成的执行阶段参数字段；`parallel_threshold` 的权威入口位于 `dispatch.rs`。
 
 ### 5.4 `ParallelExecStrategy` 参数校验规则
 
@@ -218,8 +218,8 @@ where
 ```
 
 - `par_dot()` 在类型层面接受任意 `Dimension` 输入，以便与更通用的上层张量调用路径对接；但其语义契约仍限定为一维向量内积，因此实现必须在运行时检查 `lhs.ndim() == 1`、`rhs.ndim() == 1`，并在进入并行归约前再次确认两侧逻辑长度一致。
-- 整数 `sum` / `dot` 支持并行路径。在并行路径中，每个分片独立执行 checked 算术；若任一分片检测到溢出，并行执行立即终止并传播 panic。诊断仲裁必须按逻辑 chunk 索引确定：始终报告首个失败 chunk（按逻辑索引顺序）。若实现无法保证这一确定性，则整数 `sum` / `dot` 在并行模式下必须回退到串行路径。
-- 复数内积采用共轭线性定义：`result = sum(conj(lhs_i) * rhs_i)`，与 `08-simd.md` §8 中复数 dot kernel 的共轭线性方向完全一致。
+- 整数 `sum` / `dot` 支持并行路径。在并行路径中，每个分片独立执行 checked 算术；若任一分片检测到溢出，panic 将在并行收集完成后传播。诊断仲裁必须按逻辑 chunk 索引确定：始终报告首个失败 chunk（按逻辑索引顺序）。若实现无法保证这一确定性，则整数 `sum` / `dot` 在并行模式下必须回退到串行路径。
+- 复数内积采用共轭线性定义：`result = sum(conj(lhs_i) * rhs_i)`，与 `08-simd.md` §6.6 中复数 dot kernel 的共轭线性方向完全一致。
 - `Numeric` trait 定义于 `03-element.md` §5.2，提供通用数值运算能力标记（`Element + Add + Sub + Mul + Div + Neg + conjugate`）。
 
 ### 5.6 并行迭代入口
@@ -291,7 +291,6 @@ dispatch-selected parallel entry
 
 - `parallel` 假定调用方已经完成阈值、线程环境与嵌套并行治理判断。
 - 并行函数只负责固定 chunking、执行 `rayon` 并行迭代以及保持结果语义与调用方选择的串行基线一致。
-- 调度模型：`dispatch.rs` 只负责决定串行 vs 并行路径。
 
 ### 6.3 二元逐元素并行路径
 
@@ -348,6 +347,8 @@ where
 
 ### 6.4 轴向归约并行方案
 
+> 以下为实现指导，描述 `reduction` 模块如何利用 `parallel/` 提供的原语组合轴向归约的并行路径；`parallel/` 本身不暴露 `par_sum_axis` 等轴向专用 API。
+
 - 轴向 `sum_axis(axis)` / `sum_axis_keepdims(axis)` 的并行路径沿未被归约的轴切分为彼此独立的 chunk。
 - 每个 chunk 在目标轴上执行串行归约，随后按输出逻辑位置写入局部结果；最终结果按 chunk 索引顺序合并。
 - `keepdims` 行为在并行路径下保持不变，仅影响输出 shape，不改变分块策略。
@@ -361,7 +362,6 @@ where
 - 对归约和内积，若调用方选择并行路径，则 `parallel/` 必须提供固定 chunking 与固定 merge tree，保证同平台、同配置、同路径下结果确定；整数 `sum` / `dot` 的失败诊断还必须按逻辑 chunk 索引顺序仲裁，始终选择首个失败 chunk。
 - 并行归约采用固定分块策略：`chunk` 大小 = `max(1, (n + num_workers - 1) / num_workers)`，worker 按固定索引范围分配，merge 按 worker 索引顺序合并。
 - 若执行对象为整数 `sum` / `dot`，每个 worker 必须在本分片内执行 `checked_add` / `checked_mul` + `checked_add`；任一 worker 发现溢出时必须传播 panic，不得转写为 `XenonError`。失败诊断固定按逻辑 chunk 索引顺序仲裁；若该实现前提不成立，则必须改走串行路径。
-- 调度模型：`dispatch.rs` 只负责决定串行 vs 并行路径。
 
 ### 6.6 Checked 映射与错误传播
 
@@ -489,6 +489,7 @@ where
 | `test_par_zip_map_broadcast_rhs_scalar` | 右侧标量广播时并行路径与串行一致           | 高     |
 | `test_par_sum_matches_serial`           | 并行 `sum` 与串行语义一致                  | 高     |
 | `test_par_dot_matches_serial`           | `par_dot` 与串行结果一致                   | 高     |
+| `test_par_map_checked_matches_serial` | `par_map_checked` 在闭包返回 `Ok` 时结果与串行一致 | 高     |
 | `test_parallel_error_propagation`       | 并行 `Err` 及时上传                        | 高     |
 | `test_parallel_panic_propagation`       | 并行 panic 不被吞掉                        | 高     |
 
@@ -545,9 +546,9 @@ where
 | 方向           | 对方模块                     | 接口/类型                                         | 约定                                                                |
 | -------------- | ---------------------------- | ------------------------------------------------- | ------------------------------------------------------------------- |
 | 消费（输入）   | `tensor`                     | `Tensor<A, D>`, `TensorBase<S, D>`                | 调用前已满足 shape、layout、类型约束                                |
-| 消费（输入）   | `iter` / `parallel`          | `TensorBase::par_iter()`, `ParElements<'a, A, D>` | `par_iter()` 定义于 `parallel`（参见 §5.6），`ParElements` 同；二者均为 `pub(crate)` 内部入口，只提供单输入只读并行遍历 |
-| 消费（输入）   | `parallel`                   | `par_zip_map()`                                   | `math` 模块经 `dispatch.rs` 完成路径选择后调用，仅为 crate 内部能力 |
+| 消费（输入）   | `element`                    | `Element`, `Numeric`                              | 函数签名中 trait 约束所需                                           |
 | 消费（输入）   | `error`                      | `XenonError`                                      | 可恢复错误统一复用项目错误模型                                      |
+| 模块内部       | `parallel`                   | `TensorBase::par_iter()`, `ParElements<'a, A, D>` | 定义于本模块（参见 §5.6），`pub(crate)` 内部入口，提供单输入只读并行遍历 |
 | 被调用（输出） | 上层语义模块 / `dispatch.rs` | `par_map` / `par_sum` / `par_dot` / `par_zip_map` | 仅在 `dispatch.rs` 已选中并行路径后执行                             |
 | 产出（输出）   | 上层语义模块                 | `Tensor<B, D>` 或 `Result<A, XenonError>`         | 并行与串行路径保持相同外部语义                                      |
 
@@ -570,10 +571,10 @@ math / reduction / matrix call dispatch entry
 
 | 主题              | 说明                                                                                                            |
 | ----------------- | --------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | `par_dot()` 的长度不兼容返回 `XenonError::DimensionMismatch`；`par_zip_map()` 的元素总数溢出返回 `InvalidArgument` |
+| Recoverable error | `par_dot()` 的长度不兼容返回 `XenonError::DimensionMismatch`；`par_dot()` 的非一维输入返回 `XenonError::InvalidArgument`；`par_zip_map()` 的元素总数溢出返回 `InvalidArgument` |
 | Panic             | 归约中的整数溢出仍属于不可恢复错误，必须 panic，而不是包装为 `XenonError`                                       |
 | 路径一致性        | `dispatch.rs` 负责执行路径选择；一旦进入 `parallel/`，并行路径必须返回与调用方串行基线相同形状、相同错误类别，以及满足同一数值语义约束的结果  |
-| 容差边界          | 浮点与复数若存在执行路径相关的已知舍入差异，只能落在 `需求说明书 §28.3` 与 `需求说明书 §28.5` 允许且已文档化的范围内；以 `需求说明书 §28.3` 为权威基线，`00-coding.md §8.4` 仅作为实现参考。|
+| 容差边界          | 浮点与复数若存在执行路径相关的已知舍入差异，只能落在 `需求说明书 §28.3` 与 `需求说明书 §28.5` 允许且已文档化的范围内；以 `需求说明书 §28.3` 为权威基线，`00-coding.md §8` 仅作为实现参考。|
 
 路径语义边界：
 
@@ -586,7 +587,7 @@ math / reduction / matrix call dispatch entry
 ### 10.1 浮点/复数并行归约容差
 
 - 浮点与复数并行归约允许与标量路径不同的合并顺序；该差异视为合法实现细节，但必须受 `需求说明书 §28.3` 文档化容差约束。
-- 以 `需求说明书 §28.3` 为权威基线，`00-coding.md §8.4` 仅作为实现参考。
+- 以 `需求说明书 §28.3` 为权威基线，`00-coding.md §8` 仅作为实现参考。
 - 同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。
 - `NaN`：按 IEEE 754 语义检查（`NaN !=` 任何值），不使用数值容差。
 - `±Inf`：必须同号同类。

@@ -85,7 +85,7 @@ src/ffi/
 ├── blas.rs
 │   ├── crate::tensor        # TensorBase<S, D>
 │   ├── crate::storage       # Storage
-│   ├── crate::layout        # is_f_contiguous, has_zero_stride
+│   ├── crate::layout        # is_f_contiguous, has_zero_stride (via TensorBase method → LayoutFlags)
 │   ├── super::types         # BlasInfo, FfiErrorCategory
 │   └── super::ptr           # as_ptr
 └── offset.rs
@@ -101,7 +101,7 @@ src/ffi/
 | `tensor`    | `TensorBase<S, D>`, `.shape()`, `.strides()`, `.offset()`                                               |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`                                                                       |
 | `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, owned allocator metadata（供 `OwnedRawParts<A, D>` 导出/重建） |
-| `layout`    | `is_f_contiguous()`, `has_zero_stride()`                                                                |
+| `layout`    | `is_f_contiguous()`, `has_zero_stride()`（模块级函数定义于 `06-layout.md` §5，TensorBase 方法参见 `07-tensor.md` §5.3） |
 
 ### 4.3 依赖合法性
 
@@ -417,6 +417,7 @@ pub struct Complex64 {
 ````rust,ignore
 impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D>
 where
+    A: Element,
     D: Dimension,
 {
     /// Constructs an immutable view from raw pointer.
@@ -495,6 +496,7 @@ where
 
 impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D>
 where
+    A: Element,
     D: Dimension,
 {
     /// Constructs a mutable view from raw pointer.
@@ -574,6 +576,7 @@ where
 ### 5.8 将张量解构为裸指针
 
 ````rust,ignore
+#[repr(C)]
 pub struct OwnedRawParts<A, D> {
     pub ptr: *mut A,
     pub len: usize,
@@ -617,7 +620,7 @@ where
 }
 ````
 
-**设计决策：** `into_raw_parts` 仅适用于 Owned 存储，且导出的内存布局必须满足 Xenon 的 owned 不变量：F-order contiguous、`offset == 0`、canonical F-order strides。若调用方持有的是 view 或带 offset 的逻辑子视图，必须先显式物化为新的 owned contiguous tensor，再跨越 FFI 边界导出裸指针。如需将 View 转为 Owned 再解构，参见 `21-type.md` §5.6。
+**设计决策：** `into_raw_parts` 仅适用于 Owned 存储，且导出的内存布局必须满足 Xenon 的 owned 不变量：F-order contiguous、`offset == 0`、canonical F-order strides。若调用方持有的是 view 或带 offset 的逻辑子视图，必须先显式物化为新的 owned contiguous tensor，再跨越 FFI 边界导出裸指针。如需将 View 转为 Owned 再解构，参见 `21-type.md` §5.5。
 
 ### 5.9 内存管理
 
@@ -692,7 +695,7 @@ where
             reason: "raw.align must be a valid power-of-two alignment for A".into(),
         });
     }
-    let expected_strides = layout::canonical_f_strides(&raw.shape);
+    let expected_strides = layout::compute_f_strides(&raw.shape)?;
     if raw.strides != expected_strides {
         return Err(XenonError::InvalidLayout {
             operation: "ffi::from_raw_parts_owned".into(),
@@ -872,13 +875,20 @@ where
         }
 
         let data_ptr = self.as_ptr();
-        let lda = self.lda()?;
         let rows = self.shape()[0];
         let cols = self.shape()[1];
+        // After is_blas_layout_compatible() check, we know:
+        // - ndim == 2, F-contiguous, no zero strides
+        // - For rows == 0: lda = 1; otherwise lda = strides[1]
+        let leading_dim = if rows == 0 {
+            1
+        } else {
+            self.strides()[1]
+        };
 
         Ok(BlasInfo {
             data_ptr,
-            leading_dim: lda,
+            leading_dim,
             rows,
             cols,
         })
@@ -891,16 +901,19 @@ where
 ````rust,ignore
 use crate::error::FfiErrorCategory;
 
-impl<S, D> TensorBase<S, D>
+impl<S, D, A> TensorBase<S, D>
 where
-    S: Storage,
+    S: Storage<Elem = A>,
     D: Dimension,
 {
     /// Returns the leading dimension (only meaningful for 2D arrays).
     ///
     /// For F-order matrix `A[M, N]`, `LDA = stride[1]`.
-    /// For zero-size matrices, Xenon returns `1` so that callers can satisfy
-    /// the common BLAS requirement `lda >= max(1, rows)`.
+    /// For zero-row matrices (`rows == 0`), Xenon returns `1` so that callers
+    /// can satisfy the common BLAS requirement `lda >= max(1, rows)`.
+    /// For zero-column matrices (`cols == 0 && rows > 0`), Xenon returns
+    /// `stride[1]` (= rows for F-order) so that `lda >= max(1, rows)` is
+    /// still satisfied.
     ///
     /// **Note:** `lda()` is only valid for BLAS-compatible 2D tensors. For non-contiguous tensors (such as sliced views),
     /// the returned stride cannot be used directly in a BLAS call. Check `is_blas_layout_compatible()` first.
@@ -936,7 +949,7 @@ where
                 actual: alloc::format!("shape={:?}, strides={:?}", self.shape(), self.strides()).into(),
             });
         }
-        if self.shape()[0] == 0 || self.shape()[1] == 0 {
+        if self.shape()[0] == 0 {
             return Ok(1);
         }
         let strides = self.strides();
@@ -1076,32 +1089,58 @@ unsafe {
 
 ### 6.2 元数据校验算法
 
-`from_raw_parts()` / `from_raw_parts_mut()` 内部调用 `validate_access_range()` 验证元数据合法性。当前版本 stride 全为非负 `usize`，因此 `logical_min` 恒等于 `offset`。算法如下：
+`from_raw_parts()` / `from_raw_parts_mut()` 内部调用 `validate_access_range()` 验证元数据合法性。当前版本 stride 全为非负 `usize`，因此 `logical_min` 恒等于 `offset`。算法与 `07-tensor.md` §6.2 保持一致：
 
 ```
 validate_access_range(shape, strides, offset, storage_len):
-    1. Verify len(shape) == len(strides); otherwise return Err(DimensionMismatch).
-    2. Compute total_elements = product(shape) with checked multiplication;
-       on overflow, return Err(IntegerOverflow).
-    3. If total_elements == 0: skip pointer-range checks (empty tensor).
-    4. Compute the maximum element offset that any logical element can
-       reach, using checked multiplication / addition:
-          For each axis i in [0, ndim):
-            if shape[i] > 0:
-              axis_extent = checked_mul(shape[i] - 1, strides[i])
-              accumulate max contribution
-          logical_min = offset
-          logical_max = checked_add(offset, sum of axis_extent)
-       If any checked operation fails, return Err(IntegerOverflow).
-    5. If logical_max >= storage_len: return Err(InvalidLayout {
-           storage_kind,
-           shape,
-           strides,
-           offset,
-           storage_len,
-           reason: "access range exceeds storage",
-       }).
-    6. Return Ok(()).
+    if shape.checked_size() overflows:
+        return Err(XenonError::InvalidLayout {
+            operation: "validate_access_range",
+            storage_kind: "raw_parts",
+            shape, strides, offset, storage_len,
+            reason: "element count overflow",
+        })
+
+    if shape.checked_size() == Ok(0):
+        if offset > storage_len:
+            return Err(XenonError::InvalidLayout {
+                operation: "validate_access_range",
+                storage_kind: "raw_parts",
+                shape, strides, offset, storage_len,
+                reason: "empty tensor requires offset <= storage_len",
+            })
+        return Ok(())
+
+    max_offset = offset
+
+    for axis in 0..ndim:
+        if shape[axis] == 0:
+            return Ok(())
+
+        span = (shape[axis] - 1).checked_mul(strides[axis])
+            .ok_or_else(|| XenonError::InvalidLayout {
+                operation: "validate_access_range",
+                storage_kind: "raw_parts",
+                shape, strides, offset, storage_len,
+                reason: "stride span overflow",
+            })?
+        max_offset = max_offset.checked_add(span)
+            .ok_or_else(|| XenonError::InvalidLayout {
+                operation: "validate_access_range",
+                storage_kind: "raw_parts",
+                shape, strides, offset, storage_len,
+                reason: "logical access range overflow",
+            })?
+
+    if max_offset >= storage_len:
+        return Err(XenonError::InvalidLayout {
+            operation: "validate_access_range",
+            storage_kind: "raw_parts",
+            shape, strides, offset, storage_len,
+            reason: "logical access range exceeds backing storage",
+        })
+
+    return Ok(())
 ```
 
 **溢出安全性说明**：
@@ -1240,7 +1279,7 @@ Additional caller-side checks:
 | 非连续切片     | `is_blas_layout_compatible()` 返回 `false`                                                                                                                        |
 | 广播维度       | `is_blas_layout_compatible()` 返回 `false`                                                                                                                        |
 | 自别名可写布局 | `from_raw_parts_mut()` 返回 `InvalidLayout`                                                                                                                       |
-| 零尺寸矩阵     | `lda()` 返回 `1`，供调用方满足 BLAS 最小 LDA 约束                                                                                                                 |
+| 零尺寸矩阵     | `lda()` 在 `rows == 0` 时返回 `1`；在 `cols == 0 && rows > 0` 时返回 `strides[1]`（= rows），满足 `lda >= max(1, rows)` |
 | 1D 张量        | `lda()` 返回错误                                                                                                                                                  |
 | 零维张量       | `try_offset_of(&[])` 返回 `Ok(0)`                                                                                                                                 |
 | 未对齐指针     | `from_raw_parts` 的 Safety 文档需说明对齐要求                                                                                                                     |
