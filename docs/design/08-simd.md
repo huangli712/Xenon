@@ -734,71 +734,71 @@ Consistency guarantee strategy
 
 ### Wave 2: 向量化实现
 
-- [ ] **T3**: 创建 `src/simd/vector.rs` 逐元素操作
+- [ ] **T2**: 创建 `src/simd/vector.rs` 逐元素操作
   - 文件: `src/simd/vector.rs`
   - 内容: `VectorKernel<A>` 结构体、f32/f64 的 `AddKernel`/`SubKernel`/`MulKernel`/`DivKernel` WithSimd 实现
   - 测试: `test_vector_add_f32`、`test_vector_add_f64`
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T4a**: 实现浮点 `sum` SIMD 路径
+- [ ] **T3**: 实现浮点 `sum` SIMD 路径
   - 文件: `src/simd/vector.rs`
   - 内容: 为 `f32`/`f64` 实现 lane accumulation 与 documented merge 的 `SumKernel`
   - 测试: `test_sum_dispatch_simd_float`
-  - 前置: T3
+  - 前置: T2
   - 预计: 10 min
 
-- [ ] **T4b**: 实现整数 `sum` 与 `dot` 的 checked 语义 SIMD 路径
+- [ ] **T4**: 实现整数 `sum` 与 `dot` 的 checked 语义 SIMD 路径
   - 文件: `src/simd/vector.rs`
   - 内容: 为 `i32`/`i64` 实现仅在可证明等价于标量逐步 checked arithmetic 时启用的 SIMD 前缀/合并路径；无法满足条件时由语义模块保持串行路径，并补齐 overflow validation
   - 测试: `test_sum_dispatch_simd_int`、`test_dot_dispatch_simd_int`
-  - 前置: T4a
+  - 前置: T3
   - 预计: 10 min
 
-- [ ] **T4c**: 实现复数 `sum` SIMD 路径
+- [ ] **T5**: 实现复数 `sum` SIMD 路径
   - 文件: `src/simd/vector.rs`
   - 内容: 为 `Complex<f32>`/`Complex<f64>` 实现 AoS split real/imag accumulation
   - 测试: `test_sum_dispatch_simd_complex`
-  - 前置: T4a
+  - 前置: T3
   - 预计: 10 min
 
-- [ ] **T4d**: 实现浮点与复数 `dot` SIMD 路径
+- [ ] **T6**: 实现浮点与复数 `dot` SIMD 路径
   - 文件: `src/simd/vector.rs`
   - 内容: 为 `f32`/`f64`/`Complex<f32>`/`Complex<f64>` 实现 dot kernel 与 conjugate contract
   - 测试: `test_dot_dispatch_simd_float`、`test_dot_dispatch_simd_complex`
-  - 前置: T4a, T4c
+  - 前置: T3, T5
   - 预计: 10 min
 
 ### Wave 3: 集成与条件编译
 
-- [ ] **T5**: 实现 feature gate 条件编译
+- [ ] **T7**: 实现 feature gate 条件编译
   - 文件: `src/simd/mod.rs`, `Cargo.toml`
   - 内容: `#[cfg(feature = "simd")]` 条件编译、公开 API 导出、与内部 `dispatch.rs` 的集成接口
   - 测试: 不启用 simd 时编译通过且无 pulp 依赖
-  - 前置: T1, T3
+  - 前置: T1, T2
   - 预计: 10 min
 
 ### Wave 4: 测试与验证
 
-- [ ] **T6a**: 编写逐元素一致性测试
+- [ ] **T8**: 编写逐元素一致性测试
   - 文件: `src/simd/vector.rs` (#[cfg(test)])
   - 内容: 验证 `add`/`sub`/`mul`/`div` 的 SIMD kernel 与语义模块串行基线逐位一致
   - 测试: `test_simd_vector_consistency_elementwise`
-  - 前置: T5
+  - 前置: T7
   - 预计: 10 min
 
-- [ ] **T6b**: 编写 reduction / dot 语义与容差测试
+- [ ] **T9**: 编写 reduction / dot 语义与容差测试
   - 文件: `src/simd/vector.rs` (#[cfg(test)])
   - 内容: 覆盖浮点、复数与整数 SIMD 入口条件的语义约束及文档化容差边界
   - 测试: `test_simd_vector_semantics_reduction_dot`
-  - 前置: T6a
+  - 前置: T8
   - 预计: 10 min
 
-- [ ] **T6c**: 编写随机属性测试
+- [ ] **T10**: 编写随机属性测试
   - 文件: `tests/property/`
   - 内容: 随机输入下验证逐元素一致性与 reduction/dot 不变量
   - 测试: `test_simd_property_consistency`
-  - 前置: T6b
+  - 前置: T9
   - 预计: 10 min
 
 ---
