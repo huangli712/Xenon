@@ -356,7 +356,7 @@ Operator syntax (arithmetic.rs)
      v
 Element-wise math (math methods)
      |
-     | internally calls broadcast_with() to handle shape alignment
+     | internally broadcasts via broadcast_shape() + broadcast_to() (see 11-math.md §6.2)
      v
 Broadcast module (broadcast.rs) -- iterate broadcast views, write result
 ```
@@ -364,7 +364,7 @@ Broadcast module (broadcast.rs) -- iterate broadcast views, write result
 运算符 `a + b` 展开为：
 
 1. 运算符 impl 中调用 `self.add(rhs)`，委托给 `TensorBase::add()`（`11-math.md §5.3`）
-2. `TensorBase::add()` 内部调用 `broadcast_with(&a.view(), &b.view())` 完成广播
+2. `TensorBase::add()` 内部通过 `broadcast_shape()` 计算共同 shape，再分别 `broadcast_to()` 构造广播视图（`11-math.md §6.2`）；等价于调用 `broadcast_with(&a.view(), &b.view())` 完成广播
 3. 逐元素遍历广播后视图并写入新结果张量
 
 ### 6.2 深拷贝保证
@@ -544,7 +544,7 @@ tensor + scalar:
 User writes a + b / tensor + scalar / Scalar(x) + tensor
     │
     ├── overload selects the matching trait impl
-    ├── tensor×tensor delegates to broadcast_with() + method dispatch
+    ├── tensor×tensor delegates to broadcast_shape() + broadcast_to() + method dispatch (see 11-math.md §6.2)
     ├── tensor×scalar delegates to scalar method dispatch
     └── tensor / storage allocate a new owned result tensor; tensor×tensor paths return `Result`, scalar paths return `Tensor`
 ```

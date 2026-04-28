@@ -58,7 +58,7 @@
 src/broadcast/
 ├── mod.rs             # module entry, re-export public functions and trait-bound-related entry points
 ├── shape.rs           # can_broadcast(), broadcast_shape(), broadcast_strides()
-└── view.rs            # TensorBase::broadcast_to(), broadcast_with()
+└── view.rs            # broadcast_to() and pub(crate) broadcast_with() internals
 ```
 
 文件划分理由：广播模块天然分为“兼容性/步长规则”和“视图构造”两部分；前者只处理 shape 与 stride 元数据，后者负责把结果降级为只读广播视图。采用 `src/broadcast/` 目录结构能使规则函数与视图入口分离，同时保持当前版本只覆盖显式广播能力。
@@ -134,7 +134,7 @@ where
         E: IntoDimension;
 }
 
-pub fn broadcast_with<'a, A, S1, D, S2, E>(
+pub(crate) fn broadcast_with<'a, A, S1, D, S2, E>(
     a: &'a TensorBase<S1, D>,
     b: &'a TensorBase<S2, E>,
 ) -> Result<
@@ -159,7 +159,7 @@ where
 | `broadcast_shape()`   | 运行时计算公共 shape；不兼容时返回 `XenonError::BroadcastError`。                                                                                                        |
 | `broadcast_strides()` | 对齐原 shape 与目标 shape，广播轴写入 `0` 步长；输入长度非法时返回 `InvalidArgument`。                                                                                   |
 | `broadcast_to()`      | 显式广播入口；成功时返回共享底层数据的只读 `TensorView`。结果必须满足 `需求说明书 §6` 对“共享只读引用”的约束：可在多个张量实例之间共享同一底层数据，但不提供可写访问权。 |
-| `broadcast_with()`    | 面向两个张量输入的专用助手：先计算共同 shape，再分别构造两个只读广播视图。它不承担通用 shape 工具职责；仅需 shape 判定时应使用 `can_broadcast()` / `broadcast_shape()`。 |
+| `broadcast_with()`    | 面向两个张量输入的 `pub(crate)` 助手：先计算共同 shape，再分别构造两个只读广播视图。它不承担通用 shape 工具职责；仅需 shape 判定时应使用 `can_broadcast()` / `broadcast_shape()`。 |
 
 - **同形状快捷路径**：当两个输入形状完全相同时，`broadcast_with()` 可直接返回两个原始视图而不执行步长重写，因为目标 shape 与输入 shape 一致。
 - **目标秩语义**：`broadcast_to()` 的目标 shape 秩决定了输出视图的维度类型；标量广播到高维时，缺失前导轴按 `1` 补齐。
@@ -241,7 +241,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 对广播轴写入零步长意味着该轴被逻辑扩展，但所有索引都回落到同一底层元素；这与 `06-layout.md` §5.11 的零步长语义保持一致。若任一轴出现 `0` 步长，结果即不再视为普通 `FContiguous` 或一般 `NonContiguous` 视图，而统一进入 `BroadcastView`。
 
 - **再次广播规则：** 对已广播视图再次广播时，已有零步长轴保持为 `0`，新增广播轴也写入 `0` 步长；结果 `shape` 取“当前视图 shape”与“新目标 shape”的广播结果。
-- **布局标志重算规则：** `ALIGNED` 继承源视图；若任一轴 stride 为 `0`，设置 `BroadcastView` flag。`F_CONTIGUOUS` 仅在不存在零步长且结果 stride 仍满足 F-order 规则时保留。
+- **布局标志重算规则：** 布局标志必须通过 `compute_layout_flags()`（见 `06-layout.md`）重算，而非直接复制源标志。广播不改变逻辑首元素指针，因此重算后 `ALIGNED` 结果与源视图一致；`F_CONTIGUOUS` 仅在不存在零步长且结果 stride 仍满足 F-order 规则时保留；若任一轴 stride 为 `0`，设置 `BroadcastView` flag。
 
 ### 6.4 共享只读视图构造
 
