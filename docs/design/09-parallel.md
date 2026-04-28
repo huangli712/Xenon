@@ -27,18 +27,6 @@
 | 最小能力边界   | 当前版本只覆盖 `par_map`、`par_zip_map`、`par_sum`、`par_dot`，不扩展到 GPU 或通用多输入同步公开接口 |
 | 可选依赖最小化 | 仅在 `parallel` feature 下引入 `rayon`，默认关闭                                                     |
 
-### 1.3 架构位置
-
-```text
-Dependency levels:
-L0: error, private
-L1: dimension, element, complex
-L2: layout
-L3: storage
-L4: tensor
-L5: iter, dispatch, parallel  <- current module (optional, feature = "parallel")
-```
-
 ---
 
 ## 2. 需求映射与范围约束
@@ -96,11 +84,7 @@ src/parallel/
 | `parallel`  | `ParElements<'a, A, D>`, `TensorBase::par_iter()`, `par_zip_map()`                                       |
 | `error`     | `XenonError`, `XenonError::DimensionMismatch`, `XenonError::InvalidShape`                                |
 
-### 4.3 依赖方向
-
-> **依赖方向：单向向上。** `parallel/` 只提供纯并行执行入口，不包含串行回退。执行路径裁决由 `dispatch.rs` 完成，`parallel/` 不依赖 `dispatch.rs`。`ParElements` 与 `TensorBase::par_iter()` 归属 `parallel` 模块本身，不属于 `iter` 模块。并行路径只建立在上层已完成的张量形状、布局与类型约束之上；广播形状裁决由 `math` 调用侧先完成，再以 `output_dim` 形式传入。
-
-### 4.4 合法性声明
+### 4.3 依赖合法性
 
 | 项目           | 说明                                                                                       |
 | -------------- | ------------------------------------------------------------------------------------------ |
@@ -108,9 +92,9 @@ src/parallel/
 | 合法性结论     | 合法；符合 `需求说明书 §1.2` 对最小依赖的限制，以及 `需求说明书 §9.2` 对可选并行能力的要求 |
 | 替代方案       | 仅用 `std::thread` 不能无损提供当前所需的并行迭代与线程池抽象，因此不采用                  |
 
-### 4.5 与迭代器模块的边界
+### 4.4 依赖方向
 
-`parallel/` 不定义通用多输入同步并行公开迭代接口。`TensorBase::par_iter()` 只提供单输入元素级并行入口；二元逐元素并行能力以 `pub(crate)` 级 `par_zip_map()` 形式提供，仅供 `math` 模块在完成广播裁决后消费。该边界与 `10-iterator.md §1.2` 中“并行迭代不属于 `iter` 模块公开职责”保持一致。
+> **依赖方向：单向向上。** `parallel/` 只提供纯并行执行入口，不包含串行回退。执行路径裁决由 `dispatch.rs` 完成，`parallel/` 不依赖 `dispatch.rs`。`ParElements` 与 `TensorBase::par_iter()` 归属 `parallel` 模块本身，不属于 `iter` 模块。并行路径只建立在上层已完成的张量形状、布局与类型约束之上；广播形状裁决由 `math` 调用侧先完成，再以 `output_dim` 形式传入。
 
 ---
 
