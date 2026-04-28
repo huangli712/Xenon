@@ -424,7 +424,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 | `broadcast → dimension`     | `dimension`  | `Dimension`, `BroadcastDim`                     | 运行时 shape 计算与编译期输出维度类型推导分离。          |
 | `broadcast → layout`        | `layout`     | `Strides<D>`, `LayoutState::BroadcastView`      | 零步长轴必须映射到广播视图布局状态。                     |
 | `broadcast → error`         | `error`      | `XenonError::BroadcastError`, `InvalidArgument` | 广播不兼容与参数前提失败都必须返回结构化错误。           |
-| `overload ← broadcast`      | `overload`   | `broadcast_with()`, `broadcast_shape()`         | 二元运算先广播再计算，不允许各模块私自重复定义广播规则。 |
+| `math ← broadcast`          | `math`       | `broadcast_with()`, `broadcast_shape()`         | 二元运算先广播再计算，不允许各模块私自重复定义广播规则。 |
 | `iter ← broadcast`          | `iter`       | 只读广播视图                                    | 广播结果可被读取遍历，但不得提供可变迭代能力。           |
 
 ### 9.2 数据流描述
