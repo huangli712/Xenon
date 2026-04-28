@@ -113,7 +113,7 @@ xenon/
 │   ├── prelude.rs             # Common pub-use exports
 │   ├── private.rs             # Sealed-trait infrastructure
 │   ├── error.rs               # XenonError enum and Result alias
-│   ├── dispatch.rs            # Internal dispatch helper (ExecPath, ParallelGuard, parallel thresholds)
+│   ├── dispatch.rs            # Internal dispatch helper (ExecPath, ParallelExecStrategy, ParallelGuard, parallel thresholds)
 │   │
 │   ├── dimension/             # Dimension type system
 │   │   ├── mod.rs             # Dimension trait definition
@@ -447,7 +447,7 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | L4     | iter      | tensor, storage, dimension, error   | 10-iterator.md      |
 | L4     | ffi       | tensor, layout, storage, dimension  | 23-ffi.md           |
 | L4     | dispatch  | tensor                              | 01-architecture.md  |
-| L5     | parallel  | tensor, dimension, error            | 09-parallel.md      |
+| L5     | parallel  | tensor, dimension, error, dispatch  | 09-parallel.md      |
 | L5     | simd      | tensor, layout, element, storage    | 08-simd.md          |
 | L5     | math      | tensor, broadcast, element, iter    | 11-math.md          |
 | L5     | set       | tensor, element, complex, iter      | 14-set.md           |

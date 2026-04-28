@@ -52,8 +52,8 @@ SIMD 后端模块是 Xenon 张量库的可选性能加速层，通过 `pulp` cra
 | 需求映射 | 需求说明书 §9、§12 - §14、§27、§28                                                                                                      |
 | 范围内   | 本文覆盖矩阵中列出的 SIMD 子集：`add`/`sub`/`mul`/`div`、`neg`、`sum` / `dot`，以及复数逐元素算术；未列出能力由各语义模块的串行实现承担 |
 | 范围外   | 矩阵乘法、非 `sum` 归约、归约模块负责的 `norm` 等专用 SIMD kernel，以及 SVE 当前版本实现                                                |
-| 标量回退 | `simd` 模块不提供标量回退；职责划分见 §1.1                                                                                           |
-| 非目标   | No new third-party dependencies beyond pulp；在本模块内提供标量回退路径                                                             |
+| 标量回退 | `simd` 模块不提供标量回退；职责划分见 §1.1                                                                                              |
+| 非目标   | No new third-party dependencies beyond pulp；在本模块内提供标量回退路径                                                                 |
 
 **SIMD 覆盖范围**：当前版本正式承诺的 SIMD 覆盖以逐元素算术、归约（sum）和内积（dot）为优先。其他运算（一元、比较、逻辑、复数、数学函数）的 SIMD 路径作为实现优化项，不构成当前版本的稳定交付承诺。
 
@@ -73,7 +73,7 @@ src/simd/
 
 ## 4. 依赖关系
 
-### 4.1 依赖图
+### 4.1 依赖图（ASCII）
 
 ```
 src/simd/
@@ -354,7 +354,7 @@ SIMD 路径选择已收敛到 `simd` 后端内部（分层原则见 §1.2）。
 | `abs`                                            | `f32` / `f64`                                                   | 优化项（不构成稳定交付承诺）                              | 通过专用一元 kernel 路径或共享装载/收尾框架实现，不经 `SimdKernel` 二元算术 trait                                                              |
 | `square`                                         | `i32` / `i64` / `f32` / `f64` / `Complex<f32>` / `Complex<f64>` | 优化项（不构成稳定交付承诺）                              | 通过专用一元 kernel 路径或复用乘法/分量级 kernel，不经 `SimdKernel` 二元算术 trait                                                             |
 | `eq` / `ne` / `lt` / `gt`                        | 适用的整数 / 浮点类型                                           | 优化项（不构成稳定交付承诺）                              | 比较 kernel 将布尔结果写入 `bool` 目标缓冲区，不经 `SimdKernel` 二元算术 trait                                                                 |
-| `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` | `f32` / `f64`                                                   | 标量回退 + 可选 SIMD 加速                                 | 数学函数的 SIMD 实现依赖平台 libm 或手动实现，精度约束见 §10                  |
+| `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` | `f32` / `f64`                                                   | 标量回退 + 可选 SIMD 加速                                 | 数学函数的 SIMD 实现依赖平台 libm 或手动实现，精度以 `需求说明书 §28.3` 为权威基线，`00-coding.md §8.4` 为实现/测试参考 |
 | `not`                                            | `bool`                                                          | 优化项（不构成稳定交付承诺）                              | 通过独立 bool / mask kernel 实现，不经 `SimdKernel` 二元算术 trait                                                                             |
 | `complex_abs` / `conjugate`                      | `Complex<f32>` / `Complex<f64>`                                 | 优化项（不构成稳定交付承诺）                              | 通过专用一元/复数 kernel 路径实现；复数 AoS 输入在寄存器内重排后执行，不经 `SimdKernel` 二元算术 trait                                         |
 
@@ -898,7 +898,7 @@ SIMD 模块依赖 layout 提供的连续性和对齐信息来判断是否可以�
 | Recoverable error | 无专属 recoverable error；SIMD 不可用、类型不支持、未满足统一对齐快路径或当前 ISA 无法满足语义约束时均由 `simd` 后端内部保持非 SIMD 路径  |
 | Panic             | 切片长度不一致；整数 `sum` / `dot` 溢出；违反 kernel 前置条件的内部 bug                                                                   |
 | 路径一致性        | 逐元素 SIMD 路径保持公开语义一致；整数 `sum` / `dot` 与标量 checked arithmetic 精确一致；浮点/复数归约与内积允许已文档化容差              |
-| 容差边界          | 整数精确一致；浮点/复数归约与内积以 `需求说明书 §28.3` 为权威基线，`00-coding.md §7.4` 仅作为实现/测试参考                                |
+| 容差边界          | 整数精确一致；浮点/复数归约与内积以 `需求说明书 §28.3` 为权威基线，`00-coding.md §8.4` 仅作为实现/测试参考                                |
 
 **非有限值容差规则**：
 - `NaN`：按 IEEE 754 语义检查（`NaN !=` 任何值），不使用数值容差。

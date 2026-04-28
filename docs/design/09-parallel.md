@@ -64,6 +64,7 @@ src/parallel/
 ├── rayon (optional)         # ThreadPool, ParallelIterator, current_num_threads
 ├── crate::tensor            # Tensor, TensorBase, TensorView
 ├── crate::dimension         # Dimension
+├── crate::dispatch          # ParallelExecStrategy (defined in dispatch.rs)
 ├── (module-owned)           # ParElements and par_iter() entry belong to parallel/
 └── crate::error             # XenonError
 ```
@@ -75,6 +76,7 @@ src/parallel/
 | `rayon`     | `rayon::ThreadPool`, `rayon::current_num_threads`, `rayon::iter::ParallelIterator`                       |
 | `tensor`    | `Tensor<A, D>`, `TensorBase<S, D>`, `TensorView<'a, A, D>`, `.len()`, `.raw_dim()`, `.is_f_contiguous()` |
 | `dimension` | `Dimension`                                                                                              |
+| `dispatch`  | `ParallelExecStrategy`                                                                                   |
 | `parallel`  | `ParElements<'a, A, D>`, `TensorBase::par_iter()`, `par_zip_map()`                                       |
 | `error`     | `XenonError`, `XenonError::DimensionMismatch`, `XenonError::InvalidShape`                                |
 
@@ -88,7 +90,7 @@ src/parallel/
 
 ### 4.4 依赖方向
 
-依赖方向：单向向上。`parallel` 只提供纯并行执行入口，不包含串行回退。执行路径裁决由 `dispatch.rs` 完成，`parallel` 不依赖 `dispatch.rs`。`ParElements` 与 `TensorBase::par_iter()` 归属 `parallel` 模块本身，不属于 `iter` 模块。并行路径只建立在上层已完成的张量形状、布局与类型约束之上；广播形状裁决由 `math` 调用侧先完成，再以 `output_dim` 形式传入。
+依赖方向：单向向上。`parallel` 只提供纯并行执行入口，不包含串行回退。执行路径裁决由 `dispatch.rs` 完成；`parallel` 通过 `crate::dispatch` 引用 `ParallelExecStrategy` 类型（定义于 `dispatch.rs`），但不依赖 dispatch 的路径裁决实现逻辑。`ParElements` 与 `TensorBase::par_iter()` 归属 `parallel` 模块本身，不属于 `iter` 模块。并行路径只建立在上层已完成的张量形状、布局与类型约束之上；广播形状裁决由 `math` 调用侧先完成，再以 `output_dim` 形式传入。
 
 ---
 
@@ -139,6 +141,8 @@ pub(crate) struct ParallelPool {
 | `chunk_size`  | `Some(n)` where `n > 0` 或 `None` | `None` | `0` 返回 `InvalidArgument`                 |
 
 ### 5.5 函数签名
+
+> **定义位置**：`ParallelExecStrategy` 定义于 `dispatch.rs`（L4），`parallel/` 通过 `crate::dispatch` 引用。此处列出签名以便与并行函数签名一同参阅。
 
 ```rust,ignore
 pub(crate) struct ParallelExecStrategy {
@@ -227,8 +231,19 @@ where
     D: Dimension,
 {
     base: TensorView<'a, A, D>,
+    chunk_size: Option<usize>,
+    max_workers: Option<usize>,
 }
+```
 
+`ParElements` 通过实现 `rayon::iter::ParallelIterator` trait（`Item = &'a A`）提供并行遍历能力：
+
+- 按逻辑顺序产出共享引用；内部将 `TensorView` 按逻辑元素总数均匀分割为固定 chunk。
+- 对于 C-contiguous 布局，直接按连续内存切片分割以获得最佳缓存局部性；对于非连续布局（如 F-contiguous、转置视图），退化为线性索引区间 + 逐元素步长访问。
+- 分片粒度由 `chunk_size` 和 `max_workers` 字段控制：若 `chunk_size` 为 `Some(n)`，每个分片至多包含 `n` 个元素；若为 `None`，按 `(total_elements + num_threads - 1) / num_threads` 自动计算，其中 `num_threads` 取 `max_workers` 或 `rayon::current_num_threads()`。
+- `par_iter()` 返回使用默认策略（`chunk_size: None`, `max_workers: None`）的 `ParElements`；`ParElements::with_strategy()` 接受显式策略参数，供 `par_map_checked` 等需要精确控制分块的内部入口使用。
+
+```rust,ignore
 #[cfg(feature = "parallel")]
 impl<S, D, A> TensorBase<S, D>
 where
@@ -349,6 +364,7 @@ where
 ```rust,ignore
 pub(crate) fn par_map_checked<A, B, S, D, F>(
     tensor: &TensorBase<S, D>,
+    strategy: &ParallelExecStrategy,
     f: F,
 ) -> Result<Tensor<B, D>, XenonError>
 where
@@ -358,12 +374,13 @@ where
     B: Element + Send,
     F: Fn(&A) -> Result<B, XenonError> + Sync + Send,
 {
-    let output: Result<Vec<B>, XenonError> = tensor.par_iter().map(|x| f(x)).collect();
+    let iter = ParElements::with_strategy(tensor.view(), strategy);
+    let output: Result<Vec<B>, XenonError> = iter.map(|x| f(x)).collect();
     Ok(unsafe { Tensor::from_raw_vec_unchecked(output?, tensor.raw_dim()) })
 }
 ```
 
-`par_map_checked()` 不再自行决定是否并行；若被调用，表示 `dispatch.rs` 已选择并行执行路径。
+`par_map_checked()` 不再自行决定是否并行；若被调用，表示 `dispatch.rs` 已选择并行执行路径。`strategy` 参数控制并行分块策略，与其他并行入口保持一致。
 
 ### 6.7 安全性论证
 
@@ -680,6 +697,7 @@ math / reduction / matrix call dispatch entry
 | 1.3.2 | 2026-04-15 |
 | 1.3.3 | 2026-04-16 |
 | 1.3.4 | 2026-04-16 |
+| 1.4.0 | 2026-04-28 |
 
 ---
 
