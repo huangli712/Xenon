@@ -88,7 +88,7 @@ src/parallel/
 
 ### 4.4 依赖方向
 
-> **依赖方向：单向向上。** `parallel/` 只提供纯并行执行入口，不包含串行回退。执行路径裁决由 `dispatch.rs` 完成，`parallel/` 不依赖 `dispatch.rs`。`ParElements` 与 `TensorBase::par_iter()` 归属 `parallel` 模块本身，不属于 `iter` 模块。并行路径只建立在上层已完成的张量形状、布局与类型约束之上；广播形状裁决由 `math` 调用侧先完成，再以 `output_dim` 形式传入。
+依赖方向：单向向上。`parallel` 只提供纯并行执行入口，不包含串行回退。执行路径裁决由 `dispatch.rs` 完成，`parallel` 不依赖 `dispatch.rs`。`ParElements` 与 `TensorBase::par_iter()` 归属 `parallel` 模块本身，不属于 `iter` 模块。并行路径只建立在上层已完成的张量形状、布局与类型约束之上；广播形状裁决由 `math` 调用侧先完成，再以 `output_dim` 形式传入。
 
 ---
 

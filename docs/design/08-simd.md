@@ -89,10 +89,11 @@ src/simd/
 | 来源模块  | 使用的类型/trait                                                                   |
 | --------- | ---------------------------------------------------------------------------------- |
 | `pulp`    | `Arch`, `Simd`, `WithSimd`                                                         |
-| `tensor`  | `TensorBase<S, D>`, `.as_ptr()`, `.as_slice()`（参见 `07-tensor.md` §5.4 / §5.4a） |
+| `tensor`  | `TensorBase<S, D>`, `.as_ptr()`, `.as_slice()`（参见 `07-tensor.md` §5.4 / §5.5） |
 | `storage` | `RawStorage`, `Storage`, `.len()`（参见 `05-storage.md` §5）                       |
 | `tensor`  | `.is_f_contiguous()`, 布局标志查询（参见 `07-tensor.md` §5）                       |
 | `element` | `Element`（参见 `03-element.md` §5.1）                                             |
+| `element` | `Numeric`（参见 `03-element.md` §5.2）                                             |
 | `simd`    | `SimdElement`（本模块定义，见 §5.2）                                               |
 
 ### 4.3 依赖合法性
@@ -242,12 +243,11 @@ pub(crate) trait SimdKernel<A: Copy + Send + Sync + 'static>: Send + Sync {
 
     // NOTE: Unary operations are part of the SIMD design target.
     // Concrete kernels may still fall back to scalar per type/ISA.
+    // `abs` is excluded from this trait; it goes through a dedicated
+    // unary kernel path (see §5.6).
 
     /// Element-wise negation.
     fn neg(&self, src: &[A], dst: &mut [A]);
-
-    /// Element-wise absolute value.
-    fn abs(&self, src: &[A], dst: &mut [A]);
 
     // ========================================
     // Reduction operations
@@ -314,7 +314,7 @@ pub(crate) fn get_arch() -> () {
 /// `dispatch.rs` parallel gating, then in non-parallel execution extract
 /// compatible contiguous slices and call into the pure vectorized backend
 /// exposed by `simd/` only when `simd/` admits the SIMD path.
-pub enum BinaryOp {
+pub(crate) enum BinaryOp {
     Add,
     Sub,
     Mul,
@@ -323,7 +323,12 @@ pub enum BinaryOp {
 
 pub(crate) fn dispatch_vector_binary_op<A>(op: BinaryOp, lhs: &[A], rhs: &[A], dst: &mut [A])
 where
-    A: SimdElement + Numeric + Copy;
+    A: SimdElement + Numeric + Copy,
+{
+    // Internal dispatch: selects the appropriate SIMD kernel based on
+    // element type, ISA capability and alignment; falls back to scalar
+    // path when no SIMD path qualifies.
+}
 ```
 
 SIMD 路径选择已收敛到 `simd` 后端内部。`dispatch.rs` 只决定是否进入并行执行；一旦处于串行执行上下文，是否启用 SIMD 由 `simd/` 内部判断。
@@ -351,12 +356,11 @@ SIMD 路径选择已收敛到 `simd` 后端内部。`dispatch.rs` 只决定是�
 | `abs`                                            | `f32` / `f64`                                                   | 优化项（不构成稳定交付承诺）                              | 通过专用一元 kernel 路径或共享装载/收尾框架实现，不经 `SimdKernel` 二元算术 trait                                                              |
 | `square`                                         | `i32` / `i64` / `f32` / `f64` / `Complex<f32>` / `Complex<f64>` | 优化项（不构成稳定交付承诺）                              | 通过专用一元 kernel 路径或复用乘法/分量级 kernel，不经 `SimdKernel` 二元算术 trait                                                             |
 | `eq` / `ne` / `lt` / `gt`                        | 适用的整数 / 浮点类型                                           | 优化项（不构成稳定交付承诺）                              | 比较 kernel 将布尔结果写入 `bool` 目标缓冲区，不经 `SimdKernel` 二元算术 trait                                                                 |
-| `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` | `f32` / `f64`                                                   | 标量回退 + 可选 SIMD 加速                                 | 数学函数的 SIMD 实现依赖平台 libm 或手动实现，精度约束见 §5.5                                                                                  |
+| `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` | `f32` / `f64`                                                   | 标量回退 + 可选 SIMD 加速                                 | 数学函数的 SIMD 实现依赖平台 libm 或手动实现，精度约束见 §10                  |
 | `not`                                            | `bool`                                                          | 优化项（不构成稳定交付承诺）                              | 通过独立 bool / mask kernel 实现，不经 `SimdKernel` 二元算术 trait                                                                             |
 | `complex_abs` / `conjugate`                      | `Complex<f32>` / `Complex<f64>`                                 | 优化项（不构成稳定交付承诺）                              | 通过专用一元/复数 kernel 路径实现；复数 AoS 输入在寄存器内重排后执行，不经 `SimdKernel` 二元算术 trait                                         |
 
-- `dot()` 为当前版本正式能力；`SimdKernel` 直接覆盖 `f32` / `f64` / `Complex<f32>` / `Complex<f64>`。整数 `dot` 仅在存在已验证的 ISA 专用 widening 实现时才进入 SIMD，否则保持语义模块串行路径。
-- **注意**：`i64` 类型的 SIMD 归约和内积路径在当前版本默认不提供，除非存在已验证的 widening ISA 实现。不存在时回退到标量路径。
+- `dot()` 为当前版本正式能力；`SimdKernel` 直接覆盖 `f32` / `f64` / `Complex<f32>` / `Complex<f64>`。整数 `dot` 仅在存在已验证的 ISA 专用 widening 实现时才进入 SIMD，否则保持语义模块串行路径。整数归约/内积的详细约束见 §6.6。
 - 该覆盖目标不改变公开 API 的可用性；SIMD 仅影响执行路径选择，不改变公开语义契约。
 
 ### 5.7 SIMD Path Selection Thresholds
@@ -689,12 +693,12 @@ Consistency guarantee strategy
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**设计决策：** 对于逐元素运算，SIMD 与标量路径必须保持相同公开语义；当前版本仅对 §5.4a 表中“已实现”或“本版覆盖”的条目提供对应 SIMD kernel 路径，其中比较、一元与 bool 操作走独立专用 kernel，不经 `SimdKernel` 二元算术 trait。对于归约和内积，当前版本仅对已验证的 SIMD 覆盖子集启用向量化：`f32` / `f64` / `Complex<f32>` / `Complex<f64>` 为正式 SIMD 覆盖，`i32` / `i64` 仅在存在已验证的 ISA widening 实现时才进入 SIMD，否则默认回到串行 checked 基线，并继续遵循 `需求说明书 §9.1`、`需求说明书 §9.3` 与 `需求说明书 §28.3` 中对应的数值约束。以 `需求说明书 §28.3` 为权威基线，`00-coding.md §7.4` 仅作为实现/测试参考。同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。
+**设计决策：** 对于逐元素运算，SIMD 与标量路径必须保持相同公开语义；当前版本仅对 §5.6 覆盖状态表中“已实现”或“本版覆盖”的条目提供对应 SIMD kernel 路径，其中比较、一元与 bool 操作走独立专用 kernel，不经 `SimdKernel` 二元算术 trait。对于归约和内积，当前版本仅对已验证的 SIMD 覆盖子集启用向量化：`f32` / `f64` / `Complex<f32>` / `Complex<f64>` 为正式 SIMD 覆盖，`i32` / `i64` 仅在存在已验证的 ISA widening 实现时才进入 SIMD，否则默认回到串行 checked 基线（容差与精度约束见 §10）。
 
  **一致性说明：** 对于逐元素操作（add、mul 等），SIMD 和标量路径产生逐位一致的结果。
 对于归约/内积操作，Xenon 不接受未记录的“近似一致”；若某个 SIMD 内核无法满足文档定义的数值语义与容差边界，则不走 SIMD 路径。
 
-**覆盖说明：** 当前版本只覆盖 §5.4a 表中列出的“已实现”“本版覆盖”与“条件实现，默认标量回退”子集；其中整数 `sum` / `dot` 默认仍回到串行 checked 路径，只有在存在已验证 ISA widening 实现时才实际进入 SIMD。其余条目由 `simd/` 后端内部保持对应语义模块的标量/串行路径。数学函数作为后续增强目标逐步补齐；这不改变 `math` 模块对这些逐元素运算的公开 API 承诺。完整覆盖计划见 §5.4a。
+**覆盖说明：** 当前版本只覆盖 §5.6 覆盖状态表中列出的“已实现”“本版覆盖”与“条件实现，默认标量回退”子集；其中整数 `sum` / `dot` 默认仍回到串行 checked 路径，只有在存在已验证 ISA widening 实现时才实际进入 SIMD。其余条目由 `simd/` 后端内部保持对应语义模块的标量/串行路径。数学函数作为后续增强目标逐步补齐；这不改变 `math` 模块对这些逐元素运算的公开 API 承诺。完整覆盖计划见 §5.6。
 
 ### 6.6 SIMD reduction / dot 内部策略
 
@@ -702,20 +706,18 @@ Consistency guarantee strategy
 | -------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
 | `i32`          | 默认走串行 `checked_add`；仅在存在已验证的 ISA 专用 widening SIMD 实现时，才可使用 `i32 -> i64` 中间累加 | 默认走串行 `checked_mul` + `checked_add`；仅在存在已验证的 ISA 专用 widening SIMD 实现时，才可使用 `i32 -> i64` 中间累加 | 与标量整数语义精确一致；无法维持等价时不得进入 SIMD                                           |
 | `i64`          | 默认走串行 `checked_add`；当前版本不泛化承诺 widening SIMD                                               | 默认走串行 `checked_mul` + `checked_add`；当前版本不泛化承诺 widening SIMD                                               | 与标量整数语义精确一致；无法维持等价时不得进入 SIMD                                           |
-| `f32`          | lane 内 pairwise/Kahan-style 累加，水平合并允许不同顺序                                                  | `mul` 后进入同一累加流程                                                                                                 | 以 `需求说明书 §28.3` 为权威基线，`00-coding.md §7.4` 仅作为实现/测试参考；同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差 |
-| `f64`          | lane 内 pairwise/Kahan-style 累加，水平合并允许不同顺序                                                  | `mul` 后进入同一累加流程                                                                                                 | 以 `需求说明书 §28.3` 为权威基线，`00-coding.md §7.4` 仅作为实现/测试参考；同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差 |
-| `Complex<f32>` | 将 AoS 数据重排为实/虚 lane，分别累加后重组                                                              | 先执行共轭乘法：`conj(lhs_i) * rhs_i`，再分别累加实部与虚部                                                              | 以 `需求说明书 §28.3` 为权威基线，`00-coding.md §7.4` 仅作为实现/测试参考；同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差 |
-| `Complex<f64>` | 将 AoS 数据重排为实/虚 lane，分别累加后重组                                                              | 先执行共轭乘法：`conj(lhs_i) * rhs_i`，再分别累加实部与虚部                                                              | 以 `需求说明书 §28.3` 为权威基线，`00-coding.md §7.4` 仅作为实现/测试参考；同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差 |
+| `f32`          | lane 内 pairwise/Kahan-style 累加，水平合并允许不同顺序                                                  | `mul` 后进入同一累加流程                                                                                                 | 容差约束见 §10 |
+| `f64`          | lane 内 pairwise/Kahan-style 累加，水平合并允许不同顺序                                                  | `mul` 后进入同一累加流程                                                                                                 | 容差约束见 §10 |
+| `Complex<f32>` | 将 AoS 数据重排为实/虚 lane，分别累加后重组                                                              | 先执行共轭乘法：`conj(lhs_i) * rhs_i`，再分别累加实部与虚部                                                              | 容差约束见 §10 |
+| `Complex<f64>` | 将 AoS 数据重排为实/虚 lane，分别累加后重组                                                              | 先执行共轭乘法：`conj(lhs_i) * rhs_i`，再分别累加实部与虚部                                                              | 容差约束见 §10 |
 
-**容差说明：** 以 `需求说明书 §28.3` 为权威基线，`00-coding.md §7.4` 仅作为实现/测试参考。同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。
+**容差说明：** 整数 `sum` / `dot` 要求与标量 checked arithmetic 精确一致；浮点/复数的容差基准与约束条件详见 §10。
 
 **复数内积方向说明：** 根据 `需求说明书 §13`，复数 `dot` 的定义必须是 `sum(conj(x_i) * y_i)`，即对左操作数（lhs）取共轭，而不是对右操作数取共轭。SIMD 复数 dot kernel 必须保持这一共轭线性方向。
 
 **整数归约/内积补充约束：** 对 `i32` / `i64` 的 `sum()` / `dot()`，当前默认路径是串行 checked arithmetic。仅当某个 ISA 专用 widening SIMD 实现（例如 `i32 -> i64`）已被验证与标量逐步 `checked_add` / `checked_mul` + `checked_add` 完全等价时，才允许启用 SIMD；`i64` 不做泛化 widening 承诺。
 
-**注意**：`i64` 类型的 SIMD 归约和内积路径在当前版本默认不提供，除非存在已验证的 widening ISA 实现。不存在时回退到标量路径。
-
-**FMA 使用约束：** 元素级 `mul()` / `add()` / `dot()` 主循环中的乘法和加法必须按标量表达式顺序分开执行，不得在这些公开语义上隐式启用 FMA，以保持逐元素路径与标量路径的逐位一致。仅在 `sum()` / `dot()` 的内部 reduction merge 已显式声明“允许末位 ULP 差异”的位置，才能在特定 ISA 上使用 FMA 作为局部优化；启用时必须满足本节容差约束。
+**FMA 使用约束：** 元素级 `mul()` / `add()` / `dot()` 主循环中的乘法和加法必须按标量表达式顺序分开执行，不得在这些公开语义上隐式启用 FMA，以保持逐元素路径与标量路径的逐位一致。对于 `dot()` 而言，其主循环中的 per-element `mul` + lane-local `accumulate` 属于元素级步骤，同样禁用 FMA。仅在 `sum()` / `dot()` 的内部 **horizontal reduction merge** 阶段（已显式声明“允许末位 ULP 差异”），才能在特定 ISA 上使用 FMA 作为局部优化；启用时必须满足本节容差约束。
 
 **ISA 检测补充：** `dispatch.rs` 与 `pulp::Arch` 的主分支检测顺序按 `AVX-512 -> AVX2 -> SSE4.1 -> NEON` 组织。FMA 可用性若需要利用，必须作为独立能力位单独检测，不得把 `AVX2` 与 `FMA` 隐式绑定成同一准入条件。
 
@@ -912,7 +914,7 @@ SIMD 与并行的组合策略：`dispatch.rs` 只决定是否启用并行（基�
 
 ### 9.4 与 storage/layout 模块
 
-SIMD 模块依赖 layout 提供的连续性和对齐信息来判断是否可以使用 SIMD 路径（参见 `06-layout.md` §5.5）。
+SIMD 模块依赖 layout 提供的连续性和对齐信息来判断是否可以使用 SIMD 路径（参见 `06-layout.md` §5.9）。
 
 ---
 
