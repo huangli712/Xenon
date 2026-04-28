@@ -201,7 +201,7 @@ pub(crate) fn par_sum<S, A, D>(tensor: &TensorBase<S, D>, strategy: &ParallelExe
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: Element + Numeric + Send + Sync + Clone;
+    A: Numeric + Send + Sync;
 
 #[cfg(feature = "parallel")]
 pub(crate) fn par_dot<SL, SR, A, DL, DR>(
@@ -214,13 +214,13 @@ where
     SR: Storage<Elem = A>,
     DL: Dimension,
     DR: Dimension,
-    A: Element + Numeric + Send + Sync + Clone;
+    A: Numeric + Send + Sync;
 ```
 
 - `par_dot()` 在类型层面接受任意 `Dimension` 输入，以便与更通用的上层张量调用路径对接；但其语义契约仍限定为一维向量内积，因此实现必须在运行时检查 `lhs.ndim() == 1`、`rhs.ndim() == 1`，并在进入并行归约前再次确认两侧逻辑长度一致。
-- 整数 `sum` / `dot` 支持并行路径。在并行路径中，每个分片独立执行 checked 算术；若任一分片检测到溢出，panic 将在并行收集完成后传播。诊断仲裁必须按逻辑 chunk 索引确定：始终报告首个失败 chunk（按逻辑索引顺序）。若实现无法保证这一确定性，则整数 `sum` / `dot` 在并行模式下必须回退到串行路径。
 - 复数内积采用共轭线性定义：`result = sum(conj(lhs_i) * rhs_i)`，与 `08-simd.md` §6.6 中复数 dot kernel 的共轭线性方向完全一致。
 - `Numeric` trait 定义于 `03-element.md` §5.2，提供通用数值运算能力标记（`Element + Add + Sub + Mul + Div + Neg + conjugate`）。
+- 整数 `par_sum` / `par_dot` 在并行路径中，每个分片独立执行 checked 算术；若任一分片检测到溢出，panic 将在并行收集完成后传播。诊断仲裁必须按逻辑 chunk 索引确定：始终报告首个失败 chunk（按逻辑索引顺序）。若实现无法保证这一确定性，则整数 `sum` / `dot` 在并行模式下必须回退到串行路径。
 
 ### 5.6 并行迭代入口
 
@@ -459,7 +459,7 @@ where
 ### Wave 4: 配置与回归验证
 
 - [ ] **T8**: 补齐 feature gate 与配置矩阵测试
-  - 文件: `src/parallel/` (全部子文件), `tests/parallel_feature.rs`
+  - 文件: `src/parallel/` (全部子文件), `tests/test_parallel.rs`
   - 内容: 默认关闭、`--features parallel` 构建、单线程/多线程分支验证
   - 测试: `cargo test`, `cargo test --features parallel`
   - 前置: T1-T7
@@ -474,7 +474,7 @@ where
 | 类型                    | 位置                                           | 目的                                                             |
 | ----------------------- | ---------------------------------------------- | ---------------------------------------------------------------- |
 | 单元测试                | `src/parallel/` 各子文件内联测试模块           | 验证并行入口、归约与错误传播                                     |
-| 集成测试                | `tests/parallel_feature.rs` 或等效位置         | 验证跨模块语义与 feature gate 行为                               |
+| 集成测试                | `tests/test_parallel.rs`                       | 验证跨模块语义与 feature gate 行为                               |
 | 边界测试                | 与并行测试配套组织                             | 覆盖空张量、单元素、非连续视图、单线程环境                       |
 | 属性测试（按需）        | 当前版本不强制                                 | 当前模块以确定性路径与语义对齐为主，暂无必须引入的随机不变量测试 |
 | Feature gate / 配置测试 | `cargo test`, `cargo test --features parallel` | 验证默认关闭与启用并行后语义不变                                 |

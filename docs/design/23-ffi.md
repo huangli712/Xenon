@@ -340,7 +340,25 @@ where
     /// Empty tensors are allowed: when `len() == 0`, `data` is a valid aligned
     /// pointer that must not be dereferenced. `shape`, `strides`, and `offset`
     /// still describe the empty tensor metadata.
-    pub fn export(&self) -> TensorExport<'_, A>;
+    pub fn export(&self) -> TensorExport<'_, A> {
+        TensorExport {
+            data: if self.is_empty() {
+                // Empty tensor: return a valid aligned non-dereferenceable pointer.
+                // Do NOT call storage.as_ptr() — the backing storage may be empty
+                // or even unallocated (e.g. zero-cap Vec).
+                core::ptr::NonNull::<A>::dangling().as_ptr()
+            } else {
+                self.storage.as_ptr()
+            },
+            _marker: core::marker::PhantomData,
+            element_type: ElementType::of::<A>(),
+            ndim: self.ndim(),
+            shape: self.shape().as_slice().as_ptr(),
+            strides: self.strides().as_slice().as_ptr(),
+            storage_len: self.storage.len(),
+            offset: self.offset(),
+        }
+    }
 }
 
 impl<S, D, A> TensorBase<S, D>
@@ -356,7 +374,22 @@ where
     /// modes are rejected at the trait boundary rather than at runtime.
     /// No additional fallible validation is performed beyond the existing
     /// `&mut self` + `S: StorageMut` exclusivity boundary.
-    pub fn export_mut(&mut self) -> TensorExportMut<'_, A>;
+    pub fn export_mut(&mut self) -> TensorExportMut<'_, A> {
+        TensorExportMut {
+            data: if self.is_empty() {
+                core::ptr::NonNull::<A>::dangling().as_ptr()
+            } else {
+                self.storage.as_mut_ptr()
+            },
+            _marker: core::marker::PhantomData,
+            element_type: ElementType::of::<A>(),
+            ndim: self.ndim(),
+            shape: self.shape().as_slice().as_ptr(),
+            strides: self.strides().as_slice().as_ptr(),
+            storage_len: self.storage.len(),
+            offset: self.offset(),
+        }
+    }
 }
 ```
 
@@ -567,7 +600,7 @@ where
 }
 ````
 
-**校验边界说明：** 与 `07-tensor.md` §5.6 一致，`from_raw_parts*()` 只验证库能够直接检查的元数据约束（例如 shape/stride/offset/storage*len 组合是否合法、是否溢出、是否越界），并在失败时返回 `Result<*, XenonError>`。指针有效性、对齐、实际可访问范围与生命周期仍由调用方在 `unsafe` 前提下负责。
+**校验边界说明：** 与 `07-tensor.md` §5.7 一致，`from_raw_parts*()` 只验证库能够直接检查的元数据约束（例如 shape/stride/offset/storage*len 组合是否合法、是否溢出、是否越界），并在失败时返回 `Result<*, XenonError>`。指针有效性、对齐、实际可访问范围与生命周期仍由调用方在 `unsafe` 前提下负责。
 
 **空张量补充：** `ptr.add(offset)` 形式的逻辑首元素地址计算只适用于非空张量；空张量路径必须跳过该指针运算，并改用 `NonNull::dangling()` 这类明确定义的非解引用哨兵值参与 flags / metadata 初始化。
 
@@ -1323,7 +1356,7 @@ Additional caller-side checks:
 | 方向                       | 对方模块             | 接口/类型                                | 约定                                                                    |
 | -------------------------- | -------------------- | ---------------------------------------- | ----------------------------------------------------------------------- |
 | `ffi → tensor`             | `tensor`             | 原始指针访问                             | 通过 `TensorBase` 的 storage 获取底层指针，参见 `07-tensor.md` §5       |
-| `ffi ← layout`             | `layout`             | `is_f_contiguous()` / stride 标志        | BLAS 布局兼容性检查依赖布局查询结果，参见 `06-layout.md` §5.5           |
+| `ffi ← layout`             | `layout`             | `is_f_contiguous()` / stride 标志        | BLAS 布局兼容性检查依赖布局查询结果，参见 `06-layout.md` §5.7           |
 | `ffi → storage`            | `storage`            | `OwnedRawParts` / allocator metadata     | `into_raw_parts` 导出 owned 存储的完整重建信息，参见 `05-storage.md` §5 |
 | `ffi → upstream libraries` | `upstream libraries` | `blas_info()` / `lda()` / `try_ptr_at()` | 向外部 BLAS/FFI 调用方暴露零拷贝参数与可恢复索引转换                    |
 
