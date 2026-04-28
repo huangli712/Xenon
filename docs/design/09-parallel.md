@@ -336,7 +336,7 @@ where
 
 ### 6.5 自动路径派发与所有权
 
-`dispatch.rs` 负责自动路径派发与执行策略裁决。`parallel/` 只接收已经完成路径选择、输入校验与语义前置条件检查的调用。
+`dispatch.rs` 负责自动路径派发与执行策略裁决。`parallel` 只接收已经完成路径选择、输入校验与语义前置条件检查的调用。
 
 - `par_map`、`par_zip_map`、`par_sum` 接收的输入都已由上层语义模块和 `dispatch.rs` 验证完毕；`par_dot` 在进入并行归约前仍需自行做运行时校验，要求 `lhs.ndim() == 1`、`rhs.ndim() == 1` 且两侧逻辑长度一致。
 - 对归约和内积，若调用方选择并行路径，则 `parallel/` 必须提供固定 chunking 与固定 merge tree，保证同平台、同配置、同路径下结果确定；整数 `sum` / `dot` 的失败诊断还必须按逻辑 chunk 索引顺序仲裁，始终选择首个失败 chunk。
@@ -384,64 +384,64 @@ where
 
 ### Wave 2: 并行入口与执行内核
 
-- [ ] **T4**: 实现 `ParElements` 与 `TensorBase::par_iter()`
+- [ ] **T1**: 实现 `ParElements` 与 `TensorBase::par_iter()`
   - 文件: `src/parallel/iter.rs`
   - 内容: 单输入元素级并行遍历入口
   - 测试: `test_par_iter_len_matches_tensor_len`
   - 前置: `dispatch.rs` 执行路径裁决已可用，`10-iterator.md` 中只读迭代语义已确定
   - 预计: 10 min
 
-- [ ] **T5**: 实现 `par_map`
+- [ ] **T2**: 实现 `par_map`
   - 文件: `src/parallel/map.rs`
   - 内容: 纯并行逐元素映射入口，执行策略参数由 `dispatch.rs` 统一传入
   - 测试: `test_par_map_parallel_path`
-  - 前置: T4
+  - 前置: T1
   - 预计: 10 min
 
-- [ ] **T5a**: 实现 `par_zip_map`
+- [ ] **T3**: 实现 `par_zip_map`
   - 文件: `src/parallel/map.rs`
   - 内容: 二元广播逐元素纯并行入口，供 `math` 模块消费
   - 测试: `test_par_zip_map_matches_serial_add`, `test_par_zip_map_broadcast_rhs_scalar`
-  - 前置: T4, `math` 广播语义已确定
+  - 前置: T1, `math` 广播语义已确定
   - 预计: 10 min
 
-- [ ] **T6**: 实现 `par_reduce_impl` 与 `par_sum`
+- [ ] **T4**: 实现 `par_reduce_impl` 与 `par_sum`
   - 文件: `src/parallel/reduce.rs`
   - 内容: 并行归约、identity 合并、语义对齐调用方选定的串行基线
   - 测试: `test_par_sum_matches_serial`, `test_par_sum_empty_matches_identity`
-  - 前置: T4, `13-reduction.md` 归约语义已确定
+  - 前置: T1, `13-reduction.md` 归约语义已确定
   - 预计: 10 min
 
-- [ ] **T7**: 实现 `par_dot`
+- [ ] **T5**: 实现 `par_dot`
   - 文件: `src/parallel/reduce.rs`
   - 内容: 运行时 `ndim() == 1` / 长度一致性检查、并行内积、错误返回与空数组单位元语义
   - 测试: `test_par_dot_matches_serial`, `test_par_dot_shape_mismatch`, `test_par_dot_empty_identity`
-  - 前置: T6
+  - 前置: T4
   - 预计: 10 min
 
 ### Wave 3: 线程池与异常传播
 
-- [ ] **T8**: 实现 `ParallelPool`
+- [ ] **T6**: 实现 `ParallelPool`
   - 文件: `src/parallel/mod.rs`
   - 内容: 自定义 `rayon::ThreadPool` 包装，不改变公开 API 结果语义
   - 测试: `test_parallel_pool_preserves_semantics`
-  - 前置: T5, T6, T7
+  - 前置: T2, T4, T5
   - 预计: 10 min
 
-- [ ] **T9**: 完成错误与 panic 传播收口
+- [ ] **T7**: 完成错误与 panic 传播收口
   - 文件: `src/parallel/checked.rs`
   - 内容: `XenonError` 透传、panic 不吞掉
   - 测试: `test_parallel_error_propagation`, `test_parallel_panic_propagation`
-  - 前置: T5, T6, T7
+  - 前置: T2, T4, T5
   - 预计: 10 min
 
 ### Wave 4: 配置与回归验证
 
-- [ ] **T10**: 补齐 feature gate 与配置矩阵测试
+- [ ] **T8**: 补齐 feature gate 与配置矩阵测试
   - 文件: `src/parallel/` (全部子文件), `tests/parallel_feature.rs`
   - 内容: 默认关闭、`--features parallel` 构建、单线程/多线程分支验证
   - 测试: `cargo test`, `cargo test --features parallel`
-  - 前置: T4-T9
+  - 前置: T1-T7
   - 预计: 10 min
 
 ---
