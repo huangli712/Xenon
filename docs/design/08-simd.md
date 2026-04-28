@@ -33,46 +33,6 @@ SIMD 后端模块是 Xenon 张量库的可选性能加速层，通过 `pulp` cra
 | 跨平台       | pulp 统一 x86_64 (SSE4.1/AVX2/AVX-512) 和 ARM (NEON)；SVE 属于后续扩展，不纳入当前设计                                                                 |
 | 精度优先约束 | 元素级 `mul`/`add` 不使用 FMA 以保持逐位一致；仅在已记录容差的 reduction merge 内部可使用                                                              |
 
-### 1.3 在架构中的位置
-
-```
-Dependency levels:
-L0: error, private
-L1: dimension, element, complex
-L2: layout (depends on dimension)
-L3: storage (depends only on core/alloc, not layout)
-L4: tensor (depends on storage, dimension)
-L5: simd  <- current module (optional, feature = "simd")
-```
-
-### 1.4 性能分层中的角色
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Call layer (overload/iter)                   │
-│              math, reduction, matrix::dot                       │
-│  See 11-math.md §5, 13-reduction.md §5, 12-matrix.md §5.1       │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│          dispatch.rs parallel gating layer                     │
-│        Only decide serial vs parallel execution                │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│              simd/ backend internal selection                   │
-│      Decide whether to use vectorized path or stay serial       │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                Pure vectorized hardware exec                    │
-│                AVX-512 / AVX2 / SSE4.1 / NEON                   │
-└─────────────────────────────────────────────────────────────────┘
-```
-
 ---
 
 ## 2. 需求映射与范围约束
@@ -126,17 +86,17 @@ src/simd/
 | `element` | `Element`（参见 `03-element.md` §5.1）                                             |
 | `simd`    | `SimdElement`（本模块定义，见 §5.2）                                               |
 
-### 4.3 依赖方向声明
-
-> **依赖方向：单向向上。** `simd/` 仅消费 `tensor`、`storage`、`element` 等核心模块，不被它们依赖。布局/连续性判断经由 `TensorBase` 暴露的查询接口完成；`simd/` 模块在未启用 feature 时完全不存在。
-
-### 4.4 依赖合法性与新增依赖说明
+### 4.3 依赖合法性
 
 | 项目           | 说明                       |
 | -------------- | -------------------------- |
 | 新增第三方依赖 | `pulp`                     |
 | 合法性结论     | 符合需求说明书最小依赖限制 |
 | 替代方案       | 不适用                     |
+
+### 4.4 依赖方向声明
+
+> **依赖方向：单向向上。** `simd/` 仅消费 `tensor`、`storage`、`element` 等核心模块，不被它们依赖。布局/连续性判断经由 `TensorBase` 暴露的查询接口完成；`simd/` 模块在未启用 feature 时完全不存在。
 
 ---
 
@@ -364,7 +324,7 @@ where
 >
 > **职责边界说明：** SIMD 路径选择由 `simd/` 后端内部处理，包括 feature、元素类型、操作种类、连续性、对齐与 ISA 能力检查。`dispatch.rs` 不承担 SIMD admission/selection，只负责决定是否进入并行执行。
 
-### 5.4a 当前版本的 SIMD 覆盖范围
+### 5.5 当前版本的 SIMD 覆盖范围
 
 根据 `需求说明书 §9.1`，SIMD 路径当前已覆盖逐元素运算、归约与内积三个大类。是否实际进入 SIMD 仍取决于元素类型、ISA 能力、统一对齐快路径与语义约束；当前版本在 `matrix` 相关范围内仅承载 **vector dot**，不展开矩阵乘法或其他 matrix 范围能力。
 

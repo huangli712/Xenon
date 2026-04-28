@@ -15,7 +15,7 @@
 
 | 职责           | 包含                                                                    |
 | -------------- | ----------------------------------------------------------------------- |
-| 广播兼容性判定 | `can_broadcast()`、`broadcast_shape()`，按 NumPy 规则从尾轴开始逐轴比对 |
+| 广播兼容性判定 | `can_broadcast()`、`broadcast_shape()`，按 Numpy 规则从尾轴开始逐轴比对 |
 | 广播步长计算   | `broadcast_strides()` 生成目标视图步长；广播轴写入 `0`                  |
 | 广播视图创建   | `broadcast_to()`、`broadcast_with()` 返回零拷贝共享底层数据的只读视图   |
 | 类型层维度推导 | 通过 `D1: BroadcastDim<D2>` 这一 public sealed trait 在编译期确定输出维度类型 |
@@ -33,7 +33,7 @@
 
 | 原则             | 体现                                                                                     |
 | ---------------- | ---------------------------------------------------------------------------------------- |
-| NumPy 一致性     | 从尾轴开始比对；轴长度相同或一方为 `1` 时兼容，否则返回 `XenonError::BroadcastError`。   |
+| Numpy 一致性     | 从尾轴开始比对；轴长度相同或一方为 `1` 时兼容，否则返回 `XenonError::BroadcastError`。   |
 | 零拷贝优先       | 广播只改写 shape/stride/flags，不复制底层数据。                                          |
 | 共享只读         | 广播结果始终降级为只读视图；任何可变访问都必须在类型层或运行时显式拒绝。                 |
 | 步长显式化       | 广播轴使用 `usize` 零步长表达，与 `06-layout.md` 中的 `BroadcastView` 布局状态保持一致。 |
@@ -76,8 +76,7 @@ src/broadcast/
 │   └── module entry, re-export public functions and trait-bound-related entry points
 |
 ├── shape.rs
-│   ├── crate::dimension  # Dimension, Ix0~Ix6, IxDyn, BroadcastDim<Other>
-│   ├── crate::layout     # Strides<D>, LayoutFlags
+│   ├── crate::dimension  # Dimension, Ix0~Ix6, IxDyn
 │   └── crate::error      # XenonError::BroadcastError, XenonError::InvalidArgument
 |
 └── view.rs
@@ -230,7 +229,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
         - if original dimension == target dimension, keep the original stride;
         - if original dimension == 1 and target dimension > 1, write stride 0;
         - otherwise return BroadcastError.
-    4. Mark the result layout as BroadcastView when any stride is 0.
+    4. Return the computed stride vector.
 ```
 
 对广播轴写入零步长意味着该轴被逻辑扩展，但所有索引都回落到同一底层元素；这与 `06-layout.md` §5.11 的零步长语义保持一致。若任一轴出现 `0` 步长，结果即不再视为普通 `FContiguous` 或一般 `NonContiguous` 视图，而统一进入 `BroadcastView`。
@@ -243,6 +242,8 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 `broadcast_to()` 和 `broadcast_with()` 只负责在元数据层重建视图：保留原始 storage 与 offset，改写 shape、strides 与 flags。返回类型虽然仍是 `TensorView`，但其公开语义必须统一收敛到共享只读引用：广播结果内部承载 `ViewRepr<'a, A>`，`storage_kind()` 返回 `StorageKind::View`；只读共享语义由广播布局标志与访问控制 API 共同保证，任何试图从广播结果取得可变访问权的 API，都必须在类型层缺失或运行时返回错误。
 
 **安全性论证（unchecked 视图构造）：** 若内部使用 `TensorView::new_unchecked()` 或等价未检查构造器，调用点必须先证明：1）目标 `shape` 与源 `shape` 广播兼容；2）新 `shape` / `stride` / `offset` 组合不会访问到底层 storage 可见边界之外；3）任何零步长元素都不会通过结果视图暴露为可变访问。
+
+**布局状态判定（由视图构造方负责）：** 广播视图的 `LayoutFlags` 必须通过 `compute_layout_flags()`（见 `06-layout.md`）重算。当 `broadcast_strides()` 写入了广播零步长（即 `original dimension == 1 and target dimension > 1` 的轴），结果将落入 `LayoutState::BroadcastView`。注意：空数组的退化零步长（dimension == 0 导致的 stride 0）不属于广播语义，不因此触发 `BroadcastView` 分类。
 
 ### 6.5 `BroadcastDim` 的职责边界
 
@@ -424,7 +425,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 ```text
 User calls broadcast_to() or broadcast_with()
     │
-    ├── broadcast_shape() checks NumPy compatibility from trailing axes
+    ├── broadcast_shape() checks Numpy compatibility from trailing axes
     ├── broadcast_strides() writes zero strides for expanded axes
     ├── tensor view constructor reuses original storage and offset
     └── result is exposed as a shared read-only broadcast view
