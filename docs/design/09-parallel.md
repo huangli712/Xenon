@@ -129,7 +129,7 @@ pub(crate) struct ParallelPool {
 
 > **执行策略说明：** 并行阈值由 `dispatch.rs` 统一管理：内部保留编译期默认值，但允许 dispatch 层按配置覆盖该默认值。`parallel/` 模块不提供独立的公开阈值配置接口；所有并行入口仅接受 dispatch 层传入的最终执行策略参数。
 
-### 5.2a 内部执行策略参数规范
+### 5.3 内部执行策略参数规范
 
 | 参数                 | 类型            | 默认值                   | 说明                                                                                             |
 | -------------------- | --------------- | ------------------------ | ------------------------------------------------------------------------------------------------ |
@@ -138,14 +138,14 @@ pub(crate) struct ParallelPool {
 
 配置入口不对外暴露。`parallel_threshold` 的权威入口位于 `dispatch.rs`：其内部保留编译期默认值，同时允许配置层覆写；`parallel/` 模块仅通过 `ParallelExecStrategy` 接收 dispatch 已裁决完成的执行阶段参数字段。
 
-### 5.2b `ParallelExecStrategy` 参数校验规则
+### 5.4 `ParallelExecStrategy` 参数校验规则
 
 | 字段          | 合法范围                          | 默认值 | 非法时行为                                 |
 | ------------- | --------------------------------- | ------ | ------------------------------------------ |
 | `max_workers` | `Some(1..=pool_size)` 或 `None`   | `None` | `0` 或超过线程池大小返回 `InvalidArgument` |
 | `chunk_size`  | `Some(n)` where `n > 0` 或 `None` | `None` | `0` 返回 `InvalidArgument`                 |
 
-### 5.3 函数签名
+### 5.5 函数签名
 
 ```rust,ignore
 pub(crate) struct ParallelExecStrategy {
@@ -226,7 +226,7 @@ where
 
 复数内积采用共轭线性定义：`result = sum(conj(lhs_i) * rhs_i)`，与 `08-simd.md` 中的复数内积语义完全一致。
 
-### 5.4 并行迭代入口
+### 5.6 并行迭代入口
 
 ```rust,ignore
 #[cfg(feature = "parallel")]
@@ -253,7 +253,7 @@ where
 
 当前版本不提供任何通用并行双输入公开 API；需要二元逐元素调度时，由 `math` 模块先完成广播与输出形状裁决，再通过 `dispatch.rs` 选择并调用 `pub(crate)` 级 `par_zip_map()` 执行并行路径。
 
-### 5.5 Good / Bad 对比示例
+### 5.7 Good / Bad 对比示例
 
 ```rust,ignore
 // Good - shape mismatch stays in Result.
