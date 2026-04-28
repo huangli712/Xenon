@@ -1174,18 +1174,6 @@ Additional caller-side checks:
   - 前置: T1
   - 预计: 10 min
 
-### 并行执行图
-
-```
-Wave 1:    [T1]
-             │
-Wave 2:    [T2]
-             │
-Wave 3: ┌────┴────┐
-        │         │
-       [T3]      [T4]   (can run in parallel)
-```
-
 ---
 
 ## 8. 测试计划
@@ -1239,15 +1227,7 @@ Wave 3: ┌────┴────┐
 | 零维张量       | `try_offset_of(&[])` 返回 `Ok(0)`                                                                                                                                 |
 | 未对齐指针     | `from_raw_parts` 的 Safety 文档需说明对齐要求                                                                                                                     |
 
-### 8.4 `需求说明书 §28.4` 边界测试场景
-
-| 场景           | 说明                                                                                           |
-| -------------- | ---------------------------------------------------------------------------------------------- |
-| 导出结构生命周期   | `TensorExport<'a, _>` / `TensorExportMut<'a, _>` 不得逃逸源张量生命周期，借用结束后不可继续使用 |
-| 广播零步长导入     | 只读零步长布局允许导入为共享视图；可写零步长布局构造统一返回错误                            |
-| `storage_len` 重建 | 导出后按 `storage_len` 重建视图时覆盖空张量、offset 非零与末元素访问边界                            |
-
-### 8.5 属性测试不变量
+### 8.4 属性测试不变量
 
 | 不变量                                                                                 | 测试方法                             |
 | -------------------------------------------------------------------------------------- | ------------------------------------ |
@@ -1255,27 +1235,20 @@ Wave 3: ┌────┴────┐
 | `into_raw_parts → from_raw_parts_owned` roundtrip 保持 shape/strides/offset            | 对 F-contiguous owned 张量做往返验证 |
 | `is_blas_layout_compatible() == true` 且维度/整数范围合法 ⟹ `blas_info()` 成功         | 以连续二维张量为样本验证             |
 
-### 8.6 内存安全测试
-
-| 场景                                           | 验证方式               |
-| ---------------------------------------------- | ---------------------- |
-| `from_raw_parts` + Drop                        | 无内存泄漏（借用语义） |
-| `into_raw_parts` + `from_raw_parts_owned(raw)` | 重建后由 Drop 正确释放 |
-
-### 8.7 集成测试
+### 8.5 集成测试
 
 | 测试文件            | 测试内容                                                                                         |
 | ------------------- | ------------------------------------------------------------------------------------------------ |
 | `tests/test_ffi.rs` | 指针 API / BLAS 兼容检查 / raw-parts roundtrip 与 `tensor`、`layout`、`storage` 的端到端协同路径 |
 
-### 8.8 Feature gate / 配置测试
+### 8.6 Feature gate / 配置测试
 
 | 配置              | 验证点                                                                         |
 | ----------------- | ------------------------------------------------------------------------------ |
 | 默认配置          | 指针 API、BLAS 兼容性检查与 raw-parts roundtrip 在默认构建下保持既定安全边界。 |
 | 其他 feature 组合 | 不适用；当前模块无额外 feature gate。                                          |
 
-### 8.9 类型边界 / 编译期测试
+### 8.7 类型边界 / 编译期测试
 
 | 场景                                                                                | 测试方式                      |
 | ----------------------------------------------------------------------------------- | ----------------------------- |
@@ -1324,7 +1297,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 
 | 主题              | 内容                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Recoverable error | `blas_info()` / `lda()` 在 rank 或布局非法时返回 `XenonError::Ffi { operation, category, backend, precondition, actual }`；BLAS 整数宽度转换失败由 `BlasInfo::as_blas_int()` 返回同一结构化公开变体；`from_raw_parts_owned()` 在 owned 元数据非法时返回 `XenonError::InvalidLayout`；`try_offset_of()` / `try_ptr_at()` 在 rank / bounds / checked arithmetic 非法时返回 `XenonError`；`from_raw_parts_mut()` 在可写布局自别名时返回 `XenonError::InvalidLayout`。 |
+| Recoverable error | `blas_info()` / `lda()` 在 rank 或布局非法时返回 `XenonError::Ffi`；BLAS 整数宽度转换失败由 `BlasInfo::as_blas_int()` 返回同一结构化公开变体；`from_raw_parts_owned()` 在 owned 元数据非法时返回 `XenonError::InvalidLayout`；`try_offset_of()` / `try_ptr_at()` 在 rank / bounds / checked arithmetic 非法时返回 `XenonError`；`from_raw_parts_mut()` 在可写布局自别名时返回 `XenonError::InvalidLayout`。 |
 | Panic             | 不提供公开 panic-sugar 索引转换 API；`from_raw_parts*()` 中那些无法直接验证的不安全前提若被违反，仍属于 unsafe UB，而非 recoverable error。                                                                                                                                                                                                                                                                              |
 | 路径一致性        | 指针访问、BLAS 查询与 raw-parts roundtrip 必须共享同一 shape / strides / offset 解释；无 SIMD / 并行分支。                                                                                                                                                                                                                                                                                                               |
 | 容差边界          | 不适用。                                                                                                                                                                                                                                                                                                                                                                                                                 |
