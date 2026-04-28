@@ -78,8 +78,7 @@ src/simd/
 ```
 src/simd/
 ├── pulp (optional)           # External dependency, feature = "simd"
-├── crate::tensor             # TensorBase<S, D>, type aliases
-├── crate::storage            # Storage trait, raw slice access
+├── crate::tensor             # TensorBase<S, D>, as_slice(), layout queries
 ├── crate::layout             # Alignment helpers
 └── crate::element            # Element trait, SimdElement
 ```
@@ -90,7 +89,6 @@ src/simd/
 | --------- | ---------------------------------------------------------------------------------- |
 | `pulp`    | `Arch`, `Simd`, `WithSimd`                                                         |
 | `tensor`  | `TensorBase<S, D>`, `.as_ptr()`, `.as_slice()`（参见 `07-tensor.md` §5.4 / §5.5）  |
-| `storage` | `RawStorage`, `Storage`, `.len()`（参见 `05-storage.md` §5）                       |
 | `tensor`  | `.is_f_contiguous()`, 布局标志查询（参见 `07-tensor.md` §5）                       |
 | `element` | `Element`（参见 `03-element.md` §5.1）                                             |
 | `element` | `Numeric`（参见 `03-element.md` §5.2）                                             |
@@ -106,7 +104,7 @@ src/simd/
 
 ### 4.4 依赖方向声明
 
-依赖方向：单向向上。`simd` 仅消费 `tensor`、`storage`、`element` 等核心模块，不被它们依赖。布局/连续性判断经由 `TensorBase` 暴露的查询接口完成；`simd` 模块在未启用 feature 时完全不存在。
+依赖方向：单向向上。`simd` 仅消费 `tensor`、`element` 等核心模块，不被它们依赖；`layout` 通过 `tensor` 暴露的查询接口间接使用。`simd` 模块在未启用 feature 时完全不存在。
 
 ---
 
@@ -374,7 +372,6 @@ SIMD 路径选择已收敛到 `simd` 后端内部（分层原则见 §1.2）。
 | 操作类型                  | 元素类型                        | SIMD 最小长度 | 说明                                                         |
 | ------------------------- | ------------------------------- | ------------- | ------------------------------------------------------------ |
 | 逐元素算术                | `f32` / `f64`                   | 64            | 对齐后向量宽度                                               |
-| 逐元素算术                | `i32` / `i64`                   | 64            | 同上                                                         |
 | 逐元素算术                | `Complex<f32>` / `Complex<f64>` | 128           | AoS 输入需寄存器内重排，默认阈值高于实数路径                 |
 | 比较                      | 适用的整数 / 浮点类型           | 64            | 与逐元素算术共享向量装载/收尾框架                            |
 | `abs` / `sign` / `signum` | `f32` / `f64`                   | 64            | 一元实数路径，通常复用比较/位运算或算术框架                  |
@@ -888,7 +885,7 @@ math/reduction/dot call acceleration entry
 
 SIMD 与并行的组合策略（分层原则见 §1.2）：`dispatch.rs` 决定是否启用并行；进入非并行执行上下文后，是否启用 SIMD 由 `simd` 后端内部决定（基于元素数、对齐和 ISA 支持）。并行路径的 worker 线程内调用 SIMD helper 时，不会再次触发并行分派。
 
-### 9.4 与 storage/layout 模块
+### 9.4 与 layout 模块
 
 SIMD 模块依赖 layout 提供的连续性和对齐信息来判断是否可以使用 SIMD 路径（参见 `06-layout.md` §5.7, §5.9）。
 
