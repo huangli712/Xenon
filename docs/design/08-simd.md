@@ -105,7 +105,7 @@ src/simd/
 
 ### 4.4 依赖方向声明
 
-> **依赖方向：单向向上。** `simd/` 仅消费 `tensor`、`storage`、`element` 等核心模块，不被它们依赖。布局/连续性判断经由 `TensorBase` 暴露的查询接口完成；`simd/` 模块在未启用 feature 时完全不存在。
+依赖方向：单向向上。`simd` 仅消费 `tensor`、`storage`、`element` 等核心模块，不被它们依赖。布局/连续性判断经由 `TensorBase` 暴露的查询接口完成；`simd` 模块在未启用 feature 时完全不存在。
 
 ---
 
