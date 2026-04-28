@@ -165,6 +165,13 @@ where
 - **目标秩语义**：`broadcast_to()` 的目标 shape 秩决定了输出视图的维度类型；标量广播到高维时，缺失前导轴按 `1` 补齐。
 - **`IntoDimension` 说明：** `IntoDimension` 只决定目标 rank/type；逐轴长度兼容性完全由 `broadcast_shape()` / `broadcast_strides()` 在运行时检查。
 - **类型设计说明：** `broadcast_to()` 是目标 shape 主导的 API，只需目标维度类型 `E: IntoDimension`。`broadcast_with()` 是双输入 shape 合流 API，需要双向 `BroadcastDim` 一致性以保证输出维度类型的静态可推导性。`BroadcastDim` 本身是 public sealed trait，因此在这些公开签名中对外可命名。
+- **BroadcastError 字段映射：** 各 API 返回 `XenonError::BroadcastError` 时，结构化字段按以下规则填充（字段定义见 `26-error.md`）：
+
+  | API | `operation` | `lhs_shape` | `rhs_shape` | `attempted_target_shape` | `axis` |
+  | --- | --- | --- | --- | --- | --- |
+  | `broadcast_shape(a, b)` | `"broadcast_shape"` | `Some(a)` | `Some(b)` | `None` | 失败轴 index |
+  | `broadcast_to(self, target)` | `"broadcast_to"` | `Some(self.shape())` | `None` | `Some(target)` | 失败轴 index |
+  | `broadcast_with(a, b)` | `"broadcast_with"` | `Some(a.shape())` | `Some(b.shape())` | `None` | 失败轴 index |
 - **类型说明：** 当前版本继续复用 `TensorView` 作为返回类型，而不是引入单独的 `BroadcastView` 新类型；广播结果内部承载 `ViewRepr<'a, A>`，`storage_kind()` 返回 `StorageKind::View`。广播结果的只读共享语义通过 `LayoutFlags::HAS_ZERO_STRIDE` / `LayoutState::BroadcastView` 与访问控制 API 保证：任何试图取得其可变访问权的 API 在类型层或运行时拒绝。
 - **共享只读强制说明：** `broadcast_to()` / `broadcast_with()` 返回 `TensorView`，其生命周期绑定源张量。由于广播结果引入零步长布局，可能导致多个逻辑位置映射到同一物理元素，因此：1) 广播结果在 API 层不提供可变访问入口；2) `storage_kind()` 仍返回 `StorageKind::View`；3) 只读共享语义由 `LayoutFlags::HAS_ZERO_STRIDE`、`LayoutState::BroadcastView`、缺失的 `StorageMut` 能力以及不提供 `into_mut()` 等 API 共同保证。
 
@@ -249,7 +256,8 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 
 `BroadcastDim<Other>` 是 public sealed trait，因此在公开 API 中可被外部稳定命名；它仅用于编译期计算输出维度类型：
 
-- `IxN BroadcastDim IxN` → `IxN`
+- `IxM BroadcastDim IxN`（M > N）→ `IxM`（跨静态 rank，取较高 ndim；同 `02-dimension.md` §5.10）
+- `IxN BroadcastDim IxN` → `IxN`（同 rank）
 - `IxN BroadcastDim IxDyn` → `IxDyn`
 - `IxDyn BroadcastDim IxN` → `IxDyn`
 - `IxDyn BroadcastDim IxDyn` → `IxDyn`
