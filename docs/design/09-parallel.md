@@ -491,6 +491,12 @@ where
 | `par_zip_map` 与串行广播二元运算在相同输入上产出相同形状与逐元素值 | 对 `add/sub/mul/div` 做表驱动校验        |
 | `par_sum` / `par_dot` 在相同执行路径和配置下结果确定               | 对相同输入重复运行并比较结果             |
 
+### 8.5 集成测试
+
+| 测试文件                       | 测试内容                                                                     |
+| ------------------------------ | ---------------------------------------------------------------------------- |
+| `tests/test_parallel.rs`       | 并行 dispatch 与 `math`、`reduction`、`dot` 等语义模块组合路径的端到端验证   |
+
 ### 8.6 Feature gate / 配置测试
 
 | 配置                           | 验证点                                                     |
@@ -537,10 +543,6 @@ math / reduction / matrix call dispatch entry
     └── return Tensor or Result with unchanged public semantics
 ```
 
-### 9.3 所有权与生命周期约定
-
-> **约定：** `par_iter()` 借用输入张量的只读视图，所有权不转移。并行执行只读取逻辑元素，不得暴露共享可写访问权；输出张量若需要拥有结果数据，必须在本模块内构造新的拥有型结果。
-
 ---
 
 ## 10. 错误处理与语义边界
@@ -549,7 +551,7 @@ math / reduction / matrix call dispatch entry
 | ----------------- | --------------------------------------------------------------------------------------------------------------- |
 | Recoverable error | `par_dot()` 的长度不兼容返回 `XenonError::DimensionMismatch`；`par_zip_map()` 的元素总数溢出返回 `InvalidShape` |
 | Panic             | 归约中的整数溢出仍属于不可恢复错误，必须 panic，而不是包装为 `XenonError`                                       |
-| 路径一致性        | `dispatch.rs` 负责执行路径选择；一旦进入 `parallel/`，并行路径必须返回与调用方串行基线相同形状、相同错误类别，以及满足同一数值语义约束的结果            |
+| 路径一致性        | `dispatch.rs` 负责执行路径选择；一旦进入 `parallel/`，并行路径必须返回与调用方串行基线相同形状、相同错误类别，以及满足同一数值语义约束的结果  |
 | 容差边界          | 浮点与复数若存在执行路径相关的已知舍入差异，只能落在 `需求说明书 §28.3` 与 `需求说明书 §28.5` 允许且已文档化的范围内；以 `需求说明书 §28.3` 为权威基线，`00-coding.md §7.4` 仅作为实现参考。|
 
 路径语义边界：
@@ -558,7 +560,7 @@ math / reduction / matrix call dispatch entry
 - 自定义线程池类参数若存在非法值，应返回 `InvalidArgument`。
 - 当前 `par_zip_map()` 不承担广播兼容性校验，也不新增广播专属错误构造。
 - panic 与 `Err(XenonError)` 都不得被吞掉；并行执行中发生的错误须至少传播一个。仅对整数 `sum` / `dot`，失败诊断必须额外满足“按逻辑 chunk 索引顺序固定选择首个失败 chunk”；做不到则回退串行路径。
-- 执行路径裁决由 `dispatch.rs` 负责；`parallel/` 不新增路径选择语义。
+- 执行路径裁决由 `dispatch.rs` 负责；`parallel` 不新增路径选择语义。
 
 ### 10.1 浮点/复数并行归约容差
 
@@ -597,7 +599,7 @@ math / reduction / matrix call dispatch entry
 | 替代方案 | 允许库内部继续二次并行 —— 放弃，违反需求                                         |
 | 替代方案 | 将嵌套并行视为 recoverable error —— 放弃，会污染公开 API 语义                    |
 
-补充说明：`ParallelPool` 内部调用同样必须经过 `dispatch.rs` 中的 `ParallelGuard`。若用户在自定义 pool 中再次调用内部并行后端，dispatch helper 会把 `ParallelContext` token 捕获到 Rayon worker 闭包中，并在二次派发时自动回退串行，与全局线程池行为一致；同时不允许嵌套 `ParallelPool` 实例，以避免引入额外调度语义。
+`ParallelPool` 内部调用同样必须经过 `dispatch.rs` 中的 `ParallelGuard`。若用户在自定义 pool 中再次调用内部并行后端，dispatch helper 会把 `ParallelContext` token 捕获到 Rayon worker 闭包中，并在二次派发时自动回退串行，与全局线程池行为一致；同时不允许嵌套 `ParallelPool` 实例，以避免引入额外调度语义。
 
 ### 决策 3：并行模块不新增专属公开错误类型
 
