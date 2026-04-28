@@ -52,8 +52,8 @@ SIMD 后端模块是 Xenon 张量库的可选性能加速层，通过 `pulp` cra
 | 需求映射 | 需求说明书 §9、§12 - §14、§27、§28                                                                                                      |
 | 范围内   | 本文覆盖矩阵中列出的 SIMD 子集：`add`/`sub`/`mul`/`div`、`neg`、`sum` / `dot`，以及复数逐元素算术；未列出能力由各语义模块的串行实现承担 |
 | 范围外   | 矩阵乘法、非 `sum` 归约、归约模块负责的 `norm` 等专用 SIMD kernel，以及 SVE 当前版本实现                                                |
-| 标量回退 | `simd` 模块内不再提供标量回退；当 SIMD 不可用时，由 `simd` 后端内部保持各语义模块的串行实现                                             |
-| 非目标   | No new third-party dependencies beyond pulp；在本模块内提供标量回退路径——该职责由各语义模块的串行实现承担                               |
+| 标量回退 | `simd` 模块不提供标量回退；职责划分见 §1.1                                                                                           |
+| 非目标   | No new third-party dependencies beyond pulp；在本模块内提供标量回退路径                                                             |
 
 **SIMD 覆盖范围**：当前版本正式承诺的 SIMD 覆盖以逐元素算术、归约（sum）和内积（dot）为优先。其他运算（一元、比较、逻辑、复数、数学函数）的 SIMD 路径作为实现优化项，不构成当前版本的稳定交付承诺。
 
@@ -331,16 +331,16 @@ where
 }
 ```
 
-SIMD 路径选择已收敛到 `simd` 后端内部。`dispatch.rs` 只决定是否进入并行执行；一旦处于串行执行上下文，是否启用 SIMD 由 `simd/` 内部判断。
+SIMD 路径选择已收敛到 `simd` 后端内部（分层原则见 §1.2）。
 
-**职责边界说明：** SIMD 路径选择由 `simd` 后端内部处理，包括 feature、元素类型、操作种类、连续性、对齐与 ISA 能力检查。`dispatch.rs` 不承担 SIMD admission/selection，只负责决定是否进入并行执行。
+**职责边界说明：** SIMD 路径选择由 `simd` 后端内部处理，包括 feature、元素类型、操作种类、连续性、对齐与 ISA 能力检查。`dispatch.rs` 不承担 SIMD admission/selection（分层原则见 §1.2）。
 
 ### 5.5 当前版本的 SIMD 覆盖范围
 
 根据 `需求说明书 §9.1`，SIMD 路径当前已覆盖逐元素运算、归约与内积三个大类。是否实际进入 SIMD 仍取决于元素类型、ISA 能力、统一对齐快路径与语义约束；当前版本在 `matrix` 相关范围内仅承载 **vector dot**，不展开矩阵乘法或其他 matrix 范围能力。
 
 - **SIMD 覆盖范围**：当前版本正式承诺的 SIMD 覆盖以逐元素算术、归约（sum）和内积（dot）为优先。其他运算（一元、比较、逻辑、复数、数学函数）的 SIMD 路径作为按阶段推进的实现优化项，不构成当前版本的稳定交付承诺。
-- **透明回退说明：** 对于下表中尚未提供 SIMD kernel 的操作，或运行时不满足 SIMD 入口条件的输入，`simd` 后端内部保持对应语义模块的标量/串行路径；公开 API 与结果语义保持不变。
+- **透明回退说明：** 对于下表中尚未提供 SIMD kernel 的操作，或运行时不满足 SIMD 入口条件的输入，标量回退按 §1.1 职责边界执行；公开 API 与结果语义保持不变。
 
 ### 5.6 SIMD 操作覆盖状态表
 
@@ -360,7 +360,7 @@ SIMD 路径选择已收敛到 `simd` 后端内部。`dispatch.rs` 只决定是�
 | `not`                                            | `bool`                                                          | 优化项（不构成稳定交付承诺）                              | 通过独立 bool / mask kernel 实现，不经 `SimdKernel` 二元算术 trait                                                                             |
 | `complex_abs` / `conjugate`                      | `Complex<f32>` / `Complex<f64>`                                 | 优化项（不构成稳定交付承诺）                              | 通过专用一元/复数 kernel 路径实现；复数 AoS 输入在寄存器内重排后执行，不经 `SimdKernel` 二元算术 trait                                         |
 
-- `dot()` 为当前版本正式能力；`SimdKernel` 直接覆盖 `f32` / `f64` / `Complex<f32>` / `Complex<f64>`。整数 `dot` 仅在存在已验证的 ISA 专用 widening 实现时才进入 SIMD，否则保持语义模块串行路径。整数归约/内积的详细约束见 §6.6。
+- `dot()` 为当前版本正式能力；`SimdKernel` 直接覆盖 `f32` / `f64` / `Complex<f32>` / `Complex<f64>`。整数 `dot` 仅在存在已验证的 ISA 专用 widening 实现时才进入 SIMD，否则按 §1.1 职责边界回到语义模块串行路径。整数归约/内积的详细约束见 §6.6。
 - 该覆盖目标不改变公开 API 的可用性；SIMD 仅影响执行路径选择，不改变公开语义契约。
 
 ### 5.7 SIMD Path Selection Thresholds
@@ -496,7 +496,7 @@ SIMD dot dispatch flow
 // the pure vectorized path.
 ```
 
-- SIMD 条件判断已收敛到 `simd` 后端内部。`dispatch.rs` 只负责决定是否进入并行执行。
+- SIMD 条件判断已收敛到 `simd` 后端内部（分层原则见 §1.2）。
 - 进入串行执行上下文后，`simd` 再按统一规则检查 feature、连续性、对齐、元素类型与运行时可用 lane 宽度，决定是否使用向量化路径。
 
 ### 5.10 `simd` 能力查询接口
@@ -601,7 +601,7 @@ pub(crate) fn add_f32_simd(lhs: &[f32], rhs: &[f32], dst: &mut [f32]) {
 
 ### 6.2 标量回退实现
 
-ScalarKernel（标量回退）已在方案中移除。标量路径由各语义模块的串行实现承担。
+ScalarKernel（标量回退）已在方案中移除。标量路径职责见 §1.1。
 
 ### 6.3 `unsafe` 健全性边界
 
@@ -669,12 +669,12 @@ Consistency guarantee strategy
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**设计决策：** 对于逐元素运算，SIMD 与标量路径必须保持相同公开语义；当前版本仅对 §5.6 覆盖状态表中“已实现”或“本版覆盖”的条目提供对应 SIMD kernel 路径，其中比较、一元与 bool 操作走独立专用 kernel，不经 `SimdKernel` 二元算术 trait。对于归约和内积，当前版本仅对已验证的 SIMD 覆盖子集启用向量化：`f32` / `f64` / `Complex<f32>` / `Complex<f64>` 为正式 SIMD 覆盖，`i32` / `i64` 仅在存在已验证的 ISA widening 实现时才进入 SIMD，否则默认回到串行 checked 基线（容差与精度约束见 §10）。
+**设计决策：** 对于逐元素运算，SIMD 与标量路径必须保持相同公开语义；当前版本仅对 §5.6 覆盖状态表中“已实现”或“本版覆盖”的条目提供对应 SIMD kernel 路径，其中比较、一元与 bool 操作走独立专用 kernel，不经 `SimdKernel` 二元算术 trait。对于归约和内积，当前版本仅对已验证的 SIMD 覆盖子集启用向量化：`f32` / `f64` / `Complex<f32>` / `Complex<f64>` 为正式 SIMD 覆盖，`i32` / `i64` 的默认策略与 SIMD 启用条件见 §5.6（容差与精度约束见 §10）。
 
  **一致性说明：** 对于逐元素操作（add、mul 等），SIMD 和标量路径产生逐位一致的结果。
 对于归约/内积操作，Xenon 不接受未记录的“近似一致”；若某个 SIMD 内核无法满足文档定义的数值语义与容差边界，则不走 SIMD 路径。
 
-**覆盖说明：** 当前版本只覆盖 §5.6 覆盖状态表中列出的“已实现”“本版覆盖”与“条件实现，默认标量回退”子集；其中整数 `sum` / `dot` 默认仍回到串行 checked 路径，只有在存在已验证 ISA widening 实现时才实际进入 SIMD。其余条目由 `simd/` 后端内部保持对应语义模块的标量/串行路径。数学函数作为后续增强目标逐步补齐；这不改变 `math` 模块对这些逐元素运算的公开 API 承诺。完整覆盖计划见 §5.6。
+**覆盖说明：** 当前版本只覆盖 §5.6 覆盖状态表中列出的“已实现”“本版覆盖”与“条件实现，默认标量回退”子集。其余条目按 §1.1 职责边界回退。数学函数作为后续增强目标逐步补齐；这不改变 `math` 模块对这些逐元素运算的公开 API 承诺。完整覆盖计划见 §5.6。
 
 ### 6.6 SIMD reduction / dot 内部策略
 
@@ -691,7 +691,7 @@ Consistency guarantee strategy
 
 **复数内积方向说明：** 根据 `需求说明书 §13`，复数 `dot` 的定义必须是 `sum(conj(x_i) * y_i)`，即对左操作数（lhs）取共轭，而不是对右操作数取共轭。SIMD 复数 dot kernel 必须保持这一共轭线性方向。
 
-**整数归约/内积补充约束：** 对 `i32` / `i64` 的 `sum()` / `dot()`，当前默认路径是串行 checked arithmetic。仅当某个 ISA 专用 widening SIMD 实现（例如 `i32 -> i64`）已被验证与标量逐步 `checked_add` / `checked_mul` + `checked_add` 完全等价时，才允许启用 SIMD；`i64` 不做泛化 widening 承诺。
+**整数归约/内积补充约束：** 对 `i32` / `i64` 的 `sum()` / `dot()`，默认策略与 SIMD 启用条件见 §5.6 覆盖状态表。`i64` 不做泛化 widening 承诺。
 
 **FMA 使用约束：** 元素级 `mul()` / `add()` / `dot()` 主循环中的乘法和加法必须按标量表达式顺序分开执行，不得在这些公开语义上隐式启用 FMA，以保持逐元素路径与标量路径的逐位一致。对于 `dot()` 而言，其主循环中的 per-element `mul` + lane-local `accumulate` 属于元素级步骤，同样禁用 FMA。仅在 `sum()` / `dot()` 的内部 **horizontal reduction merge** 阶段（已显式声明“允许末位 ULP 差异”），才能在特定 ISA 上使用 FMA 作为局部优化；启用时必须满足本节容差约束。
 
@@ -860,7 +860,7 @@ SIMD 路径与各语义模块串行实现的一致性测试，由各语义模块
 | 方向         | 对方模块                     | 接口/类型                                                                                                    | 契约                                                                                            |
 | ------------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
 | 消费（输入） | `tensor`                     | `TensorBase<S, D>::as_slice()`                                                                               | 只消费满足 `07-tensor.md` 连续切片契约的输入；非连续或广播视图保持语义模块串行路径              |
-| 消费（输入） | `math` / `reduction` / `dot` | `dispatch.rs` / `dispatch_vector_binary_op()` / `SimdKernel::sum()` / `SimdKernel::dot()` / `simd_vector_width()` | 上层语义模块先完成形状和类型裁决；`dispatch.rs` 只决定是否进入并行执行，SIMD 分支选择由 `simd/` 后端内部完成 |
+| 消费（输入） | `math` / `reduction` / `dot` | `dispatch.rs` / `dispatch_vector_binary_op()` / `SimdKernel::sum()` / `SimdKernel::dot()` / `simd_vector_width()` | 上层语义模块先完成形状和类型裁决；SIMD 分支选择由 `simd/` 后端内部完成（分层原则见 §1.2） |
 | 消费（输入） | `layout`                     | 对齐/连续性元数据                                                                                            | 当前版本仅对统一对齐快路径启用 SIMD，其余情况由 `simd/` 后端内部保持非 SIMD 路径                  |
 | 产出（输出） | 上层语义模块                 | 标量结果或写回目标切片                                                                                       | 不改变公开 API 形状、错误类别和数值语义边界                                                     |
 
@@ -886,7 +886,7 @@ math/reduction/dot call acceleration entry
 
 ### 9.3 与 parallel 模块
 
-SIMD 与并行的组合策略：`dispatch.rs` 只决定是否启用并行（基于元素数和并行阈值）；进入非并行执行上下文后，是否启用 SIMD 由 `simd` 后端内部决定（基于元素数、对齐和 ISA 支持）。并行路径的 worker 线程内调用 SIMD helper 时，不会再次触发并行分派。
+SIMD 与并行的组合策略（分层原则见 §1.2）：`dispatch.rs` 决定是否启用并行；进入非并行执行上下文后，是否启用 SIMD 由 `simd` 后端内部决定（基于元素数、对齐和 ISA 支持）。并行路径的 worker 线程内调用 SIMD helper 时，不会再次触发并行分派。
 
 ### 9.4 与 storage/layout 模块
 
