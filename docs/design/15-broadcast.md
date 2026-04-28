@@ -87,7 +87,7 @@ src/broadcast/
 | `layout`    | `Strides<D>`, `LayoutFlags`, `LayoutState::FContiguous`, `LayoutState::NonContiguous`, `LayoutState::BroadcastView`。                               |
 | `error`     | `XenonError::BroadcastError`, `XenonError::InvalidArgument`。                                                                                       |
 
-### 4.3 依赖合法性与新增依赖说明
+### 4.3 依赖合法性
 
 | 项目           | 说明                                                                                         |
 | -------------- | -------------------------------------------------------------------------------------------- |
@@ -374,7 +374,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 | 广播轴 stride 恒为 `0`                                 | 随机含 `1` 轴的 shape           |
 | 广播结果共享源数据                                     | 比较 data pointer / offset 不变 |
 
-### 8.5 Feature gate / 配置测试
+### 8.6 Feature gate / 配置测试
 
 | 配置                          | 验证点                                                          |
 | ----------------------------- | --------------------------------------------------------------- |
@@ -382,7 +382,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 | `rayon` / `simd` feature 开关 | 广播模块本身不改变语义；不同执行路径不得改变 shape 与错误类别。 |
 | 无额外 feature                | 当前模块不新增独立 feature gate。                               |
 
-### 8.6 类型边界 / 编译期测试
+### 8.7 类型边界 / 编译期测试
 
 | 场景                                                  | 测试方式                     |
 | ----------------------------------------------------- | ---------------------------- |

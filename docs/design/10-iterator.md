@@ -3,7 +3,7 @@
 > 文档编号: 10
 > 模块目录: src/iter/
 > 任务阶段: Phase 4
-> 前置文档: 02-dimension.md, 05-storage.md, 07-tensor.md, 09-parallel.md, 26-error.md
+> 前置文档: 02-dimension.md, 05-storage.md, 07-tensor.md, 26-error.md
 > 需求参考: 需求说明书 §6 - §8、§10、§11、§16 - §18、§21、§27、§28
 > 范围声明: 范围内
 
