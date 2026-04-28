@@ -52,9 +52,8 @@
 | 范围外   | 独立的多输入 lock-step 迭代抽象、`DoubleEndedIterator`、`Windows` / `LaneIter`、负步长布局以及并行公开迭代接口。           |
 | 非目标   | 不扩展当前公开迭代器集合，不新增第三方依赖，不放宽广播只读约束，也不在本文定义新的并行 API 契约。                          |
 
-- 迭代器类型的 `Send` / `Sync` 由其持有的引用类型和元素类型共同决定。
-- `Elements<'a, A, D>` 实现 `Send` / `Sync` 当且仅当 `&'a A` 分别满足 `Send` / `Sync`。
-- `AxisIter`、`IndexedIter` 及对应可变版本同理，不额外放宽或收紧张量/视图本身的线程安全边界。
+- 只读迭代器（`Elements`、`AxisIter`、`IndexedIter`）实现 `Send + Sync` 当且仅当 `A: Sync`，与底层 `ViewRepr` 的线程安全语义一致。
+- 可变迭代器（`ElementsMut`、`AxisIterMut`、`IndexedIterMut`）仅实现 `Send`（当 `A: Send`），不实现 `Sync`，与 `ViewMutRepr` 通过 `PhantomData<*const ()>` 实现 `!Sync` 保持一致。参见 `25-safety.md §5.5`。
 
 ---
 
@@ -76,11 +75,10 @@ src/iter/
 
 ```
 src/iter/
-├── crate::tensor        # TensorBase<S, D>, TensorView, TensorViewMut
+├── crate::tensor        # TensorBase<S, D>, TensorView, TensorViewMut, layout & contiguity queries
 ├── crate::dimension     # Dimension trait, Ix0~Ix6, IxDyn
 ├── crate::storage       # Storage, StorageMut trait
-├── crate::error         # XenonError
-└── crate::tensor        # Layout and contiguity queries via TensorBase
+└── crate::error         # XenonError
 ```
 
 ### 4.2 类型级依赖
@@ -89,7 +87,7 @@ src/iter/
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tensor`    | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `TensorViewMut<'a, A, D>`, `.shape()`, `.strides()`, `.as_ptr()`, `.len()`（参见 `07-tensor.md §5` ） |
 | `dimension` | `Dimension`, `Axis`, `Ix0`~`Ix6`, `IxDyn`，以及仅供内部轴迭代实现使用的 `RemoveAxis` / `D::Smaller`（参见 `02-dimension.md §5`）                  |
-| `storage`   | `Storage<Elem = A>`, `StorageMut<Elem = A>`, `Owned<A>`（参见 `05-storage.md §5`）                                                                |
+| `storage`   | `Storage<Elem = A>`, `StorageMut<Elem = A>`（参见 `05-storage.md §5`）                                                                            |
 | `error`     | `XenonError::InvalidAxis`（参见 `26-error.md §5`）                                                                                                |
 | `tensor`    | `.is_f_contiguous()`, 布局标志查询（参见 `07-tensor.md §5`）                                                                                      |
 
@@ -103,7 +101,7 @@ src/iter/
 
 ### 4.4 依赖方向声明
 
-依赖方向：单向向上。`iter` 仅消费 `tensor`、`dimension`、`storage` 等核心模块，不被它们依赖。布局/连续性判断通过 `TensorBase` 暴露的查询接口完成。
+依赖方向：单向向上。`iter` 仅消费 `tensor`、`dimension`、`storage`、`error` 等核心模块，不被核心模块反向依赖。上层运算模块（`math`、`reduction`、`matrix`、`set`、`utility` 等）可消费 `iter` 提供的公开迭代器类型。布局/连续性判断通过 `TensorBase` 暴露的查询接口完成。
 
 ---
 
@@ -201,7 +199,7 @@ where
 {}
 ```
 
-- `需求说明书 §11` 与 `02-dimension.md §5.6` 更偏向“0D 按轴遍历通过运行时 `InvalidAxis` 拒绝，且公开张量方法不直接暴露 `RemoveAxis`”。当前文档仍保留 `D: RemoveAxis` 的公开签名，是因为 `Iterator::Item = TensorView<'a, A, D::Smaller>` 的静态返回类型尚未找到同样简洁的公开建模方式。在当前设计下，所有进入运行时路径的按轴迭代仍必须对 `axis < ndim`（含动态 rank-0）返回 `XenonError::InvalidAxis`。
+- `需求说明书 §11` 与 `02-dimension.md §5.8` 更偏向“0D 按轴遍历通过运行时 `InvalidAxis` 拒绝，且公开张量方法不直接暴露 `RemoveAxis`”。当前文档仍保留 `D: RemoveAxis` 的公开签名，是因为 `Iterator::Item = TensorView<'a, A, D::Smaller>` 的静态返回类型尚未找到同样简洁的公开建模方式。在当前设计下，所有进入运行时路径的按轴迭代仍必须对 `axis < ndim`（含动态 rank-0）返回 `XenonError::InvalidAxis`。
 - **`ExactSizeIterator` 契约说明：** `AxisIter` / `AxisIterMut` 的 `len()` 返回 `shape[axis]`；因此 `size_hint()` 的上下界必须始终相等，并与剩余未产出的轴切片数量一致。空轴（`shape[axis] == 0`）时，`len() == 0`。
 
 ### 5.3 内部迭代分发说明
@@ -355,7 +353,7 @@ increment_index_f(shape, index):
 // Therefore broadcast_to() only returns an immutable view.
 ```
 
-**编译期防护机制：** 广播结果返回 `TensorView`（不可变视图），而非 `TensorViewMut`。由于 `TensorView` 不提供 `iter_mut()` 方法（`iter_mut()` 要求 `StorageMut` 约束，仅 `TensorViewMut` 和 `Tensor` 满足），对广播结果调用 `iter_mut()` 会在编译期被类型系统拒绝，无需运行时检查。参见 `07-tensor.md §5.7` 中视图方法的约束差异。
+**编译期防护机制：** 广播结果返回 `TensorView`（不可变视图），而非 `TensorViewMut`。由于 `TensorView` 不提供 `iter_mut()` 方法（`iter_mut()` 要求 `StorageMut` 约束，仅 `TensorViewMut` 和 `Tensor` 满足），对广播结果调用 `iter_mut()` 会在编译期被类型系统拒绝，无需运行时检查。参见 `07-tensor.md §5.8` 中视图方法的约束差异。
 
 ### 6.4 填充数组迭代
 
