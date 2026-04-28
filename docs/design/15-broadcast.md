@@ -435,49 +435,13 @@ User calls broadcast_to() or broadcast_with()
 
 ## 10. 错误处理与语义边界
 
-| 主题              | 内容                                                                                                                                                                              |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | 广播不兼容时统一返回 `XenonError::BroadcastError { operation, lhs_shape, rhs_shape, attempted_target_shape, axis }`；例如 `broadcast_to`、`broadcast_shape`、`broadcast_with` 都必须填充结构化字段。 |
-| 参数错误          | 当 `orig_shape.len() != orig_strides.len()` 等公开前提被破坏时，`broadcast_strides()` 返回 `XenonError::InvalidArgument { operation, argument, expected, actual, axis, shape }`。 |
-| Panic             | 不允许把 shape 不兼容隐藏为 panic；公开 API 使用 `Result` 表达失败。                                                                                                              |
-| 语义边界          | 广播只负责显式元数据扩展，不改变元素值、不重排数据、不授予可写访问。                                                                                                              |
-| 路径一致性        | 默认路径、后续可能启用的 SIMD/并行消费路径都必须共享同一广播规则与错误类别；广播模块自身不分裂语义分支。                                                                          |
-
-### 10.1 错误示例
-
-```rust,ignore
-XenonError::BroadcastError {
-    operation: "broadcast_to",
-    lhs_shape: self.shape().to_vec(),
-    rhs_shape: shape.slice().to_vec(),
-    attempted_target_shape: Some(shape.slice().to_vec()),
-    axis: None,
-}
-
-XenonError::BroadcastError {
-    operation: "broadcast_shape",
-    lhs_shape: shape_a.to_vec(),
-    rhs_shape: shape_b.to_vec(),
-    attempted_target_shape: None,
-    axis: Some(axis_from_right),
-}
-```
-
-```rust,ignore
-XenonError::InvalidArgument {
-    operation: "broadcast_strides".into(),
-    argument: "orig_strides".into(),
-    expected: "orig_shape.len() == orig_strides.len()".into(),
-    actual: format!("shape={}, strides={}", orig_shape.len(), orig_strides.len()).into(),
-    axis: None,
-    axis_len: None,
-    start: None,
-    end: None,
-    shape: Some(orig_shape.to_vec()),
-}
-```
-
-文档中不得再使用 `shape_a`、`shape_b`、`from`、`to` 等旧字段名来描述广播错误结构。
+| 主题              | 内容                                                                                                                               |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Recoverable error | 广播不兼容时统一返回 `XenonError::BroadcastError`；例如 `broadcast_to`、`broadcast_shape`、`broadcast_with` 都必须填充结构化字段。 |
+| 参数错误          | 当 `orig_shape.len() != orig_strides.len()` 等公开前提被破坏时，`broadcast_strides()` 返回 `XenonError::InvalidArgument`。         |
+| Panic             | 不允许把 shape 不兼容隐藏为 panic；公开 API 使用 `Result` 表达失败。                                                               |
+| 语义边界          | 广播只负责显式元数据扩展，不改变元素值、不重排数据、不授予可写访问。                                                               |
+| 路径一致性        | 默认路径、后续可能启用的 SIMD/并行消费路径都必须共享同一广播规则与错误类别；广播模块自身不分裂语义分支。                           |
 
 ---
 
@@ -503,7 +467,7 @@ XenonError::InvalidArgument {
 
 | 属性     | 值                                                                    |
 | -------- | --------------------------------------------------------------------- |
-| 决策     | `BroadcastDim` 作为 public sealed trait 只负责输出维度类型推导，实际兼容性由运行时函数检查。   |
+| 决策     | `BroadcastDim` 作为 public sealed trait 只负责输出维度类型推导，实际兼容性由运行时函数检查。|
 | 理由     | 维度 rank 可在类型层表达，但具体轴长度仍需运行时输入决定。            |
 | 替代方案 | 尝试完全在类型层判定广播成功 —— 放弃，不适用于动态 shape 与值级信息。 |
 
