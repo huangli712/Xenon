@@ -53,7 +53,7 @@
 | 非目标   | 不扩展当前公开迭代器集合，不新增第三方依赖，不放宽广播只读约束，也不在本文定义新的并行 API 契约。                          |
 
 - 只读迭代器（`Elements`、`AxisIter`、`IndexedIter`）实现 `Send + Sync` 当且仅当 `A: Sync`，与底层 `ViewRepr` 的线程安全语义一致。
-- 可变迭代器（`ElementsMut`、`AxisIterMut`、`IndexedIterMut`）仅实现 `Send`（当 `A: Send`），不实现 `Sync`，与 `ViewMutRepr` 通过 `PhantomData<*const ()>` 实现 `!Sync` 保持一致。参见 `25-safety.md §5.5`。
+- 可变迭代器（`ElementsMut`、`AxisIterMut`、`IndexedIterMut`）仅实现 `Send`（当 `A: Send`），不实现 `Sync`，与 `ViewMutRepr` 不提供 `Sync` impl 保持一致（`ViewMutRepr` 内部通过 `PhantomData<&'a mut A>` 阻止自动 `Sync` 推导）。参见 `05-storage.md §6.8`、`25-safety.md §5.5`。
 
 ---
 
