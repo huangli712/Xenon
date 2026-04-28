@@ -214,7 +214,7 @@ broadcast_shape(shape_a, shape_b):
     1. Align dimensions from right to left.
     2. Treat missing leading dimensions as 1.
     3. If two aligned dimensions differ and neither is 1, return BroadcastError.
-    4. Otherwise choose the non-1 dimension, with 0 preserved when paired with 1.
+    4. Otherwise result = max(a, b): if one is 1, take the other; if both equal (including both 1), take that value.
     5. Return the computed IxDyn shape.
 ```
 
@@ -233,10 +233,9 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
     4. Mark the result layout as BroadcastView when any stride is 0.
 ```
 
-对广播轴写入零步长意味着该轴被逻辑扩展，但所有索引都回落到同一底层元素；这与 `06-layout.md` §5.7 的零步长语义保持一致。若任一轴出现 `0` 步长，结果即不再视为普通 `FContiguous` 或一般 `NonContiguous` 视图，而统一进入 `BroadcastView`。
+对广播轴写入零步长意味着该轴被逻辑扩展，但所有索引都回落到同一底层元素；这与 `06-layout.md` §5.11 的零步长语义保持一致。若任一轴出现 `0` 步长，结果即不再视为普通 `FContiguous` 或一般 `NonContiguous` 视图，而统一进入 `BroadcastView`。
 
 - **再次广播规则：** 对已广播视图再次广播时，已有零步长轴保持为 `0`，新增广播轴也写入 `0` 步长；结果 `shape` 取“当前视图 shape”与“新目标 shape”的广播结果。
-
 - **布局标志重算规则：** `ALIGNED` 继承源视图；若任一轴 stride 为 `0`，设置 `BroadcastView` flag。`F_CONTIGUOUS` 仅在不存在零步长且结果 stride 仍满足 F-order 规则时保留。
 
 ### 6.4 共享只读视图构造
@@ -258,7 +257,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 
 ### 6.6 与存储系统的对接
 
-- **查询：** 广播结果内部使用 `ViewRepr<'a, A>`，因此 `storage_kind()` 返回 `StorageKind::View`；是否为广播结果由 layout flags 中的 `LayoutFlags::HAS_ZERO_STRIDE` / `LayoutState::BroadcastView` 指示。
+- **查询：** 广播结果内部使用 `ViewRepr<'a, A>`，因此 `storage_kind()` 返回 `StorageKind::View`，`access_semantics()` 返回 `AccessSemantics::SharedReadOnly`；是否为广播结果由 layout flags 中的 `LayoutFlags::HAS_ZERO_STRIDE` / `LayoutState::BroadcastView` 指示。
 - **转换：** 广播结果可通过显式分配转成 `Owned` 连续张量（如 `to_owned()` / `to_contiguous()` 一类路径）；由于广播视图存在零步长别名，当前版本不允许把它转换为 `ViewMut`，也不提供 `into_mut()`。
 - **线程：** 广播 `ViewRepr` 遵循标准借用规则；当 `A: Sync` 时可满足只读跨线程共享前提，`Send`/`Sync` 语义与普通只读视图一致，不因广播额外放宽。
 
@@ -298,7 +297,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 
 ### Wave 2: 视图构造基础
 
-- [ ] *T5**: 实现 `broadcast_to()` 基本路径
+- [ ] **T5**: 实现 `broadcast_to()` 基本路径
   - 文件: `src/broadcast/view.rs`
   - 内容: 目标 shape 校验与只读视图构造
   - 测试: `test_broadcast_to_basic`
