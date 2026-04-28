@@ -69,23 +69,22 @@ src/broadcast/
 
 ### 4.1 依赖图（ASCII）
 
-```text
-                    ┌──────────────┐
-                    │    tensor    │
-                    │ TensorBase   │
-                    │ TensorView   │
-                    └──────┬───────┘
-                           │ uses
-              ┌────────────┼───────────────┐
-              │        broadcast            │
-              │   shape.rs + view.rs        │
-              └──┬──────────┬──────────┬────┘
-                 │ uses     │ uses     │ uses
-          ┌──────▼───┐ ┌────▼─────┐ ┌──▼──────────┐
-          │ dimension│ │  layout  │ │    error    │
-          │Dimension │ │Strides   │ │ XenonError  │
-          │BroadcastDim││Flags/State││             │
-          └──────────┘ └──────────┘ └─────────────┘
+```
+src/broadcast/
+|
+├── mod.rs
+│   └── module entry, re-export public functions and trait-bound-related entry points
+|
+├── shape.rs
+│   ├── crate::dimension  # Dimension, Ix0~Ix6, IxDyn, BroadcastDim<Other>
+│   ├── crate::layout     # Strides<D>, LayoutFlags
+│   └── crate::error      # XenonError::BroadcastError, XenonError::InvalidArgument
+|
+└── view.rs
+    ├── crate::tensor     # TensorBase<S, D>, TensorView<'a, A, D>, .shape(), .strides(), .offset()
+    ├── crate::dimension  # Dimension, BroadcastDim<Other>
+    ├── crate::layout     # Strides<D>, LayoutFlags, LayoutState::BroadcastView
+    └── crate::error      # XenonError::BroadcastError, XenonError::InvalidArgument
 ```
 
 ### 4.2 类型级依赖
@@ -93,7 +92,7 @@ src/broadcast/
 | 来源模块    | 使用的类型/trait                                                                                                                                    |
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tensor`    | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `.shape()`, `.strides()`, `.offset()`, 视图构造入口，以及从任意受支持存储模式降级到只读广播视图的入口。 |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<Other>`（public sealed trait，对外可命名）。                                                                                          |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<Other>`（public sealed trait，对外可命名）。                                                       |
 | `layout`    | `Strides<D>`, `LayoutFlags`, `LayoutState::FContiguous`, `LayoutState::NonContiguous`, `LayoutState::BroadcastView`。                               |
 | `error`     | `XenonError::BroadcastError`, `XenonError::InvalidArgument`。                                                                                       |
 
