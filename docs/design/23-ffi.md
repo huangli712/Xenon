@@ -396,21 +396,21 @@ pub struct Complex64 {
 }
 ```
 
-> **Complex 布局约定：** `Complex<f32>` 与 `Complex<f64>` 的 FFI 表示分别等价于 `#[repr(C)] struct { re: f32, im: f32 }` 和 `#[repr(C)] struct { re: f64, im: f64 }`。
+**Complex 布局约定：** `Complex<f32>` 与 `Complex<f64>` 的 FFI 表示分别等价于 `#[repr(C)] struct { re: f32, im: f32 }` 和 `#[repr(C)] struct { re: f64, im: f64 }`。
 
-> **内存保证：** `#[repr(C)]` 保证字段顺序固定为 `re` 后接 `im`，整体对齐分别等于 `f32` / `f64` 的 C ABI 对齐要求；若目标 ABI 需要尾部 padding，则该 padding 仅作用于单个复数元素末尾，不改变数组按该结构逐元素重复排布的语义。
+**内存保证：** `#[repr(C)]` 保证字段顺序固定为 `re` 后接 `im`，整体对齐分别等于 `f32` / `f64` 的 C ABI 对齐要求；若目标 ABI 需要尾部 padding，则该 padding 仅作用于单个复数元素末尾，不改变数组按该结构逐元素重复排布的语义。
 
-> **导出语义：** 导出复数张量时，`TensorExport<Complex<f32>>` / `TensorExport<Complex<f64>>` 和 `TensorExportMut<Complex<f32>>` / `TensorExportMut<Complex<f64>>` 中的 `data` 仍是“复数元素指针”，`offset` 与 `strides` 仍按“复数元素个数”计量，而不是按标量 `re/im` 分量或字节计量。C 侧看到的是 `Complex32*` / `Complex64*` 加上相同的 shape/stride 元数据。
+**导出语义：** 导出复数张量时，`TensorExport<Complex<f32>>` / `TensorExport<Complex<f64>>` 和 `TensorExportMut<Complex<f32>>` / `TensorExportMut<Complex<f64>>` 中的 `data` 仍是“复数元素指针”，`offset` 与 `strides` 仍按“复数元素个数”计量，而不是按标量 `re/im` 分量或字节计量。C 侧看到的是 `Complex32*` / `Complex64*` 加上相同的 shape/stride 元数据。
 
 ### 5.6 Bool FFI 布局契约
 
-> **Bool ABI 约束：** `bool` 与 C `_Bool` / C23 `bool` 的互操作仅在文档明确支持的平台/ABI 下成立；它用于说明当前支持目标上的对接方式，不作为跨语言、跨目标的稳定 ABI 承诺。对这些已支持平台，C 消费者应使用 `_Bool` 或 `bool`（C23）来匹配 `TensorExport<bool>` / `TensorExportMut<bool>` 中的 `data` 指针类型，并避免使用 `int`、`unsigned char` 等其它整数类型。
+**Bool ABI 约束：** `bool` 与 C `_Bool` / C23 `bool` 的互操作仅在文档明确支持的平台/ABI 下成立；它用于说明当前支持目标上的对接方式，不作为跨语言、跨目标的稳定 ABI 承诺。对这些已支持平台，C 消费者应使用 `_Bool` 或 `bool`（C23）来匹配 `TensorExport<bool>` / `TensorExportMut<bool>` 中的 `data` 指针类型，并避免使用 `int`、`unsigned char` 等其它整数类型。
 
-> **导出语义：** 导出 `bool` 张量时，`TensorExport<bool>` 中的 `data` 为 `*const bool`（C 侧 `const _Bool*`），`TensorExportMut<bool>` 中的 `data` 为 `*mut bool`（C 侧 `_Bool*`），`offset` 与 `strides` 按 `bool` 元素个数计量。`strides[i] == 1` 表示相邻逻辑元素在内存中连续排列（每个占 1 字节）。
+**导出语义：** 导出 `bool` 张量时，`TensorExport<bool>` 中的 `data` 为 `*const bool`（C 侧 `const _Bool*`），`TensorExportMut<bool>` 中的 `data` 为 `*mut bool`（C 侧 `_Bool*`），`offset` 与 `strides` 按 `bool` 元素个数计量。`strides[i] == 1` 表示相邻逻辑元素在内存中连续排列（每个占 1 字节）。
 
-> **C 侧验证说明：** Xenon 仅对文档明确支持的平台/ABI 给出 Rust `bool` 与 C `_Bool` 的互操作说明；跨语言集成时，调用方仍应在目标工具链侧通过 `sizeof(_Bool) == 1`、`_Alignof(_Bool) == 1` 等静态断言验证兼容性，不应把该文档表述解读为跨平台稳定 ABI 保证。
+**C 侧验证说明：** Xenon 仅对文档明确支持的平台/ABI 给出 Rust `bool` 与 C `_Bool` 的互操作说明；跨语言集成时，调用方仍应在目标工具链侧通过 `sizeof(_Bool) == 1`、`_Alignof(_Bool) == 1` 等静态断言验证兼容性，不应把该文档表述解读为跨平台稳定 ABI 保证。
 
-> **测试边界说明：** 与上述 ABI 约束一致，`bool` FFI ABI 相关测试也只应在文档明确支持的 targets/ABI 上启用；其它目标上应通过 `#[cfg(...)]` 跳过，而不是把 `_Bool` 兼容性断言提升为无条件测试基线。
+**测试边界说明：** 与上述 ABI 约束一致，`bool` FFI ABI 相关测试也只应在文档明确支持的 targets/ABI 上启用；其它目标上应通过 `#[cfg(...)]` 跳过，而不是把 `_Bool` 兼容性断言提升为无条件测试基线。
 
 ### 5.7 从裸指针构造张量
 
@@ -565,11 +565,11 @@ where
 }
 ````
 
-> **校验边界说明：** 与 `07-tensor.md` §5.6 一致，`from_raw_parts*()` 只验证库能够直接检查的元数据约束（例如 shape/stride/offset/storage*len 组合是否合法、是否溢出、是否越界），并在失败时返回 `Result<*, XenonError>`。指针有效性、对齐、实际可访问范围与生命周期仍由调用方在 `unsafe` 前提下负责。
+**校验边界说明：** 与 `07-tensor.md` §5.6 一致，`from_raw_parts*()` 只验证库能够直接检查的元数据约束（例如 shape/stride/offset/storage*len 组合是否合法、是否溢出、是否越界），并在失败时返回 `Result<*, XenonError>`。指针有效性、对齐、实际可访问范围与生命周期仍由调用方在 `unsafe` 前提下负责。
 
-> **空张量补充：** `ptr.add(offset)` 形式的逻辑首元素地址计算只适用于非空张量；空张量路径必须跳过该指针运算，并改用 `NonNull::dangling()` 这类明确定义的非解引用哨兵值参与 flags / metadata 初始化。
+**空张量补充：** `ptr.add(offset)` 形式的逻辑首元素地址计算只适用于非空张量；空张量路径必须跳过该指针运算，并改用 `NonNull::dangling()` 这类明确定义的非解引用哨兵值参与 flags / metadata 初始化。
 
-> **可写视图补充：** `from_raw_parts_mut()` 不仅必须拒绝所有非空零步长布局（任何非单元素轴的 `stride == 0`），还必须拒绝一切能被高效保守判定为潜在自别名的布局。实现上先用 `validate_access_range()` 验证越界与可表示性，再用 `validate_non_overlapping_layout(shape, strides, offset, storage_len)` 对受支持的正步长布局做保守非重叠判定；若布局超出该高效判定范围，也必须返回可恢复错误，而不是枚举全部可达 offset。
+**可写视图补充：** `from_raw_parts_mut()` 不仅必须拒绝所有非空零步长布局（任何非单元素轴的 `stride == 0`），还必须拒绝一切能被高效保守判定为潜在自别名的布局。实现上先用 `validate_access_range()` 验证越界与可表示性，再用 `validate_non_overlapping_layout(shape, strides, offset, storage_len)` 对受支持的正步长布局做保守非重叠判定；若布局超出该高效判定范围，也必须返回可恢复错误，而不是枚举全部可达 offset。
 
 ### 5.8 将张量解构为裸指针
 
@@ -617,7 +617,7 @@ where
 }
 ````
 
-> **设计决策：** `into_raw_parts` 仅适用于 Owned 存储，且导出的内存布局必须满足 Xenon 的 owned 不变量：F-order contiguous、`offset == 0`、canonical F-order strides。若调用方持有的是 view 或带 offset 的逻辑子视图，必须先显式物化为新的 owned contiguous tensor，再跨越 FFI 边界导出裸指针。如需将 View 转为 Owned 再解构，参见 `21-type.md` §5.6。
+**设计决策：** `into_raw_parts` 仅适用于 Owned 存储，且导出的内存布局必须满足 Xenon 的 owned 不变量：F-order contiguous、`offset == 0`、canonical F-order strides。若调用方持有的是 view 或带 offset 的逻辑子视图，必须先显式物化为新的 owned contiguous tensor，再跨越 FFI 边界导出裸指针。如需将 View 转为 Owned 再解构，参见 `21-type.md` §5.6。
 
 ### 5.9 内存管理
 
@@ -712,9 +712,9 @@ where
 }
 ```
 
-> **owned 重建校验说明：** `from_raw_parts_owned()` 虽然仍是 `unsafe`，但必须先验证所有可直接从元数据证明的约束：`offset == 0`、`strides` 等于 canonical F-order、`len == product(shape)`、`cap >= len`、`align` 是对 `A` 有效的 2 的幂对齐。只有指针真实来源、分配器匹配和初始化状态等无法由元数据单独证明的前提继续留给调用方承担。
+**owned 重建校验说明：** `from_raw_parts_owned()` 虽然仍是 `unsafe`，但必须先验证所有可直接从元数据证明的约束：`offset == 0`、`strides` 等于 canonical F-order、`len == product(shape)`、`cap >= len`、`align` 是对 `A` 有效的 2 的幂对齐。只有指针真实来源、分配器匹配和初始化状态等无法由元数据单独证明的前提继续留给调用方承担。
 
-> **裸指针直接构造 Owned 张量的设计约束：** 当前版本不提供从任意裸指针直接构造 `Owned` 张量的接口。`from_raw_parts()` / `from_raw_parts_mut()` 仅构造视图（View / ViewMut），`from_raw_parts_owned()` 仅从 `into_raw_parts()` 导出的 `OwnedRawParts` 重建 Owned 张量。原因是 `Owned` 存储需要 Xenon 分配器的元数据（capacity、alignment），这些信息无法从单一裸指针推断。若调用方需要从裸指针创建 Owned 张量，须先将数据复制到 Xenon 分配的张量中（如通过 `Tensor::from_shape_vec()` 等构造方法）。
+**裸指针直接构造 Owned 张量的设计约束：** 当前版本不提供从任意裸指针直接构造 `Owned` 张量的接口。`from_raw_parts()` / `from_raw_parts_mut()` 仅构造视图（View / ViewMut），`from_raw_parts_owned()` 仅从 `into_raw_parts()` 导出的 `OwnedRawParts` 重建 Owned 张量。原因是 `Owned` 存储需要 Xenon 分配器的元数据（capacity、alignment），这些信息无法从单一裸指针推断。若调用方需要从裸指针创建 Owned 张量，须先将数据复制到 Xenon 分配的张量中（如通过 `Tensor::from_shape_vec()` 等构造方法）。
 
 ```rust,ignore
 // Correct round-trip: into_raw_parts → use pointer → from_raw_parts_owned → drop
@@ -829,16 +829,19 @@ where
     /// - `Err(XenonError::Ffi { .. })`: returned when the tensor is not 2D or
     ///   not BLAS compatible
     ///
-    /// BLAS/LAPACK 后端的整数宽度因实现而异。`blas_info()` 提供
-    /// `rows`/`cols`/`leading_dim` 的原始 `usize` 值，并提供
-    /// `as_blas_int()` 辅助方法将其转换为后端所需的整数类型（`i32` 或
-    /// `i64`）。调用方根据目标后端选择合适的转换。`blas_info()` 本身
-    /// 不执行该整数宽度转换；真正可能失败的是后续的 `as_blas_int()`。
+    /// BLAS/LAPACK backend integer widths vary by implementation. `blas_info()`
+    /// provides `rows`/`cols`/`leading_dim` as raw `usize` values, along with
+    /// an `as_blas_int()` helper to convert them to the backend's integer type
+    /// (`i32` or `i64`). Callers choose the appropriate conversion based on
+    /// the target backend. `blas_info()` itself does not perform integer-width
+    /// conversion; the conversion that may actually fail is the subsequent
+    /// `as_blas_int()`.
     ///
-    /// 本模块同时提供面向 LAPACK 集成的辅助能力。LAPACK 所需的
-    /// leading dimension、矩阵布局信息与 BLAS 共享同一套 metadata 导出格式
-    /// （`blas_info()` / `is_blas_layout_compatible()`）。LAPACK 特有的参数
-    /// （如 pivot indices）由上游库通过 raw pointer API 自行管理。
+    /// This module also provides helpers for LAPACK integration. The leading
+    /// dimension and matrix layout information required by LAPACK shares the
+    /// same metadata export format as BLAS (`blas_info()` /
+    /// `is_blas_layout_compatible()`). LAPACK-specific parameters (e.g.,
+    /// pivot indices) are managed by upstream libraries via the raw pointer API.
     ///
     /// # Example
     ///

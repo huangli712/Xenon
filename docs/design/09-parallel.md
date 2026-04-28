@@ -78,7 +78,7 @@ src/parallel/
 | `dimension` | `Dimension`                                                                                              |
 | `dispatch`  | `ParallelExecStrategy`                                                                                   |
 | `parallel`  | `ParElements<'a, A, D>`, `TensorBase::par_iter()`, `par_zip_map()`                                       |
-| `error`     | `XenonError`, `XenonError::DimensionMismatch`, `XenonError::InvalidShape`                                |
+| `error`     | `XenonError`, `XenonError::DimensionMismatch`, `XenonError::InvalidShape`, `XenonError::InvalidArgument` |
 
 ### 4.3 依赖合法性
 
@@ -219,7 +219,8 @@ where
 
 - `par_dot()` 在类型层面接受任意 `Dimension` 输入，以便与更通用的上层张量调用路径对接；但其语义契约仍限定为一维向量内积，因此实现必须在运行时检查 `lhs.ndim() == 1`、`rhs.ndim() == 1`，并在进入并行归约前再次确认两侧逻辑长度一致。
 - 整数 `sum` / `dot` 支持并行路径。在并行路径中，每个分片独立执行 checked 算术；若任一分片检测到溢出，并行执行立即终止并传播 panic。诊断仲裁必须按逻辑 chunk 索引确定：始终报告首个失败 chunk（按逻辑索引顺序）。若实现无法保证这一确定性，则整数 `sum` / `dot` 在并行模式下必须回退到串行路径。
-- 复数内积采用共轭线性定义：`result = sum(conj(lhs_i) * rhs_i)`，与 `08-simd.md` 中的复数内积语义完全一致。
+- 复数内积采用共轭线性定义：`result = sum(conj(lhs_i) * rhs_i)`，与 `08-simd.md` §8 中复数 dot kernel 的共轭线性方向完全一致。
+- `Numeric` trait 定义于 `03-element.md` §5.2，提供通用数值运算能力标记（`Element + Add + Sub + Mul + Div + Neg + conjugate`）。
 
 ### 5.6 并行迭代入口
 
@@ -572,7 +573,7 @@ math / reduction / matrix call dispatch entry
 | Recoverable error | `par_dot()` 的长度不兼容返回 `XenonError::DimensionMismatch`；`par_zip_map()` 的元素总数溢出返回 `InvalidArgument` |
 | Panic             | 归约中的整数溢出仍属于不可恢复错误，必须 panic，而不是包装为 `XenonError`                                       |
 | 路径一致性        | `dispatch.rs` 负责执行路径选择；一旦进入 `parallel/`，并行路径必须返回与调用方串行基线相同形状、相同错误类别，以及满足同一数值语义约束的结果  |
-| 容差边界          | 浮点与复数若存在执行路径相关的已知舍入差异，只能落在 `需求说明书 §28.3` 与 `需求说明书 §28.5` 允许且已文档化的范围内；以 `需求说明书 §28.3` 为权威基线，`00-coding.md §7.4` 仅作为实现参考。|
+| 容差边界          | 浮点与复数若存在执行路径相关的已知舍入差异，只能落在 `需求说明书 §28.3` 与 `需求说明书 §28.5` 允许且已文档化的范围内；以 `需求说明书 §28.3` 为权威基线，`00-coding.md §8.4` 仅作为实现参考。|
 
 路径语义边界：
 
@@ -585,7 +586,7 @@ math / reduction / matrix call dispatch entry
 ### 10.1 浮点/复数并行归约容差
 
 - 浮点与复数并行归约允许与标量路径不同的合并顺序；该差异视为合法实现细节，但必须受 `需求说明书 §28.3` 文档化容差约束。
-- 以 `需求说明书 §28.3` 为权威基线，`00-coding.md §7.4` 仅作为实现参考。
+- 以 `需求说明书 §28.3` 为权威基线，`00-coding.md §8.4` 仅作为实现参考。
 - 同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。
 - `NaN`：按 IEEE 754 语义检查（`NaN !=` 任何值），不使用数值容差。
 - `±Inf`：必须同号同类。
