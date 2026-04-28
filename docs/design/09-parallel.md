@@ -68,7 +68,7 @@ src/parallel/
 └── crate::error             # XenonError
 ```
 
-### 4.2 类型级依赖表
+### 4.2 类型级依赖
 
 | 来源模块    | 使用的类型/trait                                                                                         |
 | ----------- | -------------------------------------------------------------------------------------------------------- |
@@ -112,25 +112,24 @@ pub(crate) struct ParallelPool {
 ```
 
 - `ParallelPool`：内部线程池包装，只改变执行上下文，不改变外部语义；其内部调用仍受 `dispatch.rs` 中的 `ParallelGuard` + `ParallelContext` 保护，自定义 pool 内嵌套调用并行入口时会自动回退串行，不允许嵌套 `ParallelPool` 实例。它属于内部机制，不构成公开 API 契约。
-
-> `ParallelGuard`、阈值状态与嵌套并行防护逻辑已迁移至内部 `dispatch.rs` 模块；本节仅保留与线程池执行上下文直接相关的并行后端状态。
+- `ParallelGuard`、阈值状态与嵌套并行防护逻辑已迁移至内部 `dispatch.rs` 模块；本节仅保留与线程池执行上下文直接相关的并行后端状态。
 
 ### 5.2 内部执行入口与可见性
 
-> **可见性说明：** `parallel/` 是 `pub(crate)` 内部后端；所有执行后端函数与类型（包括 `par_map`、`par_zip_map`、`par_sum`、`par_dot`、`ParallelPool`、`ParElements`）均保持 `pub(crate)`，仅供 `math` / `reduction` / `matrix` 等语义模块通过 `dispatch.rs` 自动调用。
-
-阈值配置与嵌套并行防护已迁移至内部 `dispatch.rs` 模块，本模块仅提供纯并行执行入口。
-
-> **执行策略说明：** 并行阈值由 `dispatch.rs` 统一管理：内部保留编译期默认值，但允许 dispatch 层按配置覆盖该默认值。`parallel/` 模块不提供独立的公开阈值配置接口；所有并行入口仅接受 dispatch 层传入的最终执行策略参数。
+- **可见性说明：** `parallel` 是 `pub(crate)` 内部后端；所有执行后端函数与类型（包括 `par_map`、`par_zip_map`、`par_sum`、`par_dot`、`ParallelPool`、`ParElements`）均保持 `pub(crate)`，仅供 `math` / `reduction` / `matrix` 等语义模块通过 `dispatch.rs` 自动调用。
+- 阈值配置与嵌套并行防护已迁移至内部 `dispatch.rs` 模块，本模块仅提供纯并行执行入口。
+- **执行策略说明：** 并行阈值由 `dispatch.rs` 统一管理：内部保留编译期默认值，但允许 dispatch 层按配置覆盖该默认值。`parallel` 模块不提供独立的公开阈值配置接口；所有并行入口仅接受 dispatch 层传入的最终执行策略参数。
 
 ### 5.3 内部执行策略参数规范
 
-| 参数                 | 类型            | 默认值                   | 说明                                                                                             |
-| -------------------- | --------------- | ------------------------ | ------------------------------------------------------------------------------------------------ |
-| `max_workers`        | `Option<usize>` | `None`（使用线程池默认） | 最大并行工作线程数                                                                               |
-| `chunk_size`         | `Option<usize>` | `None`（自动计算）       | 每个 chunk 的元素数                                                                              |
+| 参数                 | 类型            | 默认值                   | 说明                 |
+| -------------------- | --------------- | ------------------------ | ---------------------|
+| `max_workers`        | `Option<usize>` | `None`（使用线程池默认） | 最大并行工作线程数   |
+| `chunk_size`         | `Option<usize>` | `None`（自动计算）       | 每个 chunk 的元素数  |
 
-配置入口不对外暴露。`parallel_threshold` 的权威入口位于 `dispatch.rs`：其内部保留编译期默认值，同时允许配置层覆写；`parallel/` 模块仅通过 `ParallelExecStrategy` 接收 dispatch 已裁决完成的执行阶段参数字段。
+- 配置入口不对外暴露。
+- `parallel_threshold` 的权威入口位于 `dispatch.rs`：其内部保留编译期默认值，同时允许配置层覆写。
+- `parallel` 模块仅通过 `ParallelExecStrategy` 接收 dispatch 已裁决完成的执行阶段参数字段。
 
 ### 5.4 `ParallelExecStrategy` 参数校验规则
 
@@ -214,11 +213,9 @@ where
     A: Element + Numeric + Send + Sync + Clone;
 ```
 
-`par_dot()` 在类型层面接受任意 `Dimension` 输入，以便与更通用的上层张量调用路径对接；但其语义契约仍限定为一维向量内积，因此实现必须在运行时检查 `lhs.ndim() == 1`、`rhs.ndim() == 1`，并在进入并行归约前再次确认两侧逻辑长度一致。
-
-整数 `sum` / `dot` 支持并行路径。在并行路径中，每个分片独立执行 checked 算术；若任一分片检测到溢出，并行执行立即终止并传播 panic。诊断仲裁必须按逻辑 chunk 索引确定：始终报告首个失败 chunk（按逻辑索引顺序）。若实现无法保证这一确定性，则整数 `sum` / `dot` 在并行模式下必须回退到串行路径。
-
-复数内积采用共轭线性定义：`result = sum(conj(lhs_i) * rhs_i)`，与 `08-simd.md` 中的复数内积语义完全一致。
+- `par_dot()` 在类型层面接受任意 `Dimension` 输入，以便与更通用的上层张量调用路径对接；但其语义契约仍限定为一维向量内积，因此实现必须在运行时检查 `lhs.ndim() == 1`、`rhs.ndim() == 1`，并在进入并行归约前再次确认两侧逻辑长度一致。
+- 整数 `sum` / `dot` 支持并行路径。在并行路径中，每个分片独立执行 checked 算术；若任一分片检测到溢出，并行执行立即终止并传播 panic。诊断仲裁必须按逻辑 chunk 索引确定：始终报告首个失败 chunk（按逻辑索引顺序）。若实现无法保证这一确定性，则整数 `sum` / `dot` 在并行模式下必须回退到串行路径。
+- 复数内积采用共轭线性定义：`result = sum(conj(lhs_i) * rhs_i)`，与 `08-simd.md` 中的复数内积语义完全一致。
 
 ### 5.6 并行迭代入口
 

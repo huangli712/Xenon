@@ -339,7 +339,7 @@ SIMD 路径选择已收敛到 `simd` 后端内部。`dispatch.rs` 只决定是�
 
 根据 `需求说明书 §9.1`，SIMD 路径当前已覆盖逐元素运算、归约与内积三个大类。是否实际进入 SIMD 仍取决于元素类型、ISA 能力、统一对齐快路径与语义约束；当前版本在 `matrix` 相关范围内仅承载 **vector dot**，不展开矩阵乘法或其他 matrix 范围能力。
 
-- **SIMD 覆盖范围**：当前版本正式承诺的 SIMD 覆盖以逐元素算术、归约（sum）和内积（dot）为优先。其他运算（一元、比较、逻辑、复数、数学函数）的 SIMD 路径作为实现优化项，不构成当前版本的稳定交付承诺。
+- **SIMD 覆盖范围**：当前版本正式承诺的 SIMD 覆盖以逐元素算术、归约（sum）和内积（dot）为优先。其他运算（一元、比较、逻辑、复数、数学函数）的 SIMD 路径作为按阶段推进的实现优化项，不构成当前版本的稳定交付承诺。
 - **透明回退说明：** 对于下表中尚未提供 SIMD kernel 的操作，或运行时不满足 SIMD 入口条件的输入，`simd` 后端内部保持对应语义模块的标量/串行路径；公开 API 与结果语义保持不变。
 
 ### 5.6 SIMD 操作覆盖状态表
@@ -504,41 +504,17 @@ SIMD dot dispatch flow
 ```rust,ignore
 // src/simd/mod.rs
 
-pub(crate) enum SimdOp {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Neg,
-    Sum,
-    Dot,
-    Abs,
-    Square,
-    Eq,
-    Ne,
-    Lt,
-    Gt,
-    Not,
-    ComplexAbs,
-    Conjugate,
-}
-
-pub(crate) enum SimdElementKind {
-    Bool,
-    F32,
-    F64,
-    I32,
-    I64,
-    ComplexF32,
-    ComplexF64,
-}
-
-pub(crate) fn is_supported(element_type: SimdElementKind, op: SimdOp) -> bool;
+/// Returns the SIMD vector width for `T` on the current platform,
+/// or `None` if SIMD is unavailable for `T` (feature disabled,
+/// unsupported type, or no suitable ISA).
+pub(crate) fn simd_vector_width<T: SimdElement>() -> Option<usize>;
 ```
 
-- `simd` 后端内部通过该接口查询“某元素类型 + 某操作”是否存在 SIMD 实现资格。
-- 资格查询只回答“当前版本是否存在可进入的 SIMD 能力”，不替代连续性、对齐、长度阈值和 ISA 检查。
-- 对状态为“规划中”或“标量回退”的条目，`is_supported(...)` 必须返回 `false`。
+- `simd` 后端内部通过该接口查询某元素类型是否具备 SIMD 向量宽度。
+- 返回 `Some(width)` 表示当前平台对该类型有可用 SIMD 路径；返回 `None` 表示不具备。
+- 该查询只回答向量宽度，不替代连续性、对齐、长度阈值和 ISA 检查。
+- 具体的操作覆盖矩阵（哪些类型 + 哪些操作已实现）由 §5.6 覆盖状态表决定，各 kernel 入口内部按表裁决；对状态为“优化项”或“标量回退”的条目，对应 kernel 入口直接回退到语义模块串行路径。
+- 当需要为新增操作扩展 SIMD 时，只需在对应 kernel 入口添加分支，无需修改此查询接口。
 
 ### 5.11 Good/Bad 对比示例
 
@@ -884,11 +860,11 @@ SIMD 路径与各语义模块串行实现的一致性测试，由各语义模块
 | 方向         | 对方模块                     | 接口/类型                                                                                                    | 契约                                                                                            |
 | ------------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
 | 消费（输入） | `tensor`                     | `TensorBase<S, D>::as_slice()`                                                                               | 只消费满足 `07-tensor.md` 连续切片契约的输入；非连续或广播视图保持语义模块串行路径              |
-| 消费（输入） | `math` / `reduction` / `dot` | `dispatch.rs` / `dispatch_vector_binary_op()` / `SimdKernel::sum()` / `SimdKernel::dot()` / `is_supported()` | 上层语义模块先完成形状和类型裁决；`dispatch.rs` 只决定是否进入并行执行，SIMD 分支选择由 `simd/` 后端内部完成 |
+| 消费（输入） | `math` / `reduction` / `dot` | `dispatch.rs` / `dispatch_vector_binary_op()` / `SimdKernel::sum()` / `SimdKernel::dot()` / `simd_vector_width()` | 上层语义模块先完成形状和类型裁决；`dispatch.rs` 只决定是否进入并行执行，SIMD 分支选择由 `simd/` 后端内部完成 |
 | 消费（输入） | `layout`                     | 对齐/连续性元数据                                                                                            | 当前版本仅对统一对齐快路径启用 SIMD，其余情况由 `simd/` 后端内部保持非 SIMD 路径                  |
 | 产出（输出） | 上层语义模块                 | 标量结果或写回目标切片                                                                                       | 不改变公开 API 形状、错误类别和数值语义边界                                                     |
 
-`math` 模块在执行逐元素运算时，先经 `dispatch.rs` 决定是否进入并行执行；在非并行执行上下文中，`simd` 后端再根据兼容连续切片、统一对齐快路径与 ISA 能力内部决定是否进入 SIMD，否则保持其串行实现（参见 `11-math.md §5.3`）。
+`math` 模块在执行逐元素运算时，先经 `dispatch.rs` 决定是否进入并行执行；在非并行执行上下文中，`simd` 后端再根据兼容连续切片、统一对齐快路径与 ISA 能力内部决定是否进入 SIMD，否则保持其串行实现（参见 `11-math.md §6.3`）。
 
 **分派策略**: `math` 模块提供公共 `sqrt()` API，但在当前版本中 `sqrt()` 不接入 SIMD kernel，而是保持语义模块串行路径。用户仅调用 `math::sqrt()`，无需关心底层是否存在加速能力。
 
