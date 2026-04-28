@@ -402,7 +402,7 @@ Element-wise operation flow
 │ • F-order contiguous memory                                     │
 │ • Supported element type / op                                   │
 │ • Current unified-alignment fast path enabled                   │
-│ • feature = "simd" enabled                                     │
+│ • feature = "simd" enabled                                      │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
                           ▼
@@ -468,7 +468,7 @@ SIMD dot dispatch flow
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ simd/ backend already selected SIMD path + type-specific contract │
+│ simd backend already selected SIMD path + type-specific contract│
 │ • f32/f64: SIMD mul + lane-local accumulation                   │
 │ • Complex: `conj(lhs)`-multiply-add on split real/imag lanes    │
 │ • Integer: only enter SIMD when checked multiply/add semantics  │
@@ -492,9 +492,10 @@ SIMD dot dispatch flow
 // the pure vectorized path.
 ```
 
-SIMD 条件判断已收敛到 `simd/` 后端内部。`dispatch.rs` 只负责决定是否进入并行执行；进入串行执行上下文后，`simd/` 再按统一规则检查 feature、连续性、对齐、元素类型与运行时可用 lane 宽度，决定是否使用向量化路径。
+- SIMD 条件判断已收敛到 `simd` 后端内部。`dispatch.rs` 只负责决定是否进入并行执行。
+- 进入串行执行上下文后，`simd` 再按统一规则检查 feature、连续性、对齐、元素类型与运行时可用 lane 宽度，决定是否使用向量化路径。
 
-### 5.10 `simd/` 能力查询接口
+### 5.10 `simd` 能力查询接口
 
 ```rust,ignore
 // src/simd/mod.rs
@@ -531,7 +532,7 @@ pub(crate) enum SimdElementKind {
 pub(crate) fn is_supported(element_type: SimdElementKind, op: SimdOp) -> bool;
 ```
 
-- `simd/` 后端内部通过该接口查询“某元素类型 + 某操作”是否存在 SIMD 实现资格。
+- `simd` 后端内部通过该接口查询“某元素类型 + 某操作”是否存在 SIMD 实现资格。
 - 资格查询只回答“当前版本是否存在可进入的 SIMD 能力”，不替代连续性、对齐、长度阈值和 ISA 检查。
 - 对状态为“规划中”或“标量回退”的条目，`is_supported(...)` 必须返回 `false`。
 
