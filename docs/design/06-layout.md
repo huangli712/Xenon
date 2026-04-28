@@ -758,7 +758,7 @@ Upper layers create or transform tensor metadata
 
 | 方向            | 对方模块 | 接口/类型                            | 约定                                                    |
 | --------------- | -------- | ------------------------------------ | ------------------------------------------------------- |
-| `simd ← layout` | `simd`   | `is_aligned()` / `is_f_contiguous()` | simd 用这些查询结果做路径选择（参见 `08-simd.md` §5.6） |
+| `simd ← layout` | `simd`   | `is_aligned()` / `is_f_contiguous()` | simd 用这些查询结果做路径选择（参见 `08-simd.md` §5.7） |
 | `simd ← layout` | `simd`   | 步长检查                             | simd 继续检查步长是否为 1，以确认连续访问路径           |
 
 ### 9.5 与 FFI 模块

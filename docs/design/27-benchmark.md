@@ -319,7 +319,7 @@ Benchmark categories
 | `broadcast_col`            | 列向量广播到矩阵        | S/M/L | f64            | F-contiguous   | 列广播                                                                           |
 | `transpose_2d`             | 2D 转置（零拷贝）       | S/M/L | f64            | F-contiguous   | 转置视图创建                                                                     |
 | `simd_add_compare`         | `a + b` (SIMD vs 标量)  | M     | f32/f64        | F-contiguous   | SIMD 加速比（参见 `08-simd.md §12`）                                             |
-| `simd_sum_compare`         | sum (SIMD vs 标量)      | M     | i32            | F-contiguous   | 默认仅覆盖已验证启用的 i32 SIMD reduction 路径；i64 如需保留，须作为显式 opt-in 非默认基准（参见 `08-simd.md §5.4a`） |
+| `simd_sum_compare`         | sum (SIMD vs 标量)      | M     | i32            | F-contiguous   | 默认仅覆盖已验证启用的 i32 SIMD reduction 路径；i64 如需保留，须作为显式 opt-in 非默认基准（参见 `08-simd.md §5.6`） |
 | `simd_dot_compare`         | dot (SIMD vs 标量)      | M     | f32/f64        | F-contiguous   | SIMD dot kernel 已在 `08-simd.md` 中设计，本基准仅对比 SIMD 与标量路径的性能差异 |
 | `par_sum_compare`          | sum (并行 vs 串行)      | L     | i64            | F-contiguous   | 并行加速比（参见 `09-parallel.md §12`）                                          |
 | `par_add_compare`          | `a + b` (并行 vs 串行)  | L     | f64            | F-contiguous   | 并行逐元素加速                                                                   |

@@ -89,7 +89,7 @@ src/simd/
 | 来源模块  | 使用的类型/trait                                                                   |
 | --------- | ---------------------------------------------------------------------------------- |
 | `pulp`    | `Arch`, `Simd`, `WithSimd`                                                         |
-| `tensor`  | `TensorBase<S, D>`, `.as_ptr()`, `.as_slice()`（参见 `07-tensor.md` §5.4 / §5.5） |
+| `tensor`  | `TensorBase<S, D>`, `.as_ptr()`, `.as_slice()`（参见 `07-tensor.md` §5.4 / §5.5）  |
 | `storage` | `RawStorage`, `Storage`, `.len()`（参见 `05-storage.md` §5）                       |
 | `tensor`  | `.is_f_contiguous()`, 布局标志查询（参见 `07-tensor.md` §5）                       |
 | `element` | `Element`（参见 `03-element.md` §5.1）                                             |
@@ -890,7 +890,7 @@ SIMD 与并行的组合策略：`dispatch.rs` 只决定是否启用并行（基�
 
 ### 9.4 与 storage/layout 模块
 
-SIMD 模块依赖 layout 提供的连续性和对齐信息来判断是否可以使用 SIMD 路径（参见 `06-layout.md` §5.9）。
+SIMD 模块依赖 layout 提供的连续性和对齐信息来判断是否可以使用 SIMD 路径（参见 `06-layout.md` §5.7, §5.9）。
 
 ---
 
