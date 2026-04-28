@@ -81,6 +81,7 @@ src/broadcast/
 |
 └── view.rs
     ├── crate::tensor     # TensorBase<S, D>, TensorView<'a, A, D>, .shape(), .strides(), .offset()
+    │                      # broadcast_to() 是在 broadcast 模块内为 TensorBase 添加的 inherent impl
     ├── crate::dimension  # Dimension, BroadcastDim<Other>
     ├── crate::layout     # Strides<D>, LayoutFlags, LayoutState::BroadcastView
     └── crate::error      # XenonError::BroadcastError, XenonError::InvalidArgument
@@ -92,7 +93,7 @@ src/broadcast/
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tensor`    | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `.shape()`, `.strides()`, `.offset()`, 视图构造入口，以及从任意受支持存储模式降级到只读广播视图的入口。 |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<Other>`（public sealed trait，对外可命名）。                                                       |
-| `layout`    | `Strides<D>`, `LayoutFlags`, `LayoutState::FContiguous`, `LayoutState::NonContiguous`, `LayoutState::BroadcastView`。                               |
+| `layout`    | `Strides<D>`, `LayoutFlags`, `LayoutState::BroadcastView`（广播结果的目标布局状态），以及通过 `compute_layout_flags()` 间接关联的 `LayoutState::FContiguous` / `LayoutState::NonContiguous`。 |
 | `error`     | `XenonError::BroadcastError`, `XenonError::InvalidArgument`。                                                                                       |
 
 ### 4.3 依赖合法性
@@ -161,6 +162,7 @@ where
 | `broadcast_to()`      | 显式广播入口；成功时返回共享底层数据的只读 `TensorView`。结果必须满足 `需求说明书 §6` 对“共享只读引用”的约束：可在多个张量实例之间共享同一底层数据，但不提供可写访问权。 |
 | `broadcast_with()`    | 面向两个张量输入的 `pub(crate)` 助手：先计算共同 shape，再分别构造两个只读广播视图。它不承担通用 shape 工具职责；仅需 shape 判定时应使用 `can_broadcast()` / `broadcast_shape()`。 |
 
+- **inherent 方法 vs 自由函数：** `broadcast_to()` 以 `&self` 为接收者，语义上属于"对该张量执行广播"，因此作为 `TensorBase` 的 inherent 方法定义在 `view.rs` 中。`broadcast_with()` 是双输入函数，没有自然接收者，因此定义为 `pub(crate)` 自由函数。`can_broadcast()`、`broadcast_shape()`、`broadcast_strides()` 仅操作 shape/stride 元数据，不涉及张量实例，因此也作为自由函数定义在 `shape.rs` 中。
 - **同形状快捷路径**：当两个输入形状完全相同时，`broadcast_with()` 可直接返回两个原始视图而不执行步长重写，因为目标 shape 与输入 shape 一致。
 - **目标秩语义**：`broadcast_to()` 的目标 shape 秩决定了输出视图的维度类型；标量广播到高维时，缺失前导轴按 `1` 补齐。
 - **`IntoDimension` 说明：** `IntoDimension` 只决定目标 rank/type；逐轴长度兼容性完全由 `broadcast_shape()` / `broadcast_strides()` 在运行时检查。
@@ -240,7 +242,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 
 对广播轴写入零步长意味着该轴被逻辑扩展，但所有索引都回落到同一底层元素；这与 `06-layout.md` §5.11 的零步长语义保持一致。若任一轴出现 `0` 步长，结果即不再视为普通 `FContiguous` 或一般 `NonContiguous` 视图，而统一进入 `BroadcastView`。
 
-- **再次广播规则：** 对已广播视图再次广播时，已有零步长轴保持为 `0`，新增广播轴也写入 `0` 步长；结果 `shape` 取“当前视图 shape”与“新目标 shape”的广播结果。
+- **再次广播规则：** 对已广播视图再次广播时，已有零步长轴保持为 `0`，新增广播轴也写入 `0` 步长；结果 `shape` 取“当前视图 shape”与“新目标 shape”的广播结果。 `broadcast_strides()` 的 `orig_shape` 参数始终传入当前视图的逻辑 shape（即 `.shape()` 返回值），而非某个“广播前的原始 shape”；因此对已广播视图再次广播时，算法天然将已有零步长轴（对应 `orig_shape` 中值为 `1` 的轴）正确处理为广播轴。
 - **布局标志重算规则：** 布局标志必须通过 `compute_layout_flags()`（见 `06-layout.md`）重算，而非直接复制源标志。广播不改变逻辑首元素指针，因此重算后 `ALIGNED` 结果与源视图一致；`F_CONTIGUOUS` 仅在不存在零步长且结果 stride 仍满足 F-order 规则时保留；若任一轴 stride 为 `0`，设置 `BroadcastView` flag。
 
 ### 6.4 共享只读视图构造
@@ -331,7 +333,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 ### Wave 4: 综合验证
 
 - [ ] **T8**: 编写单元与集成测试
-  - 文件: `tests/test_broadcast.rs`, `tests/property_tests.rs`, `tests/property/shape_props.rs`
+  - 文件: `tests/test_broadcast.rs`, `tests/property_tests.rs`, `tests/property/shape_props.rs`（路径需与项目实际测试目录结构一致，实现时以现有测试布局为准）
   - 内容: 兼容性规则、零步长语义、共享只读边界、属性测试
   - 测试: 覆盖范围内所有公开 API
   - 前置: T6, T7
