@@ -341,7 +341,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 | 单元测试 | `src/broadcast/*` 的 `#[cfg(test)]`                  | 验证 shape 兼容性、零步长生成和错误结构。                      |
 | 集成测试 | `tests/test_broadcast.rs`                            | 验证广播与 `tensor`、`layout`、`overload`、`iter` 的协同路径。 |
 | 边界测试 | 同模块测试中标注                                     | 覆盖标量、空数组、再次广播、高维广播和 `10^7` 元素大张量广播。 |
-| 属性测试 | `tests/property_tests.rs`, `tests/property/shape_props.rs` | 验证广播 shape/stride 不变量和零拷贝语义。                     |
+| 属性测试 | `tests/property_tests.rs`, `tests/property/shape_props.rs` | 验证广播 shape/stride 不变量和零拷贝语义。               |
 
 ### 8.2 单元测试清单
 
@@ -360,7 +360,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 | `test_broadcast_high_rank_ixdyn`         | `IxDyn` 高 rank 广播形状与步长正确     | 中     |
 | `test_broadcast_rebroadcast_zero_stride` | 再次广播时零步长继承与新增规则正确     | 中     |
 | `test_broadcast_layout_flags_recomputed` | 广播后 flags 按零步长/F-order 规则重算 | 中     |
-| `test_broadcast_large_tensor_zero_copy`  | `10^7` 元素级广播保持零拷贝与零步长语义 | 高     |
+| `test_broadcast_large_tensor_zero_copy`  | `10^7` 元素级广播保持零拷贝与零步长语义 | 高    |
 
 ### 8.3 边界测试场景
 
@@ -381,6 +381,12 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 | 广播后逻辑元素数与目标 shape 一致                      | 随机目标 shape                  |
 | 广播轴 stride 恒为 `0`                                 | 随机含 `1` 轴的 shape           |
 | 广播结果共享源数据                                     | 比较 data pointer / offset 不变 |
+
+### 8.5 集成测试
+
+| 测试文件                  | 测试内容                                                                                                        |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `tests/test_broadcast.rs` | `broadcast_to()` / `broadcast_with()` / `broadcast_shape()` 与 `tensor`、`layout`、`overload`、`iter` 的协同路径 |
 
 ### 8.6 Feature gate / 配置测试
 

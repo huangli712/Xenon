@@ -392,7 +392,7 @@ increment_index_f(shape, index):
 
 ### 6.6 并行分块说明
 
-当前版本不在 `iter` 模块中设计独立的内部区间分块抽象。若并行后端需要对元素遍历做分块，应由并行执行模块基于自身的任务划分策略直接维护逻辑区间和调度状态；`iter` 文档只约束串行迭代器的外部语义，不再把这类内部多输入遍历或分块结构描述为稳定设计能力。
+当前版本不在 `iter` 模块中设计独立的内部区间分块抽象。若并行后端需要对元素遍历做分块，应由并行执行模块基于自身的任务划分策略直接维护逻辑区间和调度状态。此约束与 §5.3 的设计原则一致。
 
 ---
 
@@ -442,7 +442,7 @@ increment_index_f(shape, index):
 ### Wave 4: TensorBase 入口集成
 
 - [ ] **T6**: 在 TensorBase 上添加迭代器入口方法
-  - 文件: `src/tensor/`（或 `src/iter/mod.rs` 通过 trait extension）
+  - 文件: `src/iter/mod.rs`
   - 内容: `iter()`, `iter_mut()`, `axis_iter()`, `indexed_iter()` 等
   - 测试: `test_tensor_iter_integration`
   - 前置: T3, T4, T5
@@ -537,7 +537,7 @@ increment_index_f(shape, index):
 
 | 方向               | 对方模块    | 接口/类型                                                             | 约定                                                                     |
 | ------------------ | ----------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `iter → tensor`    | `tensor`    | `TensorBase<S, D>`、`TensorView<'a, A, D>`、`TensorViewMut<'a, A, D>` | 由 `tensor` 暴露迭代器入口与视图类型，参见 `07-tensor.md` §5。           |
+| `iter → tensor`    | `tensor`    | `TensorBase<S, D>`、`TensorView<'a, A, D>`、`TensorViewMut<'a, A, D>` | 视图类型由 `tensor` 提供（参见 `07-tensor.md` §5），迭代器入口方法由 `iter` 在 `TensorBase` 上实现（参见 `10-iterator.md` §5.5）。 |
 | `iter → dimension` | `dimension` | `Dimension`、`Axis`，以及内部轴迭代实现使用的 `RemoveAxis`            | 迭代状态机按维度与轴语义推进，参见 `02-dimension.md` §5。                |
 | `iter → storage`   | `storage`   | `Storage`、`StorageMut`                                               | 元素访问与可变访问分别受只读/可写存储约束保护，参见 `05-storage.md` §5。 |
 
@@ -546,7 +546,8 @@ increment_index_f(shape, index):
 ```text
 User calls tensor.iter() / axis_iter() / indexed_iter()
     │
-    ├── tensor exposes TensorView / TensorViewMut entry points
+    ├── tensor provides TensorBase / TensorView / TensorViewMut types
+    ├── iter adds entry-point methods on TensorBase (see §5.5)
     ├── iter builds iterator state from shape + strides
     └── iter yields elements or sub-views for math / reduction / overload
 ```
