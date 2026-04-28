@@ -124,8 +124,8 @@ pulp = { version = "0.18", optional = true }
 
 - 默认关闭，通过 `features = ["simd"]` 显式启用
 - 启用后 pulp 自动引入，提供跨平台 SIMD 抽象
-
-> **内部边界说明：** `simd/` 中出现的 trait、enum 与函数签名仅用于说明后端实现分层；所有 SIMD 类型与入口都属于内部实现细节，不构成稳定公开 API，对外导出层级统一按 `pub(crate)` 理解。
+- `simd` 中出现的 trait、enum 与函数签名仅用于说明后端实现分层。
+- 所有 SIMD 类型与入口都属于内部实现细节，不构成稳定公开 API，对外导出层级统一按 `pub(crate)` 理解。
 
 ### 5.2 SimdElement Trait
 
@@ -181,16 +181,15 @@ impl SimdElement for Complex<f64> {
 }
 ```
 
-> **不实现 SimdElement 的类型**：以下元素类型不通过本 trait 直接进入数值 SIMD kernel：
->
-> | 类型              | 原因                                                                                                           |
-> | ----------------- | -------------------------------------------------------------------------------------------------------------- |
-> | `bool`            | 当前版本不进入数值 SIMD kernel；`not` 通过独立 bool / mask SIMD kernel 覆盖，因此不复用本 trait 的数值类型边界 |
-> | `usize`           | 指针宽度依赖平台，SIMD 语义不稳定                                                                              |
-> | 其他 `Complex<T>` | 仅 `Complex<f32>` / `Complex<f64>` 在当前设计中进入专用 kernel                                                 |
->
-> **复数 SIMD 策略：** `Complex<f32>` 和 `Complex<f64>` 在当前设计中优先覆盖逐元素 `add` / `sub` / `mul` / `div`、`neg()`、`sum()` 与 `dot()`。实现上采用 AoS 输入 + 寄存器内重排，按实部/虚部分离后执行
-> 向量累加与复数乘加，避免引入额外的布局转换 API。
+**不实现 SimdElement 的类型**：以下元素类型不通过本 trait 直接进入数值 SIMD kernel：
+
+| 类型              | 原因                                                                                                           |
+| ----------------- | -------------------------------------------------------------------------------------------------------------- |
+| `bool`            | 当前版本不进入数值 SIMD kernel；`not` 通过独立 bool / mask SIMD kernel 覆盖，因此不复用本 trait 的数值类型边界 |
+| `usize`           | 指针宽度依赖平台，SIMD 语义不稳定                                                                              |
+| 其他 `Complex<T>` | 仅 `Complex<f32>` / `Complex<f64>` 在当前设计中进入专用 kernel                                                 |
+
+**复数 SIMD 策略：** `Complex<f32>` 和 `Complex<f64>` 在当前设计中优先覆盖逐元素 `add` / `sub` / `mul` / `div`、`neg()`、`sum()` 与 `dot()`。实现上采用 AoS 输入 + 寄存器内重排，按实部/虚部分离后执行向量累加与复数乘加，避免引入额外的布局转换 API。
 
 ### 5.3 SimdKernel Trait
 
@@ -260,7 +259,7 @@ pub(crate) trait SimdKernel<A: Copy + Send + Sync + 'static>: Send + Sync {
     /// Integer kernels must be equivalent to scalar checked arithmetic at every
     /// observable accumulation step; if this cannot be guaranteed efficiently,
     /// they must fall back to the scalar path. Floating-point/complex kernels may
-/// use a different accumulation order, but per `需求说明书 §9.3` / `需求说明书 §28.3` any
+    /// use a different accumulation order, but per `需求说明书 §9.3` / `需求说明书 §28.3` any
     /// tolerance must be defined and documented from the final algorithm and test baseline.
     fn sum(&self, data: &[A]) -> A;
 
@@ -283,8 +282,6 @@ pub(crate) trait SimdKernel<A: Copy + Send + Sync + 'static>: Send + Sync {
 
 }
 ```
-
-> 方案 D 中保留 `SimdKernel` trait 作为向量化 kernel 的统一接口；当前仅 `VectorKernel` 系列实现该 trait，`ScalarKernel` 已移除。
 
 ### 5.4 pulp 集成与 Arch 缓存
 
@@ -329,9 +326,9 @@ where
     A: SimdElement + Numeric + Copy;
 ```
 
-> SIMD 路径选择已收敛到 `simd/` 后端内部。`dispatch.rs` 只决定是否进入并行执行；一旦处于串行执行上下文，是否启用 SIMD 由 `simd/` 内部判断。
->
-> **职责边界说明：** SIMD 路径选择由 `simd/` 后端内部处理，包括 feature、元素类型、操作种类、连续性、对齐与 ISA 能力检查。`dispatch.rs` 不承担 SIMD admission/selection，只负责决定是否进入并行执行。
+SIMD 路径选择已收敛到 `simd` 后端内部。`dispatch.rs` 只决定是否进入并行执行；一旦处于串行执行上下文，是否启用 SIMD 由 `simd/` 内部判断。
+
+**职责边界说明：** SIMD 路径选择由 `simd` 后端内部处理，包括 feature、元素类型、操作种类、连续性、对齐与 ISA 能力检查。`dispatch.rs` 不承担 SIMD admission/selection，只负责决定是否进入并行执行。
 
 ### 5.5 当前版本的 SIMD 覆盖范围
 

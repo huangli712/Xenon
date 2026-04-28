@@ -327,7 +327,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
   - 文件: `src/broadcast/view.rs`
   - 内容: 公共 shape 推导、双输入广播、`BroadcastDim` 输出类型对齐
   - 测试: `test_broadcast_with_same_shape`, `test_broadcast_scalar_and_tensor`, `test_broadcast_with_incompatible_shapes`
-  - 前置: T4
+  - 前置: T4, T5
   - 预计: 15 min
 
 ### Wave 4: 综合验证
