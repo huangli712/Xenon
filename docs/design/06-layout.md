@@ -765,7 +765,7 @@ Upper layers create or transform tensor metadata
 
 | 方向           | 对方模块 | 接口/类型            | 约定                                                           |
 | -------------- | -------- | -------------------- | -------------------------------------------------------------- |
-| `ffi ← layout` | `ffi`    | BLAS 兼容检查        | FFI 路径依赖连续、正步长、无零步长等布局前提（参见 `23-ffi.md` §5.5） |
+| `ffi ← layout` | `ffi`    | BLAS 兼容检查        | FFI 路径依赖连续、正步长、无零步长等布局前提（参见 `23-ffi.md` §5.10） |
 | `ffi ← layout` | `ffi`    | `lda()` 相关步长信息 | FFI 从 layout 步长推导 leading dimension                       |
 
 ---

@@ -85,11 +85,10 @@ src/ffi/
 │   ├── crate::storage       # Storage, StorageMut, owned allocator metadata
 │   └── crate::layout        # is_f_contiguous
 ├── blas.rs
-│   ├── crate::tensor        # TensorBase<S, D>
+│   ├── crate::tensor        # TensorBase<S, D> (as_ptr via inherent method)
 │   ├── crate::storage       # Storage
 │   ├── crate::layout        # is_f_contiguous, has_zero_stride (via TensorBase method → LayoutFlags)
-│   ├── super::types         # BlasInfo, FfiErrorCategory
-│   └── super::ptr           # as_ptr
+│   └── super::types         # BlasInfo, FfiErrorCategory
 └── offset.rs
     ├── crate::tensor        # TensorBase<S, D>
     ├── crate::dimension     # Dimension trait

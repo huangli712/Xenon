@@ -120,8 +120,9 @@ pub(crate) struct ParallelPool {
 
 ### 5.2 内部执行入口与可见性
 
-- **可见性说明：** `parallel` 是 `pub(crate)` 内部后端；所有执行后端函数与类型（包括 `par_map`、`par_zip_map`、`par_sum`、`par_dot`、`ParallelPool`、`ParElements`）均保持 `pub(crate)`，仅供 `math` / `reduction` / `matrix` 等语义模块通过 `dispatch.rs` 自动调用。
-- **执行策略：** 阈值配置与嵌套并行防护由 `dispatch.rs` 统一管理（见 §6.1、决策 4）；本模块仅通过 `ParallelExecStrategy` 接收 dispatch 已裁决的执行参数，不提供独立的公开阈值配置接口。
+**可见性说明：** `parallel` 是 `pub(crate)` 内部后端；所有执行后端函数与类型（包括 `par_map`、`par_zip_map`、`par_sum`、`par_dot`、`ParallelPool`、`ParElements`）均保持 `pub(crate)`，仅供 `math` / `reduction` / `matrix` 等语义模块通过 `dispatch.rs` 自动调用。
+
+**执行策略：** 阈值配置与嵌套并行防护由 `dispatch.rs` 统一管理（见 §6.1、决策 4）；本模块仅通过 `ParallelExecStrategy` 接收 dispatch 已裁决的执行参数，不提供独立的公开阈值配置接口。
 
 ### 5.3 内部执行策略参数规范
 
@@ -130,7 +131,7 @@ pub(crate) struct ParallelPool {
 | `max_workers`        | `Option<usize>` | `None`（使用线程池默认） | 最大并行工作线程数   |
 | `chunk_size`         | `Option<usize>` | `None`（自动计算）       | 每个 chunk 的元素数  |
 
-- 配置入口不对外暴露。`parallel` 模块仅通过 `ParallelExecStrategy` 接收 dispatch 已裁决完成的执行阶段参数字段；`parallel_threshold` 的权威入口位于 `dispatch.rs`。
+配置入口不对外暴露。`parallel` 模块仅通过 `ParallelExecStrategy` 接收 dispatch 已裁决完成的执行阶段参数字段；`parallel_threshold` 的权威入口位于 `dispatch.rs`。
 
 ### 5.4 `ParallelExecStrategy` 参数校验规则
 
@@ -141,7 +142,7 @@ pub(crate) struct ParallelPool {
 
 ### 5.5 函数签名
 
-> **定义位置**：`ParallelExecStrategy` 定义于 `dispatch.rs`（L4），`parallel/` 通过 `crate::dispatch` 引用。此处列出签名以便与并行函数签名一同参阅。
+**定义位置**：`ParallelExecStrategy` 定义于 `dispatch.rs`，`parallel` 通过 `crate::dispatch` 引用。此处列出签名以便与并行函数签名一同参阅。
 
 ```rust,ignore
 pub(crate) struct ParallelExecStrategy {
@@ -346,7 +347,7 @@ where
 
 ### 6.4 轴向归约并行方案
 
-> 以下为实现指导，描述 `reduction` 模块如何利用 `parallel/` 提供的原语组合轴向归约的并行路径；`parallel/` 本身不暴露 `par_sum_axis` 等轴向专用 API。
+以下为实现指导，描述 `reduction` 模块如何利用 `parallel` 提供的原语组合轴向归约的并行路径；`parallel` 本身不暴露 `par_sum_axis` 等轴向专用 API。
 
 - 轴向 `sum_axis(axis)` / `sum_axis_keepdims(axis)` 的并行路径沿未被归约的轴切分为彼此独立的 chunk。
 - 每个 chunk 在目标轴上执行串行归约，随后按输出逻辑位置写入局部结果；最终结果按 chunk 索引顺序合并。
@@ -488,7 +489,7 @@ where
 | `test_par_zip_map_broadcast_rhs_scalar` | 右侧标量广播时并行路径与串行一致           | 高     |
 | `test_par_sum_matches_serial`           | 并行 `sum` 与串行语义一致                  | 高     |
 | `test_par_dot_matches_serial`           | `par_dot` 与串行结果一致                   | 高     |
-| `test_par_map_checked_matches_serial` | `par_map_checked` 在闭包返回 `Ok` 时结果与串行一致 | 高     |
+| `test_par_map_checked_matches_serial` | `par_map_checked` 在闭包返回 `Ok` 时结果与串行一致 | 高|
 | `test_parallel_error_propagation`       | 并行 `Err` 及时上传                        | 高     |
 | `test_parallel_panic_propagation`       | 并行 panic 不被吞掉                        | 高     |
 
