@@ -838,12 +838,6 @@ Consistency guarantee strategy
 | `len = SIMD_WIDTH`        | 恰好一个 SIMD 块，无尾部          |
 | `len = SIMD_WIDTH + 1`    | 一个 SIMD 块 + 1 个标量尾部       |
 
-### 8.3a `需求说明书 §28.4` 边界占位
-
-- [ ] 补充 `min_positive` / `max_finite` / `subnormal` 输入的 SIMD 与串行一致性边界测试。
-- [ ] 补充复数实部/虚部跨 `±0.0`、`±Inf`、`NaN` 组合时的归约与内积边界测试。
-- [ ] 补充尾部长度与 lane 宽度交错组合下的 load/store 安全性回归测试。
-
 ### 8.4 属性测试不变量
 
 | 不变量                                                              | 测试方法                              |
@@ -943,7 +937,7 @@ SIMD 后端不改变 `TensorBase<S, D>` 的 `Send` / `Sync` 判定。线程安�
 
 ---
 
-## 11. 设计决策记录（ADR）
+## 11. 设计决策记录
 
 ### 决策 1：选择 pulp 作为 SIMD 抽象层
 
