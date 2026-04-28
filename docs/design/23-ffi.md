@@ -3,7 +3,7 @@
 > 文档编号: 23
 > 模块目录: src/ffi/
 > 任务阶段: Phase 4
-> 前置文档: 07-tensor.md, 06-layout.md
+> 前置文档: 02-dimension.md, 03-element.md, 05-storage.md, 06-layout.md, 07-tensor.md, 26-error.md
 > 需求参考: 需求说明书 §5 - §8、§25、§27、§28
 > 范围声明: 范围内
 
@@ -76,10 +76,12 @@ src/ffi/
 ├── mod.rs
 │   └── re-exports from types, ptr, blas, offset
 ├── types.rs
-│   └── (no external dependency, only core)
+│   ├── core
+│   └── crate::element       # Element trait (for ElementType::of)
 ├── ptr.rs
 │   ├── crate::tensor        # TensorBase<S, D>, offset
 │   ├── crate::dimension     # Dimension trait
+│   ├── crate::element       # Element trait (for ElementType::of)
 │   ├── crate::storage       # Storage, StorageMut, owned allocator metadata
 │   └── crate::layout        # is_f_contiguous
 ├── blas.rs
@@ -100,6 +102,7 @@ src/ffi/
 | ----------- | ------------------------------------------------------------------------------------------------------- |
 | `tensor`    | `TensorBase<S, D>`, `.shape()`, `.strides()`, `.offset()`                                               |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`                                                                       |
+| `element`   | `Element`, `ElementType::of::<A>()`                                                                     |
 | `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, owned allocator metadata（供 `OwnedRawParts<A, D>` 导出/重建） |
 | `layout`    | `is_f_contiguous()`, `has_zero_stride()`（模块级函数定义于 `06-layout.md` §5，TensorBase 方法参见 `07-tensor.md` §5.3） |
 
@@ -141,66 +144,65 @@ use crate::error::FfiErrorCategory;
 
 **结果类型说明：** 公开 API 统一使用 `Result<T, XenonError>`，`crate::error::Result<_>` 为等价类型别名。
 
-````rust,ignore
-impl<S, D, A> TensorBase<S, D>
-where
-    S: Storage<Elem = A>,
-    D: Dimension,
-{
-    /// Returns a read-only raw pointer to the logical first element.
-    ///
-    /// The pointer returned here points to the first logical element.
-    /// Internally, storage keeps the storage base pointer and TensorBase applies
-    /// `offset` exactly once when exposing the logical-first pointer.
-    /// The returned pointer is invalid after `self` is modified or dropped.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let tensor = Tensor2::<f64>::zeros([3, 4]);
-    /// let ptr = tensor.as_ptr();
-    /// // Can be passed to read-only C functions
-    /// ```
-    pub fn as_ptr(&self) -> *const A {
-        if self.is_empty() {
-            // For empty tensors, return a non-dereferenceable dangling pointer.
-            // Do NOT call .add() on a potentially dangling base pointer.
-            return core::ptr::NonNull::<A>::dangling().as_ptr();
-        }
-        // SAFETY: non-empty tensor guarantees storage base pointer is valid
-        // and offset is within bounds by TensorBase construction invariants.
-        unsafe {
-            self.storage.as_ptr().add(self.offset)
-        }
-    }
-}
+**核心定义归属：** `as_ptr()`、`as_mut_ptr()`、`from_raw_parts()`、`from_raw_parts_mut()` 的实现定义在 `07-tensor.md` §5.4 和 §5.7，代码位于 `src/tensor/construct.rs`。本文仅描述这些方法在 FFI 边界的语义契约和 Safety 要求；完整签名与实现参见 `07-tensor.md`。
 
-impl<S, D, A> TensorBase<S, D>
-where
-    S: StorageMut<Elem = A>,
-    D: Dimension,
-{
-    /// Returns a mutable raw pointer to the logical first element.
-    ///
-    /// Only available for writable storage (Owned, ViewMut).
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let mut tensor = Tensor2::<f64>::zeros([3, 4]);
-    /// let ptr = tensor.as_mut_ptr();
-    /// // Can be passed to C functions requiring a mutable pointer
-    /// ```
-    pub fn as_mut_ptr(&mut self) -> *mut A {
-        if self.is_empty() {
-            return core::ptr::NonNull::<A>::dangling().as_ptr();
-        }
-        unsafe {
-            self.storage.as_mut_ptr().add(self.offset)
-        }
-    }
-}
+````rust,ignore
+// as_ptr() — 参见 07-tensor.md §5.4
+//
+// Returns a read-only raw pointer to the logical first element.
+// - Non-empty: storage.as_ptr().add(offset)
+// - Empty:     NonNull::<A>::dangling().as_ptr()
+//
+// impl<S, D, A> TensorBase<S, D> where S: Storage<Elem = A>, D: Dimension {
+//     pub fn as_ptr(&self) -> *const A { ... }
+// }
+
+// as_mut_ptr() — 参见 07-tensor.md §5.4
+//
+// Returns a mutable raw pointer to the logical first element.
+// Only available for S: StorageMut.
+// - Non-empty: storage.as_mut_ptr().add(offset)
+// - Empty:     NonNull::<A>::dangling().as_ptr()
+//
+// impl<S, D, A> TensorBase<S, D> where S: StorageMut<Elem = A>, D: Dimension {
+//     pub fn as_mut_ptr(&mut self) -> *mut A { ... }
+// }
+
+// from_raw_parts() — 参见 07-tensor.md §5.7
+//
+// Constructs an immutable view from raw pointer.
+// ptr = storage base pointer; offset = displacement to logical first element.
+// Calls validate_access_range() internally; empty tensors use dangling sentinel.
+//
+// impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D> where A: Element, D: Dimension {
+//     pub unsafe fn from_raw_parts(
+//         ptr: *const A, storage_len: usize, shape: D,
+//         strides: Strides<D>, offset: usize,
+//     ) -> Result<Self, XenonError> { ... }
+// }
+
+// from_raw_parts_mut() — 参见 07-tensor.md §5.7
+//
+// Constructs a mutable view from raw pointer.
+// Same as from_raw_parts, plus: rejects zero-stride non-singleton axes and
+// overlapping layouts via validate_non_overlapping_layout().
+//
+// impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D> where A: Element, D: Dimension {
+//     pub unsafe fn from_raw_parts_mut(
+//         ptr: *mut A, storage_len: usize, shape: D,
+//         strides: Strides<D>, offset: usize,
+//     ) -> Result<Self, XenonError> { ... }
+// }
 ````
+
+**FFI 侧 Safety 摘要（调用方须保证）：**
+
+| 方法 | 调用方义务 |
+|------|-----------|
+| `as_ptr()` | 返回指针借用源张量；源张量 drop 后立即失效 |
+| `as_mut_ptr()` | 同上，且借用期间不可有其它引用 |
+| `from_raw_parts()` | ptr 有效/对齐/覆盖全部可达元素；生命周期 `'a` 内可读共享 |
+| `from_raw_parts_mut()` | 同上，且独占可写、逻辑元素地址不重叠 |
 
 ### 5.3 C 侧结构化导出格式
 
@@ -238,7 +240,7 @@ impl ElementType {
 | `as_ptr()` / `as_mut_ptr()` | 逻辑首元素           | 对非空张量返回第一个逻辑元素的指针；空张量返回 dangling              |
 | `TensorExport.data`         | storage base pointer | 非空张量时等于底层存储的基地址；空张量时为有效对齐但不可解引用的指针 |
 | `BlasInfo.data_ptr`         | 逻辑首元素           | 等价于 `as_ptr()`                                                    |
-| `try_ptr_at(indices)`       | 指定逻辑位置         | 基于 `as_ptr() + offset` 计算                                        |
+| `try_ptr_at(indices)`       | 指定逻辑位置       | 基于 `as_ptr()` + `try_offset_of(indices)` 结果计算                        |
 
 ```rust,ignore
 /// Raw tensor data export for FFI consumers.
@@ -447,158 +449,42 @@ pub struct Complex64 {
 
 ### 5.7 从裸指针构造张量
 
-````rust,ignore
-impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D>
-where
-    A: Element,
-    D: Dimension,
-{
-    /// Constructs an immutable view from raw pointer.
-    ///
-    /// # Arguments
-    ///
-    /// * `ptr` - Storage base pointer (immutable)
-    /// * `shape` - Length of each axis
-    /// * `strides` - Strides per axis (element units, non-negative)
-    /// * `offset` - Data start offset (element units)
-    ///
-    /// # Returns
-    ///
-    /// `Ok(TensorView<'a, A, D>)` when all directly checkable metadata
-    /// constraints pass; otherwise `Err(XenonError::InvalidLayout { .. })`.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure all of the following:
-    ///
-    /// | Prerequisite | Description |
-    /// |----------|------|
-    /// | Pointer validity | For non-empty tensors, `ptr` must be non-null, non-dangling, and aligned to `align_of::<A>()`; empty tensors may use a non-dereferenceable sentinel pointer |
-    /// | Memory range | Memory starting from the storage base pointer `ptr` must cover all accessible elements (considering offset, shape, strides) |
-    /// | Lifetime | Memory must remain valid for lifetime `'a` |
-    /// | Aliasing rules | Memory can be read-shared but must not be written to |
-    /// | Layout consistency | `shape` and `strides` lengths must match |
-    /// | Element initialization | All accessible elements must be properly initialized |
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let data: [f64; 12] = [0.0; 12];
-    /// let view = unsafe {
-    ///     // SAFETY: `data` lives for the whole view lifetime, is properly aligned,
-    ///     // and the metadata describes the full accessible range.
-    ///     TensorView2::from_raw_parts(
-    ///         data.as_ptr(),
-    ///         data.len(),
-    ///         [3, 4],
-    ///         Strides::from_slice(&[1, 3]),
-    ///         0,
-    ///     )
-    ///     .expect("metadata should describe a valid view")
-    /// };
-    /// ```
-    pub unsafe fn from_raw_parts(
-        ptr: *const A,
-        storage_len: usize,
-        shape: D,
-        strides: Strides<D>,
-        offset: usize,
-    ) -> Result<Self, XenonError> {
-        validate_access_range(&shape, &strides, offset, storage_len)?;
-        let logical_ptr = if shape.size() == 0 {
-            // Empty tensors must not do pointer arithmetic on a possibly dangling
-            // storage-base sentinel. Use a well-defined non-dereferenceable value.
-            core::ptr::NonNull::<A>::dangling().as_ptr()
-        } else {
-            unsafe { ptr.add(offset) }
-        };
+**核心定义归属：** `from_raw_parts()` 和 `from_raw_parts_mut()` 的完整签名、实现和 Safety 文档定义在 `07-tensor.md` §5.7，代码位于 `src/tensor/construct.rs`。本文仅描述 FFI 边界的语义要点和校验逻辑概述。
 
-        // SAFETY: Caller still guarantees pointer validity, alignment,
-        // initialization, actual accessible range, and lifetime. The constructor
-        // only rejects metadata combinations it can check directly.
-        Ok(TensorBase {
-            storage: ViewRepr::new(ptr, storage_len),
-            shape,
-            strides,
-            offset,
-            flags: layout::compute_layout_flags(&shape, &strides, logical_ptr),
-        })
-    }
+**语义契约摘要：**
 
-}
+```rust,ignore
+// from_raw_parts() — 完整实现参见 07-tensor.md §5.7
+//
+// impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D> where A: Element, D: Dimension {
+//     pub unsafe fn from_raw_parts(
+//         ptr: *const A,        // storage base pointer
+//         storage_len: usize,
+//         shape: D,
+//         strides: Strides<D>,
+//         offset: usize,        // displacement from storage base to logical first
+//     ) -> Result<Self, XenonError>
+// }
+//
+// 内部校验流程：
+//   1. validate_access_range(&shape, &strides, offset, storage_len)
+//   2. 空张量使用 NonNull::dangling() 作为 logical_ptr
+//   3. compute_layout_flags(&shape, &strides, logical_ptr)
 
-impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D>
-where
-    A: Element,
-    D: Dimension,
-{
-    /// Constructs a mutable view from raw pointer.
-    ///
-    /// Same as `from_raw_parts`, but requires exclusive access (no other references).
-    /// `ptr` is still the storage base pointer rather than the logical-first pointer.
-    ///
-    /// # Safety
-    ///
-    /// Same as `from_raw_parts`, with additional requirement: no other references to the memory,
-    /// and the logical element set described by `(shape, strides, offset)` must not alias itself.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let mut data: [f64; 12] = [0.0; 12];
-    /// let view = unsafe {
-    ///     // SAFETY: `data` is uniquely borrowed for the view lifetime, properly
-    ///     // aligned, and the metadata describes a non-overlapping writable range.
-    ///     TensorViewMut2::from_raw_parts_mut(
-    ///         data.as_mut_ptr(),
-    ///         data.len(),
-    ///         [3, 4],
-    ///         Strides::from_slice(&[1, 3]),
-    ///         0,
-    ///     )
-    ///     .expect("metadata should describe a valid mutable view")
-    /// };
-    /// ```
-    pub unsafe fn from_raw_parts_mut(
-        ptr: *mut A,
-        storage_len: usize,
-        shape: D,
-        strides: Strides<D>,
-        offset: usize,
-    ) -> Result<Self, XenonError> {
-        validate_access_range(&shape, &strides, offset, storage_len)?;
-        if shape.size() != 0 && shape.iter().zip(strides.iter()).any(|(&axis_len, &stride)| axis_len > 1 && stride == 0) {
-            return Err(XenonError::InvalidLayout {
-                operation: "ffi::from_raw_parts_mut".into(),
-                storage_kind: "view_mut".into(),
-                shape: shape.to_vec(),
-                strides: strides.to_vec(),
-                offset,
-                storage_len,
-                reason: "mutable raw-parts view must not contain zero strides on non-singleton axes".into(),
-            });
-        }
-        validate_non_overlapping_layout(&shape, &strides, offset, storage_len)?;
-        let logical_ptr = if shape.size() == 0 {
-            // Empty tensors must not do pointer arithmetic on a possibly dangling
-            // storage-base sentinel. Use a well-defined non-dereferenceable value.
-            core::ptr::NonNull::<A>::dangling().as_ptr()
-        } else {
-            unsafe { ptr.add(offset) }
-        };
-
-        // SAFETY: Caller guarantees exclusive mutable access to the memory
-        // for lifetime 'a. Same validity requirements as from_raw_parts.
-        Ok(TensorBase {
-            storage: ViewMutRepr::new(ptr, storage_len),
-            shape,
-            strides,
-            offset,
-            flags: layout::compute_layout_flags(&shape, &strides, logical_ptr),
-        })
-    }
-}
-````
+// from_raw_parts_mut() — 完整实现参见 07-tensor.md §5.7
+//
+// impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D> where A: Element, D: Dimension {
+//     pub unsafe fn from_raw_parts_mut(
+//         ptr: *mut A, storage_len: usize, shape: D,
+//         strides: Strides<D>, offset: usize,
+//     ) -> Result<Self, XenonError>
+// }
+//
+// 额外校验（相对于 from_raw_parts）：
+//   1. 拒绝非空零步长布局（非单元素轴 stride == 0）
+//   2. validate_non_overlapping_layout() 保守非重叠判定
+//   3. 空张量使用 NonNull::dangling() 作为 logical_ptr
+```
 
 **校验边界说明：** 与 `07-tensor.md` §5.7 一致，`from_raw_parts*()` 只验证库能够直接检查的元数据约束（例如 shape/stride/offset/storage*len 组合是否合法、是否溢出、是否越界），并在失败时返回 `Result<*, XenonError>`。指针有效性、对齐、实际可访问范围与生命周期仍由调用方在 `unsafe` 前提下负责。
 
@@ -742,7 +628,15 @@ where
     }
 
     let storage = Owned::from_raw_parts(raw.ptr, raw.len, raw.cap, raw.align);
-    let flags = layout::compute_layout_flags(&raw.shape, &raw.strides, raw.ptr);
+    let logical_ptr = if raw.shape.size() == 0 {
+        // Empty tensors must not pass a potentially dangling storage pointer
+        // to compute_layout_flags; use a well-defined non-dereferenceable sentinel.
+        core::ptr::NonNull::<A>::dangling().as_ptr()
+    } else {
+        // offset == 0 already verified, so raw.ptr IS the logical first element.
+        raw.ptr
+    };
+    let flags = layout::compute_layout_flags(&raw.shape, &raw.strides, logical_ptr);
     Ok(TensorBase { storage, shape: raw.shape, strides: raw.strides, offset: raw.offset, flags })
     }
 }
