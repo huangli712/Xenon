@@ -115,7 +115,12 @@ src/ffi/
 
 依赖方向：单向向上。`ffi` 仅消费 `tensor`、`storage` 等核心模块，为上游库提供接口。
 
-> **owner 约定：** `as_ptr()` / `as_mut_ptr()` 的核心定义在 `07-tensor.md`（tensor 核心层）；`ffi` 模块负责指针导出格式（`TensorExport`）、BLAS 辅助 API 和裸指针构造。本文聚焦这些能力在 FFI 边界的公开形态，因此依赖表中仍把相关实现文件归入 `ffi` 模块文档范围，而不把它写成反向依赖。
+**owner 约定：** 
+
+- `as_ptr()` / `as_mut_ptr()` 的核心定义在 `07-tensor.md`（tensor 核心层）。
+- `ffi` 模块负责指针导出格式（`TensorExport`）、BLAS 辅助 API 和裸指针构造。
+
+本文聚焦这些能力在 FFI 边界的公开形态，因此依赖表中仍把相关实现文件归入 `ffi` 模块文档范围，而不把它写成反向依赖。
 
 ---
 
@@ -134,7 +139,7 @@ use crate::error::FfiErrorCategory;
 
 ### 5.2 原始指针 API
 
-> **结果类型说明：** 公开 API 统一使用 `Result<T, XenonError>`，`crate::error::Result<_>` 为等价类型别名。
+**结果类型说明：** 公开 API 统一使用 `Result<T, XenonError>`，`crate::error::Result<_>` 为等价类型别名。
 
 ````rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -224,7 +229,7 @@ impl ElementType {
 }
 ```
 
-> **实现基础说明：** 可在 `Element` sealed trait 中引入 `const ELEMENT_TYPE: ElementType` 关联常量作为 `ElementType::of::<A>()` 的实现基础。若当前 Rust 版本不支持所需 const 机制，可将该 API 降为普通 `fn`，保持语义不变。
+**实现基础说明：** 可在 `Element` sealed trait 中引入 `const ELEMENT_TYPE: ElementType` 关联常量作为 `ElementType::of::<A>()` 的实现基础。若当前 Rust 版本不支持所需 const 机制，可将该 API 降为普通 `fn`，保持语义不变。
 
 ### 5.4 指针约定对照
 
@@ -234,8 +239,6 @@ impl ElementType {
 | `TensorExport.data`         | storage base pointer | 非空张量时等于底层存储的基地址；空张量时为有效对齐但不可解引用的指针 |
 | `BlasInfo.data_ptr`         | 逻辑首元素           | 等价于 `as_ptr()`                                                    |
 | `try_ptr_at(indices)`       | 指定逻辑位置         | 基于 `as_ptr() + offset` 计算                                        |
-
-> **指针语义统一**：`TensorExport.data` 和 `TensorExportMut.data` 指向底层存储的基地址（storage base pointer），与 `from_raw_parts()` 的 `ptr` 参数语义一致。逻辑首元素地址可通过 `base_ptr + offset` 计算。
 
 ```rust,ignore
 /// Raw tensor data export for FFI consumers.
@@ -357,23 +360,25 @@ where
 }
 ```
 
-> **导出语义说明：** `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 面向 C 调用方提供"指针 + shape + strides + storage_len + offset"的结构化快照，其中 `shape` 与 `strides` 指针均借用源张量内部元数据，不能在源张量释放后继续使用；生命周期参数和 `PhantomData` 明确表达“源张量必须活得比导出结构更久”。
+**指针语义统一**：`TensorExport.data` 和 `TensorExportMut.data` 指向底层存储的基地址（storage base pointer），与 `from_raw_parts()` 的 `ptr` 参数语义一致。逻辑首元素地址可通过 `base_ptr + offset` 计算。
 
-> **导出范围说明：** `export()` 提供只读结构化导出并返回 `TensorExport<'_, A>`，适用于任意 `TensorBase<S, D>` 且仅要求 `S: Storage`，因此覆盖 Owned、View、只读共享存储以及所有合法 stride 布局。`export_mut()` 直接返回 `TensorExportMut<'_, A>`，适用于任意满足 `S: StorageMut` 的 `TensorBase<S, D>`，因此同时覆盖 Owned 与 `ViewMut` 这两类可写存储。
+**导出语义说明：** `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 面向 C 调用方提供"指针 + shape + strides + storage_len + offset"的结构化快照，其中 `shape` 与 `strides` 指针均借用源张量内部元数据，不能在源张量释放后继续使用；生命周期参数和 `PhantomData` 明确表达“源张量必须活得比导出结构更久”。
 
-> **可写导出边界：** `export_mut()` 通过 `&mut self` 和 `S: StorageMut` 保证 Xenon 侧的独占可写访问；只读视图和共享只读存储则在 trait 边界上直接被拒绝。这与 `需求说明书 §6` 的存储模式转换和 `需求说明书 §25` 的零拷贝导出要求保持一致。
+**导出范围说明：** `export()` 提供只读结构化导出并返回 `TensorExport<'_, A>`，适用于任意 `TensorBase<S, D>` 且仅要求 `S: Storage`，因此覆盖 Owned、View、只读共享存储以及所有合法 stride 布局。`export_mut()` 直接返回 `TensorExportMut<'_, A>`，适用于任意满足 `S: StorageMut` 的 `TensorBase<S, D>`，因此同时覆盖 Owned 与 `ViewMut` 这两类可写存储。
 
-> **空张量约定：** 空张量上的 `as_ptr()` / `as_mut_ptr()` 必须返回有效对齐但不可解引用的 dangling 指针。导出时 `TensorExport*.data` 也遵循相同约定：它始终表示 storage base pointer；当 `len() == 0` 时该位置没有可解引用元素，因此调用方必须先基于长度判断是否可访问。
+**可写导出边界：** `export_mut()` 通过 `&mut self` 和 `S: StorageMut` 保证 Xenon 侧的独占可写访问；只读视图和共享只读存储则在 trait 边界上直接被拒绝。这与 `需求说明书 §6` 的存储模式转换和 `需求说明书 §25` 的零拷贝导出要求保持一致。
 
-> **指针语义补充：** `TensorExport<'_, A>::data` 是 `*const A`，`TensorExportMut<'_, A>::data` 是 `*mut A`，二者语义上都始终指向 storage base pointer。对非空张量，逻辑首元素地址需通过 `data.add(offset)` 计算；当 `offset == 0` 时，它与 storage base 重合。`offset` 与 `strides` 都以"元素个数"计量，而不是字节数。
+**空张量约定：** 空张量上的 `as_ptr()` / `as_mut_ptr()` 必须返回有效对齐但不可解引用的 dangling 指针。导出时 `TensorExport*.data` 也遵循相同约定：它始终表示 storage base pointer；当 `len() == 0` 时该位置没有可解引用元素，因此调用方必须先基于长度判断是否可访问。
 
-> **stride 约定：** `strides` 以"元素个数"而非字节数表示步长，类型为 `usize`。按照 `06-layout.md` §1.2 与 `需求说明书 §7`，当前版本 Xenon 不支持负步长，因此 FFI 导出格式也不保留负 stride 语义。`from_raw_parts()` 允许零步长布局以表达广播只读视图；`from_raw_parts_mut()` 则拒绝所有非空零步长布局（即任何非单元素轴的 `stride == 0` 都会报错）。
+**指针语义补充：** `TensorExport<'_, A>::data` 是 `*const A`，`TensorExportMut<'_, A>::data` 是 `*mut A`，二者语义上都始终指向 storage base pointer。对非空张量，逻辑首元素地址需通过 `data.add(offset)` 计算；当 `offset == 0` 时，它与 storage base 重合。`offset` 与 `strides` 都以"元素个数"计量，而不是字节数。
 
-> **offset 约定：** `offset` 记录与 `07-tensor.md` raw-parts 契约一致的逻辑偏移元数据，单位始终是元素个数而不是字节数。导出结构中的 `data` 始终指向 storage base pointer，C 调用方应通过 `data + offset` 还原逻辑首元素地址；`offset` 本身仍仅用于视图重建、范围校验和与 Xenon 原始布局元数据对齐。
+**stride 约定：** `strides` 以"元素个数"而非字节数表示步长，类型为 `usize`。按照 `06-layout.md` §1.2 与 `需求说明书 §7`，当前版本 Xenon 不支持负步长，因此 FFI 导出格式也不保留负 stride 语义。`from_raw_parts()` 允许零步长布局以表达广播只读视图；`from_raw_parts_mut()` 则拒绝所有非空零步长布局（即任何非单元素轴的 `stride == 0` 都会报错）。
 
-> **ndim 一致性约定：** C 消费者须以 `ndim` 为 `shape` 和 `strides` 数组的长度，不得以硬编码长度或其它来源替代。`TensorExport` 的构造保证 `shape` 和 `strides` 指向的数组长度均等于 `ndim`。
+**offset 约定：** `offset` 记录与 `07-tensor.md` raw-parts 契约一致的逻辑偏移元数据，单位始终是元素个数而不是字节数。导出结构中的 `data` 始终指向 storage base pointer，C 调用方应通过 `data + offset` 还原逻辑首元素地址；`offset` 本身仍仅用于视图重建、范围校验和与 Xenon 原始布局元数据对齐。
 
-> **生命周期与借用语义：** 导出结果不拥有底层内存；一旦源张量被 drop，`TensorExport` 内的 `data`、`shape`、`strides` 全部立即失效。应将该导出结果视为对源张量当前元数据与指针状态的借用快照：`export()` 暴露只读快照，`export_mut()` 暴露独占可写快照；无论是否跨 FFI 边界缓存，该快照都不得超出源张量的生命周期，也不得绕过 `&mut self` 所表达的独占写语义。本文不额外指定 `TensorExport<'_, _>` / `TensorExportMut<'_, _>` 的 auto trait 组合，线程相关性质以其字段与 Rust auto-trait 推导结果为准；测试计划应通过编译期 `Send` / `Sync` 检查验证该自动推导结果。
+**ndim 一致性约定：** C 消费者须以 `ndim` 为 `shape` 和 `strides` 数组的长度，不得以硬编码长度或其它来源替代。`TensorExport` 的构造保证 `shape` 和 `strides` 指向的数组长度均等于 `ndim`。
+
+**生命周期与借用语义：** 导出结果不拥有底层内存；一旦源张量被 drop，`TensorExport` 内的 `data`、`shape`、`strides` 全部立即失效。应将该导出结果视为对源张量当前元数据与指针状态的借用快照：`export()` 暴露只读快照，`export_mut()` 暴露独占可写快照；无论是否跨 FFI 边界缓存，该快照都不得超出源张量的生命周期，也不得绕过 `&mut self` 所表达的独占写语义。本文不额外指定 `TensorExport<'_, _>` / `TensorExportMut<'_, _>` 的 auto trait 组合，线程相关性质以其字段与 Rust auto-trait 推导结果为准；测试计划应通过编译期 `Send` / `Sync` 检查验证该自动推导结果。
 
 ### 5.5 Complex FFI 布局契约
 
