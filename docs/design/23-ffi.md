@@ -28,18 +28,6 @@
 | BLAS 友好    | 提供完整的 BLAS 兼容性检查和布局查询        |
 | 最小约束     | FFI 方法避免重复安全检查（调用方已 unsafe） |
 
-### 1.3 在架构中的位置
-
-```
-Dependency layers:
-L0: error, private
-L1: dimension, element, complex
-L2: layout (depends on dimension)
-L3: storage (independent of layout; owned by tensor and consumes layout results)
-L4: tensor (depends on storage, dimension)
-L5: ffi  <- current module
-```
-
 ---
 
 ## 2. 需求映射与范围约束
@@ -50,16 +38,6 @@ L5: ffi  <- current module
 | 范围内   | 原始指针访问、raw-parts 往返、BLAS 兼容性查询、多维索引到偏移 / 指针转换。                                                                     |
 | 范围外   | 实际 BLAS / LAPACK 例程调用、GPU 互操作、跨进程共享内存与更高层序列化协议。                                                                    |
 | 非目标   | 不把 `ffi` 扩展为外部数值库绑定层，不新增第三方 FFI crate 依赖。                                                                               |
-
-| 需求条款     | 本文承接方式                                                                                 |
-| ------------ | -------------------------------------------------------------------------------------------- |
-| 需求说明书 §5 复数类型  | 明确 `Complex<f32>` / `Complex<f64>` 的稳定 `#[repr(C)]` FFI 表示。                          |
-| 需求说明书 §6 存储系统  | `export()` / `export_mut()` 分别覆盖 `Storage` / `StorageMut`，保持零拷贝导出边界。          |
-| 需求说明书 §7 内存布局  | 导出与导入统一使用 shape / strides / offset 元数据解释当前版本合法布局。                     |
-| 需求说明书 §8 张量类型  | `from_raw_parts*()` 验证可检查的布局、范围与别名条件，失败时返回可恢复错误。                 |
-| 需求说明书 §25 FFI 集成 | 提供原始指针、偏移转换、BLAS 兼容性查询和 raw-parts roundtrip。                              |
-| 需求说明书 §27 错误处理 | 仅公开 `try_offset_of()` / `try_ptr_at()` 这类 `Result` API，不额外暴露 panic sugar。        |
-| 需求说明书 §28.1 文档   | 所有 unsafe 入口提供 Safety 说明；关键 FFI API 提供示例，非完整上下文示例统一标记 `ignore`。 |
 
 ---
 
@@ -76,14 +54,6 @@ src/
 ```
 
 多文件设计：将 FFI 按职责拆分为多个文件，便于后期拓展和维护。
-
-| 文件        | 职责                                                                                        |
-| ----------- | ------------------------------------------------------------------------------------------- |
-| `mod.rs`    | 模块入口，导出公共 API                                                                      |
-| `types.rs`  | `FfiErrorCategory` 枚举、`BlasInfo` 结构体                                                  |
-| `ptr.rs`    | 原始指针访问（`as_ptr`/`as_mut_ptr`）和裸指针构造/解构（`from_raw_parts`/`into_raw_parts`） |
-| `blas.rs`   | BLAS 兼容性检查和参数查询（`is_blas_layout_compatible`/`blas_info`/`lda`）                  |
-| `offset.rs` | 多维索引到偏移量和指针转换（`try_offset_of`、`try_ptr_at`）                                 |
 
 ---
 
