@@ -172,8 +172,7 @@ where
   | `broadcast_shape(a, b)` | `"broadcast_shape"` | `Some(a)` | `Some(b)` | `None` | 失败轴 index |
   | `broadcast_to(self, target)` | `"broadcast_to"` | `Some(self.shape())` | `None` | `Some(target)` | 失败轴 index |
   | `broadcast_with(a, b)` | `"broadcast_with"` | `Some(a.shape())` | `Some(b.shape())` | `None` | 失败轴 index |
-- **类型说明：** 当前版本继续复用 `TensorView` 作为返回类型，而不是引入单独的 `BroadcastView` 新类型；广播结果内部承载 `ViewRepr<'a, A>`，`storage_kind()` 返回 `StorageKind::View`。广播结果的只读共享语义通过 `LayoutFlags::HAS_ZERO_STRIDE` / `LayoutState::BroadcastView` 与访问控制 API 保证：任何试图取得其可变访问权的 API 在类型层或运行时拒绝。
-- **共享只读强制说明：** `broadcast_to()` / `broadcast_with()` 返回 `TensorView`，其生命周期绑定源张量。由于广播结果引入零步长布局，可能导致多个逻辑位置映射到同一物理元素，因此：1) 广播结果在 API 层不提供可变访问入口；2) `storage_kind()` 仍返回 `StorageKind::View`；3) 只读共享语义由 `LayoutFlags::HAS_ZERO_STRIDE`、`LayoutState::BroadcastView`、缺失的 `StorageMut` 能力以及不提供 `into_mut()` 等 API 共同保证。
+- **返回类型与共享只读保证：** 当前版本复用 `TensorView` 作为返回类型，不引入单独的 `BroadcastView` 新类型。广播结果内部承载 `ViewRepr<'a, A>`，`storage_kind()` 返回 `StorageKind::View`，`access_semantics()` 返回 `AccessSemantics::SharedReadOnly`。由于广播引入零步长布局，多个逻辑位置映射到同一物理元素，因此只读共享语义由以下机制共同保证：1) `LayoutFlags::HAS_ZERO_STRIDE` / `LayoutState::BroadcastView` 标识广播布局；2) 广播结果类型层缺失 `StorageMut` 能力且不提供 `into_mut()` 等 API；3) 广播结果的生命周期绑定源张量。
 
 ### 5.3 Good / Bad 对比
 

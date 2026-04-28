@@ -449,13 +449,13 @@ SIMD sum reduction flow
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-#### 轴向归约 SIMD 策略
+#### 5.8.3 轴向归约 SIMD 策略
 
 - 轴向 `sum_axis(axis)` / `sum_axis_keepdims(axis)` 的 SIMD 路径仅在被归约维对应连续内层维度时启用。
 - 若输入布局非连续，或目标轴无法映射为连续内层归约区间，则由对应语义模块保持串行路径。
 - 当目标轴是连续内层维度时，实现可在每个逻辑归约段内使用 SIMD 加速全局归约，再按轴向输出形状写回结果；`keepdims` 仅影响输出 shape，不改变 SIMD/标量裁决规则。
 
-#### 向量内积（dot product）
+#### 5.8.4 向量内积（dot product）
 
 ```
 SIMD dot dispatch flow
@@ -479,7 +479,7 @@ SIMD dot dispatch flow
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 5.6 条件检查与自动回退
+### 5.9 条件检查与自动回退
 
 ```rust,ignore
 // src/simd/mod.rs
@@ -492,7 +492,7 @@ SIMD dot dispatch flow
 
 SIMD 条件判断已收敛到 `simd/` 后端内部。`dispatch.rs` 只负责决定是否进入并行执行；进入串行执行上下文后，`simd/` 再按统一规则检查 feature、连续性、对齐、元素类型与运行时可用 lane 宽度，决定是否使用向量化路径。
 
-### 5.6a `simd/` 能力查询接口
+### 5.10 `simd/` 能力查询接口
 
 ```rust,ignore
 // src/simd/mod.rs
@@ -533,7 +533,7 @@ pub(crate) fn is_supported(element_type: SimdElementKind, op: SimdOp) -> bool;
 - 资格查询只回答“当前版本是否存在可进入的 SIMD 能力”，不替代连续性、对齐、长度阈值和 ISA 检查。
 - 对状态为“规划中”或“标量回退”的条目，`is_supported(...)` 必须返回 `false`。
 
-### 5.7 Good/Bad 对比示例
+### 5.11 Good/Bad 对比示例
 
 ```rust,ignore
 // Good - use the public semantic entry; dispatch only decides serial vs parallel.
