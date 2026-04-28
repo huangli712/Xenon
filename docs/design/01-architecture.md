@@ -113,7 +113,7 @@ xenon/
 │   ├── prelude.rs             # Common pub-use exports
 │   ├── private.rs             # Sealed-trait infrastructure
 │   ├── error.rs               # XenonError enum and Result alias
-│   ├── dispatch.rs            # Internal dispatch helper (ExecPath, ParallelExecStrategy, ParallelGuard, parallel thresholds)
+│   ├── dispatch.rs            # Internal dispatch helper (ExecPath, ParallelExecStrategy, ParallelGuard, ParallelContext, parallel thresholds)
 │   │
 │   ├── dimension/             # Dimension type system
 │   │   ├── mod.rs             # Dimension trait definition

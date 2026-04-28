@@ -314,13 +314,16 @@ where
     C: Element + Send,
     F: Fn(&A, &B) -> Result<C, XenonError> + Send + Sync,
 {
-    let total = output_dim.checked_size().map_err(|_| XenonError::InvalidShape {
+    let total = output_dim.checked_size().map_err(|_| XenonError::InvalidArgument {
         operation: "par_zip_map".into(),
-        shape: output_dim.slice().to_vec(),
-        expected_elements: 0,
-        actual_elements: 0,
-        offending_dim: None,
-        reason: Some(alloc::borrow::Cow::Borrowed("element count overflow")),
+        argument: "output_dim".into(),
+        expected: "element count within usize range".into(),
+        actual: "element count overflow".into(),
+        axis: None,
+        axis_len: None,
+        start: None,
+        end: None,
+        shape: Some(output_dim.slice().to_vec()),
     })?;
 
     let num_threads = strategy.max_workers.unwrap_or_else(rayon::current_num_threads);
@@ -541,7 +544,7 @@ where
 | 方向           | 对方模块                     | 接口/类型                                         | 约定                                                                |
 | -------------- | ---------------------------- | ------------------------------------------------- | ------------------------------------------------------------------- |
 | 消费（输入）   | `tensor`                     | `Tensor<A, D>`, `TensorBase<S, D>`                | 调用前已满足 shape、layout、类型约束                                |
-| 消费（输入）   | `parallel`                   | `TensorBase::par_iter()`, `ParElements<'a, A, D>` | 二者均为 `pub(crate)` 内部入口，只提供单输入只读并行遍历            |
+| 消费（输入）   | `iter` / `parallel`          | `TensorBase::par_iter()`, `ParElements<'a, A, D>` | `par_iter()` 定义于 `parallel`（参见 §5.6），`ParElements` 同；二者均为 `pub(crate)` 内部入口，只提供单输入只读并行遍历 |
 | 消费（输入）   | `parallel`                   | `par_zip_map()`                                   | `math` 模块经 `dispatch.rs` 完成路径选择后调用，仅为 crate 内部能力 |
 | 消费（输入）   | `error`                      | `XenonError`                                      | 可恢复错误统一复用项目错误模型                                      |
 | 被调用（输出） | 上层语义模块 / `dispatch.rs` | `par_map` / `par_sum` / `par_dot` / `par_zip_map` | 仅在 `dispatch.rs` 已选中并行路径后执行                             |
@@ -566,7 +569,7 @@ math / reduction / matrix call dispatch entry
 
 | 主题              | 说明                                                                                                            |
 | ----------------- | --------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | `par_dot()` 的长度不兼容返回 `XenonError::DimensionMismatch`；`par_zip_map()` 的元素总数溢出返回 `InvalidShape` |
+| Recoverable error | `par_dot()` 的长度不兼容返回 `XenonError::DimensionMismatch`；`par_zip_map()` 的元素总数溢出返回 `InvalidArgument` |
 | Panic             | 归约中的整数溢出仍属于不可恢复错误，必须 panic，而不是包装为 `XenonError`                                       |
 | 路径一致性        | `dispatch.rs` 负责执行路径选择；一旦进入 `parallel/`，并行路径必须返回与调用方串行基线相同形状、相同错误类别，以及满足同一数值语义约束的结果  |
 | 容差边界          | 浮点与复数若存在执行路径相关的已知舍入差异，只能落在 `需求说明书 §28.3` 与 `需求说明书 §28.5` 允许且已文档化的范围内；以 `需求说明书 §28.3` 为权威基线，`00-coding.md §7.4` 仅作为实现参考。|
