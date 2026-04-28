@@ -3,7 +3,7 @@
 > 文档编号: 09
 > 模块目录: src/parallel/
 > 任务阶段: Phase 5
-> 前置文档: 07-tensor.md, 26-error.md
+> 前置文档: 01-architecture.md, 07-tensor.md, 26-error.md
 > 需求参考: 需求说明书 §1、§9、§12 - §14、§27、§28
 > 范围声明: 范围内
 
@@ -239,7 +239,7 @@ where
 `ParElements` 通过实现 `rayon::iter::ParallelIterator` trait（`Item = &'a A`）提供并行遍历能力：
 
 - 按逻辑顺序产出共享引用；内部将 `TensorView` 按逻辑元素总数均匀分割为固定 chunk。
-- 对于 C-contiguous 布局，直接按连续内存切片分割以获得最佳缓存局部性；对于非连续布局（如 F-contiguous、转置视图），退化为线性索引区间 + 逐元素步长访问。
+- 对于 F-contiguous 布局，直接按连续内存切片分割以获得最佳缓存局部性；对于非连续布局（如转置视图），退化为线性索引区间 + 逐元素步长访问。
 - 分片粒度由 `chunk_size` 和 `max_workers` 字段控制：若 `chunk_size` 为 `Some(n)`，每个分片至多包含 `n` 个元素；若为 `None`，按 `(total_elements + num_threads - 1) / num_threads` 自动计算，其中 `num_threads` 取 `max_workers` 或 `rayon::current_num_threads()`。
 - `par_iter()` 返回使用默认策略（`chunk_size: None`, `max_workers: None`）的 `ParElements`；`ParElements::with_strategy()` 接受显式策略参数，供 `par_map_checked` 等需要精确控制分块的内部入口使用。
 
