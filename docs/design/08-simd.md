@@ -18,7 +18,7 @@ SIMD 后端模块是 Xenon 张量库的可选性能加速层，通过 `pulp` cra
 | 职责       | 包含                                                                |
 | ---------- | ------------------------------------------------------------------- |
 | SIMD 抽象  | 通过 pulp 统一抽象 x86/ARM 指令集                                   |
-| 逐元素运算 | `SimdKernel` 直接覆盖二元算术与 `neg`；比较、`abs`、`square`、`not` 等由独立专用 kernel 路径承载 |
+| 逐元素运算 | `SimdKernel` 直接覆盖二元算术与 `neg`；比较、`abs`、`square`、`not` 等计划由独立专用 kernel 路径承载（当前为优化项） |
 | 归约运算   | `sum` 的 SIMD 加速与向量化可用性约束；整数路径仅在已验证 ISA widening 实现存在时启用 |
 | 内积运算   | `dot` 的 SIMD 加速与向量化可用性约束；整数路径仅在已验证 ISA widening 实现存在时启用 |
 | 运行时分发 | Arch 检测缓存、自动最优路径选择                                     |
@@ -344,21 +344,21 @@ SIMD 路径选择已收敛到 `simd` 后端内部（分层原则见 §1.2）。
 
 ### 5.6 SIMD 操作覆盖状态表
 
-| 操作                                             | 类型                                                            | 状态（已实现/规划中/标量回退）                            | 说明                                                                                                                                           |
-| ------------------------------------------------ | --------------------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `add` / `sub` / `mul` / `div`                    | `f32` / `f64` / `Complex<f32>` / `Complex<f64>`                 | 已实现                                                    | 当前版本提供 SIMD kernel                                                                                                                       |
-| `neg`                                            | `f32` / `f64` / `Complex<f32>` / `Complex<f64>`                 | 已实现                                                    | 当前版本提供 SIMD kernel                                                                                                                       |
-| `sign` / `signum`                                | `f32` / `f64`                                                   | 优化项（不构成稳定交付承诺）                              | 当前版本仅为实数浮点提供 SIMD 路径；其他类型保持标量/串行路径                                                                                  |
-| `sum`                                            | `f32` / `f64` / `Complex<f32>` / `Complex<f64>`                 | 已实现                                                    | 浮点/复数遵循本文档记录的归约容差                                                                                                              |
-| `sum`                                            | `i32` / `i64`                                                   | 条件实现，默认标量回退                                    | 整数 `sum` 默认走串行 checked 路径；仅在存在已验证的 ISA 专用 widening SIMD 实现时启用（例如 `i32 -> i64`），且必须与标量 checked 语义完全等价 |
-| `dot`                                            | `f32` / `f64` / `Complex<f32>` / `Complex<f64>`                 | 已实现                                                    | 复数 `dot` 采用 `sum(conj(lhs_i) * rhs_i)`                                                                                                     |
-| `dot`                                            | `i32` / `i64`                                                   | 条件实现，默认标量回退                                    | 整数 `dot` 默认走串行 checked 路径；仅在存在已验证的 ISA 专用 widening SIMD 实现时启用（例如 `i32 -> i64`），且必须与标量 checked 语义完全等价 |
-| `abs`                                            | `f32` / `f64`                                                   | 优化项（不构成稳定交付承诺）                              | 通过专用一元 kernel 路径或共享装载/收尾框架实现，不经 `SimdKernel` 二元算术 trait                                                              |
-| `square`                                         | `i32` / `i64` / `f32` / `f64` / `Complex<f32>` / `Complex<f64>` | 优化项（不构成稳定交付承诺）                              | 通过专用一元 kernel 路径或复用乘法/分量级 kernel，不经 `SimdKernel` 二元算术 trait                                                             |
-| `eq` / `ne` / `lt` / `gt`                        | 适用的整数 / 浮点类型                                           | 优化项（不构成稳定交付承诺）                              | 比较 kernel 将布尔结果写入 `bool` 目标缓冲区，不经 `SimdKernel` 二元算术 trait                                                                 |
-| `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` | `f32` / `f64`                                                   | 标量回退 + 可选 SIMD 加速                                 | 数学函数的 SIMD 实现依赖平台 libm 或手动实现，精度以 `需求说明书 §28.3` 为权威基线，`00-coding.md §8.4` 为实现/测试参考 |
-| `not`                                            | `bool`                                                          | 优化项（不构成稳定交付承诺）                              | 通过独立 bool / mask kernel 实现，不经 `SimdKernel` 二元算术 trait                                                                             |
-| `complex_abs` / `conjugate`                      | `Complex<f32>` / `Complex<f64>`                                 | 优化项（不构成稳定交付承诺）                              | 通过专用一元/复数 kernel 路径实现；复数 AoS 输入在寄存器内重排后执行，不经 `SimdKernel` 二元算术 trait                                         |
+| 操作                                             | 类型                                                            | 状态（已实现/规划中/标量回退）  | 说明                                                                                                                                           |
+| ------------------------------------------------ | --------------------------------------------------------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `add` / `sub` / `mul` / `div`                    | `f32` / `f64` / `Complex<f32>` / `Complex<f64>`                 | 已实现                          | 当前版本提供 SIMD kernel                                                                                                                       |
+| `neg`                                            | `f32` / `f64` / `Complex<f32>` / `Complex<f64>`                 | 已实现                          | 当前版本提供 SIMD kernel                                                                                                                       |
+| `signum`                                         | `f32` / `f64`                                                   | 优化项（不构成稳定交付承诺）    | 当前版本仅为实数浮点提供 SIMD 路径；其他类型保持标量/串行路径                                                                                  |
+| `sum`                                            | `f32` / `f64` / `Complex<f32>` / `Complex<f64>`                 | 已实现                          | 浮点/复数遵循本文档记录的归约容差                                                                                                              |
+| `sum`                                            | `i32` / `i64`                                                   | 条件实现，默认标量回退          | 整数 `sum` 默认走串行 checked 路径；仅在存在已验证的 ISA 专用 widening SIMD 实现时启用（例如 `i32 -> i64`），且必须与标量 checked 语义完全等价 |
+| `dot`                                            | `f32` / `f64` / `Complex<f32>` / `Complex<f64>`                 | 已实现                          | 复数 `dot` 采用 `sum(conj(lhs_i) * rhs_i)`                                                                                                     |
+| `dot`                                            | `i32` / `i64`                                                   | 条件实现，默认标量回退          | 整数 `dot` 默认走串行 checked 路径；仅在存在已验证的 ISA 专用 widening SIMD 实现时启用（例如 `i32 -> i64`），且必须与标量 checked 语义完全等价 |
+| `abs`                                            | `f32` / `f64`                                                   | 优化项（不构成稳定交付承诺）    | 通过专用一元 kernel 路径或共享装载/收尾框架实现，不经 `SimdKernel` 二元算术 trait                                                              |
+| `square`                                         | `i32` / `i64` / `f32` / `f64` / `Complex<f32>` / `Complex<f64>` | 优化项（不构成稳定交付承诺）    | 通过专用一元 kernel 路径或复用乘法/分量级 kernel，不经 `SimdKernel` 二元算术 trait                                                             |
+| `eq` / `ne` / `lt` / `gt`                        | 适用的整数 / 浮点类型                                           | 优化项（不构成稳定交付承诺）    | 比较 kernel 将布尔结果写入 `bool` 目标缓冲区，不经 `SimdKernel` 二元算术 trait                                                                 |
+| `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` | `f32` / `f64`                                                   | 标量回退 + 可选 SIMD 加速       | 数学函数的 SIMD 实现依赖平台 libm 或手动实现，精度以 `需求说明书 §28.3` 为权威基线，`00-coding.md §8.4` 为实现/测试参考 |
+| `not`                                            | `bool`                                                          | 优化项（不构成稳定交付承诺）    | 通过独立 bool / mask kernel 实现，不经 `SimdKernel` 二元算术 trait                                                                             |
+| `complex_abs` / `conjugate`                      | `Complex<f32>` / `Complex<f64>`                                 | 优化项（不构成稳定交付承诺）    | 通过专用一元/复数 kernel 路径实现；复数 AoS 输入在寄存器内重排后执行，不经 `SimdKernel` 二元算术 trait                                         |
 
 - `dot()` 为当前版本正式能力；`SimdKernel` 直接覆盖 `f32` / `f64` / `Complex<f32>` / `Complex<f64>`。整数 `dot` 仅在存在已验证的 ISA 专用 widening 实现时才进入 SIMD，否则按 §1.1 职责边界回到语义模块串行路径。整数归约/内积的详细约束见 §6.6。
 - 该覆盖目标不改变公开 API 的可用性；SIMD 仅影响执行路径选择，不改变公开语义契约。
@@ -376,7 +376,7 @@ SIMD 路径选择已收敛到 `simd` 后端内部（分层原则见 §1.2）。
 | 逐元素算术                | `f32` / `f64`                   | 64            | 对齐后向量宽度                                               |
 | 逐元素算术                | `Complex<f32>` / `Complex<f64>` | 128           | AoS 输入需寄存器内重排，默认阈值高于实数路径                 |
 | 比较                      | 适用的整数 / 浮点类型           | 64            | 与逐元素算术共享向量装载/收尾框架                            |
-| `abs` / `sign` / `signum` | `f32` / `f64`                   | 64            | 一元实数路径，通常复用比较/位运算或算术框架                  |
+| `abs` / `signum`          | `f32` / `f64`                   | 64            | 一元实数路径，通常复用比较/位运算或算术框架                  |
 | `square`                  | `i32` / `i64` / `f32` / `f64`   | 64            | 复用逐元素乘法 kernel                                        |
 | `square`                  | `Complex<f32>` / `Complex<f64>` | 128           | 复用 complex 算术路径与寄存器重排框架                        |
 | `bool` (`not`)            | `bool`                          | N/A           | 由独立 bool / mask kernel 决定，不在统一数值阈值表内单独承诺 |
@@ -616,6 +616,8 @@ SIMD 内核中的 `unsafe` 只允许用于底层 load/store 与寄存器装载�
 
 ### 6.4 dispatch 流程
 
+以下流程由 pulp 内部自动完成，Xenon 不做 ISA 级分支。
+
 ```
 Dispatch call flow
 
@@ -797,7 +799,7 @@ Consistency guarantee strategy
 | ------------------------ | -------------------------------------- | ------ |
 | `test_vector_add_f32`    | SIMD f32 加法正确性                    | 高     |
 | `test_vector_add_f64`    | SIMD f64 加法正确性                    | 高     |
-| `test_sum_dispatch_simd_float` | 浮点 sum 满足条件时进入 SIMD 路径   | 高     |
+| `test_sum_dispatch_simd_float` | 浮点 sum 满足条件时进入 SIMD 路径   | 高  |
 | `test_dot_dispatch_simd` | dot 满足条件时进入 SIMD 路径           | 高     |
 | `test_tail_handling`     | 非宽度整数倍数组尾部处理               | 中     |
 | `test_empty_array`       | 空数组不 panic                         | 中     |
