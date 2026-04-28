@@ -80,7 +80,8 @@ src/simd/
 ├── pulp (optional)           # External dependency, feature = "simd"
 ├── crate::tensor             # TensorBase<S, D>, as_slice(), layout queries
 ├── crate::layout             # Alignment helpers
-└── crate::element            # Element trait, SimdElement
+├── crate::element            # Element trait, SimdElement
+└── crate::complex            # Complex<T> for complex SIMD kernels
 ```
 
 ### 4.2 类型级依赖
@@ -92,6 +93,7 @@ src/simd/
 | `tensor`  | `.is_f_contiguous()`, 布局标志查询（参见 `07-tensor.md` §5）                       |
 | `element` | `Element`（参见 `03-element.md` §5.1）                                             |
 | `element` | `Numeric`（参见 `03-element.md` §5.2）                                             |
+| `complex` | `Complex<T>`（参见 `04-complex.md`）                                               |
 | `simd`    | `SimdElement`（本模块定义，见 §5.2）                                               |
 
 ### 4.3 依赖合法性
@@ -795,7 +797,7 @@ Consistency guarantee strategy
 | ------------------------ | -------------------------------------- | ------ |
 | `test_vector_add_f32`    | SIMD f32 加法正确性                    | 高     |
 | `test_vector_add_f64`    | SIMD f64 加法正确性                    | 高     |
-| `test_sum_dispatch_simd` | 浮点/复数 sum 满足条件时进入 SIMD 路径 | 高     |
+| `test_sum_dispatch_simd_float` | 浮点 sum 满足条件时进入 SIMD 路径   | 高     |
 | `test_dot_dispatch_simd` | dot 满足条件时进入 SIMD 路径           | 高     |
 | `test_tail_handling`     | 非宽度整数倍数组尾部处理               | 中     |
 | `test_empty_array`       | 空数组不 panic                         | 中     |
