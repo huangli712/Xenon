@@ -1,8 +1,10 @@
 # 广播模块设计
 
-> 文档编号: 15 | 模块: `src/broadcast/` | 阶段: Phase 3
-> 前置文档: `02-dimension.md`, `06-layout.md`, `07-tensor.md`, `26-error.md`
-> 需求参考: `需求说明书 §6§7§11§16§20§27§28
+> 文档编号: 15
+> 模块目录: src/broadcast/
+> 任务阶段: Phase 3
+> 前置文档: 02-dimension.md, 06-layout.md, 07-tensor.md, 26-error.md
+> 需求参考: 需求说明书 §6、§7、§11、§16、§20、§27、§28
 > 范围声明: 范围内
 
 ---
@@ -11,23 +13,31 @@
 
 ### 1.1 职责边界
 
-| 职责           | 包含                                                                    | 不包含                                      |
-| -------------- | ----------------------------------------------------------------------- | ------------------------------------------- |
-| 广播兼容性判定 | `can_broadcast()`、`broadcast_shape()`，按 NumPy 规则从尾轴开始逐轴比对 | 自动触发广播、隐式改写其他模块的 shape 契约 |
-| 广播步长计算   | `broadcast_strides()` 生成目标视图步长；广播轴写入 `0`                  | 负步长、复制式 reshape、额外布局模式        |
-| 广播视图创建   | `broadcast_to()`、`broadcast_with()` 返回零拷贝共享底层数据的只读视图   | 可写广播视图、共享可写广播结果              |
-| 类型层维度推导 | 通过 `D1: BroadcastDim<D2>` 这一 public sealed trait 在编译期确定输出维度类型                    | 在类型层替代运行时 shape 兼容性检查         |
-| 广播语义收敛   | 广播结果统一视为“共享底层数据且绝不暴露写权限”的只读广播语义            | 多输入同步迭代调度、多操作数广播编排        |
+| 职责           | 包含                                                                    |
+| -------------- | ----------------------------------------------------------------------- |
+| 广播兼容性判定 | `can_broadcast()`、`broadcast_shape()`，按 Numpy 规则从尾轴开始逐轴比对 |
+| 广播步长计算   | `broadcast_strides()` 生成目标视图步长；广播轴写入 `0`                  |
+| 广播视图创建   | `broadcast_to()`、`broadcast_with()` 返回零拷贝共享底层数据的只读视图   |
+| 类型层维度推导 | 通过 `D1: BroadcastDim<D2>` 这一 public sealed trait 在编译期确定输出维度类型 |
+| 广播语义收敛   | 广播结果统一视为“共享底层数据且绝不暴露写权限”的只读广播语义            |
+
+| 职责           | 不包含                                      |
+| -------------- | ------------------------------------------- |
+| 广播兼容性判定 | 自动触发广播、隐式改写其他模块的 shape 契约 |
+| 广播步长计算   | 负步长、复制式 reshape、额外布局模式        |
+| 广播视图创建   | 可写广播视图、共享可写广播结果              |
+| 类型层维度推导 | 在类型层替代运行时 shape 兼容性检查         |
+| 广播语义收敛   | 多输入同步迭代调度、多操作数广播编排        |
 
 ### 1.2 设计原则
 
 | 原则             | 体现                                                                                     |
 | ---------------- | ---------------------------------------------------------------------------------------- |
-| NumPy 一致性     | 从尾轴开始比对；轴长度相同或一方为 `1` 时兼容，否则返回 `XenonError::BroadcastError`。   |
+| Numpy 一致性     | 从尾轴开始比对；轴长度相同或一方为 `1` 时兼容，否则返回 `XenonError::BroadcastError`。   |
 | 零拷贝优先       | 广播只改写 shape/stride/flags，不复制底层数据。                                          |
 | 共享只读         | 广播结果始终降级为只读视图；任何可变访问都必须在类型层或运行时显式拒绝。                 |
 | 步长显式化       | 广播轴使用 `usize` 零步长表达，与 `06-layout.md` 中的 `BroadcastView` 布局状态保持一致。 |
-| 类型与运行时分层 | `BroadcastDim` 作为 public sealed trait 负责输出维度类型推导，`broadcast_shape()` 负责实际兼容性裁决。            |
+| 类型与运行时分层 | `BroadcastDim` 作为 public sealed trait 负责输出维度类型推导，`broadcast_shape()` 负责实际兼容性裁决。 |
 
 ---
 
@@ -35,7 +45,7 @@
 
 | 类型     | 内容                                                                                                                                    |
 | -------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| 需求映射 | `需求说明书 §16`；同时受 `需求说明书 §6` 存储模式、`需求说明书 §7` 内存布局、`需求说明书 §11` 迭代器、`需求说明书 §20` 运算符重载、`需求说明书 §27` 错误处理、`需求说明书 §28.2` 测试交付、`需求说明书 §28.4` 边界覆盖约束。                                                       |
+| 需求映射 | 需求说明书 §6、§7、§11、§16、§20、§27、§28。                                                                                            |
 | 范围内   | `broadcast_shape()`、`can_broadcast()`、`broadcast_strides()`、`broadcast_to()`、`broadcast_with()`、零步长广播视图、共享只读广播结果。 |
 | 范围外   | 可写广播视图、隐式广播、多操作数统一调度、负步长广播、复制式 expand/reshape。                                                           |
 | 非目标   | 不在本文引入新的布局状态、存储模式、自动类型提升或任何额外第三方依赖。                                                                  |
@@ -59,23 +69,21 @@ src/broadcast/
 
 ### 4.1 依赖图（ASCII）
 
-```text
-                    ┌──────────────┐
-                    │    tensor    │
-                    │ TensorBase   │
-                    │ TensorView   │
-                    └──────┬───────┘
-                           │ uses
-              ┌────────────┼───────────────┐
-              │        broadcast            │
-              │   shape.rs + view.rs        │
-              └──┬──────────┬──────────┬────┘
-                 │ uses     │ uses     │ uses
-          ┌──────▼───┐ ┌────▼─────┐ ┌──▼──────────┐
-          │ dimension│ │  layout  │ │    error    │
-          │Dimension │ │Strides   │ │ XenonError  │
-          │BroadcastDim││Flags/State││             │
-          └──────────┘ └──────────┘ └─────────────┘
+```
+src/broadcast/
+|
+├── mod.rs
+│   └── module entry, re-export public functions and trait-bound-related entry points
+|
+├── shape.rs
+│   ├── crate::dimension  # Dimension, Ix0~Ix6, IxDyn
+│   └── crate::error      # XenonError::BroadcastError, XenonError::InvalidArgument
+|
+└── view.rs
+    ├── crate::tensor     # TensorBase<S, D>, TensorView<'a, A, D>, .shape(), .strides(), .offset()
+    ├── crate::dimension  # Dimension, BroadcastDim<Other>
+    ├── crate::layout     # Strides<D>, LayoutFlags, LayoutState::BroadcastView
+    └── crate::error      # XenonError::BroadcastError, XenonError::InvalidArgument
 ```
 
 ### 4.2 类型级依赖
@@ -83,21 +91,21 @@ src/broadcast/
 | 来源模块    | 使用的类型/trait                                                                                                                                    |
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tensor`    | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `.shape()`, `.strides()`, `.offset()`, 视图构造入口，以及从任意受支持存储模式降级到只读广播视图的入口。 |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<Other>`（public sealed trait，对外可命名）。                                                                                          |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<Other>`（public sealed trait，对外可命名）。                                                       |
 | `layout`    | `Strides<D>`, `LayoutFlags`, `LayoutState::FContiguous`, `LayoutState::NonContiguous`, `LayoutState::BroadcastView`。                               |
 | `error`     | `XenonError::BroadcastError`, `XenonError::InvalidArgument`。                                                                                       |
 
-### 4.3 依赖合法性与新增依赖说明
+### 4.3 依赖合法性
 
-| 项目           | 说明                                                                                         |
-| -------------- | -------------------------------------------------------------------------------------------- |
-| 新增第三方依赖 | 无                                                                                           |
-| 合法性结论     | 合法；当前设计仅使用 Xenon 既有模块与标准库，符合本文前述需求映射以及最小依赖、单 crate 约束。 |
-| 替代方案       | 不适用；广播规则与只读视图构造可直接在现有模块边界内完成。                                   |
+| 项目           | 说明                                                                                          |
+| -------------- | --------------------------------------------------------------------------------------------- |
+| 新增第三方依赖 | 无                                                                                            |
+| 合法性结论     | 合法；当前设计仅使用 Xenon 既有模块与标准库，符合本文前述需求映射以及最小依赖、单 crate 约束。|
+| 替代方案       | 不适用；广播规则与只读视图构造可直接在现有模块边界内完成。                                    |
 
 ### 4.4 依赖方向声明
 
-> **依赖方向：单向向上。** `broadcast/` 消费 `tensor`、`dimension`、`layout` 与 `error` 的既有能力，不反向定义这些核心模块的语义。
+依赖方向：单向向上。`broadcast` 消费 `tensor`、`dimension`、`layout` 与 `error` 的既有能力，不反向定义这些核心模块的语义。
 
 ---
 
@@ -145,21 +153,26 @@ where
 
 ### 5.2 API 语义约束
 
-| API                   | 语义                                                                                                                                                                         |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `can_broadcast()`     | 仅回答兼容性，不分配、不生成中间结果。                                                                                                                                       |
-| `broadcast_shape()`   | 运行时计算公共 shape；不兼容时返回 `XenonError::BroadcastError`。                                                                                                            |
-| `broadcast_strides()` | 对齐原 shape 与目标 shape，广播轴写入 `0` 步长；输入长度非法时返回 `InvalidArgument`。                                                                                       |
-| `broadcast_to()`      | 显式广播入口；成功时返回共享底层数据的只读 `TensorView`。结果必须满足 `需求说明书 §6` 对“共享只读引用”的约束：可在多个张量实例之间共享同一底层数据，但不提供可写访问权。     |
+| API                   | 语义                                                                                                                                                                     |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `can_broadcast()`     | 仅回答兼容性，不分配、不生成中间结果。                                                                                                                                   |
+| `broadcast_shape()`   | 运行时计算公共 shape；不兼容时返回 `XenonError::BroadcastError`。                                                                                                        |
+| `broadcast_strides()` | 对齐原 shape 与目标 shape，广播轴写入 `0` 步长；输入长度非法时返回 `InvalidArgument`。                                                                                   |
+| `broadcast_to()`      | 显式广播入口；成功时返回共享底层数据的只读 `TensorView`。结果必须满足 `需求说明书 §6` 对“共享只读引用”的约束：可在多个张量实例之间共享同一底层数据，但不提供可写访问权。 |
 | `broadcast_with()`    | 面向两个张量输入的专用助手：先计算共同 shape，再分别构造两个只读广播视图。它不承担通用 shape 工具职责；仅需 shape 判定时应使用 `can_broadcast()` / `broadcast_shape()`。 |
 
-> **同形状快捷路径**：当两个输入形状完全相同时，`broadcast_with()` 可直接返回两个原始视图而不执行步长重写，因为目标 shape 与输入 shape 一致。
-> **目标秩语义**：`broadcast_to()` 的目标 shape 秩决定了输出视图的维度类型；标量广播到高维时，缺失前导轴按 `1` 补齐。
-> **`IntoDimension` 说明：** `IntoDimension` 只决定目标 rank/type；逐轴长度兼容性完全由 `broadcast_shape()` / `broadcast_strides()` 在运行时检查。
-> **类型设计说明：** `broadcast_to()` 是目标 shape 主导的 API，只需目标维度类型 `E: IntoDimension`。`broadcast_with()` 是双输入 shape 合流 API，需要双向 `BroadcastDim` 一致性以保证输出维度类型的静态可推导性。`BroadcastDim` 本身是 public sealed trait，因此在这些公开签名中对外可命名。
-> **类型说明：** 当前版本继续复用 `TensorView` 作为返回类型，而不是引入单独的 `BroadcastView` 新类型；广播结果内部承载 `ViewRepr<'a, A>`，`storage_kind()` 返回 `StorageKind::View`。广播结果的只读共享语义通过 `LayoutFlags::HAS_ZERO_STRIDE` / `LayoutState::BroadcastView` 与访问控制 API 保证：任何试图取得其可变访问权的 API 在类型层或运行时拒绝。
+- **同形状快捷路径**：当两个输入形状完全相同时，`broadcast_with()` 可直接返回两个原始视图而不执行步长重写，因为目标 shape 与输入 shape 一致。
+- **目标秩语义**：`broadcast_to()` 的目标 shape 秩决定了输出视图的维度类型；标量广播到高维时，缺失前导轴按 `1` 补齐。
+- **`IntoDimension` 说明：** `IntoDimension` 只决定目标 rank/type；逐轴长度兼容性完全由 `broadcast_shape()` / `broadcast_strides()` 在运行时检查。
+- **类型设计说明：** `broadcast_to()` 是目标 shape 主导的 API，只需目标维度类型 `E: IntoDimension`。`broadcast_with()` 是双输入 shape 合流 API，需要双向 `BroadcastDim` 一致性以保证输出维度类型的静态可推导性。`BroadcastDim` 本身是 public sealed trait，因此在这些公开签名中对外可命名。
+- **BroadcastError 字段映射：** 各 API 返回 `XenonError::BroadcastError` 时，结构化字段按以下规则填充（字段定义见 `26-error.md`）：
 
-> **共享只读强制说明：** `broadcast_to()` / `broadcast_with()` 返回 `TensorView`，其生命周期绑定源张量。由于广播结果引入零步长布局，可能导致多个逻辑位置映射到同一物理元素，因此：1) 广播结果在 API 层不提供可变访问入口；2) `storage_kind()` 仍返回 `StorageKind::View`；3) 只读共享语义由 `LayoutFlags::HAS_ZERO_STRIDE`、`LayoutState::BroadcastView`、缺失的 `StorageMut` 能力以及不提供 `into_mut()` 等 API 共同保证。
+  | API | `operation` | `lhs_shape` | `rhs_shape` | `attempted_target_shape` | `axis` |
+  | --- | --- | --- | --- | --- | --- |
+  | `broadcast_shape(a, b)` | `"broadcast_shape"` | `Some(a)` | `Some(b)` | `None` | 失败轴 index |
+  | `broadcast_to(self, target)` | `"broadcast_to"` | `Some(self.shape())` | `None` | `Some(target)` | 失败轴 index |
+  | `broadcast_with(a, b)` | `"broadcast_with"` | `Some(a.shape())` | `Some(b.shape())` | `None` | 失败轴 index |
+- **返回类型与共享只读保证：** 当前版本复用 `TensorView` 作为返回类型，不引入单独的 `BroadcastView` 新类型。广播结果内部承载 `ViewRepr<'a, A>`，`storage_kind()` 返回 `StorageKind::View`，`access_semantics()` 返回 `AccessSemantics::SharedReadOnly`。由于广播引入零步长布局，多个逻辑位置映射到同一物理元素，因此只读共享语义由以下机制共同保证：1) `LayoutFlags::HAS_ZERO_STRIDE` / `LayoutState::BroadcastView` 标识广播布局；2) 广播结果类型层缺失 `StorageMut` 能力且不提供 `into_mut()` 等 API；3) 广播结果的生命周期绑定源张量。
 
 ### 5.3 Good / Bad 对比
 
@@ -206,11 +219,11 @@ broadcast_shape(shape_a, shape_b):
     1. Align dimensions from right to left.
     2. Treat missing leading dimensions as 1.
     3. If two aligned dimensions differ and neither is 1, return BroadcastError.
-    4. Otherwise choose the non-1 dimension, with 0 preserved when paired with 1.
+    4. Otherwise result = max(a, b): if one is 1, take the other; if both equal (including both 1), take that value.
     5. Return the computed IxDyn shape.
 ```
 
-NumPy 兼容性规则由 `broadcast_shape()` 和 `can_broadcast()` 共用：从尾轴开始逐轴比较，当轴长度相同或其中一方为 `1` 时兼容，否则不兼容。缺失的前导轴按 `1` 处理，因此标量与低维输入可广播到更高维目标。
+Numpy 兼容性规则由 `broadcast_shape()` 和 `can_broadcast()` 共用：从尾轴开始逐轴比较，当轴长度相同或其中一方为 `1` 时兼容，否则不兼容。缺失的前导轴按 `1` 处理，因此标量与低维输入可广播到更高维目标。
 
 ### 6.3 广播步长算法
 
@@ -222,14 +235,13 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
         - if original dimension == target dimension, keep the original stride;
         - if original dimension == 1 and target dimension > 1, write stride 0;
         - otherwise return BroadcastError.
-    4. Mark the result layout as BroadcastView when any stride is 0.
+    4. Return the computed stride vector.
 ```
 
-对广播轴写入零步长意味着该轴被逻辑扩展，但所有索引都回落到同一底层元素；这与 `06-layout.md` §5.7 的零步长语义保持一致。若任一轴出现 `0` 步长，结果即不再视为普通 `FContiguous` 或一般 `NonContiguous` 视图，而统一进入 `BroadcastView`。
+对广播轴写入零步长意味着该轴被逻辑扩展，但所有索引都回落到同一底层元素；这与 `06-layout.md` §5.11 的零步长语义保持一致。若任一轴出现 `0` 步长，结果即不再视为普通 `FContiguous` 或一般 `NonContiguous` 视图，而统一进入 `BroadcastView`。
 
-> **再次广播规则：** 对已广播视图再次广播时，已有零步长轴保持为 `0`，新增广播轴也写入 `0` 步长；结果 `shape` 取“当前视图 shape”与“新目标 shape”的广播结果。
-
-> **布局标志重算规则：** `ALIGNED` 继承源视图；若任一轴 stride 为 `0`，设置 `BroadcastView` flag。`F_CONTIGUOUS` 仅在不存在零步长且结果 stride 仍满足 F-order 规则时保留。
+- **再次广播规则：** 对已广播视图再次广播时，已有零步长轴保持为 `0`，新增广播轴也写入 `0` 步长；结果 `shape` 取“当前视图 shape”与“新目标 shape”的广播结果。
+- **布局标志重算规则：** `ALIGNED` 继承源视图；若任一轴 stride 为 `0`，设置 `BroadcastView` flag。`F_CONTIGUOUS` 仅在不存在零步长且结果 stride 仍满足 F-order 规则时保留。
 
 ### 6.4 共享只读视图构造
 
@@ -237,11 +249,14 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 
 **安全性论证（unchecked 视图构造）：** 若内部使用 `TensorView::new_unchecked()` 或等价未检查构造器，调用点必须先证明：1）目标 `shape` 与源 `shape` 广播兼容；2）新 `shape` / `stride` / `offset` 组合不会访问到底层 storage 可见边界之外；3）任何零步长元素都不会通过结果视图暴露为可变访问。
 
+**布局状态判定（由视图构造方负责）：** 广播视图的 `LayoutFlags` 必须通过 `compute_layout_flags()`（见 `06-layout.md`）重算。当 `broadcast_strides()` 写入了广播零步长（即 `original dimension == 1 and target dimension > 1` 的轴），结果将落入 `LayoutState::BroadcastView`。注意：空数组的退化零步长（dimension == 0 导致的 stride 0）不属于广播语义，不因此触发 `BroadcastView` 分类。
+
 ### 6.5 `BroadcastDim` 的职责边界
 
 `BroadcastDim<Other>` 是 public sealed trait，因此在公开 API 中可被外部稳定命名；它仅用于编译期计算输出维度类型：
 
-- `IxN BroadcastDim IxN` → `IxN`
+- `IxM BroadcastDim IxN`（M > N）→ `IxM`（跨静态 rank，取较高 ndim；同 `02-dimension.md` §5.10）
+- `IxN BroadcastDim IxN` → `IxN`（同 rank）
 - `IxN BroadcastDim IxDyn` → `IxDyn`
 - `IxDyn BroadcastDim IxN` → `IxDyn`
 - `IxDyn BroadcastDim IxDyn` → `IxDyn`
@@ -250,7 +265,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 
 ### 6.6 与存储系统的对接
 
-- **查询：** 广播结果内部使用 `ViewRepr<'a, A>`，因此 `storage_kind()` 返回 `StorageKind::View`；是否为广播结果由 layout flags 中的 `LayoutFlags::HAS_ZERO_STRIDE` / `LayoutState::BroadcastView` 指示。
+- **查询：** 广播结果内部使用 `ViewRepr<'a, A>`，因此 `storage_kind()` 返回 `StorageKind::View`，`access_semantics()` 返回 `AccessSemantics::SharedReadOnly`；是否为广播结果由 layout flags 中的 `LayoutFlags::HAS_ZERO_STRIDE` / `LayoutState::BroadcastView` 指示。
 - **转换：** 广播结果可通过显式分配转成 `Owned` 连续张量（如 `to_owned()` / `to_contiguous()` 一类路径）；由于广播视图存在零步长别名，当前版本不允许把它转换为 `ViewMut`，也不提供 `into_mut()`。
 - **线程：** 广播 `ViewRepr` 遵循标准借用规则；当 `A: Sync` 时可满足只读跨线程共享前提，`Send`/`Sync` 语义与普通只读视图一致，不因广播额外放宽。
 
@@ -290,7 +305,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 
 ### Wave 2: 视图构造基础
 
-- [ ] *T5**: 实现 `broadcast_to()` 基本路径
+- [ ] **T5**: 实现 `broadcast_to()` 基本路径
   - 文件: `src/broadcast/view.rs`
   - 内容: 目标 shape 校验与只读视图构造
   - 测试: `test_broadcast_to_basic`
@@ -333,7 +348,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 | 单元测试 | `src/broadcast/*` 的 `#[cfg(test)]`                  | 验证 shape 兼容性、零步长生成和错误结构。                      |
 | 集成测试 | `tests/test_broadcast.rs`                            | 验证广播与 `tensor`、`layout`、`overload`、`iter` 的协同路径。 |
 | 边界测试 | 同模块测试中标注                                     | 覆盖标量、空数组、再次广播、高维广播和 `10^7` 元素大张量广播。 |
-| 属性测试 | `tests/property_tests.rs`, `tests/property/shape_props.rs` | 验证广播 shape/stride 不变量和零拷贝语义。                     |
+| 属性测试 | `tests/property_tests.rs`, `tests/property/shape_props.rs` | 验证广播 shape/stride 不变量和零拷贝语义。               |
 
 ### 8.2 单元测试清单
 
@@ -352,7 +367,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 | `test_broadcast_high_rank_ixdyn`         | `IxDyn` 高 rank 广播形状与步长正确     | 中     |
 | `test_broadcast_rebroadcast_zero_stride` | 再次广播时零步长继承与新增规则正确     | 中     |
 | `test_broadcast_layout_flags_recomputed` | 广播后 flags 按零步长/F-order 规则重算 | 中     |
-| `test_broadcast_large_tensor_zero_copy`  | `10^7` 元素级广播保持零拷贝与零步长语义 | 高     |
+| `test_broadcast_large_tensor_zero_copy`  | `10^7` 元素级广播保持零拷贝与零步长语义 | 高    |
 
 ### 8.3 边界测试场景
 
@@ -374,7 +389,13 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 | 广播轴 stride 恒为 `0`                                 | 随机含 `1` 轴的 shape           |
 | 广播结果共享源数据                                     | 比较 data pointer / offset 不变 |
 
-### 8.5 Feature gate / 配置测试
+### 8.5 集成测试
+
+| 测试文件                  | 测试内容                                                                                                        |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `tests/test_broadcast.rs` | `broadcast_to()` / `broadcast_with()` / `broadcast_shape()` 与 `tensor`、`layout`、`overload`、`iter` 的协同路径 |
+
+### 8.6 Feature gate / 配置测试
 
 | 配置                          | 验证点                                                          |
 | ----------------------------- | --------------------------------------------------------------- |
@@ -382,7 +403,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 | `rayon` / `simd` feature 开关 | 广播模块本身不改变语义；不同执行路径不得改变 shape 与错误类别。 |
 | 无额外 feature                | 当前模块不新增独立 feature gate。                               |
 
-### 8.6 类型边界 / 编译期测试
+### 8.7 类型边界 / 编译期测试
 
 | 场景                                                  | 测试方式                     |
 | ----------------------------------------------------- | ---------------------------- |
@@ -397,21 +418,21 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 
 ### 9.1 接口约定
 
-| 方向                        | 对方模块                       | 接口/类型                                       | 约定                                                     |
-| --------------------------- | ------------------------------ | ----------------------------------------------- | -------------------------------------------------------- |
-| `broadcast → tensor`        | `tensor`                       | `TensorBase`, `TensorView`                      | 读取 shape/stride/offset，并通过只读视图入口构造结果。   |
-| `broadcast → dimension`     | `dimension`                    | `Dimension`, `BroadcastDim`                     | 运行时 shape 计算与编译期输出维度类型推导分离；`BroadcastDim` 为 public sealed trait，可在公开签名中稳定命名。          |
-| `broadcast → layout`        | `layout`                       | `Strides<D>`, `LayoutState::BroadcastView`      | 零步长轴必须映射到广播视图布局状态。                     |
-| `broadcast → error`         | `error`                        | `XenonError::BroadcastError`, `InvalidArgument` | 广播不兼容与参数前提失败都必须返回结构化错误。           |
-| `overload/math ← broadcast` | `19-overload.md`, `11-math.md` | `broadcast_with()`, `broadcast_shape()`         | 二元运算先广播再计算，不允许各模块私自重复定义广播规则。 |
-| `iter ← broadcast`          | `10-iterator.md`               | 只读广播视图                                    | 广播结果可被读取遍历，但不得提供可变迭代能力。           |
+| 方向                        | 对方模块     | 接口/类型                                       | 约定                                                     |
+| --------------------------- | ------------ | ----------------------------------------------- | -------------------------------------------------------- |
+| `broadcast → tensor`        | `tensor`     | `TensorBase`, `TensorView`                      | 读取 shape/stride/offset，并通过只读视图入口构造结果。   |
+| `broadcast → dimension`     | `dimension`  | `Dimension`, `BroadcastDim`                     | 运行时 shape 计算与编译期输出维度类型推导分离。          |
+| `broadcast → layout`        | `layout`     | `Strides<D>`, `LayoutState::BroadcastView`      | 零步长轴必须映射到广播视图布局状态。                     |
+| `broadcast → error`         | `error`      | `XenonError::BroadcastError`, `InvalidArgument` | 广播不兼容与参数前提失败都必须返回结构化错误。           |
+| `math ← broadcast`          | `math`       | `broadcast_with()`, `broadcast_shape()`         | 二元运算先广播再计算，不允许各模块私自重复定义广播规则。 |
+| `iter ← broadcast`          | `iter`       | 只读广播视图                                    | 广播结果可被读取遍历，但不得提供可变迭代能力。           |
 
 ### 9.2 数据流描述
 
 ```text
 User calls broadcast_to() or broadcast_with()
     │
-    ├── broadcast_shape() checks NumPy compatibility from trailing axes
+    ├── broadcast_shape() checks Numpy compatibility from trailing axes
     ├── broadcast_strides() writes zero strides for expanded axes
     ├── tensor view constructor reuses original storage and offset
     └── result is exposed as a shared read-only broadcast view
@@ -421,49 +442,13 @@ User calls broadcast_to() or broadcast_with()
 
 ## 10. 错误处理与语义边界
 
-| 主题              | 内容                                                                                                                                                                              |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | 广播不兼容时统一返回 `XenonError::BroadcastError { operation, lhs_shape, rhs_shape, attempted_target_shape, axis }`；例如 `broadcast_to`、`broadcast_shape`、`broadcast_with` 都必须填充结构化字段。 |
-| 参数错误          | 当 `orig_shape.len() != orig_strides.len()` 等公开前提被破坏时，`broadcast_strides()` 返回 `XenonError::InvalidArgument { operation, argument, expected, actual, axis, shape }`。 |
-| Panic             | 不允许把 shape 不兼容隐藏为 panic；公开 API 使用 `Result` 表达失败。                                                                                                              |
-| 语义边界          | 广播只负责显式元数据扩展，不改变元素值、不重排数据、不授予可写访问。                                                                                                              |
-| 路径一致性        | 默认路径、后续可能启用的 SIMD/并行消费路径都必须共享同一广播规则与错误类别；广播模块自身不分裂语义分支。                                                                          |
-
-### 10.1 错误示例
-
-```rust,ignore
-XenonError::BroadcastError {
-    operation: "broadcast_to",
-    lhs_shape: self.shape().to_vec(),
-    rhs_shape: shape.slice().to_vec(),
-    attempted_target_shape: Some(shape.slice().to_vec()),
-    axis: None,
-}
-
-XenonError::BroadcastError {
-    operation: "broadcast_shape",
-    lhs_shape: shape_a.to_vec(),
-    rhs_shape: shape_b.to_vec(),
-    attempted_target_shape: None,
-    axis: Some(axis_from_right),
-}
-```
-
-```rust,ignore
-XenonError::InvalidArgument {
-    operation: "broadcast_strides".into(),
-    argument: "orig_strides".into(),
-    expected: "orig_shape.len() == orig_strides.len()".into(),
-    actual: format!("shape={}, strides={}", orig_shape.len(), orig_strides.len()).into(),
-    axis: None,
-    axis_len: None,
-    start: None,
-    end: None,
-    shape: Some(orig_shape.to_vec()),
-}
-```
-
-文档中不得再使用 `shape_a`、`shape_b`、`from`、`to` 等旧字段名来描述广播错误结构。
+| 主题              | 内容                                                                                                                               |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Recoverable error | 广播不兼容时统一返回 `XenonError::BroadcastError`；例如 `broadcast_to`、`broadcast_shape`、`broadcast_with` 都必须填充结构化字段。 |
+| 参数错误          | 当 `orig_shape.len() != orig_strides.len()` 等公开前提被破坏时，`broadcast_strides()` 返回 `XenonError::InvalidArgument`。         |
+| Panic             | 不允许把 shape 不兼容隐藏为 panic；公开 API 使用 `Result` 表达失败。                                                               |
+| 语义边界          | 广播只负责显式元数据扩展，不改变元素值、不重排数据、不授予可写访问。                                                               |
+| 路径一致性        | 默认路径、后续可能启用的 SIMD/并行消费路径都必须共享同一广播规则与错误类别；广播模块自身不分裂语义分支。                           |
 
 ---
 
@@ -489,7 +474,7 @@ XenonError::InvalidArgument {
 
 | 属性     | 值                                                                    |
 | -------- | --------------------------------------------------------------------- |
-| 决策     | `BroadcastDim` 作为 public sealed trait 只负责输出维度类型推导，实际兼容性由运行时函数检查。   |
+| 决策     | `BroadcastDim` 作为 public sealed trait 只负责输出维度类型推导，实际兼容性由运行时函数检查。|
 | 理由     | 维度 rank 可在类型层表达，但具体轴长度仍需运行时输入决定。            |
 | 替代方案 | 尝试完全在类型层判定广播成功 —— 放弃，不适用于动态 shape 与值级信息。 |
 

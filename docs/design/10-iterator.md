@@ -3,7 +3,7 @@
 > 文档编号: 10
 > 模块目录: src/iter/
 > 任务阶段: Phase 4
-> 前置文档: 02-dimension.md, 05-storage.md, 07-tensor.md, 09-parallel.md, 26-error.md
+> 前置文档: 02-dimension.md, 05-storage.md, 07-tensor.md, 26-error.md
 > 需求参考: 需求说明书 §6 - §8、§10、§11、§16 - §18、§21、§27、§28
 > 范围声明: 范围内
 
@@ -53,7 +53,7 @@
 | 非目标   | 不扩展当前公开迭代器集合，不新增第三方依赖，不放宽广播只读约束，也不在本文定义新的并行 API 契约。                          |
 
 - 只读迭代器（`Elements`、`AxisIter`、`IndexedIter`）实现 `Send + Sync` 当且仅当 `A: Sync`，与底层 `ViewRepr` 的线程安全语义一致。
-- 可变迭代器（`ElementsMut`、`AxisIterMut`、`IndexedIterMut`）仅实现 `Send`（当 `A: Send`），不实现 `Sync`，与 `ViewMutRepr` 通过 `PhantomData<*const ()>` 实现 `!Sync` 保持一致。参见 `25-safety.md §5.5`。
+- 可变迭代器（`ElementsMut`、`AxisIterMut`、`IndexedIterMut`）仅实现 `Send`（当 `A: Send`），不实现 `Sync`，与 `ViewMutRepr` 不提供 `Sync` impl 保持一致（`ViewMutRepr` 内部通过 `PhantomData<&'a mut A>` 阻止自动 `Sync` 推导）。参见 `05-storage.md §6.8`、`25-safety.md §5.5`。
 
 ---
 
@@ -392,7 +392,7 @@ increment_index_f(shape, index):
 
 ### 6.6 并行分块说明
 
-当前版本不在 `iter` 模块中设计独立的内部区间分块抽象。若并行后端需要对元素遍历做分块，应由并行执行模块基于自身的任务划分策略直接维护逻辑区间和调度状态；`iter` 文档只约束串行迭代器的外部语义，不再把这类内部多输入遍历或分块结构描述为稳定设计能力。
+当前版本不在 `iter` 模块中设计独立的内部区间分块抽象。若并行后端需要对元素遍历做分块，应由并行执行模块基于自身的任务划分策略直接维护逻辑区间和调度状态。此约束与 §5.3 的设计原则一致。
 
 ---
 
@@ -442,7 +442,7 @@ increment_index_f(shape, index):
 ### Wave 4: TensorBase 入口集成
 
 - [ ] **T6**: 在 TensorBase 上添加迭代器入口方法
-  - 文件: `src/tensor/`（或 `src/iter/mod.rs` 通过 trait extension）
+  - 文件: `src/iter/mod.rs`
   - 内容: `iter()`, `iter_mut()`, `axis_iter()`, `indexed_iter()` 等
   - 测试: `test_tensor_iter_integration`
   - 前置: T3, T4, T5
@@ -485,7 +485,7 @@ increment_index_f(shape, index):
 
 | 场景                                           | 预期行为                                                                                                                                    |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| 空数组 `shape=[0, 3]`                          | `iter()` 立即结束，`count() == 0`                                                                                                           |
+| 空数组 `shape=[0, 3]`                          | `iter()` 立即结束，`count() == 0`；`axis_iter(Axis(0))` 返回空 `AxisIter`（`len() == 0`），不 panic；`axis_iter(Axis(1))` 产出 3 个 shape 为 `[0]` 的子视图 |
 | 单元素 `shape=[1, 1]`                          | `iter()` 产出 1 项                                                                                                                          |
 | 零维张量 `Ix0` / rank-0 `IxDyn`                | `iter()` 产出 1 项；rank-0 运行时路径上的 `axis_iter()` / `axis_iter_mut()` 统一返回 `InvalidAxis`。静态 `Ix0` 仍受当前 `RemoveAxis` 约束。 |
 | 通过 `SliceInfo::new(...)` 构造的非连续切片视图 | `iter()` 正确处理步长跳转                                                                                                                  |
@@ -537,7 +537,7 @@ increment_index_f(shape, index):
 
 | 方向               | 对方模块    | 接口/类型                                                             | 约定                                                                     |
 | ------------------ | ----------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `iter → tensor`    | `tensor`    | `TensorBase<S, D>`、`TensorView<'a, A, D>`、`TensorViewMut<'a, A, D>` | 由 `tensor` 暴露迭代器入口与视图类型，参见 `07-tensor.md` §5。           |
+| `iter → tensor`    | `tensor`    | `TensorBase<S, D>`、`TensorView<'a, A, D>`、`TensorViewMut<'a, A, D>` | 视图类型由 `tensor` 提供（参见 `07-tensor.md` §5），迭代器入口方法由 `iter` 在 `TensorBase` 上实现（参见 `10-iterator.md` §5.5）。 |
 | `iter → dimension` | `dimension` | `Dimension`、`Axis`，以及内部轴迭代实现使用的 `RemoveAxis`            | 迭代状态机按维度与轴语义推进，参见 `02-dimension.md` §5。                |
 | `iter → storage`   | `storage`   | `Storage`、`StorageMut`                                               | 元素访问与可变访问分别受只读/可写存储约束保护，参见 `05-storage.md` §5。 |
 
@@ -546,7 +546,8 @@ increment_index_f(shape, index):
 ```text
 User calls tensor.iter() / axis_iter() / indexed_iter()
     │
-    ├── tensor exposes TensorView / TensorViewMut entry points
+    ├── tensor provides TensorBase / TensorView / TensorViewMut types
+    ├── iter adds entry-point methods on TensorBase (see §5.5)
     ├── iter builds iterator state from shape + strides
     └── iter yields elements or sub-views for math / reduction / overload
 ```
@@ -555,7 +556,7 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
 
 | 主题              | 内容                                                                                                                                              |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | `axis_iter()` / `axis_iter_mut()` 在 `axis` 越界或运行时 rank-0 动态维输入上返回 `XenonError::InvalidAxis`；静态零维 `Ix0` 不进入该公开调用路径。 |
+| Recoverable error | `axis_iter()` / `axis_iter_mut()` 在 `axis` 越界（含 `ndim == 0` 的静态 `Ix0` 与动态 `IxDyn` 输入）上返回 `XenonError::InvalidAxis`。静态 `Ix0` 虽满足 `RemoveAxis` 约束（参见 `02-dimension.md §5.8`），但因其 `ndim == 0`，任意 `Axis(n)` 均触发 `n >= ndim` 检查，统一返回 `InvalidAxis`。 |
 | Panic             | 公开迭代器 API 不引入新的 panic 语义；仅内部 producer 分块等不变量破坏可使用断言。                                                                |
 | 路径一致性        | 连续、非连续、零步长广播视图及并行 producer 的外部迭代顺序与长度语义必须一致。                                                                    |
 | 容差边界          | 不适用。                                                                                                                                          |

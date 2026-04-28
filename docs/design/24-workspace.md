@@ -28,21 +28,6 @@
 | O(1) 分割    | 仅指针算术，无内存分配                                                                                                  |
 | 显式生命周期 | 当前实现默认不可跨线程传递（`!Send + !Sync`）；这是为简化借用安全性论证采取的实现选择，而非 `需求说明书 §26` 的强制要求 |
 
-### 1.3 在架构中的位置
-
-```
-Dependency layers:
-
-L1: dimension, element, complex
-L2: workspace  <- current module (independent of tensor)
-
-Upstream libraries:
-  upstream numeric libraries ──→ workspace
-  tensor (optional) ───────────→ workspace
-```
-
-Workspace 模块位于 L2，独立于核心张量类型系统，可被上游库直接使用而无需引入 tensor 依赖（参见 `01-architecture.md §5`）。
-
 ---
 
 ## 2. 需求映射与范围约束
@@ -76,19 +61,6 @@ src/
     └── expand.rs            # ensure_capacity and reallocate growth
 ```
 
-多文件设计：按职责拆分，便于后续扩展（如新增借用策略、分配策略等）。
-
-### 3.1 文件职责
-
-| 文件           | 职责                                                                                        | 预估行数 |
-| -------------- | ------------------------------------------------------------------------------------------- | -------- |
-| `mod.rs`       | 模块根，re-exports 所有公共类型                                                             | ~20      |
-| `error.rs`     | `WorkspaceErrorCategory` 相关定义                                                           | ~40      |
-| `workspace.rs` | `Workspace` 结构体、常量、`new()`、`with_default_capacity()`、`Drop`                        | ~100     |
-| `borrow.rs`    | `WorkspaceBorrow`、`WorkspaceBorrowMut` 及其方法和 Drop                                     | ~120     |
-| `split.rs`     | `SplitBorrowMut` 及其方法（`as_maybe_uninit_slice`、`len`、顶层/递归 `split_at_mut`、Drop） | ~100     |
-| `expand.rs`    | `ensure_capacity()`、`reallocate()` 扩容逻辑                                                | ~60      |
-
 ---
 
 ## 4. 依赖关系
@@ -119,11 +91,7 @@ External dependencies:
 | `workspace/error.rs` | `WorkspaceErrorCategory`（workspace 错误类别）                         |
 | `crate::error`       | `XenonError`（公开 Xenon API 错误类型，含 `Workspace` 变体）           |
 
-### 4.3 依赖方向声明
-
-> **依赖方向：单向。** `workspace` 仅依赖 `core`、`alloc`、原子能力、模块内 `WorkspaceErrorCategory`，以及 `crate::error` 中 `XenonError::Workspace` 的公开错误边界，不依赖 `tensor`（参见 `07-tensor.md §3`）。上游库和 `tensor` 可消费 `workspace`。
-
-### 4.4 依赖合法性与替代方案
+### 4.3 依赖合法性
 
 | 项目           | 说明                                                                          |
 | -------------- | ----------------------------------------------------------------------------- |
@@ -131,13 +99,9 @@ External dependencies:
 | 合法性结论     | 合法；当前设计仅复用 Xenon 既有模块、标准库以及文档中已声明的项目内可选能力。 |
 | 替代方案       | 不适用；当前范围内无需额外第三方依赖。                                        |
 
-### 4.5 Workspace 错误边界
+### 4.4 依赖方向声明
 
-Workspace errors are reported as `XenonError::Workspace { operation, category, size, align, split, len, reason }`. The `category` field uses `WorkspaceErrorCategory` enum to distinguish failure modes (`AllocFailed`, `InvalidLayout`, `AlreadyBorrowed`, `SplitOutOfBounds`). See `26-error.md`.
-
-> **与线程安全需求的边界**: workspace 不是 `需求说明书 §10` 中张量 storage mode 的一部分，而是独立的上游缓冲区工具。`!Send + !Sync` 为当前实现选择，非 `需求说明书 §26` 的强制要求。采用此限制是为了简化借用安全性论证；未来版本可考虑放宽为 `Send`（需配合安全的跨线程借用检查）。
-
-> **初始化语义约定**: Workspace 的底层缓冲区始终按“可能未初始化”建模。公共 API 默认只暴露 `MaybeUninit` 视图；只有调用方能够证明某一前缀或某一 typed region 已被完整写入时，才允许通过 `assume_init_*` 系列 unsafe API 将其解释为已初始化视图。
+> **依赖方向：单向。** `workspace` 仅依赖 `core`、`alloc`、原子能力、模块内 `WorkspaceErrorCategory`，以及 `crate::error` 中 `XenonError::Workspace` 的公开错误边界，不依赖 `tensor`（参见 `07-tensor.md §3`）。上游库和 `tensor` 可消费 `workspace`。
 
 ---
 
@@ -1193,20 +1157,6 @@ ensure_capacity(&mut self, 2048)
   - 前置: T4, T5, T6
   - 预计: 10 min
 
-### 并行执行图
-
-```
-Wave 1:          [T1]
-                ╱    ╲
-Wave 2:      [T3]    [T2]             <- T2 and T3 run in parallel (both depend on T1)
-                     ╱  |  ╲
-Wave 3:           [T4] [T5] [T6]      <- T4, T5, and T6 run in parallel (all depend on T2)
-                     ╲  |  ╱
-Wave 4:               [T7]            <- depends on T4, T5, and T6 all being complete
-```
-
-> **关键路径**: T1 → T2 → T4/T5/T6（最长） → T7。T3 不在关键路径上，可在任何时间完成。
-
 ---
 
 ## 8. 测试计划
@@ -1222,28 +1172,28 @@ Wave 4:               [T7]            <- depends on T4, T5, and T6 all being com
 
 ### 8.2 单元测试清单
 
-| 测试函数                                       | 测试内容                                                                      | 优先级 |
-| ---------------------------------------------- | ----------------------------------------------------------------------------- | ------ |
-| `test_workspace_new_basic`                     | 指定容量和对齐创建工作空间                                                    | 高     |
-| `test_workspace_new_default`                   | 默认参数创建                                                                  | 高     |
-| `test_workspace_new_invalid_alignment`         | 非法对齐值返回 `XenonError::Workspace { operation, category, size, align, split, len, reason }`，并携带可诊断字段 | 高     |
-| `test_workspace_drop_no_leak`                  | Drop 后内存正确释放                                                           | 中     |
-| `test_borrow_basic`                            | 不可变借用和 `MaybeUninit` 切片访问                                           | 高     |
-| `test_borrow_mut_basic`                        | 可变借用和 `MaybeUninit` 类型化访问                                           | 高     |
-| `test_borrow_double_fails`                     | 重复借用返回错误                                                              | 高     |
-| `test_borrow_after_drop`                       | 归还后可再次借用                                                              | 高     |
-| `test_assume_init_requires_initialized_prefix` | 已初始化视图只覆盖调用方证明已初始化的前缀                                    | 高     |
-| `test_split_at_mut_basic`                      | 固定位置分割                                                                  | 高     |
-| `test_split_at_mut_recursive`                  | 递归分割（多级）                                                              | 中     |
-| `test_split_at_mut_oob`                        | 越界分割返回错误                                                              | 高     |
-| `test_ensure_capacity_no_grow`                 | 容量足够时不扩容                                                              | 高     |
-| `test_ensure_capacity_grow`                    | 容量不足时扩容到 1.5 倍                                                       | 高     |
-| `test_ensure_capacity_while_borrowed_fails`    | 借用期间扩容失败                                                              | 高     |
-| `test_alignment_verification`                  | 对齐值验证                                                                    | 中     |
-| `test_typed_slice_alignment`                   | 类型化切片对齐检查                                                            | 高     |
-| `test_workspace_not_send_not_sync`             | `Workspace` 的 `!Send + !Sync` 编译期负向验证                                 | 高     |
-| `test_split_borrow_mut_not_send_not_sync`      | `SplitBorrowMut` 的 `!Send + !Sync` 编译期负向验证                            | 高     |
-| `test_recursive_split_drop_order_independent`  | 递归 split 以任意 drop 顺序归还时都能正确复用工作空间                         | 中     |
+| 测试函数                                       | 测试内容                                                   | 优先级 |
+| ---------------------------------------------- | ---------------------------------------------------------- | ------ |
+| `test_workspace_new_basic`                     | 指定容量和对齐创建工作空间                                 | 高     |
+| `test_workspace_new_default`                   | 默认参数创建                                               | 高     |
+| `test_workspace_new_invalid_alignment`         | 非法对齐值返回 `XenonError::Workspace`，并携带可诊断字段   | 高     |
+| `test_workspace_drop_no_leak`                  | Drop 后内存正确释放                                        | 中     |
+| `test_borrow_basic`                            | 不可变借用和 `MaybeUninit` 切片访问                        | 高     |
+| `test_borrow_mut_basic`                        | 可变借用和 `MaybeUninit` 类型化访问                        | 高     |
+| `test_borrow_double_fails`                     | 重复借用返回错误                                           | 高     |
+| `test_borrow_after_drop`                       | 归还后可再次借用                                           | 高     |
+| `test_assume_init_requires_initialized_prefix` | 已初始化视图只覆盖调用方证明已初始化的前缀                 | 高     |
+| `test_split_at_mut_basic`                      | 固定位置分割                                               | 高     |
+| `test_split_at_mut_recursive`                  | 递归分割（多级）                                           | 中     |
+| `test_split_at_mut_oob`                        | 越界分割返回错误                                           | 高     |
+| `test_ensure_capacity_no_grow`                 | 容量足够时不扩容                                           | 高     |
+| `test_ensure_capacity_grow`                    | 容量不足时扩容到 1.5 倍                                    | 高     |
+| `test_ensure_capacity_while_borrowed_fails`    | 借用期间扩容失败                                           | 高     |
+| `test_alignment_verification`                  | 对齐值验证                                                 | 中     |
+| `test_typed_slice_alignment`                   | 类型化切片对齐检查                                         | 高     |
+| `test_workspace_not_send_not_sync`             | `Workspace` 的 `!Send + !Sync` 编译期负向验证              | 高     |
+| `test_split_borrow_mut_not_send_not_sync`      | `SplitBorrowMut` 的 `!Send + !Sync` 编译期负向验证         | 高     |
+| `test_recursive_split_drop_order_independent`  | 递归 split 以任意 drop 顺序归还时都能正确复用工作空间      | 中     |
 
 ### 8.3 边界测试场景
 
@@ -1324,14 +1274,14 @@ Upper-layer code requests temporary scratch space
 
 | 主题              | 内容                                                                                                                                                                                                                                                                             |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | `new()` / `ensure_capacity()` / `borrow*()` / `split_at_mut()` 失败时统一返回 `XenonError::Workspace { operation, category, size, align, split, len, reason }`；`category` 使用 `WorkspaceErrorCategory` 区分失败模式，并通过可选字段保留容量、对齐、分割点或借用状态等诊断上下文；typed helper 的 ZST、长度和对齐输入错误也通过同一公开错误边界报告。 |
+| Recoverable error | `new()` / `ensure_capacity()` / `borrow*()` / `split_at_mut()` 失败时统一返回 `XenonError::Workspace`；`category` 使用 `WorkspaceErrorCategory` 区分失败模式，并通过可选字段保留容量、对齐、分割点或借用状态等诊断上下文；typed helper 的 ZST、长度和对齐输入错误也通过同一公开错误边界报告。 |
 | Panic             | 不为公开 API 输入校验引入 panic；`unsafe` 初始化前提若被违反，仍属于调用方责任范围内的 UB。                                                                                                                                                                                      |
 | 路径一致性        | 当前仅有单一借用状态机与扩容路径；无 SIMD / 并行分支，所有 guard 释放规则必须保持一致。                                                                                                                                                                                          |
 | 容差边界          | 不适用。                                                                                                                                                                                                                                                                         |
 
 ---
 
-## 11. 设计决策记录(ADR)
+## 11. 设计决策记录
 
 ### 决策 1：设计选择 - workspace vs arena vs pool
 

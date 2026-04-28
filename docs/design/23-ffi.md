@@ -28,18 +28,6 @@
 | BLAS 友好    | 提供完整的 BLAS 兼容性检查和布局查询        |
 | 最小约束     | FFI 方法避免重复安全检查（调用方已 unsafe） |
 
-### 1.3 在架构中的位置
-
-```
-Dependency layers:
-L0: error, private
-L1: dimension, element, complex
-L2: layout (depends on dimension)
-L3: storage (independent of layout; owned by tensor and consumes layout results)
-L4: tensor (depends on storage, dimension)
-L5: ffi  <- current module
-```
-
 ---
 
 ## 2. 需求映射与范围约束
@@ -50,16 +38,6 @@ L5: ffi  <- current module
 | 范围内   | 原始指针访问、raw-parts 往返、BLAS 兼容性查询、多维索引到偏移 / 指针转换。                                                                     |
 | 范围外   | 实际 BLAS / LAPACK 例程调用、GPU 互操作、跨进程共享内存与更高层序列化协议。                                                                    |
 | 非目标   | 不把 `ffi` 扩展为外部数值库绑定层，不新增第三方 FFI crate 依赖。                                                                               |
-
-| 需求条款     | 本文承接方式                                                                                 |
-| ------------ | -------------------------------------------------------------------------------------------- |
-| 需求说明书 §5 复数类型  | 明确 `Complex<f32>` / `Complex<f64>` 的稳定 `#[repr(C)]` FFI 表示。                          |
-| 需求说明书 §6 存储系统  | `export()` / `export_mut()` 分别覆盖 `Storage` / `StorageMut`，保持零拷贝导出边界。          |
-| 需求说明书 §7 内存布局  | 导出与导入统一使用 shape / strides / offset 元数据解释当前版本合法布局。                     |
-| 需求说明书 §8 张量类型  | `from_raw_parts*()` 验证可检查的布局、范围与别名条件，失败时返回可恢复错误。                 |
-| 需求说明书 §25 FFI 集成 | 提供原始指针、偏移转换、BLAS 兼容性查询和 raw-parts roundtrip。                              |
-| 需求说明书 §27 错误处理 | 仅公开 `try_offset_of()` / `try_ptr_at()` 这类 `Result` API，不额外暴露 panic sugar。        |
-| 需求说明书 §28.1 文档   | 所有 unsafe 入口提供 Safety 说明；关键 FFI API 提供示例，非完整上下文示例统一标记 `ignore`。 |
 
 ---
 
@@ -76,14 +54,6 @@ src/
 ```
 
 多文件设计：将 FFI 按职责拆分为多个文件，便于后期拓展和维护。
-
-| 文件        | 职责                                                                                        |
-| ----------- | ------------------------------------------------------------------------------------------- |
-| `mod.rs`    | 模块入口，导出公共 API                                                                      |
-| `types.rs`  | `FfiErrorCategory` 枚举、`BlasInfo` 结构体                                                  |
-| `ptr.rs`    | 原始指针访问（`as_ptr`/`as_mut_ptr`）和裸指针构造/解构（`from_raw_parts`/`into_raw_parts`） |
-| `blas.rs`   | BLAS 兼容性检查和参数查询（`is_blas_layout_compatible`/`blas_info`/`lda`）                  |
-| `offset.rs` | 多维索引到偏移量和指针转换（`try_offset_of`、`try_ptr_at`）                                 |
 
 ---
 
@@ -217,7 +187,7 @@ where
 }
 ````
 
-#### C 侧结构化导出格式
+### 5.3 C 侧结构化导出格式
 
 ```rust,ignore
 /// Element type discriminant for FFI consumers.
@@ -246,7 +216,7 @@ impl ElementType {
 
 > **实现基础说明：** 可在 `Element` sealed trait 中引入 `const ELEMENT_TYPE: ElementType` 关联常量作为 `ElementType::of::<A>()` 的实现基础。若当前 Rust 版本不支持所需 const 机制，可将该 API 降为普通 `fn`，保持语义不变。
 
-### 5.2.1 指针约定对照
+### 5.4 指针约定对照
 
 | API                         | 基准                 | 说明                                                                 |
 | --------------------------- | -------------------- | -------------------------------------------------------------------- |
@@ -395,7 +365,7 @@ where
 
 > **生命周期与借用语义：** 导出结果不拥有底层内存；一旦源张量被 drop，`TensorExport` 内的 `data`、`shape`、`strides` 全部立即失效。应将该导出结果视为对源张量当前元数据与指针状态的借用快照：`export()` 暴露只读快照，`export_mut()` 暴露独占可写快照；无论是否跨 FFI 边界缓存，该快照都不得超出源张量的生命周期，也不得绕过 `&mut self` 所表达的独占写语义。本文不额外指定 `TensorExport<'_, _>` / `TensorExportMut<'_, _>` 的 auto trait 组合，线程相关性质以其字段与 Rust auto-trait 推导结果为准；测试计划应通过编译期 `Send` / `Sync` 检查验证该自动推导结果。
 
-#### 5.2.2 Complex FFI 布局契约
+### 5.5 Complex FFI 布局契约
 
 ```rust,ignore
 #[repr(C)]
@@ -417,7 +387,7 @@ pub struct Complex64 {
 
 > **导出语义：** 导出复数张量时，`TensorExport<Complex<f32>>` / `TensorExport<Complex<f64>>` 和 `TensorExportMut<Complex<f32>>` / `TensorExportMut<Complex<f64>>` 中的 `data` 仍是“复数元素指针”，`offset` 与 `strides` 仍按“复数元素个数”计量，而不是按标量 `re/im` 分量或字节计量。C 侧看到的是 `Complex32*` / `Complex64*` 加上相同的 shape/stride 元数据。
 
-#### 5.2.3 Bool FFI 布局契约
+### 5.6 Bool FFI 布局契约
 
 > **Bool ABI 约束：** `bool` 与 C `_Bool` / C23 `bool` 的互操作仅在文档明确支持的平台/ABI 下成立；它用于说明当前支持目标上的对接方式，不作为跨语言、跨目标的稳定 ABI 承诺。对这些已支持平台，C 消费者应使用 `_Bool` 或 `bool`（C23）来匹配 `TensorExport<bool>` / `TensorExportMut<bool>` 中的 `data` 指针类型，并避免使用 `int`、`unsigned char` 等其它整数类型。
 
@@ -427,7 +397,7 @@ pub struct Complex64 {
 
 > **测试边界说明：** 与上述 ABI 约束一致，`bool` FFI ABI 相关测试也只应在文档明确支持的 targets/ABI 上启用；其它目标上应通过 `#[cfg(...)]` 跳过，而不是把 `_Bool` 兼容性断言提升为无条件测试基线。
 
-### 5.3 从裸指针构造张量
+### 5.7 从裸指针构造张量
 
 ````rust,ignore
 impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D>
@@ -586,7 +556,7 @@ where
 
 > **可写视图补充：** `from_raw_parts_mut()` 不仅必须拒绝所有非空零步长布局（任何非单元素轴的 `stride == 0`），还必须拒绝一切能被高效保守判定为潜在自别名的布局。实现上先用 `validate_access_range()` 验证越界与可表示性，再用 `validate_non_overlapping_layout(shape, strides, offset, storage_len)` 对受支持的正步长布局做保守非重叠判定；若布局超出该高效判定范围，也必须返回可恢复错误，而不是枚举全部可达 offset。
 
-### 5.4 将张量解构为裸指针
+### 5.8 将张量解构为裸指针
 
 ````rust,ignore
 pub struct OwnedRawParts<A, D> {
@@ -634,7 +604,7 @@ where
 
 > **设计决策：** `into_raw_parts` 仅适用于 Owned 存储，且导出的内存布局必须满足 Xenon 的 owned 不变量：F-order contiguous、`offset == 0`、canonical F-order strides。若调用方持有的是 view 或带 offset 的逻辑子视图，必须先显式物化为新的 owned contiguous tensor，再跨越 FFI 边界导出裸指针。如需将 View 转为 Owned 再解构，参见 `21-type.md` §5.6。
 
-#### 内存管理
+### 5.9 内存管理
 
 `into_raw_parts()` 返回的是 Xenon 分配器元信息的完整快照。回收必须遵守 Xenon 的分配契约：要么通过 `Tensor::from_raw_parts_owned(raw)` 重建后交由 Xenon 的 Drop 释放，要么仅使用与该契约等价、且明确以 Xenon 分配器元数据为前提的回收路径；不得把该指针交给系统 `free`、C 侧默认释放器或其他不知晓 `cap` / `align` 的 foreign allocator。正确回收内存的方式如下：
 
@@ -748,7 +718,7 @@ unsafe {
 }
 ```
 
-### 5.5 BLAS 兼容性 API
+### 5.10 BLAS 兼容性 API
 
 ````rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -793,7 +763,7 @@ where
 }
 ````
 
-### 5.6 blas_info 和 BlasInfo 结构体
+### 5.11 blas_info 和 BlasInfo 结构体
 
 ````rust,ignore
 use crate::error::FfiErrorCategory;
@@ -898,7 +868,7 @@ where
 }
 ````
 
-### 5.7 LDA 查询
+### 5.12 LDA 查询
 
 ````rust,ignore
 use crate::error::FfiErrorCategory;
@@ -957,7 +927,7 @@ where
 }
 ````
 
-### 5.8 多维索引到指针偏移
+### 5.13 多维索引到指针偏移
 
 ````rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -1043,7 +1013,7 @@ where
 }
 ````
 
-### 5.9 Good/Bad 对比
+### 5.14 Good/Bad 对比
 
 ```rust,ignore
 // Good - Check BLAS layout compatibility before passing
@@ -1188,7 +1158,7 @@ Additional caller-side checks:
   - 前置: T1
   - 预计: 10 min
 
-### Wave 3: BLAS 和索引（可并行）
+### Wave 3: BLAS 和索引
 
 - [ ] **T3**: 实现 BLAS 兼容性 API
   - 文件: `src/ffi/blas.rs`
@@ -1203,18 +1173,6 @@ Additional caller-side checks:
   - 测试: `test_try_offset_of_various`, `test_try_offset_of_checked_overflow`, `test_try_ptr_at_various`
   - 前置: T1
   - 预计: 10 min
-
-### 并行执行图
-
-```
-Wave 1:    [T1]
-             │
-Wave 2:    [T2]
-             │
-Wave 3: ┌────┴────┐
-        │         │
-       [T3]      [T4]   (can run in parallel)
-```
 
 ---
 
@@ -1269,15 +1227,7 @@ Wave 3: ┌────┴────┐
 | 零维张量       | `try_offset_of(&[])` 返回 `Ok(0)`                                                                                                                                 |
 | 未对齐指针     | `from_raw_parts` 的 Safety 文档需说明对齐要求                                                                                                                     |
 
-### 8.4 `需求说明书 §28.4` 边界测试场景
-
-| 场景           | 说明                                                                                           |
-| -------------- | ---------------------------------------------------------------------------------------------- |
-| 导出结构生命周期   | `TensorExport<'a, _>` / `TensorExportMut<'a, _>` 不得逃逸源张量生命周期，借用结束后不可继续使用 |
-| 广播零步长导入     | 只读零步长布局允许导入为共享视图；可写零步长布局构造统一返回错误                            |
-| `storage_len` 重建 | 导出后按 `storage_len` 重建视图时覆盖空张量、offset 非零与末元素访问边界                            |
-
-### 8.5 属性测试不变量
+### 8.4 属性测试不变量
 
 | 不变量                                                                                 | 测试方法                             |
 | -------------------------------------------------------------------------------------- | ------------------------------------ |
@@ -1285,27 +1235,20 @@ Wave 3: ┌────┴────┐
 | `into_raw_parts → from_raw_parts_owned` roundtrip 保持 shape/strides/offset            | 对 F-contiguous owned 张量做往返验证 |
 | `is_blas_layout_compatible() == true` 且维度/整数范围合法 ⟹ `blas_info()` 成功         | 以连续二维张量为样本验证             |
 
-### 8.6 内存安全测试
-
-| 场景                                           | 验证方式               |
-| ---------------------------------------------- | ---------------------- |
-| `from_raw_parts` + Drop                        | 无内存泄漏（借用语义） |
-| `into_raw_parts` + `from_raw_parts_owned(raw)` | 重建后由 Drop 正确释放 |
-
-### 8.7 集成测试
+### 8.5 集成测试
 
 | 测试文件            | 测试内容                                                                                         |
 | ------------------- | ------------------------------------------------------------------------------------------------ |
 | `tests/test_ffi.rs` | 指针 API / BLAS 兼容检查 / raw-parts roundtrip 与 `tensor`、`layout`、`storage` 的端到端协同路径 |
 
-### 8.8 Feature gate / 配置测试
+### 8.6 Feature gate / 配置测试
 
 | 配置              | 验证点                                                                         |
 | ----------------- | ------------------------------------------------------------------------------ |
 | 默认配置          | 指针 API、BLAS 兼容性检查与 raw-parts roundtrip 在默认构建下保持既定安全边界。 |
 | 其他 feature 组合 | 不适用；当前模块无额外 feature gate。                                          |
 
-### 8.9 类型边界 / 编译期测试
+### 8.7 类型边界 / 编译期测试
 
 | 场景                                                                                | 测试方式                      |
 | ----------------------------------------------------------------------------------- | ----------------------------- |
@@ -1354,7 +1297,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 
 | 主题              | 内容                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Recoverable error | `blas_info()` / `lda()` 在 rank 或布局非法时返回 `XenonError::Ffi { operation, category, backend, precondition, actual }`；BLAS 整数宽度转换失败由 `BlasInfo::as_blas_int()` 返回同一结构化公开变体；`from_raw_parts_owned()` 在 owned 元数据非法时返回 `XenonError::InvalidLayout`；`try_offset_of()` / `try_ptr_at()` 在 rank / bounds / checked arithmetic 非法时返回 `XenonError`；`from_raw_parts_mut()` 在可写布局自别名时返回 `XenonError::InvalidLayout`。 |
+| Recoverable error | `blas_info()` / `lda()` 在 rank 或布局非法时返回 `XenonError::Ffi`；BLAS 整数宽度转换失败由 `BlasInfo::as_blas_int()` 返回同一结构化公开变体；`from_raw_parts_owned()` 在 owned 元数据非法时返回 `XenonError::InvalidLayout`；`try_offset_of()` / `try_ptr_at()` 在 rank / bounds / checked arithmetic 非法时返回 `XenonError`；`from_raw_parts_mut()` 在可写布局自别名时返回 `XenonError::InvalidLayout`。 |
 | Panic             | 不提供公开 panic-sugar 索引转换 API；`from_raw_parts*()` 中那些无法直接验证的不安全前提若被违反，仍属于 unsafe UB，而非 recoverable error。                                                                                                                                                                                                                                                                              |
 | 路径一致性        | 指针访问、BLAS 查询与 raw-parts roundtrip 必须共享同一 shape / strides / offset 解释；无 SIMD / 并行分支。                                                                                                                                                                                                                                                                                                               |
 | 容差边界          | 不适用。                                                                                                                                                                                                                                                                                                                                                                                                                 |

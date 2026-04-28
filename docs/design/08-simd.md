@@ -33,46 +33,6 @@ SIMD 后端模块是 Xenon 张量库的可选性能加速层，通过 `pulp` cra
 | 跨平台       | pulp 统一 x86_64 (SSE4.1/AVX2/AVX-512) 和 ARM (NEON)；SVE 属于后续扩展，不纳入当前设计                                                                 |
 | 精度优先约束 | 元素级 `mul`/`add` 不使用 FMA 以保持逐位一致；仅在已记录容差的 reduction merge 内部可使用                                                              |
 
-### 1.3 在架构中的位置
-
-```
-Dependency levels:
-L0: error, private
-L1: dimension, element, complex
-L2: layout (depends on dimension)
-L3: storage (depends only on core/alloc, not layout)
-L4: tensor (depends on storage, dimension)
-L5: simd  <- current module (optional, feature = "simd")
-```
-
-### 1.4 性能分层中的角色
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Call layer (overload/iter)                   │
-│              math, reduction, matrix::dot                       │
-│  See 11-math.md §5, 13-reduction.md §5, 12-matrix.md §5.1       │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│          dispatch.rs parallel gating layer                     │
-│        Only decide serial vs parallel execution                │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│              simd/ backend internal selection                   │
-│      Decide whether to use vectorized path or stay serial       │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                Pure vectorized hardware exec                    │
-│                AVX-512 / AVX2 / SSE4.1 / NEON                   │
-└─────────────────────────────────────────────────────────────────┘
-```
-
 ---
 
 ## 2. 需求映射与范围约束
@@ -126,17 +86,17 @@ src/simd/
 | `element` | `Element`（参见 `03-element.md` §5.1）                                             |
 | `simd`    | `SimdElement`（本模块定义，见 §5.2）                                               |
 
-### 4.3 依赖方向声明
-
-> **依赖方向：单向向上。** `simd/` 仅消费 `tensor`、`storage`、`element` 等核心模块，不被它们依赖。布局/连续性判断经由 `TensorBase` 暴露的查询接口完成；`simd/` 模块在未启用 feature 时完全不存在。
-
-### 4.4 依赖合法性与新增依赖说明
+### 4.3 依赖合法性
 
 | 项目           | 说明                       |
 | -------------- | -------------------------- |
 | 新增第三方依赖 | `pulp`                     |
 | 合法性结论     | 符合需求说明书最小依赖限制 |
 | 替代方案       | 不适用                     |
+
+### 4.4 依赖方向声明
+
+> **依赖方向：单向向上。** `simd/` 仅消费 `tensor`、`storage`、`element` 等核心模块，不被它们依赖。布局/连续性判断经由 `TensorBase` 暴露的查询接口完成；`simd/` 模块在未启用 feature 时完全不存在。
 
 ---
 
@@ -364,7 +324,7 @@ where
 >
 > **职责边界说明：** SIMD 路径选择由 `simd/` 后端内部处理，包括 feature、元素类型、操作种类、连续性、对齐与 ISA 能力检查。`dispatch.rs` 不承担 SIMD admission/selection，只负责决定是否进入并行执行。
 
-### 5.4a 当前版本的 SIMD 覆盖范围
+### 5.5 当前版本的 SIMD 覆盖范围
 
 根据 `需求说明书 §9.1`，SIMD 路径当前已覆盖逐元素运算、归约与内积三个大类。是否实际进入 SIMD 仍取决于元素类型、ISA 能力、统一对齐快路径与语义约束；当前版本在 `matrix` 相关范围内仅承载 **vector dot**，不展开矩阵乘法或其他 matrix 范围能力。
 
@@ -372,7 +332,7 @@ where
 
 > **透明回退说明：** 对于下表中尚未提供 SIMD kernel 的操作，或运行时不满足 SIMD 入口条件的输入，`simd/` 后端内部保持对应语义模块的标量/串行路径；公开 API 与结果语义保持不变。
 
-#### SIMD 操作覆盖状态表
+### 5.6 SIMD 操作覆盖状态表
 
 | 操作                                             | 类型                                                            | 状态（已实现/规划中/标量回退）                            | 说明                                                                                                                                           |
 | ------------------------------------------------ | --------------------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -396,7 +356,7 @@ where
 
 该覆盖目标不改变公开 API 的可用性；SIMD 仅影响执行路径选择，不改变公开语义契约。
 
-### 5.4b SIMD Path Selection Thresholds
+### 5.7 SIMD Path Selection Thresholds
 
 `simd/` 后端内部在尝试进入 SIMD 前，至少按以下规则做统一裁决：
 
@@ -423,9 +383,9 @@ where
 
 这些阈值只影响执行路径选择，不改变 API 结果；未通过任一条件时，系统透明回退到非 SIMD 路径。
 
-### 5.5 SIMD 加速路径设计
+### 5.8 SIMD 加速路径设计
 
-#### 逐元素运算（加减乘除）
+#### 5.8.1 逐元素运算（加减乘除）
 
 ```
 Element-wise operation flow
@@ -456,7 +416,7 @@ Element-wise operation flow
                  └─────────────────┘
 ```
 
-#### 归约运算（sum）
+#### 5.8.2 归约运算（sum）
 
 ```
 SIMD sum reduction flow
@@ -489,13 +449,13 @@ SIMD sum reduction flow
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-#### 轴向归约 SIMD 策略
+#### 5.8.3 轴向归约 SIMD 策略
 
 - 轴向 `sum_axis(axis)` / `sum_axis_keepdims(axis)` 的 SIMD 路径仅在被归约维对应连续内层维度时启用。
 - 若输入布局非连续，或目标轴无法映射为连续内层归约区间，则由对应语义模块保持串行路径。
 - 当目标轴是连续内层维度时，实现可在每个逻辑归约段内使用 SIMD 加速全局归约，再按轴向输出形状写回结果；`keepdims` 仅影响输出 shape，不改变 SIMD/标量裁决规则。
 
-#### 向量内积（dot product）
+#### 5.8.4 向量内积（dot product）
 
 ```
 SIMD dot dispatch flow
@@ -519,7 +479,7 @@ SIMD dot dispatch flow
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 5.6 条件检查与自动回退
+### 5.9 条件检查与自动回退
 
 ```rust,ignore
 // src/simd/mod.rs
@@ -532,7 +492,7 @@ SIMD dot dispatch flow
 
 SIMD 条件判断已收敛到 `simd/` 后端内部。`dispatch.rs` 只负责决定是否进入并行执行；进入串行执行上下文后，`simd/` 再按统一规则检查 feature、连续性、对齐、元素类型与运行时可用 lane 宽度，决定是否使用向量化路径。
 
-### 5.6a `simd/` 能力查询接口
+### 5.10 `simd/` 能力查询接口
 
 ```rust,ignore
 // src/simd/mod.rs
@@ -573,7 +533,7 @@ pub(crate) fn is_supported(element_type: SimdElementKind, op: SimdOp) -> bool;
 - 资格查询只回答“当前版本是否存在可进入的 SIMD 能力”，不替代连续性、对齐、长度阈值和 ISA 检查。
 - 对状态为“规划中”或“标量回退”的条目，`is_supported(...)` 必须返回 `false`。
 
-### 5.7 Good/Bad 对比示例
+### 5.11 Good/Bad 对比示例
 
 ```rust,ignore
 // Good - use the public semantic entry; dispatch only decides serial vs parallel.
@@ -660,7 +620,7 @@ pub(crate) fn add_f32_simd(lhs: &[f32], rhs: &[f32], dst: &mut [f32]) {
 
 ScalarKernel（标量回退）已在方案 D 中移除。标量路径由各语义模块的串行实现承担。
 
-### 6.2a `unsafe` 健全性边界
+### 6.3 `unsafe` 健全性边界
 
 SIMD 内核中的 `unsafe` 只允许用于底层 load/store 与寄存器装载；其健全性前提必须由 `simd/` 后端内部与调用点共同保证：
 
@@ -672,7 +632,7 @@ SIMD 内核中的 `unsafe` 只允许用于底层 load/store 与寄存器装载�
 
 若上述任一条件无法证明成立，则该实现不得进入 `unsafe` SIMD 主循环。
 
-### 6.3 dispatch 流程
+### 6.4 dispatch 流程
 
 ```
 Dispatch call flow
@@ -704,7 +664,7 @@ Dispatch call flow
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 6.4 计算结果一致性保证
+### 6.5 计算结果一致性保证
 
 ```
 Consistency guarantee strategy
@@ -733,7 +693,7 @@ Consistency guarantee strategy
 >
 > **覆盖说明：** 当前版本只覆盖 §5.4a 表中列出的“已实现”“本版覆盖”与“条件实现，默认标量回退”子集；其中整数 `sum` / `dot` 默认仍回到串行 checked 路径，只有在存在已验证 ISA widening 实现时才实际进入 SIMD。其余条目由 `simd/` 后端内部保持对应语义模块的标量/串行路径。数学函数作为后续增强目标逐步补齐；这不改变 `math` 模块对这些逐元素运算的公开 API 承诺。完整覆盖计划见 §5.4a。
 
-### 6.5 SIMD reduction / dot 内部策略
+### 6.6 SIMD reduction / dot 内部策略
 
 | 类型           | `sum()` SIMD 策略                                                                                        | `dot()` SIMD 策略                                                                                                        | 精度/溢出约束                                                                                 |
 | -------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
@@ -838,25 +798,6 @@ Consistency guarantee strategy
   - 前置: T6b
   - 预计: 10 min
 
-```
-Wave 1: [T1]
-            │
-            ▼
-Wave 2: [T3]
-           │
-           ▼
-         [T4a]
-          ├── [T4b]
-          ├── [T4c]
-          └── [T4d]
-           │
-           ▼
-Wave 3:   [T5]
-            │
-            ▼
-Wave 4: [T6a] -> [T6b] -> [T6c]
-```
-
 ---
 
 ## 8. 测试计划
@@ -896,12 +837,6 @@ Wave 4: [T6a] -> [T6b] -> [T6c]
 | 非 F-order 连续           | 由 `simd/` 后端内部保持非 SIMD 路径 |
 | `len = SIMD_WIDTH`        | 恰好一个 SIMD 块，无尾部          |
 | `len = SIMD_WIDTH + 1`    | 一个 SIMD 块 + 1 个标量尾部       |
-
-### 8.3a `需求说明书 §28.4` 边界占位
-
-- [ ] 补充 `min_positive` / `max_finite` / `subnormal` 输入的 SIMD 与串行一致性边界测试。
-- [ ] 补充复数实部/虚部跨 `±0.0`、`±Inf`、`NaN` 组合时的归约与内积边界测试。
-- [ ] 补充尾部长度与 lane 宽度交错组合下的 load/store 安全性回归测试。
 
 ### 8.4 属性测试不变量
 
@@ -1002,7 +937,7 @@ SIMD 后端不改变 `TensorBase<S, D>` 的 `Send` / `Sync` 判定。线程安�
 
 ---
 
-## 11. 设计决策记录（ADR）
+## 11. 设计决策记录
 
 ### 决策 1：选择 pulp 作为 SIMD 抽象层
 
