@@ -1136,14 +1136,14 @@ validate_non_overlapping_layout(shape, strides, offset, storage_len):
     6. Otherwise return Ok(()).
 ```
 
-> 该校验与 `validate_access_range()` 分工不同：前者解决“会不会越界”，后者解决“会不会别名写入”。两者都属于 `需求说明书 §8` 下可直接验证的安全构造前提，失败时都须返回可恢复错误。该保守算法允许拒绝一部分理论上合法但无法高效证明不重叠的 exotic stride 布局；当前版本不为这类布局提供可写 raw-parts 构造承诺。
+该校验与 `validate_access_range()` 分工不同：前者解决“会不会越界”，后者解决“会不会别名写入”。两者都属于 `需求说明书 §8` 下可直接验证的安全构造前提，失败时都须返回可恢复错误。该保守算法允许拒绝一部分理论上合法但无法高效证明不重叠的 exotic stride 布局；当前版本不为这类布局提供可写 raw-parts 构造承诺。
 
 ### 6.4 BLAS 兼容性检查流程
 
 ```
 is_blas_layout_compatible():
     │
-├── is_f_contiguous()? ─── No ──→ false
+    ├── is_f_contiguous()? ─── No ──→ false
     │
     ├── has_zero_stride()? ── Yes ──→ false
     │
@@ -1320,7 +1320,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | 路径一致性        | 指针访问、BLAS 查询与 raw-parts roundtrip 必须共享同一 shape / strides / offset 解释；无 SIMD / 并行分支。                                                                                                                                                                                                                                                                                                               |
 | 容差边界          | 不适用。                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
-> **错误语义对齐：** FFI 文档仅公开 `try_offset_of()` 与 `try_ptr_at()` 这类 `Result` 接口。索引越界、维度不匹配、偏移溢出和布局自别名都属于 `需求说明书 §27` 下的可恢复错误，不再额外提供 `offset_of()` / `ptr_at()` 之类会把这些条件升级为 panic 的公开 sugar。
+**错误语义对齐：** FFI 文档仅公开 `try_offset_of()` 与 `try_ptr_at()` 这类 `Result` 接口。索引越界、维度不匹配、偏移溢出和布局自别名都属于 `需求说明书 §27` 下的可恢复错误，不再额外提供 `offset_of()` / `ptr_at()` 之类会把这些条件升级为 panic 的公开 sugar。
 
 ---
 
@@ -1335,7 +1335,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | 替代方案 | 仅返回 `bool is_blas_layout_compatible()` — 放弃，上游库需要重复获取多个参数            |
 | 替代方案 | 返回 raw C 常量 — 放弃，不符合 Rust 惯例                                                |
 
-> **补充**：Xenon 的直接 BLAS 路径只接受 BLAS-compatible 的 F-order 2D 张量。转置或非连续视图必须先显式 materialize 为 `to_contiguous()` 结果，再由调用方结合导出的元数据传入对应的后端常量。
+**补充**：Xenon 的直接 BLAS 路径只接受 BLAS-compatible 的 F-order 2D 张量。转置或非连续视图必须先显式 materialize 为 `to_contiguous()` 结果，再由调用方结合导出的元数据传入对应的后端常量。
 
 ### 决策 2: Safety 独立边界
 
@@ -1353,7 +1353,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | 理由     | 与 `07-tensor.md` 一致：保留必要的 `shape/stride/offset/storage_len` 校验，同时避免把无法证明的内存前提伪装成库内可验证逻辑 |
 | 替代方案 | 完全不校验元数据 — 放弃，会让明显非法输入延迟到 UB；对所有内存前提做深度验证 — 放弃，超出当前边界                           |
 
-> **补充**：`try_offset_of()` 在文档层明确要求 checked arithmetic；即使张量本身来自安全构造路径，也不得把索引转换错误表述为“天然不会发生，因此无需检查”。
+**补充**：`try_offset_of()` 在文档层明确要求 checked arithmetic；即使张量本身来自安全构造路径，也不得把索引转换错误表述为“天然不会发生，因此无需检查”。
 
 ---
 
