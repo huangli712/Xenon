@@ -663,12 +663,10 @@ where
         let cols = self.shape()[1];
         // After is_blas_layout_compatible() check, we know:
         // - ndim == 2, F-contiguous, no zero strides
-        // - For rows == 0: lda = 1; otherwise lda = strides[1]
-        let leading_dim = if rows == 0 {
-            1
-        } else {
-            self.strides()[1]
-        };
+        // - rows > 0: if rows == 0, F-order strides[1] = rows = 0,
+        //   making has_zero_stride() return true, which would have
+        //   already failed the is_blas_layout_compatible() check above.
+        let leading_dim = self.strides()[1];
 
         Ok(BlasInfo {
             data_ptr,
@@ -693,8 +691,6 @@ where
     /// Returns the leading dimension (only meaningful for 2D arrays).
     ///
     /// For F-order matrix `A[M, N]`, `LDA = stride[1]`.
-    /// For zero-row matrices (`rows == 0`), Xenon returns `1` so that callers
-    /// can satisfy the common BLAS requirement `lda >= max(1, rows)`.
     /// For zero-column matrices (`cols == 0 && rows > 0`), Xenon returns
     /// `stride[1]` (= rows for F-order) so that `lda >= max(1, rows)` is
     /// still satisfied.
@@ -732,9 +728,6 @@ where
                 precondition: "F-contiguous 2D tensor without zero strides",
                 actual: alloc::format!("shape={:?}, strides={:?}", self.shape(), self.strides()).into(),
             });
-        }
-        if self.shape()[0] == 0 {
-            return Ok(1);
         }
         let strides = self.strides();
         Ok(strides[1])
@@ -898,8 +891,9 @@ validate_access_range(shape, strides, offset, storage_len):
     max_offset = offset
 
     for axis in 0..ndim:
-        // shape[axis] > 0 is guaranteed here: checked_size() already
-        // confirmed the product is non-zero, so no dimension can be zero.
+        if shape[axis] == 0:
+            return Ok(())
+
         span = (shape[axis] - 1).checked_mul(strides[axis])
             .ok_or_else(|| XenonError::InvalidLayout {
                 operation: "validate_access_range",
@@ -966,9 +960,9 @@ Additional caller-side checks:
 
 ### Wave 2: 指针 API
 
-- [ ] **T2**: 实现原始指针访问和裸指针构造/解构
+- [ ] **T2**: 提供原始指针访问的 FFI 包装器，并 re-export 裸指针构造/解构 API
   - 文件: `src/ffi/ptr.rs`
-  - 内容: `as_ptr()`, `as_mut_ptr()`, `from_raw_parts`, `from_raw_parts_mut`, `into_raw_parts` 及 Safety 文档
+  - 内容: re-export `as_ptr()`, `as_mut_ptr()`, `from_raw_parts`, `from_raw_parts_mut`, `into_raw_parts`（定义在 `tensor` 模块），以及 FFI 包装器 `export()` / `export_mut()`
   - 测试: `test_as_ptr_basic`, `test_as_mut_ptr_basic`, `test_from_raw_parts_roundtrip`, `test_into_raw_parts`
   - 前置: T1
   - 预计: 10 min
@@ -1037,7 +1031,7 @@ Additional caller-side checks:
 | 非连续切片     | `is_blas_layout_compatible()` 返回 `false`                                                                                                                        |
 | 广播维度       | `is_blas_layout_compatible()` 返回 `false`                                                                                                                        |
 | 自别名可写布局 | `from_raw_parts_mut()` 返回 `InvalidLayout`                                                                                                                       |
-| 零尺寸矩阵     | `lda()` 在 `rows == 0` 时返回 `1`；在 `cols == 0 && rows > 0` 时返回 `strides[1]`（= rows），满足 `lda >= max(1, rows)` |
+| 零尺寸矩阵     | `lda()` 在 `rows == 0` 时返回 `BlasIncompatibleLayout` 错误（F-order 下 `strides[1] = 0`，触发 `has_zero_stride`）；在 `cols == 0 && rows > 0` 时返回 `strides[1]`（= rows），满足 `lda >= max(1, rows)` |
 | 1D 张量        | `lda()` 返回错误                                                                                                                                                  |
 | 零维张量       | `try_offset_of(&[])` 返回 `Ok(0)`                                                                                                                                 |
 | 未对齐指针     | `from_raw_parts` 的 Safety 文档需说明对齐要求                                                                                                                     |
