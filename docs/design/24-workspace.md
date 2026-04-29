@@ -311,6 +311,7 @@ impl Drop for Workspace {
 /// Immutable borrow guard.
 ///
 /// RAII guard that automatically returns the workspace on drop.
+/// Inherits `!Send + !Sync` from `&'a Workspace`.
 pub struct WorkspaceBorrow<'a> {
     /// Start pointer of the borrowed scratch region.
     ptr: NonNull<u8>,
@@ -323,6 +324,7 @@ pub struct WorkspaceBorrow<'a> {
 /// Mutable borrow guard.
 ///
 /// RAII guard that automatically returns the workspace on drop.
+/// Inherits `!Send + !Sync` from `&'a Workspace`.
 pub struct WorkspaceBorrowMut<'a> {
     /// Start pointer of the borrowed scratch region.
     ptr: NonNull<u8>,
@@ -654,6 +656,9 @@ impl<'a> Drop for WorkspaceBorrowMut<'a> {
 /// `as_maybe_uninit_slice()`, `len()`, `split_at_mut()`, and `Drop`. This type deliberately does not
 /// expose `as_mut_ptr()`, `is_empty()`, or typed `assume_init_*` helpers until
 /// their aliasing and initialization contracts are separately frozen.
+///
+/// Inherits `!Send + !Sync` from `&'a Workspace` — the guard is strictly
+/// thread-local, matching the parent workspace's thread affinity.
 pub struct SplitBorrowMut<'a> {
     /// Start pointer of this split sub-space.
     ptr: NonNull<u8>,
@@ -950,10 +955,11 @@ impl Workspace {
                 reason: None,
             })?;
 
-        // The implementation may copy old bytes during growth, but callers must
-        // not rely on content preservation. All previous views and borrows are
-        // invalid after reallocation, and the scratch region must be treated as
-        // unspecified until re-initialized.
+        // Implementation detail: bytes may be copied during growth, but this is
+        // NOT part of the stable public contract. Callers must not rely on
+        // content preservation. All previous views and borrows are invalid after
+        // reallocation, and the scratch region must be treated as unspecified
+        // until re-initialized.
         // SAFETY: src and dst do not overlap, copy min(old, new) bytes
         unsafe {
             core::ptr::copy_nonoverlapping(
@@ -1099,7 +1105,7 @@ This design (zero allocation):
 
 ### 6.4 扩容安全性论证
 
-**扩容期间保证不违反已有引用安全性**（参见 `05-storage.md §5`）：
+**扩容期间保证不违反已有引用安全性**：
 
 1. `ensure_capacity` 需要 `&mut self`，编译器保证无其他引用
 2. 方法内部显式检查 `borrow_state` 是否为 NONE
@@ -1215,6 +1221,7 @@ ensure_capacity(&mut self, 2048)
 | `test_typed_slice_alignment`                   | 类型化切片对齐检查                                         | 高     |
 | `test_workspace_not_send_not_sync`             | `Workspace` 的 `!Send + !Sync` 编译期负向验证              | 高     |
 | `test_split_borrow_mut_not_send_not_sync`      | `SplitBorrowMut` 的 `!Send + !Sync` 编译期负向验证         | 高     |
+| `test_borrow_guards_not_send_not_sync`         | `WorkspaceBorrow`/`WorkspaceBorrowMut` 的 `!Send + !Sync` 编译期负向验证 | 高 |
 | `test_recursive_split_drop_order_independent`  | 递归 split 以任意 drop 顺序归还时都能正确复用工作空间      | 中     |
 
 ### 8.3 边界测试场景
@@ -1343,7 +1350,7 @@ Upper-layer code requests temporary scratch space
 | 属性     | 值                                                                                                                                                                                                                                                                                         |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 决策     | Workspace 当前实现不实现 Send 或 Sync；该结论记录当前实现选择，而非冻结为长期稳定保证                                                                                                                                                                                                      |
-| 理由     | `!Send + !Sync` 为当前实现选择，目的是简化借用安全性论证。即使存在运行时借用状态检查，也暂不将其建模为可跨线程传递或共享的基础类型；若调用方需要多线程临时缓冲区，应在线程边界外自行分配和管理独立工作空间。相关测试仅验证当前行为，未来版本可在补充安全的跨线程借用检查后重新评估并放宽。 |
+| 理由     | `!Send + !Sync` 为当前实现选择，目的是简化借用安全性论证。即使存在运行时借用状态检查，也暂不将其建模为可跨线程传递或共享的基础类型；若调用方需要多线程临时缓冲区，应在线程边界外自行分配和管理独立工作空间。相关测试仅验证当前行为，未来版本可在补充安全的跨线程借用检查后重新评估并放宽。此决策的线程安全背景分析详见 `25-safety.md §9.5`。 |
 | 替代方案 | 放宽为 Send（并配套跨线程借用检查） — 未来可评估；仅依赖当前 AtomicU8 状态机不足以直接支持完整多线程语义                                                                                                                                                                                   |
 
 ### 决策 6：borrow_mut(&self) 与 ensure_capacity(&mut self) 签名不对称

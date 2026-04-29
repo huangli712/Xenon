@@ -377,23 +377,9 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | 编译期边界 | compile-fail harness 负责验证 `usize`/非法无符号元素类型、错误 trait bound 与不合法存储组合                                                                               |
 | 数据生成   | 顺序数据、三角函数样本、非连续视图与大张量样本均在共享工具中集中生成，保证可重复性                                                                                        |
 
-## 7. 实现任务拆分
-
-| Wave   | 目标         | 说明                                                                                                                                        |
-| ------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Wave 1 | 基础设施     | 建立 `tests/common/`、compile-fail harness 与共享数据生成工具                                                                               |
-| Wave 2 | 核心功能测试 | 覆盖 tensor / math / broadcast / index / construction / reduction / iterator / matrix / set / shape / conversion / utility / output / error |
-| Wave 3 | 特化测试     | 覆盖 FFI、parallel、SIMD 与 `std` 环境测试矩阵                                                                                              |
-| Wave 4 | 属性测试     | 固化 transpose、自反性、交换律、broadcast 形状规则等不变量                                                                                  |
-| Wave 5 | CI 集成      | 收敛默认、`parallel`、`simd`、`all-features` 的仓库测试矩阵                                                                                 |
-
-> 详细任务清单继续采用 Wave 形式维护，见后文“详细任务清单”。
-
 ---
 
-## 8. 测试计划
-
-### 8.1 test_tensor.rs
+### 6.1 test_tensor.rs
 
 | 测试函数                                   | 测试内容                                                 | 优先级 |
 | ------------------------------------------ | -------------------------------------------------------- | ------ |
@@ -407,7 +393,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_arc_tensor_clone`                    | ArcTensor clone 为浅拷贝                                 | 中     |
 | `test_arc_tensor_alias_isolation_on_write` | 共享后通过公开写入口修改副本时，不影响原值且保持别名隔离 | 中     |
 
-### 8.2 test_math.rs
+### 6.2 test_math.rs
 
 | 测试函数                              | 测试内容                               | 优先级 |
 | ------------------------------------- | -------------------------------------- | ------ |
@@ -429,7 +415,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_integer_neg_min_panics`         | 验证 `neg(i8::MIN)`、`neg(i16::MIN)`、`neg(i32::MIN)`、`neg(i64::MIN)` 触发 panic（参见 `11-math.md §5.4`） | 高     |
 | `test_integer_square_overflow_panics` | 验证整数 `square(max)` 溢出触发 panic（参见 `11-math.md §5.4`） | 高     |
 
-### 8.3 test_broadcast.rs
+### 6.3 test_broadcast.rs
 
 | 测试函数                       | 测试内容            | 优先级 |
 | ------------------------------ | ------------------- | ------ |
@@ -440,7 +426,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_broadcast_view_readonly` | 广播视图为只读      | 高     |
 | `test_broadcast_zero_stride`   | 广播后步长为 0      | 中     |
 
-### 8.4 test_index.rs
+### 6.4 test_index.rs
 
 | 测试函数                            | 测试内容                                      | 优先级 |
 | ----------------------------------- | --------------------------------------------- | ------ |
@@ -450,7 +436,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_slice_subrange`               | 范围切片子区间                                | 中     |
 | `test_slice_mut_broadcast_rejected` | 广播视图上的可变切片在编译期/API 缺失层被拒绝 | 高     |
 
-### 8.5 test_construction.rs
+### 6.5 test_construction.rs
 
 | 测试函数                      | 测试内容                                                                             | 优先级 |
 | ----------------------------- | ------------------------------------------------------------------------------------ | ------ |
@@ -460,7 +446,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_from_fixed_array`       | 从固定数组构造                                                                       | 中     |
 | `test_from_shape_vec_f_order_mapping` | F-order 逻辑元素顺序与线性输入映射正确                                        | 高     |
 
-### 8.6 test_reduction.rs
+### 6.6 test_reduction.rs
 
 | 测试函数                    | 测试内容                      | 优先级 |
 | --------------------------- | ----------------------------- | ------ |
@@ -471,7 +457,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_sum_nan`              | sum 含 NaN 结果为 NaN         | 中     |
 | `test_integer_sum_overflow` | 整数 sum 溢出视为不可恢复错误 | 中     |
 
-### 8.7 test_iterator.rs
+### 6.7 test_iterator.rs
 
 | 测试函数                           | 测试内容                               | 优先级 |
 | ---------------------------------- | -------------------------------------- | ------ |
@@ -480,7 +466,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_axis_iter_ix0_runtime_error` | 0D 张量上的 `axis_iter` 返回可恢复错误 | 高     |
 | `test_indexed_iter`                | 按索引遍历返回 F-order 逻辑索引        | 中     |
 
-### 8.8 test_matrix.rs
+### 6.8 test_matrix.rs
 
 | 测试函数                  | 测试内容                  | 优先级 |
 | ------------------------- | ------------------------- | ------ |
@@ -491,7 +477,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_i32_dot_overflow_panics` | `i32` 内积溢出触发 panic | 高 |
 | `test_i64_dot_overflow_panics` | `i64` 内积溢出触发 panic | 高 |
 
-### 8.9 test_set.rs
+### 6.9 test_set.rs
 
 | 测试函数                        | 测试内容                                          | 优先级 |
 | ------------------------------- | ------------------------------------------------- | ------ |
@@ -518,14 +504,14 @@ fn test_unique_non_contiguous() {
 }
 ```
 
-### 8.10 test_shape.rs
+### 6.10 test_shape.rs
 
 | 测试函数                  | 测试内容 | 优先级 |
 | ------------------------- | -------- | ------ |
 | `test_transpose_2d`       | 2D 转置  | 高     |
 | `test_transpose_high_dim` | 高维转置 | 中     |
 
-### 8.11 test_conversion.rs
+### 6.11 test_conversion.rs
 
 | 测试函数                                 | 测试内容                                                    | 优先级 |
 | ---------------------------------------- | ----------------------------------------------------------- | ------ |
@@ -537,7 +523,7 @@ fn test_unique_non_contiguous() {
 | `test_bool_not_participating_in_cast`    | `bool` 不参与逐元素类型转换，相关入口在类型层或运行时被拒绝 | 高     |
 | `test_cast_nan_to_int`                   | `cast()` 对 NaN→整数返回 `TypeConversion` 错误              | 中     |
 
-### 8.12 test_utility.rs
+### 6.12 test_utility.rs
 
 | 测试函数                   | 测试内容                | 优先级 |
 | -------------------------- | ----------------------- | ------ |
@@ -548,7 +534,7 @@ fn test_unique_non_contiguous() {
 | `test_clip_invalid_parameters` | `min > max`、NaN 边界等非法参数返回错误 | 高 |
 | `test_fill_rejects_readonly_or_broadcast` | 只读视图或广播视图上的 fill 被拒绝 | 高 |
 
-### 8.13 test_output.rs
+### 6.13 test_output.rs
 
 | 测试函数                       | 测试内容                          | 优先级 |
 | ------------------------------ | --------------------------------- | ------ |
@@ -558,7 +544,7 @@ fn test_unique_non_contiguous() {
 | `test_output_complex`          | 复数格式化输出                    | 中     |
 | `test_scalar_vs_zero_dim_formatting` | 标量值与零维张量输出语义区分清晰 | 中 |
 
-### 8.14 test_ffi.rs
+### 6.14 test_ffi.rs
 
 | 测试函数                                 | 测试内容                                         | 优先级 |
 | ---------------------------------------- | ------------------------------------------------ | ------ |
@@ -572,7 +558,7 @@ fn test_unique_non_contiguous() {
 | `test_try_offset_of`                     | try_offset_of 正确计算                           | 高     |
 | `test_export_alignment_preconditions`    | 导出描述符仅在满足对齐前提时声明可供上游直接消费 | 高     |
 
-### 8.15 test_workspace.rs
+### 6.15 test_workspace.rs
 
 | 测试函数                               | 测试内容                                                                   | 优先级 |
 | -------------------------------------- | -------------------------------------------------------------------------- | ------ |
@@ -584,7 +570,7 @@ fn test_unique_non_contiguous() {
 | `test_workspace_error_boundary_mapping` | workspace 公开入口返回 `XenonError::Workspace { operation, category, ... }`，验证结构化字段正确性 | 中 |
 | `test_workspace_not_send_not_sync`     | `Workspace` / `SplitBorrowMut` 的 `!Send + !Sync` 编译期验证               | 高     |
 
-### 8.16 test_parallel.rs
+### 6.16 test_parallel.rs
 
 | 测试函数                                    | 测试内容                                                                                    | 优先级 |
 | ------------------------------------------- | ------------------------------------------------------------------------------------------- | ------ |
@@ -594,7 +580,7 @@ fn test_unique_non_contiguous() {
 | `test_parallel_read`                        | 多线程并发只读访问安全（参见 `25-safety.md §5`）                                            | 高     |
 | `test_nested_parallel_falls_back_to_serial` | 嵌套并行检测后自动回退串行                                                                  | 中     |
 
-### 8.17 test_simd.rs
+### 6.17 test_simd.rs
 
 | 测试函数                    | 测试内容                                                                    | 优先级 |
 | --------------------------- | --------------------------------------------------------------------------- | ------ |
@@ -604,7 +590,7 @@ fn test_unique_non_contiguous() {
 | `test_simd_fallback_small`  | 小数组 SIMD 回退到标量                                                      | 中     |
 | `test_simd_complex_path`    | 验证 `Complex<f32>` / `Complex<f64>` SIMD kernel 与标量路径在文档容差内一致 | 中     |
 
-### 8.18 compile_fail_tests.rs
+### 6.18 compile_fail_tests.rs
 
 | 测试函数                               | 测试内容                                                        | 优先级 |
 | -------------------------------------- | --------------------------------------------------------------- | ------ |
@@ -617,7 +603,7 @@ fn test_unique_non_contiguous() {
 | `ui_bool_unique_rejected`              | `bool` 不参与 unique 操作                                        | 高     |
 | `ui_bool_arithmetic_rejected`          | `bool` 不参与四则运算                                            | 高     |
 
-### 8.19 property_tests.rs
+### 6.19 property_tests.rs
 
 | 测试函数                    | 测试内容                               | 优先级 |
 | --------------------------- | -------------------------------------- | ------ |
@@ -626,7 +612,7 @@ fn test_unique_non_contiguous() {
 | `prop_unique_len_bound`     | `unique(a).len()` 不超过 `a.len()`     | 中     |
 | `prop_broadcast_shape_rule` | 广播结果形状遵循 NumPy 规则            | 高     |
 
-### 8.20 test_error.rs
+### 6.20 test_error.rs
 
 | 测试函数                      | 测试内容                                                                                                     | 优先级 |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------ | ------ |
@@ -647,9 +633,9 @@ panic 诊断信息测试：验证 panic message 包含 `需求说明书 §27` �
 
 ---
 
-### 8.21 边界测试场景
+### 6.21 边界测试场景
 
-#### 8.21.1 边界覆盖（参照 `需求说明书 §28.4`）
+#### 6.21.1 边界覆盖（参照 `需求说明书 §28.4`）
 
 | 边界类别            | 测试场景                                        | 覆盖的操作                       |
 | ------------------- | ----------------------------------------------- | -------------------------------- |
@@ -673,7 +659,7 @@ panic 诊断信息测试：验证 panic message 包含 `需求说明书 §27` �
 - 高维场景除 `Ix4`~`Ix6` 外，还须覆盖 `IxDyn` 动态维度：rank 0（标量）、1、2，直至 12 的代表性张量，满足 `需求说明书 §28.4` 对“高 rank 的动态维度张量”的覆盖要求。
 - `IxDyn` 测试须验证与固定维度 `Ix1`~`Ix6` 的 shape/dimension 转换、广播、动态索引与迭代行为；rank 12 为测试采样上限，不是 API 或实现上限。`IxDyn` 理论上支持任意 rank。
 
-#### 8.21.2 边界测试示例
+#### 6.21.2 边界测试示例
 
 ```rust,ignore
 #[test]
@@ -767,9 +753,9 @@ fn test_ixdyn_high_rank_scenarios() {
 
 ---
 
-### 8.22 数值精度规范
+### 6.22 数值精度规范
 
-#### 8.22.1 IEEE 754 精度要求
+#### 6.22.1 IEEE 754 精度要求
 
 | 比较层级                   | 适用范围                                                                    | 默认比较规则                                                                                                           | 备注                                               |
 | -------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
@@ -779,7 +765,7 @@ fn test_ixdyn_high_rank_scenarios() {
 
 对 `Complex<f32>` / `Complex<f64>`，Tier 1 默认规则仍为**分量级精确判定**：分别比较实部与虚部，各自必须满足 bitwise 等价或严格 `ULP == 0`；不得把复数整体模长误差替代为分量误差。只有进入 Tier 2 或 Tier 3 时，才可在组件级使用已文档化容差。
 
-#### 8.22.2 浮点比较方式
+#### 6.22.2 浮点比较方式
 
 以 `需求说明书 §28.3` 为规范基线，`00-coding.md §7.4` 为实现/测试辅助参考：Tier 1 使用同执行路径精确比较，Tier 2 仅用于标量/SIMD、串行/并行等跨执行路径比较，Tier 3 仅用于数学函数专用比较。
 
@@ -787,9 +773,9 @@ fn test_ixdyn_high_rank_scenarios() {
 
 ---
 
-### 8.23 并行与 SIMD 测试
+### 6.23 并行与 SIMD 测试
 
-#### 8.23.1 并行无数据竞争
+#### 6.23.1 并行无数据竞争
 
 线程安全测试方案（参见 `25-safety.md §8`）：
 
@@ -799,7 +785,7 @@ fn test_ixdyn_high_rank_scenarios() {
 | ArcTensor       | 多线程共享 ArcTensor 并发读取                            |
 | 类型系统验证    | 通过 `Send`/`Sync` 约束和并发只读/独占写测试验证线程安全 |
 
-#### 8.23.2 并行归约一致性
+#### 6.23.2 并行归约一致性
 
 ```rust,ignore
 #[test]
@@ -833,7 +819,7 @@ fn test_sum_parallel_feature_consistency() {
 }
 ```
 
-#### 8.23.3 SIMD 结果一致性
+#### 6.23.3 SIMD 结果一致性
 
 ```rust,ignore
 #[test]
@@ -864,7 +850,7 @@ fn test_simd_add_consistency() {
 }
 ```
 
-#### 8.23.4 确定性专项测试
+#### 6.23.4 确定性专项测试
 
 确定性专项测试：同输入、同配置、同执行路径重复执行 N 次，验证结果逐元素一致。适用于浮点和复数类型的逐元素运算、归约和内积。
 
@@ -877,9 +863,9 @@ fn test_simd_add_consistency() {
 
 ---
 
-### 8.24 属性测试不变量设计
+### 6.24 属性测试不变量设计
 
-#### 8.24.1 不变量清单
+#### 6.24.1 不变量清单
 
 | 不变量             | 测试方法                                                                                          | 优先级 |
 | ------------------ | ------------------------------------------------------------------------------------------------- | ------ |
@@ -890,7 +876,7 @@ fn test_simd_add_consistency() {
 | `unique` 不含重复  | 对非 `NaN` 元素，结果中不得重复；`NaN` 按 IEEE 754 自反不相等语义逐个保留                         | 中     |
 | 广播形状一致性     | 广播结果形状遵循 NumPy 规则：相等取该值，一方为 1 取另一方，否则报错（参见 `15-broadcast.md §5`） | 高     |
 
-#### 8.24.2 属性测试框架
+#### 6.24.2 属性测试框架
 
 使用受控参数化数据生成与确定性循环样本进行覆盖；不引入额外属性测试框架依赖。以下示例为代表性子集：
 
@@ -931,9 +917,9 @@ fn prop_add_commutative() {
 
 ---
 
-### 8.25 内部实现补充
+### 6.25 内部实现补充
 
-#### 8.25.1 assert_tensor_close helper 实现细节
+#### 6.25.1 assert_tensor_close helper 实现细节
 
 > 默认比较 helper 应基于已冻结的元素转换接口实现（如实数路径上的 `CastTo<f64>`），避免依赖未在 `03-element.md` 中正式冻结的附加转换约定；复数路径须拆分为独立 helper，并按实部/虚部分量比较。
 
@@ -956,7 +942,7 @@ fn prop_add_commutative() {
 // 5. error message includes: msg, index, actual, expected, and comparison contract
 ```
 
-#### 8.25.2 参数化策略设计
+#### 6.25.2 参数化策略设计
 
 | 不变量类型       | 参数化策略                  | 说明                            |
 | ---------------- | --------------------------- | ------------------------------- |
@@ -966,7 +952,7 @@ fn prop_add_commutative() {
 | 整数数据         | 固定边界样本集              | 含负数、零与边界值              |
 | 1D 向量          | `for len in 1..256`         | 含边界长度                      |
 
-#### 8.25.3 测试数据生成策略
+#### 6.25.3 测试数据生成策略
 
 | 数据类型   | 生成方法                                                    | 用途                     |
 | ---------- | ----------------------------------------------------------- | ------------------------ |
@@ -978,9 +964,9 @@ fn prop_add_commutative() {
 
 ---
 
-### 8.26 Good/Bad 对比示例
+### 6.26 Good/Bad 对比示例
 
-#### 8.26.1 Good — 正确的集成测试模式
+#### 6.26.1 Good — 正确的集成测试模式
 
 ```rust,ignore
 // Good: Use the default exact helper for same-path base arithmetic
@@ -1014,7 +1000,7 @@ fn test_transpose_shapes() {
 }
 ```
 
-#### 8.26.2 Bad — 错误的集成测试模式
+#### 6.26.2 Bad — 错误的集成测试模式
 
 ```rust,ignore
 // Bad: Applying a blanket tolerance to a same-path base arithmetic test
@@ -1045,62 +1031,15 @@ fn test_bad_magic() {
 
 ---
 
-## 9. 模块交互设计
+## 7. 实现任务拆分
 
-### 9.1 Test files到被测模块映射
-
-| Test files             | 被测模块            | 对应设计文档                    |
-| ---------------------- | ------------------- | ------------------------------- |
-| `test_tensor.rs`       | `tensor`, `storage` | `07-tensor.md`, `05-storage.md` |
-| `test_math.rs`         | `math`              | `11-math.md`                    |
-| `test_broadcast.rs`    | `broadcast`         | `15-broadcast.md`               |
-| `test_index.rs`        | `index`             | `17-indexing.md`                |
-| `test_construction.rs` | `construct`         | `18-construction.md`            |
-| `test_reduction.rs`    | `reduction`         | `13-reduction.md`               |
-| `test_iterator.rs`     | `iter`              | `10-iterator.md`                |
-| `test_matrix.rs`       | `matrix`            | `12-matrix.md`                  |
-| `test_set.rs`          | `set`               | `14-set.md`                     |
-| `test_shape.rs`        | `shape`             | `16-shape.md`                   |
-| `test_conversion.rs`   | `convert`           | `21-type.md`                    |
-| `test_workspace.rs`    | `workspace`         | `24-workspace.md`               |
-| `test_utility.rs`      | `utility`           | `20-utility.md`                 |
-| `test_output.rs`       | `format`            | `22-output.md`                  |
-| `test_ffi.rs`          | `ffi`, `workspace`  | `23-ffi.md`, `24-workspace.md`  |
-| `test_parallel.rs`     | `parallel`          | `09-parallel.md`                |
-| `test_simd.rs`         | `simd`              | `08-simd.md`                    |
-| `test_error.rs`        | `error`             | `26-error.md`                   |
-
-> **说明**：workspace 错误直接构造 `XenonError::Workspace { operation, category, ... }`，集成测试通过公共 API 验证结构化字段；`test_workspace.rs` 关注 workspace 语义与公开诊断文本，`test_error.rs` 关注统一公开错误边界。
-
-### 9.1a 基础模块补充覆盖映射
-
-| 模块        | 覆盖方式                                  | 说明 |
-| ----------- | ----------------------------------------- | ---- |
-| `dimension` | doctest + compile-fail + integration tests | doctest 覆盖维度构造与示例；compile-fail 覆盖非法维度类型；集成测试覆盖 shape、broadcast、index、IxDyn 行为 |
-| `element`   | doctest + compile-fail + integration tests | doctest 覆盖 trait/公开类型边界示例；compile-fail 覆盖非法元素类型与 trait bound；集成测试覆盖合法元素语义 |
-| `complex`   | doctest + integration tests                | doctest 覆盖公开用法示例；集成测试覆盖复数逐元素运算、归约、内积、格式化与 FFI 布局 |
-| `layout`    | doctest + integration tests                | doctest 覆盖布局/连续性示例；集成测试覆盖 F-order、非连续视图、transpose、to_contiguous 与导出前提 |
-
-### 9.2 数据流
-
-```
-Test files
-    │
-    ├── call crate public APIs (Tensor::zeros, +, sum, transpose(), ...)
-    │       │
-    │       └── internal path: storage → tensor → overload → simd/parallel
-    │
-    ├── use common/ utilities
-│       ├── use Tier 1 exact helpers by default; opt into Tier 2/Tier 3 helpers only when documented
-    │       └── generators produce test data
-    │
-    └── parameterized data generation
-            └── enumerate standard inputs → verify invariants
-```
-
----
-
-## 附录：详细任务清单
+| Wave   | 目标         | 说明                                                                                                                                        |
+| ------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Wave 1 | 基础设施     | 建立 `tests/common/`、compile-fail harness 与共享数据生成工具                                                                               |
+| Wave 2 | 核心功能测试 | 覆盖 tensor / math / broadcast / index / construction / reduction / iterator / matrix / set / shape / conversion / utility / output / error |
+| Wave 3 | 特化测试     | 覆盖 FFI、parallel、SIMD 与 `std` 环境测试矩阵                                                                                              |
+| Wave 4 | 属性测试     | 固化 transpose、自反性、交换律、broadcast 形状规则等不变量                                                                                  |
+| Wave 5 | CI 集成      | 收敛默认、`parallel`、`simd`、`all-features` 的仓库测试矩阵                                                                                 |
 
 ### Wave 1: 基础设施
 
@@ -1206,7 +1145,7 @@ Test files
 
 - [ ] **T10**: 实现 `tests/test_error.rs`
   - 文件: `tests/test_error.rs`
-- 内容: `XenonError` 边界与 display 输出验证（其中 workspace 相关公开边界断言 `XenonError::Workspace` 结构化字段）
+  - 内容: `XenonError` 边界与 display 输出验证（其中 workspace 相关公开边界断言 `XenonError::Workspace` 结构化字段）
   - 测试: `cargo test --test test_error`
   - 前置: T1
   - 预计: 10 min
@@ -1259,29 +1198,68 @@ Test files
   - 前置: T1-T15
   - 预计: 10 min
 
-### 并行执行分组图
+---
+
+## 9. 模块交互设计
+
+### 9.1 Test files到被测模块映射
+
+| Test files             | 被测模块            | 对应设计文档                    |
+| ---------------------- | ------------------- | ------------------------------- |
+| `test_tensor.rs`       | `tensor`, `storage` | `07-tensor.md`, `05-storage.md` |
+| `test_math.rs`         | `math`              | `11-math.md`                    |
+| `test_broadcast.rs`    | `broadcast`         | `15-broadcast.md`               |
+| `test_index.rs`        | `index`             | `17-indexing.md`                |
+| `test_construction.rs` | `construct`         | `18-construction.md`            |
+| `test_reduction.rs`    | `reduction`         | `13-reduction.md`               |
+| `test_iterator.rs`     | `iter`              | `10-iterator.md`                |
+| `test_matrix.rs`       | `matrix`            | `12-matrix.md`                  |
+| `test_set.rs`          | `set`               | `14-set.md`                     |
+| `test_shape.rs`        | `shape`             | `16-shape.md`                   |
+| `test_conversion.rs`   | `convert`           | `21-type.md`                    |
+| `test_workspace.rs`    | `workspace`         | `24-workspace.md`               |
+| `test_utility.rs`      | `utility`           | `20-utility.md`                 |
+| `test_output.rs`       | `format`            | `22-output.md`                  |
+| `test_ffi.rs`          | `ffi`, `workspace`  | `23-ffi.md`, `24-workspace.md`  |
+| `test_parallel.rs`     | `parallel`          | `09-parallel.md`                |
+| `test_simd.rs`         | `simd`              | `08-simd.md`                    |
+| `test_error.rs`        | `error`             | `26-error.md`                   |
+
+> **说明**：workspace 错误直接构造 `XenonError::Workspace { operation, category, ... }`，集成测试通过公共 API 验证结构化字段；`test_workspace.rs` 关注 workspace 语义与公开诊断文本，`test_error.rs` 关注统一公开错误边界。
+
+### 9.1a 基础模块补充覆盖映射
+
+| 模块        | 覆盖方式                                  | 说明 |
+| ----------- | ----------------------------------------- | ---- |
+| `dimension` | doctest + compile-fail + integration tests | doctest 覆盖维度构造与示例；compile-fail 覆盖非法维度类型；集成测试覆盖 shape、broadcast、index、IxDyn 行为 |
+| `element`   | doctest + compile-fail + integration tests | doctest 覆盖 trait/公开类型边界示例；compile-fail 覆盖非法元素类型与 trait bound；集成测试覆盖合法元素语义 |
+| `complex`   | doctest + integration tests                | doctest 覆盖公开用法示例；集成测试覆盖复数逐元素运算、归约、内积、格式化与 FFI 布局 |
+| `layout`    | doctest + integration tests                | doctest 覆盖布局/连续性示例；集成测试覆盖 F-order、非连续视图、transpose、to_contiguous 与导出前提 |
+
+### 9.2 数据流
 
 ```
-Wave 1: [T1]
-           │
-Wave 2: [T2] [T3] [T4] [T5] [T6] [T7] [T7a] [T7b] [T7c] [T8] [T9] [T9a] [T9b] [T10]
-           │    │              │                           │    │
-           └────┴──────────────┴───────────────────────────┴────┘
-                                   │
-Wave 3:                   [T11] [T12] [T13] [T14]
-                                   │
-Wave 4:                           [T15]
-                                   │
-Wave 5:                           [T16]
+Test files
+    │
+    ├── call crate public APIs (Tensor::zeros, +, sum, transpose(), ...)
+    │       │
+    │       └── internal path: storage → tensor → overload → simd/parallel
+    │
+    ├── use common/ utilities
+│       ├── use Tier 1 exact helpers by default; opt into Tier 2/Tier 3 helpers only when documented
+    │       └── generators produce test data
+    │
+    └── parameterized data generation
+            └── enumerate standard inputs → verify invariants
 ```
 
 ---
 
-## 附录：CI 测试矩阵与专项约束
+## 8. 测试计划
 
-> 以下 CI 矩阵和 feature 组合内容已合并到正文中，附录保留作为历史参考。
+> 以下 CI 矩阵和 feature 组合内容已合并到正文中，本节保留作为历史参考。
 
-### A.1 测试分类表
+### 8.1 测试分类表
 
 | 类型     | 位置                     | 目的                                  |
 | -------- | ------------------------ | ------------------------------------- |
@@ -1290,7 +1268,7 @@ Wave 5:                           [T16]
 | 边界测试 | 集成测试中标注           | 空张量、单元素、NaN/Inf、非连续、高维 |
 | 属性测试 | `tests/property/`        | 参数化输入验证不变量                  |
 
-### A.2 CI 测试矩阵
+### 8.2 CI 测试矩阵
 
 ```yaml
 # .github/workflows/test.yml

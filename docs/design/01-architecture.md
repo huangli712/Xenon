@@ -241,7 +241,6 @@ xenon/
 │   │
 │   ├── workspace/             # Temporary workspace
 │       ├── mod.rs             # Module root and re-exports
-│       ├── error.rs           # WorkspaceErrorCategory definitions
 │       ├── workspace.rs       # Workspace struct, constants, construction, destruction
 │       ├── borrow.rs          # WorkspaceBorrow, WorkspaceBorrowMut guards
 │       ├── split.rs           # SplitBorrowMut guard
