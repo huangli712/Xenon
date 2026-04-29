@@ -119,7 +119,7 @@ parallel feature implementation paths/
 
 ### 5.1 Send/Sync 实现规则表
 
-自动推导结果（以 `23-ffi.md` 中“线程相关性质以字段与 Rust auto-trait 推导结果为准”的模型为前提）：
+自动推导结果（以 `23-ffi.md` 中 `TensorExport`/`TensorExportMut` 的 `Send`/`Sync` 由 Rust auto-trait 自动推导的模型为前提，参见 §5.4）：
 
 | 存储模式             | Send | Sync | 条件                             | 理由                                               |
 | -------------------- | :--: | :--: | -------------------------------- | -------------------------------------------------- |
@@ -128,7 +128,7 @@ parallel feature implementation paths/
 | `ViewMutRepr<'a, A>` |  ✅  |  ✗   | `A: Send`                        | 独占可写视图可转移但不可共享                       |
 | `ArcRepr<A>`         |  ✅  |  ✅  | `A: Send + Sync`                 | Arc 原子计数，读共享安全；写路径仅能在内部唯一化 / 必要时复制后恢复可写性 |
 
-**补充说明：** `ViewRepr` 仅持有共享引用（`&A`），跨线程传递共享引用只要求 `A: Sync`（允许多线程共享读取），不要求 `A: Send`（所有权转移）。这是 Rust 标准库 `&T: Send + Sync where T: Sync` 的直接推论。各存储模式的完整 API 定义参见 `05-storage.md §5`；对应的语义访问分类（`ReadOnly`/`SharedReadOnly`/`Writable`/`Owned`）参见 `01-architecture.md` 中 `AccessSemantics` 枚举定义。
+**补充说明：** `ViewRepr` 仅持有共享引用（`&A`），跨线程传递共享引用只要求 `A: Sync`（允许多线程共享读取），不要求 `A: Send`（所有权转移）。这是 Rust 标准库 `&T: Send + Sync where T: Sync` 的直接推论。各存储模式的完整 API 定义参见 `05-storage.md §5`；对应的语义访问分类（`ReadOnly`/`SharedReadOnly`/`Writable`/`Owned`）参见 `05-storage.md §5.1` 中 `AccessSemantics` 枚举定义。
 
 ### 5.2 TensorBase<S, D> 自动推导规则
 

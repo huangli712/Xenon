@@ -258,7 +258,7 @@ pub fn assert_tensor_exact_complex<A, D>(
 ///
 /// Use only for comparisons such as scalar vs SIMD or serial vs parallel where
 /// `需求说明书 §28.3` allows known rounding differences. Use `需求说明书 §28.3`
-/// as the normative baseline, with `00-coding.md §7.4` as an implementation/test
+/// as the normative baseline, with `00-coding.md §8.4` as an implementation/test
 /// auxiliary reference.
 pub fn assert_tensor_close_real_cross_path<A, D>(
     actual: &TensorBase<impl Storage<Elem = A>, D>,
@@ -279,7 +279,7 @@ pub fn assert_tensor_close_real_cross_path<A, D>(
             .expect("cross-path helper requires CastTo::<f64>::cast_to support");
         assert!(
             ulp_eq_f64_with_tolerance(a_f, e_f, tolerance),
-            "{}: element {} differs: actual={}, expected={}, comparison=cross-path tolerance implemented via 00-coding.md §7.4",
+            "{}: element {} differs: actual={}, expected={}, comparison=cross-path tolerance implemented via 00-coding.md §8.4",
             msg,
             idx,
             a_f,
@@ -825,9 +825,9 @@ fn test_ixdyn_high_rank_scenarios() {
 
 #### 6.2.2 浮点比较方式
 
-以 `需求说明书 §28.3` 为规范基线，`00-coding.md §7.4` 为实现/测试辅助参考：Tier 1 使用同执行路径精确比较，Tier 2 仅用于标量/SIMD、串行/并行等跨执行路径比较，Tier 3 仅用于数学函数专用比较。
+以 `需求说明书 §28.3` 为规范基线，`00-coding.md §8.4` 为实现/测试辅助参考：Tier 1 使用同执行路径精确比较，Tier 2 仅用于标量/SIMD、串行/并行等跨执行路径比较，Tier 3 仅用于数学函数专用比较。
 
-本文档不再单独定义 `max_ulp`、`epsilon`、相对误差公式或每函数容差表；`tests/common/assertions.rs` 中出现的比较 helper 仅作为对统一规则的实现承载，具体比较契约、容差来源与注释口径必须回引 `需求说明书 §28.3`，并可辅引 `00-coding.md §7.4` 作为实现/测试辅助参考。`需求说明书 §28.5` 约束的 `usize` 与其他无符号整数编译期边界不适用浮点容差规则。
+本文档不再单独定义 `max_ulp`、`epsilon`、相对误差公式或每函数容差表；`tests/common/assertions.rs` 中出现的比较 helper 仅作为对统一规则的实现承载，具体比较契约、容差来源与注释口径必须回引 `需求说明书 §28.3`，并可辅引 `00-coding.md §8.4` 作为实现/测试辅助参考。`需求说明书 §28.5` 约束的 `usize` 与其他无符号整数编译期边界不适用浮点容差规则。
 
 ---
 
@@ -917,7 +917,7 @@ fn test_simd_add_consistency() {
 | `test_determinism_add_same_path`  | 同平台/同配置/同执行路径下重复执行 add，验证结果逐元素一致                               | 高     |
 | `test_determinism_sum_same_path`  | 同平台/同配置/同执行路径下重复执行 sum，验证结果逐元素一致                               | 高     |
 | `test_determinism_dot_same_path`  | 同平台/同配置/同执行路径下重复执行 dot，验证结果逐元素一致                               | 高     |
-| `test_determinism_across_dispatch` | 验证 serial / SIMD / parallel 路径结果在文档化容差内保持一致（以 `需求说明书 §28.3` 为规范基线，`00-coding.md §7.4` 为实现/测试辅助参考） | 高     |
+| `test_determinism_across_dispatch` | 验证 serial / SIMD / parallel 路径结果在文档化容差内保持一致（以 `需求说明书 §28.3` 为规范基线，`00-coding.md §8.4` 为实现/测试辅助参考） | 高     |
 
 ---
 
