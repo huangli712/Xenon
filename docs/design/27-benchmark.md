@@ -85,9 +85,9 @@ benches/
 
 ### 4.2 类型级依赖
 
-| 来源模块    | 使用的 API（类型/trait/函数）                                                                  |
+| 来源模块    | 使用的 API（类型/trait/函数）                                                                 |
 | ----------- | --------------------------------------------------------------------------------------------- |
-| `tensor`    | `Tensor<A, D>`, `TensorView`, `TensorViewMut`, `.shape()`（参见 `07-tensor.md §5`）             |
+| `tensor`    | `Tensor<A, D>`, `TensorView`, `TensorViewMut`, `.shape()`（参见 `07-tensor.md §5`）           |
 | `dimension` | `Ix1`, `Ix2`, `Ix3`, `IxDyn`, `Dimension`（参见 `02-dimension.md §5`）                        |
 | `element`   | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element.md §5`）                |
 | `math`      | `add`, `sub`, `mul`, `div`, `sin`, `exp`, `abs`（参见 `11-math.md §5`）                       |
@@ -96,7 +96,7 @@ benches/
 | `shape`     | `transpose`（参见 `16-shape.md §5`）                                                          |
 | `set`       | `unique`（参见 `14-set.md §5`）                                                               |
 | `construct` | `zeros`, `ones`, `from_shape_vec`（参见 `18-construction.md §5`）                             |
-| `broadcast` | `broadcast_shape`（参见 `15-broadcast.md §5`）、广播视图构造                                    |
+| `broadcast` | `broadcast_shape`（参见 `15-broadcast.md §5`）、广播视图构造                                  |
 
 ### 4.3 依赖合法性
 
@@ -300,7 +300,7 @@ Benchmark categories
 | `broadcast_with`           | 双张量广播协作          | S/M/L | f64            | F-contiguous   | broadcast_with 协作模式（参见 `15-broadcast.md §5`） |
 | `transpose_2d`             | 2D 转置（零拷贝）       | S/M/L | f64            | F-contiguous   | 转置视图创建                                    |
 | `simd_add_compare`         | `a + b` (SIMD vs 标量)  | M     | f32/f64        | F-contiguous   | SIMD 加速比（参见 `08-simd.md §12`）            |
-| `simd_sum_compare`         | sum (SIMD vs 标量)      | M     | i32/f32/f64     | F-contiguous   | SIMD sum 对比；i32 覆盖已验证启用的 widening 路径（参见 `08-simd.md §5.6`），f32/f64 覆盖已实现路径  |
+| `simd_sum_compare`         | sum (SIMD vs 标量)      | M     | i32/f32/f64    | F-contiguous   | SIMD sum 对比；i32 覆盖已验证启用的 widening 路径（参见 `08-simd.md §5.6`），f32/f64 覆盖已实现路径  |
 | `simd_dot_compare`         | dot (SIMD vs 标量)      | M     | f32/f64        | F-contiguous   | SIMD dot kernel 已在 `08-simd.md` 中设计        |
 | `par_sum_compare`          | sum (并行 vs 串行)      | L     | i64            | F-contiguous   | 并行加速比（参见 `09-parallel.md §12`）         |
 | `par_add_compare`          | `a + b` (并行 vs 串行)  | L     | f64            | F-contiguous   | 并行逐元素加速                                  |
