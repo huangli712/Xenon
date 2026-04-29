@@ -1200,61 +1200,6 @@ fn test_bad_magic() {
 
 ---
 
-## 9. 模块交互设计
-
-### 9.1 Test files到被测模块映射
-
-| Test files             | 被测模块            | 对应设计文档                    |
-| ---------------------- | ------------------- | ------------------------------- |
-| `test_tensor.rs`       | `tensor`, `storage` | `07-tensor.md`, `05-storage.md` |
-| `test_math.rs`         | `math`              | `11-math.md`                    |
-| `test_broadcast.rs`    | `broadcast`         | `15-broadcast.md`               |
-| `test_index.rs`        | `index`             | `17-indexing.md`                |
-| `test_construction.rs` | `construct`         | `18-construction.md`            |
-| `test_reduction.rs`    | `reduction`         | `13-reduction.md`               |
-| `test_iterator.rs`     | `iter`              | `10-iterator.md`                |
-| `test_matrix.rs`       | `matrix`            | `12-matrix.md`                  |
-| `test_set.rs`          | `set`               | `14-set.md`                     |
-| `test_shape.rs`        | `shape`             | `16-shape.md`                   |
-| `test_conversion.rs`   | `convert`           | `21-type.md`                    |
-| `test_workspace.rs`    | `workspace`         | `24-workspace.md`               |
-| `test_utility.rs`      | `utility`           | `20-utility.md`                 |
-| `test_output.rs`       | `format`            | `22-output.md`                  |
-| `test_ffi.rs`          | `ffi`, `workspace`  | `23-ffi.md`, `24-workspace.md`  |
-| `test_parallel.rs`     | `parallel`          | `09-parallel.md`                |
-| `test_simd.rs`         | `simd`              | `08-simd.md`                    |
-| `test_error.rs`        | `error`             | `26-error.md`                   |
-
-> **说明**：workspace 错误直接构造 `XenonError::Workspace { operation, category, ... }`，集成测试通过公共 API 验证结构化字段；`test_workspace.rs` 关注 workspace 语义与公开诊断文本，`test_error.rs` 关注统一公开错误边界。
-
-### 9.1a 基础模块补充覆盖映射
-
-| 模块        | 覆盖方式                                  | 说明 |
-| ----------- | ----------------------------------------- | ---- |
-| `dimension` | doctest + compile-fail + integration tests | doctest 覆盖维度构造与示例；compile-fail 覆盖非法维度类型；集成测试覆盖 shape、broadcast、index、IxDyn 行为 |
-| `element`   | doctest + compile-fail + integration tests | doctest 覆盖 trait/公开类型边界示例；compile-fail 覆盖非法元素类型与 trait bound；集成测试覆盖合法元素语义 |
-| `complex`   | doctest + integration tests                | doctest 覆盖公开用法示例；集成测试覆盖复数逐元素运算、归约、内积、格式化与 FFI 布局 |
-| `layout`    | doctest + integration tests                | doctest 覆盖布局/连续性示例；集成测试覆盖 F-order、非连续视图、transpose、to_contiguous 与导出前提 |
-
-### 9.2 数据流
-
-```
-Test files
-    │
-    ├── call crate public APIs (Tensor::zeros, +, sum, transpose(), ...)
-    │       │
-    │       └── internal path: storage → tensor → overload → simd/parallel
-    │
-    ├── use common/ utilities
-│       ├── use Tier 1 exact helpers by default; opt into Tier 2/Tier 3 helpers only when documented
-    │       └── generators produce test data
-    │
-    └── parameterized data generation
-            └── enumerate standard inputs → verify invariants
-```
-
----
-
 ## 8. 测试计划
 
 > 以下 CI 矩阵和 feature 组合内容已合并到正文中，本节保留作为历史参考。
@@ -1288,7 +1233,7 @@ test:
       run: cargo test --doc ${{ matrix.features }}
 ```
 
-### A.3 Feature gate / 配置测试
+### 8.3 Feature gate / 配置测试
 
 | 配置       | 验证点                                                  |
 | ---------- | ------------------------------------------------------- |
@@ -1297,7 +1242,7 @@ test:
 | 启用 SIMD  | `test_simd.rs` 与相关回退断言在 `simd` 下通过           |
 | 全 feature | 测试矩阵组合启用时无冲突、无遗漏                        |
 
-### A.4 类型边界 / 编译期测试
+### 8.4 类型边界 / 编译期测试
 
 | 场景                      | 测试方式                                  |
 | ------------------------- | ----------------------------------------- |
@@ -1305,7 +1250,7 @@ test:
 | 非法元素类型与 trait 边界 | 编译期失败测试或等价约束验证              |
 | feature gate 导出边界     | `cargo test` 配置矩阵与条件编译测试       |
 
-### A.5 `需求说明书 §28.5` 专项约束测试
+### 8.5 `需求说明书 §28.5` 专项约束测试
 
 | 约束                                                      | 验证方式                        |
 | --------------------------------------------------------- | ------------------------------- |
@@ -1355,7 +1300,62 @@ fn compile_fail_harness() {
 
 ---
 
-## 12. 平台与工程约束
+## 9. 模块交互设计
+
+### 9.1 Test files到被测模块映射
+
+| Test files             | 被测模块            | 对应设计文档                    |
+| ---------------------- | ------------------- | ------------------------------- |
+| `test_tensor.rs`       | `tensor`, `storage` | `07-tensor.md`, `05-storage.md` |
+| `test_math.rs`         | `math`              | `11-math.md`                    |
+| `test_broadcast.rs`    | `broadcast`         | `15-broadcast.md`               |
+| `test_index.rs`        | `index`             | `17-indexing.md`                |
+| `test_construction.rs` | `construct`         | `18-construction.md`            |
+| `test_reduction.rs`    | `reduction`         | `13-reduction.md`               |
+| `test_iterator.rs`     | `iter`              | `10-iterator.md`                |
+| `test_matrix.rs`       | `matrix`            | `12-matrix.md`                  |
+| `test_set.rs`          | `set`               | `14-set.md`                     |
+| `test_shape.rs`        | `shape`             | `16-shape.md`                   |
+| `test_conversion.rs`   | `convert`           | `21-type.md`                    |
+| `test_workspace.rs`    | `workspace`         | `24-workspace.md`               |
+| `test_utility.rs`      | `utility`           | `20-utility.md`                 |
+| `test_output.rs`       | `format`            | `22-output.md`                  |
+| `test_ffi.rs`          | `ffi`, `workspace`  | `23-ffi.md`, `24-workspace.md`  |
+| `test_parallel.rs`     | `parallel`          | `09-parallel.md`                |
+| `test_simd.rs`         | `simd`              | `08-simd.md`                    |
+| `test_error.rs`        | `error`             | `26-error.md`                   |
+
+> **说明**：workspace 错误直接构造 `XenonError::Workspace { operation, category, ... }`，集成测试通过公共 API 验证结构化字段；`test_workspace.rs` 关注 workspace 语义与公开诊断文本，`test_error.rs` 关注统一公开错误边界。
+
+### 9.2 基础模块补充覆盖映射
+
+| 模块        | 覆盖方式                                  | 说明 |
+| ----------- | ----------------------------------------- | ---- |
+| `dimension` | doctest + compile-fail + integration tests | doctest 覆盖维度构造与示例；compile-fail 覆盖非法维度类型；集成测试覆盖 shape、broadcast、index、IxDyn 行为 |
+| `element`   | doctest + compile-fail + integration tests | doctest 覆盖 trait/公开类型边界示例；compile-fail 覆盖非法元素类型与 trait bound；集成测试覆盖合法元素语义 |
+| `complex`   | doctest + integration tests                | doctest 覆盖公开用法示例；集成测试覆盖复数逐元素运算、归约、内积、格式化与 FFI 布局 |
+| `layout`    | doctest + integration tests                | doctest 覆盖布局/连续性示例；集成测试覆盖 F-order、非连续视图、transpose、to_contiguous 与导出前提 |
+
+### 9.2 数据流
+
+```
+Test files
+    │
+    ├── call crate public APIs (Tensor::zeros, +, sum, transpose(), ...)
+    │       │
+    │       └── internal path: storage → tensor → overload → simd/parallel
+    │
+    ├── use common/ utilities
+│       ├── use Tier 1 exact helpers by default; opt into Tier 2/Tier 3 helpers only when documented
+    │       └── generators produce test data
+    │
+    └── parameterized data generation
+            └── enumerate standard inputs → verify invariants
+```
+
+---
+
+## 10. 平台与工程约束
 
 | 约束项     | 约束内容                                           |
 | ---------- | -------------------------------------------------- |
