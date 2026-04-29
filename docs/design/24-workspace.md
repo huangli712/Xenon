@@ -1099,13 +1099,13 @@ This design (zero allocation):
 
 **公开/内部边界说明：** 本文中的公开安全 API（如 `new`、`borrow`、`borrow_mut`、`split_at_mut`、`ensure_capacity`）统一返回可恢复错误，而不是把输入校验失败暴露为 panic；只有无法直接验证的 `unsafe` 初始化前提继续由调用方承担。
 
-3. `left` drop → `split_count: 3→2`，`prev=3 ≠ 1`，不重置 ✅
-4. `right_a` drop → `split_count: 2→1`，`prev=2 ≠ 1`，不重置 ✅
-5. `right_b` drop → `split_count: 1→0`，`prev=1`，重置 `borrow_state` ✅
+1. `left` drop → `split_count: 3→2`，`prev=3 ≠ 1`，不重置 ✅
+2. `right_a` drop → `split_count: 2→1`，`prev=2 ≠ 1`，不重置 ✅
+3. `right_b` drop → `split_count: 1→0`，`prev=1`，重置 `borrow_state` ✅
 
 ### 6.4 扩容安全性论证
 
-**扩容期间保证不违反已有引用安全性**：
+扩容期间保证不违反已有引用安全性：
 
 1. `ensure_capacity` 需要 `&mut self`，编译器保证无其他引用
 2. 方法内部显式检查 `borrow_state` 是否为 NONE
