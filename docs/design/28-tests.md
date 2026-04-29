@@ -75,7 +75,7 @@ tests/
 ├── test_math.rs                # Element-wise operations (arithmetic/math/comparison/logic)
 ├── test_broadcast.rs           # Broadcasting (scalar/vector/matrix broadcasting)
 ├── test_index.rs               # Indexing operations (multi-dimensional indexing/range slicing)
-├── test_construction.rs        # Constructors (zeros/ones/eye/from_shape_vec/from_shape_slice/from_scalar/from_array; `from_vec` 非规范便捷层覆盖 only（see 18-construction.md §5.1）)
+├── test_construction.rs        # Constructors (zeros/ones/eye/from_shape_vec/from_shape_slice/from_scalar/from_array/from_vec)
 ├── test_iterator.rs            # Iterators (elements/by-axis/by-index)
 ├── test_reduction.rs           # Reduction operations (sum/sum along axis)
 ├── test_matrix.rs              # Vector dot product (dot)
@@ -97,8 +97,6 @@ tests/
     └── shape_props.rs          # Shape invariants (transpose involution, etc.)
 ```
 
-按测试领域分文件，而非按源码模块：集成测试关注跨模块行为而非单个模块内部。
-
 ---
 
 ## 4. 依赖关系
@@ -117,7 +115,7 @@ tests/
 ├── crate::broadcast        # broadcast_shape
 ├── crate::shape            # transpose
 ├── crate::index            # Multi-dimensional indexing and range slicing
-├── crate::construct        # zeros, ones, eye, from_shape_vec, from_shape_slice, from_array, from_scalar (`from_vec` 非规范便捷层 only（see 18-construction.md §5.1）)
+├── crate::construct        # zeros, ones, eye, from_shape_vec, from_shape_slice, from_array, from_scalar, from_vec)
 ├── crate::set              # unique
 ├── crate::ffi              # as_ptr, as_mut_ptr, from_raw_parts
 ├── crate::workspace        # Workspace
