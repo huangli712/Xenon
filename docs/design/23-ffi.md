@@ -83,16 +83,19 @@ src/ffi/
 │   ├── crate::dimension     # Dimension trait
 │   ├── crate::element       # Element trait (for ElementType::of)
 │   ├── crate::storage       # Storage, StorageMut, owned allocator metadata
-│   └── crate::layout        # is_f_contiguous
+│   ├── crate::layout        # is_f_contiguous
+│   └── crate::error         # XenonError (export/export_mut validation, from_raw_parts errors)
 ├── blas.rs
 │   ├── crate::tensor        # TensorBase<S, D> (as_ptr via inherent method)
 │   ├── crate::storage       # Storage
 │   ├── crate::layout        # is_f_contiguous, has_zero_stride (via TensorBase method → LayoutFlags)
+│   ├── crate::error         # XenonError, FfiErrorCategory (blas_info/lda error construction)
 │   └── super::types         # BlasInfo, FfiErrorCategory
 └── offset.rs
     ├── crate::tensor        # TensorBase<S, D>
     ├── crate::dimension     # Dimension trait
-    └── crate::storage       # Storage<Elem=A>
+    ├── crate::storage       # Storage<Elem=A>
+    └── crate::error         # XenonError (try_offset_of/try_ptr_at error construction)
 ```
 
 ### 4.2 类型级依赖
@@ -103,7 +106,8 @@ src/ffi/
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`                                                                       |
 | `element`   | `Element`, `ElementType::of::<A>()`                                                                     |
 | `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, owned allocator metadata（供 `OwnedRawParts<A, D>` 导出/重建） |
-| `layout`    | `is_f_contiguous()`, `has_zero_stride()`（模块级函数定义于 `06-layout.md` §5，TensorBase 方法参见 `07-tensor.md` §5.3） |
+| `layout`    | `is_f_contiguous()`（连续性检查算法，定义于 `06-layout.md` §5.7）、`has_zero_stride()`（零步长标志位，定义于 `06-layout.md` §5.1）；`TensorBase` 方法参见 `07-tensor.md` §5.3 |
+| `error`     | `XenonError`（含 `Ffi`、`DimensionMismatch`、`IndexOutOfBounds`、`InvalidLayout` 等变体）、`FfiErrorCategory`（定义于 `26-error.md` §5.1） |
 
 ### 4.3 依赖合法性
 
