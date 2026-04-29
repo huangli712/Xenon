@@ -201,8 +201,6 @@ L3: Examples (examples/)
 
 执行范围说明：上表是示例覆盖矩阵的理想目标。CI 实际执行范围受时间与资源约束，采用分层执行策略；参见 §8 的 CI 与 feature 维度验证矩阵。
 
----
-
 ### 5.4 核心文档模板
 
 #### 5.4.1 lib.rs 顶层文档结构
@@ -752,16 +750,6 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 ## 7. 实现任务拆分
 
-| Wave   | 目标            | 说明                                                                 |
-| ------ | --------------- | -------------------------------------------------------------------- |
-| Wave 1 | Crate 级文档    | 补齐 `lib.rs`、README 与 docs.rs 基础配置                            |
-| Wave 2 | 模块级文档      | 按模块职责补齐 `//!` 概述与关键概念说明                              |
-| Wave 3 | 类型/函数级文档 | 为关键 public API 添加 `# Examples`、`# Errors`、`# Safety` 等文档节 |
-| Wave 4 | 示例程序        | 为关键 API 族提供可运行 examples，并与 doctest 口径保持一致          |
-| Wave 5 | CI 集成         | 固化 missing docs、doctest、examples 构建与关键示例运行检查          |
-
-## 详细任务清单
-
 ### Wave 1: Crate 级文档
 
 - [ ] **T1**: 编写 lib.rs 顶层 crate 文档
@@ -792,11 +780,11 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
   - 前置: 无
   - 预计: 5 min
 
-### Wave 2: 模块级文档（可并行）
+### Wave 2: 模块级文档
 
 - [ ] **T5**: 编写核心模块文档（dimension, element, complex, storage, layout）
   - 文件: 各 `mod.rs`
-- 内容: 模块职责、核心概念、使用示例、依赖图、设计决策（参见 `02-dimension.md §1`、`03-element.md §1`、`04-complex.md §1`、`05-storage.md §1`、`06-layout.md §1`）
+  - 内容: 模块职责、核心概念、使用示例、依赖图、设计决策（参见 `02-dimension.md §1`、`03-element.md §1`、`04-complex.md §1`、`05-storage.md §1`、`06-layout.md §1`）
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T2
   - 预计: 10 min
@@ -815,7 +803,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
   - 前置: T2
   - 预计: 10 min
 
-### Wave 3: 类型/函数级文档（可并行）
+### Wave 3: 类型/函数级文档
 
 - [ ] **T8a**: tensor 模块公共 API 文档
   - 文件: `src/tensor/mod.rs` 及相关文件
@@ -875,7 +863,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 - [ ] **T9d**: construct 和 set 模块文档
   - 文件: `src/construct/mod.rs`, `src/set/mod.rs`
-- 内容: zeros, ones, eye, from_shape_vec, unique 函数文档和 doctest（`full` 当前版本未提供）
+  - 内容: zeros, ones, eye, from_shape_vec, unique 函数文档和 doctest（`full` 当前版本未提供）
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
@@ -894,7 +882,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
   - 前置: T5, T6, T7
   - 预计: 10 min
 
-### Wave 4: 示例程序（可并行）
+### Wave 4: 示例程序
 
 - [ ] **T10**: 编写 examples/basic.rs
   - 文件: `examples/basic.rs`
@@ -954,23 +942,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
   - 前置: T1-T16
   - 预计: 10 min
 
-### 并行执行分组图
-
-```
-Wave 1: [T1] [T4]
-            │
-Wave 2: [T2] [T3]
-            │
-Wave 3: [T5] [T6] [T7]
-            │
-Wave 4: [T8a] [T8b] [T8c] [T8d] [T8e] [T9a] [T9b] [T9c] [T9d] [T9e] [T9f]
-            │
-Wave 5: [T10] [T11] [T12] [T13] [T14] [T15] [T16]
-            │
-Wave 6: [T17]
-```
-
-### 7.1 unsafe API 执行清单
+### unsafe API 执行清单
 
 须在实现阶段维护一份全项目 unsafe 公开函数清单，并对清单中的**每一个 unsafe 函数**逐项执行以下检查项：
 
@@ -982,11 +954,9 @@ Wave 6: [T17]
 
 最低基线至少覆盖 `23-ffi.md` 中的 `from_raw_parts*` / `from_raw_parts_mut` / `from_raw_parts_owned()` 系列，以及 `24-workspace.md` 中的 `assume_init_*` 系列高风险函数。
 
-### 7.2 关键 API 示例矩阵
+### 关键 API 示例矩阵
 
 须在实现阶段维护一份关键 API 清单，每个条目标注是否已有使用示例（doctest 或 `example`）。`需求说明书 §28.1` 要求关键 API 提供使用示例，本矩阵作为验收基线。
-
-> 详细任务清单继续采用 Wave 形式维护，见后文“详细任务清单”。
 
 ---
 
@@ -1034,7 +1004,7 @@ Wave 6: [T17]
 
 ### 8.5 CI 配置
 
-> **说明**：本文档只保留文档交付所需的验证类别与示例命令；doctest / examples 的统一 CI 执行矩阵由 `28-tests.md` 维护。
+**说明**：本文档只保留文档交付所需的验证类别与示例命令；doctest / examples 的统一 CI 执行矩阵由 `28-tests.md` 维护。
 
 ```yaml
 # .github/workflows/docs.yml
@@ -1082,14 +1052,14 @@ docs:
 
 ### 9.1 文档对被文档模块的依赖
 
-| 文档任务            | 依赖的模块                                                | 说明                   |
-| ------------------- | --------------------------------------------------------- | ---------------------- |
-| T1 (lib.rs 文档)    | 全部                                                      | 需要了解所有模块的概览 |
-| T5 (核心模块文档)   | dimension, element, complex, storage, layout              | 基于 §1 章节编写       |
-| T6 (张量与运算文档) | tensor, overload, broadcast, shape, index, construct, set | 基于 §1 章节编写       |
-| T7 (基础设施文档)   | ffi, workspace, error, prelude                            | 基于 §1 章节编写       |
-| T8 (类型级文档)     | 全部                                                      | 逐类型添加 doc comment |
-| T9 (函数级文档)     | 全部                                                      | 逐函数添加 doc comment |
+| 文档任务       | 依赖的模块                                                | 说明                   |
+| -------------- | --------------------------------------------------------- | ---------------------- |
+| lib.rs 文档    | 全部                                                      | 需要了解所有模块的概览 |
+| 核心模块文档   | dimension, element, complex, storage, layout              | 基于 §1 章节编写       |
+| 张量与运算文档 | tensor, overload, broadcast, shape, index, construct, set | 基于 §1 章节编写       |
+| 基础设施文档   | ffi, workspace, error, prelude                            | 基于 §1 章节编写       |
+| 类型级文档     | 全部                                                      | 逐类型添加 doc comment |
+| 函数级文档     | 全部                                                      | 逐函数添加 doc comment |
 
 ### 9.2 数据流
 
@@ -1177,8 +1147,8 @@ Design docs (00-28)
 | 平台支持   | 文档、doctest 与 examples 默认面向 `std` 环境                     |
 | MSRV       | Rust 1.85+                                                        |
 | crate 结构 | 文档产物围绕当前单 crate 组织，不维护额外平台模板工程             |
-| 依赖约束   | 仅文档化现有 feature 与依赖，不扩展超出需求范围的工程契约         |
 | SemVer     | 无影响；文档组织、doctest 与 examples 策略不单独扩展稳定 API 合约 |
+| 最小依赖   | 仅文档化现有 feature 与依赖，不扩展超出需求范围的工程契约         |
 
 ---
 
