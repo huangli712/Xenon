@@ -38,8 +38,6 @@
 | BLAS 友好    | 提供完整的 BLAS 兼容性检查和布局查询        |
 | 最小约束     | FFI 方法避免重复安全检查（调用方已 unsafe） |
 
-**inherent 方法模式：** FFI 模块中的 `export()`、`export_mut()`、`is_blas_layout_compatible()`、`blas_info()`、`lda()`、`try_offset_of()`、`try_ptr_at()` 均为 `TensorBase<S, D>` 的 inherent 方法，但代码组织在 `src/ffi/` 子目录中。这些方法需要访问 `TensorBase` 的公开接口（`shape()`、`strides()` 等），无需直接操作私有字段，因此通过 inherent impl 在 ffi 模块中定义而不影响模块边界。这遵循了 §4.4 中的 owner 约定：核心构造与解构方法（`from_raw_parts*()`、`into_raw_parts()`）保留在 tensor 模块，FFI 模块仅负责面向 FFI 消费者的查询与导出方法。
-
 ---
 
 ## 2. 需求映射与范围约束
@@ -104,9 +102,9 @@ src/ffi/
 | ----------- | ------------------------------------------------------------------------------------------------------- |
 | `tensor`    | `TensorBase<S, D>`, `.shape()`, `.strides()`, `.offset()`                                               |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`                                                                       |
-| `element`   | `Element`, `ElementType`（定义于 `element` 模块，`ffi` re-export）, `ElementType::of::<A>()`             |
+| `element`   | `Element`, `ElementType`（定义于 `element` 模块，`ffi` re-export）, `ElementType::of::<A>()`            |
 | `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, owned allocator metadata（供 `OwnedRawParts<A, D>` 导出/重建） |
-| `layout`    | `is_f_contiguous()`（连续性检查算法，定义于 `06-layout.md` §5.7）、`has_zero_stride()`（零步长标志位，定义于 `06-layout.md` §5.1）；`TensorBase` 方法参见 `07-tensor.md` §5.3 |
+| `layout`    | `is_f_contiguous()`（定义于 `06-layout.md` §5.7）、`has_zero_stride()`（定义于 `06-layout.md` §5.1）；`TensorBase` 方法参见 `07-tensor.md` §5.3 |
 | `error`     | `XenonError`（含 `Ffi`、`DimensionMismatch`、`IndexOutOfBounds`、`InvalidLayout` 等变体）、`FfiErrorCategory`（定义于 `26-error.md` §5.1） |
 
 ### 4.3 依赖合法性
@@ -121,18 +119,20 @@ src/ffi/
 
 依赖方向：单向向上。`ffi` 仅消费 `tensor`、`storage` 等核心模块，为上游库提供接口。
 
+本文聚焦这些能力在 FFI 边界的公开形态，因此依赖表中仍把相关实现文件归入 `ffi` 模块文档范围，而不把它写成反向依赖。
+
+---
+
+## 5. 公共 API 设计
+
+**inherent 方法模式：** FFI 模块中的 `export()`、`export_mut()`、`is_blas_layout_compatible()`、`blas_info()`、`lda()`、`try_offset_of()`、`try_ptr_at()` 均为 `TensorBase<S, D>` 的 inherent 方法，但代码组织在 `src/ffi/` 子目录中。这些方法需要访问 `TensorBase` 的公开接口（`shape()`、`strides()` 等），无需直接操作私有字段，因此通过 inherent impl 在 ffi 模块中定义而不影响模块边界。这遵循了 §4.4 中的 owner 约定：核心构造与解构方法（`from_raw_parts*()`、`into_raw_parts()`）保留在 tensor 模块，FFI 模块仅负责面向 FFI 消费者的查询与导出方法。
+
 **owner 约定：** 
 
 - `as_ptr()` / `as_mut_ptr()` 的核心定义在 `07-tensor.md`（tensor 核心层）。
 - `into_raw_parts()` / `from_raw_parts_owned()` / `OwnedRawParts` 的核心实现同样在 `07-tensor.md §5.7`（`src/tensor/construct.rs`），因为它们需要访问 `TensorBase` 的私有字段。
 - `ffi` 模块负责指针导出格式（`TensorExport` / `TensorExportMut`）、BLAS 辅助 API 和裸指针偏移计算（`try_offset_of` / `try_ptr_at`）。
 - `ffi` 模块通过 `pub use crate::tensor::OwnedRawParts` 向 FFI 消费者 re-export tensor 模块定义的类型。`into_raw_parts()` 和 `from_raw_parts_owned()` 作为 `TensorBase` 的 inherent 方法可直接在 FFI 上下文中调用，无需额外包装。
-
-本文聚焦这些能力在 FFI 边界的公开形态，因此依赖表中仍把相关实现文件归入 `ffi` 模块文档范围，而不把它写成反向依赖。
-
----
-
-## 5. 公共 API 设计
 
 ### 5.1 辅助类型
 
