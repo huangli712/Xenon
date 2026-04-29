@@ -203,6 +203,15 @@ impl ExactRealTestScalar for f64 {
 /// This is the default helper for IEEE 754 base operations and reductions.
 /// Integer paths use `assert_eq!`; floating-point paths require strict
 /// `ULP == 0` equality instead of a mixed tolerance contract.
+///
+/// The comparison condition `to_bits() == to_bits() || ulp_distance() == 0`
+/// is **complementary, not redundant**: `to_bits()` distinguishes ±0.0
+/// (different sign bit ⇒ different bit pattern, even though ULP distance is
+/// 0), while `ulp_distance() == 0` covers the mathematical-identity case.
+/// For standard IEEE 754 values, `to_bits()` equality implies `ulp_distance()
+/// == 0`, but the `||` ensures the assertion captures the intent "bitwise
+/// identical OR numerically indistinguishable at ULP resolution" without
+/// silently equating +0.0 with −0.0 when `to_bits()` is checked first.
 pub fn assert_tensor_exact_real<A, D>(
     actual: &TensorBase<impl Storage<Elem = A>, D>,
     expected: &TensorBase<impl Storage<Elem = A>, D>,
@@ -1094,7 +1103,7 @@ fn prop_add_commutative() {
 
 - [ ] **T6**: 实现 `tests/test_construction.rs`
   - 文件: `tests/test_construction.rs`
-  - 内容: 构造方法（zeros/ones/eye/from_shape_vec/from_shape_slice/from_scalar/from_array；`from_vec` 仅作为 Ix1 非规范便捷层 coverage（see 18-construction.md §5.3））
+  - 内容: 构造方法（zeros/ones/eye/from_shape_vec/from_shape_slice/from_scalar/from_array；`from_vec` 仅覆盖 Ix1 非规范便捷路径（see 18-construction.md §5.3 末尾））
   - 测试: `cargo test --test test_construction`
   - 前置: T1
   - 预计: 10 min
