@@ -81,12 +81,10 @@ src/ffi/
 │   ├── core
 │   └── crate::element       # re-exports ElementType (defined in element module)
 ├── ptr.rs
-│   ├── crate::tensor        # TensorBase<S, D>, offset
+│   ├── crate::tensor        # TensorBase<S, D>, offset, OwnedRawParts re-export
 │   ├── crate::dimension     # Dimension trait
 │   ├── crate::element       # Element trait (for ElementType::of)
-│   ├── crate::storage       # Storage, StorageMut, owned allocator metadata
-│   ├── crate::layout        # is_f_contiguous
-│   └── crate::error         # XenonError (export/export_mut validation, from_raw_parts errors)
+│   └── crate::storage       # Storage, StorageMut, owned allocator metadata
 ├── blas.rs
 │   ├── crate::tensor        # TensorBase<S, D> (as_ptr via inherent method)
 │   ├── crate::storage       # Storage
@@ -411,7 +409,7 @@ pub struct Complex64 {
 }
 ```
 
-**Complex 布局约定：** `Complex<f32>` 与 `Complex<f64>` 的 FFI 表示分别等价于 `#[repr(C)] struct { re: f32, im: f32 }` 和 `#[repr(C)] struct { re: f64, im: f64 }`。
+**Complex 布局约定：** `Complex<f32>` 与 `Complex<f64>` 的 FFI 表示分别等价于 `#[repr(C)] struct { re: f32, im: f32 }` 和 `#[repr(C)] struct { re: f64, im: f64 }`。复数类型的完整定义、运算和 ABI 约定参见 `04-complex.md`。
 
 **内存保证：** `#[repr(C)]` 保证字段顺序固定为 `re` 后接 `im`，整体对齐分别等于 `f32` / `f64` 的 C ABI 对齐要求；若目标 ABI 需要尾部 padding，则该 padding 仅作用于单个复数元素末尾，不改变数组按该结构逐元素重复排布的语义。
 
@@ -590,7 +588,7 @@ pub struct BlasInfo<A> {
 
 impl<A> BlasInfo<A> {
     /// Convert a raw BLAS/LAPACK size parameter to the backend integer type.
-    pub fn as_blas_int<I>(&self, value: usize) -> Result<I, XenonError>
+    pub fn as_blas_int<I>(value: usize) -> Result<I, XenonError>
     where
         I: TryFrom<usize>,
     {
@@ -900,9 +898,8 @@ validate_access_range(shape, strides, offset, storage_len):
     max_offset = offset
 
     for axis in 0..ndim:
-        if shape[axis] == 0:
-            return Ok(())
-
+        // shape[axis] > 0 is guaranteed here: checked_size() already
+        // confirmed the product is non-zero, so no dimension can be zero.
         span = (shape[axis] - 1).checked_mul(strides[axis])
             .ok_or_else(|| XenonError::InvalidLayout {
                 operation: "validate_access_range",
@@ -1084,7 +1081,7 @@ Additional caller-side checks:
 | 方向                       | 对方模块             | 接口/类型                                | 约定                                                                    |
 | -------------------------- | -------------------- | ---------------------------------------- | ----------------------------------------------------------------------- |
 | `ffi → tensor`             | `tensor`             | 原始指针访问                             | 通过 `TensorBase` 的 storage 获取底层指针，参见 `07-tensor.md` §5       |
-| `ffi ← layout`             | `layout`             | `is_f_contiguous()` / stride 标志        | BLAS 布局兼容性检查依赖布局查询结果，参见 `06-layout.md` §5.7           |
+| `ffi → layout`             | `layout`             | `is_f_contiguous()` / stride 标志        | BLAS 布局兼容性检查依赖布局查询结果，参见 `06-layout.md` §5.7           |
 | `ffi → storage`            | `storage`            | `OwnedRawParts` / allocator metadata     | `into_raw_parts` 导出 owned 存储的完整重建信息，参见 `05-storage.md` §5 |
 | `ffi → upstream libraries` | `upstream libraries` | `blas_info()` / `lda()` / `try_ptr_at()` | 向外部 BLAS/FFI 调用方暴露零拷贝参数与可恢复索引转换                    |
 
