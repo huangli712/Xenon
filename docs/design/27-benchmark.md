@@ -227,7 +227,7 @@ Benchmark categories
 
 | 级别       | 示例                                           | 用途           |
 | ---------- | ---------------------------------------------- | -------------- |
-| Micro      | `zeros_1d`, `from_shape_vec_1d`               | 基础开销基线   |
+| Micro      | `zeros_1d`, `from_shape_vec_1d`                | 基础开销基线   |
 | Kernel     | `add_f64`, `sum_f64`, `dot_f64`                | 核心路径性能   |
 | Workflow   | `broadcast_add_row`, `transpose_then_sum`      | 真实场景吞吐   |
 | Comparison | `add_simd_vs_scalar`, `sum_parallel_vs_serial` | 仓库内路径对比 |
@@ -259,52 +259,40 @@ Benchmark categories
 | F-contiguous   | `zeros(shape)`                    | 默认路径性能基线   |
 | Non-contiguous | F-order 2D 张量的行视图或转置视图 | 非连续路径性能惩罚 |
 
-> **注意**：Xenon 仅支持 F-order 布局，不存在 C-order 路径。非连续布局通过切片/转置视图产生（参见 `06-layout.md §5.4` / `§5.1c`）。
+**注意**：Xenon 仅支持 F-order 布局，不存在 C-order 路径。非连续布局通过切片/转置视图产生（参见 `06-layout.md §5.4` / `§5.1c`）。
 
-> **补充**：数据竞争和 UB 验证由 `28-tests.md` 覆盖。benchmark 仅验证性能指标，不承担正确性验证职责。
+**补充**：数据竞争和 UB 验证由 `28-tests.md` 覆盖。benchmark 仅验证性能指标，不承担正确性验证职责。
 
 ---
 
 ### 5.5 Benchmark 清单
 
-| 组 ID                      | 操作                    | 规模  | 类型           | 布局           | 说明                                                                             |
-| -------------------------- | ----------------------- | ----- | -------------- | -------------- | -------------------------------------------------------------------------------- |
-| `elem_add_f64`             | `a + b`                 | S/M/L | f64            | F-contiguous   | 连续数组逐元素加法                                                               |
-| `elem_add_f32`             | `a + b`                 | S/M/L | f32            | F-contiguous   | f32 加法，SIMD 向量宽度更大                                                      |
-| `elem_add_complex`         | `a + b`                 | S/M/L | Complex\<f64\> | F-contiguous   | 复数加法开销                                                                     |
-| `elem_mul_f64`             | `a * b`                 | S/M/L | f64            | F-contiguous   | 逐元素乘法                                                                       |
-| `elem_sin_f64`             | `sin(a)`                | S/M/L | f64            | F-contiguous   | 超越函数逐元素                                                                   |
-| `elem_add_sliced`          | `a + b`（b 为切片视图） | M     | f64            | Non-contiguous | 非连续惩罚                                                                       |
-| `sum_1d_f64`               | 全局 sum                | S/M/L | f64            | F-contiguous   | 1D 归约                                                                          |
-| `sum_2d_axis0`             | 沿轴 0 sum              | S/M/L | f64            | F-contiguous   | 2D 沿轴归约                                                                      |
-| `sum_2d_axis1`             | 沿轴 1 sum              | S/M/L | f64            | F-contiguous   | 2D 沿轴归约                                                                      |
-| `sum_sliced`               | 非连续 sum              | M     | f64            | Non-contiguous | 非连续归约惩罚                                                                   |
-| `dot_1d_f64`               | 向量内积                | S/M/L | f64            | F-contiguous   | 基本内积                                                                         |
-| `dot_1d_complex`           | 复数内积                | S/M/L | Complex\<f64\> | F-contiguous   | 复数内积（含共轭）                                                               |
-| `unique_1d`                | unique 操作             | S/M/L | f64            | F-contiguous   | 返回不重复元素，结果无需排序且顺序不作要求                                       |
-| `broadcast_scalar`         | 标量广播加法            | S/M/L | f64            | F-contiguous   | 标量广播开销                                                                     |
-| `broadcast_row`            | 行向量广播到矩阵        | S/M/L | f64            | F-contiguous   | 行广播                                                                           |
-| `broadcast_col`            | 列向量广播到矩阵        | S/M/L | f64            | F-contiguous   | 列广播                                                                           |
-| `transpose_2d`             | 2D 转置（零拷贝）       | S/M/L | f64            | F-contiguous   | 转置视图创建                                                                     |
-| `simd_add_compare`         | `a + b` (SIMD vs 标量)  | M     | f32/f64        | F-contiguous   | SIMD 加速比（参见 `08-simd.md §12`）                                             |
-| `simd_sum_compare`         | sum (SIMD vs 标量)      | M     | i32            | F-contiguous   | 默认仅覆盖已验证启用的 i32 SIMD reduction 路径；i64 如需保留，须作为显式 opt-in 非默认基准（参见 `08-simd.md §5.6`） |
-| `simd_dot_compare`         | dot (SIMD vs 标量)      | M     | f32/f64        | F-contiguous   | SIMD dot kernel 已在 `08-simd.md` 中设计，本基准仅对比 SIMD 与标量路径的性能差异 |
-| `par_sum_compare`          | sum (并行 vs 串行)      | L     | i64            | F-contiguous   | 并行加速比（参见 `09-parallel.md §12`）                                          |
-| `par_add_compare`          | `a + b` (并行 vs 串行)  | L     | f64            | F-contiguous   | 并行逐元素加速                                                                   |
-| `par_dot_compare`          | dot (并行 vs 串行)      | L     | f64/Complex<f64> | F-contiguous | 并行内积加速比，覆盖实数与复数内积                                               |
-| `zeros_1d`                 | zeros 构造              | S/M/L | f64            | F-contiguous   | 构造开销                                                                         |
-
-### 5.5.1 行为验证（归 28-tests.md）
-
-> **覆盖关系说明**：benchmark coverage 是 SIMD 正式覆盖的子集，不等于完整设计覆盖。
-
-以下场景为行为正确性验证，应由 `28-tests.md` 承担。benchmark 仅测量对应路径的性能表现。
-
-| 场景 ID                    | 行为主题         | 对应测试职责说明                               |
-| -------------------------- | ---------------- | ---------------------------------------------- |
-| `simd_auto_path_switch`    | SIMD 自动路径选择 | 验证实现根据数据规模切换 SIMD/标量路径是否正确 |
-| `auto_threshold_switch`    | 自动串并切换     | 验证阈值附近串行/并行路径切换行为是否符合设计  |
-| `nested_parallel_fallback` | 嵌套并行回退     | 验证并行上下文中的串行回退是否符合设计         |
+| 组 ID                      | 操作                    | 规模  | 类型           | 布局           | 说明                                            |
+| -------------------------- | ----------------------- | ----- | -------------- | -------------- | ----------------------------------------------- |
+| `elem_add_f64`             | `a + b`                 | S/M/L | f64            | F-contiguous   | 连续数组逐元素加法                              |
+| `elem_add_f32`             | `a + b`                 | S/M/L | f32            | F-contiguous   | f32 加法，SIMD 向量宽度更大                     |
+| `elem_add_complex`         | `a + b`                 | S/M/L | Complex<f64>   | F-contiguous   | 复数加法开销                                    |
+| `elem_mul_f64`             | `a * b`                 | S/M/L | f64            | F-contiguous   | 逐元素乘法                                      |
+| `elem_sin_f64`             | `sin(a)`                | S/M/L | f64            | F-contiguous   | 超越函数逐元素                                  |
+| `elem_add_sliced`          | `a + b`（b 为切片视图） | M     | f64            | Non-contiguous | 非连续惩罚                                      |
+| `sum_1d_f64`               | 全局 sum                | S/M/L | f64            | F-contiguous   | 1D 归约                                         |
+| `sum_2d_axis0`             | 沿轴 0 sum              | S/M/L | f64            | F-contiguous   | 2D 沿轴归约                                     |
+| `sum_2d_axis1`             | 沿轴 1 sum              | S/M/L | f64            | F-contiguous   | 2D 沿轴归约                                     |
+| `sum_sliced`               | 非连续 sum              | M     | f64            | Non-contiguous | 非连续归约惩罚                                  |
+| `dot_1d_f64`               | 向量内积                | S/M/L | f64            | F-contiguous   | 基本内积                                        |
+| `dot_1d_complex`           | 复数内积                | S/M/L | Complex<f64>   | F-contiguous   | 复数内积（含共轭）                              |
+| `unique_1d`                | unique 操作             | S/M/L | f64            | F-contiguous   | 返回不重复元素，结果无需排序且顺序不作要求      |
+| `broadcast_scalar`         | 标量广播加法            | S/M/L | f64            | F-contiguous   | 标量广播开销                                    |
+| `broadcast_row`            | 行向量广播到矩阵        | S/M/L | f64            | F-contiguous   | 行广播                                          |
+| `broadcast_col`            | 列向量广播到矩阵        | S/M/L | f64            | F-contiguous   | 列广播                                          |
+| `transpose_2d`             | 2D 转置（零拷贝）       | S/M/L | f64            | F-contiguous   | 转置视图创建                                    |
+| `simd_add_compare`         | `a + b` (SIMD vs 标量)  | M     | f32/f64        | F-contiguous   | SIMD 加速比（参见 `08-simd.md §12`）            |
+| `simd_sum_compare`         | sum (SIMD vs 标量)      | M     | i32            | F-contiguous   | 默认仅覆盖已验证启用的 i32 SIMD reduction 路径  |
+| `simd_dot_compare`         | dot (SIMD vs 标量)      | M     | f32/f64        | F-contiguous   | SIMD dot kernel 已在 `08-simd.md` 中设计，      |
+| `par_sum_compare`          | sum (并行 vs 串行)      | L     | i64            | F-contiguous   | 并行加速比（参见 `09-parallel.md §12`）         |
+| `par_add_compare`          | `a + b` (并行 vs 串行)  | L     | f64            | F-contiguous   | 并行逐元素加速                                  |
+| `par_dot_compare`          | dot (并行 vs 串行)      | L     | f64/Complex<f64> | F-contiguous | 并行内积加速比，覆盖实数与复数内积              |
+| `zeros_1d`                 | zeros 构造              | S/M/L | f64            | F-contiguous   | 构造开销                                        |
 
 ---
 
@@ -316,9 +304,9 @@ Benchmark categories
 | **Regression Check** | `elem_add_f64` 和 `sum_1d_f64`                                              | ~10 min  | 存在 baseline 时可选启用     |
 | **Full Benchmark**   | 全部文件 × 4 feature 组合（`default`、`simd`、`parallel`、`simd+parallel`） | ~60 min  | 维护期按需运行               |
 
-#### 5.6.1 Smoke Test 覆盖范围
+**Smoke Test 覆盖范围**
 
-> **注意**：Smoke Test 仅验证 benchmark 代码可以正常编译和运行（"不崩溃"），不用于性能判断，也不执行回归阈值门禁。其调用约定统一使用 `--quick`；若仓库选择启用性能回归检测，再由 Regression Check（§5.6.2）承担趋势观测。
+Smoke Test 仅验证 benchmark 代码可以正常编译和运行（"不崩溃"），不用于性能判断，也不执行回归阈值门禁。其调用约定统一使用 `--quick`；若仓库选择启用性能回归检测，再由 Regression Check（§5.6.2）承担趋势观测。
 
 | 文件              | 组                      | 说明           |
 | ----------------- | ----------------------- | -------------- |
@@ -326,13 +314,13 @@ Benchmark categories
 | `reduction.rs`    | `sum_1d_f64` (Medium)   | 核心归约路径   |
 | `construction.rs` | `zeros_1d` (Medium)     | 基础构造路径   |
 
-#### 5.6.2 Regression Check 覆盖范围
+**Regression Check 覆盖范围**
 
-当仓库显式启用 Regression Check 时，可监测以下核心基准：`elem_add_f64`（逐元素加法，f64，256×256）和 `sum_1d_f64`（一维归约，f64，65536 元素）。其中 `256×256` 与 §5.4.1 的 Medium 规模保持一致。
+- 当仓库显式启用 Regression Check 时，可监测以下核心基准：`elem_add_f64`（逐元素加法，f64，256×256）和 `sum_1d_f64`（一维归约，f64，65536 元素）。其中 `256×256` 与 §5.4.1 的 Medium 规模保持一致。
 
-本文档统一使用同一组规模基线：Small = `64` / `8×8` / `4×4×4`，Medium = `65,536` / `256×256` / `64×32×32`，Large = `16,777,216` / `4096×4096` / `256×256×256`。
+- 本文档统一使用同一组规模基线：Small = `64` / `8×8` / `4×4×4`，Medium = `65,536` / `256×256` / `64×32×32`，Large = `16,777,216` / `4096×4096` / `256×256×256`。
 
-Large 规模基准测试（如 `4096×4096`、`256×256×256`）仅在 weekly/full benchmark 流水线中执行。PR 级别的 Smoke Test 仅使用 Small/Medium 规模。CI 配置须设置合理的内存上限；当可用内存低于 Large 用例估算峰值的 1.5× 安全阈值时，大张量测试应跳过并标记为 skipped。
+- Large 规模基准测试（如 `4096×4096`、`256×256×256`）仅在 weekly/full benchmark 流水线中执行。PR 级别的 Smoke Test 仅使用 Small/Medium 规模。CI 配置须设置合理的内存上限；当可用内存低于 Large 用例估算峰值的 1.5× 安全阈值时，大张量测试应跳过并标记为 skipped。
 
 #### 5.6.3 CI 配置示例
 
