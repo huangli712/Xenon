@@ -366,20 +366,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 }
 ```
 
----
-
-## 6. 内部实现设计
-
-| 方面       | 说明                                                                                                                                                                      |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 断言辅助   | 以 `assert_tensor_exact_real` / `assert_tensor_exact_complex`、跨路径容差 helper、数学函数容差 helper、错误断言宏与共享生成器统一测试表达，避免各测试文件重复定义比较逻辑 |
-| 数值比较   | 默认使用精确比较；仅标量/SIMD、串行/并行等跨执行路径比较允许文档化容差；`sin`/`sqrt`/`exp`/`ln`/`floor`/`ceil` 等数学函数使用各自文档化容差。以 `需求说明书 §28.3` 为规范基线，`00-coding.md §7.4` 为实现/测试辅助参考 |
-| 编译期边界 | compile-fail harness 负责验证 `usize`/非法无符号元素类型、错误 trait bound 与不合法存储组合                                                                               |
-| 数据生成   | 顺序数据、三角函数样本、非连续视图与大张量样本均在共享工具中集中生成，保证可重复性                                                                                        |
-
----
-
-### 6.1 test_tensor.rs
+### 5.4 test_tensor.rs
 
 | 测试函数                                   | 测试内容                                                 | 优先级 |
 | ------------------------------------------ | -------------------------------------------------------- | ------ |
@@ -393,7 +380,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_arc_tensor_clone`                    | ArcTensor clone 为浅拷贝                                 | 中     |
 | `test_arc_tensor_alias_isolation_on_write` | 共享后通过公开写入口修改副本时，不影响原值且保持别名隔离 | 中     |
 
-### 6.2 test_math.rs
+### 5.5 test_math.rs
 
 | 测试函数                              | 测试内容                               | 优先级 |
 | ------------------------------------- | -------------------------------------- | ------ |
@@ -415,7 +402,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_integer_neg_min_panics`         | 验证 `neg(i8::MIN)`、`neg(i16::MIN)`、`neg(i32::MIN)`、`neg(i64::MIN)` 触发 panic（参见 `11-math.md §5.4`） | 高     |
 | `test_integer_square_overflow_panics` | 验证整数 `square(max)` 溢出触发 panic（参见 `11-math.md §5.4`） | 高     |
 
-### 6.3 test_broadcast.rs
+### 5.6 test_broadcast.rs
 
 | 测试函数                       | 测试内容            | 优先级 |
 | ------------------------------ | ------------------- | ------ |
@@ -426,7 +413,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_broadcast_view_readonly` | 广播视图为只读      | 高     |
 | `test_broadcast_zero_stride`   | 广播后步长为 0      | 中     |
 
-### 6.4 test_index.rs
+### 5.7 test_index.rs
 
 | 测试函数                            | 测试内容                                      | 优先级 |
 | ----------------------------------- | --------------------------------------------- | ------ |
@@ -436,7 +423,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_slice_subrange`               | 范围切片子区间                                | 中     |
 | `test_slice_mut_broadcast_rejected` | 广播视图上的可变切片在编译期/API 缺失层被拒绝 | 高     |
 
-### 6.5 test_construction.rs
+### 5.8 test_construction.rs
 
 | 测试函数                      | 测试内容                                                                             | 优先级 |
 | ----------------------------- | ------------------------------------------------------------------------------------ | ------ |
@@ -446,7 +433,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_from_fixed_array`       | 从固定数组构造                                                                       | 中     |
 | `test_from_shape_vec_f_order_mapping` | F-order 逻辑元素顺序与线性输入映射正确                                        | 高     |
 
-### 6.6 test_reduction.rs
+### 5.9 test_reduction.rs
 
 | 测试函数                    | 测试内容                      | 优先级 |
 | --------------------------- | ----------------------------- | ------ |
@@ -457,7 +444,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_sum_nan`              | sum 含 NaN 结果为 NaN         | 中     |
 | `test_integer_sum_overflow` | 整数 sum 溢出视为不可恢复错误 | 中     |
 
-### 6.7 test_iterator.rs
+### 5.10 test_iterator.rs
 
 | 测试函数                           | 测试内容                               | 优先级 |
 | ---------------------------------- | -------------------------------------- | ------ |
@@ -466,7 +453,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_axis_iter_ix0_runtime_error` | 0D 张量上的 `axis_iter` 返回可恢复错误 | 高     |
 | `test_indexed_iter`                | 按索引遍历返回 F-order 逻辑索引        | 中     |
 
-### 6.8 test_matrix.rs
+### 5.11 test_matrix.rs
 
 | 测试函数                  | 测试内容                  | 优先级 |
 | ------------------------- | ------------------------- | ------ |
@@ -477,7 +464,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_i32_dot_overflow_panics` | `i32` 内积溢出触发 panic | 高 |
 | `test_i64_dot_overflow_panics` | `i64` 内积溢出触发 panic | 高 |
 
-### 6.9 test_set.rs
+### 5.12 test_set.rs
 
 | 测试函数                        | 测试内容                                          | 优先级 |
 | ------------------------------- | ------------------------------------------------- | ------ |
@@ -504,14 +491,14 @@ fn test_unique_non_contiguous() {
 }
 ```
 
-### 6.10 test_shape.rs
+### 5.13 test_shape.rs
 
 | 测试函数                  | 测试内容 | 优先级 |
 | ------------------------- | -------- | ------ |
 | `test_transpose_2d`       | 2D 转置  | 高     |
 | `test_transpose_high_dim` | 高维转置 | 中     |
 
-### 6.11 test_conversion.rs
+### 5.14 test_conversion.rs
 
 | 测试函数                                 | 测试内容                                                    | 优先级 |
 | ---------------------------------------- | ----------------------------------------------------------- | ------ |
@@ -523,7 +510,7 @@ fn test_unique_non_contiguous() {
 | `test_bool_not_participating_in_cast`    | `bool` 不参与逐元素类型转换，相关入口在类型层或运行时被拒绝 | 高     |
 | `test_cast_nan_to_int`                   | `cast()` 对 NaN→整数返回 `TypeConversion` 错误              | 中     |
 
-### 6.12 test_utility.rs
+### 5.15 test_utility.rs
 
 | 测试函数                   | 测试内容                | 优先级 |
 | -------------------------- | ----------------------- | ------ |
@@ -534,7 +521,7 @@ fn test_unique_non_contiguous() {
 | `test_clip_invalid_parameters` | `min > max`、NaN 边界等非法参数返回错误 | 高 |
 | `test_fill_rejects_readonly_or_broadcast` | 只读视图或广播视图上的 fill 被拒绝 | 高 |
 
-### 6.13 test_output.rs
+### 5.16 test_output.rs
 
 | 测试函数                       | 测试内容                          | 优先级 |
 | ------------------------------ | --------------------------------- | ------ |
@@ -544,7 +531,7 @@ fn test_unique_non_contiguous() {
 | `test_output_complex`          | 复数格式化输出                    | 中     |
 | `test_scalar_vs_zero_dim_formatting` | 标量值与零维张量输出语义区分清晰 | 中 |
 
-### 6.14 test_ffi.rs
+### 5.17 test_ffi.rs
 
 | 测试函数                                 | 测试内容                                         | 优先级 |
 | ---------------------------------------- | ------------------------------------------------ | ------ |
@@ -558,7 +545,7 @@ fn test_unique_non_contiguous() {
 | `test_try_offset_of`                     | try_offset_of 正确计算                           | 高     |
 | `test_export_alignment_preconditions`    | 导出描述符仅在满足对齐前提时声明可供上游直接消费 | 高     |
 
-### 6.15 test_workspace.rs
+### 5.18 test_workspace.rs
 
 | 测试函数                               | 测试内容                                                                   | 优先级 |
 | -------------------------------------- | -------------------------------------------------------------------------- | ------ |
@@ -570,7 +557,7 @@ fn test_unique_non_contiguous() {
 | `test_workspace_error_boundary_mapping` | workspace 公开入口返回 `XenonError::Workspace { operation, category, ... }`，验证结构化字段正确性 | 中 |
 | `test_workspace_not_send_not_sync`     | `Workspace` / `SplitBorrowMut` 的 `!Send + !Sync` 编译期验证               | 高     |
 
-### 6.16 test_parallel.rs
+### 5.19 test_parallel.rs
 
 | 测试函数                                    | 测试内容                                                                                    | 优先级 |
 | ------------------------------------------- | ------------------------------------------------------------------------------------------- | ------ |
@@ -580,7 +567,7 @@ fn test_unique_non_contiguous() {
 | `test_parallel_read`                        | 多线程并发只读访问安全（参见 `25-safety.md §5`）                                            | 高     |
 | `test_nested_parallel_falls_back_to_serial` | 嵌套并行检测后自动回退串行                                                                  | 中     |
 
-### 6.17 test_simd.rs
+### 5.20 test_simd.rs
 
 | 测试函数                    | 测试内容                                                                    | 优先级 |
 | --------------------------- | --------------------------------------------------------------------------- | ------ |
@@ -590,7 +577,7 @@ fn test_unique_non_contiguous() {
 | `test_simd_fallback_small`  | 小数组 SIMD 回退到标量                                                      | 中     |
 | `test_simd_complex_path`    | 验证 `Complex<f32>` / `Complex<f64>` SIMD kernel 与标量路径在文档容差内一致 | 中     |
 
-### 6.18 compile_fail_tests.rs
+### 5.21 compile_fail_tests.rs
 
 | 测试函数                               | 测试内容                                                        | 优先级 |
 | -------------------------------------- | --------------------------------------------------------------- | ------ |
@@ -603,7 +590,7 @@ fn test_unique_non_contiguous() {
 | `ui_bool_unique_rejected`              | `bool` 不参与 unique 操作                                        | 高     |
 | `ui_bool_arithmetic_rejected`          | `bool` 不参与四则运算                                            | 高     |
 
-### 6.19 property_tests.rs
+### 5.22 property_tests.rs
 
 | 测试函数                    | 测试内容                               | 优先级 |
 | --------------------------- | -------------------------------------- | ------ |
@@ -612,7 +599,7 @@ fn test_unique_non_contiguous() {
 | `prop_unique_len_bound`     | `unique(a).len()` 不超过 `a.len()`     | 中     |
 | `prop_broadcast_shape_rule` | 广播结果形状遵循 NumPy 规则            | 高     |
 
-### 6.20 test_error.rs
+### 5.23 test_error.rs
 
 | 测试函数                      | 测试内容                                                                                                     | 优先级 |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------ | ------ |
@@ -631,11 +618,74 @@ fn test_unique_non_contiguous() {
 
 panic 诊断信息测试：验证 panic message 包含 `需求说明书 §27` 要求的诊断上下文（至少包含错误类别和相关参数子集）。通过 `#[should_panic(expected = "...")]` 或 `std::panic::catch_unwind` 捕获并断言。
 
+### 5.24 Good/Bad 对比示例
+
+```rust,ignore
+// Good: Use the default exact helper for same-path base arithmetic
+#[test]
+fn test_add_result() {
+    let a = Tensor1::from_shape_vec([3], vec![1.0, 2.0, 3.0])
+        .expect("shape and data length must match");
+    let b = Tensor1::from_shape_vec([3], vec![4.0, 5.0, 6.0])
+        .expect("shape and data length must match");
+    let result = (&a + &b).unwrap();
+    let expected = Tensor1::from_shape_vec([3], vec![5.0, 7.0, 9.0])
+        .expect("shape and data length must match");
+    assert_tensor_exact_real(&result, &expected, "add");
+}
+
+// Good: Test a supported error path that returns Result
+#[test]
+fn test_axis_iter_invalid_axis() {
+    let t = Tensor2::<f64>::zeros([2, 3]).expect("shape is valid");
+    assert_xenon_error!(t.axis_iter(Axis(2)), XenonError::InvalidAxis { .. });
+}
+
+// Good: Parameterized test with standard shapes
+#[test]
+fn test_transpose_shapes() {
+    for (r, c) in standard_shapes_2d() {
+        let t = Tensor2::<f64>::zeros([r, c]).expect("shape is valid");
+        let tt = t.transpose();
+        assert_eq!(tt.shape(), &[c, r]);
+    }
+}
+```
+
+```rust,ignore
+// Bad: Applying a blanket tolerance to a same-path base arithmetic test
+#[test]
+fn test_add_bad() {
+    let a = Tensor1::from_shape_vec([2], vec![0.1, 0.2])
+        .expect("shape and data length must match");
+    let b = Tensor1::from_shape_vec([2], vec![0.3, 0.4])
+        .expect("shape and data length must match");
+    let result = (&a + &b).unwrap();
+    assert!(ulp_eq_f64_cross_path(result[[0]], 0.4, 1));  // Base arithmetic should use the Tier 1 exact rule
+}
+
+// Bad: Ignoring a recoverable error path
+#[test]
+fn test_axis_iter_bad() {
+    let t = Tensor2::<f64>::zeros([2, 3]).expect("shape is valid");
+    let _ = t.axis_iter(Axis(2));  // Silently ignoring the Result
+}
+
+// Bad: Hardcoded magic numbers without context
+#[test]
+fn test_bad_magic() {
+    let t = Tensor1::<f64>::zeros([100]).expect("shape is valid");
+    assert_eq!(t.sum(), 0.0);  // What is 100? Why zeros?
+}
+```
+
 ---
 
-### 6.21 边界测试场景
+## 6. 内部实现设计
 
-#### 6.21.1 边界覆盖（参照 `需求说明书 §28.4`）
+### 6.1 边界测试场景
+
+#### 6.1.1 边界覆盖（参照 `需求说明书 §28.4`）
 
 | 边界类别            | 测试场景                                        | 覆盖的操作                       |
 | ------------------- | ----------------------------------------------- | -------------------------------- |
@@ -659,7 +709,7 @@ panic 诊断信息测试：验证 panic message 包含 `需求说明书 §27` �
 - 高维场景除 `Ix4`~`Ix6` 外，还须覆盖 `IxDyn` 动态维度：rank 0（标量）、1、2，直至 12 的代表性张量，满足 `需求说明书 §28.4` 对“高 rank 的动态维度张量”的覆盖要求。
 - `IxDyn` 测试须验证与固定维度 `Ix1`~`Ix6` 的 shape/dimension 转换、广播、动态索引与迭代行为；rank 12 为测试采样上限，不是 API 或实现上限。`IxDyn` 理论上支持任意 rank。
 
-#### 6.21.2 边界测试示例
+#### 6.1.2 边界测试示例
 
 ```rust,ignore
 #[test]
@@ -753,9 +803,9 @@ fn test_ixdyn_high_rank_scenarios() {
 
 ---
 
-### 6.22 数值精度规范
+### 6.2 数值精度规范
 
-#### 6.22.1 IEEE 754 精度要求
+#### 6.2.1 IEEE 754 精度要求
 
 | 比较层级                   | 适用范围                                                                    | 默认比较规则                                                                                                           | 备注                                               |
 | -------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
@@ -765,7 +815,7 @@ fn test_ixdyn_high_rank_scenarios() {
 
 对 `Complex<f32>` / `Complex<f64>`，Tier 1 默认规则仍为**分量级精确判定**：分别比较实部与虚部，各自必须满足 bitwise 等价或严格 `ULP == 0`；不得把复数整体模长误差替代为分量误差。只有进入 Tier 2 或 Tier 3 时，才可在组件级使用已文档化容差。
 
-#### 6.22.2 浮点比较方式
+#### 6.2.2 浮点比较方式
 
 以 `需求说明书 §28.3` 为规范基线，`00-coding.md §7.4` 为实现/测试辅助参考：Tier 1 使用同执行路径精确比较，Tier 2 仅用于标量/SIMD、串行/并行等跨执行路径比较，Tier 3 仅用于数学函数专用比较。
 
@@ -773,9 +823,9 @@ fn test_ixdyn_high_rank_scenarios() {
 
 ---
 
-### 6.23 并行与 SIMD 测试
+### 6.3 并行与 SIMD 测试
 
-#### 6.23.1 并行无数据竞争
+#### 6.3.1 并行无数据竞争
 
 线程安全测试方案（参见 `25-safety.md §8`）：
 
@@ -785,7 +835,7 @@ fn test_ixdyn_high_rank_scenarios() {
 | ArcTensor       | 多线程共享 ArcTensor 并发读取                            |
 | 类型系统验证    | 通过 `Send`/`Sync` 约束和并发只读/独占写测试验证线程安全 |
 
-#### 6.23.2 并行归约一致性
+#### 6.3.2 并行归约一致性
 
 ```rust,ignore
 #[test]
@@ -819,7 +869,7 @@ fn test_sum_parallel_feature_consistency() {
 }
 ```
 
-#### 6.23.3 SIMD 结果一致性
+#### 6.3.3 SIMD 结果一致性
 
 ```rust,ignore
 #[test]
@@ -850,7 +900,7 @@ fn test_simd_add_consistency() {
 }
 ```
 
-#### 6.23.4 确定性专项测试
+#### 6.3.4 确定性专项测试
 
 确定性专项测试：同输入、同配置、同执行路径重复执行 N 次，验证结果逐元素一致。适用于浮点和复数类型的逐元素运算、归约和内积。
 
@@ -863,9 +913,9 @@ fn test_simd_add_consistency() {
 
 ---
 
-### 6.24 属性测试不变量设计
+### 6.4 属性测试不变量设计
 
-#### 6.24.1 不变量清单
+#### 6.4.1 不变量清单
 
 | 不变量             | 测试方法                                                                                          | 优先级 |
 | ------------------ | ------------------------------------------------------------------------------------------------- | ------ |
@@ -876,7 +926,7 @@ fn test_simd_add_consistency() {
 | `unique` 不含重复  | 对非 `NaN` 元素，结果中不得重复；`NaN` 按 IEEE 754 自反不相等语义逐个保留                         | 中     |
 | 广播形状一致性     | 广播结果形状遵循 NumPy 规则：相等取该值，一方为 1 取另一方，否则报错（参见 `15-broadcast.md §5`） | 高     |
 
-#### 6.24.2 属性测试框架
+#### 6.4.2 属性测试框架
 
 使用受控参数化数据生成与确定性循环样本进行覆盖；不引入额外属性测试框架依赖。以下示例为代表性子集：
 
@@ -917,9 +967,9 @@ fn prop_add_commutative() {
 
 ---
 
-### 6.25 内部实现补充
+### 6.5 内部实现补充
 
-#### 6.25.1 assert_tensor_close helper 实现细节
+#### 6.5.1 assert_tensor_close helper 实现细节
 
 > 默认比较 helper 应基于已冻结的元素转换接口实现（如实数路径上的 `CastTo<f64>`），避免依赖未在 `03-element.md` 中正式冻结的附加转换约定；复数路径须拆分为独立 helper，并按实部/虚部分量比较。
 
@@ -942,7 +992,7 @@ fn prop_add_commutative() {
 // 5. error message includes: msg, index, actual, expected, and comparison contract
 ```
 
-#### 6.25.2 参数化策略设计
+#### 6.5.2 参数化策略设计
 
 | 不变量类型       | 参数化策略                  | 说明                            |
 | ---------------- | --------------------------- | ------------------------------- |
@@ -952,7 +1002,7 @@ fn prop_add_commutative() {
 | 整数数据         | 固定边界样本集              | 含负数、零与边界值              |
 | 1D 向量          | `for len in 1..256`         | 含边界长度                      |
 
-#### 6.25.3 测试数据生成策略
+#### 6.5.3 测试数据生成策略
 
 | 数据类型   | 生成方法                                                    | 用途                     |
 | ---------- | ----------------------------------------------------------- | ------------------------ |
@@ -961,69 +1011,6 @@ fn prop_add_commutative() {
 | 非连续视图 | `t.transpose()` 或通过 `SliceInfo::new(...)` 构造的区间切片 | 测试子区间与转置视图处理 |
 | 空/单元素  | `zeros([0])?` / `Tensor::<f64, Ix0>::from_scalar(42.0)`     | 边界测试                 |
 | 受控数据   | `from_shape_vec(...)` / 顺序生成 / 固定种子参数化循环的组合 | 属性测试                 |
-
----
-
-### 6.26 Good/Bad 对比示例
-
-```rust,ignore
-// Good: Use the default exact helper for same-path base arithmetic
-#[test]
-fn test_add_result() {
-    let a = Tensor1::from_shape_vec([3], vec![1.0, 2.0, 3.0])
-        .expect("shape and data length must match");
-    let b = Tensor1::from_shape_vec([3], vec![4.0, 5.0, 6.0])
-        .expect("shape and data length must match");
-    let result = (&a + &b).unwrap();
-    let expected = Tensor1::from_shape_vec([3], vec![5.0, 7.0, 9.0])
-        .expect("shape and data length must match");
-    assert_tensor_exact_real(&result, &expected, "add");
-}
-
-// Good: Test a supported error path that returns Result
-#[test]
-fn test_axis_iter_invalid_axis() {
-    let t = Tensor2::<f64>::zeros([2, 3]).expect("shape is valid");
-    assert_xenon_error!(t.axis_iter(Axis(2)), XenonError::InvalidAxis { .. });
-}
-
-// Good: Parameterized test with standard shapes
-#[test]
-fn test_transpose_shapes() {
-    for (r, c) in standard_shapes_2d() {
-        let t = Tensor2::<f64>::zeros([r, c]).expect("shape is valid");
-        let tt = t.transpose();
-        assert_eq!(tt.shape(), &[c, r]);
-    }
-}
-```
-
-```rust,ignore
-// Bad: Applying a blanket tolerance to a same-path base arithmetic test
-#[test]
-fn test_add_bad() {
-    let a = Tensor1::from_shape_vec([2], vec![0.1, 0.2])
-        .expect("shape and data length must match");
-    let b = Tensor1::from_shape_vec([2], vec![0.3, 0.4])
-        .expect("shape and data length must match");
-    let result = (&a + &b).unwrap();
-    assert!(ulp_eq_f64_cross_path(result[[0]], 0.4, 1));  // Base arithmetic should use the Tier 1 exact rule
-}
-
-// Bad: Ignoring a recoverable error path
-#[test]
-fn test_axis_iter_bad() {
-    let t = Tensor2::<f64>::zeros([2, 3]).expect("shape is valid");
-    let _ = t.axis_iter(Axis(2));  // Silently ignoring the Result
-}
-
-// Bad: Hardcoded magic numbers without context
-#[test]
-fn test_bad_magic() {
-    let t = Tensor1::<f64>::zeros([100]).expect("shape is valid");
-    assert_eq!(t.sum(), 0.0);  // What is 100? Why zeros?
-}
-```
 
 ---
 
