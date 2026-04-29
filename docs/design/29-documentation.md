@@ -246,7 +246,7 @@ L3: Examples (examples/)
 //!
 //! ## Runtime Environment
 //!
-//! Xenon supports only the `std` environment (`需求说明书 §1.3`).
+//! Xenon supports only the `std` environment (see `01-architecture.md §1.3`).
 //! It does not need or provide a `std` feature toggle.
 //! All documentation assumes a `std` environment.
 //!
@@ -325,6 +325,8 @@ L3: Examples (examples/)
 #![warn(clippy::missing_safety_doc)]      // Unsafe functions need Safety section
 ```
 
+以上 lint 对应 §5.4.2 中 `# Errors`、`# Panics`、`# Safety` 三节的必须规则，仅在 CI 中作为自动化门禁补充；完整文档节定义仍以 §5.4.2 为准。
+
 以上仅列出文档相关 lint 增补，完整 `lib.rs` 基线见 `00-coding.md §7.1`。
 
 ### 5.6 Doctest 规范
@@ -333,11 +335,13 @@ L3: Examples (examples/)
 
 | 规范       | 说明                                                                                                                        |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------- |
-| 可编译运行 | 所有 doctest 通过 `cargo test --doc`；关键 examples 至少通过 `cargo run --example ...` 实际运行，其余 examples 至少编译通过 |
+| 可编译运行 | 所有 doctest 通过 `cargo test --doc`；**关键示例**（见下方定义）至少通过 `cargo run --example ...` 实际运行，其余 examples 至少编译通过 |
 | 使用 `?`   | doctest 天然返回 `Result` 时必须优先使用 `?`；避免在文档示例中使用 `unwrap()`                                               |
 | 隐藏样板   | 用 `# ` 隐藏 use 语句                                                                                                       |
 | 最小化     | 只展示当前 API 用法                                                                                                         |
 | 有断言     | 用 `assert_eq!` 验证结果                                                                                                    |
+
+> **关键示例定义**：§5.11.1 Gate 4 列出的示例（当前为 `basic` / `broadcasting` / `workspace`）为关键默认示例，必须在 CI 中实际运行。§5.3 示例覆盖矩阵列出的全部 API 族示例均须编译通过；其中被 Gate 4 命名的还须运行通过。
 
 #### 5.6.2 Doctest 模板
 
@@ -550,7 +554,7 @@ pub fn sum(&self) -> A { ... }
 | Gate 1：rustdoc 文档门禁 | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`                                                            | 任何 missing docs / broken intra-doc links / 其他 rustdoc warning |
 | Gate 2：文档节完整性门禁 | `cargo clippy --all-features -- -D clippy::missing_errors_doc -D clippy::missing_panics_doc -D clippy::missing_safety_doc` | 缺少 `# Errors` / `# Panics` / `# Safety` 文档节                  |
 | Doctest                  | `cargo test --doc --all-features`                                                                                          | 任何失败                                                          |
-| 示例验证                 | `cargo build --examples --all-features` + 关键默认示例运行命令（当前为 `basic` / `broadcasting` / `workspace`）            | 任何失败                                                          |
+| 示例验证                 | `cargo build --examples --all-features` + 关键示例运行命令（见 §5.6.1 定义；当前为 `basic` / `broadcasting` / `workspace`）            | 任何失败                                                          |
 
 #### 5.11.2 CI 配置
 
@@ -678,7 +682,7 @@ where
     A: Element,
     D: Dimension,
 {
-    unimplemented!()
+    // ... (implementation elided for documentation purposes)
 }
 
 /// Export the tensor as a mutable FFI descriptor.
@@ -694,7 +698,7 @@ where
     A: Element,
     D: Dimension,
 {
-    unimplemented!()
+    // ... (implementation elided for documentation purposes)
 }
 ````
 
