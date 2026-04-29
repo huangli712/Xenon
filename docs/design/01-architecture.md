@@ -236,7 +236,7 @@ xenon/
 │   │   ├── mod.rs             # Module root and re-exports
 │   │   ├── types.rs           # BlasInfo definition
 │   │   ├── ptr.rs             # Raw pointer API (export/export_mut, from_raw_parts, into_raw_parts)
-│   │   ├── blas.rs            # BLAS compatibility checks (is_blas_compatible, blas_info, lda)
+│   │   ├── blas.rs            # BLAS compatibility checks (is_blas_layout_compatible, blas_info, lda)
 │   │   └── offset.rs          # Index-to-pointer offset
 │   │
 │   ├── workspace/             # Temporary workspace
@@ -445,7 +445,7 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | L3     | tensor    | storage, dimension, layout, element, error | 07-tensor.md        |
 | L4     | broadcast | tensor, dimension, layout, error    | 15-broadcast.md     |
 | L4     | iter      | tensor, storage, dimension, error   | 10-iterator.md      |
-| L4     | ffi       | tensor, layout, storage, dimension  | 23-ffi.md           |
+| L4     | ffi       | tensor, layout, storage, dimension, element, error | 23-ffi.md           |
 | L4     | dispatch  | tensor                              | 01-architecture.md  |
 | L5     | parallel  | tensor, dimension, element, error, dispatch  | 09-parallel.md      |
 | L5     | simd      | tensor, layout, element             | 08-simd.md          |

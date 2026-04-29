@@ -1053,21 +1053,21 @@ This design (zero allocation):
 
 ### 6.3 split_at_mut 安全设计
 
-> **安全设计决策：** `split_at_mut` 采用消费式设计（consuming self）而非借用：调用 `split_at_mut(self, mid)` 消耗原 `SplitBorrowMut`，返回两个新的子 `SplitBorrowMut`。这确保每个 `SplitBorrowMut` 实例有独立的生命周期，避免计数器不一致问题。原始 `SplitBorrowMut` 被消耗后不再有效，两个子分割各自独立管理其 Drop 行为。
->
-> **引用计数安全性：** `split_at_mut` 在创建两个子分割之前，通过 `fetch_add(1)` 原子递增 `split_count`。这是因为：
->
-> - 消耗 `self` 意味着原 `SplitBorrowMut` 的 `Drop` 不会执行（避免了隐含的 −1 递减）
-> - 但两个新的 `SplitBorrowMut` 被创建（产生 +2 递减）
-> - 净变化为 +1 个活跃守卫，因此 `split_count` 需要增加 1 以保持一致
-> - 如果不加 1，最后一个子分割的 `Drop` 会过早观察到 `prev == 1`，在其他子分割仍然活跃时重置 `borrow_state`，造成安全隐患
->
-> **示例（3 个活跃子空间）**：
->
-> 1. `split_at_mut(512)` → `split_count = 2`，创建 `left` 和 `right`
-> 2. `right.split_at_mut(128)` → `fetch_add(1)`，`split_count = 3`，创建 `right_a` 和 `right_b`
+**安全设计决策：** `split_at_mut` 采用消费式设计（consuming self）而非借用：调用 `split_at_mut(self, mid)` 消耗原 `SplitBorrowMut`，返回两个新的子 `SplitBorrowMut`。这确保每个 `SplitBorrowMut` 实例有独立的生命周期，避免计数器不一致问题。原始 `SplitBorrowMut` 被消耗后不再有效，两个子分割各自独立管理其 Drop 行为。
 
-> **公开/内部边界说明：** 本文中的公开安全 API（如 `new`、`borrow`、`borrow_mut`、`split_at_mut`、`ensure_capacity`）统一返回可恢复错误，而不是把输入校验失败暴露为 panic；只有无法直接验证的 `unsafe` 初始化前提继续由调用方承担。3. `left` drop → `split_count: 3→2`，`prev=3 ≠ 1`，不重置 ✅ 4. `right_a` drop → `split_count: 2→1`，`prev=2 ≠ 1`，不重置 ✅ 5. `right_b` drop → `split_count: 1→0`，`prev=1`，重置 `borrow_state` ✅
+**引用计数安全性：** `split_at_mut` 在创建两个子分割之前，通过 `fetch_add(1)` 原子递增 `split_count`。这是因为：
+
+- 消耗 `self` 意味着原 `SplitBorrowMut` 的 `Drop` 不会执行（避免了隐含的 −1 递减）
+- 但两个新的 `SplitBorrowMut` 被创建（产生 +2 递减）
+- 净变化为 +1 个活跃守卫，因此 `split_count` 需要增加 1 以保持一致
+- 如果不加 1，最后一个子分割的 `Drop` 会过早观察到 `prev == 1`，在其他子分割仍然活跃时重置 `borrow_state`，造成安全隐患
+
+**示例（3 个活跃子空间）**：
+
+1. `split_at_mut(512)` → `split_count = 2`，创建 `left` 和 `right`
+2. `right.split_at_mut(128)` → `fetch_add(1)`，`split_count = 3`，创建 `right_a` 和 `right_b`
+
+**公开/内部边界说明：** 本文中的公开安全 API（如 `new`、`borrow`、`borrow_mut`、`split_at_mut`、`ensure_capacity`）统一返回可恢复错误，而不是把输入校验失败暴露为 panic；只有无法直接验证的 `unsafe` 初始化前提继续由调用方承担。3. `left` drop → `split_count: 3→2`，`prev=3 ≠ 1`，不重置 ✅ 4. `right_a` drop → `split_count: 2→1`，`prev=2 ≠ 1`，不重置 ✅ 5. `right_b` drop → `split_count: 1→0`，`prev=1`，重置 `borrow_state` ✅
 
 ### 6.4 扩容安全性论证
 
@@ -1238,12 +1238,12 @@ ensure_capacity(&mut self, 2048)
 
 ### 9.1 接口约定
 
-| 方向                             | 对方模块             | 接口/类型         | 约定                                                                                                                          |
-| -------------------------------- | -------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `workspace ← upstream libraries` | `upstream libraries` | 临时缓冲区请求    | 上游数值库可把 workspace 作为临时缓冲区使用；默认只获得 `MaybeUninit` 视图                                                    |
-| `workspace ← upstream libraries` | `upstream libraries` | `split_at_mut()`  | 上游数值库场景可通过分割接口拆分工作空间；子空间同样只暴露 `MaybeUninit` 视图                                                 |
-| `workspace ← upstream libraries` | `upstream libraries` | `assume_init_*`   | 调用方必须先完成写入并证明对应前缀/typed region 已初始化，才能重解释为已初始化视图                                            |
-| `workspace ← tensor`             | `tensor`             | 临时 scratch 空间 | 张量运算在需要时可借用 workspace 提供临时空间；任何借出的 scratch 视图都不得跨越 `ensure_capacity` 或持久化到 tensor 元数据中 |
+| 方向                 | 对方模块  | 接口/类型         | 约定                                                                                                                          |
+| -------------------- | --------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `workspace` ← 上游库 | 上游库    | 临时缓冲区请求    | 上游数值库可把 workspace 作为临时缓冲区使用；默认只获得 `MaybeUninit` 视图                                                    |
+| `workspace` ← 上游库 | 上游库    | `split_at_mut()`  | 上游数值库场景可通过分割接口拆分工作空间；子空间同样只暴露 `MaybeUninit` 视图                                                 |
+| `workspace` ← 上游库 | 上游库    | `assume_init_*`   | 调用方必须先完成写入并证明对应前缀/typed region 已初始化，才能重解释为已初始化视图                                            |
+| `workspace ← tensor` | `tensor`  | 临时 scratch 空间 | 张量运算在需要时可借用 workspace 提供临时空间；任何借出的 scratch 视图都不得跨越 `ensure_capacity` 或持久化到 tensor 元数据中 |
 
 ### 9.2 数据流描述
 

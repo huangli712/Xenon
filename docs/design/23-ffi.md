@@ -59,7 +59,7 @@
 src/
 └── ffi/
     ├── mod.rs         # Module root, re-exports
-    ├── types.rs       # FfiErrorCategory and BlasInfo type definitions
+    ├── types.rs       # BlasInfo type definitions; re-exports ElementType from element module
     ├── ptr.rs         # Raw-pointer API wrappers (export/export_mut, re-export from tensor module)
     ├── blas.rs        # BLAS compatibility checks (is_blas_layout_compatible, blas_info, lda)
     └── offset.rs      # Multi-dimensional index to pointer offset (try_offset_of, try_ptr_at)
@@ -79,7 +79,7 @@ src/ffi/
 │   └── re-exports from types, ptr, blas, offset
 ├── types.rs
 │   ├── core
-│   └── crate::element       # Element trait (for ElementType::of)
+│   └── crate::element       # re-exports ElementType (defined in element module)
 ├── ptr.rs
 │   ├── crate::tensor        # TensorBase<S, D>, offset
 │   ├── crate::dimension     # Dimension trait
@@ -106,7 +106,7 @@ src/ffi/
 | ----------- | ------------------------------------------------------------------------------------------------------- |
 | `tensor`    | `TensorBase<S, D>`, `.shape()`, `.strides()`, `.offset()`                                               |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`                                                                       |
-| `element`   | `Element`, `ElementType::of::<A>()`                                                                     |
+| `element`   | `Element`, `ElementType`（定义于 `element` 模块，`ffi` re-export）, `ElementType::of::<A>()`             |
 | `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, owned allocator metadata（供 `OwnedRawParts<A, D>` 导出/重建） |
 | `layout`    | `is_f_contiguous()`（连续性检查算法，定义于 `06-layout.md` §5.7）、`has_zero_stride()`（零步长标志位，定义于 `06-layout.md` §5.1）；`TensorBase` 方法参见 `07-tensor.md` §5.3 |
 | `error`     | `XenonError`（含 `Ffi`、`DimensionMismatch`、`IndexOutOfBounds`、`InvalidLayout` 等变体）、`FfiErrorCategory`（定义于 `26-error.md` §5.1） |
@@ -213,32 +213,21 @@ use crate::error::FfiErrorCategory;
 
 ### 5.3 C 侧结构化导出格式
 
+> **定义位置：** `ElementType` 枚举定义于 `element` 模块（见 `03-element.md §5.1`），`ffi` 模块通过 `pub use` re-export 以供 FFI 消费者使用。此设计避免了 `element` → `ffi` → `element` 的循环依赖。
+
 ```rust,ignore
-/// Element type discriminant for FFI consumers.
-///
-/// Each variant corresponds to one of Xenon's supported tensor element types
-/// (see `需求说明书 §4`). C consumers use this to interpret the `data` pointer.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(C)]
-pub enum ElementType {
-    Bool,
-    I32,
-    I64,
-    F32,
-    F64,
-    Complex32,
-    Complex64,
-}
+// src/ffi/types.rs
+pub use crate::element::ElementType;  // re-export from element module
 
-impl ElementType {
-    /// Returns the `ElementType` discriminant for `A`.
-    ///
-    /// This is determined at compile time via `Element` trait association.
-    pub const fn of<A: Element>() -> Self;
-}
+// ElementType 的完整定义见 03-element.md §5.1
+// 此处仅展示 FFI 消费者可见的公共 API 签名：
+//
+// pub enum ElementType { Bool, I32, I64, F32, F64, Complex32, Complex64 }
+//
+// impl ElementType {
+//     pub const fn of<A: Element>() -> Self { A::ELEMENT_TYPE }
+// }
 ```
-
-**实现基础说明：** `Element` sealed trait 中已声明 `const ELEMENT_TYPE: ElementType` 关联常量（见 `03-element.md §5.1`），作为 `ElementType::of::<A>()` 的实现基础。若当前 Rust 版本不支持所需 const 机制，可将该 API 降为普通 `fn`，保持语义不变。
 
 ### 5.4 指针约定对照
 

@@ -137,12 +137,12 @@ pub trait Element:
 
     /// Element type discriminant for FFI consumers.
     ///
-    /// Used by `ElementType::of::<A>()` (see `23-ffi.md §5.3`) to
-    /// map Rust element types to C-compatible enum discriminants at
-    /// compile time. If the current Rust version does not support
-    /// the required const mechanism, this can be downgraded to a
+    /// Maps Rust element types to C-compatible enum discriminants at
+    /// compile time. `ElementType` is defined in this module (see below)
+    /// and re-exported by `ffi`. If the current Rust version does not
+    /// support the required const mechanism, this can be downgraded to a
     /// regular `fn` without changing the semantics.
-    const ELEMENT_TYPE: crate::ffi::ElementType;
+    const ELEMENT_TYPE: ElementType;
 }
 ```
 
@@ -156,6 +156,38 @@ pub trait Element:
 | `Send`      | 可跨线程移动（并行迭代必需）           |
 | `Sync`      | 可跨线程共享引用（并行只读访问必需）   |
 | `Sealed`    | 防止外部类型实现                       |
+
+**`ElementType` 枚举（定义于本模块，`ffi` re-export）：**
+
+```rust,ignore
+/// Element type discriminant for FFI consumers.
+///
+/// Each variant corresponds to one of Xenon's supported tensor element types
+/// (see `需求说明书 §4`). Defined in the `element` module; re-exported by
+/// `ffi` for C consumers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(C)]
+pub enum ElementType {
+    Bool,
+    I32,
+    I64,
+    F32,
+    F64,
+    Complex32,
+    Complex64,
+}
+
+impl ElementType {
+    /// Returns the `ElementType` discriminant for `A`.
+    ///
+    /// Determined at compile time via `Element::ELEMENT_TYPE`.
+    pub const fn of<A: Element>() -> Self {
+        A::ELEMENT_TYPE
+    }
+}
+```
+
+**设计决策：** `ElementType` 枚举与 `Element` trait 定义于同一模块（`element`），消除 `element` → `ffi` → `element` 的循环依赖。`ffi` 模块通过 `pub use crate::element::ElementType` re-export 以供 FFI 消费者使用。
 
 ### 5.2 Numeric trait
 
