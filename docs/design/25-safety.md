@@ -543,9 +543,6 @@ SIMD 操作与并行操作的组合安全性保证（参见 `08-simd.md §5`）�
 | `test_chunks_cover_all`       | 分块覆盖所有元素                          | 中     |
 | `test_chunks_no_overlap`      | 分块不重叠                                | 中     |
 | `test_owned_cross_thread`     | Owned 跨线程移动                          | 中     |
-| `test_arc_internal_restore_writable_after_uniquify` | 内部唯一化 / 必要时复制后的写路径独占性验证 | 低     |
-| `test_arc_cow_preserves_other_aliases`              | CoW 写路径不会污染其他 Arc 别名             | 中     |
-| `test_arc_cow_unique_fast_path`                     | 唯一持有时可原位恢复可写路径                | 中     |
 
 ### 8.3 边界测试场景
 

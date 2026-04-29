@@ -17,7 +17,7 @@
 
 | 职责       | 包含                                                                   |
 | ---------- | ---------------------------------------------------------------------- |
-| 跨模块验证 | 维度、存储、布局、运算等模块的协同行为（参见 `01-architecture.md §5`） |
+| 跨模块验证 | 维度、存储、布局、运算等模块的协同行为（参见 `01-architecture.md §1.5`） |
 | 边界覆盖   | 空张量、单元素、大张量、极端值、非连续、高维                           |
 | 数值精度   | IEEE 754 精度验证                                                      |
 | 属性测试   | 代数不变量验证                                                         |
@@ -436,7 +436,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | ----------------------------- | ------------------------------------------------------------------------------------ | ------ |
 | `test_zeros_ones_from_scalar` | zeros, ones, from_scalar 构造                                                        | 高     |
 | `test_eye_identity`           | 单位矩阵                                                                             | 高     |
-| `test_from_data_constructors` | 以 `from_shape_vec`、`from_shape_slice` 为主；`from_vec` 仅覆盖 Ix1 非规范便捷层（see 18-construction.md §5.3） | 高     |
+| `test_from_data_constructors` | 以 `from_shape_vec`、`from_shape_slice` 为主；`from_vec` 仅覆盖 Ix1 非规范便捷路径（see 18-construction.md §5.3 末尾） | 高     |
 | `test_from_fixed_array`       | 从固定数组构造                                                                       | 中     |
 | `test_from_shape_vec_f_order_mapping` | F-order 逻辑元素顺序与线性输入映射正确                                       | 高     |
 
@@ -1275,15 +1275,14 @@ test:
 tests/
 ├── compile_fail_tests.rs    # repository-local harness (top-level for Cargo discovery)
 └── compile-fail/
-    └── ui/
-        ├── wrong_dimension_type.rs
-        ├── missing_element_bound.rs
-        ├── mismatched_storage_type.rs
-        ├── unsigned_tensor_element_rejected.rs
-        ├── invalid_unsigned_element_rejected.rs
-        ├── ui_bool_sum_rejected.rs
-        ├── ui_bool_unique_rejected.rs
-        └── ui_bool_arithmetic_rejected.rs
+    ├── wrong_dimension_type.rs
+    ├── missing_element_bound.rs
+    ├── mismatched_storage_type.rs
+    ├── unsigned_tensor_element_rejected.rs
+    ├── invalid_unsigned_element_rejected.rs
+    ├── ui_bool_sum_rejected.rs
+    ├── ui_bool_unique_rejected.rs
+    └── ui_bool_arithmetic_rejected.rs
 ```
 
 建议的 harness 形式如下（伪代码，需避免与辅助函数同名）：
