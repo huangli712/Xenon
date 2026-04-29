@@ -108,7 +108,7 @@ benches/
 
 ### 4.4 依赖方向声明
 
-依赖方向：单向消费。`benches` 仅消费 crate 公共 API；benchmark 工具链属于可选维护设施，不被任何模块依赖。
+依赖方向：单向消费。`benches` 消费 crate 公共 API 与部分 `pub(crate)` 内部 API（如 `broadcast_with`）；benchmark 工具链属于可选维护设施，不被任何模块依赖。
 
 ---
 

@@ -582,10 +582,6 @@ pub fn sum(&self) -> A { ... }
 // Bad: no documentation, no examples, no description
 pub fn sum(&self) -> A { ... }
 
-// Bad: documentation too brief, missing key information
-/// Sums the tensor.
-pub fn sum(&self) -> A { ... }
-
 // Bad: the example is incomplete — it omits the surrounding API description,
 // return-value semantics, and edge-case notes even though the doctest itself compiles.
 /// ```
@@ -599,57 +595,7 @@ pub fn sum(&self) -> A { ... }
 pub fn sum(&self) -> A { ... }
 ````
 
-#### 5.12.3 Good — FFI 边界文档
-
-````rust,ignore
-/// Export the tensor as an immutable FFI descriptor.
-///
-/// This helper only exposes metadata needed by upstream FFI callers.
-/// It does not promise that every legal tensor layout is directly consumable by
-/// BLAS/LAPACK; callers must inspect the exported descriptor and compatibility
-/// predicates before passing it across the boundary.
-///
-/// # Examples
-///
-/// ```rust
-/// # use xenon::prelude::*;
-///
-/// # fn demo() -> xenon::Result<()> {
-/// let data = vec![1.0f64, 2.0, 3.0, 4.0];
-/// let tensor = Tensor2::from_shape_vec([2, 2], data)?;
-/// let exported = tensor.export();
-/// let shape = unsafe { core::slice::from_raw_parts(exported.shape, exported.ndim) };
-/// assert_eq!(shape, &[2, 2]);
-/// assert!(tensor.is_blas_layout_compatible());
-/// # Ok(())
-/// # }
-/// ```
-pub fn export(&self) -> TensorExport<A>
-where
-    A: Element,
-    D: Dimension,
-{
-    // ... (implementation elided for documentation purposes)
-}
-
-/// Export the tensor as a mutable FFI descriptor.
-///
-/// # Write boundary
-///
-/// The caller of the foreign code must ensure that writes performed through the
-/// exported descriptor stay within the exported bounds, do not create aliasing
-/// violations with any other live Rust reference, and do not assume BLAS/LAPACK
-/// compatibility unless that was checked explicitly before the call.
-pub fn export_mut(&mut self) -> TensorExportMut<A>
-where
-    A: Element,
-    D: Dimension,
-{
-    // ... (implementation elided for documentation purposes)
-}
-````
-
-#### 5.12.4 Bad — Safety 文档不完整的 FFI 注释
+#### 5.12.3 Bad — Safety 文档不完整的 unsafe 函数
 
 ```rust,ignore
 // Bad: safety contract is incomplete for a still-supported raw-parts constructor.
@@ -974,7 +920,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 ---
 
-## 11. 设计决策记录
+## 10. 设计决策记录
 
 ### 决策 1：英文文档
 
@@ -1018,7 +964,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 ---
 
-## 12. 性能描述
+## 11. 性能描述
 
 | 方面     | 说明                                                                                                |
 | -------- | --------------------------------------------------------------------------------------------------- |
@@ -1028,7 +974,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 ---
 
-## 13. 平台与工程约束
+## 12. 平台与工程约束
 
 | 约束项     | 约束内容                                                          |
 | ---------- | ----------------------------------------------------------------- |
