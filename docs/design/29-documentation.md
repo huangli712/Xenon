@@ -4,7 +4,6 @@
 > 前置文档: 所有前置文档（`00-coding.md` ~ `28-tests.md`）
 > 需求参考: `需求说明书 §28.1`
 > 范围声明: 范围内
-> **格式豁免声明**：本文档为横切性的文档规范，按 `design.md` §3 豁免标准模块文档格式；允许围绕 pub API 文档、README、examples、docs.rs 与 docs CI 组织章节，而非严格套用单模块模板。
 
 ---
 
@@ -32,23 +31,7 @@
 | 惯用法     | 遵循 Rust API Guidelines                                  |
 | 英文文档   | 所有 doc comment 使用英文                                 |
 
-### 1.3 在架构中的位置
-
-```
-Dependency layers:
-L0: error, private
-L1: dimension, element, complex
-L2: layout (depends on dimension)
-L3: storage (independent of layout; owned by tensor and consumes layout results)
-L4: tensor (depends on storage, dimension)
-L5: overload/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
-
-Cross-cutting concern (global):
-┌─────────────────────────────────────────────────────────────────┐
-│  Documentation (doc comments, README, examples/)  <- current document (global) │
-│  - Spans pub API docs across all L0-L5 modules                               │
-└─────────────────────────────────────────────────────────────────┘
-```
+---
 
 ## 2. 需求映射与范围约束
 
@@ -66,8 +49,6 @@ Cross-cutting concern (global):
 ---
 
 ## 3. 文件位置
-
-### 3.1 文档源码分布
 
 ```
 src/
@@ -118,9 +99,9 @@ src/
 
 examples/
 ├── basic.rs                  # Basic-operations example
-├── complex.rs                  # Complex-number operations example
+├── complex.rs                # Complex-number operations example
 ├── broadcasting.rs           # Broadcasting example
-├── features.rs                # Optional-feature behavior example (`simd` / internal parallel execution effects)
+├── features.rs               # Optional-feature behavior example (`simd` / internal parallel execution effects)
 ├── simd.rs                   # SIMD-acceleration example (requires `simd` feature)
 ├── ffi.rs                    # FFI integration example
 └── workspace.rs              # Workspace borrow/split/growth example
@@ -129,15 +110,11 @@ README.md                     # Project README
 CHANGELOG.md                  # Optional engineering changelog artifact (non-required deliverable)
 ```
 
-### 3.2 划分理由
-
-文档与代码共存：doc comment 在源码中，CI 自动验证一致性。examples/ 独立运行。
-
 ---
 
 ## 4. 依赖关系
 
-### 4.1 依赖图
+### 4.1 依赖图（ASCII）
 
 ```
 29-documentation
@@ -161,17 +138,17 @@ CHANGELOG.md                  # Optional engineering changelog artifact (non-req
 | `Cargo.toml`     | feature 列表、依赖列表、metadata   |
 | 需求说明书       | API 行为规范、精度要求、边界定义   |
 
-### 4.3 依赖方向声明
-
-> **依赖方向：文档跟随代码。** 文档内容基于源码 API 签名和设计文档，不被代码依赖。
-
-### 4.4 依赖合法性与新增依赖说明
+### 4.3 依赖合法性
 
 | 项目           | 说明                                        |
 | -------------- | ------------------------------------------- |
 | 新增第三方依赖 | 无新增依赖                                  |
 | 合法性结论     | 符合最小依赖限制                            |
 | 替代方案       | 不适用；文档生成依赖 rustdoc 与现有工程配置 |
+
+### 4.4 依赖方向声明
+
+> **依赖方向：文档跟随代码。** 文档内容基于源码 API 签名和设计文档，不被代码依赖。
 
 ---
 
@@ -497,7 +474,7 @@ MIT
 
 ---
 
-### 5.9 CHANGELOG.md（可选工程整理，非默认交付）
+### 5.9 CHANGELOG.md
 
 > **设计扩展说明：** 本节及后续涉及版本号规则、docs.rs metadata、文档 CI / feature 验证矩阵的内容，均属于超出 `需求说明书 §28.1` 最低范围的工程化设计扩展。
 
@@ -799,152 +776,6 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | Wave 4 | 示例程序        | 为关键 API 族提供可运行 examples，并与 doctest 口径保持一致          |
 | Wave 5 | CI 集成         | 固化 missing docs、doctest、examples 构建与关键示例运行检查          |
 
-### 7.1 unsafe API 执行清单
-
-须在实现阶段维护一份全项目 unsafe 公开函数清单，并对清单中的**每一个 unsafe 函数**逐项执行以下检查项：
-
-- [ ] Aliasing: 无重叠访问保证
-- [ ] Lifetime/Provenance: 指针来源可追溯
-- [ ] Initialization: 内存已初始化
-- [ ] Bounds: 访问范围在合法边界内
-- [ ] Overflow/Layout: 布局前置条件已满足
-
-最低基线至少覆盖 `23-ffi.md` 中的 `from_raw_parts*` / `from_raw_parts_mut` / `from_raw_parts_owned()` 系列，以及 `24-workspace.md` 中的 `assume_init_*` 系列高风险函数。
-
-### 7.2 关键 API 示例矩阵
-
-须在实现阶段维护一份关键 API 清单，每个条目标注是否已有使用示例（doctest 或 `example`）。`需求说明书 §28.1` 要求关键 API 提供使用示例，本矩阵作为验收基线。
-
-> 详细任务清单继续采用 Wave 形式维护，见后文“详细任务清单”。
-
----
-
-## 8. 测试计划
-
-### 8.1 测试分类表
-
-| 类型                     | 命令                                                                                                                       | 目的                                                             |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| 单元检查                 | `cargo test --doc --all-features`                                                                                          | 验证单个 API 文档示例可编译运行                                  |
-| 集成检查                 | `cargo doc --all-features --no-deps` + examples 构建/关键默认示例运行                                                      | 验证模块文档、README、examples 与源码接口协同一致                |
-| 边界检查                 | feature-gated/unsafe doctest 逐项编译                                                                                      | 验证条件编译、unsafe 说明和 `std` 环境边界                       |
-| 属性检查                 | broken links / missing docs 不变量                                                                                         | 验证“公开 API 均有文档、关键入口均可追踪”                        |
-| Gate 1：rustdoc 文档门禁 | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`                                                            | 拦截 missing docs、broken intra-doc links 与其他 rustdoc warning |
-| Gate 2：文档节完整性门禁 | `cargo clippy --all-features -- -D clippy::missing_errors_doc -D clippy::missing_panics_doc -D clippy::missing_safety_doc` | 拦截缺少 `# Errors` / `# Panics` / `# Safety` 的公开 API 文档    |
-| Doctest                  | `cargo test --doc --all-features`                                                                                          | 验证文档中的代码示例可编译运行                                   |
-| 示例验证                 | `cargo build --examples --all-features` + 关键默认示例运行命令                                                             | 验证 examples/ 下程序可编译，关键默认示例可运行                  |
-
-### 8.2 Doctest 覆盖要求
-
-| 模块类别                                         | 定性要求                                                                                                      |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| 核心类型（tensor, dimension, storage）           | 核心入口和高频查询方法必须有 doctest                                                                          |
-| 运算模块（overload, math, broadcast, reduction） | 代表性运算、广播与错误路径必须有 doctest                                                                      |
-| 工具模块（ffi, workspace）                       | 关键 API、feature gate 与 Safety 边界必须有 doctest；`simd` / `parallel` 仅文档化其对公开 API 的 feature 影响 |
-| 辅助模块（convert, format, error）               | 至少覆盖构造、基本使用与错误语义                                                                              |
-| 迭代与归约模块（iter, reduction, matrix）        | 核心入口、边界行为和错误路径必须可追踪                                                                        |
-
-### 8.3 边界测试场景表
-
-| 场景              | 预期行为                                                              |
-| ----------------- | --------------------------------------------------------------------- |
-| feature-gated API | 在未启用 feature 时不会出现在文档中，启用后 doctest 通过              |
-| `std` 平台边界    | 文档示例默认以 `std` 环境为前提；feature-gated API 需显式标注启用条件 |
-| unsafe API 文档   | 必须包含 `# Safety` 且示例不省略关键前置条件                          |
-| 大型数组输出示例  | 截断格式与 `22-output.md` 保持一致                                    |
-
-### 8.4 属性测试不变量
-
-| 不变量                               | 验证方式                          |
-| ------------------------------------ | --------------------------------- |
-| 所有公开 API 都能在 docs.rs 中被发现 | `missing_docs` + docs.rs 构建检查 |
-| 所有关键模块都有至少一个可运行示例   | doctest / examples 构建联合验证   |
-| 文档中的路径与模块名和架构文档一致   | broken links 检查 + 人工审阅      |
-
-### 8.5 CI 配置
-
-> **说明**：本文档只保留文档交付所需的验证类别与示例命令；doctest / examples 的统一 CI 执行矩阵由 `28-tests.md` 维护。
-
-```yaml
-# .github/workflows/docs.yml
-docs:
-  steps:
-    - name: Gate 1 - rustdoc warnings
-      run: RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
-
-    - name: Gate 2 - documentation section completeness
-      run: cargo clippy --all-features -- -D clippy::missing_errors_doc -D clippy::missing_panics_doc -D clippy::missing_safety_doc
-
-    - name: Run doctests
-      run: cargo test --doc --all-features
-
-    - name: Build examples
-      run: cargo build --examples --all-features
-
-    - name: Run key examples
-      run: |
-        cargo run --example basic
-        cargo run --example broadcasting
-        cargo run --example workspace
-```
-
-### 8.6 Feature gate / 配置测试
-
-| 配置       | 验证点                                                                        |
-| ---------- | ----------------------------------------------------------------------------- |
-| 默认配置   | 默认 `std` 文档、README 与 examples 描述一致                                  |
-| 启用并行   | 受 `parallel` feature 影响的公开 API 文档说明、性能路径注记与示例说明保持一致 |
-| 启用 SIMD  | 受 `simd` feature 影响的公开 API 文档说明、性能路径注记与示例说明保持一致     |
-| 全 feature | docs.rs 构建、doctest 与 examples 在组合配置下均通过                          |
-
-### 8.7 类型边界 / 编译期测试
-
-| 场景                         | 测试方式                                         |
-| ---------------------------- | ------------------------------------------------ |
-| `unsafe fn` 的 `# Safety` 节 | Gate 1 + Gate 2 联合校验，其中 Gate 2 为权威门禁 |
-| feature-gated API 可见性     | docs.rs 构建与条件编译可见性检查                 |
-| 公共 API 文档覆盖边界        | Gate 1（missing docs / broken intra-doc links）  |
-
----
-
-## 9. 模块交互设计
-
-### 9.1 文档对被文档模块的依赖
-
-| 文档任务            | 依赖的模块                                                | 说明                   |
-| ------------------- | --------------------------------------------------------- | ---------------------- |
-| T1 (lib.rs 文档)    | 全部                                                      | 需要了解所有模块的概览 |
-| T5 (核心模块文档)   | dimension, element, complex, storage, layout              | 基于 §1 章节编写       |
-| T6 (张量与运算文档) | tensor, overload, broadcast, shape, index, construct, set | 基于 §1 章节编写       |
-| T7 (基础设施文档)   | ffi, workspace, error, prelude                            | 基于 §1 章节编写       |
-| T8 (类型级文档)     | 全部                                                      | 逐类型添加 doc comment |
-| T9 (函数级文档)     | 全部                                                      | 逐函数添加 doc comment |
-
-### 9.2 数据流
-
-````
-Design docs (00-28)
-    │
-    ├── extract module responsibilities, core concepts, and API signatures
-    │       │
-    │       └── write module docs into each mod.rs (`//!`)
-    │
-    └── extract type definitions and method signatures
-            │
-            ├── write doc comments (`///`)
-            └── write doctests (```rust ```)
-                    │
-                    └── validate with `cargo test --doc`
-````
-
----
-
-## 10. 错误处理与语义边界
-
-本文档不直接定义错误类型，但要求所有文档示例、`# Errors` 节、panic 说明与 feature-gated 文档行为统一遵循 `26-error.md` 的错误语义边界；文档层负责准确转述，不重新定义公开错误模型。
-
----
-
 ## 详细任务清单
 
 ### Wave 1: Crate 级文档
@@ -1154,6 +985,150 @@ Wave 5: [T10] [T11] [T12] [T13] [T14] [T15] [T16]
             │
 Wave 6: [T17]
 ```
+
+### 7.1 unsafe API 执行清单
+
+须在实现阶段维护一份全项目 unsafe 公开函数清单，并对清单中的**每一个 unsafe 函数**逐项执行以下检查项：
+
+- [ ] Aliasing: 无重叠访问保证
+- [ ] Lifetime/Provenance: 指针来源可追溯
+- [ ] Initialization: 内存已初始化
+- [ ] Bounds: 访问范围在合法边界内
+- [ ] Overflow/Layout: 布局前置条件已满足
+
+最低基线至少覆盖 `23-ffi.md` 中的 `from_raw_parts*` / `from_raw_parts_mut` / `from_raw_parts_owned()` 系列，以及 `24-workspace.md` 中的 `assume_init_*` 系列高风险函数。
+
+### 7.2 关键 API 示例矩阵
+
+须在实现阶段维护一份关键 API 清单，每个条目标注是否已有使用示例（doctest 或 `example`）。`需求说明书 §28.1` 要求关键 API 提供使用示例，本矩阵作为验收基线。
+
+> 详细任务清单继续采用 Wave 形式维护，见后文“详细任务清单”。
+
+---
+
+## 8. 测试计划
+
+### 8.1 测试分类表
+
+| 类型                     | 命令                                                                                                                       | 目的                                                             |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| 单元检查                 | `cargo test --doc --all-features`                                                                                          | 验证单个 API 文档示例可编译运行                                  |
+| 集成检查                 | `cargo doc --all-features --no-deps` + examples 构建/关键默认示例运行                                                      | 验证模块文档、README、examples 与源码接口协同一致                |
+| 边界检查                 | feature-gated/unsafe doctest 逐项编译                                                                                      | 验证条件编译、unsafe 说明和 `std` 环境边界                       |
+| 属性检查                 | broken links / missing docs 不变量                                                                                         | 验证“公开 API 均有文档、关键入口均可追踪”                        |
+| Gate 1：rustdoc 文档门禁 | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`                                                            | 拦截 missing docs、broken intra-doc links 与其他 rustdoc warning |
+| Gate 2：文档节完整性门禁 | `cargo clippy --all-features -- -D clippy::missing_errors_doc -D clippy::missing_panics_doc -D clippy::missing_safety_doc` | 拦截缺少 `# Errors` / `# Panics` / `# Safety` 的公开 API 文档    |
+| Doctest                  | `cargo test --doc --all-features`                                                                                          | 验证文档中的代码示例可编译运行                                   |
+| 示例验证                 | `cargo build --examples --all-features` + 关键默认示例运行命令                                                             | 验证 examples/ 下程序可编译，关键默认示例可运行                  |
+
+### 8.2 Doctest 覆盖要求
+
+| 模块类别                                         | 定性要求                                                                                                      |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| 核心类型（tensor, dimension, storage）           | 核心入口和高频查询方法必须有 doctest                                                                          |
+| 运算模块（overload, math, broadcast, reduction） | 代表性运算、广播与错误路径必须有 doctest                                                                      |
+| 工具模块（ffi, workspace）                       | 关键 API、feature gate 与 Safety 边界必须有 doctest；`simd` / `parallel` 仅文档化其对公开 API 的 feature 影响 |
+| 辅助模块（convert, format, error）               | 至少覆盖构造、基本使用与错误语义                                                                              |
+| 迭代与归约模块（iter, reduction, matrix）        | 核心入口、边界行为和错误路径必须可追踪                                                                        |
+
+### 8.3 边界测试场景表
+
+| 场景              | 预期行为                                                              |
+| ----------------- | --------------------------------------------------------------------- |
+| feature-gated API | 在未启用 feature 时不会出现在文档中，启用后 doctest 通过              |
+| `std` 平台边界    | 文档示例默认以 `std` 环境为前提；feature-gated API 需显式标注启用条件 |
+| unsafe API 文档   | 必须包含 `# Safety` 且示例不省略关键前置条件                          |
+| 大型数组输出示例  | 截断格式与 `22-output.md` 保持一致                                    |
+
+### 8.4 属性测试不变量
+
+| 不变量                               | 验证方式                          |
+| ------------------------------------ | --------------------------------- |
+| 所有公开 API 都能在 docs.rs 中被发现 | `missing_docs` + docs.rs 构建检查 |
+| 所有关键模块都有至少一个可运行示例   | doctest / examples 构建联合验证   |
+| 文档中的路径与模块名和架构文档一致   | broken links 检查 + 人工审阅      |
+
+### 8.5 CI 配置
+
+> **说明**：本文档只保留文档交付所需的验证类别与示例命令；doctest / examples 的统一 CI 执行矩阵由 `28-tests.md` 维护。
+
+```yaml
+# .github/workflows/docs.yml
+docs:
+  steps:
+    - name: Gate 1 - rustdoc warnings
+      run: RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
+
+    - name: Gate 2 - documentation section completeness
+      run: cargo clippy --all-features -- -D clippy::missing_errors_doc -D clippy::missing_panics_doc -D clippy::missing_safety_doc
+
+    - name: Run doctests
+      run: cargo test --doc --all-features
+
+    - name: Build examples
+      run: cargo build --examples --all-features
+
+    - name: Run key examples
+      run: |
+        cargo run --example basic
+        cargo run --example broadcasting
+        cargo run --example workspace
+```
+
+### 8.6 Feature gate / 配置测试
+
+| 配置       | 验证点                                                                        |
+| ---------- | ----------------------------------------------------------------------------- |
+| 默认配置   | 默认 `std` 文档、README 与 examples 描述一致                                  |
+| 启用并行   | 受 `parallel` feature 影响的公开 API 文档说明、性能路径注记与示例说明保持一致 |
+| 启用 SIMD  | 受 `simd` feature 影响的公开 API 文档说明、性能路径注记与示例说明保持一致     |
+| 全 feature | docs.rs 构建、doctest 与 examples 在组合配置下均通过                          |
+
+### 8.7 类型边界 / 编译期测试
+
+| 场景                         | 测试方式                                         |
+| ---------------------------- | ------------------------------------------------ |
+| `unsafe fn` 的 `# Safety` 节 | Gate 1 + Gate 2 联合校验，其中 Gate 2 为权威门禁 |
+| feature-gated API 可见性     | docs.rs 构建与条件编译可见性检查                 |
+| 公共 API 文档覆盖边界        | Gate 1（missing docs / broken intra-doc links）  |
+
+---
+
+## 9. 模块交互设计
+
+### 9.1 文档对被文档模块的依赖
+
+| 文档任务            | 依赖的模块                                                | 说明                   |
+| ------------------- | --------------------------------------------------------- | ---------------------- |
+| T1 (lib.rs 文档)    | 全部                                                      | 需要了解所有模块的概览 |
+| T5 (核心模块文档)   | dimension, element, complex, storage, layout              | 基于 §1 章节编写       |
+| T6 (张量与运算文档) | tensor, overload, broadcast, shape, index, construct, set | 基于 §1 章节编写       |
+| T7 (基础设施文档)   | ffi, workspace, error, prelude                            | 基于 §1 章节编写       |
+| T8 (类型级文档)     | 全部                                                      | 逐类型添加 doc comment |
+| T9 (函数级文档)     | 全部                                                      | 逐函数添加 doc comment |
+
+### 9.2 数据流
+
+````
+Design docs (00-28)
+    │
+    ├── extract module responsibilities, core concepts, and API signatures
+    │       │
+    │       └── write module docs into each mod.rs (`//!`)
+    │
+    └── extract type definitions and method signatures
+            │
+            ├── write doc comments (`///`)
+            └── write doctests (```rust ```)
+                    │
+                    └── validate with `cargo test --doc`
+````
+
+---
+
+## 10. 错误处理与语义边界
+
+本文档不直接定义错误类型，但要求所有文档示例、`# Errors` 节、panic 说明与 feature-gated 文档行为统一遵循 `26-error.md` 的错误语义边界；文档层负责准确转述，不重新定义公开错误模型。
 
 ---
 
