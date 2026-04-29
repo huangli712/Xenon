@@ -106,15 +106,15 @@ parallel feature implementation paths/
 
 ### 4.4 依赖方向声明
 
-> **依赖方向：线程安全是横切关注点。** 各存储模块自行声明 Send/Sync（参见 `05-storage.md §5`）；启用 `parallel` feature 后，相关公开 API 的内部并行执行路径消费这些约束（参见 `09-parallel.md §5.2`）。无循环依赖。
+依赖方向：线程安全是横切关注点。各存储模块自行声明 Send/Sync（参见 `05-storage.md §5`）；启用 `parallel` feature 后，相关公开 API 的内部并行执行路径消费这些约束（参见 `09-parallel.md §5.2`）。无循环依赖。
 
 ---
 
 ## 5. 公共 API 设计
 
-> **权威来源对齐：** 本文档的 Send/Sync 定义以 `05-storage.md §5.3` 与需求说明书为基准；若与其他设计文档冲突，以需求说明书为规范基线解决，并同步修正相关文档。
+**权威来源对齐：** 本文档的 Send/Sync 定义以 `05-storage.md §5.3` 与需求说明书为基准；若与其他设计文档冲突，以需求说明书为规范基线解决，并同步修正相关文档。
 
-> **注意：** 本文档与 `05-storage.md §5.7` 采用同一组 Send/Sync 规则；若后续出现不一致，应按需求说明书统一校正并同步回写相关设计文档。
+**注意：** 本文档与 `05-storage.md §5.7` 采用同一组 Send/Sync 规则；若后续出现不一致，应按需求说明书统一校正并同步回写相关设计文档。
 
 ### 5.1 Send/Sync 实现规则表
 
@@ -127,9 +127,7 @@ parallel feature implementation paths/
 | `ViewMutRepr<'a, A>` |  ✅  |  ✗   | `A: Send`                        | 独占可写视图可转移但不可共享                       |
 | `ArcRepr<A>`         |  ✅  |  ✅  | `A: Send + Sync`                 | Arc 原子计数，读共享安全；写路径仅能在内部唯一化 / 必要时复制后恢复可写性 |
 
-> **补充说明：** `ViewRepr` 仅持有共享引用（`&A`），跨线程传递共享引用只要求 `A: Sync`（允许多线程共享读取），不要求 `A: Send`（所有权转移）。这是 Rust 标准库 `&T: Send + Sync where T: Sync` 的直接推论。
-
-各存储模式的完整 API 定义参见 `05-storage.md §5`。
+**补充说明：** `ViewRepr` 仅持有共享引用（`&A`），跨线程传递共享引用只要求 `A: Sync`（允许多线程共享读取），不要求 `A: Send`（所有权转移）。这是 Rust 标准库 `&T: Send + Sync where T: Sync` 的直接推论。各存储模式的完整 API 定义参见 `05-storage.md §5`。
 
 ### 5.2 TensorBase<S, D> 自动推导规则
 
@@ -142,7 +140,7 @@ parallel feature implementation paths/
 | `ViewMutRepr<'a, A>` where A: Send     | ✅ Send                    | ❌ (exclusive borrow)      |
 | `ArcRepr<A>` where A: Send + Sync      | ✅ Send                    | ✅ Sync                    |
 
-> **说明**: `D: Dimension` 要求 `Dimension: Send + Sync`；所有 Dimension 类型（`Ix0`-`Ix6`, `IxDyn`）内部仅包含 Copy 类型的值数组或 `Vec<usize>`，因此自动满足 `Send + Sync`。
+**说明**: `D: Dimension` 要求 `Dimension: Send + Sync`；所有 Dimension 类型（`Ix0`-`Ix6`, `IxDyn`）内部仅包含 Copy 类型的值数组或 `Vec<usize>`，因此自动满足 `Send + Sync`。
 
 ### 5.3 安全违规分类表
 
@@ -286,7 +284,7 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 
 ### 5.8 ArcRepr<A> 的 Send/Sync
 
-> **共享可写边界说明：** ArcRepr 相关的唯一化（uniquify）后恢复独占写能力仅是内部实现机制。这不构成共享可写存储模式。当前版本不提供共享可写存储模式（参见 `需求说明书 §6.1`）。
+**共享可写边界说明：** ArcRepr 相关的唯一化（uniquify）后恢复独占写能力仅是内部实现机制。这不构成共享可写存储模式。当前版本不提供共享可写存储模式（参见 `需求说明书 §6.1`）。
 
 ```rust,ignore
 // src/storage/arc.rs
