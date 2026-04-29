@@ -1,10 +1,11 @@
 # 基准测试规范
 
-> 文档编号: 27 | 影响范围: `benches/`, benchmark CI 与性能回归流程 | 阶段: Phase 6
+> 文档编号: 27
+> 模块目录: src/benches/
+> 任务阶段: Phase 6
 > 前置文档: 所有前置文档（`00-coding.md` ~ `26-error.md`）
-> 需求参考: `需求说明书 §9.1`, `需求说明书 §9.2`, `需求说明书 §9.3`, `需求说明书 §28.2`, `需求说明书 §28.3`, `需求说明书 §28.4`, `需求说明书 §28.5`
+> 需求参考: 需求说明书 §9、§28
 > 范围声明: 范围内
-> **格式豁免声明**：本文档为横切性的性能观测规范，按 `design.md` §3 豁免标准模块文档格式；允许围绕 benchmark 分类、观测流程、CI 分级与回归口径组织章节，而非严格套用单模块模板。
 
 ---
 
@@ -27,21 +28,6 @@
 | 全面覆盖 | 覆盖所有性能关键路径（逐元素、归约、内积、转置、广播）                      |
 | 低噪声   | 使用固定输入与稳定运行环境收集趋势；benchmark 结果不作为 crate 合约的一部分 |
 | 分级执行 | 可选 CI 分级工作流：Smoke / Regression / Full，不阻塞默认交付                 |
-
-### 1.3 在架构中的位置
-
-```
-Dependency layers:
-L0: error, private
-L1: dimension, element, complex
-L2: layout (depends on dimension)
-L3: storage (independent of layout; owned by tensor and consumes layout results)
-L4: tensor (depends on storage, dimension)
-L5: overload/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
-
-External (non-crate modules):
-benches/  <- current module (dev-dependency, consumes only the crate's public API)
-```
 
 ## 2. 需求映射与范围约束
 
