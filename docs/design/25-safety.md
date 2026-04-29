@@ -337,11 +337,11 @@ unsafe impl<A: Send + Sync> Send for ArcRepr<A> {}
 unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 ```
 
-### 5.10 ViewMutRepr 不实现 Sync 的规范
+### 5.9 ViewMutRepr 不实现 Sync 的规范
 
 `ViewMutRepr` 的 `!Sync` 来源于其 `ptr: *mut A` 字段（raw pointer 默认 `!Send + !Sync`）与仅恢复 `Send` 的显式 `unsafe impl`：由于未提供 `unsafe impl Sync`，`Sync` 保持默认的否定推导。这与 `05-storage.md §6.4` 中 `_marker: PhantomData<&'a mut A>` 的定义一致（该字段用于方差与 drop check，不承担 `!Sync` 职责）。禁止在模块文档中保留多种备选方案；如有变更须同步更新本文件。
 
-### 5.11 广播结果不可变迭代的原因
+### 5.10 广播结果不可变迭代的原因
 
 ```rust,ignore
 // Broadcast results use ViewRepr (read-only view), no mutable iterator provided
@@ -358,7 +358,7 @@ let sum: f64 = b.iter().sum();  // OK: read-only iteration
 
 **设计决策：** 广播结果使用 `ViewRepr`（只读视图），因为广播不拷贝数据，语义上仅为只读（参见 `15-broadcast.md §5`）。如果允许可变迭代，修改广播结果会意外修改原数据的多个位置，这既不符合广播语义，也容易引入 bug。
 
-### 5.12 Good/Bad 对比示例
+### 5.11 Good/Bad 对比示例
 
 ```rust,ignore
 // Good - ViewMutRepr cross-thread movement inside thread::scope

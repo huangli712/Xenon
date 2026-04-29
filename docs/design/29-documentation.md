@@ -1,8 +1,10 @@
 # 文档交付规范
 
-> 文档编号: 29 | 影响范围: `src/**` pub API 文档、`README.md`、`examples/` 与 docs CI | 阶段: Phase 6
-> 前置文档: 所有前置文档（`00-coding.md` ~ `28-tests.md`）
-> 需求参考: `需求说明书 §28.1`
+> 文档编号: 29
+> 适用目录: src/** pub API 文档、README.md、examples
+> 任务阶段: Phase 6
+> 前置文档: 所有前置文档（00-coding.md ~ 28-tests.md）
+> 需求参考: 需求说明书 §28
 > 范围声明: 范围内
 
 ---
@@ -37,14 +39,14 @@
 
 | 类型     | 内容                                                         |
 | -------- | ------------------------------------------------------------ |
-| 需求映射 | `需求说明书 §28.1`                                           |
+| 需求映射 | 需求说明书 §28                                               |
 | 范围内   | pub API 文档、doctest、examples、docs.rs 配置、README        |
 | 范围外   | 第三方教程平台、自定义文档主题、交互式 notebook 或站点系统   |
 | 非目标   | 通过文档规范扩展产品能力、引入额外文档构建依赖或改变平台边界 |
 
-> **说明**：`CHANGELOG.md` 为工程辅助产物，不属于 `需求说明书 §28.1` 的文档要求范围。
+**说明**：`CHANGELOG.md` 为工程辅助产物，不属于 `需求说明书 §28.1` 的文档要求范围。
 
-> **范围注记：** `需求说明书 §28.1` 的最低要求聚焦 pub API 文档、README 与示例交付。下文中的 `CHANGELOG.md`、版本号规则、docs.rs metadata、文档 CI / feature 验证矩阵、Wave 拆分与详细任务清单均为设计扩展，用于工程化落地，不构成对 `需求说明书 §28.1` 的新增强制项。
+**范围注记：** `需求说明书 §28.1` 的最低要求聚焦 pub API 文档、README 与示例交付。下文中的 `CHANGELOG.md`、版本号规则、docs.rs metadata、文档 CI / feature 验证矩阵、Wave 拆分与详细任务清单均为设计扩展，用于工程化落地，不构成对 `需求说明书 §28.1` 的新增强制项。
 
 ---
 
@@ -125,10 +127,10 @@ CHANGELOG.md                  # Optional engineering changelog artifact (non-req
 ├── depends on `28-tests.md`
 │   └── doctest / examples / docs CI validation must stay aligned
 └── may reference `27-benchmark.md`
-    └── 如需 benchmark 文档模板，可参考 `27-benchmark.md`；非强前置依赖
+    └── If a benchmark documentation template is needed, refer to `27-benchmark.md`
 ```
 
-> **数值容差公开要求**：凡 `28-tests.md` 中定义了跨路径舍入差异或数学函数容差的 API，公共文档须同步说明适用范围。公共文档需引用 `需求说明书 §28.3` 的容差语义；`28-tests.md` 仅定义测试落实方式和比较 helper。
+**数值容差公开要求**：凡 `28-tests.md` 中定义了跨路径舍入差异或数学函数容差的 API，公共文档须同步说明适用范围。公共文档需引用 `需求说明书 §28.3` 的容差语义；`28-tests.md` 仅定义测试落实方式和比较 helper。
 
 ### 4.2 类型级依赖
 
@@ -148,7 +150,7 @@ CHANGELOG.md                  # Optional engineering changelog artifact (non-req
 
 ### 4.4 依赖方向声明
 
-> **依赖方向：文档跟随代码。** 文档内容基于源码 API 签名和设计文档，不被代码依赖。
+依赖方向：文档跟随代码。文档内容基于源码 API 签名和设计文档，不被代码依赖。
 
 ---
 
@@ -197,7 +199,7 @@ L3: Examples (examples/)
 | 工作空间                             | ✅         | `24-workspace.md`    |
 | 格式化输出                           | ✅         | `22-output.md`       |
 
-> **执行范围说明：** 上表是示例覆盖矩阵的理想目标。CI 实际执行范围受时间与资源约束，采用分层执行策略；参见 §8 的 CI 与 feature 维度验证矩阵。
+执行范围说明：上表是示例覆盖矩阵的理想目标。CI 实际执行范围受时间与资源约束，采用分层执行策略；参见 §8 的 CI 与 feature 维度验证矩阵。
 
 ---
 
@@ -295,11 +297,11 @@ L3: Examples (examples/)
 
 #### 5.5.1 Lint 规则
 
-> **开发提示**：在开发期间可将 deny 改为 warn（`#![warn(missing_docs)]`），CI 中通过 `RUSTDOCFLAGS="-D warnings" cargo doc` 来强制执行文档完整性检查（参见 §5.11.1 CI checks）。
+**开发提示**：在开发期间可将 deny 改为 warn（`#![warn(missing_docs)]`），CI 中通过 `RUSTDOCFLAGS="-D warnings" cargo doc` 来强制执行文档完整性检查（参见 §5.11.1 CI checks）。
 
-> **门禁说明**：`#![warn(missing_docs)]` 为最小存在性检查（确保公开 item 有文档文本），不保证文档质量、完整性或示例覆盖。完整文档质量由评审流程保障。
+**门禁说明**：`#![warn(missing_docs)]` 为最小存在性检查（确保公开 item 有文档文本），不保证文档质量、完整性或示例覆盖。完整文档质量由评审流程保障。
 
-> **执行矩阵说明**：doctest 与测试 CI 矩阵由 `28-tests.md` 统一定义。本文档仅规定“需要哪些文档验证”，不维护 CI 执行矩阵。
+**执行矩阵说明**：doctest 与测试 CI 矩阵由 `28-tests.md` 统一定义。本文档仅规定“需要哪些文档验证”，不维护 CI 执行矩阵。
 
 ```rust,ignore
 // lib.rs
