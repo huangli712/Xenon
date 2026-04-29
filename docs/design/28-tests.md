@@ -966,8 +966,6 @@ fn prop_add_commutative() {
 
 ### 6.26 Good/Bad 对比示例
 
-#### 6.26.1 Good — 正确的集成测试模式
-
 ```rust,ignore
 // Good: Use the default exact helper for same-path base arithmetic
 #[test]
@@ -999,8 +997,6 @@ fn test_transpose_shapes() {
     }
 }
 ```
-
-#### 6.26.2 Bad — 错误的集成测试模式
 
 ```rust,ignore
 // Bad: Applying a blanket tolerance to a same-path base arithmetic test
@@ -1336,7 +1332,7 @@ fn compile_fail_harness() {
 | `complex`   | doctest + integration tests                | doctest 覆盖公开用法示例；集成测试覆盖复数逐元素运算、归约、内积、格式化与 FFI 布局 |
 | `layout`    | doctest + integration tests                | doctest 覆盖布局/连续性示例；集成测试覆盖 F-order、非连续视图、transpose、to_contiguous 与导出前提 |
 
-### 9.2 数据流
+### 9.3 数据流
 
 ```
 Test files
