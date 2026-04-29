@@ -995,7 +995,7 @@ let mut buf = ws.borrow_mut()?;
 // Bad - Re-enter a borrow-only API while a guard is still alive
 let ws = Workspace::new(256, 64)?;
 let _buf = ws.borrow_mut()?;
-let _again = ws.split_at_mut(128)?;  // Returns `XenonError::Workspace { operation, category, size, align, split, len, reason }` at runtime
+let _again = ws.split_at_mut(128)?;  // Returns `XenonError::Workspace` at runtime
 ```
 
 ---
