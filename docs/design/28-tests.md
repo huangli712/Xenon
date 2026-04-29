@@ -53,15 +53,15 @@ tests/
 │   └── generators.rs           # Test data generators
 │
 ├── compile_fail_tests.rs       # Repository-local compile-fail harness（top-level for Cargo discovery）
-└── compile-fail/
-    ├── wrong_dimension_type.rs
-    ├── missing_element_bound.rs
-    ├── mismatched_storage_type.rs
-    ├── unsigned_tensor_element_rejected.rs
-    ├── invalid_unsigned_element_rejected.rs
-    ├── ui_bool_sum_rejected.rs
-    ├── ui_bool_unique_rejected.rs
-    └── ui_bool_arithmetic_rejected.rs
+├── compile-fail/
+│   ├── wrong_dimension_type.rs
+│   ├── missing_element_bound.rs
+│   ├── mismatched_storage_type.rs
+│   ├── unsigned_tensor_element_rejected.rs
+│   ├── invalid_unsigned_element_rejected.rs
+│   ├── ui_bool_sum_rejected.rs
+│   ├── ui_bool_unique_rejected.rs
+│   └── ui_bool_arithmetic_rejected.rs
 │
 ├── test_tensor.rs              # Tensor core functionality (creation/query/type aliases)
 ├── test_math.rs                # Element-wise operations (arithmetic/math/comparison/logic)

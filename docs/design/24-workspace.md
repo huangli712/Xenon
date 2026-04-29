@@ -3,7 +3,7 @@
 > 文档编号: 24
 > 模块目录: src/workspace/
 > 任务阶段: Phase 4
-> 前置文档: 
+> 前置文档: 00-coding.md, 01-architecture.md, 26-error.md
 > 需求参考: 需求说明书 §26 - §28
 > 范围声明: 范围内
 
@@ -1278,7 +1278,7 @@ ensure_capacity(&mut self, 2048)
 | `workspace` ← 上游库 | 上游库    | 临时缓冲区请求    | 上游数值库可把 workspace 作为临时缓冲区使用；默认只获得 `MaybeUninit` 视图                                                    |
 | `workspace` ← 上游库 | 上游库    | `split_at_mut()`  | 上游数值库场景可通过分割接口拆分工作空间；子空间同样只暴露 `MaybeUninit` 视图                                                 |
 | `workspace` ← 上游库 | 上游库    | `assume_init_*`   | 调用方必须先完成写入并证明对应前缀/typed region 已初始化，才能重解释为已初始化视图                                            |
-| `workspace ← tensor` | `tensor`  | 临时 scratch 空间 | 张量运算在需要时可借用 workspace 提供临时空间；任何借出的 scratch 视图都不得跨越 `ensure_capacity` 或持久化到 tensor 元数据中 |
+| `workspace ← tensor` | `tensor`  | 临时 scratch 空间 | 张量运算在需要时可借用 workspace 提供临时空间；这是运行时的可选协作模式，不是模块级别的类型依赖（`01-architecture.md §5.2` 中 tensor 的编译期依赖不包含 workspace）；任何借出的 scratch 视图都不得跨越 `ensure_capacity` 或持久化到 tensor 元数据中 |
 
 ### 9.2 数据流描述
 
