@@ -147,12 +147,12 @@ tests/
 | `util`      | `.clip()`, `.fill()`, `.to_contiguous()`（参见 `20-utility.md §5`）                                           |
 | `convert`   | `CastTo<T>` trait, `.cast()` 张量级转换（参见 `21-type.md §5`；标量级转换使用 `CastTo::<f64>::cast_to`）       |
 | `format`    | `Display`, `Debug` trait（参见 `22-output.md §5`）                                                             |
-| `broadcast` | `BroadcastInput`, `broadcast_shape`（参见 `15-broadcast.md §5`）                                               |
+| `broadcast` | `broadcast_shape`, `broadcast_to`（参见 `15-broadcast.md §5`）                                                 |
 | `shape`     | `.transpose()`（参见 `16-shape.md §5`）                                                                        |
 | `reduction` | `.sum()`（参见 `13-reduction.md §5`）                                                                          |
 | `construct` | `zeros`, `ones`, `eye`, `from_shape_vec` 构造器（参见 `18-construction.md §5`）                               |
 | `index`     | `Index`/`Range` 索引 trait（参见 `17-indexing.md §5`）                                                          |
-| `ffi`       | `as_ptr()`, `as_mut_ptr()`, `from_raw_parts`（参见 `23-ffi.md §5`）                                           |
+| `ffi`       | `as_ptr()`, `as_mut_ptr()`（参见 `23-ffi.md §5`）；`from_raw_parts` 核心定义归属 `07-tensor.md §5.7`，`23-ffi.md §5` 仅 re-export |
 | `workspace` | `Workspace`（参见 `24-workspace.md §5`）                                                                       |
 
 ### 4.3 依赖合法性
