@@ -34,12 +34,13 @@
 | unsafe 安全论证 | 每个 unsafe impl 附带完整 SAFETY 注释                |
 | 所有权协同      | 充分利用 Rust 所有权系统与线程安全的天然协同         |
 
-## 1.3 影响范围
+### 1.3 影响范围
 
 - `storage`: 各存储模式的 `Send`/`Sync` 约束与内部唯一化写路径
 - `tensor`: `TensorBase<S, D>` 的 auto-trait 传播与公开语义边界
 - `iterator`: 只读/可写迭代器的线程可用性与别名约束
 - `simd`: SIMD 内核在多线程场景下的无共享状态约束
+- `dispatch`: 嵌套并行检测（`ParallelGuard`）与自动回退串行路径
 - `parallel`: 启用 `parallel` feature 后公开 API 的内部并行执行路径
 - `ffi`: 跨边界指针与导出描述符在多线程中的可共享/可写前提
 
@@ -127,7 +128,7 @@ parallel feature implementation paths/
 | `ViewMutRepr<'a, A>` |  ✅  |  ✗   | `A: Send`                        | 独占可写视图可转移但不可共享                       |
 | `ArcRepr<A>`         |  ✅  |  ✅  | `A: Send + Sync`                 | Arc 原子计数，读共享安全；写路径仅能在内部唯一化 / 必要时复制后恢复可写性 |
 
-**补充说明：** `ViewRepr` 仅持有共享引用（`&A`），跨线程传递共享引用只要求 `A: Sync`（允许多线程共享读取），不要求 `A: Send`（所有权转移）。这是 Rust 标准库 `&T: Send + Sync where T: Sync` 的直接推论。各存储模式的完整 API 定义参见 `05-storage.md §5`。
+**补充说明：** `ViewRepr` 仅持有共享引用（`&A`），跨线程传递共享引用只要求 `A: Sync`（允许多线程共享读取），不要求 `A: Send`（所有权转移）。这是 Rust 标准库 `&T: Send + Sync where T: Sync` 的直接推论。各存储模式的完整 API 定义参见 `05-storage.md §5`；对应的语义访问分类（`ReadOnly`/`SharedReadOnly`/`Writable`/`Owned`）参见 `01-architecture.md` 中 `AccessSemantics` 枚举定义。
 
 ### 5.2 TensorBase<S, D> 自动推导规则
 
@@ -697,7 +698,7 @@ workspace 的线程安全规则（`!Send + !Sync` 实现选择及理由，参见
 | 属性     | 值                                                                                   |
 | -------- | ------------------------------------------------------------------------------------ |
 | 决策     | 使用显式 `unsafe impl Send/Sync`，而非依赖编译器自动推导                             |
-| 理由     | 文档化意图，每个 impl 附带完整 SAFETY 注释（参见 `00-coding.md §5`），便于审查和维护 |
+| 理由     | 文档化意图，每个 impl 附带完整 SAFETY 注释（参见 `00-coding.md §6.2–§6.3`），便于审查和维护 |
 | 替代方案 | 依赖自动推导 — 放弃，缺少安全性论证文档，修改内部字段时可能意外改变线程安全语义      |
 
 ### 决策 2：ViewMutRepr 不实现 Sync
