@@ -233,7 +233,7 @@ Benchmark categories
 | ---------- | ---------------------------------------------- | -------------- |
 | Micro      | `zeros_1d`, `from_shape_vec_1d`                | 基础开销基线   |
 | Kernel     | `add_f64`, `sum_f64`, `dot_f64`                | 核心路径性能   |
-| Workflow   | `broadcast_add_row`, `transpose_then_sum`      | 真实场景吞吐   |
+| Workflow   | `broadcast_row`                                | 真实场景吞吐   |
 | Comparison | `add_simd_vs_scalar`, `sum_parallel_vs_serial` | 仓库内路径对比 |
 
 ---
@@ -290,12 +290,14 @@ Benchmark categories
 | `sum_2d_axis0`             | 沿轴 0 sum              | S/M/L | f64            | F-contiguous   | 2D 沿轴归约                                     |
 | `sum_2d_axis1`             | 沿轴 1 sum              | S/M/L | f64            | F-contiguous   | 2D 沿轴归约                                     |
 | `sum_sliced`               | 非连续 sum              | M     | f64            | Non-contiguous | 非连续归约惩罚                                  |
+| `sum_2d_keepdims`          | 沿轴 sum 并保留维度     | S/M/L | f64            | F-contiguous   | keepdims 路径性能（参见 `13-reduction.md §5`）  |
 | `dot_1d_f64`               | 向量内积                | S/M/L | f64            | F-contiguous   | 基本内积                                        |
 | `dot_1d_complex`           | 复数内积                | S/M/L | Complex<f64>   | F-contiguous   | 复数内积（含共轭）                              |
 | `unique_1d`                | unique 操作             | S/M/L | f64            | F-contiguous   | 返回不重复元素，结果无需排序且顺序不作要求      |
 | `broadcast_scalar`         | 标量广播加法            | S/M/L | f64            | F-contiguous   | 标量广播开销                                    |
 | `broadcast_row`            | 行向量广播到矩阵        | S/M/L | f64            | F-contiguous   | 行广播                                          |
 | `broadcast_col`            | 列向量广播到矩阵        | S/M/L | f64            | F-contiguous   | 列广播                                          |
+| `broadcast_with`           | 双张量广播协作          | S/M/L | f64            | F-contiguous   | broadcast_with 协作模式（参见 `15-broadcast.md §5`） |
 | `transpose_2d`             | 2D 转置（零拷贝）       | S/M/L | f64            | F-contiguous   | 转置视图创建                                    |
 | `simd_add_compare`         | `a + b` (SIMD vs 标量)  | M     | f32/f64        | F-contiguous   | SIMD 加速比（参见 `08-simd.md §12`）            |
 | `simd_sum_compare`         | sum (SIMD vs 标量)      | M     | i32/f32/f64     | F-contiguous   | SIMD sum 对比；i32 覆盖已验证启用的 widening 路径（参见 `08-simd.md §5.6`），f32/f64 覆盖已实现路径  |
@@ -305,6 +307,7 @@ Benchmark categories
 | `par_dot_compare`          | dot (并行 vs 串行)      | L     | f64/Complex<f64> | F-contiguous | 并行内积加速比，覆盖实数与复数内积              |
 | `zeros_1d`                 | zeros 构造              | S/M/L | f64            | F-contiguous   | 构造开销                                        |
 | `from_shape_vec_1d`        | from_shape_vec 构造     | S/M/L | f64            | F-contiguous   | 顺序数据构造开销                                |
+| `eye_2d`                   | eye 单位矩阵构造        | S/M/L | f64            | F-contiguous   | 单位矩阵构造开销（参见 `18-construction.md §5`） |
 
 ---
 
@@ -516,7 +519,7 @@ let _result = (&a + &b).unwrap();
 
 ### 6.5 数值正确性引用边界
 
-benchmark 不定义正确性容差，也不在本文件内重复维护 `atol` / `rtol` 或其他比较表。所有数值正确性判断统一引用 `28-tests.md` 中冻结的数值契约：默认比较遵循 ULP-based contract，仅在文档明确允许的数学函数场景使用单独容差规则。benchmark 侧只允许复用这些契约来说明“性能观测建立在既有正确性测试之上”，不得把 benchmark 结果或阈值升级为新的正确性门禁。参见 `需求说明书 §28.3`。
+benchmark 不定义正确性容差，也不在本文件内重复维护 `MathTolerance`（`{ ulp, abs }`）或其他数值比较契约。所有数值正确性判断统一引用 `28-tests.md` 中冻结的数值契约：默认比较遵循 ULP-based contract，仅在文档明确允许的数学函数场景使用单独容差规则。benchmark 侧只允许复用这些契约来说明“性能观测建立在既有正确性测试之上”，不得把 benchmark 结果或阈值升级为新的正确性门禁。参见 `需求说明书 §28.3`。
 
 ---
 
@@ -549,7 +552,7 @@ benchmark 不定义正确性容差，也不在本文件内重复维护 `atol` / 
 
 - [ ] **T4**: 实现 `benches/reduction.rs`
   - 文件: `benches/reduction.rs`
-  - 内容: sum_1d_f64/sum_2d_axis0/sum_2d_axis1/sum_sliced
+  - 内容: sum_1d_f64/sum_2d_axis0/sum_2d_axis1/sum_sliced/sum_2d_keepdims
   - 测试: `cargo bench --bench reduction -- "sum" --quick`
   - 前置: T2
   - 预计: 10 min
@@ -570,7 +573,7 @@ benchmark 不定义正确性容差，也不在本文件内重复维护 `atol` / 
 
 - [ ] **T7**: 实现 `benches/broadcast.rs`
   - 文件: `benches/broadcast.rs`
-  - 内容: broadcast_scalar/broadcast_row/broadcast_col
+  - 内容: broadcast_scalar/broadcast_row/broadcast_col/broadcast_with
   - 测试: `cargo bench --bench broadcast -- --quick`
   - 前置: T2
   - 预计: 10 min
@@ -586,7 +589,7 @@ benchmark 不定义正确性容差，也不在本文件内重复维护 `atol` / 
 
 - [ ] **T9**: 实现 `benches/construction.rs`
   - 文件: `benches/construction.rs`
-  - 内容: zeros_1d/from_shape_vec_1d
+  - 内容: zeros_1d/from_shape_vec_1d/eye_2d
   - 测试: `cargo bench --bench construction -- --quick`
   - 前置: T2
   - 预计: 10 min

@@ -113,7 +113,7 @@ tests/
 ├── crate::storage          # Owned, ViewRepr, ViewMutRepr, ArcRepr
 ├── crate::layout           # LayoutFlags
 ├── crate::math             # Element-wise operations
-├── crate::broadcast        # broadcast_shape
+├── crate::broadcast        # broadcast_shape, broadcast_to
 ├── crate::shape            # transpose
 ├── crate::index            # Multi-dimensional indexing and range slicing
 ├── crate::construct        # zeros, ones, eye, from_shape_vec, from_shape_slice, from_array, from_scalar, from_vec
@@ -122,13 +122,19 @@ tests/
 ├── crate::workspace        # Workspace
 ├── crate::error            # XenonError
 ├── crate::iter             # element/axis/index iterators
-├── crate::matrix           # dot (inner product)
+├── crate::matrix           # dot (inner product, dual entry: free function + TensorBase inherent method, see 01-architecture.md §10)
+├── crate::reduction        # sum
 ├── crate::overload         # Add, Sub, Mul, Div trait implementations
 ├── crate::util             # clip, fill, to_contiguous
 ├── crate::convert          # CastTo, type conversion
 ├── crate::format           # NumPy-style formatted output
 └── public API feature effects (`simd` / `parallel`) # Internal backends are verified indirectly through observable public behavior
 ```
+
+> **API 暴露方式说明**（参见 `01-architecture.md §10`）：上方依赖图列出的是实现模块路径，但部分模块的公共 API 通过 TensorBase 固有方法暴露，而非自由函数。测试代码的实际调用方式如下：
+> - TensorBase 固有方法：`t.transpose()`（shape）、`t.unique()`（set）、`t.sum()`（reduction）、`t.clip()` / `t.fill()` / `t.to_contiguous()`（util）、`t.cast()`（convert）、`t.iter()` / `t.axis_iter()`（iter）、`t.dot()`（matrix，另有自由函数入口）
+> - trait impl：`Display` / `Debug`（format）
+> - 自由函数：`broadcast_shape()`（broadcast）、`zeros()` / `ones()` / `eye()` / `from_shape_vec()` 等（construct）
 
 ### 4.2 类型级依赖
 
@@ -142,7 +148,7 @@ tests/
 | `layout`    | `LayoutFlags`（参见 `06-layout.md §5`）                                                                        |
 | `error`     | `XenonError`, `Result<T>`（参见 `26-error.md §5`）                                                             |
 | `iter`      | `Elements`, `AxisIter`, `IndexedIter`（参见 `10-iterator.md §5`）                                              |
-| `matrix`    | `.dot()`（参见 `12-matrix.md §5`）                                                                             |
+| `matrix`    | `.dot()`（TensorBase 固有方法）；`crate::matrix::dot(&a, &b)`（自由函数）；双入口等价性参见 `01-architecture.md §10`（参见 `12-matrix.md §5`） |
 | `overload`  | `Tensor<A, D>` 运算符 trait bounds（参见 `19-overload.md §5`）                                                 |
 | `util`      | `.clip()`, `.fill()`, `.to_contiguous()`（参见 `20-utility.md §5`）                                           |
 | `convert`   | `CastTo<T>` trait, `.cast()` 张量级转换（参见 `21-type.md §5`；标量级转换使用 `CastTo::<f64>::cast_to`）       |
@@ -153,6 +159,7 @@ tests/
 | `construct` | `zeros`, `ones`, `eye`, `from_shape_vec` 构造器（参见 `18-construction.md §5`）                               |
 | `index`     | `Index`/`Range` 索引 trait（参见 `17-indexing.md §5`）                                                          |
 | `ffi`       | `as_ptr()`, `as_mut_ptr()`（参见 `23-ffi.md §5`）；`from_raw_parts` 核心定义归属 `07-tensor.md §5.7`，`23-ffi.md §5` 仅 re-export |
+| `set`       | `.unique()`（参见 `14-set.md §5`）                                                                             |
 | `workspace` | `Workspace`（参见 `24-workspace.md §5`）                                                                       |
 
 ### 4.3 依赖合法性
@@ -537,6 +544,8 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_dot_empty`          | 空向量 dot 返回加法单位元 | 中     |
 | `test_i32_dot_overflow_panics` | `i32` 内积溢出触发 panic | 高 |
 | `test_i64_dot_overflow_panics` | `i64` 内积溢出触发 panic | 高 |
+| `test_dot_free_function`  | `crate::matrix::dot(&a, &b)` 自由函数入口返回相同结果 | 高 |
+| `test_dot_dual_entry_equivalence` | 自由函数与 TensorBase 固有方法 `a.dot(b)` 结果一致（参见 `01-architecture.md §10`） | 高 |
 
 ### 5.12 test_set.rs
 
@@ -759,7 +768,7 @@ fn test_bad_magic() {
 
 | 测试函数                            | 测试内容                                                        | 优先级 |
 | ----------------------------------- | --------------------------------------------------------------- | ------ |
-| `test_add_same_shape`               | `[2,3] + [2,3]` 返回 `Ok(...)`，逐元素验证                     | 高     |
+| `test_add_same_shape_overload`       | `[2,3] + [2,3]` 返回 `Ok(...)`，逐元素验证（运算符 trait 重载路径）   | 高     |
 | `test_add_broadcast`                | `[2,1,3] + [3]` 广播后相加返回 `Ok(...)`                       | 高     |
 | `test_add_ref_ref`                  | `&a + &b` 返回 `Ok(...)`，所有权保留                           | 高     |
 | `test_add_owned_ref`                | `a + &b` 返回 `Ok(...)`，a 被消费                              | 中     |
@@ -1021,7 +1030,7 @@ fn test_simd_add_consistency() {
 | 不变量             | 测试方法                                                                                          | 优先级 |
 | ------------------ | ------------------------------------------------------------------------------------------------- | ------ |
 | `sum` 保加法单位元 | 空数组 sum == 0（参见 `13-reduction.md §5.1`）                                                    | 高     |
-| `transpose` 自反性 | `transpose().transpose()` == 原张量（参见 `16-shape.md §5.1`）                                    | 高     |
+| `transpose` 自反性 | `transpose().transpose()` == 原张量（参见 `16-shape.md §5.1` API 定义；不变量设计参见 `16-shape.md §8.4`）                                    | 高     |
 | 加法交换律         | `a + b` == `b + a`（同执行路径下精确一致）                                                        | 中     |
 | `unique` 保元素数  | `unique(a).len()` ≤ `a.len()`                                                                     | 中     |
 | `unique` 不含重复  | 对非 `NaN` 元素，结果中不得重复；`NaN` 按 IEEE 754 自反不相等语义逐个保留                         | 中     |

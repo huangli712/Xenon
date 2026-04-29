@@ -46,7 +46,7 @@
 
 **说明**：`CHANGELOG.md` 为工程辅助产物，不属于 `需求说明书 §28.1` 的文档要求范围。
 
-**范围注记：** `需求说明书 §28.1` 的最低要求聚焦 pub API 文档、README 与示例交付。下文中的 `CHANGELOG.md`、版本号规则、docs.rs metadata、文档 CI / feature 验证矩阵、Wave 拆分与详细任务清单均为设计扩展，用于工程化落地，不构成对 `需求说明书 §28.1` 的新增强制项。
+**范围注记：** `需求说明书 §28.1` 的最低要求聚焦 pub API 文档、README 与示例交付。下文中的 `CHANGELOG.md`、docs.rs metadata、Wave 拆分与详细任务清单均为设计扩展，用于工程化落地，不构成对 `需求说明书 §28.1` 的新增强制项。
 
 ---
 
@@ -163,6 +163,23 @@ CHANGELOG.md                  # Optional engineering changelog artifact (non-req
 
 依赖方向：文档跟随代码。文档内容基于源码 API 签名和设计文档，不被代码依赖。
 
+### 4.5 数据流
+
+````
+Design docs (00-28)
+    │
+    ├── extract module responsibilities, core concepts, and API signatures
+    │       │
+    │       └── write module docs into each mod.rs (`//!`)
+    │
+    └── extract type definitions and method signatures
+            │
+            ├── write doc comments (`///`)
+            └── write doctests (```rust ```)
+                    │
+                    └── validate with `cargo test --doc`
+````
+
 ---
 
 ## 5. 公共 API 设计
@@ -194,24 +211,24 @@ L3: Examples (examples/)
 
 ### 5.3 关键 API 示例覆盖矩阵
 
-| API 族                               | 必须有示例 | 对应设计文档         |
-| ------------------------------------ | ---------- | -------------------- |
-| 构造 (`zeros`/`ones`/`eye`/`from_*`) | ✅         | `18-construction.md` |
-| 索引/切片                            | ✅         | `17-indexing.md`     |
-| 转置                                 | ✅         | `16-shape.md`        |
-| 广播                                 | ✅         | `15-broadcast.md`    |
-| 逐元素运算                           | ✅         | `11-math.md`         |
-| 归约 (`sum`)                         | ✅         | `13-reduction.md`    |
-| 内积 (`dot`)                         | ✅         | `12-matrix.md`       |
-| 类型转换 (`cast`)                    | ✅         | `21-type.md`         |
-| FFI unsafe API                       | ✅         | `23-ffi.md`          |
-| 运算符重载                           | ✅         | `19-overload.md`     |
-| `clip`/`fill`                        | ✅         | `20-utility.md`      |
-| 集合操作 (`unique`)                  | ✅         | `14-set.md`          |
-| 工作空间                             | ✅         | `24-workspace.md`    |
-| 格式化输出                           | ✅         | `22-output.md`       |
+| API 族                               | 必须有示例 | 示例载体  | 对应设计文档         |
+| ------------------------------------ | ---------- | --------- | -------------------- |
+| 构造 (`zeros`/`ones`/`eye`/`from_*`) | ✅         | example   | `18-construction.md` |
+| 索引/切片                            | ✅         | doctest   | `17-indexing.md`     |
+| 转置                                 | ✅         | doctest   | `16-shape.md`        |
+| 广播                                 | ✅         | example   | `15-broadcast.md`    |
+| 逐元素运算                           | ✅         | doctest   | `11-math.md`         |
+| 归约 (`sum`)                         | ✅         | doctest   | `13-reduction.md`    |
+| 内积 (`dot`)                         | ✅         | doctest   | `12-matrix.md`       |
+| 类型转换 (`cast`)                    | ✅         | doctest   | `21-type.md`         |
+| FFI unsafe API                       | ✅         | example   | `23-ffi.md`          |
+| 运算符重载                           | ✅         | doctest   | `19-overload.md`     |
+| `clip`/`fill`                        | ✅         | doctest   | `20-utility.md`      |
+| 集合操作 (`unique`)                  | ✅         | doctest   | `14-set.md`          |
+| 工作空间                             | ✅         | example   | `24-workspace.md`    |
+| 格式化输出                           | ✅         | doctest   | `22-output.md`       |
 
-执行范围说明：上表是示例覆盖矩阵的理想目标。CI 实际执行范围受时间与资源约束，采用分层执行策略；参见 §8 的 CI 与 feature 维度验证矩阵。
+执行范围说明：上表是示例覆盖矩阵的理想目标。"示例载体"列标明该 API 族主要通过独立 example 程序还是 doctest 满足覆盖要求。CI 实际执行范围受时间与资源约束，采用分层执行策略；参见 §5.11.1 的 Gate 定义。
 
 ### 5.4 核心文档模板
 
@@ -475,45 +492,7 @@ MIT
 
 ### 5.9 CHANGELOG.md
 
-**设计扩展说明：** 本节及后续涉及版本号规则、docs.rs metadata、文档 CI / feature 验证矩阵的内容，均属于超出 `需求说明书 §28.1` 最低范围的工程化设计扩展。
-
-#### 5.9.1 格式
-
-`CHANGELOG.md` 可遵循 [Keep a Changelog](https://keepachangelog.com/) 格式维护，但该文件属于可选工程整理项，不进入 `需求说明书 §28.1` 的默认交付波次：
-
-```markdown
-# Changelog
-
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/),
-and this project adheres to [Semantic Versioning](https://semver.org/).
-
-## [Unreleased]
-
-### Added
-
-- Initial implementation of N-dimensional tensor type
-- Dimension system (Ix0-Ix6, IxDyn)
-- Element type hierarchy
-- Custom complex number type with repr(C)
-- Storage system (Owned, View, ViewMut, Arc)
-- F-order memory layout with 64-byte alignment
-
-### Changed
-
-### Fixed
-```
-
-#### 5.9.2 版本号规则
-
-| 变更类型   | 版本号影响           |
-| ---------- | -------------------- |
-| 新增 API   | minor                |
-| 破坏性变更 | major (1.0 后)       |
-| Bug 修复   | patch                |
-| 性能优化   | patch                |
-| 0.x 阶段   | minor 可含破坏性变更 |
+**设计扩展说明：** `CHANGELOG.md` 为可选工程辅助产物，不属于 `需求说明书 §28.1` 的文档要求范围。若维护，建议遵循 [Keep a Changelog](https://keepachangelog.com/) 格式。
 
 ### 5.10 docs.rs 配置
 
@@ -553,44 +532,12 @@ pub fn sum(&self) -> A { ... }
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | Gate 1：rustdoc 文档门禁 | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`                                                            | 任何 missing docs / broken intra-doc links / 其他 rustdoc warning |
 | Gate 2：文档节完整性门禁 | `cargo clippy --all-features -- -D clippy::missing_errors_doc -D clippy::missing_panics_doc -D clippy::missing_safety_doc` | 缺少 `# Errors` / `# Panics` / `# Safety` 文档节                  |
-| Doctest                  | `cargo test --doc --all-features`                                                                                          | 任何失败                                                          |
-| 示例验证                 | `cargo build --examples --all-features` + 关键示例运行命令（见 §5.6.1 定义；当前为 `basic` / `broadcasting` / `workspace`）            | 任何失败                                                          |
+| Gate 3：Doctest          | `cargo test --doc --all-features`                                                                                          | 任何失败                                                          |
+| Gate 4：示例验证         | `cargo build --examples --all-features` + 关键示例运行命令（见 §5.6.1 定义；当前为 `basic` / `broadcasting` / `workspace`）            | 任何失败                                                          |
 
-#### 5.11.2 CI 配置
+#### 5.11.2 CI 配置与 Feature 维度验证矩阵
 
-**说明**：以下仅为文档交付验证示例。权威的 doctest / examples CI 执行矩阵以 `28-tests.md` 为准。
-
-```yaml
-# .github/workflows/docs.yml
-docs:
-  steps:
-    - name: Gate 1 - rustdoc warnings
-      run: RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
-
-    - name: Gate 2 - documentation section completeness
-      run: cargo clippy --all-features -- -D clippy::missing_errors_doc -D clippy::missing_panics_doc -D clippy::missing_safety_doc
-
-    - name: Run doctests
-      run: cargo test --doc --all-features
-
-    - name: Build examples
-      run: cargo build --examples --all-features
-
-    - name: Run key examples
-      run: |
-        cargo run --example basic
-        cargo run --example broadcasting
-        cargo run --example workspace
-```
-
-#### 5.11.3 Feature 维度验证矩阵
-
-| 配置                  | 文档检查（docs）                                                                                                 | Doctest 检查                                                                                            | examples 检查                                                                                        |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| 默认配置              | `cargo doc --no-deps`：验证默认 `std` 文档、README 引导与未 gated API 的文档可生成                               | `cargo test --doc`：验证默认配置下的文档示例                                                            | `cargo build --examples`，并运行关键默认示例（如 `basic`、`broadcasting`）                           |
-| `--features simd`     | `cargo doc --features simd --no-deps`：额外验证 `simd` feature 对公开 API 行为/性能路径的说明与 docs.rs 展示口径 | `cargo test --doc --features simd`：验证公开 API 在启用 `simd` 时的相关 doctest 与默认 doctest 共同通过 | `cargo build --examples --features simd`，并验证 `simd`、`features` 等相关示例                  |
-| `--features parallel` | `cargo doc --features parallel --no-deps`：验证并行 feature 对公开 API 行为说明与性能路径注记                    | `cargo test --doc --features parallel`：验证并行相关 doctest 与默认 doctest 共同通过                    | `cargo build --examples --features parallel`，并验证 `features` 等相关示例                      |
-| `--all-features`      | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`：验证组合配置下完整文档、链接与 docs.rs 口径     | `cargo test --doc --all-features`：验证所有 feature 组合后的 doctest                                    | `cargo build --examples --all-features`，并运行关键组合示例，确认默认/feature 示例在全集配置下仍成立 |
+**说明**：§5.11.1 定义了文档交付需要的验证项。权威的 doctest / examples CI 执行矩阵（含 Feature 维度验证矩阵）由 `28-tests.md` 统一维护，本文档不再重复。
 
 ### 5.12 Good / Bad 文档注释对比
 
@@ -980,18 +927,9 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 ## 8. 测试计划
 
-### 8.1 测试分类表
+### 8.1 验证入口
 
-| 类型                     | 命令                                                                                                                       | 目的                                                             |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| 单元检查                 | `cargo test --doc --all-features`                                                                                          | 验证单个 API 文档示例可编译运行                                  |
-| 集成检查                 | `cargo doc --all-features --no-deps` + examples 构建/关键默认示例运行                                                      | 验证模块文档、README、examples 与源码接口协同一致                |
-| 边界检查                 | feature-gated/unsafe doctest 逐项编译                                                                                      | 验证条件编译、unsafe 说明和 `std` 环境边界                       |
-| 属性检查                 | broken links / missing docs 不变量                                                                                         | 验证“公开 API 均有文档、关键入口均可追踪”                        |
-| Gate 1：rustdoc 文档门禁 | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`                                                            | 拦截 missing docs、broken intra-doc links 与其他 rustdoc warning |
-| Gate 2：文档节完整性门禁 | `cargo clippy --all-features -- -D clippy::missing_errors_doc -D clippy::missing_panics_doc -D clippy::missing_safety_doc` | 拦截缺少 `# Errors` / `# Panics` / `# Safety` 的公开 API 文档    |
-| Doctest                  | `cargo test --doc --all-features`                                                                                          | 验证文档中的代码示例可编译运行                                   |
-| 示例验证                 | `cargo build --examples --all-features` + 关键默认示例运行命令                                                             | 验证 examples/ 下程序可编译，关键默认示例可运行                  |
+文档验证的完整 Gate 定义和 CI 执行矩阵参见 §5.11.1 和 `28-tests.md`。本节仅补充文档特有的覆盖要求和边界场景。
 
 ### 8.2 Doctest 覆盖要求
 
@@ -1020,20 +958,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | 所有关键模块都有至少一个可运行示例   | doctest / examples 构建联合验证   |
 | 文档中的路径与模块名和架构文档一致   | broken links 检查 + 人工审阅      |
 
-### 8.5 CI 配置
-
-CI 配置与 §5.11.2 完全一致，此处不再重复。§5.11 是完整规范定义，§8 是对应的测试执行视角；两者交叉引用以保持一致性。doctest / examples 的统一 CI 执行矩阵由 `28-tests.md` 维护。
-
-### 8.6 Feature gate / 配置测试
-
-| 配置       | 验证点                                                                        |
-| ---------- | ----------------------------------------------------------------------------- |
-| 默认配置   | 默认 `std` 文档、README 与 examples 描述一致                                  |
-| 启用并行   | 受 `parallel` feature 影响的公开 API 文档说明、性能路径注记与示例说明保持一致 |
-| 启用 SIMD  | 受 `simd` feature 影响的公开 API 文档说明、性能路径注记与示例说明保持一致     |
-| 全 feature | docs.rs 构建、doctest 与 examples 在组合配置下均通过                          |
-
-### 8.7 类型边界 / 编译期测试
+### 8.5 类型边界 / 编译期测试
 
 | 场景                         | 测试方式                                         |
 | ---------------------------- | ------------------------------------------------ |
@@ -1043,39 +968,7 @@ CI 配置与 §5.11.2 完全一致，此处不再重复。§5.11 是完整规范
 
 ---
 
-## 9. 模块交互设计
-
-### 9.1 文档对被文档模块的依赖
-
-| 文档任务       | 依赖的模块                                                | 说明                   |
-| -------------- | --------------------------------------------------------- | ---------------------- |
-| lib.rs 文档    | 全部                                                      | 需要了解所有模块的概览 |
-| 核心模块文档   | dimension, element, complex, storage, layout              | 基于 §1 章节编写       |
-| 张量与运算文档 | tensor, overload, broadcast, shape, index, construct, set | 基于 §1 章节编写       |
-| 基础设施文档   | ffi, workspace, error, prelude                            | 基于 §1 章节编写       |
-| 类型级文档     | 全部                                                      | 逐类型添加 doc comment |
-| 函数级文档     | 全部                                                      | 逐函数添加 doc comment |
-
-### 9.2 数据流
-
-````
-Design docs (00-28)
-    │
-    ├── extract module responsibilities, core concepts, and API signatures
-    │       │
-    │       └── write module docs into each mod.rs (`//!`)
-    │
-    └── extract type definitions and method signatures
-            │
-            ├── write doc comments (`///`)
-            └── write doctests (```rust ```)
-                    │
-                    └── validate with `cargo test --doc`
-````
-
----
-
-## 10. 错误处理与语义边界
+## 9. 错误处理与语义边界
 
 本文档不直接定义错误类型，但要求所有文档示例、`# Errors` 节、panic 说明与 feature-gated 文档行为统一遵循 `26-error.md` 的错误语义边界；文档层负责准确转述，不重新定义公开错误模型。
 
