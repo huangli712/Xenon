@@ -1,7 +1,7 @@
 # 基准测试规范
 
 > 文档编号: 27
-> 模块目录: src/benches/
+> 模块目录: benches/
 > 任务阶段: Phase 6
 > 前置文档: 所有前置文档（`00-coding.md` ~ `26-error.md`）
 > 需求参考: 需求说明书 §9、§28
@@ -259,7 +259,7 @@ Benchmark categories
 | F-contiguous   | `zeros(shape)`                    | 默认路径性能基线   |
 | Non-contiguous | F-order 2D 张量的行视图或转置视图 | 非连续路径性能惩罚 |
 
-**注意**：Xenon 仅支持 F-order 布局，不存在 C-order 路径。非连续布局通过切片/转置视图产生（参见 `06-layout.md §5.4` / `§5.1c`）。
+**注意**：Xenon 仅支持 F-order 布局，不存在 C-order 路径。非连续布局通过切片/转置视图产生（参见 `06-layout.md §5.4` / `§5.3`）。
 
 **补充**：数据竞争和 UB 验证由 `28-tests.md` 覆盖。benchmark 仅验证性能指标，不承担正确性验证职责。
 
@@ -288,7 +288,7 @@ Benchmark categories
 | `transpose_2d`             | 2D 转置（零拷贝）       | S/M/L | f64            | F-contiguous   | 转置视图创建                                    |
 | `simd_add_compare`         | `a + b` (SIMD vs 标量)  | M     | f32/f64        | F-contiguous   | SIMD 加速比（参见 `08-simd.md §12`）            |
 | `simd_sum_compare`         | sum (SIMD vs 标量)      | M     | i32            | F-contiguous   | 默认仅覆盖已验证启用的 i32 SIMD reduction 路径  |
-| `simd_dot_compare`         | dot (SIMD vs 标量)      | M     | f32/f64        | F-contiguous   | SIMD dot kernel 已在 `08-simd.md` 中设计，      |
+| `simd_dot_compare`         | dot (SIMD vs 标量)      | M     | f32/f64        | F-contiguous   | SIMD dot kernel 已在 `08-simd.md` 中设计        |
 | `par_sum_compare`          | sum (并行 vs 串行)      | L     | i64            | F-contiguous   | 并行加速比（参见 `09-parallel.md §12`）         |
 | `par_add_compare`          | `a + b` (并行 vs 串行)  | L     | f64            | F-contiguous   | 并行逐元素加速                                  |
 | `par_dot_compare`          | dot (并行 vs 串行)      | L     | f64/Complex<f64> | F-contiguous | 并行内积加速比，覆盖实数与复数内积              |
@@ -456,7 +456,7 @@ fn bench_sum_bad2() {
 | 预分配 + 复用 | 数据在计时循环外生成                                            | 避免测量中混入构造开销 |
 | 非连续视图    | 行视图或转置视图                                                | 模拟真实非连续访问场景 |
 
-**设计决策**：所有数据在迭代回调外预生成（参见 §5.9.2 Bad 示例），确保仅测量目标操作本身的性能。
+**设计决策**：所有数据在迭代回调外预生成（参见 §5.9 Bad 示例），确保仅测量目标操作本身的性能。
 
 ### 6.3 black_box 使用规范
 
