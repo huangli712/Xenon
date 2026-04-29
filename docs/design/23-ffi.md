@@ -211,7 +211,7 @@ use crate::error::FfiErrorCategory;
 
 ### 5.3 C 侧结构化导出格式
 
-> **定义位置：** `ElementType` 枚举定义于 `element` 模块（见 `03-element.md §5.1`），`ffi` 模块通过 `pub use` re-export 以供 FFI 消费者使用。此设计避免了 `element` → `ffi` → `element` 的循环依赖。
+`ElementType` 枚举定义于 `element` 模块（见 `03-element.md §5.1`），`ffi` 模块通过 `pub use` re-export 以供 FFI 消费者使用。此设计避免了 `element` → `ffi` → `element` 的循环依赖。
 
 ```rust,ignore
 // src/ffi/types.rs
@@ -221,8 +221,8 @@ pub use crate::error::FfiErrorCategory;   // re-export from error module
 /// BLAS layout metadata (full definition in §5.5).
 pub struct BlasInfo<A> { /* fields omitted — see §5.5 */ }
 
-// ElementType 的完整定义见 03-element.md §5.1
-// 此处仅展示 FFI 消费者可见的公共 API 签名：
+// See 03-element.md §5.1 for the full ElementType definition.
+// Only the FFI-consumer-visible public API signature is shown here:
 //
 // pub enum ElementType { Bool, I32, I64, F32, F64, Complex32, Complex64 }
 //
@@ -238,7 +238,7 @@ pub struct BlasInfo<A> { /* fields omitted — see §5.5 */ }
 | `as_ptr()` / `as_mut_ptr()` | 逻辑首元素           | 对非空张量返回第一个逻辑元素的指针；空张量返回 dangling              |
 | `TensorExport.data`         | storage base pointer | 非空张量时等于底层存储的基地址；空张量时为有效对齐但不可解引用的指针 |
 | `BlasInfo.data_ptr`         | 逻辑首元素           | 等价于 `as_ptr()`                                                    |
-| `try_ptr_at(indices)`       | 指定逻辑位置       | 基于 `as_ptr()` + `try_offset_of(indices)` 结果计算                        |
+| `try_ptr_at(indices)`       | 指定逻辑位置         | 基于 `as_ptr()` + `try_offset_of(indices)` 结果计算                  |
 
 ```rust,ignore
 /// Raw tensor data export for FFI consumers.
@@ -432,7 +432,7 @@ pub struct Complex64 {
 **语义契约摘要：**
 
 ```rust,ignore
-// from_raw_parts() — 完整实现参见 07-tensor.md §5.7
+// from_raw_parts() — see 07-tensor.md §5.7 for the full implementation
 //
 // impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D> where A: Element, D: Dimension {
 //     pub unsafe fn from_raw_parts(
@@ -444,12 +444,12 @@ pub struct Complex64 {
 //     ) -> Result<Self, XenonError>
 // }
 //
-// 内部校验流程：
+// Internal validation flow:
 //   1. validate_access_range(&shape, &strides, offset, storage_len)
-//   2. 空张量使用 NonNull::dangling() 作为 logical_ptr
+//   2. Empty tensors use NonNull::dangling() as logical_ptr
 //   3. compute_layout_flags(&shape, &strides, logical_ptr)
-
-// from_raw_parts_mut() — 完整实现参见 07-tensor.md §5.7
+//
+// from_raw_parts_mut() — see 07-tensor.md §5.7 for the full implementation
 //
 // impl<'a, A, D> TensorBase<ViewMutRepr<'a, A>, D> where A: Element, D: Dimension {
 //     pub unsafe fn from_raw_parts_mut(
@@ -458,10 +458,10 @@ pub struct Complex64 {
 //     ) -> Result<Self, XenonError>
 // }
 //
-// 额外校验（相对于 from_raw_parts）：
-//   1. 拒绝非空零步长布局（非单元素轴 stride == 0）
-//   2. validate_non_overlapping_layout() 保守非重叠判定
-//   3. 空张量使用 NonNull::dangling() 作为 logical_ptr
+// Additional validation (beyond from_raw_parts):
+//   1. Reject non-empty zero-stride layouts (stride == 0 on non-singleton axes)
+//   2. validate_non_overlapping_layout() conservative non-overlap check
+//   3. Empty tensors use NonNull::dangling() as logical_ptr
 ```
 
 **校验边界说明：** 与 `07-tensor.md` §5.7 一致，`from_raw_parts*()` 只验证库能够直接检查的元数据约束（例如 shape/stride/offset/storage*len 组合是否合法、是否溢出、是否越界），并在失败时返回 `Result<*, XenonError>`。指针有效性、对齐、实际可访问范围与生命周期仍由调用方在 `unsafe` 前提下负责。
@@ -483,7 +483,7 @@ pub use crate::tensor::{OwnedRawParts, TensorBase};
 // They are directly callable on any Owned tensor; no wrapper is needed.
 ```
 
-**完整 API 签名、`OwnedRawParts` 字段定义、`into_raw_parts()` 代码、验证逻辑及 `# Safety` 契约**参见 `07-tensor.md §5.7 "Owned 裸指针分解与重建"`。
+完整 API 签名、`OwnedRawParts` 字段定义、`into_raw_parts()` 代码、验证逻辑及 `# Safety` 契约参见 `07-tensor.md §5.7 "Owned 裸指针分解与重建"`。
 
 **设计决策：** `into_raw_parts` 仅适用于 Owned 存储，且导出的内存布局必须满足 Xenon 的 owned 不变量：F-order contiguous、`offset == 0`、canonical F-order strides。若调用方持有的是 view 或带 offset 的逻辑子视图，必须先显式物化为新的 owned contiguous tensor，再跨越 FFI 边界导出裸指针。如需将 View 转为 Owned 再解构，参见 `21-type.md` §5.5。
 
