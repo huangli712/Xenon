@@ -3,7 +3,7 @@
 > 文档编号: 24
 > 模块目录: src/workspace/
 > 任务阶段: Phase 4
-> 前置文档: 05-storage.md
+> 前置文档: 
 > 需求参考: 需求说明书 §26 - §28
 > 范围声明: 范围内
 
@@ -47,9 +47,9 @@
 
 ```
 src/
+├── error.rs                    # WorkspaceErrorCategory definitions (shared error module)
 └── workspace/               # Temporary workspace (directory module)
     ├── mod.rs               # Module root, re-exports
-    ├── error.rs             # WorkspaceErrorCategory definitions
     ├── workspace.rs         # Workspace struct, constants, constructors, destructor
     ├── borrow.rs            # WorkspaceBorrow and WorkspaceBorrowMut borrow guards
     ├── split.rs             # SplitBorrowMut split guard
@@ -63,18 +63,19 @@ src/
 ### 4.1 依赖图（ASCII）
 
 ```
-src/workspace/
-├── mod.rs          # Re-exports: Workspace, WorkspaceBorrow, WorkspaceBorrowMut, SplitBorrowMut
-├── error.rs        # Defines WorkspaceErrorCategory; consumed by workspace.rs/split.rs/expand.rs when constructing XenonError::Workspace
-├── workspace.rs    # Depends on error
-├── borrow.rs       # Depends on workspace (by reference)
-├── split.rs        # Depends on workspace (by reference) and error
-└── expand.rs       # Depends on workspace (&mut self) and error
+src/
+├── error.rs            # Defines WorkspaceErrorCategory (alongside FfiErrorCategory, ConversionFailureReason)
+└── workspace/
+    ├── mod.rs          # Re-exports: Workspace, WorkspaceBorrow, WorkspaceBorrowMut, SplitBorrowMut
+    ├── workspace.rs    # Depends on crate::error (WorkspaceErrorCategory, XenonError)
+    ├── borrow.rs       # Depends on workspace (by reference)
+    ├── split.rs        # Depends on workspace (by reference) and crate::error
+    └── expand.rs       # Depends on workspace (&mut self) and crate::error
 
 External dependencies:
 ├── core            # ptr::NonNull, marker, sync::atomic, fmt
 ├── alloc           # alloc::alloc, alloc::dealloc, alloc::Layout
-└── crate::error      # XenonError public boundary mapping
+└── crate::error    # WorkspaceErrorCategory, XenonError public boundary mapping
 ```
 
 ### 4.2 类型级依赖
@@ -83,8 +84,7 @@ External dependencies:
 | -------------------- | ---------------------------------------------------------------------- |
 | `core`               | `NonNull<u8>`, `PhantomData`, `AtomicU8`, `fmt::Debug`, `fmt::Display` |
 | `alloc`              | `alloc()`, `dealloc()`, `Layout`                                       |
-| `workspace/error.rs` | `WorkspaceErrorCategory`（workspace 错误类别）                         |
-| `crate::error`       | `XenonError`（公开 Xenon API 错误类型，含 `Workspace` 变体）           |
+| `crate::error`       | `WorkspaceErrorCategory`（workspace 错误类别）、`XenonError`（公开 Xenon API 错误类型，含 `Workspace` 变体） |
 
 ### 4.3 依赖合法性
 
@@ -96,7 +96,7 @@ External dependencies:
 
 ### 4.4 依赖方向声明
 
-依赖方向：单向。`workspace` 仅依赖 `core`、`alloc`、原子能力、模块内 `WorkspaceErrorCategory`，以及 `crate::error` 中 `XenonError::Workspace` 的公开错误边界，不依赖 `tensor`（参见 `07-tensor.md §3`）。上游库和 `tensor` 可消费 `workspace`。
+依赖方向：单向。`workspace` 仅依赖 `core`、`alloc`、原子能力、`crate::error` 中的 `WorkspaceErrorCategory`，以及 `crate::error` 中 `XenonError::Workspace` 的公开错误边界，不依赖 `tensor`（参见 `07-tensor.md §4.4`）。上游库和 `tensor` 可消费 `workspace`。
 
 ---
 
@@ -476,6 +476,30 @@ impl<'a> WorkspaceBorrowMut<'a> {
                 self.len,
             )
         }
+    }
+
+    /// Interprets an initialized prefix as `&mut [u8]`.
+    ///
+    /// # Safety
+    ///
+    /// The caller must guarantee that the first `initialized_len` bytes have been
+    /// fully initialized before calling this method.
+    pub unsafe fn assume_init_slice(
+        &mut self,
+        initialized_len: usize,
+    ) -> Result<&mut [u8]> {
+        if initialized_len > self.len {
+            return Err(XenonError::Workspace {
+                operation: "assume_init_slice".into(),
+                category: WorkspaceErrorCategory::InvalidLayout,
+                size: Some(initialized_len),
+                align: None,
+                split: None,
+                len: Some(self.len),
+                reason: Some("initialized_len exceeds borrow length".into()),
+            });
+        }
+        Ok(core::slice::from_raw_parts_mut(self.ptr.as_ptr(), initialized_len))
     }
 
     /// Typed access to possibly-uninitialized scratch memory.
@@ -1067,7 +1091,11 @@ This design (zero allocation):
 1. `split_at_mut(512)` → `split_count = 2`，创建 `left` 和 `right`
 2. `right.split_at_mut(128)` → `fetch_add(1)`，`split_count = 3`，创建 `right_a` 和 `right_b`
 
-**公开/内部边界说明：** 本文中的公开安全 API（如 `new`、`borrow`、`borrow_mut`、`split_at_mut`、`ensure_capacity`）统一返回可恢复错误，而不是把输入校验失败暴露为 panic；只有无法直接验证的 `unsafe` 初始化前提继续由调用方承担。3. `left` drop → `split_count: 3→2`，`prev=3 ≠ 1`，不重置 ✅ 4. `right_a` drop → `split_count: 2→1`，`prev=2 ≠ 1`，不重置 ✅ 5. `right_b` drop → `split_count: 1→0`，`prev=1`，重置 `borrow_state` ✅
+**公开/内部边界说明：** 本文中的公开安全 API（如 `new`、`borrow`、`borrow_mut`、`split_at_mut`、`ensure_capacity`）统一返回可恢复错误，而不是把输入校验失败暴露为 panic；只有无法直接验证的 `unsafe` 初始化前提继续由调用方承担。
+
+3. `left` drop → `split_count: 3→2`，`prev=3 ≠ 1`，不重置 ✅
+4. `right_a` drop → `split_count: 2→1`，`prev=2 ≠ 1`，不重置 ✅
+5. `right_b` drop → `split_count: 1→0`，`prev=1`，重置 `borrow_state` ✅
 
 ### 6.4 扩容安全性论证
 
@@ -1097,8 +1125,8 @@ ensure_capacity(&mut self, 2048)
 ### Wave 1: 基础结构
 
 - [ ] **T1**: 定义 `WorkspaceErrorCategory` 并接入 `XenonError::Workspace`
-  - 文件: `src/workspace/error.rs`
-  - 内容: `WorkspaceErrorCategory` 相关定义
+  - 文件: `src/error.rs`
+  - 内容: `WorkspaceErrorCategory` 相关定义（与 `FfiErrorCategory`、`ConversionFailureReason` 同属 error 模块）
   - 测试: `test_workspace_workspace_error_category`
   - 前置: 无
   - 预计: 10 min
