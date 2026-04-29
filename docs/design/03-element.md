@@ -134,6 +134,15 @@ pub trait Element:
 
     /// Multiplicative identity (one).
     fn one() -> Self;
+
+    /// Element type discriminant for FFI consumers.
+    ///
+    /// Used by `ElementType::of::<A>()` (see `23-ffi.md §5.3`) to
+    /// map Rust element types to C-compatible enum discriminants at
+    /// compile time. If the current Rust version does not support
+    /// the required const mechanism, this can be downgraded to a
+    /// regular `fn` without changing the semantics.
+    const ELEMENT_TYPE: crate::ffi::ElementType;
 }
 ```
 

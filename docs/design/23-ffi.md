@@ -236,7 +236,7 @@ impl ElementType {
 }
 ```
 
-**实现基础说明：** 可在 `Element` sealed trait 中引入 `const ELEMENT_TYPE: ElementType` 关联常量作为 `ElementType::of::<A>()` 的实现基础。若当前 Rust 版本不支持所需 const 机制，可将该 API 降为普通 `fn`，保持语义不变。
+**实现基础说明：** `Element` sealed trait 中已声明 `const ELEMENT_TYPE: ElementType` 关联常量（见 `03-element.md §5.1`），作为 `ElementType::of::<A>()` 的实现基础。若当前 Rust 版本不支持所需 const 机制，可将该 API 降为普通 `fn`，保持语义不变。
 
 ### 5.4 指针约定对照
 
