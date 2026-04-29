@@ -413,7 +413,7 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | `simd/`        | SIMD 后端：向量化 kernel（pulp）、运行时分发，不含标量回退          |
 | `parallel/`    | 并行后端：承载纯并行执行入口与内部并行迭代 helper，不含串行回退     |
 | `math/`        | 逐元素数学运算（一元、二元算术、比较等）                            |
-| `overload`     | 运算符重载（Add, Sub, Mul, Div trait 实现）                         |
+| `overload/`     | 运算符重载（Add, Sub, Mul, Div trait 实现）                         |
 | `util/`        | 实用操作（clip 裁剪、fill 填充、to_contiguous 连续性保证的公共入口）|
 | `set/`         | 集合操作（unique 去重）                                             |
 | `broadcast/`   | NumPy 广播规则与只读广播视图构造                                    |

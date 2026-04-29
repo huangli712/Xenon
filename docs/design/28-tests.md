@@ -116,11 +116,17 @@ tests/
 ├── crate::broadcast        # broadcast_shape
 ├── crate::shape            # transpose
 ├── crate::index            # Multi-dimensional indexing and range slicing
-├── crate::construct        # zeros, ones, eye, from_shape_vec, from_shape_slice, from_array, from_scalar, from_vec)
+├── crate::construct        # zeros, ones, eye, from_shape_vec, from_shape_slice, from_array, from_scalar, from_vec
 ├── crate::set              # unique
 ├── crate::ffi              # as_ptr, as_mut_ptr, from_raw_parts
 ├── crate::workspace        # Workspace
 ├── crate::error            # XenonError
+├── crate::iter             # element/axis/index iterators
+├── crate::matrix           # dot (inner product)
+├── crate::overload         # Add, Sub, Mul, Div trait implementations
+├── crate::util             # clip, fill, to_contiguous
+├── crate::convert          # CastTo, type conversion
+├── crate::format           # NumPy-style formatted output
 └── public API feature effects (`simd` / `parallel`) # Internal backends are verified indirectly through observable public behavior
 ```
 
@@ -135,6 +141,19 @@ tests/
 | `storage`   | `Owned`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`, `Storage`（参见 `05-storage.md §5`）                            |
 | `layout`    | `LayoutFlags`（参见 `06-layout.md §5`）                                                                        |
 | `error`     | `XenonError`, `Result<T>`（参见 `26-error.md §5`）                                                             |
+| `iter`      | `Elements`, `AxisIter`, `IndexedIter`（参见 `10-iterator.md §5`）                                              |
+| `matrix`    | `.dot()`（参见 `12-matrix.md §5`）                                                                             |
+| `overload`  | `Tensor<A, D>` 运算符 trait bounds（参见 `19-overload.md §5`）                                                 |
+| `util`      | `.clip()`, `.fill()`, `.to_contiguous()`（参见 `20-utility.md §5`）                                           |
+| `convert`   | `CastTo<T>` trait, `.cast()` 张量级转换（参见 `21-type.md §5`；标量级转换使用 `CastTo::<f64>::cast_to`）       |
+| `format`    | `Display`, `Debug` trait（参见 `22-output.md §5`）                                                             |
+| `broadcast` | `BroadcastInput`, `broadcast_shape`（参见 `15-broadcast.md §5`）                                               |
+| `shape`     | `.transpose()`（参见 `16-shape.md §5`）                                                                        |
+| `reduction` | `.sum()`（参见 `13-reduction.md §5`）                                                                          |
+| `construct` | `zeros`, `ones`, `eye`, `from_shape_vec` 构造器（参见 `18-construction.md §5`）                               |
+| `index`     | `Index`/`Range` 索引 trait（参见 `17-indexing.md §5`）                                                          |
+| `ffi`       | `as_ptr()`, `as_mut_ptr()`, `from_raw_parts`（参见 `23-ffi.md §5`）                                           |
+| `workspace` | `Workspace`（参见 `24-workspace.md §5`）                                                                       |
 
 ### 4.3 依赖合法性
 
@@ -204,14 +223,15 @@ impl ExactRealTestScalar for f64 {
 /// Integer paths use `assert_eq!`; floating-point paths require strict
 /// `ULP == 0` equality instead of a mixed tolerance contract.
 ///
-/// The comparison condition `to_bits() == to_bits() || ulp_distance() == 0`
-/// is **complementary, not redundant**: `to_bits()` distinguishes ±0.0
-/// (different sign bit ⇒ different bit pattern, even though ULP distance is
-/// 0), while `ulp_distance() == 0` covers the mathematical-identity case.
-/// For standard IEEE 754 values, `to_bits()` equality implies `ulp_distance()
-/// == 0`, but the `||` ensures the assertion captures the intent "bitwise
-/// identical OR numerically indistinguishable at ULP resolution" without
-/// silently equating +0.0 with −0.0 when `to_bits()` is checked first.
+/// The comparison condition `to_bits() == to_bits() && ulp_distance() == 0`
+/// requires **both** bitwise identity and numerical indistinguishability.
+/// `to_bits()` distinguishes ±0.0 (different sign bit ⇒ different bit
+/// pattern), while `ulp_distance() == 0` confirms numerical equivalence at
+/// ULP resolution. For standard IEEE 754 values the two conditions are
+/// equivalent (bitwise identity ⇔ ULP distance zero), but the conjunction
+/// makes the intent explicit and guarantees that +0.0 and −0.0 are **never**
+/// silently equated: `to_bits()` differs for ±0.0, causing the `&&` to
+/// short-circuit and the assertion to fail.
 pub fn assert_tensor_exact_real<A, D>(
     actual: &TensorBase<impl Storage<Elem = A>, D>,
     expected: &TensorBase<impl Storage<Elem = A>, D>,
@@ -227,7 +247,7 @@ pub fn assert_tensor_exact_real<A, D>(
         let a_native = *a;
         let e_native = *e;
         assert!(
-            a_native.to_bits() == e_native.to_bits() || a_native.ulp_distance(e_native) == 0,
+            a_native.to_bits() == e_native.to_bits() && a_native.ulp_distance(e_native) == 0,
             "{}: element {} differs: actual={:?}, expected={:?}, comparison=strict native-type ULP==0",
             msg, idx, a, e);
     }
@@ -255,10 +275,10 @@ pub fn assert_tensor_exact_complex<A, D>(
         let e_re = e.re();
         let e_im = e.im();
 
-        assert!(a_re.to_bits() == e_re.to_bits() || a_re.ulp_distance(e_re) == 0,
+        assert!(a_re.to_bits() == e_re.to_bits() && a_re.ulp_distance(e_re) == 0,
             "{}: element {} real part differs: actual={:?}, expected={:?}, comparison=strict native-type ULP==0",
             msg, idx, a_re, e_re);
-        assert!(a_im.to_bits() == e_im.to_bits() || a_im.ulp_distance(e_im) == 0,
+        assert!(a_im.to_bits() == e_im.to_bits() && a_im.ulp_distance(e_im) == 0,
             "{}: element {} imaginary part differs: actual={:?}, expected={:?}, comparison=strict native-type ULP==0",
             msg, idx, a_im, e_im);
     }
@@ -346,6 +366,44 @@ macro_rules! assert_xenon_error {
 **说明**：精确比较须使用对应原生类型的位模式/ULP 比较，不依赖跨精度转换。`f32` 测试用 `f32` 比较，`f64` 测试用 `f64` 比较。
 
 **标量转换 API 约定**：测试辅助中的标量类型转换必须使用 `CastTo::<f64>::cast_to(value)` 或等价的内部 helper（例如 `scalar_to_f64(value)`），而不是在标量上调用 `.cast::<f64>()` 方法语法。`.cast()` 保留给 `21-type.md` 中约定的张量级转换 API。
+
+**辅助函数定义**：以下函数在测试代码中被引用但签名与语义须在此明确声明，实际实现位于 `tests/common/assertions.rs`：
+
+```rust,ignore
+// ULP distance functions: return the number of representable floating-point
+// values between `a` and `b`. For ±0.0, the distance is 1 (sign bit differs),
+// ensuring assert_tensor_exact_real's `&&` condition correctly rejects ±0.0
+// as unequal. NaN inputs return u64::MAX.
+pub fn ulp_distance_f32(a: f32, b: f32) -> u64;
+pub fn ulp_distance_f64(a: f64, b: f64) -> u64;
+
+/// Tolerance budget for cross-path comparisons (Tier 2) and math-function
+/// comparisons (Tier 3). Each field records the per-function ULP ceiling
+/// mandated by 需求说明书 §28.3, with 00-coding.md §8.4 as auxiliary reference.
+pub struct MathTolerance {
+    pub ulp: u64,       // Maximum ULP distance allowed
+    pub abs: f64,       // Absolute tolerance (for near-zero values)
+}
+
+/// Return the 需求说明书 §28.3 normative cross-path tolerance budget.
+/// Used by assert_tensor_close_real_cross_path (Tier 2).
+pub fn documented_cross_path_tolerance() -> MathTolerance;
+
+/// Tier 2 cross-path helper: returns true if `a` and `b` differ by at most
+/// `tolerance.ulp` ULPs, or by at most `tolerance.abs` in absolute terms
+/// (the latter covers near-zero values where ULP can be misleading).
+pub fn ulp_eq_f64_with_tolerance(a: f64, b: f64, tolerance: MathTolerance) -> bool;
+
+/// Tier 3 math-function helper: returns true if `a` and `b` differ by at
+/// most the per-function documented tolerance. Math functions (sin, sqrt,
+/// exp, etc.) each have their own ULP budget per 需求说明书 §28.3.
+pub fn math_eq_f64(a: f64, b: f64, tolerance: MathTolerance) -> bool;
+
+/// Tier 1 exact helper: returns true only when `a.to_bits() == b.to_bits()`.
+/// Used for same-path base arithmetic where IEEE 754 guarantees deterministic
+/// results. Equivalent to `ulp_distance(a, b) == 0 && a.to_bits() == b.to_bits()`.
+pub fn ulp_eq_f64_exact(a: f64, b: f64) -> bool;
+```
 
 ### 5.3 tests/common/generators.rs
 
@@ -632,6 +690,8 @@ fn test_unique_non_contiguous() {
 | `test_ix0_iter_single`        | 零维张量元素迭代恰好产出 1 个元素                                                                            | 高     |
 | `test_zst_storage_no_ub`      | 验证内部实现对零大小类型的安全处理。此为内部实现回归测试，非公开 API 契约测试。                              | 高     |
 
+> **归属说明**：`test_send_sync_contracts` 语义上属于 safety（`25-safety.md`），`test_complex_c99_layout` 属于 FFI 布局（`23-ffi.md`），`test_ix0_iter_single` 属于迭代器（`10-iterator.md`），`test_zst_storage_no_ub` 属于存储/tensor UB 验证（`05-storage.md`）。它们置于 `test_error.rs` 是因为均通过 `XenonError` 统一公开错误边界进行校验，或依赖 error 模块的类型约束（如 `Send`/`Sync` bound 传播需 `XenonError: Send + Sync`）。若后续测试文件职责边界收紧，可分别移至 `test_parallel.rs`、`test_ffi.rs`、`test_iterator.rs`、`test_tensor.rs`。
+
 panic 诊断信息测试：验证 panic message 包含 `需求说明书 §27` 要求的诊断上下文（至少包含错误类别和相关参数子集）。通过 `#[should_panic(expected = "...")]` 或 `std::panic::catch_unwind` 捕获并断言。
 
 ### 5.24 Good/Bad 对比示例
@@ -909,6 +969,8 @@ fn test_sum_parallel_feature_consistency() {
 ```
 
 #### 6.3.3 SIMD 结果一致性
+
+> **Tier 1 精度说明**：逐元素加法（add）是 IEEE 754 保证确定性结果的运算——无论执行路径（scalar/SIMD），只要输入相同，`a + b` 的浮点结果必然相同（加法无中间舍入步骤）。因此 `test_simd_add_consistency` 使用 Tier 1 精度（`ulp_eq_f64_exact`）而非 Tier 2 跨路径容差是合理的。其他运算（如归约 `sum`）涉及跨路径累积顺序差异，必须使用 Tier 2。
 
 ```rust,ignore
 #[test]
@@ -1339,12 +1401,12 @@ fn compile_fail_harness() {
 | `test_workspace.rs`    | `workspace`         | `24-workspace.md`               |
 | `test_utility.rs`      | `util`              | `20-utility.md`                 |
 | `test_output.rs`       | `format`            | `22-output.md`                  |
-| `test_ffi.rs`          | `ffi`, `workspace`  | `23-ffi.md`, `24-workspace.md`  |
+| `test_ffi.rs`          | `ffi`               | `23-ffi.md`                     |
 | `test_parallel.rs`     | `parallel`          | `09-parallel.md`                |
 | `test_simd.rs`         | `simd`              | `08-simd.md`                    |
 | `test_error.rs`        | `error`             | `26-error.md`                   |
 
-**说明**：workspace 错误直接构造 `XenonError::Workspace`，集成测试通过公共 API 验证结构化字段；`test_workspace.rs` 关注 workspace 语义与公开诊断文本，`test_error.rs` 关注统一公开错误边界。
+**说明**：workspace 错误直接构造 `XenonError::Workspace`，集成测试通过公共 API 验证结构化字段；`test_workspace.rs` 关注 workspace 语义与公开诊断文本（含 workspace 与 ffi 的协同场景，参见 `24-workspace.md`），`test_error.rs` 关注统一公开错误边界。`test_ffi.rs` 仅覆盖 ffi 模块自身语义（原始指针、BLAS 兼容、导出前提），不涉及 workspace 协同——该协同场景已由 `test_workspace.rs` 覆盖。
 
 ### 9.2 基础模块补充覆盖映射
 
@@ -1354,6 +1416,7 @@ fn compile_fail_harness() {
 | `element`   | doctest + compile-fail + integration tests | doctest 覆盖 trait/公开类型边界示例；compile-fail 覆盖非法元素类型与 trait bound；集成测试覆盖合法元素语义 |
 | `complex`   | doctest + integration tests                | doctest 覆盖公开用法示例；集成测试覆盖复数逐元素运算、归约、内积、格式化与 FFI 布局 |
 | `layout`    | doctest + integration tests                | doctest 覆盖布局/连续性示例；集成测试覆盖 F-order、非连续视图、transpose、to_contiguous 与导出前提 |
+| `storage`   | doctest + integration tests (via test_tensor.rs) | doctest 覆盖 Storage trait 与四种存储模式示例；集成测试通过 `test_tensor.rs` 间接覆盖 ViewRepr/ViewMutRepr/Owned/ArcRepr 语义（参见 §5.4 test_tensor_view_creation / test_tensor_to_owned / test_arc_tensor_clone / test_arc_tensor_alias_isolation_on_write），无专属 test_storage.rs |
 
 ### 9.3 数据流
 

@@ -132,6 +132,8 @@ CHANGELOG.md                  # Optional engineering changelog artifact (non-req
 ├── depends on `01-architecture.md`
 │   └── module layout, feature list, and dependency layer graph inform docs structure
 ├── depends on `25-safety.md`
+│   └── thread safety (Send/Sync) documentation aligned with safety invariant definitions
+├── depends on `00-coding.md §6` + `23-ffi.md`
 │   └── unsafe API documentation checklist aligned with safety invariant definitions
 ├── depends on `28-tests.md`
 │   └── doctest / examples / docs CI validation must stay aligned
@@ -259,8 +261,8 @@ L3: Examples (examples/)
 //!
 //! | Level | Types | Trait Bound |
 //! |-------|-------|-------------|
-//! | Base | i32, i64, f32, f64, Complex, bool | `Element` |
-//! | Numeric | i32, i64, f32, f64, Complex | `Numeric: Element` |
+//! | Base | i32, i64, f32, f64, Complex&lt;f32>, Complex&lt;f64>, bool | `Element` |
+//! | Numeric | i32, i64, f32, f64, Complex&lt;f32>, Complex&lt;f64> | `Numeric: Element` |
 //! | Real | f32, f64 | `RealScalar: Numeric` |
 //! | Complex | Complex<f32>, Complex<f64> | `ComplexScalar: Numeric` |
 //!
@@ -290,7 +292,7 @@ L3: Examples (examples/)
 
 容差体系、错误模型和 panic 语义的具体内容由对应技术规范（`26-error.md`、`28-tests.md`）定义。公共文档需引用 `需求说明书 §28.3` 的容差语义；`28-tests.md` 仅定义测试落实方式和比较 helper。文档层仅要求引用这些规范，不重复定义。
 
-对运算符重载入口（如 `Add` / `Sub` / `Mul` / `Div` 的实现文档），即使签名经由 trait 间接暴露，也应补齐与对应方法型 API 一致的 `# Errors` / `# Panics` 模板，并引用对应技术规范，避免仅留下语法糖示例而缺少失败条件说明。
+对运算符重载入口（如 `Add` / `Sub` / `Mul` / `Div` 的实现文档），即使签名经由 trait 间接暴露，也应补齐与对应方法型 API 一致的 `# Errors` / `# Panics` 模板，并引用 `19-overload.md` 中定义的对应技术规范，避免仅留下语法糖示例而缺少失败条件说明。
 
 ### 5.5 Lint 与文档门禁
 
@@ -357,6 +359,8 @@ pub fn sum(&self) -> A { ... }
 ````
 
 #### 5.6.3 Feature-gated Doctest
+
+> **注**：本模板演示的是 feature-gated doctest 的编写模式。`sum()` 本身是始终可用的 API（见 §5.10.2），此处仅因为示例中验证的行为（并行路径的正确性）依赖 `parallel` feature，因此用 `#[cfg(feature = "parallel")]` 包裹。`sum()` 的基础 doctest 见 §5.6.2。
 
 ````rust,ignore
 /// Compute the sum of all elements.
