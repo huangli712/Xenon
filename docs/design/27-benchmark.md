@@ -85,7 +85,7 @@ benches/
 
 ### 4.2 类型级依赖
 
-| 来源模块    | 使用的类型/trait                                                                              |
+| 来源模块    | 使用的 API（类型/trait/函数）                                                                  |
 | ----------- | --------------------------------------------------------------------------------------------- |
 | `tensor`    | `Tensor<A, D>`, `TensorView`, `TensorViewMut`, `.shape()`（参见 `07-tensor.md §5`）             |
 | `dimension` | `Ix1`, `Ix2`, `Ix3`, `IxDyn`, `Dimension`（参见 `02-dimension.md §5`）                        |
@@ -281,6 +281,10 @@ Benchmark categories
 | `elem_mul_f64`             | `a * b`                 | S/M/L | f64            | F-contiguous   | 逐元素乘法                                      |
 | `elem_sin_f64`             | `sin(a)`                | S/M/L | f64            | F-contiguous   | 超越函数逐元素                                  |
 | `elem_sin_f32`             | `sin(a)`                | S/M/L | f32            | F-contiguous   | f32 超越函数，SIMD 宽度更大                     |
+| `elem_sub_f64`             | `a - b`                 | S/M/L | f64            | F-contiguous   | 逐元素减法                                      |
+| `elem_div_f64`             | `a / b`                 | S/M/L | f64            | F-contiguous   | 逐元素除法                                      |
+| `elem_exp_f64`             | `exp(a)`                | S/M/L | f64            | F-contiguous   | 指数函数逐元素                                  |
+| `elem_abs_f64`             | `abs(a)`                | S/M/L | f64            | F-contiguous   | 绝对值逐元素                                    |
 | `elem_add_sliced`          | `a + b`（b 为切片视图） | M     | f64            | Non-contiguous | 非连续惩罚                                      |
 | `sum_1d_f64`               | 全局 sum                | S/M/L | f64            | F-contiguous   | 1D 归约                                         |
 | `sum_2d_axis0`             | 沿轴 0 sum              | S/M/L | f64            | F-contiguous   | 2D 沿轴归约                                     |
@@ -402,8 +406,20 @@ fn bench_elem_add(quick: bool) {
 }
 
 fn main() {
-    let quick = std::env::args().any(|arg| arg == "--quick");
-    bench_elem_add(quick);
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let quick = args.iter().any(|arg| arg == "--quick");
+    let filter = args.iter().find(|a| !a.starts_with("--"));
+
+    let should_run = |name: &str| -> bool {
+        match &filter {
+            Some(f) => name.contains(f.as_str()),
+            None => true,
+        }
+    };
+
+    if should_run("elem_add_f64") {
+        bench_elem_add(quick);
+    }
 }
 ```
 
@@ -517,7 +533,7 @@ benchmark 不定义正确性容差，也不在本文件内重复维护 `atol` / 
 
 - [ ] **T2**: 实现 `benches/utils/mod.rs` 和 `benches/utils/generators.rs`
   - 文件: `benches/utils/mod.rs`, `benches/utils/generators.rs`
-  - 内容: 共享常量（`SIZES_1D/2D/3D`），数据生成函数
+  - 内容: 共享常量（`SIZES_1D`、`SIZES_2D`），数据生成函数
   - 测试: 编译通过
   - 前置: T1
   - 预计: 10 min

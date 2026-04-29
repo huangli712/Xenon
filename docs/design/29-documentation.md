@@ -55,7 +55,9 @@
 ```
 src/
 ├── lib.rs                    # Crate-level docs (L0)
+├── prelude.rs                # Prelude docs (L1)
 ├── private.rs                # Sealed-trait infrastructure (internal, no pub docs)
+├── error.rs                  # Error module docs (L1)
 ├── dispatch.rs               # Internal dispatch helper (internal, no pub docs)
 ├── dimension/
 │   └── mod.rs                # Dimension module docs (L1)
@@ -71,16 +73,22 @@ src/
 │   └── mod.rs                # Tensor module docs (L1)
 ├── iter/
 │   └── mod.rs                # Iterator module docs (L1)
+├── simd/                     # (internal-only, feature-gated, no public mod.rs)
+├── parallel/                 # (internal-only, feature-gated, no public mod.rs)
+├── broadcast/
+│   └── mod.rs                # Broadcast module docs (L1)
 ├── math/
 │   └── mod.rs                # Element-wise operation module docs (L1)
 ├── overload/
 │   └── mod.rs                # Operator-overload module docs (L1)
+├── util/
+│   └── mod.rs                # Utility module docs (L1) — clip, fill, to_contiguous
+├── set/
+│   └── mod.rs                # Set-operation module docs (L1)
 ├── matrix/
 │   └── mod.rs                # Vector dot-product module docs (L1)
 ├── reduction/
 │   └── mod.rs                # Reduction module docs (L1)
-├── broadcast/
-│   └── mod.rs                # Broadcast module docs (L1)
 ├── shape/
 │   └── mod.rs                # Shape-operation module docs (L1)
 ├── index/
@@ -89,20 +97,12 @@ src/
 │   └── mod.rs                # Constructor module docs (L1)
 ├── convert/
 │   └── mod.rs                # Type-conversion module docs (L1)
-├── util/
-│   └── mod.rs                # Utility module docs (L1) — clip, fill, to_contiguous
-├── set/
-│   └── mod.rs                # Set-operation module docs (L1)
 ├── format/
 │   └── mod.rs                # Output-formatting module docs (L1)
 ├── ffi/
 │   └── mod.rs                # FFI module docs (L1)
 ├── workspace/
 │   └── mod.rs                # Workspace module docs (L1)
-├── # (internal execution backends: simd/ and parallel/ are internal-only per `01-architecture.md §3`;
-│   # they have no public mod.rs and are documented only via feature effects on public APIs)
-├── error.rs                  # Error module docs (L1)
-└── prelude.rs                # Prelude docs (L1)
 
 examples/
 ├── basic.rs                  # Basic-operations example
@@ -230,8 +230,8 @@ L3: Examples (examples/)
 //!
 //! # fn demo() -> xenon::Result<()> {
 //! // Create tensors (see 18-construction.md §5.1 for constructor signatures)
-//! let a = Tensor1::<f64>::zeros(5.into())?;
-//! let b = Tensor2::<f64>::zeros([3, 4].into())?;
+//! let a = Tensor1::<f64>::zeros([5])?;
+//! let b = Tensor2::<f64>::zeros([3, 4])?;
 //!
 //! // Element-wise operations with broadcasting
 //! let sum = (&a + &a)?;
