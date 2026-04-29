@@ -96,7 +96,7 @@ benches/
 | `shape`     | `transpose`（参见 `16-shape.md §5`）                                                          |
 | `set`       | `unique`（参见 `14-set.md §5`）                                                               |
 | `construct` | `zeros`, `ones`, `from_shape_vec`（参见 `18-construction.md §5`）                             |
-| `broadcast` | `broadcast_shape`, 广播运算符（参见 `15-broadcast.md §5`）                                    |
+| `broadcast` | `broadcast_shape`（参见 `15-broadcast.md §5`）、广播视图构造                                    |
 
 ### 4.3 依赖合法性
 
@@ -167,11 +167,6 @@ pub const SIZES_1D: &[usize] = &[64, 65_536, 16_777_216];
 pub const SIZES_2D: &[(usize, usize)] = &[
     (8, 8), (256, 256), (4096, 4096),
 ];
-
-/// Standard benchmark sizes: Small / Medium / Large (3D).
-pub const SIZES_3D: &[(usize, usize, usize)] = &[
-    (4, 4, 4), (64, 32, 32), (256, 256, 256),
-];
 ```
 
 ```rust,ignore
@@ -201,10 +196,15 @@ pub struct StridedFixture1D {
 }
 
 impl StridedFixture1D {
+    /// Returns a non-contiguous view by taking a row slice of the F-order 2D owner.
+    /// Actual slicing API follows `17-indexing.md`; the expression below is
+    /// illustrative and must be adapted to the final slice syntax at implementation.
     pub fn view(&self) -> TensorView1<'_, f64> {
+        // Illustrative: take row 1 from the F-order 2D owner, yielding a
+        // non-contiguous 1D view with stride == ncols (not 1).
         self.owner
             .view()
-            .slice(SliceInfo::new(/* [Index(1), Range { start: 0, end: self.owner.shape()[1] }] */)
+            .slice(SliceInfo::new(/* [Index(1), Range { start: 0, end: self.owner.ncols() }] */)
                 .expect("slice info must be valid"))
             .expect("slice info must match owner shape")
     }
@@ -242,11 +242,11 @@ Benchmark categories
 
 #### 5.4.1 输入规模
 
-| 级别       | 1D         | 2D        | 3D          |
-| ---------- | ---------- | --------- | ----------- |
-| **Small**  | 64         | 8×8       | 4×4×4       |
-| **Medium** | 65,536     | 256×256   | 64×32×32    |
-| **Large**  | 16,777,216 | 4096×4096 | 256×256×256 |
+| 级别       | 1D         | 2D        |
+| ---------- | ---------- | --------- |
+| **Small**  | 64         | 8×8       |
+| **Medium** | 65,536     | 256×256   |
+| **Large**  | 16,777,216 | 4096×4096 |
 
 #### 5.4.2 数据类型
 
@@ -265,7 +265,7 @@ Benchmark categories
 | F-contiguous   | `zeros(shape)`                    | 默认路径性能基线   |
 | Non-contiguous | F-order 2D 张量的行视图或转置视图 | 非连续路径性能惩罚 |
 
-**注意**：Xenon 仅支持 F-order 布局，不存在 C-order 路径。非连续布局通过切片/转置视图产生（参见 `06-layout.md §5.4` / `§5.3`）。
+**注意**：Xenon 仅支持 F-order 布局，不存在 C-order 路径。非连续布局通过切片/转置视图产生（参见 `06-layout.md §5.3` / `§5.7`）。
 
 **补充**：数据竞争和 UB 验证由 `28-tests.md` 覆盖。benchmark 仅验证性能指标，不承担正确性验证职责。
 
@@ -280,6 +280,7 @@ Benchmark categories
 | `elem_add_complex`         | `a + b`                 | S/M/L | Complex<f64>   | F-contiguous   | 复数加法开销                                    |
 | `elem_mul_f64`             | `a * b`                 | S/M/L | f64            | F-contiguous   | 逐元素乘法                                      |
 | `elem_sin_f64`             | `sin(a)`                | S/M/L | f64            | F-contiguous   | 超越函数逐元素                                  |
+| `elem_sin_f32`             | `sin(a)`                | S/M/L | f32            | F-contiguous   | f32 超越函数，SIMD 宽度更大                     |
 | `elem_add_sliced`          | `a + b`（b 为切片视图） | M     | f64            | Non-contiguous | 非连续惩罚                                      |
 | `sum_1d_f64`               | 全局 sum                | S/M/L | f64            | F-contiguous   | 1D 归约                                         |
 | `sum_2d_axis0`             | 沿轴 0 sum              | S/M/L | f64            | F-contiguous   | 2D 沿轴归约                                     |
@@ -293,7 +294,7 @@ Benchmark categories
 | `broadcast_col`            | 列向量广播到矩阵        | S/M/L | f64            | F-contiguous   | 列广播                                          |
 | `transpose_2d`             | 2D 转置（零拷贝）       | S/M/L | f64            | F-contiguous   | 转置视图创建                                    |
 | `simd_add_compare`         | `a + b` (SIMD vs 标量)  | M     | f32/f64        | F-contiguous   | SIMD 加速比（参见 `08-simd.md §12`）            |
-| `simd_sum_compare`         | sum (SIMD vs 标量)      | M     | i32            | F-contiguous   | 默认仅覆盖已验证启用的 i32 SIMD reduction 路径  |
+| `simd_sum_compare`         | sum (SIMD vs 标量)      | M     | i32/f32/f64     | F-contiguous   | SIMD sum 对比；i32 覆盖已验证启用的 widening 路径（参见 `08-simd.md §5.6`），f32/f64 覆盖已实现路径  |
 | `simd_dot_compare`         | dot (SIMD vs 标量)      | M     | f32/f64        | F-contiguous   | SIMD dot kernel 已在 `08-simd.md` 中设计        |
 | `par_sum_compare`          | sum (并行 vs 串行)      | L     | i64            | F-contiguous   | 并行加速比（参见 `09-parallel.md §12`）         |
 | `par_add_compare`          | `a + b` (并行 vs 串行)  | L     | f64            | F-contiguous   | 并行逐元素加速                                  |
@@ -325,9 +326,9 @@ Smoke Test 仅验证 benchmark 代码可以正常编译和运行（"不崩溃"�
 
 - 当仓库显式启用 Regression Check 时，可监测以下核心基准：`elem_add_f64`（逐元素加法，f64，65536 元素）和 `sum_1d_f64`（一维归约，f64，65536 元素）。其中 `65536` 与 §5.4.1 的 1D Medium 规模保持一致。
 
-- 本文档统一使用同一组规模基线：Small = `64` / `8×8` / `4×4×4`，Medium = `65,536` / `256×256` / `64×32×32`，Large = `16,777,216` / `4096×4096` / `256×256×256`。
+- 本文档统一使用同一组规模基线：Small = `64` / `8×8`，Medium = `65,536` / `256×256`，Large = `16,777,216` / `4096×4096`。
 
-- Large 规模基准测试（如 `4096×4096`、`256×256×256`）仅在 weekly/full benchmark 流水线中执行。PR 级别的 Smoke Test 仅使用 Small/Medium 规模。CI 配置须设置合理的内存上限；当可用内存低于 Large 用例估算峰值的 1.5× 安全阈值时，大张量测试应跳过并标记为 skipped。
+- Large 规模基准测试（如 `4096×4096`）仅在 weekly/full benchmark 流水线中执行。PR 级别的 Smoke Test 仅使用 Small/Medium 规模。CI 配置须设置合理的内存上限；当可用内存低于 Large 用例估算峰值的 1.5× 安全阈值时，大张量测试应跳过并标记为 skipped。
 
 **CI 配置示例**
 
@@ -580,14 +581,14 @@ benchmark 不定义正确性容差，也不在本文件内重复维护 `atol` / 
   - 文件: `benches/simd_comparison.rs`
   - 内容: add/sum/dot 在 `--features simd` 开/关时的性能对比；路径切换正确性由 `28-tests.md` 验证
   - 测试: 分别以两种 feature 配置运行，对比结果
-  - 前置: T3, T4
+  - 前置: T3, T4, T5
   - 预计: 10 min
 
 - [ ] **T11**: 实现 `benches/parallel_comparison.rs`
   - 文件: `benches/parallel_comparison.rs`
   - 内容: sum/add/dot 在 `--features parallel` 开/关时的性能对比；自动切换与嵌套回退正确性由 `28-tests.md` 验证
   - 测试: 分别以两种 feature 配置运行，对比结果
-  - 前置: T3, T4
+  - 前置: T3, T4, T5
   - 预计: 10 min
 
 ### Wave 5: CI 集成

@@ -126,7 +126,7 @@ parallel feature implementation paths/
 | `ViewMutRepr<'a, A>` |  ✅  |  ✗   | `A: Send`                        | 独占可写视图可转移但不可共享                       |
 | `ArcRepr<A>`         |  ✅  |  ✅  | `A: Send + Sync`                 | Arc 原子计数，读共享安全；写路径仅能在内部唯一化 / 必要时复制后恢复可写性 |
 
-**补充说明：** `ViewRepr` 仅持有共享引用（`&A`），跨线程传递共享引用只要求 `A: Sync`（允许多线程共享读取），不要求 `A: Send`（所有权转移）。这是 Rust 标准库 `&T: Send + Sync where T: Sync` 的直接推论。各存储模式的完整 API 定义参见 `05-storage.md §5`；对应的语义访问分类（`ReadOnly`/`SharedReadOnly`/`Writable`/`Owned`）参见 `05-storage.md §5.1` 中 `AccessSemantics` 枚举定义。
+**补充说明：** `ViewRepr` 仅持有共享引用（`&A`），跨线程传递共享引用只要求 `A: Sync`（允许多线程共享读取），不要求 `A: Send`（所有权转移）。这是 Rust 标准库 `&T: Send + Sync where T: Sync` 的直接推论。各存储模式的完整 API 定义参见 `05-storage.md §5`；对应的语义访问分类（`ReadOnly`/`SharedReadOnly`/`Writable`/`Owned`）参见 `07-tensor.md §5.3` 中 `AccessSemantics` 枚举定义（亦见 `05-storage.md §5.1` 的语义分类表）。
 
 ### 5.2 TensorBase<S, D> 自动推导规则
 
@@ -264,13 +264,15 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 // ViewMutRepr does not implement Sync.
 //
 // Mechanism: the `ptr: *mut A` field makes the struct `!Send + !Sync` by
-// default (raw pointers opt out of both auto-traits). The explicit
-// `unsafe impl Send` above restores `Send` when `A: Send`, but `Sync`
-// remains opted out because no `unsafe impl Sync` is provided. This is
-// consistent with the struct definition in `05-storage.md §6.4`, which
-// uses `_marker: PhantomData<&'a mut A>` for variance and drop check
-// (not for `!Sync`). Keep module documentation aligned with this document
-// if the design changes.
+// default (raw pointers opt out of both auto-traits), and
+// `_marker: PhantomData<&'a mut A>` also contributes `!Sync`
+// (since `&mut T` is `!Sync`). The explicit `unsafe impl Send` above
+// restores `Send` when `A: Send`, but `Sync` remains opted out because
+// no `unsafe impl Sync` is provided. This is consistent with the struct
+// definition in `05-storage.md §6.4`, which uses
+// `_marker: PhantomData<&'a mut A>` for variance and drop check.
+// Keep module documentation aligned with this document if the design
+// changes.
 ```
 
 ### 5.8 ArcRepr<A> 的 Send/Sync
@@ -656,6 +658,8 @@ After a storage type is created or borrowed
 | `TensorView<'a, A, D>`    |              ✅              |          ❌          | `A: Sync`                                                       |
 | `TensorViewMut<'a, A, D>` |       ⚠️ 需先降级为只读       |          ✅          | 只读路径经显式只读重借用进入；写路径要求独占借用且块划分不重叠  |
 | `ArcTensor<A, D>`         |              ✅              | ❌（若实现内部写路径，则必须先内部唯一化 / 必要时复制后恢复可写） | `A: Send + Sync`   |
+
+**ViewMutRepr 并行写路径机制说明：** `ViewMutRepr` 虽为 `!Sync`，但并行写路径通过独占 `&mut` 借用接管整个视图后将其分块为互不重叠的子视图，每个子视图仅由一个线程独占持有，因此不违反 `Sync` 约束。该机制与 §5.7 中 `ViewMutRepr: Send where A: Send` 的论证一致——独占所有权可跨线程转移，但不允许共享。
 
 ### 9.5 与 workspace 模块的边界
 
