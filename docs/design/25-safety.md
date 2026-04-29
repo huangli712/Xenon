@@ -418,20 +418,20 @@ fn parallel_iteration(tensor: &Tensor2<f64>) {
 ### 6.1 Rust 所有权系统与线程安全的协同
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│           Rust ownership -> thread safety mapping                │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  Rust ownership rule         Thread-safety guarantee             │
-│  ──────────────────────      ──────────────────────              │
-│                                                                 │
-│  move semantics              Owned/ArcRepr can move across threads (Send) │
+┌────────────────────────────────────────────────────────────────────────────┐
+│           Rust ownership -> thread safety mapping                          │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│  Rust ownership rule         Thread-safety guarantee                       │
+│  ──────────────────────      ──────────────────────                        │
+│                                                                            │
+│  move semantics              Owned/ArcRepr can move across threads (Send)  │
 │  shared &T reference         ViewRepr can be shared across threads (Sync)  │
 │  exclusive &mut T reference  ViewMutRepr can only move (Send only)         │
 │  Arc atomic refcount         ArcRepr can be shared safely (Send + Sync)    │
-│  lifetime 'a                 Views cannot outlive source data               │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+│  lifetime 'a                 Views cannot outlive source data              │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 6.2 并行操作安全约束
@@ -440,11 +440,11 @@ fn parallel_iteration(tensor: &Tensor2<f64>) {
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│             Parallel iteration access isolation                  │
+│             Parallel iteration access isolation                 │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  Array: [e0, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11]    │
-│         └──thread0──┘└──thread1──┘└──thread2──┘└─thread3──┘    │
+│  Array: [e0, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11]      │
+│         └──thread0──┘└──thread1──┘└──thread2──┘└─thread3──┘     │
 │                                                                 │
 │  Key guarantees:                                                │
 │  • Each element is accessed by at most one thread               │
