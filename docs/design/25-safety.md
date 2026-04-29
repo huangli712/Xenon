@@ -537,7 +537,7 @@ SIMD 操作与并行操作的组合安全性保证（参见 `08-simd.md §5`）�
 | ------------ | ---------------------------------------- | --------------------------------------------------------- |
 | 编译期检查   | 仓库既有编译期测试机制或手写断言辅助函数 | 验证 Send/Sync 约束传播                                   |
 | 跨线程测试   | `#[test]` with `std::thread`             | 验证跨线程使用安全性                                      |
-| 并发访问测试 | `tests/test_parallel.rs` / `tests/test_error.rs` | 多线程并发场景验证                               |
+| 并发访问测试 | `tests/test_parallel.rs` / `tests/test_error.rs` | 多线程并发场景验证                                |
 | 边界测试     | 同模块测试中标注                         | 验证广播只读、非 `Send` / `Sync` 元素、嵌套并行回退等边界 |
 | 属性测试     | 编译期断言 + 参数化并发用例              | 验证 trait 约束传播与分块不重叠不变量                     |
 
@@ -558,7 +558,7 @@ SIMD 操作与并行操作的组合安全性保证（参见 `08-simd.md §5`）�
 | `test_owned_cross_thread`     | Owned 跨线程移动                          | 中     |
 | `test_arc_internal_restore_writable_after_uniquify` | 内部唯一化 / 必要时复制后的写路径独占性验证 | 低     |
 | `test_arc_cow_preserves_other_aliases`              | CoW 写路径不会污染其他 Arc 别名             | 中     |
-| `test_arc_cow_unique_fast_path`                     | 唯一持有时可原位恢复可写路径                 | 中     |
+| `test_arc_cow_unique_fast_path`                     | 唯一持有时可原位恢复可写路径                | 中     |
 
 ### 8.3 边界测试场景
 
@@ -609,26 +609,26 @@ SIMD 操作与并行操作的组合安全性保证（参见 `08-simd.md §5`）�
 ### 9.1 接口约定
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                 Thread-safety interface of the storage module       │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  trait RawStorage {                                             │
-│      type Elem;  // no Send/Sync constraint                         │
-│  }                                                              │
-│                                                                 │
-│  trait Storage: RawStorage {                                    │
-│      type Elem;                                                 │
-│      fn as_ptr(&self) -> *const Self::Elem;                     │
-│  }                                                              │
-│                                                                 │
-│  trait StorageMut: Storage {                                    │
-│      fn as_mut_ptr(&mut self) -> *mut Self::Elem;               │
-│  }                                                              │
-│                                                                 │
+┌────────────────────────────────────────────────────────────────────┐
+│                 Thread-safety interface of the storage module      │
+├────────────────────────────────────────────────────────────────────┤
+│                                                                    │
+│  trait RawStorage {                                                │
+│      type Elem;  // no Send/Sync constraint                        │
+│  }                                                                 │
+│                                                                    │
+│  trait Storage: RawStorage {                                       │
+│      type Elem;                                                    │
+│      fn as_ptr(&self) -> *const Self::Elem;                        │
+│  }                                                                 │
+│                                                                    │
+│  trait StorageMut: Storage {                                       │
+│      fn as_mut_ptr(&mut self) -> *mut Self::Elem;                  │
+│  }                                                                 │
+│                                                                    │
 │  Send/Sync for each implementation is decided by the concrete type │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+│                                                                    │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 9.2 数据流描述
@@ -646,18 +646,18 @@ After a storage type is created or borrowed
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│      Thread-safety requirements of public APIs with optional       │
-│              internal execution paths behind `parallel`            │
+│      Thread-safety requirements of public APIs with optional    │
+│              internal execution paths behind `parallel`         │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  Public APIs keep their stable signatures.                       │
-│  When the `parallel` feature is enabled, eligible execution      │
-│  paths may internally split work into non-overlapping chunks.    │
+│  Public APIs keep their stable signatures.                      │
+│  When the `parallel` feature is enabled, eligible execution     │
+│  paths may internally split work into non-overlapping chunks.   │
 │                                                                 │
-│  Internal safety guarantees:                                     │
-│  • compute_safe_chunks() guarantees non-overlap                  │
-│  • lifetimes ensure the view remains valid                       │
-│  • element/thread-safety bounds remain checked before dispatch   │
+│  Internal safety guarantees:                                    │
+│  • compute_safe_chunks() guarantees non-overlap                 │
+│  • lifetimes ensure the view remains valid                      │
+│  • element/thread-safety bounds remain checked before dispatch  │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -666,16 +666,14 @@ After a storage type is created or borrowed
 
 启用 `parallel` feature 时，内部执行路径可借助 rayon 等并行后端；后端仍要求被分发到线程的工作单元满足 `Send`/`Sync` 边界（参见 `09-parallel.md §5.3`）：
 
-| 存储模式                  | 公开 API 可选内部并行只读路径 | 内部并行逐元素写路径 | 约束                                                                                  |
-| ------------------------- | :--------------------------: | :------------------: | ------------------------------------------------------------------------------------- |
-| `Tensor<A, D>` (Owned)    |              ✅              |          ✅          | `A: Send + Sync`                                                                      |
-| `TensorView<'a, A, D>`    |              ✅              |          ❌          | `A: Sync`                                                                             |
-| `TensorViewMut<'a, A, D>` |       ⚠️ 需先降级为只读       |          ✅          | 只读路径经显式只读重借用进入；写路径要求独占借用且块划分不重叠                         |
-| `ArcTensor<A, D>`         |              ✅              | ❌（若实现内部写路径，则必须先内部唯一化 / 必要时复制后恢复可写） | `A: Send + Sync`                                                         |
+| 存储模式                  | 公开 API 可选内部并行只读路径 | 内部并行逐元素写路径 | 约束                                                           |
+| ------------------------- | :--------------------------: | :------------------: | --------------------------------------------------------------- |
+| `Tensor<A, D>` (Owned)    |              ✅              |          ✅          | `A: Send + Sync`                                                |
+| `TensorView<'a, A, D>`    |              ✅              |          ❌          | `A: Sync`                                                       |
+| `TensorViewMut<'a, A, D>` |       ⚠️ 需先降级为只读       |          ✅          | 只读路径经显式只读重借用进入；写路径要求独占借用且块划分不重叠  |
+| `ArcTensor<A, D>`         |              ✅              | ❌（若实现内部写路径，则必须先内部唯一化 / 必要时复制后恢复可写） | `A: Send + Sync`   |
 
 ### 9.5 与 workspace 模块的边界
-
-> **设计扩展说明：** 本节属于超出 `需求说明书 §10` 强制范围的设计扩展，用于说明与 workspace 文档的边界衔接。
 
 workspace 的线程安全规则、借用状态机与分割守卫生命周期不属于本文档范围，统一参见 `24-workspace.md §5.7` 与 `24-workspace.md §6.3`。本文仅要求并行与张量存储相关设计在引用 workspace 时，不得与该文档定义的线程安全边界冲突。
 
@@ -734,9 +732,10 @@ workspace 的线程安全规则、借用状态机与分割守卫生命周期不�
 | 约束       | 说明                                                                                                            |
 | ---------- | --------------------------------------------------------------------------------------------------------------- |
 | `std` only | 当前版本线程安全规范以 `std` 环境为前提                                                                         |
+| MSRV       | Rust 1.85+                                                                                                      |
 | 单 crate   | 线程安全约束分布在既有模块中，不拆分独立并发 crate                                                              |
-| 最小依赖   | 不预设 `static_assertions`、`loom`、`critical_section` 等额外依赖；如需引入，仅可作为仓库内部 dev-only 评估工具 |
 | SemVer     | `Send` / `Sync` 承诺属于公开类型语义的一部分，变更需审慎评估兼容性                                              |
+| 最小依赖   | 不预设 `static_assertions`、`loom`、`critical_section` 等额外依赖；如需引入，仅可作为仓库内部 dev-only 评估工具 |
 
 ---
 
