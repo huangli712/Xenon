@@ -1329,7 +1329,7 @@ Test files
     │       └── internal path: storage → tensor → overload → simd/parallel
     │
     ├── use common/ utilities
-│       ├── use Tier 1 exact helpers by default; opt into Tier 2/Tier 3 helpers only when documented
+    │       ├── use Tier 1 exact helpers by default; opt into Tier 2/Tier 3 helpers only when documented
     │       └── generators produce test data
     │
     └── parameterized data generation
