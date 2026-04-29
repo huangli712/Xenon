@@ -431,7 +431,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | `test_eye_identity`           | 单位矩阵                                                                             | 高     |
 | `test_from_data_constructors` | 以 `from_shape_vec`、`from_shape_slice` 为主；`from_vec` 仅覆盖 Ix1 非规范便捷层（see 18-construction.md §5.1） | 高     |
 | `test_from_fixed_array`       | 从固定数组构造                                                                       | 中     |
-| `test_from_shape_vec_f_order_mapping` | F-order 逻辑元素顺序与线性输入映射正确                                        | 高     |
+| `test_from_shape_vec_f_order_mapping` | F-order 逻辑元素顺序与线性输入映射正确                                       | 高     |
 
 ### 5.9 test_reduction.rs
 
@@ -586,9 +586,9 @@ fn test_unique_non_contiguous() {
 | `ui_mismatched_storage_type`           | 不合法存储表示组合在编译期被拒绝                                | 高     |
 | `ui_unsigned_tensor_element_rejected`  | `usize` 等无符号整数不能作为张量元素类型                        | 高     |
 | `ui_invalid_unsigned_element_rejected` | `u8` / `u16` / `u32` / `u64` 等非法无符号元素类型在编译期被拒绝 | 高     |
-| `ui_bool_sum_rejected`                 | `bool` 不参与 sum 归约                                           | 高     |
-| `ui_bool_unique_rejected`              | `bool` 不参与 unique 操作                                        | 高     |
-| `ui_bool_arithmetic_rejected`          | `bool` 不参与四则运算                                            | 高     |
+| `ui_bool_sum_rejected`                 | `bool` 不参与 sum 归约                                          | 高     |
+| `ui_bool_unique_rejected`              | `bool` 不参与 unique 操作                                       | 高     |
+| `ui_bool_arithmetic_rejected`          | `bool` 不参与四则运算                                           | 高     |
 
 ### 5.22 property_tests.rs
 
@@ -608,8 +608,8 @@ fn test_unique_non_contiguous() {
 | `test_invalid_axis_error`     | 轴越界返回 InvalidAxis                                                                                       | 高     |
 | `test_invalid_argument_error` | 非法参数返回 `XenonError::InvalidArgument`                                                                   | 高     |
 | `test_invalid_shape_error`    | 非法 shape/元素数不匹配返回 `XenonError::InvalidShape`                                                       | 高     |
-| `test_invalid_storage_mode_conversion_error` | 存储模式转换失败返回 `XenonError::InvalidStorageMode`，含转换上下文                                      | 高     |
-| `test_layout_state_query_error_context`      | 布局状态查询失败时返回结构化上下文                                                                        | 中     |
+| `test_invalid_storage_mode_conversion_error` | 存储模式转换失败返回 `XenonError::InvalidStorageMode`，含转换上下文                           | 高     |
+| `test_layout_state_query_error_context`      | 布局状态查询失败时返回结构化上下文                                                            | 中     |
 | `test_error_display`          | 所有错误类型的 Display 包含上下文                                                                            | 中     |
 | `test_send_sync_contracts`    | 各 storage mode 的 Send/Sync 边界与 `25-safety.md` 一致                                                      | 高     |
 | `test_complex_c99_layout`     | `Complex<T>` 的 C-compatible 布局与 FFI 约定一致                                                             | 高     |
