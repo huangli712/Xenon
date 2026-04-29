@@ -555,12 +555,12 @@ fn test_unique_non_contiguous() {
 
 | 测试函数                               | 测试内容                                                                   | 优先级 |
 | -------------------------------------- | -------------------------------------------------------------------------- | ------ |
-| `test_workspace_new_invalid_alignment` | 非法对齐返回 `XenonError::Workspace { reason }`，仅断言公开 opaque 变体与诊断文本 | 高     |
+| `test_workspace_new_invalid_alignment` | 非法对齐返回 `XenonError::Workspace`，仅断言公开 opaque 变体与诊断文本     | 高     |
 | `test_workspace_borrow_rules`          | 借用守卫与复借用约束                                                       | 高     |
 | `test_workspace_split`                 | split 后子工作空间边界正确                                                 | 中     |
 | `test_workspace_ensure_capacity`       | 扩容不破坏已借用安全性                                                     | 高     |
 | `test_workspace_assume_init_prefix`    | `assume_init_*` 只允许访问调用方已证明初始化的前缀                         | 高     |
-| `test_workspace_error_boundary_mapping` | workspace 公开入口返回 `XenonError::Workspace { operation, category, ... }`，验证结构化字段正确性 | 中 |
+| `test_workspace_error_boundary_mapping` | workspace 公开入口返回 `XenonError::Workspace`，验证结构化字段正确性      | 中     |
 | `test_workspace_not_send_not_sync`     | `Workspace` / `SplitBorrowMut` 的 `!Send + !Sync` 编译期验证               | 高     |
 
 ### 5.19 test_parallel.rs
@@ -691,7 +691,9 @@ fn test_bad_magic() {
 
 ### 6.1 边界测试场景
 
-#### 6.1.1 边界覆盖（参照 `需求说明书 §28.4`）
+#### 6.1.1 边界覆盖
+
+参照 `需求说明书 §28.4`
 
 | 边界类别            | 测试场景                                        | 覆盖的操作                       |
 | ------------------- | ----------------------------------------------- | -------------------------------- |
@@ -803,9 +805,9 @@ fn test_ixdyn_high_rank_scenarios() {
 }
 ```
 
-说明：上述示例中的大张量测试以 `f32` 作为默认元素类型，以在 `10^7` 元素量级下控制测试内存占用；若目标平台内存预算更紧，可保留元素数量目标不变并避免并发叠加分配。`IxDyn` 高 rank 测试以 rank 12 作为测试采样上限，兼顾需求覆盖与测试执行成本；这不是 API 或实现上限。
+**说明**：上述示例中的大张量测试以 `f32` 作为默认元素类型，以在 `10^7` 元素量级下控制测试内存占用；若目标平台内存预算更紧，可保留元素数量目标不变并避免并发叠加分配。`IxDyn` 高 rank 测试以 rank 12 作为测试采样上限，兼顾需求覆盖与测试执行成本；这不是 API 或实现上限。
 
-> **执行分层要求：** 大张量用例默认归入 weekly / release 级 extended test；PR 级别只保留 smoke/required 层中的小中规模代表性样例。若 PR 需要触发大张量专项验证，应显式标记为额外质量门，而非默认必跑项。
+**执行分层要求**：大张量用例默认归入 weekly / release 级 extended test；PR 级别只保留 smoke/required 层中的小中规模代表性样例。若 PR 需要触发大张量专项验证，应显式标记为额外质量门，而非默认必跑项。
 
 ---
 
@@ -910,8 +912,8 @@ fn test_simd_add_consistency() {
 
 确定性专项测试：同输入、同配置、同执行路径重复执行 N 次，验证结果逐元素一致。适用于浮点和复数类型的逐元素运算、归约和内积。
 
-| 测试函数                          | 测试内容                                                                                  | 优先级 |
-| --------------------------------- | ----------------------------------------------------------------------------------------- | ------ |
+| 测试函数                          | 测试内容                                                                                 | 优先级 |
+| --------------------------------- | ---------------------------------------------------------------------------------------- | ------ |
 | `test_determinism_add_same_path`  | 同平台/同配置/同执行路径下重复执行 add，验证结果逐元素一致                               | 高     |
 | `test_determinism_sum_same_path`  | 同平台/同配置/同执行路径下重复执行 sum，验证结果逐元素一致                               | 高     |
 | `test_determinism_dot_same_path`  | 同平台/同配置/同执行路径下重复执行 dot，验证结果逐元素一致                               | 高     |
@@ -977,7 +979,7 @@ fn prop_add_commutative() {
 
 #### 6.5.1 assert_tensor_close helper 实现细节
 
-> 默认比较 helper 应基于已冻结的元素转换接口实现（如实数路径上的 `CastTo<f64>`），避免依赖未在 `03-element.md` 中正式冻结的附加转换约定；复数路径须拆分为独立 helper，并按实部/虚部分量比较。
+默认比较 helper 应基于已冻结的元素转换接口实现（如实数路径上的 `CastTo<f64>`），避免依赖未在 `03-element.md` 中正式冻结的附加转换约定；复数路径须拆分为独立 helper，并按实部/虚部分量比较。
 
 `assert_tensor_exact_real` / `assert_tensor_exact_complex` 以及容差 helper 的核心逻辑：
 
@@ -1022,14 +1024,6 @@ fn prop_add_commutative() {
 
 ## 7. 实现任务拆分
 
-| Wave   | 目标         | 说明                                                                                                                                        |
-| ------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Wave 1 | 基础设施     | 建立 `tests/common/`、compile-fail harness 与共享数据生成工具                                                                               |
-| Wave 2 | 核心功能测试 | 覆盖 tensor / math / broadcast / index / construction / reduction / iterator / matrix / set / shape / conversion / utility / output / error |
-| Wave 3 | 特化测试     | 覆盖 FFI、parallel、SIMD 与 `std` 环境测试矩阵                                                                                              |
-| Wave 4 | 属性测试     | 固化 transpose、自反性、交换律、broadcast 形状规则等不变量                                                                                  |
-| Wave 5 | CI 集成      | 收敛默认、`parallel`、`simd`、`all-features` 的仓库测试矩阵                                                                                 |
-
 ### Wave 1: 基础设施
 
 - [ ] **T1**: 创建 `tests/` 目录结构和 `common/` 共享工具
@@ -1039,7 +1033,7 @@ fn prop_add_commutative() {
   - 前置: 无
   - 预计: 10 min
 
-### Wave 2: 核心功能测试（可并行）
+### Wave 2: 核心功能测试
 
 - [ ] **T2**: 实现 `tests/test_tensor.rs`
   - 文件: `tests/test_tensor.rs`
@@ -1083,86 +1077,86 @@ fn prop_add_commutative() {
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T7a**: 实现 `tests/test_iterator.rs`
+- [ ] **T8**: 实现 `tests/test_iterator.rs`
   - 文件: `tests/test_iterator.rs`
   - 内容: 迭代器（elements/axis/indexed）
   - 测试: `cargo test --test test_iterator`
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T7b**: 实现 `tests/test_matrix.rs`
+- [ ] **T9**: 实现 `tests/test_matrix.rs`
   - 文件: `tests/test_matrix.rs`
   - 内容: 向量内积（dot/complex/shape mismatch）
   - 测试: `cargo test --test test_matrix`
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T7c**: 实现 `tests/test_set.rs`
+- [ ] **T10**: 实现 `tests/test_set.rs`
   - 文件: `tests/test_set.rs`
   - 内容: 集合操作（unique 无序结果/整数/复数/NaN/±0.0）
   - 测试: `cargo test --test test_set`
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T8**: 实现 `tests/test_shape.rs`
+- [ ] **T11**: 实现 `tests/test_shape.rs`
   - 文件: `tests/test_shape.rs`
   - 内容: 形状操作（transpose/高维）
   - 测试: `cargo test --test test_shape`
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T9**: 实现 `tests/test_conversion.rs`
+- [ ] **T12**: 实现 `tests/test_conversion.rs`
   - 文件: `tests/test_conversion.rs`
   - 内容: 类型转换（cast/to_owned/into_owned）
   - 测试: `cargo test --test test_conversion`
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T9a**: 实现 `tests/test_utility.rs`
+- [ ] **T13**: 实现 `tests/test_utility.rs`
   - 文件: `tests/test_utility.rs`
   - 内容: 实用操作（fill/clip/to_contiguous）
   - 测试: `cargo test --test test_utility`
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T9b**: 实现 `tests/test_output.rs`
+- [ ] **T14**: 实现 `tests/test_output.rs`
   - 文件: `tests/test_output.rs`
   - 内容: NumPy 风格输出（Display/Debug/截断/复数）
   - 测试: `cargo test --test test_output`
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T10**: 实现 `tests/test_error.rs`
+- [ ] **T15**: 实现 `tests/test_error.rs`
   - 文件: `tests/test_error.rs`
   - 内容: `XenonError` 边界与 display 输出验证（其中 workspace 相关公开边界断言 `XenonError::Workspace` 结构化字段）
   - 测试: `cargo test --test test_error`
   - 前置: T1
   - 预计: 10 min
 
-### Wave 3: 特化测试（可并行）
+### Wave 3: 特化测试
 
-- [ ] **T11**: 实现 `tests/test_ffi.rs`
+- [ ] **T16**: 实现 `tests/test_ffi.rs`
   - 文件: `tests/test_ffi.rs`
   - 内容: FFI 集成（指针/BLAS 兼容性辅助判断/export/export_mut/offset）
   - 测试: `cargo test --test test_ffi`
   - 前置: T2
   - 预计: 10 min
 
-- [ ] **T12**: 实现 `tests/test_parallel.rs`
+- [ ] **T17**: 实现 `tests/test_parallel.rs`
   - 文件: `tests/test_parallel.rs`
   - 内容: 启用 `parallel` feature 后公开 `sum`/`add` 行为一致性、并发读取、嵌套禁止
   - 测试: `cargo test --test test_parallel --features parallel`
   - 前置: T3, T7
   - 预计: 10 min
 
-- [ ] **T13**: 实现 `tests/test_simd.rs`
+- [ ] **T18**: 实现 `tests/test_simd.rs`
   - 文件: `tests/test_simd.rs`
   - 内容: SIMD 结果一致性（add/sum/fallback）
   - 测试: `cargo test --test test_simd --features simd`
   - 前置: T3, T7
   - 预计: 10 min
 
-- [ ] **T14**: 校验测试矩阵仅覆盖 `std` 环境
+- [ ] **T19**: 校验测试矩阵仅覆盖 `std` 环境
   - 文件: `.github/workflows/test.yml`
   - 内容: 维持 lib/tests/doctest 的 `std` 环境测试矩阵，不增加额外平台编译验证分支
   - 测试: CI 中运行默认测试矩阵
@@ -1171,27 +1165,25 @@ fn prop_add_commutative() {
 
 ### Wave 4: 属性测试
 
-- [ ] **T15**: 实现 `tests/property` 属性测试模块
+- [ ] **T20**: 实现 `tests/property` 属性测试模块
   - 文件: `tests/property_tests.rs`, `tests/property/tensor_props.rs`, `tests/property/ops_props.rs`, `tests/property/shape_props.rs`
   - 内容: transpose 自反/加法交换律/unique 不含重复
   - 测试: `cargo test --test property_tests`
-  - 前置: T3, T7, T8
+  - 前置: T3, T7, T11
   - 预计: 10 min
 
 ### Wave 5: CI 集成
 
-- [ ] **T16**: 配置 CI 测试矩阵
+- [ ] **T21**: 配置 CI 测试矩阵
   - 文件: `.github/workflows/test.yml`
   - 内容: `std` 环境下的默认/`parallel`/`simd`/全 feature 组合；不额外扩展平台矩阵，不设置覆盖率门禁
   - 测试: CI 触发运行
-  - 前置: T1-T15
+  - 前置: T1-T20
   - 预计: 10 min
 
 ---
 
 ## 8. 测试计划
-
-> 以下 CI 矩阵和 feature 组合内容已合并到正文中，本节保留作为历史参考。
 
 ### 8.1 测试分类表
 
@@ -1314,7 +1306,7 @@ fn compile_fail_harness() {
 | `test_simd.rs`         | `simd`              | `08-simd.md`                    |
 | `test_error.rs`        | `error`             | `26-error.md`                   |
 
-> **说明**：workspace 错误直接构造 `XenonError::Workspace { operation, category, ... }`，集成测试通过公共 API 验证结构化字段；`test_workspace.rs` 关注 workspace 语义与公开诊断文本，`test_error.rs` 关注统一公开错误边界。
+**说明**：workspace 错误直接构造 `XenonError::Workspace`，集成测试通过公共 API 验证结构化字段；`test_workspace.rs` 关注 workspace 语义与公开诊断文本，`test_error.rs` 关注统一公开错误边界。
 
 ### 9.2 基础模块补充覆盖映射
 
@@ -1351,8 +1343,8 @@ Test files
 | 平台支持   | 集成测试仅覆盖 `std` 环境                          |
 | MSRV       | Rust 1.85+                                         |
 | crate 结构 | 测试方案依附当前单 crate，不拆分额外测试 crate     |
-| 依赖约束   | 维持标准测试工具链，不为测试矩阵引入额外第三方依赖 |
 | SemVer     | 无影响；测试矩阵与 CI 分层属于工程验证约束，不改变公开 API 语义 |
+| 最小依赖   | 维持标准测试工具链，不为测试矩阵引入额外第三方依赖 |
 
 ---
 

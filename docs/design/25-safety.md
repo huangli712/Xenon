@@ -94,7 +94,7 @@ parallel feature implementation paths/
 | `core::marker` | `PhantomData<A>`, `Send`, `Sync`                                   |
 | `std::sync`    | `Arc<_>`, `AtomicUsize`                                            |
 | `std::cell`    | `Cell<usize>`, `Cell<Option<usize>>`（仅启用 `parallel` feature 的内部执行路径） |
-| `rayon::iter`  | `ParallelIterator` (要求 `Item: Send`，参见 `09-parallel.md §5.3`) |
+| `rayon::iter`  | `ParallelIterator` (要求 `Item: Send`，参见 `09-parallel.md §5.5`) |
 
 ### 4.3 依赖合法性
 
@@ -112,9 +112,9 @@ parallel feature implementation paths/
 
 ## 5. 公共 API 设计
 
-**权威来源对齐：** 本文档的 Send/Sync 定义以 `05-storage.md §5.3` 与需求说明书为基准；若与其他设计文档冲突，以需求说明书为规范基线解决，并同步修正相关文档。
+**权威来源对齐：** 本文档的 Send/Sync 定义以 `05-storage.md §6.8` 与需求说明书为基准；若与其他设计文档冲突，以需求说明书为规范基线解决，并同步修正相关文档。
 
-**注意：** 本文档与 `05-storage.md §5.7` 采用同一组 Send/Sync 规则；若后续出现不一致，应按需求说明书统一校正并同步回写相关设计文档。
+**注意：** 本文档与 `05-storage.md §6.8` 采用同一组 Send/Sync 规则；若后续出现不一致，应按需求说明书统一校正并同步回写相关设计文档。
 
 ### 5.1 Send/Sync 实现规则表
 
@@ -277,9 +277,14 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 
 // ViewMutRepr does not implement Sync.
 //
-// Canonical mechanism: use `PhantomData<*const ()>` to make the representation
-// `!Sync` without affecting its `Send` behavior. Keep module documentation
-// aligned with this document if the design changes.
+// Mechanism: the `ptr: *mut A` field makes the struct `!Send + !Sync` by
+// default (raw pointers opt out of both auto-traits). The explicit
+// `unsafe impl Send` above restores `Send` when `A: Send`, but `Sync`
+// remains opted out because no `unsafe impl Sync` is provided. This is
+// consistent with the struct definition in `05-storage.md §6.4`, which
+// uses `_marker: PhantomData<&'a mut A>` for variance and drop check
+// (not for `!Sync`). Keep module documentation aligned with this document
+// if the design changes.
 ```
 
 ### 5.8 ArcRepr<A> 的 Send/Sync
@@ -334,7 +339,7 @@ unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 
 ### 5.10 ViewMutRepr 不实现 Sync 的规范
 
-`ViewMutRepr` 通过 `PhantomData<*const ()>` 实现 `!Sync`（但不影响 `Send`）。禁止在模块文档中保留多种备选方案；如有变更须同步更新本文件。
+`ViewMutRepr` 的 `!Sync` 来源于其 `ptr: *mut A` 字段（raw pointer 默认 `!Send + !Sync`）与仅恢复 `Send` 的显式 `unsafe impl`：由于未提供 `unsafe impl Sync`，`Sync` 保持默认的否定推导。这与 `05-storage.md §6.4` 中 `_marker: PhantomData<&'a mut A>` 的定义一致（该字段用于方差与 drop check，不承担 `!Sync` 职责）。禁止在模块文档中保留多种备选方案；如有变更须同步更新本文件。
 
 ### 5.11 广播结果不可变迭代的原因
 
@@ -664,7 +669,7 @@ After a storage type is created or borrowed
 
 ### 9.4 与 rayon 的集成
 
-启用 `parallel` feature 时，内部执行路径可借助 rayon 等并行后端；后端仍要求被分发到线程的工作单元满足 `Send`/`Sync` 边界（参见 `09-parallel.md §5.3`）：
+启用 `parallel` feature 时，内部执行路径可借助 rayon 等并行后端；后端仍要求被分发到线程的工作单元满足 `Send`/`Sync` 边界（参见 `09-parallel.md §5.5`）：
 
 | 存储模式                  | 公开 API 可选内部并行只读路径 | 内部并行逐元素写路径 | 约束                                                           |
 | ------------------------- | :--------------------------: | :------------------: | --------------------------------------------------------------- |
