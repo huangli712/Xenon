@@ -217,8 +217,6 @@ pub fn strided_view_1d(n: usize) -> StridedFixture1D {
 }
 ```
 
----
-
 ### 5.3 四级分类体系
 
 ```
@@ -235,8 +233,6 @@ Benchmark categories
 | Kernel     | `add_f64`, `sum_f64`, `dot_f64`                | 核心路径性能   |
 | Workflow   | `broadcast_row`                                | 真实场景吞吐   |
 | Comparison | `add_simd_vs_scalar`, `sum_parallel_vs_serial` | 仓库内路径对比 |
-
----
 
 ### 5.4 参数矩阵
 
@@ -268,8 +264,6 @@ Benchmark categories
 **注意**：Xenon 仅支持 F-order 布局，不存在 C-order 路径。非连续布局通过切片/转置视图产生（参见 `06-layout.md §5.3` / `§5.7`）。
 
 **补充**：数据竞争和 UB 验证由 `28-tests.md` 覆盖。benchmark 仅验证性能指标，不承担正确性验证职责。
-
----
 
 ### 5.5 Benchmark 清单
 
@@ -308,8 +302,6 @@ Benchmark categories
 | `zeros_1d`                 | zeros 构造              | S/M/L | f64            | F-contiguous   | 构造开销                                        |
 | `from_shape_vec_1d`        | from_shape_vec 构造     | S/M/L | f64            | F-contiguous   | 顺序数据构造开销                                |
 | `eye_2d`                   | eye 单位矩阵构造        | S/M/L | f64            | F-contiguous   | 单位矩阵构造开销（参见 `18-construction.md §5`） |
-
----
 
 ### 5.6 可选 CI 三级工作流
 
@@ -359,8 +351,6 @@ cargo bench --bench construction -- "zeros_1d" --quick
 - **说明**：若仓库选择为 benchmark 增加 CI 摘要，则须通过仓库内脚本显式导出到约定路径（如 `target/benchmark-results/regression.json`），而不是依赖第三方 GitHub Action 或外部服务。
 - **baseline 管理**：若启用 Regression Check，则以上一轮 main 分支通过的结果作为 baseline；当性能改善或已知噪声需要更新基线时，应在专门的 benchmark PR 中更新并记录原因。未启用时不影响默认交付。
 
----
-
 ### 5.7 可选回归阈值
 
 | 级别     | 阈值       | 动作                                      |
@@ -370,8 +360,6 @@ cargo bench --bench construction -- "zeros_1d" --quick
 | **改善** | > 5% 变快  | 可选 CI note（记录性能改善）              |
 
 **设计决策**：5% 以内视为测量噪声，20% 以上通常可视为真实回归；这些门限只在仓库显式启用回归门禁时生效，不构成默认必需交付。
-
----
 
 ### 5.8 Benchmark 模板
 
@@ -425,8 +413,6 @@ fn main() {
     }
 }
 ```
-
----
 
 ### 5.9 Good / Bad 示例
 
