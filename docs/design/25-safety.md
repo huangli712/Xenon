@@ -351,7 +351,7 @@ let sum: f64 = b.iter().sum();  // OK: read-only iteration
 // b_mut.iter_mut()  // Compile error! ViewRepr does not implement StorageMut
 ```
 
-> **设计决策：** 广播结果使用 `ViewRepr`（只读视图），因为广播不拷贝数据，语义上仅为只读（参见 `15-broadcast.md §5`）。如果允许可变迭代，修改广播结果会意外修改原数据的多个位置，这既不符合广播语义，也容易引入 bug。
+**设计决策：** 广播结果使用 `ViewRepr`（只读视图），因为广播不拷贝数据，语义上仅为只读（参见 `15-broadcast.md §5`）。如果允许可变迭代，修改广播结果会意外修改原数据的多个位置，这既不符合广播语义，也容易引入 bug。
 
 ### 5.12 Good/Bad 对比示例
 
