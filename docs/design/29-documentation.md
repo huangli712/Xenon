@@ -583,8 +583,6 @@ docs:
 | `--features parallel` | `cargo doc --features parallel --no-deps`：验证并行 feature 对公开 API 行为说明与性能路径注记                    | `cargo test --doc --features parallel`：验证并行相关 doctest 与默认 doctest 共同通过                    | `cargo build --examples --features parallel`，并验证 `features` 等相关示例                      |
 | `--all-features`      | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`：验证组合配置下完整文档、链接与 docs.rs 口径     | `cargo test --doc --all-features`：验证所有 feature 组合后的 doctest                                    | `cargo build --examples --all-features`，并运行关键组合示例，确认默认/feature 示例在全集配置下仍成立 |
 
----
-
 ### 5.12 Good / Bad 文档注释对比
 
 #### 5.12.1 Good — 完整的函数文档
