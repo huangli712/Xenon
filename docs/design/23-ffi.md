@@ -38,6 +38,8 @@
 | BLAS 友好    | 提供完整的 BLAS 兼容性检查和布局查询        |
 | 最小约束     | FFI 方法避免重复安全检查（调用方已 unsafe） |
 
+**inherent 方法模式：** FFI 模块中的 `export()`、`export_mut()`、`is_blas_layout_compatible()`、`blas_info()`、`lda()`、`try_offset_of()`、`try_ptr_at()` 均为 `TensorBase<S, D>` 的 inherent 方法，但代码组织在 `src/ffi/` 子目录中。这些方法需要访问 `TensorBase` 的公开接口（`shape()`、`strides()` 等），无需直接操作私有字段，因此通过 inherent impl 在 ffi 模块中定义而不影响模块边界。这遵循了 §4.4 中的 owner 约定：核心构造与解构方法（`from_raw_parts*()`、`into_raw_parts()`）保留在 tensor 模块，FFI 模块仅负责面向 FFI 消费者的查询与导出方法。
+
 ---
 
 ## 2. 需求映射与范围约束
@@ -297,36 +299,28 @@ pub struct TensorExport<'a, A> {
 }
 
 /// Raw mutable tensor data export for FFI consumers.
+///
+/// Field semantics are identical to `TensorExport` unless noted below.
+/// The only differences are: `data` is `*mut A` (writable), and
+/// `_marker` uses `PhantomData<&'a mut A>` (exclusive borrow).
 #[repr(C)]
 pub struct TensorExportMut<'a, A> {
-    /// Typed pointer to the storage base pointer.
-    ///
-    /// For non-empty tensors this points at the underlying storage base.
-    /// For empty tensors (`len() == 0`), this is still a valid aligned pointer
-    /// but must not be dereferenced.
-    ///
-    /// `strides` and `offset` use element units of `A`.
-    /// C consumers must cast `data` to the matching element type and interpret
-    /// both `offset` and `strides` as element counts rather than byte counts.
-    /// The logical first element address is `data.add(offset)` when `len() != 0`.
+    /// Typed mutable pointer to the storage base pointer.
+    /// Same semantics as `TensorExport::data`, but writable.
     pub data: *mut A,
-    /// Lifetime marker tying the export to the source tensor borrow.
+    /// Lifetime marker; `PhantomData<&'a mut A>` enforces exclusive borrow.
     pub _marker: core::marker::PhantomData<&'a mut A>,
-    /// Element type identifier (matches ElementType enum).
+    /// See `TensorExport::element_type`.
     pub element_type: ElementType,
-    /// Number of dimensions.
-    ///
-    /// C consumers must use this value as the length of both `shape` and `strides`
-    /// arrays. Do NOT substitute with any other value.
+    /// See `TensorExport::ndim`.
     pub ndim: usize,
-    /// Shape array (length = ndim).
+    /// See `TensorExport::shape`.
     pub shape: *const usize,
-    /// Stride array (length = ndim), in units of elements (not bytes).
+    /// See `TensorExport::strides`.
     pub strides: *const usize,
-    /// Storage length in elements for safe view reconstruction.
+    /// See `TensorExport::storage_len`.
     pub storage_len: usize,
-    /// Logical offset metadata in element units, preserved for raw-parts
-    /// roundtrip/reconstruction contracts.
+    /// See `TensorExport::offset`.
     pub offset: usize,
 }
 
@@ -962,32 +956,7 @@ validate_access_range(shape, strides, offset, storage_len):
 
 ### 6.3 可写布局非重叠校验
 
-`from_raw_parts_mut()` 还必须拒绝会让两个不同逻辑索引映射到同一地址的可写布局。这里的“非重叠”定义为：任意两个不同逻辑索引 `i != j`，其可写目标地址 `addr(i)` 与 `addr(j)` 必须不同；换言之，逻辑元素地址集合不得重叠。该校验不得通过枚举全部可达 offset 来实现；当前版本只承诺接受可高效保守判定的正步长布局（例如 canonical F-order，以及满足同一保守判据的更一般正步长布局）。算法如下：
-
-```
-validate_non_overlapping_layout(shape, strides, offset, storage_len):
-    1. If product(shape) <= 1: return Ok(()).
-    2. Reject immediately if any non-singleton axis has stride == 0.
-    3. Collect all non-singleton axes, sort them by stride ascending, and track
-       the already-covered span of the lower-stride subspace.
-    4. For each sorted axis i:
-         require stride[i] >= covered_span;
-         covered_span = covered_span + (shape[i] - 1) * stride[i]
-       If any checked arithmetic fails or the inequality does not hold, reject.
-    5. If the conservative test cannot prove non-overlap, return
-       Err(InvalidLayout {
-           storage_kind: "view_mut",
-           shape,
-           strides,
-           offset,
-           storage_len,
-           reason: "mutable layout is not in the efficiently verifiable non-overlapping subset",
-        }).
-    6. Otherwise return Ok(()).
-```
-
-该校验与 `validate_access_range()` 分工不同：前者解决“会不会越界”，后者解决“会不会别名写入”。两者都属于 `需求说明书 §8` 下可直接验证的安全构造前提，失败时都须返回可恢复错误。该保守算法允许拒绝一部分理论上合法但无法高效证明不重叠的 exotic stride 布局；当前版本不为这类布局提供可写 raw-parts 构造承诺。
-
+`from_raw_parts_mut()` 的非重叠校验算法定义于 `07-tensor.md §5.7`（`validate_non_overlapping_layout`）。该校验与 `validate_access_range()` 分工不同：前者解决"会不会越界"，后者解决"会不会别名写入"。两者都属于 `需求说明书 §8` 下可直接验证的安全构造前提，失败时都须返回可恢复错误。FFI 消费者通过 `from_raw_parts_mut()` 间接调用该校验，无需了解算法细节——完整算法描述和保守策略说明参见 `07-tensor.md`。
 ### 6.4 BLAS 兼容性检查流程
 
 ```

@@ -96,7 +96,7 @@ External dependencies:
 
 ### 4.4 依赖方向声明
 
-> **依赖方向：单向。** `workspace` 仅依赖 `core`、`alloc`、原子能力、模块内 `WorkspaceErrorCategory`，以及 `crate::error` 中 `XenonError::Workspace` 的公开错误边界，不依赖 `tensor`（参见 `07-tensor.md §3`）。上游库和 `tensor` 可消费 `workspace`。
+依赖方向：单向。`workspace` 仅依赖 `core`、`alloc`、原子能力、模块内 `WorkspaceErrorCategory`，以及 `crate::error` 中 `XenonError::Workspace` 的公开错误边界，不依赖 `tensor`（参见 `07-tensor.md §3`）。上游库和 `tensor` 可消费 `workspace`。
 
 ---
 
@@ -174,9 +174,9 @@ pub struct Workspace {
 }
 ````
 
-> **设计决策：** 使用 `AtomicU8` 管理借用状态而非 `Mutex`，原因：无锁、状态简单（仅需 3 个值）。当前版本默认运行于 `std` 环境，因此直接依赖标准平台提供的原子与分配能力。
+**设计决策：** 使用 `AtomicU8` 管理借用状态而非 `Mutex`，原因：无锁、状态简单（仅需 3 个值）。当前版本默认运行于 `std` 环境，因此直接依赖标准平台提供的原子与分配能力。
 
-> **设计备注：** 当前实现使用 `AtomicU8`/`AtomicUsize` 管理借用状态。由于 `Workspace` 当前实现选择为 `!Send + !Sync`，理论上可以使用 `Cell`/`RefCell` 替代以简化实现。选择原子操作是为了在未来版本可能支持跨线程借用检查时减少迁移成本。
+**设计备注：** 当前实现使用 `AtomicU8`/`AtomicUsize` 管理借用状态。由于 `Workspace` 当前实现选择为 `!Send + !Sync`，理论上可以使用 `Cell`/`RefCell` 替代以简化实现。选择原子操作是为了在未来版本可能支持跨线程借用检查时减少迁移成本。
 
 ### 5.2 常量
 
@@ -210,9 +210,9 @@ impl Workspace {
 
 ### 5.3 构造方法
 
-> **错误公开边界**：公开 API 直接构造 `XenonError::Workspace { operation, category, size, align, split, len, reason }` 报告错误，详见 `26-error.md`。
->
-> **结果类型说明：** 公开 API 统一使用 `Result<T, XenonError>`，`crate::error::Result<_>` 为等价类型别名。
+- **错误公开边界**：公开 API 直接构造 `XenonError::Workspace` 报告错误，详见 `26-error.md`。
+
+- **结果类型说明：** 公开 API 统一使用 `Result<T, XenonError>`，`crate::error::Result<_>` 为等价类型别名。
 
 ````rust,ignore
 impl Workspace {
@@ -225,7 +225,7 @@ impl Workspace {
     ///
     /// # Errors
     ///
-    /// - `XenonError::Workspace { operation, category, size, align, split, len, reason }`: Memory allocation failed or layout parameters invalid
+    /// - `XenonError::Workspace`: Memory allocation failed or layout parameters invalid
     ///
     /// # Example
     ///
@@ -337,7 +337,7 @@ impl Workspace {
     ///
     /// # Errors
     ///
-    /// `XenonError::Workspace { operation, category, size, align, split, len, reason }`: Workspace is already borrowed.
+    /// `XenonError::Workspace`: Workspace is already borrowed.
     ///
     /// Note: the current design allows at most one active read guard at a time.
     /// This keeps the runtime state machine simple and matches the workspace's
@@ -348,7 +348,7 @@ impl Workspace {
     /// `borrow()`/`borrow_mut()` take `&self` rather than `&mut self` because
     /// exclusivity is enforced at runtime by the internal `AtomicU8` state
     /// machine. Concurrent or overlapping borrow attempts are rejected by
-    /// returning a `XenonError::Workspace { operation, category, size, align, split, len, reason }` value.
+    /// returning a `XenonError::Workspace` value.
     pub fn borrow(&self) -> Result<WorkspaceBorrow<'_>> {
         let prev = self.borrow_state.compare_exchange(
             Self::BORROW_NONE,
@@ -380,7 +380,7 @@ impl Workspace {
     ///
     /// # Errors
     ///
-    /// `XenonError::Workspace { operation, category, size, align, split, len, reason }`: Workspace is already borrowed.
+    /// `XenonError::Workspace`: Workspace is already borrowed.
     pub fn borrow_mut(&self) -> Result<WorkspaceBorrowMut<'_>> {
         let prev = self.borrow_state.compare_exchange(
             Self::BORROW_NONE,
@@ -668,7 +668,7 @@ impl Workspace {
     ///
     /// # Errors
     ///
-    /// - `XenonError::Workspace { operation, category, size, align, split, len, reason }`: `mid > capacity` or already borrowed
+    /// - `XenonError::Workspace`: `mid > capacity` or already borrowed
     ///
     /// # Example
     ///
@@ -849,7 +849,7 @@ impl Workspace {
     ///
     /// # Errors
     ///
-    /// - `XenonError::Workspace { operation, category, size, align, split, len, reason }`: Workspace is already borrowed or memory allocation failed
+    /// - `XenonError::Workspace`: Workspace is already borrowed or memory allocation failed
     ///
     /// # Example
     ///
@@ -881,7 +881,7 @@ impl Workspace {
 
         // 1.5x growth
         // Growth-factor arithmetic must use checked_mul to avoid usize overflow.
-        // On overflow, return XenonError::Workspace { operation, category, size, align, split, len, reason }
+        // On overflow, return XenonError::Workspace
         // at the public boundary rather than
         // panicking or silently wrapping.
         let grown = self.capacity
@@ -957,9 +957,8 @@ impl Workspace {
 }
 ````
 
-> **错误映射说明：** `reallocate()` 使用统一的 `Result<()>` 别名作为模块内实现签名，并直接构造 `XenonError::Workspace { operation, category, size, align, split, len, reason }`；不得绕过统一错误模型。
-
-> **扩容语义说明：** `ensure_capacity()` / `reallocate()` 的公开契约仅保证扩容后容量不小于请求值且对齐保持不变。当前实现可能复制旧缓冲区中的字节，但调用方不得依赖内容被保留；扩容后所有旧视图与借用均失效，必须把整个 scratch 区域重新视为 unspecified 状态，并在重新初始化后再通过 `assume_init_*` 系列 API 解释为已初始化数据。
+- **错误映射说明：** `reallocate()` 使用统一的 `Result<()>` 别名作为模块内实现签名，并直接构造 `XenonError::Workspace`；不得绕过统一错误模型。
+- **扩容语义说明：** `ensure_capacity()` / `reallocate()` 的公开契约仅保证扩容后容量不小于请求值且对齐保持不变。当前实现可能复制旧缓冲区中的字节，但调用方不得依赖内容被保留；扩容后所有旧视图与借用均失效，必须把整个 scratch 区域重新视为 unspecified 状态，并在重新初始化后再通过 `assume_init_*` 系列 API 解释为已初始化数据。
 
 ### 5.9 Good/Bad 对比
 

@@ -639,6 +639,32 @@ where
 }
 ```
 
+**可写布局非重叠校验：** `from_raw_parts_mut()` 还必须拒绝会让两个不同逻辑索引映射到同一地址的可写布局。"非重叠"定义为：任意两个不同逻辑索引 `i != j`，其可写目标地址 `addr(i)` 与 `addr(j)` 必须不同。该校验不得通过枚举全部可达 offset 来实现；当前版本只承诺接受可高效保守判定的正步长布局。算法如下：
+
+```
+validate_non_overlapping_layout(shape, strides, offset, storage_len):
+    1. If product(shape) <= 1: return Ok(()).
+    2. Reject immediately if any non-singleton axis has stride == 0.
+    3. Collect all non-singleton axes, sort them by stride ascending, and track
+       the already-covered span of the lower-stride subspace.
+    4. For each sorted axis i:
+         require stride[i] >= covered_span;
+         covered_span = covered_span + (shape[i] - 1) * stride[i]
+       If any checked arithmetic fails or the inequality does not hold, reject.
+    5. If the conservative test cannot prove non-overlap, return
+       Err(InvalidLayout {
+           storage_kind: "view_mut",
+           shape,
+           strides,
+           offset,
+           storage_len,
+           reason: "mutable layout is not in the efficiently verifiable non-overlapping subset",
+        }).
+    6. Otherwise return Ok(()).
+```
+
+该保守算法允许拒绝一部分理论上合法但无法高效证明不重叠的 exotic stride 布局；当前版本不为这类布局提供可写 raw-parts 构造承诺。FFI 文档（`23-ffi.md §6.3`）引用此算法。
+
 #### Owned 裸指针分解与重建
 
 上述 `from_raw_parts*()` 构造视图；以下方法专用于 Owned 张量的分解与重建，构成完整的 round-trip 对。核心实现定义于本模块（`src/tensor/construct.rs`），FFI 模块仅做薄包装——参见 `23-ffi.md §5.8`。
