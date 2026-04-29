@@ -291,8 +291,6 @@ L3: Examples (examples/)
 
 对运算符重载入口（如 `Add` / `Sub` / `Mul` / `Div` 的实现文档），即使签名经由 trait 间接暴露，也应补齐与对应方法型 API 一致的 `# Errors` / `# Panics` 模板，并引用对应技术规范，避免仅留下语法糖示例而缺少失败条件说明。
 
----
-
 ### 5.5 Lint 与文档门禁
 
 #### 5.5.1 Lint 规则
@@ -325,8 +323,6 @@ L3: Examples (examples/)
 ```
 
 以上仅列出文档相关 lint 增补，完整 `lib.rs` 基线见 `00-coding.md §6.1`。
-
----
 
 ### 5.6 Doctest 规范
 
@@ -386,8 +382,6 @@ pub fn sum(&self) -> A { ... }
 pub fn sum(&self) -> A { ... }
 ````
 
----
-
 ### 5.7 examples/ 目录规划
 
 #### 5.7.1 示例清单
@@ -434,13 +428,9 @@ fn main() -> xenon::Result<()> {
 | Feature gate | 需可选 feature 的在文件顶部注明 |
 | 无 unwrap    | 使用 `?`，main 返回 `Result`    |
 
----
-
 ### 5.8 README.md 内容规划
 
 README 使用英文的来源与 crate 内 doc comment 一致：遵循 `00-coding.md §6` 的英文文档约束，并面向 docs.rs / crates.io 的 Rust 生态读者。
-
-#### 5.8.1 结构
 
 ````markdown
 # Xenon
@@ -474,11 +464,9 @@ xenon = "x.y.z"
 MIT
 ````
 
----
-
 ### 5.9 CHANGELOG.md
 
-> **设计扩展说明：** 本节及后续涉及版本号规则、docs.rs metadata、文档 CI / feature 验证矩阵的内容，均属于超出 `需求说明书 §28.1` 最低范围的工程化设计扩展。
+**设计扩展说明：** 本节及后续涉及版本号规则、docs.rs metadata、文档 CI / feature 验证矩阵的内容，均属于超出 `需求说明书 §28.1` 最低范围的工程化设计扩展。
 
 #### 5.9.1 格式
 
@@ -518,8 +506,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 | 性能优化   | patch                |
 | 0.x 阶段   | minor 可含破坏性变更 |
 
----
-
 ### 5.10 docs.rs 配置
 
 #### 5.10.1 Cargo.toml metadata
@@ -550,8 +536,6 @@ rustdoc-args = ["--cfg", "docsrs"]
 pub fn sum(&self) -> A { ... }
 ```
 
----
-
 ### 5.11 文档 CI 检查
 
 #### 5.11.1 验证项目
@@ -565,7 +549,7 @@ pub fn sum(&self) -> A { ... }
 
 #### 5.11.2 CI 配置
 
-> **说明**：以下仅为文档交付验证示例。权威的 doctest / examples CI 执行矩阵以 `28-tests.md` 为准。
+**说明**：以下仅为文档交付验证示例。权威的 doctest / examples CI 执行矩阵以 `28-tests.md` 为准。
 
 ```yaml
 # .github/workflows/docs.yml
