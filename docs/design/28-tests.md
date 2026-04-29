@@ -32,21 +32,6 @@
 | 可读性   | 测试名称描述预期行为，失败信息包含上下文                                                                     |
 | 快速反馈 | 分层执行：smoke test ~2 min（每次 PR）/ required test ~10 min（每次 PR）/ extended test ~30 min（每周/发版） |
 
-### 1.3 在架构中的位置
-
-```
-Dependency layers:
-L0: error, private
-L1: dimension, element, complex
-L2: layout (depends on dimension)
-L3: storage (independent of layout; owned by tensor and consumes layout results)
-L4: tensor (depends on storage, dimension)
-L5: overload/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
-
-External (non-crate modules):
-tests/  <- current module (consumes only the crate's public API)
-```
-
 ## 2. 需求映射与范围约束
 
 | 类型     | 内容                                                             |
@@ -59,8 +44,6 @@ tests/  <- current module (consumes only the crate's public API)
 ---
 
 ## 3. 文件位置
-
-### 3.1 目录结构
 
 ```
 tests/
@@ -106,15 +89,13 @@ tests/
     └── shape_props.rs          # Shape invariants (transpose involution, etc.)
 ```
 
-### 3.2 划分理由
-
 按测试领域分文件，而非按源码模块：集成测试关注跨模块行为而非单个模块内部。
 
 ---
 
 ## 4. 依赖关系
 
-### 4.1 依赖图
+### 4.1 依赖图（ASCII）
 
 ```
 tests/
@@ -148,17 +129,17 @@ tests/
 | `layout`    | `LayoutFlags`（参见 `06-layout.md §5`）                                                                        |
 | `error`     | `XenonError`, `Result<T>`（参见 `26-error.md §5`）                                                             |
 
-### 4.3 依赖方向声明
-
-> **依赖方向：单向消费。** `tests/` 仅消费 crate 公共 API（参见 `01-architecture.md §10`），不被任何模块依赖。
-
-### 4.4 依赖合法性与新增依赖说明
+### 4.3 依赖合法性
 
 | 项目           | 说明                                                                              |
 | -------------- | --------------------------------------------------------------------------------- |
 | 新增第三方依赖 | 当前基线不新增测试专用 dev-dependency；编译期边界验证使用标准工具链与仓库内脚本   |
 | 合法性结论     | 仅依赖 `cargo test`、`cargo check`、`rustc` 与既有 feature 矩阵，符合最小依赖约束 |
 | 替代方案       | 若后续希望引入专用 compile-fail 框架，须先单独裁决 dev-dependency 政策            |
+
+### 4.4 依赖方向声明
+
+依赖方向：单向消费。`tests` 仅消费 crate 公共 API（参见 `01-architecture.md §10`），不被任何模块依赖。
 
 ---
 

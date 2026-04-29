@@ -1149,7 +1149,7 @@ ensure_capacity(&mut self, 2048)
 
 - [ ] **T4**: 实现借用守卫类型和 MaybeUninit 访问方法
   - 文件: `src/workspace/borrow.rs`
-  - 内容: `WorkspaceBorrow`、`WorkspaceBorrowMut` 结构体、`borrow()`、`borrow_mut()`、`as_maybe_uninit_slice()`、`assume_init_slice()`、`as_maybe_uninit_typed_slice()`、`assume_init_typed_slice()`、`Drop` 实现
+  - 内容: `WorkspaceBorrow`、`WorkspaceBorrowMut` 结构体、`borrow()`、`borrow_mut()`、`as_maybe_uninit_slice()`、`assume_init_slice()`（两者均有）、`as_maybe_uninit_typed_slice()`、`assume_init_typed_slice()`、`Drop` 实现
   - 测试: `test_borrow_basic`, `test_borrow_mut_basic`, `test_borrow_double_fails`, `test_borrow_after_drop`, `test_assume_init_requires_initialized_prefix`
   - 前置: T2
   - 预计: 10 min
@@ -1346,6 +1346,14 @@ Upper-layer code requests temporary scratch space
 | 理由     | `!Send + !Sync` 为当前实现选择，目的是简化借用安全性论证。即使存在运行时借用状态检查，也暂不将其建模为可跨线程传递或共享的基础类型；若调用方需要多线程临时缓冲区，应在线程边界外自行分配和管理独立工作空间。相关测试仅验证当前行为，未来版本可在补充安全的跨线程借用检查后重新评估并放宽。 |
 | 替代方案 | 放宽为 Send（并配套跨线程借用检查） — 未来可评估；仅依赖当前 AtomicU8 状态机不足以直接支持完整多线程语义                                                                                                                                                                                   |
 
+### 决策 6：borrow_mut(&self) 与 ensure_capacity(&mut self) 签名不对称
+
+| 属性     | 值                                                                                                                                                                                                                                                    |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | `borrow()`/`borrow_mut()`/`split_at_mut()` 使用 `&self`，而 `ensure_capacity()` 使用 `&mut self`                                                                                                                                                     |
+| 理由     | 借用类方法接受 `&self` 是为了允许在持有 `&Workspace` 引用时获取守卫（guard），独占性由运行时 `AtomicU8` 状态机保证。`ensure_capacity` 需要 `&mut self` 是因为该方法直接修改 `ptr` 和 `capacity` 字段（重新分配内存），编译期 `&mut` 独占保证可静态排除"扩容期间存在活跃借用"的可能性。虽然运行时 `borrow_state` 检查也能拒绝借用中扩容，但 `&mut self` 在类型系统层面提供额外的静态安全保证，避免 UB。 |
+| 替代方案 | `ensure_capacity` 也使用 `&self` + 纯运行时检查 — 放弃，扩容涉及裸指针替换和 `dealloc`，仅靠运行时检查不够充分，`&mut self` 的编译期独占是更安全的防御层                                                                                               |
+
 ---
 
 ## 12. 性能考量
@@ -1359,6 +1367,7 @@ Upper-layer code requests temporary scratch space
 | `ensure_capacity()`             | O(n)       | O(new_capacity) | 分配 + 拷贝 + 释放             |
 | `as_maybe_uninit_typed_slice()` | O(1)       | O(1)            | 仅指针转换                     |
 | `assume_init_typed_slice()`     | O(1)       | O(1)            | 仅在调用方已证明初始化后重解释 |
+| `assume_init_slice()`          | O(1)       | O(1)            | 仅在调用方已证明初始化后重解释（非泛型字节版本） |
 
 **性能提示**:
 
@@ -1398,6 +1407,7 @@ Upper-layer code requests temporary scratch space
 | 1.2.6 | 2026-04-16 |
 | 1.2.7 | 2026-04-16 |
 | 1.2.8 | 2026-04-16 |
+| 1.2.9 | 2026-04-29 |
 
 ---
 
