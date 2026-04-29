@@ -234,7 +234,7 @@ xenon/
 │   │
 │   ├── ffi/                   # FFI interface
 │   │   ├── mod.rs             # Module root and re-exports
-│   │   ├── types.rs           # BlasInfo definition
+│   │   ├── types.rs           # BlasInfo; re-exports ElementType (from element), FfiErrorCategory (from error)
 │   │   ├── ptr.rs             # Raw pointer API (export/export_mut, from_raw_parts, into_raw_parts)
 │   │   ├── blas.rs            # BLAS compatibility checks (is_blas_layout_compatible, blas_info, lda)
 │   │   └── offset.rs          # Index-to-pointer offset

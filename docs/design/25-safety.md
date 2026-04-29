@@ -36,35 +36,7 @@
 | unsafe 安全论证 | 每个 unsafe impl 附带完整 SAFETY 注释                |
 | 所有权协同      | 充分利用 Rust 所有权系统与线程安全的天然协同         |
 
-### 1.3 在架构中的位置
-
-```
-Dependency layers:
-L0: error, private
-L1: dimension, element, complex
-L2: layout (depends on dimension)
-L3: storage (independent of layout; owned by tensor and consumes layout results)
-L4: tensor (depends on storage, dimension)
-L5: math/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
-
-Cross-cutting concern:
-┌─────────────────────────────────────────────────────────────────┐
-│  Thread safety (Send/Sync)  <- current document (spans modules across L3-L5) │
-│  - Spans storage (L3), tensor (L4), and simd / parallel-feature public APIs (L5) │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### 1.4 线程安全在 Xenon 中的重要性
-
-| 场景         | 线程安全需求                       |
-| ------------ | ---------------------------------- |
-| 并行迭代     | 多线程同时访问不同元素区间         |
-| 跨线程共享   | 通过 ArcRepr 在线程间传递只读数据  |
-| 写时复制     | ArcRepr 内部唯一化 / 必要时复制后恢复可写性的实现约束 |
-| 数据竞争预防 | 确保 ViewMutRepr 独占访问不被共享  |
-| rayon 集成   | ParallelIterator 要求 Send 约束    |
-
-## 1.5 影响范围
+## 1.3 影响范围
 
 - `storage`: 各存储模式的 `Send`/`Sync` 约束与内部唯一化写路径
 - `tensor`: `TensorBase<S, D>` 的 auto-trait 传播与公开语义边界
@@ -88,8 +60,6 @@ Cross-cutting concern:
 
 线程安全实现散布于各存储模块中，不单独创建文件：
 
-> **命名说明：** 以下 API 名称为当前候选方案，最终命名以实现为准。
-
 ```
 src/
 ├── storage/
@@ -106,7 +76,7 @@ src/
 
 ## 4. 依赖关系
 
-### 4.1 依赖图
+### 4.1 依赖图（ASCII）
 
 ```
 src/storage/
@@ -128,17 +98,17 @@ parallel feature implementation paths/
 | `std::cell`    | `Cell<usize>`, `Cell<Option<usize>>`（仅启用 `parallel` feature 的内部执行路径） |
 | `rayon::iter`  | `ParallelIterator` (要求 `Item: Send`，参见 `09-parallel.md §5.3`) |
 
-### 4.3 依赖方向声明
-
-> **依赖方向：线程安全是横切关注点。** 各存储模块自行声明 Send/Sync（参见 `05-storage.md §5`）；启用 `parallel` feature 后，相关公开 API 的内部并行执行路径消费这些约束（参见 `09-parallel.md §5.2`）。无循环依赖。
-
-### 4.4 依赖合法性与新增依赖说明
+### 4.3 依赖合法性与新增依赖说明
 
 | 项目           | 说明                                                         |
 | -------------- | ------------------------------------------------------------ |
 | 新增第三方依赖 | 无新增依赖；仅复用既有 `rayon` 可选依赖与标准库同步原语      |
 | 合法性结论     | 符合最小依赖限制                                             |
 | 替代方案       | 不适用；线程安全约束优先通过 Rust 类型系统与既有模块实现表达 |
+
+### 4.4 依赖方向声明
+
+> **依赖方向：线程安全是横切关注点。** 各存储模块自行声明 Send/Sync（参见 `05-storage.md §5`）；启用 `parallel` feature 后，相关公开 API 的内部并行执行路径消费这些约束（参见 `09-parallel.md §5.2`）。无循环依赖。
 
 ---
 
@@ -176,7 +146,7 @@ parallel feature implementation paths/
 
 > **说明**: `D: Dimension` 要求 `Dimension: Send + Sync`；所有 Dimension 类型（`Ix0`-`Ix6`, `IxDyn`）内部仅包含 Copy 类型的值数组或 `Vec<usize>`，因此自动满足 `Send + Sync`。
 
-### 5.2.1 安全违规分类表
+### 5.3 安全违规分类表
 
 | 安全违规类型           | 检测层级                     | 处理方式            |
 | ---------------------- | ---------------------------- | ------------------- |
@@ -185,7 +155,7 @@ parallel feature implementation paths/
 | 并行中二次并行         | 运行时（嵌套并行防护机制）   | 自动回退串行路径    |
 | 整数溢出               | 运行时（checked arithmetic） | panic（不可恢复）   |
 
-### 5.2.2 当前受支持元素类型的线程安全传播
+### 5.4 当前受支持元素类型的线程安全传播
 
 | 元素类型 | `Send` | `Sync` |
 |---------|--------|--------|
@@ -193,7 +163,7 @@ parallel feature implementation paths/
 | `Complex<f32/f64>` | ✓ | ✓ |
 | `bool` | ✓ | ✓ |
 
-### 5.3 Owned<A> 的 Send/Sync
+### 5.5 Owned<A> 的 Send/Sync
 
 ```rust,ignore
 // src/storage/owned.rs
@@ -235,7 +205,7 @@ unsafe impl<A: Send> Send for Owned<A> {}
 unsafe impl<A: Sync> Sync for Owned<A> {}
 ```
 
-### 5.4 ViewRepr<'a, A> 的 Send/Sync
+### 5.6 ViewRepr<'a, A> 的 Send/Sync
 
 ```rust,ignore
 // src/storage/view.rs
@@ -278,7 +248,7 @@ unsafe impl<'a, A: Sync> Send for ViewRepr<'a, A> {}
 unsafe impl<'a, A: Sync> Sync for ViewRepr<'a, A> {}
 ```
 
-### 5.5 ViewMutRepr<'a, A> 的 Send（不实现 Sync）
+### 5.7 ViewMutRepr<'a, A> 的 Send（不实现 Sync）
 
 ```rust,ignore
 // src/storage/viewmut.rs
@@ -316,7 +286,7 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 // aligned with this document if the design changes.
 ```
 
-### 5.6 ArcRepr<A> 的 Send/Sync
+### 5.8 ArcRepr<A> 的 Send/Sync
 
 > **共享可写边界说明：** ArcRepr 相关的唯一化（uniquify）后恢复独占写能力仅是内部实现机制。这不构成共享可写存储模式。当前版本不提供共享可写存储模式（参见 `需求说明书 §6.1`）。
 
@@ -366,11 +336,11 @@ unsafe impl<A: Send + Sync> Send for ArcRepr<A> {}
 unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 ```
 
-### 5.7 ViewMutRepr 不实现 Sync 的规范
+### 5.10 ViewMutRepr 不实现 Sync 的规范
 
 `ViewMutRepr` 通过 `PhantomData<*const ()>` 实现 `!Sync`（但不影响 `Send`）。禁止在模块文档中保留多种备选方案；如有变更须同步更新本文件。
 
-### 5.8 广播结果不可变迭代的原因
+### 5.11 广播结果不可变迭代的原因
 
 ```rust,ignore
 // Broadcast results use ViewRepr (read-only view), no mutable iterator provided
@@ -387,7 +357,7 @@ let sum: f64 = b.iter().sum();  // OK: read-only iteration
 
 > **设计决策：** 广播结果使用 `ViewRepr`（只读视图），因为广播不拷贝数据，语义上仅为只读（参见 `15-broadcast.md §5`）。如果允许可变迭代，修改广播结果会意外修改原数据的多个位置，这既不符合广播语义，也容易引入 bug。
 
-### 5.9 Good/Bad 对比示例
+### 5.12 Good/Bad 对比示例
 
 ```rust,ignore
 // Good - ViewMutRepr cross-thread movement inside thread::scope
@@ -563,25 +533,6 @@ SIMD 操作与并行操作的组合安全性保证（参见 `08-simd.md §5`）�
   - 前置: T1-T4
   - 预计: 10 min
 
-```
-Wave 1: [T1] [T2] [T3] [T4]
-           │     │     │     │
-           └─────┴─────┴─────┘
-                     │
-                     ▼
-Wave 2:            [T5]
-                     │
-              ┌──────┴──────┐
-              ▼             ▼
-            [T6]          [T7]
-```
-
----
-
-## 验证与落地方式
-
-本文通过测试计划、trait 边界检查和公开 API 语义约束落地线程安全规范；以下测试矩阵即为本文的主要验证手段。
-
 ## 8. 测试计划
 
 ### 8.1 测试分类表
@@ -613,53 +564,7 @@ Wave 2:            [T5]
 | `test_arc_cow_preserves_other_aliases`              | CoW 写路径不会污染其他 Arc 别名             | 中     |
 | `test_arc_cow_unique_fast_path`                     | 唯一持有时可原位恢复可写路径                 | 中     |
 
-### 8.3 编译期静态检查模板
-
-可使用仓库自带的编译期测试框架或等价断言辅助函数进行验证：
-
-```rust,ignore
-fn assert_send<T: Send>() {}
-fn assert_sync<T: Sync>() {}
-
-#[test]
-fn owned_send_sync() {
-    assert_send::<Owned<f64>>();
-    assert_sync::<Owned<f64>>();
-}
-
-#[test]
-fn view_send_sync() {
-    assert_send::<ViewRepr<'_, f64>>();
-    assert_sync::<ViewRepr<'_, f64>>();
-}
-
-#[test]
-fn view_mut_send_only() {
-    assert_send::<ViewMutRepr<'_, f64>>();
-}
-
-#[test]
-fn arc_send_sync() {
-    assert_send::<ArcRepr<f64>>();
-    assert_sync::<ArcRepr<f64>>();
-}
-```
-
-### 8.3.1 迭代器 Send/Sync 验证矩阵
-
-> **设计扩展说明：** 下表属于超出 `需求说明书 §10` 强制范围的设计扩展，用于补充迭代器线程安全验证策略。
-
-| 迭代器类型 | 预期 trait 边界 | 验证方式 |
-| ---------- | --------------- | -------- |
-| `Elements<'a, A, D>` | `Send + Sync` 当底层只读存储满足 `A: Sync` | 编译期断言正向测试 |
-| `AxisIter<'a, A, D>` | `Send + Sync` 当产出只读 view 且 `A: Sync` | 编译期断言正向测试 |
-| `IndexedIter<'a, A, D>` | `Send + Sync` 当仅暴露只读元素与索引元数据 | 编译期断言正向测试 |
-| `ElementsMut<'a, A, D>` | `Send` 取决于 `A: Send`，不得实现 `Sync` | 正向 `Send` + 负向 `Sync` 测试 |
-| `AxisIterMut<'a, A, D>` | `Send` 取决于 `A: Send`，不得实现 `Sync` | 正向 `Send` + 负向 `Sync` 测试 |
-
-> **验证要求：** 迭代器类型的线程安全必须与其底层存储语义一致：只读迭代器沿用 `ViewRepr` / 共享读取规则，可按 `A: Sync` 推导 `Send + Sync`；可写迭代器沿用 `ViewMutRepr` / 独占写入规则。由于 `ViewMutRepr` 通过 `PhantomData<*const ()>` 实现 `!Sync`（但不影响 `Send`），`ElementsMut` / `AxisIterMut` 的最终线程安全结论也需随该表示保持一致，并通过编译期负向测试验证。
-
-### 8.4 边界测试场景
+### 8.3 边界测试场景
 
 | 场景                               | 预期行为                         |
 | ---------------------------------- | -------------------------------- |
@@ -669,7 +574,7 @@ fn arc_send_sync() {
 | 广播结果调用 `iter_mut()`          | 在类型层面不可调用               |
 | 嵌套并行进入公开 API 的内部并行路径 | 检测后回退串行，不得共享可变状态 |
 
-### 8.5 属性测试不变量
+### 8.4 属性测试不变量
 
 | 不变量                                            | 测试方法                                |
 | ------------------------------------------------- | --------------------------------------- |
@@ -678,74 +583,13 @@ fn arc_send_sync() {
 | 可写迭代器永不实现 `Sync`                         | 编译期负向断言                          |
 | 并行分块覆盖全部元素且互不重叠                    | 参数化 shape / chunk 大小验证           |
 
-### 8.6 集成测试
+### 8.5 集成测试
 
 | 测试文件                      | 测试内容                                                                                 |
 | ----------------------------- | ---------------------------------------------------------------------------------------- |
 | `tests/test_parallel.rs` / `tests/test_error.rs` | 线程安全测试归入现有并行/错误测试文件，覆盖 `Owned` / `View` / `ViewMut` / 共享 Arc 存储张量与 `parallel`、跨线程传递场景的端到端协同验证 |
 
-### 8.6.1 FFI 导出描述符线程安全规则
-
-> **设计扩展说明：** 本节属于超出 `需求说明书 §10` 强制范围的设计扩展，用于补充 FFI 导出描述符的线程安全边界。
-
-FFI 导出描述符的线程安全约束必须与其导出的 Rust 视图语义保持一致：
-
-- 只读导出描述符仅在其底层元素满足共享读取条件时可跨线程共享；它不授予写权限，也不得暗示 BLAS/LAPACK 兼容性已自动成立。
-- 可写导出描述符不得被多个线程共享使用；其跨线程传递必须保持单一独占拥有者，并且 foreign code 不得制造与任何 Rust 活跃引用冲突的别名写入。
-- 导出描述符本身是否可 `Send` / `Sync`，取决于其字段组合；本文表格记录的是与 `23-ffi.md` 一致的自动推导预期结果，而非额外要求手写 `unsafe impl`。
-- 编译期类型边界负责第一层约束；跨 FFI 边界后的实际并发写入前提仍需通过 `23-ffi.md` 中的 Safety 契约在运行时/调用约定层维持。
-
-### FFI 导出描述符线程安全（自动推导结果）
-
-| 描述符类型 | `Send` | `Sync` | 说明 |
-|-----------|--------|--------|------|
-| `TensorExport<'a, A>` | 由字段自动推导 | 由字段自动推导 | 只读导出；预期结果与只读借用语义一致，具体以 `23-ffi.md` 的表示设计和编译期检查为准 |
-| `TensorExportMut<'a, A>` | 由字段自动推导 | 由字段自动推导 | 可写导出；预期结果与独占借用语义一致，具体以 `23-ffi.md` 的表示设计和编译期检查为准 |
-
-> **说明：** 本表用于记录自动推导的预期落点，不单独构成“必须手写 impl”的规范来源。最终线程安全结论以 `23-ffi.md` 的字段表示设计和编译期 `Send` / `Sync` 检查为准。
-
-须在 `23-ffi.md` 的测试计划中覆盖编译期 `Send` / `Sync` 检查。
-
-### 8.7 多线程传递测试
-
-```rust,ignore
-#[test]
-fn test_owned_cross_thread() {
-    let tensor = Tensor1::from_shape_vec(Ix1(3), vec![1.0, 2.0, 3.0])
-        .expect("shape and data length must match");
-    let handle = std::thread::spawn(move || {
-        // tensor is available in the new thread
-        assert_eq!(tensor[0], 1.0);
-        assert_eq!(tensor.len(), 3);
-    });
-    handle.join().expect("worker thread should complete without panic");
-}
-
-#[test]
-fn test_arc_concurrent_access() {
-    let arc = ArcTensor1::from_shape_vec(Ix1(3), vec![1.0, 2.0, 3.0])
-        .expect("shape and data length must match");
-    let mut handles = vec![];
-
-    for _ in 0..4 {
-        let arc_clone = arc.clone();
-        handles.push(std::thread::spawn(move || {
-            // All threads read concurrently
-            let sum: f64 = arc_clone.iter().sum();
-            sum
-        }));
-    }
-
-    let sums: Vec<f64> = handles.into_iter()
-        .map(|h| h.join().expect("worker thread should complete without panic"))
-        .collect();
-
-    // All threads should get the same result
-    assert!(sums.windows(2).all(|w| (w[0] - w[1]).abs() < 1e-10));
-}
-```
-
-### 8.8 Feature gate / 配置测试
+### 8.6 Feature gate / 配置测试
 
 | 配置       | 验证点                                                      |
 | ---------- | ----------------------------------------------------------- |
@@ -754,19 +598,13 @@ fn test_arc_concurrent_access() {
 | 启用 SIMD  | SIMD 与线程安全规则正交，不引入共享可变状态                 |
 | 全 feature | 组合启用时线程安全约束与回退策略保持一致                    |
 
-### 8.9 类型边界 / 编译期测试
+### 8.7 类型边界 / 编译期测试
 
 | 场景                             | 测试方式                            |
 | -------------------------------- | ----------------------------------- |
 | `Owned<A>` 的 `Send`/`Sync` 传播 | 编译期断言辅助函数                  |
 | `ViewMutRepr` 永不实现 `Sync`    | 编译期负向断言或等价约束验证        |
 | 非 `Send` / `Sync` 元素被拒绝    | 编译期失败测试或手写 trait 边界检查 |
-
----
-
-## 错误处理与语义边界
-
-本文档不直接定义错误类型，但要求所有受影响模块在暴露线程安全相关失败或回退行为时遵循 `26-error.md` 的错误语义边界；线程安全规范只定义 trait 边界、panic 禁区与并行路径的一致性要求。
 
 ---
 
@@ -845,30 +683,15 @@ After a storage type is created or borrowed
 
 workspace 的线程安全规则、借用状态机与分割守卫生命周期不属于本文档范围，统一参见 `24-workspace.md §5.7` 与 `24-workspace.md §6.3`。本文仅要求并行与张量存储相关设计在引用 workspace 时，不得与该文档定义的线程安全边界冲突。
 
-#### TensorViewMut 的并行逐元素写路径安全性论证
+---
 
-`TensorViewMut` 仅在**显式独占借用**场景下支持内部并行逐元素写路径；若需要并行只读访问，应先通过只读重借用转换为 `TensorView`，再进入公开 API 的可选内部并行只读路径。其安全性基于以下保证：
+## 10. 错误处理与语义边界
 
-1. **独占语义**：`TensorViewMut` 持有 `&mut [A]`，Rust 借用规则保证在任意时刻只有唯一的可变访问者
-2. **分块不重叠**：并行逐元素写路径会将数据按块分割，每个线程获得独占的 `&mut [A]` 切片，块之间无重叠
-3. **Send 约束**：`A: Send` 确保元素类型可跨线程传递
-4. **只读路径分离**：只读路径不直接依赖 `TensorViewMut: Sync`；调用方先显式获得只读视图，再走 `TensorView` 的内部并行只读实现
-5. **生命周期**：`TensorViewMut` 的 `'a` 生命周期确保视图不会比源数据存活更久
-
-```rust,ignore
-// Safety argument for the parallel element-wise write path on TensorViewMut:
-//
-// TensorViewMut<'a, A, D> holds &mut [A] exclusively.
-// The internal parallel write path splits the slice into non-overlapping chunks,
-// each chunk is sent to a different thread as &mut [A].
-// Since chunks don't overlap, no two threads can access the same element,
-// satisfying the aliasing rule. A: Send ensures element ownership may cross threads;
-// shared read requirements remain on the borrowed source type, not on mutable chunks.
-```
+本文档不直接定义错误类型，但要求所有受影响模块在暴露线程安全相关失败或回退行为时遵循 `26-error.md` 的错误语义边界；线程安全规范只定义 trait 边界、panic 禁区与并行路径的一致性要求。
 
 ---
 
-## 10. 设计决策记录（ADR）
+## 11. 设计决策记录
 
 ### 决策 1：显式 unsafe impl 而非依赖自动推导
 
@@ -904,7 +727,13 @@ workspace 的线程安全规则、借用状态机与分割守卫生命周期不�
 
 ---
 
-## 11. 平台与工程约束
+## 12. 性能考量
+
+无。
+
+---
+
+## 13. 平台与工程约束
 
 | 约束       | 说明                                                                                                            |
 | ---------- | --------------------------------------------------------------------------------------------------------------- |

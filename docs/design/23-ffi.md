@@ -59,7 +59,7 @@
 src/
 └── ffi/
     ├── mod.rs         # Module root, re-exports
-    ├── types.rs       # BlasInfo type definitions; re-exports ElementType from element module
+    ├── types.rs       # BlasInfo type definitions; re-exports ElementType (from element), FfiErrorCategory (from error)
     ├── ptr.rs         # Raw-pointer API wrappers (export/export_mut, re-export from tensor module)
     ├── blas.rs        # BLAS compatibility checks (is_blas_layout_compatible, blas_info, lda)
     └── offset.rs      # Multi-dimensional index to pointer offset (try_offset_of, try_ptr_at)
@@ -217,7 +217,11 @@ use crate::error::FfiErrorCategory;
 
 ```rust,ignore
 // src/ffi/types.rs
-pub use crate::element::ElementType;  // re-export from element module
+pub use crate::element::ElementType;      // re-export from element module
+pub use crate::error::FfiErrorCategory;   // re-export from error module
+
+/// BLAS layout metadata (full definition in §5.5).
+pub struct BlasInfo<A> { /* fields omitted — see §5.5 */ }
 
 // ElementType 的完整定义见 03-element.md §5.1
 // 此处仅展示 FFI 消费者可见的公共 API 签名：
