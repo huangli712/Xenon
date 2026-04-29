@@ -1010,9 +1010,9 @@ Workspace memory layout (64-byte aligned)
 Address:  0x00           0x40           0x80           0xC0
           ├──────────────┼──────────────┼──────────────┼──────────────┤
 Data:     |  scratch  |  scratch  |  scratch  |  scratch  |
-           |  buffer  |  buffer  |  buffer  |  buffer  |
-           └────────────┴────────────┴────────────┴────────────┘
-           │<───────────────── capacity ─────────────────>│
+          |  buffer   |  buffer   |  buffer   |  buffer   |
+          └───────────┴───────────┴───────────┴───────────┘
+          │<───────────────── capacity ──────────────────>│
 
           ↑
           ptr (NonNull<u8>)
@@ -1031,7 +1031,7 @@ Traditional approach (requires allocation):
          ▼ Allocate a new Workspace (512 bytes)
 ┌──────────────────┐  ┌──────────────────┐
 │ Left [512 bytes] │  │ Right [512 bytes]│
-│ (separate alloc)  │  │ (separate alloc)  │
+│ (separate alloc) │  │ (separate alloc) │
 └──────────────────┘  └──────────────────┘
          O(n) memory copy ❌
 
@@ -1046,7 +1046,7 @@ This design (zero allocation):
 │ SplitBorrowMut   │  │ SplitBorrowMut   │
 │ ptr = 0x1000     │  │ ptr = 0x1200     │
 │ len = 512        │  │ len = 512        │
-│ (view, no alloc)  │  │ (view, no alloc)  │
+│ (view, no alloc) │  │ (view, no alloc) │
 └──────────────────┘  └──────────────────┘
          O(1) ✓
 ```
