@@ -194,6 +194,8 @@ pub fn sequential_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 }
 
 /// Generate a truly non-contiguous 1D view from an F-order 2D owner.
+/// NOTE: The slice construction below uses pseudo-code; actual API shape
+/// must follow `17-indexing.md` frozen interface at implementation time.
 pub struct StridedFixture1D {
     pub owner: Tensor2<f64>,
 }
@@ -254,6 +256,8 @@ Benchmark categories
 | `f32`          | **必测** | SIMD 向量宽度更大 |
 | `Complex<f64>` | **必测** | 复数运算开销验证  |
 
+**补充**：Comparison benchmark（§5.5 中 `simd_*_compare` / `par_*_compare` 组）可额外使用 `i32`、`i64` 等整数类型，以覆盖对应后端路径的特定加速场景（参见 `08-simd.md §5.6`、`09-parallel.md §5`）。
+
 #### 5.4.3 内存布局
 
 | 布局           | 构造方式                          | 验证目标           |
@@ -295,6 +299,7 @@ Benchmark categories
 | `par_add_compare`          | `a + b` (并行 vs 串行)  | L     | f64            | F-contiguous   | 并行逐元素加速                                  |
 | `par_dot_compare`          | dot (并行 vs 串行)      | L     | f64/Complex<f64> | F-contiguous | 并行内积加速比，覆盖实数与复数内积              |
 | `zeros_1d`                 | zeros 构造              | S/M/L | f64            | F-contiguous   | 构造开销                                        |
+| `from_shape_vec_1d`        | from_shape_vec 构造     | S/M/L | f64            | F-contiguous   | 顺序数据构造开销                                |
 
 ---
 
@@ -370,24 +375,34 @@ mod utils;
 use utils::{SIZES_1D, generators};
 
 const WARMUP_ITERATIONS: usize = 10;
+const ROUNDS: usize = 10;
+const ITERATIONS_PER_ROUND: usize = 100;
 
-fn bench_elem_add() {
+fn bench_elem_add(quick: bool) {
+    let (rounds, iters) = if quick { (1, 10) } else { (ROUNDS, ITERATIONS_PER_ROUND) };
     for &size in SIZES_1D {
         let a = generators::sequential_1d(size);
         let b = generators::sequential_1d(size);
         for _ in 0..WARMUP_ITERATIONS {
             black_box((&a + &b).unwrap());
         }
-        let started_at = Instant::now();
-        for _iteration in 0..100 {
-            let _result = black_box((&a + &b).unwrap());
+        let mut timings = Vec::with_capacity(rounds);
+        for _round in 0..rounds {
+            let started_at = Instant::now();
+            for _iteration in 0..iters {
+                let _result = black_box((&a + &b).unwrap());
+            }
+            timings.push(started_at.elapsed().as_nanos());
         }
-        println!("elem_add_f64/{size}: {:?}", started_at.elapsed());
+        timings.sort();
+        let median = timings[timings.len() / 2];
+        println!("elem_add_f64/{size}: {median} ns (median of {rounds} rounds)");
     }
 }
 
 fn main() {
-    bench_elem_add();
+    let quick = std::env::args().any(|arg| arg == "--quick");
+    bench_elem_add(quick);
 }
 ```
 
@@ -578,11 +593,11 @@ benchmark 不定义正确性容差，也不在本文件内重复维护 `atol` / 
 ### Wave 5: CI 集成
 
 - [ ] **T12**: 配置可选 CI benchmark 工作流
-  - 文件: `.github/workflows/bench.yml`
-  - 内容: Smoke/Regression/Full 三级工作流与可选回归阈值配置；不作为默认交付阻塞项
+  - 文件: `.github/workflows/bench.yml`, `tools/bench/report.py`
+  - 内容: Smoke/Regression/Full 三级工作流与可选回归阈值配置；`tools/bench/report.py` 负责读取 stdout 或 JSON 摘要并输出回归判定结果；不作为默认交付阻塞项
   - 测试: CI 触发运行
   - 前置: T3-T11
-  - 预计: 10 min
+  - 预计: 15 min
 
 ---
 

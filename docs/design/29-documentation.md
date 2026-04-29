@@ -99,7 +99,8 @@ src/
 │   └── mod.rs                # FFI module docs (L1)
 ├── workspace/
 │   └── mod.rs                # Workspace module docs (L1)
-├── internal execution backends  # simd / parallel remain internal and are documented only via feature effects on public APIs
+├── # (internal execution backends: simd/ and parallel/ are internal-only per `01-architecture.md §3`;
+│   # they have no public mod.rs and are documented only via feature effects on public APIs)
 ├── error.rs                  # Error module docs (L1)
 └── prelude.rs                # Prelude docs (L1)
 
@@ -128,6 +129,10 @@ CHANGELOG.md                  # Optional engineering changelog artifact (non-req
 │   └── each module's docs are derived from its design doc
 ├── depends on `00-coding.md`
 │   └── documentation style follows the coding conventions (see `00-coding.md §7`)
+├── depends on `01-architecture.md`
+│   └── module layout, feature list, and dependency layer graph inform docs structure
+├── depends on `25-safety.md`
+│   └── unsafe API documentation checklist aligned with safety invariant definitions
 ├── depends on `28-tests.md`
 │   └── doctest / examples / docs CI validation must stay aligned
 └── may reference `27-benchmark.md`
@@ -1009,7 +1014,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 ### 8.5 CI 配置
 
-CI 配置与 §5.11.2 完全一致，此处不再重复。doctest / examples 的统一 CI 执行矩阵由 `28-tests.md` 维护。
+CI 配置与 §5.11.2 完全一致，此处不再重复。§5.11 是完整规范定义，§8 是对应的测试执行视角；两者交叉引用以保持一致性。doctest / examples 的统一 CI 执行矩阵由 `28-tests.md` 维护。
 
 ### 8.6 Feature gate / 配置测试
 
@@ -1084,7 +1089,7 @@ Design docs (00-28)
 | -------- | ---------------------------------------------------------------------------------- |
 | 决策     | doctest 在示例天然返回 `Result` 时统一使用 `?`；不再为最小示例保留 `unwrap()` 例外 |
 | 理由     | 同时遵循 Rust API Guidelines C-QUESTION-MARK，并避免为纯展示型示例引入多余样板     |
-| 替代方案 | 完全禁止 unwrap — 放弃，对最小示例过于僵硬                                         |
+| 替代方案 | 允许最小示例使用 `unwrap()` 以减少样板 — 放弃，与 `00-coding.md §7.4` 要求冲突且增加了审查负担 |
 
 ### 决策 3：开发期间 `#![warn(missing_docs)]`，CI 中 deny
 
