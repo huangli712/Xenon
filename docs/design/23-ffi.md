@@ -58,7 +58,7 @@ src/
 └── ffi/
     ├── mod.rs         # Module root, re-exports
     ├── types.rs       # FfiErrorCategory and BlasInfo type definitions
-    ├── ptr.rs         # Raw-pointer APIs (as_ptr, as_mut_ptr, from_raw_parts, from_raw_parts_mut, into_raw_parts)
+    ├── ptr.rs         # Raw-pointer API wrappers (export/export_mut, re-export from tensor module)
     ├── blas.rs        # BLAS compatibility checks (is_blas_layout_compatible, blas_info, lda)
     └── offset.rs      # Multi-dimensional index to pointer offset (try_offset_of, try_ptr_at)
 ```
@@ -120,7 +120,9 @@ src/ffi/
 **owner 约定：** 
 
 - `as_ptr()` / `as_mut_ptr()` 的核心定义在 `07-tensor.md`（tensor 核心层）。
-- `ffi` 模块负责指针导出格式（`TensorExport`）、BLAS 辅助 API 和裸指针构造。
+- `into_raw_parts()` / `from_raw_parts_owned()` / `OwnedRawParts` 的核心实现同样在 `07-tensor.md §5.7`（`src/tensor/construct.rs`），因为它们需要访问 `TensorBase` 的私有字段。
+- `ffi` 模块负责指针导出格式（`TensorExport` / `TensorExportMut`）、BLAS 辅助 API 和裸指针偏移计算（`try_offset_of` / `try_ptr_at`）。
+- `ffi` 模块通过 `pub use crate::tensor::OwnedRawParts` 向 FFI 消费者 re-export tensor 模块定义的类型。`into_raw_parts()` 和 `from_raw_parts_owned()` 作为 `TensorBase` 的 inherent 方法可直接在 FFI 上下文中调用，无需额外包装。
 
 本文聚焦这些能力在 FFI 边界的公开形态，因此依赖表中仍把相关实现文件归入 `ffi` 模块文档范围，而不把它写成反向依赖。
 
@@ -345,18 +347,18 @@ where
         TensorExport {
             data: if self.is_empty() {
                 // Empty tensor: return a valid aligned non-dereferenceable pointer.
-                // Do NOT call storage.as_ptr() — the backing storage may be empty
+                // Do NOT call as_storage_ptr() — the backing storage may be empty
                 // or even unallocated (e.g. zero-cap Vec).
                 core::ptr::NonNull::<A>::dangling().as_ptr()
             } else {
-                self.storage.as_ptr()
+                self.as_storage_ptr()
             },
             _marker: core::marker::PhantomData,
             element_type: ElementType::of::<A>(),
             ndim: self.ndim(),
             shape: self.shape().as_slice().as_ptr(),
             strides: self.strides().as_slice().as_ptr(),
-            storage_len: self.storage.len(),
+            storage_len: self.storage_len(),
             offset: self.offset(),
         }
     }
@@ -380,14 +382,14 @@ where
             data: if self.is_empty() {
                 core::ptr::NonNull::<A>::dangling().as_ptr()
             } else {
-                self.storage.as_mut_ptr()
+                self.as_storage_mut_ptr()
             },
             _marker: core::marker::PhantomData,
             element_type: ElementType::of::<A>(),
             ndim: self.ndim(),
             shape: self.shape().as_slice().as_ptr(),
             strides: self.strides().as_slice().as_ptr(),
-            storage_len: self.storage.len(),
+            storage_len: self.storage_len(),
             offset: self.offset(),
         }
     }
@@ -493,50 +495,18 @@ pub struct Complex64 {
 
 ### 5.8 将张量解构为裸指针
 
-````rust,ignore
-#[repr(C)]
-pub struct OwnedRawParts<A, D> {
-    pub ptr: *mut A,
-    pub len: usize,
-    pub cap: usize,
-    pub align: usize,
-    pub shape: D,
-    pub strides: Strides<D>,
-    pub offset: usize,
-}
+**实现归属：** `OwnedRawParts` 结构体及 `into_raw_parts()` / `from_raw_parts_owned()` 方法的**核心实现**定义于 `07-tensor.md §5.7`（`src/tensor/construct.rs`）。这些方法需要直接访问 `TensorBase` 的私有字段（`storage`、`shape`、`strides`、`offset`、`flags`），因此只能在 tensor 模块内定义。本模块（`src/ffi/ptr.rs`）通过 re-export 向 FFI 消费者暴露：
 
-impl<A, D> TensorBase<Owned<A>, D>
-where
-    D: Dimension,
-{
-    /// Consumes the tensor, returning owned raw parts.
-    ///
-    /// # Returns
-    ///
-    /// An `OwnedRawParts<A, D>` snapshot containing the pointer plus the allocator
-    /// metadata required to reconstruct Xenon's aligned owned storage.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let tensor = Tensor2::<f64>::zeros([3, 4]);
-    /// let raw = tensor.into_raw_parts();
-    /// // Reconstruct with Tensor::from_raw_parts_owned(raw) and let Drop free it.
-    /// ```
-    pub fn into_raw_parts(self) -> OwnedRawParts<A, D> {
-        let this = core::mem::ManuallyDrop::new(self);
-        OwnedRawParts {
-            ptr: unsafe { this.storage.as_mut_ptr() },
-            len: this.storage.len(),
-            cap: this.storage.capacity(),
-            align: this.storage.alignment(),
-            shape: this.shape.clone(),
-            strides: this.strides.clone(),
-            offset: this.offset,
-        }
-    }
-}
-````
+```rust,ignore
+// src/ffi/ptr.rs
+pub use crate::tensor::{OwnedRawParts, TensorBase};
+
+// into_raw_parts() and from_raw_parts_owned() are inherent methods on
+// TensorBase<Owned<A>, D> defined in src/tensor/construct.rs.
+// They are directly callable on any Owned tensor; no wrapper is needed.
+```
+
+**完整 API 签名、`OwnedRawParts` 字段定义、`into_raw_parts()` 代码、验证逻辑及 `# Safety` 契约**参见 `07-tensor.md §5.7 "Owned 裸指针分解与重建"`。
 
 **设计决策：** `into_raw_parts` 仅适用于 Owned 存储，且导出的内存布局必须满足 Xenon 的 owned 不变量：F-order contiguous、`offset == 0`、canonical F-order strides。若调用方持有的是 view 或带 offset 的逻辑子视图，必须先显式物化为新的 owned contiguous tensor，再跨越 FFI 边界导出裸指针。如需将 View 转为 Owned 再解构，参见 `21-type.md` §5.5。
 
@@ -550,96 +520,7 @@ where
 | ❌ 直接调用系统 free | 分配器不匹配，导致 UB 或内存泄漏                                |
 | ❌ 忽略返回值        | 内存泄漏                                                        |
 
-```rust,ignore
-/// Reconstructs an owned tensor from raw parts obtained via `into_raw_parts`.
-/// Takes ownership of memory allocated by Xenon's aligned allocator.
-///
-/// # Safety
-///
-/// - `raw.ptr` must point to memory allocated by Xenon's aligned allocator
-/// - `raw.len`, `raw.cap`, and `raw.align` must be the original allocator metadata
-/// - `raw.shape` and `raw.strides` must describe a valid, non-overlapping canonical F-order layout
-/// - `raw.offset` must be 0 for owned raw parts
-/// - The caller transfers ownership; do NOT free `raw.ptr` separately
-impl<A, D> TensorBase<Owned<A>, D>
-where
-    D: Dimension,
-{
-    pub unsafe fn from_raw_parts_owned(
-        raw: OwnedRawParts<A, D>,
-    ) -> Result<Self, XenonError> {
-    if raw.offset != 0 {
-        return Err(XenonError::InvalidLayout {
-            operation: "ffi::from_raw_parts_owned".into(),
-            storage_kind: "owned".into(),
-            shape: raw.shape.to_vec(),
-            strides: raw.strides.to_vec(),
-            offset: raw.offset,
-            storage_len: raw.len,
-            reason: "owned raw parts must use offset == 0".into(),
-        });
-    }
-    let expected_len = raw.shape.size();
-    if raw.len != expected_len {
-        return Err(XenonError::InvalidLayout {
-            operation: "ffi::from_raw_parts_owned".into(),
-            storage_kind: "owned".into(),
-            shape: raw.shape.to_vec(),
-            strides: raw.strides.to_vec(),
-            offset: raw.offset,
-            storage_len: raw.len,
-            reason: "raw.len must equal product(shape)".into(),
-        });
-    }
-    if raw.cap < raw.len {
-        return Err(XenonError::InvalidLayout {
-            operation: "ffi::from_raw_parts_owned".into(),
-            storage_kind: "owned".into(),
-            shape: raw.shape.to_vec(),
-            strides: raw.strides.to_vec(),
-            offset: raw.offset,
-            storage_len: raw.len,
-            reason: "raw.cap must be >= raw.len".into(),
-        });
-    }
-    if !raw.align.is_power_of_two() || raw.align < core::mem::align_of::<A>() {
-        return Err(XenonError::InvalidLayout {
-            operation: "ffi::from_raw_parts_owned".into(),
-            storage_kind: "owned".into(),
-            shape: raw.shape.to_vec(),
-            strides: raw.strides.to_vec(),
-            offset: raw.offset,
-            storage_len: raw.len,
-            reason: "raw.align must be a valid power-of-two alignment for A".into(),
-        });
-    }
-    let expected_strides = layout::compute_f_strides(&raw.shape)?;
-    if raw.strides != expected_strides {
-        return Err(XenonError::InvalidLayout {
-            operation: "ffi::from_raw_parts_owned".into(),
-            storage_kind: "owned".into(),
-            shape: raw.shape.to_vec(),
-            strides: raw.strides.to_vec(),
-            offset: raw.offset,
-            storage_len: raw.len,
-            reason: "owned raw parts must use canonical F-order strides".into(),
-        });
-    }
-
-    let storage = Owned::from_raw_parts(raw.ptr, raw.len, raw.cap, raw.align);
-    let logical_ptr = if raw.shape.size() == 0 {
-        // Empty tensors must not pass a potentially dangling storage pointer
-        // to compute_layout_flags; use a well-defined non-dereferenceable sentinel.
-        core::ptr::NonNull::<A>::dangling().as_ptr()
-    } else {
-        // offset == 0 already verified, so raw.ptr IS the logical first element.
-        raw.ptr
-    };
-    let flags = layout::compute_layout_flags(&raw.shape, &raw.strides, logical_ptr);
-    Ok(TensorBase { storage, shape: raw.shape, strides: raw.strides, offset: raw.offset, flags })
-    }
-}
-```
+**实现归属：** `from_raw_parts_owned()` 的核心实现（含完整验证逻辑与 `TensorBase` 构造）定义于 `07-tensor.md §5.7`（`src/tensor/construct.rs`）。本模块通过 re-export 暴露该方法。完整 `# Safety` 契约及验证步骤详见该文档。
 
 **owned 重建校验说明：** `from_raw_parts_owned()` 虽然仍是 `unsafe`，但必须先验证所有可直接从元数据证明的约束：`offset == 0`、`strides` 等于 canonical F-order、`len == product(shape)`、`cap >= len`、`align` 是对 `A` 有效的 2 的幂对齐。只有指针真实来源、分配器匹配和初始化状态等无法由元数据单独证明的前提继续留给调用方承担。
 

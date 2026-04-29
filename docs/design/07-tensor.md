@@ -65,13 +65,14 @@ src/tensor/
 ├── mod.rs             # TensorBase<S, D> struct definition and public exports
 ├── impls.rs           # core query method implementations
 ├── aliases.rs         # type alias definitions
-└── construct.rs       # internal constructors (unsafe low-level construction)
+└── construct.rs       # internal constructors (unsafe low-level construction,
+                       #   Owned raw-parts decomposition & reconstruction)
 ```
 
 文件划分理由：结构体定义、方法实现、类型别名、构造方法各自独立且职责清晰。
 
 - 公开安全构造方法（`from_shape_vec`、`zeros`、`ones`、`eye` 等）的实现位于独立的上层模块 `src/construct/`（参见 `18-construction.md`）。
-- 本目录下的 `construct.rs` 仅负责内部 unsafe 低级构造（`from_raw_parts`、`from_raw_vec_unchecked`）。
+- 本目录下的 `construct.rs` 负责内部 unsafe 低级构造（`from_raw_parts`、`from_raw_vec_unchecked`）以及 Owned 张量的裸指针分解与重建（`into_raw_parts`、`from_raw_parts_owned`、`OwnedRawParts`）。这些方法需要直接访问 `TensorBase` 的私有字段，因此只能在本模块内定义；FFI 模块通过公开 API 或 re-export 暴露给外部消费者。
 
 ---
 
@@ -97,7 +98,7 @@ src/tensor/
 └── construct.rs
     ├── crate::storage    # Owned<A>, from_raw_parts storage access
     ├── crate::dimension  # Dimension, checked_size()
-    ├── crate::layout     # Strides<D>, LayoutFlags, compute_f_strides()
+    ├── crate::layout     # Strides<D>, LayoutFlags, compute_f_strides(), compute_layout_flags()
     └── crate::error      # XenonError::InvalidLayout
 ```
 
@@ -396,6 +397,14 @@ where
     /// use `as_ptr()` for that. Any pointer arithmetic based on this
     /// pointer must include `self.offset` to access the correct data.
     pub fn as_storage_ptr(&self) -> *const A;
+
+    /// Returns the length of the underlying storage buffer in elements.
+    ///
+    /// This differs from `len()` which returns the logical element count
+    /// (product of shape). For views, `storage_len()` may be larger than
+    /// `len()` because the backing storage can extend beyond the visible
+    /// portion. For owned tensors, `storage_len()` equals `len()`.
+    pub fn storage_len(&self) -> usize;
 }
 
 impl<S, D, A> TensorBase<S, D>
@@ -410,6 +419,19 @@ where
     /// `NonNull::dangling().as_ptr()` returns `*mut A`, matching this method's
     /// return type exactly.
     pub fn as_mut_ptr(&mut self) -> *mut A;
+
+    /// Returns the raw mutable storage base pointer WITHOUT adding the offset.
+    ///
+    /// Unlike `as_mut_ptr()` which returns `storage.as_mut_ptr().add(offset)`,
+    /// this method returns `storage.as_mut_ptr()` directly — the raw mutable
+    /// base pointer of the storage buffer. The caller is responsible for
+    /// manually accounting for `self.offset()` when computing element
+    /// addresses.
+    ///
+    /// The returned pointer does NOT point to the first logical element;
+    /// use `as_mut_ptr()` for that. Any pointer arithmetic based on this
+    /// pointer must include `self.offset()` to access the correct data.
+    pub fn as_storage_mut_ptr(&mut self) -> *mut A;
 }
 ```
 
@@ -616,6 +638,173 @@ where
     ) -> Result<Self, XenonError>;
 }
 ```
+
+#### Owned 裸指针分解与重建
+
+上述 `from_raw_parts*()` 构造视图；以下方法专用于 Owned 张量的分解与重建，构成完整的 round-trip 对。核心实现定义于本模块（`src/tensor/construct.rs`），FFI 模块仅做薄包装——参见 `23-ffi.md §5.8`。
+
+```rust,ignore
+/// Decomposition of an owned tensor into raw pointer + allocator metadata.
+///
+/// This type is `#[repr(C)]` so that FFI consumers can receive the same
+/// memory layout. The tensor module owns the definition; the FFI module
+/// re-exports it.
+#[repr(C)]
+pub struct OwnedRawParts<A, D> {
+    pub ptr: *mut A,
+    pub len: usize,
+    pub cap: usize,
+    pub align: usize,
+    pub shape: D,
+    pub strides: Strides<D>,
+    pub offset: usize,
+}
+
+impl<A, D> TensorBase<Owned<A>, D>
+where
+    D: Dimension,
+{
+    /// Consumes the tensor, returning owned raw parts.
+    ///
+    /// # Returns
+    ///
+    /// An `OwnedRawParts<A, D>` snapshot containing the pointer plus the
+    /// allocator metadata required to reconstruct Xenon's aligned owned
+    /// storage.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let tensor = Tensor2::<f64>::zeros([3, 4]);
+    /// let raw = tensor.into_raw_parts();
+    /// // Reconstruct with Tensor::from_raw_parts_owned(raw) and let Drop free it.
+    /// ```
+    pub fn into_raw_parts(self) -> OwnedRawParts<A, D> {
+        let this = core::mem::ManuallyDrop::new(self);
+        OwnedRawParts {
+            ptr: unsafe { this.storage.as_mut_ptr() },
+            len: this.storage.len(),
+            cap: this.storage.capacity(),
+            align: this.storage.alignment(),
+            shape: this.shape.clone(),
+            strides: this.strides.clone(),
+            offset: this.offset,
+        }
+    }
+
+    /// Reconstructs an owned tensor from raw parts obtained via
+    /// `into_raw_parts`. Takes ownership of memory allocated by Xenon's
+    /// aligned allocator.
+    ///
+    /// # Safety
+    ///
+    /// - `raw.ptr` must point to memory allocated by Xenon's aligned allocator
+    /// - `raw.len`, `raw.cap`, and `raw.align` must be the original allocator
+    ///   metadata
+    /// - `raw.shape` and `raw.strides` must describe a valid, non-overlapping
+    ///   canonical F-order layout
+    /// - `raw.offset` must be 0 for owned raw parts
+    /// - The caller transfers ownership; do NOT free `raw.ptr` separately
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(XenonError::InvalidLayout)` when directly checkable
+    /// metadata validation fails:
+    /// - `raw.offset != 0`
+    /// - `raw.len != product(raw.shape)`
+    /// - `raw.cap < raw.len`
+    /// - `raw.align` is not a valid power-of-two alignment for `A`
+    /// - `raw.strides` does not equal canonical F-order strides for `raw.shape`
+    ///
+    /// The unsafe obligation remains the memory/pointer guarantees that
+    /// cannot be checked from metadata alone.
+    pub unsafe fn from_raw_parts_owned(
+        raw: OwnedRawParts<A, D>,
+    ) -> Result<Self, XenonError> {
+        if raw.offset != 0 {
+            return Err(XenonError::InvalidLayout {
+                operation: "ffi::from_raw_parts_owned".into(),
+                storage_kind: "owned".into(),
+                shape: raw.shape.to_vec(),
+                strides: raw.strides.to_vec(),
+                offset: raw.offset,
+                storage_len: raw.len,
+                reason: "owned raw parts must use offset == 0".into(),
+            });
+        }
+        let expected_len = raw.shape.size();
+        if raw.len != expected_len {
+            return Err(XenonError::InvalidLayout {
+                operation: "ffi::from_raw_parts_owned".into(),
+                storage_kind: "owned".into(),
+                shape: raw.shape.to_vec(),
+                strides: raw.strides.to_vec(),
+                offset: raw.offset,
+                storage_len: raw.len,
+                reason: "raw.len must equal product(shape)".into(),
+            });
+        }
+        if raw.cap < raw.len {
+            return Err(XenonError::InvalidLayout {
+                operation: "ffi::from_raw_parts_owned".into(),
+                storage_kind: "owned".into(),
+                shape: raw.shape.to_vec(),
+                strides: raw.strides.to_vec(),
+                offset: raw.offset,
+                storage_len: raw.len,
+                reason: "raw.cap must be >= raw.len".into(),
+            });
+        }
+        if !raw.align.is_power_of_two() || raw.align < core::mem::align_of::<A>() {
+            return Err(XenonError::InvalidLayout {
+                operation: "ffi::from_raw_parts_owned".into(),
+                storage_kind: "owned".into(),
+                shape: raw.shape.to_vec(),
+                strides: raw.strides.to_vec(),
+                offset: raw.offset,
+                storage_len: raw.len,
+                reason: "raw.align must be a valid power-of-two alignment for A".into(),
+            });
+        }
+        let expected_strides = layout::compute_f_strides(&raw.shape)?;
+        if raw.strides != expected_strides {
+            return Err(XenonError::InvalidLayout {
+                operation: "ffi::from_raw_parts_owned".into(),
+                storage_kind: "owned".into(),
+                shape: raw.shape.to_vec(),
+                strides: raw.strides.to_vec(),
+                offset: raw.offset,
+                storage_len: raw.len,
+                reason: "owned raw parts must use canonical F-order strides".into(),
+            });
+        }
+
+        let storage = Owned::from_raw_parts(raw.ptr, raw.len, raw.cap, raw.align);
+        let logical_ptr = if raw.shape.size() == 0 {
+            // Empty tensors must not pass a potentially dangling storage pointer
+            // to compute_layout_flags; use a well-defined non-dereferenceable sentinel.
+            core::ptr::NonNull::<A>::dangling().as_ptr()
+        } else {
+            // offset == 0 already verified, so raw.ptr IS the logical first element.
+            raw.ptr
+        };
+        let flags = layout::compute_layout_flags(&raw.shape, &raw.strides, logical_ptr);
+        Ok(Self { storage, shape: raw.shape, strides: raw.strides, offset: raw.offset, flags })
+    }
+}
+```
+
+**设计约束：** `into_raw_parts` 仅适用于 Owned 存储，且导出的内存布局必须满足 Xenon 的 owned 不变量：F-order contiguous、`offset == 0`、canonical F-order strides。若调用方持有的是 view 或带 offset 的逻辑子视图，必须先显式物化为新的 owned contiguous tensor，再跨越 FFI 边界导出裸指针。如需将 View 转为 Owned 再解构，参见 `21-type.md §5.5`。
+
+**内存回收规则：**
+
+| 规则                 | 说明                                                            |
+| -------------------- | --------------------------------------------------------------- |
+| ✅ 重建张量后 Drop   | 使用 `Tensor::from_raw_parts_owned(raw)` 重建，让 Drop 处理释放 |
+| ❌ 直接调用系统 free | 分配器不匹配，导致 UB 或内存泄漏                                |
+| ❌ 忽略返回值        | 内存泄漏                                                        |
+
+**裸指针直接构造 Owned 张量的约束：** 当前版本不提供从任意裸指针直接构造 `Owned` 张量的接口。`from_raw_parts()` / `from_raw_parts_mut()` 仅构造视图（View / ViewMut），`from_raw_parts_owned()` 仅从 `into_raw_parts()` 导出的 `OwnedRawParts` 重建 Owned 张量。原因是 `Owned` 存储需要 Xenon 分配器的元数据（capacity、alignment），这些信息无法从单一裸指针推断。若调用方需要从裸指针创建 Owned 张量，须先将数据复制到 Xenon 分配的张量中（如通过 `Tensor::from_shape_vec()` 等构造方法）。
 
 ### 5.8 视图方法
 
