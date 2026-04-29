@@ -120,7 +120,7 @@ tests/
 ├── crate::ffi              # as_ptr, as_mut_ptr, from_raw_parts
 ├── crate::workspace        # Workspace
 ├── crate::error            # XenonError
-└── public API feature effects (`simd` / `parallel`)    # Internal backends are verified indirectly through observable public behavior
+└── public API feature effects (`simd` / `parallel`) # Internal backends are verified indirectly through observable public behavior
 ```
 
 ### 4.2 类型级依赖
@@ -279,7 +279,7 @@ pub fn assert_tensor_close_real_cross_path<A, D>(
             .expect("cross-path helper requires CastTo::<f64>::cast_to support");
         assert!(
             ulp_eq_f64_with_tolerance(a_f, e_f, tolerance),
-            "{}: element {} differs: actual={}, expected={}, comparison=cross-path tolerance defined by 需求说明书 §28.3 and implemented via 00-coding.md §7.4",
+            "{}: element {} differs: actual={}, expected={}, comparison=cross-path tolerance implemented via 00-coding.md §7.4",
             msg,
             idx,
             a_f,
@@ -333,9 +333,9 @@ macro_rules! assert_xenon_error {
 }
 ```
 
-> **说明**：精确比较须使用对应原生类型的位模式/ULP 比较，不依赖跨精度转换。`f32` 测试用 `f32` 比较，`f64` 测试用 `f64` 比较。
+**说明**：精确比较须使用对应原生类型的位模式/ULP 比较，不依赖跨精度转换。`f32` 测试用 `f32` 比较，`f64` 测试用 `f64` 比较。
 
-> **标量转换 API 约定**：测试辅助中的标量类型转换必须使用 `CastTo::<f64>::cast_to(value)` 或等价的内部 helper（例如 `scalar_to_f64(value)`），而不是在标量上调用 `.cast::<f64>()` 方法语法。`.cast()` 保留给 `21-type.md` 中约定的张量级转换 API。
+**标量转换 API 约定**：测试辅助中的标量类型转换必须使用 `CastTo::<f64>::cast_to(value)` 或等价的内部 helper（例如 `scalar_to_f64(value)`），而不是在标量上调用 `.cast::<f64>()` 方法语法。`.cast()` 保留给 `21-type.md` 中约定的张量级转换 API。
 
 ### 5.3 tests/common/generators.rs
 

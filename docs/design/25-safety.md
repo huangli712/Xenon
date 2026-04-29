@@ -96,7 +96,7 @@ parallel feature implementation paths/
 | `std::cell`    | `Cell<usize>`, `Cell<Option<usize>>`（仅启用 `parallel` feature 的内部执行路径） |
 | `rayon::iter`  | `ParallelIterator` (要求 `Item: Send`，参见 `09-parallel.md §5.3`) |
 
-### 4.3 依赖合法性与新增依赖说明
+### 4.3 依赖合法性
 
 | 项目           | 说明                                                         |
 | -------------- | ------------------------------------------------------------ |
