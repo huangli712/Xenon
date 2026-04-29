@@ -322,7 +322,7 @@ Smoke Test 仅验证 benchmark 代码可以正常编译和运行（"不崩溃"�
 
 - Large 规模基准测试（如 `4096×4096`、`256×256×256`）仅在 weekly/full benchmark 流水线中执行。PR 级别的 Smoke Test 仅使用 Small/Medium 规模。CI 配置须设置合理的内存上限；当可用内存低于 Large 用例估算峰值的 1.5× 安全阈值时，大张量测试应跳过并标记为 skipped。
 
-#### 5.6.3 CI 配置示例
+**CI 配置示例**
 
 ```yaml
 # .github/workflows/bench.yml
@@ -341,9 +341,8 @@ cargo bench --bench construction -- "zeros_1d" --quick
           run: python tools/bench/report.py --input target/benchmark-results --output target/benchmark-results/regression.json
 ```
 
-> **说明**：若仓库选择为 benchmark 增加 CI 摘要，则须通过仓库内脚本显式导出到约定路径（如 `target/benchmark-results/regression.json`），而不是依赖第三方 GitHub Action 或外部服务。
-
-> **baseline 管理**：若启用 Regression Check，则以上一轮 main 分支通过的结果作为 baseline；当性能改善或已知噪声需要更新基线时，应在专门的 benchmark PR 中更新并记录原因。未启用时不影响默认交付。
+- **说明**：若仓库选择为 benchmark 增加 CI 摘要，则须通过仓库内脚本显式导出到约定路径（如 `target/benchmark-results/regression.json`），而不是依赖第三方 GitHub Action 或外部服务。
+- **baseline 管理**：若启用 Regression Check，则以上一轮 main 分支通过的结果作为 baseline；当性能改善或已知噪声需要更新基线时，应在专门的 benchmark PR 中更新并记录原因。未启用时不影响默认交付。
 
 ---
 
@@ -355,7 +354,7 @@ cargo bench --bench construction -- "zeros_1d" --quick
 | **失败** | > 20% 变慢 | 可选 CI failure gate（仅仓库显式启用时）  |
 | **改善** | > 5% 变快  | 可选 CI note（记录性能改善）              |
 
-> **设计决策**：5% 以内视为测量噪声，20% 以上通常可视为真实回归；这些门限只在仓库显式启用回归门禁时生效，不构成默认必需交付。
+**设计决策**：5% 以内视为测量噪声，20% 以上通常可视为真实回归；这些门限只在仓库显式启用回归门禁时生效，不构成默认必需交付。
 
 ---
 
@@ -394,8 +393,6 @@ fn main() {
 
 ### 5.9 Good / Bad 示例
 
-#### 5.9.1 Good — 正确的 benchmark 模式
-
 ```rust,ignore
 // Good: Use black_box and a dedicated timing loop
 fn bench_sum() {
@@ -407,8 +404,6 @@ fn bench_sum() {
     println!("sum_f64_65k: {:?}", started_at.elapsed());
 }
 ```
-
-#### 5.9.2 Bad — 错误的 benchmark 模式
 
 ```rust,ignore
 // Bad: Not using black_box, compiler may eliminate the operation
@@ -449,10 +444,7 @@ fn bench_sum_bad2() {
 
 - 记录环境信息：至少包含 CPU、编译配置、feature flags。
 - 可选 CPU pinning：如仓库环境允许，可将 benchmark 进程绑定到固定核心以降低抖动。
-
-> **说明**：当前测量方法为简化版本。回归阈值（5%/20%）为参考值，CI 环境波动可能导致误判。未来可升级为统计显著性检验。
-
-### 6.1.1 结果文件 schema 说明
+- 当前测量方法为简化版本。回归阈值（5%/20%）为参考值，CI 环境波动可能导致误判。未来可升级为统计显著性检验。
 
 若仓库启用 benchmark 结果持久化，结果文件应至少包含以下字段：`benchmark_id`、`feature_set`、`input_shape`、`element_type`、`layout_kind`、`warmup_iterations`、`measured_iterations`、`wall_time_ns`、`timestamp`、`git_commit`、`environment_label`。JSON / CSV 载体可自行选择，但字段语义必须保持稳定，以便 Regression Check 消费。
 
@@ -460,11 +452,11 @@ fn bench_sum_bad2() {
 
 | 策略          | 实现                                                            | 说明                   |
 | ------------- | --------------------------------------------------------------- | ---------------------- |
-| 顺序填充      | 预先构造顺序 `Vec<f64>` 后用 `from_shape_vec` 导入；`from_vec` 仅作为 Ix1 非规范便捷层（参见 `18-construction.md §5.1`，不纳入公开 API 承诺）对照 | 可重复，无随机性       |
+| 顺序填充      | 预先构造顺序 `Vec<f64>` 后用 `from_shape_vec` 导入；`from_vec` 仅作为 Ix1 非规范便捷层对照 | 可重复，无随机性       |
 | 预分配 + 复用 | 数据在计时循环外生成                                            | 避免测量中混入构造开销 |
 | 非连续视图    | 行视图或转置视图                                                | 模拟真实非连续访问场景 |
 
-> **设计决策**：所有数据在迭代回调外预生成（参见 §5.9.2 Bad 示例），确保仅测量目标操作本身的性能。
+**设计决策**：所有数据在迭代回调外预生成（参见 §5.9.2 Bad 示例），确保仅测量目标操作本身的性能。
 
 ### 6.3 black_box 使用规范
 
@@ -490,9 +482,7 @@ let _result = (&a + &b).unwrap();
 
 ### 6.5 数值正确性引用边界
 
-benchmark 不定义正确性容差，也不在本文件内重复维护 `atol` / `rtol` 或其他比较表。所有数值正确性判断统一引用 `28-tests.md` 中冻结的数值契约：默认比较遵循 ULP-based contract，仅在文档明确允许的数学函数场景使用单独容差规则。
-
-benchmark 侧只允许复用这些契约来说明“性能观测建立在既有正确性测试之上”，不得把 benchmark 结果或阈值升级为新的正确性门禁。参见 `需求说明书 §28.3`。
+benchmark 不定义正确性容差，也不在本文件内重复维护 `atol` / `rtol` 或其他比较表。所有数值正确性判断统一引用 `28-tests.md` 中冻结的数值契约：默认比较遵循 ULP-based contract，仅在文档明确允许的数学函数场景使用单独容差规则。benchmark 侧只允许复用这些契约来说明“性能观测建立在既有正确性测试之上”，不得把 benchmark 结果或阈值升级为新的正确性门禁。参见 `需求说明书 §28.3`。
 
 ---
 
