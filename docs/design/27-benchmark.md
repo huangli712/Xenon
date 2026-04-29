@@ -73,7 +73,9 @@ benches/
 ├── crate::tensor           # TensorBase, Tensor, TensorView, etc.
 ├── crate::dimension        # Ix0~Ix6, IxDyn, Dimension trait
 ├── crate::element          # Element, Numeric, RealScalar, ComplexScalar
-├── crate::math             # Element-wise ops, reductions, dot products
+├── crate::math             # Element-wise ops
+├── crate::reduction        # sum, sum_axis
+├── crate::matrix           # dot
 ├── crate::shape            # transpose
 ├── crate::broadcast        # broadcast_shape
 ├── crate::set              # unique
@@ -85,7 +87,7 @@ benches/
 
 | 来源模块    | 使用的类型/trait                                                                              |
 | ----------- | --------------------------------------------------------------------------------------------- |
-| `tensor`    | `Tensor<A, D>`, `TensorView`, `TensorViewMut`, `.shape()`, `.sum()`（参见 `07-tensor.md §5`） |
+| `tensor`    | `Tensor<A, D>`, `TensorView`, `TensorViewMut`, `.shape()`（参见 `07-tensor.md §5`）             |
 | `dimension` | `Ix1`, `Ix2`, `Ix3`, `IxDyn`, `Dimension`（参见 `02-dimension.md §5`）                        |
 | `element`   | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element.md §5`）                |
 | `math`      | `add`, `sub`, `mul`, `div`, `sin`, `exp`, `abs`（参见 `11-math.md §5`）                       |
@@ -316,7 +318,7 @@ Smoke Test 仅验证 benchmark 代码可以正常编译和运行（"不崩溃"�
 
 **Regression Check 覆盖范围**
 
-- 当仓库显式启用 Regression Check 时，可监测以下核心基准：`elem_add_f64`（逐元素加法，f64，256×256）和 `sum_1d_f64`（一维归约，f64，65536 元素）。其中 `256×256` 与 §5.4.1 的 Medium 规模保持一致。
+- 当仓库显式启用 Regression Check 时，可监测以下核心基准：`elem_add_f64`（逐元素加法，f64，65536 元素）和 `sum_1d_f64`（一维归约，f64，65536 元素）。其中 `65536` 与 §5.4.1 的 1D Medium 规模保持一致。
 
 - 本文档统一使用同一组规模基线：Small = `64` / `8×8` / `4×4×4`，Medium = `65,536` / `256×256` / `64×32×32`，Large = `16,777,216` / `4096×4096` / `256×256×256`。
 
@@ -477,7 +479,7 @@ let _result = (&a + &b).unwrap();
 
 | 基准 ID        | 输入规模 | baseline 来源              | 报告指标             | 阈值消费者       |
 | -------------- | -------- | -------------------------- | -------------------- | ---------------- |
-| `elem_add_f64` | 256×256  | 最近一次 main 分支通过结果 | wall time / change % | 可选 Regression Check |
+| `elem_add_f64` | 65,536   | 最近一次 main 分支通过结果 | wall time / change % | 可选 Regression Check |
 | `sum_1d_f64`   | 65,536   | 最近一次 main 分支通过结果 | wall time / change % | 可选 Regression Check |
 
 ### 6.5 数值正确性引用边界

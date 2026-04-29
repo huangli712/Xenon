@@ -73,6 +73,7 @@ tests/
 │
 ├── test_tensor.rs              # Tensor core functionality (creation/query/type aliases)
 ├── test_math.rs                # Element-wise operations (arithmetic/math/comparison/logic)
+├── test_overload.rs            # Operator overloading (Add/Sub/Mul/Div trait implementations)
 ├── test_broadcast.rs           # Broadcasting (scalar/vector/matrix broadcasting)
 ├── test_index.rs               # Indexing operations (multi-dimensional indexing/range slicing)
 ├── test_construction.rs        # Constructors (zeros/ones/eye/from_shape_vec/from_shape_slice/from_scalar/from_array/from_vec)
@@ -435,7 +436,7 @@ pub fn non_contiguous_2d(rows: usize, cols: usize) -> NonContiguous2D {
 | ----------------------------- | ------------------------------------------------------------------------------------ | ------ |
 | `test_zeros_ones_from_scalar` | zeros, ones, from_scalar 构造                                                        | 高     |
 | `test_eye_identity`           | 单位矩阵                                                                             | 高     |
-| `test_from_data_constructors` | 以 `from_shape_vec`、`from_shape_slice` 为主；`from_vec` 仅覆盖 Ix1 非规范便捷层（see 18-construction.md §5.1） | 高     |
+| `test_from_data_constructors` | 以 `from_shape_vec`、`from_shape_slice` 为主；`from_vec` 仅覆盖 Ix1 非规范便捷层（see 18-construction.md §5.3） | 高     |
 | `test_from_fixed_array`       | 从固定数组构造                                                                       | 中     |
 | `test_from_shape_vec_f_order_mapping` | F-order 逻辑元素顺序与线性输入映射正确                                       | 高     |
 
@@ -684,6 +685,27 @@ fn test_bad_magic() {
     assert_eq!(t.sum(), 0.0);  // What is 100? Why zeros?
 }
 ```
+
+### 5.25 test_overload.rs
+
+| 测试函数                            | 测试内容                                                        | 优先级 |
+| ----------------------------------- | --------------------------------------------------------------- | ------ |
+| `test_add_same_shape`               | `[2,3] + [2,3]` 返回 `Ok(...)`，逐元素验证                     | 高     |
+| `test_add_broadcast`                | `[2,1,3] + [3]` 广播后相加返回 `Ok(...)`                       | 高     |
+| `test_add_ref_ref`                  | `&a + &b` 返回 `Ok(...)`，所有权保留                           | 高     |
+| `test_add_owned_ref`                | `a + &b` 返回 `Ok(...)`，a 被消费                              | 中     |
+| `test_add_ref_owned`                | `&a + b` 返回 `Ok(...)`，b 被消费                              | 中     |
+| `test_add_scalar`                   | `tensor + 5.0` 直接返回 `Tensor`                               | 高     |
+| `test_scalar_wrapper_add_tensor`    | `Scalar(5.0) + tensor` 直接返回 `Tensor`                       | 高     |
+| `test_native_scalar_add_tensor_f64` | 原生 `5.0 + tensor` 直接返回 `Tensor`                          | 高     |
+| `test_native_scalar_add_tensor_i32` | 原生 `5i32 + tensor` 直接返回 `Tensor`                         | 中     |
+| `test_sub_basic`                    | `a - b` 返回 `Ok(...)` 且结果正确                              | 高     |
+| `test_mul_basic`                    | `a * b` 返回 `Ok(...)` 且结果正确                              | 高     |
+| `test_div_basic`                    | `a / b` 返回 `Ok(...)` 且结果正确                              | 高     |
+| `test_broadcast_incompatible`       | 不兼容形状返回 `Err(XenonError::BroadcastError)`               | 中     |
+| `test_result_ownership`             | `Ok` 中结果张量与输入不共享内存                                | 高     |
+| `test_i32_tensor`                   | `i32` 类型张量运算返回 `Ok(...)`                               | 中     |
+| `test_complex_tensor`               | `Complex<f64>` 类型张量运算返回 `Ok(...)`                      | 中     |
 
 ---
 
@@ -1049,6 +1071,13 @@ fn prop_add_commutative() {
   - 前置: T1
   - 预计: 10 min
 
+- [ ] **T3b**: 实现 `tests/test_overload.rs`
+  - 文件: `tests/test_overload.rs`
+  - 内容: 运算符重载（Add/Sub/Mul/Div trait 实现、广播分派、Result 所有权语义、标量运算符）
+  - 测试: `cargo test --test test_overload`
+  - 前置: T1, T3
+  - 预计: 10 min
+
 - [ ] **T4**: 实现 `tests/test_broadcast.rs`
   - 文件: `tests/test_broadcast.rs`
   - 内容: 广播机制（标量/行/列/不兼容/只读）
@@ -1065,7 +1094,7 @@ fn prop_add_commutative() {
 
 - [ ] **T6**: 实现 `tests/test_construction.rs`
   - 文件: `tests/test_construction.rs`
-  - 内容: 构造方法（zeros/ones/eye/from_shape_vec/from_shape_slice/from_scalar/from_array；`from_vec` 仅作为 Ix1 非规范便捷层 coverage（see 18-construction.md §5.1））
+  - 内容: 构造方法（zeros/ones/eye/from_shape_vec/from_shape_slice/from_scalar/from_array；`from_vec` 仅作为 Ix1 非规范便捷层 coverage（see 18-construction.md §5.3））
   - 测试: `cargo test --test test_construction`
   - 前置: T1
   - 预计: 10 min
@@ -1289,6 +1318,7 @@ fn compile_fail_harness() {
 | ---------------------- | ------------------- | ------------------------------- |
 | `test_tensor.rs`       | `tensor`, `storage` | `07-tensor.md`, `05-storage.md` |
 | `test_math.rs`         | `math`              | `11-math.md`                    |
+| `test_overload.rs`     | `overload`          | `19-overload.md`                |
 | `test_broadcast.rs`    | `broadcast`         | `15-broadcast.md`               |
 | `test_index.rs`        | `index`             | `17-indexing.md`                |
 | `test_construction.rs` | `construct`         | `18-construction.md`            |
@@ -1299,7 +1329,7 @@ fn compile_fail_harness() {
 | `test_shape.rs`        | `shape`             | `16-shape.md`                   |
 | `test_conversion.rs`   | `convert`           | `21-type.md`                    |
 | `test_workspace.rs`    | `workspace`         | `24-workspace.md`               |
-| `test_utility.rs`      | `utility`           | `20-utility.md`                 |
+| `test_utility.rs`      | `util`              | `20-utility.md`                 |
 | `test_output.rs`       | `format`            | `22-output.md`                  |
 | `test_ffi.rs`          | `ffi`, `workspace`  | `23-ffi.md`, `24-workspace.md`  |
 | `test_parallel.rs`     | `parallel`          | `09-parallel.md`                |

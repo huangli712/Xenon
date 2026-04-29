@@ -17,7 +17,7 @@
 | ------------ | -------------------------------------------------------------- | ---------------------------------- |
 | API 文档     | 所有 pub 类型和函数的 doc comment                              | 内部实现注释（非 pub）             |
 | 使用示例     | 关键 API 的可运行代码示例（doctest）                           | 完整教程、视频教程                 |
-| Safety 说明  | 所有 unsafe 函数的 `# Safety` 文档节（参见 `00-coding.md §5`） | 安全函数的 Safety 节               |
+| Safety 说明  | 所有 unsafe 函数的 `# Safety` 文档节（参见 `00-coding.md §6`） | 安全函数的 Safety 节               |
 | Crate 级文档 | lib.rs 顶层文档、README                                        | 第三方博客文章、CHANGELOG 工程产物 |
 | 模块级文档   | 各 mod.rs 的 `//!` 模块概述                                    | 内部实现文档                       |
 | examples/    | 独立可运行示例程序                                             | 交互式 notebook                    |
@@ -27,7 +27,7 @@
 
 | 原则       | 体现                                                      |
 | ---------- | --------------------------------------------------------- |
-| 全覆盖     | 所有 pub API 必须有 doc comment（参见 `00-coding.md §6`） |
+| 全覆盖     | 所有 pub API 必须有 doc comment（参见 `00-coding.md §7`） |
 | 可测试     | 关键 API 的示例通过 doctest 或独立 examples 验证          |
 | 安全性透明 | 所有 unsafe 函数有 `# Safety` 节                          |
 | 惯用法     | 遵循 Rust API Guidelines                                  |
@@ -55,6 +55,8 @@
 ```
 src/
 ├── lib.rs                    # Crate-level docs (L0)
+├── private.rs                # Sealed-trait infrastructure (internal, no pub docs)
+├── dispatch.rs               # Internal dispatch helper (internal, no pub docs)
 ├── dimension/
 │   └── mod.rs                # Dimension module docs (L1)
 ├── element/
@@ -87,6 +89,8 @@ src/
 │   └── mod.rs                # Constructor module docs (L1)
 ├── convert/
 │   └── mod.rs                # Type-conversion module docs (L1)
+├── util/
+│   └── mod.rs                # Utility module docs (L1) — clip, fill, to_contiguous
 ├── set/
 │   └── mod.rs                # Set-operation module docs (L1)
 ├── format/
@@ -123,7 +127,7 @@ CHANGELOG.md                  # Optional engineering changelog artifact (non-req
 ├── depends on all design docs (00-28)
 │   └── each module's docs are derived from its design doc
 ├── depends on `00-coding.md`
-│   └── documentation style follows the coding conventions (see `00-coding.md §6`)
+│   └── documentation style follows the coding conventions (see `00-coding.md §7`)
 ├── depends on `28-tests.md`
 │   └── doctest / examples / docs CI validation must stay aligned
 └── may reference `27-benchmark.md`
@@ -178,7 +182,7 @@ L3: Examples (examples/)
 | ---- | ----------------------------- | ---------------------------------------------------- |
 | L0   | 必须存在                      | CI 检查                                              |
 | L1   | 每个 pub mod 必须有模块文档   | `#![warn(missing_docs)]`                             |
-| L2   | 每个 pub 项必须有 doc comment | `#![warn(missing_docs)]`（参见 `00-coding.md §6`）   |
+| L2   | 每个 pub 项必须有 doc comment | `#![warn(missing_docs)]`（参见 `00-coding.md §7`）   |
 | L3   | 关键 API 至少一个示例         | `cargo build --examples` / `cargo run --example ...` |
 
 ### 5.3 关键 API 示例覆盖矩阵
@@ -196,6 +200,7 @@ L3: Examples (examples/)
 | FFI unsafe API                       | ✅         | `23-ffi.md`          |
 | 运算符重载                           | ✅         | `19-overload.md`     |
 | `clip`/`fill`                        | ✅         | `20-utility.md`      |
+| 集合操作 (`unique`)                  | ✅         | `14-set.md`          |
 | 工作空间                             | ✅         | `24-workspace.md`    |
 | 格式化输出                           | ✅         | `22-output.md`       |
 
@@ -263,15 +268,8 @@ L3: Examples (examples/)
 //! but not every legal layout is natively BLAS/LAPACK-compatible.
 //!
 
-// During development: warn level allows gradual documentation
-// In CI: RUSTDOCFLAGS="-D warnings" enforces deny-level documentation
-#![warn(missing_docs)]
-#![warn(unsafe_op_in_unsafe_fn)]
-#![warn(rustdoc::missing_crate_level_docs)]
-#![cfg_attr(docsrs, feature(doc_cfg))]
+// lint 配置详见 §5.5.1 Lint 规则
 ````
-
-以上仅列出文档相关 lint 增补，完整 `lib.rs` 基线见 `00-coding.md §6.1`。
 
 #### 5.4.2 文档节使用规则
 
@@ -320,7 +318,7 @@ L3: Examples (examples/)
 #![warn(clippy::missing_safety_doc)]      // Unsafe functions need Safety section
 ```
 
-以上仅列出文档相关 lint 增补，完整 `lib.rs` 基线见 `00-coding.md §6.1`。
+以上仅列出文档相关 lint 增补，完整 `lib.rs` 基线见 `00-coding.md §7.1`。
 
 ### 5.6 Doctest 规范
 
@@ -428,7 +426,7 @@ fn main() -> xenon::Result<()> {
 
 ### 5.8 README.md 内容规划
 
-README 使用英文的来源与 crate 内 doc comment 一致：遵循 `00-coding.md §6` 的英文文档约束，并面向 docs.rs / crates.io 的 Rust 生态读者。
+README 使用英文的来源与 crate 内 doc comment 一致：遵循 `00-coding.md §7` 的英文文档约束，并面向 docs.rs / crates.io 的 Rust 生态读者。
 
 ````markdown
 # Xenon
@@ -768,7 +766,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 - [ ] **T3**: 编写 README.md
   - 文件: `README.md`
-  - 内容: 项目介绍、Features、Quick Start、安装、文档链接、许可证；README 英文说明需明确引用 `00-coding.md §6` 与 Rust 生态受众
+  - 内容: 项目介绍、Features、Quick Start、安装、文档链接、许可证；README 英文说明需明确引用 `00-coding.md §7` 与 Rust 生态受众
   - 测试: 内容完整
   - 前置: T1
   - 预计: 10 min
@@ -802,6 +800,13 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T2
   - 预计: 10 min
+
+- [ ] **T7a**: 编写 util 模块文档
+  - 文件: `src/util/mod.rs`
+  - 内容: 模块职责、clip / fill / to_contiguous 等 utility 函数的文档和 doctest（参见 `20-utility.md §1`）
+  - 测试: `cargo doc --no-deps` 无 warning
+  - 前置: T2
+  - 预计: 5 min
 
 ### Wave 3: 类型/函数级文档
 
@@ -930,7 +935,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
   - 文件: `src/lib.rs`, `README.md`, `examples/`
   - 内容: 清理超范围的平台说明，确保示例与文档默认面向 `std` 环境
   - 测试: `cargo doc --no-deps` 与 `cargo build --examples --all-features`
-  - 前置: T1
+  - 前置: T1, T3, T10-T15
   - 预计: 10 min
 
 ### Wave 5: CI 集成
@@ -1004,30 +1009,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 ### 8.5 CI 配置
 
-**说明**：本文档只保留文档交付所需的验证类别与示例命令；doctest / examples 的统一 CI 执行矩阵由 `28-tests.md` 维护。
-
-```yaml
-# .github/workflows/docs.yml
-docs:
-  steps:
-    - name: Gate 1 - rustdoc warnings
-      run: RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
-
-    - name: Gate 2 - documentation section completeness
-      run: cargo clippy --all-features -- -D clippy::missing_errors_doc -D clippy::missing_panics_doc -D clippy::missing_safety_doc
-
-    - name: Run doctests
-      run: cargo test --doc --all-features
-
-    - name: Build examples
-      run: cargo build --examples --all-features
-
-    - name: Run key examples
-      run: |
-        cargo run --example basic
-        cargo run --example broadcasting
-        cargo run --example workspace
-```
+CI 配置与 §5.11.2 完全一致，此处不再重复。doctest / examples 的统一 CI 执行矩阵由 `28-tests.md` 维护。
 
 ### 8.6 Feature gate / 配置测试
 
@@ -1093,7 +1075,7 @@ Design docs (00-28)
 | 属性     | 值                                                              |
 | -------- | --------------------------------------------------------------- |
 | 决策     | 所有 doc comment 和 README 使用英文                             |
-| 理由     | Rust 生态惯例；docs.rs 面向全球开发者（参见 `00-coding.md §6`） |
+| 理由     | Rust 生态惯例；docs.rs 面向全球开发者（参见 `00-coding.md §7`） |
 | 替代方案 | 中文文档 — 放弃，不符合 Rust 社区惯例                           |
 
 ### 决策 2：doctest 统一使用 `?`

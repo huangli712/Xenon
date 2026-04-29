@@ -113,9 +113,7 @@ parallel feature implementation paths/
 
 ## 5. 公共 API 设计
 
-**权威来源对齐：** 本文档的 Send/Sync 定义以 `05-storage.md §6.8` 与需求说明书为基准；若与其他设计文档冲突，以需求说明书为规范基线解决，并同步修正相关文档。
-
-**注意：** 本文档与 `05-storage.md §6.8` 采用同一组 Send/Sync 规则；若后续出现不一致，应按需求说明书统一校正并同步回写相关设计文档。
+**权威来源对齐：** 本文档的 Send/Sync 定义以 `05-storage.md §6.8` 与需求说明书为基准；若与其他设计文档出现不一致，以需求说明书为规范基线统一校正，并同步回写相关设计文档。
 
 ### 5.1 Send/Sync 实现规则表
 
@@ -132,16 +130,7 @@ parallel feature implementation paths/
 
 ### 5.2 TensorBase<S, D> 自动推导规则
 
-`TensorBase<S, D>` 的 `Send`/`Sync` 由 Rust 自动推导，规则如下：
-
-| 存储模式 S                             | TensorBase\<S, D\> 的 Send | TensorBase\<S, D\> 的 Sync |
-| -------------------------------------- | -------------------------- | -------------------------- |
-| `Owned<A>` where `A: Send` / `A: Sync` | ✅ Send                    | ✅ Sync                    |
-| `ViewRepr<'a, A>` where A: Sync        | ✅ Send                    | ✅ Sync                    |
-| `ViewMutRepr<'a, A>` where A: Send     | ✅ Send                    | ❌ (exclusive borrow)      |
-| `ArcRepr<A>` where A: Send + Sync      | ✅ Send                    | ✅ Sync                    |
-
-**说明**: `D: Dimension` 要求 `Dimension: Send + Sync`；所有 Dimension 类型（`Ix0`-`Ix6`, `IxDyn`）内部仅包含 Copy 类型的值数组或 `Vec<usize>`，因此自动满足 `Send + Sync`。
+`TensorBase<S, D>` 的 `Send`/`Sync` 由 Rust 根据存储模式 `S` 的约束自动推导，结果与 §5.1 规则表一致。`D: Dimension` 要求 `Dimension: Send + Sync`；所有 Dimension 类型（`Ix0`-`Ix6`, `IxDyn`）内部仅包含 Copy 类型的值数组或 `Vec<usize>`，因此自动满足 `Send + Sync`。
 
 ### 5.3 安全违规分类表
 
@@ -154,11 +143,7 @@ parallel feature implementation paths/
 
 ### 5.4 当前受支持元素类型的线程安全传播
 
-| 元素类型 | `Send` | `Sync` |
-|---------|--------|--------|
-| `i32/i64/f32/f64` | ✓ | ✓ |
-| `Complex<f32/f64>` | ✓ | ✓ |
-| `bool` | ✓ | ✓ |
+当前所有受支持元素类型（`i32/i64/f32/f64`、`Complex<f32/f64>`、`bool`）均满足 `Send + Sync`，其线程安全属性随 §5.1 规则自动传播至各存储模式。
 
 ### 5.5 Owned<A> 的 Send/Sync
 
@@ -338,11 +323,7 @@ unsafe impl<A: Send + Sync> Send for ArcRepr<A> {}
 unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 ```
 
-### 5.9 ViewMutRepr 不实现 Sync 的规范
-
-`ViewMutRepr` 的 `!Sync` 来源于其 `ptr: *mut A` 字段（raw pointer 默认 `!Send + !Sync`）与仅恢复 `Send` 的显式 `unsafe impl`：由于未提供 `unsafe impl Sync`，`Sync` 保持默认的否定推导。这与 `05-storage.md §6.4` 中 `_marker: PhantomData<&'a mut A>` 的定义一致（该字段用于方差与 drop check，不承担 `!Sync` 职责）。禁止在模块文档中保留多种备选方案；如有变更须同步更新本文件。
-
-### 5.10 广播结果不可变迭代的原因
+### 5.9 广播结果不可变迭代的原因
 
 ```rust,ignore
 // Broadcast results use ViewRepr (read-only view), no mutable iterator provided
@@ -359,7 +340,7 @@ let sum: f64 = b.iter().sum();  // OK: read-only iteration
 
 **设计决策：** 广播结果使用 `ViewRepr`（只读视图），因为广播不拷贝数据，语义上仅为只读（参见 `15-broadcast.md §5`）。如果允许可变迭代，修改广播结果会意外修改原数据的多个位置，这既不符合广播语义，也容易引入 bug。
 
-### 5.11 Good/Bad 对比示例
+### 5.10 Good/Bad 对比示例
 
 ```rust,ignore
 // Good - ViewMutRepr cross-thread movement inside thread::scope
@@ -706,7 +687,7 @@ workspace 的线程安全规则（`!Send + !Sync` 实现选择及理由，参见
 | 属性     | 值                                                                                                                             |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | 决策     | `ViewMutRepr<'a, A>` 仅实现 `Send`，不实现 `Sync`                                                                              |
-| 理由     | 独占借用语义（`&mut T`）不可共享。如果 Sync，则 `&ViewMutRepr` 可跨线程移动，导致多线程同时持有 `&mut [A]`，违反 Rust 别名规则 |
+| 理由     | 独占借用语义（`&mut T`）不可共享，详细论证参见 §5.7 unsafe impl 注释与 §5.3 安全违规分类表 |
 | 替代方案 | 通过 Mutex 包装实现 Sync — 放弃，引入运行时锁，违反“以编译期类型系统为主，特定场景辅以运行时检查”的原则                        |
 
 ### 决策 3：ArcRepr 要求 A: Send + Sync
@@ -729,7 +710,11 @@ workspace 的线程安全规则（`!Send + !Sync` 实现选择及理由，参见
 
 ## 12. 性能考量
 
-无。
+| 开销点 | 影响范围 | 可接受理由 |
+| ------ | -------- | ---------- |
+| `ArcRepr` COW 深拷贝 | 非唯一持有时写路径触发 `clone` | 仅在首次写入共享数据时发生，后续写操作走唯一持有快速路径 |
+| `ParallelGuard` thread_local 读写 | 启用 `parallel` feature 后每次并行操作 | 单次 `Cell::get/set`，纳秒级开销，远低于线程调度成本 |
+| `ArcRepr` 原子引用计数 | `clone`/`drop` 涉及 `AtomicUsize` 操作 | 标准库 `Arc` 开销，与 `std::sync::Arc` 一致 |
 
 ---
 
