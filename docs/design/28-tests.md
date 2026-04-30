@@ -446,8 +446,8 @@ pub fn non_contiguous_2d_owner(rows: usize, cols: usize) -> Tensor2<f64> {
 | `test_integer_divide_by_zero_panics`  | 整数除以零触发 panic                   | 高     |
 | `test_integer_min_abs_panics`         | 最小负值取绝对值触发 panic             | 高     |
 | `test_integer_min_div_neg_one_panics` | 最小负值除以 `-1` 触发 panic           | 高     |
-| `test_integer_neg_min_panics`         | 验证 `neg(i8::MIN)`、`neg(i16::MIN)`、`neg(i32::MIN)`、`neg(i64::MIN)` 触发 panic（参见 `11-math.md §5.4`） | 高     |
-| `test_integer_square_overflow_panics` | 验证整数 `square(max)` 溢出触发 panic（参见 `11-math.md §5.4`） | 高     |
+| `test_integer_neg_min_panics`         | 验证 `neg(i32::MIN)`、`neg(i64::MIN)` 触发 panic | 高     |
+| `test_integer_square_overflow_panics` | 验证整数 `square(max)` 溢出触发 panic  | 高     |
 
 ### 5.6 test_broadcast.rs
 
@@ -476,7 +476,7 @@ pub fn non_contiguous_2d_owner(rows: usize, cols: usize) -> Tensor2<f64> {
 | ----------------------------- | ------------------------------------------------------------------------------------ | ------ |
 | `test_zeros_ones_from_scalar` | zeros, ones, from_scalar 构造                                                        | 高     |
 | `test_eye_identity`           | 单位矩阵                                                                             | 高     |
-| `test_from_data_constructors` | 以 `from_shape_vec`、`from_shape_slice` 为主；`from_vec` 仅覆盖 Ix1 非规范便捷路径（see 18-construction.md §5.3 末尾） | 高     |
+| `test_from_data_constructors` | 以 `from_shape_vec`、`from_shape_slice` 为主；`from_vec` 仅覆盖 Ix1 非规范便捷路径   | 高     |
 | `test_from_fixed_array`       | 从固定数组构造                                                                       | 中     |
 | `test_from_shape_vec_f_order_mapping` | F-order 逻辑元素顺序与线性输入映射正确                                       | 高     |
 
@@ -615,10 +615,10 @@ fn test_unique_non_contiguous() {
 | `test_par_dot_consistency`                  | 并行 dot 与串行 dot 结果一致                                                                | 高     |
 | `test_parallel_read`                        | 多线程并发只读访问安全（参见 `25-safety.md §5`）                                            | 高     |
 | `test_nested_parallel_falls_back_to_serial` | 嵌套并行检测后自动回退串行                                                                  | 中     |
-| `test_determinism_add_same_path`             | 同平台/同配置/同执行路径下重复执行 add，验证结果逐元素一致（参见 §6.3.4）                   | 高     |
-| `test_determinism_sum_same_path`             | 同平台/同配置/同执行路径下重复执行 sum，验证结果逐元素一致（参见 §6.3.4）                   | 高     |
-| `test_determinism_dot_same_path`             | 同平台/同配置/同执行路径下重复执行 dot，验证结果逐元素一致（参见 §6.3.4）                   | 高     |
-| `test_determinism_across_dispatch`           | 验证 serial / SIMD / parallel 路径结果在文档化容差内保持一致（容差规范见 §6.2，参见 §6.3.4）| 高     |
+| `test_determinism_add_same_path`            | 同平台/同配置/同执行路径下重复执行 add，验证结果逐元素一致（参见 §6.3.4）                   | 高     |
+| `test_determinism_sum_same_path`            | 同平台/同配置/同执行路径下重复执行 sum，验证结果逐元素一致（参见 §6.3.4）                   | 高     |
+| `test_determinism_dot_same_path`            | 同平台/同配置/同执行路径下重复执行 dot，验证结果逐元素一致（参见 §6.3.4）                   | 高     |
+| `test_determinism_across_dispatch`          | 验证 serial / SIMD / parallel 路径结果在文档化容差内保持一致（容差规范见 §6.2，参见 §6.3.4）| 高     |
 
 ### 5.20 test_simd.rs
 
@@ -664,14 +664,14 @@ fn test_unique_non_contiguous() {
 | `test_invalid_argument_error` | 非法参数返回 `XenonError::InvalidArgument`                                                                   | 高     |
 | `test_invalid_shape_error`    | 非法 shape/元素数不匹配返回 `XenonError::InvalidShape`                                                       | 高     |
 | `test_invalid_storage_mode_conversion_error` | 存储模式转换失败返回 `XenonError::InvalidStorageMode`，含转换上下文                           | 高     |
-| `test_layout_state_query_error_context`      | 查询 `LayoutState` 相关操作失败时，`XenonError::LayoutMismatch` 或 `InvalidLayout` 返回结构化上下文 | 中     |
+| `test_layout_state_query_error_context`      | 查询 `LayoutState` 相关操作失败时，`XenonError::LayoutMismatch` 或 `InvalidLayout` 返回结构化上下文 | 中   |
 | `test_error_display`          | 所有错误类型的 Display 包含上下文                                                                            | 中     |
 | `test_send_sync_contracts`    | 各 storage mode 的 Send/Sync 边界与 `25-safety.md` 一致                                                      | 高     |
 | `test_complex_c99_layout`     | `Complex<T>` 的 C-compatible 布局与 FFI 约定一致                                                             | 高     |
 | `test_ix0_iter_single`        | 零维张量元素迭代恰好产出 1 个元素                                                                            | 高     |
 | `test_zst_storage_no_ub`      | 验证内部实现对零大小类型的安全处理。此为内部实现回归测试，非公开 API 契约测试。                              | 高     |
 
-> **归属说明**：`test_send_sync_contracts` 语义上属于 safety（`25-safety.md`），`test_complex_c99_layout` 属于 FFI 布局（`23-ffi.md`），`test_ix0_iter_single` 属于迭代器（`10-iterator.md`），`test_zst_storage_no_ub` 属于存储/tensor UB 验证（`05-storage.md`）。它们置于 `test_error.rs` 是因为均通过 `XenonError` 统一公开错误边界进行校验，或依赖 error 模块的类型约束（如 `Send`/`Sync` bound 传播需 `XenonError: Send + Sync`）。若后续测试文件职责边界收紧，可分别移至 `test_parallel.rs`、`test_ffi.rs`、`test_iterator.rs`、`test_tensor.rs`。
+**归属说明**：`test_send_sync_contracts` 语义上属于 safety（`25-safety.md`），`test_complex_c99_layout` 属于 FFI 布局（`23-ffi.md`），`test_ix0_iter_single` 属于迭代器（`10-iterator.md`），`test_zst_storage_no_ub` 属于存储/tensor UB 验证（`05-storage.md`）。它们置于 `test_error.rs` 是因为均通过 `XenonError` 统一公开错误边界进行校验，或依赖 error 模块的类型约束（如 `Send`/`Sync` bound 传播需 `XenonError: Send + Sync`）。若后续测试文件职责边界收紧，可分别移至 `test_parallel.rs`、`test_ffi.rs`、`test_iterator.rs`、`test_tensor.rs`。
 
 panic 诊断信息测试：验证 panic message 包含 `需求说明书 §27` 要求的诊断上下文（至少包含错误类别和相关参数子集）。通过 `#[should_panic(expected = "...")]` 或 `std::panic::catch_unwind` 捕获并断言。
 
@@ -951,7 +951,7 @@ fn test_sum_parallel_feature_consistency() {
 
 #### 6.3.3 SIMD 结果一致性
 
-> **Tier 1 精度说明**：逐元素加法（add）是 IEEE 754 保证确定性结果的运算——无论执行路径（scalar/SIMD），只要输入相同，`a + b` 的浮点结果必然相同（加法无中间舍入步骤）。因此 `test_simd_add_consistency` 使用 Tier 1 精度（`ulp_eq_f64_exact`）而非 Tier 2 跨路径容差是合理的。其他运算（如归约 `sum`）涉及跨路径累积顺序差异，必须使用 Tier 2。
+**Tier 1 精度说明**：逐元素加法（add）是 IEEE 754 保证确定性结果的运算——无论执行路径（scalar/SIMD），只要输入相同，`a + b` 的浮点结果必然相同（加法无中间舍入步骤）。因此 `test_simd_add_consistency` 使用 Tier 1 精度（`ulp_eq_f64_exact`）而非 Tier 2 跨路径容差是合理的。其他运算（如归约 `sum`）涉及跨路径累积顺序差异，必须使用 Tier 2。
 
 ```rust,ignore
 #[test]
@@ -986,14 +986,14 @@ fn test_simd_add_consistency() {
 
 确定性专项测试：同输入、同配置、同执行路径重复执行 N 次，验证结果逐元素一致。适用于浮点和复数类型的逐元素运算、归约和内积。
 
-| 测试函数                          | 测试内容                                                                                 | 优先级 |
-| --------------------------------- | ---------------------------------------------------------------------------------------- | ------ |
-| `test_determinism_add_same_path`  | 同平台/同配置/同执行路径下重复执行 add，验证结果逐元素一致                               | 高     |
-| `test_determinism_sum_same_path`  | 同平台/同配置/同执行路径下重复执行 sum，验证结果逐元素一致                               | 高     |
-| `test_determinism_dot_same_path`  | 同平台/同配置/同执行路径下重复执行 dot，验证结果逐元素一致                               | 高     |
+| 测试函数                          | 测试内容                                                                         | 优先级 |
+| --------------------------------- | -------------------------------------------------------------------------------- | ------ |
+| `test_determinism_add_same_path`  | 同平台/同配置/同执行路径下重复执行 add，验证结果逐元素一致                       | 高     |
+| `test_determinism_sum_same_path`  | 同平台/同配置/同执行路径下重复执行 sum，验证结果逐元素一致                       | 高     |
+| `test_determinism_dot_same_path`  | 同平台/同配置/同执行路径下重复执行 dot，验证结果逐元素一致                       | 高     |
 | `test_determinism_across_dispatch` | 验证 serial / SIMD / parallel 路径结果在文档化容差内保持一致（容差规范见 §6.2） | 高     |
 
-> **归属说明**：以上 4 项确定性测试函数归属于 `test_parallel.rs`（§5.19），因为它们验证的核心关注点是并行/向量化调度路径下的结果一致性与可重复性。
+**归属说明**：以上 4 项确定性测试函数归属于 `test_parallel.rs`（§5.19），因为它们验证的核心关注点是并行/向量化调度路径下的结果一致性与可重复性。
 
 ---
 
@@ -1004,7 +1004,7 @@ fn test_simd_add_consistency() {
 | 不变量             | 测试方法                                                                                          | 优先级 |
 | ------------------ | ------------------------------------------------------------------------------------------------- | ------ |
 | `sum` 保加法单位元 | 空数组 sum == 0（参见 `13-reduction.md §5.1`）                                                    | 高     |
-| `transpose` 自反性 | `transpose().transpose()` == 原张量（参见 `16-shape.md §5.1` API 定义；不变量设计参见 `16-shape.md §8.4`）                                    | 高     |
+| `transpose` 自反性 | `transpose().transpose()` == 原张量（参见 `16-shape.md §5.1` API 定义；不变量设计参见 `16-shape.md §8.4`） | 高     |
 | 加法交换律         | `a + b` == `b + a`（同执行路径下精确一致）                                                        | 中     |
 | `unique` 保元素数  | `unique(a).len()` ≤ `a.len()`                                                                     | 中     |
 | `unique` 不含重复  | 对非 `NaN` 元素，结果中不得重复；`NaN` 按 IEEE 754 自反不相等语义逐个保留                         | 中     |
@@ -1182,7 +1182,7 @@ fn prop_broadcast_shape_rule() {
 
 - [ ] **T6**: 实现 `tests/test_construction.rs`
   - 文件: `tests/test_construction.rs`
-  - 内容: 构造方法（zeros/ones/eye/from_shape_vec/from_shape_slice/from_scalar/from_array；`from_vec` 仅覆盖 Ix1 非规范便捷路径（see 18-construction.md §5.3 末尾））
+  - 内容: 构造方法（zeros/ones/eye/from_shape_vec/from_shape_slice/from_scalar/from_array；`from_vec` 仅覆盖 Ix1 非规范便捷路径）
   - 测试: `cargo test --test test_construction`
   - 前置: T1
   - 预计: 25 min
@@ -1238,7 +1238,7 @@ fn prop_broadcast_shape_rule() {
 
 - [ ] **T14**: 实现 `tests/test_output.rs`
   - 文件: `tests/test_output.rs`
-  - 内容: NumPy 风格输出（Display/Debug/截断/复数）
+  - 内容: Numpy 风格输出（Display/Debug/截断/复数）
   - 测试: `cargo test --test test_output`
   - 前置: T1
   - 预计: 10 min
