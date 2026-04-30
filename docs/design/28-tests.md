@@ -91,7 +91,7 @@ tests/
 ├── test_simd.rs                # SIMD computation (result consistency)
 ├── test_error.rs               # Error handling (all error types)
 │
-├── property_tests.rs          # Property-test entry point (integration test target)
+├── property_tests.rs           # Property-test entry point (integration test target)
 └── property/
     ├── tensor_props.rs         # Tensor invariants (transpose involution, unique boundaries, etc.)
     ├── ops_props.rs            # Operation invariants (commutativity/associativity, etc.)
@@ -128,15 +128,17 @@ tests/
 ├── crate::util             # clip, fill, to_contiguous
 ├── crate::convert          # CastTo, type conversion
 ├── crate::format           # NumPy-style formatted output
-├── crate::dispatch            # Dispatch routing (pub(crate); verified indirectly through feature effects)
+├── crate::dispatch         # Dispatch routing (pub(crate); verified indirectly through feature effects)
 └── public API feature effects (`simd` / `parallel`) # Internal backends (including dispatch) are verified indirectly through observable public behavior
 ```
 
-> **API 暴露方式说明**（参见 `01-architecture.md §10`，仅列出重点 API，非穷举）：上方依赖图列出的是实现模块路径，但部分模块的公共 API 通过 TensorBase 固有方法暴露，而非自由函数。测试代码的实际调用方式如下：
-> - TensorBase 固有方法：`t.transpose()`（shape）、`t.unique()`（set）、`t.sum()`（reduction）、`t.clip()` / `t.fill()` / `t.to_contiguous()`（util）、`t.cast()`（convert）、`t.iter()` / `t.axis_iter()`（iter）、`t.dot()`（matrix，另有自由函数入口）、`t.broadcast_to()`（broadcast）
-> - 注：`to_contiguous()` 未列入 §10 但确为 TensorBase inherent method
-> - trait impl：`Display` / `Debug`（format）
-> - 自由函数：`broadcast_shape()`（broadcast）、`zeros()` / `ones()` / `eye()` / `from_shape_vec()` 等（construct）
+**API 暴露方式说明**（参见 `01-architecture.md §10`，仅列出重点 API，非穷举）：上方依赖图列出的是实现模块路径，但部分模块的公共 API 通过 TensorBase 固有方法暴露，而非自由函数。
+
+测试代码的实际调用方式如下：
+- TensorBase 固有方法：`t.transpose()`（shape）、`t.unique()`（set）、`t.sum()`（reduction）、`t.clip()` / `t.fill()` / `t.to_contiguous()`（util）、`t.cast()`（convert）、`t.iter()` / `t.axis_iter()`（iter）、`t.dot()`（matrix，另有自由函数入口）、`t.broadcast_to()`（broadcast）
+- 注：`to_contiguous()` 未列入 §10 但确为 TensorBase inherent method
+- trait impl：`Display` / `Debug`（format）
+- 自由函数：`broadcast_shape()`（broadcast）、`zeros()` / `ones()` / `eye()` / `from_shape_vec()` 等（construct）
 
 ### 4.2 类型级依赖
 
@@ -152,14 +154,14 @@ tests/
 | `iter`      | `Elements`, `AxisIter`, `IndexedIter`（参见 `10-iterator.md §5`）                                              |
 | `matrix`    | `.dot()`（TensorBase 固有方法）；`crate::matrix::dot(&a, &b)`（自由函数）；双入口等价性见上方 §4.1 说明（参见 `12-matrix.md §5`） |
 | `overload`  | `Tensor<A, D>` 运算符 trait bounds（参见 `19-overload.md §5`）                                                 |
-| `util`      | `.clip()`, `.fill()`, `.to_contiguous()`（参见 `20-utility.md §5`）                                           |
+| `util`      | `.clip()`, `.fill()`, `.to_contiguous()`（参见 `20-utility.md §5`）                                            |
 | `convert`   | `CastTo<T>` trait, `.cast()` 张量级转换（参见 `21-type.md §5`；标量级转换使用 `CastTo::<f64>::cast_to`）       |
 | `format`    | `Display`, `Debug` trait（参见 `22-output.md §5`）                                                             |
 | `broadcast` | `broadcast_shape`, `broadcast_to`（参见 `15-broadcast.md §5`）                                                 |
 | `shape`     | `.transpose()`（参见 `16-shape.md §5`）                                                                        |
 | `reduction` | `.sum()`（参见 `13-reduction.md §5`）                                                                          |
-| `construct` | `zeros`, `ones`, `eye`, `from_shape_vec` 构造器（参见 `18-construction.md §5`）                               |
-| `index`     | `Index`/`Range` 索引 trait（参见 `17-indexing.md §5`）                                                          |
+| `construct` | `zeros`, `ones`, `eye`, `from_shape_vec` 构造器（参见 `18-construction.md §5`）                                |
+| `index`     | `Index`/`Range` 索引 trait（参见 `17-indexing.md §5`）                                                         |
 | `ffi`       | `as_ptr()`, `as_mut_ptr()`（参见 `23-ffi.md §5`）；`from_raw_parts` 核心定义归属 `07-tensor.md §5.7`，`23-ffi.md §5` 仅 re-export |
 | `set`       | `.unique()`（参见 `14-set.md §5`）                                                                             |
 | `workspace` | `Workspace`（参见 `24-workspace.md §5`）                                                                       |
