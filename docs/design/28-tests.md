@@ -132,7 +132,8 @@ tests/
 ```
 
 > **API 暴露方式说明**（参见 `01-architecture.md §10`）：上方依赖图列出的是实现模块路径，但部分模块的公共 API 通过 TensorBase 固有方法暴露，而非自由函数。测试代码的实际调用方式如下：
-> - TensorBase 固有方法：`t.transpose()`（shape）、`t.unique()`（set）、`t.sum()`（reduction）、`t.clip()` / `t.fill()` / `t.to_contiguous()`（util）、`t.cast()`（convert）、`t.iter()` / `t.axis_iter()`（iter）、`t.dot()`（matrix，另有自由函数入口）
+> - TensorBase 固有方法：`t.transpose()`（shape）、`t.unique()`（set）、`t.sum()`（reduction）、`t.clip()` / `t.fill()` / `t.to_contiguous()`（util）、`t.cast()`（convert）、`t.iter()` / `t.axis_iter()`（iter）、`t.dot()`（matrix，另有自由函数入口）、`t.broadcast_to()`（broadcast）
+> - 注：`01-architecture.md §10` 仅列出重点 API，非穷举；`to_contiguous()` 未列入 §10 但确为 TensorBase inherent method
 > - trait impl：`Display` / `Debug`（format）
 > - 自由函数：`broadcast_shape()`（broadcast）、`zeros()` / `ones()` / `eye()` / `from_shape_vec()` 等（construct）
 
@@ -677,10 +678,12 @@ fn test_unique_non_contiguous() {
 
 | 测试函数                    | 测试内容                               | 优先级 |
 | --------------------------- | -------------------------------------- | ------ |
-| `prop_transpose_involution` | `transpose().transpose()` 与原张量相等 | 高     |
-| `prop_add_commutative`      | 逐元素加法满足交换律（同执行路径下精确一致） | 中     |
-| `prop_unique_len_bound`     | `unique(a).len()` 不超过 `a.len()`     | 中     |
-| `prop_broadcast_shape_rule` | 广播结果形状遵循 NumPy 规则            | 高     |
+| `prop_transpose_involution` | `transpose().transpose()` 与原张量相等（tensor_props.rs） | 高     |
+| `prop_add_commutative`      | 逐元素加法满足交换律（同执行路径下精确一致）（ops_props.rs） | 中     |
+| `prop_unique_len_bound`     | `unique(a).len()` 不超过 `a.len()`（ops_props.rs） | 中     |
+| `prop_unique_no_duplicate`  | 对非 `NaN` 元素 `unique` 结果不含重复；`NaN` 按 IEEE 754 自反不相等语义逐个保留（ops_props.rs） | 中     |
+| `prop_sum_additive_identity`| 空数组 `sum == 0`，验证归约保加法单位元（ops_props.rs） | 高     |
+| `prop_broadcast_shape_rule` | 广播结果形状遵循 NumPy 规则（shape_props.rs） | 高     |
 
 ### 5.23 test_error.rs
 
@@ -935,7 +938,7 @@ fn test_ixdyn_high_rank_scenarios() {
 
 #### 6.3.1 并行无数据竞争
 
-线程安全测试方案（参见 `25-safety.md §8`）：
+线程安全测试方案（参见 `25-safety.md §5` Send/Sync 实现规则、`25-safety.md §8.5` 集成测试、`25-safety.md §8.2` 单元测试清单）：
 
 | 方式            | 说明                                                     |
 | --------------- | -------------------------------------------------------- |
@@ -1073,6 +1076,40 @@ fn prop_add_commutative() {
         }
     }
 }
+
+// tests/property/ops_props.rs
+#[test]
+fn prop_unique_no_duplicate() {
+    for len in 2..64usize {
+        let t = Tensor1::from_shape_vec([len], (0..len).map(|idx| idx as f64).collect())
+            .expect("shape and data length must match");
+        let u = t.unique();
+        let mut seen: Vec<f64> = Vec::new();
+        for v in u.iter() {
+            assert!(!seen.contains(v), "duplicate value found in unique output");
+            seen.push(*v);
+        }
+    }
+}
+
+#[test]
+fn prop_sum_additive_identity() {
+    let t = Tensor1::<f64>::zeros([0]).expect("shape is valid");
+    assert_eq!(t.sum(), 0.0);
+}
+
+// tests/property/shape_props.rs
+#[test]
+fn prop_broadcast_shape_rule() {
+    for m in 1..8usize {
+        for n in 1..8usize {
+            let a = Tensor2::<f64>::zeros([m, n]).expect("shape is valid");
+            let b = Tensor1::<f64>::zeros([n]).expect("shape is valid");
+            let result = (&a + &b).unwrap();
+            assert_eq!(result.shape(), &[m, n]);
+        }
+    }
+}
 ```
 
 ---
@@ -1133,7 +1170,7 @@ fn prop_add_commutative() {
   - 内容: `assert_tensor_exact_real` / `assert_tensor_exact_complex`、跨路径容差 helper、数学函数容差 helper、标准形状常量、数据生成函数
   - 测试: 编译通过
   - 前置: 无
-  - 预计: 10 min
+  - 预计: 15 min
 
 ### Wave 2: 核心功能测试
 
@@ -1142,56 +1179,56 @@ fn prop_add_commutative() {
   - 内容: 张量核心功能（shape/strides/view/to_owned/type_aliases/debug_display/arc）
   - 测试: `cargo test --test test_tensor`
   - 前置: T1
-  - 预计: 10 min
+  - 预计: 30 min
 
 - [ ] **T3**: 实现 `tests/test_math.rs`
   - 文件: `tests/test_math.rs`
   - 内容: 逐元素运算（算术/数学/比较/逻辑）
   - 测试: `cargo test --test test_math`
   - 前置: T1
-  - 预计: 10 min
+  - 预计: 30 min
 
 - [ ] **T3b**: 实现 `tests/test_overload.rs`
   - 文件: `tests/test_overload.rs`
   - 内容: 运算符重载（Add/Sub/Mul/Div trait 实现、广播分派、Result 所有权语义、标量运算符）
   - 测试: `cargo test --test test_overload`
   - 前置: T1, T3
-  - 预计: 10 min
+  - 预计: 25 min
 
 - [ ] **T4**: 实现 `tests/test_broadcast.rs`
   - 文件: `tests/test_broadcast.rs`
   - 内容: 广播机制（标量/行/列/不兼容/只读）
   - 测试: `cargo test --test test_broadcast`
   - 前置: T1
-  - 预计: 10 min
+  - 预计: 15 min
 
 - [ ] **T5**: 实现 `tests/test_index.rs`
   - 文件: `tests/test_index.rs`
   - 内容: 索引操作（多维索引/越界返回错误/切片/步长）
   - 测试: `cargo test --test test_index`
   - 前置: T1
-  - 预计: 10 min
+  - 预计: 20 min
 
 - [ ] **T6**: 实现 `tests/test_construction.rs`
   - 文件: `tests/test_construction.rs`
   - 内容: 构造方法（zeros/ones/eye/from_shape_vec/from_shape_slice/from_scalar/from_array；`from_vec` 仅覆盖 Ix1 非规范便捷路径（see 18-construction.md §5.3 末尾））
   - 测试: `cargo test --test test_construction`
   - 前置: T1
-  - 预计: 10 min
+  - 预计: 25 min
 
 - [ ] **T7**: 实现 `tests/test_reduction.rs`
   - 文件: `tests/test_reduction.rs`
   - 内容: 归约运算（sum/sum_axis/keepdims/empty/NaN/overflow）
   - 测试: `cargo test --test test_reduction`
   - 前置: T1
-  - 预计: 10 min
+  - 预计: 20 min
 
 - [ ] **T8**: 实现 `tests/test_iterator.rs`
   - 文件: `tests/test_iterator.rs`
   - 内容: 迭代器（elements/axis/indexed）
   - 测试: `cargo test --test test_iterator`
   - 前置: T1
-  - 预计: 10 min
+  - 预计: 15 min
 
 - [ ] **T9**: 实现 `tests/test_matrix.rs`
   - 文件: `tests/test_matrix.rs`
@@ -1205,7 +1242,7 @@ fn prop_add_commutative() {
   - 内容: 集合操作（unique 无序结果/整数/复数/NaN/±0.0）
   - 测试: `cargo test --test test_set`
   - 前置: T1
-  - 预计: 10 min
+  - 预计: 15 min
 
 - [ ] **T11**: 实现 `tests/test_shape.rs`
   - 文件: `tests/test_shape.rs`
@@ -1219,7 +1256,7 @@ fn prop_add_commutative() {
   - 内容: 类型转换（cast/to_owned/into_owned）
   - 测试: `cargo test --test test_conversion`
   - 前置: T1
-  - 预计: 10 min
+  - 预计: 15 min
 
 - [ ] **T13**: 实现 `tests/test_utility.rs`
   - 文件: `tests/test_utility.rs`
@@ -1240,7 +1277,7 @@ fn prop_add_commutative() {
   - 内容: `XenonError` 边界与 display 输出验证（其中 workspace 相关公开边界断言 `XenonError::Workspace` 结构化字段）
   - 测试: `cargo test --test test_error`
   - 前置: T1
-  - 预计: 10 min
+  - 预计: 20 min
 
 ### Wave 3: 特化测试
 
@@ -1249,21 +1286,21 @@ fn prop_add_commutative() {
   - 内容: FFI 集成（指针/BLAS 兼容性辅助判断/export/export_mut/offset）
   - 测试: `cargo test --test test_ffi`
   - 前置: T2
-  - 预计: 10 min
+  - 预计: 20 min
 
 - [ ] **T17**: 实现 `tests/test_parallel.rs`
   - 文件: `tests/test_parallel.rs`
   - 内容: 启用 `parallel` feature 后公开 `sum`/`add` 行为一致性、并发读取、嵌套禁止
   - 测试: `cargo test --test test_parallel --features parallel`
   - 前置: T3, T7
-  - 预计: 10 min
+  - 预计: 15 min
 
 - [ ] **T18**: 实现 `tests/test_simd.rs`
   - 文件: `tests/test_simd.rs`
   - 内容: SIMD 结果一致性（add/sum/fallback）
   - 测试: `cargo test --test test_simd --features simd`
   - 前置: T3, T7
-  - 预计: 10 min
+  - 预计: 15 min
 
 - [ ] **T19**: 校验测试矩阵仅覆盖 `std` 环境
   - 文件: `.github/workflows/test.yml`
@@ -1276,10 +1313,10 @@ fn prop_add_commutative() {
 
 - [ ] **T20**: 实现 `tests/property` 属性测试模块
   - 文件: `tests/property_tests.rs`, `tests/property/tensor_props.rs`, `tests/property/ops_props.rs`, `tests/property/shape_props.rs`
-  - 内容: transpose 自反/加法交换律/unique 不含重复
+  - 内容: transpose 自反/加法交换律/unique 不含重复/sum 保加法单位元/广播形状一致性
   - 测试: `cargo test --test property_tests`
   - 前置: T3, T7, T11
-  - 预计: 10 min
+  - 预计: 20 min
 
 ### Wave 5: CI 集成
 
@@ -1288,7 +1325,7 @@ fn prop_add_commutative() {
   - 内容: `std` 环境下的默认/`parallel`/`simd`/全 feature 组合；不额外扩展平台矩阵，不设置覆盖率门禁
   - 测试: CI 触发运行
   - 前置: T1-T20
-  - 预计: 10 min
+  - 预计: 15 min
 
 ---
 
@@ -1414,6 +1451,8 @@ fn compile_fail_harness() {
 | `test_parallel.rs`     | `parallel`          | `09-parallel.md`                |
 | `test_simd.rs`         | `simd`              | `08-simd.md`                    |
 | `test_error.rs`        | `error`             | `26-error.md`                   |
+| `compile_fail_tests.rs`| 编译期断言           | `03-element.md`, `02-dimension.md`, `05-storage.md` |
+| `property_tests.rs`    | 属性测试（shape/math/broadcast 不变量） | `16-shape.md`, `11-math.md`, `15-broadcast.md` |
 
 **说明**：workspace 错误直接构造 `XenonError::Workspace`，集成测试通过公共 API 验证结构化字段；`test_workspace.rs` 关注 workspace 语义与公开诊断文本（含 workspace 与 ffi 的协同场景，参见 `24-workspace.md`），`test_error.rs` 关注统一公开错误边界。`test_ffi.rs` 仅覆盖 ffi 模块自身语义（原始指针、BLAS 兼容、导出前提），不涉及 workspace 协同——该协同场景已由 `test_workspace.rs` 覆盖。
 

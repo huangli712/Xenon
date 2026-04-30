@@ -247,8 +247,8 @@ L3: Examples (examples/)
 //!
 //! # fn demo() -> xenon::Result<()> {
 //! // Create tensors (see 18-construction.md §5.1 for constructor signatures)
-//! let a = Tensor1::<f64>::zeros([5])?;
-//! let b = Tensor2::<f64>::zeros([3, 4])?;
+//! let a = Tensor::<f64, _>::zeros([5])?;
+//! let b = Tensor::<f64, _>::zeros([3, 4])?;
 //!
 //! // Element-wise operations with broadcasting
 //! let sum = (&a + &a)?;
@@ -371,7 +371,7 @@ L3: Examples (examples/)
 /// # use xenon::prelude::*;
 ///
 /// # fn demo() -> xenon::Result<()> {
-/// let t = Tensor1::from_shape_vec([3], vec![1.0, 2.0, 3.0])?;
+/// let t = Tensor::<f64, _>::from_shape_vec([3], vec![1.0, 2.0, 3.0])?;
 /// assert_eq!(t.sum(), 6.0);
 /// # Ok(())
 /// # }
@@ -398,7 +398,7 @@ pub fn sum(&self) -> A { ... }
 /// # use xenon::prelude::*;
 ///
 /// # fn demo() -> xenon::Result<()> {
-/// let t = Tensor1::<f64>::ones([1_000_000])?;
+/// let t = Tensor::<f64, _>::ones([1_000_000])?;
 /// let s = t.sum();
 /// assert_eq!(s, 1_000_000.0);
 /// # Ok(())
@@ -433,7 +433,7 @@ use xenon::prelude::*;
 
 fn main() -> xenon::Result<()> {
     // Step 1: Create tensors
-    let a = Tensor2::<f64>::zeros([3, 4])?;
+    let a = Tensor::<f64, _>::zeros([3, 4])?;
     println!("Created 3x4 zero matrix: shape={:?}", a.shape());
 
     // Step 2: Perform operation
@@ -555,10 +555,10 @@ pub fn sum(&self) -> A { ... }
 /// # use xenon::prelude::*;
 ///
 /// # fn demo() -> xenon::Result<()> {
-/// let t = Tensor1::from_shape_vec([3], vec![1.0, 2.0, 3.0])?;
+/// let t = Tensor::<f64, _>::from_shape_vec([3], vec![1.0, 2.0, 3.0])?;
 /// assert_eq!(t.sum(), 6.0);
 ///
-/// let empty = Tensor1::<f64>::zeros([0])?;
+/// let empty = Tensor::<f64, _>::zeros([0])?;
 /// assert_eq!(empty.sum(), 0.0);
 /// # Ok(())
 /// # }
@@ -587,7 +587,7 @@ pub fn sum(&self) -> A { ... }
 /// ```
 /// # use xenon::prelude::*;
 /// # fn demo() -> xenon::Result<()> {
-/// let t = Tensor1::from_shape_vec([3], vec![1.0, 2.0, 3.0])?;
+/// let t = Tensor::<f64, _>::from_shape_vec([3], vec![1.0, 2.0, 3.0])?;
 /// assert_eq!(t.sum(), 6.0);
 /// # Ok(())
 /// # }

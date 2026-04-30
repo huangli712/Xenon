@@ -254,6 +254,7 @@ xenon/
 │   │
 │   ├── test_tensor.rs         # Tensor core functionality (creation/query/type aliases)
 │   ├── test_math.rs           # Element-wise operations (arithmetic/math/comparison/logic)
+│   ├── test_overload.rs       # Operator overloading (Add/Sub/Mul/Div trait implementations)
 │   ├── test_broadcast.rs      # Broadcasting (scalar/vector/matrix broadcasting)
 │   ├── test_index.rs          # Indexing operations (multi-dimensional indexing/range slicing)
 │   ├── test_construction.rs   # Constructors (zeros/ones/eye/from_shape_vec/...)
