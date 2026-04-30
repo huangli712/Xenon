@@ -613,6 +613,10 @@ fn test_unique_non_contiguous() {
 | `test_par_dot_consistency`                  | 并行 dot 与串行 dot 结果一致                                                                | 高     |
 | `test_parallel_read`                        | 多线程并发只读访问安全（参见 `25-safety.md §5`）                                            | 高     |
 | `test_nested_parallel_falls_back_to_serial` | 嵌套并行检测后自动回退串行                                                                  | 中     |
+| `test_determinism_add_same_path`             | 同平台/同配置/同执行路径下重复执行 add，验证结果逐元素一致（参见 §6.3.4）                   | 高     |
+| `test_determinism_sum_same_path`             | 同平台/同配置/同执行路径下重复执行 sum，验证结果逐元素一致（参见 §6.3.4）                   | 高     |
+| `test_determinism_dot_same_path`             | 同平台/同配置/同执行路径下重复执行 dot，验证结果逐元素一致（参见 §6.3.4）                   | 高     |
+| `test_determinism_across_dispatch`           | 验证 serial / SIMD / parallel 路径结果在文档化容差内保持一致（容差规范见 §6.2，参见 §6.3.4）| 高     |
 
 ### 5.20 test_simd.rs
 
@@ -658,7 +662,7 @@ fn test_unique_non_contiguous() {
 | `test_invalid_argument_error` | 非法参数返回 `XenonError::InvalidArgument`                                                                   | 高     |
 | `test_invalid_shape_error`    | 非法 shape/元素数不匹配返回 `XenonError::InvalidShape`                                                       | 高     |
 | `test_invalid_storage_mode_conversion_error` | 存储模式转换失败返回 `XenonError::InvalidStorageMode`，含转换上下文                           | 高     |
-| `test_layout_state_query_error_context`      | 布局状态查询失败时返回结构化上下文                                                            | 中     |
+| `test_layout_state_query_error_context`      | 查询 `LayoutState` 相关操作失败时，`XenonError::LayoutMismatch` 或 `InvalidLayout` 返回结构化上下文 | 中     |
 | `test_error_display`          | 所有错误类型的 Display 包含上下文                                                                            | 中     |
 | `test_send_sync_contracts`    | 各 storage mode 的 Send/Sync 边界与 `25-safety.md` 一致                                                      | 高     |
 | `test_complex_c99_layout`     | `Complex<T>` 的 C-compatible 布局与 FFI 约定一致                                                             | 高     |
