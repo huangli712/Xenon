@@ -501,7 +501,7 @@ pub unsafe trait StorageIntoOwned: Storage {
 
 ### 5.10 StorageIntoRaw Trait
 
-消耗式解构为裸指针，用于 `into_raw_parts()`（参见 `23-ffi.md §5.4`）。
+消耗式解构为裸指针，用于 `into_raw_parts()`（参见 `23-ffi.md §5.8`）。
 
 ```rust,ignore
 /// Storage types that can be destructured into raw parts.
@@ -514,7 +514,7 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
     ///
     /// The caller must preserve the allocator metadata required to reconstruct
     /// the owned buffer. In Xenon's tensor-level FFI API, this metadata is carried
-    /// by `OwnedRawParts` (see `23-ffi.md §5.4`).
+    /// by `OwnedRawParts` (see `23-ffi.md §5.8`).
     unsafe fn into_raw(self) -> *mut Self::Elem;
 }
 ```

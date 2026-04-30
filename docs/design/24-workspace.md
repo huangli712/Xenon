@@ -1,8 +1,10 @@
 # 临时工作空间模块设计
 
-> 文档编号: 24 | 模块: `src/workspace/` | 阶段: Phase 4
-> 前置文档: `05-storage.md`
-> 需求参考: `需求说明书 §26`, `需求说明书 §27`, `需求说明书 §28.1`, `需求说明书 §28.2`
+> 文档编号: 24
+> 模块目录: src/workspace/
+> 任务阶段: Phase 4
+> 前置文档: 00-coding.md, 01-architecture.md, 26-error.md
+> 需求参考: 需求说明书 §26 - §28
 > 范围声明: 范围内
 
 ---
@@ -34,17 +36,10 @@
 
 | 类型     | 内容                                                                                                       |
 | -------- | ---------------------------------------------------------------------------------------------------------- |
-| 需求映射 | `需求说明书 §26`, `需求说明书 §27`, `需求说明书 §28.1`, `需求说明书 §28.2`                                 |
+| 需求映射 | 需求说明书 §26 - §28                                                                                       |
 | 范围内   | 对齐分配、借用守卫、`split_at_mut` 递归分割、`ensure_capacity` 单向增长，以及 `MaybeUninit` scratch 语义。 |
 | 范围外   | 持久化分配、custom allocators、arena / pool 策略与跨线程共享工作空间。                                     |
 | 非目标   | 不把 workspace 设计成通用分配器框架，不新增第三方 allocator / sync 依赖。                                  |
-
-| 需求条款         | 本文承接方式                                                                                                                             |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| 需求说明书 §26 临时工作空间 | 定义对齐分配、借用守卫、`split_at_mut()` 与 `ensure_capacity()` 的行为边界。                                                             |
-| 需求说明书 §27 错误处理     | 公开入口统一使用 `crate::error::Result<_>`；其错误值为 `XenonError::Workspace { operation, category, size, align, split, len, reason }`，覆盖长度、对齐、ZST、越界和扩容溢出。 |
-| 需求说明书 §28.1 文档       | 关键 API 提供文档和示例；非完整可编译示例统一标记 `ignore`。                                                                             |
-| 需求说明书 §28.2 测试       | 测试计划覆盖单元、集成、边界、类型边界与借用状态机路径。                                                                                 |
 
 ---
 
@@ -52,9 +47,9 @@
 
 ```
 src/
+├── error.rs                    # WorkspaceErrorCategory definitions (shared error module)
 └── workspace/               # Temporary workspace (directory module)
     ├── mod.rs               # Module root, re-exports
-    ├── error.rs             # WorkspaceErrorCategory definitions
     ├── workspace.rs         # Workspace struct, constants, constructors, destructor
     ├── borrow.rs            # WorkspaceBorrow and WorkspaceBorrowMut borrow guards
     ├── split.rs             # SplitBorrowMut split guard
@@ -65,21 +60,22 @@ src/
 
 ## 4. 依赖关系
 
-### 4.1 依赖图
+### 4.1 依赖图（ASCII）
 
 ```
-src/workspace/
-├── mod.rs          # Re-exports: Workspace, WorkspaceBorrow, WorkspaceBorrowMut, SplitBorrowMut
-├── error.rs        # Defines WorkspaceErrorCategory; consumed by workspace.rs/split.rs/expand.rs when constructing XenonError::Workspace
-├── workspace.rs    # Depends on error
-├── borrow.rs       # Depends on workspace (by reference)
-├── split.rs        # Depends on workspace (by reference) and error
-└── expand.rs       # Depends on workspace (&mut self) and error
+src/
+├── error.rs            # Defines WorkspaceErrorCategory (alongside FfiErrorCategory, ConversionFailureReason)
+└── workspace/
+    ├── mod.rs          # Re-exports: Workspace, WorkspaceBorrow, WorkspaceBorrowMut, SplitBorrowMut
+    ├── workspace.rs    # Depends on crate::error (WorkspaceErrorCategory, XenonError)
+    ├── borrow.rs       # Depends on workspace (by reference)
+    ├── split.rs        # Depends on workspace (by reference) and crate::error
+    └── expand.rs       # Depends on workspace (&mut self) and crate::error
 
 External dependencies:
 ├── core            # ptr::NonNull, marker, sync::atomic, fmt
 ├── alloc           # alloc::alloc, alloc::dealloc, alloc::Layout
-└── crate::error      # XenonError public boundary mapping
+└── crate::error    # WorkspaceErrorCategory, XenonError public boundary mapping
 ```
 
 ### 4.2 类型级依赖
@@ -88,8 +84,7 @@ External dependencies:
 | -------------------- | ---------------------------------------------------------------------- |
 | `core`               | `NonNull<u8>`, `PhantomData`, `AtomicU8`, `fmt::Debug`, `fmt::Display` |
 | `alloc`              | `alloc()`, `dealloc()`, `Layout`                                       |
-| `workspace/error.rs` | `WorkspaceErrorCategory`（workspace 错误类别）                         |
-| `crate::error`       | `XenonError`（公开 Xenon API 错误类型，含 `Workspace` 变体）           |
+| `crate::error`       | `WorkspaceErrorCategory`（workspace 错误类别）、`XenonError`（公开 Xenon API 错误类型，含 `Workspace` 变体） |
 
 ### 4.3 依赖合法性
 
@@ -101,7 +96,7 @@ External dependencies:
 
 ### 4.4 依赖方向声明
 
-> **依赖方向：单向。** `workspace` 仅依赖 `core`、`alloc`、原子能力、模块内 `WorkspaceErrorCategory`，以及 `crate::error` 中 `XenonError::Workspace` 的公开错误边界，不依赖 `tensor`（参见 `07-tensor.md §3`）。上游库和 `tensor` 可消费 `workspace`。
+依赖方向：单向。`workspace` 仅依赖 `core`、`alloc`、原子能力、`crate::error` 中的 `WorkspaceErrorCategory`，以及 `crate::error` 中 `XenonError::Workspace` 的公开错误边界，不依赖 `tensor`（参见 `07-tensor.md §4.4`）。上游库和 `tensor` 可消费 `workspace`。
 
 ---
 
@@ -179,9 +174,9 @@ pub struct Workspace {
 }
 ````
 
-> **设计决策：** 使用 `AtomicU8` 管理借用状态而非 `Mutex`，原因：无锁、状态简单（仅需 3 个值）。当前版本默认运行于 `std` 环境，因此直接依赖标准平台提供的原子与分配能力。
+**设计决策：** 使用 `AtomicU8` 管理借用状态而非 `Mutex`，原因：无锁、状态简单（仅需 3 个值）。当前版本默认运行于 `std` 环境，因此直接依赖标准平台提供的原子与分配能力。
 
-> **设计备注：** 当前实现使用 `AtomicU8`/`AtomicUsize` 管理借用状态。由于 `Workspace` 当前实现选择为 `!Send + !Sync`，理论上可以使用 `Cell`/`RefCell` 替代以简化实现。选择原子操作是为了在未来版本可能支持跨线程借用检查时减少迁移成本。
+**设计备注：** 当前实现使用 `AtomicU8`/`AtomicUsize` 管理借用状态。由于 `Workspace` 当前实现选择为 `!Send + !Sync`，理论上可以使用 `Cell`/`RefCell` 替代以简化实现。选择原子操作是为了在未来版本可能支持跨线程借用检查时减少迁移成本。
 
 ### 5.2 常量
 
@@ -215,9 +210,9 @@ impl Workspace {
 
 ### 5.3 构造方法
 
-> **错误公开边界**：公开 API 直接构造 `XenonError::Workspace { operation, category, size, align, split, len, reason }` 报告错误，详见 `26-error.md`。
->
-> **结果类型说明：** 公开 API 统一使用 `Result<T, XenonError>`，`crate::error::Result<_>` 为等价类型别名。
+- **错误公开边界**：公开 API 直接构造 `XenonError::Workspace` 报告错误，详见 `26-error.md`。
+
+- **结果类型说明：** 公开 API 统一使用 `Result<T, XenonError>`，`crate::error::Result<_>` 为等价类型别名。
 
 ````rust,ignore
 impl Workspace {
@@ -230,7 +225,7 @@ impl Workspace {
     ///
     /// # Errors
     ///
-    /// - `XenonError::Workspace { operation, category, size, align, split, len, reason }`: Memory allocation failed or layout parameters invalid
+    /// - `XenonError::Workspace`: Memory allocation failed or layout parameters invalid
     ///
     /// # Example
     ///
@@ -316,6 +311,7 @@ impl Drop for Workspace {
 /// Immutable borrow guard.
 ///
 /// RAII guard that automatically returns the workspace on drop.
+/// Inherits `!Send + !Sync` from `&'a Workspace`.
 pub struct WorkspaceBorrow<'a> {
     /// Start pointer of the borrowed scratch region.
     ptr: NonNull<u8>,
@@ -328,6 +324,7 @@ pub struct WorkspaceBorrow<'a> {
 /// Mutable borrow guard.
 ///
 /// RAII guard that automatically returns the workspace on drop.
+/// Inherits `!Send + !Sync` from `&'a Workspace`.
 pub struct WorkspaceBorrowMut<'a> {
     /// Start pointer of the borrowed scratch region.
     ptr: NonNull<u8>,
@@ -342,7 +339,7 @@ impl Workspace {
     ///
     /// # Errors
     ///
-    /// `XenonError::Workspace { operation, category, size, align, split, len, reason }`: Workspace is already borrowed.
+    /// `XenonError::Workspace`: Workspace is already borrowed.
     ///
     /// Note: the current design allows at most one active read guard at a time.
     /// This keeps the runtime state machine simple and matches the workspace's
@@ -353,7 +350,7 @@ impl Workspace {
     /// `borrow()`/`borrow_mut()` take `&self` rather than `&mut self` because
     /// exclusivity is enforced at runtime by the internal `AtomicU8` state
     /// machine. Concurrent or overlapping borrow attempts are rejected by
-    /// returning a `XenonError::Workspace { operation, category, size, align, split, len, reason }` value.
+    /// returning a `XenonError::Workspace` value.
     pub fn borrow(&self) -> Result<WorkspaceBorrow<'_>> {
         let prev = self.borrow_state.compare_exchange(
             Self::BORROW_NONE,
@@ -385,7 +382,7 @@ impl Workspace {
     ///
     /// # Errors
     ///
-    /// `XenonError::Workspace { operation, category, size, align, split, len, reason }`: Workspace is already borrowed.
+    /// `XenonError::Workspace`: Workspace is already borrowed.
     pub fn borrow_mut(&self) -> Result<WorkspaceBorrowMut<'_>> {
         let prev = self.borrow_state.compare_exchange(
             Self::BORROW_NONE,
@@ -481,6 +478,30 @@ impl<'a> WorkspaceBorrowMut<'a> {
                 self.len,
             )
         }
+    }
+
+    /// Interprets an initialized prefix as `&mut [u8]`.
+    ///
+    /// # Safety
+    ///
+    /// The caller must guarantee that the first `initialized_len` bytes have been
+    /// fully initialized before calling this method.
+    pub unsafe fn assume_init_slice(
+        &mut self,
+        initialized_len: usize,
+    ) -> Result<&mut [u8]> {
+        if initialized_len > self.len {
+            return Err(XenonError::Workspace {
+                operation: "assume_init_slice".into(),
+                category: WorkspaceErrorCategory::InvalidLayout,
+                size: Some(initialized_len),
+                align: None,
+                split: None,
+                len: Some(self.len),
+                reason: Some("initialized_len exceeds borrow length".into()),
+            });
+        }
+        Ok(core::slice::from_raw_parts_mut(self.ptr.as_ptr(), initialized_len))
     }
 
     /// Typed access to possibly-uninitialized scratch memory.
@@ -635,6 +656,9 @@ impl<'a> Drop for WorkspaceBorrowMut<'a> {
 /// `as_maybe_uninit_slice()`, `len()`, `split_at_mut()`, and `Drop`. This type deliberately does not
 /// expose `as_mut_ptr()`, `is_empty()`, or typed `assume_init_*` helpers until
 /// their aliasing and initialization contracts are separately frozen.
+///
+/// Inherits `!Send + !Sync` from `&'a Workspace` — the guard is strictly
+/// thread-local, matching the parent workspace's thread affinity.
 pub struct SplitBorrowMut<'a> {
     /// Start pointer of this split sub-space.
     ptr: NonNull<u8>,
@@ -673,7 +697,7 @@ impl Workspace {
     ///
     /// # Errors
     ///
-    /// - `XenonError::Workspace { operation, category, size, align, split, len, reason }`: `mid > capacity` or already borrowed
+    /// - `XenonError::Workspace`: `mid > capacity` or already borrowed
     ///
     /// # Example
     ///
@@ -854,7 +878,7 @@ impl Workspace {
     ///
     /// # Errors
     ///
-    /// - `XenonError::Workspace { operation, category, size, align, split, len, reason }`: Workspace is already borrowed or memory allocation failed
+    /// - `XenonError::Workspace`: Workspace is already borrowed or memory allocation failed
     ///
     /// # Example
     ///
@@ -886,7 +910,7 @@ impl Workspace {
 
         // 1.5x growth
         // Growth-factor arithmetic must use checked_mul to avoid usize overflow.
-        // On overflow, return XenonError::Workspace { operation, category, size, align, split, len, reason }
+        // On overflow, return XenonError::Workspace
         // at the public boundary rather than
         // panicking or silently wrapping.
         let grown = self.capacity
@@ -931,10 +955,11 @@ impl Workspace {
                 reason: None,
             })?;
 
-        // The implementation may copy old bytes during growth, but callers must
-        // not rely on content preservation. All previous views and borrows are
-        // invalid after reallocation, and the scratch region must be treated as
-        // unspecified until re-initialized.
+        // Implementation detail: bytes may be copied during growth, but this is
+        // NOT part of the stable public contract. Callers must not rely on
+        // content preservation. All previous views and borrows are invalid after
+        // reallocation, and the scratch region must be treated as unspecified
+        // until re-initialized.
         // SAFETY: src and dst do not overlap, copy min(old, new) bytes
         unsafe {
             core::ptr::copy_nonoverlapping(
@@ -962,9 +987,8 @@ impl Workspace {
 }
 ````
 
-> **错误映射说明：** `reallocate()` 使用统一的 `Result<()>` 别名作为模块内实现签名，并直接构造 `XenonError::Workspace { operation, category, size, align, split, len, reason }`；不得绕过统一错误模型。
-
-> **扩容语义说明：** `ensure_capacity()` / `reallocate()` 的公开契约仅保证扩容后容量不小于请求值且对齐保持不变。当前实现可能复制旧缓冲区中的字节，但调用方不得依赖内容被保留；扩容后所有旧视图与借用均失效，必须把整个 scratch 区域重新视为 unspecified 状态，并在重新初始化后再通过 `assume_init_*` 系列 API 解释为已初始化数据。
+- **错误映射说明：** `reallocate()` 使用统一的 `Result<()>` 别名作为模块内实现签名，并直接构造 `XenonError::Workspace`；不得绕过统一错误模型。
+- **扩容语义说明：** `ensure_capacity()` / `reallocate()` 的公开契约仅保证扩容后容量不小于请求值且对齐保持不变。当前实现可能复制旧缓冲区中的字节，但调用方不得依赖内容被保留；扩容后所有旧视图与借用均失效，必须把整个 scratch 区域重新视为 unspecified 状态，并在重新初始化后再通过 `assume_init_*` 系列 API 解释为已初始化数据。
 
 ### 5.9 Good/Bad 对比
 
@@ -1001,7 +1025,7 @@ let mut buf = ws.borrow_mut()?;
 // Bad - Re-enter a borrow-only API while a guard is still alive
 let ws = Workspace::new(256, 64)?;
 let _buf = ws.borrow_mut()?;
-let _again = ws.split_at_mut(128)?;  // Returns `XenonError::Workspace { operation, category, size, align, split, len, reason }` at runtime
+let _again = ws.split_at_mut(128)?;  // Returns `XenonError::Workspace` at runtime
 ```
 
 ---
@@ -1013,12 +1037,12 @@ let _again = ws.split_at_mut(128)?;  // Returns `XenonError::Workspace { operati
 ```
 Workspace memory layout (64-byte aligned)
 
-Address:  0x00           0x40           0x80           0xC0
-          ├──────────────┼──────────────┼──────────────┼──────────────┤
+Address:  0x00        0x40        0x80        0xC0
+          ├───────────┼───────────┼───────────┼───────────┤
 Data:     |  scratch  |  scratch  |  scratch  |  scratch  |
-           |  buffer  |  buffer  |  buffer  |  buffer  |
-           └────────────┴────────────┴────────────┴────────────┘
-           │<───────────────── capacity ─────────────────>│
+          |  buffer   |  buffer   |  buffer   |  buffer   |
+          └───────────┴───────────┴───────────┴───────────┘
+          │<───────────────── capacity ──────────────────>│
 
           ↑
           ptr (NonNull<u8>)
@@ -1037,7 +1061,7 @@ Traditional approach (requires allocation):
          ▼ Allocate a new Workspace (512 bytes)
 ┌──────────────────┐  ┌──────────────────┐
 │ Left [512 bytes] │  │ Right [512 bytes]│
-│ (separate alloc)  │  │ (separate alloc)  │
+│ (separate alloc) │  │ (separate alloc) │
 └──────────────────┘  └──────────────────┘
          O(n) memory copy ❌
 
@@ -1052,32 +1076,36 @@ This design (zero allocation):
 │ SplitBorrowMut   │  │ SplitBorrowMut   │
 │ ptr = 0x1000     │  │ ptr = 0x1200     │
 │ len = 512        │  │ len = 512        │
-│ (view, no alloc)  │  │ (view, no alloc)  │
+│ (view, no alloc) │  │ (view, no alloc) │
 └──────────────────┘  └──────────────────┘
          O(1) ✓
 ```
 
 ### 6.3 split_at_mut 安全设计
 
-> **安全设计决策：** `split_at_mut` 采用消费式设计（consuming self）而非借用：调用 `split_at_mut(self, mid)` 消耗原 `SplitBorrowMut`，返回两个新的子 `SplitBorrowMut`。这确保每个 `SplitBorrowMut` 实例有独立的生命周期，避免计数器不一致问题。原始 `SplitBorrowMut` 被消耗后不再有效，两个子分割各自独立管理其 Drop 行为。
->
-> **引用计数安全性：** `split_at_mut` 在创建两个子分割之前，通过 `fetch_add(1)` 原子递增 `split_count`。这是因为：
->
-> - 消耗 `self` 意味着原 `SplitBorrowMut` 的 `Drop` 不会执行（避免了隐含的 −1 递减）
-> - 但两个新的 `SplitBorrowMut` 被创建（产生 +2 递减）
-> - 净变化为 +1 个活跃守卫，因此 `split_count` 需要增加 1 以保持一致
-> - 如果不加 1，最后一个子分割的 `Drop` 会过早观察到 `prev == 1`，在其他子分割仍然活跃时重置 `borrow_state`，造成安全隐患
->
-> **示例（3 个活跃子空间）**：
->
-> 1. `split_at_mut(512)` → `split_count = 2`，创建 `left` 和 `right`
-> 2. `right.split_at_mut(128)` → `fetch_add(1)`，`split_count = 3`，创建 `right_a` 和 `right_b`
+**安全设计决策：** `split_at_mut` 采用消费式设计（consuming self）而非借用：调用 `split_at_mut(self, mid)` 消耗原 `SplitBorrowMut`，返回两个新的子 `SplitBorrowMut`。这确保每个 `SplitBorrowMut` 实例有独立的生命周期，避免计数器不一致问题。原始 `SplitBorrowMut` 被消耗后不再有效，两个子分割各自独立管理其 Drop 行为。
 
-> **公开/内部边界说明：** 本文中的公开安全 API（如 `new`、`borrow`、`borrow_mut`、`split_at_mut`、`ensure_capacity`）统一返回可恢复错误，而不是把输入校验失败暴露为 panic；只有无法直接验证的 `unsafe` 初始化前提继续由调用方承担。3. `left` drop → `split_count: 3→2`，`prev=3 ≠ 1`，不重置 ✅ 4. `right_a` drop → `split_count: 2→1`，`prev=2 ≠ 1`，不重置 ✅ 5. `right_b` drop → `split_count: 1→0`，`prev=1`，重置 `borrow_state` ✅
+**引用计数安全性：** `split_at_mut` 在创建两个子分割之前，通过 `fetch_add(1)` 原子递增 `split_count`。这是因为：
+
+- 消耗 `self` 意味着原 `SplitBorrowMut` 的 `Drop` 不会执行（避免了隐含的 −1 递减）
+- 但两个新的 `SplitBorrowMut` 被创建（产生 +2 递减）
+- 净变化为 +1 个活跃守卫，因此 `split_count` 需要增加 1 以保持一致
+- 如果不加 1，最后一个子分割的 `Drop` 会过早观察到 `prev == 1`，在其他子分割仍然活跃时重置 `borrow_state`，造成安全隐患
+
+**示例（3 个活跃子空间）**：
+
+1. `split_at_mut(512)` → `split_count = 2`，创建 `left` 和 `right`
+2. `right.split_at_mut(128)` → `fetch_add(1)`，`split_count = 3`，创建 `right_a` 和 `right_b`
+
+**公开/内部边界说明：** 本文中的公开安全 API（如 `new`、`borrow`、`borrow_mut`、`split_at_mut`、`ensure_capacity`）统一返回可恢复错误，而不是把输入校验失败暴露为 panic；只有无法直接验证的 `unsafe` 初始化前提继续由调用方承担。
+
+1. `left` drop → `split_count: 3→2`，`prev=3 ≠ 1`，不重置 ✅
+2. `right_a` drop → `split_count: 2→1`，`prev=2 ≠ 1`，不重置 ✅
+3. `right_b` drop → `split_count: 1→0`，`prev=1`，重置 `borrow_state` ✅
 
 ### 6.4 扩容安全性论证
 
-**扩容期间保证不违反已有引用安全性**（参见 `05-storage.md §5`）：
+扩容期间保证不违反已有引用安全性：
 
 1. `ensure_capacity` 需要 `&mut self`，编译器保证无其他引用
 2. 方法内部显式检查 `borrow_state` 是否为 NONE
@@ -1103,8 +1131,8 @@ ensure_capacity(&mut self, 2048)
 ### Wave 1: 基础结构
 
 - [ ] **T1**: 定义 `WorkspaceErrorCategory` 并接入 `XenonError::Workspace`
-  - 文件: `src/workspace/error.rs`
-  - 内容: `WorkspaceErrorCategory` 相关定义
+  - 文件: `src/error.rs`
+  - 内容: `WorkspaceErrorCategory` 相关定义（与 `FfiErrorCategory`、`ConversionFailureReason` 同属 error 模块）
   - 测试: `test_workspace_workspace_error_category`
   - 前置: 无
   - 预计: 10 min
@@ -1193,6 +1221,7 @@ ensure_capacity(&mut self, 2048)
 | `test_typed_slice_alignment`                   | 类型化切片对齐检查                                         | 高     |
 | `test_workspace_not_send_not_sync`             | `Workspace` 的 `!Send + !Sync` 编译期负向验证              | 高     |
 | `test_split_borrow_mut_not_send_not_sync`      | `SplitBorrowMut` 的 `!Send + !Sync` 编译期负向验证         | 高     |
+| `test_borrow_guards_not_send_not_sync`         | `WorkspaceBorrow`/`WorkspaceBorrowMut` 的 `!Send + !Sync` 编译期负向验证 | 高 |
 | `test_recursive_split_drop_order_independent`  | 递归 split 以任意 drop 顺序归还时都能正确复用工作空间      | 中     |
 
 ### 8.3 边界测试场景
@@ -1244,12 +1273,12 @@ ensure_capacity(&mut self, 2048)
 
 ### 9.1 接口约定
 
-| 方向                             | 对方模块             | 接口/类型         | 约定                                                                                                                          |
-| -------------------------------- | -------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `workspace ← upstream libraries` | `upstream libraries` | 临时缓冲区请求    | 上游数值库可把 workspace 作为临时缓冲区使用；默认只获得 `MaybeUninit` 视图                                                    |
-| `workspace ← upstream libraries` | `upstream libraries` | `split_at_mut()`  | 上游数值库场景可通过分割接口拆分工作空间；子空间同样只暴露 `MaybeUninit` 视图                                                 |
-| `workspace ← upstream libraries` | `upstream libraries` | `assume_init_*`   | 调用方必须先完成写入并证明对应前缀/typed region 已初始化，才能重解释为已初始化视图                                            |
-| `workspace ← tensor`             | `tensor`             | 临时 scratch 空间 | 张量运算在需要时可借用 workspace 提供临时空间；任何借出的 scratch 视图都不得跨越 `ensure_capacity` 或持久化到 tensor 元数据中 |
+| 方向                 | 对方模块  | 接口/类型         | 约定                                                                                                                          |
+| -------------------- | --------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `workspace` ← 上游库 | 上游库    | 临时缓冲区请求    | 上游数值库可把 workspace 作为临时缓冲区使用；默认只获得 `MaybeUninit` 视图                                                    |
+| `workspace` ← 上游库 | 上游库    | `split_at_mut()`  | 上游数值库场景可通过分割接口拆分工作空间；子空间同样只暴露 `MaybeUninit` 视图                                                 |
+| `workspace` ← 上游库 | 上游库    | `assume_init_*`   | 调用方必须先完成写入并证明对应前缀/typed region 已初始化，才能重解释为已初始化视图                                            |
+| `workspace ← tensor` | `tensor`  | 临时 scratch 空间 | 张量运算在需要时可借用 workspace 提供临时空间；这是运行时的可选协作模式，不是模块级别的类型依赖（`01-architecture.md §5.2` 中 tensor 的编译期依赖不包含 workspace）；任何借出的 scratch 视图都不得跨越 `ensure_capacity` 或持久化到 tensor 元数据中 |
 
 ### 9.2 数据流描述
 
@@ -1272,12 +1301,12 @@ Upper-layer code requests temporary scratch space
 
 ## 10. 错误处理与语义边界
 
-| 主题              | 内容                                                                                                                                                                                                                                                                             |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 主题              | 内容                                                                                        |
+| ----------------- | ------------------------------------------------------------------------------------------- |
 | Recoverable error | `new()` / `ensure_capacity()` / `borrow*()` / `split_at_mut()` 失败时统一返回 `XenonError::Workspace`；`category` 使用 `WorkspaceErrorCategory` 区分失败模式，并通过可选字段保留容量、对齐、分割点或借用状态等诊断上下文；typed helper 的 ZST、长度和对齐输入错误也通过同一公开错误边界报告。 |
-| Panic             | 不为公开 API 输入校验引入 panic；`unsafe` 初始化前提若被违反，仍属于调用方责任范围内的 UB。                                                                                                                                                                                      |
-| 路径一致性        | 当前仅有单一借用状态机与扩容路径；无 SIMD / 并行分支，所有 guard 释放规则必须保持一致。                                                                                                                                                                                          |
-| 容差边界          | 不适用。                                                                                                                                                                                                                                                                         |
+| Panic             | 不为公开 API 输入校验引入 panic；`unsafe` 初始化前提若被违反，仍属于调用方责任范围内的 UB。 |
+| 路径一致性        | 当前仅有单一借用状态机与扩容路径；无 SIMD / 并行分支，所有 guard 释放规则必须保持一致。     |
+| 容差边界          | 不适用。                                                                                    |
 
 ---
 
@@ -1318,11 +1347,19 @@ Upper-layer code requests temporary scratch space
 
 ### 决策 5：Workspace 不实现 Send/Sync
 
-| 属性     | 值                                                                                                                                                                                                                                                                                         |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 决策     | Workspace 当前实现不实现 Send 或 Sync；该结论记录当前实现选择，而非冻结为长期稳定保证                                                                                                                                                                                                      |
-| 理由     | `!Send + !Sync` 为当前实现选择，目的是简化借用安全性论证。即使存在运行时借用状态检查，也暂不将其建模为可跨线程传递或共享的基础类型；若调用方需要多线程临时缓冲区，应在线程边界外自行分配和管理独立工作空间。相关测试仅验证当前行为，未来版本可在补充安全的跨线程借用检查后重新评估并放宽。 |
-| 替代方案 | 放宽为 Send（并配套跨线程借用检查） — 未来可评估；仅依赖当前 AtomicU8 状态机不足以直接支持完整多线程语义                                                                                                                                                                                   |
+| 属性     | 值                                                                                                       |
+| -------- | -------------------------------------------------------------------------------------------------------- |
+| 决策     | Workspace 当前实现不实现 Send 或 Sync；该结论记录当前实现选择，而非冻结为长期稳定保证                    |
+| 理由     | `!Send + !Sync` 为当前实现选择，目的是简化借用安全性论证。即使存在运行时借用状态检查，也暂不将其建模为可跨线程传递或共享的基础类型；若调用方需要多线程临时缓冲区，应在线程边界外自行分配和管理独立工作空间。相关测试仅验证当前行为，未来版本可在补充安全的跨线程借用检查后重新评估并放宽。此决策的线程安全背景分析详见 `25-safety.md §9.5`。                    |
+| 替代方案 | 放宽为 Send（并配套跨线程借用检查） — 未来可评估；仅依赖当前 AtomicU8 状态机不足以直接支持完整多线程语义 |
+
+### 决策 6：borrow_mut(&self) 与 ensure_capacity(&mut self) 签名不对称
+
+| 属性     | 值                                                                                                       |
+| -------- | -------------------------------------------------------------------------------------------------------- |
+| 决策     | `borrow()`/`borrow_mut()`/`split_at_mut()` 使用 `&self`，而 `ensure_capacity()` 使用 `&mut self`         |
+| 理由     | 借用类方法接受 `&self` 是为了允许在持有 `&Workspace` 引用时获取守卫（guard），独占性由运行时 `AtomicU8` 状态机保证。`ensure_capacity` 需要 `&mut self` 是因为该方法直接修改 `ptr` 和 `capacity` 字段（重新分配内存），编译期 `&mut` 独占保证可静态排除"扩容期间存在活跃借用"的可能性。虽然运行时 `borrow_state` 检查也能拒绝借用中扩容，但 `&mut self` 在类型系统层面提供额外的静态安全保证，避免 UB。 |
+| 替代方案 | `ensure_capacity` 也使用 `&self` + 纯运行时检查 — 放弃，扩容涉及裸指针替换和 `dealloc`，仅靠运行时检查不够充分，`&mut self` 的编译期独占是更安全的防御层  |
 
 ---
 
@@ -1337,6 +1374,7 @@ Upper-layer code requests temporary scratch space
 | `ensure_capacity()`             | O(n)       | O(new_capacity) | 分配 + 拷贝 + 释放             |
 | `as_maybe_uninit_typed_slice()` | O(1)       | O(1)            | 仅指针转换                     |
 | `assume_init_typed_slice()`     | O(1)       | O(1)            | 仅在调用方已证明初始化后重解释 |
+| `assume_init_slice()`          | O(1)       | O(1)            | 仅在调用方已证明初始化后重解释（非泛型字节版本） |
 
 **性能提示**:
 
@@ -1376,6 +1414,7 @@ Upper-layer code requests temporary scratch space
 | 1.2.6 | 2026-04-16 |
 | 1.2.7 | 2026-04-16 |
 | 1.2.8 | 2026-04-16 |
+| 1.2.9 | 2026-04-29 |
 
 ---
 

@@ -1,14 +1,17 @@
 # 基准测试规范
 
-> 文档编号: 27 | 影响范围: `benches/`, benchmark CI 与性能回归流程 | 阶段: Phase 6
+> 文档编号: 27
+> 模块目录: benches/
+> 任务阶段: Phase 6
 > 前置文档: 所有前置文档（`00-coding.md` ~ `26-error.md`）
-> 需求参考: `需求说明书 §9.1`, `需求说明书 §9.2`, `需求说明书 §9.3`, `需求说明书 §28.2`, `需求说明书 §28.3`, `需求说明书 §28.4`, `需求说明书 §28.5`
+> 需求参考: 需求说明书 §9、§28
 > 范围声明: 范围内
-> **格式豁免声明**：本文档为横切性的性能观测规范，按 `design.md` §3 豁免标准模块文档格式；允许围绕 benchmark 分类、观测流程、CI 分级与回归口径组织章节，而非严格套用单模块模板。
 
 ---
 
 ## 1. 主题定位
+
+本文档是“性能观测规范”，用于约定 benchmark 采样口径、趋势记录与可选回归检测；它不是完整质量门禁规范。功能正确性、错误语义、并发/UB 边界等质量要求统一由 `28-tests.md` 承担。
 
 ### 1.1 职责边界
 
@@ -26,55 +29,22 @@
 | 可重复性 | 固定数据规模、固定随机种子、预热后测量                                      |
 | 全面覆盖 | 覆盖所有性能关键路径（逐元素、归约、内积、转置、广播）                      |
 | 低噪声   | 使用固定输入与稳定运行环境收集趋势；benchmark 结果不作为 crate 合约的一部分 |
-| 分级执行 | 可选 CI 分级工作流：Smoke / Regression / Full，不阻塞默认交付                 |
+| 分级执行 | 可选 CI 分级工作流：Smoke / Regression / Full，不阻塞默认交付               |
 
-### 1.3 在架构中的位置
-
-```
-Dependency layers:
-L0: error, private
-L1: dimension, element, complex
-L2: layout (depends on dimension)
-L3: storage (independent of layout; owned by tensor and consumes layout results)
-L4: tensor (depends on storage, dimension)
-L5: overload/, iter/, index/, shape/, broadcast/, construct/, ffi/, convert/, format/
-
-External (non-crate modules):
-benches/  <- current module (dev-dependency, consumes only the crate's public API)
-```
+---
 
 ## 2. 需求映射与范围约束
 
 | 类型     | 内容                                                                       |
 | -------- | -------------------------------------------------------------------------- |
-| 需求映射 | `需求说明书 §9.1`、`需求说明书 §9.2`、`需求说明书 §9.3`                                              |
-| 正确性映射 | `需求说明书 §28.2`：由 `28-tests.md` 负责验证，本文档不承接。<br>`需求说明书 §28.3`：引用的正确性前提，benchmark 不定义正确性容差。<br>`需求说明书 §28.4`：由 `28-tests.md` 负责验证，本文档不承接。<br>`需求说明书 §28.5`：由 `28-tests.md` 负责验证，本文档不承接。 |
+| 需求映射 | 需求说明书 §9、§28                                                         |
 | 范围内   | benchmark 分类、参数矩阵、基准 harness 与结果汇总口径                      |
 | 范围外   | 生产运行时性能调优、跨语言基准、额外平台专用测量框架                       |
 | 非目标   | 通过 benchmark 文档扩展 crate 公共 API、引入非必要运行时依赖或改变需求边界 |
 
-> **定位说明**：本文档是“性能观测规范”，用于约定 benchmark 采样口径、趋势记录与可选回归检测；它不是完整质量门禁规范。功能正确性、错误语义、并发/UB 边界等质量要求统一由 `28-tests.md` 承担。
-
-### 职责边界补充
-
-> **职责边界：benchmark 仅负责性能测量与回归检测。行为正确性（路径切换、SIMD 回退、并行一致性）由 `28-tests.md` 验证。benchmark 可包含性能回归相关的 smoke test，但不替代功能测试。**
-
-### 2.1 前提条件
-
-| 前提项 | 说明 |
-| ------ | ---- |
-| 平台前提 | 仅面向 `std` 环境，且保持单 crate 结构，不引入 benchmark 专用第三方依赖 |
-| 能力前提 | 被测公开 API 已按 `需求说明书` 范围落地：逐元素运算、归约、内积、广播、转置、构造、集合操作 |
-| feature 前提 | `simd` / `parallel` 默认关闭，仅在显式启用对应 feature 时进入对比基准 |
-| 布局前提 | 拥有型连续布局仅覆盖 F-order；非连续输入仅通过切片/转置等合法视图产生 |
-| 数据前提 | benchmark 输入在计时前预生成并固定，必要时使用固定随机种子或确定性序列 |
-| 基线前提 | Regression Check 仅在存在最近一次 main 分支通过结果作为 baseline 时执行；否则仅记录观测值 |
-| 环境前提 | 回归趋势比较需在固定硬件或等效稳定环境运行；CI 噪声不得被解释为公开语义变化 |
-| 正确性前提 | benchmark 不承担功能正确性与 UB 验证职责；相关语义由 `28-tests.md` 覆盖 |
-
 ---
 
-## 3. 适用范围
+## 3. 文件位置
 
 ```
 benches/
@@ -98,14 +68,16 @@ benches/
 
 ## 4. 依赖关系
 
-### 4.1 依赖图
+### 4.1 依赖图（ASCII）
 
 ```
 benches/
 ├── crate::tensor           # TensorBase, Tensor, TensorView, etc.
 ├── crate::dimension        # Ix0~Ix6, IxDyn, Dimension trait
 ├── crate::element          # Element, Numeric, RealScalar, ComplexScalar
-├── crate::math             # Element-wise ops, reductions, dot products
+├── crate::math             # Element-wise ops
+├── crate::reduction        # sum, sum_axis
+├── crate::matrix           # dot
 ├── crate::shape            # transpose
 ├── crate::broadcast        # broadcast_shape
 ├── crate::set              # unique
@@ -115,9 +87,9 @@ benches/
 
 ### 4.2 类型级依赖
 
-| 来源模块    | 使用的类型/trait                                                                              |
+| 来源模块    | 使用的 API（类型/trait/函数）                                                                 |
 | ----------- | --------------------------------------------------------------------------------------------- |
-| `tensor`    | `Tensor<A, D>`, `TensorView`, `TensorViewMut`, `.shape()`, `.sum()`（参见 `07-tensor.md §5`） |
+| `tensor`    | `Tensor<A, D>`, `TensorView`, `TensorViewMut`, `.shape()`（参见 `07-tensor.md §5`）           |
 | `dimension` | `Ix1`, `Ix2`, `Ix3`, `IxDyn`, `Dimension`（参见 `02-dimension.md §5`）                        |
 | `element`   | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element.md §5`）                |
 | `math`      | `add`, `sub`, `mul`, `div`, `sin`, `exp`, `abs`（参见 `11-math.md §5`）                       |
@@ -125,20 +97,20 @@ benches/
 | `matrix`    | `dot`（参见 `12-matrix.md §5`）                                                               |
 | `shape`     | `transpose`（参见 `16-shape.md §5`）                                                          |
 | `set`       | `unique`（参见 `14-set.md §5`）                                                               |
-| `construct` | `zeros`, `ones`, `from_shape_vec`（参见 `18-construction.md §5`；`from_vec` 仅作为 Ix1 非规范便捷层（参见 `18-construction.md §5.1`，不纳入公开 API 承诺）） |
-| `broadcast` | `broadcast_shape`, 广播运算符（参见 `15-broadcast.md §5`）                                    |
+| `construct` | `zeros`, `ones`, `from_shape_vec`（参见 `18-construction.md §5`）                             |
+| `broadcast` | `broadcast_shape`（参见 `15-broadcast.md §5`）、广播视图构造                                  |
 
-### 4.3 依赖方向声明
-
-> **依赖方向：单向消费。** `benches/` 仅消费 crate 公共 API；benchmark 工具链属于可选维护设施，不被任何模块依赖。
-
-### 4.4 依赖合法性与新增依赖说明
+### 4.3 依赖合法性
 
 | 项目           | 说明                                                                                           |
 | -------------- | ---------------------------------------------------------------------------------------------- |
 | 新增第三方依赖 | 当前基线不新增 benchmark 专用 dev-dependency；若后续希望引入外部框架，须单独裁决               |
 | 合法性结论     | 以 `std::time::Instant`、`std::hint::black_box` 与仓库内脚本作为当前版本基线，符合最小依赖约束 |
 | 替代方案       | 外部 benchmark 框架可作为未来方案评估，但不属于当前版本默认要求                                |
+
+### 4.4 依赖方向声明
+
+依赖方向：单向消费。`benches` 消费 crate 公共 API 与部分 `pub(crate)` 内部 API（如 `broadcast_with`）；benchmark 工具链属于可选维护设施，不被任何模块依赖。
 
 ---
 
@@ -197,11 +169,6 @@ pub const SIZES_1D: &[usize] = &[64, 65_536, 16_777_216];
 pub const SIZES_2D: &[(usize, usize)] = &[
     (8, 8), (256, 256), (4096, 4096),
 ];
-
-/// Standard benchmark sizes: Small / Medium / Large (3D).
-pub const SIZES_3D: &[(usize, usize, usize)] = &[
-    (4, 4, 4), (64, 32, 32), (256, 256, 256),
-];
 ```
 
 ```rust,ignore
@@ -224,15 +191,22 @@ pub fn sequential_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 }
 
 /// Generate a truly non-contiguous 1D view from an F-order 2D owner.
+/// NOTE: The slice construction below uses pseudo-code; actual API shape
+/// must follow `17-indexing.md` frozen interface at implementation time.
 pub struct StridedFixture1D {
     pub owner: Tensor2<f64>,
 }
 
 impl StridedFixture1D {
+    /// Returns a non-contiguous view by taking a row slice of the F-order 2D owner.
+    /// Actual slicing API follows `17-indexing.md`; the expression below is
+    /// illustrative and must be adapted to the final slice syntax at implementation.
     pub fn view(&self) -> TensorView1<'_, f64> {
+        // Illustrative: take row 1 from the F-order 2D owner, yielding a
+        // non-contiguous 1D view with stride == ncols (not 1).
         self.owner
             .view()
-            .slice(SliceInfo::new(/* [Index(1), Range { start: 0, end: self.owner.shape()[1] }] */)
+            .slice(SliceInfo::new(/* [Index(1), Range { start: 0, end: self.owner.ncols() }] */)
                 .expect("slice info must be valid"))
             .expect("slice info must match owner shape")
     }
@@ -244,8 +218,6 @@ pub fn strided_view_1d(n: usize) -> StridedFixture1D {
     }
 }
 ```
-
----
 
 ### 5.3 四级分类体系
 
@@ -259,22 +231,20 @@ Benchmark categories
 
 | 级别       | 示例                                           | 用途           |
 | ---------- | ---------------------------------------------- | -------------- |
-| Micro      | `zeros_1d`, `from_shape_vec_1d`               | 基础开销基线   |
+| Micro      | `zeros_1d`, `from_shape_vec_1d`                | 基础开销基线   |
 | Kernel     | `add_f64`, `sum_f64`, `dot_f64`                | 核心路径性能   |
-| Workflow   | `broadcast_add_row`, `transpose_then_sum`      | 真实场景吞吐   |
+| Workflow   | `broadcast_row`                                | 真实场景吞吐   |
 | Comparison | `add_simd_vs_scalar`, `sum_parallel_vs_serial` | 仓库内路径对比 |
-
----
 
 ### 5.4 参数矩阵
 
 #### 5.4.1 输入规模
 
-| 级别       | 1D         | 2D        | 3D          |
-| ---------- | ---------- | --------- | ----------- |
-| **Small**  | 64         | 8×8       | 4×4×4       |
-| **Medium** | 65,536     | 256×256   | 64×32×32    |
-| **Large**  | 16,777,216 | 4096×4096 | 256×256×256 |
+| 级别       | 1D         | 2D        |
+| ---------- | ---------- | --------- |
+| **Small**  | 64         | 8×8       |
+| **Medium** | 65,536     | 256×256   |
+| **Large**  | 16,777,216 | 4096×4096 |
 
 #### 5.4.2 数据类型
 
@@ -284,6 +254,8 @@ Benchmark categories
 | `f32`          | **必测** | SIMD 向量宽度更大 |
 | `Complex<f64>` | **必测** | 复数运算开销验证  |
 
+**补充**：Comparison benchmark（§5.5 中 `simd_*_compare` / `par_*_compare` 组）可额外使用 `i32`、`i64` 等整数类型，以覆盖对应后端路径的特定加速场景（参见 `08-simd.md §5.6`、`09-parallel.md §5`）。
+
 #### 5.4.3 内存布局
 
 | 布局           | 构造方式                          | 验证目标           |
@@ -291,54 +263,47 @@ Benchmark categories
 | F-contiguous   | `zeros(shape)`                    | 默认路径性能基线   |
 | Non-contiguous | F-order 2D 张量的行视图或转置视图 | 非连续路径性能惩罚 |
 
-> **注意**：Xenon 仅支持 F-order 布局，不存在 C-order 路径。非连续布局通过切片/转置视图产生（参见 `06-layout.md §5.4` / `§5.1c`）。
+**注意**：Xenon 仅支持 F-order 布局，不存在 C-order 路径。非连续布局通过切片/转置视图产生（参见 `06-layout.md §5.3` / `§5.7`）。
 
-> **补充**：数据竞争和 UB 验证由 `28-tests.md` 覆盖。benchmark 仅验证性能指标，不承担正确性验证职责。
-
----
+**补充**：数据竞争和 UB 验证由 `28-tests.md` 覆盖。benchmark 仅验证性能指标，不承担正确性验证职责。
 
 ### 5.5 Benchmark 清单
 
-| 组 ID                      | 操作                    | 规模  | 类型           | 布局           | 说明                                                                             |
-| -------------------------- | ----------------------- | ----- | -------------- | -------------- | -------------------------------------------------------------------------------- |
-| `elem_add_f64`             | `a + b`                 | S/M/L | f64            | F-contiguous   | 连续数组逐元素加法                                                               |
-| `elem_add_f32`             | `a + b`                 | S/M/L | f32            | F-contiguous   | f32 加法，SIMD 向量宽度更大                                                      |
-| `elem_add_complex`         | `a + b`                 | S/M/L | Complex\<f64\> | F-contiguous   | 复数加法开销                                                                     |
-| `elem_mul_f64`             | `a * b`                 | S/M/L | f64            | F-contiguous   | 逐元素乘法                                                                       |
-| `elem_sin_f64`             | `sin(a)`                | S/M/L | f64            | F-contiguous   | 超越函数逐元素                                                                   |
-| `elem_add_sliced`          | `a + b`（b 为切片视图） | M     | f64            | Non-contiguous | 非连续惩罚                                                                       |
-| `sum_1d_f64`               | 全局 sum                | S/M/L | f64            | F-contiguous   | 1D 归约                                                                          |
-| `sum_2d_axis0`             | 沿轴 0 sum              | S/M/L | f64            | F-contiguous   | 2D 沿轴归约                                                                      |
-| `sum_2d_axis1`             | 沿轴 1 sum              | S/M/L | f64            | F-contiguous   | 2D 沿轴归约                                                                      |
-| `sum_sliced`               | 非连续 sum              | M     | f64            | Non-contiguous | 非连续归约惩罚                                                                   |
-| `dot_1d_f64`               | 向量内积                | S/M/L | f64            | F-contiguous   | 基本内积                                                                         |
-| `dot_1d_complex`           | 复数内积                | S/M/L | Complex\<f64\> | F-contiguous   | 复数内积（含共轭）                                                               |
-| `unique_1d`                | unique 操作             | S/M/L | f64            | F-contiguous   | 返回不重复元素，结果无需排序且顺序不作要求                                       |
-| `broadcast_scalar`         | 标量广播加法            | S/M/L | f64            | F-contiguous   | 标量广播开销                                                                     |
-| `broadcast_row`            | 行向量广播到矩阵        | S/M/L | f64            | F-contiguous   | 行广播                                                                           |
-| `broadcast_col`            | 列向量广播到矩阵        | S/M/L | f64            | F-contiguous   | 列广播                                                                           |
-| `transpose_2d`             | 2D 转置（零拷贝）       | S/M/L | f64            | F-contiguous   | 转置视图创建                                                                     |
-| `simd_add_compare`         | `a + b` (SIMD vs 标量)  | M     | f32/f64        | F-contiguous   | SIMD 加速比（参见 `08-simd.md §12`）                                             |
-| `simd_sum_compare`         | sum (SIMD vs 标量)      | M     | i32            | F-contiguous   | 默认仅覆盖已验证启用的 i32 SIMD reduction 路径；i64 如需保留，须作为显式 opt-in 非默认基准（参见 `08-simd.md §5.4a`） |
-| `simd_dot_compare`         | dot (SIMD vs 标量)      | M     | f32/f64        | F-contiguous   | SIMD dot kernel 已在 `08-simd.md` 中设计，本基准仅对比 SIMD 与标量路径的性能差异 |
-| `par_sum_compare`          | sum (并行 vs 串行)      | L     | i64            | F-contiguous   | 并行加速比（参见 `09-parallel.md §12`）                                          |
-| `par_add_compare`          | `a + b` (并行 vs 串行)  | L     | f64            | F-contiguous   | 并行逐元素加速                                                                   |
-| `par_dot_compare`          | dot (并行 vs 串行)      | L     | f64/Complex<f64> | F-contiguous | 并行内积加速比，覆盖实数与复数内积                                               |
-| `zeros_1d`                 | zeros 构造              | S/M/L | f64            | F-contiguous   | 构造开销                                                                         |
-
-### 5.5.1 行为验证（归 28-tests.md）
-
-> **覆盖关系说明**：benchmark coverage 是 SIMD 正式覆盖的子集，不等于完整设计覆盖。
-
-以下场景为行为正确性验证，应由 `28-tests.md` 承担。benchmark 仅测量对应路径的性能表现。
-
-| 场景 ID                    | 行为主题         | 对应测试职责说明                               |
-| -------------------------- | ---------------- | ---------------------------------------------- |
-| `simd_auto_path_switch`    | SIMD 自动路径选择 | 验证实现根据数据规模切换 SIMD/标量路径是否正确 |
-| `auto_threshold_switch`    | 自动串并切换     | 验证阈值附近串行/并行路径切换行为是否符合设计  |
-| `nested_parallel_fallback` | 嵌套并行回退     | 验证并行上下文中的串行回退是否符合设计         |
-
----
+| 组 ID                      | 操作                    | 规模  | 类型           | 布局           | 说明                                            |
+| -------------------------- | ----------------------- | ----- | -------------- | -------------- | ----------------------------------------------- |
+| `elem_add_f64`             | `a + b`                 | S/M/L | f64            | F-contiguous   | 连续数组逐元素加法                              |
+| `elem_add_f32`             | `a + b`                 | S/M/L | f32            | F-contiguous   | f32 加法，SIMD 向量宽度更大                     |
+| `elem_add_complex`         | `a + b`                 | S/M/L | Complex<f64>   | F-contiguous   | 复数加法开销                                    |
+| `elem_mul_f64`             | `a * b`                 | S/M/L | f64            | F-contiguous   | 逐元素乘法                                      |
+| `elem_sin_f64`             | `sin(a)`                | S/M/L | f64            | F-contiguous   | 超越函数逐元素                                  |
+| `elem_sin_f32`             | `sin(a)`                | S/M/L | f32            | F-contiguous   | f32 超越函数，SIMD 宽度更大                     |
+| `elem_sub_f64`             | `a - b`                 | S/M/L | f64            | F-contiguous   | 逐元素减法                                      |
+| `elem_div_f64`             | `a / b`                 | S/M/L | f64            | F-contiguous   | 逐元素除法                                      |
+| `elem_exp_f64`             | `exp(a)`                | S/M/L | f64            | F-contiguous   | 指数函数逐元素                                  |
+| `elem_abs_f64`             | `abs(a)`                | S/M/L | f64            | F-contiguous   | 绝对值逐元素                                    |
+| `elem_add_sliced`          | `a + b`（b 为切片视图） | M     | f64            | Non-contiguous | 非连续惩罚                                      |
+| `sum_1d_f64`               | 全局 sum                | S/M/L | f64            | F-contiguous   | 1D 归约                                         |
+| `sum_2d_axis0`             | 沿轴 0 sum              | S/M/L | f64            | F-contiguous   | 2D 沿轴归约                                     |
+| `sum_2d_axis1`             | 沿轴 1 sum              | S/M/L | f64            | F-contiguous   | 2D 沿轴归约                                     |
+| `sum_sliced`               | 非连续 sum              | M     | f64            | Non-contiguous | 非连续归约惩罚                                  |
+| `sum_2d_keepdims`          | 沿轴 sum 并保留维度     | S/M/L | f64            | F-contiguous   | keepdims 路径性能（参见 `13-reduction.md §5`）  |
+| `dot_1d_f64`               | 向量内积                | S/M/L | f64            | F-contiguous   | 基本内积                                        |
+| `dot_1d_complex`           | 复数内积                | S/M/L | Complex<f64>   | F-contiguous   | 复数内积（含共轭）                              |
+| `unique_1d`                | unique 操作             | S/M/L | f64            | F-contiguous   | 返回不重复元素，结果无需排序且顺序不作要求      |
+| `broadcast_scalar`         | 标量广播加法            | S/M/L | f64            | F-contiguous   | 标量广播开销                                    |
+| `broadcast_row`            | 行向量广播到矩阵        | S/M/L | f64            | F-contiguous   | 行广播                                          |
+| `broadcast_col`            | 列向量广播到矩阵        | S/M/L | f64            | F-contiguous   | 列广播                                          |
+| `broadcast_with`           | 双张量广播协作          | S/M/L | f64            | F-contiguous   | broadcast_with 协作模式（参见 `15-broadcast.md §5`） |
+| `transpose_2d`             | 2D 转置（零拷贝）       | S/M/L | f64            | F-contiguous   | 转置视图创建                                    |
+| `simd_add_compare`         | `a + b` (SIMD vs 标量)  | M     | f32/f64        | F-contiguous   | SIMD 加速比（参见 `08-simd.md §12`）            |
+| `simd_sum_compare`         | sum (SIMD vs 标量)      | M     | i32/f32/f64    | F-contiguous   | SIMD sum 对比；i32 覆盖已验证启用的 widening 路径（参见 `08-simd.md §5.6`），f32/f64 覆盖已实现路径  |
+| `simd_dot_compare`         | dot (SIMD vs 标量)      | M     | f32/f64        | F-contiguous   | SIMD dot kernel 已在 `08-simd.md` 中设计        |
+| `par_sum_compare`          | sum (并行 vs 串行)      | L     | i64            | F-contiguous   | 并行加速比（参见 `09-parallel.md §12`）         |
+| `par_add_compare`          | `a + b` (并行 vs 串行)  | L     | f64            | F-contiguous   | 并行逐元素加速                                  |
+| `par_dot_compare`          | dot (并行 vs 串行)      | L     | f64/Complex<f64> | F-contiguous | 并行内积加速比，覆盖实数与复数内积              |
+| `zeros_1d`                 | zeros 构造              | S/M/L | f64            | F-contiguous   | 构造开销                                        |
+| `from_shape_vec_1d`        | from_shape_vec 构造     | S/M/L | f64            | F-contiguous   | 顺序数据构造开销                                |
+| `eye_2d`                   | eye 单位矩阵构造        | S/M/L | f64            | F-contiguous   | 单位矩阵构造开销（参见 `18-construction.md §5`） |
 
 ### 5.6 可选 CI 三级工作流
 
@@ -348,9 +313,9 @@ Benchmark categories
 | **Regression Check** | `elem_add_f64` 和 `sum_1d_f64`                                              | ~10 min  | 存在 baseline 时可选启用     |
 | **Full Benchmark**   | 全部文件 × 4 feature 组合（`default`、`simd`、`parallel`、`simd+parallel`） | ~60 min  | 维护期按需运行               |
 
-#### 5.6.1 Smoke Test 覆盖范围
+**Smoke Test 覆盖范围**
 
-> **注意**：Smoke Test 仅验证 benchmark 代码可以正常编译和运行（"不崩溃"），不用于性能判断，也不执行回归阈值门禁。其调用约定统一使用 `--quick`；若仓库选择启用性能回归检测，再由 Regression Check（§5.6.2）承担趋势观测。
+Smoke Test 仅验证 benchmark 代码可以正常编译和运行（"不崩溃"），不用于性能判断，也不执行回归阈值门禁。其调用约定统一使用 `--quick`；若仓库选择启用性能回归检测，再由 Regression Check（§5.6.2）承担趋势观测。
 
 | 文件              | 组                      | 说明           |
 | ----------------- | ----------------------- | -------------- |
@@ -358,15 +323,15 @@ Benchmark categories
 | `reduction.rs`    | `sum_1d_f64` (Medium)   | 核心归约路径   |
 | `construction.rs` | `zeros_1d` (Medium)     | 基础构造路径   |
 
-#### 5.6.2 Regression Check 覆盖范围
+**Regression Check 覆盖范围**
 
-当仓库显式启用 Regression Check 时，可监测以下核心基准：`elem_add_f64`（逐元素加法，f64，256×256）和 `sum_1d_f64`（一维归约，f64，65536 元素）。其中 `256×256` 与 §5.4.1 的 Medium 规模保持一致。
+- 当仓库显式启用 Regression Check 时，可监测以下核心基准：`elem_add_f64`（逐元素加法，f64，65536 元素）和 `sum_1d_f64`（一维归约，f64，65536 元素）。其中 `65536` 与 §5.4.1 的 1D Medium 规模保持一致。
 
-本文档统一使用同一组规模基线：Small = `64` / `8×8` / `4×4×4`，Medium = `65,536` / `256×256` / `64×32×32`，Large = `16,777,216` / `4096×4096` / `256×256×256`。
+- 本文档统一使用同一组规模基线：Small = `64` / `8×8`，Medium = `65,536` / `256×256`，Large = `16,777,216` / `4096×4096`。
 
-Large 规模基准测试（如 `4096×4096`、`256×256×256`）仅在 weekly/full benchmark 流水线中执行。PR 级别的 Smoke Test 仅使用 Small/Medium 规模。CI 配置须设置合理的内存上限；当可用内存低于 Large 用例估算峰值的 1.5× 安全阈值时，大张量测试应跳过并标记为 skipped。
+- Large 规模基准测试（如 `4096×4096`）仅在 weekly/full benchmark 流水线中执行。PR 级别的 Smoke Test 仅使用 Small/Medium 规模。CI 配置须设置合理的内存上限；当可用内存低于 Large 用例估算峰值的 1.5× 安全阈值时，大张量测试应跳过并标记为 skipped。
 
-#### 5.6.3 CI 配置示例
+**CI 配置示例**
 
 ```yaml
 # .github/workflows/bench.yml
@@ -385,11 +350,8 @@ cargo bench --bench construction -- "zeros_1d" --quick
           run: python tools/bench/report.py --input target/benchmark-results --output target/benchmark-results/regression.json
 ```
 
-> **说明**：若仓库选择为 benchmark 增加 CI 摘要，则须通过仓库内脚本显式导出到约定路径（如 `target/benchmark-results/regression.json`），而不是依赖第三方 GitHub Action 或外部服务。
-
-> **baseline 管理**：若启用 Regression Check，则以上一轮 main 分支通过的结果作为 baseline；当性能改善或已知噪声需要更新基线时，应在专门的 benchmark PR 中更新并记录原因。未启用时不影响默认交付。
-
----
+- **说明**：若仓库选择为 benchmark 增加 CI 摘要，则须通过仓库内脚本显式导出到约定路径（如 `target/benchmark-results/regression.json`），而不是依赖第三方 GitHub Action 或外部服务。
+- **baseline 管理**：若启用 Regression Check，则以上一轮 main 分支通过的结果作为 baseline；当性能改善或已知噪声需要更新基线时，应在专门的 benchmark PR 中更新并记录原因。未启用时不影响默认交付。
 
 ### 5.7 可选回归阈值
 
@@ -399,9 +361,7 @@ cargo bench --bench construction -- "zeros_1d" --quick
 | **失败** | > 20% 变慢 | 可选 CI failure gate（仅仓库显式启用时）  |
 | **改善** | > 5% 变快  | 可选 CI note（记录性能改善）              |
 
-> **设计决策**：5% 以内视为测量噪声，20% 以上通常可视为真实回归；这些门限只在仓库显式启用回归门禁时生效，不构成默认必需交付。
-
----
+**设计决策**：5% 以内视为测量噪声，20% 以上通常可视为真实回归；这些门限只在仓库显式启用回归门禁时生效，不构成默认必需交付。
 
 ### 5.8 Benchmark 模板
 
@@ -413,32 +373,50 @@ mod utils;
 use utils::{SIZES_1D, generators};
 
 const WARMUP_ITERATIONS: usize = 10;
+const ROUNDS: usize = 10;
+const ITERATIONS_PER_ROUND: usize = 100;
 
-fn bench_elem_add() {
+fn bench_elem_add(quick: bool) {
+    let (rounds, iters) = if quick { (1, 10) } else { (ROUNDS, ITERATIONS_PER_ROUND) };
     for &size in SIZES_1D {
         let a = generators::sequential_1d(size);
         let b = generators::sequential_1d(size);
         for _ in 0..WARMUP_ITERATIONS {
             black_box((&a + &b).unwrap());
         }
-        let started_at = Instant::now();
-        for _iteration in 0..100 {
-            let _result = black_box((&a + &b).unwrap());
+        let mut timings = Vec::with_capacity(rounds);
+        for _round in 0..rounds {
+            let started_at = Instant::now();
+            for _iteration in 0..iters {
+                let _result = black_box((&a + &b).unwrap());
+            }
+            timings.push(started_at.elapsed().as_nanos());
         }
-        println!("elem_add_f64/{size}: {:?}", started_at.elapsed());
+        timings.sort();
+        let median = timings[timings.len() / 2];
+        println!("elem_add_f64/{size}: {median} ns (median of {rounds} rounds)");
     }
 }
 
 fn main() {
-    bench_elem_add();
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let quick = args.iter().any(|arg| arg == "--quick");
+    let filter = args.iter().find(|a| !a.starts_with("--"));
+
+    let should_run = |name: &str| -> bool {
+        match &filter {
+            Some(f) => name.contains(f.as_str()),
+            None => true,
+        }
+    };
+
+    if should_run("elem_add_f64") {
+        bench_elem_add(quick);
+    }
 }
 ```
 
----
-
 ### 5.9 Good / Bad 示例
-
-#### 5.9.1 Good — 正确的 benchmark 模式
 
 ```rust,ignore
 // Good: Use black_box and a dedicated timing loop
@@ -451,8 +429,6 @@ fn bench_sum() {
     println!("sum_f64_65k: {:?}", started_at.elapsed());
 }
 ```
-
-#### 5.9.2 Bad — 错误的 benchmark 模式
 
 ```rust,ignore
 // Bad: Not using black_box, compiler may eliminate the operation
@@ -493,10 +469,7 @@ fn bench_sum_bad2() {
 
 - 记录环境信息：至少包含 CPU、编译配置、feature flags。
 - 可选 CPU pinning：如仓库环境允许，可将 benchmark 进程绑定到固定核心以降低抖动。
-
-> **说明**：当前测量方法为简化版本。回归阈值（5%/20%）为参考值，CI 环境波动可能导致误判。未来可升级为统计显著性检验。
-
-### 6.1.1 结果文件 schema 说明
+- 当前测量方法为简化版本。回归阈值（5%/20%）为参考值，CI 环境波动可能导致误判。未来可升级为统计显著性检验。
 
 若仓库启用 benchmark 结果持久化，结果文件应至少包含以下字段：`benchmark_id`、`feature_set`、`input_shape`、`element_type`、`layout_kind`、`warmup_iterations`、`measured_iterations`、`wall_time_ns`、`timestamp`、`git_commit`、`environment_label`。JSON / CSV 载体可自行选择，但字段语义必须保持稳定，以便 Regression Check 消费。
 
@@ -504,11 +477,11 @@ fn bench_sum_bad2() {
 
 | 策略          | 实现                                                            | 说明                   |
 | ------------- | --------------------------------------------------------------- | ---------------------- |
-| 顺序填充      | 预先构造顺序 `Vec<f64>` 后用 `from_shape_vec` 导入；`from_vec` 仅作为 Ix1 非规范便捷层（参见 `18-construction.md §5.1`，不纳入公开 API 承诺）对照 | 可重复，无随机性       |
+| 顺序填充      | 预先构造顺序 `Vec<f64>` 后用 `from_shape_vec` 导入；`from_vec` 仅作为 Ix1 非规范便捷层对照 | 可重复，无随机性       |
 | 预分配 + 复用 | 数据在计时循环外生成                                            | 避免测量中混入构造开销 |
 | 非连续视图    | 行视图或转置视图                                                | 模拟真实非连续访问场景 |
 
-> **设计决策**：所有数据在迭代回调外预生成（参见 §5.9.2 Bad 示例），确保仅测量目标操作本身的性能。
+**设计决策**：所有数据在迭代回调外预生成（参见 §5.9 Bad 示例），确保仅测量目标操作本身的性能。
 
 ### 6.3 black_box 使用规范
 
@@ -529,14 +502,12 @@ let _result = (&a + &b).unwrap();
 
 | 基准 ID        | 输入规模 | baseline 来源              | 报告指标             | 阈值消费者       |
 | -------------- | -------- | -------------------------- | -------------------- | ---------------- |
-| `elem_add_f64` | 256×256  | 最近一次 main 分支通过结果 | wall time / change % | 可选 Regression Check |
+| `elem_add_f64` | 65,536   | 最近一次 main 分支通过结果 | wall time / change % | 可选 Regression Check |
 | `sum_1d_f64`   | 65,536   | 最近一次 main 分支通过结果 | wall time / change % | 可选 Regression Check |
 
 ### 6.5 数值正确性引用边界
 
-benchmark 不定义正确性容差，也不在本文件内重复维护 `atol` / `rtol` 或其他比较表。所有数值正确性判断统一引用 `28-tests.md` 中冻结的数值契约：默认比较遵循 ULP-based contract，仅在文档明确允许的数学函数场景使用单独容差规则。
-
-benchmark 侧只允许复用这些契约来说明“性能观测建立在既有正确性测试之上”，不得把 benchmark 结果或阈值升级为新的正确性门禁。参见 `需求说明书 §28.3`。
+benchmark 不定义正确性容差，也不在本文件内重复维护 `MathTolerance`（`{ ulp, abs }`）或其他数值比较契约。所有数值正确性判断统一引用 `28-tests.md` 中冻结的数值契约：默认比较遵循 ULP-based contract，仅在文档明确允许的数学函数场景使用单独容差规则。benchmark 侧只允许复用这些契约来说明“性能观测建立在既有正确性测试之上”，不得把 benchmark 结果或阈值升级为新的正确性门禁。参见 `需求说明书 §28.3`。
 
 ---
 
@@ -553,7 +524,7 @@ benchmark 侧只允许复用这些契约来说明“性能观测建立在既有�
 
 - [ ] **T2**: 实现 `benches/utils/mod.rs` 和 `benches/utils/generators.rs`
   - 文件: `benches/utils/mod.rs`, `benches/utils/generators.rs`
-  - 内容: 共享常量（`SIZES_1D/2D/3D`），数据生成函数
+  - 内容: 共享常量（`SIZES_1D`、`SIZES_2D`），数据生成函数
   - 测试: 编译通过
   - 前置: T1
   - 预计: 10 min
@@ -569,7 +540,7 @@ benchmark 侧只允许复用这些契约来说明“性能观测建立在既有�
 
 - [ ] **T4**: 实现 `benches/reduction.rs`
   - 文件: `benches/reduction.rs`
-  - 内容: sum_1d_f64/sum_2d_axis0/sum_2d_axis1/sum_sliced
+  - 内容: sum_1d_f64/sum_2d_axis0/sum_2d_axis1/sum_sliced/sum_2d_keepdims
   - 测试: `cargo bench --bench reduction -- "sum" --quick`
   - 前置: T2
   - 预计: 10 min
@@ -590,7 +561,7 @@ benchmark 侧只允许复用这些契约来说明“性能观测建立在既有�
 
 - [ ] **T7**: 实现 `benches/broadcast.rs`
   - 文件: `benches/broadcast.rs`
-  - 内容: broadcast_scalar/broadcast_row/broadcast_col
+  - 内容: broadcast_scalar/broadcast_row/broadcast_col/broadcast_with
   - 测试: `cargo bench --bench broadcast -- --quick`
   - 前置: T2
   - 预计: 10 min
@@ -606,7 +577,7 @@ benchmark 侧只允许复用这些契约来说明“性能观测建立在既有�
 
 - [ ] **T9**: 实现 `benches/construction.rs`
   - 文件: `benches/construction.rs`
-  - 内容: zeros_1d/from_shape_vec_1d
+  - 内容: zeros_1d/from_shape_vec_1d/eye_2d
   - 测试: `cargo bench --bench construction -- --quick`
   - 前置: T2
   - 预计: 10 min
@@ -617,48 +588,30 @@ benchmark 侧只允许复用这些契约来说明“性能观测建立在既有�
   - 文件: `benches/simd_comparison.rs`
   - 内容: add/sum/dot 在 `--features simd` 开/关时的性能对比；路径切换正确性由 `28-tests.md` 验证
   - 测试: 分别以两种 feature 配置运行，对比结果
-  - 前置: T3, T4
+  - 前置: T3, T4, T5
   - 预计: 10 min
 
 - [ ] **T11**: 实现 `benches/parallel_comparison.rs`
   - 文件: `benches/parallel_comparison.rs`
   - 内容: sum/add/dot 在 `--features parallel` 开/关时的性能对比；自动切换与嵌套回退正确性由 `28-tests.md` 验证
   - 测试: 分别以两种 feature 配置运行，对比结果
-  - 前置: T3, T4
+  - 前置: T3, T4, T5
   - 预计: 10 min
 
 ### Wave 5: CI 集成
 
 - [ ] **T12**: 配置可选 CI benchmark 工作流
-  - 文件: `.github/workflows/bench.yml`
-  - 内容: Smoke/Regression/Full 三级工作流与可选回归阈值配置；不作为默认交付阻塞项
+  - 文件: `.github/workflows/bench.yml`, `tools/bench/report.py`
+  - 内容: Smoke/Regression/Full 三级工作流与可选回归阈值配置；`tools/bench/report.py` 负责读取 stdout 或 JSON 摘要并输出回归判定结果；不作为默认交付阻塞项
   - 测试: CI 触发运行
   - 前置: T3-T11
-  - 预计: 10 min
-
-### 并行执行分组图
-
-```
-Wave 1: [T1] → [T2]
-                    │
-         ┌──────┬───┴───┬──────┬──────┐
-Wave 2: [T3]   [T4]   [T5]   [T6]   [T7]
-         └──────┴───┬───┴──────┴──────┘
-                    │
-         ┌──────┬───┴───┐
-Wave 3: [T8]   [T9]    │
-         └──────┴───┬───┘
-                    │
-         ┌──────┬───┴───┐
-Wave 4: [T10]  [T11]   │
-         └──────┴───┬───┘
-                    │
-Wave 5:           [T12]
-```
+  - 预计: 15 min
 
 ---
 
 ## 8. 测试计划
+
+### 8.1 测试分类表
 
 | 类型     | 位置                                   | 目的                                                     |
 | -------- | -------------------------------------- | -------------------------------------------------------- |
@@ -667,7 +620,7 @@ Wave 5:           [T12]
 | 边界验证 | CI smoke/regression                    | 验证 benchmark 分组、输入规模、feature 组合与回归阈值流程符合预期 |
 | 基线校验 | benchmark 输入准备与路径选择检查       | 验证 benchmark 分组、输入规模与 feature 组合符合预期     |
 
-### 8.1 Feature gate / 配置测试
+### 8.2 Feature gate / 配置测试
 
 | 配置        | 验证点                                                                 |
 | ----------- | ---------------------------------------------------------------------- |
@@ -676,7 +629,7 @@ Wave 5:           [T12]
 | 启用并行    | parallel comparison 组在 `parallel` feature 下可用，并覆盖阈值切换行为 |
 | 全 feature  | benchmark 入口、结果采集与 CI 工作流在组合配置下保持有效               |
 
-### 8.2 类型边界 / 编译期测试
+### 8.3 类型边界 / 编译期测试
 
 | 场景                         | 测试方式                                           |
 | ---------------------------- | -------------------------------------------------- |
@@ -757,7 +710,7 @@ benchmark files
 | 理由     | 该门限有助于持续观察性能趋势，但属于 CI/维护流程增强，不是 `需求说明书` 当前版本的必需交付 |
 | 替代方案 | 完全不设门限 — 允许，当前版本至少需保留可重复 benchmark 方案与结果汇总口径 |
 
-> **补充**：Regression Check、baseline 更新与 5% / 20% 门限均属于可选工程增强；当前版本必需交付的是 benchmark 分组、输入矩阵、feature 组合与可重复测量方法，Smoke Test 只验证 benchmark 可运行性，不应阻塞合并。
+**补充**：Regression Check、baseline 更新与 5% / 20% 门限均属于可选工程增强；当前版本必需交付的是 benchmark 分组、输入矩阵、feature 组合与可重复测量方法，Smoke Test 只验证 benchmark 可运行性，不应阻塞合并。
 
 ### 决策 5：仅 F-order 布局测试
 
@@ -787,8 +740,8 @@ benchmark files
 | 平台支持   | benchmark 方案仅覆盖 `std` 环境                       |
 | MSRV       | Rust 1.85+                                            |
 | crate 结构 | 保持单 crate，不为 benchmark 拆分独立 crate           |
-| 依赖约束   | 不引入 benchmark 专用第三方依赖；不扩展额外运行时依赖 |
 | SemVer     | 无影响；benchmark 与性能观测流程不构成 crate 稳定 API 合约 |
+| 最小依赖   | 不引入 benchmark 专用第三方依赖；不扩展额外运行时依赖 |
 
 ---
 

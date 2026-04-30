@@ -113,7 +113,7 @@ xenon/
 │   ├── prelude.rs             # Common pub-use exports
 │   ├── private.rs             # Sealed-trait infrastructure
 │   ├── error.rs               # XenonError enum and Result alias
-│   ├── dispatch.rs            # Internal dispatch helper (ExecPath, ParallelGuard, parallel thresholds)
+│   ├── dispatch.rs            # Internal dispatch helper (ExecPath, ParallelExecStrategy, ParallelGuard, ParallelContext, parallel thresholds)
 │   │
 │   ├── dimension/             # Dimension type system
 │   │   ├── mod.rs             # Dimension trait definition
@@ -234,14 +234,13 @@ xenon/
 │   │
 │   ├── ffi/                   # FFI interface
 │   │   ├── mod.rs             # Module root and re-exports
-│   │   ├── types.rs           # BlasInfo definition
+│   │   ├── types.rs           # BlasInfo; re-exports ElementType (from element), FfiErrorCategory (from error)
 │   │   ├── ptr.rs             # Raw pointer API (export/export_mut, from_raw_parts, into_raw_parts)
-│   │   ├── blas.rs            # BLAS compatibility checks (is_blas_compatible, blas_info, lda)
+│   │   ├── blas.rs            # BLAS compatibility checks (is_blas_layout_compatible, blas_info, lda)
 │   │   └── offset.rs          # Index-to-pointer offset
 │   │
 │   ├── workspace/             # Temporary workspace
 │       ├── mod.rs             # Module root and re-exports
-│       ├── error.rs           # WorkspaceErrorCategory definitions
 │       ├── workspace.rs       # Workspace struct, constants, construction, destruction
 │       ├── borrow.rs          # WorkspaceBorrow, WorkspaceBorrowMut guards
 │       ├── split.rs           # SplitBorrowMut guard
@@ -255,6 +254,7 @@ xenon/
 │   │
 │   ├── test_tensor.rs         # Tensor core functionality (creation/query/type aliases)
 │   ├── test_math.rs           # Element-wise operations (arithmetic/math/comparison/logic)
+│   ├── test_overload.rs       # Operator overloading (Add/Sub/Mul/Div trait implementations)
 │   ├── test_broadcast.rs      # Broadcasting (scalar/vector/matrix broadcasting)
 │   ├── test_index.rs          # Indexing operations (multi-dimensional indexing/range slicing)
 │   ├── test_construction.rs   # Constructors (zeros/ones/eye/from_shape_vec/...)
@@ -414,7 +414,7 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | `simd/`        | SIMD 后端：向量化 kernel（pulp）、运行时分发，不含标量回退          |
 | `parallel/`    | 并行后端：承载纯并行执行入口与内部并行迭代 helper，不含串行回退     |
 | `math/`        | 逐元素数学运算（一元、二元算术、比较等）                            |
-| `overload`     | 运算符重载（Add, Sub, Mul, Div trait 实现）                         |
+| `overload/`     | 运算符重载（Add, Sub, Mul, Div trait 实现）                         |
 | `util/`        | 实用操作（clip 裁剪、fill 填充、to_contiguous 连续性保证的公共入口）|
 | `set/`         | 集合操作（unique 去重）                                             |
 | `broadcast/`   | NumPy 广播规则与只读广播视图构造                                    |
@@ -445,10 +445,10 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | L3     | tensor    | storage, dimension, layout, element, error | 07-tensor.md        |
 | L4     | broadcast | tensor, dimension, layout, error    | 15-broadcast.md     |
 | L4     | iter      | tensor, storage, dimension, error   | 10-iterator.md      |
-| L4     | ffi       | tensor, layout, storage, dimension  | 23-ffi.md           |
+| L4     | ffi       | tensor, layout, storage, dimension, element, error | 23-ffi.md           |
 | L4     | dispatch  | tensor                              | 01-architecture.md  |
-| L5     | parallel  | tensor, dimension, error            | 09-parallel.md      |
-| L5     | simd      | tensor, layout, element, storage    | 08-simd.md          |
+| L5     | parallel  | tensor, dimension, element, error, dispatch  | 09-parallel.md      |
+| L5     | simd      | tensor, layout, element             | 08-simd.md          |
 | L5     | math      | tensor, broadcast, element, iter    | 11-math.md          |
 | L5     | set       | tensor, element, complex, iter      | 14-set.md           |
 | L5     | matrix    | tensor, element                     | 12-matrix.md        |

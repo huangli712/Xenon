@@ -796,7 +796,7 @@ fmt_display(error, formatter):
 | 被消费  | `convert`                      | `XenonError::TypeConversion`    | 有损转换失败时构造并返回          |
 | 被消费  | `ffi`                          | `XenonError::Ffi`               | FFI 前提不满足时构造并返回        |
 | 被消费  | `tensor` / `ffi`               | `XenonError::InvalidLayout`     | 元数据校验失败时构造并返回        |
-| 被消费  | `index` / `math` / `overload`  | `XenonError::InvalidArgument`   | 参数非法时构造并返回              |
+| 被消费  | `index` / `math` / `overload` / `parallel` | `XenonError::InvalidArgument`   | 参数非法时构造并返回              |
 | 被消费  | `construction` / `math` / `parallel` | `XenonError::InvalidShape` | 形状/长度不匹配时构造并返回       |
 | 被消费  | `dimension` / `parallel` / `matrix` / `index` / `ffi` | `XenonError::DimensionMismatch` | 维度不匹配时构造并返回 |
 | 被消费  | `storage` / `utility`          | `XenonError::InvalidStorageMode`| 存储模式不支持时构造并返回        |
