@@ -705,7 +705,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
   - 前置: T2
   - 预计: 10 min
 
-- [ ] **T7a**: 编写 util 模块级文档
+- [ ] **T8**: 编写 util 模块级文档
   - 文件: `src/util/mod.rs`
   - 内容: 模块职责概述、utility 函数分类说明（参见 `20-utility.md §1`）；仅模块级文档（`//!`），不含函数级 doctest
   - 测试: `cargo doc --no-deps` 无 warning
@@ -714,162 +714,162 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 ### Wave 3: 类型/函数级文档
 
-- [ ] **T8a**: tensor 模块公共 API 文档
+- [ ] **T9**: tensor 模块公共 API 文档
   - 文件: `src/tensor/mod.rs` 及相关文件
   - 内容: TensorBase, Tensor, TensorView, TensorViewMut, ArcTensor 类型文档
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T5, T6, T7
   - 预计: 10 min
 
-- [ ] **T8b**: dimension 模块文档
+- [ ] **T10**: dimension 模块文档
   - 文件: `src/dimension/mod.rs`
   - 内容: Ix0~Ix6, IxDyn, Dimension trait 文档
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T5, T6, T7
   - 预计: 10 min
 
-- [ ] **T8c**: element 模块文档
+- [ ] **T11**: element 模块文档
   - 文件: `src/element/mod.rs`
   - 内容: Element, Numeric, RealScalar, ComplexScalar trait 文档
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T5, T6, T7
   - 预计: 10 min
 
-- [ ] **T8d**: storage 模块文档
+- [ ] **T12**: storage 模块文档
   - 文件: `src/storage/mod.rs`
   - 内容: Owned, ViewRepr, StorageMut trait 文档
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T5, T6, T7
   - 预计: 10 min
 
-- [ ] **T8e**: layout 模块文档
+- [ ] **T13**: layout 模块文档
   - 文件: `src/layout/mod.rs`
   - 内容: LayoutFlags, compute_f_strides 文档
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T5, T6, T7
   - 预计: 10 min
 
-- [ ] **T9a**: math 模块逐元素运算文档
+- [ ] **T14**: math 模块逐元素运算文档
   - 文件: `src/math/` 下相关文件
   - 内容: add, sub, mul, div, sin, sqrt, exp, ln, abs 等逐元素运算函数文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
 
-- [ ] **T9b**: reduction 与 matrix 模块文档
+- [ ] **T15**: reduction 与 matrix 模块文档
   - 文件: `src/reduction/`, `src/matrix/` 下相关文件
   - 内容: sum, sum_axis, dot 等归约/内积函数文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
 
-- [ ] **T9c**: broadcast 和 shape 模块文档
+- [ ] **T16**: broadcast 和 shape 模块文档
   - 文件: `src/broadcast/`, `src/shape/mod.rs`
   - 内容: broadcast_shape, transpose 函数文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
 
-- [ ] **T9d**: construct 和 set 模块文档
+- [ ] **T17**: construct 和 set 模块文档
   - 文件: `src/construct/mod.rs`, `src/set/mod.rs`
   - 内容: zeros, ones, eye, from_shape_vec, unique 函数文档和 doctest（`full` 当前版本未提供）
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
 
-- [ ] **T9e**: ffi, workspace, error 模块文档
+- [ ] **T18**: ffi, workspace, error 模块文档
   - 文件: `src/ffi/mod.rs`, `src/workspace/mod.rs`, `src/error.rs`
   - 内容: FFI 函数（含 Safety 节）、Workspace、XenonError 文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
 
-- [ ] **T9f**: iter, convert, format, overload 模块文档
+- [ ] **T19**: iter, convert, format, overload 模块文档
   - 文件: `src/iter/mod.rs`, `src/convert/mod.rs`, `src/format/mod.rs`, `src/overload/mod.rs`
   - 内容: 迭代器入口、类型转换、输出格式化、运算符语法边界的模块文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
 
-- [ ] **T9g**: index 模块函数级文档和 doctest
+- [ ] **T20**: index 模块函数级文档和 doctest
   - 文件: `src/index/mod.rs`
   - 内容: 索引/切片相关函数的文档和 doctest（参见 `17-indexing.md §1`）
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
 
-- [ ] **T9h**: util 模块函数级文档和 doctest
+- [ ] **T21**: util 模块函数级文档和 doctest
   - 文件: `src/util/mod.rs`
   - 内容: clip / fill / to_contiguous 等 utility 函数的函数级文档和 doctest（参见 `20-utility.md §1`）
   - 测试: `cargo test --doc --all-features`
-  - 前置: T7a
+  - 前置: T8
   - 预计: 10 min
 
 ### Wave 4: 示例程序
 
-- [ ] **T10**: 编写 examples/basic.rs
+- [ ] **T22**: 编写 examples/basic.rs
   - 文件: `examples/basic.rs`
   - 内容: 创建、运算、归约、打印
   - 测试: `cargo run --example basic`
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T11**: 编写 examples/complex.rs
+- [ ] **T23**: 编写 examples/complex.rs
   - 文件: `examples/complex.rs`
   - 内容: 复数构造、同类型复数算术、显式转换后的运算
   - 测试: `cargo run --example complex`
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T12**: 编写 examples/broadcasting.rs
+- [ ] **T24**: 编写 examples/broadcasting.rs
   - 文件: `examples/broadcasting.rs`
   - 内容: 广播规则、行/列/标量广播
   - 测试: `cargo run --example broadcasting`
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T13**: 编写 examples/features.rs
+- [ ] **T25**: 编写 examples/features.rs
   - 文件: `examples/features.rs`
   - 内容: 可选 feature 的启用方式，以及 `parallel` / `simd` 对公开 API **语义可见性与执行路径**的横向对比（如同一 API 在不同 feature 组合下的行为差异）；不深入单个 feature 的内部实现细节
   - 测试: `cargo run --example features --features parallel,simd`
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T14**: 编写 examples/simd.rs
+- [ ] **T26**: 编写 examples/simd.rs
   - 文件: `examples/simd.rs`
   - 内容: `simd` feature 专属的**内部加速路径、数据布局前提与回退策略**纵向深入示例；聚焦 SIMD 实现细节而非 feature 横向对比
   - 测试: `cargo run --example simd --features simd`
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T15**: 编写 examples/ffi.rs
+- [ ] **T27**: 编写 examples/ffi.rs
   - 文件: `examples/ffi.rs`
   - 内容: 为上游 C/BLAS 集成展示辅助 API 与兼容性判断
   - 测试: `cargo run --example ffi`
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T15b**: 编写 examples/workspace.rs
+- [ ] **T28**: 编写 examples/workspace.rs
   - 文件: `examples/workspace.rs`
   - 内容: 工作空间借用、split 与扩容语义示例
   - 测试: `cargo run --example workspace`
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T16**: 校验示例与 crate 文档仅声明 `std` 环境
+- [ ] **T29**: 校验示例与 crate 文档仅声明 `std` 环境
   - 文件: `src/lib.rs`, `README.md`, `examples/`
   - 内容: 清理超范围的平台说明，确保示例与文档默认面向 `std` 环境
   - 测试: `cargo doc --no-deps` 与 `cargo build --examples --all-features`
-  - 前置: T1, T3, T10-T15b
+  - 前置: T1, T3, T22-T28
   - 预计: 10 min
 
 ### Wave 5: CI 集成
 
-- [ ] **T17**: 配置 CI 文档验证工作流
+- [ ] **T30**: 配置 CI 文档验证工作流
   - 文件: `.github/workflows/docs.yml`
   - 内容: missing docs 检查、doctest、示例编译
   - 测试: CI 触发运行
-  - 前置: T1-T16
+  - 前置: T1-T29
   - 预计: 10 min
 
 ### unsafe API 执行清单
