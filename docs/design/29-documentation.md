@@ -322,14 +322,12 @@ L3: Examples (examples/)
 **执行矩阵说明**：doctest 与测试 CI 矩阵由 `28-tests.md` 统一定义。本文档仅规定“需要哪些文档验证”，不维护 CI 执行矩阵。
 
 ```rust,ignore
-// lib.rs
-// During development: warn level allows gradual documentation
-// In CI: RUSTDOCFLAGS="-D warnings" cargo doc enforces deny-level
-#![warn(missing_docs)]                        // all pub items should have documentation
+// lib.rs — documentation-specific lint additions only.
+// The complete lib.rs lint baseline is in `00-coding.md §7.1`; the entries
+// below are supplementary rustdoc / clippy rules not already covered there.
 #![deny(rustdoc::broken_intra_doc_links)]     // doc links must be valid
 #![deny(rustdoc::private_intra_doc_links)]    // private item links are invalid
 #![warn(rustdoc::missing_crate_level_docs)]   // crate-level docs must exist
-#![warn(unsafe_op_in_unsafe_fn)]              // unsafe ops in unsafe fn should be documented
 #![cfg_attr(docsrs, feature(doc_cfg))]        // docs.rs feature annotation
 ```
 
@@ -344,7 +342,7 @@ L3: Examples (examples/)
 
 以上 lint 对应 §5.4.2 中 `# Errors`、`# Panics`、`# Safety` 三节的必须规则，仅在 CI 中作为自动化门禁补充；完整文档节定义仍以 §5.4.2 为准。
 
-以上仅列出文档相关 lint 增补，完整 `lib.rs` 基线见 `00-coding.md §7.1`。
+完整 `lib.rs` 基线（含 `missing_docs`、`unsafe_op_in_unsafe_fn`、`missing_debug_implementations` 等）见 `00-coding.md §7.1`。
 
 ### 5.6 Doctest 规范
 
