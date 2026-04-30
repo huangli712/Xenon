@@ -3,7 +3,7 @@
 > 文档编号: 13
 > 模块目录: src/reduction/
 > 任务阶段: Phase 4
-> 前置文档: 02-dimension.md, 03-element.md, 07-tensor.md, 09-parallel.md, 10-iterator.md, 26-error.md
+> 前置文档: 01-architecture.md, 02-dimension.md, 03-element.md, 07-tensor.md, 09-parallel.md, 10-iterator.md, 26-error.md
 > 需求参考: 需求说明书 §9、§14、§27、§28
 > 范围声明: 范围内
 

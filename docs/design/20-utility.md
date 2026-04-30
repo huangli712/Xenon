@@ -558,7 +558,7 @@ into_contiguous(tensor):
 | `utility → iter`   | `iter`   | `iter_mut()`   | `fill` 通过 storage 层 helper 直接写入逻辑元素（参见 §5.4），参见 `10-iterator.md` §5.6 |
 | `utility → iter`   | `iter`   | `iter()`       | `clip` 通过只读迭代器读取并写入新张量，参见 `10-iterator.md` §5.6 |
 | `utility → layout` | `layout` | 连续性查询     | `to_contiguous` 先查询当前布局是否已经连续，张量层方法参见 `07-tensor.md` §5.3，算法定义参见 `06-layout.md` §5.7 |
-| `utility → tensor` | `tensor` | `to_owned()` / `into_owned()` | `to_contiguous` 与 `into_contiguous` 复用张量 owned 化路径（定义参见 `21-type.md` §5.6）；跨文档连续化归属统一在 utility |
+| `utility → tensor` | `tensor` | `to_owned()` / `into_owned()` | `to_contiguous` 与 `into_contiguous` 复用张量 owned 化路径（定义参见 `21-type.md` §5.5）；跨文档连续化归属统一在 utility |
 | `utility → tensor` | `tensor` | owned 结果张量构造 | `clip` 分配新的 owned 结果张量，通过 `iter()` 读取源数据并写入 |
 
 ### 9.2 数据流描述

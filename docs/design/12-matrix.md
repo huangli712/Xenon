@@ -3,7 +3,7 @@
 > 文档编号: 12
 > 模块目录: src/matrix/
 > 任务阶段: Phase 4
-> 前置文档: 03-element.md, 07-tensor.md, 08-simd.md, 09-parallel.md, 10-iterator.md, 13-reduction.md, 26-error.md
+> 前置文档: 00-coding.md, 03-element.md, 07-tensor.md, 08-simd.md, 09-parallel.md, 10-iterator.md, 11-math.md, 13-reduction.md, 26-error.md
 > 需求参考: 需求说明书 §4、§9、§10、§13、§27、§28
 > 范围声明: 范围内
 
