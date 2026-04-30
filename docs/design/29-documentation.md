@@ -356,7 +356,7 @@ L3: Examples (examples/)
 | 最小化     | 只展示当前 API 用法                                                                                                         |
 | 有断言     | 用 `assert_eq!` 验证结果                                                                                                    |
 
-> **关键示例定义**：§5.11.1 Gate 4 列出的示例（当前为 `basic` / `broadcasting` / `workspace`）为关键默认示例，必须在 CI 中实际运行。§5.3 示例覆盖矩阵列出的全部 API 族示例均须编译通过；其中被 Gate 4 命名的还须运行通过。
+**关键示例定义**：§5.11.1 Gate 4 列出的示例（当前为 `basic` / `broadcasting` / `workspace`）为关键默认示例，必须在 CI 中实际运行。§5.3 示例覆盖矩阵列出的全部 API 族示例均须编译通过；其中被 Gate 4 命名的还须运行通过。
 
 #### 5.6.2 Doctest 模板
 
@@ -379,7 +379,7 @@ pub fn sum(&self) -> A { ... }
 
 #### 5.6.3 Feature-gated Doctest
 
-> **注**：本模板演示的是 feature-gated doctest 的编写模式。`sum()` 本身是始终可用的 API（见 §5.10.2），此处仅因为示例中验证的行为（并行路径的正确性）依赖 `parallel` feature，因此用 `#[cfg(feature = "parallel")]` 包裹。`sum()` 的基础 doctest 见 §5.6.2。
+**注**：本模板演示的是 feature-gated doctest 的编写模式。`sum()` 本身是始终可用的 API（见 §5.10.2），此处仅因为示例中验证的行为（并行路径的正确性）依赖 `parallel` feature，因此用 `#[cfg(feature = "parallel")]` 包裹。`sum()` 的基础 doctest 见 §5.6.2。
 
 ````rust,ignore
 /// Compute the sum of all elements.
@@ -531,7 +531,7 @@ pub fn sum(&self) -> A { ... }
 | Gate 1：rustdoc 文档门禁 | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`                                                            | 任何 missing docs / broken intra-doc links / 其他 rustdoc warning |
 | Gate 2：文档节完整性门禁 | `cargo clippy --all-features -- -D clippy::missing_errors_doc -D clippy::missing_panics_doc -D clippy::missing_safety_doc` | 缺少 `# Errors` / `# Panics` / `# Safety` 文档节                  |
 | Gate 3：Doctest          | `cargo test --doc --all-features`                                                                                          | 任何失败                                                          |
-| Gate 4：示例验证         | `cargo build --examples --all-features` + 关键示例运行命令（见 §5.6.1 定义；当前为 `basic` / `broadcasting` / `workspace`）            | 任何失败                                                          |
+| Gate 4：示例验证         | `cargo build --examples --all-features` + 关键示例运行命令（见 §5.6.1 定义；当前为 `basic` / `broadcasting` / `workspace`）| 任何失败                                                          |
 
 #### 5.11.2 CI 配置与 Feature 维度验证矩阵
 
@@ -977,7 +977,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 | 属性     | 值                                                              |
 | -------- | --------------------------------------------------------------- |
-| 决策     | examples/ 按使用场景（basic/broadcasting/features 等）组织 |
+| 决策     | examples/ 按使用场景（basic/broadcasting/features 等）组织      |
 | 理由     | 用户按需求查找示例，而非按源码模块                              |
 | 替代方案 | 按源码模块组织 — 放弃，不便于用户理解实际用法                   |
 
