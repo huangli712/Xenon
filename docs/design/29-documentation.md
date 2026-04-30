@@ -73,8 +73,8 @@ src/
 │   └── mod.rs                # Tensor module docs (L1)
 ├── iter/
 │   └── mod.rs                # Iterator module docs (L1)
-├── simd/                     # (internal-only, feature-gated, no public mod.rs)
-├── parallel/                 # (internal-only, feature-gated, no public mod.rs)
+├── simd/                     # (pub(crate), feature-gated, no externally-visible docs)
+├── parallel/                 # (pub(crate), feature-gated, no externally-visible docs)
 ├── broadcast/
 │   └── mod.rs                # Broadcast module docs (L1)
 ├── math/
@@ -223,7 +223,7 @@ L3: Examples (examples/)
 | 类型转换 (`cast`)                    | ✅         | doctest   | `21-type.md`         |
 | FFI unsafe API                       | ✅         | example   | `23-ffi.md`          |
 | 运算符重载                           | ✅         | doctest   | `19-overload.md`     |
-| `clip`/`fill`                        | ✅         | doctest   | `20-utility.md`      |
+| `clip`/`fill`/`to_contiguous`        | ✅         | doctest   | `20-utility.md`      |
 | 集合操作 (`unique`)                  | ✅         | doctest   | `14-set.md`          |
 | 工作空间                             | ✅         | example   | `24-workspace.md`    |
 | 格式化输出                           | ✅         | doctest   | `22-output.md`       |
@@ -251,11 +251,11 @@ L3: Examples (examples/)
 //! let b = Tensor::<f64, _>::zeros([3, 4])?;
 //!
 //! // Element-wise operations with broadcasting
-//! let sum = (&a + &a)?;
+//! let added = (&a + &a)?;
 //!
 //! // Reduction
 //! let total = b.sum();
-//! assert_eq!(sum.len(), 5);
+//! assert_eq!(added.len(), 5);
 //! assert_eq!(total, 0.0);
 //! # Ok(())
 //! # }
@@ -263,7 +263,7 @@ L3: Examples (examples/)
 //!
 //! ## Runtime Environment
 //!
-//! Xenon supports only the `std` environment (see `01-architecture.md §1.3`).
+//! Xenon supports only the `std` environment (see `01-architecture.md §1.4`).
 //! It does not need or provide a `std` feature toggle.
 //! All documentation assumes a `std` environment.
 //!
@@ -707,9 +707,9 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
   - 前置: T2
   - 预计: 10 min
 
-- [ ] **T7a**: 编写 util 模块文档
+- [ ] **T7a**: 编写 util 模块级文档
   - 文件: `src/util/mod.rs`
-  - 内容: 模块职责、clip / fill / to_contiguous 等 utility 函数的文档和 doctest（参见 `20-utility.md §1`）
+  - 内容: 模块职责概述、utility 函数分类说明（参见 `20-utility.md §1`）；仅模块级文档（`//!`），不含函数级 doctest
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T2
   - 预计: 5 min
@@ -793,6 +793,20 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
   - 前置: T5, T6, T7
   - 预计: 10 min
 
+- [ ] **T9g**: index 模块函数级文档和 doctest
+  - 文件: `src/index/mod.rs`
+  - 内容: 索引/切片相关函数的文档和 doctest（参见 `17-indexing.md §1`）
+  - 测试: `cargo test --doc --all-features`
+  - 前置: T5, T6, T7
+  - 预计: 10 min
+
+- [ ] **T9h**: util 模块函数级文档和 doctest
+  - 文件: `src/util/mod.rs`
+  - 内容: clip / fill / to_contiguous 等 utility 函数的函数级文档和 doctest（参见 `20-utility.md §1`）
+  - 测试: `cargo test --doc --all-features`
+  - 前置: T7a
+  - 预计: 10 min
+
 ### Wave 4: 示例程序
 
 - [ ] **T10**: 编写 examples/basic.rs
@@ -818,14 +832,14 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 - [ ] **T13**: 编写 examples/features.rs
   - 文件: `examples/features.rs`
-  - 内容: 可选 feature 启用方式，以及 `parallel` / `simd` 对公开 API 执行路径和文档可见性的影响
-  - 测试: `cargo run --example features --features parallel`
+  - 内容: 可选 feature 的启用方式，以及 `parallel` / `simd` 对公开 API **语义可见性与执行路径**的横向对比（如同一 API 在不同 feature 组合下的行为差异）；不深入单个 feature 的内部实现细节
+  - 测试: `cargo run --example features --features parallel,simd`
   - 前置: T1
   - 预计: 10 min
 
 - [ ] **T14**: 编写 examples/simd.rs
   - 文件: `examples/simd.rs`
-  - 内容: SIMD 加速、回退策略
+  - 内容: `simd` feature 专属的**内部加速路径、数据布局前提与回退策略**纵向深入示例；聚焦 SIMD 实现细节而非 feature 横向对比
   - 测试: `cargo run --example simd --features simd`
   - 前置: T1
   - 预计: 10 min
@@ -837,11 +851,18 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
   - 前置: T1
   - 预计: 10 min
 
+- [ ] **T15b**: 编写 examples/workspace.rs
+  - 文件: `examples/workspace.rs`
+  - 内容: 工作空间借用、split 与扩容语义示例
+  - 测试: `cargo run --example workspace`
+  - 前置: T1
+  - 预计: 10 min
+
 - [ ] **T16**: 校验示例与 crate 文档仅声明 `std` 环境
   - 文件: `src/lib.rs`, `README.md`, `examples/`
   - 内容: 清理超范围的平台说明，确保示例与文档默认面向 `std` 环境
   - 测试: `cargo doc --no-deps` 与 `cargo build --examples --all-features`
-  - 前置: T1, T3, T10-T15
+  - 前置: T1, T3, T10-T15b
   - 预计: 10 min
 
 ### Wave 5: CI 集成
@@ -863,7 +884,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 - [ ] Bounds: 访问范围在合法边界内
 - [ ] Overflow/Layout: 布局前置条件已满足
 
-最低基线至少覆盖 `23-ffi.md` 中的 `from_raw_parts*` / `from_raw_parts_mut` / `from_raw_parts_owned()` 系列，以及 `24-workspace.md` 中的 `assume_init_*` 系列高风险函数。
+最低基线至少覆盖 `23-ffi.md` 中的 `from_raw_parts()` / `from_raw_parts_mut()` / `from_raw_parts_owned()` 系列，以及 `24-workspace.md` 中的 `assume_init_*` 系列高风险函数。
 
 ### 关键 API 示例矩阵
 
