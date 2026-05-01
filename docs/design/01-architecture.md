@@ -809,7 +809,6 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 | W5.3 parallel sum | W3.6, W5.2 | 高         | 并行 sum       |
 | W5.4 SIMD math    | W3.4       | 高         | 纯向量化逐元素 |
 | W5.5 SIMD sum     | W3.6       | 高         | 纯向量化 sum   |
-```
 
 ---
 

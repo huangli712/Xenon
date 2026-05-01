@@ -583,9 +583,9 @@ impl RemoveAxis for IxDyn {
 }
 ```
 
-- `RemoveAxis` 是维度层内部/泛型辅助能力，公开张量方法不直接把该 trait 暴露给用户。
-- `RemoveAxis` 作为独立 trait 而非 `Dimension` 的关联类型。它负责描述“可移除一条轴后的结果维度类型”，但零维轴操作不应依赖编译期拒绝。标量场景若进入统一轴操作入口，仍须返回运行时可恢复错误。
-- 对 `Ix0` 的移轴请求统一在运行时返回 `XenonError::InvalidAxis`，而不是通过公开 API 暴露 `RemoveAxis` 细节或要求用户理解零维 `Smaller` 类型。
+- `RemoveAxis` 是公开 sealed trait，出现在 `sum_axis()`（`13-reduction.md §5.1`）与 `axis_iter()`（`10-iterator.md §5.5`）的公开签名中。与 `BroadcastDim` 一致，它在对外签名中可被命名，但通过 `Sealed` 封闭实现，下游 crate 不得自行实现。
+- `RemoveAxis` 作为独立 trait 而非 `Dimension` 的关联类型。它负责描述"可移除一条轴后的结果维度类型"，但零维轴操作不应依赖编译期拒绝。标量场景若进入统一轴操作入口，仍须返回运行时可恢复错误。
+- 对 `Ix0` 的移轴请求统一在运行时返回 `XenonError::InvalidAxis`。
 
 ### 5.9 Sealed trait 策略
 

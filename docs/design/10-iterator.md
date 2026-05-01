@@ -86,7 +86,7 @@ src/iter/
 | 来源模块    | 使用的类型/trait                                                                                                                                  |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tensor`    | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `TensorViewMut<'a, A, D>`, `.shape()`, `.strides()`, `.as_ptr()`, `.len()`（参见 `07-tensor.md §5` ） |
-| `dimension` | `Dimension`, `Axis`, `Ix0`~`Ix6`, `IxDyn`，以及仅供内部轴迭代实现使用的 `RemoveAxis` / `D::Smaller`（参见 `02-dimension.md §5`）                  |
+| `dimension` | `Dimension`, `Axis`, `Ix0`~`Ix6`, `IxDyn`，以及在公开签名中使用的 `RemoveAxis` / `D::Smaller`（参见 `02-dimension.md §5`）                  |
 | `storage`   | `Storage<Elem = A>`, `StorageMut<Elem = A>`（参见 `05-storage.md §5`）                                                                            |
 | `error`     | `XenonError::InvalidAxis`（参见 `26-error.md §5`）                                                                                                |
 | `tensor`    | `.is_f_contiguous()`, 布局标志查询（参见 `07-tensor.md §5`）                                                                                      |
@@ -199,7 +199,7 @@ where
 {}
 ```
 
-- `需求说明书 §11` 与 `02-dimension.md §5.8` 更偏向“0D 按轴遍历通过运行时 `InvalidAxis` 拒绝，且公开张量方法不直接暴露 `RemoveAxis`”。当前文档仍保留 `D: RemoveAxis` 的公开签名，是因为 `Iterator::Item = TensorView<'a, A, D::Smaller>` 的静态返回类型尚未找到同样简洁的公开建模方式。在当前设计下，所有进入运行时路径的按轴迭代仍必须对 `axis < ndim`（含动态 rank-0）返回 `XenonError::InvalidAxis`。
+- `需求说明书 §11` 与 `02-dimension.md §5.8` 要求 0D 按轴遍历通过运行时 `InvalidAxis` 拒绝。`RemoveAxis` 是公开 sealed trait（定义见 `02-dimension.md §5.8`），对外可命名但禁止外部实现。当前文档保留 `D: RemoveAxis` 的公开签名，是通过 `RemoveAxis::Smaller` 关联类型精确描述输出秩降语义，与 `BroadcastDim` 地位一致。所有进入运行时路径的按轴迭代必须对 `axis < ndim`（含动态 rank-0）返回 `XenonError::InvalidAxis`。
 - **`ExactSizeIterator` 契约说明：** `AxisIter` / `AxisIterMut` 的 `len()` 返回 `shape[axis]`；因此 `size_hint()` 的上下界必须始终相等，并与剩余未产出的轴切片数量一致。空轴（`shape[axis] == 0`）时，`len() == 0`。
 
 ### 5.3 内部迭代分发说明

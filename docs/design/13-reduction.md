@@ -128,10 +128,6 @@ where
     ///
     /// Returns `XenonError::InvalidAxis` when `axis.index() >= self.ndim()`.
     ///
-    /// Note: the current typed signature still uses `D::Smaller` and therefore
-    /// carries a `D: RemoveAxis` bound. This conflicts with the preferred public
-    /// direction recorded in `02-dimension.md §5.8`, but changing the return-type
-    /// modeling is a broader API decision and is not resolved in this patch.
     pub fn sum_axis(&self, axis: Axis) -> Result<Tensor<A, D::Smaller>, XenonError>
     where
         D: RemoveAxis;
@@ -144,7 +140,7 @@ where
 }
 ```
 
-- 按 `需求说明书 §14` 与 `02-dimension.md §5.8`，更理想的公开语义是让 0D 轴归约统一走运行时 `InvalidAxis`。但当前返回类型仍使用 `Tensor<A, D::Smaller>`，因此文档暂时保留 `D: RemoveAxis` 约束，并把该冲突记录为待统一的 API 形状问题；对所有实际进入运行时路径的调用，仍必须校验 `axis < ndim` 并返回 `XenonError::InvalidAxis`。
+- `sum_axis()` 通过返回 `Tensor<A, D::Smaller>` 描述"移除一条轴后维度降一"的语义，因此公开签名要求 `D: RemoveAxis`。该 trait 是公开 sealed trait（定义见 `02-dimension.md §5.8`），对外可命名但禁止外部实现。对所有实际进入运行时路径的调用，仍必须校验 `axis < ndim` 并返回 `XenonError::InvalidAxis`；其中 0D 张量因 `ndim == 0` 不存在合法轴，统一走此错误路径。
 - keepdims 不移除被归约轴，因此不需要 `RemoveAxis` 约束。输出维度类型与输入维度类型相同，被归约轴长度变为 `1`。但对 0D 张量而言不存在任何合法轴，因此 `sum_axis_keepdims()` 仍须返回 `InvalidAxis`，而不能定义为 no-op。
 
 ### 5.2 对外错误契约
@@ -494,12 +490,12 @@ User calls sum / sum_axis / sum_axis_keepdims
 
 ### 决策 3：0D axis API 边界
 
-| 属性     | 值                                                                                                                                                                                                        |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | 对 0D 张量，公开语义目标仍是统一返回 `XenonError::InvalidAxis`；但当前 typed 设计下，`sum_axis()` 暂保留 `D: RemoveAxis`，`sum_axis_keepdims()` 继续返回 `XenonError::InvalidAxis`。                      |
-| 理由     | `需求说明书 §14` 与 `02-dimension.md §5.8` 要求 0D 轴 API 保持 recoverable error 语义；同时 `sum_axis()` 的现有返回类型仍依赖 `D::Smaller`，短期内无法在不重塑返回类型的前提下完全消除公开 `RemoveAxis`。 |
-| 替代方案 | (1) 立刻把 `sum_axis()` 改成仅 `D: Dimension` 并重塑结果维度建模；(2) 继续维持当前签名但不记录该张力。                                                                                                    |
-| 拒绝原因 | 前者属于超出本次最小修正范围的 API 设计变更；后者会让文档继续掩盖与需求/维度文档的冲突。                                                                                                                  |
+| 属性     | 值                                                                                                                                                                                             |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | `sum_axis()` 通过返回 `Tensor<A, D::Smaller>` 在类型层表达"移除一条轴"，公开签名要求 `D: RemoveAxis`。`RemoveAxis` 是公开 sealed trait，对外可命名但禁止外部实现。0D 张量因 `ndim == 0` 不存在合法轴，`sum_axis()` / `sum_axis_keepdims()` 统一返回 `XenonError::InvalidAxis`。 |
+| 理由     | `需求说明书 §14` 与 `02-dimension.md §5.8` 定义 0D 轴 API 须保持 recoverable error 语义。`D::Smaller` 作为关联类型可精确描述"秩降一"的静态语义而无须重塑返回类型。                              |
+| 替代方案 | (1) 将 `sum_axis()` 返回类型改为 `Tensor<A, D>` 并舍弃静态秩降信息；(2) 将 `RemoveAxis` 设计为 `Dimension` 的关联类型。                                                                       |
+| 拒绝原因 | 前者丧失类型层秩降保证，要求调用方在运行时自行追踪维度变化；后者会扩大 `Dimension` trait 面且违背最小化设计原则。                                                                              |
 
 ### 决策 4：整数溢出使用 panic 而非 `Result`
 
