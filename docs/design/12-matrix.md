@@ -18,7 +18,7 @@
 | 向量内积  | dot product（实数内积：sum(a[i] \* b[i])）                                                   |
 | 复数内积  | 共轭线性定义（sum(conjugate(a[i]) \* b[i])）                                                 |
 | SIMD 状态 | dot 可选接入 `simd` / `parallel` 能力                                                        |
-| 错误处理  | 非 1D 输入返回 `XenonError::InvalidArgument`；长度不匹配返回 `XenonError::DimensionMismatch` |
+| 错误处理  | 非 1D 输入返回 `XenonError::InvalidArgument`；长度不匹配返回 `XenonError::ShapeMismatch` |
 
 | 职责      | 不包含         |
 |---------- | -------------- |
@@ -89,7 +89,7 @@ src/matrix/
 | `element`          | `Numeric`, `ComplexScalar`                                                                 |
 | `iter`             | `Elements`, `.iter()`                                                                      |
 | `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`should_parallelize()`                                   |
-| `error`            | `XenonError::InvalidArgument`, `XenonError::DimensionMismatch`                             |
+| `error`            | `XenonError::InvalidArgument`, `XenonError::ShapeMismatch`                             |
 | `simd`（可选）     | 为满足条件的输入提供 dot 的 SIMD kernel（参见 `08-simd.md`）                               |
 | `parallel`（可选） | 为 dot 提供并行执行能力                                                                    |
 
@@ -133,7 +133,7 @@ src/matrix/
 /// # Errors
 ///
 /// Returns a recoverable error when either input is not logically 1D.
-/// Returns `XenonError::DimensionMismatch { operation, expected, actual }`
+/// Returns `XenonError::ShapeMismatch { operation, left_shape, right_shape }`
 /// when lengths do not match.
 /// Empty vectors are valid inputs and return the additive identity `A::zero()`.
 /// When available, dot may delegate to the `simd` module for SIMD acceleration
@@ -230,7 +230,7 @@ dot_impl(a, b):
         return Err(XenonError::InvalidArgument { ... })
 
     if a.len() != b.len():
-        return Err(XenonError::DimensionMismatch { ... })
+        return Err(XenonError::ShapeMismatch { ... })
 
     match dispatch::select_exec_path(a.len(), a.is_f_contiguous() && b.is_f_contiguous(), alignment_ok):
         ExecPath::Parallel => parallel::par_dot(as_ix1_view(a)?, as_ix1_view(b)?)
@@ -414,7 +414,7 @@ fn dot_impl<A, D1, D2>(
 | --------------------------------------------- | --------------------------------------------------------------- | ------ |
 | `test_dot_basic`                              | 两个长度为 3 的向量内积正确                                     | 高     |
 | `test_dot_complex`                            | 复数内积满足共轭线性                                            | 高     |
-| `test_dot_dimension_mismatch`                 | 长度不匹配返回 DimensionMismatch 错误                           | 高     |
+| `test_dot_shape_mismatch`                     | 长度不匹配返回 ShapeMismatch 错误                               | 高     |
 | `test_dot_int_overflow_mul`                   | 整数乘法溢出触发 panic                                          | 高     |
 | `test_dot_int_overflow_add`                   | 整数累加溢出触发 panic                                          | 高     |
 | `test_dot_empty`                              | 两个空向量内积返回加法单位元                                    | 中     |
@@ -486,7 +486,7 @@ fn dot_impl<A, D1, D2>(
 | `matrix → element`  | `element`  | `Numeric` / `ComplexScalar` | 通过泛型约束区分实数与复数路径，参见 `03-element.md` §5 |
 | `matrix → simd`     | `simd`     | dot kernel | 满足条件时委托给 `simd` 模块做内积加速，且保持统一语义             |
 | `matrix → parallel` | `parallel` | parallel reduction | 大输入时可委托给 `parallel` 模块做并行归约，且保持统一语义 |
-| `matrix → error`    | `error`    | `XenonError::InvalidArgument`, `XenonError::DimensionMismatch` | 非 1D 输入或长度不匹配时返回可恢复错误，字段使用规范形式  |
+| `matrix → error`    | `error`    | `XenonError::InvalidArgument`, `XenonError::ShapeMismatch` | 非 1D 输入或长度不匹配时返回可恢复错误，字段使用规范形式  |
 
 ### 9.2 数据流描述
 
@@ -505,7 +505,7 @@ User calls dot(a, b)
 
 | 主题              | 内容                                                                      |
 | ----------------- | ------------------------------------------------------------------------- |
-| Recoverable error | 左/右输入非 1D 时分别返回 `XenonError::InvalidArgument`；长度不匹配时返回 `XenonError::DimensionMismatch`。 |
+| Recoverable error | 左/右输入非 1D 时分别返回 `XenonError::InvalidArgument`；长度不匹配时返回 `XenonError::ShapeMismatch`。 |
 | Panic             | 整数 dot 的乘法溢出与累加溢出均为不可恢复错误，按 checked arithmetic 触发 panic。|
 | 路径一致性        | 执行路径选择参见 §6.1；任何可选路径都不得改变结果、错误类别或 panic 语义。|
 | 容差边界          | 以 `需求说明书 §28.3` 为权威基线；实现细节参见 `00-coding.md §8.4`。同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。|
@@ -527,7 +527,7 @@ User calls dot(a, b)
 
 | 属性     | 值                                                                         |
 | -------- | -------------------------------------------------------------------------- |
-| 决策     | 长度不匹配返回 `Result::Err(XenonError::DimensionMismatch)`                |
+| 决策     | 长度不匹配返回 `Result::Err(XenonError::ShapeMismatch)`                |
 | 理由     | 运行时形状检查失败属于可恢复错误；用户可能动态构造向量长度，应允许优雅处理 |
 | 替代方案 | panic                                                                      |
 | 拒绝原因 | 与 `需求说明书 §13` “维度或形状不匹配时须提供可恢复的错误处理路径” 不一致  |

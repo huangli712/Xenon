@@ -789,7 +789,7 @@ fmt_display(error, formatter):
 
 | 方向    | 对方模块                       | 接口/类型                       | 约定                              |
 | ------- | ------------------------------ | ------------------------------- | --------------------------------- |
-| 被消费  | `tensor` / `shape`             | `XenonError::ShapeMismatch`     | 非广播的双输入形状冲突时构造并返回 |
+| 被消费  | `tensor` / `shape` / `matrix`  | `XenonError::ShapeMismatch`     | 非广播的双输入形状冲突时构造并返回 |
 | 被消费  | `index`                        | `XenonError::IndexOutOfBounds`  | 方法型索引越界时构造并返回        |
 | 被消费  | `broadcast` / `math`           | `XenonError::BroadcastError`    | 广播不兼容时构造并返回            |
 | 被消费  | `reduction`                    | `XenonError::InvalidAxis`       | 轴越界时构造并返回；溢出走 panic  |
@@ -798,7 +798,7 @@ fmt_display(error, formatter):
 | 被消费  | `tensor` / `ffi`               | `XenonError::InvalidLayout`     | 元数据校验失败时构造并返回        |
 | 被消费  | `index` / `math` / `overload` / `parallel` | `XenonError::InvalidArgument`   | 参数非法时构造并返回              |
 | 被消费  | `construction` / `math` / `parallel` | `XenonError::InvalidShape` | 形状/长度不匹配时构造并返回       |
-| 被消费  | `dimension` / `parallel` / `matrix` / `index` / `ffi` | `XenonError::DimensionMismatch` | 维度不匹配时构造并返回 |
+| 被消费  | `dimension` / `parallel` / `index` / `ffi` | `XenonError::DimensionMismatch` | 维度不匹配时构造并返回 |
 | 被消费  | `storage` / `utility`          | `XenonError::InvalidStorageMode`| 存储模式不支持时构造并返回        |
 | 被消费  | `workspace`                    | `XenonError::Workspace`         | 工作区分配/借用/分割失败时构造并返回 |
 | 被消费  | 所有模块                       | `Result<T>`                     | 公开 API 返回类型统一使用此别名   |

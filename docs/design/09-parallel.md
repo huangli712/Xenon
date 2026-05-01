@@ -80,7 +80,7 @@ src/parallel/
 | `dimension` | `Dimension`                                                                                              |
 | `dispatch`  | `ParallelExecStrategy`                                                                                   |
 | `parallel`  | `ParElements<'a, A, D>`, `TensorBase::par_iter()`, `par_zip_map()`                                       |
-| `error`     | `XenonError`, `XenonError::DimensionMismatch`, `XenonError::InvalidArgument` |
+| `error`     | `XenonError`, `XenonError::ShapeMismatch`, `XenonError::InvalidArgument` |
 
 ### 4.3 依赖合法性
 
@@ -392,7 +392,7 @@ where
 | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Tensor::from_raw_vec_unchecked` | 这里只在输出向量长度与 `tensor.raw_dim()` 已由输入张量长度和映射过程保持一致时使用；并行与串行路径都必须保证产出元素数等于输入逻辑元素数。                                                                                                   |
 | `par_zip_map` broadcast chunking | 每个并行 chunk 仅借用两个输入的只读 broadcast-compatible sub-view；广播轴保持逻辑重复语义，不进行额外物理展开，因此不会引入越界写或悬垂引用。                                                                                                |
-| panic / `Err` 传播               | 并行操作中发生 panic 或返回 `Err(XenonError)` 时，错误不会被静默忽略；语义上最终结果须至少传播一个错误，不保证传播“第一个”发生的错误。实现上 Rayon 的并行 collect/reduce 可能不会物理中断其他 worker，但错误信息会被收集并在最终结果中报告。 |
+| panic / `Err` 传播               | 并行操作中发生 panic 或返回 `Err(XenonError)` 时，错误不会被静默忽略；语义上最终结果须至少传播一个错误。一般错误不保证传播"第一个"发生的错误（整型 `sum` / `dot` 除外：整型运算的失败诊断固定按逻辑 chunk 索引顺序仲裁，始终选择首个失败 chunk，参见 §5.5、§6.5）。实现上 Rayon 的并行 collect/reduce 可能不会物理中断其他 worker，但错误信息会被收集并在最终结果中报告。 |
 | Send/Sync/借用边界               | 并行执行只借用输入张量的只读视图；闭包与元素类型必须满足 `Send` / `Sync` 约束；输出分配与写入归当前 worker 独占，不能向其他 worker 暴露共享可写借用。                                                                                        |
 
 ---
@@ -502,7 +502,7 @@ where
 | 非连续视图           | 若 `dispatch.rs` 选择并行路径，结果仍与串行一致                                     |
 | 单线程环境           | 不由 `parallel/` 自行处理；调用方不应选择并行路径                                   |
 | 非一维输入           | `par_dot()` 在任一输入 `ndim() != 1` 时返回错误                                     |
-| 长度不匹配的一维输入 | `par_dot()` 返回 `XenonError::DimensionMismatch { operation, expected, actual }`    |
+| 长度不匹配的一维输入 | `par_dot()` 返回 `XenonError::ShapeMismatch { operation, left_shape, right_shape }`    |
 | 二元广播逐元素输入   | `par_zip_map()` 在广播兼容时返回与串行 `add/sub/mul/div` 一致的结果                 |
 
 ### 8.4 属性测试不变量
@@ -571,7 +571,7 @@ math / reduction / matrix call dispatch entry
 
 | 主题              | 说明                                                                                                            |
 | ----------------- | --------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | `par_dot()` 的长度不兼容返回 `XenonError::DimensionMismatch`；`par_dot()` 的非一维输入返回 `XenonError::InvalidArgument`；`par_zip_map()` 的元素总数溢出返回 `InvalidArgument` |
+| Recoverable error | `par_dot()` 的长度不兼容返回 `XenonError::ShapeMismatch`；`par_dot()` 的非一维输入返回 `XenonError::InvalidArgument`；`par_zip_map()` 的元素总数溢出返回 `InvalidArgument` |
 | Panic             | 归约中的整数溢出仍属于不可恢复错误，必须 panic，而不是包装为 `XenonError`                                       |
 | 路径一致性        | 一旦进入 `parallel/`，并行路径必须返回与调用方串行基线相同形状、相同错误类别，以及满足同一数值语义约束的结果（路径选择见 §6.1）  |
 | 容差边界          | 浮点与复数若存在执行路径相关的已知舍入差异，只能落在 `需求说明书 §28.3` 与 `需求说明书 §28.5` 允许且已文档化的范围内；以 `需求说明书 §28.3` 为权威基线，`00-coding.md §8` 仅作为实现参考。|

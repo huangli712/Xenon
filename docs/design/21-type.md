@@ -292,10 +292,13 @@ where
     /// let owned_from_view: Tensor<f64, Ix1> = view.into_owned(); // O(n), new allocation
     /// ```
     pub fn into_owned(self) -> Tensor<A, D> {
-        // StorageIntoOwned dispatches by storage mode:
-        //   Owned    → O(1) direct return (see 05-storage.md §5.9)
+        // Use storage-level StorageIntoOwned::into_owned_storage() to
+        // convert the storage to Owned (see 05-storage.md §5.9).
+        // The tensor-level method then ensures canonical F-order:
+        //   Owned    → O(1) when source is already F-contiguous with offset=0
         //   View/ViewMut/Arc → O(n) allocate + copy into canonical F-order
-        S::into_owned(self.storage, self.shape, self.strides, self.offset)
+        let owned_storage = self.storage.into_owned_storage();
+        self.into_owned_from_owned_storage(owned_storage)
     }
 }
 ````
