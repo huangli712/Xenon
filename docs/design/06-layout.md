@@ -504,6 +504,16 @@ pub(crate) fn compute_layout_flags<A, D: Dimension>(
 
 当前文档统一使用 `compute_layout_flags` 表示“从 `shape + strides + ptr` 计算 `LayoutFlags`”的主函数。
 
+**调用方清单（权威列表）：** 本函数是布局状态的唯一计算入口，被以下调用方共用，实现必须同时满足三类调用方的语义需求：
+
+| 调用方 | 调用场景 | 关键语义需求 |
+| ------ | -------- | ------------ |
+| `15-broadcast.md` | 广播视图构建后 | 广播引入的零步长须置 `HAS_ZERO_STRIDE`，并使布局重新分类为 `LayoutState::BroadcastView`（见 §5.11） |
+| `16-shape.md` | 转置 / 重排轴后 | 步长重排后须重新判定 `F_CONTIGUOUS`；`ArcRepr` 已在转置规则中绝对降级为 `ViewRepr` |
+| `17-indexing.md` | 切片 / 范围索引后 | 对齐基于切片后逻辑首元素；若源带 `BroadcastView` 且切片后仍存零步长轴，则保留 `BroadcastView`，否则按普通 F-order / non-contiguous 重分类 |
+
+`compute_layout_flags` 的实现与单元测试覆盖矩阵须同时覆盖以上三种调用上下文。
+
 ### 5.13 Good/Bad 对比
 
 ```rust,ignore

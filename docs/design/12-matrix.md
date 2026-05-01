@@ -177,7 +177,7 @@ where
 }
 ````
 
-整数内积使用 checked arithmetic 进行中间乘积和累加。泛型约束 `A: Numeric + Copy` 在实现层通过 sealed trait `CheckedArith`（定义见 `11-math.md`）确保 `i32` / `i64` 路径使用 checked `mul` / `add`。
+整数内积使用 checked arithmetic 进行中间乘积和累加。泛型约束 `A: Numeric + Copy` 在实现层直接复用 element 层 sealed traits `CheckedMul` 与 `CheckedAdd`（权威定义见 `03-element.md §5.9`）确保 `i32` / `i64` 路径使用 checked `mul` / `add`，并在 `None` 时按整数溢出策略 panic。
 
 ### 5.2 复数内积语义
 

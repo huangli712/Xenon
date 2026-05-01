@@ -153,26 +153,9 @@ Storage mode taxonomy
 
 **访问语义查询**
 
-张量层须提供稳定的访问语义查询接口：
+张量层须提供稳定的访问语义查询接口 `access_semantics() -> AccessSemantics`，将上述四种存储模式映射为四种统一的访问语义分类（`ReadOnly` / `SharedReadOnly` / `Writable` / `Owned`）。
 
-```rust,ignore
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AccessSemantics {
-    ReadOnly,
-    SharedReadOnly,
-    Writable,
-    Owned,
-}
-```
-
-| 语义分类 | 对应表示类型               | 统一语义说明          | 查询结果                          |
-| -------- | -------------------------- | --------------------- | --------------------------------- |
-| 只读     | `ViewRepr<'_, A>`（普通非广播只读借用）| 只提供共享只读借用；不提供写访问；不持有底层存储 | `AccessSemantics::ReadOnly` |
-| 共享只读 | `ArcRepr<A>`，或带共享只读语义标记的 `ViewRepr<'_, A>`（广播结果 / `ViewMutRepr` 零拷贝降级结果） | 可被多个只读视图共享；不提供安全可写访问；可共享所有权或共享借用语义 | `AccessSemantics::SharedReadOnly` |
-| 可写     | `ViewMutRepr<'_, A>` | 提供独占可写借用；同时允许读取；不得与其他可写或共享只读访问并存   | `AccessSemantics::Writable` |
-| 拥有     | `Owned<A>` | 持有底层存储所有权；提供可读可写访问；可零拷贝借出视图或降级为共享只读 | `AccessSemantics::Owned`          |
-
-当 `ViewRepr` 作为广播结果或从可写引用降级产生时，须通过额外的语义标记（而非仅表示类型）将其归类为 `AccessSemantics::SharedReadOnly`。该标记由张量层的 `access_semantics()` 方法统一提供，作为满足 §5.1 的权威判定来源。详见 `07-tensor.md` 的 `access_semantics()` 设计。
+`AccessSemantics` 枚举的**权威定义、变体含义、表示类型映射表与广播判定机制**统一以 `07-tensor.md §5.3` 为准；本节只列出存储模式视角下的高层语义。当 `ViewRepr` 作为广播结果或从可写引用降级产生时，须通过额外的语义标记（而非仅表示类型）将其归类为 `AccessSemantics::SharedReadOnly`，详细规则见 `07-tensor.md §5.3`。
 
 **设计权衡对比**
 

@@ -742,10 +742,11 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 | `BroadcastDim`          | 公开 sealed trait  | 允许命名但禁止外部实现           |
 | `PermuteAxes`           | 模块内部辅助 trait | 非稳定公开面；供转置实现内部辅助 |
 | `BoolElement`           | 模块内部辅助 trait | 非稳定公开面；布尔专用 helper    |
-| `CheckedAdd`            | 模块内部辅助 trait | 非稳定公开面；整数 checked 原语  |
-| `CheckedSub`            | 模块内部辅助 trait | 非稳定公开面；整数 checked 原语  |
-| `CheckedMul`            | 模块内部辅助 trait | 非稳定公开面；整数 checked 原语  |
-| `CheckedNeg`            | 模块内部辅助 trait | 非稳定公开面；整数 checked 原语  |
+| `CheckedAdd`            | 模块内部辅助 trait | 非稳定公开面；整数 checked 原语（element 层权威定义） |
+| `CheckedSub`            | 模块内部辅助 trait | 非稳定公开面；整数 checked 原语（element 层权威定义） |
+| `CheckedMul`            | 模块内部辅助 trait | 非稳定公开面；整数 checked 原语（element 层权威定义） |
+| `CheckedNeg`            | 模块内部辅助 trait | 非稳定公开面；整数 checked 原语（element 层权威定义） |
+| `CheckedDiv`            | 模块内部辅助 trait | 非稳定公开面；整数 checked 原语（element 层权威定义） |
 | `CastTo<T>`             | 公开 trait         | 受 `convert/` 模块消费的显式转换契约 |
 | `OrderedCompareElement` | 公开 sealed trait  | 出现在有序比较相关的公开签名中；允许命名但禁止外部实现 |
 
@@ -874,6 +875,15 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 | 决策     | 新增 `dispatch.rs` 内部 helper，统一承载执行路径裁决（`ExecPath`）、嵌套并行防护（`ParallelGuard`）和并行阈值判断 |
 | 理由     | 判断归 dispatch，执行归各模块；避免 `parallel/` 携带串行回退，也避免各语义模块重复实现并行阈值分支树；SIMD 选择保持在 `simd/` 模块内部 |
 | 替代方案 | 各语义模块各自实现判断逻辑 — 放弃，会导致阈值行为不一致和代码重复 |
+
+**二级裁决模型（重要）：** 路径选择被严格分为两级，互不重叠：
+
+| 级别 | 责任方 | 裁决内容 | 依据 |
+| ---- | ------ | -------- | ---- |
+| 一级 | `dispatch.rs`（顶层） | **串行 vs 并行** | 元素数量与并行阈值、嵌套并行防护、`ParallelContext` 决议（参见 `09-parallel.md`） |
+| 二级 | `simd/` 后端内部 | **串行/并行内部是否走 SIMD** | 连续性、对齐、目标 ISA 准入（参见 `08-simd.md §1.2 / §5.4`） |
+
+`dispatch.rs` **不参与 SIMD 选择**；`simd/` **不参与串行/并行选择**。两层裁决独立完成，避免责任错位。
 
 ### 决策 7：错误语义集中裁决
 

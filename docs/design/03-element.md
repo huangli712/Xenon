@@ -327,6 +327,22 @@ impl OrderedCompareElement for f64 {}
 - 不支持 `usize`、u8/u16/u32/i8/i16 等其他整数类型。
 - `usize` 仅作为索引和形状元数据使用。
 
+**按运算的元素类型可用矩阵（跨模块快速参考）：** 以下表格汇总各运算模块支持的元素类型；个别运算因数学语义限制（如有序比较对复数无定义）仅支持子集。**权威定义仍以各运算模块文档为准**，本表仅作为单点查询与 sealed trait 实现一致性核对的参考。
+
+| 运算 / 模块 | i32 | i64 | f32 | f64 | Complex<f32> | Complex<f64> | bool | 权威文档 |
+| ----------- | :-: | :-: | :-: | :-: | :----------: | :----------: | :--: | -------- |
+| 算术 add/sub/mul/div（11-math） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `11-math.md §5.3` |
+| neg / abs / square（11-math） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `11-math.md §5.4` |
+| 内积 dot（12-matrix） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `12-matrix.md §5.1` |
+| sum / mean 归约（13-reduction） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `13-reduction.md §5` |
+| min / max 归约（13-reduction） | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | `13-reduction.md §5`（复数无序） |
+| unique 集合运算（14-set） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | `14-set.md` |
+| eye 单位矩阵构造（18-construction） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `18-construction.md` |
+| clip（20-utility） | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | `20-utility.md`（无序比较不适用） |
+| cast 类型转换（21-type） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | `21-type.md` |
+| 有序比较 lt/le/gt/ge（OrderedCompareElement） | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | `03-element.md §5.5`（复数无序） |
+| Checked 整数原语（CheckedAdd/Sub/Mul/Neg/Div） | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | `03-element.md §5.9` |
+
 ### 5.7 Sealed trait 策略
 
 `Element`、`Numeric`、`RealScalar`、`ComplexScalar`、`CastTo<T>`、 `OrderedCompareElement` 全部通过共享的 `private::Sealed` 基础设施实现 sealed trait 模式。下游 crate 只能使用 Xenon 已声明的元素类型，不能为自定义类型补充这些 trait 实现。
@@ -457,11 +473,30 @@ impl CheckedNeg for i64 {
     #[inline]
     fn checked_neg(self) -> Option<Self> { i64::checked_neg(self) }
 }
+
+/// Checked division for integer-only overflow-sensitive paths.
+///
+/// Returns `None` for divisor zero or for the `MIN / -1` overflow case;
+/// callers translate `None` to a panic per the project-wide integer
+/// overflow policy (see `26-error.md §6`).
+pub(crate) trait CheckedDiv: Numeric + Sealed {
+    fn checked_div(self, rhs: Self) -> Option<Self>;
+}
+
+impl CheckedDiv for i32 {
+    #[inline]
+    fn checked_div(self, rhs: Self) -> Option<Self> { i32::checked_div(self, rhs) }
+}
+
+impl CheckedDiv for i64 {
+    #[inline]
+    fn checked_div(self, rhs: Self) -> Option<Self> { i64::checked_div(self, rhs) }
+}
 ```
 
 - 此 trait 为内部实现辅助，不纳入稳定公开 API 面。具体可见性由实现决定。
 - `CheckedAdd` 仅覆盖整数加法（`i32`/`i64`），用于归约等必须精确检测溢出的路径。
-- 当前元素层统一提供 `CheckedAdd` / `CheckedSub` / `CheckedMul` / `CheckedNeg` 四类整数 checked 原语，供 `math`、`matrix`、`reduction` 等模块复用；除法、余数与更高阶组合检查仍由具体运算模块在实现层完成（参见 `11-math.md`、`12-matrix.md`）。
+- 当前元素层统一提供 `CheckedAdd` / `CheckedSub` / `CheckedMul` / `CheckedNeg` / `CheckedDiv` 五类整数 checked 原语，作为整数溢出检测的**唯一权威定义点**，供 `math`、`matrix`、`reduction` 等所有上层模块复用。上层模块**不应**重新定义同语义 trait；余数与更高阶组合检查仍由具体运算模块在实现层基于这些原语组合完成。
 
 ### 5.10 Good / Bad 对比示例
 

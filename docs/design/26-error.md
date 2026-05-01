@@ -326,6 +326,23 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 
 分配成本说明：`attempted_index: Vec<usize>`、`shape: Vec<usize>` 以及 `InvalidArgument` / `InvalidStorageMode` 中的可选 `Vec<usize>` 字段会带来少量堆分配成本；这是当前版本可接受的诊断开销，用于换取跨公开 API 的一致结构化上下文。
 
+**字段命名约定（跨变体一致性规则）：** 各变体字段集合允许不同，但**同义字段必须使用同名**，新增变体或扩展字段时须遵循以下规则；目的是让结构化诊断在跨变体程序化处理时具备稳定语义。
+
+| 字段名 | 类型 | 含义 | 备注 |
+| ------ | ---- | ---- | ---- |
+| `operation` | `&'static str` 或等价 | 触发错误的高层运算名（如 `"sum"`、`"reshape"`、`"slice"`） | 几乎所有变体都必须携带；以一致词汇表命名 |
+| `axis` | `usize` | 单一相关维度索引 | 多个相关维度时使用 `axes: Vec<usize>` |
+| `ndim` | `usize` | 张量秩 | 与 `axis < ndim` 配套使用 |
+| `shape` | `Vec<usize>` | 完整逻辑形状 | 字段名固定为 `shape`；二元运算用 `lhs_shape`/`rhs_shape` 或 `left_shape`/`right_shape`，不得混用其他前缀 |
+| `lhs_shape` / `rhs_shape` | `Vec<usize>` | 二元运算的左右操作数形状 | 二元广播/算术运算优先使用此对，区别于 `left_shape`/`right_shape` 用于纯形状对比的语义场景 |
+| `expected` / `actual` | 类型与场景相关 | 期望值与实际值 | 简单二元对比模式；不混用 `required` / `provided` 等同义词 |
+| `expected_elements` / `actual_elements` | `usize` | 元素数量对比 | 形状相关场景的专用变体 |
+| `reason` | `Option<&'static str>` 或 `String` | 简短自由文本理由 | 可选；不替代结构化字段，仅作补充 |
+| `category` | enum 或 `&'static str` | 子分类 | 仅 `Ffi` / `Workspace` 等粗粒度类别变体使用 |
+| `attempted_index` | `Vec<usize>` | 多维索引 tuple | `IndexOutOfBounds` 等需要完整索引上下文的变体使用 |
+
+未来新增变体须复用上表名称；如需新字段且语义新颖，需要先扩展本表再使用。
+
 ### 5.7 Display 与 panic 信息要求
 
 - Display 输出和 panic 文本都必须能让调用方定位问题来源；最少应包含操作名、错误类别以及适用上下文。

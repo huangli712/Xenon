@@ -130,14 +130,16 @@ pub fn computeStrides(shape: &[Ix]) -> Vec<Ix>;
 
 ```rust
 // Good
-pub const MAX_DIMENSION: usize = 100;
+pub const MAX_DIMENSION: usize = usize::MAX;
 pub const DEFAULT_ALIGNMENT: usize = 64;
 const INTERNAL_BUFFER_SIZE: usize = 1024;
 
 // Bad
-pub const maxDimension: usize = 100;
-pub const Max_Dimension: usize = 6;
+pub const maxDimension: usize = usize::MAX;
+pub const Max_Dimension: usize = usize::MAX;
 ```
+
+**注：** `MAX_DIMENSION` 的权威定义见 `02-dimension.md §5.2`，此处仅展示常量命名风格。
 
 ### 2.7 类型参数
 
@@ -717,7 +719,7 @@ src/
 
 - `RUSTFLAGS="-D warnings" cargo check`
 
-本节的 `lib.rs` lint 列表是权威来源。`01-architecture.md §8` 及其他文档中的 `lib.rs` 片段须与本节保持一致。
+本节的 `lib.rs` lint 列表是项目级**权威基线**。`01-architecture.md §8` 及其他文档中的 `lib.rs` 片段须与本节保持一致。专项模块（如 `29-documentation.md` 的 rustdoc 专项 lint、`23-ffi.md` 的 FFI 专项 lint）可在本节基线之上**附加**专项 lint，但**不得弱化或移除**本节定义的任何条目。
 
 ```rust,ignore
 // src/lib.rs
