@@ -499,9 +499,11 @@ pub unsafe trait StorageIntoOwned: Storage {
 }
 ```
 
-### 5.10 StorageIntoRaw Trait
+### 5.10 StorageIntoRaw Trait（保留定义，当前未使用）
 
-消耗式解构为裸指针，用于 `into_raw_parts()`（参见 `23-ffi.md §5.8`）。
+> **注意**：当前 `07-tensor.md §5.7` 的 `into_raw_parts()` 实现为 `TensorBase<Owned<A>, D>` 的 inherent 方法，未使用此 trait。保留此 trait 定义以供未来存储层统一抽象参考。
+
+消耗式解构为裸指针，原始预期用途为 `into_raw_parts()`（参见 `23-ffi.md §5.8`）。
 
 ```rust,ignore
 /// Storage types that can be destructured into raw parts.

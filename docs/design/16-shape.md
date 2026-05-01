@@ -116,7 +116,7 @@ where
     /// assert_eq!(b.shape(), &[3, 2]);
     /// ```
     pub fn transpose(&self) -> TensorView<'_, A, D> {
-        // Reverse trait (02-dimension.md): reverses axis order
+        // Reverse trait (02-dimension.md §5.11): reverses axis order
         let new_shape = self.shape().reverse();
         let new_strides = self.strides().reverse();
         let new_flags = compute_layout_flags::<A, D>(&new_shape, &new_strides, self.as_ptr());

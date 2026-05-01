@@ -338,7 +338,7 @@ function compute_f_strides(shape: [usize; N]) -> Result<[usize; N], XenonError>:
     for i from 0 to N-1:
         strides[i] = cumulative
         cumulative = checked_mul(cumulative, shape[i])
-            或在整数溢出时返回可恢复错误（`InvalidLayout` 或等效错误类别）
+            或在整数溢出时返回可恢复错误（`XenonError::InvalidLayout`）
 
     return Ok(strides)
 ```

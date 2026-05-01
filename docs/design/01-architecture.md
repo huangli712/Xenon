@@ -459,7 +459,20 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | L5     | construct | tensor, storage, layout, dimension, element | 18-construction.md |
 | L5     | format    | tensor, storage, dimension, element | 22-output.md        |
 | L5     | convert   | tensor, element                     | 21-type.md          |
-| L6     | overload  | tensor, broadcast, math             | 19-overload.md      |
+| L6     | overload  | tensor, broadcast, math, dimension, element | 19-overload.md      |
+
+### 5.2a 内部 Helper 函数清单
+
+以下为跨模块引用的 `pub(crate)` 内部 helper 函数，统一在此记录其位置与职责：
+
+| 函数                                | 定义位置               | 职责                                  | 引用模块                |
+| ----------------------------------- | ---------------------- | ------------------------------------- | ----------------------- |
+| `validate_access_range()`           | `src/tensor/` 内部      | 校验 raw parts 构造的存储边界         | 07-tensor, 23-ffi       |
+| `validate_non_overlapping_layout()` | `src/tensor/` 内部      | 保守验证非重叠可变布局               | 07-tensor, 23-ffi       |
+| `compute_safe_chunks()`             | `src/parallel/mod.rs`   | 将 [0,total) 划分为非重叠区间         | 25-safety               |
+| `util_internal_to_f_contiguous()`   | `src/utility/` 内部     | 将张量连续化为 canonical F-order     | 20-utility              |
+| `fill_storage_mut()`                | `src/utility/` 内部     | 通过 StorageMut 填充后备缓冲区       | 20-utility              |
+| `fill_try_dispatch()`               | `src/utility/` 内部     | try_fill 的错误感知分派              | 20-utility              |
 
 ### 5.3 依赖图（ASCII）
 

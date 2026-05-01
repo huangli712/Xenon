@@ -641,7 +641,13 @@ After a storage type is created or borrowed
 │  paths may internally split work into non-overlapping chunks.   │
 │                                                                 │
 │  Internal safety guarantees:                                    │
-│  • compute_safe_chunks() guarantees non-overlap                 │
+│  • compute_safe_chunks(total, num_workers) divides the logical  │
+│    element range [0, total) into non-overlapping [start, end)   │
+│    intervals. Each interval is assigned to exactly one worker   │
+│    and returned as &[(usize, usize)]. The intervals satisfy     │
+│    start[0] = 0, end[i] = start[i+1], end[last] = total.        │
+│    Implementation is in src/parallel/mod.rs as a pub(crate) fn. │
+│    Panics if num_workers = 0 (violates internal precondition).  │
 │  • lifetimes ensure the view remains valid                      │
 │  • element/thread-safety bounds remain checked before dispatch  │
 │                                                                 │

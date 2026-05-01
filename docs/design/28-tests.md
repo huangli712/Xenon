@@ -90,6 +90,10 @@ tests/
 ├── test_parallel.rs            # Parallel computation (consistency/data races)
 ├── test_simd.rs                # SIMD computation (result consistency)
 ├── test_error.rs               # Error handling (all error types)
+├── test_dimension.rs           # Dimension type system (static/dynamic dimension traits)
+├── test_element.rs             # Element type hierarchy (Element/Numeric/RealScalar/ComplexScalar)
+├── test_layout.rs              # Layout module (strides/computation/contiguity/layout flags)
+├── test_storage.rs             # Storage system (Owned/View/ViewMut/Arc storage modes)
 │
 ├── property_tests.rs           # Property-test entry point (integration test target)
 └── property/
