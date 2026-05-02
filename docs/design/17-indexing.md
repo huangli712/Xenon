@@ -631,6 +631,27 @@ User calls tensor.slice(info)
 | 1.0.5 | 2026-04-16 |
 | 1.0.6 | 2026-04-16 |
 | 1.0.7 | 2026-04-16 |
+| 2.0.0 | 2026-05-02 |
+
+### v2.0.0 (2026-05-02) — 校验职责重新分配 + 错误字段对齐
+
+> 本版本是与用户决策 B9.a + 26-error v3.0.0 + 05-storage v2.0.0 + 06-layout v1.3 协同的破坏性内部更新。`SliceInfo::new` 的校验范围**收窄**（结构性校验），shape 边界校验**下沉**到 `TensorBase::slice(info)`；该变更是 `SliceInfo::new` 的语义破坏（部分原本失败的非法构造现在会在 `slice` 时才失败，但同样可恢复）。
+
+**契约更新（B9.a 用户已批准）**：
+
+- §5.1 / §5.2 / §6.3 / §11 决策 3：`SliceInfo::new` 仅做结构性校验（rank 一致、output 维度匹配 Range 计数、Range 内 start ≤ end）；shape 边界校验下沉到 `TensorBase::slice(info)`。
+- §5.1 SliceInfo::new doc comment 重写：列出 SliceInfo::new 实际执行的 3 类结构性校验；明确 shape 边界校验 deferred 到 slice。
+- §5.1 校验职责分工表：清楚区分 SliceInfo::new 与 TensorBase::slice 的校验范围。
+- §11 新增决策 3：完整论证 B9.a 决策的理由与拒绝替代方案的原因。
+
+**协同与一致性更新**：
+
+- §5.1 Inline / Dynamic 选择规则：明确 `SliceInfoIndices::Inline` 覆盖 `Ix0..Ix6`；`IxDyn` 且 `indices.len() > 6` 必须使用 `Dynamic`。
+- §5.2 `get(&[usize])` 委托语义澄清：不再"转 IxDyn 后委托 try_at"（此路径会触发 trait bound 不满足），改为独立实现共用 `compute_offset`，但分派路径分离；新增段落说明理由。
+- §6.3 切片元数据更新算法重写：明确 SliceInfo::new 已通过结构性校验；列出 shape 边界 + 算术溢出的具体错误变体（`IndexOutOfBounds`、`InvalidArgumentKind::RangeOutOfBounds`、`InvalidLayoutReason::AccessRangeExceedsStorage`）；明确 offset 是元素单位（修复 §6.3 之前 offset 单位不清问题）。
+- §6.3 协同引用 `05-storage.md v2.0.0 §5.11.1` 的统一规则（广播 / 转置 / 切片产出 ViewRepr）。
+- §6.3 layout flags 重算引用 06-layout v1.3 `compute_layout_flags::<A, I>`。
+- §10 错误处理表：列出 5 个错误变体的完整封闭枚举字段，对齐 26-error v3.0.0 §5.1。
 
 ---
 
