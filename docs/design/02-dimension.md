@@ -37,6 +37,8 @@
 | 形状元数据          | stride 元数据及其合法性判定                                 |
 | 内存分配            | 张量数据分配                                                |
 
+**内存分配边界说明：** 本模块只允许为 `IxDyn` 元数据和静态/动态维度转换进行少量 `Vec<usize>` 分配；张量元素缓冲区分配仍属于 storage / tensor 相关模块。
+
 ### 1.2 设计原则
 
 | 原则       | 体现                                          |
@@ -55,7 +57,7 @@
 | -------- | ---------------------------------------------------------------------- |
 | 需求映射 | 需求说明书 §3、§11、§14、§16 - §18                                     |
 | 范围内   | 静态/动态维度类型、`Dimension`/`IntoDimension`/`RemoveAxis`、轴元数据  |
-| 范围外   | 内存分配、布局标志计算、张量运算、C-order 支持                         |
+| 范围外   | 张量数据分配、布局标志计算、张量运算、C-order 支持                     |
 | 非目标   | 引入开放维度扩展机制、负步长维度模型或新的存储后端                     |
 
 ---
@@ -87,8 +89,9 @@ src/dimension/
 
 | 来源模块  | 使用的类型/trait                           |
 | --------- | ------------------------------------------ |
-| `error`   | `XenonError::DimensionMismatch` 等         |
+| `error`   | `XenonError::DimensionMismatch`、`InvalidShapeKind` 等 |
 | `private` | `Sealed`（`Dimension` trait 的 supertrait）|
+| `std::borrow` | `Cow`（构造结构化错误的 `operation` 字段） |
 
 ### 4.3 依赖合法性与新增依赖说明
 
@@ -111,7 +114,8 @@ src/dimension/
 ```rust,ignore
 use core::fmt::Debug;
 use crate::private::Sealed;
-use crate::error::XenonError;
+use crate::error::{InvalidShapeKind, XenonError};
+use std::borrow::Cow;
 
 /// Trait for array dimension types.
 ///
@@ -212,16 +216,28 @@ pub struct Ix2(pub usize, pub usize);
 pub struct Ix3(pub usize, pub usize, pub usize);
 
 /// Four-dimensional dimension.
+///
+/// `#[repr(C)]` is required because `slice()` reinterprets `&Self` as `&[usize; 4]`
+/// via pointer cast; this is only safe because `repr(C)` guarantees the `usize`
+/// fields are laid out contiguously starting at offset 0.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix4(pub usize, pub usize, pub usize, pub usize);
 
 /// Five-dimensional dimension.
+///
+/// `#[repr(C)]` is required because `slice()` reinterprets `&Self` as `&[usize; 5]`
+/// via pointer cast; this is only safe because `repr(C)` guarantees the `usize`
+/// fields are laid out contiguously starting at offset 0.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix5(pub usize, pub usize, pub usize, pub usize, pub usize);
 
 /// Six-dimensional dimension.
+///
+/// `#[repr(C)]` is required because `slice()` reinterprets `&Self` as `&[usize; 6]`
+/// via pointer cast; this is only safe because `repr(C)` guarantees the `usize`
+/// fields are laid out contiguously starting at offset 0.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix6(pub usize, pub usize, pub usize, pub usize, pub usize, pub usize);
@@ -315,7 +331,7 @@ impl Dimension for Ix3 {
         }
     }
 
-    // Remaining helper methods follow the same pattern.
+    // Other static ranks implement the same `Dimension` methods.
 }
 ```
 
@@ -604,9 +620,9 @@ impl Sealed for IxDyn {}
 
 ### 5.10 BroadcastDim trait
 
-`BroadcastDim<Other>` 用于编译期计算两个维度类型广播后的输出维度类型。该 trait 定义在`dimension`模块中，由广播/运算符重载层消费（参见 `11-math.md`、`15-broadcast.md` 与 `19-overload.md`）。
+`BroadcastDim<Other>` 用于编译期计算两个维度类型广播后的输出维度类型。该 trait 定义在 `dimension` 模块中，由广播/运算符重载层消费（参见 `11-math.md`、`15-broadcast.md` 与 `19-overload.md`）。本节仅是类型级输出维度的权威 owner；运行时形状兼容性、错误路径与广播结果形状以 `15-broadcast.md` 为准。
 
-**实现建议：** 
+**实现建议：**
 
 - 跨静态维度的 `BroadcastDim` 实现共计 57 个：
   - 同 rank 自广播：7 个（`Ix0..Ix6` 每个对自身一份）
@@ -803,7 +819,7 @@ impl Reverse for IxDyn {
 ```
 
 - 当前版本的形状操作只包含 `transpose()`。维度层保留 `PermuteAxes` 作为内部泛化能力，但公开 `transpose()` 契约当前仅承诺默认的轴反转（reverse-axis transpose）；显式轴置换保留为后续版本扩展，不构成当前版本公开 API 承诺。参见 `需求说明书 §17` 与 `16-shape.md §5.1.1`。
-- ** 对静态维度 `Ix0`..`Ix6`，`PermuteAxes` 若实现，仍属于内部辅助能力；当前版本公开 `transpose()` 由 `16-shape.md` 定义，不把通用显式轴置换提升为规范性 API。其生成签名模式可写为：`impl PermuteAxes for Ix3 { fn permuted_axes(&self, permutation: &[Axis]) -> Result<Ix3, XenonError>; }`，更高/更低静态维度按同一模板展开。
+- **对静态维度 `Ix0`..`Ix6`，`PermuteAxes` 若实现，仍属于内部辅助能力；当前版本公开 `transpose()` 由 `16-shape.md` 定义，不把通用显式轴置换提升为规范性 API。其生成签名模式可写为：`impl PermuteAxes for Ix3 { fn permuted_axes(&self, permutation: &[Axis]) -> Result<Ix3, XenonError>; }`，更高/更低静态维度按同一模板展开。
 - 对 `IxN` 的 `PermuteAxes` 实现，输入 `permutation` 的长度必须恰好等于 `N`，并且必须是 `0..N-1` 上的双射；任何越界轴、重复轴或缺失轴都统一返回 `XenonError::InvalidAxis`，不引入额外错误类别。
 - `BroadcastDim`、静态 `PermuteAxes` 等宏生成实现应至少通过三类测试覆盖：成功路径（每个静态 rank 至少一例）、compile-fail 边界（非法 rank/非法输入不暴露实现）、以及文档/trait 矩阵核对，防止某个 rank 在宏展开中遗漏。
 
@@ -861,7 +877,7 @@ let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
 
 ### 6.3 辅助 trait 实现
 
-静态维度额外实现：`Index<usize>`、`IndexMut<usize>`、`IntoIterator`、`From<(usize, ...)>`。
+静态维度可额外实现 `Index<usize>`、`IndexMut<usize>`、`IntoIterator`、`From<(usize, ...)>` 作为非规范实现建议；公开 API 契约仍以 §5 的 trait 与类型定义为准。
 
 ---
 
@@ -933,7 +949,7 @@ let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
 
 - [ ] **T9**: 实现 `Axis` 类型
   - 文件: `src/dimension/axes.rs`
-  - 内容: `Axis` 新类型 + From/Display + 辅助方法
+  - 内容: `Axis` 新类型 + `new` / `index` / `checked_next` / `next` / `prev` / `is_first` / `is_last`
   - 测试: `test_axis_next_prev`, `test_axis_is_first_last`
   - 前置: T1
   - 预计: 10 min
@@ -982,17 +998,17 @@ let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
 | `test_ix0_ndim_is_zero`                   | `Ix0.ndim() == 0`                                                              | 高     |
 | `test_ix0_is_zst`                         | `size_of::<Ix0>() == 0`                                                        | 高     |
 | `test_ix1_slice`                          | `Ix1(5).slice() == &[5]`                                                       | 高     |
-| `test_ix2_slice`                          | `Ix2(3,4).slice() == &[3,4]`                                                   | 高     |
-| `test_ix3_slice`                          | `Ix3(2,3,4).slice() == &[2,3,4]`                                               | 高     |
-| `test_ix3_size_calculation`               | `Ix3(2,3,4).checked_size() == Ok(24)`                                          | 高     |
+| `test_ix2_slice`                          | `Ix2(3, 4).slice() == &[3,4]`                                                   | 高     |
+| `test_ix3_slice`                          | `Ix3(2, 3, 4).slice() == &[2, 3, 4]`                                               | 高     |
+| `test_ix3_size_calculation`               | `Ix3(2, 3, 4).checked_size() == Ok(24)`                                          | 高     |
 | `test_ix6_max_dimensions`                 | `Ix6(1,2,3,4,5,6).checked_size() == Ok(720)`                                   | 中     |
-| `test_ixdyn_from_slice`                   | `IxDyn::from_slice(&[2,3])`                                                    | 高     |
-| `test_ixdyn_size`                         | `IxDyn::from_slice(&[2,3,4]).checked_size() == Ok(24)`                         | 高     |
-| `test_static_to_dyn`                      | `Ix3(2,3,4).into_dyn()`                                                        | 高     |
-| `test_dyn_to_static_success`              | `Ix3::try_from_dyn(IxDyn::from_slice(&[2,3,4]))`                               | 高     |
-| `test_dyn_to_static_failure`              | `Ix3::try_from_dyn(IxDyn::from_slice(&[2,3,4,5]))` → Err                       | 高     |
-| `test_tuple_into_dimension`               | `(2,3,4).into_dimension()` → `Ix3(2,3,4)`                                      | 中     |
-| `test_slice_to_ixdyn`                     | `(&[2,3,4][..]).into_dimension()` → `IxDyn`                                    | 中     |
+| `test_ixdyn_from_slice`                   | `IxDyn::from_slice(&[2, 3])`                                                    | 高     |
+| `test_ixdyn_size`                         | `IxDyn::from_slice(&[2, 3, 4]).checked_size() == Ok(24)`                         | 高     |
+| `test_static_to_dyn`                      | `Ix3(2, 3, 4).into_dyn()`                                                        | 高     |
+| `test_dyn_to_static_success`              | `Ix3::try_from_dyn(IxDyn::from_slice(&[2, 3, 4]))`                               | 高     |
+| `test_dyn_to_static_failure`              | `Ix3::try_from_dyn(IxDyn::from_slice(&[2, 3, 4, 5]))` → Err                       | 高     |
+| `test_tuple_into_dimension`               | `(2, 3, 4).into_dimension()` → `Ix3(2, 3, 4)`                                      | 中     |
+| `test_slice_to_ixdyn`                     | `(&[2, 3, 4][..]).into_dimension()` → `IxDyn`                                    | 中     |
 | `test_axis_next_prev`                     | `Axis(2).next() == Some(Axis(3))`, `Axis(0).prev() == None`                    | 中     |
 | `test_axis_checked_next`                  | `Axis(usize::MAX).checked_next() == None`                                      | 中     |
 | `test_axis_is_first_last`                 | `Axis(0).is_first()`, `Axis(2).is_last(3)`                                     | 中     |
@@ -1168,6 +1184,14 @@ User provides shape / axis / dimension input
 | 1.2.3 | 2026-04-15 |
 | 1.2.4 | 2026-04-15 |
 | 1.2.5 | 2026-04-16 |
+| 1.2.6 | 2026-05-03 |
+
+### v1.2.6 (2026-05-03) — Medium/Low 文档修复
+
+- 澄清 `IxDyn` 元数据分配与张量数据分配的边界，并补齐 `Ix4`-`Ix6` 的 `repr(C)` 安全说明。
+- 补充结构化错误示例所需依赖来源，明确 `BroadcastDim` 只负责类型级输出维度，运行时广播语义以 `15-broadcast.md` 为准。
+- 收敛 `Axis` 实现任务到 §5.7 已列方法，并将静态维度辅助 trait 标注为非规范实现建议。
+- 修正文档格式、测试示例逗号空格与 `PermuteAxes` 列表标记。
 
 ---
 
