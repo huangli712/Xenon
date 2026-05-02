@@ -136,6 +136,22 @@ src/overload/
 - `TensorView` 相关组合已纳入当前稳定范围，与 `broadcast_to()` / `transpose()` / `slice()` 返回视图的既有设计保持一致。`TensorView` 参与张量×张量/视图路径的运算符重载，同时标量运算符重载（`TensorView + scalar`、`&TensorView + scalar`、`Scalar(s) + TensorView`、原生左标量）也已覆盖 `TensorView`（只读视图）。`TensorViewMut` 不直接参与标量运算符重载——使用方需先调用 `.view()` 转为 `TensorView` 后再使用运算符，或显式调用 `.add_scalar()` 等方法。
 - `BroadcastDim` 定义于 `02-dimension.md §5.10`，被 `01-architecture.md §11` 记为“公开 sealed trait”（允许命名但禁止外部实现）。由于它出现在 `broadcast` / `overload` 的公开签名与 trait bound 中，稳定承诺要求用户可在签名中命名该 trait，但不要求用户自行实现它。
 
+#### 同形状 vs 异形状路径使用建议（B1.c）
+
+虽然张量×张量运算符的 `Output` 类型一律为 `Result<Tensor<A, F>, XenonError>`（决策 3），但实际调用语义按 LHS / RHS 形状关系可分为两个使用场景，**推荐选择不同的写法以提高代码可读性**：
+
+| 场景                  | 形状关系                                       | 失败可能性                                     | 推荐写法                                | 理由                                                                                  |
+| --------------------- | ---------------------------------------------- | ---------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------- |
+| 同形状路径            | `a.shape() == b.shape()`（且 rank 类型一致）   | **无**（广播必然成功，结果永远 `Ok`）          | `a + b`（直接用运算符）                 | 调用点最简洁；`.unwrap()` 安全，可在静态已知同形状的上下文中通过类型层进一步收敛       |
+| 异形状路径 / 广播路径 | `a.shape() != b.shape()` 或维度类型不同        | **有**（广播可能失败 → `Err::BroadcastError`） | `a.add(b)?`（显式方法 + `?` 传播）      | 显式方法名 `add` 比运算符 `+` 更突出"可能失败"语义，与 Rust `Result`-传播习惯一致     |
+
+具体含义：
+
+- **同形状路径**：当编译期或运行期已知 `a` 与 `b` 同形状（含 rank 类型一致），`a + b` 永远返回 `Ok(...)`，对返回值 `.unwrap()` 是安全的；运算符语法的简洁优势在此场景最大化。
+- **异形状路径**：当 `a` 与 `b` 形状不同（含 rank 不同或某些轴维度不同），运算符 `a + b` 仍合法，但是否成功取决于 `BroadcastDim` 的运行期校验；此时显式方法 `a.add(&b)?`（由 `11-math.md §5.3` 提供）更能突出失败可恢复的语义。
+- **API 等价性**：运算符 `a + b` 与方法 `a.add(&b)` 在语义、错误模型、性能上完全等价（前者委托给后者，参见 §6.1）；区别仅在调用点风格。本节是**风格建议**，不是语义约束——任意场景下两种写法都合法。
+- **不引入新方法**：`11-math.md §5` 现有 `add()` / `sub()` / `mul()` / `div()` 方法已经返回 `Result<Tensor<A, F>, XenonError>`，自身扮演 `try_add` 角色；本模块**不**新增独立 `try_add` / `try_sub` / `try_mul` / `try_div` 方法。运算符与方法的二元划分已经足够，引入第三套命名只会增加 API 表面噪音。
+
 ### 5.2 张量×张量运算符
 
 ```rust,ignore
@@ -456,14 +472,19 @@ where A: Numeric, D: Dimension
 ### 5.5 Good / Bad 对比
 
 ```rust,ignore
-// Good - use borrowed form to avoid ownership transfer
-fn compute(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix2>) -> Result<Tensor<f64, Ix2>, XenonError> {
-    a + b  // &Tensor + &Tensor -> Result<new Tensor, XenonError>
+// Good - same shape (no broadcast failure) — operator preferred for clarity
+fn compute_same_shape(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix2>) -> Result<Tensor<f64, Ix2>, XenonError> {
+    a + b  // &Tensor + &Tensor -> Result<Tensor, XenonError> ; operator is safe & idiomatic here
 }
 
-// Good - use explicit API for broadcast safety
-fn compute_safe(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix1>) -> Result<Tensor<f64, Ix2>, XenonError> {
-    a.add(b)
+// Good - different shapes (broadcast may fail) — explicit method emphasises possible Err
+fn compute_broadcast(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix1>) -> Result<Tensor<f64, Ix2>, XenonError> {
+    a.add(b)  // Explicit method makes the failure path obvious
+}
+
+// Also fine - operator works for broadcast too, but `.add()` is recommended in broadcast contexts
+fn compute_broadcast_with_op(a: &Tensor<f64, Ix2>, b: &Tensor<f64, Ix1>) -> Result<Tensor<f64, Ix2>, XenonError> {
+    a + b  // Equivalent to a.add(b) ; legal but slightly less explicit
 }
 
 // Bad - mixing owned and borrowed (unnecessarily consumes a)
@@ -753,6 +774,18 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | 替代方案 | 创建标量广播视图 `Tensor0::from_scalar(scalar).view().broadcast_to(shape)` |
 | 拒绝原因 | 会增加间接寻址与额外中间视图概念，不符合当前最小实现描述 |
 
+### 决策 6：同形状路径优先运算符、异形状路径推荐显式方法（B1.c）
+
+| 属性     | 值 |
+| -------- | --- |
+| 决策     | 保持运算符 `Output = Result<Tensor<A, F>, XenonError>`（决策 3 不动），但在 §5.1 与 §5.5 提供风格建议：同形状场景推荐直接 `a + b`、异形状场景推荐显式 `a.add(&b)?` |
+| 理由     | (1) 同形状路径广播必然成功，运算符简洁性优势最大化，`.unwrap()` 安全；(2) 异形状/广播路径失败可能性是真实的，显式方法名 `add` / `sub` 比运算符 `+` / `-` 更突出"可能 `Err`"的语义，与 Rust `?` 传播习惯一致；(3) 不引入新 API，仅是风格建议——任意场景下两种写法都合法 |
+| 替代方案 | 让运算符 `Output = Tensor<A, F>`，异形状走独立 `try_add` 方法返回 `Result`（运算符 panic on broadcast error） |
+| 拒绝原因 | 直接违反需求说明书 §12 / §27 "广播错误必须以返回值形式报告"；与决策 2 拒绝 panic 路径的论证矛盾；增加 API 表面（需要新增 try_* 命名） |
+| 替代方案 | 在 11-math 新增 `try_add` 等方法作为 `add` 的别名 |
+| 拒绝原因 | 命名重复（`add` 已经返回 `Result`），无新语义价值，反而增加用户决策成本 |
+| 关联     | 该决策是 B1.c 的解读 A 落地，与决策 3、4 互补；用户已批准（参见用户决策 2026-04-25） |
+
 ---
 
 ## 12. 性能考量
@@ -823,6 +856,24 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | 1.1.9 | 2026-04-16 |
 | 1.2.0 | 2026-04-16 |
 | 1.2.1 | 2026-04-16 |
+| 2.0.0 | 2026-05-02 |
+
+### v2.0.0 (2026-05-02) — B1.c 落地（同形状 vs 异形状路径风格建议）
+
+> 本版本是与用户决策 B1.c（解读 A）一致的**非破坏性**文档级补充。运算符 `Output` 类型保持 `Result<Tensor<A, F>, XenonError>` 不变（决策 3、4 完全保留），仅在使用风格层增加建议；现有 `11-math.md` 方法签名与本文档其它部分一律不动。
+
+**契约更新（B1.c 用户已批准 — m0434 选择解读 A）**：
+
+- §5.1 矩阵表后新增"同形状 vs 异形状路径使用建议"段：明确同形状推荐 `a + b`、异形状推荐 `a.add(&b)?`，并附等价性说明（运算符与方法语义、错误模型、性能完全等价；区别仅在调用点风格）。
+- §5.1 明确**不**新增 `try_add` / `try_sub` / `try_mul` / `try_div` 方法：`11-math.md §5` 现有 `add()` / `sub()` / `mul()` / `div()` 已返回 `Result`，自身扮演 `try_*` 角色。
+- §5.5 Good / Bad 示例补充：分同形状（`compute_same_shape`）、异形状（`compute_broadcast` 推荐方法 / `compute_broadcast_with_op` 同样合法）两个场景；保留原 Bad 示例（混合 owned 与 borrowed）。
+- §11 新增决策 6：完整记录 B1.c 解读 A 的决策、理由、被拒绝的替代方案（运算符 panic + try_add；新增 try_* 别名），并明确与决策 3、4 的互补关系。
+- B2.a 状态确认：§5.3 Scalar<A> newtype + 原生左标量逐类型生成 impl 的设计已实际落地且符合用户决策（孤儿规则限制下的工程折中），本次无额外修改。
+
+**协同与一致性更新**：
+
+- 错误字段引用对齐 26-error v3.0.0 §5.1 `BroadcastError { operation, lhs_shape, rhs_shape, attempted_target_shape, axis }`（变体名与字段保持稳定，无需调整）。
+- 与 11-math v2.0.0 §5（已修复版本）的方法签名一致：`add(&self, other: &TensorBase<S, E>) -> Result<Tensor<A, F>, XenonError>`。
 
 ---
 

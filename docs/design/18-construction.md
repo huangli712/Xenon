@@ -86,7 +86,7 @@ src/construct/
 |
 ├── init.rs
 │   ├── crate::tensor      # TensorBase<S, D>, Tensor<A, D>
-│   ├── crate::storage     # Owned<A>, Storage, from_vec_aligned()
+│   ├── crate::storage     # Owned<A>, StorageOwned (from_elem trait method)
 │   ├── crate::layout      # LayoutFlags, compute_layout_flags
 │   ├── crate::dimension   # Dimension, Ix0~Ix6, IxDyn, IntoDimension
 │   ├── crate::element     # Element (zero() / one())
@@ -122,7 +122,7 @@ src/construct/
 | 来源模块    | 使用的类型/trait                                                                                                  |
 | ----------- | ----------------------------------------------------------------------------------------------------------------- |
 | `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, 类型别名 `Tensor0`~`Tensor6`（参见 `07-tensor.md` §5）                        |
-| `storage`   | `Owned<A>`, `Storage<Elem = A>`, `from_vec_aligned()`（参见 `05-storage.md` §6.1）                                  |
+| `storage`   | `Owned<A>`, `Storage<Elem = A>`, `Owned::from_vec_aligned()` 与 `<Owned<A> as StorageOwned>::from_elem()`（参见 `05-storage.md` §5.7、§6.1）                                  |
 | `layout`    | `LayoutFlags`, `Strides<D>`, `compute_f_strides`, `compute_layout_flags`（F-order stride 计算与权威布局标志计算入口，参见 `06-layout.md` §5.6, §5.12） |
 | `dimension` | `Dimension::checked_size()`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`（元素总数验证与形状归一化，参见 `02-dimension.md` §5） |
 | `element`   | `Element`（`zero()` / `one()` 由 `Element` 提供，参见 `03-element.md` §5.1）                                      |
@@ -173,7 +173,11 @@ where
         let dim = shape.into_dimension();
         let len = dim.checked_size()?;
         let strides = layout::compute_f_strides(&dim)?;
-        let storage = Owned::from_elem(len, A::zero());
+        // `Owned<A>` does not expose an inherent `from_elem`. The `from_elem`
+        // method is provided by the `StorageOwned` trait (see 05-storage.md
+        // §5.7); it is invoked here through fully-qualified syntax to make the
+        // delegation path explicit.
+        let storage = <Owned<A> as StorageOwned>::from_elem(len, A::zero());
         let flags = layout::compute_layout_flags(&dim, &strides, storage.as_ptr());
         Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags })
     }
@@ -187,13 +191,15 @@ where
     /// ```
     pub fn ones<Sh>(shape: Sh) -> Result<Self, XenonError>
     where
-        A: Element,  // A::one() from Element; Clone implied by Element (see 03-element.md §5.1). StorageOwned::from_elem requires Clone (see 05-storage.md §5.7)
         Sh: IntoDimension<Dim = D>,
     {
+        // A::one() comes from Element. Element implies Copy (03-element.md §5.1),
+        // which satisfies the Clone bound required by
+        // <Owned<A> as StorageOwned>::from_elem (05-storage.md §5.7).
         let dim = shape.into_dimension();
         let len = dim.checked_size()?;
         let strides = layout::compute_f_strides(&dim)?;
-        let storage = Owned::from_elem(len, A::one());
+        let storage = <Owned<A> as StorageOwned>::from_elem(len, A::one());
         let flags = layout::compute_layout_flags(&dim, &strides, storage.as_ptr());
         Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags })
     }
@@ -285,8 +291,13 @@ where
     /// F-order contiguous storage.
     ///
     /// # Errors
-    /// Returns `XenonError::InvalidShape` if `dim.checked_size()` reports
-    /// element-count overflow or `data.len()` does not match the validated count.
+    ///
+    /// Returns `XenonError::InvalidShape` aligned with `26-error.md` §5.1:
+    ///
+    /// - When `dim.checked_size()` overflows `usize`, the error is propagated
+    ///   directly with `kind: InvalidShapeKind::ProductOverflow`.
+    /// - When `data.len() != expected`, this method constructs
+    ///   `kind: InvalidShapeKind::ElementCountMismatch { expected, actual }`.
     ///
     /// # Examples
     /// ```
@@ -316,12 +327,13 @@ where
         let expected = dim.checked_size()?;
         if data.len() != expected {
             return Err(XenonError::InvalidShape {
-                operation: "from_shape_vec".into(),
+                operation: Cow::Borrowed("from_shape_vec"),
                 shape: dim.slice().to_vec(),
-                expected_elements: expected,
-                actual_elements: data.len(),
+                kind: InvalidShapeKind::ElementCountMismatch {
+                    expected,
+                    actual: data.len(),
+                },
                 offending_dim: None,
-                reason: None,
             });
         }
         let strides = layout::compute_f_strides(&dim)?;
@@ -338,8 +350,13 @@ where
     /// Construct a tensor from a slice (copies data).
     ///
     /// # Errors
-    /// Returns `XenonError::InvalidShape` if `dim.checked_size()` reports
-    /// element-count overflow or `slice.len()` does not match the validated count.
+    ///
+    /// Returns `XenonError::InvalidShape` aligned with `26-error.md` §5.1:
+    ///
+    /// - When `dim.checked_size()` overflows `usize`, the error is propagated
+    ///   directly with `kind: InvalidShapeKind::ProductOverflow`.
+    /// - When `slice.len() != expected`, this method constructs
+    ///   `kind: InvalidShapeKind::ElementCountMismatch { expected, actual }`.
     ///
     /// # Examples
     /// ```
@@ -355,12 +372,13 @@ where
         let expected = dim.checked_size()?;
         if slice.len() != expected {
             return Err(XenonError::InvalidShape {
-                operation: "from_shape_slice".into(),
+                operation: Cow::Borrowed("from_shape_slice"),
                 shape: dim.slice().to_vec(),
-                expected_elements: expected,
-                actual_elements: slice.len(),
+                kind: InvalidShapeKind::ElementCountMismatch {
+                    expected,
+                    actual: slice.len(),
+                },
                 offending_dim: None,
-                reason: None,
             });
         }
         // The baseline implementation materializes an owned buffer from the slice
@@ -426,7 +444,13 @@ where
     /// Construct a zero-dimensional tensor from a scalar.
     ///
     /// # Errors
-    /// Returns an error if the underlying owned storage allocation fails.
+    ///
+    /// In practice this single-element path does not produce
+    /// `InvalidShapeKind::ElementCountMismatch` (the `vec![scalar]` length is
+    /// always 1, matching `Ix0::checked_size() == 1`). The `Result` return
+    /// type is preserved for signature uniformity with the rest of the
+    /// construction family and to leave room for future allocator-side
+    /// failure paths surfaced by `Owned::from_vec_aligned`.
     ///
     /// # Examples
     /// ```
@@ -461,12 +485,13 @@ fn create_matrix(data: Vec<f64>) -> Result<Tensor<f64, Ix2>, XenonError> {
     let n = (data.len() as f64).sqrt() as usize;
     if n * n != data.len() {
         return Err(XenonError::InvalidShape {
-            operation: "create_matrix".into(),
+            operation: Cow::Borrowed("create_matrix"),
             shape: vec![n, n],
-            expected_elements: n * n,
-            actual_elements: data.len(),
+            kind: InvalidShapeKind::ElementCountMismatch {
+                expected: n * n,
+                actual: data.len(),
+            },
             offending_dim: None,
-            reason: None,
         });
     }
     Tensor::from_shape_vec([n, n], data)
@@ -500,7 +525,7 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 
 ### 6.3 安全性论证
 
-- `zeros`: 全零字节初始化仅对当前封闭元素集合合法：`i32` / `i64` 的 `0`、`f32` / `f64` 的 `+0.0`（IEEE 754）、`bool` 的 `false`、`Complex<T>` 的 `(0 + 0i)`。若未来新增元素类型，必须重新验证“全零字节可表示合法值”这一不变量。
+- `zeros`: 实际实现走 `<Owned<A> as StorageOwned>::from_elem(len, A::zero())`（trait 方法委托），由存储层负责具体写入策略。所谓"全零字节初始化"仅描述当前封闭元素集合下零值的位模式特性：`i32` / `i64` 的 `0`、`f32` / `f64` 的 `+0.0`（IEEE 754）、`bool` 的 `false`、`Complex<T>` 的 `(0 + 0i)` 与全零字节等价；若未来新增元素类型，必须重新验证"全零字节可表示合法值"这一不变量，否则需切换到非全零字节的初始化策略。
 - `ones`: 逐元素写入过程中，若 `A::one()` 的 copy 在理论上发生 panic（当前封闭类型集合中不预期出现），未初始化内存仍须由 `Owned` 析构路径基于“已初始化长度跟踪”正确回收。
 - `from_shape_vec`: 先通过 `dim.checked_size()` 验证元素总数（`Dimension::checked_size`，参见 `02-dimension.md`），再验证 `data.len() == expected`；通过后进入共享 owned 构造路径。是否复用原始 `Vec` 分配、是否进行额外重打包，均属于内部实现选择，不影响公开语义
 - `from_shape_slice`: 先通过 `dim.checked_size()` 验证元素总数，长度匹配后先把切片物化为 owned 缓冲区，再委托给 `from_shape_vec`；这样把 F-order 映射、长度约束与 owned 结果语义统一收敛到单一路径
@@ -664,7 +689,7 @@ User calls zeros / from_shape_vec / eye
 
 | 主题              | 内容                                                                     |
 | ----------------- | ------------------------------------------------------------------------ |
-| Recoverable error | 构造路径可返回两类错误：(1) 元素总数溢出（由 `dim.checked_size()` 直接返回 `InvalidShape`，参见 `02-dimension.md`）以及 shape 与数据长度不匹配时由构造方法自身构造的 `InvalidShape`，所有 `InvalidShape` 示例都保持 `26-error.md` 的 canonical 字段集；(2) `compute_f_strides` 的步长计算溢出错误通过 `?` 直接传播，错误类别以 `06-layout.md` §5.6 为准。 |
+| Recoverable error | 构造路径返回两类 `XenonError`，字段严格对齐 `26-error.md` v3.0.0 §5.1：(1) `InvalidShape` —— 元素总数溢出由 `dim.checked_size()` 直接返回 `kind: InvalidShapeKind::ProductOverflow`（参见 `02-dimension.md`）；shape 与数据长度不匹配由构造方法自身构造 `kind: InvalidShapeKind::ElementCountMismatch { expected, actual }`，`offending_dim` 在当前路径设为 `None`，`operation` 使用 `Cow::Borrowed("from_shape_vec" \| "from_shape_slice" \| ..)`；(2) F-order 步长计算溢出由 `compute_f_strides` 通过 `?` 直接传播，错误类别以 `06-layout.md` §5.6 为准（`InvalidLayout { reason: InvalidLayoutReason::ShapeProductOverflow }` 等），构造路径不再二次转换为 `InvalidShape`。 |
 | Panic             | 公开构造 API 不定义额外 panic 语义；失败统一走 `Result`。                |
 | 路径一致性        | 所有构造路径都必须产出 canonical F-order owned 张量，并保持一致的 shape / strides / flags 语义。 |
 | 容差边界          | 不适用。                                                                 |
@@ -751,6 +776,23 @@ User calls zeros / from_shape_vec / eye
 | 1.1.2 | 2026-04-10 |
 | 1.1.3 | 2026-04-14 |
 | 1.1.4 | 2026-04-15 |
+| 2.0.0 | 2026-05-02 |
+
+### v2.0.0 (2026-05-02) — 错误字段对齐 26-error v3.0.0 + StorageOwned 委托澄清
+
+> 本版本是与 `26-error.md` v3.0.0 协同的破坏性内部更新（公开签名兼容；只有错误字段集合发生变化）。
+
+**协同与一致性更新**：
+
+- §5.1 `zeros` / `ones` 实现：`Owned::from_elem(...)` 改为完全限定调用 `<Owned<A> as StorageOwned>::from_elem(len, value)`，避免读者误以为 `Owned<A>` 提供了同名 inherent 方法（`from_elem` 是 `StorageOwned` trait 方法，参见 `05-storage.md` §5.7）。
+- §5.1 `ones` where 子句去掉重复的 `A: Element` 约束，把对 `Element: Copy ⇒ Clone` 的依赖移到注释中说明，与 `from_elem` 的 `Clone` bound 对齐。
+- §5.3 `from_shape_vec` / `from_shape_slice` `InvalidShape` 字段重写：`expected_elements` / `actual_elements` / `reason` → `kind: InvalidShapeKind::ElementCountMismatch { expected, actual }`；`operation` 使用 `Cow::Borrowed(..)`；删除冗余的 `reason: None`。
+- §5.3 / §5.3 doc comments 重写 `# Errors` 段落，明确列出 `ProductOverflow` 与 `ElementCountMismatch` 两类来源。
+- §5.4 `from_scalar` `# Errors` 段澄清：当前实现路径不会产生 `ElementCountMismatch`（vec 长度与 `Ix0::checked_size() == 1` 始终匹配）；`Result` 返回类型保留以保持构造家族签名统一并为未来分配器侧失败留出位置。
+- §5.5 Good 示例的 `InvalidShape` 字段同步更新，与 §5.3 实现保持一致。
+- §6.3 `zeros` 安全性论证补充：明确实现走 `StorageOwned::from_elem` 委托，并把"全零字节"措辞限定为对零值位模式的描述而非分配策略承诺。
+- §10 错误处理表：列出 `InvalidShape` 在本模块的 `kind` 取值（`ProductOverflow` / `ElementCountMismatch`）与 `operation` / `offending_dim` 字段约定；明确 `compute_f_strides` 的溢出错误以 `InvalidLayout` 形式直接传播。
+- §4.1 / §4.2 依赖图 / 类型级依赖：把 `from_vec_aligned` 调整为 `Owned::from_vec_aligned`（inherent 方法）+ `StorageOwned::from_elem`（trait 方法）双入口，与 §5 实现保持一致。
 
 ---
 
