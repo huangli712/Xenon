@@ -30,7 +30,7 @@
 
 ### 1.3 协同基线
 
-本文档以已修订的下游设计文档为协同基线。若本文档提到具体类型、字段、trait、枚举或 API 形态，必须与以下版本保持一致：`01-architecture.md v2.0.0`、`02-dimension.md v1.x`、`03-element.md v1.x`、`04-complex.md v2.0.0`、`05-storage.md v2.0.0`、`06-layout.md v1.3`、`07-tensor.md v2.0.0`、`08-simd.md v2.0.0`、`09-parallel.md v2.0.0`、`11-math.md v2.0.0`、`12-matrix.md v2.0.0`、`13-reduction.md v2.0.0`、`14-set.md v2.0.0`、`15-broadcast.md v2.0.0`、`16-shape.md v2.0.0`、`17-indexing.md v2.0.0`、`18-construction.md v2.0.0`、`19-overload.md v2.0.0`、`20-utility.md v2.0.0`、`21-type.md v2.0.0`、`22-output.md v2.0.0`、`23-ffi.md v2.0.0`、`24-workspace.md v2.0.0`、`25-safety.md v2.0.0`、`26-error.md v3.0.0`、`27-benchmark.md v2.0.0`、`28-tests.md v2.0.0`、`29-documentation.md v2.0.0`、`30-dispatch.md v1.1.0`。
+本文档以已修订的下游设计文档为协同基线。若本文档提到具体类型、字段、trait、枚举或 API 形态，必须与以下版本保持一致：`01-architecture.md v2.0.0`、`02-dimension.md v1.x`、`03-element.md v1.x`、`04-complex.md v2.0.0`、`05-storage.md v2.0.0`、`06-layout.md v1.3`、`07-tensor.md v2.0.0`、`08-simd.md v2.0.0`、`09-parallel.md v2.0.0`、`11-math.md v2.0.0`、`12-matrix.md v2.0.0`、`13-reduction.md v2.0.0`、`14-set.md v2.0.0`、`15-broadcast.md v2.0.0`、`16-shape.md v2.0.0`、`17-indexing.md v2.0.0`、`18-construction.md v2.0.0`、`19-overload.md v2.0.0`、`20-utility.md v2.0.0`、`21-type.md v2.0.0`、`22-output.md v2.0.0`、`23-ffi.md v2.0.0`、`24-workspace.md v2.0.0`、`25-safety.md v2.0.0`、`26-error.md v3.0.0`、`27-benchmark.md v2.0.0`、`28-tests.md v2.0.0`、`29-documentation.md v2.0.0`、`30-dispatch.md v1.1.1`。
 
 ---
 
@@ -236,10 +236,10 @@ pub fn get_strides(&self) -> &[Ix] { /* ... */ }
 
 ```rust,ignore
 // Good - requires index parameter, may fail, returns XenonError::IndexOutOfBounds
-pub fn try_at(&self, index: &[Ix]) -> Result<&A> { /* ... */ }
+pub fn try_at<I: NdIndex<D>>(&self, index: I) -> Result<&A> { /* ... */ }
 
 // Good - may fail, returns XenonError::IndexOutOfBounds
-pub fn try_at_mut(&mut self, index: &[Ix]) -> Result<&mut A> { /* ... */ }
+pub fn try_at_mut<I: NdIndex<D>>(&mut self, index: I) -> Result<&mut A> { /* ... */ }
 ```
 
 ---
@@ -632,17 +632,19 @@ where
     D: Dimension,
 {
     /// Checked indexing — returns `Err(XenonError::IndexOutOfBounds{...})` on out of bounds.
-    pub fn try_at(&self, index: &[Ix]) -> Result<&A> {
-        if !self.is_index_valid(index) {
+    /// Authoritative signature: see `17-indexing.md` v2.0.0 §5.2.
+    pub fn try_at<I: NdIndex<D>>(&self, index: I) -> Result<&A> {
+        let index_vec = index.to_index_vec();
+        if !self.is_index_valid(&index_vec) {
             return Err(XenonError::IndexOutOfBounds {
                 operation: Cow::Borrowed("try_at"),
-                attempted_index: index.into(),
+                attempted_index: index_vec.clone(),
                 axis: 0,
                 shape: self.shape().into(),
             });
         }
         // SAFETY: index is validated above
-        Ok(unsafe { self.get_unchecked(index) })
+        Ok(unsafe { self.get_unchecked(&index_vec) })
     }
 
     /// Public safe indexing uses `try_at()` / `try_at_mut()` and returns recoverable errors.
@@ -921,7 +923,7 @@ fn assert_close(a: f64, b: f64, epsilon: f64) {
 }
 
 // Bad - direct float comparison
-assert_eq!(*result.try_at(&[0, 0])?, 58.0);  // may fail due to rounding errors
+assert_eq!(*result.try_at((0, 0))?, 58.0);  // may fail due to rounding errors
 ```
 
 ---
@@ -1171,7 +1173,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 - 对齐 `18-construction.md v2.0.0`：`from_shape_vec` 元素数错误使用 `InvalidShapeKind::ElementCountMismatch { expected, actual }`；`zeros` / `ones` 使用 `<Owned<A> as StorageOwned>::from_elem(len, value)`。
 - 对齐 `19-overload.md v2.0.0` 与 `21-type.md v2.0.0`：运算符输出为 `Result<Tensor<_, _>, XenonError>`；同形状使用 `a + b`，可能广播路径使用 `a.add(&b)?`；类型转换分为 `From` / `CastTo<T>`；左标量使用 `Scalar<A>`。
 - 对齐 `05-storage.md v2.0.0`、`06-layout.md v1.3`、`24-workspace.md v2.0.0`、`25-safety.md v2.0.0`：补充 `deep_clone`、`Owned::into_shared`、`ViewRepr` 生成规则、`LayoutState`、`HAS_ZERO_STRIDE`、workspace 可变借用签名与 Send/Sync 权威边界。
-- 对齐 `08-simd.md v2.0.0`、`09-parallel.md v2.0.0`、`30-dispatch.md v1.1.0`：补充 worker 内 SIMD、`dispatch_vector_binary_op -> bool`、`SimdElement: Sealed`、`_guard: ParallelGuard`、`select_exec_path -> (ExecPath, Option<ParallelGuard>)`、`threshold = 0` sentinel 与 `saturating_mul`。
+- 对齐 `08-simd.md v2.0.0`、`09-parallel.md v2.0.0`、`30-dispatch.md v1.1.1`：补充 worker 内 SIMD、`dispatch_vector_binary_op -> bool`、`SimdElement: Sealed`、`_guard: ParallelGuard`、`select_exec_path -> (ExecPath, Option<ParallelGuard>)`、`threshold = 0` sentinel 与 `saturating_mul`。
 - 对齐 `02-dimension.md v1.x`、`03-element.md v1.x`、`04-complex.md v2.0.0`、`11-math.md v2.0.0`、`12-matrix.md v2.0.0`、`13-reduction.md v2.0.0`、`14-set.md v2.0.0`：补充 `IxDyn::RemoveAxis`、`BroadcastDim` 57 项、封闭 `Element` 集、复数构造路径、比较 API、F-order 集合顺序与矩阵私有桥接约束。
 
 未变更清单：

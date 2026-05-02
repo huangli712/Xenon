@@ -101,7 +101,7 @@ External dependencies:
 
 ### 5.1 CastTo trait
 
-- `CastTo<T>` trait 的唯一 owner 是 `03-element.md §5.8`。`convert` 模块只消费该 trait，并在受支持的源/目标类型矩阵上提供 `cast()` 路径，不重新定义 trait。
+- `CastTo<T>` trait 的唯一 owner 是 `03-element.md §5.9`。`convert` 模块只消费该 trait，并在受支持的源/目标类型矩阵上提供 `cast()` 路径，不重新定义 trait。
 - `CastElement` 为封闭 trait，下游不得扩展。`bool` 不属于 `CastElement`，因此 `cast::<bool>()` 在编译期被拒绝。
 
 ````rust,ignore
@@ -363,13 +363,15 @@ let ints: Tensor<i32, Ix1> = floats.cast().unwrap();  // forbidden: returns Type
 
 ### 6.1 CastTo 实现
 
-`CastTo` 的规范签名统一为：
+`CastTo` 的规范签名统一为（与 `03-element.md` §5.9 的权威定义对齐）：
 
 ```rust,ignore
-pub trait CastTo<T> {
+pub trait CastTo<T: Element>: Element {
     fn cast_to(self) -> Result<T, XenonError>;
 }
 ```
+
+`T: Element` bound 与 `Self: Element` super-trait 一起约束源/目标类型只能在封闭元素集合（`i32 / i64 / f32 / f64 / Complex<f32> / Complex<f64> / bool`）内取值，外部 crate 无法扩展转换矩阵。`bool` 默认排除在源/目标之外（参见 `03-element.md §5.9`）。
 
 调用形态为 `value.cast_to()`；`element_index` 由调用方在逐元素遍历时单独跟踪，而不是作为 `CastTo` 的参数传入。`element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引。
 
@@ -632,7 +634,7 @@ impl CastTo<i32> for i64 {
 | 方向                | 对方模块  | 接口/类型                               | 约定                                                                                              |
 | ------------------- | --------- | --------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `convert → tensor`  | `tensor`  | `TensorBase<S, D>` / `StorageIntoOwned` | `cast()`、`to_owned()`、`into_owned()` 都定义在张量抽象之上；其中 `to_owned()` / `into_owned()` 负责产出 canonical F-order owned 结果 |
-| `convert → element` | `element` | `CastTo`                                | 逐元素类型转换通过 `CastTo` trait 驱动，参见 `03-element.md` §5.8                                 |
+| `convert → element` | `element` | `CastTo`                                | 逐元素类型转换通过 `CastTo` trait 驱动，参见 `03-element.md` §5.9                                 |
 | `convert → math`    | `math`    | 逐元素转换语义                          | `cast()` 采用迭代收集路径，不复用 `mapv()` 的同类型返回语义                                       |
 | `convert → storage` | `storage` | `Owned` / readable storage traits       | convert 只消费可读存储与 owned 化能力，不在本文扩展额外存储模式互转矩阵                           |
 | `convert → utility` | `utility`  | `to_contiguous`, `into_contiguous`   | 外部调用方若需要显式连续化入口，由 `util::to_contiguous()` 负责（参见 `20-utility.md §5.5`） |

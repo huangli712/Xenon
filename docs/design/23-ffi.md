@@ -154,7 +154,8 @@ use crate::error::{FfiErrorCategory, FfiBackend};
 /// - `backend: FfiBackend` — closed enum: `RawParts` for generic raw-parts
 ///   FFI, `Blas` for BLAS-compatible export.
 /// - `cause: Option<Box<XenonError>>` — optional source-chain pointer
-///   per `26-error.md §5.2`.
+///   per `26-error.md` v3.0.0 §5.1; the chain is exposed to callers via
+///   `std::error::Error::source()` (see `26-error.md` §5.1 `impl Error`).
 ///
 /// FFI errors must NOT use free-text `precondition` / `actual` fields;
 /// the structured payload inside `FfiErrorCategory` already carries the
