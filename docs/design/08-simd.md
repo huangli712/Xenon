@@ -13,6 +13,8 @@
 
 SIMD 后端模块是 Xenon 张量库的可选性能加速层，通过 `pulp` crate 提供跨平台 SIMD 抽象。根据 `需求说明书 §9.1`，当前版本以算术运算、`neg`、`sum` 与 **vector dot** 为优先，并对复数逐元素算术提供 SIMD 支持；比较、`abs`、`square` 与其他数学函数按阶段推进，完整覆盖计划见 §5.5。该模块默认关闭，通过 `features = ["simd"]` 启用。
 
+SIMD 与并行的组合策略：`dispatch.rs` 决定线程级串行/并行选择，`simd` 决定每个执行上下文（串行或单个并行 worker chunk）内是否启用 SIMD。两层正交，可同时启用（详见 §9.3）。
+
 ### 1.1 职责边界
 
 | 职责       | 包含                                                                |
@@ -38,7 +40,7 @@ SIMD 后端模块是 Xenon 张量库的可选性能加速层，通过 `pulp` cra
 | 原则         | 体现                                                                                                                                                   |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 结果一致性   | 逐元素路径要求保持公开语义一致；整数 `sum` / `dot` 必须等价于逐步 checked arithmetic，浮点/复数 `sum` / `dot` 允许在已文档化容差内偏离标量累加顺序结果 |
-| 自动分层     | SIMD 加速仅在串行执行路径上生效；`dispatch.rs` 决定串行 vs 并行后，仅在串行分支内由 `simd` 后端决定是否启用 SIMD，用户无需感知                        |
+| 双层加速     | SIMD 与并行可同时启用：`dispatch.rs` 决定串行 vs 并行；并行路径中每个 worker 在拿到自己的 chunk 后，由 `simd` 后端按统一规则决定该 chunk 内是否启用 SIMD（详见 §9.3）|
 | 零成本抽象   | 未启用 `simd` feature 时无任何运行时开销                                                                                                               |
 | 跨平台       | pulp 统一 x86_64 (SSE4.1/AVX2/AVX-512) 和 ARM (NEON)；SVE 属于后续扩展，不纳入当前设计                                                                 |
 | 精度优先约束 | 元素级 `mul`/`add` 不使用 FMA 以保持逐位一致；仅在已记录容差的 reduction merge 内部可使用                                                              |
@@ -134,12 +136,15 @@ pulp = { version = "0.18", optional = true }
 // src/simd/mod.rs
 
 use crate::complex::Complex;
+use crate::private::Sealed;
 
 /// Marker trait for SIMD kernel element types.
 ///
 /// Distinguishes different element types at compile time for SIMD dispatch.
-/// Only implemented for numeric types that support SIMD operations.
-pub(crate) trait SimdElement: Copy + Clone + Send + Sync + 'static {
+/// Only implemented for numeric types that support SIMD operations. Sealed
+/// against external implementation; see also §6.6 for the closed kernel-element
+/// matrix.
+pub(crate) trait SimdElement: Sealed + Copy + Clone + Send + Sync + 'static {
     /// Element size in bytes.
     const SIZE: usize;
 
@@ -203,8 +208,9 @@ impl SimdElement for Complex<f64> {
 ///
 /// # Type Parameters
 ///
-/// * `A` - Element type, must implement `SimdElement`
-pub(crate) trait SimdKernel<A: Copy + Send + Sync + 'static>: Send + Sync {
+/// * `A` - Element type, must implement `SimdElement` (sealed; see §5.2 for the
+///   closed list of supported element types)
+pub(crate) trait SimdKernel<A: SimdElement>: Send + Sync {
     // ========================================
     // Metadata
     // ========================================
@@ -256,11 +262,16 @@ pub(crate) trait SimdKernel<A: Copy + Send + Sync + 'static>: Send + Sync {
     /// Sum reduction.
     ///
     /// Covers integer, floating-point, and supported complex element types.
-    /// Integer kernels must be equivalent to scalar checked arithmetic at every
-    /// observable accumulation step; if this cannot be guaranteed efficiently,
-    /// they must fall back to the scalar path. Floating-point/complex kernels may
-    /// use a different accumulation order, but per `需求说明书 §9.3` / `需求说明书 §28.3` any
-    /// tolerance must be defined and documented from the final algorithm and test baseline.
+    /// For integer kernels, the implementation MUST be equivalent to per-step
+    /// scalar checked arithmetic at every observable accumulation step. If the
+    /// implementation cannot prove that equivalence, it MUST NOT enter SIMD
+    /// (instead the language-level admission rule selects the scalar path; see
+    /// §1.1). Integer overflow MUST panic with the same diagnostics as the
+    /// semantic module's scalar implementation.
+    ///
+    /// Floating-point / complex kernels may use a different accumulation
+    /// order; per `需求说明书 §9.3` / `需求说明书 §28.3` any tolerance MUST be
+    /// defined and documented from the final algorithm and test baseline.
     fn sum(&self, data: &[A]) -> A;
 
     // ========================================
@@ -269,11 +280,14 @@ pub(crate) trait SimdKernel<A: Copy + Send + Sync + 'static>: Send + Sync {
 
     /// Vector dot product.
     ///
-    /// Floating-point and complex kernels may use SIMD lane-local accumulation and a
-    /// documented merge step, with the final result staying within the documented
-    /// tolerance bound. Integer kernels must be equivalent to scalar checked
-    /// multiply-then-add semantics at each step; if SIMD cannot guarantee that,
-    /// this operation must fall back to scalar.
+    /// Floating-point and complex kernels may use SIMD lane-local accumulation
+    /// and a documented merge step, with the final result staying within the
+    /// documented tolerance bound. For integer kernels, the implementation MUST
+    /// be equivalent to per-step scalar `checked_mul` + `checked_add` at every
+    /// observable accumulation step; if the implementation cannot prove that
+    /// equivalence, it MUST NOT enter SIMD (the scalar path is selected
+    /// instead). Integer overflow MUST panic with the same diagnostics as the
+    /// semantic module's scalar implementation.
     ///
     /// # Panics
     ///
@@ -287,33 +301,28 @@ pub(crate) trait SimdKernel<A: Copy + Send + Sync + 'static>: Send + Sync {
 
 ```rust,ignore
 // src/simd/mod.rs
+//
+// All items below are `pub(crate)` and are only compiled when
+// `feature = "simd"` is enabled. Callers must already be inside a
+// `#[cfg(feature = "simd")]` block; there is no fallback symbol when
+// the feature is disabled (cfg API is not exposed to callers).
 
 #[cfg(feature = "simd")]
 use pulp::Arch;
 
-/// Returns the `Arch` instance for SIMD dispatch.
+/// Returns a reference to the cached `Arch` instance for SIMD dispatch.
 ///
-/// Cached via `OnceLock` for zero-cost reuse after first call.
+/// Cached via `OnceLock` for zero-cost reuse after first call. Returns a
+/// `&'static Arch` so callers do not require `pulp::Arch: Copy`.
 #[cfg(feature = "simd")]
 #[inline]
-pub(crate) fn get_arch() -> Arch {
+pub(crate) fn get_arch() -> &'static Arch {
     static ARCH: std::sync::OnceLock<Arch> = std::sync::OnceLock::new();
-    *ARCH.get_or_init(Arch::new)
+    ARCH.get_or_init(Arch::new)
 }
 
-/// Placeholder when SIMD is disabled.
-#[cfg(not(feature = "simd"))]
-pub(crate) fn get_arch() -> () {
-    ()
-}
-
-/// Stable vectorized entry used after the semantic module has entered
-/// non-parallel execution and `simd/` has selected a SIMD path internally.
-///
-/// `math/`, `matrix::dot`, and `reduction/` first go through their internal
-/// `dispatch.rs` parallel gating, then in non-parallel execution extract
-/// compatible contiguous slices and call into the pure vectorized backend
-/// exposed by `simd/` only when `simd/` admits the SIMD path.
+/// Internal binary-op selector for the vectorized binary entry point.
+#[cfg(feature = "simd")]
 pub(crate) enum BinaryOp {
     Add,
     Sub,
@@ -321,13 +330,37 @@ pub(crate) enum BinaryOp {
     Div,
 }
 
-pub(crate) fn dispatch_vector_binary_op<A>(op: BinaryOp, lhs: &[A], rhs: &[A], dst: &mut [A])
+/// Vectorized binary entry used by the semantic modules
+/// (`math` / `matrix::dot` / `reduction`).
+///
+/// The semantic module first goes through its own `dispatch.rs` parallel
+/// gating (returning a serial chunk or per-worker chunk); then for that
+/// chunk it extracts compatible contiguous slices and calls this entry.
+///
+/// Returns:
+/// - `true`  : SIMD path was admitted; `dst` has been fully written for the
+///             input range. The caller MUST NOT also run the scalar path.
+/// - `false` : SIMD path was rejected (feature/element-type/ISA/alignment/
+///             length/per-op admission failed). `dst` is left unmodified.
+///             The caller MUST then run its own scalar implementation for
+///             the same range.
+///
+/// Rationale: `simd/` itself never owns the scalar fallback (see §1.1).
+/// The boolean return is the explicit signal a previous version was missing.
+#[cfg(feature = "simd")]
+pub(crate) fn dispatch_vector_binary_op<A>(
+    op: BinaryOp,
+    lhs: &[A],
+    rhs: &[A],
+    dst: &mut [A],
+) -> bool
 where
-    A: SimdElement + Numeric + Copy,
+    A: SimdElement + Numeric,
 {
     // Internal dispatch: selects the appropriate SIMD kernel based on
-    // element type, ISA capability and alignment; falls back to scalar
-    // path when no SIMD path qualifies.
+    // element type, ISA capability, alignment, and per-op admission. If
+    // no SIMD path qualifies, returns `false` and leaves `dst` untouched
+    // so the caller can run the scalar fallback (which it owns).
 }
 ```
 
@@ -335,12 +368,17 @@ SIMD 路径选择已收敛到 `simd` 后端内部（分层原则见 §1.2）。
 
 **职责边界说明：** SIMD 路径选择由 `simd` 后端内部处理，包括 feature、元素类型、操作种类、连续性、对齐与 ISA 能力检查。`dispatch.rs` 不承担 SIMD admission/selection（分层原则见 §1.2）。
 
+**回退归属说明：** `simd/` 模块永不承担标量回退实现。当 SIMD 不可进入时，`dispatch_vector_binary_op` 返回 `false`，并保证不修改 `dst`；调用侧的语义模块（`math` / `matrix::dot` / `reduction`）按各自串行实现处理。这与 §1.1 "标量回退由各语义模块串行实现承担" 形成单一事实源。
+
 ### 5.5 当前版本的 SIMD 覆盖范围
 
 根据 `需求说明书 §9.1`，SIMD 路径当前已覆盖逐元素运算、归约与内积三个大类。是否实际进入 SIMD 仍取决于元素类型、ISA 能力、统一对齐快路径与语义约束；当前版本在 `matrix` 相关范围内仅承载 **vector dot**，不展开矩阵乘法或其他 matrix 范围能力。
 
-- **SIMD 覆盖范围**：当前版本正式承诺的 SIMD 覆盖以逐元素算术、归约（sum）和内积（dot）为优先。其他运算（一元、比较、逻辑、复数、数学函数）的 SIMD 路径作为按阶段推进的实现优化项，不构成当前版本的稳定交付承诺。
-- **透明回退说明：** 对于下表中尚未提供 SIMD kernel 的操作，或运行时不满足 SIMD 入口条件的输入，标量回退按 §1.1 职责边界执行；公开 API 与结果语义保持不变。
+- **SIMD 覆盖范围**：当前版本正式承诺的 SIMD 覆盖以下两类：
+  1. 逐元素算术（`add` / `sub` / `mul` / `div` / `neg`）：覆盖 `f32` / `f64` / `Complex<f32>` / `Complex<f64>`，状态为"已实现"。
+  2. 归约（`sum`）与内积（`dot`）：覆盖 `f32` / `f64` / `Complex<f32>` / `Complex<f64>`，状态为"已实现"；`i32` / `i64` 为"条件实现，默认标量回退"（详见 §5.6）。
+- 其他运算（除上述以外的一元运算如 `abs` / `square`、比较运算、逻辑 `not`、未列入的复数运算如 `complex_abs` / `conjugate`、数学函数如 `sin` / `sqrt` 等）的 SIMD 路径作为按阶段推进的实现优化项，不构成当前版本的稳定交付承诺。每条具体规则以 §5.6 覆盖状态表为权威。
+- **透明回退说明：** 对于 §5.6 表中尚未提供 SIMD kernel 的操作，或运行时不满足 SIMD 入口条件的输入，标量回退按 §1.1 职责边界由对应语义模块自行执行；公开 API 与结果语义保持不变。
 
 ### 5.6 SIMD 操作覆盖状态表
 
@@ -368,7 +406,9 @@ SIMD 路径选择已收敛到 `simd` 后端内部（分层原则见 §1.2）。
 `simd` 后端内部在尝试进入 SIMD 前，至少按以下规则做统一裁决：
 
 1. **Minimum length**：输入长度必须达到对应操作的最小向量化阈值，避免短切片因装载/收尾成本高于收益而误入 SIMD。
-2. **Alignment requirement**：参与运算的切片必须满足 Xenon 统一对齐快路径要求（通过 `layout::is_aligned()` 一类检查判定）；不满足时直接回退标量/串行路径。
+2. **Alignment policy（按 ISA/操作动态选择）**：`simd` 内部根据当前 ISA 与操作类型选择 aligned 或 unaligned load/store 变体。`layout::is_aligned()` 仅作为 kernel 内部能力位输入，不作为 SIMD 准入的强制条件。具体规则：
+   - 若 kernel 选择 aligned 变体（如某些归约的 horizontal merge 阶段），输入对齐必须满足该变体的硬件前提；不满足时改用同 kernel 的 unaligned 变体或不进入 SIMD。
+   - 若 kernel 选择 unaligned 变体（这是大多数逐元素 kernel 的默认选择），不要求统一对齐快路径；调用侧无需为此预先回退。
 3. **ISA width check**：运行时需确认当前 `pulp::Arch` 上存在可用 ISA 且 lane 宽度大于 1；若目标类型或当前 ISA 无法提供有效向量宽度，则不进入 SIMD。
 
 | 操作类型                  | 元素类型                        | SIMD 最小长度 | 说明                                                         |
@@ -385,8 +425,8 @@ SIMD 路径选择已收敛到 `simd` 后端内部（分层原则见 §1.2）。
 | 内积 `dot`                | `f32` / `f64`                   | 512           | 同归约                                                       |
 | 内积 `dot`                | `i32` / `i64`                   | 256           | 同上                                                         |
 
-- 以上阈值为内部默认值。当输入长度低于阈值时，自动回退到标量路径。
-- 这些阈值只影响执行路径选择，不改变 API 结果；未通过任一条件时，系统透明回退到非 SIMD 路径。
+- 以上阈值为内部默认值。当输入长度低于阈值时，`simd` 后端不进入 SIMD（kernel 入口对外通过返回 `false` 或不写入结果通知调用侧；调用侧语义模块按 §1.1 走自身串行实现）。
+- 这些阈值只影响执行路径选择，不改变 API 结果；未通过任一条件时，整体行为透明等价于非 SIMD 路径。
 
 ### 5.8 SIMD 加速路径设计
 
@@ -496,23 +536,25 @@ SIMD dot dispatch flow
 ```
 
 - SIMD 条件判断已收敛到 `simd` 后端内部（分层原则见 §1.2）。
-- 进入串行执行上下文后，`simd` 再按统一规则检查 feature、连续性、对齐、元素类型与运行时可用 lane 宽度，决定是否使用向量化路径。
+- 进入任一执行上下文（串行执行或并行 worker 内的单个 chunk）后，`simd` 再按统一规则检查 feature、连续性、对齐、元素类型与运行时可用 lane 宽度，决定是否使用向量化路径。该裁决在串行与并行 worker 中一致（详见 §9.3）。
 
 ### 5.10 `simd` 能力查询接口
 
 ```rust,ignore
 // src/simd/mod.rs
 
-/// Returns the SIMD vector width for `T` on the current platform,
-/// or `None` if SIMD is unavailable for `T` (feature disabled,
-/// unsupported type, or no suitable ISA).
+/// Returns the natural SIMD vector width (in elements) for `T` on the
+/// current platform, or `None` if no SIMD lane width > 1 is available
+/// for `T` (feature disabled, unsupported type, or no suitable ISA).
+#[cfg(feature = "simd")]
 pub(crate) fn simd_vector_width<T: SimdElement>() -> Option<usize>;
 ```
 
-- `simd` 后端内部通过该接口查询某元素类型是否具备 SIMD 向量宽度。
-- 返回 `Some(width)` 表示当前平台对该类型有可用 SIMD 路径；返回 `None` 表示不具备。
-- 该查询只回答向量宽度，不替代连续性、对齐、长度阈值和 ISA 检查。
-- 具体的操作覆盖矩阵（哪些类型 + 哪些操作已实现）由 §5.6 覆盖状态表决定，各 kernel 入口内部按表裁决；对状态为“优化项”或“标量回退”的条目，对应 kernel 入口直接回退到语义模块串行路径。
+- `simd` 后端内部通过该接口查询某元素类型在当前平台上的自然向量宽度。
+- 返回 `Some(width)`（其中 `width > 1`）表示当前平台对该类型存在可用的 SIMD 向量宽度。**这并不意味着对任意调用一定会进入 SIMD 路径**——是否实际进入 SIMD 仍需通过 §5.7 的最小长度、对齐策略、ISA 能力检查，以及 §5.6 覆盖状态表中的"已实现/条件实现"裁决。
+- 返回 `None` 表示该平台对该类型没有可用 lane 宽度，可作为提前短路依据。
+- 该查询只回答向量宽度，不替代连续性、对齐、长度阈值、操作覆盖与 per-op 准入检查。
+- 具体的操作覆盖矩阵（哪些类型 + 哪些操作已实现）由 §5.6 覆盖状态表决定，各 kernel 入口内部按表裁决；对状态为"优化项"或"标量回退"的条目，对应 kernel 入口直接通过 §5.4 的 `false` 返回值告知调用方走串行实现。
 - 当需要为新增操作扩展 SIMD 时，只需在对应 kernel 入口添加分支，无需修改此查询接口。
 
 ### 5.11 Good/Bad 对比示例
@@ -541,11 +583,15 @@ let out = lhs.add(&rhs)?;
 use pulp::{Simd, WithSimd};
 
 /// f32 addition SIMD kernel.
+///
+/// Internal kernel struct; `pub(crate)` only. Fields are also `pub(crate)`
+/// so other simd-internal modules can construct it without exposing the
+/// layout outside the crate.
 #[cfg(feature = "simd")]
-pub struct AddF32Kernel<'a> {
-    pub lhs: &'a [f32],
-    pub rhs: &'a [f32],
-    pub dst: &'a mut [f32],
+pub(crate) struct AddF32Kernel<'a> {
+    pub(crate) lhs: &'a [f32],
+    pub(crate) rhs: &'a [f32],
+    pub(crate) dst: &'a mut [f32],
 }
 
 #[cfg(feature = "simd")]
@@ -865,7 +911,7 @@ SIMD 路径与各语义模块串行实现的一致性测试，由各语义模块
 | 消费（输入） | `layout`                     | 对齐/连续性元数据                                                                                            | 当前版本仅对统一对齐快路径启用 SIMD，其余情况由 `simd/` 后端内部保持非 SIMD 路径                  |
 | 产出（输出） | 上层语义模块                 | 标量结果或写回目标切片                                                                                       | 不改变公开 API 形状、错误类别和数值语义边界                                                     |
 
-`math` 模块在执行逐元素运算时，先经 `dispatch.rs` 决定是否进入并行执行；在非并行执行上下文中，`simd` 后端再根据兼容连续切片、统一对齐快路径与 ISA 能力内部决定是否进入 SIMD，否则保持其串行实现（参见 `11-math.md §6.3`）。
+`math` 模块在执行逐元素运算时，先经 `dispatch.rs` 决定是串行还是并行执行；无论选择哪一层，对应执行上下文（串行整段，或并行 worker 拿到的 chunk）内 `simd` 后端再根据兼容连续切片、对齐策略与 ISA 能力独立决定是否进入 SIMD，否则保持其串行实现（参见 `11-math.md §6.3`、本文 §9.3）。
 
 **分派策略**: `math` 模块提供公共 `sqrt()` API，但在当前版本中 `sqrt()` 不接入 SIMD kernel，而是保持语义模块串行路径。用户仅调用 `math::sqrt()`，无需关心底层是否存在加速能力。
 
@@ -885,9 +931,18 @@ math/reduction/dot call acceleration entry
     └── NO  -> stay in semantic-module serial/other backend path
 ```
 
-### 9.3 与 parallel 模块
+### 9.3 与 parallel 模块（双层加速：thread × SIMD）
 
-SIMD 与并行的组合策略（分层原则见 §1.2）：`dispatch.rs` 决定串行 vs 并行路径。SIMD 仅在串行执行路径上使用——进入非并行执行上下文后，`simd` 后端根据元素数、对齐和 ISA 支持内部决定是否启用 SIMD。并行路径中各 worker 线程执行标量代码，不调用任何 SIMD helper。这是 Xenon 二级裁决模型的明确边界：`dispatch.rs` 决定串/并选择后，SIMD 的准入与执行完全限定在串行分支内部。
+SIMD 与并行的组合策略（分层原则见 §1.2）：`dispatch.rs` 仅决定**线程级**路径选择（串行 vs 并行），不再排斥 SIMD。SIMD 与并行可同时启用：
+
+- **串行路径**：进入非并行执行上下文后，`simd` 后端在单线程内按 §5.7 / §5.6 决定是否启用 SIMD。
+- **并行路径**：每个 rayon worker 线程拿到自己的 chunk 后，**仍可在该 chunk 内由 `simd` 后端按 §5.7 / §5.6 独立决定是否启用 SIMD**。准入条件（最小长度、对齐策略、ISA 宽度、操作覆盖）以 chunk 为单位评估。
+  - 实现要求：`simd` 公开给并行后端的 kernel 入口必须 `Send + Sync`，且对 chunk 内部状态无跨线程共享假设。
+  - 一致性要求：worker 内 SIMD 不改变并行归约的合并顺序——SIMD 仅影响 chunk 内部累加，chunk 之间的合并仍由 `parallel` 模块按其文档化容差规则执行。
+
+这是 Xenon 二级裁决模型的更新边界：`dispatch.rs` 决定线程级串/并选择，`simd` 决定每个执行上下文（串行或单个 worker chunk）内是否启用 SIMD。两层是正交的，不互斥。
+
+> 历史说明：v1.x 设计明确禁止并行 worker 内调用 SIMD helper。v2.0 起放开此限制（决策 5）。
 
 ### 9.4 与 layout 模块
 
@@ -951,6 +1006,25 @@ SIMD 模块依赖 layout 提供的连续性和对齐信息来判断是否可以�
 | 理由     | `ScalarKernel` 与各语义模块的串行实现功能重复；`simd` 模块定位为纯向量化后端更清晰       |
 | 替代方案 | 保留 `ScalarKernel` 作为 `SimdKernel` trait 的参考实现 — 放弃，违反方案 D 的职责分离原则 |
 
+### 决策 5：允许并行 worker 内启用 SIMD（thread × SIMD 双层加速）
+
+| 属性     | 值                                                                                                                                                                                                                                            |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | `dispatch.rs` 选择并行后，每个 rayon worker 在自己的 chunk 内仍可由 `simd` 后端按统一规则启用 SIMD；并行与 SIMD 不再互斥                                                                                                                       |
+| 理由     | 大输入下 thread × SIMD 双层加速对常见 CPU 架构有显著吞吐收益；`dispatch.rs` 决定的是线程级串/并选择，与 chunk 内是否走向量化在概念上正交；强制互斥会让任何一次进入并行的运算都无法享受 SIMD                                                    |
+| 替代方案 | 保留 v1.x 的"并行 worker 内强制标量"策略 — 放弃，明确放弃可观吞吐；同时 SIMD 内部容差规则与 chunk 间合并顺序由 `parallel` 模块独立控制，互斥并不能换来更强的数值确定性                                                                          |
+| 风险     | worker 内 SIMD 要求 kernel 入口 `Send + Sync` 且对 chunk 内部状态无跨线程共享假设；并行归约 chunk 间合并顺序仍由 `parallel` 模块按其文档化容差控制，SIMD 仅影响 chunk 内累加（详见 §9.3）                                                       |
+
+### 决策 6：`dispatch_vector_binary_op` 返回 `bool` 表达"是否进入 SIMD"
+
+| 属性     | 值                                                                                                                                                                                                                            |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | `dispatch_vector_binary_op(op, lhs, rhs, dst) -> bool`；`true` 表示 SIMD 已写入 `dst`，`false` 表示未进入 SIMD 且 `dst` 未被修改                                                                                              |
+| 理由     | v1.x 签名为 `-> ()`，无法显式表达"未进入 SIMD"，与 §1.1 "`simd/` 永不承担标量回退" 形成无法闭合的控制流。明确的布尔信号让调用侧（`math` / `matrix::dot` / `reduction`）可以确定是否需要执行自己的串行实现，回退归属彻底单向化 |
+| 替代方案 | `simd/` 内部承担标量回退 — 放弃，违反 §1.1 职责边界与决策 4                                                                                                                                                                   |
+| 替代方案 | 返回 `Result<(), NotAdmitted>` — 放弃，`NotAdmitted` 不是错误，是路径选择信号，用 `bool` 更轻量                                                                                                                               |
+| 替代方案 | 在 `simd` 内部直接调用回 `math` 串行实现 — 放弃，会反向造成 `simd` 依赖 `math` 的循环依赖                                                                                                                                      |
+
 ---
 
 ## 12. 性能考量
@@ -983,7 +1057,7 @@ SIMD 模块依赖 layout 提供的连续性和对齐信息来判断是否可以�
 | `std` only | SIMD 路径依赖 `std` 环境  |
 | MSRV       | Rust 1.85+                |
 | 单 crate   | 保持单 crate 边界         |
-| SemVer     | SIMD API 变更遵循 SemVer  |
+| SemVer     | `simd/` 内所有类型与入口均为 `pub(crate)` 内部 API，**不构成稳定公开 API**；变更不强制走 SemVer，但需在 `CHANGELOG.md` 中显式记录。本模块对外可见的影响仅通过 §9.1 列出的语义模块公开 API 表现（详见 §5.1）。 |
 | 最小依赖   | 可选依赖 `pulp`，默认关闭 |
 
 ---
@@ -1004,6 +1078,7 @@ SIMD 模块依赖 layout 提供的连续性和对齐信息来判断是否可以�
 | 1.2.5 | 2026-04-16 |
 | 1.2.6 | 2026-04-16 |
 | 1.2.7 | 2026-04-16 |
+| 2.0.0 | 2026-05-02 | SemVer breaking。决策 5：允许并行 worker 内启用 SIMD，撤销 v1.x 的并行/SIMD 互斥限制（§1.2、§9.3 重写）。决策 6：`dispatch_vector_binary_op` 签名改为返回 `bool` 显式表达"未进入 SIMD"，配合 §1.1 单向回退归属（§5.4 重写）。`SimdKernel<A>` 的 `A` bound 由 `Copy + Send + Sync + 'static` 收紧为 `SimdElement`（§5.3）。`SimdElement` 加 `Sealed` super-trait（§5.2）。`get_arch()` 返回 `&'static Arch`，移除 disabled feature 下的 `-> ()` 占位（§5.4）。§5.7 对齐准入由"必须满足统一对齐快路径"放宽为 kernel 内部按 ISA/操作动态选择 aligned/unaligned 变体。§5.5 复数算术承诺与 §5.6 覆盖状态表对齐，明确"已实现"为本版稳定交付。§5.10 `simd_vector_width` 语义补注。`AddF32Kernel` 字段由 `pub` 降为 `pub(crate)`（§6.1）。§13 SemVer 行修正为 `pub(crate)` 内部 API，不强制走 SemVer。 |
 
 ---
 
