@@ -32,7 +32,7 @@
 | Dimension trait     | stride 计算、logical-first pointer、布局标志计算            |
 | IntoDimension trait | 用户自定义维度源                                            |
 | Axis 类型           | 轴上的切片/迭代操作（由 tensor 方法提供）                   |
-| RemoveAxis trait    | 标量轴错误建模为编译期拒绝；零维场景统一走运行时可恢复错误  |
+| RemoveAxis trait    | 零维 / 标量轴操作不做编译期拒绝；统一走运行时 `XenonError::InvalidAxis` 可恢复错误 |
 | 维度互转            | 隐式维度转换                                                |
 | 形状元数据          | stride 元数据及其合法性判定                                 |
 | 内存分配            | 张量数据分配                                                |
@@ -496,7 +496,7 @@ impl Axis {
 /// Used by:
 /// - `AxisIter` (see `10-iterator.md §5.2`): `Item = TensorView<'a, A, D::Smaller>`
 /// - `sum_axis` (see `13-reduction.md §5.1`): result dimension is `D::Smaller`
-pub trait RemoveAxis: Dimension {
+pub trait RemoveAxis: Dimension + Sealed {
     /// The dimension type with one fewer axis.
     type Smaller: Dimension;
 
@@ -612,12 +612,17 @@ impl Sealed for IxDyn {}
 
 **实现建议：** 
 
-- 跨静态维度的 `BroadcastDim` 实现共计约 57 个（含自身广播 7 个 + 跨静态维度 42 个 + 与 IxDyn 混合 7 个（静态维度→IxDyn）+ 1 个（IxDyn→D 泛型 impl））。
+- 跨静态维度的 `BroadcastDim` 实现共计 57 个：
+  - 同 rank 自广播：7 个（`Ix0..Ix6` 每个对自身一份）
+  - 跨静态 rank 有序对：42 个（`{Ix0..Ix6}` 内部 7×7 = 49，扣除 7 个同 rank 后剩 42）
+  - 静态 + `IxDyn` 单向：7 个（`impl BroadcastDim<IxDyn> for IxN`）
+  - `IxDyn` + 任意：1 个泛型 `impl<D: Dimension> BroadcastDim<D> for IxDyn`（同时覆盖 `IxDyn + IxN` 和 `IxDyn + IxDyn`）
 - 建议使用声明宏（`macro_rules!`）生成这些实现，避免手工编写导致的遗漏和错误。宏生成后须通过 compile-fail 测试验证全覆盖。
 - `BroadcastDim` 必须是公开 sealed trait，以保证 `math` / `broadcast` / `overload` 的公开签名与 trait bound 可命名；公开仅限命名和使用 crate 内既有实现，仍禁止外部实现。
 - 跨静态维度广播（如 `Ix2 + Ix1`）时，输出类型为维度数较大的静态类型（`Ix2`）。这遵循 NumPy 广播规则：低维数组在左侧补 1，结果维度数 = max(ndim_a, ndim_b)。
-- 运行时兼容性由 `broadcast_shape()` 在调用处验证。  
+- 运行时兼容性由 `broadcast_shape()` 在调用处验证。
 - 与 `IxDyn` 混合时始终返回 `IxDyn` 以保证类型安全。
+- **对称性保证（消除双向 bound 风险）：** 对任意 `D, E ∈ {Ix0..Ix6, IxDyn}`，`<D as BroadcastDim<E>>::Output == <E as BroadcastDim<D>>::Output`。该不变量由本节给出的实现矩阵直接保证（同 rank 返回自身、跨 rank 返回较大 rank、含 `IxDyn` 一律返回 `IxDyn`），下游 `broadcast_with` 等需要 `D: BroadcastDim<E, Output=O>` 与 `E: BroadcastDim<D, Output=O>` 同时成立的双向 bound 在所有支持组合下均可被类型系统证明。该对称性必须通过 compile-time 类型等价测试覆盖（每个组合一例）。
 
 ```rust,ignore
 /// Trait for computing the output dimension type when broadcasting two arrays.
@@ -778,16 +783,14 @@ impl PermuteAxes for IxDyn {
             dims.push(self.axis(axis)?);
         }
         if let Some(missing_axis) = seen.iter().position(|present| !present) {
-            return Err(XenonError::InvalidArgument {
+            // Missing axis is treated as an invalid-axis condition to keep the
+            // unified contract: any out-of-range / duplicate / missing axis in
+            // a permutation maps to `InvalidAxis`. See §5.11 contract bullet.
+            return Err(XenonError::InvalidAxis {
                 operation: "PermuteAxes::permuted_axes".into(),
-                argument: "permutation".into(),
-                expected: "a bijection over axes 0..ndim-1".into(),
-                actual: format!("missing axis {}", missing_axis).into(),
-                axis: Some(missing_axis),
-                axis_len: None,
-                start: None,
-                end: None,
-                shape: Some(self.slice().into()),
+                axis: missing_axis,
+                ndim: self.ndim(),
+                shape: self.slice().into(),
             });
         }
         Ok(IxDyn::from_vec(dims))
@@ -1008,7 +1011,7 @@ let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
 | ------------------------------------- | ------------------------------------------------------ |
 | 空维度 `Ix0`                          | `checked_size()=Ok(1)`, `ndim()=0`, `slice()=&[]`      |
 | 单元素 `Ix1(1)`                       | `checked_size()=Ok(1)`                                 |
-| 零长度轴 `Ix2(0, 3)`                  | `checked_size()=Ok(0)`, `contains_zero()=true`         |
+| 零长度轴 `Ix2(0, 3)`                  | `checked_size()=Ok(0)`，`slice()` 中至少一个轴为 0     |
 | 大维度 `Ix6(100,100,100,100,100,100)` | `checked_size()` 在溢出时返回带 `offending_dim` 的错误 |
 | `IxDyn::ones(0)`                      | 零维动态维度                                           |
 | `PermuteAxes` 重复/缺失轴             | 返回可恢复错误，不接受非双射排列                       |
