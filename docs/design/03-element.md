@@ -403,7 +403,7 @@ use crate::error::XenonError;
 /// Defines explicit conversion from `Self` to `T`.
 /// Lossless conversions return `Ok(T)`.
 /// Lossy conversions default to recoverable
-/// `XenonError::TypeConversion { source_type, target_type, reason, element_index }`
+/// `XenonError::TypeConversion { operation, source_type, target_type, reason, element_index }`
 /// unless a documented success precondition is satisfied (see `21-type.md §5.3`).
 ///
 /// This trait is implemented only inside Xenon for the supported source/target pairs.

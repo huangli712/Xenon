@@ -148,9 +148,11 @@ pub(crate) enum ExecPath {
 
     /// Parallel execution.
     ///
-    /// Caller delegates to the `parallel/` backend. Workers execute
-    /// scalar code (no SIMD inside parallel workers per architectural
-    /// decision). This path is only returned when `feature = "parallel"`
+    /// Caller delegates to the `parallel/` backend. Each worker chunk
+    /// MAY independently invoke a SIMD kernel from `simd/` per chunk-local
+    /// admission (thread × SIMD double-layer acceleration; see
+    /// `08-simd.md v2.0.0` §9.3 / decision 5 and `09-parallel.md v2.0.0`
+    /// decision 9). This path is only returned when `feature = "parallel"`
     /// is enabled AND the input meets the parallel threshold AND the
     /// thread is not already inside a library-internal parallel region.
     ///
@@ -767,8 +769,10 @@ Caller (math / matrix / reduction)
 │ holds the guard    │ │ backend      │ │ own scalar   │
 │ for the entire     │ │ (may         │ │ impl         │
 │ parallel region;   │ │  internally  │ │              │
-│ workers run scalar │ │  fall back   │ │              │
-│ code (no SIMD).    │ │  to scalar)  │ │              │
+│ each worker chunk  │ │  fall back   │ │              │
+│ MAY invoke SIMD    │ │  to scalar)  │ │              │
+│ per chunk-local    │ │              │ │              │
+│ admission (v2.0).  │ │              │ │              │
 │ Drop releases the  │ │              │ │              │
 │ in-parallel flag.  │ │              │ │              │
 └────────────────────┘ └──────────────┘ └──────────────┘
@@ -933,7 +937,7 @@ Caller (math / matrix / reduction)
 
 | 方向           | 对方模块         | 接口/类型                                  | 约定                                                                                            |
 | -------------- | ---------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| 被调用（输出） | `math`           | `select_exec_path()`, `should_parallelize()` | `math` 在广播裁决后调用 dispatch 决定串行/并行路径；并行 worker 内执行标量代码（不使用 SIMD）    |
+| 被调用（输出） | `math`           | `select_exec_path()`, `should_parallelize()` | `math` 在广播裁决后调用 dispatch 决定串行/并行路径；并行 worker 内 chunk 可独立做 SIMD admission（v2.0 起，参见 `08-simd.md` §9.3 / 决策 5、`09-parallel.md` 决策 9） |
 | 被调用（输出） | `matrix`         | `select_exec_path()`, `should_parallelize()` | `matrix::dot()` 完成 rank/shape 校验后调用 dispatch 三路分发（参见 `12-matrix.md` §6.1）         |
 | 被调用（输出） | `reduction`      | `select_exec_path()`                        | `reduction::sum()` 调用 dispatch 决定执行路径（参见 `13-reduction.md` §6.3）                    |
 | 被调用（输出） | `simd`（间接）   | `ExecPath::Simd`                            | dispatch 仅推荐 SIMD 路径；`simd/` 内部做最终 admission（ISA/ lane 宽度检测）                   |
@@ -953,7 +957,7 @@ math / matrix / reduction 调用方
     │       │
     │       ├── ExecPath::Serial  → 调用方自己的标量实现
     │       ├── ExecPath::Simd    → simd/ 后端（可能内部回退标量）
-    │       └── ExecPath::Parallel → parallel/ 后端（各 worker 执行标量代码，无 SIMD）
+    │       └── ExecPath::Parallel → parallel/ 后端（各 worker chunk 可独立做 SIMD admission，v2.0 起）
     │
     └── 返回结果（Tensor / scalar / Result），公开语义不变
 ```
@@ -1018,7 +1022,7 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 | 决策     | `ExecPath` 枚举包含三个变体：`Serial`、`Simd`、`Parallel`。调用方通过单次 `match` 分发。                    |
 | 理由     | 调用方（`math`/`matrix`/`reduction`）需要区分三种互斥执行策略；三路枚举比两层 `Option` 或独立布尔值更清晰，且 match 强制穷尽检查，编译器可做分支优化。 |
 | 替代方案 | 两层 `Option<ParallelPath>` + `Option<SimdPath>` —— 放弃，语义模糊，易出现不完整分支覆盖。                  |
-| 替代方案 | 四路（含 `SimdParallel`） —— 放弃，当前架构规定并行 worker 内不使用 SIMD，该变体无存在必要。               |
+| 替代方案 | 四路（含 `SimdParallel`） —— 放弃，三路枚举已覆盖路径选择。注：v2.0 起架构允许并行 worker 内做 SIMD admission（08-simd v2.0.0 决策 5、09-parallel v2.0.0 决策 9），但仍由 `simd/` 在 worker chunk 内自治判定，不需要在 `ExecPath` 顶层新增 `SimdParallel` 变体；dispatch 只返回 `Parallel`，SIMD 进入由 worker 自决。 |
 | 来源     | **用户决策 B**：`ExecPath` 有三个变体。                                                                     |
 
 ### 决策 2：dispatch 是 ISA-agnostic
@@ -1136,6 +1140,7 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 | ----- | ---------- | -------------------------------------------------------------------------------------- |
 | 1.0.0 | 2026-05-02 | 初始版本：依据用户决策 B（三路 ExecPath）+ 决策 X（ISA-agnostic），定义 dispatch 的完整设计 |
 | 1.1.0 | 2026-05-02 | （内部 API 修订，不影响下游用户）依据用户决策 B8.a + 评审 C6/C7/C8/溢出风险修复：(1) `select_exec_path()` 返回 `(ExecPath, Option<ParallelGuard>)`，select 与 acquire guard 原子绑定；(2) 移除 `ParallelGuard::enter()` 公开入口，guard 仅由 dispatch 内部 `try_acquire_guard()` 产生；(3) `set_parallel_threshold(0)` 显式作为禁用 sentinel；(4) 非连续阈值翻倍改为 `saturating_mul(2)` 防溢出；(5) SIMD/Parallel 非连续策略表述统一（SIMD 直接拒绝、Parallel 翻倍阈值）；(6) `ParallelExecStrategy` 字段私有 + 构造器 `new()` 校验；(7) `should_parallelize()` 语义澄清为诊断查询，不获取 guard；(8) §12.3 修正"纯函数"表述（实际读 thread-local + atomic）；(9) 新增决策 7 / 决策 8。 |
+| 1.1.1 | 2026-05-03 | （文档同步，与 08-simd v2.0.0 / 09-parallel v2.0.0 / 11-math v2.0.0 / 12-matrix v2.0.0 / 13-reduction v2.0.0 worker 内 SIMD 决策对齐）：清理 5 处 v1.x "no SIMD inside parallel workers" 表述：(1) §5.1 `ExecPath::Parallel` doc comment 改写：worker chunk 可独立调用 SIMD kernel（thread × SIMD）；(2) §7 ASCII 流向图：将 "workers run scalar code (no SIMD)" 替换为 "each worker chunk MAY invoke SIMD per chunk-local admission (v2.0)"；(3) §9.1 接口约定表 `math` 行：替换 "并行 worker 内执行标量代码（不使用 SIMD）" 为 "worker 内 chunk 可独立做 SIMD admission"；(4) §9.2 数据流图 `ExecPath::Parallel` 行：替换 "各 worker 执行标量代码，无 SIMD" 为 "各 worker chunk 可独立做 SIMD admission"；(5) §11 决策 1 拒绝替代方案 "四路" 表述更新：保留三路 ExecPath 决策，但说明 v2.0 起 SIMD admission 由 worker 自决，不需要顶层 `SimdParallel` 变体。无 API 变更。 |
 
 ---
 

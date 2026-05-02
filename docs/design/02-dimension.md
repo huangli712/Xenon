@@ -264,17 +264,15 @@ impl Dimension for Ix3 {
         let dims = [self.0, self.1, self.2];
         let mut acc = 1usize;
         for (axis, &dim) in dims.iter().enumerate() {
-            let previous = acc;
+            let _previous = acc;
             acc = acc.checked_mul(dim).ok_or(XenonError::InvalidShape {
-                operation: "Dimension::checked_size".into(),
+                operation: Cow::Borrowed("Dimension::checked_size"),
                 shape: dims.into(),
-                // Overflow path note: in this specific checked_size contract,
-                // `expected_elements` stores the previous partial product and
-                // `actual_elements` stores the current dimension value.
-                expected_elements: previous,
-                actual_elements: dim,
+                // Per 26-error v3.0.0 §5.1: ProductOverflow is a unit
+                // variant; no expected/actual fields are encoded because
+                // overflowed products cannot be expressed in `usize`.
+                kind: InvalidShapeKind::ProductOverflow,
                 offending_dim: Some(axis),
-                reason: Some("element count overflow".into()),
             })?;
         }
         Ok(acc)
@@ -370,17 +368,15 @@ impl Dimension for IxDyn {
     fn checked_size(&self) -> Result<usize, XenonError> {
         let mut acc = 1usize;
         for (axis, &dim) in self.dims.iter().enumerate() {
-            let previous = acc;
+            let _previous = acc;
             acc = acc.checked_mul(dim).ok_or(XenonError::InvalidShape {
-                operation: "Dimension::checked_size".into(),
+                operation: Cow::Borrowed("Dimension::checked_size"),
                 shape: self.dims.clone(),
-                // Overflow path note: in this specific checked_size contract,
-                // `expected_elements` stores the previous partial product and
-                // `actual_elements` stores the current dimension value.
-                expected_elements: previous,
-                actual_elements: dim,
+                // Per 26-error v3.0.0 §5.1: ProductOverflow is a unit
+                // variant; no expected/actual fields are encoded because
+                // overflowed products cannot be expressed in `usize`.
+                kind: InvalidShapeKind::ProductOverflow,
                 offending_dim: Some(axis),
-                reason: Some("element count overflow".into()),
             })?;
         }
         Ok(acc)

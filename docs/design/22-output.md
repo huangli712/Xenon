@@ -464,7 +464,7 @@ println!("{}", tensor);  // NumPy style output
 let tensor = Tensor2::<f64>::zeros([3, 4])?;
 for i in 0..3 {
     for j in 0..4 {
-        print!("{} ", tensor[[i, j]]);  // unreadable, no truncation
+        print!("{} ", tensor.try_at((i, j))?);  // unreadable, no truncation
     }
     println!();
 }
@@ -532,7 +532,7 @@ fmt_nd(tensor, f, prefix):
         else:
             next_prefix = prefix + [entry]
             // Outermost dimension is axis 0. For shape [M, N], this emits M rows,
-            // and each displayed element at [i, j] is tensor[[i, j]] in logical F-order.
+            // and each displayed element at [i, j] is `tensor.try_at((i, j))?` in logical F-order.
             fmt_nd(tensor, f, next_prefix)
         if pos < indices.len() - 1:
             write separator_for_axis(axis)

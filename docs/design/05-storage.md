@@ -603,7 +603,7 @@ pub trait StorageIntoOwned: Storage {
 | 任意只读/共享只读 -> `ViewMutRepr<'_, A>` | 不允许违反独占可写前提                         | `XenonError::InvalidStorageMode`                                                         |
 | `ViewRepr<'_, A> -> ArcRepr<A>`           | storage 层不具备共享所有权句柄，禁止运行时补造 | `XenonError::InvalidStorageMode`                                                         |
 
-- 上表与 `需求说明书` §6.2 的矩阵一致：违反存储模式/可变性前提的张量层转换入口（例如对只读张量调用 `view_mut()`）须统一使用 `26-error.md` §5.1 定义的结构化错误 `XenonError::InvalidStorageMode { operation, expected: StorageKindTag, actual: StorageKindTag, conversion: Option<StorageConversionKind> }` 作为失败返回值。其中 `expected` / `actual` 来自 `StorageKindTag` 封闭枚举（`Owned/View/ViewMut/Arc`），`conversion` 取自 `StorageConversionKind`，与 `26-error.md` 的字段表保持同步。复制型成功路径本身不再额外引入新的公开转换错误类型。最后两行（`任意只读/共享只读 -> ViewMutRepr`、`ViewRepr -> ArcRepr`）描述的是张量层运行时失败模型；在 storage 层，这些转换是 `type-level only`（无运行时 API 入口，参见 §5.11.3）。
+- 上表与 `需求说明书` §6.2 的矩阵一致：违反存储模式/可变性前提的张量层转换入口（例如对只读张量调用 `view_mut()`）须统一使用 `26-error.md` v3.0.0 §5.1 定义的结构化错误 `XenonError::InvalidStorageMode { operation: Cow<'static, str>, expected: StorageKindTag, actual: StorageKindTag, shape: Option<Vec<usize>>, conversion: Option<StorageConversionKind> }` 作为失败返回值。其中 `expected` / `actual` 来自 `StorageKindTag` 封闭枚举（`Owned/View/ViewMut/Arc`），`shape` 在张量层调用点可附加输入形状（不可用时为 `None`），`conversion` 取自 `StorageConversionKind`，与 `26-error.md` 的字段表保持同步。复制型成功路径本身不再额外引入新的公开转换错误类型。最后两行（`任意只读/共享只读 -> ViewMutRepr`、`ViewRepr -> ArcRepr`）描述的是张量层运行时失败模型；在 storage 层，这些转换是 `type-level only`（无运行时 API 入口，参见 §5.11.3）。
 
 - 涉及内存分配的转换操作，若分配失败则遵循运行时既有行为（如全局分配器 panic 或 OOM），不通过 `XenonError` 建模。此设计决策与 `需求说明书 §6.2` 的“须分配”路径一致：该路径仅在目标为持有时可执行，分配失败不属于张量语义层的可恢复错误。
 

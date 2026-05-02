@@ -187,7 +187,7 @@ where
   | `broadcast_with(a, b)` | `Cow::Borrowed("broadcast_with")` | `a.shape().to_vec()` | `b.shape().to_vec()` | `None` | `Some(失败轴 index)` |
 
   > 字段类型说明：v3.0.0 中 `lhs_shape` 与 `rhs_shape` 不再是 `Option<Vec<usize>>`，而是 `Vec<usize>`。`broadcast_to` 这种"单输入 + 显式目标"的场景没有右侧输入，按约定用 `vec![]` 占位以满足结构体字段非 Option 的要求；调用方据此可识别"右侧输入不存在"。`attempted_target_shape` 仅 `broadcast_to` 填 `Some(..)`，其它 API 用 `None`。
-- **返回类型与共享只读保证：** 当前版本复用 `TensorView` 作为返回类型，不引入单独的 `BroadcastView` 新类型。广播结果内部承载 `ViewRepr<'a, A>`，`storage_kind()` 返回 `StorageKind::View`，`access_semantics()` 返回 `AccessSemantics::SharedReadOnly`。由于广播引入零步长布局，多个逻辑位置映射到同一物理元素，因此只读共享语义由以下机制共同保证：1) `LayoutFlags::HAS_ZERO_STRIDE` / `LayoutState::BroadcastView` 标识广播布局；2) 广播结果类型层缺失 `StorageMut` 能力且不提供 `into_mut()` 等 API；3) 广播结果的生命周期绑定源张量。
+- **返回类型与共享只读保证：** 当前版本复用 `TensorView` 作为返回类型，不引入单独的 `BroadcastView` 新类型。广播结果内部承载 `ViewRepr<'a, A>`（与 `05-storage.md` v2.0.0 §5.11.1 "广播 / 转置 / 切片产生的只读视图统一使用 ViewRepr" 规则一致），`storage_kind()` 返回 `StorageKind::View`，`access_semantics()` 返回 `AccessSemantics::SharedReadOnly`。由于广播引入零步长布局，多个逻辑位置映射到同一物理元素，因此只读共享语义由以下机制共同保证：1) `LayoutFlags::HAS_ZERO_STRIDE` / `LayoutState::BroadcastView` 标识广播布局；2) 广播结果类型层缺失 `StorageMut` 能力且不提供 `into_mut()` 等 API；3) 广播结果的生命周期绑定源张量。
 
 ### 5.3 Good / Bad 对比
 
