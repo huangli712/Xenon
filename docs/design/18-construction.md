@@ -43,7 +43,7 @@
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
 | 合法性验证   | 所有构造路径须验证合法性，防止越界访问（`需求说明书 §8`）                                                                               |
 | F-order 默认 | 构造时数据按 F-order 存放，默认列优先布局                                                                                               |
-| 对齐分配     | `zeros`/`ones` 使用项目统一的对齐分配策略，满足拥有型连续存储的实现需求；具体对齐值不作为构造 API 的公开语义                            |
+| 对齐分配     | `zeros`/`ones` 使用项目统一的对齐分配策略，满足拥有型连续存储的实现需求；具体对齐值不作为构造 API 的公开语义。对齐策略详见 `05-storage.md` §6.1 AlignedBuf 定义。                            |
 | 对齐优先     | `from_shape_vec` 可复用项目统一的 owned 存储构造路径；是否复制输入 `Vec<A>`、以及采用何种对齐值，均属于内部实现选择，不单独形成公开承诺 |
 | 类型安全     | 形状和元素类型通过泛型约束在编译期检查                                                                                                  |
 
@@ -168,7 +168,6 @@ where
     /// ```
     pub fn zeros<Sh>(shape: Sh) -> Result<Self, XenonError>
     where
-        A: Element,  // A::zero() from Element; Clone implied by Element (see 03-element.md §5.1). StorageOwned::from_elem requires Clone (see 05-storage.md §5.7)
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();

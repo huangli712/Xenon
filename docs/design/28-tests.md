@@ -677,6 +677,8 @@ fn test_unique_non_contiguous() {
 
 **归属说明**：`test_send_sync_contracts` 语义上属于 safety（`25-safety.md`），`test_complex_c99_layout` 属于 FFI 布局（`23-ffi.md`），`test_ix0_iter_single` 属于迭代器（`10-iterator.md`），`test_zst_storage_no_ub` 属于存储/tensor UB 验证（`05-storage.md`）。它们置于 `test_error.rs` 是因为均通过 `XenonError` 统一公开错误边界进行校验，或依赖 error 模块的类型约束（如 `Send`/`Sync` bound 传播需 `XenonError: Send + Sync`）。若后续测试文件职责边界收紧，可分别移至 `test_parallel.rs`、`test_ffi.rs`、`test_iterator.rs`、`test_tensor.rs`。
 
+**TODO（v2）**：当前安全不变量测试（`test_send_sync_contracts`、`test_zst_storage_no_ub` 等）暂置于 `test_error.rs` 中以利用统一的 `XenonError` 校验入口。未来版本应迁移至独立的 `test_safety.rs` 文件以匹配模块职责边界。
+
 panic 诊断信息测试：验证 panic message 包含 `需求说明书 §27` 要求的诊断上下文（至少包含错误类别和相关参数子集）。通过 `#[should_panic(expected = "...")]` 或 `std::panic::catch_unwind` 捕获并断言。
 
 ### 5.24 test_overload.rs

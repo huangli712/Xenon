@@ -202,9 +202,9 @@ where
 | `f64`          | `i64`          | 错误     | 有损，默认失败                              |
 | `i32`          | `f32`          | 错误     | 有损，默认失败                              |
 | `i64`          | `f32`          | 错误     | 有损，默认失败                              |
-| `i64`          | `f64`          | 错误     | 有损，默认失败                              |
+| `i64`          | `f64`          | 错误     | 精度敏感：`±2^53` 内精确，超出按 IEEE 754 舍入。当前按需求说明书视为有损，默认失败。 [Awaiting requirements confirmation: should i64→f64 always succeed with documented precision loss, or fail for values outside ±2^53?] |
 | `i32`          | `Complex<f32>` | 错误     | 由 `i32 -> f32` 有损导致默认失败            |
-| `i64`          | `Complex<f64>` | 错误     | 由 `i64 -> f64` 有损导致默认失败            |
+| `i64`          | `Complex<f64>` | 错误     | 由 `i64 -> f64` 精度敏感导致默认失败（同 `i64 → f64` 条目） |
 | `i64`          | `Complex<f32>` | 错误     | 有损，默认失败                              |
 | `f64`          | `Complex<f32>` | 错误     | 有损，默认失败                              |
 | `Complex<f32>` | `f64`          | 默认错误 | 默认错误（虚部非 0 时返回 `NonZeroImaginaryPart`；虚部为 0 时再按 `f32 -> f64` 规则处理） |
@@ -226,7 +226,9 @@ where
 - 凡 `需求说明书 §23.1` 已逐项列出的组合，其默认语义与附加成功前提以 `需求说明书 §23.1` 表格为准；闭合规则仅用于补足未逐项列出的受支持组合，不得覆盖或重新解释已列组合的语义。
 - 未在上表逐项展开、但属于受支持源/目标集合的组合，按 `需求说明书 §23.2` 闭合：
   - 实数 → 整数：一律默认为 `FloatToInteger` 错误（浮点值域与整数表示不兼容，包括 NaN/Inf 场景）
-  - 整数 → 浮点（窄精度）：一律默认为有损失败（如 `i64 → f32`、`i64 → f64`、`i32 → f32`），返回 `IntegerToFloatPrecisionLoss`
+  - 整数 → 浮点（窄精度）：一律默认为有损失败（如 `i64 → f32`、`i64 → f64`[^precision_note]、`i32 → f32`），返回 `IntegerToFloatPrecisionLoss`
+
+[^precision_note]: `i64 → f64` 在数学上 `±2^53` 范围内可精确表示，但超出此范围的 `i64` 值在转为 `f64` 时按 IEEE 754 round-to-nearest-even 可能丢失低阶位信息。当前按需求说明书保守归类为有损，已在 §5.3 条目中标注待需求确认。
   - 实数 → 复数：先按实数到目标复数实部分量类型的规则转换实部，再补 `0` 虚部
   - 复数 → 实数：仅当虚部为 `0` 时才可继续；但这只是必要条件而非充分条件。若实部到目标实数类型的内层转换按 `需求说明书 §23.1` 属于默认有损失败，则整体转换仍为默认错误并必须返回 `Err`
   - 复数 → 复数：实部和虚部分别按对应实数转换规则处理
@@ -442,6 +444,12 @@ impl CastTo<i32> for i64 {
         })
     }
 }
+
+// `CastTo<f64> for i64` is not explicitly listed here because it falls
+// into the lossy-by-default macro-generated pattern per §5.4.
+// See §5.3 i64→f64 entry for precision caveats.
+// [Awaiting requirements confirmation: should i64→f64 always succeed
+//  with documented precision loss, or fail for values outside ±2^53?]
 ```
 
 ### 6.2 溢出行为汇总

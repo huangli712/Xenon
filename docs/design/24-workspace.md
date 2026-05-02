@@ -233,6 +233,10 @@ impl Workspace {
     /// let ws = Workspace::new(1024, 64)?;
     /// assert!(ws.capacity() >= 1024);
     /// ```
+    ///
+    /// **容量注释**：`capacity.max(1)` 确保零容量时至少请求 1 字节以生成合法布局。
+    /// 实际内部容量可能略大于请求值（由于 `Layout::from_size_align` 的对齐要求）。
+    /// `capacity()` 返回的是 `max(1)` 后的请求值，不是实际分配的字节数。
     pub fn new(capacity: usize, alignment: usize) -> Result<Self> {
         if !alignment.is_power_of_two() || alignment < Self::MIN_ALIGNMENT {
             return Err(XenonError::Workspace {

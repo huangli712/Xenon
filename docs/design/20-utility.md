@@ -313,6 +313,13 @@ where
     /// let contig2 = transposed.to_contiguous();
     /// assert!(contig2.is_f_contiguous());
     /// ```
+    ///
+    /// # Trait bounds for `to_owned()`
+    ///
+    /// `to_owned()` 在 `S: Storage<Elem = A>` 且 `A: Element` 上定义
+    /// (参见 21-type.md §5.x)。所有 4 种存储模式
+    /// (Owned/ViewRepr/ViewMutRepr/ArcRepr) 都满足此约束，
+    /// 因此 `to_contiguous` 在所有存储类型上可用。
     pub fn to_contiguous(&self) -> Tensor<A, D> {
         if self.is_f_contiguous() {
             self.to_owned()

@@ -241,7 +241,7 @@ where
 
 - 按逻辑顺序产出共享引用；内部将 `TensorView` 按逻辑元素总数均匀分割为固定 chunk。
 - 对于 F-contiguous 布局，直接按连续内存切片分割以获得最佳缓存局部性；对于非连续布局（如转置视图），退化为线性索引区间 + 逐元素步长访问。
-- 分片粒度由 `chunk_size` 和 `max_workers` 字段控制：若 `chunk_size` 为 `Some(n)`，每个分片至多包含 `n` 个元素；若为 `None`，按 `(total_elements + num_threads - 1) / num_threads` 自动计算，其中 `num_threads` 取 `max_workers` 或 `rayon::current_num_threads()`。
+- 分片粒度由 `chunk_size` 和 `max_workers` 字段控制：若 `chunk_size` 为 `Some(n)`，每个分片至多包含 `n` 个元素；若为 `None`，通过 `compute_safe_chunks(total, num_threads)` 自动计算（定义于 `src/parallel/mod.rs`，见 01-architecture.md §5.2a），其中 `num_threads` 取 `max_workers` 或 `rayon::current_num_threads()`。
 - `par_iter()` 返回使用默认策略（`chunk_size: None`, `max_workers: None`）的 `ParElements`；`ParElements::with_strategy()` 接受显式策略参数，供 `par_map_checked` 等需要精确控制分块的内部入口使用。
 
 ```rust,ignore
@@ -294,6 +294,8 @@ dispatch-selected parallel entry
 
 ### 6.3 二元逐元素并行路径
 
+分块策略统一通过 `compute_safe_chunks(total, num_workers)` 计算，该函数定义于 `src/parallel/mod.rs`（参见 01-architecture.md §5.2a）。这避免了多处重复内联公式造成的不一致风险。
+
 ```rust,ignore
 #[cfg(feature = "parallel")]
 pub(crate) fn par_zip_map<SL, SR, A, B, C, DL, DR, DO, F>(
@@ -327,9 +329,11 @@ where
     })?;
 
     let num_threads = strategy.max_workers.unwrap_or_else(rayon::current_num_threads);
+    // Use compute_safe_chunks from src/parallel/mod.rs (declared in 01-architecture.md §5.2a)
+    // to centralize chunk-size policy and apply safety bounds.
     let chunk_size = strategy
         .chunk_size
-        .unwrap_or_else(|| usize::max(1, (total + num_threads - 1) / num_threads));
+        .unwrap_or_else(|| crate::parallel::compute_safe_chunks(total, num_threads));
 
     // Build broadcast-compatible read-only chunk views for lhs / rhs.
     // Execute f in parallel and collect Result<Vec<C>, XenonError> directly.
@@ -340,7 +344,7 @@ where
 
 - `par_zip_map()` 是二元逐元素并行路径的统一设计入口，供 `math` 模块中的 `add` / `sub` / `mul` / `div` 广播运算消费，不直接暴露为公开用户 API。
 - `par_zip_map()` 接收的 `lhs`、`rhs` 与 `output_dim` 必须已由调用侧完成兼容性验证；广播裁决（含输出 rank/shape 计算）属于 `math` 模块职责，`parallel/` 不重复做形状推导。
-- 广播处理顺序固定为：先由 `math` 模块验证 `lhs` / `rhs` 广播兼容并产出 `output_dim`，再由 `parallel` 按外轴/块状多维 tile 分块；默认 `chunk_size = max(1, (total_elements + num_threads - 1) / num_threads)` 仍作为 tile 目标工作量上界，其中 `num_threads = rayon::current_num_threads()`，并按固定左折叠顺序合并 chunk 结果。每个 chunk 为两个输入分别构造与该 tile 对应、且仍与 `output_dim` 兼容的只读 sub-view。若某一侧是广播轴（stride 为 `0` 或逻辑重复维），chunk 视图保持该广播语义，不做物理复制。`DL`、`DR`、`DO` 独立建模，以表达输入与输出 rank 可能不同的广播结果。
+- 广播处理顺序固定为：先由 `math` 模块验证 `lhs` / `rhs` 广播兼容并产出 `output_dim`，再由 `parallel` 按外轴/块状多维 tile 分块；默认 chunk_size 通过 `compute_safe_chunks(total, num_threads)` 确定（定义于 `src/parallel/mod.rs`，见 01-architecture.md §5.2a），作为 tile 目标工作量上界，其中 `num_threads = rayon::current_num_threads()`，并按固定左折叠顺序合并 chunk 结果。每个 chunk 为两个输入分别构造与该 tile 对应、且仍与 `output_dim` 兼容的只读 sub-view。若某一侧是广播轴（stride 为 `0` 或逻辑重复维），chunk 视图保持该广播语义，不做物理复制。`DL`、`DR`、`DO` 独立建模，以表达输入与输出 rank 可能不同的广播结果。
 - 广播 chunk 映射草图：优先按 `output_dim` 的外轴边界生成块状多维 tile，使 chunk 在输出空间内保持可直接切片的矩形子域；若某些退化形状无法形成理想矩形 tile，则实现可退化为“线性索引区间 + 逐元素广播投影”的内部执行形式，而不是要求把任意线性区间整体重建成单个 broadcast sub-view。对输出维中的广播轴，输入侧固定复用同一逻辑坐标；对非广播轴，chunk 保持对应 tile 的区间跨度。实现不得为广播轴做物理展开或额外分配。
 - `par_zip_map` 仅包含并行执行逻辑；若调用发生，表示 `dispatch.rs` 已确认当前输入适合走并行路径。
 - `par_zip_map()` 作为内部并行入口，假定广播兼容性已由调用方验证，不再额外定义单独的 checked 变体，也不依赖 `BroadcastError`。此为内部前置条件。违反时视为内部 bug，可触发 debug assert，但不得破坏内存安全或对外错误模型。release 模式下行为保持语义定义，不引入未指定行为。panic 与 `Err` 传播语义参见 §6.7 与 §10。
@@ -360,7 +364,7 @@ where
 
 - `par_map`、`par_zip_map`、`par_sum` 接收的输入都已由上层语义模块和 `dispatch.rs` 验证完毕；`par_dot` 在进入并行归约前仍需自行做运行时校验，要求 `lhs.ndim() == 1`、`rhs.ndim() == 1` 且两侧逻辑长度一致。
 - 对归约和内积，若调用方选择并行路径，则 `parallel/` 必须提供固定 chunking 与固定 merge tree，保证同平台、同配置、同路径下结果确定；整数 `sum` / `dot` 的失败诊断还必须按逻辑 chunk 索引顺序仲裁，始终选择首个失败 chunk。
-- 并行归约采用固定分块策略：`chunk` 大小 = `max(1, (n + num_workers - 1) / num_workers)`，worker 按固定索引范围分配，merge 按 worker 索引顺序合并。
+- 并行归约采用固定分块策略：chunk 大小由 `compute_safe_chunks(n, num_workers)` 确定（定义于 `src/parallel/mod.rs`，见 01-architecture.md §5.2a），worker 按固定索引范围分配，merge 按 worker 索引顺序合并。
 - 若执行对象为整数 `sum` / `dot`，每个 worker 必须在本分片内执行 `checked_add` / `checked_mul` + `checked_add`；任一 worker 发现溢出时必须传播 panic，不得转写为 `XenonError`。失败诊断固定按逻辑 chunk 索引顺序仲裁；若该实现前提不成立，则必须改走串行路径。
 
 ### 6.6 Checked 映射与错误传播

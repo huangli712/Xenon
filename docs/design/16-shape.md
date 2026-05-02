@@ -111,14 +111,17 @@ where
     ///
     /// # Examples
     /// ```
-    /// let a = Tensor::<f64, _>::zeros([2, 3]);
+    /// let a = Tensor::<f64, _>::zeros([2, 3])?;
     /// let b = a.transpose();
     /// assert_eq!(b.shape(), &[3, 2]);
     /// ```
     pub fn transpose(&self) -> TensorView<'_, A, D> {
-        // Reverse trait (02-dimension.md §5.11): reverses axis order
-        let new_shape = self.shape().reverse();
-        let new_strides = self.strides().reverse();
+        // Uses `Reverse` trait from 02-dimension.md §5.11 to consume self
+        // and return reversed dimension/strides.
+        // Note: calling .reverse() on bare slices would not compile —
+        // we must go through the owned dimension type.
+        let new_shape = self.raw_dim().clone().reverse();
+        let new_strides = self.strides().clone().reverse();
         let new_flags = compute_layout_flags::<A, D>(&new_shape, &new_strides, self.as_ptr());
 
         // actual construction uses TensorView::new_unchecked() or similar
@@ -140,7 +143,7 @@ where
 
 - 根据 `需求说明书 §17`，当前版本形状操作仅支持转置。
 - 其他形状变换与连续性驱动的形状重解释不属于本文档覆盖范围，留待后续版本单独设计。
-- 当前版本的 `transpose()` 定义为全轴顺序反转（reverse axis order），即 `shape' = shape[::-1]`，`strides' = strides[::-1]`，等价于矩阵转置。`需求说明书 §17` 所述的“轴置换规则”在本版本中等价于全轴反转。一般化的 `permute_axes()` API 不在当前版本范围内；未来若引入，`transpose()` 仍保持为 `reverse_axes()` 的便捷别名，不改变现有契约。
+- 当前版本的 `transpose()` 定义为全轴顺序反转（reverse axis order），即 `shape' = shape[::-1]`，`strides' = strides[::-1]`，等价于矩阵转置。`需求说明书 §17` 所述的“轴置换规则”在本版本中等价于全轴反转。一般化的 `permute_axes()` API 不在当前版本范围内；未来若引入，`transpose()` 仍保持为基于 `Reverse` trait（`02-dimension.md §5.11`）的便捷别名，不改变现有契约。
 - 若内部通过 unchecked 视图构造返回转置结果，其安全前提为：（1）转置仅重排轴顺序，不改变逻辑访问范围；（2）反转后的 `shape` / `stride` 组合仍满足原 storage 的可见边界约束（由构造期验证保证）；（3）`offset` 保持不变。因此转置无需新的存储分配，视图构造仍落在原验证范围内。
 
 | 属性     | 行为                                                                                                   |

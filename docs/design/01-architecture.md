@@ -681,20 +681,132 @@ pub use error::XenonError;
 
 ## 10. 重点 API 暴露方式
 
-| API                  | 暴露方式              | 说明                         |
-| -------------------- | --------------------- | ---------------------------- |
-| `sum`                | `TensorBase` 固有方法 | 归约语义由张量实例直接触发   |
-| `dot`                | 双入口                | 位于 `matrix` 模块的 API     |
-| `transpose`          | `TensorBase` 固有方法 | 形状变换直接挂载在张量实例上 |
-| `broadcast_to`       | `TensorBase` 固有方法 | 广播视图构造由张量实例发起   |
-| `clip`               | `TensorBase` 固有方法 | 逐元素裁剪作为张量实用操作暴露 |
-| `fill`               | `TensorBase` 固有方法 | 仅 `TensorViewMut` / 可变存储路径可调用 |
-| `cast`               | `TensorBase` 固有方法 | 类型转换保持实例方法风格     |
-| `unique`             | `TensorBase` 固有方法 | 集合操作直接从张量实例触发   |
-| `iter` / `axis_iter` | `TensorBase` 固有方法 | 迭代器入口保持实例方法风格   |
+Xenon 的公开 API 以 `TensorBase` 固有方法为主。以下按类别列出所有公开方法及对应模块文档。
 
-- Xenon 的公开 API 以 `TensorBase` 固有方法为主。
-- `dot` 实际上是双入口函数，一个是自由函数，一个是 `TensorBase` 固有方法。
+### 10.1 逐元素数学（参见 `11-math.md`）
+
+| 方法 | 暴露方式 | 说明 |
+| ---- | -------- | ---- |
+| `add` | `TensorBase` 固有方法 | 元素级加法（另可通过 `+` 运算符；参见 `19-overload.md`） |
+| `sub` | `TensorBase` 固有方法 | 元素级减法（另可通过 `-` 运算符） |
+| `mul` | `TensorBase` 固有方法 | 元素级乘法（另可通过 `*` 运算符） |
+| `div` | `TensorBase` 固有方法 | 元素级除法（另可通过 `/` 运算符） |
+| `neg` | `TensorBase` 固有方法 | 逐元素取反（另可通过 `-` 一元运算符） |
+| `abs` | `TensorBase` 固有方法 | 逐元素绝对值 |
+| `square` | `TensorBase` 固有方法 | 逐元素平方 |
+| `signum` | `TensorBase` 固有方法 | 逐元素符号 |
+| `sin` | `TensorBase` 固有方法 | 逐元素正弦 |
+| `sqrt` | `TensorBase` 固有方法 | 逐元素平方根 |
+| `exp` | `TensorBase` 固有方法 | 逐元素指数 |
+| `ln` | `TensorBase` 固有方法 | 逐元素自然对数 |
+| `floor` | `TensorBase` 固有方法 | 逐元素向下取整 |
+| `ceil` | `TensorBase` 固有方法 | 逐元素向上取整 |
+| `modulus` | `TensorBase` 固有方法 | 逐元素取模 |
+| `conjugate` | `TensorBase` 固有方法 | 逐元素共轭（实数类型为恒等操作；参见 `04-complex.md`） |
+
+### 10.2 逐元素比较（参见 `11-math.md`）
+
+| 方法 | 暴露方式 | 说明 |
+| ---- | -------- | ---- |
+| `eq` | `TensorBase` 固有方法 | 逐元素等于比较（返回 `Tensor<bool, D>`） |
+| `ne` | `TensorBase` 固有方法 | 逐元素不等于比较 |
+| `lt` | `TensorBase` 固有方法 | 逐元素小于比较 |
+| `gt` | `TensorBase` 固有方法 | 逐元素大于比较 |
+
+### 10.3 布尔操作（参见 `11-math.md`）
+
+| 方法 | 暴露方式 | 说明 |
+| ---- | -------- | ---- |
+| `not` | `TensorBase` 固有方法 | 仅 `bool` 张量可用，逐元素逻辑非 |
+
+### 10.4 标量算术（参见 `11-math.md`）
+
+| 方法 | 暴露方式 | 说明 |
+| ---- | -------- | ---- |
+| `add_scalar` | `TensorBase` 固有方法 | 张量 + 标量（另可通过 `tensor + scalar` / `Tensor + Scalar` 宏） |
+| `sub_scalar` | `TensorBase` 固有方法 | 张量 - 标量 |
+| `mul_scalar` | `TensorBase` 固有方法 | 张量 * 标量 |
+| `div_scalar` | `TensorBase` 固有方法 | 张量 / 标量 |
+
+### 10.5 标量比较（参见 `11-math.md`）
+
+| 方法 | 暴露方式 | 说明 |
+| ---- | -------- | ---- |
+| `eq_scalar` | `TensorBase` 固有方法 | 逐元素与标量比较相等 |
+| `ne_scalar` | `TensorBase` 固有方法 | 逐元素与标量比较不等 |
+| `lt_scalar` | `TensorBase` 固有方法 | 逐元素与标量比较小于 |
+| `gt_scalar` | `TensorBase` 固有方法 | 逐元素与标量比较大于 |
+
+### 10.6 归约（参见 `13-reduction.md`）
+
+| 方法 | 暴露方式 | 说明 |
+| ---- | -------- | ---- |
+| `sum` | `TensorBase` 固有方法 | 归约语义由张量实例直接触发 |
+| `sum_axis` | `TensorBase` 固有方法 | 沿指定轴归约并移除该轴（要求 `D: RemoveAxis`） |
+| `sum_axis_keepdims` | `TensorBase` 固有方法 | 沿指定轴归约并保留长度为 1 的轴 |
+
+### 10.7 形状变换（参见 `16-shape.md`）
+
+| 方法 | 暴露方式 | 说明 |
+| ---- | -------- | ---- |
+| `transpose` | `TensorBase` 固有方法 | 形状变换直接挂载在张量实例上 |
+| `broadcast_to` | `TensorBase` 固有方法 | 广播视图构造由张量实例发起 |
+
+### 10.8 逐元素实用操作
+
+| 方法 | 暴露方式 | 说明 |
+| ---- | -------- | ---- |
+| `clip` | `TensorBase` 固有方法 | 逐元素裁剪作为张量实用操作暴露 |
+| `fill` | `TensorBase` 固有方法 | 仅 `TensorViewMut` / 可变存储路径可调用 |
+| `try_fill` | `TensorBase` 固有方法 | 带错误检查的填充操作（参见 `20-utility.md`） |
+
+### 10.9 类型转换（参见 `21-type.md`）
+
+| 方法 | 暴露方式 | 说明 |
+| ---- | -------- | ---- |
+| `cast` | `TensorBase` 固有方法 | 类型转换保持实例方法风格 |
+| `to_owned` | `TensorBase` 固有方法 | 从视图/引用创建拥有所有权的副本 |
+| `into_owned` | `TensorBase` 固有方法 | 消费自身并返回拥有所有权的副本 |
+
+### 10.10 集合与迭代
+
+| 方法 | 暴露方式 | 说明 |
+| ---- | -------- | ---- |
+| `unique` | `TensorBase` 固有方法 | 集合操作直接从张量实例触发 |
+| `iter` / `axis_iter` | `TensorBase` 固有方法 | 迭代器入口保持实例方法风格 |
+
+### 10.11 输出（参见 `22-output.md`）
+
+| 方法 | 暴露方式 | 说明 |
+| ---- | -------- | ---- |
+| `display_with` | `TensorBase` 固有方法 | 带格式化选项的张量显示（精度、宽度等） |
+
+### 10.12 FFI（参见 `23-ffi.md`）
+
+| 方法 | 暴露方式 | 说明 |
+| ---- | -------- | ---- |
+| `export` | `TensorBase` 固有方法 | 导出不可变底层缓冲区指针 |
+| `export_mut` | `TensorBase` 固有方法 | 导出可变底层缓冲区指针 |
+| `blas_info` | `TensorBase` 固有方法 | 返回 BLAS 兼容的布局元数据 |
+| `lda` | `TensorBase` 固有方法 | 返回行主维数（leading dimension） |
+| `try_offset_of` | `TensorBase` 固有方法 | 安全计算多维索引的线性偏移 |
+| `try_ptr_at` | `TensorBase` 固有方法 | 获取指定位置元素的原始指针 |
+
+### 10.13 连续性与内存管理（参见 `20-utility.md`）
+
+| 方法 | 暴露方式 | 说明 |
+| ---- | -------- | ---- |
+| `to_contiguous` | `TensorBase` 固有方法 | 创建连续布局的副本（不消费自身） |
+| `into_contiguous` | `TensorBase` 固有方法 | 消费自身并确保连续布局 |
+
+### 10.14 双入口 API
+
+| API | 暴露方式 | 说明 |
+| --- | -------- | ---- |
+| `dot` | 双入口 | 自由函数 + `TensorBase` 固有方法；位于 `matrix` 模块 |
+
+### 10.15 补充说明
+
 - `parallel` / `simd` 仅影响这些公开 API 的内部执行路径，不额外暴露稳定的并行或 SIMD 用户侧入口。
 - `dispatch.rs`、`prelude` 中的重导出布局，属于当前实现组织建议。
 - `construct` 模块自由函数/便捷包装的存在方式，属于当前实现组织建议。

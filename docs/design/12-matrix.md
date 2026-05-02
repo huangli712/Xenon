@@ -150,24 +150,24 @@ src/matrix/
 /// let result = dot(&a.view(), &b.view())?;
 /// assert_eq!(result, 32.0);  // 1*4 + 2*5 + 3*6
 /// ```
-pub fn dot<A, D1, D2>(
-    a: &TensorView<'_, A, D1>,
-    b: &TensorView<'_, A, D2>,
+pub fn dot<S1, S2, A, D1, D2>(
+    a: &TensorBase<S1, D1>,
+    b: &TensorBase<S2, D2>,
 ) -> Result<A, XenonError>
 where
+    S1: Storage<Elem = A>,
+    S2: Storage<Elem = A>,
     A: Numeric,
     D1: Dimension,
     D2: Dimension;
-// Note: Numeric (defined in 03-element.md) already implies
-// Mul<Output=Self> + Add<Output=Self>, so the public constraint
-// `Numeric + Copy` is sufficient. The internal implementation
-// (dot_impl) repeats these bounds explicitly for clarity.
+// 自由函数与 TensorBase 方法接受相同泛型参数，可直接传入
+// owned/view/viewmut/arc 任何形式的张量。
 
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: Numeric + Copy,
+    A: Numeric,
 {
     /// Stable method-style API; semantically equivalent to `matrix::dot()`.
     pub fn dot<S2, D2>(&self, other: &TensorBase<S2, D2>) -> Result<A, XenonError>
@@ -177,7 +177,7 @@ where
 }
 ````
 
-整数内积使用 checked arithmetic 进行中间乘积和累加。泛型约束 `A: Numeric + Copy` 在实现层直接复用 element 层 sealed traits `CheckedMul` 与 `CheckedAdd`（权威定义见 `03-element.md §5.9`）确保 `i32` / `i64` 路径使用 checked `mul` / `add`，并在 `None` 时按整数溢出策略 panic。
+整数内积使用 checked arithmetic 进行中间乘积和累加。泛型约束 `A: Numeric`（Numeric 已蕴含 Copy）在实现层直接复用 element 层 sealed traits `CheckedMul` 与 `CheckedAdd`（权威定义见 `03-element.md §5.9`）确保 `i32` / `i64` 路径使用 checked `mul` / `add`，并在 `None` 时按整数溢出策略 panic。
 
 ### 5.2 复数内积语义
 
@@ -240,7 +240,7 @@ dot_impl(a, b):
 
 - `dot` 必须先完成逻辑 1D 与长度一致性检查。
 - 调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径。
-- 若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。
+- 若进入并行路径，各 worker 线程执行标量代码（不使用 SIMD）。SIMD 加速仅在串行执行路径上启用。
 - SIMD 路径要求 `a` 和 `b` **均为** F-contiguous 且满足对齐前提；若任一输入不满足条件，必须回退到标量或并行中的标量 chunk 路径。
 - `par_dot()` 自身的 API 契约仍与 `09-parallel.md` 一致，保持对泛型 `D: Dimension` 输入开放，并在实现内部执行运行时 1D 校验。这里“只接受 `Ix1`”描述的是 `matrix::dot()` 进入并行后端前的私有桥接约束，而不是 `par_dot()` 的公开函数签名。桥接实现详见 §6.4。所有路径都必须保持一致的结果、错误模型与整数溢出 panic 语义。
 

@@ -266,10 +266,16 @@ impl UniqueElement for i64 {
     fn unique_eq(&self, other: &Self) -> bool { self == other }
 }
 
+// IEEE 754 == semantics:
+// - NaN != NaN: each NaN is preserved as distinct (no merging)
+// - +0.0 == -0.0: treated as equal (single output)
 impl UniqueElement for f32 {
     fn unique_eq(&self, other: &Self) -> bool { self == other }
 }
 
+// IEEE 754 == semantics (same as f32 above):
+// - NaN != NaN: each NaN is preserved as distinct (no merging)
+// - +0.0 == -0.0: treated as equal (single output)
 impl UniqueElement for f64 {
     fn unique_eq(&self, other: &Self) -> bool { self == other }
 }

@@ -269,8 +269,6 @@ pub struct TensorExport<'a, A> {
     /// The logical first element address is `data.add(offset)` when `len() != 0`.
     ///
     pub data: *const A,
-    /// Lifetime marker tying the export to the source tensor borrow.
-    pub _marker: core::marker::PhantomData<&'a A>,
     /// Element type identifier (matches ElementType enum).
     pub element_type: ElementType,
     /// Number of dimensions.
@@ -287,6 +285,13 @@ pub struct TensorExport<'a, A> {
     /// Logical offset metadata in element units, preserved for raw-parts
     /// roundtrip/reconstruction contracts.
     pub offset: usize,
+    /// Lifetime marker tying the export to the source tensor borrow.
+    ///
+    /// Must be the last field in this `#[repr(C)]` struct: as a ZST,
+    /// it contributes 0 bytes in the C ABI, but placing it in the middle
+    /// can produce unspecified behavior across compiler versions.
+    /// Keeping it last ensures cross-version consistency.
+    pub _marker: core::marker::PhantomData<&'a A>,
 }
 
 /// Raw mutable tensor data export for FFI consumers.
@@ -299,8 +304,6 @@ pub struct TensorExportMut<'a, A> {
     /// Typed mutable pointer to the storage base pointer.
     /// Same semantics as `TensorExport::data`, but writable.
     pub data: *mut A,
-    /// Lifetime marker; `PhantomData<&'a mut A>` enforces exclusive borrow.
-    pub _marker: core::marker::PhantomData<&'a mut A>,
     /// See `TensorExport::element_type`.
     pub element_type: ElementType,
     /// See `TensorExport::ndim`.
@@ -313,8 +316,37 @@ pub struct TensorExportMut<'a, A> {
     pub storage_len: usize,
     /// See `TensorExport::offset`.
     pub offset: usize,
+    /// Lifetime marker; `PhantomData<&'a mut A>` enforces exclusive borrow.
+    ///
+    /// Must be the last field (ZST), same rationale as `TensorExport::_marker`.
+    pub _marker: core::marker::PhantomData<&'a mut A>,
 }
 
+// Static layout assertions for FFI compatibility.
+// These verify that the struct layout (field sizes + ZST exclusion)
+// matches the expected total at compile time.
+const _: () = {
+    // Excluding PhantomData (ZST, 0 bytes):
+    //   data: *const f64  +  element_type: ElementType  +  ndim: usize
+    //   + shape: *const usize  +  strides: *const usize
+    //   + storage_len: usize  +  offset: usize
+    assert!(
+        core::mem::size_of::<TensorExport<f64>>()
+            == core::mem::size_of::<*const f64>()
+                + core::mem::size_of::<ElementType>()
+                + core::mem::size_of::<usize>() * 3
+                + core::mem::size_of::<*const usize>() * 2
+    );
+    // PhantomData<&'a A> is ZST, contributes 0 bytes.
+    // _marker is placed last in the struct to avoid unspecified
+    // behavior arising from ZST field positioning in #[repr(C)].
+};
+
+```
+
+`PhantomData<&'a A>` 必须放在 `#[repr(C)]` 结构体的最后位置：作为 ZST，它在 C ABI 视角不占据任何字节，但放在中间可能因不同编译器版本对 ZST 字段的处理而产生未指定行为。统一放在末尾确保跨版本一致性。
+
+```rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -391,7 +423,7 @@ where
 
 **stride 约定**：`strides` 以元素个数（非字节）表示步长。按照 `06-layout.md` §1.2 与 `需求说明书 §7`，当前版本不支持负步长。`from_raw_parts()` 允许零步长布局以表达广播只读视图；`from_raw_parts_mut()` 拒绝所有非空零步长布局（非单元素轴的 `stride == 0` 会报错）。
 
-**生命周期与 auto trait**：导出结果不拥有底层内存，`data`、`shape`、`strides` 均借用源张量内部数据，源张量 drop 后立即失效。`TensorExport` / `TensorExportMut` 的 `Send` / `Sync` 由 Rust auto-trait 自动推导，测试计划应通过编译期检查验证推导结果。
+**生命周期与 auto trait**：导出结果不拥有底层内存，`data`、`shape`、`strides` 均借用源张量内部数据，源张量 drop 后立即失效。`TensorExport` 包含 `*const A`（裸指针），因此 Rust 自动推导为 `!Send + !Sync`。如果 FFI 消费者需要跨线程共享，必须显式包装（如 `Arc<TensorExport<...>>` + 手动 `unsafe impl`）。Xenon 不为 `TensorExport` 提供 `Send/Sync` 自动实现。
 
 ### 5.5 Complex FFI 布局契约
 

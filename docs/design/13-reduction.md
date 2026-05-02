@@ -190,6 +190,21 @@ assert_eq!(empty.sum(), 0);
 // Ok(0) or Err(XenonError::InvalidShape { .. }) — overflow must panic, not return
 ```
 
+### 5.4 API 形态二选一：RemoveAxis vs Dimension
+
+`sum_axis` 与 `sum_axis_keepdims` 的 trait 边界不同是**设计上有意为之**，而非待统一：
+
+- **`sum_axis`** 要求 `D: RemoveAxis`，返回 `D::Smaller`——编译期移除一轴。这使输出类型在类型层反映降维语义（例如 `Ix3` → `Ix2`），但 `RemoveAxis` 是 sealed trait（定义见 `02-dimension.md §5.8`），仅静态维度（`Ix1`-`Ix6`）实现，`IxDyn` 不可用。
+- **`sum_axis_keepdims`** 仅要求 `D: Dimension`，返回相同的 `D`——被归约轴保留为长度 `1`。因为不涉及编译期维度类型变更，`IxDyn` 和所有静态维度均可使用。
+
+使用指导：
+
+| 场景 | 推荐 API | 理由 |
+| ---- | -------- | ---- |
+| 静态维度，需要后续类型级降维 | `sum_axis` | 类型安全，`D::Smaller` 保证 |
+| 动态维度（`Tensor<IxDyn>`） | `sum_axis_keepdims` | `IxDyn` 未实现 `RemoveAxis` |
+| 归约后仍需保持原秩 | `sum_axis_keepdims` | 语义匹配，避免不必要的维度消解 |
+
 ---
 
 ## 6. 内部实现设计
@@ -200,7 +215,7 @@ assert_eq!(empty.sum(), 0);
 | ------------- | ----------------------------------------------------------------------------------------------- |
 | 归约族范围    | 当前版本只实现 `sum`，不为其它归约预留公开入口。                                                |
 | 空输入语义    | `sum()` 对空数组返回 `A::zero()`；沿轴归约的被归约轴长度为 `0` 时，对每个输出槽写入 `A::zero()`。|
-| axis 校验顺序 | `sum_axis_keepdims()` 的公开入口要求 `D: Dimension`。`sum_axis()` 当前文档仍保留 `D: RemoveAxis`，但这已被记录为待统一问题；对所有进入 axis 归约路径的调用，都必须先校验 `axis < ndim`；若越界则统一返回 `XenonError::InvalidAxis`。 |
+| axis 校验顺序 | `sum_axis()` 要求 `D: RemoveAxis`（编译期维度降阶），`sum_axis_keepdims()` 要求 `D: Dimension`（不要求 RemoveAxis）。两个变体的 trait 边界不同是设计上有意为之——详见 §5.4。对所有进入 axis 归约路径的调用，都必须先校验 `axis < ndim`；若越界则统一返回 `XenonError::InvalidAxis`。 |
 | 整数语义      | `i32` / `i64` 累加使用 checked arithmetic，任何溢出立即 panic。                                 |
 | 浮点/复数语义 | `f32` / `f64` / `Complex<_>` 遵循标量加法语义，`NaN` 按 IEEE 754 自动传播。                     |
 | 执行路径约束  | SIMD / 并行若无法满足 `需求说明书 §28.3` 数值语义约束，则必须回退标量。                         |
@@ -239,7 +254,7 @@ sum_axis_keepdims(tensor, axis):
 
 ### 6.3 类型分派与回退规则
 
-调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。执行路径由 `dispatch::select_exec_path()` 统一裁决（参见 `01-architecture.md`），本模块根据返回的 `ExecPath` 委托到对应后端或使用本模块串行实现。
+调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，各 worker 线程执行标量代码（不使用 SIMD）。SIMD 加速仅在串行执行路径上启用。执行路径由 `dispatch::select_exec_path()` 统一裁决（参见 `01-architecture.md`），本模块根据返回的 `ExecPath` 委托到对应后端或使用本模块串行实现。
 
 ```rust,ignore
 fn sum_int<I: Numeric + CheckedAdd>(iter: impl Iterator<Item = I>) -> I {

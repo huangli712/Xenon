@@ -164,7 +164,7 @@ Storage mode taxonomy
 | **创建开销** | 高 (分配)               | 低 (借用)        | 低 (借用)        | 中 (Arc 包装)           |
 | **克隆开销** | O(n)                    | O(1)             | 不可克隆         | O(1)                    |
 | **写入开销** | 无                      | 不可写           | 无               | 可能 O(n) (CoW)         |
-| **线程安全** | 取决于 `A: Send + Sync` | 取决于 `A: Sync` | 取决于 `A: Send` | 取决于 `A: Send + Sync` |
+| **线程安全** | 取决于 `A: Send + Sync` | 取决于 `A: Sync` | 取决于 `A: Send`（不实现 Sync——参见 §6.8） | 取决于 `A: Send + Sync` |
 | **典型用途** | 创建、运算结果          | 切片、子数组     | 原地修改         | 跨线程共享、延迟复制    |
 
 ### 5.2 Storage Trait 层次
@@ -474,7 +474,12 @@ pub unsafe trait StorageShared: Storage + Clone {
 /// - `Owned<A>` → O(1), returns self directly
 /// - `ViewRepr`/`ViewMutRepr` → O(n), copies data
 /// - `ArcRepr` → O(n), always allocates and copies into a fresh owned buffer
-pub unsafe trait StorageIntoOwned: Storage {
+///
+/// # Safety
+///
+/// No unsafe contract: all required guarantees are provided by the `Storage`
+/// supertrait and the `Self::Elem: Clone` bound on the method.
+pub trait StorageIntoOwned: Storage {
     /// Consume this storage, returning an `Owned<A>` storage.
     fn into_owned_storage(self) -> Owned<Self::Elem>
     where
@@ -482,38 +487,16 @@ pub unsafe trait StorageIntoOwned: Storage {
 }
 ```
 
-### 5.10 StorageIntoRaw Trait（保留定义，当前未使用）
+### 5.10 Trait 实现矩阵
 
-> **注意**：当前 `07-tensor.md §5.7` 的 `into_raw_parts()` 实现为 `TensorBase<Owned<A>, D>` 的 inherent 方法，未使用此 trait。保留此 trait 定义以供未来存储层统一抽象参考。
+| 存储类型             | RawStorage | Storage | RawStorageMut | StorageMut | StorageOwned | StorageShared | StorageIntoOwned |
+| -------------------- | :--------: | :-----: | :-----------: | :--------: | :----------: | :-----------: | :--------------: |
+| `Owned<A>`           |     ✅     |   ✅    |      ✅       |     ✅     |      ✅      |      ❌       |        ✅        |
+| `ViewRepr<'a, A>`    |     ✅     |   ✅    |      ❌       |     ❌     |      ❌      |      ❌       |        ✅        |
+| `ViewMutRepr<'a, A>` |     ✅     |   ✅    |      ✅       |     ✅     |      ❌      |      ❌       |        ✅        |
+| `ArcRepr<A>`         |     ✅     |   ✅    |      ❌       |     ❌     |      ❌      |      ✅       |        ✅        |
 
-消耗式解构为裸指针，原始预期用途为 `into_raw_parts()`（参见 `23-ffi.md §5.8`）。
-
-```rust,ignore
-/// Storage types that can be destructured into raw parts.
-///
-/// Only `Owned<A>` implements this trait (other storage modes cannot transfer ownership of raw memory).
-pub unsafe trait StorageIntoRaw: StorageOwned {
-    /// Consume the storage, returning a raw pointer.
-    ///
-    /// # Safety
-    ///
-    /// The caller must preserve the allocator metadata required to reconstruct
-    /// the owned buffer. In Xenon's tensor-level FFI API, this metadata is carried
-    /// by `OwnedRawParts` (see `23-ffi.md §5.8`).
-    unsafe fn into_raw(self) -> *mut Self::Elem;
-}
-```
-
-### 5.11 Trait 实现矩阵
-
-| 存储类型             | RawStorage | Storage | RawStorageMut | StorageMut | StorageOwned | StorageShared | StorageIntoOwned | StorageIntoRaw |
-| -------------------- | :--------: | :-----: | :-----------: | :--------: | :----------: | :-----------: | :--------------: | :------------: |
-| `Owned<A>`           |     ✅     |   ✅    |      ✅       |     ✅     |      ✅      |      ❌       |        ✅        |       ✅       |
-| `ViewRepr<'a, A>`    |     ✅     |   ✅    |      ❌       |     ❌     |      ❌      |      ❌       |        ✅        |       ❌       |
-| `ViewMutRepr<'a, A>` |     ✅     |   ✅    |      ✅       |     ✅     |      ❌      |      ❌       |        ✅        |       ❌       |
-| `ArcRepr<A>`         |     ✅     |   ✅    |      ❌       |     ❌     |      ❌      |      ✅       |        ✅        |       ❌       |
-
-### 5.12 存储模式转换矩阵
+### 5.11 存储模式转换矩阵
 
 | From                 | To                   | 复杂度      | 说明                                             |
 | -------------------- | -------------------- | ----------- | ------------------------------------------------ |
@@ -527,7 +510,7 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
 | `ArcRepr<A>`         | `ViewRepr<'_, A>`    | O(1)        | 共享只读借用                                     |
 | `ArcRepr<A>`         | `Owned<A>`           | O(n)        | 总是分配新的独占缓冲并复制数据；不提供条件零拷贝 |
 
-#### 5.12.1 抽象转换矩阵
+#### 5.11.1 抽象转换矩阵
 
 | 抽象源（具体表示）                                           | `ReadOnly`                                                                                             | `SharedReadOnly`                                                                                                             | `Writable`                                                                           | `Owned`                                                               |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
@@ -540,7 +523,7 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
 
 `Writable -> SharedReadOnly` 的零拷贝结果虽然仍是 `ViewRepr<'_, A>`，但必须在张量查询层被标记为 `AccessSemantics::SharedReadOnly`，不能按普通 `AccessSemantics::ReadOnly` 处理。也就是说，该转换的“共享只读”判定来源于 `access_semantics()` 返回值，而不是 `ViewRepr` 这一表示类型本身。
 
-#### 5.12.2 转换成功/失败模型
+#### 5.11.2 转换成功/失败模型
 
 | 转换入口                                  | 成功条件                                       | 失败错误类型                                                                                    |
 | ----------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------- |
@@ -557,13 +540,13 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
 | 任意只读/共享只读 -> `ViewMutRepr<'_, A>` | 不允许违反独占可写前提                         | `XenonError::InvalidStorageMode`                                                         |
 | `ViewRepr<'_, A> -> ArcRepr<A>`           | storage 层不具备共享所有权句柄，禁止运行时补造 | `XenonError::InvalidStorageMode`                                                         |
 
-- 上表与 `需求说明书` §6.2 的矩阵一致：违反存储模式/可变性前提的张量层转换入口（例如对只读张量调用 `view_mut()`）须统一使用 `26-error.md` 定义的 `XenonError::InvalidStorageMode { .. }` 作为失败返回值；复制型成功路径本身不再额外引入新的公开转换错误类型。最后两行（`任意只读/共享只读 -> ViewMutRepr`、`ViewRepr -> ArcRepr`）描述的是张量层运行时失败模型；在 storage 层，这些转换是 `type-level only`（无运行时 API 入口，参见 §5.12.3）。
+- 上表与 `需求说明书` §6.2 的矩阵一致：违反存储模式/可变性前提的张量层转换入口（例如对只读张量调用 `view_mut()`）须统一使用 `26-error.md` 定义的 `XenonError::InvalidStorageMode { .. }` 作为失败返回值；复制型成功路径本身不再额外引入新的公开转换错误类型。最后两行（`任意只读/共享只读 -> ViewMutRepr`、`ViewRepr -> ArcRepr`）描述的是张量层运行时失败模型；在 storage 层，这些转换是 `type-level only`（无运行时 API 入口，参见 §5.11.3）。
 
 - 涉及内存分配的转换操作，若分配失败则遵循运行时既有行为（如全局分配器 panic 或 OOM），不通过 `XenonError` 建模。此设计决策与 `需求说明书 §6.2` 的“须分配”路径一致：该路径仅在目标为持有时可执行，分配失败不属于张量语义层的可恢复错误。
 
 - `ViewMutRepr<'a, A>` 的零拷贝降级路径是只读重借用 `ViewRepr<'a, A>`，其语义与 `需求说明书` §6.2 对“可写引用 → 共享只读引用 = 零拷贝”的要求一致：结果显式放弃写权限，且在该只读结果存续期间不得再并发写入同一底层数据。相对地，`ViewMutRepr<'a, A>` 不持有底层分配所有权，因此仍不能在零拷贝前提下构造 `ArcRepr<A>` 所需的共享所有权句柄。
 
-#### 5.12.3 公开转换 API 对照表
+#### 5.11.3 公开转换 API 对照表
 
 | From \ To        | `ReadOnly`      | `SharedReadOnly`  | `Writable`      | `Owned`                        |
 | ---------------- | --------------- | ----------------- | --------------- | ------------------------------ |
@@ -576,9 +559,9 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
 - `view()`、`view_mut()`、`into_shared()` 是具体存储类型上的 inherent method，不属于 storage trait 层次。`Owned -> SharedReadOnly` 的 storage 层公开入口固定为 `Owned<A>::into_shared(self) -> ArcRepr<A>`；张量层在此基础上包装为对应的消费式共享只读转换 API。
 - 非 Owned 行到 `Owned` 列的 storage 层入口统一走 `StorageIntoOwned::into_owned_storage(self)`（参见 §5.9）；`to_owned()` 仅对 `Owned<A>` 自身有效（`StorageOwned::to_owned`，深拷贝语义）。
 - Xenon 当前元素类型集合是封闭且按值语义处理的集合；`Owned::from_vec` 保持 `Elem: Copy` 约束，并统一复制到内部 64B 对齐缓冲（参见 `06-layout.md §5.6`）。其它从迭代器或构造器进入 `Owned` 的路径由上层构造模块统一收敛。
-- `type-level only` 的格子表示 storage 层无运行时 API；若张量层提供了对应的转换入口（如对只读张量调用 `view_mut()`），则该张量层 API 须返回 `XenonError::InvalidStorageMode` 等可恢复错误（参见 §5.12.2 最后两行），而不是隐式降级为别的存储模式。
+- `type-level only` 的格子表示 storage 层无运行时 API；若张量层提供了对应的转换入口（如对只读张量调用 `view_mut()`），则该张量层 API 须返回 `XenonError::InvalidStorageMode` 等可恢复错误（参见 §5.11.2 最后两行），而不是隐式降级为别的存储模式。
 
-### 5.13 Good/Bad 对比
+### 5.12 Good/Bad 对比
 
 ```rust,ignore
 // Good - Use Storage trait bound to accept any readable storage
@@ -999,7 +982,11 @@ unsafe impl<'a, A: Sync> Sync for ViewRepr<'a, A> {}
 
 // SAFETY: ViewMutRepr<'a, A> allows exclusive access via &mut self.
 // It is safe to send between threads if A: Send.
-// Sync is NOT implemented: &mut T is not Sync (exclusive access must not be shared).
+// Sync is NOT implemented for ViewMutRepr.
+// Reason: PhantomData<&'a mut A> makes ViewMutRepr invariant in A,
+// which prevents auto-derivation of Sync regardless of A's Sync bound.
+// Additionally, *mut A pointer field is also !Sync (does not auto-impl Sync).
+// This is intentional: exclusive mutable access must never be shared across threads.
 unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 ```
 

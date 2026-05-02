@@ -290,6 +290,7 @@ impl Dimension for Ix3 {
         IxDyn::from_vec(vec![self.0, self.1, self.2])
     }
 
+    #[inline]
     fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
         if dyn_dim.ndim() == 3 {
             let s = dyn_dim.slice();
@@ -303,6 +304,7 @@ impl Dimension for Ix3 {
         }
     }
 
+    #[inline]
     fn try_from_slice(slice: &[usize]) -> Result<Self, XenonError> {
         if slice.len() == 3 {
             Ok(Ix3(slice[0], slice[1], slice[2]))
@@ -390,6 +392,7 @@ impl Dimension for IxDyn {
 
     fn into_dyn(self) -> IxDyn { self }
 
+    #[inline]
     fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
         Ok(dyn_dim) // IxDyn always accepts IxDyn
     }

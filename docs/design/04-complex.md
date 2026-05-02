@@ -436,28 +436,55 @@ impl<T: ComplexFloat> PartialEq for Complex<T> {
 impl<T: ComplexFloat + core::fmt::Display + PositiveZero> core::fmt::Display for Complex<T> {
     /// Formats as "a+bj", "a-bj", "a", "bj", or "0".
     ///
-    /// NaN handling: when the imaginary part is NaN, always display
-    /// as "re+NaNj". This deliberately normalizes the textual form instead
-    /// of inferring a sign from NaN payload/sign-bit details.
-    /// `-0.0` must preserve the underlying scalar Display output, `Inf` / `-Inf`
-    /// follow the component scalar formatting, and NaN payload bits are not
-    /// rendered textually distinct.
+    /// `f.precision()` 若为 `Some(p)`，将 `p` 同时作用于 `re` 和 `im` 两个分量；
+    /// 若为 `None`，使用 Rust 的默认 `Display` 格式。
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        // Capture precision early so all branches are consistent.
+        let prec = f.precision();
         if self.im != self.im {
-            return write!(f, "{}+NaNj", self.re);
+            return if let Some(p) = prec {
+                write!(f, "{:.p$}+NaNj", self.re)
+            } else {
+                write!(f, "{}+NaNj", self.re)
+            };
         }
+        // Compare against IEEE 754 +0.0 using T::default().
+        // ComplexFloat is sealed to f32 / f64; their Default impls
+        // return +0.0, so T::default() is a reliable zero sentinel.
+        // PositiveZero::is_positive_zero is used further below to
+        // distinguish +0.0 from -0.0 in Display output.
         if self.im == T::default() {
             if scalar_is_positive_zero(self.im) {
-                write!(f, "{}", self.re)
+                if let Some(p) = prec {
+                    write!(f, "{:.p$}", self.re)
+                } else {
+                    write!(f, "{}", self.re)
+                }
             } else {
-                write!(f, "{}{}j", self.re, self.im)
+                if let Some(p) = prec {
+                    write!(f, "{:.p$}{:.p$}j", self.re, self.im)
+                } else {
+                    write!(f, "{}{}j", self.re, self.im)
+                }
             }
         } else if self.re == T::default() {
-            write!(f, "{}j", self.im)
+            if let Some(p) = prec {
+                write!(f, "{:.p$}j", self.im)
+            } else {
+                write!(f, "{}j", self.im)
+            }
         } else if self.im > T::default() {
-            write!(f, "{}+{}j", self.re, self.im)
+            if let Some(p) = prec {
+                write!(f, "{:.p$}+{:.p$}j", self.re, self.im)
+            } else {
+                write!(f, "{}+{}j", self.re, self.im)
+            }
         } else {
-            write!(f, "{}{}j", self.re, self.im) // negative sign included in im
+            if let Some(p) = prec {
+                write!(f, "{:.p$}{:.p$}j", self.re, self.im)
+            } else {
+                write!(f, "{}{}j", self.re, self.im) // negative sign included in im
+            }
         }
     }
 }

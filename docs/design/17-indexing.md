@@ -44,7 +44,7 @@
 | -------- | ------------------------------------------------------------------------------------------------------------------------ |
 | 需求映射 | 需求说明书 §4、§6、§18、§27、§28                                                                                         |
 | 范围内   | `usize` 多维索引、范围索引（切片）、rank 一致性检查、越界 recoverable error、unsafe 未检查变体、切片后 shape/stride 更新 |
-| 范围外   | 负索引、负步长、布尔/整数数组高级索引、共享可写视图、额外索引语法；`Index`/`IndexMut` 运算符语法（panic 语义）           |
+| 范围外   | 负索引、负步长、布尔/整数数组高级索引、共享可写视图、额外索引语法；**不实现** `std::ops::Index` 与 `std::ops::IndexMut` trait（原因：标准库 trait 强制 panic 语义，不符合 Xenon 的 Result 错误模型。访问元素请使用 `try_at()` / `get()` / `try_at_mut()` / `get_mut()` 或 `unsafe` 的 `get_unchecked` 系列） |
 | 非目标   | 不新增索引能力，不引入新的存储模式或复制语义                                                                             |
 
 ---
@@ -128,7 +128,7 @@ src/index/
 use crate::private::Sealed;
 
 pub trait NdIndex<D: Dimension>: Sealed {
-    fn index_checked(&self, dim: &D, strides: &Strides<D>) -> Option<usize>;
+    fn index_checked(&self, dim: &D, strides: &Strides<D>) -> Result<usize, XenonError>;
 
     /// # Safety
     ///
@@ -490,7 +490,7 @@ User calls tensor.slice(info)
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Recoverable error | `try_at()` / `get()` / `slice()` 在 rank 不匹配、轴非法、越界时返回 `XenonError`。其中索引长度与张量 `ndim` 不匹配时，错误类型固定为 `XenonError::DimensionMismatch` |
 | Trait-bound 边界  | `try_at_mut()` / `get_mut()` / `get_unchecked_mut()` 仅在 `S: StorageMut` 前提成立时存在；不再为“只读存储上的可写索引”设计运行时 `InvalidStorageMode` 分支           |
-| Panic             | 当前版本稳定 API 不承诺 `Index` / `IndexMut` panic 语法糖；若实现保留该便利接口，其行为不属于规范契约。规范安全主路径仍是返回 `Result` 的 checked API                |
+| Panic             | `std::ops::Index` 与 `std::ops::IndexMut` 不在 Xenon 稳定 API 中实现（见 §3 范围约束）。规范安全主路径是返回 `Result` 的 checked API                                                                                                                  |
 | 路径一致性        | 对同一合法输入，checked 与 unchecked 路径必须给出同一偏移和同一逻辑结果；unsafe 只省略检查                                                                           |
 | 容差边界          | 不适用；本模块不涉及浮点容差、SIMD 误差或并行归约差异                                                                                                                |
 

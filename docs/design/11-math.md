@@ -131,7 +131,7 @@ src/math/
 
 二元逐元素方法统一使用 `BroadcastDim<DB>` 进行编译期维度推导；`BroadcastDim` 是 public sealed trait，因此在公开 API 中可被外部稳定命名。该 trait 定义于 `02-dimension.md §5.10`，详见该文档。
 
-当前版本不承诺独立的通用二元逐元素 helper 公开函数。二元算术、比较与内部辅助路径统一采用“先广播，再直接遍历广播后视图并写入结果张量”的执行模型。调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。
+当前版本不承诺独立的通用二元逐元素 helper 公开函数。二元算术、比较与内部辅助路径统一采用“先广播，再直接遍历广播后视图并写入结果张量”的执行模型。调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，各 worker 线程执行标量代码（不使用 SIMD）。SIMD 加速仅在串行执行路径上启用。
 
 ### 5.3 算术运算（Numeric 约束）
 
@@ -204,7 +204,7 @@ impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: Numeric + PartialOrd,
+    A: Numeric + OrderedCompareElement,
 {
     pub fn abs(&self) -> Tensor<A, D>;
 }
@@ -219,44 +219,22 @@ where
     pub fn square(&self) -> Tensor<A, D>;
 }
 
-// Conceptual overload set for signum: integer and floating-point paths are
-// documented separately because they have different semantic rules.
-impl<S, D> TensorBase<S, D>
+impl<S, A, D> TensorBase<S, D>
 where
-    S: Storage<Elem = i32>,
+    S: Storage<Elem = A>,
+    A: OrderedCompareElement,
     D: Dimension,
 {
-    pub fn signum(&self) -> Tensor<i32, D>;
-}
-
-impl<S, D> TensorBase<S, D>
-where
-    S: Storage<Elem = i64>,
-    D: Dimension,
-{
-    pub fn signum(&self) -> Tensor<i64, D>;
-}
-
-impl<S, D> TensorBase<S, D>
-where
-    S: Storage<Elem = f32>,
-    D: Dimension,
-{
-    pub fn signum(&self) -> Tensor<f32, D>;
-}
-
-impl<S, D> TensorBase<S, D>
-where
-    S: Storage<Elem = f64>,
-    D: Dimension,
-{
-    pub fn signum(&self) -> Tensor<f64, D>;
+    /// Element-wise signum.
+    /// Returns `-1` for negative, `0` for zero, `1` for positive.
+    /// For floats, NaN propagates.
+    pub fn signum(&self) -> Tensor<A, D>;
 }
 ```
 
 - `abs` / `signum` 仅对具备自然顺序的数值类型开放：i32, i64, f32, f64。
 - `neg` / `square` 对所有 `Numeric` 类型开放：i32, i64, f32, f64, Complex<f32>, Complex<f64>。
-- `abs()` 约束说明：`Numeric + PartialOrd` 只是简写，实际实现受 sealed 类型集合限制（仅 `i32` / `i64` / `f32` / `f64`）。
+- `abs()` 约束说明：`OrderedCompareElement` 限定到 i32/i64/f32/f64 四种类型，与 abs 的实际支持范围严格匹配。
 - 对有符号整数，`neg(i32::MIN)` / `neg(i64::MIN)` 等不可表示情形视为不可恢复错误，遵循 panic 语义。
 - `abs` / `square` 在整数路径上必须使用 checked arithmetic。特别是最小负值取绝对值、平方溢出等情形，均须视为不可恢复错误并触发 panic。`signum` 仅做符号分类，不额外要求 checked arithmetic。
 
@@ -321,6 +299,8 @@ where
 ```
 
 - 公开张量 API 统一使用 `conjugate()`（与 `Numeric::conjugate()` 保持一致）；`conj` 仅允许作为内部 `Complex` 方法名或实现细节出现，不构成公开 API 命名承诺。
+
+**关于实数张量的 conjugate()**：实数（`i32`/`i64`/`f32`/`f64`）类型的共轭等于自身。Xenon 不为实数张量提供 `conjugate()` 入口，要求显式调用避免冗余 API。如需统一处理，使用 `Numeric::conjugate()`（标量级）或在泛型代码中通过 trait bound 调用。
 - `modulus()` 对应 `需求说明书 §12` 中的“模”运算。`Complex<f32> → f32`，`Complex<f64> → f64`。
 - 参与逐元素运算或比较的双方元素类型须预先一致。因此，`Complex<T>` 与实数标量的混合张量 API（如 `add_real_scalar` / `mul_real_scalar`）不属于当前公开范围；若内部实现需要复用相应标量逻辑，也只能作为不对外承诺的内部辅助路径存在。
 
@@ -509,14 +489,14 @@ apply_binary(a, b, f):
 
 本文描述的逐元素运算功能范围以 `需求说明书 §12` 为准。SIMD 和并行加速路径的当前正式支持子集以 `08-simd.md` 和 `09-parallel.md` 定义的能力边界为准，不在本文档中另行扩张覆盖承诺。
 
-调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，每个 worker 在不触发第二层并行前提下，可局部选择 SIMD 或标量路径。SIMD 具体能力与后端细节参见 `08-simd.md §5.5`。未列出的运算、类型、ISA 或不满足语义约束的路径统一回退标量实现。
+调度模型：由 `dispatch.rs` 统一决定串行 vs 并行路径；若进入并行路径，各 worker 线程执行标量代码（不使用 SIMD）。SIMD 加速仅在串行执行路径上由 `simd` 后端内部决定是否启用。具体能力与后端细节参见 `08-simd.md §5.5`。未列出的运算、类型、ISA 或不满足语义约束的路径统一回退标量实现。
 
 | 操作类别 | SIMD 状态 | 并行状态 |
 | -------- | --------- | -------- |
 | 算术（`+ - * /`） | 覆盖：仅在 `08-simd.md` 定义的正式支持子集内尝试 SIMD；其余情况回退标量 | 覆盖：仅在 `09-parallel.md` 定义的正式支持子集内尝试并行；其余情况回退串行 |
 | 一元（`neg` / `abs` / `signum` / `square`） | 覆盖：仅在 `08-simd.md` 定义的正式支持子集内尝试 SIMD；其余情况回退标量 | 覆盖：仅在 `09-parallel.md` 定义的正式支持子集内尝试并行；其余情况回退串行 |
 | 比较（`eq` / `ne` / `lt` / `gt`） | 覆盖：仅在 `08-simd.md` 定义的正式支持子集内尝试 SIMD；其余情况回退标量 | 覆盖：仅在 `09-parallel.md` 定义的正式支持子集内尝试并行；其余情况回退串行 |
-| 数学（`sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil`） | 覆盖：仅在 `08-simd.md` 定义的正式支持子集内尝试 SIMD，否则回退标量 | 覆盖：仅在 `09-parallel.md` 定义的正式支持子集内尝试并行；进入并行路径后每个 worker 可局部选择 SIMD 或标量 |
+| 数学（`sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil`） | 覆盖：仅在 `08-simd.md` 定义的正式支持子集内尝试 SIMD，否则回退标量 | 覆盖：仅在 `09-parallel.md` 定义的正式支持子集内尝试并行；并行路径中各 worker 执行标量代码，不使用 SIMD |
 | 复数（`modulus` / `conjugate`） | 覆盖：仅在 `08-simd.md` 定义的正式支持子集内尝试 SIMD；其余情况回退标量 | 覆盖：仅在 `09-parallel.md` 定义的正式支持子集内尝试并行；其余情况回退串行 |
 | 逻辑（`not`） | 覆盖：仅在 `08-simd.md` 定义的正式支持子集内尝试 SIMD；其余情况回退标量 | 覆盖：仅在 `09-parallel.md` 定义的正式支持子集内尝试并行；其余情况回退串行 |
 
@@ -669,7 +649,7 @@ apply_binary(a, b, f):
 | 默认配置 | 所有逐元素运算走标量 / fallback 路径且语义满足文档约束。 |
 | 启用 `simd`（`simd = ["dep:pulp"]`） | 连续输入上的 SIMD 分发结果与默认配置保持一致，非连续输入仍正确回退。 |
 | 启用 `parallel`（`parallel = ["dep:rayon"]`） | 大输入上的并行逐元素路径与默认配置保持相同 shape、错误类别与数值语义，并遵守阈值与无嵌套并行约束。 |
-| 同时启用 `simd,parallel` | 并行 chunk 内可局部选择 SIMD 或标量，但对外语义仍与默认配置一致。 |
+| 同时启用 `simd,parallel` | 串行路径上 SIMD 加速生效，并行路径走标量代码；对外语义仍与默认配置一致。 |
 
 ### 8.7 类型边界 / 编译期测试
 
@@ -691,7 +671,7 @@ apply_binary(a, b, f):
 | `math → broadcast` | `broadcast` | `broadcast_shape()`                        | 二元运算先调用广播模块推导兼容视图（参见 `15-broadcast.md` §5）|
 | `math → element`   | `element`   | `Numeric` / `RealScalar` / `ComplexScalar` | 通过元素约束区分数值与复数运算语义（参见 `03-element.md` §5）|
 | `math → simd`      | `simd`      | SIMD backend dispatch facade               | 连续数组且 feature 开启时通过稳定的 backend facade 分发到 SIMD 或标量路径，`math` 不直接依赖具体 vector kernel 名称（参见 `08-simd.md` §5） |
-| `math → parallel`  | `parallel`  | `par_zip_map()` / threshold / guard        | `dispatch.rs` 统一决定串行 vs 并行；进入并行路径后各 worker 在无第二层并行前提下可局部选择 SIMD 或标量（参见 `09-parallel.md` §5 / `§6`） |
+| `math → parallel`  | `parallel`  | `par_zip_map()` / threshold / guard        | `dispatch.rs` 统一决定串行 vs 并行；进入并行路径后各 worker 执行标量代码（不使用 SIMD）。SIMD 加速仅限串行路径（参见 `09-parallel.md` §5 / `§6`） |
 
 ### 9.2 数据流描述
 
@@ -702,7 +682,7 @@ User calls add / unary op / comparison method
     ├── binary ops validate broadcast compatibility first
     ├── dispatch.rs decides serial vs parallel
     ├── parallel workers avoid second-level parallelism
-    ├── each worker may choose SIMD or scalar locally
+    ├── each worker executes scalar code (no SIMD)
     └── iter produces element streams from shape + strides
 ```
 

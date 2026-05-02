@@ -108,6 +108,8 @@ benches/
 | 合法性结论     | 以 `std::time::Instant`、`std::hint::black_box` 与仓库内脚本作为当前版本基线，符合最小依赖约束 |
 | 替代方案       | 外部 benchmark 框架可作为未来方案评估，但不属于当前版本默认要求                                |
 
+**工具链依赖说明**：`tools/bench/report.py`（CI 结果汇总脚本）使用 Python 实现，属于 CI 工具链依赖（与 cargo/rustc 同一级别），**不属于** crate 的 `dev-dependency`。它不影响基准测试本身的可重现性——所有 benchmark 代码仅使用 `std::time::Instant` 和 `std::hint::black_box`。
+
 ### 4.4 依赖方向声明
 
 依赖方向：单向消费。`benches` 消费 crate 公共 API 与部分 `pub(crate)` 内部 API（如 `broadcast_with`）；benchmark 工具链属于可选维护设施，不被任何模块依赖。

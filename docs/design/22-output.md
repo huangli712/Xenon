@@ -310,6 +310,8 @@ where
 
 ### 5.5 Numpy 风格输出示例
 
+示例使用 `display_with(FormatConfig { precision: Some(1), ... })` 时输出 `.0` 后缀；默认 `Display` 路径（无 precision 配置）按 Rust 标准库格式输出（整数浮点不带 `.0` 后缀）。
+
 **1D（完整）**:
 
 ```

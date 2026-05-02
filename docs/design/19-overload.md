@@ -126,10 +126,14 @@ src/overload/
 | `Scalar<A>`          | `Tensor<A, D>`       | `Tensor<A, D>` | 标量广播 | `impl<...> Add<TensorBase<Owned<A>,D>> for Scalar<A>`                               |
 | `Scalar<A>`          | `&Tensor<A, D>`      | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&TensorBase<Owned<A>,D>> for Scalar<A>`                              |
 | `f32`/`f64`/`i32`/`i64`/`Complex<..>` | `Tensor<A, D>` | `Tensor<A, D>` | 标量广播 | `impl Add<TensorBase<Owned<A>,D>> for T`（逐类型生成）                   |
-| `f32`/`f64`/`i32`/`i64`/`Complex<..>` | `&Tensor<A, D>` | `Tensor<A, D>` | 标量广播 | `impl Add<&TensorBase<Owned<A>,D>> for T`（逐类型生成）                 |
+| `f32`/`f64`/`i32`/`i64`/`Complex<..>` | `&Tensor<A, D>`      | `Tensor<A, D>` | 标量广播 | `impl Add<&TensorBase<Owned<A>,D>> for T`（逐类型生成）                 |
+| `TensorView<A, D>`   | `A`                  | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for TensorBase<ViewRepr<'a, A>,D>`                                   |
+| `&TensorView<A, D>`  | `A`                  | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for &TensorBase<ViewRepr<'a, A>,D>`                                  |
+| `Scalar<A>`          | `TensorView<A, D>`   | `Tensor<A, D>` | 标量广播 | `impl<...> Add<TensorBase<ViewRepr<'a, A>,D>> for Scalar<A>`                           |
+| `f32`/`f64`/`i32`/`i64`/`Complex<..>` | `TensorView<A, D>` | `Tensor<A, D>` | 标量广播 | `impl Add<TensorBase<ViewRepr<'a, A>,D>> for T`（逐类型生成）               |
 
-- 上表仅列出当前稳定承诺。张量×张量/视图路径（前 7 行）与标量路径（后 6 行）通过空行分隔。
-- `TensorView` 相关组合已纳入当前稳定范围，与 `broadcast_to()` / `transpose()` / `slice()` 返回视图的既有设计保持一致。**注意**：`TensorView` 仅参与张量×张量/视图路径的运算符重载；标量运算符重载（`tensor + scalar`、`Scalar(s) + tensor`、原生左标量）仅覆盖 owned `Tensor`，不覆盖 `TensorView`。`TensorView` 的标量运算须通过方法调用（如 `.add_scalar()`）实现。
+- 上表仅列出当前稳定承诺。张量×张量/视图路径（前 7 行）与标量路径（后 10 行）通过空行分隔。
+- `TensorView` 相关组合已纳入当前稳定范围，与 `broadcast_to()` / `transpose()` / `slice()` 返回视图的既有设计保持一致。`TensorView` 参与张量×张量/视图路径的运算符重载，同时标量运算符重载（`TensorView + scalar`、`&TensorView + scalar`、`Scalar(s) + TensorView`、原生左标量）也已覆盖 `TensorView`（只读视图）。`TensorViewMut` 不直接参与标量运算符重载——使用方需先调用 `.view()` 转为 `TensorView` 后再使用运算符，或显式调用 `.add_scalar()` 等方法。
 - `BroadcastDim` 定义于 `02-dimension.md §5.10`，被 `01-architecture.md §11` 记为“公开 sealed trait”（允许命名但禁止外部实现）。由于它出现在 `broadcast` / `overload` 的公开签名与 trait bound 中，稳定承诺要求用户可在签名中命名该 trait，但不要求用户自行实现它。
 
 ### 5.2 张量×张量运算符
@@ -209,11 +213,26 @@ where
 
 - 与 `15-broadcast.md` 保持一致；对称张量×张量运算须同时满足 `D: BroadcastDim<E>` 与 `E: BroadcastDim<D>`，以保证输出维度类型可双向收敛到同一关联类型。
 - 张量×张量运算符直接委托给 `11-math.md §5` 的方法型逐元素 API（`TensorBase::add()` / `TensorBase::sub()` / `TensorBase::mul()` / `TensorBase::div()`）。运算符 impl 中的 `self.add(rhs)` 不会产生递归：Rust 的方法解析规则优先匹配固有方法（`math` 模块提供的 `pub fn add(&self, ...)`），而非 `Add` trait 自身的 `fn add(self, ...)`。
+
+**测试保障**：`tests/compile/operator_inherent_method_resolution.rs` 验证 `Tensor + Tensor` 始终调用 inherent `add()` 方法（来自 11-math），而非 `core::ops::Add` trait 方法。如果 `add` inherent 方法被改名或删除，该测试将编译失败，阻止悄悄破坏委托关系。
 - 广播失败走 `Err(XenonError::BroadcastError)` ；整数除零、整数溢出与结果不可表示仍保持 panic。本文 §11 的决策 3 / 决策 4 仅记录该 ADR 在本模块中的细化范围。
 - 当前稳定承诺覆盖 `Owned×Owned`、`TensorView×TensorView`、`TensorView×Tensor`、`Tensor×TensorView` 以及标量路径。实现优先级：`Owned×Owned` > `Owned/View` 混合路径。
 - 当前稳定 API 直接承诺只读 `TensorView` 参与运算符重载，这样 `broadcast_to()`、`transpose()`、`slice()` 等返回视图的操作结果可以继续参与四则运算。
 - `TensorViewMut` **不**直接参与运算符重载。若要使用运算符，必须先调用 `.view()` 获取只读 `TensorView`，再对该只读视图应用运算符。
 - 无论输入组合如何，成功结果都分配新的 owned 张量，不提供原地写回或视图就地更新。
+
+#### TensorViewMut 与运算符
+
+`TensorViewMut<'a, A, D>` 不直接参与运算符重载。原因：可变独占借用语义与运算符的“输入按值或共享引用消费”模式冲突。使用方需要先调用 `.view()` 转为 `TensorView` 再使用运算符：
+
+```rust,ignore
+let mut tensor: Tensor<f64, _> = ...;
+let mut_view = tensor.view_mut();
+let immut_view = mut_view.view();   // reborrow as TensorView
+let result = immut_view + 5.0;      // operators work on TensorView
+```
+
+或显式调用 `.add_scalar()` 等方法，这些方法在 `TensorViewMut` 上仍可用。
 
 ### 5.3 张量×标量运算符
 
@@ -284,6 +303,45 @@ where
         rhs.add_scalar(self.0)
     }
 }
+
+// TensorView + scalar
+impl<'a, A, D> Add<A> for TensorBase<ViewRepr<'a, A>, D>
+where
+    A: Numeric,
+    D: Dimension,
+{
+    type Output = Tensor<A, D>;
+
+    fn add(self, rhs: A) -> Self::Output {
+        self.add_scalar(rhs)
+    }
+}
+
+// &TensorView + scalar
+impl<'a, 'b, A, D> Add<A> for &'b TensorBase<ViewRepr<'a, A>, D>
+where
+    A: Numeric,
+    D: Dimension,
+{
+    type Output = Tensor<A, D>;
+
+    fn add(self, rhs: A) -> Self::Output {
+        self.add_scalar(rhs)
+    }
+}
+
+// Scalar<A> + TensorView (commutative -- Add/Mul)
+impl<'a, A, D> Add<TensorBase<ViewRepr<'a, A>, D>> for Scalar<A>
+where
+    A: Numeric,
+    D: Dimension,
+{
+    type Output = Tensor<A, D>;
+
+    fn add(self, rhs: TensorBase<ViewRepr<'a, A>, D>) -> Self::Output {
+        rhs.add_scalar(self.0)
+    }
+}
 ```
 
 - `Scalar<A>` 包装器是实现“泛型左标量 + 张量”时的工程性折中，而不是原生`scalar + tensor` 整体不可行的证明。对 Xenon 支持的具体标量类型（`i32`、`i64`、`f32`、`f64`、`Complex<f32>`、`Complex<f64>`），可以逐类型生成 `impl Add<TensorBase<...>> for T`；真正不可行的是 `impl<T> Add<TensorBase<...>> for T` 这种 blanket impl。因此“常用原生标量”在本文中明确指上述 6 个受支持算术元素类型，而不包括 `bool`、`usize` 或其他范围外类型。
@@ -291,10 +349,10 @@ where
 - 标量运算符的 LHS/RHS 组合通过宏生成，覆盖矩阵参见 §5.4。
 - 标量路径无形状不兼容风险，不返回 `Result`；运算符返回 `Tensor` 直接。整数溢出仍遵循 panic 语义。
 - 当前版本**不**稳定承诺 `&A` 形式的标量运算符重载。公开契约仅保证值形式 `tensor + scalar`、`Scalar(scalar) + tensor`，以及常用原生左标量（如 `5.0 + tensor`）。若后续版本需要 `&A` 支持，应以独立议题评估。
-- 标量运算符重载仅覆盖 owned `Tensor`；`TensorView` 的标量运算通过方法调用（如 `.add_scalar()`）实现，参见 `11-math.md §5.9`。`TensorViewMut` 若需使用运算符，同样必须先调用 `.view()` 转为只读 `TensorView`。
-- 标量路径的委托分为两类：
+- 标量运算符重载已覆盖 owned `Tensor` 和 `TensorView`（只读视图）。`TensorViewMut` 不直接参与标量运算符重载——使用方需先调用 `.view()` 转为 `TensorView` 后再使用运算符，或显式调用 `.add_scalar()` 等方法，参见 `11-math.md §5.9`。
+- 标量路径的委托分为两类，对 owned `Tensor` 和 `TensorView` 均适用：
   - **委托 math**：右标量路径（`tensor op scalar`）与交换性左标量路径（`scalar + tensor`、`scalar * tensor`）直接调用 `11-math.md §5.9` 的公开标量方法（`.add_scalar()` / `.sub_scalar()` / `.mul_scalar()` / `.div_scalar()`），不重复实现。
-  - **本模块新增**：非交换左标量路径（`scalar - tensor`、`scalar / tensor`）需要本模块内部 helper `sub_scalar_left_impl` / `div_scalar_left_impl`，逐元素计算 `scalar - each_element` / `scalar / each_element`。这两条路径不能复用现有 `tensor.sub_scalar(scalar)` / `tensor.div_scalar(scalar)`，因为减法与除法不满足交换律。`11-math.md` 当前未提供对应的 `_left` 方法。
+  - **本模块新增**：非交换左标量路径（`scalar - tensor`、`scalar / tensor`）需要本模块内部 helper `sub_scalar_left_impl` / `div_scalar_left_impl`，逐元素计算 `scalar - each_element` / `scalar / each_element`。这两条路径不能复用现有 `tensor.sub_scalar(scalar)` / `tensor.div_scalar(scalar)`，因为减法与除法不满足交换律。`11-math.md` 当前未提供对应的 `_left` 方法。其中 `TensorView` 路径的 `sub_scalar_left_impl`/`div_scalar_left_impl` 接受 `&TensorBase<ViewRepr<..>, D>` 引用，与 owned `Tensor` 路径共用同一逐元素运算逻辑。
 
 ### 5.4 Sub / Mul / Div
 
@@ -310,7 +368,81 @@ where
 
 对整数类型，`Div` 路径中的除以零和结果不可表示（如最小负值除以 `-1`）均遵循 `需求说明书 §12` 与 `需求说明书 §27` 的统一 panic 语义；运算符重载仅把广播不兼容报告为 `Result::Err`，不额外吞掉或包装这类不可恢复错误。
 
-**标量重载委托路径**（覆盖全部 `Numeric` 类型：`i32`、`i64`、`f32`、`f64`、`Complex<f32>`、`Complex<f64>`）：
+**TensorView 标量路径**（与 owned `Tensor` 对称，覆盖 3 种 LHS/RHS 组合 × 4 种运算符）：
+
+```rust,ignore
+// ── Sub ─────────────────────────────────────────────
+
+// TensorView - scalar
+impl<'a, A, D> Sub<A> for TensorBase<ViewRepr<'a, A>, D>
+where A: Numeric, D: Dimension
+{ type Output = Tensor<A, D>; fn sub(self, rhs: A) -> Self::Output { self.sub_scalar(rhs) } }
+
+// &TensorView - scalar
+impl<'a, 'b, A, D> Sub<A> for &'b TensorBase<ViewRepr<'a, A>, D>
+where A: Numeric, D: Dimension
+{ type Output = Tensor<A, D>; fn sub(self, rhs: A) -> Self::Output { self.sub_scalar(rhs) } }
+
+// Scalar<A> - TensorView (non-commutative → sub_scalar_left_impl)
+impl<'a, A, D> Sub<TensorBase<ViewRepr<'a, A>, D>> for Scalar<A>
+where A: Numeric, D: Dimension
+{
+    type Output = Tensor<A, D>;
+    fn sub(self, rhs: TensorBase<ViewRepr<'a, A>, D>) -> Self::Output {
+        sub_scalar_left_impl(self.0, &rhs)
+    }
+}
+
+// ── Mul ─────────────────────────────────────────────
+
+// TensorView * scalar
+impl<'a, A, D> Mul<A> for TensorBase<ViewRepr<'a, A>, D>
+where A: Numeric, D: Dimension
+{ type Output = Tensor<A, D>; fn mul(self, rhs: A) -> Self::Output { self.mul_scalar(rhs) } }
+
+// &TensorView * scalar
+impl<'a, 'b, A, D> Mul<A> for &'b TensorBase<ViewRepr<'a, A>, D>
+where A: Numeric, D: Dimension
+{ type Output = Tensor<A, D>; fn mul(self, rhs: A) -> Self::Output { self.mul_scalar(rhs) } }
+
+// Scalar<A> * TensorView (commutative)
+impl<'a, A, D> Mul<TensorBase<ViewRepr<'a, A>, D>> for Scalar<A>
+where A: Numeric, D: Dimension
+{
+    type Output = Tensor<A, D>;
+    fn mul(self, rhs: TensorBase<ViewRepr<'a, A>, D>) -> Self::Output {
+        rhs.mul_scalar(self.0)
+    }
+}
+
+// ── Div ─────────────────────────────────────────────
+
+// TensorView / scalar
+impl<'a, A, D> Div<A> for TensorBase<ViewRepr<'a, A>, D>
+where A: Numeric, D: Dimension
+{ type Output = Tensor<A, D>; fn div(self, rhs: A) -> Self::Output { self.div_scalar(rhs) } }
+
+// &TensorView / scalar
+impl<'a, 'b, A, D> Div<A> for &'b TensorBase<ViewRepr<'a, A>, D>
+where A: Numeric, D: Dimension
+{ type Output = Tensor<A, D>; fn div(self, rhs: A) -> Self::Output { self.div_scalar(rhs) } }
+
+// Scalar<A> / TensorView (non-commutative → div_scalar_left_impl)
+impl<'a, A, D> Div<TensorBase<ViewRepr<'a, A>, D>> for Scalar<A>
+where A: Numeric, D: Dimension
+{
+    type Output = Tensor<A, D>;
+    fn div(self, rhs: TensorBase<ViewRepr<'a, A>, D>) -> Self::Output {
+        div_scalar_left_impl(self.0, &rhs)
+    }
+}
+```
+
+- 上述 12 个 impl 与 owned `Tensor` 的标量路径完全对称：右标量路径和交换性左标量路径委托给 `11-math.md §5.9` 的公开标量方法；非交换左标量路径（`Sub`/`Div` 的 `Scalar<A> + TensorView`）委托给本模块内部 helper（`sub_scalar_left_impl`/`div_scalar_left_impl`）。
+- 同 owned `Tensor` 路径，本处 `TensorView` 标量运算符组合也通过宏生成实际代码。
+- 原生左标量（如 `5.0 + tensor_view`、`3.0 / tensor_view`）的 `TensorView` 版本同样受支持。
+
+**标量重载委托路径**（覆盖全部 `Numeric` 类型：`i32`、`i64`、`f32`、`f64`、`Complex<f32>`、`Complex<f64>`；表中 `tensor` 指 owned `Tensor` 与 `TensorView` 两者）：
 
 | 运算符 | `tensor op scalar` | `scalar op tensor`（交换性） | `scalar op tensor`（非交换性） |
 | ------ | ------------------ | ---------------------------- | ------------------------------ |
@@ -319,8 +451,7 @@ where
 | `*`    | → `.mul_scalar()`  | 原生左标量 / `Scalar<A>` → `.mul_scalar()` | — |
 | `/`    | → `.div_scalar()`  | —                            | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
 
-- "交换性"指运算满足交换律，左标量可复用右标量的 math 方法（如 `scalar + tensor` → `tensor.add_scalar(scalar)`）。"非交换性"指减法/除法不满足交换律，需要本模块内部 helper（`sub_scalar_left_impl` / `div_scalar_left_impl`），参见 §5.3。
-- 实际实现中，标量运算符的 LHS/RHS 组合通过宏按上表规则生成。
+- "交换性"指运算满足交换律，左标量可复用右标量的 math 方法（如 `scalar + tensor` → `tensor.add_scalar(scalar)`）——此处 `tensor` 泛指 owned `Tensor` 与 `TensorView`。`TensorView` 标量路径与 owned `Tensor` 标量路径在生成宏中合并，共享同一委托规则。
 
 ### 5.5 Good / Bad 对比
 
@@ -559,6 +690,18 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | Panic | 广播不兼容不再 panic；整数除零、溢出与结果不可表示继续沿用 `math` 的 panic 语义，且 panic 消息须包含操作类型、元素类型与第一个失败元素索引（若可确定）。 |
 | 路径一致性 | 借用 / owned / 标量以及由 `math` 触发的标量 / SIMD 路径必须保持相同输出 shape 与数值语义。 |
 | 容差边界 | 当前不引入额外容差；容差基线以 `需求说明书 §28.3` 为权威。若底层 `math` 使用 SIMD，仍须与该基线及标量路径语义一致。 |
+
+### 10.1 运算符错误模型
+
+| 错误类型 | 处理方式 | 理由 |
+|----------|---------|------|
+| 形状不匹配（不可广播） | 返回 `Result::Err(XenonError::BroadcastError)` | 形状错误是用户输入问题，可恢复 |
+| 维度不匹配 | 返回 `Result::Err(XenonError::DimensionMismatch)` | 同上 |
+| 整数溢出（add/sub/mul/neg） | panic | 算术错误是程序员 bug，不可恢复 |
+| 整数除零（div） | panic | 同上 |
+| 浮点 NaN/Inf | 按 IEEE 754 传播 | 不视为错误，标量行为 |
+
+设计决策：形状/广播错误返回 `Result`，因为它们源自合法但不兼容的输入；算术错误 panic，因为它们指示程序逻辑错误。这种双错误模型在同一运算符表面下统一存在。
 
 ---
 

@@ -226,6 +226,16 @@ pub enum FfiErrorCategory {
     IntegerOverflow,
 }
 
+impl core::fmt::Display for FfiErrorCategory {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InvalidRank => write!(f, "invalid rank"),
+            Self::BlasIncompatibleLayout => write!(f, "BLAS-incompatible layout"),
+            Self::IntegerOverflow => write!(f, "integer overflow"),
+        }
+    }
+}
+
 /// Workspace error category for `XenonError::Workspace`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceErrorCategory {
@@ -233,6 +243,17 @@ pub enum WorkspaceErrorCategory {
     InvalidLayout,
     AlreadyBorrowed,
     SplitOutOfBounds,
+}
+
+impl core::fmt::Display for WorkspaceErrorCategory {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::AllocFailed => write!(f, "allocation failed"),
+            Self::InvalidLayout => write!(f, "invalid layout"),
+            Self::AlreadyBorrowed => write!(f, "already borrowed"),
+            Self::SplitOutOfBounds => write!(f, "split out of bounds"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -244,15 +265,43 @@ pub enum ConversionFailureReason {
     NonZeroImaginaryPart,
 }
 
+impl core::fmt::Display for ConversionFailureReason {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::LossyIntegerNarrowing => write!(f, "lossy integer narrowing"),
+            Self::LossyFloatNarrowing => write!(f, "lossy float narrowing"),
+            Self::FloatToInteger => write!(f, "float to integer"),
+            Self::IntegerToFloatPrecisionLoss => write!(f, "integer to float precision loss"),
+            Self::NonZeroImaginaryPart => write!(f, "non-zero imaginary part"),
+        }
+    }
+}
+
 pub type Result<T> = core::result::Result<T, XenonError>;
 ```
 
-- 当前版本不定义 `EmptyArray` 公开错误变体。
+- **空数组的语义**：空数组（任意维度上 size==0 的张量）是 Xenon 中的**合法输入**而非错误条件。例如 `sum()` 对空数组返回加法单位元（`A::zero()`）；`unique()` 返回空 1D 张量；广播规则正常应用。因此 `XenonError` **不**定义 `EmptyArray` 变体——空数组永远不会触发可恢复错误。
 - `XenonError` 须实现 `std::error::Error` trait，提供 `source()` 方法用于链式错误追踪。
 - 对于所有 `XenonError` 变体，`source()` 返回 `None`，除非内部保留了链式错误源（当前版本不保留）。
 - 公开 API 统一使用 prelude 导出的 `crate::error::Result`（即 `Result<T, XenonError>` 别名）作为返回类型。
 - 所有可恢复错误直接以 `XenonError` 结构化变体返回，不使用模块内部错误类型。
 - 每个变体携带适用的结构化字段，满足 `需求说明书 §27` 对公开诊断信息的要求。
+
+```rust,ignore
+/// `XenonError` implements `std::error::Error` for compatibility with the
+/// standard error-handling ecosystem (`?`, `anyhow`, `thiserror`, etc.).
+/// `source()` always returns `None` because all variants are leaf errors
+/// (structured fields already capture error context).
+impl std::error::Error for XenonError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        // XenonError variants are leaf errors (no nested source).
+        // External errors (e.g., from FFI) are absorbed into structured fields.
+        None
+    }
+}
+```
+
+`XenonError` 实现 `std::error::Error` 以兼容标准错误处理生态（`?`、`anyhow`、`thiserror` 等）。`source()` 始终返回 `None`，因为所有变体都是叶子错误（结构化字段已捕获错误上下文）。
 
 ### 5.2 可恢复错误与 panic 的边界
 
@@ -528,7 +577,7 @@ impl fmt::Display for XenonError {
                 actual,
             } => write!(
                 f,
-                "ffi error in {}: {:?} (backend={}, precondition={}, actual={})",
+                "ffi error in {}: {} (backend={}, precondition={}, actual={})",
                 operation,
                 category,
                 backend,
@@ -545,7 +594,7 @@ impl fmt::Display for XenonError {
                 reason,
             } => write!(
                 f,
-                "workspace error in {}: {:?}, size={}, align={}, split={}, len={}, reason={}",
+                "workspace error in {}: {}, size={}, align={}, split={}, len={}, reason={}",
                 operation,
                 category,
                 OrAny(*size),
@@ -561,7 +610,7 @@ impl fmt::Display for XenonError {
                 element_index,
             } => write!(
                 f,
-                "type conversion failed at element {}: {:?} -> {:?} ({:?})",
+                "type conversion failed at element {}: {:?} -> {:?} ({})",
                 OrAny(*element_index),
                 source_type,
                 target_type,

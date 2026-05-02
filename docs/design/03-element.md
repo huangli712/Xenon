@@ -311,6 +311,23 @@ impl OrderedCompareElement for f64 {}
 - `OrderedCompareElement` 需要作为公开 sealed trait 暴露，因为 `11-math` 的公开比较 API（`lt` / `gt`）直接使用它作为元素类型约束；但其实现集合仍限制为 Xenon 当前支持的有序比较元素类型。
 - `OrderedCompareElement` 用于把有序比较能力显式收敛到 `i32`、`i64`、`f32`、`f64`。该 trait 虽然为配合 `11-math` 的公开 `lt` / `gt` API 而公开暴露，但仍通过 `Sealed` 保持 sealed，只允许 Xenon 为这四种类型提供实现。
 
+### §5.6 BoolElement（`pub(crate)` sealed）
+
+`BoolElement` 是仅在 element 模块内部使用的辅助 trait，标记 `bool` 类型以区分布尔运算的可用性（例如 `not()`）。
+
+```rust,ignore
+/// Internal marker for the bool element type.
+///
+/// Used by `11-math.md` `not()` to constrain its impl to bool tensors only.
+/// Not part of the public API; sealed via `private::Sealed`.
+pub(crate) trait BoolElement: Element + private::Sealed {}
+
+impl BoolElement for bool {}
+```
+
+- **用途**：`11-math.md` 的 `not()` 方法 trait bound 使用 `A: BoolElement`，阻止其他元素类型偶然实现该 trait。
+- `pub(crate)`：用户不可直接使用该 trait。
+
 ### 5.6 支持的类型与 trait 矩阵
 
 | 类型           | Element | Numeric | RealScalar | ComplexScalar |

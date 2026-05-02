@@ -315,6 +315,8 @@ L3: Examples (examples/)
 
 #### 5.5.1 Lint 规则
 
+本节列出文档专项 lint。完整 `lib.rs` 项目级 lint 基线（含 `missing_docs`、`unsafe_op_in_unsafe_fn`、`missing_debug_implementations` 等）见 `00-coding.md §7.1`。
+
 **开发提示**：在开发期间可将 deny 改为 warn（`#![warn(missing_docs)]`），CI 中通过 `RUSTDOCFLAGS="-D warnings" cargo doc` 来强制执行文档完整性检查（参见 §5.11.1 CI checks）。
 
 **门禁说明**：`#![warn(missing_docs)]` 为最小存在性检查（确保公开 item 有文档文本），不保证文档质量、完整性或示例覆盖。完整文档质量由评审流程保障。
@@ -532,6 +534,8 @@ pub fn sum(&self) -> A { ... }
 | Gate 2：文档节完整性门禁 | `cargo clippy --all-features -- -D clippy::missing_errors_doc -D clippy::missing_panics_doc -D clippy::missing_safety_doc` | 缺少 `# Errors` / `# Panics` / `# Safety` 文档节                  |
 | Gate 3：Doctest          | `cargo test --doc --all-features`                                                                                          | 任何失败                                                          |
 | Gate 4：示例验证         | `cargo build --examples --all-features` + 关键示例运行命令（见 §5.6.1 定义；当前为 `basic` / `broadcasting` / `workspace`）| 任何失败                                                          |
+
+Gate 4 当前涵盖 `basic` / `broadcasting` / `workspace` 三个核心示例；完整示例覆盖清单见 §5.3。随着项目成熟，Gate 4 范围可逐步扩展至 §5.3 表中的所有 13 个 API 族。
 
 #### 5.11.2 CI 配置与 Feature 维度验证矩阵
 
