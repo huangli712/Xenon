@@ -611,6 +611,45 @@ fn modify_shared(arc: ArcRepr<f64>) -> Owned<f64> {
 
 ## 6. 内部实现设计
 
+#### §6.1.0 AlignedBuf<A> 类型定义
+
+`AlignedBuf<A>` 是 `Owned<A>` 内部使用的对齐缓冲区，承载实际数据指针、容量与对齐元数据。
+
+```rust
+/// Internal aligned buffer for Owned storage.
+///
+/// Owns a heap allocation of `A` elements with explicit alignment.
+/// Drop releases memory using the same Layout used at allocation time.
+pub(crate) struct AlignedBuf<A> {
+    /// Non-null pointer to the first element. For zero-capacity buffers,
+    /// uses NonNull::dangling() as a sentinel; never dereferenced.
+    ptr: NonNull<A>,
+    /// Number of valid initialized elements (logical length).
+    len: usize,
+    /// Allocation capacity in elements (cap >= len).
+    cap: usize,
+    /// Allocation alignment in bytes (must be power of 2, default 64).
+    align: usize,
+    /// Marker to make AlignedBuf own A for drop check and variance.
+    _marker: PhantomData<A>,
+}
+
+// Layout: AlignedBuf does not require #[repr(C)]; it is internal only.
+//
+// Send: AlignedBuf<A>: Send when A: Send. Manual unsafe impl needed
+// because of *mut A pointer (auto-derive yields !Send + !Sync).
+// Sync: AlignedBuf<A>: Sync when A: Sync.
+//
+// Drop: dealloc using Layout::from_size_align(cap * size_of::<A>(), align).
+// For empty (cap == 0), Drop is no-op (NonNull::dangling never deallocates).
+```
+
+**关键不变量**：
+- `ptr` 始终满足 `align` 字节对齐
+- `align` 是 2 的幂且 `>= align_of::<A>()`
+- 当 `cap == 0` 时 `ptr` 是 `NonNull::dangling()`，不可解引用
+- `_marker: PhantomData<A>` 让编译器把 `AlignedBuf<A>` 视为拥有 `A`，drop check 正确触发
+
 ### 6.1 Owned<A> 结构体
 
 ```rust,ignore
@@ -636,7 +675,7 @@ fn modify_shared(arc: ArcRepr<f64>) -> Owned<f64> {
 /// The authoritative `ALIGNED` layout flag is still computed by
 /// `layout::compute_layout_flags(shape, strides, ptr)` rather than copied
 /// directly from storage state.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct Owned<A> {
     /// Internal data storage.
     ///
@@ -644,6 +683,31 @@ pub struct Owned<A> {
     /// is managed by `AlignedBuf<A>` and deallocated with the exact original layout.
     /// When constructed via `from_vec`, data is copied into a fresh aligned buffer.
     data: AlignedBuf<A>,
+}
+
+// **手动 Clone 实现说明**：Owned<A> 的 Clone 必须分配新的对齐缓冲区并逐元素深拷贝。
+// derive Clone 会对 *mut A 进行浅拷贝（仅复制指针），导致两个 Owned 共享底层内存——
+// 这违反所有权语义并在 Drop 时引发 double-free UB。
+impl<A: Clone> Clone for Owned<A> {
+    fn clone(&self) -> Self {
+        // Allocate new aligned buffer with same capacity and alignment
+        let new_buf = AlignedBuf::with_capacity_aligned(
+            self.data.cap,
+            self.data.align,
+        ).expect("allocation failed during Owned::clone");
+        // Deep-copy each element via Clone
+        for i in 0..self.data.len {
+            unsafe {
+                let src = self.data.ptr.as_ptr().add(i);
+                let dst = new_buf.ptr.as_ptr().add(i);
+                core::ptr::write(dst, (*src).clone());
+            }
+        }
+        // SAFETY: All `len` elements have been initialized above.
+        let mut data = new_buf;
+        unsafe { data.set_len(self.data.len); }
+        Owned { data }
+    }
 }
 
 impl<A> Owned<A> {
@@ -809,6 +873,28 @@ pub type ViewMut<'a, A> = ViewMutRepr<'a, A>;
 
 // Intentionally no Clone impl — Rust borrowing rules require mutable references to be exclusive
 ```
+
+#### §6.5.0 SharedBuf<A> 类型定义
+
+`SharedBuf<A>` 是 `ArcRepr<A>` 内部包装的共享缓冲区，由 `Arc` 管理引用计数。
+
+```rust
+/// Internal shared buffer for ArcRepr storage.
+///
+/// Wraps an AlignedBuf<A> with shared (Arc) ownership semantics.
+/// Drop releases the underlying allocation when the last Arc is dropped.
+pub(crate) struct SharedBuf<A> {
+    /// Underlying aligned allocation, structurally identical to Owned's.
+    buf: AlignedBuf<A>,
+}
+
+// Send: SharedBuf<A>: Send when A: Send + Sync (Arc requirement).
+// Sync: SharedBuf<A>: Sync when A: Send + Sync (Arc requirement).
+```
+
+**关键不变量**：
+- `SharedBuf` 仅由 `ArcRepr` 内部使用，不对外暴露
+- 写时复制（CoW）严格限定在 `arc.rs` 私有边界
 
 ### 6.5 ArcRepr<A> 结构体
 

@@ -113,7 +113,7 @@ parallel feature implementation paths/
 
 ## 5. 公共 API 设计
 
-**权威来源对齐：** 本文档的 Send/Sync 定义以 `05-storage.md §6.8` 与需求说明书为基准；若与其他设计文档出现不一致，以需求说明书为规范基线统一校正，并同步回写相关设计文档。
+**权威来源声明：** 本文档（25-safety.md §5.1）是 Xenon 库 Send/Sync 与线程安全规则的**唯一权威定义**。00-coding.md §4.4、05-storage.md §6.8、07-tensor.md §5.1 等其他文档若与本节冲突，应以本节为准统一校正。需求说明书作为更高层规范，若与本节冲突时以需求说明书为最终基线。
 
 ### 5.1 Send/Sync 实现规则表
 

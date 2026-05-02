@@ -470,9 +470,9 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | `validate_access_range()`           | `src/tensor/` 内部      | 校验 raw parts 构造的存储边界         | 07-tensor, 23-ffi       |
 | `validate_non_overlapping_layout()` | `src/tensor/` 内部      | 保守验证非重叠可变布局               | 07-tensor, 23-ffi       |
 | `compute_safe_chunks()`             | `src/parallel/mod.rs`   | 将 [0,total) 划分为非重叠区间         | 25-safety               |
-| `util_internal_to_f_contiguous()`   | `src/utility/` 内部     | 将张量连续化为 canonical F-order     | 20-utility              |
-| `fill_storage_mut()`                | `src/utility/` 内部     | 通过 StorageMut 填充后备缓冲区       | 20-utility              |
-| `fill_try_dispatch()`               | `src/utility/` 内部     | try_fill 的错误感知分派              | 20-utility              |
+| `util_internal_to_f_contiguous()`   | `src/util/` 内部     | 将张量连续化为 canonical F-order     | 20-utility              |
+| `fill_storage_mut()`                | `src/util/` 内部     | 通过 StorageMut 填充后备缓冲区       | 20-utility              |
+| `fill_try_dispatch()`               | `src/util/` 内部     | try_fill 的错误感知分派              | 20-utility              |
 
 ### 5.3 依赖图（ASCII）
 

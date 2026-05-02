@@ -336,11 +336,11 @@ impl OrderedCompareElement for f64 {}
 | 内积 dot（12-matrix） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `12-matrix.md §5.1` |
 | sum / mean 归约（13-reduction） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `13-reduction.md §5` |
 | min / max 归约（13-reduction） | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | `13-reduction.md §5`（复数无序） |
-| unique 集合运算（14-set） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | `14-set.md` |
+| unique 集合运算（14-set） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `14-set.md` |
 | eye 单位矩阵构造（18-construction） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `18-construction.md` |
 | clip（20-utility） | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | `20-utility.md`（无序比较不适用） |
-| cast 类型转换（21-type） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | `21-type.md` |
-| 有序比较 lt/le/gt/ge（OrderedCompareElement） | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | `03-element.md §5.5`（复数无序） |
+| cast 类型转换（21-type） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `21-type.md` |
+| 有序比较 lt/le/gt/ge（OrderedCompareElement） | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | `03-element.md §5.5`（复数无序） |
 | Checked 整数原语（CheckedAdd/Sub/Mul/Neg/Div） | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | `03-element.md §5.9` |
 
 ### 5.7 Sealed trait 策略

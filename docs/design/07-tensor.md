@@ -181,7 +181,7 @@ pub struct TensorBase<S, D> {
 | ------------------------- | --------------------------------- | ------------------------------ | ------------------------------------------------- |
 | `Tensor<Owned<A>, D>`     | 取决于 `Owned<A>: Send`           | 取决于 `Owned<A>: Sync`        | 拥有型规则与 `05-storage.md`、`25-safety.md` 一致 |
 | `TensorView<'a, A, D>`    | 取决于 `ViewRepr<'a, A>: Send`    | 取决于 `ViewRepr<'a, A>: Sync` | 只读借用可跨线程共享的前提由 storage 层定义       |
-| `TensorViewMut<'a, A, D>` | 取决于 `ViewMutRepr<'a, A>: Send` | 取决于 `ViewMutRepr<'a, A>: Sync`（通常不满足） | 可变视图只允许独占传播                            |
+| `TensorViewMut<'a, A, D>` | 取决于 `ViewMutRepr<'a, A>: Send` | 取决于 `ViewMutRepr<'a, A>: Sync`（永不满足） | 可变视图只允许独占传播 |
 | `ArcTensor<A, D>`         | 取决于 `ArcRepr<A>: Send`         | 取决于 `ArcRepr<A>: Sync`      | 共享只读线程安全前提完全继承 storage 层           |
 
 ### 5.2 Type aliases
