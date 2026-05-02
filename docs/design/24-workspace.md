@@ -122,7 +122,7 @@ use crate::error::{Result, XenonError};
 /// - Can be reused after returning
 /// - The current implementation is not transferable across threads
 ///   (`!Send + !Sync`), which simplifies the borrow-safety argument around raw
-///   pointers. This is an implementation choice rather than a `需求说明书 §26`
+///   pointers. This is an implementation choice rather than a requirement specification §26
 ///   mandate; future versions may relax it with safe cross-thread borrow checks.
 ///
 /// # Initialization Model
@@ -234,9 +234,9 @@ impl Workspace {
     /// assert!(ws.capacity() >= 1024);
     /// ```
     ///
-    /// **容量注释**：`capacity.max(1)` 确保零容量时至少请求 1 字节以生成合法布局。
-    /// 实际内部容量可能略大于请求值（由于 `Layout::from_size_align` 的对齐要求）。
-    /// `capacity()` 返回的是 `max(1)` 后的请求值，不是实际分配的字节数。
+    /// **Capacity note**: `capacity.max(1)` ensures at least 1 byte is requested for a valid layout even at zero capacity.
+    /// The actual internal capacity may be slightly larger than the requested value (due to alignment padding in `Layout::from_size_align`).
+    /// `capacity()` returns the requested value after `max(1)`, not the actual allocated byte count.
     pub fn new(capacity: usize, alignment: usize) -> Result<Self> {
         if !alignment.is_power_of_two() || alignment < Self::MIN_ALIGNMENT {
             return Err(XenonError::Workspace {

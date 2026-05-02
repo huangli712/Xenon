@@ -118,7 +118,7 @@ where
     ///
     /// # Unsupported types
     ///
-    /// - bool: `false` and `true` are still distinct values, but `需求说明书 §15`
+    /// - bool: `false` and `true` are still distinct values, but `requirements specification §15`
     ///   explicitly excludes bool from the current `unique` contract
     ///
     /// # Equality behavior

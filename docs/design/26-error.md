@@ -122,8 +122,8 @@ pub enum XenonError {
         axis: Option<usize>,
     },
 
-    /// 保留供未来 BLAS/FFI 布局校验使用。
-    /// 当前版本无公开 API 构造此错误。
+    /// Reserved for future BLAS/FFI layout validation.
+    /// No public API constructs this error in the current version.
     LayoutMismatch {
         operation: Cow<'static, str>,
         required_layout: Cow<'static, str>,

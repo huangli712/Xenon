@@ -160,8 +160,8 @@ where
     A: Numeric,
     D1: Dimension,
     D2: Dimension;
-// 自由函数与 TensorBase 方法接受相同泛型参数，可直接传入
-// owned/view/viewmut/arc 任何形式的张量。
+// The free function and TensorBase method accept the same generic parameters and can be
+// called directly with any tensor form (owned/view/viewmut/arc).
 
 impl<S, D, A> TensorBase<S, D>
 where

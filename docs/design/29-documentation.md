@@ -292,7 +292,7 @@ L3: Examples (examples/)
 //! but not every legal layout is natively BLAS/LAPACK-compatible.
 //!
 
-// lint 配置详见 §5.5.1 Lint 规则
+// lint configuration — see §5.5.1 Lint Rules
 ````
 
 #### 5.4.2 文档节使用规则

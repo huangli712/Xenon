@@ -152,7 +152,7 @@ pub enum SliceInfoElem {
     Range {
         start: usize,
         end: usize,
-        // 步长切片（step slicing）不在当前版本范围内，未来版本可另行设计。
+        // Step slicing is not in scope for the current version and may be designed in a future version.
     },
 }
 

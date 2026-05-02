@@ -142,7 +142,7 @@ use crate::error::FfiErrorCategory;
 /// FFI-specific recoverable errors are constructed directly as
 /// `XenonError::Ffi { operation, category, backend, precondition, actual }`.
 /// `FfiErrorCategory` identifies the failure class, while the remaining fields
-/// carry structured diagnostics required by `需求说明书 §27`.
+/// carry structured diagnostics required by `requirements specification §27`.
 ```
 
 ### 5.2 原始指针 API
@@ -152,7 +152,7 @@ use crate::error::FfiErrorCategory;
 **核心定义归属：** `as_ptr()`、`as_mut_ptr()`、`from_raw_parts()`、`from_raw_parts_mut()` 的实现定义在 `07-tensor.md` §5.4 和 §5.7，代码位于 `src/tensor/construct.rs`。本文仅描述这些方法在 FFI 边界的语义契约和 Safety 要求；完整签名与实现参见 `07-tensor.md`。
 
 ````rust,ignore
-// as_ptr() — 参见 07-tensor.md §5.4
+// as_ptr() — see 07-tensor.md §5.4
 //
 // Returns a read-only raw pointer to the logical first element.
 // - Non-empty: storage.as_ptr().add(offset)
@@ -162,7 +162,7 @@ use crate::error::FfiErrorCategory;
 //     pub fn as_ptr(&self) -> *const A { ... }
 // }
 
-// as_mut_ptr() — 参见 07-tensor.md §5.4
+// as_mut_ptr() — see 07-tensor.md §5.4
 //
 // Returns a mutable raw pointer to the logical first element.
 // Only available for S: StorageMut.
@@ -173,7 +173,7 @@ use crate::error::FfiErrorCategory;
 //     pub fn as_mut_ptr(&mut self) -> *mut A { ... }
 // }
 
-// from_raw_parts() — 参见 07-tensor.md §5.7
+// from_raw_parts() — see 07-tensor.md §5.7
 //
 // Constructs an immutable view from raw pointer.
 // ptr = storage base pointer; offset = displacement to logical first element.
@@ -186,7 +186,7 @@ use crate::error::FfiErrorCategory;
 //     ) -> Result<Self, XenonError> { ... }
 // }
 
-// from_raw_parts_mut() — 参见 07-tensor.md §5.7
+// from_raw_parts_mut() — see 07-tensor.md §5.7
 //
 // Constructs a mutable view from raw pointer.
 // Same as from_raw_parts, plus: rejects zero-stride non-singleton axes and

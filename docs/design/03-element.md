@@ -163,7 +163,7 @@ pub trait Element:
 /// Element type discriminant for FFI consumers.
 ///
 /// Each variant corresponds to one of Xenon's supported tensor element types
-/// (see `需求说明书 §4`). Defined in the `element` module; re-exported by
+/// (see the requirements specification §4). Defined in the `element` module; re-exported by
 /// `ffi` for C consumers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(C)]
@@ -203,7 +203,7 @@ impl ElementType {
 /// The native operator supertraits describe syntax availability only.
 /// Overflow-sensitive integer paths must additionally follow Xenon's checked
 /// arithmetic contracts in operation modules so that recoverable vs panic
-/// behavior remains consistent with `需求说明书`.
+/// behavior remains consistent with the requirements specification.
 ///
 /// Note: `Sealed` is not listed as a separate supertrait here because
 /// `Element` already inherits `Sealed`.

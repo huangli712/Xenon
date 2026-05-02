@@ -268,7 +268,7 @@ pub fn assert_tensor_exact_complex<A, D>(
 /// Assert two real-valued tensors stay within a documented cross-path tolerance.
 ///
 /// Use only for comparisons such as scalar vs SIMD or serial vs parallel where
-/// `需求说明书 §28.3` allows known rounding differences (with `00-coding.md §8.4`
+/// the requirements specification §28.3 allows known rounding differences (with `00-coding.md §8.4`
 /// as an implementation/test auxiliary reference).
 pub fn assert_tensor_close_real_cross_path<A, D>(
     actual: &TensorBase<impl Storage<Elem = A>, D>,
@@ -366,7 +366,7 @@ pub fn real_ulp_eq(a: impl RealScalar, b: impl RealScalar) -> bool;
 
 /// Tolerance budget for cross-path comparisons (Tier 2) and math-function
 /// comparisons (Tier 3). Each field records the per-function ULP ceiling
-/// mandated by 需求说明书 §28.3 (with `00-coding.md §8.4` as auxiliary reference).
+/// mandated by the requirements specification §28.3 (with `00-coding.md §8.4` as auxiliary reference).
 pub struct MathTolerance {
     pub ulp: u64,       // Maximum ULP distance allowed
     pub abs: f64,       // Absolute tolerance (for near-zero values)
