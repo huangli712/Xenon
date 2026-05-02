@@ -262,11 +262,20 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
     fn ceil(self) -> Self;
 
     fn is_nan(self) -> bool;
+
+    /// Returns `true` if `self` is positive or negative infinity.
+    /// Forwards to `f32::is_infinite` / `f64::is_infinite`.
+    fn is_infinite(self) -> bool;
+
+    /// Returns `true` if `self` is neither NaN nor infinity.
+    /// Forwards to `f32::is_finite` / `f64::is_finite`.
+    fn is_finite(self) -> bool;
 }
 ```
 
 - 公开 `RealScalar` trait 仅保留当前版本可稳定承诺的实数运算能力。
-- 常量访问器与 NaN/无穷辅助逻辑降为 crate 内部扩展 trait，避免把实现便利误暴露为公开契约。
+- `is_nan` / `is_infinite` / `is_finite` 三个谓词作为 IEEE 754 浮点类别检测的最小公开集合（与标准库 `f32`/`f64` 同名方法语义一致），供 `11-math` 与 `13-reduction` 等模块以及测试代码统一使用。
+- 其余常量访问器与 NaN/无穷辅助逻辑降为 crate 内部扩展 trait，避免把实现便利误暴露为公开契约。
 - `RealScalar::signum()` 明确跟随标准库 `f32::signum()` / `f64::signum()` 语义。有限非 NaN 输入返回 `1.0` 或 `-1.0`，其中 `signum(+0.0) == 1.0`、`signum(-0.0) == -1.0`，`NaN` 传播为 `NaN`。`11-math.md` 中张量级 `signum()` 的浮点语义以此 trait 契约为权威基线。
 
 ### 5.4 ComplexScalar trait
@@ -311,7 +320,7 @@ impl OrderedCompareElement for f64 {}
 - `OrderedCompareElement` 需要作为公开 sealed trait 暴露，因为 `11-math` 的公开比较 API（`lt` / `gt`）直接使用它作为元素类型约束；但其实现集合仍限制为 Xenon 当前支持的有序比较元素类型。
 - `OrderedCompareElement` 用于把有序比较能力显式收敛到 `i32`、`i64`、`f32`、`f64`。该 trait 虽然为配合 `11-math` 的公开 `lt` / `gt` API 而公开暴露，但仍通过 `Sealed` 保持 sealed，只允许 Xenon 为这四种类型提供实现。
 
-### §5.6 BoolElement（`pub(crate)` sealed）
+### 5.6 BoolElement（`pub(crate)` sealed）
 
 `BoolElement` 是仅在 element 模块内部使用的辅助 trait，标记 `bool` 类型以区分布尔运算的可用性（例如 `not()`）。
 
@@ -319,16 +328,16 @@ impl OrderedCompareElement for f64 {}
 /// Internal marker for the bool element type.
 ///
 /// Used by `11-math.md` `not()` to constrain its impl to bool tensors only.
-/// Not part of the public API; sealed via `private::Sealed`.
-pub(crate) trait BoolElement: Element + private::Sealed {}
+/// Not part of the public API; sealed via `crate::private::Sealed`.
+pub(crate) trait BoolElement: Element + Sealed {}
 
 impl BoolElement for bool {}
 ```
 
 - **用途**：`11-math.md` 的 `not()` 方法 trait bound 使用 `A: BoolElement`，阻止其他元素类型偶然实现该 trait。
-- `pub(crate)`：用户不可直接使用该 trait。
+- **`pub(crate)` 与公开 API 边界**：`BoolElement` 本身不出现在 `not()` 等方法的 *公开* 签名上；公开 API 仅通过 `impl<S, D> TensorBase<S, D> where S: Storage<Elem = bool>` 之类的具体类型约束暴露 `not()`，避免出现私有 trait 出现在公开 bound 上的可见性冲突。详见 `11-math.md §5.7`。
 
-### 5.6 支持的类型与 trait 矩阵
+### 5.7 支持的类型与 trait 矩阵
 
 | 类型           | Element | Numeric | RealScalar | ComplexScalar |
 | -------------- | :-----: | :-----: | :--------: | :-----------: |
@@ -358,9 +367,9 @@ impl BoolElement for bool {}
 | clip（20-utility） | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | `20-utility.md`（无序比较不适用） |
 | cast 类型转换（21-type） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `21-type.md` |
 | 有序比较 lt/le/gt/ge（OrderedCompareElement） | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | `03-element.md §5.5`（复数无序） |
-| Checked 整数原语（CheckedAdd/Sub/Mul/Neg/Div） | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | `03-element.md §5.9` |
+| Checked 整数原语（CheckedAdd/Sub/Mul/Neg/Div） | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | `03-element.md §5.10` |
 
-### 5.7 Sealed trait 策略
+### 5.8 Sealed trait 策略
 
 `Element`、`Numeric`、`RealScalar`、`ComplexScalar`、`CastTo<T>`、 `OrderedCompareElement` 全部通过共享的 `private::Sealed` 基础设施实现 sealed trait 模式。下游 crate 只能使用 Xenon 已声明的元素类型，不能为自定义类型补充这些 trait 实现。
 
@@ -380,7 +389,7 @@ impl Sealed for Complex<f64> {}
 impl Sealed for bool {}
 ```
 
-### 5.8 CastTo<T> trait
+### 5.9 CastTo<T> trait
 
 `CastTo<T>` 的 trait 定义位于 `src/element/mod.rs`，具体 impl 统一放在 `src/convert/cast.rs`；`convert/` 负责消费该 trait 并承载受支持转换矩阵的实现（参见 `21-type.md §5.1`），不在其他模块重复定义或分散实现。
 
@@ -399,7 +408,11 @@ use crate::error::XenonError;
 ///
 /// This trait is implemented only inside Xenon for the supported source/target pairs.
 /// External crates cannot extend the conversion matrix.
-pub trait CastTo<T>: Element {
+///
+/// The target type `T` is itself constrained to `Element`: this prevents
+/// instantiating `CastTo<T>` for types outside Xenon's closed element set
+/// at the trait-level, complementing the sealed `Self: Element` bound.
+pub trait CastTo<T: Element>: Element {
     /// Performs the type conversion.
     fn cast_to(self) -> Result<T, XenonError>;
 }
@@ -407,10 +420,11 @@ pub trait CastTo<T>: Element {
 
 - 类型转换错误载荷的完整定义见 `26-error.md §5.1`，`CastTo<T>` 的转换矩阵与实现约束见 `21-type.md §5.2`、`§6.1`。本节仅保留元素层 trait 骨架。
 - `CastTo<T>` 直接返回 `XenonError::TypeConversion`。
-- `bool` 不为任何目标类型实现 `CastTo<T>`。
+- 类型参数 `T` 必须满足 `T: Element`，结合 `Self: Element` 的 sealed 边界，从 trait 层面把转换关系限制在 Xenon 封闭元素集合内。
+- `bool` 不出现为任何 `CastTo<T>` 的 *源类型*，也不出现为任何 `CastTo<T>` 的 *目标类型*；这两个方向都通过"不提供 impl"在编译期阻断（与 §6.1 决策一致）。
 - `Complex<T> -> Real` 的条件成功语义、受支持矩阵与 `XenonError::TypeConversion` 字段约束，统一以 `21-type.md §5.3`、`§6.1` 以及 `26-error.md §5.6` 为准。
 
-### 5.9 Checked arithmetic traits
+### 5.10 Checked arithmetic traits
 
 `CheckedAdd` 为整数类型提供 checked 加法，供 `sum` 归约操作在整数溢出时 panic（参见 `13-reduction.md §5.1`）。
 
@@ -515,7 +529,7 @@ impl CheckedDiv for i64 {
 - `CheckedAdd` 仅覆盖整数加法（`i32`/`i64`），用于归约等必须精确检测溢出的路径。
 - 当前元素层统一提供 `CheckedAdd` / `CheckedSub` / `CheckedMul` / `CheckedNeg` / `CheckedDiv` 五类整数 checked 原语，作为整数溢出检测的**唯一权威定义点**，供 `math`、`matrix`、`reduction` 等所有上层模块复用。上层模块**不应**重新定义同语义 trait；余数与更高阶组合检查仍由具体运算模块在实现层基于这些原语组合完成。
 
-### 5.10 Good / Bad 对比示例
+### 5.11 Good / Bad 对比示例
 
 ```rust,ignore
 // Good - Numeric constraint automatically excludes bool and non-Numeric types
@@ -563,7 +577,22 @@ let c = &a + &b64;
 impl Element for bool {
     fn zero() -> Self { false }
     fn one() -> Self { true }
+
+    // The `ELEMENT_TYPE` constant is mandatory for *every* `Element` impl
+    // (see §5.1). For `bool`, it maps to the `Bool` discriminant of
+    // `ElementType`. This is required even though `bool` is excluded from
+    // `Numeric`, because FFI consumers still need to identify `Tensor<bool, _>`
+    // by its element-type discriminant.
+    const ELEMENT_TYPE: ElementType = ElementType::Bool;
 }
+
+// Equivalent constants for the other six element types:
+//   impl Element for i32          { ... const ELEMENT_TYPE: ElementType = ElementType::I32; }
+//   impl Element for i64          { ... const ELEMENT_TYPE: ElementType = ElementType::I64; }
+//   impl Element for f32          { ... const ELEMENT_TYPE: ElementType = ElementType::F32; }
+//   impl Element for f64          { ... const ELEMENT_TYPE: ElementType = ElementType::F64; }
+//   impl Element for Complex<f32> { ... const ELEMENT_TYPE: ElementType = ElementType::Complex32; }
+//   impl Element for Complex<f64> { ... const ELEMENT_TYPE: ElementType = ElementType::Complex64; }
 ```
 
 编译时阻止无效泛型实例化：`fn sum<A: Numeric>` 无法接受 `bool` 张量；需要布尔专用逐元素逻辑非时，使用 `!`。此外，`bool` 不实现任何 `CastTo<T>`；`bool_tensor.cast::<f32>()` 必须在编译期失败，而不是返回运行时类型转换错误。
