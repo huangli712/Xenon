@@ -73,6 +73,8 @@ src/dispatch.rs                    # Single-file module
 src/dispatch.rs
 ├── std::sync::atomic        # AtomicUsize (threshold storage)
 ├── std::cell::Cell          # Cell<bool> (thread-local guard)
+├── core::marker::PhantomData # Guard's _private field
+├── crate::error             # XenonError, InvalidArgument (only via ParallelExecStrategy::new)
 ├── crate::tensor            # .len(), .is_f_contiguous() (layout queries via tensor)
 └── crate::layout            # Alignment helpers (via tensor)
 ```
@@ -83,7 +85,9 @@ src/dispatch.rs
 | --------- | -------------------------------------------------------- |
 | `tensor`  | `TensorBase<S, D>`, `.len()`, `.is_f_contiguous()`       |
 | `layout`  | `is_aligned()`（通过 tensor 暴露的查询接口间接使用）     |
-| `std`     | `AtomicUsize`, `Cell<bool>`                              |
+| `error`   | `XenonError`, `XenonError::InvalidArgument`（仅 `ParallelExecStrategy::new()` 使用） |
+| `std`     | `AtomicUsize`, `Cell<bool>`, `thread_local!`             |
+| `core`    | `core::marker::PhantomData`                              |
 
 ### 4.3 依赖合法性
 
@@ -235,67 +239,75 @@ impl ParallelExecStrategy {
 /// RAII guard that indicates the current thread is inside a
 /// library-internal parallel region.
 ///
-/// When `ParallelGuard::enter()` returns `Ok(guard)`, the thread-local
-/// flag is set. While the guard is alive, any nested call to
-/// `select_exec_path()` or `should_parallelize()` that would return
-/// `ExecPath::Parallel` will instead fall back to `Serial`.
+/// A `ParallelGuard` value is **only ever obtained as the second tuple
+/// element of `select_exec_path()`** when that function selects
+/// `ExecPath::Parallel`. There is no public `enter()` constructor: this
+/// removes the TOCTOU window between "decide to parallelize" and "enter
+/// the parallel region", and ensures the nested-parallel check is
+/// observed as a single atomic step inside `select_exec_path()`.
 ///
-/// Dropping the guard clears the thread-local flag, allowing
-/// future parallel execution on this thread.
+/// While the guard is alive, the thread-local flag is set. Any nested
+/// call to `select_exec_path()` or `should_parallelize()` that would
+/// otherwise return `ExecPath::Parallel` will instead return
+/// `ExecPath::Serial` (with `None` guard).
+///
+/// Dropping the guard clears the thread-local flag, allowing future
+/// parallel execution on this thread.
 pub(crate) struct ParallelGuard {
-    // private: marker to prevent external construction
-    _private: (),
-}
-
-impl ParallelGuard {
-    /// Try to enter a parallel execution region.
-    ///
-    /// Returns `Ok(guard)` if the current thread is not already inside
-    /// a parallel region. Returns `Err(())` if nested parallel execution
-    /// is detected—the caller must fall back to `ExecPath::Serial`.
-    ///
-    /// This function is infallible in the `Result` sense; it never panics
-    /// and never returns a recoverable error type. The `Err(())` is a
-    /// sentinel for "cannot parallelize now"—the caller must respond by
-    /// taking the serial path.
-    pub(crate) fn enter() -> Result<Self, ()> {
-        // Implementation uses thread_local! + Cell<bool>
-        // See §6.2 for internal design.
-        unimplemented!()
-    }
+    // No public fields: external construction is impossible.
+    // Field omitted; instances are produced only by select_exec_path().
+    _private: core::marker::PhantomData<*const ()>,
 }
 
 impl Drop for ParallelGuard {
     fn drop(&mut self) {
-        // Clear the thread-local flag.
+        // Clear the thread-local IN_PARALLEL flag.
     }
 }
 ```
 
-**实现提示：** 基于 thread-local `Cell<bool>` 实现：
+**关键 API 边界变化（v1.1.0）：** `ParallelGuard::enter()` 不再作为公开 API 暴露。取而代之，进入并行区域的 **唯一** 入口是 `select_exec_path()` 返回 `(ExecPath::Parallel, Some(guard))`。`parallel/` 后端在收到该 guard 后将其持有到并行区域结束即可，无需也不能再次调用 `enter()`。详细论证见决策 7（§11）。
+
+**实现提示（内部）：** 基于 thread-local `Cell<bool>` 实现，仅 dispatch 模块内部可见：
 
 ```rust,ignore
 // Internal implementation sketch (not a public API commitment)
 std::thread_local! {
     static IN_PARALLEL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
+
+// Internal-only: produces a guard, intended exclusively for use by
+// select_exec_path(). Not exposed outside this module.
+fn try_acquire_guard() -> Option<ParallelGuard> {
+    IN_PARALLEL.with(|flag| {
+        if flag.get() {
+            None
+        } else {
+            flag.set(true);
+            Some(ParallelGuard { _private: core::marker::PhantomData })
+        }
+    })
+}
 ```
 
-`ParallelContext` 是 thread-local 状态 token，由 `ParallelGuard` 内部管理，不对外暴露为独立类型。各个 `parallel/` 后端函数在入口处调用 `ParallelGuard::enter()`；若返回 `Err(())` 则表明当前已处于并行区域内，必须回退串行路径。
+`ParallelContext` 是 thread-local 状态 token，由 `ParallelGuard` 内部管理，不对外暴露为独立类型。
 
 **嵌套并行行为矩阵：**
 
-| 场景                              | `ParallelGuard::enter()` 结果 | dispatch 返回        |
-| --------------------------------- | :---------------------------: | -------------------- |
-| 首次进入并行区域                  | `Ok(guard)`                   | `ExecPath::Parallel` |
-| 已在并行区域内，再次尝试进入      | `Err(())`                     | `ExecPath::Serial`   |
-| guard drop 后再次进入             | `Ok(guard)`                   | `ExecPath::Parallel` |
-| `ParallelPool` 内部调用并行后端   | `Err(())`（同嵌套规则）       | `ExecPath::Serial`   |
+| 场景                              | `select_exec_path()` 中的 guard 检查 | 返回值                                 |
+| --------------------------------- | :----------------------------------: | -------------------------------------- |
+| 首次进入并行区域，且阈值满足      | 获取成功                             | `(ExecPath::Parallel, Some(guard))`    |
+| 已在并行区域内，再次调用          | 获取失败                             | `(ExecPath::Serial, None)` 或 `Simd/Serial` 路径（按其他条件）  |
+| guard drop 后再次调用             | 获取成功                             | `(ExecPath::Parallel, Some(guard))`    |
+| 库内部嵌套并行 API 调用           | 获取失败                             | `(ExecPath::Serial, None)`             |
+| `feature = "parallel"` 关闭       | 不进入 guard 路径                    | `(ExecPath::Serial, None)` 或 `Simd`  |
+| `len < effective_parallel_threshold` | 不进入 guard 路径                 | `(ExecPath::Simd, None)` 或 `Serial`  |
 
 ### 5.5 核心 API 函数
 
 ```rust,ignore
-/// Selects the optimal execution path for an operation.
+/// Selects the optimal execution path for an operation, atomically
+/// binding "select Parallel" with "enter the parallel region".
 ///
 /// This is the central dispatch function. All `math`, `matrix`, and
 /// `reduction` modules call this to decide their execution strategy.
@@ -309,40 +321,83 @@ std::thread_local! {
 ///
 /// # Returns
 ///
-/// * `ExecPath::Parallel` — if `len >= parallel_threshold` **and**
-///   contiguity allows, **and** `feature = "parallel"` is enabled,
-///   **and** the current thread is not already inside a parallel region.
+/// A pair `(ExecPath, Option<ParallelGuard>)` where:
 ///
-/// * `ExecPath::Simd` — if `len >= simd_threshold` **and** contiguous
-///   **and** aligned, **and** `feature = "simd"` is enabled, **and**
-///   parallel is either disabled or `len < parallel_threshold`.
+/// * `(ExecPath::Parallel, Some(guard))` — the parallel path was
+///   selected **and** the nested-parallel check has been performed
+///   atomically inside this function. The caller must keep `guard`
+///   alive for the entire parallel region.
 ///
-/// * `ExecPath::Serial` — otherwise (the default fallback).
+/// * `(ExecPath::Simd, None)` — the SIMD path was recommended.
+///   No guard is associated with SIMD execution.
+///
+/// * `(ExecPath::Serial, None)` — the serial path was selected
+///   (default fallback). No guard.
+///
+/// The `Option<ParallelGuard>` is `Some` **iff** the first element
+/// is `ExecPath::Parallel`. This invariant is enforced by the
+/// implementation and may be relied upon by callers.
+///
+/// # Selection conditions
+///
+/// * `ExecPath::Parallel` — `feature = "parallel"` is enabled, **and**
+///   the current thread is not already inside a parallel region, **and**
+///   `len >= effective_parallel_threshold` (see §5.6 for non-contiguous
+///   penalty), **and** the parallel threshold is not zero (see §5.6,
+///   "threshold = 0" semantics).
+///
+/// * `ExecPath::Simd` — `feature = "simd"` is enabled, **and**
+///   `is_contiguous`, **and** `alignment_ok`, **and** `len >= SIMD_THRESHOLD`,
+///   **and** `ExecPath::Parallel` was not chosen.
+///
+/// * `ExecPath::Serial` — otherwise.
 ///
 /// # Behavior under feature gates
 ///
-/// - Without `feature = "parallel"`: never returns `ExecPath::Parallel`
-/// - Without `feature = "simd"`: never returns `ExecPath::Simd`
-/// - With both disabled: always returns `ExecPath::Serial`
+/// - Without `feature = "parallel"`: first element is never `ExecPath::Parallel`
+/// - Without `feature = "simd"`: first element is never `ExecPath::Simd`
+/// - With both disabled: always returns `(ExecPath::Serial, None)`
 ///
 /// # Determinism
 ///
-/// This function is deterministic: given the same inputs and global
-/// threshold state, it always returns the same `ExecPath`.
+/// Given the same inputs, the same global threshold state, and the
+/// same thread-local parallel-region state, this function always
+/// returns the same `ExecPath`. It is not a pure function in the
+/// strict sense (it reads thread-local state and may transition the
+/// "in-parallel" flag), but it is deterministic with respect to its
+/// observable inputs and produces no other side effects.
+///
+/// # Atomicity
+///
+/// The decision "select Parallel" and the action "enter parallel
+/// region" are performed as a single critical section against the
+/// thread-local flag. There is no observable intermediate state
+/// where another caller on the same thread could see "Parallel
+/// selected but not yet entered" — see Decision 7 (§11).
 pub(crate) fn select_exec_path(
     len: usize,
     is_contiguous: bool,
     alignment_ok: bool,
-) -> ExecPath;
+) -> (ExecPath, Option<ParallelGuard>);
 
 /// Quick boolean query for "should I use parallel?"
 ///
-/// Used by callers that already know they have only Serial/Parallel
-/// options (no SIMD relevance). Equivalent to checking whether
-/// `select_exec_path(...)` would return `ExecPath::Parallel`.
+/// Used only by callers that need to **observe** whether parallel
+/// execution would be selected, without committing to it. This
+/// function does **not** acquire a `ParallelGuard`.
 ///
-/// This function respects the same threshold and feature-gate logic
-/// as `select_exec_path()`, but it does not consider SIMD at all.
+/// Returns `true` iff `select_exec_path(len, is_contiguous, _).0`
+/// would return `ExecPath::Parallel`. The `alignment_ok` parameter
+/// is irrelevant for this query: alignment only affects SIMD
+/// eligibility, not parallel.
+///
+/// **Important:** if a caller observes `should_parallelize() == true`
+/// and then calls `select_exec_path()`, the second call may still
+/// return `ExecPath::Serial` if another caller on the same thread
+/// entered a parallel region between the two queries. This function
+/// is intended for diagnostics and should-not-be-used-for-control-flow
+/// scenarios; for actual execution dispatch, use `select_exec_path()`
+/// directly.
 pub(crate) fn should_parallelize(len: usize, is_contiguous: bool) -> bool;
 ```
 
@@ -363,42 +418,48 @@ pub(crate) fn should_parallelize(len: usize, is_contiguous: bool) -> bool;
 /// Override the parallel threshold at runtime.
 ///
 /// Intended for internal testing and benchmarking.
-/// Setting `threshold = 0` effectively disables the parallel path
-/// for all future `select_exec_path()` calls.
+///
+/// # Special value: 0
+///
+/// Setting `threshold = 0` is interpreted as **"disable the parallel
+/// path entirely"**, NOT as "always parallelize". This is the only
+/// sentinel meaning of zero. After this call, `select_exec_path()`
+/// will never return `ExecPath::Parallel` regardless of `len`, until
+/// `set_parallel_threshold(non_zero)` or `reset_parallel_threshold()`
+/// is called.
 pub(crate) fn set_parallel_threshold(threshold: usize);
 
 /// Reset the parallel threshold to its compile-time default.
 pub(crate) fn reset_parallel_threshold();
 ```
 
-**非连续惩罚策略：** 当输入非 F-order 连续时，有效阈值翻倍：
+**非连续策略（统一规则）：** SIMD 路径与并行路径采取不同规则——
 
-| 条件                           | 有效并行阈值                | 有效 SIMD 阈值               |
-| ------------------------------ | --------------------------- | ---------------------------- |
-| 连续 + 对齐                    | `PARALLEL_THRESHOLD`        | `SIMD_THRESHOLD`             |
-| 连续 + 非对齐                  | `PARALLEL_THRESHOLD`        | 不返回 `Simd`（对齐失败）    |
-| 非连续                         | `2 * PARALLEL_THRESHOLD`    | 不返回 `Simd`（连续性失败）  |
-| 非连续 + `len < 2 * threshold` | 回退 `Serial`               | 回退 `Serial`                |
+| 输入条件          | 是否考虑 `Simd`           | 是否考虑 `Parallel`                                  |
+| ----------------- | ------------------------- | ---------------------------------------------------- |
+| 连续 + 对齐       | 是（`len >= SIMD_THRESHOLD`） | 是（`len >= PARALLEL_THRESHOLD`）                |
+| 连续 + 非对齐     | **否**（对齐是 SIMD 准入硬性条件） | 是（`len >= PARALLEL_THRESHOLD`）            |
+| 非连续            | **否**（连续性是 SIMD 准入硬性条件） | 是，但 `len >= 2 * PARALLEL_THRESHOLD`（饱和乘法防溢出） |
 
-这一策略确保仅在收益明确（输入足够大以摊平非连续访问的缓存惩罚）时才选择非标量路径。
+**两条规则的差异有意为之：**
+
+- **SIMD**：`is_contiguous == false` 或 `alignment_ok == false` 时**直接拒绝**进入 `Simd` 路径——SIMD 后端要求连续 + 对齐，无法通过单纯放宽阈值满足，强行进入会触发 simd 内部回退而吃掉调度开销。
+- **Parallel**：`is_contiguous == false` 时**不拒绝**，但通过**有效阈值翻倍**抑制进入——非连续的并行 worker 仍可执行（只是缓存局部性差），收益曲线由翻倍阈值近似补偿。
+
+**溢出保护：** `effective_parallel_threshold = base.saturating_mul(2)`。当 `set_parallel_threshold` 被设为接近 `usize::MAX` 的值时，饱和乘法把翻倍结果钉在 `usize::MAX`，从而 `len >= effective` 永不成立——同样落到 `Serial`。这避免任何 wrap-around 导致的非确定性路径选择。
 
 ### 5.7 Guard API（补充）
 
-```rust,ignore
-impl ParallelGuard {
-    /// Try to enter parallel execution.
-    ///
-    /// Returns `Ok(guard)` if not already in a parallel region;
-    /// `Err(())` if a nested call is detected (caller falls back to Serial).
-    pub(crate) fn enter() -> Result<Self, ()>;
-}
+`ParallelGuard` 在 v1.1.0 起**没有**公开（pub/pub(crate)）的构造函数。
+进入并行区域的唯一入口是 `select_exec_path()` 返回 `(ExecPath::Parallel, Some(guard))`。
+该设计让调用方拿到的 guard 与"select 到 Parallel 的决策"严格对应，
+消除了"先 select 到 Parallel，再 enter() 失败回退"的无效中间状态。
 
-// Drop implementation releases the thread-local flag.
-```
+`Drop` 实现释放 thread-local flag，是 `ParallelGuard` 唯一对外可观察的行为。
 
 ### 5.8 路径选择阈值（分操作类型参考）
 
-dispatch 持有的阈值适用于**所有操作类型**的统一入口裁决。各操作的具体 SIMD 阈值差异由 `simd/` 内部处理。以下表格列出 dispatch 向各操作类别推荐的通用策略，与 `08-simd.md` §5.7 和 `09-parallel.md` 保持一致：
+dispatch 持有的阈值适用于**所有操作类型**的统一入口裁决。各操作的具体 SIMD 阈值差异由 `simd/` 内部处理。以下表格仅供参考说明各模块的总体阈值策略，**dispatch 自身只持有两个统一阈值**（`PARALLEL_THRESHOLD = 65536`、`SIMD_THRESHOLD = 64`），不感知操作类型；具体 per-op 阈值由调用方在调用 dispatch 之前自行 gating：
 
 | 操作类型       | 元素类型                        | 并行最小长度 | SIMD 最小长度 | 说明                                   |
 | -------------- | ------------------------------- | :----------: | :-----------: | -------------------------------------- |
@@ -410,8 +471,13 @@ dispatch 持有的阈值适用于**所有操作类型**的统一入口裁决。�
 | 内积 `dot`     | `f32` / `f64`                   |    65536     |     512       | 同归约                                 |
 | 内积 `dot`     | `i32` / `i64`                   |    65536     |     256       | 同归约                                 |
 
-- dispatch 的 `select_exec_path()` 接收调用方传入的具体 `len`、`is_contiguous` 和 `alignment_ok`；调用方应根据自身操作类型决定是否传入更严格的限制（例如，归约调用方在长度足够大时才走 dispatch，此时 dispatch 依据统一阈值裁决并行；SIMD 路径的最终长度准入由 `simd/` 做二次检查）。
-- 非连续惩罚：有效并行阈值在上表基础上翻倍。
+**调用方-dispatch-后端的阈值分工：**
+
+- **dispatch 持有**：通用最小阈值（`PARALLEL_THRESHOLD`、`SIMD_THRESHOLD`），用于"是否值得进入非标量路径"的粗粒度裁决。
+- **调用方持有**：操作 + 元素类型特定的阈值（如归约 `sum_f64` 的 SIMD 阈值 1024）。调用方在调用 `select_exec_path()` 之前可自行 gating——若 `len` 不满足自己的最小要求，可直接走 `Serial` 而不调用 dispatch。
+- **`simd/` 后端持有**：lane 宽度、ISA 可用性、操作覆盖矩阵等最终准入条件。`simd/` 在 `ExecPath::Simd` 被选中后做最终二次检查；不通过时内部回退标量。
+
+非连续与对齐处理见 §5.6。
 
 ---
 
@@ -428,39 +494,55 @@ Input:
     alignment_ok   : bool    — all inputs satisfy SIMD alignment fast-path
 
 Output:
-    ExecPath::{Serial | Simd | Parallel}
+    (ExecPath, Option<ParallelGuard>)
+    // Invariant: second element is Some(_) iff first element == ExecPath::Parallel
 
 Steps:
-    1. effective_parallel_threshold = PARALLEL_THRESHOLD
-       if not is_contiguous:
-           effective_parallel_threshold *= 2
+    1. base_parallel_threshold = get_parallel_threshold()
 
-    2. effective_simd_threshold = SIMD_THRESHOLD
-       // Simd path requires both contiguity and alignment;
-       // if either fails, Simd is not eligible.
+       // "threshold == 0" sentinel: explicit parallel disable
+       if base_parallel_threshold == 0:
+           parallel_eligible_by_threshold = false
+       else:
+           // Non-contiguous penalty via saturating multiplication
+           // (avoids wrap-around on extreme threshold values)
+           if is_contiguous:
+               effective_parallel = base_parallel_threshold
+           else:
+               effective_parallel = base_parallel_threshold.saturating_mul(2)
+           parallel_eligible_by_threshold = (len >= effective_parallel)
 
-    3. // Check parallel eligibility
+    2. // Try parallel first: select-and-enter atomically
        if cfg!(feature = "parallel")
-          AND len >= effective_parallel_threshold
-          AND ParallelGuard::enter().is_ok():
-              return ExecPath::Parallel
-          // Note: ParallelGuard is consumed here;
-          // the caller may re-enter the guard in the parallel backend.
+          AND parallel_eligible_by_threshold:
+              if let Some(guard) = try_acquire_guard():
+                  // Acquired the thread-local in-parallel flag.
+                  // Selection and entry happen as a single critical section;
+                  // no other thread-local observer can see "Parallel selected
+                  // but not yet entered".
+                  return (ExecPath::Parallel, Some(guard))
+              // try_acquire_guard() returned None: thread is already
+              // inside a parallel region. Fall through to SIMD/Serial.
 
-    4. // Check SIMD eligibility
+    3. // Check SIMD eligibility (no guard involved)
        if cfg!(feature = "simd")
           AND is_contiguous
           AND alignment_ok
-          AND len >= effective_simd_threshold:
-              return ExecPath::Simd
+          AND len >= get_simd_threshold():
+              return (ExecPath::Simd, None)
 
-    5. // Default fallback
-       return ExecPath::Serial
+    4. // Default fallback
+       return (ExecPath::Serial, None)
 ```
 
 **优先级说明：** 并行检查在 SIMD 之前。这是因为在同时启用两个 feature 且输入足够大的场景下，并行路径的吞吐收益通常高于 SIMD 串行加速。若并行不可用或输入未达并行阈值，再考虑 SIMD。
 
-**确定性保证：** 该算法完全确定性——相同的 `(len, is_contiguous, alignment_ok, threshold_state, feature_flags)` 输入始终产生相同的 `ExecPath`。
+**Guard 与路径绑定的关键不变量：**
+
+- Step 2 中 `try_acquire_guard()` **要么**返回 `Some(guard)` 并设置 thread-local flag、并立即返回 `(Parallel, Some(guard))`；**要么**返回 `None` 并落到 Step 3/4。中间没有其他状态。
+- 一旦 `Some(guard)` 被产生，guard 必然作为返回值的一部分被调用方持有；guard 永不在 dispatch 内部被丢弃。
+
+**确定性保证：** 该算法在以下输入集合相同时确定性：`(len, is_contiguous, alignment_ok, threshold_state, feature_flags, thread_local_in_parallel_state)`。这是与 v1.0.0 不同的细节——thread-local 的 `IN_PARALLEL` 状态显式被纳入"输入"，因为嵌套并行场景下相同的 `(len, contig, align)` 在不同 thread-local 状态下会有不同结果。这是正确语义。
 
 ### 6.2 ParallelGuard 实现
 
@@ -474,21 +556,7 @@ std::thread_local! {
 }
 
 pub(crate) struct ParallelGuard {
-    _private: (),
-}
-
-impl ParallelGuard {
-    pub(crate) fn enter() -> Result<Self, ()> {
-        IN_PARALLEL.with(|flag| {
-            if flag.get() {
-                // Already inside a parallel region — reject nesting
-                Err(())
-            } else {
-                flag.set(true);
-                Ok(ParallelGuard { _private: () })
-            }
-        })
-    }
+    _private: core::marker::PhantomData<*const ()>,
 }
 
 impl Drop for ParallelGuard {
@@ -499,11 +567,39 @@ impl Drop for ParallelGuard {
     }
 }
 
+/// Module-private: try to acquire the in-parallel flag and, on success,
+/// produce a guard whose Drop will release it.
+///
+/// This is the **only** way a `ParallelGuard` value comes into existence.
+/// It is intentionally not exposed as a `pub(crate)` API; it is wired into
+/// `select_exec_path()` as the single atomic site for selection-and-entry.
+fn try_acquire_guard() -> Option<ParallelGuard> {
+    IN_PARALLEL.with(|flag| {
+        if flag.get() {
+            None
+        } else {
+            flag.set(true);
+            Some(ParallelGuard { _private: core::marker::PhantomData })
+        }
+    })
+}
+
 /// Query-only: check if currently in parallel region without setting the flag.
-/// Used by `select_exec_path()` for the pre-check before attempting `enter()`.
+/// Used by `should_parallelize()` for diagnostic queries that do not commit.
 fn is_in_parallel() -> bool {
     IN_PARALLEL.with(|flag| flag.get())
 }
+```
+
+**安全性论证：**
+
+| 主题          | 论证                                                                                               |
+| ------------- | -------------------------------------------------------------------------------------------------- |
+| thread-local  | `Cell<bool>` 是 `!Sync`，但通过 `thread_local!` 访问确保每个线程拥有独立副本，无数据竞争。        |
+| RAII 保证     | `ParallelGuard` 的 `Drop` 实现在任何退出路径（包括 panic unwind）下都会重置 flag，不会泄漏状态。  |
+| 原子选择      | `try_acquire_guard()` 内部先 `flag.get()` 再 `flag.set(true)`；这两步在单线程内是顺序执行，无 TOCTOU。 |
+| 公共入口收敛  | `try_acquire_guard()` 是模块私有函数，仅由 `select_exec_path()` 调用。`ParallelGuard` 没有 `pub(crate)` 构造函数，杜绝调用方绕过原子契约。 |
+| 零分配        | 不在堆上分配，不涉及原子操作（`Cell` 是非原子内部可变性），开销为单次 thread-local 访问。         |
 ```
 
 **安全性论证：**
@@ -563,8 +659,8 @@ pub(crate) fn reset_parallel_threshold() {
 // Compile-time feature detection for variant elimination.
 //
 // When `feature = "parallel"` is absent, the compiler eliminates
-// the entire parallel-eligibility branch as dead code, making
-// `ExecPath::Parallel` truly zero-cost.
+// the entire parallel-eligibility branch as dead code; the
+// `try_acquire_guard()` call site is removed.
 //
 // When `feature = "simd"` is absent, the SIMD branch is eliminated.
 
@@ -572,20 +668,28 @@ pub(crate) fn select_exec_path(
     len: usize,
     is_contiguous: bool,
     alignment_ok: bool,
-) -> ExecPath {
-    let effective_parallel = if is_contiguous {
-        get_parallel_threshold()
+) -> (ExecPath, Option<ParallelGuard>) {
+    // Threshold == 0 sentinel: explicit parallel disable
+    let base = get_parallel_threshold();
+    let parallel_eligible_by_threshold = if base == 0 {
+        false
     } else {
-        get_parallel_threshold() * 2
+        let effective = if is_contiguous {
+            base
+        } else {
+            base.saturating_mul(2) // overflow-safe doubling
+        };
+        len >= effective
     };
 
-    // Parallel check: compiled away when feature is absent
+    // Parallel check: select-and-enter atomically
     #[cfg(feature = "parallel")]
     {
-        if len >= effective_parallel && !is_in_parallel() {
-            // Note: we do NOT consume the guard here;
-            // the caller will enter() in the parallel backend.
-            return ExecPath::Parallel;
+        if parallel_eligible_by_threshold {
+            if let Some(guard) = try_acquire_guard() {
+                return (ExecPath::Parallel, Some(guard));
+            }
+            // Acquisition failed (already in parallel region): fall through.
         }
     }
 
@@ -593,12 +697,42 @@ pub(crate) fn select_exec_path(
     #[cfg(feature = "simd")]
     {
         if is_contiguous && alignment_ok && len >= get_simd_threshold() {
-            return ExecPath::Simd;
+            return (ExecPath::Simd, None);
         }
     }
 
-    ExecPath::Serial
+    (ExecPath::Serial, None)
 }
+
+#[cfg(feature = "parallel")]
+pub(crate) fn should_parallelize(len: usize, is_contiguous: bool) -> bool {
+    let base = get_parallel_threshold();
+    if base == 0 || is_in_parallel() {
+        return false;
+    }
+    let effective = if is_contiguous {
+        base
+    } else {
+        base.saturating_mul(2)
+    };
+    len >= effective
+}
+
+#[cfg(not(feature = "parallel"))]
+pub(crate) fn should_parallelize(_len: usize, _is_contiguous: bool) -> bool {
+    false
+}
+```
+
+**`ParallelGuard` 的 cfg 处理：** `ParallelGuard` 类型与 `try_acquire_guard()` / `is_in_parallel()` / `IN_PARALLEL` thread-local 仅在 `feature = "parallel"` 启用时存在；`feature = "parallel"` 关闭时这些项目通过模块级 `#[cfg(feature = "parallel")]` 整体不生成。`select_exec_path()` 的返回类型 `(ExecPath, Option<ParallelGuard>)` 在 feature 关闭时退化为 `Option<NeverGuard>`-等价（永远 `None`）；为简化签名，在 feature 关闭时 `ParallelGuard` 仍以零大小占位类型形式存在但永不构造。
+
+```rust,ignore
+#[cfg(not(feature = "parallel"))]
+pub(crate) struct ParallelGuard {
+    // Zero-size, never constructed in this build configuration.
+    _private: core::marker::PhantomData<*const ()>,
+}
+// No `try_acquire_guard()`, no `Drop` impl needed — the type is unconstructible.
 ```
 
 ### 6.5 决策流 ASCII 图
@@ -607,40 +741,40 @@ pub(crate) fn select_exec_path(
 Caller (math / matrix / reduction)
     │
     ▼
-┌────────────────────────────────────────────────────────┐
-│         dispatch::select_exec_path(len, contiguous,     │
-│                                    alignment_ok)        │
-└────────────────────────┬───────────────────────────────┘
+┌────────────────────────────────────────────────────────────┐
+│  dispatch::select_exec_path(len, is_contiguous, align_ok)  │
+│                                                             │
+│  Returns: (ExecPath, Option<ParallelGuard>)                 │
+│  Invariant: guard is Some(_) IFF ExecPath::Parallel         │
+└────────────────────────┬───────────────────────────────────┘
                          │
         ┌────────────────┼────────────────┐
         ▼                ▼                ▼
-┌───────────────┐ ┌──────────────┐ ┌──────────────┐
-│ feature =     │ │ feature =    │ │ default      │
-│ "parallel" +  │ │ "simd" +     │ │ fallback     │
-│ len >= eff.   │ │ contiguous + │ │              │
-│ threshold +   │ │ aligned +    │ │              │
-│ not nested    │ │ len >= SIMD  │ │              │
-│               │ │ threshold +  │ │              │
-│               │ │ parallel     │ │              │
-│               │ │ disabled or  │ │              │
-│               │ │ len < PAR.   │ │              │
-└───────┬───────┘ └──────┬───────┘ └──────┬───────┘
-        │                │                │
-        ▼                ▼                ▼
-ExecPath::Parallel  ExecPath::Simd  ExecPath::Serial
-        │                │                │
-        ▼                ▼                ▼
-┌───────────────┐ ┌──────────────┐ ┌──────────────┐
-│ parallel/     │ │ simd/        │ │ caller's     │
-│ backend       │ │ backend      │ │ own scalar   │
-│ (workers run  │ │ (may         │ │ impl         │
-│  scalar code, │ │  internally  │ │              │
-│  no SIMD)     │ │  fall back   │ │              │
-│               │ │  to scalar)  │ │              │
-└───────────────┘ └──────────────┘ └──────────────┘
+┌────────────────────┐ ┌──────────────┐ ┌──────────────┐
+│ feature=parallel + │ │ feature=simd │ │ default      │
+│ threshold != 0 +   │ │ + contig +   │ │ fallback     │
+│ len >= effective +  │ │ aligned +    │ │              │
+│ guard acquired     │ │ len >= SIMD  │ │              │
+│ (atomic)           │ │ threshold    │ │              │
+└──────────┬─────────┘ └──────┬───────┘ └──────┬───────┘
+           │                  │                │
+           ▼                  ▼                ▼
+(Parallel, Some(guard)) (Simd, None)    (Serial, None)
+           │                  │                │
+           ▼                  ▼                ▼
+┌────────────────────┐ ┌──────────────┐ ┌──────────────┐
+│ parallel/ backend  │ │ simd/        │ │ caller's     │
+│ holds the guard    │ │ backend      │ │ own scalar   │
+│ for the entire     │ │ (may         │ │ impl         │
+│ parallel region;   │ │  internally  │ │              │
+│ workers run scalar │ │  fall back   │ │              │
+│ code (no SIMD).    │ │  to scalar)  │ │              │
+│ Drop releases the  │ │              │ │              │
+│ in-parallel flag.  │ │              │ │              │
+└────────────────────┘ └──────────────┘ └──────────────┘
 ```
 
-**关键语义：** dispatch 做出三路裁决后，调用方执行单次 `match` 分发。`ExecPath::Simd` 分支由 `simd/` 后端接管——它可能在内部因 ISA、lane 宽度等原因回退标量，这一回退对 dispatch 完全透明。
+**关键语义：** dispatch 做出三路裁决后，调用方执行单次 `match` 分发。`ExecPath::Simd` 分支由 `simd/` 后端接管——它可能在内部因 ISA、lane 宽度等原因回退标量，这一回退对 dispatch 完全透明。`ExecPath::Parallel` 分支总是带着已获取的 guard 进入 `parallel/` 后端；后端不再自己 `enter()`，只持有 guard 直到并行区结束。
 
 ---
 
@@ -659,26 +793,33 @@ ExecPath::Parallel  ExecPath::Simd  ExecPath::Serial
 
 - [ ] **T2**: 实现 `select_exec_path()` 与 `should_parallelize()`
   - 文件: `src/dispatch.rs`
-  - 内容: 三路裁决逻辑、阈值读取、feature gate 分支、非连续惩罚
-  - 测试: `test_exec_path_serial_below_threshold`, `test_exec_path_parallel_above_threshold`, `test_exec_path_simd_when_aligned`
-  - 前置: T1
+  - 内容: 三路裁决逻辑、阈值读取（含 0 sentinel 与 saturating_mul）、feature gate 分支、非连续策略、返回 `(ExecPath, Option<ParallelGuard>)`
+  - 测试: `test_exec_path_serial_below_threshold`, `test_exec_path_parallel_above_threshold`, `test_exec_path_simd_when_aligned`, `test_select_returns_guard_iff_parallel`
+  - 前置: T1, T4
   - 预计: 10 min
 
 - [ ] **T3**: 实现阈值配置接口
   - 文件: `src/dispatch.rs`
-  - 内容: `AtomicUsize` 阈值存储、`set_parallel_threshold()`、`reset_parallel_threshold()`、`Relaxed` ordering 注释
-  - 测试: `test_threshold_override_respected`
+  - 内容: `AtomicUsize` 阈值存储、`set_parallel_threshold()`、`reset_parallel_threshold()`、`Relaxed` ordering 注释、`threshold == 0` sentinel 文档化
+  - 测试: `test_threshold_override_respected`, `test_threshold_zero_disables_parallel`, `test_threshold_saturating_mul_no_overflow`
   - 前置: T2
   - 预计: 5 min
 
 ### Wave 3: 嵌套防护
 
-- [ ] **T4**: 实现 `ParallelGuard` / `ParallelContext`
+- [ ] **T4**: 实现 `ParallelGuard` 与模块私有 `try_acquire_guard()`
   - 文件: `src/dispatch.rs`
-  - 内容: `thread_local! { IN_PARALLEL: Cell<bool> }`、`ParallelGuard::enter()`、`Drop` 实现
-  - 测试: `test_parallel_guard_blocks_nesting`, `test_parallel_guard_releases_on_drop`
+  - 内容: `thread_local! { IN_PARALLEL: Cell<bool> }`、`ParallelGuard` 类型（无公开/`pub(crate)` 构造函数）、模块私有 `try_acquire_guard()`、`is_in_parallel()` 诊断 helper、`Drop` 实现
+  - 测试: `test_nested_select_falls_back_to_serial`, `test_guard_drop_releases_flag`
   - 前置: T1
   - 预计: 10 min
+
+- [ ] **T4.1**: 实现 `ParallelExecStrategy::new()` 校验构造器
+  - 文件: `src/dispatch.rs`
+  - 内容: 字段私有化、`new()` 拒绝 `Some(0)`、`auto()` infallible 默认、字段访问器
+  - 测试: `test_parallel_strategy_new_rejects_zero`, `test_parallel_strategy_new_accepts_none`
+  - 前置: T1
+  - 预计: 5 min
 
 ### Wave 4: 测试与验证
 
@@ -689,7 +830,7 @@ ExecPath::Parallel  ExecPath::Simd  ExecPath::Serial
   - 前置: T2, T3, T4
   - 预计: 10 min
 
-**总预计时间：** ~40 min。所有任务均在同一文件 `src/dispatch.rs` 内完成。
+**总预计时间：** ~45 min（v1.1.0 增加 T4.1）。所有任务均在同一文件 `src/dispatch.rs` 内完成。
 
 ---
 
@@ -710,42 +851,51 @@ ExecPath::Parallel  ExecPath::Simd  ExecPath::Serial
 
 | 测试函数                                          | 测试内容                                                       | 优先级 |
 | ------------------------------------------------- | -------------------------------------------------------------- | ------ |
-| `test_exec_path_serial_below_threshold`           | `len < threshold` 时返回 `Serial`                              | 高     |
-| `test_exec_path_parallel_above_threshold`         | 连续大输入启用 parallel feature 时返回 `Parallel`             | 高     |
-| `test_exec_path_simd_when_aligned`                | 中等输入 + 连续 + 对齐且启用 simd feature 时返回 `Simd`       | 高     |
-| `test_exec_path_serial_when_noncontiguous_below_doubled_threshold` | 非连续且 len < 2*threshold 时返回 `Serial`         | 高     |
-| `test_parallel_guard_blocks_nesting`              | 已处于并行区域时 `ParallelGuard::enter()` 返回 `Err(())`      | 高     |
-| `test_parallel_guard_releases_on_drop`            | Drop 后再次 `enter()` 成功                                     | 高     |
+| `test_exec_path_serial_below_threshold`           | `len < threshold` 时返回 `(Serial, None)`                      | 高     |
+| `test_exec_path_parallel_above_threshold`         | 连续大输入启用 parallel feature 时返回 `(Parallel, Some(_))`   | 高     |
+| `test_exec_path_simd_when_aligned`                | 中等输入 + 连续 + 对齐且启用 simd feature 时返回 `(Simd, None)`| 高     |
+| `test_exec_path_serial_when_noncontiguous_below_doubled_threshold` | 非连续且 len < 2*threshold 时返回 `(Serial, None)` | 高 |
+| `test_select_returns_guard_iff_parallel`          | 返回值不变量：`Some(guard)` 当且仅当 `ExecPath::Parallel`     | 高     |
+| `test_nested_select_falls_back_to_serial`         | 持有未 drop 的 guard 时再次 `select_exec_path()` 返回 Serial（非 Parallel）| 高 |
+| `test_guard_drop_releases_flag`                   | guard drop 后再次调用 `select_exec_path()` 可重新获得 Parallel + 新 guard | 高 |
 | `test_threshold_override_respected`               | `set_parallel_threshold()` 后 `select_exec_path()` 使用新阈值  | 高     |
+| `test_threshold_zero_disables_parallel`           | `set_parallel_threshold(0)` 后任意 len 都不返回 Parallel       | 高     |
+| `test_threshold_saturating_mul_no_overflow`       | `set_parallel_threshold(usize::MAX / 2 + 1)` 后非连续路径 saturating，永不返回 Parallel | 高 |
 | `test_reset_threshold_restores_default`           | `reset_parallel_threshold()` 恢复编译期默认值                  | 中     |
 | `test_no_parallel_feature_never_returns_parallel` | 未启用 `parallel` feature 时永不为 `Parallel`                  | 高     |
 | `test_no_simd_feature_never_returns_simd`         | 未启用 `simd` feature 时永不为 `Simd`                         | 高     |
-| `test_should_parallelize_matches_select`          | `should_parallelize()` 与 `select_exec_path()` 并行判断一致    | 中     |
-| `test_parallel_preferred_over_simd_for_large_input` | 同时满足并行和 SIMD 条件时返回 `Parallel`                  | 中     |
-| `test_deterministic_same_input_same_output`       | 相同输入多次调用返回相同结果                                   | 中     |
+| `test_should_parallelize_diagnostic_does_not_acquire_guard` | `should_parallelize() == true` 后 thread-local 仍为 false；可立即 `select_exec_path()` 拿到 guard | 高 |
+| `test_parallel_preferred_over_simd_for_large_input` | 同时满足并行和 SIMD 条件时返回 `(Parallel, Some(_))`         | 中     |
+| `test_deterministic_same_input_same_output`       | 固定 thread-local 状态时相同输入多次调用返回结构等价的结果（含 ExecPath，guard 不参与等价比较） | 中 |
+| `test_simd_rejected_when_noncontiguous`           | 非连续输入即便 `len >= SIMD_THRESHOLD` 也不返回 Simd          | 高     |
+| `test_simd_rejected_when_misaligned`              | 连续但非对齐时即便 `len >= SIMD_THRESHOLD` 也不返回 Simd      | 高     |
+| `test_parallel_strategy_new_rejects_zero`         | `ParallelExecStrategy::new(Some(0), _)` 与 `new(_, Some(0))` 返回 `InvalidArgument` | 高 |
+| `test_parallel_strategy_new_accepts_none`         | `ParallelExecStrategy::new(None, None)` 等价 `auto()`         | 中     |
 
 ### 8.3 边界测试场景
 
-| 场景                                        | 预期行为                                               |
-| ------------------------------------------- | ------------------------------------------------------ |
-| `len = 0`                                   | 返回 `ExecPath::Serial`                                |
-| `len = 1`                                   | 返回 `ExecPath::Serial`（远低于任何阈值）              |
-| `len = PARALLEL_THRESHOLD - 1`              | 返回 `Serial` 或 `Simd`（取决于 alignment）            |
-| `len = PARALLEL_THRESHOLD`（恰在阈值）      | 返回 `Parallel`（若连续且 feature 启用）               |
-| 非连续 `len = 2 * PARALLEL_THRESHOLD - 1`   | 不满足翻倍阈值，返回 `Serial`                          |
-| 非连续 `len = 2 * PARALLEL_THRESHOLD`       | 满足翻倍阈值，可能返回 `Parallel`                      |
-| `ParallelGuard` 在 panic unwind 中          | `Drop` 仍执行，flag 被正确清除                         |
-| 阈值被设为 `0`                              | `select_exec_path()` 永不为 `Parallel`                 |
-| 阈值被设为 `usize::MAX`                     | `select_exec_path()` 永不为 `Parallel`                 |
+| 场景                                        | 预期行为                                                   |
+| ------------------------------------------- | ---------------------------------------------------------- |
+| `len = 0`                                   | 返回 `(Serial, None)`                                      |
+| `len = 1`                                   | 返回 `(Serial, None)`（远低于任何阈值）                    |
+| `len = PARALLEL_THRESHOLD - 1`              | 返回 `(Serial, None)` 或 `(Simd, None)`（取决于 alignment）|
+| `len = PARALLEL_THRESHOLD`（恰在阈值）      | 返回 `(Parallel, Some(_))`（若连续且 feature 启用）        |
+| 非连续 `len = 2 * PARALLEL_THRESHOLD - 1`   | 不满足翻倍阈值，返回 `(Serial, None)`                       |
+| 非连续 `len = 2 * PARALLEL_THRESHOLD`       | 满足翻倍阈值，可能返回 `(Parallel, Some(_))`                |
+| `ParallelGuard` 在 panic unwind 中          | `Drop` 仍执行，flag 被正确清除；后续 select 可重新获得 guard |
+| 阈值被设为 `0`                              | `select_exec_path()` 永不返回 `Parallel`（显式禁用 sentinel） |
+| 阈值被设为 `usize::MAX`                     | 连续路径下需 `len == usize::MAX` 才进 Parallel；非连续路径 `saturating_mul(2) = usize::MAX`，永不进 Parallel |
+| 阈值被设为 `usize::MAX / 2 + 1`             | 连续路径下需要 `len >= usize::MAX/2+1`；非连续路径饱和到 `usize::MAX`，永不进 Parallel（验证 saturating_mul） |
 
 ### 8.4 属性测试不变量
 
 | 不变量                                                              | 测试方法                               |
 | ------------------------------------------------------------------- | -------------------------------------- |
-| Idempotent：相同参数多次调用返回相同结果                            | 循环调用验证                           |
-| Monotonic in `len`：若 `len1 <= len2`，则 `select_exec_path(len1, ...)` 的"加速等级"不超过 `select_exec_path(len2, ...)`（Serial < Simd < Parallel） | 对递增 len 序列验证                    |
+| Idempotent（无 guard 持有时）：相同参数多次调用返回相同 ExecPath（guard 由每次调用重新获取并立即 drop） | 循环调用 + 立即 drop 验证 |
+| Monotonic in `len`：若 `len1 <= len2`，则 `select_exec_path(len1, ...).0` 的"加速等级"不超过 `select_exec_path(len2, ...).0`（Serial < Simd < Parallel） | 对递增 len 序列验证 |
 | Feature gate 不变：禁用 feature 时对应路径永不返回                 | 编译期 `#[cfg(not(feature = "..."))]` 测试 + 运行时断言 |
-| Guard 不变：`ParallelGuard` 存活期间 `ParallelGuard::enter()` 始终失败 | 嵌套 `enter()` 测试                   |
+| Guard 不变：`ParallelGuard` 存活期间任何 `select_exec_path()` 调用都不返回 `(Parallel, Some(_))` | 嵌套 select 测试 |
+| 返回值不变量：`select_exec_path()` 第二元素为 `Some(_)` 当且仅当第一元素为 `ExecPath::Parallel` | 全场景断言 |
 
 ### 8.5 集成测试
 
@@ -771,8 +921,8 @@ ExecPath::Parallel  ExecPath::Simd  ExecPath::Serial
 | 场景                                           | 测试方式                     |
 | ---------------------------------------------- | ---------------------------- |
 | `ExecPath` 无 `pub` 导出                       | 编译期可见性检查             |
-| `ParallelGuard` 不可外部构造（无 `pub` 构造器） | 编译期可见性检查             |
-| `ParallelExecStrategy` 无 `pub` 导出            | 编译期可见性检查             |
+| `ParallelGuard` 不可外部构造（无 `pub`/`pub(crate)` 构造器；唯一来源为 `select_exec_path()` 返回值） | 编译期可见性检查 + 反例编译失败测试 |
+| `ParallelExecStrategy` 无 `pub` 导出，字段私有  | 编译期可见性检查             |
 | dispatch 模块不依赖 `pulp` 或 `rayon`           | `cargo tree --no-dev-deps` 验证 |
 
 ---
@@ -812,11 +962,24 @@ math / matrix / reduction 调用方
 
 | 交互项           | dispatch 职责                                   | parallel 职责                                  |
 | ---------------- | ----------------------------------------------- | ---------------------------------------------- |
-| 路径裁决         | dispatch 决定是否进入并行路径                   | parallel 被选中后纯粹执行，不自行判断路径       |
+| 路径裁决         | dispatch 决定是否进入并行路径并获取 guard         | parallel 被选中后纯粹执行，不自行判断路径，不再调用 `enter()` |
 | 阈值             | dispatch 持有权威阈值并管理覆写                 | parallel 通过 `ParallelExecStrategy` 接收参数   |
-| 嵌套防护         | dispatch 提供 `ParallelGuard` 机制              | parallel 在入口处调用 `ParallelGuard::enter()`  |
-| `ParallelExecStrategy` | dispatch 定义该结构体                    | parallel 消费 chunk_size / max_workers 字段    |
+| 嵌套防护         | dispatch 在 `select_exec_path()` 内原子获取 guard | parallel 接收 guard 并持有到并行区结束         |
+| `ParallelExecStrategy` | dispatch 定义该结构体并提供构造器校验   | parallel 消费 chunk_size / max_workers 字段    |
 | 串行回退         | dispatch 选择 `ExecPath::Serial` 时不进入 parallel | parallel 自身不包含串行回退代码               |
+
+**guard 传递契约（v1.1.0）：** parallel 后端函数（如 `par_map`、`par_sum`）的内部入口不再调用 `ParallelGuard::enter()`——该函数已在 dispatch 内部消失，由 `try_acquire_guard()` 模块私有 helper 取代。parallel 后端的入口签名（概念上）应当接受 guard 作为参数：
+
+```rust,ignore
+// Conceptual signature inside parallel/ backend
+pub(crate) fn par_map_internal<...>(
+    /* ...inputs..., */
+    strategy: ParallelExecStrategy,
+    _guard: ParallelGuard, // takes ownership; dropped at function exit
+) -> Result<...>;
+```
+
+调用方持有 `(ExecPath::Parallel, Some(guard))` 时通过 `match` 把 guard 转交给 parallel 后端入口；parallel 后端拥有 guard 直到工作完成，guard 在函数退出（含 panic unwind）时 `Drop` 释放 thread-local flag。
 
 参见 `09-parallel.md` §6.1（路径选择）、决策 4（parallel 不包含串行回退）、决策 6（执行路径裁决由 dispatch 统一收口）。
 
@@ -838,11 +1001,11 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 
 | 主题              | 说明                                                                                                        |
 | ----------------- | ----------------------------------------------------------------------------------------------------------- |
-| Recoverable error | dispatch 自身**不产生**可恢复错误。所有条件不满足时静默回退 `Serial`。                                      |
-| Panic             | dispatch 在正常操作中永不 panic。唯一可能的 panic 场景是内部不变量违反（如 `AtomicUsize` 存储逻辑错误），属于实现 bug。 |
-| 路径一致性        | `select_exec_path()` 是确定性函数：相同输入 + 相同全局状态 → 相同 `ExecPath`。                              |
+| Recoverable error | dispatch 大部分 API **不产生**可恢复错误。所有路径裁决条件不满足时静默回退 `Serial`。`ParallelExecStrategy::new()` 是唯一例外：构造非法策略时返回 `XenonError::InvalidArgument`（参数不符合 §5.3 字段不变量）。 |
+| Panic             | dispatch 在正常操作中永不 panic。唯一可能的 panic 场景是内部不变量违反（如 `AtomicUsize` 存储逻辑错误），属于实现 bug。`saturating_mul(2)` 显式避免了非连续阈值翻倍的 wrap-around 风险。 |
+| 路径一致性        | `select_exec_path()` 在固定的输入集合（含 thread-local 状态）下确定性。详见 §6.1 与 §12.3。                |
 | 语义透明          | 调用方从 dispatch 获得的只是路径推荐；无论走哪条路径，公开 API 的 shape、错误类别和数值语义必须一致。       |
-| Guard 语义        | `ParallelGuard::enter()` 返回 `Err(())` 不是可恢复错误——它是路径选择的信号，调用方必须回退 `Serial`。       |
+| Guard 语义        | `ParallelGuard` 由 `select_exec_path()` 在选中并行路径时原子产生；调用方收到 `(Parallel, None)` 是不可能的，"回退 Serial"通过 `(Serial, None)` 显式表达。 |
 
 ---
 
@@ -903,6 +1066,24 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 | 替代方案 | 拆分为 `dispatch/` 子目录（如 `path.rs` + `guard.rs` + `threshold.rs`）—— 放弃，对当前规模过度工程化。 |
 | 触发条件 | 若未来 dispatch 膨胀到 >500 行或引入新的独立关注点（如更细粒度的 per-op 阈值配置），可重新评估。  |
 
+### 决策 7：select-and-enter 原子绑定（v1.1.0 修订）
+
+| 属性     | 值                                                                                                                       |
+| -------- | ------------------------------------------------------------------------------------------------------------------------ |
+| 决策     | `select_exec_path()` 返回 `(ExecPath, Option<ParallelGuard>)`；当且仅当首元素为 `ExecPath::Parallel` 时第二元素为 `Some(_)`。`ParallelGuard` 没有任何公开/`pub(crate)` 构造函数；唯一产生途径是 dispatch 模块内部的 `try_acquire_guard()`。 |
+| 理由     | v1.0.0 设计中 `select_exec_path()` 只返回 `ExecPath`，调用方再单独 `enter()`。这造成两个问题：(a) C6 矛盾——三处文档（§5.4 / §6.1 / §6.4）对"select 是否 consume guard"表述不一致；(b) TOCTOU 窗口——select 返回 Parallel 与 backend 调用 enter() 之间，另一并行 API 可能抢先进入 parallel region，使 backend 实际执行嵌套并行。把 select 与 acquire 绑定为单次 thread-local 临界区根本性消除这两个问题。 |
+| 替代方案 | 保留独立 `enter()` 并通过文档约束调用方"必须立刻 enter"——放弃，约束无法在类型系统层面强制，且不消除 TOCTOU。 |
+| 替代方案 | `select_exec_path()` 返回 `Result<ParallelGuard, ExecPath>` 风格——放弃，过度工程化且让 Serial/SIMD 路径退化为"错误"，语义反直觉。 |
+| 来源     | **用户决策 B8.a**（"select_exec_path() 返回 (ExecPath, Option<ParallelGuard>)"）。                                       |
+
+### 决策 8：`set_parallel_threshold(0)` 为显式禁用 sentinel
+
+| 属性     | 值                                                                                                              |
+| -------- | --------------------------------------------------------------------------------------------------------------- |
+| 决策     | `set_parallel_threshold(0)` 唯一含义为"禁用并行路径"，永不解释为"对所有 len 都启用"。                              |
+| 理由     | C7 指出 v1.0.0 算法 `len >= effective_parallel_threshold` 在 threshold == 0 时会让所有 len（含 0）满足并行条件，与 §5.6 文字"effectively disables the parallel path"直接矛盾。把 0 作为显式 sentinel 一次性闭合该语义，且对测试/基准最有用——禁用而非穷尽启用。 |
+| 替代方案 | 用 `Option<usize>` 表达启用/禁用——放弃，与 `AtomicUsize` 存储不兼容；引入 `usize::MAX` 当作 disable 又无法与"巨大但非禁用"区分。 |
+
 ---
 
 ## 12. 性能考量
@@ -927,11 +1108,11 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 | 两者均关闭                        | `select_exec_path()` 被优化为立即返回 `ExecPath::Serial`                    |
 | 阈值常量传播                      | 编译期常量在 release build 中被内联为立即数                                 |
 
-### 12.3 缓存效应
+### 12.3 缓存效应与确定性表述
 
 - 阈值存储在 `static AtomicUsize` 中，不与其他频繁写入的变量共享 cache line，无 false sharing 风险。
 - `IN_PARALLEL` thread-local 变量每个线程一份，无跨线程竞争。
-- `select_exec_path()` 是纯函数（除读取全局阈值），无副作用；其结果可被调用方安全缓存，但通常不需要——每操作调用一次的开销已经极低。
+- `select_exec_path()` **不是**严格意义上的纯函数。它读取两类隐式状态（全局阈值 `AtomicUsize` 与 thread-local `IN_PARALLEL` flag），并且在选中并行路径时**修改** thread-local flag。它在以下意义上确定：固定 `(len, is_contiguous, alignment_ok, threshold_state, in_parallel_state)` 时返回值确定。其结果**不可**跨调用缓存——`IN_PARALLEL` 状态会在 guard 生命周期内变化，且即便单线程内不同时刻调用 dispatch，全局阈值也可能被覆写。每操作调用一次 dispatch 的开销已经极低，无需缓存。
 
 ---
 
@@ -954,6 +1135,7 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 | 版本  | 日期       | 说明                                                                                   |
 | ----- | ---------- | -------------------------------------------------------------------------------------- |
 | 1.0.0 | 2026-05-02 | 初始版本：依据用户决策 B（三路 ExecPath）+ 决策 X（ISA-agnostic），定义 dispatch 的完整设计 |
+| 1.1.0 | 2026-05-02 | （内部 API 修订，不影响下游用户）依据用户决策 B8.a + 评审 C6/C7/C8/溢出风险修复：(1) `select_exec_path()` 返回 `(ExecPath, Option<ParallelGuard>)`，select 与 acquire guard 原子绑定；(2) 移除 `ParallelGuard::enter()` 公开入口，guard 仅由 dispatch 内部 `try_acquire_guard()` 产生；(3) `set_parallel_threshold(0)` 显式作为禁用 sentinel；(4) 非连续阈值翻倍改为 `saturating_mul(2)` 防溢出；(5) SIMD/Parallel 非连续策略表述统一（SIMD 直接拒绝、Parallel 翻倍阈值）；(6) `ParallelExecStrategy` 字段私有 + 构造器 `new()` 校验；(7) `should_parallelize()` 语义澄清为诊断查询，不获取 guard；(8) §12.3 修正"纯函数"表述（实际读 thread-local + atomic）；(9) 新增决策 7 / 决策 8。 |
 
 ---
 
