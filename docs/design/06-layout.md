@@ -135,13 +135,13 @@ Xenon 不需要 `C_CONTIGUOUS` 标志位（不支持 C-order）。1D 和 0D 数�
 pub struct LayoutFlags(u8);
 
 impl LayoutFlags {
-    /// Empty flags
+    /// Empty flags.
     pub const EMPTY: Self = Self(0b0000_0000);
 
-    /// F-order contiguity flag
+    /// F-order contiguity flag.
     pub const F_CONTIGUOUS: Self = Self(0b0000_0001);    // 0x01
 
-    /// SIMD alignment flag (64-byte)
+    /// SIMD alignment flag (64-byte).
     pub const ALIGNED: Self = Self(0b0000_0100);         // 0x04
 
     /// Zero stride flag (broadcast dimension only).
@@ -529,6 +529,13 @@ Indices [0, 0], [0, 1], [0, 2], and [0, 3] access the same physical element
 /// at tensor construction time. The result is cached in TensorBase.flags
 /// for O(1) queries thereafter.
 ///
+/// # Preconditions
+///
+/// Callers must invoke this function only after the construction or
+/// transformation path has already validated that `product(shape)` is
+/// representable. This helper does not return a recoverable error for shape
+/// product overflow; fallible size validation belongs to the caller.
+///
 /// # Arguments
 ///
 /// * `shape` - Dimension lengths
@@ -706,7 +713,7 @@ Layout 模块本身**不执行任何 `unsafe` 操作**。`compute_layout_flags()
 
 - [ ] **T5**: 实现步长特性检测
   - 文件: `src/layout/strides.rs`
-  - 内容: `has_zero_stride<D: Dimension>(strides: &Strides<D>) -> bool`
+  - 内容: `has_zero_stride<D: Dimension>(strides: &Strides<D>) -> bool` 仅作为 raw zero stride detector；不得直接作为 `HAS_ZERO_STRIDE` flag 的唯一判据，flag 计算必须同时检查 `product(shape) > 0`
   - 测试: `test_zero_stride_detect`
   - 前置: T1
   - 预计: 10 min
@@ -776,7 +783,7 @@ Layout 模块本身**不执行任何 `unsafe` 操作**。`compute_layout_flags()
 | ------------------------------------------ | ---------------------------------------------------------------------- |
 | F-步长乘积 == 总元素数                     | `product(shape[i]) == total`                                           |
 | 空数组/标量始终 F-连续                     | 随机 0D/空 shape                                                       |
-| `compute_f_strides` 成功后 `is_f_contiguous` 返回 true | 随机 shape                                                 |
+| computed F strides are recognized as F-contiguous | 随机 shape |
 | `Owned::from_vec(v)` 走规范对齐分配路径    | 验证返回存储/布局的对齐标志与指针对齐状态一致，且满足 64-byte 对齐契约 |
 
 ### 8.5 集成测试
@@ -965,6 +972,13 @@ Upper layers create or transform tensor metadata
 | 1.2.5 | 2026-04-16 |
 | 1.2.6 | 2026-04-16 |
 | 1.3.0 | 2026-05-02 |
+| 1.3.1 | 2026-05-03 |
+
+### 1.3.1
+
+- Clarified that `compute_layout_flags()` requires caller-side shape-product validation before use.
+- Marked `has_zero_stride()` in the implementation tasks as a raw detector, not the sole `HAS_ZERO_STRIDE` flag predicate.
+- Polished Rustdoc punctuation and shortened the F-stride property-test wording.
 
 ---
 

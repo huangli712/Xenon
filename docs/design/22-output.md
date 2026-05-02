@@ -25,7 +25,7 @@
 | 原则       | 体现                                                     |
 | ---------- | -------------------------------------------------------- |
 | NumPy 对齐 | 输出格式与 NumPy `np.array_repr` 尽可能一致              |
-| 可配置截断 | 阈值/边缘元素数通过常量或 `FormatConfig` 配置            |
+| 可配置截断 | 阈值/边缘元素数通过 `FormatConfig` 配置，默认值由常量实现 |
 | 平台一致性 | `Display` 和 `Debug` 在当前 `std` 环境下保持一致格式语义 |
 | 零拷贝     | 格式化过程不修改原始数据                                 |
 
@@ -160,7 +160,7 @@ impl Default for FormatConfig {
 }
 ```
 
-`precision` 和 `line_width` 为受控扩展，超出 `需求说明书 §24` 的最小必要集。纳入稳定 API 面须遵守 SemVer。
+`precision` 和 `line_width` 为受控扩展，超出 `需求说明书 §24` 的最小必要集。纳入稳定 API 面须遵守 SemVer。`edge_items = 0` 在配置归一化时按 `1` 处理，以避免截断预览只剩省略号。
 
 ### 5.2 TensorDisplay 包装结构
 
@@ -362,7 +362,7 @@ Tensor(shape=[3, 4], strides=[4, 1], dtype=f64, layout=non-contiguous)
  [100, 200, 300, ..., 9800, 9900, 10000]] ... (9964 elements omitted)  shape=[100, 100]
 ```
 
-**Complex<f64> 类型**:
+**Complex<f64> 类型（使用 `display_with(FormatConfig { precision: Some(1), ..Default::default() })`）**:
 
 ```
 [[1.0+2.0j, 5.0+6.0j],
@@ -383,11 +383,11 @@ Tensor0(42)
 ### 5.6 截断规则
 
 1. 截断决策仅由 `threshold` 决定：当 `tensor.len() <= threshold` 时，输出全部逻辑元素；当 `tensor.len() > threshold` 时，进入截断模式。
-2. 截断模式下，每一层轴只使用一个局部规则：
-   - 若当前轴长度 `axis_len <= 2 * edge_items`，该轴完整显示；
-   - 若 `axis_len > 2 * edge_items`，该轴仅显示前 `edge_items` 项、一个 `...` 标记、以及后 `edge_items` 项。
+2. 截断模式下，每一层轴只使用一个局部规则；实现先计算 `effective_edge_items = max(edge_items, 1)`，因此 `edge_items = 0` 按 `1` 处理：
+   - 若当前轴长度 `axis_len <= 2 * effective_edge_items`，该轴完整显示；
+   - 若 `axis_len > 2 * effective_edge_items`，该轴仅显示前 `effective_edge_items` 项、一个 `...` 标记、以及后 `effective_edge_items` 项。
 3. `visible_elements` 定义为最终真实打印出的逻辑元素数量，不包含任何 `...` 标记、逗号、括号、换行或 `shape=[...]` 后缀。
-4. `omitted = tensor.len() - visible_elements`。只有在 `tensor.len() > threshold` 且至少一个轴满足 `axis_len > 2 * edge_items` 时，`omitted` 才会大于 `0`。
+4. `omitted = tensor.len() - visible_elements`。只有在 `tensor.len() > threshold` 且至少一个轴满足 `axis_len > 2 * effective_edge_items` 时，`omitted` 才会大于 `0`。
 5. `Display` 与 `Debug` 共享完全相同的元素选点规则与 `visible_elements` / `omitted` 计算规则；差异仅在元信息呈现：
    - `Display` 只输出数据文本；若 `omitted > 0`，则在最外层右括号后追加 ` ... (N elements omitted)  shape=[...]`；
    - `Debug` 先输出 `shape=` / `strides=` / `dtype=` / `layout=` 头部；若 `omitted > 0`，则只在数据段末尾追加 ` ... (N elements omitted)`，不重复追加 `shape=[...]`。
@@ -412,10 +412,11 @@ render_axis(tensor, config, axis, prefix, truncated):
         return render_scalar(prefix), 1
 
     axis_len = tensor.shape()[axis]
-    if !truncated || axis_len <= 2 * config.edge_items:
+    edge_items = max(config.edge_items, 1)
+    if !truncated || axis_len <= 2 * edge_items:
         entries = [0, 1, ..., axis_len - 1]
     else:
-        k = config.edge_items
+        k = edge_items
         entries = [0, 1, ..., k - 1, Ellipsis, axis_len - k, ..., axis_len - 1]
 
     rendered = "["
@@ -438,7 +439,7 @@ render_axis(tensor, config, axis, prefix, truncated):
     return rendered, visible
 ```
 
-在该规则下，若 rank 为 `n` 且截断模式下第 `i` 个轴实际显示 `shown_i` 个索引位置（`shown_i = axis_len_i` 或 `2 * edge_items`），则：`visible_elements = Π shown_i`（对所有轴求乘积）。因此 `shape=[100, 100]`、`edge_items=3`、`threshold=1000` 时：
+在该规则下，若 rank 为 `n` 且截断模式下第 `i` 个轴实际显示 `shown_i` 个索引位置（`shown_i = axis_len_i` 或 `2 * effective_edge_items`），则：`visible_elements = Π shown_i`（对所有轴求乘积）。因此 `shape=[100, 100]`、`edge_items=3`、`threshold=1000` 时：
 
 - 每个轴都显示 `6` 个索引位置；
 - `visible_elements = 6 × 6 = 36`；
@@ -448,7 +449,7 @@ render_axis(tensor, config, axis, prefix, truncated):
 
 | 参数         | 默认值 | 说明                           |
 | ------------ | ------ | ------------------------------ |
-| `edge_items` | 3      | 每层轴在截断时保留的头/尾项数  |
+| `edge_items` | 3      | 每层轴在截断时保留的头/尾项数；配置为 0 时按 1 处理 |
 | `threshold`  | 1000   | 元素总数严格大于该值时触发截断 |
 | `precision`  | `None` | 浮点精度（None = 类型默认）    |
 | `line_width` | 80     | 每行最大字符数（用于换行）     |
@@ -624,7 +625,7 @@ Debug 输出的 `dtype=` 字段通过 `Element::ELEMENT_TYPE` 编译期常量分
 | 测试分类 | 位置                     | 说明                                                    |
 | -------- | ------------------------ | ------------------------------------------------------- |
 | 单元测试 | `#[cfg(test)] mod tests` | 验证 `Display`、`Debug` 与截断格式化语义                |
-| 集成测试 | `tests/`                 | 验证 `output` 与 `tensor`、`iter`、`element` 的协同路径 |
+| 集成测试 | `tests/`                 | 验证 `output` 与 `tensor` 元数据、逻辑索引读取、`element` 格式化路径的协同 |
 | 边界测试 | 同模块测试中标注         | 覆盖空数组、零维张量、阈值截断和 NaN/Inf 输出           |
 | 属性测试 | `tests/property/`        | 验证截断阈值、逻辑顺序与格式配置不变量                  |
 
@@ -715,7 +716,7 @@ User calls format!("{}", tensor) / format!("{:?}", tensor)
     ├── pretty recursively reads the required logical elements
     ├── large arrays are truncated according to threshold and edge-items rules
     ├── truncated output appends omitted-element count and full shape metadata
-    └── the module writes directly into Formatter without heap allocation
+    └── the module writes directly into Formatter without constructing a full output string
 ```
 
 ---
@@ -768,7 +769,7 @@ User calls format!("{}", tensor) / format!("{:?}", tensor)
 | 格式化开销 | 非截断输出 O(n)                                          |
 | 大数组截断 | 截断输出 O(visible_elements + overhead)                  |
 | 零拷贝     | 格式化过程不修改原始数据                                 |
-| 临时分配   | 格式化过程尽量避免中间字符串构造，直接写入 `Formatter`；动态维度可能需要少量索引缓冲，但不产生格式化结果字符串本身的堆分配 |
+| 临时分配   | 格式化过程尽量避免中间字符串构造，直接写入 `Formatter`；动态维度可能需要少量索引缓冲，但不构造完整格式化结果字符串 |
 
 ---
 
@@ -826,6 +827,7 @@ User calls format!("{}", tensor) / format!("{:?}", tensor)
 - §5.3 `Display` 实现的 trait bound `A: Display + Element` 不变（`Display` 路径本来就没有 `'static` 要求）。
 - §5.5 NumPy 风格输出示例与 §5.6 截断规则均不变。
 - 所有公开 API（`fmt`、`display_with`、`FormatConfig`）签名与语义不变。
+- §5.1 / §5.6 定义 `edge_items = 0` 归一化为 1；§5.5 标注 Complex 示例使用 `precision: Some(1)`；§1.2、§8.1、§9.2、§12 清理配置、逻辑读取与临时分配措辞。
 
 ---
 

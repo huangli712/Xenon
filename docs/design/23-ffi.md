@@ -157,6 +157,31 @@ use crate::error::{FfiErrorCategory, FfiBackend};
 ///   per `26-error.md` v3.0.0 §5.1; the chain is exposed to callers via
 ///   `std::error::Error::source()` (see `26-error.md` §5.1 `impl Error`).
 ///
+/// Example source-chain construction when an FFI boundary wraps a lower-level
+/// Workspace failure:
+///
+/// ```ignore
+/// let inner = XenonError::Workspace {
+///     operation: Cow::Borrowed("Workspace::borrow"),
+///     category: WorkspaceErrorCategory::BorrowConflict {
+///         requested: WorkspaceBorrowKind::Shared,
+///         current: WorkspaceBorrowState::Exclusive,
+///     },
+///     cause: None,
+/// };
+/// let outer = XenonError::Ffi {
+///     operation: Cow::Borrowed("ffi::export_workspace_buffer"),
+///     category: FfiErrorCategory::AbiMismatch {
+///         detail: AbiMismatchKind::CapacityMismatch { expected: 1024, actual: 512 },
+///     },
+///     backend: FfiBackend::RawParts,
+///     cause: Some(Box::new(inner)),
+/// };
+/// ```
+///
+/// Leaf FFI errors normally use `cause: None`; wrapper errors use
+/// `cause: Some(Box::new(inner))`.
+///
 /// FFI errors must NOT use free-text `precondition` / `actual` fields;
 /// the structured payload inside `FfiErrorCategory` already carries the
 /// diagnostic context required by `requirements specification §27`.
@@ -1286,7 +1311,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 
 **Blocker 修复**：
 
-- §5.1 辅助类型重写：`XenonError::Ffi` 字段从错误的 `{operation, category, backend, precondition, actual}` 改为正确的 `{operation, category, backend, cause}`；明示 `category: FfiErrorCategory` 是封闭枚举的结构化负载，无 `cause: Option<Box<XenonError>>`。
+- §5.1 辅助类型重写：`XenonError::Ffi` 字段从错误的 `{operation, category, backend, precondition, actual}` 改为正确的 `{operation, category, backend, cause}`；明示 `category: FfiErrorCategory` 是封闭枚举的结构化负载；包含 `cause: Option<Box<XenonError>>`，叶子错误通常为 `None`，包装底层错误时使用 `Some(Box::new(inner))`。
 - §5.11 `BlasInfo::as_blas_int` 重写：`FfiErrorCategory::IntegerOverflow` 从无负载的占位符改为 `IntegerOverflow { value, target_width_bits }` 结构化负载，`target_width_bits` 由 `core::mem::size_of::<I>() * 8` 计算；`backend: "blas/lapack"` 改为 `FfiBackend::Blas`；移除 `precondition` / `actual` 字段；`operation` 改为 `Cow::Borrowed("ffi::blas_info::as_blas_int")`。
 - §5.11 `blas_info()` 重写：`FfiErrorCategory::InvalidRank` 改为 `InvalidRank { expected: 2, actual: ndim }`；`FfiErrorCategory::BlasIncompatibleLayout` 改为 `BlasIncompatibleLayout { shape, strides }`；`backend: "blas"` 改为 `FfiBackend::Blas`；移除 `precondition` / `actual`。
 - §5.12 `lda()` 重写：同 `blas_info()` 的修复。
@@ -1303,6 +1328,12 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 
 - 与 `07-tensor.md` v2.0.0 §6.2 / §5.7 的 `InvalidLayoutReason` / `StorageKindTag` 字段命名对齐。
 - 与 `26-error.md` v3.0.0 §5.1 的 `FfiErrorCategory` 八子变体（`NullPointer` / `AlignmentMismatch` / `InvalidRank` / `BlasIncompatibleLayout` / `IntegerOverflow` / `AbiMismatch` / `OverlapRejected` / `ForeignAllocatorMismatch`）和 `FfiBackend` 两子变体（`RawParts` / `Blas`）保持双向引用一致。
+
+
+### v2.0.1 (2026-05-03) — Medium/Low documentation follow-up
+
+- Added a minimal `cause: Some(Box::new(inner))` source-chain example for `XenonError::Ffi` wrapping a lower-level workspace error.
+- Clarified version-history wording: `cause: Option<Box<XenonError>>` is part of the FFI error shape; leaf errors usually use `None`, wrappers use `Some(Box::new(inner))`.
 
 ---
 

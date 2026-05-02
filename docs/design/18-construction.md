@@ -229,10 +229,10 @@ where
     ///
     /// # Examples
     /// ```ignore
-    /// let e = Tensor::<f64, Ix2>::eye(3).unwrap();
-    /// assert_eq!(*e.get(&[0, 0]).unwrap(), 1.0);
-    /// assert_eq!(*e.get(&[0, 1]).unwrap(), 0.0);
-    /// assert_eq!(*e.get(&[1, 1]).unwrap(), 1.0);
+    /// let e = Tensor::<f64, Ix2>::eye(3)?;
+    /// assert_eq!(*e.get(&[0, 0]).expect("diagonal index is in bounds"), 1.0);
+    /// assert_eq!(*e.get(&[0, 1]).expect("off-diagonal index is in bounds"), 0.0);
+    /// assert_eq!(*e.get(&[1, 1]).expect("diagonal index is in bounds"), 1.0);
     /// ```
     pub fn eye(n: usize) -> Result<Self, XenonError> {
         let mut result = Self::zeros([n, n])?;
@@ -269,9 +269,10 @@ impl EyeElement for Complex<f64> {}
 > **与 `07-tensor.md` 的关系：** `from_shape_vec` 的公开签名作为 `TensorBase<Owned<A>, D>` 的固有方法列于 `07-tensor.md` §5.5；本节是其权威实现设计，实际代码位于 `src/construct/from.rs`。`07-tensor.md` §9 中的数据流图仅用于展示 `tensor` 与 `layout` 模块的交互方式，以本节为准。
 
 ```rust,ignore
+# use std::borrow::Cow;
 # use crate::dimension::{Dimension, IntoDimension, Ix1};
 # use crate::element::Element;
-# use crate::error::XenonError;
+# use crate::error::{InvalidShapeKind, XenonError};
 # use crate::layout;
 # use crate::storage::Owned;
 # use crate::tensor::{Tensor, TensorBase};
@@ -455,7 +456,7 @@ where
     /// # Examples
     /// ```
     /// let t = Tensor::<f64, Ix0>::from_scalar(3.14)?;
-    /// assert_eq!(*t.get(&[]).unwrap(), 3.14);
+    /// assert_eq!(*t.get(&[]).expect("zero-dimensional index is valid"), 3.14);
     /// ```
     pub fn from_scalar(scalar: A) -> Result<Self, XenonError> {
         let storage = Owned::from_vec_aligned(vec![scalar])?;
@@ -477,8 +478,9 @@ where
 ### 5.5 Good / Bad 对比
 
 ```rust,ignore
+# use std::borrow::Cow;
 # use crate::dimension::Ix2;
-# use crate::error::XenonError;
+# use crate::error::{InvalidShapeKind, XenonError};
 # use crate::tensor::Tensor;
 // Good - use Result to handle potential shape mismatch
 fn create_matrix(data: Vec<f64>) -> Result<Tensor<f64, Ix2>, XenonError> {
@@ -512,8 +514,8 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 
 | 构造方法           | 分配策略                                                  | 初始化                                         |
 | ------------------ | --------------------------------------------------------- | ---------------------------------------------- |
-| `zeros`            | 对齐分配 + 零初始化                                       | `ptr::write_bytes(0)`                          |
-| `ones`             | 对齐分配 + 批量填充                                       | `ptr::write(A::one())`                         |
+| `zeros`            | 委托 `<Owned<A> as StorageOwned>::from_elem(len, A::zero())` | 具体初始化策略由 storage 层决定                |
+| `ones`             | 委托 `<Owned<A> as StorageOwned>::from_elem(len, A::one())`  | 具体填充策略由 storage 层决定                  |
 | `from_shape_vec`   | 走共享 owned 构造路径；可按实现需要复用或重打包输入缓冲区 | 用户提供数据                                   |
 | `from_shape_slice` | 先物化 owned 缓冲区，再委托共享 owned 构造路径            | 至少一次切片拷贝；后续是否再搬运取决于内部实现 |
 | `from_scalar`      | 对齐分配（1 元素）                                        | 单元素写入                                     |
@@ -743,8 +745,8 @@ User calls zeros / from_shape_vec / eye
 
 | 场景             | 优化方式                 | 预期性能                           |
 | ---------------- | ------------------------ | ---------------------------------- |
-| `zeros` 大数组   | `ptr::write_bytes(0)`    | ~10 GB/s（memset 速度）            |
-| `ones` 大数组    | `ptr::write(value)` 循环 | ~5 GB/s                            |
+| `zeros` 大数组   | storage 层可选择 memset 等零值优化 | 可接近平台内存带宽，具体取决于后端与硬件 |
+| `ones` 大数组    | storage 层逐元素或批量填充         | 受元素类型、后端与硬件影响             |
 | `from_shape_vec` | 共享 owned 构造路径      | O(n)                               |
 | `eye` 大矩阵     | 先零后对角               | n 次 `write` + n² 次 `write_bytes` |
 
@@ -793,6 +795,7 @@ User calls zeros / from_shape_vec / eye
 - §6.3 `zeros` 安全性论证补充：明确实现走 `StorageOwned::from_elem` 委托，并把"全零字节"措辞限定为对零值位模式的描述而非分配策略承诺。
 - §10 错误处理表：列出 `InvalidShape` 在本模块的 `kind` 取值（`ProductOverflow` / `ElementCountMismatch`）与 `operation` / `offending_dim` 字段约定；明确 `compute_f_strides` 的溢出错误以 `InvalidLayout` 形式直接传播。
 - §4.1 / §4.2 依赖图 / 类型级依赖：把 `from_vec_aligned` 调整为 `Owned::from_vec_aligned`（inherent 方法）+ `StorageOwned::from_elem`（trait 方法）双入口，与 §5 实现保持一致。
+- §6.1 初始化策略表同步为 `StorageOwned::from_elem(len, A::zero()/A::one())` 委托表述；示例去除 `.unwrap()`；补齐错误示例 imports；性能表删除无来源的固定吞吐数字。
 
 ---
 

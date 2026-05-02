@@ -164,8 +164,11 @@ pub struct AxisIter<'a, A, D: Dimension> {
 /// axis stride and current logical position, then yields exactly one mutable view
 /// for that disjoint slice. Successive positions differ by one axis-step, so the
 /// produced `&mut` views cover non-overlapping logical regions along the iterated
-/// axis. The iterator advances monotonically and never revisits an earlier offset,
-/// which prevents mutable aliasing between yielded items.
+/// axis. Zero-length subviews expose no writable elements, so even when their
+/// metadata denotes an empty logical slice, they cannot create overlapping
+/// mutable element access. The iterator advances monotonically and never
+/// revisits an earlier offset, which prevents mutable aliasing between yielded
+/// items.
 pub struct AxisIterMut<'a, A, D: Dimension> {
     // Internal fields: iterator state for validated mutable axis traversal.
 }
@@ -310,7 +313,8 @@ for i in 0..tensor.shape()[0] {
 
 // Bad - ignoring the recoverable error path for invalid axis iteration
 let scalar = Tensor::<f64, IxDyn>::from_shape_vec(IxDyn::from_slice(&[]), vec![1.0])?;
-// let _ = scalar.axis_iter(Axis(0)).unwrap();
+// let result = scalar.axis_iter(Axis(0));
+// assert!(result.is_ok());  // wrong: this should handle InvalidAxis explicitly
 ```
 
 ---
@@ -478,7 +482,7 @@ increment_index_f(shape, index):
 | `test_axis_iter_dyn_rank0_error`        | rank-0 `IxDyn` 调用 `axis_iter()` 返回 `InvalidAxis` 可恢复错误          | 高     |
 | `test_elements_large_tensor_count`      | 大张量（`10^7` 量级元素）上的 `count()` / `len()` 一致，且不访问越界内存 | 高     |
 | `test_indexed_iter_high_rank_ixdyn`     | 高 rank `IxDyn`（接近静态上限/超过静态维度）索引遍历次序与数量正确       | 高     |
-| `test_axis_iter_large_axis_index_error` | 极端 axis 值（如 `usize::MAX`）返回 `InvalidAxis` 且携带完整诊断         | 高     |
+| `test_axis_iter_large_axis_index_error` | 极端 axis 值（如 `usize::MAX`）返回 `InvalidAxis`，字段包含 `operation`、`axis`、`ndim`、`shape` | 高     |
 | `test_padded_iter`                      | 填充数组仅遍历逻辑元素                                                   | 低     |
 
 ### 8.3 边界测试场景
@@ -654,6 +658,13 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
 | 1.2.3 | 2026-04-15 |
 | 1.2.4 | 2026-04-15 |
 | 1.2.5 | 2026-04-16 |
+| 1.2.6 | 2026-05-03 |
+
+### v1.2.6 (2026-05-03) — Medium/Low review fixes
+
+- §5.2：补充 `AxisIterMut` 零长度子视图不暴露可写元素的安全说明。
+- §5.6：将 Bad 示例中的 `unwrap()` 改为错误处理反例断言，避免形成库代码模板。
+- §8.2：明确极端 axis 测试需要校验 `InvalidAxis { operation, axis, ndim, shape }` 字段。
 
 ---
 

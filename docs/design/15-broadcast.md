@@ -154,12 +154,14 @@ where
 
 **关于 `broadcast_with` 双向 `BroadcastDim` bound 的可满足性**：
 
-`broadcast_with` 的 `where` 子句同时要求 `D: BroadcastDim<E>` 与 `E: BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>`。这条双向 bound 看似过强，但能完整覆盖封闭维度集合 `{Ix0..Ix6, IxDyn}` 的所有 `(D, E)` 组合（57 项），由 02-dimension v1.x §5.10 实现矩阵保证：
+`broadcast_with` 的 `where` 子句同时要求 `D: BroadcastDim<E>` 与 `E: BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>`。这条双向 bound 看似过强，但能完整覆盖封闭维度集合 `{Ix0..Ix6, IxDyn}` 的所有 `(D, E)` 组合（57 项），由 02-dimension v1.x §5.10 实现矩阵保证。57 项的计数口径是“同 rank 自广播 + 跨静态 rank 双向合并行 + 静态/IxDyn 双向合并行 + IxDyn 自广播”的文档矩阵行数，而不是底层 trait impl 条数：
 
-- 同 rank 自广播 7 项（`IxN BroadcastDim IxN → IxN`，自然对称）
-- 跨静态 rank 有序对 42 项（同时实现 `IxM BroadcastDim IxN` 与 `IxN BroadcastDim IxM`，且 `Output` 都为较高 rank 的 `IxK`，`K = max(M, N)`）
-- 静态 + IxDyn 双向 7 项（`IxN BroadcastDim IxDyn` 与 `IxDyn BroadcastDim IxN`，`Output` 都为 `IxDyn`）
+- 同 rank自广播 7 项（`IxN BroadcastDim IxN → IxN`，自然对称）
+- 跨静态 rank 双向合并 42 项（每个无序静态 rank 对在文档矩阵中列出两个方向：`IxM BroadcastDim IxN` 与 `IxN BroadcastDim IxM`，`Output` 都为较高 rank 的 `IxK`，`K = max(M, N)`）
+- 静态 + IxDyn 双向合并 7 项（每项覆盖 `IxN BroadcastDim IxDyn` 与 `IxDyn BroadcastDim IxN`，`Output` 都为 `IxDyn`）
 - `IxDyn BroadcastDim IxDyn → IxDyn` 1 项
+
+公式：`7 + 42 + 7 + 1 = 57`。其中“静态 + IxDyn 双向合并 7 项”每项包含两个方向的对称实现；若按单个 trait impl 逐条计数，会得到不同数字，但 `broadcast_with` 只依赖 02-dimension §5.10 已声明的 57 项矩阵及其对称性测试。
 
 02-dimension v1.x §5.10 通过显式 trait 实现对称性保证：对所有 `(D, E)`，`<D as BroadcastDim<E>>::Output == <E as BroadcastDim<D>>::Output`，并在 §5.10 末尾增加 compile-time 类型等价测试覆盖（见 02-dimension v1.x 修复说明）。因此 `broadcast_with` 的 bound 在所有合法组合上可满足，不会因为反向 trait 缺失而拒绝调用。
 
@@ -186,7 +188,7 @@ where
   | `broadcast_to(self, target)` | `Cow::Borrowed("broadcast_to")` | `self.shape().to_vec()` | `vec![]`（无右侧输入；用空 Vec 作占位） | `Some(target.shape().to_vec())` | `Some(失败轴 index)` |
   | `broadcast_with(a, b)` | `Cow::Borrowed("broadcast_with")` | `a.shape().to_vec()` | `b.shape().to_vec()` | `None` | `Some(失败轴 index)` |
 
-  > 字段类型说明：v3.0.0 中 `lhs_shape` 与 `rhs_shape` 不再是 `Option<Vec<usize>>`，而是 `Vec<usize>`。`broadcast_to` 这种"单输入 + 显式目标"的场景没有右侧输入，按约定用 `vec![]` 占位以满足结构体字段非 Option 的要求；调用方据此可识别"右侧输入不存在"。`attempted_target_shape` 仅 `broadcast_to` 填 `Some(..)`，其它 API 用 `None`。
+  > 字段类型说明：v3.0.0 中 `lhs_shape` 与 `rhs_shape` 不再是 `Option<Vec<usize>>`，而是 `Vec<usize>`。`broadcast_to` 这种"单输入 + 显式目标"的场景没有右侧输入，按约定用 `vec![]` 占位以满足结构体字段非 Option 的要求；调用方据此可识别"右侧输入不存在"。该占位只在 `operation == "broadcast_to"` 且 `attempted_target_shape.is_some()` 的语境下表示无右侧输入；标量 shape `[]` 仍需结合具体 operation / 字段位置解释。`attempted_target_shape` 仅 `broadcast_to` 填 `Some(..)`，其它 API 用 `None`。
 - **返回类型与共享只读保证：** 当前版本复用 `TensorView` 作为返回类型，不引入单独的 `BroadcastView` 新类型。广播结果内部承载 `ViewRepr<'a, A>`（与 `05-storage.md` v2.0.0 §5.11.1 "广播 / 转置 / 切片产生的只读视图统一使用 ViewRepr" 规则一致），`storage_kind()` 返回 `StorageKind::View`，`access_semantics()` 返回 `AccessSemantics::SharedReadOnly`。由于广播引入零步长布局，多个逻辑位置映射到同一物理元素，因此只读共享语义由以下机制共同保证：1) `LayoutFlags::HAS_ZERO_STRIDE` / `LayoutState::BroadcastView` 标识广播布局；2) 广播结果类型层缺失 `StorageMut` 能力且不提供 `into_mut()` 等 API；3) 广播结果的生命周期绑定源张量。
 
 ### 5.3 Good / Bad 对比
@@ -248,12 +250,15 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
     2. Right-align the original shape against the target shape.
     3. For each axis:
         - if original dimension == target dimension, keep the original stride;
-        - if original dimension == 1 and target dimension > 1, write stride 0;
+        - if original dimension == 1 and target dimension != 1, write stride 0;
+          (this includes empty-axis broadcasting `1 -> 0`; the result has no
+          logical elements along that axis, and stride 0 preserves the
+          broadcast-aliasing classification without accessing extra storage)
         - otherwise return BroadcastError.
     4. Return the computed stride vector.
 ```
 
-对广播轴写入零步长意味着该轴被逻辑扩展，但所有索引都回落到同一底层元素；这与 `06-layout.md` §5.11 的零步长语义保持一致。若任一轴出现 `0` 步长，结果即不再视为普通 `FContiguous` 或一般 `NonContiguous` 视图，而统一进入 `BroadcastView`。
+对广播轴写入零步长意味着该轴被逻辑扩展（或在空轴广播中收缩为 0 长度目标），但所有有效索引都回落到同一底层元素；这与 `06-layout.md` §5.11 的零步长语义保持一致。`orig_dim == 1 && target_dim == 0` 是兼容的空轴广播，输出 stride 写为 `0`，且因为目标轴长度为 0 不会产生实际元素访问。若任一轴出现 `0` 步长，结果即不再视为普通 `FContiguous` 或一般 `NonContiguous` 视图，而统一进入 `BroadcastView`。
 
 - **再次广播规则：** 对已广播视图再次广播时，已有零步长轴保持为 `0`，新增广播轴也写入 `0` 步长；结果 `shape` 取"当前视图 shape"与"新目标 shape"的广播结果。 `broadcast_strides()` 的 `orig_shape` 参数始终传入当前视图的逻辑 shape（即 `.shape()` 返回值），而非某个"广播前的原始 shape"。
 
@@ -390,7 +395,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 
 | 场景                                | 预期行为                                           |
 | ----------------------------------- | -------------------------------------------------- |
-| `[0, 3]` 与 `[1, 3]`                | 允许空轴广播，结果 shape 为 `[0, 3]`，不复制数据。 |
+| `[0, 3]` 与 `[1, 3]`                | 允许空轴广播，结果 shape 为 `[0, 3]`；`1 -> 0` 轴输出 stride 为 `0`，不复制数据且不访问额外元素。 |
 | 标量广播到高维                      | 缺失前导轴按 `1` 处理，广播结果为共享只读视图。    |
 | 输入已是广播视图再次广播            | 允许继续广播，但结果仍保持只读且零步长语义一致。   |
 | 高维输入 `[2,1,4]` → `[3,2,5,4]`    | 右对齐补 `1` 后逐轴校验，写入对应零步长。          |
@@ -417,7 +422,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 | 配置                          | 验证点                                                          |
 | ----------------------------- | --------------------------------------------------------------- |
 | 默认配置                      | 显式广播 API、零步长和共享只读语义保持一致。                    |
-| `rayon` / `simd` feature 开关 | 广播模块本身不改变语义；不同执行路径不得改变 shape 与错误类别。 |
+| `rayon` / SIMD/pulp 相关 feature（按 Cargo.toml 命名） | 广播模块本身不改变语义；不同执行路径不得改变 shape 与错误类别。 |
 | 无额外 feature                | 当前模块不新增独立 feature gate。                               |
 
 ### 8.7 类型边界 / 编译期测试
@@ -549,6 +554,14 @@ User calls broadcast_to() or broadcast_with()
 | 1.0.1 | 2026-04-15 |
 | 1.0.2 | 2026-04-15 |
 | 2.0.0 | 2026-05-02 |
+| 2.0.1 | 2026-05-03 |
+
+### v2.0.1 (2026-05-03) — Medium/Low 文档修复
+
+- §5.1：明确 `BroadcastDim` 57 项矩阵的文档计数口径与公式，避免与逐 impl 计数混淆。
+- §5.2：补充 `broadcast_to` 中 `rhs_shape = vec![]` 与标量 shape `[]` 的语境区分。
+- §6.3 / §8.3：定义 `orig_dim == 1 && target_dim == 0` 的空轴广播兼容规则，输出 stride 写为 `0`。
+- §8.6：将 `simd` feature 表述改为按 Cargo.toml 命名的 SIMD/pulp 相关 feature。
 
 ### v2.0.0 (2026-05-02) — 协同与一致性更新（公开 API 形态保持兼容）
 

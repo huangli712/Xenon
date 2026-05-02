@@ -535,7 +535,7 @@ where
     /// (for example via `Owned::from_vec_aligned`), consistent with `05-storage.md`.
     /// This aligned path is the default owned-storage policy; any exception must be
     /// explicitly documented by the corresponding constructor and still preserve
-    /// the same logical element order. See `05-storage.md §5` and `18-construction.md §5.3`。
+    /// the same logical element order. See `05-storage.md §5` and `18-construction.md §5.3`.
     /// Owned tensors constructed from shape + data also use the canonical packed
     /// F-order stride for their logical layout; any mentioned "padding" refers only
     /// to allocation-level tail capacity, not to logical tensor stride gaps. See
@@ -573,7 +573,7 @@ where
     ///   `Vec<A>` must satisfy the alignment requirements of `A`
     /// - `shape.checked_size()` must already have been validated (no overflow)
     ///   before calling this method
-    /// - `data.len()` must equal `shape.checked_size().unwrap()`
+    /// - `data.len()` must equal the previously validated element count
     /// - `shape` must be representable by the current dimension type
     /// - The default packed F-order stride derived from `shape` must be
     ///   representable and consistent with `需求说明书 §7`
@@ -1296,7 +1296,7 @@ Logical view:
 | 标量 `Tensor0<f64>`   | `ndim()==0`, `len()==1`                      |
 | 高维 `Tensor6`        | `ndim()==6`, 步长正确                        |
 | 动态维度 `TensorD`    | `ndim()` 运行时值正确                        |
-| 大张量 `10^7` 元素    | 构造成功，长度与 flags 保持正确              |
+| 大张量 `10_000_000` 元素 | 构造成功，长度与 flags 保持正确              |
 | 非连续转置视图        | 可构造 `view()`，但连续切片快路径返回 `None`                          |
 | 非零 offset 视图      | `as_storage_ptr() != as_ptr()`，差值等于 `offset`                     |
 | 空张量 + 多种 offset  | 只要 `offset <= storage_len` 即合法                                    |
@@ -1451,7 +1451,8 @@ authoritative implementation resides in src/construct/, see 18-construction.md �
          ├─ Owned::from_vec_aligned(data)   → 64-byte aligned storage
          ├─ compute_layout_flags(&shape, &strides, logical_ptr)
          │                                  → LayoutFlags
-         └─ Ok(TensorBase { storage, shape, strides, offset: 0, flags })
+         └─ call tensor's `pub(crate)` internal constructor with private-field access
+                                             → Ok(TensorBase<Owned<f64>, Ix2>)
 ```
 
 ---
@@ -1604,6 +1605,13 @@ TensorBase<S, D>
 | 1.1.5 | 2026-04-15 |
 | 1.1.6 | 2026-04-16 |
 | 2.0.0 | 2026-05-02 |
+| 2.0.1 | 2026-05-03 |
+
+### 2.0.1
+
+- Replaced the checked-size unwrap safety-text example with a reference to the previously validated element count.
+- Clarified that construction uses a `pub(crate)` tensor-internal constructor rather than cross-module struct literal access to private fields.
+- Polished punctuation and numeric formatting in constructor and boundary-test prose.
 
 ### 2.0.0 (SemVer breaking)
 

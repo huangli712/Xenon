@@ -113,7 +113,7 @@ src/matrix/
 
 ### 5.1 向量内积
 
-````rust,ignore
+```rust,ignore
 /// Vector dot product: result = sum(a[i] * b[i])
 ///
 /// For complex numbers, the conjugate-linear definition is used (§1.1).
@@ -177,7 +177,7 @@ where
         S2: Storage<Elem = A>,
         D2: Dimension;
 }
-````
+```
 
 整数内积使用 checked arithmetic 进行中间乘积和累加。泛型约束 `A: Numeric`（Numeric 已蕴含 Copy）在实现层直接复用 element 层 sealed traits `CheckedMul` 与 `CheckedAdd`（权威定义见 `03-element.md §5.9`）确保 `i32` / `i64` 路径使用 checked `mul` / `add`，并在 `None` 时按整数溢出策略 panic。
 
@@ -240,12 +240,12 @@ dot_impl(a, b):
         alignment_ok,
     );
     match path {
-        ExecPath::Parallel => parallel::par_dot(
-            &a.view(),
-            &b.view(),
-            strategy,
-            guard.expect("dispatch returned (Parallel, None) — invariant violated"),
-        ),
+        ExecPath::Parallel => {
+            let Some(guard) = guard else {
+                unreachable!("dispatch returned (Parallel, None) — invariant violated");
+            };
+            parallel::par_dot(&a.view(), &b.view(), strategy, guard)
+        },
         ExecPath::Simd    => simd::dot::<A>(a, b),
         ExecPath::Serial  => scalar::dot_impl(a, b),
     }
@@ -266,10 +266,6 @@ dot_impl(a, b):
 | 阈值来源     | 是否进入并行路径由 `dispatch::select_exec_path(len, is_f_contiguous, alignment_ok)` 的返回值决定（30-dispatch v1.1.0 §5.5）。 |
 | 非连续惩罚   | 非连续视图沿用 `dispatch.rs` 的有效阈值 saturating 翻倍策略（30-dispatch v1.1.0 决策 5），仅当收益明确时才进入并行。 |
 | 禁止嵌套并行 | `select_exec_path` 内部检测当前线程是否已处于库内部并行区域；若已嵌套则不会返回 `(Parallel, _)`，从而把并行降级为串行/SIMD 路径，调用方无需再做嵌套防护（参见 30-dispatch v1.1.0 决策 7：select-and-enter 原子绑定）。 |
-| 路径顺序     | 同 §6.1 执行路径选择。                                                                              |
-| 阈值来源     | 是否进入并行路径由 `dispatch::should_parallelize(len, is_f_contiguous)` 与全局阈值配置决定。        |
-| 非连续惩罚   | 非连续视图沿用 `dispatch.rs` 的有效阈值翻倍策略；仅当收益明确时才进入并行。                         |
-| 禁止嵌套并行 | 若当前线程已处于库内部并行区域，则 `dispatch::ParallelGuard::enter()` 失败并强制回退标量/串行路径，不得再开启第二层并行。 |
 | 路径顺序     | 同 §6.1 执行路径选择。                                                                              |
 
 这满足 `需求说明书 §9.2` / `需求说明书 §9.3` 对"支持阈值配置"和"库内部不得开启第二层并行"的要求。
@@ -386,12 +382,12 @@ where
         alignment_ok(a, b),
     );
     match path {
-        ExecPath::Parallel => parallel::par_dot::<_, _, A, _, _>(
-            &a.view(),
-            &b.view(),
-            &strategy,
-            guard.expect("dispatch returned (Parallel, None)"),
-        ),
+        ExecPath::Parallel => {
+            let Some(guard) = guard else {
+                unreachable!("dispatch returned (Parallel, None)");
+            };
+            parallel::par_dot::<_, _, A, _, _>(&a.view(), &b.view(), &strategy, guard)
+        }
         ExecPath::Simd    => Ok(simd::dot::<A>(a, b)),
         ExecPath::Serial  => Ok(scalar::dot_dispatch::<A, _, _, _, _>(a, b)),
     }
@@ -500,7 +496,7 @@ where
 | 高维输入 `shape=[1,1,1,1,1,1]` 调用 `dot`  | 返回 `InvalidArgument`，诊断字段完整                          |
 | `10^7` 量级元素向量 `dot`                  | 阈值切换、文档化容差与 panic 契约在标量/SIMD/并行路径上一致   |
 | 阈值边界输入                               | 覆盖低于/等于/高于并行阈值时的路径裁决与结果一致性            |
-| 非连续向量（切片后）                       | dispatch 不会选择 `ExecPath::Simd`；最终走 Serial 标量或 Parallel 路径；结果与标量基线一致（worker 内 SIMD admission 在 chunk 内独立判断，可能仍走标量） |
+| 非连续向量（切片后）                       | dispatch 不会选择 `ExecPath::Simd`；最终走 Serial 标量或 Parallel 路径；结果与标量基线一致（worker 内 SIMD admission 在 chunk 内独立判断，是否可 SIMD 由 chunk 连续性与对齐条件决定，不满足则走标量） |
 | `NaN` 输入                                 | 实数 `dot([NaN], [1.0])` 或 `dot([1.0], [NaN])` 返回 `NaN`    |
 | `Inf` / `-Inf` 输入                        | 遵循 IEEE 754；例如实数 `dot([Inf], [2.0]) == Inf`            |
 
@@ -681,6 +677,13 @@ User calls dot(a, b)
 | 1.2.3 | 2026-04-16 |
 | 1.2.4 | 2026-04-16 |
 | 2.0.0 | 2026-05-02 |
+| 2.0.1 | 2026-05-03 |
+
+### v2.0.1 (2026-05-03) — Medium/Low review fixes
+
+- §5.1：统一代码块 fence 格式。
+- §6.1 / §6.2：将并行 guard 示例改为 let-else 内部断言，并删除旧版 `should_parallelize` / `ParallelGuard::enter()` 阈值表述。
+- §8.3：明确非连续输入下 worker chunk SIMD admission 由 chunk 连续性与对齐条件决定。
 
 ### v2.0.0 (2026-05-02) — SemVer breaking changes
 

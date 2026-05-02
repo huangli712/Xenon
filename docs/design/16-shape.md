@@ -24,7 +24,7 @@
 | 转置操作       | 其他形状变换（当前版本不提供）                   |
 | 连续性标志更新 | pad / repeat / split（当前版本不提供）           |
 | 形状操作边界   | `permute_axes()` / `swap_axes()` / `moveaxis()` （当前版本不提供）|
-| 未来形状操作   |其他形状变换与自动推断维度留待后续版本            |
+| 未来形状操作   | 其他形状变换与自动推断维度留待后续版本           |
 
 ### 1.2 设计原则
 
@@ -91,7 +91,7 @@ src/shape/
 
 ### 4.4 依赖方向声明
 
-依赖方向：单向向上。`shape/` 消费 `tensor`、`dimension`、`layout` 的 trait 和类型，不被它们依赖。
+依赖方向：单向向上。`shape/` 消费 `tensor`、`dimension`、`layout`、`storage` 的 trait 和类型（包括 `ViewRepr`），不被它们依赖。
 
 ---
 
@@ -182,10 +182,10 @@ where
   **设计论证（与 05-storage v2.0.0 §5.11.1 协同）**：
 
   1. 05-storage v2.0.0 §5.11.1 明文规定："从广播、转置、切片产生的只读视图**统一使用** `ViewRepr`"。本节遵循该统一规则。
-  2. 转置只重写 shape / stride / flags 元数据，不复制底层存储。如果转置后保留 `ArcRepr`，意味着多了一个共享 `Arc` 计数副本，但实际收益有限：源张量已持有共享所有权，调用方若需要"转置后仍是 `ArcRepr`"，可显式链式调用 `tensor.transpose().to_owned().into_shared()`（参见 21-type §5.5 `to_owned()` + 05-storage §5.11 `Owned::into_shared()`）。
+  2. 转置只重写 shape / stride / flags 元数据，不复制底层存储。如果转置后保留 `ArcRepr`，意味着多了一个共享 `Arc` 计数副本，但实际收益有限：源张量已持有共享所有权，调用方若需要"转置后仍是 `ArcRepr`"，可显式链式调用 `tensor.transpose().to_owned().into_shared()` 创建新的 owned 共享副本（参见 21-type §5.5 `to_owned()` + 05-storage §5.11 `Owned::into_shared()`）；该路径会复制数据，不是零拷贝恢复原 `ArcRepr`。
   3. 统一返回 `TensorView<'_, A, D>` 让 `transpose()` 的返回类型在所有源存储模式下都相同；用户代码无需为不同存储类型分支处理转置结果，这与 NumPy / ndarray 的 `transpose()` 一致行为相符。
   4. 如果未来确实需要"`ArcRepr.transpose() → ArcRepr`"特性，仍可通过单独的 `inherent impl on ArcTensor` 添加 `transpose_arc()` 等命名 API；但当前版本不暴露，避免一开始就引入"两个 transpose"分裂语义。
-- 若源张量为 `ArcRepr`（共享只读），转置后 `storage_kind()` 返回 `StorageKind::View` 而非 `Shared`。这是有意设计：转置结果的生命周期绑定到调用时借用，而不是源张量的共享引用计数。这是允许的收窄：`需求说明书 §17` 只要求结果落在只读引用或共享只读引用范围内，借用视图满足只读引用约束。对后续广播、格式化、线程共享的影响：转置结果的生命周期绑定到原始张量的借用期；如需跨线程持有转置结果，按 (2) 显式恢复共享所有权。
+- 若源张量为 `ArcRepr`（共享只读），转置后 `storage_kind()` 返回 `StorageKind::View` 而非 `Shared`。这是有意设计：转置结果的生命周期绑定到调用时借用，而不是源张量的共享引用计数。这是允许的收窄：`需求说明书 §17` 只要求结果落在只读引用或共享只读引用范围内，借用视图满足只读引用约束。对后续广播、格式化、线程共享的影响：转置结果的生命周期绑定到原始张量的借用期；如需跨线程持有转置结果，按 (2) 显式创建新的 owned 共享副本。
 
 ### 5.4 Good / Bad 对比
 
@@ -468,6 +468,13 @@ User calls transpose()
 | 1.1.3 | 2026-04-15 |
 | 1.1.4 | 2026-04-15 |
 | 2.0.0 | 2026-05-02 |
+| 2.0.1 | 2026-05-03 |
+
+### v2.0.1 (2026-05-03) — Low 级文档修复
+
+- §1.1：修复职责边界表格中的格式空格。
+- §4.4：依赖方向声明补充 `storage` / `ViewRepr`。
+- §5.3：明确 `tensor.transpose().to_owned().into_shared()` 是显式创建新的 owned 共享副本且会复制数据。
 
 ### v2.0.0 (2026-05-02) — 协同与一致性更新（公开 API 形态保持兼容）
 

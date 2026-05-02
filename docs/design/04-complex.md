@@ -25,8 +25,8 @@
 | 实数构造     | `From<T> for Complex<T>` 的显式标量构造                                          |
 | 混合运算边界 | `Complex<T> op Complex<T>` 前须先完成显式构造                                    |
 | 格式化输出   | Display（`"a+bj"` / `"a-bj"`）, Debug                                            |
-| 双字段 C 布局基础 | `#[repr(C)]` + 编译期静态断言                                               |
-| 类型转换语义| 定义 `Complex<f32>↔Complex<f64>`, `f32/f64→Complex`, `i32/i64→Complex` 的语义边界 |
+| 双字段 C 布局基础 | `#[repr(C)]` + 编译期静态断言                                                |
+| 类型转换语义       | 定义 `Complex<f32>↔Complex<f64>`, `f32/f64→Complex`, `i32/i64→Complex` 的语义边界 |
 
 | 职责              | 不包含                                                               |
 | ----------------- | -------------------------------------------------------------------- |
@@ -491,8 +491,9 @@ impl<T: ComplexFloat + core::fmt::Display + PositiveZero> core::fmt::Display for
     }
 }
 
-// Concrete f32/f64 helpers distinguish +0.0 from -0.0 via IEEE-754 bit patterns.
-trait PositiveZero {
+// Crate-private f32/f64 helper trait distinguishes +0.0 from -0.0 via IEEE-754 bit patterns.
+// This is an implementation detail, not a public extension point.
+pub(crate) trait PositiveZero {
     fn is_positive_zero(self) -> bool;
 }
 
@@ -525,7 +526,7 @@ fn scalar_is_positive_zero<T: PositiveZero>(im: T) -> bool {
 | `Complex::new(0.0, 4.0)`  | `"4j"`       |
 | `Complex::new(0.0, 0.0)`  | `"0"`        |
 
-**稳定性规则**： 
+**稳定性规则**：
 
 - `-0.0` 必须保留其符号信息。
 - 当虚部为 `-0.0` 时，输出须包含虚部表示，不能落入“仅输出实部”的 `im == 0` 折叠路径。
@@ -582,7 +583,7 @@ const _: () = {
 ```
 
 - `#[repr(C)]` 仅用于固定字段顺序与 C 兼容结构体表示；安全前提建立在按 `re` / `im` 两个已知字段访问，而非依赖“无 padding”假设。
--  除 size/align 静态断言外，测试计划还应补充 `re` 位于偏移 0、`im` 位于 `size_of::<T>()` 偏移处的验证意图，用于防止未来重构破坏两字段 C struct 的约定布局。
+- 除 size/align 静态断言外，测试计划还应补充 `re` 位于偏移 0、`im` 位于 `size_of::<T>()` 偏移处的验证意图，用于防止未来重构破坏两字段 C struct 的约定布局。
 
 ### 5.12 FFI 布局兼容性说明
 
@@ -777,7 +778,7 @@ hypot(a, b):
 
 - [ ] **T9**: 实现类型转换
   - 文件: `src/convert/cast.rs`
-  - 内容: `element` 模块定义 `CastTo<T>` trait；`convert/cast.rs` 承载复数相关转换实现，包括 `From<Complex<f32>> for Complex<f64>`、`From<f32> for Complex<f32>`、`From<f64> for Complex<f64>` 与统一的窄化转换
+  - 内容: `convert/cast.rs` 中复数相关 impl，包括 `From<Complex<f32>> for Complex<f64>`、`From<f32> for Complex<f32>`、`From<f64> for Complex<f64>` 与统一的窄化转换
   - 测试: `test_f32_to_f64_lossless`, `test_f64_to_f32_precision_loss`, `test_real_to_complex`
   - 前置: T1
   - 预计: 10 min
@@ -832,7 +833,7 @@ hypot(a, b):
 | `test_eq_nan`                    | `Complex::new(NaN, 0.0) != self`                            | 高     |
 | `test_display_format`            | `"3+4j"`, `"3-4j"`, `"3-0j"`, `"3"`, `"4j"`, `"0"`          | 中     |
 | `test_f32_to_f64_lossless`       | `Complex<f32>→Complex<f64>` 无损                            | 高     |
-| `test_f64_to_f32_precision_loss` | `Complex<f64>→Complex<f32>` 精度降低                        | 中     |
+| `test_f64_to_f32_precision_loss` | `Complex<f64>→Complex<f32>` 返回 `TypeConversion`，`reason = LossyFloatNarrowing` | 中     |
 | `test_real_to_complex`           | `f64→Complex<f64>` 虚部为 0                                 | 高     |
 
 推荐将 `test_div_complex` 写成显式容差断言，而不是直接对浮点结果做 `==` 比较：
@@ -858,8 +859,8 @@ assert!((result.re - 2.0).abs() < 1e-10 && result.im.abs() < 1e-10);
 
 | 不变量                                                           | 测试方法           |
 | ---------------------------------------------------------------- | ------------------ |
-| `(z * z.conj()).re == z.norm_sqr()` 且 `(z * z.conj()).im == 0`  | 随机 z             |
-| `(z / w) * w ≈ z`                                                | 随机 z, w（w ≠ 0） |
+| `(z * z.conj()).re == z.norm_sqr()` 且 `(z * z.conj()).im == 0`  | 随机有限 z，排除 NaN/Inf |
+| `(z / w) * w ≈ z`                                                | 随机有限 z, w，且 `w != 0` |
 
 ### 8.5 集成测试
 
@@ -916,7 +917,7 @@ User constructs `Complex<f64>::new(re, im)`
 
 | 项目              | 内容                                                                                |
 | ----------------- | ----------------------------------------------------------------------------------- |
-| Recoverable error | `CastTo<T>` trait 级的有损窄化路径返回 `XenonError::TypeConversion { operation: Cow<'static, str>, source_type: ElementType, target_type: ElementType, reason: ConversionFailureReason, element_index: Option<usize> }`（五字段，对齐 `26-error.md v3.0.0 §5.1`）。`source_type` / `target_type` 使用封闭枚举 `ElementType`（`03-element.md §5.1`），**不使用** `core::any::TypeId`。`reason` 取 `ConversionFailureReason` 封闭枚举的五个变体之一（`LossyIntegerNarrowing` / `LossyFloatNarrowing` / `FloatToInteger` / `IntegerToFloatPrecisionLoss` / `NonZeroImaginaryPart`，参见 `26-error.md v3.0.0 §5.1` 的完整定义）；复数模块涉及的具体路径主要使用 `LossyFloatNarrowing` / `IntegerToFloatPrecisionLoss` / `FloatToInteger` / `NonZeroImaginaryPart` 四个变体，`LossyIntegerNarrowing` 由非复数实数窄化路径（如 i64→i32）使用，本模块不直接构造。`operation` 由调用入口（如 `21-type.md` 的 `cast()`）注入；`CastTo::cast_to()` 实现可留空 `Cow::Borrowed("")` 由上层补齐。`element_index` 由张量级逐元素调用方填充，标量级实现留 `None`。 |
+| Recoverable error | `CastTo<T>` trait 级的有损窄化路径返回 `XenonError::TypeConversion { operation: Cow<'static, str>, source_type: ElementType, target_type: ElementType, reason: ConversionFailureReason, element_index: Option<usize> }`（五字段，对齐 `26-error.md v3.0.0 §5.1`）。`source_type` / `target_type` 使用封闭枚举 `ElementType`（`03-element.md §5.1`），**不使用** `core::any::TypeId`。`reason` 取 `ConversionFailureReason` 封闭枚举的五个变体之一（`LossyIntegerNarrowing` / `LossyFloatNarrowing` / `FloatToInteger` / `IntegerToFloatPrecisionLoss` / `NonZeroImaginaryPart`，参见 `26-error.md v3.0.0 §5.1` 的完整定义）；复数模块涉及的具体路径主要使用 `LossyFloatNarrowing` / `IntegerToFloatPrecisionLoss` / `FloatToInteger` / `NonZeroImaginaryPart` 四个变体，`LossyIntegerNarrowing` 由非复数实数窄化路径（如 i64→i32）使用，本模块不直接构造。`operation` 由调用入口（如 `21-type.md` 的 `cast()`）注入；`CastTo::cast_to()` 实现可留空 `Cow::Borrowed("")` 作为内部临时值，但公开返回前必须由调用入口补齐为规范操作名。`element_index` 由张量级逐元素调用方填充，标量级实现留 `None`。 |
 | Panic             | 常规复数运算与方法不以 panic 作为错误通道；若调用底层标准库浮点 API，遵循其既有语义 |
 | 路径一致性        | scalar 路径与普通标量实现必须一致；SIMD：不适用；parallel：不适用                   |
 | 容差边界          | 复数数值测试采用显式容差；布局、格式化与类型边界测试不适用                          |
@@ -997,6 +998,14 @@ User constructs `Complex<f64>::new(re, im)`
 | 1.1.2 | 2026-04-15 |
 | 1.1.3 | 2026-04-15 |
 | 2.0.0 | 2026-05-02 |
+| 2.0.1 | 2026-05-03 |
+
+### v2.0.1 (2026-05-03) — Medium/Low 文档修复
+
+- 将 `PositiveZero` 明确为 `pub(crate)` 私有 helper trait，保持 Display 设计不引入新公开 API。
+- 收敛类型转换任务到 `convert/cast.rs` 中复数 impl，并明确空 `operation` 只能作为内部临时值。
+- 修正 `Complex<f64> -> Complex<f32>` 测试预期和属性测试输入约束。
+- 修正文档表格、尾随空格和列表缩进格式。
 
 ### v2.0.0 (2026-05-02) — 错误字段对齐 + 整数→复数路径澄清
 

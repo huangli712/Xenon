@@ -55,7 +55,7 @@ Xenon 是一个纯 Rust 实现的 N 维数组（张量）库，定位为科学�
 - `05-storage.md` v2.0.0、`06-layout.md` v1.3、`07-tensor.md` v2.0.0：存储模式、F-order 布局状态与张量核心类型。
 - `08-simd.md` v2.0.0、`09-parallel.md` v2.0.0、`30-dispatch.md` v1.1.1：执行路径、`ParallelGuard`、worker 内 SIMD 与阈值语义。
 - `11-math.md` v2.0.0、`12-matrix.md` v2.0.0、`13-reduction.md` v2.0.0、`14-set.md` v2.0.0：数学、矩阵、归约与集合操作命名及 F-order 顺序契约。
-- `17-indexing.md`、`18-construction.md`、`19-overload.md`、`21-type.md`、`23-ffi.md`、`24-workspace.md`、`25-safety.md` v2.0.0：索引、构造、运算符、类型转换、FFI、workspace 与线程安全边界。
+- `17-indexing.md` v2.0.0、`18-construction.md` v2.0.0、`19-overload.md` v2.0.0、`21-type.md` v2.0.0、`23-ffi.md` v2.0.0、`24-workspace.md` v2.0.0、`25-safety.md` v2.0.0：索引、构造、运算符、类型转换、FFI、workspace 与线程安全边界。
 
 ### 1.6 全局布局不变量
 
@@ -761,7 +761,7 @@ Xenon 的公开 API 以 `TensorBase` 固有方法为主。以下按类别列出�
 | 方法 | 暴露方式 | 说明 |
 | ---- | -------- | ---- |
 | `transpose` | `TensorBase` 固有方法 | 形状变换直接挂载在张量实例上 |
-| `broadcast_to` | `TensorBase` 固有方法 | 广播视图构造由张量实例发起 |
+| `broadcast_to` | `TensorBase` 固有方法 | 广播视图构造由张量实例发起（参见 `15-broadcast.md`） |
 
 ### 10.8 逐元素实用操作
 
@@ -942,7 +942,7 @@ Element                        // Base: Copy + Sealed with const ELEMENT_TYPE: E
 
 | 任务              | 依赖       | 预估复杂度 | 产出           |
 | ------------------| ---------- | ---------- | -------------- |
-| W5.1 Dispatch     | W2.6       | 高         | 纯并行执行后端 |
+| W5.1 Dispatch     | W2.6       | 高         | 内部执行路径裁决层（ExecPath / threshold / ParallelGuard） |
 | W5.2 Parallel     | W3.1, W3.2 | 高         | 纯并行执行后端 |
 | W5.3 parallel sum | W3.6, W5.2 | 高         | 并行 sum       |
 | W5.4 SIMD math    | W3.4       | 高         | 纯向量化逐元素 |
@@ -1004,9 +1004,9 @@ Element                        // Base: Copy + Sealed with const ELEMENT_TYPE: E
 
 | 路径 | 触发条件 | 后端 |
 |------|----------|------|
-| `ExecPath::Serial` | 默认回退；len 低于所有阈值，或 feature 禁用，或 `ParallelGuard::enter()` 失败 | 消费者模块自身的串行实现 |
+| `ExecPath::Serial` | 默认回退；len 低于所有阈值，或 feature 禁用，或 `select_exec_path()` 未能获取并行 guard | 消费者模块自身的串行实现 |
 | `ExecPath::Simd` | feature = "simd" 启用 + len ≥ simd_threshold + 连续 + 对齐前提满足 + 不进入并行路径 | `simd/` 后端（`dispatch_vector_binary_op` 以 `bool` 报告是否接管执行；失败时由 dispatch 消费方回退） |
-| `ExecPath::Parallel` | feature = "parallel" 启用 + len ≥ parallel_threshold + `ParallelGuard::enter()` 成功 | `parallel/` 后端；并行 worker 内部可在 `_guard: ParallelGuard` 保护下调用 SIMD |
+| `ExecPath::Parallel` | feature = "parallel" 启用 + len ≥ parallel_threshold + `select_exec_path()` 成功获取并返回 `Some(ParallelGuard)` | `parallel/` 后端；并行 worker 内部可在 `_guard: ParallelGuard` 保护下调用 SIMD |
 
 #### 职责边界
 
@@ -1106,6 +1106,13 @@ Element                        // Base: Copy + Sealed with const ELEMENT_TYPE: E
 - Feature gate 矩阵、公开模块导出策略、prelude 组织建议保持不变。
 - 归约仅 sum、集合仅 unique、形状仅 transpose、矩阵仅 dot 的范围决策保持不变。
 - `simd/`、`parallel/` 作为独立可选后端，`dispatch.rs` 作为内部裁决层的架构边界保持不变。
+
+
+### v2.0.1 (2026-05-03) — Medium/Low documentation follow-up
+
+- Expanded the collaborative baseline list so each late-stage document carries its explicit version number.
+- Updated the dispatch Parallel trigger wording to use `select_exec_path()` returning `Some(ParallelGuard)` instead of the removed `ParallelGuard::enter()` API.
+- Corrected Wave 5 Dispatch output to describe the internal execution-path decision layer and added the `15-broadcast.md` reference for `broadcast_to`.
 
 ---
 

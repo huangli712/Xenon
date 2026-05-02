@@ -33,7 +33,7 @@
 | ---------- | ----------------------------------------------------------------------------------------------- |
 | 最小范围   | 公开 API 只覆盖 `sum`、`sum_axis`、`sum_axis_keepdims`。                                        |
 | 语义优先   | 空数组返回加法单位元；浮点遵循 IEEE 754；整数溢出按不可恢复算术域错误处理。                     |
-| 路径一致性 | SIMD 与并行只在满足 `需求说明书 §28.3` 定义的数值语义约束时参与，否则回退标量。                 |
+| 路径一致性 | SIMD 与并行只在 dispatch 判定满足 `需求说明书 §28.3` 数值语义约束时参与；否则 dispatch 不选择对应路径。 |
 | 错误统一   | 所有 axis 越界都统一为 `XenonError::InvalidAxis`，并携带 `operation`、`axis`、`ndim`、`shape`。 |
 
 ---
@@ -220,7 +220,7 @@ assert_eq!(empty.sum(), 0);
 | axis 校验顺序 | `sum_axis()` 要求 `D: RemoveAxis`（编译期维度降阶），`sum_axis_keepdims()` 要求 `D: Dimension`（不要求 RemoveAxis）。两个变体的 trait 边界不同是设计上有意为之——详见 §5.4。对所有进入 axis 归约路径的调用，都必须先校验 `axis < ndim`；若越界则统一返回 `XenonError::InvalidAxis`。 |
 | 整数语义      | `i32` / `i64` 累加使用 checked arithmetic，任何溢出立即 panic。                                 |
 | 浮点/复数语义 | `f32` / `f64` / `Complex<_>` 遵循标量加法语义，`NaN` 按 IEEE 754 自动传播。                     |
-| 执行路径约束  | SIMD / 并行若无法满足 `需求说明书 §28.3` 数值语义约束，则必须回退标量。                         |
+| 执行路径约束  | SIMD / 并行若无法满足 `需求说明书 §28.3` 数值语义约束，dispatch 必须不选择对应路径。             |
 | 布局前提      | 算法面向 Xenon 当前支持的 F-order 语义和合法 stride 视图，不得引入 C-order 假设。               |
 
 ### 6.2 算法描述
@@ -343,7 +343,7 @@ fn sum_floating_or_complex<A: Numeric>(iter: impl Iterator<Item = A>) -> A {
 
 - [ ] **T5**: 接入 SIMD / 并行分派守卫
   - 文件: `src/reduction/sum.rs`, `src/simd/*`, `src/parallel/*`
-  - 内容: 仅在结果与标量路径可证明一致时启用；否则回退
+  - 内容: 接入 dispatch 裁决结果；确保 dispatch 不会把不满足语义约束的输入路由到 SIMD / Parallel 路径
   - 测试: `test_sum_simd_consistency`, `test_sum_parallel_consistency`
   - 前置: T2, T3, T4, simd/parallel 模块
   - 预计: 10 min
@@ -387,10 +387,10 @@ fn sum_floating_or_complex<A: Numeric>(iter: impl Iterator<Item = A>) -> A {
 | `test_sum_axis_keepdims_invalid_axis`      | `sum_axis_keepdims()` 越界返回 `InvalidAxis`                    | 高     |
 | `test_sum_axis_zero_len_axis`              | 被归约轴长度为 `0` 时输出槽全部为零                             | 高     |
 | `test_sum_parallel_consistency`            | 并行路径与标量结果、错误类别、panic 语义一致                    | 高     |
-| `test_sum_simd_consistency`                | SIMD 路径与标量结果一致，否则正确回退                           | 高     |
+| `test_sum_simd_consistency`                | SIMD 路径与标量结果一致；不满足前提时 dispatch 不选择 SIMD      | 高     |
 | `test_sum_large_tensor_parallel_threshold` | 大张量（`10^7` 量级元素）达到阈值后并行路径仍满足文档化语义     | 高     |
 | `test_sum_high_rank_ixdyn`                 | 高 rank 动态维输入上的 `sum_axis*` shape 与 keepdims 语义正确   | 高     |
-| `test_sum_scalar_rank0`                      | rank-0 张量 `sum()` 返回其唯一元素                               | 高     |
+| `test_sum_scalar_rank0`                    | rank-0 张量 `sum()` 返回其唯一元素                               | 高     |
 | `test_sum_inf`                             | `Inf` / `-Inf` 输入遵循 IEEE 754 语义                           | 高     |
 
 ### 8.3 边界测试场景
@@ -432,8 +432,9 @@ fn sum_floating_or_complex<A: Numeric>(iter: impl Iterator<Item = A>) -> A {
 | 配置                  | 验证点                                                                 |
 | --------------------- | ---------------------------------------------------------------------- |
 | 默认配置              | 仅标量路径也满足全部正确性与错误语义要求                               |
-| 启用 `simd`           | 只在可证明一致时使用 SIMD，否则回退标量                                |
+| 启用 `simd`           | dispatch 只在可证明一致时选择 SIMD，否则不选择 SIMD 路径                |
 | 启用并行              | 受全局阈值配置控制，不得嵌套并行，且结果/错误/panic 语义与标量路径一致 |
+| 同时启用 `simd,parallel` | 并行 worker chunk 内可独立做 SIMD admission，整体语义仍满足 §10      |
 | `simd = ["dep:pulp"]` | feature gate 约束保持不变                                              |
 
 ### 8.7 类型边界 / 编译期测试
@@ -566,8 +567,8 @@ User calls sum / sum_axis / sum_axis_keepdims
 | 路径      | 说明                                                 |
 | --------- | ---------------------------------------------------- |
 | 标量路径  | 语义基线；始终可用。                                 |
-| SIMD 路径 | 仅在满足等价性前提时启用；否则回退标量。             |
-| 并行路径  | 仅在满足等价性和无嵌套并行约束时启用；否则回退标量。 |
+| SIMD 路径 | 仅当 dispatch 判断满足等价性前提时才会选择该路径；否则 dispatch 不选择 SIMD。 |
+| 并行路径  | 仅当 dispatch 判断满足等价性和无嵌套并行约束时才会选择该路径；否则 dispatch 不选择 Parallel。 |
 
 ### 12.3 缓存与布局说明
 
@@ -602,6 +603,13 @@ User calls sum / sum_axis / sum_axis_keepdims
 | 1.1.1 | 2026-04-15 |
 | 1.1.2 | 2026-04-16 |
 | 2.0.0 | 2026-05-02 |
+| 2.0.1 | 2026-05-03 |
+
+### v2.0.1 (2026-05-03) — Medium/Low review fixes
+
+- §7 / §12.2：将 SIMD / Parallel 不满足前提时的处理表述收敛为 dispatch 不选择对应路径，避免 backend 内部回退歧义。
+- §8.2：清理 `test_sum_scalar_rank0` 表格行对齐。
+- §8.6：补充 `simd,parallel` 组合配置下 worker chunk 独立 SIMD admission 的验证点。
 
 ### v2.0.0 (2026-05-02) — SemVer 内部一致性更新
 

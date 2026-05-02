@@ -190,7 +190,12 @@ use crate::element::{CheckedAdd, CheckedSub, CheckedMul, CheckedDiv};
 
 #[inline]
 fn add_or_panic<A: CheckedAdd>(a: A, b: A) -> A {
-    a.checked_add(b).expect("integer overflow in element-wise add")
+    match a.checked_add(b) {
+        Some(value) => value,
+        None => panic!(
+            "integer overflow in element-wise add: operation=add, trigger=overflow",
+        ),
+    }
 }
 // Analogous wrappers for sub / mul / div reuse element-layer primitives.
 ```
@@ -573,15 +578,15 @@ apply_binary(a, b, f):
 - [ ] **T7**: 实现逻辑非（not）和比较运算（`equal` / `not_equal` / `less` / `greater`）
   - 文件: `src/math/unary.rs`（not）, `src/math/comparison.rs`（`equal`/`not_equal`/`less`/`greater`）
   - 内容: bool 取反、比较运算返回 bool 张量
-  - 测试: `test_not_bool`, `test_eq_f64`, `test_lt_i32`, `test_nan_comparison`
+  - 测试: `test_not_bool`, `test_equal_f64`, `test_less_i32`, `test_nan_comparison`
   - 前置: T2
   - 预计: 10 min
 
 ### Wave 3: SIMD 集成
 
-- [ ] **T8**: 添加 SIMD 加速路径
-  - 文件: `src/math/binary.rs`, `src/simd/vector.rs`
-  - 内容: 在 `math` 中接入独立 `simd/` backend，为连续数组上的逐元素算术提供 SIMD 路径并保留标量回退；当前覆盖 `add/sub/mul/div`，其余操作保持文档化回退策略
+- [ ] **T8**: 接入 SIMD backend 统一分发
+  - 文件: `src/math/binary.rs`, `src/math/unary.rs`, `src/math/comparison.rs`, `src/simd/vector.rs`
+  - 内容: 在 `math` 中接入独立 `simd/` backend 的统一分发点；具体操作、类型和 ISA 覆盖以 `08-simd.md` 的正式覆盖矩阵与 admission 规则为准
   - 测试: `test_add_simd_vs_scalar`, `test_mul_simd_vs_scalar`
   - 前置: T3, 08-simd.md
   - 预计: 10 min
@@ -669,7 +674,7 @@ apply_binary(a, b, f):
 | 默认配置 | 所有逐元素运算走标量 / fallback 路径且语义满足文档约束。 |
 | 启用 `simd`（`simd = ["dep:pulp"]`） | 连续输入上的 SIMD 分发结果与默认配置保持一致，非连续输入仍正确回退。 |
 | 启用 `parallel`（`parallel = ["dep:rayon"]`） | 大输入上的并行逐元素路径与默认配置保持相同 shape、错误类别与数值语义，并遵守阈值与无嵌套并行约束。 |
-| 同时启用 `simd,parallel` | 串行路径上 SIMD 加速生效，并行路径走标量代码；对外语义仍与默认配置一致。 |
+| 同时启用 `simd,parallel` | 串行路径上 SIMD admission 可生效；并行路径中每个 worker chunk 可独立做 SIMD admission，不满足条件时该 chunk 回退标量；对外语义仍与默认配置一致。 |
 
 ### 8.7 类型边界 / 编译期测试
 
@@ -832,6 +837,13 @@ SIMD 实现位于独立 backend 模块 `src/simd/`，`math/` 仅按连续性和 
 | 1.3.0 | 2026-04-15 |
 | 1.3.1 | 2026-04-16 |
 | 2.0.0 | 2026-05-02 |
+| 2.0.1 | 2026-05-03 |
+
+### v2.0.1 (2026-05-03) — Medium/Low review fixes
+
+- §5.3：将 checked arithmetic 示例从 `expect` 改为 `match` + 诊断化 panic 示意。
+- §7 / §8.2：同步比较测试命名为 `equal` / `less`，并将 T8 改为接入 SIMD backend 统一分发，覆盖以 08-simd 为准。
+- §8.6：同步 `simd,parallel` 组合配置下 worker chunk 独立 SIMD admission 的 v2.0 规则。
 
 ### v2.0.0 (2026-05-02) — SemVer breaking changes
 

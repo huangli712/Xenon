@@ -550,7 +550,7 @@ pub fn sum(&self) -> A { ... }
 | Gate 3：Doctest          | `cargo test --doc --all-features`                                                                                          | 任何失败                                                          |
 | Gate 4：示例验证         | `cargo build --examples --all-features` + 关键示例运行命令（见 §5.6.1 定义；当前为 `basic` / `broadcasting` / `workspace`）| 任何失败                                                          |
 
-Gate 4 当前涵盖 `basic` / `broadcasting` / `workspace` 三个核心示例；完整示例覆盖清单见 §5.3。随着项目成熟，Gate 4 范围可逐步扩展至 §5.3 表中的所有 13 个 API 族。
+Gate 4 当前涵盖 `basic` / `broadcasting` / `workspace` 三个核心示例；完整示例覆盖清单见 §5.3。随着项目成熟，Gate 4 范围可逐步扩展至 §5.3 表中的所有 14 个 API 族。
 
 #### 5.11.2 CI 配置与 Feature 维度验证矩阵
 
@@ -1071,7 +1071,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 - §5.8 README.md 内容规划。
 - §5.9 CHANGELOG.md。
 - §5.10 docs.rs 配置（metadata、feature gate）。
-- §5.11 文档 CI 检查（5 个 Gate）。
+- §5.11 文档 CI 检查（4 个 Gate）。
 - §5.12 Good / Bad 文档注释对比示例。
 - §6 内部实现设计（文档生成流程、覆盖率计算、编写工作流）。
 - §7 Wave 1-2、Wave 4-5 任务（仅 Wave 3 T17-T20 补充协同约束）。
@@ -1080,6 +1080,12 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 - §10 决策 1-5。
 - §11 性能描述。
 - §12 平台与工程约束。
+
+
+### v2.0.1 (2026-05-03) — Low documentation follow-up
+
+- Corrected the key API family count from 13 to 14.
+- Corrected the documentation CI gate count from 5 to 4.
 
 ---
 

@@ -1048,10 +1048,12 @@ ws.ensure_capacity(1024)?;  // Grow first
 let mut buf = ws.borrow_mut()?;
 // Safe to use the larger buffer
 
-// Bad - Re-enter a borrow-only API while a guard is still alive
-let ws = Workspace::new(256, 64)?;
+// Bad - The following example does not compile: `borrow_mut()` and
+// `split_at_mut()` both require `&mut self`, so the borrow checker prevents
+// this re-entry while `_buf` is alive before any runtime error path is reached.
+let mut ws = Workspace::new(256, 64)?;
 let _buf = ws.borrow_mut()?;
-let _again = ws.split_at_mut(128)?;  // Returns `XenonError::Workspace` at runtime
+let _again = ws.split_at_mut(128)?;
 ```
 
 ---
@@ -1329,7 +1331,7 @@ Upper-layer code requests temporary scratch space
 
 | 主题              | 内容                                                                                        |
 | ----------------- | ------------------------------------------------------------------------------------------- |
-| Recoverable error | `new()` / `ensure_capacity()` / `borrow*()` / `split_at_mut()` / typed helper 失败时统一返回 `XenonError::Workspace { operation: Cow<'static, str>, category: WorkspaceErrorCategory, cause: Option<Box<XenonError>> }`（三字段，对齐 26-error v3.0.0 §5.1）。`operation` 一律使用 `Cow::Borrowed(..)`。`category` 子变体与触发场景：`AllocFailed { size, align }`（`alloc` 返回 null）；`InvalidLayout { size, align }`（`alignment` 非 2 的幂或 `Layout::from_size_align` 拒绝）；`BorrowConflict { requested: WorkspaceBorrowKind, current: WorkspaceBorrowState }`（CAS 失败 / 残留状态）；`SplitOutOfBounds { mid, len }`（`split_at_mut` mid 越界 / `assume_init_*` initialized_len 越界 / typed helper byte_len 越界）；`GrowOverflow { current_capacity, additional }`（容量乘 1.5 倍溢出 / typed helper count×size_of 溢出）；`TypedViewRejected { detail: TypedViewRejection }`（ZST / pointer 不满足 T 对齐）；`SplitCountInvariant { detail }`（保留给未来内部不变量违反检查）。**禁止使用** `size: Option<usize>` / `reason: Cow<str>` 等自由文本字段（v2.0.0 之前的旧形态）。 |
+| Recoverable error | `new()` / `ensure_capacity()` / `borrow*()` / `split_at_mut()` / typed helper 失败时统一返回 `XenonError::Workspace { operation: Cow<'static, str>, category: WorkspaceErrorCategory, cause: Option<Box<XenonError>> }`（三字段，对齐 26-error v3.0.0 §5.1）。`operation` 一律使用 `Cow::Borrowed(..)`。`category` 子变体与触发场景：`AllocFailed { size, align }`（`alloc` 返回 null）；`InvalidLayout { size, align }`（`alignment` 非 2 的幂或 `Layout::from_size_align` 拒绝）；`BorrowConflict { requested: WorkspaceBorrowKind, current: WorkspaceBorrowState }`（CAS 失败 / 残留状态）；`SplitOutOfBounds { mid, len }`（`split_at_mut` mid 越界 / `assume_init_*` initialized_len 越界 / typed helper byte_len 越界）；`GrowOverflow { current_capacity, additional }`（容量乘 1.5 倍溢出 / typed helper count×size_of 溢出）；`TypedViewRejected { detail: TypedViewRejection }`（ZST / pointer 不满足 T 对齐）；`SplitCountInvariant { detail }`（保留给未来内部不变量违反检查）。`cause` 字段用于源链：workspace 自身产生的叶子错误通常为 `None`；若未来需要包装更底层的 `XenonError`，外层错误使用 `Some(Box::new(inner))` 并通过 `Error::source()` 暴露内层。**禁止使用** `size: Option<usize>` / `reason: Cow<str>` 等自由文本字段（v2.0.0 之前的旧形态）。 |
 | Panic             | 不为公开 API 输入校验引入 panic；`unsafe` 初始化前提若被违反，仍属于调用方责任范围内的 UB。 |
 | 路径一致性        | 当前仅有单一借用状态机与扩容路径；无 SIMD / 并行分支，所有 guard 释放规则必须保持一致。     |
 | 容差边界          | 不适用。                                                                                    |
@@ -1475,6 +1477,12 @@ Upper-layer code requests temporary scratch space
 - §4.2 `crate::error` 行展开为 `WorkspaceErrorCategory` 七子变体 + `WorkspaceBorrowKind` + `WorkspaceBorrowState` + `TypedViewRejection`，明示**不**使用 `Cow<str>` 自由文本字段。
 - §10 `Recoverable error` 行重写：列出三字段公开形态、七子变体触发场景、明示禁用旧字段。
 - §5.5 borrow API doc 中"`borrow()`/`borrow_mut()` take `&self` because exclusivity is enforced at runtime by AtomicU8" 表述同步更新为反映 B12.a 后的不对称语义。
+
+
+### v2.0.1 (2026-05-03) — Medium documentation follow-up
+
+- Updated the Good/Bad re-entry example to reflect B12.a `&mut self` borrow-checker behavior instead of incorrectly describing a runtime error.
+- Clarified `XenonError::Workspace.cause` semantics: workspace leaf errors usually use `None`; wrappers use `Some(Box::new(inner))` when carrying a lower-level source.
 
 ---
 

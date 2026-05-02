@@ -141,7 +141,8 @@ parallel feature implementation paths/
 | 存储模式不支持可写操作 | 类型层（编译期）             | 通过 trait 约束拒绝 |
 | 广播结果尝试可变访问   | 类型层（编译期）             | 通过返回类型拒绝    |
 | 并行中二次并行         | 运行时（嵌套并行防护机制）   | 自动回退串行路径    |
-| 整数溢出               | 运行时（checked arithmetic） | panic（不可恢复）   |
+| 逐元素算术 / 归约 / 内积中的整数溢出 | 运行时（checked arithmetic） | panic（不可恢复）   |
+| 元数据 / 索引偏移 / FFI 校验类 checked arithmetic 失败 | 运行时（checked arithmetic） | 按 `26-error.md` 返回 `Result` |
 
 ### 5.4 当前受支持元素类型的线程安全传播
 
@@ -790,6 +791,11 @@ workspace 的线程安全规则（`!Send + !Sync` 实现选择及理由，参见
 - §6 内部实现协同图。
 - §7-§9 任务/测试/交互章节。
 - §11 决策 1-4。
+
+
+### v2.0.1 (2026-05-03) — Medium documentation follow-up
+
+- Narrowed the integer-overflow panic rule to element-wise arithmetic, reductions, and dot products, while metadata / index-offset / FFI checked arithmetic remains recoverable via `26-error.md`.
 
 ---
 

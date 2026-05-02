@@ -502,7 +502,7 @@ fn bench_sum_bad2() {
 let _result = black_box((&a + &b).unwrap());
 
 // Good: black_box wraps inputs to prevent constant folding
-let _result = black_box(a) + black_box(b);
+let _result = black_box(&a) + black_box(&b);
 
 // Bad: forgetting black_box allows compiler to optimize away
 let _result = (&a + &b).unwrap();
@@ -801,6 +801,11 @@ benchmark files
 - §8-§9 测试计划与模块映射。
 - §11 决策 1-5。
 - §12-§13 性能描述与平台约束。
+
+
+### v2.0.1 (2026-05-03) — Low documentation follow-up
+
+- Adjusted the `black_box` input-wrapping example to borrow tensors (`black_box(&a) + black_box(&b)`) instead of implying owned moves.
 
 ---
 

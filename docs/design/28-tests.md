@@ -695,7 +695,7 @@ Workspace 借用测试须调用 `Workspace::borrow_mut(&mut self)` 与顶层 `Wo
 
 **归属说明**：`test_send_sync_contracts` 语义上属于 safety（`25-safety.md`），`test_complex_c99_layout` 属于 FFI 布局（`23-ffi.md`），`test_ix0_iter_single` 属于迭代器（`10-iterator.md`），`test_zst_storage_no_ub` 属于存储/tensor UB 验证（`05-storage.md`）。它们置于 `test_error.rs` 是因为均通过 `XenonError` 统一公开错误边界进行校验，或依赖 error 模块的类型约束（如 `Send`/`Sync` bound 传播需 `XenonError: Send + Sync`）。若后续测试文件职责边界收紧，可分别移至 `test_parallel.rs`、`test_ffi.rs`、`test_iterator.rs`、`test_tensor.rs`。
 
-**TODO（v2）**：当前安全不变量测试（`test_send_sync_contracts`、`test_zst_storage_no_ub` 等）暂置于 `test_error.rs` 中以利用统一的 `XenonError` 校验入口。未来版本应迁移至独立的 `test_safety.rs` 文件以匹配模块职责边界。
+**TODO（v2）**：当前安全不变量测试（`test_send_sync_contracts`、`test_zst_storage_no_ub` 等）暂置于 `test_error.rs` 中以利用统一的 `XenonError` 校验入口。未来若新增独立的 `test_safety.rs` 文件以匹配模块职责边界，须同步更新 §3 文件位置与 §9.1 测试文件映射表。
 
 panic 诊断信息测试：验证 panic message 包含 `需求说明书 §27` 要求的诊断上下文（至少包含错误类别和相关参数子集）。通过 `#[should_panic(expected = "...")]` 或 `std::panic::catch_unwind` 捕获并断言。
 
@@ -1470,7 +1470,7 @@ fn compile_fail_harness() {
 | `element`   | doctest + compile-fail + integration tests | doctest 覆盖 trait/公开类型边界示例；compile-fail 覆盖非法元素类型与 trait bound；集成测试覆盖合法元素语义 |
 | `complex`   | doctest + integration tests                | doctest 覆盖公开用法示例；集成测试覆盖复数逐元素运算、归约、内积、格式化与 FFI 布局 |
 | `layout`    | doctest + integration tests                | doctest 覆盖布局/连续性示例；集成测试覆盖 F-order、非连续视图、transpose、to_contiguous 与导出前提 |
-| `storage`   | doctest + integration tests (via test_tensor.rs) | doctest 覆盖 Storage trait 与四种存储模式示例；集成测试通过 `test_tensor.rs` 间接覆盖 ViewRepr/ViewMutRepr/Owned/ArcRepr 语义（参见 §5.4 test_tensor_view_creation / test_tensor_to_owned / test_arc_tensor_clone / test_arc_tensor_alias_isolation_on_write），无专属 test_storage.rs |
+| `storage`   | doctest + integration tests (`test_storage.rs` + `test_tensor.rs`) | Storage 内部 doctest 与 dimension/element 集成测试间接覆盖 trait/元素/维度协同；`test_storage.rs` 仅测试公开 storage 边界条件，`test_tensor.rs` 继续覆盖 ViewRepr/ViewMutRepr/Owned/ArcRepr 的张量层语义（参见 §5.4 test_tensor_view_creation / test_tensor_to_owned / test_arc_tensor_clone / test_arc_tensor_alias_isolation_on_write） |
 
 ### 9.3 数据流
 
@@ -1547,6 +1547,12 @@ Test files
 - 保留 §6.2 ULP-based 数值精度规范，不放宽 Tier 1 / Tier 2 / Tier 3 契约。
 - 保留 §5.21 compile-fail 测试章节结构与语义，仅在类型边界列表补充复数协同约束。
 - 保留测试矩阵、CI 分层、属性测试列表与大张量 extended test 分层，不扩大测试范围。
+
+
+### v2.0.1 (2026-05-03) — Medium/Low documentation follow-up
+
+- Reconciled storage test placement: `test_storage.rs` covers public storage boundary conditions, while doctests and integration tests continue to cover cross-module storage semantics.
+- Clarified that any future `test_safety.rs` addition must also update the file layout and mapping sections.
 
 ---
 

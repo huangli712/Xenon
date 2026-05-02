@@ -85,7 +85,7 @@ src/error.rs
 | --------------------- | ----------------------------------------------------------------------------- |
 | `core::fmt`           | `Display`, `Formatter`, `fmt::Result`（`Display` 实现）                       |
 | `alloc::borrow`       | `Cow<'static, str>`（仅用于 `operation` 等稳定标识符字符串）                  |
-| `alloc::boxed`        | `Box<XenonError>`（`Ffi` / `Workspace` 变体的 `cause` 源链字段）              |
+| `alloc::boxed`        | `Box<XenonError>`（`Ffi` / `Workspace` 变体的 `cause` 源链字段；递归枚举不能直接包含自身，`Box` 用固定大小指针打断无限大小递归） |
 | `alloc::vec`          | `Vec<usize>`（`shape`、`attempted_index` 等字段）                             |
 | `crate::element`      | `ElementType`（`TypeConversion` 变体的 `source_type` / `target_type`）        |
 
@@ -873,8 +873,8 @@ fmt_display(error, formatter):
 
 - [ ] **T4**: 实现 `std::error::Error` for `XenonError`
   - 文件: `src/error.rs`
-  - 内容: `Error` trait 实现，`source()` 返回 `None`
-  - 测试: `test_error_trait_source_none`
+  - 内容: `Error` trait 实现；对 `Ffi` / `Workspace` 的 `cause: Some(_)` 返回内层错误，其余叶子变体返回 `None`
+  - 测试: `test_error_trait_source_leaf_none`, `test_error_trait_source_chain_ffi_workspace`
   - 前置: T2
   - 预计: 5 min
 
@@ -1094,7 +1094,7 @@ Caller invokes public API (e.g., tensor.broadcast_to(shape))
 | 属性     | 值                                                                                                                                                                |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 决策     | `FfiErrorCategory` / `WorkspaceErrorCategory` 改为携带结构化负载的 closed enum，覆盖 NullPointer / AlignmentMismatch / AbiMismatch / OverlapRejected / ForeignAllocatorMismatch / BorrowConflict / SplitCountInvariant / GrowOverflow / TypedViewRejected 等具体子类 |
-| 理由     | (b2) 评审 B6.a：原 `Ffi { backend, precondition, actual }` 三个 `Cow<str>` 字段把关键诊断稳定为自由文本，`InvalidRank/BlasIncompatibleLayout/IntegerOverflow` 三类无法覆盖 raw-parts FFI 常见错误源；workspace 的 `AllocFailed/InvalidLayout/AlreadyBorrowed/SplitOutOfBounds` 同样过粗 |
+| 理由     | 早期评审指出：原 `Ffi { backend, precondition, actual }` 三个 `Cow<str>` 字段把关键诊断稳定为自由文本，`InvalidRank/BlasIncompatibleLayout/IntegerOverflow` 三类无法覆盖 raw-parts FFI 常见错误源；workspace 的 `AllocFailed/InvalidLayout/AlreadyBorrowed（旧模型历史名称）/SplitOutOfBounds` 同样过粗 |
 | 替代方案 | 维持粗粒度子枚举 + 自由文本 — 放弃，违反“结构化诊断不依赖纯字符串消息”原则                                                                                         |
 | 替代方案 | 把所有 FFI/workspace 错误打平为一级变体 — 放弃，会让 `XenonError` 顶层变体爆炸性增长且失去“按子系统聚类”的程序化匹配能力                                            |
 
@@ -1164,6 +1164,13 @@ Caller invokes public API (e.g., tensor.broadcast_to(shape))
 | 1.1.5 | 2026-04-16 |
 | 2.0.0 | 2026-04-22 |
 | 3.0.0 | 2026-05-02 |
+
+
+### v3.0.1 (2026-05-03) — Medium/Low documentation follow-up
+
+- Explained why recursive `XenonError` source chains require `Box<XenonError>`.
+- Corrected the `Error::source()` implementation task to return inner errors for `Ffi` / `Workspace` causes and `None` for leaf variants.
+- Replaced an internal review placeholder with explicit historical wording and marked `AlreadyBorrowed` as an old-model historical name.
 
 ---
 

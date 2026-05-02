@@ -258,7 +258,7 @@ where
 
 `fill_try_dispatch()` 的内部判定标准固定为：
 
-- 先通过 `Storage` trait 提供的可选可变句柄接口（若命名尚未最终确定，则由 storage 层提供等价能力）判定当前存储是否支持可写路径；
+- 先通过 storage 层提供的 `pub(crate)` 内部可写能力 helper（参见 `05-storage.md` 的存储模式与可写能力约束；helper 名称不作为本文稳定契约）判定当前存储是否支持可写路径；
 - `Owned` / `ViewMut` / 其他满足 `StorageMut` 的存储：进入 `fill_storage_mut()` 直接写入路径；
 - `View` / `SharedReadOnly` / 其他只读或共享只读存储：返回 `XenonError::InvalidStorageMode`；
 - 连续布局可走快路径，非连续或带 padding 布局必须退回“仅写逻辑元素”的 stride-aware 路径。
@@ -323,7 +323,8 @@ where
     /// # Trait bounds for `to_owned()`
     ///
     /// `to_owned()` is defined on `S: Storage<Elem = A>` with `A: Element`
-    /// (see `21-type.md §5.5`). All 4 storage modes
+    /// (the current impl also carries `A: Element + Clone`; see
+    /// `21-type.md §5.5`). All 4 storage modes
     /// (Owned/ViewRepr/ViewMutRepr/ArcRepr) satisfy this bound,
     /// so `to_contiguous` is available on all storage types.
     pub fn to_contiguous(&self) -> Tensor<A, D> {
@@ -359,7 +360,7 @@ where
 ````
 
 - `to_contiguous(&self)` 是稳定的“总是返回独立 owned 结果”入口；当输入已是连续 F-order 时，它不得改变逻辑值，且可以复用现有数据作为读取来源，但因为返回值必须与借用源解除别名，所以仍会物化为新的 owned 张量。
-- `into_contiguous(self)` 是满足 `需求说明书 §22` 的消费式入口：当输入已经是 F-contiguous（允许存在 tail padding）且具备 owned 化前提时，可复用原数据而不重新分配；否则退化为重新打包。`to_contiguous()` 对已连续输入始终返回新的 owned 拷贝。连续化结果始终为 canonical F-order（无 inter-axis padding）。仅当输入已是 `Owned` 且为 canonical F-contiguous 时，`into_contiguous()` 方可 O(1) 复用现有数据。其他 `StorageIntoOwned` 情况可能需要复制。
+- `into_contiguous(self)` 是满足 `需求说明书 §22` 的消费式入口：`F-contiguous` 表示逻辑上按 F-order 连续；`canonical F-contiguous` 进一步要求 offset/strides/storage 形态可作为标准 owned 表示复用。`to_contiguous()` 对已连续输入始终返回新的 canonical F-order owned 拷贝。`into_contiguous()` 仅当输入已是 `Owned` 且为 canonical F-contiguous 时方可 O(1) 复用现有数据；其他情况（包括仅逻辑 F-contiguous 但带 tail padding 的输入）需要重新物化为 canonical F-order owned 结果。
 - `to_contiguous()` / `into_contiguous()` 专注于连续性保证：仅在输入已是 canonical F-contiguous `Owned` 时，`into_contiguous()` 才可 O(1) 复用。`to_owned()` / `into_owned()`（见 `21-type.md`）专注于独立拷贝：无论原始布局如何，始终产出独立的拥有型存储。二者可能产生相同结果（非连续输入 → 连续 owned），但语义主语不同。
 - `util_internal_to_f_contiguous()` 只接受“逻辑索引语义已验证、shape / strides / offset 自洽”的输入张量；调用方须先完成这些张量不变量检查。该 helper 的职责仅限于把当前逻辑元素重排并物化为 canonical F-order owned 结果，不再重复承担布局合法性验证。
 
@@ -376,7 +377,8 @@ let t = Tensor1::from_shape_vec([1000], data)?;
 ```
 
 ```rust,ignore
-// Good - check contiguity first before deciding whether to convert
+// Good - when the downstream function accepts a borrow and does not require owned storage,
+// check contiguity before deciding whether to materialize an owned copy.
 if tensor.is_f_contiguous() {
     process(&tensor);
 } else {
@@ -384,7 +386,8 @@ if tensor.is_f_contiguous() {
     process(&contiguous);
 }
 
-// Bad - unconditionally call to_contiguous, wastes a copy when already contiguous
+// Bad in borrow-only downstream paths - unconditionally calling to_contiguous
+// wastes a copy when the input is already contiguous and ownership is not needed.
 let contiguous = tensor.to_contiguous();  // potentially unnecessary O(n) copy
 process(&contiguous);
 ```
@@ -429,7 +432,7 @@ into_contiguous(tensor):
         return util_internal_to_f_contiguous(&tensor)
 ```
 
-若输入已是 F-contiguous 但底层存储包含 tail padding，`into_contiguous()` 仍可复用该 owned 存储；`to_contiguous()` 则必须生成新的 canonical F-order owned 拷贝，结果不保留 inter-axis padding，且不依赖原始 tail padding 形态。
+若输入已是逻辑 F-contiguous 但底层存储包含 tail padding，它仍不满足本文的 canonical F-contiguous 复用前提；`into_contiguous()` 与 `to_contiguous()` 都必须生成 canonical F-order owned 结果，结果不保留 inter-axis padding，且不依赖原始 tail padding 形态。
 
 ### 6.4 NaN 处理语义
 
@@ -534,7 +537,7 @@ into_contiguous(tensor):
 
 | 不变量                                                                         | 测试方法                |
 | ------------------------------------------------------------------------------ | ----------------------- |
-| `clip(min, max)` 结果的每个元素 ∈ [min, max]                                   | 随机张量 + 随机 min/max |
+| `clip(min, max)` 对非 NaN 输入产出 `[min, max]` 内元素；NaN 输入保持 NaN；NaN 边界返回错误 | 随机张量 + 随机 min/max |
 | `fill(v)` 后 `iter().all(\|x\| *x == v)`                                       | 随机形状 + 随机值       |
 | `to_contiguous()` / `into_contiguous()` 返回的张量 `is_f_contiguous() == true` | 随机非连续布局          |
 
@@ -682,6 +685,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 - §4.2 类型级依赖表新增 `error` 行：列出 `XenonError`、`InvalidArgumentKind::OperationSpecific`、`StorageKindTag`。
 - §5.5 文档注释引用从 `21-type.md §5.x` 修正为具体的 `21-type.md §5.5`。
 - §10 错误处理表 `Recoverable error` 一行重写：完整列出 `clip` 的 `InvalidArgument.kind` 与 `try_fill` 的 `InvalidStorageMode` 字段（`operation` / `expected: StorageKindTag::ViewMut（或 Owned）` / `actual: StorageKindTag::View（或 Arc）` / `shape: Some(...)` / `conversion: None`）。
+- §5.3 将 `try_fill()` 分派前提收敛为 storage 层 `pub(crate)` 内部 helper；§5.5 / §6.3 统一 F-contiguous 与 canonical F-contiguous 语义；§5.6 限定 `to_contiguous()` Bad 示例适用场景；§8.4 修正 NaN 相关 clip 属性测试不变量。
 
 ---
 

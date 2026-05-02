@@ -910,20 +910,22 @@ mod tests {
 
 浮点比较：
 
-- 对存在舍入误差容差的数值路径，使用近似比较
-- 对比较 API 自身、布尔结果、文档明确要求精确一致的场景，允许/要求精确断言
+浮点断言遵循 `28-tests.md §6.2` 的三层规则，而不是默认套用统一容差：
+
+- Tier 1：同执行路径基础 IEEE 754 路径（基础浮点算术、比较、归约、复数分量级基础运算）默认使用精确比较；整数和布尔使用 `assert_eq!`，浮点使用 bitwise 等价或严格 `ULP == 0`。
+- Tier 2：标量 vs SIMD、串行 vs 并行等跨执行路径比较，才使用已文档化的跨路径容差 helper，并在测试中注明路径与容差来源。
+- Tier 3：`sin`、`sqrt`、`exp`、`ln`、`floor`、`ceil` 等数学函数使用按函数文档化的专用容差 helper，不复用笼统容差。
 
 ```rust,ignore
-// Good - tolerance uses max(1 ULP, epsilon * |scalar_result|)
-fn assert_close(a: f64, b: f64, epsilon: f64) {
-    let diff = (a - b).abs();
-    let scalar_result = a.abs().max(b.abs());
-    let tol = f64::EPSILON.max(epsilon * scalar_result.abs());
-    assert!(diff <= tol, "expected {a} ≈ {b}, tol={tol}");
-}
+// Good - same-path base arithmetic uses the Tier 1 exact helper.
+assert_tensor_exact_real(&result, &expected, "add");
 
-// Bad - direct float comparison
-assert_eq!(*result.try_at((0, 0))?, 58.0);  // may fail due to rounding errors
+// Good - cross-path comparison explicitly opts into the documented Tier 2 tolerance.
+let tolerance = documented_cross_path_tolerance();
+assert!(ulp_eq_f64_with_tolerance(parallel_sum, serial_sum, tolerance));
+
+// Bad - applying a blanket tolerance to every floating-point assertion.
+assert_close(*result.try_at((0, 0))?, 58.0, 1e-12);
 ```
 
 ---
@@ -1182,6 +1184,11 @@ rustdoc-args = ["--cfg", "docsrs"]
 - 未弱化 `unwrap()`、数值 `as`、unsafe 文档和 lint 基线的禁止或约束级别。
 - 未新增外部依赖、feature、crate 拆分、平台适配策略或业务模块算法规则。
 - 未调整 Phase 0 的实现任务拆分、验证方式和既有设计决策记录。
+
+
+### v2.0.1 (2026-05-03) — Medium documentation follow-up
+
+- Replaced the blanket floating-point tolerance guidance with the `28-tests.md §6.2` Tier 1 / Tier 2 / Tier 3 comparison model.
 
 ---
 

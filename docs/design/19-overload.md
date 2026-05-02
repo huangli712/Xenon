@@ -125,14 +125,14 @@ src/overload/
 | `&Tensor<A, D>`      | `A`                  | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for &TensorBase<Owned<A>,D>`                                      |
 | `Scalar<A>`          | `Tensor<A, D>`       | `Tensor<A, D>` | 标量广播 | `impl<...> Add<TensorBase<Owned<A>,D>> for Scalar<A>`                               |
 | `Scalar<A>`          | `&Tensor<A, D>`      | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&TensorBase<Owned<A>,D>> for Scalar<A>`                              |
-| `f32`/`f64`/`i32`/`i64`/`Complex<..>` | `Tensor<A, D>` | `Tensor<A, D>` | 标量广播 | `impl Add<TensorBase<Owned<A>,D>> for T`（逐类型生成）                   |
-| `f32`/`f64`/`i32`/`i64`/`Complex<..>` | `&Tensor<A, D>`      | `Tensor<A, D>` | 标量广播 | `impl Add<&TensorBase<Owned<A>,D>> for T`（逐类型生成）                 |
+| `T`（逐类型：`f32`/`f64`/`i32`/`i64`/`Complex<..>`） | `Tensor<T, D>` | `Tensor<T, D>` | 标量广播 | `impl<D> Add<TensorBase<Owned<T>,D>> for T`（逐类型生成，`T == A`） |
+| `T`（逐类型：`f32`/`f64`/`i32`/`i64`/`Complex<..>`） | `&Tensor<T, D>` | `Tensor<T, D>` | 标量广播 | `impl<D> Add<&TensorBase<Owned<T>,D>> for T`（逐类型生成，`T == A`） |
 | `TensorView<A, D>`   | `A`                  | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for TensorBase<ViewRepr<'a, A>,D>`                                   |
 | `&TensorView<A, D>`  | `A`                  | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for &TensorBase<ViewRepr<'a, A>,D>`                                  |
 | `Scalar<A>`          | `TensorView<A, D>`   | `Tensor<A, D>` | 标量广播 | `impl<...> Add<TensorBase<ViewRepr<'a, A>,D>> for Scalar<A>`                           |
-| `f32`/`f64`/`i32`/`i64`/`Complex<..>` | `TensorView<A, D>` | `Tensor<A, D>` | 标量广播 | `impl Add<TensorBase<ViewRepr<'a, A>,D>> for T`（逐类型生成）               |
+| `T`（逐类型：`f32`/`f64`/`i32`/`i64`/`Complex<..>`） | `TensorView<T, D>` | `Tensor<T, D>` | 标量广播 | `impl<D> Add<TensorBase<ViewRepr<'a, T>,D>> for T`（逐类型生成，`T == A`） |
 
-- 上表仅列出当前稳定承诺。张量×张量/视图路径（前 7 行）与标量路径（后 10 行）通过空行分隔。
+- 上表仅列出当前稳定承诺。张量×张量/视图路径（前 7 行）与标量路径（后 10 行）通过空行分隔；原生左标量逐类型 impl 只覆盖 `T op Tensor<T, D>` / `T op TensorView<T, D>`，不提供 `T op Tensor<A, D>` 的混合元素类型提升。
 - `TensorView` 相关组合已纳入当前稳定范围，与 `broadcast_to()` / `transpose()` / `slice()` 返回视图的既有设计保持一致。`TensorView` 参与张量×张量/视图路径的运算符重载，同时标量运算符重载（`TensorView + scalar`、`&TensorView + scalar`、`Scalar(s) + TensorView`、原生左标量）也已覆盖 `TensorView`（只读视图）。`TensorViewMut` 不直接参与标量运算符重载——使用方需先调用 `.view()` 转为 `TensorView` 后再使用运算符，或显式调用 `.add_scalar()` 等方法。
 - `BroadcastDim` 定义于 `02-dimension.md §5.10`，被 `01-architecture.md §11` 记为“公开 sealed trait”（允许命名但禁止外部实现）。由于它出现在 `broadcast` / `overload` 的公开签名与 trait bound 中，稳定承诺要求用户可在签名中命名该 trait，但不要求用户自行实现它。
 
@@ -234,7 +234,7 @@ where
 - 广播失败走 `Err(XenonError::BroadcastError)` ；整数除零、整数溢出与结果不可表示仍保持 panic。本文 §11 的决策 3 / 决策 4 仅记录该 ADR 在本模块中的细化范围。
 - 当前稳定承诺覆盖 `Owned×Owned`、`TensorView×TensorView`、`TensorView×Tensor`、`Tensor×TensorView` 以及标量路径。实现优先级：`Owned×Owned` > `Owned/View` 混合路径。
 - 当前稳定 API 直接承诺只读 `TensorView` 参与运算符重载，这样 `broadcast_to()`、`transpose()`、`slice()` 等返回视图的操作结果可以继续参与四则运算。
-- `TensorViewMut` **不**直接参与运算符重载。若要使用运算符，必须先调用 `.view()` 获取只读 `TensorView`，再对该只读视图应用运算符。
+- `TensorViewMut` **不**直接参与运算符重载。若要使用运算符，必须先调用 `.view()` 获取只读 `TensorView`，再对该只读视图应用运算符。若调用方需要从视图结果恢复 owned / shared 链（如 `tensor.transpose().to_owned().into_shared()`），参见 `21-type.md §5.5` 以及 storage shared ownership 相关设计。
 - 无论输入组合如何，成功结果都分配新的 owned 张量，不提供原地写回或视图就地更新。
 
 #### TensorViewMut 与运算符
@@ -454,7 +454,7 @@ where A: Numeric, D: Dimension
 }
 ```
 
-- 上述 12 个 impl 与 owned `Tensor` 的标量路径完全对称：右标量路径和交换性左标量路径委托给 `11-math.md §5.9` 的公开标量方法；非交换左标量路径（`Sub`/`Div` 的 `Scalar<A> + TensorView`）委托给本模块内部 helper（`sub_scalar_left_impl`/`div_scalar_left_impl`）。
+- 上述 12 个 impl 与 owned `Tensor` 的标量路径完全对称：右标量路径和交换性左标量路径委托给 `11-math.md §5.9` 的公开标量方法；非交换左标量路径（`Scalar<A> - TensorView` / `Scalar<A> / TensorView`）委托给本模块内部 helper（`sub_scalar_left_impl`/`div_scalar_left_impl`）。
 - 同 owned `Tensor` 路径，本处 `TensorView` 标量运算符组合也通过宏生成实际代码。
 - 原生左标量（如 `5.0 + tensor_view`、`3.0 / tensor_view`）的 `TensorView` 版本同样受支持。
 
@@ -663,8 +663,8 @@ tensor + scalar:
 | 配置 | 验证点 |
 | ---- | ------ |
 | 默认配置 | 运算符语法在纯标量后端下与方法型 API 语义保持一致，包括广播失败返回 `Result::Err`。 |
-| 启用 `simd` | 通过 `math` 委托的 SIMD 路径不改变广播、`Result` 与结果所有权语义。 |
-| 启用并行 | 通过 `math` 委托的并行路径不改变广播、错误边界与结果所有权语义。 |
+| 启用 SIMD 相关 feature（按 `Cargo.toml` 实际命名） | 通过 `math` 委托的 SIMD 路径不改变广播、`Result` 与结果所有权语义。 |
+| 启用 rayon-backed 并行 feature（按 `Cargo.toml` 实际命名） | 通过 `math` 委托的并行路径不改变广播、错误边界与结果所有权语义。 |
 
 ### 8.7 类型边界 / 编译期测试
 
@@ -873,6 +873,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 **协同与一致性更新**：
 
 - 错误字段引用对齐 26-error v3.0.0 §5.1 `BroadcastError { operation, lhs_shape, rhs_shape, attempted_target_shape, axis }`（变体名与字段保持稳定，无需调整）。
+- §5.1 原生左标量表改为逐类型 `T == A` 绑定，明确不做混合元素类型提升；§5.2 补充视图恢复 owned/shared 链交叉引用；§5.4 修正非交换左标量说明；§8.6 feature gate 名称改为按 `Cargo.toml` 实际命名。
 - 与 11-math v2.0.0 §5（已修复版本）的方法签名一致：`add(&self, other: &TensorBase<S, E>) -> Result<Tensor<A, F>, XenonError>`。
 
 ---

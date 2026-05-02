@@ -170,6 +170,7 @@ where
     A: Element + Send + Sync,
     B: Element + Send,
     F: Fn(&A) -> B + Send + Sync;
+// `Send + Sync` on input elements is retained for uniform rayon worker bounds.
 
 #[cfg(feature = "parallel")]
 pub(crate) fn par_zip_map<SL, SR, A, B, C, DL, DR, DO, F>(
@@ -190,6 +191,7 @@ where
     B: Element + Send + Sync,
     C: Element + Send,
     F: Fn(&A, &B) -> Result<C, XenonError> + Send + Sync;
+// `Send + Sync` on both inputs is retained for uniform rayon worker bounds.
 
 #[cfg(feature = "parallel")]
 pub(crate) fn par_reduce_impl<S, A, D, F, ID>(
@@ -205,6 +207,7 @@ where
     A: Element + Send + Sync + Clone,
     F: Fn(A, A) -> A + Send + Sync,
     ID: Fn() -> A + Send + Sync + Clone;
+// `Sync` covers shared source references; `Send` covers owned partial values moved across rayon workers.
 
 #[cfg(feature = "parallel")]
 pub(crate) fn par_sum<S, A, D>(
@@ -259,7 +262,7 @@ where
 }
 ```
 
-`ParElements` 通过同时实现 `rayon::iter::IndexedParallelIterator`（`Item = &'a A`，由其 supertrait `ParallelIterator` 自动得到）以及对应的 `rayon::iter::plumbing::Producer` 桥接来提供并行遍历能力：
+`ParElements` 通过同时实现 `rayon::iter::IndexedParallelIterator`（`Item = &'a A`，由其 supertrait `ParallelIterator` 自动得到）以及对应的 `rayon::iter::plumbing::Producer` 桥接来提供并行遍历能力。`&A: Send` 需要 `A: Sync`；`A: Send` 保留用于统一内部并行入口的 worker bound：
 
 - **producer 拆分（修复 Blocker B7）**：`ParElements` 内部实现 `rayon::iter::plumbing::Producer`，由 `with_producer()` 把 view + 当前逻辑区间 `[lo, hi)` 转交给 rayon scheduler；rayon 通过 `producer.split_at(mid)` 将逻辑区间均分为两个互不重叠的子 producer：
   - F-contiguous 子区间：`split_at` 直接对 base pointer 做指针算术 `ptr.add(mid - lo)`，两个子 producer 持有不相交的连续切片。
@@ -387,7 +390,7 @@ where
 - 广播 chunk 映射草图：优先按 `output_dim` 的外轴边界生成块状多维 tile，使 chunk 在输出空间内保持可直接切片的矩形子域；若某些退化形状无法形成理想矩形 tile，则实现可退化为“逻辑区间 + 逐元素广播投影”的内部执行形式，而不是要求把任意线性区间整体重建成单个 broadcast sub-view。对输出维中的广播轴，输入侧固定复用同一逻辑坐标；对非广播轴，chunk 保持对应 tile 的区间跨度。实现不得为广播轴做物理展开或额外分配。
 - `par_zip_map` 仅包含并行执行逻辑；若调用发生，表示 `dispatch.rs` 已确认当前输入适合走并行路径。
 - `par_zip_map()` 作为内部并行入口，假定广播兼容性已由调用方验证，不再额外定义单独的 checked 变体，也不依赖 `BroadcastError`。此为内部前置条件。违反时视为内部 bug，可触发 debug assert，但不得破坏内存安全或对外错误模型。release 模式下行为保持语义定义，不引入未指定行为。panic 与 `Err` 传播语义参见 §6.7 与 §10。
-- **唯一仍由本函数返回的可恢复错误**是 `output_dim.checked_size()` 的整型溢出，归类为 `XenonError::InvalidArgument { operation: "par_zip_map", kind: InvalidArgumentKind::ShapeProductOverflow { shape } }`（封闭枚举字段，参见 26-error.md v3.0.0 §5.1）。
+- **唯一仍由本函数返回的可恢复错误**是 `output_dim.checked_size()` 的整型溢出，归类为 `XenonError::InvalidShape { operation: "par_zip_map", shape, kind: InvalidShapeKind::ProductOverflow, offending_dim: None }`（封闭枚举字段，参见 26-error.md v3.0.0 §5.1）。
 
 ### 6.4 轴向归约并行方案
 
@@ -429,15 +432,18 @@ where
     // regardless of worker completion order.
     //
     // Two-phase pattern preserves both ordering and short-circuit-on-error:
-    //   1) reduce-with: detect first error (in chunk-index order) and bail.
+    //   1) reduce-with: detect an error and bail.
     //   2) on success, indexed collect into a pre-sized Vec<B> guarantees
     //      output[i] corresponds to logical input element i.
+    // Internal precondition: `f` must be side-effect free and deterministic,
+    // because the success path evaluates it once during error probing and once
+    // during indexed collection.
     let iter = ParElements::with_strategy(tensor.view(), strategy);
     let total = iter.len(); // IndexedParallelIterator → ExactSize semantics
     let mut out: Vec<B> = Vec::with_capacity(total);
     // Sketch: collect_into_vec writes by index; if any element returns Err,
-    // we instead surface the first Err in chunk-index order via a separate
-    // try_reduce_with pass that does NOT rely on completion order.
+    // we instead surface an Err via a separate try_reduce_with pass that does
+    // NOT rely on completion order.
     let result: Result<(), XenonError> = iter
         .clone() // ParElements is cheap to clone (metadata only)
         .try_for_each(|item| { let _ = f(item)?; Ok(()) });
@@ -666,7 +672,7 @@ math / reduction / matrix call dispatch entry
 - 并行模块本身不新增专属错误枚举；公开错误必须复用 `26-error.md` 中的统一模型。
 - 自定义线程池类参数若存在非法值，由 `dispatch::ParallelExecStrategy::new()` 在构造期统一返回 `InvalidArgument`；`parallel` 模块在收到合法策略实例后不再重复返回该错误（参见 §5.4 与 30-dispatch.md §5.3、决策 8）。
 - 当前 `par_zip_map()` 不承担广播兼容性校验，也不新增广播专属错误构造。
-- panic 与 `Err(XenonError)` 都不得被吞掉；并行执行中发生的错误须至少传播一个。仅对整数 `sum` / `dot`，失败诊断必须额外满足“按逻辑 chunk 索引顺序固定选择首个失败 chunk”；做不到则回退串行路径。
+- panic 与 `Err(XenonError)` 都不得被吞掉；并行执行中发生的错误须至少传播一个。仅对整数 `sum` / `dot`，失败诊断必须额外满足“按逻辑 chunk 索引顺序固定选择首个失败 chunk”；做不到则由 `dispatch.rs` 不选择 `Parallel` 路径。
 - 路径裁决语义见 §6.1 与决策 4、决策 6。
 
 ### 10.1 浮点/复数并行归约容差
@@ -815,6 +821,14 @@ math / reduction / matrix call dispatch entry
 | 1.3.4 | 2026-04-16 |
 | 1.4.0 | 2026-04-28 |
 | 2.0.0 | 2026-05-02 |
+| 2.0.1 | 2026-05-03 |
+
+### v2.0.1 (2026-05-03)
+
+- Corrected the `par_zip_map()` shape-product overflow description to use `InvalidShape { kind: InvalidShapeKind::ProductOverflow, .. }`.
+- Removed the chunk-index-order claim from generic checked-map error probing and documented the side-effect-free deterministic closure precondition for the two-pass pattern.
+- Clarified that integer reduction fallback is selected by `dispatch.rs` not by the `parallel` backend.
+- Added brief rationale for retained `Send + Sync` bounds on parallel input elements and reducers.
 
 ### v2.0.0 (2026-05-02) — SemVer breaking changes
 
@@ -825,7 +839,7 @@ math / reduction / matrix call dispatch entry
 - §5.5：`par_reduce_impl` 闭包 bound 从 `F: Fn(A, A) -> A + Sync` 加强为 `F: Fn(A, A) -> A + Send + Sync`，`ID` 同样从 `Fn() -> A + Sync + Clone` 加强为 `Fn() -> A + Send + Sync + Clone`，与其他并行入口保持一致。
 - §5.6：`ParElements` 实现 `IndexedParallelIterator` + `Producer`（决策 8），修复 v1.x 缺失的 producer 拆分语义（Blocker B7）。
 - §6.1 / §6.2 / §6.3 / §9.2：worker 内允许调用 SIMD 后端 kernel（决策 9，与 08-simd v2.0.0 决策 5 对齐）。
-- §6.3：`par_zip_map` 的元素总数溢出错误对齐 26-error v3.0.0 的 `InvalidShape { kind: InvalidShapeKind::ProductOverflow, .. }` 封闭枚举（v2.0.0-rc 误用 `InvalidArgumentKind::ShapeProductOverflow`，已修正）；`num_threads` 来源统一为 `strategy.max_workers.unwrap_or_else(rayon::current_num_threads)`（修复 §5.6 与 §6.3 的不一致）。
+- §6.3：`par_zip_map` 的元素总数溢出错误对齐 26-error v3.0.0 的 `InvalidShape { kind: InvalidShapeKind::ProductOverflow, .. }` 封闭枚举（v2.0.0-rc 误用 invalid-argument shape overflow，已修正）；`num_threads` 来源统一为 `strategy.max_workers.unwrap_or_else(rayon::current_num_threads)`（修复 §5.6 与 §6.3 的不一致）。
 - §6.5：整数 `sum` / `dot` 的"首个失败 chunk 仲裁"前提不成立时，**回退责任由 dispatch 承担**（即 `select_exec_path()` 不选择 Parallel）；`parallel` 模块本身永远不串行回退（保持决策 4）。
 - §6.6：`par_map_checked` 改用两遍模式（`try_for_each` 错误探测 + `collect_into_vec` 索引收集），从 producer 不变量证明 F-order 顺序与 `from_raw_vec_unchecked` 安全前提（修复 Blocker B8）。
 - §10：错误返回字段全部对齐 26-error v3.0.0 的封闭枚举（`InvalidArgumentKind::*`、`ShapeMismatch.operation`）。

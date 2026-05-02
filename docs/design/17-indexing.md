@@ -284,8 +284,8 @@ where
 
 ```
 
-- 当前版本把 `try_at()` / `get()` / `try_at_mut()` / `get_mut()` 与 `slice()` 作为对外规范的主恢复路径。
-- `get(&[usize])` / `get_mut(&[usize])` 是基于 `&[usize]` 的便利访问入口：先验证 `index.len() == self.ndim()`（不一致时返回 `XenonError::DimensionMismatch { operation, expected: self.ndim(), actual: index.len() }`），再逐轴验证 `index[i] < shape[i]`（越界时返回 `XenonError::IndexOutOfBounds { operation: "get" / "get_mut", attempted_index: index.to_vec(), axis: 首个越界轴, shape: self.shape().to_vec() }`），最后用 `compute_offset` 直接计算偏移返回引用。这条路径**不通过** `try_at<I: NdIndex<D>>` 委托，因为对静态 `D=Ix2`，`IxDyn` 没有实现 `NdIndex<Ix2>`（封闭元素集合的 `NdIndex` 实现按维度类型严格分类），强制把 `&[usize]` 转 `IxDyn` 再走 `try_at` 会触发 trait bound 不满足。两条路径的偏移计算逻辑等价（都使用 §6.2 `compute_offset`），但 trait 分派路径不同，独立实现以避免类型约束混淆。
+- 当前版本把 `try_at()` / `try_at_mut()` 与 `slice()` 作为对外规范的主恢复路径；`get(&[usize])` / `get_mut(&[usize])` 保留为基于 slice index 的 convenience wrapper，不取代规范主入口。
+- `get(&[usize])` / `get_mut(&[usize])` 作为 convenience wrapper：先验证 `index.len() == self.ndim()`（不一致时返回 `XenonError::DimensionMismatch { operation, expected: self.ndim(), actual: index.len() }`），再逐轴验证 `index[i] < shape[i]`（越界时返回 `XenonError::IndexOutOfBounds { operation: "get" / "get_mut", attempted_index: index.to_vec(), axis: 首个越界轴, shape: self.shape().to_vec() }`），最后用 `compute_offset` 直接计算偏移返回引用。这条路径**不通过** `try_at<I: NdIndex<D>>` 委托，因为对静态 `D=Ix2`，`IxDyn` 没有实现 `NdIndex<Ix2>`（封闭元素集合的 `NdIndex` 实现按维度类型严格分类），强制把 `&[usize]` 转 `IxDyn` 再走 `try_at` 会触发 trait bound 不满足。两条路径的偏移计算逻辑等价（都使用 §6.2 `compute_offset`），但 trait 分派路径不同，独立实现以避免类型约束混淆。
 - `SliceInfo` 稳定构造入口： 调用方可通过 `SliceInfo::new(indices, in_dim, out_dim)` 直接构造切片描述符；该构造器是公开且带**结构性**校验的稳定 API（边界校验由 `TensorBase::slice(info)` 在应用时完成，参见 §5.1 表）。
 
 ### 5.3 Good / Bad 对比
@@ -295,8 +295,8 @@ where
 let value = tensor.try_at((2, 1))?;
 let value2 = tensor.get(&[2, 1])?;
 
-// Acceptable only after index validity has already been established.
-let value = tensor.try_at((2, 1)).expect("index already validated");
+// Good - propagate validation failure instead of hiding it behind panic.
+let value = tensor.try_at((2, 1))?;
 ```
 
 
@@ -356,7 +356,9 @@ TensorBase::slice(info):
           Fold start into new offset with checked_add(checked_mul(start, stride[i])).
           Update output shape[axis] = end - start; keep stride[axis] unchanged.
     3. Recompute layout flags via compute_layout_flags::<A, I>(&new_shape,
-       &new_strides, self.as_ptr().add(new_offset_in_elements)).
+       &new_strides, unsafe { self.as_ptr().add(new_offset_in_elements) }).
+       The unsafe pointer add is executed only after shape-aware bounds checks
+       and checked offset arithmetic have proved the element offset valid.
        (offset is in elements; pointer arithmetic uses elements via *const A.)
     4. Construct and return TensorView<'_, A, I> with ViewRepr borrowed from
        self.storage.
@@ -371,7 +373,7 @@ TensorBase::slice(info):
 - **存储表示绝对降级：** 范围索引/切片产出的张量始终承载 `ViewRepr<'a, A>`，与 `15-broadcast.md §6.4` 的广播降级规则、`16-shape.md §5.3` 的转置降级规则保持一致（统一规则见 `05-storage.md v2.0.0 §5.11.1`）。无论源张量是 `Owned<A>`、`ArcRepr<A>`、`ViewRepr<'_, A>` 还是 `ViewMutRepr<'_, A>`，切片产出的视图均为 `ViewRepr<'a, A>`（生命周期绑定源张量），不保留 `ArcRepr` 的引用计数共享所有权语义。`access_semantics()` 视布局是否含零步长决定返回 `ReadOnly` 或 `SharedReadOnly`（见 `07-tensor.md §5.3`）。
 - 布局状态只能重新落在 `FContiguous`、`NonContiguous`、`BroadcastView` 三种之一。
 
-**offset 单位：** 本模块中所有 `offset` 字段一律是元素单位（element-count），不是字节单位。指针算术 `self.as_ptr().add(offset)` 对 `*const A` 调用 `add(n: usize)` 时，自动按 `size_of::<A>()` 字节换算，由 Rust 标准库 pointer 类型保证；本模块直接传 element offset 即可。
+**offset 单位：** 本模块中所有 `offset` 字段一律是元素单位（element-count），不是字节单位。指针算术 `self.as_ptr().add(offset)` 对 `*const A` 调用 `add(n: usize)` 时，自动按 `size_of::<A>()` 字节换算，由 Rust 标准库 pointer 类型保证；本模块直接传 element offset 即可。该 `add` 调用必须位于已完成 shape-aware bounds 校验与 checked offset 算术验证之后的 unsafe block 中。
 
 **SliceInfo 校验职责回顾：** `SliceInfo::new` 只做结构性校验（rank 一致、output 维度匹配 Range 计数、Range start≤end）；shape 边界校验（Range.end <= shape[axis]、Index < shape[axis]）由 `TensorBase::slice(info)` 在切片应用时完成，理由详见 §5.1 和决策 3。
 
@@ -383,6 +385,7 @@ TensorBase::slice(info):
 | ------------------------------------- | ------------------------------------ | ---------------------------------- |
 | `NdIndex::index_unchecked`            | 调用方已保证 rank 匹配且每个分量有效 | 为内部已验证路径消除重复检查       |
 | `get_unchecked` / `get_unchecked_mut` | 调用方已保证索引合法且可写性前提成立 | 为热点访问路径提供零额外分支的能力 |
+| `self.as_ptr().add(new_offset_in_elements)` | `TensorBase::slice(info)` 已完成 shape-aware bounds 校验与 checked offset 算术验证，证明 element offset 位于可见 storage 范围内 | 为布局 flags 重算提供切片后的逻辑首元素指针 |
 
 unsafe 变体只省略检查，不改变偏移量公式、shape/stride 解释或引用别名规则。若输入索引非法，责任由调用方承担；若输入合法，unsafe 与安全路径的结果必须一致。
 
@@ -468,7 +471,7 @@ unsafe 变体只省略检查，不改变偏移量公式、shape/stride 解释或
 | rank-0 张量索引                       | 仅接受零维合法索引形式，偏移为 0                           |
 | 广播视图上的只读索引                  | 索引成功但结果仍遵循只读/共享只读语义                      |
 | 非连续切片后的访问                    | 偏移量计算继续基于 stride，不假设连续                      |
-| 任一轴越界                            | 安全接口返回 recoverable error；非规范语法糖若存在可 panic |
+| 任一轴越界                            | 安全接口返回 recoverable error                            |
 | 高 rank（静态上限附近或 `IxDyn`）切片 | rank 校验、输出 shape 与 stride 更新保持正确               |
 | `10^7` 元素张量 `[3162,3162]` 的末元素索引与极端 offset 组合 | 合法索引返回正确元素；会溢出的 offset 计算返回错误而非 panic |
 
@@ -632,6 +635,14 @@ User calls tensor.slice(info)
 | 1.0.6 | 2026-04-16 |
 | 1.0.7 | 2026-04-16 |
 | 2.0.0 | 2026-05-02 |
+| 2.0.1 | 2026-05-03 |
+
+### v2.0.1 (2026-05-03) — Medium/Low 文档修复
+
+- §5.2：明确 `try_at()` / `try_at_mut()` 是规范主入口，`get()` / `get_mut()` 仅为 `&[usize]` convenience wrapper。
+- §5.3：移除 `expect("index already validated")` 示例，改为继续通过 `?` 传播错误。
+- §6.3 / §6.4：将 `self.as_ptr().add(new_offset_in_elements)` 明确纳入已校验后的 unsafe block 与安全性论证。
+- §8.3：删除越界场景中关于非规范 panic 语法糖的残留表述。
 
 ### v2.0.0 (2026-05-02) — 校验职责重新分配 + 错误字段对齐
 

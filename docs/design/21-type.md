@@ -191,14 +191,11 @@ where
             })?;
             data.push(value);
         }
-        // Internal helper, not a public API. Returns Result<Tensor<B, D>,
-        // XenonError>; the `?` propagates the (unreachable in this branch)
-        // shape-product / element-count failure. By construction
-        // (data.len() == self.len() == product(self.shape())), the only
-        // remaining failure mode is shape product overflow, which has
-        // already been validated when `self` was constructed; the `?` is
-        // kept solely for type-correctness.
-        Tensor::from_shape_vec_aligned(self.raw_dim(), data)
+        // Return through a pub(crate) internal helper that constructs an owned
+        // tensor from already-validated shape/data length. The helper is not a
+        // public API surface of convert; its exact name is intentionally kept
+        // outside this document's stable contract.
+        Ok(Tensor::from_shape_vec_aligned_unchecked(self.raw_dim(), data))
     }
 }
 ````
@@ -223,19 +220,19 @@ where
 | `f64`          | `i64`          | 错误     | 有损，默认失败                              |
 | `i32`          | `f32`          | 错误     | 有损，默认失败                              |
 | `i64`          | `f32`          | 错误     | 有损，默认失败                              |
-| `i64`          | `f64`          | 错误     | 精度敏感：`±2^53` 内精确，超出按 IEEE 754 舍入。当前按需求说明书视为有损，默认失败。 [Awaiting requirements confirmation: should i64→f64 always succeed with documented precision loss, or fail for values outside ±2^53?] |
+| `i64`          | `f64`          | 错误     | 精度敏感：`±2^53` 内精确，超出按 IEEE 754 舍入。当前按 B10.a 选定为有损默认失败。 |
 | `i32`          | `Complex<f32>` | 错误     | 由 `i32 -> f32` 有损导致默认失败            |
 | `i64`          | `Complex<f64>` | 错误     | 由 `i64 -> f64` 精度敏感导致默认失败（同 `i64 → f64` 条目） |
 | `i64`          | `Complex<f32>` | 错误     | 有损，默认失败                              |
 | `f64`          | `Complex<f32>` | 错误     | 有损，默认失败                              |
-| `Complex<f32>` | `f64`          | 默认错误 | 默认错误（虚部非 0 时返回 `NonZeroImaginaryPart`；虚部为 0 时再按 `f32 -> f64` 规则处理） |
-| `Complex<f32>` | `f32`          | 默认错误 | 默认错误（虚部非 0 时返回 `NonZeroImaginaryPart`；虚部为 0 时返回实部） |
-| `Complex<f32>` | `i32`          | 默认错误 | 默认错误（虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误） |
-| `Complex<f32>` | `i64`          | 默认错误 | 默认错误（虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误） |
-| `Complex<f64>` | `f64`          | 默认错误 | 默认错误（虚部非 0 时返回 `NonZeroImaginaryPart`；虚部为 0 时返回实部） |
-| `Complex<f64>` | `f32`          | 默认错误 | 默认错误（虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误） |
-| `Complex<f64>` | `i32`          | 默认错误 | 默认错误（虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误） |
-| `Complex<f64>` | `i64`          | 默认错误 | 默认错误（虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误） |
+| `Complex<f32>` | `f64`          | 条件成功 | 条件成功（虚部非 0 时返回 `NonZeroImaginaryPart`；虚部为 0 时再按 `f32 -> f64` 规则处理） |
+| `Complex<f32>` | `f32`          | 条件成功 | 条件成功（虚部非 0 时返回 `NonZeroImaginaryPart`；虚部为 0 时返回实部） |
+| `Complex<f32>` | `i32`          | 条件成功 | 条件成功（虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误） |
+| `Complex<f32>` | `i64`          | 条件成功 | 条件成功（虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误） |
+| `Complex<f64>` | `f64`          | 条件成功 | 条件成功（虚部非 0 时返回 `NonZeroImaginaryPart`；虚部为 0 时返回实部） |
+| `Complex<f64>` | `f32`          | 条件成功 | 条件成功（虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误） |
+| `Complex<f64>` | `i32`          | 条件成功 | 条件成功（虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误） |
+| `Complex<f64>` | `i64`          | 条件成功 | 条件成功（虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误） |
 | `Complex<f64>` | `Complex<f32>` | 错误     | 分量精度丢失，默认失败                      |
 
 - `bool` 不参与 `cast()`；任何 `bool` 相关逐元素类型转换都不在本模块范围内。
@@ -249,7 +246,7 @@ where
   - 实数 → 整数：一律默认为 `FloatToInteger` 错误（浮点值域与整数表示不兼容，包括 NaN/Inf 场景）
   - 整数 → 浮点（窄精度）：一律默认为有损失败（如 `i64 → f32`、`i64 → f64`[^precision_note]、`i32 → f32`），返回 `IntegerToFloatPrecisionLoss`
 
-[^precision_note]: `i64 → f64` 在数学上 `±2^53` 范围内可精确表示，但超出此范围的 `i64` 值在转为 `f64` 时按 IEEE 754 round-to-nearest-even 可能丢失低阶位信息。当前按需求说明书保守归类为有损，已在 §5.3 条目中标注待需求确认。
+[^precision_note]: `i64 → f64` 在数学上 `±2^53` 范围内可精确表示，但超出此范围的 `i64` 值在转为 `f64` 时按 IEEE 754 round-to-nearest-even 可能丢失低阶位信息。当前按 B10.a 选定为有损默认失败。
   - 实数 → 复数：先按实数到目标复数实部分量类型的规则转换实部，再补 `0` 虚部
   - 复数 → 实数：仅当虚部为 `0` 时才可继续；但这只是必要条件而非充分条件。若实部到目标实数类型的内层转换按 `需求说明书 §23.1` 属于默认有损失败，则整体转换仍为默认错误并必须返回 `Err`
   - 复数 → 复数：实部和虚部分别按对应实数转换规则处理
@@ -335,7 +332,7 @@ where
 ### 5.6 内部构造辅助边界
 
 - `cast()` / `to_owned()` 在实现上可以复用张量或存储层的内部构造 helper，但这些 helper 的命名、文件布局、是否存在 unchecked 变体以及具体对齐策略，都不属于 convert 模块的稳定文档面。
-- 若内部保留类似 `from_shape_vec_aligned_unchecked` 的便捷路径，它也只属于内部 helper、非公开 API；其 `# Safety` 只能要求调用方保证：`shape` 的已验证元素总数与 `data.len()` 一致，且由 `shape` 推导出的 F-order 元数据在当前版本范围内合法。底层使用哪一种分配器或对齐值，不应写入该 safety 契约。
+- `cast()` / `to_owned()` 可通过 `pub(crate)` 内部 helper 从已验证的 shape/data 长度构造 owned 结果；若实现保留类似 `from_shape_vec_aligned_unchecked` 的便捷路径，它也只属于内部 helper、非公开 API。其 `# Safety` 只能要求调用方保证：`shape` 的已验证元素总数与 `data.len()` 一致，且由 `shape` 推导出的 F-order 元数据在当前版本范围内合法。底层使用哪一种分配器或对齐值，不应写入该 safety 契约。
 
 ### 5.7 Good / Bad 对比
 
@@ -490,9 +487,7 @@ impl CastTo<i32> for i64 {
 
 // `CastTo<f64> for i64` is not explicitly listed here because it falls
 // into the lossy-by-default macro-generated pattern per §5.4.
-// See §5.3 i64→f64 entry for precision caveats.
-// [Awaiting requirements confirmation: should i64→f64 always succeed
-//  with documented precision loss, or fail for values outside ±2^53?]
+// See §5.3 i64→f64 entry: B10.a selects lossy-by-default failure.
 ```
 
 ### 6.2 溢出行为汇总
@@ -545,7 +540,7 @@ impl CastTo<i32> for i64 {
 
 - [ ] **T5**: 扩展 CastTo 实现（整数↔整数、实数↔复数、复数↔复数）
   - 文件: `src/convert/cast.rs`
-- 内容: 补齐 `需求说明书 §23.1` 与 `需求说明书 §23.2` 定义的全部组合；`bool` 不参与
+  - 内容: 补齐 `需求说明书 §23.1` 与 `需求说明书 §23.2` 定义的全部组合；`bool` 不参与
   - 测试: `test_cast_real_to_complex`, `test_cast_complex_to_real_requires_zero_imag`, `test_cast_complex_f64_to_complex_f32_returns_error`
   - 前置: T1
   - 预计: 10 min
@@ -754,7 +749,7 @@ User calls cast() / to_owned() / into_owned()
 **契约更新**：
 
 - §5.2 `cast()` doc comment `# Errors` 段重写：完整列出 `TypeConversion` 字段（`operation: Cow<'static, str>`、`source_type: ElementType`、`target_type: ElementType`、`reason`、`element_index: Some(usize)`），明示 `source_type/target_type` 是 `ElementType` 封闭枚举，**禁止**使用 `core::any::TypeId`。
-- §5.2 `cast()` 函数体重写：`map_err` 闭包注入 `operation: Cow::Borrowed("cast")`；尾部由直接 `Ok(Tensor::from_shape_vec_aligned(..))` 改为返回 fallible `Tensor::from_shape_vec_aligned(..)?`（18-construction v2.0.0 中该 helper 返回 Result）；附完整注释说明为何 `?` 在此分支不可达但仍需保留以满足类型签名。
+- §5.2 `cast()` 函数体重写：`map_err` 闭包注入 `operation: Cow::Borrowed("cast")`；尾部通过 `pub(crate)` 内部 helper 从已验证的 shape/data 长度构造 owned 结果，helper 不作为 convert 稳定文档面。
 - §5.5 `to_owned()` 函数体重写：从 fallible 的 `Tensor::from_shape_vec_aligned(self.raw_dim(), data)` 改为 `pub(crate)` 内部 helper `Tensor::from_shape_vec_aligned_unchecked(self.raw_dim(), data)`，配合 doc comment 中"shape/data 长度一致性已构造期保证"的论证，让 `to_owned()` 保持 infallible 签名。
 - §6.1 `CastTo` 实现示例完全重写：把 `core::any::TypeId::of::<T>()` 替换为 `ElementType::F64`、`ElementType::I32`、`ElementType::Complex64` 等封闭枚举值；为每个 `Err(TypeConversion {..})` 添加 `operation: Cow::Borrowed("")` 占位字段（`cast()` 的 `map_err` 会注入 "cast"）；移除 `use core::any::TypeId;`，改为 `use crate::element::ElementType;` + `use crate::error::ConversionFailureReason;`。
 
@@ -765,6 +760,7 @@ User calls cast() / to_owned() / into_owned()
 - §4.2 类型级依赖表更新：`element` 行从 §5.8（Sealed trait 策略）修正为 §5.9（CastTo<T>），并补充 `ElementType` 标签依赖；`error` 行展开为 `XenonError`、`Result<T>`、`ConversionFailureReason`、`ElementType`；新增 `iter` 行（`cast()` / `to_owned()` 都通过 `self.iter()` 遍历）。
 - §10 错误处理表 `Recoverable error` 一行重写：完整列出 `TypeConversion` 五字段；明示 `CastTo::cast_to()` 自身 emits `operation` 留空 + `element_index = None`，由 `cast()` 在 `map_err` 中注入。
 - §11 新增决策 4：完整论证 B10.a 决策——三层结构（静态无损 / 静态有损 / 动态条件性）+ 拒绝替代方案的理由（拒绝默认饱和、拒绝 `i64 → f64` 默认成功、拒绝 `cast()` 主循环逐元素扫描）。
+- §5.3 / §5.4 / §6.1 移除 `i64 → f64` 待确认文案，明确按 B10.a 选定为有损默认失败；Complex→Real 表项改为“条件成功”；§5.2 / §5.6 统一 `cast()` 的 `pub(crate)` 内部 helper 边界；修正 T5 任务缩进。
 
 ---
 

@@ -353,7 +353,7 @@ impl BoolElement for bool {}
 - 不支持 `usize`、u8/u16/u32/i8/i16 等其他整数类型。
 - `usize` 仅作为索引和形状元数据使用。
 
-**按运算的元素类型可用矩阵（跨模块快速参考）：** 以下表格汇总各运算模块支持的元素类型；个别运算因数学语义限制（如有序比较对复数无定义）仅支持子集。**权威定义仍以各运算模块文档为准**，本表仅作为单点查询与 sealed trait 实现一致性核对的参考。
+**按运算的元素类型可用矩阵（跨模块快速参考，非规范性索引）：** 以下表格汇总各运算模块支持的元素类型；个别运算因数学语义限制（如有序比较对复数无定义）仅支持子集。**权威定义仍以各运算模块文档为准**，本表仅作为单点查询与 sealed trait 实现一致性核对的参考；每行的“权威文档”列必须保留对应 owner 链接。
 
 | 运算 / 模块 | i32 | i64 | f32 | f64 | Complex<f32> | Complex<f64> | bool | 权威文档 |
 | ----------- | :-: | :-: | :-: | :-: | :----------: | :----------: | :--: | -------- |
@@ -362,7 +362,7 @@ impl BoolElement for bool {}
 | 内积 dot（12-matrix） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `12-matrix.md §5.1` |
 | sum / mean 归约（13-reduction） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `13-reduction.md §5` |
 | min / max 归约（13-reduction） | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | `13-reduction.md §5`（复数无序） |
-| unique 集合运算（14-set） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `14-set.md` |
+| unique 集合运算（14-set） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `14-set.md §6.1`（哈希查重 + F-order 顺序输出） |
 | eye 单位矩阵构造（18-construction） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `18-construction.md` |
 | clip（20-utility） | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | `20-utility.md`（无序比较不适用） |
 | cast 类型转换（21-type） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `21-type.md` |
@@ -371,7 +371,7 @@ impl BoolElement for bool {}
 
 ### 5.8 Sealed trait 策略
 
-`Element`、`Numeric`、`RealScalar`、`ComplexScalar`、`CastTo<T>`、 `OrderedCompareElement` 全部通过共享的 `private::Sealed` 基础设施实现 sealed trait 模式。下游 crate 只能使用 Xenon 已声明的元素类型，不能为自定义类型补充这些 trait 实现。
+`Element`、`Numeric`、`RealScalar`、`ComplexScalar`、`CastTo<T>`、`OrderedCompareElement` 全部通过共享的 `private::Sealed` 基础设施实现 sealed trait 模式。下游 crate 只能使用 Xenon 已声明的元素类型，不能为自定义类型补充这些 trait 实现。`CastTo<T>` 通过 `Self: Element` 的 sealed 边界间接封闭实现范围。
 
 ```rust,ignore
 // src/element/mod.rs
@@ -680,7 +680,7 @@ impl RealScalar for f64 {
 
 - [ ] **T3**: 创建 `real.rs`，定义 RealScalar trait
   - 文件: `src/element/real.rs`
-  - 内容: `RealScalar` 仅含公开数学函数与 `is_nan()`
+  - 内容: `RealScalar` 仅含公开数学函数与 `is_nan()` / `is_infinite()` / `is_finite()`
   - 测试: 编译通过
   - 前置: T2
   - 预计: 10 min
@@ -780,7 +780,6 @@ impl RealScalar for f64 {
 | `test_f64_sin`                  | `sin(0)==0`                                                | 高     |
 | `test_f64_exp_ln_inverse`       | 对 `x > 0` 且有限输入使用容差断言验证 `exp(ln(x)) ≈ x`     | 高     |
 | `test_f32_nan_detection`        | `NaN.is_nan()`, `Inf.is_infinite()`                        | 高     |
-| `test_f64_nan_propagating_min`  | `min(NaN, 1.0).is_nan()`                                   | 高     |
 | `test_bool_element_only`        | `bool::zero()==false`, `bool::one()==true`                 | 高     |
 | `test_bool_not_numeric`         | bool 不满足 Numeric（编译测试）                            | 高     |
 | `test_bool_cast_to_f32_fails`   | `bool` 张量 `.cast::<f32>()` 不可编译（compile-fail）      | 高     |
@@ -828,7 +827,7 @@ impl RealScalar for f64 {
 ### 8.7 类型边界 / 编译期测试
 
 | 测试类型       | 覆盖方式                                | 说明                                         |
-| -------------- | ----------------------------------------| -------------------------------------------- |
+| -------------- | --------------------------------------- | -------------------------------------------- |
 | sealed 边界    | compile-fail 测试外部类型实现 `Element` | 验证封闭元素集合不会被外部 crate 扩展        |
 | 元素能力边界   | compile-fail 测试 `bool.cast::<f32>()`  | 验证布尔元数据类型不会进入算术元素层         |
 | 元素能力边界   | compile-fail 测试 `usize: Element`      | 验证索引元数据类型不会进入算术元素层         |
@@ -847,7 +846,7 @@ impl RealScalar for f64 {
 | `tensor`     | `Element`                   | Tensor<A, D> 的 A 约束 |
 | `matrix`     | `Numeric` / `ComplexScalar` | 内积运算               |
 | `convert`    | `Element`                   | 类型转换               |
-| `math`       | 全部Traits                  | 数学运算               |
+| `math`       | 全部 Traits                 | 数学运算               |
 
 各模块的详细接口约定参见对应设计文档（`11-math.md` §4、`13-reduction.md` §4、`21-type.md` §4）。
 
@@ -968,6 +967,14 @@ Upstream modules declare element bounds
 | 1.2.6 | 2026-04-15 |
 | 1.2.7 | 2026-04-15 |
 | 1.2.8 | 2026-04-16 |
+| 1.2.9 | 2026-05-03 |
+
+### v1.2.9 (2026-05-03) — Medium/Low 文档修复
+
+- 将跨模块运算矩阵标注为非规范性索引，并为 `unique` 复数支持补充 `14-set.md §6.1` 的哈希查重与 F-order 输出引用。
+- 澄清 `CastTo<T>` 通过 `Self: Element` 间接 sealed，并同步 `RealScalar` 实现任务的方法范围。
+- 移除 element 单元测试中属于 math/reduction 语义的 `min(NaN, 1.0)` 测试项。
+- 修正文档表格格式、`全部 Traits` 术语空格，并为最近版本补充变更摘要。
 
 ---
 

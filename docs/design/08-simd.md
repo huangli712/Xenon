@@ -444,7 +444,7 @@ Element-wise operation flow
 │ simd/ backend already selected SIMD path                        │
 │ • F-order contiguous memory                                     │
 │ • Supported element type / op                                   │
-│ • Current unified-alignment fast path enabled                   │
+│ • Kernel-specific alignment strategy selected                   │
 │ • feature = "simd" enabled                                      │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
@@ -531,7 +531,7 @@ SIMD dot dispatch flow
 
 // `can_use_simd` remains inside the `simd/` module.
 // The decision checks feature gate, contiguous layout, supported type,
-// unified alignment fast path, and runtime vector width before entering
+// kernel-specific alignment or unaligned-load admission, and runtime vector width before entering
 // the pure vectorized path.
 ```
 
@@ -613,8 +613,8 @@ impl WithSimd for AddF32Kernel<'_> {
             let offset = i * width;
             unsafe {
                 // SAFETY: offset + width <= chunks * width <= len
-                // Xenon's unified alignment fast-path precondition has already
-                // been checked before dispatch.
+                // The kernel-specific alignment or unaligned-load admission
+                // has already been checked before dispatch.
                 let lhs_vec = simd.f32s_load(
                     self.lhs.as_ptr().add(offset)
                 );
@@ -773,10 +773,10 @@ Consistency guarantee strategy
   - 前置: T2
   - 预计: 10 min
 
-- [ ] **T4**: 实现整数 `sum` 与 `dot` 的 checked 语义 SIMD 路径
+- [ ] **T4**: 实现整数 `sum` 与 `dot` 的 admission 与回退测试
   - 文件: `src/simd/vector.rs`
-  - 内容: 为 `i32`/`i64` 实现仅在可证明等价于标量逐步 checked arithmetic 时启用的 SIMD 前缀/合并路径；无法满足条件时由语义模块保持串行路径，并补齐 overflow validation
-  - 测试: `test_sum_dispatch_simd_int`、`test_dot_dispatch_simd_int`
+  - 内容: 为 `i32`/`i64` 实现 checked 语义的 SIMD admission 与回退测试；仅在已验证 ISA widening kernel 存在时实现 SIMD 路径，无法满足条件时由语义模块保持串行路径，并补齐 overflow validation
+  - 测试: `test_sum_dispatch_simd_int_admission`、`test_dot_dispatch_simd_int_admission`
   - 前置: T3
   - 预计: 10 min
 
@@ -850,7 +850,7 @@ Consistency guarantee strategy
 | `test_tail_handling`     | 非宽度整数倍数组尾部处理               | 中     |
 | `test_empty_array`       | 空数组不 panic                         | 中     |
 | `test_single_element`    | 单元素数组正确处理                     | 中     |
-| `test_misaligned_ptr`    | 非对齐数据回退到标量                   | 中     |
+| `test_misaligned_ptr`    | aligned-only kernel 回退或 unaligned kernel 正确执行                   | 中     |
 
 SIMD 路径与各语义模块串行实现的一致性测试，由各语义模块的测试计划覆盖。
 
@@ -908,7 +908,7 @@ SIMD 路径与各语义模块串行实现的一致性测试，由各语义模块
 | ------------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
 | 消费（输入） | `tensor`                     | `TensorBase<S, D>::as_slice()`                                                                               | 只消费满足 `07-tensor.md` 连续切片契约的输入；非连续或广播视图保持语义模块串行路径              |
 | 消费（输入） | `math` / `reduction` / `dot` | `dispatch.rs` / `dispatch_vector_binary_op()` / `SimdKernel::sum()` / `SimdKernel::dot()` / `simd_vector_width()` | 上层语义模块先完成形状和类型裁决；SIMD 分支选择由 `simd/` 后端内部完成（分层原则见 §1.2） |
-| 消费（输入） | `layout`                     | 对齐/连续性元数据                                                                                            | 当前版本仅对统一对齐快路径启用 SIMD，其余情况由 `simd/` 后端内部保持非 SIMD 路径                  |
+| 消费（输入） | `layout`                     | 对齐/连续性元数据                                                                                            | SIMD 后端按 kernel 选择 aligned 或 unaligned 变体；若所选 admission 不满足，则保持非 SIMD 路径                  |
 | 产出（输出） | 上层语义模块                 | 标量结果或写回目标切片                                                                                       | 不改变公开 API 形状、错误类别和数值语义边界                                                     |
 
 `math` 模块在执行逐元素运算时，先经 `dispatch.rs` 决定是串行还是并行执行；无论选择哪一层，对应执行上下文（串行整段，或并行 worker 拿到的 chunk）内 `simd` 后端再根据兼容连续切片、对齐策略与 ISA 能力独立决定是否进入 SIMD，否则保持其串行实现（参见 `11-math.md §6.3`、本文 §9.3）。
@@ -920,11 +920,11 @@ SIMD 路径与各语义模块串行实现的一致性测试，由各语义模块
 ```
 math/reduction/dot call acceleration entry
     │
-    ├── check feature + contiguous slice contract + unified alignment fast path
+    ├── check feature + contiguous slice contract, then defer alignment admission to simd
     │       ├── Check feature = simd
     │       ├── Check F-order contiguity via tensor contract
     │       ├── Check whether element type implements SimdElement
-    │       └── Check aligned fast-path preconditions
+    │       └── Defer kernel-specific aligned/unaligned admission to `simd/`
     │
     ├── YES -> get_arch().dispatch(VectorKernel)
     │
@@ -954,7 +954,7 @@ SIMD 模块依赖 layout 提供的连续性和对齐信息来判断是否可以�
 
 | 类型              | 说明                                                                                                                                      |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | 无专属 recoverable error；SIMD 不可用、类型不支持、未满足统一对齐快路径或当前 ISA 无法满足语义约束时均由 `simd` 后端内部保持非 SIMD 路径  |
+| Recoverable error | 无专属 recoverable error；SIMD 不可用、类型不支持、所选 kernel 的 aligned/unaligned admission 或当前 ISA 无法满足语义约束时均由 `simd` 后端内部保持非 SIMD 路径  |
 | Panic             | 切片长度不一致；整数 `sum` / `dot` 溢出；违反 kernel 前置条件的内部 bug                                                                   |
 | 路径一致性        | 逐元素 SIMD 路径保持公开语义一致；整数 `sum` / `dot` 与标量 checked arithmetic 精确一致；浮点/复数归约与内积允许已文档化容差              |
 | 容差边界          | 整数精确一致；浮点/复数归约与内积以 `需求说明书 §28.3` 为权威基线，`00-coding.md §8.4` 仅作为实现/测试参考                                |
@@ -1043,7 +1043,7 @@ SIMD 模块依赖 layout 提供的连续性和对齐信息来判断是否可以�
 | 方面       | 设计决策                                                                             |
 | ---------- | ------------------------------------------------------------------------------------ |
 | 向量化宽度 | pulp 运行时自动选择最优宽度，无需编译期配置                                          |
-| 内存对齐   | 当前版本仅对统一对齐快路径启用 SIMD；未满足该条件时由 `simd` 后端内部保持非 SIMD 路径|
+| 内存对齐   | 按 kernel 选择 aligned 或 unaligned 变体；若所选 admission 不满足，则由 `simd` 后端内部保持非 SIMD 路径|
 | 尾部处理   | 标量循环处理尾部，简单安全                                                           |
 | 循环展开   | pulp 内部处理，无需手动展开                                                          |
 | FMA 利用   | 不用于逐元素 `mul`/`add`；仅可在已文档化容差的 reduction merge 中受控使用            |
@@ -1079,6 +1079,13 @@ SIMD 模块依赖 layout 提供的连续性和对齐信息来判断是否可以�
 | 1.2.6 | 2026-04-16 |
 | 1.2.7 | 2026-04-16 |
 | 2.0.0 | 2026-05-02 | SemVer breaking。决策 5：允许并行 worker 内启用 SIMD，撤销 v1.x 的并行/SIMD 互斥限制（§1.2、§9.3 重写）。决策 6：`dispatch_vector_binary_op` 签名改为返回 `bool` 显式表达"未进入 SIMD"，配合 §1.1 单向回退归属（§5.4 重写）。`SimdKernel<A>` 的 `A` bound 由 `Copy + Send + Sync + 'static` 收紧为 `SimdElement`（§5.3）。`SimdElement` 加 `Sealed` super-trait（§5.2）。`get_arch()` 返回 `&'static Arch`，移除 disabled feature 下的 `-> ()` 占位（§5.4）。§5.7 对齐准入由"必须满足统一对齐快路径"放宽为 kernel 内部按 ISA/操作动态选择 aligned/unaligned 变体。§5.5 复数算术承诺与 §5.6 覆盖状态表对齐，明确"已实现"为本版稳定交付。§5.10 `simd_vector_width` 语义补注。`AddF32Kernel` 字段由 `pub` 降为 `pub(crate)`（§6.1）。§13 SemVer 行修正为 `pub(crate)` 内部 API，不强制走 SemVer。 |
+| 2.0.1 | 2026-05-03 | Clarified kernel-specific aligned/unaligned admission wording across flow charts, safety notes, interaction diagrams, error semantics, tests, and performance notes. Integer `sum` / `dot` implementation work now covers admission and fallback tests first, with SIMD implementation only when a verified ISA widening kernel exists. |
+
+### 2.0.1
+
+- Replaced stale alignment-admission wording with kernel-specific aligned/unaligned admission language.
+- Updated integer `sum` / `dot` implementation tasks to focus on admission and fallback tests unless a verified widening SIMD kernel exists.
+- Polished misaligned-input test and performance wording to match the dynamic alignment policy.
 
 ---
 
