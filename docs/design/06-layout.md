@@ -144,7 +144,13 @@ impl LayoutFlags {
     /// SIMD alignment flag (64-byte)
     pub const ALIGNED: Self = Self(0b0000_0100);         // 0x04
 
-    /// Zero stride flag (broadcast dimension)
+    /// Zero stride flag (broadcast dimension only).
+    ///
+    /// **Semantics**: This flag marks zero strides introduced by broadcasting,
+    /// where multiple logical indices map to the same physical element. It is
+    /// **never** set for empty-array degenerate metadata that happens to carry
+    /// `stride[i] == 0` due to `shape[i] == 0`. The discriminator between the
+    /// two is `product(shape) > 0` (see §5.11 and §6.1).
     pub const HAS_ZERO_STRIDE: Self = Self(0b0000_1000); // 0x08
 
     // === Query methods ===
@@ -204,12 +210,25 @@ impl LayoutFlags {
 /// layout is F-order (e.g., immediately after a successful
 /// `compute_f_strides()` call). For the general case, use
 /// `compute_layout_flags(shape, strides, ptr)` (§5.12) instead.
+///
+/// # Arguments
+///
+/// * `aligned` - Whether the logical-first pointer satisfies 64-byte
+///   alignment (or whether the layout describes an empty tensor; see §5.9).
+/// * `is_broadcast_zero_stride` - Whether the layout contains broadcast-induced
+///   zero strides (i.e., a zero stride that should be mapped to
+///   `LayoutState::BroadcastView`). Empty-array degenerate zero strides
+///   (`product(shape) == 0`) must **not** be passed as `true`; in that case
+///   pass `false` and the result will retain `F_CONTIGUOUS`.
 #[inline]
-pub(crate) const fn flags_for_f_layout(aligned: bool, has_zero_stride: bool) -> LayoutFlags {
+pub(crate) const fn flags_for_f_layout(
+    aligned: bool,
+    is_broadcast_zero_stride: bool,
+) -> LayoutFlags {
     LayoutFlags::EMPTY
-        .set_f_contiguous(!has_zero_stride)
+        .set_f_contiguous(!is_broadcast_zero_stride)
         .set_aligned(aligned)
-        .set_has_zero_stride(has_zero_stride)
+        .set_has_zero_stride(is_broadcast_zero_stride)
 }
 ```
 
@@ -305,18 +324,28 @@ impl<D: Dimension> Strides<D> {
     pub fn try_stride(&self, axis: usize) -> Result<usize, XenonError>;
 
     /// Returns an iterator over stride values.
+    ///
+    /// Implementation note: delegates to `D::slice().iter()` so the iteration
+    /// shares its representation with `Dimension::slice()`.
     pub fn iter(&self) -> impl Iterator<Item = &usize>;
 
     /// Borrows the stride storage as a slice.
+    ///
+    /// Implementation note: equivalent to `<D as Dimension>::slice(&self.strides)`.
+    /// `Strides<D>` reuses `D` as a `[usize; N]` carrier of stride values; this
+    /// is **not** a shape value. The shape and stride share the same rank but
+    /// carry different semantics, and they live in different fields of
+    /// `TensorBase` (see `07-tensor.md` §5.1).
     pub fn as_slice(&self) -> &[usize];
 }
 ```
 
-- 所有 stride 值必须为非负；零表示广播维度。
+- 所有 stride 值必须为非负；零表示广播维度（参见 §5.11 对零步长来源的二分）。
 - `Strides<D>` 的维度数必须与对应 `shape: D` 完全一致。
 - 对于 F-contiguous 布局：`stride[0] = 1`，且 `stride[i] = stride[i-1] * shape[i-1]`。
 - `Strides::new()` 仅构造承载对象，不执行完整合法性验证。
 - 布局合法性由构造器/validator 入口统一负责。
+- `Strides<D>` 复用 `D` 作为 `[usize; N]` 元数据载体来表示 stride，与 `Dimension` 的 shape 语义无关；`Dimension::slice()` 在 stride 路径上仅作为底层数据视图，不再承担 shape 语义。
 
 与 `Dimension`/`TensorBase` 的职责边界如下：
 
@@ -327,6 +356,8 @@ impl<D: Dimension> Strides<D> {
 ### 5.6 F-order 步长计算
 
 `compute_f_strides()` 产出的仍是规范化 packed F-order stride（`stride[i] = product(shape[0..i])`）。`需求说明书 §7` 提到的“padding”在当前版本不进入逻辑布局元数据；同时需满足 `需求说明书 §11` 关于“带填充区域的数组迭代须仅遍历逻辑元素，不得暴露为对齐或实现目的引入的填充区域”的要求。
+
+**构造与识别的非对称性**：`compute_f_strides()` 是**构造**入口，输出严格 packed F-order stride（包括 size=1 轴也使用 packed 公式产出的值）；§5.7 的 `is_f_contiguous()` 是**识别**算法，对来自切片/转置/外部 raw-parts 的 stride 模式做判定，对 size=1 轴的 stride 值放宽（任意值均不破坏连续性）。两者不冲突：构造侧产出的 stride 必然能通过识别侧验证为 F-连续，但识别侧也接受由其它合法路径派生的等价非 packed 值。该非对称性只在识别侧体现，不允许 safe 构造路径返回非 packed F-order stride。
 
 **算法**：
 
@@ -410,7 +441,7 @@ Result: false (not F-contiguous)
 - **F-order contiguous**：对所有轴满足 `strides[i] == product(shape[0..i])`；对 `shape[i] == 1` 的轴，可按 §5.7 的连续性规则放宽判定；若零步长来自广播语义，则不得归类为 `F_CONTIGUOUS`，但空数组在退化 metadata 表示下出现的零步长不自动破坏 `F_CONTIGUOUS`。
 - **转置视图（non-contiguous）**：`strides` 是对应 F-order contiguous stride 集合的轴置换结果，且所有 stride 都为正。
 - **切片派生的正步长非连续视图**：仅指由 Xenon 内部张量切片 API 产生的布局；所有 stride 都为正，但不满足 F-order 连续条件；例如在已验证父布局上继续切片后得到的正步长布局仍属合法。
-- **广播视图**：广播轴允许 stride 为 `0`；是否为广播轴由广播语义决定（源维度为 1 且目标维度 > 1），而非由结果张量的 `shape[i] == 1` 判定。其余非广播轴必须保持 F-order 或转置后的正 stride 模式。
+- **广播视图**：广播轴允许 stride 为 `0`；广播语义本身（哪些轴是广播轴、源/目标轴长度的判定规则）由 `15-broadcast.md` 拥有，layout 仅接收已构造好的 `(shape, strides)` 状态并据此分类为 `LayoutState::BroadcastView`。其余非广播轴必须保持 F-order 或转置后的正 stride 模式。
 - **单元素或 0-D**：可放宽连续性判定，但 stride 仍须落在当前版本支持的布局族内；其中零步长只允许来自广播语义或空数组退化 metadata，不能把“任意零步长”视为一般合法布局。
 
 **校验口径说明**： 上述“合法 stride 布局族”同时定义当前版本 safe 构造可接受的布局边界。safe 构造只接受能够**仅凭 metadata** 验证正确性的布局：`shape + strides + offset + storage_len` 必须足以证明访问范围不越界，且布局须落在当前版本支持的布局族内。这里的“切片派生”只指 Xenon 内部张量切片 API 产出的布局，不接受外部 raw-parts 输入仅凭“它看起来像切片结果”就走 safe 路径。任何 raw-parts 构造即使 metadata 恰好匹配切片结果，也只能走 unsafe 构造路径并由调用方承担额外正确性责任。该口径与 `需求说明书` §8 保持一致。
@@ -439,11 +470,23 @@ Result: false (not F-contiguous)
 ```rust,ignore
 /// Checks whether the logical-first pointer satisfies the alignment requirement.
 ///
-/// # Preconditions
+/// # Behavior on invalid `align`
 ///
-/// `align` must be greater than 0 and a power of 2.
+/// If `align == 0` or `align` is not a power of two, returns `false`. This
+/// keeps the function `safe` and side-effect free; layout queries never
+/// panic on malformed alignment values. Callers that require a power-of-two
+/// alignment must validate `align` before calling. The implementation is
+/// permitted to compute the modulo only when `align` is valid; for invalid
+/// values the function short-circuits.
+///
+/// The function only inspects the integer representation of `ptr`; it does
+/// not dereference the pointer, and `ptr` is permitted to be dangling
+/// (e.g., for empty tensors). See §6.5 for the safety argument.
 #[inline]
 pub fn is_aligned_to(ptr: *const u8, align: usize) -> bool {
+    if align == 0 || !align.is_power_of_two() {
+        return false;
+    }
     (ptr as usize) % align == 0
 }
 
@@ -490,11 +533,27 @@ Indices [0, 0], [0, 1], [0, 2], and [0, 3] access the same physical element
 ///
 /// * `shape` - Dimension lengths
 /// * `strides` - Strides in element units (`Strides<D>` with explicit `usize` storage)
-/// * `ptr` - Raw pointer to the logical first element (`TensorBase::as_ptr()`)
+/// * `ptr` - Raw pointer to the logical first element (`TensorBase::as_ptr()`).
+///   Used **only** for alignment inspection (integer-modulo on the address).
+///   The pointer is never dereferenced; it is permitted to be dangling for
+///   empty tensors. See §6.5.
 ///
 /// # Returns
 ///
 /// A `LayoutFlags` instance with all relevant flags set.
+///
+/// # Note: HAS_ZERO_STRIDE semantics
+///
+/// `HAS_ZERO_STRIDE` is set **only** when at least one stride is `0` *and*
+/// `product(shape) > 0`. Empty-array degenerate metadata (some `shape[i] == 0`
+/// causing the product to be `0`) is intentionally **not** classified as a
+/// broadcast view, so empty tensors that otherwise satisfy the F-order
+/// recognition rule retain `LayoutState::FContiguous`. The classification of
+/// a stride pattern as “broadcast vs non-broadcast” is therefore expressed
+/// entirely through the `(stride == 0, product(shape) > 0)` joint condition;
+/// `compute_layout_flags()` never asks the broadcast module to participate
+/// in this decision. The actual rules for **producing** a broadcast view
+/// (which axes get zero strides) live in `15-broadcast.md`.
 pub(crate) fn compute_layout_flags<A, D: Dimension>(
     shape: &D,
     strides: &Strides<D>,
@@ -595,7 +654,13 @@ function compute_flags(shape, strides, ptr):
 
 ### 6.5 安全性论证
 
-Layout 模块不涉及 `unsafe` 操作。标志位计算基于 shape/strides 的只读查询，结果缓存在 `LayoutFlags` 中。
+Layout 模块本身**不执行任何 `unsafe` 操作**。`compute_layout_flags()` 与 `is_aligned_to()` 接收 `*const A` / `*const u8` 参数，但仅用其整数地址进行 modulo 运算，从不解引用，也不构造引用。该约束意味着：
+
+- 调用方传入的 raw pointer 允许是 dangling（例如空张量的 dangling logical-first pointer）。
+- pointer 的 provenance、生命周期、是否指向已初始化内存等属性，由调用方（`tensor` 构造路径）单独保证；这些属性不属于 layout 模块的安全契约。
+- `is_aligned_to(ptr, 0)` 或 align 非 2 的幂时返回 `false`，不计算 modulo（参见 §5.9）；layout 模块对外公开的查询函数永不 panic、永不引发 UB。
+
+标志位计算基于 shape/strides 的只读查询与上述地址级运算，结果缓存在 `LayoutFlags` 中。Layout 公开 API 中不需要 `unsafe fn`。
 
 ### 6.6 与 Dimension 模块的接口
 
@@ -838,6 +903,23 @@ Upper layers create or transform tensor metadata
 | 理由     | 规范化 packed F-order 可简化布局校验与 FFI 导出；轴间 padding 将引入 `leading_dim` 一类概念，显著增加类型系统复杂度；分配级对齐由 `storage` 层的 `AlignedBuf` 处理，而非 `layout` 层。                                                                                                                          |
 | 替代方案 | 在 `layout` 元数据中显式支持轴间 padding / padded leading dimension — 放弃，会扩大布局状态空间并增加验证、类型表达与 FFI 映射复杂度。                                                                                                                                                                           |
 
+### 决策 6：零步长语义二分（广播零步长 vs 空数组退化零步长）
+
+| 属性     | 值 |
+| -------- | -- |
+| 决策 | `HAS_ZERO_STRIDE` 仅识别广播引入的零步长（`product(shape) > 0` 且至少一个 `stride == 0`）。空数组（`product(shape) == 0`）即使 metadata 中含零步长，也不设置 `HAS_ZERO_STRIDE`，可继续保持 `LayoutState::FContiguous`。 |
+| 理由 | 两类零步长的语义截然不同：广播零步长意味着多个逻辑索引指向同一物理元素，必须按 `BroadcastView` 处理（拒绝可变迭代、SIMD 路径选择需特判等）；空数组退化零步长则没有元素可访问，任何分类都不影响实际行为，但若强行降级为 `BroadcastView` 会让空 F-order 张量丢失连续性查询的快路径。`compute_layout_flags()` 通过 `(stride == 0, product(shape) > 0)` 联合条件做这一分类，不需要参与广播规则推导，遵守 layout 模块的职责边界。 |
+| 替代方案 | 仅以 `any(stride == 0)` 判定 `HAS_ZERO_STRIDE` — 放弃，会让空数组路径误入 `BroadcastView` 分类，影响下游 dispatch 与 iterator 边界。 |
+| 替代方案 | 在 layout 中保存 `is_broadcast` source 信息以做更精细分类 — 放弃，会让 layout 反向依赖 broadcast 语义，违反 §1.1 单向依赖。 |
+
+### 决策 7：is_aligned_to 不 panic
+
+| 属性     | 值 |
+| -------- | -- |
+| 决策 | `is_aligned_to(ptr, align)` 在 `align == 0` 或 `align` 非 2 的幂时返回 `false`，不 panic。 |
+| 理由 | layout 公开查询 API 与“safe 布局校验失败必须返回 `XenonError`，不以 panic 作为常规错误通道”原则一致；该函数本身不返回 `Result`（其语义就是 bool 查询），用 `false` 作为非法输入的“查询失败”值即可，与 `is_aligned()` 包装层的合法使用边界一致。 |
+| 替代方案 | 保留 panic — 放弃，与公开 layout 查询 API 不引发异常的边界冲突，且当 `is_aligned_to` 在 release 路径被运行时计算时容易因外部输入意外 panic。 |
+
 ---
 
 ## 12. 性能考量
@@ -882,6 +964,7 @@ Upper layers create or transform tensor metadata
 | 1.2.4 | 2026-04-15 |
 | 1.2.5 | 2026-04-16 |
 | 1.2.6 | 2026-04-16 |
+| 1.3.0 | 2026-05-02 |
 
 ---
 
