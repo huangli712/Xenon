@@ -563,9 +563,9 @@ pub enum XenonError {
     InvalidAxis { operation: Cow<'static, str>, axis: usize, ndim: usize, shape: Vec<usize> },
     Ffi { operation: Cow<'static, str>, category: FfiErrorCategory, backend: FfiBackend, cause: Option<Box<XenonError>> },
     Workspace { operation: Cow<'static, str>, category: WorkspaceErrorCategory, cause: Option<Box<XenonError>> },
-    Storage,
-    Numerical,
-    Internal,
+    // 注：旧模型中曾包含 Storage / Numerical / Internal 三个占位变体，
+    // 26-error v3.0.0 已删除该模型。本枚举为 v3.0.0 的封闭变体集，
+    // 禁止再新增自由占位错误；新错误必须按封闭枚举/结构化负载补入。
 }
 
 pub enum StorageKindTag { Owned, View, ViewMut, Arc }

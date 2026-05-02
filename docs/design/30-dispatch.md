@@ -942,7 +942,7 @@ Caller (math / matrix / reduction)
 | 被调用（输出） | `reduction`      | `select_exec_path()`                        | `reduction::sum()` 调用 dispatch 决定执行路径（参见 `13-reduction.md` §6.3）                    |
 | 被调用（输出） | `simd`（间接）   | `ExecPath::Simd`                            | dispatch 仅推荐 SIMD 路径；`simd/` 内部做最终 admission（ISA/ lane 宽度检测）                   |
 | 被消费（输入） | `parallel`       | `ParallelExecStrategy`                      | dispatch 定义该类型，`parallel/` 通过 `crate::dispatch` 引用并消费其字段                        |
-| 被消费（输入） | `parallel`       | `ParallelGuard`                             | `parallel/` 后端在入口调用 `ParallelGuard::enter()`；失败时回退（参见 `09-parallel.md` §5.1）   |
+| 被消费（输入） | `parallel`       | `ParallelGuard`                             | `parallel/` 后端接收并持有 `select_exec_path()` 返回的 `ParallelGuard`（select-and-enter 原子绑定，不再单独调用 `enter()`；参见 §5.4 / §5.7 / §9.3 与 `09-parallel.md` §5.1） |
 | 消费（输入）   | `tensor`         | `.len()`, `.is_f_contiguous()`              | 调用方在调用 dispatch 前自行查询这些元数据并传入                                               |
 | 消费（输入）   | `layout`（间接） | `is_aligned()`                              | 调用方在调用 dispatch 前自行查询对齐状态并传入 `alignment_ok`                                  |
 
@@ -1098,7 +1098,7 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 | ------------------------- | ----------------------- | ------------------------------------------------------------------------ |
 | `select_exec_path()`      | ~3 comparisons + 2 loads | 两次 `AtomicUsize::load(Relaxed)` + 一次 `Cell::get()`（仅并行分支）      |
 | 阈值读取                 | 单次 Relaxed atomic load | 无锁，无竞争；Relaxed 在 x86 上等同于普通 load。                          |
-| ParallelGuard::enter()   | 一次 thread-local 访问   | `Cell::get()` + `Cell::set()`，纳秒级                                     |
+| guard 获取（select 内部） | 一次 thread-local 访问   | `select_exec_path()` 内部 `Cell::get()` + `Cell::set()`，纳秒级；不再暴露独立的 `ParallelGuard::enter()` API |
 | ParallelGuard::drop()    | 一次 thread-local 访问   | `Cell::set(false)`，纳秒级                                                |
 
 **总体评估：** 每次 `select_exec_path()` 调用的总开销 < 10 ns（在典型 x86_64 硬件上）。相比之下，被派发的操作本身（如 1M 元素的 `add`）耗时在微秒至毫秒级，dispatch 开销可忽略不计。
