@@ -107,10 +107,10 @@ src/tensor/
 | 来源模块    | 使用的类型/trait                                                                                                                   |
 | ----------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `storage`   | `Owned`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`, `Storage`, `StorageMut`, `StorageOwned`, `StorageShared`（参见 `05-storage.md §5`） |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `.slice()`, `.checked_size()`, `.ndim()`（参见 `02-dimension.md §5`）                           |
-| `layout`    | `LayoutFlags`, `compute_f_strides()`, `is_f_contiguous()`, `is_aligned()`（参见 `06-layout.md §5`）                                |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`, `.slice()`, `.checked_size()`, `.ndim()`（参见 `02-dimension.md §5`、`§5.6`）   |
+| `layout`    | `LayoutFlags`, `Strides<D>`, `compute_f_strides()`, `compute_layout_flags()`, `is_f_contiguous()`, `is_aligned()`（参见 `06-layout.md §5`） |
 | `element`   | `Element`（构造方法中 `A: Element` 约束；参见 `03-element.md §5`）                                                                  |
-| `error`     | `XenonError`（`InvalidLayout` / `InvalidShape`；构造校验与 `validate_access_range`；参见 `26-error.md`）                            |
+| `error`     | `XenonError`（`InvalidLayout` 含 `InvalidLayoutReason` / `StorageKindTag` 字段、`InvalidShape` 含 `InvalidShapeKind`；构造校验与 `validate_access_range`；参见 `26-error.md §5.1`） |
 
 ### 4.3 依赖合法性
 
@@ -181,7 +181,7 @@ pub struct TensorBase<S, D> {
 | ------------------------- | --------------------------------- | ------------------------------ | ------------------------------------------------- |
 | `Tensor<Owned<A>, D>`     | 取决于 `Owned<A>: Send`           | 取决于 `Owned<A>: Sync`        | 拥有型规则与 `05-storage.md`、`25-safety.md` 一致 |
 | `TensorView<'a, A, D>`    | 取决于 `ViewRepr<'a, A>: Send`    | 取决于 `ViewRepr<'a, A>: Sync` | 只读借用可跨线程共享的前提由 storage 层定义       |
-| `TensorViewMut<'a, A, D>` | 取决于 `ViewMutRepr<'a, A>: Send` | 取决于 `ViewMutRepr<'a, A>: Sync`（永不满足） | 可变视图只允许独占传播 |
+| `TensorViewMut<'a, A, D>` | 取决于 `ViewMutRepr<'a, A>: Send` | 永不实现 `Sync` | 可变视图只允许独占传播；`!Sync` 由 `ViewMutRepr` 内部 raw `*mut A` 字段使 auto-trait 不实现 `Sync`、且 storage 层不提供 `unsafe impl Sync` 共同保证（参见 `05-storage.md §6.8`） |
 | `ArcTensor<A, D>`         | 取决于 `ArcRepr<A>: Send`         | 取决于 `ArcRepr<A>: Sync`      | 共享只读线程安全前提完全继承 storage 层           |
 
 ### 5.2 Type aliases
@@ -351,6 +351,10 @@ pub enum DataLocation {
 - **`storage_kind()` 语义说明：** `storage_kind()` 返回底层**实际存储表示类型**对应的 `Owned / View / ViewMut / Shared`，而不是高层语义分类。`Owned` 报告 `Owned`，`ViewRepr` 报告 `View`，`ViewMutRepr` 报告 `ViewMut`，`ArcRepr` 报告 `Shared`。因此广播结果若底层表示为 `ViewRepr`，其 `storage_kind()` 也必须返回 `View`，而不是 `Shared`。
 - **广播语义补充：** 广播结果的只读共享语义通过 layout flags 和访问控制表达，而非通过 `storage_kind()` 伪装。详见 `15-broadcast.md`。
 - **`access_semantics()` 广播判定机制：** 当 `ViewRepr` 的 `LayoutFlags` 包含 `HAS_ZERO_STRIDE` 时，`access_semantics()` 返回 `AccessSemantics::SharedReadOnly`，以区分普通只读视图（`ReadOnly`）与广播只读视图（`SharedReadOnly`）。此判定与 `LayoutState::BroadcastView` 的分类条件一致（见 `06-layout.md §5.11`）。
+- **`SharedReadOnly` 双重含义说明：** `AccessSemantics::SharedReadOnly` 同时覆盖两类张量：
+  1. **所有权共享（`ArcRepr`）：** 多个张量句柄通过 `Arc` 共享底层存储；写访问需要先唯一化（参见 `05-storage.md §5.8`、`§11` 决策 2）。这里"共享"指存储所有权层面的共享。
+  2. **同物理地址共享（带 `HAS_ZERO_STRIDE` 的 `ViewRepr`）：** 多个不同逻辑索引映射到同一物理地址（广播视图、`ViewMutRepr` 零拷贝降级结果）。这里"共享"指同一物理元素被多个逻辑索引共享读取。
+  两类共享在写访问安全性上的结论相同（都不能直接可写），因此合并到同一变体；但调用方若需要区分（例如内部 CoW 唯一化路径只对 `ArcRepr` 适用），必须先通过 `storage_kind()` 判断底层存储类型，再由 `flags().has_zero_stride()` 区分广播视图。`access_semantics()` 本身不暴露这一区分。
 - **权威约束：** 访问语义的权威查询入口是 `access_semantics()`；`storage_kind()` 只报告底层表示类型，不能替代访问语义判定。
 - `LayoutState` 使用 `crate::layout::LayoutState`（参见 `06-layout.md §5`）；
 - 本文档不再重复定义 `FContiguous`、`NonContiguous`、`BroadcastView` 三个变体。
@@ -458,6 +462,12 @@ where
     /// first element and the layout is contiguous, `as_slice()` may still be
     /// returned zero-copy.
     /// Empty tensors return `Some(&[])`.
+    ///
+    /// **ZST contract:** the closed element set in `03-element.md §5.6`
+    /// contains no zero-sized types, so `size_of::<A>() > 0` always holds and
+    /// `slice::from_raw_parts` does not require a special ZST branch. If the
+    /// closed element set is ever extended to include ZSTs, this contract
+    /// must be revisited together with `05-storage.md §5.5`.
     pub fn as_slice(&self) -> Option<&[A]>;
 }
 
@@ -482,6 +492,12 @@ where
 
 安全构造路径必须验证全部可验证元数据约束，至少包括 shape/stride 可表示性、元素总数计算不溢出、以及逻辑访问范围不越界。`from_shape_vec` 这类 API 不得把这些前提留给调用方；safe 构造负责兜底全部可检查元数据条件。
 
+> **权威分工说明（避免双权威）：**
+>
+> - `TensorBase<Owned<A>, D>::from_shape_vec` 等公开安全构造方法的**完整设计**（包含算法、错误字段、对齐策略、边界场景）位于 `18-construction.md §5.3`。
+> - 本节仅给出**公开签名与公开契约摘要**，不重复展开实现算法。任何与 `18-construction.md` 不一致的描述均以 `18-construction.md` 为准。
+> - 本节列出 `from_shape_vec` 的目的，是说明它是 `TensorBase<Owned<A>, D>` 的固有方法签名，并固定其错误返回类型与文档化前置条件，方便 `tensor` 模块下游消费者在不阅读 `18-construction.md` 时也能理解类型签名。
+
 ````rust,ignore
 impl<A, D> TensorBase<Owned<A>, D>
 where
@@ -500,16 +516,20 @@ where
     ///
     /// # Errors
     ///
-    /// Returns `Err` when:
-    /// - `shape.checked_size()` overflows
-    /// - `data.len() != shape.checked_size()`
-    /// - F-order stride derivation fails
-    /// - underlying storage construction fails
+    /// Returns `Err(XenonError)` per `26-error.md §5.1`:
     ///
-    /// Error conditions include but are not limited to: shape-product overflow,
-    /// mismatch between logical element count and input data length, failure to
-    /// derive canonical F-order strides, and failure to construct the underlying
-    /// storage. Any unmet condition returns `XenonError`.
+    /// - `XenonError::InvalidShape { kind: InvalidShapeKind::ProductOverflow, .. }`
+    ///   when `shape.checked_size()` overflows
+    /// - `XenonError::InvalidShape { kind: InvalidShapeKind::ElementCountMismatch, .. }`
+    ///   when `data.len() != shape.checked_size()`
+    /// - `XenonError::InvalidLayout { reason: InvalidLayoutReason::*, .. }`
+    ///   when canonical F-order stride derivation fails
+    /// - `XenonError::InvalidLayout` or storage-layer error when the underlying
+    ///   storage cannot be constructed
+    ///
+    /// All error variants are structured per `26-error.md §5.1` (no free-text
+    /// `reason` strings). The full error matrix lives with the implementation
+    /// in `18-construction.md §5.3`.
     ///
     /// The current version defaults to 64-byte-aligned allocation
     /// (for example via `Owned::from_vec_aligned`), consistent with `05-storage.md`.
@@ -536,29 +556,32 @@ where
     // NOTE: the default owned-storage path uses aligned allocation.
     // The concrete alignment policy belongs to the storage module.
 
-    /// Construct a tensor from a Vec without validating shape/stride consistency.
+    /// Construct a tensor from a `Vec` while skipping logical / physical
+    /// consistency checks. This is a `pub(crate)` internal fast path used by
+    /// constructor-module helpers (such as `Tensor::zeros` once shape has been
+    /// pre-validated) and by parallel-write paths that already proved their
+    /// outputs satisfy the canonical layout invariants.
     ///
-    /// Despite the `_unchecked` name, this method still validates that
-    /// `shape.checked_size()` succeeds (i.e. the product does not overflow) so
-    /// that subsequent `len()` calls via the `expect` path remain safe. The
-    /// caller's unsafe obligation is limited to pointer validity, alignment, and
-    /// the data-length-matches-shape-product invariant.
+    /// The `_unchecked` suffix means: the caller has already proved the listed
+    /// safety contract holds, and this constructor performs no `Result`-returning
+    /// validation. In particular, `shape.checked_size()` is **not** revalidated;
+    /// the caller must guarantee it succeeded prior to invocation. Any violation
+    /// is undefined behavior, not a recoverable error.
     ///
     /// # Safety
     /// - `data.as_ptr()` must remain valid for the duration of construction, and
     ///   `Vec<A>` must satisfy the alignment requirements of `A`
-    /// - `data.len()` must equal the product of all shape dimensions
-    /// - That product must be representable in `usize` without overflow
+    /// - `shape.checked_size()` must already have been validated (no overflow)
+    ///   before calling this method
+    /// - `data.len()` must equal `shape.checked_size().unwrap()`
     /// - `shape` must be representable by the current dimension type
     /// - The default packed F-order stride derived from `shape` must be
     ///   representable and consistent with `需求说明书 §7`
     /// - The constructor assumes no extra offset and therefore treats the input
     ///   buffer as the full logical tensor payload
     pub(crate) unsafe fn from_raw_vec_unchecked(data: Vec<A>, shape: D) -> Self {
-        // Validates shape.checked_size() to protect the len() expect path.
-        // Remaining invariants (pointer validity, alignment, data length) are
-        // the caller's responsibility.
-        // computes F-order strides internally
+        // No revalidation; `shape.checked_size()` and `data.len()` are caller-proved.
+        // Computes F-order strides internally and constructs flags directly.
         // ...
     }
 }
@@ -578,28 +601,40 @@ where
     ///
     /// # Safety
     ///
-    /// Caller must ensure:
-    /// - `ptr` points to the storage base pointer of the view; for empty arrays or
-    ///   ZST elements, a well-formed dangling sentinel is permitted because it is never dereferenced
-    /// - For empty tensors, metadata validation treats `offset` as a bounded metadata
-    ///   value only (`offset <= storage_len`) and performs no actual pointer offset
-    /// - Memory remains valid for the lifetime `'a` of the returned view
-    /// - Pointer alignment and initialization requirements of `A` are satisfied
-    /// - The access range implied by `shape`, `strides`, and `offset` is actually accessible within the backing storage
+    /// The caller must guarantee the following invariants. Violating any of
+    /// them is undefined behavior; the library cannot detect them from the
+    /// passed metadata alone.
     ///
-    /// The constructor validates metadata that can be checked directly:
-    /// - `shape` and `strides` are combinable for this dimension type
-    /// - Element-count computation does not overflow
-    /// - Every stride is representable for pointer-offset calculations (`stride <= isize::MAX`)
-    /// - The layout family is valid for the requested view kind (F-order/non-contiguous view,
-    ///   and broadcast-style zero-stride layouts only on read-only/shared-read-only paths)
-    /// - The logical access range implied by `shape`, `strides`, and `offset`
-    ///   fits within `storage_len`
+    /// **Pointer / memory invariants (caller-only):**
+    /// - `ptr` points to the storage base of the view (logical-first pointer is
+    ///   computed by the constructor as `ptr.add(offset)` only when `offset != 0`
+    ///   and the tensor is non-empty)
+    /// - The byte range `[ptr, ptr + storage_len * size_of::<A>())` is part of
+    ///   a single allocated object (same provenance) and remains valid for the
+    ///   entire lifetime `'a` of the returned view
+    /// - `ptr` is aligned to `align_of::<A>()` (even for ZST elements, in which
+    ///   case a `NonNull::<A>::dangling().as_ptr()` sentinel satisfies this rule)
+    /// - For non-empty tensors, every logical element address derived from
+    ///   `shape`, `strides`, and `offset` points to an initialized `A` value
+    /// - For empty tensors (`product(shape) == 0`), `ptr` may be a well-formed
+    ///   dangling sentinel and is never dereferenced
+    /// - No `&mut` reference to overlapping memory is alive during `'a`
     ///
-    /// If metadata validation fails, returns `Err(XenonError::InvalidLayout)`
-    /// with context. The unsafe obligation is limited to pointer validity,
-    /// alignment, actual accessible range, and lifetime guarantees that the
-    /// library cannot verify from metadata alone.
+    /// **Constructor-validated metadata (no caller obligation):** the
+    /// constructor returns `Err(XenonError::InvalidLayout)` (see
+    /// `26-error.md §5.1`, `InvalidLayoutReason`) when any of the following
+    /// directly checkable conditions fail; otherwise returns `Ok(_)`.
+    /// - `shape` and `strides` agree on rank for this dimension type
+    /// - `shape.checked_size()` succeeds (no element-count overflow)
+    /// - Every stride is representable as a non-negative `usize <= isize::MAX`
+    ///   (so that pointer-offset arithmetic via `<*const A>::add` cannot
+    ///   produce an `isize` overflow)
+    /// - The layout family is valid for an immutable view: F-order packed,
+    ///   non-contiguous F-order-derived (slice / transpose), or broadcast-style
+    ///   zero-stride layouts (zero strides only allowed on read-only paths)
+    /// - The logical access range computed by `validate_access_range`
+    ///   (see §6.2) fits within `storage_len`
+    /// - For empty tensors, the only metadata requirement is `offset <= storage_len`
     pub unsafe fn from_raw_parts(
         ptr: *const A,
         storage_len: usize,
@@ -618,17 +653,29 @@ where
     ///
     /// # Safety
     ///
-    /// Same as `from_raw_parts`, including stride `<= isize::MAX` and layout-family
-    /// validation, as well as the rule that empty tensors only require
-    /// `offset <= storage_len` and never perform actual pointer offsetting, with the
-    /// additional requirement of exclusive access. In particular, mutable views must
-    /// not describe overlapping logical elements and must reject shared-read-only /
-    /// broadcast-style layout families: if multiple logical indices map to the same
-    /// physical address, the constructor must reject the layout and return an error.
+    /// Inherits all caller obligations from `from_raw_parts` (pointer
+    /// provenance, alignment, lifetime, initialization, no overlapping `&` /
+    /// `&mut` aliases) **with the following additional rules**:
     ///
-    /// The constructor returns `Err(XenonError::InvalidLayout)` when directly
-    /// checkable metadata validation fails; the unsafe obligation remains the
-    /// memory/pointer guarantees that cannot be checked by the library.
+    /// - The caller must hold exclusive write access to the entire backing
+    ///   storage range covered by `[ptr, ptr + storage_len * size_of::<A>())`
+    ///   for the lifetime `'a`
+    /// - No other reference (shared or mutable) to overlapping memory may be
+    ///   alive during `'a`
+    /// - The caller asserts that the layout itself is non-overlapping, i.e. no
+    ///   two distinct logical indices map to the same physical address
+    ///
+    /// **Constructor-validated metadata** (returns `Err(XenonError::InvalidLayout)`
+    /// on failure):
+    /// - All checks performed by `from_raw_parts`
+    /// - The layout family is valid for a mutable view: only F-order packed or
+    ///   F-order-derived non-contiguous layouts. Broadcast-style / zero-stride
+    ///   layouts are **rejected** (a zero stride on any non-singleton axis means
+    ///   multiple logical indices alias the same address)
+    /// - `validate_non_overlapping_layout` (see below) accepts the layout. The
+    ///   library only accepts the efficiently verifiable non-overlapping subset;
+    ///   exotic but theoretically valid strided layouts may be conservatively
+    ///   rejected.
     pub unsafe fn from_raw_parts_mut(
         ptr: *mut A,
         storage_len: usize,
@@ -639,29 +686,50 @@ where
 }
 ```
 
-**可写布局非重叠校验：** `from_raw_parts_mut()` 还必须拒绝会让两个不同逻辑索引映射到同一地址的可写布局。"非重叠"定义为：任意两个不同逻辑索引 `i != j`，其可写目标地址 `addr(i)` 与 `addr(j)` 必须不同。该校验不得通过枚举全部可达 offset 来实现；当前版本只承诺接受可高效保守判定的正步长布局。算法如下：
+**可写布局非重叠校验：** `from_raw_parts_mut()` 还必须拒绝会让两个不同逻辑索引映射到同一地址的可写布局。"非重叠"定义为：任意两个不同逻辑索引 `i != j`，其可写目标地址 `addr(i)` 与 `addr(j)` 必须不同。该校验不得通过枚举全部可达 offset 来实现；当前版本只承诺接受可高效保守判定的正步长布局。
 
-```
+**核心不变量：** 对一个非单元素轴 `i`，该轴单独可达的 offset 集合是
+`{ k_i * stride[i] | 0 <= k_i < shape[i] }`，其大小为 `(shape[i] - 1) * stride[i] + 1`
+（"+1" 来自 `k_i = 0` 这一项）。因此在按 stride 升序逐轴并入时，"下一轴 stride" 必须严格大于 "已覆盖子空间最大可达 offset"，下一轴的最小非零步进 `1 * stride[next]` 才不会与已覆盖区域产生别名。
+
+算法如下：
+
+```text
 validate_non_overlapping_layout(shape, strides, offset, storage_len):
-    1. If product(shape) <= 1: return Ok(()).
+    1. If product(shape) <= 1:
+           return Ok(()).
     2. Reject immediately if any non-singleton axis has stride == 0.
-    3. Collect all non-singleton axes, sort them by stride ascending, and track
-       the already-covered span of the lower-stride subspace.
-    4. For each sorted axis i:
-         require stride[i] >= covered_span;
-         covered_span = covered_span + (shape[i] - 1) * stride[i]
+    3. Collect all non-singleton axes, sort them by stride ascending.
+    4. Initialize covered_max_offset = 0.
+       (covered_max_offset is the maximum offset reachable by varying only
+        the axes already accepted; the corresponding offset set has size
+        covered_max_offset + 1.)
+    5. For each sorted axis i:
+           // The next axis's smallest non-zero step (stride[i] * 1) must
+           // exceed every offset already reachable, otherwise it aliases
+           // an already-covered offset.
+           require stride[i] > covered_max_offset;
+           // checked_mul to detect span overflow before adding it in.
+           span_i = (shape[i] - 1).checked_mul(stride[i])?;
+           covered_max_offset = covered_max_offset.checked_add(span_i)?;
        If any checked arithmetic fails or the inequality does not hold, reject.
-    5. If the conservative test cannot prove non-overlap, return
-       Err(InvalidLayout {
-           storage_kind: "view_mut",
-           shape,
-           strides,
+    6. If the conservative test cannot prove non-overlap, return
+       Err(XenonError::InvalidLayout {
+           operation: "validate_non_overlapping_layout".into(),
+           storage_kind: StorageKindTag::ViewMut,
+           shape: shape.slice().to_vec(),
+           strides: strides.as_slice().to_vec(),
            offset,
            storage_len,
-           reason: "mutable layout is not in the efficiently verifiable non-overlapping subset",
-        }).
-    6. Otherwise return Ok(()).
+           reason: InvalidLayoutReason::OverlapNotProvable,
+       }).
+    7. Otherwise return Ok(()).
 ```
+
+> **示例（核对算法正确性）：** `shape = [2, 2]`, `strides = [1, 1]`。
+> 排序后第一轴 stride=1，进入步骤 5：要求 `1 > 0`（成立），然后
+> `covered_max_offset = 0 + (2-1)*1 = 1`。第二轴 stride=1，要求 `1 > 1`（不成立），
+> 拒绝。该结果正确，因为两个轴单独可达 offset 集合 `{0, 1}` 与 `{0, 1}` 完全重叠。
 
 该保守算法允许拒绝一部分理论上合法但无法高效证明不重叠的 exotic stride 布局；当前版本不为这类布局提供可写 raw-parts 构造承诺。FFI 文档（`23-ffi.md §6.3`）引用此算法。
 
@@ -672,10 +740,14 @@ validate_non_overlapping_layout(shape, strides, offset, storage_len):
 ```rust,ignore
 /// Decomposition of an owned tensor into raw pointer + allocator metadata.
 ///
-/// This type is `#[repr(C)]` so that FFI consumers can receive the same
-/// memory layout. The tensor module owns the definition; the FFI module
-/// re-exports it.
-#[repr(C)]
+/// **Note on ABI:** `OwnedRawParts<A, D>` is **not** a stable C-ABI type. The
+/// `D` and `Strides<D>` fields are Rust generics whose layout is not specified
+/// by `#[repr(C)]` (especially for `IxDyn`, which contains a `Vec<usize>`).
+/// FFI consumers MUST NOT decode this struct from C code. It exists solely as
+/// a Rust-internal round-trip carrier for `into_raw_parts` /
+/// `from_raw_parts_owned`. C-facing interop must use the dedicated
+/// `TensorExport` / `TensorExportMut` types defined in `23-ffi.md §5.4`,
+/// which are explicitly designed for stable C ABI.
 pub struct OwnedRawParts<A, D> {
     pub ptr: *mut A,
     pub len: usize,
@@ -688,7 +760,7 @@ pub struct OwnedRawParts<A, D> {
 
 impl<A, D> TensorBase<Owned<A>, D>
 where
-    D: Dimension,
+    D: Dimension + Clone,
 {
     /// Consumes the tensor, returning owned raw parts.
     ///
@@ -701,17 +773,22 @@ where
     /// # Example
     ///
     /// ```ignore
-    /// let tensor = Tensor2::<f64>::zeros([3, 4]);
+    /// let tensor = Tensor2::<f64>::zeros([3, 4])?;
     /// let raw = tensor.into_raw_parts();
     /// // Reconstruct with Tensor::from_raw_parts_owned(raw) and let Drop free it.
     /// ```
     pub fn into_raw_parts(self) -> OwnedRawParts<A, D> {
         let this = core::mem::ManuallyDrop::new(self);
+        // SAFETY: `this` is a valid owned tensor; `as_mut_ptr` returns a
+        // pointer to the storage base, ownership of which is transferred to
+        // the caller as part of the returned raw parts.
+        let ptr = unsafe { (&*this).storage_base_mut_ptr_unchecked() };
         OwnedRawParts {
-            ptr: unsafe { this.storage.as_mut_ptr() },
+            ptr,
             len: this.storage.len(),
             cap: this.storage.capacity(),
             align: this.storage.alignment(),
+            // D and Strides<D> require Clone; this is enforced by the impl bound.
             shape: this.shape.clone(),
             strides: this.strides.clone(),
             offset: this.offset,
@@ -734,79 +811,96 @@ where
     ///
     /// # Errors
     ///
-    /// Returns `Err(XenonError::InvalidLayout)` when directly checkable
-    /// metadata validation fails:
-    /// - `raw.offset != 0`
-    /// - `raw.len != product(raw.shape)`
-    /// - `raw.cap < raw.len`
-    /// - `raw.align` is not a valid power-of-two alignment for `A`
-    /// - `raw.strides` does not equal canonical F-order strides for `raw.shape`
-    ///
-    /// The unsafe obligation remains the memory/pointer guarantees that
-    /// cannot be checked from metadata alone.
+    /// Returns `Err(XenonError::InvalidLayout { reason: InvalidLayoutReason::* })`
+    /// (see `26-error.md §5.1`) when directly checkable metadata validation
+    /// fails. Reason variants used here are the canonical `InvalidLayoutReason`
+    /// values for owned raw-parts reconstruction; the unsafe obligation remains
+    /// the memory/pointer guarantees that cannot be checked from metadata alone.
     pub unsafe fn from_raw_parts_owned(
         raw: OwnedRawParts<A, D>,
     ) -> Result<Self, XenonError> {
+        // 1) offset must be zero for owned raw parts.
         if raw.offset != 0 {
             return Err(XenonError::InvalidLayout {
-                operation: "ffi::from_raw_parts_owned".into(),
-                storage_kind: "owned".into(),
-                shape: raw.shape.to_vec(),
-                strides: raw.strides.to_vec(),
+                operation: Cow::Borrowed("tensor::from_raw_parts_owned"),
+                storage_kind: StorageKindTag::Owned,
+                shape: raw.shape.slice().to_vec(),
+                strides: raw.strides.as_slice().to_vec(),
                 offset: raw.offset,
                 storage_len: raw.len,
-                reason: "owned raw parts must use offset == 0".into(),
-            });
-        }
-        let expected_len = raw.shape.size();
-        if raw.len != expected_len {
-            return Err(XenonError::InvalidLayout {
-                operation: "ffi::from_raw_parts_owned".into(),
-                storage_kind: "owned".into(),
-                shape: raw.shape.to_vec(),
-                strides: raw.strides.to_vec(),
-                offset: raw.offset,
-                storage_len: raw.len,
-                reason: "raw.len must equal product(shape)".into(),
-            });
-        }
-        if raw.cap < raw.len {
-            return Err(XenonError::InvalidLayout {
-                operation: "ffi::from_raw_parts_owned".into(),
-                storage_kind: "owned".into(),
-                shape: raw.shape.to_vec(),
-                strides: raw.strides.to_vec(),
-                offset: raw.offset,
-                storage_len: raw.len,
-                reason: "raw.cap must be >= raw.len".into(),
-            });
-        }
-        if !raw.align.is_power_of_two() || raw.align < core::mem::align_of::<A>() {
-            return Err(XenonError::InvalidLayout {
-                operation: "ffi::from_raw_parts_owned".into(),
-                storage_kind: "owned".into(),
-                shape: raw.shape.to_vec(),
-                strides: raw.strides.to_vec(),
-                offset: raw.offset,
-                storage_len: raw.len,
-                reason: "raw.align must be a valid power-of-two alignment for A".into(),
-            });
-        }
-        let expected_strides = layout::compute_f_strides(&raw.shape)?;
-        if raw.strides != expected_strides {
-            return Err(XenonError::InvalidLayout {
-                operation: "ffi::from_raw_parts_owned".into(),
-                storage_kind: "owned".into(),
-                shape: raw.shape.to_vec(),
-                strides: raw.strides.to_vec(),
-                offset: raw.offset,
-                storage_len: raw.len,
-                reason: "owned raw parts must use canonical F-order strides".into(),
+                reason: InvalidLayoutReason::OwnedRequiresZeroOffset,
             });
         }
 
-        let storage = Owned::from_raw_parts(raw.ptr, raw.len, raw.cap, raw.align);
-        let logical_ptr = if raw.shape.size() == 0 {
+        // 2) shape product must be representable AND must equal raw.len.
+        let expected_len = raw.shape.checked_size().map_err(|_| XenonError::InvalidLayout {
+            operation: Cow::Borrowed("tensor::from_raw_parts_owned"),
+            storage_kind: StorageKindTag::Owned,
+            shape: raw.shape.slice().to_vec(),
+            strides: raw.strides.as_slice().to_vec(),
+            offset: raw.offset,
+            storage_len: raw.len,
+            reason: InvalidLayoutReason::ElementCountOverflow,
+        })?;
+        if raw.len != expected_len {
+            return Err(XenonError::InvalidLayout {
+                operation: Cow::Borrowed("tensor::from_raw_parts_owned"),
+                storage_kind: StorageKindTag::Owned,
+                shape: raw.shape.slice().to_vec(),
+                strides: raw.strides.as_slice().to_vec(),
+                offset: raw.offset,
+                storage_len: raw.len,
+                reason: InvalidLayoutReason::LenShapeMismatch,
+            });
+        }
+
+        // 3) capacity must cover len.
+        if raw.cap < raw.len {
+            return Err(XenonError::InvalidLayout {
+                operation: Cow::Borrowed("tensor::from_raw_parts_owned"),
+                storage_kind: StorageKindTag::Owned,
+                shape: raw.shape.slice().to_vec(),
+                strides: raw.strides.as_slice().to_vec(),
+                offset: raw.offset,
+                storage_len: raw.len,
+                reason: InvalidLayoutReason::CapacityBelowLen,
+            });
+        }
+
+        // 4) align must be a valid power of two and at least align_of::<A>().
+        if !raw.align.is_power_of_two() || raw.align < core::mem::align_of::<A>() {
+            return Err(XenonError::InvalidLayout {
+                operation: Cow::Borrowed("tensor::from_raw_parts_owned"),
+                storage_kind: StorageKindTag::Owned,
+                shape: raw.shape.slice().to_vec(),
+                strides: raw.strides.as_slice().to_vec(),
+                offset: raw.offset,
+                storage_len: raw.len,
+                reason: InvalidLayoutReason::AlignmentInvalid,
+            });
+        }
+
+        // 5) strides must equal canonical F-order strides.
+        let expected_strides = layout::compute_f_strides(&raw.shape)?;
+        if raw.strides != expected_strides {
+            return Err(XenonError::InvalidLayout {
+                operation: Cow::Borrowed("tensor::from_raw_parts_owned"),
+                storage_kind: StorageKindTag::Owned,
+                shape: raw.shape.slice().to_vec(),
+                strides: raw.strides.as_slice().to_vec(),
+                offset: raw.offset,
+                storage_len: raw.len,
+                reason: InvalidLayoutReason::OwnedRequiresCanonicalFOrder,
+            });
+        }
+
+        // SAFETY: The caller's # Safety contract guarantees raw.ptr is valid
+        // memory allocated by Xenon's aligned allocator with the recorded
+        // (len, cap, align) metadata. Ownership transfer is part of the
+        // contract; raw.ptr must not be freed externally.
+        let storage = unsafe { Owned::from_raw_parts(raw.ptr, raw.len, raw.cap, raw.align) };
+
+        let logical_ptr: *const A = if raw.len == 0 {
             // Empty tensors must not pass a potentially dangling storage pointer
             // to compute_layout_flags; use a well-defined non-dereferenceable sentinel.
             core::ptr::NonNull::<A>::dangling().as_ptr()
@@ -814,11 +908,23 @@ where
             // offset == 0 already verified, so raw.ptr IS the logical first element.
             raw.ptr
         };
-        let flags = layout::compute_layout_flags(&raw.shape, &raw.strides, logical_ptr);
-        Ok(Self { storage, shape: raw.shape, strides: raw.strides, offset: raw.offset, flags })
+        let flags = layout::compute_layout_flags::<A, D>(&raw.shape, &raw.strides, logical_ptr);
+        Ok(Self {
+            storage,
+            shape: raw.shape,
+            strides: raw.strides,
+            offset: raw.offset,
+            flags,
+        })
     }
 }
 ```
+
+> **`InvalidLayoutReason` 字段引用：** 上述错误构造使用 `26-error.md §5.1` 定义的封闭枚举字段。如果 `InvalidLayoutReason` 中尚未列出 `OwnedRequiresZeroOffset` / `LenShapeMismatch` / `CapacityBelowLen` / `AlignmentInvalid` / `OwnedRequiresCanonicalFOrder` / `ElementCountOverflow` / `OverlapNotProvable` 这些子变体之一，则视为 `26-error.md` 与本节双向追加；二者必须同步更新。`Cow::Borrowed("...")` 与 `StorageKindTag::Owned` 同样按 `26-error.md §5.1` 字段表填写。
+>
+> **关于 `# Safety` 与 `unsafe block`：** Rust 2024 / `unsafe_op_in_unsafe_fn` 要求即便函数本身已是 `unsafe fn`，函数体内执行 unsafe 操作仍需显式 `unsafe { ... }` 包裹。上面伪码中的 `Owned::from_raw_parts(...)` 调用已用 `unsafe { ... }` 包裹并附 `// SAFETY:` 注释。
+>
+> **关于 `into_raw_parts` 中读取 storage base pointer：** 由于 `ManuallyDrop` 内仍然对内部 storage 拥有所有权，`storage_base_mut_ptr_unchecked` 是 `Owned<A>` 的 `pub(crate)` 内部 helper，等价于 `Owned::as_mut_ptr` 的读字段实现，但避免对 `&mut` 的形式要求；调用本身仍是 `unsafe`，因为读取裸指针不构造任何外部别名。
 
 **设计约束：** `into_raw_parts` 仅适用于 Owned 存储，且导出的内存布局必须满足 Xenon 的 owned 不变量：F-order contiguous、`offset == 0`、canonical F-order strides。若调用方持有的是 view 或带 offset 的逻辑子视图，必须先显式物化为新的 owned contiguous tensor，再跨越 FFI 边界导出裸指针。如需将 View 转为 Owned 再解构，参见 `21-type.md §5.5`。
 
@@ -903,15 +1009,15 @@ let t = unsafe {
 
 **实现方案：**
 
-| 层次                 | 类型         | 说明                                                                           |
-| -------------------- | ------------ | ------------------------------------------------------------------------------ |
-| `TensorBase.strides` | `Strides<D>` | 与 shape 维度数一致，显式保存 stride 元数据                                    |
-| `strides()` 返回值   | `&[usize]`   | 直接来自 `Strides<D>`（参见 `06-layout.md §5`）                                |
-| layout 模块计算      | `usize`      | F-order、转置与零步长布局在 layout 层计算（参见 `06-layout.md §5.3` / `§5.7`） |
+| 层次                 | 类型         | 说明                                                                                                  |
+| -------------------- | ------------ | ----------------------------------------------------------------------------------------------------- |
+| `TensorBase.strides` | `Strides<D>` | 与 shape rank 一致：静态维度编译期保证、`IxDyn` 构造期保证（参见 `06-layout.md §5.5`）                |
+| `strides()` 返回值   | `&[usize]`   | 直接来自 `Strides<D>`（参见 `06-layout.md §5`）                                                       |
+| layout 模块计算      | `usize`      | F-order、转置与零步长布局在 layout 层计算（参见 `06-layout.md §5.3` / `§5.7`）                        |
 
 **权衡：**
 
-- `Strides<D>` 保证 strides 与 shape 维度数相同（编译期）
+- `Strides<D>` 保证 strides 与 shape rank 一致：对静态维度（`Ix0`-`Ix6`）通过类型系统在编译期保证；对动态维度（`IxDyn`）通过 `Strides<IxDyn>` 内部 `Vec<usize>` 与 `IxDyn` 的 `dims: Vec<usize>` 在构造期验证 `len()` 相等（参见 `06-layout.md §5.5`）。
 - 静态维度使用栈分配数组（性能）
 - 当前版本仅覆盖非负步长与零步长（广播）；负步长布局不在当前版本范围内（参见 `需求说明书 §7`）
 
@@ -933,31 +1039,58 @@ Logical view: [c, d, e]
 - **raw-parts 设计补充：** `storage_len` 是 raw-parts 视图构造的必填输入。`ViewRepr` / `ViewMutRepr` 需要保存 backing storage 的可访问元素数，`validate_access_range(...)` 也必须基于该长度执行边界校验；仅有 `ptr + shape + strides + offset` 不足以安全重建视图。
 - **空张量指针说明：** 当 `len == 0` 时，元数据仍可描述一个合法的空视图，但 `as_ptr()` / `as_mut_ptr()` 不能对 storage base pointer 执行 `add(offset)`。Rust 的指针算术要求结果仍落在同一已分配对象内；对悬垂哨兵或空存储基指针做偏移计算会触发未定义行为，且对 ZST 即使执行 `add(0)` 也不应依赖这种做法。设计上因此统一采用“空张量 `offset` 仅需满足 `offset <= storage_len`，但不做实际偏移”的契约，并让指针 API 直接返回 `NonNull::dangling().as_ptr()` 快路径。
 
+> **错误字段约定：** `validate_access_range` 与 `validate_non_overlapping_layout`
+> 构造的 `XenonError::InvalidLayout` 字段必须使用 `26-error.md §5.1` 定义的封闭枚举
+> （`InvalidLayoutReason` / `StorageKindTag` / `Cow<'static, str>`），不得退化为自由
+> 文本。下面伪码中的 `InvalidLayoutReason::*` 标识符若 `26-error.md` 中尚未列出，
+> 则视为对 `26-error.md` 的字段集追加请求，二者必须同步更新。`storage_kind` 由调用
+> 方提供（视图路径填 `StorageKindTag::View` / `StorageKindTag::ViewMut`，owned raw-parts
+> 路径填 `StorageKindTag::Owned`）。
+>
+> **验证前提：** `validate_access_range` 假定调用方已在更早阶段拒绝
+> `stride > isize::MAX` 的 stride，或在算法首部追加该检查。这是因为后续
+> `<*const A>::add(stride * (shape - 1))` 的指针运算需要 stride 可表示为非负
+> `isize`；该前提在 §5.7 的 `# Safety` 列表中已显式列入构造器自验项。
+
 ```text
-validate_access_range(shape, strides, offset, storage_len):
+validate_access_range(shape, strides, offset, storage_len, op_name, kind):
     if shape.checked_size() overflows:
         return Err(XenonError::InvalidLayout {
-            operation: "validate_access_range",
-            storage_kind: "raw_parts",
+            operation: Cow::Borrowed(op_name),
+            storage_kind: kind,
             shape: shape.slice().to_vec(),
             strides: strides.as_slice().to_vec(),
             offset,
             storage_len,
-            reason: "element count overflow",
+            reason: InvalidLayoutReason::ElementCountOverflow,
         })
 
     if shape.checked_size() == Ok(0):
         if offset > storage_len:
             return Err(XenonError::InvalidLayout {
-                operation: "validate_access_range",
-                storage_kind: "raw_parts",
+                operation: Cow::Borrowed(op_name),
+                storage_kind: kind,
                 shape: shape.slice().to_vec(),
                 strides: strides.as_slice().to_vec(),
                 offset,
                 storage_len,
-                reason: "empty tensor requires offset <= storage_len",
+                reason: InvalidLayoutReason::EmptyTensorOffsetExceedsStorage,
             })
         return Ok(())
+
+    // Reject any stride whose pointer-arithmetic equivalent would overflow isize
+    // (this is the # Safety precondition for from_raw_parts*).
+    for axis in 0..ndim:
+        if strides[axis] > isize::MAX as usize:
+            return Err(XenonError::InvalidLayout {
+                operation: Cow::Borrowed(op_name),
+                storage_kind: kind,
+                shape: shape.slice().to_vec(),
+                strides: strides.as_slice().to_vec(),
+                offset,
+                storage_len,
+                reason: InvalidLayoutReason::StrideExceedsIsizeMax,
+            })
 
     max_offset = offset
 
@@ -967,34 +1100,34 @@ validate_access_range(shape, strides, offset, storage_len):
 
         span = (shape[axis] - 1).checked_mul(strides[axis])
             .ok_or_else(|| XenonError::InvalidLayout {
-                operation: "validate_access_range",
-                storage_kind: "raw_parts",
+                operation: Cow::Borrowed(op_name),
+                storage_kind: kind,
                 shape: shape.slice().to_vec(),
                 strides: strides.as_slice().to_vec(),
                 offset,
                 storage_len,
-                reason: "stride span overflow",
+                reason: InvalidLayoutReason::StrideSpanOverflow,
             })?
         max_offset = max_offset.checked_add(span)
             .ok_or_else(|| XenonError::InvalidLayout {
-                operation: "validate_access_range",
-                storage_kind: "raw_parts",
+                operation: Cow::Borrowed(op_name),
+                storage_kind: kind,
                 shape: shape.slice().to_vec(),
                 strides: strides.as_slice().to_vec(),
                 offset,
                 storage_len,
-                reason: "logical access range overflow",
+                reason: InvalidLayoutReason::AccessRangeOverflow,
             })?
 
     if max_offset >= storage_len:
         return Err(XenonError::InvalidLayout {
-            operation: "validate_access_range",
-            storage_kind: "raw_parts",
+            operation: Cow::Borrowed(op_name),
+            storage_kind: kind,
             shape: shape.slice().to_vec(),
             strides: strides.as_slice().to_vec(),
             offset,
             storage_len,
-            reason: "logical access range exceeds backing storage",
+            reason: InvalidLayoutReason::AccessRangeExceedsStorage,
         })
 
     return Ok(())
@@ -1372,6 +1505,22 @@ authoritative implementation resides in src/construct/, see 18-construction.md �
 | 理由     | 显式优于隐式（`.view()` 清晰表达意图）；避免隐式生命周期传播；与 ndarray 一致 |
 | 替代方案 | 实现 Deref — 放弃，隐式转换可能导致意外借用                                   |
 
+### 决策 5：`OwnedRawParts<A, D>` 不承诺 C ABI 稳定
+
+| 属性     | 值                                                                                                                                                              |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | 移除原先的 `#[repr(C)]` 注释，明确 `OwnedRawParts<A, D>` 是 Rust 内部 round-trip 类型，不作为 FFI ABI 边界                                                       |
+| 理由     | `D` 与 `Strides<D>` 是 Rust 泛型，对 `IxDyn` 包含 `Vec<usize>` 字段，无法被 `#[repr(C)]` 稳定描述；FFI 已有专用 `TensorExport` / `TensorExportMut` 类型           |
+| 替代方案 | 强行保留 `#[repr(C)]` — 放弃，会让外部 C 代码误以为可解码该结构，导致跨语言 UB                                                                                  |
+
+### 决策 6：`from_raw_vec_unchecked` 走 `pub(crate)` 真正的 unchecked 路径
+
+| 属性     | 值                                                                                                                              |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | `from_raw_vec_unchecked` 不再隐式重做 `shape.checked_size()` 验证；调用方在 `# Safety` 中证明已验证                              |
+| 理由     | "_unchecked" 名称要求语义透明：要么不做任何 fallible 校验，要么提供 `Result` 版本。混合"unchecked + 内部 panic"会让安全契约模糊 |
+| 替代方案 | 改名 `from_raw_vec_with_shape_check` 并返回 `Result` — 放弃，会引入冗余 fallible 路径与上层 `from_shape_vec` 重复                |
+
 ---
 
 ## 12. 性能考量
@@ -1454,6 +1603,24 @@ TensorBase<S, D>
 | 1.1.4 | 2026-04-15 |
 | 1.1.5 | 2026-04-15 |
 | 1.1.6 | 2026-04-16 |
+| 2.0.0 | 2026-05-02 |
+
+### 2.0.0 (SemVer breaking)
+
+- **B14**：§4.2 类型级依赖表补齐 `IntoDimension`、`Strides<D>`、`compute_layout_flags`、`InvalidLayoutReason` / `InvalidShapeKind` / `StorageKindTag` 等条目，避免 `from_shape_vec` 等公开签名引用未声明类型。
+- **B15**：`into_raw_parts` 的 `impl` 块绑定改为 `D: Dimension + Clone`，与方法体内 `shape.clone()` / `strides.clone()` 一致。
+- **B16/B17**：`from_raw_parts_owned` 全面对齐契约：使用 `shape.checked_size()` 而非未承诺的 `size()`；`shape.slice().to_vec()` / `strides.as_slice().to_vec()` 替代未声明的 `to_vec()` 调用；调用 `Owned::from_raw_parts` 已显式 `unsafe { ... }` 包裹并附 `// SAFETY:` 注释，符合 Rust 2024 `unsafe_op_in_unsafe_fn` lint 基线。
+- **B18**：`OwnedRawParts<A, D>` 不再标注 `#[repr(C)]`，文档明确它仅作 Rust 内部 round-trip 载体，FFI 一律使用 `TensorExport` / `TensorExportMut`。
+- **B19**：`from_raw_vec_unchecked` 改为真正 unchecked，`# Safety` 增加"调用方负责 `shape.checked_size()` 已成功"前置条件，且不再以 panic 兜底失败。
+- **H-I7**：§5.1 线程安全表对 `TensorViewMut<'a, A, D>` 的 `Sync` 论证修正，归因为 storage 层 `ViewMutRepr` 内部的 raw `*mut A` 字段使 auto-trait 不实现 `Sync` 与未提供 `unsafe impl Sync` 共同保证（与 `05-storage.md §6.8` 同步）。
+- **§5.6 双权威收敛**：`from_shape_vec` 公开签名保留在本节，但完整算法、错误字段、对齐策略一律以 `18-construction.md §5.3` 为权威；本节加 "权威分工说明" 段落，删除原"测试归 18 构造模块"的零散注释。
+- **§5.7 # Safety 完整列表**：`from_raw_parts` / `from_raw_parts_mut` 的 `# Safety` 拆分为 "Pointer / memory invariants (caller-only)" 与 "Constructor-validated metadata (no caller obligation)" 两个清单，显式包含 provenance、stride `<= isize::MAX`、ZST aligned dangling、initialization、aliasing、可写时 layout 非重叠等 Rust unsafe 必要前提。
+- **§5.5 ZST 契约**：`as_slice` / `as_mut_slice` 增加 ZST 契约说明：当前封闭元素集合不含 ZST，`size_of::<A>() > 0` 始终成立；若未来扩展到 ZST，必须连同 `05-storage.md §5.5` 一起重新审视。
+- **§5.3 SharedReadOnly 双重含义**：增加显式说明，区分"所有权共享（`ArcRepr`）"与"同物理地址共享（`HAS_ZERO_STRIDE` 的 `ViewRepr`）"两种共享语义。
+- **§6.1 IxDyn rank 论证**：将原"`Strides<D>` 保证 strides 与 shape 维度数相同（编译期）"改为对静态维度编译期、对 `IxDyn` 构造期分别保证的说法，与 `06-layout.md §5.5` 一致。
+- **§6.2 `validate_non_overlapping_layout` off-by-one 修正**：算法明确 "`covered_max_offset` 是已覆盖子空间的最大可达 offset，对应集合大小为 `covered_max_offset + 1`"；下一轴 stride 必须 **严格大于** `covered_max_offset`。新增 `[2,2]` strides `[1,1]` 的核对示例。
+- **§6.2 错误字段对齐 26-error v3.0.0**：`validate_access_range` / `validate_non_overlapping_layout` / `from_raw_parts_owned` 的 `XenonError::InvalidLayout` 全部改用封闭枚举字段 `InvalidLayoutReason::*` / `StorageKindTag::*` / `Cow::Borrowed(...)`，不再使用自由文本 `reason: "..."`。
+- **§6.2 stride <= isize::MAX 校验前置**：`validate_access_range` 算法首部追加 stride `<= isize::MAX` 校验，作为后续指针运算的合法性保证；同步在 §5.7 `# Safety` 列入构造器自验项。
 
 ---
 

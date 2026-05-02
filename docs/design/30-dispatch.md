@@ -117,6 +117,11 @@ src/dispatch.rs
 ///
 /// The caller uses a single match on this enum to delegate to the
 /// appropriate backend. This is the primary API of the dispatch module.
+///
+/// Note: `select_exec_path()` returns `(ExecPath, Option<ParallelGuard>)`.
+/// When `ExecPath::Parallel` is selected, the accompanying guard is
+/// `Some(_)` and the caller must keep it alive for the duration of the
+/// parallel region. See §5.5 for the atomic selection-and-entry contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ExecPath {
     /// Serial scalar execution.
@@ -134,7 +139,7 @@ pub(crate) enum ExecPath {
     /// element type support). That fallback is invisible to dispatch.
     ///
     /// dispatch only signals "SIMD path is preferred for this input shape";
-    /// `simd/` retains final admission authority per Decision X (§11).
+    /// `simd/` retains final admission authority per Decision 2 (§11).
     Simd,
 
     /// Parallel execution.
@@ -142,12 +147,20 @@ pub(crate) enum ExecPath {
     /// Caller delegates to the `parallel/` backend. Workers execute
     /// scalar code (no SIMD inside parallel workers per architectural
     /// decision). This path is only returned when `feature = "parallel"`
-    /// is enabled AND the input meets the parallel threshold.
+    /// is enabled AND the input meets the parallel threshold AND the
+    /// thread is not already inside a library-internal parallel region.
+    ///
+    /// When this variant is returned, `select_exec_path()` also yields
+    /// the corresponding `ParallelGuard` (held by the caller) — selection
+    /// and entry are bound into a single atomic step. See §5.5 and
+    /// Decision 7 (§11).
     Parallel,
 }
 ```
 
 **语义约定：** `ExecPath::Simd` 表示 dispatch **推荐** SIMD 路径；`simd/` 模块仍保有最终准入权（检测 ISA、lane 宽度、对齐细节等），并可在内部回退标量。dispatch 不参与该回退决策，也不感知其发生。
+
+**`ExecPath::Parallel` 与 guard 的原子绑定：** 一旦 `select_exec_path()` 返回 `ExecPath::Parallel`，调用方必然拿到 `Some(ParallelGuard)`。两者**不可分离**——这是 Decision 7 的核心契约（参见 §11）。任何让调用方先收到 `ExecPath::Parallel` 再尝试单独 `enter()` 的设计都会引入 TOCTOU 窗口（中间被另一并行 API 抢占进入），与"嵌套并行检测"语义冲突。
 
 **feature gate 影响：**
 
@@ -165,28 +178,56 @@ pub(crate) enum ExecPath {
 ///
 /// Defined in dispatch.rs; consumed by `parallel/` module functions
 /// such as `par_map`, `par_zip_map`, `par_sum`, and `par_dot`.
-/// See `09-parallel.md` §5.4 for parameter validation rules.
+///
+/// Fields are kept private to enforce construction via the
+/// validating constructor `new()`. This guarantees that any
+/// `ParallelExecStrategy` value observed by `parallel/` is already
+/// well-formed and the backend never needs a defensive validation
+/// step. See `09-parallel.md` §5.4 for the consumed semantics.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ParallelExecStrategy {
     /// Suggested chunk size for parallel chunking.
     ///
     /// `None` means the parallel module decides autonomously
     /// (typically via `compute_safe_chunks`).
-    pub chunk_size: Option<usize>,
+    chunk_size: Option<usize>,
 
     /// Maximum worker count.
     ///
     /// `None` means use rayon's default thread pool size.
-    pub max_workers: Option<usize>,
+    max_workers: Option<usize>,
+}
+
+impl ParallelExecStrategy {
+    /// Construct a validated strategy.
+    ///
+    /// Returns `InvalidArgument` if `chunk_size == Some(0)` or
+    /// `max_workers == Some(0)`. Upper bound on `max_workers` (≤ thread
+    /// pool size) is enforced by the parallel backend at consumption
+    /// time, since the pool size is a runtime value.
+    pub(crate) fn new(
+        chunk_size: Option<usize>,
+        max_workers: Option<usize>,
+    ) -> Result<Self, XenonError>;
+
+    /// Default strategy: let the parallel backend decide everything.
+    pub(crate) fn auto() -> Self {
+        Self { chunk_size: None, max_workers: None }
+    }
+
+    pub(crate) fn chunk_size(&self) -> Option<usize> { self.chunk_size }
+    pub(crate) fn max_workers(&self) -> Option<usize> { self.max_workers }
 }
 ```
 
-**参数校验规则（由 `parallel/` 模块在消费时执行）：**
+**参数校验规则：**
 
-| 字段          | 合法范围                          | 默认值 | 非法时行为                                 |
-| ------------- | --------------------------------- | ------ | ------------------------------------------ |
-| `max_workers` | `Some(1..=pool_size)` 或 `None`   | `None` | `0` 或超过线程池大小返回 `InvalidArgument` |
-| `chunk_size`  | `Some(n)` where `n > 0` 或 `None` | `None` | `0` 返回 `InvalidArgument`                 |
+| 字段          | 合法范围                          | 默认值 | 非法时行为                                                                  |
+| ------------- | --------------------------------- | ------ | --------------------------------------------------------------------------- |
+| `max_workers` | `Some(1..=pool_size)` 或 `None`   | `None` | `Some(0)` 在 `new()` 内返回 `InvalidArgument`；超过线程池大小由 `parallel/` 在运行时返回 `InvalidArgument` |
+| `chunk_size`  | `Some(n)` where `n > 0` 或 `None` | `None` | `Some(0)` 在 `new()` 内返回 `InvalidArgument`                              |
+
+**字段不变量归属：** 字段层不变量（非零）由构造器在 dispatch 内强制；运行时不变量（worker 上限依赖 rayon 线程池大小）由 `parallel/` 模块在消费时检查。这避免了 dispatch 编译期需要感知 rayon 状态。
 
 ### 5.4 ParallelGuard / ParallelContext
 
