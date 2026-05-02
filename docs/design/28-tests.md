@@ -13,6 +13,10 @@
 
 本文档属于横切质量保证文档，统一定义 Xenon 在 `tests`、doctest 与 CI 测试矩阵中的验证策略，而非单一源码模块的实施方案。
 
+### 1.0 协同基线
+
+本文档 v2.0.0 以以下已修订设计文档为协同基线：`02-dimension.md` v1.x、`03-element.md` v1.x、`04-complex.md` v2.0.0、`05-storage.md` v2.0.0、`06-layout.md` v1.3、`07-tensor.md` v2.0.0、`08-simd.md` v2.0.0、`09-parallel.md` v2.0.0、`11-math.md` v2.0.0、`12-matrix.md` v2.0.0、`13-reduction.md` v2.0.0、`14-set.md` v2.0.0、`15-broadcast.md` v2.0.0、`16-shape.md` v2.0.0、`17-indexing.md` v2.0.0、`18-construction.md` v2.0.0、`19-overload.md` v2.0.0、`20-utility.md` v2.0.0、`21-type.md` v2.0.0、`22-output.md` v2.0.0、`23-ffi.md` v2.0.0、`24-workspace.md` v2.0.0、`25-safety.md` v2.0.0、`26-error.md` v3.0.0、`27-benchmark.md` v2.0.0。
+
 ### 1.1 职责边界
 
 | 职责       | 包含                                                                   |
@@ -165,7 +169,7 @@ tests/
 | `shape`     | `.transpose()`（参见 `16-shape.md §5`）                                                                        |
 | `reduction` | `.sum()`（参见 `13-reduction.md §5`）                                                                          |
 | `construct` | `zeros`, `ones`, `eye`, `from_shape_vec` 构造器（参见 `18-construction.md §5`）                                |
-| `index`     | `Index`/`Range` 索引 trait（参见 `17-indexing.md §5`）                                                         |
+| `index`     | `try_at` / `try_at_mut` 安全索引与 `SliceInfo::new` / `slice` 范围切片（参见 `17-indexing.md §5`）              |
 | `ffi`       | `as_ptr()`, `as_mut_ptr()`（参见 `23-ffi.md §5`）；`from_raw_parts` 核心定义归属 `07-tensor.md §5.7`，`23-ffi.md §5` 仅 re-export |
 | `set`       | `.unique()`（参见 `14-set.md §5`）                                                                             |
 | `workspace` | `Workspace`（参见 `24-workspace.md §5`）                                                                       |
@@ -431,6 +435,8 @@ pub fn non_contiguous_2d_owner(rows: usize, cols: usize) -> Tensor2<f64> {
 | `test_arc_tensor_clone`                    | ArcTensor clone 为浅拷贝                                 | 中     |
 | `test_arc_tensor_alias_isolation_on_write` | 共享后通过公开写入口修改副本时，不影响原值且保持别名隔离 | 中     |
 
+Storage 协同测试遵循 `05-storage.md`：广播、转置、切片均产生 `ViewRepr<'a, A>`；`Owned::into_shared(self) -> ArcRepr<A>`；`StorageShared` / `AlignedAlloc` 保持 `pub(crate)`；`is_aligned_to` 不 panic；storage 层深拷贝命名为 `deep_clone`，张量层公开 API 仍为 `to_owned`。
+
 ### 5.5 test_math.rs
 
 | 测试函数                              | 测试内容                               | 优先级 |
@@ -443,8 +449,8 @@ pub fn non_contiguous_2d_owner(rows: usize, cols: usize) -> Tensor2<f64> {
 | `test_sin_sqrt_exp_ln_floor_ceil`     | 三角/开方/指数/对数/取整精度           | 高     |
 | `test_complex_math`                   | 复数逐元素运算                         | 中     |
 | `test_bool_not`                       | bool 逻辑非                            | 中     |
-| `test_compare_eq_ne`                  | 等于/不等于比较                        | 高     |
-| `test_compare_lt_gt`                  | 小于/大于比较                          | 中     |
+| `test_compare_equal_not_equal`        | 等于/不等于比较                        | 高     |
+| `test_compare_less_greater`           | 小于/大于比较                          | 中     |
 | `test_square`                         | square 逐元素平方                      | 中     |
 | `test_integer_add_overflow_panics`    | 整数加法溢出触发 panic                 | 高     |
 | `test_integer_divide_by_zero_panics`  | 整数除以零触发 panic                   | 高     |
@@ -474,6 +480,8 @@ pub fn non_contiguous_2d_owner(rows: usize, cols: usize) -> Tensor2<f64> {
 | `test_slice_subrange`               | 范围切片子区间                                | 中     |
 | `test_slice_mut_broadcast_rejected` | 广播视图上的可变切片在编译期/API 缺失层被拒绝 | 高     |
 
+索引测试只使用 `try_at` / `try_at_mut` 作为公开安全元素访问入口；不得使用下标运算符访问张量元素。切片测试中，`SliceInfo::new(indices, in_dim, out_dim)` 只验证结构性约束（rank 一致、output 维度匹配 Range 计数、Range start <= end），shape 边界校验由 `TensorBase::slice(info)` 执行。`SliceInfoElem::Range` 仅包含 `start` / `end`，无 step；`SliceInfoIndices::Inline` 覆盖 `Ix0..Ix6`，`IxDyn` 且 `indices.len() > 6` 时必须使用 `Dynamic`。
+
 ### 5.8 test_construction.rs
 
 | 测试函数                      | 测试内容                                                                             | 优先级 |
@@ -483,6 +491,8 @@ pub fn non_contiguous_2d_owner(rows: usize, cols: usize) -> Tensor2<f64> {
 | `test_from_data_constructors` | 以 `from_shape_vec`、`from_shape_slice` 为主；`from_vec` 仅覆盖 Ix1 非规范便捷路径   | 高     |
 | `test_from_fixed_array`       | 从固定数组构造                                                                       | 中     |
 | `test_from_shape_vec_f_order_mapping` | F-order 逻辑元素顺序与线性输入映射正确                                       | 高     |
+
+构造测试须断言 `Tensor::from_shape_vec` 的长度不匹配失败为 `XenonError::InvalidShape { kind: InvalidShapeKind::ElementCountMismatch { expected, actual }, .. }`。`zeros` / `ones` 的实现路径按 `18-construction.md` 使用 `<Owned<A> as StorageOwned>::from_elem(len, value)` 完全限定调用；`pub(crate) Tensor::from_shape_vec_aligned_unchecked(shape, data)` 是供 `21-type.md` 张量层 `to_owned` 使用的 infallible 内部路径，不作为集成测试公开入口。
 
 ### 5.9 test_reduction.rs
 
@@ -551,6 +561,8 @@ fn test_unique_non_contiguous() {
 | `test_transpose_2d`       | 2D 转置  | 高     |
 | `test_transpose_high_dim` | 高维转置 | 中     |
 
+布局相关测试遵循 `06-layout.md`：`HAS_ZERO_STRIDE` 仅表示广播零步长，不把普通 `stride == 0` 误判为广播；布局旗标入口为 `compute_layout_flags::<A, D>(shape, strides, ptr) -> LayoutFlags`；`LayoutState` 仅覆盖 `FContiguous` / `NonContiguous` / `BroadcastView`。
+
 ### 5.14 test_conversion.rs
 
 | 测试函数                                 | 测试内容                                                    | 优先级 |
@@ -562,6 +574,8 @@ fn test_unique_non_contiguous() {
 | `test_cast_complex_to_real_nonzero_imag` | `cast()` 对虚部非 0 的复数→实数返回 `TypeConversion` 错误   | 高     |
 | `test_bool_not_participating_in_cast`    | `bool` 不参与逐元素类型转换，相关入口在类型层或运行时被拒绝 | 高     |
 | `test_cast_nan_to_int`                   | `cast()` 对 NaN→整数返回 `TypeConversion` 错误              | 中     |
+
+转换测试遵循 `21-type.md` 的三层结构：静态无损 `From`、静态有损 `CastTo<T>`、动态条件性 `CastTo<T>`。`TypeConversion` 错误断言必须匹配五字段：`operation: Cow::Borrowed("cast")`（标量级 `CastTo::cast_to()` 保留 `Cow::Borrowed("")` 并由张量入口注入）、`source_type: ElementType`、`target_type: ElementType`、`reason: ConversionFailureReason`、`element_index: Option<usize>`；类型身份只使用 `ElementType` 封闭枚举。
 
 ### 5.15 test_utility.rs
 
@@ -598,6 +612,8 @@ fn test_unique_non_contiguous() {
 | `test_try_offset_of`                     | try_offset_of 正确计算                           | 高     |
 | `test_export_alignment_preconditions`    | 导出描述符仅在满足对齐前提时声明可供上游直接消费 | 高     |
 
+FFI 错误测试必须匹配 `XenonError::Ffi { operation, category: FfiErrorCategory, backend: FfiBackend, cause }` 四字段结构，`operation` 使用 `Cow::Borrowed("...")`。`FfiErrorCategory` 覆盖 `NullPointer`、`AlignmentMismatch`、`InvalidRank`、`BlasIncompatibleLayout`、`IntegerOverflow`、`AbiMismatch`、`OverlapRejected`、`ForeignAllocatorMismatch`，`FfiBackend` 仅为 `RawParts` / `Blas`。
+
 ### 5.18 test_workspace.rs
 
 | 测试函数                               | 测试内容                                                                   | 优先级 |
@@ -609,6 +625,8 @@ fn test_unique_non_contiguous() {
 | `test_workspace_assume_init_prefix`    | `assume_init_*` 只允许访问调用方已证明初始化的前缀                         | 高     |
 | `test_workspace_error_boundary_mapping` | workspace 公开入口返回 `XenonError::Workspace`，验证结构化字段正确性      | 中     |
 | `test_workspace_not_send_not_sync`     | `Workspace` / `SplitBorrowMut` 的 `!Send + !Sync` 编译期验证               | 高     |
+
+Workspace 借用测试须调用 `Workspace::borrow_mut(&mut self)` 与顶层 `Workspace::split_at_mut(&mut self)`；递归 `SplitBorrowMut::split_at_mut(self)` 保持消费式。workspace 错误测试必须匹配 `WorkspaceErrorCategory` 七个结构化子变体（`AllocFailed`、`InvalidLayout`、`BorrowConflict`、`SplitOutOfBounds`、`SplitCountInvariant`、`GrowOverflow`、`TypedViewRejected`），不得使用已删除的旧字段或旧借用冲突变体。
 
 ### 5.19 test_parallel.rs
 
@@ -662,13 +680,13 @@ fn test_unique_non_contiguous() {
 
 | 测试函数                      | 测试内容                                                                                                     | 优先级 |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------ | ------ |
-| `test_broadcast_shape_error`  | 逐元素/广播不兼容形状返回 `XenonError::BroadcastError`；`ShapeMismatch` 仅用于非广播双输入形状冲突（如 dot） | 高     |
+| `test_broadcast_shape_error`  | 逐元素/广播不兼容形状返回 `XenonError::BroadcastError`；`DimensionMismatch` 用于非广播双输入维度冲突（如 dot） | 高     |
 | `test_broadcast_error`        | 不可广播返回 `XenonError::BroadcastError`                                                                    | 高     |
 | `test_invalid_axis_error`     | 轴越界返回 InvalidAxis                                                                                       | 高     |
 | `test_invalid_argument_error` | 非法参数返回 `XenonError::InvalidArgument`                                                                   | 高     |
 | `test_invalid_shape_error`    | 非法 shape/元素数不匹配返回 `XenonError::InvalidShape`                                                       | 高     |
 | `test_invalid_storage_mode_conversion_error` | 存储模式转换失败返回 `XenonError::InvalidStorageMode`，含转换上下文                           | 高     |
-| `test_layout_state_query_error_context`      | 查询 `LayoutState` 相关操作失败时，`XenonError::LayoutMismatch` 或 `InvalidLayout` 返回结构化上下文 | 中   |
+| `test_layout_state_query_error_context`      | 查询 `LayoutState` 相关操作失败时，`XenonError::InvalidLayout` 返回结构化上下文 | 中   |
 | `test_error_display`          | 所有错误类型的 Display 包含上下文                                                                            | 中     |
 | `test_send_sync_contracts`    | 各 storage mode 的 Send/Sync 边界与 `25-safety.md` 一致                                                      | 高     |
 | `test_complex_c99_layout`     | `Complex<T>` 的 C-compatible 布局与 FFI 约定一致                                                             | 高     |
@@ -690,10 +708,9 @@ panic 诊断信息测试：验证 panic message 包含 `需求说明书 §27` �
 | `test_add_ref_ref`                  | `&a + &b` 返回 `Ok(...)`，所有权保留                           | 高     |
 | `test_add_owned_ref`                | `a + &b` 返回 `Ok(...)`，a 被消费                              | 中     |
 | `test_add_ref_owned`                | `&a + b` 返回 `Ok(...)`，b 被消费                              | 中     |
-| `test_add_scalar`                   | `tensor + 5.0` 直接返回 `Tensor`                               | 高     |
-| `test_scalar_wrapper_add_tensor`    | `Scalar(5.0) + tensor` 直接返回 `Tensor`                       | 高     |
-| `test_native_scalar_add_tensor_f64` | 原生 `5.0 + tensor` 直接返回 `Tensor`                          | 高     |
-| `test_native_scalar_add_tensor_i32` | 原生 `5i32 + tensor` 直接返回 `Tensor`                         | 中     |
+| `test_add_scalar`                   | `tensor + 5.0` 返回 `Ok(...)`，逐元素验证                      | 高     |
+| `test_scalar_wrapper_add_tensor`    | `Scalar(5.0) + tensor` 返回 `Ok(...)`，逐元素验证              | 高     |
+| `ui_native_scalar_add_tensor_rejected` | 原生 `i32 + Tensor` 左标量写法在编译期被拒绝；使用 `Scalar<A>` 包装类型 | 高     |
 | `test_sub_basic`                    | `a - b` 返回 `Ok(...)` 且结果正确                              | 高     |
 | `test_mul_basic`                    | `a * b` 返回 `Ok(...)` 且结果正确                              | 高     |
 | `test_div_basic`                    | `a / b` 返回 `Ok(...)` 且结果正确                              | 高     |
@@ -701,6 +718,8 @@ panic 诊断信息测试：验证 panic message 包含 `需求说明书 §27` �
 | `test_result_ownership`             | `Ok` 中结果张量与输入不共享内存                                | 高     |
 | `test_i32_tensor`                   | `i32` 类型张量运算返回 `Ok(...)`                               | 中     |
 | `test_complex_tensor`               | `Complex<f64>` 类型张量运算返回 `Ok(...)`                      | 中     |
+
+重载测试保持 `std::ops::Add` / `Sub` / `Mul` / `Div` 的 `Output = Result<Tensor, XenonError>`。同形状可使用 `a + b`，异形状推荐 `a.add(&b)?`；测试中可用 `(&a + &b).unwrap()` 或 `?`。不得新增额外 `try_*` 运算符别名，不得恢复原生 `i32 + Tensor` 左标量；左标量使用 `Scalar<A>` 包装类型。
 
 ### 5.25 Good/Bad 对比示例
 
@@ -745,7 +764,7 @@ fn test_add_bad() {
     let b = Tensor1::from_shape_vec([2], vec![0.3, 0.4])
         .expect("shape and data length must match");
     let result = (&a + &b).unwrap();
-    assert!(ulp_eq_f64_cross_path(result[[0]], 0.4, 1));  // Base arithmetic should use the Tier 1 exact rule
+    assert!(ulp_eq_f64_cross_path(*result.try_at((0,)).unwrap(), 0.4, 1));  // Base arithmetic should use the Tier 1 exact rule
 }
 
 // Bad: Ignoring a recoverable error path
@@ -851,9 +870,9 @@ fn test_large_tensor_boundary_10m_elements() {
         .expect("10^7 element tensor allocation must succeed");
 
     assert_eq!(t.shape(), &shape);
-    assert_eq!(t[[0, 0]], 1.0);
-    assert_eq!(t[[1, 0]], 1.0);
-    assert_eq!(t[[9_999, 999]], 1.0);
+    assert_eq!(*t.try_at((0, 0)).unwrap(), 1.0);
+    assert_eq!(*t.try_at((1, 0)).unwrap(), 1.0);
+    assert_eq!(*t.try_at((9_999, 999)).unwrap(), 1.0);
 }
 
 #[test]
@@ -879,7 +898,7 @@ fn test_ixdyn_high_rank_scenarios() {
         .expect("shape is valid");
     let sum = (&lhs + &rhs).unwrap();
     assert_eq!(sum.shape(), &[3, 5, 4]);
-    assert_eq!(sum[IxDyn::from_slice(&[2, 4, 3])], 2);
+    assert_eq!(*sum.try_at(IxDyn::from_slice(&[2, 4, 3])).unwrap(), 2);
 }
 ```
 
@@ -983,7 +1002,7 @@ fn test_simd_add_consistency() {
     // Verify against an explicit scalar baseline with exact comparison
     for i in 0..1024 {
         let expected_value = expected[i];
-        assert!(ulp_eq_f64_exact(result[[i]], expected_value), "SIMD add mismatch at {}", i);
+        assert!(ulp_eq_f64_exact(*result.try_at((i,)).unwrap(), expected_value), "SIMD add mismatch at {}", i);
     }
 }
 ```
@@ -1181,7 +1200,7 @@ fn prop_broadcast_shape_rule() {
 
 - [ ] **T5**: 实现 `tests/test_index.rs`
   - 文件: `tests/test_index.rs`
-  - 内容: 索引操作（多维索引/越界返回错误/切片/步长）
+  - 内容: 索引操作（多维索引/越界返回错误/切片/结构性 SliceInfo 校验）
   - 测试: `cargo test --test test_index`
   - 前置: T1
   - 预计: 20 min
@@ -1361,6 +1380,8 @@ test:
 | 非法元素类型与 trait 边界 | 编译期失败测试或等价约束验证              |
 | feature gate 导出边界     | `cargo test` 配置矩阵与条件编译测试       |
 
+安全边界须与 `25-safety.md` 一致：示例访问使用 `try_at(Ix1(...))` 或等价安全入口，不使用下标索引语法；`ViewMutRepr` 不实现 `Sync`；`ArcRepr` 的线程共享要求 `A: Send + Sync`。
+
 ### 8.5 `需求说明书 §28.5` 专项约束测试
 
 | 约束                                                      | 验证方式                        |
@@ -1405,6 +1426,7 @@ fn compile_fail_harness() {
 - 不匹配的存储类型：例如要求 `StorageMut` 的 API 传入只读 view，或将不兼容的 storage representation 组合到同一签名中。
 - `usize` / 非法无符号元素类型边界：例如拒绝 `Tensor<usize, Ix1>`、拒绝把 `usize` 送入逐元素算术或数值 cast，同时允许 `usize` 仅出现在 shape、axis、index 与切片边界等元数据位置。
 - `bool` 操作边界：例如拒绝 `bool` 参与 `sum`、`unique` 与四则运算，确保布尔类型只出现在文档允许的逻辑语义范围内。
+- 复数构造与运算边界：`From<T> for Complex<T>` 是唯一允许的显式实数构造路径；不存在复数与实数混合的便捷运算符；整数到复数转换必须走 `CastTo`，不走 `From`。
 
 这些 compile-fail 用例与运行时错误测试互补：前者验证“错误代码无法通过编译”，后者验证“合法代码在非法输入下返回正确错误语义”。
 
@@ -1500,6 +1522,31 @@ Test files
 | 1.2.9 | 2026-04-16 |
 | 1.3.0 | 2026-04-16 |
 | 1.3.1 | 2026-04-16 |
+| 2.0.0 | 2026-05-03 |
+
+### v2.0.0 修订记录
+
+**Blocker 修复**：
+
+- 对齐 `17-indexing.md` v2.0.0：测试规范改为 `try_at` / `try_at_mut` 与 `slice`，删除公开下标索引写法，并明确 `SliceInfo::new` 只做结构性校验。
+- 对齐 `19-overload.md` v2.0.0：运算符测试保持 `Output = Result<Tensor, XenonError>`，删除原生 `i32 + Tensor` 左标量测试，改为 `Scalar<A>` 包装类型契约。
+- 对齐 `21-type.md` v2.0.0 与 `26-error.md` v3.0.0：`TypeConversion` 测试使用 `ElementType` 与五字段结构，禁止开放式运行时类型身份，并要求 `operation` 使用 `Cow::Borrowed("...")`。
+- 对齐 `24-workspace.md` v2.0.0：workspace 借用入口改为 `&mut self` 契约，错误分类改为七个结构化 `WorkspaceErrorCategory` 子变体，淘汰旧借用冲突变体与旧可选字段。
+
+**High 修复**：
+
+- 新增 §1 协同基线，列出本文档依赖的已修订下游版本。
+- 对齐 `18-construction.md` v2.0.0：明确 `from_shape_vec` 长度不匹配使用 `InvalidShapeKind::ElementCountMismatch { expected, actual }`，`zeros` / `ones` 使用完全限定 `StorageOwned::from_elem` 路径。
+- 对齐 `23-ffi.md` v2.0.0：明确 `XenonError::Ffi` 四字段结构、八个 `FfiErrorCategory` 子变体与 `FfiBackend::RawParts` / `Blas`。
+- 对齐 `06-layout.md` v1.3 与 `05-storage.md` v2.0.0：明确广播零步长、`compute_layout_flags`、`LayoutState` 三态、`ViewRepr` 生成规则、`deep_clone` / 张量层 `to_owned` 分层命名。
+- 对齐 `11-math.md` v2.0.0：比较测试命名改为 `equal` / `not_equal` / `less` / `greater`。
+- 对齐 `25-safety.md` v2.0.0 与 `04-complex.md` v2.0.0：补充安全索引、`ViewMutRepr`/`ArcRepr` 线程边界，以及复数构造/运算限制。
+
+**未变更项**：
+
+- 保留 §6.2 ULP-based 数值精度规范，不放宽 Tier 1 / Tier 2 / Tier 3 契约。
+- 保留 §5.21 compile-fail 测试章节结构与语义，仅在类型边界列表补充复数协同约束。
+- 保留测试矩阵、CI 分层、属性测试列表与大张量 extended test 分层，不扩大测试范围。
 
 ---
 

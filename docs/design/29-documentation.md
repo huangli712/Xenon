@@ -23,7 +23,11 @@
 | examples/    | 独立可运行示例程序                                             | 交互式 notebook                    |
 | docs.rs 配置 | metadata、feature gate 标注                                    | 自定义文档主题                     |
 
-### 1.2 设计原则
+### 1.2 协同基线
+
+本文档的 doc comment、doctest、README、CHANGELOG 与 examples 示例必须以下游已修文档为协同基线：`04-complex.md v2.0.0`、`17-indexing.md v2.0.0`、`18-construction.md v2.0.0`、`19-overload.md v2.0.0`、`21-type.md v2.0.0`、`23-ffi.md v2.0.0`、`24-workspace.md v2.0.0`、`25-safety.md v2.0.0`、`26-error.md v3.0.0`、`28-tests.md v2.0.0`。示例代码中的 API 形态、错误字段、索引语法、运算符返回类型、类型转换语义、workspace 借用形式和线程安全说明均不得重新定义这些契约。
+
+### 1.3 设计原则
 
 | 原则       | 体现                                                      |
 | ---------- | --------------------------------------------------------- |
@@ -311,6 +315,15 @@ L3: Examples (examples/)
 
 对运算符重载入口（如 `Add` / `Sub` / `Mul` / `Div` 的实现文档），即使签名经由 trait 间接暴露，也应补齐与对应方法型 API 一致的 `# Errors` / `# Panics` 模板，并引用 `19-overload.md` 中定义的对应技术规范，避免仅留下语法糖示例而缺少失败条件说明。
 
+所有 doc comment、doctest、README、CHANGELOG 与 examples 中的示例代码必须执行协同审查：
+
+- 错误构造必须匹配 `26-error.md v3.0.0 §5.1`。所有 `operation` 字段使用 `Cow<'static, str>`，示例构造使用 `Cow::Borrowed("...")`；`TypeConversion` 必须填充 `operation`、`source_type`、`target_type`、`reason`、`element_index`，其中 `source_type` / `target_type` 使用 `ElementType`，不得使用运行时类型 ID；`Ffi` 必须为 `operation` / `category` / `backend` / `cause` 四字段；`Workspace` 必须使用七子变体结构化 `WorkspaceErrorCategory`，不得引用旧的借用冲突子变体。
+- 索引示例必须使用 `try_at` / `try_at_mut` 或 `get(&[...])` / `get_mut(&[...])`，不得展示方括号索引语法。切片示例必须说明 `SliceInfo::new` 仅执行结构性校验，`SliceInfoElem::Range` 仅包含 `start` / `end`。
+- 构造示例必须保持 `Tensor::from_shape_vec` 的失败语义为 `InvalidShapeKind::ElementCountMismatch { expected, actual }`；`zeros` / `ones` 的实现说明必须使用 `<Owned<A> as StorageOwned>::from_elem(len, value)` 的完全限定调用。
+- 运算符示例必须体现 `Output = Result<Tensor, XenonError>`：同形状可写 `(&a + &b)?`，异形状优先写显式方法 `a.add(&b)?`；不得新增或引用额外的 try 前缀算术方法；左标量示例使用 `Scalar<A>` 包装类型，不展示原生左标量加张量语法。
+- 类型转换示例必须遵循静态无损 `From`、静态有损与动态条件性 `CastTo<T>` 三层结构；复数实数构造只展示 `From<T> for Complex<T>`，整数到复数转换走 `CastTo`。
+- Workspace 示例必须展示 `borrow_mut(&mut self)`、`Workspace::split_at_mut(&mut self)` 与消费式 `SplitBorrowMut::split_at_mut(self)`；线程安全说明以 `25-safety.md v2.0.0` 为准，`ViewMutRepr` 不实现 `Sync`，`ArcRepr` 要求 `A: Send + Sync`。
+
 ### 5.5 Lint 与文档门禁
 
 #### 5.5.1 Lint 规则
@@ -357,6 +370,8 @@ L3: Examples (examples/)
 | 隐藏样板   | 用 `# ` 隐藏 use 语句                                                                                                       |
 | 最小化     | 只展示当前 API 用法                                                                                                         |
 | 有断言     | 用 `assert_eq!` 验证结果                                                                                                    |
+
+API 形态与错误字段审查必须执行 §5.4.2 的协同审查清单；特别是索引示例不得使用标准库索引 trait 语法，错误示例不得使用旧字段或运行时类型 ID。
 
 **关键示例定义**：§5.11.1 Gate 4 列出的示例（当前为 `basic` / `broadcasting` / `workspace`）为关键默认示例，必须在 CI 中实际运行。§5.3 示例覆盖矩阵列出的全部 API 族示例均须编译通过；其中被 Gate 4 命名的还须运行通过。
 
@@ -776,28 +791,28 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 - [ ] **T17**: construct 和 set 模块文档
   - 文件: `src/construct/mod.rs`, `src/set/mod.rs`
-  - 内容: zeros, ones, eye, from_shape_vec, unique 函数文档和 doctest（`full` 当前版本未提供）
+  - 内容: zeros, ones, eye, from_shape_vec, unique 函数文档和 doctest（`full` 当前版本未提供）；构造错误语义与 `<Owned<A> as StorageOwned>::from_elem` 调用形态须与 `18-construction.md v2.0.0` 一致
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
 
 - [ ] **T18**: ffi, workspace, error 模块文档
   - 文件: `src/ffi/mod.rs`, `src/workspace/mod.rs`, `src/error.rs`
-  - 内容: FFI 函数（含 Safety 节）、Workspace、XenonError 文档和 doctest
+  - 内容: FFI 函数（含 Safety 节）、Workspace、XenonError 文档和 doctest；错误字段须对齐 `26-error.md v3.0.0 §5.1`，workspace 借用示例须使用 `24-workspace.md v2.0.0` 的 `&mut self` / 消费式 split 形态
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
 
 - [ ] **T19**: iter, convert, format, overload 模块文档
   - 文件: `src/iter/mod.rs`, `src/convert/mod.rs`, `src/format/mod.rs`, `src/overload/mod.rs`
-  - 内容: 迭代器入口、类型转换、输出格式化、运算符语法边界的模块文档和 doctest
+  - 内容: 迭代器入口、类型转换、输出格式化、运算符语法边界的模块文档和 doctest；类型转换示例不得使用运行时类型 ID，运算符示例必须体现 `Output = Result<..., XenonError>` 且不得新增额外的 try 前缀算术方法
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
 
 - [ ] **T20**: index 模块函数级文档和 doctest
   - 文件: `src/index/mod.rs`
-  - 内容: 索引/切片相关函数的文档和 doctest（参见 `17-indexing.md §1`）
+  - 内容: 索引/切片相关函数的文档和 doctest（参见 `17-indexing.md §1`）；示例只使用 `try_at` / `try_at_mut` / `get` / `get_mut`，不得展示方括号索引语法
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
@@ -1026,6 +1041,45 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | 1.1.6 | 2026-04-15 |
 | 1.1.7 | 2026-04-15 |
 | 1.1.8 | 2026-04-15 |
+| 2.0.0 | 2026-05-03 |
+
+### v2.0.0 (2026-05-03) — 协同与一致性更新（非破坏性）
+
+> 本版本是与 04-complex v2.0.0、17-indexing v2.0.0、18-construction v2.0.0、19-overload v2.0.0、21-type v2.0.0、23-ffi v2.0.0、24-workspace v2.0.0、25-safety v2.0.0、26-error v3.0.0、28-tests v2.0.0 协同的非破坏性更新。文档层次（L0/L1/L2/L3）、Lint 门禁、docs.rs 配置、CI 检查、决策 1-5、examples/ 规划、README/CHANGELOG 模板**均未变更**；仅新增协同审查清单。
+
+**Blocker 修复**：
+
+- §1.2 新增"协同基线"段：明确本文档示例、README、CHANGELOG、doctest、examples 必须以已修下游版本为协同基线；列出全部依据版本。原 §1.2 "设计原则" 顺延为 §1.3。
+- §5.4.2 新增"示例协同审查清单"段：6 项契约检查（错误字段对齐 26-error v3.0.0 / 索引语法 17-indexing / 构造错误 18-construction / 运算符返回 19-overload / 类型转换 21-type / Workspace 借用 24-workspace + 线程安全 25-safety + 复数构造 04-complex）。
+
+**High 修复**：
+
+- §5.6 Doctest 规范："API 形态与错误字段审查必须执行 §5.4.2 清单；索引示例不得使用 `[..]`；错误示例不得使用旧字段或运行时 TypeId。"
+- §7 Wave 3 任务说明补齐：T17 construct/set 任务补 18-construction v2.0.0 的 `<Owned<A> as StorageOwned>::from_elem` 完全限定调用要求；T18 ffi/workspace/error 补 26-error v3.0.0 字段对齐 + 24-workspace v2.0.0 `&mut self` / 消费式 split；T19 iter/convert/format/overload 补 "类型转换不得用 TypeId" + "运算符返回 `Result<..., XenonError>` 且不新增 try_*"；T20 index 任务补 "示例只使用 `try_at` / `try_at_mut` / `get` / `get_mut`，不得展示方括号索引"。
+
+**未变更**：
+
+- §3 文件位置（src/lib.rs / src/*/mod.rs / examples/ / README.md / CHANGELOG.md / docs.rs metadata）。
+- §4 依赖关系。
+- §5.1 文档层次 L0/L1/L2/L3。
+- §5.2 各层覆盖要求。
+- §5.3 关键 API 示例覆盖矩阵。
+- §5.4.1 核心文档模板（doc comment 形式）。
+- §5.5 Lint 与文档门禁（`#![warn(missing_docs)]` 开发期、CI deny 配置）。
+- §5.6.1 / §5.6.2 Doctest 模板与运行说明。
+- §5.7 examples/ 目录规划（basic / broadcasting / workspace 关键示例）。
+- §5.8 README.md 内容规划。
+- §5.9 CHANGELOG.md。
+- §5.10 docs.rs 配置（metadata、feature gate）。
+- §5.11 文档 CI 检查（5 个 Gate）。
+- §5.12 Good / Bad 文档注释对比示例。
+- §6 内部实现设计（文档生成流程、覆盖率计算、编写工作流）。
+- §7 Wave 1-2、Wave 4-5 任务（仅 Wave 3 T17-T20 补充协同约束）。
+- §8 测试计划。
+- §9 错误处理与语义边界。
+- §10 决策 1-5。
+- §11 性能描述。
+- §12 平台与工程约束。
 
 ---
 

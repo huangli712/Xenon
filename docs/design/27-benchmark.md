@@ -11,7 +11,9 @@
 
 ## 1. 主题定位
 
-本文档是“性能观测规范”，用于约定 benchmark 采样口径、趋势记录与可选回归检测；它不是完整质量门禁规范。功能正确性、错误语义、并发/UB 边界等质量要求统一由 `28-tests.md` 承担。
+本文档是"性能观测规范"，用于约定 benchmark 采样口径、趋势记录与可选回归检测；它不是完整质量门禁规范。功能正确性、错误语义、并发/UB 边界等质量要求统一由 `28-tests.md` 承担。
+
+**协同基线（v2.0.0）**：本文档以下游已修文档的契约为准——18-construction v2.0.0（`from_shape_vec` 返回 `Result<Self, XenonError>` 含 `InvalidShape{kind: ElementCountMismatch}`）、19-overload v2.0.0（`std::ops::Add` 等运算符 `Output = Result<Tensor, XenonError>`，benchmark 中可用 `(&a + &b).unwrap()`）、17-indexing v2.0.0（`SliceInfo::new` 仅做结构性校验，shape 边界校验下沉到 `TensorBase::slice`）、08-simd v2.0.0、09-parallel v2.0.0、13-reduction v2.0.0、12-matrix v2.0.0、26-error v3.0.0。
 
 ### 1.1 职责边界
 
@@ -194,23 +196,26 @@ pub fn sequential_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 
 /// Generate a truly non-contiguous 1D view from an F-order 2D owner.
 /// NOTE: The slice construction below uses pseudo-code; actual API shape
-/// must follow `17-indexing.md` frozen interface at implementation time.
+/// must follow `17-indexing.md v2.0.0` frozen interface at implementation time.
 pub struct StridedFixture1D {
     pub owner: Tensor2<f64>,
 }
 
 impl StridedFixture1D {
     /// Returns a non-contiguous view by taking a row slice of the F-order 2D owner.
-    /// Actual slicing API follows `17-indexing.md`; the expression below is
-    /// illustrative and must be adapted to the final slice syntax at implementation.
+    /// Actual slicing API follows `17-indexing.md v2.0.0`; the expression below
+    /// is illustrative and must be adapted to the final slice syntax at
+    /// implementation. `SliceInfo::new` performs structural validation only;
+    /// shape-aware bounds checking happens inside `TensorBase::slice` (see
+    /// 17-indexing v2.0.0 §5.1 and decision 3 / B9.a).
     pub fn view(&self) -> TensorView1<'_, f64> {
         // Illustrative: take row 1 from the F-order 2D owner, yielding a
         // non-contiguous 1D view with stride == ncols (not 1).
         self.owner
             .view()
             .slice(SliceInfo::new(/* [Index(1), Range { start: 0, end: self.owner.ncols() }] */)
-                .expect("slice info must be valid"))
-            .expect("slice info must match owner shape")
+                .expect("structurally valid slice info"))
+            .expect("slice bounds within owner shape")
     }
 }
 
@@ -367,6 +372,10 @@ cargo bench --bench construction -- "zeros_1d" --quick
 
 ### 5.8 Benchmark 模板
 
+> **算子返回类型说明（与 19-overload v2.0.0 协同）**：`std::ops::Add`/`Sub`/`Mul`/`Div` 等运算符的 `Output = Result<Tensor, XenonError>`（参见 `19-overload.md v2.0.0 §5.1` 决策 3/4）。在 benchmark 中，输入张量都由 `generators::*` 在迭代回调外预生成且形状已知一致，因此 `(&a + &b).unwrap()` 在该路径上等价于一次永远成功的 `Result` 解包；`unwrap()` 不构成 hot-path 噪声，仅作为编译期 sanity check。同形状路径不应失败；如失败应视为 benchmark fixture 配置错误。
+>
+> **构造返回类型说明（与 18-construction v2.0.0 协同）**：`Tensor::from_shape_vec` 返回 `Result<Self, XenonError>`，失败时 `kind: InvalidShapeKind::ElementCountMismatch { expected, actual }`（参见 `18-construction.md v2.0.0 §5.3`）。Generator 中的 `expect(...)` 仅作为预生成阶段的 assertion，不进入计时区间。
+
 ```rust,ignore
 // benches/math.rs
 use std::hint::black_box;
@@ -383,6 +392,7 @@ fn bench_elem_add(quick: bool) {
     for &size in SIZES_1D {
         let a = generators::sequential_1d(size);
         let b = generators::sequential_1d(size);
+        // Same-shape add path always succeeds; unwrap is a sanity check, not hot-path noise.
         for _ in 0..WARMUP_ITERATIONS {
             black_box((&a + &b).unwrap());
         }
@@ -760,6 +770,37 @@ benchmark files
 | 1.2.1 | 2026-04-10 |
 | 1.2.2 | 2026-04-14 |
 | 1.2.3 | 2026-04-15 |
+| 2.0.0 | 2026-05-02 |
+
+### v2.0.0 (2026-05-02) — 协同与一致性更新（非破坏性）
+
+> 本版本是与 18-construction v2.0.0、19-overload v2.0.0、17-indexing v2.0.0、08-simd v2.0.0、09-parallel v2.0.0、13-reduction v2.0.0、12-matrix v2.0.0、26-error v3.0.0 协同的非破坏性更新。Benchmark 分组、参数矩阵、CI 工作流、回归阈值、决策 1-5 **未变更**；仅补充契约说明与协同基线。
+
+**Blocker 修复**：
+
+- §5.8 模板新增"算子返回类型说明"段：明示 `std::ops::Add` 等运算符 `Output = Result<Tensor, XenonError>`（与 19-overload v2.0.0 决策 3/4 协同）；解释 `(&a + &b).unwrap()` 在 benchmark fixture 同形状路径下永远成功，`unwrap` 不构成 hot-path 噪声，仅作为 sanity check；同形状路径若失败应视为 fixture 配置错误。
+- §5.8 新增"构造返回类型说明"段：明示 `Tensor::from_shape_vec` 失败时 `kind: InvalidShapeKind::ElementCountMismatch { expected, actual }`（与 18-construction v2.0.0 §5.3 协同）；generator 中的 `expect(...)` 仅作为预生成阶段 assertion，不进入计时区间。
+- §5.2 `StridedFixture1D::view` 注释更新：明示 `SliceInfo::new` 仅做结构性校验、shape 边界校验下沉到 `TensorBase::slice`（与 17-indexing v2.0.0 §5.1 决策 3 / B9.a 协同）；`expect(...)` 消息从模糊的"slice info must be valid" / "slice info must match owner shape" 改为"structurally valid slice info" / "slice bounds within owner shape" 以分别对应两类失败语义。
+
+**High 修复**：
+
+- §1 新增"协同基线"段：列出本文档依据的下游版本（18-construction / 19-overload / 17-indexing / 08-simd / 09-parallel / 13-reduction / 12-matrix / 26-error）。
+
+**未变更**：
+
+- §3 文件位置（9 个 benchmark 文件 + utils）。
+- §4 依赖关系（消费 crate 公共 API）。
+- §5.1 Cargo.toml `[[bench]]` 入口。
+- §5.3 四级分类（Micro / Kernel / Workflow / Comparison）。
+- §5.4 参数矩阵（Small/Medium/Large × f32/f64/Complex<f64> × F-contig/Non-contig）。
+- §5.5 Benchmark 清单 30+ 组。
+- §5.6 三级 CI 工作流（Smoke / Regression / Full）。
+- §5.7 可选回归阈值（5% warning / 20% failure / 5% improvement）。
+- §6 测量方法论（warmup / sampling / black_box / median）。
+- §7 实现任务拆分 T1-T12。
+- §8-§9 测试计划与模块映射。
+- §11 决策 1-5。
+- §12-§13 性能描述与平台约束。
 
 ---
 
