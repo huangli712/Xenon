@@ -98,7 +98,8 @@ src/format/
 | `tensor`    | `TensorBase<S, D>`, `.shape()`, `.ndim()`, `.len()`（参见 `07-tensor.md` §5） | 
 | `dimension` | `Dimension`（参见 `02-dimension.md` §5）                                      | 
 | `storage`   | `Storage<Elem=A>`（参见 `05-storage.md` §5）                                  | 
-| `element`   | `Element`（参见 `03-element.md` §5.1）；`dtype_name()` 内部还使用 `core::any::TypeId` / `core::any::type_name`，属于标准库 | 
+| `element`   | `Element`（参见 `03-element.md` §5.1）；`Element::ELEMENT_TYPE: ElementType` 编译期常量（参见 `03-element.md` §5.1 与 `21-type.md`）；`dtype_name()` 通过 `A::ELEMENT_TYPE` 静态分流到稳定 dtype 字符串，**不**使用 `core::any::TypeId` |
+| `layout`    | `LayoutState`（参见 `06-layout.md` v1.3 §5.3）；`Debug` 实现读取 `TensorBase::layout_state()` 用于头部 `layout=` 字段 |
 
 ### 4.3 依赖合法性
 
@@ -254,7 +255,7 @@ where
 
 - `Display` 只负责数据文本；当发生截断时，它在最外层右括号后追加 `shape=[...]`，用于满足 `需求说明书 §24` 的“可识别 shape”要求。
 - `Debug` 已在头部输出 `shape=`、`strides=`、`dtype=` 和 `layout=`，因此其数据段复用相同截断选点规则，但不再重复追加 `shape=[...]` 后缀。
-- `Debug` impl 的元素渲染仅依赖 `A: Debug`。若内部复用 Display helper，应通过独立内部 trait 抽象，避免在公开约束中引入 Display 依赖。注意：完整 trait bound 包含 `Element + 'static`，其中 `'static` 用于 `dtype_name()` 内部的 `core::any::TypeId` 分发。
+- `Debug` impl 的元素渲染仅依赖 `A: Debug`。若内部复用 Display helper，应通过独立内部 trait 抽象，避免在公开约束中引入 Display 依赖。完整 trait bound 为 `Element`（**不再要求** `'static`），因为 `dtype_name::<A>()` 通过 `A::ELEMENT_TYPE` 编译期常量静态分流，不需要运行时 `TypeId`。
 - `Debug` 输出包含完整的元信息（形状/步长/类型/布局），方便开发调试。Display 只输出数据，面向最终用户；其中零维张量使用显式标记，避免与裸标量文本混淆。
 - `Debug` 至少区分三类布局：`layout=f-contiguous`、`layout=broadcast`（存在零步长）、`layout=non-contiguous`（如转置、切片等非广播非连续布局）。
 
@@ -266,7 +267,7 @@ impl<S, D, A> core::fmt::Debug for TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: core::fmt::Debug + Element + 'static,
+    A: core::fmt::Debug + Element,
 {
     /// Developer-facing debug output.
     ///
@@ -546,21 +547,28 @@ fmt_nd(tensor, f, prefix):
 ### 6.2 dtype 名称映射
 
 ```rust,ignore
-fn dtype_name<A: Element + 'static>() -> &'static str {
-    match core::any::TypeId::of::<A>() {
-        id if id == core::any::TypeId::of::<f32>() => "f32",
-        id if id == core::any::TypeId::of::<f64>() => "f64",
-        id if id == core::any::TypeId::of::<i32>() => "i32",
-        id if id == core::any::TypeId::of::<i64>() => "i64",
-        id if id == core::any::TypeId::of::<Complex<f32>>() => "Complex<f32>",
-        id if id == core::any::TypeId::of::<Complex<f64>>() => "Complex<f64>",
-        id if id == core::any::TypeId::of::<bool>() => "bool",
-        _ => core::any::type_name::<A>(),
+// Static dispatch via Element::ELEMENT_TYPE — the closed enum from 03-element §5.1.
+// No core::any::TypeId, no 'static bound, no fallback path: Element is a sealed
+// trait with a closed implementor set ({i32, i64, f32, f64, Complex<f32>,
+// Complex<f64>, bool}); the match below is exhaustive.
+fn dtype_name<A: Element>() -> &'static str {
+    match A::ELEMENT_TYPE {
+        ElementType::I32       => "i32",
+        ElementType::I64       => "i64",
+        ElementType::F32       => "f32",
+        ElementType::F64       => "f64",
+        ElementType::Complex32 => "Complex<f32>",
+        ElementType::Complex64 => "Complex<f64>",
+        ElementType::Bool      => "bool",
     }
 }
 ```
 
-Debug 输出的 `dtype=` 字段应通过内部 `dtype_name()` 映射获得稳定、紧凑的展示名，而不是直接暴露编译器的完整类型路径。
+Debug 输出的 `dtype=` 字段通过 `Element::ELEMENT_TYPE` 编译期常量分流到稳定、紧凑的展示名（参见 `03-element.md` §5.1 `ElementType` 枚举定义、`21-type.md` v2.0.0 决策 4 关于 `ElementType` 静态分流的统一规则）。这样做的好处：
+
+- **零运行时开销**：`A::ELEMENT_TYPE` 是 `const`，`match` 在单态化后会被编译器折叠为单一 `&'static str`。
+- **类型边界更松**：不再要求 `A: 'static`，与 `TensorView<'a, A, D>` 的非 `'static` 借用语义协同。
+- **与 21-type/26-error 一致**：禁用 `core::any::TypeId` 是 v2.0.0 协同决策（参见 21-type v2.0.0 §6.1 `CastTo` 实现、26-error v3.0.0 `TypeConversion.source_type / target_type: ElementType`）。
 
 ---
 
@@ -792,6 +800,32 @@ User calls format!("{}", tensor) / format!("{:?}", tensor)
 | 1.1.4 | 2026-04-14 |
 | 1.1.5 | 2026-04-15 |
 | 1.1.6 | 2026-04-15 |
+| 2.0.0 | 2026-05-02 |
+
+### v2.0.0 (2026-05-02) — `dtype_name` 改用 `Element::ELEMENT_TYPE` 静态分流
+
+> 协同 21-type v2.0.0 决策 4 与 26-error v3.0.0 `TypeConversion` 字段（`source_type/target_type: ElementType`）的统一规则：禁用 `core::any::TypeId` 进行类型分发，所有元素类型分流走 `Element::ELEMENT_TYPE` 编译期常量。
+
+**契约更新**：
+
+- §5.4 `Debug` 实现 `A` trait bound 从 `Debug + Element + 'static` 收窄为 `Debug + Element`。这是 `Debug` 公开约束的**放宽**（`'static` 边界移除），对调用方非破坏性 — 所有原本满足旧 bound 的类型都满足新 bound。
+- §6.2 `dtype_name<A>()` 函数体重写：从 `core::any::TypeId::of::<A>()` 链式比较 + `core::any::type_name::<A>()` 兜底，改为基于 `A::ELEMENT_TYPE` 的封闭 `match`。`'static` bound 同步移除。
+
+**协同与一致性更新**：
+
+- §4.2 依赖表 `element` 行：明确依赖 `Element::ELEMENT_TYPE` 与 `ElementType`，并明示**不**使用 `core::any::TypeId`。
+- §4.2 依赖表新增 `layout` 行：`Debug` 实现读取 `LayoutState` 来源 `06-layout.md` v1.3 §5.3。
+- §5.4 `Debug` 实现段落注释明示 `dtype_name::<A>()` 通过 `A::ELEMENT_TYPE` 编译期常量静态分流。
+- §6.2 注释明示 `Element` 是 sealed trait + 实现集合封闭（{i32, i64, f32, f64, Complex<f32>, Complex<f64>, bool}），`match` 完备且无 fallback 分支。
+- §6.2 引用 21-type v2.0.0 决策 4、26-error v3.0.0 §5.1 `TypeConversion` 字段，建立"`ElementType` 静态分流"是项目级统一规则的协同链路。
+
+**非破坏性确认**：
+
+- §5.1 `FormatConfig` 字段不变。
+- §5.2 `TensorDisplay` 包装与 `display_with(config)` 入口不变。
+- §5.3 `Display` 实现的 trait bound `A: Display + Element` 不变（`Display` 路径本来就没有 `'static` 要求）。
+- §5.5 NumPy 风格输出示例与 §5.6 截断规则均不变。
+- 所有公开 API（`fmt`、`display_with`、`FormatConfig`）签名与语义不变。
 
 ---
 
