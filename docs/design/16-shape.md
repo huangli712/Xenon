@@ -34,6 +34,7 @@
 | 语义收敛   | 当前版本规范契约只设计 `transpose()`，不在本文扩展其他形状变换 |
 | BLAS 友好  | 正确处理转置产生的非连续布局，确保 shape/stride 元数据一致     |
 | 维度安全   | 转置仅做轴反转，不改变逻辑元素值与元素总数                     |
+| 视图统一性 | 转置结果统一返回借用视图（`ViewRepr`），与 05-storage v2.0.0 §5.11.1 "广播 / 转置 / 切片产生的只读视图统一使用 `ViewRepr`" 规则一致 |
 
 ---
 
@@ -64,19 +65,21 @@ src/shape/
 
 ```
 src/shape/
-├── crate::tensor     # TensorBase<S, D>, TensorView<'_, A, D>, .shape(), .strides(), .offset()
-├── crate::dimension  # Dimension, Ix0~Ix6, IxDyn
-└── crate::layout     # LayoutFlags, LayoutState, Strides<D>
+├── crate::tensor     # TensorBase<S, D>, TensorView<'_, A, D>, .shape(), .strides(), .offset(), .as_ptr()
+├── crate::dimension  # Dimension, Ix0~Ix6, IxDyn, pub(crate) Reverse trait
+├── crate::layout     # LayoutFlags, LayoutState, Strides<D>, compute_layout_flags
+└── crate::storage    # ViewRepr<'a, A> (transpose result borrows source storage)
 ```
 
 ### 4.2 类型级依赖
 
-| 来源模块    | 使用的类型/trait                                                                  |
-| ----------- | --------------------------------------------------------------------------------- |
-| `tensor`    | `TensorBase<S, D>`, `TensorView<'_, A, D>`, `.shape()`, `.strides()`, `.offset()` |
-| `dimension` | `Dimension`                                                                       |
-| `layout`    | `LayoutFlags`, `LayoutState`, `Strides<D>`                                        |
-| `error`     | 无新增可恢复错误；规范性 `transpose()` 不走失败返回路径                           |
+| 来源模块    | 使用的类型/trait                                                                                          |
+| ----------- | --------------------------------------------------------------------------------------------------------- |
+| `tensor`    | `TensorBase<S, D>`, `TensorView<'_, A, D>`, `.shape()`, `.strides()`, `.offset()`, `.as_ptr()`            |
+| `dimension` | `Dimension`，以及 02-dimension v1.x §5.11 的 `pub(crate) trait Reverse: Dimension`（在本模块内消费）      |
+| `layout`    | `LayoutFlags`, `LayoutState`, `Strides<D>`，以及 06-layout v1.3 的 `compute_layout_flags::<A, D>(...)`     |
+| `storage`   | `ViewRepr<'a, A>`（转置结果统一持有借用视图，参见 05-storage v2.0.0 §5.11.1）                              |
+| `error`     | 无新增可恢复错误；规范性 `transpose()` 不走失败返回路径                                                   |
 
 ### 4.3 依赖合法性
 
@@ -116,16 +119,26 @@ where
     /// assert_eq!(b.shape(), &[3, 2]);
     /// ```
     pub fn transpose(&self) -> TensorView<'_, A, D> {
-        // Uses `Reverse` trait from 02-dimension.md §5.11 to consume self
-        // and return reversed dimension/strides.
+        // Uses pub(crate) `Reverse` trait from 02-dimension.md §5.11 to
+        // produce reversed dimension/strides. The trait is crate-internal;
+        // it does not appear in the public signature.
         // Note: calling .reverse() on bare slices would not compile —
-        // we must go through the owned dimension type.
+        // we must go through the owned dimension/Strides types.
         let new_shape = self.raw_dim().clone().reverse();
         let new_strides = self.strides().clone().reverse();
+
+        // For 0D / 1D inputs, transpose is a metadata no-op; layout flags
+        // are guaranteed equivalent because shape/stride are equal (0D)
+        // or the only axis is unchanged (1D). compute_layout_flags is
+        // still well-defined on the same input and produces equivalent
+        // flags, so a short-circuit fast path is an optimization, not a
+        // correctness requirement.
         let new_flags = compute_layout_flags::<A, D>(&new_shape, &new_strides, self.as_ptr());
 
-        // actual construction uses TensorView::new_unchecked() or similar
-        // internal constructor, see 07-tensor.md
+        // Internal construction uses TensorView::new_unchecked() or an
+        // equivalent constructor. ViewRepr borrows the source storage
+        // (see 05-storage v2.0.0 §5.11.1: broadcast / transpose / slice
+        // results all use ViewRepr).
         TensorView {
             // Pseudocode: create ViewRepr by borrowing source storage
             storage: ViewRepr::from(&self.storage),
@@ -164,8 +177,15 @@ where
 | 只读引用(ViewRepr)    | 只读引用(ViewRepr) |
 | 共享只读(ArcRepr)     | 只读引用(ViewRepr) |
 
-- `transpose()` 的返回类型统一固定为 `TensorView<'_, A, D>`，因此结果始终是基于借用的只读视图，只能持有 `ViewRepr`。即使源张量底层使用 `ArcRepr`（共享只读存储），转置结果也不会保留共享所有权语义，而是降级为普通借用视图。这是有意为之：转置仅重写 shape/stride/flags 等元数据，不复制也不迁移底层存储；原张量自身继续保留其原有存储模式，`ArcRepr` 的共享所有权能力仍由源对象负责维持。统一返回 `TensorView` 可以避免为元数据操作引入额外表示类型或条件返回类型，保持 API 与实现的简单性和一致性。
-- 若源张量为 `ArcRepr`（共享只读），转置后 `storage_kind()` 返回 `StorageKind::View` 而非 `Shared`。这是有意设计：转置结果的生命周期绑定到调用时借用，而不是源张量的共享引用计数。这是允许的收窄：`需求说明书 §17` 只要求结果落在只读引用或共享只读引用范围内。借用视图满足只读引用约束。对后续广播、格式化、线程共享的影响：转置结果的生命周期绑定到原始张量的借用期。
+- `transpose()` 的返回类型统一固定为 `TensorView<'_, A, D>`，因此结果始终是基于借用的只读视图，只能持有 `ViewRepr`。即使源张量底层使用 `ArcRepr`（共享只读存储），转置结果也不会保留共享所有权语义，而是降级为普通借用视图。
+
+  **设计论证（与 05-storage v2.0.0 §5.11.1 协同）**：
+
+  1. 05-storage v2.0.0 §5.11.1 明文规定："从广播、转置、切片产生的只读视图**统一使用** `ViewRepr`"。本节遵循该统一规则。
+  2. 转置只重写 shape / stride / flags 元数据，不复制底层存储。如果转置后保留 `ArcRepr`，意味着多了一个共享 `Arc` 计数副本，但实际收益有限：源张量已持有共享所有权，调用方若需要"转置后仍是 `ArcRepr`"，可显式链式调用 `tensor.transpose().to_owned().into_shared()`（参见 21-type §5.5 `to_owned()` + 05-storage §5.11 `Owned::into_shared()`）。
+  3. 统一返回 `TensorView<'_, A, D>` 让 `transpose()` 的返回类型在所有源存储模式下都相同；用户代码无需为不同存储类型分支处理转置结果，这与 NumPy / ndarray 的 `transpose()` 一致行为相符。
+  4. 如果未来确实需要"`ArcRepr.transpose() → ArcRepr`"特性，仍可通过单独的 `inherent impl on ArcTensor` 添加 `transpose_arc()` 等命名 API；但当前版本不暴露，避免一开始就引入"两个 transpose"分裂语义。
+- 若源张量为 `ArcRepr`（共享只读），转置后 `storage_kind()` 返回 `StorageKind::View` 而非 `Shared`。这是有意设计：转置结果的生命周期绑定到调用时借用，而不是源张量的共享引用计数。这是允许的收窄：`需求说明书 §17` 只要求结果落在只读引用或共享只读引用范围内，借用视图满足只读引用约束。对后续广播、格式化、线程共享的影响：转置结果的生命周期绑定到原始张量的借用期；如需跨线程持有转置结果，按 (2) 显式恢复共享所有权。
 
 ### 5.4 Good / Bad 对比
 
@@ -173,17 +193,19 @@ where
 
 ```rust,ignore
 // Good - use transpose() for zero-copy transpose
-let a = Tensor::<f64, _>::zeros([1000, 1000]);
+let a = Tensor::<f64, _>::zeros([1000, 1000])?;
 let b = a.transpose();  // O(1), zero-copy
 assert_eq!(b.shape(), &[1000, 1000]);
 
-// Bad - manually copy data for transpose (wastes memory and time)
-let a = Tensor::<f64, _>::zeros([1000, 1000]);
-let mut b = Tensor::<f64, _>::zeros([1000, 1000]);
+// Bad - manually copy data for transpose (wastes memory and time).
+// Note: `[]` indexing is intentionally not implemented (see 17-indexing
+// decisions). Use the safe `try_at` / `try_at_mut` APIs explicitly.
+let a = Tensor::<f64, _>::zeros([1000, 1000])?;
+let mut b = Tensor::<f64, _>::zeros([1000, 1000])?;
 for i in 0..1000 {
     for j in 0..1000 {
-        let value = *a.get(&[i, j]).expect("loop bounds are valid");
-        *b.get_mut(&[j, i]).expect("loop bounds are valid") = value;  // Prefer checked access APIs over [] indexing.
+        let value = *a.try_at(&[i, j]).expect("loop bounds are valid");
+        *b.try_at_mut(&[j, i]).expect("loop bounds are valid") = value;
     }
 }
 ```
@@ -387,11 +409,12 @@ User calls transpose()
 
 ### 决策 4：`transpose()` 不保留 `ArcRepr` 共享所有权语义
 
-| 属性     | 值                                                                                |
-| -------- | --------------------------------------------------------------------------------- |
-| 决策     | `transpose()` 始终返回 `TensorView<'_, A, D>`；无论源存储是 `Owned`、`ViewMutRepr`、`ViewRepr` 还是 `ArcRepr`，结果统一使用只读借用视图 `ViewRepr` |
-| 理由     | `ArcRepr` 降级为借用视图的详细说明见 §5.3 存储模式降级表后的 ArcRepr 降级说明；这里仅重复其规范性结论，不再展开重复论证 |
-| 替代方案 | 让 `ArcRepr` 输入返回保留共享所有权的新视图类型 — 放弃，详见 §5.3 中关于统一返回类型与复杂度权衡的说明 |
+| 属性     | 值                                                                                                                                                                                                                                                                                            |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | `transpose()` 始终返回 `TensorView<'_, A, D>`；无论源存储是 `Owned`、`ViewMutRepr`、`ViewRepr` 还是 `ArcRepr`，结果统一使用只读借用视图 `ViewRepr`                                                                                                                                            |
+| 理由     | (1) 与 05-storage v2.0.0 §5.11.1 的"广播 / 转置 / 切片产生的只读视图统一使用 `ViewRepr`"协同；(2) 转置只重写元数据，不复制存储；显式恢复共享所有权可通过 `tensor.transpose().to_owned().into_shared()` 链式调用（参见 21-type §5.5、05-storage §5.11）；(3) 统一返回类型让用户代码无需对存储模式分支处理 |
+| 替代方案 | 让 `ArcRepr` 输入返回保留共享所有权的新视图类型 — 放弃，会破坏 05-storage v2.0.0 §5.11.1 的统一规则，并引入"两个 transpose"的分裂语义                                                                                                                                                          |
+| 未来扩展 | 若确实需要"`ArcRepr.transpose() → ArcRepr`"特性，可通过单独的 `inherent impl on ArcTensor` 添加 `transpose_arc()` 等命名 API；当前版本不暴露                                                                                                                                                |
 
 ---
 
@@ -444,6 +467,19 @@ User calls transpose()
 | 1.1.2 | 2026-04-14 |
 | 1.1.3 | 2026-04-15 |
 | 1.1.4 | 2026-04-15 |
+| 2.0.0 | 2026-05-02 |
+
+### v2.0.0 (2026-05-02) — 协同与一致性更新（公开 API 形态保持兼容）
+
+> 本版本是与 02-dimension v1.x、05-storage v2.0.0、06-layout v1.3、26-error v3.0.0 协同的内部一致性更新。`transpose()` 公开签名不变；仅文档层强化论证 + 依赖表补全 + 伪实现注释更新。
+
+- §1.2 设计原则：新增"视图统一性"行，明确与 05-storage v2.0.0 §5.11.1 的统一规则协同。
+- §3 文件位置 / §4.1 依赖图：补 `crate::storage` (`ViewRepr`) 依赖；说明 `Reverse` trait 是 `pub(crate)`，仅在本模块内消费。
+- §4.2 类型级依赖：明确引用 02-dimension v1.x §5.11 `pub(crate) trait Reverse`；明确 06-layout v1.3 `compute_layout_flags`；补 `crate::storage` 行说明 `ViewRepr<'a, A>` 的来源（05-storage v2.0.0 §5.11.1）。
+- §5.1 伪实现：注释强化（明确 Reverse trait 是 pub(crate)、不在公开签名中泄露）；新增 0D / 1D 路径的等价性说明（`compute_layout_flags` 在相同输入下产生等价 flags，短路是优化非正确性要求）；引用 05-storage 统一规则。
+- §5.3 存储模式降级表后的 ArcRepr 降级说明：完全重写，新增四点设计论证：(1) 与 05-storage v2.0.0 §5.11.1 协同；(2) 显式恢复共享所有权的链式调用路径 `tensor.transpose().to_owned().into_shared()`；(3) 统一返回类型避免用户代码分支；(4) 未来若需要 `ArcRepr.transpose() → ArcRepr` 可通过单独命名 API 添加。
+- §5.4 Bad 示例：`a.get(&[i, j])` / `b.get_mut(&[j, i])` 改为安全索引 `try_at` / `try_at_mut`（与 17-indexing 决策 7 "公开安全索引收敛为 try_at / try_at_mut" 一致）；构造路径补 `?`。
+- §11 决策 4 完全重写：补充与 05-storage v2.0.0 §5.11.1 协同的论证；新增"未来扩展"行说明若需特殊化 ArcRepr.transpose() 可通过单独命名 API 添加，避免破坏统一规则。
 
 ---
 

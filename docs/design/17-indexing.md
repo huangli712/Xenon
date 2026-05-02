@@ -180,6 +180,27 @@ where
     I: Dimension,
     D: Dimension,
 {
+    /// Constructs a `SliceInfo` from indices and dimension types.
+    ///
+    /// Performs **structural** validation only; it does **not** validate
+    /// per-axis bounds against any tensor shape. See decision 3 (B9.a).
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::InvalidArgument { operation: "SliceInfo::new",
+    /// kind: InvalidArgumentKind::OperationSpecific { .. } }` when:
+    ///
+    /// - `indices.len() != in_dim.ndim()` (rank of slice descriptor must
+    ///   match the input dimension type's rank).
+    /// - `out_dim.ndim() != count_of(Range)` (one output axis per Range,
+    ///   none per Index).
+    /// - `Range { start, end }` has `start > end` — surfaced as
+    ///   `InvalidArgumentKind::RangeStartAfterEnd { axis, start, end }`.
+    ///
+    /// Per-axis bounds checking against actual tensor shape (`Range.end <=
+    /// shape[axis]`, `Index < shape[axis]`) is **deferred** to
+    /// `TensorBase::slice(info)` because `SliceInfo::new` does not know the
+    /// concrete tensor shape.
     pub fn new(indices: SliceInfoIndices, in_dim: D, out_dim: I) -> Result<Self, XenonError>;
 
     pub fn indices(&self) -> &SliceInfoIndices;
@@ -192,14 +213,31 @@ where
 
 设计说明：为支持 `XenonError::IndexOutOfBounds` 与 `26-error.md` 的规范对齐，`NdIndex<D>` 将提供 `fn to_index_vec(&self) -> Vec<usize>`（或等价 helper）用于把任意合法索引表示统一转换为 `Vec<usize>`。这样 tuple-based `Ix0`~`Ix6` 与切片形式索引都能在错误上报路径中生成一致的结构化诊断数据。
 
-`SliceInfo<I, D>` 是切片描述符的公开包装类型：`D` 表示输入维度，`I` 表示切片后的输出维度；其内部字段保持私有，必须通过带校验的公开构造器建立，以避免手工拼出“索引长度、输入维度、输出维度彼此矛盾”的无效状态。`SliceInfo::new` 属于稳定公共 API，校验失败时返回 `XenonError`，具体校验规则如下：
+`SliceInfo<I, D>` 是切片描述符的公开包装类型：`D` 表示输入维度，`I` 表示切片后的输出维度；其内部字段保持私有，必须通过带校验的公开构造器建立，以避免手工拼出"索引长度、输入维度、输出维度彼此矛盾"的无效状态。
 
-1. **indices 长度 == in_dim.ndim()**：切片描述符的元素数量必须精确匹配输入维度数。
-2. **out_dim.ndim() == count_of(Range)**：每个 `Range` 元素保留一个输出轴，每个 `Index(usize)` 折叠一个轴；输出维度数必须等于 `Range` 元素的计数。
-3. **每个 Range 的 `start ≤ end ≤ shape[axis]`**：范围边界不得超出对应轴长度。
-4. **每个 Index 的值 < shape[axis]**：单轴索引不得越界。
+**校验职责分工（决策 3 / 用户已批准 B9.a）**：
 
-这为当前版本的 `slice()` 提供了稳定、可验证的编程式入口。范围语法中的省略边界应在进入 `SliceInfoElem::Range` 前先被规范化为显式 `start` / `end`。
+| 校验类型 | 由谁负责 | 时机 | 失败错误 |
+| --- | --- | --- | --- |
+| 结构性校验（rank 一致、output 维度匹配 Range 计数、Range start≤end） | `SliceInfo::new` | 构造时 | `XenonError::InvalidArgument { kind: InvalidArgumentKind::OperationSpecific / RangeStartAfterEnd }` |
+| 边界校验（Range.end ≤ shape[axis]、Index < shape[axis]） | `TensorBase::slice(info)` | 切片应用时 | `XenonError::InvalidArgument { kind: InvalidArgumentKind::RangeOutOfBounds }` |
+
+理由：`SliceInfo::new` 只接收 `in_dim: D`（维度类型，不携带 shape 值），无法验证具体 shape 边界。把边界校验下沉到 `TensorBase::slice(info)` 让 SliceInfo 可在不绑定具体 shape 的前提下被构造、传递、复用。
+
+`SliceInfo::new` 在构造时执行的结构性校验：
+
+1. **indices 长度 == in_dim.ndim()**：切片描述符的元素数量必须精确匹配输入维度数。失败 → `InvalidArgumentKind::OperationSpecific { argument: "indices", constraint: "len must equal in_dim.ndim()" }`。
+2. **out_dim.ndim() == count_of(Range)**：每个 `Range` 元素保留一个输出轴，每个 `Index(usize)` 折叠一个轴；输出维度数必须等于 `Range` 元素的计数。失败 → `InvalidArgumentKind::OperationSpecific { argument: "out_dim", constraint: "ndim must equal Range count in indices" }`。
+3. **Range 内部一致性**：每个 `Range { start, end }` 必须满足 `start <= end`。失败 → `InvalidArgumentKind::RangeStartAfterEnd { axis, start, end }`（参见 26-error v3.0.0 §5.1）。
+
+`TensorBase::slice(info)` 在切片应用时执行的边界校验（决策 3 详见 §11）：
+
+4. **每个 Range 的 `end <= shape[axis]`**：失败 → `InvalidArgumentKind::RangeOutOfBounds { axis, axis_len, start, end }`。
+5. **每个 Index 的值 < shape[axis]**：失败 → `XenonError::IndexOutOfBounds { operation: "slice", attempted_index, axis, shape }`。
+
+这为当前版本的 `slice()` 提供了稳定、可验证的编程式入口，同时把"shape-aware"校验留给真正持有 shape 的层。范围语法中的省略边界应在进入 `SliceInfoElem::Range` 前先被规范化为显式 `start` / `end`。
+
+**Inline / Dynamic 选择规则**：`SliceInfoIndices::Inline { len, elems }` 使用固定 6 槽位，覆盖静态维度集合 `Ix0..Ix6` 的所有合法切片描述。当输入维度为 `IxDyn` 且 `indices.len() > 6` 时，`SliceInfo::new` 必须使用 `SliceInfoIndices::Dynamic(Vec<SliceInfoElem>)` 路径以容纳任意 rank。`indices.len() <= 6` 时两种表示都合法，但实现 SHOULD 优先选择 `Inline` 以避免堆分配。
 
 ### 5.2 张量访问与切片 API
 
@@ -247,8 +285,8 @@ where
 ```
 
 - 当前版本把 `try_at()` / `get()` / `try_at_mut()` / `get_mut()` 与 `slice()` 作为对外规范的主恢复路径。
-- `get(&[usize])` / `get_mut(&[usize])` 是 `try_at` / `try_at_mut` 的便利包装：内部将 `&[usize]` 转换为 `IxDyn` 后委托给对应的 `try_at` / `try_at_mut`，保证两条路径的偏移计算逻辑一致。
-- `SliceInfo` 稳定构造入口： 调用方可通过 `SliceInfo::new(indices, in_dim, out_dim)` 直接构造切片描述符；该构造器是公开且带校验的稳定 API。
+- `get(&[usize])` / `get_mut(&[usize])` 是基于 `&[usize]` 的便利访问入口：先验证 `index.len() == self.ndim()`（不一致时返回 `XenonError::DimensionMismatch { operation, expected: self.ndim(), actual: index.len() }`），再逐轴验证 `index[i] < shape[i]`（越界时返回 `XenonError::IndexOutOfBounds { operation: "get" / "get_mut", attempted_index: index.to_vec(), axis: 首个越界轴, shape: self.shape().to_vec() }`），最后用 `compute_offset` 直接计算偏移返回引用。这条路径**不通过** `try_at<I: NdIndex<D>>` 委托，因为对静态 `D=Ix2`，`IxDyn` 没有实现 `NdIndex<Ix2>`（封闭元素集合的 `NdIndex` 实现按维度类型严格分类），强制把 `&[usize]` 转 `IxDyn` 再走 `try_at` 会触发 trait bound 不满足。两条路径的偏移计算逻辑等价（都使用 §6.2 `compute_offset`），但 trait 分派路径不同，独立实现以避免类型约束混淆。
+- `SliceInfo` 稳定构造入口： 调用方可通过 `SliceInfo::new(indices, in_dim, out_dim)` 直接构造切片描述符；该构造器是公开且带**结构性**校验的稳定 API（边界校验由 `TensorBase::slice(info)` 在应用时完成，参见 §5.1 表）。
 
 ### 5.3 Good / Bad 对比
 
@@ -302,28 +340,42 @@ fn compute_offset<D: Dimension>(index: &[usize], strides: &Strides<D>) -> Option
 ### 6.3 切片元数据更新
 
 ```text
-compute_slice(shape, strides, offset, slices):
-    1. Validate the slice descriptor rank against ndim.
-    2. For Index(idx), check bounds and fold into the new offset with checked arithmetic.
-    3. For Range { start, end }, validate `0 <= start <= end <= shape[axis]`.
-    4. Update the resulting axis length as `end - start` and keep stride semantics unchanged.
-    5. Recompute layout flags via compute_layout_flags(&new_shape, &new_strides, data_ptr().add(offset)).
-    6. Return a read-only TensorView.
+TensorBase::slice(info):
+    // info already passed structural validation in SliceInfo::new.
+    // This step performs SHAPE-AWARE bounds validation and metadata update.
+    1. Validate info.input_dim() matches self.shape() rank (already guaranteed
+       by D type, but assert in debug for safety).
+    2. For each SliceInfoElem at axis i:
+       a. If Index(idx): check `idx < shape[i]`; on failure return
+          IndexOutOfBounds { operation: "slice", attempted_index, axis: i, shape }.
+          Fold into new offset with checked_add(checked_mul(idx, stride[i])).
+          Drop axis i from output shape and stride.
+       b. If Range { start, end }: check `end <= shape[i]`; on failure return
+          InvalidArgument { kind: RangeOutOfBounds { axis: i, axis_len: shape[i],
+          start, end } }. (start <= end already guaranteed by SliceInfo::new.)
+          Fold start into new offset with checked_add(checked_mul(start, stride[i])).
+          Update output shape[axis] = end - start; keep stride[axis] unchanged.
+    3. Recompute layout flags via compute_layout_flags::<A, I>(&new_shape,
+       &new_strides, self.as_ptr().add(new_offset_in_elements)).
+       (offset is in elements; pointer arithmetic uses elements via *const A.)
+    4. Construct and return TensorView<'_, A, I> with ViewRepr borrowed from
+       self.storage.
 ```
 
 切片后的语义约束如下：
 
 - 结果须保持原有逻辑元素顺序。
-- `Index(usize)` 会折叠对应轴并以 checked arithmetic 累加 offset。
+- `Index(usize)` 会折叠对应轴并以 checked arithmetic 累加 offset；任一 checked_mul / checked_add 溢出返回 `XenonError::InvalidLayout { reason: AccessRangeExceedsStorage, .. }`（参见 26-error v3.0.0 §5.1 `InvalidLayoutReason`）。
 - `Range` 会按起止边界更新 shape；对应轴的 stride 值保持不变。
 - 切片结果与源张量共享底层数据时，仅可落在只读或共享只读范围内，不提供共享可写视图。
-- **存储表示绝对降级：** 范围索引/切片产出的张量始终承载 `ViewRepr<'a, A>`，与 `15-broadcast.md §6.4` 的广播降级规则、`16-shape.md §5.3` 的转置降级规则保持一致。无论源张量是 `Owned<A>`、`ArcRepr<A>`、`ViewRepr<'_, A>` 还是 `ViewMutRepr<'_, A>`，切片产出的视图均为 `ViewRepr<'a, A>`（生命周期绑定源张量），不保留 `ArcRepr` 的引用计数共享所有权语义。`access_semantics()` 视布局是否含零步长决定返回 `ReadOnly` 或 `SharedReadOnly`（见 `07-tensor.md §5.3`）。
+- **存储表示绝对降级：** 范围索引/切片产出的张量始终承载 `ViewRepr<'a, A>`，与 `15-broadcast.md §6.4` 的广播降级规则、`16-shape.md §5.3` 的转置降级规则保持一致（统一规则见 `05-storage.md v2.0.0 §5.11.1`）。无论源张量是 `Owned<A>`、`ArcRepr<A>`、`ViewRepr<'_, A>` 还是 `ViewMutRepr<'_, A>`，切片产出的视图均为 `ViewRepr<'a, A>`（生命周期绑定源张量），不保留 `ArcRepr` 的引用计数共享所有权语义。`access_semantics()` 视布局是否含零步长决定返回 `ReadOnly` 或 `SharedReadOnly`（见 `07-tensor.md §5.3`）。
 - 布局状态只能重新落在 `FContiguous`、`NonContiguous`、`BroadcastView` 三种之一。
-- `SliceInfo::new(...)` 作为稳定公共构造器，必须校验索引描述长度、`in_dim` 与 `out_dim` 的对应关系，拒绝构造内部自相矛盾的描述符。
 
-`SliceInfo` 构造语义： `SliceInfo::new` 是当前版本稳定公开的低层编程式构造入口；它保留显式 `out_dim` 参数，以便与 `SliceInfo<I, D>` 的类型级输出维度约束保持一致，同时通过构造期校验保证该参数不能与切片描述矛盾。
+**offset 单位：** 本模块中所有 `offset` 字段一律是元素单位（element-count），不是字节单位。指针算术 `self.as_ptr().add(offset)` 对 `*const A` 调用 `add(n: usize)` 时，自动按 `size_of::<A>()` 字节换算，由 Rust 标准库 pointer 类型保证；本模块直接传 element offset 即可。
 
-切片布局标志规则：切片结果的 layout flags 根据新的 `shape` / `stride` 组合重新计算。若源视图带有 `BroadcastView`，且切片后仍存在任一零步长轴，则继续保留 `BroadcastView` flag；否则按普通 F-order / non-contiguous 规则重分类。
+**SliceInfo 校验职责回顾：** `SliceInfo::new` 只做结构性校验（rank 一致、output 维度匹配 Range 计数、Range start≤end）；shape 边界校验（Range.end <= shape[axis]、Index < shape[axis]）由 `TensorBase::slice(info)` 在切片应用时完成，理由详见 §5.1 和决策 3。
+
+切片布局标志规则：切片结果的 layout flags 根据新的 `shape` / `stride` 组合重新计算（调用 06-layout v1.3 `compute_layout_flags::<A, I>`）。若源视图带有 `BroadcastView`，且切片后仍存在任一零步长轴，则继续保留 `BroadcastView` flag；否则按普通 F-order / non-contiguous 规则重分类。
 
 ### 6.4 安全性论证
 
@@ -488,7 +540,7 @@ User calls tensor.slice(info)
 
 | 主题              | 说明                                                                                                                                                                 |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | `try_at()` / `get()` / `slice()` 在 rank 不匹配、轴非法、越界时返回 `XenonError`。其中索引长度与张量 `ndim` 不匹配时，错误类型固定为 `XenonError::DimensionMismatch` |
+| Recoverable error | `try_at()` / `get()` / `slice()` 在 rank 不匹配、轴非法、越界时返回 `XenonError`。其中索引长度与张量 `ndim` 不匹配时，错误类型固定为 `XenonError::DimensionMismatch { operation, expected, actual }`；多维索引越界使用 `XenonError::IndexOutOfBounds { operation, attempted_index, axis, shape }`；`slice()` 的 Range 越界使用 `InvalidArgument { kind: InvalidArgumentKind::RangeOutOfBounds { axis, axis_len, start, end } }`；`SliceInfo::new` 的 Range start>end 使用 `InvalidArgument { kind: InvalidArgumentKind::RangeStartAfterEnd { axis, start, end } }`；offset 算术溢出使用 `InvalidLayout { reason: InvalidLayoutReason::AccessRangeExceedsStorage, .. }`。所有字段对齐 26-error v3.0.0 §5.1 封闭枚举。 |
 | Trait-bound 边界  | `try_at_mut()` / `get_mut()` / `get_unchecked_mut()` 仅在 `S: StorageMut` 前提成立时存在；不再为“只读存储上的可写索引”设计运行时 `InvalidStorageMode` 分支           |
 | Panic             | `std::ops::Index` 与 `std::ops::IndexMut` 不在 Xenon 稳定 API 中实现（见 §3 范围约束）。规范安全主路径是返回 `Result` 的 checked API                                                                                                                  |
 | 路径一致性        | 对同一合法输入，checked 与 unchecked 路径必须给出同一偏移和同一逻辑结果；unsafe 只省略检查                                                                           |
@@ -515,6 +567,17 @@ User calls tensor.slice(info)
 | 理由     | 符合 `需求说明书 §18` 与 `需求说明书 §6`，对共享数据结果收敛到可验证的只读语义 |
 | 替代方案 | 允许共享可写切片 — 放弃，超出当前版本范围且引入别名写入风险       |
 | 替代方案 | 切片总是复制生成独立张量 — 放弃，会破坏零拷贝视图语义并扩大成本   |
+
+### 决策 3: SliceInfo::new 仅做结构性校验，shape 边界校验下沉到 TensorBase::slice (B9.a)
+
+| 属性     | 值                                                                                                                                                                                                                            |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | `SliceInfo::new(indices, in_dim, out_dim)` 只校验结构性约束（rank 一致、output 维度匹配 Range 计数、Range 内 start ≤ end）；shape 边界校验（Range.end ≤ shape[axis]、Index < shape[axis]）由 `TensorBase::slice(info)` 在应用时完成 |
+| 理由     | (1) `SliceInfo::new` 只接收维度类型 `D`，不携带具体 shape 值，根本无法验证 shape 边界；(2) 把校验下沉让同一个 `SliceInfo` 实例可在不同 shape 但 rank 相同的张量上复用；(3) 错误来源更清晰：结构错 → SliceInfo 构造期失败；shape 错 → slice 应用期失败 |
+| 替代方案 | 在 `SliceInfo::new` 强制要求传入 shape 一并校验                                                                                                                                                                              |
+| 拒绝原因 | 会让 `SliceInfo` 与具体张量 shape 强耦合，丢失"切片描述符可在不同张量上复用"的能力，并把构造器签名复杂化（`new(indices, in_dim, out_dim, shape)`）                                                                          |
+| 替代方案 | 不在 SliceInfo 做任何校验，全部下沉到 slice                                                                                                                                                                                  |
+| 拒绝原因 | 结构性约束（rank 一致、output 维度匹配）在没有 shape 也能校验，下沉会让显然非法的 SliceInfo 在构造期就溜过去，错误诊断时机过晚                                                                                                |
 
 ---
 

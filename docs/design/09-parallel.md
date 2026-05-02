@@ -78,9 +78,9 @@ src/parallel/
 | `tensor`    | `Tensor<A, D>`, `TensorBase<S, D>`, `TensorView<'a, A, D>`, `.len()`, `.raw_dim()`, `.is_f_contiguous()` |
 | `element`   | `Element`, `Numeric`                                                                                     |
 | `dimension` | `Dimension`                                                                                              |
-| `dispatch`  | `ParallelExecStrategy`                                                                                   |
+| `dispatch`  | `ParallelExecStrategy`, `ParallelGuard`                                                                  |
 | `parallel`  | `ParElements<'a, A, D>`, `TensorBase::par_iter()`, `par_zip_map()`                                       |
-| `error`     | `XenonError`, `XenonError::ShapeMismatch`, `XenonError::InvalidArgument` |
+| `error`     | `XenonError`, `XenonError::ShapeMismatch`, `XenonError::InvalidShape`, `XenonError::InvalidArgument`, `InvalidShapeKind::ProductOverflow`, `InvalidArgumentKind::OperationSpecific`, `Cow<'static, str>` |
 
 ### 4.3 依赖合法性
 
@@ -348,13 +348,13 @@ where
     C: Element + Send,
     F: Fn(&A, &B) -> Result<C, XenonError> + Send + Sync,
 {
-    // checked_size overflow → InvalidArgument with the closed-enum kind defined
-    // in 26-error.md v3.0.0 §5.1 (InvalidArgumentKind::ShapeProductOverflow).
-    let total = output_dim.checked_size().map_err(|_| XenonError::InvalidArgument {
+    // checked_size overflow → InvalidShape with the closed-enum kind defined
+    // in 26-error.md v3.0.0 §5.1 (InvalidShapeKind::ProductOverflow).
+    let total = output_dim.checked_size().map_err(|_| XenonError::InvalidShape {
         operation: Cow::Borrowed("par_zip_map"),
-        kind: InvalidArgumentKind::ShapeProductOverflow {
-            shape: output_dim.slice().to_vec(),
-        },
+        shape: output_dim.slice().to_vec(),
+        kind: InvalidShapeKind::ProductOverflow,
+        offending_dim: None,
     })?;
 
     // num_threads is taken from the validated strategy; falls back to
@@ -464,10 +464,13 @@ where
 
 | 主题                             | 论证                                                                                                                                                                                                                                         |
 | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Tensor::from_raw_vec_unchecked` | 这里只在输出向量长度与 `tensor.raw_dim()` 已由输入张量长度和映射过程保持一致时使用；并行与串行路径都必须保证产出元素数等于输入逻辑元素数。                                                                                                   |
-| `par_zip_map` broadcast chunking | 每个并行 chunk 仅借用两个输入的只读 broadcast-compatible sub-view；广播轴保持逻辑重复语义，不进行额外物理展开，因此不会引入越界写或悬垂引用。                                                                                                |
+| `Tensor::from_raw_vec_unchecked`（长度） | 这里只在输出向量长度与 `tensor.raw_dim()` 已由输入张量长度和映射过程保持一致时使用；并行与串行路径都必须保证产出元素数等于输入逻辑元素数。`ParElements: IndexedParallelIterator` 提供 `len()` 与 `Producer::split_at` 的不重叠覆盖不变量（§5.6），从而 `collect_into_vec` 后 `out.len() == checked_size(raw_dim)`。 |
+| `Tensor::from_raw_vec_unchecked`（顺序） | F-order 顺序由 producer 拆分契约 + `IndexedParallelIterator::collect_into_vec` 的"按索引写入"语义共同保证（修复 Blocker B8）。worker 完成顺序乱序不影响 `out[i]` 对应的逻辑索引；这与串行 `map` 的 F-order 收集严格等价。 |
+| `par_zip_map` broadcast chunking | 每个并行 chunk 仅借用两个输入的只读 broadcast-compatible sub-view；广播轴保持逻辑重复语义，不进行额外物理展开，因此不会引入越界写或悬垂引用。Producer split 不切分广播轴的物理切片，仅切分逻辑输出区间。 |
+| `ParallelGuard` 转移              | `_guard: ParallelGuard` 由 dispatch 在 `select_exec_path` 内构造并按值移交；`parallel` 函数体在并行执行结束后自然 drop guard，由 RAII 保证 thread-local 嵌套防护标记一定被清除（与 30-dispatch.md 决策 7 一致）。 |
 | panic / `Err` 传播               | 并行操作中发生 panic 或返回 `Err(XenonError)` 时，错误不会被静默忽略；语义上最终结果须至少传播一个错误。一般错误不保证传播"第一个"发生的错误（整型 `sum` / `dot` 除外：整型运算的失败诊断固定按逻辑 chunk 索引顺序仲裁，始终选择首个失败 chunk，参见 §5.5、§6.5）。实现上 Rayon 的并行 collect/reduce 可能不会物理中断其他 worker，但错误信息会被收集并在最终结果中报告。 |
-| Send/Sync/借用边界               | 并行执行只借用输入张量的只读视图；闭包与元素类型必须满足 `Send` / `Sync` 约束；输出分配与写入归当前 worker 独占，不能向其他 worker 暴露共享可写借用。                                                                                        |
+| Send/Sync/借用边界               | 并行执行只借用输入张量的只读视图；闭包与元素类型必须满足 `Send` / `Sync` 约束；输出分配与写入归当前 worker 独占，不能向其他 worker 暴露共享可写借用。 |
+| Worker 内 SIMD 安全性              | worker 在自己 chunk 的连续内存切片（或逻辑区间）上独立调用 `simd` 后端 kernel，不跨 worker 访问；SIMD admission 由 `08-simd.md` §5.4 在 chunk 内部独立判断，不与跨 worker 的 chunking/合并语义产生交叉依赖（v2.0 起决策 5）。 |
 
 ---
 
@@ -631,13 +634,21 @@ where
 ```text
 math / reduction / matrix call dispatch entry
     │
-    ├── query metadata (.len(), .is_f_contiguous(), alignment, simd support)
-    ├── dispatch::select_exec_path(...)
-    │       ├── serial / simd path stays outside parallel/
-    │       └── parallel path enters parallel/
-    ├── parallel path uses par_iter() / par_zip_map() / parallel reduce
-    └── return Tensor or Result with unchanged public semantics
+    ├── query metadata (.len(), .is_f_contiguous(), alignment_ok)
+    ├── let (path, guard) = dispatch::select_exec_path(...)
+    │       ├── (Serial, None)        → serial path stays outside parallel/
+    │       ├── (Simd,   None)        → simd path stays outside parallel/
+    │       └── (Parallel, Some(g))   → parallel path; g is forwarded by value
+    ├── parallel path
+    │      │
+    │      ├── par_iter() / par_zip_map(.., guard) / par_sum(.., guard) / par_dot(.., guard)
+    │      └── inside each worker chunk, SIMD admission may apply per chunk
+    │              (08-simd.md v2.0.0 决策 5)
+    └── return Tensor or Result with unchanged public semantics; guard auto-drops
 ```
+
+- `select_exec_path()` 返回类型为 `(ExecPath, Option<ParallelGuard>)`；`Option` 仅在 `ExecPath::Parallel` 分支返回 `Some(_)`，`Serial` / `Simd` 分支返回 `None`（与 30-dispatch.md v1.1.0 决策 7 完全一致）。
+- 调用方负责把 `Some(guard)` 按值移交到 `parallel` 后端入口；guard 在并行函数返回时被 drop，自动清除 thread-local 嵌套防护标记。
 
 ---
 
@@ -645,7 +656,7 @@ math / reduction / matrix call dispatch entry
 
 | 主题              | 说明                                                                                                            |
 | ----------------- | --------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | `par_dot()` 的长度不兼容返回 `XenonError::ShapeMismatch`；`par_dot()` 的非一维输入返回 `XenonError::InvalidArgument`；`par_zip_map()` 的元素总数溢出返回 `InvalidArgument` |
+| Recoverable error | `par_dot()` 的长度不兼容返回 `XenonError::ShapeMismatch { operation: "par_dot", left_shape, right_shape }`；`par_dot()` 的非一维输入返回 `XenonError::InvalidArgument { operation: "par_dot", kind: InvalidArgumentKind::OperationSpecific { argument: "ndim", constraint: "rank == 1" } }`；`par_zip_map()` 的元素总数溢出返回 `InvalidShape { operation: "par_zip_map", shape, kind: InvalidShapeKind::ProductOverflow, offending_dim: None }`。所有字段对齐 26-error.md v3.0.0 §5.1 的封闭枚举字段。 |
 | Panic             | 归约中的整数溢出仍属于不可恢复错误，必须 panic，而不是包装为 `XenonError`                                       |
 | 路径一致性        | 一旦进入 `parallel/`，并行路径必须返回与调用方串行基线相同形状、相同错误类别，以及满足同一数值语义约束的结果（路径选择见 §6.1）  |
 | 容差边界          | 浮点与复数若存在执行路径相关的已知舍入差异，只能落在 `需求说明书 §28.3` 与 `需求说明书 §28.5` 允许且已文档化的范围内；以 `需求说明书 §28.3` 为权威基线，`00-coding.md §8` 仅作为实现参考。|
@@ -653,7 +664,7 @@ math / reduction / matrix call dispatch entry
 路径语义边界：
 
 - 并行模块本身不新增专属错误枚举；公开错误必须复用 `26-error.md` 中的统一模型。
-- 自定义线程池类参数若存在非法值，应返回 `InvalidArgument`。
+- 自定义线程池类参数若存在非法值，由 `dispatch::ParallelExecStrategy::new()` 在构造期统一返回 `InvalidArgument`；`parallel` 模块在收到合法策略实例后不再重复返回该错误（参见 §5.4 与 30-dispatch.md §5.3、决策 8）。
 - 当前 `par_zip_map()` 不承担广播兼容性校验，也不新增广播专属错误构造。
 - panic 与 `Err(XenonError)` 都不得被吞掉；并行执行中发生的错误须至少传播一个。仅对整数 `sum` / `dot`，失败诊断必须额外满足“按逻辑 chunk 索引顺序固定选择首个失败 chunk”；做不到则回退串行路径。
 - 路径裁决语义见 §6.1 与决策 4、决策 6。
@@ -731,6 +742,32 @@ math / reduction / matrix call dispatch entry
 | 理由     | 统一串并阈值与并行前置条件判断，避免多个模块各自实现分支树                       |
 | 替代方案 | 每个模块自行判断 serial/parallel —— 放弃，易产生阈值漂移和行为不一致             |
 
+### 决策 7：并行入口接收 `_guard: ParallelGuard` 按值参数
+
+| 属性     | 值                                                                                                                                              |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | `par_map` / `par_zip_map` / `par_sum` / `par_dot` / `par_reduce_impl` / `par_map_checked` 都接收 `_guard: ParallelGuard` 按值参数                |
+| 理由     | 把"裁决到 Parallel"和"进入并行临界区"在调用图上原子绑定；调用方无法忘记 acquire guard，guard RAII 在函数返回时自动清除 thread-local 嵌套防护标记 |
+| 替代方案 | 在 `parallel` 内部自行 `enter()` —— 放弃，会让 `select_exec_path` 与实际并行进入分离，重新引入 30-dispatch v1.0 的 C6 矛盾（哪个函数 consume guard） |
+| 替代方案 | 不传 guard，依赖 thread_local 隐式状态 —— 放弃，无法让类型系统强制"只有被 dispatch 选中的调用才能进入并行" |
+
+### 决策 8：`ParElements` 实现 `IndexedParallelIterator` + `Producer`
+
+| 属性     | 值                                                                                                                                  |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | `ParElements` 同时实现 `rayon::iter::IndexedParallelIterator` 和 `rayon::iter::plumbing::Producer`，提供 `split_at`-based 不重叠拆分 |
+| 理由     | 为 `par_map_checked` 顺序保证、`par_zip_map` 索引收集、`par_sum`/`par_dot` 固定 chunking 提供唯一可证明的 producer 不变量基础（修复 Blocker B7） |
+| 替代方案 | 仅实现 `ParallelIterator` —— 放弃，rayon 无法保证 `collect` 的索引顺序；`from_raw_vec_unchecked` 元素错位将导致内存安全前提缺失 |
+
+### 决策 9：worker 内允许 SIMD（决策 4 + 决策 5 协同）
+
+| 属性     | 值                                                                                                                            |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | 单个 worker chunk 内可独立调用 `simd` 后端 kernel；chunk 间合并仍由 `parallel` 控制                                            |
+| 理由     | 与 08-simd.md v2.0.0 决策 5 对齐：撤销并行/SIMD 互斥，提供 thread × SIMD 双层加速                                              |
+| 替代方案 | 保留 v1.x 设计（worker 内禁止 SIMD）—— 放弃，会牺牲大数据吞吐                                                                  |
+| 替代方案 | worker 跨 chunk 共享 SIMD 状态 —— 放弃，会让 chunk 不变量与 SIMD admission 互相耦合                                            |
+
 ---
 
 ## 12. 性能描述
@@ -777,6 +814,22 @@ math / reduction / matrix call dispatch entry
 | 1.3.3 | 2026-04-16 |
 | 1.3.4 | 2026-04-16 |
 | 1.4.0 | 2026-04-28 |
+| 2.0.0 | 2026-05-02 |
+
+### v2.0.0 (2026-05-02) — SemVer breaking changes
+
+> 本版本是与 30-dispatch v1.1.0、08-simd v2.0.0 协同的破坏性更新；所有 `parallel` 后端入口均为 `pub(crate)` 内部 API，故对外 SemVer 影响实际为零，但内部契约破坏列出如下：
+
+- §5.4 / §5.5：`ParallelExecStrategy` 字段从 `pub` 改为 `pub(crate)`，构造方式收敛到 `ParallelExecStrategy::new()`；`parallel` 模块不再返回 `InvalidArgument` 处置非法策略字段（已由 dispatch 端在构造期拒绝）。
+- §5.5：`par_map` / `par_zip_map` / `par_sum` / `par_dot` / `par_reduce_impl` / `par_map_checked` 全部新增 `_guard: ParallelGuard` 按值参数（决策 7）。
+- §5.5：`par_reduce_impl` 闭包 bound 从 `F: Fn(A, A) -> A + Sync` 加强为 `F: Fn(A, A) -> A + Send + Sync`，`ID` 同样从 `Fn() -> A + Sync + Clone` 加强为 `Fn() -> A + Send + Sync + Clone`，与其他并行入口保持一致。
+- §5.6：`ParElements` 实现 `IndexedParallelIterator` + `Producer`（决策 8），修复 v1.x 缺失的 producer 拆分语义（Blocker B7）。
+- §6.1 / §6.2 / §6.3 / §9.2：worker 内允许调用 SIMD 后端 kernel（决策 9，与 08-simd v2.0.0 决策 5 对齐）。
+- §6.3：`par_zip_map` 的元素总数溢出错误对齐 26-error v3.0.0 的 `InvalidShape { kind: InvalidShapeKind::ProductOverflow, .. }` 封闭枚举（v2.0.0-rc 误用 `InvalidArgumentKind::ShapeProductOverflow`，已修正）；`num_threads` 来源统一为 `strategy.max_workers.unwrap_or_else(rayon::current_num_threads)`（修复 §5.6 与 §6.3 的不一致）。
+- §6.5：整数 `sum` / `dot` 的"首个失败 chunk 仲裁"前提不成立时，**回退责任由 dispatch 承担**（即 `select_exec_path()` 不选择 Parallel）；`parallel` 模块本身永远不串行回退（保持决策 4）。
+- §6.6：`par_map_checked` 改用两遍模式（`try_for_each` 错误探测 + `collect_into_vec` 索引收集），从 producer 不变量证明 F-order 顺序与 `from_raw_vec_unchecked` 安全前提（修复 Blocker B8）。
+- §10：错误返回字段全部对齐 26-error v3.0.0 的封闭枚举（`InvalidArgumentKind::*`、`ShapeMismatch.operation`）。
+- §11：新增决策 7 / 8 / 9。
 
 ---
 
