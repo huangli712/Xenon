@@ -584,6 +584,51 @@ where
         // Computes F-order strides internally and constructs flags directly.
         // ...
     }
+
+    /// Construct a tensor from already-validated parts, skipping all
+    /// `Result`-returning validation. This is the canonical `pub(crate)`
+    /// internal constructor used by `src/construct/` (see `18-construction.md
+    /// §5.1` / `§5.4` / `§5.5`) when shape, strides, storage, and flags have
+    /// each been produced by their authoritative `Result`-returning helpers
+    /// (`shape.into_dimension()` + `shape.checked_size()`, `Owned::from_vec`
+    /// / `Owned::from_vec_aligned` / `<Owned<A> as StorageOwned>::from_elem`,
+    /// `layout::compute_f_strides`, `layout::compute_layout_flags`).
+    ///
+    /// The `_unchecked` suffix means: the caller has already proved the
+    /// listed safety contract holds, and this constructor performs no
+    /// validation. Any violation is undefined behavior at the type-system
+    /// level (private fields are bypassed), not a recoverable error.
+    ///
+    /// This helper exists so that constructor-module call sites do not write
+    /// `TensorBase { storage, shape, strides, offset, flags }` directly,
+    /// keeping `pub(crate)` field access localized to one named entry point
+    /// and providing a single grep target for tensor construction tracing.
+    ///
+    /// # Safety
+    /// - `shape`, `strides`, `offset`, and `flags` must be mutually
+    ///   consistent: `flags` was produced by
+    ///   `layout::compute_layout_flags::<A, D>(&shape, &strides, storage_ptr)`
+    ///   for the same `shape` and `strides` actually stored, where
+    ///   `storage_ptr` is the same logical-first pointer the caller will
+    ///   later expose via `as_ptr()`
+    /// - The logical access range derived from `shape` / `strides` / `offset`
+    ///   must lie entirely within `storage` (no overflow, no out-of-bounds)
+    /// - `shape.checked_size()` must already have been validated (no
+    ///   overflow) before calling this method
+    /// - When `offset == 0` and `shape` is canonical-F-contiguous w.r.t.
+    ///   `strides`, the value of `flags` must reflect that (the caller
+    ///   should use `compute_layout_flags` rather than fabricating bits
+    ///   manually)
+    pub(crate) fn new_unchecked(
+        storage: Owned<A>,
+        shape: D,
+        strides: Strides<D>,
+        offset: usize,
+        flags: LayoutFlags,
+    ) -> Self {
+        // No revalidation; all four metadata items are caller-proved.
+        TensorBase { storage, shape, strides, offset, flags }
+    }
 }
 ````
 
@@ -1611,6 +1656,7 @@ TensorBase<S, D>
 
 - Replaced the checked-size unwrap safety-text example with a reference to the previously validated element count.
 - Clarified that construction uses a `pub(crate)` tensor-internal constructor rather than cross-module struct literal access to private fields.
+- §5.6 actually introduced `pub(crate) fn TensorBase::new_unchecked(storage, shape, strides, offset, flags) -> Self` as the named entry point for that contract; `18-construction.md §5.1` / `§5.3` / `§5.4` route every construction site through it, so private-field access is localized to one grep target.
 - Polished punctuation and numeric formatting in constructor and boundary-test prose.
 
 ### 2.0.0 (SemVer breaking)

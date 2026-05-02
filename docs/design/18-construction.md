@@ -179,7 +179,11 @@ where
         // delegation path explicit.
         let storage = <Owned<A> as StorageOwned>::from_elem(len, A::zero());
         let flags = layout::compute_layout_flags(&dim, &strides, storage.as_ptr());
-        Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags })
+        // Pass already-validated parts through tensor's `pub(crate)` internal
+        // constructor (see 07-tensor.md §5.6 `TensorBase::new_unchecked`) instead
+        // of writing private fields directly here. This keeps construct's
+        // pub(crate) field access localized to one named entry point.
+        Ok(TensorBase::new_unchecked(storage, dim, strides, 0, flags))
     }
 
     /// Create a tensor filled with ones (F-order).
@@ -201,7 +205,9 @@ where
         let strides = layout::compute_f_strides(&dim)?;
         let storage = <Owned<A> as StorageOwned>::from_elem(len, A::one());
         let flags = layout::compute_layout_flags(&dim, &strides, storage.as_ptr());
-        Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags })
+        // See `zeros` above and 07-tensor.md §5.6: routed through the named
+        // `pub(crate)` constructor `TensorBase::new_unchecked`.
+        Ok(TensorBase::new_unchecked(storage, dim, strides, 0, flags))
     }
 }
 ```
@@ -345,7 +351,10 @@ where
         // left as an internal choice.
         let storage = Owned::from_vec_aligned(data)?;
         let flags = layout::compute_layout_flags(&dim, &strides, storage.as_ptr());
-        Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags })
+        // Routed through tensor's `pub(crate)` internal constructor (see
+        // 07-tensor.md §5.6 `TensorBase::new_unchecked`) so this module never
+        // accesses private fields by struct-literal syntax directly.
+        Ok(TensorBase::new_unchecked(storage, dim, strides, 0, flags))
     }
 
     /// Construct a tensor from a slice (copies data).
@@ -463,13 +472,9 @@ where
         let shape = Ix0;
         let strides = layout::compute_f_strides(&shape)?;
         let flags = layout::compute_layout_flags(&shape, &strides, storage.as_ptr());
-        Ok(TensorBase {
-            storage,
-            shape,
-            strides,
-            offset: 0,
-            flags,
-        })
+        // Routed through tensor's `pub(crate)` internal constructor (see
+        // 07-tensor.md §5.6 `TensorBase::new_unchecked`).
+        Ok(TensorBase::new_unchecked(storage, shape, strides, 0, flags))
     }
 }
 
@@ -779,6 +784,16 @@ User calls zeros / from_shape_vec / eye
 | 1.1.3 | 2026-04-14 |
 | 1.1.4 | 2026-04-15 |
 | 2.0.0 | 2026-05-02 |
+| 2.0.1 | 2026-05-03 |
+
+### v2.0.1 (2026-05-03) — 通过 `TensorBase::new_unchecked` 集中 `pub(crate)` 字段访问
+
+- §5.1 `zeros` / `ones`：把 `Ok(TensorBase { storage, shape, strides, offset, flags })` 直接 struct literal 写法改为 `Ok(TensorBase::new_unchecked(storage, dim, strides, 0, flags))`，统一通过 `07-tensor.md` §5.6 新增的 `pub(crate) fn new_unchecked(...)` 构造器进入 tensor 私有字段。
+- §5.3 `from_shape_vec`、§5.4 `from_scalar`：同上修改，构造路径全部走 `TensorBase::new_unchecked`。
+- 协同 `07-tensor.md` v2.0.1 changelog 中关于"construction uses a `pub(crate)` tensor-internal constructor rather than cross-module struct literal access"的承诺，本次为 18-construction 落地具体调用站点。
+- 不改变运行时行为；不改变公开 API 签名；不影响错误字段；零破坏性。
+
+---
 
 ### v2.0.0 (2026-05-02) — 错误字段对齐 26-error v3.0.0 + StorageOwned 委托澄清
 
