@@ -28,6 +28,10 @@
 | 范围外   | 单个业务模块的算法细节、独立功能设计、额外平台适配策略               |
 | 非目标   | 通过本规范引入超出需求范围的新能力、第三方依赖或额外 crate 拆分      |
 
+### 1.3 协同基线
+
+本文档以已修订的下游设计文档为协同基线。若本文档提到具体类型、字段、trait、枚举或 API 形态，必须与以下版本保持一致：`01-architecture.md v2.0.0`、`02-dimension.md v1.x`、`03-element.md v1.x`、`04-complex.md v2.0.0`、`05-storage.md v2.0.0`、`06-layout.md v1.3`、`07-tensor.md v2.0.0`、`08-simd.md v2.0.0`、`09-parallel.md v2.0.0`、`11-math.md v2.0.0`、`12-matrix.md v2.0.0`、`13-reduction.md v2.0.0`、`14-set.md v2.0.0`、`15-broadcast.md v2.0.0`、`16-shape.md v2.0.0`、`17-indexing.md v2.0.0`、`18-construction.md v2.0.0`、`19-overload.md v2.0.0`、`20-utility.md v2.0.0`、`21-type.md v2.0.0`、`22-output.md v2.0.0`、`23-ffi.md v2.0.0`、`24-workspace.md v2.0.0`、`25-safety.md v2.0.0`、`26-error.md v3.0.0`、`27-benchmark.md v2.0.0`、`28-tests.md v2.0.0`、`29-documentation.md v2.0.0`、`30-dispatch.md v1.1.0`。
+
 ---
 
 ## 2. 命名规范
@@ -87,10 +91,17 @@ Trait 名使用 `CamelCase`。标记 trait 使用描述性形容词。
 
 ```rust,ignore
 // Good
-pub trait Element: Copy + PartialEq + Debug + Display + Send + Sync { /* ... */ }
+pub trait Element: Copy + Sealed {
+    const ELEMENT_TYPE: ElementType;
+}
+
+pub enum ElementType { I32, I64, F32, F64, Complex32, Complex64, Bool }
+
+// The sealed implementation set is:
+// i32, i64, f32, f64, Complex<f32>, Complex<f64>, bool.
 pub trait Numeric: Element + Add<Output=Self> + Sub<Output=Self>
     + Mul<Output=Self> + Div<Output=Self> + Neg<Output=Self> { /* ... */ }
-pub trait RealScalar: Numeric + PartialOrd { /* ... */ }
+pub trait OrderedCompareElement: Element + PartialOrd + Sealed { /* ... */ }
 pub trait Dimension { /* ... */ }
 pub trait Storage { /* ... */ }
 
@@ -99,6 +110,8 @@ pub trait element { /* ... */ }
 pub trait ELEMENT { /* ... */ }
 pub trait Has_Element { /* ... */ }
 ```
+
+`BoolElement` 为 `pub(crate)` 内部分类 trait，不属于公开扩展点。封闭元素集合不包含 `usize`。
 
 ### 2.4 索引类型别名
 
@@ -177,7 +190,7 @@ pub struct View<'DATA, A, D> { /* ... */ }
 | 前缀    | 语义                   | 复杂度   | 示例                              |
 | ------- | ---------------------- | -------- | --------------------------------- |
 | `as_`   | 借用转换，O(1)，无分配 | 廉价     | `as_slice()`、`as_ptr()`          |
-| `to_`   | 克隆转换，可能分配     | 可能昂贵 | `to_vec()`、`to_owned()`          |
+| `to_`   | 克隆转换，可能分配     | 可能昂贵 | `to_vec()`、`deep_clone()`        |
 | `into_` | 消耗 self，转换所有权  | 变化     | `into_raw_vec()`、`into_owned()`  |
 | `is_`   | 布尔查询，无副作用     | 廉价     | `is_empty()`、`is_f_contiguous()` |
 | `with_` | 构建器模式，返回 Self  | 变化     | `with_shape()`、`with_capacity()` |
@@ -196,6 +209,8 @@ impl<A, D> TensorBase<Owned<A>, D> {
 pub fn get_slice(&self) -> &[A] { /* ... */ }  // no need for get_ prefix
 pub fn to_view(&self) -> View<'_, A, D> { /* ... */ }  // view conversion should use as_
 ```
+
+storage 层的深拷贝 API 使用 `deep_clone()`；`to_owned` 不作为 storage 层命名。`Owned::into_shared(self) -> ArcRepr<A>` 是拥有存储转共享存储的消耗式转换。广播、转置和切片产生 `ViewRepr<'a, A>`。`StorageShared` 与 `AlignedAlloc` 保持 `pub(crate)`。
 
 ### 2.10 Getter类方法约定
 
@@ -274,6 +289,8 @@ pub fn from_shape_vec_unchecked(
 pub fn from_shape_vec_unchecked(shape: Shape, data: Vec<A>) -> Self { /* ... */ }
 ```
 
+`Tensor::from_shape_vec` 的元素数不匹配错误使用 `InvalidShapeKind::ElementCountMismatch { expected, actual }`。`zeros` / `ones` 构造填充值存储时使用完全限定调用：`<Owned<A> as StorageOwned>::from_elem(len, value)`。
+
 ### 3.4 导入分组规则
 
 导入按以下顺序分组，每组之间空一行：
@@ -341,6 +358,12 @@ let offset = ptr as usize;
 // CAST-SAFETY: saturating semantics per IEEE 754
 let truncated = float_val as i32;
 ```
+
+类型转换分为三层：静态无损转换使用 `From`，静态有损转换和动态条件性转换使用 `CastTo<T>`。`XenonError::TypeConversion` 必须填写 `operation`、`source_type: ElementType`、`target_type: ElementType`、`reason`、`element_index` 五个字段，禁止使用 `TypeId` 表达元素类型。
+
+复数实数构造的唯一显式路径是 `From<T> for Complex<T>`。不存在 `Complex<T> op T` 便捷运算符；整数到复数转换必须走 `CastTo`。
+
+运算符重载的 `Output` 必须是 `Result<Tensor<_, _>, XenonError>`。同形状可写 `a + b`，可能广播或形状不确定的路径使用方法调用如 `a.add(&b)?`；不新增 `try_add` / `try_sub`。左标量运算使用 `Scalar<A>` 包装类型，不提供 `i32 + Tensor` 原生左标量实现。
 
 ### 4.2 泛型约束写法
 
@@ -438,6 +461,8 @@ pub struct Bad<A> {
 
 **关键约束**：`ViewMutRepr` 永远不实现 `Sync`——独占借用语义要求同一时刻只有一个线程可访问。
 
+Send/Sync 的唯一权威定义见 `25-safety.md v2.0.0 §5.1`。`ArcRepr<A>` 的 Send 与 Sync 均要求 `A: Send + Sync`。
+
 ```rust,ignore
 // Owned: Send+Sync when A: Send+Sync
 unsafe impl<A: Send> Send for Owned<A> {}
@@ -474,7 +499,7 @@ unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 - 前置条件违反（不变量被破坏）
 - 逻辑错误（不可能的状态）
 - 契约违反
-- 已证明前提下的内部快捷路径可使用 unchecked 或索引语法糖
+- 已证明前提下的内部快捷路径可使用 unchecked
 
 ```rust,ignore
 // Good - recoverable error
@@ -484,10 +509,10 @@ where
 {
     if !is_broadcast_compatible(self.shape(), shape.as_ref()) {
         return Err(XenonError::BroadcastError {
-            operation: "broadcast_to",
+            operation: Cow::Borrowed("broadcast_to"),
             lhs_shape: self.shape().into(),
             rhs_shape: shape.as_ref().into(),
-            attempted_target_shape: Some(shape.as_ref().into()),
+            attempted_target_shape: shape.as_ref().into(),
             axis: None,
         });
     }
@@ -516,23 +541,46 @@ where
 
 ### 5.2 XenonError 设计
 
-单一 `XenonError` 错误模型的架构决策已在 `01-architecture.md §13` 中定义。本节仅说明该决策在编码层面的公开 API、错误映射与文档写法约束。统一错误类型 `XenonError`，覆盖所有可恢复错误场景，以下为字段形态示意，非权威定义。错误模型以 `26-error.md` 为准。
+单一 `XenonError` 错误模型的架构决策已在 `01-architecture.md §13` 中定义。本节仅说明该决策在编码层面的公开 API、错误映射与文档写法约束。统一错误类型 `XenonError`，覆盖所有可恢复错误场景，以下为字段形态示意，非权威定义。错误模型以 `26-error.md v3.0.0 §5.1` 为准。
 
 ```rust,ignore
 #[derive(Debug, Clone)]
 pub enum XenonError {
+    InvalidShape { operation: Cow<'static, str>, shape: Vec<usize>, kind: InvalidShapeKind, offending_dim: Option<usize> },
+    InvalidLayout { operation: Cow<'static, str>, storage_kind: StorageKindTag, shape: Vec<usize>, strides: Vec<isize>, offset: usize, storage_len: usize, reason: InvalidLayoutReason },
+    InvalidArgument { operation: Cow<'static, str>, kind: InvalidArgumentKind },
+    InvalidStorageMode { operation: Cow<'static, str>, expected: StorageKindTag, actual: StorageKindTag, shape: Vec<usize>, conversion: Option<StorageConversionKind> },
+    DimensionMismatch { operation: Cow<'static, str>, expected: Vec<usize>, actual: Vec<usize> },
+    IndexOutOfBounds { operation: Cow<'static, str>, attempted_index: Vec<usize>, axis: Option<usize>, shape: Vec<usize> },
     BroadcastError {
         operation: Cow<'static, str>,
         lhs_shape: Vec<usize>,
         rhs_shape: Vec<usize>,
-        attempted_target_shape: Option<Vec<usize>>,
+        attempted_target_shape: Vec<usize>,
         axis: Option<usize>,
     },
-    // ...
+    TypeConversion { operation: Cow<'static, str>, source_type: ElementType, target_type: ElementType, reason: ConversionFailureReason, element_index: Option<usize> },
+    InvalidAxis { operation: Cow<'static, str>, axis: usize, ndim: usize, shape: Vec<usize> },
+    Ffi { operation: Cow<'static, str>, category: FfiErrorCategory, backend: FfiBackend, cause: Option<Box<XenonError>> },
+    Workspace { operation: Cow<'static, str>, category: WorkspaceErrorCategory, cause: Option<Box<XenonError>> },
+    Storage,
+    Numerical,
+    Internal,
 }
+
+pub enum StorageKindTag { Owned, View, ViewMut, Arc }
+pub enum FfiBackend { RawParts, Blas }
+
+// Workspace borrow conflicts use:
+// WorkspaceErrorCategory::BorrowConflict {
+//     requested: WorkspaceBorrowKind,
+//     current: WorkspaceBorrowState,
+// }
 
 pub type Result<T> = std::result::Result<T, XenonError>;
 ```
+
+`FfiErrorCategory` 覆盖 `NullPointer`、`AlignmentMismatch`、`InvalidRank`、`BlasIncompatibleLayout`、`IntegerOverflow`、`AbiMismatch`、`OverlapRejected`、`ForeignAllocatorMismatch` 八个子变体，`FfiBackend` 仅为 `RawParts | Blas`。`WorkspaceErrorCategory` 覆盖 `AllocFailed`、`InvalidLayout`、`BorrowConflict`、`SplitOutOfBounds`、`SplitCountInvariant`、`GrowOverflow`、`TypedViewRejected` 七个子变体。
 
 ### 5.3 unwrap 限制
 
@@ -546,10 +594,10 @@ where
 {
     if !is_broadcast_compatible(self.shape(), shape.as_ref()) {
         return Err(XenonError::BroadcastError {
-            operation: "broadcast_to",
+            operation: Cow::Borrowed("broadcast_to"),
             lhs_shape: self.shape().into(),
             rhs_shape: shape.as_ref().into(),
-            attempted_target_shape: Some(shape.as_ref().into()),
+            attempted_target_shape: shape.as_ref().into(),
             axis: None,
         });
     }
@@ -587,9 +635,9 @@ where
     pub fn try_at(&self, index: &[Ix]) -> Result<&A> {
         if !self.is_index_valid(index) {
             return Err(XenonError::IndexOutOfBounds {
-                operation: "try_at",
+                operation: Cow::Borrowed("try_at"),
                 attempted_index: index.into(),
-                axis: 0,
+                axis: Some(0),
                 shape: self.shape().into(),
             });
         }
@@ -597,9 +645,8 @@ where
         Ok(unsafe { self.get_unchecked(index) })
     }
 
-    /// `[]` indexing sugar for already-validated internal paths.
-    /// Public safe APIs should use `try_at()` / `try_at_mut()` and return recoverable errors.
-    /// Note: `[]` remains restricted panic sugar outside Xenon's stable safe API contract.
+    /// Public safe indexing uses `try_at()` / `try_at_mut()` and returns recoverable errors.
+    /// Xenon does not implement `std::ops::Index` or `std::ops::IndexMut` for tensor indexing.
 
     /// Unchecked indexing — UB on out of bounds.
     ///
@@ -704,6 +751,8 @@ src/
 └── lib.rs
 ```
 
+workspace 的可变借用 API 使用消费式或独占式签名：`borrow_mut(&mut self)`、`Workspace::split_at_mut(&mut self)`、`SplitBorrowMut::split_at_mut(self)`。
+
 ---
 
 ## 7. 文档规范
@@ -801,7 +850,7 @@ where
 
 ### 8.1 测试命名规范
 
-测试函数命名格式：`test_<function>_<scenario>_<expected>`。其中 `Index` / `IndexMut` 的 `[]` 语法仅作为已验证路径的受限人体工学 panic sugar。公开安全 API 必须优先通过 `try_at()` / `try_at_mut()` 暴露可恢复错误语义。
+测试函数命名格式：`test_<function>_<scenario>_<expected>`。Xenon 不实现 `std::ops::Index` / `IndexMut`；公开安全索引 API 必须通过 `try_at()` / `try_at_mut()` 暴露可恢复错误语义。
 
 ```rust,ignore
 #[cfg(test)]
@@ -814,12 +863,6 @@ mod tests {
 
     #[test]
     fn test_index_single_element_returns_value() { /* ... */ }
-
-    #[test]
-    fn test_index_out_of_bounds_panics() {
-        // This test intentionally exercises `Index` panic sugar (`[]`),
-        // not Xenon's recoverable safe indexing API.
-    }
 
     #[test]
     fn test_safe_index_returns_error() {
@@ -878,7 +921,7 @@ fn assert_close(a: f64, b: f64, epsilon: f64) {
 }
 
 // Bad - direct float comparison
-assert_eq!(result[[0, 0]], 58.0);  // may fail due to rounding errors
+assert_eq!(*result.try_at(&[0, 0])?, 58.0);  // may fail due to rounding errors
 ```
 
 ---
@@ -939,6 +982,8 @@ where
 
 其中 `simd` 与 `parallel` 都建立在 Xenon 的 `std` 前提之上。`std` 是无条件工程基线，不单独建模为 feature。
 
+并行与 SIMD 可以协同：worker 内允许使用 SIMD，不存在并行/SIMD 互斥规则。SIMD 分发入口 `dispatch_vector_binary_op` 返回 `bool`，`SimdElement` 为 sealed trait，所有并行入口必须携带 `_guard: ParallelGuard`。执行路径选择 `select_exec_path` 返回 `(ExecPath, Option<ParallelGuard>)`，并使用 `threshold = 0` sentinel 与 `saturating_mul` 处理规模计算。
+
 ```toml
 [features]
 parallel = ["dep:rayon"]      # Additive: enables internal parallel execution backend
@@ -985,6 +1030,12 @@ rustdoc-args = ["--cfg", "docsrs"]
 | 单 crate   | 保持单 crate 边界，不引入额外 crate                              |
 | SemVer     | 遵循 SemVer，公开 API 变更须同步版本号                           |
 | 最小依赖   | 仅允许 `rayon`（并行）和 `pulp`（SIMD）作为可选外部依赖，默认关闭 |
+
+布局实现使用 `LayoutState::{FContiguous, NonContiguous, BroadcastView}`。`HAS_ZERO_STRIDE` 仅表示广播零步长；步长与布局标志分别通过 `compute_f_strides`、`compute_layout_flags` 计算。
+
+维度实现保持 `IxDyn::RemoveAxis<Smaller = IxDyn>`；`BroadcastDim` 兼容矩阵保持 57 项。集合运算遵循 F-order 输出顺序。数学比较 API 命名为 `equal`、`not_equal`、`less`、`greater`。矩阵模块不使用 `as_ix1_view` 私有桥接。
+
+切片描述 `SliceInfo::new` 仅做结构性校验，不进行张量形状依赖校验。
 
 ---
 
@@ -1097,6 +1148,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 | 版本  | 日期       |
 | ----- | ---------- |
+| 2.0.0 | 2026-05-03 |
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |
 | 1.0.2 | 2026-04-08 |
@@ -1108,6 +1160,26 @@ rustdoc-args = ["--cfg", "docsrs"]
 | 1.2.3 | 2026-04-15 |
 | 1.2.4 | 2026-04-15 |
 | 1.2.5 | 2026-04-17 |
+
+### v2.0.0
+
+改动清单：
+
+- 增加 §1.3 协同基线，明确本文档依据的下游设计文档版本。
+- 对齐 `26-error.md v3.0.0 §5.1`：`operation` 使用 `Cow<'static, str>`，构造示例使用 `Cow::Borrowed("...")`；`TypeConversion` 使用 `ElementType` 五字段；`Ffi` 四字段、`FfiBackend`、`FfiErrorCategory` 八子变体、`Workspace` 三字段、`WorkspaceErrorCategory` 七子变体、`StorageKindTag` 字段形态同步。
+- 对齐 `17-indexing.md v2.0.0`：公开安全索引收敛为 `try_at` / `try_at_mut`，并明确不实现 `std::ops::Index` / `IndexMut`；示例不使用 `tensor[...]`。
+- 对齐 `18-construction.md v2.0.0`：`from_shape_vec` 元素数错误使用 `InvalidShapeKind::ElementCountMismatch { expected, actual }`；`zeros` / `ones` 使用 `<Owned<A> as StorageOwned>::from_elem(len, value)`。
+- 对齐 `19-overload.md v2.0.0` 与 `21-type.md v2.0.0`：运算符输出为 `Result<Tensor<_, _>, XenonError>`；同形状使用 `a + b`，可能广播路径使用 `a.add(&b)?`；类型转换分为 `From` / `CastTo<T>`；左标量使用 `Scalar<A>`。
+- 对齐 `05-storage.md v2.0.0`、`06-layout.md v1.3`、`24-workspace.md v2.0.0`、`25-safety.md v2.0.0`：补充 `deep_clone`、`Owned::into_shared`、`ViewRepr` 生成规则、`LayoutState`、`HAS_ZERO_STRIDE`、workspace 可变借用签名与 Send/Sync 权威边界。
+- 对齐 `08-simd.md v2.0.0`、`09-parallel.md v2.0.0`、`30-dispatch.md v1.1.0`：补充 worker 内 SIMD、`dispatch_vector_binary_op -> bool`、`SimdElement: Sealed`、`_guard: ParallelGuard`、`select_exec_path -> (ExecPath, Option<ParallelGuard>)`、`threshold = 0` sentinel 与 `saturating_mul`。
+- 对齐 `02-dimension.md`、`03-element.md`、`04-complex.md v2.0.0`、`11-math.md v2.0.0`、`12-matrix.md v2.0.0`、`13-reduction.md v2.0.0`、`14-set.md v2.0.0`：补充 `IxDyn::RemoveAxis`、`BroadcastDim` 57 项、封闭 `Element` 集、复数构造路径、比较 API、F-order 集合顺序与矩阵私有桥接约束。
+
+未变更清单：
+
+- 未改变命名、缩进、rustfmt、导入分组、文档注释、unsafe 注释与测试命名的基础规范。
+- 未弱化 `unwrap()`、数值 `as`、unsafe 文档和 lint 基线的禁止或约束级别。
+- 未新增外部依赖、feature、crate 拆分、平台适配策略或业务模块算法规则。
+- 未调整 Phase 0 的实现任务拆分、验证方式和既有设计决策记录。
 
 ---
 
