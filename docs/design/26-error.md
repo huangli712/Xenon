@@ -66,20 +66,28 @@ src/
 
 ```
 src/error.rs
-├── core::any::TypeId          # TypeConversion variant type identity
 ├── core::fmt                   # Display implementation
-├── alloc::borrow::Cow          # Flexible string representation for error fields
-└── alloc::vec::Vec             # Heap allocation for shape, index fields
+├── alloc::borrow::Cow          # Stable identifier-like strings (operation/backend names)
+├── alloc::boxed::Box           # Source chain for Ffi / Workspace variants
+├── alloc::vec::Vec             # Heap allocation for shape, index fields
+└── crate::element::ElementType # TypeConversion variant element identity (closed enum)
 ```
+
+`error.rs` 对 `crate::element::ElementType` 的依赖是“类型标签级”依赖：
+仅引用作为公共封闭枚举的 `ElementType`，不依赖元素 trait 行为；与
+`error → element` 的依赖方向单向，由 `01-architecture.md` L0/L2 层级允许
+（`error` 仍在 L0，`ElementType` 作为 L2 的纯数据枚举被向下引用，不构成
+循环依赖）。
 
 ### 4.2 类型级依赖
 
-| 来源              | 使用的类型/trait                                                 |
-| ----------------- | ---------------------------------------------------------------- |
-| `core::any`       | `TypeId`（`TypeConversion` 变体的 `source_type` / `target_type`）|
-| `core::fmt`       | `Display`, `Formatter`, `fmt::Result`（`Display` 实现）          |
-| `alloc::borrow`   | `Cow<'static, str>`（多个变体的 `operation` 等字段）             |
-| `alloc::vec`      | `Vec<usize>`（`shape`、`attempted_index` 等字段）                |
+| 来源                  | 使用的类型/trait                                                              |
+| --------------------- | ----------------------------------------------------------------------------- |
+| `core::fmt`           | `Display`, `Formatter`, `fmt::Result`（`Display` 实现）                       |
+| `alloc::borrow`       | `Cow<'static, str>`（仅用于 `operation` 等稳定标识符字符串）                  |
+| `alloc::boxed`        | `Box<XenonError>`（`Ffi` / `Workspace` 变体的 `cause` 源链字段）              |
+| `alloc::vec`          | `Vec<usize>`（`shape`、`attempted_index` 等字段）                             |
+| `crate::element`      | `ElementType`（`TypeConversion` 变体的 `source_type` / `target_type`）        |
 
 ### 4.3 依赖合法性
 
@@ -91,7 +99,19 @@ src/error.rs
 
 ### 4.4 依赖方向声明
 
-依赖方向：单向向上。`error.rs` 不依赖 crate 内任何其他模块，仅依赖标准库/核心库类型；被所有其他模块消费。
+依赖方向：单向向上。`error.rs` 仅依赖标准库 / 核心库类型，以及
+`crate::element::ElementType`（公共封闭枚举，作为类型标签使用，无运行时
+行为依赖）。被所有其他模块消费。
+
+`error → element` 的反向引用受限于以下条件：
+
+- 仅引用 `ElementType` 这一个公共封闭枚举；不引用 `Element` / `Numeric`
+  / `RealScalar` 等 trait
+- `ElementType` 自身在 `03-element.md` 定义为 `#[derive(Copy, Clone,
+  Debug, PartialEq, Eq, Hash)] #[repr(u8)] pub enum`，不依赖 `error`
+  模块
+- 该引用方向不构成循环依赖：`error` 是 L0、`ElementType` 是 L2 的纯
+  数据枚举，使用方向单向（`error` 拉取，`element` 不感知）
 
 ---
 
@@ -101,9 +121,11 @@ src/error.rs
 
 ```rust,ignore
 use alloc::borrow::Cow;
+use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::any::TypeId;
 use core::fmt;
+
+use crate::element::ElementType;
 
 /// Unified recoverable error type for all public Xenon APIs.
 #[derive(Debug, Clone, PartialEq)]
@@ -124,6 +146,11 @@ pub enum XenonError {
 
     /// Reserved for future BLAS/FFI layout validation.
     /// No public API constructs this error in the current version.
+    /// The variant is exposed in the public enum for SemVer stability:
+    /// future BLAS/FFI integrations may construct it without an enum
+    /// breaking change. `required_layout` / `actual_layout` use a
+    /// stable enum-like vocabulary (e.g., `"f-contiguous"`,
+    /// `"non-contiguous"`, `"broadcast-view"`), not free-form messages.
     LayoutMismatch {
         operation: Cow<'static, str>,
         required_layout: Cow<'static, str>,
@@ -133,12 +160,12 @@ pub enum XenonError {
 
     InvalidLayout {
         operation: Cow<'static, str>,
-        storage_kind: Cow<'static, str>,
+        storage_kind: StorageKindTag,
         shape: Vec<usize>,
         strides: Vec<usize>,
         offset: usize,
         storage_len: usize,
-        reason: Cow<'static, str>,
+        reason: InvalidLayoutReason,
     },
 
     InvalidAxis {
@@ -151,10 +178,8 @@ pub enum XenonError {
     InvalidShape {
         operation: Cow<'static, str>,
         shape: Vec<usize>,
-        expected_elements: usize,
-        actual_elements: usize,
+        kind: InvalidShapeKind,
         offending_dim: Option<usize>,
-        reason: Option<Cow<'static, str>>,
     },
 
     DimensionMismatch {
@@ -165,42 +190,28 @@ pub enum XenonError {
 
     InvalidArgument {
         operation: Cow<'static, str>,
-        argument: Cow<'static, str>,
-        expected: Cow<'static, str>,
-        actual: Cow<'static, str>,
-        axis: Option<usize>,
-        axis_len: Option<usize>,
-        start: Option<usize>,
-        end: Option<usize>,
-        shape: Option<Vec<usize>>,
+        kind: InvalidArgumentKind,
     },
 
     InvalidStorageMode {
         operation: Cow<'static, str>,
-        expected: Cow<'static, str>,
-        actual: Cow<'static, str>,
+        expected: StorageKindTag,
+        actual: StorageKindTag,
         shape: Option<Vec<usize>>,
-        source_storage_mode: Option<Cow<'static, str>>,
-        target_storage_mode: Option<Cow<'static, str>>,
-        conversion_type: Option<Cow<'static, str>>,
+        conversion: Option<StorageConversionKind>,
     },
 
     Ffi {
         operation: Cow<'static, str>,
         category: FfiErrorCategory,
-        backend: Cow<'static, str>,
-        precondition: Cow<'static, str>,
-        actual: Cow<'static, str>,
+        backend: FfiBackend,
+        cause: Option<Box<XenonError>>,
     },
 
     Workspace {
         operation: Cow<'static, str>,
         category: WorkspaceErrorCategory,
-        size: Option<usize>,
-        align: Option<usize>,
-        split: Option<usize>,
-        len: Option<usize>,
-        reason: Option<Cow<'static, str>>,
+        cause: Option<Box<XenonError>>,
     },
 
     IndexOutOfBounds {
@@ -211,49 +222,250 @@ pub enum XenonError {
     },
 
     TypeConversion {
-        source_type: TypeId,
-        target_type: TypeId,
+        operation: Cow<'static, str>,
+        source_type: ElementType,
+        target_type: ElementType,
         reason: ConversionFailureReason,
         element_index: Option<usize>,
     },
 }
 
-/// FFI error category for `XenonError::Ffi`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// FFI error category for `XenonError::Ffi`. All categories are
+/// fully structured; no free-text fallback variant.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FfiErrorCategory {
-    InvalidRank,
-    BlasIncompatibleLayout,
-    IntegerOverflow,
+    /// Caller passed a null raw pointer where a valid pointer was required.
+    NullPointer { argument: Cow<'static, str> },
+    /// Pointer alignment did not satisfy the type's alignment requirement.
+    AlignmentMismatch { required: usize, actual: usize },
+    /// Rank check failed (e.g., BLAS layer expects 2D matrix).
+    InvalidRank { expected: usize, actual: usize },
+    /// Layout cannot be expressed in the FFI ABI (e.g., non F-contiguous
+    /// where BLAS layer requires column-major contiguous).
+    BlasIncompatibleLayout {
+        shape: Vec<usize>,
+        strides: Vec<usize>,
+    },
+    /// `usize`-to-backend-integer conversion overflowed (e.g., to `i32` LDA).
+    IntegerOverflow {
+        value: usize,
+        target_width_bits: u8,
+    },
+    /// ABI shape mismatch when reconstructing tensor from raw parts.
+    AbiMismatch { detail: AbiMismatchKind },
+    /// `from_raw_parts_mut` rejected a layout whose disjointness cannot
+    /// be conservatively proven (overlap-rejected guard).
+    OverlapRejected {
+        shape: Vec<usize>,
+        strides: Vec<usize>,
+    },
+    /// Foreign allocator metadata does not match Xenon's owned-tensor
+    /// invariants (e.g., element type / capacity / alignment differ).
+    ForeignAllocatorMismatch { detail: AbiMismatchKind },
+}
+
+/// Backend identifier for `XenonError::Ffi.backend`. Closed enum: any
+/// future backend must extend this enum (SemVer-tracked).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FfiBackend {
+    /// Generic raw-parts FFI (no specific backend library).
+    RawParts,
+    /// BLAS-compatible export.
+    Blas,
+}
+
+/// Detail kind for ABI mismatch / foreign allocator mismatch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AbiMismatchKind {
+    ElementTypeMismatch { expected: ElementType, actual: ElementType },
+    CapacityMismatch { expected: usize, actual: usize },
+    AlignmentMismatch { expected: usize, actual: usize },
+    ShapeProductExceedsLen { product: usize, storage_len: usize },
+    StridesRankMismatch { shape_ndim: usize, strides_ndim: usize },
 }
 
 impl core::fmt::Display for FfiErrorCategory {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::InvalidRank => write!(f, "invalid rank"),
-            Self::BlasIncompatibleLayout => write!(f, "BLAS-incompatible layout"),
-            Self::IntegerOverflow => write!(f, "integer overflow"),
+            Self::NullPointer { argument } =>
+                write!(f, "null pointer for argument {argument}"),
+            Self::AlignmentMismatch { required, actual } =>
+                write!(f, "alignment mismatch: required {required}, actual {actual}"),
+            Self::InvalidRank { expected, actual } =>
+                write!(f, "invalid rank: expected {expected}, actual {actual}"),
+            Self::BlasIncompatibleLayout { shape, strides } =>
+                write!(f, "BLAS-incompatible layout: shape [{}], strides [{}]",
+                    FmtShape(shape), FmtShape(strides)),
+            Self::IntegerOverflow { value, target_width_bits } =>
+                write!(f, "integer overflow: {value} does not fit in i{target_width_bits}"),
+            Self::AbiMismatch { detail } =>
+                write!(f, "ABI mismatch: {detail:?}"),
+            Self::OverlapRejected { shape, strides } =>
+                write!(f, "potentially overlapping layout rejected: shape [{}], strides [{}]",
+                    FmtShape(shape), FmtShape(strides)),
+            Self::ForeignAllocatorMismatch { detail } =>
+                write!(f, "foreign allocator metadata mismatch: {detail:?}"),
         }
     }
 }
 
-/// Workspace error category for `XenonError::Workspace`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Workspace error category for `XenonError::Workspace`. All categories
+/// carry structured context; no free-text fallback variant.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceErrorCategory {
-    AllocFailed,
-    InvalidLayout,
-    AlreadyBorrowed,
-    SplitOutOfBounds,
+    /// Underlying allocator returned failure (e.g., OOM / size==0 not allowed).
+    AllocFailed { size: usize, align: usize },
+    /// Layout request violates `Layout::from_size_align` rules.
+    InvalidLayout { size: usize, align: usize },
+    /// Borrow request conflicts with current borrow state.
+    BorrowConflict {
+        requested: WorkspaceBorrowKind,
+        current: WorkspaceBorrowState,
+    },
+    /// `split_at_mut` mid index out of bounds for current view length.
+    SplitOutOfBounds { mid: usize, len: usize },
+    /// Internal split-count atomic invariant was violated (e.g., underflow
+    /// or leak detected in debug).
+    SplitCountInvariant { detail: Cow<'static, str> },
+    /// Capacity grow request would overflow `usize`.
+    GrowOverflow { current_capacity: usize, additional: usize },
+    /// Typed view request rejected (e.g., ZST not supported, range not
+    /// aligned for `T`).
+    TypedViewRejected { detail: TypedViewRejection },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceBorrowKind {
+    Shared,
+    Exclusive,
+    Split,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceBorrowState {
+    None,
+    Shared,
+    Exclusive,
+    SplitActive { count: usize },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TypedViewRejection {
+    ZeroSizedType,
+    AlignmentMismatch { required: usize, actual: usize },
+    LengthNotMultipleOfSize { len_bytes: usize, elem_size: usize },
 }
 
 impl core::fmt::Display for WorkspaceErrorCategory {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::AllocFailed => write!(f, "allocation failed"),
-            Self::InvalidLayout => write!(f, "invalid layout"),
-            Self::AlreadyBorrowed => write!(f, "already borrowed"),
-            Self::SplitOutOfBounds => write!(f, "split out of bounds"),
+            Self::AllocFailed { size, align } =>
+                write!(f, "allocation failed (size={size}, align={align})"),
+            Self::InvalidLayout { size, align } =>
+                write!(f, "invalid layout (size={size}, align={align})"),
+            Self::BorrowConflict { requested, current } =>
+                write!(f, "borrow conflict: requested {requested:?}, current {current:?}"),
+            Self::SplitOutOfBounds { mid, len } =>
+                write!(f, "split out of bounds (mid={mid}, len={len})"),
+            Self::SplitCountInvariant { detail } =>
+                write!(f, "split-count invariant violated: {detail}"),
+            Self::GrowOverflow { current_capacity, additional } =>
+                write!(f, "grow overflow: capacity={current_capacity} + additional={additional}"),
+            Self::TypedViewRejected { detail } =>
+                write!(f, "typed view rejected: {detail:?}"),
         }
     }
+}
+
+/// Reason for `XenonError::InvalidLayout`. Closed enum: each reason
+/// has program-matchable semantics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InvalidLayoutReason {
+    /// `shape.checked_size()` overflowed `usize`.
+    ShapeProductOverflow,
+    /// Computed `max_offset` exceeds `storage_len`.
+    AccessRangeExceedsStorage,
+    /// Stride along an axis is not allowed for the current storage kind
+    /// (e.g., negative stride; not representable as `usize`).
+    UnsupportedStride,
+    /// Zero stride observed on a non-broadcast-view storage kind.
+    UnexpectedZeroStride,
+    /// `strides.len() != shape.len()`.
+    StridesRankMismatch,
+    /// Logical layout cannot be conservatively proven non-overlapping
+    /// for the requested mutable access.
+    AmbiguousOverlap,
+}
+
+/// Kind for `XenonError::InvalidShape`. Closed enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InvalidShapeKind {
+    /// `shape.checked_size()` overflowed `usize`. Element-count fields
+    /// are intentionally absent because no finite expected/actual
+    /// counts can be expressed.
+    ProductOverflow,
+    /// Provided element count does not equal `shape.checked_size()`.
+    ElementCountMismatch { expected: usize, actual: usize },
+    /// Provided shape rank exceeds the static maximum (`Ix0..=Ix6`)
+    /// when constructing a static-rank tensor from a dynamic source.
+    RankExceedsStaticMax { provided_ndim: usize, max_ndim: usize },
+}
+
+/// Kind for `XenonError::InvalidArgument`. Closed enum: each operation
+/// family contributes one variant; new families must extend the enum.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InvalidArgumentKind {
+    /// Range slice `start..end` is out of `[0, axis_len]`.
+    RangeOutOfBounds {
+        axis: usize,
+        axis_len: usize,
+        start: usize,
+        end: usize,
+    },
+    /// Range slice has `start > end`.
+    RangeStartAfterEnd { axis: usize, start: usize, end: usize },
+    /// Numeric parameter outside its required domain (e.g., `alpha < 0`).
+    NumericOutOfRange {
+        argument: Cow<'static, str>,
+        domain: Cow<'static, str>,
+        actual: Cow<'static, str>,
+    },
+    /// Threshold / chunk-size / max-workers etc. configuration violated.
+    InvalidConfig {
+        argument: Cow<'static, str>,
+        constraint: Cow<'static, str>,
+        actual: Cow<'static, str>,
+    },
+    /// Unique-list / set parameter contained duplicate or empty groups.
+    DuplicateOrEmpty { argument: Cow<'static, str> },
+    /// Caller-provided shape parameter inconsistent with operation
+    /// (e.g., `clip` min > max, `reshape` shape product mismatch but
+    /// reported via `InvalidShape::ElementCountMismatch` instead — this
+    /// variant covers operation-specific argument validation).
+    OperationSpecific {
+        argument: Cow<'static, str>,
+        constraint: Cow<'static, str>,
+    },
+}
+
+/// Storage kind tag, used in error variants to identify which storage
+/// model the error refers to. Closed enum aligned with `05-storage.md`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StorageKindTag {
+    Owned,
+    View,
+    ViewMut,
+    Arc,
+}
+
+/// Storage conversion kind for `InvalidStorageMode.conversion`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StorageConversionKind {
+    ToOwned,
+    IntoOwned,
+    Transpose,
+    SliceMut,
+    BroadcastTo,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -280,28 +492,57 @@ impl core::fmt::Display for ConversionFailureReason {
 pub type Result<T> = core::result::Result<T, XenonError>;
 ```
 
-- **空数组的语义**：空数组（任意维度上 size==0 的张量）是 Xenon 中的**合法输入**而非错误条件。例如 `sum()` 对空数组返回加法单位元（`A::zero()`）；`unique()` 返回空 1D 张量；广播规则正常应用。因此 `XenonError` **不**定义 `EmptyArray` 变体——空数组永远不会触发可恢复错误。
-- `XenonError` 须实现 `std::error::Error` trait，提供 `source()` 方法用于链式错误追踪。
-- 对于所有 `XenonError` 变体，`source()` 返回 `None`，除非内部保留了链式错误源（当前版本不保留）。
-- 公开 API 统一使用 prelude 导出的 `crate::error::Result`（即 `Result<T, XenonError>` 别名）作为返回类型。
-- 所有可恢复错误直接以 `XenonError` 结构化变体返回，不使用模块内部错误类型。
-- 每个变体携带适用的结构化字段，满足 `需求说明书 §27` 对公开诊断信息的要求。
+- **空数组的语义**：空数组（任意维度上 size==0 的张量）是 Xenon 中的
+  **合法输入**而非错误条件。所有公开 API 在“形状本身合法但其中一个或
+  多个维度长度为 0”的情况下都不构造可恢复错误：例如 `sum()` 返回加法
+  单位元 `A::zero()`、`unique()` 返回空 1D 张量、广播规则正常应用、
+  `transpose()` 返回相同形状的空视图。`XenonError` 不定义
+  `EmptyArray` 变体，公开 API 也不得在“仅因为形状包含 0”这一原因下
+  返回 `Err`。
+- “形状本身非法”仍然返回错误：`shape` 元素总数 `checked_size()` 溢出
+  `usize`、`from_shape_vec` 提供的 `Vec<A>` 长度与
+  `shape.checked_size()` 不一致、动态维度 rank 超过静态最大值等场景，
+  返回 `XenonError::InvalidShape`，但其 `kind` 不会被诊断为“数组为空”，
+  而是 `ProductOverflow` / `ElementCountMismatch` /
+  `RankExceedsStaticMax` 中的某一种。`§8.3 边界测试`中的 `shape=[0, 3]`
+  对应“合法空形状”，预期为 `Ok` 而非 `InvalidShape`（除非该 API 自身
+  另有合法性约束，比如要求至少 1 个轴长大于 0；此时也以
+  `InvalidShape::ElementCountMismatch` 表达，不以“空”为由）。
+- `XenonError` 须实现 `std::error::Error` trait，提供 `source()` 方法
+  用于链式错误追踪。
+- `Ffi` 和 `Workspace` 变体可携带 `cause: Option<Box<XenonError>>`
+  源链：当外层公开错误是“包装”自一个更底层的可恢复错误（例如
+  `Workspace` 借用失败被 FFI 路径包装为 `Ffi` 错误）时，外层变体的
+  `cause` 设为 `Some(Box::new(inner))`；`source()` 据此返回内层错误的
+  `&dyn Error`。其他变体的 `source()` 仍返回 `None`（叶子错误）。
+- 公开 API 统一使用 prelude 导出的 `crate::error::Result`（即
+  `Result<T, XenonError>` 别名）作为返回类型。
+- 所有可恢复错误直接以 `XenonError` 结构化变体返回，不使用模块内部
+  错误类型。
+- 每个变体携带适用的结构化字段，满足 `需求说明书 §27` 对公开诊断
+  信息的要求。
 
 ```rust,ignore
-/// `XenonError` implements `std::error::Error` for compatibility with the
-/// standard error-handling ecosystem (`?`, `anyhow`, `thiserror`, etc.).
-/// `source()` always returns `None` because all variants are leaf errors
-/// (structured fields already capture error context).
+/// `XenonError` implements `std::error::Error` for compatibility with
+/// the standard error-handling ecosystem (`?`, `anyhow`, `thiserror`,
+/// etc.). Variants that wrap another recoverable error expose it via
+/// `source()`; the others are leaf errors with no nested source.
 impl std::error::Error for XenonError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        // XenonError variants are leaf errors (no nested source).
-        // External errors (e.g., from FFI) are absorbed into structured fields.
-        None
+        match self {
+            Self::Ffi { cause: Some(inner), .. } => Some(&**inner),
+            Self::Workspace { cause: Some(inner), .. } => Some(&**inner),
+            _ => None,
+        }
     }
 }
 ```
 
-`XenonError` 实现 `std::error::Error` 以兼容标准错误处理生态（`?`、`anyhow`、`thiserror` 等）。`source()` 始终返回 `None`，因为所有变体都是叶子错误（结构化字段已捕获错误上下文）。
+`XenonError` 实现 `std::error::Error` 以兼容标准错误处理生态（`?`、
+`anyhow`、`thiserror` 等）。仅 `Ffi` / `Workspace` 两个变体允许通过
+`cause` 字段链式包装；其余变体均为叶子错误，`source()` 返回 `None`。
+源链是 SemVer 兼容扩展点：未来若新的变体需要承载内部错误源，须以新增
+变体而非改变现有变体语义的方式扩展。
 
 ### 5.2 可恢复错误与 panic 的边界
 
@@ -346,293 +587,95 @@ impl std::error::Error for XenonError {
 `cast()` 的错误模型须与 `21-type.md` 保持一致：
 
 - `cast<B>(&self)` 返回 `Result<Tensor<B, D>, XenonError>`
-- 任何被 `需求说明书 §23` 判定为有损的默认转换组合，都须返回 `XenonError::TypeConversion`
+- 任何被 `需求说明书 §23` 判定为有损的默认转换组合，都须返回
+  `XenonError::TypeConversion`
 - 仅当需求显式给出附加成功前提时，满足前提后才可成功
-- `Complex -> Real` 不是编译期拒绝；当 `im == 0` 时允许继续转换，否则返回 `XenonError::TypeConversion`
-- `bool` 不参与逐元素类型转换，因此不得用 `TypeConversion` 为 `bool` 扩大支持范围
+- `Complex -> Real` 不是编译期拒绝；当 `im == 0` 时允许继续转换，
+  否则返回 `XenonError::TypeConversion { reason: NonZeroImaginaryPart, ... }`
+- `bool` 不参与逐元素类型转换，因此不得用 `TypeConversion` 为 `bool`
+  扩大支持范围
+- `TypeConversion` 必须包含 `operation: Cow<'static, str>` 字段，记录
+  触发转换的高层运算名（例如 `"cast"`、`"complex_to_real"`、
+  `"infer_dtype_promotion"`），与其他错误变体保持字段一致性
+- 源/目标类型字段使用 `crate::element::ElementType` 公共封闭枚举，
+  不使用 `core::any::TypeId`：`ElementType` 是用户可读、可程序化匹配
+  的封闭枚举，覆盖所有合法元素类型；`TypeId` 是不透明哈希，无法满足
+  “结构化诊断 + 可读 Display”要求
 
-类型转换失败统一通过 `XenonError::TypeConversion` 返回，其中字段为公开字段，用户可直接通过模式匹配访问。
+类型转换失败统一通过 `XenonError::TypeConversion` 返回，其中字段为
+公开字段，用户可直接通过模式匹配访问。
 
 ### 5.6 结构化上下文字段要求
 
-所有错误变体都须带"错误类别 + 适用上下文"的结构化字段；仅字符串消息不足以满足要求。
+所有错误变体都须带“错误类别 + 适用上下文”的结构化字段；不得使用纯
+字符串消息字段（除 `operation`、`backend` 等稳定标识符以及枚举内的
+有限自由文本载荷外）。
 
-| 变体                  | 最小结构化字段                             |
-| --------------------- | ------------------------------------------ |
-| `ShapeMismatch`       | `operation`, `left_shape`, `right_shape`   |
-| `BroadcastError`      | `operation`, `lhs_shape`, `rhs_shape`, `attempted_target_shape?`, `axis?` |
-| `LayoutMismatch`      | `operation`, `required_layout`, `actual_layout`, `shape`                  |
+| 变体                  | 最小结构化字段                                                                |
+| --------------------- | ----------------------------------------------------------------------------- |
+| `ShapeMismatch`       | `operation`, `left_shape`, `right_shape`                                      |
+| `BroadcastError`      | `operation`, `lhs_shape`, `rhs_shape`, `attempted_target_shape?`, `axis?`     |
+| `LayoutMismatch`      | `operation`, `required_layout`, `actual_layout`, `shape`                      |
 | `InvalidLayout`       | `operation`, `storage_kind`, `shape`, `strides`, `offset`, `storage_len`, `reason` |
-| `InvalidAxis`         | `operation`, `axis`, `ndim`, `shape`       |
-| `InvalidShape`        | `operation`, `shape`, `expected_elements`, `actual_elements`, `offending_dim?`, `reason?` |
-| `DimensionMismatch`   | `operation`, `expected`, `actual`          |
-| `InvalidArgument`     | `operation`, `argument`, `expected`, `actual`, `axis?`, `axis_len?`, `start?`, `end?`, `shape?`；范围切片越界时必须额外携带 `axis`、`axis_len`、`start`、`end`，不得仅以字符串拼接描述 |
-| `InvalidStorageMode`  | `operation`, `expected`, `actual`, `shape?`, `source_storage_mode?`, `target_storage_mode?`, `conversion_type?` |
-| `Ffi`                 | `operation`, `category`, `backend`, `precondition`, `actual` |
-| `Workspace`           | `operation`, `category`, `size?`, `align?`, `split?`, `len?`, `reason?` |
+| `InvalidAxis`         | `operation`, `axis`, `ndim`, `shape`                                          |
+| `InvalidShape`        | `operation`, `shape`, `kind`, `offending_dim?`                                |
+| `DimensionMismatch`   | `operation`, `expected`, `actual`                                             |
+| `InvalidArgument`     | `operation`, `kind`（封闭枚举 `InvalidArgumentKind`，每个变体内部携带其专属字段，例如 `RangeOutOfBounds` 必带 `axis/axis_len/start/end`） |
+| `InvalidStorageMode`  | `operation`, `expected`, `actual`, `shape?`, `conversion?`                    |
+| `Ffi`                 | `operation`, `category`（封闭枚举 `FfiErrorCategory`，每个子类携带专属结构化负载）, `backend`, `cause?` |
+| `Workspace`           | `operation`, `category`（封闭枚举 `WorkspaceErrorCategory`，每个子类携带专属结构化负载）, `cause?` |
 | `IndexOutOfBounds`    | `operation`, `attempted_index`, `axis`, `shape`；`attempted_index` 表示完整多维索引 tuple，`axis` 指出首个越界维度 |
-| `TypeConversion`      | `source_type`, `target_type`, `reason`, `element_index?` |
+| `TypeConversion`      | `operation`, `source_type`（`ElementType`）, `target_type`（`ElementType`）, `reason`, `element_index?` |
 
-分配成本说明：`attempted_index: Vec<usize>`、`shape: Vec<usize>` 以及 `InvalidArgument` / `InvalidStorageMode` 中的可选 `Vec<usize>` 字段会带来少量堆分配成本；这是当前版本可接受的诊断开销，用于换取跨公开 API 的一致结构化上下文。
+分配成本说明：`attempted_index: Vec<usize>`、`shape: Vec<usize>` 以及
+若干 `InvalidArgumentKind` / `FfiErrorCategory` 子变体内的 `Vec<usize>`
+字段会带来少量堆分配成本；这是当前版本可接受的诊断开销，用于换取跨
+公开 API 的一致结构化上下文。
 
-**字段命名约定（跨变体一致性规则）：** 各变体字段集合允许不同，但**同义字段必须使用同名**，新增变体或扩展字段时须遵循以下规则；目的是让结构化诊断在跨变体程序化处理时具备稳定语义。
+**字段命名约定（跨变体一致性规则）：** 各变体字段集合允许不同，但
+**同义字段必须使用同名**，新增变体或扩展字段时须遵循以下规则；目的是
+让结构化诊断在跨变体程序化处理时具备稳定语义。
 
-| 字段名 | 类型 | 含义 | 备注 |
-| ------ | ---- | ---- | ---- |
-| `operation` | `&'static str` 或等价 | 触发错误的高层运算名（如 `"sum"`、`"reshape"`、`"slice"`） | 几乎所有变体都必须携带；以一致词汇表命名 |
-| `axis` | `usize` | 单一相关维度索引 | 多个相关维度时使用 `axes: Vec<usize>` |
-| `ndim` | `usize` | 张量秩 | 与 `axis < ndim` 配套使用 |
-| `shape` | `Vec<usize>` | 完整逻辑形状 | 字段名固定为 `shape`；二元运算用 `lhs_shape`/`rhs_shape` 或 `left_shape`/`right_shape`，不得混用其他前缀 |
-| `lhs_shape` / `rhs_shape` | `Vec<usize>` | 二元运算的左右操作数形状 | 二元广播/算术运算优先使用此对，区别于 `left_shape`/`right_shape` 用于纯形状对比的语义场景 |
-| `expected` / `actual` | 类型与场景相关 | 期望值与实际值 | 简单二元对比模式；不混用 `required` / `provided` 等同义词 |
-| `expected_elements` / `actual_elements` | `usize` | 元素数量对比 | 形状相关场景的专用变体 |
-| `reason` | `Option<&'static str>` 或 `String` | 简短自由文本理由 | 可选；不替代结构化字段，仅作补充 |
-| `category` | enum 或 `&'static str` | 子分类 | 仅 `Ffi` / `Workspace` 等粗粒度类别变体使用 |
-| `attempted_index` | `Vec<usize>` | 多维索引 tuple | `IndexOutOfBounds` 等需要完整索引上下文的变体使用 |
+| 字段名                                  | 类型                                | 含义                                                       | 备注                                                                       |
+| --------------------------------------- | ----------------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `operation`                             | `Cow<'static, str>`                 | 触发错误的高层运算名（如 `"sum"`、`"reshape"`、`"slice"`） | 几乎所有变体都必须携带；以一致词汇表命名；仅作为稳定标识符使用             |
+| `axis`                                  | `usize`                             | 单一相关维度索引                                           | 多个相关维度时使用 `axes: Vec<usize>`                                      |
+| `ndim`                                  | `usize`                             | 张量秩                                                     | 与 `axis < ndim` 配套使用                                                  |
+| `shape`                                 | `Vec<usize>`                        | 完整逻辑形状                                               | 字段名固定为 `shape`；二元运算用 `lhs_shape`/`rhs_shape` 或 `left_shape`/`right_shape`，不得混用其他前缀 |
+| `lhs_shape` / `rhs_shape`               | `Vec<usize>`                        | 二元运算的左右操作数形状                                   | 二元广播/算术运算优先使用此对，区别于 `left_shape`/`right_shape` 用于纯形状对比的语义场景 |
+| `expected` / `actual`                   | 类型与场景相关（封闭枚举或 `usize`）| 期望值与实际值                                             | 简单二元对比模式；不混用 `required` / `provided` 等同义词                  |
+| `kind`                                  | 子分类封闭枚举                      | 变体内部细分（如 `InvalidShapeKind`、`InvalidArgumentKind`）| 替代以前的自由文本 `reason: Cow<str>`                                      |
+| `category`                              | 子分类封闭枚举                      | 子分类（仅 `Ffi` / `Workspace` 使用）                      | 子枚举中各变体携带专属结构化字段                                           |
+| `attempted_index`                       | `Vec<usize>`                        | 多维索引 tuple                                             | `IndexOutOfBounds` 等需要完整索引上下文的变体使用                          |
+| `cause`                                 | `Option<Box<XenonError>>`           | 源链 inner error                                           | 仅 `Ffi` / `Workspace` 允许；通过 `Error::source()` 暴露                   |
+| `backend`                               | `FfiBackend` 封闭枚举               | FFI 后端标识                                               | 仅 `Ffi` 使用                                                              |
+| `storage_kind` / `expected` / `actual`  | `StorageKindTag` 封闭枚举           | 存储模式标签                                               | `InvalidLayout` / `InvalidStorageMode` 使用                                |
+| `conversion`                            | `Option<StorageConversionKind>`     | 存储模式转换种类                                           | `InvalidStorageMode` 使用                                                  |
+| `source_type` / `target_type`           | `ElementType` 封闭枚举              | 元素类型标签                                               | `TypeConversion` 使用                                                      |
 
-未来新增变体须复用上表名称；如需新字段且语义新颖，需要先扩展本表再使用。
+未来新增变体须复用上表名称与字段类型；如需新字段且语义新颖，须先在
+本表中扩展再使用。**字符串字段（如 `operation`）只允许作为稳定标识
+符**，不得作为可变诊断载体；所有可变细节须通过封闭枚举的子变体表达。
 
 ### 5.7 Display 与 panic 信息要求
 
-- Display 输出和 panic 文本都必须能让调用方定位问题来源；最少应包含操作名、错误类别以及适用上下文。
-- panic 信息必须包含 `operation` + error kind + 至少一个关键上下文字段（如 `axis`、`shape`、`index`、类型等）。
-- 对 `Option<Vec<usize>>` 等可选结构化字段，`Display` 实现必须做人性化格式化。
-- `None` 统一显示为 `<any>`，不得直接打印 `Some(...)` / `None` 调试文本。
+- Display 输出和 panic 文本都必须能让调用方定位问题来源；最少应包含
+  操作名、错误类别以及适用上下文。
+- panic 信息必须包含 `operation` + error kind + 至少一个关键上下文
+  字段（如 `axis`、`shape`、`index`、类型等）。
+- 对 `Option<Vec<usize>>` 等可选结构化字段，`Display` 实现必须做
+  人性化格式化；`None` 统一显示为 `<any>`，不得直接打印 `Some(...)`
+  / `None` 调试文本。
+- 对 `TypeConversion` 的 `source_type` / `target_type`，Display 必须
+  使用 `ElementType` 自身的 `Display` 实现（人类可读名称，例如 `f32`、
+  `Complex<f64>`），不得使用 `{:?}` 或 `TypeId` 风格的不透明哈希。
+- 携带 `cause` 的 `Ffi` / `Workspace` 变体须在 Display 末尾追加
+  `; caused by: <inner>` 片段，使单次格式化即可显示完整错误链；
+  程序化遍历仍通过 `std::error::Error::source()`。
 
-```rust,ignore
-/// Display wrapper: Some(v) -> write v, None -> write "<any>".
-struct OrAny<T>(Option<T>);
-
-impl<T: fmt::Display> fmt::Display for OrAny<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.0 {
-            Some(v) => v.fmt(f),
-            None => write!(f, "<any>"),
-        }
-    }
-}
-
-/// Display wrapper for shape/slices: comma-separated dimensions.
-struct FmtShape<'a>(&'a [usize]);
-
-impl<'a> fmt::Display for FmtShape<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (i, dim) in self.0.iter().enumerate() {
-            if i > 0 { write!(f, ", ")?; }
-            write!(f, "{}", dim)?;
-        }
-        Ok(())
-    }
-}
-
-impl fmt::Display for XenonError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::ShapeMismatch {
-                operation,
-                left_shape,
-                right_shape,
-            } => write!(
-                f,
-                "shape mismatch in {}: left [{}], right [{}]",
-                operation,
-                FmtShape(left_shape),
-                FmtShape(right_shape),
-            ),
-            Self::BroadcastError {
-                operation,
-                lhs_shape,
-                rhs_shape,
-                attempted_target_shape,
-                axis,
-            } => write!(
-                f,
-                "broadcast error in {}: lhs [{}], rhs [{}], attempted_target {}, axis {}",
-                operation,
-                FmtShape(lhs_shape),
-                FmtShape(rhs_shape),
-                OrAny(attempted_target_shape.as_deref().map(FmtShape)),
-                OrAny(*axis),
-            ),
-            Self::LayoutMismatch {
-                operation,
-                required_layout,
-                actual_layout,
-                shape,
-            } => write!(
-                f,
-                "layout mismatch in {}: required {}, actual {}, shape [{}]",
-                operation,
-                required_layout,
-                actual_layout,
-                FmtShape(shape),
-            ),
-            Self::InvalidLayout {
-                operation,
-                storage_kind,
-                shape,
-                strides,
-                offset,
-                storage_len,
-                reason,
-            } => write!(
-                f,
-                "invalid layout in {}: storage_kind={}, shape [{}], strides [{}], offset {}, storage_len {}, reason: {}",
-                operation,
-                storage_kind,
-                FmtShape(shape),
-                FmtShape(strides),
-                offset,
-                storage_len,
-                reason,
-            ),
-            Self::InvalidAxis {
-                operation,
-                axis,
-                ndim,
-                shape,
-            } => write!(
-                f,
-                "invalid axis in {}: axis {}, ndim {}, shape [{}]",
-                operation,
-                axis,
-                ndim,
-                FmtShape(shape),
-            ),
-            Self::InvalidShape {
-                operation,
-                shape,
-                expected_elements,
-                actual_elements,
-                offending_dim,
-                reason,
-            } => write!(
-                f,
-                "invalid shape in {}: shape [{}], expected_elements {}, actual_elements {}, offending_dim {}, reason {}",
-                operation,
-                FmtShape(shape),
-                expected_elements,
-                actual_elements,
-                OrAny(*offending_dim),
-                OrAny(reason.as_deref()),
-            ),
-            Self::DimensionMismatch {
-                operation,
-                expected,
-                actual,
-            } => write!(
-                f,
-                "dimension mismatch in {}: expected {}, actual {}",
-                operation,
-                expected,
-                actual,
-            ),
-            Self::InvalidArgument {
-                operation,
-                argument,
-                expected,
-                actual,
-                axis,
-                axis_len,
-                start,
-                end,
-                shape,
-            } => write!(
-                f,
-                "invalid argument in {}: {} expected {}, actual {}, axis {}, axis_len {}, start {}, end {}, shape {}",
-                operation,
-                argument,
-                expected,
-                actual,
-                OrAny(*axis),
-                OrAny(*axis_len),
-                OrAny(*start),
-                OrAny(*end),
-                OrAny(shape.as_deref().map(FmtShape)),
-            ),
-            Self::InvalidStorageMode {
-                operation,
-                expected,
-                actual,
-                shape,
-                source_storage_mode,
-                target_storage_mode,
-                conversion_type,
-            } => write!(
-                f,
-                "invalid storage mode in {}: expected {}, actual {}, shape {}, source {}, target {}, conversion {}",
-                operation,
-                expected,
-                actual,
-                OrAny(shape.as_deref().map(FmtShape)),
-                OrAny(source_storage_mode.as_deref()),
-                OrAny(target_storage_mode.as_deref()),
-                OrAny(conversion_type.as_deref()),
-            ),
-            Self::Ffi {
-                operation,
-                category,
-                backend,
-                precondition,
-                actual,
-            } => write!(
-                f,
-                "ffi error in {}: {} (backend={}, precondition={}, actual={})",
-                operation,
-                category,
-                backend,
-                precondition,
-                actual,
-            ),
-            Self::Workspace {
-                operation,
-                category,
-                size,
-                align,
-                split,
-                len,
-                reason,
-            } => write!(
-                f,
-                "workspace error in {}: {}, size={}, align={}, split={}, len={}, reason={}",
-                operation,
-                category,
-                OrAny(*size),
-                OrAny(*align),
-                OrAny(*split),
-                OrAny(*len),
-                OrAny(reason.as_deref()),
-            ),
-            Self::TypeConversion {
-                source_type,
-                target_type,
-                reason,
-                element_index,
-            } => write!(
-                f,
-                "type conversion failed at element {}: {:?} -> {:?} ({})",
-                OrAny(*element_index),
-                source_type,
-                target_type,
-                reason,
-            ),
-            Self::IndexOutOfBounds {
-                operation,
-                attempted_index,
-                axis,
-                shape,
-            } => write!(
-                f,
-                "index out of bounds in {}: index [{}], axis {}, shape [{}]",
-                operation,
-                FmtShape(attempted_index),
-                axis,
-                FmtShape(shape),
-            ),
-        }
-    }
-}
-```
+`Display` 的具体实现伪代码（含 `OrAny<T>` / `FmtShape<'_>` 等格式化
+helper）属于内部实现细节，集中在 §6.1 给出，不在公共 API 章节复述。
+公共契约只规定输出必须包含上表所述字段集合。
 
 ### 5.8 统一 panic 类别
 
@@ -666,16 +709,18 @@ where
     let mut out = Vec::with_capacity(self.len());
     for (index, value) in self.iter().enumerate() {
         let converted = value.cast_to().map_err(|err| {
-            // Preserve the conversion error, enriching with element index.
+            // Preserve the conversion error, enriching with element index
+            // and the high-level operation name.
             match err {
-                XenonError::TypeConversion { source_type, target_type, reason, .. } => {
-                    XenonError::TypeConversion {
-                        source_type,
-                        target_type,
-                        reason,
-                        element_index: Some(index),
-                    }
-                }
+                XenonError::TypeConversion {
+                    source_type, target_type, reason, ..
+                } => XenonError::TypeConversion {
+                    operation: Cow::Borrowed("cast"),
+                    source_type,
+                    target_type,
+                    reason,
+                    element_index: Some(index),
+                },
                 other => other,
             }
         })?;
@@ -714,24 +759,73 @@ let value = lhs * rhs;
 
 ### 6.1 算法描述
 
+错误构造与格式化的内部实现包含两部分：枚举构造模板 + Display
+实现。下列伪代码描述其骨架；实际实现位于 `src/error.rs`，对外不暴露。
+
 ```
-//
-// the following pseudo-codes describe the core error construction flow.
-//
 construct_xenon_error(operation, variant, context_fields):
     1. match variant to select the appropriate XenonError enum variant
     2. populate all mandatory structured fields from context_fields
-    3. set optional fields to None when not applicable
+       (including closed-enum sub-variants such as InvalidLayoutReason,
+       InvalidShapeKind, InvalidArgumentKind, FfiErrorCategory,
+       WorkspaceErrorCategory, AbiMismatchKind, TypedViewRejection,
+       StorageKindTag, StorageConversionKind, FfiBackend, ElementType)
+    3. set optional fields (e.g., offending_dim, cause, conversion) to None
+       when not applicable
     4. return XenonError::{variant} { ... }
+```
 
+格式化辅助类型（私有，不属于公开 API；放置于 `src/error.rs` 的私有
+模块内部）：
+
+```rust,ignore
+// Internal Display helpers. Not part of the public API.
+struct OrAny<T>(Option<T>);
+
+impl<T: fmt::Display> fmt::Display for OrAny<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.0 {
+            Some(v) => v.fmt(f),
+            None => write!(f, "<any>"),
+        }
+    }
+}
+
+struct FmtShape<'a>(&'a [usize]);
+
+impl<'a> fmt::Display for FmtShape<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (i, dim) in self.0.iter().enumerate() {
+            if i > 0 { write!(f, ", ")?; }
+            write!(f, "{}", dim)?;
+        }
+        Ok(())
+    }
+}
+```
+
+`Display for XenonError` 主体的实现策略：
+
+```
 fmt_display(error, formatter):
     1. match error variant
-    2. for each variant, format operation + kind + key context
-    3. for Option fields, render as human-readable:
-       - Some(value) -> display value
-       - None -> display "<any>"
-    4. write formatted string to formatter
+    2. for each variant, format:
+        - operation
+        - error-kind label (variant name in human form)
+        - all mandatory structured fields, using FmtShape for [usize]
+          and OrAny<T> for Option<T>
+        - for Ffi / Workspace: append "; caused by: <inner>" if cause is Some
+        - for TypeConversion: format source_type / target_type using
+          ElementType's Display impl, not Debug
+    3. write formatted string to formatter
 ```
+
+未来如需新增变体或子枚举，须同步：
+
+1. 更新 `§5.6` 字段表
+2. 在 `§6.1` 的构造模板中添加该变体所需结构化字段映射
+3. 在 `Display for XenonError` 中添加该变体分支
+4. 在 `§8.2` 单元测试清单中添加 Display / Clone / PartialEq 用例
 
 ### 6.2 安全性论证
 
@@ -805,7 +899,7 @@ fmt_display(error, formatter):
 | panic 测试              | 集成测试目录       | 验证逐元素整数溢出、除以零、`abs(MIN)`、dot overflow       |
 | 并行测试                | 集成测试目录       | 验证 `Err` 与 panic 在并行路径中的传播一致性               |
 | Feature gate / 配置测试 | 配置矩阵           | 验证可选 SIMD/并行路径与标量路径的错误类别一致             |
-| 类型边界 / 编译期测试   | 编译期测试框架     | 验证 `TypeId` 字段在 `const` 上下文中的可用性              |
+| 类型边界 / 编译期测试   | 编译期测试框架     | 验证 `ElementType` 字段在 `const` 上下文中的可用性以及子枚举的 `match` 完备性 |
 
 ### 8.2 单元测试清单
 
@@ -821,19 +915,27 @@ fmt_display(error, formatter):
 | `test_dot_overflow_panics`                     | 内积溢出走统一 panic                            | 高     |
 | `test_display_shape_mismatch`                  | `ShapeMismatch` 的 Display 输出格式             | 中     |
 | `test_display_option_fields_render_any`        | `None` 字段显示为 `<any>`                       | 中     |
-| `test_error_trait_source_none`                 | `std::error::Error` 的 `source()` 返回 `None`   | 中     |
+| `test_error_trait_source_leaf_none`            | 叶子变体的 `source()` 返回 `None`               | 中     |
+| `test_error_trait_source_chain_ffi_workspace`  | `Ffi { cause: Some(_) }` 的 `source()` 返回内层 | 高     |
+| `test_type_conversion_uses_element_type`       | `TypeConversion` 的源/目标字段是 `ElementType`  | 高     |
+| `test_type_conversion_carries_operation`       | `TypeConversion` 的 `operation` 必须非空        | 高     |
 | `test_clone_eq_roundtrip`                      | `Clone` + `PartialEq` 往返一致                  | 中     |
 
 ### 8.3 边界测试场景
 
-| 场景                             | 预期行为                                        |
-| -------------------------------- | ----------------------------------------------- |
-| 空形状 `shape=[0, 3]`            | 返回 `InvalidShape` 或加法单位元（视 API 而定） |
-| 非法轴 `axis=5, ndim=2`          | 返回 `InvalidAxis` 结构化错误                   |
-| 越界索引 `index=[9], shape=[4]`  | 返回 `IndexOutOfBounds` 结构化错误              |
-| 复数虚部非零 `Complex(1, 2)`     | 转换为实数类型返回 `TypeConversion`             |
-| 整数极值 `i32::MIN`              | `abs(i32::MIN)` 走 panic                        |
-| NaN/Inf 转换                     | `f64::NaN` → `i32` 返回 `TypeConversion` 错误   |
+| 场景                             | 预期行为                                                                                                  |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| 空形状 `shape=[0, 3]`            | 合法输入；构造成功，归约/广播/`unique` 等返回单位元或空张量；不返回 `InvalidShape`                         |
+| 形状乘积溢出 `shape=[usize::MAX,2]` | 返回 `InvalidShape { kind: ProductOverflow, .. }`                                                       |
+| 元素数不匹配 `shape=[2,3], data.len()=5` | 返回 `InvalidShape { kind: ElementCountMismatch { expected: 6, actual: 5 }, .. }`                  |
+| rank 超静态最大 `IxDyn(7) -> Ix6` 转换 | 返回 `InvalidShape { kind: RankExceedsStaticMax { provided_ndim: 7, max_ndim: 6 }, .. }`           |
+| 非法轴 `axis=5, ndim=2`          | 返回 `InvalidAxis` 结构化错误                                                                              |
+| 越界索引 `index=[9], shape=[4]`  | 返回 `IndexOutOfBounds` 结构化错误                                                                         |
+| 复数虚部非零 `Complex(1, 2)`     | 转换为实数类型返回 `TypeConversion { reason: NonZeroImaginaryPart, source_type: Complex64, target_type: F64, .. }` |
+| 整数极值 `i32::MIN`              | `abs(i32::MIN)` 走 panic                                                                                   |
+| NaN/Inf 转换                     | `f64::NaN` → `i32` 返回 `TypeConversion { reason: FloatToInteger, source_type: F64, target_type: I32, .. }` |
+| FFI 空指针                       | 返回 `Ffi { category: NullPointer { argument: "ptr" }, backend: RawParts, cause: None, .. }`              |
+| FFI 包装 workspace 错误          | 返回 `Ffi { category: ..., cause: Some(Box::new(XenonError::Workspace { .. })), .. }`，`Error::source()` 返回内层 |
 
 ### 8.4 Feature gate / 配置测试
 
@@ -897,7 +999,15 @@ Caller invokes public API (e.g., tensor.broadcast_to(shape))
 
 ### 9.3 生命周期与所有权约定
 
-`XenonError` 为 `Clone` 类型，错误构造时所有 `Cow<'static, str>` 字段使用 `'static` 生命周期，不借用调用方的临时数据。`Vec<usize>` 字段在构造时独立拥有，错误可安全地跨线程传递和存储。
+`XenonError` 为 `Clone` 类型，错误构造时所有 `Cow<'static, str>`
+字段使用 `'static` 生命周期，不借用调用方的临时数据。`Vec<usize>`
+字段在构造时独立拥有，错误可安全地跨线程传递和存储。
+
+`Ffi` / `Workspace` 变体的 `cause: Option<Box<XenonError>>` 字段在
+构造时通过 `Box::new(inner)` 装箱，所有权完全归属外层错误；克隆外层
+错误时会递归 `Clone` 内层错误并重新装箱，相等性比较递归到内层。
+源链深度无人为限制，但实际构造路径不会产生超过 2-3 层的嵌套
+（公开 API 不会自身递归包装）。
 
 ---
 
@@ -979,6 +1089,33 @@ Caller invokes public API (e.g., tensor.broadcast_to(shape))
 | 替代方案 | 仅提供 `String` 消息 — 放弃，无法程序化匹配错误类别                              |
 | 替代方案 | 使用 `thiserror` 派生 — 放弃，违反最小依赖约束                                   |
 
+### 决策 4：FFI / Workspace 子分类完全结构化
+
+| 属性     | 值                                                                                                                                                                |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | `FfiErrorCategory` / `WorkspaceErrorCategory` 改为携带结构化负载的 closed enum，覆盖 NullPointer / AlignmentMismatch / AbiMismatch / OverlapRejected / ForeignAllocatorMismatch / BorrowConflict / SplitCountInvariant / GrowOverflow / TypedViewRejected 等具体子类 |
+| 理由     | (b2) 评审 B6.a：原 `Ffi { backend, precondition, actual }` 三个 `Cow<str>` 字段把关键诊断稳定为自由文本，`InvalidRank/BlasIncompatibleLayout/IntegerOverflow` 三类无法覆盖 raw-parts FFI 常见错误源；workspace 的 `AllocFailed/InvalidLayout/AlreadyBorrowed/SplitOutOfBounds` 同样过粗 |
+| 替代方案 | 维持粗粒度子枚举 + 自由文本 — 放弃，违反“结构化诊断不依赖纯字符串消息”原则                                                                                         |
+| 替代方案 | 把所有 FFI/workspace 错误打平为一级变体 — 放弃，会让 `XenonError` 顶层变体爆炸性增长且失去“按子系统聚类”的程序化匹配能力                                            |
+
+### 决策 5：仅 `Ffi` / `Workspace` 引入源链
+
+| 属性     | 值                                                                                                                                            |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | `Ffi` / `Workspace` 携带 `cause: Option<Box<XenonError>>`；其他变体保持叶子错误。`Error::source()` 据此返回内层；其余变体返回 `None`           |
+| 理由     | (b2) 评审 B6.c：原 `source()` 始终返回 `None` 已经封死了链式追踪的能力；FFI 包装 workspace 错误、workspace allocator 错误等真实场景需要源链支持 |
+| 替代方案 | 全部变体都加 `cause` — 放弃，绝大多数变体本身就是叶子，统一加字段会增加构造复杂度与无意义 None                                                  |
+| 替代方案 | 用外部 `anyhow` / `Box<dyn Error>` 包装 — 放弃，违反最小依赖约束                                                                              |
+
+### 决策 6：`TypeConversion` 用 `ElementType` 替换 `TypeId`，并补 `operation`
+
+| 属性     | 值                                                                                                                                                                |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | `TypeConversion` 字段改为 `{ operation, source_type: ElementType, target_type: ElementType, reason, element_index? }`，`source_type` / `target_type` 使用元素模块的封闭枚举 |
+| 理由     | (b2) 评审 H-R8 / C23：`TypeId` 是不透明哈希，无法满足结构化诊断 + 可读 Display；`ElementType` 已存在于 `03-element.md` 且覆盖所有合法元素类型；同时补齐 `operation` 字段消除“几乎所有变体都必须携带 operation 但 TypeConversion 例外”的不一致 |
+| 替代方案 | 保留 `TypeId` + 在 Display 时反查类型名 — 放弃，反查机制不存在且 TypeId 不可程序化匹配封闭元素集合                                                                |
+| 替代方案 | 使用字符串类型名 — 放弃，与“结构化诊断”原则冲突                                                                                                                   |
+
 ---
 
 ## 12. 性能考量
@@ -1026,6 +1163,7 @@ Caller invokes public API (e.g., tensor.broadcast_to(shape))
 | 1.1.4 | 2026-04-15 |
 | 1.1.5 | 2026-04-16 |
 | 2.0.0 | 2026-04-22 |
+| 3.0.0 | 2026-05-02 |
 
 ---
 
