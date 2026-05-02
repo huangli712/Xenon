@@ -135,25 +135,33 @@ pub(crate) struct ParallelPool {
 
 ### 5.4 `ParallelExecStrategy` 参数校验规则
 
-| 字段          | 合法范围                          | 默认值 | 非法时行为                                 |
-| ------------- | --------------------------------- | ------ | ------------------------------------------ |
-| `max_workers` | `Some(1..=pool_size)` 或 `None`   | `None` | `0` 或超过线程池大小返回 `InvalidArgument` |
-| `chunk_size`  | `Some(n)` where `n > 0` 或 `None` | `None` | `0` 返回 `InvalidArgument`                 |
+`ParallelExecStrategy` 的字段合法性由 `dispatch.rs` 在构造时（`ParallelExecStrategy::new(...) -> Result<Self, XenonError>`）一次性校验完成（参见 30-dispatch.md §5.3、决策 8）。`parallel` 模块收到的策略实例已经满足以下范围；若违反则视为 `dispatch.rs` 的内部 bug，可触发 `debug_assert!`，但**不再**由 `parallel` 自己重新返回 `InvalidArgument`。
+
+| 字段          | 合法范围                          | 默认值（dispatch 端） | 非法值的处置                                                |
+| ------------- | --------------------------------- | --------------------- | ----------------------------------------------------------- |
+| `max_workers` | `Some(1..=pool_size)` 或 `None`   | `None`                | dispatch 端在 `new()` 中拒绝并返回 `InvalidArgument`        |
+| `chunk_size`  | `Some(n)` where `n > 0` 或 `None` | `None`                | dispatch 端在 `new()` 中拒绝并返回 `InvalidArgument`        |
+
+**与 §5.5 函数签名的一致性**：因为参数合法性已由 dispatch 保证，`par_map` / `par_reduce_impl` / `par_sum` 等签名不返回 `Result`（它们只可能因为整数溢出 panic 或正常完成，没有可恢复错误通道），不再存在“函数签名无法返回 `InvalidArgument`”的不一致问题。
 
 ### 5.5 函数签名
 
-**定义位置**：`ParallelExecStrategy` 定义于 `dispatch.rs`，`parallel` 通过 `crate::dispatch` 引用。此处列出签名以便与并行函数签名一同参阅。
+**定义位置**：`ParallelExecStrategy` 定义于 `dispatch.rs`（30-dispatch.md §5.3，字段为 `pub(crate)` 私有，构造仅通过 `ParallelExecStrategy::new(chunk_size, max_workers) -> Result<Self, XenonError>`）。`parallel` 通过 `crate::dispatch` 引用，仅做只读消费。
 
 ```rust,ignore
+// Authoritative definition lives in dispatch.rs; reproduced here as reference only.
+// Fields are pub(crate); external construction is forbidden — use
+// `ParallelExecStrategy::new(chunk_size, max_workers)` for validated construction.
 pub(crate) struct ParallelExecStrategy {
-    pub chunk_size: Option<usize>,
-    pub max_workers: Option<usize>,
+    pub(crate) chunk_size: Option<usize>,
+    pub(crate) max_workers: Option<usize>,
 }
 
 #[cfg(feature = "parallel")]
 pub(crate) fn par_map<S, A, B, D, F>(
     tensor: &TensorBase<S, D>,
     strategy: &ParallelExecStrategy,
+    _guard: ParallelGuard,
     f: F,
 ) -> Tensor<B, D>
 where
@@ -169,6 +177,7 @@ pub(crate) fn par_zip_map<SL, SR, A, B, C, DL, DR, DO, F>(
     rhs: &TensorBase<SR, DR>,
     output_dim: &DO,
     strategy: &ParallelExecStrategy,
+    _guard: ParallelGuard,
     f: F,
 ) -> Result<Tensor<C, DO>, XenonError>
 where
@@ -186,6 +195,7 @@ where
 pub(crate) fn par_reduce_impl<S, A, D, F, ID>(
     tensor: &TensorBase<S, D>,
     strategy: &ParallelExecStrategy,
+    _guard: ParallelGuard,
     identity: ID,
     op: F,
 ) -> A
@@ -193,11 +203,15 @@ where
     S: Storage<Elem = A>,
     D: Dimension,
     A: Element + Send + Sync + Clone,
-    F: Fn(A, A) -> A + Sync,
-    ID: Fn() -> A + Sync + Clone;
+    F: Fn(A, A) -> A + Send + Sync,
+    ID: Fn() -> A + Send + Sync + Clone;
 
 #[cfg(feature = "parallel")]
-pub(crate) fn par_sum<S, A, D>(tensor: &TensorBase<S, D>, strategy: &ParallelExecStrategy) -> A
+pub(crate) fn par_sum<S, A, D>(
+    tensor: &TensorBase<S, D>,
+    strategy: &ParallelExecStrategy,
+    _guard: ParallelGuard,
+) -> A
 where
     S: Storage<Elem = A>,
     D: Dimension,
@@ -208,6 +222,7 @@ pub(crate) fn par_dot<SL, SR, A, DL, DR>(
     lhs: &TensorBase<SL, DL>,
     rhs: &TensorBase<SR, DR>,
     strategy: &ParallelExecStrategy,
+    _guard: ParallelGuard,
 ) -> Result<A, XenonError>
 where
     SL: Storage<Elem = A>,
@@ -217,10 +232,17 @@ where
     A: Numeric + Send + Sync;
 ```
 
+**`_guard: ParallelGuard` 设计要点**（与 30-dispatch v1.1.0 决策 7 一致）：
+- `_guard` 由 `dispatch::select_exec_path()` 在裁决到 `ExecPath::Parallel` 时返回 `Some(ParallelGuard)`，并由调用侧（`math` / `reduction` / `matrix`）按值移交到 `parallel` 后端入口。
+- `parallel` 在函数体内只持有 `_guard` 直至并行执行结束；`ParallelGuard::drop()` 自动清除 thread-local 嵌套防护标记。
+- 这样 “选中并行路径” 与 “进入并行临界区” 在调用图上原子绑定：调用方无法忘记 acquire guard，也无法在函数返回后越界使用 guard。
+- `ParallelGuard` 类型在 `parallel` feature 关闭时由 `dispatch.rs` 提供为不可构造的占位类型，相关并行入口本身整体被 `#[cfg(feature = "parallel")]` 排除，签名层不会泄露。
+
 - `par_dot()` 在类型层面接受任意 `Dimension` 输入，以便与更通用的上层张量调用路径对接；但其语义契约仍限定为一维向量内积，因此实现必须在运行时检查 `lhs.ndim() == 1`、`rhs.ndim() == 1`，并在进入并行归约前再次确认两侧逻辑长度一致。
 - 复数内积采用共轭线性定义：`result = sum(conj(lhs_i) * rhs_i)`，与 `08-simd.md` §6.6 中复数 dot kernel 的共轭线性方向完全一致。
 - `Numeric` trait 定义于 `03-element.md` §5.2，提供通用数值运算能力标记（`Element + Add + Sub + Mul + Div + Neg + conjugate`）。
-- 整数 `par_sum` / `par_dot` 在并行路径中，每个分片独立执行 checked 算术；若任一分片检测到溢出，panic 将在并行收集完成后传播。诊断仲裁必须按逻辑 chunk 索引确定：始终报告首个失败 chunk（按逻辑索引顺序）。若实现无法保证这一确定性，则整数 `sum` / `dot` 在并行模式下必须回退到串行路径。
+- 整数 `par_sum` / `par_dot` 在并行路径中，每个分片独立执行 checked 算术；若任一分片检测到溢出，panic 将在并行收集完成后传播。诊断仲裁必须按逻辑 chunk 索引确定：始终报告首个失败 chunk（按逻辑索引顺序）。**若实现无法保证这一确定性，`dispatch.rs` 必须在 `select_exec_path()` 的 `ExecPath::Parallel` 分支前提中预先排除该输入**（即由 dispatch 不选择并行，而非 parallel 内部回退；这与决策 4 “parallel 不包含串行回退” 一致）。
+- 闭包 bound 统一要求 `Send + Sync`：`F: Fn(...) -> ... + Send + Sync`、`ID: Fn() -> A + Send + Sync + Clone`。`Send` 是 rayon worker 跨线程移动闭包数据的必要前提；仅 `Sync` 不足以覆盖 closure 在某些 by-value 工作单元中的所有权迁移场景。
 
 ### 5.6 并行迭代入口
 
@@ -237,10 +259,14 @@ where
 }
 ```
 
-`ParElements` 通过实现 `rayon::iter::ParallelIterator` trait（`Item = &'a A`）提供并行遍历能力：
+`ParElements` 通过同时实现 `rayon::iter::IndexedParallelIterator`（`Item = &'a A`，由其 supertrait `ParallelIterator` 自动得到）以及对应的 `rayon::iter::plumbing::Producer` 桥接来提供并行遍历能力：
 
-- 按逻辑顺序产出共享引用；内部将 `TensorView` 按逻辑元素总数均匀分割为固定 chunk。
-- 对于 F-contiguous 布局，直接按连续内存切片分割以获得最佳缓存局部性；对于非连续布局（如转置视图），退化为线性索引区间 + 逐元素步长访问。
+- **producer 拆分（修复 Blocker B7）**：`ParElements` 内部实现 `rayon::iter::plumbing::Producer`，由 `with_producer()` 把 view + 当前逻辑区间 `[lo, hi)` 转交给 rayon scheduler；rayon 通过 `producer.split_at(mid)` 将逻辑区间均分为两个互不重叠的子 producer：
+  - F-contiguous 子区间：`split_at` 直接对 base pointer 做指针算术 `ptr.add(mid - lo)`，两个子 producer 持有不相交的连续切片。
+  - 非连续 / 转置视图：`split_at` 不切分物理切片，而是切分逻辑区间 `[lo, mid)` 与 `[mid, hi)`；每个 producer 内部维护一个轻量的 stride 状态机，按 F-order 对该子区间进行逐元素 stride 访问；rayon 仍可保证两个子 producer 不共享同一逻辑元素。
+  - **不变量**：任意 producer 拆分序列覆盖原区间正好一次且互不相交（`Disjoint Coverage`），由 `with_producer` 的契约和 `split_at` 的实现共同保证；该不变量是 `IndexedParallelIterator` 的安全前提，也是 `par_map_checked` 顺序恢复（§6.6）能成立的基础。
+- **逻辑顺序契约**：`IndexedParallelIterator` 要求 producer 按 `[0, n)` 的索引顺序覆盖输出；rayon worker 之间执行顺序未定，但每个元素仅被访问一次，且 `collect_into_vec(&mut Vec<_>)` / `collect()` 等 indexed 收集 API 会**按索引位置**写入结果，与 worker 完成顺序无关。
+- 对于 F-contiguous 布局，直接按连续内存切片分割以获得最佳缓存局部性；对于非连续布局（如转置视图），退化为逻辑区间 + 逐元素步长访问。
 - 分片粒度由 `chunk_size` 和 `max_workers` 字段控制：若 `chunk_size` 为 `Some(n)`，每个分片至多包含 `n` 个元素；若为 `None`，通过 `compute_safe_chunks(total, num_threads)` 自动计算（定义于 `src/parallel/mod.rs`，见 01-architecture.md §5.2a），其中 `num_threads` 取 `max_workers` 或 `rayon::current_num_threads()`。
 - `par_iter()` 返回使用默认策略（`chunk_size: None`, `max_workers: None`）的 `ParElements`；`ParElements::with_strategy()` 接受显式策略参数，供 `par_map_checked` 等需要精确控制分块的内部入口使用。
 
@@ -281,16 +307,21 @@ let dot = par_dot(&lhs, &rhs, strategy).unwrap();
 ### 6.2 核心执行路径
 
 ```text
-dispatch-selected parallel entry
+dispatch-selected parallel entry (receives ParallelGuard by value)
     │
     ├── receive validated tensor metadata and closure
-    ├── split logical work into fixed chunks
+    ├── split logical work into fixed chunks (via Producer::split_at)
     ├── execute rayon parallel path
-    └── propagate panic / Err without swallowing
+    │      │
+    │      └── inside each worker chunk:
+    │             optionally call into simd backend (SIMD admission per chunk)
+    │             — see 08-simd.md v2.0.0 决策 5（worker 内 SIMD）
+    └── propagate panic / Err without swallowing; drop guard at end
 ```
 
-- `parallel` 假定调用方已经完成阈值、线程环境与嵌套并行治理判断。
-- 并行函数只负责固定 chunking 与执行 `rayon` 并行迭代（语义一致性要求见 §1.2）。
+- `parallel` 假定调用方已经完成阈值、线程环境、嵌套并行治理判断（由 `dispatch.rs` 的 `select_exec_path()` 完成）。
+- 并行函数只负责固定 chunking + 执行 `rayon` 并行迭代（语义一致性要求见 §1.2）。
+- **Worker 内 SIMD（v2.0 起）**：单个 worker 拿到 chunk 后，可在 chunk 内部独立调用 `simd` 后端的 `pub(crate)` kernel（如 `dispatch_vector_binary_op`），按 `08-simd.md` §5.4 的 SIMD admission（连续性、对齐、长度阈值、操作覆盖、ISA）独立判断；不进入 SIMD 时回退到该 chunk 内的标量循环。chunk 间合并顺序仍由 `parallel` 模块的固定 chunking + 固定 merge tree 控制，跨 chunk 的语义一致性不被 SIMD 影响。
 
 ### 6.3 二元逐元素并行路径
 
@@ -303,6 +334,7 @@ pub(crate) fn par_zip_map<SL, SR, A, B, C, DL, DR, DO, F>(
     rhs: &TensorBase<SR, DR>,
     output_dim: &DO,
     strategy: &ParallelExecStrategy,
+    _guard: ParallelGuard,
     f: F,
 ) -> Result<Tensor<C, DO>, XenonError>
 where
@@ -316,38 +348,46 @@ where
     C: Element + Send,
     F: Fn(&A, &B) -> Result<C, XenonError> + Send + Sync,
 {
+    // checked_size overflow → InvalidArgument with the closed-enum kind defined
+    // in 26-error.md v3.0.0 §5.1 (InvalidArgumentKind::ShapeProductOverflow).
     let total = output_dim.checked_size().map_err(|_| XenonError::InvalidArgument {
-        operation: "par_zip_map".into(),
-        argument: "output_dim".into(),
-        expected: "element count within usize range".into(),
-        actual: "element count overflow".into(),
-        axis: None,
-        axis_len: None,
-        start: None,
-        end: None,
-        shape: Some(output_dim.slice().to_vec()),
+        operation: Cow::Borrowed("par_zip_map"),
+        kind: InvalidArgumentKind::ShapeProductOverflow {
+            shape: output_dim.slice().to_vec(),
+        },
     })?;
 
-    let num_threads = strategy.max_workers.unwrap_or_else(rayon::current_num_threads);
+    // num_threads is taken from the validated strategy; falls back to
+    // rayon::current_num_threads() only when strategy.max_workers is None.
+    // (Single source of truth — see 30-dispatch.md §5.3 for strategy validation.)
+    let num_threads = strategy
+        .max_workers
+        .unwrap_or_else(rayon::current_num_threads);
+
     // Use compute_safe_chunks from src/parallel/mod.rs (declared in 01-architecture.md §5.2a)
     // to centralize chunk-size policy and apply safety bounds.
     let chunk_size = strategy
         .chunk_size
         .unwrap_or_else(|| crate::parallel::compute_safe_chunks(total, num_threads));
 
-    // Build broadcast-compatible read-only chunk views for lhs / rhs.
-    // Execute f in parallel and collect Result<Vec<C>, XenonError> directly.
-    // Panic propagation follows Rayon defaults.
+    // Build broadcast-compatible read-only chunk views for lhs / rhs via
+    // ParElements-style IndexedParallelIterator + Producer split (see §5.6).
+    // Each worker chunk MAY independently call into the simd backend
+    // (08-simd.md v2.0.0 决策 5; admission per chunk).
+    // Use indexed collect (.collect_into_vec / collect()) to recover F-order
+    // result placement regardless of worker completion order.
+    // Panic propagation follows Rayon defaults; see §6.7 and §10.
     unimplemented!()
 }
 ```
 
 - `par_zip_map()` 是二元逐元素并行路径的统一设计入口，供 `math` 模块中的 `add` / `sub` / `mul` / `div` 广播运算消费，不直接暴露为公开用户 API。
 - `par_zip_map()` 接收的 `lhs`、`rhs` 与 `output_dim` 必须已由调用侧完成兼容性验证；广播裁决（含输出 rank/shape 计算）属于 `math` 模块职责，`parallel/` 不重复做形状推导。
-- 广播处理顺序固定为：先由 `math` 模块验证 `lhs` / `rhs` 广播兼容并产出 `output_dim`，再由 `parallel` 按外轴/块状多维 tile 分块；默认 chunk_size 通过 `compute_safe_chunks(total, num_threads)` 确定（定义于 `src/parallel/mod.rs`，见 01-architecture.md §5.2a），作为 tile 目标工作量上界，其中 `num_threads = rayon::current_num_threads()`，并按固定左折叠顺序合并 chunk 结果。每个 chunk 为两个输入分别构造与该 tile 对应、且仍与 `output_dim` 兼容的只读 sub-view。若某一侧是广播轴（stride 为 `0` 或逻辑重复维），chunk 视图保持该广播语义，不做物理复制。`DL`、`DR`、`DO` 独立建模，以表达输入与输出 rank 可能不同的广播结果。
-- 广播 chunk 映射草图：优先按 `output_dim` 的外轴边界生成块状多维 tile，使 chunk 在输出空间内保持可直接切片的矩形子域；若某些退化形状无法形成理想矩形 tile，则实现可退化为“线性索引区间 + 逐元素广播投影”的内部执行形式，而不是要求把任意线性区间整体重建成单个 broadcast sub-view。对输出维中的广播轴，输入侧固定复用同一逻辑坐标；对非广播轴，chunk 保持对应 tile 的区间跨度。实现不得为广播轴做物理展开或额外分配。
+- 广播处理顺序固定为：先由 `math` 模块验证 `lhs` / `rhs` 广播兼容并产出 `output_dim`，再由 `parallel` 按外轴/块状多维 tile 分块；默认 chunk_size 通过 `compute_safe_chunks(total, num_threads)` 确定（定义于 `src/parallel/mod.rs`，见 01-architecture.md §5.2a），作为 tile 目标工作量上界，其中 `num_threads = strategy.max_workers.unwrap_or_else(rayon::current_num_threads)`（与 §5.6 一致：`max_workers` 优先，回退到 rayon 默认）。chunk 间合并按 `IndexedParallelIterator` 的索引顺序写入输出 buffer。每个 chunk 为两个输入分别构造与该 tile 对应、且仍与 `output_dim` 兼容的只读 sub-view。若某一侧是广播轴（stride 为 `0` 或逻辑重复维），chunk 视图保持该广播语义，不做物理复制。`DL`、`DR`、`DO` 独立建模，以表达输入与输出 rank 可能不同的广播结果。
+- 广播 chunk 映射草图：优先按 `output_dim` 的外轴边界生成块状多维 tile，使 chunk 在输出空间内保持可直接切片的矩形子域；若某些退化形状无法形成理想矩形 tile，则实现可退化为“逻辑区间 + 逐元素广播投影”的内部执行形式，而不是要求把任意线性区间整体重建成单个 broadcast sub-view。对输出维中的广播轴，输入侧固定复用同一逻辑坐标；对非广播轴，chunk 保持对应 tile 的区间跨度。实现不得为广播轴做物理展开或额外分配。
 - `par_zip_map` 仅包含并行执行逻辑；若调用发生，表示 `dispatch.rs` 已确认当前输入适合走并行路径。
 - `par_zip_map()` 作为内部并行入口，假定广播兼容性已由调用方验证，不再额外定义单独的 checked 变体，也不依赖 `BroadcastError`。此为内部前置条件。违反时视为内部 bug，可触发 debug assert，但不得破坏内存安全或对外错误模型。release 模式下行为保持语义定义，不引入未指定行为。panic 与 `Err` 传播语义参见 §6.7 与 §10。
+- **唯一仍由本函数返回的可恢复错误**是 `output_dim.checked_size()` 的整型溢出，归类为 `XenonError::InvalidArgument { operation: "par_zip_map", kind: InvalidArgumentKind::ShapeProductOverflow { shape } }`（封闭枚举字段，参见 26-error.md v3.0.0 §5.1）。
 
 ### 6.4 轴向归约并行方案
 
@@ -365,7 +405,8 @@ where
 - `par_map`、`par_zip_map`、`par_sum` 接收的输入都已由上层语义模块和 `dispatch.rs` 验证完毕；`par_dot` 在进入并行归约前仍需自行做运行时校验，要求 `lhs.ndim() == 1`、`rhs.ndim() == 1` 且两侧逻辑长度一致。
 - 对归约和内积，若调用方选择并行路径，则 `parallel/` 必须提供固定 chunking 与固定 merge tree，保证同平台、同配置、同路径下结果确定；整数 `sum` / `dot` 的失败诊断还必须按逻辑 chunk 索引顺序仲裁，始终选择首个失败 chunk。
 - 并行归约采用固定分块策略：chunk 大小由 `compute_safe_chunks(n, num_workers)` 确定（定义于 `src/parallel/mod.rs`，见 01-architecture.md §5.2a），worker 按固定索引范围分配，merge 按 worker 索引顺序合并。
-- 若执行对象为整数 `sum` / `dot`，每个 worker 必须在本分片内执行 `checked_add` / `checked_mul` + `checked_add`；任一 worker 发现溢出时必须传播 panic，不得转写为 `XenonError`。失败诊断固定按逻辑 chunk 索引顺序仲裁；若该实现前提不成立，则必须改走串行路径。
+- 若执行对象为整数 `sum` / `dot`，每个 worker 必须在本分片内执行 `checked_add` / `checked_mul` + `checked_add`；任一 worker 发现溢出时必须传播 panic，不得转写为 `XenonError`。失败诊断固定按逻辑 chunk 索引顺序仲裁。
+- **回退归属**：若某实现选择不能保证 “首个失败 chunk 仲裁” 这一不变量，则该实现版本的 `dispatch.rs` 必须在 `select_exec_path()` 阶段就拒绝把整数 `sum` / `dot` 路由到 `Parallel`（例如：将整数归约的并行阈值置为 `usize::MAX`）。这条职责落在 `dispatch.rs` 而**不是** `parallel`，与决策 4（“parallel 不包含串行回退”）保持一致。`parallel` 一旦被调用，就永远不会自行切换到串行路径。
 
 ### 6.6 Checked 映射与错误传播
 
@@ -373,6 +414,7 @@ where
 pub(crate) fn par_map_checked<A, B, S, D, F>(
     tensor: &TensorBase<S, D>,
     strategy: &ParallelExecStrategy,
+    _guard: ParallelGuard,
     f: F,
 ) -> Result<Tensor<B, D>, XenonError>
 where
@@ -382,11 +424,39 @@ where
     B: Element + Send,
     F: Fn(&A) -> Result<B, XenonError> + Sync + Send,
 {
+    // ParElements implements IndexedParallelIterator (see §5.6), so .collect()
+    // and .collect_into_vec() preserve F-order index→position mapping
+    // regardless of worker completion order.
+    //
+    // Two-phase pattern preserves both ordering and short-circuit-on-error:
+    //   1) reduce-with: detect first error (in chunk-index order) and bail.
+    //   2) on success, indexed collect into a pre-sized Vec<B> guarantees
+    //      output[i] corresponds to logical input element i.
     let iter = ParElements::with_strategy(tensor.view(), strategy);
-    let output: Result<Vec<B>, XenonError> = iter.map(|x| f(x)).collect();
-    Ok(unsafe { Tensor::from_raw_vec_unchecked(output?, tensor.raw_dim()) })
+    let total = iter.len(); // IndexedParallelIterator → ExactSize semantics
+    let mut out: Vec<B> = Vec::with_capacity(total);
+    // Sketch: collect_into_vec writes by index; if any element returns Err,
+    // we instead surface the first Err in chunk-index order via a separate
+    // try_reduce_with pass that does NOT rely on completion order.
+    let result: Result<(), XenonError> = iter
+        .clone() // ParElements is cheap to clone (metadata only)
+        .try_for_each(|item| { let _ = f(item)?; Ok(()) });
+    result?;
+    iter.map(|item| f(item).expect("error already surfaced by try_for_each pass"))
+        .collect_into_vec(&mut out);
+
+    // Safety: out.len() == total == checked_size(tensor.raw_dim()) (ExactSize),
+    // and `out` is laid out in F-order index sequence by collect_into_vec on
+    // an IndexedParallelIterator. Element ordering matches the serial baseline.
+    Ok(unsafe { Tensor::from_raw_vec_unchecked(out, tensor.raw_dim()) })
 }
 ```
+
+**顺序保证（修复 Blocker B8）**：`ParElements` 实现 `IndexedParallelIterator`（§5.6 producer 拆分契约），其 `collect()` / `collect_into_vec()` 按 producer 索引位置（即 F-order 逻辑顺序）写入输出 buffer，而不是按 worker 完成顺序追加。因此：
+
+- 即便 worker 之间执行顺序不确定，`out[i]` 必然对应 `tensor` 的第 `i` 个 F-order 逻辑元素，`Tensor::from_raw_vec_unchecked(out, raw_dim)` 的"长度一致 + 顺序一致"前提两条都满足。
+- 错误优先性：若闭包返回 `Err`，单次 `IndexedParallelIterator::collect()` 在 rayon 当前实现中不保证返回"最早索引"的 `Err`。本设计采用两遍模式：第一遍 `try_for_each` 用作错误探测，遇到 `Err` 立即停止；只有所有 chunk 都成功时，第二遍 `collect_into_vec` 按索引位置写入最终结果。第一遍内部的 `Err` 选择仍由 rayon 决定，但调用方对外语义只承诺"至少传播一个 `Err`"（与 §6.7、§10 一致），不要求"第一个发生的 `Err`"。整数 `sum`/`dot` 的"首个失败 chunk 仲裁"是另一种更强约束，只在 §6.5 中适用，不向 `par_map_checked` 推广。
+- panic 中途 drop：`out` 通过 `Vec::with_capacity(total)` 预分配但**未先初始化**；`collect_into_vec` 内部按 `Vec::resize` + indexed writeback 完成填充。若闭包 panic，`Vec` 的 drop 会安全释放已写入元素的存储。`B: Element` 即 `Copy + Sized`，无 drop side-effects，进一步简化论证。
 
 `par_map_checked()` 不再自行决定是否并行（路径选择见 §6.1）；`strategy` 参数控制并行分块策略，与其他并行入口保持一致。
 
