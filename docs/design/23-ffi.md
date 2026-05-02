@@ -37,6 +37,7 @@
 | 安全边界清晰 | 所有 unsafe 函数有详尽 Safety 文档          |
 | BLAS 友好    | 提供完整的 BLAS 兼容性检查和布局查询        |
 | 最小约束     | FFI 方法避免重复安全检查（调用方已 unsafe） |
+| 错误结构化   | FFI 错误一律使用 `26-error.md §5.1` 封闭枚举（`FfiErrorCategory` / `FfiBackend` / `InvalidLayoutReason` / `StorageKindTag`）；禁止自由文本 `precondition`/`actual`/`reason` |
 
 ---
 
@@ -105,7 +106,7 @@ src/ffi/
 | `element`   | `Element`, `ElementType`（定义于 `element` 模块，`ffi` re-export）, `ElementType::of::<A>()`            |
 | `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, owned allocator metadata（供 `OwnedRawParts<A, D>` 导出/重建） |
 | `layout`    | `is_f_contiguous()`（定义于 `06-layout.md` §5.7）、`has_zero_stride()`（定义于 `06-layout.md` §5.1）；`TensorBase` 方法参见 `07-tensor.md` §5.3 |
-| `error`     | `XenonError`（含 `Ffi`、`DimensionMismatch`、`IndexOutOfBounds`、`InvalidLayout` 等变体）、`FfiErrorCategory`（定义于 `26-error.md` §5.1） |
+| `error`     | `XenonError`（含 `Ffi`、`DimensionMismatch`、`IndexOutOfBounds`、`InvalidLayout` 等变体）、`FfiErrorCategory`（封闭枚举，定义于 `26-error.md` §5.1，含 `NullPointer`/`AlignmentMismatch`/`InvalidRank`/`BlasIncompatibleLayout`/`IntegerOverflow`/`AbiMismatch`/`OverlapRejected`/`ForeignAllocatorMismatch` 八个结构化子变体）、`FfiBackend`（封闭枚举：`RawParts`/`Blas`，定义于 `26-error.md` §5.1）、`InvalidLayoutReason`（封闭枚举，定义于 `26-error.md` §5.1）、`StorageKindTag`（封闭枚举：`Owned`/`View`/`ViewMut`/`Arc`，定义于 `26-error.md` §5.1） |
 
 ### 4.3 依赖合法性
 
@@ -137,12 +138,27 @@ src/ffi/
 ### 5.1 辅助类型
 
 ```rust,ignore
-use crate::error::FfiErrorCategory;
+use crate::error::{FfiErrorCategory, FfiBackend};
 
 /// FFI-specific recoverable errors are constructed directly as
-/// `XenonError::Ffi { operation, category, backend, precondition, actual }`.
-/// `FfiErrorCategory` identifies the failure class, while the remaining fields
-/// carry structured diagnostics required by `requirements specification §27`.
+/// `XenonError::Ffi { operation, category, backend, cause }`. See
+/// `26-error.md §5.1` for the authoritative field list.
+///
+/// - `operation: Cow<'static, str>` — operation name (e.g.
+///   `Cow::Borrowed("ffi::blas_info")`).
+/// - `category: FfiErrorCategory` — closed enum carrying the failure
+///   class together with its **structured** payload (e.g.
+///   `BlasIncompatibleLayout { shape, strides }`,
+///   `IntegerOverflow { value, target_width_bits }`,
+///   `InvalidRank { expected, actual }`). No free-text payload.
+/// - `backend: FfiBackend` — closed enum: `RawParts` for generic raw-parts
+///   FFI, `Blas` for BLAS-compatible export.
+/// - `cause: Option<Box<XenonError>>` — optional source-chain pointer
+///   per `26-error.md §5.2`.
+///
+/// FFI errors must NOT use free-text `precondition` / `actual` fields;
+/// the structured payload inside `FfiErrorCategory` already carries the
+/// diagnostic context required by `requirements specification §27`.
 ```
 
 ### 5.2 原始指针 API
@@ -600,7 +616,7 @@ where
 ### 5.11 blas_info 和 BlasInfo 结构体
 
 ````rust,ignore
-use crate::error::FfiErrorCategory;
+use crate::error::{FfiErrorCategory, FfiBackend};
 
 /// BLAS/LAPACK matrix metadata.
 ///
@@ -620,16 +636,23 @@ pub struct BlasInfo<A> {
 
 impl<A> BlasInfo<A> {
     /// Convert a raw BLAS/LAPACK size parameter to the backend integer type.
+    ///
+    /// `target_width_bits` reports the bit width of `I` (e.g. `32` for `i32`,
+    /// `64` for `i64`) so that the structured `FfiErrorCategory::IntegerOverflow`
+    /// payload accurately identifies which backend integer type was unable
+    /// to represent `value`.
     pub fn as_blas_int<I>(value: usize) -> Result<I, XenonError>
     where
         I: TryFrom<usize>,
     {
         value.try_into().map_err(|_| XenonError::Ffi {
-            operation: "ffi::blas_info",
-            category: FfiErrorCategory::IntegerOverflow,
-            backend: "blas/lapack",
-            precondition: "BLAS/LAPACK integer parameter must fit target backend type",
-            actual: alloc::format!("value={}", value).into(),
+            operation: Cow::Borrowed("ffi::blas_info::as_blas_int"),
+            category: FfiErrorCategory::IntegerOverflow {
+                value,
+                target_width_bits: (core::mem::size_of::<I>() * 8) as u8,
+            },
+            backend: FfiBackend::Blas,
+            cause: None,
         })
     }
 }
@@ -673,20 +696,24 @@ where
     pub fn blas_info(&self) -> Result<BlasInfo<A>, XenonError> {
         if self.ndim() != 2 {
             return Err(XenonError::Ffi {
-                operation: "ffi::blas_info",
-                category: FfiErrorCategory::InvalidRank,
-                backend: "blas",
-                precondition: "tensor must be 2D",
-                actual: alloc::format!("ndim={}", self.ndim()).into(),
+                operation: Cow::Borrowed("ffi::blas_info"),
+                category: FfiErrorCategory::InvalidRank {
+                    expected: 2,
+                    actual: self.ndim(),
+                },
+                backend: FfiBackend::Blas,
+                cause: None,
             });
         }
         if !self.is_blas_layout_compatible() {
             return Err(XenonError::Ffi {
-                operation: "ffi::blas_info",
-                category: FfiErrorCategory::BlasIncompatibleLayout,
-                backend: "blas",
-                precondition: "F-contiguous 2D tensor without zero strides",
-                actual: alloc::format!("shape={:?}, strides={:?}", self.shape(), self.strides()).into(),
+                operation: Cow::Borrowed("ffi::blas_info"),
+                category: FfiErrorCategory::BlasIncompatibleLayout {
+                    shape: self.shape().to_vec(),
+                    strides: self.strides().to_vec(),
+                },
+                backend: FfiBackend::Blas,
+                cause: None,
             });
         }
 
@@ -713,7 +740,7 @@ where
 ### 5.12 LDA 查询
 
 ````rust,ignore
-use crate::error::FfiErrorCategory;
+use crate::error::{FfiErrorCategory, FfiBackend};
 
 impl<S, D, A> TensorBase<S, D>
 where
@@ -745,20 +772,24 @@ where
     pub fn lda(&self) -> Result<usize, XenonError> {
         if self.ndim() != 2 {
             return Err(XenonError::Ffi {
-                operation: "ffi::lda",
-                category: FfiErrorCategory::InvalidRank,
-                backend: "blas",
-                precondition: "tensor must be 2D",
-                actual: alloc::format!("ndim={}", self.ndim()).into(),
+                operation: Cow::Borrowed("ffi::lda"),
+                category: FfiErrorCategory::InvalidRank {
+                    expected: 2,
+                    actual: self.ndim(),
+                },
+                backend: FfiBackend::Blas,
+                cause: None,
             });
         }
         if !self.is_blas_layout_compatible() {
             return Err(XenonError::Ffi {
-                operation: "ffi::lda",
-                category: FfiErrorCategory::BlasIncompatibleLayout,
-                backend: "blas",
-                precondition: "F-contiguous 2D tensor without zero strides",
-                actual: alloc::format!("shape={:?}, strides={:?}", self.shape(), self.strides()).into(),
+                operation: Cow::Borrowed("ffi::lda"),
+                category: FfiErrorCategory::BlasIncompatibleLayout {
+                    shape: self.shape().to_vec(),
+                    strides: self.strides().to_vec(),
+                },
+                backend: FfiBackend::Blas,
+                cause: None,
             });
         }
         let strides = self.strides();
@@ -796,40 +827,44 @@ where
     pub fn try_offset_of(&self, index: &[usize]) -> Result<usize, XenonError> {
         if index.len() != self.ndim() {
             return Err(XenonError::DimensionMismatch {
-                operation: "ffi::try_offset_of".into(),
+                operation: Cow::Borrowed("ffi::try_offset_of"),
                 expected: self.ndim(),
                 actual: index.len(),
             });
         }
         let strides = self.strides();
         let shape = self.shape();
+        // Build storage_kind tag once: tensor's StorageKind already maps
+        // 1:1 to StorageKindTag (Owned/View/ViewMut/Arc), and is needed
+        // by every InvalidLayout branch below.
+        let storage_kind: StorageKindTag = self.storage_kind().into();
         let mut offset: usize = 0;
         for i in 0..self.ndim() {
             if index[i] >= shape[i] {
                 return Err(XenonError::IndexOutOfBounds {
-                    operation: "ffi::try_offset_of".into(),
+                    operation: Cow::Borrowed("ffi::try_offset_of"),
                     attempted_index: index.to_vec(),
                     axis: i,
                     shape: shape.to_vec(),
                 });
             }
             let term = strides[i].checked_mul(index[i]).ok_or_else(|| XenonError::InvalidLayout {
-                operation: "ffi::try_offset_of".into(),
-                storage_kind: self.storage_kind().into(),
+                operation: Cow::Borrowed("ffi::try_offset_of"),
+                storage_kind,
                 shape: shape.to_vec(),
                 strides: strides.to_vec(),
                 offset: self.offset(),
                 storage_len: self.storage_len(),
-                reason: "index-to-offset multiplication overflow".into(),
+                reason: InvalidLayoutReason::AccessRangeExceedsStorage,
             })?;
             offset = offset.checked_add(term).ok_or_else(|| XenonError::InvalidLayout {
-                operation: "ffi::try_offset_of".into(),
-                storage_kind: self.storage_kind().into(),
+                operation: Cow::Borrowed("ffi::try_offset_of"),
+                storage_kind,
                 shape: shape.to_vec(),
                 strides: strides.to_vec(),
                 offset: self.offset(),
                 storage_len: self.storage_len(),
-                reason: "index-to-offset accumulation overflow".into(),
+                reason: InvalidLayoutReason::AccessRangeExceedsStorage,
             })?;
         }
         Ok(offset)
@@ -901,22 +936,25 @@ unsafe {
 `from_raw_parts()` / `from_raw_parts_mut()` 内部调用 `validate_access_range()` 验证元数据合法性。当前版本 stride 全为非负 `usize`，因此 `logical_min` 恒等于 `offset`。算法与 `07-tensor.md` §6.2 保持一致：
 
 ```
-validate_access_range(shape, strides, offset, storage_len):
+// `caller_storage_kind: StorageKindTag` is supplied by the caller (View /
+// ViewMut / Owned). All `reason` values are closed-enum variants of
+// `InvalidLayoutReason` per `26-error.md §5.1`; no free-text reason is used.
+validate_access_range(shape, strides, offset, storage_len, caller_storage_kind):
     if shape.checked_size() overflows:
         return Err(XenonError::InvalidLayout {
-            operation: "validate_access_range",
-            storage_kind: "raw_parts",
+            operation: Cow::Borrowed("validate_access_range"),
+            storage_kind: caller_storage_kind,
             shape, strides, offset, storage_len,
-            reason: "element count overflow",
+            reason: InvalidLayoutReason::ShapeProductOverflow,
         })
 
     if shape.checked_size() == Ok(0):
         if offset > storage_len:
             return Err(XenonError::InvalidLayout {
-                operation: "validate_access_range",
-                storage_kind: "raw_parts",
+                operation: Cow::Borrowed("validate_access_range"),
+                storage_kind: caller_storage_kind,
                 shape, strides, offset, storage_len,
-                reason: "empty tensor requires offset <= storage_len",
+                reason: InvalidLayoutReason::AccessRangeExceedsStorage,
             })
         return Ok(())
 
@@ -928,25 +966,25 @@ validate_access_range(shape, strides, offset, storage_len):
 
         span = (shape[axis] - 1).checked_mul(strides[axis])
             .ok_or_else(|| XenonError::InvalidLayout {
-                operation: "validate_access_range",
-                storage_kind: "raw_parts",
+                operation: Cow::Borrowed("validate_access_range"),
+                storage_kind: caller_storage_kind,
                 shape, strides, offset, storage_len,
-                reason: "stride span overflow",
+                reason: InvalidLayoutReason::AccessRangeExceedsStorage,
             })?
         max_offset = max_offset.checked_add(span)
             .ok_or_else(|| XenonError::InvalidLayout {
-                operation: "validate_access_range",
-                storage_kind: "raw_parts",
+                operation: Cow::Borrowed("validate_access_range"),
+                storage_kind: caller_storage_kind,
                 shape, strides, offset, storage_len,
-                reason: "logical access range overflow",
+                reason: InvalidLayoutReason::AccessRangeExceedsStorage,
             })?
 
     if max_offset >= storage_len:
         return Err(XenonError::InvalidLayout {
-            operation: "validate_access_range",
-            storage_kind: "raw_parts",
+            operation: Cow::Borrowed("validate_access_range"),
+            storage_kind: caller_storage_kind,
             shape, strides, offset, storage_len,
-            reason: "logical access range exceeds backing storage",
+            reason: InvalidLayoutReason::AccessRangeExceedsStorage,
         })
 
     return Ok(())
@@ -1138,7 +1176,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 
 | 主题              | 内容                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Recoverable error | `blas_info()` / `lda()` 在 rank 或布局非法时返回 `XenonError::Ffi`；BLAS 整数宽度转换失败由 `BlasInfo::as_blas_int()` 返回同一结构化公开变体；`from_raw_parts_owned()` 在 owned 元数据非法时返回 `XenonError::InvalidLayout`；`try_offset_of()` / `try_ptr_at()` 在 rank / bounds / checked arithmetic 非法时返回 `XenonError`；`from_raw_parts_mut()` 在可写布局自别名时返回 `XenonError::InvalidLayout`。 |
+| Recoverable error | `blas_info()` / `lda()` 在 rank 或布局非法时返回 `XenonError::Ffi { operation, category: FfiErrorCategory::InvalidRank{expected,actual} \| BlasIncompatibleLayout{shape,strides}, backend: FfiBackend::Blas, cause: None }`（封闭枚举，字段对齐 `26-error.md §5.1`，**不**使用自由文本 `precondition`/`actual`）；BLAS 整数宽度转换失败由 `BlasInfo::as_blas_int()` 返回 `FfiErrorCategory::IntegerOverflow{value, target_width_bits}`；`from_raw_parts_owned()` 在 owned 元数据非法时返回 `XenonError::InvalidLayout { reason: InvalidLayoutReason::*, storage_kind: StorageKindTag::Owned, .. }`；`try_offset_of()` / `try_ptr_at()` 在 rank 失配时返回 `XenonError::DimensionMismatch{operation, expected, actual}`，在 bounds 越界时返回 `XenonError::IndexOutOfBounds{operation, attempted_index, axis, shape}`，在 checked arithmetic 溢出时返回 `XenonError::InvalidLayout { reason: InvalidLayoutReason::AccessRangeExceedsStorage, storage_kind: 调用方实际 StorageKindTag, .. }`；`from_raw_parts_mut()` 在可写布局自别名时返回 `XenonError::InvalidLayout { reason: InvalidLayoutReason::AmbiguousOverlap, storage_kind: StorageKindTag::ViewMut, .. }`。所有错误变体禁止使用 `Cow<str>` 自由文本作为诊断 payload；结构化负载由 `26-error.md §5.1` 的封闭子枚举承担。 |
 | Panic             | 不提供公开 panic-sugar 索引转换 API；`from_raw_parts*()` 中那些无法直接验证的不安全前提若被违反，仍属于 unsafe UB，而非 recoverable error。                                                                                                                                                                                                                                                                              |
 | 路径一致性        | 指针访问、BLAS 查询与 raw-parts roundtrip 必须共享同一 shape / strides / offset 解释；无 SIMD / 并行分支。                                                                                                                                                                                                                                                                                                               |
 | 容差边界          | 不适用。                                                                                                                                                                                                                                                                                                                                                                                                                 |
@@ -1239,6 +1277,31 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | 1.2.4 | 2026-04-16 |
 | 1.2.5 | 2026-04-16 |
 | 1.2.6 | 2026-04-16 |
+| 2.0.0 | 2026-05-02 |
+
+### v2.0.0 (2026-05-02) — 错误字段对齐 26-error v3.0.0
+
+> 本版本与 26-error v3.0.0 协同更新。`XenonError::Ffi` 变体的 4 个字段 (`operation`, `category`, `backend`, `cause`) 与 v3.0.0 保持一致，移除了原 v1.x 文本中错误使用的 `precondition` / `actual` 自由文本字段，全部改用 `FfiErrorCategory` 子变体的结构化负载。这是文档级的破坏性更新（与原文档示例不兼容），但与正式 `error` 模块定义对齐后即恢复一致。
+
+**Blocker 修复**：
+
+- §5.1 辅助类型重写：`XenonError::Ffi` 字段从错误的 `{operation, category, backend, precondition, actual}` 改为正确的 `{operation, category, backend, cause}`；明示 `category: FfiErrorCategory` 是封闭枚举的结构化负载，无 `cause: Option<Box<XenonError>>`。
+- §5.11 `BlasInfo::as_blas_int` 重写：`FfiErrorCategory::IntegerOverflow` 从无负载的占位符改为 `IntegerOverflow { value, target_width_bits }` 结构化负载，`target_width_bits` 由 `core::mem::size_of::<I>() * 8` 计算；`backend: "blas/lapack"` 改为 `FfiBackend::Blas`；移除 `precondition` / `actual` 字段；`operation` 改为 `Cow::Borrowed("ffi::blas_info::as_blas_int")`。
+- §5.11 `blas_info()` 重写：`FfiErrorCategory::InvalidRank` 改为 `InvalidRank { expected: 2, actual: ndim }`；`FfiErrorCategory::BlasIncompatibleLayout` 改为 `BlasIncompatibleLayout { shape, strides }`；`backend: "blas"` 改为 `FfiBackend::Blas`；移除 `precondition` / `actual`。
+- §5.12 `lda()` 重写：同 `blas_info()` 的修复。
+- §5.13 `try_offset_of` 重写：`storage_kind` 一次性提取为 `StorageKindTag`（避免在每个 `ok_or_else` 分支重复调用 `.into()`，同时移除 self 借用问题）；`reason` 从自由文本 `"index-to-offset multiplication overflow"` / `"index-to-offset accumulation overflow"` 改为封闭枚举 `InvalidLayoutReason::AccessRangeExceedsStorage`；`operation` 改为 `Cow::Borrowed("ffi::try_offset_of")`。
+- §6.2 `validate_access_range` 伪代码重写：所有 `reason: "..."` 自由文本改为 `InvalidLayoutReason::ShapeProductOverflow` / `AccessRangeExceedsStorage`；`storage_kind: "raw_parts"` 改为由调用方传入的 `caller_storage_kind: StorageKindTag`；`operation` 字段改 `Cow::Borrowed(..)`。
+
+**High 修复**：
+
+- §1.2 设计原则新增"错误结构化"行：FFI 错误一律使用封闭枚举，禁止自由文本 payload。
+- §4.2 `error` 行展开：完整列出 `FfiErrorCategory` 八个子变体名 + `FfiBackend` 两个变体名 + `InvalidLayoutReason` + `StorageKindTag`，让后续维护者无需跳转 26-error 即可定位字段集合。
+- §10 错误处理表 Recoverable error 重写：完整列出每个错误变体的字段构造模板，明示禁止 `Cow<str>` 自由文本 payload。
+
+**协同与一致性更新**：
+
+- 与 `07-tensor.md` v2.0.0 §6.2 / §5.7 的 `InvalidLayoutReason` / `StorageKindTag` 字段命名对齐。
+- 与 `26-error.md` v3.0.0 §5.1 的 `FfiErrorCategory` 八子变体（`NullPointer` / `AlignmentMismatch` / `InvalidRank` / `BlasIncompatibleLayout` / `IntegerOverflow` / `AbiMismatch` / `OverlapRejected` / `ForeignAllocatorMismatch`）和 `FfiBackend` 两子变体（`RawParts` / `Blas`）保持双向引用一致。
 
 ---
 

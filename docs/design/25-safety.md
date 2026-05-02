@@ -15,6 +15,8 @@
 
 **范围注记：** workspace 的线程安全属性参见 `24-workspace.md`；本文不将 workspace 纳入 `需求说明书 §10` 的存储模式线程安全矩阵。
 
+**协同基线：** 本文档示例与论证以下游已修文档为准——05-storage v2.0.0、06-layout v1.3、07-tensor v2.0.0、17-indexing v2.0.0（公开安全索引收敛为 `try_at`/`try_at_mut`，不实现 `std::ops::Index`）、19-overload v2.0.0、24-workspace v2.0.0。任何 §5 / §9 引用上述文档的章节号时，以这些版本为准。
+
 ### 1.1 职责边界
 
 | 职责           | 包含                                   | 不包含                       |
@@ -380,20 +382,26 @@ fn cannot_share_view_mut() {
 }
 
 // Good - ArcRepr cross-thread sharing
-fn share_arc_tensor() {
-    let arc = ArcTensor1::from_shape_vec(Ix1(3), vec![1.0, 2.0, 3.0])
-        .expect("shape and data length must match");
+fn share_arc_tensor() -> Result<(), XenonError> {
+    let arc = ArcTensor1::from_shape_vec(Ix1(3), vec![1.0, 2.0, 3.0])?;
     let arc_clone = arc.clone();  // strong_count = 2
+
+    // Read fixed offsets up-front. Xenon does not implement `std::ops::Index`;
+    // use `try_at` (17-indexing v2.0.0 §5.2) for fallible structured indexing.
+    let parent_v1 = *arc.try_at(Ix1(1))?;
+    assert_eq!(parent_v1, 2.0);
 
     std::thread::scope(|scope| {
         scope.spawn(move || {
-            // arc_clone is safely read in this thread
-            assert_eq!(arc_clone[0], 1.0);
+            // The closure captures `arc_clone` by move; failures from
+            // try_at are unwrapped here only because indices are constants.
+            let v0 = *arc_clone.try_at(Ix1(0))
+                .expect("constant index 0 is in bounds for shape [3]");
+            assert_eq!(v0, 1.0);
         });
-
-        // arc is still safe in the parent thread during the scope
-        assert_eq!(arc[1], 2.0);
     });
+
+    Ok(())
 }
 
 // Good - parallel iteration element constraint
