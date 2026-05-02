@@ -696,7 +696,7 @@ Consistency guarantee strategy
 
 **FMA 使用约束：** 元素级 `mul()` / `add()` / `dot()` 主循环中的乘法和加法必须按标量表达式顺序分开执行，不得在这些公开语义上隐式启用 FMA，以保持逐元素路径与标量路径的逐位一致。对于 `dot()` 而言，其主循环中的 per-element `mul` + lane-local `accumulate` 属于元素级步骤，同样禁用 FMA。仅在 `sum()` / `dot()` 的内部 **horizontal reduction merge** 阶段（已显式声明“允许末位 ULP 差异”），才能在特定 ISA 上使用 FMA 作为局部优化；启用时必须满足本节容差约束。
 
-**ISA 检测补充：** `dispatch.rs` 与 `pulp::Arch` 的主分支检测顺序按 `AVX-512 -> AVX2 -> SSE4.1 -> NEON` 组织。FMA 可用性若需要利用，必须作为独立能力位单独检测，不得把 `AVX2` 与 `FMA` 隐式绑定成同一准入条件。
+**ISA 检测补充：** `pulp::Arch` 的主分支检测顺序按 `AVX-512 -> AVX2 -> SSE4.1 -> NEON` 组织（由 pulp 内部实现，dispatch.rs 不参与 ISA 检测）。FMA 可用性若需要利用，必须作为独立能力位单独检测，不得把 `AVX2` 与 `FMA` 隐式绑定成同一准入条件。
 
 ---
 

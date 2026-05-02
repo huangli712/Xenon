@@ -980,22 +980,30 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 | 理由     | 性能后端是横切关注点，独立模块便于统一 feature gate 与共享分发逻辑；`dispatch.rs` 集中并行阈值判断与嵌套并行防护，避免各语义模块重复实现并行分支树，而 SIMD 细节保持在 `simd/` 内部 |
 | 替代方案 | 将后端内嵌到各语义模块 — 放弃，会让性能实现与语义 API 耦合，扩大重复实现；使用独立 kernel 模块承载串行基线 — 改为 `dispatch.rs` + 各模块自含串行实现，减少冗余 |
 
-### 决策 6：dispatch.rs 统一执行路径裁决
+### 决策 6：dispatch.rs 三路 ExecPath 裁决模型
 
 | 属性     | 值                                                                                                   |
 | -------- | ---------------------------------------------------------------------------------------------------- |
-| 决策     | 新增 `dispatch.rs` 内部 helper，统一承载执行路径裁决（`ExecPath`）、嵌套并行防护（`ParallelGuard`）和并行阈值判断 |
-| 理由     | 判断归 dispatch，执行归各模块；避免 `parallel/` 携带串行回退，也避免各语义模块重复实现并行阈值分支树；SIMD 选择保持在 `simd/` 模块内部 |
-| 替代方案 | 各语义模块各自实现判断逻辑 — 放弃，会导致阈值行为不一致和代码重复 |
+| 决策     | dispatch.rs 通过 `ExecPath` 枚举的三路裁决统一指示执行路径：`Serial` / `Simd` / `Parallel` |
+| 理由     | 集中式三路裁决避免消费者模块（math/matrix/reduction）各自重复实现路径选择树；同时保持 simd/ 后端对其内部细化（ISA、lane 宽度、对齐细节）的最终准入权 |
+| 替代方案 | 二元 ExecPath（Serial/Parallel）+ SIMD 在 Serial 分支内部隐式裁决 — 放弃，导致消费者代码中需要嵌套裁决，且 dispatch 无法在 Simd 与 Serial 之间做相同精度的阈值差异化 |
 
-**二级裁决模型（重要）：** 路径选择被严格分为两级，互不重叠：
+#### 三路裁决模型
 
-| 级别 | 责任方 | 裁决内容 | 依据 |
-| ---- | ------ | -------- | ---- |
-| 一级 | `dispatch.rs`（顶层） | **串行 vs 并行** | 元素数量与并行阈值、嵌套并行防护、`ParallelContext` 决议（参见 `09-parallel.md`） |
-| 二级 | `simd/` 后端内部 | **串行/并行内部是否走 SIMD** | 连续性、对齐、目标 ISA 准入（参见 `08-simd.md §1.2 / §5.4`） |
+| 路径 | 触发条件 | 后端 |
+|------|----------|------|
+| `ExecPath::Serial` | 默认回退；len 低于所有阈值，或 feature 禁用，或 ParallelGuard 检测到嵌套 | 消费者模块自身的串行实现 |
+| `ExecPath::Simd` | feature = "simd" 启用 + len ≥ simd_threshold + 连续 + 对齐前提满足 + ParallelGuard 不允许并行（嵌套或 len < parallel_threshold） | `simd/` 后端（仍保有内部最终准入权；若内部前提失败仍可回退标量） |
+| `ExecPath::Parallel` | feature = "parallel" 启用 + len ≥ parallel_threshold + ParallelGuard::enter() 成功 | `parallel/` 后端；并行 worker 内部执行标量代码（不使用 SIMD） |
 
-`dispatch.rs` **不参与 SIMD 选择**；`simd/` **不参与串行/并行选择**。两层裁决独立完成，避免责任错位。
+#### 职责边界
+
+- **dispatch.rs**: 仅做 ExecPath 三路裁决；不参与 ISA 检测、不参与 SIMD lane 选择、不参与对齐细节判断
+- **simd/**: 在被 dispatch 选中（ExecPath::Simd 返回）后，内部决定是否最终启用 SIMD（ISA 可用性、lane 宽度、对齐 fast path）；若内部前提失败可静默回退标量
+- **parallel/**: 在被 dispatch 选中（ExecPath::Parallel 返回）后执行；worker 内部走标量路径
+- **pulp::Arch**: ISA 检测（AVX-512 -> AVX2 -> SSE4.1 -> NEON）的唯一权威，仅在 simd/ 内部使用
+
+详见 30-dispatch.md（dispatch 模块设计文档）和 08-simd.md（SIMD 后端设计文档）。
 
 ### 决策 7：错误语义集中裁决
 
