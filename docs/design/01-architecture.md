@@ -46,7 +46,18 @@ Xenon 是一个纯 Rust 实现的 N 维数组（张量）库，定位为科学�
 | 内存对齐   | 默认建议 64 字节                       |
 | 外部依赖   | 仅 rayon（可选并行）+ pulp（可选 SIMD）|
 
-### 1.5 全局布局不变量
+### 1.5 协同基线
+
+本文档作为架构总览，以下游设计文档的已修版本为协同基线；若本文档提及类型、trait、字段名或执行边界，须与这些文档保持一致：
+
+- `26-error.md` v3.0.0：`XenonError` 结构化变体、`ElementType` 类型转换字段、`FfiBackend` 与 workspace/FFI 错误分类。
+- `02-dimension.md`、`03-element.md`、`04-complex.md` v2.0.0：维度、元素封闭实现集与复数显式构造/运算边界。
+- `05-storage.md` v2.0.0、`06-layout.md` v1.3、`07-tensor.md` v2.0.0：存储模式、F-order 布局状态与张量核心类型。
+- `08-simd.md` v2.0.0、`09-parallel.md` v2.0.0、`30-dispatch.md` v1.1.0：执行路径、`ParallelGuard`、worker 内 SIMD 与阈值语义。
+- `11-math.md`、`12-matrix.md`、`13-reduction.md`、`14-set.md`：数学、矩阵、归约与集合操作命名及 F-order 顺序契约。
+- `17-indexing.md`、`18-construction.md`、`19-overload.md`、`21-type.md`、`23-ffi.md`、`24-workspace.md`、`25-safety.md` v2.0.0：索引、构造、运算符、类型转换、FFI、workspace 与线程安全边界。
+
+### 1.6 全局布局不变量
 
 以下布局规则为跨模块统一不变量，所有涉及 shape/stride/layout 的模块设计须遵守：
 
@@ -180,7 +191,7 @@ xenon/
 │   │   ├── mod.rs             # Module entry and re-exports
 │   │   ├── unary.rs           # Unary ops (abs, neg, signum, square, sin, modulus, conj, etc)
 │   │   ├── binary.rs          # Binary arithmetic methods (add, sub, mul, div, add_scalar, etc)
-│   │   └── comparison.rs      # Comparison ops (eq, ne, lt, gt)
+│   │   └── comparison.rs      # Comparison ops (equal, not_equal, less, greater)
 │   │
 │   ├── overload/              # Operator overloading
 │   │   ├── mod.rs             # Operator trait exports
@@ -211,7 +222,7 @@ xenon/
 │   ├── index/                 # Indexing system
 │   │   ├── mod.rs             # Index trait definitions
 │   │   ├── ndindex.rs         # NdIndex trait and tuple/slice index implementations
-│   │   ├── access.rs          # try_at/get/get_unchecked and mutable variants
+│   │   ├── access.rs          # try_at/try_at_mut and unchecked internals
 │   │   └── slice.rs           # SliceInfo, slice, shape/stride updates
 │   │
 │   ├── construct/             # Tensor construction
@@ -413,7 +424,7 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | `iter/`        | 元素/轴/索引迭代器                                                  |
 | `simd/`        | SIMD 后端：向量化 kernel（pulp）、运行时分发，不含标量回退          |
 | `parallel/`    | 并行后端：承载纯并行执行入口与内部并行迭代 helper，不含串行回退     |
-| `math/`        | 逐元素数学运算（一元、二元算术、比较等）                            |
+| `math/`        | 逐元素数学运算（一元、二元算术、`equal`/`not_equal`/`less`/`greater` 比较等） |
 | `overload/`     | 运算符重载（Add, Sub, Mul, Div trait 实现）                         |
 | `util/`        | 实用操作（clip 裁剪、fill 填充、to_contiguous 连续性保证的公共入口）|
 | `set/`         | 集合操作（unique 去重）                                             |
@@ -421,7 +432,7 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | `matrix/`      | 向量内积 dot，必要时委托 `simd/` 或 `parallel`                      |
 | `reduction/`   | 归约操作（sum）                                                     |
 | `shape/`       | 转置操作（transpose）                                               |
-| `index/`       | 多维整数索引、范围切片索引                                          |
+| `index/`       | 多维整数索引、范围切片索引；公开安全入口为 `try_at` / `try_at_mut`  |
 | `construct/`   | 张量构造（`zeros`、`ones`、`eye` 等）                               |
 | `convert/`     | 类型转换                                                            |
 | `format/`      | Numpy 风格格式化输出                                                |
@@ -708,10 +719,10 @@ Xenon 的公开 API 以 `TensorBase` 固有方法为主。以下按类别列出�
 
 | 方法 | 暴露方式 | 说明 |
 | ---- | -------- | ---- |
-| `eq` | `TensorBase` 固有方法 | 逐元素等于比较（返回 `Tensor<bool, D>`） |
-| `ne` | `TensorBase` 固有方法 | 逐元素不等于比较 |
-| `lt` | `TensorBase` 固有方法 | 逐元素小于比较 |
-| `gt` | `TensorBase` 固有方法 | 逐元素大于比较 |
+| `equal` | `TensorBase` 固有方法 | 逐元素等于比较（返回 `Tensor<bool, D>`） |
+| `not_equal` | `TensorBase` 固有方法 | 逐元素不等于比较 |
+| `less` | `TensorBase` 固有方法 | 逐元素小于比较 |
+| `greater` | `TensorBase` 固有方法 | 逐元素大于比较 |
 
 ### 10.3 布尔操作（参见 `11-math.md`）
 
@@ -723,7 +734,7 @@ Xenon 的公开 API 以 `TensorBase` 固有方法为主。以下按类别列出�
 
 | 方法 | 暴露方式 | 说明 |
 | ---- | -------- | ---- |
-| `add_scalar` | `TensorBase` 固有方法 | 张量 + 标量（另可通过 `tensor + scalar` / `Tensor + Scalar` 宏） |
+| `add_scalar` | `TensorBase` 固有方法 | 张量 + 标量；运算符路径使用 `Scalar<A>` 包装类型 |
 | `sub_scalar` | `TensorBase` 固有方法 | 张量 - 标量 |
 | `mul_scalar` | `TensorBase` 固有方法 | 张量 * 标量 |
 | `div_scalar` | `TensorBase` 固有方法 | 张量 / 标量 |
@@ -732,10 +743,10 @@ Xenon 的公开 API 以 `TensorBase` 固有方法为主。以下按类别列出�
 
 | 方法 | 暴露方式 | 说明 |
 | ---- | -------- | ---- |
-| `eq_scalar` | `TensorBase` 固有方法 | 逐元素与标量比较相等 |
-| `ne_scalar` | `TensorBase` 固有方法 | 逐元素与标量比较不等 |
-| `lt_scalar` | `TensorBase` 固有方法 | 逐元素与标量比较小于 |
-| `gt_scalar` | `TensorBase` 固有方法 | 逐元素与标量比较大于 |
+| `equal_scalar` | `TensorBase` 固有方法 | 逐元素与标量比较相等 |
+| `not_equal_scalar` | `TensorBase` 固有方法 | 逐元素与标量比较不等 |
+| `less_scalar` | `TensorBase` 固有方法 | 逐元素与标量比较小于 |
+| `greater_scalar` | `TensorBase` 固有方法 | 逐元素与标量比较大于 |
 
 ### 10.6 归约（参见 `13-reduction.md`）
 
@@ -838,12 +849,12 @@ compute_layout_flags(shape, strides, ptr) // Central function for all layout fla
 LayoutState                          // FContiguous / NonContiguous / BroadcastView
 
 // Tensor semantic query enums
-StorageKind                          // Owned / View / ViewMut / Shared
+StorageKind                          // Owned / View / ViewMut / Arc
 AccessSemantics                      // ReadOnly / SharedReadOnly / Writable / Owned
 DataLocation                         // Cpu (current version only supports CPU)
 
 // Element trait hierarchy
-Element                        // Base: Copy + PartialEq + Debug + Display + Send + Sync
+Element                        // Base: Copy + Sealed with const ELEMENT_TYPE: ElementType
 └── Numeric                    // Numeric: arithmetic syntax + checked integer contract + conjugate semantics
     ├── RealScalar             // Real: sqrt, sin, exp, ln, floor, ceil
     └── ComplexScalar          // Complex: complex-specific modulus/re/im helpers; conjugation is unified by `Numeric::conjugate()`
@@ -865,7 +876,8 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 上述公开元素能力 trait（`Element`、`Numeric`、`RealScalar`、`ComplexScalar`、`CastTo`）均通过 `private::Sealed` 实现 sealed trait 模式，禁止下游 crate 自行实现。其中 `Numeric` 不仅表示 `Add + Sub + Mul + Div + Neg` 语法可用，还要求：
 
 - 对整数路径，具体运算模块必须落实 checked overflow / divide-by-zero / unrepresentable-result contract；
-- 对实数类型，`conjugate(self)` 为恒等；对复数类型，`conjugate(self)` 执行数学共轭；
+- `ElementType` 的公开取值为 `I32`、`I64`、`F32`、`F64`、`Complex32`、`Complex64`、`Bool`；封闭实现集为 `i32`、`i64`、`f32`、`f64`、`Complex<f32>`、`Complex<f64>`、`bool`；
+- 对实数类型，`conjugate(self)` 为恒等；对复数类型，`conjugate(self)` 执行数学共轭；`Complex<T>` 的显式实数构造路径仅为 `From<T> for Complex<T>`，不提供 `Complex<T> op T` 便捷运算符；
 - 统一错误入口与结构化字段约束遵循 `26-error.md`，不得在架构层引入第二套公开错误模型。
 
 ---
@@ -984,23 +996,23 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 
 | 属性     | 值                                                                                                   |
 | -------- | ---------------------------------------------------------------------------------------------------- |
-| 决策     | dispatch.rs 通过 `ExecPath` 枚举的三路裁决统一指示执行路径：`Serial` / `Simd` / `Parallel` |
-| 理由     | 集中式三路裁决避免消费者模块（math/matrix/reduction）各自重复实现路径选择树；同时保持 simd/ 后端对其内部细化（ISA、lane 宽度、对齐细节）的最终准入权 |
+| 决策     | dispatch.rs 通过 `select_exec_path` 返回 `(ExecPath, Option<ParallelGuard>)`，统一指示执行路径：`Serial` / `Simd` / `Parallel` |
+| 理由     | 集中式三路裁决避免消费者模块（math/matrix/reduction）各自重复实现路径选择树；同时保持 simd/ 后端对其内部细化（ISA、lane 宽度、对齐细节）的最终准入权，并通过 guard 显式传递并行进入状态 |
 | 替代方案 | 二元 ExecPath（Serial/Parallel）+ SIMD 在 Serial 分支内部隐式裁决 — 放弃，导致消费者代码中需要嵌套裁决，且 dispatch 无法在 Simd 与 Serial 之间做相同精度的阈值差异化 |
 
 #### 三路裁决模型
 
 | 路径 | 触发条件 | 后端 |
 |------|----------|------|
-| `ExecPath::Serial` | 默认回退；len 低于所有阈值，或 feature 禁用，或 ParallelGuard 检测到嵌套 | 消费者模块自身的串行实现 |
-| `ExecPath::Simd` | feature = "simd" 启用 + len ≥ simd_threshold + 连续 + 对齐前提满足 + ParallelGuard 不允许并行（嵌套或 len < parallel_threshold） | `simd/` 后端（仍保有内部最终准入权；若内部前提失败仍可回退标量） |
-| `ExecPath::Parallel` | feature = "parallel" 启用 + len ≥ parallel_threshold + ParallelGuard::enter() 成功 | `parallel/` 后端；并行 worker 内部执行标量代码（不使用 SIMD） |
+| `ExecPath::Serial` | 默认回退；len 低于所有阈值，或 feature 禁用，或 `ParallelGuard::enter()` 失败 | 消费者模块自身的串行实现 |
+| `ExecPath::Simd` | feature = "simd" 启用 + len ≥ simd_threshold + 连续 + 对齐前提满足 + 不进入并行路径 | `simd/` 后端（`dispatch_vector_binary_op` 以 `bool` 报告是否接管执行；失败时由 dispatch 消费方回退） |
+| `ExecPath::Parallel` | feature = "parallel" 启用 + len ≥ parallel_threshold + `ParallelGuard::enter()` 成功 | `parallel/` 后端；并行 worker 内部可在 `_guard: ParallelGuard` 保护下调用 SIMD |
 
 #### 职责边界
 
-- **dispatch.rs**: 仅做 ExecPath 三路裁决；不参与 ISA 检测、不参与 SIMD lane 选择、不参与对齐细节判断
-- **simd/**: 在被 dispatch 选中（ExecPath::Simd 返回）后，内部决定是否最终启用 SIMD（ISA 可用性、lane 宽度、对齐 fast path）；若内部前提失败可静默回退标量
-- **parallel/**: 在被 dispatch 选中（ExecPath::Parallel 返回）后执行；worker 内部走标量路径
+- **dispatch.rs**: 仅做 ExecPath 三路裁决；阈值计算使用 `saturating_mul`，threshold = 0 为禁用 sentinel；不参与 ISA 检测、不参与 SIMD lane 选择、不参与对齐细节判断
+- **simd/**: 在被 dispatch 选中（ExecPath::Simd 返回）后，内部决定是否最终启用 SIMD（ISA 可用性、lane 宽度、对齐 fast path）；`SimdElement` 仍为 sealed trait，整数仲裁失败回退归 dispatch 消费方处理
+- **parallel/**: 在被 dispatch 选中（ExecPath::Parallel 返回）后执行；worker 内部可结合 SIMD 形成 thread × SIMD 双层加速
 - **pulp::Arch**: ISA 检测（AVX-512 -> AVX2 -> SSE4.1 -> NEON）的唯一权威，仅在 simd/ 内部使用
 
 详见 30-dispatch.md（dispatch 模块设计文档）和 08-simd.md（SIMD 后端设计文档）。
@@ -1009,9 +1021,9 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 
 | 属性     | 值                                                                                                                               |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | 可恢复错误统一通过 `Result` 暴露；公开安全索引入口收敛为 `try_at()` / `try_at_mut()`；`[]` 单独作为受限 panic sugar 说明；FFI 公开入口包含结构化导出 `export()` / `export_mut()` 与 checked 查询 `try_offset_of()` / `try_ptr_at()`，并统一以 checked arithmetic 计算偏移与指针 |
+| 决策     | 可恢复错误统一通过 `Result` 暴露；公开安全索引入口收敛为 `try_at()` / `try_at_mut()`，不提供方括号索引 trait 实现；FFI 公开入口包含结构化导出 `export()` / `export_mut()` 与 checked 查询 `try_offset_of()` / `try_ptr_at()`，并统一以 checked arithmetic 计算偏移与指针 |
 | 理由     | 保持与 `需求说明书 §18` 的安全接口契约一致，避免相同失败条件在公开方法与运算符之间分裂成两套模型，同时让 FFI 结构化导出与偏移/指针查询都遵循相同的可恢复错误约束 |
-| 替代方案 | 所有接口统一 panic — 放弃，不利于库集成和诊断；把 `[]` 语法糖当作稳定公开安全 API — 放弃，会与索引失败的可恢复错误契约冲突；为 FFI 额外提供 `offset_of()` / `ptr_at()` 这类 panic-sugar 包装 — 放弃，会破坏公开错误入口的一致性                 |
+| 替代方案 | 所有接口统一 panic — 放弃，不利于库集成和诊断；实现 `[]` 语法糖 — 放弃，会与索引失败的可恢复错误契约冲突；为 FFI 额外提供 `offset_of()` / `ptr_at()` 这类 panic-sugar 包装 — 放弃，会破坏公开错误入口的一致性                 |
 
 ### 决策 8：所有可恢复错误统一使用 XenonError 结构化变体
 
@@ -1029,6 +1041,9 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 - 架构层只裁决错误入口应单一、路径语义应一致，不在此重复定义完整错误枚举。
 - 所有可恢复错误直接以 `XenonError` 结构化变体返回，不使用模块内部错误类型。
 - 规范错误模型的 canonical source 以 `26-error.md` 为准。
+- 所有 `operation` 字段使用 `Cow<'static, str>`；类型转换错误使用 `source_type: ElementType` / `target_type: ElementType` 与 `ConversionFailureReason`，不使用运行时类型标识。
+- Workspace 错误使用 `WorkspaceErrorCategory` 七子变体的结构化负载；借用冲突为 `BorrowConflict { requested, current }`。
+- FFI 错误使用 `Ffi { operation, category, backend, cause }` 四字段模型；`FfiErrorCategory` 含八个子变体，`FfiBackend` 为 `RawParts` / `Blas`。
 - 对于 FFI 场景，公开 Rust 入口包含结构化导出 `export()` / `export_mut()` 与 checked 查询 `try_offset_of()` / `try_ptr_at()`，并统一通过 checked arithmetic 计算偏移与指针。
 
 ---
@@ -1071,6 +1086,26 @@ Element                        // Base: Copy + PartialEq + Debug + Display + Sen
 | 1.2.4 | 2026-04-15 |
 | 1.3.0 | 2026-04-15 |
 | 1.3.1 | 2026-04-16 |
+| 2.0.0 | 2026-05-03 |
+
+### v2.0.0
+
+改动清单：
+
+- 新增 §1 协同基线，明确本文档与已修下游设计文档版本的对齐关系。
+- 对齐 `26-error.md` v3.0.0：架构层错误边界补充 `Cow<'static, str>`、`ElementType`、`WorkspaceErrorCategory`、`FfiErrorCategory` 与 `FfiBackend` 约束。
+- 对齐 `17-indexing.md` v2.0.0：公开安全索引入口收敛为 `try_at` / `try_at_mut`，不提供方括号索引 trait 实现。
+- 对齐 `11-math.md` 与 `19-overload.md`：比较方法命名改为 `equal` / `not_equal` / `less` / `greater`，标量运算符路径引用 `Scalar<A>` 包装类型。
+- 对齐 `03-element.md`、`04-complex.md`、`05-storage.md`：核心类型速查更新 `Element`、`ElementType`、封闭实现集、`Complex<T>` 实数构造边界与 `StorageKind::Arc` 命名。
+- 对齐 `08-simd.md`、`09-parallel.md`、`30-dispatch.md`：dispatch 决策补充 `(ExecPath, Option<ParallelGuard>)`、threshold = 0 sentinel、`saturating_mul` 与 worker 内 SIMD 的双层加速边界。
+
+未变更项：
+
+- 单 crate 架构、11 模块设计边界、L0-L6 分层和依赖图保持不变。
+- F-order 单一布局、广播零步长只读视图、`LayoutState` 三状态边界保持不变。
+- Feature gate 矩阵、公开模块导出策略、prelude 组织建议保持不变。
+- 归约仅 sum、集合仅 unique、形状仅 transpose、矩阵仅 dot 的范围决策保持不变。
+- `simd/`、`parallel/` 作为独立可选后端，`dispatch.rs` 作为内部裁决层的架构边界保持不变。
 
 ---
 
