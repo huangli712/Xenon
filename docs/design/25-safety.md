@@ -766,6 +766,30 @@ workspace 的线程安全规则（`!Send + !Sync` 实现选择及理由，参见
 | 1.0.7 | 2026-04-14 |
 | 1.0.8 | 2026-04-15 |
 | 1.0.9 | 2026-04-15 |
+| 2.0.0 | 2026-05-02 |
+
+### v2.0.0 (2026-05-02) — 协同与一致性更新（非破坏性）
+
+> 本版本是与 17-indexing v2.0.0 决策 7 + 19-overload v2.0.0（不实现 `std::ops::Index`）+ 24-workspace v2.0.0（B12.a）+ 05-storage v2.0.0 + 26-error v3.0.0 协同的非破坏性更新。本文档作为线程安全规范，§5.1 Send/Sync 规则表与决策 1-4 内容**未变更**；仅修复示例代码与协同引用。
+
+**Blocker 修复**：
+
+- §5.10 `share_arc_tensor` 示例：`arc_clone[0]` / `arc[1]` 改用 `arc_clone.try_at(Ix1(0))?` / `arc.try_at(Ix1(1))?`，因 Xenon 不实现 `std::ops::Index`（17-indexing v2.0.0 决策 7、19-overload v2.0.0）；函数签名加 `Result<(), XenonError>`；父线程读取在 spawn 前完成，子闭包用 `.expect("constant index 0 is in bounds for shape [3]")` 处理常量索引返回的 `Result`，避免 `thread::scope` 闭包返回 Result 的语法噪声。
+
+**协同声明**：
+
+- §1 新增"协同基线"段：列出本文档示例与论证依据的下游已修文档版本（05-storage v2.0.0、06-layout v1.3、07-tensor v2.0.0、17-indexing v2.0.0、19-overload v2.0.0、24-workspace v2.0.0）。
+
+**未变更**：
+
+- §5.1 Send/Sync 规则表（Owned / ViewRepr / ViewMutRepr / ArcRepr 的 trait 实现）。
+- §5.2 TensorBase auto-trait 推导规则。
+- §5.3 安全违规分类表。
+- §5.5–§5.8 unsafe impl SAFETY 注释（已正确）。
+- §5.9 广播只读约束。
+- §6 内部实现协同图。
+- §7-§9 任务/测试/交互章节。
+- §11 决策 1-4。
 
 ---
 
