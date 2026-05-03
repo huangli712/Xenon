@@ -38,6 +38,7 @@
 | BLAS 友好    | 提供完整的 BLAS 兼容性检查和布局查询        |
 | 最小约束     | FFI 方法避免重复安全检查（调用方已 unsafe） |
 | 错误结构化   | FFI 错误一律使用 `26-error.md §5.1` 封闭枚举（`FfiErrorCategory` / `FfiBackend` / `InvalidLayoutReason` / `StorageKindTag`）；禁止自由文本 `precondition`/`actual`/`reason` |
+| FFI panic 边界 | Xenon 本模块**不**定义 `extern "C"` 导出函数；任何上游 C ABI wrapper 必须阻止 Rust panic 穿越 C ABI（`std::panic::catch_unwind` 或在 FFI 边界采用 `panic = "abort"`），并保证 panic 后不会继续使用已失效的 `TensorExport` 指针 |
 
 ---
 
@@ -466,6 +467,43 @@ where
 **stride 约定**：`strides` 以元素个数（非字节）表示步长。按照 `06-layout.md` §1.2 与 `需求说明书 §7`，当前版本不支持负步长。`from_raw_parts()` 允许零步长布局以表达广播只读视图；`from_raw_parts_mut()` 拒绝所有非空零步长布局（非单元素轴的 `stride == 0` 会报错）。
 
 **生命周期与 auto trait**：导出结果不拥有底层内存，`data`、`shape`、`strides` 均借用源张量内部数据，源张量 drop 后立即失效。`TensorExport` 包含 `*const A`（裸指针），因此 Rust 自动推导为 `!Send + !Sync`。如果 FFI 消费者需要跨线程共享，必须显式包装（如 `Arc<TensorExport<...>>` + 手动 `unsafe impl`）。Xenon 不为 `TensorExport` 提供 `Send/Sync` 自动实现。
+
+#### 5.4.1 FFI panic 边界与回调限制（v2.0.x 新增）
+
+`TensorExport<'a, A>` / `TensorExportMut<'a, A>` 只是借用源张量内部数据和元数据的 Rust 结构体；本模块**不**提供 `pub extern "C"` 导出函数，也不承诺替调用方管理 C ABI 边界的 panic 行为。
+
+当上游库把 `TensorExport` 传给 C 代码时，必须满足以下额外约束：
+
+- Rust panic **不得**穿越 `extern "C"` ABI 边界。任何由上游定义的 `extern "C"` wrapper 都必须在最外层使用 `std::panic::catch_unwind` 捕获 panic 并转换为上游 ABI 的错误码，或在该 FFI 边界采用 `panic = "abort"` 策略。
+- `TensorExport` / `TensorExportMut` 的所有指针只在源张量借用仍然存活、且没有发生 unwinding 导致源张量或相关 owner 被 drop 的期间有效。
+- C 代码不得在持有 `TensorExport` 指针期间 re-enter Rust 并调用可能 panic 的 callback，除非该 callback 的 Rust ABI 边界同样捕获 panic 或直接 abort。
+- 如果捕获到 panic，wrapper 必须把当前导出的所有 borrowed pointer 视为失效，**不得**继续让 C 侧读取或缓存这些指针。
+
+推荐的上游 wrapper 形态如下：
+
+```rust,ignore
+#[repr(C)]
+pub enum XenonFfiStatus {
+    Ok = 0,
+    Error = 1,
+    Panic = 2,
+}
+
+#[no_mangle]
+pub extern "C" fn upstream_call_xenon(/* C ABI args */) -> XenonFfiStatus {
+    match std::panic::catch_unwind(|| {
+        // Build or borrow the tensor.
+        // Create TensorExport only for the synchronous C call duration.
+        // Do not let C store the borrowed pointers after this function returns.
+    }) {
+        Ok(Ok(())) => XenonFfiStatus::Ok,
+        Ok(Err(_err)) => XenonFfiStatus::Error,
+        Err(_panic) => XenonFfiStatus::Panic,
+    }
+}
+```
+
+上述 wrapper 示例属于上游集成责任；Xenon 的 `export()` / `export_mut()` 本身仍保持 O(1)、不分配、不捕获 panic。
 
 ### 5.5 Complex FFI 布局契约
 
@@ -1114,6 +1152,7 @@ Additional caller-side checks:
 | `test_complex_ffi_abi`                   | `Complex32/Complex64` 的 `#[repr(C)]` 字段顺序、大小与对齐满足 ABI 约定                                                               | 高     |
 | `test_bool_ffi_abi`                      | 仅在文档明确支持的 targets/ABI 上验证 `bool` FFI 导出匹配 `_Bool` ABI（1-byte / align 1 / 值域 0/1）；其它目标通过 `#[cfg(...)]` 跳过 | 高     |
 | `test_export_empty_tensor_pointer`       | 空张量导出时返回有效对齐但不可解引用的指针，且 shape/strides/offset 仍正确                                                            | 高     |
+| `test_ffi_wrapper_catches_panic_doc_example` | 文档示例级验证：上游 `extern "C"` wrapper 使用 `std::panic::catch_unwind` 阻止 panic 穿越 C ABI（参见 §5.4.1）；该测试不要求 Xenon 自身暴露 `extern "C"` 函数 | 高     |
 | `test_try_offset_of_various`             | recoverable 索引转换返回正确偏移或错误                                                                                                | 高     |
 | `test_try_offset_of_checked_overflow`    | 极端 stride/index 组合返回可恢复错误而非 panic                                                                                        | 高     |
 | `test_try_ptr_at_various`                | recoverable 指针转换返回正确指针或错误                                                                                                | 高     |
@@ -1194,7 +1233,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | `into_raw_parts()`                          | 消费源张量（`self`），将内存所有权转移给调用方。调用方须按 Xenon 分配契约回收：通过 `from_raw_parts_owned()` 重建张量并由 Drop 释放，或使用与 Xenon 分配器元数据等价的专用回收路径；不得直接调用系统 `free` 或其他 foreign allocator。 |
 | `from_raw_parts()` / `from_raw_parts_mut()` | 构造的视图生命周期 `'a` 由调用方在 `unsafe` 前提下保证，须与底层内存的实际存活期一致。视图不拥有内存，drop 时不会释放。                                                                                                                |
 | `from_raw_parts_owned()`                    | 接收 `OwnedRawParts` 并重建 Owned 张量，内存所有权回归 Xenon 的 Drop 管理。                                                                                                                                                            |
-| `export()` / `export_mut()`                 | 返回的 `TensorExport` / `TensorExportMut` 中 `data`、`shape`、`strides` 均借用源张量内部存储；源张量 drop 后全部指针失效。`export_mut()` 额外要求 `&mut self` 且 `S: StorageMut`，确保独占可写访问。                                   |
+| `export()` / `export_mut()`                 | 返回的 `TensorExport` / `TensorExportMut` 中 `data`、`shape`、`strides` 均借用源张量内部存储；源张量 drop 后全部指针失效。若上游 C ABI wrapper 捕获到 panic，或 unwinding 可能已 drop 源张量 / owner，则这些 borrowed pointer 必须立即视为失效，C 侧不得继续读取或缓存（参见 §5.4.1）。`export_mut()` 额外要求 `&mut self` 且 `S: StorageMut`，确保独占可写访问。 |
 
 ---
 
@@ -1203,7 +1242,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | 主题              | 内容                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Recoverable error | `blas_info()` / `lda()` 在 rank 或布局非法时返回 `XenonError::Ffi { operation, category: FfiErrorCategory::InvalidRank{expected,actual} \| BlasIncompatibleLayout{shape,strides}, backend: FfiBackend::Blas, cause: None }`（封闭枚举，字段对齐 `26-error.md §5.1`，**不**使用自由文本 `precondition`/`actual`）；BLAS 整数宽度转换失败由 `BlasInfo::as_blas_int()` 返回 `FfiErrorCategory::IntegerOverflow{value, target_width_bits}`；`from_raw_parts_owned()` 在 owned 元数据非法时返回 `XenonError::InvalidLayout { reason: InvalidLayoutReason::*, storage_kind: StorageKindTag::Owned, .. }`；`try_offset_of()` / `try_ptr_at()` 在 rank 失配时返回 `XenonError::DimensionMismatch{operation, expected, actual}`，在 bounds 越界时返回 `XenonError::IndexOutOfBounds{operation, attempted_index, axis, shape}`，在 checked arithmetic 溢出时返回 `XenonError::InvalidLayout { reason: InvalidLayoutReason::AccessRangeExceedsStorage, storage_kind: 调用方实际 StorageKindTag, .. }`；`from_raw_parts_mut()` 在可写布局自别名时返回 `XenonError::InvalidLayout { reason: InvalidLayoutReason::AmbiguousOverlap, storage_kind: StorageKindTag::ViewMut, .. }`。所有错误变体禁止使用 `Cow<str>` 自由文本作为诊断 payload；结构化负载由 `26-error.md §5.1` 的封闭子枚举承担。 |
-| Panic             | 不提供公开 panic-sugar 索引转换 API；`from_raw_parts*()` 中那些无法直接验证的不安全前提若被违反，仍属于 unsafe UB，而非 recoverable error。                                                                                                                                                                                                                                                                              |
+| Panic             | 本模块不提供公开 panic-sugar 索引转换 API，也**不**定义 `extern "C"` 导出函数。若上游把 Xenon API 包装为 C ABI，wrapper 必须阻止 Rust panic 穿越 C ABI：使用 `std::panic::catch_unwind` 转换为上游 ABI 错误码，或采用 `panic = "abort"`（参见 §1.2 与 §5.4.1）。`from_raw_parts*()` 中那些无法直接验证的不安全前提若被违反，仍属于 unsafe UB，而非 recoverable error。 |
 | 路径一致性        | 指针访问、BLAS 查询与 raw-parts roundtrip 必须共享同一 shape / strides / offset 解释；无 SIMD / 并行分支。                                                                                                                                                                                                                                                                                                               |
 | 容差边界          | 不适用。                                                                                                                                                                                                                                                                                                                                                                                                                 |
 

@@ -243,6 +243,59 @@ pub struct Ix5(pub usize, pub usize, pub usize, pub usize, pub usize);
 pub struct Ix6(pub usize, pub usize, pub usize, pub usize, pub usize, pub usize);
 ```
 
+**编译期布局断言（v2.0.x，安全前提）：** `slice()` 通过指针 cast 将 `&Self` 重解释为 `&[usize; N]`，这一 unsafe 操作仅在每个 `IxN` 的 size、alignment、字段偏移与 `[usize; N]` 完全一致时成立。`#[repr(C)]` 给出语言级保证，但若未来重构误删 `#[repr(C)]`、改字段类型或插入填充，**runtime 不会产生任何信号**——编译器可能对 `&Self → &[usize; N]` 的 cast 做出基于错误布局假设的优化，导致 UB 静默引入。下面这块 `const _` 在编译期机械验证布局不变量，任何破坏立刻让 build 失败：
+
+```rust,ignore
+// Compile-time layout assertions for the unsafe `slice()` casts in §5.4.
+// If a refactor removes `#[repr(C)]`, changes a field type, or inserts
+// padding, these const assertions fail before the pointer cast can
+// become unsound.
+const _: () = {
+    use core::mem::{align_of, offset_of, size_of};
+
+    assert!(size_of::<Ix1>() == size_of::<[usize; 1]>());
+    assert!(align_of::<Ix1>() == align_of::<[usize; 1]>());
+    assert!(offset_of!(Ix1, 0) == 0);
+
+    assert!(size_of::<Ix2>() == size_of::<[usize; 2]>());
+    assert!(align_of::<Ix2>() == align_of::<[usize; 2]>());
+    assert!(offset_of!(Ix2, 0) == 0);
+    assert!(offset_of!(Ix2, 1) == size_of::<usize>());
+
+    assert!(size_of::<Ix3>() == size_of::<[usize; 3]>());
+    assert!(align_of::<Ix3>() == align_of::<[usize; 3]>());
+    assert!(offset_of!(Ix3, 0) == 0);
+    assert!(offset_of!(Ix3, 1) == size_of::<usize>());
+    assert!(offset_of!(Ix3, 2) == 2 * size_of::<usize>());
+
+    assert!(size_of::<Ix4>() == size_of::<[usize; 4]>());
+    assert!(align_of::<Ix4>() == align_of::<[usize; 4]>());
+    assert!(offset_of!(Ix4, 0) == 0);
+    assert!(offset_of!(Ix4, 1) == size_of::<usize>());
+    assert!(offset_of!(Ix4, 2) == 2 * size_of::<usize>());
+    assert!(offset_of!(Ix4, 3) == 3 * size_of::<usize>());
+
+    assert!(size_of::<Ix5>() == size_of::<[usize; 5]>());
+    assert!(align_of::<Ix5>() == align_of::<[usize; 5]>());
+    assert!(offset_of!(Ix5, 0) == 0);
+    assert!(offset_of!(Ix5, 1) == size_of::<usize>());
+    assert!(offset_of!(Ix5, 2) == 2 * size_of::<usize>());
+    assert!(offset_of!(Ix5, 3) == 3 * size_of::<usize>());
+    assert!(offset_of!(Ix5, 4) == 4 * size_of::<usize>());
+
+    assert!(size_of::<Ix6>() == size_of::<[usize; 6]>());
+    assert!(align_of::<Ix6>() == align_of::<[usize; 6]>());
+    assert!(offset_of!(Ix6, 0) == 0);
+    assert!(offset_of!(Ix6, 1) == size_of::<usize>());
+    assert!(offset_of!(Ix6, 2) == 2 * size_of::<usize>());
+    assert!(offset_of!(Ix6, 3) == 3 * size_of::<usize>());
+    assert!(offset_of!(Ix6, 4) == 4 * size_of::<usize>());
+    assert!(offset_of!(Ix6, 5) == 5 * size_of::<usize>());
+};
+```
+
+注：`offset_of!(IxN, 0)` 用于元组结构体字段索引语法在 Rust 1.85+ 上稳定；若实现期 rustc 校验出语法不可用，需以 `core::ptr::addr_of!` 配合零值结构体的 const eval 等价等价物替换，但**绝不可** 降级为运行时检查——unsafe 前提必须由编译期保证。
+
 **说明：** `MAX_DIMENSION` 是哨兵值，表示动态维度类型 `IxDyn` 不设人工上限，而非表示系统支持的最大维度数。
 
 ### 5.3 Ix0 特殊语义
@@ -267,9 +320,12 @@ impl Dimension for Ix3 {
 
     #[inline]
     fn slice(&self) -> &[usize] {
-        // SAFETY (§8.2): `Ix3` uses `#[repr(C)]` and contains exactly three `usize`
+        // SAFETY: `Ix3` uses `#[repr(C)]` and contains exactly three `usize`
         // fields in declaration order. Reinterpreting `&Ix3` as a contiguous
         // `*const usize` slice of length 3 preserves provenance, alignment, and size.
+        // §5.2 compile-time const assertions verify size, alignment, and field
+        // offsets against `[usize; 3]` so this layout precondition cannot drift
+        // out of sync with the type definition without a build failure.
         unsafe {
             core::slice::from_raw_parts(self as *const Self as *const usize, 3)
         }
@@ -1016,6 +1072,7 @@ let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
 | `test_permuted_axes_valid_permutation`    | `PermuteAxes` 仅接受 `0..ndim-1` 的双射排列                                    | 高     |
 | `test_permuted_axes_duplicate_axis_error` | 重复轴返回可恢复错误                                                           | 高     |
 | `test_permuted_axes_missing_axis_error`   | 缺失轴返回可恢复错误                                                           | 高     |
+| `test_static_ix_layout_assertions_compile` | §5.2 `const _` 布局断言块在 `Ix1`-`Ix6` 上编译通过；compile-fail 用例验证若 `repr(C)` 被移除或字段被改写，build 立即失败 | 高     |
 
 ### 8.3 边界测试场景
 
@@ -1055,6 +1112,7 @@ let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
 | sealed 边界 | compile-fail 测试外部类型实现 `Dimension`          | 验证封闭 trait 边界保持成立                 |
 | 维度边界    | 运行时验证零维轴操作返回 `XenonError::InvalidAxis` | 验证标量轴操作走可恢复错误路径              |
 | 静动态边界  | 编译期验证数组/元组输入保持预期 `Dim` 类型         | 验证 `IntoDimension` 不会意外退化为动态维度 |
+| 静态 Ix 布局 | §5.2 `const _` 块在 `Ix1`-`Ix6` 上做 size/alignment/字段偏移与 `[usize; N]` 的对比；负向 compile-fail 用例尝试移除 `#[repr(C)]` 或改字段类型，`cargo build` 必须失败 | 验证 `slice()` 指针 cast 的 unsafe 前提不会因后续重构静默失效 |
 
 ---
 

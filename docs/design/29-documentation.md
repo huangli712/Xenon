@@ -227,7 +227,7 @@ L3: Examples (examples/)
 | 类型转换 (`cast`)                    | ✅         | doctest   | `21-type.md`         |
 | FFI unsafe API                       | ✅         | example   | `23-ffi.md`          |
 | 运算符重载                           | ✅         | doctest   | `19-overload.md`     |
-| `clip`/`fill`/`to_contiguous`        | ✅         | doctest   | `20-utility.md`      |
+| `clip`/`fill`/`try_fill`/`to_contiguous`/`into_contiguous` | ✅ | doctest | `20-utility.md`      |
 | 集合操作 (`unique`)                  | ✅         | doctest   | `14-set.md`          |
 | 工作空间                             | ✅         | example   | `24-workspace.md`    |
 | 格式化输出                           | ✅         | doctest   | `22-output.md`       |
@@ -819,7 +819,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 - [ ] **T21**: util 模块函数级文档和 doctest
   - 文件: `src/util/mod.rs`
-  - 内容: clip / fill / to_contiguous 等 utility 函数的函数级文档和 doctest（参见 `20-utility.md §1`）
+  - 内容: clip / fill / try_fill / to_contiguous / into_contiguous 等 utility 函数的函数级文档和 doctest（参见 `20-utility.md §1`）
   - 测试: `cargo test --doc --all-features`
   - 前置: T8
   - 预计: 10 min

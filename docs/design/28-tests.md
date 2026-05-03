@@ -143,8 +143,8 @@ tests/
 **API 暴露方式说明**（参见 `01-architecture.md §10`，仅列出重点 API，非穷举）：上方依赖图列出的是实现模块路径，但部分模块的公共 API 通过 TensorBase 固有方法暴露，而非自由函数。
 
 测试代码的实际调用方式如下：
-- TensorBase 固有方法：`t.transpose()`（shape）、`t.unique()`（set）、`t.sum()`（reduction）、`t.clip()` / `t.fill()` / `t.to_contiguous()`（util）、`t.cast()`（convert）、`t.iter()` / `t.axis_iter()`（iter）、`t.dot()`（matrix，另有自由函数入口）、`t.broadcast_to()`（broadcast）
-- 注：`to_contiguous()` 未列入 §10 但确为 TensorBase inherent method
+- TensorBase 固有方法：`t.transpose()`（shape）、`t.unique()`（set）、`t.sum()`（reduction）、`t.clip()` / `t.fill()` / `t.try_fill()` / `t.to_contiguous()` / `t.into_contiguous()`（util）、`t.cast()`（convert）、`t.iter()` / `t.axis_iter()`（iter）、`t.dot()`（matrix，另有自由函数入口）、`t.broadcast_to()`（broadcast）
+- 注：`to_contiguous()` / `into_contiguous()` 已列入 `01-architecture.md §10.13`，均为 TensorBase inherent method；测试覆盖见 §5.15。
 - trait impl：`Display` / `Debug`（format）
 - 自由函数：`broadcast_shape()`（broadcast）、`zeros()` / `ones()` / `eye()` / `from_shape_vec()` 等（construct）
 
@@ -162,7 +162,7 @@ tests/
 | `iter`      | `Elements`, `AxisIter`, `IndexedIter`（参见 `10-iterator.md §5`）                                              |
 | `matrix`    | `.dot()`（TensorBase 固有方法）；`crate::matrix::dot(&a, &b)`（自由函数）；双入口等价性见上方 §4.1 说明（参见 `12-matrix.md §5`） |
 | `overload`  | `Tensor<A, D>` 运算符 trait bounds（参见 `19-overload.md §5`）                                                 |
-| `util`      | `.clip()`, `.fill()`, `.to_contiguous()`（参见 `20-utility.md §5`）                                            |
+| `util`      | `.clip()`, `.fill()`, `.try_fill()`, `.to_contiguous()`, `.into_contiguous()`（参见 `20-utility.md §5`）       |
 | `convert`   | `CastTo<T>` trait, `.cast()` 张量级转换（参见 `21-type.md §5`；标量级转换使用 `CastTo::<f64>::cast_to`）       |
 | `format`    | `Display`, `Debug` trait（参见 `22-output.md §5`）                                                             |
 | `broadcast` | `broadcast_shape`, `broadcast_to`（参见 `15-broadcast.md §5`）                                                 |
@@ -579,14 +579,18 @@ fn test_unique_non_contiguous() {
 
 ### 5.15 test_utility.rs
 
-| 测试函数                   | 测试内容                | 优先级 |
-| -------------------------- | ----------------------- | ------ |
-| `test_fill_inplace`        | 原地 fill / 非连续 fill | 中     |
-| `test_clip`                | 裁剪操作                | 中     |
-| `test_clip_non_contiguous` | 非连续布局裁剪          | 中     |
-| `test_to_contiguous`       | 连续化保持逻辑元素顺序  | 高     |
-| `test_clip_invalid_parameters` | `min > max`、NaN 边界等非法参数返回错误 | 高 |
-| `test_fill_rejects_readonly_or_broadcast` | 只读视图或广播视图上的 fill 被拒绝 | 高 |
+| 测试函数                                          | 测试内容                                                        | 优先级 |
+| ------------------------------------------------- | --------------------------------------------------------------- | ------ |
+| `test_fill_inplace`                               | 原地 fill / 非连续 fill                                          | 中     |
+| `test_try_fill_writable_success`                  | `try_fill()` 在可写 Owned / ViewMut 路径成功填充逻辑元素         | 高     |
+| `test_try_fill_rejects_readonly_or_broadcast`     | `try_fill()` 在只读视图或广播视图上返回 `InvalidStorageMode`     | 高     |
+| `test_clip`                                       | 裁剪操作                                                         | 中     |
+| `test_clip_non_contiguous`                        | 非连续布局裁剪                                                   | 中     |
+| `test_to_contiguous`                              | 连续化保持逻辑元素顺序                                           | 高     |
+| `test_into_contiguous_reuses_owned_data`          | canonical F-contiguous Owned 输入可消费式复用 owned 存储         | 高     |
+| `test_into_contiguous_materializes_view`          | View / 非 canonical 或非连续输入消费后物化为 canonical F-order owned | 高 |
+| `test_clip_invalid_parameters`                    | `min > max`、NaN 边界等非法参数返回错误                          | 高     |
+| `test_fill_rejects_readonly_or_broadcast`         | 只读视图或广播视图上的 fill 被拒绝                               | 高     |
 
 ### 5.16 test_output.rs
 

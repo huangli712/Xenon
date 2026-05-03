@@ -455,7 +455,15 @@ impl<'a> WorkspaceBorrow<'a> {
     }
 
     /// Returns the scratch region as possibly-uninitialized bytes.
-    pub fn as_maybe_uninit_slice(&self) -> &[core::mem::MaybeUninit<u8>] {
+    ///
+    /// Although the returned slice is shared (`&[MaybeUninit<u8>]`), this method
+    /// takes `&mut self`. This makes the `MaybeUninit<u8>` view and the
+    /// initialized `u8` view mutually exclusive at the borrow-guard level: safe
+    /// code cannot keep a returned slice alive while asking the same borrow for
+    /// the other view, which would otherwise alias the same bytes under
+    /// conflicting initialization assumptions and violate `MaybeUninit` aliasing
+    /// rules.
+    pub fn as_maybe_uninit_slice(&mut self) -> &[core::mem::MaybeUninit<u8>] {
         // SAFETY: `MaybeUninit<u8>` may represent uninitialized bytes.
         unsafe {
             core::slice::from_raw_parts(
@@ -467,12 +475,17 @@ impl<'a> WorkspaceBorrow<'a> {
 
     /// Interprets an initialized prefix as `&[u8]`.
     ///
+    /// Takes `&mut self` for the same mutual-exclusion reason as
+    /// `as_maybe_uninit_slice`: the initialized `u8` view and the
+    /// `MaybeUninit<u8>` view are not allowed to be held simultaneously
+    /// from the same borrow.
+    ///
     /// # Safety
     ///
     /// The caller must guarantee that the first `initialized_len` bytes have been
     /// fully initialized before calling this method.
     pub unsafe fn assume_init_slice(
-        &self,
+        &mut self,
         initialized_len: usize,
     ) -> Result<&[u8]> {
         if initialized_len > self.len {
@@ -561,7 +574,9 @@ impl<'a> WorkspaceBorrowMut<'a> {
             .ok_or(XenonError::Workspace {
                 operation: OP,
                 category: WorkspaceErrorCategory::GrowOverflow {
-                    current_capacity: core::mem::size_of::<T>(),
+                    // Bytes available in the borrowed region; both fields are
+                    // measured in bytes (see 26-error.md §5.1 GrowOverflow).
+                    current_capacity: self.len,
                     additional: count,
                 },
                 cause: None,
@@ -624,7 +639,9 @@ impl<'a> WorkspaceBorrowMut<'a> {
             .ok_or(XenonError::Workspace {
                 operation: OP,
                 category: WorkspaceErrorCategory::GrowOverflow {
-                    current_capacity: core::mem::size_of::<T>(),
+                    // Bytes available in the borrowed region; both fields are
+                    // measured in bytes (see 26-error.md §5.1 GrowOverflow).
+                    current_capacity: self.len,
                     additional: count,
                 },
                 cause: None,
@@ -1239,6 +1256,7 @@ ensure_capacity(&mut self, 2048)
 | `test_borrow_double_fails`                     | 重复借用返回错误                                           | 高     |
 | `test_borrow_after_drop`                       | 归还后可再次借用                                           | 高     |
 | `test_assume_init_requires_initialized_prefix` | 已初始化视图只覆盖调用方证明已初始化的前缀                 | 高     |
+| `test_workspace_borrow_views_are_mutually_exclusive` | `WorkspaceBorrow` 的 `as_maybe_uninit_slice` 与 `assume_init_slice` 取 `&mut self`：safe 代码不能同时持有 `&[MaybeUninit<u8>]` 与 `&[u8]` 两种视图（编译失败测试） | 高     |
 | `test_split_at_mut_basic`                      | 固定位置分割                                               | 高     |
 | `test_split_at_mut_recursive`                  | 递归分割（多级）                                           | 中     |
 | `test_split_at_mut_oob`                        | 越界分割返回错误                                           | 高     |
@@ -1334,6 +1352,7 @@ Upper-layer code requests temporary scratch space
 | Recoverable error | `new()` / `ensure_capacity()` / `borrow*()` / `split_at_mut()` / typed helper 失败时统一返回 `XenonError::Workspace { operation: Cow<'static, str>, category: WorkspaceErrorCategory, cause: Option<Box<XenonError>> }`（三字段，对齐 26-error v3.0.0 §5.1）。`operation` 一律使用 `Cow::Borrowed(..)`。`category` 子变体与触发场景：`AllocFailed { size, align }`（`alloc` 返回 null）；`InvalidLayout { size, align }`（`alignment` 非 2 的幂或 `Layout::from_size_align` 拒绝）；`BorrowConflict { requested: WorkspaceBorrowKind, current: WorkspaceBorrowState }`（CAS 失败 / 残留状态）；`SplitOutOfBounds { mid, len }`（`split_at_mut` mid 越界 / `assume_init_*` initialized_len 越界 / typed helper byte_len 越界）；`GrowOverflow { current_capacity, additional }`（容量乘 1.5 倍溢出 / typed helper count×size_of 溢出）；`TypedViewRejected { detail: TypedViewRejection }`（ZST / pointer 不满足 T 对齐）；`SplitCountInvariant { detail }`（保留给未来内部不变量违反检查）。`cause` 字段用于源链：workspace 自身产生的叶子错误通常为 `None`；若未来需要包装更底层的 `XenonError`，外层错误使用 `Some(Box::new(inner))` 并通过 `Error::source()` 暴露内层。**禁止使用** `size: Option<usize>` / `reason: Cow<str>` 等自由文本字段（v2.0.0 之前的旧形态）。 |
 | Panic             | 不为公开 API 输入校验引入 panic；`unsafe` 初始化前提若被违反，仍属于调用方责任范围内的 UB。 |
 | 路径一致性        | 当前仅有单一借用状态机与扩容路径；无 SIMD / 并行分支，所有 guard 释放规则必须保持一致。     |
+| 别名隔离          | `WorkspaceBorrow` / `WorkspaceBorrowMut` 上的 `as_maybe_uninit_slice` 与 `assume_init_slice` 均取 `&mut self`；API shape 防止同一 borrow 同时存在 `&[MaybeUninit<u8>]` 与 `&[u8]` / `&mut [u8]` 两种 safe 引用，杜绝在同一块内存上同时声称"已初始化"与"可能未初始化"造成的 `MaybeUninit` 别名违规。 |
 | 容差边界          | 不适用。                                                                                    |
 
 ---
@@ -1458,7 +1477,7 @@ Upper-layer code requests temporary scratch space
 - §5.5 `borrow()` / `borrow_mut()` CAS 失败 → `BorrowConflict { requested: Shared / Exclusive, current: WorkspaceBorrowState }`；移除已不存在的 `WorkspaceErrorCategory::AlreadyBorrowed`。
 - §5.5 新增内部 helper `current_borrow_state(ws)`：把 `borrow_state` + `split_count` 组合解读为 `WorkspaceBorrowState`（None/Shared/Exclusive/SplitActive{count}），用于 `BorrowConflict.current`。
 - §5.6 `WorkspaceBorrow::assume_init_slice` / `WorkspaceBorrowMut::assume_init_slice` 越界 → `SplitOutOfBounds { mid: initialized_len, len: self.len }`。
-- §5.6 `as_maybe_uninit_typed_slice` / `assume_init_typed_slice` 五个错误点：ZST → `TypedViewRejected { detail: ZeroSizedType }`；`count*size_of` 溢出 → `GrowOverflow { current_capacity: size_of::<T>(), additional: count }`；byte_len 越界 → `SplitOutOfBounds`；指针对齐不满足 → `TypedViewRejected { detail: AlignmentMismatch { required, actual } }`。
+- §5.6 `as_maybe_uninit_typed_slice` / `assume_init_typed_slice` 五个错误点：ZST → `TypedViewRejected { detail: ZeroSizedType }`；`count*size_of` 溢出 → `GrowOverflow { current_capacity: self.len, additional: count }`（两字段单位均为字节）；byte_len 越界 → `SplitOutOfBounds`；指针对齐不满足 → `TypedViewRejected { detail: AlignmentMismatch { required, actual } }`。
 - §5.7 顶层 `split_at_mut` mid 越界 → `SplitOutOfBounds { mid, len: capacity }`；CAS 失败 → `BorrowConflict { requested: Split, current }`。
 - §5.7 递归 `SplitBorrowMut::split_at_mut` mid 越界 → `SplitOutOfBounds { mid, len: self.len }`。
 - §5.8 `ensure_capacity` borrow_state 残留 → `BorrowConflict { requested: Exclusive, current }`；容量 ×3 溢出 → `GrowOverflow { current_capacity, additional }`。

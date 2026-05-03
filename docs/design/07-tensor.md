@@ -766,7 +766,7 @@ validate_non_overlapping_layout(shape, strides, offset, storage_len):
            strides: strides.as_slice().to_vec(),
            offset,
            storage_len,
-           reason: InvalidLayoutReason::OverlapNotProvable,
+           reason: InvalidLayoutReason::AmbiguousOverlap,
        }).
     7. Otherwise return Ok(()).
 ```
@@ -885,7 +885,7 @@ where
             strides: raw.strides.as_slice().to_vec(),
             offset: raw.offset,
             storage_len: raw.len,
-            reason: InvalidLayoutReason::ElementCountOverflow,
+            reason: InvalidLayoutReason::ShapeProductOverflow,
         })?;
         if raw.len != expected_len {
             return Err(XenonError::InvalidLayout {
@@ -965,7 +965,7 @@ where
 }
 ```
 
-> **`InvalidLayoutReason` 字段引用：** 上述错误构造使用 `26-error.md §5.1` 定义的封闭枚举字段。如果 `InvalidLayoutReason` 中尚未列出 `OwnedRequiresZeroOffset` / `LenShapeMismatch` / `CapacityBelowLen` / `AlignmentInvalid` / `OwnedRequiresCanonicalFOrder` / `ElementCountOverflow` / `OverlapNotProvable` 这些子变体之一，则视为 `26-error.md` 与本节双向追加；二者必须同步更新。`Cow::Borrowed("...")` 与 `StorageKindTag::Owned` 同样按 `26-error.md §5.1` 字段表填写。
+> **`InvalidLayoutReason` 字段引用（v2.0.x）：** 上述错误构造使用 `26-error.md §5.1` 定义的**封闭超集枚举**字段。Owned raw-parts 专属错误使用 `OwnedRequiresZeroOffset` / `LenShapeMismatch` / `CapacityBelowLen` / `AlignmentInvalid` / `OwnedRequiresCanonicalFOrder`；shape 元素数溢出统一使用 `ShapeProductOverflow`（不再使用旧名 `ElementCountOverflow`）；无法证明可写布局不重叠统一使用 `AmbiguousOverlap`（不再使用旧名 `OverlapNotProvable`）。**禁止**在本节新增未列入 `26-error.md §5.1` 的局部变体——`26-error.md §5.1` 是 `InvalidLayoutReason` 的唯一权威源；新增 case 必须先扩展该枚举。`Cow::Borrowed("...")` 与 `StorageKindTag::Owned` 同样按 `26-error.md §5.1` 字段表填写。
 >
 > **关于 `# Safety` 与 `unsafe block`：** Rust 2024 / `unsafe_op_in_unsafe_fn` 要求即便函数本身已是 `unsafe fn`，函数体内执行 unsafe 操作仍需显式 `unsafe { ... }` 包裹。上面伪码中的 `Owned::from_raw_parts(...)` 调用已用 `unsafe { ... }` 包裹并附 `// SAFETY:` 注释。
 >
@@ -1084,13 +1084,16 @@ Logical view: [c, d, e]
 - **raw-parts 设计补充：** `storage_len` 是 raw-parts 视图构造的必填输入。`ViewRepr` / `ViewMutRepr` 需要保存 backing storage 的可访问元素数，`validate_access_range(...)` 也必须基于该长度执行边界校验；仅有 `ptr + shape + strides + offset` 不足以安全重建视图。
 - **空张量指针说明：** 当 `len == 0` 时，元数据仍可描述一个合法的空视图，但 `as_ptr()` / `as_mut_ptr()` 不能对 storage base pointer 执行 `add(offset)`。Rust 的指针算术要求结果仍落在同一已分配对象内；对悬垂哨兵或空存储基指针做偏移计算会触发未定义行为，且对 ZST 即使执行 `add(0)` 也不应依赖这种做法。设计上因此统一采用“空张量 `offset` 仅需满足 `offset <= storage_len`，但不做实际偏移”的契约，并让指针 API 直接返回 `NonNull::dangling().as_ptr()` 快路径。
 
-> **错误字段约定：** `validate_access_range` 与 `validate_non_overlapping_layout`
+> **错误字段约定（v2.0.x）：** `validate_access_range` 与 `validate_non_overlapping_layout`
 > 构造的 `XenonError::InvalidLayout` 字段必须使用 `26-error.md §5.1` 定义的封闭枚举
 > （`InvalidLayoutReason` / `StorageKindTag` / `Cow<'static, str>`），不得退化为自由
-> 文本。下面伪码中的 `InvalidLayoutReason::*` 标识符若 `26-error.md` 中尚未列出，
-> 则视为对 `26-error.md` 的字段集追加请求，二者必须同步更新。`storage_kind` 由调用
-> 方提供（视图路径填 `StorageKindTag::View` / `StorageKindTag::ViewMut`，owned raw-parts
-> 路径填 `StorageKindTag::Owned`）。
+> 文本，也**不得**在本节发明未列入 `26-error.md §5.1` 的局部 reason——下面伪码中
+> 出现的所有 `InvalidLayoutReason::*` 标识符（`ShapeProductOverflow` /
+> `EmptyTensorOffsetExceedsStorage` / `StrideExceedsIsizeMax` / `StrideSpanOverflow`
+> / `AccessRangeOverflow` / `AccessRangeExceedsStorage` / `AmbiguousOverlap` 等）
+> 必须已在 `26-error.md §5.1` 列出。新增 case 必须先扩展 `26-error.md §5.1` 的枚举。
+> `storage_kind` 由调用方提供（视图路径填 `StorageKindTag::View` /
+> `StorageKindTag::ViewMut`，owned raw-parts 路径填 `StorageKindTag::Owned`）。
 >
 > **验证前提：** `validate_access_range` 假定调用方已在更早阶段拒绝
 > `stride > isize::MAX` 的 stride，或在算法首部追加该检查。这是因为后续
@@ -1107,7 +1110,7 @@ validate_access_range(shape, strides, offset, storage_len, op_name, kind):
             strides: strides.as_slice().to_vec(),
             offset,
             storage_len,
-            reason: InvalidLayoutReason::ElementCountOverflow,
+            reason: InvalidLayoutReason::ShapeProductOverflow,
         })
 
     if shape.checked_size() == Ok(0):

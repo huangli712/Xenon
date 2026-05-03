@@ -279,6 +279,33 @@ fn sum_floating_or_complex<A: Numeric>(iter: impl Iterator<Item = A>) -> A {
 - 并行路径：仅在 `dispatch::select_exec_path()` 返回 `(ExecPath::Parallel, Some(guard))` 时委托 `parallel/` 纯并行后端，并按值移交 guard；整数路径必须保持与串行精确一致；若实现无法保证整数 chunk 索引顺序仲裁（参见 09-parallel v2.0.0 §6.5），**回退责任在 `dispatch.rs`**——dispatch 不应把整数归约路由到 `Parallel`，而**不是**由 reduction 内部回退（与 09-parallel 决策 4 一致）。浮点/复数路径允许不同合并顺序。以 `需求说明书 §28.3` 为权威基线。
 - 同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用以 `需求说明书 §28.3` 为权威基线的文档化容差。
 
+**有限值数值容差表（authoritative for `sum`，v2.0.x 新增）：**
+
+该表闭合 `需求说明书 §28.3` 对"文档化误差容差"的要求。它**仅**适用于浮点 / 复数 `sum` 在不同执行路径之间的有限值结果比较，例如 Serial scalar vs SIMD、Serial scalar vs Parallel、Parallel worker 内 SIMD vs 非 SIMD。它**不**适用于整数路径；整数 `sum` 必须与逐步 checked arithmetic 精确一致。`dot` 的容差由 dot/matrix 文档独立定义；在该容差表落地之前，不得启用会改变合并顺序的 SIMD `dot` 路径。
+
+| 元素类型       | 比较对象  | 有限值容差                                                                                                                            |
+| -------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `f32`          | `sum` 结果 | `abs(actual - expected) <= max(4.0 * f32::EPSILON * (n as f32) * max_abs_input, 4.0 * f32::MIN_POSITIVE)`                            |
+| `f64`          | `sum` 结果 | `abs(actual - expected) <= max(4.0 * f64::EPSILON * (n as f64) * max_abs_input, 4.0 * f64::MIN_POSITIVE)`                            |
+| `Complex<f32>` | `sum` 结果 | 实部和虚部分别按 `f32` 规则比较；`max_abs_input` 对每个分量独立计算（即实部容差使用所有输入实部的 `max_abs`，虚部使用所有输入虚部的 `max_abs`） |
+| `Complex<f64>` | `sum` 结果 | 实部和虚部分别按 `f64` 规则比较；`max_abs_input` 同 `Complex<f32>` 行的规则                                                          |
+
+其中：
+
+- `n` 是本次归约**实际累加**的元素数（对 `sum_axis` 是被归约轴长度，对全归约 `sum` 是 `tensor.len()`）。
+- `max_abs_input` 是参与该输出槽位归约的有限输入值绝对值最大值。
+- 若 `n == 0`，空归约返回加法单位元（`A::zero()`），不使用容差比较——空归约结果跨路径必须**逐位一致**。
+- 若所有参与比较的有限输入均为 `0.0`（含 `+0.0` 与 `-0.0`），`max_abs_input == 0.0`，容差退化为表中第二项 `4.0 * MIN_POSITIVE` 的下限。
+
+**非有限值规则：**
+
+- `NaN`：按 IEEE 754 传播语义验证；含 `NaN` 的结果**不**使用数值容差比较，必须按 IEEE 754 行为对齐（任何路径产生 NaN 时其他路径也必须产生 NaN）。
+- `+Inf` / `-Inf`：必须**同号同类**；有限容差**不得**把有限值与无穷值视为相等。
+- `+0.0` / `-0.0`：符号必须一致；**不得**用容差抹平零符号差异。
+- 容差只约束不同执行路径引入的舍入差异，**不**允许改变 shape、错误类别、panic 契约或整数溢出语义。
+
+**实现回退条款：** 若某个 SIMD 或并行实现无法证明其结果满足上表（例如使用了 FMA/Kahan/pairwise 但未走完误差分析），`dispatch.rs` 必须**不**选择该路径，而**不是**由 `reduction` 内部在运行后修正结果。这与 §6.3 上一条 bullet 中"回退责任在 dispatch.rs"的全局规则一致。
+
 ### 6.4 并行 axis 归约写回策略
 
 沿轴归约进入并行路径时，写回策略必须按**输出槽位分区**而不是按输入元素任意抢占：每个并行任务只负责一组互不重叠的输出索引区间，并在其私有局部累加完成后一次性写回对应输出槽位。不得让两个任务同时写入同一个输出元素，也不得通过共享可变引用在任务间累加同一槽位。由此可保证并行 axis-reduction 不发生数据竞争；若当前布局或调度策略无法证明这一点，必须回退串行路径。
@@ -386,8 +413,8 @@ fn sum_floating_or_complex<A: Numeric>(iter: impl Iterator<Item = A>) -> A {
 | `test_sum_axis_invalid_axis`               | `sum_axis()` 越界返回 `InvalidAxis`                             | 高     |
 | `test_sum_axis_keepdims_invalid_axis`      | `sum_axis_keepdims()` 越界返回 `InvalidAxis`                    | 高     |
 | `test_sum_axis_zero_len_axis`              | 被归约轴长度为 `0` 时输出槽全部为零                             | 高     |
-| `test_sum_parallel_consistency`            | 并行路径与标量结果、错误类别、panic 语义一致                    | 高     |
-| `test_sum_simd_consistency`                | SIMD 路径与标量结果一致；不满足前提时 dispatch 不选择 SIMD      | 高     |
+| `test_sum_parallel_consistency`            | 并行路径与标量结果、错误类别、panic 语义一致；浮点/复数有限结果满足 §6.3 容差表，非有限值（NaN/±Inf/±0.0）按 §6.3 规则对齐 | 高     |
+| `test_sum_simd_consistency`                | SIMD 路径与标量结果一致；浮点/复数有限结果满足 §6.3 容差表；不满足前提时 dispatch 不选择 SIMD | 高     |
 | `test_sum_large_tensor_parallel_threshold` | 大张量（`10^7` 量级元素）达到阈值后并行路径仍满足文档化语义     | 高     |
 | `test_sum_high_rank_ixdyn`                 | 高 rank 动态维输入上的 `sum_axis*` shape 与 keepdims 语义正确   | 高     |
 | `test_sum_scalar_rank0`                    | rank-0 张量 `sum()` 返回其唯一元素                               | 高     |
@@ -403,7 +430,7 @@ fn sum_floating_or_complex<A: Numeric>(iter: impl Iterator<Item = A>) -> A {
 | 单元素数组                                         | 结果等于该元素本身                                                 |
 | 空张量 `shape=[0, 3]`                              | `sum()` 返回加法单位元；`sum_axis*` 输出 shape 与零长度轴语义正确  |
 | rank-6 张量 `IxDyn([2,1,3,1,1,4])` 沿 `Axis(5)` 归约 | `sum_axis*` 的 axis 投影、keepdims 与错误诊断保持正确            |
-| `10^7` 元素张量归约                                | 默认/SIMD/并行配置下满足文档化容差，且 panic 契约一致              |
+| `10^7` 元素张量归约                                | 默认/SIMD/并行配置下满足 §6.3 有限值容差表与非有限值规则，且 panic 契约一致 |
 | 静态 rank-0 输入 `Ix0` 调用 `sum_axis()`           | 编译期可调用（`Ix0: RemoveAxis`，`Smaller = Ix0`，参见 02-dimension §5.8）；运行时返回 `InvalidAxis`，因为 0D 上不存在合法轴 |
 | 静态 rank-0 输入 `Ix0` 调用 `sum_axis_keepdims()`  | 返回 `InvalidAxis`，因为 0D 上不存在合法轴                         |
 | 动态 rank-0 输入 `IxDyn([])` 调用 `sum_axis*`      | 返回 `InvalidAxis`，因运行时 `axis >= ndim`                        |

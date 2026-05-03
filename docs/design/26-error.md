@@ -327,8 +327,12 @@ pub enum WorkspaceErrorCategory {
     /// Internal split-count atomic invariant was violated (e.g., underflow
     /// or leak detected in debug).
     SplitCountInvariant { detail: Cow<'static, str> },
-    /// Capacity grow request would overflow `usize`.
-    GrowOverflow { current_capacity: usize, additional: usize },
+/// Capacity grow or byte-length request would overflow `usize`.
+/// For `Workspace` errors, both fields are measured in bytes
+/// (`current_capacity` is the currently available byte length of the
+/// region or workspace; `additional` is the requested additional bytes
+/// or the operand whose product with `size_of::<T>()` overflowed).
+GrowOverflow { current_capacity: usize, additional: usize },
     /// Typed view request rejected (e.g., ZST not supported, range not
     /// aligned for `T`).
     TypedViewRejected { detail: TypedViewRejection },
@@ -379,22 +383,49 @@ impl core::fmt::Display for WorkspaceErrorCategory {
 
 /// Reason for `XenonError::InvalidLayout`. Closed enum: each reason
 /// has program-matchable semantics.
+///
+/// **Single source of truth.** This enum is the only authoritative source
+/// for layout-validation failure reasons across the crate. The `tensor`,
+/// `layout`, `ffi`, and `construction` modules MUST construct
+/// `XenonError::InvalidLayout { reason, .. }` using the variants defined
+/// here and MUST NOT introduce locally-named variants outside this enum.
+/// Adding a new layout-validation case requires extending this enum first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InvalidLayoutReason {
     /// `shape.checked_size()` overflowed `usize`.
     ShapeProductOverflow,
-    /// Computed `max_offset` exceeds `storage_len`.
-    AccessRangeExceedsStorage,
-    /// Stride along an axis is not allowed for the current storage kind
-    /// (e.g., negative stride; not representable as `usize`).
-    UnsupportedStride,
-    /// Zero stride observed on a non-broadcast-view storage kind.
-    UnexpectedZeroStride,
     /// `strides.len() != shape.len()`.
     StridesRankMismatch,
+    /// Computed `max_offset` exceeds `storage_len`.
+    AccessRangeExceedsStorage,
+    /// Empty tensor metadata uses `offset > storage_len`.
+    EmptyTensorOffsetExceedsStorage,
+    /// Stride along an axis is not allowed for the current storage kind
+    /// (e.g., negative stride; not representable as `usize`) or cannot
+    /// be represented for pointer arithmetic.
+    UnsupportedStride,
+    /// A stride exceeds `isize::MAX`, so pointer `.add()` arithmetic
+    /// cannot be proven valid.
+    StrideExceedsIsizeMax,
+    /// `(shape[axis] - 1) * stride[axis]` overflowed.
+    StrideSpanOverflow,
+    /// Accumulating the reachable access range overflowed.
+    AccessRangeOverflow,
+    /// Zero stride observed on a non-broadcast-view storage kind.
+    UnexpectedZeroStride,
     /// Logical layout cannot be conservatively proven non-overlapping
     /// for the requested mutable access.
     AmbiguousOverlap,
+    /// Owned raw-parts reconstruction requires `offset == 0`.
+    OwnedRequiresZeroOffset,
+    /// Owned raw-parts `len` does not equal `shape.checked_size()`.
+    LenShapeMismatch,
+    /// Owned raw-parts `cap` is smaller than `len`.
+    CapacityBelowLen,
+    /// Owned raw-parts allocator alignment is invalid for the element type.
+    AlignmentInvalid,
+    /// Owned raw-parts reconstruction requires canonical F-order strides.
+    OwnedRequiresCanonicalFOrder,
 }
 
 /// Kind for `XenonError::InvalidShape`. Closed enum.
@@ -552,7 +583,6 @@ impl std::error::Error for XenonError {
 | 轴越界 / 参数非法 / FFI 前提失败  | `Result::Err(XenonError)`                    | 调用方可修正输入并重试                |
 | `cast()` 有损或前提不满足         | `Result::Err(XenonError::TypeConversion(_))` | `需求说明书 §23` 强制要求             |
 | 方法型索引失败                    | `Result::Err(XenonError::IndexOutOfBounds)`  | 需返回结构化索引上下文                |
-| `Index` 语法 `tensor[i]` 越界     | panic                                        | 属于 Rust 语法糖边界，非 `Result` API |
 | 有符号整数算术溢出 / 除以零       | panic                                        | 仅适用于 `i32` / `i64`，见需求说明书  |
 | 有符号整数算术结果不可表示        | panic                                        | 仅适用于 `i32` / `i64`，见需求说明书  |
 | `sqrt(negative)`                  | IEEE 754 返回 `NaN` / `-Inf`，不得 panic     | `f32` / `f64` 数学域边界              |
@@ -564,12 +594,12 @@ impl std::error::Error for XenonError {
 总原则： 
 - 所有安全公开 API 对非法输入须返回可恢复错误（`Result`）。
 - 仅 `unsafe` 函数的前提违反和内部 helper 可使用 panic。
+- Xenon 当前稳定 API **不实现** `std::ops::Index` / `std::ops::IndexMut`（见 `01-architecture.md` 决策 7、`00-coding.md §8.1`）；方括号索引语法 `tensor[i]` 在当前版本不可编译，**不是**当前的 panic 边界。所有公开安全索引错误通过 `try_at()` / `try_at_mut()` 以 `Result::Err(XenonError::IndexOutOfBounds { .. })` 返回。
 
 除下表外，其余安全公开 API 遇到错误条件时都必须返回 `Result<_, XenonError>`，不得以 panic 代替可恢复错误；即使是 FFI convenience helper，只要属于安全公开 API，也必须遵循这一规则。
 
 | 类别                      | 允许 panic 的边界                        | 约束                                            |
 | ------------------------- | ---------------------------------------- | ----------------------------------------------- |
-| 语言级语法边界            | `tensor[i]` / `tensor[i] = value`        | 仅指 `Index`/`IndexMut` 语法糖；越界时可 panic  |
 | 需求明确定义的算术域边界  | `i32` / `i64` 的逐元素算术、归约、内积   | 溢出、除以零、结果不可表示时 panic              |
 | internal / unsafe helper 边界 | private helper、`unsafe fn` 前提检查、未对外公开的 typed helper | 仅限实现内部或不安全前提；不得作为安全公开 API 的用户输入错误出口 |
 
@@ -693,7 +723,6 @@ helper）属于内部实现细节，集中在 §6.1 给出，不在公共 API �
 | 逐元素加法溢出               | `"Xenon: add overflow for i32 at element_index=7"`                             |
 | 归约溢出                     | `"Xenon: sum overflow for i64 at axis=1, output_index=3"`                      |
 | 内积溢出                     | `"Xenon: dot overflow for i32 at lane=12"`                                     |
-| 语言级索引 panic             | `"Xenon: index out of bounds for tensor[i] at axis=0, index=9, len=4"`         |
 | internal/unsafe helper panic | `"Xenon: ptr_at precondition violation in internal helper at axis=1, index=8"` |
 
 ### 5.9 Good / Bad 对比式代码示例
@@ -1078,7 +1107,7 @@ Caller invokes public API (e.g., tensor.broadcast_to(shape))
 | 决策     | 安全公开 API 仅在语言级语法边界和需求明确定义的算术域边界允许 panic              |
 | 理由     | 需求说明书 §27 要求可恢复错误以返回值形式报告；宽泛的 panic 会破坏调用方的错误恢复能力 |
 | 替代方案 | 对所有非法输入统一 panic — 放弃，违反可恢复优先原则                              |
-| 替代方案 | 对 `tensor[i]` 越界返回 Result — 放弃，受限于 Rust `Index` trait 签名            |
+| 替代方案 | 实现 `std::ops::Index` 把 `tensor[i]` 越界 panic 化 — 放弃，与可恢复优先原则冲突；当前稳定 API 直接不实现 `Index` / `IndexMut`，公开安全索引错误经由 `try_at()` / `try_at_mut()` 以 `Result` 返回 |
 
 ### 决策 3：结构化字段而非纯字符串消息
 

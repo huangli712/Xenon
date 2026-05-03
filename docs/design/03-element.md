@@ -75,7 +75,7 @@ src/element/
 
 ```
 src/element/
-├── crate::error      # XenonError for recoverable conversion diagnostics
+├── crate::error      # XenonError + ElementType (authoritative ElementType owner; see 26-error.md §5.1)
 ├── crate::complex    # Complex<T> type definition
 ├── crate::private    # Sealed trait infrastructure
 ├── core::ops         # Add/Sub/Mul/Div/Neg operator traits
@@ -87,7 +87,7 @@ src/element/
 
 | 来源模块         | 使用的类型/trait                                           |
 | ---------------- | ---------------------------------------------------------- |
-| `crate::error`   | `XenonError`（显式类型转换失败时返回）                     |
+| `crate::error`   | `XenonError`（显式类型转换失败时返回）；`ElementType`（封闭枚举，权威定义见 `26-error.md §5.1`，本模块通过 `pub use` re-export 以支撑 `Element::ELEMENT_TYPE` 与 `ElementType::of::<A>()`） |
 | `crate::complex` | `Complex<f32>`, `Complex<f64>`（元素类型实现目标）         |
 | `crate::private` | `Sealed`（封闭 trait 实现边界）                            |
 | `core::ops`      | `Add`, `Sub`, `Mul`, `Div`, `Neg`（Numeric supertrait）    |
@@ -138,10 +138,13 @@ pub trait Element:
     /// Element type discriminant for FFI consumers.
     ///
     /// Maps Rust element types to C-compatible enum discriminants at
-    /// compile time. `ElementType` is defined in this module (see below)
-    /// and re-exported by `ffi`. If the current Rust version does not
-    /// support the required const mechanism, this can be downgraded to a
-    /// regular `fn` without changing the semantics.
+    /// compile time. `ElementType` is **owned by the `error` module**
+    /// (authoritative definition in `26-error.md §5.1`); the `element`
+    /// module re-exports it as `crate::element::ElementType` to support
+    /// `Element::ELEMENT_TYPE` and `ElementType::of::<A>()`. The `ffi`
+    /// module also re-exports it for C consumers. If the current Rust
+    /// version does not support the required const mechanism, this can be
+    /// downgraded to a regular `fn` without changing the semantics.
     const ELEMENT_TYPE: ElementType;
 }
 ```
@@ -157,37 +160,31 @@ pub trait Element:
 | `Sync`      | 可跨线程共享引用（并行只读访问必需）   |
 | `Sealed`    | 防止外部类型实现                       |
 
-**`ElementType` 枚举（定义于本模块，`ffi` re-export）：**
+**`ElementType` 枚举（定义于 `error` 模块，`element` 与 `ffi` 通过 `pub use` re-export）：**
+
+权威定义参见 `26-error.md §5.1`。本模块 `src/element/mod.rs` 通过 `pub use crate::error::ElementType;` 暴露同一枚举，并在 `Element::ELEMENT_TYPE` 关联常量与 `ElementType::of::<A>()` 帮助函数中复用。`ffi` 模块同样通过 `pub use crate::error::ElementType` re-export，以保持给 C 消费者的可见名称稳定。
 
 ```rust,ignore
-/// Element type discriminant for FFI consumers.
-///
-/// Each variant corresponds to one of Xenon's supported tensor element types
-/// (see the requirements specification §4). Defined in the `element` module; re-exported by
-/// `ffi` for C consumers.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(C)]
-pub enum ElementType {
-    Bool,
-    I32,
-    I64,
-    F32,
-    F64,
-    Complex32,
-    Complex64,
-}
+// src/element/mod.rs (re-export only; authoritative definition lives in error)
+pub use crate::error::ElementType;
 
 impl ElementType {
     /// Returns the `ElementType` discriminant for `A`.
     ///
     /// Determined at compile time via `Element::ELEMENT_TYPE`.
+    ///
+    /// Defined as an inherent method here (rather than at the definition site)
+    /// because `Element` is a trait owned by this module; co-locating
+    /// `ElementType::of::<A>()` with `Element::ELEMENT_TYPE` keeps the
+    /// `A: Element` bound in this module's dependency direction (`element` →
+    /// `error`, never `error` → `element`).
     pub const fn of<A: Element>() -> Self {
         A::ELEMENT_TYPE
     }
 }
 ```
 
-**设计决策：** `ElementType` 枚举与 `Element` trait 定义于同一模块（`element`），消除 `element` → `ffi` → `element` 的循环依赖。`ffi` 模块通过 `pub use crate::element::ElementType` re-export 以供 FFI 消费者使用。
+**设计决策（v1.3.0 协同 26-error v3.1.0）：** `ElementType` 的权威定义所有权从 `element` 模块**下移**到 L0 `error` 模块，恢复 `01-architecture.md §5.2` 的 L0..L6 单向依赖。`element` 通过 `pub use` 暴露同一枚举名给上层模块（保留 `crate::element::ElementType` 的稳定路径与 `Element::ELEMENT_TYPE` 关联常量语义）。`ffi` 也通过 `pub use crate::error::ElementType` re-export。`ElementType::of::<A>()` 因为依赖 `A: Element` trait bound，作为 `element` 模块的 inherent impl 留在本模块。
 
 ### 5.2 Numeric trait
 
@@ -423,6 +420,39 @@ pub trait CastTo<T: Element>: Element {
 - 类型参数 `T` 必须满足 `T: Element`，结合 `Self: Element` 的 sealed 边界，从 trait 层面把转换关系限制在 Xenon 封闭元素集合内。
 - `bool` 不出现为任何 `CastTo<T>` 的 *源类型*，也不出现为任何 `CastTo<T>` 的 *目标类型*；这两个方向都通过"不提供 impl"在编译期阻断（与 §6.1 决策一致）。
 - `Complex<T> -> Real` 的条件成功语义、受支持矩阵与 `XenonError::TypeConversion` 字段约束，统一以 `21-type.md §5.3`、`§6.1` 以及 `26-error.md §5.6` 为准。
+
+#### 5.9.1 CastElement marker trait
+
+`CastElement` 是公开 sealed marker trait，标记"可作为 `cast()` 操作源/目标元素类型集合"。`21-type.md §5.1` 的 `cast()` 公开方法签名 `where A: CastElement, T: CastElement` 通过此 trait 在编译期排除 `bool`，并把元素集合统一收敛到 6 个数值类型。
+
+```rust,ignore
+// src/element/mod.rs
+
+/// Marker trait for element types that participate in the `cast()` operation.
+///
+/// Sealed via `Element` (which inherits `Sealed`); only Xenon's six numeric
+/// element types implement it. `bool` is intentionally excluded — `bool` is
+/// neither a valid source nor a valid target of `cast()`, matching the
+/// "no impl" exclusion of `bool` from `CastTo<T>` (see `§5.9` and `§6.1`).
+///
+/// This trait is consumed by `21-type.md §5.1` `cast()` to bound both the
+/// receiver element type `A` and the target element type `T`. It does **not**
+/// itself define a `cast` method — conversion logic still goes through
+/// `CastTo<T>` and `convert/cast.rs`.
+pub trait CastElement: Element {}
+
+impl CastElement for i32 {}
+impl CastElement for i64 {}
+impl CastElement for f32 {}
+impl CastElement for f64 {}
+impl CastElement for Complex<f32> {}
+impl CastElement for Complex<f64> {}
+// bool: NOT implemented — bool is excluded from cast() per §6.1.
+```
+
+- **与 `CastTo<T>` 的关系**：`CastElement` 是"哪些元素类型属于 cast 矩阵"的封闭集合标记；`CastTo<T>` 是"具体的 (源, 目标) 对存在合法转换"的关系。两者同属 §5.9 类型转换主题，但语义槽位不同：`CastElement` 让 `cast()` 公开签名能用单一 trait 边界排除 `bool`；`CastTo<T>` 表达具体可转换关系并实现转换逻辑。
+- **sealed 论证**：`CastElement: Element` 间接 sealed（`Element: Sealed`），下游 crate 无法为新类型实现。
+- **owner**：`CastElement` 定义在 `src/element/mod.rs`；`21-type.md §5.1` 仅消费、不重新定义。
 
 ### 5.10 Checked arithmetic traits
 

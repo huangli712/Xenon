@@ -270,6 +270,12 @@ impl Drop for ParallelGuard {
 
 **关键 API 边界变化（v1.1.0）：** `ParallelGuard::enter()` 不再作为公开 API 暴露。取而代之，进入并行区域的 **唯一** 入口是 `select_exec_path()` 返回 `(ExecPath::Parallel, Some(guard))`。`parallel/` 后端在收到该 guard 后将其持有到并行区域结束即可，无需也不能再次调用 `enter()`。详细论证见决策 7（§11）。
 
+**线程亲和性（thread affinity）契约（v1.2.0）：** `ParallelGuard` 有意 `!Send + !Sync`（通过 `_private: PhantomData<*const ()>` 推导）。其 `Drop` 实现清除调用线程的 thread-local `IN_PARALLEL` flag——若 guard 被 move 到 Rayon worker 线程并在 worker 上 drop，会清错线程的 TLS，破坏嵌套并行检测的正确性。因此：
+
+- `parallel/` 后端必须保持 outer guard 在 **调用线程**（dispatching thread）的入口函数栈帧上，直到整个 Rayon 并行区域结束。
+- Rayon worker 闭包 **不得** 捕获 outer guard。
+- 每个 worker 闭包内 chunk 的执行必须包裹在 `dispatch::with_parallel_worker_context` 中，使该 worker 自身的 TLS 在 chunk 执行期间观测到 `IN_PARALLEL == true`，从而让 worker 内部嵌套调用 dispatch 时正确回退串行路径。
+
 **实现提示（内部）：** 基于 thread-local `Cell<bool>` 实现，仅 dispatch 模块内部可见：
 
 ```rust,ignore
@@ -293,6 +299,36 @@ fn try_acquire_guard() -> Option<ParallelGuard> {
 ```
 
 `ParallelContext` 是 thread-local 状态 token，由 `ParallelGuard` 内部管理，不对外暴露为独立类型。
+
+**Worker 上下文 helper（pub(crate)）：** 为支持上述线程亲和性契约，dispatch 模块同时提供以下内部 helper，供 `parallel/` 在每个 Rayon worker 闭包中使用：
+
+```rust,ignore
+/// Runs `f` while marking the current worker thread as being inside a
+/// Xenon-internal parallel region.
+///
+/// Used by `parallel/` inside Rayon worker closures: outer `ParallelGuard`
+/// stays on the dispatching thread; each worker closure wraps its chunk
+/// execution in this helper so nested `select_exec_path()` calls inside
+/// the worker thread correctly observe `IN_PARALLEL == true` and fall
+/// back to `ExecPath::Serial`.
+///
+/// The helper does NOT construct or consume `ParallelGuard`. It saves
+/// the previous TLS value, sets it to `true`, runs `f`, and restores
+/// the previous value on drop (panic-safe via the inner `Reset` RAII).
+pub(crate) fn with_parallel_worker_context<R>(f: impl FnOnce() -> R) -> R {
+    IN_PARALLEL.with(|flag| {
+        let previous = flag.replace(true);
+        struct Reset<'a>(&'a core::cell::Cell<bool>, bool);
+        impl Drop for Reset<'_> {
+            fn drop(&mut self) {
+                self.0.set(self.1);
+            }
+        }
+        let _reset = Reset(flag, previous);
+        f()
+    })
+}
+```
 
 **嵌套并行行为矩阵：**
 
@@ -597,21 +633,14 @@ fn is_in_parallel() -> bool {
 
 | 主题          | 论证                                                                                               |
 | ------------- | -------------------------------------------------------------------------------------------------- |
-| thread-local  | `Cell<bool>` 是 `!Sync`，但通过 `thread_local!` 访问确保每个线程拥有独立副本，无数据竞争。        |
-| RAII 保证     | `ParallelGuard` 的 `Drop` 实现在任何退出路径（包括 panic unwind）下都会重置 flag，不会泄漏状态。  |
-| 原子选择      | `try_acquire_guard()` 内部先 `flag.get()` 再 `flag.set(true)`；这两步在单线程内是顺序执行，无 TOCTOU。 |
-| 公共入口收敛  | `try_acquire_guard()` 是模块私有函数，仅由 `select_exec_path()` 调用。`ParallelGuard` 没有 `pub(crate)` 构造函数，杜绝调用方绕过原子契约。 |
-| 零分配        | 不在堆上分配，不涉及原子操作（`Cell` 是非原子内部可变性），开销为单次 thread-local 访问。         |
+| thread-local      | `Cell<bool>` 是 `!Sync`，但通过 `thread_local!` 访问确保每个线程拥有独立副本，无数据竞争。        |
+| RAII 保证         | `ParallelGuard` 的 `Drop` 实现在任何退出路径（包括 panic unwind）下都会重置 flag，不会泄漏状态。  |
+| 原子选择          | `try_acquire_guard()` 内部先 `flag.get()` 再 `flag.set(true)`；这两步在单线程内是顺序执行，无 TOCTOU。 |
+| 公共入口收敛      | `try_acquire_guard()` 是模块私有函数，仅由 `select_exec_path()` 调用。`ParallelGuard` 没有 `pub(crate)` 构造函数，杜绝调用方绕过原子契约。 |
+| 线程亲和性        | `ParallelGuard` 是 `!Send + !Sync`，因为 `Drop` 清除当前线程的 TLS——若 guard 被 drop 在另一线程会清错线程的 flag。`parallel/` 后端必须在调用线程持有 guard，禁止在 Rayon 闭包中捕获。 |
+| Worker 上下文     | Rayon worker 闭包必须使用 `with_parallel_worker_context` 在 chunk 执行期间设置 worker 自身 TLS；不得捕获或 move outer guard。 |
+| 零分配            | 不在堆上分配，不涉及原子操作（`Cell` 是非原子内部可变性），开销为单次 thread-local 访问。         |
 ```
-
-**安全性论证：**
-
-| 主题          | 论证                                                                                               |
-| ------------- | -------------------------------------------------------------------------------------------------- |
-| thread-local  | `Cell<bool>` 是 `!Sync`，但通过 `thread_local!` 访问确保每个线程拥有独立副本，无数据竞争。        |
-| RAII 保证     | `ParallelGuard` 的 `Drop` 实现在任何退出路径（包括 panic unwind）下都会重置 flag，不会泄漏状态。  |
-| 重入安全      | `enter()` 内部先检查 flag，再设置 flag，无 TOCTOU 问题（单线程内顺序执行）。                       |
-| 零分配        | 不在堆上分配，不涉及原子操作（`Cell` 是非原子内部可变性），开销为单次 thread-local 访问。         |
 
 ### 6.3 阈值存储
 
@@ -726,16 +755,24 @@ pub(crate) fn should_parallelize(_len: usize, _is_contiguous: bool) -> bool {
 }
 ```
 
-**`ParallelGuard` 的 cfg 处理：** `ParallelGuard` 类型与 `try_acquire_guard()` / `is_in_parallel()` / `IN_PARALLEL` thread-local 仅在 `feature = "parallel"` 启用时存在；`feature = "parallel"` 关闭时这些项目通过模块级 `#[cfg(feature = "parallel")]` 整体不生成。`select_exec_path()` 的返回类型 `(ExecPath, Option<ParallelGuard>)` 在 feature 关闭时退化为 `Option<NeverGuard>`-等价（永远 `None`）；为简化签名，在 feature 关闭时 `ParallelGuard` 仍以零大小占位类型形式存在但永不构造。
+**`ParallelGuard` 的 cfg 处理：** `ParallelGuard` 类型与 `try_acquire_guard()` / `is_in_parallel()` / `IN_PARALLEL` thread-local 仅在 `feature = "parallel"` 启用时存在对应实现；`feature = "parallel"` 关闭时仅保留一个零大小占位结构体以保持 `select_exec_path()` 的返回类型签名稳定，但**永不构造**且**无 Drop 行为**。
 
 ```rust,ignore
 #[cfg(not(feature = "parallel"))]
 pub(crate) struct ParallelGuard {
     // Zero-size, never constructed in this build configuration.
-    _private: core::marker::PhantomData<*const ()>,
+    //
+    // Unlike the real guard under `feature = "parallel"`, this placeholder
+    // has no Drop implementation and no thread-local state to release, so
+    // it must be Send + Sync by construction. Otherwise
+    // `(ExecPath, Option<ParallelGuard>)` would unnecessarily become non-Send
+    // in default/no-parallel builds, where the option is provably always `None`.
+    _private: core::marker::PhantomData<()>,
 }
 // No `try_acquire_guard()`, no `Drop` impl needed — the type is unconstructible.
 ```
+
+**真 guard !Send vs placeholder Send 的有意不对称：** 在 `feature = "parallel"` 启用下，真 `ParallelGuard` 必须是 `!Send + !Sync`，因为它持有清除当前线程 TLS flag 的释放语义。在 `feature = "parallel"` 关闭下，placeholder `ParallelGuard` **不**持有任何线程亲和的释放语义（无构造、无 Drop），因此**必须**是 `Send + Sync`，以避免 `Option<ParallelGuard>`（始终 `None`）在默认构建下被无端打上 `!Send` 标签。这种不对称是有意为之的安全契约差异，并非疏漏。
 
 ### 6.5 决策流 ASCII 图
 
@@ -766,19 +803,25 @@ Caller (math / matrix / reduction)
            ▼                  ▼                ▼
 ┌────────────────────┐ ┌──────────────┐ ┌──────────────┐
 │ parallel/ backend  │ │ simd/        │ │ caller's     │
-│ holds the guard    │ │ backend      │ │ own scalar   │
-│ for the entire     │ │ (may         │ │ impl         │
-│ parallel region;   │ │  internally  │ │              │
-│ each worker chunk  │ │  fall back   │ │              │
-│ MAY invoke SIMD    │ │  to scalar)  │ │              │
-│ per chunk-local    │ │              │ │              │
-│ admission (v2.0).  │ │              │ │              │
-│ Drop releases the  │ │              │ │              │
-│ in-parallel flag.  │ │              │ │              │
+│ keeps the guard    │ │ backend      │ │ own scalar   │
+│ on the dispatching │ │ (may         │ │ impl         │
+│ thread (entry-fn   │ │  internally  │ │              │
+│ frame); each Rayon │ │  fall back   │ │              │
+│ worker closure     │ │  to scalar)  │ │              │
+│ wraps its chunk in │ │              │ │              │
+│ with_parallel_     │ │              │ │              │
+│ worker_context;    │ │              │ │              │
+│ chunk MAY invoke   │ │              │ │              │
+│ SIMD per chunk-    │ │              │ │              │
+│ local admission    │ │              │ │              │
+│ (v2.0). Outer      │ │              │ │              │
+│ guard Drop on the  │ │              │ │              │
+│ dispatching thread │ │              │ │              │
+│ releases TLS flag. │ │              │ │              │
 └────────────────────┘ └──────────────┘ └──────────────┘
 ```
 
-**关键语义：** dispatch 做出三路裁决后，调用方执行单次 `match` 分发。`ExecPath::Simd` 分支由 `simd/` 后端接管——它可能在内部因 ISA、lane 宽度等原因回退标量，这一回退对 dispatch 完全透明。`ExecPath::Parallel` 分支总是带着已获取的 guard 进入 `parallel/` 后端；后端不再自己 `enter()`，只持有 guard 直到并行区结束。
+**关键语义：** dispatch 做出三路裁决后，调用方执行单次 `match` 分发。`ExecPath::Simd` 分支由 `simd/` 后端接管——它可能在内部因 ISA、lane 宽度等原因回退标量，这一回退对 dispatch 完全透明。`ExecPath::Parallel` 分支总是带着已获取的 guard 进入 `parallel/` 后端；后端不再自己 `enter()`，guard 始终留在调用线程的 entry function frame 中（`!Send` 不允许 move 到 worker），每个 Rayon worker 闭包内 chunk 执行被包裹在 `dispatch::with_parallel_worker_context` 中以正确传递 worker 自身 TLS 状态。
 
 ---
 
@@ -927,6 +970,8 @@ Caller (math / matrix / reduction)
 | `ExecPath` 无 `pub` 导出                       | 编译期可见性检查             |
 | `ParallelGuard` 不可外部构造（无 `pub`/`pub(crate)` 构造器；唯一来源为 `select_exec_path()` 返回值） | 编译期可见性检查 + 反例编译失败测试 |
 | `ParallelExecStrategy` 无 `pub` 导出，字段私有  | 编译期可见性检查             |
+| `feature = "parallel"` 启用下，真 `ParallelGuard` 是 `!Send + !Sync` | compile-fail（尝试把 guard `move` 到另一线程闭包应失败）+ static 类型断言 |
+| `feature = "parallel"` 关闭下，placeholder `ParallelGuard` 是 `Send + Sync`，因此 `Option<ParallelGuard>` 不应被错误打上 `!Send` 标签 | static 类型断言（`fn assert_send<T: Send>()`、`fn assert_sync<T: Sync>()`） |
 | dispatch 模块不依赖 `pulp` 或 `rayon`           | `cargo tree --no-dev-deps` 验证 |
 
 ---
@@ -984,6 +1029,8 @@ pub(crate) fn par_map_internal<...>(
 ```
 
 调用方持有 `(ExecPath::Parallel, Some(guard))` 时通过 `match` 把 guard 转交给 parallel 后端入口；parallel 后端拥有 guard 直到工作完成，guard 在函数退出（含 panic unwind）时 `Drop` 释放 thread-local flag。
+
+**线程亲和性约束（v1.2.0）：** 由于 `ParallelGuard` 是 `!Send + !Sync`（见 §5.4 / §6.2），parallel 后端**必须**把 guard 保留在调用线程的 entry function frame 中（即 `par_map_internal` 的栈帧），**不得**把 guard 捕获进 Rayon worker 闭包。每个 worker 闭包内 chunk 执行必须包裹在 `dispatch::with_parallel_worker_context(|| { ... })` 中——该 helper 不构造、不消费 guard，仅在 worker 自身 TLS 上设置/还原 `IN_PARALLEL == true`，使 worker 内部嵌套调用 `select_exec_path()` 正确回退串行路径。
 
 参见 `09-parallel.md` §6.1（路径选择）、决策 4（parallel 不包含串行回退）、决策 6（执行路径裁决由 dispatch 统一收口）。
 
