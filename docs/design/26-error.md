@@ -686,7 +686,7 @@ impl std::error::Error for XenonError {
 | `Ffi`                 | `operation`, `category`（封闭枚举 `FfiErrorCategory`，每个子类携带专属结构化负载）, `backend`, `cause?` |
 | `Workspace`           | `operation`, `category`（封闭枚举 `WorkspaceErrorCategory`，每个子类携带专属结构化负载）, `cause?` |
 | `IndexOutOfBounds`    | `operation`, `attempted_index`, `axis`, `shape`；`attempted_index` 表示完整多维索引 tuple，`axis` 指出首个越界维度 |
-| `TypeConversion`      | `operation`, `source_type`（`ElementType`）, `target_type`（`ElementType`）, `reason`, `element_index?` |
+| `TypeConversion`      | `operation`, `source_type`（`&'static str`，v3.2.0 起；值来自 `Element::ELEMENT_TYPE_NAME`）, `target_type`（同前）, `reason`, `element_index?` |
 
 分配成本说明：`attempted_index: Vec<usize>`、`shape: Vec<usize>` 以及
 若干 `InvalidArgumentKind` / `FfiErrorCategory` 子变体内的 `Vec<usize>`
@@ -712,7 +712,7 @@ impl std::error::Error for XenonError {
 | `backend`                               | `FfiBackend` 封闭枚举               | FFI 后端标识                                               | 仅 `Ffi` 使用                                                              |
 | `storage_kind` / `expected` / `actual`  | `StorageKindTag` 封闭枚举           | 存储模式标签                                               | `InvalidLayout` / `InvalidStorageMode` 使用                                |
 | `conversion`                            | `Option<StorageConversionKind>`     | 存储模式转换种类                                           | `InvalidStorageMode` 使用                                                  |
-| `source_type` / `target_type`           | `ElementType` 封闭枚举              | 元素类型标签                                               | `TypeConversion` 使用                                                      |
+| `source_type` / `target_type`           | `&'static str`（v3.2.0 起）         | 元素类型名（如 `"f32"`、`"Complex<f64>"`）                 | `TypeConversion` 使用；值由 `Element::ELEMENT_TYPE_NAME` 提供，详见 `03-element.md §5.1.1` |
 
 未来新增变体须复用上表名称与字段类型；如需新字段且语义新颖，须先在
 本表中扩展再使用。**字符串字段（如 `operation`）只允许作为稳定标识
@@ -727,9 +727,10 @@ impl std::error::Error for XenonError {
 - 对 `Option<Vec<usize>>` 等可选结构化字段，`Display` 实现必须做
   人性化格式化；`None` 统一显示为 `<any>`，不得直接打印 `Some(...)`
   / `None` 调试文本。
-- 对 `TypeConversion` 的 `source_type` / `target_type`，Display 必须
-  使用 `ElementType` 自身的 `Display` 实现（人类可读名称，例如 `f32`、
-  `Complex<f64>`），不得使用 `{:?}` 或 `TypeId` 风格的不透明哈希。
+- 对 `TypeConversion` 的 `source_type` / `target_type`，Display 直接
+  写出该 `&'static str` 值（v3.2.0 起；值已是人类可读名称，例如 `"f32"`、
+  `"Complex<f64>"`，由 `Element::ELEMENT_TYPE_NAME` 关联常量保证）。
+  禁止使用 `{:?}` 或 `TypeId` 风格的不透明哈希。
 - 携带 `cause` 的 `Ffi` / `Workspace` 变体须在 Display 末尾追加
   `; caused by: <inner>` 片段，使单次格式化即可显示完整错误链；
   程序化遍历仍通过 `std::error::Error::source()`。
