@@ -101,7 +101,7 @@ src/error.rs
 
 - 不再向上引用 `element` / `complex` / 任何 L1+ 模块
 - `ElementType` 是纯数据枚举（`#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)] #[repr(u8)]`），属于错误诊断元数据而非元素能力，下沉到 L0 是合理职责划分
-- `Element::ELEMENT_TYPE` 关联常量值（如 `ElementType::I32`）所有具体取值都来自本模块的封闭枚举，`element` 模块仅提供 trait bound 与 `ElementType::of::<A>()` 帮助函数（后者作为 `element` 模块的 inherent impl）
+- `Element::ELEMENT_TYPE` 关联常量值（如 `ElementType::I32`）所有具体取值都来自本模块的封闭枚举，`element` 模块仅提供 trait bound 与 `crate::element::element_type_of::<A>()` 帮助函数（**自由函数**，不是 inherent impl——Rust 不允许在 `element` 模块为定义于 `error` 模块的 `ElementType` 类型添加 inherent impl，详见 `03-element.md §5.1` v1.3.1 决策）
 
 ---
 
@@ -120,7 +120,7 @@ use core::fmt;
 /// Authoritative definition lives here in the `error` module (L0) so that
 /// `XenonError::TypeConversion` can carry the discriminant without forcing
 /// `error` to depend on `element` (L2). The `element` module re-exports it
-/// via `pub use crate::error::ElementType` and provides the `ElementType::of::<A>()`
+/// via `pub use crate::error::ElementType` and provides the free function `element_type_of::<A>()`
 /// inherent impl that requires `A: Element`. The `ffi` module also
 /// re-exports it for C consumers.
 ///
@@ -161,6 +161,13 @@ impl fmt::Display for ElementType {
             ElementType::F64       => "f64",
             ElementType::Complex32 => "Complex<f32>",
             ElementType::Complex64 => "Complex<f64>",
+            // Wildcard arm required because `ElementType` is `#[non_exhaustive]`.
+            // Although this `impl` lives in the same crate as the enum and
+            // therefore CAN exhaustively match today, omitting the wildcard
+            // would silently break the moment a new variant is added in a
+            // future version. Returning a stable placeholder string keeps
+            // `Display` total without mis-naming an unknown variant.
+            _                      => "<unknown ElementType>",
         };
         f.write_str(name)
     }
@@ -368,12 +375,18 @@ pub enum WorkspaceErrorCategory {
     SplitCountInvariant { detail: Cow<'static, str> },
 /// Capacity grow or byte-length request would overflow `usize`.
 /// For `Workspace` errors, both fields are measured in bytes
-/// (`current_capacity` is the currently available byte length of the
-/// region or workspace; `additional` is the requested additional bytes
-/// or the operand whose product with `size_of::<T>()` overflowed).
-GrowOverflow { current_capacity: usize, additional: usize },
+    /// Capacity grow overflow.
+    ///
+    /// `current_capacity` is the currently available byte length of the
+    /// region or workspace; `additional` is the requested additional
+    /// bytes (always in BYTES). For typed-view `count * size_of::<T>()`
+    /// overflows where `count` is in element units (not bytes), use
+    /// `TypedViewRejection::TypedByteLengthOverflow` instead — see
+    /// `24-workspace.md §5.6` and v3.1.1 changelog.
+    GrowOverflow { current_capacity: usize, additional: usize },
     /// Typed view request rejected (e.g., ZST not supported, range not
-    /// aligned for `T`).
+    /// aligned for `T`, count×size_of overflow — the last via
+    /// `TypedViewRejection::TypedByteLengthOverflow`).
     TypedViewRejected { detail: TypedViewRejection },
 }
 
@@ -393,13 +406,25 @@ pub enum WorkspaceBorrowState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum TypedViewRejection {
+    /// `T` is a zero-sized type; typed view of ZST is rejected.
     ZeroSizedType,
+    /// Buffer base address does not satisfy `align_of::<T>()`.
     AlignmentMismatch { required: usize, actual: usize },
-    // `LengthNotMultipleOfSize` removed in v3.1.0: `24-workspace.md §5.6` typed
-    // view API only allocates by `count` (computing `count * size_of::<T>()`
-    // internally), it does not reinterpret an arbitrary byte length, so this
-    // variant had no triggering call site.
+    /// `count.checked_mul(size_of::<T>())` overflowed `usize`. We cannot
+    /// represent the requested byte length, so reusing `GrowOverflow`
+    /// (which expects bytes) would produce a misleading diagnostic. Carry
+    /// `count` (element units) and `elem_size` (bytes per `T`) instead.
+    /// Added in v3.1.1 to replace the misuse of `GrowOverflow` previously
+    /// done by `24-workspace.md §5.6` typed helpers.
+    TypedByteLengthOverflow { count: usize, elem_size: usize },
+    // Historical note: `LengthNotMultipleOfSize` was removed in v3.1.0.
+    // `24-workspace.md §5.6` typed view API only allocates by element
+    // `count` (computing `count * size_of::<T>()` internally), it does
+    // NOT reinterpret an arbitrary byte length, so the variant had no
+    // triggering call site. The new `TypedByteLengthOverflow` (above)
+    // replaces it for the `count * size_of` overflow path.
 }
 
 impl core::fmt::Display for WorkspaceErrorCategory {
@@ -1246,7 +1271,7 @@ Caller invokes public API (e.g., tensor.broadcast_to(shape))
 
 > 本版本恢复 `01-architecture.md §5.2` 的 L0..L6 单向依赖，并清理 v3.0 协同期中遗留的两处死变体。公开 `XenonError` 变体名称保持兼容，调用方仅在错误诊断路径才能感知差异。
 
-- §4.1 / §4.4：`error.rs` 不再依赖 `crate::element::ElementType`。`ElementType` 枚举的权威定义下沉到 L0 `error` 模块，`element` 与 `ffi` 通过 `pub use crate::error::ElementType` 暴露上层稳定路径；`ElementType::of::<A>()` 帮助函数因依赖 `A: Element` trait bound，作为 `element` 模块的 inherent impl 留在 `element`。
+- §4.1 / §4.4：`error.rs` 不再依赖 `crate::element::ElementType`。`ElementType` 枚举的权威定义下沉到 L0 `error` 模块，`element` 与 `ffi` 通过 `pub use crate::error::ElementType` 暴露上层稳定路径；`element_type_of::<A>()` 帮助函数因依赖 `A: Element` trait bound，作为 `element` 模块的 **自由函数（free function，非 inherent impl）** 留在 `element`——Rust 不允许在 `element` 模块为定义于 `error` 模块的类型添加 inherent impl（E0116），详见 `03-element.md §5.1` v1.3.1 决策记录。
 - §5.1：`ElementType` 枚举完整定义（含 `Display` impl）出现在本模块，与 `XenonError` 同处一个文件。变体名（`Bool`/`I32`/`I64`/`F32`/`F64`/`Complex32`/`Complex64`）与 `repr(u8)` / derive 集合不变；`Display` 输出格式延续 03-element.md 中的稳定文本（`bool` / `i32` / `i64` / `f32` / `f64` / `Complex<f32>` / `Complex<f64>`）。
 - §5.5 / §11 决策 6：`TypeConversion` 字段引用从 `crate::element::ElementType` 改为本模块 §5.1 的权威定义；语义无变化。
 - C5 协同：`FfiErrorCategory::OverlapRejected { shape, strides }` 由本版本起被 `23-ffi v2.x` 的 `from_raw_parts_mut` 自别名路径正式启用，不再是文档中的死变体（具体修订见 `23-ffi.md` 最新版本）。

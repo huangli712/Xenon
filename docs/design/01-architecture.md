@@ -622,7 +622,18 @@ pub use crate::construct::{
 //!
 //! A Rust N-dimensional array library for scientific computing.
 
-#![cfg_attr(docsrs, feature(doc_cfg))]
+// NOTE: We deliberately do NOT enable `feature(doc_cfg)` here. That feature
+// is nightly-only and would break MSRV 1.85 stable builds (and any cargo doc
+// invocation on stable). Feature-gated items below use plain
+// `#[cfg(feature = "...")]` to be hidden from non-feature builds; the
+// `#[cfg_attr(docsrs, doc(cfg(...)))]` attribute decorations elsewhere in
+// this file are documentation-only hints that compile to no-ops on stable
+// (because `docsrs` is never set in normal builds and `doc(cfg(...))` is a
+// stable-rustdoc no-op without `feature(doc_cfg)`). docs.rs rendering of
+// feature-gated items will therefore look identical to local cargo doc on
+// stable; if richer "this item requires feature X" badges become required
+// later, the right path is to bump MSRV or move that surface to a separate
+// nightly-only doc build, not to enable `feature(doc_cfg)` here.
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
 #![warn(rust_2024_compatibility)]

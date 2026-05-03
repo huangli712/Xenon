@@ -30,7 +30,9 @@
 
 ### 1.3 协同基线
 
-本文档以已修订的下游设计文档为协同基线。若本文档提到具体类型、字段、trait、枚举或 API 形态，必须与以下版本保持一致：`01-architecture.md v3.0.0`、`02-dimension.md v3.0.0`、`03-element.md v1.3.0`、`04-complex.md v2.0.0`、`05-storage.md v3.0.0`、`06-layout.md v1.3`、`07-tensor.md v3.0.0`、`08-simd.md v2.0.0`、`09-parallel.md v1.1.0`、`11-math.md v1.1.0`、`12-matrix.md v1.1.0`、`13-reduction.md v3.0.0`、`14-set.md v2.0.1`、`15-broadcast.md v3.0.0`、`16-shape.md v2.0.0`、`17-indexing.md v3.0.0`、`18-construction.md v3.0.0`、`19-overload.md v2.0.0`、`20-utility.md v3.0.0`、`21-type.md v3.0.0`、`22-output.md v2.0.0`、`23-ffi.md v3.0.0`、`24-workspace.md v3.0.0`、`25-safety.md v2.0.0`、`26-error.md v3.1.0`、`27-benchmark.md v2.0.0`、`28-tests.md v2.0.0`、`29-documentation.md v2.0.0`、`30-dispatch.md v2.0.0`。
+本文档以已修订的下游设计文档为协同基线。若本文档提到具体类型、字段、trait、枚举或 API 形态，必须与以下版本保持一致：`01-architecture.md v3.0.0`、`02-dimension.md v3.0.0`、`03-element.md v1.3.1`、`04-complex.md v2.0.1`、`05-storage.md v3.0.1`、`06-layout.md v1.3`、`07-tensor.md v3.0.0`、`08-simd.md v2.0.1`、`09-parallel.md v2.0.1`、`11-math.md v2.0.1`、`12-matrix.md v2.0.1`、`13-reduction.md v3.0.0`、`14-set.md v2.0.1`、`15-broadcast.md v3.0.1`、`16-shape.md v2.0.1`、`17-indexing.md v3.0.1`、`18-construction.md v3.0.1`、`19-overload.md v2.1.0`、`20-utility.md v3.0.1`、`21-type.md v2.1.0`、`22-output.md v2.0.1`、`23-ffi.md v3.0.1`、`24-workspace.md v3.0.1`、`25-safety.md v2.0.1`、`26-error.md v3.1.1`、`27-benchmark.md v2.0.0`、`28-tests.md v2.1.0`、`29-documentation.md v2.0.1`、`30-dispatch.md v2.0.1`。
+
+> **协同基线版本号是本次评审第三轮修复后的目标版本**。若个别文档目前还停留在旧版本号，应在本轮修订完成时同步 bump 到此基线（详见各文档版本历史段）。
 
 ---
 
@@ -541,7 +543,7 @@ where
 
 ### 5.2 XenonError 设计
 
-单一 `XenonError` 错误模型的架构决策已在 `01-architecture.md §13` 中定义。本节仅说明该决策在编码层面的公开 API、错误映射与文档写法约束。统一错误类型 `XenonError`，覆盖所有可恢复错误场景，以下为字段形态示意，非权威定义。错误模型以 `26-error.md v3.0.0 §5.1` 为准。
+单一 `XenonError` 错误模型的架构决策已在 `01-architecture.md §13` 中定义。本节仅说明该决策在编码层面的公开 API、错误映射与文档写法约束。统一错误类型 `XenonError`，覆盖所有可恢复错误场景，以下为字段形态示意，非权威定义。错误模型以 `26-error.md v3.1.1 §5.1` 为准（与 §1.3 协同基线一致）。
 
 ```rust,ignore
 #[derive(Debug, Clone)]
@@ -1011,12 +1013,18 @@ rayon = { version = "1.10", optional = true }
 pulp = { version = "0.18", optional = true }
 ```
 
-### 10.3 `cfg_attr(docsrs, doc(cfg(...)))` 标注条件编译 API
+### 10.3 条件编译 API 的文档标注（`cfg_attr(docsrs, doc(cfg(...)))`）
+
+**重要约束（与 MSRV 1.85 stable 协同）：** Xenon 不启用 nightly `feature(doc_cfg)`。仅依赖：
+- `#[cfg(feature = "...")]`：稳定 Rust 自带，按 feature 开关编译。
+- `#[cfg_attr(docsrs, doc(cfg(...)))]`：**纯文档辅助标注，可选**。在 stable 上编译时 `docsrs` 不被设置，整条属性是 no-op；docs.rs 渲染时若设置了 `--cfg docsrs` 也只是把 cfg 信息以 doc 文本形式呈现，不需要 `feature(doc_cfg)` crate-level gate。这意味着 stable / docs.rs 在 1.85 上都能正确编译。
+
+如果某个项目选择**不**启用 `doc(cfg)` 美化标注，纯写 `#[cfg(feature = "...")]` 完全合法（rustdoc 仍会按 cfg 隐藏未启用 feature 的条目）。本规范只把 `doc(cfg)` 视为**推荐**而非强制。
 
 ```rust,ignore
 /// Internal parallel execution backend marker.
 #[cfg(feature = "parallel")]
-#[cfg_attr(docsrs, doc(cfg(feature = "parallel")))]
+#[cfg_attr(docsrs, doc(cfg(feature = "parallel")))] // optional documentation hint
 pub(crate) trait ParallelBackend {
     fn for_each<F>(&self, f: F)
     where
@@ -1024,13 +1032,19 @@ pub(crate) trait ParallelBackend {
 }
 ```
 
-在 `Cargo.toml` 中配置 docsrs：
+`Cargo.toml` 中可以**可选**地为 docs.rs 配置 cfg 标志（不强制）：
 
 ```toml
 [package.metadata.docs.rs]
 all-features = true
+# Optional: only needed if doc(cfg) badges are desired on docs.rs.
+# This sets the docsrs cfg flag during docs.rs renders; on stable Rust
+# 1.85 it is a documentation-only no-op (doc(cfg) does NOT require
+# feature(doc_cfg) and does NOT pull nightly).
 rustdoc-args = ["--cfg", "docsrs"]
 ```
+
+**禁止**：在 `lib.rs` 中写 `#![cfg_attr(docsrs, feature(doc_cfg))]` 或任何 `#![feature(...)]` crate-level gate——这会破坏 stable 1.85 编译。详见 `01-architecture.md §lib.rs` 的禁用说明。
 
 ---
 

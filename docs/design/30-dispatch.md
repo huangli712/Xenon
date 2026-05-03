@@ -108,7 +108,7 @@ src/dispatch.rs
 ### 5.1 Crate 级约束
 
 - 所有 dispatch API 均为 `pub(crate)`；不对外公开任何 dispatch 类型或函数。
-- `Cargo.toml` feature 交互：dispatch.rs **始终编译**（不依赖任何 feature gate），但其运行时行为随 feature flag 变化：
+- `Cargo.toml` feature 交互：dispatch.rs **始终编译**，模块本体不依赖任何 feature gate；但**`ParallelExecStrategy` 相关代码路径（`new()` 内对 `max_workers` 上限的校验调用 `rayon::current_num_threads()`）只在 `feature = "parallel"` 下编译并使用 rayon**。具体形态：dispatch 内涉及读取 rayon 池大小的代码必须用 `#[cfg(feature = "parallel")]` 包裹；非 parallel feature 下，`ParallelExecStrategy::new()` 不可达（dispatch 永远不返回 `ExecPath::Parallel`），调用方也不会构造该策略。这等价于：**dispatch 对 rayon 的依赖是"feature-gated 内部传递"，与 `parallel/` 后端共享同一个 `optional = true, feature = "parallel"` 的 rayon 依赖项**，没有引入新的 always-on 依赖。运行时行为随 feature flag 变化：
   - `feature = "parallel"` 关闭时，`select_exec_path()` 永不返回 `ExecPath::Parallel`
   - `feature = "simd"` 关闭时，`select_exec_path()` 永不返回 `ExecPath::Simd`
   - 两者均关闭时，`select_exec_path()` 总是返回 `ExecPath::Serial`
@@ -830,9 +830,12 @@ Caller (math / matrix / reduction)
 ┌────────────────────┐ ┌──────────────┐ ┌──────────────┐
 │ feature=parallel + │ │ feature=simd │ │ default      │
 │ threshold != 0 +   │ │ + contig +   │ │ fallback     │
-│ len >= effective +  │ │ aligned +    │ │              │
-│ guard acquired     │ │ len >= SIMD  │ │              │
-│ (atomic)           │ │ threshold    │ │              │
+│ len >= effective + │ │ len >= SIMD  │ │              │
+│ guard acquired     │ │ threshold;   │ │              │
+│ (atomic)           │ │ alignment_ok │ │              │
+│                    │ │ is HINT only │ │              │
+│                    │ │ (forwarded   │ │              │
+│                    │ │  to simd/)   │ │              │
 └──────────┬─────────┘ └──────┬───────┘ └──────┬───────┘
            │                  │                │
            ▼                  ▼                ▼
@@ -1010,7 +1013,7 @@ Caller (math / matrix / reduction)
 | `ParallelExecStrategy` 无 `pub` 导出，字段私有  | 编译期可见性检查             |
 | `feature = "parallel"` 启用下，真 `ParallelGuard` 是 `!Send + !Sync` | compile-fail（尝试把 guard `move` 到另一线程闭包应失败）+ static 类型断言 |
 | `feature = "parallel"` 关闭下，placeholder `ParallelGuard` 是 `Send + Sync`，因此 `Option<ParallelGuard>` 不应被错误打上 `!Send` 标签 | static 类型断言（`fn assert_send<T: Send>()`、`fn assert_sync<T: Sync>()`） |
-| dispatch 模块不依赖 `pulp` 或 `rayon`           | `cargo tree --no-dev-deps` 验证 |
+| dispatch 模块在默认 feature 集（不启用 `parallel` / `simd`）下不依赖 `pulp` 或 `rayon` | `cargo tree --no-dev-deps --no-default-features` 验证。在 `--features parallel` 下 dispatch 通过 cfg 共享 rayon 依赖（用于 `current_num_threads()` 池大小校验），不引入新顶层依赖 |
 
 ---
 
@@ -1213,7 +1216,7 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 | MSRV       | Rust 1.85+                                                                                                       |
 | 单 crate   | dispatch 是 Xenon 单 crate 的内部模块，不独立发布                                                               |
 | SemVer     | dispatch 全为 `pub(crate)`——无对外 SemVer 承诺。内部 API 变更不影响下游用户，但需保持与 `parallel`/`math`/`matrix`/`reduction` 的接口一致 |
-| 最小依赖   | 无新增依赖；不依赖 `pulp`、`rayon` 或任何其他第三方 crate                                                        |
+| 最小依赖   | 不引入**额外**第三方 crate；`pulp` / `rayon` 仅作为 `feature = "simd"` / `feature = "parallel"` 下的可选依赖，dispatch 共享 `parallel/` 已声明的 rayon 依赖项以读取池大小（仅在 `cfg(feature = "parallel")` 块内使用 `rayon::current_num_threads()`）。非 `parallel` 编译下 dispatch 完全不引入 rayon 符号 |
 | 确定性     | 同平台、同编译配置、同输入下 `select_exec_path()` 结果必须确定，不依赖随机数或时间                               |
 | 不变量     | `ExecPath` 枚举为 `#[derive(Copy, Clone, Debug, PartialEq, Eq)]`，零成本传递                                     |
 

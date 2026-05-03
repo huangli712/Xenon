@@ -351,6 +351,7 @@ pub enum DataLocation {
 - **`storage_kind()` 语义说明：** `storage_kind()` 返回底层**实际存储表示类型**对应的 `Owned / View / ViewMut / Shared`，而不是高层语义分类。`Owned` 报告 `Owned`，`ViewRepr` 报告 `View`，`ViewMutRepr` 报告 `ViewMut`，`ArcRepr` 报告 `Shared`。因此广播结果若底层表示为 `ViewRepr`，其 `storage_kind()` 也必须返回 `View`，而不是 `Shared`。
 - **广播语义补充：** 广播结果的只读共享语义通过 layout flags 和访问控制表达，而非通过 `storage_kind()` 伪装。详见 `15-broadcast.md`。
 - **`access_semantics()` 广播判定机制：** 当 `ViewRepr` 的 `LayoutFlags` 包含 `HAS_ZERO_STRIDE` 时，`access_semantics()` 返回 `AccessSemantics::SharedReadOnly`，以区分普通只读视图（`ReadOnly`）与广播只读视图（`SharedReadOnly`）。此判定与 `LayoutState::BroadcastView` 的分类条件一致（见 `06-layout.md §5.11`）。
+- **`ViewMutRepr → ViewRepr` 零拷贝降级的来源标记（v3.0.1）：** 当 `view_mut().view()` 把可写视图降级为只读视图时，结果的 `LayoutFlags` 不一定包含 `HAS_ZERO_STRIDE`（普通 contiguous mutable view 降级后仍是 contiguous）。为了让 `access_semantics()` 在不依赖来源上下文的前提下仍能区分"普通 view 借用"与"由 ViewMut 降级而来的共享只读视图"，`TensorBase` 携带一个 1-bit 的内部标记字段 `flags::DERIVED_FROM_VIEW_MUT`（被 `LayoutFlags` 内部预留位承担，对外不暴露 setter，仅由 `view_mut().view()` / `view_mut().view_mut()` 等内部转换路径设置）。`access_semantics()` 的判定规则因此扩展为：(1) `storage_kind() == Arc` → `SharedReadOnly`；(2) `storage_kind() == ViewMut` → `Writable`；(3) `storage_kind() == View` 且 `(HAS_ZERO_STRIDE || DERIVED_FROM_VIEW_MUT)` → `SharedReadOnly`；(4) `storage_kind() == View` 且二者都未设置 → `ReadOnly`；(5) `storage_kind() == Owned` → `Owned`。这避免了 `access_semantics()` 输出与构造来源的歧义，且实现成本只有一个标志位。
 - **`SharedReadOnly` 双重含义说明：** `AccessSemantics::SharedReadOnly` 同时覆盖两类张量：
   1. **所有权共享（`ArcRepr`）：** 多个张量句柄通过 `Arc` 共享底层存储；写访问需要先唯一化（参见 `05-storage.md §5.8`、`§11` 决策 2）。这里"共享"指存储所有权层面的共享。
   2. **同物理地址共享（带 `HAS_ZERO_STRIDE` 的 `ViewRepr`）：** 多个不同逻辑索引映射到同一物理地址（广播视图、`ViewMutRepr` 零拷贝降级结果）。这里"共享"指同一物理元素被多个逻辑索引共享读取。
@@ -737,9 +738,21 @@ where
 `{ k_i * stride[i] | 0 <= k_i < shape[i] }`，其大小为 `(shape[i] - 1) * stride[i] + 1`
 （"+1" 来自 `k_i = 0` 这一项）。因此在按 stride 升序逐轴并入时，"下一轴 stride" 必须严格大于 "已覆盖子空间最大可达 offset"，下一轴的最小非零步进 `1 * stride[next]` 才不会与已覆盖区域产生别名。
 
-算法如下：
+算法如下（**保守 dense-prefix 充分判定**，并非完备判定）：
 
 ```text
+// Algorithm name: dense-prefix sufficient non-overlap test.
+//
+// Soundness: PASSING inputs are guaranteed non-overlapping (this test
+// proves the property).
+// Completeness: this test is CONSERVATIVE — some layouts that are
+// non-overlapping but do not form a dense prefix pattern will be
+// rejected. We accept that trade-off because the dense-prefix family
+// covers all layouts Xenon's safe constructors and internal slicing
+// API can produce (canonical F-order, transpose, slice with positive
+// strides). External `from_raw_parts_mut` callers passing exotic
+// non-overlapping strides will be rejected and should route through
+// Xenon's internal slicing API (which carries provenance) instead.
 validate_non_overlapping_layout(shape, strides, offset, storage_len):
     1. If product(shape) <= 1:
            return Ok(()).
@@ -748,7 +761,11 @@ validate_non_overlapping_layout(shape, strides, offset, storage_len):
     4. Initialize covered_max_offset = 0.
        (covered_max_offset is the maximum offset reachable by varying only
         the axes already accepted; the corresponding offset set has size
-        covered_max_offset + 1.)
+        covered_max_offset + 1. For dense-prefix layouts the offset set
+        equals the contiguous integer range [0, covered_max_offset],
+        which is what makes step 5's strict-greater test sufficient.
+        For non-dense-prefix layouts the offset set is a SUBSET of
+        [0, covered_max_offset] — step 5 then becomes conservative.)
     5. For each sorted axis i:
            // The next axis's smallest non-zero step (stride[i] * 1) must
            // exceed every offset already reachable, otherwise it aliases
@@ -1536,7 +1553,7 @@ authoritative implementation resides in src/construct/, see 18-construction.md �
 | 理由     | 显式保留 stride 元数据；与 `shape: D` 职责分离；静态维度仍可栈分配，动态维度仍可保持维度数一致 |
 | 替代方案 | `strides: Vec<isize>` — 放弃，静态维度也要堆分配                                               |
 | 替代方案 | `strides: [isize; N]` — 放弃，不支持动态维度                                                   |
-| 替代方案 | `strides` 复用 `D` 类型 — 放弃，无法显式表达 stride 元数据，且会混淆 shape 与 layout 的职责    |
+| 替代方案 | 裸用 `strides: D`（直接把 `D` 当 stride carrier 用）— 放弃，无法显式区分 shape 与 stride 的语义，且会让 `Strides<D>` 失去 newtype 文档价值。**当前方案使用 `Strides<D>` newtype 内部复用 `D` 表示**（详见 `06-layout.md §5.2`），这是"复用 D 的存储表示但隔离语义"的折中——并非该替代方案，请勿混淆 |
 
 ### 决策 3：offset 字段必要性
 

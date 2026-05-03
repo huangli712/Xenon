@@ -87,7 +87,7 @@ src/element/
 
 | 来源模块         | 使用的类型/trait                                           |
 | ---------------- | ---------------------------------------------------------- |
-| `crate::error`   | `XenonError`（显式类型转换失败时返回）；`ElementType`（封闭枚举，权威定义见 `26-error.md §5.1`，本模块通过 `pub use` re-export 以支撑 `Element::ELEMENT_TYPE` 与 `ElementType::of::<A>()`） |
+| `crate::error`   | `XenonError`（显式类型转换失败时返回）；`ElementType`（封闭枚举，权威定义见 `26-error.md §5.1`，本模块通过 `pub use` re-export 以支撑 `Element::ELEMENT_TYPE` 与 `crate::element::element_type_of::<A>()` 自由函数；详见 §5.1） |
 | `crate::complex` | `Complex<f32>`, `Complex<f64>`（元素类型实现目标）         |
 | `crate::private` | `Sealed`（封闭 trait 实现边界）                            |
 | `core::ops`      | `Add`, `Sub`, `Mul`, `Div`, `Neg`（Numeric supertrait）    |
@@ -141,7 +141,7 @@ pub trait Element:
     /// compile time. `ElementType` is **owned by the `error` module**
     /// (authoritative definition in `26-error.md §5.1`); the `element`
     /// module re-exports it as `crate::element::ElementType` to support
-    /// `Element::ELEMENT_TYPE` and `ElementType::of::<A>()`. The `ffi`
+    /// `Element::ELEMENT_TYPE` and the free function `element_type_of::<A>()`. The `ffi`
     /// module also re-exports it for C consumers. If the current Rust
     /// version does not support the required const mechanism, this can be
     /// downgraded to a regular `fn` without changing the semantics.
@@ -162,29 +162,32 @@ pub trait Element:
 
 **`ElementType` 枚举（定义于 `error` 模块，`element` 与 `ffi` 通过 `pub use` re-export）：**
 
-权威定义参见 `26-error.md §5.1`。本模块 `src/element/mod.rs` 通过 `pub use crate::error::ElementType;` 暴露同一枚举，并在 `Element::ELEMENT_TYPE` 关联常量与 `ElementType::of::<A>()` 帮助函数中复用。`ffi` 模块同样通过 `pub use crate::error::ElementType` re-export，以保持给 C 消费者的可见名称稳定。
+权威定义参见 `26-error.md §5.1`。本模块 `src/element/mod.rs` 通过 `pub use crate::error::ElementType;` 暴露同一枚举，并在 `Element::ELEMENT_TYPE` 关联常量与 `crate::element::element_type_of::<A>()` 自由函数中复用（自由函数而非 inherent impl，原因见下方 §5.1 决策记录）。`ffi` 模块同样通过 `pub use crate::error::ElementType` re-export，以保持给 C 消费者的可见名称稳定。
 
 ```rust,ignore
 // src/element/mod.rs (re-export only; authoritative definition lives in error)
 pub use crate::error::ElementType;
 
-impl ElementType {
-    /// Returns the `ElementType` discriminant for `A`.
-    ///
-    /// Determined at compile time via `Element::ELEMENT_TYPE`.
-    ///
-    /// Defined as an inherent method here (rather than at the definition site)
-    /// because `Element` is a trait owned by this module; co-locating
-    /// `ElementType::of::<A>()` with `Element::ELEMENT_TYPE` keeps the
-    /// `A: Element` bound in this module's dependency direction (`element` →
-    /// `error`, never `error` → `element`).
-    pub const fn of<A: Element>() -> Self {
-        A::ELEMENT_TYPE
-    }
+/// Returns the `ElementType` discriminant for `A`.
+///
+/// Determined at compile time via `Element::ELEMENT_TYPE`.
+///
+/// Defined as a free function in this module (NOT as an inherent method on
+/// `ElementType`) because Rust requires inherent `impl` blocks to live in
+/// the same crate AND the same module-tree position as the type definition.
+/// `ElementType` is owned by `crate::error` (see `26-error.md §5.1`); adding
+/// `impl ElementType { fn of::<A: Element>() ... }` in `crate::element`
+/// would not compile (E0116). Keeping `element_type_of::<A>()` here lets the
+/// `A: Element` bound stay in the `element → error` direction without
+/// reversing L0/L2 layering.
+pub const fn element_type_of<A: Element>() -> ElementType {
+    A::ELEMENT_TYPE
 }
 ```
 
-**设计决策（v1.3.0 协同 26-error v3.1.0）：** `ElementType` 的权威定义所有权从 `element` 模块**下移**到 L0 `error` 模块，恢复 `01-architecture.md §5.2` 的 L0..L6 单向依赖。`element` 通过 `pub use` 暴露同一枚举名给上层模块（保留 `crate::element::ElementType` 的稳定路径与 `Element::ELEMENT_TYPE` 关联常量语义）。`ffi` 也通过 `pub use crate::error::ElementType` re-export。`ElementType::of::<A>()` 因为依赖 `A: Element` trait bound，作为 `element` 模块的 inherent impl 留在本模块。
+**设计决策（v1.3.0 协同 26-error v3.1.0）：** `ElementType` 的权威定义所有权从 `element` 模块**下移**到 L0 `error` 模块，恢复 `01-architecture.md §5.2` 的 L0..L6 单向依赖。`element` 通过 `pub use` 暴露同一枚举名给上层模块（保留 `crate::element::ElementType` 的稳定路径与 `Element::ELEMENT_TYPE` 关联常量语义）。`ffi` 也通过 `pub use crate::error::ElementType` re-export。
+
+**关于 `ElementType::of::<A>()` 的 API 形态调整（v1.3.1）：** Rust 不允许 `impl ElementType { ... }` 写在 `crate::element` 而 `ElementType` 定义在 `crate::error`（错误码 E0116：inherent impl 必须与类型定义在同一模块树位置）。因此原计划中作为 `element` 模块 inherent impl 的 `ElementType::of::<A: Element>()` **改为自由函数 `crate::element::element_type_of::<A: Element>() -> ElementType`**。所有引用 `ElementType::of::<A>()` 的文档/示例须改写为 `element_type_of::<A>()`，调用处导入 `use crate::element::element_type_of;` 或经 prelude re-export。该函数依赖 `A: Element` trait bound，因此放在 `element` 模块本身是天然位置；`error` 模块仍只持有不依赖 `Element` 的纯枚举定义，不会反向依赖。
 
 ### 5.2 Numeric trait
 
@@ -1005,7 +1008,7 @@ Upstream modules declare element bounds
 
 **契约更新（破坏性内部变更，公开 trait 名称兼容）**：
 
-- §4.1 / §4.2 / §5.1：`ElementType` 枚举的权威定义从本模块**下沉**到 L0 `error` 模块（`26-error.md v3.1.0 §5.1`）。本模块通过 `pub use crate::error::ElementType;` 在 `src/element/mod.rs` re-export 同名枚举，保留 `crate::element::ElementType` 与 `Element::ELEMENT_TYPE` 关联常量的稳定上层路径。`ElementType::of::<A>()` 因依赖 `A: Element` trait bound，作为 `element` 模块的 inherent impl 留在本模块。这恢复了 `01-architecture.md §5.2` 的 L0..L6 单向依赖（`error` 不再向上引用 `element`）。
+- §4.1 / §4.2 / §5.1：`ElementType` 枚举的权威定义从本模块**下沉**到 L0 `error` 模块（`26-error.md v3.1.0 §5.1`）。本模块通过 `pub use crate::error::ElementType;` 在 `src/element/mod.rs` re-export 同名枚举，保留 `crate::element::ElementType` 与 `Element::ELEMENT_TYPE` 关联常量的稳定上层路径。`element_type_of::<A>()` 作为 `element` 模块的 **自由函数（不是 inherent impl）** 提供：因依赖 `A: Element` trait bound，放在 element 模块是天然位置；改为自由函数是因为 Rust 不允许跨模块为外部模块定义的类型添加 inherent impl（详见 §5.1 v1.3.1 决策记录）。这恢复了 `01-architecture.md §5.2` 的 L0..L6 单向依赖（`error` 不再向上引用 `element`）。
 - §5.9.1：新增 `CastElement` 公开 sealed marker trait——标记"可作为 `cast()` 操作源/目标元素类型集合"。封闭实现集合：i32 / i64 / f32 / f64 / Complex<f32> / Complex<f64>（排除 bool）。`21-type.md v2.1.0 §5.1` 通过 `use crate::element::CastElement;` 消费。这填补了 v1.x 中 `21-type.md` 引用 `CastElement` 但 `03-element.md` 未定义的 owner 缺口。
 - §5.8：sealed trait 列表新增 `CastElement`。
 

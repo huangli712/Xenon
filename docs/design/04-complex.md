@@ -11,7 +11,7 @@
 
 ## 1. 模块定位
 
-**协同基线（v2.0.0）**：本文档以下游已修文档为准——03-element v1.3.0（`Element` / `Numeric` / `ComplexScalar` / `CastTo<T>` trait / `CastElement` sealed marker；`ElementType` 仅通过 `pub use crate::error::ElementType` re-export，不在 element 模块内重新定义）、21-type v3.0.0（B10.a：静态无损 `From` / 静态有损 + 动态条件性 `CastTo` 三层结构）、26-error v3.1.0（`XenonError::TypeConversion` 五字段；`ConversionFailureReason` 封闭枚举；**`ElementType` 封闭枚举的权威定义在此处，`#[non_exhaustive]`，详见 `26-error.md §5.1`**）。本文档不重复定义这些类型，仅在引用时遵循其权威字段。
+**协同基线（v2.0.1）**：本文档以下游已修文档为准——03-element v1.3.1（`Element` / `Numeric` / `ComplexScalar` / `CastTo<T>` trait / `CastElement` sealed marker；`ElementType` 仅通过 `pub use crate::error::ElementType` re-export，不在 element 模块内重新定义；`element_type_of::<A>()` 是自由函数而非 inherent impl）、21-type v2.1.0（B10.a：静态无损 `From` / 静态有损 + 动态条件性 `CastTo` 三层结构 + CastElement owner）、26-error v3.1.1（`XenonError::TypeConversion` 五字段；`ConversionFailureReason` 封闭枚举；**`ElementType` 封闭枚举的权威定义在此处，`#[non_exhaustive]` + `#[repr(u8)]` + Display match 含 wildcard arm，详见 `26-error.md §5.1`**）。本文档不重复定义这些类型，仅在引用时遵循其权威字段。
 
 ### 1.1 职责边界
 

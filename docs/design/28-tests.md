@@ -1,7 +1,7 @@
 # 集成测试模块设计
 
 > 文档编号: 28
-> 模块目录: src/tests
+> 适用目录: tests/（crate 根下集成测试）、src/**/*.rs 的 `#[cfg(test)] mod tests` 单元测试块、doctest（在 doc comment 内）、CI test matrix。Rust 集成测试目录约定为 crate 根下的 `tests/`，**不是** `src/tests`
 > 任务阶段: Phase 6
 > 前置文档: 所有前置文档（00-coding.md ~ 27-benchmark.md）
 > 需求参考: 需求说明书 §28
@@ -15,7 +15,7 @@
 
 ### 1.0 协同基线
 
-本文档 v2.0.0 以以下已修订设计文档为协同基线：`02-dimension.md` v1.x、`03-element.md` v1.x、`04-complex.md` v2.0.0、`05-storage.md` v2.0.0、`06-layout.md` v1.3、`07-tensor.md` v2.0.0、`08-simd.md` v2.0.0、`09-parallel.md` v2.0.0、`11-math.md` v2.0.0、`12-matrix.md` v2.0.0、`13-reduction.md` v2.0.0、`14-set.md` v2.0.0、`15-broadcast.md` v2.0.0、`16-shape.md` v2.0.0、`17-indexing.md` v2.0.0、`18-construction.md` v2.0.0、`19-overload.md` v2.0.0、`20-utility.md` v2.0.0、`21-type.md` v2.0.0、`22-output.md` v2.0.0、`23-ffi.md` v2.0.0、`24-workspace.md` v2.0.0、`25-safety.md` v2.0.0、`26-error.md` v3.0.0、`27-benchmark.md` v2.0.0。
+本文档 v2.1.0 以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`02-dimension.md` v3.0.0、`03-element.md` v1.3.1、`04-complex.md` v2.0.1、`05-storage.md` v3.0.1、`06-layout.md` v1.3、`07-tensor.md` v3.0.0、`08-simd.md` v2.0.1、`09-parallel.md` v2.0.1、`11-math.md` v2.0.1、`12-matrix.md` v2.0.1、`13-reduction.md` v3.0.0、`14-set.md` v2.0.1、`15-broadcast.md` v3.0.1、`16-shape.md` v2.0.1、`17-indexing.md` v3.0.1、`18-construction.md` v3.0.1、`19-overload.md` v2.1.0、`20-utility.md` v3.0.1、`21-type.md` v2.1.0、`22-output.md` v2.0.1、`23-ffi.md` v3.0.1、`24-workspace.md` v3.0.1、`25-safety.md` v2.0.1、`26-error.md` v3.1.1、`27-benchmark.md` v2.0.0、`30-dispatch.md` v2.0.1。
 
 ### 1.1 职责边界
 
@@ -714,7 +714,9 @@ panic 诊断信息测试：验证 panic message 包含 `需求说明书 §27` �
 | `test_add_ref_owned`                | `&a + b` 返回 `Ok(...)`，b 被消费                              | 中     |
 | `test_add_scalar`                   | `tensor + 5.0` 返回 `Ok(...)`，逐元素验证                      | 高     |
 | `test_scalar_wrapper_add_tensor`    | `Scalar(5.0) + tensor` 返回 `Ok(...)`，逐元素验证              | 高     |
-| `ui_native_scalar_add_tensor_rejected` | 原生 `i32 + Tensor` 左标量写法在编译期被拒绝；使用 `Scalar<A>` 包装类型 | 高     |
+| `test_native_scalar_add_tensor_i32`    | 原生 `i32 + Tensor<i32>` 左标量写法返回 `Tensor<i32>`，逐元素验证；19-overload §5.4 为受支持具体标量类型逐类型生成 `impl Add<TensorBase<...>> for f32 / f64 / i32 / i64 / Complex<f32> / Complex<f64>`，Rust 孤儿规则允许（`Self` 是非泛型外部类型 + trait 含本地 `TensorBase`，详见 19-overload §6 决策） | 高     |
+| `test_native_scalar_add_tensor_f64`    | `5.0_f64 + Tensor<f64>` 同上 | 高     |
+| `ui_blanket_scalar_add_rejected`       | `impl<T> Add<TensorBase<...>> for T` 这种**泛型 T** blanket impl 被孤儿规则编译期拒绝；这条 compile-fail 测试守住边界，区别于上面具体类型的正向测试 | 高     |
 | `test_sub_basic`                    | `a - b` 返回 `Ok(...)` 且结果正确                              | 高     |
 | `test_mul_basic`                    | `a * b` 返回 `Ok(...)` 且结果正确                              | 高     |
 | `test_div_basic`                    | `a / b` 返回 `Ok(...)` 且结果正确                              | 高     |
@@ -723,7 +725,14 @@ panic 诊断信息测试：验证 panic message 包含 `需求说明书 §27` �
 | `test_i32_tensor`                   | `i32` 类型张量运算返回 `Ok(...)`                               | 中     |
 | `test_complex_tensor`               | `Complex<f64>` 类型张量运算返回 `Ok(...)`                      | 中     |
 
-重载测试保持 `std::ops::Add` / `Sub` / `Mul` / `Div` 的 `Output = Result<Tensor, XenonError>`。同形状可使用 `a + b`，异形状推荐 `a.add(&b)?`；测试中可用 `(&a + &b).unwrap()` 或 `?`。不得新增额外 `try_*` 运算符别名，不得恢复原生 `i32 + Tensor` 左标量；左标量使用 `Scalar<A>` 包装类型。
+重载测试保持 `std::ops::Add` / `Sub` / `Mul` / `Div` 的 `Output = Result<Tensor, XenonError>`。同形状可使用 `a + b`，异形状推荐 `a.add(&b)?`；测试中可用 `(&a + &b).unwrap()` 或 `?`。不得新增额外 `try_*` 运算符别名。
+
+**关于左标量的写法（与 `19-overload.md §5.4` 协同）：**
+- ✅ **允许且应当测试**：原生具体类型左标量 `5.0_f32 + tensor`、`3_i32 + tensor`、`5.0_f64 + tensor`、`Complex::<f32>::new(...) + tensor` 等。Rust 孤儿规则**允许**为 `Self` = 受支持的具体外部类型 + trait 类型参数含本地 `TensorBase` 的组合实现 `Add`/`Sub`/`Mul`/`Div`。这些 impl 由 19-overload 逐类型生成，覆盖 `f32 / f64 / i32 / i64 / Complex<f32> / Complex<f64>` 6 种受支持算术标量。
+- ✅ **允许**：泛型场景使用 `Scalar<A>` 包装：当算法在泛型代码中持有 `A: Numeric`，需要 `Scalar(a) + tensor` 才能落地 `impl<A, D> Add<...> for Scalar<A>`，因为泛型 `A` 的 blanket impl 不允许。
+- ❌ **必须 compile-fail 拒绝**：blanket `impl<T> Add<...> for T`（**泛型 T**）。这是孤儿规则真正不允许的形态。`ui_blanket_scalar_add_rejected` 守住此边界。
+
+`bool` 张量没有算术运算（见 `19-overload.md §2`），因此不存在 `bool + Tensor<bool>` 的左标量路径，无需测试。
 
 ### 5.25 Good/Bad 对比示例
 

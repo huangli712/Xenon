@@ -287,6 +287,8 @@ fill_logical_only(storage, shape, strides, offset, flags, value):
 - 若非连续路径需要额外实现步骤，也仅属于 utility 的内部细节。
 - 类型转换语义仍归 convert，连续性保证语义仍归 utility。
 
+**关键前置依赖（与 `21-type.md §5.5` 协同）：** `to_contiguous()` 在 logically-F-contiguous 快路径委托 `to_owned()`，**必须**依赖 `21-type.md §5.5` 对 `to_owned()` 的承诺：返回的 owned 张量是 canonical F-order（无 inter-axis padding、无 tail padding、`offset == 0`、layout flags 由 `06-layout.md §5.7` 重算）。如果 `to_owned()` 改动为不再保证 canonical 形态（例如未来引入复用底层 buffer 的优化），`to_contiguous()` 的 `is_f_contiguous()` 快路径**必须同步切换**为统一走 `util_internal_to_f_contiguous()`，否则带 tail padding 的输入会破坏 canonical 输出契约。当前版本两个文档协同保证此前置依赖成立。
+
 ````rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
@@ -503,7 +505,7 @@ into_contiguous(tensor):
 - [ ] **T3**: 实现 `to_contiguous` 方法
   - 文件: `src/util/contiguous.rs`
   - 内容: 实现 `to_contiguous(&self)` 与 `into_contiguous(self)`；非 F-contiguous 输入始终转为 F-order，连续 owned 输入允许复用数据
-  - 测试: `test_to_contiguous_f_order`, `test_into_contiguous_reuses_owned_data`, `test_to_contiguous_transposed_becomes_f`, `test_to_contiguous_non_contiguous`
+  - 测试: `test_to_contiguous_f_order`, `test_into_contiguous_reuses_canonical_owned_data`, `test_into_contiguous_repacks_noncanonical_f_contiguous_owned`, `test_into_contiguous_repacks_arc_input`, `test_to_contiguous_transposed_becomes_f`, `test_to_contiguous_non_contiguous`（**注意**：`into_contiguous` 仅在 `is_canonical_f_contiguous_owned()` 为真时 O(1) 复用；`is_f_contiguous()` 但带 tail padding 或非 Owned storage 必须重排，详见 §6.3 predicate 对照表）
   - 前置: layout 模块的 `is_f_contiguous` 完成
   - 预计: 10 min
 
@@ -545,7 +547,9 @@ into_contiguous(tensor):
 | `test_try_fill_read_only_returns_error`   | `try_fill()` 在只读 / 共享只读 / 广播只读张量上返回 `InvalidStorageMode` | 高     |
 | `test_fill_empty`                         | 空数组 fill 不 panic                           | 中     |
 | `test_to_contiguous_f_order`              | F-order 连续输入返回 owned 拷贝                | 高     |
-| `test_into_contiguous_reuses_owned_data`  | F-order owned 输入消费后复用原数据             | 高     |
+| `test_into_contiguous_reuses_canonical_owned_data`           | **canonical** F-order owned 输入（offset==0 + 无 tail padding）消费后 O(1) 复用原数据                                | 高 |
+| `test_into_contiguous_repacks_noncanonical_f_contiguous_owned` | `is_f_contiguous() == true` 但带 tail padding 或非零 offset 的 Owned 输入必须重排为 canonical F-order owned，**不得**走 O(1) 复用路径 | 高 |
+| `test_into_contiguous_repacks_arc_input`                     | `ArcRepr` 输入消费后必须深拷贝为 canonical owned，不能"假装是 owned"复用 Arc backing buffer | 高 |
 | `test_to_contiguous_transposed_becomes_f` | 转置视图转为 F-order owned                     | 高     |
 | `test_to_contiguous_non_contiguous`       | 非连续输入返回 F-order owned                   | 高     |
 
@@ -664,7 +668,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 | `into_contiguous`（已连续 owned） | O(1)       | O(1)       | 直接复用现有 F-order owned 数据                                      |
 
 - 连续布局的 `fill` 仅在填充值是全零 bit-pattern 时才可使用 `ptr::write_bytes(0)` 优化；一般情况仍应逐元素写入，避免把任意 `Copy` 值错误地按字节复制
-- `clip` 的热点路径可考虑 SIMD 加速（参见 `08-simd.md` §5）
+- `clip` 的热点路径**未来**可考虑 SIMD 加速：但当前版本 `utility/` 不实现独立的 SIMD / parallel 路径。任何 SIMD 化必须先在 `08-simd.md §5` 与 `30-dispatch.md §5` 中显式声明 admission rule、ExecPath 与阈值，然后由 `utility/` 通过统一 dispatch 接入 SIMD 后端，**禁止**在 `utility/` 内部直接接入 `pulp` 或绕开 dispatch 模型。当前版本 `clip` 走标量逐元素路径（详见 §10）。
 
 ---
 

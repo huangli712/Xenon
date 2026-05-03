@@ -83,7 +83,7 @@ src/ffi/
 ├── ptr.rs
 │   ├── crate::tensor        # TensorBase<S, D>, offset, OwnedRawParts re-export
 │   ├── crate::dimension     # Dimension trait
-│   ├── crate::element       # Element trait (for ElementType::of)
+│   ├── crate::element       # Element trait (for element_type_of free fn)
 │   └── crate::storage       # Storage, StorageMut, owned allocator metadata
 ├── blas.rs
 │   ├── crate::tensor        # TensorBase<S, D> (as_ptr via inherent method)
@@ -104,7 +104,7 @@ src/ffi/
 | ----------- | ------------------------------------------------------------------------------------------------------- |
 | `tensor`    | `TensorBase<S, D>`, `.shape()`, `.strides()`, `.offset()`                                               |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`                                                                       |
-| `element`   | `Element`, `ElementType`（定义于 `element` 模块，`ffi` re-export）, `ElementType::of::<A>()`            |
+| `element`   | `Element`、`ElementType`（**权威定义在 `crate::error`**；`element` 与 `ffi` 各自通过 `pub use crate::error::ElementType` re-export，使用点路径稳定）、`element_type_of::<A>()`（自由函数，定义在 `crate::element`；详见 `03-element.md §5.1` v1.3.1 决策） |
 | `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, owned allocator metadata（供 `OwnedRawParts<A, D>` 导出/重建） |
 | `layout`    | `is_f_contiguous()`（定义于 `06-layout.md` §5.7）、`has_zero_stride()`（定义于 `06-layout.md` §5.1）；`TensorBase` 方法参见 `07-tensor.md` §5.3 |
 | `error`     | `XenonError`（含 `Ffi`、`DimensionMismatch`、`IndexOutOfBounds`、`InvalidLayout` 等变体）、`FfiErrorCategory`（封闭枚举，定义于 `26-error.md` §5.1，含 `NullPointer`/`AlignmentMismatch`/`InvalidRank`/`BlasIncompatibleLayout`/`IntegerOverflow`/`AbiMismatch`/`OverlapRejected`/`ForeignAllocatorMismatch` 八个结构化子变体）、`FfiBackend`（封闭枚举：`RawParts`/`Blas`，定义于 `26-error.md` §5.1）、`InvalidLayoutReason`（封闭枚举，定义于 `26-error.md` §5.1）、`StorageKindTag`（封闭枚举：`Owned`/`View`/`ViewMut`/`Arc`，定义于 `26-error.md` §5.1） |
@@ -418,7 +418,7 @@ where
                 self.as_storage_ptr()
             },
             _marker: core::marker::PhantomData,
-            element_type: ElementType::of::<A>(),
+            element_type: crate::element::element_type_of::<A>(),
             ndim: self.ndim(),
             shape: self.shape().as_slice().as_ptr(),
             strides: self.strides().as_slice().as_ptr(),
@@ -449,7 +449,7 @@ where
                 self.as_storage_mut_ptr()
             },
             _marker: core::marker::PhantomData,
-            element_type: ElementType::of::<A>(),
+            element_type: crate::element::element_type_of::<A>(),
             ndim: self.ndim(),
             shape: self.shape().as_slice().as_ptr(),
             strides: self.strides().as_slice().as_ptr(),

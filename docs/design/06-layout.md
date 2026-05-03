@@ -556,11 +556,41 @@ Indices [0, 0], [0, 1], [0, 2], and [0, 3] access the same physical element
 /// causing the product to be `0`) is intentionally **not** classified as a
 /// broadcast view, so empty tensors that otherwise satisfy the F-order
 /// recognition rule retain `LayoutState::FContiguous`. The classification of
-/// a stride pattern as “broadcast vs non-broadcast” is therefore expressed
+/// a stride pattern as "broadcast vs non-broadcast" is therefore expressed
 /// entirely through the `(stride == 0, product(shape) > 0)` joint condition;
 /// `compute_layout_flags()` never asks the broadcast module to participate
 /// in this decision. The actual rules for **producing** a broadcast view
 /// (which axes get zero strides) live in `15-broadcast.md`.
+///
+/// # Note: classification vs validation (v1.3 emphasis)
+///
+/// `compute_layout_flags()` performs **classification only** — it does NOT
+/// validate that a non-empty zero-stride layout has a *legitimate origin*.
+/// The set of legitimate origins for non-empty zero-stride is fixed by
+/// §5.8.1 to:
+/// 1. Outputs of the `15-broadcast.md` module's `broadcast_to` /
+///    `broadcast_with` (read-only or shared-read-only views);
+/// 2. Empty-array degenerate metadata (covered by the
+///    `product(shape) > 0` exclusion above; this case never reaches the
+///    `HAS_ZERO_STRIDE` branch).
+///
+/// In particular, an arbitrary `unsafe { from_raw_parts*(... stride==0 ...) }`
+/// call that smuggles a non-empty zero-stride layout into a tensor will
+/// pass through `compute_layout_flags()` and be classified as
+/// `LayoutState::BroadcastView`, but it is the **constructor's**
+/// responsibility (`07-tensor.md §5`) to reject such inputs at the
+/// mutable / raw-parts boundary. Specifically:
+///
+/// - Read-only `from_raw_parts` MAY allow non-empty zero-stride only if
+///   the construction path is documented as producing a broadcast-derived
+///   view (which Xenon's public `from_raw_parts` currently does **not**).
+/// - Mutable `from_raw_parts_mut` MUST reject any non-empty zero-stride
+///   layout, since concurrent writes to the same physical address through
+///   different logical indices would violate aliasing rules.
+///
+/// `compute_layout_flags()` cannot enforce these origin constraints
+/// because it does not see the construction context; this is by design,
+/// not an oversight.
 pub(crate) fn compute_layout_flags<A, D: Dimension>(
     shape: &D,
     strides: &Strides<D>,

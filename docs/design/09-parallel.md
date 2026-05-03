@@ -341,6 +341,36 @@ dispatch-selected parallel entry (receives ParallelGuard by value;
 
 分块策略统一通过 `compute_safe_chunks(total, num_workers)` 计算，该函数定义于 `src/parallel/mod.rs`（参见 01-architecture.md §5.2a）。这避免了多处重复内联公式造成的不一致风险。
 
+**`compute_safe_chunks` 策略定义（v2.0.1 显式化）：**
+
+```text
+compute_safe_chunks(total, num_workers) -> chunk_size:
+    constants:
+        MIN_CHUNK = 1024            // lower bound on chunk size (elements)
+        TARGET_CHUNKS_PER_WORKER = 4 // aim for ~4 chunks per worker so
+                                     // rayon's work-stealing has slack;
+                                     // not a hard guarantee.
+    if total == 0:
+        return 1                    // dummy; no work scheduled
+    if total <= num_workers:
+        return 1                    // each element in its own chunk; only
+                                    // up to `total` workers will get work
+    target_chunks = num_workers * TARGET_CHUNKS_PER_WORKER
+    raw = ceil_div(total, target_chunks)
+    chunk = max(raw, MIN_CHUNK)
+    return chunk
+```
+
+设计理由：
+- **`MIN_CHUNK = 1024`**：避免 chunk 过小导致 rayon 调度开销超过实际工作（典型 f32/f64 标量运算 < 1µs / 1024 元素）。该常数是经验值，对所有受支持元素类型 + ExecPath::Parallel 路径统一使用，不区分类型。
+- **`TARGET_CHUNKS_PER_WORKER = 4`**：让 rayon 的 work-stealing 有空间均衡负载，避免最慢的 worker 拖累整体延迟。系数小于 4 时尾延迟敏感，大于 4 时调度开销显著。
+- **`total < num_workers` fallback**：直接 chunk_size = 1，让 `total` 个 worker 各得一个元素，剩余 worker 闲置；不再尝试聚合（聚合会导致 worker 不满载）。
+- **不基于元素 byte 大小调整**：所有受支持元素类型都是简单 POD（最大 16 bytes for `Complex<f64>`），1024 元素 chunk = 16 KiB，完全在 L1 cache 内。
+
+**与 `ParallelExecStrategy::chunk_size` 的关系：** 调用方通过 `with_strategy()` 提供 `chunk_size: Some(n)` 时，**完全覆盖** `compute_safe_chunks` 的输出（不再调用该函数）；`chunk_size: None` 时才调用 `compute_safe_chunks`。这把"自动选择 vs 显式覆盖"的边界写在调用点，避免实现层每次重新决策。
+
+**性能基线（参考非强制）：** 在 `27-benchmark.md` 的标准硬件下，`compute_safe_chunks` 应让 1M-element f32 add 在 8 worker 上达到 ≥ 5x 串行加速（详见 `27-benchmark.md §6`）；如果实测低于 4x，应优先排查热路径中的非 chunk 因素（如不必要的临时分配）。
+
 ```rust,ignore
 #[cfg(feature = "parallel")]
 pub(crate) fn par_zip_map<SL, SR, A, B, C, DL, DR, DO, F>(

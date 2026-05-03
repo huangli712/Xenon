@@ -422,6 +422,26 @@ fn parallel_iteration(tensor: &Tensor2<f64>) {
 }
 ```
 
+### 5.11 FFI unsafe 与线程安全边界（v2.0.1 新增）
+
+**适用范围：** `src/ffi/`（详见 `23-ffi.md`）。本节是横切线程安全规范在 FFI 边界的延伸，与 `23-ffi.md` 的 unsafe 接口契约协同。
+
+**核心约束：**
+
+| 约束类别 | 规则 |
+|:--|:--|
+| 描述符 Send/Sync | `TensorExport<'a, A>` / `TensorExportMut<'a, A>`（`23-ffi.md §5.4`）按 Rust auto-trait 推导：含 `*const A` / `*mut A` 字段使其默认 `!Send + !Sync`；不为这两个类型提供任何 `unsafe impl Send/Sync`。跨线程移动/共享导出的 raw 描述符**必须**由调用方在 `unsafe` 块中重新构造一个匹配 lifetime/borrow 的描述符，且仅在能证明无别名 + 无并发写时进行 |
+| C 端并发写 | 同一 `TensorExportMut` 在 C 侧**禁止**并发写（即便 C 端没有 Rust 借用规则的强制）；这是 `from_raw_parts_mut` round-trip 的隐含前提，违反时 Rust 侧重新构造的 `&mut` 别名会导致 UB |
+| Raw pointer 输入责任 | `TensorBase::from_raw_parts(_mut)`（`07-tensor.md §5.6 / §5.7`）的调用方必须保证：(1) provenance — `data_ptr` 必须从可被 `'a` 长度合法借用的对象派生；(2) lifetime — `'a` 不超过该对象的有效借用期；(3) alignment — `data_ptr % align_of::<A>() == 0`；(4) initialization — 范围内所有元素已是有效的 `A` 实例；(5) aliasing — `from_raw_parts_mut` 时无其他活跃别名（无论 Rust 侧还是 C 侧） |
+| Allocator 归属 | Owned 路径不得跨 allocator 释放：通过 `from_raw_parts` 接收的 raw 描述符**禁止**被 Xenon 用 `dealloc(System)` 释放（除非显式声明的 round-trip 构造由 Xenon 自己分配）。详见 `23-ffi.md §10` 的 `ForeignAllocatorMismatch` 错误 |
+| Panic 跨边界 | Rust 侧 panic 不得跨 `extern "C"` 函数边界。所有 `extern "C"` 导出函数必须用 `catch_unwind` 包裹并把 panic 转换为错误码（`23-ffi.md §6.4`），否则会触发 UB |
+
+**与本文档其他章节的关系：**
+- §5.7 的 `ViewMutRepr !Sync` 论证适用于 Xenon 内部的 ViewMut；FFI 中的 `TensorExportMut` 是**单独的、独立的描述符类型**，不实现 ViewMut 的相关 trait，因此 FFI 描述符不沿用 ViewMut 的 Send/Sync 结论，而是按 raw pointer 默认推导。
+- §5.4 的 "当前受支持元素类型线程安全传播" 同样适用于通过 FFI 传出的元素类型，但前提是元素以原生 Rust 类型（i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool）形式存在；C 侧若把字节范围重新解释为另一种类型，进入 `23-ffi.md §10` 的 `AbiMismatch` 错误路径。
+
+更详细的 FFI 错误模型与 unsafe 边界：见 `23-ffi.md §10 / §11`。本节只规范线程安全维度。
+
 ---
 
 ## 6. 内部实现设计

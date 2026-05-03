@@ -108,7 +108,9 @@ src/overload/
 
 ### 5.1 运算符 trait 实现矩阵
 
-完整的 `impl` 组合表（以 `Add` 为例，`Sub`/`Mul`/`Div` 同理）：
+**当前稳定承诺的 `impl` 组合表（以 `Add` 为例，`Sub`/`Mul`/`Div` 同理）：**
+
+> 本表列举本版本 SemVer 稳定承诺的组合，不是所有可能 owned/借用组合的笛卡尔积。表中已覆盖：所有 owned-or-borrowed × owned-or-borrowed 的张量×张量 16 种组合中**实际承诺**的子集。其它未列出的按值/借用排列（如 `TensorView<A, D> + TensorView<A, E>` 按值×按值），调用方应通过显式 `&view + &other` 或 `view.add(other)?` 表达；这是有意收窄，不是文档遗漏。`Tensor<A, D> + Tensor<A, E>`（owned×owned）虽列在表中，但生产代码推荐使用 `&a + &b` 避免不必要的所有权消费。详细按值 vs 按引用决策见 §6.2。
 
 
 | Lhs                  | Rhs                  | Output         | 广播     | impl 签名                                                                           |
@@ -125,12 +127,12 @@ src/overload/
 | `&Tensor<A, D>`      | `A`                  | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for &TensorBase<Owned<A>,D>`                                      |
 | `Scalar<A>`          | `Tensor<A, D>`       | `Tensor<A, D>` | 标量广播 | `impl<...> Add<TensorBase<Owned<A>,D>> for Scalar<A>`                               |
 | `Scalar<A>`          | `&Tensor<A, D>`      | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&TensorBase<Owned<A>,D>> for Scalar<A>`                              |
-| `T`（逐类型：`f32`/`f64`/`i32`/`i64`/`Complex<..>`） | `Tensor<T, D>` | `Tensor<T, D>` | 标量广播 | `impl<D> Add<TensorBase<Owned<T>,D>> for T`（逐类型生成，`T == A`） |
+| `T`（逐类型：`f32`/`f64`/`i32`/`i64`/`Complex<f32>`/`Complex<f64>`） | `Tensor<T, D>` | `Tensor<T, D>` | 标量广播 | 逐具体类型生成（**不是泛型 `T`**），例如 `impl<D: Dimension> Add<TensorBase<Owned<f32>, D>> for f32 { ... }`、`impl<D: Dimension> Add<TensorBase<Owned<i32>, D>> for i32 { ... }`，每个受支持的算术标量一份。Rust 孤儿规则允许这种 impl：`Self = f32` 是确定的外部类型，但 trait 类型参数 `Add<TensorBase<...>>` 含本地类型 `TensorBase`，因此本 crate 拥有 impl 权（详见 §5.4 与 §6 决策记录） |
 | `T`（逐类型：`f32`/`f64`/`i32`/`i64`/`Complex<..>`） | `&Tensor<T, D>` | `Tensor<T, D>` | 标量广播 | `impl<D> Add<&TensorBase<Owned<T>,D>> for T`（逐类型生成，`T == A`） |
 | `TensorView<A, D>`   | `A`                  | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for TensorBase<ViewRepr<'a, A>,D>`                                   |
 | `&TensorView<A, D>`  | `A`                  | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for &TensorBase<ViewRepr<'a, A>,D>`                                  |
 | `Scalar<A>`          | `TensorView<A, D>`   | `Tensor<A, D>` | 标量广播 | `impl<...> Add<TensorBase<ViewRepr<'a, A>,D>> for Scalar<A>`                           |
-| `T`（逐类型：`f32`/`f64`/`i32`/`i64`/`Complex<..>`） | `TensorView<T, D>` | `Tensor<T, D>` | 标量广播 | `impl<D> Add<TensorBase<ViewRepr<'a, T>,D>> for T`（逐类型生成，`T == A`） |
+| `T`（逐类型：`f32`/`f64`/`i32`/`i64`/`Complex<f32>`/`Complex<f64>`） | `TensorView<T, D>` | `Tensor<T, D>` | 标量广播 | 逐具体类型生成（**不是泛型 `T`**），例如 `impl<'a, D: Dimension> Add<TensorBase<ViewRepr<'a, f32>, D>> for f32 { ... }`，每个受支持的算术标量一份。Rust 孤儿规则允许此模式：`Self = f32` 是非泛型外部类型，trait 类型参数含本地 `TensorBase`，**禁止**的写法是 `impl<T> Add<TensorBase<..., T, D>> for T`（泛型 `T` 在 trait 第一个本地类型参数之前）。 |
 
 - 上表仅列出当前稳定承诺。张量×张量/视图路径（前 7 行）与标量路径（后 10 行）通过空行分隔；原生左标量逐类型 impl 只覆盖 `T op Tensor<T, D>` / `T op TensorView<T, D>`，不提供 `T op Tensor<A, D>` 的混合元素类型提升。
 - `TensorView` 相关组合已纳入当前稳定范围，与 `broadcast_to()` / `transpose()` / `slice()` 返回视图的既有设计保持一致。`TensorView` 参与张量×张量/视图路径的运算符重载，同时标量运算符重载（`TensorView + scalar`、`&TensorView + scalar`、`Scalar(s) + TensorView`、原生左标量）也已覆盖 `TensorView`（只读视图）。`TensorViewMut` 不直接参与标量运算符重载——使用方需先调用 `.view()` 转为 `TensorView` 后再使用运算符，或显式调用 `.add_scalar()` 等方法。
@@ -153,6 +155,8 @@ src/overload/
 - **不引入新方法**：`11-math.md §5` 现有 `add()` / `sub()` / `mul()` / `div()` 方法已经返回 `Result<Tensor<A, F>, XenonError>`，自身扮演 `try_add` 角色；本模块**不**新增独立 `try_add` / `try_sub` / `try_mul` / `try_div` 方法。运算符与方法的二元划分已经足够，引入第三套命名只会增加 API 表面噪音。
 
 ### 5.2 张量×张量运算符
+
+> **重要：方法解析说明（v2.1.0）**：以下伪代码体内出现的 `self.add(rhs)` / `self.sub(rhs)` / `self.mul(rhs)` / `self.div(rhs)` 调用**必须**解析到 `11-math.md §5` 定义的 inherent method，**不能**递归到本 trait `core::ops::Add` 实现，否则会无限递归并 stack overflow。Rust 方法解析优先级是"inherent method 优先于 trait method"，因此只要 `TensorBase` 上存在同名 inherent `add` / `sub` / `mul` / `div`，调用即正确委托——这正是 §5.1 选择"trait 委托 inherent"模式的原因。委托关系由 `tests/compile/operator_inherent_method_resolution.rs` 守护（详见 §5.3 末尾）。如实现层为了消除任何歧义，可改为完全限定调用形式 `<TensorBase<Owned<A>, D>>::add(self, &rhs)` 或在 inherent method 改名为 `add_impl` / `_add` 等内部名称——这两种形态本质等价；当前文档保留 `self.add(rhs)` 是为了与公开 API 命名一致。
 
 ```rust,ignore
 // Tensor + Tensor (owned + owned)
@@ -716,8 +720,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 
 | 错误类型 | 处理方式 | 理由 |
 |----------|---------|------|
-| 形状不匹配（不可广播） | 返回 `Result::Err(XenonError::BroadcastError)` | 形状错误是用户输入问题，可恢复 |
-| 维度不匹配 | 返回 `Result::Err(XenonError::DimensionMismatch)` | 同上 |
+| 形状不匹配（不可广播） | 返回 `Result::Err(XenonError::BroadcastError)` | 形状错误是用户输入问题，可恢复；**所有** `+ - * /` 运算符与 `add/sub/mul/div` 方法的逐元素广播路径，shape 不可广播（含 rank 不一致但走逐元素广播规则的情形）一律走 `BroadcastError`。本模块运算符**不**返回 `DimensionMismatch`——`DimensionMismatch` 保留给 `dot` 这类**非广播**双输入操作（详见 `12-matrix.md §5.1`），它们要求 rank 与对应轴长度严格相等，没有"尝试广播"语义，因此用 `DimensionMismatch` 而非 `BroadcastError`。 |
 | 整数溢出（add/sub/mul/neg） | panic | 算术错误是程序员 bug，不可恢复 |
 | 整数除零（div） | panic | 同上 |
 | 浮点 NaN/Inf | 按 IEEE 754 传播 | 不视为错误，标量行为 |

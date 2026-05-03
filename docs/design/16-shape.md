@@ -66,7 +66,7 @@ src/shape/
 ```
 src/shape/
 ├── crate::tensor     # TensorBase<S, D>, TensorView<'_, A, D>, .shape(), .strides(), .offset(), .as_ptr()
-├── crate::dimension  # Dimension, Ix0~Ix6, IxDyn, pub(crate) Reverse trait
+├── crate::dimension  # Dimension, Ix0~Ix6, IxDyn, pub sealed Reverse trait
 ├── crate::layout     # LayoutFlags, LayoutState, Strides<D>, compute_layout_flags
 └── crate::storage    # ViewRepr<'a, A> (transpose result borrows source storage)
 ```
@@ -76,7 +76,7 @@ src/shape/
 | 来源模块    | 使用的类型/trait                                                                                          |
 | ----------- | --------------------------------------------------------------------------------------------------------- |
 | `tensor`    | `TensorBase<S, D>`, `TensorView<'_, A, D>`, `.shape()`, `.strides()`, `.offset()`, `.as_ptr()`            |
-| `dimension` | `Dimension`，以及 02-dimension v1.x §5.11 的 `pub(crate) trait Reverse: Dimension`（在本模块内消费）      |
+| `dimension` | `Dimension`，以及 02-dimension v1.x §5.11 的 `pub trait Reverse: Dimension`（sealed via `Dimension: Sealed`，外部可命名不可实现；用作 `transpose()` 的 `where` 约束） |
 | `layout`    | `LayoutFlags`, `LayoutState`, `Strides<D>`，以及 06-layout v1.3 的 `compute_layout_flags::<A, D>(...)`     |
 | `storage`   | `ViewRepr<'a, A>`（转置结果统一持有借用视图，参见 05-storage v2.0.0 §5.11.1）                              |
 | `error`     | 无新增可恢复错误；规范性 `transpose()` 不走失败返回路径                                                   |
@@ -118,14 +118,28 @@ where
     /// let b = a.transpose();
     /// assert_eq!(b.shape(), &[3, 2]);
     /// ```
-    pub fn transpose(&self) -> TensorView<'_, A, D> {
-        // Uses pub(crate) `Reverse` trait from 02-dimension.md §5.11 to
-        // produce reversed dimension/strides. The trait is crate-internal;
-        // it does not appear in the public signature.
-        // Note: calling .reverse() on bare slices would not compile —
+    pub fn transpose(&self) -> TensorView<'_, A, D>
+    where
+        D: crate::dimension::Reverse, // pub sealed trait from 02-dimension.md §5.11
+    {
+        // Uses sealed `Reverse` trait from 02-dimension.md §5.11 to produce
+        // reversed dimension/strides. The trait is `pub` (named in this
+        // public method's `where` clause) but sealed: external crates can
+        // name it but cannot implement it for their own types. Every
+        // concrete `D` Xenon supports (Ix0..Ix6, IxDyn) implements
+        // `Reverse` returning `Self`, so the bound is satisfied for all
+        // supported dimensions; it is documentary and lets the body
+        // call `.reverse()`.
+        //
+        // Reverse signature is `fn reverse(self) -> Self`, so `new_shape`
+        // and `new_strides` keep the same dimension type `D`; the static
+        // rank is preserved (e.g. `Ix2 -> Ix2`), and only the shape/stride
+        // VALUES are reversed.
+        //
+        // Note: calling `.reverse()` on bare slices would not compile —
         // we must go through the owned dimension/Strides types.
-        let new_shape = self.raw_dim().clone().reverse();
-        let new_strides = self.strides().clone().reverse();
+        let new_shape: D = self.raw_dim().clone().reverse();
+        let new_strides: Strides<D> = self.strides().clone().reverse();
 
         // For 0D / 1D inputs, transpose is a metadata no-op; layout flags
         // are guaranteed equivalent because shape/stride are equal (0D)

@@ -498,7 +498,15 @@ impl<'a> WorkspaceBorrow<'a> {
                 cause: None,
             });
         }
-        Ok(core::slice::from_raw_parts(self.ptr.as_ptr(), initialized_len))
+        // SAFETY: Caller asserts that the first `initialized_len` bytes are
+        // fully initialized (function-level `# Safety` precondition). The
+        // raw pointer / length pair stays within the workspace borrow's
+        // capacity (checked above), the borrow is held by `&mut self`, and
+        // `WorkspaceBorrow` is `!Send + !Sync`, so no other reference can
+        // alias these bytes for the duration of the returned `&[u8]`.
+        // Explicit `unsafe { ... }` is required under Rust 2024 edition's
+        // `unsafe_op_in_unsafe_fn` lint.
+        Ok(unsafe { core::slice::from_raw_parts(self.ptr.as_ptr(), initialized_len) })
     }
 
     /// Returns the borrow length.
@@ -545,7 +553,14 @@ impl<'a> WorkspaceBorrowMut<'a> {
                 cause: None,
             });
         }
-        Ok(core::slice::from_raw_parts_mut(self.ptr.as_ptr(), initialized_len))
+        // SAFETY: Caller asserts that the first `initialized_len` bytes are
+        // fully initialized (function-level `# Safety` precondition). The
+        // mutable borrow is held by `&mut self`, the workspace is
+        // `!Send + !Sync`, and the raw range is bounded by the borrow's
+        // capacity (checked above), so no aliasing reference can coexist.
+        // Explicit `unsafe { ... }` is required under Rust 2024 edition's
+        // `unsafe_op_in_unsafe_fn` lint.
+        Ok(unsafe { core::slice::from_raw_parts_mut(self.ptr.as_ptr(), initialized_len) })
     }
 
     /// Typed access to possibly-uninitialized scratch memory.
@@ -573,11 +588,17 @@ impl<'a> WorkspaceBorrowMut<'a> {
             .checked_mul(core::mem::size_of::<T>())
             .ok_or(XenonError::Workspace {
                 operation: OP,
-                category: WorkspaceErrorCategory::GrowOverflow {
-                    // Bytes available in the borrowed region; both fields are
-                    // measured in bytes (see 26-error.md §5.1 GrowOverflow).
-                    current_capacity: self.len,
-                    additional: count,
+                // `count * size_of::<T>()` overflowed `usize` — we cannot even
+                // express the requested byte length, so reuse of `GrowOverflow`
+                // (which expects bytes in both fields) would lie about the
+                // request. Use `TypedViewRejected::TypedByteLengthOverflow`
+                // (see `26-error.md §5.1` v3.1.1) which carries `count` and
+                // `elem_size` in their natural units.
+                category: WorkspaceErrorCategory::TypedViewRejected {
+                    detail: TypedViewRejection::TypedByteLengthOverflow {
+                        count,
+                        elem_size: core::mem::size_of::<T>(),
+                    },
                 },
                 cause: None,
             })?;
@@ -604,10 +625,17 @@ impl<'a> WorkspaceBorrowMut<'a> {
                 cause: None,
             });
         }
-        Ok(core::slice::from_raw_parts_mut(
+        // SAFETY: Capacity (`byte_len <= self.len`) and alignment
+        // (`actual_addr % align_of::<T>() == 0`) are checked above.
+        // `MaybeUninit<T>` permits uninitialized representation, so this
+        // does NOT impose initialization requirements on the caller for
+        // `T`. The mutable borrow is held by `&mut self` and the workspace
+        // is `!Send + !Sync`, ensuring no aliasing.
+        // Explicit `unsafe { ... }` required by Rust 2024 edition.
+        Ok(unsafe { core::slice::from_raw_parts_mut(
             self.ptr.as_ptr() as *mut core::mem::MaybeUninit<T>,
             count,
-        ))
+        ) })
     }
 
     /// Interprets the first `count` elements as initialized `T` values.
@@ -638,11 +666,14 @@ impl<'a> WorkspaceBorrowMut<'a> {
             .checked_mul(core::mem::size_of::<T>())
             .ok_or(XenonError::Workspace {
                 operation: OP,
-                category: WorkspaceErrorCategory::GrowOverflow {
-                    // Bytes available in the borrowed region; both fields are
-                    // measured in bytes (see 26-error.md §5.1 GrowOverflow).
-                    current_capacity: self.len,
-                    additional: count,
+                // Same overflow handling as `as_maybe_uninit_typed_slice`:
+                // `GrowOverflow` expects both fields in bytes, but `count`
+                // is element units, so route through TypedViewRejection.
+                category: WorkspaceErrorCategory::TypedViewRejected {
+                    detail: TypedViewRejection::TypedByteLengthOverflow {
+                        count,
+                        elem_size: core::mem::size_of::<T>(),
+                    },
                 },
                 cause: None,
             })?;
@@ -669,7 +700,14 @@ impl<'a> WorkspaceBorrowMut<'a> {
                 cause: None,
             });
         }
-        Ok(core::slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut T, count))
+        // SAFETY: Capacity and alignment checks above confirm the
+        // range fits and is `T`-aligned. The caller's `# Safety`
+        // contract guarantees that the first `count * size_of::<T>()`
+        // bytes hold valid `T` instances. The borrow is exclusive and
+        // workspace is `!Send + !Sync`, so no aliasing or concurrent
+        // access can occur. Explicit `unsafe { ... }` required by
+        // Rust 2024 edition.
+        Ok(unsafe { core::slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut T, count) })
     }
 }
 
@@ -1477,7 +1515,7 @@ Upper-layer code requests temporary scratch space
 - §5.5 `borrow()` / `borrow_mut()` CAS 失败 → `BorrowConflict { requested: Shared / Exclusive, current: WorkspaceBorrowState }`；移除已不存在的 `WorkspaceErrorCategory::AlreadyBorrowed`。
 - §5.5 新增内部 helper `current_borrow_state(ws)`：把 `borrow_state` + `split_count` 组合解读为 `WorkspaceBorrowState`（None/Shared/Exclusive/SplitActive{count}），用于 `BorrowConflict.current`。
 - §5.6 `WorkspaceBorrow::assume_init_slice` / `WorkspaceBorrowMut::assume_init_slice` 越界 → `SplitOutOfBounds { mid: initialized_len, len: self.len }`。
-- §5.6 `as_maybe_uninit_typed_slice` / `assume_init_typed_slice` 五个错误点：ZST → `TypedViewRejected { detail: ZeroSizedType }`；`count*size_of` 溢出 → `GrowOverflow { current_capacity: self.len, additional: count }`（两字段单位均为字节）；byte_len 越界 → `SplitOutOfBounds`；指针对齐不满足 → `TypedViewRejected { detail: AlignmentMismatch { required, actual } }`。
+- §5.6 `as_maybe_uninit_typed_slice` / `assume_init_typed_slice` 五个错误点：ZST → `TypedViewRejected { detail: ZeroSizedType }`；`count*size_of` 溢出 → `TypedViewRejected { detail: TypedByteLengthOverflow { count, elem_size } }`（v2.1.0 起；不再复用 `GrowOverflow`，因为后者两字段单位均为字节，而 `count` 是元素单位会让诊断字段语义错误）；byte_len 越界 → `SplitOutOfBounds`；指针对齐不满足 → `TypedViewRejected { detail: AlignmentMismatch { required, actual } }`。
 - §5.7 顶层 `split_at_mut` mid 越界 → `SplitOutOfBounds { mid, len: capacity }`；CAS 失败 → `BorrowConflict { requested: Split, current }`。
 - §5.7 递归 `SplitBorrowMut::split_at_mut` mid 越界 → `SplitOutOfBounds { mid, len: self.len }`。
 - §5.8 `ensure_capacity` borrow_state 残留 → `BorrowConflict { requested: Exclusive, current }`；容量 ×3 溢出 → `GrowOverflow { current_capacity, additional }`。

@@ -181,7 +181,26 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
 /// Sentinel upper bound for dynamic rank.
 ///
 /// `usize::MAX` here means there is no artificial upper bound beyond `usize`
-/// representability and available memory; it is not a practical max supported rank.
+/// representability and available memory; it is **not a practical max
+/// supported rank** and **must not** be used by callers as a `Vec` capacity
+/// hint, loop upper bound, or input validation ceiling. Doing so will at
+/// best be wrong (preallocating `usize::MAX` slots OOMs immediately) and at
+/// worst silently mask user input bugs.
+///
+/// Concrete guidance for callers:
+/// - To validate user-supplied rank, compare against the actual policy
+///   limit imposed by the consuming module (e.g. some operations only
+///   support rank ≤ 6 due to `Ix0..Ix6` static dispatch).
+/// - To allocate per-axis buffers, use the runtime rank (`shape.len()` /
+///   `dim.ndim()`), never `MAX_DIMENSION`.
+/// - To know "is this rank supported by Xenon at all", treat
+///   `MAX_DIMENSION` as `+∞` and rely on `usize` arithmetic checks +
+///   memory pressure instead.
+///
+/// (We keep the public name `MAX_DIMENSION` rather than renaming to
+/// `DYNAMIC_DIMENSION_SENTINEL` because the constant is referenced by
+/// downstream documentation and the sentinel meaning is clearly
+/// documented here.)
 pub const MAX_DIMENSION: usize = usize::MAX;
 
 /// Zero-dimensional (scalar) dimension. ZST.
@@ -795,7 +814,19 @@ pub(crate) trait PermuteAxes: Dimension {
 }
 
 /// Convenience trait for the default reverse-axis transpose.
-pub(crate) trait Reverse: Dimension {
+///
+/// **Visibility:** `pub` (sealed via the `Dimension: Sealed` super-bound).
+/// External crates can name `Reverse` in `where` clauses and trait bounds,
+/// but cannot implement it for their own types — the only types implementing
+/// `Reverse` are `Ix0`..`Ix6` and `IxDyn` defined in this module. We expose
+/// the trait (instead of leaving it `pub(crate)`) because public API methods
+/// such as `TensorBase::transpose()` (`16-shape.md §5.1`) need to mention
+/// `D: Reverse` in their `where` clause; a `pub(crate)` trait would trigger
+/// Rust's private-in-public diagnostic when used in a `pub fn` signature.
+///
+/// All concrete dimensions Xenon supports (`Ix0..Ix6`, `IxDyn`) implement
+/// `Reverse` returning `Self`, so the bound is documentary at call sites.
+pub trait Reverse: Dimension {
     fn reverse(self) -> Self;
 }
 

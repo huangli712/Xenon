@@ -230,7 +230,7 @@ where
 | `Complex<f64>` | `Complex<f32>` | 错误     | 分量精度丢失，默认失败                      |
 
 - `bool` 不参与 `cast()`；任何 `bool` 相关逐元素类型转换都不在本模块范围内。
-- `CastTo` 的完整实现矩阵通过宏生成或 exhaustive enum dispatch 保证。
+- `CastTo` 的完整实现矩阵通过显式 impl 列表（每对 `(A, B)` 一份手写 `impl CastTo<B> for A`）或 crate-internal `macro_rules!` 生成 impl，并以 compile-fail 矩阵测试 / 完整性测试守住覆盖。**不**使用任何形式的运行时 enum dispatch 来选择转换路径——所有 cast 行为在编译期通过单态化决议，避免引入额外间接调用与代码路径。
 - §5.3 和 §5.4 的表项加闭合规则覆盖所有受支持组合，编译期测试验证无遗漏。
 
 ### 5.4 闭合规则映射
@@ -326,7 +326,9 @@ where
 ### 5.6 内部构造辅助边界
 
 - `cast()` / `to_owned()` 在实现上可以复用张量或存储层的内部构造 helper，但这些 helper 的命名、文件布局、是否存在 unchecked 变体以及具体对齐策略，都不属于 convert 模块的稳定文档面。
-- `cast()` / `to_owned()` 可通过 `pub(crate)` 内部 helper 从已验证的 shape/data 长度构造 owned 结果；若实现保留类似 `from_shape_vec_aligned_unchecked` 的便捷路径，它也只属于内部 helper、非公开 API。其 `# Safety` 只能要求调用方保证：`shape` 的已验证元素总数与 `data.len()` 一致，且由 `shape` 推导出的 F-order 元数据在当前版本范围内合法。底层使用哪一种分配器或对齐值，不应写入该 safety 契约。
+- `cast()` / `to_owned()` 通过 `pub(crate)` 内部 helper 从已验证的 shape/data 长度构造 owned 结果。该 helper 形态如 `from_shape_vec_aligned_unchecked`，**是 `pub(crate) unsafe fn`**（不是 safe 函数）；调用点必须用 `unsafe { ... }` 块包裹，且每个调用点必须挂 `// SAFETY: ...` 注释说明 `shape` 已验证元素总数等于 `data.len()`、由 `shape` 推导出的 F-order 元数据在当前版本范围内合法（无 stride 溢出、无 offset 越界、无非法零步长来源）。
+- helper 名称中的 `unchecked` 严格表示"跳过可由调用方安全封装重复检查的 metadata 校验"，**不**表示"内部实现可放任任意输入"——任何错误的 `(shape, data.len())` 配对仍会构成 UB。底层使用哪一种分配器或对齐值，不应写入该 safety 契约（这部分由 storage 层的 `Owned::from_vec_aligned` 自行决定）。
+- 之所以让 helper 保留 `unsafe` 而不是把它做成 safe 函数（再在内部 panic 检查），是为了让 `cast()` / `to_owned()` 的 infallible 签名真正零额外检查开销；safe wrapper 路径已由 `Tensor::from_shape_vec` 提供（fallible，返回 `Result`）。
 
 ### 5.7 Good / Bad 对比
 
@@ -403,17 +405,25 @@ impl CastTo<f32> for f64 {
 // === Lossless widening ===
 impl CastTo<f64> for f32 {
     #[inline]
+    // CAST-SAFETY: f32 → f64 is statically lossless (every f32 value is
+    // exactly representable as f64; this is one of the documented
+    // exceptions to the `clippy::as_conversions` lint per 00-coding §6.5).
     fn cast_to(self) -> Result<f64, XenonError> { Ok(self as f64) }
 }
 
 impl CastTo<i64> for i32 {
     #[inline]
+    // CAST-SAFETY: i32 → i64 is statically lossless (signed widening
+    // preserves both sign and magnitude).
     fn cast_to(self) -> Result<i64, XenonError> { Ok(self as i64) }
 }
 
 // === Integer → float (lossless widening) ===
 impl CastTo<f64> for i32 {
     #[inline]
+    // CAST-SAFETY: i32 → f64 is statically lossless (f64 mantissa has
+    // 53 bits, > 32 bits of i32 range; every i32 is exactly representable
+    // as f64). i64 → f64 would NOT be lossless and is handled separately.
     fn cast_to(self) -> Result<f64, XenonError> { Ok(self as f64) }
 }
 

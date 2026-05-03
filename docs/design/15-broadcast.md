@@ -225,7 +225,7 @@ assert_eq!(view.strides()[0], 0);
 - 广播必须是零拷贝；不得复制底层数据。
 - 广播结果只能返回只读 `TensorView`，并按共享只读引用处理；这里的“共享只读引用”含义与 `需求说明书 §6` 一致：结果可在多个张量实例之间共享同一底层数据，但不提供可写访问权。
 - 广播轴的 stride 必须写成 `0`，且 stride 类型保持为 `usize`。
-- 若结果存在零步长轴，则布局状态必须标记为 `LayoutState::BroadcastView`。
+- 若结果存在广播零步长轴**且** `product(shape) > 0`（即结果非空），布局状态必须标记为 `LayoutState::BroadcastView`。空数组退化情形（`product(shape) == 0`，例如 `1 → 0` 空轴广播）即使含 `stride == 0` 也**不**触发 `BroadcastView`——与 `06-layout.md §5.12` 的 `HAS_ZERO_STRIDE` 公式严格一致。详细分类口径见 §6.3。
 - 广播不改变底层 storage、offset 与逻辑元素顺序语义。
 - 所有 shape 兼容性裁决必须在创建结果视图前完成。
 

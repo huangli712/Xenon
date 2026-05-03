@@ -25,7 +25,7 @@
 
 ### 1.2 协同基线
 
-本文档的 doc comment、doctest、README、CHANGELOG 与 examples 示例必须以下游已修文档为协同基线：`04-complex.md v2.0.0`、`17-indexing.md v2.0.0`、`18-construction.md v2.0.0`、`19-overload.md v2.0.0`、`21-type.md v2.0.0`、`23-ffi.md v2.0.0`、`24-workspace.md v2.0.0`、`25-safety.md v2.0.0`、`26-error.md v3.0.0`、`28-tests.md v2.0.0`。示例代码中的 API 形态、错误字段、索引语法、运算符返回类型、类型转换语义、workspace 借用形式和线程安全说明均不得重新定义这些契约。
+本文档 v2.0.1 的 doc comment、doctest、README、CHANGELOG 与 examples 示例必须以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`04-complex.md v2.0.1`、`17-indexing.md v3.0.1`、`18-construction.md v3.0.1`、`19-overload.md v2.1.0`、`21-type.md v2.1.0`、`23-ffi.md v3.0.1`、`24-workspace.md v3.0.1`、`25-safety.md v2.0.1`、`26-error.md v3.1.1`、`28-tests.md v2.1.0`、`30-dispatch.md v2.0.1`。示例代码中的 API 形态、错误字段、索引语法、运算符返回类型、类型转换语义、workspace 借用形式和线程安全说明均不得重新定义这些契约。
 
 ### 1.3 设计原则
 
