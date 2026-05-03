@@ -962,7 +962,7 @@ fmt_display(error, formatter):
 | panic 测试              | 集成测试目录       | 验证逐元素整数溢出、除以零、`abs(MIN)`、dot overflow       |
 | 并行测试                | 集成测试目录       | 验证 `Err` 与 panic 在并行路径中的传播一致性               |
 | Feature gate / 配置测试 | 配置矩阵           | 验证可选 SIMD/并行路径与标量路径的错误类别一致             |
-| 类型边界 / 编译期测试   | 编译期测试框架     | 验证 `ElementType` 字段在 `const` 上下文中的可用性以及子枚举的 `match` 完备性 |
+| 类型边界 / 编译期测试   | 编译期测试框架     | 验证子枚举（`ConversionFailureReason` / `FfiErrorCategory` / `WorkspaceErrorCategory` / `AbiMismatchKind` / `TypedViewRejection` 等）的 `match` 完备性；`source_type` / `target_type` 为 `&'static str`，无需 const 上下文枚举验证 |
 
 ### 8.2 单元测试清单
 
@@ -980,7 +980,7 @@ fmt_display(error, formatter):
 | `test_display_option_fields_render_any`        | `None` 字段显示为 `<any>`                       | 中     |
 | `test_error_trait_source_leaf_none`            | 叶子变体的 `source()` 返回 `None`               | 中     |
 | `test_error_trait_source_chain_ffi_workspace`  | `Ffi { cause: Some(_) }` 的 `source()` 返回内层 | 高     |
-| `test_type_conversion_uses_element_type`       | `TypeConversion` 的源/目标字段是 `ElementType`  | 高     |
+| `test_type_conversion_uses_element_type_name`  | `TypeConversion` 的源/目标字段是 `&'static str`，值与 `Element::ELEMENT_TYPE_NAME` 一致（如 `"f32"`、`"Complex<f64>"`） | 高     |
 | `test_type_conversion_carries_operation`       | `TypeConversion` 的 `operation` 必须非空        | 高     |
 | `test_clone_eq_roundtrip`                      | `Clone` + `PartialEq` 往返一致                  | 中     |
 
