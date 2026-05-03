@@ -78,9 +78,9 @@ External dependencies:
 | `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.is_f_contiguous()`（参见 `07-tensor.md` §5） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §5）                                               |
 | `storage`   | `Storage<Elem=A>`, `StorageMut`, `Owned<A>`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`（参见 `05-storage.md` §5） |
-| `element`   | `Element`, `CastTo<B>`（参见 `03-element.md` §5.9）；`ElementType` 封闭枚举（`TypeConversion` 标签使用，参见 `03-element.md`）。convert 只消费这两者，不重新定义 |
+| `element`   | `Element`, `CastTo<B>`（参见 `03-element.md` §5.9）, `CastElement`（sealed marker，参见 `03-element.md §5.9.1`）。convert 只消费这些，不重新定义 |
 | `layout`    | `is_f_contiguous()`（参见 `06-layout.md` §5）                                                                |
-| `error`     | `XenonError`、`Result<T>`、`ConversionFailureReason`、`ElementType`（参见 `26-error.md v3.0.0 §5.1`）       |
+| `error`     | `XenonError`、`Result<T>`、`ConversionFailureReason`、`ElementType`（**权威定义见 `26-error.md v3.1.0 §5.1`**；本模块的 `use crate::element::ElementType;` 通过 element 模块的 `pub use crate::error::ElementType` re-export 间接消费，等价于 `use crate::error::ElementType;`，使用点不需要修改）       |
 | `iter`      | `iter()` 用于 `cast()` / `to_owned()` 的逐元素遍历（参见 `10-iterator.md` §5）                             |
 
 ### 4.3 依赖合法性

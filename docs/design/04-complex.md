@@ -11,7 +11,7 @@
 
 ## 1. 模块定位
 
-**协同基线（v2.0.0）**：本文档以下游已修文档为准——03-element v1.x（`Element` / `Numeric` / `ComplexScalar` / `ElementType` 封闭枚举 / `CastTo<T>` trait）、21-type v2.0.0（B10.a：静态无损 `From` / 静态有损 + 动态条件性 `CastTo` 三层结构）、26-error v3.0.0（`XenonError::TypeConversion` 五字段；`ConversionFailureReason` 封闭枚举）。本文档不重复定义这些类型，仅在引用时遵循其权威字段。
+**协同基线（v2.0.0）**：本文档以下游已修文档为准——03-element v1.3.0（`Element` / `Numeric` / `ComplexScalar` / `CastTo<T>` trait / `CastElement` sealed marker；`ElementType` 仅通过 `pub use crate::error::ElementType` re-export，不在 element 模块内重新定义）、21-type v3.0.0（B10.a：静态无损 `From` / 静态有损 + 动态条件性 `CastTo` 三层结构）、26-error v3.1.0（`XenonError::TypeConversion` 五字段；`ConversionFailureReason` 封闭枚举；**`ElementType` 封闭枚举的权威定义在此处，`#[non_exhaustive]`，详见 `26-error.md §5.1`**）。本文档不重复定义这些类型，仅在引用时遵循其权威字段。
 
 ### 1.1 职责边界
 
@@ -105,7 +105,7 @@ src/convert/
 | `core::ops`  | `Add`, `Sub`, `Mul`, `Div`, `Neg`（算术运算）            |
 | `core::fmt`  | `Debug`, `Display`（格式化输出）                         |
 | `core::cmp`  | `PartialEq`（相等比较）                                  |
-| `convert/`   | 作为 `CastTo<T>`（trait 定义在 `element` 模块，参见 `03-element.md §5.9`）/ `XenonError::TypeConversion`（参见 `26-error.md v3.0.0 §5.1`）/ `ConversionFailureReason`（封闭枚举：`LossyIntegerNarrowing` / `LossyFloatNarrowing` / `FloatToInteger` / `IntegerToFloatPrecisionLoss` / `NonZeroImaginaryPart`）/ `ElementType`（`03-element.md §5.1` 封闭枚举）的 owner 承载复数相关转换实现 |
+| `convert/`   | 作为 `CastTo<T>`（trait 定义在 `element` 模块，参见 `03-element.md §5.9`）/ `XenonError::TypeConversion`（参见 `26-error.md v3.1.0 §5.1`）/ `ConversionFailureReason`（封闭枚举：`LossyIntegerNarrowing` / `LossyFloatNarrowing` / `FloatToInteger` / `IntegerToFloatPrecisionLoss` / `NonZeroImaginaryPart`）/ `ElementType`（**权威定义见 `26-error.md §5.1`**；`element` 模块通过 `pub use crate::error::ElementType` 暴露稳定上层路径 `crate::element::ElementType`）的 owner 承载复数相关转换实现 |
 
 ### 4.3 依赖合法性
 
@@ -567,7 +567,7 @@ fn scalar_is_positive_zero<T: PositiveZero>(im: T) -> bool {
 | `Complex<f64>` | `i32` | 虚部非零先返回错误；虚部为零后内层 f64→i32 是 B10.a 静态有损路径，**无条件**返回错误 | 虚部非零 → `NonZeroImaginaryPart`；虚部为零 → `FloatToInteger`（B10.a 静态有损） |
 | `Complex<f64>` | `i64` | 虚部非零先返回错误；虚部为零后内层 f64→i64 是 B10.a 静态有损路径，**无条件**返回错误 | 虚部非零 → `NonZeroImaginaryPart`；虚部为零 → `FloatToInteger`（B10.a 静态有损） |
 
-- `Complex -> Real` 的具体 `CastTo<T>` 实现同样位于 `convert/cast.rs`。`complex/` 仅保留 "虚部必须为 `0`；失败返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index, operation }`" 这一语义约束，字段模型以 `26-error.md v3.0.0 §5.1`（变体定义）/ `§5.6`（结构化上下文要求）为准。`source_type` / `target_type` 使用 `ElementType` 封闭枚举（参见 `03-element.md §5.1` 的 `ElementType::I32 / I64 / F32 / F64 / Complex32 / Complex64 / Bool`），不使用 `core::any::TypeId`。
+- `Complex -> Real` 的具体 `CastTo<T>` 实现同样位于 `convert/cast.rs`。`complex/` 仅保留 "虚部必须为 `0`；失败返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index, operation }`" 这一语义约束，字段模型以 `26-error.md v3.1.0 §5.1`（变体定义）/ `§5.6`（结构化上下文要求）为准。`source_type` / `target_type` 使用 `ElementType` 封闭枚举（**权威定义见 `26-error.md §5.1`**：`ElementType::Bool / I32 / I64 / F32 / F64 / Complex32 / Complex64`，`#[non_exhaustive]`），不使用 `core::any::TypeId`。
 - `-0.0` 补充说明： 复数到实数转换对“虚部是否为零”的判断遵循 IEEE 754 比较语义；因此 `-0.0` 视为零，`Complex::new(3.0, -0.0)` 允许按虚部为零的路径继续转换，不应被误判为非零虚部。
 
 ### 5.11 内存布局静态断言

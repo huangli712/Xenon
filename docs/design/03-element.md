@@ -314,8 +314,8 @@ impl OrderedCompareElement for f32 {}
 impl OrderedCompareElement for f64 {}
 ```
 
-- `OrderedCompareElement` 需要作为公开 sealed trait 暴露，因为 `11-math` 的公开比较 API（`lt` / `gt`）直接使用它作为元素类型约束；但其实现集合仍限制为 Xenon 当前支持的有序比较元素类型。
-- `OrderedCompareElement` 用于把有序比较能力显式收敛到 `i32`、`i64`、`f32`、`f64`。该 trait 虽然为配合 `11-math` 的公开 `lt` / `gt` API 而公开暴露，但仍通过 `Sealed` 保持 sealed，只允许 Xenon 为这四种类型提供实现。
+- `OrderedCompareElement` 需要作为公开 sealed trait 暴露，因为 `11-math` 的公开比较 API（`less` / `greater`，详见 `11-math.md §5` 与 `01-architecture.md §10.1`）直接使用它作为元素类型约束；但其实现集合仍限制为 Xenon 当前支持的有序比较元素类型。
+- `OrderedCompareElement` 用于把有序比较能力显式收敛到 `i32`、`i64`、`f32`、`f64`。该 trait 虽然为配合 `11-math` 的公开 `less` / `greater` 比较 API 而公开暴露，但仍通过 `Sealed` 保持 sealed，只允许 Xenon 为这四种类型提供实现。
 
 ### 5.6 BoolElement（`pub(crate)` sealed）
 
@@ -362,7 +362,7 @@ impl BoolElement for bool {}
 | eye 单位矩阵构造（18-construction） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `18-construction.md` |
 | clip（20-utility） | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | `20-utility.md`（无序比较不适用） |
 | cast 类型转换（21-type） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `21-type.md` |
-| 有序比较 lt/le/gt/ge（OrderedCompareElement） | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | `03-element.md §5.5`（复数无序） |
+| 有序比较 less/greater（OrderedCompareElement） | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | `03-element.md §5.5`（复数无序；命名权威见 `11-math.md §5`，仅 less/greater，不含 less_equal/greater_equal） |
 | Checked 整数原语（CheckedAdd/Sub/Mul/Neg/Div） | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | `03-element.md §5.10` |
 
 ### 5.8 Sealed trait 策略

@@ -30,7 +30,7 @@
 
 ### 1.3 协同基线
 
-本文档以已修订的下游设计文档为协同基线。若本文档提到具体类型、字段、trait、枚举或 API 形态，必须与以下版本保持一致：`01-architecture.md v2.0.0`、`02-dimension.md v1.x`、`03-element.md v1.x`、`04-complex.md v2.0.0`、`05-storage.md v2.0.0`、`06-layout.md v1.3`、`07-tensor.md v2.0.0`、`08-simd.md v2.0.0`、`09-parallel.md v2.0.0`、`11-math.md v2.0.0`、`12-matrix.md v2.0.0`、`13-reduction.md v2.0.0`、`14-set.md v2.0.0`、`15-broadcast.md v2.0.0`、`16-shape.md v2.0.0`、`17-indexing.md v2.0.0`、`18-construction.md v2.0.0`、`19-overload.md v2.0.0`、`20-utility.md v2.0.0`、`21-type.md v2.1.0`、`22-output.md v2.0.0`、`23-ffi.md v2.1.0`、`24-workspace.md v2.0.0`、`25-safety.md v2.0.0`、`26-error.md v3.1.0`、`27-benchmark.md v2.0.0`、`28-tests.md v2.0.0`、`29-documentation.md v2.0.0`、`30-dispatch.md v1.1.3`。
+本文档以已修订的下游设计文档为协同基线。若本文档提到具体类型、字段、trait、枚举或 API 形态，必须与以下版本保持一致：`01-architecture.md v3.0.0`、`02-dimension.md v3.0.0`、`03-element.md v1.3.0`、`04-complex.md v2.0.0`、`05-storage.md v3.0.0`、`06-layout.md v1.3`、`07-tensor.md v3.0.0`、`08-simd.md v2.0.0`、`09-parallel.md v1.1.0`、`11-math.md v1.1.0`、`12-matrix.md v1.1.0`、`13-reduction.md v3.0.0`、`14-set.md v2.0.1`、`15-broadcast.md v3.0.0`、`16-shape.md v2.0.0`、`17-indexing.md v3.0.0`、`18-construction.md v3.0.0`、`19-overload.md v2.0.0`、`20-utility.md v3.0.0`、`21-type.md v3.0.0`、`22-output.md v2.0.0`、`23-ffi.md v3.0.0`、`24-workspace.md v3.0.0`、`25-safety.md v2.0.0`、`26-error.md v3.1.0`、`27-benchmark.md v2.0.0`、`28-tests.md v2.0.0`、`29-documentation.md v2.0.0`、`30-dispatch.md v2.0.0`。
 
 ---
 

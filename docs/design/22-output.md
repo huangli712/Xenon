@@ -20,6 +20,8 @@
 | NumPy 风格输出 | 嵌套括号、矩阵形式、按逻辑索引顺序展示 | HTML 渲染            |
 | 截断规则       | 超过阈值触发 `... (N elements omitted)  shape=[...]` 后缀 | 自定义格式化器注册   |
 
+**关于"输出模式"数量的澄清**：本模块对外只暴露**两种公开输出模式** —— `core::fmt::Display`（面向最终用户的简洁可读输出）与 `core::fmt::Debug`（面向开发者的形状 / 步长 / 类型信息）。NumPy 风格的"pretty"渲染（嵌套括号 / 矩阵分行 / 截断省略号）是 **`Display` 输出的内部实现风格**，由 `format/pretty.rs` 内的 helper（`fmt_1d_display` / `fmt_nd_display` 等）承担；`pretty.rs` 不导出独立的 trait（如 `Pretty`、`TensorPretty`），也不构成第三种公开输出模式。同样地，`display_with(&FormatConfig)` 是 `Display` 的可配置包装器，不是第三态。如果未来需要把 pretty 渲染独立成可调用 API，需要单独的设计文档与 SemVer 评估，不应作为本模块的隐式扩展加入。
+
 ### 1.2 设计原则
 
 | 原则       | 体现                                                     |

@@ -266,20 +266,29 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 
 // ViewMutRepr does not implement Sync.
 //
-// Mechanism: the `ptr: *mut A` field makes the struct `!Send + !Sync` by
-// default (raw pointers opt out of both auto-traits), and
-// `_marker: PhantomData<&'a mut A>` also contributes `!Sync`
-// (since `&mut T` is `!Sync`).
+// Mechanism (authoritative; aligned with `05-storage.md §6.10`):
+//   1. The `ptr: *mut A` field opts ViewMutRepr OUT of the `Send` and `Sync`
+//      auto-traits by default. Raw pointers (`*const T` / `*mut T`) carry no
+//      auto-trait implementations regardless of T.
+//   2. We then EXPLICITLY restore `Send` for `A: Send` via the
+//      `unsafe impl Send` above (motivated by exclusive-ownership transfer,
+//      see the doc comment).
+//   3. We deliberately do NOT provide a corresponding `unsafe impl Sync`,
+//      so `Sync` remains opted out. Sharing `&ViewMutRepr` across threads
+//      could allow concurrent mutation through the raw `*mut A` pointer,
+//      which would violate Rust's aliasing rules.
 //
-// PhantomData<&'a mut A> 使 ViewMutRepr 在 A 上**不变（invariant）**——
-// 这阻止了 Sync 的自动派生，无论 A 是否本身实现 Sync。
+// `_marker: PhantomData<&'a mut A>` is purely a variance / dropck marker:
+// it makes `ViewMutRepr` invariant in `A` and tells the borrow checker that
+// `'a` is an exclusive-borrow lifetime. It is NOT what makes ViewMutRepr
+// `!Sync` — that role belongs to (1) and (3) above. (Earlier drafts
+// attributed `!Sync` to `PhantomData<&mut A>`; that explanation was
+// imprecise: `&mut T` is in fact `Sync` whenever `T: Sync`, so the
+// PhantomData alone would not exclude `Sync`.)
 //
-// The explicit `unsafe impl Send` above restores `Send` when `A: Send`,
-// but `Sync` remains opted out because no `unsafe impl Sync` is provided.
-// This is consistent with the struct definition in `05-storage.md §6.4`,
-// which uses `_marker: PhantomData<&'a mut A>` for variance and drop check.
-// Keep module documentation aligned with this document if the design
-// changes.
+// This explanation is consistent with the struct definition in
+// `05-storage.md §5.4 / §6.10`. Keep this document and `05-storage.md`
+// aligned if the design changes.
 ```
 
 ### 5.8 ArcRepr<A> 的 Send/Sync

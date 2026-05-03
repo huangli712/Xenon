@@ -337,14 +337,21 @@ where
 
     /// Consume the tensor and ensure F-contiguous owned storage.
     ///
-    /// Reuses the existing owned data when the input is already F-contiguous;
-    /// otherwise materializes a new contiguous tensor.
-    /// Only canonical F-contiguous `Owned` input can be reused in O(1).
+    /// Reuses the existing owned data **only when the input is already a
+    /// canonical F-contiguous `Owned` tensor**; otherwise materializes a new
+    /// contiguous tensor. In particular, an input that is merely
+    /// "logically F-contiguous" (i.e. `is_f_contiguous()` returns `true`)
+    /// but whose storage contains tail padding, has a non-zero offset, or
+    /// is not an `Owned` representation, does NOT qualify for reuse and must
+    /// go through `util_internal_to_f_contiguous` to produce a canonical
+    /// owned result with no padding.
     pub fn into_contiguous(self) -> Tensor<A, D>
     where
         S: StorageIntoOwned<Elem = A>,
     {
-        if self.is_f_contiguous() {
+        // Use `is_canonical_f_contiguous_owned()` — strictly stronger than
+        // `is_f_contiguous()` — to gate the O(1) reuse path. See §6.3.
+        if self.is_canonical_f_contiguous_owned() {
             Tensor {
                 storage: self.storage.into_owned(),
                 shape: self.shape,
@@ -359,8 +366,8 @@ where
 }
 ````
 
-- `to_contiguous(&self)` 是稳定的“总是返回独立 owned 结果”入口；当输入已是连续 F-order 时，它不得改变逻辑值，且可以复用现有数据作为读取来源，但因为返回值必须与借用源解除别名，所以仍会物化为新的 owned 张量。
-- `into_contiguous(self)` 是满足 `需求说明书 §22` 的消费式入口：`F-contiguous` 表示逻辑上按 F-order 连续；`canonical F-contiguous` 进一步要求 offset/strides/storage 形态可作为标准 owned 表示复用。`to_contiguous()` 对已连续输入始终返回新的 canonical F-order owned 拷贝。`into_contiguous()` 仅当输入已是 `Owned` 且为 canonical F-contiguous 时方可 O(1) 复用现有数据；其他情况（包括仅逻辑 F-contiguous 但带 tail padding 的输入）需要重新物化为 canonical F-order owned 结果。
+- `to_contiguous(&self)` 是稳定的"总是返回独立 owned 结果"入口；当输入已是连续 F-order 时，它不得改变逻辑值，且可以复用现有数据作为读取来源，但因为返回值必须与借用源解除别名，所以仍会物化为新的 owned 张量。
+- `into_contiguous(self)` 是满足 `需求说明书 §22` 的消费式入口：`F-contiguous`（即 `is_f_contiguous()`）只表示逻辑上按 F-order 连续；`canonical F-contiguous owned`（即 `is_canonical_f_contiguous_owned()`，crate-internal predicate）进一步要求 storage 表示为 `Owned`、`offset == 0`、底层 buffer 无 tail padding，从而可作为 canonical owned 表示直接复用。`to_contiguous()` 对已连续输入始终返回新的 canonical F-order owned 拷贝。`into_contiguous()` **仅当 `is_canonical_f_contiguous_owned()` 为真时**才可 O(1) 复用现有数据；其他所有情况（包括仅 `is_f_contiguous()` 为真但带 tail padding、或非 `Owned` storage、或 `offset != 0` 的输入）都必须重新物化为 canonical F-order owned 结果。详细 predicate 定义与分派表见 §6.3。
 - `to_contiguous()` / `into_contiguous()` 专注于连续性保证：仅在输入已是 canonical F-contiguous `Owned` 时，`into_contiguous()` 才可 O(1) 复用。`to_owned()` / `into_owned()`（见 `21-type.md`）专注于独立拷贝：无论原始布局如何，始终产出独立的拥有型存储。二者可能产生相同结果（非连续输入 → 连续 owned），但语义主语不同。
 - `util_internal_to_f_contiguous()` 只接受“逻辑索引语义已验证、shape / strides / offset 自洽”的输入张量；调用方须先完成这些张量不变量检查。该 helper 的职责仅限于把当前逻辑元素重排并物化为 canonical F-order owned 结果，不再重复承担布局合法性验证。
 
@@ -416,23 +423,46 @@ clip(tensor, min, max):
 
 ### 6.3 to_contiguous 路径选择
 
+`to_contiguous` / `into_contiguous` 共用同一 canonical 输出契约（无 inter-axis / tail padding，offset == 0，layout 由 `06-layout` 计算），但分派逻辑使用两套 predicate：
+
+| Predicate                                     | 含义                                                                                                                                                                                                                          | 用途                                                            |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `is_f_contiguous()`                           | **逻辑** F-连续：`strides` 满足 `s_0 = 1`、`s_{i+1} = s_i * shape_i`，但不约束底层 storage 形态、offset 是否为 0、是否带 tail padding。算法定义见 `06-layout.md §5.7`。              | 仅作为 `to_contiguous` 的优化提示：可委托 `to_owned()` 走线性 memcpy 快路径。 |
+| `is_canonical_f_contiguous_owned()` *(crate-internal)* | **canonical owned**：(1) `is_f_contiguous() == true`，(2) `S` 的运行时表示是 `Owned` 单一所有者，(3) `offset == 0`，(4) 底层 buffer 容量等于逻辑元素数 × `size_of::<A>()`（即无 tail padding）。 | 控制 `into_contiguous` 的 O(1) 复用路径。 |
+
 ```
 to_contiguous(tensor):
+    // `to_contiguous` ALWAYS yields a fresh canonical F-order owned tensor.
+    // The `is_f_contiguous()` branch is purely an optimization hint: when
+    // the input is logically F-contiguous, the implementation may delegate
+    // to `to_owned()`, which (per `21-type.md §5.5`) is required to allocate
+    // a brand-new canonical F-order buffer with NO tail padding (NOT to
+    // alias / wrap / reuse the source storage). Non-F-contiguous inputs
+    // (e.g. transposed views, sliced views, broadcast views) are re-packed
+    // by `util_internal_to_f_contiguous`. Both branches end at the same
+    // canonical contract.
     if is_f_contiguous(tensor):
-        return to_owned(tensor)        // O(n) copy, layout unchanged (already F-order)
+        return to_owned(tensor)        // O(n) fresh canonical F-order copy
     else:
-        return util_internal_to_f_contiguous(tensor)  // O(n) copy, always convert to F-order
-        // Non-contiguous inputs (e.g. transposed or sliced views) are
-        // converted to F-order. Xenon only supports F-order.
+        return util_internal_to_f_contiguous(tensor)  // O(n) re-pack into F-order
 
 into_contiguous(tensor):
-    if is_f_contiguous(tensor):
-        return reuse_owned_storage(tensor)  // O(1) only for canonical F-contiguous Owned input
+    // O(1) reuse is permitted ONLY when the input is already a canonical
+    // F-contiguous `Owned` tensor (see the predicate table above). All other
+    // inputs — including ones that pass `is_f_contiguous()` but carry tail
+    // padding, a non-zero offset, or a non-`Owned` storage representation —
+    // MUST go through the re-pack path to honour the no-padding contract.
+    if is_canonical_f_contiguous_owned(tensor):
+        return reuse_owned_storage(tensor)  // O(1) move of the canonical buffer
     else:
-        return util_internal_to_f_contiguous(&tensor)
+        return util_internal_to_f_contiguous(&tensor)  // O(n) re-pack
 ```
 
-若输入已是逻辑 F-contiguous 但底层存储包含 tail padding，它仍不满足本文的 canonical F-contiguous 复用前提；`into_contiguous()` 与 `to_contiguous()` 都必须生成 canonical F-order owned 结果，结果不保留 inter-axis padding，且不依赖原始 tail padding 形态。
+设计契约：
+
+- `to_contiguous()` 与 `into_contiguous()` 都必须返回 canonical F-order owned 张量：无 inter-axis padding、无 tail padding、`offset == 0`、layout flags 重新由 `06-layout` 计算。
+- `is_f_contiguous()` 不是 `into_contiguous()` 复用的充分条件，因为它不能区分 owned/Arc/View、不能保证 offset==0、不能拒绝 tail padding。把它误用为 `into_contiguous()` 分派条件会让带 tail padding 的输入直接跨过 re-pack，破坏 SIMD/FFI 等下游对 canonical contiguous 的隐式假设。
+- `is_canonical_f_contiguous_owned()` 是 crate-internal predicate，外部调用方不能名指；它的具体判定由 storage / layout 协同提供（参见 `05-storage.md §5.5` 的 ArcRepr→Owned 转换不变量与 `06-layout.md §5.7` 的连续性公式）。
 
 ### 6.4 NaN 处理语义
 

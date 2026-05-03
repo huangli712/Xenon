@@ -953,7 +953,7 @@ Caller (math / matrix / reduction)
 | `test_parallel_preferred_over_simd_for_large_input` | 同时满足并行和 SIMD 条件时返回 `(Parallel, Some(_))`         | 中     |
 | `test_deterministic_same_input_same_output`       | 固定 thread-local 状态时相同输入多次调用返回结构等价的结果（含 ExecPath，guard 不参与等价比较） | 中 |
 | `test_simd_rejected_when_noncontiguous`           | 非连续输入即便 `len >= SIMD_THRESHOLD` 也不返回 Simd          | 高     |
-| `test_simd_rejected_when_misaligned`              | 连续但非对齐时即便 `len >= SIMD_THRESHOLD` 也不返回 Simd      | 高     |
+| `test_simd_allows_misaligned_hint_when_contiguous` | 连续但非对齐（`alignment_ok = false`）时，只要 `len >= SIMD_THRESHOLD` 仍应返回 `ExecPath::Simd`；`alignment_ok` 仅作为能力提示位透传给 simd 后端，由 `08-simd.md §5.7` 决定具体 kernel；dispatch 层不再以非对齐为由拒绝 SIMD 路径。任何 aligned-only kernel 的最终拒绝由 simd 后端测试覆盖，不在本测试范围内。 | 高     |
 | `test_parallel_strategy_new_rejects_zero`         | `ParallelExecStrategy::new(Some(0), _)` 与 `new(_, Some(0))` 返回 `InvalidArgument` | 高 |
 | `test_parallel_strategy_new_accepts_none`         | `ParallelExecStrategy::new(None, None)` 等价 `auto()`         | 中     |
 

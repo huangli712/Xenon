@@ -126,8 +126,21 @@ use core::fmt;
 ///
 /// Each variant corresponds to one of Xenon's supported tensor element types
 /// (see the requirements specification §4).
+///
+/// Marked `#[non_exhaustive]` so that adding a new supported element type
+/// in a future version does not constitute a breaking change for downstream
+/// `match` expressions. Downstream code MUST include a `_ => ...` arm when
+/// matching on `ElementType` exhaustively.
+///
+/// `#[repr(u8)]` is retained so that the enum has a well-defined size and is
+/// cheap to copy / hash, but the discriminant values are NOT part of the
+/// public ABI contract. Any FFI consumer that needs a stable wire-level tag
+/// MUST translate via `match` to its own ABI-stable representation rather
+/// than relying on the implicit discriminant order. (See `23-ffi.md` for
+/// the corresponding FFI guidance.)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum ElementType {
     Bool,
     I32,
@@ -897,7 +910,7 @@ fmt_display(error, formatter):
 | 分配开销     | `Vec<usize>` 字段（`shape`、`attempted_index`）在错误构造时产生少量堆分配     |
 | 零分配路径   | 错误路径本身非热路径；少量分配换取结构化诊断上下文是可接受的工程权衡          |
 | Clone 成本   | `XenonError` 的 `Clone` 会复制 `Vec` 和 `Cow` 字段；仅在测试或显式需要时调用  |
-| PartialEq    | 用于测试断言；`TypeId` 的 `PartialEq` 比较为整数级比较，`Vec` 为逐元素比较    |
+| PartialEq    | 用于测试断言；`ElementType`（v3.1.0 权威定义见 §5.1）的 `PartialEq` 比较为小枚举判别比较，`Vec` 为逐元素比较 |
 
 ---
 
@@ -1045,7 +1058,10 @@ Caller invokes public API (e.g., tensor.broadcast_to(shape))
     │               │
     │               └── return Err(XenonError)
     │
-    └── For panic-bound operations (integer overflow, Index syntax sugar, ...)
+    └── For panic-bound operations (integer overflow in checked arithmetic, internal/unsafe helper precondition violations, ...)
+        // Note: Xenon does NOT implement std::ops::Index/IndexMut for tensors;
+        // user-facing indexing is via fallible methods (see 17-indexing.md §5),
+        // so there is no "Index syntax sugar" panic path on the public API.
             │
             ├── Triggered → panic with formatted message
             │       "Xenon: {operation} overflow for {type} at {context}"

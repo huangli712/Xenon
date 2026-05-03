@@ -55,7 +55,7 @@
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 需求映射 | 需求说明书 §7、§8、§19、§27、§28                                                                                                                      |
 | 范围内   | `zeros` / `ones` / `eye` / `from_shape_vec` / `from_vec` / `from_shape_slice` / `from_array` / `from_scalar`，以及空张量 / 零维张量 / ZST 路径的合法性与错误语义。 |
-| 范围外   | arange、linspace、from_fn、随机构造器与其他序列生成 API。                                                                                             |
+| 范围外   | **以下序列/生成式构造器全部不在当前版本范围内**：`arange(start, stop, step)`、`linspace(start, stop, n)`、`logspace(start, stop, n, base)`、`geomspace(...)`、`meshgrid(...)`、`from_fn<A, D, F>(shape, f)`、`from_iter<I: Iterator>(...)`、随机构造器（`rand` / `randn` / `randint` / `random_uniform` 等）、`full(shape, value)`、`empty_like` / `zeros_like` / `ones_like`（"like" 系列）。这些 API 需要独立的设计文档（例如序列生成需要数值步长 / 端点策略 / NaN 行为决策；随机构造器需要 PRNG 依赖与 reproducibility 策略），不应作为本模块的隐式扩展加入。 |
 | 非目标   | 不新增新的构造器家族，不改变 F-order / 对齐分配基线，也不引入第三方随机或数据加载依赖。                                                               |
 
 ---

@@ -507,7 +507,15 @@ pub unsafe trait StorageOwned: StorageMut + Clone {
 /// Types implementing `StorageShared` allow multiple owners to share the same
 /// read-only data, typically through reference counting. The public trait is a
 /// marker only and does not expose reference-counting helpers.
-pub unsafe trait StorageShared: Storage + Clone {}
+///
+/// **Sealed**: this `unsafe` trait is sealed via the `Sealed` super-bound
+/// from `crate::private`, so external crates can name `StorageShared` as a
+/// generic bound but cannot implement it for their own types. This preserves
+/// the closed set of shared-storage representations (currently `ArcRepr<A>`
+/// only) and the unsafe invariants documented in §5.5 / §11 决策 4 / 决策 6.
+/// To add a new shared-storage representation, the change must be made
+/// in-tree alongside its safety proof.
+pub unsafe trait StorageShared: Storage + Clone + crate::private::Sealed {}
 
 /// Crate-internal extension trait for shared-storage diagnostics and CoW helpers.
 ///
@@ -1421,10 +1429,11 @@ User calls `TensorBase::as_ptr()`
 
 | 属性     | 值                                                                                                                                              |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | `StorageShared` 仍为公开 unsafe marker trait（决策 4 所需），但 `is_unique()` / `ref_count()` 两个 helper 方法收敛到 `pub(crate)` 的 `StorageSharedExt`，外部用户不可调用    |
-| 理由     | 引用计数细节不应固化为 SemVer 公开契约；保持 trait 公开以支持泛型 `S: StorageShared` 边界，同时把诊断/优化方法限制在 crate 内部                  |
+| 决策     | `StorageShared` 仍为公开 **sealed** unsafe marker trait（决策 4 所需，sealed via `crate::private::Sealed` super-bound），但 `is_unique()` / `ref_count()` 两个 helper 方法收敛到 `pub(crate)` 的 `StorageSharedExt`，外部用户不可调用    |
+| 理由     | 引用计数细节不应固化为 SemVer 公开契约；保持 trait 公开以支持泛型 `S: StorageShared` 边界，同时把诊断/优化方法限制在 crate 内部；同时通过 sealed 防止外部 crate 实现 unsafe trait，绕过封闭存储模式与 `ArcRepr` 的不变量      |
 | 替代方案 | 公开 `is_unique` / `ref_count` — 放弃，会把 Arc 内部细节锁死                                                                                    |
 | 替代方案 | 把整个 `StorageShared` 降级为 `pub(crate)` — 放弃，`ArcRepr` 在公开 API 中仍需要类型层的 marker 区分                                            |
+| 替代方案 | 不 sealed（公开 unsafe trait 任由外部实现）— 放弃，外部错误 impl 可能破坏 `Storage::as_slice()` / 共享只读 / CoW 私有边界等不变量              |
 
 ### 决策 7：AlignedAlloc 收敛为 `pub(crate)`
 

@@ -225,10 +225,20 @@ pub struct IndexedIter<'a, A, D: Dimension> {
 ///
 /// `IndexedIterMut` yields at most one mutable reference for each logical index.
 /// The internal state machine visits every logical coordinate once in F-order and
-/// computes the element address from the tensor's validated stride metadata. Since
-/// no logical index is repeated during a single traversal, each yielded `&mut A`
-/// refers to a distinct element slot and does not overlap with previously yielded
-/// references.
+/// computes the element address from the tensor's validated stride metadata.
+///
+/// **Within the layout family that `IndexedIterMut` is allowed to construct
+/// from** — i.e. the source must be a `TensorViewMut` (per §6.5: `StorageMut`,
+/// no broadcast, no zero-stride, no overlapping/aliased physical addresses,
+/// validated by `from_raw_parts_mut` / `view_mut` constructors per
+/// `07-tensor.md §5`) — every logical index maps to a distinct, non-overlapping
+/// physical address. The "no logical index is repeated" property combined with
+/// these construction-time invariants is what guarantees that each yielded
+/// `&mut A` refers to a distinct element slot. Note that the implication
+/// "unique logical index ⇒ unique physical address" does **not** hold in the
+/// general case (broadcast / zero-stride views are precisely the
+/// counter-examples), which is why `TensorViewMut` constructors reject those
+/// layouts up-front; see §6.5 for the full safety proof.
 pub struct IndexedIterMut<'a, A, D: Dimension> {}
 
 impl<'a, A, D: Dimension> Iterator for IndexedIter<'a, A, D> {
@@ -397,6 +407,8 @@ increment_index_f(shape, index):
 ### 6.6 并行分块说明
 
 当前版本不在 `iter` 模块中设计独立的内部区间分块抽象。若并行后端需要对元素遍历做分块，应由并行执行模块基于自身的任务划分策略直接维护逻辑区间和调度状态。此约束与 §5.3 的设计原则一致。
+
+**关于 `rayon::iter::ParallelIterator`：** 本模块**不**对外提供 `rayon::ParallelIterator` 实现，也不维护"串行 / 并行迭代器双轨公开 API"。设计为单轨：本模块定义**串行**的 `Iterator` / `ExactSizeIterator` 公开接口；所有并行执行（含分块、worker 调度、worker 内 SIMD admission）由 `09-parallel.md` 的 `parallel/` 后端独立实现，通过对底层 storage / shape / strides / offset 的直接访问完成，并不要求 `iter` 模块做出 `ParallelIterator` 适配。这种分工避免了把 rayon 的 producer / consumer 协议固化到本模块的稳定 API。
 
 ---
 

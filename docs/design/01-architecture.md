@@ -50,12 +50,12 @@ Xenon 是一个纯 Rust 实现的 N 维数组（张量）库，定位为科学�
 
 本文档作为架构总览，以下游设计文档的已修版本为协同基线；若本文档提及类型、trait、字段名或执行边界，须与这些文档保持一致：
 
-- `26-error.md` v3.0.0：`XenonError` 结构化变体、`ElementType` 类型转换字段、`FfiBackend` 与 workspace/FFI 错误分类。
-- `02-dimension.md` v1.x、`03-element.md` v1.x、`04-complex.md` v2.0.0：维度、元素封闭实现集与复数显式构造/运算边界。
-- `05-storage.md` v2.0.0、`06-layout.md` v1.3、`07-tensor.md` v2.0.0：存储模式、F-order 布局状态与张量核心类型。
-- `08-simd.md` v2.0.0、`09-parallel.md` v2.0.0、`30-dispatch.md` v1.1.1：执行路径、`ParallelGuard`、worker 内 SIMD 与阈值语义。
-- `11-math.md` v2.0.0、`12-matrix.md` v2.0.0、`13-reduction.md` v2.0.0、`14-set.md` v2.0.0：数学、矩阵、归约与集合操作命名及 F-order 顺序契约。
-- `17-indexing.md` v2.0.0、`18-construction.md` v2.0.0、`19-overload.md` v2.0.0、`21-type.md` v2.0.0、`23-ffi.md` v2.0.0、`24-workspace.md` v2.0.0、`25-safety.md` v2.0.0：索引、构造、运算符、类型转换、FFI、workspace 与线程安全边界。
+- `26-error.md` v3.1.0：`XenonError` 结构化变体（13 顶层变体）、`ElementType` 权威定义（L0 owner，`#[non_exhaustive]`）、`FfiBackend` 与 workspace/FFI 错误分类。
+- `02-dimension.md` v3.0.0、`03-element.md` v1.3.0、`04-complex.md` v2.0.0：维度、元素封闭实现集（含 `CastElement` sealed marker）与复数显式构造/运算边界。
+- `05-storage.md` v3.0.0、`06-layout.md` v1.3、`07-tensor.md` v3.0.0：存储模式（含 `StorageShared` sealed unsafe marker）、F-order 布局状态与张量核心类型。
+- `08-simd.md` v2.0.0、`09-parallel.md` v1.1.0、`30-dispatch.md` v2.0.0：执行路径、`ParallelGuard`、worker 内 SIMD 与阈值语义；`alignment_ok` 仅作 simd 后端能力提示位。
+- `11-math.md` v1.1.0、`12-matrix.md` v1.1.0、`13-reduction.md` v3.0.0、`14-set.md` v2.0.1、`15-broadcast.md` v3.0.0：数学、矩阵、归约（仅 sum）、集合（仅 unique）、广播零步长分类与 F-order 顺序契约。
+- `16-shape.md` v2.0.0、`17-indexing.md` v3.0.0、`18-construction.md` v3.0.0、`19-overload.md` v2.0.0、`20-utility.md` v3.0.0、`21-type.md` v3.0.0、`22-output.md` v2.0.0、`23-ffi.md` v3.0.0、`24-workspace.md` v3.0.0、`25-safety.md` v2.0.0、`27-benchmark.md` v2.0.0、`28-tests.md` v2.0.0、`29-documentation.md` v2.0.0：shape、索引、构造、运算符、utility、类型转换、输出、FFI、workspace、线程安全、benchmark、测试与文档边界。
 
 ### 1.6 全局布局不变量
 
