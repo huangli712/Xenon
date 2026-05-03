@@ -11,7 +11,7 @@
 
 ## 1. 模块定位
 
-**协同基线（v2.0.1）**：本文档以下游已修文档为准——03-element v1.3.1（`Element` / `Numeric` / `ComplexScalar` / `CastTo<T>` trait / `CastElement` sealed marker；`ElementType` 仅通过 `pub use crate::error::ElementType` re-export，不在 element 模块内重新定义；`element_type_of::<A>()` 是自由函数而非 inherent impl）、21-type v2.1.0（B10.a：静态无损 `From` / 静态有损 + 动态条件性 `CastTo` 三层结构 + CastElement owner）、26-error v3.1.1（`XenonError::TypeConversion` 五字段；`ConversionFailureReason` 封闭枚举；**`ElementType` 封闭枚举的权威定义在此处，`#[non_exhaustive]` + `#[repr(u8)]` + Display match 含 wildcard arm，详见 `26-error.md §5.1`**）。本文档不重复定义这些类型，仅在引用时遵循其权威字段。
+**协同基线（v2.0.2）**：本文档以下游已修文档为准——03-element v1.4.0（`Element` / `Numeric` / `ComplexScalar` / `CastTo<T>` trait / `CastElement` sealed marker；**`ElementType` 权威定义在此模块**，`#[non_exhaustive]` + `#[repr(u8)]`；新增 `Element::ELEMENT_TYPE_NAME: &'static str` 关联常量；提供 `ElementType::name()` inherent + `element_type_of` / `element_type_name_of` 自由函数）、21-type v2.1.1（B10.a：静态无损 `From` / 静态有损 + 动态条件性 `CastTo` 三层结构 + CastElement owner；错误字段 `source_type` / `target_type` 改用 `&'static str`）、26-error v3.2.0（`XenonError::TypeConversion` 五字段；`source_type` / `target_type` 改为 `&'static str`；本模块**不再**持有 `ElementType` 枚举）。本文档不重复定义这些类型，仅在引用时遵循其权威字段。
 
 ### 1.1 职责边界
 
@@ -105,7 +105,7 @@ src/convert/
 | `core::ops`  | `Add`, `Sub`, `Mul`, `Div`, `Neg`（算术运算）            |
 | `core::fmt`  | `Debug`, `Display`（格式化输出）                         |
 | `core::cmp`  | `PartialEq`（相等比较）                                  |
-| `convert/`   | 作为 `CastTo<T>`（trait 定义在 `element` 模块，参见 `03-element.md §5.9`）/ `XenonError::TypeConversion`（参见 `26-error.md v3.1.0 §5.1`）/ `ConversionFailureReason`（封闭枚举：`LossyIntegerNarrowing` / `LossyFloatNarrowing` / `FloatToInteger` / `IntegerToFloatPrecisionLoss` / `NonZeroImaginaryPart`）/ `ElementType`（**权威定义见 `26-error.md §5.1`**；`element` 模块通过 `pub use crate::error::ElementType` 暴露稳定上层路径 `crate::element::ElementType`）的 owner 承载复数相关转换实现 |
+| `convert/`   | 作为 `CastTo<T>`（trait 定义在 `element` 模块，参见 `03-element.md §5.9`）/ `XenonError::TypeConversion`（参见 `26-error.md v3.2.0 §5.1`，`source_type` / `target_type` 字段为 `&'static str`）/ `ConversionFailureReason`（封闭枚举：`LossyIntegerNarrowing` / `LossyFloatNarrowing` / `FloatToInteger` / `IntegerToFloatPrecisionLoss` / `NonZeroImaginaryPart`）的 owner 承载复数相关转换实现。错误构造点使用 `<A as Element>::ELEMENT_TYPE_NAME`（如 `<Complex<f64> as Element>::ELEMENT_TYPE_NAME == "Complex<f64>"`）填充 `source_type` / `target_type` |
 
 ### 4.3 依赖合法性
 
@@ -567,7 +567,7 @@ fn scalar_is_positive_zero<T: PositiveZero>(im: T) -> bool {
 | `Complex<f64>` | `i32` | 虚部非零先返回错误；虚部为零后内层 f64→i32 是 B10.a 静态有损路径，**无条件**返回错误 | 虚部非零 → `NonZeroImaginaryPart`；虚部为零 → `FloatToInteger`（B10.a 静态有损） |
 | `Complex<f64>` | `i64` | 虚部非零先返回错误；虚部为零后内层 f64→i64 是 B10.a 静态有损路径，**无条件**返回错误 | 虚部非零 → `NonZeroImaginaryPart`；虚部为零 → `FloatToInteger`（B10.a 静态有损） |
 
-- `Complex -> Real` 的具体 `CastTo<T>` 实现同样位于 `convert/cast.rs`。`complex/` 仅保留 "虚部必须为 `0`；失败返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index, operation }`" 这一语义约束，字段模型以 `26-error.md v3.1.0 §5.1`（变体定义）/ `§5.6`（结构化上下文要求）为准。`source_type` / `target_type` 使用 `ElementType` 封闭枚举（**权威定义见 `26-error.md §5.1`**：`ElementType::Bool / I32 / I64 / F32 / F64 / Complex32 / Complex64`，`#[non_exhaustive]`），不使用 `core::any::TypeId`。
+- `Complex -> Real` 的具体 `CastTo<T>` 实现同样位于 `convert/cast.rs`。`complex/` 仅保留 "虚部必须为 `0`；失败返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index, operation }`" 这一语义约束，字段模型以 `26-error.md v3.2.0 §5.1`（变体定义）/ `§5.6`（结构化上下文要求）为准。`source_type` / `target_type` 字段类型为 `&'static str`（v3.2.0 起；值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供），不使用 `core::any::TypeId`。`ElementType` 枚举类型本身权威定义在 `crate::element`（详见 `03-element.md §5.1.1`），但**不**作为本错误字段的存储类型——error 模块通过字符串字面量记录类型诊断信息，避免 L0 反向依赖 element。
 - `-0.0` 补充说明： 复数到实数转换对“虚部是否为零”的判断遵循 IEEE 754 比较语义；因此 `-0.0` 视为零，`Complex::new(3.0, -0.0)` 允许按虚部为零的路径继续转换，不应被误判为非零虚部。
 
 ### 5.11 内存布局静态断言
@@ -917,7 +917,7 @@ User constructs `Complex<f64>::new(re, im)`
 
 | 项目              | 内容                                                                                |
 | ----------------- | ----------------------------------------------------------------------------------- |
-| Recoverable error | `CastTo<T>` trait 级的有损窄化路径返回 `XenonError::TypeConversion { operation: Cow<'static, str>, source_type: ElementType, target_type: ElementType, reason: ConversionFailureReason, element_index: Option<usize> }`（五字段，对齐 `26-error.md v3.0.0 §5.1`）。`source_type` / `target_type` 使用封闭枚举 `ElementType`（`03-element.md §5.1`），**不使用** `core::any::TypeId`。`reason` 取 `ConversionFailureReason` 封闭枚举的五个变体之一（`LossyIntegerNarrowing` / `LossyFloatNarrowing` / `FloatToInteger` / `IntegerToFloatPrecisionLoss` / `NonZeroImaginaryPart`，参见 `26-error.md v3.0.0 §5.1` 的完整定义）；复数模块涉及的具体路径主要使用 `LossyFloatNarrowing` / `IntegerToFloatPrecisionLoss` / `FloatToInteger` / `NonZeroImaginaryPart` 四个变体，`LossyIntegerNarrowing` 由非复数实数窄化路径（如 i64→i32）使用，本模块不直接构造。`operation` 由调用入口（如 `21-type.md` 的 `cast()`）注入；`CastTo::cast_to()` 实现可留空 `Cow::Borrowed("")` 作为内部临时值，但公开返回前必须由调用入口补齐为规范操作名。`element_index` 由张量级逐元素调用方填充，标量级实现留 `None`。 |
+| Recoverable error | `CastTo<T>` trait 级的有损窄化路径返回 `XenonError::TypeConversion { operation: Cow<'static, str>, source_type: &'static str, target_type: &'static str, reason: ConversionFailureReason, element_index: Option<usize> }`（五字段，对齐 `26-error.md v3.2.0 §5.1`）。`source_type` / `target_type` 使用 `&'static str`，值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供（`03-element.md §5.1.1`，例如 `<Complex<f64>>::ELEMENT_TYPE_NAME == "Complex<f64>"`），**不使用** `core::any::TypeId`，**也不使用** `ElementType` 枚举（避免 error 反向依赖 element）。`reason` 取 `ConversionFailureReason` 封闭枚举的五个变体之一（`LossyIntegerNarrowing` / `LossyFloatNarrowing` / `FloatToInteger` / `IntegerToFloatPrecisionLoss` / `NonZeroImaginaryPart`，参见 `26-error.md v3.2.0 §5.1` 的完整定义）；复数模块涉及的具体路径主要使用 `LossyFloatNarrowing` / `IntegerToFloatPrecisionLoss` / `FloatToInteger` / `NonZeroImaginaryPart` 四个变体，`LossyIntegerNarrowing` 由非复数实数窄化路径（如 i64→i32）使用，本模块不直接构造。`operation` 由调用入口（如 `21-type.md` 的 `cast()`）注入；`CastTo::cast_to()` 实现可留空 `Cow::Borrowed("")` 作为内部临时值，但公开返回前必须由调用入口补齐为规范操作名。`element_index` 由张量级逐元素调用方填充，标量级实现留 `None`。 |
 | Panic             | 常规复数运算与方法不以 panic 作为错误通道；若调用底层标准库浮点 API，遵循其既有语义 |
 | 路径一致性        | scalar 路径与普通标量实现必须一致；SIMD：不适用；parallel：不适用                   |
 | 容差边界          | 复数数值测试采用显式容差；布局、格式化与类型边界测试不适用                          |

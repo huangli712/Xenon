@@ -15,7 +15,7 @@
 
 ### 1.0 协同基线
 
-本文档 v2.1.0 以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`02-dimension.md` v3.0.0、`03-element.md` v1.3.1、`04-complex.md` v2.0.1、`05-storage.md` v3.0.1、`06-layout.md` v1.3、`07-tensor.md` v3.0.0、`08-simd.md` v2.0.1、`09-parallel.md` v2.0.1、`11-math.md` v2.0.1、`12-matrix.md` v2.0.1、`13-reduction.md` v3.0.0、`14-set.md` v2.0.1、`15-broadcast.md` v3.0.1、`16-shape.md` v2.0.1、`17-indexing.md` v3.0.1、`18-construction.md` v3.0.1、`19-overload.md` v2.1.0、`20-utility.md` v3.0.1、`21-type.md` v2.1.0、`22-output.md` v2.0.1、`23-ffi.md` v3.0.1、`24-workspace.md` v3.0.1、`25-safety.md` v2.0.1、`26-error.md` v3.1.1、`27-benchmark.md` v2.0.0、`30-dispatch.md` v2.0.1。
+本文档 v2.1.1 以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`02-dimension.md` v3.0.0、`03-element.md` v1.4.0、`04-complex.md` v2.0.2、`05-storage.md` v3.0.1、`06-layout.md` v1.3、`07-tensor.md` v3.0.0、`08-simd.md` v2.0.1、`09-parallel.md` v2.0.1、`11-math.md` v2.0.1、`12-matrix.md` v2.0.1、`13-reduction.md` v3.0.0、`14-set.md` v2.0.1、`15-broadcast.md` v3.0.1、`16-shape.md` v2.0.1、`17-indexing.md` v3.0.1、`18-construction.md` v3.0.1、`19-overload.md` v2.1.0、`20-utility.md` v3.0.1、`21-type.md` v2.1.1、`22-output.md` v2.0.1、`23-ffi.md` v3.0.2、`24-workspace.md` v3.0.1、`25-safety.md` v2.0.1、`26-error.md` v3.2.0、`27-benchmark.md` v2.0.0、`30-dispatch.md` v2.0.1。
 
 ### 1.1 职责边界
 
@@ -575,7 +575,7 @@ fn test_unique_non_contiguous() {
 | `test_bool_not_participating_in_cast`    | `bool` 不参与逐元素类型转换，相关入口在类型层或运行时被拒绝 | 高     |
 | `test_cast_nan_to_int`                   | `cast()` 对 NaN→整数返回 `TypeConversion` 错误              | 中     |
 
-转换测试遵循 `21-type.md` 的三层结构：静态无损 `From`、静态有损 `CastTo<T>`、动态条件性 `CastTo<T>`。`TypeConversion` 错误断言必须匹配五字段：`operation: Cow::Borrowed("cast")`（标量级 `CastTo::cast_to()` 保留 `Cow::Borrowed("")` 并由张量入口注入）、`source_type: ElementType`、`target_type: ElementType`、`reason: ConversionFailureReason`、`element_index: Option<usize>`；类型身份只使用 `ElementType` 封闭枚举。
+转换测试遵循 `21-type.md` 的三层结构：静态无损 `From`、静态有损 `CastTo<T>`、动态条件性 `CastTo<T>`。`TypeConversion` 错误断言必须匹配五字段：`operation: Cow::Borrowed("cast")`（标量级 `CastTo::cast_to()` 保留 `Cow::Borrowed("")` 并由张量入口注入）、`source_type: &'static str`（断言示例：`assert_eq!(err.source_type, "f64")`，v3.2.0 起改为字符串字面量比较）、`target_type: &'static str`（同前）、`reason: ConversionFailureReason`、`element_index: Option<usize>`；类型身份只使用 `&'static str`，值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供（详见 `26-error.md v3.2.0 §5.1` 与 `03-element.md v1.4.0 §5.1.1`）。
 
 ### 5.15 test_utility.rs
 
@@ -1543,7 +1543,7 @@ Test files
 
 - 对齐 `17-indexing.md` v2.0.0：测试规范改为 `try_at` / `try_at_mut` 与 `slice`，删除公开下标索引写法，并明确 `SliceInfo::new` 只做结构性校验。
 - 对齐 `19-overload.md` v2.0.0：运算符测试保持 `Output = Result<Tensor, XenonError>`，删除原生 `i32 + Tensor` 左标量测试，改为 `Scalar<A>` 包装类型契约。
-- 对齐 `21-type.md` v2.0.0 与 `26-error.md` v3.0.0：`TypeConversion` 测试使用 `ElementType` 与五字段结构，禁止开放式运行时类型身份，并要求 `operation` 使用 `Cow::Borrowed("...")`。
+- 对齐 `21-type.md` v2.1.1 与 `26-error.md` v3.2.0：`TypeConversion` 测试使用 `&'static str`（值由 `Element::ELEMENT_TYPE_NAME` 提供，例如 `"f64"`、`"Complex<f64>"`）替代 `ElementType` 枚举，禁止开放式运行时类型身份，并要求 `operation` 使用 `Cow::Borrowed("...")`。
 - 对齐 `24-workspace.md` v2.0.0：workspace 借用入口改为 `&mut self` 契约，错误分类改为七个结构化 `WorkspaceErrorCategory` 子变体，淘汰旧借用冲突变体与旧可选字段。
 
 **High 修复**：

@@ -24,7 +24,7 @@
 | 原则       | 体现                                                                       |
 | ---------- | -------------------------------------------------------------------------- |
 | 显式转换   | 所有类型转换须显式调用 `cast()`，无隐式提升                                |
-| 失败可诊断 | 有损转换默认返回可恢复错误，错误上下文由 `XenonError::TypeConversion` 承载（字段对齐 `26-error.md v3.0.0 §5.1`，使用 `ElementType` 而非 `TypeId`） |
+| 失败可诊断 | 有损转换默认返回可恢复错误，错误上下文由 `XenonError::TypeConversion` 承载（字段对齐 `26-error.md v3.2.0 §5.1`，`source_type` / `target_type` 字段类型为 `&'static str`，值来自 `<A as Element>::ELEMENT_TYPE_NAME`；不使用 `TypeId`，也不直接持有 `ElementType` 枚举值） |
 | 存储约束   | `cast` 面向所有可读存储开放，但结果统一物化为 owned 张量                   |
 | 需求闭合   | 仅支持 `需求说明书 §23.1` 与 `需求说明书 §23.2` 定义的类型对及其成功前提   |
 | 静态分流   | 决策 4（B10.a）：无损/默认有损在类型对级别静态判定，不做逐元素扫描；仅 `Complex → Real` 等条件性成功才在 `cast_to()` 内逐元素判定（如 `im == 0.0`）|
@@ -80,7 +80,7 @@ External dependencies:
 | `storage`   | `Storage<Elem=A>`, `StorageMut`, `Owned<A>`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`（参见 `05-storage.md` §5） |
 | `element`   | `Element`, `CastTo<B>`（参见 `03-element.md` §5.9）, `CastElement`（sealed marker，参见 `03-element.md §5.9.1`）。convert 只消费这些，不重新定义 |
 | `layout`    | `is_f_contiguous()`（参见 `06-layout.md` §5）                                                                |
-| `error`     | `XenonError`、`Result<T>`、`ConversionFailureReason`、`ElementType`（**权威定义见 `26-error.md v3.1.0 §5.1`**；本模块的 `use crate::element::ElementType;` 通过 element 模块的 `pub use crate::error::ElementType` re-export 间接消费，等价于 `use crate::error::ElementType;`，使用点不需要修改）       |
+| `error`     | `XenonError`（含 `TypeConversion::source_type` / `target_type: &'static str`，v3.2.0 起；详见 `26-error.md §5.4`）、`Result<T>`、`ConversionFailureReason`。本模块**不**通过 error 间接消费 `ElementType`——`ElementType` 类型权威定义在 `crate::element`（`03-element.md §5.1.1`），如需本类型本模块直接 `use crate::element::ElementType;`；如需类型名字符串，使用 `<A as Element>::ELEMENT_TYPE_NAME` 或 `crate::element::element_type_name_of::<A>()` |
 | `iter`      | `iter()` 用于 `cast()` / `to_owned()` 的逐元素遍历（参见 `10-iterator.md` §5）                             |
 
 ### 4.3 依赖合法性
@@ -136,15 +136,18 @@ where
     ///
     /// Returns `XenonError::TypeConversion {
     ///     operation: Cow::Borrowed("cast"),
-    ///     source_type: ElementType,
-    ///     target_type: ElementType,
+    ///     source_type: &'static str,
+    ///     target_type: &'static str,
     ///     reason: ConversionFailureReason,
     ///     element_index: Some(usize),
     /// }` when any element cannot be converted under the rules defined in
-    /// `需求说明书 §23`. `source_type` / `target_type` are `crate::element::
-    /// ElementType` closed-enum tags (see `26-error.md v3.0.0 §5.1`); they
-    /// **must not** use `core::any::TypeId`. `operation` must be supplied
-    /// (the v3.0.0 contract removed the implicit-empty default).
+    /// `需求说明书 §23`. `source_type` / `target_type` are `&'static str`
+    /// (see `26-error.md v3.2.0 §5.1`); the canonical name strings come
+    /// from `<A as Element>::ELEMENT_TYPE_NAME`
+    /// (see `03-element.md §5.1.1`). They **must not** use
+    /// `core::any::TypeId` and **must not** be free-form text. `operation`
+    /// must be supplied (the v3.0.0 contract removed the implicit-empty
+    /// default).
     ///
     /// # Examples
     ///
@@ -384,9 +387,10 @@ use crate::error::{ConversionFailureReason, XenonError};
 // injecting `operation = Cow::Borrowed("cast")` and the resolved element
 // index. See §5.2 cast() for the rewrap pattern.
 //
-// Note (26-error v3.0.0): source_type / target_type are ElementType closed-
-// enum tags, NOT core::any::TypeId. The previous TypeId-based design has
-// been removed; ElementType is the only supported tag type.
+// Note (26-error v3.2.0): source_type / target_type are `&'static str`
+// (NOT `core::any::TypeId`, NOT `ElementType` enum). Values come from
+// `<A as Element>::ELEMENT_TYPE_NAME`, ensuring `error` (L0) holds no
+// `element` dependency while still producing readable Display output.
 
 // === Lossy-by-default conversion ===
 impl CastTo<f32> for f64 {
@@ -394,8 +398,8 @@ impl CastTo<f32> for f64 {
     fn cast_to(self) -> Result<f32, XenonError> {
         Err(XenonError::TypeConversion {
             operation: Cow::Borrowed(""),
-            source_type: ElementType::F64,
-            target_type: ElementType::F32,
+            source_type: <f64 as Element>::ELEMENT_TYPE_NAME, // == "f64"
+            target_type: <f32 as Element>::ELEMENT_TYPE_NAME, // == "f32"
             reason: ConversionFailureReason::LossyFloatNarrowing,
             element_index: None,
         })
@@ -433,8 +437,8 @@ impl CastTo<i32> for f64 {
     fn cast_to(self) -> Result<i32, XenonError> {
         Err(XenonError::TypeConversion {
             operation: Cow::Borrowed(""),
-            source_type: ElementType::F64,
-            target_type: ElementType::I32,
+            source_type: <f64 as Element>::ELEMENT_TYPE_NAME, // "f64"
+            target_type: <i32 as Element>::ELEMENT_TYPE_NAME, // "i32"
             reason: ConversionFailureReason::FloatToInteger,
             element_index: None,
         })
@@ -466,8 +470,8 @@ impl CastTo<f64> for Complex<f64> {
         } else {
             Err(XenonError::TypeConversion {
                 operation: Cow::Borrowed(""),
-                source_type: ElementType::Complex64,
-                target_type: ElementType::F64,
+                source_type: <Complex<f64> as Element>::ELEMENT_TYPE_NAME, // "Complex<f64>"
+                target_type: <f64 as Element>::ELEMENT_TYPE_NAME, // "f64"
                 reason: ConversionFailureReason::NonZeroImaginaryPart,
                 element_index: None,
             })
@@ -481,8 +485,8 @@ impl CastTo<i32> for i64 {
     fn cast_to(self) -> Result<i32, XenonError> {
         Err(XenonError::TypeConversion {
             operation: Cow::Borrowed(""),
-            source_type: ElementType::I64,
-            target_type: ElementType::I32,
+            source_type: <i64 as Element>::ELEMENT_TYPE_NAME, // "i64"
+            target_type: <i32 as Element>::ELEMENT_TYPE_NAME, // "i32"
             reason: ConversionFailureReason::LossyIntegerNarrowing,
             element_index: None,
         })
@@ -657,7 +661,7 @@ User calls cast() / to_owned() / into_owned()
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `cast()` 在有损转换、虚部非零或其他规则不满足时返回 `XenonError::TypeConversion { operation: Cow::Borrowed("cast"), source_type: ElementType, target_type: ElementType, reason: ConversionFailureReason, element_index: Some(usize) }`（字段定义见 `26-error.md v3.0.0 §5.1`）。源/目标类型字段必须使用 `ElementType` 封闭枚举，**不**得使用 `core::any::TypeId`。`element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引；`CastTo::cast_to()` 自身不知道线性索引，因此其返回的错误中 `operation` 留空、`element_index` 为 `None`，由 `cast()` 在 `map_err` 中注入正确值（见 §5.2 实现）。 |
+| Recoverable error | `cast()` 在有损转换、虚部非零或其他规则不满足时返回 `XenonError::TypeConversion { operation: Cow::Borrowed("cast"), source_type: &'static str, target_type: &'static str, reason: ConversionFailureReason, element_index: Some(usize) }`（字段定义见 `26-error.md v3.2.0 §5.1`）。源/目标类型字段为 `&'static str`，值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供（`03-element.md §5.1.1`），**不**使用 `core::any::TypeId`，**也不**直接持有 `ElementType` 枚举值。`element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引；`CastTo::cast_to()` 自身不知道线性索引，因此其返回的错误中 `operation` 留空、`element_index` 为 `None`，由 `cast()` 在 `map_err` 中注入正确值（见 §5.2 实现）。 |
 | Panic | 公开转换 API 不定义额外 panic 语义；有损场景统一返回可恢复错误。 |
 | 路径一致性 | `cast`、`to_owned`、`into_owned` 必须保持相同 shape 与逻辑元素顺序；其中 `to_owned` / `into_owned` 的 owned 结果固定为 canonical F-order。无 SIMD / 并行分支。 |
 | 容差边界 | 不适用。 |

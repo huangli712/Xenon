@@ -994,9 +994,9 @@ fmt_display(error, formatter):
 | rank 超静态最大 `IxDyn(7) -> Ix6` 转换 | 返回 `InvalidShape { kind: RankExceedsStaticMax { provided_ndim: 7, max_ndim: 6 }, .. }`           |
 | 非法轴 `axis=5, ndim=2`          | 返回 `InvalidAxis` 结构化错误                                                                              |
 | 越界索引 `index=[9], shape=[4]`  | 返回 `IndexOutOfBounds` 结构化错误                                                                         |
-| 复数虚部非零 `Complex(1, 2)`     | 转换为实数类型返回 `TypeConversion { reason: NonZeroImaginaryPart, source_type: Complex64, target_type: F64, .. }` |
+| 复数虚部非零 `Complex(1, 2)`     | 转换为实数类型返回 `TypeConversion { reason: NonZeroImaginaryPart, source_type: "Complex<f64>", target_type: "f64", .. }` |
 | 整数极值 `i32::MIN`              | `abs(i32::MIN)` 走 panic                                                                                   |
-| NaN/Inf 转换                     | `f64::NaN` → `i32` 返回 `TypeConversion { reason: FloatToInteger, source_type: F64, target_type: I32, .. }` |
+| NaN/Inf 转换                     | `f64::NaN` → `i32` 返回 `TypeConversion { reason: FloatToInteger, source_type: "f64", target_type: "i32", .. }` |
 | FFI 空指针                       | 返回 `Ffi { category: NullPointer { argument: "ptr" }, backend: RawParts, cause: None, .. }`              |
 | FFI 包装 workspace 错误          | 返回 `Ffi { category: ..., cause: Some(Box::new(XenonError::Workspace { .. })), .. }`，`Error::source()` 返回内层 |
 
@@ -1173,14 +1173,15 @@ Caller invokes public API (e.g., tensor.broadcast_to(shape))
 | 替代方案 | 全部变体都加 `cause` — 放弃，绝大多数变体本身就是叶子，统一加字段会增加构造复杂度与无意义 None                                                  |
 | 替代方案 | 用外部 `anyhow` / `Box<dyn Error>` 包装 — 放弃，违反最小依赖约束                                                                              |
 
-### 决策 6：`TypeConversion` 用 `ElementType` 替换 `TypeId`，并补 `operation`
+### 决策 6：`TypeConversion` 用类型名 `&'static str` 替换 `TypeId`，并补 `operation`
 
 | 属性     | 值                                                                                                                                                                |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | `TypeConversion` 字段改为 `{ operation, source_type: ElementType, target_type: ElementType, reason, element_index? }`，`source_type` / `target_type` 使用元素模块的封闭枚举 |
-| 理由     | (b2) 评审 H-R8 / C23：`TypeId` 是不透明哈希，无法满足结构化诊断 + 可读 Display；`ElementType` 是 Xenon 的封闭元素类型枚举（v3.1.0 起权威定义在本模块 §5.1，`element` / `ffi` 通过 `pub use` re-export），覆盖所有合法元素类型；同时补齐 `operation` 字段消除“几乎所有变体都必须携带 operation 但 TypeConversion 例外”的不一致 |
-| 替代方案 | 保留 `TypeId` + 在 Display 时反查类型名 — 放弃，反查机制不存在且 TypeId 不可程序化匹配封闭元素集合                                                                |
-| 替代方案 | 使用字符串类型名 — 放弃，与“结构化诊断”原则冲突                                                                                                                   |
+| 决策     | `TypeConversion` 字段为 `{ operation, source_type: &'static str, target_type: &'static str, reason, element_index? }`（v3.2.0 起；v1.3.0–v3.1.x 曾使用 `ElementType`，详见决策回滚说明）。`source_type` / `target_type` 取值来自 `Element::ELEMENT_TYPE_NAME` 关联常量（`03-element.md §5.1.1`） |
+| 理由     | (b2) 评审 H-R8 / C23：`TypeId` 是不透明哈希，无法满足结构化诊断 + 可读 Display；同时补齐 `operation` 字段消除"几乎所有变体都必须携带 operation 但 TypeConversion 例外"的不一致。`&'static str` 取代 `ElementType` 枚举（v3.2.0）：避免 error 反向依赖 element，让 L0..L6 单向依赖严格成立，同时保留可读 Display；具体类型枚举仍由 `crate::element` 拥有，结构化匹配可由调用方按需 `match` 字符串字面量（受支持的全集是固定的封闭名称集合） |
+| 替代方案 | 保留 `TypeId` + 在 Display 时反查类型名 — 放弃，反查机制不存在且 TypeId 不可程序化匹配封闭元素集合 |
+| 替代方案 | 字段保持 `ElementType` 枚举 — 放弃（v3.2.0 反转）：会让 error 模块持有 element 模块定义的类型，破坏 L0 单向依赖（即便通过 re-export 隐藏耦合，链路上仍是 error → element） |
+| 替代方案 | 自由文本字符串 `Cow<'static, str>` — 放弃：构造点缺乏统一来源会导致拼写不一致；本设计要求值必须来自 `Element::ELEMENT_TYPE_NAME` 关联常量集中管理 |
 
 ---
 
@@ -1232,6 +1233,36 @@ Caller invokes public API (e.g., tensor.broadcast_to(shape))
 | 3.0.0 | 2026-05-02 |
 | 3.0.1 | 2026-05-03 |
 | 3.1.0 | 2026-05-03 |
+| 3.1.1 | 2026-05-03 |
+| 3.2.0 | 2026-05-03 |
+
+### v3.2.0 (2026-05-03) — ElementType 字段类型改 `&'static str`（破坏性公开 API 更新；ElementType 类型回归 element）
+
+> 本版本与 `03-element.md v1.4.0` 协同。**公开 API 破坏性变更**：`XenonError::TypeConversion::source_type` / `target_type` 与 `AbiMismatchKind::ElementTypeMismatch::expected` / `actual` 的字段类型从 `ElementType` 枚举改为 `&'static str`；同时本模块**移除** `ElementType` 枚举定义（v3.1.0–v3.1.1 中临时持有，回到 `crate::element` 拥有，详见 `03-element.md §5.1.1`）。L0 单向依赖严格成立：error 现在不依赖任何 internal 模块，仅依赖标准库。
+
+**破坏性变更点**：
+- `XenonError::TypeConversion { source_type: ElementType, target_type: ElementType, ... }` → `{ source_type: &'static str, target_type: &'static str, ... }`
+- `AbiMismatchKind::ElementTypeMismatch { expected: ElementType, actual: ElementType }` → `{ expected: &'static str, actual: &'static str }`
+- `crate::error::ElementType` 路径**不再存在**；唯一权威路径是 `crate::element::ElementType`，FFI 路径是 `crate::ffi::ElementType`（`element` re-export）
+- 错误构造站点：`source_type: ElementType::F32` → `source_type: <f32 as Element>::ELEMENT_TYPE_NAME`（值为 `"f32"`），或等价 `crate::element::element_type_name_of::<f32>()`
+
+**契约更新**：
+- §4.1 / §4.4：error 严格 L0，无 internal 依赖；`ElementType` re-export 链断开
+- §5.1：删除 `ElementType` 定义与 Display impl；保留对 `03-element.md §5.1.1` 的引用
+- §5.4：`TypeConversion` / `ElementTypeMismatch` 字段类型注释更新
+- §5.6 / §5.7：字段表与 Display 实现规范更新
+- §11 决策 6：增加 v3.2.0 决策反转说明与新替代方案
+- §13 关联类型表（PartialEq）：从枚举判别比较改为字符串字面量比较
+
+**测试影响**：
+- `test_type_conversion_uses_element_type` → `test_type_conversion_uses_element_type_name`（断言值改为字符串字面量）
+- 所有错误构造期望字面量从 `ElementType::F32` 改为 `"f32"`
+
+**未受影响**：FFI 模块 `TensorExport.element_type: ElementType` 字段保持 ABI 稳定，`element_type` 仍是 enum（C 端按 u8 discriminant 比较），只是路径从 `crate::error::ElementType` 改为 `crate::element::ElementType`（详见 `23-ffi.md`）。
+
+### v3.1.1 (2026-05-03) — TypedByteLengthOverflow 新增
+
+> 详见 `24-workspace.md §5.6` 协同更新。`TypedViewRejection` 增加 `TypedByteLengthOverflow { count, elem_size }` 变体替代误用的 `GrowOverflow`。
 
 ### v3.1.0 (2026-05-03) — ElementType 下沉到 L0 + OverlapRejected 启用 + LengthNotMultipleOfSize 删除（破坏性内部更新）
 
