@@ -720,7 +720,7 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 
 | 错误类型 | 处理方式 | 理由 |
 |----------|---------|------|
-| 形状不匹配（不可广播） | 返回 `Result::Err(XenonError::BroadcastError)` | 形状错误是用户输入问题，可恢复；**所有** `+ - * /` 运算符与 `add/sub/mul/div` 方法的逐元素广播路径，shape 不可广播（含 rank 不一致但走逐元素广播规则的情形）一律走 `BroadcastError`。本模块运算符**不**返回 `DimensionMismatch`——`DimensionMismatch` 保留给 `dot` 这类**非广播**双输入操作（详见 `12-matrix.md §5.1`），它们要求 rank 与对应轴长度严格相等，没有"尝试广播"语义，因此用 `DimensionMismatch` 而非 `BroadcastError`。 |
+| 形状不匹配（不可广播） | 返回 `Result::Err(XenonError::BroadcastError)` | 形状错误是用户输入问题，可恢复；**所有** `+ - * /` 运算符与 `add/sub/mul/div` 方法的逐元素广播路径，shape 不可广播（含 rank 不一致但走逐元素广播规则的情形）一律走 `BroadcastError`。本模块运算符**不**返回 `ShapeMismatch` 或 `DimensionMismatch`。`ShapeMismatch` 保留给 `dot` 这类**非广播**双输入操作（详见 `12-matrix.md §5.1`：rank ≠ 1 走 `InvalidArgument`，长度不匹配走 `ShapeMismatch`），它们要求 rank 与对应轴长度严格相等，没有"尝试广播"语义，因此用 `ShapeMismatch` 而非 `BroadcastError`。`DimensionMismatch` 在本项目中是更宽泛的"维度不一致"语义（详见 `26-error.md §5.1`），不适用于 dot 也不适用于运算符路径。 |
 | 整数溢出（add/sub/mul/neg） | panic | 算术错误是程序员 bug，不可恢复 |
 | 整数除零（div） | panic | 同上 |
 | 浮点 NaN/Inf | 按 IEEE 754 传播 | 不视为错误，标量行为 |

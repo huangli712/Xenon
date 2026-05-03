@@ -95,9 +95,16 @@ Trait 名使用 `CamelCase`。标记 trait 使用描述性形容词。
 // Good
 pub trait Element: Copy + Sealed {
     const ELEMENT_TYPE: ElementType;
+    const ELEMENT_TYPE_NAME: &'static str;
 }
 
-pub enum ElementType { I32, I64, F32, F64, Complex32, Complex64, Bool }
+#[non_exhaustive]
+#[repr(u8)]
+pub enum ElementType { Bool, I32, I64, F32, F64, Complex32, Complex64 }
+// Authoritative definition lives in `crate::element` (see 03-element.md §5.1.1).
+// `ffi` re-exports via `pub use crate::element::ElementType`. `error` does NOT
+// hold this enum — it uses `&'static str` (sourced from ELEMENT_TYPE_NAME) for
+// type tags in error fields, keeping L0 free of element dependency.
 
 // The sealed implementation set is:
 // i32, i64, f32, f64, Complex<f32>, Complex<f64>, bool.
@@ -361,7 +368,7 @@ let offset = ptr as usize;
 let truncated = float_val as i32;
 ```
 
-类型转换分为三层：静态无损转换使用 `From`，静态有损转换和动态条件性转换使用 `CastTo<T>`。`XenonError::TypeConversion` 必须填写 `operation`、`source_type: ElementType`、`target_type: ElementType`、`reason`、`element_index` 五个字段，禁止使用 `TypeId` 表达元素类型。
+类型转换分为三层：静态无损转换使用 `From`，静态有损转换和动态条件性转换使用 `CastTo<T>`。`XenonError::TypeConversion` 必须填写 `operation`、`source_type: &'static str`、`target_type: &'static str`、`reason`、`element_index` 五个字段（v3.2.0 起；值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供），禁止使用 `TypeId` 表达元素类型，**也禁止**直接使用 `ElementType` 枚举（避免 error 反向依赖 element）。
 
 复数实数构造的唯一显式路径是 `From<T> for Complex<T>`。不存在 `Complex<T> op T` 便捷运算符；整数到复数转换必须走 `CastTo`。
 
@@ -566,17 +573,23 @@ pub enum XenonError {
     InvalidStorageMode { operation: Cow<'static, str>, expected: StorageKindTag, actual: StorageKindTag, shape: Option<Vec<usize>>, conversion: Option<StorageConversionKind> },
     DimensionMismatch { operation: Cow<'static, str>, expected: usize, actual: usize },
     IndexOutOfBounds { operation: Cow<'static, str>, attempted_index: Vec<usize>, axis: usize, shape: Vec<usize> },
-    TypeConversion { operation: Cow<'static, str>, source_type: ElementType, target_type: ElementType, reason: ConversionFailureReason, element_index: Option<usize> },
+    TypeConversion { operation: Cow<'static, str>, source_type: &'static str, target_type: &'static str, reason: ConversionFailureReason, element_index: Option<usize> },
     InvalidAxis { operation: Cow<'static, str>, axis: usize, ndim: usize, shape: Vec<usize> },
     Ffi { operation: Cow<'static, str>, category: FfiErrorCategory, backend: FfiBackend, cause: Option<Box<XenonError>> },
     Workspace { operation: Cow<'static, str>, category: WorkspaceErrorCategory, cause: Option<Box<XenonError>> },
     // 完整变体清单（13 个）：ShapeMismatch / BroadcastError / LayoutMismatch /
     // InvalidShape / InvalidLayout / InvalidArgument / InvalidStorageMode /
     // DimensionMismatch / IndexOutOfBounds / TypeConversion / InvalidAxis /
-    // Ffi / Workspace。详见 26-error.md v3.1.0 §5.1。
+    // Ffi / Workspace。详见 26-error.md v3.2.0 §5.1。
     // 旧模型 Storage / Numerical / Internal 三个占位变体已在 v3.0.0 删除。
-    // ElementType 在 v3.1.0 起的权威定义在 26-error.md §5.1（L0 模块），
-    // element 与 ffi 通过 `pub use crate::error::ElementType` re-export。
+    //
+    // ElementType 类型自 v1.4.0 / v3.2.0 起的权威定义在 `crate::element`
+    // （03-element.md §5.1.1），ffi 通过 `pub use crate::element::ElementType`
+    // re-export 到 `crate::ffi::ElementType` 给 C ABI 消费者。
+    //
+    // **error 模块完全不依赖 element**：TypeConversion / AbiMismatchKind 中
+    // 涉及类型标识的字段使用 `&'static str`（值由 `<A as Element>::ELEMENT_TYPE_NAME`
+    // 提供），不直接持有 `ElementType` 枚举，从而保持 L0 严格无 internal 依赖。
 }
 
 pub enum StorageKindTag { Owned, View, ViewMut, Arc }
@@ -1193,7 +1206,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 改动清单：
 
 - 增加 §1.3 协同基线，明确本文档依据的下游设计文档版本。
-- 对齐 `26-error.md v3.0.0 §5.1`：`operation` 使用 `Cow<'static, str>`，构造示例使用 `Cow::Borrowed("...")`；`TypeConversion` 使用 `ElementType` 五字段；`Ffi` 四字段、`FfiBackend`、`FfiErrorCategory` 八子变体、`Workspace` 三字段、`WorkspaceErrorCategory` 七子变体、`StorageKindTag` 字段形态同步。
+- 对齐 `26-error.md v3.2.0 §5.1`：`operation` 使用 `Cow<'static, str>`，构造示例使用 `Cow::Borrowed("...")`；`TypeConversion` 五字段（`source_type` / `target_type` 为 `&'static str`，值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供）；`Ffi` 四字段、`FfiBackend`、`FfiErrorCategory` 八子变体、`Workspace` 三字段、`WorkspaceErrorCategory` 七子变体（含 `TypedViewRejected::TypedByteLengthOverflow`）、`StorageKindTag` 字段形态同步。
 - 对齐 `17-indexing.md v2.0.0`：公开安全索引收敛为 `try_at` / `try_at_mut`，并明确不实现 `std::ops::Index` / `IndexMut`；示例不使用 `tensor[...]`。
 - 对齐 `18-construction.md v2.0.0`：`from_shape_vec` 元素数错误使用 `InvalidShapeKind::ElementCountMismatch { expected, actual }`；`zeros` / `ones` 使用 `<Owned<A> as StorageOwned>::from_elem(len, value)`。
 - 对齐 `19-overload.md v2.0.0` 与 `21-type.md v2.0.0`：运算符输出为 `Result<Tensor<_, _>, XenonError>`；同形状使用 `a + b`，可能广播路径使用 `a.add(&b)?`；类型转换分为 `From` / `CastTo<T>`；左标量使用 `Scalar<A>`。

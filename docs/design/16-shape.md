@@ -495,9 +495,9 @@ User calls transpose()
 > 本版本是与 02-dimension v1.x、05-storage v2.0.0、06-layout v1.3、26-error v3.0.0 协同的内部一致性更新。`transpose()` 公开签名不变；仅文档层强化论证 + 依赖表补全 + 伪实现注释更新。
 
 - §1.2 设计原则：新增"视图统一性"行，明确与 05-storage v2.0.0 §5.11.1 的统一规则协同。
-- §3 文件位置 / §4.1 依赖图：补 `crate::storage` (`ViewRepr`) 依赖；说明 `Reverse` trait 是 `pub(crate)`，仅在本模块内消费。
-- §4.2 类型级依赖：明确引用 02-dimension v1.x §5.11 `pub(crate) trait Reverse`；明确 06-layout v1.3 `compute_layout_flags`；补 `crate::storage` 行说明 `ViewRepr<'a, A>` 的来源（05-storage v2.0.0 §5.11.1）。
-- §5.1 伪实现：注释强化（明确 Reverse trait 是 pub(crate)、不在公开签名中泄露）；新增 0D / 1D 路径的等价性说明（`compute_layout_flags` 在相同输入下产生等价 flags，短路是优化非正确性要求）；引用 05-storage 统一规则。
+- §3 文件位置 / §4.1 依赖图：补 `crate::storage` (`ViewRepr`) 依赖；说明 `Reverse` trait（**v2.0.1 起**为 `pub` sealed trait via `Dimension: Sealed`，外部可命名 / 不可实现；早期 v2.0.0 草案曾设计为 `pub(crate)`，但 `transpose()` 的 `where D: Reverse` 不能引用 crate-private trait，故升级到 sealed pub）。
+- §4.2 类型级依赖：明确引用 02-dimension §5.11 `pub trait Reverse: Dimension`（sealed）；明确 06-layout v1.3 `compute_layout_flags`；补 `crate::storage` 行说明 `ViewRepr<'a, A>` 的来源（05-storage v2.0.0 §5.11.1）。
+- §5.1 伪实现：注释更新——`Reverse` 在 `transpose()` 的 `where` 子句中可见（`pub` sealed），但实际上对所有受支持的维度类型（`Ix0..Ix6`、`IxDyn`）都已实现，因此对调用方是透明的；`fn reverse(self) -> Self` 同类型反转，不涉及关联类型。新增 0D / 1D 路径的等价性说明（`compute_layout_flags` 在相同输入下产生等价 flags，短路是优化非正确性要求）；引用 05-storage 统一规则。
 - §5.3 存储模式降级表后的 ArcRepr 降级说明：完全重写，新增四点设计论证：(1) 与 05-storage v2.0.0 §5.11.1 协同；(2) 显式恢复共享所有权的链式调用路径 `tensor.transpose().to_owned().into_shared()`；(3) 统一返回类型避免用户代码分支；(4) 未来若需要 `ArcRepr.transpose() → ArcRepr` 可通过单独命名 API 添加。
 - §5.4 Bad 示例：`a.get(&[i, j])` / `b.get_mut(&[j, i])` 改为安全索引 `try_at` / `try_at_mut`（与 17-indexing 决策 7 "公开安全索引收敛为 try_at / try_at_mut" 一致）；构造路径补 `?`。
 - §11 决策 4 完全重写：补充与 05-storage v2.0.0 §5.11.1 协同的论证；新增"未来扩展"行说明若需特殊化 ArcRepr.transpose() 可通过单独命名 API 添加，避免破坏统一规则。

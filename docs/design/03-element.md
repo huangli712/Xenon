@@ -75,7 +75,9 @@ src/element/
 
 ```
 src/element/
-├── crate::error      # XenonError + ElementType (authoritative ElementType owner; see 26-error.md §5.1)
+├── crate::error      # XenonError only (consumed for fallible APIs).
+                      # NOTE (v1.4.0): `ElementType` is defined HERE in the
+                      # element module (see §5.1.1), NOT in error.
 ├── crate::complex    # Complex<T> type definition
 ├── crate::private    # Sealed trait infrastructure
 ├── core::ops         # Add/Sub/Mul/Div/Neg operator traits
@@ -708,21 +710,28 @@ impl Element for bool {
     fn zero() -> Self { false }
     fn one() -> Self { true }
 
-    // The `ELEMENT_TYPE` constant is mandatory for *every* `Element` impl
-    // (see §5.1). For `bool`, it maps to the `Bool` discriminant of
-    // `ElementType`. This is required even though `bool` is excluded from
-    // `Numeric`, because FFI consumers still need to identify `Tensor<bool, _>`
-    // by its element-type discriminant.
+    // Both `ELEMENT_TYPE` and `ELEMENT_TYPE_NAME` are mandatory for *every*
+    // `Element` impl (see §5.1 trait definition + §5.1.1 ElementType).
+    // For `bool`, the type-tag pair maps to (Bool, "bool"). FFI consumers
+    // identify `Tensor<bool, _>` via `ELEMENT_TYPE`; error diagnostics
+    // (e.g. `XenonError::TypeConversion::source_type`) use the
+    // `ELEMENT_TYPE_NAME` string. Both constants are required even though
+    // `bool` is excluded from `Numeric`.
     const ELEMENT_TYPE: ElementType = ElementType::Bool;
+    const ELEMENT_TYPE_NAME: &'static str = "bool"; // == ElementType::Bool.name()
 }
 
-// Equivalent constants for the other six element types:
-//   impl Element for i32          { ... const ELEMENT_TYPE: ElementType = ElementType::I32; }
-//   impl Element for i64          { ... const ELEMENT_TYPE: ElementType = ElementType::I64; }
-//   impl Element for f32          { ... const ELEMENT_TYPE: ElementType = ElementType::F32; }
-//   impl Element for f64          { ... const ELEMENT_TYPE: ElementType = ElementType::F64; }
-//   impl Element for Complex<f32> { ... const ELEMENT_TYPE: ElementType = ElementType::Complex32; }
-//   impl Element for Complex<f64> { ... const ELEMENT_TYPE: ElementType = ElementType::Complex64; }
+// Equivalent constant pairs for the other six element types:
+//   impl Element for i32          { ... ELEMENT_TYPE = ElementType::I32;       NAME = "i32";          }
+//   impl Element for i64          { ... ELEMENT_TYPE = ElementType::I64;       NAME = "i64";          }
+//   impl Element for f32          { ... ELEMENT_TYPE = ElementType::F32;       NAME = "f32";          }
+//   impl Element for f64          { ... ELEMENT_TYPE = ElementType::F64;       NAME = "f64";          }
+//   impl Element for Complex<f32> { ... ELEMENT_TYPE = ElementType::Complex32; NAME = "Complex<f32>"; }
+//   impl Element for Complex<f64> { ... ELEMENT_TYPE = ElementType::Complex64; NAME = "Complex<f64>"; }
+//
+// Each NAME literal MUST equal `ElementType::<discriminant>.name()` exactly;
+// this is enforced by the runtime test
+// `tests/element_type_name_consistency.rs` (see §5.1.1).
 ```
 
 编译时阻止无效泛型实例化：`fn sum<A: Numeric>` 无法接受 `bool` 张量；需要布尔专用逐元素逻辑非时，使用 `!`。此外，`bool` 不实现任何 `CastTo<T>`；`bool_tensor.cast::<f32>()` 必须在编译期失败，而不是返回运行时类型转换错误。

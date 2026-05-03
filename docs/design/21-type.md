@@ -192,7 +192,13 @@ where
         // tensor from already-validated shape/data length. The helper is not a
         // public API surface of convert; its exact name is intentionally kept
         // outside this document's stable contract.
-        Ok(Tensor::from_shape_vec_aligned_unchecked(self.raw_dim(), data))
+        // SAFETY: `data.len() == self.len() == product(self.raw_dim())` because
+        // the loop pushes exactly one element per F-order iteration over
+        // `self`; `self.raw_dim()` was validated when `self` was constructed
+        // (no shape-product overflow); F-order strides/flags are computed
+        // internally by the helper. The helper is `pub(crate) unsafe fn`
+        // (see §5.6); the `unsafe` block satisfies its safety contract.
+        Ok(unsafe { Tensor::from_shape_vec_aligned_unchecked(self.raw_dim(), data) })
     }
 }
 ````
@@ -289,7 +295,13 @@ where
         // this path; instead we invoke the unchecked helper to keep
         // `to_owned()` infallible. See 05-storage.md §6.1 for the
         // unchecked-construction contract.
-        Tensor::from_shape_vec_aligned_unchecked(self.raw_dim(), data)
+        // SAFETY: `data.len() == self.len() == product(self.raw_dim())` (loop
+        // pushes one element per F-order iteration); `self.raw_dim()` was
+        // validated at `self` construction time; F-order strides/flags are
+        // computed internally by the helper. The helper is `pub(crate)
+        // unsafe fn` (see §5.6); the `unsafe` block satisfies its safety
+        // contract.
+        unsafe { Tensor::from_shape_vec_aligned_unchecked(self.raw_dim(), data) }
     }
 }
 
@@ -359,6 +371,13 @@ let ints: Tensor<i32, Ix1> = floats.cast().unwrap();  // forbidden: returns Type
 
 ### 6.1 CastTo 实现
 
+> **三层架构（v2.1.1，与 §11 决策 4 一致）**：
+> - **Tier-1 — 静态无损（`From`）**：通过 Rust 标准 `From`/`Into` 表达，例如 `f64: From<f32>`、`i64: From<i32>`、`f64: From<i32>`。这一层**不**经过 `CastTo`，调用点用 `T::from(value)` 或 `value.into()` 即零开销转换。`cast()` 主循环对静态无损 type pair 不实例化 `CastTo`，而是内部直接走 `From` 委托。
+> - **Tier-2 — 静态有损（`CastTo` 静态 `Err`）**：例如 `f64 → f32`、`f64 → i32`。`impl CastTo<T> for U` 直接 `Err(TypeConversion { reason: LossyFloatNarrowing | LossyFloatToInt | ... })`，无运行时值域检查。
+> - **Tier-3 — 动态条件（`CastTo` 运行时判定）**：仅 `Complex<T> → T` 这一类需要按 `im == 0.0` 等运行时条件决定 `Ok / Err`。
+>
+> 下方仅展示 Tier-2 / Tier-3 的 `CastTo` 实现；Tier-1 通过 `From` 表达，本节为完整记录附录展示在 §6.1.bis。
+
 `CastTo` 的规范签名统一为（与 `03-element.md` §5.9 的权威定义对齐）：
 
 ```rust,ignore
@@ -379,7 +398,7 @@ let converted: Result<T, XenonError> = value.cast_to();
 ```rust,ignore
 use std::borrow::Cow;
 
-use crate::element::ElementType;
+use crate::element::Element; // for `<A as Element>::ELEMENT_TYPE_NAME`
 use crate::error::{ConversionFailureReason, XenonError};
 
 // All TypeConversion errors below leave `operation` empty (Cow::Borrowed(""))
@@ -406,30 +425,12 @@ impl CastTo<f32> for f64 {
     }
 }
 
-// === Lossless widening ===
-impl CastTo<f64> for f32 {
-    #[inline]
-    // CAST-SAFETY: f32 → f64 is statically lossless (every f32 value is
-    // exactly representable as f64; this is one of the documented
-    // exceptions to the `clippy::as_conversions` lint per 00-coding §6.5).
-    fn cast_to(self) -> Result<f64, XenonError> { Ok(self as f64) }
-}
-
-impl CastTo<i64> for i32 {
-    #[inline]
-    // CAST-SAFETY: i32 → i64 is statically lossless (signed widening
-    // preserves both sign and magnitude).
-    fn cast_to(self) -> Result<i64, XenonError> { Ok(self as i64) }
-}
-
-// === Integer → float (lossless widening) ===
-impl CastTo<f64> for i32 {
-    #[inline]
-    // CAST-SAFETY: i32 → f64 is statically lossless (f64 mantissa has
-    // 53 bits, > 32 bits of i32 range; every i32 is exactly representable
-    // as f64). i64 → f64 would NOT be lossless and is handled separately.
-    fn cast_to(self) -> Result<f64, XenonError> { Ok(self as f64) }
-}
+// === Lossless widening — Tier-1 (`From`, NOT `CastTo`) ===
+// f32 → f64, i32 → i64, i32 → f64 are expressed via Rust standard `From`
+// (e.g. `f64::from(x)`, `<f64 as From<i32>>::from(x)`). They do NOT have
+// a `CastTo` impl; the `cast()` main loop dispatches statically-known
+// lossless pairs to `T::from(value)` directly. See §6.1.bis for the
+// lossless impl listing and §11 Decision 4 for the three-tier rationale.
 
 // === Float → integer (lossy-by-default) ===
 impl CastTo<i32> for f64 {
@@ -750,11 +751,24 @@ User calls cast() / to_owned() / into_owned()
 | 1.2.6 | 2026-04-15 |
 | 2.0.0 | 2026-05-02 |
 | 2.1.0 | 2026-05-03 |
+| 2.1.1 | 2026-05-03 |
+
+### v2.1.1 (2026-05-03) — TypeConversion 字段类型反转为 &'static str
+
+> 本版本与 `26-error.md v3.2.0`、`03-element.md v1.4.0` 协同。**ABI 兼容**：用户通过 `Result<T, XenonError>` 接收错误的形态不变；变化是错误字段值类型。
+
+- §4.2：`error` 依赖行修正为不再通过 error re-export 间接消费 `ElementType`；本模块如需类型枚举本身用 `use crate::element::ElementType;`，如需类型名字符串用 `<A as Element>::ELEMENT_TYPE_NAME` 或 `crate::element::element_type_name_of::<A>()`。
+- §5.2 `cast()` doc comment `# Errors` 段更新：`source_type` / `target_type` 字段类型从 `ElementType` 改为 `&'static str`，值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供。
+- §6.1 全部 13 处 `CastTo` 实现示例：错误构造 `source_type: ElementType::F64` → `source_type: <f64 as Element>::ELEMENT_TYPE_NAME`，所有数值类型对均同步。
+- §10 错误处理表：`source_type` / `target_type` 类型说明改为 `&'static str`。
+- 设计权衡说明：error 模块不直接依赖 element（不持有 `ElementType` 枚举），通过 `&'static str` 解耦；`ElementType` 类型枚举权威定义同时回归 `crate::element`（`03-element.md §5.1.1`）以让职责归属对齐。
 
 ### v2.1.0 (2026-05-03) — CastElement owner 协同 + ElementType 重新定位
 
+> v2.1.0 阶段曾让 `ElementType` 权威定义下沉到 `crate::error`（用以让 error 自带枚举 Display）；该决策已在 v2.1.1 / `26-error.md v3.2.0` 反转——`ElementType` 重新由 `crate::element` 拥有，error 模块改用 `&'static str` 字段。本节其他内容保留，仅 `ElementType` 路径相关说明已被 v2.1.1 取代。
+
 - §5.1：明确 `CastElement` 的唯一 owner 是 `03-element.md §5.9.1`；本模块只通过 `use crate::element::CastElement;` 消费，不再在本文档中重复展开 trait 定义与 impl 列表（解决 P0 C1 修复任务中的"CastElement owner 缺失"项）。
-- §6.1 / §10：`ElementType` 引用提示更新——v3.1.0 起权威定义在 `26-error.md §5.1`，`crate::element::ElementType` 是通过 `pub use` re-export 的稳定上层路径；本文档示例 `use crate::element::ElementType;` 仍然有效，无需调整使用点。
+- ~~§6.1 / §10：`ElementType` 引用提示更新——v3.1.0 起权威定义在 `26-error.md §5.1`，`crate::element::ElementType` 是通过 `pub use` re-export 的稳定上层路径~~（**v2.1.1 反转**：`ElementType` 权威定义在 `crate::element`，详见 `03-element.md §5.1.1`；error 模块字段类型改为 `&'static str`）。
 
 ### v2.0.0 (2026-05-02) — 错误字段对齐 26-error v3.0.0 + B10.a 决策落地
 

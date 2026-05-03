@@ -317,12 +317,12 @@ L3: Examples (examples/)
 
 所有 doc comment、doctest、README、CHANGELOG 与 examples 中的示例代码必须执行协同审查：
 
-- 错误构造必须匹配 `26-error.md v3.0.0 §5.1`。所有 `operation` 字段使用 `Cow<'static, str>`，示例构造使用 `Cow::Borrowed("...")`；`TypeConversion` 必须填充 `operation`、`source_type`、`target_type`、`reason`、`element_index`，其中 `source_type` / `target_type` 使用 `ElementType`，不得使用运行时类型 ID；`Ffi` 必须为 `operation` / `category` / `backend` / `cause` 四字段；`Workspace` 必须使用七子变体结构化 `WorkspaceErrorCategory`，不得引用旧的借用冲突子变体。
+- 错误构造必须匹配 `26-error.md v3.2.0 §5.1`。所有 `operation` 字段使用 `Cow<'static, str>`，示例构造使用 `Cow::Borrowed("...")`；`TypeConversion` 必须填充 `operation`、`source_type`、`target_type`、`reason`、`element_index`，其中 `source_type` / `target_type` 类型为 `&'static str`（v3.2.0 起；值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供，例如 `"f32"`、`"Complex<f64>"`），**不得**使用运行时类型 ID，**也不得**直接使用 `ElementType` 枚举值（避免 error 反向依赖 element）；`Ffi` 必须为 `operation` / `category` / `backend` / `cause` 四字段；`Workspace` 必须使用七子变体结构化 `WorkspaceErrorCategory`（含 `TypedViewRejected::TypedByteLengthOverflow { count, elem_size }`），不得引用旧的借用冲突子变体。
 - 索引示例必须使用 `try_at` / `try_at_mut` 或 `get(&[...])` / `get_mut(&[...])`，不得展示方括号索引语法。切片示例必须说明 `SliceInfo::new` 仅执行结构性校验，`SliceInfoElem::Range` 仅包含 `start` / `end`。
 - 构造示例必须保持 `Tensor::from_shape_vec` 的失败语义为 `InvalidShapeKind::ElementCountMismatch { expected, actual }`；`zeros` / `ones` 的实现说明必须使用 `<Owned<A> as StorageOwned>::from_elem(len, value)` 的完全限定调用。
 - 运算符示例必须体现 `Output = Result<Tensor, XenonError>`：同形状可写 `(&a + &b)?`，异形状优先写显式方法 `a.add(&b)?`；不得新增或引用额外的 try 前缀算术方法；左标量示例使用 `Scalar<A>` 包装类型，不展示原生左标量加张量语法。
 - 类型转换示例必须遵循静态无损 `From`、静态有损与动态条件性 `CastTo<T>` 三层结构；复数实数构造只展示 `From<T> for Complex<T>`，整数到复数转换走 `CastTo`。
-- Workspace 示例必须展示 `borrow_mut(&mut self)`、`Workspace::split_at_mut(&mut self)` 与消费式 `SplitBorrowMut::split_at_mut(self)`；线程安全说明以 `25-safety.md v2.0.0` 为准，`ViewMutRepr` 不实现 `Sync`，`ArcRepr` 要求 `A: Send + Sync`。
+- Workspace 示例必须展示 `borrow_mut(&mut self)`、`Workspace::split_at_mut(&mut self)` 与消费式 `SplitBorrowMut::split_at_mut(self)`；线程安全说明以 `25-safety.md v2.0.1` 为准，`ViewMutRepr` 不实现 `Sync`（`!Sync` 来自 raw `*mut A` opt-out + 不提供 `unsafe impl Sync`，**不是**来自 `PhantomData<&mut T>`），`ArcRepr` 要求 `A: Send + Sync`。
 
 ### 5.5 Lint 与文档门禁
 
@@ -791,14 +791,14 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 - [ ] **T17**: construct 和 set 模块文档
   - 文件: `src/construct/mod.rs`, `src/set/mod.rs`
-  - 内容: zeros, ones, eye, from_shape_vec, unique 函数文档和 doctest（`full` 当前版本未提供）；构造错误语义与 `<Owned<A> as StorageOwned>::from_elem` 调用形态须与 `18-construction.md v2.0.0` 一致
+  - 内容: zeros, ones, eye, from_shape_vec, unique 函数文档和 doctest（`full` 当前版本未提供）；构造错误语义与 `<Owned<A> as StorageOwned>::from_elem` 调用形态须与 `18-construction.md v3.0.1` 一致
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
 
 - [ ] **T18**: ffi, workspace, error 模块文档
   - 文件: `src/ffi/mod.rs`, `src/workspace/mod.rs`, `src/error.rs`
-  - 内容: FFI 函数（含 Safety 节）、Workspace、XenonError 文档和 doctest；错误字段须对齐 `26-error.md v3.0.0 §5.1`，workspace 借用示例须使用 `24-workspace.md v2.0.0` 的 `&mut self` / 消费式 split 形态
+  - 内容: FFI 函数（含 Safety 节）、Workspace、XenonError 文档和 doctest；错误字段须对齐 `26-error.md v3.2.0 §5.1`（`TypeConversion` 等使用 `&'static str`），workspace 借用示例须使用 `24-workspace.md v3.0.1` 的 `&mut self` / 消费式 split 形态
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
@@ -1042,6 +1042,22 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | 1.1.7 | 2026-04-15 |
 | 1.1.8 | 2026-04-15 |
 | 2.0.0 | 2026-05-03 |
+| 2.0.1 | 2026-05-03 |
+| 2.0.2 | 2026-05-03 |
+
+### v2.0.2 (2026-05-03) — ElementType 字段类型协同 + 文档残留清理（非破坏性）
+
+> 本版本与 `26-error.md v3.2.0`、`03-element.md v1.4.0`、`28-tests.md v2.1.1` 协同。本身不引入新文档约束，只把既有协同清单与 Wave 任务条目升级到第四轮目标基线，清除前轮 ElementType 反向定位修复后的历史残留描述。
+
+**变更**：
+
+- §1.2 协同基线版本号统一升至：`26-error v3.2.0` / `03-element v1.4.0` / `28-tests v2.1.1` / `21-type v2.1.1` / `23-ffi v3.0.2` / `25-safety v2.0.1` / `04-complex v2.0.2` / `19-overload v2.1.0` / `17-indexing v3.0.1` / `18-construction v3.0.1` / `24-workspace v3.0.1` / `30-dispatch v2.0.1`。
+- §5.4.2 协同审查清单更新：`TypeConversion` 字段类型为 `&'static str`（值由 `Element::ELEMENT_TYPE_NAME` 提供），不再使用 `ElementType` 枚举值；`ViewMutRepr !Sync` 论证更新为 raw pointer opt-out 形态。
+- §7 Wave 任务（T17 / T18）协同基线版本号同步。
+
+### v2.0.1 (2026-05-03) — Medium/Low 文档清理
+
+> Round-3 review 协同；非破坏性更新。具体修订点见 §1.2 与 §5.4.2 文本更新。
 
 ### v2.0.0 (2026-05-03) — 协同与一致性更新（非破坏性）
 

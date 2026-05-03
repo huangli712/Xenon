@@ -263,7 +263,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 - **再次广播规则：** 对已广播视图再次广播时，已有零步长轴保持为 `0`，新增广播轴也写入 `0` 步长；结果 `shape` 取"当前视图 shape"与"新目标 shape"的广播结果。 `broadcast_strides()` 的 `orig_shape` 参数始终传入当前视图的逻辑 shape（即 `.shape()` 返回值），而非某个"广播前的原始 shape"。
 
   **关于"已有零步长轴的识别"**：算法通过 `orig_strides[i] == 0` 直接识别零步长轴，而**不是**依赖 `orig_shape[i] == 1`。理由是：广播视图的当前逻辑 shape 中，原本被广播的轴长度可能已大于 1（例如 `[1] -broadcast→ [4]` 后再次广播，新视图 `orig_shape[axis] == 4` 但 `orig_strides[axis] == 0`）。算法的第 3 步分支"if original dimension == target dimension, keep the original stride"对此场景天然正确：保留原始 stride 即保留 0 步长，无需基于 shape 值判断。读者不应把 `orig_shape[i] == 1` 误认为零步长轴的识别条件——它只是"原始尚未广播的轴可被广播到更大目标"的条件，与"已存在的零步长轴"无关。
-- **布局标志重算规则：** 布局标志必须通过 `compute_layout_flags()`（见 `06-layout.md`）重算，而非直接复制源标志。广播不改变逻辑首元素指针，因此重算后 `ALIGNED` 结果与源视图一致；`F_CONTIGUOUS` 仅在不存在零步长且结果 stride 仍满足 F-order 规则时保留；若任一轴 stride 为 `0`，设置 `BroadcastView` flag。
+- **布局标志重算规则：** 布局标志必须通过 `compute_layout_flags()`（见 `06-layout.md`）重算，而非直接复制源标志。广播不改变逻辑首元素指针，因此重算后 `ALIGNED` 结果与源视图一致；`F_CONTIGUOUS` 仅在不存在零步长且结果 stride 仍满足 F-order 规则时保留；**当且仅当** `any(stride == 0) && product(shape) > 0` 时设置 `HAS_ZERO_STRIDE` flag 并对应 `LayoutState::BroadcastView`，与 `06-layout.md §5.12` 严格一致——空数组退化（`product(shape) == 0`，例如 `1 → 0` 空轴广播）即使含 `stride == 0` 也**不**触发 `BroadcastView`。
 
 ### 6.4 共享只读视图构造
 
@@ -444,7 +444,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 | --------------------------- | ------------ | ----------------------------------------------- | -------------------------------------------------------- |
 | `broadcast → tensor`        | `tensor`     | `TensorBase`, `TensorView`                      | 读取 shape/stride/offset，并通过只读视图入口构造结果。   |
 | `broadcast → dimension`     | `dimension`  | `Dimension`, `BroadcastDim`                     | 运行时 shape 计算与编译期输出维度类型推导分离。          |
-| `broadcast → layout`        | `layout`     | `Strides<D>`, `LayoutState::BroadcastView`      | 零步长轴必须映射到广播视图布局状态。                     |
+| `broadcast → layout`        | `layout`     | `Strides<D>`, `LayoutState::BroadcastView`      | 非空（`product(shape) > 0`）且至少一轴 stride 为 0 的视图必须映射到 `BroadcastView` 布局状态；空数组退化的零步长不触发该状态（与 `06-layout.md §5.12` 严格一致）。 |
 | `broadcast → error`         | `error`      | `XenonError::BroadcastError`, `InvalidArgument` | 广播不兼容与参数前提失败都必须返回结构化错误。           |
 | `math ← broadcast`          | `math`       | `broadcast_with()`, `broadcast_shape()`         | 二元运算先广播再计算。`math` 模块内部统一调用 `broadcast_with()`（pub(crate) 唯一入口）完成双输入广播，不允许各模块私自重复定义广播规则。具体调用路径：`math` 通过 `dispatch::select_exec_path` 决定串行/SIMD/并行三路；并行路径下 `par_zip_map` 接收已广播好的 `output_dim`，所有广播裁决发生在调用 `parallel/` 后端**之前**（参见 11-math v2.0.0 §5.2、09-parallel v2.0.0 §6.3）。 |
 | `iter ← broadcast`          | `iter`       | 只读广播视图                                    | 广播结果可被读取遍历，但不得提供可变迭代能力。           |

@@ -351,7 +351,7 @@ pub enum DataLocation {
 - **`storage_kind()` 语义说明：** `storage_kind()` 返回底层**实际存储表示类型**对应的 `Owned / View / ViewMut / Shared`，而不是高层语义分类。`Owned` 报告 `Owned`，`ViewRepr` 报告 `View`，`ViewMutRepr` 报告 `ViewMut`，`ArcRepr` 报告 `Shared`。因此广播结果若底层表示为 `ViewRepr`，其 `storage_kind()` 也必须返回 `View`，而不是 `Shared`。
 - **广播语义补充：** 广播结果的只读共享语义通过 layout flags 和访问控制表达，而非通过 `storage_kind()` 伪装。详见 `15-broadcast.md`。
 - **`access_semantics()` 广播判定机制：** 当 `ViewRepr` 的 `LayoutFlags` 包含 `HAS_ZERO_STRIDE` 时，`access_semantics()` 返回 `AccessSemantics::SharedReadOnly`，以区分普通只读视图（`ReadOnly`）与广播只读视图（`SharedReadOnly`）。此判定与 `LayoutState::BroadcastView` 的分类条件一致（见 `06-layout.md §5.11`）。
-- **`ViewMutRepr → ViewRepr` 零拷贝降级的来源标记（v3.0.1）：** 当 `view_mut().view()` 把可写视图降级为只读视图时，结果的 `LayoutFlags` 不一定包含 `HAS_ZERO_STRIDE`（普通 contiguous mutable view 降级后仍是 contiguous）。为了让 `access_semantics()` 在不依赖来源上下文的前提下仍能区分"普通 view 借用"与"由 ViewMut 降级而来的共享只读视图"，`TensorBase` 携带一个 1-bit 的内部标记字段 `flags::DERIVED_FROM_VIEW_MUT`（被 `LayoutFlags` 内部预留位承担，对外不暴露 setter，仅由 `view_mut().view()` / `view_mut().view_mut()` 等内部转换路径设置）。`access_semantics()` 的判定规则因此扩展为：(1) `storage_kind() == Arc` → `SharedReadOnly`；(2) `storage_kind() == ViewMut` → `Writable`；(3) `storage_kind() == View` 且 `(HAS_ZERO_STRIDE || DERIVED_FROM_VIEW_MUT)` → `SharedReadOnly`；(4) `storage_kind() == View` 且二者都未设置 → `ReadOnly`；(5) `storage_kind() == Owned` → `Owned`。这避免了 `access_semantics()` 输出与构造来源的歧义，且实现成本只有一个标志位。
+- **`ViewMutRepr → ViewRepr` 零拷贝降级的来源标记（v3.0.1）：** 当 `view_mut().view()` 把可写视图降级为只读视图时，结果的 `LayoutFlags` 不一定包含 `HAS_ZERO_STRIDE`（普通 contiguous mutable view 降级后仍是 contiguous）。为了让 `access_semantics()` 在不依赖来源上下文的前提下仍能区分"普通 view 借用"与"由 ViewMut 降级而来的共享只读视图"，`TensorBase` 携带一个 1-bit 的内部标记字段 `flags::DERIVED_FROM_VIEW_MUT`（被 `LayoutFlags` 内部预留位承担，对外不暴露 setter，仅由 `view_mut().view()` / `view_mut().view_mut()` 等内部转换路径设置）。`access_semantics()` 的判定规则因此扩展为：(1) `storage_kind() == StorageKind::Shared` → `SharedReadOnly`；(2) `storage_kind() == StorageKind::ViewMut` → `Writable`；(3) `storage_kind() == StorageKind::View` 且 `(HAS_ZERO_STRIDE || DERIVED_FROM_VIEW_MUT)` → `SharedReadOnly`；(4) `storage_kind() == StorageKind::View` 且二者都未设置 → `ReadOnly`；(5) `storage_kind() == StorageKind::Owned` → `Owned`。这避免了 `access_semantics()` 输出与构造来源的歧义，且实现成本只有一个标志位。
 - **`SharedReadOnly` 双重含义说明：** `AccessSemantics::SharedReadOnly` 同时覆盖两类张量：
   1. **所有权共享（`ArcRepr`）：** 多个张量句柄通过 `Arc` 共享底层存储；写访问需要先唯一化（参见 `05-storage.md §5.8`、`§11` 决策 2）。这里"共享"指存储所有权层面的共享。
   2. **同物理地址共享（带 `HAS_ZERO_STRIDE` 的 `ViewRepr`）：** 多个不同逻辑索引映射到同一物理地址（广播视图、`ViewMutRepr` 零拷贝降级结果）。这里"共享"指同一物理元素被多个逻辑索引共享读取。
@@ -628,6 +628,40 @@ where
         flags: LayoutFlags,
     ) -> Self {
         // No revalidation; all four metadata items are caller-proved.
+        // This is the Owned-specialized form; the generic form for
+        // `S: StorageRaw` lives below as `TensorBase::<S, D>::new_unchecked`
+        // and is the canonical entry point for View / ViewMut / Arc paths.
+        TensorBase { storage, shape, strides, offset, flags }
+    }
+}
+
+impl<S, D> TensorBase<S, D>
+where
+    S: crate::storage::StorageRaw,
+    D: Dimension,
+{
+    /// Generic unchecked constructor over storage representation.
+    ///
+    /// This is the canonical `pub(crate)` internal constructor used by
+    /// view / view_mut / arc-tensor paths (broadcast, transpose, slicing,
+    /// `view()` / `view_mut()`) when shape, strides, storage, and flags
+    /// have already been produced by their authoritative `Result`-returning
+    /// helpers. Same safety contract as the `Owned`-specialized form
+    /// above; see that doc comment for the full SAFETY contract.
+    ///
+    /// # Safety
+    /// Same as the `Owned`-specialized variant: shape, strides, offset,
+    /// and flags must be mutually consistent (flags produced by
+    /// `compute_layout_flags::<A, D>` for the same shape/strides/storage_ptr
+    /// pair); the logical access range must lie within `storage`; shape
+    /// product must already be overflow-checked.
+    pub(crate) unsafe fn new_unchecked(
+        storage: S,
+        shape: D,
+        strides: Strides<D>,
+        offset: usize,
+        flags: LayoutFlags,
+    ) -> Self {
         TensorBase { storage, shape, strides, offset, flags }
     }
 }

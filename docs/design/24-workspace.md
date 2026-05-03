@@ -84,7 +84,7 @@ External dependencies:
 | -------------------- | ---------------------------------------------------------------------- |
 | `core`               | `NonNull<u8>`, `PhantomData`, `AtomicU8`, `fmt::Debug`, `fmt::Display` |
 | `alloc`              | `alloc()`, `dealloc()`, `Layout`                                       |
-| `crate::error`       | `XenonError`（公开 Xenon API 错误类型，含 `Workspace` 变体）、`Result<T>`、`WorkspaceErrorCategory`（七子变体：`AllocFailed` / `InvalidLayout` / `BorrowConflict` / `SplitOutOfBounds` / `SplitCountInvariant` / `GrowOverflow` / `TypedViewRejected`）、`WorkspaceBorrowKind`（Shared/Exclusive/Split）、`WorkspaceBorrowState`（None/Shared/Exclusive/SplitActive）、`TypedViewRejection`（ZeroSizedType/AlignmentMismatch/LengthNotMultipleOfSize），均见 `26-error.md v3.0.0 §5.1`。本模块 **不**使用任何 `Cow<str>` 自由文本字段构造错误。 |
+| `crate::error`       | `XenonError`（公开 Xenon API 错误类型，含 `Workspace` 变体）、`Result<T>`、`WorkspaceErrorCategory`（七子变体：`AllocFailed` / `InvalidLayout` / `BorrowConflict` / `SplitOutOfBounds` / `SplitCountInvariant` / `GrowOverflow` / `TypedViewRejected`）、`WorkspaceBorrowKind`（Shared/Exclusive/Split）、`WorkspaceBorrowState`（None/Shared/Exclusive/SplitActive）、`TypedViewRejection`（`ZeroSizedType` / `AlignmentMismatch { required, actual }` / `TypedByteLengthOverflow { count, elem_size }`，**均见 `26-error.md v3.2.0 §5.1`**；旧 `LengthNotMultipleOfSize` 已在 v3.1.0 删除——typed view API 仅按 `count` 申请、不存在按字节长度 reinterpret 的路径，溢出走 `TypedByteLengthOverflow`，详见 §5.6 与 `26-error.md v3.1.1` changelog）。本模块 **不**使用任何 `Cow<str>` 自由文本字段构造错误。 |
 
 ### 4.3 依赖合法性
 
@@ -565,11 +565,19 @@ impl<'a> WorkspaceBorrowMut<'a> {
 
     /// Typed access to possibly-uninitialized scratch memory.
     ///
+    /// `T` is constrained to `Element` (`03-element.md §5.1`) to keep the
+    /// typed-view API closed over Xenon's supported element type set
+    /// (`bool` / `i32` / `i64` / `f32` / `f64` / `Complex<f32>` / `Complex<f64>`,
+    /// all of which are `Copy`, `Sealed`, and free of drop glue / hidden
+    /// invariants). This rules out using the workspace as a scratch buffer
+    /// for arbitrary user types, references, types with destructors, etc.,
+    /// which would otherwise impose unbounded SAFETY obligations on callers.
+    ///
     /// # Safety
     ///
     /// The caller must still uphold the initialization model for `T`; directly
     /// checkable size/alignment/count violations are reported as `Result` errors.
-    pub unsafe fn as_maybe_uninit_typed_slice<T>(
+    pub unsafe fn as_maybe_uninit_typed_slice<T: crate::element::Element>(
         &mut self,
         count: usize,
     ) -> Result<&mut [core::mem::MaybeUninit<T>]> {
@@ -647,7 +655,7 @@ impl<'a> WorkspaceBorrowMut<'a> {
     /// - those values are valid instances of `T`,
     /// - the requested region fits in this borrow (`count * size_of::<T>() <= self.len()`),
     /// - and the scratch region satisfies `T` alignment requirements.
-    pub unsafe fn assume_init_typed_slice<T>(
+    pub unsafe fn assume_init_typed_slice<T: crate::element::Element>(
         &mut self,
         count: usize,
     ) -> Result<&mut [T]> {
@@ -1086,10 +1094,13 @@ let mut buf = ws.borrow_mut()?;
 let scratch = buf.as_maybe_uninit_slice();
 // Initialize scratch before reinterpretation
 
-// Bad - Treating scratch memory as initialized bytes without proof
+// Bad - Treating scratch memory as initialized typed elements without proof
 let mut ws = Workspace::new(1024, 64)?;
 let mut buf = ws.borrow_mut()?;
-let bytes: &mut [u8] = unsafe { buf.assume_init_typed_slice::<u8>(1024)? };
+// Note: typed view is sealed to T: Element (per §5.6, v3.0.2). Even with the
+// proper bound, calling `assume_init_typed_slice` without first writing valid
+// `i32` values via the `MaybeUninit` view is UB.
+let ints: &mut [i32] = unsafe { buf.assume_init_typed_slice::<i32>(256)? };
 // Still requires the unsafe initialization proof; direct input validation errors use Result.
 
 // Bad - Directly manipulating raw pointers to bypass borrow checking
