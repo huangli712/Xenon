@@ -97,7 +97,6 @@ tests/
 ├── test_dimension.rs           # Dimension type system (static/dynamic dimension traits)
 ├── test_element.rs             # Element type hierarchy (Element/Numeric/RealScalar/ComplexScalar)
 ├── test_layout.rs              # Layout module (strides/computation/contiguity/layout flags)
-├── test_storage.rs             # Storage system (Owned/View/ViewMut/Arc storage modes)
 │
 ├── property_tests.rs           # Property-test entry point (integration test target)
 └── property/
@@ -1483,7 +1482,7 @@ fn compile_fail_harness() {
 | `element`   | doctest + compile-fail + integration tests | doctest 覆盖 trait/公开类型边界示例；compile-fail 覆盖非法元素类型与 trait bound；集成测试覆盖合法元素语义 |
 | `complex`   | doctest + integration tests                | doctest 覆盖公开用法示例；集成测试覆盖复数逐元素运算、归约、内积、格式化与 FFI 布局 |
 | `layout`    | doctest + integration tests                | doctest 覆盖布局/连续性示例；集成测试覆盖 F-order、非连续视图、transpose、to_contiguous 与导出前提 |
-| `storage`   | doctest + integration tests (`test_storage.rs` + `test_tensor.rs`) | Storage 内部 doctest 与 dimension/element 集成测试间接覆盖 trait/元素/维度协同；`test_storage.rs` 仅测试公开 storage 边界条件，`test_tensor.rs` 继续覆盖 ViewRepr/ViewMutRepr/Owned/ArcRepr 的张量层语义（参见 §5.4 test_tensor_view_creation / test_tensor_to_owned / test_arc_tensor_clone / test_arc_tensor_alias_isolation_on_write） |
+| `storage`   | doctest + integration tests (`test_tensor.rs`) | Storage 内部 doctest 与 dimension/element 集成测试间接覆盖 trait/元素/维度协同；storage 公开边界（Owned/View/ViewMut/Arc 模式、`into_shared` 等）通过 `test_tensor.rs` 的 ViewRepr/ViewMutRepr/Owned/ArcRepr 张量层语义测试覆盖（参见 §5.4 test_tensor_view_creation / test_tensor_to_owned / test_arc_tensor_clone / test_arc_tensor_alias_isolation_on_write）；本版本不引入独立 `test_storage.rs` —— storage 模块没有 ViewRepr/ArcRepr 之外、不能通过张量层 API 触发的公开边界 |
 
 ### 9.3 数据流
 
@@ -1564,7 +1563,7 @@ Test files
 
 ### v2.0.1 (2026-05-03) — Medium/Low documentation follow-up
 
-- Reconciled storage test placement: `test_storage.rs` covers public storage boundary conditions, while doctests and integration tests continue to cover cross-module storage semantics.
+- Reconciled storage test placement: storage module's public boundary is fully exercised through `test_tensor.rs` (ViewRepr/ViewMutRepr/Owned/ArcRepr semantics) and doctests; this revision drops the previously-listed standalone `test_storage.rs` because storage has no public boundary that cannot be triggered via tensor-layer APIs (see §9.2 storage row).
 - Clarified that any future `test_safety.rs` addition must also update the file layout and mapping sections.
 
 ---

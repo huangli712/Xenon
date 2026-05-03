@@ -530,7 +530,7 @@ benchmark 不定义正确性容差，也不在本文件内重复维护 `MathTole
 - [ ] **T1**: 配置 `Cargo.toml` bench 入口和仓库内基准 harness
   - 文件: `Cargo.toml`
   - 内容: 添加 9 个 `[[bench]]` 入口，不新增 benchmark 专用第三方依赖
-  - 测试: `cargo bench --bench math -- --list` 输出正常
+  - 测试: `cargo bench --bench math -- "elem_add_f64" --quick` 能编译并冒烟运行至少一个基准组（自定义 `harness = false` 模板仅识别 `--quick` 与单个 filter 字符串，**不**支持 `--list` —— 见 §5.8 模板）
   - 前置: 无
   - 预计: 5 min
 
@@ -627,7 +627,7 @@ benchmark 不定义正确性容差，也不在本文件内重复维护 `MathTole
 
 | 类型     | 位置                                   | 目的                                                     |
 | -------- | -------------------------------------- | -------------------------------------------------------- |
-| 单元验证 | `cargo bench --bench X -- --list`      | 每个 benchmark 文件可编译并正确列出基准组                |
+| 单元验证 | `cargo bench --bench X -- "<name>" --quick` | 每个 benchmark 文件可编译并冒烟运行至少一个基准组（自定义 harness 不实现 `--list`） |
 | 集成验证 | `cargo bench --bench X -- "Y" --quick` | 快速验证单个 benchmark 可运行，输入与 feature 组合正确   |
 | 边界验证 | CI smoke/regression                    | 验证 benchmark 分组、输入规模、feature 组合与回归阈值流程符合预期 |
 | 基线校验 | benchmark 输入准备与路径选择检查       | 验证 benchmark 分组、输入规模与 feature 组合符合预期     |

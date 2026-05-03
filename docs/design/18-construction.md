@@ -236,9 +236,9 @@ where
     /// # Examples
     /// ```ignore
     /// let e = Tensor::<f64, Ix2>::eye(3)?;
-    /// assert_eq!(*e.get(&[0, 0]).expect("diagonal index is in bounds"), 1.0);
-    /// assert_eq!(*e.get(&[0, 1]).expect("off-diagonal index is in bounds"), 0.0);
-    /// assert_eq!(*e.get(&[1, 1]).expect("diagonal index is in bounds"), 1.0);
+    /// assert_eq!(*e.try_at(&[0, 0]).expect("diagonal index is in bounds"), 1.0);
+    /// assert_eq!(*e.try_at(&[0, 1]).expect("off-diagonal index is in bounds"), 0.0);
+    /// assert_eq!(*e.try_at(&[1, 1]).expect("diagonal index is in bounds"), 1.0);
     /// ```
     pub fn eye(n: usize) -> Result<Self, XenonError> {
         let mut result = Self::zeros([n, n])?;
@@ -486,7 +486,7 @@ where
     /// # Examples
     /// ```
     /// let t = Tensor::<f64, Ix0>::from_scalar(3.14)?;
-    /// assert_eq!(*t.get(&[]).expect("zero-dimensional index is valid"), 3.14);
+    /// assert_eq!(*t.try_at(&[]).expect("zero-dimensional index is valid"), 3.14);
     /// ```
     pub fn from_scalar(scalar: A) -> Result<Self, XenonError> {
         let storage = Owned::from_vec_aligned(vec![scalar])?;

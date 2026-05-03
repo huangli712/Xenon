@@ -377,7 +377,7 @@ TensorBase::slice(info):
 
 **SliceInfo 校验职责回顾：** `SliceInfo::new` 只做结构性校验（rank 一致、output 维度匹配 Range 计数、Range start≤end）；shape 边界校验（Range.end <= shape[axis]、Index < shape[axis]）由 `TensorBase::slice(info)` 在切片应用时完成，理由详见 §5.1 和决策 3。
 
-切片布局标志规则：切片结果的 layout flags 根据新的 `shape` / `stride` 组合重新计算（调用 06-layout v1.3 `compute_layout_flags::<A, I>`）。若源视图带有 `BroadcastView`，且切片后仍存在任一零步长轴，则继续保留 `BroadcastView` flag；否则按普通 F-order / non-contiguous 规则重分类。
+切片布局标志规则：切片结果的 layout flags 根据新的 `shape` / `stride` 组合重新计算（调用 06-layout v1.3 `compute_layout_flags::<A, I>`）。若源视图带有 `BroadcastView`，且切片后仍存在任一零步长轴**并且** `product(shape) > 0`，则继续保留 `BroadcastView` flag；若切片导致 `product(shape) == 0`（空数组退化），即使存在 stride == 0 也**不**保留 `BroadcastView`，与 `15-broadcast.md §6.3` / `06-layout.md §5.12` 严格一致；其余情形按普通 F-order / non-contiguous 规则重分类。
 
 ### 6.4 安全性论证
 

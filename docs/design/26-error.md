@@ -335,8 +335,6 @@ pub enum WorkspaceErrorCategory {
     /// Internal split-count atomic invariant was violated (e.g., underflow
     /// or leak detected in debug).
     SplitCountInvariant { detail: Cow<'static, str> },
-/// Capacity grow or byte-length request would overflow `usize`.
-/// For `Workspace` errors, both fields are measured in bytes
     /// Capacity grow overflow.
     ///
     /// `current_capacity` is the currently available byte length of the

@@ -265,16 +265,85 @@ pub use crate::error::FfiErrorCategory;   // re-export from error module
 pub struct BlasInfo<A> { /* fields omitted — see §5.5 */ }
 
 // See 03-element.md §5.1.1 for the full ElementType definition.
-// Only the FFI-consumer-visible public API signature is shown here:
+// Only the FFI-consumer-visible public API signature is shown here.
+//
+// **C ABI value pinning (v3.0.2)**: each variant has an explicit
+// discriminant. These values are SemVer-pinned for `crate::ffi::ElementType`
+// consumers — adding a new variant gets a new value and is a non-breaking
+// change under `#[non_exhaustive]`; reordering or reusing existing values
+// is a breaking change for C ABI consumers and requires a major version
+// bump.
 //
 // #[repr(u8)] #[non_exhaustive]
-// pub enum ElementType { Bool, I32, I64, F32, F64, Complex32, Complex64 }
+// pub enum ElementType {
+//     Bool      = 0,
+//     I32       = 1,
+//     I64       = 2,
+//     F32       = 3,
+//     F64       = 4,
+//     Complex32 = 5,
+//     Complex64 = 6,
+// }
 //
 // impl ElementType {
 //     pub const fn name(self) -> &'static str { ... }
 //     pub const fn of<A: Element>() -> Self { A::ELEMENT_TYPE }
 // }
 ```
+
+#### 5.3.bis C 头文件可见的非泛型导出 schema（v3.0.2）
+
+`TensorExport<'a, A>` / `TensorExportMut<'a, A>` 是 Rust 侧带生命周期与 `PhantomData` 的泛型类型，C 头文件无法直接表达"泛型 + 生命周期 + PhantomData"。`crate::ffi` 因此对外暴露**非泛型**的 C-visible 描述符，作为 cbindgen 的固定输出 schema：
+
+```rust,ignore
+/// C-visible read-only tensor descriptor.
+///
+/// This is the cbindgen-emitted concrete schema. Generic
+/// `TensorExport<'a, A>` is converted to `TensorExportRaw` at the FFI
+/// boundary by stripping the lifetime / `PhantomData` and erasing
+/// `*const A` to `*const core::ffi::c_void`. C consumers cast `data`
+/// to the matching pointer type using `element_type` as the discriminator.
+#[repr(C)]
+pub struct TensorExportRaw {
+    pub data: *const core::ffi::c_void,
+    pub element_type: ElementType,    // see C ABI value pinning above
+    pub ndim: usize,
+    pub shape: *const usize,
+    pub strides: *const usize,
+    pub storage_len: usize,
+    pub offset: usize,
+    // No PhantomData / lifetime: those are Rust-only.
+}
+
+/// C-visible mutable tensor descriptor (writable variant).
+#[repr(C)]
+pub struct TensorExportMutRaw {
+    pub data: *mut core::ffi::c_void,
+    pub element_type: ElementType,
+    pub ndim: usize,
+    pub shape: *const usize,
+    pub strides: *const usize,
+    pub storage_len: usize,
+    pub offset: usize,
+}
+
+// Rust-side conversion (consumed at the FFI boundary, never crosses C).
+impl<'a, A: Element> From<TensorExport<'a, A>> for TensorExportRaw {
+    fn from(e: TensorExport<'a, A>) -> Self {
+        TensorExportRaw {
+            data: e.data as *const core::ffi::c_void,
+            element_type: e.element_type,
+            ndim: e.ndim,
+            shape: e.shape,
+            strides: e.strides,
+            storage_len: e.storage_len,
+            offset: e.offset,
+        }
+    }
+}
+```
+
+C 消费者**只能**绑定到 `TensorExportRaw` / `TensorExportMutRaw`；Rust 侧的 `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 是内部表达类型，包含生命周期借用证据与类型化指针，cbindgen 不会为其生成 C 头文件条目。两类描述符通过 `From` 在 FFI 边界一次性转换。这一设计保留了 Rust 侧的借用安全（`PhantomData<&'a A>` 阻止借用越界），同时给 C 一份稳定可消费的 ABI schema。
 
 ### 5.4 指针约定对照
 
@@ -368,23 +437,38 @@ pub struct TensorExportMut<'a, A> {
 }
 
 // Static layout assertions for FFI compatibility.
-// These verify that the struct layout (field sizes + ZST exclusion)
-// matches the expected total at compile time.
+//
+// IMPORTANT (Rust `#[repr(C)]` rules): a raw sum of `size_of::<field>` is
+// NOT the struct size — `#[repr(C)]` inserts padding before each field
+// so that its address satisfies the field's alignment. After
+// `data: *const f64` (8B aligned) the `element_type: ElementType`
+// (`#[repr(u8)]`, 1B aligned) packs at offset 8, but the next field
+// `ndim: usize` (8B aligned on 64-bit) needs offset 16, so 7 padding
+// bytes appear between `element_type` and `ndim`. The total size on a
+// typical 64-bit ABI is therefore not the naive sum.
+//
+// The assertions below verify field offsets and total size with padding
+// taken into account. PhantomData<&'a A> is ZST (0 bytes) and is placed
+// last in `#[repr(C)]` to avoid unspecified ZST positioning behavior.
 const _: () = {
-    // Excluding PhantomData (ZST, 0 bytes):
-    //   data: *const f64  +  element_type: ElementType  +  ndim: usize
-    //   + shape: *const usize  +  strides: *const usize
-    //   + storage_len: usize  +  offset: usize
-    assert!(
-        core::mem::size_of::<TensorExport<f64>>()
-            == core::mem::size_of::<*const f64>()
-                + core::mem::size_of::<ElementType>()
-                + core::mem::size_of::<usize>() * 3
-                + core::mem::size_of::<*const usize>() * 2
-    );
-    // PhantomData<&'a A> is ZST, contributes 0 bytes.
-    // _marker is placed last in the struct to avoid unspecified
-    // behavior arising from ZST field positioning in #[repr(C)].
+    use core::mem::{align_of, offset_of, size_of};
+
+    // Field offsets (verifies the C-side header layout for cbindgen consumers).
+    assert!(offset_of!(TensorExport<f64>, data)         == 0);
+    // `element_type` immediately follows the 8-byte pointer on 64-bit.
+    assert!(offset_of!(TensorExport<f64>, element_type) == size_of::<*const f64>());
+    // `ndim` is 8B-aligned: padding inserted between `element_type` and `ndim`.
+    assert!(offset_of!(TensorExport<f64>, ndim)         % align_of::<usize>() == 0);
+    // PhantomData ZST is last in `#[repr(C)]`.
+    // (No offset assertion on `_marker`: ZST positioning is unobservable
+    // in C ABI, but its trailing position is required by §5.3 prose.)
+
+    // Total size equals offset of the last non-ZST field plus its size,
+    // rounded up to the struct's overall alignment. We verify that the
+    // total size is at least the maximum-aligned monotonic layout, and
+    // is consistent with the offsets above:
+    assert!(size_of::<TensorExport<f64>>() >= offset_of!(TensorExport<f64>, offset) + size_of::<usize>());
+    assert!(size_of::<TensorExport<f64>>() % align_of::<TensorExport<f64>>() == 0);
 };
 
 ```

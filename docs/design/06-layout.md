@@ -248,7 +248,10 @@ pub enum LayoutState {
     FContiguous,
     /// Arbitrary non-broadcast view that is not F-contiguous.
     NonContiguous,
-    /// Broadcast view: at least one axis has zero stride.
+    /// Broadcast view: non-empty (`product(shape) > 0`) and at least one axis
+    /// has stride == 0. Empty tensors with degenerate zero strides are NOT
+    /// classified here — they are reported as `FContiguous` (canonical empty
+    /// representation; see "empty handling" below).
     BroadcastView,
 }
 ```
@@ -257,13 +260,21 @@ pub enum LayoutState {
 
 - `LayoutState::FContiguous`：满足当前文档 §5.7 的 F-order 连续性判定；广播引入的零步长轴不得归入该类，但空数组在退化表示下出现的零步长可继续保持 `FContiguous`。
 - `LayoutState::NonContiguous`：表示任意其它非广播 stride 模式，例如转置后布局或切片后非连续布局。
-- `LayoutState::BroadcastView`：表示至少包含一个零步长轴的广播视图，用于与一般非连续视图区分。
+- `LayoutState::BroadcastView`：表示**非空**视图（`product(shape) > 0`）且至少包含一个零步长轴；用于与一般非连续视图、空数组退化布局区分。**空数组（`product(shape) == 0`）即使含 stride == 0，也不进入此变体**，参见下方"empty handling"段。
 
-`LayoutFlags -> LayoutState` 的确定性映射规则如下：
+**empty handling（与 15-broadcast.md / 16-shape.md / 17-indexing.md 严格一致）：**
 
-1. 若 `HAS_ZERO_STRIDE == true`，返回 `LayoutState::BroadcastView`
+- Xenon 不为"空"引入独立的 `LayoutState::Empty` 变体。空数组的 `is_empty() == true` 由 `product(shape) == 0` 单独判定（张量层 API），不与 `LayoutState` 三态正交。
+- 对外提供"是否空"判定的稳定路径是 `Tensor::is_empty()`（`07-tensor.md`），而不是 `LayoutState` 模式匹配。
+- 在 `LayoutState` 枚举内部，空数组按以下规则分类：(1) 若 strides 仍满足 F-order 渐进，归 `FContiguous`；(2) 否则归 `NonContiguous`；(3) **永不**进入 `BroadcastView`，即使存在 stride == 0 也不视为广播——空集没有"被复制"的元素，广播语义对其无意义。
+
+`LayoutFlags -> LayoutState` 的确定性映射规则如下（v1.3 起严格遵守"`BroadcastView` ⇔ `any(stride==0) && product(shape) > 0`"）：
+
+1. 若 `HAS_ZERO_STRIDE == true` **且** `product(shape) > 0`，返回 `LayoutState::BroadcastView`
 2. 否则若 `F_CONTIGUOUS == true`，返回 `LayoutState::FContiguous`
 3. 否则返回 `LayoutState::NonContiguous`
+
+注：`HAS_ZERO_STRIDE` 是 `LayoutFlags` 的位标志，由 `compute_layout_flags(shape, strides, ptr)` 在 `any(stride==0) && product(shape) > 0` 时**才**设置，因此规则 1 中的 `product(shape) > 0` 已在 flag 计算阶段保证；这里再次写明是为防止下游模块绕过 `compute_layout_flags` 直接读 `strides` 数组时漏判空数组退化情形。
 
 ```rust,ignore
 impl LayoutFlags {

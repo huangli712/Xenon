@@ -999,6 +999,14 @@ User constructs `Complex<f64>::new(re, im)`
 | 1.1.3 | 2026-04-15 |
 | 2.0.0 | 2026-05-02 |
 | 2.0.1 | 2026-05-03 |
+| 2.0.2 | 2026-05-03 |
+
+### v2.0.2 (2026-05-03) — 协同基线指代消歧 + 错误字段对齐 26-error v3.2.0
+
+- §1 协同基线：明确 `ElementType` 权威定义在 `crate::element`（即 `03-element.md §5.1.1`），不在本 04-complex 文档；消除 v2.0.1 早期表述中"此模块定义 `ElementType`"的指代歧义。
+- §1 协同基线：把下游错误字段表述对齐到 `26-error v3.2.0` —— `XenonError::TypeConversion.source_type / target_type` 为 `&'static str`（不是 `ElementType`），`error` 模块**不**持有 `ElementType` 枚举。
+- §6 / §11：`Complex → Real` 的逐元素 `TypeConversion` 错误字段值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供，与 `21-type.md v2.1.1` 一致。
+- 仅文档措辞与字段类型说明更新；公开 API、错误语义、复数算法均无变化。
 
 ### v2.0.1 (2026-05-03) — Medium/Low 文档修复
 

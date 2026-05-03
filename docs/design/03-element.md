@@ -216,6 +216,12 @@ impl ElementType {
     /// its corresponding `ELEMENT_TYPE`. The crate-internal test
     /// `tests/element_type_name_consistency.rs` enforces this.
     pub const fn name(self) -> &'static str {
+        // No wildcard arm: this `match` is in the defining crate and is
+        // exhaustive over current variants. `#[non_exhaustive]` only affects
+        // out-of-crate matches; in-crate, adding a new variant must update
+        // this `match` (the compiler will fail with E0004, which is the
+        // intended behavior — silent fallthrough to "<unknown>" would be
+        // worse than a hard compile error inside the crate).
         match self {
             ElementType::Bool       => "bool",
             ElementType::I32        => "i32",
@@ -224,12 +230,16 @@ impl ElementType {
             ElementType::F64        => "f64",
             ElementType::Complex32  => "Complex<f32>",
             ElementType::Complex64  => "Complex<f64>",
-            // Wildcard arm required by `#[non_exhaustive]`; same rationale
-            // as the Display impl: this `match` is in the defining crate
-            // and currently exhaustive, but a future variant must not
-            // silently break this `const fn`.
-            _                       => "<unknown ElementType>",
         }
+    }
+
+    /// Inherent constructor returning the `ElementType` discriminant for `A`.
+    ///
+    /// Equivalent to the free function `element_type_of::<A>()`. Provided
+    /// for ergonomic call sites that prefer `ElementType::of::<f32>()`
+    /// over the free-function form. v1.4.0 onward.
+    pub const fn of<A: Element>() -> Self {
+        A::ELEMENT_TYPE
     }
 }
 

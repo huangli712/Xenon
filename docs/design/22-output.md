@@ -571,7 +571,7 @@ Debug 输出的 `dtype=` 字段通过 `Element::ELEMENT_TYPE` 编译期常量分
 
 - **零运行时开销**：`A::ELEMENT_TYPE` 是 `const`，`match` 在单态化后会被编译器折叠为单一 `&'static str`。
 - **类型边界更松**：不再要求 `A: 'static`，与 `TensorView<'a, A, D>` 的非 `'static` 借用语义协同。
-- **与 21-type/26-error 一致**：禁用 `core::any::TypeId` 是 v2.0.0 协同决策（参见 21-type v2.0.0 §6.1 `CastTo` 实现、26-error v3.0.0 `TypeConversion.source_type / target_type: ElementType`）。
+- **与 21-type/26-error 一致**：禁用 `core::any::TypeId` 是 v2.0.0 协同决策；自 26-error v3.2.0 起 `TypeConversion.source_type / target_type` 字段类型为 `&'static str`（值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供），不再是 `ElementType` 枚举（参见 21-type v2.1.1 §6.1 `CastTo` 实现、26-error v3.2.0 §5.1）。Output 模块仅消费 `Element::ELEMENT_TYPE` 编译期常量做 dtype 名分流，不与 error 字段直接耦合。
 
 ---
 

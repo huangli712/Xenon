@@ -1081,11 +1081,11 @@ pub(crate) fn par_map_internal<...>(
 | ------------ | ----------------------------------------------------------- | ----------------------------------------------------------- |
 | ISA 检测     | dispatch **不参与** ISA 检测                                | `pulp::Arch` 做 ISA 检测与缓存（参见 `08-simd.md` §5.4）    |
 | 路径推荐     | dispatch 通过 `ExecPath::Simd` 推荐 SIMD 路径               | simd 接收推荐后可自行拒绝（内部回退标量）                    |
-| 准入条件     | dispatch 仅检查 len、连续性、对齐                           | simd 内部检查元素类型、ISA lane 宽度、操作支持矩阵          |
+| 准入条件     | dispatch 仅检查 len 与 F-连续性；`alignment_ok` 仅作为 hint 透传给 simd，**不**作为硬门槛（v1.1.3 起，与 §5.5/§6.1 一致） | simd 内部检查元素类型、ISA lane 宽度、操作支持矩阵；自行决定 aligned vs unaligned kernel 分发 |
 | 长度阈值     | dispatch 持有 SIMD 通用阈值（64）                           | simd 持有操作特定阈值（如 sum 的 1024，参见 `08-simd.md` §5.7）|
 | 调用方式     | dispatch 不直接调用 simd 代码                               | 语义模块在 `match ExecPath::Simd` 分支中调用 simd 后端       |
 
-dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系。dispatch 说"SIMD 路径可能合适"，simd 说"我能做"或"我回退"。这种分层避免 dispatch 理解 ISA 细节（per Decision X，§11）。
+dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系。dispatch 说"SIMD 路径可能合适"，simd 说"我能做"或"我回退"。这种分层避免 dispatch 理解 ISA 细节（per 决策 2 "dispatch 是 ISA-agnostic"，§11）。
 
 ---
 

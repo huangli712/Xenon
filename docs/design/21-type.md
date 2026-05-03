@@ -499,6 +499,38 @@ impl CastTo<i32> for i64 {
 // See §5.3 i64→f64 entry: B10.a selects lossy-by-default failure.
 ```
 
+### 6.1.bis Tier-1 静态无损（`From` impls）
+
+下列 `From` impls **不**通过 `CastTo`，由 Rust 标准库（`f64: From<f32>`、`i64: From<i32>`、`f64: From<i32>`、`f64: From<u32>` 等）直接提供。`cast()` 主循环对 Tier-1 type pair 的实现委托：
+
+```rust,ignore
+// In `cast()` main loop (§5.2 pseudo-code), the static dispatch picks
+// `From` for lossless pairs and `CastTo` for lossy / dynamic pairs:
+//
+//   if STATICALLY_LOSSLESS::<A, T>() {
+//       data.push(T::from(value));            // Tier-1: From, infallible
+//   } else {
+//       let converted = value.cast_to()       // Tier-2 / Tier-3
+//           .map_err(|e| /* inject operation + element_index */)?;
+//       data.push(converted);
+//   }
+
+// Tier-1 lossless pairs (provided by std, NOT impl'd in this crate):
+//
+//   impl From<f32> for f64        // f32 → f64
+//   impl From<i32> for i64        // i32 → i64
+//   impl From<i32> for f64        // i32 → f64
+//
+// (Same-type "conversions" — e.g. f64 → f64 — short-circuit even earlier
+// to `value` directly without traversing the From/CastTo branch.)
+```
+
+设计要点：
+
+- **Tier-1 不允许 `Err`**：以编译期 `From` 表达就消除了运行时分支与错误路径，`cast()` 在 Tier-1 路径不会构造 `XenonError::TypeConversion`。
+- **Tier-2/Tier-3 由 `CastTo` 承担**：见 §6.1 上方代码块。Tier-2 静态返回 `Err`，Tier-3 按运行时条件返回 `Ok / Err`。
+- **静态分流的实现细节**：`STATICALLY_LOSSLESS::<A, T>()` 是 §5.2 内部 helper（不公开），按 `<A as Element>::ELEMENT_TYPE` × `<T as Element>::ELEMENT_TYPE` 静态判定。具体实现可用 trait 关联常量、宏、或 specialization-free 的若干 `where` 子句穷举三对，详见 §5.2 伪代码注释。
+
 ### 6.2 溢出行为汇总
 
 `cast()` 是 fallible API。凡被 `需求说明书 §23` 判定为有损的转换，默认返回 `XenonError::TypeConversion`；仅在该节明确给出额外成功前提时，满足前提后方可成功。
@@ -701,7 +733,7 @@ User calls cast() / to_owned() / into_owned()
 
 | 属性     | 值                                                                                                                                  |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | (1) 无损转换静态判定为 `Ok`，无需逐元素运行时检查；(2) 有损转换默认在 `CastTo::cast_to()` 中静态返回 `TypeConversion` 错误，不尝试逐元素值域检查；(3) 仅条件性成功（如 `Complex → Real` 在 `im == 0.0` 时）才在 `CastTo::cast_to()` 内做逐元素动态判定 |
+| 决策     | **三层架构（v2.1.1）**：(Tier-1) 静态无损通过 Rust 标准 `From` / `Into` 表达（`f64: From<f32>`、`i64: From<i32>`、`f64: From<i32>`），**不**经过 `CastTo`，`cast()` 主循环对 Tier-1 直接 `T::from(value)` 零开销；(Tier-2) 静态有损在 `impl CastTo<T> for U` 中直接 `Err(TypeConversion)`，不尝试运行时值域检查；(Tier-3) 动态条件性（如 `Complex<T> → T` 仅当 `im == 0.0`）在 `CastTo::cast_to()` 内做逐元素运行时判定 |
 | 理由     | (1) `需求说明书 §23` 要求"有损转换默认失败"，把判定下推到类型对级别（即 `impl CastTo<i32> for f64` 一律 `Err`）即可满足；(2) 不需要为每个 i64 值检查 `±2^53` 边界（这超出了当前需求；§5.3 中已标注 i64→f64 待需求方确认）；(3) 唯一需要逐元素检查的场景是 `Complex → Real`：`im == 0.0` 是动态条件，必须运行时判定 — 这部分实现已在 §6.1 `CastTo<f64> for Complex<f64>` 中正确给出 |
 | 替代方案 | 默认对所有有损转换尝试动态饱和/截断 — 放弃，与 `需求说明书 §23` 冲突                                                                |
 | 替代方案 | 对 `i64 → f64` 默认成功（数学上窄化但 IEEE 754 round-to-nearest）— 暂保守归类有损，§5.3 已标注待需求方决定                         |
