@@ -15,7 +15,7 @@
 
 **范围注记：** workspace 的线程安全属性参见 `24-workspace.md`；本文不将 workspace 纳入 `需求说明书 §10` 的存储模式线程安全矩阵。
 
-**协同基线：** 本文档示例与论证以下游已修文档为准——05-storage v2.0.0、06-layout v1.3、07-tensor v2.0.0、17-indexing v2.0.0（公开安全索引收敛为 `try_at`/`try_at_mut`，不实现 `std::ops::Index`）、19-overload v2.0.0、24-workspace v2.0.0。任何 §5 / §9 引用上述文档的章节号时，以这些版本为准。
+**协同基线：** 本文档示例与论证以下游已修文档为准——05-storage v2.0.1、06-layout v1.3.1、07-tensor v2.0.1、17-indexing v3.0.1（公开安全索引收敛为 `try_at`/`try_at_mut`，不实现 `std::ops::Index`）、19-overload v2.0.0、24-workspace v3.0.1。任何 §5 / §9 引用上述文档的章节号时，以这些版本为准。
 
 ### 1.1 职责边界
 
@@ -397,7 +397,7 @@ fn share_arc_tensor() -> Result<(), XenonError> {
     let arc_clone = arc.clone();  // strong_count = 2
 
     // Read fixed offsets up-front. Xenon does not implement `std::ops::Index`;
-    // use `try_at` (17-indexing v2.0.0 §5.2) for fallible structured indexing.
+    // use `try_at` (17-indexing v3.0.1 §5.2) for fallible structured indexing.
     let parent_v1 = *arc.try_at(Ix1(1))?;
     assert_eq!(parent_v1, 2.0);
 
@@ -446,7 +446,7 @@ fn parallel_iteration(tensor: &Tensor2<f64>) {
 
 下列 `unsafe fn` 在 Xenon crate 内部 / 公开 API 面使用，每个调用点必须用 `unsafe { ... }` 块包裹并附 `// SAFETY:` 注释证明其契约满足。本节只列入口，详细 `# Safety` 契约由各 owner 文档维护。
 
-#### 5.12.1 `pub(crate)` 内部 unsafe fn 清单（5 项）
+#### 5.12.1 `pub(crate)` 内部 unsafe fn 清单（6 项）
 
 仅 crate 内部可见，不进入公开 API。调用点全部位于本 crate 源代码内：
 

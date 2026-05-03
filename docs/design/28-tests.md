@@ -603,7 +603,19 @@ fn test_unique_non_contiguous() {
 | `test_display_truncated`       | 超阈值触发截断                    | 高     |
 | `test_debug_includes_metadata` | Debug 包含 shape/stride/type 信息 | 中     |
 | `test_output_complex`          | 复数格式化输出基础 case (`a+bj` / `a-bj`) | 中     |
-| `test_output_complex_signed_special_values` | 7 个边界快照 (per `22-output.md §6.1`)：默认 Display 与 `precision: Some(1)` 双套快照覆盖 `(1.0, 0.0)` / `(1.0, -0.0)` / `(1.0, +inf)` / `(1.0, -inf)` / `(1.0, NaN)` / `(+inf, +inf)` / `(NaN, NaN)`；验证 `is_sign_negative()` 决定虚部符号、NaN 强制 `+`、`abs()` 取幅值的形式化规则 | 高 |
+| `test_output_complex_signed_special_values` | 7 个边界双 expected 快照（与 `22-output.md §6.1` 表严格一致；下方 fixture 表是权威来源的字面 mirror，CI 脚本可直接读取本表生成断言）；验证 `is_sign_negative()` 决定虚部符号、NaN 强制 `+`、`abs()` 取幅值的形式化规则 | 高 |
+
+**§5.16 fixture 表**（与 `22-output.md §6.1` 字面对齐；任何更新必须**同步**两边或在 `22-output.md` 改后由 R-轮评审捕获 drift）：
+
+| 输入 `(re, im)` | 默认 Display 期望（no precision） | `precision: Some(1)` 期望 |
+|:--|:--|:--|
+| `(1.0_f64, 0.0_f64)` | `1+0j` | `1.0+0.0j` |
+| `(1.0_f64, -0.0_f64)` | `1-0j` | `1.0-0.0j` |
+| `(1.0_f64, f64::INFINITY)` | `1+infj` | `1.0+infj` |
+| `(1.0_f64, f64::NEG_INFINITY)` | `1-infj` | `1.0-infj` |
+| `(1.0_f64, f64::NAN)` | `1+NaNj` | `1.0+NaNj` |
+| `(f64::INFINITY, f64::INFINITY)` | `inf+infj` | `inf+infj` |
+| `(f64::NAN, f64::NAN)` | `NaN+NaNj` | `NaN+NaNj` |
 | `test_scalar_vs_zero_dim_formatting` | 标量值与零维张量输出语义区分清晰 | 中 |
 
 ### 5.17 test_ffi.rs
@@ -689,7 +701,7 @@ Workspace 借用测试须调用 `Workspace::borrow_mut(&mut self)` 与顶层 `Wo
 
 | 测试函数                      | 测试内容                                                                                                     | 优先级 |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------ | ------ |
-| `test_broadcast_shape_error`  | 逐元素/广播不兼容形状返回 `XenonError::BroadcastError`；`DimensionMismatch` 用于非广播双输入维度冲突（如 dot） | 高     |
+| `test_broadcast_shape_error`  | 逐元素/广播不兼容形状返回 `XenonError::BroadcastError`；`ShapeMismatch` 用于非广播双输入形状冲突（如 dot 长度不匹配，参见 `12-matrix.md §5.1 / §10`）；`DimensionMismatch` 用于维度不匹配场景（rank 不一致，例如 `02-dimension.md §5.4 try_from_dyn`，与 dot 长度不匹配是不同语义） | 高     |
 | `test_broadcast_error`        | 不可广播返回 `XenonError::BroadcastError`                                                                    | 高     |
 | `test_invalid_axis_error`     | 轴越界返回 InvalidAxis                                                                                       | 高     |
 | `test_invalid_argument_error` | 非法参数返回 `XenonError::InvalidArgument`                                                                   | 高     |
@@ -1253,7 +1265,7 @@ fn prop_broadcast_shape_rule() {
 
 - [ ] **T10**: 实现 `tests/test_set.rs`
   - 文件: `tests/test_set.rs`
-  - 内容: 集合操作（unique 无序结果/整数/复数/NaN/±0.0）
+  - 内容: 集合操作（unique 按 F-order 首次出现顺序/整数/复数/NaN/±0.0；与 `14-set.md v2.0.1 §5.1 / §8.2` 稳定顺序契约一致）
   - 测试: `cargo test --test test_set`
   - 前置: T1
   - 预计: 15 min

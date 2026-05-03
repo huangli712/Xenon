@@ -519,7 +519,7 @@ pub(crate) fn reset_parallel_threshold();
 
 ### 5.8 路径选择阈值（分操作类型参考）
 
-dispatch 持有的阈值适用于**所有操作类型**的统一入口裁决。各操作的具体 SIMD 阈值差异由 `simd/` 内部处理。以下表格仅供参考说明各模块的总体阈值策略，**dispatch 自身只持有两个统一阈值**（`PARALLEL_THRESHOLD = 65536`、`SIMD_THRESHOLD = 64`），不感知操作类型；具体 per-op 阈值由调用方在调用 dispatch 之前自行 gating：
+dispatch 持有的阈值适用于**所有操作类型**的统一入口裁决。各操作的具体 SIMD 阈值差异由 `simd/` 内部处理。以下表格仅供参考说明各模块的总体阈值策略，**dispatch 自身只持有两个统一阈值**（`PARALLEL_THRESHOLD = 65536`、`SIMD_THRESHOLD = 64`），不感知操作类型；**具体 per-op 阈值由 `simd/` 后端在 `ExecPath::Simd` 被选中后执行最终 admission 时裁决**（与下方"调用方-dispatch-后端的阈值分工"以及 `08-simd.md §5.6` "条件实现，默认标量回退" 一致；调用方**不**在调用 dispatch 之前自行 per-op gating）：
 
 | 操作类型       | 元素类型                        | 并行最小长度 | SIMD 最小长度 | 说明                                   |
 | -------------- | ------------------------------- | :----------: | :-----------: | -------------------------------------- |

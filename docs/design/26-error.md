@@ -1008,7 +1008,8 @@ fmt_display(error, formatter):
 | 空形状 `shape=[0, 3]`            | 合法输入；构造成功，归约/广播/`unique` 等返回单位元或空张量；不返回 `InvalidShape`                         |
 | 形状乘积溢出 `shape=[usize::MAX,2]` | 返回 `InvalidShape { kind: ProductOverflow, .. }`                                                       |
 | 元素数不匹配 `shape=[2,3], data.len()=5` | 返回 `InvalidShape { kind: ElementCountMismatch { expected: 6, actual: 5 }, .. }`                  |
-| rank 超静态最大 `IxDyn(7) -> Ix6` 转换 | 返回 `InvalidShape { kind: RankExceedsStaticMax { provided_ndim: 7, max_ndim: 6 }, .. }`           |
+| rank 超静态最大 `IxDyn(7) -> Ix6` 转换 | 返回 `DimensionMismatch { operation: "Dimension::try_from_dyn", expected: 6, actual: 7, .. }`，由 `02-dimension.md §5.4 try_from_dyn` 提供（rank-mismatch 路径属维度不匹配，不属 InvalidShape） |
+| 静态 rank 张量构造时输入 rank 超出该维度类型最大值（非 `IxDyn`→静态转换路径，例如内部用 `IntoDimension` 构造 `Ix6` 时遇到 `provided_ndim > 6`） | 返回 `InvalidShape { kind: RankExceedsStaticMax { provided_ndim, max_ndim }, .. }`           |
 | 非法轴 `axis=5, ndim=2`          | 返回 `InvalidAxis` 结构化错误                                                                              |
 | 越界索引 `index=[9], shape=[4]`  | 返回 `IndexOutOfBounds` 结构化错误                                                                         |
 | 复数虚部非零 `Complex(1, 2)`     | 转换为实数类型返回 `TypeConversion { reason: NonZeroImaginaryPart, source_type: "Complex<f64>", target_type: "f64", .. }` |

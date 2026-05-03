@@ -18,7 +18,7 @@
 | 向量内积  | dot product（实数内积：sum(a[i] \* b[i])）                                                   |
 | 复数内积  | 共轭线性定义（sum(conjugate(a[i]) \* b[i])）                                                 |
 | SIMD 状态 | dot 可选接入 `simd` / `parallel` 能力                                                        |
-| 错误处理  | 非 1D 输入返回 `XenonError::InvalidArgument`；长度不匹配返回 `XenonError::ShapeMismatch`（shape 比较语义与字段顺序对齐 `16-shape.md` 的形状向量约定 + `26-error.md §5.1` 的字段定义） |
+| 错误处理  | 非 1D 输入返回 `XenonError::InvalidArgument`；长度不匹配返回 `XenonError::ShapeMismatch`（字段定义见 `26-error.md §5.1`；shape 向量元素的语义与轴次序约定见 `02-dimension.md §5` 的 `Dimension` 抽象） |
 
 | 职责      | 不包含         |
 |---------- | -------------- |
@@ -414,7 +414,7 @@ where
 
 - 统一使用 `Numeric::conjugate()` 实现 `x.conjugate() * y` 乘积生成规则（定义见 §1.1），避免为复数类型单独实现 `complex_dot` 函数。实数类型的 `conjugate()` 为零开销（内联后等价于直接使用 `x * y`），不引入额外运行时成本。
 - 对整数 dot，乘法和累加都属于需求层面的不可恢复溢出路径；文档不得只对累加做 checked 处理而把乘法留给 release wrapping 语义。panic 信息至少包含 `operation=dot`、元素类型、触发阶段（`multiply` / `accumulate`）、逻辑位置（如 `lane` 或 `element_index`）以及适用 `shape`。
-- 错误字段全部对齐 26-error v3.0.0 §5.1 的封闭枚举：`InvalidArgument { operation, kind: InvalidArgumentKind::OperationSpecific { argument, constraint } }`，`ShapeMismatch { operation, left_shape, right_shape }`。`left_shape` / `right_shape` 是逻辑形状向量，比较顺序与 `16-shape.md` 的形状向量约定一致。不再使用旧版自由文本 `expected` / `actual` / `argument: "input"` 等字段。
+- 错误字段全部对齐 26-error v3.0.0 §5.1 的封闭枚举：`InvalidArgument { operation, kind: InvalidArgumentKind::OperationSpecific { argument, constraint } }`，`ShapeMismatch { operation, left_shape, right_shape }`。`left_shape` / `right_shape` 是逻辑形状向量，元素与轴次序语义对齐 `02-dimension.md §5` 的 `Dimension` 抽象。不再使用旧版自由文本 `expected` / `actual` / `argument: "input"` 等字段。
 
 ---
 

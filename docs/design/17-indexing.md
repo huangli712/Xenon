@@ -387,13 +387,42 @@ TensorBase::slice(info):
 
 切片布局标志规则：切片结果的 layout flags 根据新的 `shape` / `stride` 组合重新计算（调用 06-layout v1.3 `compute_layout_flags::<A, I>`）。若源视图带有 `BroadcastView`，且切片后仍存在任一零步长轴**并且** `product(shape) > 0`，则继续保留 `BroadcastView` flag；若切片导致 `product(shape) == 0`（空数组退化），即使存在 stride == 0 也**不**保留 `BroadcastView`，与 `15-broadcast.md §6.3` / `06-layout.md §5.12` 严格一致；其余情形按普通 F-order / non-contiguous 规则重分类。
 
+**切片 offset 计算与空切片规则（v3.0.2）：** 切片应用时**必须**严格区分两个 offset 概念：
+
+1. `slice_delta`（element 单位）：本次切片在每个轴上累加得到的相对偏移，由 `TensorBase::slice(info)` 在 bounds-check 通过后计算：`slice_delta = Σ src_strides[i] * fixed_index[i]`。
+2. `new_offset = src.offset + slice_delta`：写回切片结果 `TensorBase::offset` 字段的绝对偏移（仍以 storage base 为基准）。
+
+`compute_layout_flags::<A, I>` 需要的是**逻辑首元素指针**（non-derefenceable 即可），不是绝对 offset；因此必须按结果 `len` 分支：
+
+```rust,ignore
+let logical_ptr: *const A = if result_len == 0 {
+    // Empty slice: do NOT call src.as_ptr().add(slice_delta), the storage
+    // base might already be NonNull::<A>::dangling() (per 07-tensor §6.2);
+    // pass a well-defined non-dereferenceable sentinel instead.
+    core::ptr::NonNull::<A>::dangling().as_ptr()
+} else {
+    // result_len > 0: slice_delta is a pure relative element-unit offset,
+    // already verified by TensorBase::slice(info) to land within the
+    // source's reachable storage range; src.as_ptr() already includes
+    // src.offset (07-tensor §5.4), so adding slice_delta (NOT new_offset)
+    // gives the result's logical-first pointer exactly once.
+    // SAFETY: TensorBase::slice(info) verified bounds + checked-offset
+    // arithmetic; result range [logical_ptr, logical_ptr + result_len)
+    // lies within the source's storage.
+    unsafe { src.as_ptr().add(slice_delta) }
+};
+let new_flags = layout::compute_layout_flags::<A, I>(&new_shape, &new_strides, logical_ptr);
+```
+
+**禁止**直接写 `src.as_ptr().add(new_offset)` —— `src.as_ptr()` 已经叠加过 `src.offset`，再 add `new_offset` 会双重 offset；且空切片场景下 storage base 可能是 dangling，对其做 add 算术违反 `07-tensor.md §6.2` 空张量规则。
+
 ### 6.4 安全性论证
 
 | `unsafe` 点                           | 安全前提                             | 为什么仍然需要                     |
 | ------------------------------------- | ------------------------------------ | ---------------------------------- |
 | `NdIndex::index_unchecked`            | 调用方已保证 rank 匹配且每个分量有效 | 为内部已验证路径消除重复检查       |
 | `get_unchecked` / `get_unchecked_mut` | 调用方已保证索引合法且可写性前提成立 | 为热点访问路径提供零额外分支的能力 |
-| `self.as_ptr().add(new_offset_in_elements)` | `TensorBase::slice(info)` 已完成 shape-aware bounds 校验与 checked offset 算术验证，证明 element offset 位于可见 storage 范围内 | 为布局 flags 重算提供切片后的逻辑首元素指针 |
+| `src.as_ptr().add(slice_delta)`（仅当 `result_len > 0`） | `TensorBase::slice(info)` 已完成 shape-aware bounds 校验与 checked offset 算术验证；`src.as_ptr()` 已叠加 `src.offset`，再 add 的是相对 `slice_delta`（element 单位），等价于"叠加一次 offset"；空切片走 `NonNull::<A>::dangling()` 路径，不进入该 unsafe | 为布局 flags 重算提供切片后的逻辑首元素指针；详见 §6.3 切片 offset 计算与空切片规则 |
 
 unsafe 变体只省略检查，不改变偏移量公式、shape/stride 解释或引用别名规则。若输入索引非法，责任由调用方承担；若输入合法，unsafe 与安全路径的结果必须一致。
 

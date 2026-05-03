@@ -393,30 +393,43 @@ pub trait MyPublicSealedTrait: crate::private::Sealed { /* ... */ }
 
 完整 `lib.rs` 基线（含 `missing_docs`、`unsafe_op_in_unsafe_fn`、`missing_debug_implementations` 等）见 `00-coding.md §7.1`。
 
-#### 5.5.3 Sealed-trait doc grep 检查（v2.0.3）
+#### 5.5.3 Sealed-trait doc grep 检查（v2.0.2）
 
 针对 §5.4.3 列出的所有公开 sealed trait（05-storage 6 storage trait + 4 marker trait、02-dim Dimension/Reverse、03-element Element/Numeric/RealScalar/ComplexScalar/CastElement、21-type CastTo），CI 必须执行一项 grep / 脚本检查：
 
 - 在源码中扫描所有满足 `pub trait <Name>(<...>): ... crate::private::Sealed` 或在 §5.4.3 列表内的 `pub trait` 声明；
-- 对每个匹配的 trait，断言其 doc comment（`///` 块）必须出现 `# Sealed` 段落；
+- 对每个匹配的 trait，断言其**紧邻前置** doc comment（`///` 连续块）必须出现 `# Sealed` 段落；
 - 不出现 `# Sealed` 段落 → CI 失败。
 
-最小实现示例（CI shell hook，伪代码）：
+最小实现示例（CI shell hook，伪代码）。**关键**：检查的是 `pub trait` 行**之前**的连续 `///` 块，**不是**之后的函数体内容；R11 E-02 之前的实现搜了 `pub trait...}` 范围，会漏掉前置 doc comment 而误报：
 
 ```bash
-# Fail if any sealed pub trait lacks the `# Sealed` doc section.
-sealed_traits=$(grep -nE "^pub (unsafe )?trait [A-Z][A-Za-z0-9_]*.*Sealed" -r src/)
-for line in "$sealed_traits"; do
-    file=$(echo "$line" | cut -d: -f1)
-    name=$(echo "$line" | sed -E 's/.*pub (unsafe )?trait ([A-Z][A-Za-z0-9_]*).*/\2/')
-    if ! awk "/^pub (unsafe )?trait $name/,/^}/" "$file" | grep -q "^/// # Sealed"; then
-        echo "MISSING # Sealed doc section: $name in $file" >&2
-        exit 1
+# Fail if any sealed pub trait lacks the `# Sealed` doc section in its
+# IMMEDIATELY PRECEDING contiguous `///` doc-comment block.
+set -euo pipefail
+matches=$(grep -REn '^pub (unsafe )?trait [A-Z][A-Za-z0-9_]*.*Sealed' src/)
+exit_code=0
+while IFS= read -r match; do
+    file=$(echo "$match" | cut -d: -f1)
+    line=$(echo "$match" | cut -d: -f2)
+    name=$(echo "$match" | sed -E 's/.*pub (unsafe )?trait ([A-Z][A-Za-z0-9_]*).*/\2/')
+    # Walk upward from (line - 1) collecting contiguous `///` lines until
+    # the first non-/// line; assert `# Sealed` appears in that block.
+    block=$(awk -v target="$line" '
+        NR < target {
+            if ($0 ~ /^[[:space:]]*\/\/\//) { buf = buf "\n" $0 } else { buf = "" }
+        }
+        NR == target { print buf; exit }
+    ' "$file")
+    if ! echo "$block" | grep -q '^[[:space:]]*///[[:space:]]*# Sealed'; then
+        echo "MISSING # Sealed doc section before pub trait $name at $file:$line" >&2
+        exit_code=1
     fi
-done
+done <<< "$matches"
+exit $exit_code
 ```
 
-该门禁与 §5.4.3 的"强制 doc comment 格式"形成闭环：§5.4.3 要求作者写、§5.5.3 在 CI 校验。
+该门禁与 §5.4.3 的"强制 doc comment 格式"形成闭环：§5.4.3 要求作者写、§5.5.3 在 CI 校验。脚本逻辑必须扫描 `pub trait` 之前的 doc comment 块（非之后），否则即使作者按 §5.4.3 正确书写也会被误报为缺失。
 
 ### 5.6 Doctest 规范
 
@@ -1106,7 +1119,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 ### v2.0.2 (2026-05-03) — ElementType 字段类型协同 + 文档残留清理 + Sealed-trait doc 约定
 
-> 本版本与 `26-error.md v3.2.0`、`03-element.md v1.4.0`、`28-tests.md v2.0.1` 协同。把既有协同清单与 Wave 任务条目升级到第四轮目标基线，清除前轮 ElementType 反向定位修复后的历史残留描述；同时新增 §5.4.3 "Sealed trait 公开 doc 约定"（R9 E-03 修复 sealed-trait 公开 doc 约定缺失），明确所有公开 sealed trait 的 doc comment 必须含 `# Sealed` 段落，并在 §5.5.3（v2.0.3 计划）中引入 CI grep 门禁。
+> 本版本与 `26-error.md v3.2.0`、`03-element.md v1.4.0`、`28-tests.md v2.0.1` 协同。把既有协同清单与 Wave 任务条目升级到第四轮目标基线，清除前轮 ElementType 反向定位修复后的历史残留描述；同时新增 §5.4.3 "Sealed trait 公开 doc 约定"（R9 E-03 修复 sealed-trait 公开 doc 约定缺失）与 §5.5.3 "Sealed-trait doc grep 检查"（R10 E-02 引入、R11 E-02 修正脚本扫描方向 bug），明确所有公开 sealed trait 的 doc comment 必须含 `# Sealed` 段落，并由 CI grep 门禁强制校验。
 
 **变更**：
 

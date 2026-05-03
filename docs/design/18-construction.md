@@ -841,6 +841,8 @@ User calls zeros / from_shape_vec / eye
 
 ### v2.0.1 (2026-05-03) — 通过 `TensorBase::new_unchecked` 集中 `pub(crate)` 字段访问
 
+> **历史快照（pre-R10 syntax）**：本节示例展示的 `TensorBase { storage, shape, strides, offset, flags }` 5-字段结构与 `new_unchecked(storage, dim, strides, 0, flags)` 5-参数调用是 R10 之前的形态。R10 B-01 之后 `TensorBase` 升级到 6 字段（新增 `derived_from_view_mut: bool`），`new_unchecked` 升级到 6 参数；当前 `§5.1 / §5.3 / §5.4` 实际示例已使用 6-参数形态（追加 `, false`）。本 v2.0.1 changelog 行保留为历史记录，方便追溯 R10 之前的字段访问收敛过程。
+
 - §5.1 `zeros` / `ones`：把 `Ok(TensorBase { storage, shape, strides, offset, flags })` 直接 struct literal 写法改为 `Ok(unsafe { TensorBase::new_unchecked(storage, dim, strides, 0, flags) })`，统一通过 `07-tensor.md` §5.6 新增的 `pub(crate) unsafe fn new_unchecked(...)` 构造器进入 tensor 私有字段（`unsafe fn` 自 R7-B-02 起；调用点必须用 `unsafe { ... }` 块包裹并附 `// SAFETY:` 注释证明 dim/strides/flags/offset/storage 互一致）。
 - §5.3 `from_shape_vec`、§5.4 `from_scalar`：同上修改，构造路径全部走 `TensorBase::new_unchecked`。
 - 协同 `07-tensor.md` v2.0.1 changelog 中关于"construction uses a `pub(crate)` tensor-internal constructor rather than cross-module struct literal access"的承诺，本次为 18-construction 落地具体调用站点。

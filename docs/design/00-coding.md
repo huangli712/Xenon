@@ -121,8 +121,8 @@ pub enum ElementType {
 pub trait Numeric: Element + Add<Output=Self> + Sub<Output=Self>
     + Mul<Output=Self> + Div<Output=Self> + Neg<Output=Self> { /* ... */ }
 pub trait OrderedCompareElement: Element + PartialOrd + Sealed { /* ... */ }
-pub trait Dimension { /* ... */ }
-pub trait Storage { /* ... */ }
+pub trait Dimension: Sealed { /* ... full bound list see `02-dimension.md §5.1` ... */ }
+pub trait Storage: RawStorage + Sealed { /* ... */ }
 
 // Bad
 pub trait element { /* ... */ }
@@ -666,7 +666,7 @@ where
     D: Dimension,
 {
     /// Checked indexing — returns `Err(XenonError::IndexOutOfBounds{...})` on out of bounds.
-    /// Authoritative signature: see `17-indexing.md` v2.0.0 §5.2.
+    /// Authoritative signature: see `17-indexing.md` v3.0.1 §5.2.
     pub fn try_at<I: NdIndex<D>>(&self, index: I) -> Result<&A> {
         let index_vec = index.to_index_vec();
         if !self.is_index_valid(&index_vec) {

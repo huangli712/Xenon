@@ -664,7 +664,8 @@ where
         flags: LayoutFlags,
         derived_from_view_mut: bool,
     ) -> Self {
-        // No revalidation; all five metadata items are caller-proved.
+        // No revalidation; all six constructor inputs are caller-proved
+        // (storage, shape, strides, offset, flags, derived_from_view_mut).
         // This is the Owned-specialized form; the generic form for
         // `S: RawStorage` lives below as `TensorBase::<S, D>::new_unchecked`
         // and is the canonical entry point for View / ViewMut / Arc paths.
@@ -1050,12 +1051,21 @@ where
             raw.ptr
         };
         let flags = layout::compute_layout_flags::<A, D>(&raw.shape, &raw.strides, logical_ptr);
-        Ok(Self {
-            storage,
-            shape: raw.shape,
-            strides: raw.strides,
-            offset: raw.offset,
-            flags,
+        // Routed through the named `pub(crate) unsafe fn new_unchecked` (§5.6
+        // Owned-specialized form) to keep private-field access localized to
+        // ONE entry point and to satisfy the locked invariant "TensorBase has
+        // 6 fields including `derived_from_view_mut`" (R10 B-01).
+        // SAFETY: All five metadata invariants of `new_unchecked` are
+        // satisfied: shape was overflow-checked above; strides were verified
+        // canonical F-order above; flags were just produced by
+        // `compute_layout_flags` for the same shape/strides/logical_ptr;
+        // offset == 0 was verified above; the logical access range
+        // `[0, raw.len)` lies within `storage` because `raw.len ==
+        // shape.checked_size()` and `raw.cap >= raw.len` were both verified.
+        // `derived_from_view_mut: false` — `from_raw_parts_owned` is an
+        // Owned reconstruction path, not a ViewMut downgrade.
+        Ok(unsafe {
+            TensorBase::new_unchecked(storage, raw.shape, raw.strides, raw.offset, flags, false)
         })
     }
 }

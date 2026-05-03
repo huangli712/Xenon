@@ -971,8 +971,8 @@ impl RealScalar for f64 {
 | ------------------------ | ---------------------------------------------------------------------- |
 | `tests/test_tensor.rs`   | `Element` / `Numeric` bound 在张量构造、`storage_kind`、`access_semantics` 等路径上 |
 | `tests/test_math.rs`     | `RealScalar` / `ComplexScalar` 数学函数语义                            |
-| `tests/test_reduction.rs`| 元素类型与归约结果类型协同（`Numeric` bound 在 sum 路径；当前 reduction 仅 sum，dot/matmul 在 matrix 测试覆盖） |
-| `tests/test_matrix.rs`   | dot / matmul 中 `Numeric` bound 协同路径                               |
+| `tests/test_reduction.rs`| 元素类型与归约结果类型协同（`Numeric` bound 在 sum 路径；当前 reduction 仅 sum，dot 在 matrix 测试覆盖；matrix-matrix multiplication / matmul 在 `01-architecture.md §2.2` 范围外） |
+| `tests/test_matrix.rs`   | dot 中 `Numeric` bound 协同路径（matrix-matrix multiplication / matmul 在 `01-architecture.md §2.2` 范围外）                               |
 | `tests/test_conversion.rs` | `CastElement` 在 cast 路径上的 6×6 矩阵覆盖（文件名与 `01-architecture.md §3` ./tests 目录树严格一致） |
 
 ### 8.6 Feature gate / 配置测试

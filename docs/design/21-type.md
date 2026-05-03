@@ -652,7 +652,7 @@ impl ConvertTo<Complex<f64>> for Complex<f32> {
 // Macro generation is acceptable for the 22 forwarding impls; they are
 // mechanical and exhaustively determined by §5.3's type-pair classification.
 
-// --- Tier-2 lossy (static Err): 18 cells ---
+// --- Tier-2 lossy (static Err): 14 cells ---
 // f64 → {f32, i32, i64}
 impl ConvertTo<f32> for f64 { #[inline] fn convert(self) -> Result<f32, XenonError> { <f64 as CastTo<f32>>::cast_to(self) } }
 impl ConvertTo<i32> for f64 { #[inline] fn convert(self) -> Result<i32, XenonError> { <f64 as CastTo<i32>>::cast_to(self) } }
@@ -996,14 +996,14 @@ User calls cast() / to_owned() / into_owned()
 - §5.2 `cast()` doc comment `# Errors` 段重写：完整列出 `TypeConversion` 字段（`operation: Cow<'static, str>`、`source_type: ElementType`、`target_type: ElementType`、`reason`、`element_index: Some(usize)`），明示 `source_type/target_type` 是 `ElementType` 封闭枚举，**禁止**使用 `core::any::TypeId`。
 - §5.2 `cast()` 函数体重写：`map_err` 闭包注入 `operation: Cow::Borrowed("cast")`；尾部通过 `pub(crate)` 内部 helper 从已验证的 shape/data 长度构造 owned 结果，helper 不作为 convert 稳定文档面。
 - §5.5 `to_owned()` 函数体重写：从 fallible 的 `Tensor::from_shape_vec_aligned(self.raw_dim(), data)` 改为 `pub(crate)` 内部 helper `Tensor::from_shape_vec_aligned_unchecked(self.raw_dim(), data)`，配合 doc comment 中"shape/data 长度一致性已构造期保证"的论证，让 `to_owned()` 保持 infallible 签名。
-- §6.1 `CastTo` 实现示例完全重写：把 `core::any::TypeId::of::<T>()` 替换为 `ElementType::F64`、`ElementType::I32`、`ElementType::Complex64` 等封闭枚举值；为每个 `Err(TypeConversion {..})` 添加 `operation: Cow::Borrowed("")` 占位字段（`cast()` 的 `map_err` 会注入 "cast"）；移除 `use core::any::TypeId;`，改为 `use crate::element::ElementType;` + `use crate::error::ConversionFailureReason;`。
+- §6.1 `CastTo` 实现示例完全重写：把 `core::any::TypeId::of::<T>()` 替换为 `ElementType::F64`、`ElementType::I32`、`ElementType::Complex64` 等封闭枚举值；为每个 `Err(TypeConversion {..})` 添加 `operation` 占位字段（v2.0.0 当时使用 `Cow::Borrowed("")`，**后续 R10 C-01 修订统一为 `Cow::Borrowed("cast_to")` 非空操作名**，参见 v2.1.1 changelog 与 §6.1 现行实现）；`cast()` 的 `map_err` 会把 `operation` 覆盖为 `Cow::Borrowed("cast")`；移除 `use core::any::TypeId;`，改为 `use crate::element::ElementType;` + `use crate::error::ConversionFailureReason;`。
 
 **协同与一致性更新**：
 
 - §1.2 设计原则表新增"静态分流"一行：明确标注决策 4（B10.a）落地——无损/默认有损在类型对级别静态判定，仅条件性成功（`Complex → Real` 的 `im == 0.0`）才逐元素动态判定。
 - §1.2 "失败可诊断"一行补充"字段对齐 26-error v3.0.0 §5.1，使用 `ElementType` 而非 `TypeId`"。
 - §4.2 类型级依赖表更新：`element` 行从 §5.8（Sealed trait 策略）修正为 §5.9（CastTo<T>），并补充 `ElementType` 标签依赖；`error` 行展开为 `XenonError`、`Result<T>`、`ConversionFailureReason`、`ElementType`；新增 `iter` 行（`cast()` / `to_owned()` 都通过 `self.iter()` 遍历）。
-- §10 错误处理表 `Recoverable error` 一行重写：完整列出 `TypeConversion` 五字段；明示 `CastTo::cast_to()` 自身 emits `operation` 留空 + `element_index = None`，由 `cast()` 在 `map_err` 中注入。
+- §10 错误处理表 `Recoverable error` 一行重写：完整列出 `TypeConversion` 五字段；明示 `CastTo::cast_to()` 自身 emits `operation = Cow::Borrowed("cast_to")` + `element_index = None`（**注**：v2.0.0 草案曾留空，后续 R10 C-01 起统一为 `"cast_to"` 非空操作名），由 `cast()` 在 `map_err` 中将 `operation` 覆盖为 `"cast"` 并注入 `element_index`。
 - §11 新增决策 4：完整论证 B10.a 决策——三层结构（静态无损 / 静态有损 / 动态条件性）+ 拒绝替代方案的理由（拒绝默认饱和、拒绝 `i64 → f64` 默认成功、拒绝 `cast()` 主循环逐元素扫描）。
 - §5.3 / §5.4 / §6.1 移除 `i64 → f64` 待确认文案，明确按 B10.a 选定为有损默认失败；Complex→Real 表项改为“条件成功”；§5.2 / §5.6 统一 `cast()` 的 `pub(crate)` 内部 helper 边界；修正 T5 任务缩进。
 
