@@ -357,8 +357,7 @@ impl BoolElement for bool {}
 | 算术 add/sub/mul/div（11-math） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `11-math.md §5.3` |
 | neg / abs / square（11-math） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `11-math.md §5.4` |
 | 内积 dot（12-matrix） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `12-matrix.md §5.1` |
-| sum / mean 归约（13-reduction） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `13-reduction.md §5` |
-| min / max 归约（13-reduction） | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | `13-reduction.md §5`（复数无序） |
+| sum 归约（13-reduction） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `13-reduction.md §5`（当前版本仅 sum；mean/min/max 不在范围） |
 | unique 集合运算（14-set） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `14-set.md §6.1`（哈希查重 + F-order 顺序输出） |
 | eye 单位矩阵构造（18-construction） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `18-construction.md` |
 | clip（20-utility） | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | `20-utility.md`（无序比较不适用） |
@@ -368,7 +367,7 @@ impl BoolElement for bool {}
 
 ### 5.8 Sealed trait 策略
 
-`Element`、`Numeric`、`RealScalar`、`ComplexScalar`、`CastTo<T>`、`OrderedCompareElement` 全部通过共享的 `private::Sealed` 基础设施实现 sealed trait 模式。下游 crate 只能使用 Xenon 已声明的元素类型，不能为自定义类型补充这些 trait 实现。`CastTo<T>` 通过 `Self: Element` 的 sealed 边界间接封闭实现范围。
+`Element`、`Numeric`、`RealScalar`、`ComplexScalar`、`CastTo<T>`、`CastElement`、`OrderedCompareElement` 全部通过共享的 `private::Sealed` 基础设施实现 sealed trait 模式。下游 crate 只能使用 Xenon 已声明的元素类型，不能为自定义类型补充这些 trait 实现。`CastTo<T>` 与 `CastElement` 都通过 `Self: Element`（间接 `Sealed`）封闭实现范围。
 
 ```rust,ignore
 // src/element/mod.rs
@@ -998,6 +997,21 @@ Upstream modules declare element bounds
 | 1.2.7 | 2026-04-15 |
 | 1.2.8 | 2026-04-16 |
 | 1.2.9 | 2026-05-03 |
+| 1.3.0 | 2026-05-03 |
+
+### v1.3.0 (2026-05-03) — ElementType 下沉到 L0 + 新增 CastElement + 删除越界词汇
+
+> 本版本是 P0 修复任务（C2 + C1 + C14）的落地，与 `26-error.md v3.1.0` 协同。
+
+**契约更新（破坏性内部变更，公开 trait 名称兼容）**：
+
+- §4.1 / §4.2 / §5.1：`ElementType` 枚举的权威定义从本模块**下沉**到 L0 `error` 模块（`26-error.md v3.1.0 §5.1`）。本模块通过 `pub use crate::error::ElementType;` 在 `src/element/mod.rs` re-export 同名枚举，保留 `crate::element::ElementType` 与 `Element::ELEMENT_TYPE` 关联常量的稳定上层路径。`ElementType::of::<A>()` 因依赖 `A: Element` trait bound，作为 `element` 模块的 inherent impl 留在本模块。这恢复了 `01-architecture.md §5.2` 的 L0..L6 单向依赖（`error` 不再向上引用 `element`）。
+- §5.9.1：新增 `CastElement` 公开 sealed marker trait——标记"可作为 `cast()` 操作源/目标元素类型集合"。封闭实现集合：i32 / i64 / f32 / f64 / Complex<f32> / Complex<f64>（排除 bool）。`21-type.md v2.1.0 §5.1` 通过 `use crate::element::CastElement;` 消费。这填补了 v1.x 中 `21-type.md` 引用 `CastElement` 但 `03-element.md` 未定义的 owner 缺口。
+- §5.8：sealed trait 列表新增 `CastElement`。
+
+**协同与一致性更新**：
+
+- §5.7 跨模块运算矩阵（非规范性索引）：删除 `mean`、`min` / `max` 行，与 `require.md §14`（当前版本仅 `sum`）一致；保留 `sum 归约` 一行并标注 `mean/min/max 不在范围`。
 
 ### v1.2.9 (2026-05-03) — Medium/Low 文档修复
 

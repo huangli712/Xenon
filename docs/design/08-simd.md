@@ -108,7 +108,7 @@ src/simd/
 
 ### 4.4 依赖方向声明
 
-依赖方向：单向向上。`simd` 仅消费 `tensor`、`element`、`complex` 等核心模块，不被它们依赖；`layout` 通过 `tensor` 暴露的查询接口间接使用。`simd` 模块在未启用 feature 时完全不存在。
+依赖方向：单向向上。`simd` 消费 `tensor`、`layout`、`element`、`complex` 等核心模块（直接依赖关系参见 §4.1 依赖图与 §4.2 类型级依赖表，含 `crate::tensor` 与 `crate::layout`），不被它们依赖。`layout` 既可通过 `tensor` 暴露的查询接口间接使用（如 `is_f_contiguous()`），也可直接消费 `crate::layout` 模块的对齐 helper（如 `is_aligned()`）。`simd` 模块在未启用 feature 时完全不存在。
 
 ---
 

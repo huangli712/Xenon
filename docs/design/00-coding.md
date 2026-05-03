@@ -30,7 +30,7 @@
 
 ### 1.3 协同基线
 
-本文档以已修订的下游设计文档为协同基线。若本文档提到具体类型、字段、trait、枚举或 API 形态，必须与以下版本保持一致：`01-architecture.md v2.0.0`、`02-dimension.md v1.x`、`03-element.md v1.x`、`04-complex.md v2.0.0`、`05-storage.md v2.0.0`、`06-layout.md v1.3`、`07-tensor.md v2.0.0`、`08-simd.md v2.0.0`、`09-parallel.md v2.0.0`、`11-math.md v2.0.0`、`12-matrix.md v2.0.0`、`13-reduction.md v2.0.0`、`14-set.md v2.0.0`、`15-broadcast.md v2.0.0`、`16-shape.md v2.0.0`、`17-indexing.md v2.0.0`、`18-construction.md v2.0.0`、`19-overload.md v2.0.0`、`20-utility.md v2.0.0`、`21-type.md v2.0.0`、`22-output.md v2.0.0`、`23-ffi.md v2.0.0`、`24-workspace.md v2.0.0`、`25-safety.md v2.0.0`、`26-error.md v3.0.0`、`27-benchmark.md v2.0.0`、`28-tests.md v2.0.0`、`29-documentation.md v2.0.0`、`30-dispatch.md v1.1.1`。
+本文档以已修订的下游设计文档为协同基线。若本文档提到具体类型、字段、trait、枚举或 API 形态，必须与以下版本保持一致：`01-architecture.md v2.0.0`、`02-dimension.md v1.x`、`03-element.md v1.x`、`04-complex.md v2.0.0`、`05-storage.md v2.0.0`、`06-layout.md v1.3`、`07-tensor.md v2.0.0`、`08-simd.md v2.0.0`、`09-parallel.md v2.0.0`、`11-math.md v2.0.0`、`12-matrix.md v2.0.0`、`13-reduction.md v2.0.0`、`14-set.md v2.0.0`、`15-broadcast.md v2.0.0`、`16-shape.md v2.0.0`、`17-indexing.md v2.0.0`、`18-construction.md v2.0.0`、`19-overload.md v2.0.0`、`20-utility.md v2.0.0`、`21-type.md v2.1.0`、`22-output.md v2.0.0`、`23-ffi.md v2.1.0`、`24-workspace.md v2.0.0`、`25-safety.md v2.0.0`、`26-error.md v3.1.0`、`27-benchmark.md v2.0.0`、`28-tests.md v2.0.0`、`29-documentation.md v2.0.0`、`30-dispatch.md v1.1.3`。
 
 ---
 
@@ -210,7 +210,7 @@ pub fn get_slice(&self) -> &[A] { /* ... */ }  // no need for get_ prefix
 pub fn to_view(&self) -> View<'_, A, D> { /* ... */ }  // view conversion should use as_
 ```
 
-storage 层的深拷贝 API 使用 `deep_clone()`；`to_owned` 不作为 storage 层命名。`Owned::into_shared(self) -> ArcRepr<A>` 是拥有存储转共享存储的消耗式转换。广播、转置和切片产生 `ViewRepr<'a, A>`。`StorageShared` 与 `AlignedAlloc` 保持 `pub(crate)`。
+storage 层的深拷贝 API 使用 `deep_clone()`；`to_owned` 不作为 storage 层命名。`Owned::into_shared(self) -> ArcRepr<A>` 是拥有存储转共享存储的消耗式转换。广播、转置和切片产生 `ViewRepr<'a, A>`。`StorageShared` 是公开 `unsafe` sealed trait（权威定义见 `05-storage.md §5.8` 与决策 6），下游可在泛型签名中命名 `S: StorageShared` 表达"共享只读张量"约束，但因 sealed 边界不能为外部类型实现；`AlignedAlloc` 保持 `pub(crate)` 内部能力。
 
 ### 2.10 Getter类方法约定
 
@@ -546,12 +546,7 @@ where
 ```rust,ignore
 #[derive(Debug, Clone)]
 pub enum XenonError {
-    InvalidShape { operation: Cow<'static, str>, shape: Vec<usize>, kind: InvalidShapeKind, offending_dim: Option<usize> },
-    InvalidLayout { operation: Cow<'static, str>, storage_kind: StorageKindTag, shape: Vec<usize>, strides: Vec<usize>, offset: usize, storage_len: usize, reason: InvalidLayoutReason },
-    InvalidArgument { operation: Cow<'static, str>, kind: InvalidArgumentKind },
-    InvalidStorageMode { operation: Cow<'static, str>, expected: StorageKindTag, actual: StorageKindTag, shape: Option<Vec<usize>>, conversion: Option<StorageConversionKind> },
-    DimensionMismatch { operation: Cow<'static, str>, expected: usize, actual: usize },
-    IndexOutOfBounds { operation: Cow<'static, str>, attempted_index: Vec<usize>, axis: usize, shape: Vec<usize> },
+    ShapeMismatch { operation: Cow<'static, str>, left_shape: Vec<usize>, right_shape: Vec<usize> },
     BroadcastError {
         operation: Cow<'static, str>,
         lhs_shape: Vec<usize>,
@@ -559,13 +554,27 @@ pub enum XenonError {
         attempted_target_shape: Option<Vec<usize>>,
         axis: Option<usize>,
     },
+    // Reserved-for-future variant; no public API constructs it in the current
+    // version. Kept in the enum for SemVer stability so future BLAS/FFI
+    // integrations can construct it without breaking changes.
+    LayoutMismatch { operation: Cow<'static, str>, required_layout: Cow<'static, str>, actual_layout: Cow<'static, str>, shape: Vec<usize> },
+    InvalidShape { operation: Cow<'static, str>, shape: Vec<usize>, kind: InvalidShapeKind, offending_dim: Option<usize> },
+    InvalidLayout { operation: Cow<'static, str>, storage_kind: StorageKindTag, shape: Vec<usize>, strides: Vec<usize>, offset: usize, storage_len: usize, reason: InvalidLayoutReason },
+    InvalidArgument { operation: Cow<'static, str>, kind: InvalidArgumentKind },
+    InvalidStorageMode { operation: Cow<'static, str>, expected: StorageKindTag, actual: StorageKindTag, shape: Option<Vec<usize>>, conversion: Option<StorageConversionKind> },
+    DimensionMismatch { operation: Cow<'static, str>, expected: usize, actual: usize },
+    IndexOutOfBounds { operation: Cow<'static, str>, attempted_index: Vec<usize>, axis: usize, shape: Vec<usize> },
     TypeConversion { operation: Cow<'static, str>, source_type: ElementType, target_type: ElementType, reason: ConversionFailureReason, element_index: Option<usize> },
     InvalidAxis { operation: Cow<'static, str>, axis: usize, ndim: usize, shape: Vec<usize> },
     Ffi { operation: Cow<'static, str>, category: FfiErrorCategory, backend: FfiBackend, cause: Option<Box<XenonError>> },
     Workspace { operation: Cow<'static, str>, category: WorkspaceErrorCategory, cause: Option<Box<XenonError>> },
-    // 注：旧模型中曾包含 Storage / Numerical / Internal 三个占位变体，
-    // 26-error v3.0.0 已删除该模型。本枚举为 v3.0.0 的封闭变体集，
-    // 禁止再新增自由占位错误；新错误必须按封闭枚举/结构化负载补入。
+    // 完整变体清单（13 个）：ShapeMismatch / BroadcastError / LayoutMismatch /
+    // InvalidShape / InvalidLayout / InvalidArgument / InvalidStorageMode /
+    // DimensionMismatch / IndexOutOfBounds / TypeConversion / InvalidAxis /
+    // Ffi / Workspace。详见 26-error.md v3.1.0 §5.1。
+    // 旧模型 Storage / Numerical / Internal 三个占位变体已在 v3.0.0 删除。
+    // ElementType 在 v3.1.0 起的权威定义在 26-error.md §5.1（L0 模块），
+    // element 与 ffi 通过 `pub use crate::error::ElementType` re-export。
 }
 
 pub enum StorageKindTag { Owned, View, ViewMut, Arc }

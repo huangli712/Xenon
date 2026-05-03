@@ -258,7 +258,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
     4. Return the computed stride vector.
 ```
 
-对广播轴写入零步长意味着该轴被逻辑扩展（或在空轴广播中收缩为 0 长度目标），但所有有效索引都回落到同一底层元素；这与 `06-layout.md` §5.11 的零步长语义保持一致。`orig_dim == 1 && target_dim == 0` 是兼容的空轴广播，输出 stride 写为 `0`，且因为目标轴长度为 0 不会产生实际元素访问。若任一轴出现 `0` 步长，结果即不再视为普通 `FContiguous` 或一般 `NonContiguous` 视图，而统一进入 `BroadcastView`。
+对广播轴写入零步长意味着该轴被逻辑扩展（或在空轴广播中收缩为 0 长度目标），但所有有效索引都回落到同一底层元素；这与 `06-layout.md` §5.11 的零步长语义保持一致。`orig_dim == 1 && target_dim == 0` 是兼容的空轴广播，输出 stride 写为 `0`，且因为目标轴长度为 0 不会产生实际元素访问。布局分类口径以 `06-layout.md §5.12` 的 `HAS_ZERO_STRIDE` 与 `LayoutState` 计算规则为权威：当 `any(stride == 0) && product(shape) > 0`（即存在零步长轴**且**张量非空）时进入 `BroadcastView`；空数组退化情形（`product(shape) == 0`）即使含 `stride == 0` 也**不**触发 `BroadcastView`，与 `06-layout.md §5.12` 严格一致。
 
 - **再次广播规则：** 对已广播视图再次广播时，已有零步长轴保持为 `0`，新增广播轴也写入 `0` 步长；结果 `shape` 取"当前视图 shape"与"新目标 shape"的广播结果。 `broadcast_strides()` 的 `orig_shape` 参数始终传入当前视图的逻辑 shape（即 `.shape()` 返回值），而非某个"广播前的原始 shape"。
 

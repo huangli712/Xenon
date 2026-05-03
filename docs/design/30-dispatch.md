@@ -207,10 +207,22 @@ pub(crate) struct ParallelExecStrategy {
 impl ParallelExecStrategy {
     /// Construct a validated strategy.
     ///
-    /// Returns `InvalidArgument` if `chunk_size == Some(0)` or
-    /// `max_workers == Some(0)`. Upper bound on `max_workers` (≤ thread
-    /// pool size) is enforced by the parallel backend at consumption
-    /// time, since the pool size is a runtime value.
+    /// All `max_workers` and `chunk_size` validation happens here at
+    /// construction time (v1.1.3, fail-fast):
+    ///
+    /// - `chunk_size == Some(0)` → `InvalidArgument`
+    /// - `max_workers == Some(0)` → `InvalidArgument`
+    /// - `max_workers == Some(n)` with `n > rayon::current_num_threads()`
+    ///   → `InvalidArgument`
+    ///
+    /// The pool-size upper bound is read once at construction via
+    /// `rayon::current_num_threads()`. Since rayon's global pool size
+    /// is fixed for the lifetime of the process by default, this value
+    /// is stable for typical use; if the caller intentionally swaps
+    /// thread pools mid-execution, the strategy must be reconstructed.
+    /// `parallel/` consumes a pre-validated strategy and never returns
+    /// `InvalidArgument` for `max_workers` itself (single source of
+    /// validation).
     pub(crate) fn new(
         chunk_size: Option<usize>,
         max_workers: Option<usize>,
@@ -230,10 +242,10 @@ impl ParallelExecStrategy {
 
 | 字段          | 合法范围                          | 默认值 | 非法时行为                                                                  |
 | ------------- | --------------------------------- | ------ | --------------------------------------------------------------------------- |
-| `max_workers` | `Some(1..=pool_size)` 或 `None`   | `None` | `Some(0)` 在 `new()` 内返回 `InvalidArgument`；超过线程池大小由 `parallel/` 在运行时返回 `InvalidArgument` |
-| `chunk_size`  | `Some(n)` where `n > 0` 或 `None` | `None` | `Some(0)` 在 `new()` 内返回 `InvalidArgument`                              |
+| `max_workers` | `Some(1..=rayon::current_num_threads())` 或 `None` | `None` | `Some(0)` 与 `Some(n) where n > pool_size` 都在 `new()` 内返回 `InvalidArgument`（v1.1.3 起统一在构造期校验） |
+| `chunk_size`  | `Some(n)` where `n > 0` 或 `None`                  | `None` | `Some(0)` 在 `new()` 内返回 `InvalidArgument`                              |
 
-**字段不变量归属：** 字段层不变量（非零）由构造器在 dispatch 内强制；运行时不变量（worker 上限依赖 rayon 线程池大小）由 `parallel/` 模块在消费时检查。这避免了 dispatch 编译期需要感知 rayon 状态。
+**字段不变量归属（v1.1.3 起）：** 所有 `max_workers` / `chunk_size` 校验统一在 dispatch 内的 `ParallelExecStrategy::new()` 构造器中完成，包括对 rayon 线程池上限的检查（通过 `rayon::current_num_threads()` 一次性读取）。`parallel/` 模块只消费已校验的策略，**不再**返回 `max_workers` 相关的 `InvalidArgument`。这与 `09-parallel.md v2.0.0 §5.4` 协同（"dispatch 构造期一次性校验"），消除 v1.1.x 与 v1.1.2 之间存在的"分两层校验"歧义。
 
 ### 5.4 ParallelGuard / ParallelContext
 
@@ -385,8 +397,17 @@ pub(crate) fn with_parallel_worker_context<R>(f: impl FnOnce() -> R) -> R {
 ///   "threshold = 0" semantics).
 ///
 /// * `ExecPath::Simd` — `feature = "simd"` is enabled, **and**
-///   `is_contiguous`, **and** `alignment_ok`, **and** `len >= SIMD_THRESHOLD`,
+///   `is_contiguous`, **and** `len >= SIMD_THRESHOLD`,
 ///   **and** `ExecPath::Parallel` was not chosen.
+///
+///   **Note (v1.1.3 alignment policy):** `alignment_ok` is **NOT** a
+///   hard precondition for `ExecPath::Simd`. It is propagated to the
+///   `simd` backend as a kernel-capability hint; the SIMD kernel
+///   itself decides whether to dispatch to an aligned or unaligned
+///   variant based on its `08-simd.md §5.7` admission rules. Most
+///   element-wise kernels accept unaligned input. Forcing alignment
+///   as a hard gate here would incorrectly close legal unaligned
+///   SIMD paths.
 ///
 /// * `ExecPath::Serial` — otherwise.
 ///
@@ -475,14 +496,15 @@ pub(crate) fn reset_parallel_threshold();
 
 | 输入条件          | 是否考虑 `Simd`           | 是否考虑 `Parallel`                                  |
 | ----------------- | ------------------------- | ---------------------------------------------------- |
-| 连续 + 对齐       | 是（`len >= SIMD_THRESHOLD`） | 是（`len >= PARALLEL_THRESHOLD`）                |
-| 连续 + 非对齐     | **否**（对齐是 SIMD 准入硬性条件） | 是（`len >= PARALLEL_THRESHOLD`）            |
-| 非连续            | **否**（连续性是 SIMD 准入硬性条件） | 是，但 `len >= 2 * PARALLEL_THRESHOLD`（饱和乘法防溢出） |
+| 连续 + 对齐       | 是（`len >= SIMD_THRESHOLD`），`alignment_ok` 作为能力提示传入 simd 后端 | 是（`len >= PARALLEL_THRESHOLD`）                |
+| 连续 + 非对齐     | **是**（v1.1.3 起放宽：连续 + `len >= SIMD_THRESHOLD` 即可进入；`alignment_ok = false` 转为传给 simd 的 unaligned-kernel 提示，由 `08-simd.md §5.7` 决定具体 kernel 选择） | 是（`len >= PARALLEL_THRESHOLD`）            |
+| 非连续            | **否**（连续性仍是 SIMD 准入硬性条件） | 是，但 `len >= 2 * PARALLEL_THRESHOLD`（饱和乘法防溢出） |
 
-**两条规则的差异有意为之：**
+**三条规则的差异有意为之（v1.1.3 起）：**
 
-- **SIMD**：`is_contiguous == false` 或 `alignment_ok == false` 时**直接拒绝**进入 `Simd` 路径——SIMD 后端要求连续 + 对齐，无法通过单纯放宽阈值满足，强行进入会触发 simd 内部回退而吃掉调度开销。
-- **Parallel**：`is_contiguous == false` 时**不拒绝**，但通过**有效阈值翻倍**抑制进入——非连续的并行 worker 仍可执行（只是缓存局部性差），收益曲线由翻倍阈值近似补偿。
+- **SIMD 连续性**：`is_contiguous == false` 时**直接拒绝**进入 `Simd` 路径——SIMD 后端要求连续输入，无法通过单纯放宽阈值满足。
+- **SIMD 对齐**：`alignment_ok == false` 时**不拒绝**进入 `Simd` 路径——`alignment_ok` 仅作为能力提示位透传到 simd 后端，由 `08-simd.md §5.7` 的 admission 规则决定走 aligned 或 unaligned kernel；多数逐元素 kernel 默认接受 unaligned 输入（与 `08-simd.md v2.0.0` 协同）。这是与 v1.1.x 的破坏性差异——v1.1.x 把 alignment 当作硬门槛，会错误关闭合法 unaligned SIMD 路径。
+- **Parallel 非连续**：`is_contiguous == false` 时**不拒绝**，但通过**有效阈值翻倍**抑制进入——非连续的并行 worker 仍可执行（只是缓存局部性差），收益曲线由翻倍阈值近似补偿。
 
 **溢出保护：** `effective_parallel_threshold = base.saturating_mul(2)`。当 `set_parallel_threshold` 被设为接近 `usize::MAX` 的值时，饱和乘法把翻倍结果钉在 `usize::MAX`，从而 `len >= effective` 永不成立——同样落到 `Serial`。这避免任何 wrap-around 导致的非确定性路径选择。
 
@@ -563,9 +585,15 @@ Steps:
               // inside a parallel region. Fall through to SIMD/Serial.
 
     3. // Check SIMD eligibility (no guard involved)
+       //
+       // v1.1.3: alignment_ok is NOT a hard gate here. It is propagated
+       // to the simd backend as a kernel-capability hint; the simd
+       // kernel itself (per 08-simd.md §5.7 admission rules) decides
+       // whether to use aligned or unaligned variants. Most element-wise
+       // kernels accept unaligned input, so forcing alignment here would
+       // wrongly close legal SIMD paths.
        if cfg!(feature = "simd")
           AND is_contiguous
-          AND alignment_ok
           AND len >= get_simd_threshold():
               return (ExecPath::Simd, None)
 
@@ -725,9 +753,19 @@ pub(crate) fn select_exec_path(
     }
 
     // SIMD check: compiled away when feature is absent
+    //
+    // v1.1.3: alignment_ok is consumed by the simd backend as a capability
+    // hint, not as a dispatch-side hard gate. See §5.5 / §5.6.
     #[cfg(feature = "simd")]
     {
-        if is_contiguous && alignment_ok && len >= get_simd_threshold() {
+        if is_contiguous && len >= get_simd_threshold() {
+            // alignment_ok is forwarded to the simd backend (e.g., via a
+            // backend-internal context or directly to the kernel selector);
+            // simd internally decides aligned vs unaligned dispatch per
+            // 08-simd.md §5.7. The exact propagation mechanism is a simd-
+            // backend implementation detail and not part of dispatch's
+            // public surface.
+            let _ = alignment_ok;
             return (ExecPath::Simd, None);
         }
     }
@@ -1193,6 +1231,26 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 ### v1.1.2 (2026-05-03) — Medium documentation follow-up
 
 - Clarified Decision 5: non-contiguous input doubles only the Parallel effective threshold; SIMD rejects non-contiguous input directly.
+
+### v1.1.3 (2026-05-03) — alignment_ok 改为能力提示位 + max_workers 校验集中（破坏性内部更新）
+
+> 本版本与 `08-simd.md v2.0.x` 协同恢复 SIMD admission 职责的正确划分，并把 `ParallelExecStrategy` 的 `max_workers` 校验完整收敛到 dispatch 构造期。所有 API 仍为 `pub(crate)`，对外无 SemVer 影响。
+
+**契约更新**：
+
+- §5.5 / §5.6 / §6.1 / §9.4：`alignment_ok` 不再是 `ExecPath::Simd` 的硬门槛。dispatch 仅检查 `is_contiguous && len >= SIMD_THRESHOLD` 即可推荐 `ExecPath::Simd`；`alignment_ok` 透传给 simd 后端作为能力提示位，由 `08-simd.md §5.7` 的 admission 规则决定具体走 aligned 或 unaligned kernel。这恢复了多数逐元素 unaligned SIMD kernel 的可达性，与 v1.1.x 是破坏性差异。
+- §5.3：`ParallelExecStrategy::new()` 现在在构造期完整校验 `max_workers`：
+  - `Some(0)` → `InvalidArgument`
+  - `Some(n) where n > rayon::current_num_threads()` → `InvalidArgument`
+  - `parallel/` 后端不再返回 `max_workers` 相关的 `InvalidArgument`，统一在 dispatch 内 fail-fast。
+  
+  这与 `09-parallel.md v2.0.0 §5.4` 协同，消除 v1.1.2 文档中"分两层校验"的歧义。
+- §6.1 算法伪代码：Step 3 SIMD 检查从 `if is_contiguous && alignment_ok && len >= SIMD_THRESHOLD` 改为 `if is_contiguous && len >= SIMD_THRESHOLD`；显式 `let _ = alignment_ok;` 表达"作为提示位透传"的意图。
+
+**协同与一致性更新**：
+
+- 该版本是项目 P0 修复任务（C4 + C6）的落地，与 `08-simd.md v2.0.0` / `09-parallel.md v2.0.0` 共同闭环 v2.0 协同。
+- 调用方代码层面无变化：`select_exec_path(len, is_contiguous, alignment_ok)` 签名保持不变；语义变化仅体现在 dispatch 内部对 `alignment_ok` 的处理方式。
 
 ---
 

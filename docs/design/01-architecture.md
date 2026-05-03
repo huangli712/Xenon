@@ -561,6 +561,12 @@ L6  ┌───────────┐
 
 ## 7. prelude.rs 导出清单
 
+> **§7 vs §10 职责区分（v2.0.1 导引）：**
+>
+> - **§7（本节）** 是 `src/prelude.rs` 的 **类型/trait re-export 清单**，回答"`use xenon::prelude::*;` 后用户能直接命名哪些类型与 trait"。它面向"如何把 API 暴露给调用方"。
+> - **§10** 是 **公开方法 / 自由函数 API 权威清单**，按操作族列出 `TensorBase` 固有方法、自由函数、错误契约、双入口策略。它面向"调用方实际能调用哪些 API"。
+> - 两节互补：§7 决定哪些**名字**可见，§10 决定哪些**操作**可调用。跨文档引用 API 清单时应引 §10 而非 §7。
+
 以下为当前实现组织建议，不属于 `需求说明书 §27` 的稳定 API 承诺。
 
 ```rust,ignore
@@ -712,8 +718,8 @@ Xenon 的公开 API 以 `TensorBase` 固有方法为主。以下按类别列出�
 | `ln` | `TensorBase` 固有方法 | 逐元素自然对数 |
 | `floor` | `TensorBase` 固有方法 | 逐元素向下取整 |
 | `ceil` | `TensorBase` 固有方法 | 逐元素向上取整 |
-| `modulus` | `TensorBase` 固有方法 | 逐元素取模 |
-| `conjugate` | `TensorBase` 固有方法 | 逐元素共轭（实数类型为恒等操作；参见 `04-complex.md`） |
+| `modulus` | `TensorBase` 固有方法 | 逐元素取模（**仅 Complex 张量**，返回实数类型；参见 `11-math.md §5.6`） |
+| `conjugate` | `TensorBase` 固有方法 | 逐元素共轭（**仅 Complex 张量**；权威定义见 `11-math.md §5.6` —— 不为实数张量提供 `conjugate()` 公开入口，泛型代码若需统一处理可直接调用 `Numeric::conjugate()` 标量级 trait 方法） |
 
 ### 10.2 逐元素比较（参见 `11-math.md`）
 

@@ -102,18 +102,12 @@ External dependencies:
 ### 5.1 CastTo trait
 
 - `CastTo<T>` trait 的唯一 owner 是 `03-element.md §5.9`。`convert` 模块只消费该 trait，并在受支持的源/目标类型矩阵上提供 `cast()` 路径，不重新定义 trait。
-- `CastElement` 为封闭 trait，下游不得扩展。`bool` 不属于 `CastElement`，因此 `cast::<bool>()` 在编译期被拒绝。
+- `CastElement` 是公开 sealed marker trait，**唯一 owner 是 `03-element.md §5.9.1`**（v2.1.0 协同新增）。`convert` 模块只消费、不重新定义。`bool` 不属于 `CastElement`，因此 `cast::<bool>()` 在编译期被拒绝。封闭实现集合见 `03-element.md §5.9.1`：i32 / i64 / f32 / f64 / Complex<f32> / Complex<f64>。
 
-````rust,ignore
-pub trait CastElement: Element + private::Sealed {}
-
-impl CastElement for i32 {}
-impl CastElement for i64 {}
-impl CastElement for f32 {}
-impl CastElement for f64 {}
-impl CastElement for Complex<f32> {}
-impl CastElement for Complex<f64> {}
-````
+```rust,ignore
+// In `21-type.md`, only consumed via `use crate::element::CastElement;`.
+// See `03-element.md §5.9.1` for the trait definition and impl set.
+```
 
 ### 5.2 cast 方法
 
@@ -741,6 +735,12 @@ User calls cast() / to_owned() / into_owned()
 | 1.2.5 | 2026-04-15 |
 | 1.2.6 | 2026-04-15 |
 | 2.0.0 | 2026-05-02 |
+| 2.1.0 | 2026-05-03 |
+
+### v2.1.0 (2026-05-03) — CastElement owner 协同 + ElementType 重新定位
+
+- §5.1：明确 `CastElement` 的唯一 owner 是 `03-element.md §5.9.1`；本模块只通过 `use crate::element::CastElement;` 消费，不再在本文档中重复展开 trait 定义与 impl 列表（解决 P0 C1 修复任务中的"CastElement owner 缺失"项）。
+- §6.1 / §10：`ElementType` 引用提示更新——v3.1.0 起权威定义在 `26-error.md §5.1`，`crate::element::ElementType` 是通过 `pub use` re-export 的稳定上层路径；本文档示例 `use crate::element::ElementType;` 仍然有效，无需调整使用点。
 
 ### v2.0.0 (2026-05-02) — 错误字段对齐 26-error v3.0.0 + B10.a 决策落地
 

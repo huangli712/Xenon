@@ -69,15 +69,10 @@ src/error.rs
 ├── core::fmt                   # Display implementation
 ├── alloc::borrow::Cow          # Stable identifier-like strings (operation/backend names)
 ├── alloc::boxed::Box           # Source chain for Ffi / Workspace variants
-├── alloc::vec::Vec             # Heap allocation for shape, index fields
-└── crate::element::ElementType # TypeConversion variant element identity (closed enum)
+└── alloc::vec::Vec             # Heap allocation for shape, index fields
 ```
 
-`error.rs` 对 `crate::element::ElementType` 的依赖是“类型标签级”依赖：
-仅引用作为公共封闭枚举的 `ElementType`，不依赖元素 trait 行为；与
-`error → element` 的依赖方向单向，由 `01-architecture.md` L0/L2 层级允许
-（`error` 仍在 L0，`ElementType` 作为 L2 的纯数据枚举被向下引用，不构成
-循环依赖）。
+`ElementType` 枚举本身**定义在本模块**（参见 §5.1），作为 L0 纯数据类型标签使用。`element` 与 `ffi` 通过 `pub use crate::error::ElementType` re-export 到上层稳定路径。这恢复了 `01-architecture.md §5.2` 的 L0..L6 单向依赖：`error`（L0）不再向上引用 `element`（L2）。
 
 ### 4.2 类型级依赖
 
@@ -87,31 +82,26 @@ src/error.rs
 | `alloc::borrow`       | `Cow<'static, str>`（仅用于 `operation` 等稳定标识符字符串）                  |
 | `alloc::boxed`        | `Box<XenonError>`（`Ffi` / `Workspace` 变体的 `cause` 源链字段；递归枚举不能直接包含自身，`Box` 用固定大小指针打断无限大小递归） |
 | `alloc::vec`          | `Vec<usize>`（`shape`、`attempted_index` 等字段）                             |
-| `crate::element`      | `ElementType`（`TypeConversion` 变体的 `source_type` / `target_type`）        |
+
+无对其他 crate 内模块的依赖。
 
 ### 4.3 依赖合法性
 
 | 项目           | 说明                                              |
 | -------------- | ------------------------------------------------- |
 | 新增第三方依赖 | 无新增依赖                                        |
-| 合法性结论     | 符合最小依赖限制                                  |
+| 合法性结论     | 符合最小依赖限制；`error` 严格保持 L0 无内部依赖  |
 | 替代方案       | 不适用；错误模型统一由 crate 内部类型与标准库承载 |
 
 ### 4.4 依赖方向声明
 
-依赖方向：单向向上。`error.rs` 仅依赖标准库 / 核心库类型，以及
-`crate::element::ElementType`（公共封闭枚举，作为类型标签使用，无运行时
-行为依赖）。被所有其他模块消费。
+依赖方向：单向向上。`error.rs` 仅依赖标准库 / 核心库类型，不依赖任何 crate 内部模块。`ElementType` 枚举本身定义在本模块（见 §5.1），通过 `pub use` 由 `element` 与 `ffi` 模块 re-export 到上层稳定路径。
 
-`error → element` 的反向引用受限于以下条件：
+`error` 严格保持 L0 单向依赖（v3.1.0 起）：
 
-- 仅引用 `ElementType` 这一个公共封闭枚举；不引用 `Element` / `Numeric`
-  / `RealScalar` 等 trait
-- `ElementType` 自身在 `03-element.md` 定义为 `#[derive(Copy, Clone,
-  Debug, PartialEq, Eq, Hash)] #[repr(u8)] pub enum`，不依赖 `error`
-  模块
-- 该引用方向不构成循环依赖：`error` 是 L0、`ElementType` 是 L2 的纯
-  数据枚举，使用方向单向（`error` 拉取，`element` 不感知）
+- 不再向上引用 `element` / `complex` / 任何 L1+ 模块
+- `ElementType` 是纯数据枚举（`#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)] #[repr(u8)]`），属于错误诊断元数据而非元素能力，下沉到 L0 是合理职责划分
+- `Element::ELEMENT_TYPE` 关联常量值（如 `ElementType::I32`）所有具体取值都来自本模块的封闭枚举，`element` 模块仅提供 trait bound 与 `ElementType::of::<A>()` 帮助函数（后者作为 `element` 模块的 inherent impl）
 
 ---
 
@@ -125,7 +115,43 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt;
 
-use crate::element::ElementType;
+/// Element type discriminant for FFI consumers and structured diagnostics.
+///
+/// Authoritative definition lives here in the `error` module (L0) so that
+/// `XenonError::TypeConversion` can carry the discriminant without forcing
+/// `error` to depend on `element` (L2). The `element` module re-exports it
+/// via `pub use crate::error::ElementType` and provides the `ElementType::of::<A>()`
+/// inherent impl that requires `A: Element`. The `ffi` module also
+/// re-exports it for C consumers.
+///
+/// Each variant corresponds to one of Xenon's supported tensor element types
+/// (see the requirements specification §4).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum ElementType {
+    Bool,
+    I32,
+    I64,
+    F32,
+    F64,
+    Complex32,
+    Complex64,
+}
+
+impl fmt::Display for ElementType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            ElementType::Bool      => "bool",
+            ElementType::I32       => "i32",
+            ElementType::I64       => "i64",
+            ElementType::F32       => "f32",
+            ElementType::F64       => "f64",
+            ElementType::Complex32 => "Complex<f32>",
+            ElementType::Complex64 => "Complex<f64>",
+        };
+        f.write_str(name)
+    }
+}
 
 /// Unified recoverable error type for all public Xenon APIs.
 #[derive(Debug, Clone, PartialEq)]
@@ -357,7 +383,10 @@ pub enum WorkspaceBorrowState {
 pub enum TypedViewRejection {
     ZeroSizedType,
     AlignmentMismatch { required: usize, actual: usize },
-    LengthNotMultipleOfSize { len_bytes: usize, elem_size: usize },
+    // `LengthNotMultipleOfSize` removed in v3.1.0: `24-workspace.md §5.6` typed
+    // view API only allocates by `count` (computing `count * size_of::<T>()`
+    // internally), it does not reinterpret an arbitrary byte length, so this
+    // variant had no triggering call site.
 }
 
 impl core::fmt::Display for WorkspaceErrorCategory {
@@ -627,7 +656,8 @@ impl std::error::Error for XenonError {
 - `TypeConversion` 必须包含 `operation: Cow<'static, str>` 字段，记录
   触发转换的高层运算名（例如 `"cast"`、`"complex_to_real"`、
   `"infer_dtype_promotion"`），与其他错误变体保持字段一致性
-- 源/目标类型字段使用 `crate::element::ElementType` 公共封闭枚举，
+- 源/目标类型字段使用 `ElementType` 公共封闭枚举（权威定义在本模块 §5.1，
+  `element` 与 `ffi` 通过 `pub use crate::error::ElementType` re-export），
   不使用 `core::any::TypeId`：`ElementType` 是用户可读、可程序化匹配
   的封闭枚举，覆盖所有合法元素类型；`TypeId` 是不透明哈希，无法满足
   “结构化诊断 + 可读 Display”要求
@@ -1141,7 +1171,7 @@ Caller invokes public API (e.g., tensor.broadcast_to(shape))
 | 属性     | 值                                                                                                                                                                |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 决策     | `TypeConversion` 字段改为 `{ operation, source_type: ElementType, target_type: ElementType, reason, element_index? }`，`source_type` / `target_type` 使用元素模块的封闭枚举 |
-| 理由     | (b2) 评审 H-R8 / C23：`TypeId` 是不透明哈希，无法满足结构化诊断 + 可读 Display；`ElementType` 已存在于 `03-element.md` 且覆盖所有合法元素类型；同时补齐 `operation` 字段消除“几乎所有变体都必须携带 operation 但 TypeConversion 例外”的不一致 |
+| 理由     | (b2) 评审 H-R8 / C23：`TypeId` 是不透明哈希，无法满足结构化诊断 + 可读 Display；`ElementType` 是 Xenon 的封闭元素类型枚举（v3.1.0 起权威定义在本模块 §5.1，`element` / `ffi` 通过 `pub use` re-export），覆盖所有合法元素类型；同时补齐 `operation` 字段消除“几乎所有变体都必须携带 operation 但 TypeConversion 例外”的不一致 |
 | 替代方案 | 保留 `TypeId` + 在 Display 时反查类型名 — 放弃，反查机制不存在且 TypeId 不可程序化匹配封闭元素集合                                                                |
 | 替代方案 | 使用字符串类型名 — 放弃，与“结构化诊断”原则冲突                                                                                                                   |
 
@@ -1193,7 +1223,18 @@ Caller invokes public API (e.g., tensor.broadcast_to(shape))
 | 1.1.5 | 2026-04-16 |
 | 2.0.0 | 2026-04-22 |
 | 3.0.0 | 2026-05-02 |
+| 3.0.1 | 2026-05-03 |
+| 3.1.0 | 2026-05-03 |
 
+### v3.1.0 (2026-05-03) — ElementType 下沉到 L0 + OverlapRejected 启用 + LengthNotMultipleOfSize 删除（破坏性内部更新）
+
+> 本版本恢复 `01-architecture.md §5.2` 的 L0..L6 单向依赖，并清理 v3.0 协同期中遗留的两处死变体。公开 `XenonError` 变体名称保持兼容，调用方仅在错误诊断路径才能感知差异。
+
+- §4.1 / §4.4：`error.rs` 不再依赖 `crate::element::ElementType`。`ElementType` 枚举的权威定义下沉到 L0 `error` 模块，`element` 与 `ffi` 通过 `pub use crate::error::ElementType` 暴露上层稳定路径；`ElementType::of::<A>()` 帮助函数因依赖 `A: Element` trait bound，作为 `element` 模块的 inherent impl 留在 `element`。
+- §5.1：`ElementType` 枚举完整定义（含 `Display` impl）出现在本模块，与 `XenonError` 同处一个文件。变体名（`Bool`/`I32`/`I64`/`F32`/`F64`/`Complex32`/`Complex64`）与 `repr(u8)` / derive 集合不变；`Display` 输出格式延续 03-element.md 中的稳定文本（`bool` / `i32` / `i64` / `f32` / `f64` / `Complex<f32>` / `Complex<f64>`）。
+- §5.5 / §11 决策 6：`TypeConversion` 字段引用从 `crate::element::ElementType` 改为本模块 §5.1 的权威定义；语义无变化。
+- C5 协同：`FfiErrorCategory::OverlapRejected { shape, strides }` 由本版本起被 `23-ffi v2.x` 的 `from_raw_parts_mut` 自别名路径正式启用，不再是文档中的死变体（具体修订见 `23-ffi.md` 最新版本）。
+- C11 协同：`WorkspaceErrorCategory::TypedViewRejection::LengthNotMultipleOfSize { len_bytes, elem_size }` 子变体在本版本删除，因为 `24-workspace v2.x` 的 typed view API 仅按 `count` 申请、不存在按字节长度 reinterpret 的路径。
 
 ### v3.0.1 (2026-05-03) — Medium/Low documentation follow-up
 
