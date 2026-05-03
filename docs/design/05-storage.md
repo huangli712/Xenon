@@ -63,7 +63,7 @@ src/storage/
 ├── viewmut.rs         # ViewMutRepr<'a, A> mutable view
 ├── arc.rs             # ArcRepr<A> shared read-only storage
 ├── alloc.rs           # 64-byte aligned allocator
-└── traits.rs          # marker traits such as IsOwned and IsView
+└── traits.rs          # marker traits such as IsOwned / IsView / IsViewMut / IsShared
 ```
 
 多文件目录设计理由：`src/storage/` 按 trait 定义、具体表示、分配器与 marker trait 分层拆分；各文件职责清晰，存储类型之间高度相关但不适合合并，拆分保持可维护性。
@@ -1069,13 +1069,16 @@ pub unsafe trait IsView: RawStorage + crate::private::Sealed {}
 /// Sealed: cannot be implemented outside this crate.
 pub unsafe trait IsViewMut: RawStorage + crate::private::Sealed {}
 
-/// Marker trait for storage types that use Arc sharing.
+/// Marker trait for storage types whose access semantics map to
+/// `StorageKindTag::Shared` (currently backed by `ArcRepr<A>`).
 ///
 /// Sealed: cannot be implemented outside this crate.
-pub unsafe trait IsArc: RawStorage + crate::private::Sealed {}
+pub unsafe trait IsShared: RawStorage + crate::private::Sealed {}
 ```
 
-使用 `crate::private::Sealed` super-bound 防止外部 crate 实现这些 marker trait。`Sealed` trait 本身在 `src/private/mod.rs` 内为 `pub trait Sealed {}`，但只在 crate 内部为我们 4 种实际 storage 类型（`Owned<A>` / `ViewRepr<'a, A>` / `ViewMutRepr<'a, A>` / `ArcRepr<A>`）实现。这一模式与本文档 §5.4 / §5.5 / §5.6 中 `Storage` / `StorageMut` / `StorageOwned` / `StorageShared` 的 sealed pattern 一致。
+> **命名一致性 (R10 B-03 修复)**：marker trait 用 `IsShared` 而**不是** `IsArc`，与公开抽象模式 `StorageKindTag::Shared` 与 `StorageKind::Shared` 严格一致；`Arc` / `ArcRepr` 仅作为具体内部 backing representation 类型名出现，不进入抽象模式术语。
+
+使用 `crate::private::Sealed` super-bound 防止外部 crate 实现这些 marker trait。`Sealed` trait 本身在 `src/private/mod.rs` 内为 `pub trait Sealed {}`，但只在 crate 内部为我们 4 种实际 storage 类型（`Owned<A>` / `ViewRepr<'a, A>` / `ViewMutRepr<'a, A>` / `ArcRepr<A>`）实现，分别对应 `IsOwned` / `IsView` / `IsViewMut` / `IsShared`。这一模式与本文档 §5.4 / §5.5 / §5.6 中 `Storage` / `StorageMut` / `StorageOwned` / `StorageShared` 的 sealed pattern 一致。
 
 ### 6.9 `as_ptr()` / 空张量偏移规则
 
@@ -1231,7 +1234,7 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 
 - [ ] **T12**: 实现 `traits.rs` marker traits
   - 文件: `src/storage/traits.rs`
-  - 内容: `IsOwned`/`IsView`/`IsViewMut`/`IsArc`，Sealed trait 模式，各存储类型的实现
+  - 内容: `IsOwned`/`IsView`/`IsViewMut`/`IsShared`，Sealed trait 模式，各存储类型的实现（`IsShared` 由 `ArcRepr<A>` impl，对应 `StorageKindTag::Shared`；R10 B-03 修复：`IsArc` 重命名为 `IsShared` 与公开抽象模式术语一致）
   - 测试: `test_marker_traits`
   - 前置: T8, T9, T10, T11
   - 预计: 10 min

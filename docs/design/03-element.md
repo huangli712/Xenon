@@ -900,7 +900,7 @@ impl RealScalar for f64 {
   - 预计: 10 min
 
 - [ ] **T12**: 集成测试（跨模块交互验证）
-  - 文件: element 内部单元测试 + doctest，跨模块协同覆盖经由 `tests/test_tensor.rs` / `tests/test_math.rs` / `tests/test_reduction.rs` / `tests/test_convert.rs` 等已存在的集成测试间接验证（与 `28-tests.md §9.2` 覆盖映射一致；**不**新增独立 `tests/test_element.rs`）
+  - 文件: element 内部单元测试 + doctest，跨模块协同覆盖经由 `tests/test_tensor.rs` / `tests/test_math.rs` / `tests/test_reduction.rs` / `tests/test_conversion.rs` 等已存在的集成测试间接验证（与 `28-tests.md §9.2` 覆盖映射一致；**不**新增独立 `tests/test_element.rs`）
   - 内容: 各类型各层 trait 的完整性验证
   - 测试: 见测试计划 §8
   - 前置: T10, T11
@@ -915,7 +915,7 @@ impl RealScalar for f64 {
 | 测试分类 | 位置                      | 说明                                       |
 | -------- | ------------------------- | ------------------------------------------ |
 | 单元测试 | `#[cfg(test)] mod tests`  | 验证各 trait 和基础类型实现                |
-| 集成测试 | `tests/test_tensor.rs` / `tests/test_math.rs` / `tests/test_reduction.rs` / `tests/test_convert.rs` | 通过张量/数学/归约/转换层间接验证 element 协同路径（**不**新增独立 `tests/test_element.rs`，与 `28-tests.md §9.2` 一致） |
+| 集成测试 | `tests/test_tensor.rs` / `tests/test_math.rs` / `tests/test_reduction.rs` / `tests/test_conversion.rs` | 通过张量/数学/归约/转换层间接验证 element 协同路径（**不**新增独立 `tests/test_element.rs`，与 `28-tests.md §9.2` 一致） |
 | 边界测试 | 同模块测试中标注          | 覆盖 NaN/Inf、bool 限制与 sealed 行为      |
 | 属性测试 | 同模块单元测试 / `tests/property_tests.rs` | 验证零元、单位元与数学函数不变量（不依赖独立 `test_element.rs`） |
 
@@ -971,8 +971,9 @@ impl RealScalar for f64 {
 | ------------------------ | ---------------------------------------------------------------------- |
 | `tests/test_tensor.rs`   | `Element` / `Numeric` bound 在张量构造、`storage_kind`、`access_semantics` 等路径上 |
 | `tests/test_math.rs`     | `RealScalar` / `ComplexScalar` 数学函数语义                            |
-| `tests/test_reduction.rs`| 元素类型与归约结果类型协同（`Numeric` bound 在 sum / mean / dot 等路径） |
-| `tests/test_convert.rs`  | `CastElement` 在 cast 路径上的 6×6 矩阵覆盖                            |
+| `tests/test_reduction.rs`| 元素类型与归约结果类型协同（`Numeric` bound 在 sum 路径；当前 reduction 仅 sum，dot/matmul 在 matrix 测试覆盖） |
+| `tests/test_matrix.rs`   | dot / matmul 中 `Numeric` bound 协同路径                               |
+| `tests/test_conversion.rs` | `CastElement` 在 cast 路径上的 6×6 矩阵覆盖（文件名与 `01-architecture.md §3` ./tests 目录树严格一致） |
 
 ### 8.6 Feature gate / 配置测试
 

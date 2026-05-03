@@ -617,8 +617,8 @@ impl std::error::Error for XenonError {
 | 有符号整数算术溢出 / 除以零       | panic                                        | 仅适用于 `i32` / `i64`，见需求说明书  |
 | 有符号整数算术结果不可表示        | panic                                        | 仅适用于 `i32` / `i64`，见需求说明书  |
 | `sqrt(negative)`                  | IEEE 754 返回 `NaN`，不得 panic              | `f32` / `f64` 数学域边界              |
-| `ln(negative)`                    | IEEE 754 返回 `NaN` / `-Inf`，不得 panic     | `f32` / `f64` 数学域边界              |
-| `ln(0)`                           | IEEE 754 返回 `NaN` / `-Inf`，不得 panic     | `f32` / `f64` 数学域边界              |
+| `ln(negative)`                    | IEEE 754 返回 `NaN`，不得 panic              | `f32` / `f64` 数学域边界              |
+| `ln(0)`                           | IEEE 754 返回 `-Inf`，不得 panic             | `f32` / `f64` 数学域边界              |
 
 ### 5.3 安全 API 的 panic 边界
 

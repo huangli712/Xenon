@@ -196,18 +196,18 @@ pub fn sequential_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 
 /// Generate a truly non-contiguous 1D view from an F-order 2D owner.
 /// NOTE: The slice construction below uses pseudo-code; actual API shape
-/// must follow `17-indexing.md v2.0.0` frozen interface at implementation time.
+/// must follow `17-indexing.md v3.0.1` frozen interface at implementation time.
 pub struct StridedFixture1D {
     pub owner: Tensor2<f64>,
 }
 
 impl StridedFixture1D {
     /// Returns a non-contiguous view by taking a row slice of the F-order 2D owner.
-    /// Actual slicing API follows `17-indexing.md v2.0.0`; the expression below
+    /// Actual slicing API follows `17-indexing.md v3.0.1`; the expression below
     /// is illustrative and must be adapted to the final slice syntax at
     /// implementation. `SliceInfo::new` performs structural validation only;
     /// shape-aware bounds checking happens inside `TensorBase::slice` (see
-    /// 17-indexing v2.0.0 §5.1 and decision 3 / B9.a).
+    /// 17-indexing v3.0.1 §5.1 and decision 3 / B9.a).
     pub fn view(&self) -> TensorView1<'_, f64> {
         // Illustrative: take row 1 from the F-order 2D owner, yielding a
         // non-contiguous 1D view with stride == ncols (not 1).
@@ -303,7 +303,7 @@ Benchmark categories
 | `broadcast_with`           | 双张量广播协作          | S/M/L | f64            | F-contiguous   | broadcast_with 协作模式（参见 `15-broadcast.md §5`） |
 | `transpose_2d`             | 2D 转置（零拷贝）       | S/M/L | f64            | F-contiguous   | 转置视图创建                                    |
 | `simd_add_compare`         | `a + b` (SIMD vs 标量)  | M     | f32/f64        | F-contiguous   | SIMD 加速比（参见 `08-simd.md §12`）            |
-| `simd_sum_compare`         | sum (SIMD vs 标量)      | M     | i32/f32/f64    | F-contiguous   | SIMD sum 对比；i32 覆盖已验证启用的 widening 路径（参见 `08-simd.md §5.6`），f32/f64 覆盖已实现路径  |
+| `simd_sum_compare`         | sum (SIMD vs 标量)      | M     | i32/f32/f64    | F-contiguous   | SIMD sum 对比；i32 覆盖整数 admission / scalar fallback 路径（仅在已验证 widening kernel 存在时记录 SIMD vs 标量对比，否则记录 fallback 等价路径；参见 `08-simd.md §5.6` 的"条件实现，默认标量回退"约定），f32/f64 覆盖已实现 SIMD 路径  |
 | `simd_dot_compare`         | dot (SIMD vs 标量)      | M     | f32/f64        | F-contiguous   | SIMD dot kernel 已在 `08-simd.md` 中设计        |
 | `par_sum_compare`          | sum (并行 vs 串行)      | L     | i64            | F-contiguous   | 并行加速比（参见 `09-parallel.md §12`）         |
 | `par_add_compare`          | `a + b` (并行 vs 串行)  | L     | f64            | F-contiguous   | 并行逐元素加速                                  |

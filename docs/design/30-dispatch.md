@@ -531,11 +531,11 @@ dispatch 持有的阈值适用于**所有操作类型**的统一入口裁决。�
 | 内积 `dot`     | `f32` / `f64`                   |    65536     |     512       | 同归约                                 |
 | 内积 `dot`     | `i32` / `i64`                   |    65536     |     256       | 同归约                                 |
 
-**调用方-dispatch-后端的阈值分工：**
+**调用方-dispatch-后端的阈值分工（v2.0.x 锁定，与 §5.6 / §9.4 + `08-simd.md §5.6` 一致）：**
 
-- **dispatch 持有**：通用最小阈值（`PARALLEL_THRESHOLD`、`SIMD_THRESHOLD`），用于"是否值得进入非标量路径"的粗粒度裁决。
-- **调用方持有**：操作 + 元素类型特定的阈值（如归约 `sum_f64` 的 SIMD 阈值 1024）。调用方在调用 `select_exec_path()` 之前可自行 gating——若 `len` 不满足自己的最小要求，可直接走 `Serial` 而不调用 dispatch。
-- **`simd/` 后端持有**：lane 宽度、ISA 可用性、操作覆盖矩阵等最终准入条件。`simd/` 在 `ExecPath::Simd` 被选中后做最终二次检查；不通过时内部回退标量。
+- **dispatch 持有**：通用最小阈值（`PARALLEL_THRESHOLD`、`SIMD_THRESHOLD`），用于"是否值得进入非标量路径"的粗粒度裁决。调用方仍走完整三路 dispatch（`Serial / Simd / Parallel`），不在 dispatch 之前自行裁决 `Serial` 短路。
+- **调用方持有**：通用元数据（`len` / `is_contiguous` / `alignment_ok`）传入；调用方**不**持有 op-/element-type-specific 阈值，**不**在调用 `select_exec_path()` 之前 gating。
+- **`simd/` 后端持有**：op-/element-type-specific 阈值（如归约 `sum_f64` 的 SIMD 准入阈值 1024）、lane 宽度、ISA 可用性、操作覆盖矩阵等最终准入条件。`simd/` 在 `ExecPath::Simd` 被选中后执行**最终二次 admission**——通过则走 SIMD kernel，不通过则内部回退标量。这与 `08-simd.md §5.6` "条件实现，默认标量回退" 与本文 §9.4 "simd 持有最终 admission" 严格一致。
 
 非连续与对齐处理见 §5.6。
 

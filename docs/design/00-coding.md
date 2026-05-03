@@ -480,7 +480,7 @@ pub struct Bad<A> {
 
 **关键约束**：`ViewMutRepr` 永远不实现 `Sync`——独占借用语义要求同一时刻只有一个线程可访问。
 
-Send/Sync 的唯一权威定义见 `25-safety.md v2.0.0 §5.1`。`ArcRepr<A>` 的 Send 与 Sync 均要求 `A: Send + Sync`。
+Send/Sync 的唯一权威定义见 `25-safety.md v2.0.1 §5.1`。`ArcRepr<A>` 的 Send 与 Sync 均要求 `A: Send + Sync`。
 
 ```rust,ignore
 // Owned: Send+Sync when A: Send+Sync
@@ -1218,7 +1218,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 - 增加 §1.3 协同基线，明确本文档依据的下游设计文档版本。
 - 对齐 `26-error.md v3.2.0 §5.1`：`operation` 使用 `Cow<'static, str>`，构造示例使用 `Cow::Borrowed("...")`；`TypeConversion` 五字段（`source_type` / `target_type` 为 `&'static str`，值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供）；`Ffi` 四字段、`FfiBackend`、`FfiErrorCategory` 八子变体、`Workspace` 三字段、`WorkspaceErrorCategory` 七子变体（含 `TypedViewRejected::TypedByteLengthOverflow`）、`StorageKindTag` 字段形态同步。
-- 对齐 `17-indexing.md v2.0.0`：公开安全索引收敛为 `try_at` / `try_at_mut`，并明确不实现 `std::ops::Index` / `IndexMut`；示例不使用 `tensor[...]`。
+- 对齐 `17-indexing.md v3.0.1`：公开安全索引收敛为 `try_at` / `try_at_mut`，并明确不实现 `std::ops::Index` / `IndexMut`；示例不使用 `tensor[...]`。
 - 对齐 `18-construction.md v2.0.0`：`from_shape_vec` 元素数错误使用 `InvalidShapeKind::ElementCountMismatch { expected, actual }`；`zeros` / `ones` 使用 `<Owned<A> as StorageOwned>::from_elem(len, value)`。
 - 对齐 `19-overload.md v2.0.0` 与 `21-type.md v2.0.0`：运算符输出为 `Result<Tensor<_, _>, XenonError>`；同形状使用 `a + b`，可能广播路径使用 `a.add(&b)?`；类型转换分为 `From` / `CastTo<T>`；左标量使用 `Scalar<A>`。
 - 对齐 `05-storage.md v2.0.0`、`06-layout.md v1.3`、`24-workspace.md v2.0.0`、`25-safety.md v2.0.0`：补充 `deep_clone`、`Owned::into_shared`、`ViewRepr` 生成规则、`LayoutState`、`HAS_ZERO_STRIDE`、workspace 可变借用签名与 Send/Sync 权威边界。

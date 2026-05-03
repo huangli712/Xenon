@@ -372,7 +372,13 @@ TensorBase::slice(info):
 - `Index(usize)` 会折叠对应轴并以 checked arithmetic 累加 offset；任一 checked_mul / checked_add 溢出返回 `XenonError::InvalidLayout { reason: AccessRangeExceedsStorage, .. }`（参见 26-error v3.0.0 §5.1 `InvalidLayoutReason`）。
 - `Range` 会按起止边界更新 shape；对应轴的 stride 值保持不变。
 - 切片结果与源张量共享底层数据时，仅可落在只读或共享只读范围内，不提供共享可写视图。
-- **存储表示绝对降级：** 范围索引/切片产出的张量始终承载 `ViewRepr<'a, A>`，与 `15-broadcast.md §6.4` 的广播降级规则、`16-shape.md §5.3` 的转置降级规则保持一致（统一规则见 `05-storage.md v2.0.0 §5.11.1`）。无论源张量是 `Owned<A>`、`ArcRepr<A>`、`ViewRepr<'_, A>` 还是 `ViewMutRepr<'_, A>`，切片产出的视图均为 `ViewRepr<'a, A>`（生命周期绑定源张量），不保留 `ArcRepr` 的引用计数共享所有权语义。`access_semantics()` 视布局是否含零步长决定返回 `ReadOnly` 或 `SharedReadOnly`（见 `07-tensor.md §5.3`）。
+- **存储表示绝对降级：** 范围索引/切片产出的张量始终承载 `ViewRepr<'a, A>`，与 `15-broadcast.md §6.4` 的广播降级规则、`16-shape.md §5.3` 的转置降级规则保持一致（统一规则见 `05-storage.md v2.0.0 §5.11.1`）。无论源张量是 `Owned<A>`、`ArcRepr<A>`、`ViewRepr<'_, A>` 还是 `ViewMutRepr<'_, A>`，切片产出的视图均为 `ViewRepr<'a, A>`（生命周期绑定源张量），不保留 `ArcRepr` 的引用计数共享所有权语义。
+- **`derived_from_view_mut` 传播规则（v3.0.2）：** 切片结果的私有内部字段 `derived_from_view_mut: bool`（参见 `07-tensor.md §5.1` / §5.3）按以下规则设置：
+  1. 源 `storage_kind() == StorageKind::ViewMut` → 切片结果设置 `derived_from_view_mut = true`（即使切片本身没有零步长轴）；
+  2. 源 `storage_kind() == StorageKind::View` 且源 `derived_from_view_mut == true` → 切片结果继承 `derived_from_view_mut = true`；
+  3. 其他所有情形（源为 `Owned` / `Shared` / `View` 且未带降级标记） → 切片结果 `derived_from_view_mut = false`。
+  
+  `access_semantics()` 的判定**不仅看零步长**，必须按 `07-tensor.md §5.3` 的完整 5-rule 表（结合 `storage_kind()` + `layout_flags().has_zero_stride()` + `derived_from_view_mut`）。如果只看零步长，从可写视图切片得到的普通 contiguous 只读视图会被误报为 `ReadOnly`，违反"由 ViewMut 降级而来的共享只读视图"的语义边界。
 - 布局状态只能重新落在 `FContiguous`、`NonContiguous`、`BroadcastView` 三种之一。
 
 **offset 单位：** 本模块中所有 `offset` 字段一律是元素单位（element-count），不是字节单位。指针算术 `self.as_ptr().add(offset)` 对 `*const A` 调用 `add(n: usize)` 时，自动按 `size_of::<A>()` 字节换算，由 Rust 标准库 pointer 类型保证；本模块直接传 element offset 即可。该 `add` 调用必须位于已完成 shape-aware bounds 校验与 checked offset 算术验证之后的 unsafe block 中。

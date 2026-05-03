@@ -358,7 +358,35 @@ where
 ### 5.6 内部构造辅助边界
 
 - `cast()` / `to_owned()` 在实现上可以复用张量或存储层的内部构造 helper，但这些 helper 的命名、文件布局、是否存在 unchecked 变体以及具体对齐策略，都不属于 convert 模块的稳定文档面。
-- `cast()` / `to_owned()` 通过 `pub(crate)` 内部 helper 从已验证的 shape/data 长度构造 owned 结果。该 helper 形态如 `from_shape_vec_aligned_unchecked`，**是 `pub(crate) unsafe fn`**（不是 safe 函数）；调用点必须用 `unsafe { ... }` 块包裹，且每个调用点必须挂 `// SAFETY: ...` 注释说明 `shape` 已验证元素总数等于 `data.len()`、由 `shape` 推导出的 F-order 元数据在当前版本范围内合法（无 stride 溢出、无 offset 越界、无非法零步长来源）。
+- `cast()` / `to_owned()` 通过 `pub(crate)` 内部 helper 从已验证的 shape/data 长度构造 owned 结果。该 helper 名为 `from_shape_vec_aligned_unchecked`，**是 `pub(crate) unsafe fn`**（不是 safe 函数）；调用点必须用 `unsafe { ... }` 块包裹，且每个调用点必须挂 `// SAFETY: ...` 注释说明 `shape` 已验证元素总数等于 `data.len()`、由 `shape` 推导出的 F-order 元数据在当前版本范围内合法（无 stride 溢出、无 offset 越界、无非法零步长来源）。
+
+  规范签名（被 `25-safety.md §5.12.1` 索引引用）：
+
+  ```rust,ignore
+  impl<A, D> Tensor<A, D>
+  where
+      A: Element,
+      D: Dimension,
+  {
+      /// Internal `unsafe` constructor: build an Owned tensor from a fully
+      /// validated `(shape, data)` pair, using Xenon's canonical aligned
+      /// allocation path (`Owned::from_vec_aligned`) and canonical packed
+      /// F-order strides. Performs NO `Result`-returning validation.
+      ///
+      /// # Safety
+      /// - `data.len() == shape.checked_size()` (caller-proved; no overflow check)
+      /// - `shape` representable in `D`
+      /// - F-order strides derived from `shape` are representable
+      /// - The default packed F-order layout matches `需求说明书 §7`
+      ///
+      /// Used by `cast()` / `to_owned()` / `into_owned()` after they have
+      /// already proved length / shape consistency at the call site.
+      pub(crate) unsafe fn from_shape_vec_aligned_unchecked(
+          shape: D,
+          data: Vec<A>,
+      ) -> Tensor<A, D>;
+  }
+  ```
 - helper 名称中的 `unchecked` 严格表示"跳过可由调用方安全封装重复检查的 metadata 校验"，**不**表示"内部实现可放任任意输入"——任何错误的 `(shape, data.len())` 配对仍会构成 UB。底层使用哪一种分配器或对齐值，不应写入该 safety 契约（这部分由 storage 层的 `Owned::from_vec_aligned` 自行决定）。
 - 之所以让 helper 保留 `unsafe` 而不是把它做成 safe 函数（再在内部 panic 检查），是为了让 `cast()` / `to_owned()` 的 infallible 签名真正零额外检查开销；safe wrapper 路径已由 `Tensor::from_shape_vec` 提供（fallible，返回 `Result`）。
 
@@ -851,7 +879,7 @@ User calls cast() / to_owned() / into_owned()
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `cast()` 在有损转换、虚部非零或其他规则不满足时返回 `XenonError::TypeConversion { operation: Cow::Borrowed("cast"), source_type: &'static str, target_type: &'static str, reason: ConversionFailureReason, element_index: Some(usize) }`（字段定义见 `26-error.md v3.2.0 §5.1`）。源/目标类型字段为 `&'static str`，值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供（`03-element.md §5.1.1`），**不**使用 `core::any::TypeId`，**也不**直接持有 `ElementType` 枚举值。`element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引；`CastTo::cast_to()` 自身不知道线性索引，因此其返回的错误中 `operation` 留空、`element_index` 为 `None`，由 `cast()` 在 `map_err` 中注入正确值（见 §5.2 实现）。 |
+| Recoverable error | `cast()` 在有损转换、虚部非零或其他规则不满足时返回 `XenonError::TypeConversion { operation: Cow::Borrowed("cast"), source_type: &'static str, target_type: &'static str, reason: ConversionFailureReason, element_index: Some(usize) }`（字段定义见 `26-error.md v3.2.0 §5.1`）。源/目标类型字段为 `&'static str`，值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供（`03-element.md §5.1.1`），**不**使用 `core::any::TypeId`，**也不**直接持有 `ElementType` 枚举值。`element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引；`CastTo::cast_to()` 自身不知道线性索引，因此其返回的错误中 `operation = Cow::Borrowed("cast_to")`（**稳定非空操作名**，与 `26-error.md §8.2` `test_type_conversion_carries_operation` 的非空契约一致；空字符串被禁止，参见 §6.1 / `04-complex.md §10`），`element_index` 为 `None`，由 `cast()` 在 `map_err` 中将 `operation` 覆盖为 `Cow::Borrowed("cast")` 并注入实际索引（见 §5.2 实现）。 |
 | Panic | 公开转换 API 不定义额外 panic 语义；有损场景统一返回可恢复错误。 |
 | 路径一致性 | `cast`、`to_owned`、`into_owned` 必须保持相同 shape 与逻辑元素顺序；其中 `to_owned` / `into_owned` 的 owned 结果固定为 canonical F-order。无 SIMD / 并行分支。 |
 | 容差边界 | 不适用。 |

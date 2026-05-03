@@ -449,16 +449,17 @@ Element-wise operation flow
 └─────────────────────────┬───────────────────────────────────────┘
                           │
                           ▼
-                 ┌─────────────────┐
-                 │ SIMD main loop  │
-                 │ width = S::len()│
-                 │ for chunk:      │
-                 │   load + op +   │
-                 │   store         │
-                 ├─────────────────┤
-                 │ Scalar tail     │
-                 │ [chunks*W..N)   │
-                 └─────────────────┘
+                 ┌──────────────────────────┐
+                 │ SIMD main loop           │
+                 │ (body, tail) = simd      │
+                 │   .f32s_as_simd(slice)   │
+                 │ for v in body:           │
+                 │   simd.f32s_add(...)     │
+                 ├──────────────────────────┤
+                 │ Scalar tail              │
+                 │ for x in tail:           │
+                 │   scalar fallback        │
+                 └──────────────────────────┘
 ```
 
 #### 5.8.2 归约运算（sum）

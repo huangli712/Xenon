@@ -167,11 +167,35 @@ pub struct TensorBase<S, D> {
     /// Layout flags (u8 bitflags).
     ///
     /// Caches contiguity, alignment, and zero-stride info for O(1) queries.
+    /// Authoritative bit set: `F_CONTIGUOUS / ALIGNED / HAS_ZERO_STRIDE`
+    /// (see `06-layout.md §5.1`); `compute_layout_flags(shape, strides, ptr)`
+    /// is the unique authoritative entry. This field never carries
+    /// derivation-source markers — those live in `derived_from_view_mut`
+    /// below to keep `LayoutFlags` orthogonal to construction provenance.
     flags: LayoutFlags,
+
+    /// Internal 1-bit marker: was this tensor produced by demoting a
+    /// `ViewMutRepr` to a read-only `ViewRepr` (e.g., via `view_mut().view()`)?
+    ///
+    /// **Visibility:** private; no public getter / setter. Read internally by
+    /// `access_semantics()` (see §5.3 rule (3)). Set internally only by the
+    /// downgrade paths (`ViewMutRepr::view()`, `ViewMutRepr::view_mut()` chained
+    /// reborrows, slicing routes that demote `ViewMut` source — see §6.3 of
+    /// `17-indexing.md`); all other construction paths leave it `false`.
+    ///
+    /// This is a **separate** field from `LayoutFlags`: it carries
+    /// construction-provenance information, not layout geometry. Reusing a
+    /// `LayoutFlags` reserved bit would conflate the two concerns and break
+    /// `compute_layout_flags` as the unique authoritative entry for layout-derived
+    /// state (`06-layout.md §5.1 / §5.3 / §5.12`). Implementations MAY pack this
+    /// bool with other private internal bools (e.g., via a private
+    /// `#[repr(transparent)]` byte) to avoid padding waste, provided the
+    /// semantic boundary against `LayoutFlags` is preserved.
+    derived_from_view_mut: bool,
 }
 ```
 
-- `TensorBase` 直接嵌入 `offset` 和 `flags` 字段。这是因为 `offset` 与存储指针配合进行偏移计算，属于张量实例的固有属性。
+- `TensorBase` 直接嵌入 `offset` / `flags` / `derived_from_view_mut` 字段。这是因为 `offset` 与存储指针配合进行偏移计算，`flags` 缓存布局信息，`derived_from_view_mut` 跟踪 ViewMut 降级来源，三者都属于张量实例的固有属性。
 - `TensorBase` 不对外承诺稳定的结构体内存布局，也不作为 FFI 边界类型。FFI 消费者应优先使用 `23-ffi.md` 的 `TensorExport`，而非直接依赖 `TensorBase` 的字段顺序或 ABI 表示。
 - `from_raw_parts*()` 系列中的 `ptr` 一律表示 storage base pointer，`offset` 一律表示从 storage base 到逻辑首元素的非负位移。`TensorBase::as_ptr()` / `TensorBase::as_mut_ptr()` 负责应用这一次偏移。`ffi` 文档中的示例与 Safety 说明必须遵循同一语义。
 
@@ -601,9 +625,15 @@ where
     /// level (private fields are bypassed), not a recoverable error.
     ///
     /// This helper exists so that constructor-module call sites do not write
-    /// `TensorBase { storage, shape, strides, offset, flags }` directly,
-    /// keeping `pub(crate)` field access localized to one named entry point
-    /// and providing a single grep target for tensor construction tracing.
+    /// `TensorBase { storage, shape, strides, offset, flags, derived_from_view_mut }`
+    /// directly, keeping `pub(crate)` field access localized to one named entry
+    /// point and providing a single grep target for tensor construction tracing.
+    /// All non-downgrade construction paths (`zeros`, `ones`, `from_shape_vec`,
+    /// `from_scalar`, broadcast, transpose, slicing of non-`ViewMut` sources,
+    /// `from_raw_parts*`) MUST pass `derived_from_view_mut: false`; the only
+    /// callers that pass `true` are the `ViewMutRepr` → `ViewRepr` downgrade
+    /// paths in §6 of this doc and the slicing-from-`ViewMut` route in
+    /// `17-indexing.md §6.3`.
     ///
     /// # Safety
     /// - `shape`, `strides`, `offset`, and `flags` must be mutually
@@ -620,21 +650,28 @@ where
     ///   `strides`, the value of `flags` must reflect that (the caller
     ///   should use `compute_layout_flags` rather than fabricating bits
     ///   manually)
+    /// - `derived_from_view_mut` semantics: the caller must pass `true`
+    ///   ONLY when this tensor is a `ViewRepr` produced by demoting a
+    ///   `ViewMutRepr` source (see §5.3 rule (3) for the
+    ///   `access_semantics()` consequence); for the `Owned`-specialized
+    ///   form, the caller MUST pass `false` (Owned tensors never carry
+    ///   downgrade provenance)
     pub(crate) unsafe fn new_unchecked(
         storage: Owned<A>,
         shape: D,
         strides: Strides<D>,
         offset: usize,
         flags: LayoutFlags,
+        derived_from_view_mut: bool,
     ) -> Self {
-        // No revalidation; all four metadata items are caller-proved.
+        // No revalidation; all five metadata items are caller-proved.
         // This is the Owned-specialized form; the generic form for
         // `S: RawStorage` lives below as `TensorBase::<S, D>::new_unchecked`
         // and is the canonical entry point for View / ViewMut / Arc paths.
         // Both forms are `unsafe fn` because the # Safety contract above
         // promises UB on metadata mismatch (caller-proved invariants); the
         // signature must match the documented hazard.
-        TensorBase { storage, shape, strides, offset, flags }
+        TensorBase { storage, shape, strides, offset, flags, derived_from_view_mut }
     }
 }
 
@@ -650,22 +687,27 @@ where
     /// `view()` / `view_mut()`) when shape, strides, storage, and flags
     /// have already been produced by their authoritative `Result`-returning
     /// helpers. Same safety contract as the `Owned`-specialized form
-    /// above; see that doc comment for the full SAFETY contract.
+    /// above; see that doc comment for the full SAFETY contract, including
+    /// the `derived_from_view_mut` rules.
     ///
     /// # Safety
     /// Same as the `Owned`-specialized variant: shape, strides, offset,
     /// and flags must be mutually consistent (flags produced by
     /// `compute_layout_flags::<A, D>` for the same shape/strides/storage_ptr
     /// pair); the logical access range must lie within `storage`; shape
-    /// product must already be overflow-checked.
+    /// product must already be overflow-checked. `derived_from_view_mut`
+    /// must be `true` ONLY for `ViewRepr` results downgraded from a
+    /// `ViewMutRepr` source (or sliced from a source that itself had
+    /// `derived_from_view_mut == true`); `false` for all other paths.
     pub(crate) unsafe fn new_unchecked(
         storage: S,
         shape: D,
         strides: Strides<D>,
         offset: usize,
         flags: LayoutFlags,
+        derived_from_view_mut: bool,
     ) -> Self {
-        TensorBase { storage, shape, strides, offset, flags }
+        TensorBase { storage, shape, strides, offset, flags, derived_from_view_mut }
     }
 }
 ````
@@ -1272,7 +1314,7 @@ Logical view:
 
 - [ ] **T2**: 定义 `TensorBase<S, D>` 结构体
   - 文件: `src/tensor/mod.rs`
-  - 内容: 结构体定义，5 个字段：storage、shape、strides、offset、flags
+  - 内容: 结构体定义，6 个字段：storage、shape、strides、offset、flags、derived_from_view_mut（最后一个为私有 1-bit ViewMut→View 降级来源标记，仅由 view_mut().view() / 内部切片降级路径设置；详见 §5.1 / §5.3）
   - 测试: 结构体编译通过
   - 前置: T1
   - 预计: 10 min
@@ -1713,7 +1755,7 @@ TensorBase<S, D>
 
 - Replaced the checked-size unwrap safety-text example with a reference to the previously validated element count.
 - Clarified that construction uses a `pub(crate)` tensor-internal constructor rather than cross-module struct literal access to private fields.
-- §5.6 actually introduced `pub(crate) unsafe fn TensorBase::new_unchecked(storage, shape, strides, offset, flags) -> Self` (Owned-specialized + generic `S: RawStorage` forms; both `unsafe fn` because the # Safety contract documents UB on metadata mismatch) as the named entry point for that contract; `18-construction.md §5.1` / `§5.3` / `§5.4` route every construction site through it inside `unsafe { ... }` blocks with `// SAFETY:` comments, so private-field access is localized to one grep target.
+- §5.6 actually introduced `pub(crate) unsafe fn TensorBase::new_unchecked(storage, shape, strides, offset, flags, derived_from_view_mut) -> Self` (Owned-specialized + generic `S: RawStorage` forms; both `unsafe fn` because the # Safety contract documents UB on metadata mismatch) as the named entry point for that contract; `18-construction.md §5.1` / `§5.3` / `§5.4` route every construction site through it inside `unsafe { ... }` blocks with `// SAFETY:` comments, so private-field access is localized to one grep target. All non-downgrade construction sites pass `derived_from_view_mut: false`; only the `ViewMutRepr` → `ViewRepr` downgrade routes pass `true` (see §5.3 + `17-indexing.md §6.3`).
 - Polished punctuation and numeric formatting in constructor and boundary-test prose.
 
 ### 2.0.0 (SemVer breaking)

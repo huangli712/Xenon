@@ -189,7 +189,8 @@ where
         // same dim/strides/storage pair; `offset = 0`; `storage` length =
         // `len = dim.checked_size()?`. Logical access range == [0, len) within
         // storage. All `# Safety` invariants of `new_unchecked` are satisfied.
-        Ok(unsafe { TensorBase::new_unchecked(storage, dim, strides, 0, flags) })
+        // `derived_from_view_mut: false` — `zeros` is not a downgrade path.
+        Ok(unsafe { TensorBase::new_unchecked(storage, dim, strides, 0, flags, false) })
     }
 
     /// Create a tensor filled with ones (F-order).
@@ -215,7 +216,8 @@ where
         // `pub(crate)` constructor `TensorBase::new_unchecked`.
         // SAFETY: same invariants as `zeros` above (dim/strides/flags/offset
         // mutually consistent; storage length = checked_size; offset 0).
-        Ok(unsafe { TensorBase::new_unchecked(storage, dim, strides, 0, flags) })
+        // `derived_from_view_mut: false` — `ones` is not a downgrade path.
+        Ok(unsafe { TensorBase::new_unchecked(storage, dim, strides, 0, flags, false) })
     }
 }
 ```
@@ -366,7 +368,8 @@ where
         // `flags` from `compute_layout_flags(&dim, &strides, storage.as_ptr())`;
         // `data.len() == dim.checked_size()?` already enforced via
         // ElementCountMismatch check; `offset = 0`; logical access range fits.
-        Ok(unsafe { TensorBase::new_unchecked(storage, dim, strides, 0, flags) })
+        // `derived_from_view_mut: false` — `from_shape_vec` is not a downgrade path.
+        Ok(unsafe { TensorBase::new_unchecked(storage, dim, strides, 0, flags, false) })
     }
 
     /// Construct a tensor from a slice (copies data).
@@ -510,7 +513,8 @@ where
         // SAFETY: 0-D scalar; `shape = Ix0` (product = 1); `strides = []`;
         // `flags` from `compute_layout_flags`; storage length = 1; offset 0;
         // logical access trivially within storage.
-        Ok(unsafe { TensorBase::new_unchecked(storage, shape, strides, 0, flags) })
+        // `derived_from_view_mut: false` — `from_scalar` is not a downgrade path.
+        Ok(unsafe { TensorBase::new_unchecked(storage, shape, strides, 0, flags, false) })
     }
 }
 

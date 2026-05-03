@@ -408,7 +408,7 @@ parse_deps = false  # do not parse dependency crates' types
 **测试合约（28-tests）**：必须包含 `test_cbindgen_header_exports_only_raw_descriptors`，断言生成的 C 头文件：
 
 1. 包含 `typedef ... TensorExportRaw;` / `typedef ... TensorExportMutRaw;` / `enum ElementType` 定义；
-2. **不**包含 `TensorExport` / `TensorExportMut` 的任何 typedef / struct / enum 标识符（grep-level 字符串检查）——这是三道闸门的最终验证；
+2. **不**包含 `TensorExport` / `TensorExportMut` 这两个**裸标识符**（必须使用 word-boundary 正则匹配，例如 `\bTensorExport\b` / `\bTensorExportMut\b`，**不**使用普通 substring grep；否则 `TensorExportRaw` / `TensorExportMutRaw` 会被前缀误命中）的任何 typedef / struct / enum 出现——这是三道闸门的最终验证；
 3. `ElementType` 枚举值与 03-element §5.1.1 显式 discriminants 严格一致（`Bool=0..Complex64=6`）。
 
 CI 在每次 PR 重新生成 C 头并对比预期 schema；schema 差异需 reviewer 在 PR 中显式确认。

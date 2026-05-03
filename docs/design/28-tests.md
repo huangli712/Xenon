@@ -534,7 +534,7 @@ Storage 协同测试遵循 `05-storage.md`：广播、转置、切片均产生 `
 
 | 测试函数                        | 测试内容                                          | 优先级 |
 | ------------------------------- | ------------------------------------------------- | ------ |
-| `test_unique_order_unspecified` | unique 返回不重复元素，结果无需排序且顺序不作要求 | 高     |
+| `test_unique_first_occurrence_order` | unique 返回不重复元素；按 F-order 逻辑遍历的**首次出现顺序**（与 `14-set.md v2.0.1 §5.1` / §8.2 锁定的稳定顺序契约一致），且在同一进程内的多次调用结果可复现 | 高     |
 | `test_unique_integers`          | 整数 unique                                       | 中     |
 | `test_unique_nan_preserved`     | 浮点 `NaN != NaN`，输入中的每个 NaN 都应保留      | 高     |
 | `test_unique_signed_zero_equal` | `-0.0` 与 `0.0` 视为相等，仅保留一个零值          | 高     |
@@ -619,7 +619,7 @@ fn test_unique_non_contiguous() {
 | `test_from_raw_parts_mut_reject_overlap` | `from_raw_parts_mut` 对地址重叠/别名冲突执行检查 | 高     |
 | `test_try_offset_of`                     | try_offset_of 正确计算                           | 高     |
 | `test_export_alignment_preconditions`    | 导出描述符仅在满足对齐前提时声明可供上游直接消费 | 高     |
-| `test_cbindgen_header_exports_only_raw_descriptors` | cbindgen 三道闸门契约（per `23-ffi.md §5.3.bis` v3.0.2 + `§3` 文件布局）：(1) 生成的 C 头文件包含 `TensorExportRaw` / `TensorExportMutRaw` / `enum ElementType` 定义；(2a) **不**包含泛型 `TensorExport` / `TensorExportMut` 的任何 typedef / struct / enum 标识符（grep-level 字符串检查）；(2b) **断言**泛型 `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 仅定义在 `src/ffi/private.rs`，且该模块不被 cbindgen emission 路径引用（通过源码 grep + cbindgen.toml `exclude` 规则两路验证）；(3) `ElementType` 枚举值与 `03-element.md §5.1.1` 显式 discriminants 严格一致（`Bool=0..Complex64=6`）。CI 在每次 PR 重新生成头文件并对比预期 schema | 高     |
+| `test_cbindgen_header_exports_only_raw_descriptors` | cbindgen 三道闸门契约（per `23-ffi.md §5.3.bis` v3.0.2 + `§3` 文件布局）：(1) 生成的 C 头文件包含 `TensorExportRaw` / `TensorExportMutRaw` / `enum ElementType` 定义；(2a) **不**包含泛型 `TensorExport` / `TensorExportMut` 的任何 typedef / struct / enum 出现——必须使用 word-boundary 正则 `\bTensorExport\b` / `\bTensorExportMut\b`（**不**使用普通 substring grep；否则 `TensorExportRaw` / `TensorExportMutRaw` 会被前缀误命中）；(2b) **断言**泛型 `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 仅定义在 `src/ffi/private.rs`，且该模块不被 cbindgen emission 路径引用（通过源码 grep + cbindgen.toml `exclude` 规则两路验证）；(3) `ElementType` 枚举值与 `03-element.md §5.1.1` 显式 discriminants 严格一致（`Bool=0..Complex64=6`）。CI 在每次 PR 重新生成头文件并对比预期 schema | 高     |
 
 FFI 错误测试必须匹配 `XenonError::Ffi { operation, category: FfiErrorCategory, backend: FfiBackend, cause }` 四字段结构，`operation` 使用 `Cow::Borrowed("...")`。`FfiErrorCategory` 覆盖 `NullPointer`、`AlignmentMismatch`、`InvalidRank`、`BlasIncompatibleLayout`、`IntegerOverflow`、`AbiMismatch`、`OverlapRejected`、`ForeignAllocatorMismatch`，`FfiBackend` 仅为 `RawParts` / `Blas`。
 
