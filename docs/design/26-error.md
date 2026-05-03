@@ -72,7 +72,7 @@ src/error.rs
 └── alloc::vec::Vec             # Heap allocation for shape, index fields
 ```
 
-`ElementType` 枚举本身**定义在本模块**（参见 §5.1），作为 L0 纯数据类型标签使用。`element` 与 `ffi` 通过 `pub use crate::error::ElementType` re-export 到上层稳定路径。这恢复了 `01-architecture.md §5.2` 的 L0..L6 单向依赖：`error`（L0）不再向上引用 `element`（L2）。
+**`ElementType` 不在本模块定义（v3.2.0 起回到 `crate::element`，详见 `03-element.md §5.1.1`）**。`error` 模块持有所有错误状态所需类型信息时使用 `&'static str`（值由 `Element::ELEMENT_TYPE_NAME` 关联常量提供），而**不**持有 `ElementType` 枚举字段。这保持 `error`（L0）严格不依赖 `element`（L2），同时通过字符串字面量让 error 仍能完整 `Display` 类型诊断信息——L0..L6 单向依赖严格成立。
 
 ### 4.2 类型级依赖
 
@@ -95,13 +95,13 @@ src/error.rs
 
 ### 4.4 依赖方向声明
 
-依赖方向：单向向上。`error.rs` 仅依赖标准库 / 核心库类型，不依赖任何 crate 内部模块。`ElementType` 枚举本身定义在本模块（见 §5.1），通过 `pub use` 由 `element` 与 `ffi` 模块 re-export 到上层稳定路径。
+依赖方向：单向向上。`error.rs` 仅依赖标准库 / 核心库类型，不依赖任何 crate 内部模块——v3.2.0 起严格成立（v1.3.x 阶段曾引入对 `ElementType` 的 owner 关系并通过 re-export 维持下游路径稳定，v3.2.0 移除了这一耦合）。
 
-`error` 严格保持 L0 单向依赖（v3.1.0 起）：
+`error` 严格保持 L0 单向依赖（v3.2.0 起）：
 
-- 不再向上引用 `element` / `complex` / 任何 L1+ 模块
-- `ElementType` 是纯数据枚举（`#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)] #[repr(u8)]`），属于错误诊断元数据而非元素能力，下沉到 L0 是合理职责划分
-- `Element::ELEMENT_TYPE` 关联常量值（如 `ElementType::I32`）所有具体取值都来自本模块的封闭枚举，`element` 模块仅提供 trait bound 与 `crate::element::element_type_of::<A>()` 帮助函数（**自由函数**，不是 inherent impl——Rust 不允许在 `element` 模块为定义于 `error` 模块的 `ElementType` 类型添加 inherent impl，详见 `03-element.md §5.1` v1.3.1 决策）
+- 不向上引用 `element` / `complex` / 任何 L1+ 模块
+- `XenonError::TypeConversion` 与 `AbiMismatchKind::ElementTypeMismatch` 中的类型字段使用 `&'static str` 而非 `ElementType` 枚举（值来自 `Element::ELEMENT_TYPE_NAME`，由元素侧统一控制；详见 `03-element.md v1.4.0 §5.1.1`）
+- `ElementType` 枚举本身**不再**定义在本模块；其权威定义在 `crate::element`
 
 ---
 
@@ -115,63 +115,14 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt;
 
-/// Element type discriminant for FFI consumers and structured diagnostics.
-///
-/// Authoritative definition lives here in the `error` module (L0) so that
-/// `XenonError::TypeConversion` can carry the discriminant without forcing
-/// `error` to depend on `element` (L2). The `element` module re-exports it
-/// via `pub use crate::error::ElementType` and provides the free function `element_type_of::<A>()`
-/// inherent impl that requires `A: Element`. The `ffi` module also
-/// re-exports it for C consumers.
-///
-/// Each variant corresponds to one of Xenon's supported tensor element types
-/// (see the requirements specification §4).
-///
-/// Marked `#[non_exhaustive]` so that adding a new supported element type
-/// in a future version does not constitute a breaking change for downstream
-/// `match` expressions. Downstream code MUST include a `_ => ...` arm when
-/// matching on `ElementType` exhaustively.
-///
-/// `#[repr(u8)]` is retained so that the enum has a well-defined size and is
-/// cheap to copy / hash, but the discriminant values are NOT part of the
-/// public ABI contract. Any FFI consumer that needs a stable wire-level tag
-/// MUST translate via `match` to its own ABI-stable representation rather
-/// than relying on the implicit discriminant order. (See `23-ffi.md` for
-/// the corresponding FFI guidance.)
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(u8)]
-#[non_exhaustive]
-pub enum ElementType {
-    Bool,
-    I32,
-    I64,
-    F32,
-    F64,
-    Complex32,
-    Complex64,
-}
-
-impl fmt::Display for ElementType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let name = match self {
-            ElementType::Bool      => "bool",
-            ElementType::I32       => "i32",
-            ElementType::I64       => "i64",
-            ElementType::F32       => "f32",
-            ElementType::F64       => "f64",
-            ElementType::Complex32 => "Complex<f32>",
-            ElementType::Complex64 => "Complex<f64>",
-            // Wildcard arm required because `ElementType` is `#[non_exhaustive]`.
-            // Although this `impl` lives in the same crate as the enum and
-            // therefore CAN exhaustively match today, omitting the wildcard
-            // would silently break the moment a new variant is added in a
-            // future version. Returning a stable placeholder string keeps
-            // `Display` total without mis-naming an unknown variant.
-            _                      => "<unknown ElementType>",
-        };
-        f.write_str(name)
-    }
-}
+// NOTE (v3.2.0): `ElementType` is **not** defined here.
+// Authoritative definition has moved (back) to `crate::element`
+// (see `03-element.md §5.1.1`). The `error` module records type-tag
+// information using `&'static str` instead — values come from
+// `<A as Element>::ELEMENT_TYPE_NAME`. This keeps `error` (L0) free
+// of any internal-module dependency while still giving `XenonError`
+// fully formed `Display` output (the strings are simply written
+// directly, without going through an enum).
 
 /// Unified recoverable error type for all public Xenon APIs.
 #[derive(Debug, Clone, PartialEq)]
@@ -269,8 +220,14 @@ pub enum XenonError {
 
     TypeConversion {
         operation: Cow<'static, str>,
-        source_type: ElementType,
-        target_type: ElementType,
+        // `&'static str` rather than `ElementType` (v3.2.0): value should
+        // be the canonical name from `<A as Element>::ELEMENT_TYPE_NAME`
+        // (see `03-element.md §5.1.1`). Storing the string keeps `error`
+        // free of any dependency on `element`. Construction-site
+        // ergonomic: pass `<A as Element>::ELEMENT_TYPE_NAME` or
+        // `crate::element::element_type_name_of::<A>()`.
+        source_type: &'static str,
+        target_type: &'static str,
         reason: ConversionFailureReason,
         element_index: Option<usize>,
     },
@@ -323,7 +280,12 @@ pub enum FfiBackend {
 /// Detail kind for ABI mismatch / foreign allocator mismatch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AbiMismatchKind {
-    ElementTypeMismatch { expected: ElementType, actual: ElementType },
+    /// Element type tag mismatch (e.g. C side claims `f32` but Rust side
+    /// holds `f64`). Both fields are `&'static str` (v3.2.0): pass
+    /// `<A as Element>::ELEMENT_TYPE_NAME` for the Rust side and the
+    /// already-validated string from the FFI tag table for the C side.
+    /// See `23-ffi.md §10` for FFI-side construction ergonomics.
+    ElementTypeMismatch { expected: &'static str, actual: &'static str },
     CapacityMismatch { expected: usize, actual: usize },
     AlignmentMismatch { expected: usize, actual: usize },
     ShapeProductExceedsLen { product: usize, storage_len: usize },
@@ -694,11 +656,12 @@ impl std::error::Error for XenonError {
 - `TypeConversion` 必须包含 `operation: Cow<'static, str>` 字段，记录
   触发转换的高层运算名（例如 `"cast"`、`"complex_to_real"`、
   `"infer_dtype_promotion"`），与其他错误变体保持字段一致性
-- 源/目标类型字段使用 `ElementType` 公共封闭枚举（权威定义在本模块 §5.1，
-  `element` 与 `ffi` 通过 `pub use crate::error::ElementType` re-export），
-  不使用 `core::any::TypeId`：`ElementType` 是用户可读、可程序化匹配
-  的封闭枚举，覆盖所有合法元素类型；`TypeId` 是不透明哈希，无法满足
-  “结构化诊断 + 可读 Display”要求
+- 源/目标类型字段使用 `&'static str`（v3.2.0 起）。值由 `Element::ELEMENT_TYPE_NAME`
+  关联常量提供（详见 `03-element.md §5.1.1`），由元素侧统一控制，避免 error 模块
+  反向依赖 element。**不**使用 `core::any::TypeId`：`TypeId` 是不透明哈希，无法满足
+  "结构化诊断 + 可读 Display" 要求；**也不**直接持有 `ElementType` 枚举字段，因为这
+  会让 error（L0）被迫依赖 element（L2）。使用 `&'static str` 同时获得：编译期确定的
+  字符串字面量（零分配、零间接）+ 直接 Display + L0 单向依赖严格成立
 
 类型转换失败统一通过 `XenonError::TypeConversion` 返回，其中字段为
 公开字段，用户可直接通过模式匹配访问。
