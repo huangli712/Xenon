@@ -418,10 +418,13 @@ use std::borrow::Cow;
 use crate::element::Element; // for `<A as Element>::ELEMENT_TYPE_NAME`
 use crate::error::{ConversionFailureReason, XenonError};
 
-// All TypeConversion errors below leave `operation` empty (Cow::Borrowed(""))
-// and `element_index = None`; the caller (cast() in §5.2) is responsible for
-// injecting `operation = Cow::Borrowed("cast")` and the resolved element
-// index. See §5.2 cast() for the rewrap pattern.
+// All TypeConversion errors below set `operation = Cow::Borrowed("cast_to")`
+// (a stable non-empty operation name; satisfies `26-error.md §8.2`'s
+// non-empty contract for direct `CastTo::cast_to()` callers) and
+// `element_index = None`; the tensor-level caller (cast() in §5.2)
+// rewraps to `operation = Cow::Borrowed("cast")` and injects the
+// resolved element index. See §5.2 cast() for the rewrap pattern.
+// Empty `Cow::Borrowed("")` is FORBIDDEN at this layer.
 //
 // Note (26-error v3.2.0): source_type / target_type are `&'static str`
 // (NOT `core::any::TypeId`, NOT `ElementType` enum). Values come from
@@ -433,7 +436,7 @@ impl CastTo<f32> for f64 {
     #[inline]
     fn cast_to(self) -> Result<f32, XenonError> {
         Err(XenonError::TypeConversion {
-            operation: Cow::Borrowed(""),
+            operation: Cow::Borrowed("cast_to"),
             source_type: <f64 as Element>::ELEMENT_TYPE_NAME, // == "f64"
             target_type: <f32 as Element>::ELEMENT_TYPE_NAME, // == "f32"
             reason: ConversionFailureReason::LossyFloatNarrowing,
@@ -454,7 +457,7 @@ impl CastTo<i32> for f64 {
     #[inline]
     fn cast_to(self) -> Result<i32, XenonError> {
         Err(XenonError::TypeConversion {
-            operation: Cow::Borrowed(""),
+            operation: Cow::Borrowed("cast_to"),
             source_type: <f64 as Element>::ELEMENT_TYPE_NAME, // "f64"
             target_type: <i32 as Element>::ELEMENT_TYPE_NAME, // "i32"
             reason: ConversionFailureReason::FloatToInteger,
@@ -464,20 +467,17 @@ impl CastTo<i32> for f64 {
 }
 
 // === Real → complex (lossless, zero imaginary) ===
-impl CastTo<Complex<f32>> for f32 {
-    #[inline]
-    fn cast_to(self) -> Result<Complex<f32>, XenonError> {
-        Ok(Complex::new(self, 0.0))
-    }
-}
+// NOT a `CastTo` impl. These cells are Tier-1 lossless and routed through
+// `ConvertTo<B>` directly with `Ok(Complex::new(value, 0.0))` shims (see
+// §6.1.ter "Tier-1 lossless real→complex" block); `cast()` dispatches them
+// without ever instantiating `CastTo`. Listed here only as a reminder that
+// real→complex zero-imaginary widenings are NOT `CastTo` cases.
 
 // === Complex → complex (lossless widening) ===
-impl CastTo<Complex<f64>> for Complex<f32> {
-    #[inline]
-    fn cast_to(self) -> Result<Complex<f64>, XenonError> {
-        Ok(Complex::new(self.re as f64, self.im as f64))
-    }
-}
+// NOT a `CastTo` impl. `Complex<f32> → Complex<f64>` is Tier-1 lossless and
+// expressed in §6.1.ter via a direct `ConvertTo` shim (componentwise
+// `f64::from(...)`). It is NOT routed through `CastTo`. Listed here only
+// as a reminder that complex widening is NOT a `CastTo` case.
 
 // === Conditionally successful conversions ===
 impl CastTo<f64> for Complex<f64> {
@@ -487,7 +487,7 @@ impl CastTo<f64> for Complex<f64> {
             Ok(self.re)
         } else {
             Err(XenonError::TypeConversion {
-                operation: Cow::Borrowed(""),
+                operation: Cow::Borrowed("cast_to"),
                 source_type: <Complex<f64> as Element>::ELEMENT_TYPE_NAME, // "Complex<f64>"
                 target_type: <f64 as Element>::ELEMENT_TYPE_NAME, // "f64"
                 reason: ConversionFailureReason::NonZeroImaginaryPart,
@@ -502,7 +502,7 @@ impl CastTo<i32> for i64 {
     #[inline]
     fn cast_to(self) -> Result<i32, XenonError> {
         Err(XenonError::TypeConversion {
-            operation: Cow::Borrowed(""),
+            operation: Cow::Borrowed("cast_to"),
             source_type: <i64 as Element>::ELEMENT_TYPE_NAME, // "i64"
             target_type: <i32 as Element>::ELEMENT_TYPE_NAME, // "i32"
             reason: ConversionFailureReason::LossyIntegerNarrowing,
@@ -586,18 +586,100 @@ impl ConvertTo<i64>          for i64          { #[inline] fn convert(self) -> Re
 impl ConvertTo<Complex<f32>> for Complex<f32> { #[inline] fn convert(self) -> Result<Complex<f32>, XenonError> { Ok(self) } }
 impl ConvertTo<Complex<f64>> for Complex<f64> { #[inline] fn convert(self) -> Result<Complex<f64>, XenonError> { Ok(self) } }
 
+// === Tier-1 lossless real→complex (zero-imaginary widening) ===
+// `f → Complex<f>` and `i → Complex<f>` lossless cells are expressed by
+// `From` (where std provides them) or by direct `Ok(Complex::new(...))`
+// shims here when std does not. They are NOT routed through `CastTo`:
+// `CastTo` is reserved for Tier-2 / Tier-3 (lossy or dynamic) per §6.1.
+impl ConvertTo<Complex<f32>> for f32 {
+    #[inline] fn convert(self) -> Result<Complex<f32>, XenonError> { Ok(Complex::new(self, 0.0)) }
+}
+impl ConvertTo<Complex<f64>> for f64 {
+    #[inline] fn convert(self) -> Result<Complex<f64>, XenonError> { Ok(Complex::new(self, 0.0)) }
+}
+impl ConvertTo<Complex<f64>> for f32 {
+    #[inline] fn convert(self) -> Result<Complex<f64>, XenonError> { Ok(Complex::new(f64::from(self), 0.0)) }
+}
+impl ConvertTo<Complex<f64>> for i32 {
+    #[inline] fn convert(self) -> Result<Complex<f64>, XenonError> { Ok(Complex::new(f64::from(self), 0.0)) }
+}
+impl ConvertTo<Complex<f64>> for Complex<f32> {
+    #[inline] fn convert(self) -> Result<Complex<f64>, XenonError> {
+        Ok(Complex::new(f64::from(self.re), f64::from(self.im)))
+    }
+}
+
 // === Tier-2 / Tier-3: lossy / dynamic. Delegate to CastTo. ===
-// Macro-generated: `impl<A, B> ConvertTo<B> for A where A: CastTo<B>`
-// won't work due to coherence with the lossless impls above; instead, each
-// remaining type pair gets its own forwarding impl:
-impl ConvertTo<f32> for f64 {
-    #[inline] fn convert(self) -> Result<f32, XenonError> { <f64 as CastTo<f32>>::cast_to(self) }
-}
-impl ConvertTo<i32> for f64 {
-    #[inline] fn convert(self) -> Result<i32, XenonError> { <f64 as CastTo<i32>>::cast_to(self) }
-}
-// ... similarly for every Tier-2/Tier-3 (A, B) pair documented in §5.3.
+// `impl<A, B> ConvertTo<B> for A where A: CastTo<B>` won't work due to
+// coherence with the lossless / identity impls above; instead each
+// remaining type pair gets its own forwarding impl. Each forwarding impl
+// is a `#[inline]` thin shim around `<A as CastTo<B>>::cast_to(self)`.
+//
+// Complete 6×6 matrix below (36 cells total accounted for):
+//   - 6 Tier-0 identity impls (listed above)
+//   - 3 Tier-1 lossless arithmetic impls via std `From` (listed above)
+//   - 5 Tier-1 lossless real→complex impls (listed above)
+//   - 22 Tier-2/Tier-3 forwarding impls (listed below)
+//
+// Macro generation is acceptable for the 22 forwarding impls; they are
+// mechanical and exhaustively determined by §5.3's type-pair classification.
+
+// --- Tier-2 lossy (static Err): 18 cells ---
+// f64 → {f32, i32, i64}
+impl ConvertTo<f32> for f64 { #[inline] fn convert(self) -> Result<f32, XenonError> { <f64 as CastTo<f32>>::cast_to(self) } }
+impl ConvertTo<i32> for f64 { #[inline] fn convert(self) -> Result<i32, XenonError> { <f64 as CastTo<i32>>::cast_to(self) } }
+impl ConvertTo<i64> for f64 { #[inline] fn convert(self) -> Result<i64, XenonError> { <f64 as CastTo<i64>>::cast_to(self) } }
+// f32 → {i32, i64}
+impl ConvertTo<i32> for f32 { #[inline] fn convert(self) -> Result<i32, XenonError> { <f32 as CastTo<i32>>::cast_to(self) } }
+impl ConvertTo<i64> for f32 { #[inline] fn convert(self) -> Result<i64, XenonError> { <f32 as CastTo<i64>>::cast_to(self) } }
+// i64 → {i32, f32, f64}  (i64→f64 is Tier-2 per B10.a, see §5.3 footnote)
+impl ConvertTo<i32> for i64 { #[inline] fn convert(self) -> Result<i32, XenonError> { <i64 as CastTo<i32>>::cast_to(self) } }
+impl ConvertTo<f32> for i64 { #[inline] fn convert(self) -> Result<f32, XenonError> { <i64 as CastTo<f32>>::cast_to(self) } }
+impl ConvertTo<f64> for i64 { #[inline] fn convert(self) -> Result<f64, XenonError> { <i64 as CastTo<f64>>::cast_to(self) } }
+// i32 → f32  (lossy per closed rule §5.4)
+impl ConvertTo<f32> for i32 { #[inline] fn convert(self) -> Result<f32, XenonError> { <i32 as CastTo<f32>>::cast_to(self) } }
+// real → complex (lossy through inner real conversion)
+impl ConvertTo<Complex<f32>> for i32          { #[inline] fn convert(self) -> Result<Complex<f32>, XenonError> { <i32 as CastTo<Complex<f32>>>::cast_to(self) } }
+impl ConvertTo<Complex<f32>> for i64          { #[inline] fn convert(self) -> Result<Complex<f32>, XenonError> { <i64 as CastTo<Complex<f32>>>::cast_to(self) } }
+impl ConvertTo<Complex<f64>> for i64          { #[inline] fn convert(self) -> Result<Complex<f64>, XenonError> { <i64 as CastTo<Complex<f64>>>::cast_to(self) } }
+impl ConvertTo<Complex<f32>> for f64          { #[inline] fn convert(self) -> Result<Complex<f32>, XenonError> { <f64 as CastTo<Complex<f32>>>::cast_to(self) } }
+// complex → complex narrowing
+impl ConvertTo<Complex<f32>> for Complex<f64> { #[inline] fn convert(self) -> Result<Complex<f32>, XenonError> { <Complex<f64> as CastTo<Complex<f32>>>::cast_to(self) } }
+
+// --- Tier-3 dynamic (Complex → real, conditional on im==0): 8 cells ---
+impl ConvertTo<f32> for Complex<f32> { #[inline] fn convert(self) -> Result<f32, XenonError> { <Complex<f32> as CastTo<f32>>::cast_to(self) } }
+impl ConvertTo<f64> for Complex<f32> { #[inline] fn convert(self) -> Result<f64, XenonError> { <Complex<f32> as CastTo<f64>>::cast_to(self) } }
+impl ConvertTo<i32> for Complex<f32> { #[inline] fn convert(self) -> Result<i32, XenonError> { <Complex<f32> as CastTo<i32>>::cast_to(self) } }
+impl ConvertTo<i64> for Complex<f32> { #[inline] fn convert(self) -> Result<i64, XenonError> { <Complex<f32> as CastTo<i64>>::cast_to(self) } }
+impl ConvertTo<f32> for Complex<f64> { #[inline] fn convert(self) -> Result<f32, XenonError> { <Complex<f64> as CastTo<f32>>::cast_to(self) } }
+impl ConvertTo<f64> for Complex<f64> { #[inline] fn convert(self) -> Result<f64, XenonError> { <Complex<f64> as CastTo<f64>>::cast_to(self) } }
+impl ConvertTo<i32> for Complex<f64> { #[inline] fn convert(self) -> Result<i32, XenonError> { <Complex<f64> as CastTo<i32>>::cast_to(self) } }
+impl ConvertTo<i64> for Complex<f64> { #[inline] fn convert(self) -> Result<i64, XenonError> { <Complex<f64> as CastTo<i64>>::cast_to(self) } }
+
+// === 36-cell coverage check ===
+//   Tier-0 identity:            6 cells (f32/f64/i32/i64/Complex<f32>/Complex<f64> self)
+//   Tier-1 std From:            3 cells (f32→f64, i32→i64, i32→f64)
+//   Tier-1 real→complex:        5 cells (f32→C<f32>, f64→C<f64>, f32→C<f64>, i32→C<f64>, C<f32>→C<f64>)
+//   Tier-2 lossy:              14 cells (f64→{f32,i32,i64}, f32→{i32,i64}, i64→{i32,f32,f64},
+//                                       i32→f32, i32→C<f32>, i64→C<f32>, i64→C<f64>, f64→C<f32>, C<f64>→C<f32>)
+//   Tier-3 dynamic:             8 cells (C<f32>→{f32,f64,i32,i64}, C<f64>→{f32,f64,i32,i64})
+//   Total:                     36 cells = 6 × 6.
 ```
+
+> **6×6 矩阵分类总览（行=源 A，列=目标 B；编号即上文 impl 的 Tier 标签）**：
+>
+> | A \ B          | `i32` | `i64` | `f32` | `f64` | `Complex<f32>` | `Complex<f64>` |
+> | -------------- | ----- | ----- | ----- | ----- | -------------- | -------------- |
+> | `i32`          | T0    | T1    | T2    | T1    | T2             | T1             |
+> | `i64`          | T2    | T0    | T2    | T2    | T2             | T2             |
+> | `f32`          | T2    | T2    | T0    | T1    | T1             | T1             |
+> | `f64`          | T2    | T2    | T2    | T0    | T2             | T1             |
+> | `Complex<f32>` | T3    | T3    | T3    | T3    | T0             | T1             |
+> | `Complex<f64>` | T3    | T3    | T3    | T3    | T2             | T0             |
+>
+> Tier-0 = identity (6); Tier-1 = lossless via `From` 或 zero-imaginary widening (8); Tier-2 = lossy 静态失败 (14); Tier-3 = 动态条件 (8)。合计 36，与上方 impl 列表一一对应。
+
+> **同型 `cast::<A>()` 语义澄清（与 §5.5 协同）**：`§5.5` 说"`cast::<A>()` 不适用于同类型拷贝场景"——这是**使用建议**，不是编译期禁止；技术上 Tier-0 identity impls (`ConvertTo<f32> for f32` 等) 让 `Tensor<f32>.cast::<f32>()` 编译通过并返回 `Ok(self)`。同型 cast 在功能上等价于 `to_owned()`，但走 `cast()` 路径会引入 fallible signature 与 enumerate 开销，因此推荐使用 `to_owned()`。Tier-0 identity impls 存在的真正目的是让 `ConvertTo<B>` 的 trait bound 在泛型上下文中也能覆盖 `A == B` 边界，避免上层调用方为同型/异型分支两条路径。
 
 设计要点：
 

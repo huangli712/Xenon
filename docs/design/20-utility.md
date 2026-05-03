@@ -628,7 +628,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 
 | 主题              | 内容                                                                                 |
 | ----------------- | ------------------------------------------------------------------------------------ |
-| Recoverable error | `clip` 在 `min > max` 或任一边界为 `NaN` 时返回 `XenonError::InvalidArgument { operation: Cow::Borrowed("clip"), kind: InvalidArgumentKind::OperationSpecific { argument, constraint } }`（字段定义见 `26-error.md v3.0.0 §5.1`）。`try_fill()` 在只读 / 共享只读 / 缺失 `StorageMut` 能力的存储上返回 `XenonError::InvalidStorageMode { operation, expected: StorageKindTag::ViewMut（或 Owned）, actual: StorageKindTag::View（或 Arc）, shape: Some(self.shape().to_vec()), conversion: None }`，其中 `expected` 表示分派期望具备的可写能力对应的模式标签。`fill()` 因 `StorageMut` 编译期约束不会进入这条错误路径。`XenonError` 是本模块唯一公开错误类型。 |
+| Recoverable error | `clip` 在 `min > max` 或任一边界为 `NaN` 时返回 `XenonError::InvalidArgument { operation: Cow::Borrowed("clip"), kind: InvalidArgumentKind::OperationSpecific { argument, constraint } }`（字段定义见 `26-error.md v3.0.0 §5.1`）。`try_fill()` 在只读 / 共享只读 / 缺失 `StorageMut` 能力的存储上返回 `XenonError::InvalidStorageMode { operation, expected: StorageKindTag::ViewMut（或 Owned）, actual: StorageKindTag::View（或 Shared）, shape: Some(self.shape().to_vec()), conversion: None }`，其中 `expected` 表示分派期望具备的可写能力对应的模式标签。`fill()` 因 `StorageMut` 编译期约束不会进入这条错误路径。`XenonError` 是本模块唯一公开错误类型。 |
 | Panic             | 公开 utility API 不定义额外 panic 语义；连续化与裁剪失败统一走显式错误或正常返回。   |
 | 路径一致性        | 连续与非连续布局都必须通过同一逻辑元素语义工作；当前无独立 SIMD / 并行分支。         |
 | 容差边界          | `clip` 对浮点数遵循 IEEE 754 比较语义；不额外引入近似容差。                          |
@@ -702,6 +702,17 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 | 1.1.6 | 2026-04-16 |
 | 1.1.7 | 2026-04-16 |
 | 2.0.0 | 2026-05-02 |
+| 3.0.0 | 2026-05-03 |
+| 3.0.1 | 2026-05-04 |
+
+### v3.0.1 (2026-05-04) — R8/R9 协同基线对齐
+
+- 与 `00-coding.md §1.3` / `28-tests.md §1.0` 锁定基线版本号显式对齐；本版无契约变更，仅同步 changelog 行避免 R8 升版后的版本号漂移（R9 评审 C-04 修复）。
+
+### v3.0.0 (2026-05-03) — Utility 转换契约对齐 21-type / 05-storage
+
+- `to_contiguous()` / `into_owned_*` 等公开入口的实现引用收敛到 `21-type.md §5.5 to_owned/into_owned` 与 `05-storage.md §5.9 StorageIntoOwned`，并与 R8 修复后的 ConvertTo / sealed Storage trait 闭环一致；本版不引入新的公开 API。
+- 文档示例在引用 `ElementType` 时统一从 `crate::element::ElementType` 导入。
 
 ### v2.0.0 (2026-05-02) — 错误字段对齐 26-error v3.0.0
 
@@ -718,7 +729,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 
 - §4.2 类型级依赖表新增 `error` 行：列出 `XenonError`、`InvalidArgumentKind::OperationSpecific`、`StorageKindTag`。
 - §5.5 文档注释引用从 `21-type.md §5.x` 修正为具体的 `21-type.md §5.5`。
-- §10 错误处理表 `Recoverable error` 一行重写：完整列出 `clip` 的 `InvalidArgument.kind` 与 `try_fill` 的 `InvalidStorageMode` 字段（`operation` / `expected: StorageKindTag::ViewMut（或 Owned）` / `actual: StorageKindTag::View（或 Arc）` / `shape: Some(...)` / `conversion: None`）。
+- §10 错误处理表 `Recoverable error` 一行重写：完整列出 `clip` 的 `InvalidArgument.kind` 与 `try_fill` 的 `InvalidStorageMode` 字段（`operation` / `expected: StorageKindTag::ViewMut（或 Owned）` / `actual: StorageKindTag::View（或 Shared）` / `shape: Some(...)` / `conversion: None`）。
 - §5.3 将 `try_fill()` 分派前提收敛为 storage 层 `pub(crate)` 内部 helper；§5.5 / §6.3 统一 F-contiguous 与 canonical F-contiguous 语义；§5.6 限定 `to_contiguous()` Bad 示例适用场景；§8.4 修正 NaN 相关 clip 属性测试不变量。
 
 ---

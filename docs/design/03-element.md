@@ -900,7 +900,7 @@ impl RealScalar for f64 {
   - 预计: 10 min
 
 - [ ] **T12**: 集成测试（跨模块交互验证）
-  - 文件: `tests/test_element.rs`
+  - 文件: element 内部单元测试 + doctest，跨模块协同覆盖经由 `tests/test_tensor.rs` / `tests/test_math.rs` / `tests/test_reduction.rs` / `tests/test_convert.rs` 等已存在的集成测试间接验证（与 `28-tests.md §9.2` 覆盖映射一致；**不**新增独立 `tests/test_element.rs`）
   - 内容: 各类型各层 trait 的完整性验证
   - 测试: 见测试计划 §8
   - 前置: T10, T11
@@ -915,9 +915,9 @@ impl RealScalar for f64 {
 | 测试分类 | 位置                      | 说明                                       |
 | -------- | ------------------------- | ------------------------------------------ |
 | 单元测试 | `#[cfg(test)] mod tests`  | 验证各 trait 和基础类型实现                |
-| 集成测试 | `tests/test_element.rs`   | 验证 `element` 与 `tensor`、`math`、`reduction`、`convert` 的协同路径 |
+| 集成测试 | `tests/test_tensor.rs` / `tests/test_math.rs` / `tests/test_reduction.rs` / `tests/test_convert.rs` | 通过张量/数学/归约/转换层间接验证 element 协同路径（**不**新增独立 `tests/test_element.rs`，与 `28-tests.md §9.2` 一致） |
 | 边界测试 | 同模块测试中标注          | 覆盖 NaN/Inf、bool 限制与 sealed 行为      |
-| 属性测试 | `tests/test_element.rs` 或 `tests/property_tests.rs` | 验证零元、单位元与数学函数不变量    |
+| 属性测试 | 同模块单元测试 / `tests/property_tests.rs` | 验证零元、单位元与数学函数不变量（不依赖独立 `test_element.rs`） |
 
 ### 8.2 单元测试清单
 
@@ -965,9 +965,14 @@ impl RealScalar for f64 {
 
 ### 8.5 集成测试
 
-| 测试文件                | 测试内容                                                                              |
-| ----------------------- | ------------------------------------------------------------------------------------- |
-| `tests/test_element.rs` | 各元素类型在 `tensor`、`math`、`reduction`、`convert` 中的 trait 约束与端到端行为验证 |
+> **不**新增独立 `tests/test_element.rs`（与 `28-tests.md §9.2` 一致）。element 模块的端到端协同路径通过下列已存在的集成测试间接覆盖：
+
+| 集成测试文件             | 覆盖的 element 协同路径                                                |
+| ------------------------ | ---------------------------------------------------------------------- |
+| `tests/test_tensor.rs`   | `Element` / `Numeric` bound 在张量构造、`storage_kind`、`access_semantics` 等路径上 |
+| `tests/test_math.rs`     | `RealScalar` / `ComplexScalar` 数学函数语义                            |
+| `tests/test_reduction.rs`| 元素类型与归约结果类型协同（`Numeric` bound 在 sum / mean / dot 等路径） |
+| `tests/test_convert.rs`  | `CastElement` 在 cast 路径上的 6×6 矩阵覆盖                            |
 
 ### 8.6 Feature gate / 配置测试
 

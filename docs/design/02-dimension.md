@@ -800,7 +800,7 @@ impl<D: Dimension> BroadcastDim<D> for IxDyn { type Output = IxDyn; }
 
 ### 5.11 PermuteAxes / Reverse trait
 
-`PermuteAxes` 为转置操作提供通用轴置换语义；`Reverse` 仅作为 `transpose()` 默认轴反转形式的便捷层。以下 trait 为内部实现辅助，标记为 `pub(crate)`，不纳入稳定公开 API 面。
+`PermuteAxes` 为转置操作提供通用轴置换语义；`Reverse` 仅作为 `transpose()` 默认轴反转形式的便捷层。两者可见性不同：`PermuteAxes` 标记为 `pub(crate)`，是纯内部实现辅助，不进入公开 API 面；`Reverse` 是 `pub trait`，但通过 `Dimension: Sealed` super-bound 闭合（外部不可实现），原因详见下方 doc comment。
 
 ```rust,ignore
 /// Trait for permuting the axis order of a dimension.
@@ -1058,7 +1058,7 @@ let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
   - 预计: 10 min
 
 - [ ] **T12**: 集成测试与边界测试
-  - 文件: `tests/test_dimension.rs`
+  - 文件: dimension 内部单元测试 + doctest，跨模块协同覆盖经由 `tests/test_tensor.rs` / `tests/test_shape.rs` / `tests/test_index.rs` 等已存在的集成测试间接验证（与 `28-tests.md §9.2` 覆盖映射一致；**不**新增独立 `tests/test_dimension.rs`）
   - 内容: 空维度、单元素、大维度、size 溢出
   - 测试: 见测试计划 §8
   - 前置: T11
@@ -1073,9 +1073,9 @@ let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
 | 测试分类 | 位置                      | 说明                                                                |
 | -------- | ------------------------- | ------------------------------------------------------------------- |
 | 单元测试 | `#[cfg(test)] mod tests`  | 验证各维度类型、形状/rank API 和辅助 trait                          |
-| 集成测试 | `tests/test_dimension.rs` | 验证 `dimension` 与 `tensor`、`layout`、`shape`、`index` 的协同路径 |
+| 集成测试 | `tests/test_tensor.rs` / `tests/test_shape.rs` / `tests/test_index.rs` | 通过张量/形状/索引层间接验证 dimension 协同路径（**不**新增独立 `tests/test_dimension.rs`，与 `28-tests.md §9.2` 一致） |
 | 边界测试 | 同模块测试中标注          | 覆盖 Ix0、零长度轴、大维度与溢出路径                                |
-| 属性测试 | `tests/test_dimension.rs` 或 `tests/property_tests.rs` | 验证 size/维度互转不变量               |
+| 属性测试 | 同模块单元测试 / `tests/property_tests.rs` | 验证 size/维度互转不变量（不依赖独立 `test_dimension.rs`） |
 
 ### 8.2 单元测试清单
 
@@ -1125,9 +1125,13 @@ let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
 
 ### 8.5 集成测试
 
-| 测试文件                  | 测试内容                                                                               |
-| ------------------------- | -------------------------------------------------------------------------------------- |
-| `tests/test_dimension.rs` | `IntoDimension`、`Axis`、`BroadcastDim` 与 `tensor`、`shape`、`index` 的端到端协同验证 |
+> **不**新增独立 `tests/test_dimension.rs`（与 `28-tests.md §9.2` 一致）。dimension 模块的端到端协同路径通过下列已存在的集成测试间接覆盖：
+
+| 集成测试文件             | 覆盖的 dimension 协同路径                                              |
+| ------------------------ | ---------------------------------------------------------------------- |
+| `tests/test_tensor.rs`   | `IntoDimension` 在 `Tensor::from_shape_vec` / `zeros` 等构造路径的端到端 |
+| `tests/test_shape.rs`    | `Axis` / `BroadcastDim` 在 reshape / transpose / broadcast 路径上的协同 |
+| `tests/test_index.rs`    | dimension 与索引/切片入口的 `D: Dimension` bound 协同验证               |
 
 ### 8.6 Feature gate / 配置测试
 

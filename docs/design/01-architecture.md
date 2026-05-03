@@ -248,7 +248,8 @@ xenon/
 │   │   ├── types.rs           # BlasInfo; re-exports ElementType (from element), FfiErrorCategory (from error)
 │   │   ├── ptr.rs             # Raw pointer API (export/export_mut, from_raw_parts, into_raw_parts)
 │   │   ├── blas.rs            # BLAS compatibility checks (is_blas_layout_compatible, blas_info, lda)
-│   │   └── offset.rs          # Index-to-pointer offset
+│   │   ├── offset.rs          # Index-to-pointer offset
+│   │   └── private.rs         # Internal generic descriptors (TensorExport<'a, A>, TensorExportMut<'a, A>); Rust-only, excluded from cbindgen emission set (per `23-ffi.md §3`)
 │   │
 │   ├── workspace/             # Temporary workspace
 │       ├── mod.rs             # Module root and re-exports

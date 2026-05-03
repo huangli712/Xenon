@@ -638,6 +638,18 @@ User calls tensor.slice(info)
 | 1.0.7 | 2026-04-16 |
 | 2.0.0 | 2026-05-02 |
 | 2.0.1 | 2026-05-03 |
+| 3.0.0 | 2026-05-03 |
+| 3.0.1 | 2026-05-04 |
+
+### v3.0.1 (2026-05-04) — R8/R9 协同基线对齐
+
+- 与 `00-coding.md §1.3` / `28-tests.md §1.0` 锁定基线版本号显式对齐；本版无契约变更，仅同步 changelog 行避免 R8 升版后的版本号漂移（R9 评审 B-05 修复）。
+
+### v3.0.0 (2026-05-03) — Indexing 公开入口收敛到 `try_at` / `try_at_mut`
+
+- 将公开安全 indexing 入口规范化为 `try_at(&self, index)` / `try_at_mut(&mut self, index)`，与 `00-coding §1.3` / `26-error §5.1` 锁定的 `IndexOutOfBounds` 错误约定一致。
+- `get(&[usize])` / `get_mut(&[usize])` 保留为 `&[usize]` convenience wrapper，文档说明其与 `try_at` 的等价路径。
+- 与 `25-safety.md §5.12` 内部 unsafe fn 索引表保持入口名一致（不暴露 unchecked 公开变体）。
 
 ### v2.0.1 (2026-05-03) — Medium/Low 文档修复
 

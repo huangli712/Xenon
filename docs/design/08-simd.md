@@ -603,40 +603,41 @@ impl WithSimd for AddF32Kernel<'_> {
         assert_eq!(self.rhs.len(), len);
         assert_eq!(self.dst.len(), len);
 
-        // pulp 0.18.x API canonical idiom: split-prefix / body / suffix.
-        //
-        // The exact symbol names below MUST be cross-checked against
-        // `docs.rs/pulp/0.18.*/pulp/trait.Simd.html` at implementation time.
-        // pulp 0.18 exposes both associated-style (`S::as_simd_f32s(slice)`)
-        // and instance-style splits; pick whichever the pinned pulp minor
-        // version exports, and use the corresponding lane-wise op
-        // (`simd.add_f32s(a, b)` or equivalent). The pseudocode below uses
-        // instance-style names as a placeholder shape — the (prefix, body,
-        // suffix) split itself is the stable contract, NOT the exact
-        // method symbol.
+        // pulp 0.18.x canonical API surface (locked):
+        //   - Split helpers (instance-style on `simd: S`):
+        //       `simd.f32s_as_simd(slice)`        → 2-tuple `(body: &[S::f32s], tail: &[f32])`
+        //       `simd.f32s_as_mut_simd(slice)`    → 2-tuple `(body: &mut [S::f32s], tail: &mut [f32])`
+        //     (Unaligned input has NO leading prefix — pulp aligns by truncating tail.
+        //     The 3-tuple aligned family `f32s_as_aligned_simd(self, slice, offset)` requires
+        //     pre-aligned input and is NOT used by `WithSimd` kernels for general slices.)
+        //   - Lane-wise ops (instance-style on `simd: S`):
+        //       `simd.f32s_add(a, b)`             → lane-wise add of two `S::f32s` vectors
+        //       (analogous: `f32s_sub`, `f32s_mul`, `f32s_splat`, ...)
         //
         // Forbidden symbols (do NOT use; do not exist in pulp 0.18.x):
-        //   `S::f32s_len()` / `simd.f32s_load(ptr)` / `simd.f32s_store(ptr, v)`
-        let (lhs_prefix, lhs_body, lhs_suffix) = simd.f32s_as_simd(self.lhs);
-        let (rhs_prefix, rhs_body, rhs_suffix) = simd.f32s_as_simd(self.rhs);
-        let (dst_prefix, dst_body, dst_suffix) = simd.f32s_as_mut_simd(self.dst);
-
-        // Scalar prefix handling (alignment lead-in; usually empty when caller
-        // already passes aligned chunks).
-        for i in 0..lhs_prefix.len() {
-            dst_prefix[i] = lhs_prefix[i] + rhs_prefix[i];
-        }
+        //   - `S::f32s_len()` / `S::WIDTH`         (no such associated item)
+        //   - `simd.f32s_load(ptr)`                (no scalar pointer load)
+        //   - `simd.f32s_store(ptr, v)`            (no scalar pointer store)
+        //   - `simd.add_f32s(a, b)`                (op suffix wrong; use f32s_add)
+        //   - `simd.splat_f32(x)`                  (use simd.f32s_splat)
+        //
+        // Structural contract: split into (vector body, scalar tail); process body
+        // lane-wise via `simd.f32s_add(a, b)`; process tail element-wise.
+        let (lhs_body, lhs_tail) = simd.f32s_as_simd(self.lhs);
+        let (rhs_body, rhs_tail) = simd.f32s_as_simd(self.rhs);
+        let (dst_body, dst_tail) = simd.f32s_as_mut_simd(self.dst);
 
         // SIMD body — vector-width-wide adds, one body element per iter.
         // Use the lane-wise add method exported by the pinned pulp version
-        // (`simd.f32s_add(a, b)` OR `simd.add_f32s(a, b)` per pulp 0.18.x).
+        // (`simd.f32s_add(a, b)` per pulp 0.18.x; the `add_f32s` form does
+        // NOT exist).
         for i in 0..lhs_body.len() {
             dst_body[i] = simd.f32s_add(lhs_body[i], rhs_body[i]);
         }
 
-        // Scalar suffix handling (trailing length < lane width).
-        for i in 0..lhs_suffix.len() {
-            dst_suffix[i] = lhs_suffix[i] + rhs_suffix[i];
+        // Scalar tail handling (trailing length < lane width).
+        for i in 0..lhs_tail.len() {
+            dst_tail[i] = lhs_tail[i] + rhs_tail[i];
         }
     }
 }

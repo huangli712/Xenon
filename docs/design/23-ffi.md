@@ -59,13 +59,24 @@
 src/
 └── ffi/
     ├── mod.rs         # Module root, re-exports
-    ├── types.rs       # BlasInfo type definitions; re-exports ElementType (from element), FfiErrorCategory (from error)
+    ├── types.rs       # TensorExportRaw / TensorExportMutRaw (non-generic, C-visible);
+    │                  #   BlasInfo type definitions; re-exports ElementType (from element),
+    │                  #   FfiErrorCategory (from error)
     ├── ptr.rs         # Raw-pointer API wrappers (export/export_mut, re-export from tensor module)
     ├── blas.rs        # BLAS compatibility checks (is_blas_layout_compatible, blas_info, lda)
-    └── offset.rs      # Multi-dimensional index to pointer offset (try_offset_of, try_ptr_at)
+    ├── offset.rs      # Multi-dimensional index to pointer offset (try_offset_of, try_ptr_at)
+    └── private.rs     # Generic Rust-only descriptors `TensorExport<'a, A>` /
+                       #   `TensorExportMut<'a, A>` + `From` impls converting them to
+                       #   the C-visible `TensorExportRaw` / `TensorExportMutRaw`.
+                       #
+                       # Marked `#[doc(hidden)]` and `pub(crate)`-exported. cbindgen
+                       # treats this as internal — these generic types never appear
+                       # in any `extern "C"` function signature, so they are not
+                       # reachable from cbindgen's transitive emission set. This is
+                       # gate #2 of the three-gate cbindgen contract (see §5.3.bis).
 ```
 
-多文件设计：将 FFI 按职责拆分为多个文件，便于后期拓展和维护。
+多文件设计：将 FFI 按职责拆分为多个文件，便于后期拓展和维护。`private.rs` 隔离 generic Rust-only 描述符，是 cbindgen 三道闸门契约的 gate #2（见 §5.3.bis），确保泛型类型与 C-visible raw 描述符在文件层面就分离。
 
 ---
 
@@ -107,7 +118,7 @@ src/ffi/
 | `element`   | `Element`、`ElementType`（**权威定义在 `crate::element`**，v1.4.0 起；本模块通过 `pub use crate::element::ElementType` re-export 暴露 `crate::ffi::ElementType` 给 C 消费者）、`element_type_of::<A>()`（`pub const fn`，定义在 `crate::element`，配合 inherent `ElementType::of::<A>()` 共同提供入口；详见 `03-element.md §5.1.1` v1.4.0 决策） |
 | `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, owned allocator metadata（供 `OwnedRawParts<A, D>` 导出/重建） |
 | `layout`    | `is_f_contiguous()`（定义于 `06-layout.md` §5.7）、`has_zero_stride()`（定义于 `06-layout.md` §5.1）；`TensorBase` 方法参见 `07-tensor.md` §5.3 |
-| `error`     | `XenonError`（含 `Ffi`、`DimensionMismatch`、`IndexOutOfBounds`、`InvalidLayout` 等变体）、`FfiErrorCategory`（封闭枚举，定义于 `26-error.md` §5.1，含 `NullPointer`/`AlignmentMismatch`/`InvalidRank`/`BlasIncompatibleLayout`/`IntegerOverflow`/`AbiMismatch`/`OverlapRejected`/`ForeignAllocatorMismatch` 八个结构化子变体）、`FfiBackend`（封闭枚举：`RawParts`/`Blas`，定义于 `26-error.md` §5.1）、`InvalidLayoutReason`（封闭枚举，定义于 `26-error.md` §5.1）、`StorageKindTag`（封闭枚举：`Owned`/`View`/`ViewMut`/`Arc`，定义于 `26-error.md` §5.1） |
+| `error`     | `XenonError`（含 `Ffi`、`DimensionMismatch`、`IndexOutOfBounds`、`InvalidLayout` 等变体）、`FfiErrorCategory`（封闭枚举，定义于 `26-error.md` §5.1，含 `NullPointer`/`AlignmentMismatch`/`InvalidRank`/`BlasIncompatibleLayout`/`IntegerOverflow`/`AbiMismatch`/`OverlapRejected`/`ForeignAllocatorMismatch` 八个结构化子变体）、`FfiBackend`（封闭枚举：`RawParts`/`Blas`，定义于 `26-error.md` §5.1）、`InvalidLayoutReason`（封闭枚举，定义于 `26-error.md` §5.1）、`StorageKindTag`（封闭枚举：`Owned`/`View`/`ViewMut`/`Shared`，由 `ArcRepr<A>` 支撑 `Shared`；定义于 `26-error.md` §5.1） |
 
 ### 4.3 依赖合法性
 
@@ -332,6 +343,20 @@ impl<'a, A: Element> From<TensorExport<'a, A>> for TensorExportRaw {
     fn from(e: TensorExport<'a, A>) -> Self {
         TensorExportRaw {
             data: e.data as *const core::ffi::c_void,
+            element_type: e.element_type,
+            ndim: e.ndim,
+            shape: e.shape,
+            strides: e.strides,
+            storage_len: e.storage_len,
+            offset: e.offset,
+        }
+    }
+}
+
+impl<'a, A: Element> From<TensorExportMut<'a, A>> for TensorExportMutRaw {
+    fn from(e: TensorExportMut<'a, A>) -> Self {
+        TensorExportMutRaw {
+            data: e.data as *mut core::ffi::c_void,
             element_type: e.element_type,
             ndim: e.ndim,
             shape: e.shape,
@@ -1028,7 +1053,7 @@ where
         let strides = self.strides();
         let shape = self.shape();
         // Build storage_kind tag once: tensor's StorageKind already maps
-        // 1:1 to StorageKindTag (Owned/View/ViewMut/Arc), and is needed
+        // 1:1 to StorageKindTag (Owned/View/ViewMut/Shared), and is needed
         // by every InvalidLayout branch below.
         let storage_kind: StorageKindTag = self.storage_kind().into();
         let mut offset: usize = 0;
@@ -1472,6 +1497,11 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | 1.2.5 | 2026-04-16 |
 | 1.2.6 | 2026-04-16 |
 | 2.0.0 | 2026-05-02 |
+| 2.0.1 | 2026-05-03 |
+| 2.1.0 | 2026-05-03 |
+| 3.0.0 | 2026-05-03 |
+| 3.0.1 | 2026-05-03 |
+| 3.0.2 | 2026-05-04 |
 
 ### v2.0.0 (2026-05-02) — 错误字段对齐 26-error v3.0.0
 
@@ -1502,6 +1532,21 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 
 - Added a minimal `cause: Some(Box::new(inner))` source-chain example for `XenonError::Ffi` wrapping a lower-level workspace error.
 - Clarified version-history wording: `cause: Option<Box<XenonError>>` is part of the FFI error shape; leaf errors usually use `None`, wrappers use `Some(Box::new(inner))`.
+
+### v3.0.2 (2026-05-04) — R8 cbindgen 三道闸门 + private.rs 子模块（R9 同步）
+
+- §3 文件布局：FFI 模块树新增 `src/ffi/private.rs` 子模块，承载泛型 `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 等 Rust-only descriptor 定义，对外不导出（R8-D-03 落地）。`01-architecture.md §3` 的 ffi 目录树同步反映该子模块。
+- §5.3.bis cbindgen 三道闸门契约：(1) `extern "C"` 签名只引用 raw 类型 `TensorExportRaw` / `TensorExportMutRaw`；(2) 泛型 descriptor 物理隔离在 `crate::ffi::private` 子模块，不参与 cbindgen emission 路径；(3) `cbindgen.toml` 使用 `exclude` 严格列表（`[export] include` 不是 allowlist）。`28-tests.md §5.17` 的 `test_cbindgen_header_exports_only_raw_descriptors` 在 (2) gate 中同时断言 `private.rs` 物理边界。
+- 与 `00-coding.md §1.3` / `28-tests.md §1.0` 锁定基线版本号严格对齐。
+
+### v3.0.1 (2026-05-03) — TensorExportRaw 非泛型描述符落地
+
+- `TensorExportRaw` / `TensorExportMutRaw` 是非泛型 `*const c_void` C ABI 描述符；提供 `From<TensorExport<'a, A>> for TensorExportRaw` 与 `From<TensorExportMut<'a, A>> for TensorExportMutRaw` 的 generic→raw 转换。
+- C ABI 表面只暴露 raw descriptor + `ElementType` 显式 discriminants（`Bool=0..Complex64=6`，`03-element.md §5.1.1`）。
+
+### v3.0.0 (2026-05-03) — FFI 错误结构化 + offset_of! padding 守门
+
+- `XenonError::Ffi` 四字段 `{ operation, category: FfiErrorCategory, backend: FfiBackend, cause }` 与 `26-error.md v3.x` 同步（`FfiErrorCategory` 八变体、`FfiBackend` 二变体）；FFI 路径 padding / alignment 通过 `core::mem::offset_of!` 编译期断言守门。
 
 ### v2.1.0 (2026-05-03) — from_raw_parts_mut 自别名改返 OverlapRejected
 

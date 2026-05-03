@@ -616,7 +616,7 @@ impl std::error::Error for XenonError {
 | 方法型索引失败                    | `Result::Err(XenonError::IndexOutOfBounds)`  | 需返回结构化索引上下文                |
 | 有符号整数算术溢出 / 除以零       | panic                                        | 仅适用于 `i32` / `i64`，见需求说明书  |
 | 有符号整数算术结果不可表示        | panic                                        | 仅适用于 `i32` / `i64`，见需求说明书  |
-| `sqrt(negative)`                  | IEEE 754 返回 `NaN` / `-Inf`，不得 panic     | `f32` / `f64` 数学域边界              |
+| `sqrt(negative)`                  | IEEE 754 返回 `NaN`，不得 panic              | `f32` / `f64` 数学域边界              |
 | `ln(negative)`                    | IEEE 754 返回 `NaN` / `-Inf`，不得 panic     | `f32` / `f64` 数学域边界              |
 | `ln(0)`                           | IEEE 754 返回 `NaN` / `-Inf`，不得 panic     | `f32` / `f64` 数学域边界              |
 
@@ -1186,7 +1186,7 @@ Caller invokes public API (e.g., tensor.broadcast_to(shape))
 | 属性     | 值                                                                                                                                            |
 | -------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | 决策     | `Ffi` / `Workspace` 携带 `cause: Option<Box<XenonError>>`；其他变体保持叶子错误。`Error::source()` 据此返回内层；其余变体返回 `None`           |
-| 理由     | (b2) 评审 B6.c：原 `source()` 始终返回 `None` 已经封死了链式追踪的能力；FFI 包装 workspace 错误、workspace allocator 错误等真实场景需要源链支持 |
+| 理由     | 前序评审 B6.c：原 `source()` 始终返回 `None` 已经封死了链式追踪的能力；FFI 包装 workspace 错误、workspace allocator 错误等真实场景需要源链支持 |
 | 替代方案 | 全部变体都加 `cause` — 放弃，绝大多数变体本身就是叶子，统一加字段会增加构造复杂度与无意义 None                                                  |
 | 替代方案 | 用外部 `anyhow` / `Box<dyn Error>` 包装 — 放弃，违反最小依赖约束                                                                              |
 
@@ -1195,7 +1195,7 @@ Caller invokes public API (e.g., tensor.broadcast_to(shape))
 | 属性     | 值                                                                                                                                                                |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 决策     | `TypeConversion` 字段为 `{ operation, source_type: &'static str, target_type: &'static str, reason, element_index? }`（v3.2.0 起；v1.3.0–v3.1.x 曾使用 `ElementType`，详见决策回滚说明）。`source_type` / `target_type` 取值来自 `Element::ELEMENT_TYPE_NAME` 关联常量（`03-element.md §5.1.1`） |
-| 理由     | (b2) 评审 H-R8 / C23：`TypeId` 是不透明哈希，无法满足结构化诊断 + 可读 Display；同时补齐 `operation` 字段消除"几乎所有变体都必须携带 operation 但 TypeConversion 例外"的不一致。`&'static str` 取代 `ElementType` 枚举（v3.2.0）：避免 error 反向依赖 element，让 L0..L6 单向依赖严格成立，同时保留可读 Display；具体类型枚举仍由 `crate::element` 拥有，结构化匹配可由调用方按需 `match` 字符串字面量（受支持的全集是固定的封闭名称集合） |
+| 理由     | Round-8 评审 H-R8 / C23：`TypeId` 是不透明哈希，无法满足结构化诊断 + 可读 Display；同时补齐 `operation` 字段消除"几乎所有变体都必须携带 operation 但 TypeConversion 例外"的不一致。`&'static str` 取代 `ElementType` 枚举（v3.2.0）：避免 error 反向依赖 element，让 L0..L6 单向依赖严格成立，同时保留可读 Display；具体类型枚举仍由 `crate::element` 拥有，结构化匹配可由调用方按需 `match` 字符串字面量（受支持的全集是固定的封闭名称集合） |
 | 替代方案 | 保留 `TypeId` + 在 Display 时反查类型名 — 放弃，反查机制不存在且 TypeId 不可程序化匹配封闭元素集合 |
 | 替代方案 | 字段保持 `ElementType` 枚举 — 放弃（v3.2.0 反转）：会让 error 模块持有 element 模块定义的类型，破坏 L0 单向依赖（即便通过 re-export 隐藏耦合，链路上仍是 error → element） |
 | 替代方案 | 自由文本字符串 `Cow<'static, str>` — 放弃：构造点缺乏统一来源会导致拼写不一致；本设计要求值必须来自 `Element::ELEMENT_TYPE_NAME` 关联常量集中管理 |

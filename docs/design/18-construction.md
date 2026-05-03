@@ -183,7 +183,13 @@ where
         // constructor (see 07-tensor.md §5.6 `TensorBase::new_unchecked`) instead
         // of writing private fields directly here. This keeps construct's
         // pub(crate) field access localized to one named entry point.
-        Ok(TensorBase::new_unchecked(storage, dim, strides, 0, flags))
+        // SAFETY: `dim` validated by `IntoDimension`; `strides` produced by
+        // `compute_f_strides(&dim)?`; `flags` produced by
+        // `compute_layout_flags(&dim, &strides, storage.as_ptr())` for the
+        // same dim/strides/storage pair; `offset = 0`; `storage` length =
+        // `len = dim.checked_size()?`. Logical access range == [0, len) within
+        // storage. All `# Safety` invariants of `new_unchecked` are satisfied.
+        Ok(unsafe { TensorBase::new_unchecked(storage, dim, strides, 0, flags) })
     }
 
     /// Create a tensor filled with ones (F-order).
@@ -207,7 +213,9 @@ where
         let flags = layout::compute_layout_flags(&dim, &strides, storage.as_ptr());
         // See `zeros` above and 07-tensor.md §5.6: routed through the named
         // `pub(crate)` constructor `TensorBase::new_unchecked`.
-        Ok(TensorBase::new_unchecked(storage, dim, strides, 0, flags))
+        // SAFETY: same invariants as `zeros` above (dim/strides/flags/offset
+        // mutually consistent; storage length = checked_size; offset 0).
+        Ok(unsafe { TensorBase::new_unchecked(storage, dim, strides, 0, flags) })
     }
 }
 ```
@@ -354,7 +362,11 @@ where
         // Routed through tensor's `pub(crate)` internal constructor (see
         // 07-tensor.md §5.6 `TensorBase::new_unchecked`) so this module never
         // accesses private fields by struct-literal syntax directly.
-        Ok(TensorBase::new_unchecked(storage, dim, strides, 0, flags))
+        // SAFETY: `dim` validated; `strides` from `compute_f_strides(&dim)?`;
+        // `flags` from `compute_layout_flags(&dim, &strides, storage.as_ptr())`;
+        // `data.len() == dim.checked_size()?` already enforced via
+        // ElementCountMismatch check; `offset = 0`; logical access range fits.
+        Ok(unsafe { TensorBase::new_unchecked(storage, dim, strides, 0, flags) })
     }
 
     /// Construct a tensor from a slice (copies data).
@@ -495,7 +507,10 @@ where
         let flags = layout::compute_layout_flags(&shape, &strides, storage.as_ptr());
         // Routed through tensor's `pub(crate)` internal constructor (see
         // 07-tensor.md §5.6 `TensorBase::new_unchecked`).
-        Ok(TensorBase::new_unchecked(storage, shape, strides, 0, flags))
+        // SAFETY: 0-D scalar; `shape = Ix0` (product = 1); `strides = []`;
+        // `flags` from `compute_layout_flags`; storage length = 1; offset 0;
+        // logical access trivially within storage.
+        Ok(unsafe { TensorBase::new_unchecked(storage, shape, strides, 0, flags) })
     }
 }
 
@@ -806,10 +821,23 @@ User calls zeros / from_shape_vec / eye
 | 1.1.4 | 2026-04-15 |
 | 2.0.0 | 2026-05-02 |
 | 2.0.1 | 2026-05-03 |
+| 3.0.0 | 2026-05-03 |
+| 3.0.1 | 2026-05-04 |
+
+### v3.0.1 (2026-05-04) — R8/R9 协同基线对齐
+
+- 与 `00-coding.md §1.3` / `28-tests.md §1.0` 锁定基线版本号显式对齐；本版无契约变更，仅同步 changelog 行避免 R8 升版后的版本号漂移（R9 评审 B-06 修复）。
+- 同步 R9 评审 B-07：`from_shape_vec` 的 `// SAFETY:` 注释将残留的 `slice.len()` 修正为实际参数 `data.len()`。
+
+### v3.0.0 (2026-05-03) — 4 处 unsafe { } block + SAFETY 注释闭环
+
+- `zeros` / `ones` / `from_shape_vec` / `from_scalar` 4 个构造路径全部用 `unsafe { ... }` 显式包裹对内部 `pub(crate) unsafe fn` helper（`from_shape_vec_aligned_unchecked` 等）的调用，并在每个调用点挂 `// SAFETY: ...` 注释，明确 shape/data-length 一致性、F-order 元数据合法性等前置条件（R8-B-01 落地）。
+- 与 `25-safety.md §5.12` 内部 unsafe fn 索引表的 6 项入口保持完整一一对应。
+- 不变的：构造 API 公开签名、`Result` 返回类型、错误变体选择。
 
 ### v2.0.1 (2026-05-03) — 通过 `TensorBase::new_unchecked` 集中 `pub(crate)` 字段访问
 
-- §5.1 `zeros` / `ones`：把 `Ok(TensorBase { storage, shape, strides, offset, flags })` 直接 struct literal 写法改为 `Ok(TensorBase::new_unchecked(storage, dim, strides, 0, flags))`，统一通过 `07-tensor.md` §5.6 新增的 `pub(crate) fn new_unchecked(...)` 构造器进入 tensor 私有字段。
+- §5.1 `zeros` / `ones`：把 `Ok(TensorBase { storage, shape, strides, offset, flags })` 直接 struct literal 写法改为 `Ok(unsafe { TensorBase::new_unchecked(storage, dim, strides, 0, flags) })`，统一通过 `07-tensor.md` §5.6 新增的 `pub(crate) unsafe fn new_unchecked(...)` 构造器进入 tensor 私有字段（`unsafe fn` 自 R7-B-02 起；调用点必须用 `unsafe { ... }` 块包裹并附 `// SAFETY:` 注释证明 dim/strides/flags/offset/storage 互一致）。
 - §5.3 `from_shape_vec`、§5.4 `from_scalar`：同上修改，构造路径全部走 `TensorBase::new_unchecked`。
 - 协同 `07-tensor.md` v2.0.1 changelog 中关于"construction uses a `pub(crate)` tensor-internal constructor rather than cross-module struct literal access"的承诺，本次为 18-construction 落地具体调用站点。
 - 不改变运行时行为；不改变公开 API 签名；不影响错误字段；零破坏性。

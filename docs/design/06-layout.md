@@ -786,8 +786,8 @@ Layout 模块本身**不执行任何 `unsafe` 操作**。`compute_layout_flags()
 ### Wave 4: 测试和文档
 
 - [ ] **T7**: 集成测试和文档完善
-  - 文件: `tests/test_layout.rs`
-  - 内容: 综合测试套件：步长计算、连续性检查、零步长、对齐检查
+  - 文件: layout 内部单元测试 + doctest，跨模块协同覆盖经由 `tests/test_tensor.rs` / `tests/test_shape.rs` / `tests/test_index.rs` / `tests/test_ffi.rs` / `tests/test_simd.rs` 等已存在的集成测试间接验证（与 `28-tests.md §9.2` 覆盖映射一致；**不**新增独立 `tests/test_layout.rs`）
+  - 内容: 综合验证：步长计算、连续性检查、零步长、对齐检查
   - 测试: 完整集成测试
   - 前置: T3, T4, T5, T6
   - 预计: 10 min
@@ -844,9 +844,15 @@ Layout 模块本身**不执行任何 `unsafe` 操作**。`compute_layout_flags()
 
 ### 8.5 集成测试
 
-| 测试文件               | 测试内容                                                                      |
-| ---------------------- | ----------------------------------------------------------------------------- |
-| `tests/test_layout.rs` | `compute_f_strides` 等 与 `tensor`、`storage`、`simd`、`ffi` 的端到端协同路径 |
+> **不**新增独立 `tests/test_layout.rs`（与 `28-tests.md §9.2` 一致）。layout 模块的端到端协同路径通过下列已存在的集成测试间接覆盖：
+
+| 集成测试文件             | 覆盖的 layout 协同路径                                                |
+| ------------------------ | --------------------------------------------------------------------- |
+| `tests/test_tensor.rs`   | `compute_f_strides` / `LayoutFlags` 与 `TensorBase` 字段构造的端到端路径 |
+| `tests/test_shape.rs`    | reshape / transpose / broadcast 后的 strides + flags 重算正确性       |
+| `tests/test_index.rs`    | slice 后的 layout flags 重算（`compute_layout_flags`）                |
+| `tests/test_simd.rs`     | F-contiguous 判定对 SIMD body / tail 拆分的影响                       |
+| `tests/test_ffi.rs`      | layout flags 决定 `is_blas_layout_compatible` 等 FFI 兼容性判定       |
 
 ### 8.6 Feature gate / 配置测试
 

@@ -518,7 +518,19 @@ println!("strides: {:?}", tensor.strides());
 
 `im.abs()` 把幅值统一转为非负展示数；NaN 在 `abs()` 后仍是 NaN，但因 `is_nan()` 分支已选择符号 `+`，避免 `is_sign_negative()` 在 NaN 上的实现定义行为。
 
-**测试覆盖要求（28-tests）**：必须为以下输入形成快照测试：`1.0+0.0j` / `1.0-0.0j` / `1.0+infj` / `1.0-infj` / `1.0+NaNj` / `inf+infj` / `NaN+NaNj`。
+**测试覆盖要求（28-tests）**：必须为以下 7 个边界输入形成快照测试。下列示例期望输出**默认未指定 precision**（即 Rust 标准 `Display` 默认输出，整数浮点不带 `.0`）：
+
+| 输入 (`re`, `im`) | 默认 Display 期望 (no precision) | `precision: Some(1)` 期望 |
+|:--|:--|:--|
+| `(1.0_f64, 0.0_f64)` | `1+0j` | `1.0+0.0j` |
+| `(1.0_f64, -0.0_f64)` | `1-0j` | `1.0-0.0j` |
+| `(1.0_f64, f64::INFINITY)` | `1+infj` | `1.0+infj` |
+| `(1.0_f64, f64::NEG_INFINITY)` | `1-infj` | `1.0-infj` |
+| `(1.0_f64, f64::NAN)` | `1+NaNj` | `1.0+NaNj` |
+| `(f64::INFINITY, f64::INFINITY)` | `inf+infj` | `inf+infj` |
+| `(f64::NAN, f64::NAN)` | `NaN+NaNj` | `NaN+NaNj` |
+
+注：Rust 标准 `Display` 对 `1.0_f64` / `0.0_f64` 默认输出 `1` / `0`（不带小数点），对 `f64::INFINITY` 输出 `inf`，对 `f64::NAN` 输出 `NaN`。`±inf` 和 `NaN` 的 Display 输出本身不变（无小数表示），`precision` 参数对它们无影响。复数虚部符号由 §6.1 形式化规则决定（`is_sign_negative()` + NaN 强制 `+`），与 precision 无关。
 
 对 F-order 张量，格式化必须按**逻辑索引**而不是物理线性内存顺序展开。以 `shape=[3, 3]` 为例，显示位置 `[i, j]` 对应逻辑索引 `[i, j]`，其线性位置为 `i + j * 3`；因此输出为 `[[1, 4, 7], [2, 5, 8], [3, 6, 9]]`，而不是按物理连续内存直接切成 `[[1, 2, 3], [4, 5, 6], [7, 8, 9]]`。内部若使用 `read_at(indices)` 等辅助函数，仅表示实现通过逻辑坐标取值，不构成新的公开索引承诺；该 helper 的前提为索引已通过范围检查，单次读取复杂度为 `O(ndim)`。
 
@@ -574,6 +586,13 @@ fmt_nd(tensor, f, prefix):
 ### 6.2 dtype 名称映射
 
 ```rust,ignore
+// `ElementType` is the closed enum authoritatively defined in `crate::element`
+// (see `03-element.md §5.1` and `§5.1.1` for the explicit discriminants).
+// Consumers MUST import it from `crate::element::ElementType` (the locked
+// invariant); `crate::ffi::ElementType` is a `pub use` re-export of the same
+// symbol — equivalent identity, but `crate::element` is the canonical path.
+use crate::element::{Element, ElementType};
+
 // Static dispatch via Element::ELEMENT_TYPE — the closed enum from 03-element §5.1.
 // No core::any::TypeId, no 'static bound, no fallback path: Element is a sealed
 // trait with a closed implementor set ({i32, i64, f32, f64, Complex<f32>,
@@ -828,6 +847,13 @@ User calls format!("{}", tensor) / format!("{:?}", tensor)
 | 1.1.5 | 2026-04-15 |
 | 1.1.6 | 2026-04-15 |
 | 2.0.0 | 2026-05-02 |
+| 2.0.1 | 2026-05-04 |
+
+### v2.0.1 (2026-05-04) — R8/R9 复数 Display 双 expected 与 ElementType 导入路径
+
+- §6.1：复数 Display 的虚部符号决策由 `is_sign_negative()` 决定（NaN 强制 `+`），并提供 7 个边界值的双 expected 快照表（默认 `Display` vs `precision: Some(1)`），与 `28-tests.md §5.16 test_output_complex_signed_special_values` 双 expected 集严格一致（R8 落地，R9 同步）。
+- §6.2：示例代码块在使用 `ElementType::I32` 等枚举值前显式 `use crate::element::ElementType;`，与锁定不变量"`ElementType` 权威定义在 `crate::element`、消费者必须从该路径导入"一致（R9 评审 C-03 修复）。
+- 与 `00-coding.md §1.3` / `28-tests.md §1.0` 锁定基线版本号对齐。
 
 ### v2.0.0 (2026-05-02) — `dtype_name` 改用 `Element::ELEMENT_TYPE` 静态分流
 

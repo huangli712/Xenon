@@ -442,6 +442,21 @@ fn parallel_iteration(tensor: &Tensor2<f64>) {
 
 更详细的 FFI 错误模型与 unsafe 边界：见 `23-ffi.md §10 / §11`。本节只规范线程安全维度。
 
+### 5.12 内部 unsafe fn 清单与契约入口（v2.0.1 新增）
+
+下列 `pub(crate) unsafe fn` 在 Xenon crate 内部使用，每个调用点必须用 `unsafe { ... }` 块包裹并附 `// SAFETY:` 注释证明其契约满足。本节只列入口，详细 `# Safety` 契约由各 owner 文档维护：
+
+| `unsafe fn` | Owner 文档 | 契约要点 |
+|:--|:--|:--|
+| `TensorBase::<Owned<A>, D>::new_unchecked(storage, shape, strides, offset, flags)` | `07-tensor.md §5.6` | shape/strides/flags/offset 互一致；flags 由 `compute_layout_flags` 产出；逻辑访问范围在 storage 内；shape product 已 overflow-check |
+| `TensorBase::<S, D>::new_unchecked(storage, shape, strides, offset, flags) where S: RawStorage` | `07-tensor.md §5.6` (Generic) | 同上；适用于 View / ViewMut / Arc 路径 |
+| `WorkspaceBorrowMut::as_maybe_uninit_typed_slice<T>(&mut self, count)` | `24-workspace.md §5.6` | `T: crate::element::Element`；count 不致 byte 长度溢出；返回 `&mut [MaybeUninit<T>]` 调用方负责完整初始化才能 `assume_init` |
+| `WorkspaceBorrowMut::assume_init_typed_slice<T>(&mut self, count)` | `24-workspace.md §5.6` | `T: Element`；调用方已保证范围内 `count` 个 `T` 已被有效初始化 |
+| `Tensor::from_shape_vec_aligned_unchecked` | `21-type.md §5.6` (cast/to_owned helper) | `data.len() == self.len() == product(shape)`；shape 已验证；F-order 元数据合法 |
+| `TensorBase::from_raw_parts(_mut)` | `07-tensor.md §5.7` (FFI 入口) | provenance / lifetime / alignment / initialization / aliasing 五点（与 §5.11 一致） |
+
+调用点要求：每个 `unsafe { ... }` 块必须紧邻 `// SAFETY:` 注释，注释引用 owner 文档章节并列出本调用点已建立的不变式如何满足契约。25-safety §5.12 仅作为索引；具体契约文本以 owner 文档为准，禁止在两处分别维护。
+
 ---
 
 ## 6. 内部实现设计
@@ -822,9 +837,10 @@ workspace 的线程安全规则（`!Send + !Sync` 实现选择及理由，参见
 - §11 决策 1-4。
 
 
-### v2.0.1 (2026-05-03) — Medium documentation follow-up
+### v2.0.1 (2026-05-03) — Medium documentation follow-up + R8 内部 unsafe fn 索引
 
 - Narrowed the integer-overflow panic rule to element-wise arithmetic, reductions, and dot products, while metadata / index-offset / FFI checked arithmetic remains recoverable via `26-error.md`.
+- Added §5.12 "内部 unsafe fn 清单与契约入口" — 6-entry index covering `TensorBase::new_unchecked` (Owned-specialized + Generic dual impl), workspace typed-slice `MaybeUninit` helpers, `Tensor::from_shape_vec_aligned_unchecked`, and `TensorBase::from_raw_parts(_mut)`. Index lists entry-point signatures only; detailed `# Safety` contracts remain in each owner doc (R8 baseline; locked at v2.0.1, R9 评审 E-02 修复了之前误标的 v2.0.2)。
 
 ---
 

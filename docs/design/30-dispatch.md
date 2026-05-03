@@ -1229,7 +1229,20 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 | 1.0.0 | 2026-05-02 | 初始版本：依据用户决策 B（三路 ExecPath）+ dispatch decision 2（ISA-agnostic），定义 dispatch 的完整设计 |
 | 1.1.0 | 2026-05-02 | （内部 API 修订，不影响下游用户）依据用户决策 B8.a + 评审 C6/C7/C8/溢出风险修复：(1) `select_exec_path()` 返回 `(ExecPath, Option<ParallelGuard>)`，select 与 acquire guard 原子绑定；(2) 移除 `ParallelGuard::enter()` 公开入口，guard 仅由 dispatch 内部 `try_acquire_guard()` 产生；(3) `set_parallel_threshold(0)` 显式作为禁用 sentinel；(4) 非连续阈值翻倍改为 `saturating_mul(2)` 防溢出；(5) SIMD/Parallel 非连续策略表述统一（SIMD 直接拒绝、Parallel 翻倍阈值）；(6) `ParallelExecStrategy` 字段私有 + 构造器 `new()` 校验；(7) `should_parallelize()` 语义澄清为诊断查询，不获取 guard；(8) §12.3 修正"纯函数"表述（实际读 thread-local + atomic）；(9) 新增决策 7 / 决策 8。 |
 | 1.1.1 | 2026-05-03 | （文档同步，与 08-simd v2.0.0 / 09-parallel v2.0.0 / 11-math v2.0.0 / 12-matrix v2.0.0 / 13-reduction v2.0.0 worker 内 SIMD 决策对齐）：清理 5 处 v1.x "no SIMD inside parallel workers" 表述：(1) §5.1 `ExecPath::Parallel` doc comment 改写：worker chunk 可独立调用 SIMD kernel（thread × SIMD）；(2) §7 ASCII 流向图：将 "workers run scalar code (no SIMD)" 替换为 "each worker chunk MAY invoke SIMD per chunk-local admission (v2.0)"；(3) §9.1 接口约定表 `math` 行：替换 "并行 worker 内执行标量代码（不使用 SIMD）" 为 "worker 内 chunk 可独立做 SIMD admission"；(4) §9.2 数据流图 `ExecPath::Parallel` 行：替换 "各 worker 执行标量代码，无 SIMD" 为 "各 worker chunk 可独立做 SIMD admission"；(5) §11 决策 1 拒绝替代方案 "四路" 表述更新：保留三路 ExecPath 决策，但说明 v2.0 起 SIMD admission 由 worker 自决，不需要顶层 `SimdParallel` 变体。无 API 变更。 |
+| 1.1.2 | 2026-05-03 | Medium documentation follow-up：澄清决策 5 非连续输入仅让 Parallel 有效阈值翻倍；SIMD 直接拒绝非连续输入。 |
+| 1.1.3 | 2026-05-03 | （破坏性内部更新）`alignment_ok` 改为能力提示位（不再是 SIMD 硬门槛）+ `ParallelExecStrategy::new()` 集中 max_workers 校验。详见下方 v1.1.3 块。 |
+| 2.0.0 | 2026-05-04 | SemVer 主版本上升标记（与 08-simd v2.0.x / 09-parallel v2.0.x 协同基线统一）。 |
+| 2.0.1 | 2026-05-04 | R8/R9 协同基线对齐：与 `00-coding.md §1.3` / `28-tests.md §1.0` 锁定基线版本号显式对齐，本版无契约变更。 |
 
+
+### v2.0.1 (2026-05-04) — R8/R9 协同基线对齐
+
+- 与 `00-coding.md §1.3` / `28-tests.md §1.0` 锁定基线版本号显式对齐；本版无契约变更，仅同步 changelog 行避免 v1.1.3 升级到 v2.0 后的版本号漂移（R9 评审追加发现）。
+- 维持 v1.1.3 的契约：`alignment_ok` 是 SIMD 后端能力提示位（不是 dispatch 硬门槛）；`ParallelExecStrategy::new()` 在构造期完整校验 `max_workers`；`select_exec_path(len, is_contiguous, alignment_ok)` 签名与 `(ExecPath, Option<ParallelGuard>)` 返回类型不变。
+
+### v2.0.0 (2026-05-04) — SemVer 主版本上升标记（与协同基线一致）
+
+- 自 v1.1.3 起累积的破坏性内部更新（alignment_ok 语义反转 + max_workers 校验集中）正式按 SemVer 主版本号体现，与 `08-simd.md v2.0.x` / `09-parallel.md v2.0.x` 协同基线统一为 v2.0.x。
 
 ### v1.1.2 (2026-05-03) — Medium documentation follow-up
 

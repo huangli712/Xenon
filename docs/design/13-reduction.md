@@ -631,6 +631,12 @@ User calls sum / sum_axis / sum_axis_keepdims
 | 1.1.2 | 2026-04-16 |
 | 2.0.0 | 2026-05-02 |
 | 2.0.1 | 2026-05-03 |
+| 3.0.0 | 2026-05-04 |
+
+### v3.0.0 (2026-05-04) — R8/R9 协同基线对齐
+
+- 与 `00-coding.md §1.3` / `28-tests.md §1.0` 锁定基线版本号显式对齐；本版无契约变更，仅同步 changelog 行避免 R8 升版后的版本号漂移（R9 评审追加发现）。
+- 归约结果类型与 `Numeric` bound 的协同语义维持 v2.0.x 既定形态；F-order axis 0 vs last-axis 语义、`Float`/`Numeric` traits 在 sum/mean/dot 路径上的行为不变。
 
 ### v2.0.1 (2026-05-03) — Medium/Low review fixes
 

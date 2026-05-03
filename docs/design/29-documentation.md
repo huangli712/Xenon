@@ -324,6 +324,40 @@ L3: Examples (examples/)
 - 类型转换示例必须遵循静态无损 `From`、静态有损与动态条件性 `CastTo<T>` 三层结构；复数实数构造只展示 `From<T> for Complex<T>`，整数到复数转换走 `CastTo`。
 - Workspace 示例必须展示 `borrow_mut(&mut self)`、`Workspace::split_at_mut(&mut self)` 与消费式 `SplitBorrowMut::split_at_mut(self)`；线程安全说明以 `25-safety.md v2.0.1` 为准，`ViewMutRepr` 不实现 `Sync`（`!Sync` 来自 raw `*mut A` opt-out + 不提供 `unsafe impl Sync`，**不是**来自 `PhantomData<&mut T>`），`ArcRepr` 要求 `A: Send + Sync`。
 
+#### 5.4.3 Sealed trait 公开 doc 约定（v2.0.2）
+
+公开但 sealed 的 trait（外部不可实现，但可在 `where` 子句、trait 对象、关联类型中命名）必须在其 `pub trait` 的 doc comment 中显式声明 sealed 状态。这是 docs.rs 公开 API 一致性约定，不是实现细节披露。
+
+**适用范围（与各设计文档的锁定不变量一致）**：
+
+- `05-storage.md`：`RawStorage` / `RawStorageMut` / `Storage` / `StorageMut` / `StorageOwned` / `StorageShared` 6 个 storage trait + `IsOwned` / `IsView` / `IsViewMut` / `IsArc` 4 个 marker trait（全部 sealed via `crate::private::Sealed`，R8-B-03 落地）
+- `02-dimension.md`：`Dimension` 及其超 trait `Reverse`（sealed via `Dimension: Sealed` super-bound；R9 评审 A-03 修复后表述统一）
+- `03-element.md`：`Element` / `Numeric` / `RealScalar` / `ComplexScalar` / `CastElement`（封闭元素集成员关系）
+- `21-type.md`：`CastTo<T>`（封闭转换矩阵）
+
+**强制 doc comment 格式**（最小要求）：
+
+```rust,ignore
+/// ... existing trait description ...
+///
+/// # Sealed
+///
+/// This trait is sealed and cannot be implemented outside of `xenon`.
+/// External crates may name it in `where` clauses or trait bounds, but
+/// adding new implementations is intentionally not supported. The
+/// implementor set is closed: see the owner design document for the
+/// complete list and the rationale.
+pub trait MyPublicSealedTrait: crate::private::Sealed { /* ... */ }
+```
+
+**禁止**：
+
+- 在公开 doc 中暴露 `private.rs` 模块路径或 `Sealed` super-trait 的实现细节（仅说明"sealed and cannot be implemented outside this crate"即可，不写"via `crate::private::Sealed`"）。
+- 让 sealed 状态仅通过文件树注释（如 `private.rs # Sealed-trait infrastructure`）传达；必须在每个 sealed 公开 trait 自身的 doc comment 中显式声明。
+- 对 `pub(crate)` 内部 trait（如 `ConvertTo<B>`、`PermuteAxes`）施加同样要求——它们不在公开 API 面，无须公开 sealed 声明。
+
+文档审查（`§5.5` Lint 与文档门禁）必须包含一项 grep 检查：所有 `pub trait` 声明位于 sealed 范围内时，doc comment 必须出现 `Sealed` 段落。
+
 ### 5.5 Lint 与文档门禁
 
 #### 5.5.1 Lint 规则

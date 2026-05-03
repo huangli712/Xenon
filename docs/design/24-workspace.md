@@ -1097,7 +1097,7 @@ let scratch = buf.as_maybe_uninit_slice();
 // Bad - Treating scratch memory as initialized typed elements without proof
 let mut ws = Workspace::new(1024, 64)?;
 let mut buf = ws.borrow_mut()?;
-// Note: typed view is sealed to T: Element (per §5.6, v3.0.2). Even with the
+// Note: typed view is sealed to T: Element (per §5.6, v3.0.1). Even with the
 // proper bound, calling `assume_init_typed_slice` without first writing valid
 // `i32` values via the `MaybeUninit` view is UB.
 let ints: &mut [i32] = unsafe { buf.assume_init_typed_slice::<i32>(256)? };
@@ -1515,6 +1515,9 @@ Upper-layer code requests temporary scratch space
 | 1.2.8 | 2026-04-16 |
 | 1.2.9 | 2026-04-29 |
 | 2.0.0 | 2026-05-02 |
+| 2.0.1 | 2026-05-03 |
+| 3.0.0 | 2026-05-03 |
+| 3.0.1 | 2026-05-04 |
 
 ### v2.0.0 (2026-05-02) — 错误字段对齐 26-error v3.0.0 + B12.a 落地
 
@@ -1546,6 +1549,17 @@ Upper-layer code requests temporary scratch space
 - §10 `Recoverable error` 行重写：列出三字段公开形态、七子变体触发场景、明示禁用旧字段。
 - §5.5 borrow API doc 中"`borrow()`/`borrow_mut()` take `&self` because exclusivity is enforced at runtime by AtomicU8" 表述同步更新为反映 B12.a 后的不对称语义。
 
+
+### v3.0.1 (2026-05-04) — R8/R9 协同基线对齐
+
+- 与 `00-coding.md §1.3` / `28-tests.md §1.0` 锁定基线版本号显式对齐；本版无契约变更，仅同步 changelog 行避免 R8 升版后的版本号漂移（R9 评审 D-03 修复）。
+- §5.9 文中残留的 `(per §5.6, v3.0.2)` 错误版本引用统一为 `(per §5.6, v3.0.1)`，避免误导读者认为存在 v3.0.2。
+- typed view 维持 `T: crate::element::Element` bound；`TypedViewRejection` 的三变体（`ZeroSizedType` / `AlignmentMismatch { required, actual }` / `TypedByteLengthOverflow { count, elem_size }`）与 `26-error.md §5.1` 严格一致。
+
+### v3.0.0 (2026-05-03) — typed view 收敛到 `T: Element` + WorkspaceErrorCategory 七变体
+
+- typed view 的元素类型 bound 收敛为 `T: crate::element::Element`（封闭元素集 6+1）；非 Element 类型在编译期被拒绝。
+- `WorkspaceErrorCategory` 七变体（`AllocFailed` / `InvalidLayout` / `BorrowConflict` / `SplitOutOfBounds` / `SplitCountInvariant` / `GrowOverflow` / `TypedViewRejected`）与 `26-error.md §5.1` 完全对齐；`TypedViewRejected` 携带 `TypedViewRejection` 枚举字段。
 
 ### v2.0.1 (2026-05-03) — Medium documentation follow-up
 

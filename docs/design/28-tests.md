@@ -15,7 +15,7 @@
 
 ### 1.0 协同基线
 
-本文档 v2.0.1 以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`02-dimension.md` v1.2.6、`03-element.md` v1.4.0、`04-complex.md` v2.0.2、`05-storage.md` v2.0.1、`06-layout.md` v1.3、`07-tensor.md` v2.0.1、`08-simd.md` v2.0.1、`09-parallel.md` v2.0.1、`11-math.md` v2.0.1、`12-matrix.md` v2.0.1、`13-reduction.md` v3.0.0、`14-set.md` v2.0.1、`15-broadcast.md` v3.0.1、`16-shape.md` v2.0.1、`17-indexing.md` v3.0.1、`18-construction.md` v3.0.1、`19-overload.md` v2.0.0、`20-utility.md` v3.0.1、`21-type.md` v2.1.1、`22-output.md` v2.0.1、`23-ffi.md` v3.0.2、`24-workspace.md` v3.0.1、`25-safety.md` v2.0.1、`26-error.md` v3.2.0、`27-benchmark.md` v2.0.0、`30-dispatch.md` v2.0.1。
+本文档 v2.0.1 以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`02-dimension.md` v1.2.6、`03-element.md` v1.4.0、`04-complex.md` v2.0.2、`05-storage.md` v2.0.1、`06-layout.md` v1.3.1、`07-tensor.md` v2.0.1、`08-simd.md` v2.0.1、`09-parallel.md` v2.0.1、`10-iterator.md` v1.2.6、`11-math.md` v2.0.1、`12-matrix.md` v2.0.1、`13-reduction.md` v3.0.0、`14-set.md` v2.0.1、`15-broadcast.md` v3.0.1、`16-shape.md` v2.0.1、`17-indexing.md` v3.0.1、`18-construction.md` v3.0.1、`19-overload.md` v2.0.0、`20-utility.md` v3.0.1、`21-type.md` v2.1.1、`22-output.md` v2.0.1、`23-ffi.md` v3.0.2、`24-workspace.md` v3.0.1、`25-safety.md` v2.0.1、`26-error.md` v3.2.0、`27-benchmark.md` v2.0.1、`30-dispatch.md` v2.0.1。
 
 ### 1.1 职责边界
 
@@ -578,7 +578,7 @@ fn test_unique_non_contiguous() {
 | `test_bool_not_participating_in_cast`    | `bool` 不参与逐元素类型转换，相关入口在类型层或运行时被拒绝 | 高     |
 | `test_cast_nan_to_int`                   | `cast()` 对 NaN→整数返回 `TypeConversion` 错误              | 中     |
 
-转换测试遵循 `21-type.md` 的三层结构：静态无损 `From`、静态有损 `CastTo<T>`、动态条件性 `CastTo<T>`。`TypeConversion` 错误断言必须匹配五字段：`operation: Cow::Borrowed("cast")`（标量级 `CastTo::cast_to()` 保留 `Cow::Borrowed("")` 并由张量入口注入）、`source_type: &'static str`（断言示例：`assert_eq!(err.source_type, "f64")`，v3.2.0 起改为字符串字面量比较）、`target_type: &'static str`（同前）、`reason: ConversionFailureReason`、`element_index: Option<usize>`；类型身份只使用 `&'static str`，值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供（详见 `26-error.md v3.2.0 §5.1` 与 `03-element.md v1.4.0 §5.1.1`）。
+转换测试遵循 `21-type.md` 的三层结构：静态无损 `From`、静态有损 `CastTo<T>`、动态条件性 `CastTo<T>`。`TypeConversion` 错误断言必须匹配五字段：`operation: Cow::Borrowed("cast")`（标量级 `CastTo::cast_to()` 自身填 `Cow::Borrowed("cast_to")`，张量入口 `cast()` 在 rewrap 时覆盖为 `"cast"`；空字符串被禁止——见 `04-complex.md §10` / `21-type.md §6.1`）、`source_type: &'static str`（断言示例：`assert_eq!(err.source_type, "f64")`，v3.2.0 起改为字符串字面量比较）、`target_type: &'static str`（同前）、`reason: ConversionFailureReason`、`element_index: Option<usize>`；类型身份只使用 `&'static str`，值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供（详见 `26-error.md v3.2.0 §5.1` 与 `03-element.md v1.4.0 §5.1.1`）。
 
 ### 5.15 test_utility.rs
 
@@ -602,7 +602,8 @@ fn test_unique_non_contiguous() {
 | `test_display_small_tensor`    | 小张量 NumPy 风格输出             | 高     |
 | `test_display_truncated`       | 超阈值触发截断                    | 高     |
 | `test_debug_includes_metadata` | Debug 包含 shape/stride/type 信息 | 中     |
-| `test_output_complex`          | 复数格式化输出                    | 中     |
+| `test_output_complex`          | 复数格式化输出基础 case (`a+bj` / `a-bj`) | 中     |
+| `test_output_complex_signed_special_values` | 7 个边界快照 (per `22-output.md §6.1`)：默认 Display 与 `precision: Some(1)` 双套快照覆盖 `(1.0, 0.0)` / `(1.0, -0.0)` / `(1.0, +inf)` / `(1.0, -inf)` / `(1.0, NaN)` / `(+inf, +inf)` / `(NaN, NaN)`；验证 `is_sign_negative()` 决定虚部符号、NaN 强制 `+`、`abs()` 取幅值的形式化规则 | 高 |
 | `test_scalar_vs_zero_dim_formatting` | 标量值与零维张量输出语义区分清晰 | 中 |
 
 ### 5.17 test_ffi.rs
@@ -618,6 +619,7 @@ fn test_unique_non_contiguous() {
 | `test_from_raw_parts_mut_reject_overlap` | `from_raw_parts_mut` 对地址重叠/别名冲突执行检查 | 高     |
 | `test_try_offset_of`                     | try_offset_of 正确计算                           | 高     |
 | `test_export_alignment_preconditions`    | 导出描述符仅在满足对齐前提时声明可供上游直接消费 | 高     |
+| `test_cbindgen_header_exports_only_raw_descriptors` | cbindgen 三道闸门契约（per `23-ffi.md §5.3.bis` v3.0.2 + `§3` 文件布局）：(1) 生成的 C 头文件包含 `TensorExportRaw` / `TensorExportMutRaw` / `enum ElementType` 定义；(2a) **不**包含泛型 `TensorExport` / `TensorExportMut` 的任何 typedef / struct / enum 标识符（grep-level 字符串检查）；(2b) **断言**泛型 `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 仅定义在 `src/ffi/private.rs`，且该模块不被 cbindgen emission 路径引用（通过源码 grep + cbindgen.toml `exclude` 规则两路验证）；(3) `ElementType` 枚举值与 `03-element.md §5.1.1` 显式 discriminants 严格一致（`Bool=0..Complex64=6`）。CI 在每次 PR 重新生成头文件并对比预期 schema | 高     |
 
 FFI 错误测试必须匹配 `XenonError::Ffi { operation, category: FfiErrorCategory, backend: FfiBackend, cause }` 四字段结构，`operation` 使用 `Cow::Borrowed("...")`。`FfiErrorCategory` 覆盖 `NullPointer`、`AlignmentMismatch`、`InvalidRank`、`BlasIncompatibleLayout`、`IntegerOverflow`、`AbiMismatch`、`OverlapRejected`、`ForeignAllocatorMismatch`，`FfiBackend` 仅为 `RawParts` / `Blas`。
 
@@ -1486,7 +1488,7 @@ fn compile_fail_harness() {
 | `element`   | doctest + compile-fail + integration tests | doctest 覆盖 trait/公开类型边界示例；compile-fail 覆盖非法元素类型与 trait bound；集成测试覆盖合法元素语义 |
 | `complex`   | doctest + integration tests                | doctest 覆盖公开用法示例；集成测试覆盖复数逐元素运算、归约、内积、格式化与 FFI 布局 |
 | `layout`    | doctest + integration tests                | doctest 覆盖布局/连续性示例；集成测试覆盖 F-order、非连续视图、transpose、to_contiguous 与导出前提 |
-| `storage`   | doctest + integration tests (`test_tensor.rs`) | Storage 内部 doctest 与 dimension/element 集成测试间接覆盖 trait/元素/维度协同；storage 公开边界（Owned/View/ViewMut/Arc 模式、`into_shared` 等）通过 `test_tensor.rs` 的 ViewRepr/ViewMutRepr/Owned/ArcRepr 张量层语义测试覆盖（参见 §5.4 test_tensor_view_creation / test_tensor_to_owned / test_arc_tensor_clone / test_arc_tensor_alias_isolation_on_write）；本版本不引入独立 `test_storage.rs` —— storage 模块没有 ViewRepr/ArcRepr 之外、不能通过张量层 API 触发的公开边界 |
+| `storage`   | doctest + integration tests (`test_tensor.rs`) | Storage 内部 doctest 与 dimension/element 集成测试间接覆盖 trait/元素/维度协同；storage 公开边界（Owned/View/ViewMut/Shared 模式、`into_shared` 等）通过 `test_tensor.rs` 的 ViewRepr/ViewMutRepr/Owned/ArcRepr 张量层语义测试覆盖（参见 §5.4 test_tensor_view_creation / test_tensor_to_owned / test_arc_tensor_clone / test_arc_tensor_alias_isolation_on_write）；本版本不引入独立 `test_storage.rs` —— storage 模块没有 ViewRepr/ArcRepr 之外、不能通过张量层 API 触发的公开边界 |
 
 ### 9.3 数据流
 
