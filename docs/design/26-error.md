@@ -507,13 +507,17 @@ pub enum InvalidArgumentKind {
 }
 
 /// Storage kind tag, used in error variants to identify which storage
-/// model the error refers to. Closed enum aligned with `05-storage.md`.
+/// model the error refers to. Closed enum aligned with the public
+/// `StorageKind` enum in `07-tensor.md` (Owned / View / ViewMut / Shared).
+/// `Shared` is the user-facing name for the storage mode backed by
+/// `ArcRepr<A>` (see `05-storage.md`); using `Shared` here keeps error
+/// diagnostics consistent with the public `StorageKind::Shared` API.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StorageKindTag {
     Owned,
     View,
     ViewMut,
-    Arc,
+    Shared, // Backed by ArcRepr<A> in storage layer.
 }
 
 /// Storage conversion kind for `InvalidStorageMode.conversion`.
@@ -761,13 +765,24 @@ helper）属于内部实现细节，集中在 §6.1 给出，不在公共 API �
 
 ```rust,ignore
 // Good - cast is fallible and reports the failing element.
+// Note: `ConvertTo<B>` is the `pub(crate) sealed` static dispatch trait
+// owned by `convert/cast.rs` (see `21-type.md §6.1.ter`); it routes
+// Tier-1 lossless pairs through `From` and Tier-2/Tier-3 pairs through
+// `<A as CastTo<B>>::cast_to`. cast()'s public bound MUST be
+// `A: ConvertTo<B>` (NOT `A: CastTo<B>`), because Tier-1 lossless type
+// pairs (e.g. f32->f64, i32->i64, i32->f64) intentionally do NOT
+// implement `CastTo` per the three-tier architecture.
 pub fn cast<B: CastElement>(&self) -> Result<Tensor<B, D>, XenonError>
 where
-    A: CastTo<B>,
+    A: ConvertTo<B>,
 {
     let mut out = Vec::with_capacity(self.len());
     for (index, value) in self.iter().enumerate() {
-        let converted = value.cast_to().map_err(|err| {
+        // ConvertTo::convert dispatches: Tier-0 identity returns Ok(self),
+        // Tier-1 returns Ok(B::from(self)), Tier-2/Tier-3 forward to
+        // <A as CastTo<B>>::cast_to(self) (which produces the structured
+        // TypeConversion error fields below for lossy / dynamic pairs).
+        let converted = ConvertTo::<B>::convert(*value).map_err(|err| {
             // Preserve the conversion error, enriching with element index
             // and the high-level operation name.
             match err {
@@ -789,10 +804,14 @@ where
     Ok(Tensor::from_shape_vec_aligned(self.shape().clone(), out))
 }
 
-// Bad - silently saturating or truncating.
+// Bad - silently saturating or truncating; also wrongly bounds on
+// `A: CastTo<B>` (which would forbid Tier-1 lossless pairs since Tier-1
+// type pairs intentionally have NO `CastTo` impl per `21-type.md §6.1.bis`
+// — this Bad example would not even compile for `f32 -> f64`, and the
+// non-fallible signature also drops the structured TypeConversion error).
 pub fn cast_bad<B: Element>(&self) -> Tensor<B, D>
 where
-    A: CastTo<B>,
+    A: CastTo<B>, // WRONG: should be ConvertTo<B>; CastTo lacks Tier-1 impls
 {
     let out = self.iter().map(|value| value.cast_to_lossy()).collect();
     // Internal helper, not a public API.

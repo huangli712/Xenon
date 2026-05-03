@@ -100,11 +100,21 @@ pub trait Element: Copy + Sealed {
 
 #[non_exhaustive]
 #[repr(u8)]
-pub enum ElementType { Bool, I32, I64, F32, F64, Complex32, Complex64 }
+pub enum ElementType {
+    Bool      = 0,
+    I32       = 1,
+    I64       = 2,
+    F32       = 3,
+    F64       = 4,
+    Complex32 = 5,
+    Complex64 = 6,
+}
 // Authoritative definition lives in `crate::element` (see 03-element.md §5.1.1).
 // `ffi` re-exports via `pub use crate::element::ElementType`. `error` does NOT
 // hold this enum — it uses `&'static str` (sourced from ELEMENT_TYPE_NAME) for
 // type tags in error fields, keeping L0 free of element dependency.
+// Discriminant values ARE part of the public C ABI contract (v1.4.0+);
+// reordering or reusing existing values is breaking.
 
 // The sealed implementation set is:
 // i32, i64, f32, f64, Complex<f32>, Complex<f64>, bool.
@@ -1188,6 +1198,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 | 版本  | 日期       |
 | ----- | ---------- |
+| 2.0.1 | 2026-05-03 |
 | 2.0.0 | 2026-05-03 |
 | 1.0.0 | 2026-04-07 |
 | 1.0.1 | 2026-04-07 |

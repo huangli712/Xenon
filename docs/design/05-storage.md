@@ -453,7 +453,7 @@ pub unsafe trait StorageMut: Storage + RawStorageMut {
 /// let storage: Owned<f64> = Owned::zeros(100);
 /// let cloned = storage.deep_clone();
 /// ```
-pub unsafe trait StorageOwned: StorageMut + Clone {
+pub unsafe trait StorageOwned: StorageMut + Clone + crate::private::Sealed {
     /// Allocates storage of the given size, zero-filled.
     fn zeros(len: usize) -> Self
     where

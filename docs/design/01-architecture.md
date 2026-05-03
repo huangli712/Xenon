@@ -544,7 +544,7 @@ L6  ┌───────────┐
 | ---------------- | :--: | :-------: | :---: | :------------: |
 | 基础张量操作     |  ✅  |    ✅     |  ✅   |       ✅       |
 | 视图/视图可变    |  ✅  |    ✅     |  ✅   |       ✅       |
-| Arc 存储         |  ✅  |    ✅     |  ✅   |       ✅       |
+| Shared 存储       |  ✅  |    ✅     |  ✅   |       ✅       |
 | 迭代器           |  ✅  |    ✅     |  ✅   |       ✅       |
 | 逐元素非数学运算 |  ✅  |    ✅     |  ✅   |       ✅       |
 | 逐元素数学函数   |  ✅  |    ✅     |  ✅   |       ✅       |
@@ -866,7 +866,7 @@ compute_layout_flags(shape, strides, ptr) // Central function for all layout fla
 LayoutState                          // FContiguous / NonContiguous / BroadcastView
 
 // Tensor semantic query enums
-StorageKind                          // Owned / View / ViewMut / Arc
+StorageKind                          // Owned / View / ViewMut / Shared
 AccessSemantics                      // ReadOnly / SharedReadOnly / Writable / Owned
 DataLocation                         // Cpu (current version only supports CPU)
 
@@ -1104,6 +1104,7 @@ Element                        // Base: Copy + Sealed with const ELEMENT_TYPE: E
 | 1.3.0 | 2026-04-15 |
 | 1.3.1 | 2026-04-16 |
 | 2.0.0 | 2026-05-03 |
+| 2.0.1 | 2026-05-03 |
 
 ### v2.0.0
 
@@ -1113,7 +1114,7 @@ Element                        // Base: Copy + Sealed with const ELEMENT_TYPE: E
 - 对齐 `26-error.md` v3.0.0：架构层错误边界补充 `Cow<'static, str>`、`ElementType`、`WorkspaceErrorCategory`、`FfiErrorCategory` 与 `FfiBackend` 约束。
 - 对齐 `17-indexing.md` v2.0.0：公开安全索引入口收敛为 `try_at` / `try_at_mut`，不提供方括号索引 trait 实现。
 - 对齐 `11-math.md` 与 `19-overload.md`：比较方法命名改为 `equal` / `not_equal` / `less` / `greater`，标量运算符路径引用 `Scalar<A>` 包装类型。
-- 对齐 `03-element.md`、`04-complex.md`、`05-storage.md`：核心类型速查更新 `Element`、`ElementType`、封闭实现集、`Complex<T>` 实数构造边界与 `StorageKind::Arc` 命名。
+- 对齐 `03-element.md`、`04-complex.md`、`05-storage.md`：核心类型速查更新 `Element`、`ElementType`、封闭实现集、`Complex<T>` 实数构造边界与 `StorageKind::Shared` 命名（`ArcRepr` / `ArcTensor` 仍作为底层表示与类型别名保留）。
 - 对齐 `08-simd.md`、`09-parallel.md`、`30-dispatch.md`：dispatch 决策补充 `(ExecPath, Option<ParallelGuard>)`、threshold = 0 sentinel、`saturating_mul` 与 worker 内 SIMD 的双层加速边界。
 
 未变更项：

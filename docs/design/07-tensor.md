@@ -620,7 +620,7 @@ where
     ///   `strides`, the value of `flags` must reflect that (the caller
     ///   should use `compute_layout_flags` rather than fabricating bits
     ///   manually)
-    pub(crate) fn new_unchecked(
+    pub(crate) unsafe fn new_unchecked(
         storage: Owned<A>,
         shape: D,
         strides: Strides<D>,
@@ -631,6 +631,9 @@ where
         // This is the Owned-specialized form; the generic form for
         // `S: RawStorage` lives below as `TensorBase::<S, D>::new_unchecked`
         // and is the canonical entry point for View / ViewMut / Arc paths.
+        // Both forms are `unsafe fn` because the # Safety contract above
+        // promises UB on metadata mismatch (caller-proved invariants); the
+        // signature must match the documented hazard.
         TensorBase { storage, shape, strides, offset, flags }
     }
 }
@@ -1710,7 +1713,7 @@ TensorBase<S, D>
 
 - Replaced the checked-size unwrap safety-text example with a reference to the previously validated element count.
 - Clarified that construction uses a `pub(crate)` tensor-internal constructor rather than cross-module struct literal access to private fields.
-- §5.6 actually introduced `pub(crate) fn TensorBase::new_unchecked(storage, shape, strides, offset, flags) -> Self` as the named entry point for that contract; `18-construction.md §5.1` / `§5.3` / `§5.4` route every construction site through it, so private-field access is localized to one grep target.
+- §5.6 actually introduced `pub(crate) unsafe fn TensorBase::new_unchecked(storage, shape, strides, offset, flags) -> Self` (Owned-specialized + generic `S: RawStorage` forms; both `unsafe fn` because the # Safety contract documents UB on metadata mismatch) as the named entry point for that contract; `18-construction.md §5.1` / `§5.3` / `§5.4` route every construction site through it inside `unsafe { ... }` blocks with `// SAFETY:` comments, so private-field access is localized to one grep target.
 - Polished punctuation and numeric formatting in constructor and boundary-test prose.
 
 ### 2.0.0 (SemVer breaking)

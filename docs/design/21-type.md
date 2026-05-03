@@ -550,7 +550,9 @@ impl CastTo<i32> for i64 {
 
 ### 6.1.ter `ConvertTo<B>` 内部 sealed 分流 trait
 
-`ConvertTo<B>` 是 `convert/cast.rs` 内部的 `pub(crate) sealed` trait，作为 `cast<B>()` 公开 API 的静态分流入口。它统一三层架构的实现（Tier-1 / Tier-2 / Tier-3），让 `cast<B>()` 的 trait bound 不必直接要求 `CastTo<B>`（避免 Tier-1 type pair 因不实现 `CastTo` 而无法通过 bound）：
+`ConvertTo<B>` 是 `convert/cast.rs` 内部的 `pub(crate) sealed` trait，作为 `cast<B>()` 公开 API 的静态分流入口。它统一三层架构的实现（Tier-0 / Tier-1 / Tier-2 / Tier-3），让 `cast<B>()` 的 trait bound 不必直接要求 `CastTo<B>`（避免 Tier-1 type pair 因不实现 `CastTo` 而无法通过 bound）：
+
+> **覆盖范围（`CastElement`-only 6×6 矩阵）**：`ConvertTo<B>` 的源/目标类型集合严格为 `CastElement` 封闭实现集（`i32 / i64 / f32 / f64 / Complex<f32> / Complex<f64>`，**不**包含 `bool`），因此完整矩阵是 6×6 = 36 个 type pair，**不**是基于 7 元素全集的 49 对。`bool` 既不在 `CastElement` 封闭集合内（`03-element.md §5.9.1`），也不在 `cast()` 类型矩阵内（`§5.1`）；`Tensor<bool, _>` 不能调用 `cast()`、`Tensor<_, _>` 也不能 `cast::<bool>()`，编译期通过 `B: CastElement` bound 拒绝。`bool` 张量的同型拷贝由 `to_owned()` 承担（`§5.5`），不走 `cast::<bool>()` 路径。下方"same-type identity short-circuit (Tier-0)"块仅覆盖 `CastElement` 6 类同型对，`bool -> bool` 不属于该 Tier-0。
 
 ```rust,ignore
 // crate-internal, NOT exported. Sealed via crate::private::Sealed.
@@ -575,6 +577,8 @@ impl ConvertTo<f64> for i32 {
 }
 
 // === Same-type identity short-circuit (Tier-0 — no conversion at all). ===
+// Covers the 6 `CastElement` types only (not `bool`); `bool` self-copy is
+// handled by `to_owned()` per §5.5, not by `cast::<bool>()`.
 impl ConvertTo<f32>          for f32          { #[inline] fn convert(self) -> Result<f32, XenonError>          { Ok(self) } }
 impl ConvertTo<f64>          for f64          { #[inline] fn convert(self) -> Result<f64, XenonError>          { Ok(self) } }
 impl ConvertTo<i32>          for i32          { #[inline] fn convert(self) -> Result<i32, XenonError>          { Ok(self) } }

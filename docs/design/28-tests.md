@@ -15,7 +15,7 @@
 
 ### 1.0 协同基线
 
-本文档 v2.1.1 以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`02-dimension.md` v3.0.0、`03-element.md` v1.4.0、`04-complex.md` v2.0.2、`05-storage.md` v3.0.1、`06-layout.md` v1.3、`07-tensor.md` v3.0.0、`08-simd.md` v2.0.1、`09-parallel.md` v2.0.1、`11-math.md` v2.0.1、`12-matrix.md` v2.0.1、`13-reduction.md` v3.0.0、`14-set.md` v2.0.1、`15-broadcast.md` v3.0.1、`16-shape.md` v2.0.1、`17-indexing.md` v3.0.1、`18-construction.md` v3.0.1、`19-overload.md` v2.1.0、`20-utility.md` v3.0.1、`21-type.md` v2.1.1、`22-output.md` v2.0.1、`23-ffi.md` v3.0.2、`24-workspace.md` v3.0.1、`25-safety.md` v2.0.1、`26-error.md` v3.2.0、`27-benchmark.md` v2.0.0、`30-dispatch.md` v2.0.1。
+本文档 v2.0.1 以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`02-dimension.md` v1.2.6、`03-element.md` v1.4.0、`04-complex.md` v2.0.2、`05-storage.md` v2.0.1、`06-layout.md` v1.3、`07-tensor.md` v2.0.1、`08-simd.md` v2.0.1、`09-parallel.md` v2.0.1、`11-math.md` v2.0.1、`12-matrix.md` v2.0.1、`13-reduction.md` v3.0.0、`14-set.md` v2.0.1、`15-broadcast.md` v3.0.1、`16-shape.md` v2.0.1、`17-indexing.md` v3.0.1、`18-construction.md` v3.0.1、`19-overload.md` v2.0.0、`20-utility.md` v3.0.1、`21-type.md` v2.1.1、`22-output.md` v2.0.1、`23-ffi.md` v3.0.2、`24-workspace.md` v3.0.1、`25-safety.md` v2.0.1、`26-error.md` v3.2.0、`27-benchmark.md` v2.0.0、`30-dispatch.md` v2.0.1。
 
 ### 1.1 职责边界
 

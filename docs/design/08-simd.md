@@ -603,19 +603,20 @@ impl WithSimd for AddF32Kernel<'_> {
         assert_eq!(self.rhs.len(), len);
         assert_eq!(self.dst.len(), len);
 
-        // pulp 0.18.x API used here:
-        //   `simd.f32s_as_simd(slice)` returns `(prefix: &[f32], body: &[S::f32s], suffix: &[f32])`
-        //     — splits a `&[f32]` into a leading scalar prefix (alignment
-        //     padding), a body of full SIMD vectors, and a trailing scalar
-        //     suffix (length < lane width).
-        //   `simd.f32s_as_mut_simd(slice)` is the `&mut` counterpart.
-        //   `simd.f32s_add(a, b)` performs lane-wise add on `S::f32s`.
+        // pulp 0.18.x API canonical idiom: split-prefix / body / suffix.
         //
-        // The (prefix, body, suffix) split is the canonical pulp idiom and
-        // does NOT require the input to be aligned: prefix/suffix carry the
-        // scalar tail handling, body executes the SIMD path. The prior
-        // `f32s_load` / `f32s_store` / `f32s_len` symbols do not exist in
-        // pulp 0.18.x.
+        // The exact symbol names below MUST be cross-checked against
+        // `docs.rs/pulp/0.18.*/pulp/trait.Simd.html` at implementation time.
+        // pulp 0.18 exposes both associated-style (`S::as_simd_f32s(slice)`)
+        // and instance-style splits; pick whichever the pinned pulp minor
+        // version exports, and use the corresponding lane-wise op
+        // (`simd.add_f32s(a, b)` or equivalent). The pseudocode below uses
+        // instance-style names as a placeholder shape — the (prefix, body,
+        // suffix) split itself is the stable contract, NOT the exact
+        // method symbol.
+        //
+        // Forbidden symbols (do NOT use; do not exist in pulp 0.18.x):
+        //   `S::f32s_len()` / `simd.f32s_load(ptr)` / `simd.f32s_store(ptr, v)`
         let (lhs_prefix, lhs_body, lhs_suffix) = simd.f32s_as_simd(self.lhs);
         let (rhs_prefix, rhs_body, rhs_suffix) = simd.f32s_as_simd(self.rhs);
         let (dst_prefix, dst_body, dst_suffix) = simd.f32s_as_mut_simd(self.dst);
@@ -627,6 +628,8 @@ impl WithSimd for AddF32Kernel<'_> {
         }
 
         // SIMD body — vector-width-wide adds, one body element per iter.
+        // Use the lane-wise add method exported by the pinned pulp version
+        // (`simd.f32s_add(a, b)` OR `simd.add_f32s(a, b)` per pulp 0.18.x).
         for i in 0..lhs_body.len() {
             dst_body[i] = simd.f32s_add(lhs_body[i], rhs_body[i]);
         }

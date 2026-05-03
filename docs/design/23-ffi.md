@@ -347,39 +347,43 @@ C 消费者**只能**绑定到 `TensorExportRaw` / `TensorExportMutRaw`；Rust �
 
 #### cbindgen 配置合约（v3.0.2 强制）
 
-为强制上述区分，工程必须提供 `cbindgen.toml` 显式 allowlist + denylist 配置。最小约束：
+为强制 generic Rust-only 描述符不进入 C 头文件，工程依赖 **三道闸门**协同（cbindgen 没有真正的 "exhaustive allowlist" 机制；`[export] include` 只是把那些没被 `extern "C"` 函数引用、但也想强制纳入的额外类型 *补充进来*，并不能把生成集合限制为只有列表中的项）：
+
+1. **`extern "C"` 函数签名只引用 raw 描述符。** `crate::ffi` 的所有 `extern "C"` 函数只接受 / 返回 `TensorExportRaw` / `TensorExportMutRaw` / `ElementType` 等非泛型 C-visible 类型。这是最强约束：cbindgen 仅会生成被 `extern "C"` 函数实际依赖的类型。
+2. **`#[doc(hidden)] mod private { ... }` 隔离泛型类型。** `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 与 `From` 转换 impl 全部放在 `crate::ffi::private` 子模块内，让 cbindgen 的 parser 把它们视为内部细节；同时通过 `[export.exclude]` 显式列出名字作为第二道闸门防止意外暴露。
+3. **`cbindgen.toml` 显式 `[export.exclude]` + 测试时头文件 grep 检查。** 三道闸门叠加，任何一道单独失效（例如未来重构把泛型类型移出 private 模块）都不会让 generic schema 泄露到 C 头。
 
 ```toml
 # cbindgen.toml — repository-pinned excerpt for FFI ABI stability.
 language = "C"
 
 [export]
+# Force-include items NOT referenced by any extern "C" function (rare).
+# This is NOT an exhaustive allowlist — cbindgen ALWAYS emits items
+# transitively reachable from extern "C" function signatures regardless
+# of this list. The first gate (extern "C" only references raw types)
+# is what actually constrains the output set.
 include = [
-    # Stable C ABI surface only:
-    "ElementType",
-    "TensorExportRaw",
-    "TensorExportMutRaw",
-    "BlasInfo",
-    "FfiErrorCode",
-    "FfiBackend",
+    "ElementType",      # standalone enum, ABI-stable
+    "FfiErrorCode",     # error code enum exposed to C
+    "FfiBackend",       # backend tag enum exposed to C
 ]
+
+# Second gate: explicit deny by name. Even if a future refactor accidentally
+# referenced these from an extern "C" function, cbindgen would skip them.
 exclude = [
-    # Rust-side types with lifetimes / generics / PhantomData. cbindgen
-    # cannot represent them stably; explicit deny so accidental `#[repr(C)]`
-    # additions in Rust are not silently emitted to the C header.
     "TensorExport",
     "TensorExportMut",
 ]
 
 [parse]
-# Do NOT auto-include from glob; the `include` allowlist above is exhaustive.
-parse_deps = false
+parse_deps = false  # do not parse dependency crates' types
 ```
 
-测试合约（28-tests）：必须包含 `test_cbindgen_header_exports_only_raw_descriptors`，断言生成的 C 头文件：
+**测试合约（28-tests）**：必须包含 `test_cbindgen_header_exports_only_raw_descriptors`，断言生成的 C 头文件：
 
 1. 包含 `typedef ... TensorExportRaw;` / `typedef ... TensorExportMutRaw;` / `enum ElementType` 定义；
-2. **不**包含 `TensorExport` / `TensorExportMut` 的任何 typedef / struct / enum 标识符（grep-level 字符串检查）；
+2. **不**包含 `TensorExport` / `TensorExportMut` 的任何 typedef / struct / enum 标识符（grep-level 字符串检查）——这是三道闸门的最终验证；
 3. `ElementType` 枚举值与 03-element §5.1.1 显式 discriminants 严格一致（`Bool=0..Complex64=6`）。
 
 CI 在每次 PR 重新生成 C 头并对比预期 schema；schema 差异需 reviewer 在 PR 中显式确认。
