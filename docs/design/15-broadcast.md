@@ -271,7 +271,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 
 **安全性论证（unchecked 视图构造）：** 若内部使用 `TensorView::new_unchecked()` 或等价未检查构造器，调用点必须先证明：1）目标 `shape` 与源 `shape` 广播兼容；2）新 `shape` / `stride` / `offset` 组合不会访问到底层 storage 可见边界之外；3）任何零步长元素都不会通过结果视图暴露为可变访问。
 
-**布局状态判定（由视图构造方负责）：** 广播视图的 `LayoutFlags` 必须通过 `compute_layout_flags()`（见 `06-layout.md`）重算。当 `broadcast_strides()` 写入了广播零步长（即 `original dimension == 1 and target dimension > 1` 的轴），结果将落入 `LayoutState::BroadcastView`。注意：空数组的退化零步长（dimension == 0 导致的 stride 0）不属于广播语义，不因此触发 `BroadcastView` 分类。
+**布局状态判定（由视图构造方负责）：** 广播视图的 `LayoutFlags` 必须通过 `compute_layout_flags()`（见 `06-layout.md`）重算。当 `broadcast_strides()` 写入了广播零步长（即 `original dimension == 1 and target dimension > 1` 的轴）**且** `product(shape) > 0`（结果非空）时，结果落入 `LayoutState::BroadcastView`。若结果存在广播零步长但 `product(shape) == 0`（例如 `[1, 0]` 广播到 `[4, 0]`），即使 `target dimension > 1` 触发了零步长写入，也**不**触发 `BroadcastView` 分类——空数组没有"被复制"的元素，广播语义对其无意义。空数组的退化零步长（dimension == 0 导致的 stride 0）同样不属于广播语义，与上述规则一致。详见 `06-layout.md §5.12` `compute_layout_flags` 的 `HAS_ZERO_STRIDE` 公式。
 
 ### 6.5 `BroadcastDim` 的职责边界
 

@@ -496,6 +496,30 @@ println!("strides: {:?}", tensor.strides());
 
 如果 `FormatConfig::precision` 为 `Some(p)`，浮点数格式化使用 `write!(f, "{:.prec$}", value, prec = p)`；为 `None` 时使用默认精度（即 `write!(f, "{}", value)`）。对 `Complex<T>` 而言，`precision` 分别作用于 `re` 和 `im` 两个分量，再按 `a+bj` / `a-bj` 规则拼接，不共享额外的整体舍入层。
 
+**复数虚部符号决策（v2.0.1+，覆盖 NaN/Inf/-0.0 边界）**：
+
+复数 `Complex<T>` 的拼接规则使用 `T::is_sign_negative()` 决定连接符号，而**不是** `im < 0`。这一选择覆盖以下边界场景：
+
+| `im` | `is_sign_negative()` | 输出形式 | 说明 |
+|:--|:--:|:--|:--|
+| `+0.0` | `false` | `a+0j` | 正零 |
+| `-0.0` | `true`  | `a-0j` | 负零（IEEE 754 区分；`im < 0` 会归为 `+0`） |
+| `+inf` | `false` | `a+infj` | 正无穷 |
+| `-inf` | `true`  | `a-infj` | 负无穷 |
+| `NaN`  | 实现定义 | `a+NaNj` | NaN 统一选择 `+` 连接符（避免 NaN 比较未定义） |
+| 普通 `+x` | `false` | `a+xj` | 正常正值 |
+| 普通 `-x` | `true`  | `a-xj` | 正常负值 |
+
+**形式化规则**：
+
+1. 设 `s = if im.is_nan() { "+" } else if im.is_sign_negative() { "-" } else { "+" }`。
+2. 设 `mag = if im.is_nan() { /* T 的默认 NaN 输出 */ } else { format(im.abs(), precision) }`。
+3. 输出 `format(re, precision) + s + mag + "j"`。
+
+`im.abs()` 把幅值统一转为非负展示数；NaN 在 `abs()` 后仍是 NaN，但因 `is_nan()` 分支已选择符号 `+`，避免 `is_sign_negative()` 在 NaN 上的实现定义行为。
+
+**测试覆盖要求（28-tests）**：必须为以下输入形成快照测试：`1.0+0.0j` / `1.0-0.0j` / `1.0+infj` / `1.0-infj` / `1.0+NaNj` / `inf+infj` / `NaN+NaNj`。
+
 对 F-order 张量，格式化必须按**逻辑索引**而不是物理线性内存顺序展开。以 `shape=[3, 3]` 为例，显示位置 `[i, j]` 对应逻辑索引 `[i, j]`，其线性位置为 `i + j * 3`；因此输出为 `[[1, 4, 7], [2, 5, 8], [3, 6, 9]]`，而不是按物理连续内存直接切成 `[[1, 2, 3], [4, 5, 6], [7, 8, 9]]`。内部若使用 `read_at(indices)` 等辅助函数，仅表示实现通过逻辑坐标取值，不构成新的公开索引承诺；该 helper 的前提为索引已通过范围检查，单次读取复杂度为 `O(ndim)`。
 
 ```

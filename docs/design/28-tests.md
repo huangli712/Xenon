@@ -94,9 +94,13 @@ tests/
 ├── test_parallel.rs            # Parallel computation (consistency/data races)
 ├── test_simd.rs                # SIMD computation (result consistency)
 ├── test_error.rs               # Error handling (all error types)
-├── test_dimension.rs           # Dimension type system (static/dynamic dimension traits)
-├── test_element.rs             # Element type hierarchy (Element/Numeric/RealScalar/ComplexScalar)
-├── test_layout.rs              # Layout module (strides/computation/contiguity/layout flags)
+│
+│ # Note: dimension / element / layout do NOT have standalone integration
+│ # test files. Their public boundaries are covered by doctests +
+│ # compile-fail tests + cross-cutting integration tests in test_tensor.rs /
+│ # test_shape.rs / test_broadcast.rs / test_index.rs (see §9.2 mapping).
+│ # This avoids the 4-way (file tree / §5.x section / §7 Wave / §9.1
+│ # mapping) consistency drift seen in R5-E-02 / R6-E-02.
 │
 ├── property_tests.rs           # Property-test entry point (integration test target)
 └── property/
@@ -1535,6 +1539,7 @@ Test files
 | 1.3.0 | 2026-04-16 |
 | 1.3.1 | 2026-04-16 |
 | 2.0.0 | 2026-05-03 |
+| 2.0.1 | 2026-05-03 |
 
 ### v2.0.0 修订记录
 

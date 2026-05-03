@@ -345,6 +345,45 @@ impl<'a, A: Element> From<TensorExport<'a, A>> for TensorExportRaw {
 
 C 消费者**只能**绑定到 `TensorExportRaw` / `TensorExportMutRaw`；Rust 侧的 `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 是内部表达类型，包含生命周期借用证据与类型化指针，cbindgen 不会为其生成 C 头文件条目。两类描述符通过 `From` 在 FFI 边界一次性转换。这一设计保留了 Rust 侧的借用安全（`PhantomData<&'a A>` 阻止借用越界），同时给 C 一份稳定可消费的 ABI schema。
 
+#### cbindgen 配置合约（v3.0.2 强制）
+
+为强制上述区分，工程必须提供 `cbindgen.toml` 显式 allowlist + denylist 配置。最小约束：
+
+```toml
+# cbindgen.toml — repository-pinned excerpt for FFI ABI stability.
+language = "C"
+
+[export]
+include = [
+    # Stable C ABI surface only:
+    "ElementType",
+    "TensorExportRaw",
+    "TensorExportMutRaw",
+    "BlasInfo",
+    "FfiErrorCode",
+    "FfiBackend",
+]
+exclude = [
+    # Rust-side types with lifetimes / generics / PhantomData. cbindgen
+    # cannot represent them stably; explicit deny so accidental `#[repr(C)]`
+    # additions in Rust are not silently emitted to the C header.
+    "TensorExport",
+    "TensorExportMut",
+]
+
+[parse]
+# Do NOT auto-include from glob; the `include` allowlist above is exhaustive.
+parse_deps = false
+```
+
+测试合约（28-tests）：必须包含 `test_cbindgen_header_exports_only_raw_descriptors`，断言生成的 C 头文件：
+
+1. 包含 `typedef ... TensorExportRaw;` / `typedef ... TensorExportMutRaw;` / `enum ElementType` 定义；
+2. **不**包含 `TensorExport` / `TensorExportMut` 的任何 typedef / struct / enum 标识符（grep-level 字符串检查）；
+3. `ElementType` 枚举值与 03-element §5.1.1 显式 discriminants 严格一致（`Bool=0..Complex64=6`）。
+
+CI 在每次 PR 重新生成 C 头并对比预期 schema；schema 差异需 reviewer 在 PR 中显式确认。
+
 ### 5.4 指针约定对照
 
 | API                         | 基准                 | 说明                                                                 |

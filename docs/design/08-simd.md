@@ -603,35 +603,37 @@ impl WithSimd for AddF32Kernel<'_> {
         assert_eq!(self.rhs.len(), len);
         assert_eq!(self.dst.len(), len);
 
-        // NOTE: The following method names have been verified against pulp 0.18.x API.
-        // If upgrading pulp, verify these names remain stable.
-        let width = S::f32s_len();
-        let chunks = len / width;
+        // pulp 0.18.x API used here:
+        //   `simd.f32s_as_simd(slice)` returns `(prefix: &[f32], body: &[S::f32s], suffix: &[f32])`
+        //     — splits a `&[f32]` into a leading scalar prefix (alignment
+        //     padding), a body of full SIMD vectors, and a trailing scalar
+        //     suffix (length < lane width).
+        //   `simd.f32s_as_mut_simd(slice)` is the `&mut` counterpart.
+        //   `simd.f32s_add(a, b)` performs lane-wise add on `S::f32s`.
+        //
+        // The (prefix, body, suffix) split is the canonical pulp idiom and
+        // does NOT require the input to be aligned: prefix/suffix carry the
+        // scalar tail handling, body executes the SIMD path. The prior
+        // `f32s_load` / `f32s_store` / `f32s_len` symbols do not exist in
+        // pulp 0.18.x.
+        let (lhs_prefix, lhs_body, lhs_suffix) = simd.f32s_as_simd(self.lhs);
+        let (rhs_prefix, rhs_body, rhs_suffix) = simd.f32s_as_simd(self.rhs);
+        let (dst_prefix, dst_body, dst_suffix) = simd.f32s_as_mut_simd(self.dst);
 
-        // SIMD main loop
-        for i in 0..chunks {
-            let offset = i * width;
-            unsafe {
-                // SAFETY: offset + width <= chunks * width <= len
-                // The kernel-specific alignment or unaligned-load admission
-                // has already been checked before dispatch.
-                let lhs_vec = simd.f32s_load(
-                    self.lhs.as_ptr().add(offset)
-                );
-                let rhs_vec = simd.f32s_load(
-                    self.rhs.as_ptr().add(offset)
-                );
-                let result = simd.f32s_add(lhs_vec, rhs_vec);
-                simd.f32s_store(
-                    self.dst.as_mut_ptr().add(offset),
-                    result,
-                );
-            }
+        // Scalar prefix handling (alignment lead-in; usually empty when caller
+        // already passes aligned chunks).
+        for i in 0..lhs_prefix.len() {
+            dst_prefix[i] = lhs_prefix[i] + rhs_prefix[i];
         }
 
-        // Scalar tail handling
-        for i in (chunks * width)..len {
-            self.dst[i] = self.lhs[i] + self.rhs[i];
+        // SIMD body — vector-width-wide adds, one body element per iter.
+        for i in 0..lhs_body.len() {
+            dst_body[i] = simd.f32s_add(lhs_body[i], rhs_body[i]);
+        }
+
+        // Scalar suffix handling (trailing length < lane width).
+        for i in 0..lhs_suffix.len() {
+            dst_suffix[i] = lhs_suffix[i] + rhs_suffix[i];
         }
     }
 }

@@ -1120,7 +1120,7 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 | 决策     | dispatch.rs 不参与 ISA 检测或 SIMD 能力判定。ISA 检测、lane 宽度选择、对齐细节均保留在 `simd/` 模块内部。                 |
 | 理由     | ISA 检测属于 SIMD 后端实现细节；将其隔离在 `simd/` 内部保持 dispatch 简单、可测试、无平台依赖。dispatch 只需要知道"输入是否连续+对齐"。 |
 | 替代方案 | dispatch 调用 `pulp::Arch::new()` 做 ISA 检测 —— 放弃，会引入 `pulp` 依赖到 dispatch（违反零依赖原则）、模糊职责边界。  |
-| 来源     | **用户决策 X**：dispatch 是 ISA-agnostic；ISA 检测是 `pulp::Arch` 的职责。                                               |
+| 来源     | **用户决策（dispatch decision 2）**：dispatch 是 ISA-agnostic；ISA 检测是 `pulp::Arch` 的职责。                                               |
 
 ### 决策 3：嵌套并行检测通过 thread-local + RAII guard
 
@@ -1226,7 +1226,7 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 
 | 版本  | 日期       | 说明                                                                                   |
 | ----- | ---------- | -------------------------------------------------------------------------------------- |
-| 1.0.0 | 2026-05-02 | 初始版本：依据用户决策 B（三路 ExecPath）+ 决策 X（ISA-agnostic），定义 dispatch 的完整设计 |
+| 1.0.0 | 2026-05-02 | 初始版本：依据用户决策 B（三路 ExecPath）+ dispatch decision 2（ISA-agnostic），定义 dispatch 的完整设计 |
 | 1.1.0 | 2026-05-02 | （内部 API 修订，不影响下游用户）依据用户决策 B8.a + 评审 C6/C7/C8/溢出风险修复：(1) `select_exec_path()` 返回 `(ExecPath, Option<ParallelGuard>)`，select 与 acquire guard 原子绑定；(2) 移除 `ParallelGuard::enter()` 公开入口，guard 仅由 dispatch 内部 `try_acquire_guard()` 产生；(3) `set_parallel_threshold(0)` 显式作为禁用 sentinel；(4) 非连续阈值翻倍改为 `saturating_mul(2)` 防溢出；(5) SIMD/Parallel 非连续策略表述统一（SIMD 直接拒绝、Parallel 翻倍阈值）；(6) `ParallelExecStrategy` 字段私有 + 构造器 `new()` 校验；(7) `should_parallelize()` 语义澄清为诊断查询，不获取 guard；(8) §12.3 修正"纯函数"表述（实际读 thread-local + atomic）；(9) 新增决策 7 / 决策 8。 |
 | 1.1.1 | 2026-05-03 | （文档同步，与 08-simd v2.0.0 / 09-parallel v2.0.0 / 11-math v2.0.0 / 12-matrix v2.0.0 / 13-reduction v2.0.0 worker 内 SIMD 决策对齐）：清理 5 处 v1.x "no SIMD inside parallel workers" 表述：(1) §5.1 `ExecPath::Parallel` doc comment 改写：worker chunk 可独立调用 SIMD kernel（thread × SIMD）；(2) §7 ASCII 流向图：将 "workers run scalar code (no SIMD)" 替换为 "each worker chunk MAY invoke SIMD per chunk-local admission (v2.0)"；(3) §9.1 接口约定表 `math` 行：替换 "并行 worker 内执行标量代码（不使用 SIMD）" 为 "worker 内 chunk 可独立做 SIMD admission"；(4) §9.2 数据流图 `ExecPath::Parallel` 行：替换 "各 worker 执行标量代码，无 SIMD" 为 "各 worker chunk 可独立做 SIMD admission"；(5) §11 决策 1 拒绝替代方案 "四路" 表述更新：保留三路 ExecPath 决策，但说明 v2.0 起 SIMD admission 由 worker 自决，不需要顶层 `SimdParallel` 变体。无 API 变更。 |
 

@@ -114,7 +114,8 @@ External dependencies:
 - 公开 API 统一使用 `Result<T, XenonError>`，`crate::error::Result<_>` 为等价类型别名。
 - `element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引。
 - `cast()` 面向所有可读存储开放；无论输入是 `Owned`、`ViewRepr`、`ViewMutRepr` 还是 `ArcRepr`，结果统一物化为新的 owned 张量，以保持返回类型与所有权语义一致。源类型与目标类型都进一步收缩为 `CastElement`，从签名层面排除 `bool`。
-- `cast<B>()` 仅在 `A: CastElement + CastTo<B>` 时可用。`bool` 不实现 `CastElement`，因此 `Tensor<bool, _>` 上 `cast()` 在编译期不可调用，而不是落到运行时 `TypeConversion`。
+- `cast<B>()` 仅在 `A: CastElement + ConvertTo<B>` 时可用。`bool` 不实现 `CastElement`，因此 `Tensor<bool, _>` 上 `cast()` 在编译期不可调用，而不是落到运行时 `TypeConversion`。
+- **`ConvertTo<B>` 是 `pub(crate) sealed` 内部分流 trait**，仅在 `convert/cast.rs` 定义，作为三层架构（§6.1 / §6.1.bis / §11 决策 4）的静态调度入口：Tier-1 lossless type pair 的 impl 直接走 `B::from(value)` 委托给 std `From`，Tier-2 / Tier-3 的 impl 委托给 `<A as CastTo<B>>::cast_to(value)`。这样公开的 `cast<B>()` 不再要求源/目标对必须实现 `CastTo`，避免 Tier-1 因为没有 `CastTo` impl 而无法通过 trait bound（项目不变量：Tier-1 不实现 `CastTo`）。
 
 ````rust,ignore
 impl<S, A, D> TensorBase<S, D>
@@ -160,16 +161,32 @@ where
     /// ```
     pub fn cast<B: CastElement>(&self) -> Result<Tensor<B, D>, XenonError>
     where
-        A: CastTo<B>,
+        A: ConvertTo<B>,
     {
         // iter() traverses elements in logical (F-order) linear order;
         // the enumerated `index` is thus the 0-based logical element index
         // used in `element_index` of XenonError::TypeConversion (see §10).
+        //
+        // Three-tier dispatch (per §6.1 / §6.1.bis / §11 Decision 4):
+        //   ConvertTo::<B>::convert((*x))
+        //     ├── Tier-1 (lossless static): impl returns `Ok(B::from(value))`,
+        //     │   delegating to Rust std `From`. Never errors.
+        //     ├── Tier-2 (lossy static):    impl returns
+        //     │   `Err(<A as CastTo<B>>::cast_to(value))` — cast_to() always
+        //     │   produces `Err(TypeConversion { reason: ... })` for static
+        //     │   lossy pairs.
+        //     └── Tier-3 (dynamic):         impl returns
+        //         `<A as CastTo<B>>::cast_to(value)` — runtime check returns
+        //         `Ok` or `Err` per element.
+        //
+        // The error rewrap below covers Tier-2/Tier-3; Tier-1 returns Ok
+        // and never enters the `map_err` branch.
         let mut data: Vec<B> = Vec::with_capacity(self.len());
         for (index, x) in self.iter().enumerate() {
-            let value = (*x).cast_to().map_err(|err| match err {
+            let value = ConvertTo::<B>::convert(*x).map_err(|err| match err {
                 // Inject the element index and ensure operation/source_type/
-                // target_type are populated. CastTo::cast_to() emits the
+                // target_type are populated. CastTo::cast_to() (called from
+                // the Tier-2/3 branches of ConvertTo::convert) emits the
                 // structural fields (source_type/target_type/reason); cast()
                 // attaches operation = "cast" and the resolved element_index.
                 XenonError::TypeConversion {
@@ -530,6 +547,60 @@ impl CastTo<i32> for i64 {
 - **Tier-1 不允许 `Err`**：以编译期 `From` 表达就消除了运行时分支与错误路径，`cast()` 在 Tier-1 路径不会构造 `XenonError::TypeConversion`。
 - **Tier-2/Tier-3 由 `CastTo` 承担**：见 §6.1 上方代码块。Tier-2 静态返回 `Err`，Tier-3 按运行时条件返回 `Ok / Err`。
 - **静态分流的实现细节**：`STATICALLY_LOSSLESS::<A, T>()` 是 §5.2 内部 helper（不公开），按 `<A as Element>::ELEMENT_TYPE` × `<T as Element>::ELEMENT_TYPE` 静态判定。具体实现可用 trait 关联常量、宏、或 specialization-free 的若干 `where` 子句穷举三对，详见 §5.2 伪代码注释。
+
+### 6.1.ter `ConvertTo<B>` 内部 sealed 分流 trait
+
+`ConvertTo<B>` 是 `convert/cast.rs` 内部的 `pub(crate) sealed` trait，作为 `cast<B>()` 公开 API 的静态分流入口。它统一三层架构的实现（Tier-1 / Tier-2 / Tier-3），让 `cast<B>()` 的 trait bound 不必直接要求 `CastTo<B>`（避免 Tier-1 type pair 因不实现 `CastTo` 而无法通过 bound）：
+
+```rust,ignore
+// crate-internal, NOT exported. Sealed via crate::private::Sealed.
+pub(crate) trait ConvertTo<B>: crate::element::CastElement
+where
+    B: crate::element::CastElement,
+{
+    /// Returns `Ok(B::from(self))` for Tier-1 lossless pairs;
+    /// delegates to `<Self as CastTo<B>>::cast_to(self)` for Tier-2/3 pairs.
+    fn convert(self) -> Result<B, XenonError>;
+}
+
+// === Tier-1: Lossless. Use `From`, no `CastTo` impl. ===
+impl ConvertTo<f64> for f32 {
+    #[inline] fn convert(self) -> Result<f64, XenonError> { Ok(f64::from(self)) }
+}
+impl ConvertTo<i64> for i32 {
+    #[inline] fn convert(self) -> Result<i64, XenonError> { Ok(i64::from(self)) }
+}
+impl ConvertTo<f64> for i32 {
+    #[inline] fn convert(self) -> Result<f64, XenonError> { Ok(f64::from(self)) }
+}
+
+// === Same-type identity short-circuit (Tier-0 — no conversion at all). ===
+impl ConvertTo<f32>          for f32          { #[inline] fn convert(self) -> Result<f32, XenonError>          { Ok(self) } }
+impl ConvertTo<f64>          for f64          { #[inline] fn convert(self) -> Result<f64, XenonError>          { Ok(self) } }
+impl ConvertTo<i32>          for i32          { #[inline] fn convert(self) -> Result<i32, XenonError>          { Ok(self) } }
+impl ConvertTo<i64>          for i64          { #[inline] fn convert(self) -> Result<i64, XenonError>          { Ok(self) } }
+impl ConvertTo<Complex<f32>> for Complex<f32> { #[inline] fn convert(self) -> Result<Complex<f32>, XenonError> { Ok(self) } }
+impl ConvertTo<Complex<f64>> for Complex<f64> { #[inline] fn convert(self) -> Result<Complex<f64>, XenonError> { Ok(self) } }
+
+// === Tier-2 / Tier-3: lossy / dynamic. Delegate to CastTo. ===
+// Macro-generated: `impl<A, B> ConvertTo<B> for A where A: CastTo<B>`
+// won't work due to coherence with the lossless impls above; instead, each
+// remaining type pair gets its own forwarding impl:
+impl ConvertTo<f32> for f64 {
+    #[inline] fn convert(self) -> Result<f32, XenonError> { <f64 as CastTo<f32>>::cast_to(self) }
+}
+impl ConvertTo<i32> for f64 {
+    #[inline] fn convert(self) -> Result<i32, XenonError> { <f64 as CastTo<i32>>::cast_to(self) }
+}
+// ... similarly for every Tier-2/Tier-3 (A, B) pair documented in §5.3.
+```
+
+设计要点：
+
+- **零运行时开销**：每个 `impl ConvertTo<B> for A` 都是 `#[inline]` 的 thin shim，编译器单态化后等同于直接 `From` / `CastTo` 调用。
+- **bound 与 Tier-1 兼容**：`cast<B>()` 只要求 `A: ConvertTo<B>`，Tier-1 type pair（`f32→f64` 等）有 `ConvertTo` impl 但**没有** `CastTo` impl，编译通过。
+- **错误形态统一**：`ConvertTo::convert` 永远返回 `Result<B, XenonError>`；Tier-1 必为 `Ok`，Tier-2/Tier-3 与 `CastTo::cast_to` 一致。
+- **sealed**：通过 `crate::private::Sealed` 阻止外部 crate 实现 `ConvertTo`，与 `CastTo` 的 sealed 方式一致。
 
 ### 6.2 溢出行为汇总
 

@@ -292,8 +292,10 @@ where
 
 ```rust,ignore
 // Good - checked indexing keeps recoverable errors on the main path.
-let value = tensor.try_at((2, 1))?;
-let value2 = tensor.get(&[2, 1])?;
+// `try_at` is the canonical safe entry point; both `(usize, usize)` and
+// `&[usize]` indices are accepted via the `NdIndex` impls.
+let value  = tensor.try_at((2, 1))?;
+let value2 = tensor.try_at(&[2, 1][..])?;
 
 // Good - propagate validation failure instead of hiding it behind panic.
 let value = tensor.try_at((2, 1))?;

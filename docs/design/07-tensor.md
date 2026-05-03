@@ -629,7 +629,7 @@ where
     ) -> Self {
         // No revalidation; all four metadata items are caller-proved.
         // This is the Owned-specialized form; the generic form for
-        // `S: StorageRaw` lives below as `TensorBase::<S, D>::new_unchecked`
+        // `S: RawStorage` lives below as `TensorBase::<S, D>::new_unchecked`
         // and is the canonical entry point for View / ViewMut / Arc paths.
         TensorBase { storage, shape, strides, offset, flags }
     }
@@ -637,7 +637,7 @@ where
 
 impl<S, D> TensorBase<S, D>
 where
-    S: crate::storage::StorageRaw,
+    S: crate::storage::RawStorage,
     D: Dimension,
 {
     /// Generic unchecked constructor over storage representation.

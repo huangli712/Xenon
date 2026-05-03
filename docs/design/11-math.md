@@ -103,7 +103,7 @@ src/math/
 | `dimension`    | `BroadcastDim<E>` public sealed trait（对外可命名的公开 sealed trait，用于编译期维度推导，参见 `02-dimension.md §5.10`）|
 | `storage`      | `Storage<Elem = A>`, `StorageMut<Elem = A>`                                            |
 | `error`        | `XenonError`（含 `BroadcastError` 变体，参见 `26-error.md §5`）                        |
-| `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`should_parallelize()`                           |
+| `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`ParallelGuard`（`select_exec_path` 返回 `(ExecPath, Option<ParallelGuard>)`，与 30-dispatch v1.1.0 select-and-enter 原子裁决一致；旧 `should_parallelize()` 已废弃） |
 | `simd`（可选） | `pulp::Arch`（参见 `08-simd.md §5`）                                                   |
 | `parallel`（可选） | `par_zip_map()`（纯并行执行入口，不含串行回退，参见 `09-parallel.md §5` / `§6`）   |
 

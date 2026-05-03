@@ -281,6 +281,21 @@ impl LayoutFlags {
     /// Classifies the current layout into a `LayoutState` variant.
     ///
     /// Deterministic mapping: BroadcastView → FContiguous → NonContiguous.
+    ///
+    /// # Invariant
+    ///
+    /// This method is correct **only** for `LayoutFlags` produced by
+    /// `compute_layout_flags(shape, strides, ptr)`. That entry point is the
+    /// single source of truth for the bit `HAS_ZERO_STRIDE`, and it sets
+    /// the bit if and only if `any(stride == 0) && product(shape) > 0`
+    /// (i.e. it never sets the bit on empty arrays). As a consequence,
+    /// `classify()` does not need (and intentionally cannot — it has no
+    /// `shape` argument) to re-check the `product(shape) > 0` half of the
+    /// `BroadcastView` rule: the flag itself already encodes both halves.
+    ///
+    /// Callers that hand-construct `LayoutFlags` outside `compute_layout_flags`
+    /// must respect the same invariant, or `classify()` will return a
+    /// `BroadcastView` for empty shapes — violating the §5.12 contract.
     #[inline]
     pub const fn classify(self) -> LayoutState {
         if self.has_zero_stride() { LayoutState::BroadcastView }

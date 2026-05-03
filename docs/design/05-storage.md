@@ -1055,19 +1055,27 @@ return internal unique buffer
 
 ```rust,ignore
 /// Marker trait for storage types that own data.
-pub unsafe trait IsOwned: RawStorage {}
+///
+/// Sealed: cannot be implemented outside this crate.
+pub unsafe trait IsOwned: RawStorage + crate::private::Sealed {}
 
 /// Marker trait for storage types that are views (borrowed).
-pub unsafe trait IsView: RawStorage {}
+///
+/// Sealed: cannot be implemented outside this crate.
+pub unsafe trait IsView: RawStorage + crate::private::Sealed {}
 
 /// Marker trait for storage types that are mutable views.
-pub unsafe trait IsViewMut: RawStorage {}
+///
+/// Sealed: cannot be implemented outside this crate.
+pub unsafe trait IsViewMut: RawStorage + crate::private::Sealed {}
 
 /// Marker trait for storage types that use Arc sharing.
-pub unsafe trait IsArc: RawStorage {}
+///
+/// Sealed: cannot be implemented outside this crate.
+pub unsafe trait IsArc: RawStorage + crate::private::Sealed {}
 ```
 
-使用 Sealed trait 模式防止外部类型实现。
+使用 `crate::private::Sealed` super-bound 防止外部 crate 实现这些 marker trait。`Sealed` trait 本身在 `src/private/mod.rs` 内为 `pub trait Sealed {}`，但只在 crate 内部为我们 4 种实际 storage 类型（`Owned<A>` / `ViewRepr<'a, A>` / `ViewMutRepr<'a, A>` / `ArcRepr<A>`）实现。这一模式与本文档 §5.4 / §5.5 / §5.6 中 `Storage` / `StorageMut` / `StorageOwned` / `StorageShared` 的 sealed pattern 一致。
 
 ### 6.9 `as_ptr()` / 空张量偏移规则
 

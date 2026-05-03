@@ -645,7 +645,7 @@ benchmark 不定义正确性容差，也不在本文件内重复维护 `MathTole
 
 | 场景                         | 测试方式                                           |
 | ---------------------------- | -------------------------------------------------- |
-| feature-gated benchmark 入口 | `cargo bench --bench ... --features ... -- --list` |
+| feature-gated benchmark 入口 | `cargo bench --bench ... --features ... -- "<filter>" --quick`（自定义 `harness=false` runner 仅识别 filter + `--quick`，不实现 `--list`；与 §7 T1 / §8.1 一致） |
 | SIMD / 并行比较组导出边界    | 配置矩阵编译检查                                   |
 | 非法 feature 组合            | CI 配置矩阵与 smoke check                          |
 

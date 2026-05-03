@@ -191,20 +191,23 @@ pub trait Element:
 /// exhaustively.
 ///
 /// `#[repr(u8)]` keeps the enum cheap to copy/hash and gives the FFI layer
-/// (see `23-ffi.md`) a stable single-byte tag. Discriminant values are NOT
-/// part of the public ABI contract: any C consumer that needs a wire-stable
-/// tag must translate via `match` to its own representation.
+/// (see `23-ffi.md`) a stable single-byte tag. **Discriminant values ARE
+/// part of the public C ABI contract** (v1.4.0+): they are SemVer-pinned
+/// for `crate::ffi::ElementType` C consumers. Reordering existing variants
+/// or reusing existing values is a breaking change and requires a major
+/// version bump. Adding a new variant gets a new value and is non-breaking
+/// under `#[non_exhaustive]`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum ElementType {
-    Bool,
-    I32,
-    I64,
-    F32,
-    F64,
-    Complex32,
-    Complex64,
+    Bool      = 0,
+    I32       = 1,
+    I64       = 2,
+    F32       = 3,
+    F64       = 4,
+    Complex32 = 5,
+    Complex64 = 6,
 }
 
 impl ElementType {
