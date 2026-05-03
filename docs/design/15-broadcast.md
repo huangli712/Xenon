@@ -555,6 +555,17 @@ User calls broadcast_to() or broadcast_with()
 | 1.0.2 | 2026-04-15 |
 | 2.0.0 | 2026-05-02 |
 | 2.0.1 | 2026-05-03 |
+| 3.0.0 | 2026-05-04 |
+| 3.0.1 | 2026-05-04 |
+
+### v3.0.1 (2026-05-04) — R8/R9 协同基线对齐
+
+- 与 `00-coding.md §1.3` / `28-tests.md §1.0` 锁定基线版本号显式对齐；本版无契约变更，仅同步 changelog 行避免 R8 升版后的版本号漂移（R9 评审追加发现）。
+- 维持 v3.0.0 起的 `BroadcastError` 结构与 operator (+ - * /) 错误类型映射约定；`BroadcastError` 与 `XenonError::ShapeMismatch` 的协同入口在 `19-overload.md` / `12-matrix.md` 不变。
+
+### v3.0.0 (2026-05-04) — broadcast 错误协议升级与 R8 关联标记
+
+- BroadcastError 字段与 `26-error.md v3.x §5.1` 严格对齐：operator (+ - * /) 错误为 `BroadcastError`，dot/matmul 错误为 `ShapeMismatch`（锁定不变量）；本版无公开签名破坏，仅文档语义升级以反映 R6/R7/R8 协同。
 
 ### v2.0.1 (2026-05-03) — Medium/Low 文档修复
 
