@@ -830,7 +830,9 @@ construct_xenon_error(operation, variant, context_fields):
        (including closed-enum sub-variants such as InvalidLayoutReason,
        InvalidShapeKind, InvalidArgumentKind, FfiErrorCategory,
        WorkspaceErrorCategory, AbiMismatchKind, TypedViewRejection,
-       StorageKindTag, StorageConversionKind, FfiBackend, ElementType)
+       StorageKindTag, StorageConversionKind, FfiBackend; type-tag
+       fields use `&'static str` from `Element::ELEMENT_TYPE_NAME`,
+       see `03-element.md §5.1.1`)
     3. set optional fields (e.g., offending_dim, cause, conversion) to None
        when not applicable
     4. return XenonError::{variant} { ... }
@@ -876,8 +878,8 @@ fmt_display(error, formatter):
         - all mandatory structured fields, using FmtShape for [usize]
           and OrAny<T> for Option<T>
         - for Ffi / Workspace: append "; caused by: <inner>" if cause is Some
-        - for TypeConversion: format source_type / target_type using
-          ElementType's Display impl, not Debug
+        - for TypeConversion: write source_type / target_type as the
+          stored &'static str directly (v3.2.0); no Debug formatting
     3. write formatted string to formatter
 ```
 
@@ -899,7 +901,7 @@ fmt_display(error, formatter):
 | 分配开销     | `Vec<usize>` 字段（`shape`、`attempted_index`）在错误构造时产生少量堆分配     |
 | 零分配路径   | 错误路径本身非热路径；少量分配换取结构化诊断上下文是可接受的工程权衡          |
 | Clone 成本   | `XenonError` 的 `Clone` 会复制 `Vec` 和 `Cow` 字段；仅在测试或显式需要时调用  |
-| PartialEq    | 用于测试断言；`ElementType`（v3.1.0 权威定义见 §5.1）的 `PartialEq` 比较为小枚举判别比较，`Vec` 为逐元素比较 |
+| PartialEq    | 用于测试断言；`source_type` / `target_type`（v3.2.0 起为 `&'static str`）的 `PartialEq` 比较是逐字节字符串比较；`Vec` 为逐元素比较 |
 
 ---
 
