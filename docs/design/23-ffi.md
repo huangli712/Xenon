@@ -37,6 +37,8 @@
 | 安全边界清晰 | 所有 unsafe 函数有详尽 Safety 文档          |
 | BLAS 友好    | 提供完整的 BLAS 兼容性检查和布局查询        |
 | 最小约束     | FFI 方法避免重复安全检查（调用方已 unsafe） |
+| 错误结构化   | FFI 错误一律使用 `26-error.md §5.1` 封闭枚举（`FfiErrorCategory` / `FfiBackend` / `InvalidLayoutReason` / `StorageKindTag`）；禁止自由文本 `precondition`/`actual`/`reason` |
+| FFI panic 边界 | Xenon 本模块**不**定义 `extern "C"` 导出函数；任何上游 C ABI wrapper 必须阻止 Rust panic 穿越 C ABI（`std::panic::catch_unwind` 或在 FFI 边界采用 `panic = "abort"`），并保证 panic 后不会继续使用已失效的 `TensorExport` 指针 |
 
 ---
 
@@ -57,13 +59,24 @@
 src/
 └── ffi/
     ├── mod.rs         # Module root, re-exports
-    ├── types.rs       # BlasInfo type definitions; re-exports ElementType (from element), FfiErrorCategory (from error)
+    ├── types.rs       # TensorExportRaw / TensorExportMutRaw (non-generic, C-visible);
+    │                  #   BlasInfo type definitions; re-exports ElementType (from element),
+    │                  #   FfiErrorCategory (from error)
     ├── ptr.rs         # Raw-pointer API wrappers (export/export_mut, re-export from tensor module)
     ├── blas.rs        # BLAS compatibility checks (is_blas_layout_compatible, blas_info, lda)
-    └── offset.rs      # Multi-dimensional index to pointer offset (try_offset_of, try_ptr_at)
+    ├── offset.rs      # Multi-dimensional index to pointer offset (try_offset_of, try_ptr_at)
+    └── private.rs     # Generic Rust-only descriptors `TensorExport<'a, A>` /
+                       #   `TensorExportMut<'a, A>` + `From` impls converting them to
+                       #   the C-visible `TensorExportRaw` / `TensorExportMutRaw`.
+                       #
+                       # Marked `#[doc(hidden)]` and `pub(crate)`-exported. cbindgen
+                       # treats this as internal — these generic types never appear
+                       # in any `extern "C"` function signature, so they are not
+                       # reachable from cbindgen's transitive emission set. This is
+                       # gate #2 of the three-gate cbindgen contract (see §5.3.bis).
 ```
 
-多文件设计：将 FFI 按职责拆分为多个文件，便于后期拓展和维护。
+多文件设计：将 FFI 按职责拆分为多个文件，便于后期拓展和维护。`private.rs` 隔离 generic Rust-only 描述符，是 cbindgen 三道闸门契约的 gate #2（见 §5.3.bis），确保泛型类型与 C-visible raw 描述符在文件层面就分离。
 
 ---
 
@@ -81,7 +94,7 @@ src/ffi/
 ├── ptr.rs
 │   ├── crate::tensor        # TensorBase<S, D>, offset, OwnedRawParts re-export
 │   ├── crate::dimension     # Dimension trait
-│   ├── crate::element       # Element trait (for ElementType::of)
+│   ├── crate::element       # Element trait (for element_type_of free fn)
 │   └── crate::storage       # Storage, StorageMut, owned allocator metadata
 ├── blas.rs
 │   ├── crate::tensor        # TensorBase<S, D> (as_ptr via inherent method)
@@ -102,10 +115,10 @@ src/ffi/
 | ----------- | ------------------------------------------------------------------------------------------------------- |
 | `tensor`    | `TensorBase<S, D>`, `.shape()`, `.strides()`, `.offset()`                                               |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`                                                                       |
-| `element`   | `Element`, `ElementType`（定义于 `element` 模块，`ffi` re-export）, `ElementType::of::<A>()`            |
+| `element`   | `Element`、`ElementType`（**权威定义在 `crate::element`**，v1.4.0 起；本模块通过 `pub use crate::element::ElementType` re-export 暴露 `crate::ffi::ElementType` 给 C 消费者）、`element_type_of::<A>()`（`pub const fn`，定义在 `crate::element`，配合 inherent `ElementType::of::<A>()` 共同提供入口；详见 `03-element.md §5.1.1` v1.4.0 决策） |
 | `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, owned allocator metadata（供 `OwnedRawParts<A, D>` 导出/重建） |
 | `layout`    | `is_f_contiguous()`（定义于 `06-layout.md` §5.7）、`has_zero_stride()`（定义于 `06-layout.md` §5.1）；`TensorBase` 方法参见 `07-tensor.md` §5.3 |
-| `error`     | `XenonError`（含 `Ffi`、`DimensionMismatch`、`IndexOutOfBounds`、`InvalidLayout` 等变体）、`FfiErrorCategory`（定义于 `26-error.md` §5.1） |
+| `error`     | `XenonError`（含 `Ffi`、`DimensionMismatch`、`IndexOutOfBounds`、`InvalidLayout` 等变体）、`FfiErrorCategory`（封闭枚举，定义于 `26-error.md` §5.1，含 `NullPointer`/`AlignmentMismatch`/`InvalidRank`/`BlasIncompatibleLayout`/`IntegerOverflow`/`AbiMismatch`/`OverlapRejected`/`ForeignAllocatorMismatch` 八个结构化子变体）、`FfiBackend`（封闭枚举：`RawParts`/`Blas`，定义于 `26-error.md` §5.1）、`InvalidLayoutReason`（封闭枚举，定义于 `26-error.md` §5.1）、`StorageKindTag`（封闭枚举：`Owned`/`View`/`ViewMut`/`Shared`，由 `ArcRepr<A>` 支撑 `Shared`；定义于 `26-error.md` §5.1） |
 
 ### 4.3 依赖合法性
 
@@ -137,12 +150,53 @@ src/ffi/
 ### 5.1 辅助类型
 
 ```rust,ignore
-use crate::error::FfiErrorCategory;
+use crate::error::{FfiErrorCategory, FfiBackend};
 
 /// FFI-specific recoverable errors are constructed directly as
-/// `XenonError::Ffi { operation, category, backend, precondition, actual }`.
-/// `FfiErrorCategory` identifies the failure class, while the remaining fields
-/// carry structured diagnostics required by `需求说明书 §27`.
+/// `XenonError::Ffi { operation, category, backend, cause }`. See
+/// `26-error.md §5.1` for the authoritative field list.
+///
+/// - `operation: Cow<'static, str>` — operation name (e.g.
+///   `Cow::Borrowed("ffi::blas_info")`).
+/// - `category: FfiErrorCategory` — closed enum carrying the failure
+///   class together with its **structured** payload (e.g.
+///   `BlasIncompatibleLayout { shape, strides }`,
+///   `IntegerOverflow { value, target_width_bits }`,
+///   `InvalidRank { expected, actual }`). No free-text payload.
+/// - `backend: FfiBackend` — closed enum: `RawParts` for generic raw-parts
+///   FFI, `Blas` for BLAS-compatible export.
+/// - `cause: Option<Box<XenonError>>` — optional source-chain pointer
+///   per `26-error.md` v3.2.0 §5.1; the chain is exposed to callers via
+///   `std::error::Error::source()` (see `26-error.md` §5.1 `impl Error`).
+///
+/// Example source-chain construction when an FFI boundary wraps a lower-level
+/// Workspace failure:
+///
+/// ```ignore
+/// let inner = XenonError::Workspace {
+///     operation: Cow::Borrowed("Workspace::borrow"),
+///     category: WorkspaceErrorCategory::BorrowConflict {
+///         requested: WorkspaceBorrowKind::Shared,
+///         current: WorkspaceBorrowState::Exclusive,
+///     },
+///     cause: None,
+/// };
+/// let outer = XenonError::Ffi {
+///     operation: Cow::Borrowed("ffi::export_workspace_buffer"),
+///     category: FfiErrorCategory::AbiMismatch {
+///         detail: AbiMismatchKind::CapacityMismatch { expected: 1024, actual: 512 },
+///     },
+///     backend: FfiBackend::RawParts,
+///     cause: Some(Box::new(inner)),
+/// };
+/// ```
+///
+/// Leaf FFI errors normally use `cause: None`; wrapper errors use
+/// `cause: Some(Box::new(inner))`.
+///
+/// FFI errors must NOT use free-text `precondition` / `actual` fields;
+/// the structured payload inside `FfiErrorCategory` already carries the
+/// diagnostic context required by `requirements specification §27`.
 ```
 
 ### 5.2 原始指针 API
@@ -152,7 +206,7 @@ use crate::error::FfiErrorCategory;
 **核心定义归属：** `as_ptr()`、`as_mut_ptr()`、`from_raw_parts()`、`from_raw_parts_mut()` 的实现定义在 `07-tensor.md` §5.4 和 §5.7，代码位于 `src/tensor/construct.rs`。本文仅描述这些方法在 FFI 边界的语义契约和 Safety 要求；完整签名与实现参见 `07-tensor.md`。
 
 ````rust,ignore
-// as_ptr() — 参见 07-tensor.md §5.4
+// as_ptr() — see 07-tensor.md §5.4
 //
 // Returns a read-only raw pointer to the logical first element.
 // - Non-empty: storage.as_ptr().add(offset)
@@ -162,7 +216,7 @@ use crate::error::FfiErrorCategory;
 //     pub fn as_ptr(&self) -> *const A { ... }
 // }
 
-// as_mut_ptr() — 参见 07-tensor.md §5.4
+// as_mut_ptr() — see 07-tensor.md §5.4
 //
 // Returns a mutable raw pointer to the logical first element.
 // Only available for S: StorageMut.
@@ -173,7 +227,7 @@ use crate::error::FfiErrorCategory;
 //     pub fn as_mut_ptr(&mut self) -> *mut A { ... }
 // }
 
-// from_raw_parts() — 参见 07-tensor.md §5.7
+// from_raw_parts() — see 07-tensor.md §5.7
 //
 // Constructs an immutable view from raw pointer.
 // ptr = storage base pointer; offset = displacement to logical first element.
@@ -186,7 +240,7 @@ use crate::error::FfiErrorCategory;
 //     ) -> Result<Self, XenonError> { ... }
 // }
 
-// from_raw_parts_mut() — 参见 07-tensor.md §5.7
+// from_raw_parts_mut() — see 07-tensor.md §5.7
 //
 // Constructs a mutable view from raw pointer.
 // Same as from_raw_parts, plus: rejects zero-stride non-singleton axes and
@@ -211,7 +265,7 @@ use crate::error::FfiErrorCategory;
 
 ### 5.3 C 侧结构化导出格式
 
-`ElementType` 枚举定义于 `element` 模块（见 `03-element.md §5.1`），`ffi` 模块通过 `pub use` re-export 以供 FFI 消费者使用。此设计避免了 `element` → `ffi` → `element` 的循环依赖。
+`ElementType` 枚举定义于 `element` 模块（见 `03-element.md §5.1.1`，v1.4.0 起），`ffi` 模块通过 `pub use crate::element::ElementType` re-export 以供 FFI 消费者使用稳定路径 `crate::ffi::ElementType`。此设计让 element 拥有类型枚举，让 ffi 提供 C ABI 边界稳定路径，同时 error 模块完全不依赖 ElementType（error 用 `&'static str` 记录类型诊断信息，详见 `26-error.md v3.2.0 §5.4`）。
 
 ```rust,ignore
 // src/ffi/types.rs
@@ -221,15 +275,143 @@ pub use crate::error::FfiErrorCategory;   // re-export from error module
 /// BLAS layout metadata (full definition in §5.5).
 pub struct BlasInfo<A> { /* fields omitted — see §5.5 */ }
 
-// See 03-element.md §5.1 for the full ElementType definition.
-// Only the FFI-consumer-visible public API signature is shown here:
+// See 03-element.md §5.1.1 for the full ElementType definition.
+// Only the FFI-consumer-visible public API signature is shown here.
 //
-// pub enum ElementType { Bool, I32, I64, F32, F64, Complex32, Complex64 }
+// **C ABI value pinning (v3.0.2)**: each variant has an explicit
+// discriminant. These values are SemVer-pinned for `crate::ffi::ElementType`
+// consumers — adding a new variant gets a new value and is a non-breaking
+// change under `#[non_exhaustive]`; reordering or reusing existing values
+// is a breaking change for C ABI consumers and requires a major version
+// bump.
+//
+// #[repr(u8)] #[non_exhaustive]
+// pub enum ElementType {
+//     Bool      = 0,
+//     I32       = 1,
+//     I64       = 2,
+//     F32       = 3,
+//     F64       = 4,
+//     Complex32 = 5,
+//     Complex64 = 6,
+// }
 //
 // impl ElementType {
+//     pub const fn name(self) -> &'static str { ... }
 //     pub const fn of<A: Element>() -> Self { A::ELEMENT_TYPE }
 // }
 ```
+
+#### 5.3.bis C 头文件可见的非泛型导出 schema（v3.0.2）
+
+`TensorExport<'a, A>` / `TensorExportMut<'a, A>` 是 Rust 侧带生命周期与 `PhantomData` 的泛型类型，C 头文件无法直接表达"泛型 + 生命周期 + PhantomData"。`crate::ffi` 因此对外暴露**非泛型**的 C-visible 描述符，作为 cbindgen 的固定输出 schema：
+
+```rust,ignore
+/// C-visible read-only tensor descriptor.
+///
+/// This is the cbindgen-emitted concrete schema. Generic
+/// `TensorExport<'a, A>` is converted to `TensorExportRaw` at the FFI
+/// boundary by stripping the lifetime / `PhantomData` and erasing
+/// `*const A` to `*const core::ffi::c_void`. C consumers cast `data`
+/// to the matching pointer type using `element_type` as the discriminator.
+#[repr(C)]
+pub struct TensorExportRaw {
+    pub data: *const core::ffi::c_void,
+    pub element_type: ElementType,    // see C ABI value pinning above
+    pub ndim: usize,
+    pub shape: *const usize,
+    pub strides: *const usize,
+    pub storage_len: usize,
+    pub offset: usize,
+    // No PhantomData / lifetime: those are Rust-only.
+}
+
+/// C-visible mutable tensor descriptor (writable variant).
+#[repr(C)]
+pub struct TensorExportMutRaw {
+    pub data: *mut core::ffi::c_void,
+    pub element_type: ElementType,
+    pub ndim: usize,
+    pub shape: *const usize,
+    pub strides: *const usize,
+    pub storage_len: usize,
+    pub offset: usize,
+}
+
+// Rust-side conversion (consumed at the FFI boundary, never crosses C).
+impl<'a, A: Element> From<TensorExport<'a, A>> for TensorExportRaw {
+    fn from(e: TensorExport<'a, A>) -> Self {
+        TensorExportRaw {
+            data: e.data as *const core::ffi::c_void,
+            element_type: e.element_type,
+            ndim: e.ndim,
+            shape: e.shape,
+            strides: e.strides,
+            storage_len: e.storage_len,
+            offset: e.offset,
+        }
+    }
+}
+
+impl<'a, A: Element> From<TensorExportMut<'a, A>> for TensorExportMutRaw {
+    fn from(e: TensorExportMut<'a, A>) -> Self {
+        TensorExportMutRaw {
+            data: e.data as *mut core::ffi::c_void,
+            element_type: e.element_type,
+            ndim: e.ndim,
+            shape: e.shape,
+            strides: e.strides,
+            storage_len: e.storage_len,
+            offset: e.offset,
+        }
+    }
+}
+```
+
+C 消费者**只能**绑定到 `TensorExportRaw` / `TensorExportMutRaw`；Rust 侧的 `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 是内部表达类型，包含生命周期借用证据与类型化指针，cbindgen 不会为其生成 C 头文件条目。两类描述符通过 `From` 在 FFI 边界一次性转换。这一设计保留了 Rust 侧的借用安全（`PhantomData<&'a A>` 阻止借用越界），同时给 C 一份稳定可消费的 ABI schema。
+
+#### cbindgen 配置合约（v3.0.2 强制）
+
+为强制 generic Rust-only 描述符不进入 C 头文件，工程依赖 **三道闸门**协同（cbindgen 没有真正的 "exhaustive allowlist" 机制；`[export] include` 只是把那些没被 `extern "C"` 函数引用、但也想强制纳入的额外类型 *补充进来*，并不能把生成集合限制为只有列表中的项）：
+
+1. **`extern "C"` 函数签名只引用 raw 描述符。** `crate::ffi` 的所有 `extern "C"` 函数只接受 / 返回 `TensorExportRaw` / `TensorExportMutRaw` / `ElementType` 等非泛型 C-visible 类型。这是最强约束：cbindgen 仅会生成被 `extern "C"` 函数实际依赖的类型。
+2. **`#[doc(hidden)] mod private { ... }` 隔离泛型类型。** `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 与 `From` 转换 impl 全部放在 `crate::ffi::private` 子模块内，让 cbindgen 的 parser 把它们视为内部细节；同时通过 `[export.exclude]` 显式列出名字作为第二道闸门防止意外暴露。
+3. **`cbindgen.toml` 显式 `[export.exclude]` + 测试时头文件 grep 检查。** 三道闸门叠加，任何一道单独失效（例如未来重构把泛型类型移出 private 模块）都不会让 generic schema 泄露到 C 头。
+
+```toml
+# cbindgen.toml — repository-pinned excerpt for FFI ABI stability.
+language = "C"
+
+[export]
+# Force-include items NOT referenced by any extern "C" function (rare).
+# This is NOT an exhaustive allowlist — cbindgen ALWAYS emits items
+# transitively reachable from extern "C" function signatures regardless
+# of this list. The first gate (extern "C" only references raw types)
+# is what actually constrains the output set.
+include = [
+    "ElementType",      # standalone enum, ABI-stable
+    "FfiErrorCode",     # error code enum exposed to C
+    "FfiBackend",       # backend tag enum exposed to C
+]
+
+# Second gate: explicit deny by name. Even if a future refactor accidentally
+# referenced these from an extern "C" function, cbindgen would skip them.
+exclude = [
+    "TensorExport",
+    "TensorExportMut",
+]
+
+[parse]
+parse_deps = false  # do not parse dependency crates' types
+```
+
+**测试合约（28-tests）**：必须包含 `test_cbindgen_header_exports_only_raw_descriptors`，断言生成的 C 头文件：
+
+1. 包含 `typedef ... TensorExportRaw;` / `typedef ... TensorExportMutRaw;` / `enum ElementType` 定义；
+2. **不**包含 `TensorExport` / `TensorExportMut` 这两个**裸标识符**（必须使用 word-boundary 正则匹配，例如 `\bTensorExport\b` / `\bTensorExportMut\b`，**不**使用普通 substring grep；否则 `TensorExportRaw` / `TensorExportMutRaw` 会被前缀误命中）的任何 typedef / struct / enum 出现——这是三道闸门的最终验证；
+3. `ElementType` 枚举值与 03-element §5.1.1 显式 discriminants 严格一致（`Bool=0..Complex64=6`）。
+
+CI 在每次 PR 重新生成 C 头并对比预期 schema；schema 差异需 reviewer 在 PR 中显式确认。
 
 ### 5.4 指针约定对照
 
@@ -255,8 +437,18 @@ pub struct BlasInfo<A> { /* fields omitted — see §5.5 */ }
 ///   constitute a cross-language stable ABI promise across all targets.
 /// - `TensorExport` is the read-only export form and uses `*const A`.
 ///   `TensorExportMut` is the writable export form and uses `*mut A`.
+///
+/// **Visibility & file location (R13 D-01):** Generic descriptors are
+/// `pub(crate)` Rust-only borrowing evidence and live in
+/// `src/ffi/private.rs` (see §3 file layout + §5.3.bis cbindgen gate #2:
+/// generic descriptors are physically isolated and excluded from cbindgen
+/// emission set). They are NOT part of any C ABI surface; the C-visible
+/// raw descriptors are `TensorExportRaw` / `TensorExportMutRaw` (defined
+/// above). `#[doc(hidden)]` keeps them out of public rustdoc as well.
+// File: src/ffi/private.rs
+#[doc(hidden)]
 #[repr(C)]
-pub struct TensorExport<'a, A> {
+pub(crate) struct TensorExport<'a, A> {
     /// Typed pointer to the storage base pointer.
     ///
     /// For non-empty tensors this points at the underlying storage base.
@@ -269,8 +461,6 @@ pub struct TensorExport<'a, A> {
     /// The logical first element address is `data.add(offset)` when `len() != 0`.
     ///
     pub data: *const A,
-    /// Lifetime marker tying the export to the source tensor borrow.
-    pub _marker: core::marker::PhantomData<&'a A>,
     /// Element type identifier (matches ElementType enum).
     pub element_type: ElementType,
     /// Number of dimensions.
@@ -287,6 +477,13 @@ pub struct TensorExport<'a, A> {
     /// Logical offset metadata in element units, preserved for raw-parts
     /// roundtrip/reconstruction contracts.
     pub offset: usize,
+    /// Lifetime marker tying the export to the source tensor borrow.
+    ///
+    /// Must be the last field in this `#[repr(C)]` struct: as a ZST,
+    /// it contributes 0 bytes in the C ABI, but placing it in the middle
+    /// can produce unspecified behavior across compiler versions.
+    /// Keeping it last ensures cross-version consistency.
+    pub _marker: core::marker::PhantomData<&'a A>,
 }
 
 /// Raw mutable tensor data export for FFI consumers.
@@ -294,13 +491,17 @@ pub struct TensorExport<'a, A> {
 /// Field semantics are identical to `TensorExport` unless noted below.
 /// The only differences are: `data` is `*mut A` (writable), and
 /// `_marker` uses `PhantomData<&'a mut A>` (exclusive borrow).
+///
+/// **Visibility & file location (R13 D-01):** Same `pub(crate)` Rust-only
+/// scope and `src/ffi/private.rs` location as `TensorExport`. Not part of
+/// any C ABI surface; C consumers see `TensorExportMutRaw` instead.
+// File: src/ffi/private.rs
+#[doc(hidden)]
 #[repr(C)]
-pub struct TensorExportMut<'a, A> {
+pub(crate) struct TensorExportMut<'a, A> {
     /// Typed mutable pointer to the storage base pointer.
     /// Same semantics as `TensorExport::data`, but writable.
     pub data: *mut A,
-    /// Lifetime marker; `PhantomData<&'a mut A>` enforces exclusive borrow.
-    pub _marker: core::marker::PhantomData<&'a mut A>,
     /// See `TensorExport::element_type`.
     pub element_type: ElementType,
     /// See `TensorExport::ndim`.
@@ -313,8 +514,52 @@ pub struct TensorExportMut<'a, A> {
     pub storage_len: usize,
     /// See `TensorExport::offset`.
     pub offset: usize,
+    /// Lifetime marker; `PhantomData<&'a mut A>` enforces exclusive borrow.
+    ///
+    /// Must be the last field (ZST), same rationale as `TensorExport::_marker`.
+    pub _marker: core::marker::PhantomData<&'a mut A>,
 }
 
+// Static layout assertions for FFI compatibility.
+//
+// IMPORTANT (Rust `#[repr(C)]` rules): a raw sum of `size_of::<field>` is
+// NOT the struct size — `#[repr(C)]` inserts padding before each field
+// so that its address satisfies the field's alignment. After
+// `data: *const f64` (8B aligned) the `element_type: ElementType`
+// (`#[repr(u8)]`, 1B aligned) packs at offset 8, but the next field
+// `ndim: usize` (8B aligned on 64-bit) needs offset 16, so 7 padding
+// bytes appear between `element_type` and `ndim`. The total size on a
+// typical 64-bit ABI is therefore not the naive sum.
+//
+// The assertions below verify field offsets and total size with padding
+// taken into account. PhantomData<&'a A> is ZST (0 bytes) and is placed
+// last in `#[repr(C)]` to avoid unspecified ZST positioning behavior.
+const _: () = {
+    use core::mem::{align_of, offset_of, size_of};
+
+    // Field offsets (verifies the C-side header layout for cbindgen consumers).
+    assert!(offset_of!(TensorExport<f64>, data)         == 0);
+    // `element_type` immediately follows the 8-byte pointer on 64-bit.
+    assert!(offset_of!(TensorExport<f64>, element_type) == size_of::<*const f64>());
+    // `ndim` is 8B-aligned: padding inserted between `element_type` and `ndim`.
+    assert!(offset_of!(TensorExport<f64>, ndim)         % align_of::<usize>() == 0);
+    // PhantomData ZST is last in `#[repr(C)]`.
+    // (No offset assertion on `_marker`: ZST positioning is unobservable
+    // in C ABI, but its trailing position is required by §5.3 prose.)
+
+    // Total size equals offset of the last non-ZST field plus its size,
+    // rounded up to the struct's overall alignment. We verify that the
+    // total size is at least the maximum-aligned monotonic layout, and
+    // is consistent with the offsets above:
+    assert!(size_of::<TensorExport<f64>>() >= offset_of!(TensorExport<f64>, offset) + size_of::<usize>());
+    assert!(size_of::<TensorExport<f64>>() % align_of::<TensorExport<f64>>() == 0);
+};
+
+```
+
+`PhantomData<&'a A>` 必须放在 `#[repr(C)]` 结构体的最后位置：作为 ZST，它在 C ABI 视角不占据任何字节，但放在中间可能因不同编译器版本对 ZST 字段的处理而产生未指定行为。统一放在末尾确保跨版本一致性。
+
+```rust,ignore
 impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
@@ -332,7 +577,26 @@ where
     /// Empty tensors are allowed: when `len() == 0`, `data` is a valid aligned
     /// pointer that must not be dereferenced. `shape`, `strides`, and `offset`
     /// still describe the empty tensor metadata.
-    pub fn export(&self) -> TensorExport<'_, A> {
+    /// **Visibility & return type (R15 D-01 fix):** This is the public FFI
+    /// entry; it returns `TensorExportRaw` (the C-visible non-generic raw
+    /// descriptor; see §5.4 above). The intermediate generic descriptor
+    /// `TensorExport<'_, A>` is `pub(crate)` Rust-only borrowing evidence
+    /// (located in `src/ffi/private.rs`, §3 + §5.3.bis) and cannot appear
+    /// in a `pub fn` return type — Rust's `private_in_public` rule
+    /// (`error[E0446]`) would reject that signature. The internal generic
+    /// descriptor is built within this method and immediately converted to
+    /// `TensorExportRaw` via the `From<TensorExport<'_, A>>` impl in §5.4.
+    pub fn export(&self) -> TensorExportRaw {
+        // Build the internal `pub(crate)` generic descriptor first; then
+        // convert to the C-visible raw descriptor via `From` (§5.4).
+        let generic = self.export_internal();
+        generic.into()
+    }
+
+    /// `pub(crate)` internal helper: produces the typed generic descriptor
+    /// for in-crate borrow tracking and lifetime evidence. Not exposed to
+    /// downstream consumers; use `export()` for the public FFI surface.
+    pub(crate) fn export_internal(&self) -> TensorExport<'_, A> {
         TensorExport {
             data: if self.is_empty() {
                 // Empty tensor: return a valid aligned non-dereferenceable pointer.
@@ -343,7 +607,7 @@ where
                 self.as_storage_ptr()
             },
             _marker: core::marker::PhantomData,
-            element_type: ElementType::of::<A>(),
+            element_type: crate::element::element_type_of::<A>(),
             ndim: self.ndim(),
             shape: self.shape().as_slice().as_ptr(),
             strides: self.strides().as_slice().as_ptr(),
@@ -362,11 +626,26 @@ where
 
     /// Export tensor data with mutable access.
     ///
+    /// **Visibility & return type (R15 D-01 fix):** Public FFI entry; returns
+    /// `TensorExportMutRaw` (the C-visible non-generic raw descriptor). The
+    /// intermediate generic `TensorExportMut<'_, A>` is `pub(crate)` Rust-only
+    /// (located in `src/ffi/private.rs`) and cannot appear in `pub fn` return
+    /// type per Rust's `private_in_public` rule.
+    ///
     /// This API is only implemented for writable storage, so read-only storage
     /// modes are rejected at the trait boundary rather than at runtime.
     /// No additional fallible validation is performed beyond the existing
     /// `&mut self` + `S: StorageMut` exclusivity boundary.
-    pub fn export_mut(&mut self) -> TensorExportMut<'_, A> {
+    pub fn export_mut(&mut self) -> TensorExportMutRaw {
+        let generic = self.export_mut_internal();
+        generic.into()
+    }
+
+    /// `pub(crate)` internal helper: produces the typed mutable generic
+    /// descriptor for in-crate borrow tracking and lifetime evidence.
+    /// Not exposed to downstream consumers; use `export_mut()` for the public
+    /// FFI surface.
+    pub(crate) fn export_mut_internal(&mut self) -> TensorExportMut<'_, A> {
         TensorExportMut {
             data: if self.is_empty() {
                 core::ptr::NonNull::<A>::dangling().as_ptr()
@@ -374,7 +653,7 @@ where
                 self.as_storage_mut_ptr()
             },
             _marker: core::marker::PhantomData,
-            element_type: ElementType::of::<A>(),
+            element_type: crate::element::element_type_of::<A>(),
             ndim: self.ndim(),
             shape: self.shape().as_slice().as_ptr(),
             strides: self.strides().as_slice().as_ptr(),
@@ -385,13 +664,50 @@ where
 }
 ```
 
-**指针语义**：`TensorExport.data`（`*const A`）与 `TensorExportMut.data`（`*mut A`）始终指向 storage base pointer；逻辑首元素地址通过 `data + offset` 计算，`offset` 与 `strides` 以元素个数（非字节）计量。空张量（`len() == 0`）时 `data` 为有效对齐但不可解引用的 dangling 指针。详细字段语义见结构体注释与上方对照表。
+**指针语义**：`TensorExportRaw.data`（`*const c_void`，C-visible）与 `TensorExportMutRaw.data`（`*mut c_void`，C-visible）通过 `From<TensorExport<'_, A>>` / `From<TensorExportMut<'_, A>>` 转换从 generic 描述符的 typed pointer 派生而来；C 消费者必须按 `element_type` 字段识别的类型 cast 后再访问。逻辑首元素地址通过 `data + offset * size_of_element` 计算，`offset` 与 `strides` 以元素个数（非字节）计量。空张量（`len() == 0`）时 `data` 为有效对齐但不可解引用的 dangling 指针。Generic descriptor (`TensorExport<'_, A>` / `TensorExportMut<'_, A>`) 仅在 crate 内部使用，详细字段语义见 §5.4 结构体注释与上方对照表。
 
-**导出范围与可写边界**：`export()` 返回 `TensorExport<'_, A>`，仅要求 `S: Storage`，覆盖 Owned、View、只读共享存储及所有合法 stride 布局。`export_mut()` 返回 `TensorExportMut<'_, A>`，要求 `S: StorageMut`，通过 `&mut self` 保证独占可写访问；只读视图和共享只读存储在 trait 边界上直接被拒绝，与 `需求说明书 §6` 的存储模式转换和 `需求说明书 §25` 的零拷贝导出要求保持一致。
+**导出范围与可写边界**：公开 `export()` 返回 `TensorExportRaw`（内部经 generic descriptor 中转后转换），仅要求 `S: Storage`，覆盖 Owned、View、只读共享存储及所有合法 stride 布局。公开 `export_mut()` 返回 `TensorExportMutRaw`，要求 `S: StorageMut`，通过 `&mut self` 保证独占可写访问；只读视图和共享只读存储在 trait 边界上直接被拒绝，与 `需求说明书 §6` 的存储模式转换和 `需求说明书 §25` 的零拷贝导出要求保持一致。Crate 内部如需 generic descriptor 的 borrow 证据，使用 `pub(crate)` 的 `export_internal()` / `export_mut_internal()`。
 
 **stride 约定**：`strides` 以元素个数（非字节）表示步长。按照 `06-layout.md` §1.2 与 `需求说明书 §7`，当前版本不支持负步长。`from_raw_parts()` 允许零步长布局以表达广播只读视图；`from_raw_parts_mut()` 拒绝所有非空零步长布局（非单元素轴的 `stride == 0` 会报错）。
 
-**生命周期与 auto trait**：导出结果不拥有底层内存，`data`、`shape`、`strides` 均借用源张量内部数据，源张量 drop 后立即失效。`TensorExport` / `TensorExportMut` 的 `Send` / `Sync` 由 Rust auto-trait 自动推导，测试计划应通过编译期检查验证推导结果。
+**生命周期与 auto trait**：导出结果不拥有底层内存，`data`、`shape`、`strides` 均借用源张量内部数据，源张量 drop 后立即失效。`TensorExport` 包含 `*const A`（裸指针），因此 Rust 自动推导为 `!Send + !Sync`。如果 FFI 消费者需要跨线程共享，必须显式包装（如 `Arc<TensorExport<...>>` + 手动 `unsafe impl`）。Xenon 不为 `TensorExport` 提供 `Send/Sync` 自动实现。
+
+#### 5.4.1 FFI panic 边界与回调限制（v2.0.x 新增）
+
+`TensorExport<'a, A>` / `TensorExportMut<'a, A>` 只是借用源张量内部数据和元数据的 Rust 结构体；本模块**不**提供 `pub extern "C"` 导出函数，也不承诺替调用方管理 C ABI 边界的 panic 行为。
+
+当上游库把 `TensorExport` 传给 C 代码时，必须满足以下额外约束：
+
+- Rust panic **不得**穿越 `extern "C"` ABI 边界。任何由上游定义的 `extern "C"` wrapper 都必须在最外层使用 `std::panic::catch_unwind` 捕获 panic 并转换为上游 ABI 的错误码，或在该 FFI 边界采用 `panic = "abort"` 策略。
+- `TensorExport` / `TensorExportMut` 的所有指针只在源张量借用仍然存活、且没有发生 unwinding 导致源张量或相关 owner 被 drop 的期间有效。
+- C 代码不得在持有 `TensorExport` 指针期间 re-enter Rust 并调用可能 panic 的 callback，除非该 callback 的 Rust ABI 边界同样捕获 panic 或直接 abort。
+- 如果捕获到 panic，wrapper 必须把当前导出的所有 borrowed pointer 视为失效，**不得**继续让 C 侧读取或缓存这些指针。
+
+推荐的上游 wrapper 形态如下：
+
+```rust,ignore
+#[repr(C)]
+pub enum XenonFfiStatus {
+    Ok = 0,
+    Error = 1,
+    Panic = 2,
+}
+
+#[no_mangle]
+pub extern "C" fn upstream_call_xenon(/* C ABI args */) -> XenonFfiStatus {
+    match std::panic::catch_unwind(|| {
+        // Build or borrow the tensor.
+        // Create TensorExport only for the synchronous C call duration.
+        // Do not let C store the borrowed pointers after this function returns.
+    }) {
+        Ok(Ok(())) => XenonFfiStatus::Ok,
+        Ok(Err(_err)) => XenonFfiStatus::Error,
+        Err(_panic) => XenonFfiStatus::Panic,
+    }
+}
+```
+
+上述 wrapper 示例属于上游集成责任；Xenon 的 `export()` / `export_mut()` 本身仍保持 O(1)、不分配、不捕获 panic。
 
 ### 5.5 Complex FFI 布局契约
 
@@ -568,7 +884,7 @@ where
 ### 5.11 blas_info 和 BlasInfo 结构体
 
 ````rust,ignore
-use crate::error::FfiErrorCategory;
+use crate::error::{FfiErrorCategory, FfiBackend};
 
 /// BLAS/LAPACK matrix metadata.
 ///
@@ -588,16 +904,23 @@ pub struct BlasInfo<A> {
 
 impl<A> BlasInfo<A> {
     /// Convert a raw BLAS/LAPACK size parameter to the backend integer type.
+    ///
+    /// `target_width_bits` reports the bit width of `I` (e.g. `32` for `i32`,
+    /// `64` for `i64`) so that the structured `FfiErrorCategory::IntegerOverflow`
+    /// payload accurately identifies which backend integer type was unable
+    /// to represent `value`.
     pub fn as_blas_int<I>(value: usize) -> Result<I, XenonError>
     where
         I: TryFrom<usize>,
     {
         value.try_into().map_err(|_| XenonError::Ffi {
-            operation: "ffi::blas_info",
-            category: FfiErrorCategory::IntegerOverflow,
-            backend: "blas/lapack",
-            precondition: "BLAS/LAPACK integer parameter must fit target backend type",
-            actual: alloc::format!("value={}", value).into(),
+            operation: Cow::Borrowed("ffi::blas_info::as_blas_int"),
+            category: FfiErrorCategory::IntegerOverflow {
+                value,
+                target_width_bits: (core::mem::size_of::<I>() * 8) as u8,
+            },
+            backend: FfiBackend::Blas,
+            cause: None,
         })
     }
 }
@@ -641,20 +964,24 @@ where
     pub fn blas_info(&self) -> Result<BlasInfo<A>, XenonError> {
         if self.ndim() != 2 {
             return Err(XenonError::Ffi {
-                operation: "ffi::blas_info",
-                category: FfiErrorCategory::InvalidRank,
-                backend: "blas",
-                precondition: "tensor must be 2D",
-                actual: alloc::format!("ndim={}", self.ndim()).into(),
+                operation: Cow::Borrowed("ffi::blas_info"),
+                category: FfiErrorCategory::InvalidRank {
+                    expected: 2,
+                    actual: self.ndim(),
+                },
+                backend: FfiBackend::Blas,
+                cause: None,
             });
         }
         if !self.is_blas_layout_compatible() {
             return Err(XenonError::Ffi {
-                operation: "ffi::blas_info",
-                category: FfiErrorCategory::BlasIncompatibleLayout,
-                backend: "blas",
-                precondition: "F-contiguous 2D tensor without zero strides",
-                actual: alloc::format!("shape={:?}, strides={:?}", self.shape(), self.strides()).into(),
+                operation: Cow::Borrowed("ffi::blas_info"),
+                category: FfiErrorCategory::BlasIncompatibleLayout {
+                    shape: self.shape().to_vec(),
+                    strides: self.strides().to_vec(),
+                },
+                backend: FfiBackend::Blas,
+                cause: None,
             });
         }
 
@@ -681,7 +1008,7 @@ where
 ### 5.12 LDA 查询
 
 ````rust,ignore
-use crate::error::FfiErrorCategory;
+use crate::error::{FfiErrorCategory, FfiBackend};
 
 impl<S, D, A> TensorBase<S, D>
 where
@@ -713,20 +1040,24 @@ where
     pub fn lda(&self) -> Result<usize, XenonError> {
         if self.ndim() != 2 {
             return Err(XenonError::Ffi {
-                operation: "ffi::lda",
-                category: FfiErrorCategory::InvalidRank,
-                backend: "blas",
-                precondition: "tensor must be 2D",
-                actual: alloc::format!("ndim={}", self.ndim()).into(),
+                operation: Cow::Borrowed("ffi::lda"),
+                category: FfiErrorCategory::InvalidRank {
+                    expected: 2,
+                    actual: self.ndim(),
+                },
+                backend: FfiBackend::Blas,
+                cause: None,
             });
         }
         if !self.is_blas_layout_compatible() {
             return Err(XenonError::Ffi {
-                operation: "ffi::lda",
-                category: FfiErrorCategory::BlasIncompatibleLayout,
-                backend: "blas",
-                precondition: "F-contiguous 2D tensor without zero strides",
-                actual: alloc::format!("shape={:?}, strides={:?}", self.shape(), self.strides()).into(),
+                operation: Cow::Borrowed("ffi::lda"),
+                category: FfiErrorCategory::BlasIncompatibleLayout {
+                    shape: self.shape().to_vec(),
+                    strides: self.strides().to_vec(),
+                },
+                backend: FfiBackend::Blas,
+                cause: None,
             });
         }
         let strides = self.strides();
@@ -764,40 +1095,44 @@ where
     pub fn try_offset_of(&self, index: &[usize]) -> Result<usize, XenonError> {
         if index.len() != self.ndim() {
             return Err(XenonError::DimensionMismatch {
-                operation: "ffi::try_offset_of".into(),
+                operation: Cow::Borrowed("ffi::try_offset_of"),
                 expected: self.ndim(),
                 actual: index.len(),
             });
         }
         let strides = self.strides();
         let shape = self.shape();
+        // Build storage_kind tag once: tensor's StorageKind already maps
+        // 1:1 to StorageKindTag (Owned/View/ViewMut/Shared), and is needed
+        // by every InvalidLayout branch below.
+        let storage_kind: StorageKindTag = self.storage_kind().into();
         let mut offset: usize = 0;
         for i in 0..self.ndim() {
             if index[i] >= shape[i] {
                 return Err(XenonError::IndexOutOfBounds {
-                    operation: "ffi::try_offset_of".into(),
+                    operation: Cow::Borrowed("ffi::try_offset_of"),
                     attempted_index: index.to_vec(),
                     axis: i,
                     shape: shape.to_vec(),
                 });
             }
             let term = strides[i].checked_mul(index[i]).ok_or_else(|| XenonError::InvalidLayout {
-                operation: "ffi::try_offset_of".into(),
-                storage_kind: self.storage_kind().into(),
+                operation: Cow::Borrowed("ffi::try_offset_of"),
+                storage_kind,
                 shape: shape.to_vec(),
                 strides: strides.to_vec(),
                 offset: self.offset(),
                 storage_len: self.storage_len(),
-                reason: "index-to-offset multiplication overflow".into(),
+                reason: InvalidLayoutReason::AccessRangeExceedsStorage,
             })?;
             offset = offset.checked_add(term).ok_or_else(|| XenonError::InvalidLayout {
-                operation: "ffi::try_offset_of".into(),
-                storage_kind: self.storage_kind().into(),
+                operation: Cow::Borrowed("ffi::try_offset_of"),
+                storage_kind,
                 shape: shape.to_vec(),
                 strides: strides.to_vec(),
                 offset: self.offset(),
                 storage_len: self.storage_len(),
-                reason: "index-to-offset accumulation overflow".into(),
+                reason: InvalidLayoutReason::AccessRangeExceedsStorage,
             })?;
         }
         Ok(offset)
@@ -869,22 +1204,25 @@ unsafe {
 `from_raw_parts()` / `from_raw_parts_mut()` 内部调用 `validate_access_range()` 验证元数据合法性。当前版本 stride 全为非负 `usize`，因此 `logical_min` 恒等于 `offset`。算法与 `07-tensor.md` §6.2 保持一致：
 
 ```
-validate_access_range(shape, strides, offset, storage_len):
+// `caller_storage_kind: StorageKindTag` is supplied by the caller (View /
+// ViewMut / Owned). All `reason` values are closed-enum variants of
+// `InvalidLayoutReason` per `26-error.md §5.1`; no free-text reason is used.
+validate_access_range(shape, strides, offset, storage_len, caller_storage_kind):
     if shape.checked_size() overflows:
         return Err(XenonError::InvalidLayout {
-            operation: "validate_access_range",
-            storage_kind: "raw_parts",
+            operation: Cow::Borrowed("validate_access_range"),
+            storage_kind: caller_storage_kind,
             shape, strides, offset, storage_len,
-            reason: "element count overflow",
+            reason: InvalidLayoutReason::ShapeProductOverflow,
         })
 
     if shape.checked_size() == Ok(0):
         if offset > storage_len:
             return Err(XenonError::InvalidLayout {
-                operation: "validate_access_range",
-                storage_kind: "raw_parts",
+                operation: Cow::Borrowed("validate_access_range"),
+                storage_kind: caller_storage_kind,
                 shape, strides, offset, storage_len,
-                reason: "empty tensor requires offset <= storage_len",
+                reason: InvalidLayoutReason::AccessRangeExceedsStorage,
             })
         return Ok(())
 
@@ -896,25 +1234,25 @@ validate_access_range(shape, strides, offset, storage_len):
 
         span = (shape[axis] - 1).checked_mul(strides[axis])
             .ok_or_else(|| XenonError::InvalidLayout {
-                operation: "validate_access_range",
-                storage_kind: "raw_parts",
+                operation: Cow::Borrowed("validate_access_range"),
+                storage_kind: caller_storage_kind,
                 shape, strides, offset, storage_len,
-                reason: "stride span overflow",
+                reason: InvalidLayoutReason::AccessRangeExceedsStorage,
             })?
         max_offset = max_offset.checked_add(span)
             .ok_or_else(|| XenonError::InvalidLayout {
-                operation: "validate_access_range",
-                storage_kind: "raw_parts",
+                operation: Cow::Borrowed("validate_access_range"),
+                storage_kind: caller_storage_kind,
                 shape, strides, offset, storage_len,
-                reason: "logical access range overflow",
+                reason: InvalidLayoutReason::AccessRangeExceedsStorage,
             })?
 
     if max_offset >= storage_len:
         return Err(XenonError::InvalidLayout {
-            operation: "validate_access_range",
-            storage_kind: "raw_parts",
+            operation: Cow::Borrowed("validate_access_range"),
+            storage_kind: caller_storage_kind,
             shape, strides, offset, storage_len,
-            reason: "logical access range exceeds backing storage",
+            reason: InvalidLayoutReason::AccessRangeExceedsStorage,
         })
 
     return Ok(())
@@ -1018,6 +1356,7 @@ Additional caller-side checks:
 | `test_complex_ffi_abi`                   | `Complex32/Complex64` 的 `#[repr(C)]` 字段顺序、大小与对齐满足 ABI 约定                                                               | 高     |
 | `test_bool_ffi_abi`                      | 仅在文档明确支持的 targets/ABI 上验证 `bool` FFI 导出匹配 `_Bool` ABI（1-byte / align 1 / 值域 0/1）；其它目标通过 `#[cfg(...)]` 跳过 | 高     |
 | `test_export_empty_tensor_pointer`       | 空张量导出时返回有效对齐但不可解引用的指针，且 shape/strides/offset 仍正确                                                            | 高     |
+| `test_ffi_wrapper_catches_panic_doc_example` | 文档示例级验证：上游 `extern "C"` wrapper 使用 `std::panic::catch_unwind` 阻止 panic 穿越 C ABI（参见 §5.4.1）；该测试不要求 Xenon 自身暴露 `extern "C"` 函数 | 高     |
 | `test_try_offset_of_various`             | recoverable 索引转换返回正确偏移或错误                                                                                                | 高     |
 | `test_try_offset_of_checked_overflow`    | 极端 stride/index 组合返回可恢复错误而非 panic                                                                                        | 高     |
 | `test_try_ptr_at_various`                | recoverable 指针转换返回正确指针或错误                                                                                                | 高     |
@@ -1030,7 +1369,7 @@ Additional caller-side checks:
 | 单元素张量     | `as_ptr()` 指向唯一元素                                                                                                                                           |
 | 非连续切片     | `is_blas_layout_compatible()` 返回 `false`                                                                                                                        |
 | 广播维度       | `is_blas_layout_compatible()` 返回 `false`                                                                                                                        |
-| 自别名可写布局 | `from_raw_parts_mut()` 返回 `InvalidLayout`                                                                                                                       |
+| 自别名可写布局 | `from_raw_parts_mut()` 返回 `XenonError::Ffi { category: FfiErrorCategory::OverlapRejected{shape, strides}, backend: FfiBackend::RawParts, .. }`（v2.x 协同 26-error v3.1.0） |
 | 零尺寸矩阵     | `lda()` 在 `rows == 0` 时返回 `BlasIncompatibleLayout` 错误（F-order 下 `strides[1] = 0`，触发 `has_zero_stride`）；在 `cols == 0 && rows > 0` 时返回 `strides[1]`（= rows），满足 `lda >= max(1, rows)` |
 | 1D 张量        | `lda()` 返回错误                                                                                                                                                  |
 | 零维张量       | `try_offset_of(&[])` 返回 `Ok(0)`                                                                                                                                 |
@@ -1098,7 +1437,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | `into_raw_parts()`                          | 消费源张量（`self`），将内存所有权转移给调用方。调用方须按 Xenon 分配契约回收：通过 `from_raw_parts_owned()` 重建张量并由 Drop 释放，或使用与 Xenon 分配器元数据等价的专用回收路径；不得直接调用系统 `free` 或其他 foreign allocator。 |
 | `from_raw_parts()` / `from_raw_parts_mut()` | 构造的视图生命周期 `'a` 由调用方在 `unsafe` 前提下保证，须与底层内存的实际存活期一致。视图不拥有内存，drop 时不会释放。                                                                                                                |
 | `from_raw_parts_owned()`                    | 接收 `OwnedRawParts` 并重建 Owned 张量，内存所有权回归 Xenon 的 Drop 管理。                                                                                                                                                            |
-| `export()` / `export_mut()`                 | 返回的 `TensorExport` / `TensorExportMut` 中 `data`、`shape`、`strides` 均借用源张量内部存储；源张量 drop 后全部指针失效。`export_mut()` 额外要求 `&mut self` 且 `S: StorageMut`，确保独占可写访问。                                   |
+| `export()` / `export_mut()`                 | 返回的 `TensorExport` / `TensorExportMut` 中 `data`、`shape`、`strides` 均借用源张量内部存储；源张量 drop 后全部指针失效。若上游 C ABI wrapper 捕获到 panic，或 unwinding 可能已 drop 源张量 / owner，则这些 borrowed pointer 必须立即视为失效，C 侧不得继续读取或缓存（参见 §5.4.1）。`export_mut()` 额外要求 `&mut self` 且 `S: StorageMut`，确保独占可写访问。 |
 
 ---
 
@@ -1106,8 +1445,8 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 
 | 主题              | 内容                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Recoverable error | `blas_info()` / `lda()` 在 rank 或布局非法时返回 `XenonError::Ffi`；BLAS 整数宽度转换失败由 `BlasInfo::as_blas_int()` 返回同一结构化公开变体；`from_raw_parts_owned()` 在 owned 元数据非法时返回 `XenonError::InvalidLayout`；`try_offset_of()` / `try_ptr_at()` 在 rank / bounds / checked arithmetic 非法时返回 `XenonError`；`from_raw_parts_mut()` 在可写布局自别名时返回 `XenonError::InvalidLayout`。 |
-| Panic             | 不提供公开 panic-sugar 索引转换 API；`from_raw_parts*()` 中那些无法直接验证的不安全前提若被违反，仍属于 unsafe UB，而非 recoverable error。                                                                                                                                                                                                                                                                              |
+| Recoverable error | `blas_info()` / `lda()` 在 rank 或布局非法时返回 `XenonError::Ffi { operation, category: FfiErrorCategory::InvalidRank{expected,actual} \| BlasIncompatibleLayout{shape,strides}, backend: FfiBackend::Blas, cause: None }`（封闭枚举，字段对齐 `26-error.md §5.1`，**不**使用自由文本 `precondition`/`actual`）；BLAS 整数宽度转换失败由 `BlasInfo::as_blas_int()` 返回 `FfiErrorCategory::IntegerOverflow{value, target_width_bits}`；`from_raw_parts_owned()` 在 owned 元数据非法时返回 `XenonError::InvalidLayout { reason: InvalidLayoutReason::*, storage_kind: StorageKindTag::Owned, .. }`；`try_offset_of()` / `try_ptr_at()` 在 rank 失配时返回 `XenonError::DimensionMismatch{operation, expected, actual}`，在 bounds 越界时返回 `XenonError::IndexOutOfBounds{operation, attempted_index, axis, shape}`，在 checked arithmetic 溢出时返回 `XenonError::InvalidLayout { reason: InvalidLayoutReason::AccessRangeExceedsStorage, storage_kind: 调用方实际 StorageKindTag, .. }`；`from_raw_parts_mut()` 在可写布局自别名时返回 `XenonError::Ffi { operation, category: FfiErrorCategory::OverlapRejected{shape, strides}, backend: FfiBackend::RawParts, cause: None }`（v2.x 起，与 `26-error.md v3.1.0 §5.1` 协同启用 `OverlapRejected` 子变体）。该路径不再使用 `InvalidLayoutReason::AmbiguousOverlap`——后者保留给非 FFI 入口的 layout 自检（如内部 layout 校验场景）。所有错误变体禁止使用 `Cow<str>` 自由文本作为诊断 payload；结构化负载由 `26-error.md §5.1` 的封闭子枚举承担。 |
+| Panic             | 本模块不提供公开 panic-sugar 索引转换 API，也**不**定义 `extern "C"` 导出函数。若上游把 Xenon API 包装为 C ABI，wrapper 必须阻止 Rust panic 穿越 C ABI：使用 `std::panic::catch_unwind` 转换为上游 ABI 错误码，或采用 `panic = "abort"`（参见 §1.2 与 §5.4.1）。`from_raw_parts*()` 中那些无法直接验证的不安全前提若被违反，仍属于 unsafe UB，而非 recoverable error。 |
 | 路径一致性        | 指针访问、BLAS 查询与 raw-parts roundtrip 必须共享同一 shape / strides / offset 解释；无 SIMD / 并行分支。                                                                                                                                                                                                                                                                                                               |
 | 容差边界          | 不适用。                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
@@ -1177,7 +1516,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | `std` only  | 当前版本仅讨论 `std` 环境下的 FFI 接口；FFI 指针操作依赖 `std` 提供的分配器与布局保证                                                                                            |
 | MSRV        | Rust 1.85+                                                                                                                                                                       |
 | 单 crate    | FFI 模块位于 `src/ffi/`，不引入额外 crate，保持 Xenon 单 crate 结构                                                                                                              |
-| SemVer      | `TensorExport<'a, A>`、`TensorExportMut<'a, A>`、`OwnedRawParts<A, D>` 的字段布局和 `#[repr(C)]` 表示均为公开契约，变更须遵循 SemVer；新增公共 FFI 方法或枚举变体属于 minor 变更 |
+| SemVer      | C ABI 稳定契约**仅**覆盖 C-visible raw descriptors：`TensorExportRaw` / `TensorExportMutRaw` 的字段布局与 `#[repr(C)]` 表示，以及 `crate::ffi::ElementType` 的显式 discriminants（参见 `03-element.md §5.1.1`）。Generic descriptors `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 是 `pub(crate)` Rust-only 借用证据（位于 `src/ffi/private.rs`，参见 §3 / §5.3.bis），**不**进入 C ABI 稳定契约面，可在不破坏 SemVer 的前提下变更字段。`OwnedRawParts<A, D>` 是 owned 解构/重建的 Rust API 表面，字段布局变更须遵循 SemVer。新增公共 FFI 方法或 raw descriptor 变体属于 minor 变更 |
 | 最小依赖    | 无新增第三方依赖，符合 `需求说明书 §1.3` 对最小依赖的限制                                                                                                                        |
 | 索引类型    | 逻辑索引统一使用 `usize`；BLAS/LAPACK 整数参数在边界处按目标后端转换为 `i32` 或 `i64`                                                                                            |
 | stride 范围 | 当前版本只接受非负 stride；负步长导入不在范围内                                                                                                                                  |
@@ -1207,6 +1546,70 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | 1.2.4 | 2026-04-16 |
 | 1.2.5 | 2026-04-16 |
 | 1.2.6 | 2026-04-16 |
+| 2.0.0 | 2026-05-02 |
+| 2.0.1 | 2026-05-03 |
+| 2.1.0 | 2026-05-03 |
+| 3.0.0 | 2026-05-03 |
+| 3.0.1 | 2026-05-03 |
+| 3.0.2 | 2026-05-04 |
+| 3.0.3 | 2026-05-04 |
+
+### v3.0.3 (2026-05-04) — patch: refresh stale 26-error v3.0.0 reference to v3.2.0
+
+- §5 文档注释：`per 26-error.md` 引用从 v3.0.0 更新到 v3.2.0。
+
+### v2.0.0 (2026-05-02) — 错误字段对齐 26-error v3.0.0
+
+> 本版本与 26-error v3.0.0 协同更新。`XenonError::Ffi` 变体的 4 个字段 (`operation`, `category`, `backend`, `cause`) 与 v3.0.0 保持一致，移除了原 v1.x 文本中错误使用的 `precondition` / `actual` 自由文本字段，全部改用 `FfiErrorCategory` 子变体的结构化负载。这是文档级的破坏性更新（与原文档示例不兼容），但与正式 `error` 模块定义对齐后即恢复一致。
+
+**Blocker 修复**：
+
+- §5.1 辅助类型重写：`XenonError::Ffi` 字段从错误的 `{operation, category, backend, precondition, actual}` 改为正确的 `{operation, category, backend, cause}`；明示 `category: FfiErrorCategory` 是封闭枚举的结构化负载；包含 `cause: Option<Box<XenonError>>`，叶子错误通常为 `None`，包装底层错误时使用 `Some(Box::new(inner))`。
+- §5.11 `BlasInfo::as_blas_int` 重写：`FfiErrorCategory::IntegerOverflow` 从无负载的占位符改为 `IntegerOverflow { value, target_width_bits }` 结构化负载，`target_width_bits` 由 `core::mem::size_of::<I>() * 8` 计算；`backend: "blas/lapack"` 改为 `FfiBackend::Blas`；移除 `precondition` / `actual` 字段；`operation` 改为 `Cow::Borrowed("ffi::blas_info::as_blas_int")`。
+- §5.11 `blas_info()` 重写：`FfiErrorCategory::InvalidRank` 改为 `InvalidRank { expected: 2, actual: ndim }`；`FfiErrorCategory::BlasIncompatibleLayout` 改为 `BlasIncompatibleLayout { shape, strides }`；`backend: "blas"` 改为 `FfiBackend::Blas`；移除 `precondition` / `actual`。
+- §5.12 `lda()` 重写：同 `blas_info()` 的修复。
+- §5.13 `try_offset_of` 重写：`storage_kind` 一次性提取为 `StorageKindTag`（避免在每个 `ok_or_else` 分支重复调用 `.into()`，同时移除 self 借用问题）；`reason` 从自由文本 `"index-to-offset multiplication overflow"` / `"index-to-offset accumulation overflow"` 改为封闭枚举 `InvalidLayoutReason::AccessRangeExceedsStorage`；`operation` 改为 `Cow::Borrowed("ffi::try_offset_of")`。
+- §6.2 `validate_access_range` 伪代码重写：所有 `reason: "..."` 自由文本改为 `InvalidLayoutReason::ShapeProductOverflow` / `AccessRangeExceedsStorage`；`storage_kind: "raw_parts"` 改为由调用方传入的 `caller_storage_kind: StorageKindTag`；`operation` 字段改 `Cow::Borrowed(..)`。
+
+**High 修复**：
+
+- §1.2 设计原则新增"错误结构化"行：FFI 错误一律使用封闭枚举，禁止自由文本 payload。
+- §4.2 `error` 行展开：完整列出 `FfiErrorCategory` 八个子变体名 + `FfiBackend` 两个变体名 + `InvalidLayoutReason` + `StorageKindTag`，让后续维护者无需跳转 26-error 即可定位字段集合。
+- §10 错误处理表 Recoverable error 重写：完整列出每个错误变体的字段构造模板，明示禁止 `Cow<str>` 自由文本 payload。
+
+**协同与一致性更新**：
+
+- 与 `07-tensor.md` v2.0.0 §6.2 / §5.7 的 `InvalidLayoutReason` / `StorageKindTag` 字段命名对齐。
+- 与 `26-error.md` v3.0.0 §5.1 的 `FfiErrorCategory` 八子变体（`NullPointer` / `AlignmentMismatch` / `InvalidRank` / `BlasIncompatibleLayout` / `IntegerOverflow` / `AbiMismatch` / `OverlapRejected` / `ForeignAllocatorMismatch`）和 `FfiBackend` 两子变体（`RawParts` / `Blas`）保持双向引用一致。
+
+
+### v2.0.1 (2026-05-03) — Medium/Low documentation follow-up
+
+- Added a minimal `cause: Some(Box::new(inner))` source-chain example for `XenonError::Ffi` wrapping a lower-level workspace error.
+- Clarified version-history wording: `cause: Option<Box<XenonError>>` is part of the FFI error shape; leaf errors usually use `None`, wrappers use `Some(Box::new(inner))`.
+
+### v3.0.2 (2026-05-04) — R8 cbindgen 三道闸门 + private.rs 子模块（R9 同步）
+
+- §3 文件布局：FFI 模块树新增 `src/ffi/private.rs` 子模块，承载泛型 `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 等 Rust-only descriptor 定义，对外不导出（R8-D-03 落地）。`01-architecture.md §3` 的 ffi 目录树同步反映该子模块。
+- §5.3.bis cbindgen 三道闸门契约：(1) `extern "C"` 签名只引用 raw 类型 `TensorExportRaw` / `TensorExportMutRaw`；(2) 泛型 descriptor 物理隔离在 `crate::ffi::private` 子模块，不参与 cbindgen emission 路径；(3) `cbindgen.toml` 使用 `exclude` 严格列表（`[export] include` 不是 allowlist）。`28-tests.md §5.17` 的 `test_cbindgen_header_exports_only_raw_descriptors` 在 (2) gate 中同时断言 `private.rs` 物理边界。
+- 与 `00-coding.md §1.3` / `28-tests.md §1.0` 锁定基线版本号严格对齐。
+
+### v3.0.1 (2026-05-03) — TensorExportRaw 非泛型描述符落地
+
+- `TensorExportRaw` / `TensorExportMutRaw` 是非泛型 `*const c_void` C ABI 描述符；提供 `From<TensorExport<'a, A>> for TensorExportRaw` 与 `From<TensorExportMut<'a, A>> for TensorExportMutRaw` 的 generic→raw 转换。
+- C ABI 表面只暴露 raw descriptor + `ElementType` 显式 discriminants（`Bool=0..Complex64=6`，`03-element.md §5.1.1`）。
+
+### v3.0.0 (2026-05-03) — FFI 错误结构化 + offset_of! padding 守门
+
+- `XenonError::Ffi` 四字段 `{ operation, category: FfiErrorCategory, backend: FfiBackend, cause }` 与 `26-error.md v3.x` 同步（`FfiErrorCategory` 八变体、`FfiBackend` 二变体）；FFI 路径 padding / alignment 通过 `core::mem::offset_of!` 编译期断言守门。
+
+### v2.1.0 (2026-05-03) — from_raw_parts_mut 自别名改返 OverlapRejected
+
+> 本版本与 `26-error.md v3.1.0` 协同，启用此前死变体 `FfiErrorCategory::OverlapRejected`。公开错误变体类别（仍是 `XenonError::Ffi`）保持兼容；变化仅在错误分类的精确度。
+
+- §10：`from_raw_parts_mut()` 在可写布局自别名时的错误分类从 `XenonError::InvalidLayout { reason: AmbiguousOverlap, storage_kind: ViewMut, .. }` 改为 `XenonError::Ffi { category: FfiErrorCategory::OverlapRejected{shape, strides}, backend: FfiBackend::RawParts, .. }`。
+- 理由：FFI raw-parts 自别名属于 FFI 类错误（在 FFI 边界拒绝），归到 `Ffi` 变体的 `OverlapRejected` 比归到通用 `InvalidLayout::AmbiguousOverlap` 更精确，也为 v3.1.0 之前是死变体的 `OverlapRejected` 提供了真正的触发点。
+- `InvalidLayoutReason::AmbiguousOverlap` 仍保留，但范围收窄到非 FFI 入口的内部 layout 自检场景。
 
 ---
 

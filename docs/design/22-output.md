@@ -20,12 +20,14 @@
 | NumPy 风格输出 | 嵌套括号、矩阵形式、按逻辑索引顺序展示 | HTML 渲染            |
 | 截断规则       | 超过阈值触发 `... (N elements omitted)  shape=[...]` 后缀 | 自定义格式化器注册   |
 
+**关于"输出模式"数量的澄清**：本模块对外只暴露**两种公开输出模式** —— `core::fmt::Display`（面向最终用户的简洁可读输出）与 `core::fmt::Debug`（面向开发者的形状 / 步长 / 类型信息）。NumPy 风格的"pretty"渲染（嵌套括号 / 矩阵分行 / 截断省略号）是 **`Display` 输出的内部实现风格**，由 `format/pretty.rs` 内的 helper（`fmt_1d_display` / `fmt_nd_display` 等）承担；`pretty.rs` 不导出独立的 trait（如 `Pretty`、`TensorPretty`），也不构成第三种公开输出模式。同样地，`display_with(&FormatConfig)` 是 `Display` 的可配置包装器，不是第三态。如果未来需要把 pretty 渲染独立成可调用 API，需要单独的设计文档与 SemVer 评估，不应作为本模块的隐式扩展加入。
+
 ### 1.2 设计原则
 
 | 原则       | 体现                                                     |
 | ---------- | -------------------------------------------------------- |
 | NumPy 对齐 | 输出格式与 NumPy `np.array_repr` 尽可能一致              |
-| 可配置截断 | 阈值/边缘元素数通过常量或 `FormatConfig` 配置            |
+| 可配置截断 | 阈值/边缘元素数通过 `FormatConfig` 配置，默认值由常量实现 |
 | 平台一致性 | `Display` 和 `Debug` 在当前 `std` 环境下保持一致格式语义 |
 | 零拷贝     | 格式化过程不修改原始数据                                 |
 
@@ -98,7 +100,8 @@ src/format/
 | `tensor`    | `TensorBase<S, D>`, `.shape()`, `.ndim()`, `.len()`（参见 `07-tensor.md` §5） | 
 | `dimension` | `Dimension`（参见 `02-dimension.md` §5）                                      | 
 | `storage`   | `Storage<Elem=A>`（参见 `05-storage.md` §5）                                  | 
-| `element`   | `Element`（参见 `03-element.md` §5.1）；`dtype_name()` 内部还使用 `core::any::TypeId` / `core::any::type_name`，属于标准库 | 
+| `element`   | `Element`（参见 `03-element.md` §5.1）；`Element::ELEMENT_TYPE: ElementType` 编译期常量（参见 `03-element.md` §5.1 与 `21-type.md`）；`dtype_name()` 通过 `A::ELEMENT_TYPE` 静态分流到稳定 dtype 字符串，**不**使用 `core::any::TypeId` |
+| `layout`    | `LayoutState`（参见 `06-layout.md` v1.3 §5.3）；`Debug` 实现读取 `TensorBase::layout_state()` 用于头部 `layout=` 字段 |
 
 ### 4.3 依赖合法性
 
@@ -159,7 +162,7 @@ impl Default for FormatConfig {
 }
 ```
 
-`precision` 和 `line_width` 为受控扩展，超出 `需求说明书 §24` 的最小必要集。纳入稳定 API 面须遵守 SemVer。
+`precision` 和 `line_width` 为受控扩展，超出 `需求说明书 §24` 的最小必要集。纳入稳定 API 面须遵守 SemVer。`edge_items = 0` 在配置归一化时按 `1` 处理，以避免截断预览只剩省略号。
 
 ### 5.2 TensorDisplay 包装结构
 
@@ -254,7 +257,7 @@ where
 
 - `Display` 只负责数据文本；当发生截断时，它在最外层右括号后追加 `shape=[...]`，用于满足 `需求说明书 §24` 的“可识别 shape”要求。
 - `Debug` 已在头部输出 `shape=`、`strides=`、`dtype=` 和 `layout=`，因此其数据段复用相同截断选点规则，但不再重复追加 `shape=[...]` 后缀。
-- `Debug` impl 的元素渲染仅依赖 `A: Debug`。若内部复用 Display helper，应通过独立内部 trait 抽象，避免在公开约束中引入 Display 依赖。注意：完整 trait bound 包含 `Element + 'static`，其中 `'static` 用于 `dtype_name()` 内部的 `core::any::TypeId` 分发。
+- `Debug` impl 的元素渲染仅依赖 `A: Debug`。若内部复用 Display helper，应通过独立内部 trait 抽象，避免在公开约束中引入 Display 依赖。完整 trait bound 为 `Element`（**不再要求** `'static`），因为 `dtype_name::<A>()` 通过 `A::ELEMENT_TYPE` 编译期常量静态分流，不需要运行时 `TypeId`。
 - `Debug` 输出包含完整的元信息（形状/步长/类型/布局），方便开发调试。Display 只输出数据，面向最终用户；其中零维张量使用显式标记，避免与裸标量文本混淆。
 - `Debug` 至少区分三类布局：`layout=f-contiguous`、`layout=broadcast`（存在零步长）、`layout=non-contiguous`（如转置、切片等非广播非连续布局）。
 
@@ -266,7 +269,7 @@ impl<S, D, A> core::fmt::Debug for TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
-    A: core::fmt::Debug + Element + 'static,
+    A: core::fmt::Debug + Element,
 {
     /// Developer-facing debug output.
     ///
@@ -309,6 +312,8 @@ where
 ```
 
 ### 5.5 Numpy 风格输出示例
+
+示例使用 `display_with(FormatConfig { precision: Some(1), ... })` 时输出 `.0` 后缀；默认 `Display` 路径（无 precision 配置）按 Rust 标准库格式输出（整数浮点不带 `.0` 后缀）。
 
 **1D（完整）**:
 
@@ -359,7 +364,7 @@ Tensor(shape=[3, 4], strides=[4, 1], dtype=f64, layout=non-contiguous)
  [100, 200, 300, ..., 9800, 9900, 10000]] ... (9964 elements omitted)  shape=[100, 100]
 ```
 
-**Complex<f64> 类型**:
+**Complex<f64> 类型（使用 `display_with(FormatConfig { precision: Some(1), ..Default::default() })`）**:
 
 ```
 [[1.0+2.0j, 5.0+6.0j],
@@ -380,11 +385,11 @@ Tensor0(42)
 ### 5.6 截断规则
 
 1. 截断决策仅由 `threshold` 决定：当 `tensor.len() <= threshold` 时，输出全部逻辑元素；当 `tensor.len() > threshold` 时，进入截断模式。
-2. 截断模式下，每一层轴只使用一个局部规则：
-   - 若当前轴长度 `axis_len <= 2 * edge_items`，该轴完整显示；
-   - 若 `axis_len > 2 * edge_items`，该轴仅显示前 `edge_items` 项、一个 `...` 标记、以及后 `edge_items` 项。
+2. 截断模式下，每一层轴只使用一个局部规则；实现先计算 `effective_edge_items = max(edge_items, 1)`，因此 `edge_items = 0` 按 `1` 处理：
+   - 若当前轴长度 `axis_len <= 2 * effective_edge_items`，该轴完整显示；
+   - 若 `axis_len > 2 * effective_edge_items`，该轴仅显示前 `effective_edge_items` 项、一个 `...` 标记、以及后 `effective_edge_items` 项。
 3. `visible_elements` 定义为最终真实打印出的逻辑元素数量，不包含任何 `...` 标记、逗号、括号、换行或 `shape=[...]` 后缀。
-4. `omitted = tensor.len() - visible_elements`。只有在 `tensor.len() > threshold` 且至少一个轴满足 `axis_len > 2 * edge_items` 时，`omitted` 才会大于 `0`。
+4. `omitted = tensor.len() - visible_elements`。只有在 `tensor.len() > threshold` 且至少一个轴满足 `axis_len > 2 * effective_edge_items` 时，`omitted` 才会大于 `0`。
 5. `Display` 与 `Debug` 共享完全相同的元素选点规则与 `visible_elements` / `omitted` 计算规则；差异仅在元信息呈现：
    - `Display` 只输出数据文本；若 `omitted > 0`，则在最外层右括号后追加 ` ... (N elements omitted)  shape=[...]`；
    - `Debug` 先输出 `shape=` / `strides=` / `dtype=` / `layout=` 头部；若 `omitted > 0`，则只在数据段末尾追加 ` ... (N elements omitted)`，不重复追加 `shape=[...]`。
@@ -409,10 +414,11 @@ render_axis(tensor, config, axis, prefix, truncated):
         return render_scalar(prefix), 1
 
     axis_len = tensor.shape()[axis]
-    if !truncated || axis_len <= 2 * config.edge_items:
+    edge_items = max(config.edge_items, 1)
+    if !truncated || axis_len <= 2 * edge_items:
         entries = [0, 1, ..., axis_len - 1]
     else:
-        k = config.edge_items
+        k = edge_items
         entries = [0, 1, ..., k - 1, Ellipsis, axis_len - k, ..., axis_len - 1]
 
     rendered = "["
@@ -435,7 +441,7 @@ render_axis(tensor, config, axis, prefix, truncated):
     return rendered, visible
 ```
 
-在该规则下，若 rank 为 `n` 且截断模式下第 `i` 个轴实际显示 `shown_i` 个索引位置（`shown_i = axis_len_i` 或 `2 * edge_items`），则：`visible_elements = Π shown_i`（对所有轴求乘积）。因此 `shape=[100, 100]`、`edge_items=3`、`threshold=1000` 时：
+在该规则下，若 rank 为 `n` 且截断模式下第 `i` 个轴实际显示 `shown_i` 个索引位置（`shown_i = axis_len_i` 或 `2 * effective_edge_items`），则：`visible_elements = Π shown_i`（对所有轴求乘积）。因此 `shape=[100, 100]`、`edge_items=3`、`threshold=1000` 时：
 
 - 每个轴都显示 `6` 个索引位置；
 - `visible_elements = 6 × 6 = 36`；
@@ -445,7 +451,7 @@ render_axis(tensor, config, axis, prefix, truncated):
 
 | 参数         | 默认值 | 说明                           |
 | ------------ | ------ | ------------------------------ |
-| `edge_items` | 3      | 每层轴在截断时保留的头/尾项数  |
+| `edge_items` | 3      | 每层轴在截断时保留的头/尾项数；配置为 0 时按 1 处理 |
 | `threshold`  | 1000   | 元素总数严格大于该值时触发截断 |
 | `precision`  | `None` | 浮点精度（None = 类型默认）    |
 | `line_width` | 80     | 每行最大字符数（用于换行）     |
@@ -461,7 +467,7 @@ println!("{}", tensor);  // NumPy style output
 let tensor = Tensor2::<f64>::zeros([3, 4])?;
 for i in 0..3 {
     for j in 0..4 {
-        print!("{} ", tensor[[i, j]]);  // unreadable, no truncation
+        print!("{} ", tensor.try_at((i, j))?);  // unreadable, no truncation
     }
     println!();
 }
@@ -489,6 +495,42 @@ println!("strides: {:?}", tensor.strides());
 ### 6.1 格式化算法
 
 如果 `FormatConfig::precision` 为 `Some(p)`，浮点数格式化使用 `write!(f, "{:.prec$}", value, prec = p)`；为 `None` 时使用默认精度（即 `write!(f, "{}", value)`）。对 `Complex<T>` 而言，`precision` 分别作用于 `re` 和 `im` 两个分量，再按 `a+bj` / `a-bj` 规则拼接，不共享额外的整体舍入层。
+
+**复数虚部符号决策（v2.0.1+，覆盖 NaN/Inf/-0.0 边界）**：
+
+复数 `Complex<T>` 的拼接规则使用 `T::is_sign_negative()` 决定连接符号，而**不是** `im < 0`。这一选择覆盖以下边界场景：
+
+| `im` | `is_sign_negative()` | 输出形式 | 说明 |
+|:--|:--:|:--|:--|
+| `+0.0` | `false` | `a+0j` | 正零 |
+| `-0.0` | `true`  | `a-0j` | 负零（IEEE 754 区分；`im < 0` 会归为 `+0`） |
+| `+inf` | `false` | `a+infj` | 正无穷 |
+| `-inf` | `true`  | `a-infj` | 负无穷 |
+| `NaN`  | 实现定义 | `a+NaNj` | NaN 统一选择 `+` 连接符（避免 NaN 比较未定义） |
+| 普通 `+x` | `false` | `a+xj` | 正常正值 |
+| 普通 `-x` | `true`  | `a-xj` | 正常负值 |
+
+**形式化规则**：
+
+1. 设 `s = if im.is_nan() { "+" } else if im.is_sign_negative() { "-" } else { "+" }`。
+2. 设 `mag = if im.is_nan() { /* T 的默认 NaN 输出 */ } else { format(im.abs(), precision) }`。
+3. 输出 `format(re, precision) + s + mag + "j"`。
+
+`im.abs()` 把幅值统一转为非负展示数；NaN 在 `abs()` 后仍是 NaN，但因 `is_nan()` 分支已选择符号 `+`，避免 `is_sign_negative()` 在 NaN 上的实现定义行为。
+
+**测试覆盖要求（28-tests）**：必须为以下 7 个边界输入形成快照测试。下列示例期望输出**默认未指定 precision**（即 Rust 标准 `Display` 默认输出，整数浮点不带 `.0`）：
+
+| 输入 (`re`, `im`) | 默认 Display 期望 (no precision) | `precision: Some(1)` 期望 |
+|:--|:--|:--|
+| `(1.0_f64, 0.0_f64)` | `1+0j` | `1.0+0.0j` |
+| `(1.0_f64, -0.0_f64)` | `1-0j` | `1.0-0.0j` |
+| `(1.0_f64, f64::INFINITY)` | `1+infj` | `1.0+infj` |
+| `(1.0_f64, f64::NEG_INFINITY)` | `1-infj` | `1.0-infj` |
+| `(1.0_f64, f64::NAN)` | `1+NaNj` | `1.0+NaNj` |
+| `(f64::INFINITY, f64::INFINITY)` | `inf+infj` | `inf+infj` |
+| `(f64::NAN, f64::NAN)` | `NaN+NaNj` | `NaN+NaNj` |
+
+注：Rust 标准 `Display` 对 `1.0_f64` / `0.0_f64` 默认输出 `1` / `0`（不带小数点），对 `f64::INFINITY` 输出 `inf`，对 `f64::NAN` 输出 `NaN`。`±inf` 和 `NaN` 的 Display 输出本身不变（无小数表示），`precision` 参数对它们无影响。复数虚部符号由 §6.1 形式化规则决定（`is_sign_negative()` + NaN 强制 `+`），与 precision 无关。
 
 对 F-order 张量，格式化必须按**逻辑索引**而不是物理线性内存顺序展开。以 `shape=[3, 3]` 为例，显示位置 `[i, j]` 对应逻辑索引 `[i, j]`，其线性位置为 `i + j * 3`；因此输出为 `[[1, 4, 7], [2, 5, 8], [3, 6, 9]]`，而不是按物理连续内存直接切成 `[[1, 2, 3], [4, 5, 6], [7, 8, 9]]`。内部若使用 `read_at(indices)` 等辅助函数，仅表示实现通过逻辑坐标取值，不构成新的公开索引承诺；该 helper 的前提为索引已通过范围检查，单次读取复杂度为 `O(ndim)`。
 
@@ -529,7 +571,7 @@ fmt_nd(tensor, f, prefix):
         else:
             next_prefix = prefix + [entry]
             // Outermost dimension is axis 0. For shape [M, N], this emits M rows,
-            // and each displayed element at [i, j] is tensor[[i, j]] in logical F-order.
+            // and each displayed element at [i, j] is `tensor.try_at((i, j))?` in logical F-order.
             fmt_nd(tensor, f, next_prefix)
         if pos < indices.len() - 1:
             write separator_for_axis(axis)
@@ -544,21 +586,35 @@ fmt_nd(tensor, f, prefix):
 ### 6.2 dtype 名称映射
 
 ```rust,ignore
-fn dtype_name<A: Element + 'static>() -> &'static str {
-    match core::any::TypeId::of::<A>() {
-        id if id == core::any::TypeId::of::<f32>() => "f32",
-        id if id == core::any::TypeId::of::<f64>() => "f64",
-        id if id == core::any::TypeId::of::<i32>() => "i32",
-        id if id == core::any::TypeId::of::<i64>() => "i64",
-        id if id == core::any::TypeId::of::<Complex<f32>>() => "Complex<f32>",
-        id if id == core::any::TypeId::of::<Complex<f64>>() => "Complex<f64>",
-        id if id == core::any::TypeId::of::<bool>() => "bool",
-        _ => core::any::type_name::<A>(),
+// `ElementType` is the closed enum authoritatively defined in `crate::element`
+// (see `03-element.md §5.1` and `§5.1.1` for the explicit discriminants).
+// Consumers MUST import it from `crate::element::ElementType` (the locked
+// invariant); `crate::ffi::ElementType` is a `pub use` re-export of the same
+// symbol — equivalent identity, but `crate::element` is the canonical path.
+use crate::element::{Element, ElementType};
+
+// Static dispatch via Element::ELEMENT_TYPE — the closed enum from 03-element §5.1.
+// No core::any::TypeId, no 'static bound, no fallback path: Element is a sealed
+// trait with a closed implementor set ({i32, i64, f32, f64, Complex<f32>,
+// Complex<f64>, bool}); the match below is exhaustive.
+fn dtype_name<A: Element>() -> &'static str {
+    match A::ELEMENT_TYPE {
+        ElementType::I32       => "i32",
+        ElementType::I64       => "i64",
+        ElementType::F32       => "f32",
+        ElementType::F64       => "f64",
+        ElementType::Complex32 => "Complex<f32>",
+        ElementType::Complex64 => "Complex<f64>",
+        ElementType::Bool      => "bool",
     }
 }
 ```
 
-Debug 输出的 `dtype=` 字段应通过内部 `dtype_name()` 映射获得稳定、紧凑的展示名，而不是直接暴露编译器的完整类型路径。
+Debug 输出的 `dtype=` 字段通过 `Element::ELEMENT_TYPE` 编译期常量分流到稳定、紧凑的展示名（参见 `03-element.md` §5.1 `ElementType` 枚举定义、`21-type.md` v2.0.0 决策 4 关于 `ElementType` 静态分流的统一规则）。这样做的好处：
+
+- **零运行时开销**：`A::ELEMENT_TYPE` 是 `const`，`match` 在单态化后会被编译器折叠为单一 `&'static str`。
+- **类型边界更松**：不再要求 `A: 'static`，与 `TensorView<'a, A, D>` 的非 `'static` 借用语义协同。
+- **与 21-type/26-error 一致**：禁用 `core::any::TypeId` 是 v2.0.0 协同决策；自 26-error v3.2.0 起 `TypeConversion.source_type / target_type` 字段类型为 `&'static str`（值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供），不再是 `ElementType` 枚举（参见 21-type v2.1.1 §6.1 `CastTo` 实现、26-error v3.2.0 §5.1）。Output 模块仅消费 `Element::ELEMENT_TYPE` 编译期常量做 dtype 名分流，不与 error 字段直接耦合。
 
 ---
 
@@ -614,7 +670,7 @@ Debug 输出的 `dtype=` 字段应通过内部 `dtype_name()` 映射获得稳定
 | 测试分类 | 位置                     | 说明                                                    |
 | -------- | ------------------------ | ------------------------------------------------------- |
 | 单元测试 | `#[cfg(test)] mod tests` | 验证 `Display`、`Debug` 与截断格式化语义                |
-| 集成测试 | `tests/`                 | 验证 `output` 与 `tensor`、`iter`、`element` 的协同路径 |
+| 集成测试 | `tests/`                 | 验证 `output` 与 `tensor` 元数据、逻辑索引读取、`element` 格式化路径的协同 |
 | 边界测试 | 同模块测试中标注         | 覆盖空数组、零维张量、阈值截断和 NaN/Inf 输出           |
 | 属性测试 | `tests/property/`        | 验证截断阈值、逻辑顺序与格式配置不变量                  |
 
@@ -705,7 +761,7 @@ User calls format!("{}", tensor) / format!("{:?}", tensor)
     ├── pretty recursively reads the required logical elements
     ├── large arrays are truncated according to threshold and edge-items rules
     ├── truncated output appends omitted-element count and full shape metadata
-    └── the module writes directly into Formatter without heap allocation
+    └── the module writes directly into Formatter without constructing a full output string
 ```
 
 ---
@@ -758,7 +814,7 @@ User calls format!("{}", tensor) / format!("{:?}", tensor)
 | 格式化开销 | 非截断输出 O(n)                                          |
 | 大数组截断 | 截断输出 O(visible_elements + overhead)                  |
 | 零拷贝     | 格式化过程不修改原始数据                                 |
-| 临时分配   | 格式化过程尽量避免中间字符串构造，直接写入 `Formatter`；动态维度可能需要少量索引缓冲，但不产生格式化结果字符串本身的堆分配 |
+| 临时分配   | 格式化过程尽量避免中间字符串构造，直接写入 `Formatter`；动态维度可能需要少量索引缓冲，但不构造完整格式化结果字符串 |
 
 ---
 
@@ -790,6 +846,40 @@ User calls format!("{}", tensor) / format!("{:?}", tensor)
 | 1.1.4 | 2026-04-14 |
 | 1.1.5 | 2026-04-15 |
 | 1.1.6 | 2026-04-15 |
+| 2.0.0 | 2026-05-02 |
+| 2.0.1 | 2026-05-04 |
+
+### v2.0.1 (2026-05-04) — R8/R9 复数 Display 双 expected 与 ElementType 导入路径
+
+- §6.1：复数 Display 的虚部符号决策由 `is_sign_negative()` 决定（NaN 强制 `+`），并提供 7 个边界值的双 expected 快照表（默认 `Display` vs `precision: Some(1)`），与 `28-tests.md §5.16 test_output_complex_signed_special_values` 双 expected 集严格一致（R8 落地，R9 同步）。
+- §6.2：示例代码块在使用 `ElementType::I32` 等枚举值前显式 `use crate::element::ElementType;`，与锁定不变量"`ElementType` 权威定义在 `crate::element`、消费者必须从该路径导入"一致（R9 评审 C-03 修复）。
+- 与 `00-coding.md §1.3` / `28-tests.md §1.0` 锁定基线版本号对齐。
+
+### v2.0.0 (2026-05-02) — `dtype_name` 改用 `Element::ELEMENT_TYPE` 静态分流
+
+> 协同 21-type v2.0.0 决策 4 与 26-error v3.0.0 `TypeConversion` 字段（v2.0.0 当时 `source_type/target_type: ElementType`；**自 26-error v3.2.0 起改为 `&'static str`**，值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供，详见现行 §6.2 与 26-error v3.2.0 §5.1）的统一规则：禁用 `core::any::TypeId` 进行类型分发，所有元素类型分流走 `Element::ELEMENT_TYPE` 编译期常量。
+
+**契约更新**：
+
+- §5.4 `Debug` 实现 `A` trait bound 从 `Debug + Element + 'static` 收窄为 `Debug + Element`。这是 `Debug` 公开约束的**放宽**（`'static` 边界移除），对调用方非破坏性 — 所有原本满足旧 bound 的类型都满足新 bound。
+- §6.2 `dtype_name<A>()` 函数体重写：从 `core::any::TypeId::of::<A>()` 链式比较 + `core::any::type_name::<A>()` 兜底，改为基于 `A::ELEMENT_TYPE` 的封闭 `match`。`'static` bound 同步移除。
+
+**协同与一致性更新**：
+
+- §4.2 依赖表 `element` 行：明确依赖 `Element::ELEMENT_TYPE` 与 `ElementType`，并明示**不**使用 `core::any::TypeId`。
+- §4.2 依赖表新增 `layout` 行：`Debug` 实现读取 `LayoutState` 来源 `06-layout.md` v1.3 §5.3。
+- §5.4 `Debug` 实现段落注释明示 `dtype_name::<A>()` 通过 `A::ELEMENT_TYPE` 编译期常量静态分流。
+- §6.2 注释明示 `Element` 是 sealed trait + 实现集合封闭（{i32, i64, f32, f64, Complex<f32>, Complex<f64>, bool}），`match` 完备且无 fallback 分支。
+- §6.2 引用 21-type v2.0.0 决策 4、26-error v3.0.0 §5.1 `TypeConversion` 字段，建立"`ElementType` 静态分流"是项目级统一规则的协同链路。
+
+**非破坏性确认**：
+
+- §5.1 `FormatConfig` 字段不变。
+- §5.2 `TensorDisplay` 包装与 `display_with(config)` 入口不变。
+- §5.3 `Display` 实现的 trait bound `A: Display + Element` 不变（`Display` 路径本来就没有 `'static` 要求）。
+- §5.5 NumPy 风格输出示例与 §5.6 截断规则均不变。
+- 所有公开 API（`fmt`、`display_with`、`FormatConfig`）签名与语义不变。
+- §5.1 / §5.6 定义 `edge_items = 0` 归一化为 1；§5.5 标注 Complex 示例使用 `precision: Some(1)`；§1.2、§8.1、§9.2、§12 清理配置、逻辑读取与临时分配措辞。
 
 ---
 

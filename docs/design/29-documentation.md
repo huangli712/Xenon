@@ -23,7 +23,11 @@
 | examples/    | 独立可运行示例程序                                             | 交互式 notebook                    |
 | docs.rs 配置 | metadata、feature gate 标注                                    | 自定义文档主题                     |
 
-### 1.2 设计原则
+### 1.2 协同基线
+
+本文档 v2.0.4 的 doc comment、doctest、README、CHANGELOG 与 examples 示例必须以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`03-element.md v1.4.0`（`ElementType` 在 element 模块；新增 `Element::ELEMENT_TYPE_NAME: &'static str`）、`04-complex.md v2.0.3`、`17-indexing.md v3.0.4`、`18-construction.md v3.0.2`、`19-overload.md v2.0.0`、`21-type.md v2.1.2`、`23-ffi.md v3.0.3`、`24-workspace.md v3.0.2`、`25-safety.md v2.0.4`、`26-error.md v3.2.0`（`TypeConversion` 等错误字段类型为 `&'static str`）、`28-tests.md v2.0.3`、`30-dispatch.md v2.0.3`。示例代码中的 API 形态、错误字段、索引语法、运算符返回类型、类型转换语义、workspace 借用形式和线程安全说明均不得重新定义这些契约。
+
+### 1.3 设计原则
 
 | 原则       | 体现                                                      |
 | ---------- | --------------------------------------------------------- |
@@ -223,7 +227,7 @@ L3: Examples (examples/)
 | 类型转换 (`cast`)                    | ✅         | doctest   | `21-type.md`         |
 | FFI unsafe API                       | ✅         | example   | `23-ffi.md`          |
 | 运算符重载                           | ✅         | doctest   | `19-overload.md`     |
-| `clip`/`fill`/`to_contiguous`        | ✅         | doctest   | `20-utility.md`      |
+| `clip`/`fill`/`try_fill`/`to_contiguous`/`into_contiguous` | ✅ | doctest | `20-utility.md`      |
 | 集合操作 (`unique`)                  | ✅         | doctest   | `14-set.md`          |
 | 工作空间                             | ✅         | example   | `24-workspace.md`    |
 | 格式化输出                           | ✅         | doctest   | `22-output.md`       |
@@ -292,7 +296,7 @@ L3: Examples (examples/)
 //! but not every legal layout is natively BLAS/LAPACK-compatible.
 //!
 
-// lint 配置详见 §5.5.1 Lint 规则
+// lint configuration — see §5.5.1 Lint Rules
 ````
 
 #### 5.4.2 文档节使用规则
@@ -311,9 +315,54 @@ L3: Examples (examples/)
 
 对运算符重载入口（如 `Add` / `Sub` / `Mul` / `Div` 的实现文档），即使签名经由 trait 间接暴露，也应补齐与对应方法型 API 一致的 `# Errors` / `# Panics` 模板，并引用 `19-overload.md` 中定义的对应技术规范，避免仅留下语法糖示例而缺少失败条件说明。
 
+所有 doc comment、doctest、README、CHANGELOG 与 examples 中的示例代码必须执行协同审查：
+
+- 错误构造必须匹配 `26-error.md v3.2.0 §5.1`。所有 `operation` 字段使用 `Cow<'static, str>`，示例构造使用 `Cow::Borrowed("...")`；`TypeConversion` 必须填充 `operation`、`source_type`、`target_type`、`reason`、`element_index`，其中 `source_type` / `target_type` 类型为 `&'static str`（v3.2.0 起；值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供，例如 `"f32"`、`"Complex<f64>"`），**不得**使用运行时类型 ID，**也不得**直接使用 `ElementType` 枚举值（避免 error 反向依赖 element）；`Ffi` 必须为 `operation` / `category` / `backend` / `cause` 四字段；`Workspace` 必须使用七子变体结构化 `WorkspaceErrorCategory`（含 `TypedViewRejected::TypedByteLengthOverflow { count, elem_size }`），不得引用旧的借用冲突子变体。
+- 索引示例必须使用 `try_at` / `try_at_mut` 或 `get(&[...])` / `get_mut(&[...])`，不得展示方括号索引语法。切片示例必须说明 `SliceInfo::new` 仅执行结构性校验，`SliceInfoElem::Range` 仅包含 `start` / `end`。
+- 构造示例必须保持 `Tensor::from_shape_vec` 的失败语义为 `InvalidShapeKind::ElementCountMismatch { expected, actual }`；`zeros` / `ones` 的实现说明必须使用 `<Owned<A> as StorageOwned>::from_elem(len, value)` 的完全限定调用。
+- 运算符示例必须体现 `Output = Result<Tensor, XenonError>`：同形状可写 `(&a + &b)?`，异形状优先写显式方法 `a.add(&b)?`；不得新增或引用额外的 try 前缀算术方法；左标量示例使用 `Scalar<A>` 包装类型，不展示原生左标量加张量语法。
+- 类型转换示例必须遵循静态无损 `From`、静态有损与动态条件性 `CastTo<T>` 三层结构；复数实数构造只展示 `From<T> for Complex<T>`，整数到复数转换走 `CastTo`。
+- Workspace 示例必须展示 `borrow_mut(&mut self)`、`Workspace::split_at_mut(&mut self)` 与消费式 `SplitBorrowMut::split_at_mut(self)`；线程安全说明以 `25-safety.md v2.0.1` 为准，`ViewMutRepr` 不实现 `Sync`（`!Sync` 来自 raw `*mut A` opt-out + 不提供 `unsafe impl Sync`，**不是**来自 `PhantomData<&mut T>`），`ArcRepr` 要求 `A: Send + Sync`。
+
+#### 5.4.3 Sealed trait 公开 doc 约定（v2.0.2）
+
+公开但 sealed 的 trait（外部不可实现，但可在 `where` 子句、trait 对象、关联类型中命名）必须在其 `pub trait` 的 doc comment 中显式声明 sealed 状态。这是 docs.rs 公开 API 一致性约定，不是实现细节披露。
+
+**适用范围（与各设计文档的锁定不变量一致）**：
+
+- `05-storage.md`：`RawStorage` / `RawStorageMut` / `Storage` / `StorageMut` / `StorageOwned` / `StorageShared` 6 个 storage trait + `IsOwned` / `IsView` / `IsViewMut` / `IsShared` 4 个 marker trait（全部 sealed via `crate::private::Sealed`，R8-B-03 落地；R10 B-03 把 marker `IsArc` 重命名为 `IsShared`）
+- `02-dimension.md`：`Dimension` 及其超 trait `Reverse`（sealed via `Dimension: Sealed` super-bound；R9 评审 A-03 修复后表述统一）
+- `03-element.md`：`Element` / `Numeric` / `RealScalar` / `ComplexScalar` / `CastElement`（封闭元素集成员关系）
+- `21-type.md`：`CastTo<T>`（封闭转换矩阵）
+
+**强制 doc comment 格式**（最小要求）：
+
+```rust,ignore
+/// ... existing trait description ...
+///
+/// # Sealed
+///
+/// This trait is sealed and cannot be implemented outside of `xenon`.
+/// External crates may name it in `where` clauses or trait bounds, but
+/// adding new implementations is intentionally not supported. The
+/// implementor set is closed: see the owner design document for the
+/// complete list and the rationale.
+pub trait MyPublicSealedTrait: crate::private::Sealed { /* ... */ }
+```
+
+**禁止**：
+
+- 在公开 doc 中暴露 `private.rs` 模块路径或 `Sealed` super-trait 的实现细节（仅说明"sealed and cannot be implemented outside this crate"即可，不写"via `crate::private::Sealed`"）。
+- 让 sealed 状态仅通过文件树注释（如 `private.rs # Sealed-trait infrastructure`）传达；必须在每个 sealed 公开 trait 自身的 doc comment 中显式声明。
+- 对 `pub(crate)` 内部 trait（如 `ConvertTo<B>`、`PermuteAxes`）施加同样要求——它们不在公开 API 面，无须公开 sealed 声明。
+
+文档审查（`§5.5` Lint 与文档门禁）必须包含一项 grep 检查：所有 `pub trait` 声明位于 sealed 范围内时，doc comment 必须出现 `Sealed` 段落。
+
 ### 5.5 Lint 与文档门禁
 
 #### 5.5.1 Lint 规则
+
+本节列出文档专项 lint。完整 `lib.rs` 项目级 lint 基线（含 `missing_docs`、`unsafe_op_in_unsafe_fn`、`missing_debug_implementations` 等）见 `00-coding.md §7.1`。
 
 **开发提示**：在开发期间可将 deny 改为 warn（`#![warn(missing_docs)]`），CI 中通过 `RUSTDOCFLAGS="-D warnings" cargo doc` 来强制执行文档完整性检查（参见 §5.11.1 CI checks）。
 
@@ -328,7 +377,8 @@ L3: Examples (examples/)
 #![deny(rustdoc::broken_intra_doc_links)]     // doc links must be valid
 #![deny(rustdoc::private_intra_doc_links)]    // private item links are invalid
 #![warn(rustdoc::missing_crate_level_docs)]   // crate-level docs must exist
-#![cfg_attr(docsrs, feature(doc_cfg))]        // docs.rs feature annotation
+// NOTE: NO `#![cfg_attr(docsrs, feature(doc_cfg))]` — that gate is nightly-only
+// and would break MSRV 1.85 stable builds. See `00-coding.md §10.3`.
 ```
 
 #### 5.5.2 Clippy 文档 lint
@@ -344,6 +394,62 @@ L3: Examples (examples/)
 
 完整 `lib.rs` 基线（含 `missing_docs`、`unsafe_op_in_unsafe_fn`、`missing_debug_implementations` 等）见 `00-coding.md §7.1`。
 
+#### 5.5.3 Sealed-trait doc grep 检查（v2.0.2）
+
+针对 §5.4.3 列出的所有公开 sealed trait（05-storage 6 storage trait + 4 marker trait、02-dim Dimension/Reverse、03-element Element/Numeric/RealScalar/ComplexScalar/CastElement、21-type CastTo），CI 必须执行一项 grep / 脚本检查：
+
+- 在源码中扫描所有满足 `pub trait <Name>(<...>): ... crate::private::Sealed` 或在 §5.4.3 列表内的 `pub trait` 声明；
+- 对每个匹配的 trait，断言其**紧邻前置** doc comment（`///` 连续块）必须出现 `# Sealed` 段落；
+- 不出现 `# Sealed` 段落 → CI 失败。
+
+最小实现示例（CI shell hook，伪代码）。**关键**：检查的是 `pub trait` 行**之前**的连续 `///` 块，**不是**之后的函数体内容；R11 E-02 之前的实现搜了 `pub trait...}` 范围，会漏掉前置 doc comment 而误报：
+
+```bash
+# Fail if any sealed pub trait lacks the `# Sealed` doc section in its
+# IMMEDIATELY PRECEDING contiguous `///` doc-comment block.
+#
+# Candidate discovery uses TWO sources unioned (R14 E-01 fix):
+#   (1) Direct grep match: `pub trait <Name>...crate::private::Sealed` —
+#       catches traits whose declaration line contains the Sealed bound.
+#   (2) §5.4.3 whitelist: explicit list of sealed pub trait names — catches
+#       traits that are sealed via super-trait (e.g., `Reverse: Dimension`
+#       inherits Dimension's Sealed bound) or whose `pub trait` line does
+#       NOT literally contain "Sealed". The whitelist MUST be kept in sync
+#       with §5.4.3.
+set -euo pipefail
+
+# §5.4.3 whitelist (R14 E-01; sync with §5.4.3 listing):
+WHITELIST='RawStorage|RawStorageMut|Storage|StorageMut|StorageOwned|StorageShared|IsOwned|IsView|IsViewMut|IsShared|Dimension|Reverse|Element|Numeric|RealScalar|ComplexScalar|CastElement|CastTo'
+
+# Union of (1) direct Sealed match and (2) whitelist match.
+matches_direct=$(grep -REn '^pub (unsafe )?trait [A-Z][A-Za-z0-9_]*.*Sealed' src/ || true)
+matches_whitelist=$(grep -REn "^pub (unsafe )?trait (${WHITELIST})\\b" src/ || true)
+matches=$(printf '%s\n%s\n' "$matches_direct" "$matches_whitelist" | sort -u | grep -v '^$' || true)
+
+exit_code=0
+while IFS= read -r match; do
+    [ -z "$match" ] && continue
+    file=$(echo "$match" | cut -d: -f1)
+    line=$(echo "$match" | cut -d: -f2)
+    name=$(echo "$match" | sed -E 's/.*pub (unsafe )?trait ([A-Z][A-Za-z0-9_]*).*/\2/')
+    # Walk upward from (line - 1) collecting contiguous `///` lines until
+    # the first non-/// line; assert `# Sealed` appears in that block.
+    block=$(awk -v target="$line" '
+        NR < target {
+            if ($0 ~ /^[[:space:]]*\/\/\//) { buf = buf "\n" $0 } else { buf = "" }
+        }
+        NR == target { print buf; exit }
+    ' "$file")
+    if ! echo "$block" | grep -q '^[[:space:]]*///[[:space:]]*# Sealed'; then
+        echo "MISSING # Sealed doc section: $name in $file:$line" >&2
+        exit_code=1
+    fi
+done <<< "$matches"
+exit $exit_code
+```
+
+该门禁与 §5.4.3 的"强制 doc comment 格式"形成闭环：§5.4.3 要求作者写、§5.5.3 在 CI 校验。脚本逻辑必须扫描 `pub trait` 之前的 doc comment 块（非之后），否则即使作者按 §5.4.3 正确书写也会被误报为缺失。
+
 ### 5.6 Doctest 规范
 
 #### 5.6.1 规则
@@ -355,6 +461,8 @@ L3: Examples (examples/)
 | 隐藏样板   | 用 `# ` 隐藏 use 语句                                                                                                       |
 | 最小化     | 只展示当前 API 用法                                                                                                         |
 | 有断言     | 用 `assert_eq!` 验证结果                                                                                                    |
+
+API 形态与错误字段审查必须执行 §5.4.2 的协同审查清单；特别是索引示例不得使用标准库索引 trait 语法，错误示例不得使用旧字段或运行时类型 ID。
 
 **关键示例定义**：§5.11.1 Gate 4 列出的示例（当前为 `basic` / `broadcasting` / `workspace`）为关键默认示例，必须在 CI 中实际运行。§5.3 示例覆盖矩阵列出的全部 API 族示例均须编译通过；其中被 Gate 4 命名的还须运行通过。
 
@@ -499,19 +607,19 @@ MIT
 ```toml
 [package.metadata.docs.rs]
 all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
+# NOTE: do NOT add `rustdoc-args = ["--cfg", "docsrs"]` (see `00-coding.md §10.3`).
 ```
 
 #### 5.10.2 Feature gate 标注
 
 文档中必须显式区分以下两类情况：
 
-1. **API gated by feature**：API 本身只在特定 feature 启用时出现，此时使用条件编译与必要的 `doc(cfg)`/可见性说明。
+1. **API gated by feature**：API 本身只在特定 feature 启用时出现，此时仅使用 `#[cfg(feature = "...")]` 条件编译；**不**使用 `#[doc(cfg(...))]`（nightly-only，详见 `00-coding.md §10.3`）。
 2. **API always present but behavior varies by feature**：API 始终存在，只是启用 feature 后内部执行路径或性能特征变化；此时不得把该 API 误写成“仅在 feature 下可用”，而应在正文中说明行为差异。
 
 ```rust,ignore
-// lib.rs
-#![cfg_attr(docsrs, feature(doc_cfg))]
+// lib.rs — NO `#![cfg_attr(docsrs, feature(doc_cfg))]` (nightly-only,
+// breaks MSRV 1.85 stable; see `00-coding.md §10.3`).
 
 // Public APIs whose behavior is affected by an optional feature should document
 // the behavior change directly instead of using doc(cfg) when the API itself is
@@ -526,12 +634,18 @@ pub fn sum(&self) -> A { ... }
 
 #### 5.11.1 验证项目
 
-| 检查项                   | 命令                                                                                                                       | 失败条件                                                          |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| Gate 1：rustdoc 文档门禁 | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`                                                            | 任何 missing docs / broken intra-doc links / 其他 rustdoc warning |
-| Gate 2：文档节完整性门禁 | `cargo clippy --all-features -- -D clippy::missing_errors_doc -D clippy::missing_panics_doc -D clippy::missing_safety_doc` | 缺少 `# Errors` / `# Panics` / `# Safety` 文档节                  |
-| Gate 3：Doctest          | `cargo test --doc --all-features`                                                                                          | 任何失败                                                          |
-| Gate 4：示例验证         | `cargo build --examples --all-features` + 关键示例运行命令（见 §5.6.1 定义；当前为 `basic` / `broadcasting` / `workspace`）| 任何失败                                                          |
+| 检查项                                   | 命令                                                                                                                       | 失败条件                                                          |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Gate 1：rustdoc 文档门禁                 | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`                                                            | 任何 missing docs / broken intra-doc links / 其他 rustdoc warning |
+| Gate 2：文档节完整性门禁（补充文档 lint） | `cargo clippy --all-features -- -D clippy::missing_errors_doc -D clippy::missing_panics_doc -D clippy::missing_safety_doc` | 缺少 `# Errors` / `# Panics` / `# Safety` 文档节                  |
+| Gate 3：Doctest                          | `cargo test --doc --all-features`                                                                                          | 任何失败                                                          |
+| Gate 4：示例验证                         | `cargo build --examples --all-features` + 关键示例运行命令（见 §5.6.1 定义；当前为 `basic` / `broadcasting` / `workspace`）| 任何失败                                                          |
+| Gate 5：Clippy 完整门禁                  | `cargo clippy --all-features -- -D warnings`                                                                               | 任何 clippy warning                                               |
+| Gate 6：编译警告门禁                     | `RUSTFLAGS="-D warnings" cargo check --all-features`                                                                       | 任何编译器 warning                                                |
+
+Gate 4 当前涵盖 `basic` / `broadcasting` / `workspace` 三个核心示例；完整示例覆盖清单见 §5.3。随着项目成熟，Gate 4 范围可逐步扩展至 §5.3 表中的所有 14 个 API 族。
+
+Gate 1、Gate 5、Gate 6 为 `00-coding.md §7.1` 规定的三项 CI 硬门禁。Gate 5（完整 clippy）覆盖所有 clippy lint，远不止 Gate 2 的三条文档专项 lint；Gate 2 作为补充文档节完整性校验继续保留，但不替代完整 clippy 扫描。Gate 6 确保常规编译警告在所有 feature 组合下均提升为错误。
 
 #### 5.11.2 CI 配置与 Feature 维度验证矩阵
 
@@ -663,7 +777,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 - [ ] **T2**: 配置 `#![warn(missing_docs)]` 和 docs.rs metadata
   - 文件: `src/lib.rs`, `Cargo.toml`
-  - 内容: lint 规则、`[package.metadata.docs.rs]`、`cfg_attr(docsrs, ...)`
+  - 内容: lint 规则、`[package.metadata.docs.rs] all-features = true`（**不**使用 `cfg_attr(docsrs, ...)` 与 `--cfg docsrs`，详见 `00-coding.md §10.3`）
   - 测试: 编译通过
   - 前置: T1
   - 预计: 5 min
@@ -772,35 +886,35 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 - [ ] **T17**: construct 和 set 模块文档
   - 文件: `src/construct/mod.rs`, `src/set/mod.rs`
-  - 内容: zeros, ones, eye, from_shape_vec, unique 函数文档和 doctest（`full` 当前版本未提供）
+  - 内容: zeros, ones, eye, from_shape_vec, unique 函数文档和 doctest（`full` 当前版本未提供）；构造错误语义与 `<Owned<A> as StorageOwned>::from_elem` 调用形态须与 `18-construction.md v3.0.1` 一致
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
 
 - [ ] **T18**: ffi, workspace, error 模块文档
   - 文件: `src/ffi/mod.rs`, `src/workspace/mod.rs`, `src/error.rs`
-  - 内容: FFI 函数（含 Safety 节）、Workspace、XenonError 文档和 doctest
+  - 内容: FFI 函数（含 Safety 节）、Workspace、XenonError 文档和 doctest；错误字段须对齐 `26-error.md v3.2.0 §5.1`（`TypeConversion` 等使用 `&'static str`），workspace 借用示例须使用 `24-workspace.md v3.0.1` 的 `&mut self` / 消费式 split 形态
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
 
 - [ ] **T19**: iter, convert, format, overload 模块文档
   - 文件: `src/iter/mod.rs`, `src/convert/mod.rs`, `src/format/mod.rs`, `src/overload/mod.rs`
-  - 内容: 迭代器入口、类型转换、输出格式化、运算符语法边界的模块文档和 doctest
+  - 内容: 迭代器入口、类型转换、输出格式化、运算符语法边界的模块文档和 doctest；类型转换示例不得使用运行时类型 ID，运算符示例必须体现 `Output = Result<..., XenonError>` 且不得新增额外的 try 前缀算术方法
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
 
 - [ ] **T20**: index 模块函数级文档和 doctest
   - 文件: `src/index/mod.rs`
-  - 内容: 索引/切片相关函数的文档和 doctest（参见 `17-indexing.md §1`）
+  - 内容: 索引/切片相关函数的文档和 doctest（参见 `17-indexing.md §1`）；示例只使用 `try_at` / `try_at_mut` / `get` / `get_mut`，不得展示方括号索引语法
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
 
 - [ ] **T21**: util 模块函数级文档和 doctest
   - 文件: `src/util/mod.rs`
-  - 内容: clip / fill / to_contiguous 等 utility 函数的函数级文档和 doctest（参见 `20-utility.md §1`）
+  - 内容: clip / fill / try_fill / to_contiguous / into_contiguous 等 utility 函数的函数级文档和 doctest（参见 `20-utility.md §1`）
   - 测试: `cargo test --doc --all-features`
   - 前置: T8
   - 预计: 10 min
@@ -1022,6 +1136,88 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | 1.1.6 | 2026-04-15 |
 | 1.1.7 | 2026-04-15 |
 | 1.1.8 | 2026-04-15 |
+| 2.0.0 | 2026-05-03 |
+| 2.0.1 | 2026-05-03 |
+| 2.0.2 | 2026-05-03 |
+| 2.0.3 | 2026-05-04 |
+| 2.0.4 | 2026-05-04 |
+
+### v2.0.4 (2026-05-04) — patch fix: refresh §1.2 协同基线 pins to current actual versions of all 12 referenced docs (post 7-condition convergence cascade)
+
+- §1.2 协同基线：将示例、README、CHANGELOG、doctest 与 examples 依赖的设计文档 pins 刷新到当前实际版本，并对齐本轮 7 个基线 owner 文档的 post-bump 固定点。
+
+### v2.0.3 (2026-05-04) — CI 硬门禁对齐 00-coding §7.1
+
+> 本版本将 `00-coding.md §7.1` 的三项 CI 硬门禁落实为 §5.11.1 的独立 Gate。非破坏性追加。
+
+**变更**：
+
+- §5.11.1 新增 Gate 5（`cargo clippy --all-features -- -D warnings`，完整 clippy 硬门禁）和 Gate 6（`RUSTFLAGS="-D warnings" cargo check --all-features`，编译警告硬门禁）。
+- Gate 2 重命名为"文档节完整性门禁（补充文档 lint）"以区别于覆盖全体 lint 的 Gate 5。
+- 新增交叉引用段落说明 Gate 1/5/6 为 `00-coding.md §7.1` 的三项 CI 硬门禁。
+
+**未变更**：
+
+- Gate 1–4 原有命令、命名（除 Gate 2 补充说明外）和失败条件均未改变。
+- §5.4.2 协同审查清单、§5.5 Lint 规则、§5.11.2 CI 配置说明等未变动。
+
+### v2.0.2 (2026-05-03) — ElementType 字段类型协同 + 文档残留清理 + Sealed-trait doc 约定
+
+> 本版本与 `26-error.md v3.2.0`、`03-element.md v1.4.0`、`28-tests.md v2.0.1` 协同。把既有协同清单与 Wave 任务条目升级到第四轮目标基线，清除前轮 ElementType 反向定位修复后的历史残留描述；同时新增 §5.4.3 "Sealed trait 公开 doc 约定"（R9 E-03 修复 sealed-trait 公开 doc 约定缺失）与 §5.5.3 "Sealed-trait doc grep 检查"（R10 E-02 引入、R11 E-02 修正脚本扫描方向 bug），明确所有公开 sealed trait 的 doc comment 必须含 `# Sealed` 段落，并由 CI grep 门禁强制校验。
+
+**变更**：
+
+- §1.2 协同基线版本号统一升至：`26-error v3.2.0` / `03-element v1.4.0` / `28-tests v2.0.1` / `21-type v2.1.1` / `23-ffi v3.0.2` / `25-safety v2.0.1` / `04-complex v2.0.2` / `19-overload v2.0.0` / `17-indexing v3.0.2` / `18-construction v3.0.1` / `24-workspace v3.0.1` / `30-dispatch v2.0.1`。
+- §5.4.2 协同审查清单更新：`TypeConversion` 字段类型为 `&'static str`（值由 `Element::ELEMENT_TYPE_NAME` 提供），不再使用 `ElementType` 枚举值；`ViewMutRepr !Sync` 论证更新为 raw pointer opt-out 形态。
+- §7 Wave 任务（T17 / T18）协同基线版本号同步。
+
+### v2.0.1 (2026-05-03) — Medium/Low 文档清理
+
+> Round-3 review 协同；非破坏性更新。具体修订点见 §1.2 与 §5.4.2 文本更新。
+
+### v2.0.0 (2026-05-03) — 协同与一致性更新（非破坏性）
+
+> 本版本是与 04-complex v2.0.0、17-indexing v2.0.0、18-construction v2.0.0、19-overload v2.0.0、21-type v2.0.0、23-ffi v2.0.0、24-workspace v2.0.0、25-safety v2.0.0、26-error v3.0.0、28-tests v2.0.0 协同的非破坏性更新。文档层次（L0/L1/L2/L3）、Lint 门禁、docs.rs 配置、CI 检查、决策 1-5、examples/ 规划、README/CHANGELOG 模板**均未变更**；仅新增协同审查清单。
+
+**Blocker 修复**：
+
+- §1.2 新增"协同基线"段：明确本文档示例、README、CHANGELOG、doctest、examples 必须以已修下游版本为协同基线；列出全部依据版本。原 §1.2 "设计原则" 顺延为 §1.3。
+- §5.4.2 新增"示例协同审查清单"段：6 项契约检查（错误字段对齐 26-error v3.0.0 / 索引语法 17-indexing / 构造错误 18-construction / 运算符返回 19-overload / 类型转换 21-type / Workspace 借用 24-workspace + 线程安全 25-safety + 复数构造 04-complex）。
+
+**High 修复**：
+
+- §5.6 Doctest 规范："API 形态与错误字段审查必须执行 §5.4.2 清单；索引示例不得使用 `[..]`；错误示例不得使用旧字段或运行时 TypeId。"
+- §7 Wave 3 任务说明补齐：T17 construct/set 任务补 18-construction v2.0.0 的 `<Owned<A> as StorageOwned>::from_elem` 完全限定调用要求；T18 ffi/workspace/error 补 26-error v3.0.0 字段对齐 + 24-workspace v2.0.0 `&mut self` / 消费式 split；T19 iter/convert/format/overload 补 "类型转换不得用 TypeId" + "运算符返回 `Result<..., XenonError>` 且不新增 try_*"；T20 index 任务补 "示例只使用 `try_at` / `try_at_mut` / `get` / `get_mut`，不得展示方括号索引"。
+
+**未变更**：
+
+- §3 文件位置（src/lib.rs / src/*/mod.rs / examples/ / README.md / CHANGELOG.md / docs.rs metadata）。
+- §4 依赖关系。
+- §5.1 文档层次 L0/L1/L2/L3。
+- §5.2 各层覆盖要求。
+- §5.3 关键 API 示例覆盖矩阵。
+- §5.4.1 核心文档模板（doc comment 形式）。
+- §5.5 Lint 与文档门禁（`#![warn(missing_docs)]` 开发期、CI deny 配置）。
+- §5.6.1 / §5.6.2 Doctest 模板与运行说明。
+- §5.7 examples/ 目录规划（basic / broadcasting / workspace 关键示例）。
+- §5.8 README.md 内容规划。
+- §5.9 CHANGELOG.md。
+- §5.10 docs.rs 配置（metadata、feature gate）。
+- §5.11 文档 CI 检查（4 个 Gate）。
+- §5.12 Good / Bad 文档注释对比示例。
+- §6 内部实现设计（文档生成流程、覆盖率计算、编写工作流）。
+- §7 Wave 1-2、Wave 4-5 任务（仅 Wave 3 T17-T20 补充协同约束）。
+- §8 测试计划。
+- §9 错误处理与语义边界。
+- §10 决策 1-5。
+- §11 性能描述。
+- §12 平台与工程约束。
+
+
+### v2.0.1 (2026-05-03) — Low documentation follow-up
+
+- Corrected the key API family count from 13 to 14.
+- Corrected the documentation CI gate count from 5 to 4.
 
 ---
 

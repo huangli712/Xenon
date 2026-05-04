@@ -84,7 +84,7 @@ External dependencies:
 | -------------------- | ---------------------------------------------------------------------- |
 | `core`               | `NonNull<u8>`, `PhantomData`, `AtomicU8`, `fmt::Debug`, `fmt::Display` |
 | `alloc`              | `alloc()`, `dealloc()`, `Layout`                                       |
-| `crate::error`       | `WorkspaceErrorCategory`（workspace 错误类别）、`XenonError`（公开 Xenon API 错误类型，含 `Workspace` 变体） |
+| `crate::error`       | `XenonError`（公开 Xenon API 错误类型，含 `Workspace` 变体）、`Result<T>`、`WorkspaceErrorCategory`（七子变体：`AllocFailed` / `InvalidLayout` / `BorrowConflict` / `SplitOutOfBounds` / `SplitCountInvariant` / `GrowOverflow` / `TypedViewRejected`）、`WorkspaceBorrowKind`（Shared/Exclusive/Split）、`WorkspaceBorrowState`（None/Shared/Exclusive/SplitActive）、`TypedViewRejection`（`ZeroSizedType` / `AlignmentMismatch { required, actual }` / `TypedByteLengthOverflow { count, elem_size }`，**均见 `26-error.md v3.2.0 §5.1`**；旧 `LengthNotMultipleOfSize` 已在 v3.1.0 删除——typed view API 仅按 `count` 申请、不存在按字节长度 reinterpret 的路径，溢出走 `TypedByteLengthOverflow`，详见 §5.6 与 `26-error.md v3.1.1` changelog）。本模块**不**使用 `Cow<'static, str>` 作为自由文本诊断字段（即不向错误结构体注入用户可见的随意诊断字符串）；按 `26-error.md v3.2.0` 要求，仅使用 `Cow<'static, str>` 填充稳定标识符字段 `operation`（值取自字面量集合，例如 `Cow::Borrowed("Workspace::new")`、`Cow::Borrowed("Workspace::reserve")` 等），用于诊断"哪个 API 触发了错误"，不携带运行时信息。 |
 
 ### 4.3 依赖合法性
 
@@ -109,7 +109,11 @@ use core::ptr::NonNull;
 use core::marker::PhantomData;
 use core::sync::atomic::{AtomicU8, Ordering};
 use alloc::alloc::{alloc, dealloc, Layout};
-use crate::error::{Result, XenonError};
+use alloc::borrow::Cow;
+use crate::error::{
+    Result, XenonError, WorkspaceErrorCategory, WorkspaceBorrowKind,
+    WorkspaceBorrowState, TypedViewRejection,
+};
 
 /// Temporary workspace.
 ///
@@ -122,7 +126,7 @@ use crate::error::{Result, XenonError};
 /// - Can be reused after returning
 /// - The current implementation is not transferable across threads
 ///   (`!Send + !Sync`), which simplifies the borrow-safety argument around raw
-///   pointers. This is an implementation choice rather than a `需求说明书 §26`
+///   pointers. This is an implementation choice rather than a requirement specification §26
 ///   mandate; future versions may relax it with safe cross-thread borrow checks.
 ///
 /// # Initialization Model
@@ -233,40 +237,41 @@ impl Workspace {
     /// let ws = Workspace::new(1024, 64)?;
     /// assert!(ws.capacity() >= 1024);
     /// ```
+    ///
+    /// **Capacity note**: `capacity.max(1)` ensures at least 1 byte is requested for a valid layout even at zero capacity.
+    /// The actual internal capacity may be slightly larger than the requested value (due to alignment padding in `Layout::from_size_align`).
+    /// `capacity()` returns the requested value after `max(1)`, not the actual allocated byte count.
     pub fn new(capacity: usize, alignment: usize) -> Result<Self> {
         if !alignment.is_power_of_two() || alignment < Self::MIN_ALIGNMENT {
             return Err(XenonError::Workspace {
-                operation: "new".into(),
-                category: WorkspaceErrorCategory::InvalidLayout,
-                size: Some(capacity),
-                align: Some(alignment),
-                split: None,
-                len: None,
-                reason: Some("alignment must be a power of two and >= MIN_ALIGNMENT".into()),
+                operation: Cow::Borrowed("Workspace::new"),
+                category: WorkspaceErrorCategory::InvalidLayout {
+                    size: capacity,
+                    align: alignment,
+                },
+                cause: None,
             });
         }
 
         let size = capacity.max(1);
         let layout = Layout::from_size_align(size, alignment)
             .map_err(|_| XenonError::Workspace {
-                operation: "new".into(),
-                category: WorkspaceErrorCategory::InvalidLayout,
-                size: Some(size),
-                align: Some(alignment),
-                split: None,
-                len: None,
-                reason: Some("Layout::from_size_align rejected the requested size/alignment".into()),
+                operation: Cow::Borrowed("Workspace::new"),
+                category: WorkspaceErrorCategory::InvalidLayout {
+                    size,
+                    align: alignment,
+                },
+                cause: None,
             })?;
 
         let ptr = unsafe { alloc(layout) };
         let ptr = NonNull::new(ptr).ok_or(XenonError::Workspace {
-            operation: "new".into(),
-            category: WorkspaceErrorCategory::AllocFailed,
-            size: Some(size),
-            align: Some(alignment),
-            split: None,
-            len: None,
-            reason: None,
+            operation: Cow::Borrowed("Workspace::new"),
+            category: WorkspaceErrorCategory::AllocFailed {
+                size,
+                align: alignment,
+            },
+            cause: None,
         })?;
 
         Ok(Self {
@@ -347,10 +352,13 @@ impl Workspace {
     /// bytes as potentially uninitialized; use `assume_init_slice` only when the
     /// caller can prove the inspected prefix has been written.
     ///
-    /// `borrow()`/`borrow_mut()` take `&self` rather than `&mut self` because
-    /// exclusivity is enforced at runtime by the internal `AtomicU8` state
-    /// machine. Concurrent or overlapping borrow attempts are rejected by
-    /// returning a `XenonError::Workspace` value.
+    /// `borrow()` takes `&self` because shared read guards are enforced at
+    /// runtime by the internal `AtomicU8` state machine — multiple read
+    /// guards are mutually exclusive but do not require compile-time
+    /// exclusivity. By contrast, `borrow_mut()` and `split_at_mut()` take
+    /// `&mut self` (decision 6) so that compile-time exclusivity makes
+    /// "exclusive borrow while another guard is alive" a static type error,
+    /// in addition to the runtime CAS check.
     pub fn borrow(&self) -> Result<WorkspaceBorrow<'_>> {
         let prev = self.borrow_state.compare_exchange(
             Self::BORROW_NONE,
@@ -361,13 +369,12 @@ impl Workspace {
 
         if prev.is_err() {
             return Err(XenonError::Workspace {
-                operation: "borrow".into(),
-                category: WorkspaceErrorCategory::AlreadyBorrowed,
-                size: None,
-                align: None,
-                split: None,
-                len: None,
-                reason: None,
+                operation: Cow::Borrowed("Workspace::borrow"),
+                category: WorkspaceErrorCategory::BorrowConflict {
+                    requested: WorkspaceBorrowKind::Shared,
+                    current: current_borrow_state(self),
+                },
+                cause: None,
             });
         }
 
@@ -380,10 +387,17 @@ impl Workspace {
 
     /// Mutably borrow the workspace.
     ///
+    /// Takes `&mut self` (decision 6 / B12.a): compile-time exclusivity
+    /// makes "exclusive borrow while another guard exists" a static type
+    /// error. The internal `AtomicU8` CAS still runs as a defense-in-depth
+    /// check that observes residual state from prior split lifecycles.
+    ///
     /// # Errors
     ///
-    /// `XenonError::Workspace`: Workspace is already borrowed.
-    pub fn borrow_mut(&self) -> Result<WorkspaceBorrowMut<'_>> {
+    /// `XenonError::Workspace { category: BorrowConflict }`: residual
+    /// state observed (should be unreachable under correct `&mut self`
+    /// semantics; reported defensively).
+    pub fn borrow_mut(&mut self) -> Result<WorkspaceBorrowMut<'_>> {
         let prev = self.borrow_state.compare_exchange(
             Self::BORROW_NONE,
             Self::BORROW_EXCLUSIVE,
@@ -393,13 +407,12 @@ impl Workspace {
 
         if prev.is_err() {
             return Err(XenonError::Workspace {
-                operation: "borrow_mut".into(),
-                category: WorkspaceErrorCategory::AlreadyBorrowed,
-                size: None,
-                align: None,
-                split: None,
-                len: None,
-                reason: None,
+                operation: Cow::Borrowed("Workspace::borrow_mut"),
+                category: WorkspaceErrorCategory::BorrowConflict {
+                    requested: WorkspaceBorrowKind::Exclusive,
+                    current: current_borrow_state(self),
+                },
+                cause: None,
             });
         }
 
@@ -408,6 +421,26 @@ impl Workspace {
             len: self.capacity,
             workspace: self,
         })
+    }
+}
+
+/// Internal helper: read current borrow state in structured form for
+/// error reporting. Loads `borrow_state` and `split_count` with `Relaxed`
+/// because the loads are diagnostic-only — the actual borrow safety is
+/// enforced by the CAS in the borrow methods and by `&mut self` in
+/// `borrow_mut`/`split_at_mut`/`ensure_capacity`.
+fn current_borrow_state(ws: &Workspace) -> WorkspaceBorrowState {
+    use core::sync::atomic::Ordering::Relaxed;
+    let bs = ws.borrow_state.load(Relaxed);
+    let sc = ws.split_count.load(Relaxed);
+    match (bs, sc) {
+        (Workspace::BORROW_NONE, _) => WorkspaceBorrowState::None,
+        (Workspace::BORROW_READ, _) => WorkspaceBorrowState::Shared,
+        (Workspace::BORROW_EXCLUSIVE, 0) => WorkspaceBorrowState::Exclusive,
+        (Workspace::BORROW_EXCLUSIVE, count) => {
+            WorkspaceBorrowState::SplitActive { count }
+        }
+        _ => WorkspaceBorrowState::None,
     }
 }
 ```
@@ -422,7 +455,15 @@ impl<'a> WorkspaceBorrow<'a> {
     }
 
     /// Returns the scratch region as possibly-uninitialized bytes.
-    pub fn as_maybe_uninit_slice(&self) -> &[core::mem::MaybeUninit<u8>] {
+    ///
+    /// Although the returned slice is shared (`&[MaybeUninit<u8>]`), this method
+    /// takes `&mut self`. This makes the `MaybeUninit<u8>` view and the
+    /// initialized `u8` view mutually exclusive at the borrow-guard level: safe
+    /// code cannot keep a returned slice alive while asking the same borrow for
+    /// the other view, which would otherwise alias the same bytes under
+    /// conflicting initialization assumptions and violate `MaybeUninit` aliasing
+    /// rules.
+    pub fn as_maybe_uninit_slice(&mut self) -> &[core::mem::MaybeUninit<u8>] {
         // SAFETY: `MaybeUninit<u8>` may represent uninitialized bytes.
         unsafe {
             core::slice::from_raw_parts(
@@ -434,26 +475,38 @@ impl<'a> WorkspaceBorrow<'a> {
 
     /// Interprets an initialized prefix as `&[u8]`.
     ///
+    /// Takes `&mut self` for the same mutual-exclusion reason as
+    /// `as_maybe_uninit_slice`: the initialized `u8` view and the
+    /// `MaybeUninit<u8>` view are not allowed to be held simultaneously
+    /// from the same borrow.
+    ///
     /// # Safety
     ///
     /// The caller must guarantee that the first `initialized_len` bytes have been
     /// fully initialized before calling this method.
     pub unsafe fn assume_init_slice(
-        &self,
+        &mut self,
         initialized_len: usize,
     ) -> Result<&[u8]> {
         if initialized_len > self.len {
             return Err(XenonError::Workspace {
-                operation: "assume_init_slice".into(),
-                category: WorkspaceErrorCategory::InvalidLayout,
-                size: Some(initialized_len),
-                align: None,
-                split: None,
-                len: Some(self.len),
-                reason: Some("initialized_len exceeds borrow length".into()),
+                operation: Cow::Borrowed("WorkspaceBorrow::assume_init_slice"),
+                category: WorkspaceErrorCategory::SplitOutOfBounds {
+                    mid: initialized_len,
+                    len: self.len,
+                },
+                cause: None,
             });
         }
-        Ok(core::slice::from_raw_parts(self.ptr.as_ptr(), initialized_len))
+        // SAFETY: Caller asserts that the first `initialized_len` bytes are
+        // fully initialized (function-level `# Safety` precondition). The
+        // raw pointer / length pair stays within the workspace borrow's
+        // capacity (checked above), the borrow is held by `&mut self`, and
+        // `WorkspaceBorrow` is `!Send + !Sync`, so no other reference can
+        // alias these bytes for the duration of the returned `&[u8]`.
+        // Explicit `unsafe { ... }` is required under Rust 2024 edition's
+        // `unsafe_op_in_unsafe_fn` lint.
+        Ok(unsafe { core::slice::from_raw_parts(self.ptr.as_ptr(), initialized_len) })
     }
 
     /// Returns the borrow length.
@@ -492,76 +545,105 @@ impl<'a> WorkspaceBorrowMut<'a> {
     ) -> Result<&mut [u8]> {
         if initialized_len > self.len {
             return Err(XenonError::Workspace {
-                operation: "assume_init_slice".into(),
-                category: WorkspaceErrorCategory::InvalidLayout,
-                size: Some(initialized_len),
-                align: None,
-                split: None,
-                len: Some(self.len),
-                reason: Some("initialized_len exceeds borrow length".into()),
+                operation: Cow::Borrowed("WorkspaceBorrowMut::assume_init_slice"),
+                category: WorkspaceErrorCategory::SplitOutOfBounds {
+                    mid: initialized_len,
+                    len: self.len,
+                },
+                cause: None,
             });
         }
-        Ok(core::slice::from_raw_parts_mut(self.ptr.as_ptr(), initialized_len))
+        // SAFETY: Caller asserts that the first `initialized_len` bytes are
+        // fully initialized (function-level `# Safety` precondition). The
+        // mutable borrow is held by `&mut self`, the workspace is
+        // `!Send + !Sync`, and the raw range is bounded by the borrow's
+        // capacity (checked above), so no aliasing reference can coexist.
+        // Explicit `unsafe { ... }` is required under Rust 2024 edition's
+        // `unsafe_op_in_unsafe_fn` lint.
+        Ok(unsafe { core::slice::from_raw_parts_mut(self.ptr.as_ptr(), initialized_len) })
     }
 
     /// Typed access to possibly-uninitialized scratch memory.
+    ///
+    /// `T` is constrained to `Element` (`03-element.md §5.1`) to keep the
+    /// typed-view API closed over Xenon's supported element type set
+    /// (`bool` / `i32` / `i64` / `f32` / `f64` / `Complex<f32>` / `Complex<f64>`,
+    /// all of which are `Copy`, `Sealed`, and free of drop glue / hidden
+    /// invariants). This rules out using the workspace as a scratch buffer
+    /// for arbitrary user types, references, types with destructors, etc.,
+    /// which would otherwise impose unbounded SAFETY obligations on callers.
     ///
     /// # Safety
     ///
     /// The caller must still uphold the initialization model for `T`; directly
     /// checkable size/alignment/count violations are reported as `Result` errors.
-    pub unsafe fn as_maybe_uninit_typed_slice<T>(
+    pub unsafe fn as_maybe_uninit_typed_slice<T: crate::element::Element>(
         &mut self,
         count: usize,
     ) -> Result<&mut [core::mem::MaybeUninit<T>]> {
+        const OP: Cow<'static, str> =
+            Cow::Borrowed("WorkspaceBorrowMut::as_maybe_uninit_typed_slice");
         if core::mem::size_of::<T>() == 0 {
             return Err(XenonError::Workspace {
-                operation: "as_maybe_uninit_typed_slice".into(),
-                category: WorkspaceErrorCategory::InvalidLayout,
-                size: Some(core::mem::size_of::<T>()),
-                align: Some(core::mem::align_of::<T>()),
-                split: None,
-                len: Some(self.len),
-                reason: Some("zero-sized types are not supported for typed workspace borrows".into()),
+                operation: OP,
+                category: WorkspaceErrorCategory::TypedViewRejected {
+                    detail: TypedViewRejection::ZeroSizedType,
+                },
+                cause: None,
             });
         }
         let byte_len = count
             .checked_mul(core::mem::size_of::<T>())
             .ok_or(XenonError::Workspace {
-                operation: "as_maybe_uninit_typed_slice".into(),
-                category: WorkspaceErrorCategory::InvalidLayout,
-                size: Some(count),
-                align: Some(core::mem::align_of::<T>()),
-                split: None,
-                len: Some(self.len),
-                reason: Some("count * size_of::<T>() overflowed".into()),
+                operation: OP,
+                // `count * size_of::<T>()` overflowed `usize` — we cannot even
+                // express the requested byte length, so reuse of `GrowOverflow`
+                // (which expects bytes in both fields) would lie about the
+                // request. Use `TypedViewRejected::TypedByteLengthOverflow`
+                // (see `26-error.md §5.1` v3.1.1) which carries `count` and
+                // `elem_size` in their natural units.
+                category: WorkspaceErrorCategory::TypedViewRejected {
+                    detail: TypedViewRejection::TypedByteLengthOverflow {
+                        count,
+                        elem_size: core::mem::size_of::<T>(),
+                    },
+                },
+                cause: None,
             })?;
         if byte_len > self.len {
             return Err(XenonError::Workspace {
-                operation: "as_maybe_uninit_typed_slice".into(),
-                category: WorkspaceErrorCategory::InvalidLayout,
-                size: Some(byte_len),
-                align: Some(core::mem::align_of::<T>()),
-                split: None,
-                len: Some(self.len),
-                reason: Some("typed slice byte length exceeds borrow length".into()),
+                operation: OP,
+                category: WorkspaceErrorCategory::SplitOutOfBounds {
+                    mid: byte_len,
+                    len: self.len,
+                },
+                cause: None,
             });
         }
-        if self.ptr.as_ptr() as usize % core::mem::align_of::<T>() != 0 {
+        let actual_addr = self.ptr.as_ptr() as usize;
+        if actual_addr % core::mem::align_of::<T>() != 0 {
             return Err(XenonError::Workspace {
-                operation: "as_maybe_uninit_typed_slice".into(),
-                category: WorkspaceErrorCategory::InvalidLayout,
-                size: Some(byte_len),
-                align: Some(core::mem::align_of::<T>()),
-                split: None,
-                len: Some(self.len),
-                reason: Some("workspace pointer does not satisfy T alignment".into()),
+                operation: OP,
+                category: WorkspaceErrorCategory::TypedViewRejected {
+                    detail: TypedViewRejection::AlignmentMismatch {
+                        required: core::mem::align_of::<T>(),
+                        actual: actual_addr % core::mem::align_of::<T>(),
+                    },
+                },
+                cause: None,
             });
         }
-        Ok(core::slice::from_raw_parts_mut(
+        // SAFETY: Capacity (`byte_len <= self.len`) and alignment
+        // (`actual_addr % align_of::<T>() == 0`) are checked above.
+        // `MaybeUninit<T>` permits uninitialized representation, so this
+        // does NOT impose initialization requirements on the caller for
+        // `T`. The mutable borrow is held by `&mut self` and the workspace
+        // is `!Send + !Sync`, ensuring no aliasing.
+        // Explicit `unsafe { ... }` required by Rust 2024 edition.
+        Ok(unsafe { core::slice::from_raw_parts_mut(
             self.ptr.as_ptr() as *mut core::mem::MaybeUninit<T>,
             count,
-        ))
+        ) })
     }
 
     /// Interprets the first `count` elements as initialized `T` values.
@@ -573,55 +655,67 @@ impl<'a> WorkspaceBorrowMut<'a> {
     /// - those values are valid instances of `T`,
     /// - the requested region fits in this borrow (`count * size_of::<T>() <= self.len()`),
     /// - and the scratch region satisfies `T` alignment requirements.
-    pub unsafe fn assume_init_typed_slice<T>(
+    pub unsafe fn assume_init_typed_slice<T: crate::element::Element>(
         &mut self,
         count: usize,
     ) -> Result<&mut [T]> {
+        const OP: Cow<'static, str> =
+            Cow::Borrowed("WorkspaceBorrowMut::assume_init_typed_slice");
         if core::mem::size_of::<T>() == 0 {
             return Err(XenonError::Workspace {
-                operation: "assume_init_typed_slice".into(),
-                category: WorkspaceErrorCategory::InvalidLayout,
-                size: Some(core::mem::size_of::<T>()),
-                align: Some(core::mem::align_of::<T>()),
-                split: None,
-                len: Some(self.len),
-                reason: Some("zero-sized types are not supported for typed workspace borrows".into()),
+                operation: OP,
+                category: WorkspaceErrorCategory::TypedViewRejected {
+                    detail: TypedViewRejection::ZeroSizedType,
+                },
+                cause: None,
             });
         }
         let byte_len = count
             .checked_mul(core::mem::size_of::<T>())
             .ok_or(XenonError::Workspace {
-                operation: "assume_init_typed_slice".into(),
-                category: WorkspaceErrorCategory::InvalidLayout,
-                size: Some(count),
-                align: Some(core::mem::align_of::<T>()),
-                split: None,
-                len: Some(self.len),
-                reason: Some("count * size_of::<T>() overflowed".into()),
+                operation: OP,
+                // Same overflow handling as `as_maybe_uninit_typed_slice`:
+                // `GrowOverflow` expects both fields in bytes, but `count`
+                // is element units, so route through TypedViewRejection.
+                category: WorkspaceErrorCategory::TypedViewRejected {
+                    detail: TypedViewRejection::TypedByteLengthOverflow {
+                        count,
+                        elem_size: core::mem::size_of::<T>(),
+                    },
+                },
+                cause: None,
             })?;
         if byte_len > self.len {
             return Err(XenonError::Workspace {
-                operation: "assume_init_typed_slice".into(),
-                category: WorkspaceErrorCategory::InvalidLayout,
-                size: Some(byte_len),
-                align: Some(core::mem::align_of::<T>()),
-                split: None,
-                len: Some(self.len),
-                reason: Some("typed slice byte length exceeds borrow length".into()),
+                operation: OP,
+                category: WorkspaceErrorCategory::SplitOutOfBounds {
+                    mid: byte_len,
+                    len: self.len,
+                },
+                cause: None,
             });
         }
-        if self.ptr.as_ptr() as usize % core::mem::align_of::<T>() != 0 {
+        let actual_addr = self.ptr.as_ptr() as usize;
+        if actual_addr % core::mem::align_of::<T>() != 0 {
             return Err(XenonError::Workspace {
-                operation: "assume_init_typed_slice".into(),
-                category: WorkspaceErrorCategory::InvalidLayout,
-                size: Some(byte_len),
-                align: Some(core::mem::align_of::<T>()),
-                split: None,
-                len: Some(self.len),
-                reason: Some("workspace pointer does not satisfy T alignment".into()),
+                operation: OP,
+                category: WorkspaceErrorCategory::TypedViewRejected {
+                    detail: TypedViewRejection::AlignmentMismatch {
+                        required: core::mem::align_of::<T>(),
+                        actual: actual_addr % core::mem::align_of::<T>(),
+                    },
+                },
+                cause: None,
             });
         }
-        Ok(core::slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut T, count))
+        // SAFETY: Capacity and alignment checks above confirm the
+        // range fits and is `T`-aligned. The caller's `# Safety`
+        // contract guarantees that the first `count * size_of::<T>()`
+        // bytes hold valid `T` instances. The borrow is exclusive and
+        // workspace is `!Send + !Sync`, so no aliasing or concurrent
+        // access can occur. Explicit `unsafe { ... }` required by
+        // Rust 2024 edition.
+        Ok(unsafe { core::slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut T, count) })
     }
 }
 
@@ -707,18 +801,17 @@ impl Workspace {
     /// // left: [0, 512), right: [512, 1024)
     /// ```
     pub fn split_at_mut(
-        &self,
+        &mut self,
         mid: usize,
     ) -> Result<(SplitBorrowMut<'_>, SplitBorrowMut<'_>)> {
         if mid > self.capacity {
             return Err(XenonError::Workspace {
-                operation: "split_at_mut".into(),
-                category: WorkspaceErrorCategory::SplitOutOfBounds,
-                size: None,
-                align: None,
-                split: Some(mid),
-                len: Some(self.capacity),
-                reason: None,
+                operation: Cow::Borrowed("Workspace::split_at_mut"),
+                category: WorkspaceErrorCategory::SplitOutOfBounds {
+                    mid,
+                    len: self.capacity,
+                },
+                cause: None,
             });
         }
 
@@ -731,13 +824,12 @@ impl Workspace {
 
         if prev.is_err() {
             return Err(XenonError::Workspace {
-                operation: "split_at_mut".into(),
-                category: WorkspaceErrorCategory::AlreadyBorrowed,
-                size: None,
-                align: None,
-                split: None,
-                len: None,
-                reason: None,
+                operation: Cow::Borrowed("Workspace::split_at_mut"),
+                category: WorkspaceErrorCategory::BorrowConflict {
+                    requested: WorkspaceBorrowKind::Split,
+                    current: current_borrow_state(self),
+                },
+                cause: None,
             });
         }
 
@@ -793,13 +885,12 @@ impl<'a> SplitBorrowMut<'a> {
     ) -> Result<(SplitBorrowMut<'a>, SplitBorrowMut<'a>)> {
         if mid > self.len {
             return Err(XenonError::Workspace {
-                operation: "split_at_mut".into(),
-                category: WorkspaceErrorCategory::SplitOutOfBounds,
-                size: None,
-                align: None,
-                split: Some(mid),
-                len: Some(self.len),
-                reason: None,
+                operation: Cow::Borrowed("SplitBorrowMut::split_at_mut"),
+                category: WorkspaceErrorCategory::SplitOutOfBounds {
+                    mid,
+                    len: self.len,
+                },
+                cause: None,
             });
         }
 
@@ -894,35 +985,35 @@ impl Workspace {
             return Ok(());
         }
 
-        // Check borrow state
+        // Compile-time exclusivity from `&mut self` already prevents an
+        // active guard from coexisting with growth. The runtime check
+        // below is defense-in-depth (catches residual state from a
+        // dropped split chain that failed to clean up).
         let state = self.borrow_state.load(Ordering::Acquire);
         if state != Self::BORROW_NONE {
             return Err(XenonError::Workspace {
-                operation: "ensure_capacity".into(),
-                category: WorkspaceErrorCategory::AlreadyBorrowed,
-                size: None,
-                align: None,
-                split: None,
-                len: None,
-                reason: None,
+                operation: Cow::Borrowed("Workspace::ensure_capacity"),
+                category: WorkspaceErrorCategory::BorrowConflict {
+                    requested: WorkspaceBorrowKind::Exclusive,
+                    current: current_borrow_state(self),
+                },
+                cause: None,
             });
         }
 
-        // 1.5x growth
+        // 1.5x growth.
         // Growth-factor arithmetic must use checked_mul to avoid usize overflow.
-        // On overflow, return XenonError::Workspace
-        // at the public boundary rather than
-        // panicking or silently wrapping.
+        // On overflow, return XenonError::Workspace::GrowOverflow at the
+        // public boundary rather than panicking or silently wrapping.
         let grown = self.capacity
             .checked_mul(Self::GROWTH_FACTOR_NUMERATOR)
             .ok_or(XenonError::Workspace {
-                operation: "ensure_capacity".into(),
-                category: WorkspaceErrorCategory::AllocFailed,
-                size: Some(min_capacity),
-                align: Some(self.alignment),
-                split: None,
-                len: Some(self.capacity),
-                reason: Some("capacity growth overflow".into()),
+                operation: Cow::Borrowed("Workspace::ensure_capacity"),
+                category: WorkspaceErrorCategory::GrowOverflow {
+                    current_capacity: self.capacity,
+                    additional: min_capacity,
+                },
+                cause: None,
             })?
             / Self::GROWTH_FACTOR_DENOMINATOR;
         let new_capacity = grown.max(min_capacity);
@@ -934,25 +1025,23 @@ impl Workspace {
     fn reallocate(&mut self, new_capacity: usize) -> Result<()> {
         let new_layout = Layout::from_size_align(new_capacity, self.alignment)
             .map_err(|_| XenonError::Workspace {
-                operation: "reallocate".into(),
-                category: WorkspaceErrorCategory::InvalidLayout,
-                size: Some(new_capacity),
-                align: Some(self.alignment),
-                split: None,
-                len: Some(self.capacity),
-                reason: Some("Layout::from_size_align rejected the requested size/alignment during reallocate".into()),
+                operation: Cow::Borrowed("Workspace::reallocate"),
+                category: WorkspaceErrorCategory::InvalidLayout {
+                    size: new_capacity,
+                    align: self.alignment,
+                },
+                cause: None,
             })?;
 
         let new_ptr = unsafe { alloc(new_layout) };
         let new_ptr = NonNull::new(new_ptr)
             .ok_or(XenonError::Workspace {
-                operation: "reallocate".into(),
-                category: WorkspaceErrorCategory::AllocFailed,
-                size: Some(new_capacity),
-                align: Some(self.alignment),
-                split: None,
-                len: Some(self.capacity),
-                reason: None,
+                operation: Cow::Borrowed("Workspace::reallocate"),
+                category: WorkspaceErrorCategory::AllocFailed {
+                    size: new_capacity,
+                    align: self.alignment,
+                },
+                cause: None,
             })?;
 
         // Implementation detail: bytes may be copied during growth, but this is
@@ -1005,10 +1094,13 @@ let mut buf = ws.borrow_mut()?;
 let scratch = buf.as_maybe_uninit_slice();
 // Initialize scratch before reinterpretation
 
-// Bad - Treating scratch memory as initialized bytes without proof
+// Bad - Treating scratch memory as initialized typed elements without proof
 let mut ws = Workspace::new(1024, 64)?;
 let mut buf = ws.borrow_mut()?;
-let bytes: &mut [u8] = unsafe { buf.assume_init_typed_slice::<u8>(1024)? };
+// Note: typed view is sealed to T: Element (per §5.6, v3.0.1). Even with the
+// proper bound, calling `assume_init_typed_slice` without first writing valid
+// `i32` values via the `MaybeUninit` view is UB.
+let ints: &mut [i32] = unsafe { buf.assume_init_typed_slice::<i32>(256)? };
 // Still requires the unsafe initialization proof; direct input validation errors use Result.
 
 // Bad - Directly manipulating raw pointers to bypass borrow checking
@@ -1022,10 +1114,12 @@ ws.ensure_capacity(1024)?;  // Grow first
 let mut buf = ws.borrow_mut()?;
 // Safe to use the larger buffer
 
-// Bad - Re-enter a borrow-only API while a guard is still alive
-let ws = Workspace::new(256, 64)?;
+// Bad - The following example does not compile: `borrow_mut()` and
+// `split_at_mut()` both require `&mut self`, so the borrow checker prevents
+// this re-entry while `_buf` is alive before any runtime error path is reached.
+let mut ws = Workspace::new(256, 64)?;
 let _buf = ws.borrow_mut()?;
-let _again = ws.split_at_mut(128)?;  // Returns `XenonError::Workspace` at runtime
+let _again = ws.split_at_mut(128)?;
 ```
 
 ---
@@ -1211,6 +1305,7 @@ ensure_capacity(&mut self, 2048)
 | `test_borrow_double_fails`                     | 重复借用返回错误                                           | 高     |
 | `test_borrow_after_drop`                       | 归还后可再次借用                                           | 高     |
 | `test_assume_init_requires_initialized_prefix` | 已初始化视图只覆盖调用方证明已初始化的前缀                 | 高     |
+| `test_workspace_borrow_views_are_mutually_exclusive` | `WorkspaceBorrow` 的 `as_maybe_uninit_slice` 与 `assume_init_slice` 取 `&mut self`：safe 代码不能同时持有 `&[MaybeUninit<u8>]` 与 `&[u8]` 两种视图（编译失败测试） | 高     |
 | `test_split_at_mut_basic`                      | 固定位置分割                                               | 高     |
 | `test_split_at_mut_recursive`                  | 递归分割（多级）                                           | 中     |
 | `test_split_at_mut_oob`                        | 越界分割返回错误                                           | 高     |
@@ -1303,9 +1398,10 @@ Upper-layer code requests temporary scratch space
 
 | 主题              | 内容                                                                                        |
 | ----------------- | ------------------------------------------------------------------------------------------- |
-| Recoverable error | `new()` / `ensure_capacity()` / `borrow*()` / `split_at_mut()` 失败时统一返回 `XenonError::Workspace`；`category` 使用 `WorkspaceErrorCategory` 区分失败模式，并通过可选字段保留容量、对齐、分割点或借用状态等诊断上下文；typed helper 的 ZST、长度和对齐输入错误也通过同一公开错误边界报告。 |
+| Recoverable error | `new()` / `ensure_capacity()` / `borrow*()` / `split_at_mut()` / typed helper 失败时统一返回 `XenonError::Workspace { operation: Cow<'static, str>, category: WorkspaceErrorCategory, cause: Option<Box<XenonError>> }`（三字段，对齐 26-error v3.2.0 §5.1）。`operation` 一律使用 `Cow::Borrowed(..)`。`category` 子变体与触发场景：`AllocFailed { size, align }`（`alloc` 返回 null）；`InvalidLayout { size, align }`（`alignment` 非 2 的幂或 `Layout::from_size_align` 拒绝）；`BorrowConflict { requested: WorkspaceBorrowKind, current: WorkspaceBorrowState }`（CAS 失败 / 残留状态）；`SplitOutOfBounds { mid, len }`（`split_at_mut` mid 越界 / `assume_init_*` initialized_len 越界 / typed helper byte_len 越界）；`GrowOverflow { current_capacity, additional }`（容量乘 1.5 倍溢出）；`TypedViewRejected { detail: TypedViewRejection }`（ZST / pointer 不满足 T 对齐 / typed helper `count * size_of::<T>()` 字节长度溢出 → `TypedByteLengthOverflow { count, elem_size }`，参见 §5.6 + `26-error.md §5.1` 的 `TypedViewRejection` 三变体）；`SplitCountInvariant { detail }`（保留给未来内部不变量违反检查）。`cause` 字段用于源链：workspace 自身产生的叶子错误通常为 `None`；若未来需要包装更底层的 `XenonError`，外层错误使用 `Some(Box::new(inner))` 并通过 `Error::source()` 暴露内层。**禁止使用** `size: Option<usize>` / `reason: Cow<str>` 等自由文本字段（v2.0.0 之前的旧形态）。 |
 | Panic             | 不为公开 API 输入校验引入 panic；`unsafe` 初始化前提若被违反，仍属于调用方责任范围内的 UB。 |
 | 路径一致性        | 当前仅有单一借用状态机与扩容路径；无 SIMD / 并行分支，所有 guard 释放规则必须保持一致。     |
+| 别名隔离          | `WorkspaceBorrow` / `WorkspaceBorrowMut` 上的 `as_maybe_uninit_slice` 与 `assume_init_slice` 均取 `&mut self`；API shape 防止同一 borrow 同时存在 `&[MaybeUninit<u8>]` 与 `&[u8]` / `&mut [u8]` 两种 safe 引用，杜绝在同一块内存上同时声称"已初始化"与"可能未初始化"造成的 `MaybeUninit` 别名违规。 |
 | 容差边界          | 不适用。                                                                                    |
 
 ---
@@ -1353,13 +1449,16 @@ Upper-layer code requests temporary scratch space
 | 理由     | `!Send + !Sync` 为当前实现选择，目的是简化借用安全性论证。即使存在运行时借用状态检查，也暂不将其建模为可跨线程传递或共享的基础类型；若调用方需要多线程临时缓冲区，应在线程边界外自行分配和管理独立工作空间。相关测试仅验证当前行为，未来版本可在补充安全的跨线程借用检查后重新评估并放宽。此决策的线程安全背景分析详见 `25-safety.md §9.5`。                    |
 | 替代方案 | 放宽为 Send（并配套跨线程借用检查） — 未来可评估；仅依赖当前 AtomicU8 状态机不足以直接支持完整多线程语义 |
 
-### 决策 6：borrow_mut(&self) 与 ensure_capacity(&mut self) 签名不对称
+### 决策 6：独占类方法统一使用 &mut self（B12.a）
 
 | 属性     | 值                                                                                                       |
 | -------- | -------------------------------------------------------------------------------------------------------- |
-| 决策     | `borrow()`/`borrow_mut()`/`split_at_mut()` 使用 `&self`，而 `ensure_capacity()` 使用 `&mut self`         |
-| 理由     | 借用类方法接受 `&self` 是为了允许在持有 `&Workspace` 引用时获取守卫（guard），独占性由运行时 `AtomicU8` 状态机保证。`ensure_capacity` 需要 `&mut self` 是因为该方法直接修改 `ptr` 和 `capacity` 字段（重新分配内存），编译期 `&mut` 独占保证可静态排除"扩容期间存在活跃借用"的可能性。虽然运行时 `borrow_state` 检查也能拒绝借用中扩容，但 `&mut self` 在类型系统层面提供额外的静态安全保证，避免 UB。 |
-| 替代方案 | `ensure_capacity` 也使用 `&self` + 纯运行时检查 — 放弃，扩容涉及裸指针替换和 `dealloc`，仅靠运行时检查不够充分，`&mut self` 的编译期独占是更安全的防御层  |
+| 决策     | `borrow_mut()` / `split_at_mut()` / `ensure_capacity()` 一律使用 `&mut self`；`borrow()`（共享只读守卫）保留 `&self` |
+| 理由     | (1) `borrow_mut` 与 `split_at_mut` 在语义上请求**独占**访问 workspace；用 `&mut self` 让"独占借用与其他守卫共存"成为编译期类型错误，而不仅仅是运行时 CAS 失败。(2) `ensure_capacity` 直接 `dealloc` 原指针并替换 `ptr` / `capacity`，必须独占 self 才能避免悬挂引用。(3) 内部 `AtomicU8` CAS 仍保留作为残留状态的防御性检查（如未来跨线程语义放宽时仍能正确拒绝）。(4) `borrow()` 保留 `&self` 是因为它语义上是**共享只读**借用——多个读守卫之间可以互斥但无需编译期独占（运行时 CAS 限制单个活跃读守卫已足够）。 |
+| 落地变更 | §5.5 `borrow_mut(&mut self)`；§5.7 顶层 `Workspace::split_at_mut(&mut self)`；§5.8 `ensure_capacity(&mut self)` 保持不变；递归 `SplitBorrowMut::split_at_mut(self)` 仍是消费式（因 SplitBorrowMut 本身就是 owned guard） |
+| 替代方案 | `borrow_mut(&self)` + 纯运行时 CAS                                                                        |
+| 拒绝原因 | 失去编译期独占检查，等价于把潜在的别名错误推迟到运行时；与 `ensure_capacity(&mut self)` 形成签名不对称且缺乏论证支撑 |
+| 用户决策 | B12.a 已批准                                                                                              |
 
 ---
 
@@ -1415,6 +1514,62 @@ Upper-layer code requests temporary scratch space
 | 1.2.7 | 2026-04-16 |
 | 1.2.8 | 2026-04-16 |
 | 1.2.9 | 2026-04-29 |
+| 2.0.0 | 2026-05-02 |
+| 2.0.1 | 2026-05-03 |
+| 3.0.0 | 2026-05-03 |
+| 3.0.1 | 2026-05-04 |
+| 3.0.2 | 2026-05-04 |
+
+### v3.0.2 (2026-05-04) — patch: refresh stale 26-error v3.0.0 reference to v3.2.0
+
+- §10 错误处理表：`26-error` 引用从 v3.0.0 更新到 v3.2.0。
+
+### v2.0.0 (2026-05-02) — 错误字段对齐 26-error v3.0.0 + B12.a 落地
+
+> 本版本是与用户决策 B12.a + 26-error v3.0.0 协同的破坏性内部更新。所有错误构造点改用 `WorkspaceErrorCategory` 七子变体的结构化负载，淘汰旧版 `{operation, category, size, align, split, len, reason}` 7 字段形态；`borrow_mut` / 顶层 `split_at_mut` 签名从 `&self` 改为 `&mut self`。
+
+**Blocker 修复（错误字段对齐）**：
+
+- §5.3 `new()` 三处错误（alignment 校验 / `Layout::from_size_align` / `alloc` null）→ `WorkspaceErrorCategory::InvalidLayout { size, align }` 与 `AllocFailed { size, align }`；`operation` 改 `Cow::Borrowed("Workspace::new")`。
+- §5.5 `borrow()` / `borrow_mut()` CAS 失败 → `BorrowConflict { requested: Shared / Exclusive, current: WorkspaceBorrowState }`；移除已不存在的 `WorkspaceErrorCategory::AlreadyBorrowed`。
+- §5.5 新增内部 helper `current_borrow_state(ws)`：把 `borrow_state` + `split_count` 组合解读为 `WorkspaceBorrowState`（None/Shared/Exclusive/SplitActive{count}），用于 `BorrowConflict.current`。
+- §5.6 `WorkspaceBorrow::assume_init_slice` / `WorkspaceBorrowMut::assume_init_slice` 越界 → `SplitOutOfBounds { mid: initialized_len, len: self.len }`。
+- §5.6 `as_maybe_uninit_typed_slice` / `assume_init_typed_slice` 五个错误点：ZST → `TypedViewRejected { detail: ZeroSizedType }`；`count*size_of` 溢出 → `TypedViewRejected { detail: TypedByteLengthOverflow { count, elem_size } }`（v2.1.0 起；不再复用 `GrowOverflow`，因为后者两字段单位均为字节，而 `count` 是元素单位会让诊断字段语义错误）；byte_len 越界 → `SplitOutOfBounds`；指针对齐不满足 → `TypedViewRejected { detail: AlignmentMismatch { required, actual } }`。
+- §5.7 顶层 `split_at_mut` mid 越界 → `SplitOutOfBounds { mid, len: capacity }`；CAS 失败 → `BorrowConflict { requested: Split, current }`。
+- §5.7 递归 `SplitBorrowMut::split_at_mut` mid 越界 → `SplitOutOfBounds { mid, len: self.len }`。
+- §5.8 `ensure_capacity` borrow_state 残留 → `BorrowConflict { requested: Exclusive, current }`；容量 ×3 溢出 → `GrowOverflow { current_capacity, additional }`。
+- §5.8 `reallocate` `Layout::from_size_align` 拒绝 → `InvalidLayout { size: new_capacity, align }`；`alloc` null → `AllocFailed { size: new_capacity, align }`。
+- §5.1 `use` 语句新增 `Cow` 与 `WorkspaceErrorCategory` / `WorkspaceBorrowKind` / `WorkspaceBorrowState` / `TypedViewRejection`。
+
+**Blocker 修复（B12.a 落地）**：
+
+- §5.5 `borrow_mut(&self)` → `borrow_mut(&mut self)`。
+- §5.5 doc 重写：`borrow()` 为何保留 `&self`、`borrow_mut()` 为何升级为 `&mut self`（编译期独占防御层）；移除原"借用类方法接受 `&self`"陈述。
+- §5.7 顶层 `split_at_mut(&self)` → `split_at_mut(&mut self)`；递归 `SplitBorrowMut::split_at_mut(self)` 保持消费式（因 SplitBorrowMut 本身是 owned guard，与决策 6 不冲突）。
+- §11 决策 6 完全重写：标注用户决策 B12.a；论证独占类方法统一 `&mut self`；列出落地变更与替代方案拒绝原因。
+
+**High 修复**：
+
+- §4.2 `crate::error` 行展开为 `WorkspaceErrorCategory` 七子变体 + `WorkspaceBorrowKind` + `WorkspaceBorrowState` + `TypedViewRejection`，明示**不**使用 `Cow<str>` 自由文本字段。
+- §10 `Recoverable error` 行重写：列出三字段公开形态、七子变体触发场景、明示禁用旧字段。
+- §5.5 borrow API doc 中"`borrow()`/`borrow_mut()` take `&self` because exclusivity is enforced at runtime by AtomicU8" 表述同步更新为反映 B12.a 后的不对称语义。
+
+
+### v3.0.1 (2026-05-04) — R8/R9 协同基线对齐
+
+- 与 `00-coding.md §1.3` / `28-tests.md §1.0` 锁定基线版本号显式对齐；本版无契约变更，仅同步 changelog 行避免 R8 升版后的版本号漂移（R9 评审 D-03 修复）。
+- §5.9 文中残留的 `(per §5.6, v3.0.2)` 错误版本引用统一为 `(per §5.6, v3.0.1)`，避免误导读者认为存在 v3.0.2。
+- typed view 维持 `T: crate::element::Element` bound；`TypedViewRejection` 的三变体（`ZeroSizedType` / `AlignmentMismatch { required, actual }` / `TypedByteLengthOverflow { count, elem_size }`）与 `26-error.md §5.1` 严格一致。
+
+### v3.0.0 (2026-05-03) — typed view 收敛到 `T: Element` + WorkspaceErrorCategory 七变体
+
+- typed view 的元素类型 bound 收敛为 `T: crate::element::Element`（封闭元素集 6+1）；非 Element 类型在编译期被拒绝。
+- `WorkspaceErrorCategory` 七变体（`AllocFailed` / `InvalidLayout` / `BorrowConflict` / `SplitOutOfBounds` / `SplitCountInvariant` / `GrowOverflow` / `TypedViewRejected`）与 `26-error.md §5.1` 完全对齐；`TypedViewRejected` 携带 `TypedViewRejection` 枚举字段。
+
+### v2.0.1 (2026-05-03) — Medium documentation follow-up
+
+- Updated the Good/Bad re-entry example to reflect B12.a `&mut self` borrow-checker behavior instead of incorrectly describing a runtime error.
+- Clarified `XenonError::Workspace.cause` semantics: workspace leaf errors usually use `None`; wrappers use `Some(Box::new(inner))` when carrying a lower-level source.
 
 ---
 

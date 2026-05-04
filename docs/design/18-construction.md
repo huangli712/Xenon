@@ -43,7 +43,7 @@
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
 | 合法性验证   | 所有构造路径须验证合法性，防止越界访问（`需求说明书 §8`）                                                                               |
 | F-order 默认 | 构造时数据按 F-order 存放，默认列优先布局                                                                                               |
-| 对齐分配     | `zeros`/`ones` 使用项目统一的对齐分配策略，满足拥有型连续存储的实现需求；具体对齐值不作为构造 API 的公开语义                            |
+| 对齐分配     | `zeros`/`ones` 使用项目统一的对齐分配策略，满足拥有型连续存储的实现需求；具体对齐值不作为构造 API 的公开语义。对齐策略详见 `05-storage.md` §6.1 AlignedBuf 定义。                            |
 | 对齐优先     | `from_shape_vec` 可复用项目统一的 owned 存储构造路径；是否复制输入 `Vec<A>`、以及采用何种对齐值，均属于内部实现选择，不单独形成公开承诺 |
 | 类型安全     | 形状和元素类型通过泛型约束在编译期检查                                                                                                  |
 
@@ -55,7 +55,7 @@
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 需求映射 | 需求说明书 §7、§8、§19、§27、§28                                                                                                                      |
 | 范围内   | `zeros` / `ones` / `eye` / `from_shape_vec` / `from_vec` / `from_shape_slice` / `from_array` / `from_scalar`，以及空张量 / 零维张量 / ZST 路径的合法性与错误语义。 |
-| 范围外   | arange、linspace、from_fn、随机构造器与其他序列生成 API。                                                                                             |
+| 范围外   | **以下序列/生成式构造器全部不在当前版本范围内**：`arange(start, stop, step)`、`linspace(start, stop, n)`、`logspace(start, stop, n, base)`、`geomspace(...)`、`meshgrid(...)`、`from_fn<A, D, F>(shape, f)`、`from_iter<I: Iterator>(...)`、随机构造器（`rand` / `randn` / `randint` / `random_uniform` 等）、`full(shape, value)`、`empty_like` / `zeros_like` / `ones_like`（"like" 系列）。这些 API 需要独立的设计文档（例如序列生成需要数值步长 / 端点策略 / NaN 行为决策；随机构造器需要 PRNG 依赖与 reproducibility 策略），不应作为本模块的隐式扩展加入。 |
 | 非目标   | 不新增新的构造器家族，不改变 F-order / 对齐分配基线，也不引入第三方随机或数据加载依赖。                                                               |
 
 ---
@@ -86,7 +86,7 @@ src/construct/
 |
 ├── init.rs
 │   ├── crate::tensor      # TensorBase<S, D>, Tensor<A, D>
-│   ├── crate::storage     # Owned<A>, Storage, from_vec_aligned()
+│   ├── crate::storage     # Owned<A>, StorageOwned (from_elem trait method)
 │   ├── crate::layout      # LayoutFlags, compute_layout_flags
 │   ├── crate::dimension   # Dimension, Ix0~Ix6, IxDyn, IntoDimension
 │   ├── crate::element     # Element (zero() / one())
@@ -122,7 +122,7 @@ src/construct/
 | 来源模块    | 使用的类型/trait                                                                                                  |
 | ----------- | ----------------------------------------------------------------------------------------------------------------- |
 | `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, 类型别名 `Tensor0`~`Tensor6`（参见 `07-tensor.md` §5）                        |
-| `storage`   | `Owned<A>`, `Storage<Elem = A>`, `from_vec_aligned()`（参见 `05-storage.md` §6.1）                                  |
+| `storage`   | `Owned<A>`, `Storage<Elem = A>`, `Owned::from_vec_aligned()` 与 `<Owned<A> as StorageOwned>::from_elem()`（参见 `05-storage.md` §5.7、§6.1）                                  |
 | `layout`    | `LayoutFlags`, `Strides<D>`, `compute_f_strides`, `compute_layout_flags`（F-order stride 计算与权威布局标志计算入口，参见 `06-layout.md` §5.6, §5.12） |
 | `dimension` | `Dimension::checked_size()`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`（元素总数验证与形状归一化，参见 `02-dimension.md` §5） |
 | `element`   | `Element`（`zero()` / `one()` 由 `Element` 提供，参见 `03-element.md` §5.1）                                      |
@@ -168,15 +168,29 @@ where
     /// ```
     pub fn zeros<Sh>(shape: Sh) -> Result<Self, XenonError>
     where
-        A: Element,  // A::zero() from Element; Clone implied by Element (see 03-element.md §5.1). StorageOwned::from_elem requires Clone (see 05-storage.md §5.7)
         Sh: IntoDimension<Dim = D>,
     {
         let dim = shape.into_dimension();
         let len = dim.checked_size()?;
         let strides = layout::compute_f_strides(&dim)?;
-        let storage = Owned::from_elem(len, A::zero());
+        // `Owned<A>` does not expose an inherent `from_elem`. The `from_elem`
+        // method is provided by the `StorageOwned` trait (see 05-storage.md
+        // §5.7); it is invoked here through fully-qualified syntax to make the
+        // delegation path explicit.
+        let storage = <Owned<A> as StorageOwned>::from_elem(len, A::zero());
         let flags = layout::compute_layout_flags(&dim, &strides, storage.as_ptr());
-        Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags })
+        // Pass already-validated parts through tensor's `pub(crate)` internal
+        // constructor (see 07-tensor.md §5.6 `TensorBase::new_unchecked`) instead
+        // of writing private fields directly here. This keeps construct's
+        // pub(crate) field access localized to one named entry point.
+        // SAFETY: `dim` validated by `IntoDimension`; `strides` produced by
+        // `compute_f_strides(&dim)?`; `flags` produced by
+        // `compute_layout_flags(&dim, &strides, storage.as_ptr())` for the
+        // same dim/strides/storage pair; `offset = 0`; `storage` length =
+        // `len = dim.checked_size()?`. Logical access range == [0, len) within
+        // storage. All `# Safety` invariants of `new_unchecked` are satisfied.
+        // `derived_from_view_mut: false` — `zeros` is not a downgrade path.
+        Ok(unsafe { TensorBase::new_unchecked(storage, dim, strides, 0, flags, false) })
     }
 
     /// Create a tensor filled with ones (F-order).
@@ -188,15 +202,22 @@ where
     /// ```
     pub fn ones<Sh>(shape: Sh) -> Result<Self, XenonError>
     where
-        A: Element,  // A::one() from Element; Clone implied by Element (see 03-element.md §5.1). StorageOwned::from_elem requires Clone (see 05-storage.md §5.7)
         Sh: IntoDimension<Dim = D>,
     {
+        // A::one() comes from Element. Element implies Copy (03-element.md §5.1),
+        // which satisfies the Clone bound required by
+        // <Owned<A> as StorageOwned>::from_elem (05-storage.md §5.7).
         let dim = shape.into_dimension();
         let len = dim.checked_size()?;
         let strides = layout::compute_f_strides(&dim)?;
-        let storage = Owned::from_elem(len, A::one());
+        let storage = <Owned<A> as StorageOwned>::from_elem(len, A::one());
         let flags = layout::compute_layout_flags(&dim, &strides, storage.as_ptr());
-        Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags })
+        // See `zeros` above and 07-tensor.md §5.6: routed through the named
+        // `pub(crate)` constructor `TensorBase::new_unchecked`.
+        // SAFETY: same invariants as `zeros` above (dim/strides/flags/offset
+        // mutually consistent; storage length = checked_size; offset 0).
+        // `derived_from_view_mut: false` — `ones` is not a downgrade path.
+        Ok(unsafe { TensorBase::new_unchecked(storage, dim, strides, 0, flags, false) })
     }
 }
 ```
@@ -224,10 +245,10 @@ where
     ///
     /// # Examples
     /// ```ignore
-    /// let e = Tensor::<f64, Ix2>::eye(3).unwrap();
-    /// assert_eq!(*e.get(&[0, 0]).unwrap(), 1.0);
-    /// assert_eq!(*e.get(&[0, 1]).unwrap(), 0.0);
-    /// assert_eq!(*e.get(&[1, 1]).unwrap(), 1.0);
+    /// let e = Tensor::<f64, Ix2>::eye(3)?;
+    /// assert_eq!(*e.try_at(&[0, 0]).expect("diagonal index is in bounds"), 1.0);
+    /// assert_eq!(*e.try_at(&[0, 1]).expect("off-diagonal index is in bounds"), 0.0);
+    /// assert_eq!(*e.try_at(&[1, 1]).expect("diagonal index is in bounds"), 1.0);
     /// ```
     pub fn eye(n: usize) -> Result<Self, XenonError> {
         let mut result = Self::zeros([n, n])?;
@@ -264,9 +285,10 @@ impl EyeElement for Complex<f64> {}
 > **与 `07-tensor.md` 的关系：** `from_shape_vec` 的公开签名作为 `TensorBase<Owned<A>, D>` 的固有方法列于 `07-tensor.md` §5.5；本节是其权威实现设计，实际代码位于 `src/construct/from.rs`。`07-tensor.md` §9 中的数据流图仅用于展示 `tensor` 与 `layout` 模块的交互方式，以本节为准。
 
 ```rust,ignore
+# use std::borrow::Cow;
 # use crate::dimension::{Dimension, IntoDimension, Ix1};
 # use crate::element::Element;
-# use crate::error::XenonError;
+# use crate::error::{InvalidShapeKind, XenonError};
 # use crate::layout;
 # use crate::storage::Owned;
 # use crate::tensor::{Tensor, TensorBase};
@@ -286,8 +308,13 @@ where
     /// F-order contiguous storage.
     ///
     /// # Errors
-    /// Returns `XenonError::InvalidShape` if `dim.checked_size()` reports
-    /// element-count overflow or `data.len()` does not match the validated count.
+    ///
+    /// Returns `XenonError::InvalidShape` aligned with `26-error.md` §5.1:
+    ///
+    /// - When `dim.checked_size()` overflows `usize`, the error is propagated
+    ///   directly with `kind: InvalidShapeKind::ProductOverflow`.
+    /// - When `data.len() != expected`, this method constructs
+    ///   `kind: InvalidShapeKind::ElementCountMismatch { expected, actual }`.
     ///
     /// # Examples
     /// ```
@@ -317,12 +344,13 @@ where
         let expected = dim.checked_size()?;
         if data.len() != expected {
             return Err(XenonError::InvalidShape {
-                operation: "from_shape_vec".into(),
+                operation: Cow::Borrowed("from_shape_vec"),
                 shape: dim.slice().to_vec(),
-                expected_elements: expected,
-                actual_elements: data.len(),
+                kind: InvalidShapeKind::ElementCountMismatch {
+                    expected,
+                    actual: data.len(),
+                },
                 offending_dim: None,
-                reason: None,
             });
         }
         let strides = layout::compute_f_strides(&dim)?;
@@ -333,14 +361,27 @@ where
         // left as an internal choice.
         let storage = Owned::from_vec_aligned(data)?;
         let flags = layout::compute_layout_flags(&dim, &strides, storage.as_ptr());
-        Ok(TensorBase { storage, shape: dim, strides, offset: 0, flags })
+        // Routed through tensor's `pub(crate)` internal constructor (see
+        // 07-tensor.md §5.6 `TensorBase::new_unchecked`) so this module never
+        // accesses private fields by struct-literal syntax directly.
+        // SAFETY: `dim` validated; `strides` from `compute_f_strides(&dim)?`;
+        // `flags` from `compute_layout_flags(&dim, &strides, storage.as_ptr())`;
+        // `data.len() == dim.checked_size()?` already enforced via
+        // ElementCountMismatch check; `offset = 0`; logical access range fits.
+        // `derived_from_view_mut: false` — `from_shape_vec` is not a downgrade path.
+        Ok(unsafe { TensorBase::new_unchecked(storage, dim, strides, 0, flags, false) })
     }
 
     /// Construct a tensor from a slice (copies data).
     ///
     /// # Errors
-    /// Returns `XenonError::InvalidShape` if `dim.checked_size()` reports
-    /// element-count overflow or `slice.len()` does not match the validated count.
+    ///
+    /// Returns `XenonError::InvalidShape` aligned with `26-error.md` §5.1:
+    ///
+    /// - When `dim.checked_size()` overflows `usize`, the error is propagated
+    ///   directly with `kind: InvalidShapeKind::ProductOverflow`.
+    /// - When `slice.len() != expected`, this method constructs
+    ///   `kind: InvalidShapeKind::ElementCountMismatch { expected, actual }`.
     ///
     /// # Examples
     /// ```
@@ -356,12 +397,13 @@ where
         let expected = dim.checked_size()?;
         if slice.len() != expected {
             return Err(XenonError::InvalidShape {
-                operation: "from_shape_slice".into(),
+                operation: Cow::Borrowed("from_shape_slice"),
                 shape: dim.slice().to_vec(),
-                expected_elements: expected,
-                actual_elements: slice.len(),
+                kind: InvalidShapeKind::ElementCountMismatch {
+                    expected,
+                    actual: slice.len(),
+                },
                 offending_dim: None,
-                reason: None,
             });
         }
         // The baseline implementation materializes an owned buffer from the slice
@@ -386,6 +428,27 @@ where
     where
         Sh: IntoDimension<Dim = D>,
     {
+        // Implementation note (v3.0.1):
+        //
+        // The `arr.into_iter().collect::<Vec<A>>()` step here introduces a
+        // single temporary `Vec<A>` of length N, which is then handed to
+        // `from_shape_vec` and ultimately to `Owned::from_vec_aligned`. The
+        // owned-buffer path (see 05-storage.md §5.4) MAY repack the data
+        // into a 64B-aligned buffer if the incoming `Vec` is not already
+        // suitably aligned, in which case there is one temp Vec + one
+        // owned aligned buffer = two allocations. This is documented as
+        // "necessary data movement" rather than "avoidable temporary
+        // allocation": the fixed array on the stack cannot itself become
+        // the owned heap buffer without a copy. A future optimization
+        // could provide `Owned::from_array_aligned([A; N])` that allocates
+        // the aligned buffer directly and copies once; until then,
+        // `from_array` accepts the one extra Vec hop.
+        //
+        // The "no unnecessary temporary allocation" promise of the public
+        // API is therefore: `zeros / ones / eye / from_shape_vec /
+        // from_scalar` are O(n) with at most ONE allocation. `from_array`
+        // and `from_shape_slice` may incur ONE additional copy; this is
+        // documented and not a regression.
         Self::from_shape_vec(shape, arr.into_iter().collect())
     }
 }
@@ -427,25 +490,31 @@ where
     /// Construct a zero-dimensional tensor from a scalar.
     ///
     /// # Errors
-    /// Returns an error if the underlying owned storage allocation fails.
+    ///
+    /// In practice this single-element path does not produce
+    /// `InvalidShapeKind::ElementCountMismatch` (the `vec![scalar]` length is
+    /// always 1, matching `Ix0::checked_size() == 1`). The `Result` return
+    /// type is preserved for signature uniformity with the rest of the
+    /// construction family and to leave room for future allocator-side
+    /// failure paths surfaced by `Owned::from_vec_aligned`.
     ///
     /// # Examples
     /// ```
     /// let t = Tensor::<f64, Ix0>::from_scalar(3.14)?;
-    /// assert_eq!(*t.get(&[]).unwrap(), 3.14);
+    /// assert_eq!(*t.try_at(&[]).expect("zero-dimensional index is valid"), 3.14);
     /// ```
     pub fn from_scalar(scalar: A) -> Result<Self, XenonError> {
         let storage = Owned::from_vec_aligned(vec![scalar])?;
         let shape = Ix0;
         let strides = layout::compute_f_strides(&shape)?;
         let flags = layout::compute_layout_flags(&shape, &strides, storage.as_ptr());
-        Ok(TensorBase {
-            storage,
-            shape,
-            strides,
-            offset: 0,
-            flags,
-        })
+        // Routed through tensor's `pub(crate)` internal constructor (see
+        // 07-tensor.md §5.6 `TensorBase::new_unchecked`).
+        // SAFETY: 0-D scalar; `shape = Ix0` (product = 1); `strides = []`;
+        // `flags` from `compute_layout_flags`; storage length = 1; offset 0;
+        // logical access trivially within storage.
+        // `derived_from_view_mut: false` — `from_scalar` is not a downgrade path.
+        Ok(unsafe { TensorBase::new_unchecked(storage, shape, strides, 0, flags, false) })
     }
 }
 
@@ -454,20 +523,22 @@ where
 ### 5.5 Good / Bad 对比
 
 ```rust,ignore
+# use std::borrow::Cow;
 # use crate::dimension::Ix2;
-# use crate::error::XenonError;
+# use crate::error::{InvalidShapeKind, XenonError};
 # use crate::tensor::Tensor;
 // Good - use Result to handle potential shape mismatch
 fn create_matrix(data: Vec<f64>) -> Result<Tensor<f64, Ix2>, XenonError> {
     let n = (data.len() as f64).sqrt() as usize;
     if n * n != data.len() {
         return Err(XenonError::InvalidShape {
-            operation: "create_matrix".into(),
+            operation: Cow::Borrowed("create_matrix"),
             shape: vec![n, n],
-            expected_elements: n * n,
-            actual_elements: data.len(),
+            kind: InvalidShapeKind::ElementCountMismatch {
+                expected: n * n,
+                actual: data.len(),
+            },
             offending_dim: None,
-            reason: None,
         });
     }
     Tensor::from_shape_vec([n, n], data)
@@ -488,8 +559,8 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 
 | 构造方法           | 分配策略                                                  | 初始化                                         |
 | ------------------ | --------------------------------------------------------- | ---------------------------------------------- |
-| `zeros`            | 对齐分配 + 零初始化                                       | `ptr::write_bytes(0)`                          |
-| `ones`             | 对齐分配 + 批量填充                                       | `ptr::write(A::one())`                         |
+| `zeros`            | 委托 `<Owned<A> as StorageOwned>::from_elem(len, A::zero())` | 具体初始化策略由 storage 层决定                |
+| `ones`             | 委托 `<Owned<A> as StorageOwned>::from_elem(len, A::one())`  | 具体填充策略由 storage 层决定                  |
 | `from_shape_vec`   | 走共享 owned 构造路径；可按实现需要复用或重打包输入缓冲区 | 用户提供数据                                   |
 | `from_shape_slice` | 先物化 owned 缓冲区，再委托共享 owned 构造路径            | 至少一次切片拷贝；后续是否再搬运取决于内部实现 |
 | `from_scalar`      | 对齐分配（1 元素）                                        | 单元素写入                                     |
@@ -501,7 +572,7 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 
 ### 6.3 安全性论证
 
-- `zeros`: 全零字节初始化仅对当前封闭元素集合合法：`i32` / `i64` 的 `0`、`f32` / `f64` 的 `+0.0`（IEEE 754）、`bool` 的 `false`、`Complex<T>` 的 `(0 + 0i)`。若未来新增元素类型，必须重新验证“全零字节可表示合法值”这一不变量。
+- `zeros`: 实际实现走 `<Owned<A> as StorageOwned>::from_elem(len, A::zero())`（trait 方法委托），由存储层负责具体写入策略。所谓"全零字节初始化"仅描述当前封闭元素集合下零值的位模式特性：`i32` / `i64` 的 `0`、`f32` / `f64` 的 `+0.0`（IEEE 754）、`bool` 的 `false`、`Complex<T>` 的 `(0 + 0i)` 与全零字节等价；若未来新增元素类型，必须重新验证"全零字节可表示合法值"这一不变量，否则需切换到非全零字节的初始化策略。
 - `ones`: 逐元素写入过程中，若 `A::one()` 的 copy 在理论上发生 panic（当前封闭类型集合中不预期出现），未初始化内存仍须由 `Owned` 析构路径基于“已初始化长度跟踪”正确回收。
 - `from_shape_vec`: 先通过 `dim.checked_size()` 验证元素总数（`Dimension::checked_size`，参见 `02-dimension.md`），再验证 `data.len() == expected`；通过后进入共享 owned 构造路径。是否复用原始 `Vec` 分配、是否进行额外重打包，均属于内部实现选择，不影响公开语义
 - `from_shape_slice`: 先通过 `dim.checked_size()` 验证元素总数，长度匹配后先把切片物化为 owned 缓冲区，再委托给 `from_shape_vec`；这样把 F-order 映射、长度约束与 owned 结果语义统一收敛到单一路径
@@ -665,7 +736,7 @@ User calls zeros / from_shape_vec / eye
 
 | 主题              | 内容                                                                     |
 | ----------------- | ------------------------------------------------------------------------ |
-| Recoverable error | 构造路径可返回两类错误：(1) 元素总数溢出（由 `dim.checked_size()` 直接返回 `InvalidShape`，参见 `02-dimension.md`）以及 shape 与数据长度不匹配时由构造方法自身构造的 `InvalidShape`，所有 `InvalidShape` 示例都保持 `26-error.md` 的 canonical 字段集；(2) `compute_f_strides` 的步长计算溢出错误通过 `?` 直接传播，错误类别以 `06-layout.md` §5.6 为准。 |
+| Recoverable error | 构造路径返回两类 `XenonError`，字段严格对齐 `26-error.md` v3.2.0 §5.1：(1) `InvalidShape` —— 元素总数溢出由 `dim.checked_size()` 直接返回 `kind: InvalidShapeKind::ProductOverflow`（参见 `02-dimension.md`）；shape 与数据长度不匹配由构造方法自身构造 `kind: InvalidShapeKind::ElementCountMismatch { expected, actual }`，`offending_dim` 在当前路径设为 `None`，`operation` 使用 `Cow::Borrowed("from_shape_vec" \| "from_shape_slice" \| ..)`；(2) F-order 步长计算溢出由 `compute_f_strides` 通过 `?` 直接传播，错误类别以 `06-layout.md` §5.6 为准（`InvalidLayout { reason: InvalidLayoutReason::ShapeProductOverflow }` 等），构造路径不再二次转换为 `InvalidShape`。 |
 | Panic             | 公开构造 API 不定义额外 panic 语义；失败统一走 `Result`。                |
 | 路径一致性        | 所有构造路径都必须产出 canonical F-order owned 张量，并保持一致的 shape / strides / flags 语义。 |
 | 容差边界          | 不适用。                                                                 |
@@ -719,8 +790,8 @@ User calls zeros / from_shape_vec / eye
 
 | 场景             | 优化方式                 | 预期性能                           |
 | ---------------- | ------------------------ | ---------------------------------- |
-| `zeros` 大数组   | `ptr::write_bytes(0)`    | ~10 GB/s（memset 速度）            |
-| `ones` 大数组    | `ptr::write(value)` 循环 | ~5 GB/s                            |
+| `zeros` 大数组   | storage 层可选择 memset 等零值优化 | 可接近平台内存带宽，具体取决于后端与硬件 |
+| `ones` 大数组    | storage 层逐元素或批量填充         | 受元素类型、后端与硬件影响             |
 | `from_shape_vec` | 共享 owned 构造路径      | O(n)                               |
 | `eye` 大矩阵     | 先零后对角               | n 次 `write` + n² 次 `write_bytes` |
 
@@ -752,6 +823,54 @@ User calls zeros / from_shape_vec / eye
 | 1.1.2 | 2026-04-10 |
 | 1.1.3 | 2026-04-14 |
 | 1.1.4 | 2026-04-15 |
+| 2.0.0 | 2026-05-02 |
+| 2.0.1 | 2026-05-03 |
+| 3.0.0 | 2026-05-03 |
+| 3.0.1 | 2026-05-04 |
+| 3.0.2 | 2026-05-04 |
+
+### v3.0.2 (2026-05-04) — patch: refresh stale 26-error v3.0.0 reference to v3.2.0
+
+- §10 错误处理表：`26-error.md` 引用从 v3.0.0 更新到 v3.2.0。
+
+### v3.0.1 (2026-05-04) — R8/R9 协同基线对齐
+
+- 与 `00-coding.md §1.3` / `28-tests.md §1.0` 锁定基线版本号显式对齐；本版无契约变更，仅同步 changelog 行避免 R8 升版后的版本号漂移（R9 评审 B-06 修复）。
+- 同步 R9 评审 B-07：`from_shape_vec` 的 `// SAFETY:` 注释将残留的 `slice.len()` 修正为实际参数 `data.len()`。
+
+### v3.0.0 (2026-05-03) — 4 处 unsafe { } block + SAFETY 注释闭环
+
+- `zeros` / `ones` / `from_shape_vec` / `from_scalar` 4 个构造路径全部用 `unsafe { ... }` 显式包裹对内部 `pub(crate) unsafe fn` 构造器的调用，并在每个调用点挂 `// SAFETY: ...` 注释，明确 shape/data-length 一致性、F-order 元数据合法性等前置条件（R8-B-01 落地）。**注（pre-R10/pre-R11 历史术语）**：该 v3.0.0 changelog 行写作时构造器名称为 `from_shape_vec_aligned_unchecked` 等内部 helper；R10 B-01 起 4 个调用点统一改为 `TensorBase::new_unchecked(storage, ..., flags, false)` 6 参数形态（详见现行 §5.1 / §5.3 / §5.4 实际示例）。
+- 与 `25-safety.md §5.12` 内部 unsafe fn 索引表的 6 项入口保持完整一一对应。
+- 不变的：构造 API 公开签名、`Result` 返回类型、错误变体选择。
+
+### v2.0.1 (2026-05-03) — 通过 `TensorBase::new_unchecked` 集中 `pub(crate)` 字段访问
+
+> **历史快照（pre-R10 syntax）**：本节示例展示的 `TensorBase { storage, shape, strides, offset, flags }` 5-字段结构与 `new_unchecked(storage, dim, strides, 0, flags)` 5-参数调用是 R10 之前的形态。R10 B-01 之后 `TensorBase` 升级到 6 字段（新增 `derived_from_view_mut: bool`），`new_unchecked` 升级到 6 参数；当前 `§5.1 / §5.3 / §5.4` 实际示例已使用 6-参数形态（追加 `, false`）。本 v2.0.1 changelog 行保留为历史记录，方便追溯 R10 之前的字段访问收敛过程。
+
+- §5.1 `zeros` / `ones`：把 `Ok(TensorBase { storage, shape, strides, offset, flags })` 直接 struct literal 写法改为 `Ok(unsafe { TensorBase::new_unchecked(storage, dim, strides, 0, flags) })`，统一通过 `07-tensor.md` §5.6 新增的 `pub(crate) unsafe fn new_unchecked(...)` 构造器进入 tensor 私有字段（`unsafe fn` 自 R7-B-02 起；调用点必须用 `unsafe { ... }` 块包裹并附 `// SAFETY:` 注释证明 dim/strides/flags/offset/storage 互一致）。
+- §5.3 `from_shape_vec`、§5.4 `from_scalar`：同上修改，构造路径全部走 `TensorBase::new_unchecked`。
+- 协同 `07-tensor.md` v2.0.1 changelog 中关于"construction uses a `pub(crate)` tensor-internal constructor rather than cross-module struct literal access"的承诺，本次为 18-construction 落地具体调用站点。
+- 不改变运行时行为；不改变公开 API 签名；不影响错误字段；零破坏性。
+
+---
+
+### v2.0.0 (2026-05-02) — 错误字段对齐 26-error v3.0.0 + StorageOwned 委托澄清
+
+> 本版本是与 `26-error.md` v3.0.0 协同的破坏性内部更新（公开签名兼容；只有错误字段集合发生变化）。
+
+**协同与一致性更新**：
+
+- §5.1 `zeros` / `ones` 实现：`Owned::from_elem(...)` 改为完全限定调用 `<Owned<A> as StorageOwned>::from_elem(len, value)`，避免读者误以为 `Owned<A>` 提供了同名 inherent 方法（`from_elem` 是 `StorageOwned` trait 方法，参见 `05-storage.md` §5.7）。
+- §5.1 `ones` where 子句去掉重复的 `A: Element` 约束，把对 `Element: Copy ⇒ Clone` 的依赖移到注释中说明，与 `from_elem` 的 `Clone` bound 对齐。
+- §5.3 `from_shape_vec` / `from_shape_slice` `InvalidShape` 字段重写：`expected_elements` / `actual_elements` / `reason` → `kind: InvalidShapeKind::ElementCountMismatch { expected, actual }`；`operation` 使用 `Cow::Borrowed(..)`；删除冗余的 `reason: None`。
+- §5.3 / §5.3 doc comments 重写 `# Errors` 段落，明确列出 `ProductOverflow` 与 `ElementCountMismatch` 两类来源。
+- §5.4 `from_scalar` `# Errors` 段澄清：当前实现路径不会产生 `ElementCountMismatch`（vec 长度与 `Ix0::checked_size() == 1` 始终匹配）；`Result` 返回类型保留以保持构造家族签名统一并为未来分配器侧失败留出位置。
+- §5.5 Good 示例的 `InvalidShape` 字段同步更新，与 §5.3 实现保持一致。
+- §6.3 `zeros` 安全性论证补充：明确实现走 `StorageOwned::from_elem` 委托，并把"全零字节"措辞限定为对零值位模式的描述而非分配策略承诺。
+- §10 错误处理表：列出 `InvalidShape` 在本模块的 `kind` 取值（`ProductOverflow` / `ElementCountMismatch`）与 `operation` / `offending_dim` 字段约定；明确 `compute_f_strides` 的溢出错误以 `InvalidLayout` 形式直接传播。
+- §4.1 / §4.2 依赖图 / 类型级依赖：把 `from_vec_aligned` 调整为 `Owned::from_vec_aligned`（inherent 方法）+ `StorageOwned::from_elem`（trait 方法）双入口，与 §5 实现保持一致。
+- §6.1 初始化策略表同步为 `StorageOwned::from_elem(len, A::zero()/A::one())` 委托表述；示例去除 `.unwrap()`；补齐错误示例 imports；性能表删除无来源的固定吞吐数字。
 
 ---
 

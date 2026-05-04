@@ -28,7 +28,7 @@
 | 内存管理 | 并行调度（由 `parallel` 模块提供） |
 | 对齐分配 | 高级线性代数（矩阵分解等）         |
 | 类型安全 | GPU 存储后端（当前仅 CPU）         |
-| 多级访问 | 迭代器实现（由 `iter`模块 提供）   |
+| 多级访问 | 迭代器实现（由 `iter` 模块提供）   |
 | ZST 安全 | —                                  |
 
 ### 1.2 设计原则
@@ -63,7 +63,7 @@ src/storage/
 ├── viewmut.rs         # ViewMutRepr<'a, A> mutable view
 ├── arc.rs             # ArcRepr<A> shared read-only storage
 ├── alloc.rs           # 64-byte aligned allocator
-└── traits.rs          # marker traits such as IsOwned and IsView
+└── traits.rs          # marker traits such as IsOwned / IsView / IsViewMut / IsShared
 ```
 
 多文件目录设计理由：`src/storage/` 按 trait 定义、具体表示、分配器与 marker trait 分层拆分；各文件职责清晰，存储类型之间高度相关但不适合合并，拆分保持可维护性。
@@ -85,13 +85,13 @@ src/storage/
 
 ### 4.2 类型级依赖
 
-| 来源模块         | 使用的类型/trait                                                                   |
-| ---------------- | ---------------------------------------------------------------------------------- |
-| `core`           | `*const T`, `*mut T`, `NonNull<T>`, `PhantomData<T>`                               |
-| `alloc`          | `Vec<A>`, `alloc`/`dealloc`                                                        |
-| `std::sync`      | `Arc`（用于 `ArcRepr<A>` 的内部引用计数头；底层数据缓冲保持 `AlignedBuf<A>` 表示） |
-| `crate::error`   | `XenonError`（用于 `try_reserve` 等可恢复错误）                                    |
-| `crate::private` | `Sealed`（用于 marker trait 封闭实现）                                             |
+| 来源模块         | 使用的类型/trait                                                                                                              |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `core`           | `*const T`, `*mut T`, `NonNull<T>`, `PhantomData<T>`                                                                          |
+| `alloc`          | `Vec<A>`, `alloc::alloc::Layout`, `alloc::borrow::Cow`（用于 `XenonError` `operation` 字段构造）                              |
+| `std::sync`      | `Arc`（用于 `ArcRepr<A>` 的内部引用计数头；底层数据缓冲保持 `AlignedBuf<A>` 表示）                                            |
+| `crate::error`   | `XenonError`、`InvalidShapeKind`、`StorageKindTag`、`StorageConversionKind`（参见 `26-error.md` §5.1 的封闭枚举字段权威定义） |
+| `crate::private` | `Sealed`（用于 marker trait 封闭实现）                                                                                        |
 
 ### 4.3 依赖合法性
 
@@ -153,26 +153,9 @@ Storage mode taxonomy
 
 **访问语义查询**
 
-张量层须提供稳定的访问语义查询接口：
+张量层须提供稳定的访问语义查询接口 `access_semantics() -> AccessSemantics`，将上述四种存储模式映射为四种统一的访问语义分类（`ReadOnly` / `SharedReadOnly` / `Writable` / `Owned`）。
 
-```rust,ignore
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AccessSemantics {
-    ReadOnly,
-    SharedReadOnly,
-    Writable,
-    Owned,
-}
-```
-
-| 语义分类 | 对应表示类型               | 统一语义说明          | 查询结果                          |
-| -------- | -------------------------- | --------------------- | --------------------------------- |
-| 只读     | `ViewRepr<'_, A>`（普通非广播只读借用）| 只提供共享只读借用；不提供写访问；不持有底层存储 | `AccessSemantics::ReadOnly` |
-| 共享只读 | `ArcRepr<A>`，或带共享只读语义标记的 `ViewRepr<'_, A>`（广播结果 / `ViewMutRepr` 零拷贝降级结果） | 可被多个只读视图共享；不提供安全可写访问；可共享所有权或共享借用语义 | `AccessSemantics::SharedReadOnly` |
-| 可写     | `ViewMutRepr<'_, A>` | 提供独占可写借用；同时允许读取；不得与其他可写或共享只读访问并存   | `AccessSemantics::Writable` |
-| 拥有     | `Owned<A>` | 持有底层存储所有权；提供可读可写访问；可零拷贝借出视图或降级为共享只读 | `AccessSemantics::Owned`          |
-
-当 `ViewRepr` 作为广播结果或从可写引用降级产生时，须通过额外的语义标记（而非仅表示类型）将其归类为 `AccessSemantics::SharedReadOnly`。该标记由张量层的 `access_semantics()` 方法统一提供，作为满足 §5.1 的权威判定来源。详见 `07-tensor.md` 的 `access_semantics()` 设计。
+`AccessSemantics` 枚举的**权威定义、变体含义、表示类型映射表与广播判定机制**统一以 `07-tensor.md §5.3` 为准；本节只列出存储模式视角下的高层语义。当 `ViewRepr` 作为广播结果或从可写引用降级产生时，须通过额外的语义标记（而非仅表示类型）将其归类为 `AccessSemantics::SharedReadOnly`，详细规则见 `07-tensor.md §5.3`。
 
 **设计权衡对比**
 
@@ -181,7 +164,7 @@ pub enum AccessSemantics {
 | **创建开销** | 高 (分配)               | 低 (借用)        | 低 (借用)        | 中 (Arc 包装)           |
 | **克隆开销** | O(n)                    | O(1)             | 不可克隆         | O(1)                    |
 | **写入开销** | 无                      | 不可写           | 无               | 可能 O(n) (CoW)         |
-| **线程安全** | 取决于 `A: Send + Sync` | 取决于 `A: Sync` | 取决于 `A: Send` | 取决于 `A: Send + Sync` |
+| **线程安全** | 取决于 `A: Send + Sync` | 取决于 `A: Sync` | 取决于 `A: Send`（不实现 Sync——参见 §6.8） | 取决于 `A: Send + Sync` |
 | **典型用途** | 创建、运算结果          | 切片、子数组     | 原地修改         | 跨线程共享、延迟复制    |
 
 ### 5.2 Storage Trait 层次
@@ -215,7 +198,7 @@ use core::ptr::NonNull;
 /// Implementors must ensure:
 /// - The pointer returned by `as_ptr()` remains valid for the storage's lifetime
 /// - Multiple calls to `as_ptr()` on the same storage instance return the same address
-pub unsafe trait RawStorage {
+pub unsafe trait RawStorage: crate::private::Sealed {
     /// The element type of the storage.
     type Elem;
 
@@ -237,11 +220,15 @@ pub unsafe trait RawStorage {
 
     /// Checks if the pointer satisfies the specified alignment requirement.
     ///
-    /// # Preconditions
-    ///
-    /// `align` must be greater than 0 and a power of 2.
+    /// Returns `false` for `align == 0` or `align` that is not a power of two,
+    /// rather than panicking. This keeps the safe API total: invalid alignment
+    /// values are reported as "not satisfied", and callers that want stricter
+    /// behavior must pre-validate `align`.
     #[inline]
     fn is_aligned_to(&self, align: usize) -> bool {
+        if align == 0 || !align.is_power_of_two() {
+            return false;
+        }
         (self.as_ptr() as usize) % align == 0
     }
 
@@ -267,7 +254,7 @@ pub unsafe trait RawStorage {
 /// Implementors must ensure:
 /// - The pointer returned by `as_mut_ptr()` remains valid for the storage's lifetime
 /// - No other mutable references to the same data exist (aliasing rules)
-pub unsafe trait RawStorageMut: RawStorage {
+pub unsafe trait RawStorageMut: RawStorage + crate::private::Sealed {
     /// Returns a raw mutable pointer to the start of the data.
     fn as_mut_ptr(&mut self) -> *mut Self::Elem;
 
@@ -300,7 +287,7 @@ pub unsafe trait RawStorageMut: RawStorage {
 /// let storage: Owned<f64> = Owned::from_vec(vec![1.0, 2.0, 3.0])?;
 /// assert_eq!(storage.get(0), Some(&1.0));
 /// ```
-pub unsafe trait Storage: RawStorage {
+pub unsafe trait Storage: RawStorage + crate::private::Sealed {
     /// Returns an immutable reference to the element at the given index.
     #[inline]
     fn get(&self, index: usize) -> Option<&Self::Elem> {
@@ -333,9 +320,34 @@ pub unsafe trait Storage: RawStorage {
     /// `strides` metadata, so callers must not treat it as an arbitrary logical
     /// tensor slice. The tensor-level zero-copy fast path lives in
     /// `TensorBase::as_slice()` (see `07-tensor.md §5.4a`).
+    ///
+    /// # Safety contract relied upon by this safe method
+    ///
+    /// The blanket implementation calls `core::slice::from_raw_parts(ptr, len)`.
+    /// The `Storage` `unsafe` supertrait contract therefore requires every
+    /// implementor to ensure all of the following at all times:
+    ///
+    /// 1. `as_ptr()` returns a non-null pointer that is properly aligned for
+    ///    `Self::Elem` (or `NonNull::dangling()` when `len() == 0`, in which
+    ///    case it is non-null and aligned but never dereferenced).
+    /// 2. The pointer and the `len()` elements after it lie within a single
+    ///    allocated object (no spanning multiple allocations).
+    /// 3. All `len()` elements are initialized values of `Self::Elem`.
+    /// 4. `len() * size_of::<Self::Elem>() <= isize::MAX` (the
+    ///    `from_raw_parts` upper bound). For zero-sized `Self::Elem`,
+    ///    only the `len()` itself must fit in `isize`.
+    /// 5. No mutable reference to the same memory exists for the duration of
+    ///    the returned `&[Self::Elem]`. `Storage` callers may rely on shared
+    ///    borrow semantics; concurrent mutable access is the implementor's
+    ///    responsibility to forbid.
+    ///
+    /// `Owned<A>`, `ViewRepr<'a, A>`, `ViewMutRepr<'a, A>` and `ArcRepr<A>`
+    /// are required to maintain these invariants by construction.
     #[inline]
     fn as_slice(&self) -> &[Self::Elem] {
-        // SAFETY: Storage guarantees all elements are initialized
+        // SAFETY: `Storage`'s unsafe supertrait contract (see preconditions
+        // 1-5 above) guarantees a single, aligned, fully initialized,
+        // non-aliased range of `len()` elements starting at `as_ptr()`.
         unsafe { core::slice::from_raw_parts(self.as_ptr(), self.len()) }
     }
 }
@@ -362,7 +374,7 @@ pub unsafe trait Storage: RawStorage {
 /// }
 /// assert_eq!(storage.get(0), Some(&10.0));
 /// ```
-pub unsafe trait StorageMut: Storage + RawStorageMut {
+pub unsafe trait StorageMut: Storage + RawStorageMut + crate::private::Sealed {
     /// Returns a mutable reference to the element at the given index.
     #[inline]
     fn get_mut(&mut self, index: usize) -> Option<&mut Self::Elem> {
@@ -389,9 +401,26 @@ pub unsafe trait StorageMut: Storage + RawStorageMut {
     /// Like `Storage::as_slice()`, this is a storage-level API over the storage
     /// base pointer and `len()` initialized elements. Tensor-level logical
     /// offsets remain the responsibility of `TensorBase`.
+    ///
+    /// # Safety contract relied upon by this safe method
+    ///
+    /// In addition to all preconditions listed for `Storage::as_slice()` above,
+    /// `StorageMut` implementors must guarantee:
+    ///
+    /// 1. `as_mut_ptr()` is exclusively owned by the caller's `&mut self`
+    ///    borrow for the duration of the returned `&mut [Self::Elem]`.
+    /// 2. No other reference (mutable or shared) into the same `len()`
+    ///    elements exists during that borrow. `ViewMutRepr<'a, A>` carries
+    ///    this guarantee through its exclusive lifetime; `Owned<A>` carries
+    ///    it through unique ownership.
+    /// 3. Total size satisfies `len() * size_of::<Self::Elem>() <= isize::MAX`,
+    ///    matching `from_raw_parts_mut`.
     #[inline]
     fn as_mut_slice(&mut self) -> &mut [Self::Elem] {
-        // SAFETY: StorageMut guarantees all elements are initialized and exclusive access
+        // SAFETY: `StorageMut`'s unsafe supertrait contract (see preconditions
+        // 1-3 above plus the `Storage` preconditions) guarantees an
+        // exclusive, aligned, fully initialized range of `len()` elements
+        // starting at `as_mut_ptr()`.
         unsafe { core::slice::from_raw_parts_mut(self.as_mut_ptr(), self.len()) }
     }
 
@@ -422,9 +451,9 @@ pub unsafe trait StorageMut: Storage + RawStorageMut {
 ///
 /// ```ignore
 /// let storage: Owned<f64> = Owned::zeros(100);
-/// let cloned = storage.to_owned();
+/// let cloned = storage.deep_clone();
 /// ```
-pub unsafe trait StorageOwned: StorageMut + Clone {
+pub unsafe trait StorageOwned: StorageMut + Clone + crate::private::Sealed {
     /// Allocates storage of the given size, zero-filled.
     fn zeros(len: usize) -> Self
     where
@@ -436,6 +465,10 @@ pub unsafe trait StorageOwned: StorageMut + Clone {
         Self::Elem: Clone;
 
     /// Constructs storage from a Vec.
+    ///
+    /// All Xenon element types are `Copy` (see `03-element.md`); this trait
+    /// method consequently requires `Self::Elem: Copy` to keep the contract
+    /// uniform with the storage-level allocation/copy strategy.
     fn from_vec(vec: Vec<Self::Elem>) -> Result<Self, XenonError>
     where
         Self::Elem: Copy;
@@ -447,7 +480,12 @@ pub unsafe trait StorageOwned: StorageMut + Clone {
     fn into_vec(self) -> Vec<Self::Elem>;
 
     /// Creates a deep copy of the storage.
-    fn to_owned(&self) -> Self;
+    ///
+    /// Renamed from `to_owned()` to avoid colliding with `std::borrow::ToOwned`
+    /// in generic code: `ToOwned::to_owned(&self) -> Self::Owned` returns a
+    /// type-projected owned value, while this method always returns `Self` and
+    /// always performs a fresh deep copy of the backing allocation.
+    fn deep_clone(&self) -> Self;
 
     /// Returns the capacity of the storage.
     fn capacity(&self) -> usize;
@@ -464,20 +502,36 @@ pub unsafe trait StorageOwned: StorageMut + Clone {
 ### 5.8 StorageShared Trait
 
 ```rust,ignore
-/// Special operations for shared storage.
+/// Marker trait for shared read-only storage.
 ///
 /// Types implementing `StorageShared` allow multiple owners to share the same
-/// read-only data, typically through reference counting.
-pub unsafe trait StorageShared: Storage + Clone {
-    /// Checks if this is the sole owner.
+/// read-only data, typically through reference counting. The public trait is a
+/// marker only and does not expose reference-counting helpers.
+///
+/// **Sealed**: this `unsafe` trait is sealed via the `Sealed` super-bound
+/// from `crate::private`, so external crates can name `StorageShared` as a
+/// generic bound but cannot implement it for their own types. This preserves
+/// the closed set of shared-storage representations (currently `ArcRepr<A>`
+/// only) and the unsafe invariants documented in §5.5 / §11 决策 4 / 决策 6.
+/// To add a new shared-storage representation, the change must be made
+/// in-tree alongside its safety proof.
+pub unsafe trait StorageShared: Storage + Clone + crate::private::Sealed {}
+
+/// Crate-internal extension trait for shared-storage diagnostics and CoW helpers.
+///
+/// `is_unique()` and `ref_count()` are used only for internal optimization
+/// (for example, CoW uniqueness checks inside `arc.rs`) and debugging. They are
+/// not part of the stable public API contract.
+pub(crate) trait StorageSharedExt: StorageShared {
+    /// Checks if this is the sole owner. Crate-internal helper.
     fn is_unique(&self) -> bool;
 
-    /// Returns the current reference count.
+    /// Returns the current reference count. Crate-internal helper.
     fn ref_count(&self) -> usize;
 }
 ```
 
-`ref_count()` / `is_unique()` 主要用于内部优化与调试辅助，不纳入稳定公开 API 契约。实现上可降为 `pub(crate)` 或仅通过内部 trait 暴露。
+`ref_count()` / `is_unique()` 通过 `StorageSharedExt` 的 `pub(crate)` 可见性把“公开 marker trait”和“crate-internal helper”边界写进类型系统层。这样既保留 `StorageShared` 作为统一 trait 体系的一部分（决策 4），又避免把引用计数细节固化为 SemVer 公开契约（与 §5.5 ArcRepr `Owned` 转换的 O(n) 公开承诺一致）。
 
 ### 5.9 StorageIntoOwned Trait
 
@@ -491,7 +545,12 @@ pub unsafe trait StorageShared: Storage + Clone {
 /// - `Owned<A>` → O(1), returns self directly
 /// - `ViewRepr`/`ViewMutRepr` → O(n), copies data
 /// - `ArcRepr` → O(n), always allocates and copies into a fresh owned buffer
-pub unsafe trait StorageIntoOwned: Storage {
+///
+/// # Safety
+///
+/// No unsafe contract: all required guarantees are provided by the `Storage`
+/// supertrait and the `Self::Elem: Clone` bound on the method.
+pub trait StorageIntoOwned: Storage {
     /// Consume this storage, returning an `Owned<A>` storage.
     fn into_owned_storage(self) -> Owned<Self::Elem>
     where
@@ -499,40 +558,20 @@ pub unsafe trait StorageIntoOwned: Storage {
 }
 ```
 
-### 5.10 StorageIntoRaw Trait
+### 5.10 Trait 实现矩阵
 
-消耗式解构为裸指针，用于 `into_raw_parts()`（参见 `23-ffi.md §5.8`）。
+| 存储类型             | RawStorage | Storage | RawStorageMut | StorageMut | StorageOwned | StorageShared | StorageIntoOwned |
+| -------------------- | :--------: | :-----: | :-----------: | :--------: | :----------: | :-----------: | :--------------: |
+| `Owned<A>`           |     ✅     |   ✅    |      ✅       |     ✅     |      ✅      |      ❌       |        ✅        |
+| `ViewRepr<'a, A>`    |     ✅     |   ✅    |      ❌       |     ❌     |      ❌      |      ❌       |        ✅        |
+| `ViewMutRepr<'a, A>` |     ✅     |   ✅    |      ✅       |     ✅     |      ❌      |      ❌       |        ✅        |
+| `ArcRepr<A>`         |     ✅     |   ✅    |      ❌       |     ❌     |      ❌      |      ✅       |        ✅        |
 
-```rust,ignore
-/// Storage types that can be destructured into raw parts.
-///
-/// Only `Owned<A>` implements this trait (other storage modes cannot transfer ownership of raw memory).
-pub unsafe trait StorageIntoRaw: StorageOwned {
-    /// Consume the storage, returning a raw pointer.
-    ///
-    /// # Safety
-    ///
-    /// The caller must preserve the allocator metadata required to reconstruct
-    /// the owned buffer. In Xenon's tensor-level FFI API, this metadata is carried
-    /// by `OwnedRawParts` (see `23-ffi.md §5.8`).
-    unsafe fn into_raw(self) -> *mut Self::Elem;
-}
-```
-
-### 5.11 Trait 实现矩阵
-
-| 存储类型             | RawStorage | Storage | RawStorageMut | StorageMut | StorageOwned | StorageShared | StorageIntoOwned | StorageIntoRaw |
-| -------------------- | :--------: | :-----: | :-----------: | :--------: | :----------: | :-----------: | :--------------: | :------------: |
-| `Owned<A>`           |     ✅     |   ✅    |      ✅       |     ✅     |      ✅      |      ❌       |        ✅        |       ✅       |
-| `ViewRepr<'a, A>`    |     ✅     |   ✅    |      ❌       |     ❌     |      ❌      |      ❌       |        ✅        |       ❌       |
-| `ViewMutRepr<'a, A>` |     ✅     |   ✅    |      ✅       |     ✅     |      ❌      |      ❌       |        ✅        |       ❌       |
-| `ArcRepr<A>`         |     ✅     |   ✅    |      ❌       |     ❌     |      ❌      |      ✅       |        ✅        |       ❌       |
-
-### 5.12 存储模式转换矩阵
+### 5.11 存储模式转换矩阵
 
 | From                 | To                   | 复杂度      | 说明                                             |
 | -------------------- | -------------------- | ----------- | ------------------------------------------------ |
-| `Owned<A>`           | `Owned<A>`           | O(1) / O(n) | move 为 O(1)，`to_owned()` 深拷贝为 O(n)         |
+| `Owned<A>`           | `Owned<A>`           | O(1) / O(n) | move 为 O(1)，`deep_clone()` 深拷贝为 O(n)       |
 | `Owned<A>`           | `ViewRepr<'_, A>`    | O(1)        | 借用视图，不转移所有权                           |
 | `Owned<A>`           | `ViewMutRepr<'_, A>` | O(1)        | 独占借用视图                                     |
 | `Owned<A>`           | `ArcRepr<A>`         | O(1)        | 零拷贝降级为共享只读引用                         |
@@ -542,7 +581,7 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
 | `ArcRepr<A>`         | `ViewRepr<'_, A>`    | O(1)        | 共享只读借用                                     |
 | `ArcRepr<A>`         | `Owned<A>`           | O(n)        | 总是分配新的独占缓冲并复制数据；不提供条件零拷贝 |
 
-#### 5.12.1 抽象转换矩阵
+#### 5.11.1 抽象转换矩阵
 
 | 抽象源（具体表示）                                           | `ReadOnly`                                                                                             | `SharedReadOnly`                                                                                                             | `Writable`                                                                           | `Owned`                                                               |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
@@ -555,12 +594,12 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
 
 `Writable -> SharedReadOnly` 的零拷贝结果虽然仍是 `ViewRepr<'_, A>`，但必须在张量查询层被标记为 `AccessSemantics::SharedReadOnly`，不能按普通 `AccessSemantics::ReadOnly` 处理。也就是说，该转换的“共享只读”判定来源于 `access_semantics()` 返回值，而不是 `ViewRepr` 这一表示类型本身。
 
-#### 5.12.2 转换成功/失败模型
+#### 5.11.2 转换成功/失败模型
 
 | 转换入口                                  | 成功条件                                       | 失败错误类型                                                                                    |
 | ----------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `Owned<A> -> Owned<A>`（move）            | 直接转移所有权                                 | 不失败                                                                                          |
-| `Owned<A>::to_owned()`                    | `A: Clone`，深拷贝底层 buffer 成功             | 不新增公开转换错误；若底层分配失败，遵循分配器/运行时既有行为，不通过新的 `XenonError` 变体建模 |
+| `Owned<A>::deep_clone()`                  | `A: Clone`，深拷贝底层 buffer 成功             | 不新增公开转换错误；若底层分配失败，遵循分配器/运行时既有行为，不通过新的 `XenonError` 变体建模 |
 | `Owned<A> -> ViewRepr<'_, A>`             | 借用源 owned，生命周期合法                     | 不失败                                                                                          |
 | `Owned<A> -> ViewMutRepr<'_, A>`          | 独占借用源 owned，生命周期合法                 | 不失败                                                                                          |
 | `Owned<A> -> ArcRepr<A>`                  | 允许零拷贝降级为共享只读表示                   | 不失败                                                                                          |
@@ -572,28 +611,28 @@ pub unsafe trait StorageIntoRaw: StorageOwned {
 | 任意只读/共享只读 -> `ViewMutRepr<'_, A>` | 不允许违反独占可写前提                         | `XenonError::InvalidStorageMode`                                                         |
 | `ViewRepr<'_, A> -> ArcRepr<A>`           | storage 层不具备共享所有权句柄，禁止运行时补造 | `XenonError::InvalidStorageMode`                                                         |
 
-- 上表与 `需求说明书` §6.2 的矩阵一致：违反存储模式/可变性前提的张量层转换入口（例如对只读张量调用 `view_mut()`）须统一使用 `26-error.md` 定义的 `XenonError::InvalidStorageMode { .. }` 作为失败返回值；复制型成功路径本身不再额外引入新的公开转换错误类型。最后两行（`任意只读/共享只读 -> ViewMutRepr`、`ViewRepr -> ArcRepr`）描述的是张量层运行时失败模型；在 storage 层，这些转换是 `type-level only`（无运行时 API 入口，参见 §5.12.3）。
+- 上表与 `需求说明书` §6.2 的矩阵一致：违反存储模式/可变性前提的张量层转换入口（例如对只读张量调用 `view_mut()`）须统一使用 `26-error.md` v3.2.0 §5.1 定义的结构化错误 `XenonError::InvalidStorageMode { operation: Cow<'static, str>, expected: StorageKindTag, actual: StorageKindTag, shape: Option<Vec<usize>>, conversion: Option<StorageConversionKind> }` 作为失败返回值。其中 `expected` / `actual` 来自 `StorageKindTag` 封闭枚举（`Owned/View/ViewMut/Shared`，其中 `Shared` 由 `ArcRepr<A>` 支撑；详见 `26-error.md §5.1`），`shape` 在张量层调用点可附加输入形状（不可用时为 `None`），`conversion` 取自 `StorageConversionKind`，与 `26-error.md` 的字段表保持同步。复制型成功路径本身不再额外引入新的公开转换错误类型。最后两行（`任意只读/共享只读 -> ViewMutRepr`、`ViewRepr -> ArcRepr`）描述的是张量层运行时失败模型；在 storage 层，这些转换是 `type-level only`（无运行时 API 入口，参见 §5.11.3）。
 
 - 涉及内存分配的转换操作，若分配失败则遵循运行时既有行为（如全局分配器 panic 或 OOM），不通过 `XenonError` 建模。此设计决策与 `需求说明书 §6.2` 的“须分配”路径一致：该路径仅在目标为持有时可执行，分配失败不属于张量语义层的可恢复错误。
 
 - `ViewMutRepr<'a, A>` 的零拷贝降级路径是只读重借用 `ViewRepr<'a, A>`，其语义与 `需求说明书` §6.2 对“可写引用 → 共享只读引用 = 零拷贝”的要求一致：结果显式放弃写权限，且在该只读结果存续期间不得再并发写入同一底层数据。相对地，`ViewMutRepr<'a, A>` 不持有底层分配所有权，因此仍不能在零拷贝前提下构造 `ArcRepr<A>` 所需的共享所有权句柄。
 
-#### 5.12.3 公开转换 API 对照表
+#### 5.11.3 公开转换 API 对照表
 
 | From \ To        | `ReadOnly`      | `SharedReadOnly`  | `Writable`      | `Owned`                        |
 | ---------------- | --------------- | ----------------- | --------------- | ------------------------------ |
-| `Owned`          | `view()`        | `into_shared()`   | `view_mut()`    | move / `to_owned()`            |
+| `Owned`          | `view()`        | `into_shared()`   | `view_mut()`    | move / `deep_clone()`          |
 | `Writable`       | `view()`        | `view()`          | type-level only | `into_owned_storage()`         |
 | `ReadOnly`       | type-level only | type-level only   | type-level only | `into_owned_storage()`         |
 | `SharedReadOnly` | `view()`        | type-level only   | type-level only | `into_owned_storage()`         |
 
 - 本表用于标注 storage 层公开运行时 API 与纯类型层拒绝的边界。`type-level only` 表示 storage 层不提供运行时转换入口，而是由 Rust 类型系统直接拒绝；若同一抽象格子有多种具体表示，API 可用性以具体来源为准。
 - `view()`、`view_mut()`、`into_shared()` 是具体存储类型上的 inherent method，不属于 storage trait 层次。`Owned -> SharedReadOnly` 的 storage 层公开入口固定为 `Owned<A>::into_shared(self) -> ArcRepr<A>`；张量层在此基础上包装为对应的消费式共享只读转换 API。
-- 非 Owned 行到 `Owned` 列的 storage 层入口统一走 `StorageIntoOwned::into_owned_storage(self)`（参见 §5.9）；`to_owned()` 仅对 `Owned<A>` 自身有效（`StorageOwned::to_owned`，深拷贝语义）。
+- 非 Owned 行到 `Owned` 列的 storage 层入口统一走 `StorageIntoOwned::into_owned_storage(self)`（参见 §5.9）；`deep_clone()` 仅对 `Owned<A>` 自身有效（`StorageOwned::deep_clone`，深拷贝语义）。
 - Xenon 当前元素类型集合是封闭且按值语义处理的集合；`Owned::from_vec` 保持 `Elem: Copy` 约束，并统一复制到内部 64B 对齐缓冲（参见 `06-layout.md §5.6`）。其它从迭代器或构造器进入 `Owned` 的路径由上层构造模块统一收敛。
-- `type-level only` 的格子表示 storage 层无运行时 API；若张量层提供了对应的转换入口（如对只读张量调用 `view_mut()`），则该张量层 API 须返回 `XenonError::InvalidStorageMode` 等可恢复错误（参见 §5.12.2 最后两行），而不是隐式降级为别的存储模式。
+- `type-level only` 的格子表示 storage 层无运行时 API；若张量层提供了对应的转换入口（如对只读张量调用 `view_mut()`），则该张量层 API 须返回 `XenonError::InvalidStorageMode` 等可恢复错误（参见 §5.11.2 最后两行），而不是隐式降级为别的存储模式。
 
-### 5.13 Good/Bad 对比
+### 5.12 Good/Bad 对比
 
 ```rust,ignore
 // Good - Use Storage trait bound to accept any readable storage
@@ -626,7 +665,52 @@ fn modify_shared(arc: ArcRepr<f64>) -> Owned<f64> {
 
 ## 6. 内部实现设计
 
-### 6.1 Owned<A> 结构体
+### 6.1 AlignedBuf<A> 类型定义
+
+`AlignedBuf<A>` 是 `Owned<A>` 内部使用的对齐缓冲区，承载实际数据指针、容量与对齐元数据。
+
+```rust
+/// Internal aligned buffer for Owned storage.
+///
+/// Owns a heap allocation of `A` elements with explicit alignment.
+/// Drop releases memory using the same Layout used at allocation time.
+///
+/// **Manual trait implementations**: `AlignedBuf` does not derive `Debug`,
+/// `Clone` or `PartialEq`. Each public-facing wrapper (`Owned<A>`, `SharedBuf<A>`)
+/// implements these traits manually with the appropriate semantics
+/// (deep-copy for `Clone`, element-wise compare for `PartialEq`,
+/// pointer/len/align summary for `Debug`).
+pub(crate) struct AlignedBuf<A> {
+    /// Non-null pointer to the first element. For zero-capacity buffers,
+    /// uses NonNull::dangling() as a sentinel; never dereferenced.
+    ptr: NonNull<A>,
+    /// Number of valid initialized elements (logical length).
+    len: usize,
+    /// Allocation capacity in elements (cap >= len).
+    cap: usize,
+    /// Allocation alignment in bytes (must be power of 2, default 64).
+    align: usize,
+    /// Marker to make AlignedBuf own A for drop check and variance.
+    _marker: PhantomData<A>,
+}
+
+// Layout: AlignedBuf does not require #[repr(C)]; it is internal only.
+//
+// Send: AlignedBuf<A>: Send when A: Send. Manual unsafe impl needed
+// because of *mut A pointer (auto-derive yields !Send + !Sync).
+// Sync: AlignedBuf<A>: Sync when A: Sync.
+//
+// Drop: dealloc using Layout::from_size_align(cap * size_of::<A>(), align).
+// For empty (cap == 0), Drop is no-op (NonNull::dangling never deallocates).
+```
+
+**关键不变量**：
+- `ptr` 始终满足 `align` 字节对齐
+- `align` 是 2 的幂且 `>= align_of::<A>()`
+- 当 `cap == 0` 时 `ptr` 是 `NonNull::dangling()`，不可解引用
+- `_marker: PhantomData<A>` 让编译器把 `AlignedBuf<A>` 视为拥有 `A`，drop check 正确触发
+
+### 6.2 Owned<A> 结构体
 
 ```rust,ignore
 /// Owned storage.
@@ -651,7 +735,6 @@ fn modify_shared(arc: ArcRepr<f64>) -> Owned<f64> {
 /// The authoritative `ALIGNED` layout flag is still computed by
 /// `layout::compute_layout_flags(shape, strides, ptr)` rather than copied
 /// directly from storage state.
-#[derive(Debug, Clone, PartialEq)]
 pub struct Owned<A> {
     /// Internal data storage.
     ///
@@ -659,6 +742,55 @@ pub struct Owned<A> {
     /// is managed by `AlignedBuf<A>` and deallocated with the exact original layout.
     /// When constructed via `from_vec`, data is copied into a fresh aligned buffer.
     data: AlignedBuf<A>,
+}
+
+// Debug shows length, capacity, alignment, and a logical-element preview;
+// it must not dump the full backing allocation. Implementation goes through
+// Storage::as_slice() so that hidden allocator capacity is not exposed.
+impl<A: core::fmt::Debug> core::fmt::Debug for Owned<A> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Owned")
+            .field("len", &self.data.len)
+            .field("capacity", &self.data.cap)
+            .field("alignment", &self.data.align)
+            .field("elements", &self.as_slice())
+            .finish()
+    }
+}
+
+// PartialEq compares the logical-length element prefix only. Capacity and
+// alignment are implementation details and are not part of equality.
+impl<A: PartialEq> PartialEq for Owned<A> {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_slice() == other.as_slice()
+    }
+}
+
+// **手动 Clone 实现说明**：Owned<A> 的 Clone 必须分配新的对齐缓冲区并逐元素深拷贝。
+// derive Clone 会对 *mut A 进行浅拷贝（仅复制指针），导致两个 Owned 共享底层内存——
+// 这违反所有权语义并在 Drop 时引发 double-free UB。
+impl<A: Clone> Clone for Owned<A> {
+    fn clone(&self) -> Self {
+        // Allocate new aligned buffer with same capacity and alignment
+        let new_buf = AlignedBuf::with_capacity_aligned(
+            self.data.cap,
+            self.data.align,
+        ).expect("allocation failed during Owned::clone");
+        // Allocation failure follows the project OOM/panic strategy and is not
+        // represented as a recoverable `XenonError` from `Clone`.
+        // Deep-copy each element via Clone
+        for i in 0..self.data.len {
+            unsafe {
+                let src = self.data.ptr.as_ptr().add(i);
+                let dst = new_buf.ptr.as_ptr().add(i);
+                core::ptr::write(dst, (*src).clone());
+            }
+        }
+        // SAFETY: All `len` elements have been initialized above.
+        let mut data = new_buf;
+        unsafe { data.set_len(self.data.len); }
+        Owned { data }
+    }
 }
 
 impl<A> Owned<A> {
@@ -682,24 +814,40 @@ impl<A> Owned<A> {
     ///
     /// Backing implementation used by `from_vec` and Xenon construction paths
     /// (`from_shape_vec`, etc.) to guarantee SIMD-compatible alignment.
+    ///
+    /// # ZST and empty handling
+    ///
+    /// - When `data.len() == 0` (empty input), the returned `Owned` has
+    ///   `len() == 0` and a non-null dangling base pointer. No allocation
+    ///   is performed.
+    /// - When `size_of::<A>() == 0` (ZST element type) but
+    ///   `data.len() > 0`, the returned `Owned` MUST report
+    ///   `len() == data.len()`, with a non-null dangling base pointer. No
+    ///   allocation is performed. `AlignedBuf::empty()` is therefore not a
+    ///   valid backing here; the helper used must be `AlignedBuf::zst(len)`,
+    ///   which records the user-supplied logical length while keeping the
+    ///   pointer dangling.
     pub fn from_vec_aligned(data: Vec<A>) -> Result<Self, XenonError>
     where
         A: Copy,
     {
         let len = data.len();
         let elem_size = core::mem::size_of::<A>();
-        if len == 0 || elem_size == 0 {
+        if elem_size == 0 {
+            // ZST: no allocation; preserve the user-provided logical length.
+            return Ok(Self { data: AlignedBuf::zst(len) });
+        }
+        if len == 0 {
+            // Empty non-ZST: no allocation, len == 0.
             return Ok(Self { data: AlignedBuf::empty() });
         }
         let size = len
             .checked_mul(elem_size)
             .ok_or_else(|| XenonError::InvalidShape {
-                operation: "Owned::from_vec_aligned",
+                operation: Cow::Borrowed("Owned::from_vec_aligned"),
                 shape: vec![len],
-                expected_elements: len,
-                actual_elements: len,
-                offending_dim: None,
-                reason: Some("element count overflow".into()),
+                kind: InvalidShapeKind::ProductOverflow,
+                offending_dim: Some(0),
             })?;
         // Allocate aligned memory and copy elements
         // SAFETY: AlignedAlloc returns a valid, aligned allocation of the requested size.
@@ -733,21 +881,21 @@ impl<A> Owned<A> {
 }
 ```
 
-### 6.2 对齐分配器
+### 6.3 对齐分配器
 
 ```rust,ignore
 /// Aligned memory allocator.
 ///
-/// Design note: implementation should prefer `pub(crate)` unless Xenon later
-/// decides to expose allocator customization as a public semver commitment.
-pub struct AlignedAlloc;
+/// `AlignedAlloc` 是 crate-internal 实现细节，不构成公开扩展点。所有方法
+/// 与类型本身均以 `pub(crate)` 暴露。
+pub(crate) struct AlignedAlloc;
 
 impl AlignedAlloc {
     /// Current default alignment: 64 bytes.
     ///
-    /// This default is configurable and is not a hard requirement of the
-    /// storage abstraction itself.
-    pub const DEFAULT_ALIGNMENT: usize = 64;
+    /// This default is an internal constant that may be adjusted in a future
+    /// implementation; it is not a public configuration API.
+    pub(crate) const DEFAULT_ALIGNMENT: usize = 64;
 
     /// Allocates a memory block of the given size and alignment, without initialization.
     ///
@@ -757,13 +905,14 @@ impl AlignedAlloc {
     /// - `size` is 0
     /// - Memory allocation fails
     ///
-    /// For zero-sized types (ZST, `size_of::<A>() == 0`), this allocator must not be called; 
-    /// Use `NonNull::dangling()` directly and return a dangling pointer instead.
-    /// Callers (such as `Owned::new`) are responsible for skipping allocation when size == 0.
-    pub fn alloc(size: usize, align: usize) -> NonNull<u8>;
+    /// For zero-sized types (ZST, `size_of::<A>() == 0`), this allocator must not be called;
+    /// use `NonNull::dangling()` directly and return a dangling pointer instead.
+    /// Callers (such as `Owned::from_vec_aligned`) are responsible for skipping
+    /// allocation when `size == 0` or `size_of::<A>() == 0`.
+    pub(crate) fn alloc(size: usize, align: usize) -> NonNull<u8>;
 
     /// Allocates and zero-initializes.
-    pub fn alloc_zeroed(size: usize, align: usize) -> NonNull<u8>;
+    pub(crate) fn alloc_zeroed(size: usize, align: usize) -> NonNull<u8>;
 
     /// Deallocates memory.
     ///
@@ -771,17 +920,17 @@ impl AlignedAlloc {
     ///
     /// - `ptr` must have been returned by `alloc` or `alloc_zeroed`
     /// - `size` and `align` must be the same as during allocation
-    pub unsafe fn dealloc(ptr: NonNull<u8>, size: usize, align: usize);
+    pub(crate) unsafe fn dealloc(ptr: NonNull<u8>, size: usize, align: usize);
 }
 ```
 
-- 当前默认实现选择 64 字节对齐，以匹配 SIMD 友好的 owned 缓冲策略；这是一项实现选择，而不是 `需求说明书 §10` 所要求的唯一对齐值。对齐值可配置。
+- 当前默认实现选择 64 字节对齐，以匹配 SIMD 友好的 owned 缓冲策略；这是一项实现选择，而不是 `需求说明书 §10` 所要求的唯一对齐值。该值是内部常量，未来实现可调整，但当前不提供公开配置入口。
 
-- 为保持文档与当前设计一致，`AlignedAlloc` 不提供“小数组回退到普通分配”的分支。除 ZST 与 `len == 0` 这两类显式跳过分配的情形外，当前默认实现的真实堆分配统一使用该默认对齐值。
-- 若后续没有把对齐分配器作为独立公共扩展点的计划，实现应默认使用 `pub(crate)`，避免把底层分配细节固化为公开 API。
+- 为保持文档与当前设计一致，`AlignedAlloc` 不提供"小数组回退到普通分配"的分支。除 ZST 与 `len == 0` 这两类显式跳过分配的情形外，当前默认实现的真实堆分配统一使用该默认对齐值。
+- `AlignedAlloc` 收敛为 `pub(crate)`，避免把底层分配细节固化为公开 API；如未来需要把对齐分配作为公共扩展点，再以独立 SemVer breaking change 提升可见性。
 - `AlignedAlloc` 使用 `alloc::alloc::Layout` 确保对齐值是 2 的幂且总大小合法。分配失败时调用 `handle_alloc_error` 而非返回空指针，避免 UB。
 
-### 6.3 ViewRepr<'a, A> 结构体
+### 6.4 ViewRepr<'a, A> 结构体
 
 ```rust,ignore
 /// Immutable view storage.
@@ -806,7 +955,7 @@ impl<'a, A> Clone for ViewRepr<'a, A> {
 impl<'a, A> Copy for ViewRepr<'a, A> {}
 ```
 
-### 6.4 ViewMutRepr<'a, A> 结构体
+### 6.5 ViewMutRepr<'a, A> 结构体
 
 ```rust,ignore
 /// Mutable view storage.
@@ -825,7 +974,29 @@ pub type ViewMut<'a, A> = ViewMutRepr<'a, A>;
 // Intentionally no Clone impl — Rust borrowing rules require mutable references to be exclusive
 ```
 
-### 6.5 ArcRepr<A> 结构体
+### 6.6 SharedBuf<A> 类型定义
+
+`SharedBuf<A>` 是 `ArcRepr<A>` 内部包装的共享缓冲区，由 `Arc` 管理引用计数。
+
+```rust
+/// Internal shared buffer for ArcRepr storage.
+///
+/// Wraps an AlignedBuf<A> with shared (Arc) ownership semantics.
+/// Drop releases the underlying allocation when the last Arc is dropped.
+pub(crate) struct SharedBuf<A> {
+    /// Underlying aligned allocation, structurally identical to Owned's.
+    buf: AlignedBuf<A>,
+}
+
+// Send: SharedBuf<A>: Send when A: Send + Sync (Arc requirement).
+// Sync: SharedBuf<A>: Sync when A: Send + Sync (Arc requirement).
+```
+
+**关键不变量**：
+- `SharedBuf` 仅由 `ArcRepr` 内部使用，不对外暴露
+- 写时复制（CoW）严格限定在 `arc.rs` 私有边界
+
+### 6.7 ArcRepr<A> 结构体
 
 ```rust,ignore
 /// Shared read-only storage.
@@ -834,16 +1005,25 @@ pub type ViewMut<'a, A> = ViewMutRepr<'a, A>;
 /// Internally it wraps the same `AlignedBuf<A>` backing used by `Owned<A>`,
 /// adding only an `Arc` reference-counting header in `arc.rs`.
 /// The public contract remains shared ownership semantics plus read-only access.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ArcRepr<A> {
     inner: std::sync::Arc<SharedBuf<A>>,
 }
 
-#[derive(Debug)]
-struct SharedBuf<A> {
-    aligned_buf: AlignedBuf<A>,
-    len: usize,
-    capacity: usize,
+// `SharedBuf<A>` is defined once in §6.5.0 and is the single authoritative
+// source for the shared backing buffer. Do not duplicate the field list here.
+//
+// `Debug` for `ArcRepr<A>` is implemented manually to avoid forcing
+// `A: Debug` on `SharedBuf<A>` and to keep output bounded; it goes through
+// `Storage::as_slice()` and includes ref_count for crate-internal diagnostics.
+impl<A: core::fmt::Debug> core::fmt::Debug for ArcRepr<A> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ArcRepr")
+            .field("len", &self.len())
+            .field("ref_count", &std::sync::Arc::strong_count(&self.inner))
+            .field("elements", &self.as_slice())
+            .finish()
+    }
 }
 ```
 
@@ -871,25 +1051,36 @@ return internal unique buffer
            allocate new buffer → copy data → drop one shared handle
 ```
 
-### 6.6 Marker Traits
+### 6.8 Marker Traits
 
 ```rust,ignore
 /// Marker trait for storage types that own data.
-pub unsafe trait IsOwned: RawStorage {}
+///
+/// Sealed: cannot be implemented outside this crate.
+pub unsafe trait IsOwned: RawStorage + crate::private::Sealed {}
 
 /// Marker trait for storage types that are views (borrowed).
-pub unsafe trait IsView: RawStorage {}
+///
+/// Sealed: cannot be implemented outside this crate.
+pub unsafe trait IsView: RawStorage + crate::private::Sealed {}
 
 /// Marker trait for storage types that are mutable views.
-pub unsafe trait IsViewMut: RawStorage {}
+///
+/// Sealed: cannot be implemented outside this crate.
+pub unsafe trait IsViewMut: RawStorage + crate::private::Sealed {}
 
-/// Marker trait for storage types that use Arc sharing.
-pub unsafe trait IsArc: RawStorage {}
+/// Marker trait for storage types whose access semantics map to
+/// `StorageKindTag::Shared` (currently backed by `ArcRepr<A>`).
+///
+/// Sealed: cannot be implemented outside this crate.
+pub unsafe trait IsShared: RawStorage + crate::private::Sealed {}
 ```
 
-使用 Sealed trait 模式防止外部类型实现。
+> **命名一致性 (R10 B-03 修复)**：marker trait 用 `IsShared` 而**不是** `IsArc`，与公开抽象模式 `StorageKindTag::Shared` 与 `StorageKind::Shared` 严格一致；`Arc` / `ArcRepr` 仅作为具体内部 backing representation 类型名出现，不进入抽象模式术语。
 
-### 6.7 `as_ptr()` / 空张量偏移规则
+使用 `crate::private::Sealed` super-bound 防止外部 crate 实现这些 marker trait。`Sealed` trait 本身在 `src/private/mod.rs` 内为 `pub trait Sealed {}`，但只在 crate 内部为我们 4 种实际 storage 类型（`Owned<A>` / `ViewRepr<'a, A>` / `ViewMutRepr<'a, A>` / `ArcRepr<A>`）实现，分别对应 `IsOwned` / `IsView` / `IsViewMut` / `IsShared`。这一模式与本文档 §5.4 / §5.5 / §5.6 中 `Storage` / `StorageMut` / `StorageOwned` / `StorageShared` 的 sealed pattern 一致。
+
+### 6.9 `as_ptr()` / 空张量偏移规则
 
 storage 层返回的是 storage base pointer，不预先叠加张量逻辑 `offset`。与 `07-tensor.md` 保持一致：对空张量（`len() == 0`），张量层指针 API 必须直接返回 `NonNull::dangling().as_ptr()`，不对 storage base pointer 做 `add(offset)` 操作。
 
@@ -908,7 +1099,7 @@ where
 }
 ```
 
-### 6.8 Send/Sync 实现规则
+### 6.10 Send/Sync 实现规则
 
 存储类型的 `Send`/`Sync` 实现规则由 `25-safety.md` §5 定义。本文档仅做概要说明；若与 `25-safety.md` 存在冲突，以 `25-safety.md` 为准。
 
@@ -928,7 +1119,27 @@ unsafe impl<'a, A: Sync> Sync for ViewRepr<'a, A> {}
 
 // SAFETY: ViewMutRepr<'a, A> allows exclusive access via &mut self.
 // It is safe to send between threads if A: Send.
-// Sync is NOT implemented: &mut T is not Sync (exclusive access must not be shared).
+//
+// Sync is intentionally NOT implemented for ViewMutRepr.
+//
+// Why ViewMutRepr is `!Sync`:
+//
+// 1. The struct holds a raw `*mut A` field. Raw mutable pointers are
+//    `!Send + !Sync` under Rust's auto-trait rules. Therefore the compiler
+//    will *not* auto-derive `Sync` for `ViewMutRepr<'a, A>` regardless of
+//    any bound on `A`.
+// 2. We do NOT provide any `unsafe impl<'a, A: ...> Sync for ViewMutRepr<'a, A>`.
+//    Without an explicit unsafe impl, `Sync` therefore stays disabled.
+//
+// (Aside) `PhantomData<&'a mut A>` controls *variance* — it makes the type
+// invariant in `A` and tells dropck that we logically borrow `A` mutably
+// for `'a`. Variance is unrelated to `Sync`. The `!Sync` property here
+// comes from the raw pointer field plus the absence of an explicit
+// `unsafe impl Sync`, NOT from `PhantomData`.
+//
+// Net effect: exclusive mutable access can be transferred between threads
+// (`Send` when `A: Send`), but never shared between threads. This matches
+// the design intent of an exclusive mutable view.
 unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 ```
 
@@ -1023,14 +1234,14 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 
 - [ ] **T12**: 实现 `traits.rs` marker traits
   - 文件: `src/storage/traits.rs`
-  - 内容: `IsOwned`/`IsView`/`IsViewMut`/`IsArc`，Sealed trait 模式，各存储类型的实现
+  - 内容: `IsOwned`/`IsView`/`IsViewMut`/`IsShared`，Sealed trait 模式，各存储类型的实现（`IsShared` 由 `ArcRepr<A>` impl，对应 `StorageKindTag::Shared`；R10 B-03 修复：`IsArc` 重命名为 `IsShared` 与公开抽象模式术语一致）
   - 测试: `test_marker_traits`
   - 前置: T8, T9, T10, T11
   - 预计: 10 min
 
 - [ ] **T13**: 集成测试和文档
-  - 文件: `tests/test_storage.rs`
-  - 内容: 跨存储类型交互测试、ZST 测试、空数组测试
+  - 文件: storage 内部单元测试 + doctest，跨模块协同覆盖经由 `tests/test_tensor.rs` / `tests/test_index.rs` / `tests/test_ffi.rs` / `tests/test_iterator.rs` 等已存在的集成测试间接验证（与 `28-tests.md §9.2` 覆盖映射一致；**不**新增独立 `tests/test_storage.rs`）
+  - 内容: 跨存储类型交互、ZST 行为、空数组路径
   - 测试: 完整集成测试套件
   - 前置: T12
   - 预计: 20 min
@@ -1078,15 +1289,15 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 | ----------------------------------- | ----------------------------------------------- |
 | 空数组 `Owned::new()`               | `len() == 0`, `is_empty() == true`              |
 | 单元素 `Owned::from_vec(vec![1.0])` | `len() == 1`, `get(0) == Some(&1.0)`            |
-| ZST 元素 `Owned::<()>::zeros(1000)` | 不分配内存，不引发 UB                           |
+| ZST storage 泛型测试 `Owned::<()>::zeros(1000)` | 不分配内存，不引发 UB；不代表公开 Tensor 元素支持 `()` |
 | 大数组 16M 元素                     | 正常分配和访问                                  |
 | 容量乘法接近 `usize::MAX`           | 返回 `XenonError::InvalidShape`，不发生整数回绕 |
 
 ### 8.4 属性测试不变量
 
-| 不变量                                            | 测试方法           |
-| ------------------------------------------------- | ------------------ |
-| `owned.to_owned().as_slice() == owned.as_slice()` | 随机元素类型和大小 |
+| 不变量                                              | 测试方法           |
+| --------------------------------------------------- | ------------------ |
+| `owned.deep_clone().as_slice() == owned.as_slice()` | 随机元素类型和大小 |
 | `view.clone().as_ptr() == view.as_ptr()`          | 随机切片范围       |
 | 内部 CoW helper 完成后引用计数收敛到 1            | 随机共享数量       |
 | `Owned::from_vec_aligned` 在 ZST 上不调用分配器   | 随机 ZST 长度      |
@@ -1117,7 +1328,7 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 | 并列协作     | `layout`       | `Strides` 及其辅助接口 | `Strides` 由 `06-layout.md` 定义并与 storage 在 `tensor` / `ffi` 上层组合使用；storage 本身不直接消费 layout API |
 | 输出 | `tensor`       | `Storage` / `StorageMut` / `StorageOwned` / `StorageShared`，以及 `Owned<A>` / `ViewRepr<'a, A>` / `ViewMutRepr<'a, A>` / `ArcRepr<A>` | `TensorBase<S, D>` 通过 `S: Storage` 或 `S: StorageMut` 消费底层存储；`TensorBase` 负责解释 `offset` / `shape` / `strides` |
 | 输出 | `parallel`     | `S: Storage + Sync` 或 `S: StorageMut + Send` | 并行路径只能在满足 Send/Sync 前提时消费 storage；不得突破共享只读 / 独占可写边界 |
-| 输出 | `iter` / `ffi` | `as_ptr()` / `as_slice()` / `into_raw()`  | 上层仅消费 storage-visible backing range；不得把 storage API 误解为逻辑张量切片 |
+| 输出 | `iter` / `ffi` | `as_ptr()` / `as_slice()` | 上层仅消费 storage-visible backing range；不得把 storage API 误解为逻辑张量切片 |
 
 ### 9.2 与 Tensor 模块
 
@@ -1167,7 +1378,7 @@ User calls `TensorBase::as_ptr()`
 ## 10. 错误处理与语义边界
 
 | 项目              | 内容                                                                  |
-| ----------------- | ----------------------------------------------------------------------|
+| ----------------- | --------------------------------------------------------------------- |
 | Recoverable error | `try_reserve()`、显式运行时转换与 raw-parts 元数据校验失败返回 `XenonError`；上下文字段应包含操作名、存储模式、长度/容量或布局信息 |
 | Panic             | 对齐分配器在 `align` 非 2 的幂、`size == 0` 或分配失败时 panic；公开构造入口（如 `from_vec_aligned`）通过 `checked_mul` 在到达分配器之前将溢出转为 `XenonError::InvalidShape` 可恢复错误（参见 §6.1）；仅内部未经验证的快捷路径中整数溢出可能 panic  |
 | 路径一致性        | scalar：不适用；SIMD 对齐与非对齐路径必须返回一致元素值；parallel 存储访问须与串行路径保持一致        |
@@ -1187,7 +1398,7 @@ User calls `TensorBase::as_ptr()`
 
 | 属性     | 值                                                                                        |
 | -------- | ----------------------------------------------------------------------------------------- |
-| 决策     | 当前默认实现使用 64 字节作为默认对齐；该默认值可配置，且不构成需求层硬约束                |
+| 决策     | 当前默认实现使用 64 字节作为默认对齐；该默认值是内部常量，未来可调，且不构成需求层硬约束                |
 | 理由     | AVX-512 缓存行大小；现代 CPU 缓存行通常 64 字节；满足 SSE/AVX/AVX2/AVX-512 所有 SIMD 指令 |
 | 替代方案 | 16 字节 — 放弃，AVX-512 未对齐                                                            |
 | 替代方案 | 32 字节 — 放弃，AVX-512 未对齐                                                            |
@@ -1216,19 +1427,47 @@ User calls `TensorBase::as_ptr()`
 | 理由     | 更好的正交性，泛型代码可通过 `Storage` trait 统一处理所有存储模式      |
 | 替代方案 | ndarray 风格 `ArcArray` 独立类型 — 放弃，增加类型复杂度                |
 
+### 决策 5：StorageOwned 深拷贝方法命名为 `deep_clone`
+
+| 属性     | 值                                                                                                                                                                                            |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | `StorageOwned` 的深拷贝方法命名为 `deep_clone(&self) -> Self`，不再使用 `to_owned`                                                                                                            |
+| 理由     | `std::borrow::ToOwned::to_owned(&self) -> Self::Owned` 是标准库 trait 方法，签名要求关联类型 `Owned`；同名 inherent 方法会让泛型代码出现 trait 方法解析二义性，并误导读者把它当作 `ToOwned` 实现 |
+| 替代方案 | 沿用 `to_owned()` 名称 — 放弃，方法解析与命名直觉冲突                                                                                                                                         |
+| 替代方案 | 实现 `std::borrow::ToOwned` — 放弃，`Self::Owned = Self` 与 storage trait 的关联类型已固定不一致                                                                                              |
+
+### 决策 6：StorageShared 的 `is_unique` / `ref_count` 收敛为 `pub(crate)`
+
+| 属性     | 值                                                                                                                                              |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | `StorageShared` 仍为公开 **sealed** unsafe marker trait（决策 4 所需，sealed via `crate::private::Sealed` super-bound），但 `is_unique()` / `ref_count()` 两个 helper 方法收敛到 `pub(crate)` 的 `StorageSharedExt`，外部用户不可调用    |
+| 理由     | 引用计数细节不应固化为 SemVer 公开契约；保持 trait 公开以支持泛型 `S: StorageShared` 边界，同时把诊断/优化方法限制在 crate 内部；同时通过 sealed 防止外部 crate 实现 unsafe trait，绕过封闭存储模式与 `ArcRepr` 的不变量      |
+| 替代方案 | 公开 `is_unique` / `ref_count` — 放弃，会把 Arc 内部细节锁死                                                                                    |
+| 替代方案 | 把整个 `StorageShared` 降级为 `pub(crate)` — 放弃，`ArcRepr` 在公开 API 中仍需要类型层的 marker 区分                                            |
+| 替代方案 | 不 sealed（公开 unsafe trait 任由外部实现）— 放弃，外部错误 impl 可能破坏 `Storage::as_slice()` / 共享只读 / CoW 私有边界等不变量              |
+
+### 决策 7：AlignedAlloc 收敛为 `pub(crate)`
+
+| 属性     | 值                                                                                            |
+| -------- | --------------------------------------------------------------------------------------------- |
+| 决策     | `AlignedAlloc` 类型与所有方法/常量统一以 `pub(crate)` 暴露，不构成公开扩展点                  |
+| 理由     | 对齐分配是底层实现细节，公开后会把 64 字节默认对齐与 `handle_alloc_error` 行为锁死为 SemVer 契约 |
+| 替代方案 | 公开 `AlignedAlloc` — 放弃，未来切换分配策略需要 SemVer breaking change                       |
+
 ---
 
 ## 12. 性能考量
 
-| 方面                    | 设计决策                                                            |
-| ----------------------- | ------------------------------------------------------------------- |
-| 对齐分配                | `Owned` 与 `ArcRepr` 统一保持 64 字节对齐语义；ZST 和空数组跳过分配 |
-| 视图克隆                | O(1)，仅复制指针和长度                                              |
-| Arc 克隆                | O(1)，仅增加引用计数                                                |
-| Arc internal CoW helper | 唯一时 O(1)，非唯一时 O(n) 深拷贝                                   |
-| Owned 克隆              | O(n) 深拷贝                                                         |
-| 内联                    | 所有 `as_ptr`/`len`/`get` 标注 `#[inline]`                          |
-| 单态化                  | Storage trait 在泛型上下文中单态化，无虚调用开销                    |
+| 方面 | 设计决策 |
+| ---- | -------- |
+| 对齐分配 | `Owned` 与 `ArcRepr` 统一保持 64 字节对齐语义；ZST 和空数组跳过分配 |
+| 视图克隆 | O(1)，仅复制指针和长度 |
+| Arc 克隆 | O(1)，仅增加引用计数 |
+| Arc 公开转换 `ArcRepr -> Owned` | 公开承诺 O(n) 深拷贝（参见 §5.11）；不承诺唯一引用条件下的 O(1) 优化 |
+| Arc 内部 CoW helper（仅 `arc.rs`） | 唯一时 O(1)，非唯一时 O(n) 深拷贝；仅作为 crate-internal 性能优化，不构成公开 SemVer 契约 |
+| Owned 克隆 | O(n) 深拷贝 |
+| 内联 | 所有 `as_ptr`/`len`/`get` 标注 `#[inline]` |
+| 单态化 | Storage trait 在泛型上下文中单态化，无虚调用开销 |
 
 ---
 
@@ -1260,6 +1499,33 @@ User calls `TensorBase::as_ptr()`
 | 1.2.4 | 2026-04-15 |
 | 1.2.5 | 2026-04-15 |
 | 1.2.6 | 2026-04-16 |
+| 2.0.0 | 2026-05-02 |
+| 2.0.1 | 2026-05-03 |
+| 2.0.2 | 2026-05-04 |
+
+### v2.0.2 (2026-05-04) — patch: refresh stale 26-error v3.0.0 reference to v3.2.0
+
+- §5.11.2：`InvalidStorageMode` 错误引用从 `26-error.md` v3.0.0 更新到 v3.2.0。
+
+> 2.0.1 (2026-05-03) — Medium/Low 文档修复：
+> - 将 `StorageShared` 改为公开 marker trait，并通过 `pub(crate) StorageSharedExt` 描述内部 `is_unique` / `ref_count` helper。
+> - 移除 `AlignedBuf<A>` 的 `Debug` derive，与手动 trait 实现说明保持一致。
+> - 明确 `Owned::clone` 分配失败遵循 OOM/panic 策略，并补齐 `InvalidShape` 示例的 `offending_dim` 字段。
+> - 将默认对齐描述改为内部常量未来可调，避免暗示当前公开配置入口。
+> - 标注 ZST `()` 仅用于 storage 泛型测试，并移除未定义的 raw 交互项。
+> - 修正文档章节层级、表格格式与 `iter` 模块术语空格。
+>
+> 2.0.0 (SemVer breaking)：
+> - `StorageOwned::to_owned` 重命名为 `deep_clone`（决策 5）
+> - `StorageShared::is_unique` / `ref_count` 收敛为 `pub(crate)`（决策 6）
+> - `AlignedAlloc` 收敛为 `pub(crate)`（决策 7）
+> - `as_slice` / `as_mut_slice` unsafe 前提补全（B12）
+> - `Owned<A>` derive 改为手动 Debug/PartialEq（B13）
+> - `ViewMutRepr` `!Sync` auto-trait 论证修正（H-I7）
+> - `is_aligned_to(0, _)` 改为返回 `false` 不再 panic
+> - `from_vec_aligned` 错误字段对齐 26-error v3.0.0 的 `InvalidShapeKind`
+> - `from_vec_aligned` ZST 路径明确保留用户给定的逻辑长度
+> - `SharedBuf<A>` 字段以 §6.5.0 为唯一权威定义，§6.5 不再重复
 
 ---
 

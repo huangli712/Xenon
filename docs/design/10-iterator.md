@@ -86,7 +86,7 @@ src/iter/
 | 来源模块    | 使用的类型/trait                                                                                                                                  |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tensor`    | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `TensorViewMut<'a, A, D>`, `.shape()`, `.strides()`, `.as_ptr()`, `.len()`（参见 `07-tensor.md §5` ） |
-| `dimension` | `Dimension`, `Axis`, `Ix0`~`Ix6`, `IxDyn`，以及仅供内部轴迭代实现使用的 `RemoveAxis` / `D::Smaller`（参见 `02-dimension.md §5`）                  |
+| `dimension` | `Dimension`, `Axis`, `Ix0`~`Ix6`, `IxDyn`，以及在公开签名中使用的 `RemoveAxis` / `D::Smaller`（参见 `02-dimension.md §5`）                  |
 | `storage`   | `Storage<Elem = A>`, `StorageMut<Elem = A>`（参见 `05-storage.md §5`）                                                                            |
 | `error`     | `XenonError::InvalidAxis`（参见 `26-error.md §5`）                                                                                                |
 | `tensor`    | `.is_f_contiguous()`, 布局标志查询（参见 `07-tensor.md §5`）                                                                                      |
@@ -164,8 +164,11 @@ pub struct AxisIter<'a, A, D: Dimension> {
 /// axis stride and current logical position, then yields exactly one mutable view
 /// for that disjoint slice. Successive positions differ by one axis-step, so the
 /// produced `&mut` views cover non-overlapping logical regions along the iterated
-/// axis. The iterator advances monotonically and never revisits an earlier offset,
-/// which prevents mutable aliasing between yielded items.
+/// axis. Zero-length subviews expose no writable elements, so even when their
+/// metadata denotes an empty logical slice, they cannot create overlapping
+/// mutable element access. The iterator advances monotonically and never
+/// revisits an earlier offset, which prevents mutable aliasing between yielded
+/// items.
 pub struct AxisIterMut<'a, A, D: Dimension> {
     // Internal fields: iterator state for validated mutable axis traversal.
 }
@@ -199,7 +202,7 @@ where
 {}
 ```
 
-- `需求说明书 §11` 与 `02-dimension.md §5.8` 更偏向“0D 按轴遍历通过运行时 `InvalidAxis` 拒绝，且公开张量方法不直接暴露 `RemoveAxis`”。当前文档仍保留 `D: RemoveAxis` 的公开签名，是因为 `Iterator::Item = TensorView<'a, A, D::Smaller>` 的静态返回类型尚未找到同样简洁的公开建模方式。在当前设计下，所有进入运行时路径的按轴迭代仍必须对 `axis < ndim`（含动态 rank-0）返回 `XenonError::InvalidAxis`。
+- `需求说明书 §11` 与 `02-dimension.md §5.8` 要求 0D 按轴遍历通过运行时 `InvalidAxis` 拒绝。`RemoveAxis` 是公开 sealed trait（定义见 `02-dimension.md §5.8`），对外可命名但禁止外部实现。当前文档保留 `D: RemoveAxis` 的公开签名，是通过 `RemoveAxis::Smaller` 关联类型精确描述输出秩降语义，与 `BroadcastDim` 地位一致。所有进入运行时路径的按轴迭代必须对 `axis < ndim`（含动态 rank-0）返回 `XenonError::InvalidAxis`。
 - **`ExactSizeIterator` 契约说明：** `AxisIter` / `AxisIterMut` 的 `len()` 返回 `shape[axis]`；因此 `size_hint()` 的上下界必须始终相等，并与剩余未产出的轴切片数量一致。空轴（`shape[axis] == 0`）时，`len() == 0`。
 
 ### 5.3 内部迭代分发说明
@@ -222,10 +225,20 @@ pub struct IndexedIter<'a, A, D: Dimension> {
 ///
 /// `IndexedIterMut` yields at most one mutable reference for each logical index.
 /// The internal state machine visits every logical coordinate once in F-order and
-/// computes the element address from the tensor's validated stride metadata. Since
-/// no logical index is repeated during a single traversal, each yielded `&mut A`
-/// refers to a distinct element slot and does not overlap with previously yielded
-/// references.
+/// computes the element address from the tensor's validated stride metadata.
+///
+/// **Within the layout family that `IndexedIterMut` is allowed to construct
+/// from** — i.e. the source must be a `TensorViewMut` (per §6.5: `StorageMut`,
+/// no broadcast, no zero-stride, no overlapping/aliased physical addresses,
+/// validated by `from_raw_parts_mut` / `view_mut` constructors per
+/// `07-tensor.md §5`) — every logical index maps to a distinct, non-overlapping
+/// physical address. The "no logical index is repeated" property combined with
+/// these construction-time invariants is what guarantees that each yielded
+/// `&mut A` refers to a distinct element slot. Note that the implication
+/// "unique logical index ⇒ unique physical address" does **not** hold in the
+/// general case (broadcast / zero-stride views are precisely the
+/// counter-examples), which is why `TensorViewMut` constructors reject those
+/// layouts up-front; see §6.5 for the full safety proof.
 pub struct IndexedIterMut<'a, A, D: Dimension> {}
 
 impl<'a, A, D: Dimension> Iterator for IndexedIter<'a, A, D> {
@@ -304,13 +317,14 @@ assert_eq!(iter.len(), 12);
 // Bad - manual index traversal (poor performance, repeated bounds checks, loses unified iteration semantics)
 for i in 0..tensor.shape()[0] {
     for j in 0..tensor.shape()[1] {
-        let _ = tensor[[i, j]];  // not recommended
+        let _ = tensor.try_at((i, j))?;  // not recommended; see 17-indexing v3.0.2 决策 7
     }
 }
 
 // Bad - ignoring the recoverable error path for invalid axis iteration
 let scalar = Tensor::<f64, IxDyn>::from_shape_vec(IxDyn::from_slice(&[]), vec![1.0])?;
-// let _ = scalar.axis_iter(Axis(0)).unwrap();
+// let result = scalar.axis_iter(Axis(0));
+// assert!(result.is_ok());  // wrong: this should handle InvalidAxis explicitly
 ```
 
 ---
@@ -393,6 +407,12 @@ increment_index_f(shape, index):
 ### 6.6 并行分块说明
 
 当前版本不在 `iter` 模块中设计独立的内部区间分块抽象。若并行后端需要对元素遍历做分块，应由并行执行模块基于自身的任务划分策略直接维护逻辑区间和调度状态。此约束与 §5.3 的设计原则一致。
+
+**关于 `rayon::iter::ParallelIterator`：** 本 `iter/` 模块**不**对外提供 `rayon::ParallelIterator` 实现，也不维护"串行 / 并行迭代器双轨公开 API"。本模块设计为单轨：定义**串行**的 `Iterator` / `ExactSizeIterator` 公开接口。
+
+**`09-parallel.md` 中的 `pub(crate) ParElements<'a, A, D>` 与 `TensorBase::par_iter()` 不属于本模块的稳定 API**：它们是 `parallel/` 后端为内部并行执行实现的 `pub(crate)` Rayon 适配，仅在 crate 内部消费；外部 crate 不能命名 `ParElements`、不能把它当成 `iter/` 的扩展。所有公开的并行执行（含分块、worker 调度、worker 内 SIMD admission）通过对底层 storage / shape / strides / offset 的直接访问完成，由 `parallel/` 模块独立实现，不要求 `iter/` 做出 rayon 协议适配。
+
+这种分工避免了把 rayon 的 producer / consumer 协议固化到 `iter/` 模块的稳定 API；任何把 `ParElements` 暴露成稳定 API 的尝试需要单独的设计文档与 SemVer 评估。
 
 ---
 
@@ -478,7 +498,7 @@ increment_index_f(shape, index):
 | `test_axis_iter_dyn_rank0_error`        | rank-0 `IxDyn` 调用 `axis_iter()` 返回 `InvalidAxis` 可恢复错误          | 高     |
 | `test_elements_large_tensor_count`      | 大张量（`10^7` 量级元素）上的 `count()` / `len()` 一致，且不访问越界内存 | 高     |
 | `test_indexed_iter_high_rank_ixdyn`     | 高 rank `IxDyn`（接近静态上限/超过静态维度）索引遍历次序与数量正确       | 高     |
-| `test_axis_iter_large_axis_index_error` | 极端 axis 值（如 `usize::MAX`）返回 `InvalidAxis` 且携带完整诊断         | 高     |
+| `test_axis_iter_large_axis_index_error` | 极端 axis 值（如 `usize::MAX`）返回 `InvalidAxis`，字段包含 `operation`、`axis`、`ndim`、`shape` | 高     |
 | `test_padded_iter`                      | 填充数组仅遍历逻辑元素                                                   | 低     |
 
 ### 8.3 边界测试场景
@@ -654,6 +674,13 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
 | 1.2.3 | 2026-04-15 |
 | 1.2.4 | 2026-04-15 |
 | 1.2.5 | 2026-04-16 |
+| 1.2.6 | 2026-05-03 |
+
+### v1.2.6 (2026-05-03) — Medium/Low review fixes
+
+- §5.2：补充 `AxisIterMut` 零长度子视图不暴露可写元素的安全说明。
+- §5.6：将 Bad 示例中的 `unwrap()` 改为错误处理反例断言，避免形成库代码模板。
+- §8.2：明确极端 axis 测试需要校验 `InvalidAxis { operation, axis, ndim, shape }` 字段。
 
 ---
 
