@@ -471,8 +471,8 @@ pub enum InvalidShapeKind {
     ///
     /// **Excludes** `Dimension::try_from_dyn(IxDyn(...))` rank-mismatch
     /// path, which returns `XenonError::DimensionMismatch` (see
-    /// `02-dimension.md §5.4` + `§8.3` line 1011 in this doc); that path
-    /// is a dimension-conversion mismatch, not a constructor rank-policy
+    /// `02-dimension.md §5.4` + `§8.3` in this doc); that path is a
+    /// dimension-conversion mismatch, not a constructor rank-policy
     /// violation.
     RankExceedsStaticMax { provided_ndim: usize, max_ndim: usize },
 }

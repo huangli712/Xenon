@@ -407,10 +407,28 @@ pub trait MyPublicSealedTrait: crate::private::Sealed { /* ... */ }
 ```bash
 # Fail if any sealed pub trait lacks the `# Sealed` doc section in its
 # IMMEDIATELY PRECEDING contiguous `///` doc-comment block.
+#
+# Candidate discovery uses TWO sources unioned (R14 E-01 fix):
+#   (1) Direct grep match: `pub trait <Name>...crate::private::Sealed` —
+#       catches traits whose declaration line contains the Sealed bound.
+#   (2) §5.4.3 whitelist: explicit list of sealed pub trait names — catches
+#       traits that are sealed via super-trait (e.g., `Reverse: Dimension`
+#       inherits Dimension's Sealed bound) or whose `pub trait` line does
+#       NOT literally contain "Sealed". The whitelist MUST be kept in sync
+#       with §5.4.3.
 set -euo pipefail
-matches=$(grep -REn '^pub (unsafe )?trait [A-Z][A-Za-z0-9_]*.*Sealed' src/)
+
+# §5.4.3 whitelist (R14 E-01; sync with §5.4.3 listing):
+WHITELIST='RawStorage|RawStorageMut|Storage|StorageMut|StorageOwned|StorageShared|IsOwned|IsView|IsViewMut|IsShared|Dimension|Reverse|Element|Numeric|RealScalar|ComplexScalar|CastElement|CastTo'
+
+# Union of (1) direct Sealed match and (2) whitelist match.
+matches_direct=$(grep -REn '^pub (unsafe )?trait [A-Z][A-Za-z0-9_]*.*Sealed' src/ || true)
+matches_whitelist=$(grep -REn "^pub (unsafe )?trait (${WHITELIST})\\b" src/ || true)
+matches=$(printf '%s\n%s\n' "$matches_direct" "$matches_whitelist" | sort -u | grep -v '^$' || true)
+
 exit_code=0
 while IFS= read -r match; do
+    [ -z "$match" ] && continue
     file=$(echo "$match" | cut -d: -f1)
     line=$(echo "$match" | cut -d: -f2)
     name=$(echo "$match" | sed -E 's/.*pub (unsafe )?trait ([A-Z][A-Za-z0-9_]*).*/\2/')
@@ -423,7 +441,7 @@ while IFS= read -r match; do
         NR == target { print buf; exit }
     ' "$file")
     if ! echo "$block" | grep -q '^[[:space:]]*///[[:space:]]*# Sealed'; then
-        echo "MISSING # Sealed doc section before pub trait $name at $file:$line" >&2
+        echo "MISSING # Sealed doc section: $name in $file:$line" >&2
         exit_code=1
     fi
 done <<< "$matches"

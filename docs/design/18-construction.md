@@ -835,7 +835,7 @@ User calls zeros / from_shape_vec / eye
 
 ### v3.0.0 (2026-05-03) — 4 处 unsafe { } block + SAFETY 注释闭环
 
-- `zeros` / `ones` / `from_shape_vec` / `from_scalar` 4 个构造路径全部用 `unsafe { ... }` 显式包裹对内部 `pub(crate) unsafe fn` helper（`from_shape_vec_aligned_unchecked` 等）的调用，并在每个调用点挂 `// SAFETY: ...` 注释，明确 shape/data-length 一致性、F-order 元数据合法性等前置条件（R8-B-01 落地）。
+- `zeros` / `ones` / `from_shape_vec` / `from_scalar` 4 个构造路径全部用 `unsafe { ... }` 显式包裹对内部 `pub(crate) unsafe fn` 构造器的调用，并在每个调用点挂 `// SAFETY: ...` 注释，明确 shape/data-length 一致性、F-order 元数据合法性等前置条件（R8-B-01 落地）。**注（pre-R10/pre-R11 历史术语）**：该 v3.0.0 changelog 行写作时构造器名称为 `from_shape_vec_aligned_unchecked` 等内部 helper；R10 B-01 起 4 个调用点统一改为 `TensorBase::new_unchecked(storage, ..., flags, false)` 6 参数形态（详见现行 §5.1 / §5.3 / §5.4 实际示例）。
 - 与 `25-safety.md §5.12` 内部 unsafe fn 索引表的 6 项入口保持完整一一对应。
 - 不变的：构造 API 公开签名、`Result` 返回类型、错误变体选择。
 

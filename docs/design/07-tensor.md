@@ -636,12 +636,20 @@ where
     /// `TensorBase { storage, shape, strides, offset, flags, derived_from_view_mut }`
     /// directly, keeping `pub(crate)` field access localized to one named entry
     /// point and providing a single grep target for tensor construction tracing.
-    /// All non-downgrade construction paths (`zeros`, `ones`, `from_shape_vec`,
-    /// `from_scalar`, broadcast, transpose, slicing of non-`ViewMut` sources,
-    /// `from_raw_parts*`) MUST pass `derived_from_view_mut: false`; the only
-    /// callers that pass `true` are the `ViewMutRepr` → `ViewRepr` downgrade
-    /// paths in §6 of this doc and the slicing-from-`ViewMut` route in
-    /// `17-indexing.md §6.3`.
+    /// Construction-path rules for `derived_from_view_mut` (must match §5.1
+    /// field doc + §5.3 access_semantics rule (3) + `17-indexing.md §6.3`
+    /// propagation table):
+    /// - `true` callers: (a) `ViewMutRepr::view()` downgrading to read-only
+    ///   `ViewRepr`; (b) slicing routes whose source is `ViewMutRepr` OR a
+    ///   `ViewRepr` already carrying `derived_from_view_mut == true` (the
+    ///   tag propagates through nested slicing).
+    /// - `false` callers: all other construction paths — `zeros` / `ones` /
+    ///   `from_shape_vec` / `from_scalar`, broadcast / transpose, slicing on
+    ///   sources that are neither `ViewMutRepr` nor an already-tagged
+    ///   `ViewRepr`, `from_raw_parts*`, Owned reconstructions.
+    /// - `view_mut()` reborrow chained on a `ViewMutRepr` stays
+    ///   `ViewMutRepr` (writable) and does NOT use this constructor with
+    ///   `true`.
     ///
     /// # Safety
     /// - `shape`, `strides`, `offset`, and `flags` must be mutually

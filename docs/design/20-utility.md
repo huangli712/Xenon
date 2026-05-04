@@ -712,7 +712,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 ### v3.0.0 (2026-05-03) — Utility 转换契约对齐 21-type / 05-storage
 
 - `to_contiguous()` / `into_owned_*` 等公开入口的实现引用收敛到 `21-type.md §5.5 to_owned/into_owned` 与 `05-storage.md §5.9 StorageIntoOwned`，并与 R8 修复后的 ConvertTo / sealed Storage trait 闭环一致；本版不引入新的公开 API。
-- 文档示例在引用 `ElementType` 时统一从 `crate::element::ElementType` 导入。
+- 本模块**不**消费 `ElementType`（`clip` / `try_fill` 等不依赖 ElementType 枚举值分流），不涉及 ElementType 导入路径；本条仅记录跨模块约定，不引入本模块代码示例（R14 C-03 修正：v3.0.0 撰写时误以为本模块有 ElementType 示例，实际上没有）。
 
 ### v2.0.0 (2026-05-02) — 错误字段对齐 26-error v3.0.0
 

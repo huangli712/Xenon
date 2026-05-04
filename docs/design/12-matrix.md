@@ -365,7 +365,7 @@ where
     D2: Dimension,
 {
     // 1. Validate rank-1 precondition at runtime; either side non-1D returns
-    //    InvalidArgument with closed-enum kind (see 26-error v3.0.0 §5.1).
+    //    InvalidArgument with closed-enum kind (see 26-error v3.2.0 §5.1).
     if a.ndim() != 1 {
         return Err(XenonError::InvalidArgument {
             operation: Cow::Borrowed("dot"),
@@ -414,7 +414,7 @@ where
 
 - 统一使用 `Numeric::conjugate()` 实现 `x.conjugate() * y` 乘积生成规则（定义见 §1.1），避免为复数类型单独实现 `complex_dot` 函数。实数类型的 `conjugate()` 为零开销（内联后等价于直接使用 `x * y`），不引入额外运行时成本。
 - 对整数 dot，乘法和累加都属于需求层面的不可恢复溢出路径；文档不得只对累加做 checked 处理而把乘法留给 release wrapping 语义。panic 信息至少包含 `operation=dot`、元素类型、触发阶段（`multiply` / `accumulate`）、逻辑位置（如 `lane` 或 `element_index`）以及适用 `shape`。
-- 错误字段全部对齐 26-error v3.0.0 §5.1 的封闭枚举：`InvalidArgument { operation, kind: InvalidArgumentKind::OperationSpecific { argument, constraint } }`，`ShapeMismatch { operation, left_shape, right_shape }`。`left_shape` / `right_shape` 是逻辑形状向量，元素与轴次序语义对齐 `02-dimension.md §5` 的 `Dimension` 抽象。不再使用旧版自由文本 `expected` / `actual` / `argument: "input"` 等字段。
+- 错误字段全部对齐 26-error v3.2.0 §5.1 的封闭枚举：`InvalidArgument { operation, kind: InvalidArgumentKind::OperationSpecific { argument, constraint } }`，`ShapeMismatch { operation, left_shape, right_shape }`。`left_shape` / `right_shape` 是逻辑形状向量，元素与轴次序语义对齐 `02-dimension.md §5` 的 `Dimension` 抽象。不再使用旧版自由文本 `expected` / `actual` / `argument: "input"` 等字段。
 
 ---
 
@@ -586,7 +586,7 @@ User calls dot(a, b)
 
 | 主题              | 内容                                                                      |
 | ----------------- | ------------------------------------------------------------------------- |
-| Recoverable error | 左/右输入非 1D 时返回 `XenonError::InvalidArgument { operation: "dot", kind: InvalidArgumentKind::OperationSpecific { argument: "a"或"b", constraint: "rank == 1" } }`；长度不匹配时返回 `XenonError::ShapeMismatch { operation: "dot", left_shape, right_shape }`。字段对齐 26-error v3.0.0 §5.1 封闭枚举。 |
+| Recoverable error | 左/右输入非 1D 时返回 `XenonError::InvalidArgument { operation: "dot", kind: InvalidArgumentKind::OperationSpecific { argument: "a"或"b", constraint: "rank == 1" } }`；长度不匹配时返回 `XenonError::ShapeMismatch { operation: "dot", left_shape, right_shape }`。字段对齐 26-error v3.2.0 §5.1 封闭枚举。 |
 | Panic             | 整数 dot 的乘法溢出与累加溢出均为不可恢复错误，按 checked arithmetic 触发 panic。|
 | 路径一致性        | 执行路径选择参见 §6.1；任何可选路径都不得改变结果、错误类别或 panic 语义。worker 内 SIMD（v2.0 起）的 chunk 内独立 admission 不影响整体结果与错误模型。|
 | 容差边界          | 以 `需求说明书 §28.3` 为权威基线；实现细节参见 `00-coding.md §8.4`。同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。|

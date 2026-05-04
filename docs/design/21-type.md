@@ -870,7 +870,8 @@ impl ConvertTo<i64> for Complex<f64> { #[inline] fn convert(self) -> Result<i64,
 User calls cast() / to_owned() / into_owned()
     │
     ├── convert reads tensor shape / strides / storage mode metadata
-    ├── cast collects elements and re-encodes them via CastTo rules
+    ├── cast collects elements and re-encodes them via ConvertTo dispatch
+    │     (Tier-1 lossless via std `From` / direct shims; Tier-2/Tier-3 via CastTo)
     ├── owned-conversion paths choose explicit O(1) transfer or O(n) copy by source storage mode
     ├── ArcRepr → Owned always allocates and copies (O(n))
     └── the module returns a new owned tensor

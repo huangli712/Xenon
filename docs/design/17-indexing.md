@@ -347,19 +347,20 @@ TensorBase::slice(info):
     // This step performs SHAPE-AWARE bounds validation and metadata update.
     1. Validate info.input_dim() matches self.shape() rank (already guaranteed
        by D type, but assert in debug for safety).
-    2. For each SliceInfoElem at axis i:
+    2. Initialize `slice_delta = 0` (relative element-unit delta accumulator).
+       For each SliceInfoElem at axis i:
        a. If Index(idx): check `idx < shape[i]`; on failure return
           IndexOutOfBounds { operation: "slice", attempted_index, axis: i, shape }.
-          Fold into new offset with checked_add(checked_mul(idx, stride[i])).
+          Fold into `slice_delta` with checked_add(checked_mul(idx, stride[i])).
           Drop axis i from output shape and stride.
        b. If Range { start, end }: check `end <= shape[i]`; on failure return
           InvalidArgument { kind: RangeOutOfBounds { axis: i, axis_len: shape[i],
           start, end } }. (start <= end already guaranteed by SliceInfo::new.)
-          Fold start into `slice_delta` (relative element-unit delta) with
-          checked_add(checked_mul(start, stride[i])); compute the absolute
-          new offset as new_offset = self.offset + slice_delta (only the
-          absolute new_offset is written to the resulting TensorBase.offset).
+          Fold start into `slice_delta` with checked_add(checked_mul(start, stride[i])).
           Update output shape[axis] = end - start; keep stride[axis] unchanged.
+       After the loop completes, compute the absolute new offset as
+       `new_offset = self.offset + slice_delta` (only this absolute
+       `new_offset` is written to the resulting `TensorBase.offset`).
     3. Recompute layout flags via compute_layout_flags::<A, I>(&new_shape,
        &new_strides, logical_ptr) where `logical_ptr` is computed per the
        v3.0.2 SAFETY rule below: for empty results (`product(new_shape) == 0`)
