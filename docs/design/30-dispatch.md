@@ -808,6 +808,8 @@ pub(crate) fn should_parallelize(_len: usize, _is_contiguous: bool) -> bool {
 }
 ```
 
+**关于 `alignment_ok` 的实际传递路径**：本伪代码中 `_simd_alignment_hint` 仅在 dispatch 选路阶段使用，作为"是否进入 SIMD 路径"的早期短路提示，并不会通过参数或数据结构显式 forward 给 SIMD 后端。SIMD 后端在 chunk 内部独立通过 `layout::is_aligned()` 重新检查实际指针对齐情况，并在 per-kernel admission 阶段（见 08-simd.md §5.7）选择 aligned 或 unaligned 变体。因此 `alignment_ok = false` 不会硬性禁止 SIMD 路径，仅作为 dispatch 阶段的优化启发；最终对齐准入由 SIMD 后端独立裁决。
+
 **`ParallelGuard` 的 cfg 处理：** `ParallelGuard` 类型与 `try_acquire_guard()` / `is_in_parallel()` / `IN_PARALLEL` thread-local 仅在 `feature = "parallel"` 启用时存在对应实现；`feature = "parallel"` 关闭时仅保留一个零大小占位结构体以保持 `select_exec_path()` 的返回类型签名稳定，但**永不构造**且**无 Drop 行为**。
 
 ```rust,ignore
@@ -1249,7 +1251,11 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 | 2.0.0 | 2026-05-04 | SemVer 主版本上升标记（与 08-simd v2.0.x / 09-parallel v2.0.x 协同基线统一）。 |
 | 2.0.1 | 2026-05-04 | R8/R9 协同基线对齐：与 `00-coding.md §1.3` / `28-tests.md §1.0` 锁定基线版本号显式对齐，本版无契约变更。 |
 | 2.0.2 | 2026-05-04 | Op-agnostic boundary clarification + `alignment_ok` formal contract (§5.5, §6.4). |
+| 2.0.3 | 2026-05-04 | patch fix: §6.4 澄清 `alignment_ok` 在 dispatch 与 SIMD 后端之间的实际传递路径。 |
 
+### v2.0.3 (2026-05-04) — patch fix: §6.4 `alignment_ok` 传递路径澄清
+
+- §6.4：新增 "关于 `alignment_ok` 的实际传递路径" 段落，澄清 `_simd_alignment_hint` 仅在 dispatch 选路阶段作为早期短路提示，不会通过参数或数据结构显式 forward 给 SIMD 后端。SIMD 后端通过 `layout::is_aligned()` 独立重新检查，并在 per-kernel admission 阶段独立裁决。消除 "幽灵参数" 歧义。
 
 ### v2.0.2 (2026-05-04) — dispatch op-agnostic boundary + `alignment_ok` formal contract
 

@@ -11,7 +11,7 @@
 
 ## 1. 模块定位
 
-**协同基线（v2.0.2）**：本文档以下游已修文档为准——03-element v1.4.0（`Element` / `Numeric` / `ComplexScalar` / `CastTo<T>` trait / `CastElement` sealed marker；**`ElementType` 权威定义在 `crate::element`**（即 `03-element.md §5.1.1`，**不**是本 04-complex 文档），`#[non_exhaustive]` + `#[repr(u8)]`；新增 `Element::ELEMENT_TYPE_NAME: &'static str` 关联常量；提供 `ElementType::name()` inherent + `element_type_of` / `element_type_name_of` 自由函数）、21-type v2.1.1（B10.a：静态无损 `From` / 静态有损 + 动态条件性 `CastTo` 三层结构 + CastElement owner；错误字段 `source_type` / `target_type` 改用 `&'static str`）、26-error v3.2.0（`XenonError::TypeConversion` 五字段；`source_type` / `target_type` 改为 `&'static str`；error 模块**不**持有 `ElementType` 枚举）。本文档不重复定义这些类型，仅在引用时遵循其权威字段。
+**协同基线（v2.0.3）**：本文档以下游已修文档为准——03-element v1.4.0（`Element` / `Numeric` / `ComplexScalar` / `CastTo<T>` trait / `CastElement` sealed marker；**`ElementType` 权威定义在 `crate::element`**（即 `03-element.md §5.1.1`，**不**是本 04-complex 文档），`#[non_exhaustive]` + `#[repr(u8)]`；新增 `Element::ELEMENT_TYPE_NAME: &'static str` 关联常量；提供 `ElementType::name()` inherent + `element_type_of` / `element_type_name_of` 自由函数）、21-type v2.1.2（B10.a：静态无损 `From` / 静态有损 + 动态条件性 `CastTo` 三层结构 + CastElement owner；错误字段 `source_type` / `target_type` 改用 `&'static str`）、26-error v3.2.0（`XenonError::TypeConversion` 五字段；`source_type` / `target_type` 改为 `&'static str`；error 模块**不**持有 `ElementType` 枚举）。本文档不重复定义这些类型，仅在引用时遵循其权威字段。
 
 ### 1.1 职责边界
 
@@ -1000,6 +1000,11 @@ User constructs `Complex<f64>::new(re, im)`
 | 2.0.0 | 2026-05-02 |
 | 2.0.1 | 2026-05-03 |
 | 2.0.2 | 2026-05-03 |
+| 2.0.3 | 2026-05-04 |
+
+### v2.0.3 (2026-05-04) — patch fix: refresh §1 协同基线 pins to current actual versions of all 3 referenced docs (post 7-condition convergence cascade)
+
+- §1 协同基线：将 21-type pin 刷新到当前实际版本，03-element 与 26-error pin 保持当前版本不变。
 
 ### v2.0.2 (2026-05-03) — 协同基线指代消歧 + 错误字段对齐 26-error v3.2.0
 

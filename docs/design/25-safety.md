@@ -15,7 +15,7 @@
 
 **范围注记：** workspace 的线程安全属性参见 `24-workspace.md`；本文不将 workspace 纳入 `需求说明书 §10` 的存储模式线程安全矩阵。
 
-**协同基线：** 本文档示例与论证以下游已修文档为准——05-storage v2.0.1、06-layout v1.3.1、07-tensor v2.0.1、17-indexing v3.0.2（公开安全索引收敛为 `try_at`/`try_at_mut`，不实现 `std::ops::Index`）、19-overload v2.0.0、24-workspace v3.0.1。任何 §5 / §9 引用上述文档的章节号时，以这些版本为准。
+**协同基线：** 本文档示例与论证以下游已修文档为准——05-storage v2.0.2、06-layout v1.3.2、07-tensor v2.0.4、17-indexing v3.0.4（公开安全索引收敛为 `try_at`/`try_at_mut`，不实现 `std::ops::Index`）、19-overload v2.0.0、24-workspace v3.0.2。任何 §5 / §9 引用上述文档的章节号时，以这些版本为准。
 
 ### 1.1 职责边界
 
@@ -831,6 +831,11 @@ workspace 的线程安全规则（`!Send + !Sync` 实现选择及理由，参见
 | 2.0.1 | 2026-05-03 |
 | 2.0.2 | 2026-05-04 |
 | 2.0.3 | 2026-05-04 |
+| 2.0.4 | 2026-05-04 |
+
+### v2.0.4 (2026-05-04) — patch fix: refresh §1 协同基线 pins to current actual versions of all 6 referenced docs (post 7-condition convergence cascade)
+
+- §1 协同基线：将 05-storage、06-layout、07-tensor、17-indexing、24-workspace pins 刷新到当前实际版本，19-overload pin 保持当前版本不变。
 
 ### v2.0.3 (2026-05-04) — patch: unsafe-fn 索引反映内部构造器收敛
 

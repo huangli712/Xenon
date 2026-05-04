@@ -225,7 +225,7 @@ assert_eq!(view.strides()[0], 0);
 - 广播必须是零拷贝；不得复制底层数据。
 - 广播结果只能返回只读 `TensorView`，并按共享只读引用处理；这里的“共享只读引用”含义与 `需求说明书 §6` 一致：结果可在多个张量实例之间共享同一底层数据，但不提供可写访问权。
 - 广播轴的 stride 必须写成 `0`，且 stride 类型保持为 `usize`。
-- 若结果存在广播零步长轴**且** `product(shape) > 0`（即结果非空），布局状态必须标记为 `LayoutState::BroadcastView`。空数组退化情形（`product(shape) == 0`，例如 `1 → 0` 空轴广播）即使含 `stride == 0` 也**不**触发 `BroadcastView`——与 `06-layout.md §5.12` 的 `HAS_ZERO_STRIDE` 公式严格一致。详细分类口径见 §6.3。
+- 若结果存在广播零步长轴**且** `product(shape) > 0`（即结果非空），布局状态必须标记为 `LayoutState::BroadcastView`。空数组退化情形（`product(shape) == 0`，例如 `1 → 0` 空轴广播）即使含 `stride == 0` 也**不**触发 `BroadcastView`——与 `06-layout.md §5.11` 的 `HAS_ZERO_STRIDE` 公式严格一致。详细分类口径见 §6.3。
 - 广播不改变底层 storage、offset 与逻辑元素顺序语义。
 - 所有 shape 兼容性裁决必须在创建结果视图前完成。
 
@@ -444,7 +444,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 | --------------------------- | ------------ | ----------------------------------------------- | -------------------------------------------------------- |
 | `broadcast → tensor`        | `tensor`     | `TensorBase`, `TensorView`                      | 读取 shape/stride/offset，并通过只读视图入口构造结果。   |
 | `broadcast → dimension`     | `dimension`  | `Dimension`, `BroadcastDim`                     | 运行时 shape 计算与编译期输出维度类型推导分离。          |
-| `broadcast → layout`        | `layout`     | `Strides<D>`, `LayoutState::BroadcastView`      | 非空（`product(shape) > 0`）且至少一轴 stride 为 0 的视图必须映射到 `BroadcastView` 布局状态；空数组退化的零步长不触发该状态（与 `06-layout.md §5.12` 严格一致）。 |
+| `broadcast → layout`        | `layout`     | `Strides<D>`, `LayoutState::BroadcastView`      | 非空（`product(shape) > 0`）且至少一轴 stride 为 0 的视图必须映射到 `BroadcastView` 布局状态；空数组退化的零步长不触发该状态（与 `06-layout.md §5.11` 严格一致）。 |
 | `broadcast → error`         | `error`      | `XenonError::BroadcastError`, `InvalidArgument` | 广播不兼容与参数前提失败都必须返回结构化错误。           |
 | `math ← broadcast`          | `math`       | `broadcast_with()`, `broadcast_shape()`         | 二元运算先广播再计算。`math` 模块内部统一调用 `broadcast_with()`（pub(crate) 唯一入口）完成双输入广播，不允许各模块私自重复定义广播规则。具体调用路径：`math` 通过 `dispatch::select_exec_path` 决定串行/SIMD/并行三路；并行路径下 `par_zip_map` 接收已广播好的 `output_dim`，所有广播裁决发生在调用 `parallel/` 后端**之前**（参见 11-math v2.0.0 §5.2、09-parallel v2.0.0 §6.3）。 |
 | `iter ← broadcast`          | `iter`       | 只读广播视图                                    | 广播结果可被读取遍历，但不得提供可变迭代能力。           |
@@ -559,6 +559,11 @@ User calls broadcast_to() or broadcast_with()
 | 3.0.1 | 2026-05-04 |
 | 3.0.2 | 2026-05-04 |
 | 3.0.3 | 2026-05-04 |
+| 3.0.4 | 2026-05-04 |
+
+### v3.0.4 (2026-05-04) — patch fix: 残留 `§5.12` 引用更正为 `§5.11`
+
+- §6.1 广播不变式第 4 条、§9.1 `broadcast → layout` 行：将 `06-layout.md §5.12` 更正为 `§5.11`（v3.0.3 仅修正 §6.3-§6.4，此次补漏 §6.1 与 §9.1 的残留引用）。
 
 ### v3.0.3 (2026-05-04) — patch: HAS_ZERO_STRIDE 权威收敛，内联公式替换为引用
 

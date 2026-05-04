@@ -178,7 +178,7 @@ where
 | 零拷贝   | 始终零拷贝（O(1)），仅调整步长和形状                                                                   |
 | 形状变化 | `shape[i]` → `shape[ndim-1-i]`（全反转）                                                               |
 | 步长变化 | `strides[i]` → `strides[ndim-1-i]`（全反转）                                                           |
-| 连续性   | 按结果布局重分类：转置可能产生 `NonContiguous`；实际布局状态由结果 shape/stride 是否满足 F-order 条件决定。若至少一个被交换轴长度为 1，则仍可保留 `F-contiguous`；带零步长且 `product(shape) > 0` 的转置视图仍为 `BroadcastView`（空数组退化的零步长不触发 `BroadcastView`，与 `15-broadcast.md §6.3` / `06-layout.md §5.12` 一致）；0D/1D 保留原布局状态 |
+| 连续性   | 按结果布局重分类：转置可能产生 `NonContiguous`；实际布局状态由结果 shape/stride 是否满足 F-order 条件决定。若至少一个被交换轴长度为 1，则仍可保留 `F-contiguous`；带零步长且 `product(shape) > 0` 的转置视图仍为 `BroadcastView`（空数组退化的零步长不触发 `BroadcastView`，与 `15-broadcast.md §6.3` / `06-layout.md §5.11` 一致）；0D/1D 保留原布局状态 |
 | 偏移量   | 保持不变                                                                                               |
 | 1D 数组  | 转置后形状不变（1D 无轴顺序概念）                                                                      |
 
@@ -230,7 +230,7 @@ for i in 0..1000 {
 
 ### 6.1 转置布局变化
 
-转置通过直接修改视图的 shape 和 strides 元数据实现，不拷贝数据。具体：交换对应轴的 shape 和 strides 值（即全反转），并按 `06-layout.md` 的 `LayoutState` 重新分类结果布局。对于 `ndim >= 2` 且不含零步长的普通视图，结果通常归类为 `NonContiguous`；若原视图含零步长**且** `product(shape) > 0`，则结果仍属于 `BroadcastView`；空数组退化的零步长不进入 `BroadcastView`（参见 `15-broadcast.md §6.3` / `06-layout.md §5.12`）；对 0D/1D，转置是 no-op，应保留原有 flags 和布局状态。内部通过创建新的 `TensorView`（共享原始存储的只读引用）实现。
+转置通过直接修改视图的 shape 和 strides 元数据实现，不拷贝数据。具体：交换对应轴的 shape 和 strides 值（即全反转），并按 `06-layout.md` 的 `LayoutState` 重新分类结果布局。对于 `ndim >= 2` 且不含零步长的普通视图，结果通常归类为 `NonContiguous`；若原视图含零步长**且** `product(shape) > 0`，则结果仍属于 `BroadcastView`；空数组退化的零步长不进入 `BroadcastView`（参见 `15-broadcast.md §6.3` / `06-layout.md §5.11`）；对 0D/1D，转置是 no-op，应保留原有 flags 和布局状态。内部通过创建新的 `TensorView`（共享原始存储的只读引用）实现。
 
 ```
 Source: shape=[2, 3], strides=[1, 2]  (F-order, F-contiguous)
@@ -245,7 +245,7 @@ Transpose: shape=[3, 2], strides=[2, 1]  (strides reversed, not F-contiguous)
 
 ### 6.2 转置后的连续性标志处理
 
-转置操作不引入新步长值，仅交换现有 `usize` stride 顺序。由于 `需求说明书 §7` 明确当前版本不支持负步长布局，因此这里无需讨论负 stride 或相关标志。连续性标志需要按结果布局重算：转置后连续性须根据结果的 shape 与 stride 重新计算；若结果仍满足 F-order 连续条件（如含长度为 1 的轴的转置），则保留 F-contiguous 标记。零步长等其他已存在标志仍按结果布局分类；若源视图为广播视图，且转置后仍存在任一 `stride == 0` 的轴**并且** `product(shape) > 0`，则继续保留 `BroadcastView` 标记（空数组退化情形不触发，参见 `15-broadcast.md §6.3` / `06-layout.md §5.12`）；对 0D/1D 输入，转置是元数据 no-op，应保留原有连续性标志。
+转置操作不引入新步长值，仅交换现有 `usize` stride 顺序。由于 `需求说明书 §7` 明确当前版本不支持负步长布局，因此这里无需讨论负 stride 或相关标志。连续性标志需要按结果布局重算：转置后连续性须根据结果的 shape 与 stride 重新计算；若结果仍满足 F-order 连续条件（如含长度为 1 的轴的转置），则保留 F-contiguous 标记。零步长等其他已存在标志仍按结果布局分类；若源视图为广播视图，且转置后仍存在任一 `stride == 0` 的轴**并且** `product(shape) > 0`，则继续保留 `BroadcastView` 标记（空数组退化情形不触发，参见 `15-broadcast.md §6.3` / `06-layout.md §5.11`）；对 0D/1D 输入，转置是元数据 no-op，应保留原有连续性标志。
 
 ```rust,ignore
 // Per 06-layout.md §5.12, transpose delegates flag computation to
@@ -483,6 +483,12 @@ User calls transpose()
 | 1.1.4 | 2026-04-15 |
 | 2.0.0 | 2026-05-02 |
 | 2.0.1 | 2026-05-03 |
+| 2.0.2 | 2026-05-04 |
+
+### v2.0.2 (2026-05-04) — patch fix: HAS_ZERO_STRIDE 规则引用从 `§5.12` 更正为 `§5.11`
+
+- §5.2 转置语义表连续性行、§6.1 转置布局变化段、§6.2 连续性标志处理段：三处 HAS_ZERO_STRIDE 规则引用从 `06-layout.md §5.12` 更正为 `§5.11`（与 06-layout v1.3.2 权威拆分一致）。
+- §6.2 伪代码注释区 `compute_layout_flags` 引用保持 `§5.12` 不变——该引用指向计算入口，非 HAS_ZERO_STRIDE 规则定义。
 
 ### v2.0.1 (2026-05-03) — Low 级文档修复
 
