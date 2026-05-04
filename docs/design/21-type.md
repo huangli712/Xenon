@@ -360,8 +360,18 @@ where
 
 ### 5.6 内部构造辅助边界
 
-- `cast()` / `to_owned()` 在实现上可以复用张量或存储层的内部构造 helper，但这些 helper 的命名、文件布局、是否存在 unchecked 变体以及具体对齐策略，都不属于 convert 模块的稳定文档面。
-- `cast()` / `to_owned()` 通过 `pub(crate)` 内部 helper 从已验证的 shape/data 长度构造 owned 结果。该 helper 名为 `from_shape_vec_aligned_unchecked`，**是 `pub(crate) unsafe fn`**（不是 safe 函数）；调用点必须用 `unsafe { ... }` 块包裹，且每个调用点必须挂 `// SAFETY: ...` 注释说明 `shape` 已验证元素总数等于 `data.len()`、由 `shape` 推导出的 F-order 元数据在当前版本范围内合法（无 stride 溢出、无 offset 越界、无非法零步长来源）。
+`from_shape_vec_aligned_unchecked` 是 `TensorBase::new_unchecked`（07-tensor.md §5.6）的**薄封装**（thin wrapper），存在目的是为 `cast()` / `to_owned()` / `into_owned()` 提供从已验证 `(shape, Vec<A>)` 对零开销构造 owned 张量的单一路径。它不是独立的 unsafe 入口——其安全性由 `new_unchecked` 的安全契约兜底。
+
+- 内部实现调用链：
+  1. 通过 `Owned::from_vec_aligned` 从 `data: Vec<A>` 构造对齐 storage
+  2. 通过 `layout::compute_f_strides` 从 `shape` 推导规范 F-order strides
+  3. 通过 `layout::compute_layout_flags` 从 `(shape, strides, storage.as_ptr())` 计算布局标志
+  4. 调用 `TensorBase::new_unchecked(storage, shape, strides, /*offset=*/ 0, flags, /*derived_from_view_mut=*/ false)` 完成构造
+
+- **本函数的安全契约**（v2.1.2 大幅缩减，其余 forwarded 到 `new_unchecked`）：
+  - 调用方必须证明 `shape.checked_size().is_ok()` 且 `data.len() == shape.checked_size().unwrap()`。
+  - 所有其他张量不变式（offset 计算、别名安全、布局标志正确性、F-order 元数据合法性）均由 `TensorBase::new_unchecked` 的契约兜底——详见 07-tensor.md §5.6。
+  - 本函数**永远**不设置 `derived_from_view_mut = true`（它始终构造 Owned，无从携带 ViewMut 降级标记）。
 
   规范签名（被 `25-safety.md §5.12.1` 索引引用）：
 
@@ -371,16 +381,24 @@ where
       A: Element,
       D: Dimension,
   {
-      /// Internal `unsafe` constructor: build an Owned tensor from a fully
-      /// validated `(shape, data)` pair, using Xenon's canonical aligned
-      /// allocation path (`Owned::from_vec_aligned`) and canonical packed
-      /// F-order strides. Performs NO `Result`-returning validation.
+      /// Thin wrapper around `TensorBase::new_unchecked` (&sect;07-tensor.md §5.6)
+      /// for zero-overhead Owned construction from a validated `(shape, Vec<A>)` pair.
+      ///
+      /// Internally builds aligned storage via `Owned::from_vec_aligned`, computes
+      /// canonical F-order strides via `layout::compute_f_strides`, computes layout
+      /// flags via `layout::compute_layout_flags`, then calls
+      /// `TensorBase::new_unchecked(...)` with `offset=0` and
+      /// `derived_from_view_mut=false`.
       ///
       /// # Safety
-      /// - `data.len() == shape.checked_size()` (caller-proved; no overflow check)
-      /// - `shape` representable in `D`
-      /// - F-order strides derived from `shape` are representable
-      /// - The default packed F-order layout matches `需求说明书 §7`
+      ///
+      /// Caller must prove:
+      /// - `shape.checked_size()` is `Ok` (no overflow)
+      /// - `data.len() == shape.checked_size().unwrap()`
+      ///
+      /// All other tensor invariants (offset arithmetic, alias safety, layout
+      /// flag correctness) are forwarded to `TensorBase::new_unchecked`'s contract
+      /// — see 07-tensor.md §5.6.
       ///
       /// Used by `cast()` / `to_owned()` / `into_owned()` after they have
       /// already proved length / shape consistency at the call site.
@@ -390,8 +408,8 @@ where
       ) -> Tensor<A, D>;
   }
   ```
-- helper 名称中的 `unchecked` 严格表示"跳过可由调用方安全封装重复检查的 metadata 校验"，**不**表示"内部实现可放任任意输入"——任何错误的 `(shape, data.len())` 配对仍会构成 UB。底层使用哪一种分配器或对齐值，不应写入该 safety 契约（这部分由 storage 层的 `Owned::from_vec_aligned` 自行决定）。
-- 之所以让 helper 保留 `unsafe` 而不是把它做成 safe 函数（再在内部 panic 检查），是为了让 `cast()` / `to_owned()` 的 infallible 签名真正零额外检查开销；safe wrapper 路径已由 `Tensor::from_shape_vec` 提供（fallible，返回 `Result`）。
+- helper 名称中的 `unchecked` 严格表示"跳过可由调用方安全封装重复检查的 metadata 校验"，**不**表示"内部实现可放任任意输入"；违反本函数安全契约（shape/data 长度不匹配）的后果是 UB，由 `new_unchecked` 的存储/元数据不一致语义传递过去。
+- 之所以让 helper 保留 `unsafe` 而不是把它做成 safe 函数，是为了让 `cast()` / `to_owned()` 的 infallible 签名真正零额外检查开销；safe wrapper 路径已由 `Tensor::from_shape_vec` 提供（fallible，返回 `Result`）。
 
 ### 5.7 Good / Bad 对比
 
@@ -973,6 +991,13 @@ User calls cast() / to_owned() / into_owned()
 | 2.0.0 | 2026-05-02 |
 | 2.1.0 | 2026-05-03 |
 | 2.1.1 | 2026-05-03 |
+| 2.1.2 | 2026-05-04 |
+
+### v2.1.2 (2026-05-04) — 内部构造收敛：from_shape_vec_aligned_unchecked 重构为 new_unchecked 薄封装
+
+- §5.6 `from_shape_vec_aligned_unchecked` 重构为 `TensorBase::new_unchecked`（07-tensor.md §5.6）的 thin wrapper：内部显式展示调用链 `from_vec_aligned → compute_f_strides → compute_layout_flags → new_unchecked(...)`。
+- 安全契约大幅缩减：调用方仅需证明 `shape.checked_size().is_ok()` 且 `data.len() == shape.checked_size().unwrap()`；所有其他张量不变式（offset 算术、别名安全、布局标志正确性）forwarded 到 `new_unchecked` 的契约。
+- 明确标注"永远不设置 `derived_from_view_mut = true`"（它始终构造 Owned）。
 
 ### v2.1.1 (2026-05-03) — TypeConversion 字段类型反转为 &'static str
 

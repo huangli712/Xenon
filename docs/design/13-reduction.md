@@ -148,7 +148,7 @@ where
 布尔类型 (`bool`) 不参与 `sum` 归约（`需求说明书 §14`）。该约束由元素层 trait 边界保证；当前版本以 `Numeric` 作为公开 API 的最终边界，不再额外引入更窄的公开 trait 名称。沿轴归约的 axis 越界错误必须统一为：
 
 ```rust,ignore
-// Field types follow 26-error v3.0.0 §5.1: operation is Cow<'static, str>.
+// Field types follow 26-error v3.2.0 §5.1: operation is Cow<'static, str>.
 XenonError::InvalidAxis {
     operation: Cow::Borrowed("sum_axis"),
     axis: axis.index(),
@@ -276,7 +276,7 @@ fn sum_floating_or_complex<A: Numeric>(iter: impl Iterator<Item = A>) -> A {
 - 复数路径：对实部和虚部分量分别沿用对应实数加法语义，因此含 `NaN` 分量时同样传播。
 - 整数 SIMD admission：整数归约默认优先标量/串行路径以保证 checked arithmetic 精确等价。仅当 SIMD 路径能证明与逐步 checked 加法完全一致时才启用优化（08-simd v2.0.0 §5.3 已把这条作为 `SimdKernel` trait 文档明文契约）。
 - SIMD 路径：仅在 `dispatch::select_exec_path()` 返回 `ExecPath::Simd` 时委托 `simd/` 纯向量化后端；浮点/复数路径允许不同合并顺序。以 `需求说明书 §28.3` 为权威基线。
-- 并行路径：仅在 `dispatch::select_exec_path()` 返回 `(ExecPath::Parallel, Some(guard))` 时委托 `parallel/` 纯并行后端，并按值移交 guard；整数路径必须保持与串行精确一致；若实现无法保证整数 chunk 索引顺序仲裁（参见 09-parallel v2.0.0 §6.5），**回退责任在 `dispatch.rs`**——dispatch 不应把整数归约路由到 `Parallel`，而**不是**由 reduction 内部回退（与 09-parallel 决策 4 一致）。浮点/复数路径允许不同合并顺序。以 `需求说明书 §28.3` 为权威基线。
+- 并行路径：仅在 `dispatch::select_exec_path()` 返回 `(ExecPath::Parallel, Some(guard))` 时委托 `parallel/` 纯并行后端，并按值移交 guard；整数路径必须保持与串行精确一致；若实现无法保证整数 chunk 索引顺序仲裁（参见 09-parallel v2.0.0 §6.5），**回退责任在调用方（本模块）**——当整数归约的 chunk-order 仲裁无法保证等价时，本模块应直接走 Serial 分支，不调用 `select_exec_path()` 或只在已确认 Parallel 合法时才调用。`dispatch.rs` 本身不感知操作语义（见 30-dispatch.md §5.5 "Op-agnostic boundary"）。浮点/复数路径允许不同合并顺序。以 `需求说明书 §28.3` 为权威基线。
 - 同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用以 `需求说明书 §28.3` 为权威基线的文档化容差。
 
 **有限值数值容差表（authoritative for `sum`，v2.0.x 新增）：**
@@ -304,7 +304,7 @@ fn sum_floating_or_complex<A: Numeric>(iter: impl Iterator<Item = A>) -> A {
 - `+0.0` / `-0.0`：符号必须一致；**不得**用容差抹平零符号差异。
 - 容差只约束不同执行路径引入的舍入差异，**不**允许改变 shape、错误类别、panic 契约或整数溢出语义。
 
-**实现回退条款：** 若某个 SIMD 或并行实现无法证明其结果满足上表（例如使用了 FMA/Kahan/pairwise 但未走完误差分析），`dispatch.rs` 必须**不**选择该路径，而**不是**由 `reduction` 内部在运行后修正结果。这与 §6.3 上一条 bullet 中"回退责任在 dispatch.rs"的全局规则一致。
+**实现回退条款：** 若某个 SIMD 或并行实现无法证明其结果满足上表（例如使用了 FMA/Kahan/pairwise 但未走完误差分析），调用方（本模块）必须**不**进入该路径，而**不是**由 `reduction` 内部在运行后修正结果。这与 §6.3 上一条 bullet 中"回退责任在调用方"的全局规则一致。
 
 ### 6.4 并行 axis 归约写回策略
 
@@ -510,7 +510,7 @@ User calls sum / sum_axis / sum_axis_keepdims
 
 | 主题              | 内容                                                                                                                 |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | 对所有需要运行时 axis 校验的 `sum_axis()` / `sum_axis_keepdims()` 调用，axis 越界统一返回 `XenonError::InvalidAxis { operation, axis, ndim, shape }`（字段对齐 26-error v3.0.0 §5.1）。|
+| Recoverable error | 对所有需要运行时 axis 校验的 `sum_axis()` / `sum_axis_keepdims()` 调用，axis 越界统一返回 `XenonError::InvalidAxis { operation, axis, ndim, shape }`（字段对齐 26-error v3.2.0 §5.1）。|
 | Panic             | `i32` / `i64` 归约中的累加溢出属于不可恢复错误，必须通过 checked arithmetic panic。                                  |
 | Panic 诊断        | panic 文本至少包含 `operation`、元素类型、触发位置（如 `axis`、`output_index` 或 `element_index`）以及适用 `shape`。 |
 | 空输入语义        | 空数组 `sum()` 返回加法单位元；沿轴归约时若被归约轴长度为 `0`，结果张量对应槽位也返回加法单位元。                    |
@@ -561,7 +561,7 @@ User calls sum / sum_axis / sum_axis_keepdims
 
 | 属性     | 值                                                                                                                                                                            |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | SIMD / 并行仅在满足 `需求说明书 §28.3` 数值语义约束时启用；若实现版本无法满足该约束，**回退责任在 `dispatch.rs`**——`select_exec_path()` 在裁决阶段就不应选择该路径，而**不是**由 `reduction` 内部回退到串行 |
+| 决策     | SIMD / 并行仅在满足 `需求说明书 §28.3` 数值语义约束时启用；若实现版本无法满足该约束，**回退责任在调用方（本模块）**——reduction 在调用 `select_exec_path()` 之前就应自行裁决不进入该路径（例如直接走 Serial），而**不是**由 dispatch 或 reduction 内部根据操作语义回退到串行 |
 | 理由     | 与 09-parallel v2.0.0 决策 4（"parallel 不包含串行回退"）和 30-dispatch v1.1.0 决策 7（"select-and-enter 原子绑定"）一致；归约模块本身一旦被 dispatch 选中就忠实执行该路径 |
 | 替代方案 | 无条件按数据规模选择 SIMD 或并行                                                                                                                                              |
 | 拒绝原因 | 可能改变浮点/复数结果或 panic 时机，不满足路径一致性约束                                                                                                                      |
@@ -632,6 +632,13 @@ User calls sum / sum_axis / sum_axis_keepdims
 | 2.0.0 | 2026-05-02 |
 | 2.0.1 | 2026-05-03 |
 | 3.0.0 | 2026-05-04 |
+| 3.0.1 | 2026-05-04 | dispatch op-agnostic boundary fix: reword §6.3 "回退责任" from dispatch to caller; extend changelog. |
+
+### v3.0.1 (2026-05-04) — dispatch op-agnostic boundary fix + stale references
+
+- §5.2 代码注释、§10 错误处理表：`26-error` 引用从 v3.0.0 更新到 v3.2.0。
+- **§6.3 / §11 决策 5**：将 "回退责任在 dispatch.rs" 的表述修正为 "回退责任在调用方（本模块）"。当整数归约的 chunk-order 仲裁无法保证等价时，本模块应直接走 Serial 分支，不调用 `select_exec_path()` 或只在已确认 Parallel 合法时才调用。`dispatch.rs` 本身不感知操作语义（交叉引用 30-dispatch.md §5.5）。
+- §6.3 实现回退条款：同步修正为调用方责任。
 
 ### v3.0.0 (2026-05-04) — R8/R9 协同基线对齐
 

@@ -166,7 +166,7 @@ use crate::error::{FfiErrorCategory, FfiBackend};
 /// - `backend: FfiBackend` — closed enum: `RawParts` for generic raw-parts
 ///   FFI, `Blas` for BLAS-compatible export.
 /// - `cause: Option<Box<XenonError>>` — optional source-chain pointer
-///   per `26-error.md` v3.0.0 §5.1; the chain is exposed to callers via
+///   per `26-error.md` v3.2.0 §5.1; the chain is exposed to callers via
 ///   `std::error::Error::source()` (see `26-error.md` §5.1 `impl Error`).
 ///
 /// Example source-chain construction when an FFI boundary wraps a lower-level
@@ -1552,6 +1552,11 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | 3.0.0 | 2026-05-03 |
 | 3.0.1 | 2026-05-03 |
 | 3.0.2 | 2026-05-04 |
+| 3.0.3 | 2026-05-04 |
+
+### v3.0.3 (2026-05-04) — patch: refresh stale 26-error v3.0.0 reference to v3.2.0
+
+- §5 文档注释：`per 26-error.md` 引用从 v3.0.0 更新到 v3.2.0。
 
 ### v2.0.0 (2026-05-02) — 错误字段对齐 26-error v3.0.0
 

@@ -720,7 +720,7 @@ User calls add / unary op / comparison method
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | 广播不兼容时返回 `XenonError::BroadcastError { operation, lhs_shape, rhs_shape, attempted_target_shape, axis }`（字段对齐 26-error v3.0.0 §5.1）。参数不满足公开前提时返回 `XenonError::InvalidArgument { operation, kind: InvalidArgumentKind::* }`，按操作族选择对应封闭枚举变体。 |
+| Recoverable error | 广播不兼容时返回 `XenonError::BroadcastError { operation, lhs_shape, rhs_shape, attempted_target_shape, axis }`（字段对齐 26-error v3.2.0 §5.1）。参数不满足公开前提时返回 `XenonError::InvalidArgument { operation, kind: InvalidArgumentKind::* }`，按操作族选择对应封闭枚举变体。 |
 | Panic | 整数 `add/sub/mul/div`、标量版 `add_scalar/sub_scalar/mul_scalar/div_scalar`、`abs/neg/square` 的溢出、除零或结果不可表示均按需求触发 panic；`signum` 不新增 panic 约束。panic 信息至少包含 `operation`、`type`、`trigger`、`element_index`，并在适用时附带 `shape`。 |
 | 路径一致性 | 标量、SIMD 与并行（含 worker 内 SIMD）路径必须保持相同 shape、错误类别、NaN/复数语义；不满足前提或 SIMD admission 失败时各路径内部回退到该路径上的标量实现，不跨路径切换。 |
 | 容差边界 | 精确类（`floor` / `ceil`）结果须与标量路径逐元素一致。近似类（`sin` / `sqrt` / `exp` / `ln`）以 `需求说明书 §28.3` 为权威基线；实现细节参见 `00-coding.md §8.4`。复数结果按实部、虚部分量分别应用对应实数规则；同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。 |
@@ -838,6 +838,11 @@ SIMD 实现位于独立 backend 模块 `src/simd/`，`math/` 仅按连续性和 
 | 1.3.1 | 2026-04-16 |
 | 2.0.0 | 2026-05-02 |
 | 2.0.1 | 2026-05-03 |
+| 2.0.2 | 2026-05-04 |
+
+### v2.0.2 (2026-05-04) — patch: refresh stale 26-error v3.0.0 reference to v3.2.0
+
+- §10 错误处理表：`26-error` 引用从 v3.0.0 更新到 v3.2.0。
 
 ### v2.0.1 (2026-05-03) — Medium/Low review fixes
 

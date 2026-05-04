@@ -94,7 +94,7 @@ src/broadcast/
 | `tensor`    | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `.shape()`, `.strides()`, `.offset()`, 视图构造入口，以及从任意受支持存储模式降级到只读广播视图的入口。 |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<Other>`（public sealed trait，对外可命名；对称性见 02-dimension v1.x §5.10），`IntoDimension`（用于 `broadcast_to<E>` 接受目标 shape 的多种语法形式：`IxN` / 元组 / 数组 / `Vec<usize>` / `&[usize]`）。 |
 | `layout`    | `Strides<D>`, `LayoutFlags`, `LayoutState::BroadcastView`（广播结果的目标布局状态），以及通过 `compute_layout_flags()` 间接关联的 `LayoutState::FContiguous` / `LayoutState::NonContiguous`。 |
-| `error`     | `XenonError::BroadcastError`, `XenonError::InvalidArgument`（`InvalidArgumentKind::OperationSpecific` 用于 `broadcast_strides` 的 rank/长度前提失败），以及 `Cow<'static, str>` 用于 `operation` 字段（参见 26-error v3.0.0 §5.1）。|
+| `error`     | `XenonError::BroadcastError`, `XenonError::InvalidArgument`（`InvalidArgumentKind::OperationSpecific` 用于 `broadcast_strides` 的 rank/长度前提失败），以及 `Cow<'static, str>` 用于 `operation` 字段（参见 26-error v3.2.0 §5.1）。|
 
 ### 4.3 依赖合法性
 
@@ -171,7 +171,7 @@ where
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `can_broadcast()`     | 仅回答兼容性，不分配、不生成中间结果。                                                                                                                                   |
 | `broadcast_shape()`   | 运行时计算公共 shape；不兼容时返回 `XenonError::BroadcastError`。                                                                                                        |
-| `broadcast_strides()` | 对齐原 shape 与目标 shape，广播轴写入 `0` 步长；当 `orig_shape.len() != orig_strides.len()` 时返回 `XenonError::InvalidArgument { operation: Cow::Borrowed("broadcast_strides"), kind: InvalidArgumentKind::OperationSpecific { argument: Cow::Borrowed("orig_strides"), constraint: Cow::Borrowed("len must match orig_shape.len()") } }`（字段对齐 26-error v3.0.0 §5.1）。 |
+| `broadcast_strides()` | 对齐原 shape 与目标 shape，广播轴写入 `0` 步长；当 `orig_shape.len() != orig_strides.len()` 时返回 `XenonError::InvalidArgument { operation: Cow::Borrowed("broadcast_strides"), kind: InvalidArgumentKind::OperationSpecific { argument: Cow::Borrowed("orig_strides"), constraint: Cow::Borrowed("len must match orig_shape.len()") } }`（字段对齐 26-error v3.2.0 §5.1）。 |
 | `broadcast_to()`      | 显式广播入口；成功时返回共享底层数据的只读 `TensorView`。结果必须满足 `需求说明书 §6` 对“共享只读引用”的约束：可在多个张量实例之间共享同一底层数据，但不提供可写访问权。 |
 | `broadcast_with()`    | 面向两个张量输入的 `pub(crate)` 助手：先计算共同 shape，再分别构造两个只读广播视图。它不承担通用 shape 工具职责；仅需 shape 判定时应使用 `can_broadcast()` / `broadcast_shape()`。 |
 
@@ -180,7 +180,7 @@ where
 - **目标秩语义**：`broadcast_to()` 的目标 shape 秩决定了输出视图的维度类型；标量广播到高维时，缺失前导轴按 `1` 补齐。
 - **`IntoDimension` 说明：** `IntoDimension` 只决定目标 rank/type；逐轴长度兼容性完全由 `broadcast_shape()` / `broadcast_strides()` 在运行时检查。
 - **类型设计说明：** `broadcast_to()` 是目标 shape 主导的 API，只需目标维度类型 `E: IntoDimension`。`broadcast_with()` 是双输入 shape 合流 API，需要双向 `BroadcastDim` 一致性以保证输出维度类型的静态可推导性。`BroadcastDim` 本身是 public sealed trait，因此在这些公开签名中对外可命名。
-- **BroadcastError 字段映射：** 各 API 返回 `XenonError::BroadcastError` 时，结构化字段按以下规则填充（字段类型对齐 26-error v3.0.0 §5.1：`operation: Cow<'static, str>`，`lhs_shape` / `rhs_shape` 总是 `Vec<usize>`，`attempted_target_shape: Option<Vec<usize>>`，`axis: Option<usize>`）：
+- **BroadcastError 字段映射：** 各 API 返回 `XenonError::BroadcastError` 时，结构化字段按以下规则填充（字段类型对齐 26-error v3.2.0 §5.1：`operation: Cow<'static, str>`，`lhs_shape` / `rhs_shape` 总是 `Vec<usize>`，`attempted_target_shape: Option<Vec<usize>>`，`axis: Option<usize>`）：
 
   | API | `operation` | `lhs_shape` | `rhs_shape` | `attempted_target_shape` | `axis` |
   | --- | --- | --- | --- | --- | --- |
@@ -258,12 +258,12 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
     4. Return the computed stride vector.
 ```
 
-对广播轴写入零步长意味着该轴被逻辑扩展（或在空轴广播中收缩为 0 长度目标），但所有有效索引都回落到同一底层元素；这与 `06-layout.md` §5.11 的零步长语义保持一致。`orig_dim == 1 && target_dim == 0` 是兼容的空轴广播，输出 stride 写为 `0`，且因为目标轴长度为 0 不会产生实际元素访问。布局分类口径以 `06-layout.md §5.12` 的 `HAS_ZERO_STRIDE` 与 `LayoutState` 计算规则为权威：当 `any(stride == 0) && product(shape) > 0`（即存在零步长轴**且**张量非空）时进入 `BroadcastView`；空数组退化情形（`product(shape) == 0`）即使含 `stride == 0` 也**不**触发 `BroadcastView`，与 `06-layout.md §5.12` 严格一致。
+对广播轴写入零步长意味着该轴被逻辑扩展（或在空轴广播中收缩为 0 长度目标），但所有有效索引都回落到同一底层元素；这与 `06-layout.md` §5.11 的零步长语义保持一致。`orig_dim == 1 && target_dim == 0` 是兼容的空轴广播，输出 stride 写为 `0`，且因为目标轴长度为 0 不会产生实际元素访问。布局分类口径以 **06-layout.md §5.11**（`HAS_ZERO_STRIDE` 权威定义）为准，由 `compute_layout_flags()`（06-layout.md §5.12）执行。非空广播视图进入 `BroadcastView`；空数组退化情形不触发广播分类——详见 06-layout.md §5.11 边界情形覆盖表。
 
 - **再次广播规则：** 对已广播视图再次广播时，已有零步长轴保持为 `0`，新增广播轴也写入 `0` 步长；结果 `shape` 取"当前视图 shape"与"新目标 shape"的广播结果。 `broadcast_strides()` 的 `orig_shape` 参数始终传入当前视图的逻辑 shape（即 `.shape()` 返回值），而非某个"广播前的原始 shape"。
 
   **关于"已有零步长轴的识别"**：算法通过 `orig_strides[i] == 0` 直接识别零步长轴，而**不是**依赖 `orig_shape[i] == 1`。理由是：广播视图的当前逻辑 shape 中，原本被广播的轴长度可能已大于 1（例如 `[1] -broadcast→ [4]` 后再次广播，新视图 `orig_shape[axis] == 4` 但 `orig_strides[axis] == 0`）。算法的第 3 步分支"if original dimension == target dimension, keep the original stride"对此场景天然正确：保留原始 stride 即保留 0 步长，无需基于 shape 值判断。读者不应把 `orig_shape[i] == 1` 误认为零步长轴的识别条件——它只是"原始尚未广播的轴可被广播到更大目标"的条件，与"已存在的零步长轴"无关。
-- **布局标志重算规则：** 布局标志必须通过 `compute_layout_flags()`（见 `06-layout.md`）重算，而非直接复制源标志。广播不改变逻辑首元素指针，因此重算后 `ALIGNED` 结果与源视图一致；`F_CONTIGUOUS` 仅在不存在零步长且结果 stride 仍满足 F-order 规则时保留；**当且仅当** `any(stride == 0) && product(shape) > 0` 时设置 `HAS_ZERO_STRIDE` flag 并对应 `LayoutState::BroadcastView`，与 `06-layout.md §5.12` 严格一致——空数组退化（`product(shape) == 0`，例如 `1 → 0` 空轴广播）即使含 `stride == 0` 也**不**触发 `BroadcastView`。
+- **布局标志重算规则：** 布局标志必须通过 `compute_layout_flags()`（见 `06-layout.md`）重算，而非直接复制源标志。广播不改变逻辑首元素指针，因此重算后 `ALIGNED` 结果与源视图一致；`F_CONTIGUOUS` 仅在不存在零步长且结果 stride 仍满足 F-order 规则时保留。广播结果的 `HAS_ZERO_STRIDE` flag 与 `LayoutState` 分类按 **06-layout.md §5.11**（唯一权威）判定。非空广播视图归入 `LayoutState::BroadcastView`；空数组退化（`product(shape) == 0`）不触发，详见 06-layout.md §5.11 空张量退化规则。
 
 ### 6.4 共享只读视图构造
 
@@ -271,7 +271,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 
 **安全性论证（unchecked 视图构造）：** 若内部使用 `TensorView::new_unchecked()` 或等价未检查构造器，调用点必须先证明：1）目标 `shape` 与源 `shape` 广播兼容；2）新 `shape` / `stride` / `offset` 组合不会访问到底层 storage 可见边界之外；3）任何零步长元素都不会通过结果视图暴露为可变访问。
 
-**布局状态判定（由视图构造方负责）：** 广播视图的 `LayoutFlags` 必须通过 `compute_layout_flags()`（见 `06-layout.md`）重算。当 `broadcast_strides()` 写入了广播零步长（即 `original dimension == 1 and target dimension > 1` 的轴）**且** `product(shape) > 0`（结果非空）时，结果落入 `LayoutState::BroadcastView`。若结果存在广播零步长但 `product(shape) == 0`（例如 `[1, 0]` 广播到 `[4, 0]`），即使 `target dimension > 1` 触发了零步长写入，也**不**触发 `BroadcastView` 分类——空数组没有"被复制"的元素，广播语义对其无意义。空数组的退化零步长（dimension == 0 导致的 stride 0）同样不属于广播语义，与上述规则一致。详见 `06-layout.md §5.12` `compute_layout_flags` 的 `HAS_ZERO_STRIDE` 公式。
+**布局状态判定（由视图构造方负责）：** 广播视图的 `LayoutFlags` 必须通过 `compute_layout_flags()`（见 `06-layout.md`）重算。广播结果的布局状态分类以 **06-layout.md §5.11**（`HAS_ZERO_STRIDE` 权威定义）为准。非空广播视图（`product(shape) > 0` 且存在广播零步长轴）归入 `LayoutState::BroadcastView`；空数组退化（`product(shape) == 0`，即使存在零步长写入）不触发广播分类，详见 06-layout.md §5.11 边界情形覆盖表。
 
 ### 6.5 `BroadcastDim` 的职责边界
 
@@ -467,7 +467,7 @@ User calls broadcast_to() or broadcast_with()
 | 主题              | 内容                                                                                                                               |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | Recoverable error | 广播不兼容时统一返回 `XenonError::BroadcastError`；`broadcast_to`、`broadcast_shape`、`broadcast_with` 都必须填充结构化字段（按 §5.2 表）。`operation` 用 `Cow::Borrowed(..)`，`lhs_shape` / `rhs_shape` 总是 `Vec<usize>`，`attempted_target_shape` / `axis` 是 `Option`。|
-| 参数错误          | 当 `orig_shape.len() != orig_strides.len()` 等公开前提被破坏时，`broadcast_strides()` 返回 `XenonError::InvalidArgument { operation: Cow::Borrowed("broadcast_strides"), kind: InvalidArgumentKind::OperationSpecific { argument, constraint } }`（封闭枚举字段对齐 26-error v3.0.0 §5.1）。|
+| 参数错误          | 当 `orig_shape.len() != orig_strides.len()` 等公开前提被破坏时，`broadcast_strides()` 返回 `XenonError::InvalidArgument { operation: Cow::Borrowed("broadcast_strides"), kind: InvalidArgumentKind::OperationSpecific { argument, constraint } }`（封闭枚举字段对齐 26-error v3.2.0 §5.1）。|
 | Panic             | 不允许把 shape 不兼容隐藏为 panic；公开 API 使用 `Result` 表达失败。                                                               |
 | 语义边界          | 广播只负责显式元数据扩展，不改变元素值、不重排数据、不授予可写访问。                                                               |
 | 路径一致性        | 默认路径、后续可能启用的 SIMD/并行消费路径都必须共享同一广播规则与错误类别；广播模块自身不分裂语义分支。                           |
@@ -557,6 +557,17 @@ User calls broadcast_to() or broadcast_with()
 | 2.0.1 | 2026-05-03 |
 | 3.0.0 | 2026-05-04 |
 | 3.0.1 | 2026-05-04 |
+| 3.0.2 | 2026-05-04 |
+| 3.0.3 | 2026-05-04 |
+
+### v3.0.3 (2026-05-04) — patch: HAS_ZERO_STRIDE 权威收敛，内联公式替换为引用
+
+- §6.3 布局分类口径段、§6.3 布局标志重算规则段、§6.4 布局状态判定段：移除 `any(stride == 0) && product(shape) > 0` 等 `HAS_ZERO_STRIDE` 规则内联重述，替换为对 **06-layout.md §5.11**（唯一权威）的引用。`compute_layout_flags()`（06-layout.md §5.12）仍保留为计算入口引用。
+- 这是布局标志位权威分离（R14）的一部分；15-broadcast.md 不再作为 `HAS_ZERO_STRIDE` 规则的并行来源。
+
+### v3.0.2 (2026-05-04) — patch: refresh stale 26-error v3.0.0 references to v3.2.0
+
+- §4.2 类型级依赖表、§5.2 语义约束表/正文、§10 错误处理表：`26-error` 引用从 v3.0.0 更新到 v3.2.0。
 
 ### v3.0.1 (2026-05-04) — R8/R9 协同基线对齐
 

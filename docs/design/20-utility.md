@@ -88,7 +88,7 @@ src/util/
 | `element`   | `Element`，`OrderedCompareElement`（clip 复用，参见 `03-element.md` §5.5）       |
 | `layout`    | `is_f_contiguous()`（张量层方法参见 `07-tensor.md` §5.3，算法定义参见 `06-layout.md` §5.7） |
 | `iter`      | `iter()`, `iter_mut()`（参见 `10-iterator.md` §5）                               |
-| `error`     | `XenonError`、`InvalidArgumentKind::OperationSpecific`、`StorageKindTag`（参见 `26-error.md v3.0.0 §5.1`）|
+| `error`     | `XenonError`、`InvalidArgumentKind::OperationSpecific`、`StorageKindTag`（参见 `26-error.md v3.2.0 §5.1`）|
 
 ### 4.3 依赖合法性
 
@@ -143,7 +143,7 @@ where
     ///         constraint: Cow::Borrowed("min <= max; NaN bounds are invalid"),
     ///     },
     /// })` when `min > max` or either bound is `NaN`. The `kind` variant
-    /// follows `26-error.md v3.0.0 §5.1 InvalidArgumentKind` (closed enum).
+    /// follows `26-error.md v3.2.0 §5.1 InvalidArgumentKind` (closed enum).
     ///
     /// # Examples
     ///
@@ -187,7 +187,7 @@ where
 - `clip` 总是返回新的 owned 张量，但本文不再把"先 `zeros()` 再逐元素覆写"写成稳定实现承诺；实现可使用 `MaybeUninit` 或等价的内部未初始化 owned 缓冲区，一次写入最终值，避免无意义的零填充后再覆写。
 - `clip()` 的实现可能依赖内部未初始化构造能力（如 `uninit_like`、`iter_uninit_mut`、`assume_init` 或等价 helper）；这些内部 helper 不属于稳定公共 API。
 - `clip_inplace` 不属于 `需求说明书 §21.1` 的强制公共接口。若实现上需要原地 clamp helper，可仅作为 `src/util/clip.rs` 的内部辅助，不纳入稳定 API 承诺与测试矩阵。
-- `InvalidArgument` 的字段必须严格对齐 `26-error.md v3.0.0 §5.1` 的封闭枚举：`operation: Cow<'static, str>` + `kind: InvalidArgumentKind`。`clip` 的边界违规属于 `OperationSpecific { argument, constraint }` 子变体；不再使用旧版 `expected/actual/axis/start/end` 自由文本字段（这些字段在 v3.0.0 已被移除）。`shape` 不再作为 `InvalidArgument` 的字段携带，`InvalidArgumentKind` 变体内部按需嵌入诊断数据。
+- `InvalidArgument` 的字段必须严格对齐 `26-error.md v3.2.0 §5.1` 的封闭枚举：`operation: Cow<'static, str>` + `kind: InvalidArgumentKind`。`clip` 的边界违规属于 `OperationSpecific { argument, constraint }` 子变体；不再使用旧版 `expected/actual/axis/start/end` 自由文本字段（这些字段在 v3.0.0 已被移除）。`shape` 不再作为 `InvalidArgument` 的字段携带，`InvalidArgumentKind` 变体内部按需嵌入诊断数据。
 
 ### 5.2 fill 操作
 
@@ -628,7 +628,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 
 | 主题              | 内容                                                                                 |
 | ----------------- | ------------------------------------------------------------------------------------ |
-| Recoverable error | `clip` 在 `min > max` 或任一边界为 `NaN` 时返回 `XenonError::InvalidArgument { operation: Cow::Borrowed("clip"), kind: InvalidArgumentKind::OperationSpecific { argument, constraint } }`（字段定义见 `26-error.md v3.0.0 §5.1`）。`try_fill()` 在只读 / 共享只读 / 缺失 `StorageMut` 能力的存储上返回 `XenonError::InvalidStorageMode { operation, expected: StorageKindTag::ViewMut（或 Owned）, actual: StorageKindTag::View（或 Shared）, shape: Some(self.shape().to_vec()), conversion: None }`，其中 `expected` 表示分派期望具备的可写能力对应的模式标签。`fill()` 因 `StorageMut` 编译期约束不会进入这条错误路径。`XenonError` 是本模块唯一公开错误类型。 |
+| Recoverable error | `clip` 在 `min > max` 或任一边界为 `NaN` 时返回 `XenonError::InvalidArgument { operation: Cow::Borrowed("clip"), kind: InvalidArgumentKind::OperationSpecific { argument, constraint } }`（字段定义见 `26-error.md v3.2.0 §5.1`）。`try_fill()` 在只读 / 共享只读 / 缺失 `StorageMut` 能力的存储上返回 `XenonError::InvalidStorageMode { operation, expected: StorageKindTag::ViewMut（或 Owned）, actual: StorageKindTag::View（或 Shared）, shape: Some(self.shape().to_vec()), conversion: None }`，其中 `expected` 表示分派期望具备的可写能力对应的模式标签。`fill()` 因 `StorageMut` 编译期约束不会进入这条错误路径。`XenonError` 是本模块唯一公开错误类型。 |
 | Panic             | 公开 utility API 不定义额外 panic 语义；连续化与裁剪失败统一走显式错误或正常返回。   |
 | 路径一致性        | 连续与非连续布局都必须通过同一逻辑元素语义工作；当前无独立 SIMD / 并行分支。         |
 | 容差边界          | `clip` 对浮点数遵循 IEEE 754 比较语义；不额外引入近似容差。                          |
@@ -704,6 +704,11 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 | 2.0.0 | 2026-05-02 |
 | 3.0.0 | 2026-05-03 |
 | 3.0.1 | 2026-05-04 |
+| 3.0.2 | 2026-05-04 |
+
+### v3.0.2 (2026-05-04) — patch: refresh stale 26-error v3.0.0 references to v3.2.0
+
+- §4.2 依赖表、§5.1 doc 注释/正文、§10 错误处理表：`26-error` 引用从 v3.0.0 更新到 v3.2.0。
 
 ### v3.0.1 (2026-05-04) — R8/R9 协同基线对齐
 

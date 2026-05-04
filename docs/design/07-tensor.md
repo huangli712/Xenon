@@ -343,6 +343,34 @@ where
         self.flags.has_zero_stride()
     }
 
+    /// Returns the precise alias classification for this tensor.
+    ///
+    /// This is the **single recommended entry point** for L4/L5 modules
+    /// (FFI export, parallel chunk safety, unsafe pointer arithmetic)
+    /// to determine aliasing class. Callers SHOULD NOT manually combine
+    /// `storage_kind()`, `has_zero_stride()`, and `derived_from_view_mut()`
+    /// flags — those flag combinations are the implementation detail of
+    /// this method and are forbidden by the safety contract defined in
+    /// 25-safety.md §5.
+    ///
+    /// `AccessSemantics::SharedReadOnly` remains a 3-way summary for
+    /// general access-permission queries; `AliasClass` provides the
+    /// specific provenance needed for soundness reasoning.
+    pub fn alias_class(&self) -> AliasClass {
+        if self.storage_kind() == StorageKind::Shared {
+            AliasClass::ArcShared
+        } else if self.flags().has_zero_stride() {
+            // Per 06-layout.md §5.11: HAS_ZERO_STRIDE is only set
+            // when product(shape) > 0, so the empty-tensor edge case
+            // is already excluded.
+            AliasClass::BroadcastAlias
+        } else if self.derived_from_view_mut() {
+            AliasClass::ViewMutDerived
+        } else {
+            AliasClass::Unique
+        }
+    }
+
 }
 
 impl<S, D> TensorBase<S, D>
@@ -371,6 +399,32 @@ pub enum AccessSemantics {
     Owned,
 }
 
+/// 别名分类：`TensorBase::alias_class()` 返回的精确别名类别枚举。
+///
+/// 与 `AccessSemantics` 不同，此枚举提供精确的别名来源区分，
+/// 用于 L4/L5 模块的安全推理（如 unsafe 指针算术、并行分块安全、
+/// FFI 导出决策）。
+///
+/// `AccessSemantics::SharedReadOnly` 将三类语义不同的张量合并
+/// 为单一变体；`AliasClass` 将其拆分为独立变体，方便调用方在
+/// 需要区分别名来源时进行模式匹配，而不必手动组合
+/// `storage_kind()`、`has_zero_stride()`、`derived_from_view_mut()`
+/// 三个标志。
+///
+/// 详见 25-safety.md §5 的安全契约。
+pub enum AliasClass {
+    /// 张量独占其底层数据，无别名: 来源为 Owned 或独占 ViewMut。
+    Unique,
+    /// Arc 共享所有权: 多个 ArcTensor 实例共享底层 SharedBuf。
+    ArcShared,
+    /// 广播零步长别名: 同一物理元素被多个逻辑索引访问
+    /// (any(stride == 0) && product(shape) > 0)。
+    BroadcastAlias,
+    /// ViewMut 降级而来的只读视图: derived_from_view_mut == true
+    /// 且非广播、非 Arc。
+    ViewMutDerived,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DataLocation {
     Cpu,
@@ -389,8 +443,11 @@ pub enum DataLocation {
   3. **来源共享（ViewMut 降级而来的 `ViewRepr`）：** `storage_kind() == View && self.derived_from_view_mut`（**与零步长无关**：普通 contiguous mutable view 降级后逻辑索引 1:1 物理索引，没有地址重叠，但仍标记为"共享只读"以反映"原始独占借用已转交，再获取写访问需要重新论证")。
   三类共享在写访问安全性上的结论相同（都不能直接可写），因此合并到同一变体；但调用方若需要区分（例如内部 CoW 唯一化路径只对 `ArcRepr` 适用，BLAS / SIMD 路径需要拒绝零步长但可接受 ViewMut 降级），必须先通过 `storage_kind()` 判断底层存储类型，再由 `flags().has_zero_stride()` 区分广播视图，最后由内部 `derived_from_view_mut` 区分降级来源。`access_semantics()` 本身不暴露这一三向区分。
 - **权威约束：** 访问语义的权威查询入口是 `access_semantics()`；`storage_kind()` 只报告底层表示类型，不能替代访问语义判定。
+- **`HAS_ZERO_STRIDE` 权威约束：** `HAS_ZERO_STRIDE` 标志位的定义以 **06-layout.md §5.11** 为唯一权威（`any(stride == 0) && product(shape) > 0`）；本节仅通过 `flags().has_zero_stride()` 和 `LayoutState` 查询使用该标志，不重复定义其规则。
 - `LayoutState` 使用 `crate::layout::LayoutState`（参见 `06-layout.md §5`）；
 - 本文档不再重复定义 `FContiguous`、`NonContiguous`、`BroadcastView` 三个变体。
+
+- **`alias_class()` 规范入口：** `TensorBase::alias_class() -> AliasClass` 是 L4/L5 模块（FFI 导出、并行分块安全、unsafe 指针算术）判断别名类别的 **单一推荐入口**。L4/L5 模块 **不应** 手动组合 `storage_kind()`、`has_zero_stride()`、`derived_from_view_mut()` 三个标志——这些标志组合是本方法的实现细节，由 25-safety.md §5 的安全契约禁止在外部直接组合。`AccessSemantics::SharedReadOnly` 保留为三合一语义摘要，用于通用访问权限查询；`AliasClass` 提供具体的别名来源（Arc 共享 / 广播零步长 / ViewMut 降级 / 独占），为安全性论证提供精确依据。安全契约详见 25-safety.md §5。
 
 **三层语义模型：**
 
@@ -631,6 +688,17 @@ where
     /// listed safety contract holds, and this constructor performs no
     /// validation. Any violation is undefined behavior at the type-system
     /// level (private fields are bypassed), not a recoverable error.
+    ///
+    /// **Core unsafe constructor** — `TensorBase::new_unchecked` is the single
+    /// canonical unsafe entry point for tensor metadata assembly. All other
+    /// internal unchecked constructors MUST forward to it rather than defining
+    /// their own safety invariants for tensor layout fields. For example,
+    /// `Tensor::from_shape_vec_aligned_unchecked` (`21-type.md §5.6`) is a
+    /// thin wrapper that builds storage/strides/flags internally and then
+    /// delegates to `new_unchecked` with `offset=0` and
+    /// `derived_from_view_mut=false`. Any future internal unchecked entry MUST
+    /// also route through `new_unchecked` — no new independent unsafe
+    /// contracts are permitted for tensor metadata assembly.
     ///
     /// This helper exists so that constructor-module call sites do not write
     /// `TensorBase { storage, shape, strides, offset, flags, derived_from_view_mut }`
@@ -1778,6 +1846,26 @@ TensorBase<S, D>
 | 1.1.6 | 2026-04-16 |
 | 2.0.0 | 2026-05-02 |
 | 2.0.1 | 2026-05-03 |
+| 2.0.2 | 2026-05-04 |
+| 2.0.3 | 2026-05-04 |
+| 2.0.4 | 2026-05-04 |
+
+### 2.0.4 (2026-05-04) — patch: 指定 TensorBase::new_unchecked 为核心 unsafe 构造器
+
+- §5.6 `new_unchecked` doc comment 新增"Core unsafe constructor"段落：声明 `new_unchecked` 为所有内部 unchecked 构造器的唯一规范入口；其他内部 unchecked 构造器（如 `21-type.md §5.6` 的 `from_shape_vec_aligned_unchecked`）必须 forward 到此入口，不得定义独立的安全不变式。
+- 交叉引用 `21-type.md §5.6` 作为 thin wrapper 示例；未来新增内部 unchecked 入口也必须经过 `new_unchecked`。
+
+### 2.0.3 (2026-05-04) — patch: 引入 AliasClass + alias_class() 统一别名分类入口
+
+- §5.3 新增 `pub enum AliasClass { Unique, ArcShared, BroadcastAlias, ViewMutDerived }` 精确别名类别枚举（替代调用方手动组合 `storage_kind()` + `has_zero_stride()` + `derived_from_view_mut()` 三个标志的易错模式）。
+- §5.3 新增 `pub fn alias_class(&self) -> AliasClass` 方法，实现从存储模式、零步长标志、ViewMut 降级标志到别名类别的统一映射。
+- §5.3 新增 "`alias_class()` 规范入口" 文档条目：声明 `alias_class()` 为 L4/L5 模块判断别名类别的单一推荐入口，禁止外部手动组合三个标志；交叉引用 25-safety.md §5 的安全契约。
+- `AccessSemantics::SharedReadOnly` 保持不变（保留为三合一语义摘要）。
+
+### 2.0.2 (2026-05-04) — patch: HAS_ZERO_STRIDE 权威边界显式声明
+
+- §5.3 新增"`HAS_ZERO_STRIDE` 权威约束"条目：明确 `HAS_ZERO_STRIDE` 标志位定义以 **06-layout.md §5.11** 为唯一权威，本节仅使用该标志的查询接口而不重复定义其规则。
+- 这是布局标志位权威分离（R14）的一部分；07-tensor.md 作为 `derived_from_view_mut` 的权威源，同时显式声明不重复定义 HA_ZERO_STRIDE 规则。
 
 ### 2.0.1
 

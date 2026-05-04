@@ -25,7 +25,7 @@
 
 ### 1.2 协同基线
 
-本文档 v2.0.2 的 doc comment、doctest、README、CHANGELOG 与 examples 示例必须以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`03-element.md v1.4.0`（`ElementType` 在 element 模块；新增 `Element::ELEMENT_TYPE_NAME: &'static str`）、`04-complex.md v2.0.2`、`17-indexing.md v3.0.2`、`18-construction.md v3.0.1`、`19-overload.md v2.0.0`、`21-type.md v2.1.1`、`23-ffi.md v3.0.2`、`24-workspace.md v3.0.1`、`25-safety.md v2.0.1`、`26-error.md v3.2.0`（`TypeConversion` 等错误字段类型为 `&'static str`）、`28-tests.md v2.0.1`、`30-dispatch.md v2.0.1`。示例代码中的 API 形态、错误字段、索引语法、运算符返回类型、类型转换语义、workspace 借用形式和线程安全说明均不得重新定义这些契约。
+本文档 v2.0.3 的 doc comment、doctest、README、CHANGELOG 与 examples 示例必须以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`03-element.md v1.4.0`（`ElementType` 在 element 模块；新增 `Element::ELEMENT_TYPE_NAME: &'static str`）、`04-complex.md v2.0.2`、`17-indexing.md v3.0.2`、`18-construction.md v3.0.1`、`19-overload.md v2.0.0`、`21-type.md v2.1.1`、`23-ffi.md v3.0.2`、`24-workspace.md v3.0.1`、`25-safety.md v2.0.1`、`26-error.md v3.2.0`（`TypeConversion` 等错误字段类型为 `&'static str`）、`28-tests.md v2.0.1`、`30-dispatch.md v2.0.1`。示例代码中的 API 形态、错误字段、索引语法、运算符返回类型、类型转换语义、workspace 借用形式和线程安全说明均不得重新定义这些契约。
 
 ### 1.3 设计原则
 
@@ -634,14 +634,18 @@ pub fn sum(&self) -> A { ... }
 
 #### 5.11.1 验证项目
 
-| 检查项                   | 命令                                                                                                                       | 失败条件                                                          |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| Gate 1：rustdoc 文档门禁 | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`                                                            | 任何 missing docs / broken intra-doc links / 其他 rustdoc warning |
-| Gate 2：文档节完整性门禁 | `cargo clippy --all-features -- -D clippy::missing_errors_doc -D clippy::missing_panics_doc -D clippy::missing_safety_doc` | 缺少 `# Errors` / `# Panics` / `# Safety` 文档节                  |
-| Gate 3：Doctest          | `cargo test --doc --all-features`                                                                                          | 任何失败                                                          |
-| Gate 4：示例验证         | `cargo build --examples --all-features` + 关键示例运行命令（见 §5.6.1 定义；当前为 `basic` / `broadcasting` / `workspace`）| 任何失败                                                          |
+| 检查项                                   | 命令                                                                                                                       | 失败条件                                                          |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Gate 1：rustdoc 文档门禁                 | `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`                                                            | 任何 missing docs / broken intra-doc links / 其他 rustdoc warning |
+| Gate 2：文档节完整性门禁（补充文档 lint） | `cargo clippy --all-features -- -D clippy::missing_errors_doc -D clippy::missing_panics_doc -D clippy::missing_safety_doc` | 缺少 `# Errors` / `# Panics` / `# Safety` 文档节                  |
+| Gate 3：Doctest                          | `cargo test --doc --all-features`                                                                                          | 任何失败                                                          |
+| Gate 4：示例验证                         | `cargo build --examples --all-features` + 关键示例运行命令（见 §5.6.1 定义；当前为 `basic` / `broadcasting` / `workspace`）| 任何失败                                                          |
+| Gate 5：Clippy 完整门禁                  | `cargo clippy --all-features -- -D warnings`                                                                               | 任何 clippy warning                                               |
+| Gate 6：编译警告门禁                     | `RUSTFLAGS="-D warnings" cargo check --all-features`                                                                       | 任何编译器 warning                                                |
 
 Gate 4 当前涵盖 `basic` / `broadcasting` / `workspace` 三个核心示例；完整示例覆盖清单见 §5.3。随着项目成熟，Gate 4 范围可逐步扩展至 §5.3 表中的所有 14 个 API 族。
+
+Gate 1、Gate 5、Gate 6 为 `00-coding.md §7.1` 规定的三项 CI 硬门禁。Gate 5（完整 clippy）覆盖所有 clippy lint，远不止 Gate 2 的三条文档专项 lint；Gate 2 作为补充文档节完整性校验继续保留，但不替代完整 clippy 扫描。Gate 6 确保常规编译警告在所有 feature 组合下均提升为错误。
 
 #### 5.11.2 CI 配置与 Feature 维度验证矩阵
 
@@ -1135,6 +1139,22 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | 2.0.0 | 2026-05-03 |
 | 2.0.1 | 2026-05-03 |
 | 2.0.2 | 2026-05-03 |
+| 2.0.3 | 2026-05-04 |
+
+### v2.0.3 (2026-05-04) — CI 硬门禁对齐 00-coding §7.1
+
+> 本版本将 `00-coding.md §7.1` 的三项 CI 硬门禁落实为 §5.11.1 的独立 Gate。非破坏性追加。
+
+**变更**：
+
+- §5.11.1 新增 Gate 5（`cargo clippy --all-features -- -D warnings`，完整 clippy 硬门禁）和 Gate 6（`RUSTFLAGS="-D warnings" cargo check --all-features`，编译警告硬门禁）。
+- Gate 2 重命名为"文档节完整性门禁（补充文档 lint）"以区别于覆盖全体 lint 的 Gate 5。
+- 新增交叉引用段落说明 Gate 1/5/6 为 `00-coding.md §7.1` 的三项 CI 硬门禁。
+
+**未变更**：
+
+- Gate 1–4 原有命令、命名（除 Gate 2 补充说明外）和失败条件均未改变。
+- §5.4.2 协同审查清单、§5.5 Lint 规则、§5.11.2 CI 配置说明等未变动。
 
 ### v2.0.2 (2026-05-03) — ElementType 字段类型协同 + 文档残留清理 + Sealed-trait doc 约定
 

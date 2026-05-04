@@ -736,7 +736,7 @@ User calls zeros / from_shape_vec / eye
 
 | 主题              | 内容                                                                     |
 | ----------------- | ------------------------------------------------------------------------ |
-| Recoverable error | 构造路径返回两类 `XenonError`，字段严格对齐 `26-error.md` v3.0.0 §5.1：(1) `InvalidShape` —— 元素总数溢出由 `dim.checked_size()` 直接返回 `kind: InvalidShapeKind::ProductOverflow`（参见 `02-dimension.md`）；shape 与数据长度不匹配由构造方法自身构造 `kind: InvalidShapeKind::ElementCountMismatch { expected, actual }`，`offending_dim` 在当前路径设为 `None`，`operation` 使用 `Cow::Borrowed("from_shape_vec" \| "from_shape_slice" \| ..)`；(2) F-order 步长计算溢出由 `compute_f_strides` 通过 `?` 直接传播，错误类别以 `06-layout.md` §5.6 为准（`InvalidLayout { reason: InvalidLayoutReason::ShapeProductOverflow }` 等），构造路径不再二次转换为 `InvalidShape`。 |
+| Recoverable error | 构造路径返回两类 `XenonError`，字段严格对齐 `26-error.md` v3.2.0 §5.1：(1) `InvalidShape` —— 元素总数溢出由 `dim.checked_size()` 直接返回 `kind: InvalidShapeKind::ProductOverflow`（参见 `02-dimension.md`）；shape 与数据长度不匹配由构造方法自身构造 `kind: InvalidShapeKind::ElementCountMismatch { expected, actual }`，`offending_dim` 在当前路径设为 `None`，`operation` 使用 `Cow::Borrowed("from_shape_vec" \| "from_shape_slice" \| ..)`；(2) F-order 步长计算溢出由 `compute_f_strides` 通过 `?` 直接传播，错误类别以 `06-layout.md` §5.6 为准（`InvalidLayout { reason: InvalidLayoutReason::ShapeProductOverflow }` 等），构造路径不再二次转换为 `InvalidShape`。 |
 | Panic             | 公开构造 API 不定义额外 panic 语义；失败统一走 `Result`。                |
 | 路径一致性        | 所有构造路径都必须产出 canonical F-order owned 张量，并保持一致的 shape / strides / flags 语义。 |
 | 容差边界          | 不适用。                                                                 |
@@ -827,6 +827,11 @@ User calls zeros / from_shape_vec / eye
 | 2.0.1 | 2026-05-03 |
 | 3.0.0 | 2026-05-03 |
 | 3.0.1 | 2026-05-04 |
+| 3.0.2 | 2026-05-04 |
+
+### v3.0.2 (2026-05-04) — patch: refresh stale 26-error v3.0.0 reference to v3.2.0
+
+- §10 错误处理表：`26-error.md` 引用从 v3.0.0 更新到 v3.2.0。
 
 ### v3.0.1 (2026-05-04) — R8/R9 协同基线对齐
 

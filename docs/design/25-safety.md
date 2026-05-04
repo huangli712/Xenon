@@ -144,6 +144,8 @@ parallel feature implementation paths/
 | 逐元素算术 / 归约 / 内积中的整数溢出 | 运行时（checked arithmetic） | panic（不可恢复）   |
 | 元数据 / 索引偏移 / FFI 校验类 checked arithmetic 失败 | 运行时（checked arithmetic） | 按 `26-error.md` 返回 `Result` |
 
+**别名分类规范入口：** 凡是需要区分别名类别的模块（如 unsafe 指针算术、并行分块安全、FFI 导出决策），**必须** 使用 `TensorBase::alias_class()`（定义于 `07-tensor.md §5.3`）作为**规范入口**。`alias_class()` 返回 `AliasClass` 枚举，将 `AccessSemantics::SharedReadOnly` 的三合一语义摘要拆分为 `ArcShared` / `BroadcastAlias` / `ViewMutDerived` / `Unique` 四种精确类别。在该入口外部直接组合 `storage_kind()`、`has_zero_stride()`、`derived_from_view_mut()` 三个标志由本安全契约禁止——这些标志组合是 `alias_class()` 的实现细节，外部直接组合会引入遗漏边缘情形（如空张量广播条件 `product(shape) > 0`）的风险。`AliasClass` 枚举与 `alias_class()` 方法的权威定义见 `07-tensor.md §5.3`；`HAS_ZERO_STRIDE` 边界条件（`any(stride == 0) && product(shape) > 0`）以 `06-layout.md §5.11` 为准。
+
 ### 5.4 当前受支持元素类型的线程安全传播
 
 当前所有受支持元素类型（`i32/i64/f32/f64`、`Complex<f32/f64>`、`bool`）均满足 `Send + Sync`，其线程安全属性随 §5.1 规则自动传播至各存储模式。
@@ -452,10 +454,10 @@ fn parallel_iteration(tensor: &Tensor2<f64>) {
 
 | `pub(crate) unsafe fn` | Owner 文档 | 契约要点 |
 |:--|:--|:--|
-| `TensorBase::<Owned<A>, D>::new_unchecked(storage, shape, strides, offset, flags, derived_from_view_mut)` | `07-tensor.md §5.6` | shape/strides/flags/offset 互一致；flags 由 `compute_layout_flags` 产出；逻辑访问范围在 storage 内；shape product 已 overflow-check；`derived_from_view_mut` 对 Owned 必须 `false` |
-| `TensorBase::<S, D>::new_unchecked(storage, shape, strides, offset, flags, derived_from_view_mut) where S: RawStorage` | `07-tensor.md §5.6` (Generic) | 同上；适用于 View / ViewMut / Arc 路径；`derived_from_view_mut` 仅在 `ViewMutRepr` 降级 / 切片自带降级标记的源场景为 `true` |
+| `TensorBase::<Owned<A>, D>::new_unchecked(storage, shape, strides, offset, flags, derived_from_view_mut)` | `07-tensor.md §5.6` | **核心 unsafe 构造器**——所有其他内部 unchecked 构造器必须 forward 到此处；shape/strides/flags/offset 互一致；flags 由 `compute_layout_flags` 产出；逻辑访问范围在 storage 内；shape product 已 overflow-check；`derived_from_view_mut` 对 Owned 必须 `false` |
+| `TensorBase::<S, D>::new_unchecked(storage, shape, strides, offset, flags, derived_from_view_mut) where S: RawStorage` | `07-tensor.md §5.6` (Generic) | 同上（Generic 形式）；适用于 View / ViewMut / Arc 路径；`derived_from_view_mut` 仅在 `ViewMutRepr` 降级 / 切片自带降级标记的源场景为 `true` |
 | `TensorBase::<Owned<A>, D>::from_raw_vec_unchecked(data: Vec<A>, shape: D)` | `07-tensor.md §5.6` | `data.as_ptr()` 满足 `A` 对齐；`shape.checked_size()` 已验证；`data.len()` 等于该值；F-order 元数据合法 |
-| `Tensor::from_shape_vec_aligned_unchecked(shape: D, data: Vec<A>)` | `21-type.md §5.6` (cast/to_owned helper) | `data.len() == product(shape)`；shape 已验证；F-order 元数据合法；不进行任何 `Result` 校验 |
+| `Tensor::from_shape_vec_aligned_unchecked(shape: D, data: Vec<A>)` | `21-type.md §5.6` (cast/to_owned helper) | `TensorBase::new_unchecked` 的**薄封装**（本条指数录存在供完整性索引；实质性安全契约已 forward 到 07-tensor.md §5.6）；`data.len() == product(shape)`；shape 已验证；无独立 unsafe 不变式 |
 
 #### 5.12.2 `pub` 公开 unsafe API 清单（5 项）
 
@@ -826,6 +828,21 @@ workspace 的线程安全规则（`!Send + !Sync` 实现选择及理由，参见
 | 1.0.8 | 2026-04-15 |
 | 1.0.9 | 2026-04-15 |
 | 2.0.0 | 2026-05-02 |
+| 2.0.1 | 2026-05-03 |
+| 2.0.2 | 2026-05-04 |
+| 2.0.3 | 2026-05-04 |
+
+### v2.0.3 (2026-05-04) — patch: unsafe-fn 索引反映内部构造器收敛
+
+- §5.12.1 `pub(crate)` unsafe fn 清单更新：
+  - `TensorBase::new_unchecked`（Owned + Generic 双形式）条目标注为"核心 unsafe 构造器"——所有其他内部 unchecked 构造器必须 forward 到此处。
+  - `Tensor::from_shape_vec_aligned_unchecked` 条目标注为"薄封装"——本条指数录供完整性索引，实质性安全契约已 forward 到 07-tensor.md §5.6。
+
+### v2.0.2 (2026-05-04) — patch: 禁止手动组合标志；规范 alias_class() 为别名分类唯一入口
+
+- §5.3 新增"别名分类规范入口"段：凡是需要区分别名类别的模块（unsafe 指针算术、并行分块安全、FFI 导出决策），**必须** 使用 `TensorBase::alias_class()`（`07-tensor.md §5.3`）作为规范入口，返回 `AliasClass` 枚举（`ArcShared` / `BroadcastAlias` / `ViewMutDerived` / `Unique`）。在该入口外部直接组合 `storage_kind()`、`has_zero_stride()`、`derived_from_view_mut()` 三个标志由本安全契约禁止。
+- 交叉引用 `07-tensor.md §5.3` 的 `AliasClass` 枚举与 `alias_class()` 方法定义；`HAS_ZERO_STRIDE` 边界条件以 `06-layout.md §5.11` 为准。
+- `AccessSemantics::SharedReadOnly` 保持不变（不拆分，无 SemVer 破坏）。
 
 ### v2.0.0 (2026-05-02) — 协同与一致性更新（非破坏性）
 

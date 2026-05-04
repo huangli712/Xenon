@@ -15,7 +15,7 @@
 
 ### 1.0 协同基线
 
-本文档 v2.0.1 以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`02-dimension.md` v1.2.6、`03-element.md` v1.4.0、`04-complex.md` v2.0.2、`05-storage.md` v2.0.1、`06-layout.md` v1.3.1、`07-tensor.md` v2.0.1、`08-simd.md` v2.0.1、`09-parallel.md` v2.0.1、`10-iterator.md` v1.2.6、`11-math.md` v2.0.1、`12-matrix.md` v2.0.1、`13-reduction.md` v3.0.0、`14-set.md` v2.0.1、`15-broadcast.md` v3.0.1、`16-shape.md` v2.0.1、`17-indexing.md` v3.0.2、`18-construction.md` v3.0.1、`19-overload.md` v2.0.0、`20-utility.md` v3.0.1、`21-type.md` v2.1.1、`22-output.md` v2.0.1、`23-ffi.md` v3.0.2、`24-workspace.md` v3.0.1、`25-safety.md` v2.0.1、`26-error.md` v3.2.0、`27-benchmark.md` v2.0.1、`30-dispatch.md` v2.0.1。
+本文档 v2.0.2 以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`02-dimension.md` v1.2.6、`03-element.md` v1.4.0、`04-complex.md` v2.0.2、`05-storage.md` v2.0.1、`06-layout.md` v1.3.1、`07-tensor.md` v2.0.1、`08-simd.md` v2.0.1、`09-parallel.md` v2.0.1、`10-iterator.md` v1.2.6、`11-math.md` v2.0.1、`12-matrix.md` v2.0.1、`13-reduction.md` v3.0.0、`14-set.md` v2.0.1、`15-broadcast.md` v3.0.1、`16-shape.md` v2.0.1、`17-indexing.md` v3.0.2、`18-construction.md` v3.0.1、`19-overload.md` v2.0.0、`20-utility.md` v3.0.1、`21-type.md` v2.1.1、`22-output.md` v2.0.1、`23-ffi.md` v3.0.2、`24-workspace.md` v3.0.1、`25-safety.md` v2.0.1、`26-error.md` v3.2.0、`27-benchmark.md` v2.0.1、`30-dispatch.md` v2.0.1。
 
 ### 1.1 职责边界
 
@@ -1393,6 +1393,19 @@ test:
 
     - name: Doc tests
       run: cargo test --doc ${{ matrix.features }}
+
+    # CI hard gates per 00-coding.md §7.1:
+    # Gate 1: rustdoc warnings as errors (docs completeness)
+    - name: Rustdoc warnings (hard gate, ref 00-coding.md §7.1)
+      run: RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
+
+    # Gate 5: full clippy as hard gate (all lints, not just doc-specific)
+    - name: Clippy warnings (hard gate, ref 00-coding.md §7.1)
+      run: cargo clippy --all-features -- -D warnings
+
+    # Gate 6: compile warnings as errors (catches unused code, etc.)
+    - name: Compile warnings (hard gate, ref 00-coding.md §7.1)
+      run: RUSTFLAGS="-D warnings" cargo check --all-features
 ```
 
 ### 8.3 Feature gate / 配置测试
@@ -1557,6 +1570,21 @@ Test files
 | 1.3.1 | 2026-04-16 |
 | 2.0.0 | 2026-05-03 |
 | 2.0.1 | 2026-05-03 |
+| 2.0.2 | 2026-05-04 |
+
+### v2.0.2 (2026-05-04) — CI 硬门禁对齐 00-coding §7.1
+
+> 本版本在 §8.2 CI 矩阵中新增三项硬门禁（rustdoc / clippy / cargo check），对齐 `00-coding.md §7.1`。非破坏性追加。
+
+**变更**：
+
+- §8.2 CI 矩阵新增三个 step：`RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`（Gate 1）、`cargo clippy --all-features -- -D warnings`（Gate 5）、`RUSTFLAGS="-D warnings" cargo check --all-features`（Gate 6），均运行于每个 PR 矩阵。
+- 新增注释引用 `00-coding.md §7.1` 作为硬门禁依据。
+
+**未变更**：
+
+- 原有 `Unit + Integration tests` 与 `Doc tests` step 命令、matrix feature 维度均保留不变。
+- Priority / 测试函数列表 / 属性测试 / compile-fail / 边界测试等未变动。
 
 ### v2.0.0 修订记录
 

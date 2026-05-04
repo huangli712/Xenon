@@ -228,7 +228,7 @@ where
 
 1. **indices 长度 == in_dim.ndim()**：切片描述符的元素数量必须精确匹配输入维度数。失败 → `InvalidArgumentKind::OperationSpecific { argument: "indices", constraint: "len must equal in_dim.ndim()" }`。
 2. **out_dim.ndim() == count_of(Range)**：每个 `Range` 元素保留一个输出轴，每个 `Index(usize)` 折叠一个轴；输出维度数必须等于 `Range` 元素的计数。失败 → `InvalidArgumentKind::OperationSpecific { argument: "out_dim", constraint: "ndim must equal Range count in indices" }`。
-3. **Range 内部一致性**：每个 `Range { start, end }` 必须满足 `start <= end`。失败 → `InvalidArgumentKind::RangeStartAfterEnd { axis, start, end }`（参见 26-error v3.0.0 §5.1）。
+3. **Range 内部一致性**：每个 `Range { start, end }` 必须满足 `start <= end`。失败 → `InvalidArgumentKind::RangeStartAfterEnd { axis, start, end }`（参见 26-error v3.2.0 §5.1）。
 
 `TensorBase::slice(info)` 在切片应用时执行的边界校验（决策 3 详见 §11）：
 
@@ -388,23 +388,18 @@ TensorBase::slice(info):
 切片后的语义约束如下：
 
 - 结果须保持原有逻辑元素顺序。
-- `Index(usize)` 会折叠对应轴并以 checked arithmetic 累加 offset；任一 checked_mul / checked_add 溢出返回 `XenonError::InvalidLayout { reason: AccessRangeExceedsStorage, .. }`（参见 26-error v3.0.0 §5.1 `InvalidLayoutReason`）。
+- `Index(usize)` 会折叠对应轴并以 checked arithmetic 累加 offset；任一 checked_mul / checked_add 溢出返回 `XenonError::InvalidLayout { reason: AccessRangeExceedsStorage, .. }`（参见 26-error v3.2.0 §5.1 `InvalidLayoutReason`）。
 - `Range` 会按起止边界更新 shape；对应轴的 stride 值保持不变。
 - 切片结果与源张量共享底层数据时，仅可落在只读或共享只读范围内，不提供共享可写视图。
 - **存储表示绝对降级：** 范围索引/切片产出的张量始终承载 `ViewRepr<'a, A>`，与 `15-broadcast.md §6.4` 的广播降级规则、`16-shape.md §5.3` 的转置降级规则保持一致（统一规则见 `05-storage.md v2.0.0 §5.11.1`）。无论源张量是 `Owned<A>`、`ArcRepr<A>`、`ViewRepr<'_, A>` 还是 `ViewMutRepr<'_, A>`，切片产出的视图均为 `ViewRepr<'a, A>`（生命周期绑定源张量），不保留 `ArcRepr` 的引用计数共享所有权语义。
-- **`derived_from_view_mut` 传播规则（v3.0.2）：** 切片结果的私有内部字段 `derived_from_view_mut: bool`（参见 `07-tensor.md §5.1` / §5.3）按以下规则设置：
-  1. 源 `storage_kind() == StorageKind::ViewMut` → 切片结果设置 `derived_from_view_mut = true`（即使切片本身没有零步长轴）；
-  2. 源 `storage_kind() == StorageKind::View` 且源 `derived_from_view_mut == true` → 切片结果继承 `derived_from_view_mut = true`；
-  3. 其他所有情形（源为 `Owned` / `Shared` / `View` 且未带降级标记） → 切片结果 `derived_from_view_mut = false`。
-  
-  `access_semantics()` 的判定**不仅看零步长**，必须按 `07-tensor.md §5.3` 的完整 5-rule 表（结合 `storage_kind()` + `layout_flags().has_zero_stride()` + `derived_from_view_mut`）。如果只看零步长，从可写视图切片得到的普通 contiguous 只读视图会被误报为 `ReadOnly`，违反"由 ViewMut 降级而来的共享只读视图"的语义边界。
+- **`derived_from_view_mut` 传播规则：** 切片操作按 **07-tensor.md §5.1 / §5.3**（唯一权威）的规则设置 `derived_from_view_mut` 字段：从 `ViewMutRepr` 源或其已带标记的 `ViewRepr` 继承该标记；其他情形设为 `false`。完整 3 条规则与 `access_semantics()` 5-rule 判定表定义见 07-tensor.md §5.1 字段文档与 §5.3。
 - 布局状态只能重新落在 `FContiguous`、`NonContiguous`、`BroadcastView` 三种之一。
 
 **offset 单位：** 本模块中所有 `offset` 字段一律是元素单位（element-count），不是字节单位。指针算术 `self.as_ptr().add(offset)` 对 `*const A` 调用 `add(n: usize)` 时，自动按 `size_of::<A>()` 字节换算，由 Rust 标准库 pointer 类型保证；本模块直接传 element offset 即可。该 `add` 调用必须位于已完成 shape-aware bounds 校验与 checked offset 算术验证之后的 unsafe block 中。
 
 **SliceInfo 校验职责回顾：** `SliceInfo::new` 只做结构性校验（rank 一致、output 维度匹配 Range 计数、Range start≤end）；shape 边界校验（Range.end <= shape[axis]、Index < shape[axis]）由 `TensorBase::slice(info)` 在切片应用时完成，理由详见 §5.1 和决策 3。
 
-切片布局标志规则：切片结果的 layout flags 根据新的 `shape` / `stride` 组合重新计算（调用 06-layout v1.3 `compute_layout_flags::<A, I>`）。若源视图带有 `BroadcastView`，且切片后仍存在任一零步长轴**并且** `product(shape) > 0`，则继续保留 `BroadcastView` flag；若切片导致 `product(shape) == 0`（空数组退化），即使存在 stride == 0 也**不**保留 `BroadcastView`，与 `15-broadcast.md §6.3` / `06-layout.md §5.12` 严格一致；其余情形按普通 F-order / non-contiguous 规则重分类。
+切片布局标志规则：切片结果的 layout flags 通过 `compute_layout_flags()`（06-layout.md §5.12）重新计算。切片后的 `HAS_ZERO_STRIDE` flag 与 `LayoutState::BroadcastView` 分类以 **06-layout.md §5.11**（唯一权威）为准：非空切片保留零步长轴时归入 `BroadcastView`；空切片（`product(shape) == 0`）即使存在 stride == 0 也不触发广播分类，详见 06-layout.md §5.11 边界情形覆盖表。
 
 **切片 offset 计算与空切片规则（v3.0.2）：** 切片应用时**必须**严格区分两个 offset 概念：
 
@@ -602,7 +597,7 @@ User calls tensor.slice(info)
 
 | 主题              | 说明                                                                                                                                                                 |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | `try_at()` / `get()` / `slice()` 在 rank 不匹配、轴非法、越界时返回 `XenonError`。其中索引长度与张量 `ndim` 不匹配时，错误类型固定为 `XenonError::DimensionMismatch { operation, expected, actual }`；多维索引越界使用 `XenonError::IndexOutOfBounds { operation, attempted_index, axis, shape }`；`slice()` 的 Range 越界使用 `InvalidArgument { kind: InvalidArgumentKind::RangeOutOfBounds { axis, axis_len, start, end } }`；`SliceInfo::new` 的 Range start>end 使用 `InvalidArgument { kind: InvalidArgumentKind::RangeStartAfterEnd { axis, start, end } }`；offset 算术溢出使用 `InvalidLayout { reason: InvalidLayoutReason::AccessRangeExceedsStorage, .. }`。所有字段对齐 26-error v3.0.0 §5.1 封闭枚举。 |
+| Recoverable error | `try_at()` / `get()` / `slice()` 在 rank 不匹配、轴非法、越界时返回 `XenonError`。其中索引长度与张量 `ndim` 不匹配时，错误类型固定为 `XenonError::DimensionMismatch { operation, expected, actual }`；多维索引越界使用 `XenonError::IndexOutOfBounds { operation, attempted_index, axis, shape }`；`slice()` 的 Range 越界使用 `InvalidArgument { kind: InvalidArgumentKind::RangeOutOfBounds { axis, axis_len, start, end } }`；`SliceInfo::new` 的 Range start>end 使用 `InvalidArgument { kind: InvalidArgumentKind::RangeStartAfterEnd { axis, start, end } }`；offset 算术溢出使用 `InvalidLayout { reason: InvalidLayoutReason::AccessRangeExceedsStorage, .. }`。所有字段对齐 26-error v3.2.0 §5.1 封闭枚举。 |
 | Trait-bound 边界  | `try_at_mut()` / `get_mut()` / `get_unchecked_mut()` 仅在 `S: StorageMut` 前提成立时存在；不再为“只读存储上的可写索引”设计运行时 `InvalidStorageMode` 分支           |
 | Panic             | `std::ops::Index` 与 `std::ops::IndexMut` 不在 Xenon 稳定 API 中实现（见 §3 范围约束）。规范安全主路径是返回 `Result` 的 checked API                                                                                                                  |
 | 路径一致性        | 对同一合法输入，checked 与 unchecked 路径必须给出同一偏移和同一逻辑结果；unsafe 只省略检查                                                                           |
@@ -698,6 +693,18 @@ User calls tensor.slice(info)
 | 3.0.0 | 2026-05-03 |
 | 3.0.1 | 2026-05-04 |
 | 3.0.2 | 2026-05-04 |
+| 3.0.3 | 2026-05-04 |
+| 3.0.4 | 2026-05-04 |
+
+### v3.0.4 (2026-05-04) — patch: HAS_ZERO_STRIDE + derived_from_view_mut 权威收敛，内联规则替换为引用
+
+- §6.3 切片布局标志规则段：移除 `any(stride == 0) && product(shape) > 0` 等 `HAS_ZERO_STRIDE` 规则内联重述，替换为对 **06-layout.md §5.11**（唯一权威）的引用；同步移除对 `15-broadcast.md §6.3` 的并行来源引用。
+- §6.3 `derived_from_view_mut` 传播规则段：移除内联 3-rule 传播表，替换为对 **07-tensor.md §5.1 / §5.3**（唯一权威）的引用加一行的切片归纳。
+- 这是布局标志位权威分离（R14）的一部分；17-indexing.md 不再作为 `HAS_ZERO_STRIDE` 或 `derived_from_view_mut` 规则的并行来源。
+
+### v3.0.3 (2026-05-04) — patch: refresh stale 26-error v3.0.0 references to v3.2.0
+
+- §5.1 正文、§6.3 正文、§10 错误处理表：`26-error` 引用从 v3.0.0 更新到 v3.2.0。
 
 ### v3.0.2 (2026-05-04) — R11/R12 切片 SAFETY 强化（slice_delta + empty dangling）
 

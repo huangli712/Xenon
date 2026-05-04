@@ -531,12 +531,35 @@ pub fn is_aligned(ptr: *const u8) -> bool {
 
 **Strides 归属约定**： `Strides<D>` 由 layout 模块定义并拥有；`dimension` 只提供 `checked_size()` 和无符号 F-order 形状推导，绝不保存 stride 或 logical-first pointer 语义。`tensor` 持有 `Strides<D>` 实例并把它交给 layout 计算标志位。
 
-### 5.11 零步长语义
+### 5.11 零步长语义（`HAS_ZERO_STRIDE` 权威定义）
 
-零步长需要区分两类来源：
+`HAS_ZERO_STRIDE` 标志位的形式化定义为：
 
-- **广播零步长**：由广播语义引入；所有索引访问同一物理元素，布局分类为 `BroadcastView`。
-- **空数组退化零步长**：仅因 `shape` 含零轴而出现；它不表示广播，也不必取消 `FContiguous`。
+> **`HAS_ZERO_STRIDE := any(stride == 0) && product(shape) > 0`**
+
+即：当且仅当至少存在一个 stride 为 0 **且** 张量非空（`product(shape) > 0`）时，此标志位为 `true`。
+
+该定义区分两类零步长来源：
+
+- **广播零步长**：由广播语义引入；张量非空且至少一个轴 stride 为 0，所有逻辑索引沿该轴访问同一物理元素，布局分类为 `BroadcastView`。
+- **空数组退化零步长**：仅因 `shape` 含零轴（`product(shape) == 0`）而出现 stride == 0；此情形**不**设置 `HAS_ZERO_STRIDE`，也不取消 `FContiguous` 标志位，空张量仍可归为 `LayoutState::FContiguous`。
+
+**空张量退化规则**：当 `product(shape) == 0` 时，无论 strides 中是否包含 0，`HAS_ZERO_STRIDE` 一律为 `false`，`LayoutState::BroadcastView` 也**永不**适用于空张量。理由：空集没有"被复制"的元素，广播语义（"多个逻辑索引指向同一物理元素"）对其无意义。
+
+**边界情形覆盖：**
+
+| 情形 | `product(shape) > 0` | `any(stride == 0)` | `HAS_ZERO_STRIDE` | `LayoutState` |
+| --- | :---: | :---: | :---: | --- |
+| 普通 F-order 张量 `[3,4]` strides `[1,3]` | ✓ | ✗ | `false` | `FContiguous` |
+| 广播视图 `[3,4]` strides `[1,0]` (axis-1 广播) | ✓ | ✓ | `true` | `BroadcastView` |
+| 空张量 `[0,3]` strides `[0,3]`（退化零步长） | ✗ | ✓ | `false` | `FContiguous`（若满足 F-order）|
+| 空张量 `[0,3]` strides `[1,0]`（混合退化） | ✗ | ✓ | `false` | `FContiguous` 或 `NonContiguous`，但**永不** `BroadcastView` |
+| 标量 `[]`（0-D） | ✓ (`product == 1`) | ✗（无轴） | `false` | `FContiguous` |
+| `[1,0]` 广播到 `[4,0]` 空轴广播输出 `[4,0]` strides `[0,X]` | ✗ | ✓ | `false` | `FContiguous` / `NonContiguous`，**永不** `BroadcastView` |
+
+> **注**：标量 `()` 的 `product(shape)` 按数学约定为 **1**（空 product = 1），因此 `product(shape) > 0` 成立，但 0-D 张量无轴，`any(stride == 0)` 对空 iterator 为 `false`。
+
+`compute_layout_flags()`（§5.12）是实现此定义的唯一权威计算入口；`LayoutState::classify()`（§5.3）基于已计算好的 `HAS_ZERO_STRIDE` 位进行分类，不需重复检查 `product(shape) > 0`。
 
 广播零步长示例：
 
@@ -1035,6 +1058,13 @@ Upper layers create or transform tensor metadata
 | 1.2.6 | 2026-04-16 |
 | 1.3.0 | 2026-05-02 |
 | 1.3.1 | 2026-05-03 |
+| 1.3.2 | 2026-05-04 |
+
+### 1.3.2 (2026-05-04) — patch: §5.11 零步长语义权威定义自包含化
+
+- §5.11 零步长语义扩展为完全自包含的权威定义：新增 `HAS_ZERO_STRIDE := any(stride == 0) && product(shape) > 0` 形式化公式、空张量退化规则说明、边界情形覆盖表（普通 F-order / 广播视图 / 空张量退化零步长 / 混合退化 / 标量 / 空轴广播输出六种情形），以及标量 `product(shape)` 按空 product = 1 约定的注释。
+- 旧内容（两类来源分类、广播零步长示例）保留并整合。
+- 本版是布局标志位权威分离（R14）的 §5.11 自包含化步骤；不涉及公开签名或契约变更。
 
 ### 1.3.1
 

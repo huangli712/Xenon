@@ -359,7 +359,7 @@ impl Dimension for Ix3 {
             acc = acc.checked_mul(dim).ok_or(XenonError::InvalidShape {
                 operation: Cow::Borrowed("Dimension::checked_size"),
                 shape: dims.into(),
-                // Per 26-error v3.0.0 §5.1: ProductOverflow is a unit
+                // Per 26-error v3.2.0 §5.1: ProductOverflow is a unit
                 // variant; no expected/actual fields are encoded because
                 // overflowed products cannot be expressed in `usize`.
                 kind: InvalidShapeKind::ProductOverflow,
@@ -463,7 +463,7 @@ impl Dimension for IxDyn {
             acc = acc.checked_mul(dim).ok_or(XenonError::InvalidShape {
                 operation: Cow::Borrowed("Dimension::checked_size"),
                 shape: self.dims.clone(),
-                // Per 26-error v3.0.0 §5.1: ProductOverflow is a unit
+                // Per 26-error v3.2.0 §5.1: ProductOverflow is a unit
                 // variant; no expected/actual fields are encoded because
                 // overflowed products cannot be expressed in `usize`.
                 kind: InvalidShapeKind::ProductOverflow,
@@ -1278,6 +1278,11 @@ User provides shape / axis / dimension input
 | 1.2.4 | 2026-04-15 |
 | 1.2.5 | 2026-04-16 |
 | 1.2.6 | 2026-05-03 |
+| 1.2.7 | 2026-05-04 |
+
+### v1.2.7 (2026-05-04) — patch: refresh stale 26-error v3.0.0 references to v3.2.0
+
+- §5 伪代码注释：`// Per 26-error` 引用从 v3.0.0 更新到 v3.2.0。
 
 ### v1.2.6 (2026-05-03) — Medium/Low 文档修复
 

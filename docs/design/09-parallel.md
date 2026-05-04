@@ -245,7 +245,7 @@ where
 - `par_dot()` 在类型层面接受任意 `Dimension` 输入，以便与更通用的上层张量调用路径对接；但其语义契约仍限定为一维向量内积，因此实现必须在运行时检查 `lhs.ndim() == 1`、`rhs.ndim() == 1`，并在进入并行归约前再次确认两侧逻辑长度一致。
 - 复数内积采用共轭线性定义：`result = sum(conj(lhs_i) * rhs_i)`，与 `08-simd.md` §6.6 中复数 dot kernel 的共轭线性方向完全一致。
 - `Numeric` trait 定义于 `03-element.md` §5.2，提供通用数值运算能力标记（`Element + Add + Sub + Mul + Div + Neg + conjugate`）。
-- 整数 `par_sum` / `par_dot` 在并行路径中，每个分片独立执行 checked 算术；若任一分片检测到溢出，panic 将在并行收集完成后传播。诊断仲裁必须按逻辑 chunk 索引确定：始终报告首个失败 chunk（按逻辑索引顺序）。**若实现无法保证这一确定性，`dispatch.rs` 必须在 `select_exec_path()` 的 `ExecPath::Parallel` 分支前提中预先排除该输入**（即由 dispatch 不选择并行，而非 parallel 内部回退；这与决策 4 “parallel 不包含串行回退” 一致）。
+- 整数 `par_sum` / `par_dot` 在并行路径中，每个分片独立执行 checked 算术；若任一分片检测到溢出，panic 将在并行收集完成后传播。诊断仲裁必须按逻辑 chunk 索引确定：始终报告首个失败 chunk（按逻辑索引顺序）。**若实现无法保证这一确定性，调用方模块（如 reduction / matrix）必须自行避免进入 Parallel 分支**（例如：将该操作的 len 视为低于阈值、无条件走 Serial 分支、或对该 op 完全不调用 `select_exec_path()`）。`dispatch.rs` 本身是 op-agnostic 的——其 `select_exec_path()` 签名不含元素类型或操作类型参数，因此无法也不应在内部根据操作语义做路由裁决（见 30-dispatch.md §5.5）。
 - 闭包 bound 统一要求 `Send + Sync`：`F: Fn(...) -> ... + Send + Sync`、`ID: Fn() -> A + Send + Sync + Clone`。`Send` 是 rayon worker 跨线程移动闭包数据的必要前提；仅 `Sync` 不足以覆盖 closure 在某些 by-value 工作单元中的所有权迁移场景。
 
 ### 5.6 并行迭代入口
@@ -393,7 +393,7 @@ where
     F: Fn(&A, &B) -> Result<C, XenonError> + Send + Sync,
 {
     // checked_size overflow → InvalidShape with the closed-enum kind defined
-    // in 26-error.md v3.0.0 §5.1 (InvalidShapeKind::ProductOverflow).
+    // in 26-error.md v3.2.0 §5.1 (InvalidShapeKind::ProductOverflow).
     let total = output_dim.checked_size().map_err(|_| XenonError::InvalidShape {
         operation: Cow::Borrowed("par_zip_map"),
         shape: output_dim.slice().to_vec(),
@@ -431,7 +431,7 @@ where
 - 广播 chunk 映射草图：优先按 `output_dim` 的外轴边界生成块状多维 tile，使 chunk 在输出空间内保持可直接切片的矩形子域；若某些退化形状无法形成理想矩形 tile，则实现可退化为“逻辑区间 + 逐元素广播投影”的内部执行形式，而不是要求把任意线性区间整体重建成单个 broadcast sub-view。对输出维中的广播轴，输入侧固定复用同一逻辑坐标；对非广播轴，chunk 保持对应 tile 的区间跨度。实现不得为广播轴做物理展开或额外分配。
 - `par_zip_map` 仅包含并行执行逻辑；若调用发生，表示 `dispatch.rs` 已确认当前输入适合走并行路径。
 - `par_zip_map()` 作为内部并行入口，假定广播兼容性已由调用方验证，不再额外定义单独的 checked 变体，也不依赖 `BroadcastError`。此为内部前置条件。违反时视为内部 bug，可触发 debug assert，但不得破坏内存安全或对外错误模型。release 模式下行为保持语义定义，不引入未指定行为。panic 与 `Err` 传播语义参见 §6.7 与 §10。
-- **唯一仍由本函数返回的可恢复错误**是 `output_dim.checked_size()` 的整型溢出，归类为 `XenonError::InvalidShape { operation: "par_zip_map", shape, kind: InvalidShapeKind::ProductOverflow, offending_dim: None }`（封闭枚举字段，参见 26-error.md v3.0.0 §5.1）。
+- **唯一仍由本函数返回的可恢复错误**是 `output_dim.checked_size()` 的整型溢出，归类为 `XenonError::InvalidShape { operation: "par_zip_map", shape, kind: InvalidShapeKind::ProductOverflow, offending_dim: None }`（封闭枚举字段，参见 26-error.md v3.2.0 §5.1）。
 
 ### 6.4 轴向归约并行方案
 
@@ -450,7 +450,7 @@ where
 - 对归约和内积，若调用方选择并行路径，则 `parallel/` 必须提供固定 chunking 与固定 merge tree，保证同平台、同配置、同路径下结果确定；整数 `sum` / `dot` 的失败诊断还必须按逻辑 chunk 索引顺序仲裁，始终选择首个失败 chunk。
 - 并行归约采用固定分块策略：chunk 大小由 `compute_safe_chunks(n, num_workers)` 确定（定义于 `src/parallel/mod.rs`，见 01-architecture.md §5.2a），worker 按固定索引范围分配，merge 按 worker 索引顺序合并。
 - 若执行对象为整数 `sum` / `dot`，每个 worker 必须在本分片内执行 `checked_add` / `checked_mul` + `checked_add`；任一 worker 发现溢出时必须传播 panic，不得转写为 `XenonError`。失败诊断固定按逻辑 chunk 索引顺序仲裁。
-- **回退归属**：若某实现选择不能保证 “首个失败 chunk 仲裁” 这一不变量，则该实现版本的 `dispatch.rs` 必须在 `select_exec_path()` 阶段就拒绝把整数 `sum` / `dot` 路由到 `Parallel`（例如：将整数归约的并行阈值置为 `usize::MAX`）。这条职责落在 `dispatch.rs` 而**不是** `parallel`，与决策 4（“parallel 不包含串行回退”）保持一致。`parallel` 一旦被调用，就永远不会自行切换到串行路径。
+- **回退归属**：若某实现选择不能保证 “首个失败 chunk 仲裁” 这一不变量，则**调用方模块（reduction / matrix）必须在调用 `select_exec_path()` 之前自行 gate**——例如不将整数归约路由到 Parallel 路径（直接走 Serial、或将 len 视为低于并行阈值、或完全不调用 `select_exec_path()`）。`dispatch.rs` 本身是 op-agnostic 的（其 `select_exec_path()` 不感知元素类型或操作类型，见 30-dispatch.md §5.5 "Op-agnostic boundary"），因此无法也不应在内部根据操作语义做路由裁决。`parallel` 一旦被调用，就永远不会自行切换到串行路径。
 
 ### 6.6 Checked 映射与错误传播
 
@@ -703,7 +703,7 @@ math / reduction / matrix call dispatch entry
 
 | 主题              | 说明                                                                                                            |
 | ----------------- | --------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | `par_dot()` 的长度不兼容返回 `XenonError::ShapeMismatch { operation: "par_dot", left_shape, right_shape }`；`par_dot()` 的非一维输入返回 `XenonError::InvalidArgument { operation: "par_dot", kind: InvalidArgumentKind::OperationSpecific { argument: "ndim", constraint: "rank == 1" } }`；`par_zip_map()` 的元素总数溢出返回 `InvalidShape { operation: "par_zip_map", shape, kind: InvalidShapeKind::ProductOverflow, offending_dim: None }`。所有字段对齐 26-error.md v3.0.0 §5.1 的封闭枚举字段。 |
+| Recoverable error | `par_dot()` 的长度不兼容返回 `XenonError::ShapeMismatch { operation: "par_dot", left_shape, right_shape }`；`par_dot()` 的非一维输入返回 `XenonError::InvalidArgument { operation: "par_dot", kind: InvalidArgumentKind::OperationSpecific { argument: "ndim", constraint: "rank == 1" } }`；`par_zip_map()` 的元素总数溢出返回 `InvalidShape { operation: "par_zip_map", shape, kind: InvalidShapeKind::ProductOverflow, offending_dim: None }`。所有字段对齐 26-error.md v3.2.0 §5.1 的封闭枚举字段。 |
 | Panic             | 归约中的整数溢出仍属于不可恢复错误，必须 panic，而不是包装为 `XenonError`                                       |
 | 路径一致性        | 一旦进入 `parallel/`，并行路径必须返回与调用方串行基线相同形状、相同错误类别，以及满足同一数值语义约束的结果（路径选择见 §6.1）  |
 | 容差边界          | 浮点与复数若存在执行路径相关的已知舍入差异，只能落在 `需求说明书 §28.3` 与 `需求说明书 §28.5` 允许且已文档化的范围内；以 `需求说明书 §28.3` 为权威基线，`00-coding.md §8` 仅作为实现参考。|
@@ -713,7 +713,7 @@ math / reduction / matrix call dispatch entry
 - 并行模块本身不新增专属错误枚举；公开错误必须复用 `26-error.md` 中的统一模型。
 - 自定义线程池类参数若存在非法值，由 `dispatch::ParallelExecStrategy::new()` 在构造期统一返回 `InvalidArgument`；`parallel` 模块在收到合法策略实例后不再重复返回该错误（参见 §5.4 与 30-dispatch.md §5.3、决策 8）。
 - 当前 `par_zip_map()` 不承担广播兼容性校验，也不新增广播专属错误构造。
-- panic 与 `Err(XenonError)` 都不得被吞掉；并行执行中发生的错误须至少传播一个。仅对整数 `sum` / `dot`，失败诊断必须额外满足“按逻辑 chunk 索引顺序固定选择首个失败 chunk”；做不到则由 `dispatch.rs` 不选择 `Parallel` 路径。
+- panic 与 `Err(XenonError)` 都不得被吞掉；并行执行中发生的错误须至少传播一个。仅对整数 `sum` / `dot`，失败诊断必须额外满足"按逻辑 chunk 索引顺序固定选择首个失败 chunk"；做不到则由调用方模块不进入 `Parallel` 路径（通过自行 gating，见 30-dispatch.md §5.5）。
 - 路径裁决语义见 §6.1 与决策 4、决策 6。
 
 ### 10.1 浮点/复数并行归约容差
@@ -863,6 +863,12 @@ math / reduction / matrix call dispatch entry
 | 1.4.0 | 2026-04-28 |
 | 2.0.0 | 2026-05-02 |
 | 2.0.1 | 2026-05-03 |
+| 2.0.2 | 2026-05-04 |
+
+### v2.0.2 (2026-05-04) — dispatch op-agnostic boundary fix + stale references
+
+- §6.3 伪代码注释、§6.3 正文、§10 错误处理表：`26-error` 引用从 v3.0.0 更新到 v3.2.0。
+- **§5.5 / §6.5 / §10**：将 "dispatch.rs 必须拒绝路由整数 sum/dot 到 Parallel" 的表述修正为调用方模块（reduction / matrix）自行 gate。`dispatch.rs` 本身是 op-agnostic 的——其 `select_exec_path()` 签名不含元素类型或操作类型参数，无法在内部根据操作语义做路由裁决（交叉引用 30-dispatch.md §5.5）。调用方负责在调用 `select_exec_path()` 之前判断并行是否合法，对不合法的 op 直接走 Serial 或跳过调用。
 
 ### v2.0.1 (2026-05-03)
 

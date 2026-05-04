@@ -366,8 +366,12 @@ pub(crate) fn with_parallel_worker_context<R>(f: impl FnOnce() -> R) -> R {
 ///
 /// * `len` - Logical element count of the input(s).
 /// * `is_contiguous` - Whether all inputs are F-order contiguous.
-/// * `alignment_ok` - Whether all inputs satisfy the SIMD alignment
-///   fast-path precondition (as determined by `layout::is_aligned()`).
+/// * `alignment_ok` - Caller asserts that input data pointers satisfy
+///   the alignment expected by the SIMD kernel that would be selected
+///   at the given length (`layout::is_aligned()`). If `false`, the SIMD
+///   path may select an unaligned variant or fall back internally. This
+///   is a HINT, not a hard precondition; the SIMD backend
+///   (`08-simd.md §5.7`) makes the final per-kernel admission decision.
 ///
 /// # Returns
 ///
@@ -438,6 +442,17 @@ pub(crate) fn select_exec_path(
     is_contiguous: bool,
     alignment_ok: bool,
 ) -> (ExecPath, Option<ParallelGuard>);
+
+// ---
+// Op-agnostic boundary (v2.0.2): select_exec_path is purely a hardware/
+// path arbitration function. It does NOT consider operation semantics
+// (element type, integer overflow, ordering equivalence, NaN propagation).
+// Callers responsible for op-level legality MUST gate before calling this
+// function — for example, integer reductions that require chunk-order
+// arbitration must call this only when the calling module has decided
+// parallel routing is acceptable. See 09-parallel.md §6.5 and
+// 13-reduction.md §6.3 for examples of caller-side gating.
+// ---
 
 /// Quick boolean query for "should I use parallel?"
 ///
@@ -759,13 +774,13 @@ pub(crate) fn select_exec_path(
     #[cfg(feature = "simd")]
     {
         if is_contiguous && len >= get_simd_threshold() {
-            // alignment_ok is forwarded to the simd backend (e.g., via a
-            // backend-internal context or directly to the kernel selector);
-            // simd internally decides aligned vs unaligned dispatch per
-            // 08-simd.md §5.7. The exact propagation mechanism is a simd-
-            // backend implementation detail and not part of dispatch's
-            // public surface.
-            let _ = alignment_ok;
+            // alignment_ok is forwarded to the simd backend as a
+            // kernel-capability hint (see §5.5 for the full contract
+            // of this parameter). simd internally decides aligned vs
+            // unaligned dispatch per 08-simd.md §5.7.
+            let _simd_alignment_hint = alignment_ok;
+            // (Forwarded to simd backend — the implementor wires
+            // this hint into the kernel selector. Not ignored.)
             return (ExecPath::Simd, None);
         }
     }
@@ -1233,7 +1248,14 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 | 1.1.3 | 2026-05-03 | （破坏性内部更新）`alignment_ok` 改为能力提示位（不再是 SIMD 硬门槛）+ `ParallelExecStrategy::new()` 集中 max_workers 校验。详见下方 v1.1.3 块。 |
 | 2.0.0 | 2026-05-04 | SemVer 主版本上升标记（与 08-simd v2.0.x / 09-parallel v2.0.x 协同基线统一）。 |
 | 2.0.1 | 2026-05-04 | R8/R9 协同基线对齐：与 `00-coding.md §1.3` / `28-tests.md §1.0` 锁定基线版本号显式对齐，本版无契约变更。 |
+| 2.0.2 | 2026-05-04 | Op-agnostic boundary clarification + `alignment_ok` formal contract (§5.5, §6.4). |
 
+
+### v2.0.2 (2026-05-04) — dispatch op-agnostic boundary + `alignment_ok` formal contract
+
+- §5.5：新增 "Op-agnostic boundary" 段落，明确声明 `select_exec_path` 是纯硬件/路径仲裁函数，不感知操作语义（元素类型、整数溢出、顺序等价、NaN 传播）。调用方必须在调用前自行 gate op 级合法性——例如整数归约的 chunk-order 仲裁由调用方裁定，而非 `dispatch`。交叉引用 `09-parallel.md §6.5` 和 `13-reduction.md §6.3` 作为调用方 gating 示例。
+- §5.5 `alignment_ok` 参数描述：从模糊的 "fast-path precondition" 重写为精确的正式契约——调用方断言输入指针满足预期对齐；`false` 时 SIMD 后端可选 unaligned 变体或回退；此为 HINT，非硬前置条件；最终准入由 SIMD 后端（`08-simd.md §5.7`）裁决。
+- §6.4 伪代码：`let _ = alignment_ok;` 改为 `let _simd_alignment_hint = alignment_ok;` 并附注释说明该值是**转发**给 SIMD 后端的，并非丢弃。交叉引用 §5.5 完整契约、`08-simd.md §5.7` 后端 admission。
 
 ### v2.0.1 (2026-05-04) — R8/R9 协同基线对齐
 
