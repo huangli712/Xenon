@@ -317,7 +317,7 @@ assert_eq!(iter.len(), 12);
 // Bad - manual index traversal (poor performance, repeated bounds checks, loses unified iteration semantics)
 for i in 0..tensor.shape()[0] {
     for j in 0..tensor.shape()[1] {
-        let _ = tensor.try_at((i, j))?;  // not recommended; see 17-indexing v3.0.1 决策 7
+        let _ = tensor.try_at((i, j))?;  // not recommended; see 17-indexing v3.0.2 决策 7
     }
 }
 

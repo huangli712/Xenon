@@ -437,8 +437,18 @@ CI 在每次 PR 重新生成 C 头并对比预期 schema；schema 差异需 revi
 ///   constitute a cross-language stable ABI promise across all targets.
 /// - `TensorExport` is the read-only export form and uses `*const A`.
 ///   `TensorExportMut` is the writable export form and uses `*mut A`.
+///
+/// **Visibility & file location (R13 D-01):** Generic descriptors are
+/// `pub(crate)` Rust-only borrowing evidence and live in
+/// `src/ffi/private.rs` (see §3 file layout + §5.3.bis cbindgen gate #2:
+/// generic descriptors are physically isolated and excluded from cbindgen
+/// emission set). They are NOT part of any C ABI surface; the C-visible
+/// raw descriptors are `TensorExportRaw` / `TensorExportMutRaw` (defined
+/// above). `#[doc(hidden)]` keeps them out of public rustdoc as well.
+// File: src/ffi/private.rs
+#[doc(hidden)]
 #[repr(C)]
-pub struct TensorExport<'a, A> {
+pub(crate) struct TensorExport<'a, A> {
     /// Typed pointer to the storage base pointer.
     ///
     /// For non-empty tensors this points at the underlying storage base.
@@ -481,8 +491,14 @@ pub struct TensorExport<'a, A> {
 /// Field semantics are identical to `TensorExport` unless noted below.
 /// The only differences are: `data` is `*mut A` (writable), and
 /// `_marker` uses `PhantomData<&'a mut A>` (exclusive borrow).
+///
+/// **Visibility & file location (R13 D-01):** Same `pub(crate)` Rust-only
+/// scope and `src/ffi/private.rs` location as `TensorExport`. Not part of
+/// any C ABI surface; C consumers see `TensorExportMutRaw` instead.
+// File: src/ffi/private.rs
+#[doc(hidden)]
 #[repr(C)]
-pub struct TensorExportMut<'a, A> {
+pub(crate) struct TensorExportMut<'a, A> {
     /// Typed mutable pointer to the storage base pointer.
     /// Same semantics as `TensorExport::data`, but writable.
     pub data: *mut A,
@@ -1466,7 +1482,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | `std` only  | 当前版本仅讨论 `std` 环境下的 FFI 接口；FFI 指针操作依赖 `std` 提供的分配器与布局保证                                                                                            |
 | MSRV        | Rust 1.85+                                                                                                                                                                       |
 | 单 crate    | FFI 模块位于 `src/ffi/`，不引入额外 crate，保持 Xenon 单 crate 结构                                                                                                              |
-| SemVer      | `TensorExport<'a, A>`、`TensorExportMut<'a, A>`、`OwnedRawParts<A, D>` 的字段布局和 `#[repr(C)]` 表示均为公开契约，变更须遵循 SemVer；新增公共 FFI 方法或枚举变体属于 minor 变更 |
+| SemVer      | C ABI 稳定契约**仅**覆盖 C-visible raw descriptors：`TensorExportRaw` / `TensorExportMutRaw` 的字段布局与 `#[repr(C)]` 表示，以及 `crate::ffi::ElementType` 的显式 discriminants（参见 `03-element.md §5.1.1`）。Generic descriptors `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 是 `pub(crate)` Rust-only 借用证据（位于 `src/ffi/private.rs`，参见 §3 / §5.3.bis），**不**进入 C ABI 稳定契约面，可在不破坏 SemVer 的前提下变更字段。`OwnedRawParts<A, D>` 是 owned 解构/重建的 Rust API 表面，字段布局变更须遵循 SemVer。新增公共 FFI 方法或 raw descriptor 变体属于 minor 变更 |
 | 最小依赖    | 无新增第三方依赖，符合 `需求说明书 §1.3` 对最小依赖的限制                                                                                                                        |
 | 索引类型    | 逻辑索引统一使用 `usize`；BLAS/LAPACK 整数参数在边界处按目标后端转换为 `i32` 或 `i64`                                                                                            |
 | stride 范围 | 当前版本只接受非负 stride；负步长导入不在范围内                                                                                                                                  |

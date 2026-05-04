@@ -398,7 +398,10 @@ TensorBase::slice(info):
 
 **切片 offset 计算与空切片规则（v3.0.2）：** 切片应用时**必须**严格区分两个 offset 概念：
 
-1. `slice_delta`（element 单位）：本次切片在每个轴上累加得到的相对偏移，由 `TensorBase::slice(info)` 在 bounds-check 通过后计算：`slice_delta = Σ src_strides[i] * fixed_index[i]`。
+1. `slice_delta`（element 单位）：本次切片在每个轴上累加得到的相对偏移，由 `TensorBase::slice(info)` 在 bounds-check 通过后计算。`Index` 与 `Range { start, end }` **两类元素都贡献** `slice_delta`（见上方步骤 2a / 2b）：
+   - `Index(idx)` 折轴：`slice_delta += idx * src_strides[i]`；
+   - `Range { start, end }`：`slice_delta += start * src_strides[i]`（`start == 0` 时贡献为 0）；保留 `stride[i]`，更新输出 shape[axis] = `end - start`。
+   形式化：`slice_delta = Σᵢ contribution_i * src_strides[i]`，其中 `contribution_i` 对 `Index(idx)` 取 `idx`、对 `Range { start, end }` 取 `start`。所有累加都使用 `checked_add` / `checked_mul` 防溢出。
 2. `new_offset = src.offset + slice_delta`：写回切片结果 `TensorBase::offset` 字段的绝对偏移（仍以 storage base 为基准）。
 
 `compute_layout_flags::<A, I>` 需要的是**逻辑首元素指针**（non-derefenceable 即可），不是绝对 offset；因此必须按结果 `len` 分支：
@@ -686,7 +689,7 @@ User calls tensor.slice(info)
 | 3.0.1 | 2026-05-04 |
 | 3.0.2 | 2026-05-04 |
 
-### v3.0.2 (2026-05-04) — R11 切片 SAFETY 强化（slice_delta + empty dangling）
+### v3.0.2 (2026-05-04) — R11/R12 切片 SAFETY 强化（slice_delta + empty dangling）
 
 - §6.3 / §6.4：明确切片 offset 计算规则。`slice_delta`（element 单位的相对偏移）与 `new_offset = src.offset + slice_delta`（写回 `TensorBase.offset` 字段的绝对偏移）必须**严格区分**。`compute_layout_flags` 需要逻辑首元素指针（non-dereferenceable 即可）：空切片（`product(new_shape) == 0`）走 `NonNull::<A>::dangling().as_ptr()`，与 `07-tensor.md §6.2` 空张量规则一致；非空切片只 add `slice_delta`（**不**add `new_offset`，否则 double-apply offset）。§6.3 主算法步骤 3 同步重写。
 - §6.4 表行同步更新为 `src.as_ptr().add(slice_delta)`（仅当 `result_len > 0`）。

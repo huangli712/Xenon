@@ -857,7 +857,7 @@ User calls format!("{}", tensor) / format!("{:?}", tensor)
 
 ### v2.0.0 (2026-05-02) — `dtype_name` 改用 `Element::ELEMENT_TYPE` 静态分流
 
-> 协同 21-type v2.0.0 决策 4 与 26-error v3.0.0 `TypeConversion` 字段（`source_type/target_type: ElementType`）的统一规则：禁用 `core::any::TypeId` 进行类型分发，所有元素类型分流走 `Element::ELEMENT_TYPE` 编译期常量。
+> 协同 21-type v2.0.0 决策 4 与 26-error v3.0.0 `TypeConversion` 字段（v2.0.0 当时 `source_type/target_type: ElementType`；**自 26-error v3.2.0 起改为 `&'static str`**，值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供，详见现行 §6.2 与 26-error v3.2.0 §5.1）的统一规则：禁用 `core::any::TypeId` 进行类型分发，所有元素类型分流走 `Element::ELEMENT_TYPE` 编译期常量。
 
 **契约更新**：
 

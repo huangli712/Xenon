@@ -464,8 +464,16 @@ pub enum InvalidShapeKind {
     ProductOverflow,
     /// Provided element count does not equal `shape.checked_size()`.
     ElementCountMismatch { expected: usize, actual: usize },
-    /// Provided shape rank exceeds the static maximum (`Ix0..=Ix6`)
-    /// when constructing a static-rank tensor from a dynamic source.
+    /// Provided constructor input rank exceeds the static-rank support
+    /// policy (`Ix0..=Ix6`) on a non-`try_from_dyn` path — for example,
+    /// when an internal `IntoDimension` / `Tensor::from_shape_vec` pipeline
+    /// receives a shape vector with `provided_ndim > 6`.
+    ///
+    /// **Excludes** `Dimension::try_from_dyn(IxDyn(...))` rank-mismatch
+    /// path, which returns `XenonError::DimensionMismatch` (see
+    /// `02-dimension.md §5.4` + `§8.3` line 1011 in this doc); that path
+    /// is a dimension-conversion mismatch, not a constructor rank-policy
+    /// violation.
     RankExceedsStaticMax { provided_ndim: usize, max_ndim: usize },
 }
 

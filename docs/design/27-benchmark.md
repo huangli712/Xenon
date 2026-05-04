@@ -13,7 +13,7 @@
 
 本文档是"性能观测规范"，用于约定 benchmark 采样口径、趋势记录与可选回归检测；它不是完整质量门禁规范。功能正确性、错误语义、并发/UB 边界等质量要求统一由 `28-tests.md` 承担。
 
-**协同基线（v2.0.1）**：本文档以下游已修文档的契约为准——18-construction v3.0.1（`from_shape_vec` 返回 `Result<Self, XenonError>` 含 `InvalidShape{kind: ElementCountMismatch}`）、19-overload v2.0.0（`std::ops::Add` 等运算符 `Output = Result<Tensor, XenonError>`，benchmark 中可用 `(&a + &b).unwrap()`）、17-indexing v3.0.1（`SliceInfo::new` 仅做结构性校验，shape 边界校验下沉到 `TensorBase::slice`）、08-simd v2.0.1、09-parallel v2.0.1、13-reduction v3.0.0、12-matrix v2.0.1、26-error v3.2.0。
+**协同基线（v2.0.1）**：本文档以下游已修文档的契约为准——18-construction v3.0.1（`from_shape_vec` 返回 `Result<Self, XenonError>` 含 `InvalidShape{kind: ElementCountMismatch}`）、19-overload v2.0.0（`std::ops::Add` 等运算符 `Output = Result<Tensor, XenonError>`，benchmark 中可用 `(&a + &b).unwrap()`）、17-indexing v3.0.2（`SliceInfo::new` 仅做结构性校验，shape 边界校验下沉到 `TensorBase::slice`）、08-simd v2.0.1、09-parallel v2.0.1、13-reduction v3.0.0、12-matrix v2.0.1、26-error v3.2.0。
 
 ### 1.1 职责边界
 
@@ -196,18 +196,18 @@ pub fn sequential_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 
 /// Generate a truly non-contiguous 1D view from an F-order 2D owner.
 /// NOTE: The slice construction below uses pseudo-code; actual API shape
-/// must follow `17-indexing.md v3.0.1` frozen interface at implementation time.
+/// must follow `17-indexing.md v3.0.2` frozen interface at implementation time.
 pub struct StridedFixture1D {
     pub owner: Tensor2<f64>,
 }
 
 impl StridedFixture1D {
     /// Returns a non-contiguous view by taking a row slice of the F-order 2D owner.
-    /// Actual slicing API follows `17-indexing.md v3.0.1`; the expression below
+    /// Actual slicing API follows `17-indexing.md v3.0.2`; the expression below
     /// is illustrative and must be adapted to the final slice syntax at
     /// implementation. `SliceInfo::new` performs structural validation only;
     /// shape-aware bounds checking happens inside `TensorBase::slice` (see
-    /// 17-indexing v3.0.1 §5.1 and decision 3 / B9.a).
+    /// 17-indexing v3.0.2 §5.1 and decision 3 / B9.a).
     pub fn view(&self) -> TensorView1<'_, f64> {
         // Illustrative: take row 1 from the F-order 2D owner, yielding a
         // non-contiguous 1D view with stride == ncols (not 1).

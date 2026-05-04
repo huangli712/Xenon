@@ -18,7 +18,7 @@ dispatch 模块是 Xenon 张量库内部执行路径的统一裁决层。它负�
 | 职责       | 包含                                                                 |
 | ---------- | -------------------------------------------------------------------- |
 | 路径裁决   | `ExecPath` 三路仲裁（Serial / Simd / Parallel），通过 `select_exec_path()` 统一入口 |
-| 阈值管理   | 并行阈值与 SIMD 阈值的编译期默认值、内部运行时覆写与重置接口           |
+| 阈值管理   | 并行阈值的编译期默认值（`PARALLEL_THRESHOLD`）+ 内部运行时覆写与重置接口（`set_parallel_threshold` / `reset_parallel_threshold`）；SIMD 通用最小阈值（`SIMD_THRESHOLD`）只读不可覆写，per-op SIMD admission 阈值由 `simd/` 后端管理（参见 §5.6 / §6.3 + `08-simd.md §5.6` "条件实现，默认标量回退"） |
 | 嵌套防护   | `ParallelGuard` / `ParallelContext` 的 thread-local RAII 保护，防止库内部二次并行 |
 | 策略参数   | `ParallelExecStrategy` 定义（chunk_size、max_workers），供 parallel/ 后端消费 |
 | 快捷查询   | `should_parallelize()` 布尔查询，供仅关注串行/并行二选的调用方使用    |

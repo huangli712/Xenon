@@ -55,7 +55,7 @@ Xenon 是一个纯 Rust 实现的 N 维数组（张量）库，定位为科学�
 - `05-storage.md` v2.0.1、`06-layout.md` v1.3.1、`07-tensor.md` v2.0.1：存储模式（含 `StorageShared` sealed unsafe marker）、F-order 布局状态与张量核心类型。
 - `08-simd.md` v2.0.1、`09-parallel.md` v2.0.1、`30-dispatch.md` v2.0.1：执行路径、`ParallelGuard`、worker 内 SIMD 与阈值语义；`alignment_ok` 仅作 simd 后端能力提示位。
 - `11-math.md` v2.0.1、`12-matrix.md` v2.0.1、`13-reduction.md` v3.0.0、`14-set.md` v2.0.1、`15-broadcast.md` v3.0.1：数学、矩阵、归约（仅 sum）、集合（仅 unique）、广播零步长分类与 F-order 顺序契约。
-- `16-shape.md` v2.0.1、`17-indexing.md` v3.0.1、`18-construction.md` v3.0.1、`19-overload.md` v2.0.0、`20-utility.md` v3.0.1、`21-type.md` v2.1.1、`22-output.md` v2.0.1、`23-ffi.md` v3.0.2（`pub use crate::element::ElementType`，路径稳定，ABI 稳定）、`24-workspace.md` v3.0.1、`25-safety.md` v2.0.1、`27-benchmark.md` v2.0.1、`28-tests.md` v2.0.1、`29-documentation.md` v2.0.2：shape、索引、构造、运算符、utility、类型转换、输出、FFI、workspace、线程安全、benchmark、测试与文档边界。
+- `16-shape.md` v2.0.1、`17-indexing.md` v3.0.2、`18-construction.md` v3.0.1、`19-overload.md` v2.0.0、`20-utility.md` v3.0.1、`21-type.md` v2.1.1、`22-output.md` v2.0.1、`23-ffi.md` v3.0.2（`pub use crate::element::ElementType`，路径稳定，ABI 稳定）、`24-workspace.md` v3.0.1、`25-safety.md` v2.0.1、`27-benchmark.md` v2.0.1、`28-tests.md` v2.0.1、`29-documentation.md` v2.0.2：shape、索引、构造、运算符、utility、类型转换、输出、FFI、workspace、线程安全、benchmark、测试与文档边界。
 
 ### 1.6 全局布局不变量
 

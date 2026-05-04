@@ -25,7 +25,7 @@
 
 ### 1.2 协同基线
 
-本文档 v2.0.2 的 doc comment、doctest、README、CHANGELOG 与 examples 示例必须以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`03-element.md v1.4.0`（`ElementType` 在 element 模块；新增 `Element::ELEMENT_TYPE_NAME: &'static str`）、`04-complex.md v2.0.2`、`17-indexing.md v3.0.1`、`18-construction.md v3.0.1`、`19-overload.md v2.0.0`、`21-type.md v2.1.1`、`23-ffi.md v3.0.2`、`24-workspace.md v3.0.1`、`25-safety.md v2.0.1`、`26-error.md v3.2.0`（`TypeConversion` 等错误字段类型为 `&'static str`）、`28-tests.md v2.0.1`、`30-dispatch.md v2.0.1`。示例代码中的 API 形态、错误字段、索引语法、运算符返回类型、类型转换语义、workspace 借用形式和线程安全说明均不得重新定义这些契约。
+本文档 v2.0.2 的 doc comment、doctest、README、CHANGELOG 与 examples 示例必须以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`03-element.md v1.4.0`（`ElementType` 在 element 模块；新增 `Element::ELEMENT_TYPE_NAME: &'static str`）、`04-complex.md v2.0.2`、`17-indexing.md v3.0.2`、`18-construction.md v3.0.1`、`19-overload.md v2.0.0`、`21-type.md v2.1.1`、`23-ffi.md v3.0.2`、`24-workspace.md v3.0.1`、`25-safety.md v2.0.1`、`26-error.md v3.2.0`（`TypeConversion` 等错误字段类型为 `&'static str`）、`28-tests.md v2.0.1`、`30-dispatch.md v2.0.1`。示例代码中的 API 形态、错误字段、索引语法、运算符返回类型、类型转换语义、workspace 借用形式和线程安全说明均不得重新定义这些契约。
 
 ### 1.3 设计原则
 
@@ -1124,7 +1124,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 **变更**：
 
-- §1.2 协同基线版本号统一升至：`26-error v3.2.0` / `03-element v1.4.0` / `28-tests v2.0.1` / `21-type v2.1.1` / `23-ffi v3.0.2` / `25-safety v2.0.1` / `04-complex v2.0.2` / `19-overload v2.0.0` / `17-indexing v3.0.1` / `18-construction v3.0.1` / `24-workspace v3.0.1` / `30-dispatch v2.0.1`。
+- §1.2 协同基线版本号统一升至：`26-error v3.2.0` / `03-element v1.4.0` / `28-tests v2.0.1` / `21-type v2.1.1` / `23-ffi v3.0.2` / `25-safety v2.0.1` / `04-complex v2.0.2` / `19-overload v2.0.0` / `17-indexing v3.0.2` / `18-construction v3.0.1` / `24-workspace v3.0.1` / `30-dispatch v2.0.1`。
 - §5.4.2 协同审查清单更新：`TypeConversion` 字段类型为 `&'static str`（值由 `Element::ELEMENT_TYPE_NAME` 提供），不再使用 `ElementType` 枚举值；`ViewMutRepr !Sync` 论证更新为 raw pointer opt-out 形态。
 - §7 Wave 任务（T17 / T18）协同基线版本号同步。
 

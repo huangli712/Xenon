@@ -15,7 +15,7 @@
 
 **范围注记：** workspace 的线程安全属性参见 `24-workspace.md`；本文不将 workspace 纳入 `需求说明书 §10` 的存储模式线程安全矩阵。
 
-**协同基线：** 本文档示例与论证以下游已修文档为准——05-storage v2.0.1、06-layout v1.3.1、07-tensor v2.0.1、17-indexing v3.0.1（公开安全索引收敛为 `try_at`/`try_at_mut`，不实现 `std::ops::Index`）、19-overload v2.0.0、24-workspace v3.0.1。任何 §5 / §9 引用上述文档的章节号时，以这些版本为准。
+**协同基线：** 本文档示例与论证以下游已修文档为准——05-storage v2.0.1、06-layout v1.3.1、07-tensor v2.0.1、17-indexing v3.0.2（公开安全索引收敛为 `try_at`/`try_at_mut`，不实现 `std::ops::Index`）、19-overload v2.0.0、24-workspace v3.0.1。任何 §5 / §9 引用上述文档的章节号时，以这些版本为准。
 
 ### 1.1 职责边界
 
@@ -397,7 +397,7 @@ fn share_arc_tensor() -> Result<(), XenonError> {
     let arc_clone = arc.clone();  // strong_count = 2
 
     // Read fixed offsets up-front. Xenon does not implement `std::ops::Index`;
-    // use `try_at` (17-indexing v3.0.1 §5.2) for fallible structured indexing.
+    // use `try_at` (17-indexing v3.0.2 §5.2) for fallible structured indexing.
     let parent_v1 = *arc.try_at(Ix1(1))?;
     assert_eq!(parent_v1, 2.0);
 
@@ -446,7 +446,7 @@ fn parallel_iteration(tensor: &Tensor2<f64>) {
 
 下列 `unsafe fn` 在 Xenon crate 内部 / 公开 API 面使用，每个调用点必须用 `unsafe { ... }` 块包裹并附 `// SAFETY:` 注释证明其契约满足。本节只列入口，详细 `# Safety` 契约由各 owner 文档维护。
 
-#### 5.12.1 `pub(crate)` 内部 unsafe fn 清单（6 项）
+#### 5.12.1 `pub(crate)` 内部 unsafe fn 清单（4 项）
 
 仅 crate 内部可见，不进入公开 API。调用点全部位于本 crate 源代码内：
 
@@ -455,11 +455,9 @@ fn parallel_iteration(tensor: &Tensor2<f64>) {
 | `TensorBase::<Owned<A>, D>::new_unchecked(storage, shape, strides, offset, flags, derived_from_view_mut)` | `07-tensor.md §5.6` | shape/strides/flags/offset 互一致；flags 由 `compute_layout_flags` 产出；逻辑访问范围在 storage 内；shape product 已 overflow-check；`derived_from_view_mut` 对 Owned 必须 `false` |
 | `TensorBase::<S, D>::new_unchecked(storage, shape, strides, offset, flags, derived_from_view_mut) where S: RawStorage` | `07-tensor.md §5.6` (Generic) | 同上；适用于 View / ViewMut / Arc 路径；`derived_from_view_mut` 仅在 `ViewMutRepr` 降级 / 切片自带降级标记的源场景为 `true` |
 | `TensorBase::<Owned<A>, D>::from_raw_vec_unchecked(data: Vec<A>, shape: D)` | `07-tensor.md §5.6` | `data.as_ptr()` 满足 `A` 对齐；`shape.checked_size()` 已验证；`data.len()` 等于该值；F-order 元数据合法 |
-| `WorkspaceBorrowMut::as_maybe_uninit_typed_slice<T>(&mut self, count)` | `24-workspace.md §5.6` | `T: crate::element::Element`；count 不致 byte 长度溢出（否则 `TypedViewRejection::TypedByteLengthOverflow`）；返回 `&mut [MaybeUninit<T>]` 调用方负责完整初始化才能 `assume_init` |
-| `WorkspaceBorrowMut::assume_init_typed_slice<T>(&mut self, count)` | `24-workspace.md §5.6` | `T: Element`；调用方已保证范围内 `count` 个 `T` 已被有效初始化 |
 | `Tensor::from_shape_vec_aligned_unchecked(shape: D, data: Vec<A>)` | `21-type.md §5.6` (cast/to_owned helper) | `data.len() == product(shape)`；shape 已验证；F-order 元数据合法；不进行任何 `Result` 校验 |
 
-#### 5.12.2 `pub` 公开 unsafe API 清单（3 项）
+#### 5.12.2 `pub` 公开 unsafe API 清单（5 项）
 
 公开 unsafe API；下游用户可直接调用，必须遵守同样的 `unsafe { } + // SAFETY:` 调用规范：
 
@@ -468,6 +466,8 @@ fn parallel_iteration(tensor: &Tensor2<f64>) {
 | `TensorBase::<ViewRepr<'a, A>, D>::from_raw_parts(...)` | `07-tensor.md §5.7` (FFI 入口) | provenance / lifetime / alignment / initialization / aliasing 五点（与本文 §5.11 一致） |
 | `TensorBase::<ViewMutRepr<'a, A>, D>::from_raw_parts_mut(...)` | `07-tensor.md §5.7` (FFI 入口) | 同 `from_raw_parts` 五点 + 可写布局非重叠校验（参见 `07-tensor.md §5.7`） |
 | `TensorBase::<Owned<A>, D>::from_raw_parts_owned(raw: OwnedRawParts<A, D>)` | `07-tensor.md §5.7` (Owned 重建入口) | `raw` 必须由配对的 `into_raw_parts` 产生且未被释放；元数据互一致；详见 `07-tensor.md §5.7` |
+| `WorkspaceBorrowMut::as_maybe_uninit_typed_slice<T>(&mut self, count)` | `24-workspace.md §5.6` | `T: crate::element::Element`；count 不致 byte 长度溢出（否则 `TypedViewRejection::TypedByteLengthOverflow`）；返回 `&mut [MaybeUninit<T>]` 调用方负责完整初始化才能 `assume_init`（R13 E-01：从 §5.12.1 移到此公开表，与 `24-workspace.md §5.6` `pub unsafe fn` 实际定义可见性一致） |
+| `WorkspaceBorrowMut::assume_init_typed_slice<T>(&mut self, count)` | `24-workspace.md §5.6` | `T: Element`；调用方已保证范围内 `count` 个 `T` 已被有效初始化（R13 E-01：可见性同上） |
 
 调用点要求：每个 `unsafe { ... }` 块必须紧邻 `// SAFETY:` 注释，注释引用 owner 文档章节并列出本调用点已建立的不变式如何满足契约。25-safety §5.12 仅作为索引；具体契约文本以 owner 文档为准，禁止在两处分别维护。
 
