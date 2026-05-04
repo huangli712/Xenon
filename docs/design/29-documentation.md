@@ -377,7 +377,8 @@ pub trait MyPublicSealedTrait: crate::private::Sealed { /* ... */ }
 #![deny(rustdoc::broken_intra_doc_links)]     // doc links must be valid
 #![deny(rustdoc::private_intra_doc_links)]    // private item links are invalid
 #![warn(rustdoc::missing_crate_level_docs)]   // crate-level docs must exist
-#![cfg_attr(docsrs, feature(doc_cfg))]        // docs.rs feature annotation
+// NOTE: NO `#![cfg_attr(docsrs, feature(doc_cfg))]` — that gate is nightly-only
+// and would break MSRV 1.85 stable builds. See `00-coding.md §10.3`.
 ```
 
 #### 5.5.2 Clippy 文档 lint
@@ -588,19 +589,19 @@ MIT
 ```toml
 [package.metadata.docs.rs]
 all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
+# NOTE: do NOT add `rustdoc-args = ["--cfg", "docsrs"]` (see `00-coding.md §10.3`).
 ```
 
 #### 5.10.2 Feature gate 标注
 
 文档中必须显式区分以下两类情况：
 
-1. **API gated by feature**：API 本身只在特定 feature 启用时出现，此时使用条件编译与必要的 `doc(cfg)`/可见性说明。
+1. **API gated by feature**：API 本身只在特定 feature 启用时出现，此时仅使用 `#[cfg(feature = "...")]` 条件编译；**不**使用 `#[doc(cfg(...))]`（nightly-only，详见 `00-coding.md §10.3`）。
 2. **API always present but behavior varies by feature**：API 始终存在，只是启用 feature 后内部执行路径或性能特征变化；此时不得把该 API 误写成“仅在 feature 下可用”，而应在正文中说明行为差异。
 
 ```rust,ignore
-// lib.rs
-#![cfg_attr(docsrs, feature(doc_cfg))]
+// lib.rs — NO `#![cfg_attr(docsrs, feature(doc_cfg))]` (nightly-only,
+// breaks MSRV 1.85 stable; see `00-coding.md §10.3`).
 
 // Public APIs whose behavior is affected by an optional feature should document
 // the behavior change directly instead of using doc(cfg) when the API itself is
@@ -754,7 +755,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 - [ ] **T2**: 配置 `#![warn(missing_docs)]` 和 docs.rs metadata
   - 文件: `src/lib.rs`, `Cargo.toml`
-  - 内容: lint 规则、`[package.metadata.docs.rs]`、`cfg_attr(docsrs, ...)`
+  - 内容: lint 规则、`[package.metadata.docs.rs] all-features = true`（**不**使用 `cfg_attr(docsrs, ...)` 与 `--cfg docsrs`，详见 `00-coding.md §10.3`）
   - 测试: 编译通过
   - 前置: T1
   - 预计: 5 min

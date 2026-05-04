@@ -401,7 +401,10 @@ codegen-units = 1
 
 [package.metadata.docs.rs]
 all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
+# NOTE: do NOT add `rustdoc-args = ["--cfg", "docsrs"]`. See
+# `00-coding.md §10.3`: `#[doc(cfg(...))]` is nightly-only; setting the
+# `docsrs` cfg without `feature(doc_cfg)` would expand the (forbidden)
+# `#[cfg_attr(docsrs, doc(cfg(...)))]` attributes and break docs.rs build.
 ```
 
 Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前提之上。
@@ -626,15 +629,13 @@ pub use crate::construct::{
 // NOTE: We deliberately do NOT enable `feature(doc_cfg)` here. That feature
 // is nightly-only and would break MSRV 1.85 stable builds (and any cargo doc
 // invocation on stable). Feature-gated items below use plain
-// `#[cfg(feature = "...")]` to be hidden from non-feature builds; the
-// `#[cfg_attr(docsrs, doc(cfg(...)))]` attribute decorations elsewhere in
-// this file are documentation-only hints that compile to no-ops on stable
-// (because `docsrs` is never set in normal builds and `doc(cfg(...))` is a
-// stable-rustdoc no-op without `feature(doc_cfg)`). docs.rs rendering of
-// feature-gated items will therefore look identical to local cargo doc on
-// stable; if richer "this item requires feature X" badges become required
-// later, the right path is to bump MSRV or move that surface to a separate
-// nightly-only doc build, not to enable `feature(doc_cfg)` here.
+// `#[cfg(feature = "...")]` to be hidden from non-feature builds; we also
+// do NOT use `#[doc(cfg(...))]` or `#[cfg_attr(docsrs, doc(cfg(...)))]`
+// (both require nightly `feature(doc_cfg)`; see `00-coding.md §10.3`).
+// docs.rs renders feature-gated items via `all-features = true` only; if
+// richer "this item requires feature X" badges become required later, the
+// right path is to bump MSRV to nightly and enable `feature(doc_cfg)` as
+// an independent design decision, not to add `doc(cfg)` decorations here.
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
 #![warn(rust_2024_compatibility)]
@@ -669,9 +670,9 @@ pub mod format;
 pub mod ffi;
 pub mod workspace;
 
-// Conditional modules
+// Conditional modules — only `#[cfg(feature = "...")]`, no `doc(cfg)`
+// decorations (see `00-coding.md §10.3`: `doc(cfg)` is nightly-only).
 #[cfg(feature = "simd")]
-#[cfg_attr(docsrs, doc(cfg(feature = "simd")))]
 pub(crate) mod simd;
 
 // `simd` remains a feature-gated internal backend module; concrete SIMD
@@ -679,7 +680,6 @@ pub(crate) mod simd;
 // `#[doc(hidden)]` implementation details.
 
 #[cfg(feature = "parallel")]
-#[cfg_attr(docsrs, doc(cfg(feature = "parallel")))]
 pub(crate) mod parallel;
 
 // Prelude

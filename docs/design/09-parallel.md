@@ -324,7 +324,7 @@ dispatch-selected parallel entry (receives ParallelGuard by value;
     │                 // so any nested select_exec_path() call from inside
     │                 // this chunk correctly falls back to ExecPath::Serial
     │                 optionally call into simd backend (SIMD admission per chunk)
-    │                 — see 08-simd.md v2.0.0 决策 5（worker 内 SIMD）
+    │                 — see 08-simd.md v2.0.1 决策 5（worker 内 SIMD）
     │             })
     │             // worker closure does NOT capture the outer ParallelGuard
     │             // (ParallelGuard is !Send and stays on the dispatching thread)
@@ -417,7 +417,7 @@ where
     // Build broadcast-compatible read-only chunk views for lhs / rhs via
     // ParElements-style IndexedParallelIterator + Producer split (see §5.6).
     // Each worker chunk MAY independently call into the simd backend
-    // (08-simd.md v2.0.0 决策 5; admission per chunk).
+    // (08-simd.md v2.0.1 决策 5; admission per chunk).
     // Use indexed collect (.collect_into_vec / collect()) to recover F-order
     // result placement regardless of worker completion order.
     // Panic propagation follows Rayon defaults; see §6.7 and §10.
@@ -690,7 +690,7 @@ math / reduction / matrix call dispatch entry
     │      │
     │      ├── par_iter() / par_zip_map(.., guard) / par_sum(.., guard) / par_dot(.., guard)
     │      └── inside each worker chunk, SIMD admission may apply per chunk
-    │              (08-simd.md v2.0.0 决策 5)
+    │              (08-simd.md v2.0.1 决策 5)
     └── return Tensor or Result with unchanged public semantics; guard auto-drops
 ```
 
@@ -811,7 +811,7 @@ math / reduction / matrix call dispatch entry
 | 属性     | 值                                                                                                                            |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | 决策     | 单个 worker chunk 内可独立调用 `simd` 后端 kernel；chunk 间合并仍由 `parallel` 控制                                            |
-| 理由     | 与 08-simd.md v2.0.0 决策 5 对齐：撤销并行/SIMD 互斥，提供 thread × SIMD 双层加速                                              |
+| 理由     | 与 08-simd.md v2.0.1 决策 5 对齐：撤销并行/SIMD 互斥，提供 thread × SIMD 双层加速                                              |
 | 替代方案 | 保留 v1.x 设计（worker 内禁止 SIMD）—— 放弃，会牺牲大数据吞吐                                                                  |
 | 替代方案 | worker 跨 chunk 共享 SIMD 状态 —— 放弃，会让 chunk 不变量与 SIMD admission 互相耦合                                            |
 

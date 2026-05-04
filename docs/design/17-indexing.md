@@ -355,13 +355,22 @@ TensorBase::slice(info):
        b. If Range { start, end }: check `end <= shape[i]`; on failure return
           InvalidArgument { kind: RangeOutOfBounds { axis: i, axis_len: shape[i],
           start, end } }. (start <= end already guaranteed by SliceInfo::new.)
-          Fold start into new offset with checked_add(checked_mul(start, stride[i])).
+          Fold start into `slice_delta` (relative element-unit delta) with
+          checked_add(checked_mul(start, stride[i])); compute the absolute
+          new offset as new_offset = self.offset + slice_delta (only the
+          absolute new_offset is written to the resulting TensorBase.offset).
           Update output shape[axis] = end - start; keep stride[axis] unchanged.
     3. Recompute layout flags via compute_layout_flags::<A, I>(&new_shape,
-       &new_strides, unsafe { self.as_ptr().add(new_offset_in_elements) }).
-       The unsafe pointer add is executed only after shape-aware bounds checks
-       and checked offset arithmetic have proved the element offset valid.
-       (offset is in elements; pointer arithmetic uses elements via *const A.)
+       &new_strides, logical_ptr) where `logical_ptr` is computed per the
+       v3.0.2 SAFETY rule below: for empty results (`product(new_shape) == 0`)
+       use NonNull::<A>::dangling().as_ptr() (do NOT touch the storage
+       pointer); for non-empty results use unsafe { self.as_ptr().add(slice_delta) }
+       — note `self.as_ptr()` already includes self.offset, so we add the
+       relative slice_delta exactly once. Forbidden: `self.as_ptr().add(new_offset)`
+       (would double-apply offset). The unsafe pointer add executes only after
+       shape-aware bounds checks and checked offset arithmetic have proved
+       the element offset valid. See "切片 offset 计算与空切片规则（v3.0.2）"
+       below for the full SAFETY contract.
     4. Construct and return TensorView<'_, A, I> with ViewRepr borrowed from
        self.storage.
 ```
@@ -675,6 +684,13 @@ User calls tensor.slice(info)
 | 2.0.1 | 2026-05-03 |
 | 3.0.0 | 2026-05-03 |
 | 3.0.1 | 2026-05-04 |
+| 3.0.2 | 2026-05-04 |
+
+### v3.0.2 (2026-05-04) — R11 切片 SAFETY 强化（slice_delta + empty dangling）
+
+- §6.3 / §6.4：明确切片 offset 计算规则。`slice_delta`（element 单位的相对偏移）与 `new_offset = src.offset + slice_delta`（写回 `TensorBase.offset` 字段的绝对偏移）必须**严格区分**。`compute_layout_flags` 需要逻辑首元素指针（non-dereferenceable 即可）：空切片（`product(new_shape) == 0`）走 `NonNull::<A>::dangling().as_ptr()`，与 `07-tensor.md §6.2` 空张量规则一致；非空切片只 add `slice_delta`（**不**add `new_offset`，否则 double-apply offset）。§6.3 主算法步骤 3 同步重写。
+- §6.4 表行同步更新为 `src.as_ptr().add(slice_delta)`（仅当 `result_len > 0`）。
+- 与 `00-coding.md §1.3` / `28-tests.md §1.0` 锁定基线 v3.0.2 对齐（R12 B-03 同步：锁定基线从 v3.0.1 升至 v3.0.2，反映 R11 B-04 实际落地）。
 
 ### v3.0.1 (2026-05-04) — R8/R9 协同基线对齐
 

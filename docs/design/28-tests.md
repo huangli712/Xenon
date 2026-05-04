@@ -15,7 +15,7 @@
 
 ### 1.0 协同基线
 
-本文档 v2.0.1 以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`02-dimension.md` v1.2.6、`03-element.md` v1.4.0、`04-complex.md` v2.0.2、`05-storage.md` v2.0.1、`06-layout.md` v1.3.1、`07-tensor.md` v2.0.1、`08-simd.md` v2.0.1、`09-parallel.md` v2.0.1、`10-iterator.md` v1.2.6、`11-math.md` v2.0.1、`12-matrix.md` v2.0.1、`13-reduction.md` v3.0.0、`14-set.md` v2.0.1、`15-broadcast.md` v3.0.1、`16-shape.md` v2.0.1、`17-indexing.md` v3.0.1、`18-construction.md` v3.0.1、`19-overload.md` v2.0.0、`20-utility.md` v3.0.1、`21-type.md` v2.1.1、`22-output.md` v2.0.1、`23-ffi.md` v3.0.2、`24-workspace.md` v3.0.1、`25-safety.md` v2.0.1、`26-error.md` v3.2.0、`27-benchmark.md` v2.0.1、`30-dispatch.md` v2.0.1。
+本文档 v2.0.1 以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`02-dimension.md` v1.2.6、`03-element.md` v1.4.0、`04-complex.md` v2.0.2、`05-storage.md` v2.0.1、`06-layout.md` v1.3.1、`07-tensor.md` v2.0.1、`08-simd.md` v2.0.1、`09-parallel.md` v2.0.1、`10-iterator.md` v1.2.6、`11-math.md` v2.0.1、`12-matrix.md` v2.0.1、`13-reduction.md` v3.0.0、`14-set.md` v2.0.1、`15-broadcast.md` v3.0.1、`16-shape.md` v2.0.1、`17-indexing.md` v3.0.2、`18-construction.md` v3.0.1、`19-overload.md` v2.0.0、`20-utility.md` v3.0.1、`21-type.md` v2.1.1、`22-output.md` v2.0.1、`23-ffi.md` v3.0.2、`24-workspace.md` v3.0.1、`25-safety.md` v2.0.1、`26-error.md` v3.2.0、`27-benchmark.md` v2.0.1、`30-dispatch.md` v2.0.1。
 
 ### 1.1 职责边界
 
@@ -603,9 +603,10 @@ fn test_unique_non_contiguous() {
 | `test_display_truncated`       | 超阈值触发截断                    | 高     |
 | `test_debug_includes_metadata` | Debug 包含 shape/stride/type 信息 | 中     |
 | `test_output_complex`          | 复数格式化输出基础 case (`a+bj` / `a-bj`) | 中     |
-| `test_output_complex_signed_special_values` | 7 个边界双 expected 快照（与 `22-output.md §6.1` 表严格一致；下方 fixture 表是权威来源的字面 mirror，CI 脚本可直接读取本表生成断言）；验证 `is_sign_negative()` 决定虚部符号、NaN 强制 `+`、`abs()` 取幅值的形式化规则 | 高 |
+| `test_output_complex_signed_special_values` | 7 个边界双 expected 快照（与 `22-output.md §6.1` 表严格一致；下方独立 fixture 表是权威来源的字面 mirror，CI 脚本可直接读取本表生成断言）；验证 `is_sign_negative()` 决定虚部符号、NaN 强制 `+`、`abs()` 取幅值的形式化规则 | 高 |
+| `test_scalar_vs_zero_dim_formatting` | 标量值与零维张量输出语义区分清晰 | 中 |
 
-**§5.16 fixture 表**（与 `22-output.md §6.1` 字面对齐；任何更新必须**同步**两边或在 `22-output.md` 改后由 R-轮评审捕获 drift）：
+**§5.16 fixture 表**（与 `22-output.md §6.1` 字面对齐；恰好 7 行边界输入；任何更新必须**同步**两边或在 `22-output.md` 改后由 R-轮评审捕获 drift）：
 
 | 输入 `(re, im)` | 默认 Display 期望（no precision） | `precision: Some(1)` 期望 |
 |:--|:--|:--|
@@ -616,7 +617,6 @@ fn test_unique_non_contiguous() {
 | `(1.0_f64, f64::NAN)` | `1+NaNj` | `1.0+NaNj` |
 | `(f64::INFINITY, f64::INFINITY)` | `inf+infj` | `inf+infj` |
 | `(f64::NAN, f64::NAN)` | `NaN+NaNj` | `NaN+NaNj` |
-| `test_scalar_vs_zero_dim_formatting` | 标量值与零维张量输出语义区分清晰 | 中 |
 
 ### 5.17 test_ffi.rs
 

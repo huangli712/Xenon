@@ -178,10 +178,16 @@ pub struct TensorBase<S, D> {
     /// `ViewMutRepr` to a read-only `ViewRepr` (e.g., via `view_mut().view()`)?
     ///
     /// **Visibility:** private; no public getter / setter. Read internally by
-    /// `access_semantics()` (see §5.3 rule (3)). Set internally only by the
-    /// downgrade paths (`ViewMutRepr::view()`, `ViewMutRepr::view_mut()` chained
-    /// reborrows, slicing routes that demote `ViewMut` source — see §6.3 of
-    /// `17-indexing.md`); all other construction paths leave it `false`.
+    /// `access_semantics()` (see §5.3 rule (3)). Set internally `true` ONLY
+    /// when this tensor is a `ViewRepr` produced by demoting a `ViewMutRepr`
+    /// source — namely: (a) `ViewMutRepr::view()` returning a read-only
+    /// `ViewRepr`, and (b) slicing routes whose source is `ViewMutRepr` or a
+    /// `ViewRepr` already carrying `derived_from_view_mut == true` (see
+    /// `17-indexing.md §6.3` propagation rule). Re-borrows that stay
+    /// `ViewMutRepr` (e.g., `view_mut()` chained on a `ViewMutRepr`) do
+    /// NOT set this marker — they remain writable. All other construction
+    /// paths (Owned constructors, broadcast/transpose/slice on non-ViewMut
+    /// sources, `from_raw_parts*`) leave it `false`.
     ///
     /// This is a **separate** field from `LayoutFlags`: it carries
     /// construction-provenance information, not layout geometry. Reusing a
@@ -376,10 +382,11 @@ pub enum DataLocation {
 - **广播语义补充：** 广播结果的只读共享语义通过 layout flags 和访问控制表达，而非通过 `storage_kind()` 伪装。详见 `15-broadcast.md`。
 - **`access_semantics()` 广播判定机制：** 当 `ViewRepr` 的 `LayoutFlags` 包含 `HAS_ZERO_STRIDE` 时，`access_semantics()` 返回 `AccessSemantics::SharedReadOnly`，以区分普通只读视图（`ReadOnly`）与广播只读视图（`SharedReadOnly`）。此判定与 `LayoutState::BroadcastView` 的分类条件一致（见 `06-layout.md §5.11`）。
 - **`ViewMutRepr → ViewRepr` 零拷贝降级的来源标记（v3.0.1）：** 当 `view_mut().view()` 把可写视图降级为只读视图时，结果的 `LayoutFlags` 不一定包含 `HAS_ZERO_STRIDE`（普通 contiguous mutable view 降级后仍是 contiguous）。为了让 `access_semantics()` 在不依赖来源上下文的前提下仍能区分"普通 view 借用"与"由 ViewMut 降级而来的共享只读视图"，`TensorBase` 携带一个**独立的、私有的** 1-bit 内部标记字段 `derived_from_view_mut: bool`（结构体字段层面，**不**复用 `LayoutFlags` 任何 bit；`06-layout.md §5.1` 的 `LayoutFlags` 权威定义仅包含 `F_CONTIGUOUS / ALIGNED / HAS_ZERO_STRIDE`，且 `compute_layout_flags(shape, strides, ptr)` 是其唯一权威计算入口，与张量来源信息正交）。该字段对外不暴露 setter，仅由 `view_mut().view()` / `view_mut().view_mut()` 等内部转换路径设置；可以与 `TensorBase` 中其它内部 bool 通过私有 `#[repr(transparent)]` 包装位组打包以避免 padding 浪费，但其语义边界与 `LayoutFlags` 严格分离。`access_semantics()` 的判定规则因此扩展为：(1) `storage_kind() == StorageKind::Shared` → `SharedReadOnly`；(2) `storage_kind() == StorageKind::ViewMut` → `Writable`；(3) `storage_kind() == StorageKind::View` 且 `(layout_flags().has_zero_stride() || self.derived_from_view_mut)` → `SharedReadOnly`；(4) `storage_kind() == StorageKind::View` 且二者都未设置 → `ReadOnly`；(5) `storage_kind() == StorageKind::Owned` → `Owned`。这避免了 `access_semantics()` 输出与构造来源的歧义，且实现成本只有一个独立标志位，不污染 `LayoutFlags` 权威计算。
-- **`SharedReadOnly` 双重含义说明：** `AccessSemantics::SharedReadOnly` 同时覆盖两类张量：
-  1. **所有权共享（`ArcRepr`）：** 多个张量句柄通过 `Arc` 共享底层存储；写访问需要先唯一化（参见 `05-storage.md §5.8`、`§11` 决策 2）。这里"共享"指存储所有权层面的共享。
-  2. **同物理地址共享（带 `HAS_ZERO_STRIDE` 的 `ViewRepr`）：** 多个不同逻辑索引映射到同一物理地址（广播视图、`ViewMutRepr` 零拷贝降级结果）。这里"共享"指同一物理元素被多个逻辑索引共享读取。
-  两类共享在写访问安全性上的结论相同（都不能直接可写），因此合并到同一变体；但调用方若需要区分（例如内部 CoW 唯一化路径只对 `ArcRepr` 适用），必须先通过 `storage_kind()` 判断底层存储类型，再由 `flags().has_zero_stride()` 区分广播视图。`access_semantics()` 本身不暴露这一区分。
+- **`SharedReadOnly` 三重含义说明：** `AccessSemantics::SharedReadOnly` 覆盖三类语义不同的张量，由不同的 (`storage_kind()`, `layout_flags().has_zero_stride()`, `derived_from_view_mut`) 组合识别：
+  1. **所有权共享（`ArcRepr`）：** `storage_kind() == Shared`。多个张量句柄通过 `Arc` 共享底层存储；写访问需要先唯一化（参见 `05-storage.md §5.8`、`§11` 决策 2）。这里"共享"指存储所有权层面的共享。
+  2. **同物理地址共享（广播 `ViewRepr`）：** `storage_kind() == View && layout_flags().has_zero_stride()`。多个不同逻辑索引映射到同一物理地址（典型来源：`broadcast_to` / `broadcast_with`）。这里"共享"指同一物理元素被多个逻辑索引共享读取。
+  3. **来源共享（ViewMut 降级而来的 `ViewRepr`）：** `storage_kind() == View && self.derived_from_view_mut`（**与零步长无关**：普通 contiguous mutable view 降级后逻辑索引 1:1 物理索引，没有地址重叠，但仍标记为"共享只读"以反映"原始独占借用已转交，再获取写访问需要重新论证")。
+  三类共享在写访问安全性上的结论相同（都不能直接可写），因此合并到同一变体；但调用方若需要区分（例如内部 CoW 唯一化路径只对 `ArcRepr` 适用，BLAS / SIMD 路径需要拒绝零步长但可接受 ViewMut 降级），必须先通过 `storage_kind()` 判断底层存储类型，再由 `flags().has_zero_stride()` 区分广播视图，最后由内部 `derived_from_view_mut` 区分降级来源。`access_semantics()` 本身不暴露这一三向区分。
 - **权威约束：** 访问语义的权威查询入口是 `access_semantics()`；`storage_kind()` 只报告底层表示类型，不能替代访问语义判定。
 - `LayoutState` 使用 `crate::layout::LayoutState`（参见 `06-layout.md §5`）；
 - 本文档不再重复定义 `FContiguous`、`NonContiguous`、`BroadcastView` 三个变体。
@@ -1055,15 +1062,17 @@ where
         // Owned-specialized form) to keep private-field access localized to
         // ONE entry point and to satisfy the locked invariant "TensorBase has
         // 6 fields including `derived_from_view_mut`" (R10 B-01).
-        // SAFETY: All five metadata invariants of `new_unchecked` are
-        // satisfied: shape was overflow-checked above; strides were verified
-        // canonical F-order above; flags were just produced by
+        // SAFETY: All six constructor-input invariants of `new_unchecked`
+        // are satisfied: (1) shape was overflow-checked above; (2) strides
+        // were verified canonical F-order above; (3) offset == 0 was
+        // verified above; (4) flags were just produced by
         // `compute_layout_flags` for the same shape/strides/logical_ptr;
-        // offset == 0 was verified above; the logical access range
-        // `[0, raw.len)` lies within `storage` because `raw.len ==
-        // shape.checked_size()` and `raw.cap >= raw.len` were both verified.
-        // `derived_from_view_mut: false` — `from_raw_parts_owned` is an
-        // Owned reconstruction path, not a ViewMut downgrade.
+        // (5) the logical access range `[0, raw.len)` lies within `storage`
+        // because `raw.len == shape.checked_size()` and `raw.cap >= raw.len`
+        // were both verified; (6) `derived_from_view_mut: false` —
+        // `from_raw_parts_owned` is an Owned reconstruction path, not a
+        // ViewMut downgrade (the Owned-specialized `new_unchecked` requires
+        // this argument to be `false`).
         Ok(unsafe {
             TensorBase::new_unchecked(storage, raw.shape, raw.strides, raw.offset, flags, false)
         })

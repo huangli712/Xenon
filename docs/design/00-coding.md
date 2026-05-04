@@ -30,7 +30,7 @@
 
 ### 1.3 协同基线
 
-本文档以已修订的下游设计文档为协同基线。若本文档提到具体类型、字段、trait、枚举或 API 形态，必须与以下版本保持一致：`01-architecture.md v2.0.1`、`02-dimension.md v1.2.6`、`03-element.md v1.4.0`、`04-complex.md v2.0.2`、`05-storage.md v2.0.1`、`06-layout.md v1.3.1`、`07-tensor.md v2.0.1`、`08-simd.md v2.0.1`、`09-parallel.md v2.0.1`、`10-iterator.md v1.2.6`、`11-math.md v2.0.1`、`12-matrix.md v2.0.1`、`13-reduction.md v3.0.0`、`14-set.md v2.0.1`、`15-broadcast.md v3.0.1`、`16-shape.md v2.0.1`、`17-indexing.md v3.0.1`、`18-construction.md v3.0.1`、`19-overload.md v2.0.0`、`20-utility.md v3.0.1`、`21-type.md v2.1.1`、`22-output.md v2.0.1`、`23-ffi.md v3.0.2`、`24-workspace.md v3.0.1`、`25-safety.md v2.0.1`、`26-error.md v3.2.0`、`27-benchmark.md v2.0.1`、`28-tests.md v2.0.1`、`29-documentation.md v2.0.2`、`30-dispatch.md v2.0.1`。
+本文档以已修订的下游设计文档为协同基线。若本文档提到具体类型、字段、trait、枚举或 API 形态，必须与以下版本保持一致：`01-architecture.md v2.0.1`、`02-dimension.md v1.2.6`、`03-element.md v1.4.0`、`04-complex.md v2.0.2`、`05-storage.md v2.0.1`、`06-layout.md v1.3.1`、`07-tensor.md v2.0.1`、`08-simd.md v2.0.1`、`09-parallel.md v2.0.1`、`10-iterator.md v1.2.6`、`11-math.md v2.0.1`、`12-matrix.md v2.0.1`、`13-reduction.md v3.0.0`、`14-set.md v2.0.1`、`15-broadcast.md v3.0.1`、`16-shape.md v2.0.1`、`17-indexing.md v3.0.2`、`18-construction.md v3.0.1`、`19-overload.md v2.0.0`、`20-utility.md v3.0.1`、`21-type.md v2.1.1`、`22-output.md v2.0.1`、`23-ffi.md v3.0.2`、`24-workspace.md v3.0.1`、`25-safety.md v2.0.1`、`26-error.md v3.2.0`、`27-benchmark.md v2.0.1`、`28-tests.md v2.0.1`、`29-documentation.md v2.0.2`、`30-dispatch.md v2.0.1`。
 
 > **协同基线版本号 = 各下游文档当前 changelog 表中实际最新版本**。本基线与各文档 §0/§版本历史 严格对齐——若发现下游文档版本落后于此基线、或本基线落后于下游 changelog，必须在同一轮修订中同步追加 changelog 条目，禁止"先声明后追写"。
 
@@ -1036,18 +1036,17 @@ rayon = { version = "1.10", optional = true }
 pulp = { version = "0.18", optional = true }
 ```
 
-### 10.3 条件编译 API 的文档标注（`cfg_attr(docsrs, doc(cfg(...)))`）
+### 10.3 条件编译 API 的文档标注（仅 `cfg(feature = "...")`，不使用 `doc(cfg)`）
 
-**重要约束（与 MSRV 1.85 stable 协同）：** Xenon 不启用 nightly `feature(doc_cfg)`。仅依赖：
-- `#[cfg(feature = "...")]`：稳定 Rust 自带，按 feature 开关编译。
-- `#[cfg_attr(docsrs, doc(cfg(...)))]`：**纯文档辅助标注，可选**。在 stable 上编译时 `docsrs` 不被设置，整条属性是 no-op；docs.rs 渲染时若设置了 `--cfg docsrs` 也只是把 cfg 信息以 doc 文本形式呈现，不需要 `feature(doc_cfg)` crate-level gate。这意味着 stable / docs.rs 在 1.85 上都能正确编译。
+**重要约束（与 MSRV 1.85 stable 协同）：** Xenon **不**使用 `#[doc(cfg(...))]` 与配套的 `#[cfg_attr(docsrs, doc(cfg(...)))]` / `--cfg docsrs` 模式。原因：
 
-如果某个项目选择**不**启用 `doc(cfg)` 美化标注，纯写 `#[cfg(feature = "...")]` 完全合法（rustdoc 仍会按 cfg 隐藏未启用 feature 的条目）。本规范只把 `doc(cfg)` 视为**推荐**而非强制。
+- `#[doc(cfg(...))]` 是 nightly-only attribute，受 `feature(doc_cfg)` 门控（rust-lang/rust#43781）。
+- 即便 docs.rs 设置 `--cfg docsrs`，只要 crate 没启用 `#![feature(doc_cfg)]`（而我们禁止任何 nightly `#![feature(...)]`，见下方），`#[cfg_attr(docsrs, doc(cfg(...)))]` 在 docsrs cfg 激活时会展开为 `#[doc(cfg(...))]`，触发 `error[E0658]: the doc(cfg) attribute is unstable`，破坏 docs.rs build。
+- 因此当前 MSRV 1.85 stable 模板**只**使用 `#[cfg(feature = "...")]`：这条属性是稳定 Rust 自带，按 feature 开关编译；rustdoc 也会按 cfg 自动隐藏未启用 feature 的条目，不依赖任何额外 doc 装饰。
 
 ```rust,ignore
 /// Internal parallel execution backend marker.
 #[cfg(feature = "parallel")]
-#[cfg_attr(docsrs, doc(cfg(feature = "parallel")))] // optional documentation hint
 pub(crate) trait ParallelBackend {
     fn for_each<F>(&self, f: F)
     where
@@ -1055,19 +1054,20 @@ pub(crate) trait ParallelBackend {
 }
 ```
 
-`Cargo.toml` 中可以**可选**地为 docs.rs 配置 cfg 标志（不强制）：
+`Cargo.toml` 中**不**配置 `rustdoc-args = ["--cfg", "docsrs"]`；只保留 `all-features = true` 让 docs.rs 渲染所有可选 feature 文档：
 
 ```toml
 [package.metadata.docs.rs]
 all-features = true
-# Optional: only needed if doc(cfg) badges are desired on docs.rs.
-# This sets the docsrs cfg flag during docs.rs renders; on stable Rust
-# 1.85 it is a documentation-only no-op (doc(cfg) does NOT require
-# feature(doc_cfg) and does NOT pull nightly).
-rustdoc-args = ["--cfg", "docsrs"]
 ```
 
-**禁止**：在 `lib.rs` 中写 `#![cfg_attr(docsrs, feature(doc_cfg))]` 或任何 `#![feature(...)]` crate-level gate——这会破坏 stable 1.85 编译。详见 `01-architecture.md §lib.rs` 的禁用说明。
+**禁止**：
+
+- 在源代码中写 `#[doc(cfg(...))]` 或 `#[cfg_attr(docsrs, doc(cfg(...)))]`（nightly 属性，破坏 stable docs.rs build）。
+- 在 `lib.rs` 中写 `#![cfg_attr(docsrs, feature(doc_cfg))]` 或任何 `#![feature(...)]` crate-level gate——这会破坏 stable 1.85 编译。详见 `01-architecture.md §4 / §8` 的禁用说明。
+- 在 `Cargo.toml` 中写 `rustdoc-args = ["--cfg", "docsrs"]`——单独这一条不会破坏 build，但只有配合 `feature(doc_cfg)` 才有意义；保留它会误导后续维护者添加上述被禁的 `doc(cfg)` 装饰。
+
+如果未来希望恢复 `doc(cfg)` 美化标注（需要 nightly），必须先升 MSRV 至 nightly 并启用 `feature(doc_cfg)`，作为独立设计决策评审通过。
 
 ---
 

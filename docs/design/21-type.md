@@ -171,11 +171,14 @@ where
         //   ConvertTo::<B>::convert((*x))
         //     ├── Tier-1 (lossless static): impl returns `Ok(B::from(value))`,
         //     │   delegating to Rust std `From`. Never errors.
-        //     ├── Tier-2 (lossy static):    impl returns
-        //     │   `Err(<A as CastTo<B>>::cast_to(value))` — cast_to() always
-        //     │   produces `Err(TypeConversion { reason: ... })` for static
-        //     │   lossy pairs.
-        //     └── Tier-3 (dynamic):         impl returns
+        //     ├── Tier-2 (lossy static):    impl delegates to
+        //     │   `<A as CastTo<B>>::cast_to(value)` (which itself returns
+        //     │   `Result<B, XenonError>`); for static lossy pairs cast_to
+        //     │   always returns `Err(TypeConversion { reason: ... })`.
+        //     │   The forwarding impl is `<A as CastTo<B>>::cast_to(self)`,
+        //     │   NOT `Err(<A as CastTo<B>>::cast_to(self))` (that would be
+        //     │   `Err(Result<...>)` nesting).
+        //     └── Tier-3 (dynamic):         impl delegates to
         //         `<A as CastTo<B>>::cast_to(value)` — runtime check returns
         //         `Ok` or `Err` per element.
         //
@@ -497,7 +500,7 @@ impl CastTo<i32> for f64 {
 // === Real → complex (lossless, zero imaginary) ===
 // NOT a `CastTo` impl. These cells are Tier-1 lossless and routed through
 // `ConvertTo<B>` directly with `Ok(Complex::new(value, 0.0))` shims (see
-// §6.1.ter "Tier-1 lossless real→complex" block); `cast()` dispatches them
+// §6.1.ter "Tier-1 lossless real→complex and complex widening" block); `cast()` dispatches them
 // without ever instantiating `CastTo`. Listed here only as a reminder that
 // real→complex zero-imaginary widenings are NOT `CastTo` cases.
 
@@ -614,7 +617,7 @@ impl ConvertTo<i64>          for i64          { #[inline] fn convert(self) -> Re
 impl ConvertTo<Complex<f32>> for Complex<f32> { #[inline] fn convert(self) -> Result<Complex<f32>, XenonError> { Ok(self) } }
 impl ConvertTo<Complex<f64>> for Complex<f64> { #[inline] fn convert(self) -> Result<Complex<f64>, XenonError> { Ok(self) } }
 
-// === Tier-1 lossless real→complex (zero-imaginary widening) ===
+// === Tier-1 lossless real→complex and complex widening (zero-imaginary widening for real→complex; componentwise f64::from for complex widening) ===
 // `f → Complex<f>` and `i → Complex<f>` lossless cells are expressed by
 // `From` (where std provides them) or by direct `Ok(Complex::new(...))`
 // shims here when std does not. They are NOT routed through `CastTo`:
@@ -646,7 +649,7 @@ impl ConvertTo<Complex<f64>> for Complex<f32> {
 // Complete 6×6 matrix below (36 cells total accounted for):
 //   - 6 Tier-0 identity impls (listed above)
 //   - 3 Tier-1 lossless arithmetic impls via std `From` (listed above)
-//   - 5 Tier-1 lossless real→complex impls (listed above)
+//   - 5 Tier-1 lossless real→complex and complex widening impls (listed above; 4 real→complex + 1 complex→complex widening)
 //   - 22 Tier-2/Tier-3 forwarding impls (listed below)
 //
 // Macro generation is acceptable for the 22 forwarding impls; they are
