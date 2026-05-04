@@ -426,13 +426,20 @@ SIMD 路径选择已收敛到 `simd` 后端内部（分层原则见 §1.2）。
 - 对"不得调用"的类型，实现侧**不**提供 SIMD 实现入口（在类型系统层面以 trait bound + 编译期分派排除，而非运行时分支）；调用方若违反契约 1 在编译期即报错，避免运行时无信号失败
 - 这与二元运算的 `dispatch_vector_binary_op -> bool` 不同：二元运算允许"运行时失败回退"（因为 dst 缓冲区可对照 `false` 不消费），归约/内积的 `A` 返回值无法承载该语义，故强制移到编译期
 
-**契约 3：与 dispatch op-agnostic boundary 的协同**
+**契约 3：与 dispatch 阈值层的两层 gate 协同**
 
-`30-dispatch.md §5.5` 定义 dispatch 不感知操作语义，调用方自行做 op-specific gate。本契约是该原则在 sum/dot 的具体落地：
+dispatch 模块（`30-dispatch.md`）有两个层次的 gate，本契约属于第二层：
 
-- 调用方在调用 `dispatch::select_exec_path()` **之前**完成 type gate
-- 若 type gate 决定走 Serial，调用方**不**调用 `select_exec_path()`，直接走串行实现
-- 若 type gate 允许 SIMD/Parallel，调用方按 dispatch 返回的 `ExecPath` 路由，SIMD 路径中可安全调用 `SimdKernel::sum / dot`，因为类型已通过 gate
+| 层次 | 名称 | 由谁实施 | 依据 |
+|---|---|---|---|
+| L1 | **通用阈值 gate**（`SIMD_THRESHOLD` / `PARALLEL_THRESHOLD`） | dispatch 内部 `select_exec_path` | 30-dispatch §5.6 |
+| L2 | **op-specific type gate**（如整数 sum/dot 无 widening 时跳过 SIMD/Parallel） | 调用方模块（reduction / matrix） | 30-dispatch §5.5 op-agnostic boundary + 本节契约 |
+
+L1 的规则是"调用方仍走完整三路 dispatch，不在 dispatch 之前自行裁决 Serial 短路"（30-dispatch §5.5 末尾）——这指的是**通用阈值层**，不允许调用方提前根据 `len` 短路。L2 是 op-specific 的类型可行性判定，与通用阈值无关，本契约要求调用方在 L2 早退。两者并不矛盾：
+
+- 调用方先做 L2 type gate：若该元素类型 + 操作组合在本平台**根本不存在 SIMD/Parallel 实现路径**（如整数 sum/dot 无 widening），则**不**调用 `select_exec_path()`，直接走标量串行——这不是阈值短路，而是路径可用性判定
+- 若 L2 通过，调用方走完整 `select_exec_path()`，由 dispatch 按 L1 通用阈值裁决 `ExecPath`
+- SIMD 路径中可安全调用 `SimdKernel::sum / dot`，因为类型已通过 L2 gate
 
 **契约 4：worker 内 SIMD admission 的对应行为**
 

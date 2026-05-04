@@ -512,21 +512,24 @@ pub(crate) fn reset_parallel_threshold();
 /// override capability with `set_parallel_threshold` since `SIMD_THRESHOLD`
 /// is already stored in an `AtomicUsize`.
 ///
-/// # Special value: 0
+/// # Special values
 ///
-/// Setting `threshold = 0` disables the SIMD path entirely (the dispatch
-/// `len >= SIMD_THRESHOLD` check becomes unreachable for any positive
-/// `len`, since `len > 0` implies `len >= 1 > 0`; the comparison is
-/// `len >= 0` which is always true — but path selection still requires
-/// `is_contiguous` and feature gating, so practical effect is "use SIMD
-/// even for length 1 when other admission gates pass"). To **fully disable**
-/// SIMD, set `threshold = usize::MAX` instead, making the comparison
-/// `len >= usize::MAX` effectively unreachable.
+/// SIMD admission uses the comparison `len >= SIMD_THRESHOLD`. Therefore:
 ///
-/// Setting `threshold = usize::MAX` is the canonical "disable SIMD path"
-/// sentinel, mirroring the parallel path's `threshold = 0` sentinel
-/// (semantics differ because SIMD admission uses `len >= threshold` while
-/// parallel uses `len >= threshold && threshold != 0` — see §6.3).
+/// - `threshold = 0`: comparison `len >= 0` is always true. Combined with
+///   the other gates (`is_contiguous`, feature flag), this **lowers the
+///   length floor to its minimum** but does NOT disable SIMD. Use this
+///   value to force SIMD admission for benchmarking small inputs.
+///
+/// - `threshold = usize::MAX`: comparison `len >= usize::MAX` is reachable
+///   only when `len == usize::MAX`, which is unreachable for any real
+///   tensor (since `Vec::len()` is bounded by `isize::MAX` on standard
+///   platforms). This is the canonical **"disable SIMD path"** sentinel.
+///
+/// Note: this asymmetry with `set_parallel_threshold(0)` (which disables
+/// parallel) is intentional — parallel admission uses `len >= threshold &&
+/// threshold != 0` per §6.3, while SIMD admission uses plain `len >= threshold`.
+/// Each path's "disable" sentinel reflects its own admission predicate.
 pub(crate) fn set_simd_threshold(threshold: usize);
 
 /// Reset the SIMD threshold to its compile-time default.

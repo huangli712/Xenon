@@ -404,6 +404,13 @@ where A: Numeric, D: Dimension
 { type Output = Tensor<A, D>; fn sub(self, rhs: A) -> Self::Output { self.sub_scalar(rhs) } }
 
 // Scalar<A> - TensorView (non-commutative → sub_scalar_left_impl)
+//
+// `sub_scalar_left_impl` is a 1-line bridge defined as:
+//     pub(crate) fn sub_scalar_left_impl<S, D, A>(scalar: A, t: &TensorBase<S, D>) -> Tensor<A, D>
+//     where S: Storage<Elem = A>, D: Dimension, A: Numeric
+//     { t.sub_from_scalar(scalar) }
+// All element-wise execution lives in `11-math.md §5.9.1`; this helper exists
+// only to satisfy trait-impl call-site ergonomics, never as a parallel impl path.
 impl<'a, A, D> Sub<TensorBase<ViewRepr<'a, A>, D>> for Scalar<A>
 where A: Numeric, D: Dimension
 {
@@ -458,7 +465,7 @@ where A: Numeric, D: Dimension
 }
 ```
 
-- 上述 12 个 impl 与 owned `Tensor` 的标量路径完全对称：右标量路径和交换性左标量路径委托给 `11-math.md §5.9` 的公开标量方法；非交换左标量路径（`Scalar<A> - TensorView` / `Scalar<A> / TensorView`）委托给本模块内部 helper（`sub_scalar_left_impl`/`div_scalar_left_impl`）。
+- 上述 12 个 impl 与 owned `Tensor` 的标量路径完全对称：右标量路径和交换性左标量路径委托给 `11-math.md §5.9` 的公开标量方法；非交换左标量路径（`Scalar<A> - TensorView` / `Scalar<A> / TensorView`）通过本模块内部 helper（`sub_scalar_left_impl`/`div_scalar_left_impl`）转委托——helper 自身仅一行薄桥接 `t.sub_from_scalar(scalar)` / `t.div_from_scalar(scalar)`，逐元素执行骨架由 `11-math.md §5.9.1` 单点维护。
 - 同 owned `Tensor` 路径，本处 `TensorView` 标量运算符组合也通过宏生成实际代码。
 - 原生左标量（如 `5.0 + tensor_view`、`3.0 / tensor_view`）的 `TensorView` 版本同样受支持。
 

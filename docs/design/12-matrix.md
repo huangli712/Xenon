@@ -615,7 +615,20 @@ User calls dot(a, b)
 - 若 `max_abs_a * max_abs_b == 0.0`（任一向量全零），容差退化为表中第二项 `4.0 * MIN_POSITIVE` 的下限
 - 复数共轭因子 `conj(a_i)` 不改变 `|a_i|`（共轭仅翻转虚部符号，模不变），故 `max_abs_a` 不需为共轭单独计算
 
-**容差系数推导：** 对长度 n 的浮点 dot，标准误差界为 `n * EPSILON * max_term + O(EPSILON^2)`（参见 Higham《Accuracy and Stability of Numerical Algorithms》第 3 章）。`8.0 * EPSILON` 系数为 `n * EPSILON` 的 8x 余量，覆盖：(1) per-element 乘法 1 ulp + (2) per-element 累加 1 ulp + (3) SIMD pairwise reduction 的 log₂(n) 次合并的常数因子 + (4) FMA 不可用时的额外舍入。Complex 的 `16.0` 系数额外覆盖复数乘法展开 `(ar*br - ai*bi) + i(ar*bi + ai*br)` 的 4 次实数乘 + 2 次实数加。
+**容差系数推导：**
+
+对长度 n 的实数浮点 dot，标准误差界为 `n * EPSILON * max_term + O(EPSILON^2)`（参见 Higham《Accuracy and Stability of Numerical Algorithms》第 3 章）。本表系数选取保留 8x 安全余量：
+
+- **实数 `8.0 * EPSILON`** = 1（Higham 名义界）+ 1（per-element 乘法 1 ulp 舍入）+ 1（per-element 累加 1 ulp）+ log₂ 项（SIMD pairwise reduction 的 log₂(n) 次合并常数因子，n ≤ 2³² 时不超过 32）+ FMA 不可用时的余量 → 取保守整数上界 8
+
+- **复数 `16.0 * EPSILON`** = 实数系数 8 × 2 倍。论证如下：
+  - **真实需求估算**：一个复数乘法 `conj(a_i) * b_i` 展开为 **4 次实数乘 + 2 次实数加**（实部 `ar*br + ai*bi`、虚部 `ar*bi - ai*br`，共 4 mul + 2 add = 6 个浮点 op，每 op 引入 1 ulp 舍入）。每分量结果包含 mul 阶段 ≈ 4 ulp + 累加阶段 ≈ 1 ulp ≈ 5 ulp，对应实数 dot 每元素 ≈ 2 ulp（mul 1 ulp + add 1 ulp）。复数真实需求 ≈ **2.5x 实数系数**
+  - **保守取整方向（向上）**：按误差界惯例应向上取，2.5x → **3x**（对应系数 24）
+  - **降到 2x（系数 16）的依据**：实数系数 8 自身已包含较大冗余——Higham 名义界仅给 1x，余下 7x 来自 mul 1 ulp + add 1 ulp + log₂(n) ≤ 32 项 + FMA 余量；实际累计 ≈ 3-4x，故实数系数 8 已含 ≈ 2x 安全余量。复数需求 2.5x × 实数系数中固有的 2x 余量 = 实际余量 ≈ 5x，远超复数 2.5x 需求。因此选 2x（系数 16）即可——系数 16 对应实数 2x 倍率，乘以实数系数 8 中已有的 2x 余量，复合余量 ≈ 4x，覆盖复数 2.5x 真实需求并保留 ≈ 1.6x 安全裕度
+  - **不选系数 24 的理由**：24 = 3x × 8 会过度收紧 SIMD 对比测试可接受范围，可能因合理 SIMD 实现差异导致测试 flaky。选 16 是在"保守上界"与"可实现性"之间的平衡
+  - 该系数对每个分量（实部 / 虚部）独立适用，不是分量容差之和
+
+容差表中第二项 `4.0 * MIN_POSITIVE` 是输入全零或近零时的下限，避免容差退化为 0 导致同执行路径的 `+0.0` / `-0.0` 差异被误判。
 
 ### 10.2 非有限值规则（继承 13-reduction §6.3 + dot 专属）
 

@@ -687,6 +687,7 @@ Workspace 借用测试须调用 `Workspace::borrow_mut(&mut self)` 与顶层 `Wo
 | `ui_bool_unique_rejected`              | `bool` 不参与 unique 操作                                       | 高     |
 | `ui_bool_arithmetic_rejected`          | `bool` 不参与四则运算                                           | 高     |
 | `ui_blanket_scalar_add_rejected`       | `impl<T> Add<TensorBase<...>> for T` 这种**泛型 T** blanket impl 被孤儿规则编译期拒绝（详见 §5.24 + §3 文件树 `compile-fail/blanket_scalar_add_rejected.rs`） | 高     |
+| `ui_external_seal_break_rejected`      | 外部 crate 不得通过 `use crate::private::Sealed` 命名 `Sealed` trait（验证 `private` 模块为 `pub(crate) mod`，外部命名失败编译；闭合 `02-dimension.md §5.9` 模块可见性硬性要求） | 高     |
 
 ### 5.22 property_tests.rs
 
@@ -1406,7 +1407,39 @@ test:
     # Gate 6: compile warnings as errors (catches unused code, etc.)
     - name: Compile warnings (hard gate, ref 00-coding.md §7.1)
       run: RUSTFLAGS="-D warnings" cargo check --all-features
+
+    # Gate 7: cooperative-baseline pin drift check
+    # (闭合 design.md §6.5.4 的 CI 校验要求)
+    - name: Cooperative-baseline pin drift (hard gate, ref design.md §6.5.4)
+      run: tools/check_baseline_pins.py docs/design/
 ```
+
+#### 8.2.1 协同基线 pin-drift 校验脚本规格（闭合 `design.md §6.5.4`）
+
+`tools/check_baseline_pins.py` 是设计文档协同基线的 CI 校验工具，须满足：
+
+**输入：** `docs/design/` 目录路径
+
+**算法：**
+
+1. 遍历 `docs/design/*.md`，对每个文档：
+   - 解析其 §1.x 元信息块中的「协同基线」声明（v2.0.x 标准格式：`> 协同基线（关键依赖）：` 列表，每项形如 `- \`NN-name.md vX.Y.Z\`：理由说明`）
+   - 提取声明中的 pin 字符串数组：`[(目标文档名, 期望版本号), ...]`
+2. 遍历每条 pin：
+   - 读取目标文档自身当前版本号（从其 §版本历史最新条目或元信息块标识行）
+   - 比较 pin 期望版本与目标当前版本
+3. 若所有 pin 均一致，退出码 0
+4. 若存在不一致，退出码 1 并输出报告，至少包含：
+   - 漂移文档列表
+   - 每条漂移的：源文档名 + 行号 + pin 期望版本 + 目标当前版本
+
+**附加校验（强制）：**
+
+- 每条 pin 必须附带原因说明（`：` 后非空），无原因 pin 视为格式违规，CI fail
+- 单文档 pin 数量超过 `design.md §6.5.1` 硬上限 8 项时 CI fail
+- 协同基线列表不得引用尚未存在的文档名（防止拼写错误）
+
+**测试要求：** `tools/check_baseline_pins.py` 自身须有单元测试覆盖：(a) 正常对齐场景；(b) 漂移检测；(c) 缺失原因说明的格式校验；(d) pin 数量超限。
 
 ### 8.3 Feature gate / 配置测试
 
