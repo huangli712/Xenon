@@ -216,8 +216,12 @@ impl ElementType {
     /// **This must stay in sync with `Element::ELEMENT_TYPE_NAME`** for
     /// every concrete `impl Element` in this module — every Element impl
     /// MUST set `ELEMENT_TYPE_NAME` to the exact string returned here for
-    /// its corresponding `ELEMENT_TYPE`. The crate-internal test
-    /// `tests/element_type_name_consistency.rs` enforces this.
+    /// its corresponding `ELEMENT_TYPE`. A crate-internal unit test (located
+    /// inside `src/element/`'s `#[cfg(test)] mod tests` and exercised through
+    /// existing integration tests `tests/test_tensor.rs` /
+    /// `tests/test_conversion.rs` per §8.5; see `28-tests.md §9.2` coverage
+    /// mapping) enforces this consistency. Per §8.5 / `28-tests.md §9.2` we
+    /// do NOT introduce a separate `tests/test_element*.rs` integration file.
     pub const fn name(self) -> &'static str {
         // No wildcard arm: this `match` is in the defining crate and is
         // exhaustive over current variants. `#[non_exhaustive]` only affects
@@ -282,7 +286,11 @@ impl Element for f32 {
 }
 
 // Compile-time consistency check (recommended pattern; or do it as a
-// regular runtime test in tests/element_type_name_consistency.rs):
+// regular runtime check inside `src/element/`'s `#[cfg(test)] mod tests` —
+// per §8.5 / `28-tests.md §9.2` we do NOT introduce a separate
+// `tests/test_element*.rs` integration file; the consistency assertion lives
+// alongside the closed-set definitions and is exercised through existing
+// integration tests like `tests/test_tensor.rs`):
 const _: () = {
     assert!(matches!(<f32 as Element>::ELEMENT_TYPE, ElementType::F32));
     // const_eq for &'static str isn't stable as of MSRV 1.85, so the
@@ -743,8 +751,9 @@ impl Element for bool {
 //   impl Element for Complex<f64> { ... ELEMENT_TYPE = ElementType::Complex64; NAME = "Complex<f64>"; }
 //
 // Each NAME literal MUST equal `ElementType::<discriminant>.name()` exactly;
-// this is enforced by the runtime test
-// `tests/element_type_name_consistency.rs` (see §5.1.1).
+// this is enforced by a crate-internal unit test (inside `src/element/`'s
+// `#[cfg(test)] mod tests`, exercised through `tests/test_tensor.rs` /
+// `tests/test_conversion.rs`; see §5.1.1 / §8.5 + `28-tests.md §9.2`).
 ```
 
 编译时阻止无效泛型实例化：`fn sum<A: Numeric>` 无法接受 `bool` 张量；需要布尔专用逐元素逻辑非时，使用 `!`。此外，`bool` 不实现任何 `CastTo<T>`；`bool_tensor.cast::<f32>()` 必须在编译期失败，而不是返回运行时类型转换错误。

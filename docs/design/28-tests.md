@@ -73,7 +73,8 @@ tests/
 │   ├── invalid_unsigned_element_rejected.rs
 │   ├── ui_bool_sum_rejected.rs
 │   ├── ui_bool_unique_rejected.rs
-│   └── ui_bool_arithmetic_rejected.rs
+│   ├── ui_bool_arithmetic_rejected.rs
+│   └── blanket_scalar_add_rejected.rs   # blanket `impl<T> Add<TensorBase<...>> for T` 被孤儿规则拒绝（§5.24 ui_blanket_scalar_add_rejected）
 │
 ├── test_tensor.rs              # Tensor core functionality (creation/query/type aliases)
 ├── test_math.rs                # Element-wise operations (arithmetic/math/comparison/logic)
@@ -685,6 +686,7 @@ Workspace 借用测试须调用 `Workspace::borrow_mut(&mut self)` 与顶层 `Wo
 | `ui_bool_sum_rejected`                 | `bool` 不参与 sum 归约                                          | 高     |
 | `ui_bool_unique_rejected`              | `bool` 不参与 unique 操作                                       | 高     |
 | `ui_bool_arithmetic_rejected`          | `bool` 不参与四则运算                                           | 高     |
+| `ui_blanket_scalar_add_rejected`       | `impl<T> Add<TensorBase<...>> for T` 这种**泛型 T** blanket impl 被孤儿规则编译期拒绝（详见 §5.24 + §3 文件树 `compile-fail/blanket_scalar_add_rejected.rs`） | 高     |
 
 ### 5.22 property_tests.rs
 
@@ -1434,7 +1436,8 @@ tests/
     ├── invalid_unsigned_element_rejected.rs
     ├── ui_bool_sum_rejected.rs
     ├── ui_bool_unique_rejected.rs
-    └── ui_bool_arithmetic_rejected.rs
+    ├── ui_bool_arithmetic_rejected.rs
+    └── blanket_scalar_add_rejected.rs   # blanket `impl<T> Add<TensorBase<...>> for T` 被孤儿规则拒绝（§5.24 ui_blanket_scalar_add_rejected）
 ```
 
 建议的 harness 形式如下（伪代码，需避免与辅助函数同名）：

@@ -358,9 +358,18 @@ TensorBase::slice(info):
           start, end } }. (start <= end already guaranteed by SliceInfo::new.)
           Fold start into `slice_delta` with checked_add(checked_mul(start, stride[i])).
           Update output shape[axis] = end - start; keep stride[axis] unchanged.
-       After the loop completes, compute the absolute new offset as
-       `new_offset = self.offset + slice_delta` (only this absolute
-       `new_offset` is written to the resulting `TensorBase.offset`).
+       After the loop completes, compute the absolute new offset with
+       checked arithmetic: `new_offset = self.offset.checked_add(slice_delta)
+       .ok_or_else(|| XenonError::InvalidLayout {
+           operation: Cow::Borrowed("slice"),
+           reason: InvalidLayoutReason::AccessRangeExceedsStorage,
+           ..
+       })?` (only this absolute `new_offset` is written to the resulting
+       `TensorBase.offset`). The `+` operator alone is insufficient: although
+       each per-axis `slice_delta` contribution uses `checked_add` /
+       `checked_mul`, the final fold back to absolute storage-base offset
+       can still overflow at the `usize::MAX` boundary on adversarial inputs
+       (R15 B-01 closes this gap).
     3. Recompute layout flags via compute_layout_flags::<A, I>(&new_shape,
        &new_strides, logical_ptr) where `logical_ptr` is computed per the
        v3.0.2 SAFETY rule below: for empty results (`product(new_shape) == 0`)
@@ -403,7 +412,7 @@ TensorBase::slice(info):
    - `Index(idx)` 折轴：`slice_delta += idx * src_strides[i]`；
    - `Range { start, end }`：`slice_delta += start * src_strides[i]`（`start == 0` 时贡献为 0）；保留 `stride[i]`，更新输出 shape[axis] = `end - start`。
    形式化：`slice_delta = Σᵢ contribution_i * src_strides[i]`，其中 `contribution_i` 对 `Index(idx)` 取 `idx`、对 `Range { start, end }` 取 `start`。所有累加都使用 `checked_add` / `checked_mul` 防溢出。
-2. `new_offset = src.offset + slice_delta`：写回切片结果 `TensorBase::offset` 字段的绝对偏移（仍以 storage base 为基准）。
+2. `new_offset = src.offset.checked_add(slice_delta)?`：写回切片结果 `TensorBase::offset` 字段的绝对偏移（仍以 storage base 为基准）。**必须 checked**：尽管 `slice_delta` 的累加已使用 `checked_add` / `checked_mul`，最后从相对 delta 折回绝对 offset 时仍可能在 `usize::MAX` 边界溢出；溢出映射 `XenonError::InvalidLayout { operation: Cow::Borrowed("slice"), reason: InvalidLayoutReason::AccessRangeExceedsStorage, .. }`（R15 B-01 修复）。
 
 `compute_layout_flags::<A, I>` 需要的是**逻辑首元素指针**（non-derefenceable 即可），不是绝对 offset；因此必须按结果 `len` 分支：
 
@@ -710,7 +719,7 @@ User calls tensor.slice(info)
 
 - §5.2：明确 `try_at()` / `try_at_mut()` 是规范主入口，`get()` / `get_mut()` 仅为 `&[usize]` convenience wrapper。
 - §5.3：移除 `expect("index already validated")` 示例，改为继续通过 `?` 传播错误。
-- §6.3 / §6.4：将 `self.as_ptr().add(new_offset_in_elements)` 明确纳入已校验后的 unsafe block 与安全性论证。
+- §6.3 / §6.4：将 `self.as_ptr().add(new_offset_in_elements)` 明确纳入已校验后的 unsafe block 与安全性论证。**历史标注（pre-v3.0.2 术语）**：当时使用的内联指针算术 `new_offset_in_elements` 是 absolute offset；自 v3.0.2 起重构为 `slice_delta`（相对元素偏移）+ `new_offset = self.offset.checked_add(slice_delta)?`（绝对偏移）严格区分，并要求空切片走 `NonNull::<A>::dangling().as_ptr()`。详见 v3.0.2 changelog 与现行 §6.3 / §6.4。
 - §8.3：删除越界场景中关于非规范 panic 语法糖的残留表述。
 
 ### v2.0.0 (2026-05-02) — 校验职责重新分配 + 错误字段对齐

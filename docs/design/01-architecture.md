@@ -293,7 +293,8 @@ xenon/
 │   │   ├── invalid_unsigned_element_rejected.rs
 │   │   ├── ui_bool_sum_rejected.rs
 │   │   ├── ui_bool_unique_rejected.rs
-│   │   └── ui_bool_arithmetic_rejected.rs
+│   │   ├── ui_bool_arithmetic_rejected.rs
+│   │   └── blanket_scalar_add_rejected.rs   # blanket Add<T> impl rejected by orphan rule
 │   │
 │   ├── property_tests.rs      # Property-test entry point (integration test target)
 │   └── property/

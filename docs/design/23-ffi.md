@@ -577,7 +577,26 @@ where
     /// Empty tensors are allowed: when `len() == 0`, `data` is a valid aligned
     /// pointer that must not be dereferenced. `shape`, `strides`, and `offset`
     /// still describe the empty tensor metadata.
-    pub fn export(&self) -> TensorExport<'_, A> {
+    /// **Visibility & return type (R15 D-01 fix):** This is the public FFI
+    /// entry; it returns `TensorExportRaw` (the C-visible non-generic raw
+    /// descriptor; see §5.4 above). The intermediate generic descriptor
+    /// `TensorExport<'_, A>` is `pub(crate)` Rust-only borrowing evidence
+    /// (located in `src/ffi/private.rs`, §3 + §5.3.bis) and cannot appear
+    /// in a `pub fn` return type — Rust's `private_in_public` rule
+    /// (`error[E0446]`) would reject that signature. The internal generic
+    /// descriptor is built within this method and immediately converted to
+    /// `TensorExportRaw` via the `From<TensorExport<'_, A>>` impl in §5.4.
+    pub fn export(&self) -> TensorExportRaw {
+        // Build the internal `pub(crate)` generic descriptor first; then
+        // convert to the C-visible raw descriptor via `From` (§5.4).
+        let generic = self.export_internal();
+        generic.into()
+    }
+
+    /// `pub(crate)` internal helper: produces the typed generic descriptor
+    /// for in-crate borrow tracking and lifetime evidence. Not exposed to
+    /// downstream consumers; use `export()` for the public FFI surface.
+    pub(crate) fn export_internal(&self) -> TensorExport<'_, A> {
         TensorExport {
             data: if self.is_empty() {
                 // Empty tensor: return a valid aligned non-dereferenceable pointer.
@@ -607,11 +626,26 @@ where
 
     /// Export tensor data with mutable access.
     ///
+    /// **Visibility & return type (R15 D-01 fix):** Public FFI entry; returns
+    /// `TensorExportMutRaw` (the C-visible non-generic raw descriptor). The
+    /// intermediate generic `TensorExportMut<'_, A>` is `pub(crate)` Rust-only
+    /// (located in `src/ffi/private.rs`) and cannot appear in `pub fn` return
+    /// type per Rust's `private_in_public` rule.
+    ///
     /// This API is only implemented for writable storage, so read-only storage
     /// modes are rejected at the trait boundary rather than at runtime.
     /// No additional fallible validation is performed beyond the existing
     /// `&mut self` + `S: StorageMut` exclusivity boundary.
-    pub fn export_mut(&mut self) -> TensorExportMut<'_, A> {
+    pub fn export_mut(&mut self) -> TensorExportMutRaw {
+        let generic = self.export_mut_internal();
+        generic.into()
+    }
+
+    /// `pub(crate)` internal helper: produces the typed mutable generic
+    /// descriptor for in-crate borrow tracking and lifetime evidence.
+    /// Not exposed to downstream consumers; use `export_mut()` for the public
+    /// FFI surface.
+    pub(crate) fn export_mut_internal(&mut self) -> TensorExportMut<'_, A> {
         TensorExportMut {
             data: if self.is_empty() {
                 core::ptr::NonNull::<A>::dangling().as_ptr()
@@ -630,9 +664,9 @@ where
 }
 ```
 
-**指针语义**：`TensorExport.data`（`*const A`）与 `TensorExportMut.data`（`*mut A`）始终指向 storage base pointer；逻辑首元素地址通过 `data + offset` 计算，`offset` 与 `strides` 以元素个数（非字节）计量。空张量（`len() == 0`）时 `data` 为有效对齐但不可解引用的 dangling 指针。详细字段语义见结构体注释与上方对照表。
+**指针语义**：`TensorExportRaw.data`（`*const c_void`，C-visible）与 `TensorExportMutRaw.data`（`*mut c_void`，C-visible）通过 `From<TensorExport<'_, A>>` / `From<TensorExportMut<'_, A>>` 转换从 generic 描述符的 typed pointer 派生而来；C 消费者必须按 `element_type` 字段识别的类型 cast 后再访问。逻辑首元素地址通过 `data + offset * size_of_element` 计算，`offset` 与 `strides` 以元素个数（非字节）计量。空张量（`len() == 0`）时 `data` 为有效对齐但不可解引用的 dangling 指针。Generic descriptor (`TensorExport<'_, A>` / `TensorExportMut<'_, A>`) 仅在 crate 内部使用，详细字段语义见 §5.4 结构体注释与上方对照表。
 
-**导出范围与可写边界**：`export()` 返回 `TensorExport<'_, A>`，仅要求 `S: Storage`，覆盖 Owned、View、只读共享存储及所有合法 stride 布局。`export_mut()` 返回 `TensorExportMut<'_, A>`，要求 `S: StorageMut`，通过 `&mut self` 保证独占可写访问；只读视图和共享只读存储在 trait 边界上直接被拒绝，与 `需求说明书 §6` 的存储模式转换和 `需求说明书 §25` 的零拷贝导出要求保持一致。
+**导出范围与可写边界**：公开 `export()` 返回 `TensorExportRaw`（内部经 generic descriptor 中转后转换），仅要求 `S: Storage`，覆盖 Owned、View、只读共享存储及所有合法 stride 布局。公开 `export_mut()` 返回 `TensorExportMutRaw`，要求 `S: StorageMut`，通过 `&mut self` 保证独占可写访问；只读视图和共享只读存储在 trait 边界上直接被拒绝，与 `需求说明书 §6` 的存储模式转换和 `需求说明书 §25` 的零拷贝导出要求保持一致。Crate 内部如需 generic descriptor 的 borrow 证据，使用 `pub(crate)` 的 `export_internal()` / `export_mut_internal()`。
 
 **stride 约定**：`strides` 以元素个数（非字节）表示步长。按照 `06-layout.md` §1.2 与 `需求说明书 §7`，当前版本不支持负步长。`from_raw_parts()` 允许零步长布局以表达广播只读视图；`from_raw_parts_mut()` 拒绝所有非空零步长布局（非单元素轴的 `stride == 0` 会报错）。
 
