@@ -281,7 +281,7 @@ fn sum_floating_or_complex<A: Numeric>(iter: impl Iterator<Item = A>) -> A {
 
 **有限值数值容差表（authoritative for `sum`，v2.0.x 新增）：**
 
-该表闭合 `需求说明书 §28.3` 对"文档化误差容差"的要求。它**仅**适用于浮点 / 复数 `sum` 在不同执行路径之间的有限值结果比较，例如 Serial scalar vs SIMD、Serial scalar vs Parallel、Parallel worker 内 SIMD vs 非 SIMD。它**不**适用于整数路径；整数 `sum` 必须与逐步 checked arithmetic 精确一致。`dot` 的容差由 dot/matrix 文档独立定义；在该容差表落地之前，不得启用会改变合并顺序的 SIMD `dot` 路径。
+该表闭合 `需求说明书 §28.3` 对"文档化误差容差"的要求。它**仅**适用于浮点 / 复数 `sum` 在不同执行路径之间的有限值结果比较，例如 Serial scalar vs SIMD、Serial scalar vs Parallel、Parallel worker 内 SIMD vs 非 SIMD。它**不**适用于整数路径；整数 `sum` 必须与逐步 checked arithmetic 精确一致。`dot` 的容差由 dot/matrix 文档独立定义，权威来源为 `12-matrix.md §10.1`（v2.0.2 起已落地，SIMD `dot` 路径获准上线）。
 
 | 元素类型       | 比较对象  | 有限值容差                                                                                                                            |
 | -------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------- |
@@ -299,12 +299,22 @@ fn sum_floating_or_complex<A: Numeric>(iter: impl Iterator<Item = A>) -> A {
 
 **非有限值规则：**
 
-- `NaN`：按 IEEE 754 传播语义验证；含 `NaN` 的结果**不**使用数值容差比较，必须按 IEEE 754 行为对齐（任何路径产生 NaN 时其他路径也必须产生 NaN）。
+- `NaN`：按 IEEE 754 传播语义验证。**仅约束 NaN 的存在性，不约束 NaN 的位模式（payload）**：
+  - **存在性约束（强制）**：若标量基线路径产生 NaN，则 SIMD / 并行 / 并行+SIMD 路径在相同输入下也**必须**产生 NaN（不得返回有限值或 ±Inf）；反之亦然。
+  - **位模式不约束**：NaN 的具体 payload 字段（即 `f32::to_bits()` / `f64::to_bits()` 在 NaN 类别内的取值）**不**作为跨路径比较项。IEEE 754 允许实现在 NaN 算术传播中产生不同 payload 的 NaN（例如 `NaN + x` 是否保留输入 NaN 的 payload 由硬件/编译器决定）；不同路径因合并顺序不同可能产生 payload 不同的 NaN，这**不**视为跨路径不一致。
+  - **比较方法**：跨路径 NaN 一致性测试使用 `is_nan()` 谓词比较，**不**使用 `to_bits()` 比较；同执行路径同输入的 bit-identical 也仅承诺有限值，对 NaN 不做承诺。
+  - **复数**：含 `NaN` 分量的复数结果按实部/虚部分别套用以上规则——只要标量基线对应分量为 NaN，其他路径对应分量也必须为 NaN，分量 payload 不约束。
 - `+Inf` / `-Inf`：必须**同号同类**；有限容差**不得**把有限值与无穷值视为相等。
 - `+0.0` / `-0.0`：符号必须一致；**不得**用容差抹平零符号差异。
 - 容差只约束不同执行路径引入的舍入差异，**不**允许改变 shape、错误类别、panic 契约或整数溢出语义。
 
 **实现回退条款：** 若某个 SIMD 或并行实现无法证明其结果满足上表（例如使用了 FMA/Kahan/pairwise 但未走完误差分析），调用方（本模块）必须**不**进入该路径，而**不是**由 `reduction` 内部在运行后修正结果。这与 §6.3 上一条 bullet 中"回退责任在调用方"的全局规则一致。
+
+**SIMD sum 调用方 type gate（v2.0.x，闭合 `08-simd.md §5.6.1` 契约 1）：** `SimdKernel::sum` 因返回 `A` 而无 admission 信号通道。本模块在调用 `dispatch::select_exec_path()` **之前**须完成元素类型 gate：
+
+- 浮点 / 复数（`f32` / `f64` / `Complex<f32>` / `Complex<f64>`）：可走完整三路 dispatch
+- 整数（`i32` / `i64`）且无已验证 widening SIMD 实现：**不**调用 `select_exec_path()`，直接走标量串行实现；亦不进入 parallel 路径除非 chunk-order 仲裁与 checked 等价已证明
+- 整数且已验证 widening SIMD 实现（如 ISA 提供 `i32 → i64` widening）：可走完整三路 dispatch；SIMD 实现侧负责保证 checked 等价
 
 ### 6.4 并行 axis 归约写回策略
 
@@ -413,7 +423,7 @@ fn sum_floating_or_complex<A: Numeric>(iter: impl Iterator<Item = A>) -> A {
 | `test_sum_axis_invalid_axis`               | `sum_axis()` 越界返回 `InvalidAxis`                             | 高     |
 | `test_sum_axis_keepdims_invalid_axis`      | `sum_axis_keepdims()` 越界返回 `InvalidAxis`                    | 高     |
 | `test_sum_axis_zero_len_axis`              | 被归约轴长度为 `0` 时输出槽全部为零                             | 高     |
-| `test_sum_parallel_consistency`            | 并行路径与标量结果、错误类别、panic 语义一致；浮点/复数有限结果满足 §6.3 容差表，非有限值（NaN/±Inf/±0.0）按 §6.3 规则对齐 | 高     |
+| `test_sum_parallel_consistency`            | 并行路径与标量结果、错误类别、panic 语义一致；浮点/复数有限结果满足 §6.3 容差表；非有限值规则按 §6.3：NaN 仅校验存在性（`is_nan()` 谓词，不校验 payload 位模式）、±Inf 同号同类、±0.0 符号一致 | 高     |
 | `test_sum_simd_consistency`                | SIMD 路径与标量结果一致；浮点/复数有限结果满足 §6.3 容差表；不满足前提时 dispatch 不选择 SIMD | 高     |
 | `test_sum_large_tensor_parallel_threshold` | 大张量（`10^7` 量级元素）达到阈值后并行路径仍满足文档化语义     | 高     |
 | `test_sum_high_rank_ixdyn`                 | 高 rank 动态维输入上的 `sum_axis*` shape 与 keepdims 语义正确   | 高     |

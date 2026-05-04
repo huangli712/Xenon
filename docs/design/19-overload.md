@@ -371,8 +371,8 @@ where
 - 当前版本**不**稳定承诺 `&A` 形式的标量运算符重载。公开契约仅保证值形式 `tensor + scalar`、`Scalar(scalar) + tensor`，以及常用原生左标量（如 `5.0 + tensor`）。若后续版本需要 `&A` 支持，应以独立议题评估。
 - 标量运算符重载已覆盖 owned `Tensor` 和 `TensorView`（只读视图）。`TensorViewMut` 不直接参与标量运算符重载——使用方需先调用 `.view()` 转为 `TensorView` 后再使用运算符，或显式调用 `.add_scalar()` 等方法，参见 `11-math.md §5.9`。
 - 标量路径的委托分为两类，对 owned `Tensor` 和 `TensorView` 均适用：
-  - **委托 math**：右标量路径（`tensor op scalar`）与交换性左标量路径（`scalar + tensor`、`scalar * tensor`）直接调用 `11-math.md §5.9` 的公开标量方法（`.add_scalar()` / `.sub_scalar()` / `.mul_scalar()` / `.div_scalar()`），不重复实现。
-  - **本模块新增**：非交换左标量路径（`scalar - tensor`、`scalar / tensor`）需要本模块内部 helper `sub_scalar_left_impl` / `div_scalar_left_impl`，逐元素计算 `scalar - each_element` / `scalar / each_element`。这两条路径不能复用现有 `tensor.sub_scalar(scalar)` / `tensor.div_scalar(scalar)`，因为减法与除法不满足交换律。`11-math.md` 当前未提供对应的 `_left` 方法。其中 `TensorView` 路径的 `sub_scalar_left_impl`/`div_scalar_left_impl` 接受 `&TensorBase<ViewRepr<..>, D>` 引用，与 owned `Tensor` 路径共用同一逐元素运算逻辑。
+  - **右标量与交换性左标量**：`tensor op scalar`、`scalar + tensor`、`scalar * tensor` 直接调用 `11-math.md §5.9` 的公开标量方法（`.add_scalar()` / `.sub_scalar()` / `.mul_scalar()` / `.div_scalar()`），不重复实现。
+  - **非交换性左标量**：`scalar - tensor`、`scalar / tensor` 委托到 `11-math.md §5.9.1` 的 `pub(crate)` 内部入口 `tensor.sub_from_scalar(scalar)` / `tensor.div_from_scalar(scalar)`。本模块**不得**自行实现逐元素遍历——所有逐元素执行骨架（dispatch 路径选择、SIMD/Parallel admission、checked arithmetic、panic 语义）由 `11-math.md` 单点维护，避免左标量路径游离于 math 执行优化之外。本模块内部 helper（如 `sub_scalar_left_impl` / `div_scalar_left_impl`）仅作为 trait impl 的薄桥接，函数体应仅一行委托：`fn sub_scalar_left_impl(scalar, tensor) -> Tensor { tensor.sub_from_scalar(scalar) }`，不得包含逐元素循环或 dispatch 调用。
 
 ### 5.4 Sub / Mul / Div
 

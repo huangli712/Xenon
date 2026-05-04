@@ -18,7 +18,7 @@ dispatch 模块是 Xenon 张量库内部执行路径的统一裁决层。它负�
 | 职责       | 包含                                                                 |
 | ---------- | -------------------------------------------------------------------- |
 | 路径裁决   | `ExecPath` 三路仲裁（Serial / Simd / Parallel），通过 `select_exec_path()` 统一入口 |
-| 阈值管理   | 并行阈值的编译期默认值（`PARALLEL_THRESHOLD`）+ 内部运行时覆写与重置接口（`set_parallel_threshold` / `reset_parallel_threshold`）；SIMD 通用最小阈值（`SIMD_THRESHOLD`）只读不可覆写，per-op SIMD admission 阈值由 `simd/` 后端管理（参见 §5.6 / §6.3 + `08-simd.md §5.6` "条件实现，默认标量回退"） |
+| 阈值管理   | 并行阈值与 SIMD 通用阈值均提供编译期默认值（`PARALLEL_THRESHOLD` / `SIMD_THRESHOLD`）+ 对称的内部运行时覆写与重置接口（`set_parallel_threshold` / `reset_parallel_threshold`、`set_simd_threshold` / `reset_simd_threshold`），用于内部测试与基准。per-op SIMD admission 阈值由 `simd/` 后端管理（参见 §5.6 / §6.3 + `08-simd.md §5.6` "条件实现，默认标量回退"） |
 | 嵌套防护   | `ParallelGuard` / `ParallelContext` 的 thread-local RAII 保护，防止库内部二次并行 |
 | 策略参数   | `ParallelExecStrategy` 定义（chunk_size、max_workers），供 parallel/ 后端消费 |
 | 快捷查询   | `should_parallelize()` 布尔查询，供仅关注串行/并行二选的调用方使用    |
@@ -505,6 +505,32 @@ pub(crate) fn set_parallel_threshold(threshold: usize);
 
 /// Reset the parallel threshold to its compile-time default.
 pub(crate) fn reset_parallel_threshold();
+
+/// Override the SIMD threshold at runtime.
+///
+/// Intended for internal testing and benchmarking. Provides symmetric
+/// override capability with `set_parallel_threshold` since `SIMD_THRESHOLD`
+/// is already stored in an `AtomicUsize`.
+///
+/// # Special value: 0
+///
+/// Setting `threshold = 0` disables the SIMD path entirely (the dispatch
+/// `len >= SIMD_THRESHOLD` check becomes unreachable for any positive
+/// `len`, since `len > 0` implies `len >= 1 > 0`; the comparison is
+/// `len >= 0` which is always true — but path selection still requires
+/// `is_contiguous` and feature gating, so practical effect is "use SIMD
+/// even for length 1 when other admission gates pass"). To **fully disable**
+/// SIMD, set `threshold = usize::MAX` instead, making the comparison
+/// `len >= usize::MAX` effectively unreachable.
+///
+/// Setting `threshold = usize::MAX` is the canonical "disable SIMD path"
+/// sentinel, mirroring the parallel path's `threshold = 0` sentinel
+/// (semantics differ because SIMD admission uses `len >= threshold` while
+/// parallel uses `len >= threshold && threshold != 0` — see §6.3).
+pub(crate) fn set_simd_threshold(threshold: usize);
+
+/// Reset the SIMD threshold to its compile-time default.
+pub(crate) fn reset_simd_threshold();
 ```
 
 **非连续策略（统一规则）：** SIMD 路径与并行路径采取不同规则——
@@ -702,8 +728,11 @@ static PARALLEL_THRESHOLD: AtomicUsize = AtomicUsize::new(DEFAULT_PARALLEL_THRES
 /// Compile-time default for SIMD threshold.
 const DEFAULT_SIMD_THRESHOLD: usize = 64;
 
-/// Runtime SIMD threshold (currently not overridable; reserved for
-/// future testing needs).
+/// Runtime-overridable SIMD threshold.
+///
+/// Uses `AtomicUsize` for lock-free reads, symmetric with
+/// `PARALLEL_THRESHOLD`. Written only during initialization or
+/// explicit override (testing/benchmarking).
 static SIMD_THRESHOLD: AtomicUsize = AtomicUsize::new(DEFAULT_SIMD_THRESHOLD);
 
 #[inline]
@@ -722,6 +751,14 @@ pub(crate) fn set_parallel_threshold(threshold: usize) {
 
 pub(crate) fn reset_parallel_threshold() {
     PARALLEL_THRESHOLD.store(DEFAULT_PARALLEL_THRESHOLD, Ordering::Relaxed);
+}
+
+pub(crate) fn set_simd_threshold(threshold: usize) {
+    SIMD_THRESHOLD.store(threshold, Ordering::Relaxed);
+}
+
+pub(crate) fn reset_simd_threshold() {
+    SIMD_THRESHOLD.store(DEFAULT_SIMD_THRESHOLD, Ordering::Relaxed);
 }
 ```
 

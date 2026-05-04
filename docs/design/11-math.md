@@ -446,6 +446,34 @@ where
 - 标量版算术方法与张量-张量运算遵循相同的 checked arithmetic 语义：有符号整数溢出、除以零、结果不可表示均遵循 panic 语义。
 - 标量与张量之间的逐元素运算，标量按可广播到目标张量全形状的零维输入语义处理，统一经由广播路径实现，不另起独立语义。
 
+#### 5.9.1 非交换左标量内部入口（`pub(crate)`）
+
+为支撑 `19-overload.md` 的左标量运算符（`scalar - tensor`、`scalar / tensor`）而设。可交换运算（`+`、`*`）由 19-overload 直接复用 `add_scalar` / `mul_scalar`，不需要独立左标量入口。
+
+```rust,ignore
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+    A: Numeric,
+{
+    /// Element-wise scalar - tensor (left-scalar subtraction).
+    /// Internal helper for `19-overload.md`; not part of the public surface.
+    pub(crate) fn sub_from_scalar(&self, scalar: A) -> Tensor<A, D>;
+
+    /// Element-wise scalar / tensor (left-scalar division).
+    /// Internal helper for `19-overload.md`; not part of the public surface.
+    pub(crate) fn div_from_scalar(&self, scalar: A) -> Tensor<A, D>;
+}
+```
+
+**契约：**
+
+- 这两个方法**必须**复用与 `sub_scalar` / `div_scalar` 完全相同的执行骨架（同一套 `dispatch::select_exec_path` → Serial / SIMD / Parallel 路径选择，同一套 worker 内 SIMD admission 逻辑），仅在逐元素 kernel 内部对 (lhs, rhs) 操作数顺序做翻转：`sub_from_scalar` 计算 `scalar - element`，`div_from_scalar` 计算 `scalar / element`
+- panic 语义、整数 checked arithmetic、除零规则、输出布局（F-order owned）与 `sub_scalar` / `div_scalar` 完全对齐
+- 19-overload 的左标量运算符**必须**调用本节方法，不得自行实现逐元素遍历——避免 11-math 后续优化（SIMD/并行新路径）无法被左标量受益
+- 可见性为 `pub(crate)` 而非 `pub`：左标量运算的公开入口由 19-overload 通过 `impl Sub<Tensor<A, D>> for A` 等运算符提供，本方法仅作为内部委托靶点
+
 ### 5.10 Good / Bad 对比示例
 
 ```rust,ignore

@@ -469,36 +469,9 @@ pub struct Bad<A> {
 
 ### 4.4 Send/Sync 实现规范
 
-按存储模式声明 `unsafe impl Send/Sync`，须遵循以下规则（权威定义参见 `25-safety.md §5.1`，以及 `需求说明书 §25`）：
+**Send/Sync 的唯一权威定义见 `25-safety.md §5.1`**（具体版本以本文档 §1.3 协同基线声明为准）。本节不重复规则表与 `unsafe impl` 代码，避免双重权威导致维护漂移。
 
-| 存储模式             | Send | Sync   | 条件                                                 |
-| -------------------- | ---- | ------ | ---------------------------------------------------- |
-| `Owned<A>`           | 是   | 是     | Send: `A: Send`，Sync: `A: Sync`（与 `Vec<A>` 一致） |
-| `ViewRepr<'a, A>`    | 是   | 是     | `A: Sync`                                            |
-| `ViewMutRepr<'a, A>` | 是   | **否** | `A: Send`（独占借用不可共享）                        |
-| `ArcRepr<A>`         | 是   | 是     | `A: Send + Sync`                                     |
-
-**关键约束**：`ViewMutRepr` 永远不实现 `Sync`——独占借用语义要求同一时刻只有一个线程可访问。
-
-Send/Sync 的唯一权威定义见 `25-safety.md v2.0.1 §5.1`。`ArcRepr<A>` 的 Send 与 Sync 均要求 `A: Send + Sync`。
-
-```rust,ignore
-// Owned: Send+Sync when A: Send+Sync
-unsafe impl<A: Send> Send for Owned<A> {}
-unsafe impl<A: Sync> Sync for Owned<A> {}
-
-// ViewRepr: Send+Sync when A: Sync
-unsafe impl<'a, A: Sync> Send for ViewRepr<'a, A> {}
-unsafe impl<'a, A: Sync> Sync for ViewRepr<'a, A> {}
-
-// ViewMutRepr: Send only, NEVER Sync
-unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
-// No Sync impl — intentionally omitted
-
-// ArcRepr: Send+Sync when A: Send+Sync
-unsafe impl<A: Send + Sync> Send for ArcRepr<A> {}
-unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
-```
+凡涉及存储模式 Send/Sync 边界、`unsafe impl` 的安全论证、`ViewMutRepr` 不实现 `Sync` 的精确理由（含对 `PhantomData<&mut A>` 角色的论证修正），均以 `25-safety.md §5.1` 为准。本文档其他章节如需引用 Send/Sync 规则，应链接到 `25-safety.md §5.1`，不得就地复述。
 
 ### 4.5 API 可错性规范
 

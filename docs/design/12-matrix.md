@@ -589,7 +589,48 @@ User calls dot(a, b)
 | Recoverable error | 左/右输入非 1D 时返回 `XenonError::InvalidArgument { operation: "dot", kind: InvalidArgumentKind::OperationSpecific { argument: "a"或"b", constraint: "rank == 1" } }`；长度不匹配时返回 `XenonError::ShapeMismatch { operation: "dot", left_shape, right_shape }`。字段对齐 26-error v3.2.0 §5.1 封闭枚举。 |
 | Panic             | 整数 dot 的乘法溢出与累加溢出均为不可恢复错误，按 checked arithmetic 触发 panic。|
 | 路径一致性        | 执行路径选择参见 §6.1；任何可选路径都不得改变结果、错误类别或 panic 语义。worker 内 SIMD（v2.0 起）的 chunk 内独立 admission 不影响整体结果与错误模型。|
-| 容差边界          | 以 `需求说明书 §28.3` 为权威基线；实现细节参见 `00-coding.md §8.4`。同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。|
+| 容差边界          | 浮点/复数 `dot` 跨路径有限值结果比较使用 §10.1 容差表；同执行路径基础算术/比较默认精确一致；以 `需求说明书 §28.3` 为权威基线，实现细节参见 `00-coding.md §8.4`。|
+
+### 10.1 `dot` 跨路径有限值容差表（authoritative for `dot`）
+
+该表闭合 `13-reduction.md §6.3` 中"`dot` 容差由 dot/matrix 文档独立定义"的依赖条款，使 SIMD `dot` 路径具备启用前置条件。它**仅**适用于浮点 / 复数 `dot` 在不同执行路径之间的有限值结果比较（Serial scalar vs SIMD、Serial scalar vs Parallel、Parallel worker 内 SIMD vs 非 SIMD），**不**适用于整数路径——整数 `dot` 必须与逐步 checked arithmetic 精确一致。
+
+`dot` 与 `sum` 的容差结构有两点关键差异：
+
+1. **dot 包含 per-element 乘法**：`dot(a, b) = sum_i (conj(a_i) * b_i)`（§5.2）。每次乘法产生最多 1 ulp 舍入误差，再叠加 n 次累加误差。容差系数因此从 `sum` 的 `4.0 * EPSILON` 扩大到 `8.0 * EPSILON` 以覆盖乘法 + 加法的双重舍入。
+2. **dot 的 max_abs 用 |a_i * b_i| 上界**：归约项是乘积而非原始输入，`max_abs_term = max_i(|a_i| * |b_i|) <= max_abs_a * max_abs_b`。容差用乘积上界以避免对每对 `(a_i, b_i)` 单独枚举。
+
+| 元素类型       | 比较对象   | 有限值容差                                                                                                                                                                          |
+| -------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `f32`          | `dot` 结果 | `abs(actual - expected) <= max(8.0 * f32::EPSILON * (n as f32) * max_abs_a * max_abs_b, 4.0 * f32::MIN_POSITIVE)`                                                                  |
+| `f64`          | `dot` 结果 | `abs(actual - expected) <= max(8.0 * f64::EPSILON * (n as f64) * max_abs_a * max_abs_b, 4.0 * f64::MIN_POSITIVE)`                                                                  |
+| `Complex<f32>` | `dot` 结果 | 实部和虚部分别按 `f32` 规则比较；容差系数从 `8.0` 提升到 **`16.0`** 以覆盖复数乘法的 4 次实数乘 + 2 次实数加（每分量结果含 6 个浮点 op 的舍入累积）；`max_abs_a` / `max_abs_b` 取**复数模**的最大值，即 `max_i(sqrt(re_i^2 + im_i^2))` 在两侧分别计算 |
+| `Complex<f64>` | `dot` 结果 | 实部和虚部分别按 `f64` 规则比较；其余规则同 `Complex<f32>` 行                                                                                                                       |
+
+其中：
+
+- `n` 是 `dot` 累加的元素数，即 `a.len() == b.len()`（输入两向量等长，rank=1）
+- `max_abs_a`、`max_abs_b` 分别是 `a` / `b` 中**有限**输入值绝对值（复数为模）的最大值；若任一向量含非有限值（NaN/±Inf），按 §10.2 非有限值规则裁决，不进入本容差表
+- 若 `n == 0`（空向量），`dot` 返回 `A::zero()`，跨路径必须**逐位一致**，不使用容差比较
+- 若 `max_abs_a * max_abs_b == 0.0`（任一向量全零），容差退化为表中第二项 `4.0 * MIN_POSITIVE` 的下限
+- 复数共轭因子 `conj(a_i)` 不改变 `|a_i|`（共轭仅翻转虚部符号，模不变），故 `max_abs_a` 不需为共轭单独计算
+
+**容差系数推导：** 对长度 n 的浮点 dot，标准误差界为 `n * EPSILON * max_term + O(EPSILON^2)`（参见 Higham《Accuracy and Stability of Numerical Algorithms》第 3 章）。`8.0 * EPSILON` 系数为 `n * EPSILON` 的 8x 余量，覆盖：(1) per-element 乘法 1 ulp + (2) per-element 累加 1 ulp + (3) SIMD pairwise reduction 的 log₂(n) 次合并的常数因子 + (4) FMA 不可用时的额外舍入。Complex 的 `16.0` 系数额外覆盖复数乘法展开 `(ar*br - ai*bi) + i(ar*bi + ai*br)` 的 4 次实数乘 + 2 次实数加。
+
+### 10.2 非有限值规则（继承 13-reduction §6.3 + dot 专属）
+
+- **乘法 NaN 传播**：若任一对 `(a_i, b_i)` 中含 NaN（或乘积溢出为 NaN，例如 `0 * Inf`），`dot` 结果必为 NaN。NaN 跨路径仅约束**存在性**（`is_nan()` 谓词），**不**约束 NaN payload 位模式（与 `13-reduction.md §6.3` "NaN" 条目同义）。
+- **±Inf 累加**：若中间累加产生 `+Inf - Inf` 类不定形，结果为 NaN，按上一条处理；若最终结果为 ±Inf，跨路径必须同号同类。
+- **±0.0**：若所有 `(a_i, b_i)` 乘积均为有限零（含 ±0.0），最终累加结果零的符号必须跨路径一致；这继承 `13-reduction.md §6.3` 的符号零硬约束。
+- **复数非有限值**：实部、虚部分别独立套用以上规则。
+
+### 10.3 SIMD `dot` 路径上线条件（v2.0.2 新增）
+
+`13-reduction.md §6.3` 此前以"dot 容差表未落地"为由阻塞 SIMD `dot` 路径。本节 §10.1 / §10.2 已提供该容差表，**SIMD `dot` 路径在 v2.0.2 起获准上线**，须满足：
+
+- SIMD 实现的合并顺序变化产生的有限值差异须在 §10.1 容差表内（实现期通过基准测试 + property test 验证）
+- SIMD 实现的 NaN / ±Inf / ±0.0 处理须满足 §10.2 非有限值规则
+- 整数 `dot` 路径的 SIMD 上线**仍受**与 `13-reduction.md §6.3` 同样的"chunk-order 仲裁等价"约束（参见 §6.1 dispatch 决策中"整数路径与浮点路径共享 dispatch 决策"的回退条款）；若 SIMD 整数 widening 实现无法证明等价，调用方（本模块）须在调用 dispatch 前自行 type gate 跳到 Serial
 
 ---
 

@@ -679,7 +679,16 @@ impl RemoveAxis for IxDyn {
 
 ### 5.9 Sealed trait 策略
 
+`Sealed` 模式封闭以下 trait 的下游实现集：`Dimension`、`Element`、`CastElement`、`Storage` 体系等。封闭的可靠性依赖**模块可见性**：
+
+- `private` 模块**必须**声明为 `pub(crate) mod private;`（或更受限），**不得**为 `pub mod private;`
+- 若 `private` 是 `pub mod`，外部 crate 可以 `use crate::private::Sealed` 并为自己的类型实现 `Sealed`，从而绕过封闭语义
+- `Sealed` trait 自身保留 `pub trait Sealed {}`，因为它需在 `pub trait Dimension: Sealed` 等公开 trait 的 supertrait 位置出现（`pub trait` 的 supertrait 必须公开可命名）；通过外层模块的 `pub(crate)` 限制阻止外部命名
+
 ```rust,ignore
+// src/lib.rs
+pub(crate) mod private;  // 关键：必须为 pub(crate) 或更受限
+
 // src/private.rs
 pub trait Sealed {}
 
@@ -692,6 +701,8 @@ impl Sealed for Ix5 {}
 impl Sealed for Ix6 {}
 impl Sealed for IxDyn {}
 ```
+
+实现期校验：`28-tests.md` §5.21 须包含一个 compile-fail 测试用例，验证外部代码无法通过 `use crate::private::Sealed` 路径名命名 `Sealed` trait（即 `private` 模块对外不可见）。
 
 ### 5.10 BroadcastDim trait
 
