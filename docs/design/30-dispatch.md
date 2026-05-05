@@ -11,10 +11,6 @@
 
 ## 1. 模块定位
 
-### 1.0 协同基线
-
-本文档示例与论证以下游已修文档为准——`08-simd.md` v2.0.x、`09-parallel.md` v2.0.x、`07-tensor.md` v2.0.5、`06-layout.md` v1.3.2、`26-error.md` **v3.3.1**（§5.1 `XenonError` 枚举，自 v3.3.0 起标 `#[non_exhaustive]`，v3.3.1 修正 SemVer policy 文字 + 补 2 个 sub-enum non_exhaustive，字段集合不变）。本模块自身的错误产出仅在 `ParallelExecStrategy::new()` 校验失败时使用 `XenonError`；任何 §5 / §10 引用 `26-error` 的字段或变体名时，均以 v3.3.1 为权威。
-
 ### 1.1 职责边界
 
 | 职责       | 包含                                                                 |
@@ -1285,91 +1281,6 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 | 最小依赖   | 不引入**额外**第三方 crate；`pulp` / `rayon` 仅作为 `feature = "simd"` / `feature = "parallel"` 下的可选依赖，dispatch 共享 `parallel/` 已声明的 rayon 依赖项以读取池大小（仅在 `cfg(feature = "parallel")` 块内使用 `rayon::current_num_threads()`）。非 `parallel` 编译下 dispatch 完全不引入 rayon 符号 |
 | 确定性     | 同平台、同编译配置、同输入下 `select_exec_path()` 结果必须确定，不依赖随机数或时间                               |
 | 不变量     | `ExecPath` 枚举为 `#[derive(Copy, Clone, Debug, PartialEq, Eq)]`，零成本传递                                     |
-
----
-
-## 版本历史
-
-| 版本  | 日期       | 说明                                                                                   |
-| ----- | ---------- | -------------------------------------------------------------------------------------- |
-| 1.0.0 | 2026-05-02 | 初始版本：依据用户决策 B（三路 ExecPath）+ dispatch decision 2（ISA-agnostic），定义 dispatch 的完整设计 |
-| 1.1.0 | 2026-05-02 | （内部 API 修订，不影响下游用户）依据用户决策 B8.a + 评审 C6/C7/C8/溢出风险修复：(1) `select_exec_path()` 返回 `(ExecPath, Option<ParallelGuard>)`，select 与 acquire guard 原子绑定；(2) 移除 `ParallelGuard::enter()` 公开入口，guard 仅由 dispatch 内部 `try_acquire_guard()` 产生；(3) `set_parallel_threshold(0)` 显式作为禁用 sentinel；(4) 非连续阈值翻倍改为 `saturating_mul(2)` 防溢出；(5) SIMD/Parallel 非连续策略表述统一（SIMD 直接拒绝、Parallel 翻倍阈值）；(6) `ParallelExecStrategy` 字段私有 + 构造器 `new()` 校验；(7) `should_parallelize()` 语义澄清为诊断查询，不获取 guard；(8) §12.3 修正"纯函数"表述（实际读 thread-local + atomic）；(9) 新增决策 7 / 决策 8。 |
-| 1.1.1 | 2026-05-03 | （文档同步，与 08-simd v2.0.0 / 09-parallel v2.0.0 / 11-math v2.0.0 / 12-matrix v2.0.0 / 13-reduction v2.0.0 worker 内 SIMD 决策对齐）：清理 5 处 v1.x "no SIMD inside parallel workers" 表述：(1) §5.1 `ExecPath::Parallel` doc comment 改写：worker chunk 可独立调用 SIMD kernel（thread × SIMD）；(2) §7 ASCII 流向图：将 "workers run scalar code (no SIMD)" 替换为 "each worker chunk MAY invoke SIMD per chunk-local admission (v2.0)"；(3) §9.1 接口约定表 `math` 行：替换 "并行 worker 内执行标量代码（不使用 SIMD）" 为 "worker 内 chunk 可独立做 SIMD admission"；(4) §9.2 数据流图 `ExecPath::Parallel` 行：替换 "各 worker 执行标量代码，无 SIMD" 为 "各 worker chunk 可独立做 SIMD admission"；(5) §11 决策 1 拒绝替代方案 "四路" 表述更新：保留三路 ExecPath 决策，但说明 v2.0 起 SIMD admission 由 worker 自决，不需要顶层 `SimdParallel` 变体。无 API 变更。 |
-| 1.1.2 | 2026-05-03 | Medium documentation follow-up：澄清决策 5 非连续输入仅让 Parallel 有效阈值翻倍；SIMD 直接拒绝非连续输入。 |
-| 1.1.3 | 2026-05-03 | （破坏性内部更新）`alignment_ok` 改为能力提示位（不再是 SIMD 硬门槛）+ `ParallelExecStrategy::new()` 集中 max_workers 校验。详见下方 v1.1.3 块。 |
-| 2.0.0 | 2026-05-04 | SemVer 主版本上升标记（与 08-simd v2.0.x / 09-parallel v2.0.x 协同基线统一）。 |
-| 2.0.1 | 2026-05-04 | R8/R9 协同基线对齐：与 `00-coding.md §1.3` / `28-tests.md §1.0` 锁定基线版本号显式对齐，本版无契约变更。 |
-| 2.0.2 | 2026-05-04 | Op-agnostic boundary clarification + `alignment_ok` formal contract (§5.5, §6.4). |
-| 2.0.3 | 2026-05-04 | patch fix: §6.4 澄清 `alignment_ok` 在 dispatch 与 SIMD 后端之间的实际传递路径。 |
-| 2.0.4 | 2026-05-05 | patch fix: §5.8 调用方 gating 契约与 08-simd / 09-parallel 一致化（FATAL fix）。 |
-| 2.0.5 | 2026-05-05 | patch fix: §1.0 自身协同基线 pin 同步——`07-tensor v2.0.4 → v2.0.5`、`26-error v3.2.0 → v3.3.0`（重审专家发现 30-dispatch v2.0.4 升版本时未自查 §1.0 的 stale pin）。纯 pin 刷新，无内容变更。 |
-| 2.0.6 | 2026-05-05 | patch fix: §1.0 pin `26-error v3.3.0 → v3.3.1`（post 第三轮重审）。纯 pin 同步。 |
-
-### v2.0.6 (2026-05-05) — patch fix: §1.0 pin 26-error v3.3.0 → v3.3.1（post 第三轮重审）
-
-- §1.0 协同基线声明 `26-error v3.3.0 → v3.3.1`（v3.3.1 修正 SemVer policy 文字 + 补 `WorkspaceErrorCategory` / `InvalidArgumentKind` 的 `#[non_exhaustive]`）。
-- 修复动机：v2.0.5 升版本时已同步 v3.2.0 → v3.3.0，但 26-error 随即又升至 v3.3.1，30-dispatch 第二次升版本未跟随。重审专家定级为 MAJOR（自身 §1.0 stale pin 应同 26-error 升级时同步）。
-- 协同：纯 pin 同步，本文档 §5 / §6 / §10 引用的 ExecPath、ParallelGuard、错误字段均无需改动。
-
-### v2.0.5 (2026-05-05) — patch fix: §1.0 自身协同基线 pin 同步
-
-- §1.0 协同基线声明：`07-tensor` pin v2.0.4 → v2.0.5（v2.0.5 起 `new_unchecked` 仅保留 Generic 单形式）；`26-error` pin v3.2.0 → v3.3.0（自 v3.3.0 起 enum 标 `#[non_exhaustive]`，字段集合不变）。
-- 修复动机：v2.0.4 升版本时仅修了 §5.8 内容，遗漏了文档自身 §1.0 协同基线声明的 pin 刷新——重审专家定级为 MINOR（自我引用 stale，非致命但应清理）。
-- 协同：纯 pin 刷新，无内容变更；不涉及 §5.x 任何决策、签名、契约。
-
-### v2.0.4 (2026-05-05) — patch fix: §5.8 调用方 gating 契约与 08-simd / 09-parallel 一致化
-
-- **背景**：v2.0.3 之前 §5.8 写"调用方仍走完整三路 dispatch，不在 dispatch 之前自行裁决 Serial 短路 ... 调用方**不**持有 op-/element-type-specific 阈值，**不**在调用 `select_exec_path()` 之前 gating"。该表述与 `08-simd.md §5.6.1`（"调用方先做 L2 type gate ... 不调用 `select_exec_path()`，直接走标量串行"）、`09-parallel.md §5.5/§6.5`（"必须在调用 `select_exec_path()` 之前自行 gate"）、`13-reduction.md §6.3` / `12-matrix.md §6.1` 整数 checked SIMD 等价性 gating 直接矛盾。Oracle 评审认定为 FATAL（实现者无法判断整数 `sum`/`dot` 应在哪一层做 type gate）。
-- **修复方向（方向 A，本文档单点修订）**：弱化 §5.8，把"调用方禁止 gating"约束限定为**通用长度阈值**（`len`）；明确"op-语义合法性 gating"是调用方的**必需职责**。dispatch 仍是 op-agnostic 的纯硬件/路径仲裁函数，与 §5.5 "Op-agnostic boundary"、§9.4 "simd 持有最终 admission" 一致。
-- **§5.8 表格前导段**：表述从"调用方**不**在调用 dispatch 之前自行 per-op gating"改为"调用方**不**做 per-op **长度阈值** gating，但**必须**做 op-语义 gating——参见 `08-simd.md §5.6.1` / `09-parallel.md §6.5` 整数 checked 等价性等场景"。
-- **§5.8 调用方-dispatch-后端阈值分工块**：
-  - "**dispatch 持有**" 段：把"不在 dispatch 之前自行裁决 Serial 短路"明确收窄为"**不得基于通用长度阈值**自行 gate"。
-  - "**调用方持有**" 段重写为两类职责：(1) 通用元数据传入（不持有 op-/element-type-specific **长度阈值**）；(2) **op-语义合法性 gating（必须）**——列举三类场景：整数 checked SIMD/Parallel 等价性缺失、顺序敏感约束、元素类型显式排除——并交叉引用 08/09/12/13 各自的 gating 章节。
-- **协同**：本次修复不涉及 `08-simd.md` 或 `09-parallel.md` 的内容变更（它们的 op-gating 表述早已是事实标准），仅修 30-dispatch 自身的措辞冲突。`08-simd.md v2.0.2` / `09-parallel.md v2.0.2` / `13-reduction.md v3.0.2` / `12-matrix.md v2.0.1` 的 pin 不变。
-- **调用方影响**：本次为文档措辞修订，对实现路径无新增约束——所有 op-gating 责任在 v2.0.3 之前已分散在 08/09/12/13 中明确，v2.0.4 仅是 30-dispatch 的对外措辞与之对齐。
-
-### v2.0.3 (2026-05-04) — patch fix: §6.4 `alignment_ok` 传递路径澄清
-
-- §6.4：新增 "关于 `alignment_ok` 的实际传递路径" 段落，澄清 `_simd_alignment_hint` 仅在 dispatch 选路阶段作为早期短路提示，不会通过参数或数据结构显式 forward 给 SIMD 后端。SIMD 后端通过 `layout::is_aligned()` 独立重新检查，并在 per-kernel admission 阶段独立裁决。消除 "幽灵参数" 歧义。
-
-### v2.0.2 (2026-05-04) — dispatch op-agnostic boundary + `alignment_ok` formal contract
-
-- §5.5：新增 "Op-agnostic boundary" 段落，明确声明 `select_exec_path` 是纯硬件/路径仲裁函数，不感知操作语义（元素类型、整数溢出、顺序等价、NaN 传播）。调用方必须在调用前自行 gate op 级合法性——例如整数归约的 chunk-order 仲裁由调用方裁定，而非 `dispatch`。交叉引用 `09-parallel.md §6.5` 和 `13-reduction.md §6.3` 作为调用方 gating 示例。
-- §5.5 `alignment_ok` 参数描述：从模糊的 "fast-path precondition" 重写为精确的正式契约——调用方断言输入指针满足预期对齐；`false` 时 SIMD 后端可选 unaligned 变体或回退；此为 HINT，非硬前置条件；最终准入由 SIMD 后端（`08-simd.md §5.7`）裁决。
-- §6.4 伪代码：`let _ = alignment_ok;` 改为 `let _simd_alignment_hint = alignment_ok;` 并附注释说明该值是**转发**给 SIMD 后端的，并非丢弃。交叉引用 §5.5 完整契约、`08-simd.md §5.7` 后端 admission。
-
-### v2.0.1 (2026-05-04) — R8/R9 协同基线对齐
-
-- 与 `00-coding.md §1.3` / `28-tests.md §1.0` 锁定基线版本号显式对齐；本版无契约变更，仅同步 changelog 行避免 v1.1.3 升级到 v2.0 后的版本号漂移（R9 评审追加发现）。
-- 维持 v1.1.3 的契约：`alignment_ok` 是 SIMD 后端能力提示位（不是 dispatch 硬门槛）；`ParallelExecStrategy::new()` 在构造期完整校验 `max_workers`；`select_exec_path(len, is_contiguous, alignment_ok)` 签名与 `(ExecPath, Option<ParallelGuard>)` 返回类型不变。
-
-### v2.0.0 (2026-05-04) — SemVer 主版本上升标记（与协同基线一致）
-
-- 自 v1.1.3 起累积的破坏性内部更新（alignment_ok 语义反转 + max_workers 校验集中）正式按 SemVer 主版本号体现，与 `08-simd.md v2.0.x` / `09-parallel.md v2.0.x` 协同基线统一为 v2.0.x。
-
-### v1.1.2 (2026-05-03) — Medium documentation follow-up
-
-- Clarified Decision 5: non-contiguous input doubles only the Parallel effective threshold; SIMD rejects non-contiguous input directly.
-
-### v1.1.3 (2026-05-03) — alignment_ok 改为能力提示位 + max_workers 校验集中（破坏性内部更新）
-
-> 本版本与 `08-simd.md v2.0.x` 协同恢复 SIMD admission 职责的正确划分，并把 `ParallelExecStrategy` 的 `max_workers` 校验完整收敛到 dispatch 构造期。所有 API 仍为 `pub(crate)`，对外无 SemVer 影响。
-
-**契约更新**：
-
-- §5.5 / §5.6 / §6.1 / §9.4：`alignment_ok` 不再是 `ExecPath::Simd` 的硬门槛。dispatch 仅检查 `is_contiguous && len >= SIMD_THRESHOLD` 即可推荐 `ExecPath::Simd`；`alignment_ok` 透传给 simd 后端作为能力提示位，由 `08-simd.md §5.7` 的 admission 规则决定具体走 aligned 或 unaligned kernel。这恢复了多数逐元素 unaligned SIMD kernel 的可达性，与 v1.1.x 是破坏性差异。
-- §5.3：`ParallelExecStrategy::new()` 现在在构造期完整校验 `max_workers`：
-  - `Some(0)` → `InvalidArgument`
-  - `Some(n) where n > rayon::current_num_threads()` → `InvalidArgument`
-  - `parallel/` 后端不再返回 `max_workers` 相关的 `InvalidArgument`，统一在 dispatch 内 fail-fast。
-  
-  这与 `09-parallel.md v2.0.0 §5.4` 协同，消除 v1.1.2 文档中"分两层校验"的歧义。
-- §6.1 算法伪代码：Step 3 SIMD 检查从 `if is_contiguous && alignment_ok && len >= SIMD_THRESHOLD` 改为 `if is_contiguous && len >= SIMD_THRESHOLD`；显式 `let _ = alignment_ok;` 表达"作为提示位透传"的意图。
-
-**协同与一致性更新**：
-
-- 该版本是项目 P0 修复任务（C4 + C6）的落地，与 `08-simd.md v2.0.0` / `09-parallel.md v2.0.0` 共同闭环 v2.0 协同。
-- 调用方代码层面无变化：`select_exec_path(len, is_contiguous, alignment_ok)` 签名保持不变；语义变化仅体现在 dispatch 内部对 `alignment_ok` 的处理方式。
 
 ---
 
