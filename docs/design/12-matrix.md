@@ -27,26 +27,6 @@
 | SIMD 状态 | BLAS 绑定      |
 | 错误处理  |  —             |
 
-**关于模块命名与"矩阵专属操作"的澄清**：
-
-当前版本 `matrix/` **没有任何 2D 矩阵专属操作**。模块的唯一公开 API `dot()` 是**一维向量内积**——运行时硬性要求两个输入张量的逻辑 rank 都是 `1`（详见 `12-matrix.md §5.1`）。任何高于 1D 的输入都会返回 `XenonError::InvalidArgument`，不会按 2D 矩阵语义处理。
-
-因此读者需要理解：
-
-| 概念 | 当前版本归属 |
-|:--|:--|
-| 1D 向量内积 `dot(a, b)` | ✅ 本模块（`12-matrix.md`） |
-| 2D 矩阵乘法 `matmul(A, B)` / `A @ B` | ❌ 不存在（范围外） |
-| 矩阵转置 `A.T` / `transpose()` | 张量层 shape 操作，归 `16-shape.md` |
-| 矩阵求逆 / 求解 / 分解 | ❌ 不存在（范围外） |
-| 外积 / 批量矩阵乘法 | ❌ 不存在（范围外） |
-
-**关于模块名的选择**：模块名 `matrix/` 在内容上确实比当前承诺宽。这是**有意保留**：模块名先于完整线性代数能力固定下来，是为后续在不破坏 API 路径的前提下扩展 2D 矩阵乘法、批量矩阵运算等线性代数能力（这些扩展明确不在当前版本范围内，参见 §2 范围外条目）。**至少在当前版本，`matrix::dot` 是模块的唯一公开 API。** 实现者与测试者在阅读"matrix 模块"字样时必须按 1D 向量内积语义设计代码与测试，不能把任何 2D 矩阵专属的特性（如转置后再乘、按行/按列归约等）默认归入本模块。
-
-**关于 `transpose` / `.T` 归属**：矩阵转置 / 多维张量转置**不属于** `matrix/` 模块。`transpose()` 是张量层的 shape 操作，权威定义见 `16-shape.md §5`。其语义概要：(1) 返回零拷贝**只读** `TensorView`，不复制底层 storage；(2) 当前版本仅提供"全轴反转"（reverse axis order），等价于二维矩阵转置；(3) 转置后 layout flags 重新由 `06-layout.md §5.7` 计算；(4) 通用 `permute_axes()` / `swap_axes()` / `moveaxis()` 不在当前版本范围内（详见 `16-shape.md §1.1`）。`matrix/` 模块的 `dot()` 不需要也不内嵌 transpose 步骤；如果调用方需要 `a.T.dot(b)` 形态，应先调用 `a.transpose()` 再调用 `dot()`。
-
-**关于矩阵求逆 / 求解 / 分解（`inverse` / `solve` / `lu` / `qr` / `svd` / `cholesky` / `eig`）**：均不在当前版本范围内，未来引入需要独立的设计文档与依赖评估，不会作为 `matrix/` 的隐式扩展加入。
-
 ### 1.2 设计原则
 
 | 原则                               | 体现                                                               |
@@ -723,54 +703,6 @@ User calls dot(a, b)
 | 单 crate   | 保持单 crate 结构，`matrix` 作为库内模块存在                                     |
 | SemVer     | `dot()` 的输入维度前提、错误类别、复数共轭线性定义以及文档化容差结论属于稳定契约 |
 | 最小依赖   | 不引入额外线性代数第三方依赖；BLAS 绑定仍属范围外                                |
-
----
-
-## 版本历史
-
-| 版本  | 日期       |
-| ----- | ---------- |
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.0.4 | 2026-04-08 |
-| 1.0.5 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.1.1 | 2026-04-10 |
-| 1.1.2 | 2026-04-10 |
-| 1.1.3 | 2026-04-14 |
-| 1.1.4 | 2026-04-15 |
-| 1.1.5 | 2026-04-15 |
-| 1.1.6 | 2026-04-15 |
-| 1.2.0 | 2026-04-15 |
-| 1.2.1 | 2026-04-15 |
-| 1.2.2 | 2026-04-15 |
-| 1.2.3 | 2026-04-16 |
-| 1.2.4 | 2026-04-16 |
-| 2.0.0 | 2026-05-02 |
-| 2.0.1 | 2026-05-03 |
-
-### v2.0.1 (2026-05-03) — Medium/Low review fixes
-
-- §5.1：统一代码块 fence 格式。
-- §6.1 / §6.2：将并行 guard 示例改为 let-else 内部断言，并删除旧版 `should_parallelize` / `ParallelGuard::enter()` 阈值表述。
-- §8.3：明确非连续输入下 worker chunk SIMD admission 由 chunk 连续性与对齐条件决定。
-
-### v2.0.0 (2026-05-02) — SemVer breaking changes
-
-> 本版本是与 26-error v3.0.0、30-dispatch v1.1.0、08-simd v2.0.0、09-parallel v2.0.0、07-tensor v2.0.0 协同的破坏性更新。
-
-- §1.1 末尾新增"关于模块命名"段落：解释 `matrix/` 名宽内容窄是有意保留以支持后续扩展。
-- §5.2 自由函数签名描述对齐 §5.1：`dot(&TensorBase<S1, D1>, &TensorBase<S2, D2>)`，明确允许不同 storage 与不同维度。
-- §6.1 / §6.2 / §9.2：调度模型对齐 30-dispatch v1.1.0 决策 7（`select_exec_path()` 返回 `(ExecPath, Option<ParallelGuard>)`）；`matrix::dot` 把 `Some(guard)` 按值移交 `parallel::par_dot`；嵌套并行防护由 dispatch 在裁决阶段处理（决策 7：select-and-enter 原子绑定）。
-- §6.1：worker 内允许 SIMD（决策 5，对齐 08-simd v2.0.0 决策 5、09-parallel v2.0.0 决策 9）；删除"并行 worker 不使用 SIMD"的旧表述。
-- §6.3：标量 helper 签名从 `(&TensorView<'_, I, D>, &TensorView<'_, I, D>)` 改为接受不同维度类型 `D1 / D2` 与不同 storage `S1 / S2`，消除 v1.x 与公开签名不闭合的问题。
-- §6.4：**删除 `as_ix1_view` 私有桥接 helper**（决策 4）；`dot_impl` 直接调用 `parallel::par_dot(&a.view(), &b.view(), strategy, guard)`，不做维度收窄。
-- §6.4：错误字段全部对齐 26-error v3.0.0 §5.1 封闭枚举：`InvalidArgument { kind: InvalidArgumentKind::OperationSpecific { argument, constraint } }`、`ShapeMismatch { operation, left_shape, right_shape }`；移除 v1.x 自由文本字段。
-- §10：错误字段引用同步更新；路径一致性表述纳入 worker 内 SIMD。
-- §11：新增决策 4 / 5。
-- §8.3：非连续向量场景描述更新为 dispatch 不选 SIMD，最终落 Serial / Parallel 标量。
 
 ---
 
