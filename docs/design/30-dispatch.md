@@ -13,7 +13,7 @@
 
 ### 1.0 协同基线
 
-本文档示例与论证以下游已修文档为准——`08-simd.md` v2.0.x、`09-parallel.md` v2.0.x、`07-tensor.md` v2.0.5、`06-layout.md` v1.3.2、`26-error.md` **v3.3.0**（§5.1 `XenonError` 枚举，自 v3.3.0 起标 `#[non_exhaustive]`，字段集合不变）。本模块自身的错误产出仅在 `ParallelExecStrategy::new()` 校验失败时使用 `XenonError`；任何 §5 / §10 引用 `26-error` 的字段或变体名时，均以 v3.3.0 为权威。
+本文档示例与论证以下游已修文档为准——`08-simd.md` v2.0.x、`09-parallel.md` v2.0.x、`07-tensor.md` v2.0.5、`06-layout.md` v1.3.2、`26-error.md` **v3.3.1**（§5.1 `XenonError` 枚举，自 v3.3.0 起标 `#[non_exhaustive]`，v3.3.1 修正 SemVer policy 文字 + 补 2 个 sub-enum non_exhaustive，字段集合不变）。本模块自身的错误产出仅在 `ParallelExecStrategy::new()` 校验失败时使用 `XenonError`；任何 §5 / §10 引用 `26-error` 的字段或变体名时，均以 v3.3.1 为权威。
 
 ### 1.1 职责边界
 

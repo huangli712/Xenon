@@ -1077,7 +1077,7 @@ all-features = true
 
 布局实现使用 `LayoutState::{FContiguous, NonContiguous, BroadcastView}`。`HAS_ZERO_STRIDE` 仅表示广播零步长；步长与布局标志分别通过 `compute_f_strides`、`compute_layout_flags` 计算。
 
-维度实现保持 `IxDyn::RemoveAxis<Smaller = IxDyn>`；`BroadcastDim` 兼容矩阵保持 57 项。集合运算遵循 F-order 输出顺序。数学比较 API 命名为 `equal`、`not_equal`、`less`、`greater`。矩阵模块不使用 `as_ix1_view` 私有桥接。
+维度实现保持 `IxDyn::RemoveAxis<Smaller = IxDyn>`；`BroadcastDim` 兼容矩阵保持 57 项。集合运算（如 `unique`）输出顺序未定义——实现可任选 first-occurrence、HashMap iteration 等，测试不得依赖特定顺序，仅可断言 multiset / set 等价（详见 `14-set.md v2.0.2 §11 决策 4`，与 `需求说明书 §15` 一致）。数学比较 API 命名为 `equal`、`not_equal`、`less`、`greater`。矩阵模块不使用 `as_ix1_view` 私有桥接。
 
 切片描述 `SliceInfo::new` 仅做结构性校验，不进行张量形状依赖校验。
 
@@ -1192,6 +1192,7 @@ all-features = true
 
 | 版本  | 日期       |
 | ----- | ---------- |
+| 2.0.6 | 2026-05-05 |
 | 2.0.5 | 2026-05-05 |
 | 2.0.4 | 2026-05-05 |
 | 2.0.3 | 2026-05-04 |
@@ -1230,6 +1231,12 @@ all-features = true
 - 未新增外部依赖、feature、crate 拆分、平台适配策略或业务模块算法规则。
 - 未调整 Phase 0 的实现任务拆分、验证方式和既有设计决策记录。
 
+
+### v2.0.6 (2026-05-05) — patch fix: §11 删除"集合运算遵循 F-order 输出顺序"过时规范（FATAL fix，post 第三轮重审）
+
+- §11（line 1080 附近）当前规范段曾写"集合运算遵循 F-order 输出顺序"——这是 v2.0.0 / v2.0.1 时代的全局编码规范声明。在 14-set v2.0.2 把 unique 输出顺序回退到 unspecified 后，本句变成与 14-set 现行契约直接冲突的 stale 规范。第三轮重审专家（Oracle）定级为 FATAL（00-coding 是全局规范，规范性强；下游测试若按本句写测试断言会与 14-set 实际行为冲突）。
+- 修复：删除"集合运算遵循 F-order 输出顺序"，改为"集合运算（如 unique）输出顺序未定义——实现可任选 first-occurrence、HashMap iteration 等，测试不得依赖特定顺序，仅可断言 multiset / set 等价（详见 14-set.md v2.0.2 §11 决策 4，与 require §15 一致）"。
+- 协同：纯文档措辞修订；与 14-set v2.0.2 / require §15 / 28-tests v2.0.5 §8.2 一致；不影响 §1-§10 任何编码规范。
 
 ### v2.0.5 (2026-05-05) — patch fix: §1.3 协同基线全量刷新（post v2.0.4 重审 cascade）
 

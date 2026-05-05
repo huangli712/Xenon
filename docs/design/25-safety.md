@@ -15,7 +15,7 @@
 
 **范围注记：** workspace 的线程安全属性参见 `24-workspace.md`；本文不将 workspace 纳入 `需求说明书 §10` 的存储模式线程安全矩阵。
 
-**协同基线：** 本文档示例与论证以下游已修文档为准——05-storage v2.0.2、06-layout v1.3.2、07-tensor v2.0.5（v2.0.5 起 `new_unchecked` 仅保留 Generic 单形式，详见 §5.12）、17-indexing v3.0.4（公开安全索引收敛为 `try_at`/`try_at_mut`，不实现 `std::ops::Index`）、19-overload v2.0.1、24-workspace v3.0.2、`26-error.md` **v3.3.0**（§5.1 `XenonError` 枚举，自 v3.3.0 起标 `#[non_exhaustive]`，字段集合不变）。任何 §5 / §9 引用上述文档的章节号或 `26-error` 的字段名 / 变体名时，以这些版本为准。
+**协同基线：** 本文档示例与论证以下游已修文档为准——05-storage v2.0.2、06-layout v1.3.2、07-tensor v2.0.5（v2.0.5 起 `new_unchecked` 仅保留 Generic 单形式，详见 §5.12）、17-indexing v3.0.4（公开安全索引收敛为 `try_at`/`try_at_mut`，不实现 `std::ops::Index`）、19-overload v2.0.1、24-workspace v3.0.2、`26-error.md` **v3.3.1**（§5.1 `XenonError` 枚举，自 v3.3.0 起标 `#[non_exhaustive]`，v3.3.1 修正 SemVer policy 文字 + 补 2 个 sub-enum non_exhaustive，字段集合不变）。任何 §5 / §9 引用上述文档的章节号或 `26-error` 的字段名 / 变体名时，以这些版本为准。
 
 ### 1.1 职责边界
 

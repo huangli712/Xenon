@@ -25,7 +25,7 @@
 
 ### 1.2 协同基线
 
-本文档 v2.0.6 的 doc comment、doctest、README、CHANGELOG 与 examples 示例必须以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`03-element.md v1.4.1`（`ElementType` 在 element 模块；`Element::ELEMENT_TYPE_NAME: &'static str`；v1.4.1 起 §5.9.2 提供 6×6 转换矩阵 Tier 索引表）、`04-complex.md v2.0.3`、`17-indexing.md v3.0.4`、`18-construction.md v3.0.2`、`19-overload.md v2.0.1`、`21-type.md v2.1.2`、`23-ffi.md v3.0.4`、`24-workspace.md v3.0.2`、`25-safety.md v2.0.5`、`26-error.md v3.3.1`（`TypeConversion` 等错误字段类型为 `&'static str`；v3.3.0 起 enum 标 `#[non_exhaustive]`）、`28-tests.md v2.0.5`、`30-dispatch.md v2.0.5`。示例代码中的 API 形态、错误字段、索引语法、运算符返回类型、类型转换语义、workspace 借用形式和线程安全说明均不得重新定义这些契约。
+本文档 v2.0.6 的 doc comment、doctest、README、CHANGELOG 与 examples 示例必须以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`03-element.md v1.4.1`（`ElementType` 在 element 模块；`Element::ELEMENT_TYPE_NAME: &'static str`；v1.4.1 起 §5.9.2 提供 6×6 转换矩阵 Tier 索引表）、`04-complex.md v2.0.4`、`17-indexing.md v3.0.4`、`18-construction.md v3.0.2`、`19-overload.md v2.0.1`、`21-type.md v2.1.2`、`23-ffi.md v3.0.4`、`24-workspace.md v3.0.2`、`25-safety.md v2.0.5`、`26-error.md v3.3.1`（`TypeConversion` 等错误字段类型为 `&'static str`；v3.3.0 起 enum 标 `#[non_exhaustive]`）、`28-tests.md v2.0.5`、`30-dispatch.md v2.0.5`。示例代码中的 API 形态、错误字段、索引语法、运算符返回类型、类型转换语义、workspace 借用形式和线程安全说明均不得重新定义这些契约。
 
 ### 1.3 设计原则
 

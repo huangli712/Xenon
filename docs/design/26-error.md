@@ -150,14 +150,23 @@ use core::fmt;
 ///   stable.
 ///
 /// What the inner sub-enums (`FfiErrorCategory`, `AbiMismatchKind`,
-/// `InvalidLayoutReason`, `InvalidShapeKind`) being `#[non_exhaustive]`
-/// DOES allow:
+/// `InvalidLayoutReason`, `InvalidShapeKind`, `WorkspaceErrorCategory`,
+/// `InvalidArgumentKind`) being `#[non_exhaustive]` DOES allow:
 /// - Adding a new variant inside any of those sub-enums is non-breaking
-///   (e.g. a new `FfiErrorCategory` for a future LAPACK backend). This
-///   is independent of the top-level enum: top-level `#[non_exhaustive]`
+///   (e.g. a new `FfiErrorCategory` for a future LAPACK backend, a new
+///   `WorkspaceErrorCategory` for a future borrow-state, or a new
+///   `InvalidArgumentKind` for a new operation family). This is
+///   independent of the top-level enum: top-level `#[non_exhaustive]`
 ///   protects future categories at the `XenonError` level; sub-enum
 ///   `#[non_exhaustive]` protects future categories within an existing
-///   `XenonError::Ffi { category, .. }` payload.
+///   `XenonError::Ffi { category, .. }` / `XenonError::Workspace
+///   { category, .. }` / `XenonError::InvalidArgument { kind, .. }`
+///   payload.
+///
+/// (Note: `WorkspaceErrorCategory` and `InvalidArgumentKind` were added
+/// to the `#[non_exhaustive]` set in v3.3.1 alongside the policy text
+/// correction; the original v3.3.0 release marked only the first four
+/// sub-enums.)
 ///
 /// `FfiBackend` and `StorageKindTag` are intentionally left as closed
 /// enums (no `#[non_exhaustive]`); see their definitions for rationale
@@ -763,10 +772,10 @@ impl std::error::Error for XenonError {
 | `InvalidAxis`         | `operation`, `axis`, `ndim`, `shape`                                          |
 | `InvalidShape`        | `operation`, `shape`, `kind`, `offending_dim?`                                |
 | `DimensionMismatch`   | `operation`, `expected`, `actual`                                             |
-| `InvalidArgument`     | `operation`, `kind`（结构化子枚举 `InvalidArgumentKind`，每个变体内部携带其专属字段，例如 `RangeOutOfBounds` 必带 `axis/axis_len/start/end`；自 v3.3.0 起 `#[non_exhaustive]`） |
+| `InvalidArgument`     | `operation`, `kind`（结构化子枚举 `InvalidArgumentKind`，每个变体内部携带其专属字段，例如 `RangeOutOfBounds` 必带 `axis/axis_len/start/end`；自 v3.3.1 起 `#[non_exhaustive]`——v3.3.0 设计意图，v3.3.1 补全属性） |
 | `InvalidStorageMode`  | `operation`, `expected`, `actual`, `shape?`, `conversion?`                    |
 | `Ffi`                 | `operation`, `category`（结构化子枚举 `FfiErrorCategory`，每个子类携带专属结构化负载；自 v3.3.0 起 `#[non_exhaustive]`）, `backend`, `cause?` |
-| `Workspace`           | `operation`, `category`（结构化子枚举 `WorkspaceErrorCategory`，每个子类携带专属结构化负载；自 v3.3.0 起 `#[non_exhaustive]`）, `cause?` |
+| `Workspace`           | `operation`, `category`（结构化子枚举 `WorkspaceErrorCategory`，每个子类携带专属结构化负载；自 v3.3.1 起 `#[non_exhaustive]`——v3.3.0 设计意图，v3.3.1 补全属性）, `cause?` |
 | `IndexOutOfBounds`    | `operation`, `attempted_index`, `axis`, `shape`；`attempted_index` 表示完整多维索引 tuple，`axis` 指出首个越界维度 |
 | `TypeConversion`      | `operation`, `source_type`（`&'static str`，v3.2.0 起；值来自 `Element::ELEMENT_TYPE_NAME`）, `target_type`（同前）, `reason`, `element_index?` |
 
@@ -787,8 +796,8 @@ impl std::error::Error for XenonError {
 | `shape`                                 | `Vec<usize>`                        | 完整逻辑形状                                               | 字段名固定为 `shape`；二元运算用 `lhs_shape`/`rhs_shape` 或 `left_shape`/`right_shape`，不得混用其他前缀 |
 | `lhs_shape` / `rhs_shape`               | `Vec<usize>`                        | 二元运算的左右操作数形状                                   | 二元广播/算术运算优先使用此对，区别于 `left_shape`/`right_shape` 用于纯形状对比的语义场景 |
 | `expected` / `actual`                   | 类型与场景相关（结构化子枚举或 `usize`）| 期望值与实际值                                         | 简单二元对比模式；不混用 `required` / `provided` 等同义词                  |
-| `kind`                                  | 结构化子枚举（v3.3.0 起 `#[non_exhaustive]`）| 变体内部细分（如 `InvalidShapeKind`、`InvalidArgumentKind`）| 替代以前的自由文本 `reason: Cow<str>`                              |
-| `category`                              | 结构化子枚举（v3.3.0 起 `#[non_exhaustive]`）| 子分类（仅 `Ffi` / `Workspace` 使用）                  | 子枚举中各变体携带专属结构化字段                                           |
+| `kind`                                  | 结构化子枚举（`InvalidShapeKind` 自 v3.3.0、`InvalidArgumentKind` 自 v3.3.1 起 `#[non_exhaustive]`）| 变体内部细分（如 `InvalidShapeKind`、`InvalidArgumentKind`）| 替代以前的自由文本 `reason: Cow<str>`                              |
+| `category`                              | 结构化子枚举（`FfiErrorCategory` 自 v3.3.0、`WorkspaceErrorCategory` 自 v3.3.1 起 `#[non_exhaustive]`）| 子分类（仅 `Ffi` / `Workspace` 使用）                  | 子枚举中各变体携带专属结构化字段                                           |
 | `attempted_index`                       | `Vec<usize>`                        | 多维索引 tuple                                             | `IndexOutOfBounds` 等需要完整索引上下文的变体使用                          |
 | `cause`                                 | `Option<Box<XenonError>>`           | 源链 inner error                                           | 仅 `Ffi` / `Workspace` 允许；通过 `Error::source()` 暴露                   |
 | `backend`                               | `FfiBackend` 封闭枚举（design-intent closed，无 `#[non_exhaustive]`）| FFI 后端标识                                               | 仅 `Ffi` 使用                                                              |
@@ -1335,6 +1344,18 @@ Caller invokes public API (e.g., tensor.broadcast_to(shape))
 | 3.2.0 | 2026-05-03 |
 | 3.3.0 | 2026-05-05 |
 | 3.3.1 | 2026-05-05 |
+| 3.3.2 | 2026-05-05 |
+
+### v3.3.2 (2026-05-05) — patch fix: SemVer policy doc 完整性 + §5.6 v3.3.0/v3.3.1 起始版本辨识
+
+- 第三轮重审专家发现 v3.3.1 修复存在两处不完整：
+  - **`XenonError` doc comment SemVer policy 段**：sub-enum 列表只列了 4 个（`FfiErrorCategory` / `AbiMismatchKind` / `InvalidLayoutReason` / `InvalidShapeKind`），遗漏了 v3.3.1 补加 `#[non_exhaustive]` 的 `WorkspaceErrorCategory` 和 `InvalidArgumentKind`，导致 doc 描述与代码属性不一致。
+  - **§5.6 表格**：把 `WorkspaceErrorCategory` / `InvalidArgumentKind` 标为"自 v3.3.0 起 `#[non_exhaustive]`"，但实际是 v3.3.1 补全；起始版本溯源不准确。
+- 修复：
+  - SemVer policy 段 inner sub-enum 列表补全为 6 个（含 `WorkspaceErrorCategory` / `InvalidArgumentKind`），新增括号注：v3.3.0 仅标了前 4 个，v3.3.1 补全后 2 个。
+  - §5.6 表格逐行精确标注：`InvalidArgumentKind` / `WorkspaceErrorCategory` 改为"自 v3.3.1 起"；混合行（`kind` / `category`）改为分别标注每个子枚举的起始版本（前者 `InvalidShapeKind` 自 v3.3.0、`InvalidArgumentKind` 自 v3.3.1；后者 `FfiErrorCategory` 自 v3.3.0、`WorkspaceErrorCategory` 自 v3.3.1）。
+  - v3.3.1 changlog §5.6 段措辞同步精确化。
+- 协同：纯 doc 完整性修订；属性集合、字段集合、变体集合均无变化；不影响任何引用 26-error 的下游文档（这些文档当前 pin v3.3.1 的描述仍准确）。
 
 ### v3.3.1 (2026-05-05) — patch fix: SemVer policy 文字纠正 + 补 2 个 sub-enum `#[non_exhaustive]`
 
@@ -1342,7 +1363,7 @@ Caller invokes public API (e.g., tensor.broadcast_to(shape))
 - **修复**：
   - `XenonError` doc comment 重写 SemVer policy 段：明确区分**顶层 `#[non_exhaustive]` 允许的**（新增顶层变体非破坏）、**顶层 `#[non_exhaustive]` 不允许的**（给已有 struct-style variant 加字段仍 breaking——需要 per-variant `#[non_exhaustive]`）、**sub-enum `#[non_exhaustive]` 独立保护的**（在已有 payload 内新增子分类）、**始终 breaking 的变更**。
   - 补加 `#[non_exhaustive]` 到 `WorkspaceErrorCategory` 与 `InvalidArgumentKind`（v3.3.0 漏标，但本意一致——它们也是 sub-enum 风格的可扩展枚举，doc comment 已说明）。
-  - §5.6 表格"封闭枚举"措辞改为"结构化子枚举（v3.3.0 起 `#[non_exhaustive]`）"避免与 `#[non_exhaustive]` 属性冲突；`FfiBackend` / `StorageKindTag` 标注为"封闭枚举（design-intent closed，无 `#[non_exhaustive]`）"以区分。
+  - §5.6 表格"封闭枚举"措辞改为"结构化子枚举"，并精确标注 `#[non_exhaustive]` 起始版本——`FfiErrorCategory` / `InvalidShapeKind` 自 v3.3.0；`WorkspaceErrorCategory` / `InvalidArgumentKind` 自 v3.3.1（v3.3.0 漏标，v3.3.1 补全）。`FfiBackend` / `StorageKindTag` 标注为"封闭枚举（design-intent closed，无 `#[non_exhaustive]`）"以区分。
 - **不变项**：所有变体、字段集合、字段类型、错误语义、Display 输出格式、SemVer 边界——零变化。
 - **协同**：纯 doc 与属性补强；引用 26-error 的文档无需修改字段或行为描述。
 
