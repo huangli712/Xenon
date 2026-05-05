@@ -1111,6 +1111,21 @@ Element                        // Base: Copy + Sealed with const ELEMENT_TYPE: E
 | 2.0.3 | 2026-05-05 |
 | 2.0.4 | 2026-05-05 |
 | 2.0.5 | 2026-05-05 |
+| 2.0.6 | 2026-05-05 |
+
+### v2.0.6 (2026-05-05) — patch fix: §1.5 pins cascade（post 第三轮重审，FATAL+6 MAJOR fix）
+
+- §1.5 协同基线 cascade（第三轮重审专家发现 7 项问题——1 FATAL + 6 MAJOR）：
+  - `00-coding.md v2.0.5 → v2.0.6`（**FATAL fix**：§11 line 1080 删除"集合运算遵循 F-order 输出顺序"过时规范，对齐 14-set v2.0.2 unspecified 契约）。
+  - `26-error.md v3.3.1 → v3.3.2`（**MAJOR fix**：SemVer policy doc comment sub-enum 列表补 `WorkspaceErrorCategory` / `InvalidArgumentKind` + §5.6 表格修正 v3.3.0/v3.3.1 起始版本边量）。
+  - `25-safety.md v2.0.5 → v2.0.6`（**MAJOR fix**：元信息块 pin `26-error v3.3.0 → v3.3.1`）。
+  - `30-dispatch.md v2.0.5 → v2.0.6`（**MAJOR fix**：§1.0 pin `26-error v3.3.0 → v3.3.1`）。
+  - `04-complex.md v2.0.4 → v2.0.5`（**MAJOR fix**：§1 协同基线段 line 14 pin `03-element v1.4.0 → v1.4.1`，自标 v2.0.3 → v2.0.4）。
+  - `29-documentation.md v2.0.6 → v2.0.7`（**MAJOR fix**：§1.2 pin `04-complex v2.0.3 → v2.0.4`）。
+  - `28-tests.md v2.0.5 → v2.0.6`（cascade pin 同步：受 04-complex/25-safety/30-dispatch/26-error 升级影响）。
+- 修复动机：第二轮升 26-error 到 v3.3.1 后未同步多处 pin（25-safety/30-dispatch/04-complex 元信息块仍 stale）；以及第二轮把 14-set unique 顺序回退后忽略了 00-coding §11 现行规范的 stale 声明。第三轮重审专家（Oracle）发现这些是\"升 patch 版本时未自查相邻文档 pin\"问题。
+- §1.5 全部 pin 与目标实际版本对齐；同步标注每条 pin 的核心语义增强。
+- 不变项：本次 cascade 不改变 §3 目录结构、§5 模块映射、§12 Wave 拆分或任何决策记录。
 
 ### v2.0.5 (2026-05-05) — patch fix: refresh §1.5 pins (post v2.0.4 重审 cascade)
 
