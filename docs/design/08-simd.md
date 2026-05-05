@@ -1114,36 +1114,4 @@ SIMD 模块依赖 layout 提供的连续性和对齐信息来判断是否可以�
 
 ---
 
-## 版本历史
-
-| 版本  | 日期       |
-| ----- | ---------- |
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.2.0 | 2026-04-14 |
-| 1.2.1 | 2026-04-15 |
-| 1.2.2 | 2026-04-15 |
-| 1.2.3 | 2026-04-15 |
-| 1.2.4 | 2026-04-15 |
-| 1.2.5 | 2026-04-16 |
-| 1.2.6 | 2026-04-16 |
-| 1.2.7 | 2026-04-16 |
-| 2.0.0 | 2026-05-02 | SemVer breaking。决策 5：允许并行 worker 内启用 SIMD，撤销 v1.x 的并行/SIMD 互斥限制（§1.2、§9.3 重写）。决策 6：`dispatch_vector_binary_op` 签名改为返回 `bool` 显式表达"未进入 SIMD"，配合 §1.1 单向回退归属（§5.4 重写）。`SimdKernel<A>` 的 `A` bound 由 `Copy + Send + Sync + 'static` 收紧为 `SimdElement`（§5.3）。`SimdElement` 加 `Sealed` super-trait（§5.2）。`get_arch()` 返回 `&'static Arch`，移除 disabled feature 下的 `-> ()` 占位（§5.4）。§5.7 对齐准入由"必须满足统一对齐快路径"放宽为 kernel 内部按 ISA/操作动态选择 aligned/unaligned 变体。§5.5 复数算术承诺与 §5.6 覆盖状态表对齐，明确"已实现"为本版稳定交付。§5.10 `simd_vector_width` 语义补注。`AddF32Kernel` 字段由 `pub` 降为 `pub(crate)`（§6.1）。§13 SemVer 行修正为 `pub(crate)` 内部 API，不强制走 SemVer。 |
-| 2.0.1 | 2026-05-03 | Clarified kernel-specific aligned/unaligned admission wording across flow charts, safety notes, interaction diagrams, error semantics, tests, and performance notes. Integer `sum` / `dot` implementation work now covers admission and fallback tests first, with SIMD implementation only when a verified ISA widening kernel exists. |
-| 2.0.2 | 2026-05-04 | Added `alignment_ok` cross-reference in §5.7: the parameter from 30-dispatch.md §5.5 is a caller-forwarded hint; 08-simd backend makes the final per-kernel admission. |
-
-### 2.0.2 (2026-05-04) — `alignment_ok` cross-reference
-
-- §5.7：新增 `alignment_ok` 来源说明块。`alignment_ok` 参数由 `30-dispatch.md §5.5` 定义，是调用方透传的对齐能力提示位。`08-simd` 后端根据 §5.7 的按 ISA/操作动态选择规则做最终 per-kernel admission 裁决。交叉引用 30-dispatch.md §5.5 获取完整参数契约。
-
-### 2.0.1
-
-- Replaced stale alignment-admission wording with kernel-specific aligned/unaligned admission language.
-- Updated integer `sum` / `dot` implementation tasks to focus on admission and fallback tests unless a verified widening SIMD kernel exists.
-- Polished misaligned-input test and performance wording to match the dynamic alignment policy.
-
----
-
 _本文档由 Xenon 项目维护。如有问题请提交 Issue 或 PR。_
