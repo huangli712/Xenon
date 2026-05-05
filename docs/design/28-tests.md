@@ -13,10 +13,6 @@
 
 本文档属于横切质量保证文档，统一定义 Xenon 在 `tests`、doctest 与 CI 测试矩阵中的验证策略，而非单一源码模块的实施方案。
 
-### 1.0 协同基线
-
-本文档 v2.0.6 以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`00-coding.md v2.0.6`、`01-architecture.md` v2.0.6、`02-dimension.md` v1.2.7、`03-element.md` v1.4.1、`04-complex.md` v2.0.5、`05-storage.md` v2.0.2、`06-layout.md` v1.3.2、`07-tensor.md` v2.0.5、`08-simd.md` v2.0.2、`09-parallel.md` v2.0.2、`10-iterator.md` v1.2.7、`11-math.md` v2.0.2、`12-matrix.md` v2.0.1、`13-reduction.md` v3.0.2、`14-set.md` v2.0.2、`15-broadcast.md` v3.0.4、`16-shape.md` v2.0.3、`17-indexing.md` v3.0.4、`18-construction.md` v3.0.2、`19-overload.md` v2.0.1、`20-utility.md` v3.0.2、`21-type.md` v2.1.2、`22-output.md` v2.0.1、`23-ffi.md` v3.0.4、`24-workspace.md` v3.0.2、`25-safety.md` v2.0.6、`26-error.md` v3.3.2、`27-benchmark.md` v2.0.4、`29-documentation.md` v2.0.7、`30-dispatch.md` v2.0.6。
-
 ### 1.1 职责边界
 
 | 职责       | 包含                                                                   |
@@ -1580,101 +1576,6 @@ Test files
 | crate 结构 | 测试方案依附当前单 crate，不拆分额外测试 crate     |
 | SemVer     | 无影响；测试矩阵与 CI 分层属于工程验证约束，不改变公开 API 语义 |
 | 最小依赖   | 维持标准测试工具链，不为测试矩阵引入额外第三方依赖 |
-
----
-
-## 版本历史
-
-| 版本  | 日期       |
-| ----- | ---------- |
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.2.0 | 2026-04-08 |
-| 1.2.1 | 2026-04-08 |
-| 1.2.2 | 2026-04-10 |
-| 1.2.3 | 2026-04-14 |
-| 1.2.4 | 2026-04-15 |
-| 1.2.5 | 2026-04-15 |
-| 1.2.6 | 2026-04-15 |
-| 1.2.7 | 2026-04-15 |
-| 1.2.8 | 2026-04-15 |
-| 1.2.9 | 2026-04-16 |
-| 1.3.0 | 2026-04-16 |
-| 1.3.1 | 2026-04-16 |
-| 2.0.0 | 2026-05-03 |
-| 2.0.1 | 2026-05-03 |
-| 2.0.2 | 2026-05-04 |
-| 2.0.3 | 2026-05-04 |
-| 2.0.4 | 2026-05-05 |
-| 2.0.5 | 2026-05-05 |
-| 2.0.6 | 2026-05-05 |
-
-### v2.0.6 (2026-05-05) — patch fix: §1.0 协同基线 pin cascade 同步（post 第三轮重审）
-
-- §1.0 协同基线 pin cascade 刷新（受第三轮 patch cascade 影响）：`00-coding v2.0.5 → v2.0.6`、`04-complex v2.0.4 → v2.0.5`、`25-safety v2.0.5 → v2.0.6`、`26-error v3.3.1 → v3.3.2`、`30-dispatch v2.0.5 → v2.0.6`。
-- 协同：纯 pin 同步，无测试矩阵或 CI 工作流变更。
-
-### v2.0.5 (2026-05-05) — patch fix: 同步 14-set v2.0.2 unique 顺序契约回退（FATAL 下游 fix）
-
-- §8.2 单元测试清单 / 集成测试模块表：`test_unique_first_occurrence_order` → `test_unique_set_equality` + 新增 `test_unique_order_unspecified` lint 锚点。语义对齐 `14-set.md v2.0.2 §5.1 / §11 决策 4`：unique 输出顺序自 v2.0.2 起 unspecified（与 `require.md §15` 一致），不再承诺 first-occurrence 或 bit-identical。
-- §11 任务 T10（`tests/test_set.rs`）内容描述同步：从"按 F-order 首次出现顺序"改为"multiset 等值；输出顺序 unspecified"。
-- 修复动机：v2.0.4 之前 28-tests.md 仍声明 14-set v2.0.1 的 first-occurrence 契约，与 14-set v2.0.2 实际行为冲突——会导致测试基于一个被撤销的 API 契约。重审专家定级为 FATAL（下游契约脱节）。
-- 协同：本次仅文档层同步，无测试矩阵或 CI 工作流变更；引用 `14-set.md` 的 pin 同步 bump v2.0.1 → v2.0.2。
-
-### v2.0.4 (2026-05-05) — patch fix: refresh stale 19-overload pin v2.0.0 → v2.0.1 (cascade)
-
-- §1.0 协同基线：`19-overload.md` pin 从 `v2.0.0` 刷新到 `v2.0.1`（docs-only patch，对齐 26-error v3.2.0）。同时同步级联 pin：`00-coding v2.0.3 → v2.0.4`、`01-architecture v2.0.2 → v2.0.3`、`27-benchmark v2.0.2 → v2.0.3`、`29-documentation v2.0.4 → v2.0.5`（这 4 个文档自身因 19-overload 级联升版）。本文档自身版本号同步 v2.0.3 → v2.0.4。
-- §v2.0.0 修订记录段中"对齐 19-overload.md v2.0.0"的引用保留不变——记录的是 v2.0.0 引入的契约决策（运算符 Output 为 Result）。
-- 仅文档层修订；测试矩阵、CI 工作流、属性测试、容差体系、各 test 文件设计均无变更。
-
-### v2.0.3 (2026-05-04) — patch fix: refresh §1.0 协同基线 pins to current actual versions of all 30 referenced docs (post 7-condition convergence cascade)
-
-- §1.0 协同基线：将设计文档 pins 刷新到当前实际版本，并对齐本轮 7 个基线 owner 文档的 post-bump 固定点。
-
-### v2.0.2 (2026-05-04) — CI 硬门禁对齐 00-coding §7.1
-
-> 本版本在 §8.2 CI 矩阵中新增三项硬门禁（rustdoc / clippy / cargo check），对齐 `00-coding.md §7.1`。非破坏性追加。
-
-**变更**：
-
-- §8.2 CI 矩阵新增三个 step：`RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`（Gate 1）、`cargo clippy --all-features -- -D warnings`（Gate 5）、`RUSTFLAGS="-D warnings" cargo check --all-features`（Gate 6），均运行于每个 PR 矩阵。
-- 新增注释引用 `00-coding.md §7.1` 作为硬门禁依据。
-
-**未变更**：
-
-- 原有 `Unit + Integration tests` 与 `Doc tests` step 命令、matrix feature 维度均保留不变。
-- Priority / 测试函数列表 / 属性测试 / compile-fail / 边界测试等未变动。
-
-### v2.0.0 修订记录
-
-**Blocker 修复**：
-
-- 对齐 `17-indexing.md` v2.0.0：测试规范改为 `try_at` / `try_at_mut` 与 `slice`，删除公开下标索引写法，并明确 `SliceInfo::new` 只做结构性校验。
-- 对齐 `19-overload.md` v2.0.0：运算符测试保持 `Output = Result<Tensor, XenonError>`，删除原生 `i32 + Tensor` 左标量测试，改为 `Scalar<A>` 包装类型契约。
-- 对齐 `21-type.md` v2.1.1 与 `26-error.md` v3.2.0：`TypeConversion` 测试使用 `&'static str`（值由 `Element::ELEMENT_TYPE_NAME` 提供，例如 `"f64"`、`"Complex<f64>"`）替代 `ElementType` 枚举，禁止开放式运行时类型身份，并要求 `operation` 使用 `Cow::Borrowed("...")`。
-- 对齐 `24-workspace.md` v2.0.0：workspace 借用入口改为 `&mut self` 契约，错误分类改为七个结构化 `WorkspaceErrorCategory` 子变体，淘汰旧借用冲突变体与旧可选字段。
-
-**High 修复**：
-
-- 新增 §1 协同基线，列出本文档依赖的已修订下游版本。
-- 对齐 `18-construction.md` v2.0.0：明确 `from_shape_vec` 长度不匹配使用 `InvalidShapeKind::ElementCountMismatch { expected, actual }`，`zeros` / `ones` 使用完全限定 `StorageOwned::from_elem` 路径。
-- 对齐 `23-ffi.md` v2.0.0：明确 `XenonError::Ffi` 四字段结构、八个 `FfiErrorCategory` 子变体与 `FfiBackend::RawParts` / `Blas`。
-- 对齐 `06-layout.md` v1.3 与 `05-storage.md` v2.0.0：明确广播零步长、`compute_layout_flags`、`LayoutState` 三态、`ViewRepr` 生成规则、`deep_clone` / 张量层 `to_owned` 分层命名。
-- 对齐 `11-math.md` v2.0.0：比较测试命名改为 `equal` / `not_equal` / `less` / `greater`。
-- 对齐 `25-safety.md` v2.0.0 与 `04-complex.md` v2.0.0：补充安全索引、`ViewMutRepr`/`ArcRepr` 线程边界，以及复数构造/运算限制。
-
-**未变更项**：
-
-- 保留 §6.2 ULP-based 数值精度规范，不放宽 Tier 1 / Tier 2 / Tier 3 契约。
-- 保留 §5.21 compile-fail 测试章节结构与语义，仅在类型边界列表补充复数协同约束。
-- 保留测试矩阵、CI 分层、属性测试列表与大张量 extended test 分层，不扩大测试范围。
-
-
-### v2.0.1 (2026-05-03) — Medium/Low documentation follow-up
-
-- Reconciled storage test placement: storage module's public boundary is fully exercised through `test_tensor.rs` (ViewRepr/ViewMutRepr/Owned/ArcRepr semantics) and doctests; this revision drops the previously-listed standalone `test_storage.rs` because storage has no public boundary that cannot be triggered via tensor-layer APIs (see §9.2 storage row).
-- Clarified that any future `test_safety.rs` addition must also update the file layout and mapping sections.
 
 ---
 
