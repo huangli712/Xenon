@@ -46,17 +46,6 @@ Xenon 是一个纯 Rust 实现的 N 维数组（张量）库，定位为科学�
 | 内存对齐   | 默认建议 64 字节                       |
 | 外部依赖   | 仅 rayon（可选并行）+ pulp（可选 SIMD）|
 
-### 1.5 协同基线
-
-本文档作为架构总览，以下游设计文档的已修版本为协同基线；若本文档提及类型、trait、字段名或执行边界，须与这些文档保持一致：
-
-- `26-error.md v3.3.2`：`XenonError` 结构化变体（13 顶层变体，**v3.3.0 起标 `#[non_exhaustive]`**）、`FfiBackend` 与 workspace/FFI 错误分类；`FfiErrorCategory` / `AbiMismatchKind` / `InvalidLayoutReason` / `InvalidShapeKind` / `WorkspaceErrorCategory` / `InvalidArgumentKind` 同步标 `#[non_exhaustive]`（v3.3.1 补全后 2 个）；`FfiBackend` / `StorageKindTag` 保持 design-intent closed。v3.3.1 修正了 v3.3.0 doc comment 中的 SemVer policy 文字误导。**`ElementType` 不再由 error 拥有**（v3.2.0 反转）；`TypeConversion::source_type` / `target_type` 与 `AbiMismatchKind::ElementTypeMismatch::expected` / `actual` 字段类型为 `&'static str`，值来自 `Element::ELEMENT_TYPE_NAME` 关联常量。error 模块严格不依赖任何 internal 模块。
-- `02-dimension.md` v1.2.7、`03-element.md` v1.4.1（**v1.4.1 起 §5.9.2 提供 6×6 转换矩阵 Tier 索引表，权威详细规则仍在 21-type**）、`04-complex.md` v2.0.5（**v2.0.4 起 §1 协同基线 pin 同步本 cascade**）：维度、元素封闭实现集（含 `CastElement` sealed marker、`ElementType` 权威定义、`Element::ELEMENT_TYPE_NAME` 关联常量）与复数显式构造/运算边界。
-- `05-storage.md` v2.0.2、`06-layout.md` v1.3.2、`07-tensor.md` v2.0.5（**v2.0.5 起 `new_unchecked` 仅保留 `impl<S: RawStorage, D>` 泛型形式，删除 Owned-specialized 重复定义以修复 E0592 编译错误**）：存储模式（含 `StorageShared` sealed unsafe marker）、F-order 布局状态与张量核心类型。
-- `08-simd.md` v2.0.2、`09-parallel.md` v2.0.2、`30-dispatch.md` v2.0.6（**v2.0.4 起 §5.8 调用方 gating 契约弱化为"不做长度阈值 gating，但必须做 op-语义 gating"，与 08/09/12/13 一致；v2.0.5 同步 §1.0 自身 pin 到 26-error v3.3.0 / 07-tensor v2.0.5**）：执行路径、`ParallelGuard`、worker 内 SIMD 与阈值语义；`alignment_ok` 仅作 simd 后端能力提示位。
-- `11-math.md` v2.0.2、`12-matrix.md` v2.0.1、`13-reduction.md` v3.0.2、`14-set.md` v2.0.2（**v2.0.2 起 unique 输出顺序回退到"unspecified"，与 require §15 对齐**）、`15-broadcast.md` v3.0.4：数学、矩阵、归约（仅 sum）、集合（仅 unique）、广播零步长分类与 F-order 顺序契约。
-- `16-shape.md` v2.0.3（**v2.0.3 起 §1.0 协同基线 pin 同步本 cascade**）、`17-indexing.md` v3.0.4、`18-construction.md` v3.0.2、`19-overload.md` v2.0.1、`20-utility.md` v3.0.2、`21-type.md` v2.1.2、`22-output.md` v2.0.1、`23-ffi.md` v3.0.4（**v3.0.4 起 `blas_info` / `lda` 显式 gate `rows == 0` 以避免导出 lda=0**；`pub use crate::element::ElementType`，路径稳定，ABI 稳定）、`24-workspace.md` v3.0.2、`25-safety.md` v2.0.6（**v2.0.5 起 §5.12 unsafe 入口索引同步 07-tensor v2.0.5 `new_unchecked` 单形式描述**）、`27-benchmark.md` v2.0.4（**v2.0.4 起 §1 协同基线 pin 同步本 cascade**）、`28-tests.md` v2.0.6（**v2.0.5 起 §8.2 同步 14-set v2.0.2 unique 顺序契约回退为 multiset-equality 测试**）、`29-documentation.md` v2.0.7（**v2.0.6 起 §1.2 协同基线全量刷新到本 cascade 末态**）：shape、索引、构造、运算符、utility、类型转换、输出、FFI、workspace、线程安全、benchmark、测试与文档边界。
-
 ### 1.6 全局布局不变量
 
 以下布局规则为跨模块统一不变量，所有涉及 shape/stride/layout 的模块设计须遵守：
@@ -1087,105 +1076,6 @@ Element                        // Base: Copy + Sealed with const ELEMENT_TYPE: E
 | feature gate 导出边界      | `cargo check` / `cargo test` 配置矩阵验证 |
 | 公开模块分层不发生反向依赖 | 编译期模块依赖审查与架构评审检查          |
 | 错误类型统一入口           | 通过 `test_error.rs` 与对应 doctest 验证  |
-
----
-
-## 版本历史
-
-| 版本  | 日期       |
-| ----- | ---------- |
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-08 |
-| 1.0.2 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.2.0 | 2026-04-08 |
-| 1.2.1 | 2026-04-10 |
-| 1.2.2 | 2026-04-14 |
-| 1.2.3 | 2026-04-15 |
-| 1.2.4 | 2026-04-15 |
-| 1.3.0 | 2026-04-15 |
-| 1.3.1 | 2026-04-16 |
-| 2.0.0 | 2026-05-03 |
-| 2.0.1 | 2026-05-03 |
-| 2.0.2 | 2026-05-04 |
-| 2.0.3 | 2026-05-05 |
-| 2.0.4 | 2026-05-05 |
-| 2.0.5 | 2026-05-05 |
-| 2.0.6 | 2026-05-05 |
-
-### v2.0.6 (2026-05-05) — patch fix: §1.5 pins cascade（post 第三轮重审，FATAL+6 MAJOR fix）
-
-- §1.5 协同基线 cascade（第三轮重审专家发现 7 项问题——1 FATAL + 6 MAJOR）：
-  - `00-coding.md v2.0.5 → v2.0.6`（**FATAL fix**：§11 line 1080 删除"集合运算遵循 F-order 输出顺序"过时规范，对齐 14-set v2.0.2 unspecified 契约）。
-  - `26-error.md v3.3.1 → v3.3.2`（**MAJOR fix**：SemVer policy doc comment sub-enum 列表补 `WorkspaceErrorCategory` / `InvalidArgumentKind` + §5.6 表格修正 v3.3.0/v3.3.1 起始版本边量）。
-  - `25-safety.md v2.0.5 → v2.0.6`（**MAJOR fix**：元信息块 pin `26-error v3.3.0 → v3.3.1`）。
-  - `30-dispatch.md v2.0.5 → v2.0.6`（**MAJOR fix**：§1.0 pin `26-error v3.3.0 → v3.3.1`）。
-  - `04-complex.md v2.0.4 → v2.0.5`（**MAJOR fix**：§1 协同基线段 line 14 pin `03-element v1.4.0 → v1.4.1`，自标 v2.0.3 → v2.0.4）。
-  - `29-documentation.md v2.0.6 → v2.0.7`（**MAJOR fix**：§1.2 pin `04-complex v2.0.3 → v2.0.4`）。
-  - `28-tests.md v2.0.5 → v2.0.6`（cascade pin 同步：受 04-complex/25-safety/30-dispatch/26-error 升级影响）。
-- 修复动机：第二轮升 26-error 到 v3.3.1 后未同步多处 pin（25-safety/30-dispatch/04-complex 元信息块仍 stale）；以及第二轮把 14-set unique 顺序回退后忽略了 00-coding §11 现行规范的 stale 声明。第三轮重审专家（Oracle）发现这些是\"升 patch 版本时未自查相邻文档 pin\"问题。
-- §1.5 全部 pin 与目标实际版本对齐；同步标注每条 pin 的核心语义增强。
-- 不变项：本次 cascade 不改变 §3 目录结构、§5 模块映射、§12 Wave 拆分或任何决策记录。
-
-### v2.0.5 (2026-05-05) — patch fix: refresh §1.5 pins (post v2.0.4 重审 cascade)
-
-- §1.5 协同基线 cascade（v2.0.4 重审专家发现的下游漂移与本轮引入的修复）：
-  - `26-error.md v3.3.0 → v3.3.1`（v2.0.4 引入的 SemVer policy 文字误导修复 + 补 `WorkspaceErrorCategory` / `InvalidArgumentKind` 的 `#[non_exhaustive]`）。
-  - `30-dispatch.md v2.0.4 → v2.0.5`（v2.0.4 升版本时遗漏的 §1.0 自身 pin 同步——`07-tensor`、`26-error`）。
-  - `25-safety.md v2.0.4 → v2.0.5`（§5.12 unsafe 入口索引合并 `new_unchecked` 双形式描述为 Generic 单形式，对齐 07-tensor v2.0.5；下游 MAJOR fix）。
-  - `28-tests.md v2.0.4 → v2.0.5`（§8.2 单元测试 / §11 任务 T10 同步 14-set v2.0.2 unique 顺序契约回退为 multiset-equality 测试；下游 FATAL fix）。
-- §1.5 同步标注每条 pin 的核心语义增强。
-- 不变项：本次 cascade 不改变 §3 目录结构、§5 模块映射、§12 Wave 拆分或任何决策记录。
-
-### v2.0.4 (2026-05-05) — patch fix: refresh §1.5 协同基线 pins (post FATAL/MAJOR convergence cascade)
-
-- §1.5 协同基线：将下游设计文档 pin 刷新到当前实际版本，对应本轮 6 项 FATAL/MAJOR 修复的 patch / minor bump：
-  - `26-error.md v3.2.0 → v3.3.0`（XenonError + 4 个 sub-enum 添加 `#[non_exhaustive]`，附 1.x SemVer 政策）。
-  - `03-element.md v1.4.0 → v1.4.1`（§5.9.2 新增 6×6 转换矩阵 Tier 索引表；权威详细规则仍在 21-type.md）。
-  - `07-tensor.md v2.0.4 → v2.0.5`（删除 `new_unchecked` Owned-specialized 重复定义，修复 Rust E0592；保留泛型 form 作为唯一 canonical entry）。
-  - `30-dispatch.md v2.0.3 → v2.0.4`（§5.8 调用方 gating 契约改为"不做长度阈值 gating，但必须做 op-语义 gating"，与 08-simd / 09-parallel / 12-matrix / 13-reduction 一致）。
-  - `14-set.md v2.0.1 → v2.0.2`（unique 输出顺序契约从 v2.0.0 的 first-occurrence 回退到 unspecified，对齐 require §15）。
-  - `23-ffi.md v3.0.3 → v3.0.4`（`blas_info` / `lda` 在 `is_blas_layout_compatible()` 检查后追加 `rows == 0` 显式 gate，避免对 shape `[0, n]` 导出非法 `lda=0`）。
-- §1.5 同步标注每条 pin 的核心语义增强（节省下游读者跳转）。
-- 涉及的 6 份文档之间 owner 关系未变（error / element / tensor / dispatch / set / ffi 各自的 trait / 类型 / 字段集合不变）；本次 cascade 不改变 §3 目录结构、§5 模块映射、§12 Wave 拆分或任何决策。
-- FATAL-2（19-overload 原生左标量 orphan rule 警告）经核实为 Oracle 误判（`impl<D: Dimension> Add<TensorBase<Owned<f32>, D>> for f32` 是 RFC 1023/2451 允许的 covered impl 模式，与 `impl<T> ... for T` 不同），不需修改 19-overload，pin 不变。
-
-### v2.0.3 (2026-05-05) — patch fix: refresh stale 19-overload pin v2.0.0 → v2.0.1 + §13 决策 6 alignment_ok hint 语义同步 (cascade)
-
-- §1.5 协同基线：`19-overload.md` pin 从 `v2.0.0` 刷新到 `v2.0.1`（docs-only patch，对齐 26-error v3.2.0）。
-- §1.5 协同基线 cascade 同步：`27-benchmark.md v2.0.2 → v2.0.3`、`28-tests.md v2.0.3 → v2.0.4`、`29-documentation.md v2.0.4 → v2.0.5`（这 3 个文档因 19-overload 升版连锁升 patch）。
-- §13 决策 6：`ExecPath::Simd` 行表述对齐 30-dispatch v2.0.3 §5.5 / §6.4 的 `alignment_ok` hint 语义——dispatch 不将 `alignment_ok` 用作 SIMD 准入硬门槛，simd 后端 admission 内部独立通过 `layout::is_aligned()` 重检查。
-- 仅文档层修订；架构 L0-L6 分层、模块映射、Wave 拆分、决策 1-5 / 7+ 内容均无变更。
-
-### v2.0.2 (2026-05-04) — patch fix: refresh §1.5 协同基线 pins to current actual versions of all 28 referenced docs (post 7-condition convergence cascade)
-
-- §1.5 协同基线：将下游设计文档 pin 刷新到当前实际版本，并对齐本轮 7 个基线 owner 文档的 post-bump 固定点。
-
-### v2.0.0
-
-改动清单：
-
-- 新增 §1 协同基线，明确本文档与已修下游设计文档版本的对齐关系。
-- 对齐 `26-error.md` v3.0.0：架构层错误边界补充 `Cow<'static, str>`、`ElementType`、`WorkspaceErrorCategory`、`FfiErrorCategory` 与 `FfiBackend` 约束。
-- 对齐 `17-indexing.md` v2.0.0：公开安全索引入口收敛为 `try_at` / `try_at_mut`，不提供方括号索引 trait 实现。
-- 对齐 `11-math.md` 与 `19-overload.md`：比较方法命名改为 `equal` / `not_equal` / `less` / `greater`，标量运算符路径引用 `Scalar<A>` 包装类型。
-- 对齐 `03-element.md`、`04-complex.md`、`05-storage.md`：核心类型速查更新 `Element`、`ElementType`、封闭实现集、`Complex<T>` 实数构造边界与 `StorageKind::Shared` 命名（`ArcRepr` / `ArcTensor` 仍作为底层表示与类型别名保留）。
-- 对齐 `08-simd.md`、`09-parallel.md`、`30-dispatch.md`：dispatch 决策补充 `(ExecPath, Option<ParallelGuard>)`、threshold = 0 sentinel、`saturating_mul` 与 worker 内 SIMD 的双层加速边界。
-
-未变更项：
-
-- 单 crate 架构、11 模块设计边界、L0-L6 分层和依赖图保持不变。
-- F-order 单一布局、广播零步长只读视图、`LayoutState` 三状态边界保持不变。
-- Feature gate 矩阵、公开模块导出策略、prelude 组织建议保持不变。
-- 归约仅 sum、集合仅 unique、形状仅 transpose、矩阵仅 dot 的范围决策保持不变。
-- `simd/`、`parallel/` 作为独立可选后端，`dispatch.rs` 作为内部裁决层的架构边界保持不变。
-
-
-### v2.0.1 (2026-05-03) — Medium/Low documentation follow-up
-
-- Expanded the collaborative baseline list so each late-stage document carries its explicit version number.
-- Updated the dispatch Parallel trigger wording to use `select_exec_path()` returning `Some(ParallelGuard)` instead of the removed `ParallelGuard::enter()` API.
-- Corrected Wave 5 Dispatch output to describe the internal execution-path decision layer and added the `15-broadcast.md` reference for `broadcast_to`.
 
 ---
 
