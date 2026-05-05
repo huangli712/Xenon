@@ -1303,6 +1303,13 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 | 2.0.3 | 2026-05-04 | patch fix: §6.4 澄清 `alignment_ok` 在 dispatch 与 SIMD 后端之间的实际传递路径。 |
 | 2.0.4 | 2026-05-05 | patch fix: §5.8 调用方 gating 契约与 08-simd / 09-parallel 一致化（FATAL fix）。 |
 | 2.0.5 | 2026-05-05 | patch fix: §1.0 自身协同基线 pin 同步——`07-tensor v2.0.4 → v2.0.5`、`26-error v3.2.0 → v3.3.0`（重审专家发现 30-dispatch v2.0.4 升版本时未自查 §1.0 的 stale pin）。纯 pin 刷新，无内容变更。 |
+| 2.0.6 | 2026-05-05 | patch fix: §1.0 pin `26-error v3.3.0 → v3.3.1`（post 第三轮重审）。纯 pin 同步。 |
+
+### v2.0.6 (2026-05-05) — patch fix: §1.0 pin 26-error v3.3.0 → v3.3.1（post 第三轮重审）
+
+- §1.0 协同基线声明 `26-error v3.3.0 → v3.3.1`（v3.3.1 修正 SemVer policy 文字 + 补 `WorkspaceErrorCategory` / `InvalidArgumentKind` 的 `#[non_exhaustive]`）。
+- 修复动机：v2.0.5 升版本时已同步 v3.2.0 → v3.3.0，但 26-error 随即又升至 v3.3.1，30-dispatch 第二次升版本未跟随。重审专家定级为 MAJOR（自身 §1.0 stale pin 应同 26-error 升级时同步）。
+- 协同：纯 pin 同步，本文档 §5 / §6 / §10 引用的 ExecPath、ParallelGuard、错误字段均无需改动。
 
 ### v2.0.5 (2026-05-05) — patch fix: §1.0 自身协同基线 pin 同步
 

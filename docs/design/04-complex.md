@@ -1002,6 +1002,13 @@ User constructs `Complex<f64>::new(re, im)`
 | 2.0.2 | 2026-05-03 |
 | 2.0.3 | 2026-05-04 |
 | 2.0.4 | 2026-05-05 |
+| 2.0.5 | 2026-05-05 |
+
+### v2.0.5 (2026-05-05) — patch fix: §1 协同基线段 03-element pin 修正（post 第三轮重审）
+
+- §1 协同基线段（line 14）pin `03-element v1.4.0 → v1.4.1`（v1.4.1 起 §5.9.2 提供 6×6 转换矩阵 Tier 索引表）；段头自标版本 `（v2.0.3） → （v2.0.4）` 修正——v2.0.4 changlog 已记录 03-element 升版，但 §1 段内描述未跟随。
+- 修复动机：v2.0.4 升版本时仅在 changlog 中记录了 pin 升级，但段落本身的内联 pin 描述（line 14）仍是 v1.4.0；重审专家定级为 MAJOR（pin 表与 changlog 描述自相矛盾）。
+- 协同：纯文档措辞修订，本文档 §5 / §6 / §11 引用的 Complex 算法、错误字段构造模板均无需改动。
 
 ### v2.0.4 (2026-05-05) — patch fix: §1 协同基线 pin 刷新（post FATAL/MAJOR convergence cascade）
 
