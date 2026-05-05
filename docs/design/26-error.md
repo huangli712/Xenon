@@ -125,7 +125,32 @@ use core::fmt;
 // directly, without going through an enum).
 
 /// Unified recoverable error type for all public Xenon APIs.
+///
+/// This enum is marked `#[non_exhaustive]`: downstream `match` expressions
+/// MUST include a wildcard arm (`_ => ...`) and MUST NOT exhaustively pattern
+/// against the listed variants. This lets future Xenon versions add new
+/// top-level error categories (within the same SemVer major) without forcing
+/// a breaking change on every downstream `match`.
+///
+/// **SemVer policy (1.x baseline)**:
+///
+/// - The currently listed 13 top-level variants are the **stable error
+///   surface for 1.x**. New top-level variants are permitted but rare; their
+///   addition is a minor-version (non-breaking) change because of
+///   `#[non_exhaustive]`.
+/// - Removing or renaming a top-level variant is a breaking change.
+/// - Adding a new field to an existing struct-style variant is a breaking
+///   change unless the variant itself is also marked `#[non_exhaustive]`
+///   (the inner sub-enums `FfiErrorCategory`, `InvalidShapeKind`,
+///   `InvalidLayoutReason`, etc. are individually marked `#[non_exhaustive]`
+///   to absorb future field/variant growth without bumping major).
+/// - Changing a variant's existing field type or semantic meaning is a
+///   breaking change.
+///
+/// See `01-architecture.md §13` decision 8 for the full rationale and the
+/// inner sub-enum non-exhaustive policy.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum XenonError {
     ShapeMismatch {
         operation: Cow<'static, str>,
@@ -235,7 +260,12 @@ pub enum XenonError {
 
 /// FFI error category for `XenonError::Ffi`. All categories are
 /// fully structured; no free-text fallback variant.
+///
+/// Marked `#[non_exhaustive]` to absorb future FFI-error categories without
+/// breaking downstream `match` exhaustiveness within the same major version
+/// (see `XenonError`'s SemVer policy doc above).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum FfiErrorCategory {
     /// Caller passed a null raw pointer where a valid pointer was required.
     NullPointer { argument: Cow<'static, str> },
@@ -278,7 +308,12 @@ pub enum FfiBackend {
 }
 
 /// Detail kind for ABI mismatch / foreign allocator mismatch.
+///
+/// Marked `#[non_exhaustive]` to allow new ABI mismatch kinds in future
+/// minor versions (e.g., when supporting additional FFI metadata
+/// validation).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum AbiMismatchKind {
     /// Element type tag mismatch (e.g. C side claims `f32` but Rust side
     /// holds `f64`). Both fields are `&'static str` (v3.2.0): pass
@@ -417,7 +452,11 @@ impl core::fmt::Display for WorkspaceErrorCategory {
 /// `XenonError::InvalidLayout { reason, .. }` using the variants defined
 /// here and MUST NOT introduce locally-named variants outside this enum.
 /// Adding a new layout-validation case requires extending this enum first.
+///
+/// Marked `#[non_exhaustive]` to allow new layout-validation reasons in
+/// future minor versions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum InvalidLayoutReason {
     /// `shape.checked_size()` overflowed `usize`.
     ShapeProductOverflow,
@@ -455,8 +494,12 @@ pub enum InvalidLayoutReason {
     OwnedRequiresCanonicalFOrder,
 }
 
-/// Kind for `XenonError::InvalidShape`. Closed enum.
+/// Kind for `XenonError::InvalidShape`.
+///
+/// Marked `#[non_exhaustive]` to allow new shape-validation kinds in future
+/// minor versions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum InvalidShapeKind {
     /// `shape.checked_size()` overflowed `usize`. Element-count fields
     /// are intentionally absent because no finite expected/actual
@@ -1261,6 +1304,28 @@ Caller invokes public API (e.g., tensor.broadcast_to(shape))
 | 3.1.0 | 2026-05-03 |
 | 3.1.1 | 2026-05-03 |
 | 3.2.0 | 2026-05-03 |
+| 3.3.0 | 2026-05-05 |
+
+### v3.3.0 (2026-05-05) — 公开错误 enum 加 `#[non_exhaustive]`（SemVer 防御性更新）
+
+- **背景**：v3.2.0 之前 `XenonError` 是公开 exhaustive enum，未来若需新增第 14 个顶层错误类别就是破坏性变更（强制下游所有 `match` 加新 arm）。Oracle 评审认定为 MAJOR：13 顶层变体一旦冻结，1.x 内任何错误扩展都会强制下游代码改动，SemVer 压力高。
+- **修复方向（方向 A，本文档单点修订）**：给 `XenonError` 与可扩展的内部 sub-enum 加 `#[non_exhaustive]` 属性。封闭集合不动（`StorageKindTag` 4 种存储模式、`FfiBackend` 仅 RawParts/Blas 两种且 doc 显式声明 closed），保留 closed enum 语义。
+- **`#[non_exhaustive]` 应用清单**：
+  - `XenonError` 顶层 enum——核心防御。
+  - `FfiErrorCategory`——FFI 错误类别可能新增（如未来 LAPACK / GPU backend）。
+  - `AbiMismatchKind`——ABI 不匹配类型可能新增。
+  - `InvalidLayoutReason`——v3.x 已经 patch 多次新增 reason 变体，明确开放扩展。
+  - `InvalidShapeKind`——同样高频扩展。
+- **不加 `#[non_exhaustive]` 的 enum**：
+  - `FfiBackend`——doc comment 明确声明为 closed enum；任何新 backend 必须 SemVer-tracked。设计意图就是封闭。
+  - `StorageKindTag`——对应 4 种存储模式（Owned/View/ViewMut/Shared），与 `07-tensor.md StorageKind` 一一对应；存储模式集合本身就是封闭的。
+- **配套 doc 更新**：`XenonError` doc comment 新增"SemVer policy (1.x baseline)"段落，明确：
+  - 13 顶层变体作为 1.x 稳定面；
+  - 新增顶层变体是 minor（非破坏性）；
+  - 删除/重命名顶层变体或修改既有变体字段是 major。
+  交叉引用 `01-architecture.md §13 决策 8`。
+- **下游影响**：所有 `match` `XenonError` / `FfiErrorCategory` / `AbiMismatchKind` / `InvalidLayoutReason` / `InvalidShapeKind` 的代码 **MUST** 包含 `_ => ...` wildcard arm。这是 `#[non_exhaustive]` 的 Rust 标准约束。
+- **协同**：本次修改不改变任何字段、变体或语义，仅增加 `#[non_exhaustive]` 属性。所有引用 `26-error.md` 的文档（`01-architecture.md §1.5`、各模块的协同基线 pin）需 bump pin 到 v3.3.0；但实际错误字段集合不变，因此引用方文档的内容无需改动。
 
 ### v3.2.0 (2026-05-03) — ElementType 字段类型改 `&'static str`（破坏性公开 API 更新；ElementType 类型回归 element）
 

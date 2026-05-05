@@ -675,89 +675,14 @@ where
         // ...
     }
 
-    /// Construct a tensor from already-validated parts, skipping all
-    /// `Result`-returning validation. This is the canonical `pub(crate)`
-    /// internal constructor used by `src/construct/` (see `18-construction.md
-    /// §5.1` / `§5.4` / `§5.5`) when shape, strides, storage, and flags have
-    /// each been produced by their authoritative `Result`-returning helpers
-    /// (`shape.into_dimension()` + `shape.checked_size()`, `Owned::from_vec`
-    /// / `Owned::from_vec_aligned` / `<Owned<A> as StorageOwned>::from_elem`,
-    /// `layout::compute_f_strides`, `layout::compute_layout_flags`).
-    ///
-    /// The `_unchecked` suffix means: the caller has already proved the
-    /// listed safety contract holds, and this constructor performs no
-    /// validation. Any violation is undefined behavior at the type-system
-    /// level (private fields are bypassed), not a recoverable error.
-    ///
-    /// **Core unsafe constructor** — `TensorBase::new_unchecked` is the single
-    /// canonical unsafe entry point for tensor metadata assembly. All other
-    /// internal unchecked constructors MUST forward to it rather than defining
-    /// their own safety invariants for tensor layout fields. For example,
-    /// `Tensor::from_shape_vec_aligned_unchecked` (`21-type.md §5.6`) is a
-    /// thin wrapper that builds storage/strides/flags internally and then
-    /// delegates to `new_unchecked` with `offset=0` and
-    /// `derived_from_view_mut=false`. Any future internal unchecked entry MUST
-    /// also route through `new_unchecked` — no new independent unsafe
-    /// contracts are permitted for tensor metadata assembly.
-    ///
-    /// This helper exists so that constructor-module call sites do not write
-    /// `TensorBase { storage, shape, strides, offset, flags, derived_from_view_mut }`
-    /// directly, keeping `pub(crate)` field access localized to one named entry
-    /// point and providing a single grep target for tensor construction tracing.
-    /// Construction-path rules for `derived_from_view_mut` (must match §5.1
-    /// field doc + §5.3 access_semantics rule (3) + `17-indexing.md §6.3`
-    /// propagation table):
-    /// - `true` callers: (a) `ViewMutRepr::view()` downgrading to read-only
-    ///   `ViewRepr`; (b) slicing routes whose source is `ViewMutRepr` OR a
-    ///   `ViewRepr` already carrying `derived_from_view_mut == true` (the
-    ///   tag propagates through nested slicing).
-    /// - `false` callers: all other construction paths — `zeros` / `ones` /
-    ///   `from_shape_vec` / `from_scalar`, broadcast / transpose, slicing on
-    ///   sources that are neither `ViewMutRepr` nor an already-tagged
-    ///   `ViewRepr`, `from_raw_parts*`, Owned reconstructions.
-    /// - `view_mut()` reborrow chained on a `ViewMutRepr` stays
-    ///   `ViewMutRepr` (writable) and does NOT use this constructor with
-    ///   `true`.
-    ///
-    /// # Safety
-    /// - `shape`, `strides`, `offset`, and `flags` must be mutually
-    ///   consistent: `flags` was produced by
-    ///   `layout::compute_layout_flags::<A, D>(&shape, &strides, storage_ptr)`
-    ///   for the same `shape` and `strides` actually stored, where
-    ///   `storage_ptr` is the same logical-first pointer the caller will
-    ///   later expose via `as_ptr()`
-    /// - The logical access range derived from `shape` / `strides` / `offset`
-    ///   must lie entirely within `storage` (no overflow, no out-of-bounds)
-    /// - `shape.checked_size()` must already have been validated (no
-    ///   overflow) before calling this method
-    /// - When `offset == 0` and `shape` is canonical-F-contiguous w.r.t.
-    ///   `strides`, the value of `flags` must reflect that (the caller
-    ///   should use `compute_layout_flags` rather than fabricating bits
-    ///   manually)
-    /// - `derived_from_view_mut` semantics: the caller must pass `true`
-    ///   ONLY when this tensor is a `ViewRepr` produced by demoting a
-    ///   `ViewMutRepr` source (see §5.3 rule (3) for the
-    ///   `access_semantics()` consequence); for the `Owned`-specialized
-    ///   form, the caller MUST pass `false` (Owned tensors never carry
-    ///   downgrade provenance)
-    pub(crate) unsafe fn new_unchecked(
-        storage: Owned<A>,
-        shape: D,
-        strides: Strides<D>,
-        offset: usize,
-        flags: LayoutFlags,
-        derived_from_view_mut: bool,
-    ) -> Self {
-        // No revalidation; all six constructor inputs are caller-proved
-        // (storage, shape, strides, offset, flags, derived_from_view_mut).
-        // This is the Owned-specialized form; the generic form for
-        // `S: RawStorage` lives below as `TensorBase::<S, D>::new_unchecked`
-        // and is the canonical entry point for View / ViewMut / Arc paths.
-        // Both forms are `unsafe fn` because the # Safety contract above
-        // promises UB on metadata mismatch (caller-proved invariants); the
-        // signature must match the documented hazard.
-        TensorBase { storage, shape, strides, offset, flags, derived_from_view_mut }
-    }
+    // `new_unchecked` intentionally NOT defined here on the
+    // `Owned`-specialized impl block. A separate
+    // `impl<A, D> TensorBase<Owned<A>, D> { fn new_unchecked(...) }` would
+    // collide with the generic `impl<S: RawStorage, D> { fn new_unchecked }`
+    // below (Rust E0592: duplicate definitions for
+    // `TensorBase<Owned<A>, D>` because `Owned<A>: RawStorage`). All Owned
+    // construction paths route through the generic `new_unchecked` below;
+    // see that method's doc comment for the full safety contract.
 }
 
 impl<S, D> TensorBase<S, D>
@@ -765,25 +690,48 @@ where
     S: crate::storage::RawStorage,
     D: Dimension,
 {
-    /// Generic unchecked constructor over storage representation.
+    /// Canonical unchecked constructor for tensor metadata assembly.
     ///
-    /// This is the canonical `pub(crate)` internal constructor used by
-    /// view / view_mut / arc-tensor paths (broadcast, transpose, slicing,
-    /// `view()` / `view_mut()`) when shape, strides, storage, and flags
-    /// have already been produced by their authoritative `Result`-returning
-    /// helpers. Same safety contract as the `Owned`-specialized form
-    /// above; see that doc comment for the full SAFETY contract, including
-    /// the `derived_from_view_mut` rules.
+    /// **Single canonical `pub(crate)` unsafe entry point.** All construction
+    /// paths (Owned via `zeros` / `ones` / `from_shape_vec` / `from_scalar`,
+    /// View / ViewMut via slicing / transpose / broadcast / `view()` /
+    /// `view_mut()`, Arc via Arc-storage construction) route through this
+    /// single generic form. No Owned-specialized parallel form exists — see
+    /// the comment block above for the Rust coherence reason (E0592 collision
+    /// when both an Owned-specialized impl and a generic
+    /// `impl<S: RawStorage, D>` impl define a method with the same name).
+    ///
+    /// All other internal unchecked constructors (e.g.
+    /// `Tensor::from_shape_vec_aligned_unchecked` in `21-type.md §5.6`) MUST
+    /// forward to this method rather than defining their own safety
+    /// invariants for tensor layout fields. They build storage / strides /
+    /// flags internally, then delegate to `new_unchecked` with `offset = 0`
+    /// and `derived_from_view_mut = false`.
     ///
     /// # Safety
-    /// Same as the `Owned`-specialized variant: shape, strides, offset,
-    /// and flags must be mutually consistent (flags produced by
-    /// `compute_layout_flags::<A, D>` for the same shape/strides/storage_ptr
-    /// pair); the logical access range must lie within `storage`; shape
-    /// product must already be overflow-checked. `derived_from_view_mut`
-    /// must be `true` ONLY for `ViewRepr` results downgraded from a
-    /// `ViewMutRepr` source (or sliced from a source that itself had
-    /// `derived_from_view_mut == true`); `false` for all other paths.
+    /// - `shape`, `strides`, `offset`, and `flags` must be mutually
+    ///   consistent: `flags` was produced by
+    ///   `layout::compute_layout_flags::<A, D>(&shape, &strides, storage_ptr)`
+    ///   for the same `shape` and `strides` actually stored, where
+    ///   `storage_ptr` is the same logical-first pointer the caller will
+    ///   later expose via `as_ptr()`.
+    /// - The logical access range derived from `shape` / `strides` / `offset`
+    ///   must lie entirely within `storage` (no overflow, no out-of-bounds).
+    /// - `shape.checked_size()` must already have been validated (no
+    ///   overflow) before calling this method.
+    /// - When `offset == 0` and `shape` is canonical-F-contiguous w.r.t.
+    ///   `strides`, the value of `flags` must reflect that (the caller
+    ///   should use `compute_layout_flags` rather than fabricating bits
+    ///   manually).
+    /// - `derived_from_view_mut` semantics: must be `true` ONLY when this
+    ///   tensor is a `ViewRepr` produced by demoting a `ViewMutRepr` source
+    ///   (see §5.3 rule (3) for the `access_semantics()` consequence) or
+    ///   when slicing a source that itself has `derived_from_view_mut == true`
+    ///   (the tag propagates through nested slicing). For Owned construction
+    ///   paths (`S = Owned<A>`), the caller MUST pass `false` (Owned tensors
+    ///   never carry downgrade provenance).
+    /// - `view_mut()` reborrow chained on a `ViewMutRepr` stays `ViewMutRepr`
+    ///   (writable) and does NOT use this constructor with `true`.
     pub(crate) unsafe fn new_unchecked(
         storage: S,
         shape: D,
@@ -792,6 +740,10 @@ where
         flags: LayoutFlags,
         derived_from_view_mut: bool,
     ) -> Self {
+        // No revalidation; all six constructor inputs are caller-proved
+        // (storage, shape, strides, offset, flags, derived_from_view_mut).
+        // `unsafe fn` is required because the # Safety contract documents
+        // UB on metadata mismatch.
         TensorBase { storage, shape, strides, offset, flags, derived_from_view_mut }
     }
 }
@@ -1135,10 +1087,13 @@ where
             raw.ptr
         };
         let flags = layout::compute_layout_flags::<A, D>(&raw.shape, &raw.strides, logical_ptr);
-        // Routed through the named `pub(crate) unsafe fn new_unchecked` (§5.6
-        // Owned-specialized form) to keep private-field access localized to
-        // ONE entry point and to satisfy the locked invariant "TensorBase has
-        // 6 fields including `derived_from_view_mut`" (R10 B-01).
+        // Routed through the single canonical `pub(crate) unsafe fn
+        // new_unchecked` (§5.6, generic `impl<S: RawStorage, D>` form — the
+        // Owned-specialized parallel form was removed because it would
+        // collide with the generic form for `S = Owned<A>`; see §5.6 comment
+        // block) to keep private-field access localized to ONE entry point
+        // and to satisfy the locked invariant "TensorBase has 6 fields
+        // including `derived_from_view_mut`" (R10 B-01).
         // SAFETY: All six constructor-input invariants of `new_unchecked`
         // are satisfied: (1) shape was overflow-checked above; (2) strides
         // were verified canonical F-order above; (3) offset == 0 was
@@ -1148,8 +1103,8 @@ where
         // because `raw.len == shape.checked_size()` and `raw.cap >= raw.len`
         // were both verified; (6) `derived_from_view_mut: false` —
         // `from_raw_parts_owned` is an Owned reconstruction path, not a
-        // ViewMut downgrade (the Owned-specialized `new_unchecked` requires
-        // this argument to be `false`).
+        // ViewMut downgrade (the generic `new_unchecked` Safety contract
+        // mandates this argument be `false` for any `S = Owned<A>` call).
         Ok(unsafe {
             TensorBase::new_unchecked(storage, raw.shape, raw.strides, raw.offset, flags, false)
         })
@@ -1849,6 +1804,17 @@ TensorBase<S, D>
 | 2.0.2 | 2026-05-04 |
 | 2.0.3 | 2026-05-04 |
 | 2.0.4 | 2026-05-04 |
+| 2.0.5 | 2026-05-05 |
+
+### 2.0.5 (2026-05-05) — patch: 移除 `new_unchecked` Owned-specialized 重复定义（FATAL fix）
+
+- §5.6 删除 `impl<A, D> TensorBase<Owned<A>, D>` 块内独立的 `pub(crate) unsafe fn new_unchecked` 定义，仅保留 `impl<S, D> TensorBase<S, D> where S: RawStorage` 块内的泛型版本。
+- 原因：`Owned<A>: RawStorage` 必然成立，因此两个 inherent impl 块同时为 `TensorBase<Owned<A>, D>` 添加同名同形参方法，会触发 Rust 编译错误 E0592 `duplicate definitions with name 'new_unchecked'`。原 v2.0.4 文档声称两个 form 可并存的判断不成立。
+- 替代方案：所有 Owned 构造路径（`zeros` / `ones` / `from_shape_vec` / `from_scalar` / `from_raw_parts_owned`）通过单一泛型 `new_unchecked` 完成构造；调用点签名形态完全不变（已使用 `TensorBase::new_unchecked(...)` 自动方法解析）。
+- §5.6 在 Owned impl 块的原 owned-specialized 位置改为注释 stub，说明该路径已不再单独定义、统一走泛型形式。
+- §5.6 泛型 `new_unchecked` 的 doc comment 重写：合并原 owned-specialized 的 `derived_from_view_mut` 规则；明确"Owned 构造路径必须传 `false`"作为安全契约的一部分。
+- §5.7 `from_raw_parts_owned` 内部注释更新：移除"Owned-specialized form"措辞，改为"generic `impl<S: RawStorage, D>` form"。
+- 调用方影响：无需修改任何 18-construction、21-type、17-indexing 中已有的 `TensorBase::new_unchecked(...)` 调用点；安全契约语义不变。
 
 ### 2.0.4 (2026-05-04) — patch: 指定 TensorBase::new_unchecked 为核心 unsafe 构造器
 

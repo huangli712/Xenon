@@ -985,14 +985,35 @@ where
             });
         }
 
-        let data_ptr = self.as_ptr();
         let rows = self.shape()[0];
         let cols = self.shape()[1];
-        // After is_blas_layout_compatible() check, we know:
-        // - ndim == 2, F-contiguous, no zero strides
-        // - rows > 0: if rows == 0, F-order strides[1] = rows = 0,
-        //   making has_zero_stride() return true, which would have
-        //   already failed the is_blas_layout_compatible() check above.
+        // BLAS requires `lda >= max(1, rows)`. For F-order shape `[0, n]`
+        // (zero-row matrix), `product(shape) == 0`, so by the authoritative
+        // `HAS_ZERO_STRIDE := any(stride == 0) && product(shape) > 0` rule
+        // (06-layout.md §5.11) the layout is still classified F_CONTIGUOUS
+        // and `is_blas_layout_compatible()` returns `true`. The naturally
+        // computed F-order `strides[1]` equals `rows == 0`, which violates
+        // BLAS's `lda >= 1` requirement and would induce UB in any BLAS
+        // routine. Reject zero-row matrices here as a separate gate so the
+        // exported `BlasInfo::leading_dim` is always `>= max(1, rows)`.
+        // The mirror rule for zero-column matrices (`cols == 0 && rows > 0`)
+        // is naturally satisfied because F-order `strides[1] == rows` already
+        // gives `lda == rows >= 1`.
+        if rows == 0 {
+            return Err(XenonError::Ffi {
+                operation: Cow::Borrowed("ffi::blas_info"),
+                category: FfiErrorCategory::BlasIncompatibleLayout {
+                    shape: self.shape().to_vec(),
+                    strides: self.strides().to_vec(),
+                },
+                backend: FfiBackend::Blas,
+                cause: None,
+            });
+        }
+
+        let data_ptr = self.as_ptr();
+        // Post `rows > 0` gate: F-order `strides[1] == rows >= 1`, so
+        // `leading_dim` always satisfies BLAS's `lda >= max(1, rows)`.
         let leading_dim = self.strides()[1];
 
         Ok(BlasInfo {
@@ -1060,7 +1081,26 @@ where
                 cause: None,
             });
         }
+        // Mirror `blas_info()` rows-gate: BLAS requires `lda >= max(1, rows)`.
+        // For F-order shape `[0, n]`, `product(shape) == 0` ⇒
+        // `HAS_ZERO_STRIDE` stays false (06-layout.md §5.11), so the layout
+        // is still F_CONTIGUOUS and `is_blas_layout_compatible()` returns
+        // true; raw `strides[1] == rows == 0` would violate BLAS's `lda >= 1`.
+        // Reject zero-row matrices explicitly.
+        if self.shape()[0] == 0 {
+            return Err(XenonError::Ffi {
+                operation: Cow::Borrowed("ffi::lda"),
+                category: FfiErrorCategory::BlasIncompatibleLayout {
+                    shape: self.shape().to_vec(),
+                    strides: self.strides().to_vec(),
+                },
+                backend: FfiBackend::Blas,
+                cause: None,
+            });
+        }
         let strides = self.strides();
+        // Post rows-gate: F-order `strides[1] == rows >= 1`, satisfying
+        // BLAS's `lda >= max(1, rows)`.
         Ok(strides[1])
     }
 }
@@ -1370,7 +1410,7 @@ Additional caller-side checks:
 | 非连续切片     | `is_blas_layout_compatible()` 返回 `false`                                                                                                                        |
 | 广播维度       | `is_blas_layout_compatible()` 返回 `false`                                                                                                                        |
 | 自别名可写布局 | `from_raw_parts_mut()` 返回 `XenonError::Ffi { category: FfiErrorCategory::OverlapRejected{shape, strides}, backend: FfiBackend::RawParts, .. }`（v2.x 协同 26-error v3.1.0） |
-| 零尺寸矩阵     | `lda()` 在 `rows == 0` 时返回 `BlasIncompatibleLayout` 错误（F-order 下 `strides[1] = 0`，触发 `has_zero_stride`）；在 `cols == 0 && rows > 0` 时返回 `strides[1]`（= rows），满足 `lda >= max(1, rows)` |
+| 零尺寸矩阵     | `blas_info()` / `lda()` 在 `rows == 0` 时返回 `BlasIncompatibleLayout` 错误（由 `blas_info()` / `lda()` 内部的 `rows == 0` 显式 gate 拒绝；**注意**：空数组 `product(shape) == 0` 不会触发 `has_zero_stride`，参见 `06-layout.md §5.11` 的 `HAS_ZERO_STRIDE := any(stride == 0) && product(shape) > 0` 权威定义；因此 `is_blas_layout_compatible()` 单独无法过滤 `[0, n]`，需 `blas_info()` 自行 gate）。在 `cols == 0 && rows > 0` 时返回 `strides[1]`（= rows），满足 `lda >= max(1, rows)` |
 | 1D 张量        | `lda()` 返回错误                                                                                                                                                  |
 | 零维张量       | `try_offset_of(&[])` 返回 `Ok(0)`                                                                                                                                 |
 | 未对齐指针     | `from_raw_parts` 的 Safety 文档需说明对齐要求                                                                                                                     |
@@ -1553,6 +1593,17 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | 3.0.1 | 2026-05-03 |
 | 3.0.2 | 2026-05-04 |
 | 3.0.3 | 2026-05-04 |
+| 3.0.4 | 2026-05-05 |
+
+### v3.0.4 (2026-05-05) — patch: 修复 `blas_info` / `lda` 对零行矩阵的 `lda=0` 导出（FATAL fix）
+
+- §5.11 `blas_info()` 在 `is_blas_layout_compatible()` 检查后追加 `rows == 0` 显式 gate：返回 `XenonError::Ffi { category: BlasIncompatibleLayout, ... }`。
+- §5.12 `lda()` 同步追加 `shape()[0] == 0` 显式 gate，返回相同错误。
+- 错误根因（v3.0.3 之前的潜在 UB）：对 shape `[0, n]`，`product(shape) == 0`，按 `06-layout.md §5.11` 的 `HAS_ZERO_STRIDE := any(stride == 0) && product(shape) > 0` 权威定义，空数组**永不**置 `HAS_ZERO_STRIDE`，仍归类 `LayoutState::FContiguous`；因此 `is_blas_layout_compatible() = is_f_contiguous() && !has_zero_stride()` 返回 `true`。在此情况下 F-order `strides[1] == rows == 0`，原 `let leading_dim = self.strides()[1]` 会导出 `lda = 0`，违反 BLAS 要求 `lda >= max(1, rows)`，传入 BLAS 例程会触发 UB。
+- §5.11 注释纠正：原 v2.0.4 的"if rows == 0, F-order strides[1] = rows = 0, making has_zero_stride() return true, which would have already failed the is_blas_layout_compatible() check above"推理错误——空数组不触发 `HAS_ZERO_STRIDE`，与 06-layout 权威定义直接相反。
+- §11 边界覆盖表"零尺寸矩阵"行重写：明示需 `blas_info()` / `lda()` 自身做 rows-gate，`is_blas_layout_compatible()` 单独不足以过滤 `[0, n]`。
+- 调用方影响：v3.0.3 之前已对 BLAS-compatible 张量调用 `blas_info()` / `lda()` 的代码不受影响（rows > 0 路径行为不变）；之前若对 shape `[0, n]` 调用并把 `lda` 传给 BLAS，现在会得到结构化 Err 而非潜在 UB——安全性提升，无需调用方代码改动。
+- 协同：本次修复不改变 `XenonError::Ffi` 或 `FfiErrorCategory` 字段集合，pin `26-error.md v3.2.0` 不变。
 
 ### v3.0.3 (2026-05-04) — patch: refresh stale 26-error v3.0.0 reference to v3.2.0
 

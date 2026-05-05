@@ -565,7 +565,7 @@ pub(crate) fn reset_simd_threshold();
 
 ### 5.8 路径选择阈值（分操作类型参考）
 
-dispatch 持有的阈值适用于**所有操作类型**的统一入口裁决。各操作的具体 SIMD 阈值差异由 `simd/` 内部处理。以下表格仅供参考说明各模块的总体阈值策略，**dispatch 自身只持有两个统一阈值**（`PARALLEL_THRESHOLD = 65536`、`SIMD_THRESHOLD = 64`），不感知操作类型；**具体 per-op 阈值由 `simd/` 后端在 `ExecPath::Simd` 被选中后执行最终 admission 时裁决**（与下方"调用方-dispatch-后端的阈值分工"以及 `08-simd.md §5.6` "条件实现，默认标量回退" 一致；调用方**不**在调用 dispatch 之前自行 per-op gating）：
+dispatch 持有的阈值适用于**所有操作类型**的统一入口裁决。各操作的具体 SIMD 阈值差异由 `simd/` 内部处理。以下表格仅供参考说明各模块的总体阈值策略，**dispatch 自身只持有两个统一阈值**（`PARALLEL_THRESHOLD = 65536`、`SIMD_THRESHOLD = 64`），不感知操作类型；**具体 per-op 阈值由 `simd/` 后端在 `ExecPath::Simd` 被选中后执行最终 admission 时裁决**（与下方"调用方-dispatch-后端的阈值分工"以及 `08-simd.md §5.6` "条件实现，默认标量回退" 一致；调用方**不**做 per-op **长度阈值** gating，但**必须**做 op-语义 gating——参见 `08-simd.md §5.6.1` / `09-parallel.md §6.5` 整数 checked 等价性等场景）：
 
 | 操作类型       | 元素类型                        | 并行最小长度 | SIMD 最小长度 | 说明                                   |
 | -------------- | ------------------------------- | :----------: | :-----------: | -------------------------------------- |
@@ -579,8 +579,15 @@ dispatch 持有的阈值适用于**所有操作类型**的统一入口裁决。�
 
 **调用方-dispatch-后端的阈值分工（v2.0.x 锁定，与 §5.6 / §9.4 + `08-simd.md §5.6` 一致）：**
 
-- **dispatch 持有**：通用最小阈值（`PARALLEL_THRESHOLD`、`SIMD_THRESHOLD`），用于"是否值得进入非标量路径"的粗粒度裁决。调用方仍走完整三路 dispatch（`Serial / Simd / Parallel`），不在 dispatch 之前自行裁决 `Serial` 短路。
-- **调用方持有**：通用元数据（`len` / `is_contiguous` / `alignment_ok`）传入；调用方**不**持有 op-/element-type-specific 阈值，**不**在调用 `select_exec_path()` 之前 gating。
+- **dispatch 持有**：通用最小阈值（`PARALLEL_THRESHOLD`、`SIMD_THRESHOLD`），用于"是否值得进入非标量路径"的粗粒度裁决。调用方**不得**基于通用长度阈值（`len`）在调用 `select_exec_path()` 之前自行 gate（即不得绕过 dispatch 自行做 `Serial` 长度短路）。
+- **调用方持有两类职责**：
+  1. **通用元数据传入**：`len` / `is_contiguous` / `alignment_ok` 直接传入 `select_exec_path()`，不持有 op-/element-type-specific **长度阈值**。
+  2. **op-语义合法性 gating（必须）**：调用方**必须**基于操作语义合法性在调用 `select_exec_path()` 之前 gate，包括但不限于：
+     - 整数路径 SIMD/Parallel checked-arithmetic 等价性缺失（如 `sum<i32>` / `dot<i32>` 在某后端无 checked SIMD widening kernel）→ 调用方直接走 Serial，不调用 `select_exec_path()`；详见 `08-simd.md §5.6.1` / `09-parallel.md §6.5` / `13-reduction.md §6.3` / `12-matrix.md §6.1`。
+     - 顺序敏感约束（如归约要求确定性 chunk-order）→ 调用方裁定是否进入 Parallel；详见 `09-parallel.md §6.5`。
+     - 元素类型在该 op 下被显式排除（如 `bool` 不进入 `sum`）→ 调用方在类型层或调用前直接拒绝。
+  
+  这两类职责的边界是：**通用长度阈值**由 dispatch 持有，调用方不得绕过；**op-语义合法性**由调用方持有，dispatch 不感知。
 - **`simd/` 后端持有**：op-/element-type-specific 阈值（如归约 `sum_f64` 的 SIMD 准入阈值 1024）、lane 宽度、ISA 可用性、操作覆盖矩阵等最终准入条件。`simd/` 在 `ExecPath::Simd` 被选中后执行**最终二次 admission**——通过则走 SIMD kernel，不通过则内部回退标量。这与 `08-simd.md §5.6` "条件实现，默认标量回退" 与本文 §9.4 "simd 持有最终 admission" 严格一致。
 
 非连续与对齐处理见 §5.6。
@@ -1294,6 +1301,18 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 | 2.0.1 | 2026-05-04 | R8/R9 协同基线对齐：与 `00-coding.md §1.3` / `28-tests.md §1.0` 锁定基线版本号显式对齐，本版无契约变更。 |
 | 2.0.2 | 2026-05-04 | Op-agnostic boundary clarification + `alignment_ok` formal contract (§5.5, §6.4). |
 | 2.0.3 | 2026-05-04 | patch fix: §6.4 澄清 `alignment_ok` 在 dispatch 与 SIMD 后端之间的实际传递路径。 |
+| 2.0.4 | 2026-05-05 | patch fix: §5.8 调用方 gating 契约与 08-simd / 09-parallel 一致化（FATAL fix）。 |
+
+### v2.0.4 (2026-05-05) — patch fix: §5.8 调用方 gating 契约与 08-simd / 09-parallel 一致化
+
+- **背景**：v2.0.3 之前 §5.8 写"调用方仍走完整三路 dispatch，不在 dispatch 之前自行裁决 Serial 短路 ... 调用方**不**持有 op-/element-type-specific 阈值，**不**在调用 `select_exec_path()` 之前 gating"。该表述与 `08-simd.md §5.6.1`（"调用方先做 L2 type gate ... 不调用 `select_exec_path()`，直接走标量串行"）、`09-parallel.md §5.5/§6.5`（"必须在调用 `select_exec_path()` 之前自行 gate"）、`13-reduction.md §6.3` / `12-matrix.md §6.1` 整数 checked SIMD 等价性 gating 直接矛盾。Oracle 评审认定为 FATAL（实现者无法判断整数 `sum`/`dot` 应在哪一层做 type gate）。
+- **修复方向（方向 A，本文档单点修订）**：弱化 §5.8，把"调用方禁止 gating"约束限定为**通用长度阈值**（`len`）；明确"op-语义合法性 gating"是调用方的**必需职责**。dispatch 仍是 op-agnostic 的纯硬件/路径仲裁函数，与 §5.5 "Op-agnostic boundary"、§9.4 "simd 持有最终 admission" 一致。
+- **§5.8 表格前导段**：表述从"调用方**不**在调用 dispatch 之前自行 per-op gating"改为"调用方**不**做 per-op **长度阈值** gating，但**必须**做 op-语义 gating——参见 `08-simd.md §5.6.1` / `09-parallel.md §6.5` 整数 checked 等价性等场景"。
+- **§5.8 调用方-dispatch-后端阈值分工块**：
+  - "**dispatch 持有**" 段：把"不在 dispatch 之前自行裁决 Serial 短路"明确收窄为"**不得基于通用长度阈值**自行 gate"。
+  - "**调用方持有**" 段重写为两类职责：(1) 通用元数据传入（不持有 op-/element-type-specific **长度阈值**）；(2) **op-语义合法性 gating（必须）**——列举三类场景：整数 checked SIMD/Parallel 等价性缺失、顺序敏感约束、元素类型显式排除——并交叉引用 08/09/12/13 各自的 gating 章节。
+- **协同**：本次修复不涉及 `08-simd.md` 或 `09-parallel.md` 的内容变更（它们的 op-gating 表述早已是事实标准），仅修 30-dispatch 自身的措辞冲突。`08-simd.md v2.0.2` / `09-parallel.md v2.0.2` / `13-reduction.md v3.0.2` / `12-matrix.md v2.0.1` 的 pin 不变。
+- **调用方影响**：本次为文档措辞修订，对实现路径无新增约束——所有 op-gating 责任在 v2.0.3 之前已分散在 08/09/12/13 中明确，v2.0.4 仅是 30-dispatch 的对外措辞与之对齐。
 
 ### v2.0.3 (2026-05-04) — patch fix: §6.4 `alignment_ok` 传递路径澄清
 

@@ -577,6 +577,57 @@ impl CastElement for Complex<f64> {}
 - **sealed 论证**：`CastElement: Element` 间接 sealed（`Element: Sealed`），下游 crate 无法为新类型实现。
 - **owner**：`CastElement` 定义在 `src/element/mod.rs`；`21-type.md §5.1` 仅消费、不重新定义。
 
+#### 5.9.2 转换矩阵 Tier 索引表（element 层视角，权威详细规则在 `21-type.md`）
+
+本节给出 `CastElement` 6 种元素类型间 6×6 = 36 个 (源, 目标) 对的 **Tier 分类索引表**。本表 **仅作为 element 层 trait 设计的对照参考**，让 trait 设计者能快速判断每对类型的 trait 实现策略（是否需要 `CastTo<T>`、是否走 `From` / `ConvertTo` 静态分发、是否默认 `Err`）；**完整转换语义、错误条件、闭合规则等权威详细定义统一以 `21-type.md §5` / `§6` 为准**，请勿在本节扩写转换规则细节。
+
+**Tier 分类约定**（与 `21-type.md` 保持一致）：
+
+| Tier | 含义 | trait 实现策略 |
+|------|------|---------------|
+| **T0** | identity（同类型拷贝） | 通过 `Clone` / `Copy`；不需 `CastTo<T>` impl；`cast::<A>()` 走 `to_owned()` 同等路径 |
+| **T1** | lossless（无损扩宽 / 引入虚部 0） | 默认成功；可通过 `From` / `ConvertTo` 静态分发，**不**进入 `CastTo<T>` fallible 路径 |
+| **T2** | lossy（有损：精度丢失 / 截断 / 范围溢出风险） | 默认返回 `Err(XenonError::TypeConversion)`；通过 `CastTo<T>` impl 承载，调用方需显式处理 |
+| **T3** | conditional lossy（动态条件：复数→实数虚部为 0 才成功） | 通过 `CastTo<T>` impl 承载；运行时检查虚部，虚部为 0 时按内层规则继续，否则 `Err(XenonError::TypeConversion { reason: NonZeroImaginaryPart, ... })` |
+
+**6×6 矩阵索引（行=源类型，列=目标类型）**：
+
+| 源 → 目标       | `i32`     | `i64`     | `f32`     | `f64`     | `Complex<f32>` | `Complex<f64>` |
+|-----------------|-----------|-----------|-----------|-----------|----------------|----------------|
+| **`i32`**       | T0        | T1        | T2        | T1        | T2             | T1             |
+| **`i64`**       | T2        | T0        | T2        | T2        | T2             | T2             |
+| **`f32`**       | T2        | T2        | T0        | T1        | T1             | T1             |
+| **`f64`**       | T2        | T2        | T2        | T0        | T2             | T1             |
+| **`Complex<f32>`** | T3     | T3        | T3        | T3        | T0             | T1             |
+| **`Complex<f64>`** | T3     | T3        | T3        | T3        | T2             | T0             |
+
+**Tier 分布统计（共 36 cells）**：
+
+| Tier | cell 数 | 说明 |
+|------|--------:|------|
+| T0   | 6      | 对角线：i32→i32、i64→i64、f32→f32、f64→f64、Complex<f32>→Complex<f32>、Complex<f64>→Complex<f64> |
+| T1   | 8      | i32→i64、i32→f64、i32→Complex<f64>、f32→f64、f32→Complex<f32>、f32→Complex<f64>、f64→Complex<f64>、Complex<f32>→Complex<f64> |
+| T2   | 14     | 所有有损实数收窄、i32→f32（精度丢失）、i64→f32/f64（精度丢失）、Complex<f64>→Complex<f32>（分量精度丢失）等 |
+| T3   | 8      | 4 个 Complex 源 × 4 个非 Complex 目标 = 8（由 `Complex<f32>` 与 `Complex<f64>` 行的前 4 列构成；列具体为 `i32` / `i64` / `f32` / `f64`） |
+| 合计 | 36     | 6×6 完整覆盖 |
+
+**trait 实现策略推论（element 层）**：
+
+- **T0 cells**：不需要 `CastTo<T>` impl；`cast::<A>()` 在 `21-type.md §5.5` 走同类型拷贝路径（与 `to_owned()` 等价）。
+- **T1 cells**：通过 `From<Src> for Dst` 或 `ConvertTo<Dst>` 静态分发。这部分 cells **不实现** `CastTo<T>` 的 fallible 接口（避免无失败可能的 cell 也要返回 `Result`）。
+- **T2 cells**：实现 `CastTo<T>`，默认返回 `Err(XenonError::TypeConversion { ... })`。`21-type.md §5.4` 决定是否额外提供截断/饱和等替代接口（当前版本不提供）。
+- **T3 cells**：实现 `CastTo<T>`，运行时检查虚部为 0 后按内层 (Real, Real) 或 (Real, Int) 规则递归到 T1 / T2 行为；虚部非 0 时返回 `Err(XenonError::TypeConversion { reason: NonZeroImaginaryPart, ... })`。
+
+**与 `require.md §23.1` 16 行表的对照**：
+
+`require.md §23.1` 列出的"无损"8 行对应本表 T1 cells（除去 §23.1 表中的 `i32 → Complex<f64>`、`f32 → Complex<f64>`、`f32 → Complex<f32>`、`f64 → Complex<f64>`、`Complex<f32> → Complex<f64>` 外，还含 `i32 → i64`、`f32 → f64`、`i32 → f64`，共 8 行——与本表 T1 完全对应）。`require.md §23.1` 列出的"有损"约 14 行对应本表 T2 + 部分 T3（注意 `Complex<f32> → f32` 等被 require 列在"有损"是因为存在虚部丢弃的语义条件，本表归入 T3 的"条件有损"——更精细，但与 require 不冲突，详细映射见 `21-type.md §5.3`）。
+
+**禁止事项**：
+
+- 本节 **不**复述 `require.md §23.1` 详细规则、闭合规则（§23.2）或错误字段构造模板。
+- `CastTo<T>` 具体 impl（如 `impl CastTo<i32> for f64`）放在 `src/convert/cast.rs`，**不**在本节展开。
+- 所有 cells 的具体语义 / 错误条件以 `21-type.md §5` / `§6` 为权威；本节仅作 trait 设计对照索引。
+
 ### 5.10 Checked arithmetic traits
 
 `CheckedAdd` 为整数类型提供 checked 加法，供 `sum` 归约操作在整数溢出时 panic（参见 `13-reduction.md §5.1`）。
@@ -1138,6 +1189,15 @@ Upstream modules declare element bounds
 | 1.3.0 | 2026-05-03 |
 | 1.3.1 | 2026-05-03 |
 | 1.4.0 | 2026-05-03 |
+| 1.4.1 | 2026-05-05 |
+
+### v1.4.1 (2026-05-05) — §5.9.2 新增 6×6 转换矩阵 Tier 索引表
+
+- §5.9.2 新增 element 层视角的 6×6 转换矩阵 Tier 索引表，覆盖 36 个 (源, 目标) cell。Tier 分类（T0 identity / T1 lossless / T2 lossy / T3 conditional lossy）的 trait 实现策略一并给出，让 trait 设计者能从 element 层快速判断每对类型的实现路径——是否需要 `CastTo<T>` impl、是否走 `From` / `ConvertTo` 静态分发、是否默认 `Err`。
+- 表格分布：T0=6、T1=8、T2=14、T3=8（合计 36）。与 `require.md §23.1` 的 16 行有损/无损表对照说明已附加。
+- 明确禁止事项：本表 **不**复述 `require.md §23.1` 详细规则或闭合规则（§23.2），权威详细语义统一以 `21-type.md §5` / `§6` 为准；具体 `CastTo<T>` impl 放在 `src/convert/cast.rs`。
+- 修复动机：v1.4.0 的 `CastTo<T>` / `CastElement` 文档只给出 trait 骨架并指向 `21-type.md`，但没有 element 层视角的快速查询索引；Oracle 评审认定为 MAJOR——实现者读 03-element 无法判断 sealed conversion relation 闭包是否完整，容易漏 impl 或对 T1 cell 错误实现 `CastTo<T>`。新增本节作为对照索引，弥补这一 gap。
+- 协同：本次新增 **不**改变任何 trait 定义、impl 集合或语义；仅是 element 层视角的对照表。`21-type.md` / `26-error.md` 不受影响，pin 不变。
 
 ### v1.4.0 (2026-05-03) — ElementType 回归 element + Element 新增 ELEMENT_TYPE_NAME
 
