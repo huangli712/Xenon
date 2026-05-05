@@ -15,7 +15,7 @@
 
 ### 1.0 协同基线
 
-本文档 v2.0.5 以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`00-coding.md v2.0.5`、`01-architecture.md` v2.0.5、`02-dimension.md` v1.2.7、`03-element.md` v1.4.1、`04-complex.md` v2.0.4、`05-storage.md` v2.0.2、`06-layout.md` v1.3.2、`07-tensor.md` v2.0.5、`08-simd.md` v2.0.2、`09-parallel.md` v2.0.2、`10-iterator.md` v1.2.7、`11-math.md` v2.0.2、`12-matrix.md` v2.0.1、`13-reduction.md` v3.0.2、`14-set.md` v2.0.2、`15-broadcast.md` v3.0.4、`16-shape.md` v2.0.3、`17-indexing.md` v3.0.4、`18-construction.md` v3.0.2、`19-overload.md` v2.0.1、`20-utility.md` v3.0.2、`21-type.md` v2.1.2、`22-output.md` v2.0.1、`23-ffi.md` v3.0.4、`24-workspace.md` v3.0.2、`25-safety.md` v2.0.5、`26-error.md` v3.3.1、`27-benchmark.md` v2.0.4、`29-documentation.md` v2.0.6、`30-dispatch.md` v2.0.5。
+本文档 v2.0.6 以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`00-coding.md v2.0.6`、`01-architecture.md` v2.0.5、`02-dimension.md` v1.2.7、`03-element.md` v1.4.1、`04-complex.md` v2.0.5、`05-storage.md` v2.0.2、`06-layout.md` v1.3.2、`07-tensor.md` v2.0.5、`08-simd.md` v2.0.2、`09-parallel.md` v2.0.2、`10-iterator.md` v1.2.7、`11-math.md` v2.0.2、`12-matrix.md` v2.0.1、`13-reduction.md` v3.0.2、`14-set.md` v2.0.2、`15-broadcast.md` v3.0.4、`16-shape.md` v2.0.3、`17-indexing.md` v3.0.4、`18-construction.md` v3.0.2、`19-overload.md` v2.0.1、`20-utility.md` v3.0.2、`21-type.md` v2.1.2、`22-output.md` v2.0.1、`23-ffi.md` v3.0.4、`24-workspace.md` v3.0.2、`25-safety.md` v2.0.6、`26-error.md` v3.3.2、`27-benchmark.md` v2.0.4、`29-documentation.md` v2.0.7、`30-dispatch.md` v2.0.6。
 
 ### 1.1 职责边界
 
@@ -1608,6 +1608,12 @@ Test files
 | 2.0.3 | 2026-05-04 |
 | 2.0.4 | 2026-05-05 |
 | 2.0.5 | 2026-05-05 |
+| 2.0.6 | 2026-05-05 |
+
+### v2.0.6 (2026-05-05) — patch fix: §1.0 协同基线 pin cascade 同步（post 第三轮重审）
+
+- §1.0 协同基线 pin cascade 刷新（受第三轮 patch cascade 影响）：`00-coding v2.0.5 → v2.0.6`、`04-complex v2.0.4 → v2.0.5`、`25-safety v2.0.5 → v2.0.6`、`26-error v3.3.1 → v3.3.2`、`30-dispatch v2.0.5 → v2.0.6`。
+- 协同：纯 pin 同步，无测试矩阵或 CI 工作流变更。
 
 ### v2.0.5 (2026-05-05) — patch fix: 同步 14-set v2.0.2 unique 顺序契约回退（FATAL 下游 fix）
 
