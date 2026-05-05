@@ -3,9 +3,9 @@
 > 文档编号: 10
 > 模块目录: src/iter/
 > 任务阶段: Phase 4
-> 前置文档: 02-dimension.md, 05-storage.md, 07-tensor.md, 26-error.md (v3.2.0)
+> 前置文档: 02-dimension.md, 05-storage.md, 07-tensor.md, 26-error.md (v3.3.1)
 >
-> **协同基线：** 本文档对外部错误语义的描述以 `26-error.md v3.2.0` §5.1 `XenonError` 枚举（含 `InvalidAxis` 变体）为准。任何 §9 / §10 引用 `26-error` 的字段或变体名时，均以该版本为权威。
+> **协同基线：** 本文档对外部错误语义的描述以 `26-error.md v3.3.1` §5.1 `XenonError` 枚举（含 `InvalidAxis` 变体）为准。任何 §9 / §10 引用 `26-error` 的字段或变体名时，均以该版本为权威。
 > 需求参考: 需求说明书 §6 - §8、§10、§11、§16 - §18、§21、§27、§28
 > 范围声明: 范围内
 
@@ -677,6 +677,12 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
 | 1.2.4 | 2026-04-15 |
 | 1.2.5 | 2026-04-16 |
 | 1.2.6 | 2026-05-03 |
+| 1.2.7 | 2026-05-05 |
+
+### v1.2.7 (2026-05-05) — patch fix: 协同基线 26-error pin 刷新（post FATAL/MAJOR convergence cascade）
+
+- 元信息块"前置文档"行 + "协同基线"行：`26-error.md` pin v3.2.0 → v3.3.1（v3.3.0 起 enum 标 `#[non_exhaustive]`，字段集合不变）。
+- 协同：26-error v3.3.0/v3.3.1 是防御性/docs 更新，本文档 §9 / §10 引用的 `InvalidAxis` 等错误字段不变。
 
 ### v1.2.6 (2026-05-03) — Medium/Low review fixes
 

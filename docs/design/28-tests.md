@@ -15,7 +15,7 @@
 
 ### 1.0 协同基线
 
-本文档 v2.0.4 以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`00-coding.md v2.0.4`、`01-architecture.md` v2.0.3、`02-dimension.md` v1.2.7、`03-element.md` v1.4.0、`04-complex.md` v2.0.3、`05-storage.md` v2.0.2、`06-layout.md` v1.3.2、`07-tensor.md` v2.0.4、`08-simd.md` v2.0.2、`09-parallel.md` v2.0.2、`10-iterator.md` v1.2.6、`11-math.md` v2.0.2、`12-matrix.md` v2.0.1、`13-reduction.md` v3.0.2、`14-set.md` v2.0.1、`15-broadcast.md` v3.0.4、`16-shape.md` v2.0.2、`17-indexing.md` v3.0.4、`18-construction.md` v3.0.2、`19-overload.md` v2.0.1、`20-utility.md` v3.0.2、`21-type.md` v2.1.2、`22-output.md` v2.0.1、`23-ffi.md` v3.0.3、`24-workspace.md` v3.0.2、`25-safety.md` v2.0.4、`26-error.md` v3.2.0、`27-benchmark.md` v2.0.3、`29-documentation.md` v2.0.5、`30-dispatch.md` v2.0.3。
+本文档 v2.0.5 以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`00-coding.md v2.0.5`、`01-architecture.md` v2.0.5、`02-dimension.md` v1.2.7、`03-element.md` v1.4.1、`04-complex.md` v2.0.4、`05-storage.md` v2.0.2、`06-layout.md` v1.3.2、`07-tensor.md` v2.0.5、`08-simd.md` v2.0.2、`09-parallel.md` v2.0.2、`10-iterator.md` v1.2.7、`11-math.md` v2.0.2、`12-matrix.md` v2.0.1、`13-reduction.md` v3.0.2、`14-set.md` v2.0.2、`15-broadcast.md` v3.0.4、`16-shape.md` v2.0.3、`17-indexing.md` v3.0.4、`18-construction.md` v3.0.2、`19-overload.md` v2.0.1、`20-utility.md` v3.0.2、`21-type.md` v2.1.2、`22-output.md` v2.0.1、`23-ffi.md` v3.0.4、`24-workspace.md` v3.0.2、`25-safety.md` v2.0.5、`26-error.md` v3.3.1、`27-benchmark.md` v2.0.4、`29-documentation.md` v2.0.6、`30-dispatch.md` v2.0.5。
 
 ### 1.1 职责边界
 
@@ -535,7 +535,8 @@ Storage 协同测试遵循 `05-storage.md`：广播、转置、切片均产生 `
 
 | 测试函数                        | 测试内容                                          | 优先级 |
 | ------------------------------- | ------------------------------------------------- | ------ |
-| `test_unique_first_occurrence_order` | unique 返回不重复元素；按 F-order 逻辑遍历的**首次出现顺序**（与 `14-set.md v2.0.1 §5.1` / §8.2 锁定的稳定顺序契约一致），且在同一进程内的多次调用结果可复现 | 高     |
+| `test_unique_set_equality`      | unique 返回不重复元素，按 **multiset 语义** 与输入对比（**不依赖输出顺序**——与 `14-set.md v2.0.2 §5.1` / §11 决策 4 保持一致；输出顺序自 v2.0.2 起 unspecified，与 `require.md §15` 对齐）；NaN 元素按出现次数比较 | 高     |
+| `test_unique_order_unspecified` | 编译期/lint 锚点：测试 **禁止** 依赖任何特定输出顺序——任何 `assert_eq!(unique_result.iter().collect::<Vec<_>>(), vec![...])` 形式的向量等值断言视为反模式（v2.0.2 起，取代 v2.0.0/v2.0.1 的 first-occurrence-order 测试） | 高     |
 | `test_unique_integers`          | 整数 unique                                       | 中     |
 | `test_unique_nan_preserved`     | 浮点 `NaN != NaN`，输入中的每个 NaN 都应保留      | 高     |
 | `test_unique_signed_zero_equal` | `-0.0` 与 `0.0` 视为相等，仅保留一个零值          | 高     |
@@ -1268,7 +1269,7 @@ fn prop_broadcast_shape_rule() {
 
 - [ ] **T10**: 实现 `tests/test_set.rs`
   - 文件: `tests/test_set.rs`
-  - 内容: 集合操作（unique 按 F-order 首次出现顺序/整数/复数/NaN/±0.0；与 `14-set.md v2.0.1 §5.1 / §8.2` 稳定顺序契约一致）
+  - 内容: 集合操作（unique 整数/复数/NaN/±0.0/multiset 等值；输出顺序 unspecified——与 `14-set.md v2.0.2 §5.1 / §11 决策 4 / §8.2` 一致，对齐 `require.md §15`）
   - 测试: `cargo test --test test_set`
   - 前置: T1
   - 预计: 15 min
@@ -1605,6 +1606,15 @@ Test files
 | 2.0.1 | 2026-05-03 |
 | 2.0.2 | 2026-05-04 |
 | 2.0.3 | 2026-05-04 |
+| 2.0.4 | 2026-05-05 |
+| 2.0.5 | 2026-05-05 |
+
+### v2.0.5 (2026-05-05) — patch fix: 同步 14-set v2.0.2 unique 顺序契约回退（FATAL 下游 fix）
+
+- §8.2 单元测试清单 / 集成测试模块表：`test_unique_first_occurrence_order` → `test_unique_set_equality` + 新增 `test_unique_order_unspecified` lint 锚点。语义对齐 `14-set.md v2.0.2 §5.1 / §11 决策 4`：unique 输出顺序自 v2.0.2 起 unspecified（与 `require.md §15` 一致），不再承诺 first-occurrence 或 bit-identical。
+- §11 任务 T10（`tests/test_set.rs`）内容描述同步：从"按 F-order 首次出现顺序"改为"multiset 等值；输出顺序 unspecified"。
+- 修复动机：v2.0.4 之前 28-tests.md 仍声明 14-set v2.0.1 的 first-occurrence 契约，与 14-set v2.0.2 实际行为冲突——会导致测试基于一个被撤销的 API 契约。重审专家定级为 FATAL（下游契约脱节）。
+- 协同：本次仅文档层同步，无测试矩阵或 CI 工作流变更；引用 `14-set.md` 的 pin 同步 bump v2.0.1 → v2.0.2。
 
 ### v2.0.4 (2026-05-05) — patch fix: refresh stale 19-overload pin v2.0.0 → v2.0.1 (cascade)
 

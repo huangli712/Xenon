@@ -13,7 +13,7 @@
 
 ### 1.0 协同基线
 
-本文档示例与论证以下游已修文档为准——`08-simd.md` v2.0.x、`09-parallel.md` v2.0.x、`07-tensor.md` v2.0.4、`06-layout.md` v1.3.2、`26-error.md` **v3.2.0**（§5.1 `XenonError` 枚举）。本模块自身的错误产出仅在 `ParallelExecStrategy::new()` 校验失败时使用 `XenonError`；任何 §5 / §10 引用 `26-error` 的字段或变体名时，均以 v3.2.0 为权威。
+本文档示例与论证以下游已修文档为准——`08-simd.md` v2.0.x、`09-parallel.md` v2.0.x、`07-tensor.md` v2.0.5、`06-layout.md` v1.3.2、`26-error.md` **v3.3.0**（§5.1 `XenonError` 枚举，自 v3.3.0 起标 `#[non_exhaustive]`，字段集合不变）。本模块自身的错误产出仅在 `ParallelExecStrategy::new()` 校验失败时使用 `XenonError`；任何 §5 / §10 引用 `26-error` 的字段或变体名时，均以 v3.3.0 为权威。
 
 ### 1.1 职责边界
 
@@ -1302,6 +1302,13 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 | 2.0.2 | 2026-05-04 | Op-agnostic boundary clarification + `alignment_ok` formal contract (§5.5, §6.4). |
 | 2.0.3 | 2026-05-04 | patch fix: §6.4 澄清 `alignment_ok` 在 dispatch 与 SIMD 后端之间的实际传递路径。 |
 | 2.0.4 | 2026-05-05 | patch fix: §5.8 调用方 gating 契约与 08-simd / 09-parallel 一致化（FATAL fix）。 |
+| 2.0.5 | 2026-05-05 | patch fix: §1.0 自身协同基线 pin 同步——`07-tensor v2.0.4 → v2.0.5`、`26-error v3.2.0 → v3.3.0`（重审专家发现 30-dispatch v2.0.4 升版本时未自查 §1.0 的 stale pin）。纯 pin 刷新，无内容变更。 |
+
+### v2.0.5 (2026-05-05) — patch fix: §1.0 自身协同基线 pin 同步
+
+- §1.0 协同基线声明：`07-tensor` pin v2.0.4 → v2.0.5（v2.0.5 起 `new_unchecked` 仅保留 Generic 单形式）；`26-error` pin v3.2.0 → v3.3.0（自 v3.3.0 起 enum 标 `#[non_exhaustive]`，字段集合不变）。
+- 修复动机：v2.0.4 升版本时仅修了 §5.8 内容，遗漏了文档自身 §1.0 协同基线声明的 pin 刷新——重审专家定级为 MINOR（自我引用 stale，非致命但应清理）。
+- 协同：纯 pin 刷新，无内容变更；不涉及 §5.x 任何决策、签名、契约。
 
 ### v2.0.4 (2026-05-05) — patch fix: §5.8 调用方 gating 契约与 08-simd / 09-parallel 一致化
 

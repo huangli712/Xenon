@@ -30,7 +30,7 @@
 
 ### 1.3 协同基线
 
-本文档以已修订的下游设计文档为协同基线。若本文档提到具体类型、字段、trait、枚举或 API 形态，必须与以下版本保持一致：`01-architecture.md v2.0.3`、`02-dimension.md v1.2.7`、`03-element.md v1.4.0`、`04-complex.md v2.0.3`、`05-storage.md v2.0.2`、`06-layout.md v1.3.2`、`07-tensor.md v2.0.4`、`08-simd.md v2.0.2`、`09-parallel.md v2.0.2`、`10-iterator.md v1.2.6`、`11-math.md v2.0.2`、`12-matrix.md v2.0.1`、`13-reduction.md v3.0.2`、`14-set.md v2.0.1`、`15-broadcast.md v3.0.4`、`16-shape.md v2.0.2`、`17-indexing.md v3.0.4`、`18-construction.md v3.0.2`、`19-overload.md v2.0.1`、`20-utility.md v3.0.2`、`21-type.md v2.1.2`、`22-output.md v2.0.1`、`23-ffi.md v3.0.3`、`24-workspace.md v3.0.2`、`25-safety.md v2.0.4`、`26-error.md v3.2.0`、`27-benchmark.md v2.0.3`、`28-tests.md v2.0.4`、`29-documentation.md v2.0.5`、`30-dispatch.md v2.0.3`。
+本文档以已修订的下游设计文档为协同基线。若本文档提到具体类型、字段、trait、枚举或 API 形态，必须与以下版本保持一致：`01-architecture.md v2.0.5`、`02-dimension.md v1.2.7`、`03-element.md v1.4.1`、`04-complex.md v2.0.4`、`05-storage.md v2.0.2`、`06-layout.md v1.3.2`、`07-tensor.md v2.0.5`、`08-simd.md v2.0.2`、`09-parallel.md v2.0.2`、`10-iterator.md v1.2.7`、`11-math.md v2.0.2`、`12-matrix.md v2.0.1`、`13-reduction.md v3.0.2`、`14-set.md v2.0.2`、`15-broadcast.md v3.0.4`、`16-shape.md v2.0.3`、`17-indexing.md v3.0.4`、`18-construction.md v3.0.2`、`19-overload.md v2.0.1`、`20-utility.md v3.0.2`、`21-type.md v2.1.2`、`22-output.md v2.0.1`、`23-ffi.md v3.0.4`、`24-workspace.md v3.0.2`、`25-safety.md v2.0.5`、`26-error.md v3.3.1`、`27-benchmark.md v2.0.4`、`28-tests.md v2.0.5`、`29-documentation.md v2.0.6`、`30-dispatch.md v2.0.5`。
 
 > **协同基线版本号 = 各下游文档当前 changelog 表中实际最新版本**。本基线与各文档 §0/§版本历史 严格对齐——若发现下游文档版本落后于此基线、或本基线落后于下游 changelog，必须在同一轮修订中同步追加 changelog 条目，禁止"先声明后追写"。
 
@@ -1192,6 +1192,8 @@ all-features = true
 
 | 版本  | 日期       |
 | ----- | ---------- |
+| 2.0.5 | 2026-05-05 |
+| 2.0.4 | 2026-05-05 |
 | 2.0.3 | 2026-05-04 |
 | 2.0.2 | 2026-05-04 |
 | 2.0.1 | 2026-05-03 |
@@ -1228,6 +1230,13 @@ all-features = true
 - 未新增外部依赖、feature、crate 拆分、平台适配策略或业务模块算法规则。
 - 未调整 Phase 0 的实现任务拆分、验证方式和既有设计决策记录。
 
+
+### v2.0.5 (2026-05-05) — patch fix: §1.3 协同基线全量刷新（post v2.0.4 重审 cascade）
+
+- §1.3 协同基线全量刷新到所有 30 个目标文档当前实际版本：
+  - `01-architecture v2.0.3 → v2.0.5`、`03-element v1.4.0 → v1.4.1`、`07-tensor v2.0.4 → v2.0.5`、`14-set v2.0.1 → v2.0.2`、`23-ffi v3.0.3 → v3.0.4`、`25-safety v2.0.4 → v2.0.5`、`26-error v3.2.0 → v3.3.1`、`28-tests v2.0.4 → v2.0.5`、`30-dispatch v2.0.3 → v2.0.5`。
+- 修复动机：v2.0.4 之前 §1.3 全量 pin 表落后 7 个版本号——重审专家定级为应修（pin 表是协同基线机制核心）。
+- 协同：纯 pin 同步，无内容/规范变更。
 
 ### v2.0.4 (2026-05-05) — patch fix: refresh stale 19-overload pin v2.0.0 → v2.0.1 (cascade)
 

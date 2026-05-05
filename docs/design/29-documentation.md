@@ -25,7 +25,7 @@
 
 ### 1.2 协同基线
 
-本文档 v2.0.5 的 doc comment、doctest、README、CHANGELOG 与 examples 示例必须以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`03-element.md v1.4.0`（`ElementType` 在 element 模块；新增 `Element::ELEMENT_TYPE_NAME: &'static str`）、`04-complex.md v2.0.3`、`17-indexing.md v3.0.4`、`18-construction.md v3.0.2`、`19-overload.md v2.0.1`、`21-type.md v2.1.2`、`23-ffi.md v3.0.3`、`24-workspace.md v3.0.2`、`25-safety.md v2.0.4`、`26-error.md v3.2.0`（`TypeConversion` 等错误字段类型为 `&'static str`）、`28-tests.md v2.0.4`、`30-dispatch.md v2.0.3`。示例代码中的 API 形态、错误字段、索引语法、运算符返回类型、类型转换语义、workspace 借用形式和线程安全说明均不得重新定义这些契约。
+本文档 v2.0.6 的 doc comment、doctest、README、CHANGELOG 与 examples 示例必须以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`03-element.md v1.4.1`（`ElementType` 在 element 模块；`Element::ELEMENT_TYPE_NAME: &'static str`；v1.4.1 起 §5.9.2 提供 6×6 转换矩阵 Tier 索引表）、`04-complex.md v2.0.3`、`17-indexing.md v3.0.4`、`18-construction.md v3.0.2`、`19-overload.md v2.0.1`、`21-type.md v2.1.2`、`23-ffi.md v3.0.4`、`24-workspace.md v3.0.2`、`25-safety.md v2.0.5`、`26-error.md v3.3.1`（`TypeConversion` 等错误字段类型为 `&'static str`；v3.3.0 起 enum 标 `#[non_exhaustive]`）、`28-tests.md v2.0.5`、`30-dispatch.md v2.0.5`。示例代码中的 API 形态、错误字段、索引语法、运算符返回类型、类型转换语义、workspace 借用形式和线程安全说明均不得重新定义这些契约。
 
 ### 1.3 设计原则
 
@@ -1141,6 +1141,16 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | 2.0.2 | 2026-05-03 |
 | 2.0.3 | 2026-05-04 |
 | 2.0.4 | 2026-05-04 |
+| 2.0.5 | 2026-05-05 |
+| 2.0.6 | 2026-05-05 |
+
+### v2.0.6 (2026-05-05) — patch fix: §1.2 协同基线全量刷新（post v2.0.5 重审 cascade）
+
+- §1.2 协同基线刷新所有引用文档到当前实际版本：
+  - `03-element v1.4.0 → v1.4.1`、`23-ffi v3.0.3 → v3.0.4`、`25-safety v2.0.4 → v2.0.5`、`26-error v3.2.0 → v3.3.1`、`28-tests v2.0.4 → v2.0.5`、`30-dispatch v2.0.3 → v2.0.5`。
+- §1.2 同步标注每条 pin 的核心语义增强（如 `#[non_exhaustive]`、6×6 Tier 索引表）。
+- 修复动机：v2.0.5 之前 §1.2 部分 pin 落后——重审专家定级为应修。
+- 协同：纯 pin 同步，无 doc-comment / examples 内容变更。
 
 ### v2.0.5 (2026-05-05) — patch fix: refresh stale 19-overload pin v2.0.0 → v2.0.1 + 28-tests v2.0.3 → v2.0.4 (cascade)
 

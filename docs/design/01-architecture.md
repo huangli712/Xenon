@@ -50,12 +50,12 @@ Xenon 是一个纯 Rust 实现的 N 维数组（张量）库，定位为科学�
 
 本文档作为架构总览，以下游设计文档的已修版本为协同基线；若本文档提及类型、trait、字段名或执行边界，须与这些文档保持一致：
 
-- `26-error.md v3.3.0`：`XenonError` 结构化变体（13 顶层变体，**v3.3.0 起标 `#[non_exhaustive]`**）、`FfiBackend` 与 workspace/FFI 错误分类；`FfiErrorCategory` / `AbiMismatchKind` / `InvalidLayoutReason` / `InvalidShapeKind` 同步标 `#[non_exhaustive]`。**`ElementType` 不再由 error 拥有**（v3.2.0 反转）；`TypeConversion::source_type` / `target_type` 与 `AbiMismatchKind::ElementTypeMismatch::expected` / `actual` 字段类型为 `&'static str`，值来自 `Element::ELEMENT_TYPE_NAME` 关联常量。error 模块严格不依赖任何 internal 模块。
-- `02-dimension.md` v1.2.7、`03-element.md` v1.4.1（**v1.4.1 起 §5.9.2 提供 6×6 转换矩阵 Tier 索引表，权威详细规则仍在 21-type**）、`04-complex.md` v2.0.3：维度、元素封闭实现集（含 `CastElement` sealed marker、`ElementType` 权威定义、`Element::ELEMENT_TYPE_NAME` 关联常量）与复数显式构造/运算边界。
+- `26-error.md v3.3.1`：`XenonError` 结构化变体（13 顶层变体，**v3.3.0 起标 `#[non_exhaustive]`**）、`FfiBackend` 与 workspace/FFI 错误分类；`FfiErrorCategory` / `AbiMismatchKind` / `InvalidLayoutReason` / `InvalidShapeKind` / `WorkspaceErrorCategory` / `InvalidArgumentKind` 同步标 `#[non_exhaustive]`（v3.3.1 补全后 2 个）；`FfiBackend` / `StorageKindTag` 保持 design-intent closed。v3.3.1 修正了 v3.3.0 doc comment 中的 SemVer policy 文字误导。**`ElementType` 不再由 error 拥有**（v3.2.0 反转）；`TypeConversion::source_type` / `target_type` 与 `AbiMismatchKind::ElementTypeMismatch::expected` / `actual` 字段类型为 `&'static str`，值来自 `Element::ELEMENT_TYPE_NAME` 关联常量。error 模块严格不依赖任何 internal 模块。
+- `02-dimension.md` v1.2.7、`03-element.md` v1.4.1（**v1.4.1 起 §5.9.2 提供 6×6 转换矩阵 Tier 索引表，权威详细规则仍在 21-type**）、`04-complex.md` v2.0.4（**v2.0.4 起 §1 协同基线 pin 同步本 cascade**）：维度、元素封闭实现集（含 `CastElement` sealed marker、`ElementType` 权威定义、`Element::ELEMENT_TYPE_NAME` 关联常量）与复数显式构造/运算边界。
 - `05-storage.md` v2.0.2、`06-layout.md` v1.3.2、`07-tensor.md` v2.0.5（**v2.0.5 起 `new_unchecked` 仅保留 `impl<S: RawStorage, D>` 泛型形式，删除 Owned-specialized 重复定义以修复 E0592 编译错误**）：存储模式（含 `StorageShared` sealed unsafe marker）、F-order 布局状态与张量核心类型。
-- `08-simd.md` v2.0.2、`09-parallel.md` v2.0.2、`30-dispatch.md` v2.0.4（**v2.0.4 起 §5.8 调用方 gating 契约弱化为"不做长度阈值 gating，但必须做 op-语义 gating"，与 08/09/12/13 一致**）：执行路径、`ParallelGuard`、worker 内 SIMD 与阈值语义；`alignment_ok` 仅作 simd 后端能力提示位。
+- `08-simd.md` v2.0.2、`09-parallel.md` v2.0.2、`30-dispatch.md` v2.0.5（**v2.0.4 起 §5.8 调用方 gating 契约弱化为"不做长度阈值 gating，但必须做 op-语义 gating"，与 08/09/12/13 一致；v2.0.5 同步 §1.0 自身 pin 到 26-error v3.3.0 / 07-tensor v2.0.5**）：执行路径、`ParallelGuard`、worker 内 SIMD 与阈值语义；`alignment_ok` 仅作 simd 后端能力提示位。
 - `11-math.md` v2.0.2、`12-matrix.md` v2.0.1、`13-reduction.md` v3.0.2、`14-set.md` v2.0.2（**v2.0.2 起 unique 输出顺序回退到"unspecified"，与 require §15 对齐**）、`15-broadcast.md` v3.0.4：数学、矩阵、归约（仅 sum）、集合（仅 unique）、广播零步长分类与 F-order 顺序契约。
-- `16-shape.md` v2.0.2、`17-indexing.md` v3.0.4、`18-construction.md` v3.0.2、`19-overload.md` v2.0.1、`20-utility.md` v3.0.2、`21-type.md` v2.1.2、`22-output.md` v2.0.1、`23-ffi.md` v3.0.4（**v3.0.4 起 `blas_info` / `lda` 显式 gate `rows == 0` 以避免导出 lda=0**；`pub use crate::element::ElementType`，路径稳定，ABI 稳定）、`24-workspace.md` v3.0.2、`25-safety.md` v2.0.4、`27-benchmark.md` v2.0.3、`28-tests.md` v2.0.4、`29-documentation.md` v2.0.5：shape、索引、构造、运算符、utility、类型转换、输出、FFI、workspace、线程安全、benchmark、测试与文档边界。
+- `16-shape.md` v2.0.3（**v2.0.3 起 §1.0 协同基线 pin 同步本 cascade**）、`17-indexing.md` v3.0.4、`18-construction.md` v3.0.2、`19-overload.md` v2.0.1、`20-utility.md` v3.0.2、`21-type.md` v2.1.2、`22-output.md` v2.0.1、`23-ffi.md` v3.0.4（**v3.0.4 起 `blas_info` / `lda` 显式 gate `rows == 0` 以避免导出 lda=0**；`pub use crate::element::ElementType`，路径稳定，ABI 稳定）、`24-workspace.md` v3.0.2、`25-safety.md` v2.0.5（**v2.0.5 起 §5.12 unsafe 入口索引同步 07-tensor v2.0.5 `new_unchecked` 单形式描述**）、`27-benchmark.md` v2.0.4（**v2.0.4 起 §1 协同基线 pin 同步本 cascade**）、`28-tests.md` v2.0.5（**v2.0.5 起 §8.2 同步 14-set v2.0.2 unique 顺序契约回退为 multiset-equality 测试**）、`29-documentation.md` v2.0.6（**v2.0.6 起 §1.2 协同基线全量刷新到本 cascade 末态**）：shape、索引、构造、运算符、utility、类型转换、输出、FFI、workspace、线程安全、benchmark、测试与文档边界。
 
 ### 1.6 全局布局不变量
 
@@ -1110,6 +1110,17 @@ Element                        // Base: Copy + Sealed with const ELEMENT_TYPE: E
 | 2.0.2 | 2026-05-04 |
 | 2.0.3 | 2026-05-05 |
 | 2.0.4 | 2026-05-05 |
+| 2.0.5 | 2026-05-05 |
+
+### v2.0.5 (2026-05-05) — patch fix: refresh §1.5 pins (post v2.0.4 重审 cascade)
+
+- §1.5 协同基线 cascade（v2.0.4 重审专家发现的下游漂移与本轮引入的修复）：
+  - `26-error.md v3.3.0 → v3.3.1`（v2.0.4 引入的 SemVer policy 文字误导修复 + 补 `WorkspaceErrorCategory` / `InvalidArgumentKind` 的 `#[non_exhaustive]`）。
+  - `30-dispatch.md v2.0.4 → v2.0.5`（v2.0.4 升版本时遗漏的 §1.0 自身 pin 同步——`07-tensor`、`26-error`）。
+  - `25-safety.md v2.0.4 → v2.0.5`（§5.12 unsafe 入口索引合并 `new_unchecked` 双形式描述为 Generic 单形式，对齐 07-tensor v2.0.5；下游 MAJOR fix）。
+  - `28-tests.md v2.0.4 → v2.0.5`（§8.2 单元测试 / §11 任务 T10 同步 14-set v2.0.2 unique 顺序契约回退为 multiset-equality 测试；下游 FATAL fix）。
+- §1.5 同步标注每条 pin 的核心语义增强。
+- 不变项：本次 cascade 不改变 §3 目录结构、§5 模块映射、§12 Wave 拆分或任何决策记录。
 
 ### v2.0.4 (2026-05-05) — patch fix: refresh §1.5 协同基线 pins (post FATAL/MAJOR convergence cascade)
 

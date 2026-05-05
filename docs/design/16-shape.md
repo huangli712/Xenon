@@ -13,7 +13,7 @@
 
 ### 1.0 协同基线
 
-本文档示例与论证以下游已修文档为准——`02-dimension.md` v1.2.7、`05-storage.md` v2.0.2、`06-layout.md` v1.3.2、`07-tensor.md` v2.0.4、`26-error.md` **v3.2.0**。任何 §5 / §6 / §10 引用 `26-error` 的字段或变体名（含 `InvalidShape`、`InvalidLayout` 等）时，均以 v3.2.0 为权威。
+本文档示例与论证以下游已修文档为准——`02-dimension.md` v1.2.7、`05-storage.md` v2.0.2、`06-layout.md` v1.3.2、`07-tensor.md` v2.0.5（v2.0.5 起 `new_unchecked` 仅保留 Generic 单形式）、`26-error.md` **v3.3.1**（v3.3.0 起 enum 标 `#[non_exhaustive]`，字段集合不变）。任何 §5 / §6 / §10 引用 `26-error` 的字段或变体名（含 `InvalidShape`、`InvalidLayout` 等）时，均以 v3.3.1 为权威。
 
 ### 1.1 职责边界
 
@@ -494,6 +494,12 @@ User calls transpose()
 | 2.0.0 | 2026-05-02 |
 | 2.0.1 | 2026-05-03 |
 | 2.0.2 | 2026-05-04 |
+| 2.0.3 | 2026-05-05 |
+
+### v2.0.3 (2026-05-05) — patch fix: §1.0 协同基线 pin 刷新（post FATAL/MAJOR convergence cascade）
+
+- §1.0 协同基线：`07-tensor` pin v2.0.4 → v2.0.5、`26-error` pin v3.2.0 → v3.3.1。这两个目标的本次升版本均为防御性/编译性修复（07-tensor 删除 `new_unchecked` Owned-specialized 重复定义；26-error 加 `#[non_exhaustive]`），字段集合与签名形态零变化。
+- 协同：纯 pin 同步，本文档 §5/§6 引用的字段、规则与示例代码均无需改动。
 
 ### v2.0.2 (2026-05-04) — patch fix: HAS_ZERO_STRIDE 规则引用从 `§5.12` 更正为 `§5.11`
 

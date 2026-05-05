@@ -11,7 +11,7 @@
 
 ## 1. 模块定位
 
-**协同基线（v2.0.3）**：本文档以下游已修文档为准——03-element v1.4.0（`Element` / `Numeric` / `ComplexScalar` / `CastTo<T>` trait / `CastElement` sealed marker；**`ElementType` 权威定义在 `crate::element`**（即 `03-element.md §5.1.1`，**不**是本 04-complex 文档），`#[non_exhaustive]` + `#[repr(u8)]`；新增 `Element::ELEMENT_TYPE_NAME: &'static str` 关联常量；提供 `ElementType::name()` inherent + `element_type_of` / `element_type_name_of` 自由函数）、21-type v2.1.2（B10.a：静态无损 `From` / 静态有损 + 动态条件性 `CastTo` 三层结构 + CastElement owner；错误字段 `source_type` / `target_type` 改用 `&'static str`）、26-error v3.2.0（`XenonError::TypeConversion` 五字段；`source_type` / `target_type` 改为 `&'static str`；error 模块**不**持有 `ElementType` 枚举）。本文档不重复定义这些类型，仅在引用时遵循其权威字段。
+**协同基线（v2.0.3）**：本文档以下游已修文档为准——03-element v1.4.0（`Element` / `Numeric` / `ComplexScalar` / `CastTo<T>` trait / `CastElement` sealed marker；**`ElementType` 权威定义在 `crate::element`**（即 `03-element.md §5.1.1`，**不**是本 04-complex 文档），`#[non_exhaustive]` + `#[repr(u8)]`；新增 `Element::ELEMENT_TYPE_NAME: &'static str` 关联常量；提供 `ElementType::name()` inherent + `element_type_of` / `element_type_name_of` 自由函数）、21-type v2.1.2（B10.a：静态无损 `From` / 静态有损 + 动态条件性 `CastTo` 三层结构 + CastElement owner；错误字段 `source_type` / `target_type` 改用 `&'static str`）、26-error v3.3.1（`XenonError::TypeConversion` 五字段；`source_type` / `target_type` 改为 `&'static str`；error 模块**不**持有 `ElementType` 枚举）。本文档不重复定义这些类型，仅在引用时遵循其权威字段。
 
 ### 1.1 职责边界
 
@@ -1001,6 +1001,12 @@ User constructs `Complex<f64>::new(re, im)`
 | 2.0.1 | 2026-05-03 |
 | 2.0.2 | 2026-05-03 |
 | 2.0.3 | 2026-05-04 |
+| 2.0.4 | 2026-05-05 |
+
+### v2.0.4 (2026-05-05) — patch fix: §1 协同基线 pin 刷新（post FATAL/MAJOR convergence cascade）
+
+- §1 协同基线：`03-element` pin v1.4.0 → v1.4.1（v1.4.1 起 §5.9.2 提供 6×6 转换矩阵 Tier 索引表）、`26-error` pin v3.2.0 → v3.3.1（v3.3.0 起 enum 标 `#[non_exhaustive]`，v3.3.1 修正 SemVer policy 文字）。
+- 协同：两个 pin bump 对应的下游变更均为防御性更新——03-element 仅新增索引表（不改 trait/impl）、26-error 仅加 `#[non_exhaustive]`（不改字段）；本文档 §5 / §6 / §11 引用的 `Complex` 算法、错误字段构造模板、`ELEMENT_TYPE_NAME` 用法均无需改动。
 
 ### v2.0.3 (2026-05-04) — patch fix: refresh §1 协同基线 pins to current actual versions of all 3 referenced docs (post 7-condition convergence cascade)
 

@@ -15,7 +15,7 @@
 
 **范围注记：** workspace 的线程安全属性参见 `24-workspace.md`；本文不将 workspace 纳入 `需求说明书 §10` 的存储模式线程安全矩阵。
 
-**协同基线：** 本文档示例与论证以下游已修文档为准——05-storage v2.0.2、06-layout v1.3.2、07-tensor v2.0.4、17-indexing v3.0.4（公开安全索引收敛为 `try_at`/`try_at_mut`，不实现 `std::ops::Index`）、19-overload v2.0.1、24-workspace v3.0.2、`26-error.md` **v3.2.0**（§5.1 `XenonError` 枚举）。任何 §5 / §9 引用上述文档的章节号或 `26-error` 的字段名 / 变体名时，以这些版本为准。
+**协同基线：** 本文档示例与论证以下游已修文档为准——05-storage v2.0.2、06-layout v1.3.2、07-tensor v2.0.5（v2.0.5 起 `new_unchecked` 仅保留 Generic 单形式，详见 §5.12）、17-indexing v3.0.4（公开安全索引收敛为 `try_at`/`try_at_mut`，不实现 `std::ops::Index`）、19-overload v2.0.1、24-workspace v3.0.2、`26-error.md` **v3.3.0**（§5.1 `XenonError` 枚举，自 v3.3.0 起标 `#[non_exhaustive]`，字段集合不变）。任何 §5 / §9 引用上述文档的章节号或 `26-error` 的字段名 / 变体名时，以这些版本为准。
 
 ### 1.1 职责边界
 
@@ -454,8 +454,7 @@ fn parallel_iteration(tensor: &Tensor2<f64>) {
 
 | `pub(crate) unsafe fn` | Owner 文档 | 契约要点 |
 |:--|:--|:--|
-| `TensorBase::<Owned<A>, D>::new_unchecked(storage, shape, strides, offset, flags, derived_from_view_mut)` | `07-tensor.md §5.6` | **核心 unsafe 构造器**——所有其他内部 unchecked 构造器必须 forward 到此处；shape/strides/flags/offset 互一致；flags 由 `compute_layout_flags` 产出；逻辑访问范围在 storage 内；shape product 已 overflow-check；`derived_from_view_mut` 对 Owned 必须 `false` |
-| `TensorBase::<S, D>::new_unchecked(storage, shape, strides, offset, flags, derived_from_view_mut) where S: RawStorage` | `07-tensor.md §5.6` (Generic) | 同上（Generic 形式）；适用于 View / ViewMut / Arc 路径；`derived_from_view_mut` 仅在 `ViewMutRepr` 降级 / 切片自带降级标记的源场景为 `true` |
+| `TensorBase::<S, D>::new_unchecked(storage, shape, strides, offset, flags, derived_from_view_mut) where S: RawStorage` | `07-tensor.md §5.6` | **唯一 canonical unsafe 构造器**（v2.0.5 起；早期 v2.0.4 下曾有 Owned-specialized 重复定义，已删除以修复 Rust E0592 编译错误）——所有其他内部 unchecked 构造器必须 forward 到此处；shape/strides/flags/offset 互一致；flags 由 `compute_layout_flags` 产出；逻辑访问范围在 storage 内；shape product 已 overflow-check；`derived_from_view_mut` 对 Owned 路径（`S = Owned<A>`）必须 `false`，仅在 `ViewMutRepr` 降级 / 切片自带降级标记的源场景为 `true` |
 | `TensorBase::<Owned<A>, D>::from_raw_vec_unchecked(data: Vec<A>, shape: D)` | `07-tensor.md §5.6` | `data.as_ptr()` 满足 `A` 对齐；`shape.checked_size()` 已验证；`data.len()` 等于该值；F-order 元数据合法 |
 | `Tensor::from_shape_vec_aligned_unchecked(shape: D, data: Vec<A>)` | `21-type.md §5.6` (cast/to_owned helper) | `TensorBase::new_unchecked` 的**薄封装**（本条指数录存在供完整性索引；实质性安全契约已 forward 到 07-tensor.md §5.6）；`data.len() == product(shape)`；shape 已验证；无独立 unsafe 不变式 |
 
@@ -832,6 +831,14 @@ workspace 的线程安全规则（`!Send + !Sync` 实现选择及理由，参见
 | 2.0.2 | 2026-05-04 |
 | 2.0.3 | 2026-05-04 |
 | 2.0.4 | 2026-05-04 |
+| 2.0.5 | 2026-05-05 |
+
+### v2.0.5 (2026-05-05) — patch fix: 同步 07-tensor v2.0.5 `new_unchecked` 单形式 + sub-enum non_exhaustive
+
+- §5.12 / §5.12.1 unsafe 入口索引：合并 `TensorBase::<Owned<A>, D>::new_unchecked` 与 `TensorBase::<S, D>::new_unchecked` 双行为单行 Generic 形式；说明 v2.0.5 起仅保留泛型 form——Owned-specialized 重复定义已删除以修复 Rust E0592（"duplicate definitions"）编译错误，详见 `07-tensor.md v2.0.5 §5.6` 与 changlog。
+- §5.12 §v3.0.0 修订记录段（changelog）同步：从"Owned-specialized + Generic dual impl"改为"single Generic impl (since 07-tensor v2.0.5)"措辞；保留历史记录提醒未来 reviewer。
+- 修复动机：07-tensor v2.0.5 已删除 Owned-specialized form，但 25-safety v2.0.4 仍描述双形式共存——重审专家定级为下游 MAJOR（描述与代码不符）。
+- 协同：仅文档同步，无安全契约变更；§1 协同基线 pin `07-tensor` 升 v2.0.4 → v2.0.5。
 
 ### v2.0.4 (2026-05-04) — patch fix: refresh §1 协同基线 pins to current actual versions of all 6 referenced docs (post 7-condition convergence cascade)
 
@@ -840,7 +847,7 @@ workspace 的线程安全规则（`!Send + !Sync` 实现选择及理由，参见
 ### v2.0.3 (2026-05-04) — patch: unsafe-fn 索引反映内部构造器收敛
 
 - §5.12.1 `pub(crate)` unsafe fn 清单更新：
-  - `TensorBase::new_unchecked`（Owned + Generic 双形式）条目标注为"核心 unsafe 构造器"——所有其他内部 unchecked 构造器必须 forward 到此处。
+  - `TensorBase::new_unchecked`（v2.0.5 起仅保留 Generic 形式；Owned-specialized 重复定义已删除以修复 Rust E0592）条目标注为"唯一 canonical unsafe 构造器"——所有其他内部 unchecked 构造器必须 forward 到此处。
   - `Tensor::from_shape_vec_aligned_unchecked` 条目标注为"薄封装"——本条指数录供完整性索引，实质性安全契约已 forward 到 07-tensor.md §5.6。
 
 ### v2.0.2 (2026-05-04) — patch: 禁止手动组合标志；规范 alias_class() 为别名分类唯一入口
