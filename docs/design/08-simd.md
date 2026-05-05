@@ -108,7 +108,7 @@ src/simd/
 
 ### 4.4 依赖方向声明
 
-依赖方向：单向向上。`simd` 消费 `tensor`、`layout`、`element`、`complex` 等核心模块（直接依赖关系参见 §4.1 依赖图与 §4.2 类型级依赖表，含 `crate::tensor` 与 `crate::layout`），不被它们依赖。`layout` 既可通过 `tensor` 暴露的查询接口间接使用（如 `is_f_contiguous()`），也可直接消费 `crate::layout` 模块的对齐 helper（如 `is_aligned()`）。`simd` 模块在未启用 feature 时完全不存在。
+依赖方向：单向向上。`simd` 直接消费 `tensor`、`layout`、`element`、`complex` 等核心模块（直接依赖关系参见 §4.1 依赖图与 §4.2 类型级依赖表，含 `crate::tensor` 与 `crate::layout`），不被它们依赖。`layout` 是 `simd` 的**直接**依赖：`simd` 既通过 `tensor` 暴露的查询接口使用部分语义入口（如 `tensor.is_f_contiguous()`），也直接调用 `crate::layout` 模块的对齐 helper（如 `layout::is_aligned()` 用于 admission 内部重检查）。两条访问路径并存，没有"间接 vs 直接"的取舍——选择哪条路径取决于上下文是否已持有 `Tensor` 引用。`simd` 模块在未启用 feature 时完全不存在。
 
 ---
 
@@ -712,6 +712,7 @@ SIMD 内核中的 `unsafe` 只允许用于底层 load/store 与寄存器装载�
 | 对齐要求        | 若内核调用对齐 load/store 变体，输入与输出指针必须满足 Xenon 统一对齐快路径要求；若只满足非对齐访问语义，则必须改用相应的 unaligned load/store 变体或直接不进入 SIMD |
 | load/store 安全 | 对任一主循环迭代，`offset + width <= len`；`lhs`、`rhs`、`dst` 的切片长度已经过调用侧验证；`dst` 可写区间与本次 store 范围完全重合且不越界                           |
 | 尾部处理不变量  | 向量主循环仅覆盖 `[0, chunks * width)`；标量尾部只覆盖 `[chunks * width, len)`；两段区间不重叠且并集恰好等于完整输入区间                                             |
+| `#[target_feature]` 契约 | Xenon 不在自身代码中显式书写 `#[target_feature]` 函数定义；所有平台特定 ISA 指令的启用与调用均通过 `pulp::Arch::dispatch(WithSimd)` 间接进行，由 pulp 在其内部以 `#[target_feature(enable = "…")]` 标注 ISA 专用入口并在调用点用 `unsafe { … }` 封装。Xenon 调用 `Arch::dispatch` 是 **safe API**——其安全前提由 pulp 通过 `Arch::new()` 的 CPU 特性运行时检测保证：`Arch` 仅暴露已检测可用的 ISA 入口，调用 `dispatch` 时不会启用未检测的指令集，因此从 Xenon 视角不引入额外的 `unsafe` 调用义务。若未来选择不通过 pulp 而手写 `#[target_feature]` 函数（例如新增 ISA 内核），则必须满足：(1) 函数本体声明为 `unsafe fn` 并附 `# Safety` 文档节，明确"调用方必须确保 CPU 支持 X 指令集"；(2) 所有调用点用 `is_x86_feature_detected!` 或等价 ARM/aarch64 检测 gate 后再 `unsafe { fn() }` 调用；(3) 在 §5.6 覆盖状态表中显式登记新 ISA 入口与其检测策略。 |
 
 若上述任一条件无法证明成立，则该实现不得进入 `unsafe` SIMD 主循环。
 

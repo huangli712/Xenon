@@ -30,7 +30,7 @@
 
 ### 1.3 协同基线
 
-本文档以已修订的下游设计文档为协同基线。若本文档提到具体类型、字段、trait、枚举或 API 形态，必须与以下版本保持一致：`01-architecture.md v2.0.2`、`02-dimension.md v1.2.7`、`03-element.md v1.4.0`、`04-complex.md v2.0.3`、`05-storage.md v2.0.2`、`06-layout.md v1.3.2`、`07-tensor.md v2.0.4`、`08-simd.md v2.0.2`、`09-parallel.md v2.0.2`、`10-iterator.md v1.2.6`、`11-math.md v2.0.2`、`12-matrix.md v2.0.1`、`13-reduction.md v3.0.2`、`14-set.md v2.0.1`、`15-broadcast.md v3.0.4`、`16-shape.md v2.0.2`、`17-indexing.md v3.0.4`、`18-construction.md v3.0.2`、`19-overload.md v2.0.0`、`20-utility.md v3.0.2`、`21-type.md v2.1.2`、`22-output.md v2.0.1`、`23-ffi.md v3.0.3`、`24-workspace.md v3.0.2`、`25-safety.md v2.0.4`、`26-error.md v3.2.0`、`27-benchmark.md v2.0.2`、`28-tests.md v2.0.3`、`29-documentation.md v2.0.4`、`30-dispatch.md v2.0.3`。
+本文档以已修订的下游设计文档为协同基线。若本文档提到具体类型、字段、trait、枚举或 API 形态，必须与以下版本保持一致：`01-architecture.md v2.0.3`、`02-dimension.md v1.2.7`、`03-element.md v1.4.0`、`04-complex.md v2.0.3`、`05-storage.md v2.0.2`、`06-layout.md v1.3.2`、`07-tensor.md v2.0.4`、`08-simd.md v2.0.2`、`09-parallel.md v2.0.2`、`10-iterator.md v1.2.6`、`11-math.md v2.0.2`、`12-matrix.md v2.0.1`、`13-reduction.md v3.0.2`、`14-set.md v2.0.1`、`15-broadcast.md v3.0.4`、`16-shape.md v2.0.2`、`17-indexing.md v3.0.4`、`18-construction.md v3.0.2`、`19-overload.md v2.0.1`、`20-utility.md v3.0.2`、`21-type.md v2.1.2`、`22-output.md v2.0.1`、`23-ffi.md v3.0.3`、`24-workspace.md v3.0.2`、`25-safety.md v2.0.4`、`26-error.md v3.2.0`、`27-benchmark.md v2.0.3`、`28-tests.md v2.0.4`、`29-documentation.md v2.0.5`、`30-dispatch.md v2.0.3`。
 
 > **协同基线版本号 = 各下游文档当前 changelog 表中实际最新版本**。本基线与各文档 §0/§版本历史 严格对齐——若发现下游文档版本落后于此基线、或本基线落后于下游 changelog，必须在同一轮修订中同步追加 changelog 条目，禁止"先声明后追写"。
 
@@ -1228,6 +1228,13 @@ all-features = true
 - 未新增外部依赖、feature、crate 拆分、平台适配策略或业务模块算法规则。
 - 未调整 Phase 0 的实现任务拆分、验证方式和既有设计决策记录。
 
+
+### v2.0.4 (2026-05-05) — patch fix: refresh stale 19-overload pin v2.0.0 → v2.0.1 (cascade)
+
+- §1.3 协同基线：`19-overload.md` pin 从 `v2.0.0` 刷新到 `v2.0.1`（19-overload v2.0.1 为 docs-only patch，对齐 26-error v3.2.0；变体名与字段相对 v3.0.0 保持稳定，无 API 调整）。
+- §1.3 协同基线 cascade 同步：`01-architecture.md v2.0.2 → v2.0.3`、`27-benchmark.md v2.0.2 → v2.0.3`、`28-tests.md v2.0.3 → v2.0.4`、`29-documentation.md v2.0.4 → v2.0.5`（这 4 个文档因 19-overload 升版连锁升 patch）。其余 25 个 pin 保持当前版本不变。
+- L1219 changelog 历史条目（"对齐 19-overload.md v2.0.0 与 21-type.md v2.0.0"）保留不变——记录的是 v2.0.0 时刻的对齐决策。
+- 仅文档层修订；不修改任何编码规范条款；本文档 §2-§13 内容无变更。
 
 ### v2.0.3 (2026-05-04) — patch fix: refresh stale §1.3 协同基线 pins to current actual versions of all 30 referenced docs (post 7-condition convergence cascade)
 

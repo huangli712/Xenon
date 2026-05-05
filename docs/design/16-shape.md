@@ -11,6 +11,10 @@
 
 ## 1. 模块定位
 
+### 1.0 协同基线
+
+本文档示例与论证以下游已修文档为准——`02-dimension.md` v1.2.7、`05-storage.md` v2.0.2、`06-layout.md` v1.3.2、`07-tensor.md` v2.0.4、`26-error.md` **v3.2.0**。任何 §5 / §6 / §10 引用 `26-error` 的字段或变体名（含 `InvalidShape`、`InvalidLayout` 等）时，均以 v3.2.0 为权威。
+
 ### 1.1 职责边界
 
 | 职责           | 包含                                             |
@@ -160,6 +164,12 @@ where
             strides: new_strides,
             offset: self.offset,
             flags: new_flags,
+            // Propagate the ViewMut-derived alias marker from the source view.
+            // See 07-tensor.md §5.1 (TensorBase has 6 fields) and §5.3
+            // (access_semantics() rule (3): a transpose of TensorViewMut must
+            // preserve the SharedReadOnly classification by carrying
+            // `derived_from_view_mut = true` forward).
+            derived_from_view_mut: self.derived_from_view_mut,
         }
     }
 

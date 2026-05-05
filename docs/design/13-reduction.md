@@ -256,7 +256,7 @@ sum_axis_keepdims(tensor, axis):
 
 ### 6.3 类型分派与回退规则
 
-调度模型（v2.0 起，与 30-dispatch v1.1.0、08-simd v2.0.0、09-parallel v2.0.0 协同）：由 `dispatch.rs` 通过 `let (path, guard) = dispatch::select_exec_path(...)` 统一裁决三路 `Serial / Simd / Parallel`，返回的 `Option<ParallelGuard>` 仅在选中 `Parallel` 时为 `Some(_)`，并由 `reduction` 按值移交给 `parallel` 后端入口。在 `Parallel` 路径中，单个 worker 拿到 chunk 后**可以**在 chunk 内部独立做 SIMD admission（参见 08-simd.md v2.0.0 决策 5、09-parallel.md v2.0.0 决策 9）。这取代了 v1.x "并行 worker 不使用 SIMD" 的旧规则。串行路径下 SIMD 由 `simd` 后端按其 admission 规则独立判断是否启用；不进入 SIMD 时回退到该路径上的标量循环。
+调度模型（v2.0 起，与 30-dispatch v2.0.3、08-simd v2.0.0、09-parallel v2.0.0 协同）：由 `dispatch.rs` 通过 `let (path, guard) = dispatch::select_exec_path(...)` 统一裁决三路 `Serial / Simd / Parallel`，返回的 `Option<ParallelGuard>` 仅在选中 `Parallel` 时为 `Some(_)`，并由 `reduction` 按值移交给 `parallel` 后端入口。在 `Parallel` 路径中，单个 worker 拿到 chunk 后**可以**在 chunk 内部独立做 SIMD admission（参见 08-simd.md v2.0.0 决策 5、09-parallel.md v2.0.0 决策 9）。这取代了 v1.x "并行 worker 不使用 SIMD" 的旧规则。串行路径下 SIMD 由 `simd` 后端按其 admission 规则独立判断是否启用；不进入 SIMD 时回退到该路径上的标量循环。注：`select_exec_path` 第三参数 `alignment_ok` 在 v2.0.x 起为调用方提示位（hint），dispatch 不强制将其用作 SIMD 准入硬门槛；simd 后端在 admission 内部独立通过 `layout::is_aligned()` 重检查（30-dispatch v2.0.3 §5.5 / §6.4）。
 
 ```rust,ignore
 fn sum_int<I: Numeric + CheckedAdd>(iter: impl Iterator<Item = I>) -> I {
@@ -326,9 +326,9 @@ fn sum_floating_or_complex<A: Numeric>(iter: impl Iterator<Item = A>) -> A {
 
 | 项目       | 规则                                                                                                                                              |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 阈值来源   | `sum()` 与 `sum_axis*()` 是否进入并行路径，由 `dispatch::select_exec_path(len, is_contiguous, alignment_ok)` 的返回值决定（30-dispatch v1.1.0 §5.5）。|
-| 非连续惩罚 | 非连续视图沿用 `dispatch.rs` 的有效阈值 saturating 翻倍策略（30-dispatch v1.1.0 决策 5）。                                                        |
-| 嵌套并行   | `select_exec_path` 内部检测当前线程是否已处于库内部并行区域；若已嵌套则不会返回 `(Parallel, _)`，从而把并行降级为串行/SIMD 路径，调用方无需再做嵌套防护（参见 30-dispatch v1.1.0 决策 7：select-and-enter 原子绑定）。|
+| 阈值来源   | `sum()` 与 `sum_axis*()` 是否进入并行路径，由 `dispatch::select_exec_path(len, is_contiguous, alignment_ok)` 的返回值决定（30-dispatch v2.0.3 §5.5）。`alignment_ok` 在 v2.0.x 起为调用方提示位（hint），dispatch 不强制将其用作 SIMD 准入硬门槛；simd 后端在 admission 内部独立通过 `layout::is_aligned()` 重检查（30-dispatch v2.0.3 §6.4）。|
+| 非连续惩罚 | 非连续视图沿用 `dispatch.rs` 的有效阈值 saturating 翻倍策略（30-dispatch v2.0.3 决策 5）。                                                        |
+| 嵌套并行   | `select_exec_path` 内部检测当前线程是否已处于库内部并行区域；若已嵌套则不会返回 `(Parallel, _)`，从而把并行降级为串行/SIMD 路径，调用方无需再做嵌套防护（参见 30-dispatch v2.0.3 决策 7：select-and-enter 原子绑定）。|
 | 配置接口   | 阈值读写与重置由 `dispatch.rs` 统一提供；`reduction` 不额外暴露重复配置。                                                                         |
 
 ### 6.6 安全性论证
@@ -572,7 +572,7 @@ User calls sum / sum_axis / sum_axis_keepdims
 | 属性     | 值                                                                                                                                                                            |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 决策     | SIMD / 并行仅在满足 `需求说明书 §28.3` 数值语义约束时启用；若实现版本无法满足该约束，**回退责任在调用方（本模块）**——reduction 在调用 `select_exec_path()` 之前就应自行裁决不进入该路径（例如直接走 Serial），而**不是**由 dispatch 或 reduction 内部根据操作语义回退到串行 |
-| 理由     | 与 09-parallel v2.0.0 决策 4（"parallel 不包含串行回退"）和 30-dispatch v1.1.0 决策 7（"select-and-enter 原子绑定"）一致；归约模块本身一旦被 dispatch 选中就忠实执行该路径 |
+| 理由     | 与 09-parallel v2.0.0 决策 4（"parallel 不包含串行回退"）和 30-dispatch v2.0.3 决策 7（"select-and-enter 原子绑定"）一致；归约模块本身一旦被 dispatch 选中就忠实执行该路径 |
 | 替代方案 | 无条件按数据规模选择 SIMD 或并行                                                                                                                                              |
 | 拒绝原因 | 可能改变浮点/复数结果或 panic 时机，不满足路径一致性约束                                                                                                                      |
 | 替代方案 | 在 `reduction` 内部回退到串行                                                                                                                                                 |

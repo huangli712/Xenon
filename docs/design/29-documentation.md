@@ -25,7 +25,7 @@
 
 ### 1.2 协同基线
 
-本文档 v2.0.4 的 doc comment、doctest、README、CHANGELOG 与 examples 示例必须以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`03-element.md v1.4.0`（`ElementType` 在 element 模块；新增 `Element::ELEMENT_TYPE_NAME: &'static str`）、`04-complex.md v2.0.3`、`17-indexing.md v3.0.4`、`18-construction.md v3.0.2`、`19-overload.md v2.0.0`、`21-type.md v2.1.2`、`23-ffi.md v3.0.3`、`24-workspace.md v3.0.2`、`25-safety.md v2.0.4`、`26-error.md v3.2.0`（`TypeConversion` 等错误字段类型为 `&'static str`）、`28-tests.md v2.0.3`、`30-dispatch.md v2.0.3`。示例代码中的 API 形态、错误字段、索引语法、运算符返回类型、类型转换语义、workspace 借用形式和线程安全说明均不得重新定义这些契约。
+本文档 v2.0.5 的 doc comment、doctest、README、CHANGELOG 与 examples 示例必须以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`03-element.md v1.4.0`（`ElementType` 在 element 模块；新增 `Element::ELEMENT_TYPE_NAME: &'static str`）、`04-complex.md v2.0.3`、`17-indexing.md v3.0.4`、`18-construction.md v3.0.2`、`19-overload.md v2.0.1`、`21-type.md v2.1.2`、`23-ffi.md v3.0.3`、`24-workspace.md v3.0.2`、`25-safety.md v2.0.4`、`26-error.md v3.2.0`（`TypeConversion` 等错误字段类型为 `&'static str`）、`28-tests.md v2.0.4`、`30-dispatch.md v2.0.3`。示例代码中的 API 形态、错误字段、索引语法、运算符返回类型、类型转换语义、workspace 借用形式和线程安全说明均不得重新定义这些契约。
 
 ### 1.3 设计原则
 
@@ -1141,6 +1141,13 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 | 2.0.2 | 2026-05-03 |
 | 2.0.3 | 2026-05-04 |
 | 2.0.4 | 2026-05-04 |
+
+### v2.0.5 (2026-05-05) — patch fix: refresh stale 19-overload pin v2.0.0 → v2.0.1 + 28-tests v2.0.3 → v2.0.4 (cascade)
+
+- §1.2 协同基线：`19-overload.md` pin 从 `v2.0.0` 刷新到 `v2.0.1`（docs-only patch，对齐 26-error v3.2.0）；`28-tests.md` 因 19-overload 级联从 `v2.0.3` 升到 `v2.0.4`。本文档自身版本号同步 v2.0.4 → v2.0.5。
+- L1170 changelog 历史条目（"§1.2 协同基线版本号统一升至：... 19-overload v2.0.0 ..."）保留不变——记录的是 v2.0.4 时刻的实际 pin 状态。
+- L1180 / L1185 changelog 历史条目对 19-overload v2.0.0 的引用同样保留不变。
+- 仅文档层修订；文档层次（L0-L3）、Lint 门禁、docs.rs 配置、CI 检查、决策 1-5、examples/ 规划、README/CHANGELOG 模板均无变更。
 
 ### v2.0.4 (2026-05-04) — patch fix: refresh §1.2 协同基线 pins to current actual versions of all 12 referenced docs (post 7-condition convergence cascade)
 

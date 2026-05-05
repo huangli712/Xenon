@@ -13,7 +13,7 @@
 
 本文档是"性能观测规范"，用于约定 benchmark 采样口径、趋势记录与可选回归检测；它不是完整质量门禁规范。功能正确性、错误语义、并发/UB 边界等质量要求统一由 `28-tests.md` 承担。
 
-**协同基线（v2.0.2）**：本文档以下游已修文档的契约为准——18-construction v3.0.2（`from_shape_vec` 返回 `Result<Self, XenonError>` 含 `InvalidShape{kind: ElementCountMismatch}`）、19-overload v2.0.0（`std::ops::Add` 等运算符 `Output = Result<Tensor, XenonError>`，benchmark 中可用 `(&a + &b).unwrap()`）、17-indexing v3.0.4（`SliceInfo::new` 仅做结构性校验，shape 边界校验下沉到 `TensorBase::slice`）、08-simd v2.0.2、09-parallel.md v2.0.2、13-reduction v3.0.1、12-matrix v2.0.1、26-error v3.2.0。
+**协同基线（v2.0.3）**：本文档以下游已修文档的契约为准——18-construction v3.0.2（`from_shape_vec` 返回 `Result<Self, XenonError>` 含 `InvalidShape{kind: ElementCountMismatch}`）、19-overload v2.0.1（`std::ops::Add` 等运算符 `Output = Result<Tensor, XenonError>`，benchmark 中可用 `(&a + &b).unwrap()`）、17-indexing v3.0.4（`SliceInfo::new` 仅做结构性校验，shape 边界校验下沉到 `TensorBase::slice`）、08-simd v2.0.2、09-parallel.md v2.0.2、13-reduction v3.0.1、12-matrix v2.0.1、26-error v3.2.0。
 
 ### 1.1 职责边界
 
@@ -773,6 +773,12 @@ benchmark files
 | 2.0.0 | 2026-05-02 |
 | 2.0.1 | 2026-05-03 |
 | 2.0.2 | 2026-05-04 |
+
+### v2.0.3 (2026-05-05) — patch fix: refresh stale 19-overload pin v2.0.0 → v2.0.1
+
+- §1 协同基线：`19-overload` pin 从 `v2.0.0` 刷新到 `v2.0.1`（docs-only patch，对齐 26-error v3.2.0）。本文档自身版本号同步 v2.0.2 → v2.0.3。
+- §5.8 模板的"算子返回类型说明"段中对 `19-overload v2.0.0 §5.1 决策 3/4` 的引用保持原版本号——决策 3/4 在 v2.0.0 引入并稳定，v2.0.1 仅为 docs patch，不影响决策来源版本。
+- 仅文档层修订；benchmark 分组、参数矩阵、CI 工作流、回归阈值、决策 1-5 均无变更。
 
 ### v2.0.2 (2026-05-04) — patch fix: refresh §1 协同基线 pins to current actual versions of all 8 referenced docs (post 7-condition convergence cascade)
 

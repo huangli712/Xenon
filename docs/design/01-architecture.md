@@ -55,7 +55,7 @@ Xenon 是一个纯 Rust 实现的 N 维数组（张量）库，定位为科学�
 - `05-storage.md` v2.0.2、`06-layout.md` v1.3.2、`07-tensor.md` v2.0.4：存储模式（含 `StorageShared` sealed unsafe marker）、F-order 布局状态与张量核心类型。
 - `08-simd.md` v2.0.2、`09-parallel.md` v2.0.2、`30-dispatch.md` v2.0.3：执行路径、`ParallelGuard`、worker 内 SIMD 与阈值语义；`alignment_ok` 仅作 simd 后端能力提示位。
 - `11-math.md` v2.0.2、`12-matrix.md` v2.0.1、`13-reduction.md` v3.0.2、`14-set.md` v2.0.1、`15-broadcast.md` v3.0.4：数学、矩阵、归约（仅 sum）、集合（仅 unique）、广播零步长分类与 F-order 顺序契约。
-- `16-shape.md` v2.0.2、`17-indexing.md` v3.0.4、`18-construction.md` v3.0.2、`19-overload.md` v2.0.0、`20-utility.md` v3.0.2、`21-type.md` v2.1.2、`22-output.md` v2.0.1、`23-ffi.md` v3.0.3（`pub use crate::element::ElementType`，路径稳定，ABI 稳定）、`24-workspace.md` v3.0.2、`25-safety.md` v2.0.4、`27-benchmark.md` v2.0.2、`28-tests.md` v2.0.3、`29-documentation.md` v2.0.4：shape、索引、构造、运算符、utility、类型转换、输出、FFI、workspace、线程安全、benchmark、测试与文档边界。
+- `16-shape.md` v2.0.2、`17-indexing.md` v3.0.4、`18-construction.md` v3.0.2、`19-overload.md` v2.0.1、`20-utility.md` v3.0.2、`21-type.md` v2.1.2、`22-output.md` v2.0.1、`23-ffi.md` v3.0.3（`pub use crate::element::ElementType`，路径稳定，ABI 稳定）、`24-workspace.md` v3.0.2、`25-safety.md` v2.0.4、`27-benchmark.md` v2.0.3、`28-tests.md` v2.0.4、`29-documentation.md` v2.0.5：shape、索引、构造、运算符、utility、类型转换、输出、FFI、workspace、线程安全、benchmark、测试与文档边界。
 
 ### 1.6 全局布局不变量
 
@@ -1024,7 +1024,7 @@ Element                        // Base: Copy + Sealed with const ELEMENT_TYPE: E
 | 路径 | 触发条件 | 后端 |
 |------|----------|------|
 | `ExecPath::Serial` | 默认回退；len 低于所有阈值，或 feature 禁用，或 `select_exec_path()` 未能获取并行 guard | 消费者模块自身的串行实现 |
-| `ExecPath::Simd` | feature = "simd" 启用 + len ≥ simd_threshold + 连续 + 对齐前提满足 + 不进入并行路径 | `simd/` 后端（`dispatch_vector_binary_op` 以 `bool` 报告是否接管执行；失败时由 dispatch 消费方回退） |
+| `ExecPath::Simd` | feature = "simd" 启用 + len ≥ simd_threshold + 连续 + 不进入并行路径（注：调用方传入的 `alignment_ok` 在 v2.0.x 起为提示位，dispatch 不将其作为 SIMD 准入硬门槛；simd 后端 admission 内部独立通过 `layout::is_aligned()` 重检查 — 见 30-dispatch.md v2.0.3 §5.5 / §6.4） | `simd/` 后端（`dispatch_vector_binary_op` 以 `bool` 报告是否接管执行；失败时由 dispatch 消费方回退） |
 | `ExecPath::Parallel` | feature = "parallel" 启用 + len ≥ parallel_threshold + `select_exec_path()` 成功获取并返回 `Some(ParallelGuard)` | `parallel/` 后端；并行 worker 内部可在 `_guard: ParallelGuard` 保护下调用 SIMD |
 
 #### 职责边界
@@ -1108,6 +1108,13 @@ Element                        // Base: Copy + Sealed with const ELEMENT_TYPE: E
 | 2.0.0 | 2026-05-03 |
 | 2.0.1 | 2026-05-03 |
 | 2.0.2 | 2026-05-04 |
+
+### v2.0.3 (2026-05-05) — patch fix: refresh stale 19-overload pin v2.0.0 → v2.0.1 + §13 决策 6 alignment_ok hint 语义同步 (cascade)
+
+- §1.5 协同基线：`19-overload.md` pin 从 `v2.0.0` 刷新到 `v2.0.1`（docs-only patch，对齐 26-error v3.2.0）。
+- §1.5 协同基线 cascade 同步：`27-benchmark.md v2.0.2 → v2.0.3`、`28-tests.md v2.0.3 → v2.0.4`、`29-documentation.md v2.0.4 → v2.0.5`（这 3 个文档因 19-overload 升版连锁升 patch）。
+- §13 决策 6：`ExecPath::Simd` 行表述对齐 30-dispatch v2.0.3 §5.5 / §6.4 的 `alignment_ok` hint 语义——dispatch 不将 `alignment_ok` 用作 SIMD 准入硬门槛，simd 后端 admission 内部独立通过 `layout::is_aligned()` 重检查。
+- 仅文档层修订；架构 L0-L6 分层、模块映射、Wave 拆分、决策 1-5 / 7+ 内容均无变更。
 
 ### v2.0.2 (2026-05-04) — patch fix: refresh §1.5 协同基线 pins to current actual versions of all 28 referenced docs (post 7-condition convergence cascade)
 

@@ -235,7 +235,7 @@ where
     A: Numeric + Send + Sync;
 ```
 
-**`_guard: ParallelGuard` 设计要点**（与 30-dispatch v1.1.0 决策 7 / v1.2.0 线程亲和性契约一致）：
+**`_guard: ParallelGuard` 设计要点**（与 30-dispatch v2.0.3 决策 7 / v1.2.0 线程亲和性契约一致）：
 - `_guard` 由 `dispatch::select_exec_path()` 在裁决到 `ExecPath::Parallel` 时返回 `Some(ParallelGuard)`，并由调用侧（`math` / `reduction` / `matrix`）按值移交到 `parallel` 后端入口。
 - `parallel` 在函数体内只持有 `_guard` 直至并行执行结束；`ParallelGuard::drop()` 自动清除 thread-local 嵌套防护标记。
 - 这样 “选中并行路径” 与 “进入并行临界区” 在调用图上原子绑定：调用方无法忘记 acquire guard，也无法在函数返回后越界使用 guard。
@@ -694,7 +694,7 @@ math / reduction / matrix call dispatch entry
     └── return Tensor or Result with unchanged public semantics; guard auto-drops
 ```
 
-- `select_exec_path()` 返回类型为 `(ExecPath, Option<ParallelGuard>)`；`Option` 仅在 `ExecPath::Parallel` 分支返回 `Some(_)`，`Serial` / `Simd` 分支返回 `None`（与 30-dispatch.md v1.1.0 决策 7 完全一致）。
+- `select_exec_path()` 返回类型为 `(ExecPath, Option<ParallelGuard>)`；`Option` 仅在 `ExecPath::Parallel` 分支返回 `Some(_)`，`Serial` / `Simd` 分支返回 `None`（与 30-dispatch.md v2.0.3 决策 7 完全一致）。
 - 调用方负责把 `Some(guard)` 按值移交到 `parallel` 后端入口；guard 在并行函数返回时被 drop，自动清除 thread-local 嵌套防护标记。
 
 ---

@@ -270,7 +270,7 @@ dot_impl(a, b):
 ```
 
 - `dot` 必须先完成逻辑 1D 与长度一致性检查。
-- 调度模型：由 `dispatch.rs` 通过 `let (path, guard) = dispatch::select_exec_path(...)` 统一决定串行 / SIMD / 并行路径（参见 30-dispatch.md v1.1.0 决策 7）；返回的 `Option<ParallelGuard>` 仅在 `ExecPath::Parallel` 分支为 `Some(_)`，并由 `matrix::dot` 按值移交给 `parallel::par_dot`。
+- 调度模型：由 `dispatch.rs` 通过 `let (path, guard) = dispatch::select_exec_path(...)` 统一决定串行 / SIMD / 并行路径（参见 30-dispatch.md v2.0.3 决策 7）；返回的 `Option<ParallelGuard>` 仅在 `ExecPath::Parallel` 分支为 `Some(_)`，并由 `matrix::dot` 按值移交给 `parallel::par_dot`。
 - **Worker 内 SIMD（v2.0 起）**：进入并行路径后，单个 worker 拿到 chunk 后**可以**在 chunk 内部独立做 SIMD admission（参见 08-simd.md v2.0.0 决策 5、09-parallel.md v2.0.0 决策 9）。这取代了 v1.x "并行 worker 不使用 SIMD" 的旧规则，提供 thread × SIMD 双层加速。串行路径下 SIMD 由 `simd` 后端按其 admission 规则独立判断是否启用；不进入 SIMD 时回退到该路径上的标量循环。
 - SIMD 路径要求 `a` 和 `b` **均为** F-contiguous 且满足对齐前提；若任一输入不满足条件，dispatch 不会选择 `ExecPath::Simd`，最终落在 `Serial` 或 `Parallel` 的标量内核上（worker 内 SIMD admission 仍是 chunk 内独立判断）。
 - `par_dot()` 的公开签名（见 09-parallel v2.0.0 §5.5）保持泛型 `DL: Dimension, DR: Dimension`，并接收 `_guard: ParallelGuard` 按值参数；在实现内部执行运行时 `ndim == 1` / 长度一致性校验。`matrix::dot()` 调用 `par_dot()` 时直接传 `&a.view()` / `&b.view()`，**不再通过 `as_ix1_view` 私有桥接收窄到 `Ix1`**（旧版的 `as_ix1_view` 设计与公开 `par_dot` 签名不闭合，已删除；旧文本见 §6.4 修订说明）。所有路径都必须保持一致的结果、错误模型与整数溢出 panic 语义。
@@ -281,9 +281,9 @@ dot_impl(a, b):
 
 | 约束         | 要求                                                                                                |
 | ------------ | --------------------------------------------------------------------------------------------------- |
-| 阈值来源     | 是否进入并行路径由 `dispatch::select_exec_path(len, is_f_contiguous, alignment_ok)` 的返回值决定（30-dispatch v1.1.0 §5.5）。 |
-| 非连续惩罚   | 非连续视图沿用 `dispatch.rs` 的有效阈值 saturating 翻倍策略（30-dispatch v1.1.0 决策 5），仅当收益明确时才进入并行。 |
-| 禁止嵌套并行 | `select_exec_path` 内部检测当前线程是否已处于库内部并行区域；若已嵌套则不会返回 `(Parallel, _)`，从而把并行降级为串行/SIMD 路径，调用方无需再做嵌套防护（参见 30-dispatch v1.1.0 决策 7：select-and-enter 原子绑定）。 |
+| 阈值来源     | 是否进入并行路径由 `dispatch::select_exec_path(len, is_f_contiguous, alignment_ok)` 的返回值决定（30-dispatch v2.0.3 §5.5）。`alignment_ok` 在 v2.0.x 起为调用方提示位（hint），dispatch 不强制将其用作 SIMD 准入硬门槛；simd 后端在 admission 内部独立通过 `layout::is_aligned()` 重检查（30-dispatch v2.0.3 §6.4）。 |
+| 非连续惩罚   | 非连续视图沿用 `dispatch.rs` 的有效阈值 saturating 翻倍策略（30-dispatch v2.0.3 决策 5），仅当收益明确时才进入并行。 |
+| 禁止嵌套并行 | `select_exec_path` 内部检测当前线程是否已处于库内部并行区域；若已嵌套则不会返回 `(Parallel, _)`，从而把并行降级为串行/SIMD 路径，调用方无需再做嵌套防护（参见 30-dispatch v2.0.3 决策 7：select-and-enter 原子绑定）。 |
 | 路径顺序     | 同 §6.1 执行路径选择。                                                                              |
 
 这满足 `需求说明书 §9.2` / `需求说明书 §9.3` 对"支持阈值配置"和"库内部不得开启第二层并行"的要求。

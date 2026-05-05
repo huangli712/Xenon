@@ -3,7 +3,9 @@
 > 文档编号: 10
 > 模块目录: src/iter/
 > 任务阶段: Phase 4
-> 前置文档: 02-dimension.md, 05-storage.md, 07-tensor.md, 26-error.md
+> 前置文档: 02-dimension.md, 05-storage.md, 07-tensor.md, 26-error.md (v3.2.0)
+>
+> **协同基线：** 本文档对外部错误语义的描述以 `26-error.md v3.2.0` §5.1 `XenonError` 枚举（含 `InvalidAxis` 变体）为准。任何 §9 / §10 引用 `26-error` 的字段或变体名时，均以该版本为权威。
 > 需求参考: 需求说明书 §6 - §8、§10、§11、§16 - §18、§21、§27、§28
 > 范围声明: 范围内
 

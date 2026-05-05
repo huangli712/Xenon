@@ -103,7 +103,7 @@ src/math/
 | `dimension`    | `BroadcastDim<E>` public sealed trait（对外可命名的公开 sealed trait，用于编译期维度推导，参见 `02-dimension.md §5.10`）|
 | `storage`      | `Storage<Elem = A>`, `StorageMut<Elem = A>`                                            |
 | `error`        | `XenonError`（含 `BroadcastError` 变体，参见 `26-error.md §5`）                        |
-| `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`ParallelGuard`（`select_exec_path` 返回 `(ExecPath, Option<ParallelGuard>)`，与 30-dispatch v1.1.0 select-and-enter 原子裁决一致；旧 `should_parallelize()` 已废弃） |
+| `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`ParallelGuard`（`select_exec_path` 返回 `(ExecPath, Option<ParallelGuard>)`，与 30-dispatch v2.0.3 select-and-enter 原子裁决一致；旧 `should_parallelize()` 已废弃） |
 | `simd`（可选） | `pulp::Arch`（参见 `08-simd.md §5`）                                                   |
 | `parallel`（可选） | `par_zip_map()`（纯并行执行入口，不含串行回退，参见 `09-parallel.md §5` / `§6`）   |
 
@@ -131,7 +131,7 @@ src/math/
 
 二元逐元素方法统一使用 `BroadcastDim<DB>` 进行编译期维度推导；`BroadcastDim` 是 public sealed trait，因此在公开 API 中可被外部稳定命名。该 trait 定义于 `02-dimension.md §5.10`，详见该文档。
 
-当前版本不承诺独立的通用二元逐元素 helper 公开函数。二元算术、比较与内部辅助路径统一采用"先广播，再直接遍历广播后视图并写入结果张量"的执行模型。调度模型：由 `dispatch.rs` 通过 `let (path, guard) = dispatch::select_exec_path(...)` 统一决定串行 / SIMD / 并行路径（参见 30-dispatch.md v1.1.0 决策 7）；进入并行路径后，单个 worker chunk 内**可以**独立调用 SIMD 后端 kernel（v2.0 起，参见 08-simd.md v2.0.0 决策 5），即"thread × SIMD 双层加速"模型。串行路径下 SIMD 由 `simd` 后端按其 admission 规则独立判断是否启用；不进入 SIMD 时回退到该路径内的标量循环。
+当前版本不承诺独立的通用二元逐元素 helper 公开函数。二元算术、比较与内部辅助路径统一采用"先广播，再直接遍历广播后视图并写入结果张量"的执行模型。调度模型：由 `dispatch.rs` 通过 `let (path, guard) = dispatch::select_exec_path(...)` 统一决定串行 / SIMD / 并行路径（参见 30-dispatch.md v2.0.3 决策 7）；进入并行路径后，单个 worker chunk 内**可以**独立调用 SIMD 后端 kernel（v2.0 起，参见 08-simd.md v2.0.0 决策 5），即"thread × SIMD 双层加速"模型。串行路径下 SIMD 由 `simd` 后端按其 admission 规则独立判断是否启用；不进入 SIMD 时回退到该路径内的标量循环。注：`select_exec_path` 第三参数 `alignment_ok` 是调用方提示位（hint），dispatch 不强制将其用作 SIMD 准入硬门槛，simd 后端在 admission 内部独立通过 `layout::is_aligned()` 重检查（30-dispatch v2.0.3 §5.5 / §6.4）。
 
 ### 5.3 算术运算（Numeric 约束）
 
@@ -537,7 +537,7 @@ apply_binary(a, b, f):
 
 本文描述的逐元素运算功能范围以 `需求说明书 §12` 为准。SIMD 和并行加速路径的当前正式支持子集以 `08-simd.md` 和 `09-parallel.md` 定义的能力边界为准，不在本文档中另行扩张覆盖承诺。
 
-调度模型（v2.0 起，与 30-dispatch v1.1.0、08-simd v2.0.0、09-parallel v2.0.0 协同）：
+调度模型（v2.0 起，与 30-dispatch v2.0.3、08-simd v2.0.0、09-parallel v2.0.0 协同）：
 
 1. 由 `dispatch::select_exec_path(...)` 返回 `(ExecPath, Option<ParallelGuard>)`，三路 `Serial / Simd / Parallel` 互斥裁决。
 2. 若选中 `Serial` 或 `Simd`：在串行执行上下文中由 `simd` 后端按 `08-simd.md §5.4` admission 规则独立决定是否进入 SIMD kernel；不进入时走标量循环。

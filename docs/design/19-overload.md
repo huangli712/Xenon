@@ -868,6 +868,11 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | 1.2.1 | 2026-04-16 |
 | 2.0.0 | 2026-05-02 |
 
+### v2.0.1 (2026-05-05) — patch: 协同基线刷新到 26-error v3.2.0
+
+- 协同基线刷新：本模块当前对齐 `26-error v3.2.0` §5.1 的 `BroadcastError { operation, lhs_shape, rhs_shape, attempted_target_shape, axis }`。变体名与字段相对 v3.0.0 保持稳定，无 API 调整；历史 v2.0.0 条目（基于 26-error v3.0.0 §5.1 的对齐说明）继续有效。
+- 仅文档层修订，公开 API 形态、运算符 trait 矩阵、错误字段语义均不变。
+
 ### v2.0.0 (2026-05-02) — B1.c 落地（同形状 vs 异形状路径风格建议）
 
 > 本版本是与用户决策 B1.c（解读 A）一致的**非破坏性**文档级补充。运算符 `Output` 类型保持 `Result<Tensor<A, F>, XenonError>` 不变（决策 3、4 完全保留），仅在使用风格层增加建议；现有 `11-math.md` 方法签名与本文档其它部分一律不动。

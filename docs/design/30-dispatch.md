@@ -11,7 +11,9 @@
 
 ## 1. 模块定位
 
-dispatch 模块是 Xenon 张量库内部执行路径的统一裁决层。它负责根据输入张量的形状、连续性与对齐特征，在三条互斥执行路径——串行（`Serial`）、SIMD 加速（`Simd`）、并行（`Parallel`）——中选择最优的一条，并集中管理并行阈值配置、嵌套并行防护与执行策略参数。dispatch 本身不包含任何实际运算实现，也不参与 ISA 检测或 SIMD 能力判定。
+### 1.0 协同基线
+
+本文档示例与论证以下游已修文档为准——`08-simd.md` v2.0.x、`09-parallel.md` v2.0.x、`07-tensor.md` v2.0.4、`06-layout.md` v1.3.2、`26-error.md` **v3.2.0**（§5.1 `XenonError` 枚举）。本模块自身的错误产出仅在 `ParallelExecStrategy::new()` 校验失败时使用 `XenonError`；任何 §5 / §10 引用 `26-error` 的字段或变体名时，均以 v3.2.0 为权威。
 
 ### 1.1 职责边界
 
