@@ -28,12 +28,6 @@
 | 范围外   | 单个业务模块的算法细节、独立功能设计、额外平台适配策略               |
 | 非目标   | 通过本规范引入超出需求范围的新能力、第三方依赖或额外 crate 拆分      |
 
-### 1.3 协同基线
-
-本文档以已修订的下游设计文档为协同基线。若本文档提到具体类型、字段、trait、枚举或 API 形态，必须与以下版本保持一致：`01-architecture.md v2.0.6`、`02-dimension.md v1.2.7`、`03-element.md v1.4.1`、`04-complex.md v2.0.5`、`05-storage.md v2.0.2`、`06-layout.md v1.3.2`、`07-tensor.md v2.0.5`、`08-simd.md v2.0.2`、`09-parallel.md v2.0.2`、`10-iterator.md v1.2.7`、`11-math.md v2.0.2`、`12-matrix.md v2.0.1`、`13-reduction.md v3.0.2`、`14-set.md v2.0.2`、`15-broadcast.md v3.0.4`、`16-shape.md v2.0.3`、`17-indexing.md v3.0.4`、`18-construction.md v3.0.2`、`19-overload.md v2.0.1`、`20-utility.md v3.0.2`、`21-type.md v2.1.2`、`22-output.md v2.0.1`、`23-ffi.md v3.0.4`、`24-workspace.md v3.0.2`、`25-safety.md v2.0.6`、`26-error.md v3.3.2`、`27-benchmark.md v2.0.4`、`28-tests.md v2.0.6`、`29-documentation.md v2.0.7`、`30-dispatch.md v2.0.6`。
-
-> **协同基线版本号 = 各下游文档当前 changelog 表中实际最新版本**。本基线与各文档 §0/§版本历史 严格对齐——若发现下游文档版本落后于此基线、或本基线落后于下游 changelog，必须在同一轮修订中同步追加 changelog 条目，禁止"先声明后追写"。
-
 ---
 
 ## 2. 命名规范
@@ -1185,85 +1179,6 @@ all-features = true
 | 理由     | 最小依赖原则；核心功能零依赖；并行和 SIMD 为渐进增强       |
 | 替代方案 | 引入 smallvec — 放弃，增加依赖                             |
 | 替代方案 | 引入 num-traits — 放弃，Xenon 封闭类型集合可自行定义 trait |
-
----
-
-## 版本历史
-
-| 版本  | 日期       |
-| ----- | ---------- |
-| 2.0.6 | 2026-05-05 |
-| 2.0.5 | 2026-05-05 |
-| 2.0.4 | 2026-05-05 |
-| 2.0.3 | 2026-05-04 |
-| 2.0.2 | 2026-05-04 |
-| 2.0.1 | 2026-05-03 |
-| 2.0.0 | 2026-05-03 |
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.2.0 | 2026-04-08 |
-| 1.2.1 | 2026-04-14 |
-| 1.2.2 | 2026-04-14 |
-| 1.2.3 | 2026-04-15 |
-| 1.2.4 | 2026-04-15 |
-| 1.2.5 | 2026-04-17 |
-
-### v2.0.0
-
-改动清单：
-
-- 增加 §1.3 协同基线，明确本文档依据的下游设计文档版本。
-- 对齐 `26-error.md v3.2.0 §5.1`：`operation` 使用 `Cow<'static, str>`，构造示例使用 `Cow::Borrowed("...")`；`TypeConversion` 五字段（`source_type` / `target_type` 为 `&'static str`，值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供）；`Ffi` 四字段、`FfiBackend`、`FfiErrorCategory` 八子变体、`Workspace` 三字段、`WorkspaceErrorCategory` 七子变体（含 `TypedViewRejected::TypedByteLengthOverflow`）、`StorageKindTag` 字段形态同步。
-- 对齐 `17-indexing.md v3.0.1`：公开安全索引收敛为 `try_at` / `try_at_mut`，并明确不实现 `std::ops::Index` / `IndexMut`；示例不使用 `tensor[...]`。
-- 对齐 `18-construction.md v2.0.0`：`from_shape_vec` 元素数错误使用 `InvalidShapeKind::ElementCountMismatch { expected, actual }`；`zeros` / `ones` 使用 `<Owned<A> as StorageOwned>::from_elem(len, value)`。
-- 对齐 `19-overload.md v2.0.0` 与 `21-type.md v2.0.0`：运算符输出为 `Result<Tensor<_, _>, XenonError>`；同形状使用 `a + b`，可能广播路径使用 `a.add(&b)?`；类型转换分为 `From` / `CastTo<T>`；左标量使用 `Scalar<A>`。
-- 对齐 `05-storage.md v2.0.0`、`06-layout.md v1.3`、`24-workspace.md v2.0.0`、`25-safety.md v2.0.0`：补充 `deep_clone`、`Owned::into_shared`、`ViewRepr` 生成规则、`LayoutState`、`HAS_ZERO_STRIDE`、workspace 可变借用签名与 Send/Sync 权威边界。
-- 对齐 `08-simd.md v2.0.0`、`09-parallel.md v2.0.0`、`30-dispatch.md v1.1.1`：补充 worker 内 SIMD、`dispatch_vector_binary_op -> bool`、`SimdElement: Sealed`、`_guard: ParallelGuard`、`select_exec_path -> (ExecPath, Option<ParallelGuard>)`、`threshold = 0` sentinel 与 `saturating_mul`。
-- 对齐 `02-dimension.md v1.x`、`03-element.md v1.x`、`04-complex.md v2.0.0`、`11-math.md v2.0.0`、`12-matrix.md v2.0.0`、`13-reduction.md v2.0.0`、`14-set.md v2.0.0`：补充 `IxDyn::RemoveAxis`、`BroadcastDim` 57 项、封闭 `Element` 集、复数构造路径、比较 API、F-order 集合顺序与矩阵私有桥接约束。
-
-未变更清单：
-
-- 未改变命名、缩进、rustfmt、导入分组、文档注释、unsafe 注释与测试命名的基础规范。
-- 未弱化 `unwrap()`、数值 `as`、unsafe 文档和 lint 基线的禁止或约束级别。
-- 未新增外部依赖、feature、crate 拆分、平台适配策略或业务模块算法规则。
-- 未调整 Phase 0 的实现任务拆分、验证方式和既有设计决策记录。
-
-
-### v2.0.6 (2026-05-05) — patch fix: §11 删除"集合运算遵循 F-order 输出顺序"过时规范（FATAL fix，post 第三轮重审）
-
-- §11（line 1080 附近）当前规范段曾写"集合运算遵循 F-order 输出顺序"——这是 v2.0.0 / v2.0.1 时代的全局编码规范声明。在 14-set v2.0.2 把 unique 输出顺序回退到 unspecified 后，本句变成与 14-set 现行契约直接冲突的 stale 规范。第三轮重审专家（Oracle）定级为 FATAL（00-coding 是全局规范，规范性强；下游测试若按本句写测试断言会与 14-set 实际行为冲突）。
-- 修复：删除"集合运算遵循 F-order 输出顺序"，改为"集合运算（如 unique）输出顺序未定义——实现可任选 first-occurrence、HashMap iteration 等，测试不得依赖特定顺序，仅可断言 multiset / set 等价（详见 14-set.md v2.0.2 §11 决策 4，与 require §15 一致）"。
-- 协同：纯文档措辞修订；与 14-set v2.0.2 / require §15 / 28-tests v2.0.5 §8.2 一致；不影响 §1-§10 任何编码规范。
-
-### v2.0.5 (2026-05-05) — patch fix: §1.3 协同基线全量刷新（post v2.0.4 重审 cascade）
-
-- §1.3 协同基线全量刷新到所有 30 个目标文档当前实际版本：
-  - `01-architecture v2.0.3 → v2.0.5`、`03-element v1.4.0 → v1.4.1`、`07-tensor v2.0.4 → v2.0.5`、`14-set v2.0.1 → v2.0.2`、`23-ffi v3.0.3 → v3.0.4`、`25-safety v2.0.4 → v2.0.5`、`26-error v3.2.0 → v3.3.1`、`28-tests v2.0.4 → v2.0.5`、`30-dispatch v2.0.3 → v2.0.5`。
-- 修复动机：v2.0.4 之前 §1.3 全量 pin 表落后 7 个版本号——重审专家定级为应修（pin 表是协同基线机制核心）。
-- 协同：纯 pin 同步，无内容/规范变更。
-
-### v2.0.4 (2026-05-05) — patch fix: refresh stale 19-overload pin v2.0.0 → v2.0.1 (cascade)
-
-- §1.3 协同基线：`19-overload.md` pin 从 `v2.0.0` 刷新到 `v2.0.1`（19-overload v2.0.1 为 docs-only patch，对齐 26-error v3.2.0；变体名与字段相对 v3.0.0 保持稳定，无 API 调整）。
-- §1.3 协同基线 cascade 同步：`01-architecture.md v2.0.2 → v2.0.3`、`27-benchmark.md v2.0.2 → v2.0.3`、`28-tests.md v2.0.3 → v2.0.4`、`29-documentation.md v2.0.4 → v2.0.5`（这 4 个文档因 19-overload 升版连锁升 patch）。其余 25 个 pin 保持当前版本不变。
-- L1219 changelog 历史条目（"对齐 19-overload.md v2.0.0 与 21-type.md v2.0.0"）保留不变——记录的是 v2.0.0 时刻的对齐决策。
-- 仅文档层修订；不修改任何编码规范条款；本文档 §2-§13 内容无变更。
-
-### v2.0.3 (2026-05-04) — patch fix: refresh stale §1.3 协同基线 pins to current actual versions of all 30 referenced docs (post 7-condition convergence cascade)
-
-- §1.3 协同基线：将 30 个下游设计文档 pin 刷新到当前实际版本，并对齐本轮 7 个基线 owner 文档的 post-bump 固定点。
-
-### v2.0.2 (2026-05-04) — 新增 API 可错性规范
-
-- 新增 §4.5 "API 可错性规范"，以五条规则统一跨计算模块的返回类型约定：运行时形状/轴/广播/索引校验类 API 返回 `Result`，纯逐元素标量运算和全张量归约直接返回 `T`，构造器按输入可证性决定，运算符重载按张量×张量（Result）与张量×标量（Tensor）分层。
-- 明确该规则与已有领域文档（`19-overload.md §11`、`13-reduction.md §5.1`、`11-math.md §5`）的关系——本规则为全局默认，领域文档为权威。
-
-### v2.0.1 (2026-05-03) — Medium documentation follow-up
-
-- Replaced the blanket floating-point tolerance guidance with the `28-tests.md §6.2` Tier 1 / Tier 2 / Tier 3 comparison model.
 
 ---
 
