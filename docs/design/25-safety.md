@@ -832,6 +832,13 @@ workspace 的线程安全规则（`!Send + !Sync` 实现选择及理由，参见
 | 2.0.3 | 2026-05-04 |
 | 2.0.4 | 2026-05-04 |
 | 2.0.5 | 2026-05-05 |
+| 2.0.6 | 2026-05-05 |
+
+### v2.0.6 (2026-05-05) — patch fix: 元信息块 26-error pin v3.3.0 → v3.3.1（post 第三轮重审）
+
+- 元信息块 line 18 协同基线 `26-error.md v3.3.0 → v3.3.1`（v3.3.1 修正 SemVer policy 文字 + 补 `WorkspaceErrorCategory` / `InvalidArgumentKind` 的 `#[non_exhaustive]`）。
+- 修复动机：v2.0.5 升版本时未跟随 26-error v3.3.1 同步元信息块 pin——重审专家（Oracle）发现属于"升 patch 版本时未自查"问题，定级为 MAJOR。
+- 协同：纯 pin 同步，本文档 §5 / §9 引用的字段、SemVer 边界、Send/Sync 规则均无需改动。
 
 ### v2.0.5 (2026-05-05) — patch fix: 同步 07-tensor v2.0.5 `new_unchecked` 单形式 + sub-enum non_exhaustive
 
