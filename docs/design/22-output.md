@@ -20,8 +20,6 @@
 | NumPy 风格输出 | 嵌套括号、矩阵形式、按逻辑索引顺序展示 | HTML 渲染            |
 | 截断规则       | 超过阈值触发 `... (N elements omitted)  shape=[...]` 后缀 | 自定义格式化器注册   |
 
-**关于"输出模式"数量的澄清**：本模块对外只暴露**两种公开输出模式** —— `core::fmt::Display`（面向最终用户的简洁可读输出）与 `core::fmt::Debug`（面向开发者的形状 / 步长 / 类型信息）。NumPy 风格的"pretty"渲染（嵌套括号 / 矩阵分行 / 截断省略号）是 **`Display` 输出的内部实现风格**，由 `format/pretty.rs` 内的 helper（`fmt_1d_display` / `fmt_nd_display` 等）承担；`pretty.rs` 不导出独立的 trait（如 `Pretty`、`TensorPretty`），也不构成第三种公开输出模式。同样地，`display_with(&FormatConfig)` 是 `Display` 的可配置包装器，不是第三态。如果未来需要把 pretty 渲染独立成可调用 API，需要单独的设计文档与 SemVer 评估，不应作为本模块的隐式扩展加入。
-
 ### 1.2 设计原则
 
 | 原则       | 体现                                                     |
@@ -827,59 +825,6 @@ User calls format!("{}", tensor) / format!("{:?}", tensor)
 | 单 crate   | 格式化逻辑保持在 `src/format/` 内，不拆出独立 crate   |
 | SemVer     | 0D 文本表示属于公开输出契约，后续变更需视为兼容性事项 |
 | 最小依赖   | 不引入额外第三方格式化依赖                            |
-
----
-
-## 版本历史
-
-| 版本  | 日期       |
-| ----- | ---------- |
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-08 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.0.4 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.1.1 | 2026-04-08 |
-| 1.1.2 | 2026-04-10 |
-| 1.1.3 | 2026-04-14 |
-| 1.1.4 | 2026-04-14 |
-| 1.1.5 | 2026-04-15 |
-| 1.1.6 | 2026-04-15 |
-| 2.0.0 | 2026-05-02 |
-| 2.0.1 | 2026-05-04 |
-
-### v2.0.1 (2026-05-04) — R8/R9 复数 Display 双 expected 与 ElementType 导入路径
-
-- §6.1：复数 Display 的虚部符号决策由 `is_sign_negative()` 决定（NaN 强制 `+`），并提供 7 个边界值的双 expected 快照表（默认 `Display` vs `precision: Some(1)`），与 `28-tests.md §5.16 test_output_complex_signed_special_values` 双 expected 集严格一致（R8 落地，R9 同步）。
-- §6.2：示例代码块在使用 `ElementType::I32` 等枚举值前显式 `use crate::element::ElementType;`，与锁定不变量"`ElementType` 权威定义在 `crate::element`、消费者必须从该路径导入"一致（R9 评审 C-03 修复）。
-- 与 `00-coding.md §1.3` / `28-tests.md §1.0` 锁定基线版本号对齐。
-
-### v2.0.0 (2026-05-02) — `dtype_name` 改用 `Element::ELEMENT_TYPE` 静态分流
-
-> 协同 21-type v2.0.0 决策 4 与 26-error v3.0.0 `TypeConversion` 字段（v2.0.0 当时 `source_type/target_type: ElementType`；**自 26-error v3.2.0 起改为 `&'static str`**，值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供，详见现行 §6.2 与 26-error v3.2.0 §5.1）的统一规则：禁用 `core::any::TypeId` 进行类型分发，所有元素类型分流走 `Element::ELEMENT_TYPE` 编译期常量。
-
-**契约更新**：
-
-- §5.4 `Debug` 实现 `A` trait bound 从 `Debug + Element + 'static` 收窄为 `Debug + Element`。这是 `Debug` 公开约束的**放宽**（`'static` 边界移除），对调用方非破坏性 — 所有原本满足旧 bound 的类型都满足新 bound。
-- §6.2 `dtype_name<A>()` 函数体重写：从 `core::any::TypeId::of::<A>()` 链式比较 + `core::any::type_name::<A>()` 兜底，改为基于 `A::ELEMENT_TYPE` 的封闭 `match`。`'static` bound 同步移除。
-
-**协同与一致性更新**：
-
-- §4.2 依赖表 `element` 行：明确依赖 `Element::ELEMENT_TYPE` 与 `ElementType`，并明示**不**使用 `core::any::TypeId`。
-- §4.2 依赖表新增 `layout` 行：`Debug` 实现读取 `LayoutState` 来源 `06-layout.md` v1.3 §5.3。
-- §5.4 `Debug` 实现段落注释明示 `dtype_name::<A>()` 通过 `A::ELEMENT_TYPE` 编译期常量静态分流。
-- §6.2 注释明示 `Element` 是 sealed trait + 实现集合封闭（{i32, i64, f32, f64, Complex<f32>, Complex<f64>, bool}），`match` 完备且无 fallback 分支。
-- §6.2 引用 21-type v2.0.0 决策 4、26-error v3.0.0 §5.1 `TypeConversion` 字段，建立"`ElementType` 静态分流"是项目级统一规则的协同链路。
-
-**非破坏性确认**：
-
-- §5.1 `FormatConfig` 字段不变。
-- §5.2 `TensorDisplay` 包装与 `display_with(config)` 入口不变。
-- §5.3 `Display` 实现的 trait bound `A: Display + Element` 不变（`Display` 路径本来就没有 `'static` 要求）。
-- §5.5 NumPy 风格输出示例与 §5.6 截断规则均不变。
-- 所有公开 API（`fmt`、`display_with`、`FormatConfig`）签名与语义不变。
-- §5.1 / §5.6 定义 `edge_items = 0` 归一化为 1；§5.5 标注 Complex 示例使用 `precision: Some(1)`；§1.2、§8.1、§9.2、§12 清理配置、逻辑读取与临时分配措辞。
 
 ---
 

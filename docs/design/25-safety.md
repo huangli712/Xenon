@@ -15,8 +15,6 @@
 
 **范围注记：** workspace 的线程安全属性参见 `24-workspace.md`；本文不将 workspace 纳入 `需求说明书 §10` 的存储模式线程安全矩阵。
 
-**协同基线：** 本文档示例与论证以下游已修文档为准——05-storage v2.0.2、06-layout v1.3.2、07-tensor v2.0.5（v2.0.5 起 `new_unchecked` 仅保留 Generic 单形式，详见 §5.12）、17-indexing v3.0.4（公开安全索引收敛为 `try_at`/`try_at_mut`，不实现 `std::ops::Index`）、19-overload v2.0.1、24-workspace v3.0.2、`26-error.md` **v3.3.1**（§5.1 `XenonError` 枚举，自 v3.3.0 起标 `#[non_exhaustive]`，v3.3.1 修正 SemVer policy 文字 + 补 2 个 sub-enum non_exhaustive，字段集合不变）。任何 §5 / §9 引用上述文档的章节号或 `26-error` 的字段名 / 变体名时，以这些版本为准。
-
 ### 1.1 职责边界
 
 | 职责           | 包含                                   | 不包含                       |
@@ -809,88 +807,6 @@ workspace 的线程安全规则（`!Send + !Sync` 实现选择及理由，参见
 | 单 crate   | 线程安全约束分布在既有模块中，不拆分独立并发 crate                                                              |
 | SemVer     | `Send` / `Sync` 承诺属于公开类型语义的一部分，变更需审慎评估兼容性                                              |
 | 最小依赖   | 不预设 `static_assertions`、`loom`、`critical_section` 等额外依赖；如需引入，仅可作为仓库内部 dev-only 评估工具 |
-
----
-
-## 版本历史
-
-| 版本  | 日期       |
-| ----- | ---------- |
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-08 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.0.4 | 2026-04-08 |
-| 1.0.5 | 2026-04-10 |
-| 1.0.6 | 2026-04-14 |
-| 1.0.7 | 2026-04-14 |
-| 1.0.8 | 2026-04-15 |
-| 1.0.9 | 2026-04-15 |
-| 2.0.0 | 2026-05-02 |
-| 2.0.1 | 2026-05-03 |
-| 2.0.2 | 2026-05-04 |
-| 2.0.3 | 2026-05-04 |
-| 2.0.4 | 2026-05-04 |
-| 2.0.5 | 2026-05-05 |
-| 2.0.6 | 2026-05-05 |
-
-### v2.0.6 (2026-05-05) — patch fix: 元信息块 26-error pin v3.3.0 → v3.3.1（post 第三轮重审）
-
-- 元信息块 line 18 协同基线 `26-error.md v3.3.0 → v3.3.1`（v3.3.1 修正 SemVer policy 文字 + 补 `WorkspaceErrorCategory` / `InvalidArgumentKind` 的 `#[non_exhaustive]`）。
-- 修复动机：v2.0.5 升版本时未跟随 26-error v3.3.1 同步元信息块 pin——重审专家（Oracle）发现属于"升 patch 版本时未自查"问题，定级为 MAJOR。
-- 协同：纯 pin 同步，本文档 §5 / §9 引用的字段、SemVer 边界、Send/Sync 规则均无需改动。
-
-### v2.0.5 (2026-05-05) — patch fix: 同步 07-tensor v2.0.5 `new_unchecked` 单形式 + sub-enum non_exhaustive
-
-- §5.12 / §5.12.1 unsafe 入口索引：合并 `TensorBase::<Owned<A>, D>::new_unchecked` 与 `TensorBase::<S, D>::new_unchecked` 双行为单行 Generic 形式；说明 v2.0.5 起仅保留泛型 form——Owned-specialized 重复定义已删除以修复 Rust E0592（"duplicate definitions"）编译错误，详见 `07-tensor.md v2.0.5 §5.6` 与 changlog。
-- §5.12 §v3.0.0 修订记录段（changelog）同步：从"Owned-specialized + Generic dual impl"改为"single Generic impl (since 07-tensor v2.0.5)"措辞；保留历史记录提醒未来 reviewer。
-- 修复动机：07-tensor v2.0.5 已删除 Owned-specialized form，但 25-safety v2.0.4 仍描述双形式共存——重审专家定级为下游 MAJOR（描述与代码不符）。
-- 协同：仅文档同步，无安全契约变更；§1 协同基线 pin `07-tensor` 升 v2.0.4 → v2.0.5。
-
-### v2.0.4 (2026-05-04) — patch fix: refresh §1 协同基线 pins to current actual versions of all 6 referenced docs (post 7-condition convergence cascade)
-
-- §1 协同基线：将 05-storage、06-layout、07-tensor、17-indexing、24-workspace pins 刷新到当前实际版本，19-overload pin 保持当前版本不变。
-
-### v2.0.3 (2026-05-04) — patch: unsafe-fn 索引反映内部构造器收敛
-
-- §5.12.1 `pub(crate)` unsafe fn 清单更新：
-  - `TensorBase::new_unchecked`（v2.0.5 起仅保留 Generic 形式；Owned-specialized 重复定义已删除以修复 Rust E0592）条目标注为"唯一 canonical unsafe 构造器"——所有其他内部 unchecked 构造器必须 forward 到此处。
-  - `Tensor::from_shape_vec_aligned_unchecked` 条目标注为"薄封装"——本条指数录供完整性索引，实质性安全契约已 forward 到 07-tensor.md §5.6。
-
-### v2.0.2 (2026-05-04) — patch: 禁止手动组合标志；规范 alias_class() 为别名分类唯一入口
-
-- §5.3 新增"别名分类规范入口"段：凡是需要区分别名类别的模块（unsafe 指针算术、并行分块安全、FFI 导出决策），**必须** 使用 `TensorBase::alias_class()`（`07-tensor.md §5.3`）作为规范入口，返回 `AliasClass` 枚举（`ArcShared` / `BroadcastAlias` / `ViewMutDerived` / `Unique`）。在该入口外部直接组合 `storage_kind()`、`has_zero_stride()`、`derived_from_view_mut()` 三个标志由本安全契约禁止。
-- 交叉引用 `07-tensor.md §5.3` 的 `AliasClass` 枚举与 `alias_class()` 方法定义；`HAS_ZERO_STRIDE` 边界条件以 `06-layout.md §5.11` 为准。
-- `AccessSemantics::SharedReadOnly` 保持不变（不拆分，无 SemVer 破坏）。
-
-### v2.0.0 (2026-05-02) — 协同与一致性更新（非破坏性）
-
-> 本版本是与 17-indexing v2.0.0 决策 7 + 19-overload v2.0.0（不实现 `std::ops::Index`）+ 24-workspace v2.0.0（B12.a）+ 05-storage v2.0.0 + 26-error v3.0.0 协同的非破坏性更新。本文档作为线程安全规范，§5.1 Send/Sync 规则表与决策 1-4 内容**未变更**；仅修复示例代码与协同引用。
-
-**Blocker 修复**：
-
-- §5.10 `share_arc_tensor` 示例：`arc_clone[0]` / `arc[1]` 改用 `arc_clone.try_at(Ix1(0))?` / `arc.try_at(Ix1(1))?`，因 Xenon 不实现 `std::ops::Index`（17-indexing v2.0.0 决策 7、19-overload v2.0.0）；函数签名加 `Result<(), XenonError>`；父线程读取在 spawn 前完成，子闭包用 `.expect("constant index 0 is in bounds for shape [3]")` 处理常量索引返回的 `Result`，避免 `thread::scope` 闭包返回 Result 的语法噪声。
-
-**协同声明**：
-
-- §1 新增"协同基线"段：列出本文档示例与论证依据的下游已修文档版本（05-storage v2.0.0、06-layout v1.3、07-tensor v2.0.0、17-indexing v2.0.0、19-overload v2.0.0、24-workspace v2.0.0）。
-
-**未变更**：
-
-- §5.1 Send/Sync 规则表（Owned / ViewRepr / ViewMutRepr / ArcRepr 的 trait 实现）。
-- §5.2 TensorBase auto-trait 推导规则。
-- §5.3 安全违规分类表。
-- §5.5–§5.8 unsafe impl SAFETY 注释（已正确）。
-- §5.9 广播只读约束。
-- §6 内部实现协同图。
-- §7-§9 任务/测试/交互章节。
-- §11 决策 1-4。
-
-
-### v2.0.1 (2026-05-03) — Medium documentation follow-up + R8 内部 unsafe fn 索引
-
-- Narrowed the integer-overflow panic rule to element-wise arithmetic, reductions, and dot products, while metadata / index-offset / FFI checked arithmetic remains recoverable via `26-error.md`.
-- Added §5.12 "unsafe 入口索引" — covering `TensorBase::new_unchecked` (Owned-specialized + Generic dual impl with `derived_from_view_mut: bool` parameter — 07-tensor §5.6), `from_raw_vec_unchecked`, workspace typed-slice `MaybeUninit` helpers, `Tensor::from_shape_vec_aligned_unchecked`, and the public unsafe `from_raw_parts` / `from_raw_parts_mut` / `from_raw_parts_owned` FFI entries. Index lists entry-point signatures only; detailed `# Safety` contracts remain in each owner doc. R10 B-04 拆分为 §5.12.1 `pub(crate)` 内部入口 + §5.12.2 `pub` 公开 unsafe API 双表，避免可见性与 owner 路径混淆，并补全先前遗漏的 `from_raw_vec_unchecked` / `from_raw_parts_owned`。
 
 ---
 
