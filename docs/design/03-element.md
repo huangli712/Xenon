@@ -4,8 +4,6 @@
 > 模块目录: src/element/
 > 任务阶段: Phase 1
 > 前置文档: 00-coding.md, 01-architecture.md
-> 需求参考: 需求说明书 §4、§5、§12 - §15、§23
-> 范围声明: 范围内
 
 ---
 
@@ -22,14 +20,14 @@
 | 基础类型实现        | 为 i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool 实现上述 trait  |
 | Sealed trait        | 封闭集合，禁止外部 crate 实现                                     |
 
-| 职责                | 不包含                                                          |
-| ------------------- | --------------------------------------------------------------- |
-| Element trait       | -                                                               |
-| Numeric trait       | 运算实现本身（委托给 core::ops）                                |
-| RealScalar trait    | 复数运算                                                        |
-| ComplexScalar trait | 复数类型定义（在 `src/complex/` 模块，参见 `04-complex.md` §5） |
-| 基础类型实现        | 类型转换逻辑（在 `src/convert/` 模块）                          |
-| Sealed trait        | 开放扩展                                                        |
+| 职责                | 不包含                              |
+| ------------------- | ----------------------------------- |
+| Element trait       | -                                   |
+| Numeric trait       | 运算实现本身（委托给 core::ops）    |
+| RealScalar trait    | 复数运算                            |
+| ComplexScalar trait | 复数类型定义（在 `complex/` 模块）  |
+| 基础类型实现        | 类型转换逻辑（在 `convert/` 模块）  |
+| Sealed trait        | 开放扩展                            |
 
 ### 1.2 设计原则
 
@@ -65,8 +63,6 @@ src/element/
 └── primitives.rs      # Trait implementations for primitive element types
 ```
 
-模块内聚设计：四层 trait 按文件分离，基础类型实现集中在 `primitives.rs`。
-
 ---
 
 ## 4. 依赖关系
@@ -76,8 +72,6 @@ src/element/
 ```
 src/element/
 ├── crate::error      # XenonError only (consumed for fallible APIs).
-                      # NOTE (v1.4.0): `ElementType` is defined HERE in the
-                      # element module (see §5.1.1), NOT in error.
 ├── crate::complex    # Complex<T> type definition
 ├── crate::private    # Sealed trait infrastructure
 ├── core::ops         # Add/Sub/Mul/Div/Neg operator traits
@@ -96,7 +90,7 @@ src/element/
 | `core::fmt`      | `Debug`, `Display`（Element supertrait）                   |
 | `core::cmp`      | `PartialEq`, `PartialOrd`（Element/RealScalar supertrait） |
 
-### 4.3 依赖合法性与新增依赖说明
+### 4.3 依赖合法性
 
 | 项目           | 结论                       |
 | -------------- | -------------------------- |
