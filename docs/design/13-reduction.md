@@ -378,14 +378,14 @@ fn sum_floating_or_complex<A: Numeric>(iter: impl Iterator<Item = A>) -> A {
 
 ### 8.1 测试分类表
 
-| 测试分类                | 位置                          | 说明                                                                              |
-| ----------------------- | ----------------------------- | --------------------------------------------------------------------------------- |
-| 单元测试                | `#[cfg(test)] mod tests`      | 验证 `sum` 家族正确性、错误返回与 panic 契约                                      |
-| 集成测试                | `tests/`                      | 验证 `reduction` 与 `tensor`、`dimension`、`simd`、`parallel`、`error` 的协同路径 |
-| 边界测试                | 同模块测试中标注              | 覆盖空数组、零长度轴、rank-0、单元素、非连续视图                                  |
-| 属性测试（按需）        | `tests/property/` 或等效位置  | 验证空输入单位元、不同行布局视图的一致性、keepdims 形状不变量                     |
-| Feature gate / 配置测试 | 配置矩阵                      | 验证默认配置、`simd`、并行启用/关闭时的回退与一致性                               |
-| 类型边界 / 编译期测试   | 编译期测试框架或 doctest      | 验证 `bool` 不参与归约、`sum` 仅对受支持数值类型开放                              |
+| 测试分类                | 位置                          | 说明                                                                       |
+| ----------------------- | ----------------------------- | -------------------------------------------------------------------------- |
+| 单元测试                | `#[cfg(test)] mod tests`      | 验证 `sum` 家族正确性、错误返回与 panic 契约                               |
+| 集成测试                | `tests/`                      | 验证 `reduction` 与 `tensor`、`dimension`、`simd`、`parallel`等的协同路径  |
+| 边界测试                | 同模块测试中标注              | 覆盖空数组、零长度轴、rank-0、单元素、非连续视图                           |
+| 属性测试（按需）        | `tests/property/` 或等效位置  | 验证空输入单位元、不同行布局视图的一致性、keepdims 形状不变量              |
+| Feature gate / 配置测试 | 配置矩阵                      | 验证默认配置、`simd`、并行启用/关闭时的回退与一致性                        |
+| 类型边界 / 编译期测试   | 编译期测试框架或 doctest      | 验证 `bool` 不参与归约、`sum` 仅对受支持数值类型开放                       |
 
 ### 8.2 单元测试清单
 
@@ -419,7 +419,7 @@ fn sum_floating_or_complex<A: Numeric>(iter: impl Iterator<Item = A>) -> A {
 | 空张量 `shape=[0, 3]`                              | `sum()` 返回加法单位元；`sum_axis*` 输出 shape 与零长度轴语义正确  |
 | rank-6 张量 `IxDyn([2,1,3,1,1,4])` 沿 `Axis(5)` 归约 | `sum_axis*` 的 axis 投影、keepdims 与错误诊断保持正确            |
 | `10^7` 元素张量归约                                | 默认/SIMD/并行配置下满足 §6.3 有限值容差表与非有限值规则，且 panic 契约一致 |
-| 静态 rank-0 输入 `Ix0` 调用 `sum_axis()`           | 编译期可调用（`Ix0: RemoveAxis`，`Smaller = Ix0`，参见 02-dimension §5.8）；运行时返回 `InvalidAxis`，因为 0D 上不存在合法轴 |
+| 静态 rank-0 输入 `Ix0` 调用 `sum_axis()`           | 编译期可调用（`Ix0: RemoveAxis`，`Smaller = Ix0`）；运行时返回 `InvalidAxis` |
 | 静态 rank-0 输入 `Ix0` 调用 `sum_axis_keepdims()`  | 返回 `InvalidAxis`，因为 0D 上不存在合法轴                         |
 | 动态 rank-0 输入 `IxDyn([])` 调用 `sum_axis*`      | 返回 `InvalidAxis`，因运行时 `axis >= ndim`                        |
 | 非连续视图                                         | 结果与连续输入一致                                                 |
@@ -447,9 +447,9 @@ fn sum_floating_or_complex<A: Numeric>(iter: impl Iterator<Item = A>) -> A {
 | 配置                  | 验证点                                                                 |
 | --------------------- | ---------------------------------------------------------------------- |
 | 默认配置              | 仅标量路径也满足全部正确性与错误语义要求                               |
-| 启用 `simd`           | dispatch 只在可证明一致时选择 SIMD，否则不选择 SIMD 路径                |
+| 启用 `simd`           | dispatch 只在可证明一致时选择 SIMD，否则不选择 SIMD 路径               |
 | 启用并行              | 受全局阈值配置控制，不得嵌套并行，且结果/错误/panic 语义与标量路径一致 |
-| 同时启用 `simd,parallel` | 并行 worker chunk 内可独立做 SIMD admission，整体语义仍满足 §10      |
+| 同时启用 `simd,parallel` | 并行 worker chunk 内可独立做 SIMD admission，整体语义仍满足 §10     |
 | `simd = ["dep:pulp"]` | feature gate 约束保持不变                                              |
 
 ### 8.7 类型边界 / 编译期测试
@@ -485,7 +485,6 @@ User calls sum / sum_axis / sum_axis_keepdims
     │       ├── (Simd,   None)        → simd backend reduce kernel
     │       └── (Parallel, Some(g))   → parallel backend; pass guard by value
     │              └── inside each worker chunk: SIMD admission may apply per chunk
-    │                  (08-simd v2.0.0 决策 5; 09-parallel v2.0.0 决策 9)
     ├── reduction accumulates logical elements with type-specific semantics
     │      (integer: CheckedAdd; float/complex: ordinary +)
     ├── tensor constructs the owned output tensor when axis reduction is requested
@@ -498,11 +497,11 @@ User calls sum / sum_axis / sum_axis_keepdims
 
 | 主题              | 内容                                                                                                                 |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | 对所有需要运行时 axis 校验的 `sum_axis()` / `sum_axis_keepdims()` 调用，axis 越界统一返回 `XenonError::InvalidAxis { operation, axis, ndim, shape }`（字段对齐 26-error v3.2.0 §5.1）。|
+| Recoverable error | 对所有需要运行时 axis 校验的 `sum_axis()` / `sum_axis_keepdims()` 调用，axis 越界统一返回 `XenonError::InvalidAxis`。|
 | Panic             | `i32` / `i64` 归约中的累加溢出属于不可恢复错误，必须通过 checked arithmetic panic。                                  |
 | Panic 诊断        | panic 文本至少包含 `operation`、元素类型、触发位置（如 `axis`、`output_index` 或 `element_index`）以及适用 `shape`。 |
 | 空输入语义        | 空数组 `sum()` 返回加法单位元；沿轴归约时若被归约轴长度为 `0`，结果张量对应槽位也返回加法单位元。                    |
-| 数值边界          | 整数类型结果须逐元素精确一致。对浮点和复数类型，不同执行路径（标量/SIMD/并行，以及并行 worker 内 SIMD admission）允许不同合并顺序——**但允许范围严格受 §6.3 跨路径容差表约束**：仅有限值的相对/绝对误差在表内放宽；非有限值不得用容差抹平——`±Inf` 必须同号同类、`±0.0` 符号必须一致；`NaN` 仅约束**存在性**（基线 NaN ⟺ 跨路径 NaN，用 `is_nan()` 谓词比较），**不**约束 NaN payload 位模式（详见 §6.3 NaN 条目）。同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。`NaN` / `Inf` 仍按 IEEE 754 自动传播。读者必须把本表与 §6.3 的容差与硬约束一并阅读，不可只读本表概括。 |
+| 数值边界          | 整数类型结果须逐元素精确一致。对浮点和复数类型，不同执行路径允许不同合并顺序——**但允许范围严格受 §6.3 跨路径容差表约束**：仅有限值的相对/绝对误差在表内放宽；非有限值不得用容差抹平。 |
 | 路径一致性        | 标量、SIMD、并行路径（含 worker 内 SIMD admission）在启用条件满足时必须返回相同 shape、相同错误类别，以及满足同一数值语义约束的结果。worker 内 SIMD 是否启用由 chunk 内独立 admission 决定，不影响整体语义。|
 
 ---
