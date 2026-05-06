@@ -1055,7 +1055,7 @@ let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
 | 测试分类 | 位置                      | 说明                                                                |
 | -------- | ------------------------- | ------------------------------------------------------------------- |
 | 单元测试 | `#[cfg(test)] mod tests`  | 验证各维度类型、形状/rank API 和辅助 trait                          |
-| 集成测试 | `tests/test_tensor.rs` / `tests/test_shape.rs` / `tests/test_index.rs` | 通过张量/形状/索引层间接验证 dimension 协同路径（**不**新增独立 `tests/test_dimension.rs`，与 `28-tests.md §9.2` 一致） |
+| 集成测试 | `tests/test_tensor.rs` / `tests/test_shape.rs` / `tests/test_index.rs` | 通过张量/形状/索引层间接验证 dimension 协同路径 |
 | 边界测试 | 同模块测试中标注          | 覆盖 Ix0、零长度轴、大维度与溢出路径                                |
 | 属性测试 | 同模块单元测试 / `tests/property_tests.rs` | 验证 size/维度互转不变量（不依赖独立 `test_dimension.rs`） |
 
@@ -1067,17 +1067,17 @@ let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
 | `test_ix0_ndim_is_zero`                   | `Ix0.ndim() == 0`                                                              | 高     |
 | `test_ix0_is_zst`                         | `size_of::<Ix0>() == 0`                                                        | 高     |
 | `test_ix1_slice`                          | `Ix1(5).slice() == &[5]`                                                       | 高     |
-| `test_ix2_slice`                          | `Ix2(3, 4).slice() == &[3,4]`                                                   | 高     |
-| `test_ix3_slice`                          | `Ix3(2, 3, 4).slice() == &[2, 3, 4]`                                               | 高     |
-| `test_ix3_size_calculation`               | `Ix3(2, 3, 4).checked_size() == Ok(24)`                                          | 高     |
+| `test_ix2_slice`                          | `Ix2(3, 4).slice() == &[3,4]`                                                  | 高     |
+| `test_ix3_slice`                          | `Ix3(2, 3, 4).slice() == &[2, 3, 4]`                                           | 高     |
+| `test_ix3_size_calculation`               | `Ix3(2, 3, 4).checked_size() == Ok(24)`                                        | 高     |
 | `test_ix6_max_dimensions`                 | `Ix6(1,2,3,4,5,6).checked_size() == Ok(720)`                                   | 中     |
-| `test_ixdyn_from_slice`                   | `IxDyn::from_slice(&[2, 3])`                                                    | 高     |
-| `test_ixdyn_size`                         | `IxDyn::from_slice(&[2, 3, 4]).checked_size() == Ok(24)`                         | 高     |
-| `test_static_to_dyn`                      | `Ix3(2, 3, 4).into_dyn()`                                                        | 高     |
-| `test_dyn_to_static_success`              | `Ix3::try_from_dyn(IxDyn::from_slice(&[2, 3, 4]))`                               | 高     |
-| `test_dyn_to_static_failure`              | `Ix3::try_from_dyn(IxDyn::from_slice(&[2, 3, 4, 5]))` → Err                       | 高     |
-| `test_tuple_into_dimension`               | `(2, 3, 4).into_dimension()` → `Ix3(2, 3, 4)`                                      | 中     |
-| `test_slice_to_ixdyn`                     | `(&[2, 3, 4][..]).into_dimension()` → `IxDyn`                                    | 中     |
+| `test_ixdyn_from_slice`                   | `IxDyn::from_slice(&[2, 3])`                                                   | 高     |
+| `test_ixdyn_size`                         | `IxDyn::from_slice(&[2, 3, 4]).checked_size() == Ok(24)`                       | 高     |
+| `test_static_to_dyn`                      | `Ix3(2, 3, 4).into_dyn()`                                                      | 高     |
+| `test_dyn_to_static_success`              | `Ix3::try_from_dyn(IxDyn::from_slice(&[2, 3, 4]))`                             | 高     |
+| `test_dyn_to_static_failure`              | `Ix3::try_from_dyn(IxDyn::from_slice(&[2, 3, 4, 5]))` → Err                    | 高     |
+| `test_tuple_into_dimension`               | `(2, 3, 4).into_dimension()` → `Ix3(2, 3, 4)`                                  | 中     |
+| `test_slice_to_ixdyn`                     | `(&[2, 3, 4][..]).into_dimension()` → `IxDyn`                                  | 中     |
 | `test_axis_next_prev`                     | `Axis(2).next() == Some(Axis(3))`, `Axis(0).prev() == None`                    | 中     |
 | `test_axis_checked_next`                  | `Axis(usize::MAX).checked_next() == None`                                      | 中     |
 | `test_axis_is_first_last`                 | `Axis(0).is_first()`, `Axis(2).is_last(3)`                                     | 中     |
@@ -1106,8 +1106,6 @@ let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
 | `dim.checked_size()? == dim.slice().iter().product()`  | 随机形状 |
 
 ### 8.5 集成测试
-
-> **不**新增独立 `tests/test_dimension.rs`（与 `28-tests.md §9.2` 一致）。dimension 模块的端到端协同路径通过下列已存在的集成测试间接覆盖：
 
 | 集成测试文件             | 覆盖的 dimension 协同路径                                              |
 | ------------------------ | ---------------------------------------------------------------------- |
@@ -1147,7 +1145,7 @@ let dim = Ix3::try_from_dyn(IxDyn::from_vec(vec![2, 3, 4, 5, 6])).unwrap();
 | `math`    | `Dimension`                  | 运算泛型参数                                 |
 | `index`   | `Dimension`, `Axis`          | 索引操作                                     |
 
-各模块的详细接口约定参见对应设计文档（`05-storage.md` §5、`07-tensor.md` §5、`16-shape.md` §5、`17-indexing.md` §5）。当前版本 `shape` 模块仅覆盖 transpose；reshape 超出当前版本范围。
+各模块的详细接口约定参见对应设计文档（`05-storage.md` §5、`07-tensor.md` §5、`16-shape.md` §5、`17-indexing.md` §5）。
 
 ### 9.2 数据流描述
 
@@ -1193,11 +1191,11 @@ User provides shape / axis / dimension input
 
 ### 决策 3：Ix0 的 checked_size() 返回 Ok(1)
 
-| 属性     | 值                                                                                        |
-| -------- | ----------------------------------------------------------------------------------------- |
-| 决策     | `Ix0.checked_size() == Ok(1)`（标量语义）                                                 |
-| 理由     | 数学上零维数组是标量；与 ndarray/NumPy 一致；允许 `Tensor<A, Ix0>` 表示单值；广播正确处理 |
-| 替代方案 | 将标量元素总数定义为 `0` — 放弃，与标量语义冲突                                           |
+| 属性     | 值                                                                                 |
+| -------- | ---------------------------------------------------------------------------------- |
+| 决策     | `Ix0.checked_size() == Ok(1)`（标量语义）                                          |
+| 理由     | 数学上零维数组是标量；与 Numpy 一致；允许 `Tensor<A, Ix0>` 表示单值；广播正确处理  |
+| 替代方案 | 将标量元素总数定义为 `0` — 放弃，与标量语义冲突                                    |
 
 ### 决策 4：Dimension trait 继承 Sealed
 
