@@ -443,7 +443,7 @@ all-features = true
 | L4     | broadcast | tensor, dimension, layout, error    | 15-broadcast.md     |
 | L4     | iter      | tensor, storage, dimension, error   | 10-iterator.md      |
 | L4     | ffi       | tensor, layout, storage, dimension, element, error | 23-ffi.md |
-| L4     | dispatch  | tensor                              | 01-architecture.md  |
+| L4     | dispatch  | tensor                              | 30-dispatch.md      |
 | L5     | parallel  | tensor, dimension, element, error, dispatch  | 09-parallel.md |
 | L5     | simd      | tensor, layout, element             | 08-simd.md          |
 | L5     | math      | tensor, broadcast, element, iter    | 11-math.md          |
@@ -844,7 +844,7 @@ Element                       // Base: Copy + Sealed with const ELEMENT_TYPE: El
 
 ## 12. 实现任务分解
 
-### Wave 1: 基础设施（可完全并行）
+### Wave 1: 基础设施
 
 | 任务                   | 依赖       | 预估复杂度 | 产出                               |
 | ---------------------- | ---------- | ---------- | ---------------------------------- |
@@ -858,7 +858,7 @@ Element                       // Base: Copy + Sealed with const ELEMENT_TYPE: El
 | W1.8 layout helpers    | W1.1, W1.3 | 低         | 模块级布局函数与判定入口           |
 | W1.9 F-order strides   | W1.1, W1.3 | 中         | F-order 步长计算                   |
 
-### Wave 2: 核心（依赖 Wave 1）
+### Wave 2: 核心
 
 | 任务                 | 依赖                 | 预估复杂度 | 产出                          |
 | -------------------- | -------------------- | ---------- | ----------------------------- |
@@ -871,7 +871,7 @@ Element                       // Base: Copy + Sealed with const ELEMENT_TYPE: El
 | W2.7 Type aliases    | W2.6                 | 低         | `Tensor`, `TensorView` 等     |
 | W2.8 Workspace       | W1.1                 | 中         | 临时缓冲区                    |
 
-### Wave 3: 操作（依赖 Wave 2）
+### Wave 3: 操作
 
 | 任务                  | 依赖       | 预估复杂度 | 产出               |
 | --------------------- | ---------- | ---------- | ------------------ |
@@ -888,7 +888,7 @@ Element                       // Base: Copy + Sealed with const ELEMENT_TYPE: El
 | W3.11 Set             | W2.6, W3.1 | 高         | unique             |
 | W3.12 Util            | W2.6, W3.1 | 高         | clip, fill         |
 
-### Wave 4: 集成（依赖 Wave 3）
+### Wave 4: 集成
 
 | 任务            | 依赖  | 预估复杂度 | 产出                        |
 | --------------- | ----- | ---------- | --------------------------- |
@@ -898,7 +898,7 @@ Element                       // Base: Copy + Sealed with const ELEMENT_TYPE: El
 | W4.4 Ffi        | W2.6  | 中         | 原始指针 API                |
 | W4.5 Comparison integration/tests | W3.4   | 低 | comparison integration/tests |
 
-### Wave 5: 性能（依赖 Wave 4）
+### Wave 5: 性能
 
 | 任务              | 依赖       | 预估复杂度 | 产出           |
 | ------------------| ---------- | ---------- | -------------- |
