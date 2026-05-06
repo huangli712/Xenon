@@ -682,8 +682,6 @@ src/
 └── lib.rs
 ```
 
-workspace 的可变借用 API 使用消费式或独占式签名：`borrow_mut(&mut self)`、`Workspace::split_at_mut(&mut self)`、`SplitBorrowMut::split_at_mut(self)`。
-
 ---
 
 ## 7. 文档规范
@@ -781,7 +779,7 @@ where
 
 ### 8.1 测试命名规范
 
-测试函数命名格式：`test_<function>_<scenario>_<expected>`。Xenon 不实现 `std::ops::Index` / `IndexMut`；公开安全索引 API 必须通过 `try_at()` / `try_at_mut()` 暴露可恢复错误语义。
+测试函数命名格式：`test_<function>_<scenario>_<expected>`。
 
 ```rust,ignore
 #[cfg(test)]
@@ -790,19 +788,7 @@ mod tests {
     fn test_broadcast_scalar_to_matrix_succeeds() { /* ... */ }
 
     #[test]
-    fn test_broadcast_incompatible_shape_fails() { /* ... */ }
-
-    #[test]
     fn test_index_single_element_returns_value() { /* ... */ }
-
-    #[test]
-    fn test_safe_index_returns_error() {
-        // Safe public indexing must use `try_at()` / `try_at_mut()` and
-        // return `XenonError::IndexOutOfBounds` instead of panicking.
-    }
-
-    #[test]
-    fn test_sum_float_tensor_with_nan_returns_nan() { /* ... */ }
 
     #[test]
     fn test_dot_incompatible_shapes_fails() { /* ... */ }
@@ -839,23 +825,7 @@ mod tests {
 
 浮点比较：
 
-浮点断言遵循 `28-tests.md §6.2` 的三层规则，而不是默认套用统一容差：
-
-- Tier 1：同执行路径基础 IEEE 754 路径（基础浮点算术、比较、归约、复数分量级基础运算）默认使用精确比较；整数和布尔使用 `assert_eq!`，浮点使用 bitwise 等价或严格 `ULP == 0`。
-- Tier 2：标量 vs SIMD、串行 vs 并行等跨执行路径比较，才使用已文档化的跨路径容差 helper，并在测试中注明路径与容差来源。
-- Tier 3：`sin`、`sqrt`、`exp`、`ln`、`floor`、`ceil` 等数学函数使用按函数文档化的专用容差 helper，不复用笼统容差。
-
-```rust,ignore
-// Good - same-path base arithmetic uses the Tier 1 exact helper.
-assert_tensor_exact_real(&result, &expected, "add");
-
-// Good - cross-path comparison explicitly opts into the documented Tier 2 tolerance.
-let tolerance = documented_cross_path_tolerance();
-assert!(ulp_eq_f64_with_tolerance(parallel_sum, serial_sum, tolerance));
-
-// Bad - applying a blanket tolerance to every floating-point assertion.
-assert_close(*result.try_at((0, 0))?, 58.0, 1e-12);
-```
+浮点断言遵循 `28-tests.md §6.2` 的三层规则，而不是默认套用统一容差。
 
 ---
 
@@ -913,9 +883,7 @@ where
 | `simd`     | `dep:pulp`  | SIMD 加速，默认关闭    |
 | `parallel` | `dep:rayon` | 并行计算，默认关闭     |
 
-其中 `simd` 与 `parallel` 都建立在 Xenon 的 `std` 前提之上。`std` 是无条件工程基线，不单独建模为 feature。
-
-并行与 SIMD 可以协同：worker 内允许使用 SIMD，不存在并行/SIMD 互斥规则。SIMD 分发入口 `dispatch_vector_binary_op` 返回 `bool`，`SimdElement` 为 sealed trait，所有并行入口必须携带 `_guard: ParallelGuard`。执行路径选择 `select_exec_path` 返回 `(ExecPath, Option<ParallelGuard>)`，并使用 `threshold = 0` sentinel 与 `saturating_mul` 处理规模计算。
+其中 `simd` 与 `parallel` 都建立在 Xenon 的 `std` 前提之上。`std` 是无条件工程基线，不单独建模为 feature。并行与 SIMD 可以协同：worker 内允许使用 SIMD，不存在并行/SIMD 互斥规则。
 
 ```toml
 [features]
@@ -931,38 +899,14 @@ rayon = { version = "1.10", optional = true }
 pulp = { version = "0.18", optional = true }
 ```
 
-### 10.3 条件编译 API 的文档标注（仅 `cfg(feature = "...")`，不使用 `doc(cfg)`）
+### 10.3 条件编译 API 的文档标注
 
-**重要约束（与 MSRV 1.85 stable 协同）：** Xenon **不**使用 `#[doc(cfg(...))]` 与配套的 `#[cfg_attr(docsrs, doc(cfg(...)))]` / `--cfg docsrs` 模式。原因：
-
-- `#[doc(cfg(...))]` 是 nightly-only attribute，受 `feature(doc_cfg)` 门控（rust-lang/rust#43781）。
-- 即便 docs.rs 设置 `--cfg docsrs`，只要 crate 没启用 `#![feature(doc_cfg)]`（而我们禁止任何 nightly `#![feature(...)]`，见下方），`#[cfg_attr(docsrs, doc(cfg(...)))]` 在 docsrs cfg 激活时会展开为 `#[doc(cfg(...))]`，触发 `error[E0658]: the doc(cfg) attribute is unstable`，破坏 docs.rs build。
-- 因此当前 MSRV 1.85 stable 模板**只**使用 `#[cfg(feature = "...")]`：这条属性是稳定 Rust 自带，按 feature 开关编译；rustdoc 也会按 cfg 自动隐藏未启用 feature 的条目，不依赖任何额外 doc 装饰。
-
-```rust,ignore
-/// Internal parallel execution backend marker.
-#[cfg(feature = "parallel")]
-pub(crate) trait ParallelBackend {
-    fn for_each<F>(&self, f: F)
-    where
-        F: Fn(usize) + Send + Sync;
-}
-```
-
-`Cargo.toml` 中**不**配置 `rustdoc-args = ["--cfg", "docsrs"]`；只保留 `all-features = true` 让 docs.rs 渲染所有可选 feature 文档：
+**重要约束：** Xenon **不**使用 `#[doc(cfg(...))]` 与配套的 `#[cfg_attr(docsrs, doc(cfg(...)))]` / `--cfg docsrs` 模式。`Cargo.toml` 中**不**配置 `rustdoc-args = ["--cfg", "docsrs"]`；只保留 `all-features = true` 让 docs.rs 渲染所有可选 feature 文档：
 
 ```toml
 [package.metadata.docs.rs]
 all-features = true
 ```
-
-**禁止**：
-
-- 在源代码中写 `#[doc(cfg(...))]` 或 `#[cfg_attr(docsrs, doc(cfg(...)))]`（nightly 属性，破坏 stable docs.rs build）。
-- 在 `lib.rs` 中写 `#![cfg_attr(docsrs, feature(doc_cfg))]` 或任何 `#![feature(...)]` crate-level gate——这会破坏 stable 1.85 编译。详见 `01-architecture.md §4 / §8` 的禁用说明。
-- 在 `Cargo.toml` 中写 `rustdoc-args = ["--cfg", "docsrs"]`——单独这一条不会破坏 build，但只有配合 `feature(doc_cfg)` 才有意义；保留它会误导后续维护者添加上述被禁的 `doc(cfg)` 装饰。
-
-如果未来希望恢复 `doc(cfg)` 美化标注（需要 nightly），必须先升 MSRV 至 nightly 并启用 `feature(doc_cfg)`，作为独立设计决策评审通过。
 
 ---
 
@@ -975,12 +919,6 @@ all-features = true
 | 单 crate   | 保持单 crate 边界，不引入额外 crate                              |
 | SemVer     | 遵循 SemVer，公开 API 变更须同步版本号                           |
 | 最小依赖   | 仅允许 `rayon`（并行）和 `pulp`（SIMD）作为可选外部依赖，默认关闭 |
-
-布局实现使用 `LayoutState::{FContiguous, NonContiguous, BroadcastView}`。`HAS_ZERO_STRIDE` 仅表示广播零步长；步长与布局标志分别通过 `compute_f_strides`、`compute_layout_flags` 计算。
-
-维度实现保持 `IxDyn::RemoveAxis<Smaller = IxDyn>`；`BroadcastDim` 兼容矩阵保持 57 项。集合运算（如 `unique`）输出顺序未定义——实现可任选 first-occurrence、HashMap iteration 等，测试不得依赖特定顺序，仅可断言 multiset / set 等价（详见 `14-set.md v2.0.2 §11 决策 4`，与 `需求说明书 §15` 一致）。数学比较 API 命名为 `equal`、`not_equal`、`less`、`greater`。矩阵模块不使用 `as_ix1_view` 私有桥接。
-
-切片描述 `SliceInfo::new` 仅做结构性校验，不进行张量形状依赖校验。
 
 ---
 
