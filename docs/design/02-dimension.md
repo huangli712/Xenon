@@ -653,13 +653,14 @@ impl RemoveAxis for IxDyn {
 
 `Sealed` 模式封闭以下 trait 的下游实现集：`Dimension`、`Element`、`CastElement`、`Storage` 体系等。封闭的可靠性依赖**模块可见性**：
 
-- `private` 模块**必须**声明为 `pub(crate) mod private;`（或更受限），**不得**为 `pub mod private;`
+- `private` 模块必须声明为 `pub(crate) mod private;`（或更受限），不得为 `pub mod private;`
 - 若 `private` 是 `pub mod`，外部 crate 可以 `use crate::private::Sealed` 并为自己的类型实现 `Sealed`，从而绕过封闭语义
-- `Sealed` trait 自身保留 `pub trait Sealed {}`，因为它需在 `pub trait Dimension: Sealed` 等公开 trait 的 supertrait 位置出现（`pub trait` 的 supertrait 必须公开可命名）；通过外层模块的 `pub(crate)` 限制阻止外部命名
+- `Sealed` trait 自身保留 `pub trait Sealed {}`，因为它需在 `pub trait Dimension: Sealed` 等公开 trait 的 supertrait 位置出现
+- 通过外层模块的 `pub(crate)` 限制阻止外部命名
 
 ```rust,ignore
 // src/lib.rs
-pub(crate) mod private;  // 关键：必须为 pub(crate) 或更受限
+pub(crate) mod private;
 
 // src/private.rs
 pub trait Sealed {}
@@ -674,11 +675,9 @@ impl Sealed for Ix6 {}
 impl Sealed for IxDyn {}
 ```
 
-实现期校验：`28-tests.md` §5.21 须包含一个 compile-fail 测试用例，验证外部代码无法通过 `use crate::private::Sealed` 路径名命名 `Sealed` trait（即 `private` 模块对外不可见）。
-
 ### 5.10 BroadcastDim trait
 
-`BroadcastDim<Other>` 用于编译期计算两个维度类型广播后的输出维度类型。该 trait 定义在 `dimension` 模块中，由广播/运算符重载层消费（参见 `11-math.md`、`15-broadcast.md` 与 `19-overload.md`）。本节仅是类型级输出维度的权威 owner；运行时形状兼容性、错误路径与广播结果形状以 `15-broadcast.md` 为准。
+`BroadcastDim<Other>` 用于编译期计算两个维度类型广播后的输出维度类型。该 trait 定义在 `dimension` 模块中，由广播/运算符重载层消费。本节仅是类型级输出维度的权威 owner；运行时形状兼容性、错误路径与广播结果形状以 `15-broadcast.md` 为准。
 
 **实现建议：**
 
@@ -689,10 +688,10 @@ impl Sealed for IxDyn {}
   - `IxDyn` + 任意：1 个泛型 `impl<D: Dimension> BroadcastDim<D> for IxDyn`（同时覆盖 `IxDyn + IxN` 和 `IxDyn + IxDyn`）
 - 建议使用声明宏（`macro_rules!`）生成这些实现，避免手工编写导致的遗漏和错误。宏生成后须通过 compile-fail 测试验证全覆盖。
 - `BroadcastDim` 必须是公开 sealed trait，以保证 `math` / `broadcast` / `overload` 的公开签名与 trait bound 可命名；公开仅限命名和使用 crate 内既有实现，仍禁止外部实现。
-- 跨静态维度广播（如 `Ix2 + Ix1`）时，输出类型为维度数较大的静态类型（`Ix2`）。这遵循 NumPy 广播规则：低维数组在左侧补 1，结果维度数 = max(ndim_a, ndim_b)。
+- 跨静态维度广播（如 `Ix2 + Ix1`）时，输出类型为维度数较大的静态类型（`Ix2`）。
 - 运行时兼容性由 `broadcast_shape()` 在调用处验证。
 - 与 `IxDyn` 混合时始终返回 `IxDyn` 以保证类型安全。
-- **对称性保证（消除双向 bound 风险）：** 对任意 `D, E ∈ {Ix0..Ix6, IxDyn}`，`<D as BroadcastDim<E>>::Output == <E as BroadcastDim<D>>::Output`。该不变量由本节给出的实现矩阵直接保证（同 rank 返回自身、跨 rank 返回较大 rank、含 `IxDyn` 一律返回 `IxDyn`），下游 `broadcast_with` 等需要 `D: BroadcastDim<E, Output=O>` 与 `E: BroadcastDim<D, Output=O>` 同时成立的双向 bound 在所有支持组合下均可被类型系统证明。该对称性必须通过 compile-time 类型等价测试覆盖（每个组合一例）。
+- **对称性保证：** 对任意 `D, E ∈ {Ix0..Ix6, IxDyn}`，`<D as BroadcastDim<E>>::Output == <E as BroadcastDim<D>>::Output`。该不变量由本节给出的实现矩阵直接保证（同 rank 返回自身、跨 rank 返回较大 rank、含 `IxDyn` 一律返回 `IxDyn`），下游 `broadcast_with` 等需要 `D: BroadcastDim<E, Output=O>` 与 `E: BroadcastDim<D, Output=O>` 同时成立的双向 bound 在所有支持组合下均可被类型系统证明。该对称性必须通过 compile-time 类型等价测试覆盖（每个组合一例）。
 
 ```rust,ignore
 /// Trait for computing the output dimension type when broadcasting two arrays.
@@ -716,7 +715,7 @@ impl BroadcastDim<Ix5> for Ix5 { type Output = Ix5; }
 impl BroadcastDim<Ix6> for Ix6 { type Output = Ix6; }
 
 // Cross-static-dimension broadcast: higher-dimensional type wins.
-// NumPy rule: prepend 1s to the shorter shape, then broadcast element-wise.
+// Numpy rule: prepend 1s to the shorter shape, then broadcast element-wise.
 // The output ndim = max(ndim_a, ndim_b), so the larger static type is Output.
 // Runtime compatibility is verified by broadcast_shape() at the call site.
 impl BroadcastDim<Ix0> for Ix1 { type Output = Ix1; }
@@ -889,7 +888,7 @@ impl Reverse for IxDyn {
 ```
 
 - 当前版本的形状操作只包含 `transpose()`。维度层保留 `PermuteAxes` 作为内部泛化能力，但公开 `transpose()` 契约当前仅承诺默认的轴反转（reverse-axis transpose）；显式轴置换保留为后续版本扩展，不构成当前版本公开 API 承诺。参见 `需求说明书 §17` 与 `16-shape.md §5.1.1`。
-- **对静态维度 `Ix0`..`Ix6`，`PermuteAxes` 若实现，仍属于内部辅助能力；当前版本公开 `transpose()` 由 `16-shape.md` 定义，不把通用显式轴置换提升为规范性 API。其生成签名模式可写为：`impl PermuteAxes for Ix3 { fn permuted_axes(&self, permutation: &[Axis]) -> Result<Ix3, XenonError>; }`，更高/更低静态维度按同一模板展开。
+- 对静态维度 `Ix0`..`Ix6`，`PermuteAxes` 若实现，仍属于内部辅助能力；当前版本公开 `transpose()` 由 `16-shape.md` 定义，不把通用显式轴置换提升为规范性 API。其生成签名模式可写为：`impl PermuteAxes for Ix3 { fn permuted_axes(&self, permutation: &[Axis]) -> Result<Ix3, XenonError>; }`，更高/更低静态维度按同一模板展开。
 - 对 `IxN` 的 `PermuteAxes` 实现，输入 `permutation` 的长度必须恰好等于 `N`，并且必须是 `0..N-1` 上的双射；任何越界轴、重复轴或缺失轴都统一返回 `XenonError::InvalidAxis`，不引入额外错误类别。
 - `BroadcastDim`、静态 `PermuteAxes` 等宏生成实现应至少通过三类测试覆盖：成功路径（每个静态 rank 至少一例）、compile-fail 边界（非法 rank/非法输入不暴露实现）、以及文档/trait 矩阵核对，防止某个 rank 在宏展开中遗漏。
 
