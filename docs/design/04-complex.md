@@ -4,14 +4,10 @@
 > 模块目录: src/complex/
 > 任务阶段: Phase 1
 > 前置文档: 00-coding.md, 01-architecture.md
-> 需求参考: 需求说明书 §4、§5、§12 - §15、§23 - §25、§28
-> 范围声明: 范围内
 
 ---
 
 ## 1. 模块定位
-
-**协同基线（v2.0.4）**：本文档以下游已修文档为准——03-element v1.4.1（`Element` / `Numeric` / `ComplexScalar` / `CastTo<T>` trait / `CastElement` sealed marker；**`ElementType` 权威定义在 `crate::element`**（即 `03-element.md §5.1.1`，**不**是本 04-complex 文档），`#[non_exhaustive]` + `#[repr(u8)]`；`Element::ELEMENT_TYPE_NAME: &'static str` 关联常量；提供 `ElementType::name()` inherent + `element_type_of` / `element_type_name_of` 自由函数；v1.4.1 起 §5.9.2 提供 6×6 转换矩阵 Tier 索引表）、21-type v2.1.2（B10.a：静态无损 `From` / 静态有损 + 动态条件性 `CastTo` 三层结构 + CastElement owner；错误字段 `source_type` / `target_type` 改用 `&'static str`）、26-error v3.3.1（`XenonError::TypeConversion` 五字段；`source_type` / `target_type` 改为 `&'static str`；error 模块**不**持有 `ElementType` 枚举；自 v3.3.0 起 enum 标 `#[non_exhaustive]`）。本文档不重复定义这些类型，仅在引用时遵循其权威字段。
 
 ### 1.1 职责边界
 
@@ -25,8 +21,8 @@
 | 实数构造     | `From<T> for Complex<T>` 的显式标量构造                                          |
 | 混合运算边界 | `Complex<T> op Complex<T>` 前须先完成显式构造                                    |
 | 格式化输出   | Display（`"a+bj"` / `"a-bj"`）, Debug                                            |
-| 双字段 C 布局基础 | `#[repr(C)]` + 编译期静态断言                                                |
-| 类型转换语义       | 定义 `Complex<f32>↔Complex<f64>`, `f32/f64→Complex`, `i32/i64→Complex` 的语义边界 |
+| 双字段 C 布局基础 | `#[repr(C)]` + 编译期静态断言                                               |
+| 类型转换语义 | 定义 `Complex<f32>↔Complex<f64>`, `f32/f64→Complex`, `i32/i64→Complex` 的语义边界|
 
 | 职责              | 不包含                                                               |
 | ----------------- | -------------------------------------------------------------------- |
@@ -105,7 +101,7 @@ src/convert/
 | `core::ops`  | `Add`, `Sub`, `Mul`, `Div`, `Neg`（算术运算）            |
 | `core::fmt`  | `Debug`, `Display`（格式化输出）                         |
 | `core::cmp`  | `PartialEq`（相等比较）                                  |
-| `convert/`   | 作为 `CastTo<T>`（trait 定义在 `element` 模块，参见 `03-element.md §5.9`）/ `XenonError::TypeConversion`（参见 `26-error.md v3.2.0 §5.1`，`source_type` / `target_type` 字段为 `&'static str`）/ `ConversionFailureReason`（封闭枚举：`LossyIntegerNarrowing` / `LossyFloatNarrowing` / `FloatToInteger` / `IntegerToFloatPrecisionLoss` / `NonZeroImaginaryPart`）的 owner 承载复数相关转换实现。错误构造点使用 `<A as Element>::ELEMENT_TYPE_NAME`（如 `<Complex<f64> as Element>::ELEMENT_TYPE_NAME == "Complex<f64>"`）填充 `source_type` / `target_type` |
+| `convert/`   | 作为 `CastTo<T>` / `XenonError::TypeConversion` / `ConversionFailureReason` 的 owner 承载复数相关转换实现。|
 
 ### 4.3 依赖合法性
 
@@ -117,7 +113,7 @@ src/convert/
 
 ### 4.4 依赖方向声明
 
-**依赖方向**：核心内聚、单向向下。`complex/` 仅依赖项目内基础模块 `private` 与 `core`，不依赖其他上层业务模块；类型转换实现入口由 `convert/` owner 承载。
+依赖方向：核心内聚、单向向下。`complex/` 仅依赖项目内基础模块 `private` 与 `core`，不依赖其他上层业务模块；类型转换实现入口由 `convert/` owner 承载。
 
 ---
 
