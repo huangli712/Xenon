@@ -4,8 +4,6 @@
 > 模块目录: src/error.rs
 > 任务阶段: Phase 1
 > 前置文档: 01-architecture.md, 07-tensor.md, 21-type.md
-> 需求参考: 需求说明书 §8、§12 - §28
-> 范围声明: 范围内
 
 ---
 
@@ -72,16 +70,14 @@ src/error.rs
 └── alloc::vec::Vec             # Heap allocation for shape, index fields
 ```
 
-**`ElementType` 不在本模块定义（v3.2.0 起回到 `crate::element`，详见 `03-element.md §5.1.1`）**。`error` 模块持有所有错误状态所需类型信息时使用 `&'static str`（值由 `Element::ELEMENT_TYPE_NAME` 关联常量提供），而**不**持有 `ElementType` 枚举字段。这保持 `error`（L0）严格不依赖 `element`（L2），同时通过字符串字面量让 error 仍能完整 `Display` 类型诊断信息——L0..L6 单向依赖严格成立。
-
 ### 4.2 类型级依赖
 
-| 来源                  | 使用的类型/trait                                                              |
-| --------------------- | ----------------------------------------------------------------------------- |
-| `core::fmt`           | `Display`, `Formatter`, `fmt::Result`（`Display` 实现）                       |
-| `alloc::borrow`       | `Cow<'static, str>`（仅用于 `operation` 等稳定标识符字符串）                  |
-| `alloc::boxed`        | `Box<XenonError>`（`Ffi` / `Workspace` 变体的 `cause` 源链字段；递归枚举不能直接包含自身，`Box` 用固定大小指针打断无限大小递归） |
-| `alloc::vec`          | `Vec<usize>`（`shape`、`attempted_index` 等字段）                             |
+| 来源                  | 使用的类型/trait                                                  |
+| --------------------- | ----------------------------------------------------------------- |
+| `core::fmt`           | `Display`, `Formatter`, `fmt::Result`（`Display` 实现）           |
+| `alloc::borrow`       | `Cow<'static, str>`（仅用于 `operation` 等稳定标识符字符串）      |
+| `alloc::boxed`        | `Box<XenonError>`（`Ffi` / `Workspace` 变体的 `cause` 源链字段）  |
+| `alloc::vec`          | `Vec<usize>`（`shape`、`attempted_index` 等字段）                 |
 
 无对其他 crate 内模块的依赖。
 
