@@ -517,7 +517,7 @@ L6  ┌───────────┐
 | ---------------- | :--: | :-------: | :---: | :------------: |
 | 基础张量操作     |  ✅  |    ✅     |  ✅   |       ✅       |
 | 视图/视图可变    |  ✅  |    ✅     |  ✅   |       ✅       |
-| Shared 存储       |  ✅  |    ✅     |  ✅   |       ✅       |
+| Shared 存储      |  ✅  |    ✅     |  ✅   |       ✅       |
 | 迭代器           |  ✅  |    ✅     |  ✅   |       ✅       |
 | 逐元素非数学运算 |  ✅  |    ✅     |  ✅   |       ✅       |
 | 逐元素数学函数   |  ✅  |    ✅     |  ✅   |       ✅       |
@@ -533,12 +533,6 @@ L6  ┌───────────┐
 ---
 
 ## 7. prelude.rs 导出清单
-
-> **§7 vs §10 职责区分（v2.0.1 导引）：**
->
-> - **§7（本节）** 是 `src/prelude.rs` 的 **类型/trait re-export 清单**，回答"`use xenon::prelude::*;` 后用户能直接命名哪些类型与 trait"。它面向"如何把 API 暴露给调用方"。
-> - **§10** 是 **公开方法 / 自由函数 API 权威清单**，按操作族列出 `TensorBase` 固有方法、自由函数、错误契约、双入口策略。它面向"调用方实际能调用哪些 API"。
-> - 两节互补：§7 决定哪些**名字**可见，§10 决定哪些**操作**可调用。跨文档引用 API 清单时应引 §10 而非 §7。
 
 以下为当前实现组织建议，不属于 `需求说明书 §27` 的稳定 API 承诺。
 
@@ -562,8 +556,6 @@ pub use crate::dimension::{
     IxDyn,
     Axis,
 };
-
-// Layout helpers stay module-scoped and are not re-exported by prelude.
 
 // Element traits
 pub use crate::element::{
@@ -595,16 +587,6 @@ pub use crate::construct::{
 //!
 //! A Rust N-dimensional array library for scientific computing.
 
-// NOTE: We deliberately do NOT enable `feature(doc_cfg)` here. That feature
-// is nightly-only and would break MSRV 1.85 stable builds (and any cargo doc
-// invocation on stable). Feature-gated items below use plain
-// `#[cfg(feature = "...")]` to be hidden from non-feature builds; we also
-// do NOT use `#[doc(cfg(...))]` or `#[cfg_attr(docsrs, doc(cfg(...)))]`
-// (both require nightly `feature(doc_cfg)`; see `00-coding.md §10.3`).
-// docs.rs renders feature-gated items via `all-features = true` only; if
-// richer "this item requires feature X" badges become required later, the
-// right path is to bump MSRV to nightly and enable `feature(doc_cfg)` as
-// an independent design decision, not to add `doc(cfg)` decorations here.
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
 #![warn(rust_2024_compatibility)]
@@ -639,14 +621,8 @@ pub mod format;
 pub mod ffi;
 pub mod workspace;
 
-// Conditional modules — only `#[cfg(feature = "...")]`, no `doc(cfg)`
-// decorations (see `00-coding.md §10.3`: `doc(cfg)` is nightly-only).
 #[cfg(feature = "simd")]
 pub(crate) mod simd;
-
-// `simd` remains a feature-gated internal backend module; concrete SIMD
-// traits, kernels, and ISA detection details stay `pub(crate)` or
-// `#[doc(hidden)]` implementation details.
 
 #[cfg(feature = "parallel")]
 pub(crate) mod parallel;
@@ -672,7 +648,7 @@ pub use error::XenonError;
 | `private`        | 不稳定 | 内部模块，随时可能变更                           |
 | `dispatch`       | 不稳定 | 内部模块，随时可能变更                           |
 | `#[doc(hidden)]` | 不稳定 | 仅供内部使用                                     |
-| `simd`           | 不稳定 | SIMD 加速对用户透明，但是`simd` 非公开模块       |
+| `simd`           | 不稳定 | SIMD 加速对用户透明，但是`simd` 非公开模块 API   |
 | `parallel`       | 不稳定 | 并行加速对用户透明，但是`parallel`非公开模块 API |
 
 ---
@@ -681,11 +657,11 @@ pub use error::XenonError;
 
 Xenon 的公开 API 以 `TensorBase` 固有方法为主。以下按类别列出所有公开方法及对应模块文档。
 
-### 10.1 逐元素数学（参见 `11-math.md`）
+### 10.1 逐元素数学
 
 | 方法 | 暴露方式 | 说明 |
 | ---- | -------- | ---- |
-| `add` | `TensorBase` 固有方法 | 元素级加法（另可通过 `+` 运算符；参见 `19-overload.md`） |
+| `add` | `TensorBase` 固有方法 | 元素级加法（另可通过 `+` 运算符） |
 | `sub` | `TensorBase` 固有方法 | 元素级减法（另可通过 `-` 运算符） |
 | `mul` | `TensorBase` 固有方法 | 元素级乘法（另可通过 `*` 运算符） |
 | `div` | `TensorBase` 固有方法 | 元素级除法（另可通过 `/` 运算符） |
@@ -699,25 +675,25 @@ Xenon 的公开 API 以 `TensorBase` 固有方法为主。以下按类别列出�
 | `ln` | `TensorBase` 固有方法 | 逐元素自然对数 |
 | `floor` | `TensorBase` 固有方法 | 逐元素向下取整 |
 | `ceil` | `TensorBase` 固有方法 | 逐元素向上取整 |
-| `modulus` | `TensorBase` 固有方法 | 逐元素取模（**仅 Complex 张量**，返回实数类型；参见 `11-math.md §5.6`） |
-| `conjugate` | `TensorBase` 固有方法 | 逐元素共轭（**仅 Complex 张量**；权威定义见 `11-math.md §5.6` —— 不为实数张量提供 `conjugate()` 公开入口，泛型代码若需统一处理可直接调用 `Numeric::conjugate()` 标量级 trait 方法） |
+| `modulus` | `TensorBase` 固有方法 | 逐元素取模（**仅 Complex 张量**，返回实数类型） |
+| `conjugate` | `TensorBase` 固有方法 | 逐元素共轭（**仅 Complex 张量**） |
 
-### 10.2 逐元素比较（参见 `11-math.md`）
+### 10.2 逐元素比较
 
 | 方法 | 暴露方式 | 说明 |
 | ---- | -------- | ---- |
-| `equal` | `TensorBase` 固有方法 | 逐元素等于比较（返回 `Tensor<bool, D>`） |
+| `equal` | `TensorBase` 固有方法 | 逐元素等于比较 |
 | `not_equal` | `TensorBase` 固有方法 | 逐元素不等于比较 |
 | `less` | `TensorBase` 固有方法 | 逐元素小于比较 |
 | `greater` | `TensorBase` 固有方法 | 逐元素大于比较 |
 
-### 10.3 布尔操作（参见 `11-math.md`）
+### 10.3 布尔操作
 
 | 方法 | 暴露方式 | 说明 |
 | ---- | -------- | ---- |
 | `not` | `TensorBase` 固有方法 | 仅 `bool` 张量可用，逐元素逻辑非 |
 
-### 10.4 标量算术（参见 `11-math.md`）
+### 10.4 标量算术
 
 | 方法 | 暴露方式 | 说明 |
 | ---- | -------- | ---- |
@@ -726,7 +702,7 @@ Xenon 的公开 API 以 `TensorBase` 固有方法为主。以下按类别列出�
 | `mul_scalar` | `TensorBase` 固有方法 | 张量 * 标量 |
 | `div_scalar` | `TensorBase` 固有方法 | 张量 / 标量 |
 
-### 10.5 标量比较（参见 `11-math.md`）
+### 10.5 标量比较
 
 | 方法 | 暴露方式 | 说明 |
 | ---- | -------- | ---- |
@@ -735,7 +711,7 @@ Xenon 的公开 API 以 `TensorBase` 固有方法为主。以下按类别列出�
 | `less_scalar` | `TensorBase` 固有方法 | 逐元素与标量比较小于 |
 | `greater_scalar` | `TensorBase` 固有方法 | 逐元素与标量比较大于 |
 
-### 10.6 归约（参见 `13-reduction.md`）
+### 10.6 归约
 
 | 方法 | 暴露方式 | 说明 |
 | ---- | -------- | ---- |
@@ -743,7 +719,7 @@ Xenon 的公开 API 以 `TensorBase` 固有方法为主。以下按类别列出�
 | `sum_axis` | `TensorBase` 固有方法 | 沿指定轴归约并移除该轴（要求 `D: RemoveAxis`） |
 | `sum_axis_keepdims` | `TensorBase` 固有方法 | 沿指定轴归约并保留长度为 1 的轴 |
 
-### 10.7 形状变换（参见 `16-shape.md`）
+### 10.7 形状变换
 
 | 方法 | 暴露方式 | 说明 |
 | ---- | -------- | ---- |
@@ -758,7 +734,7 @@ Xenon 的公开 API 以 `TensorBase` 固有方法为主。以下按类别列出�
 | `fill` | `TensorBase` 固有方法 | 仅 `TensorViewMut` / 可变存储路径可调用 |
 | `try_fill` | `TensorBase` 固有方法 | 带错误检查的填充操作（参见 `20-utility.md`） |
 
-### 10.9 类型转换（参见 `21-type.md`）
+### 10.9 类型转换
 
 | 方法 | 暴露方式 | 说明 |
 | ---- | -------- | ---- |
@@ -773,13 +749,13 @@ Xenon 的公开 API 以 `TensorBase` 固有方法为主。以下按类别列出�
 | `unique` | `TensorBase` 固有方法 | 集合操作直接从张量实例触发 |
 | `iter` / `axis_iter` | `TensorBase` 固有方法 | 迭代器入口保持实例方法风格 |
 
-### 10.11 输出（参见 `22-output.md`）
+### 10.11 输出
 
 | 方法 | 暴露方式 | 说明 |
 | ---- | -------- | ---- |
 | `display_with` | `TensorBase` 固有方法 | 带格式化选项的张量显示（精度、宽度等） |
 
-### 10.12 FFI（参见 `23-ffi.md`）
+### 10.12 FFI
 
 | 方法 | 暴露方式 | 说明 |
 | ---- | -------- | ---- |
@@ -790,7 +766,7 @@ Xenon 的公开 API 以 `TensorBase` 固有方法为主。以下按类别列出�
 | `try_offset_of` | `TensorBase` 固有方法 | 安全计算多维索引的线性偏移 |
 | `try_ptr_at` | `TensorBase` 固有方法 | 获取指定位置元素的原始指针 |
 
-### 10.13 连续性与内存管理（参见 `20-utility.md`）
+### 10.13 连续性与内存管理
 
 | 方法 | 暴露方式 | 说明 |
 | ---- | -------- | ---- |
