@@ -333,14 +333,9 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
     // Sealed is already inherited via Element (which Numeric extends),
     // but listed here for defensive clarity — makes the sealed intent explicit
     // at each trait level.
+    
     // ========== Math functions ==========
     fn abs(self) -> Self;
-    /// Returns the standard-library sign of the value.
-    ///
-    /// Finite non-NaN inputs return `1.0` or `-1.0`; specifically,
-    /// `signum(+0.0) == 1.0`, `signum(-0.0) == -1.0`,
-    /// `signum(+∞) == 1.0`, `signum(-∞) == -1.0`, and
-    /// `signum(NaN) == NaN`.
     fn signum(self) -> Self;
     fn sqrt(self) -> Self;
     fn sin(self) -> Self;
@@ -393,10 +388,6 @@ pub trait ComplexScalar: Numeric + Sealed {
 
 ```rust,ignore
 /// Ordered comparison element trait.
-///
-/// Publicly exposed for the `lt` / `gt` comparison API in the math module,
-/// while remaining sealed so only Xenon's supported ordered element types can
-/// implement it.
 pub trait OrderedCompareElement: Element + PartialOrd + Sealed {}
 
 impl OrderedCompareElement for i32 {}
@@ -441,7 +432,7 @@ impl BoolElement for bool {}
 - 不支持 `usize`、u8/u16/u32/i8/i16 等其他整数类型。
 - `usize` 仅作为索引和形状元数据使用。
 
-**按运算的元素类型可用矩阵：** 以下表格汇总各运算模块支持的元素类型。个别运算因数学语义限制（如有序比较对复数无定义）仅支持子集。**权威定义仍以各运算模块文档为准**，本表仅作为单点查询与 sealed trait 实现一致性核对的参考；每行的“权威文档”列必须保留对应 owner 链接。
+**按运算的元素类型可用矩阵：** 以下表格汇总各运算模块支持的元素类型。个别运算因数学语义限制（如有序比较对复数无定义）仅支持子集。权威定义仍以各运算模块文档为准，本表仅作为单点查询与 sealed trait 实现一致性核对的参考；每行的“权威文档”列必须保留对应 owner 链接。
 
 | 运算 | i32 | i64 | f32 | f64 | Complex<f32> | Complex<f64> | bool | 权威文档 |
 | ----------- | :-: | :-: | :-: | :-: | :----------: | :----------: | :--: | -------- |
@@ -507,7 +498,7 @@ pub trait CastTo<T: Element>: Element {
 - 类型转换错误载荷的完整定义见 `26-error.md §5.1`，`CastTo<T>` 的转换矩阵与实现约束见 `21-type.md §5.2`、`§6.1`。本节仅保留元素层 trait 骨架。
 - `CastTo<T>` 直接返回 `XenonError::TypeConversion`。
 - 类型参数 `T` 必须满足 `T: Element`，结合 `Self: Element` 的 sealed 边界，从 trait 层面把转换关系限制在 Xenon 封闭元素集合内。
-- `bool` 不出现为任何 `CastTo<T>` 的 *源类型*，也不出现为任何 `CastTo<T>` 的 *目标类型*；这两个方向都通过"不提供 impl"在编译期阻断（与 §6.1 决策一致）。
+- `bool` 不出现为任何 `CastTo<T>` 的 *源类型*，也不出现为任何 `CastTo<T>` 的 *目标类型*；这两个方向都通过"不提供 impl"在编译期阻断。
 - `Complex<T> -> Real` 的条件成功语义、受支持矩阵与 `XenonError::TypeConversion` 字段约束，统一以 `21-type.md §5.3`、`§6.1` 以及 `26-error.md §5.6` 为准。
 
 #### 5.9.1 CastElement marker trait
@@ -545,7 +536,7 @@ impl CastElement for Complex<f64> {}
 
 #### 5.9.2 转换矩阵 Tier 索引表
 
-本节给出 `CastElement` 6 种元素类型间 6×6 = 36 个 (源, 目标) 对的 **Tier 分类索引表**。本表 **仅作为 element 层 trait 设计的对照参考**，让 trait 设计者能快速判断每对类型的 trait 实现策略（是否需要 `CastTo<T>`、是否走 `From` / `ConvertTo` 静态分发、是否默认 `Err`）；**完整转换语义、错误条件、闭合规则等权威详细定义统一以 `21-type.md §5` / `§6` 为准**。
+本节给出 `CastElement` 6 种元素类型间 6×6 = 36 个 (源, 目标) 对的 **Tier 分类索引表**。本表 **仅作为 element 层 trait 设计的对照参考**，让 trait 设计者能快速判断每对类型的 trait 实现策略（是否需要 `CastTo<T>`、是否走 `From` / `ConvertTo` 静态分发、是否默认 `Err`）；完整转换语义、错误条件、闭合规则等权威详细定义统一以 `21-type.md §5` / `§6` 为准。
 
 **Tier 分类约定**（与 `21-type.md` 保持一致）：
 
