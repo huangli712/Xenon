@@ -106,9 +106,11 @@ src/element/
 
 ## 5. 公共 API 设计
 
-**sealed 约束说明**：以下所有公开 trait 均通过 `private::Sealed` 实现 sealed trait 模式，禁止下游 crate 为自定义类型实现这些 trait。元素类型集合为封闭集合，不支持外部扩展。
+以下所有公开 trait 均通过 `private::Sealed` 实现 sealed trait 模式，禁止下游 crate 为自定义类型实现这些 trait。元素类型集合为封闭集合，不支持外部扩展。
 
 ### 5.1 Element trait
+
+#### 5.1.1 基本定义
 
 ```rust,ignore
 /// Base trait for all tensor element types.
@@ -134,27 +136,15 @@ pub trait Element:
     /// Element type discriminant for FFI consumers.
     ///
     /// Maps Rust element types to a C-compatible enum discriminant at
-    /// compile time. `ElementType` is **owned by this module**
-    /// (authoritative definition below in §5.1.1) so that `error` (L0)
-    /// stays free of any element-trait dependency. `ffi` (L4) re-exports
-    /// `crate::element::ElementType` for C consumers — the C ABI surface
-    /// path is `crate::ffi::ElementType` (which equals
-    /// `crate::element::ElementType`).
+    /// compile time.
     const ELEMENT_TYPE: ElementType;
 
     /// Human-readable static name of this element type, e.g. "f32",
     /// "Complex<f64>".
     ///
-    /// This is the string form used in **error** diagnostics
-    /// (`XenonError::TypeConversion::source_type` /  `target_type`,
-    /// `AbiMismatchKind::ElementTypeMismatch::expected` / `actual`,
-    /// see `26-error.md §5.1`). Storing the static `&'static str` in
-    /// the `Element` trait — rather than carrying an `ElementType`
-    /// value into the error module — keeps `error` (L0) free of any
-    /// dependency on `element` (L2): error fields just hold
-    /// `&'static str` and Display them directly. The string values
-    /// here are the canonical Xenon names and **must** stay in sync
-    /// with `ElementType::name()` below.
+    /// This is the string form used in **error** diagnostics.
+    /// The string values here are the canonical Xenon names and
+    /// **must** stay in sync with `ElementType::name()` below.
     const ELEMENT_TYPE_NAME: &'static str;
 }
 ```
@@ -170,9 +160,7 @@ pub trait Element:
 | `Sync`      | 可跨线程共享引用（并行只读访问必需）   |
 | `Sealed`    | 防止外部类型实现                       |
 
-### 5.1.1 `ElementType` 枚举（权威定义；element 模块拥有）
-
-**v1.4.0 起，`ElementType` 的权威定义重新搬回 `crate::element`**（之前 v1.3.x 曾下沉到 `crate::error`，详见下方决策回滚说明）。`error` 模块**不再**直接持有 `ElementType` —— 它使用 `&'static str`（来自 `Element::ELEMENT_TYPE_NAME`）记录类型诊断信息，从而严格保持 `error`（L0）→ 不依赖任何上层模块。`ffi` 模块（L4）通过 `pub use crate::element::ElementType` re-export 暴露给 C 消费者。
+#### 5.1.2 `ElementType` 枚举
 
 ```rust,ignore
 // src/element/mod.rs (authoritative definition)
@@ -186,7 +174,7 @@ pub trait Element:
 ///
 /// `#[repr(u8)]` keeps the enum cheap to copy/hash and gives the FFI layer
 /// (see `23-ffi.md`) a stable single-byte tag. **Discriminant values ARE
-/// part of the public C ABI contract** (v1.4.0+): they are SemVer-pinned
+/// part of the public C ABI contract**: they are SemVer-pinned
 /// for `crate::ffi::ElementType` C consumers. Reordering existing variants
 /// or reusing existing values is a breaking change and requires a major
 /// version bump. Adding a new variant gets a new value and is non-breaking
@@ -238,7 +226,7 @@ impl ElementType {
     ///
     /// Equivalent to the free function `element_type_of::<A>()`. Provided
     /// for ergonomic call sites that prefer `ElementType::of::<f32>()`
-    /// over the free-function form. v1.4.0 onward.
+    /// over the free-function form.
     pub const fn of<A: Element>() -> Self {
         A::ELEMENT_TYPE
     }
@@ -269,7 +257,7 @@ pub const fn element_type_name_of<A: Element>() -> &'static str {
 }
 ```
 
-**Element impl 必须同时设置 `ELEMENT_TYPE` 与 `ELEMENT_TYPE_NAME`，且后者等于前者的 `.name()`：**
+Element impl 必须同时设置 `ELEMENT_TYPE` 与 `ELEMENT_TYPE_NAME`，且后者等于前者的 `.name()`：
 
 ```rust,ignore
 impl Element for f32 {
@@ -291,18 +279,6 @@ const _: () = {
     // string check happens in the runtime consistency test instead.
 };
 ```
-
-**设计决策（v1.4.0：ElementType owner 回到 element）：**
-
-| 项 | v1.3.x（已废弃） | v1.4.0（当前） |
-|:--|:--|:--|
-| `ElementType` 定义位置 | `crate::error` | `crate::element` |
-| `error` 字段类型 | `source_type: ElementType` | `source_type: &'static str` |
-| `error` 是否依赖 `element` | 不依赖（用 enum 自带 Display） | 不依赖（用 `&'static str` 自带 Display） |
-| FFI 字段 | `pub use crate::error::ElementType` | `pub use crate::element::ElementType` |
-| Element 关联常量 | `ELEMENT_TYPE` | `ELEMENT_TYPE` + 新增 `ELEMENT_TYPE_NAME` |
-
-回滚理由：v1.3.x 把 `ElementType` 下沉到 L0 是为了让 error 模块能直接 Display 类型名；但这同时让"元素类型枚举"在概念归属上离开了 element 模块，命名与所在位置出现张力（`Element::ELEMENT_TYPE` 关联常量类型却定义在 error）。v1.4.0 通过引入 `Element::ELEMENT_TYPE_NAME: &'static str` 让 error 直接持有用于 Display 的字符串，**两个目标同时达成**：error 不依赖 element + element 重新拥有 `ElementType` 类型。`element_type_of::<A>()` 仍是自由函数（不是 inherent impl），保留是因为它是 `pub const fn` 形态的便利入口；inherent impl 也可以现在加上（`impl ElementType { pub const fn of<A: Element>() -> Self { A::ELEMENT_TYPE } }`）因为类型定义已回 element 模块、Rust E0116 不再触发——v1.4.0 同时新增此 inherent 形式作为推荐入口（自由函数保留作为完全等价的别名供调用点选择）。
 
 ### 5.2 Numeric trait
 
