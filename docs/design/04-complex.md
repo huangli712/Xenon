@@ -210,12 +210,6 @@ impl<T: ComplexFloat> Complex<T> {
     pub fn im(self) -> T { self.im }
 
     /// Returns the complex conjugate: conj(a + bj) = a - bj.
-    ///
-    /// **Design note:** `Complex::conj()` is an inherent method returning `Self`
-    /// (the same complex type with negated imaginary part). Generic code should
-    /// use `Numeric::conjugate()` as the unified trait-level API; `ComplexScalar`
-    /// only carries complex-specific read capabilities such as `re`, `im`, and `norm`.
-    /// See `03-element.md` §5.2 / §5.4 for the trait layering details.
     #[inline]
     pub fn conj(self) -> Self {
         Self::new(self.re, -self.im)
@@ -412,7 +406,7 @@ let sum = z + rhs;
 ```
 
 - 当前版本不提供 `Complex<T> op T` 或 `T op Complex<T>` 便捷运算符。调用方若需要与实数混合运算，必须先通过显式 `From<T> for Complex<T>` 构造把实数提升为同元素类型的复数值，再参与 `Complex<T> op Complex<T>` 运算。
-- `From<T> for Complex<T>` 是当前版本**唯一**允许的显式标量构造路径，不存在通过运算符触发的隐式实数到复数转换。张量级场景中，双方元素类型必须预先一致（见 `需求说明书 §5`）；用户须先把实数显式构造成 `Complex<T>`，再参与张量运算。
+- `From<T> for Complex<T>` 是当前版本唯一允许的显式标量构造路径，不存在通过运算符触发的隐式实数到复数转换。张量级场景中，双方元素类型必须预先一致（见 `需求说明书 §5`）；用户须先把实数显式构造成 `Complex<T>`，再参与张量运算。
 
 ### 5.8 PartialEq 实现
 
@@ -433,9 +427,6 @@ impl<T: ComplexFloat> PartialEq for Complex<T> {
 ```rust,ignore
 impl<T: ComplexFloat + core::fmt::Display + PositiveZero> core::fmt::Display for Complex<T> {
     /// Formats as "a+bj", "a-bj", "a", "bj", or "0".
-    ///
-    /// `f.precision()` 若为 `Some(p)`，将 `p` 同时作用于 `re` 和 `im` 两个分量；
-    /// 若为 `None`，使用 Rust 的默认 `Display` 格式。
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         // Capture precision early so all branches are consistent.
         let prec = f.precision();
@@ -532,38 +523,38 @@ fn scalar_is_positive_zero<T: PositiveZero>(im: T) -> bool {
 
 ### 5.10 类型转换
 
-本节只保留语义矩阵。具体 `From` / `CastTo` 实现由 `convert/cast.rs` 统一承载。
+本节只保留语义矩阵。具体 `From` / `CastTo` 实现由 `src/convert/cast.rs` 统一承载。
 
-整数到复数的受支持路径按 `需求说明书 §23.1` 与 `需求说明书 §23.2` 的规则补充如下；这些路径**全部通过 `CastTo<T>` trait**（参见 `21-type.md v2.1.1 §11 决策 4 / B10.a`），**不通过 `From`**：
+整数到复数的受支持路径按 `需求说明书 §23.1` 与 `需求说明书 §23.2` 的规则补充如下。这些路径**全部通过 `CastTo<T>` trait**（参见 `21-type.md §11`），**不通过 `From`**：
 
 | 源类型 | 目标类型 | 路径 | 静态分类 | 默认行为 |
 |--------|----------|------|----------|----------|
 | `i32` | `Complex<f64>` | `i32::cast_to::<Complex<f64>>()` | 静态无损（实部 i32→f64） | 成功，虚部为 `0` |
-| `i32` | `Complex<f32>` | `i32::cast_to::<Complex<f32>>()` | 静态有损（实部 i32→f32 受 f32 mantissa 24 bit 限制） | 默认返回 `XenonError::TypeConversion { reason: ConversionFailureReason::IntegerToFloatPrecisionLoss, .. }`（B10.a：静态有损不做逐元素值域检查） |
-| `i64` | `Complex<f64>` | `i64::cast_to::<Complex<f64>>()` | 静态有损（实部 i64→f64 受 f64 mantissa 53 bit 限制） | 默认返回 `XenonError::TypeConversion { reason: ConversionFailureReason::IntegerToFloatPrecisionLoss, .. }`（B10.a：静态有损不做逐元素值域检查） |
-| `i64` | `Complex<f32>` | `i64::cast_to::<Complex<f32>>()` | 静态有损（实部 i64→f32 受 f32 mantissa 24 bit 限制） | 默认返回 `XenonError::TypeConversion { reason: ConversionFailureReason::IntegerToFloatPrecisionLoss, .. }`（B10.a：静态有损不做逐元素值域检查） |
+| `i32` | `Complex<f32>` | `i32::cast_to::<Complex<f32>>()` | 静态有损（实部 i32→f32 受 f32 mantissa 24 bit 限制） | 默认返回 `XenonError::TypeConversion` |
+| `i64` | `Complex<f64>` | `i64::cast_to::<Complex<f64>>()` | 静态有损（实部 i64→f64 受 f64 mantissa 53 bit 限制） | 默认返回 `XenonError::TypeConversion` |
+| `i64` | `Complex<f32>` | `i64::cast_to::<Complex<f32>>()` | 静态有损（实部 i64→f32 受 f32 mantissa 24 bit 限制） | 默认返回 `XenonError::TypeConversion` |
 
-其中语义遵循 `需求说明书 §23.2` 的闭合规则：先按对应实数类型到目标复数实部分量类型的规则转换实部，再引入值为 `0` 的虚部。当前版本不额外扩展 `需求说明书 §23.1` 之外的整数→复数组合。所有"静态有损"路径（如 i32→Complex<f32>、i64→Complex<f64>、i64→Complex<f32>）按 `21-type.md` B10.a 决策第二层语义无条件返回错误，**不做逐元素值域检查**；张量级 `cast()` 在循环过程中遇到该类路径会立即在第 0 个元素返回 `XenonError::TypeConversion`，并由调用入口注入 `operation` 与 `element_index: Some(0)`。
+其中语义遵循 `需求说明书 §23.2` 的闭合规则：先按对应实数类型到目标复数实部分量类型的规则转换实部，再引入值为 `0` 的虚部。当前版本不额外扩展 `需求说明书 §23.1` 之外的整数→复数组合。所有"静态有损"路径（如 i32→Complex<f32>、i64→Complex<f64>、i64→Complex<f32>）按 `21-type.md` 决策第二层语义无条件返回错误，**不做逐元素值域检查**；张量级 `cast()` 在循环过程中遇到该类路径会立即在第 0 个元素返回 `XenonError::TypeConversion`。
 
 - `Complex` 类型的逐元素类型转换统一由 `03-element.md` 定义的 `CastTo<T>` trait 管理，trait 定义位于 `element` 模块，具体实现归入 `convert/` 模块；本节不再单独定义张量级转换入口。`From` 仅用于**不可能失败且不丢失精度**的标量级构造或 widening：`From<T> for Complex<T>`（实数到同精度复数，虚部补 `0`）与 `From<Complex<f32>> for Complex<f64>`（分量无损 widening）。其中 `From<T> for Complex<T>` 是当前版本**唯一**允许的显式实数到复数标量构造路径。
 - `CastTo<T>` 直接返回 `XenonError::TypeConversion`。
 - 除上述 infallible 构造外，其余显式类型转换统一通过 `CastTo<T>` trait 实现（参见 `03-element.md` §5.9 和 `21-type.md`），包括 `Complex<f64> -> Complex<f32>`、`Complex<T> -> T` 以及其他跨精度/跨类型组合；其中有损窄化路径默认返回可恢复错误。
 - 禁止为任何可能失败或可能丢失精度的转换实现 `From`。这类转换必须走 `21-type.md` 定义的 `CastTo<T>`。
 
-复杂到实数的受支持路径同样受 `需求说明书 §23.1` 与 `需求说明书 §23.2` 约束，且统一由 `03-element.md` §5.9 定义的 `CastTo<T>` trait 作为唯一 owner；`complex/` 模块文档仅声明其语义，不重复定义独立转换入口。
+复数到实数的受支持路径同样受 `需求说明书 §23.1` 与 `需求说明书 §23.2` 约束，且统一由 `03-element.md §5.9` 定义的 `CastTo<T>` trait 作为唯一 owner；`complex/` 模块文档仅声明其语义，不重复定义独立转换入口。
 
 | 源类型 | 目标类型 | 语义 | 失败时的 `ConversionFailureReason` |
 |--------|----------|------|------------------------------------|
 | `Complex<f32>` | `f32` | 仅当虚部为 `0` 时返回实部（内层 f32→f32 无损） | 虚部非零 → `NonZeroImaginaryPart`              |
 | `Complex<f64>` | `f64` | 仅当虚部为 `0` 时返回实部（内层 f64→f64 无损） | 虚部非零 → `NonZeroImaginaryPart`              |
 | `Complex<f32>` | `f64` | 仅当虚部为 `0` 时返回实部（内层 f32→f64 静态无损 widening） | 虚部非零 → `NonZeroImaginaryPart`              |
-| `Complex<f64>` | `f32` | 虚部非零先返回错误；虚部为零后内层 f64→f32 仍是 B10.a 静态有损路径，**无条件**返回错误（不做实部值域检查） | 虚部非零 → `NonZeroImaginaryPart`；虚部为零 → `LossyFloatNarrowing`（B10.a 静态有损） |
-| `Complex<f32>` | `i32` | 虚部非零先返回错误；虚部为零后内层 f32→i32 是 B10.a 静态有损路径，**无条件**返回错误 | 虚部非零 → `NonZeroImaginaryPart`；虚部为零 → `FloatToInteger`（B10.a 静态有损） |
-| `Complex<f32>` | `i64` | 虚部非零先返回错误；虚部为零后内层 f32→i64 是 B10.a 静态有损路径，**无条件**返回错误 | 虚部非零 → `NonZeroImaginaryPart`；虚部为零 → `FloatToInteger`（B10.a 静态有损） |
-| `Complex<f64>` | `i32` | 虚部非零先返回错误；虚部为零后内层 f64→i32 是 B10.a 静态有损路径，**无条件**返回错误 | 虚部非零 → `NonZeroImaginaryPart`；虚部为零 → `FloatToInteger`（B10.a 静态有损） |
-| `Complex<f64>` | `i64` | 虚部非零先返回错误；虚部为零后内层 f64→i64 是 B10.a 静态有损路径，**无条件**返回错误 | 虚部非零 → `NonZeroImaginaryPart`；虚部为零 → `FloatToInteger`（B10.a 静态有损） |
+| `Complex<f64>` | `f32` | 虚部非零先返回错误；虚部为零后内层 f64→f32 仍是 B10.a 静态有损路径，**无条件**返回错误（不做实部值域检查） | 虚部非零 → `NonZeroImaginaryPart`；虚部为零 → `LossyFloatNarrowing` |
+| `Complex<f32>` | `i32` | 虚部非零先返回错误；虚部为零后内层 f32→i32 是 B10.a 静态有损路径，**无条件**返回错误 | 虚部非零 → `NonZeroImaginaryPart`；虚部为零 → `FloatToInteger` |
+| `Complex<f32>` | `i64` | 虚部非零先返回错误；虚部为零后内层 f32→i64 是 B10.a 静态有损路径，**无条件**返回错误 | 虚部非零 → `NonZeroImaginaryPart`；虚部为零 → `FloatToInteger` |
+| `Complex<f64>` | `i32` | 虚部非零先返回错误；虚部为零后内层 f64→i32 是 B10.a 静态有损路径，**无条件**返回错误 | 虚部非零 → `NonZeroImaginaryPart`；虚部为零 → `FloatToInteger` |
+| `Complex<f64>` | `i64` | 虚部非零先返回错误；虚部为零后内层 f64→i64 是 B10.a 静态有损路径，**无条件**返回错误 | 虚部非零 → `NonZeroImaginaryPart`；虚部为零 → `FloatToInteger` |
 
-- `Complex -> Real` 的具体 `CastTo<T>` 实现同样位于 `convert/cast.rs`。`complex/` 仅保留 "虚部必须为 `0`；失败返回 `XenonError::TypeConversion { source_type, target_type, reason, element_index, operation }`" 这一语义约束，字段模型以 `26-error.md v3.2.0 §5.1`（变体定义）/ `§5.6`（结构化上下文要求）为准。`source_type` / `target_type` 字段类型为 `&'static str`（v3.2.0 起；值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供），不使用 `core::any::TypeId`。`ElementType` 枚举类型本身权威定义在 `crate::element`（详见 `03-element.md §5.1.1`），但**不**作为本错误字段的存储类型——error 模块通过字符串字面量记录类型诊断信息，避免 L0 反向依赖 element。
+- `Complex -> Real` 的具体 `CastTo<T>` 实现同样位于 `convert/cast.rs`。`complex/` 仅保留 "虚部必须为 `0`；失败返回 `XenonError::TypeConversion`" 这一语义约束，字段模型以 `26-error.md §5.1`（变体定义）/ `§5.6`（结构化上下文要求）为准。
 - `-0.0` 补充说明： 复数到实数转换对“虚部是否为零”的判断遵循 IEEE 754 比较语义；因此 `-0.0` 视为零，`Complex::new(3.0, -0.0)` 允许按虚部为零的路径继续转换，不应被误判为非零虚部。
 
 ### 5.11 内存布局静态断言
