@@ -4,8 +4,6 @@
 > 模块目录: src/dimension/
 > 任务阶段: Phase 1
 > 前置文档: 00-coding.md, 01-architecture.md
-> 需求参考: 需求说明书 §3, §11, §14, §16 - §18
-> 范围声明: 范围内
 
 ---
 
@@ -37,7 +35,7 @@
 | 形状元数据          | stride 元数据及其合法性判定                                 |
 | 内存分配            | 张量数据分配                                                |
 
-**内存分配边界说明：** 本模块只允许为 `IxDyn` 元数据和静态/动态维度转换进行少量 `Vec<usize>` 分配；张量元素缓冲区分配仍属于 storage / tensor 相关模块。
+本模块只允许为 `IxDyn` 元数据和静态/动态维度转换进行少量 `Vec<usize>` 分配；张量元素缓冲区分配仍属于 storage / tensor 相关模块。
 
 ### 1.2 设计原则
 
@@ -93,7 +91,7 @@ src/dimension/
 | `private` | `Sealed`（`Dimension` trait 的 supertrait）|
 | `std::borrow` | `Cow`（构造结构化错误的 `operation` 字段） |
 
-### 4.3 依赖合法性与新增依赖说明
+### 4.3 依赖合法性
 
 | 项目           | 结论                       |
 | -------------- | -------------------------- |
@@ -103,7 +101,7 @@ src/dimension/
 
 ### 4.4 依赖方向声明
 
-**依赖方向：单向向上。** `dimension/` 仅消费 `error` 和 `private`，不被它们反向依赖。
+依赖方向：单向向上。`dimension/` 仅消费 `error` 和 `private`，不被它们反向依赖。
 
 ---
 
@@ -173,34 +171,12 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
 }
 ```
 
-**公开面收缩说明：** `Dimension` 稳定公开面仅保留 `ndim`、`slice`、`checked_size`、`checked`、`into_dyn`、`try_from_dyn`、`try_from_slice` 与只读 `axis` 查询等核心契约。
+`Dimension` 稳定公开面仅保留 `ndim`、`slice`、`checked_size`、`checked`、`into_dyn`、`try_from_dyn`、`try_from_slice` 与只读 `axis` 查询等核心契约。
 
 ### 5.2 静态维度类型 Ix0-Ix6
 
 ```rust
 /// Sentinel upper bound for dynamic rank.
-///
-/// `usize::MAX` here means there is no artificial upper bound beyond `usize`
-/// representability and available memory; it is **not a practical max
-/// supported rank** and **must not** be used by callers as a `Vec` capacity
-/// hint, loop upper bound, or input validation ceiling. Doing so will at
-/// best be wrong (preallocating `usize::MAX` slots OOMs immediately) and at
-/// worst silently mask user input bugs.
-///
-/// Concrete guidance for callers:
-/// - To validate user-supplied rank, compare against the actual policy
-///   limit imposed by the consuming module (e.g. some operations only
-///   support rank ≤ 6 due to `Ix0..Ix6` static dispatch).
-/// - To allocate per-axis buffers, use the runtime rank (`shape.len()` /
-///   `dim.ndim()`), never `MAX_DIMENSION`.
-/// - To know "is this rank supported by Xenon at all", treat
-///   `MAX_DIMENSION` as `+∞` and rely on `usize` arithmetic checks +
-///   memory pressure instead.
-///
-/// (We keep the public name `MAX_DIMENSION` rather than renaming to
-/// `DYNAMIC_DIMENSION_SENTINEL` because the constant is referenced by
-/// downstream documentation and the sentinel meaning is clearly
-/// documented here.)
 pub const MAX_DIMENSION: usize = usize::MAX;
 
 /// Zero-dimensional (scalar) dimension. ZST.
@@ -262,7 +238,7 @@ pub struct Ix5(pub usize, pub usize, pub usize, pub usize, pub usize);
 pub struct Ix6(pub usize, pub usize, pub usize, pub usize, pub usize, pub usize);
 ```
 
-**编译期布局断言（v2.0.x，安全前提）：** `slice()` 通过指针 cast 将 `&Self` 重解释为 `&[usize; N]`，这一 unsafe 操作仅在每个 `IxN` 的 size、alignment、字段偏移与 `[usize; N]` 完全一致时成立。`#[repr(C)]` 给出语言级保证，但若未来重构误删 `#[repr(C)]`、改字段类型或插入填充，**runtime 不会产生任何信号**——编译器可能对 `&Self → &[usize; N]` 的 cast 做出基于错误布局假设的优化，导致 UB 静默引入。下面这块 `const _` 在编译期机械验证布局不变量，任何破坏立刻让 build 失败：
+**编译期布局断言：** `slice()` 通过指针 cast 将 `&Self` 重解释为 `&[usize; N]`，这一 unsafe 操作仅在每个 `IxN` 的 size、alignment、字段偏移与 `[usize; N]` 完全一致时成立。`#[repr(C)]` 给出语言级保证，但若未来重构误删 `#[repr(C)]`、改字段类型或插入填充，**runtime 不会产生任何信号**——编译器可能对 `&Self → &[usize; N]` 的 cast 做出基于错误布局假设的优化，导致 UB 静默引入。下面这块 `const _` 在编译期机械验证布局不变量，任何破坏立刻让 build 失败：
 
 ```rust,ignore
 // Compile-time layout assertions for the unsafe `slice()` casts in §5.4.
@@ -312,10 +288,6 @@ const _: () = {
     assert!(offset_of!(Ix6, 5) == 5 * size_of::<usize>());
 };
 ```
-
-注：`offset_of!(IxN, 0)` 用于元组结构体字段索引语法在 Rust 1.85+ 上稳定；若实现期 rustc 校验出语法不可用，需以 `core::ptr::addr_of!` 配合零值结构体的 const eval 等价等价物替换，但**绝不可** 降级为运行时检查——unsafe 前提必须由编译期保证。
-
-**说明：** `MAX_DIMENSION` 是哨兵值，表示动态维度类型 `IxDyn` 不设人工上限，而非表示系统支持的最大维度数。
 
 ### 5.3 Ix0 特殊语义
 
@@ -529,7 +501,7 @@ impl IntoDimension for [usize; 6] { type Dim = Ix6; /* ... */ }
 // Dynamic arrays remain explicitly dynamic via slices/Vec/IxDyn.
 ```
 
-**固定数组范围说明：** 固定数组 `[usize; N]` 当 `N > 6` 时须先转为切片或 `Vec`，再通过 `IxDyn` 构造。当前版本仅支持 `[usize; 0]` 到 `[usize; 6]` 的直接转换。
+固定数组 `[usize; N]` 当 `N > 6` 时须先转为切片或 `Vec`，再通过 `IxDyn` 构造。当前版本仅支持 `[usize; 0]` 到 `[usize; 6]` 的直接转换。
 
 ### 5.7 Axis 类型
 
