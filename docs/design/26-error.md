@@ -91,13 +91,7 @@ src/error.rs
 
 ### 4.4 依赖方向声明
 
-依赖方向：单向向上。`error.rs` 仅依赖标准库 / 核心库类型，不依赖任何 crate 内部模块——v3.2.0 起严格成立（v1.3.x 阶段曾引入对 `ElementType` 的 owner 关系并通过 re-export 维持下游路径稳定，v3.2.0 移除了这一耦合）。
-
-`error` 严格保持 L0 单向依赖（v3.2.0 起）：
-
-- 不向上引用 `element` / `complex` / 任何 L1+ 模块
-- `XenonError::TypeConversion` 与 `AbiMismatchKind::ElementTypeMismatch` 中的类型字段使用 `&'static str` 而非 `ElementType` 枚举（值来自 `Element::ELEMENT_TYPE_NAME`，由元素侧统一控制；详见 `03-element.md v1.4.0 §5.1.1`）
-- `ElementType` 枚举本身**不再**定义在本模块；其权威定义在 `crate::element`
+依赖方向：单向向上。`error.rs` 仅依赖标准库 / 核心库类型，不依赖任何 crate 内部模块。
 
 ---
 
@@ -111,15 +105,6 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt;
 
-// NOTE (v3.2.0): `ElementType` is **not** defined here.
-// Authoritative definition has moved (back) to `crate::element`
-// (see `03-element.md §5.1.1`). The `error` module records type-tag
-// information using `&'static str` instead — values come from
-// `<A as Element>::ELEMENT_TYPE_NAME`. This keeps `error` (L0) free
-// of any internal-module dependency while still giving `XenonError`
-// fully formed `Display` output (the strings are simply written
-// directly, without going through an enum).
-
 /// Unified recoverable error type for all public Xenon APIs.
 ///
 /// This enum is marked `#[non_exhaustive]`: downstream `match` expressions
@@ -127,55 +112,6 @@ use core::fmt;
 /// against the listed variants. This lets future Xenon versions add new
 /// top-level error categories (within the same SemVer major) without forcing
 /// a breaking change on every downstream `match`.
-///
-/// **SemVer policy (1.x baseline)**:
-///
-/// What `#[non_exhaustive]` on this top-level enum DOES allow within a
-/// minor version:
-/// - Adding a new top-level variant (e.g. a 14th category) is non-breaking
-///   because downstream `match` already requires a wildcard arm.
-///
-/// What `#[non_exhaustive]` on this top-level enum DOES NOT allow:
-/// - Adding a new field to an existing struct-style variant (e.g. adding
-///   `axis: Option<usize>` to `ShapeMismatch`) IS still a breaking change.
-///   Top-level `#[non_exhaustive]` does NOT propagate into individual
-///   variants. To allow non-breaking field growth on a specific variant,
-///   that variant itself would need a per-variant `#[non_exhaustive]`
-///   attribute (Rust supports this on struct-like variants); we do NOT
-///   apply that to current variants because their field sets are already
-///   stable.
-///
-/// What the inner sub-enums (`FfiErrorCategory`, `AbiMismatchKind`,
-/// `InvalidLayoutReason`, `InvalidShapeKind`, `WorkspaceErrorCategory`,
-/// `InvalidArgumentKind`) being `#[non_exhaustive]` DOES allow:
-/// - Adding a new variant inside any of those sub-enums is non-breaking
-///   (e.g. a new `FfiErrorCategory` for a future LAPACK backend, a new
-///   `WorkspaceErrorCategory` for a future borrow-state, or a new
-///   `InvalidArgumentKind` for a new operation family). This is
-///   independent of the top-level enum: top-level `#[non_exhaustive]`
-///   protects future categories at the `XenonError` level; sub-enum
-///   `#[non_exhaustive]` protects future categories within an existing
-///   `XenonError::Ffi { category, .. }` / `XenonError::Workspace
-///   { category, .. }` / `XenonError::InvalidArgument { kind, .. }`
-///   payload.
-///
-/// (Note: `WorkspaceErrorCategory` and `InvalidArgumentKind` were added
-/// to the `#[non_exhaustive]` set in v3.3.1 alongside the policy text
-/// correction; the original v3.3.0 release marked only the first four
-/// sub-enums.)
-///
-/// `FfiBackend` and `StorageKindTag` are intentionally left as closed
-/// enums (no `#[non_exhaustive]`); see their definitions for rationale
-/// (closed sets by design).
-///
-/// **Always-breaking changes** (require major bump):
-/// - Removing or renaming a top-level variant.
-/// - Removing or renaming a sub-enum variant.
-/// - Adding a new field to an existing variant (top-level OR sub-enum)
-///   that is NOT itself `#[non_exhaustive]`.
-/// - Changing the type or semantic meaning of an existing field.
-///
-/// See `01-architecture.md §13` decision 8 for the full rationale.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum XenonError {
@@ -194,12 +130,6 @@ pub enum XenonError {
     },
 
     /// Reserved for future BLAS/FFI layout validation.
-    /// No public API constructs this error in the current version.
-    /// The variant is exposed in the public enum for SemVer stability:
-    /// future BLAS/FFI integrations may construct it without an enum
-    /// breaking change. `required_layout` / `actual_layout` use a
-    /// stable enum-like vocabulary (e.g., `"f-contiguous"`,
-    /// `"non-contiguous"`, `"broadcast-view"`), not free-form messages.
     LayoutMismatch {
         operation: Cow<'static, str>,
         required_layout: Cow<'static, str>,
@@ -272,12 +202,6 @@ pub enum XenonError {
 
     TypeConversion {
         operation: Cow<'static, str>,
-        // `&'static str` rather than `ElementType` (v3.2.0): value should
-        // be the canonical name from `<A as Element>::ELEMENT_TYPE_NAME`
-        // (see `03-element.md §5.1.1`). Storing the string keeps `error`
-        // free of any dependency on `element`. Construction-site
-        // ergonomic: pass `<A as Element>::ELEMENT_TYPE_NAME` or
-        // `crate::element::element_type_name_of::<A>()`.
         source_type: &'static str,
         target_type: &'static str,
         reason: ConversionFailureReason,
@@ -290,7 +214,6 @@ pub enum XenonError {
 ///
 /// Marked `#[non_exhaustive]` to absorb future FFI-error categories without
 /// breaking downstream `match` exhaustiveness within the same major version
-/// (see `XenonError`'s SemVer policy doc above).
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum FfiErrorCategory {
@@ -337,16 +260,10 @@ pub enum FfiBackend {
 /// Detail kind for ABI mismatch / foreign allocator mismatch.
 ///
 /// Marked `#[non_exhaustive]` to allow new ABI mismatch kinds in future
-/// minor versions (e.g., when supporting additional FFI metadata
-/// validation).
+/// minor versions (e.g., when supporting additional FFI metadata validation).
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum AbiMismatchKind {
-    /// Element type tag mismatch (e.g. C side claims `f32` but Rust side
-    /// holds `f64`). Both fields are `&'static str` (v3.2.0): pass
-    /// `<A as Element>::ELEMENT_TYPE_NAME` for the Rust side and the
-    /// already-validated string from the FFI tag table for the C side.
-    /// See `23-ffi.md §10` for FFI-side construction ergonomics.
     ElementTypeMismatch { expected: &'static str, actual: &'static str },
     CapacityMismatch { expected: usize, actual: usize },
     AlignmentMismatch { expected: usize, actual: usize },
@@ -408,7 +325,7 @@ pub enum WorkspaceErrorCategory {
     /// bytes (always in BYTES). For typed-view `count * size_of::<T>()`
     /// overflows where `count` is in element units (not bytes), use
     /// `TypedViewRejection::TypedByteLengthOverflow` instead — see
-    /// `24-workspace.md §5.6` and v3.1.1 changelog.
+    /// `24-workspace.md §5.6`.
     GrowOverflow { current_capacity: usize, additional: usize },
     /// Typed view request rejected (e.g., ZST not supported, range not
     /// aligned for `T`, count×size_of overflow — the last via
@@ -442,15 +359,7 @@ pub enum TypedViewRejection {
     /// represent the requested byte length, so reusing `GrowOverflow`
     /// (which expects bytes) would produce a misleading diagnostic. Carry
     /// `count` (element units) and `elem_size` (bytes per `T`) instead.
-    /// Added in v3.1.1 to replace the misuse of `GrowOverflow` previously
-    /// done by `24-workspace.md §5.6` typed helpers.
     TypedByteLengthOverflow { count: usize, elem_size: usize },
-    // Historical note: `LengthNotMultipleOfSize` was removed in v3.1.0.
-    // `24-workspace.md §5.6` typed view API only allocates by element
-    // `count` (computing `count * size_of::<T>()` internally), it does
-    // NOT reinterpret an arbitrary byte length, so the variant had no
-    // triggering call site. The new `TypedByteLengthOverflow` (above)
-    // replaces it for the `count * size_of` overflow path.
 }
 
 impl core::fmt::Display for WorkspaceErrorCategory {
