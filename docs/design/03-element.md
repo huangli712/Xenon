@@ -83,7 +83,7 @@ src/element/
 
 | 来源模块         | 使用的类型/trait                                           |
 | ---------------- | ---------------------------------------------------------- |
-| `crate::error`   | `XenonError`（显式类型转换失败时返回）；本模块**不**反向依赖 error。注意 `ElementType` 枚举在 v1.4.0 起重新由本模块拥有（详见 §5.1.1），`error` 模块用 `&'static str` 记录类型诊断信息（来自 `Element::ELEMENT_TYPE_NAME`），不再持有 `ElementType` 字段 |
+| `crate::error`   | `XenonError`（显式类型转换失败时返回）                     |
 | `crate::complex` | `Complex<f32>`, `Complex<f64>`（元素类型实现目标）         |
 | `crate::private` | `Sealed`（封闭 trait 实现边界）                            |
 | `core::ops`      | `Add`, `Sub`, `Mul`, `Div`, `Neg`（Numeric supertrait）    |
@@ -100,7 +100,7 @@ src/element/
 
 ### 4.4 依赖方向声明
 
-**依赖方向**：单向向上。 `element/` 消费 `complex` 的类型定义（即 `element` 依赖 `complex`），`complex` 不反向依赖 `element`。
+依赖方向：单向向上。 `element` 消费 `complex` 的类型定义，`complex` 不反向依赖 `element`。
 
 ---
 
