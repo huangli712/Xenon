@@ -408,7 +408,7 @@ impl OrderedCompareElement for f64 {}
 - `OrderedCompareElement` 需要作为公开 sealed trait 暴露，因为 `11-math` 的公开比较 API（`less` / `greater`，详见 `11-math.md §5` 与 `01-architecture.md §10.1`）直接使用它作为元素类型约束；但其实现集合仍限制为 Xenon 当前支持的有序比较元素类型。
 - `OrderedCompareElement` 用于把有序比较能力显式收敛到 `i32`、`i64`、`f32`、`f64`。该 trait 虽然为配合 `11-math` 的公开 `less` / `greater` 比较 API 而公开暴露，但仍通过 `Sealed` 保持 sealed，只允许 Xenon 为这四种类型提供实现。
 
-### 5.6 BoolElement（`pub(crate)` sealed）
+### 5.6 BoolElement
 
 `BoolElement` 是仅在 element 模块内部使用的辅助 trait，标记 `bool` 类型以区分布尔运算的可用性（例如 `not()`）。
 
@@ -423,7 +423,7 @@ impl BoolElement for bool {}
 ```
 
 - **用途**：`11-math.md` 的 `not()` 方法 trait bound 使用 `A: BoolElement`，阻止其他元素类型偶然实现该 trait。
-- **`pub(crate)` 与公开 API 边界**：`BoolElement` 本身不出现在 `not()` 等方法的 *公开* 签名上；公开 API 仅通过 `impl<S, D> TensorBase<S, D> where S: Storage<Elem = bool>` 之类的具体类型约束暴露 `not()`，避免出现私有 trait 出现在公开 bound 上的可见性冲突。详见 `11-math.md §5.7`。
+- **`pub(crate)` 与公开 API 边界**：`BoolElement` 本身不出现在 `not()` 等方法的公开签名上；公开 API 仅通过 `impl<S, D> TensorBase<S, D> where S: Storage<Elem = bool>` 之类的具体类型约束暴露 `not()`，避免出现私有 trait 出现在公开 bound 上的可见性冲突。详见 `11-math.md §5.7`。
 
 ### 5.7 支持的类型与 trait 矩阵
 
@@ -441,20 +441,20 @@ impl BoolElement for bool {}
 - 不支持 `usize`、u8/u16/u32/i8/i16 等其他整数类型。
 - `usize` 仅作为索引和形状元数据使用。
 
-**按运算的元素类型可用矩阵（跨模块快速参考，非规范性索引）：** 以下表格汇总各运算模块支持的元素类型；个别运算因数学语义限制（如有序比较对复数无定义）仅支持子集。**权威定义仍以各运算模块文档为准**，本表仅作为单点查询与 sealed trait 实现一致性核对的参考；每行的“权威文档”列必须保留对应 owner 链接。
+**按运算的元素类型可用矩阵：** 以下表格汇总各运算模块支持的元素类型。个别运算因数学语义限制（如有序比较对复数无定义）仅支持子集。**权威定义仍以各运算模块文档为准**，本表仅作为单点查询与 sealed trait 实现一致性核对的参考；每行的“权威文档”列必须保留对应 owner 链接。
 
-| 运算 / 模块 | i32 | i64 | f32 | f64 | Complex<f32> | Complex<f64> | bool | 权威文档 |
+| 运算 | i32 | i64 | f32 | f64 | Complex<f32> | Complex<f64> | bool | 权威文档 |
 | ----------- | :-: | :-: | :-: | :-: | :----------: | :----------: | :--: | -------- |
-| 算术 add/sub/mul/div（11-math） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `11-math.md §5.3` |
-| neg / abs / square（11-math） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `11-math.md §5.4` |
-| 内积 dot（12-matrix） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `12-matrix.md §5.1` |
-| sum 归约（13-reduction） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `13-reduction.md §5`（当前版本仅 sum；mean/min/max 不在范围） |
-| unique 集合运算（14-set） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `14-set.md §6.1`（哈希查重 + F-order 顺序输出） |
-| eye 单位矩阵构造（18-construction） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `18-construction.md` |
-| clip（20-utility） | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | `20-utility.md`（无序比较不适用） |
-| cast 类型转换（21-type） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `21-type.md` |
-| 有序比较 less/greater（OrderedCompareElement） | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | `03-element.md §5.5`（复数无序；命名权威见 `11-math.md §5`，仅 less/greater，不含 less_equal/greater_equal） |
-| Checked 整数原语（CheckedAdd/Sub/Mul/Neg/Div） | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | `03-element.md §5.10` |
+| 算术 add/sub/mul/div | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `11-math.md §5.3` |
+| neg / abs / square | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `11-math.md §5.4` |
+| 内积 dot | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `12-matrix.md §5.1` |
+| sum 归约 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `13-reduction.md §5` |
+| unique 集合运算 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `14-set.md §6.1` |
+| eye 单位矩阵构造 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `18-construction.md` |
+| clip | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | `20-utility.md` |
+| cast 类型转换 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `21-type.md` |
+| 有序比较 less/greater | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | `03-element.md §5.5` |
+| Checked 整数原语 | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | `03-element.md §5.10` |
 
 ### 5.8 Sealed trait 策略
 
