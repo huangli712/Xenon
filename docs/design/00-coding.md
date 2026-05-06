@@ -13,9 +13,7 @@
 
 ### 1.1 影响范围
 
-本文档适用于 Xenon 项目的所有源码文件、测试文件、基准测试和 CI 配置。
-
-受影响的模块包括 `src/` 下所有子模块以及 `tests/`、`benches/`、`docs/` 目录。
+本文档适用于 Xenon 项目的所有源码文件、测试文件、基准测试和 CI 配置。受影响的模块包括 `src/` 下所有子模块以及 `tests/`、`benches/`、`docs/` 目录。
 
 ### 1.2 需求映射与范围约束
 
@@ -102,12 +100,10 @@ pub enum ElementType {
     Complex64 = 6,
 }
 
-// The sealed implementation set is:
-// i32, i64, f32, f64, Complex<f32>, Complex<f64>, bool.
 pub trait Numeric: Element + Add<Output=Self> + Sub<Output=Self>
     + Mul<Output=Self> + Div<Output=Self> + Neg<Output=Self> { /* ... */ }
 pub trait OrderedCompareElement: Element + PartialOrd + Sealed { /* ... */ }
-pub trait Dimension: Sealed { /* ... full bound list see `02-dimension.md §5.1` ... */ }
+pub trait Dimension: Sealed { /* ... */ }
 pub trait Storage: RawStorage + Sealed { /* ... */ }
 
 // Bad
