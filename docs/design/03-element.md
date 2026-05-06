@@ -295,9 +295,6 @@ const _: () = {
 /// Overflow-sensitive integer paths must additionally follow Xenon's checked
 /// arithmetic contracts in operation modules so that recoverable vs panic
 /// behavior remains consistent with the requirements specification.
-///
-/// Note: `Sealed` is not listed as a separate supertrait here because
-/// `Element` already inherits `Sealed`.
 pub trait Numeric:
     Element
     + core::ops::Add<Output = Self>
