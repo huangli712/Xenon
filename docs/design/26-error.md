@@ -645,35 +645,26 @@ impl std::error::Error for XenonError {
 | `IndexOutOfBounds`    | `operation`, `attempted_index`, `axis`, `shape`                               |
 | `TypeConversion`      | `operation`, `source_type`, `target_type`, `reason`, `element_index?`         |
 
-分配成本说明：`attempted_index: Vec<usize>`、`shape: Vec<usize>` 以及
-若干 `InvalidArgumentKind` / `FfiErrorCategory` 子变体内的 `Vec<usize>`
-字段会带来少量堆分配成本；这是当前版本可接受的诊断开销，用于换取跨
-公开 API 的一致结构化上下文。
+分配成本说明：`attempted_index: Vec<usize>`、`shape: Vec<usize>` 以及若干 `InvalidArgumentKind` / `FfiErrorCategory` 子变体内的 `Vec<usize>`字段会带来少量堆分配成本；这是当前版本可接受的诊断开销，用于换取跨公开 API 的一致结构化上下文。
 
-**字段命名约定（跨变体一致性规则）：** 各变体字段集合允许不同，但
-**同义字段必须使用同名**，新增变体或扩展字段时须遵循以下规则；目的是
-让结构化诊断在跨变体程序化处理时具备稳定语义。
+**字段命名约定：** 各变体字段集合允许不同，但**同义字段必须使用同名**，新增变体或扩展字段时须遵循以下规则；目的是让结构化诊断在跨变体程序化处理时具备稳定语义。
 
-| 字段名                                  | 类型                                | 含义                                                       | 备注                                                                       |
-| --------------------------------------- | ----------------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `operation`                             | `Cow<'static, str>`                 | 触发错误的高层运算名（如 `"sum"`、`"reshape"`、`"slice"`） | 几乎所有变体都必须携带；以一致词汇表命名；仅作为稳定标识符使用             |
-| `axis`                                  | `usize`                             | 单一相关维度索引                                           | 多个相关维度时使用 `axes: Vec<usize>`                                      |
-| `ndim`                                  | `usize`                             | 张量秩                                                     | 与 `axis < ndim` 配套使用                                                  |
-| `shape`                                 | `Vec<usize>`                        | 完整逻辑形状                                               | 字段名固定为 `shape`；二元运算用 `lhs_shape`/`rhs_shape` 或 `left_shape`/`right_shape`，不得混用其他前缀 |
-| `lhs_shape` / `rhs_shape`               | `Vec<usize>`                        | 二元运算的左右操作数形状                                   | 二元广播/算术运算优先使用此对，区别于 `left_shape`/`right_shape` 用于纯形状对比的语义场景 |
-| `expected` / `actual`                   | 类型与场景相关（结构化子枚举或 `usize`）| 期望值与实际值                                         | 简单二元对比模式；不混用 `required` / `provided` 等同义词                  |
-| `kind`                                  | 结构化子枚举（`InvalidShapeKind` 自 v3.3.0、`InvalidArgumentKind` 自 v3.3.1 起 `#[non_exhaustive]`）| 变体内部细分（如 `InvalidShapeKind`、`InvalidArgumentKind`）| 替代以前的自由文本 `reason: Cow<str>`                              |
-| `category`                              | 结构化子枚举（`FfiErrorCategory` 自 v3.3.0、`WorkspaceErrorCategory` 自 v3.3.1 起 `#[non_exhaustive]`）| 子分类（仅 `Ffi` / `Workspace` 使用）                  | 子枚举中各变体携带专属结构化字段                                           |
-| `attempted_index`                       | `Vec<usize>`                        | 多维索引 tuple                                             | `IndexOutOfBounds` 等需要完整索引上下文的变体使用                          |
-| `cause`                                 | `Option<Box<XenonError>>`           | 源链 inner error                                           | 仅 `Ffi` / `Workspace` 允许；通过 `Error::source()` 暴露                   |
-| `backend`                               | `FfiBackend` 封闭枚举（design-intent closed，无 `#[non_exhaustive]`）| FFI 后端标识                                               | 仅 `Ffi` 使用                                                              |
-| `storage_kind` / `expected` / `actual`  | `StorageKindTag` 封闭枚举（design-intent closed，无 `#[non_exhaustive]`）| 存储模式标签                                               | `InvalidLayout` / `InvalidStorageMode` 使用                                |
-| `conversion`                            | `Option<StorageConversionKind>`     | 存储模式转换种类                                           | `InvalidStorageMode` 使用                                                  |
-| `source_type` / `target_type`           | `&'static str`（v3.2.0 起）         | 元素类型名（如 `"f32"`、`"Complex<f64>"`）                 | `TypeConversion` 使用；值由 `Element::ELEMENT_TYPE_NAME` 提供，详见 `03-element.md §5.1.1` |
-
-未来新增变体须复用上表名称与字段类型；如需新字段且语义新颖，须先在
-本表中扩展再使用。**字符串字段（如 `operation`）只允许作为稳定标识
-符**，不得作为可变诊断载体；所有可变细节须通过结构化子枚举的子变体表达。
+| 字段名         | 类型                  | 含义                             | 备注                                                        |
+| -------------- | --------------------- | -------------------------------- | ----------------------------------------------------------- |
+| `operation` | `Cow<'static, str>`  | 触发错误的高层运算名（如 `"sum"`、`"reshape"`、`"slice"`） | 以一致词汇表命名；仅作为稳定标识符使用 |
+| `axis` | `usize` | 单一相关维度索引 | 多个相关维度时使用 `axes: Vec<usize>` |
+| `ndim` | `usize` | 张量秩 | 与 `axis < ndim` 配套使用 |
+| `shape` | `Vec<usize>`  | 完整逻辑形状 | 字段名固定为 `shape`；二元运算用 `lhs_shape`/`rhs_shape` 或 `left_shape`/`right_shape`，不得混用其他前缀 |
+| `lhs_shape` / `rhs_shape` | `Vec<usize>` | 二元运算的左右操作数形状 | 二元广播/算术运算优先使用此对，区别于 `left_shape`/`right_shape` 用于纯形状对比的语义场景 |
+| `expected` / `actual` | 结构化子枚举或 `usize`| 期望值与实际值      | 简单二元对比模式；不混用 `required` / `provided` 等同义词 |
+| `kind` | 结构化子枚举 | 变体内部细分 | 替代以前的自由文本 `reason: Cow<str>` |
+| `category` | 结构化子枚举 | 子分类 | 子枚举中各变体携带专属结构化字段 |
+| `attempted_index` | `Vec<usize>` | 多维索引 tuple | `IndexOutOfBounds` 等需要完整索引上下文的变体使用 |
+| `cause` | `Option<Box<XenonError>>` | 源链 inner error | 仅 `Ffi` / `Workspace` 允许；通过 `Error::source()` 暴露 |
+| `backend` | `FfiBackend` 封闭枚举 | FFI 后端标识 | 仅 `Ffi` 使用 |
+| `storage_kind` / `expected` / `actual`  | `StorageKindTag` 封闭枚举 | 存储模式标签 | `InvalidLayout` / `InvalidStorageMode` 使用 |
+| `conversion` | `Option<StorageConversionKind>` | 存储模式转换种类 | `InvalidStorageMode` 使用 |
+| `source_type` / `target_type` | `&'static str` | 元素类型名（如 `"f32"`、`"Complex<f64>"`） | `TypeConversion` 使用 |
 
 ### 5.7 Display 与 panic 信息要求
 
