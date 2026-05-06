@@ -4,8 +4,6 @@
 > 适用范围: 项目总体架构与跨模块边界
 > 任务阶段: Phase 0
 > 前置文档: 00-coding.md
-> 需求参考: 需求说明书 §1 - §28
-> 范围声明: 范围内
 
 ---
 
@@ -13,7 +11,7 @@
 
 ### 1.1 定位
 
-Xenon 是一个纯 Rust 实现的 N 维数组（张量）库，定位为科学计算的数值基础设施。设计理念与 Numpy ndarray 层相似，但针对 Rust 生态系统进行了深度优化：类型安全、内存高效、零成本抽象、F-order 单一布局。
+Xenon 是一个纯 Rust 实现的 N 维数组（张量）库，定位为科学计算的数值基础设施。
 
 ### 1.2 目标用户
 
@@ -48,7 +46,7 @@ Xenon 是一个纯 Rust 实现的 N 维数组（张量）库，定位为科学�
 
 ### 1.6 全局布局不变量
 
-以下布局规则为跨模块统一不变量，所有涉及 shape/stride/layout 的模块设计须遵守：
+以下布局规则为跨模块统一不变量，所有涉及模块设计须遵守：
 
 | 不变量 | 说明 |
 |--------|------|
@@ -66,10 +64,10 @@ Xenon 是一个纯 Rust 实现的 N 维数组（张量）库，定位为科学�
 
 - N 维数组的存储、构造
 - N 维数组的索引操作（多维整数索引、范围切片）
-- 形状操作（仅转置）
+- 形状操作（仅 transpose）
 - 归约操作（仅 sum）
 - 集合操作（仅 unique）
-- 向量内积（dot）
+- 向量内积（仅 dot）
 - 广播操作
 - 逐元素运算
 - 显式类型转换
@@ -113,7 +111,7 @@ xenon/
 │   ├── prelude.rs             # Common pub-use exports
 │   ├── private.rs             # Sealed-trait infrastructure
 │   ├── error.rs               # XenonError enum and Result alias
-│   ├── dispatch.rs            # Internal dispatch helper (ExecPath, ParallelExecStrategy, ParallelGuard, ParallelContext, parallel thresholds)
+│   ├── dispatch.rs            # Internal dispatch helper (ExecPath, ParallelExecStrategy, etc)
 │   │
 │   ├── dimension/             # Dimension type system
 │   │   ├── mod.rs             # Dimension trait definition
@@ -165,8 +163,8 @@ xenon/
 │   │   └── vector.rs          # Vectorized implementation
 │   │
 │   ├── parallel/              # Parallel backend (feature = "parallel")
-│   │   ├── mod.rs             # Module entry, re-exports, pub(crate) ParallelPool internals
-│   │   ├── iter.rs            # Internal parallel iteration helpers (pub(crate))
+│   │   ├── mod.rs             # Module entry, re-exports, ParallelPool internals
+│   │   ├── iter.rs            # Internal parallel iteration helpers
 │   │   ├── map.rs             # par_map, par_zip_map (threshold selection is handled by dispatch.rs)
 │   │   ├── reduce.rs          # par_reduce_impl, par_sum, par_dot
 │   │   └── checked.rs         # par_map_checked and error/panic propagation
@@ -174,7 +172,7 @@ xenon/
 │   ├── broadcast/             # Broadcast rules and read-only views
 │   │   ├── mod.rs             # Module entry and re-exports
 │   │   ├── shape.rs           # Compatibility and stride rules
-│   │   └── view.rs            # broadcast_to() and pub(crate) broadcast_with() internals
+│   │   └── view.rs            # broadcast_to() and broadcast_with() internals
 │   │
 │   ├── math/                  # Element-wise math
 │   │   ├── mod.rs             # Module entry and re-exports
@@ -234,11 +232,11 @@ xenon/
 │   │
 │   ├── ffi/                   # FFI interface
 │   │   ├── mod.rs             # Module root and re-exports
-│   │   ├── types.rs           # BlasInfo; re-exports ElementType (from element), FfiErrorCategory (from error)
+│   │   ├── types.rs           # BlasInfo; re-exports ElementType, FfiErrorCategory
 │   │   ├── ptr.rs             # Raw pointer API (export/export_mut, from_raw_parts, into_raw_parts)
 │   │   ├── blas.rs            # BLAS compatibility checks (is_blas_layout_compatible, blas_info, lda)
 │   │   ├── offset.rs          # Index-to-pointer offset
-│   │   └── private.rs         # Internal generic descriptors (TensorExport<'a, A>, TensorExportMut<'a, A>); Rust-only, excluded from cbindgen emission set (per `23-ffi.md §3`)
+│   │   └── private.rs         # Internal generic descriptors (TensorExport, TensorExportMut)
 │   │
 │   ├── workspace/             # Temporary workspace
 │       ├── mod.rs             # Module root and re-exports
@@ -391,13 +389,7 @@ codegen-units = 1
 
 [package.metadata.docs.rs]
 all-features = true
-# NOTE: do NOT add `rustdoc-args = ["--cfg", "docsrs"]`. See
-# `00-coding.md §10.3`: `#[doc(cfg(...))]` is nightly-only; setting the
-# `docsrs` cfg without `feature(doc_cfg)` would expand the (forbidden)
-# `#[cfg_attr(docsrs, doc(cfg(...)))]` attributes and break docs.rs build.
 ```
-
-Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前提之上。
 
 ---
 
@@ -408,7 +400,7 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | 模块           | 职责                                                                |
 | -------------- | ------------------------------------------------------------------- |
 | `error.rs`     | `XenonError` 统一错误枚举，`Result<T>` 类型别名                     |
-| `dispatch.rs`  | 私有内部执行路径裁决层，不作为公开模块导出 |
+| `dispatch.rs`  | 私有内部执行路径裁决层，不作为公开模块导出                          |
 | `dimension/`   | `Dimension` trait 和静态/动态维度类型（Ix0-Ix6, IxDyn）             |
 | `element/`     | 元素类型 trait 层次（Element → Numeric → RealScalar/ComplexScalar） |
 | `complex/`     | 自定义 `Complex<T>` 类型，`#[repr(C)]` 兼容 C FFI                   |
@@ -418,12 +410,12 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | `iter/`        | 元素/轴/索引迭代器                                                  |
 | `simd/`        | SIMD 后端：向量化 kernel（pulp）、运行时分发，不含标量回退          |
 | `parallel/`    | 并行后端：承载纯并行执行入口与内部并行迭代 helper，不含串行回退     |
-| `math/`        | 逐元素数学运算（一元、二元算术、`equal`/`not_equal`/`less`/`greater` 比较等） |
-| `overload/`     | 运算符重载（Add, Sub, Mul, Div trait 实现）                         |
+| `math/`        | 逐元素数学运算（一元、二元算术、比较等）                            |
+| `overload/`     | 运算符重载（Add, Sub, Mul, Div trait 实现）                        |
 | `util/`        | 实用操作（clip 裁剪、fill 填充、to_contiguous 连续性保证的公共入口）|
 | `set/`         | 集合操作（unique 去重）                                             |
-| `broadcast/`   | NumPy 广播规则与只读广播视图构造                                    |
-| `matrix/`      | 向量内积 dot，必要时委托 `simd/` 或 `parallel`                      |
+| `broadcast/`   | Numpy 广播规则与只读广播视图构造                                    |
+| `matrix/`      | 向量内积（dot）                                                     |
 | `reduction/`   | 归约操作（sum）                                                     |
 | `shape/`       | 转置操作（transpose）                                               |
 | `index/`       | 多维整数索引、范围切片索引；公开安全入口为 `try_at` / `try_at_mut`  |
@@ -447,12 +439,12 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | L2     | layout    | error, dimension                    | 06-layout.md        |
 | L2     | workspace | std, error                          | 24-workspace.md     |
 | L2     | storage   | core, alloc, std, error             | 05-storage.md       |
-| L3     | tensor    | storage, dimension, layout, element, error | 07-tensor.md        |
+| L3     | tensor    | storage, dimension, layout, element, error | 07-tensor.md |
 | L4     | broadcast | tensor, dimension, layout, error    | 15-broadcast.md     |
 | L4     | iter      | tensor, storage, dimension, error   | 10-iterator.md      |
-| L4     | ffi       | tensor, layout, storage, dimension, element, error | 23-ffi.md           |
+| L4     | ffi       | tensor, layout, storage, dimension, element, error | 23-ffi.md |
 | L4     | dispatch  | tensor                              | 01-architecture.md  |
-| L5     | parallel  | tensor, dimension, element, error, dispatch  | 09-parallel.md      |
+| L5     | parallel  | tensor, dimension, element, error, dispatch  | 09-parallel.md |
 | L5     | simd      | tensor, layout, element             | 08-simd.md          |
 | L5     | math      | tensor, broadcast, element, iter    | 11-math.md          |
 | L5     | set       | tensor, element, complex, iter      | 14-set.md           |
@@ -464,20 +456,7 @@ Xenon 仅支持 `std` 环境；`simd` 与 `parallel` 都建立在该无条件前
 | L5     | construct | tensor, storage, layout, dimension, element | 18-construction.md |
 | L5     | format    | tensor, storage, dimension, element | 22-output.md        |
 | L5     | convert   | tensor, element                     | 21-type.md          |
-| L6     | overload  | tensor, broadcast, math, dimension, element | 19-overload.md      |
-
-### 5.2a 内部 Helper 函数清单
-
-以下为跨模块引用的 `pub(crate)` 内部 helper 函数，统一在此记录其位置与职责：
-
-| 函数                                | 定义位置               | 职责                                  | 引用模块                |
-| ----------------------------------- | ---------------------- | ------------------------------------- | ----------------------- |
-| `validate_access_range()`           | `src/tensor/` 内部      | 校验 raw parts 构造的存储边界         | 07-tensor, 23-ffi       |
-| `validate_non_overlapping_layout()` | `src/tensor/` 内部      | 保守验证非重叠可变布局               | 07-tensor, 23-ffi       |
-| `compute_safe_chunks()`             | `src/parallel/mod.rs`   | 将 [0,total) 划分为非重叠区间         | 25-safety               |
-| `util_internal_to_f_contiguous()`   | `src/util/` 内部     | 将张量连续化为 canonical F-order     | 20-utility              |
-| `fill_storage_mut()`                | `src/util/` 内部     | 通过 StorageMut 填充后备缓冲区       | 20-utility              |
-| `fill_try_dispatch()`               | `src/util/` 内部     | try_fill 的错误感知分派              | 20-utility              |
+| L6     | overload  | tensor, broadcast, math, dimension, element | 19-overload.md |
 
 ### 5.3 依赖图（ASCII）
 
