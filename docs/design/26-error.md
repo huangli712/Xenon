@@ -548,35 +548,13 @@ impl core::fmt::Display for ConversionFailureReason {
 pub type Result<T> = core::result::Result<T, XenonError>;
 ```
 
-- **空数组的语义**：空数组（任意维度上 size==0 的张量）是 Xenon 中的
-  **合法输入**而非错误条件。所有公开 API 在“形状本身合法但其中一个或
-  多个维度长度为 0”的情况下都不构造可恢复错误：例如 `sum()` 返回加法
-  单位元 `A::zero()`、`unique()` 返回空 1D 张量、广播规则正常应用、
-  `transpose()` 返回相同形状的空视图。`XenonError` 不定义
-  `EmptyArray` 变体，公开 API 也不得在“仅因为形状包含 0”这一原因下
-  返回 `Err`。
-- “形状本身非法”仍然返回错误：`shape` 元素总数 `checked_size()` 溢出
-  `usize`、`from_shape_vec` 提供的 `Vec<A>` 长度与
-  `shape.checked_size()` 不一致、动态维度 rank 超过静态最大值等场景，
-  返回 `XenonError::InvalidShape`，但其 `kind` 不会被诊断为“数组为空”，
-  而是 `ProductOverflow` / `ElementCountMismatch` /
-  `RankExceedsStaticMax` 中的某一种。`§8.3 边界测试`中的 `shape=[0, 3]`
-  对应“合法空形状”，预期为 `Ok` 而非 `InvalidShape`（除非该 API 自身
-  另有合法性约束，比如要求至少 1 个轴长大于 0；此时也以
-  `InvalidShape::ElementCountMismatch` 表达，不以“空”为由）。
-- `XenonError` 须实现 `std::error::Error` trait，提供 `source()` 方法
-  用于链式错误追踪。
-- `Ffi` 和 `Workspace` 变体可携带 `cause: Option<Box<XenonError>>`
-  源链：当外层公开错误是“包装”自一个更底层的可恢复错误（例如
-  `Workspace` 借用失败被 FFI 路径包装为 `Ffi` 错误）时，外层变体的
-  `cause` 设为 `Some(Box::new(inner))`；`source()` 据此返回内层错误的
-  `&dyn Error`。其他变体的 `source()` 仍返回 `None`（叶子错误）。
-- 公开 API 统一使用 prelude 导出的 `crate::error::Result`（即
-  `Result<T, XenonError>` 别名）作为返回类型。
-- 所有可恢复错误直接以 `XenonError` 结构化变体返回，不使用模块内部
-  错误类型。
-- 每个变体携带适用的结构化字段，满足 `需求说明书 §27` 对公开诊断
-  信息的要求。
+- 空数组（任意维度上 size==0 的张量）是 Xenon 中的合法输入而非错误条件。所有公开 API 在“形状本身合法但其中一个或多个维度长度为 0”的情况下都不构造可恢复错误：例如 `sum()` 返回加法单位元 `A::zero()`、`unique()` 返回空 1D 张量、广播规则正常应用、`transpose()` 返回相同形状的空视图。`XenonError` 不定义`EmptyArray` 变体，公开 API 也不得在“仅因为形状包含 0”这一原因下返回 `Err`。
+- “形状本身非法”仍然返回错误：`shape` 元素总数 `checked_size()` 溢出`usize`、`from_shape_vec` 提供的 `Vec<A>` 长度与`shape.checked_size()` 不一致、动态维度 rank 超过静态最大值等场景，返回 `XenonError::InvalidShape`，但其 `kind` 不会被诊断为“数组为空”，而是 `ProductOverflow` / `ElementCountMismatch` / `RankExceedsStaticMax` 中的某一种。`§8.3 边界测试`中的 `shape=[0, 3]`对应“合法空形状”，预期为 `Ok` 而非 `InvalidShape`（除非该 API 自身另有合法性约束，比如要求至少 1 个轴长大于 0；此时也以`InvalidShape::ElementCountMismatch` 表达，不以“空”为由）。
+- `XenonError` 须实现 `std::error::Error` trait，提供 `source()` 方法用于链式错误追踪。
+- `Ffi` 和 `Workspace` 变体可携带 `cause: Option<Box<XenonError>>`源链：当外层公开错误是“包装”自一个更底层的可恢复错误（例如`Workspace` 借用失败被 FFI 路径包装为 `Ffi` 错误）时，外层变体的`cause` 设为 `Some(Box::new(inner))`；`source()` 据此返回内层错误的  `&dyn Error`。其他变体的 `source()` 仍返回 `None`（叶子错误）。
+- 公开 API 统一使用 prelude 导出的 `crate::error::Result`（即`Result<T, XenonError>` 别名）作为返回类型。
+- 所有可恢复错误直接以 `XenonError` 结构化变体返回，不使用模块内部错误类型。
+- 每个变体携带适用的结构化字段，满足 `需求说明书 §27` 对公开诊断信息的要求。
 
 ```rust,ignore
 /// `XenonError` implements `std::error::Error` for compatibility with
@@ -594,11 +572,7 @@ impl std::error::Error for XenonError {
 }
 ```
 
-`XenonError` 实现 `std::error::Error` 以兼容标准错误处理生态（`?`、
-`anyhow`、`thiserror` 等）。仅 `Ffi` / `Workspace` 两个变体允许通过
-`cause` 字段链式包装；其余变体均为叶子错误，`source()` 返回 `None`。
-源链是 SemVer 兼容扩展点：未来若新的变体需要承载内部错误源，须以新增
-变体而非改变现有变体语义的方式扩展。
+`XenonError` 实现 `std::error::Error` 以兼容标准错误处理生态（`?`、`anyhow`、`thiserror` 等）。仅 `Ffi` / `Workspace` 两个变体允许通过`cause` 字段链式包装；其余变体均为叶子错误，`source()` 返回 `None`。源链是 SemVer 兼容扩展点：未来若新的变体需要承载内部错误源，须以新增变体而非改变现有变体语义的方式扩展。
 
 ### 5.2 可恢复错误与 panic 的边界
 
@@ -619,7 +593,7 @@ impl std::error::Error for XenonError {
 总原则： 
 - 所有安全公开 API 对非法输入须返回可恢复错误（`Result`）。
 - 仅 `unsafe` 函数的前提违反和内部 helper 可使用 panic。
-- Xenon 当前稳定 API **不实现** `std::ops::Index` / `std::ops::IndexMut`（见 `01-architecture.md` 决策 7、`00-coding.md §8.1`）；方括号索引语法 `tensor[i]` 在当前版本不可编译，**不是**当前的 panic 边界。所有公开安全索引错误通过 `try_at()` / `try_at_mut()` 以 `Result::Err(XenonError::IndexOutOfBounds { .. })` 返回。
+- Xenon 当前稳定 API 不实现 `std::ops::Index` / `std::ops::IndexMut`；方括号索引语法 `tensor[i]` 在当前版本不可编译，不是当前的 panic 边界。所有公开安全索引错误通过 `try_at()` / `try_at_mut()` 以 `Result::Err(XenonError::IndexOutOfBounds)` 返回。
 
 除下表外，其余安全公开 API 遇到错误条件时都必须返回 `Result<_, XenonError>`，不得以 panic 代替可恢复错误；即使是 FFI convenience helper，只要属于安全公开 API，也必须遵循这一规则。
 
@@ -642,31 +616,18 @@ impl std::error::Error for XenonError {
 `cast()` 的错误模型须与 `21-type.md` 保持一致：
 
 - `cast<B>(&self)` 返回 `Result<Tensor<B, D>, XenonError>`
-- 任何被 `需求说明书 §23` 判定为有损的默认转换组合，都须返回
-  `XenonError::TypeConversion`
+- 任何被 `需求说明书 §23` 判定为有损的默认转换组合，都须返回`XenonError::TypeConversion`
 - 仅当需求显式给出附加成功前提时，满足前提后才可成功
-- `Complex -> Real` 不是编译期拒绝；当 `im == 0` 时允许继续转换，
-  否则返回 `XenonError::TypeConversion { reason: NonZeroImaginaryPart, ... }`
-- `bool` 不参与逐元素类型转换，因此不得用 `TypeConversion` 为 `bool`
-  扩大支持范围
-- `TypeConversion` 必须包含 `operation: Cow<'static, str>` 字段，记录
-  触发转换的高层运算名（例如 `"cast"`、`"complex_to_real"`、
-  `"infer_dtype_promotion"`），与其他错误变体保持字段一致性
-- 源/目标类型字段使用 `&'static str`（v3.2.0 起）。值由 `Element::ELEMENT_TYPE_NAME`
-  关联常量提供（详见 `03-element.md §5.1.1`），由元素侧统一控制，避免 error 模块
-  反向依赖 element。**不**使用 `core::any::TypeId`：`TypeId` 是不透明哈希，无法满足
-  "结构化诊断 + 可读 Display" 要求；**也不**直接持有 `ElementType` 枚举字段，因为这
-  会让 error（L0）被迫依赖 element（L2）。使用 `&'static str` 同时获得：编译期确定的
-  字符串字面量（零分配、零间接）+ 直接 Display + L0 单向依赖严格成立
+- `Complex -> Real` 不是编译期拒绝；当 `im == 0` 时允许继续转换，否则返回 `XenonError::TypeConversion`
+- `bool` 不参与逐元素类型转换，因此不得用 `TypeConversion` 为 `bool`扩大支持范围
+- `TypeConversion` 必须包含 `operation` 字段，记录触发转换的高层运算名（例如 `"cast"`），与其他错误变体保持字段一致性
+- 源/目标类型字段使用 `&'static str`。
 
-类型转换失败统一通过 `XenonError::TypeConversion` 返回，其中字段为
-公开字段，用户可直接通过模式匹配访问。
+类型转换失败统一通过 `XenonError::TypeConversion` 返回，其中字段为公开字段，用户可直接通过模式匹配访问。
 
 ### 5.6 结构化上下文字段要求
 
-所有错误变体都须带“错误类别 + 适用上下文”的结构化字段；不得使用纯
-字符串消息字段（除 `operation`、`backend` 等稳定标识符以及枚举内的
-有限自由文本载荷外）。
+所有错误变体都须带“错误类别 + 适用上下文”的结构化字段；不得使用纯字符串消息字段（除 `operation`、`backend` 等稳定标识符以及枚举内的有限自由文本载荷外）。
 
 | 变体                  | 最小结构化字段                                                                |
 | --------------------- | ----------------------------------------------------------------------------- |
@@ -677,12 +638,12 @@ impl std::error::Error for XenonError {
 | `InvalidAxis`         | `operation`, `axis`, `ndim`, `shape`                                          |
 | `InvalidShape`        | `operation`, `shape`, `kind`, `offending_dim?`                                |
 | `DimensionMismatch`   | `operation`, `expected`, `actual`                                             |
-| `InvalidArgument`     | `operation`, `kind`（结构化子枚举 `InvalidArgumentKind`，每个变体内部携带其专属字段，例如 `RangeOutOfBounds` 必带 `axis/axis_len/start/end`；自 v3.3.1 起 `#[non_exhaustive]`——v3.3.0 设计意图，v3.3.1 补全属性） |
+| `InvalidArgument`     | `operation`, `kind`（结构化子枚举 `InvalidArgumentKind`）                     |
 | `InvalidStorageMode`  | `operation`, `expected`, `actual`, `shape?`, `conversion?`                    |
-| `Ffi`                 | `operation`, `category`（结构化子枚举 `FfiErrorCategory`，每个子类携带专属结构化负载；自 v3.3.0 起 `#[non_exhaustive]`）, `backend`, `cause?` |
-| `Workspace`           | `operation`, `category`（结构化子枚举 `WorkspaceErrorCategory`，每个子类携带专属结构化负载；自 v3.3.1 起 `#[non_exhaustive]`——v3.3.0 设计意图，v3.3.1 补全属性）, `cause?` |
-| `IndexOutOfBounds`    | `operation`, `attempted_index`, `axis`, `shape`；`attempted_index` 表示完整多维索引 tuple，`axis` 指出首个越界维度 |
-| `TypeConversion`      | `operation`, `source_type`（`&'static str`，v3.2.0 起；值来自 `Element::ELEMENT_TYPE_NAME`）, `target_type`（同前）, `reason`, `element_index?` |
+| `Ffi`                 | `operation`, `category`（结构化子枚举 `FfiErrorCategory`）, `backend`, `cause?` |
+| `Workspace`           | `operation`, `category`（结构化子枚举 `WorkspaceErrorCategory`）, `cause?`    |
+| `IndexOutOfBounds`    | `operation`, `attempted_index`, `axis`, `shape`                               |
+| `TypeConversion`      | `operation`, `source_type`, `target_type`, `reason`, `element_index?`         |
 
 分配成本说明：`attempted_index: Vec<usize>`、`shape: Vec<usize>` 以及
 若干 `InvalidArgumentKind` / `FfiErrorCategory` 子变体内的 `Vec<usize>`
