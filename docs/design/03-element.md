@@ -670,7 +670,7 @@ impl CheckedDiv for i64 {
 
 - 此 trait 为内部实现辅助，不纳入稳定公开 API 面。具体可见性由实现决定。
 - `CheckedAdd` 仅覆盖整数加法（`i32`/`i64`），用于归约等必须精确检测溢出的路径。
-- 当前元素层统一提供 `CheckedAdd` / `CheckedSub` / `CheckedMul` / `CheckedNeg` / `CheckedDiv` 五类整数 checked 原语，作为整数溢出检测的**唯一权威定义点**，供 `math`、`matrix`、`reduction` 等所有上层模块复用。上层模块**不应**重新定义同语义 trait；余数与更高阶组合检查仍由具体运算模块在实现层基于这些原语组合完成。
+- 当前元素层统一提供 `CheckedAdd` / `CheckedSub` / `CheckedMul` / `CheckedNeg` / `CheckedDiv` 五类整数 checked 原语，作为整数溢出检测的**唯一权威定义点**，供 `math`、`matrix`、`reduction` 等所有上层模块复用。上层模块不应重新定义同语义 trait；余数与更高阶组合检查仍由具体运算模块在实现层基于这些原语组合完成。
 
 ### 5.11 Good / Bad 对比示例
 
@@ -722,7 +722,7 @@ impl Element for bool {
     fn one() -> Self { true }
 
     // Both `ELEMENT_TYPE` and `ELEMENT_TYPE_NAME` are mandatory for *every*
-    // `Element` impl (see §5.1 trait definition + §5.1.1 ElementType).
+    // `Element` impl (see §5.1.1 trait definition + §5.1.2 ElementType).
     // For `bool`, the type-tag pair maps to (Bool, "bool"). FFI consumers
     // identify `Tensor<bool, _>` via `ELEMENT_TYPE`; error diagnostics
     // (e.g. `XenonError::TypeConversion::source_type`) use the
@@ -739,11 +739,6 @@ impl Element for bool {
 //   impl Element for f64          { ... ELEMENT_TYPE = ElementType::F64;       NAME = "f64";          }
 //   impl Element for Complex<f32> { ... ELEMENT_TYPE = ElementType::Complex32; NAME = "Complex<f32>"; }
 //   impl Element for Complex<f64> { ... ELEMENT_TYPE = ElementType::Complex64; NAME = "Complex<f64>"; }
-//
-// Each NAME literal MUST equal `ElementType::<discriminant>.name()` exactly;
-// this is enforced by a crate-internal unit test (inside `src/element/`'s
-// `#[cfg(test)] mod tests`, exercised through `tests/test_tensor.rs` /
-// `tests/test_conversion.rs`; see §5.1.1 / §8.5 + `28-tests.md §9.2`).
 ```
 
 编译时阻止无效泛型实例化：`fn sum<A: Numeric>` 无法接受 `bool` 张量；需要布尔专用逐元素逻辑非时，使用 `!`。此外，`bool` 不实现任何 `CastTo<T>`；`bool_tensor.cast::<f32>()` 必须在编译期失败，而不是返回运行时类型转换错误。
@@ -899,7 +894,7 @@ impl RealScalar for f64 {
   - 预计: 10 min
 
 - [ ] **T12**: 集成测试（跨模块交互验证）
-  - 文件: element 内部单元测试 + doctest，跨模块协同覆盖经由 `tests/test_tensor.rs` / `tests/test_math.rs` / `tests/test_reduction.rs` / `tests/test_conversion.rs` 等已存在的集成测试间接验证（与 `28-tests.md §9.2` 覆盖映射一致；**不**新增独立 `tests/test_element.rs`）
+  - 文件: element 内部单元测试 + doctest，跨模块协同覆盖经由 `tests/test_tensor.rs` / `tests/test_math.rs` / `tests/test_reduction.rs` / `tests/test_conversion.rs` 等已存在的集成测试间接验证（与 `28-tests.md §9.2` 覆盖映射一致；不新增独立 `tests/test_element.rs`）
   - 内容: 各类型各层 trait 的完整性验证
   - 测试: 见测试计划 §8
   - 前置: T10, T11
@@ -914,7 +909,7 @@ impl RealScalar for f64 {
 | 测试分类 | 位置                      | 说明                                       |
 | -------- | ------------------------- | ------------------------------------------ |
 | 单元测试 | `#[cfg(test)] mod tests`  | 验证各 trait 和基础类型实现                |
-| 集成测试 | `tests/test_tensor.rs` / `tests/test_math.rs` / `tests/test_reduction.rs` / `tests/test_conversion.rs` | 通过张量/数学/归约/转换层间接验证 element 协同路径（**不**新增独立 `tests/test_element.rs`，与 `28-tests.md §9.2` 一致） |
+| 集成测试 | `tests/test_tensor.rs` / `tests/test_math.rs` / `tests/test_reduction.rs` / `tests/test_conversion.rs` | 通过张量/数学/归约/转换层间接验证 element 协同路径 |
 | 边界测试 | 同模块测试中标注          | 覆盖 NaN/Inf、bool 限制与 sealed 行为      |
 | 属性测试 | 同模块单元测试 / `tests/property_tests.rs` | 验证零元、单位元与数学函数不变量（不依赖独立 `test_element.rs`） |
 
@@ -964,15 +959,13 @@ impl RealScalar for f64 {
 
 ### 8.5 集成测试
 
-> **不**新增独立 `tests/test_element.rs`（与 `28-tests.md §9.2` 一致）。element 模块的端到端协同路径通过下列已存在的集成测试间接覆盖：
-
 | 集成测试文件             | 覆盖的 element 协同路径                                                |
 | ------------------------ | ---------------------------------------------------------------------- |
 | `tests/test_tensor.rs`   | `Element` / `Numeric` bound 在张量构造、`storage_kind`、`access_semantics` 等路径上 |
 | `tests/test_math.rs`     | `RealScalar` / `ComplexScalar` 数学函数语义                            |
-| `tests/test_reduction.rs`| 元素类型与归约结果类型协同（`Numeric` bound 在 sum 路径；当前 reduction 仅 sum，dot 在 matrix 测试覆盖；matrix-matrix multiplication / matmul 在 `01-architecture.md §2.2` 范围外） |
-| `tests/test_matrix.rs`   | dot 中 `Numeric` bound 协同路径（matrix-matrix multiplication / matmul 在 `01-architecture.md §2.2` 范围外）                               |
-| `tests/test_conversion.rs` | `CastElement` 在 cast 路径上的 6×6 矩阵覆盖（文件名与 `01-architecture.md §3` ./tests 目录树严格一致） |
+| `tests/test_reduction.rs`| 元素类型与归约结果类型协同                                             |
+| `tests/test_matrix.rs`   | dot 中 `Numeric` bound 协同路径                                        |
+| `tests/test_conversion.rs` | `CastElement` 在 cast 路径上的 6×6 矩阵覆盖                          |
 
 ### 8.6 Feature gate / 配置测试
 
