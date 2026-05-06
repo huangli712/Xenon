@@ -806,21 +806,17 @@ ArcTensor<A, D>               // = TensorBase<ArcRepr<A>, D>
 Ix0, Ix1, Ix2, ..., Ix6       // Static dimensions (0-6 dimensions)
 IxDyn                         // Dynamic dimension
 
-// Layout helpers (F-order only)
-compute_f_strides(shape)             // Compute canonical F-order strides
-compute_layout_flags(shape, strides, ptr) // Central function for all layout flags
-LayoutState                          // FContiguous / NonContiguous / BroadcastView
-
 // Tensor semantic query enums
-StorageKind                          // Owned / View / ViewMut / Shared
-AccessSemantics                      // ReadOnly / SharedReadOnly / Writable / Owned
-DataLocation                         // Cpu (current version only supports CPU)
+LayoutState                   // FContiguous / NonContiguous / BroadcastView
+StorageKind                   // Owned / View / ViewMut / Shared
+AccessSemantics               // ReadOnly / SharedReadOnly / Writable / Owned
+DataLocation                  // Cpu (current version only supports CPU)
 
 // Element trait hierarchy
-Element                        // Base: Copy + Sealed with const ELEMENT_TYPE: ElementType
-└── Numeric                    // Numeric: arithmetic syntax + checked integer contract + conjugate semantics
-    ├── RealScalar             // Real: sqrt, sin, exp, ln, floor, ceil
-    └── ComplexScalar          // Complex: complex-specific modulus/re/im helpers; conjugation is unified by `Numeric::conjugate()`
+Element                       // Base: Copy + Sealed with const ELEMENT_TYPE: ElementType
+└── Numeric                   // Numeric: arithmetic syntax + checked integer contract + conjugate semantics
+    ├── RealScalar            // Real: sqrt, sin, exp, ln, floor, ceil
+    └── ComplexScalar         // Complex: complex-specific modulus/re/im helpers
 ```
 
 | 名称                    | 分类               | 稳定性说明                       |
@@ -839,8 +835,9 @@ Element                        // Base: Copy + Sealed with const ELEMENT_TYPE: E
 上述公开元素能力 trait（`Element`、`Numeric`、`RealScalar`、`ComplexScalar`、`CastTo`）均通过 `private::Sealed` 实现 sealed trait 模式，禁止下游 crate 自行实现。其中 `Numeric` 不仅表示 `Add + Sub + Mul + Div + Neg` 语法可用，还要求：
 
 - 对整数路径，具体运算模块必须落实 checked overflow / divide-by-zero / unrepresentable-result contract；
-- `ElementType` 的公开取值为 `I32`、`I64`、`F32`、`F64`、`Complex32`、`Complex64`、`Bool`；封闭实现集为 `i32`、`i64`、`f32`、`f64`、`Complex<f32>`、`Complex<f64>`、`bool`；
-- 对实数类型，`conjugate(self)` 为恒等；对复数类型，`conjugate(self)` 执行数学共轭；`Complex<T>` 的显式实数构造路径仅为 `From<T> for Complex<T>`，不提供 `Complex<T> op T` 便捷运算符；
+- `ElementType` 的公开取值为 `I32`、`I64`、`F32`、`F64`、`Complex32`、`Complex64`、`Bool`；
+- 对实数类型，`conjugate(self)` 为恒等；对复数类型，`conjugate(self)` 执行数学共轭；
+- `Complex<T>` 的显式实数构造路径仅为 `From<T> for Complex<T>`，不提供 `Complex<T> op T` 便捷运算符；
 - 统一错误入口与结构化字段约束遵循 `26-error.md`，不得在架构层引入第二套公开错误模型。
 
 ---
@@ -960,25 +957,8 @@ Element                        // Base: Copy + Sealed with const ELEMENT_TYPE: E
 | 属性     | 值                                                                                                   |
 | -------- | ---------------------------------------------------------------------------------------------------- |
 | 决策     | dispatch.rs 通过 `select_exec_path` 返回 `(ExecPath, Option<ParallelGuard>)`，统一指示执行路径：`Serial` / `Simd` / `Parallel` |
-| 理由     | 集中式三路裁决避免消费者模块（math/matrix/reduction）各自重复实现路径选择树；同时保持 simd/ 后端对其内部细化（ISA、lane 宽度、对齐细节）的最终准入权，并通过 guard 显式传递并行进入状态 |
+| 理由     | 集中式三路裁决避免消费者模块各自重复实现路径选择树；同时保持 simd/ 后端对其内部细化的最终准入权，并通过 guard 显式传递并行进入状态 |
 | 替代方案 | 二元 ExecPath（Serial/Parallel）+ SIMD 在 Serial 分支内部隐式裁决 — 放弃，导致消费者代码中需要嵌套裁决，且 dispatch 无法在 Simd 与 Serial 之间做相同精度的阈值差异化 |
-
-#### 三路裁决模型
-
-| 路径 | 触发条件 | 后端 |
-|------|----------|------|
-| `ExecPath::Serial` | 默认回退；len 低于所有阈值，或 feature 禁用，或 `select_exec_path()` 未能获取并行 guard | 消费者模块自身的串行实现 |
-| `ExecPath::Simd` | feature = "simd" 启用 + len ≥ simd_threshold + 连续 + 不进入并行路径（注：调用方传入的 `alignment_ok` 在 v2.0.x 起为提示位，dispatch 不将其作为 SIMD 准入硬门槛；simd 后端 admission 内部独立通过 `layout::is_aligned()` 重检查 — 见 30-dispatch.md v2.0.3 §5.5 / §6.4） | `simd/` 后端（`dispatch_vector_binary_op` 以 `bool` 报告是否接管执行；失败时由 dispatch 消费方回退） |
-| `ExecPath::Parallel` | feature = "parallel" 启用 + len ≥ parallel_threshold + `select_exec_path()` 成功获取并返回 `Some(ParallelGuard)` | `parallel/` 后端；并行 worker 内部可在 `_guard: ParallelGuard` 保护下调用 SIMD |
-
-#### 职责边界
-
-- **dispatch.rs**: 仅做 ExecPath 三路裁决；阈值计算使用 `saturating_mul`，threshold = 0 为禁用 sentinel；不参与 ISA 检测、不参与 SIMD lane 选择、不参与对齐细节判断
-- **simd/**: 在被 dispatch 选中（ExecPath::Simd 返回）后，内部决定是否最终启用 SIMD（ISA 可用性、lane 宽度、对齐 fast path）；`SimdElement` 仍为 sealed trait，整数仲裁失败回退归 dispatch 消费方处理
-- **parallel/**: 在被 dispatch 选中（ExecPath::Parallel 返回）后执行；worker 内部可结合 SIMD 形成 thread × SIMD 双层加速
-- **pulp::Arch**: ISA 检测（AVX-512 -> AVX2 -> SSE4.1 -> NEON）的唯一权威，仅在 simd/ 内部使用
-
-详见 30-dispatch.md（dispatch 模块设计文档）和 08-simd.md（SIMD 后端设计文档）。
 
 ### 决策 7：错误语义集中裁决
 
@@ -1004,9 +984,9 @@ Element                        // Base: Copy + Sealed with const ELEMENT_TYPE: E
 - 架构层只裁决错误入口应单一、路径语义应一致，不在此重复定义完整错误枚举。
 - 所有可恢复错误直接以 `XenonError` 结构化变体返回，不使用模块内部错误类型。
 - 规范错误模型的 canonical source 以 `26-error.md` 为准。
-- 所有 `operation` 字段使用 `Cow<'static, str>`；类型转换错误使用 `source_type: &'static str` / `target_type: &'static str` 与 `ConversionFailureReason`（v3.2.0 起；值由 `<A as Element>::ELEMENT_TYPE_NAME` 关联常量提供，详见 `03-element.md §5.1.1` 与 `26-error.md §5.1`），不使用运行时类型标识，**也不直接持有 `ElementType` 枚举**（保持 error 模块 L0 严格不依赖 element）。
-- Workspace 错误使用 `WorkspaceErrorCategory` 七子变体的结构化负载；借用冲突为 `BorrowConflict { requested, current }`。
-- FFI 错误使用 `Ffi { operation, category, backend, cause }` 四字段模型；`FfiErrorCategory` 含八个子变体，`FfiBackend` 为 `RawParts` / `Blas`。
+- 所有 `operation` 字段使用 `Cow<'static, str>`；类型转换错误使用 `source_type: &'static str` / `target_type: &'static str` 与 `ConversionFailureReason`，不使用运行时类型标识，也不直接持有 `ElementType` 枚举。
+- Workspace 错误使用 `WorkspaceErrorCategory` 七子变体的结构化负载；借用冲突为 `BorrowConflict`。
+- FFI 错误使用 `Ffi` 四字段模型；`FfiErrorCategory` 含八个子变体，`FfiBackend` 为 `RawParts` / `Blas`。
 - 对于 FFI 场景，公开 Rust 入口包含结构化导出 `export()` / `export_mut()` 与 checked 查询 `try_offset_of()` / `try_ptr_at()`，并统一通过 checked arithmetic 计算偏移与指针。
 
 ---
