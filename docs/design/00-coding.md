@@ -4,8 +4,6 @@
 > 适用范围: 全局编码与工程约束
 > 任务阶段: Phase 0
 > 前置文档: 无
-> 需求参考: 需求说明书 §1, §4, §7, §10, §18, §23, §25, §27, §28
-> 范围声明: 范围内
 
 ---
 
@@ -103,12 +101,6 @@ pub enum ElementType {
     Complex32 = 5,
     Complex64 = 6,
 }
-// Authoritative definition lives in `crate::element` (see 03-element.md §5.1.1).
-// `ffi` re-exports via `pub use crate::element::ElementType`. `error` does NOT
-// hold this enum — it uses `&'static str` (sourced from ELEMENT_TYPE_NAME) for
-// type tags in error fields, keeping L0 free of element dependency.
-// Discriminant values ARE part of the public C ABI contract (v1.4.0+);
-// reordering or reusing existing values is breaking.
 
 // The sealed implementation set is:
 // i32, i64, f32, f64, Complex<f32>, Complex<f64>, bool.
@@ -123,8 +115,6 @@ pub trait element { /* ... */ }
 pub trait ELEMENT { /* ... */ }
 pub trait Has_Element { /* ... */ }
 ```
-
-`BoolElement` 为 `pub(crate)` 内部分类 trait，不属于公开扩展点。封闭元素集合不包含 `usize`。
 
 ### 2.4 索引类型别名
 
@@ -165,20 +155,18 @@ pub const maxDimension: usize = usize::MAX;
 pub const Max_Dimension: usize = usize::MAX;
 ```
 
-**注：** `MAX_DIMENSION` 的权威定义见 `02-dimension.md §5.2`，此处仅展示常量命名风格。
-
 ### 2.7 类型参数
 
 类型参数使用单字母大写，选择有语义的字母。
 
-| 参数 | 含义                                 |
-| ---- | ------------------------------------ |
-| `S`  | Storage（存储类型）                  |
-| `D`  | Dimension（维度类型）                |
-| `A`  | Element type（元素类型，来自 Array） |
+| 参数 | 含义                                        |
+| ---- | ------------------------------------------- |
+| `S`  | Storage（存储类型）                         |
+| `D`  | Dimension（维度类型）                       |
+| `A`  | Element type（元素类型，来自 Array）        |
 | `L`  | Local helper type（仅模块内部局部泛型示例） |
-| `T`  | 通用类型参数                         |
-| `E`  | Error type（错误类型）               |
+| `T`  | 通用类型参数                                |
+| `E`  | Error type（错误类型）                      |
 
 ### 2.8 生命周期
 
@@ -222,8 +210,6 @@ impl<A, D> TensorBase<Owned<A>, D> {
 pub fn get_slice(&self) -> &[A] { /* ... */ }  // no need for get_ prefix
 pub fn to_view(&self) -> View<'_, A, D> { /* ... */ }  // view conversion should use as_
 ```
-
-storage 层的深拷贝 API 使用 `deep_clone()`；`to_owned` 不作为 storage 层命名。`Owned::into_shared(self) -> ArcRepr<A>` 是拥有存储转共享存储的消耗式转换。广播、转置和切片产生 `ViewRepr<'a, A>`。`StorageShared` 是公开 `unsafe` sealed trait（权威定义见 `05-storage.md §5.8` 与决策 6），下游可在泛型签名中命名 `S: StorageShared` 表达"共享只读张量"约束，但因 sealed 边界不能为外部类型实现；`AlignedAlloc` 保持 `pub(crate)` 内部能力。
 
 ### 2.10 Getter类方法约定
 
@@ -287,7 +273,7 @@ format_code_in_doc_comments = true
 
 ### 3.3 行宽限制
 
-每行最大宽度为100 字符。超过时优先换行而非缩短变量名。
+每行建议宽度为75字符，最大宽度为100 字符。超过时优先换行而非缩短变量名。
 
 ```rust,ignore
 // Good
@@ -301,8 +287,6 @@ pub fn from_shape_vec_unchecked(
 // Bad
 pub fn from_shape_vec_unchecked(shape: Shape, data: Vec<A>) -> Self { /* ... */ }
 ```
-
-`Tensor::from_shape_vec` 的元素数不匹配错误使用 `InvalidShapeKind::ElementCountMismatch { expected, actual }`。`zeros` / `ones` 构造填充值存储时使用完全限定调用：`<Owned<A> as StorageOwned>::from_elem(len, value)`。
 
 ### 3.4 导入分组规则
 
@@ -371,12 +355,6 @@ let offset = ptr as usize;
 // CAST-SAFETY: saturating semantics per IEEE 754
 let truncated = float_val as i32;
 ```
-
-类型转换分为三层：静态无损转换使用 `From`，静态有损转换和动态条件性转换使用 `CastTo<T>`。`XenonError::TypeConversion` 必须填写 `operation`、`source_type: &'static str`、`target_type: &'static str`、`reason`、`element_index` 五个字段（v3.2.0 起；值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供），禁止使用 `TypeId` 表达元素类型，**也禁止**直接使用 `ElementType` 枚举（避免 error 反向依赖 element）。
-
-复数实数构造的唯一显式路径是 `From<T> for Complex<T>`。不存在 `Complex<T> op T` 便捷运算符；整数到复数转换必须走 `CastTo`。
-
-运算符重载的 `Output` 必须是 `Result<Tensor<_, _>, XenonError>`。同形状可写 `a + b`，可能广播或形状不确定的路径使用方法调用如 `a.add(&b)?`；不新增 `try_add` / `try_sub`。左标量运算使用 `Scalar<A>` 包装类型，不提供 `i32 + Tensor` 原生左标量实现。
 
 ### 4.2 泛型约束写法
 
@@ -461,33 +439,6 @@ pub struct Bad<A> {
 - 只有真实拥有元素所有权的类型才使用`PhantomData<A>`
 - 不要在视图类型上用 `PhantomData<A>` 冒充借用关系。
 
-### 4.4 Send/Sync 实现规范
-
-**Send/Sync 的唯一权威定义见 `25-safety.md §5.1`**（具体版本以本文档 §1.3 协同基线声明为准）。本节不重复规则表与 `unsafe impl` 代码，避免双重权威导致维护漂移。
-
-凡涉及存储模式 Send/Sync 边界、`unsafe impl` 的安全论证、`ViewMutRepr` 不实现 `Sync` 的精确理由（含对 `PhantomData<&mut A>` 角色的论证修正），均以 `25-safety.md §5.1` 为准。本文档其他章节如需引用 Send/Sync 规则，应链接到 `25-safety.md §5.1`，不得就地复述。
-
-### 4.5 API 可错性规范
-
-本节定义 Xenon 公共 API 何时返回 `Result<T, XenonError>`（可错）、何时直接返回 `T`（不可错）。各计算模块的内部选择应以此规则为全局默认依据；特定模块若已在自身文档中就其 API 返回类型做出细化决策（例如 `19-overload.md §11` 决策 3 / 决策 4），则以该模块文档为领域权威，本规则仅提供跨模块一致性说明。
-
-1. **运行时形状/轴/广播/索引校验类 API** 必须返回 `Result<T, XenonError>`。
-   API 在运行时需检查输入形状兼容性、轴合法性、广播可行性或索引边界时，失败属于可恢复的用户错误。
-
-2. **纯逐元素标量运算**直接返回 `T`（不可错）。
-   例如 `add_scalar`、`mul_scalar`、`sin`、`sqrt`、`conjugate` 等。此类运算的形状兼容性在编译期或调用点已无歧义——标量天然可广播至任意形状，一元逐元素运算无形状交互。整数溢出走 §8.x panic。
-
-3. **全张量归约**（不接收轴参数，例如 `sum()`）直接返回 `T`（不可错）。
-   此类运算无需运行时轴/形状校验，失败分支仅余整数累加溢出——按 §8.x panic 处理。
-
-4. **构造器**在输入有效性（形状合法性、元素数量匹配）编译期不可证时返回 `Result`，在可静态证明时直接返回 `T`（例如 `from_scalar` 的输入有效性是自明的）。
-
-5. **运算符重载**（`+`、`-`、`*`、`/`）：
-   - `Tensor × Tensor` → `Result<Tensor>`（广播可能失败）
-   - `Tensor × Scalar` / `Scalar × Tensor` → `Tensor`（不可错）
-
-> **与已有文档的关系：** 以上五条为全局默认。特定模块若在自身设计文档中已对返回类型做出明确决策——例如 `19-overload.md §11` 决策 4（"仅张量×张量路径共享 Result 边界"）、`13-reduction.md §5.1`（`sum()` 全归约不可错 vs `sum_axis()` 校验 axis 可错）、`11-math.md §5`（二元广播方法返回 Result 而标量方法返回 `Tensor`）——则以该模块文档为领域权威，本规则仅解释这些跨模块一致决策背后的统一原则。
-
 ---
 
 ## 5. 错误处理规范
@@ -498,7 +449,7 @@ pub struct Bad<A> {
 
 - 运行时约束违反（形状不匹配、广播失败）
 - 用户输入无效
-- 方法型 API 中可恢复的边界检查失败（例如 `broadcast_to()` / `slice()` / `try_offset_of()`）
+- 方法型 API 中可恢复的边界检查失败
 - 公开安全索引 API 的越界与维度不匹配必须返回可恢复错误
 
 **使用 `panic!`**（不可恢复错误）：
@@ -548,61 +499,17 @@ where
 
 ### 5.2 XenonError 设计
 
-单一 `XenonError` 错误模型的架构决策已在 `01-architecture.md §13` 中定义。本节仅说明该决策在编码层面的公开 API、错误映射与文档写法约束。统一错误类型 `XenonError`，覆盖所有可恢复错误场景，以下为字段形态示意，非权威定义。错误模型以 `26-error.md v3.2.0 §5.1` 为准（与 §1.3 协同基线一致；v3.2.0 起 `TypeConversion::source_type` / `target_type` 与 `AbiMismatchKind::ElementTypeMismatch::expected` / `actual` 字段类型为 `&'static str`，值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供）。
+单一 `XenonError` 错误模型的架构决策已在 `01-architecture.md §13` 中定义。统一错误类型 `XenonError`，覆盖所有可恢复错误场景，以下为字段形态示意，非权威定义。错误模型以 `26-error.md §5.1` 为准。
 
 ```rust,ignore
 #[derive(Debug, Clone)]
 pub enum XenonError {
     ShapeMismatch { operation: Cow<'static, str>, left_shape: Vec<usize>, right_shape: Vec<usize> },
-    BroadcastError {
-        operation: Cow<'static, str>,
-        lhs_shape: Vec<usize>,
-        rhs_shape: Vec<usize>,
-        attempted_target_shape: Option<Vec<usize>>,
-        axis: Option<usize>,
-    },
-    // Reserved-for-future variant; no public API constructs it in the current
-    // version. Kept in the enum for SemVer stability so future BLAS/FFI
-    // integrations can construct it without breaking changes.
-    LayoutMismatch { operation: Cow<'static, str>, required_layout: Cow<'static, str>, actual_layout: Cow<'static, str>, shape: Vec<usize> },
-    InvalidShape { operation: Cow<'static, str>, shape: Vec<usize>, kind: InvalidShapeKind, offending_dim: Option<usize> },
-    InvalidLayout { operation: Cow<'static, str>, storage_kind: StorageKindTag, shape: Vec<usize>, strides: Vec<usize>, offset: usize, storage_len: usize, reason: InvalidLayoutReason },
-    InvalidArgument { operation: Cow<'static, str>, kind: InvalidArgumentKind },
-    InvalidStorageMode { operation: Cow<'static, str>, expected: StorageKindTag, actual: StorageKindTag, shape: Option<Vec<usize>>, conversion: Option<StorageConversionKind> },
-    DimensionMismatch { operation: Cow<'static, str>, expected: usize, actual: usize },
-    IndexOutOfBounds { operation: Cow<'static, str>, attempted_index: Vec<usize>, axis: usize, shape: Vec<usize> },
-    TypeConversion { operation: Cow<'static, str>, source_type: &'static str, target_type: &'static str, reason: ConversionFailureReason, element_index: Option<usize> },
-    InvalidAxis { operation: Cow<'static, str>, axis: usize, ndim: usize, shape: Vec<usize> },
-    Ffi { operation: Cow<'static, str>, category: FfiErrorCategory, backend: FfiBackend, cause: Option<Box<XenonError>> },
-    Workspace { operation: Cow<'static, str>, category: WorkspaceErrorCategory, cause: Option<Box<XenonError>> },
-    // 完整变体清单（13 个）：ShapeMismatch / BroadcastError / LayoutMismatch /
-    // InvalidShape / InvalidLayout / InvalidArgument / InvalidStorageMode /
-    // DimensionMismatch / IndexOutOfBounds / TypeConversion / InvalidAxis /
-    // Ffi / Workspace。详见 26-error.md v3.2.0 §5.1。
-    // 旧模型 Storage / Numerical / Internal 三个占位变体已在 v3.0.0 删除。
-    //
-    // ElementType 类型自 v1.4.0 / v3.2.0 起的权威定义在 `crate::element`
-    // （03-element.md §5.1.1），ffi 通过 `pub use crate::element::ElementType`
-    // re-export 到 `crate::ffi::ElementType` 给 C ABI 消费者。
-    //
-    // **error 模块完全不依赖 element**：TypeConversion / AbiMismatchKind 中
-    // 涉及类型标识的字段使用 `&'static str`（值由 `<A as Element>::ELEMENT_TYPE_NAME`
-    // 提供），不直接持有 `ElementType` 枚举，从而保持 L0 严格无 internal 依赖。
+    ...
 }
-
-pub enum StorageKindTag { Owned, View, ViewMut, Shared } // Shared backed by ArcRepr<A>; aligned with public StorageKind. (per 26-error v3.2.0 §5.1)
-pub enum FfiBackend { RawParts, Blas }
-
-// Workspace borrow conflicts use:
-// WorkspaceErrorCategory::BorrowConflict {
-//     requested: WorkspaceBorrowKind,
-//     current: WorkspaceBorrowState,
-// }
 
 pub type Result<T> = std::result::Result<T, XenonError>;
 ```
-
-`FfiErrorCategory` 覆盖 `NullPointer`、`AlignmentMismatch`、`InvalidRank`、`BlasIncompatibleLayout`、`IntegerOverflow`、`AbiMismatch`、`OverlapRejected`、`ForeignAllocatorMismatch` 八个子变体，`FfiBackend` 仅为 `RawParts | Blas`。`WorkspaceErrorCategory` 覆盖 `AllocFailed`、`InvalidLayout`、`BorrowConflict`、`SplitOutOfBounds`、`SplitCountInvariant`、`GrowOverflow`、`TypedViewRejected` 七个子变体。
 
 ### 5.3 unwrap 限制
 
