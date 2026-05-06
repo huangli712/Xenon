@@ -691,7 +691,7 @@ hypot(a, b):
 | `impl Eq for Complex<T>`         | NaN 违反自反性                      |
 | `impl Ord for Complex<T>`        | 复数无自然全序                      |
 | `impl PartialOrd for Complex<T>` | 字典序无数学意义                    |
-| Serde 序列化                     | 不在当前范围（参见 `需求说明书 §2.2`） |
+| Serde 序列化                     | 不在当前范围                        |
 
 ---
 
@@ -904,7 +904,7 @@ User constructs `Complex<f64>::new(re, im)`
 
 | 项目              | 内容                                                                                |
 | ----------------- | ----------------------------------------------------------------------------------- |
-| Recoverable error | `CastTo<T>` trait 级的有损窄化路径返回 `XenonError::TypeConversion { operation: Cow<'static, str>, source_type: &'static str, target_type: &'static str, reason: ConversionFailureReason, element_index: Option<usize> }`（五字段，对齐 `26-error.md v3.2.0 §5.1`）。`source_type` / `target_type` 使用 `&'static str`，值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供（`03-element.md §5.1.1`，例如 `<Complex<f64> as Element>::ELEMENT_TYPE_NAME == "Complex<f64>"`），**不使用** `core::any::TypeId`，**也不使用** `ElementType` 枚举（避免 error 反向依赖 element）。`reason` 取 `ConversionFailureReason` 封闭枚举的五个变体之一（`LossyIntegerNarrowing` / `LossyFloatNarrowing` / `FloatToInteger` / `IntegerToFloatPrecisionLoss` / `NonZeroImaginaryPart`，参见 `26-error.md v3.2.0 §5.1` 的完整定义）；复数模块涉及的具体路径主要使用 `LossyFloatNarrowing` / `IntegerToFloatPrecisionLoss` / `FloatToInteger` / `NonZeroImaginaryPart` 四个变体，`LossyIntegerNarrowing` 由非复数实数窄化路径（如 i64→i32）使用，本模块不直接构造。`operation` 由调用入口（如 `21-type.md` 的 `cast()`）注入；`CastTo::cast_to()` 实现**必须**填入稳定非空操作名 `Cow::Borrowed("cast_to")`（与 `26-error.md §8.2` `test_type_conversion_carries_operation` 的非空契约一致），张量级 `cast()` 在 rewrap 时再覆盖为规范的 `Cow::Borrowed("cast")` 并补齐 `element_index`。直接调用 `CastTo::cast_to()` 时返回的错误 `operation == "cast_to"`，永不为空字符串。`element_index` 由张量级逐元素调用方填充，标量级实现留 `None`。 |
+| Recoverable error | `CastTo<T>` trait 级的有损窄化路径返回 `XenonError::TypeConversion`。               |
 | Panic             | 常规复数运算与方法不以 panic 作为错误通道；若调用底层标准库浮点 API，遵循其既有语义 |
 | 路径一致性        | scalar 路径与普通标量实现必须一致；SIMD：不适用；parallel：不适用                   |
 | 容差边界          | 复数数值测试采用显式容差；布局、格式化与类型边界测试不适用                          |
@@ -920,7 +920,7 @@ User constructs `Complex<f64>::new(re, im)`
 | 决策     | 自定义 `Complex<T>`，不依赖 `num-complex`                                           |
 | 理由     | 零额外依赖；可精确控制 trait 实现；严格同精度互操作；与 Element 体系无缝集成        |
 | 替代方案 | 使用 `num-complex` — 放弃，引入 num-traits 传递依赖，且 trait surface 需要额外适配  |
-| 后果     | 需自行实现 `norm`/`norm_sqr` 等基础数学方法；高阶数学函数（如 `exp`/`ln`/`sqrt`）留待后续模块按需引入；获得 API 完全控制权                           |
+| 后果     | 需自行实现 `norm`/`norm_sqr` 等基础数学方法；高阶数学函数留待后续模块按需引入       |
 
 ### 决策 2：不实现 Eq/Ord
 
