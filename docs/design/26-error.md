@@ -1095,7 +1095,7 @@ Caller invokes public API (e.g., tensor.broadcast_to(shape))
 
 | 属性     | 值                                                                                                                                                                |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | `FfiErrorCategory` / `WorkspaceErrorCategory` 改为携带结构化负载的 closed enum，覆盖 NullPointer / AlignmentMismatch / AbiMismatch / OverlapRejected / ForeignAllocatorMismatch / BorrowConflict / SplitCountInvariant / GrowOverflow / TypedViewRejected 等具体子类 |
+| 决策     | `FfiErrorCategory` / `WorkspaceErrorCategory` 改为携带结构化负载的 closed enum，覆盖 `NullPointer / AlignmentMismatch / AbiMismatch / OverlapRejected / ForeignAllocatorMismatch / BorrowConflict / SplitCountInvariant / GrowOverflow / TypedViewRejected` 等具体子类 |
 | 理由     | 原 `Ffi { backend, precondition, actual }` 三个 `Cow<str>` 字段把关键诊断稳定为自由文本，`InvalidRank/BlasIncompatibleLayout/IntegerOverflow` 三类无法覆盖 raw-parts FFI 常见错误源；workspace 的 `AllocFailed/InvalidLayout/AlreadyBorrowed/SplitOutOfBounds` 同样过粗 |
 | 替代方案 | 维持粗粒度子枚举 + 自由文本 — 放弃，违反“结构化诊断不依赖纯字符串消息”原则                                                                                         |
 | 替代方案 | 把所有 FFI/workspace 错误打平为一级变体 — 放弃，会让 `XenonError` 顶层变体爆炸性增长且失去“按子系统聚类”的程序化匹配能力                                           |
