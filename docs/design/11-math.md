@@ -125,9 +125,16 @@ src/math/
 
 ### 5.2 二元逐元素执行约定
 
-二元逐元素方法统一使用 `BroadcastDim<DB>` 进行编译期维度推导；`BroadcastDim` 是 public sealed trait，因此在公开 API 中可被外部稳定命名。该 trait 定义于 `02-dimension.md §5.10`，详见该文档。
+- 二元逐元素方法统一使用 `BroadcastDim<DB>` 进行编译期维度推导；`BroadcastDim` 是 public sealed trait，因此在公开 API 中可被外部稳定命名。该 trait 定义于 `02-dimension.md §5.10`，详见该文档。
 
-当前版本不承诺独立的通用二元逐元素 helper 公开函数。二元算术、比较与内部辅助路径统一采用"先广播，再直接遍历广播后视图并写入结果张量"的执行模型。调度模型：由 `dispatch.rs` 通过 `let (path, guard) = dispatch::select_exec_path(...)` 统一决定串行 / SIMD / 并行路径（参见 30-dispatch.md v2.0.3 决策 7）；进入并行路径后，单个 worker chunk 内**可以**独立调用 SIMD 后端 kernel（v2.0 起，参见 08-simd.md v2.0.0 决策 5），即"thread × SIMD 双层加速"模型。串行路径下 SIMD 由 `simd` 后端按其 admission 规则独立判断是否启用；不进入 SIMD 时回退到该路径内的标量循环。注：`select_exec_path` 第三参数 `alignment_ok` 是调用方提示位（hint），dispatch 不强制将其用作 SIMD 准入硬门槛，simd 后端在 admission 内部独立通过 `layout::is_aligned()` 重检查（30-dispatch v2.0.3 §5.5 / §6.4）。
+- 当前版本不承诺独立的通用二元逐元素 helper 公开函数。二元算术、比较与内部辅助路径统一采用"先广播，再直接遍历广播后视图并写入结果张量"的执行模型。
+
+调度模型：
+
+1. 由 `dispatch.rs` 通过 `let (path, guard) = dispatch::select_exec_path(...)` 统一决定串行 / SIMD / 并行路径。
+2. 进入并行路径后，单个 worker chunk 内可以独立调用 SIMD 后端 kernel，即"thread × SIMD 双层加速"模型。
+3. 串行路径下 SIMD 由 `simd` 后端按其 admission 规则独立判断是否启用；不进入 SIMD 时回退到该路径内的标量循环。
+4. `simd` 后端在 admission 内部独立通过 `layout::is_aligned()` 重检查。
 
 ### 5.3 算术运算（Numeric 约束）
 
