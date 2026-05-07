@@ -565,11 +565,10 @@ where
 
 安全构造路径必须验证全部可验证元数据约束，至少包括 shape/stride 可表示性、元素总数计算不溢出、以及逻辑访问范围不越界。`from_shape_vec` 这类 API 不得把这些前提留给调用方；safe 构造负责兜底全部可检查元数据条件。
 
-> **权威分工说明（避免双权威）：**
->
-> - `TensorBase<Owned<A>, D>::from_shape_vec` 等公开安全构造方法的**完整设计**（包含算法、错误字段、对齐策略、边界场景）位于 `18-construction.md §5.3`。
-> - 本节仅给出**公开签名与公开契约摘要**，不重复展开实现算法。任何与 `18-construction.md` 不一致的描述均以 `18-construction.md` 为准。
-> - 本节列出 `from_shape_vec` 的目的，是说明它是 `TensorBase<Owned<A>, D>` 的固有方法签名，并固定其错误返回类型与文档化前置条件，方便 `tensor` 模块下游消费者在不阅读 `18-construction.md` 时也能理解类型签名。
+**权威分工说明**：
+
+- `TensorBase<Owned<A>, D>::from_shape_vec` 等公开安全构造方法的完整设计位于 `18-construction.md §5.3`。
+- 本节仅给出公开签名与公开契约摘要，不重复展开实现算法。任何与 `18-construction.md` 不一致的描述均以 `18-construction.md` 为准。
 
 ````rust,ignore
 impl<A, D> TensorBase<Owned<A>, D>
@@ -583,7 +582,7 @@ where
     ///
     /// * `shape` - Length of each axis
     /// * `data` - Element data following logical-index correspondence semantics
-    ///   defined by `需求说明书 §19`; the input order defines which element belongs
+    ///   defined by `require.md §19`; the input order defines which element belongs
     ///   to each logical index, rather than requiring callers to pre-arrange bytes
     ///   in a specific physical layout
     ///
@@ -649,7 +648,7 @@ where
     /// - `data.len()` must equal the previously validated element count
     /// - `shape` must be representable by the current dimension type
     /// - The default packed F-order stride derived from `shape` must be
-    ///   representable and consistent with `需求说明书 §7`
+    ///   representable and consistent with `require.md §7`
     /// - The constructor assumes no extra offset and therefore treats the input
     ///   buffer as the full logical tensor payload
     pub(crate) unsafe fn from_raw_vec_unchecked(data: Vec<A>, shape: D) -> Self {
