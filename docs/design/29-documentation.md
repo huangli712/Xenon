@@ -595,20 +595,16 @@ MIT
 ```toml
 [package.metadata.docs.rs]
 all-features = true
-# NOTE: do NOT add `rustdoc-args = ["--cfg", "docsrs"]` (see `00-coding.md §10.3`).
 ```
 
 #### 5.10.2 Feature gate 标注
 
 文档中必须显式区分以下两类情况：
 
-1. **API gated by feature**：API 本身只在特定 feature 启用时出现，此时仅使用 `#[cfg(feature = "...")]` 条件编译；**不**使用 `#[doc(cfg(...))]`（nightly-only，详见 `00-coding.md §10.3`）。
+1. **API gated by feature**：API 本身只在特定 feature 启用时出现，此时仅使用 `#[cfg(feature = "...")]` 条件编译；不使用 `#[doc(cfg(...))]`。
 2. **API always present but behavior varies by feature**：API 始终存在，只是启用 feature 后内部执行路径或性能特征变化；此时不得把该 API 误写成“仅在 feature 下可用”，而应在正文中说明行为差异。
 
 ```rust,ignore
-// lib.rs — NO `#![cfg_attr(docsrs, feature(doc_cfg))]` (nightly-only,
-// breaks MSRV 1.85 stable; see `00-coding.md §10.3`).
-
 // Public APIs whose behavior is affected by an optional feature should document
 // the behavior change directly instead of using doc(cfg) when the API itself is
 // always available.
@@ -631,13 +627,11 @@ pub fn sum(&self) -> A { ... }
 | Gate 5：Clippy 完整门禁                  | `cargo clippy --all-features -- -D warnings`                                                                               | 任何 clippy warning                                               |
 | Gate 6：编译警告门禁                     | `RUSTFLAGS="-D warnings" cargo check --all-features`                                                                       | 任何编译器 warning                                                |
 
-Gate 4 当前涵盖 `basic` / `broadcasting` / `workspace` 三个核心示例；完整示例覆盖清单见 §5.3。随着项目成熟，Gate 4 范围可逐步扩展至 §5.3 表中的所有 14 个 API 族。
-
-Gate 1、Gate 5、Gate 6 为 `00-coding.md §7.1` 规定的三项 CI 硬门禁。Gate 5（完整 clippy）覆盖所有 clippy lint，远不止 Gate 2 的三条文档专项 lint；Gate 2 作为补充文档节完整性校验继续保留，但不替代完整 clippy 扫描。Gate 6 确保常规编译警告在所有 feature 组合下均提升为错误。
+Gate 4 当前涵盖 `basic` / `broadcasting` / `workspace` 三个核心示例；完整示例覆盖清单见 §5.3。随着项目成熟，Gate 4 范围可逐步扩展至 §5.3 表中的所有 14 个 API 族。Gate 1、Gate 5、Gate 6 为 `00-coding.md §7.1` 规定的三项 CI 硬门禁。Gate 5（完整 clippy）覆盖所有 clippy lint，远不止 Gate 2 的三条文档专项 lint；Gate 2 作为补充文档节完整性校验继续保留，但不替代完整 clippy 扫描。Gate 6 确保常规编译警告在所有 feature 组合下均提升为错误。
 
 #### 5.11.2 CI 配置与 Feature 维度验证矩阵
 
-**说明**：§5.11.1 定义了文档交付需要的验证项。权威的 doctest / examples CI 执行矩阵（含 Feature 维度验证矩阵）由 `28-tests.md` 统一维护，本文档不再重复。
+§5.11.1 定义了文档交付需要的验证项。权威的 doctest / examples CI 执行矩阵（含 Feature 维度验证矩阵）由 `28-tests.md` 统一维护，本文档不再重复。
 
 ### 5.12 Good / Bad 文档注释对比
 
@@ -765,21 +759,21 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 - [ ] **T2**: 配置 `#![warn(missing_docs)]` 和 docs.rs metadata
   - 文件: `src/lib.rs`, `Cargo.toml`
-  - 内容: lint 规则、`[package.metadata.docs.rs] all-features = true`（**不**使用 `cfg_attr(docsrs, ...)` 与 `--cfg docsrs`，详见 `00-coding.md §10.3`）
+  - 内容: lint 规则、`[package.metadata.docs.rs] all-features = true`
   - 测试: 编译通过
   - 前置: T1
   - 预计: 5 min
 
 - [ ] **T3**: 编写 README.md
   - 文件: `README.md`
-  - 内容: 项目介绍、Features、Quick Start、安装、文档链接、许可证；README 英文说明需明确引用 `00-coding.md §7` 与 Rust 生态受众
+  - 内容: 项目介绍、Features、Quick Start、安装、文档链接、许可证
   - 测试: 内容完整
   - 前置: T1
   - 预计: 10 min
 
 - [ ] **T4**: 可选维护 CHANGELOG.md
   - 文件: `CHANGELOG.md`
-  - 内容: Keep a Changelog 格式；仅作为可选工程整理项，不属于 `需求说明书 §28.1` 的默认交付物
+  - 内容: Keep a Changelog 格式；仅作为可选工程整理项
   - 测试: 格式正确
   - 前置: 无
   - 预计: 5 min
@@ -788,28 +782,28 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 - [ ] **T5**: 编写核心模块文档（dimension, element, complex, storage, layout）
   - 文件: 各 `mod.rs`
-  - 内容: 模块职责、核心概念、使用示例、依赖图、设计决策（参见 `02-dimension.md §1`、`03-element.md §1`、`04-complex.md §1`、`05-storage.md §1`、`06-layout.md §1`）
+  - 内容: 模块职责、核心概念、使用示例、依赖图、设计决策
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T2
   - 预计: 10 min
 
 - [ ] **T6**: 编写张量与运算模块文档（tensor, iter, math, overload, broadcast, reduction, matrix, shape, index, construct, set）
   - 文件: 各 `mod.rs`
-  - 内容: 模块职责、核心类型、运算分类、类型约束速查（参见 `07-tensor.md §1`、`10-iterator.md §1`、`11-math.md §1`、`12-matrix.md §1`、`13-reduction.md §1`、`15-broadcast.md §1`、`16-shape.md §1`）
+  - 内容: 模块职责、核心类型、运算分类、类型约束速查
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T2
   - 预计: 10 min
 
 - [ ] **T7**: 编写基础设施模块文档（ffi, workspace, error, prelude, convert, format，以及 simd/parallel 内部后端说明）
   - 文件: 对外模块各 `mod.rs`；`simd` / `parallel` 仅补充内部架构说明与 feature 影响说明，不视为独立公开模块文档交付
-  - 内容: 模块职责、Safety 约定、feature gate 说明、转换与输出语义；`simd` / `parallel` 作为内部执行后端，仅文档化内部架构说明及其对公开 API feature 行为/执行路径的影响，不定义独立公开 API surface 文档（参见 `23-ffi.md §1`、`24-workspace.md §1`、`08-simd.md §1`、`09-parallel.md §1`、`21-type.md §1`、`22-output.md §1`、`26-error.md §1`）
+  - 内容: 模块职责、Safety 约定、feature gate 说明、转换与输出语义
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T2
   - 预计: 10 min
 
 - [ ] **T8**: 编写 util 模块级文档
   - 文件: `src/util/mod.rs`
-  - 内容: 模块职责概述、utility 函数分类说明（参见 `20-utility.md §1`）；仅模块级文档（`//!`），不含函数级 doctest
+  - 内容: 模块职责概述、utility 函数分类说明；仅模块级文档（`//!`），不含函数级 doctest
   - 测试: `cargo doc --no-deps` 无 warning
   - 前置: T2
   - 预计: 5 min
@@ -874,35 +868,35 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 - [ ] **T17**: construct 和 set 模块文档
   - 文件: `src/construct/mod.rs`, `src/set/mod.rs`
-  - 内容: zeros, ones, eye, from_shape_vec, unique 函数文档和 doctest（`full` 当前版本未提供）；构造错误语义与 `<Owned<A> as StorageOwned>::from_elem` 调用形态须与 `18-construction.md v3.0.1` 一致
+  - 内容: zeros, ones, eye, from_shape_vec, unique 函数文档和 doctest；构造错误语义
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
 
 - [ ] **T18**: ffi, workspace, error 模块文档
   - 文件: `src/ffi/mod.rs`, `src/workspace/mod.rs`, `src/error.rs`
-  - 内容: FFI 函数（含 Safety 节）、Workspace、XenonError 文档和 doctest；错误字段须对齐 `26-error.md v3.2.0 §5.1`（`TypeConversion` 等使用 `&'static str`），workspace 借用示例须使用 `24-workspace.md v3.0.1` 的 `&mut self` / 消费式 split 形态
+  - 内容: FFI 函数、Workspace、XenonError 文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
 
 - [ ] **T19**: iter, convert, format, overload 模块文档
   - 文件: `src/iter/mod.rs`, `src/convert/mod.rs`, `src/format/mod.rs`, `src/overload/mod.rs`
-  - 内容: 迭代器入口、类型转换、输出格式化、运算符语法边界的模块文档和 doctest；类型转换示例不得使用运行时类型 ID，运算符示例必须体现 `Output = Result<..., XenonError>` 且不得新增额外的 try 前缀算术方法
+  - 内容: 迭代器入口、类型转换、输出格式化、运算符语法边界的模块文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
 
 - [ ] **T20**: index 模块函数级文档和 doctest
   - 文件: `src/index/mod.rs`
-  - 内容: 索引/切片相关函数的文档和 doctest（参见 `17-indexing.md §1`）；示例只使用 `try_at` / `try_at_mut` / `get` / `get_mut`，不得展示方括号索引语法
+  - 内容: 索引/切片相关函数的文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T5, T6, T7
   - 预计: 10 min
 
 - [ ] **T21**: util 模块函数级文档和 doctest
   - 文件: `src/util/mod.rs`
-  - 内容: clip / fill / try_fill / to_contiguous / into_contiguous 等 utility 函数的函数级文档和 doctest（参见 `20-utility.md §1`）
+  - 内容: clip / fill / try_fill / to_contiguous / into_contiguous 等 utility 函数的函数级文档和 doctest
   - 测试: `cargo test --doc --all-features`
   - 前置: T8
   - 预计: 10 min
@@ -932,14 +926,14 @@ RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 - [ ] **T25**: 编写 examples/features.rs
   - 文件: `examples/features.rs`
-  - 内容: 可选 feature 的启用方式，以及 `parallel` / `simd` 对公开 API **语义可见性与执行路径**的横向对比（如同一 API 在不同 feature 组合下的行为差异）；不深入单个 feature 的内部实现细节
+  - 内容: 可选 feature 的启用方式，以及 `parallel` / `simd` 对公开 API 语义可见性与执行路径的横向对比
   - 测试: `cargo run --example features --features parallel,simd`
   - 前置: T1
   - 预计: 10 min
 
 - [ ] **T26**: 编写 examples/simd.rs
   - 文件: `examples/simd.rs`
-  - 内容: `simd` feature 专属的**内部加速路径、数据布局前提与回退策略**纵向深入示例；聚焦 SIMD 实现细节而非 feature 横向对比
+  - 内容: `simd` feature 专属的内部加速路径、数据布局前提与回退策略*纵向深入示例
   - 测试: `cargo run --example simd --features simd`
   - 前置: T1
   - 预计: 10 min
