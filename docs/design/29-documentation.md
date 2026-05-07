@@ -198,7 +198,7 @@ L3: Examples (examples/)
 | ---- | ----------------------------- | ---------------------------------------------------- |
 | L0   | 必须存在                      | CI 检查                                              |
 | L1   | 每个 pub mod 必须有模块文档   | `#![warn(missing_docs)]`                             |
-| L2   | 每个 pub 项必须有 doc comment | `#![warn(missing_docs)]`（参见 `00-coding.md §7`）   |
+| L2   | 每个 pub 项必须有 doc comment | `#![warn(missing_docs)]`                             |
 | L3   | 关键 API 至少一个示例         | `cargo build --examples` / `cargo run --example ...` |
 
 ### 5.3 关键 API 示例覆盖矩阵
@@ -215,12 +215,12 @@ L3: Examples (examples/)
 | 类型转换 (`cast`)                    | ✅         | doctest   | `21-type.md`         |
 | FFI unsafe API                       | ✅         | example   | `23-ffi.md`          |
 | 运算符重载                           | ✅         | doctest   | `19-overload.md`     |
-| `clip`/`fill`/`try_fill`/`to_contiguous`/`into_contiguous` | ✅ | doctest | `20-utility.md`      |
+| `clip/fill/try_fill/to_contiguous/into_contiguous` | ✅ | doctest | `20-utility.md`  |
 | 集合操作 (`unique`)                  | ✅         | doctest   | `14-set.md`          |
 | 工作空间                             | ✅         | example   | `24-workspace.md`    |
 | 格式化输出                           | ✅         | doctest   | `22-output.md`       |
 
-执行范围说明：上表是示例覆盖矩阵的理想目标。"示例载体"列标明该 API 族主要通过独立 example 程序还是 doctest 满足覆盖要求。CI 实际执行范围受时间与资源约束，采用分层执行策略；参见 §5.11.1 的 Gate 定义。
+上表是示例覆盖矩阵的理想目标。"示例载体"列标明该 API 族主要通过独立 example 程序还是 doctest 满足覆盖要求。
 
 ### 5.4 核心文档模板
 
@@ -238,7 +238,7 @@ L3: Examples (examples/)
 //! # use xenon::prelude::*;
 //!
 //! # fn demo() -> xenon::Result<()> {
-//! // Create tensors (see 18-construction.md §5.1 for constructor signatures)
+//! // Create tensors
 //! let a = Tensor::<f64, _>::zeros([5])?;
 //! let b = Tensor::<f64, _>::zeros([3, 4])?;
 //!
@@ -255,7 +255,7 @@ L3: Examples (examples/)
 //!
 //! ## Runtime Environment
 //!
-//! Xenon supports only the `std` environment (see `01-architecture.md §1.4`).
+//! Xenon supports only the `std` environment.
 //! It does not need or provide a `std` feature toggle.
 //! All documentation assumes a `std` environment.
 //!
@@ -270,8 +270,8 @@ L3: Examples (examples/)
 //!
 //! | Level | Types | Trait Bound |
 //! |-------|-------|-------------|
-//! | Base | i32, i64, f32, f64, Complex&lt;f32>, Complex&lt;f64>, bool | `Element` |
-//! | Numeric | i32, i64, f32, f64, Complex&lt;f32>, Complex&lt;f64> | `Numeric: Element` |
+//! | Base | i32, i64, f32, f64, Complex<f32>, Complex<f64>, bool | `Element` |
+//! | Numeric | i32, i64, f32, f64, Complex<f32>, Complex<f64> | `Numeric: Element` |
 //! | Real | f32, f64 | `RealScalar: Numeric` |
 //! | Complex | Complex<f32>, Complex<f64> | `ComplexScalar: Numeric` |
 //!
@@ -295,7 +295,7 @@ L3: Examples (examples/)
 | `# Returns`   | 返回值非显而易见时 | 描述返回值属性               |
 | `# Errors`    | 返回 Result 时     | 列出所有错误变体             |
 | `# Panics`    | 可能 panic 时      | 列出所有 panic 条件          |
-| `# Safety`    | unsafe 函数        | 列出安全前提条件（**必须**） |
+| `# Safety`    | unsafe 函数        | 列出安全前提条件             |
 | `# Examples`  | 所有关键 API       | 至少一个可运行示例           |
 | `# See Also`  | 有相关 API 时      | 交叉引用                     |
 
