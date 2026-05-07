@@ -299,38 +299,40 @@ L3: Examples (examples/)
 | `# Examples`  | 所有关键 API       | 至少一个可运行示例   |
 | `# See Also`  | 有相关 API 时      | 交叉引用             |
 
-容差体系、错误模型和 panic 语义的具体内容由对应技术规范（`26-error.md`、`28-tests.md`）定义。公共文档需引用 `需求说明书 §28.3` 的容差语义；`28-tests.md` 仅定义测试落实方式和比较 helper。文档层仅要求引用这些规范，不重复定义。
+容差体系、错误模型和 panic 语义的具体内容由对应技术规范（`26-error.md`、`28-tests.md`）定义。公共文档需引用 `需求说明书 §28.3` 的容差语义。文档层仅要求引用这些规范，不重复定义。
 
 对运算符重载入口（如 `Add` / `Sub` / `Mul` / `Div` 的实现文档），即使签名经由 trait 间接暴露，也应补齐与对应方法型 API 一致的 `# Errors` / `# Panics` 模板，并引用 `19-overload.md` 中定义的对应技术规范，避免仅留下语法糖示例而缺少失败条件说明。
 
 所有 doc comment、doctest、README、CHANGELOG 与 examples 中的示例代码必须执行协同审查：
 
-- 错误构造必须匹配 `26-error.md v3.2.0 §5.1`。所有 `operation` 字段使用 `Cow<'static, str>`，示例构造使用 `Cow::Borrowed("...")`；`TypeConversion` 必须填充 `operation`、`source_type`、`target_type`、`reason`、`element_index`，其中 `source_type` / `target_type` 类型为 `&'static str`（v3.2.0 起；值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供，例如 `"f32"`、`"Complex<f64>"`），**不得**使用运行时类型 ID，**也不得**直接使用 `ElementType` 枚举值（避免 error 反向依赖 element）；`Ffi` 必须为 `operation` / `category` / `backend` / `cause` 四字段；`Workspace` 必须使用七子变体结构化 `WorkspaceErrorCategory`（含 `TypedViewRejected::TypedByteLengthOverflow { count, elem_size }`），不得引用旧的借用冲突子变体。
-- 索引示例必须使用 `try_at` / `try_at_mut` 或 `get(&[...])` / `get_mut(&[...])`，不得展示方括号索引语法。切片示例必须说明 `SliceInfo::new` 仅执行结构性校验，`SliceInfoElem::Range` 仅包含 `start` / `end`。
-- 构造示例必须保持 `Tensor::from_shape_vec` 的失败语义为 `InvalidShapeKind::ElementCountMismatch { expected, actual }`；`zeros` / `ones` 的实现说明必须使用 `<Owned<A> as StorageOwned>::from_elem(len, value)` 的完全限定调用。
+- 错误构造必须匹配 `26-error.md §5.1`。
+- 索引示例必须使用 `try_at` / `try_at_mut` 或 `get(&[...])` / `get_mut(&[...])`，不得展示方括号索引语法。
+- 构造示例必须保持 `Tensor::from_shape_vec` 的失败语义为 `InvalidShapeKind::ElementCountMismatch`。
+- `zeros` / `ones` 的实现说明必须使用 `<Owned<A> as StorageOwned>::from_elem(len, value)` 的完全限定调用。
 - 运算符示例必须体现 `Output = Result<Tensor, XenonError>`：同形状可写 `(&a + &b)?`，异形状优先写显式方法 `a.add(&b)?`；不得新增或引用额外的 try 前缀算术方法；左标量示例使用 `Scalar<A>` 包装类型，不展示原生左标量加张量语法。
 - 类型转换示例必须遵循静态无损 `From`、静态有损与动态条件性 `CastTo<T>` 三层结构；复数实数构造只展示 `From<T> for Complex<T>`，整数到复数转换走 `CastTo`。
-- Workspace 示例必须展示 `borrow_mut(&mut self)`、`Workspace::split_at_mut(&mut self)` 与消费式 `SplitBorrowMut::split_at_mut(self)`；线程安全说明以 `25-safety.md v2.0.1` 为准，`ViewMutRepr` 不实现 `Sync`（`!Sync` 来自 raw `*mut A` opt-out + 不提供 `unsafe impl Sync`，**不是**来自 `PhantomData<&mut T>`），`ArcRepr` 要求 `A: Send + Sync`。
+- Workspace 示例必须展示 `borrow_mut(&mut self)`、`Workspace::split_at_mut(&mut self)` 与消费式 `SplitBorrowMut::split_at_mut(self)`。
+- 线程安全说明以 `25-safety.md` 为准。
 
-#### 5.4.3 Sealed trait 公开 doc 约定（v2.0.2）
+#### 5.4.3 Sealed trait 公开 doc 约定
 
 公开但 sealed 的 trait（外部不可实现，但可在 `where` 子句、trait 对象、关联类型中命名）必须在其 `pub trait` 的 doc comment 中显式声明 sealed 状态。这是 docs.rs 公开 API 一致性约定，不是实现细节披露。
 
-**适用范围（与各设计文档的锁定不变量一致）**：
+**适用范围**：
 
-- `05-storage.md`：`RawStorage` / `RawStorageMut` / `Storage` / `StorageMut` / `StorageOwned` / `StorageShared` 6 个 storage trait + `IsOwned` / `IsView` / `IsViewMut` / `IsShared` 4 个 marker trait（全部 sealed via `crate::private::Sealed`，R8-B-03 落地；R10 B-03 把 marker `IsArc` 重命名为 `IsShared`）
-- `02-dimension.md`：`Dimension` 及其超 trait `Reverse`（sealed via `Dimension: Sealed` super-bound；R9 评审 A-03 修复后表述统一）
+- `05-storage.md`：`RawStorage` / `RawStorageMut` / `Storage` / `StorageMut` / `StorageOwned` / `StorageShared` 6 个 storage trait + `IsOwned` / `IsView` / `IsViewMut` / `IsShared` 4 个 marker trait
+- `02-dimension.md`：`Dimension` 及其超 trait `Reverse`
 - `03-element.md`：`Element` / `Numeric` / `RealScalar` / `ComplexScalar` / `CastElement`（封闭元素集成员关系）
 - `21-type.md`：`CastTo<T>`（封闭转换矩阵）
 
-**强制 doc comment 格式**（最小要求）：
+**强制 doc comment 格式**：
 
 ```rust,ignore
 /// ... existing trait description ...
 ///
 /// # Sealed
 ///
-/// This trait is sealed and cannot be implemented outside of `xenon`.
+/// This trait is sealed and cannot be implemented outside of `Xenon`.
 /// External crates may name it in `where` clauses or trait bounds, but
 /// adding new implementations is intentionally not supported. The
 /// implementor set is closed: see the owner design document for the
