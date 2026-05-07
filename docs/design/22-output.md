@@ -492,9 +492,9 @@ println!("strides: {:?}", tensor.strides());
 
 如果 `FormatConfig::precision` 为 `Some(p)`，浮点数格式化使用 `write!(f, "{:.prec$}", value, prec = p)`；为 `None` 时使用默认精度（即 `write!(f, "{}", value)`）。对 `Complex<T>` 而言，`precision` 分别作用于 `re` 和 `im` 两个分量，再按 `a+bj` / `a-bj` 规则拼接，不共享额外的整体舍入层。
 
-**复数虚部符号决策（v2.0.1+，覆盖 NaN/Inf/-0.0 边界）**：
+**复数虚部符号决策**：
 
-复数 `Complex<T>` 的拼接规则使用 `T::is_sign_negative()` 决定连接符号，而**不是** `im < 0`。这一选择覆盖以下边界场景：
+复数 `Complex<T>` 的拼接规则使用 `T::is_sign_negative()` 决定连接符号，而不是 `im < 0`。这一选择覆盖以下边界场景：
 
 | `im` | `is_sign_negative()` | 输出形式 | 说明 |
 |:--|:--:|:--|:--|
@@ -514,7 +514,9 @@ println!("strides: {:?}", tensor.strides());
 
 `im.abs()` 把幅值统一转为非负展示数；NaN 在 `abs()` 后仍是 NaN，但因 `is_nan()` 分支已选择符号 `+`，避免 `is_sign_negative()` 在 NaN 上的实现定义行为。
 
-**测试覆盖要求（28-tests）**：必须为以下 7 个边界输入形成快照测试。下列示例期望输出**默认未指定 precision**（即 Rust 标准 `Display` 默认输出，整数浮点不带 `.0`）：
+**测试覆盖要求**：
+
+必须为以下 7 个边界输入形成快照测试。下列示例期望输出默认未指定 precision（即 Rust 标准 `Display` 默认输出，整数浮点不带 `.0`）：
 
 | 输入 (`re`, `im`) | 默认 Display 期望 (no precision) | `precision: Some(1)` 期望 |
 |:--|:--|:--|
@@ -526,9 +528,9 @@ println!("strides: {:?}", tensor.strides());
 | `(f64::INFINITY, f64::INFINITY)` | `inf+infj` | `inf+infj` |
 | `(f64::NAN, f64::NAN)` | `NaN+NaNj` | `NaN+NaNj` |
 
-注：Rust 标准 `Display` 对 `1.0_f64` / `0.0_f64` 默认输出 `1` / `0`（不带小数点），对 `f64::INFINITY` 输出 `inf`，对 `f64::NAN` 输出 `NaN`。`±inf` 和 `NaN` 的 Display 输出本身不变（无小数表示），`precision` 参数对它们无影响。复数虚部符号由 §6.1 形式化规则决定（`is_sign_negative()` + NaN 强制 `+`），与 precision 无关。
+Rust 标准 `Display` 对 `1.0_f64` / `0.0_f64` 默认输出 `1` / `0`（不带小数点），对 `f64::INFINITY` 输出 `inf`，对 `f64::NAN` 输出 `NaN`。`±inf` 和 `NaN` 的 Display 输出本身不变（无小数表示），`precision` 参数对它们无影响。复数虚部符号由 §6.1 形式化规则决定（`is_sign_negative()` + NaN 强制 `+`），与 precision 无关。
 
-对 F-order 张量，格式化必须按**逻辑索引**而不是物理线性内存顺序展开。以 `shape=[3, 3]` 为例，显示位置 `[i, j]` 对应逻辑索引 `[i, j]`，其线性位置为 `i + j * 3`；因此输出为 `[[1, 4, 7], [2, 5, 8], [3, 6, 9]]`，而不是按物理连续内存直接切成 `[[1, 2, 3], [4, 5, 6], [7, 8, 9]]`。内部若使用 `read_at(indices)` 等辅助函数，仅表示实现通过逻辑坐标取值，不构成新的公开索引承诺；该 helper 的前提为索引已通过范围检查，单次读取复杂度为 `O(ndim)`。
+对 F-order 张量，格式化必须按逻辑索引而不是物理线性内存顺序展开。以 `shape=[3, 3]` 为例，显示位置 `[i, j]` 对应逻辑索引 `[i, j]`，其线性位置为 `i + j * 3`；因此输出为 `[[1, 4, 7], [2, 5, 8], [3, 6, 9]]`，而不是按物理连续内存直接切成 `[[1, 2, 3], [4, 5, 6], [7, 8, 9]]`。内部若使用 `read_at(indices)` 等辅助函数，仅表示实现通过逻辑坐标取值，不构成新的公开索引承诺；该 helper 的前提为索引已通过范围检查，单次读取复杂度为 `O(ndim)`。
 
 ```
 fmt_1d(tensor, f):
@@ -583,10 +585,6 @@ fmt_nd(tensor, f, prefix):
 
 ```rust,ignore
 // `ElementType` is the closed enum authoritatively defined in `crate::element`
-// (see `03-element.md §5.1` and `§5.1.1` for the explicit discriminants).
-// Consumers MUST import it from `crate::element::ElementType` (the locked
-// invariant); `crate::ffi::ElementType` is a `pub use` re-export of the same
-// symbol — equivalent identity, but `crate::element` is the canonical path.
 use crate::element::{Element, ElementType};
 
 // Static dispatch via Element::ELEMENT_TYPE — the closed enum from 03-element §5.1.
@@ -606,11 +604,10 @@ fn dtype_name<A: Element>() -> &'static str {
 }
 ```
 
-Debug 输出的 `dtype=` 字段通过 `Element::ELEMENT_TYPE` 编译期常量分流到稳定、紧凑的展示名（参见 `03-element.md` §5.1 `ElementType` 枚举定义、`21-type.md` v2.0.0 决策 4 关于 `ElementType` 静态分流的统一规则）。这样做的好处：
+Debug 输出的 `dtype=` 字段通过 `Element::ELEMENT_TYPE` 编译期常量分流到稳定、紧凑的展示名。这样做的好处：
 
 - **零运行时开销**：`A::ELEMENT_TYPE` 是 `const`，`match` 在单态化后会被编译器折叠为单一 `&'static str`。
 - **类型边界更松**：不再要求 `A: 'static`，与 `TensorView<'a, A, D>` 的非 `'static` 借用语义协同。
-- **与 21-type/26-error 一致**：禁用 `core::any::TypeId` 是 v2.0.0 协同决策；自 26-error v3.2.0 起 `TypeConversion.source_type / target_type` 字段类型为 `&'static str`（值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供），不再是 `ElementType` 枚举（参见 21-type v2.1.1 §6.1 `CastTo` 实现、26-error v3.2.0 §5.1）。Output 模块仅消费 `Element::ELEMENT_TYPE` 编译期常量做 dtype 名分流，不与 error 字段直接耦合。
 
 ---
 
@@ -745,7 +742,7 @@ Debug 输出的 `dtype=` 字段通过 `Element::ELEMENT_TYPE` 编译期常量分
 | ----------------------- | ----------------- | ---------------------------------- | ------------------------------------------------------------ |
 | `format → tensor`       | `tensor`          | `.shape()` / `.ndim()` / `.len()`  | `Display` 路径读取基础张量元数据，参见 `07-tensor.md` §5     |
 | `format → tensor`       | `tensor`          | `.strides()` / `is_f_contiguous()` | `Debug` 额外输出布局相关元数据，参见 `06-layout.md` §5       |
-| `format → tensor`       | `tensor`          | `shape()`, 内部 `read_at(indices)` | 按逻辑行/列结构读取元素；不依赖 `iter()` 的 F-order 内存顺序，且不扩展公开索引契约 |
+| `format → tensor`       | `tensor`          | `shape()`,  `read_at(indices)`     | 按逻辑行/列结构读取元素；不依赖 `iter()` 的 F-order 内存顺序 |
 | `format → element`      | `element`         | 内部 `dtype_name::<A>()`           | 输出稳定 dtype 名称与元素类型信息，参见本文 §6.2             |
 
 ### 9.2 数据流描述
@@ -766,7 +763,7 @@ User calls format!("{}", tensor) / format!("{:?}", tensor)
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | 不适用；按 `26-error.md` 的边界约定，当前格式化 API 只通过 `fmt::Result` 与格式化器交互，不额外引入 `XenonError` 变体。 |
+| Recoverable error | 不适用；当前格式化 API 只通过 `fmt::Result` 与格式化器交互，不额外引入 `XenonError` 变体。 |
 | Panic | 不适用；公开格式化路径不引入新的 panic 语义。 |
 | 路径一致性 | `Display`、`Debug` 与 `display_with(config)` 必须共享同一逻辑索引读取与截断契约；无 SIMD / 并行分支。 |
 | 容差边界 | 不适用；`precision` 仅影响文本呈现，不构成数值误差容差语义。 |
