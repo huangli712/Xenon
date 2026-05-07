@@ -1170,11 +1170,11 @@ let t = unsafe {
 
 **实现方案：**
 
-| 层次                 | 类型         | 说明                                                                                                  |
-| -------------------- | ------------ | ----------------------------------------------------------------------------------------------------- |
-| `TensorBase.strides` | `Strides<D>` | 与 shape rank 一致：静态维度编译期保证、`IxDyn` 构造期保证（参见 `06-layout.md §5.5`）                |
-| `strides()` 返回值   | `&[usize]`   | 直接来自 `Strides<D>`（参见 `06-layout.md §5`）                                                       |
-| layout 模块计算      | `usize`      | F-order、转置与零步长布局在 layout 层计算（参见 `06-layout.md §5.3` / `§5.7`）                        |
+| 层次                 | 类型         | 说明                                                                                   |
+| -------------------- | ------------ | -------------------------------------------------------------------------------------- |
+| `TensorBase.strides` | `Strides<D>` | 与 shape rank 一致：静态维度编译期保证、`IxDyn` 构造期保证（参见 `06-layout.md §5.5`） |
+| `strides()` 返回值   | `&[usize]`   | 直接来自 `Strides<D>`（参见 `06-layout.md §5`）                                        |
+| layout 模块计算      | `usize`      | F-order、转置与零步长布局在 layout 层计算（参见 `06-layout.md §5.3` / `§5.7`）         |
 
 **权衡：**
 
@@ -1199,22 +1199,6 @@ Logical view: [c, d, e]
 - **logical-first pointer 契约：** `TensorBase::as_ptr()` / `as_mut_ptr()` 返回的是逻辑首元素指针，而不是 storage base pointer。layout 标志计算、连续切片快路径和 FFI raw-parts safety 文档都必须使用这一同一约定；若需要 storage base pointer，只能通过 storage 层 API 或 raw-parts 输入显式提供。
 - **raw-parts 设计补充：** `storage_len` 是 raw-parts 视图构造的必填输入。`ViewRepr` / `ViewMutRepr` 需要保存 backing storage 的可访问元素数，`validate_access_range(...)` 也必须基于该长度执行边界校验；仅有 `ptr + shape + strides + offset` 不足以安全重建视图。
 - **空张量指针说明：** 当 `len == 0` 时，元数据仍可描述一个合法的空视图，但 `as_ptr()` / `as_mut_ptr()` 不能对 storage base pointer 执行 `add(offset)`。Rust 的指针算术要求结果仍落在同一已分配对象内；对悬垂哨兵或空存储基指针做偏移计算会触发未定义行为，且对 ZST 即使执行 `add(0)` 也不应依赖这种做法。设计上因此统一采用“空张量 `offset` 仅需满足 `offset <= storage_len`，但不做实际偏移”的契约，并让指针 API 直接返回 `NonNull::dangling().as_ptr()` 快路径。
-
-> **错误字段约定（v2.0.x）：** `validate_access_range` 与 `validate_non_overlapping_layout`
-> 构造的 `XenonError::InvalidLayout` 字段必须使用 `26-error.md §5.1` 定义的封闭枚举
-> （`InvalidLayoutReason` / `StorageKindTag` / `Cow<'static, str>`），不得退化为自由
-> 文本，也**不得**在本节发明未列入 `26-error.md §5.1` 的局部 reason——下面伪码中
-> 出现的所有 `InvalidLayoutReason::*` 标识符（`ShapeProductOverflow` /
-> `EmptyTensorOffsetExceedsStorage` / `StrideExceedsIsizeMax` / `StrideSpanOverflow`
-> / `AccessRangeOverflow` / `AccessRangeExceedsStorage` / `AmbiguousOverlap` 等）
-> 必须已在 `26-error.md §5.1` 列出。新增 case 必须先扩展 `26-error.md §5.1` 的枚举。
-> `storage_kind` 由调用方提供（视图路径填 `StorageKindTag::View` /
-> `StorageKindTag::ViewMut`，owned raw-parts 路径填 `StorageKindTag::Owned`）。
->
-> **验证前提：** `validate_access_range` 假定调用方已在更早阶段拒绝
-> `stride > isize::MAX` 的 stride，或在算法首部追加该检查。这是因为后续
-> `<*const A>::add(stride * (shape - 1))` 的指针运算需要 stride 可表示为非负
-> `isize`；该前提在 §5.7 的 `# Safety` 列表中已显式列入构造器自验项。
 
 ```text
 validate_access_range(shape, strides, offset, storage_len, op_name, kind):
@@ -1334,7 +1318,7 @@ Logical view:
 
 - [ ] **T2**: 定义 `TensorBase<S, D>` 结构体
   - 文件: `src/tensor/mod.rs`
-  - 内容: 结构体定义，6 个字段：storage、shape、strides、offset、flags、derived_from_view_mut（最后一个为私有 1-bit ViewMut→View 降级来源标记，仅由 view_mut().view() / 内部切片降级路径设置；详见 §5.1 / §5.3）
+  - 内容: 结构体定义，6 个字段：storage、shape、strides、offset、flags、derived_from_view_mut
   - 测试: 结构体编译通过
   - 前置: T1
   - 预计: 10 min
@@ -1385,10 +1369,6 @@ Logical view:
   - 前置: T5, T7
   - 预计: 5 min
 
-> **注意**：公开安全构造方法 `from_shape_vec` 的实现位于 `src/construct/from.rs`（参见
-> `18-construction.md §5.3`），本文件 §5.6 仅列其公开签名，不属于本目录任务。对应测试
-> `test_from_shape_vec_valid` / `test_from_shape_vec_invalid` 应在构造模块的测试文件中。
-
 - [ ] **T9**: 实现视图创建方法
   - 文件: `src/tensor/impls.rs`
   - 内容: `view()`/`view_mut()`
@@ -1435,13 +1415,13 @@ Logical view:
 | `test_tensor_as_ptr`                | 指针指向正确位置                                                  | 高     |
 | `test_tensor_as_mut_ptr`            | 可变指针指向正确位置                                              | 高     |
 | `test_tensor_storage_kind`          | `Owned`/`View`/`ViewMut`/`Shared` 的存储位置查询正确              | 高     |
-| `test_tensor_access_semantics`      | 各存储模式返回正确的 `AccessSemantics`                           | 高     |
-| `test_tensor_data_location`         | `data_location()` 返回 `DataLocation::Cpu`                       | 中     |
-| `test_tensor_as_storage_ptr`        | `as_storage_ptr()` 返回 storage 基指针而非逻辑首元素指针         | 高     |
-| `test_tensor_has_zero_stride`       | 广播视图 `has_zero_stride()` 返回 true                           | 中     |
-| `test_tensor_as_slice`              | 连续张量 `as_slice()` 返回 `Some`，非连续返回 `None`             | 高     |
-| `test_tensor_as_slice_empty`        | 空张量 `as_slice()` 返回 `Some(&[])`                             | 中     |
-| `test_tensor_as_mut_slice`          | 可写连续张量 `as_mut_slice()` 返回 `Some`                        | 高     |
+| `test_tensor_access_semantics`      | 各存储模式返回正确的 `AccessSemantics`                            | 高     |
+| `test_tensor_data_location`         | `data_location()` 返回 `DataLocation::Cpu`                        | 中     |
+| `test_tensor_as_storage_ptr`        | `as_storage_ptr()` 返回 storage 基指针而非逻辑首元素指针          | 高     |
+| `test_tensor_has_zero_stride`       | 广播视图 `has_zero_stride()` 返回 true                            | 中     |
+| `test_tensor_as_slice`              | 连续张量 `as_slice()` 返回 `Some`，非连续返回 `None`              | 高     |
+| `test_tensor_as_slice_empty`        | 空张量 `as_slice()` 返回 `Some(&[])`                              | 中     |
+| `test_tensor_as_mut_slice`          | 可写连续张量 `as_mut_slice()` 返回 `Some`                         | 高     |
 | `test_tensor_view`                  | `view()` 创建正确视图                                             | 高     |
 | `test_tensor_view_mut`              | `view_mut()` 创建正确可变视图                                     | 高     |
 | `test_from_shape_vec_valid`         | 合法构造成功                                                      | 高     |
@@ -1460,10 +1440,10 @@ Logical view:
 | 标量 `Tensor0<f64>`   | `ndim()==0`, `len()==1`                      |
 | 高维 `Tensor6`        | `ndim()==6`, 步长正确                        |
 | 动态维度 `TensorD`    | `ndim()` 运行时值正确                        |
-| 大张量 `10_000_000` 元素 | 构造成功，长度与 flags 保持正确              |
-| 非连续转置视图        | 可构造 `view()`，但连续切片快路径返回 `None`                          |
-| 非零 offset 视图      | `as_storage_ptr() != as_ptr()`，差值等于 `offset`                     |
-| 空张量 + 多种 offset  | 只要 `offset <= storage_len` 即合法                                    |
+| 大张量 `10_000_000` 元素 | 构造成功，长度与 flags 保持正确           |
+| 非连续转置视图        | 可构造 `view()`，但连续切片快路径返回 `None`      |
+| 非零 offset 视图      | `as_storage_ptr() != as_ptr()`，差值等于 `offset` |
+| 空张量 + 多种 offset  | 只要 `offset <= storage_len` 即合法               |
 | 非法元素类型编译失败  | compile-fail 测试拒绝不满足元素约束的类型    |
 
 ### 8.4 属性测试不变量
@@ -1623,12 +1603,12 @@ authoritative implementation resides in src/construct/, see 18-construction.md �
 
 ## 10. 错误处理与语义边界
 
-| 项目              | 内容                                                                                                                                                    |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | `from_shape_vec()`、`from_raw_parts*()` 等构造校验失败返回 `XenonError`；上下文字段应包含操作名、shape、strides、offset、storage_len 或期望长度等元数据 |
-| Panic             | 本模块公开安全构造不以 panic 作为常规错误通道；仅在内部已验证快捷路径或明显违背 `unsafe` 前提的后续使用中可能出现 panic/未定义行为风险                  |
-| 路径一致性        | scalar、SIMD 快路径与 parallel 上游消费必须共享同一逻辑首元素与 flags 语义，不允许因路径差异改变结果                                                    |
-| 容差边界          | 不适用                                                                                                                                                  |
+| 项目              | 内容                                                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Recoverable error | `from_shape_vec()`、`from_raw_parts*()` 等构造校验失败返回 `XenonError`                                                  |
+| Panic             | 本模块公开安全构造不以 panic 作为常规错误通道；仅在内部已验证快捷路径或明显违背 `unsafe` 前提的后续使用中可能出现 panic  |
+| 路径一致性        | scalar、SIMD 快路径与 parallel 上游消费必须共享同一逻辑首元素与 flags 语义，不允许因路径差异改变结果                     |
+| 容差边界          | 不适用                                                                                                                   |
 
 ---
 
@@ -1652,7 +1632,7 @@ authoritative implementation resides in src/construct/, see 18-construction.md �
 | 理由     | 显式保留 stride 元数据；与 `shape: D` 职责分离；静态维度仍可栈分配，动态维度仍可保持维度数一致 |
 | 替代方案 | `strides: Vec<isize>` — 放弃，静态维度也要堆分配                                               |
 | 替代方案 | `strides: [isize; N]` — 放弃，不支持动态维度                                                   |
-| 替代方案 | 裸用 `strides: D`（直接把 `D` 当 stride carrier 用）— 放弃，无法显式区分 shape 与 stride 的语义，且会让 `Strides<D>` 失去 newtype 文档价值。**当前方案使用 `Strides<D>` newtype 内部复用 `D` 表示**（详见 `06-layout.md §5.2`），这是"复用 D 的存储表示但隔离语义"的折中——并非该替代方案，请勿混淆 |
+| 替代方案 | 裸用 `strides: D`（直接把 `D` 当 stride carrier 用）— 放弃，无法显式区分 shape 与 stride 的语义，且会让 `Strides<D>` 失去 newtype 文档价值。|
 
 ### 决策 3：offset 字段必要性
 
@@ -1669,22 +1649,6 @@ authoritative implementation resides in src/construct/, see 18-construction.md �
 | 决策     | 不实现 `Deref<Target = TensorView>`                                           |
 | 理由     | 显式优于隐式（`.view()` 清晰表达意图）；避免隐式生命周期传播；与 ndarray 一致 |
 | 替代方案 | 实现 Deref — 放弃，隐式转换可能导致意外借用                                   |
-
-### 决策 5：`OwnedRawParts<A, D>` 不承诺 C ABI 稳定
-
-| 属性     | 值                                                                                                                                                              |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | 移除原先的 `#[repr(C)]` 注释，明确 `OwnedRawParts<A, D>` 是 Rust 内部 round-trip 类型，不作为 FFI ABI 边界                                                       |
-| 理由     | `D` 与 `Strides<D>` 是 Rust 泛型，对 `IxDyn` 包含 `Vec<usize>` 字段，无法被 `#[repr(C)]` 稳定描述；FFI 已有专用 `TensorExport` / `TensorExportMut` 类型           |
-| 替代方案 | 强行保留 `#[repr(C)]` — 放弃，会让外部 C 代码误以为可解码该结构，导致跨语言 UB                                                                                  |
-
-### 决策 6：`from_raw_vec_unchecked` 走 `pub(crate)` 真正的 unchecked 路径
-
-| 属性     | 值                                                                                                                              |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | `from_raw_vec_unchecked` 不再隐式重做 `shape.checked_size()` 验证；调用方在 `# Safety` 中证明已验证                              |
-| 理由     | "_unchecked" 名称要求语义透明：要么不做任何 fallible 校验，要么提供 `Result` 版本。混合"unchecked + 内部 panic"会让安全契约模糊 |
-| 替代方案 | 改名 `from_raw_vec_with_shape_check` 并返回 `Result` — 放弃，会引入冗余 fallible 路径与上层 `from_shape_vec` 重复                |
 
 ---
 
