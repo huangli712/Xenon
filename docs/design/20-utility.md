@@ -242,20 +242,18 @@ where
 }
 ```
 
-- 需求来源：`需求说明书 §21.2` 要求只读引用和共享只读引用须拒绝填充请求。
-
 ### 5.3 `fill_try_dispatch()` 分派准则
 
 `fill_try_dispatch()` 的内部判定标准固定为：
 
-- 先通过 storage 层提供的 `pub(crate)` 内部可写能力 helper（参见 `05-storage.md` 的存储模式与可写能力约束；helper 名称不作为本文稳定契约）判定当前存储是否支持可写路径；
+- 先通过 storage 层提供的 `pub(crate)` 内部可写能力 helper（参见 `05-storage.md`）判定当前存储是否支持可写路径；
 - `Owned` / `ViewMut` / 其他满足 `StorageMut` 的存储：进入 `fill_storage_mut()` 直接写入路径；
 - `View` / `SharedReadOnly` / 其他只读或共享只读存储：返回 `XenonError::InvalidStorageMode`；
 - 连续布局可走快路径，非连续或带 padding 布局必须退回“仅写逻辑元素”的 stride-aware 路径。
 
 ### 5.4 fill 的显式写入语义
 
-- `fill` 必须按**逻辑索引**迭代，并且只写入逻辑元素。
+- `fill` 必须按逻辑索引迭代，并且只写入逻辑元素。
 - 对带 padding 的底层存储：不得写入任何 padding bytes。
 - 对非连续但可写的视图：必须严格按 `shape` / `strides` / `offset` / `flags` 或等价 layout helper 导航到每个逻辑元素。
 - 对存在零步长的布局：按照 `需求说明书 §16`，它们来自广播只读结果；这类只读/共享只读张量的 `try_fill()` 必须返回 `InvalidStorageMode`，而 `fill()` 因 `StorageMut` 约束在编译期不可用。
@@ -270,14 +268,14 @@ fill_logical_only(storage, shape, strides, offset, flags, value):
 
 上述伪代码强调的是契约，而不是公开 API：实现可以使用递归多维索引、stride-aware iterator 或其他等价内部辅助函数，但结果必须等价于“按逻辑索引逐元素写入，且不触碰 padding / 非逻辑区域”。
 
-### 5.5 连续性保证（to_contiguous）
+### 5.5 连续性保证
 
 `to_contiguous()` 是本模块定义的公共 API。内部可复用连续化实现，但这不构成 `convert` 模块的独立公共能力。
 - `to_contiguous()` 由 utility 模块暴露。
 - 若非连续路径需要额外实现步骤，也仅属于 utility 的内部细节。
 - 类型转换语义仍归 convert，连续性保证语义仍归 utility。
 
-**关键前置依赖（与 `21-type.md §5.5` 协同）：** `to_contiguous()` 在 logically-F-contiguous 快路径委托 `to_owned()`，**必须**依赖 `21-type.md §5.5` 对 `to_owned()` 的承诺：返回的 owned 张量是 canonical F-order（无 inter-axis padding、无 tail padding、`offset == 0`、layout flags 由 `06-layout.md §5.7` 重算）。如果 `to_owned()` 改动为不再保证 canonical 形态（例如未来引入复用底层 buffer 的优化），`to_contiguous()` 的 `is_f_contiguous()` 快路径**必须同步切换**为统一走 `util_internal_to_f_contiguous()`，否则带 tail padding 的输入会破坏 canonical 输出契约。当前版本两个文档协同保证此前置依赖成立。
+**关键前置依赖**： `to_contiguous()` 在 logically-F-contiguous 快路径委托 `to_owned()`，必须依赖 `21-type.md §5.5` 对 `to_owned()` 的承诺：返回的 owned 张量是 canonical F-order（无 inter-axis padding、无 tail padding、`offset == 0`、layout flags 由 `06-layout.md §5.7` 重算）。如果 `to_owned()` 改动为不再保证 canonical 形态（例如未来引入复用底层 buffer 的优化），`to_contiguous()` 的 `is_f_contiguous()` 快路径必须同步切换为统一走 `util_internal_to_f_contiguous()`，否则带 tail padding 的输入会破坏 canonical 输出契约。当前版本两个文档协同保证此前置依赖成立。
 
 ````rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -359,7 +357,7 @@ where
 ````
 
 - `to_contiguous(&self)` 是稳定的"总是返回独立 owned 结果"入口；当输入已是连续 F-order 时，它不得改变逻辑值，且可以复用现有数据作为读取来源，但因为返回值必须与借用源解除别名，所以仍会物化为新的 owned 张量。
-- `into_contiguous(self)` 是满足 `需求说明书 §22` 的消费式入口：`F-contiguous`（即 `is_f_contiguous()`）只表示逻辑上按 F-order 连续；`canonical F-contiguous owned`（即 `is_canonical_f_contiguous_owned()`，crate-internal predicate）进一步要求 storage 表示为 `Owned`、`offset == 0`、底层 buffer 无 tail padding，从而可作为 canonical owned 表示直接复用。`to_contiguous()` 对已连续输入始终返回新的 canonical F-order owned 拷贝。`into_contiguous()` **仅当 `is_canonical_f_contiguous_owned()` 为真时**才可 O(1) 复用现有数据；其他所有情况（包括仅 `is_f_contiguous()` 为真但带 tail padding、或非 `Owned` storage、或 `offset != 0` 的输入）都必须重新物化为 canonical F-order owned 结果。详细 predicate 定义与分派表见 §6.3。
+- `into_contiguous(self)` 是满足 `需求说明书 §22` 的消费式入口：`F-contiguous`（即 `is_f_contiguous()`）只表示逻辑上按 F-order 连续；`canonical F-contiguous owned`（即 `is_canonical_f_contiguous_owned()`，crate-internal predicate）进一步要求 storage 表示为 `Owned`、`offset == 0`、底层 buffer 无 tail padding，从而可作为 canonical owned 表示直接复用。`to_contiguous()` 对已连续输入始终返回新的 canonical F-order owned 拷贝。`into_contiguous()` 仅当 `is_canonical_f_contiguous_owned()` 为真时才可 O(1) 复用现有数据；其他所有情况（包括仅 `is_f_contiguous()` 为真但带 tail padding、或非 `Owned` storage、或 `offset != 0` 的输入）都必须重新物化为 canonical F-order owned 结果。详细 predicate 定义与分派表见 §6.3。
 - `to_contiguous()` / `into_contiguous()` 专注于连续性保证：仅在输入已是 canonical F-contiguous `Owned` 时，`into_contiguous()` 才可 O(1) 复用。`to_owned()` / `into_owned()`（见 `21-type.md`）专注于独立拷贝：无论原始布局如何，始终产出独立的拥有型存储。二者可能产生相同结果（非连续输入 → 连续 owned），但语义主语不同。
 - `util_internal_to_f_contiguous()` 只接受“逻辑索引语义已验证、shape / strides / offset 自洽”的输入张量；调用方须先完成这些张量不变量检查。该 helper 的职责仅限于把当前逻辑元素重排并物化为 canonical F-order owned 结果，不再重复承担布局合法性验证。
 
@@ -408,9 +406,9 @@ clip(tensor, min, max):
 
 ### 6.2 fill 算法
 
-写入契约与伪代码见 §5.4；分派规则见 §5.3。
-
-- 连续布局可走快路径（直接 memset 或逐元素写入）；带 padding / 非连续布局必须按逻辑索引与 strides 写入，且不得触碰 padding bytes。
+- 写入契约与伪代码见 §5.4；分派规则见 §5.3。
+- 连续布局可走快路径（直接 memset 或逐元素写入）。
+- 带 padding / 非连续布局必须按逻辑索引与 strides 写入，且不得触碰 padding bytes。
 
 
 ### 6.3 to_contiguous 路径选择
@@ -420,7 +418,7 @@ clip(tensor, min, max):
 | Predicate                                     | 含义                                                                                                                                                                                                                          | 用途                                                            |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
 | `is_f_contiguous()`                           | **逻辑** F-连续：`strides` 满足 `s_0 = 1`、`s_{i+1} = s_i * shape_i`，但不约束底层 storage 形态、offset 是否为 0、是否带 tail padding。算法定义见 `06-layout.md §5.7`。              | 仅作为 `to_contiguous` 的优化提示：可委托 `to_owned()` 走线性 memcpy 快路径。 |
-| `is_canonical_f_contiguous_owned()` *(crate-internal)* | **canonical owned**：(1) `is_f_contiguous() == true`，(2) `S` 的运行时表示是 `Owned` 单一所有者，(3) `offset == 0`，(4) 底层 buffer 容量等于逻辑元素数 × `size_of::<A>()`（即无 tail padding）。 | 控制 `into_contiguous` 的 O(1) 复用路径。 |
+| `is_canonical_f_contiguous_owned()`  | **canonical owned**：(1) `is_f_contiguous() == true`，(2) `S` 的运行时表示是 `Owned` 单一所有者，(3) `offset == 0`，(4) 底层 buffer 容量等于逻辑元素数 × `size_of::<A>()`（即无 tail padding）。 | 控制 `into_contiguous` 的 O(1) 复用路径。 |
 
 ```
 to_contiguous(tensor):
