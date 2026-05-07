@@ -1068,7 +1068,7 @@ where
         // collide with the generic form for `S = Owned<A>`; see §5.6 comment
         // block) to keep private-field access localized to ONE entry point
         // and to satisfy the locked invariant "TensorBase has 6 fields
-        // including `derived_from_view_mut`" (R10 B-01).
+        // including `derived_from_view_mut`".
         // SAFETY: All six constructor-input invariants of `new_unchecked`
         // are satisfied: (1) shape was overflow-checked above; (2) strides
         // were verified canonical F-order above; (3) offset == 0 was
@@ -1086,12 +1086,6 @@ where
     }
 }
 ```
-
-> **`InvalidLayoutReason` 字段引用（v2.0.x）：** 上述错误构造使用 `26-error.md §5.1` 定义的**封闭超集枚举**字段。Owned raw-parts 专属错误使用 `OwnedRequiresZeroOffset` / `LenShapeMismatch` / `CapacityBelowLen` / `AlignmentInvalid` / `OwnedRequiresCanonicalFOrder`；shape 元素数溢出统一使用 `ShapeProductOverflow`（不再使用旧名 `ElementCountOverflow`）；无法证明可写布局不重叠统一使用 `AmbiguousOverlap`（不再使用旧名 `OverlapNotProvable`）。**禁止**在本节新增未列入 `26-error.md §5.1` 的局部变体——`26-error.md §5.1` 是 `InvalidLayoutReason` 的唯一权威源；新增 case 必须先扩展该枚举。`Cow::Borrowed("...")` 与 `StorageKindTag::Owned` 同样按 `26-error.md §5.1` 字段表填写。
->
-> **关于 `# Safety` 与 `unsafe block`：** Rust 2024 / `unsafe_op_in_unsafe_fn` 要求即便函数本身已是 `unsafe fn`，函数体内执行 unsafe 操作仍需显式 `unsafe { ... }` 包裹。上面伪码中的 `Owned::from_raw_parts(...)` 调用已用 `unsafe { ... }` 包裹并附 `// SAFETY:` 注释。
->
-> **关于 `into_raw_parts` 中读取 storage base pointer：** 由于 `ManuallyDrop` 内仍然对内部 storage 拥有所有权，`storage_base_mut_ptr_unchecked` 是 `Owned<A>` 的 `pub(crate)` 内部 helper，等价于 `Owned::as_mut_ptr` 的读字段实现，但避免对 `&mut` 的形式要求；调用本身仍是 `unsafe`，因为读取裸指针不构造任何外部别名。
 
 **设计约束：** `into_raw_parts` 仅适用于 Owned 存储，且导出的内存布局必须满足 Xenon 的 owned 不变量：F-order contiguous、`offset == 0`、canonical F-order strides。若调用方持有的是 view 或带 offset 的逻辑子视图，必须先显式物化为新的 owned contiguous tensor，再跨越 FFI 边界导出裸指针。如需将 View 转为 Owned 再解构，参见 `21-type.md §5.5`。
 
