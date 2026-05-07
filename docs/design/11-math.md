@@ -179,13 +179,11 @@ where
 }
 ```
 
-**Trait bound 简化说明**：旧版方法签名重复写 `A: Numeric + Copy + Add<Output = A>` 等，但 `Numeric: Add + Sub + Mul + Div + Neg`（参见 `03-element.md §5.2` super-trait 定义），且 `Numeric: Element: Copy`，因此 `Add` / `Sub` / `Mul` / `Div` / `Copy` 全部由 `A: Numeric` 间接保证；新版直接以 `A: Numeric` 表达，避免冗余 bound 与"签名 trait 与实现 trait 不闭合"的歧义。整数路径的 checked 语义不通过 `Add<Output = A>` 等原生运算符落实，而是通过 `crate::element::Checked*` 原语显式包装（§5.3 末尾示例）。
-
 所有整数逐元素运算在实现层使用此 trait，确保 debug 和 release 均在溢出/除零时 panic。浮点和复数使用标准算术运算符。
 
 - 支持的类型：i32, i64, f32, f64, Complex<f32>, Complex<f64>。
-- 对 `i32` / `i64` 的 `add` / `sub` / `mul` / `div`，实现必须使用 checked arithmetic；凡发生溢出、除以零或结果不可表示，均按 `需求说明书 §12` 与 `需求说明书 §27` 走 panic 语义，不得回落为 wrapping 行为。
-- 整数 checked arithmetic 直接复用 element 层原语，**不在 math 模块内部定义同语义 trait**：使用 `crate::element::{CheckedAdd, CheckedSub, CheckedMul, CheckedNeg, CheckedDiv}`（权威定义见 `03-element.md §5.9`）。这些原语返回 `Option<Self>`；math 模块的整数路径将 `None` 翻译为 panic，由此实现"在 debug 与 release 均在溢出/除零时 panic"的语义。
+- 对 `i32` / `i64` 的 `add` / `sub` / `mul` / `div`，实现必须使用 checked arithmetic；凡发生溢出、除以零或结果不可表示，均走 panic 语义，不得回落为 wrapping 行为。
+- 整数 checked arithmetic 直接复用 element 层原语，不在 math 模块内部定义同语义 trait。这些原语返回 `Option<Self>`；math 模块的整数路径将 `None` 翻译为 panic，由此实现"在 debug 与 release 均在溢出/除零时 panic"的语义。
 
 ```rust,ignore
 // Inside math implementation (illustrative; not a new trait):
