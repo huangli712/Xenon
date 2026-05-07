@@ -628,7 +628,7 @@ pub trait StorageIntoOwned: Storage {
 - `view()`、`view_mut()`、`into_shared()` 是具体存储类型上的 inherent method，不属于 storage trait 层次。`Owned -> SharedReadOnly` 的 storage 层公开入口固定为 `Owned<A>::into_shared(self) -> ArcRepr<A>`；张量层在此基础上包装为对应的消费式共享只读转换 API。
 - 非 Owned 行到 `Owned` 列的 storage 层入口统一走 `StorageIntoOwned::into_owned_storage(self)`（参见 §5.9）；`deep_clone()` 仅对 `Owned<A>` 自身有效（`StorageOwned::deep_clone`，深拷贝语义）。
 - Xenon 当前元素类型集合是封闭且按值语义处理的集合；`Owned::from_vec` 保持 `Elem: Copy` 约束，并统一复制到内部 64B 对齐缓冲（参见 `06-layout.md §5.6`）。其它从迭代器或构造器进入 `Owned` 的路径由上层构造模块统一收敛。
-- `type-level only` 的格子表示 storage 层无运行时 API；若张量层提供了对应的转换入口（如对只读张量调用 `view_mut()`），则该张量层 API 须返回 `XenonError::InvalidStorageMode` 等可恢复错误（参见 §5.11.2 最后两行），而不是隐式降级为别的存储模式。
+- `type-level only` 的格子表示 storage 层无运行时 API；若张量层提供了对应的转换入口（如对只读张量调用 `view_mut()`），则该张量层 API 须返回 `XenonError::InvalidStorageMode` 等可恢复错误，而不是隐式降级为别的存储模式。
 
 ### 5.12 Good/Bad 对比
 
@@ -764,9 +764,6 @@ impl<A: PartialEq> PartialEq for Owned<A> {
     }
 }
 
-// **手动 Clone 实现说明**：Owned<A> 的 Clone 必须分配新的对齐缓冲区并逐元素深拷贝。
-// derive Clone 会对 *mut A 进行浅拷贝（仅复制指针），导致两个 Owned 共享底层内存——
-// 这违反所有权语义并在 Drop 时引发 double-free UB。
 impl<A: Clone> Clone for Owned<A> {
     fn clone(&self) -> Self {
         // Allocate new aligned buffer with same capacity and alignment
