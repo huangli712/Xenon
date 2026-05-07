@@ -231,9 +231,8 @@ unique(self):
        contiguous buffer).
 
 Ordering contract (decision 4, post v2.0.2):
-    - Output element order is UNSPECIFIED — see §1.2 and the doc comment in
-      §5.1. Two calls on the same input MAY produce outputs in different
-      orders.
+    - Output element order is UNSPECIFIED. Two calls on the same input MAY
+      produce outputs in different orders.
     - The reference implementation above happens to be deterministic (driven
       by input F-order iteration), but that is an implementation detail, not
       a contract. Future implementations MAY use, for example, a HashMap
