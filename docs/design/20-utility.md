@@ -4,8 +4,6 @@
 > 模块目录: src/util/
 > 任务阶段: Phase 4
 > 前置文档: 05-storage.md, 06-layout.md, 07-tensor.md, 10-iterator.md
-> 需求参考: 需求说明书 §21、§22、§27、§28
-> 范围声明: 范围内
 
 ---
 
@@ -40,12 +38,12 @@
 
 ## 2. 需求映射与范围约束
 
-| 类型     | 内容                                                                                       |
-| -------- | ------------------------------------------------------------------------------------------ |
-| 需求映射 | 需求说明书 §21、§22、§27、§28                                                              |
-| 范围内   | `clip`、`try_fill` / `fill`、`to_contiguous` / `into_contiguous`。                         |
-| 范围外   | sort、argsort、searchsorted，以及除 clip / fill / contiguous 之外的其他 utility 操作。     |
-| 非目标   | 不把 `util` 扩展为通用算法杂项集合，不新增第三方依赖，也不重定义 convert / layout 的职责。 |
+| 类型     | 内容                                                                                        |
+| -------- | ------------------------------------------------------------------------------------------- |
+| 需求映射 | 需求说明书 §21、§22、§27、§28                                                               |
+| 范围内   | `clip`、`try_fill` / `fill`、`to_contiguous` / `into_contiguous`。                          |
+| 范围外   | `sort / argsort / searchsorted`，以及除 `clip / fill / contiguous` 之外的其他 utility 操作。|
+| 非目标   | 不把 `util` 扩展为通用算法杂项集合，不新增第三方依赖，也不重定义 convert / layout 的职责。  |
 
 ---
 
@@ -58,8 +56,6 @@ src/util/
 ├── fill.rs          # fill (in-place fill)
 └── contiguous.rs    # to_contiguous (contiguity guarantee)
 ```
-
-多文件设计：三个操作（clip、fill、to_contiguous）按职责分离，通过 `mod.rs` 统一 re-export。
 
 ---
 
@@ -82,13 +78,13 @@ src/util/
 
 | 来源模块    | 使用的类型/trait                                                                 |
 | ----------- | -------------------------------------------------------------------------------- |
-| `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`；`clip` 通过 `iter()` 读取源数据并构造新的 owned 结果张量（参见 `07-tensor.md` §5） |
+| `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`（参见 `07-tensor.md` §5） |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §5）                   |
 | `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, `StorageIntoOwned<Elem=A>`（参见 `05-storage.md` §5）|
 | `element`   | `Element`，`OrderedCompareElement`（clip 复用，参见 `03-element.md` §5.5）       |
 | `layout`    | `is_f_contiguous()`（张量层方法参见 `07-tensor.md` §5.3，算法定义参见 `06-layout.md` §5.7） |
 | `iter`      | `iter()`, `iter_mut()`（参见 `10-iterator.md` §5）                               |
-| `error`     | `XenonError`、`InvalidArgumentKind::OperationSpecific`、`StorageKindTag`（参见 `26-error.md v3.2.0 §5.1`）|
+| `error`     | `XenonError`、`InvalidArgumentKind::OperationSpecific`、`StorageKindTag`（参见 `26-error.md §5.1`）|
 
 ### 4.3 依赖合法性
 
@@ -136,14 +132,9 @@ where
     ///
     /// # Errors
     ///
-    /// Returns `Err(XenonError::InvalidArgument {
-    ///     operation: Cow::Borrowed("clip"),
-    ///     kind: InvalidArgumentKind::OperationSpecific {
-    ///         argument: Cow::Borrowed("min/max"),
-    ///         constraint: Cow::Borrowed("min <= max; NaN bounds are invalid"),
-    ///     },
-    /// })` when `min > max` or either bound is `NaN`. The `kind` variant
-    /// follows `26-error.md v3.2.0 §5.1 InvalidArgumentKind` (closed enum).
+    /// Returns `Err(XenonError::InvalidArgument)` when `min > max`
+    /// or either bound is `NaN`. The `kind` variant
+    /// follows `26-error.md §5.1 InvalidArgumentKind` (closed enum).
     ///
     /// # Examples
     ///
@@ -184,10 +175,9 @@ where
 ````
 
 - 浮点参数非法时：`min > max` 或任一边界为 `NaN` 时返回可恢复错误。
-- `clip` 总是返回新的 owned 张量，但本文不再把"先 `zeros()` 再逐元素覆写"写成稳定实现承诺；实现可使用 `MaybeUninit` 或等价的内部未初始化 owned 缓冲区，一次写入最终值，避免无意义的零填充后再覆写。
-- `clip()` 的实现可能依赖内部未初始化构造能力（如 `uninit_like`、`iter_uninit_mut`、`assume_init` 或等价 helper）；这些内部 helper 不属于稳定公共 API。
+- `clip` 总是返回新的 owned 张量；实现可使用 `MaybeUninit` 或等价的内部未初始化 owned 缓冲区，一次写入最终值，避免无意义的零填充后再覆写。
+- `clip()` 的实现可能依赖内部未初始化构造能力（如 `uninit_like`、`iter_uninit_mut`、`assume_init` 或等价 helper）；它们不属于稳定公共 API。
 - `clip_inplace` 不属于 `需求说明书 §21.1` 的强制公共接口。若实现上需要原地 clamp helper，可仅作为 `src/util/clip.rs` 的内部辅助，不纳入稳定 API 承诺与测试矩阵。
-- `InvalidArgument` 的字段必须严格对齐 `26-error.md v3.2.0 §5.1` 的封闭枚举：`operation: Cow<'static, str>` + `kind: InvalidArgumentKind`。`clip` 的边界违规属于 `OperationSpecific { argument, constraint }` 子变体；不再使用旧版 `expected/actual/axis/start/end` 自由文本字段（这些字段在 v3.0.0 已被移除）。`shape` 不再作为 `InvalidArgument` 的字段携带，`InvalidArgumentKind` 变体内部按需嵌入诊断数据。
 
 ### 5.2 fill 操作
 
