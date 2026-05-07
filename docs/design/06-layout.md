@@ -119,8 +119,6 @@ ZER = HAS_ZERO_STRIDE (0b01000)  contains broadcast zero stride
 -   = reserved bits
 ```
 
-Xenon 不需要 `C_CONTIGUOUS` 标志位（不支持 C-order）。1D 和 0D 数组天然 F-连续。
-
 ```rust,ignore
 /// A set of layout flags.
 ///
