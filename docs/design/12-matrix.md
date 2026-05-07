@@ -4,8 +4,6 @@
 > 模块目录: src/matrix/
 > 任务阶段: Phase 4
 > 前置文档: 00-coding.md, 03-element.md, 07-tensor.md, 08-simd.md, 09-parallel.md, 10-iterator.md, 11-math.md, 13-reduction.md, 26-error.md
-> 需求参考: 需求说明书 §4、§9、§10、§13、§27、§28
-> 范围声明: 范围内
 
 ---
 
@@ -13,12 +11,12 @@
 
 ### 1.1 职责边界
 
-| 职责      | 包含                                                                                         |
-| --------- | -------------------------------------------------------------------------------------------- |
-| 向量内积  | dot product（实数内积：sum(a[i] \* b[i])）                                                   |
-| 复数内积  | 共轭线性定义（sum(conjugate(a[i]) \* b[i])）                                                 |
-| SIMD 状态 | dot 可选接入 `simd` / `parallel` 能力                                                        |
-| 错误处理  | 非 1D 输入返回 `XenonError::InvalidArgument`；长度不匹配返回 `XenonError::ShapeMismatch`（字段定义见 `26-error.md §5.1`；shape 向量元素的语义与轴次序约定见 `02-dimension.md §5` 的 `Dimension` 抽象） |
+| 职责      | 包含                                                              |
+| --------- | ----------------------------------------------------------------- |
+| 向量内积  | dot product（实数内积：sum(a[i] \* b[i])）                        |
+| 复数内积  | 共轭线性定义（sum(conjugate(a[i]) \* b[i])）                      |
+| SIMD 状态 | dot 可选接入 `simd` / `parallel` 能力                             |
+| 错误处理  | 非 1D 输入返回 `InvalidArgument`；长度不匹配返回 `ShapeMismatch`  |
 
 | 职责      | 不包含         |
 |---------- | -------------- |
@@ -34,7 +32,7 @@
 | 最小范围                           | 当前仅实现向量内积，复杂线性代数由上游库通过 FFI 实现              |
 | 错误恢复                           | 维度不匹配返回可恢复错误（`XenonError`）；整数溢出为不可恢复 panic |
 | 语义优先                           | dot 先保证语义与错误契约一致                                       |
-| 与上游 BLAS 集成预期的语义兼容前提 | 内存布局（F-order）与内积语义保持可对接上游 BLAS 集成的预期前提。**澄清（v1.1.1）：** 此条仅表示"未来若引入 BLAS，本模块当前的 layout/语义不会成为障碍"——它**不**要求当前 `dot` 实现做任何 BLAS 调用、layout adapter、FFI 前置检查或对 BLAS-tier 性能的承诺。当前 `matrix::dot` 是纯 Rust 标量/SIMD/parallel 实现，没有也不应包含任何 BLAS 入口；BLAS 绑定明确在范围外（见 §2 范围外条目）。 |
+| 与上游 BLAS 集成预期的语义兼容前提 | 内存布局（F-order）与内积语义保持可对接上游 BLAS 集成的预期前提。  |
 
 ---
 
