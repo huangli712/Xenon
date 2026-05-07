@@ -147,7 +147,7 @@ where
     /// For inputs of any dimension, `unique()` logically flattens all elements
     /// into a 1D sequence (in F-order) before deduplication. The output is always
     /// a 1D tensor (`Tensor<A, Ix1>`) with owned contiguous F-order storage;
-    /// element order within the output is unspecified (see "Output ordering contract" above).
+    /// element order within the output is unspecified.
     ///
     /// # Trait bound rationale
     ///
@@ -245,21 +245,25 @@ Ordering contract (decision 4, post v2.0.2):
       preserved per IEEE 754.
 ```
 
- **实现约束**:
-
- 对 `f32` / `f64` 及 `Complex<f32>` / `Complex<f64>` 的 `unique` 实现，不得直接依赖标准 Rust `Hash` / `Eq` 语义，也不得直接建立在 `BTreeSet` / `HashSet` 这类标准集合之上；必须使用线性扫描或自定义哈希键策略，以严格满足本文档定义的判等规则：
+对 `f32` / `f64` 及 `Complex<f32>` / `Complex<f64>` 的 `unique` 实现，不得直接依赖标准 Rust `Hash` / `Eq` 语义，也不得直接建立在 `BTreeSet` / `HashSet` 这类标准集合之上；必须使用线性扫描或自定义哈希键策略，以严格满足本文档定义的判等规则：
 
  1. `NaN != NaN`，因此每个 `NaN` 都必须单独保留，不能因为"同为 NaN"而被合并。
  2. `-0.0 == 0.0`，因此两者必须视为同一个 unique 值。
  3. 复数按分量比较，且每个分量分别沿用对应实数的上述语义。
- 4. 若实现采用哈希优化，键规范固定如下：NaN 元素不进入普通去重键路径。实现须对 NaN 单独旁路处理，保证输入中的每个 NaN（无论位模式是否相同）均被保留。普通哈希键仅用于非 NaN 元素；其中 `i32` / `i64` 直接以数值作为键，`f32` / `f64` 对所有 `+0.0` / `-0.0` 归一到同一键，`Complex<T>` 的键为 `(re_key, im_key)`，并对含 NaN 的分量同样走旁路保留逻辑。
+ 4. 若实现采用哈希优化，键规范固定如下：
+   - NaN 元素不进入普通去重键路径。
+   - 实现须对 NaN 单独旁路处理，保证输入中的每个 NaN（无论位模式是否相同）均被保留。
+   - 普通哈希键仅用于非 NaN 元素。
+   - `i32` / `i64` 直接以数值作为键。
+   - `f32` / `f64` 对所有 `+0.0` / `-0.0` 归一到同一键。
+   - `Complex<T>` 的键为 `(re_key, im_key)`。
 
 ### 6.2 浮点判等处理
 
 - 非 NaN 浮点值的相等判定遵循 Rust / IEEE 754 `==` 语义
 - `NaN != NaN`，因此输入中的每个 `NaN` 必须独立保留，不参与去重
 - `+0.0 == -0.0`，因此两者视为同一个 unique 值
-- 本文档约束相等语义；输出顺序不构成 API 契约。不限制实现使用哈希、线性扫描或其他查重策略
+- 输出顺序不构成 API 契约。不限制实现使用哈希、线性扫描或其他查重策略
 
 ### 6.3 复数判等规则
 
@@ -276,23 +280,10 @@ Ordering contract (decision 4, post v2.0.2):
 /// Provides the equality semantics required by `unique`.
 /// `bool` does not implement this trait.
 ///
-/// Note: `Ord` is intentionally not required because `unique` does not
-/// define or expose any sorting contract.
-///
-/// # Why in set/unique.rs, not element module?
-///
-/// UniqueElement is defined here rather than in the element module because
-/// its semantic (equality for deduplication) is operation-specific, not a
-/// fundamental element property. This avoids making the element module depend
-/// on `unique`-specific rules.
-///
-/// # Sealing
-///
 /// `UniqueElement` is a sealed trait. It reuses the shared `crate::private::Sealed`
 /// infrastructure (defined in `03-element.md §5.7`), consistent with all other
-/// public element capability traits.
-/// It is implemented only inside this crate for supported element types,
-/// so the closed element set is preserved.
+/// public element capability traits. It is implemented only inside this crate for 
+/// supported element types, so the closed element set is preserved.
 pub trait UniqueElement: crate::private::Sealed + Element {
     /// Equality check used by `unique`.
     fn unique_eq(&self, other: &Self) -> bool;
@@ -344,11 +335,11 @@ impl UniqueElement for Complex<f64> {
 
 | 场景              | 推荐策略          | 说明                                                                      |
 | ----------------- | ----------------- | ------------------------------------------------------------------------- |
-| 小输入或原型实现（约 N ≤ 64 的简单类型；阈值由实现选取） | 线性扫描          | 直接复用 `unique_eq`，最坏 O(N²)；不引入额外内存分配，常数项小，对短输入更快。|
-| 大输入主路径      | 哈希查重（输出顺序由实现选） | 用哈希表作为查重索引，重复检测降到近似 O(N) 摊销。可用 `Vec<A>` 按输入迭代顺序追加（产生 first-occurrence 序），也可直接以 `HashMap` iteration 序输出，由实现自行选择。|
-| 浮点/复数特殊值 | 专门分支处理        | `NaN != NaN`，因此哈希或索引策略也必须显式保留每个 `NaN`，不得把它们合并。|
+| 小输入或原型实现 | 线性扫描 | 直接复用 `unique_eq`，最坏 O(N²)；不引入额外内存分配，常数项小，对短输入更快。|
+| 大输入主路径 | 哈希查重 | 用哈希表作为查重索引，重复检测降到近似 O(N) 摊销。可用 `Vec<A>` 按输入迭代顺序追加，也可直接以 `HashMap` iteration 序输出，由实现自行选择。|
+| 浮点/复数特殊值 | 专门分支处理 | `NaN != NaN`，因此哈希或索引策略也必须显式保留每个 `NaN`，不得把它们合并。|
 
-**何时必须用哈希路径**：实现可自行选择阈值（如 N > 1024 或元素总数与去重比例的启发式），但当输入规模导致线性扫描的 O(N²) 内存或 CPU 成本不可接受时，必须切换到哈希路径以避免大张量上的不可接受性能。
+**何时必须用哈希路径**：当输入规模导致线性扫描的 O(N²) 内存或 CPU 成本不可接受时，必须切换到哈希路径以避免大张量上的不可接受性能。
 
 ---
 
@@ -493,12 +484,12 @@ impl UniqueElement for Complex<f64> {
 
 ### 9.1 接口约定
 
-| 方向            | 对方模块  | 接口/类型                             | 约定                                         |
-| --------------- | --------- | ------------------------------------- | -------------------------------------------- |
-| `set → tensor`  | `tensor`  | `TensorBase<S, D>` / `Tensor<A, Ix1>` | 消费输入张量并返回 1D owned 结果             |
-| `set → iter`    | `iter`    | `Elements`                            | 使用元素迭代器收集逻辑元素                   |
-| `set → element` | `element` | `Element`                             | 元素 trait 边界由 `UniqueElement: Element` 提供 |
-| `set → set`     | `set`     | `UniqueElement`                       | 通过 `unique_eq` 约束去重语义                |
+| 方向            | 对方模块  | 接口/类型                             | 约定                                    |
+| --------------- | --------- | ------------------------------------- | --------------------------------------- |
+| `set → tensor`  | `tensor`  | `TensorBase<S, D>` / `Tensor<A, Ix1>` | 消费输入张量并返回 1D owned 结果        |
+| `set → iter`    | `iter`    | `Elements`                            | 使用元素迭代器收集逻辑元素              |
+| `set → element` | `element` | `Element`                             | 元素 trait 边界由 `UniqueElement` 提供  |
+| `set → set`     | `set`     | `UniqueElement`                       | 通过 `unique_eq` 约束去重语义           |
 
 ### 9.2 数据流描述
 
@@ -519,7 +510,7 @@ User calls unique()
 | ----------------- | ------------------------------------------------------------------------------ |
 | Recoverable error | 不适用；当前 `unique()` API 直接返回结果张量，不暴露模块级 `Result` 错误路径。 |
 | Panic             | 不适用；除分配失败等通用运行时故障外，模块不定义额外 panic 语义。              |
-| 路径一致性        | 当前仅有单一执行路径（标量）；本模块不接入 SIMD / 并行后端。外部语义由 `unique_eq`单独决定。|
+| 路径一致性        | 本模块不接入 SIMD / 并行后端。外部语义由 `unique_eq`单独决定。                 |
 | 容差边界          | 不适用。                                                                       |
 
 ---
@@ -528,22 +519,22 @@ User calls unique()
 
 ### 决策 1：bool 排除理由
 
-| 属性     | 值                                                                      |
-| -------- | ----------------------------------------------------------------------- |
-| 决策     | unique 不支持 bool 类型                                                 |
-| 理由     | `需求说明书 §15` 已明确将 bool 排除在当前版本范围之外                   |
-| 替代方案 | 支持 bool unique，返回 [false, true]                                    |
-| 拒绝原因 | 增加维护负担，收益几乎为零；`需求说明书 §15` "bool 不适用"              |
+| 属性     | 值                                                          |
+| -------- | ----------------------------------------------------------- |
+| 决策     | unique 不支持 bool 类型                                     |
+| 理由     | `需求说明书 §15` 已明确将 bool 排除在当前版本范围之外       |
+| 替代方案 | 支持 bool unique，返回 [false, true]                        |
+| 拒绝原因 | 增加维护负担，收益几乎为零；`需求说明书 §15` "bool 不适用"  |
 
 ### 决策 2：NaN / signed-zero 处理策略
 
-| 属性          | 值                                                                              |
-| ------------- | ------------------------------------------------------------------------------- |
-| 决策          | `unique` 严格沿用 IEEE 754 / Rust 相等语义：`NaN != NaN`，`-0.0 == 0.0`          |
-| 理由          | 直接满足 `需求说明书 §15`，避免文档额外发明"canonical NaN"语义                  |
-| 替代方案 (a)  | 归并全部 NaN                                                                    |
-| 替代方案 (b)  | 把 `-0.0` 与 `0.0` 视为不同值                                                   |
-| 拒绝原因      | 均与需求说明书冲突                                                              |
+| 属性          | 值                                                                       |
+| ------------- | ------------------------------------------------------------------------ |
+| 决策          | `unique` 严格沿用 IEEE 754 / Rust 相等语义：`NaN != NaN`，`-0.0 == 0.0`  |
+| 理由          | 直接满足 `需求说明书 §15`，避免文档额外发明"canonical NaN"语义           |
+| 替代方案 (a)  | 归并全部 NaN                                                             |
+| 替代方案 (b)  | 把 `-0.0` 与 `0.0` 视为不同值                                            |
+| 拒绝原因      | 均与需求说明书冲突                                                       |
 
 ### 决策 3：复数按分量判等
 
@@ -570,7 +561,8 @@ User calls unique()
 ### 12.1 复杂度
 
 - 对外语义不承诺具体算法复杂度
-- 参考实现可采用线性扫描去重（O(N^2)），但对大张量主路径应优先采用不改变外部语义的哈希辅助结构；当 O(N²) CPU 成本不可接受时应切换到哈希路径
+- 参考实现可采用线性扫描去重，但对大张量主路径应优先采用不改变外部语义的哈希辅助结构
+- 当 O(N²) CPU 成本不可接受时应切换到哈希路径
 - 输出顺序未定义；实现可任选 first-occurrence、hash-iteration 等顺序
 
 ### 12.2 内存开销
@@ -583,13 +575,13 @@ User calls unique()
 
 ## 13. 平台与工程约束
 
-| 约束       | 说明                                                                   |
-| ---------- | ---------------------------------------------------------------------- |
-| `std` only | Xenon 当前版本仅支持 `std` 环境，本文不再讨论 `no_std` 路径            |
-| MSRV       | Rust 1.85+                                                             |
-| 单 crate   | `set` 设计保持在现有 crate 内，不引入额外 crate                        |
-| SemVer     | 遵循SemVer                                                             |
-| 最小依赖   | 本模块不新增第三方依赖                                                 |
+| 约束       | 说明                                                         |
+| ---------- | ------------------------------------------------------------ |
+| `std` only | Xenon 当前版本仅支持 `std` 环境，本文不再讨论 `no_std` 路径  |
+| MSRV       | Rust 1.85+                                                   |
+| 单 crate   | `set` 设计保持在现有 crate 内，不引入额外 crate              |
+| SemVer     | 遵循SemVer                                                   |
+| 最小依赖   | 本模块不新增第三方依赖                                       |
 
 ---
 
