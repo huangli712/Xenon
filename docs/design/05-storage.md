@@ -438,7 +438,7 @@ pub unsafe trait StorageMut: Storage + RawStorageMut + crate::private::Sealed {
 }
 ````
 
-`as_slice()` / `as_mut_slice()` 返回的是从 storage base pointer 开始的 storage-visible backing range，不自动应用 `TensorBase::offset`，且不得暴露容量尾部或对齐填充。对于非连续张量或带偏移视图，调用方仍须结合 `offset` / `shape` / `strides()` 解释逻辑元素顺序；逻辑张量快路径见 `07-tensor.md §5.4a`。
+`as_slice()` / `as_mut_slice()` 返回的是从 storage base pointer 开始的 storage-visible backing range，不自动应用 `TensorBase::offset`，且不得暴露容量尾部或对齐填充。对于非连续张量或带偏移视图，调用方仍须结合 `offset` / `shape` / `strides()` 解释逻辑元素顺序；逻辑张量快路径见 `07-tensor.md §5`。
 
 ### 5.7 StorageOwned Trait
 
@@ -1387,7 +1387,7 @@ User calls `TensorBase::as_ptr()`
 
 | 属性     | 值                                                                                        |
 | -------- | ----------------------------------------------------------------------------------------- |
-| 决策     | 当前默认实现使用 64 字节作为默认对齐；该默认值是内部常量，未来可调，且不构成需求层硬约束                |
+| 决策     | 当前默认实现使用 64 字节作为默认对齐；该默认值是内部常量，未来可调，且不构成需求层硬约束  |
 | 理由     | AVX-512 缓存行大小；现代 CPU 缓存行通常 64 字节；满足 SSE/AVX/AVX2/AVX-512 所有 SIMD 指令 |
 | 替代方案 | 16 字节 — 放弃，AVX-512 未对齐                                                            |
 | 替代方案 | 32 字节 — 放弃，AVX-512 未对齐                                                            |
