@@ -651,7 +651,7 @@ impl std::error::Error for XenonError {
 
 | 字段名         | 类型                  | 含义                             | 备注                                                        |
 | -------------- | --------------------- | -------------------------------- | ----------------------------------------------------------- |
-| `operation` | `Cow<'static, str>`  | 触发错误的高层运算名（如 `"sum"`、`"reshape"`、`"slice"`） | 以一致词汇表命名；仅作为稳定标识符使用 |
+| `operation` | `Cow<'static, str>`  | 触发错误的高层运算名（如 `"sum"`、`"reshape"`） | 以一致词汇表命名；仅作为稳定标识符使用 |
 | `axis` | `usize` | 单一相关维度索引 | 多个相关维度时使用 `axes: Vec<usize>` |
 | `ndim` | `usize` | 张量秩 | 与 `axis < ndim` 配套使用 |
 | `shape` | `Vec<usize>`  | 完整逻辑形状 | 字段名固定为 `shape`；二元运算用 `lhs_shape`/`rhs_shape` 或 `left_shape`/`right_shape`，不得混用其他前缀 |
@@ -664,28 +664,17 @@ impl std::error::Error for XenonError {
 | `backend` | `FfiBackend` 封闭枚举 | FFI 后端标识 | 仅 `Ffi` 使用 |
 | `storage_kind` / `expected` / `actual`  | `StorageKindTag` 封闭枚举 | 存储模式标签 | `InvalidLayout` / `InvalidStorageMode` 使用 |
 | `conversion` | `Option<StorageConversionKind>` | 存储模式转换种类 | `InvalidStorageMode` 使用 |
-| `source_type` / `target_type` | `&'static str` | 元素类型名（如 `"f32"`、`"Complex<f64>"`） | `TypeConversion` 使用 |
+| `source_type` / `target_type` | `&'static str` | 元素类型名（如 `"f32"`） | `TypeConversion` 使用 |
 
 ### 5.7 Display 与 panic 信息要求
 
-- Display 输出和 panic 文本都必须能让调用方定位问题来源；最少应包含
-  操作名、错误类别以及适用上下文。
-- panic 信息必须包含 `operation` + error kind + 至少一个关键上下文
-  字段（如 `axis`、`shape`、`index`、类型等）。
-- 对 `Option<Vec<usize>>` 等可选结构化字段，`Display` 实现必须做
-  人性化格式化；`None` 统一显示为 `<any>`，不得直接打印 `Some(...)`
-  / `None` 调试文本。
-- 对 `TypeConversion` 的 `source_type` / `target_type`，Display 直接
-  写出该 `&'static str` 值（v3.2.0 起；值已是人类可读名称，例如 `"f32"`、
-  `"Complex<f64>"`，由 `Element::ELEMENT_TYPE_NAME` 关联常量保证）。
-  禁止使用 `{:?}` 或 `TypeId` 风格的不透明哈希。
-- 携带 `cause` 的 `Ffi` / `Workspace` 变体须在 Display 末尾追加
-  `; caused by: <inner>` 片段，使单次格式化即可显示完整错误链；
-  程序化遍历仍通过 `std::error::Error::source()`。
+- Display 输出和 panic 文本都必须能让调用方定位问题来源；最少应包含操作名、错误类别以及适用上下文。
+- panic 信息必须包含 `operation` + error kind + 至少一个关键上下文字段（如 `axis`、`shape`、`index`、类型等）。
+- 对 `Option<Vec<usize>>` 等可选结构化字段，`Display` 实现必须做人性化格式化；`None` 统一显示为 `<any>`，不得直接打印 `Some(...)` / `None` 调试文本。
+- 对 `TypeConversion` 的 `source_type` / `target_type`，Display 直接写出该 `&'static str` 值。禁止使用 `{:?}` 或 `TypeId` 风格的不透明哈希。
+- 携带 `cause` 的 `Ffi` / `Workspace` 变体须在 Display 末尾追加`; caused by: <inner>` 片段，使单次格式化即可显示完整错误链；程序化遍历仍通过 `std::error::Error::source()`。
 
-`Display` 的具体实现伪代码（含 `OrAny<T>` / `FmtShape<'_>` 等格式化
-helper）属于内部实现细节，集中在 §6.1 给出，不在公共 API 章节复述。
-公共契约只规定输出必须包含上表所述字段集合。
+`Display` 的具体实现伪代码属于内部实现细节，集中在 §6.1 给出，不在公共 API 章节复述。公共契约只规定输出必须包含上表所述字段集合。
 
 ### 5.8 统一 panic 类别
 
@@ -712,7 +701,7 @@ helper）属于内部实现细节，集中在 §6.1 给出，不在公共 API �
 ```rust,ignore
 // Good - cast is fallible and reports the failing element.
 // Note: `ConvertTo<B>` is the `pub(crate) sealed` static dispatch trait
-// owned by `convert/cast.rs` (see `21-type.md §6.1.ter`); it routes
+// owned by `convert/cast.rs` (see `21-type.md §6`); it routes
 // Tier-1 lossless pairs through `From` and Tier-2/Tier-3 pairs through
 // `<A as CastTo<B>>::cast_to`. cast()'s public bound MUST be
 // `A: ConvertTo<B>` (NOT `A: CastTo<B>`), because Tier-1 lossless type
@@ -783,8 +772,7 @@ let value = lhs * rhs;
 
 ### 6.1 算法描述
 
-错误构造与格式化的内部实现包含两部分：枚举构造模板 + Display
-实现。下列伪代码描述其骨架；实际实现位于 `src/error.rs`，对外不暴露。
+错误构造与格式化的内部实现包含两部分：枚举构造模板 + Display 实现。下列伪代码描述其骨架；实际实现位于 `src/error.rs`，对外不暴露。
 
 ```
 construct_xenon_error(operation, variant, context_fields):
@@ -801,8 +789,7 @@ construct_xenon_error(operation, variant, context_fields):
     4. return XenonError::{variant} { ... }
 ```
 
-格式化辅助类型（私有，不属于公开 API；放置于 `src/error.rs` 的私有
-模块内部）：
+格式化辅助类型（私有，不属于公开 API；放置于 `src/error.rs` 的私有模块内部）：
 
 ```rust,ignore
 // Internal Display helpers. Not part of the public API.
@@ -864,7 +851,7 @@ fmt_display(error, formatter):
 | 分配开销     | `Vec<usize>` 字段（`shape`、`attempted_index`）在错误构造时产生少量堆分配     |
 | 零分配路径   | 错误路径本身非热路径；少量分配换取结构化诊断上下文是可接受的工程权衡          |
 | Clone 成本   | `XenonError` 的 `Clone` 会复制 `Vec` 和 `Cow` 字段；仅在测试或显式需要时调用  |
-| PartialEq    | 用于测试断言；`source_type` / `target_type`（v3.2.0 起为 `&'static str`）的 `PartialEq` 比较是逐字节字符串比较；`Vec` 为逐元素比较 |
+| PartialEq    | 用于测试断言；`source_type` / `target_type` 的 `PartialEq` 比较是逐字节字符串比较；`Vec` 为逐元素比较 |
 
 ---
 
@@ -925,7 +912,7 @@ fmt_display(error, formatter):
 | panic 测试              | 集成测试目录       | 验证逐元素整数溢出、除以零、`abs(MIN)`、dot overflow       |
 | 并行测试                | 集成测试目录       | 验证 `Err` 与 panic 在并行路径中的传播一致性               |
 | Feature gate / 配置测试 | 配置矩阵           | 验证可选 SIMD/并行路径与标量路径的错误类别一致             |
-| 类型边界 / 编译期测试   | 编译期测试框架     | 验证子枚举（`ConversionFailureReason` / `FfiErrorCategory` / `WorkspaceErrorCategory` / `AbiMismatchKind` / `TypedViewRejection` 等）的 `match` 完备性；`source_type` / `target_type` 为 `&'static str`，无需 const 上下文枚举验证 |
+| 类型边界 / 编译期测试   | 编译期测试框架     | 验证子枚举的 `match` 完备性；`source_type` / `target_type` 为 `&'static str`，无需 const 上下文枚举验证 |
 
 ### 8.2 单元测试清单
 
@@ -943,26 +930,26 @@ fmt_display(error, formatter):
 | `test_display_option_fields_render_any`        | `None` 字段显示为 `<any>`                       | 中     |
 | `test_error_trait_source_leaf_none`            | 叶子变体的 `source()` 返回 `None`               | 中     |
 | `test_error_trait_source_chain_ffi_workspace`  | `Ffi { cause: Some(_) }` 的 `source()` 返回内层 | 高     |
-| `test_type_conversion_uses_element_type_name`  | `TypeConversion` 的源/目标字段是 `&'static str`，值与 `Element::ELEMENT_TYPE_NAME` 一致（如 `"f32"`、`"Complex<f64>"`） | 高     |
+| `test_type_conversion_uses_element_type_name`  | `TypeConversion` 的源/目标字段是 `&'static str` | 高     |
 | `test_type_conversion_carries_operation`       | `TypeConversion` 的 `operation` 必须非空        | 高     |
 | `test_clone_eq_roundtrip`                      | `Clone` + `PartialEq` 往返一致                  | 中     |
 
 ### 8.3 边界测试场景
 
-| 场景                             | 预期行为                                                                                                  |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| 空形状 `shape=[0, 3]`            | 合法输入；构造成功，归约/广播/`unique` 等返回单位元或空张量；不返回 `InvalidShape`                         |
-| 形状乘积溢出 `shape=[usize::MAX,2]` | 返回 `InvalidShape { kind: ProductOverflow, .. }`                                                       |
-| 元素数不匹配 `shape=[2,3], data.len()=5` | 返回 `InvalidShape { kind: ElementCountMismatch { expected: 6, actual: 5 }, .. }`                  |
-| rank 超静态最大 `IxDyn(7) -> Ix6` 转换 | 返回 `DimensionMismatch { operation: "Dimension::try_from_dyn", expected: 6, actual: 7, .. }`，由 `02-dimension.md §5.4 try_from_dyn` 提供（rank-mismatch 路径属维度不匹配，不属 InvalidShape） |
-| 静态 rank 张量构造时输入 rank 超出该维度类型最大值（非 `IxDyn`→静态转换路径，例如内部用 `IntoDimension` 构造 `Ix6` 时遇到 `provided_ndim > 6`） | 返回 `InvalidShape { kind: RankExceedsStaticMax { provided_ndim, max_ndim }, .. }`           |
-| 非法轴 `axis=5, ndim=2`          | 返回 `InvalidAxis` 结构化错误                                                                              |
-| 越界索引 `index=[9], shape=[4]`  | 返回 `IndexOutOfBounds` 结构化错误                                                                         |
-| 复数虚部非零 `Complex(1, 2)`     | 转换为实数类型返回 `TypeConversion { reason: NonZeroImaginaryPart, source_type: "Complex<f64>", target_type: "f64", .. }` |
-| 整数极值 `i32::MIN`              | `abs(i32::MIN)` 走 panic                                                                                   |
-| NaN/Inf 转换                     | `f64::NaN` → `i32` 返回 `TypeConversion { reason: FloatToInteger, source_type: "f64", target_type: "i32", .. }` |
-| FFI 空指针                       | 返回 `Ffi { category: NullPointer { argument: "ptr" }, backend: RawParts, cause: None, .. }`              |
-| FFI 包装 workspace 错误          | 返回 `Ffi { category: ..., cause: Some(Box::new(XenonError::Workspace { .. })), .. }`，`Error::source()` 返回内层 |
+| 场景                             | 预期行为                                                                            |
+| -------------------------------- | ----------------------------------------------------------------------------------- |
+| 空形状 `shape=[0, 3]`            | 合法输入；构造成功，归约/广播/`unique` 等返回单位元或空张量；不返回 `InvalidShape`  |
+| 形状乘积溢出 `shape=[usize::MAX,2]` | 返回 `InvalidShape`                                                              |
+| 元素数不匹配 `shape=[2,3], data.len()=5` | 返回 `InvalidShape`                                                         |
+| rank 超静态最大 `IxDyn(7) -> Ix6` 转换 | 返回 `DimensionMismatch`                                                      |
+| 静态 rank 张量构造时输入 rank 超出该维度类型最大值 | 返回 `InvalidShape`                                               |
+| 非法轴 `axis=5, ndim=2`          | 返回 `InvalidAxis` 结构化错误                                                       |
+| 越界索引 `index=[9], shape=[4]`  | 返回 `IndexOutOfBounds` 结构化错误                                                  |
+| 复数虚部非零 `Complex(1, 2)`     | 转换为实数类型返回 `TypeConversion`                                                 |
+| 整数极值 `i32::MIN`              | `abs(i32::MIN)` 走 panic                                                            |
+| NaN/Inf 转换                     | `f64::NaN` → `i32` 返回 `TypeConversion`                                            |
+| FFI 空指针                       | 返回 `Ffi`                                                                          |
+| FFI 包装 workspace 错误          | 返回 `Ffi`，`Error::source()` 返回内层                                              |
 
 ### 8.4 Feature gate / 配置测试
 
@@ -972,12 +959,6 @@ fmt_display(error, formatter):
 | 启用 SIMD | SIMD 路径错误类别与标量路径相同                |
 | 启用并行  | 并行路径错误传播与串行路径一致，不静默吞掉错误 |
 
-### 8.5 评审要求
-
-- 任何新增公开 API 都必须明确写出"返回 `Result` 还是 panic"的裁决
-- 任何新增错误变体都必须说明结构化字段，不得只增加 `message: &'static str`
-- 任何新增类型转换组合都必须同时更新 `21-type.md` 与本规范中的错误路径说明
-
 ---
 
 ## 9. 模块交互设计
@@ -986,16 +967,16 @@ fmt_display(error, formatter):
 
 | 方向    | 对方模块                       | 接口/类型                       | 约定                              |
 | ------- | ------------------------------ | ------------------------------- | --------------------------------- |
-| 被消费  | `tensor` / `shape` / `matrix`  | `XenonError::ShapeMismatch`     | 非广播的双输入形状冲突时构造并返回 |
+| 被消费  | `tensor` / `shape` / `matrix`  | `XenonError::ShapeMismatch`     | 非广播的双输入形状冲突时构造并返回|
 | 被消费  | `index`                        | `XenonError::IndexOutOfBounds`  | 方法型索引越界时构造并返回        |
 | 被消费  | `broadcast` / `math`           | `XenonError::BroadcastError`    | 广播不兼容时构造并返回            |
 | 被消费  | `reduction`                    | `XenonError::InvalidAxis`       | 轴越界时构造并返回；溢出走 panic  |
 | 被消费  | `convert`                      | `XenonError::TypeConversion`    | 有损转换失败时构造并返回          |
 | 被消费  | `ffi`                          | `XenonError::Ffi`               | FFI 前提不满足时构造并返回        |
 | 被消费  | `tensor` / `ffi`               | `XenonError::InvalidLayout`     | 元数据校验失败时构造并返回        |
-| 被消费  | `index` / `math` / `overload` / `parallel` | `XenonError::InvalidArgument`   | 参数非法时构造并返回              |
-| 被消费  | `construction` / `math` / `parallel` | `XenonError::InvalidShape` | 形状/长度不匹配时构造并返回       |
-| 被消费  | `dimension` / `parallel` / `index` / `ffi` | `XenonError::DimensionMismatch` | 维度不匹配时构造并返回 |
+| 被消费  | `index` / `math` / `overload` / `parallel` | `XenonError::InvalidArgument`   | 参数非法时构造并返回  |
+| 被消费  | `construction` / `math` / `parallel` | `XenonError::InvalidShape` | 形状/长度不匹配时构造并返回      |
+| 被消费  | `dimension` / `parallel` / `index` / `ffi` | `XenonError::DimensionMismatch` | 维度不匹配时构造并返回|
 | 被消费  | `storage` / `utility`          | `XenonError::InvalidStorageMode`| 存储模式不支持时构造并返回        |
 | 被消费  | `workspace`                    | `XenonError::Workspace`         | 工作区分配/借用/分割失败时构造并返回 |
 | 被消费  | 所有模块                       | `Result<T>`                     | 公开 API 返回类型统一使用此别名   |
@@ -1013,10 +994,7 @@ Caller invokes public API (e.g., tensor.broadcast_to(shape))
     │               │
     │               └── return Err(XenonError)
     │
-    └── For panic-bound operations (integer overflow in checked arithmetic, internal/unsafe helper precondition violations, ...)
-        // Note: Xenon does NOT implement std::ops::Index/IndexMut for tensors;
-        // user-facing indexing is via fallible methods (see 17-indexing.md §5),
-        // so there is no "Index syntax sugar" panic path on the public API.
+    └── For panic-bound operations (integer overflow in checked arithmetic, ...)
             │
             ├── Triggered → panic with formatted message
             │       "Xenon: {operation} overflow for {type} at {context}"
@@ -1029,15 +1007,9 @@ Caller invokes public API (e.g., tensor.broadcast_to(shape))
 
 ### 9.3 生命周期与所有权约定
 
-`XenonError` 为 `Clone` 类型，错误构造时所有 `Cow<'static, str>`
-字段使用 `'static` 生命周期，不借用调用方的临时数据。`Vec<usize>`
-字段在构造时独立拥有，错误可安全地跨线程传递和存储。
+`XenonError` 为 `Clone` 类型，错误构造时所有 `Cow<'static, str>`字段使用 `'static` 生命周期，不借用调用方的临时数据。`Vec<usize>`字段在构造时独立拥有，错误可安全地跨线程传递和存储。
 
-`Ffi` / `Workspace` 变体的 `cause: Option<Box<XenonError>>` 字段在
-构造时通过 `Box::new(inner)` 装箱，所有权完全归属外层错误；克隆外层
-错误时会递归 `Clone` 内层错误并重新装箱，相等性比较递归到内层。
-源链深度无人为限制，但实际构造路径不会产生超过 2-3 层的嵌套
-（公开 API 不会自身递归包装）。
+`Ffi` / `Workspace` 变体的 `cause: Option<Box<XenonError>>` 字段在构造时通过 `Box::new(inner)` 装箱，所有权完全归属外层错误；克隆外层错误时会递归 `Clone` 内层错误并重新装箱，相等性比较递归到内层。源链深度无人为限制，但实际构造路径不会产生超过 2-3 层的嵌套（公开 API 不会自身递归包装）。
 
 ---
 
@@ -1124,28 +1096,18 @@ Caller invokes public API (e.g., tensor.broadcast_to(shape))
 | 属性     | 值                                                                                                                                                                |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 决策     | `FfiErrorCategory` / `WorkspaceErrorCategory` 改为携带结构化负载的 closed enum，覆盖 NullPointer / AlignmentMismatch / AbiMismatch / OverlapRejected / ForeignAllocatorMismatch / BorrowConflict / SplitCountInvariant / GrowOverflow / TypedViewRejected 等具体子类 |
-| 理由     | 早期评审指出：原 `Ffi { backend, precondition, actual }` 三个 `Cow<str>` 字段把关键诊断稳定为自由文本，`InvalidRank/BlasIncompatibleLayout/IntegerOverflow` 三类无法覆盖 raw-parts FFI 常见错误源；workspace 的 `AllocFailed/InvalidLayout/AlreadyBorrowed（旧模型历史名称）/SplitOutOfBounds` 同样过粗 |
+| 理由     | 原 `Ffi { backend, precondition, actual }` 三个 `Cow<str>` 字段把关键诊断稳定为自由文本，`InvalidRank/BlasIncompatibleLayout/IntegerOverflow` 三类无法覆盖 raw-parts FFI 常见错误源；workspace 的 `AllocFailed/InvalidLayout/AlreadyBorrowed/SplitOutOfBounds` 同样过粗 |
 | 替代方案 | 维持粗粒度子枚举 + 自由文本 — 放弃，违反“结构化诊断不依赖纯字符串消息”原则                                                                                         |
 | 替代方案 | 把所有 FFI/workspace 错误打平为一级变体 — 放弃，会让 `XenonError` 顶层变体爆炸性增长且失去“按子系统聚类”的程序化匹配能力                                            |
 
 ### 决策 5：仅 `Ffi` / `Workspace` 引入源链
 
-| 属性     | 值                                                                                                                                            |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | `Ffi` / `Workspace` 携带 `cause: Option<Box<XenonError>>`；其他变体保持叶子错误。`Error::source()` 据此返回内层；其余变体返回 `None`           |
-| 理由     | 前序评审 B6.c：原 `source()` 始终返回 `None` 已经封死了链式追踪的能力；FFI 包装 workspace 错误、workspace allocator 错误等真实场景需要源链支持 |
-| 替代方案 | 全部变体都加 `cause` — 放弃，绝大多数变体本身就是叶子，统一加字段会增加构造复杂度与无意义 None                                                  |
-| 替代方案 | 用外部 `anyhow` / `Box<dyn Error>` 包装 — 放弃，违反最小依赖约束                                                                              |
-
-### 决策 6：`TypeConversion` 用类型名 `&'static str` 替换 `TypeId`，并补 `operation`
-
-| 属性     | 值                                                                                                                                                                |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | `TypeConversion` 字段为 `{ operation, source_type: &'static str, target_type: &'static str, reason, element_index? }`（v3.2.0 起；v1.3.0–v3.1.x 曾使用 `ElementType`，详见决策回滚说明）。`source_type` / `target_type` 取值来自 `Element::ELEMENT_TYPE_NAME` 关联常量（`03-element.md §5.1.1`） |
-| 理由     | Round-8 评审 H-R8 / C23：`TypeId` 是不透明哈希，无法满足结构化诊断 + 可读 Display；同时补齐 `operation` 字段消除"几乎所有变体都必须携带 operation 但 TypeConversion 例外"的不一致。`&'static str` 取代 `ElementType` 枚举（v3.2.0）：避免 error 反向依赖 element，让 L0..L6 单向依赖严格成立，同时保留可读 Display；具体类型枚举仍由 `crate::element` 拥有，结构化匹配可由调用方按需 `match` 字符串字面量（受支持的全集是固定的封闭名称集合） |
-| 替代方案 | 保留 `TypeId` + 在 Display 时反查类型名 — 放弃，反查机制不存在且 TypeId 不可程序化匹配封闭元素集合 |
-| 替代方案 | 字段保持 `ElementType` 枚举 — 放弃（v3.2.0 反转）：会让 error 模块持有 element 模块定义的类型，破坏 L0 单向依赖（即便通过 re-export 隐藏耦合，链路上仍是 error → element） |
-| 替代方案 | 自由文本字符串 `Cow<'static, str>` — 放弃：构造点缺乏统一来源会导致拼写不一致；本设计要求值必须来自 `Element::ELEMENT_TYPE_NAME` 关联常量集中管理 |
+| 属性     | 值                                                                                                                              |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| 决策     | `Ffi` / `Workspace` 携带 `cause: Option<Box<XenonError>>`；其他变体保持叶子错误。`Error::source()` 据此返回内层；其余变体返回 `None` |
+| 理由     | 原 `source()` 始终返回 `None` 已经封死了链式追踪的能力；FFI 包装 workspace 错误、workspace allocator 错误等真实场景需要源链支持 |
+| 替代方案 | 全部变体都加 `cause` — 放弃，绝大多数变体本身就是叶子，统一加字段会增加构造复杂度与无意义 None                                  |
+| 替代方案 | 用外部 `anyhow` / `Box<dyn Error>` 包装 — 放弃，违反最小依赖约束                                                                |
 
 ---
 
