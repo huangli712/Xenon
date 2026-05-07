@@ -4,8 +4,6 @@
 > 模块目录: src/math/
 > 任务阶段: Phase 4
 > 前置文档: 03-element.md, 08-simd.md, 09-parallel.md, 10-iterator.md, 15-broadcast.md, 26-error.md
-> 需求参考: 需求说明书 §4、§9、§12、§27、§28
-> 范围声明: 范围内
 
 ---
 
@@ -13,27 +11,27 @@
 
 ### 1.1 职责边界
 
-| 职责     | 包含                                                                  |
-| -------- | --------------------------------------------------------------------- |
-| 算术运算 | add/sub/mul/div，数值类型：i32/i64/f32/f64/Complex                    |
-| 一元运算 | abs（有序数值）；signum（浮点按符号位、整数按比较）；neg/square（Numeric）；数学函数（RealScalar） |
-| 数学函数 | sin/sqrt/exp/ln/floor/ceil，仅 f32/f64                                |
-| 复数运算 | modulus/模（返回实数类型）/conjugate（公开 API；内部 Complex 方法名可记为 conj），仅 Complex |
-| 逻辑非   | `!`，仅 bool                                                          |
-| 比较运算 | `equal`/`not_equal` 对所有 Element 可用；`less`/`greater` 对 i32/i64/f32/f64 可用，返回 bool 张量，NaN 遵循 IEEE 754 |
-| 标量运算 | 标量与张量的逐元素运算                                                |
-| 广播支持 | 所有二元运算和比较运算支持广播                                        |
+| 职责     | 包含                                                |
+| -------- | --------------------------------------------------- |
+| 算术运算 | add/sub/mul/div，数值类型：i32/i64/f32/f64/Complex  |
+| 一元运算 | abs/signum/neg/square                               |
+| 数学函数 | sin/sqrt/exp/ln/floor/ceil，仅 f32/f64              |
+| 复数运算 | modulus/conjugate，仅 Complex                       |
+| 逻辑非   | !，仅 bool                                          |
+| 比较运算 | equal/not_equal/less/greater                        |
+| 标量运算 | 标量与张量的逐元素运算                              |
+| 广播支持 | 所有二元运算和比较运算支持广播                      |
 
-| 职责     | 不包含                                                  |
-| -------- | ------------------------------------------------------- |
-| 算术运算 | 归约运算（参见 `13-reduction.md §1`） |
-| 一元运算 | 筛选/排序                                               |
-| 数学函数 | 运算符重载（参见 `19-overload.md §1`）                  |
-| 复数运算 | 比较运算（`less`/`greater`；`equal`/`not_equal` 对复数仍可用）|
-| 逻辑非   | 位运算                                                  |
-| 比较运算 | 搜索/排序                                               |
-| 标量运算 | 矩阵运算（dot/matmul）                                  |
-| 广播支持 | 批量运算                                                |
+| 职责     | 不包含                                                |
+| -------- | ----------------------------------------------------- |
+| 算术运算 | 归约运算（参见 `13-reduction.md §1`）                 |
+| 一元运算 | 筛选/排序                                             |
+| 数学函数 | 运算符重载（参见 `19-overload.md §1`）                |
+| 复数运算 | 比较运算（less/greater/equal/not_equal 对复数仍可用） |
+| 逻辑非   | 位运算                                                |
+| 比较运算 | 搜索/排序                                             |
+| 标量运算 | 矩阵运算（dot/matmul）                                |
+| 广播支持 | 批量运算                                              |
 
 ### 1.2 设计原则
 
@@ -51,8 +49,8 @@
 | 项目     | 内容 |
 | -------- | ---- |
 | 需求映射 | 需求说明书 §4、§9、§12、§27、§28 |
-| 范围内   | 逐元素算术、一元运算、数学函数、复数 `modulus` / `conjugate`、逻辑非、比较运算、标量-张量逐元素语义与广播语义。当前版本的数学函数集合**仅包含** `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil`。 |
-| 范围外   | 混合类型逐元素运算以及 `map` 系列公开 API。**当前版本的数学函数集合不包含**：`cos` / `tan` / `asin` / `acos` / `atan` / `atan2` / `sinh` / `cosh` / `tanh` / `asinh` / `acosh` / `atanh` 等其他三角与双曲函数；`log2` / `log10` / `log1p` / `expm1` / `exp2`；`pow` / `powi` / `powf` / `cbrt` / `hypot` 等幂/根函数；`round` / `trunc` / `fract` 等取整变体；任何 special functions（`erf` / `gamma` / `lgamma` / `bessel*` 等）。这些函数若有需求需单独引入议题评估（包括 NaN / 边界 / SIMD admission / `f32` vs `f64` 精度策略）；不在当前版本作为隐式扩展加入。SIMD 与并行覆盖范围仅限本模块负责的逐元素运算；若当前类型/ISA/语义约束不满足，则自动回退标量。 |
+| 范围内   | 逐元素算术、一元运算、数学函数`sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil`、复数 `modulus` / `conjugate`、逻辑非、比较运算、标量-张量逐元素语义与广播语义。 |
+| 范围外   | 混合类型逐元素运算以及 `map` 系列公开 API。|
 | 非目标   | 不新增新的数学库依赖，不在本文扩展 mixed-type API 或更通用的逐元素映射原语。 |
 
 ---
@@ -70,8 +68,6 @@ Optional dependency touchpoints:
 src/simd/               # optional SIMD backend consumed by math dispatch
 src/parallel/           # optional parallel backend consumed by math dispatch
 ```
-
-多文件设计理由：按操作元数分组（一元 vs 二元）可保持当前最小范围；更通用的逐元素映射基础设施不属于 `需求说明书 §12` 的本期最小交付，暂不纳入当前版本。运算符重载（Add/Sub/Mul/Div trait 实现）保留在 `src/overload/arithmetic.rs`。SIMD 加速由独立 backend 模块 `src/simd/` 承载，`math/` 仅负责语义 API 与分发入口。
 
 ---
 
@@ -100,12 +96,12 @@ src/math/
 | `element`      | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`, `OrderedCompareElement`（定义见 `03-element.md §5.5`）|
 | `complex`      | `Complex<f32>`, `Complex<f64>`（参见 `04-complex.md §5`）                              |
 | `broadcast`    | `broadcast_shape()`, `broadcast_to()` 返回的 `TensorView`（参见 `15-broadcast.md §5`） |
-| `dimension`    | `BroadcastDim<E>` public sealed trait（对外可命名的公开 sealed trait，用于编译期维度推导，参见 `02-dimension.md §5.10`）|
+| `dimension`    | `BroadcastDim<E>` public sealed trait（参见 `02-dimension.md §5.10`）                  |
 | `storage`      | `Storage<Elem = A>`, `StorageMut<Elem = A>`                                            |
-| `error`        | `XenonError`（含 `BroadcastError` 变体，参见 `26-error.md §5`）                        |
-| `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`ParallelGuard`（`select_exec_path` 返回 `(ExecPath, Option<ParallelGuard>)`，与 30-dispatch v2.0.3 select-and-enter 原子裁决一致；旧 `should_parallelize()` 已废弃） |
+| `error`        | `XenonError`（参见 `26-error.md §5`）                                                  |
+| `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`ParallelGuard`                                  |
 | `simd`（可选） | `pulp::Arch`（参见 `08-simd.md §5`）                                                   |
-| `parallel`（可选） | `par_zip_map()`（纯并行执行入口，不含串行回退，参见 `09-parallel.md §5` / `§6`）   |
+| `parallel`（可选） | `par_zip_map()`（参见 `09-parallel.md §5` / `§6`）                                 |
 
 ### 4.3 依赖合法性
 
