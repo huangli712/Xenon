@@ -207,7 +207,7 @@ pub struct TensorBase<S, D> {
 | ------------------------- | --------------------------------- | ------------------------------ | ------------------------------------------------- |
 | `Tensor<Owned<A>, D>`     | 取决于 `Owned<A>: Send`           | 取决于 `Owned<A>: Sync`        | 拥有型规则与 `05-storage.md`、`25-safety.md` 一致 |
 | `TensorView<'a, A, D>`    | 取决于 `ViewRepr<'a, A>: Send`    | 取决于 `ViewRepr<'a, A>: Sync` | 只读借用可跨线程共享的前提由 storage 层定义       |
-| `TensorViewMut<'a, A, D>` | 取决于 `ViewMutRepr<'a, A>: Send` | 永不实现 `Sync` | 可变视图只允许独占传播；`!Sync` 由 `ViewMutRepr` 内部 raw `*mut A` 字段使 auto-trait 不实现 `Sync`、且 storage 层不提供 `unsafe impl Sync` 共同保证（参见 `05-storage.md §6.8`） |
+| `TensorViewMut<'a, A, D>` | 取决于 `ViewMutRepr<'a, A>: Send` | 永不实现 `Sync` | 可变视图只允许独占传播；`!Sync` 由 `ViewMutRepr` 内部 raw `*mut A` 字段使 auto-trait 不实现 `Sync`、且 storage 层不提供 `unsafe impl Sync` 共同保证 |
 | `ArcTensor<A, D>`         | 取决于 `ArcRepr<A>: Send`         | 取决于 `ArcRepr<A>: Sync`      | 共享只读线程安全前提完全继承 storage 层           |
 
 ### 5.2 Type aliases
@@ -339,18 +339,6 @@ where
     }
 
     /// Returns the precise alias classification for this tensor.
-    ///
-    /// This is the **single recommended entry point** for L4/L5 modules
-    /// (FFI export, parallel chunk safety, unsafe pointer arithmetic)
-    /// to determine aliasing class. Callers SHOULD NOT manually combine
-    /// `storage_kind()`, `has_zero_stride()`, and `derived_from_view_mut()`
-    /// flags — those flag combinations are the implementation detail of
-    /// this method and are forbidden by the safety contract defined in
-    /// 25-safety.md §5.
-    ///
-    /// `AccessSemantics::SharedReadOnly` remains a 3-way summary for
-    /// general access-permission queries; `AliasClass` provides the
-    /// specific provenance needed for soundness reasoning.
     pub fn alias_class(&self) -> AliasClass {
         if self.storage_kind() == StorageKind::Shared {
             AliasClass::ArcShared
@@ -394,29 +382,31 @@ pub enum AccessSemantics {
     Owned,
 }
 
-/// 别名分类：`TensorBase::alias_class()` 返回的精确别名类别枚举。
+/// Alias classification enum returned by `TensorBase::alias_class()`.
 ///
-/// 与 `AccessSemantics` 不同，此枚举提供精确的别名来源区分，
-/// 用于 L4/L5 模块的安全推理（如 unsafe 指针算术、并行分块安全、
-/// FFI 导出决策）。
+/// Unlike `AccessSemantics`, this enum provides precise alias origin
+/// discrimination for safety reasoning in L4/L5 modules (e.g., unsafe
+/// pointer arithmetic, parallel chunking safety, FFI export decisions).
 ///
-/// `AccessSemantics::SharedReadOnly` 将三类语义不同的张量合并
-/// 为单一变体；`AliasClass` 将其拆分为独立变体，方便调用方在
-/// 需要区分别名来源时进行模式匹配，而不必手动组合
-/// `storage_kind()`、`has_zero_stride()`、`derived_from_view_mut()`
-/// 三个标志。
+/// `AccessSemantics::SharedReadOnly` merges three semantically distinct
+/// tensor categories into a single variant; `AliasClass` splits them into
+/// separate variants so callers can pattern-match on alias origin without
+/// manually composing the three flags `storage_kind()`, `has_zero_stride()`,
+/// and `derived_from_view_mut()`.
 ///
-/// 详见 25-safety.md §5 的安全契约。
+/// See 25-safety.md §5 for the safety contract.
 pub enum AliasClass {
-    /// 张量独占其底层数据，无别名: 来源为 Owned 或独占 ViewMut。
+    /// Tensor exclusively owns its underlying data with no aliases:
+    /// source is Owned or exclusive ViewMut.
     Unique,
-    /// Arc 共享所有权: 多个 ArcTensor 实例共享底层 SharedBuf。
+    /// Arc shared ownership: multiple ArcTensor instances share the
+    /// underlying SharedBuf.
     ArcShared,
-    /// 广播零步长别名: 同一物理元素被多个逻辑索引访问
-    /// (any(stride == 0) && product(shape) > 0)。
+    /// Broadcast zero-stride alias: the same physical element is accessed
+    /// by multiple logical indices (any(stride == 0) && product(shape) > 0).
     BroadcastAlias,
-    /// ViewMut 降级而来的只读视图: derived_from_view_mut == true
-    /// 且非广播、非 Arc。
+    /// Read-only view demoted from ViewMut: derived_from_view_mut == true
+    /// and not broadcast, not Arc.
     ViewMutDerived,
 }
 
@@ -426,23 +416,21 @@ pub enum DataLocation {
 }
 ```
 
-- **`len` / storage 长度不变量：** `TensorBase::len()` 返回逻辑元素总数（由 `shape` 计算）；`Storage::len()` 返回底层存储的可见长度。对于视图类型，storage len 可能大于 logical len。所有 bounds check 基于 logical len，raw-parts 构造基于 storage len。
+- **`len` / storage 长度不变量**： `TensorBase::len()` 返回逻辑元素总数（由 `shape` 计算）；`Storage::len()` 返回底层存储的可见长度。对于视图类型，storage len 可能大于 logical len。所有 bounds check 基于 logical len，raw-parts 构造基于 storage len。
 - **数据位置查询说明：** 当前版本仅支持 CPU 内存，`data_location()` 恒返回 `DataLocation::Cpu`，用于满足 `需求说明书 §8` 的存储位置查询接口。
-- **`storage_kind()` 语义说明：** `storage_kind()` 返回底层**实际存储表示类型**对应的 `Owned / View / ViewMut / Shared`，而不是高层语义分类。`Owned` 报告 `Owned`，`ViewRepr` 报告 `View`，`ViewMutRepr` 报告 `ViewMut`，`ArcRepr` 报告 `Shared`。因此广播结果若底层表示为 `ViewRepr`，其 `storage_kind()` 也必须返回 `View`，而不是 `Shared`。
+- **`storage_kind()` 语义说明**： `storage_kind()` 返回底层实际存储表示类型对应的 `Owned / View / ViewMut / Shared`，而不是高层语义分类。`Owned` 报告 `Owned`，`ViewRepr` 报告 `View`，`ViewMutRepr` 报告 `ViewMut`，`ArcRepr` 报告 `Shared`。因此广播结果若底层表示为 `ViewRepr`，其 `storage_kind()` 也必须返回 `View`，而不是 `Shared`。
 - **广播语义补充：** 广播结果的只读共享语义通过 layout flags 和访问控制表达，而非通过 `storage_kind()` 伪装。详见 `15-broadcast.md`。
-- **`access_semantics()` 广播判定机制：** 当 `ViewRepr` 的 `LayoutFlags` 包含 `HAS_ZERO_STRIDE` 时，`access_semantics()` 返回 `AccessSemantics::SharedReadOnly`，以区分普通只读视图（`ReadOnly`）与广播只读视图（`SharedReadOnly`）。此判定与 `LayoutState::BroadcastView` 的分类条件一致（见 `06-layout.md §5.11`）。
-- **`ViewMutRepr → ViewRepr` 零拷贝降级的来源标记（v3.0.1）：** 当 `view_mut().view()` 把可写视图降级为只读视图时，结果的 `LayoutFlags` 不一定包含 `HAS_ZERO_STRIDE`（普通 contiguous mutable view 降级后仍是 contiguous）。为了让 `access_semantics()` 在不依赖来源上下文的前提下仍能区分"普通 view 借用"与"由 ViewMut 降级而来的共享只读视图"，`TensorBase` 携带一个**独立的、私有的** 1-bit 内部标记字段 `derived_from_view_mut: bool`（结构体字段层面，**不**复用 `LayoutFlags` 任何 bit；`06-layout.md §5.1` 的 `LayoutFlags` 权威定义仅包含 `F_CONTIGUOUS / ALIGNED / HAS_ZERO_STRIDE`，且 `compute_layout_flags(shape, strides, ptr)` 是其唯一权威计算入口，与张量来源信息正交）。该字段对外不暴露 setter，仅由 `ViewMutRepr::view()` 降级为只读 `ViewRepr` 的路径，以及 `17-indexing.md §6.3` 切片传播规则（源为 `ViewMutRepr` 或源已带 `derived_from_view_mut == true`）设置；`view_mut()` 的可写 reborrow 仍返回 `ViewMutRepr`，**不**设置该标记。可以与 `TensorBase` 中其它内部 bool 通过私有 `#[repr(transparent)]` 包装位组打包以避免 padding 浪费，但其语义边界与 `LayoutFlags` 严格分离。`access_semantics()` 的判定规则因此扩展为：(1) `storage_kind() == StorageKind::Shared` → `SharedReadOnly`；(2) `storage_kind() == StorageKind::ViewMut` → `Writable`；(3) `storage_kind() == StorageKind::View` 且 `(layout_flags().has_zero_stride() || self.derived_from_view_mut)` → `SharedReadOnly`；(4) `storage_kind() == StorageKind::View` 且二者都未设置 → `ReadOnly`；(5) `storage_kind() == StorageKind::Owned` → `Owned`。这避免了 `access_semantics()` 输出与构造来源的歧义，且实现成本只有一个独立标志位，不污染 `LayoutFlags` 权威计算。
-- **`SharedReadOnly` 三重含义说明：** `AccessSemantics::SharedReadOnly` 覆盖三类语义不同的张量，由不同的 (`storage_kind()`, `layout_flags().has_zero_stride()`, `derived_from_view_mut`) 组合识别：
-  1. **所有权共享（`ArcRepr`）：** `storage_kind() == Shared`。多个张量句柄通过 `Arc` 共享底层存储；写访问需要先唯一化（参见 `05-storage.md §5.8`、`§11` 决策 2）。这里"共享"指存储所有权层面的共享。
-  2. **同物理地址共享（广播 `ViewRepr`）：** `storage_kind() == View && layout_flags().has_zero_stride()`。多个不同逻辑索引映射到同一物理地址（典型来源：`broadcast_to` / `broadcast_with`）。这里"共享"指同一物理元素被多个逻辑索引共享读取。
-  3. **来源共享（ViewMut 降级而来的 `ViewRepr`）：** `storage_kind() == View && self.derived_from_view_mut`（**与零步长无关**：普通 contiguous mutable view 降级后逻辑索引 1:1 物理索引，没有地址重叠，但仍标记为"共享只读"以反映"原始独占借用已转交，再获取写访问需要重新论证")。
-  三类共享在写访问安全性上的结论相同（都不能直接可写），因此合并到同一变体；但调用方若需要区分（例如内部 CoW 唯一化路径只对 `ArcRepr` 适用，BLAS / SIMD 路径需要拒绝零步长但可接受 ViewMut 降级），必须先通过 `storage_kind()` 判断底层存储类型，再由 `flags().has_zero_stride()` 区分广播视图，最后由内部 `derived_from_view_mut` 区分降级来源。`access_semantics()` 本身不暴露这一三向区分。
-- **权威约束：** 访问语义的权威查询入口是 `access_semantics()`；`storage_kind()` 只报告底层表示类型，不能替代访问语义判定。
-- **`HAS_ZERO_STRIDE` 权威约束：** `HAS_ZERO_STRIDE` 标志位的定义以 **06-layout.md §5.11** 为唯一权威（`any(stride == 0) && product(shape) > 0`）；本节仅通过 `flags().has_zero_stride()` 和 `LayoutState` 查询使用该标志，不重复定义其规则。
+- **`ViewMutRepr → ViewRepr` 零拷贝降级的来源标记**： 当 `view_mut().view()` 把可写视图降级为只读视图时，结果的 `LayoutFlags` 不一定包含 `HAS_ZERO_STRIDE`（普通 contiguous mutable view 降级后仍是 contiguous）。为了让 `access_semantics()` 在不依赖来源上下文的前提下仍能区分"普通 view 借用"与"由 ViewMut 降级而来的共享只读视图"，`TensorBase` 携带一个独立的、私有的 1-bit 内部标记字段 `derived_from_view_mut: bool`（结构体字段层面，不复用 `LayoutFlags` 任何 bit；`06-layout.md §5.1` 的 `LayoutFlags` 权威定义仅包含 `F_CONTIGUOUS / ALIGNED / HAS_ZERO_STRIDE`，且 `compute_layout_flags(shape, strides, ptr)` 是其唯一权威计算入口，与张量来源信息正交）。该字段对外不暴露 setter，仅由 `ViewMutRepr::view()` 降级为只读 `ViewRepr` 的路径，以及 `17-indexing.md §6.3` 切片传播规则（源为 `ViewMutRepr` 或源已带 `derived_from_view_mut == true`）设置；`view_mut()` 的可写 reborrow 仍返回 `ViewMutRepr`，不设置该标记。可以与 `TensorBase` 中其它内部 bool 通过私有 `#[repr(transparent)]` 包装位组打包以避免 padding 浪费，但其语义边界与 `LayoutFlags` 严格分离。
+- **`access_semantics()` 的判定规则**：(1) `storage_kind() == StorageKind::Shared` → `SharedReadOnly`；(2) `storage_kind() == StorageKind::ViewMut` → `Writable`；(3) `storage_kind() == StorageKind::View` 且 `(layout_flags().has_zero_stride() || self.derived_from_view_mut)` → `SharedReadOnly`；(4) `storage_kind() == StorageKind::View` 且二者都未设置 → `ReadOnly`；(5) `storage_kind() == StorageKind::Owned` → `Owned`。这避免了 `access_semantics()` 输出与构造来源的歧义，且实现成本只有一个独立标志位，不污染 `LayoutFlags` 权威计算。
+- **`SharedReadOnly` 三重含义说明**： `AccessSemantics::SharedReadOnly` 覆盖三类语义不同的张量，由不同的 (`storage_kind()`, `layout_flags().has_zero_stride()`, `derived_from_view_mut`) 组合识别：
+  1. **所有权共享（`ArcRepr`）**： `storage_kind() == Shared`。多个张量句柄通过 `Arc` 共享底层存储；写访问需要先唯一化。这里"共享"指存储所有权层面的共享。
+  2. **同物理地址共享（广播 `ViewRepr`）**： `storage_kind() == View && layout_flags().has_zero_stride()`。多个不同逻辑索引映射到同一物理地址（典型来源：`broadcast_to` / `broadcast_with`）。这里"共享"指同一物理元素被多个逻辑索引共享读取。
+  3. **来源共享（ViewMut 降级而来的 `ViewRepr`）**： `storage_kind() == View && self.derived_from_view_mut`（与零步长无关：普通 contiguous mutable view 降级后逻辑索引 1:1 物理索引，没有地址重叠，但仍标记为"共享只读"以反映"原始独占借用已转交，再获取写访问需要重新论证")。
+  4. 三类共享在写访问安全性上的结论相同（都不能直接可写），因此合并到同一变体；但调用方若需要区分（例如内部 CoW 唯一化路径只对 `ArcRepr` 适用，BLAS / SIMD 路径需要拒绝零步长但可接受 ViewMut 降级），必须先通过 `storage_kind()` 判断底层存储类型，再由 `flags().has_zero_stride()` 区分广播视图，最后由内部 `derived_from_view_mut` 区分降级来源。`access_semantics()` 本身不暴露这一三向区分。
+- **权威约束**： 访问语义的权威查询入口是 `access_semantics()`；`storage_kind()` 只报告底层表示类型，不能替代访问语义判定。
+- **`HAS_ZERO_STRIDE` 权威约束**： `HAS_ZERO_STRIDE` 标志位的定义以 `06-layout.md §5.11` 为唯一权威（`any(stride == 0) && product(shape) > 0`）；本节仅通过 `flags().has_zero_stride()` 和 `LayoutState` 查询使用该标志，不重复定义其规则。
 - `LayoutState` 使用 `crate::layout::LayoutState`（参见 `06-layout.md §5`）；
 - 本文档不再重复定义 `FContiguous`、`NonContiguous`、`BroadcastView` 三个变体。
-
-- **`alias_class()` 规范入口：** `TensorBase::alias_class() -> AliasClass` 是 L4/L5 模块（FFI 导出、并行分块安全、unsafe 指针算术）判断别名类别的 **单一推荐入口**。L4/L5 模块 **不应** 手动组合 `storage_kind()`、`has_zero_stride()`、`derived_from_view_mut()` 三个标志——这些标志组合是本方法的实现细节，由 25-safety.md §5 的安全契约禁止在外部直接组合。`AccessSemantics::SharedReadOnly` 保留为三合一语义摘要，用于通用访问权限查询；`AliasClass` 提供具体的别名来源（Arc 共享 / 广播零步长 / ViewMut 降级 / 独占），为安全性论证提供精确依据。安全契约详见 25-safety.md §5。
 
 **三层语义模型：**
 
