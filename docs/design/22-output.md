@@ -4,8 +4,6 @@
 > 模块目录: src/format/
 > 任务阶段: Phase 4
 > 前置文档: 05-storage.md, 06-layout.md, 07-tensor.md
-> 需求参考: 需求说明书 §4、§5、§8、§24、§28
-> 范围声明: 范围内
 
 ---
 
@@ -22,12 +20,12 @@
 
 ### 1.2 设计原则
 
-| 原则       | 体现                                                     |
-| ---------- | -------------------------------------------------------- |
-| NumPy 对齐 | 输出格式与 NumPy `np.array_repr` 尽可能一致              |
+| 原则       | 体现                                                      |
+| ---------- | --------------------------------------------------------- |
+| Numpy 对齐 | 输出格式与 Numpy `np.array_repr` 尽可能一致               |
 | 可配置截断 | 阈值/边缘元素数通过 `FormatConfig` 配置，默认值由常量实现 |
-| 平台一致性 | `Display` 和 `Debug` 在当前 `std` 环境下保持一致格式语义 |
-| 零拷贝     | 格式化过程不修改原始数据                                 |
+| 平台一致性 | `Display` 和 `Debug` 在当前 `std` 环境下保持一致格式语义  |
+| 零拷贝     | 格式化过程不修改原始数据                                  |
 
 ---
 
@@ -98,8 +96,8 @@ src/format/
 | `tensor`    | `TensorBase<S, D>`, `.shape()`, `.ndim()`, `.len()`（参见 `07-tensor.md` §5） | 
 | `dimension` | `Dimension`（参见 `02-dimension.md` §5）                                      | 
 | `storage`   | `Storage<Elem=A>`（参见 `05-storage.md` §5）                                  | 
-| `element`   | `Element`（参见 `03-element.md` §5.1）；`Element::ELEMENT_TYPE: ElementType` 编译期常量（参见 `03-element.md` §5.1 与 `21-type.md`）；`dtype_name()` 通过 `A::ELEMENT_TYPE` 静态分流到稳定 dtype 字符串，**不**使用 `core::any::TypeId` |
-| `layout`    | `LayoutState`（参见 `06-layout.md` v1.3 §5.3）；`Debug` 实现读取 `TensorBase::layout_state()` 用于头部 `layout=` 字段 |
+| `element`   | `Element`, ElementType` 编译期常量（参见 `03-element.md` §5`）                |
+| `layout`    | `LayoutState`（参见 `06-layout.md` §5.3）                                     |
 
 ### 4.3 依赖合法性
 
