@@ -264,7 +264,7 @@ xenon/
 │   ├── test_shape.rs          # Shape operations (transpose)
 │   ├── test_conversion.rs     # Type conversion (cast)
 │   ├── test_utility.rs        # Utility operations (fill/clip/to_contiguous)
-│   ├── test_output.rs         # NumPy-style formatted output (Display/Debug/truncation)
+│   ├── test_output.rs         # Numpy-style formatted output (Display/Debug/truncation)
 │   ├── test_ffi.rs            # FFI integration (raw pointers/BLAS compatibility)
 │   ├── test_workspace.rs      # Workspace-specific errors and borrow/split/growth
 │   ├── test_parallel.rs       # Parallel computation (consistency/data races)

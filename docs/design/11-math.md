@@ -649,8 +649,8 @@ apply_binary(a, b, f):
 | `test_modulus`                 | Complex{3,4}.modulus() = 5.0             | 高     |
 | `test_conjugate`               | Complex{1,2}.conjugate() = Complex{1,-2} | 中     |
 | `test_not_bool`                | !true = false, !false = true             | 中     |
-| `test_equal_f64`               | 逐元素相等比较（NumPy 风格命名）         | 高     |
-| `test_less_i32`                | 逐元素小于比较（NumPy 风格命名）         | 高     |
+| `test_equal_f64`               | 逐元素相等比较（Numpy 风格命名）         | 高     |
+| `test_less_i32`                | 逐元素小于比较（Numpy 风格命名）         | 高     |
 | `test_nan_comparison`          | NaN 比较遵循 IEEE 754                    | 高     |
 | `test_empty_tensor`            | 空张量运算返回空张量                     | 中     |
 | `test_add_simd_vs_scalar`      | SIMD 路径结果与标量一致                  | 中     |

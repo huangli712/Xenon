@@ -642,8 +642,8 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 | 属性     | 值                                                                                          |
 | -------- | ------------------------------------------------------------------------------------------- |
 | 决策     | NaN 在 clip 中保持不变（不钳位）                                                            |
-| 理由     | 遵循 IEEE 754 比较语义（`NaN < x` = false, `NaN > x` = false），与 NumPy `np.clip` 行为一致 |
-| 替代方案 | NaN 裁剪到 min — 放弃，与 IEEE 754 和 NumPy 不一致                                          |
+| 理由     | 遵循 IEEE 754 比较语义（`NaN < x` = false, `NaN > x` = false），与 Numpy `np.clip` 行为一致 |
+| 替代方案 | NaN 裁剪到 min — 放弃，与 IEEE 754 和 Numpy 不一致                                          |
 | 替代方案 | NaN 裁剪到 max — 放弃，同上                                                                 |
 
 ### 决策 2：to_contiguous 返回类型

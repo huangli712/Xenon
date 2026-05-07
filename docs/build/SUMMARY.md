@@ -296,7 +296,7 @@
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
 | W25T1 | `src/format/mod.rs` + `config.rs` | Module skeleton + FormatConfig struct | W8T1 | 22-output §2 |
-| W25T2 | `src/format/display.rs` | Display impl for tensor (NumPy-style) | W25T1 | 22-output §3 |
+| W25T2 | `src/format/display.rs` | Display impl for tensor (Numpy-style) | W25T1 | 22-output §3 |
 | W25T3 | `src/format/debug.rs` | Debug impl for tensor | W25T1 | 22-output §4 |
 | W25T4 | `src/format/pretty.rs` + `mod.rs` | Pretty formatting helpers + module re-exports + tests | W25T2 | 22-output §5 |
 

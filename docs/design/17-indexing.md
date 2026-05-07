@@ -44,7 +44,7 @@
 | -------- | ------------------------------------------------------------------------------------------------------------------------ |
 | 需求映射 | 需求说明书 §4、§6、§18、§27、§28                                                                                         |
 | 范围内   | `usize` 多维索引、范围索引（切片）、rank 一致性检查、越界 recoverable error、unsafe 未检查变体、切片后 shape/stride 更新 |
-| 范围外   | **本模块仅覆盖 NumPy "basic indexing" 的子集，不覆盖 NumPy "advanced/fancy indexing"。** 明确不在当前版本范围内的能力：(1) 负索引（`a[-1]`）；(2) 负步长切片（`a[::-1]`）；(3) 布尔掩码索引（`a[mask]`）；(4) 整数数组高级索引（`a[[0, 2, 4]]`）；(5) `np.newaxis` / `None` 添加新轴；(6) 共享可写视图；(7) 额外索引语法。**也不实现** `std::ops::Index` 与 `std::ops::IndexMut` trait（原因：标准库 trait 强制 panic 语义，不符合 Xenon 的 Result 错误模型）。访问元素请使用 `try_at()` / `get()` / `try_at_mut()` / `get_mut()` 或 `unsafe` 的 `get_unchecked` 系列。未来若引入 fancy indexing，需单独的设计文档与 ABI 兼容评估，**不应**作为隐式扩展加入本模块。 |
+| 范围外   | **本模块仅覆盖 Numpy "basic indexing" 的子集，不覆盖 Numpy "advanced/fancy indexing"。** 明确不在当前版本范围内的能力：(1) 负索引（`a[-1]`）；(2) 负步长切片（`a[::-1]`）；(3) 布尔掩码索引（`a[mask]`）；(4) 整数数组高级索引（`a[[0, 2, 4]]`）；(5) `np.newaxis` / `None` 添加新轴；(6) 共享可写视图；(7) 额外索引语法。**也不实现** `std::ops::Index` 与 `std::ops::IndexMut` trait（原因：标准库 trait 强制 panic 语义，不符合 Xenon 的 Result 错误模型）。访问元素请使用 `try_at()` / `get()` / `try_at_mut()` / `get_mut()` 或 `unsafe` 的 `get_unchecked` 系列。未来若引入 fancy indexing，需单独的设计文档与 ABI 兼容评估，**不应**作为隐式扩展加入本模块。 |
 | 非目标   | 不新增索引能力，不引入新的存储模式或复制语义                                                                             |
 
 ---

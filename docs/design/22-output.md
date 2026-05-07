@@ -15,7 +15,7 @@
 | -------------- | -------------------------------------- | -------------------- |
 | Display 实现   | 面向用户的简洁可读输出                 | serde 序列化         |
 | Debug 实现     | 面向开发的形状/步长/类型信息           | 文件 I/O（读写文件） |
-| NumPy 风格输出 | 嵌套括号、矩阵形式、按逻辑索引顺序展示 | HTML 渲染            |
+| Numpy 风格输出 | 嵌套括号、矩阵形式、按逻辑索引顺序展示 | HTML 渲染            |
 | 截断规则       | 超过阈值触发 `... (N elements omitted)  shape=[...]` 后缀 | 自定义格式化器注册   |
 
 ### 1.2 设计原则
@@ -49,7 +49,7 @@ src/
     ├── config.rs      # FormatConfig and Default implementation
     ├── display.rs     # Display trait implementation (based on core::fmt, no std gate)
     ├── debug.rs       # Debug trait implementation
-    └── pretty.rs      # NumPy-style formatting helpers (fmt_1d, fmt_nd, truncation rules)
+    └── pretty.rs      # Numpy-style formatting helpers (fmt_1d, fmt_nd, truncation rules)
 ```
 
 ---
@@ -210,8 +210,8 @@ where
 
 ### 5.3 Display 实现
 
-- 格式化输出按**逻辑多维索引顺序**读取元素，而不是按底层物理内存顺序线性扫描。格式化层不得把 `iter()` 的顺序当作公共契约前提；若内部复用 `iter()`，那只应视为私有实现细节，必要时应改为显式逻辑索引或递归子视图遍历。
-- 内部实现可使用 `read_at(indices)` 之类的辅助函数访问逻辑位置元素；这只是实现细节，**不扩展 `需求说明书 §18` 的公开索引契约**。`read_at(indices)` 的时间复杂度为 `O(ndim)`，前提为 `indices` 在合法范围内。
+- 格式化输出按逻辑多维索引顺序读取元素，而不是按底层物理内存顺序线性扫描。格式化层不得把 `iter()` 的顺序当作公共契约前提；若内部复用 `iter()`，那只应视为私有实现细节，必要时应改为显式逻辑索引或递归子视图遍历。
+- 内部实现可使用 `read_at(indices)` 之类的辅助函数访问逻辑位置元素；这只是实现细节，不扩展 `需求说明书 §18` 的公开索引契约。`read_at(indices)` 的时间复杂度为 `O(ndim)`，前提为 `indices` 在合法范围内。
 - `core::fmt::Display` 在 Rust 1.85 中对 f32/f64 无需 `std` 即可使用，因此此实现不加 `#[cfg(feature = "std")]` 门控。
 - `Display for TensorBase` 默认使用 `FormatConfig::default()` 配置；如需自定义，请使用 `display_with(config)` 方法。
 
@@ -225,9 +225,9 @@ where
 {
     /// User-facing concise readable output.
     ///
-    /// Follows NumPy style:
+    /// Follows Numpy style:
     /// - 1D: `[1, 2, 3, 4]`
-    /// - 2D: matrix form, displayed by logical row/column structure while preserving Xenon's F-order storage model internally
+    /// - 2D: matrix form, displayed by logical row/column structure while preserving Xenon's F-order
     /// - ND: nested brackets
     ///
     /// Large arrays are automatically truncated (see §5.5), and any
@@ -253,7 +253,7 @@ where
 
 - `Display` 只负责数据文本；当发生截断时，它在最外层右括号后追加 `shape=[...]`，用于满足 `需求说明书 §24` 的“可识别 shape”要求。
 - `Debug` 已在头部输出 `shape=`、`strides=`、`dtype=` 和 `layout=`，因此其数据段复用相同截断选点规则，但不再重复追加 `shape=[...]` 后缀。
-- `Debug` impl 的元素渲染仅依赖 `A: Debug`。若内部复用 Display helper，应通过独立内部 trait 抽象，避免在公开约束中引入 Display 依赖。完整 trait bound 为 `Element`（**不再要求** `'static`），因为 `dtype_name::<A>()` 通过 `A::ELEMENT_TYPE` 编译期常量静态分流，不需要运行时 `TypeId`。
+- `Debug` impl 的元素渲染仅依赖 `A: Debug`。若内部复用 Display helper，应通过独立内部 trait 抽象，避免在公开约束中引入 Display 依赖。
 - `Debug` 输出包含完整的元信息（形状/步长/类型/布局），方便开发调试。Display 只输出数据，面向最终用户；其中零维张量使用显式标记，避免与裸标量文本混淆。
 - `Debug` 至少区分三类布局：`layout=f-contiguous`、`layout=broadcast`（存在零步长）、`layout=non-contiguous`（如转置、切片等非广播非连续布局）。
 
@@ -457,7 +457,7 @@ render_axis(tensor, config, axis, prefix, truncated):
 ```rust,ignore
 // Good - Use Display for readable output
 let tensor = Tensor2::<f64>::zeros([3, 4])?;
-println!("{}", tensor);  // NumPy style output
+println!("{}", tensor);  // Numpy style output
 
 // Bad - Manual string concatenation
 let tensor = Tensor2::<f64>::zeros([3, 4])?;
@@ -724,7 +724,7 @@ Debug 输出的 `dtype=` 字段通过 `Element::ELEMENT_TYPE` 编译期常量分
 
 | 配置 | 验证点 |
 | ---- | ---- |
-| 默认配置 | `Display` / `Debug` / `FormatConfig::default()` 输出满足 NumPy 风格与零维区分契约。 |
+| 默认配置 | `Display` / `Debug` / `FormatConfig::default()` 输出满足 Numpy 风格与零维区分契约。 |
 | 其他 feature 组合 | 不适用；当前模块无额外 feature gate。 |
 
 ### 8.7 类型边界 / 编译期测试
@@ -780,17 +780,17 @@ User calls format!("{}", tensor) / format!("{:?}", tensor)
 | 属性     | 值                                                                          |
 | -------- | --------------------------------------------------------------------------- |
 | 决策     | 默认阈值 1000，默认边缘 3                                                   |
-| 理由     | 与 NumPy 默认行为一致（`np.set_printoptions(threshold=1000, edgeitems=3)`） |
+| 理由     | 与 Numpy 默认行为一致（`np.set_printoptions(threshold=1000, edgeitems=3)`） |
 | 替代方案 | 更小的阈值（如 100） — 放弃，对中等数组也触发截断                           |
 | 替代方案 | 可配置阈值通过全局变量 — 放弃，全局可变状态不利于并发测试                   |
 
-### 决策 2：输出格式与 NumPy 对齐程度
+### 决策 2：输出格式与 Numpy 对齐程度
 
 | 属性     | 值                                                                    |
 | -------- | --------------------------------------------------------------------- |
-| 决策     | 尽可能对齐 NumPy 风格，但不追求 100% 一致                             |
+| 决策     | 尽可能对齐 Numpy 风格，但不追求 100% 一致                             |
 | 理由     | Rust 的 `fmt::Display` 约定与 Python 不同；追求语义一致而非字符级一致 |
-| 替代方案 | 100% 复制 NumPy 格式 — 放弃，Rust 类型信息有价值，不应完全省略        |
+| 替代方案 | 100% 复制 Numpy 格式 — 放弃，Rust 类型信息有价值，不应完全省略        |
 | 替代方案 | 完全自定义格式 — 放弃，与用户 Python 经验的直觉一致性是目标           |
 
 ### 决策 3：零维张量使用显式标记

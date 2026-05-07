@@ -85,7 +85,7 @@ tests/
 ├── test_shape.rs               # Shape operations (transpose)
 ├── test_conversion.rs          # Type conversion (cast)
 ├── test_utility.rs             # Utility operations (fill/clip/to_contiguous)
-├── test_output.rs              # NumPy-style formatted output (Display/Debug/truncation)
+├── test_output.rs              # Numpy-style formatted output (Display/Debug/truncation)
 ├── test_ffi.rs                 # FFI integration (raw pointers/BLAS compatibility)
 ├── test_workspace.rs           # Workspace-specific errors and borrow/split/growth
 ├── test_parallel.rs            # Parallel computation (consistency/data races)
@@ -135,7 +135,7 @@ tests/
 ├── crate::overload         # Add, Sub, Mul, Div trait implementations
 ├── crate::util             # clip, fill, to_contiguous
 ├── crate::convert          # CastTo, type conversion
-├── crate::format           # NumPy-style formatted output
+├── crate::format           # Numpy-style formatted output
 ├── crate::dispatch         # Dispatch routing (pub(crate); verified indirectly through feature effects)
 └── public API feature effects (`simd` / `parallel`) # Internal backends (including dispatch) are verified indirectly through observable public behavior
 ```
@@ -597,7 +597,7 @@ fn test_unique_non_contiguous() {
 
 | 测试函数                       | 测试内容                          | 优先级 |
 | ------------------------------ | --------------------------------- | ------ |
-| `test_display_small_tensor`    | 小张量 NumPy 风格输出             | 高     |
+| `test_display_small_tensor`    | 小张量 Numpy 风格输出             | 高     |
 | `test_display_truncated`       | 超阈值触发截断                    | 高     |
 | `test_debug_includes_metadata` | Debug 包含 shape/stride/type 信息 | 中     |
 | `test_output_complex`          | 复数格式化输出基础 case (`a+bj` / `a-bj`) | 中     |
@@ -695,7 +695,7 @@ Workspace 借用测试须调用 `Workspace::borrow_mut(&mut self)` 与顶层 `Wo
 | `prop_unique_len_bound`     | `unique(a).len()` 不超过 `a.len()`（ops_props.rs） | 中     |
 | `prop_unique_no_duplicate`  | 对非 `NaN` 元素 `unique` 结果不含重复；`NaN` 按 IEEE 754 自反不相等语义逐个保留（ops_props.rs） | 中     |
 | `prop_sum_additive_identity`| 空数组 `sum == 0`，验证归约保加法单位元（ops_props.rs） | 高     |
-| `prop_broadcast_shape_rule` | 广播结果形状遵循 NumPy 规则（shape_props.rs） | 高     |
+| `prop_broadcast_shape_rule` | 广播结果形状遵循 Numpy 规则（shape_props.rs） | 高     |
 
 ### 5.23 test_error.rs
 
@@ -1063,7 +1063,7 @@ fn test_simd_add_consistency() {
 | 加法交换律         | `a + b` == `b + a`（同执行路径下精确一致）                                                        | 中     |
 | `unique` 保元素数  | `unique(a).len()` ≤ `a.len()`                                                                     | 中     |
 | `unique` 不含重复  | 对非 `NaN` 元素，结果中不得重复；`NaN` 按 IEEE 754 自反不相等语义逐个保留                         | 中     |
-| 广播形状一致性     | 广播结果形状遵循 NumPy 规则：相等取该值，一方为 1 取另一方，否则报错（参见 `15-broadcast.md §5`） | 高     |
+| 广播形状一致性     | 广播结果形状遵循 Numpy 规则：相等取该值，一方为 1 取另一方，否则报错（参见 `15-broadcast.md §5`） | 高     |
 
 #### 6.4.2 属性测试框架
 
