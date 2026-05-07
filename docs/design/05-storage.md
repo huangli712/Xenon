@@ -880,9 +880,6 @@ impl<A> Owned<A> {
 
 ```rust,ignore
 /// Aligned memory allocator.
-///
-/// `AlignedAlloc` 是 crate-internal 实现细节，不构成公开扩展点。所有方法
-/// 与类型本身均以 `pub(crate)` 暴露。
 pub(crate) struct AlignedAlloc;
 
 impl AlignedAlloc {
@@ -919,10 +916,9 @@ impl AlignedAlloc {
 }
 ```
 
-- 当前默认实现选择 64 字节对齐，以匹配 SIMD 友好的 owned 缓冲策略；这是一项实现选择，而不是 `需求说明书 §10` 所要求的唯一对齐值。该值是内部常量，未来实现可调整，但当前不提供公开配置入口。
-
-- 为保持文档与当前设计一致，`AlignedAlloc` 不提供"小数组回退到普通分配"的分支。除 ZST 与 `len == 0` 这两类显式跳过分配的情形外，当前默认实现的真实堆分配统一使用该默认对齐值。
-- `AlignedAlloc` 收敛为 `pub(crate)`，避免把底层分配细节固化为公开 API；如未来需要把对齐分配作为公共扩展点，再以独立 SemVer breaking change 提升可见性。
+- 当前默认实现选择 64 字节对齐，以匹配 SIMD 友好的 owned 缓冲策略；这是一项实现选择，而不是 `需求说明书 §10` 所要求的唯一对齐值。
+- `AlignedAlloc` 不提供"小数组回退到普通分配"的分支。除 ZST 与 `len == 0` 这两类显式跳过分配的情形外，当前默认实现的真实堆分配统一使用该默认对齐值。
+- `AlignedAlloc` 收敛为 `pub(crate)`，避免把底层分配细节固化为公开 API。
 - `AlignedAlloc` 使用 `alloc::alloc::Layout` 确保对齐值是 2 的幂且总大小合法。分配失败时调用 `handle_alloc_error` 而非返回空指针，避免 UB。
 
 ### 6.4 ViewRepr<'a, A> 结构体
@@ -1005,7 +1001,7 @@ pub struct ArcRepr<A> {
     inner: std::sync::Arc<SharedBuf<A>>,
 }
 
-// `SharedBuf<A>` is defined once in §6.5.0 and is the single authoritative
+// `SharedBuf<A>` is defined once in §6.5 and is the single authoritative
 // source for the shared backing buffer. Do not duplicate the field list here.
 //
 // `Debug` for `ArcRepr<A>` is implemented manually to avoid forcing
@@ -1071,8 +1067,6 @@ pub unsafe trait IsViewMut: RawStorage + crate::private::Sealed {}
 pub unsafe trait IsShared: RawStorage + crate::private::Sealed {}
 ```
 
-> **命名一致性 (R10 B-03 修复)**：marker trait 用 `IsShared` 而**不是** `IsArc`，与公开抽象模式 `StorageKindTag::Shared` 与 `StorageKind::Shared` 严格一致；`Arc` / `ArcRepr` 仅作为具体内部 backing representation 类型名出现，不进入抽象模式术语。
-
 使用 `crate::private::Sealed` super-bound 防止外部 crate 实现这些 marker trait。`Sealed` trait 本身在 `src/private/mod.rs` 内为 `pub trait Sealed {}`，但只在 crate 内部为我们 4 种实际 storage 类型（`Owned<A>` / `ViewRepr<'a, A>` / `ViewMutRepr<'a, A>` / `ArcRepr<A>`）实现，分别对应 `IsOwned` / `IsView` / `IsViewMut` / `IsShared`。这一模式与本文档 §5.4 / §5.5 / §5.6 中 `Storage` / `StorageMut` / `StorageOwned` / `StorageShared` 的 sealed pattern 一致。
 
 ### 6.9 `as_ptr()` / 空张量偏移规则
@@ -1098,7 +1092,7 @@ where
 
 存储类型的 `Send`/`Sync` 实现规则由 `25-safety.md` §5 定义。本文档仅做概要说明；若与 `25-safety.md` 存在冲突，以 `25-safety.md` 为准。
 
-| 存储类型             |    Send   |    Sync   | 原因                                                                  |
+| 存储类型             |    Send   |    Sync   | 原因                                       |
 | -------------------- | --------- | --------- | ------------------------------------------ |
 | `Owned<A>`           |  A: Send  |  A: Sync  | 拥有数据，Send/Sync 条件与 `Vec<A>` 一致   |
 | `ViewRepr<'a, A>`    |  A: Sync  |  A: Sync  | 共享借用需要 Sync 才能跨线程共享           |
@@ -1229,13 +1223,13 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 
 - [ ] **T12**: 实现 `traits.rs` marker traits
   - 文件: `src/storage/traits.rs`
-  - 内容: `IsOwned`/`IsView`/`IsViewMut`/`IsShared`，Sealed trait 模式，各存储类型的实现（`IsShared` 由 `ArcRepr<A>` impl，对应 `StorageKindTag::Shared`；R10 B-03 修复：`IsArc` 重命名为 `IsShared` 与公开抽象模式术语一致）
+  - 内容: `IsOwned`/`IsView`/`IsViewMut`/`IsShared`，Sealed trait 模式，各存储类型的实现
   - 测试: `test_marker_traits`
   - 前置: T8, T9, T10, T11
   - 预计: 10 min
 
 - [ ] **T13**: 集成测试和文档
-  - 文件: storage 内部单元测试 + doctest，跨模块协同覆盖经由 `tests/test_tensor.rs` / `tests/test_index.rs` / `tests/test_ffi.rs` / `tests/test_iterator.rs` 等已存在的集成测试间接验证（与 `28-tests.md §9.2` 覆盖映射一致；**不**新增独立 `tests/test_storage.rs`）
+  - 文件: storage 内部单元测试 + doctest，跨模块协同覆盖经由 `tests/test_tensor.rs` / `tests/test_index.rs` / `tests/test_ffi.rs` / `tests/test_iterator.rs` 等已存在的集成测试间接验证
   - 内容: 跨存储类型交互、ZST 行为、空数组路径
   - 测试: 完整集成测试套件
   - 前置: T12
@@ -1293,9 +1287,9 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 | 不变量                                              | 测试方法           |
 | --------------------------------------------------- | ------------------ |
 | `owned.deep_clone().as_slice() == owned.as_slice()` | 随机元素类型和大小 |
-| `view.clone().as_ptr() == view.as_ptr()`          | 随机切片范围       |
-| 内部 CoW helper 完成后引用计数收敛到 1            | 随机共享数量       |
-| `Owned::from_vec_aligned` 在 ZST 上不调用分配器   | 随机 ZST 长度      |
+| `view.clone().as_ptr() == view.as_ptr()`            | 随机切片范围       |
+| 内部 CoW helper 完成后引用计数收敛到 1              | 随机共享数量       |
+| `Owned::from_vec_aligned` 在 ZST 上不调用分配器     | 随机 ZST 长度      |
 
 ### 8.5 Feature gate / 配置测试
 
@@ -1376,7 +1370,7 @@ User calls `TensorBase::as_ptr()`
 | ----------------- | --------------------------------------------------------------------- |
 | Recoverable error | `try_reserve()`、显式运行时转换与 raw-parts 元数据校验失败返回 `XenonError`；上下文字段应包含操作名、存储模式、长度/容量或布局信息 |
 | Panic             | 对齐分配器在 `align` 非 2 的幂、`size == 0` 或分配失败时 panic；公开构造入口（如 `from_vec_aligned`）通过 `checked_mul` 在到达分配器之前将溢出转为 `XenonError::InvalidShape` 可恢复错误（参见 §6.1）；仅内部未经验证的快捷路径中整数溢出可能 panic  |
-| 路径一致性        | scalar：不适用；SIMD 对齐与非对齐路径必须返回一致元素值；parallel 存储访问须与串行路径保持一致        |
+| 路径一致性        | scalar：不适用；SIMD 对齐与非对齐路径必须返回一致元素值；parallel 存储访问须与串行路径保持一致 |
 | 容差边界          | 不适用                                                                |
 
 | 场景           | 预期行为                                             | 安全性论证         |
@@ -1398,7 +1392,7 @@ User calls `TensorBase::as_ptr()`
 | 替代方案 | 16 字节 — 放弃，AVX-512 未对齐                                                            |
 | 替代方案 | 32 字节 — 放弃，AVX-512 未对齐                                                            |
 
-### 决策 2：ArcRepr 不实现 StorageMut（CoW 策略）
+### 决策 2：ArcRepr 不实现 StorageMut
 
 | 属性     | 值                                                                                        |
 | -------- | ----------------------------------------------------------------------------------------- |
@@ -1422,26 +1416,7 @@ User calls `TensorBase::as_ptr()`
 | 理由     | 更好的正交性，泛型代码可通过 `Storage` trait 统一处理所有存储模式      |
 | 替代方案 | ndarray 风格 `ArcArray` 独立类型 — 放弃，增加类型复杂度                |
 
-### 决策 5：StorageOwned 深拷贝方法命名为 `deep_clone`
-
-| 属性     | 值                                                                                                                                                                                            |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | `StorageOwned` 的深拷贝方法命名为 `deep_clone(&self) -> Self`，不再使用 `to_owned`                                                                                                            |
-| 理由     | `std::borrow::ToOwned::to_owned(&self) -> Self::Owned` 是标准库 trait 方法，签名要求关联类型 `Owned`；同名 inherent 方法会让泛型代码出现 trait 方法解析二义性，并误导读者把它当作 `ToOwned` 实现 |
-| 替代方案 | 沿用 `to_owned()` 名称 — 放弃，方法解析与命名直觉冲突                                                                                                                                         |
-| 替代方案 | 实现 `std::borrow::ToOwned` — 放弃，`Self::Owned = Self` 与 storage trait 的关联类型已固定不一致                                                                                              |
-
-### 决策 6：StorageShared 的 `is_unique` / `ref_count` 收敛为 `pub(crate)`
-
-| 属性     | 值                                                                                                                                              |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | `StorageShared` 仍为公开 **sealed** unsafe marker trait（决策 4 所需，sealed via `crate::private::Sealed` super-bound），但 `is_unique()` / `ref_count()` 两个 helper 方法收敛到 `pub(crate)` 的 `StorageSharedExt`，外部用户不可调用    |
-| 理由     | 引用计数细节不应固化为 SemVer 公开契约；保持 trait 公开以支持泛型 `S: StorageShared` 边界，同时把诊断/优化方法限制在 crate 内部；同时通过 sealed 防止外部 crate 实现 unsafe trait，绕过封闭存储模式与 `ArcRepr` 的不变量      |
-| 替代方案 | 公开 `is_unique` / `ref_count` — 放弃，会把 Arc 内部细节锁死                                                                                    |
-| 替代方案 | 把整个 `StorageShared` 降级为 `pub(crate)` — 放弃，`ArcRepr` 在公开 API 中仍需要类型层的 marker 区分                                            |
-| 替代方案 | 不 sealed（公开 unsafe trait 任由外部实现）— 放弃，外部错误 impl 可能破坏 `Storage::as_slice()` / 共享只读 / CoW 私有边界等不变量              |
-
-### 决策 7：AlignedAlloc 收敛为 `pub(crate)`
+### 决策 5：AlignedAlloc 收敛为 `pub(crate)`
 
 | 属性     | 值                                                                                            |
 | -------- | --------------------------------------------------------------------------------------------- |
