@@ -4,8 +4,6 @@
 > 模块目录: src/tensor/
 > 任务阶段: Phase 3
 > 前置文档: 01-architecture.md, 02-dimension.md, 03-element.md, 05-storage.md, 06-layout.md
-> 需求参考: 需求说明书 §6 - §8、§10、§19、§22、§27、§28
-> 范围声明: 范围内
 
 ---
 
@@ -13,14 +11,14 @@
 
 ### 1.1 职责边界
 
-| 职责        | 包含                                                                          |
-| ----------- | ----------------------------------------------------------------------------- |
-| 核心结构体  | `TensorBase<S, D>` 双参数泛型结构体定义                                       |
-| 类型别名    | `Tensor`/`TensorView`/`TensorViewMut`/`ArcTensor` 及维度便捷别名              |
-| 基础查询    | shape/ndim/len/strides/is_empty/is_f_contiguous/is_aligned/存储位置查询等方法 |
-| 安全构造    | 从形状和数据构造，验证合法性                                                  |
-| unsafe 构造 | `from_raw_parts`，用于 FFI                                                    |
-| 视图方法    | view/view_mut                                                                 |
+| 职责        | 包含                                                                            |
+| ----------- | ------------------------------------------------------------------------------- |
+| 核心结构体  | `TensorBase<S, D>` 双参数泛型结构体定义                                         |
+| 类型别名    | `Tensor`/`TensorView`/`TensorViewMut`/`ArcTensor` 及维度便捷别名                |
+| 基础查询    | `shape/ndim/len/strides/is_empty/is_f_contiguous/is_aligned/`存储位置查询等方法 |
+| 安全构造    | 从形状和数据构造，验证合法性                                                    |
+| unsafe 构造 | `from_raw_parts`，用于 FFI                                                      |
+| 视图方法    | `view/view_mut`                                                                 |
 
 | 职责        | 不包含                                                   |
 | ----------- | -------------------------------------------------------- |
@@ -53,7 +51,7 @@
 | 非目标   | 引入运行时动态张量类型系统、隐藏存储模式差异或跳过元数据合法性校验       |
 
 - 存储模式转换矩阵与具体转换 API 由 `05-storage.md` 承载实现设计。
-- 本文档仅定义 `storage_kind()`、view/raw-parts 与张量查询接口，不重复展开转换细节。
+- 本文档仅定义 `storage_kind()`、`view/raw-parts` 与张量查询接口，不重复展开转换细节。
 - 不引入公开 `Layout` 结构体；`TensorBase` 直接内联 `offset` 与 `LayoutFlags` 等布局元数据。
 
 ---
@@ -70,9 +68,6 @@ src/tensor/
 ```
 
 文件划分理由：结构体定义、方法实现、类型别名、构造方法各自独立且职责清晰。
-
-- 公开安全构造方法（`from_shape_vec`、`zeros`、`ones`、`eye` 等）的实现位于独立的上层模块 `src/construct/`（参见 `18-construction.md`）。
-- 本目录下的 `construct.rs` 负责内部 unsafe 低级构造（`from_raw_parts`、`from_raw_vec_unchecked`）以及 Owned 张量的裸指针分解与重建（`into_raw_parts`、`from_raw_parts_owned`、`OwnedRawParts`）。这些方法需要直接访问 `TensorBase` 的私有字段，因此只能在本模块内定义；FFI 模块通过公开 API 或 re-export 暴露给外部消费者。
 
 ---
 
@@ -107,10 +102,10 @@ src/tensor/
 | 来源模块    | 使用的类型/trait                                                                                                                   |
 | ----------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `storage`   | `Owned`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`, `Storage`, `StorageMut`, `StorageOwned`, `StorageShared`（参见 `05-storage.md §5`） |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`, `.slice()`, `.checked_size()`, `.ndim()`（参见 `02-dimension.md §5`、`§5.6`）   |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`, `.slice()`, `.checked_size()`, `.ndim()`（参见 `02-dimension.md §5`）          |
 | `layout`    | `LayoutFlags`, `Strides<D>`, `compute_f_strides()`, `compute_layout_flags()`, `is_f_contiguous()`, `is_aligned()`（参见 `06-layout.md §5`） |
-| `element`   | `Element`（构造方法中 `A: Element` 约束；参见 `03-element.md §5`）                                                                  |
-| `error`     | `XenonError`（`InvalidLayout` 含 `InvalidLayoutReason` / `StorageKindTag` 字段、`InvalidShape` 含 `InvalidShapeKind`；构造校验与 `validate_access_range`；参见 `26-error.md §5.1`） |
+| `element`   | `Element`（参见 `03-element.md §5`）                                                                                               |
+| `error`     | `XenonError`（`InvalidLayout`、`InvalidShape`；参见 `26-error.md §5.1`）                                                           |
 
 ### 4.3 依赖合法性
 
