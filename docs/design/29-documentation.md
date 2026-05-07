@@ -4,8 +4,6 @@
 > 适用目录: src/** pub API 文档、README.md、examples
 > 任务阶段: Phase 6
 > 前置文档: 所有前置文档（00-coding.md ~ 28-tests.md）
-> 需求参考: 需求说明书 §28
-> 范围声明: 范围内
 
 ---
 
@@ -13,25 +11,25 @@
 
 ### 1.1 职责边界
 
-| 职责         | 包含                                                           | 不包含                             |
-| ------------ | -------------------------------------------------------------- | ---------------------------------- |
-| API 文档     | 所有 pub 类型和函数的 doc comment                              | 内部实现注释（非 pub）             |
-| 使用示例     | 关键 API 的可运行代码示例（doctest）                           | 完整教程、视频教程                 |
-| Safety 说明  | 所有 unsafe 函数的 `# Safety` 文档节（参见 `00-coding.md §6`） | 安全函数的 Safety 节               |
-| Crate 级文档 | lib.rs 顶层文档、README                                        | 第三方博客文章、CHANGELOG 工程产物 |
-| 模块级文档   | 各 mod.rs 的 `//!` 模块概述                                    | 内部实现文档                       |
-| examples/    | 独立可运行示例程序                                             | 交互式 notebook                    |
-| docs.rs 配置 | metadata、feature gate 标注                                    | 自定义文档主题                     |
+| 职责         | 包含                                   | 不包含                             |
+| ------------ | -------------------------------------- | ---------------------------------- |
+| API 文档     | 所有 pub 类型和函数的 doc comment      | 内部实现注释（非 pub）             |
+| 使用示例     | 关键 API 的可运行代码示例（doctest）   | 完整教程、视频教程                 |
+| Safety 说明  | 所有 unsafe 函数的 `# Safety` 文档节   | 安全函数的 Safety 节               |
+| Crate 级文档 | lib.rs 顶层文档、README                | 第三方博客文章、CHANGELOG 工程产物 |
+| 模块级文档   | 各 mod.rs 的 `//!` 模块概述            | 内部实现文档                       |
+| examples/    | 独立可运行示例程序                     | 交互式 notebook                    |
+| docs.rs 配置 | metadata、feature gate 标注            | 自定义文档主题                     |
 
 ### 1.2 设计原则
 
-| 原则       | 体现                                                      |
-| ---------- | --------------------------------------------------------- |
-| 全覆盖     | 所有 pub API 必须有 doc comment（参见 `00-coding.md §7`） |
-| 可测试     | 关键 API 的示例通过 doctest 或独立 examples 验证          |
-| 安全性透明 | 所有 unsafe 函数有 `# Safety` 节                          |
-| 惯用法     | 遵循 Rust API Guidelines                                  |
-| 英文文档   | 所有 doc comment 使用英文                                 |
+| 原则       | 体现                                               |
+| ---------- | -------------------------------------------------- |
+| 全覆盖     | 所有 pub API 必须有 doc comment                    |
+| 可测试     | 关键 API 的示例通过 doctest 或独立 examples 验证   |
+| 安全性透明 | 所有 unsafe 函数有 `# Safety` 节                   |
+| 惯用法     | 遵循 Rust API Guidelines                           |
+| 英文文档   | 所有 doc comment 使用英文                          |
 
 ---
 
@@ -43,10 +41,6 @@
 | 范围内   | pub API 文档、doctest、examples、docs.rs 配置、README        |
 | 范围外   | 第三方教程平台、自定义文档主题、交互式 notebook 或站点系统   |
 | 非目标   | 通过文档规范扩展产品能力、引入额外文档构建依赖或改变平台边界 |
-
-**说明**：`CHANGELOG.md` 为工程辅助产物，不属于 `需求说明书 §28.1` 的文档要求范围。
-
-**范围注记：** `需求说明书 §28.1` 的最低要求聚焦 pub API 文档、README 与示例交付。下文中的 `CHANGELOG.md`、docs.rs metadata、Wave 拆分与详细任务清单均为设计扩展，用于工程化落地，不构成对 `需求说明书 §28.1` 的新增强制项。
 
 ---
 
@@ -108,8 +102,8 @@ examples/
 ├── basic.rs                  # Basic-operations example
 ├── complex.rs                # Complex-number operations example
 ├── broadcasting.rs           # Broadcasting example
-├── features.rs               # Optional-feature behavior example (`simd` / internal parallel execution effects)
-├── simd.rs                   # SIMD-acceleration example (requires `simd` feature)
+├── features.rs               # Optional-feature behavior example
+├── simd.rs                   # SIMD-acceleration example
 ├── ffi.rs                    # FFI integration example
 └── workspace.rs              # Workspace borrow/split/growth example
 
@@ -140,8 +134,6 @@ CHANGELOG.md                  # Optional engineering changelog artifact (non-req
 └── may reference `27-benchmark.md`
     └── If a benchmark documentation template is needed, refer to `27-benchmark.md`
 ```
-
-**数值容差公开要求**：凡 `28-tests.md` 中定义了跨路径舍入差异或数学函数容差的 API，公共文档须同步说明适用范围。公共文档需引用 `需求说明书 §28.3` 的容差语义；`28-tests.md` 仅定义测试落实方式和比较 helper。
 
 ### 4.2 类型级依赖
 
