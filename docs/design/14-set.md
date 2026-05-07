@@ -345,21 +345,10 @@ impl UniqueElement for Complex<f64> {
 | 场景              | 推荐策略          | 说明                                                                      |
 | ----------------- | ----------------- | ------------------------------------------------------------------------- |
 | 小输入或原型实现（约 N ≤ 64 的简单类型；阈值由实现选取） | 线性扫描          | 直接复用 `unique_eq`，最坏 O(N²)；不引入额外内存分配，常数项小，对短输入更快。|
-| 大输入主路径      | 哈希查重（输出顺序由实现选） | 用哈希表作为查重索引，重复检测降到近似 O(N) 摊销。输出顺序未定义（v2.0.2 起，决策 4）——可用 `Vec<A>` 按输入迭代顺序追加（产生 first-occurrence 序），也可直接以 `HashMap` iteration 序输出，由实现自行选择。|
-| 浮点/复数特殊值 | 专门分支处理        | `NaN != NaN`，因此哈希或索引策略也必须显式保留每个 `NaN`（旁路路径直接追加到输出列表，不进入哈希表），不得把它们合并。|
+| 大输入主路径      | 哈希查重（输出顺序由实现选） | 用哈希表作为查重索引，重复检测降到近似 O(N) 摊销。可用 `Vec<A>` 按输入迭代顺序追加（产生 first-occurrence 序），也可直接以 `HashMap` iteration 序输出，由实现自行选择。|
+| 浮点/复数特殊值 | 专门分支处理        | `NaN != NaN`，因此哈希或索引策略也必须显式保留每个 `NaN`，不得把它们合并。|
 
 **何时必须用哈希路径**：实现可自行选择阈值（如 N > 1024 或元素总数与去重比例的启发式），但当输入规模导致线性扫描的 O(N²) 内存或 CPU 成本不可接受时，必须切换到哈希路径以避免大张量上的不可接受性能。
-
-**性能门槛（参考非强制，v2.0.2）：** 在 `27-benchmark.md` 标准硬件下，`unique` 应满足以下趋势期望：
-
-| 输入规模 N | 期望复杂度上限 | 实测应优于 |
-|:--|:--|:--|
-| N ≤ 64 | O(N²) | 1µs（线性扫描足以） |
-| 64 < N ≤ 1024 | 实现可选（线性 vs 哈希） | 100µs |
-| N > 1024 | **必须** O(N) 摊销（哈希） | 1ms / 10⁴ 元素 |
-| N = 10⁷ | O(N) 摊销 | < 1s（在 28-tests `extended` 测试集中） |
-
-实现若不满足上述趋势（例如 N = 10⁷ 时仍是纯 O(N²)），视为性能 bug 而非语义 bug——`unique` 仍返回正确结果，但应在 CI 性能监控触发警报。具体阈值与基准方法由 `27-benchmark.md` 维护。
 
 ---
 
@@ -442,8 +431,8 @@ impl UniqueElement for Complex<f64> {
 | `test_unique_non_contiguous_view`           | 切片视图输入仍按逻辑元素去重                 | 高     |
 | `test_unique_transposed_view`               | 转置视图输入仍按逻辑元素去重                 | 高     |
 | `test_unique_padded_tensor_ignores_padding` | padding 区域不应暴露到 unique 语义中         | 高     |
-| `test_unique_order_unspecified`             | 文档化：测试不依赖顺序——仅验证 multiset 相等。**禁止** 任何调用方依赖 first-occurrence-order；该测试名同时作为编译期/lint 锚点防止回归（v2.0.2 起恢复，取代 v2.0.0/v2.0.1 删除的同名测试） | 高     |
-| `test_unique_set_equality`                  | 输入与输出按 multiset 语义相等（不依赖顺序）；这是 v2.0.2 起的主要正确性断言（**取代** v2.0.0/v2.0.1 的 first-occurrence-order 与 reproducible-within-process 断言） | 高     |
+| `test_unique_order_unspecified`             | 文档化：测试不依赖顺序——仅验证 multiset 相等 | 高     |
+| `test_unique_set_equality`                  | 输入与输出按 multiset 语义相等（不依赖顺序） | 高     |
 | `test_unique_large_tensor_high_dup`         | `10^7` 元素高重复输入主路径保持正确          | 中     |
 | `test_unique_high_rank_ixdyn`               | `IxDyn` rank 5+ 输入仍统一展平到 1D          | 中     |
 | `test_unique_extreme_i64_values`            | `i32` / `i64` 极值去重语义正确               | 中     |
@@ -468,14 +457,14 @@ impl UniqueElement for Complex<f64> {
 
 ### 8.4 属性测试不变量
 
-| 不变量                                                  | 测试方法                                                              |
-| ------------------------------------------------------- | --------------------------------------------------------------------- |
-| 输出无重复（按 `unique_eq` 定义）                       | 任意两个保留元素都不满足 `unique_eq`                                  |
-| 非 NaN 输入时输出元素集合与输入集合相同                 | 以参考集合语义对比                                                    |
-| NaN 元素按出现次数保留                                  | 统计输入/输出中的 NaN 数量并比较                                      |
-| 多维输入始终返回 1D 结果                                | 随机 2D/3D 形状输入                                                   |
-| 输出与输入按 multiset 语义相等（除 NaN 外）             | 输入去重后与输出按 `HashSet` / multiset 比较；NaN 元素按出现次数比较  |
-| 输出元素两两不满足 `unique_eq`                          | 任意两元素 `unique_eq` 为 `false`（NaN 永远互不相等）                 |
+| 不变量                                       | 测试方法                                                              |
+| -------------------------------------------- | --------------------------------------------------------------------- |
+| 输出无重复（按 `unique_eq` 定义）            | 任意两个保留元素都不满足 `unique_eq`                                  |
+| 非 NaN 输入时输出元素集合与输入集合相同      | 以参考集合语义对比                                                    |
+| NaN 元素按出现次数保留                       | 统计输入/输出中的 NaN 数量并比较                                      |
+| 多维输入始终返回 1D 结果                     | 随机 2D/3D 形状输入                                                   |
+| 输出与输入按 multiset 语义相等（除 NaN 外）  | 输入去重后与输出按 `HashSet` / multiset 比较；NaN 元素按出现次数比较  |
+| 输出元素两两不满足 `unique_eq`               | 任意两元素 `unique_eq` 为 `false`（NaN 永远互不相等）                 |
 
 ### 8.5 集成测试
 
@@ -487,7 +476,7 @@ impl UniqueElement for Complex<f64> {
 
 | 配置              | 验证点                                                                 |
 | ----------------- | ---------------------------------------------------------------------- |
-| 默认配置          | `unique()` 在默认构建下保持 NaN 保留、`-0.0 == 0.0` 与"输出顺序未定义"契约（决策 4，v2.0.2 起；不依赖 first-occurrence-order）。|
+| 默认配置          | `unique()` 在默认构建下保持 NaN 保留、`-0.0 == 0.0` 与"输出顺序未定义"契约。|
 | 其他 feature 组合 | 不适用；当前模块无额外 feature gate。                                  |
 
 ### 8.7 类型边界 / 编译期测试
@@ -506,10 +495,10 @@ impl UniqueElement for Complex<f64> {
 
 | 方向            | 对方模块  | 接口/类型                             | 约定                                         |
 | --------------- | --------- | ------------------------------------- | -------------------------------------------- |
-| `set → tensor`  | `tensor`  | `TensorBase<S, D>` / `Tensor<A, Ix1>` | 消费输入张量并返回 1D owned 结果，参见 `07-tensor.md` §5                  |
-| `set → iter`    | `iter`    | `Elements`                            | 使用元素迭代器收集逻辑元素，参见 `10-iterator.md` §5.1                    |
-| `set → element` | `element` | `Element`（其 `Copy` 继承用于元素值复制）| 元素 trait 边界由 `UniqueElement: Element` 提供；`ComplexScalar` 未直接使用，复数支持通过对 `Complex<f32>` / `Complex<f64>` 分别 impl `UniqueElement` 完成（参见 `03-element.md` §5.1）|
-| `set → set`     | `set`     | `UniqueElement`                       | `UniqueElement` 定义在 `src/set/unique.rs`，通过 `unique_eq` 约束去重语义 |
+| `set → tensor`  | `tensor`  | `TensorBase<S, D>` / `Tensor<A, Ix1>` | 消费输入张量并返回 1D owned 结果             |
+| `set → iter`    | `iter`    | `Elements`                            | 使用元素迭代器收集逻辑元素                   |
+| `set → element` | `element` | `Element`                             | 元素 trait 边界由 `UniqueElement: Element` 提供 |
+| `set → set`     | `set`     | `UniqueElement`                       | 通过 `unique_eq` 约束去重语义                |
 
 ### 9.2 数据流描述
 
