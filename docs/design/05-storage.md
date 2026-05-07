@@ -4,8 +4,6 @@
 > 模块目录: src/storage/
 > 任务阶段: Phase 2
 > 前置文档: 01-architecture.md, 02-dimension.md, 03-element.md, 04-complex.md
-> 需求参考: 需求说明书 §6、§8、§10、§16、§17、§21、§25 - §28
-> 范围声明: 范围内
 
 ---
 
@@ -66,7 +64,7 @@ src/storage/
 └── traits.rs          # marker traits such as IsOwned / IsView / IsViewMut / IsShared
 ```
 
-多文件目录设计理由：`src/storage/` 按 trait 定义、具体表示、分配器与 marker trait 分层拆分；各文件职责清晰，存储类型之间高度相关但不适合合并，拆分保持可维护性。
+`src/storage/` 按 trait 定义、具体表示、分配器与 marker trait 分层拆分；各文件职责清晰，存储类型之间高度相关但不适合合并，拆分保持可维护性。
 
 ---
 
@@ -85,13 +83,13 @@ src/storage/
 
 ### 4.2 类型级依赖
 
-| 来源模块         | 使用的类型/trait                                                                                                              |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `core`           | `*const T`, `*mut T`, `NonNull<T>`, `PhantomData<T>`                                                                          |
-| `alloc`          | `Vec<A>`, `alloc::alloc::Layout`, `alloc::borrow::Cow`（用于 `XenonError` `operation` 字段构造）                              |
-| `std::sync`      | `Arc`（用于 `ArcRepr<A>` 的内部引用计数头；底层数据缓冲保持 `AlignedBuf<A>` 表示）                                            |
-| `crate::error`   | `XenonError`、`InvalidShapeKind`、`StorageKindTag`、`StorageConversionKind`（参见 `26-error.md` §5.1 的封闭枚举字段权威定义） |
-| `crate::private` | `Sealed`（用于 marker trait 封闭实现）                                                                                        |
+| 来源模块         | 使用的类型/trait                                                                                     |
+| ---------------- | ---------------------------------------------------------------------------------------------------- |
+| `core`           | `*const T`, `*mut T`, `NonNull<T>`, `PhantomData<T>`                                                 |
+| `alloc`          | `Vec<A>`, `alloc::alloc::Layout`, `alloc::borrow::Cow`                                               |
+| `std::sync`      | `Arc`（用于 `ArcRepr<A>` 的内部引用计数头；底层数据缓冲保持 `AlignedBuf<A>` 表示）                   |
+| `crate::error`   | `XenonError`、`InvalidShapeKind`、`StorageKindTag`、`StorageConversionKind`（参见 `26-error.md` §5） |
+| `crate::private` | `Sealed`（用于 marker trait 封闭实现）                                                               |
 
 ### 4.3 依赖合法性
 
@@ -103,7 +101,7 @@ src/storage/
 
 ### 4.4 依赖方向声明
 
-依赖方向：单向向下。 `storage/` 不依赖 layout；实现层主要使用标准库及既有 `core` / `alloc` / `std::sync` 能力，并依赖 `crate::error` 提供 `XenonError`、依赖 `crate::private` 提供 `Sealed`。`storage/` 不直接依赖 `element` 或 `layout` 模块。`storage/` 只负责 backing buffer 与所有权/可变性语义，不直接消费 `Strides`。
+依赖方向：单向向下。 实现层主要使用标准库及既有 `core` / `alloc` / `std::sync` 能力，并依赖 `crate::error` 提供 `XenonError`、依赖 `crate::private` 提供 `Sealed`。`storage/` 不直接依赖 `element` 或 `layout` 模块。`storage/` 只负责 backing buffer 与所有权/可变性语义，不直接消费 `Strides`。
 
 ---
 
@@ -155,7 +153,7 @@ Storage mode taxonomy
 
 张量层须提供稳定的访问语义查询接口 `access_semantics() -> AccessSemantics`，将上述四种存储模式映射为四种统一的访问语义分类（`ReadOnly` / `SharedReadOnly` / `Writable` / `Owned`）。
 
-`AccessSemantics` 枚举的**权威定义、变体含义、表示类型映射表与广播判定机制**统一以 `07-tensor.md §5.3` 为准；本节只列出存储模式视角下的高层语义。当 `ViewRepr` 作为广播结果或从可写引用降级产生时，须通过额外的语义标记（而非仅表示类型）将其归类为 `AccessSemantics::SharedReadOnly`，详细规则见 `07-tensor.md §5.3`。
+`AccessSemantics` 枚举的权威定义、变体含义、表示类型映射表与广播判定机制统一以 `07-tensor.md §5.3` 为准；本节只列出存储模式视角下的高层语义。当 `ViewRepr` 作为广播结果或从可写引用降级产生时，须通过额外的语义标记（而非仅表示类型）将其归类为 `AccessSemantics::SharedReadOnly`，详细规则见 `07-tensor.md §5.3`。
 
 **设计权衡对比**
 
@@ -319,7 +317,7 @@ pub unsafe trait Storage: RawStorage + crate::private::Sealed {
     /// This API still does **not** account for tensor-level `shape` /
     /// `strides` metadata, so callers must not treat it as an arbitrary logical
     /// tensor slice. The tensor-level zero-copy fast path lives in
-    /// `TensorBase::as_slice()` (see `07-tensor.md §5.4a`).
+    /// `TensorBase::as_slice()` (see `07-tensor.md §5`).
     ///
     /// # Safety contract relied upon by this safe method
     ///
@@ -427,8 +425,8 @@ pub unsafe trait StorageMut: Storage + RawStorageMut + crate::private::Sealed {
     /// Fills the entire storage-visible backing range with the given value.
     ///
     /// This is a storage-layer API and therefore has `fill_all()` semantics.
-    /// It is **not** the tensor-level logical `fill()` required by
-    /// `需求说明书 §21.2`; tensor-level fill must only visit writable logical
+    /// It is not the tensor-level logical `fill()` required by
+    /// `require.md §21.2`; tensor-level fill must only visit writable logical
     /// elements after applying `shape` / `strides` / `offset`.
     #[inline]
     fn fill(&mut self, value: Self::Elem)
@@ -512,7 +510,7 @@ pub unsafe trait StorageOwned: StorageMut + Clone + crate::private::Sealed {
 /// from `crate::private`, so external crates can name `StorageShared` as a
 /// generic bound but cannot implement it for their own types. This preserves
 /// the closed set of shared-storage representations (currently `ArcRepr<A>`
-/// only) and the unsafe invariants documented in §5.5 / §11 决策 4 / 决策 6.
+/// only) and the unsafe invariants documented in §5.5 / §11.
 /// To add a new shared-storage representation, the change must be made
 /// in-tree alongside its safety proof.
 pub unsafe trait StorageShared: Storage + Clone + crate::private::Sealed {}
@@ -531,7 +529,7 @@ pub(crate) trait StorageSharedExt: StorageShared {
 }
 ```
 
-`ref_count()` / `is_unique()` 通过 `StorageSharedExt` 的 `pub(crate)` 可见性把“公开 marker trait”和“crate-internal helper”边界写进类型系统层。这样既保留 `StorageShared` 作为统一 trait 体系的一部分（决策 4），又避免把引用计数细节固化为 SemVer 公开契约（与 §5.5 ArcRepr `Owned` 转换的 O(n) 公开承诺一致）。
+`ref_count()` / `is_unique()` 通过 `StorageSharedExt` 的 `pub(crate)` 可见性把“公开 marker trait”和“crate-internal helper”边界写进类型系统层。这样既保留 `StorageShared` 作为统一 trait 体系的一部分，又避免把引用计数细节固化为 SemVer 公开契约。
 
 ### 5.9 StorageIntoOwned Trait
 
@@ -611,7 +609,7 @@ pub trait StorageIntoOwned: Storage {
 | 任意只读/共享只读 -> `ViewMutRepr<'_, A>` | 不允许违反独占可写前提                         | `XenonError::InvalidStorageMode`                                                         |
 | `ViewRepr<'_, A> -> ArcRepr<A>`           | storage 层不具备共享所有权句柄，禁止运行时补造 | `XenonError::InvalidStorageMode`                                                         |
 
-- 上表与 `需求说明书` §6.2 的矩阵一致：违反存储模式/可变性前提的张量层转换入口（例如对只读张量调用 `view_mut()`）须统一使用 `26-error.md` v3.2.0 §5.1 定义的结构化错误 `XenonError::InvalidStorageMode { operation: Cow<'static, str>, expected: StorageKindTag, actual: StorageKindTag, shape: Option<Vec<usize>>, conversion: Option<StorageConversionKind> }` 作为失败返回值。其中 `expected` / `actual` 来自 `StorageKindTag` 封闭枚举（`Owned/View/ViewMut/Shared`，其中 `Shared` 由 `ArcRepr<A>` 支撑；详见 `26-error.md §5.1`），`shape` 在张量层调用点可附加输入形状（不可用时为 `None`），`conversion` 取自 `StorageConversionKind`，与 `26-error.md` 的字段表保持同步。复制型成功路径本身不再额外引入新的公开转换错误类型。最后两行（`任意只读/共享只读 -> ViewMutRepr`、`ViewRepr -> ArcRepr`）描述的是张量层运行时失败模型；在 storage 层，这些转换是 `type-level only`（无运行时 API 入口，参见 §5.11.3）。
+- 上表与 `需求说明书` §6.2 的矩阵一致：违反存储模式/可变性前提的张量层转换入口（例如对只读张量调用 `view_mut()`）须统一使用 `26-error.md` §5.1 定义的结构化错误 `XenonError::InvalidStorageMode` 作为失败返回值。复制型成功路径本身不再额外引入新的公开转换错误类型。最后两行（`任意只读/共享只读 -> ViewMutRepr`、`ViewRepr -> ArcRepr`）描述的是张量层运行时失败模型；在 storage 层，这些转换是 `type-level only`（无运行时 API 入口，参见 §5.11.3）。
 
 - 涉及内存分配的转换操作，若分配失败则遵循运行时既有行为（如全局分配器 panic 或 OOM），不通过 `XenonError` 建模。此设计决策与 `需求说明书 §6.2` 的“须分配”路径一致：该路径仅在目标为持有时可执行，分配失败不属于张量语义层的可恢复错误。
 
