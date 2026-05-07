@@ -656,9 +656,9 @@ apply_binary(a, b, f):
 | `test_add_simd_vs_scalar`      | SIMD 路径结果与标量一致                  | 中     |
 | `test_large_tensor_add_parallel` | 大张量（`10^7` 量级元素）在串行/并行配置下结果与 shape 一致 | 高     |
 | `test_high_rank_broadcast`     | 高 rank 动态维张量广播逐元素运算保持正确 shape 与元素对应 | 高     |
-| `test_inf_math_functions`      | `Inf` / `-Inf` 输入遵循 IEEE 754 语义   | 高     |
-| `test_div_i32_by_zero_panics`  | 整数除零触发带诊断的 panic              | 高     |
-| `test_abs_i32_min_panics`      | `abs(i32::MIN)` 触发带诊断的 panic      | 高     |
+| `test_inf_math_functions`      | `Inf` / `-Inf` 输入遵循 IEEE 754 语义    | 高     |
+| `test_div_i32_by_zero_panics`  | 整数除零触发带诊断的 panic               | 高     |
+| `test_abs_i32_min_panics`      | `abs(i32::MIN)` 触发带诊断的 panic       | 高     |
 
 ### 8.3 边界测试场景
 
