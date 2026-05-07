@@ -733,7 +733,7 @@ where
 
 ### 5.7 unsafe 构造方法
 
-`from_raw_parts*()` 这类接口只验证能够基于输入元数据直接检查的条件；safe 构造会兜底验证全部可检查元数据，而 unsafe 构造仅拒绝明显非法的 shape/stride/offset/storage_len 组合。若这些元数据校验失败，构造器返回 `Err(XenonError::InvalidLayout)`（附带上下文）。调用方仍负责保证指针有效性、对齐、可访问范围和生命周期等库无法自行证明的内存前提。文档中的 `# Safety` 说明必须与这一分工保持一致。
+`from_raw_parts*()` 这类接口只验证能够基于输入元数据直接检查的条件；safe 构造会兜底验证全部可检查元数据，而 unsafe 构造仅拒绝明显非法的 `shape/stride/offset/storage_len` 组合。若这些元数据校验失败，构造器返回 `Err(XenonError::InvalidLayout)`。调用方仍负责保证指针有效性、对齐、可访问范围和生命周期等库无法自行证明的内存前提。文档中的 `# Safety` 说明必须与这一分工保持一致。
 
 ```rust,ignore
 impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D>
@@ -830,13 +830,13 @@ where
 }
 ```
 
-**可写布局非重叠校验：** `from_raw_parts_mut()` 还必须拒绝会让两个不同逻辑索引映射到同一地址的可写布局。"非重叠"定义为：任意两个不同逻辑索引 `i != j`，其可写目标地址 `addr(i)` 与 `addr(j)` 必须不同。该校验不得通过枚举全部可达 offset 来实现；当前版本只承诺接受可高效保守判定的正步长布局。
+**可写布局非重叠校验**： `from_raw_parts_mut()` 还必须拒绝会让两个不同逻辑索引映射到同一地址的可写布局。"非重叠"定义为：任意两个不同逻辑索引 `i != j`，其可写目标地址 `addr(i)` 与 `addr(j)` 必须不同。该校验不得通过枚举全部可达 offset 来实现；当前版本只承诺接受可高效保守判定的正步长布局。
 
-**核心不变量：** 对一个非单元素轴 `i`，该轴单独可达的 offset 集合是
+**核心不变量**： 对一个非单元素轴 `i`，该轴单独可达的 offset 集合是
 `{ k_i * stride[i] | 0 <= k_i < shape[i] }`，其大小为 `(shape[i] - 1) * stride[i] + 1`
 （"+1" 来自 `k_i = 0` 这一项）。因此在按 stride 升序逐轴并入时，"下一轴 stride" 必须严格大于 "已覆盖子空间最大可达 offset"，下一轴的最小非零步进 `1 * stride[next]` 才不会与已覆盖区域产生别名。
 
-算法如下（**保守 dense-prefix 充分判定**，并非完备判定）：
+**算法**：
 
 ```text
 // Algorithm name: dense-prefix sufficient non-overlap test.
@@ -886,16 +886,9 @@ validate_non_overlapping_layout(shape, strides, offset, storage_len):
     7. Otherwise return Ok(()).
 ```
 
-> **示例（核对算法正确性）：** `shape = [2, 2]`, `strides = [1, 1]`。
-> 排序后第一轴 stride=1，进入步骤 5：要求 `1 > 0`（成立），然后
-> `covered_max_offset = 0 + (2-1)*1 = 1`。第二轴 stride=1，要求 `1 > 1`（不成立），
-> 拒绝。该结果正确，因为两个轴单独可达 offset 集合 `{0, 1}` 与 `{0, 1}` 完全重叠。
+该保守算法允许拒绝一部分理论上合法但无法高效证明不重叠的 exotic stride 布局；当前版本不为这类布局提供可写 raw-parts 构造承诺。
 
-该保守算法允许拒绝一部分理论上合法但无法高效证明不重叠的 exotic stride 布局；当前版本不为这类布局提供可写 raw-parts 构造承诺。FFI 文档（`23-ffi.md §6.3`）引用此算法。
-
-#### Owned 裸指针分解与重建
-
-上述 `from_raw_parts*()` 构造视图；以下方法专用于 Owned 张量的分解与重建，构成完整的 round-trip 对。核心实现定义于本模块（`src/tensor/construct.rs`），FFI 模块仅做薄包装——参见 `23-ffi.md §5.8`。
+**Owned 裸指针分解与重建**：上述 `from_raw_parts*()` 构造视图；以下方法专用于 Owned 张量的分解与重建，构成完整的 round-trip 对。核心实现定义于本模块（`src/tensor/construct.rs`），FFI 模块仅做薄包装——参见 `23-ffi.md §5.8`。
 
 ```rust,ignore
 /// Decomposition of an owned tensor into raw pointer + allocator metadata.
