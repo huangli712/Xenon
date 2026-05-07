@@ -315,8 +315,7 @@ where
 ```
 
 - 公开张量 API 统一使用 `conjugate()`（与 `Numeric::conjugate()` 保持一致）；`conj` 仅允许作为内部 `Complex` 方法名或实现细节出现，不构成公开 API 命名承诺。
-
-**关于实数张量的 conjugate()**：实数（`i32`/`i64`/`f32`/`f64`）类型的共轭等于自身。Xenon 不为实数张量提供 `conjugate()` 入口，要求显式调用避免冗余 API。如需统一处理，使用 `Numeric::conjugate()`（标量级）或在泛型代码中通过 trait bound 调用。
+- 实数（`i32`/`i64`/`f32`/`f64`）类型的共轭等于自身。Xenon 不为实数张量提供 `conjugate()` 入口，要求显式调用避免冗余 API。如需统一处理，使用 `Numeric::conjugate()`（标量级）或在泛型代码中通过 trait bound 调用。
 - `modulus()` 对应 `需求说明书 §12` 中的“模”运算。`Complex<f32> → f32`，`Complex<f64> → f64`。
 - 参与逐元素运算或比较的双方元素类型须预先一致。因此，`Complex<T>` 与实数标量的混合张量 API（如 `add_real_scalar` / `mul_real_scalar`）不属于当前公开范围；若内部实现需要复用相应标量逻辑，也只能作为不对外承诺的内部辅助路径存在。
 
@@ -333,14 +332,11 @@ where
 }
 ```
 
-### 5.8 比较运算（NumPy 风格命名）
+### 5.8 比较运算
 
 - `equal` / `not_equal` 对所有元素类型可用（包括 `bool` 与 `Complex`）。
 - `less` / `greater` 的需求级支持范围固定为 `i32`、`i64`、`f32`、`f64`，返回 `Tensor<bool, _>`。
 - `bool` 与 `Complex` 类型不支持 `less` / `greater`。
-
-**命名规则（设计决策 4，对齐 NumPy）**：
-公开 API 不使用 `eq` / `ne` / `lt` / `gt` 这组缩写命名，避免与 Rust 标准库 `PartialEq::eq`、`PartialOrd::lt` 等同名 trait 方法在调用语法、文档自动链接、IDE 跳转上产生命名冲突。Rust 标准库这些方法返回 `bool`（标量布尔），而 Xenon 张量比较方法返回 `Tensor<bool, _>`（逐元素布尔张量），语义不同；用 NumPy 风格的全词命名（`equal` / `not_equal` / `less` / `greater`）让张量逐元素比较与标量布尔比较在调用点上明确可区分。
 
 ```rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -447,7 +443,7 @@ where
 - 标量版算术方法与张量-张量运算遵循相同的 checked arithmetic 语义：有符号整数溢出、除以零、结果不可表示均遵循 panic 语义。
 - 标量与张量之间的逐元素运算，标量按可广播到目标张量全形状的零维输入语义处理，统一经由广播路径实现，不另起独立语义。
 
-#### 5.9.1 非交换左标量内部入口（`pub(crate)`）
+**非交换左标量内部入口**
 
 为支撑 `19-overload.md` 的左标量运算符（`scalar - tensor`、`scalar / tensor`）而设。可交换运算（`+`、`*`）由 19-overload 直接复用 `add_scalar` / `mul_scalar`，不需要独立左标量入口。
 
@@ -470,9 +466,9 @@ where
 
 **契约：**
 
-- 这两个方法**必须**复用与 `sub_scalar` / `div_scalar` 完全相同的执行骨架（同一套 `dispatch::select_exec_path` → Serial / SIMD / Parallel 路径选择，同一套 worker 内 SIMD admission 逻辑），仅在逐元素 kernel 内部对 (lhs, rhs) 操作数顺序做翻转：`sub_from_scalar` 计算 `scalar - element`，`div_from_scalar` 计算 `scalar / element`
+- 这两个方法必须复用与 `sub_scalar` / `div_scalar` 完全相同的执行骨架（同一套 `dispatch::select_exec_path` → Serial / SIMD / Parallel 路径选择，同一套 worker 内 SIMD admission 逻辑），仅在逐元素 kernel 内部对 (lhs, rhs) 操作数顺序做翻转：`sub_from_scalar` 计算 `scalar - element`，`div_from_scalar` 计算 `scalar / element`
 - panic 语义、整数 checked arithmetic、除零规则、输出布局（F-order owned）与 `sub_scalar` / `div_scalar` 完全对齐
-- 19-overload 的左标量运算符**必须**调用本节方法，不得自行实现逐元素遍历——避免 11-math 后续优化（SIMD/并行新路径）无法被左标量受益
+- 19-overload 的左标量运算符必须调用本节方法，不得自行实现逐元素遍历——避免 11-math 后续优化（SIMD/并行新路径）无法被左标量受益
 - 可见性为 `pub(crate)` 而非 `pub`：左标量运算的公开入口由 19-overload 通过 `impl Sub<Tensor<A, D>> for A` 等运算符提供，本方法仅作为内部委托靶点
 
 ### 5.10 Good / Bad 对比示例
@@ -514,7 +510,7 @@ apply_unary(view, f):
 
 `modulus()` 的内部执行骨架与标准一元运算不同：输入元素类型为 `Complex<T>`，输出为 `T`。因此它不能直接复用 `apply_unary(view, f)` 这类“输入/输出同类型”的骨架，而需要独立的执行骨架处理类型变化。
 
-### 6.2 二元逐元素实现（含广播）
+### 6.2 二元逐元素实现
 
 ```
 apply_binary(a, b, f):
@@ -538,11 +534,11 @@ apply_binary(a, b, f):
 
 本文描述的逐元素运算功能范围以 `需求说明书 §12` 为准。SIMD 和并行加速路径的当前正式支持子集以 `08-simd.md` 和 `09-parallel.md` 定义的能力边界为准，不在本文档中另行扩张覆盖承诺。
 
-调度模型（v2.0 起，与 30-dispatch v2.0.3、08-simd v2.0.0、09-parallel v2.0.0 协同）：
+调度模型：
 
 1. 由 `dispatch::select_exec_path(...)` 返回 `(ExecPath, Option<ParallelGuard>)`，三路 `Serial / Simd / Parallel` 互斥裁决。
-2. 若选中 `Serial` 或 `Simd`：在串行执行上下文中由 `simd` 后端按 `08-simd.md §5.4` admission 规则独立决定是否进入 SIMD kernel；不进入时走标量循环。
-3. 若选中 `Parallel`：调用方将 `Some(guard)` 按值移交到 `parallel` 后端入口；每个 worker 拿到 chunk 后**可以**独立调用 SIMD 后端 kernel（即 worker 内 SIMD admission，与上一条路径上的 SIMD admission 同源），这是 v2.0 起新增的"thread × SIMD 双层加速"能力（08-simd v2.0.0 决策 5、09-parallel v2.0.0 决策 9）。chunk 间合并顺序仍由 `parallel` 模块的固定 chunking + 固定 merge tree 控制。
+2. 若选中 `Serial` 或 `Simd`：在串行执行上下文中由 `simd` 后端按规则独立决定是否进入 SIMD kernel；不进入时走标量循环。
+3. 若选中 `Parallel`：调用方将 `Some(guard)` 按值移交到 `parallel` 后端入口。每个 worker 拿到 chunk 后可以独立调用 SIMD 后端 kernel（即 worker 内 SIMD admission，与上一条路径上的 SIMD admission 同源）。chunk 间合并顺序仍由 `parallel` 模块的固定 chunking + 固定 merge tree 控制。
 4. 未列出的运算、类型、ISA 或不满足语义约束的路径统一回退标量实现。
 
 | 操作类别 | SIMD 状态 | 并行状态 |
