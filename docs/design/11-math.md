@@ -201,7 +201,7 @@ fn add_or_panic<A: CheckedAdd>(a: A, b: A) -> A {
 // Analogous wrappers for sub / mul / div reuse element-layer primitives.
 ```
 
-### 5.4 一元运算（分离 trait bounds）
+### 5.4 一元运算
 
 ```rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -253,7 +253,7 @@ where
 - `abs` / `signum` 仅对具备自然顺序的数值类型开放：i32, i64, f32, f64。
 - `neg` / `square` 对所有 `Numeric` 类型开放：i32, i64, f32, f64, Complex<f32>, Complex<f64>。
 - `abs()` 约束说明：`OrderedCompareElement` 限定到 i32/i64/f32/f64 四种类型，与 abs 的实际支持范围严格匹配。
-- `signum()` trait bound 修正：旧版仅要求 `A: OrderedCompareElement`，无法表达"返回 -1 / 0 / 1"所需的常量构造能力。新版 bound 为 `A: Numeric + OrderedCompareElement`，由 `Numeric: Element` 提供 `A::zero()`、`A::one()`，由 `Numeric` 的 `Neg` 提供 `-A::one()`；浮点路径直接调用 `RealScalar::signum`（不使用 `-A::one()`）。`OrderedCompareElement` 限定到 `i32/i64/f32/f64`，`Numeric` 不引入复数路径（`Complex<T>` 不实现 `OrderedCompareElement`，编译期已被排除）。
+- `signum()` trait bound 为 `A: Numeric + OrderedCompareElement`，由 `Numeric: Element` 提供 `A::zero()`、`A::one()`，由 `Numeric` 的 `Neg` 提供 `-A::one()`；浮点路径直接调用 `RealScalar::signum`（不使用 `-A::one()`）。`OrderedCompareElement` 限定到 `i32/i64/f32/f64`，`Numeric` 不引入复数路径。
 - 对有符号整数，`neg(i32::MIN)` / `neg(i64::MIN)` 等不可表示情形视为不可恢复错误，遵循 panic 语义；实现层使用 `crate::element::CheckedNeg::checked_neg`（参见 `03-element.md §5.10`），`None` 翻译为 panic。
 - `abs` 在整数路径上的 checked 推导：对 `A: i32 / i64`，`abs(x) := if x >= A::zero() { x } else { x.checked_neg().expect("integer overflow in abs") }`，等价于"在最小负值处溢出 → panic"。无需新增 `CheckedAbs` trait。
 - `square` 在整数路径上必须使用 `CheckedMul`；溢出 → panic。
