@@ -4,8 +4,6 @@
 > 模块目录: src/set/
 > 任务阶段: Phase 4
 > 前置文档: 03-element.md, 04-complex.md, 07-tensor.md, 10-iterator.md
-> 需求参考: 需求说明书 §4、§15、§28
-> 范围声明: 范围内
 
 ---
 
@@ -13,17 +11,17 @@
 
 ### 1.1 职责边界
 
-| 职责         | 包含                                                      |
-| ------------ | --------------------------------------------------------- |
-| 集合操作     | unique: 返回不重复元素组成的新 1D 张量；**返回顺序不作 API 契约**（参见 §1.2 / 决策 4，与 `需求说明书 §15` 一致） |
-| 支持类型     | i32, i64, f32, f64, Complex<f32>, Complex<f64>            |
+| 职责         | 包含                                                          |
+| ------------ | ------------------------------------------------------------- |
+| 集合操作     | unique: 返回不重复元素组成的新 1D 张量；返回顺序不作 API 契约 |
+| 支持类型     | i32, i64, f32, f64, Complex<f32>, Complex<f64>                |
 
 | 职责         | 不包含                                              |
 | ------------ | --------------------------------------------------- |
 | 集合操作     | intersection / union / difference                   |
 | 统计操作     | bincount / histogram                                |
 | 归约索引     | argmin / argmax                                     |
-| 支持类型     | `需求说明书 §15` 明确将 bool 排除在 `unique` 之外 |
+| 支持类型     | `需求说明书 §15` 明确将 bool 排除在 `unique` 之外   |
 
 ### 1.2 设计原则
 
@@ -31,8 +29,8 @@
 | -------------- | ------------------------------------------------------------- |
 | 最小范围       | 当前仅实现 unique，其他集合操作留待未来扩展                   |
 | 类型安全       | bool 显式排除；仅对受支持的元素类型开放                       |
-| 相等语义优先   | `unique` 基于逐元素相等关系去重，不承诺任何排序结果（不进行 lexicographic / 模长 / 数值排序，**也不承诺首次出现顺序**）|
-| 顺序未定义     | 输出顺序**不作 API 契约**——允许同输入下结果顺序不稳定（与 `需求说明书 §15` 一致；决策 4 解释为何把 v2.0.0 的"首次出现顺序"承诺降级）|
+| 相等语义优先   | `unique` 基于逐元素相等关系去重，不承诺任何排序结果           |
+| 顺序未定义     | 输出顺序不作 API 契约——允许同输入下结果顺序不稳定             |
 | IEEE 754 一致  | `NaN != NaN`，因此每个 `NaN` 单独保留；`-0.0 == 0.0` 视为同值 |
 | 复数按分量判等 | 复数去重按实部/虚部分别比较，并沿用对应实数语义               |
 
@@ -57,7 +55,7 @@ src/set/
 └── unique.rs           # set operations (this module)
 ```
 
-双文件设计理由：当前范围由 `mod.rs` 承担模块入口、`unique.rs` 承担唯一公开集合操作实现，保持导出边界与语义实现分离。
+由 `mod.rs` 承担模块入口、`unique.rs` 承担唯一公开集合操作实现，保持导出边界与语义实现分离。
 
 ---
 
@@ -82,7 +80,7 @@ src/set/unique.rs
 | `tensor`    | `TensorBase<S, D>`, `Tensor<A, Ix1>`, `.iter()`, `.len()`，参见 `07-tensor.md` §5  |
 | `storage`   | `Storage<Elem = A>` trait（read-only element access via `Storage<Elem = A>`）      |
 | `dimension` | `Dimension`, `Ix1`（output dimension type for flatten result）                     |
-| `element`   | `Element`（参见 `03-element.md` §5.1）；`UniqueElement: Element` 蕴含 `Copy`（`Element: Copy`），无需额外约束元素层 trait。`ComplexScalar` **未实际使用**——`Complex<f32>` / `Complex<f64>` 通过为这两个具体类型分别 impl `UniqueElement` 来支持，而不是通过 `ComplexScalar` 泛型。 |
+| `element`   | `Element`，参见 `03-element.md` §5.1                                               |
 | `complex`   | `Complex<f32>`, `Complex<f64>`，参见 `04-complex.md` §5                            |
 | `iter`      | `Elements`（遍历收集元素），参见 `10-iterator.md` §5.1                             |
 
@@ -114,13 +112,6 @@ where
     /// Returns unique elements as a 1D owned tensor.
     ///
     /// # Output ordering contract
-    ///
-    /// **The order of elements in the returned tensor is unspecified** and
-    /// SHOULD NOT be relied upon. Two calls on the same input MAY produce
-    /// outputs in different orders, even within the same process. This
-    /// matches `requirements specification §15` ("返回顺序不作要求，允许同输入下结果顺序不稳定").
-    /// No sorting is performed (no lexicographic / magnitude / numeric
-    /// ordering, and no first-occurrence guarantee).
     ///
     /// Implementations MAY internally choose a deterministic order (such as
     /// F-order first-occurrence) for performance or debugging convenience,
@@ -254,26 +245,21 @@ Ordering contract (decision 4, post v2.0.2):
       preserved per IEEE 754.
 ```
 
-#### 6.1.1 哈希键规范（用于大输入快路径）
-
  **实现约束**:
 
- 对 `f32` / `f64` 及 `Complex<f32>` / `Complex<f64>` 的 `unique` 实现，**不得**直接依赖标准 Rust `Hash` / `Eq` 语义，也**不得**直接建立在 `BTreeSet` / `HashSet` 这类标准集合之上；必须使用线性扫描或自定义哈希键策略，以严格满足本文档定义的判等规则：
+ 对 `f32` / `f64` 及 `Complex<f32>` / `Complex<f64>` 的 `unique` 实现，不得直接依赖标准 Rust `Hash` / `Eq` 语义，也不得直接建立在 `BTreeSet` / `HashSet` 这类标准集合之上；必须使用线性扫描或自定义哈希键策略，以严格满足本文档定义的判等规则：
 
  1. `NaN != NaN`，因此每个 `NaN` 都必须单独保留，不能因为"同为 NaN"而被合并。
  2. `-0.0 == 0.0`，因此两者必须视为同一个 unique 值。
  3. 复数按分量比较，且每个分量分别沿用对应实数的上述语义。
  4. 若实现采用哈希优化，键规范固定如下：NaN 元素不进入普通去重键路径。实现须对 NaN 单独旁路处理，保证输入中的每个 NaN（无论位模式是否相同）均被保留。普通哈希键仅用于非 NaN 元素；其中 `i32` / `i64` 直接以数值作为键，`f32` / `f64` 对所有 `+0.0` / `-0.0` 归一到同一键，`Complex<T>` 的键为 `(re_key, im_key)`，并对含 NaN 的分量同样走旁路保留逻辑。
- 5. **哈希表既可作为查重索引，也可作为输出容器**——输出顺序未定义（v2.0.2 起），因此哈希表默认随机化 hasher 的迭代顺序泄漏到输出是允许的。实现仍可选择由"输入逻辑迭代顺序"驱动输出（产生 F-order first-occurrence 序）作为内部确定性策略，但**不构成对外契约**。
-
-换言之，若实现采用哈希优化，则键设计必须显式编码这些语义；若无法保证，则应退回线性扫描，禁止使用与本文档语义不一致的默认集合判重行为。
 
 ### 6.2 浮点判等处理
 
 - 非 NaN 浮点值的相等判定遵循 Rust / IEEE 754 `==` 语义
 - `NaN != NaN`，因此输入中的每个 `NaN` 必须独立保留，不参与去重
 - `+0.0 == -0.0`，因此两者视为同一个 unique 值
-- 本文档约束相等语义；输出顺序**不构成 API 契约**（按 §1.2 / 决策 4，与 `需求说明书 §15` 一致）。不限制实现使用哈希、线性扫描或其他**查重**策略
+- 本文档约束相等语义；输出顺序不构成 API 契约。不限制实现使用哈希、线性扫描或其他查重策略
 
 ### 6.3 复数判等规则
 
