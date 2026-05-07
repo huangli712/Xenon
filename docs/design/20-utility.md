@@ -474,7 +474,7 @@ into_contiguous(tensor):
 
 - [ ] **T1**: 实现 `fill` 方法
   - 文件: `src/util/fill.rs`
-  - 内容: 在 `S: StorageMut` 层实现 `fill(&mut self, value: A)` 核心 helper，并补上对所有张量开放的 `try_fill(&mut self, value: A) -> Result<(), XenonError>` 分发路径；该分发依赖 storage 层提供的可选可变句柄接口（或等价能力），且只读张量或缺失该能力的存储返回 `InvalidStorageMode`
+  - 内容: 在 `S: StorageMut` 层实现 `fill(&mut self, value: A)` 核心 helper，并补上对所有张量开放的 `try_fill(&mut self, value: A) -> Result<(), XenonError>` 分发路径
   - 测试: `test_fill_basic`, `test_fill_non_contiguous`, `test_fill_padded_writes_logical_only`, `test_try_fill_read_only_returns_read_only_storage`
   - 前置: tensor 模块、iter 模块完成
   - 预计: 10 min
@@ -493,7 +493,7 @@ into_contiguous(tensor):
 - [ ] **T3**: 实现 `to_contiguous` 方法
   - 文件: `src/util/contiguous.rs`
   - 内容: 实现 `to_contiguous(&self)` 与 `into_contiguous(self)`；非 F-contiguous 输入始终转为 F-order，连续 owned 输入允许复用数据
-  - 测试: `test_to_contiguous_f_order`, `test_into_contiguous_reuses_canonical_owned_data`, `test_into_contiguous_repacks_noncanonical_f_contiguous_owned`, `test_into_contiguous_repacks_arc_input`, `test_to_contiguous_transposed_becomes_f`, `test_to_contiguous_non_contiguous`（**注意**：`into_contiguous` 仅在 `is_canonical_f_contiguous_owned()` 为真时 O(1) 复用；`is_f_contiguous()` 但带 tail padding 或非 Owned storage 必须重排，详见 §6.3 predicate 对照表）
+  - 测试: `test_to_contiguous_f_order`, `test_into_contiguous_reuses_canonical_owned_data`, `test_into_contiguous_repacks_noncanonical_f_contiguous_owned`, `test_into_contiguous_repacks_arc_input`, `test_to_contiguous_transposed_becomes_f`, `test_to_contiguous_non_contiguous`
   - 前置: layout 模块的 `is_f_contiguous` 完成
   - 预计: 10 min
 
@@ -535,8 +535,8 @@ into_contiguous(tensor):
 | `test_try_fill_read_only_returns_error`   | `try_fill()` 在只读 / 共享只读 / 广播只读张量上返回 `InvalidStorageMode` | 高     |
 | `test_fill_empty`                         | 空数组 fill 不 panic                           | 中     |
 | `test_to_contiguous_f_order`              | F-order 连续输入返回 owned 拷贝                | 高     |
-| `test_into_contiguous_reuses_canonical_owned_data`           | **canonical** F-order owned 输入（offset==0 + 无 tail padding）消费后 O(1) 复用原数据                                | 高 |
-| `test_into_contiguous_repacks_noncanonical_f_contiguous_owned` | `is_f_contiguous() == true` 但带 tail padding 或非零 offset 的 Owned 输入必须重排为 canonical F-order owned，**不得**走 O(1) 复用路径 | 高 |
+| `test_into_contiguous_reuses_canonical_owned_data` | canonical F-order owned 输入（offset==0 + 无 tail padding）消费后 O(1) 复用原数据                                | 高 |
+| `test_into_contiguous_repacks_noncanonical_f_contiguous_owned` | `is_f_contiguous() == true` 但带 tail padding 或非零 offset 的 Owned 输入必须重排为 canonical F-order owned，不得走 O(1) 复用路径 | 高 |
 | `test_into_contiguous_repacks_arc_input`                     | `ArcRepr` 输入消费后必须深拷贝为 canonical owned，不能"假装是 owned"复用 Arc backing buffer | 高 |
 | `test_to_contiguous_transposed_becomes_f` | 转置视图转为 F-order owned                     | 高     |
 | `test_to_contiguous_non_contiguous`       | 非连续输入返回 F-order owned                   | 高     |
@@ -583,7 +583,7 @@ into_contiguous(tensor):
 | `clip` 仅对 `OrderedCompareElement` 开放，拒绝 `bool` / `Complex` | 编译期测试。                                        |
 | `try_fill()` 对只读 / 共享只读 / 广播只读结果返回公开错误契约 | 运行时测试，断言返回 `XenonError::InvalidStorageMode`。 |
 | `into_contiguous(self)` 仅对支持 owned 转换的存储模式开放     | 编译期测试。                                            |
-| sort / argsort / searchsorted 不属于当前 API                  | API 缺失断言。                                          |
+| `sort / argsort / searchsorted` 不属于当前 API                | API 缺失断言。                                          |
 
 ---
 
@@ -593,18 +593,18 @@ into_contiguous(tensor):
 
 | 方向               | 对方模块 | 接口/类型      | 约定                   |
 | ------------------ | -------- | -------------- | ---------------------- |
-| `utility → iter`   | `iter`   | `iter_mut()`   | `fill` 通过 storage 层 helper 直接写入逻辑元素（参见 §5.4），参见 `10-iterator.md` §5.6 |
-| `utility → iter`   | `iter`   | `iter()`       | `clip` 通过只读迭代器读取并写入新张量，参见 `10-iterator.md` §5.6 |
-| `utility → layout` | `layout` | 连续性查询     | `to_contiguous` 先查询当前布局是否已经连续，张量层方法参见 `07-tensor.md` §5.3，算法定义参见 `06-layout.md` §5.7 |
-| `utility → tensor` | `tensor` | `to_owned()` / `into_owned()` | `to_contiguous` 与 `into_contiguous` 复用张量 owned 化路径（定义参见 `21-type.md` §5.5）；跨文档连续化归属统一在 utility |
-| `utility → tensor` | `tensor` | owned 结果张量构造 | `clip` 分配新的 owned 结果张量，通过 `iter()` 读取源数据并写入 |
+| `util → iter`   | `iter`   | `iter_mut()`   | `fill` 通过 storage 层 helper 直接写入逻辑元素（参见 §5.4），参见 `10-iterator.md` §5.6 |
+| `util → iter`   | `iter`   | `iter()`       | `clip` 通过只读迭代器读取并写入新张量，参见 `10-iterator.md` §5.6 |
+| `util → layout` | `layout` | 连续性查询     | `to_contiguous` 先查询当前布局是否已经连续，张量层方法参见 `07-tensor.md` §5.3，算法定义参见 `06-layout.md` §5.7 |
+| `util → tensor` | `tensor` | `to_owned()` / `into_owned()` | `to_contiguous` 与 `into_contiguous` 复用张量 owned 化路径（定义参见 `21-type.md` §5.5）；跨文档连续化归属统一在 utility |
+| `util → tensor` | `tensor` | owned 结果张量构造 | `clip` 分配新的 owned 结果张量，通过 `iter()` 读取源数据并写入 |
 
 ### 9.2 数据流描述
 
 ```text
 User calls fill() / clip() / to_contiguous() / into_contiguous()
     │
-    ├── utility decides between in-place update, new tensor creation, or contiguity repair
+    ├── util decides between in-place update, new tensor creation, or contiguity repair
     ├── fill / clip traverse logical elements through iter / iter_mut
     ├── to_contiguous checks layout flags before materializing F-order storage
     └── the module returns either the updated tensor or a new owned F-order tensor
@@ -616,7 +616,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 
 | 主题              | 内容                                                                                 |
 | ----------------- | ------------------------------------------------------------------------------------ |
-| Recoverable error | `clip` 在 `min > max` 或任一边界为 `NaN` 时返回 `XenonError::InvalidArgument { operation: Cow::Borrowed("clip"), kind: InvalidArgumentKind::OperationSpecific { argument, constraint } }`（字段定义见 `26-error.md v3.2.0 §5.1`）。`try_fill()` 在只读 / 共享只读 / 缺失 `StorageMut` 能力的存储上返回 `XenonError::InvalidStorageMode { operation, expected: StorageKindTag::ViewMut（或 Owned）, actual: StorageKindTag::View（或 Shared）, shape: Some(self.shape().to_vec()), conversion: None }`，其中 `expected` 表示分派期望具备的可写能力对应的模式标签。`fill()` 因 `StorageMut` 编译期约束不会进入这条错误路径。`XenonError` 是本模块唯一公开错误类型。 |
+| Recoverable error | `clip` 在 `min > max` 或任一边界为 `NaN` 时返回 `XenonError::InvalidArgument`。`try_fill()` 在只读 / 共享只读 / 缺失 `StorageMut` 能力的存储上返回 `XenonError::InvalidStorageMode`。 |
 | Panic             | 公开 utility API 不定义额外 panic 语义；连续化与裁剪失败统一走显式错误或正常返回。   |
 | 路径一致性        | 连续与非连续布局都必须通过同一逻辑元素语义工作；当前无独立 SIMD / 并行分支。         |
 | 容差边界          | `clip` 对浮点数遵循 IEEE 754 比较语义；不额外引入近似容差。                          |
@@ -639,7 +639,7 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 | 属性     | 值                                                                                          |
 | -------- | ------------------------------------------------------------------------------------------- |
 | 决策     | 返回 `Tensor<A, D>`（Owned），不使用 `Cow`                                                  |
-| 理由     | API 简洁（无生命周期参数）、调用方可预测行为、与 ndarray 设计一致；同时补充消费式 `into_contiguous(self)` 以在已连续 owned 输入上复用数据 |
+| 理由     | API 简洁、调用方可预测行为；同时补充消费式 `into_contiguous(self)` 以在已连续 owned 输入上复用数据 |
 | 替代方案 | 返回 `Cow<TensorBase<S, D>>` — 放弃，引入生命周期复杂度，调用方难以处理                     |
 | 替代方案 | 已连续时返回视图（借引用） — 放弃，返回类型不确定，违反直觉                                 |
 
@@ -654,9 +654,6 @@ User calls fill() / clip() / to_contiguous() / into_contiguous()
 | `to_contiguous`（已连续）         | O(n)       | O(n)       | 借用入口拷贝到新 owned                                               |
 | `to_contiguous`（非连续）         | O(n)       | O(n)       | 拷贝 + 重新排列                                                      |
 | `into_contiguous`（已连续 owned） | O(1)       | O(1)       | 直接复用现有 F-order owned 数据                                      |
-
-- 连续布局的 `fill` 仅在填充值是全零 bit-pattern 时才可使用 `ptr::write_bytes(0)` 优化；一般情况仍应逐元素写入，避免把任意 `Copy` 值错误地按字节复制
-- `clip` 的热点路径**未来**可考虑 SIMD 加速：但当前版本 `utility/` 不实现独立的 SIMD / parallel 路径。任何 SIMD 化必须先在 `08-simd.md §5` 与 `30-dispatch.md §5` 中显式声明 admission rule、ExecPath 与阈值，然后由 `utility/` 通过统一 dispatch 接入 SIMD 后端，**禁止**在 `utility/` 内部直接接入 `pulp` 或绕开 dispatch 模型。当前版本 `clip` 走标量逐元素路径（详见 §10）。
 
 ---
 
