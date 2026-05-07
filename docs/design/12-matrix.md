@@ -86,9 +86,9 @@ src/matrix/
 | `tensor`           | `TensorView<'a, A, D>`, `.ndim()`, `.shape()`, `.len()`, `.as_ptr()`, `.is_f_contiguous()` |
 | `element`          | `Numeric`, `ComplexScalar`                                                                 |
 | `iter`             | `Elements`, `.iter()`                                                                      |
-| `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`ParallelGuard`                                          |
-| `error`            | `XenonError::InvalidArgument`, `XenonError::ShapeMismatch`                             |
-| `simd`（可选）     | 为满足条件的输入提供 dot 的 SIMD kernel（参见 `08-simd.md`）                               |
+| `dispatch`         | `select_exec_path()`、`ExecPath`、`ParallelGuard`                                          |
+| `error`            | `XenonError::InvalidArgument`, `XenonError::ShapeMismatch`                                 |
+| `simd`（可选）     | 为满足条件的输入提供 dot 的 SIMD kernel                                                    |
 | `parallel`（可选） | 为 dot 提供并行执行能力                                                                    |
 
 ### 4.3 依赖合法性
@@ -134,11 +134,11 @@ src/matrix/
 /// Returns `XenonError::ShapeMismatch { operation, left_shape, right_shape }`
 /// when lengths do not match.
 /// Empty vectors are valid inputs and return the additive identity `A::zero()`.
+///
 /// When available, dot may delegate to the `simd` module for SIMD acceleration
 /// or to the `parallel` module for parallel execution while preserving the same
-/// observable semantics.
-/// Integer overflow during accumulation is unrecoverable and must panic via
-/// checked arithmetic, matching `13-reduction.md`.
+/// observable semantics. Integer overflow during accumulation is unrecoverable
+/// and must panic via checked arithmetic, matching `13-reduction.md`.
 ///
 /// # Examples
 ///
@@ -248,10 +248,13 @@ dot_impl(a, b):
 ```
 
 - `dot` 必须先完成逻辑 1D 与长度一致性检查。
-- 调度模型：由 `dispatch.rs` 通过 `let (path, guard) = dispatch::select_exec_path(...)` 统一决定串行 / SIMD / 并行路径（参见 30-dispatch.md v2.0.3 决策 7）；返回的 `Option<ParallelGuard>` 仅在 `ExecPath::Parallel` 分支为 `Some(_)`，并由 `matrix::dot` 按值移交给 `parallel::par_dot`。
-- **Worker 内 SIMD（v2.0 起）**：进入并行路径后，单个 worker 拿到 chunk 后**可以**在 chunk 内部独立做 SIMD admission（参见 08-simd.md v2.0.0 决策 5、09-parallel.md v2.0.0 决策 9）。这取代了 v1.x "并行 worker 不使用 SIMD" 的旧规则，提供 thread × SIMD 双层加速。串行路径下 SIMD 由 `simd` 后端按其 admission 规则独立判断是否启用；不进入 SIMD 时回退到该路径上的标量循环。
-- SIMD 路径要求 `a` 和 `b` **均为** F-contiguous 且满足对齐前提；若任一输入不满足条件，dispatch 不会选择 `ExecPath::Simd`，最终落在 `Serial` 或 `Parallel` 的标量内核上（worker 内 SIMD admission 仍是 chunk 内独立判断）。
-- `par_dot()` 的公开签名（见 09-parallel v2.0.0 §5.5）保持泛型 `DL: Dimension, DR: Dimension`，并接收 `_guard: ParallelGuard` 按值参数；在实现内部执行运行时 `ndim == 1` / 长度一致性校验。`matrix::dot()` 调用 `par_dot()` 时直接传 `&a.view()` / `&b.view()`，**不再通过 `as_ix1_view` 私有桥接收窄到 `Ix1`**（旧版的 `as_ix1_view` 设计与公开 `par_dot` 签名不闭合，已删除；旧文本见 §6.4 修订说明）。所有路径都必须保持一致的结果、错误模型与整数溢出 panic 语义。
+- 由 `dispatch.rs` 通过 `let (path, guard) = dispatch::select_exec_path(...)` 统一决定串行 / SIMD / 并行路径；返回的 `Option<ParallelGuard>` 仅在 `ExecPath::Parallel` 分支为 `Some(_)`，并由 `matrix::dot` 按值移交给 `parallel::par_dot`。
+- 进入并行路径后，单个 worker 拿到 chunk 后可以在 chunk 内部独立做 SIMD admission。
+- 串行路径下 SIMD 由 `simd` 后端按其 admission 规则独立判断是否启用；不进入 SIMD 时回退到该路径上的标量循环。
+- SIMD 路径要求 `a` 和 `b` 均为 F-contiguous 且满足对齐前提；若任一输入不满足条件，dispatch 不会选择 `ExecPath::Simd`，最终落在 `Serial` 或 `Parallel` 的标量内核上。
+- `par_dot()` 的公开签名保持泛型 `DL: Dimension, DR: Dimension`，并接收 `_guard: ParallelGuard` 按值参数；在实现内部执行运行时 `ndim == 1` / 长度一致性校验。
+- `matrix::dot()` 调用 `par_dot()` 时直接传 `&a.view()` / `&b.view()`，不再通过 `as_ix1_view` 私有桥接收窄到 `Ix1`。
+- 所有路径都必须保持一致的结果、错误模型与整数溢出 panic 语义。
 
 ### 6.2 并行阈值与禁止嵌套并行
 
@@ -259,16 +262,13 @@ dot_impl(a, b):
 
 | 约束         | 要求                                                                                                |
 | ------------ | --------------------------------------------------------------------------------------------------- |
-| 阈值来源     | 是否进入并行路径由 `dispatch::select_exec_path(len, is_f_contiguous, alignment_ok)` 的返回值决定（30-dispatch v2.0.3 §5.5）。`alignment_ok` 在 v2.0.x 起为调用方提示位（hint），dispatch 不强制将其用作 SIMD 准入硬门槛；simd 后端在 admission 内部独立通过 `layout::is_aligned()` 重检查（30-dispatch v2.0.3 §6.4）。 |
-| 非连续惩罚   | 非连续视图沿用 `dispatch.rs` 的有效阈值 saturating 翻倍策略（30-dispatch v2.0.3 决策 5），仅当收益明确时才进入并行。 |
-| 禁止嵌套并行 | `select_exec_path` 内部检测当前线程是否已处于库内部并行区域；若已嵌套则不会返回 `(Parallel, _)`，从而把并行降级为串行/SIMD 路径，调用方无需再做嵌套防护（参见 30-dispatch v2.0.3 决策 7：select-and-enter 原子绑定）。 |
-| 路径顺序     | 同 §6.1 执行路径选择。                                                                              |
-
-这满足 `需求说明书 §9.2` / `需求说明书 §9.3` 对"支持阈值配置"和"库内部不得开启第二层并行"的要求。
+| 阈值来源     | 是否进入并行路径由 `select_exec_path()` 的返回值决定。simd 后端在 admission 内部独立通过 `layout::is_aligned()` 重检查。 |
+| 非连续惩罚   | 非连续视图沿用 `dispatch.rs` 的有效阈值 saturating 翻倍策略，仅当收益明确时才进入并行。 |
+| 禁止嵌套并行 | `select_exec_path()` 内部检测当前线程是否已处于库内部并行区域；若已嵌套则不会返回 `(Parallel, _)`，从而把并行降级为串行/SIMD 路径。 |
 
 ### 6.3 标量实现
 
-公开 API 允许 `D1 != D2`（例如 `Tensor<f64, IxDyn>` 与 `Tensor<f64, Ix1>`）。运行时 1D 校验通过后，两个视图都是逻辑 1D；标量 helper 用 `Elements` 元素迭代器消费，**不要求两个泛型维度类型相同**。这与 `as_ix1_view` 私有收窄方案的明显区别在于：标量实现一开始就只依赖 `Elements`（参见 10-iterator §5.1），不依赖具体维度类型 `D`。
+公开 API 允许 `D1 != D2`（例如 `Tensor<f64, IxDyn>` 与 `Tensor<f64, Ix1>`）。运行时 1D 校验通过后，两个视图都是逻辑 1D；标量 helper 用 `Elements` 元素迭代器消费，不要求两个泛型维度类型相同。
 
 ```rust,ignore
 fn scalar_dot_int<I, S1, S2, D1, D2>(
@@ -311,17 +311,9 @@ where
 }
 ```
 
-### 6.4 统一内积实现（实数与复数分派）
+### 6.4 统一内积实现
 
-`dot()` 内部统一使用 `x.conjugate() * y` 的乘积生成规则（共轭线性定义见 §1.1，`Numeric::conjugate()` 详见 `03-element.md §5.2`），再按元素类型分派累加策略：整数路径需要同时对**乘法**和**累加**做 checked arithmetic，浮点/复数路径使用普通加法。整数路径不得因 identity conjugate 而绕过溢出检查。
-
-**v2.0 修订说明（删除 `as_ix1_view` 私有桥接）**：v1.x 设计在并行路径前用 `as_ix1_view(view: &TensorView<'_, A, D>) -> Result<TensorView<'_, A, Ix1>, XenonError>` 把任意维度视图收窄到 `Ix1` 再调用 `parallel::par_dot()`。该桥接同时存在三类问题：
-
-1. **类型链不闭合**：公开 API 接收 `&TensorBase<S, D>`（任意 storage），helper 接收 `&TensorView<'_, A, D>`，`Owned` / `Arc` 路径未说明如何获取生命周期合法的 view。
-2. **指针 / offset 约定不清**：原代码把 `view.as_ptr()`（已应用 offset 的逻辑首元素指针）传给 `from_raw_parts(ptr, ..., offset=0)`，但 07-tensor §5.7 明确规定 `from_raw_parts` 的 `ptr` 必须是 storage base pointer、`offset` 是 base 到逻辑首元素的位移；旧设计实际丢失了 offset 信息。
-3. **release 失去保护**：`debug_assert_eq!(view.ndim(), 1)` 在 release 下被消除，违反输入前提的调用会进入未定义行为。
-
-修订后的方案：`matrix::dot()` 不做维度收窄，直接传 `&a.view()` / `&b.view()` 给 `parallel::par_dot()`；后者本身就接受泛型 `DL: Dimension, DR: Dimension`（参见 09-parallel v2.0.0 §5.5），并在内部做运行时 `ndim == 1` / 长度一致性校验。这彻底删除了 `as_ix1_view` helper 与 v1.x 的 `unsafe from_raw_parts` 调用路径。
+`dot()` 内部统一使用 `x.conjugate() * y` 的乘积生成规则，再按元素类型分派累加策略：整数路径需要同时对乘法和累加做 checked arithmetic，浮点/复数路径使用普通加法。整数路径不得因 identity conjugate 而绕过溢出检查。
 
 ```rust,ignore
 // conjugate method in the Numeric trait (defined in 03-element.md §5.2)
@@ -343,7 +335,7 @@ where
     D2: Dimension,
 {
     // 1. Validate rank-1 precondition at runtime; either side non-1D returns
-    //    InvalidArgument with closed-enum kind (see 26-error v3.2.0 §5.1).
+    //    InvalidArgument with closed-enum kind (see 26-error §5.1).
     if a.ndim() != 1 {
         return Err(XenonError::InvalidArgument {
             operation: Cow::Borrowed("dot"),
@@ -391,8 +383,8 @@ where
 ```
 
 - 统一使用 `Numeric::conjugate()` 实现 `x.conjugate() * y` 乘积生成规则（定义见 §1.1），避免为复数类型单独实现 `complex_dot` 函数。实数类型的 `conjugate()` 为零开销（内联后等价于直接使用 `x * y`），不引入额外运行时成本。
-- 对整数 dot，乘法和累加都属于需求层面的不可恢复溢出路径；文档不得只对累加做 checked 处理而把乘法留给 release wrapping 语义。panic 信息至少包含 `operation=dot`、元素类型、触发阶段（`multiply` / `accumulate`）、逻辑位置（如 `lane` 或 `element_index`）以及适用 `shape`。
-- 错误字段全部对齐 26-error v3.2.0 §5.1 的封闭枚举：`InvalidArgument { operation, kind: InvalidArgumentKind::OperationSpecific { argument, constraint } }`，`ShapeMismatch { operation, left_shape, right_shape }`。`left_shape` / `right_shape` 是逻辑形状向量，元素与轴次序语义对齐 `02-dimension.md §5` 的 `Dimension` 抽象。不再使用旧版自由文本 `expected` / `actual` / `argument: "input"` 等字段。
+- 对整数 dot，乘法和累加都属于需求层面的不可恢复溢出路径；文档不得只对累加做 checked 处理而把乘法留给 release wrapping 语义。panic 信息至少包含 `operation`、元素类型、触发阶段（`multiply` / `accumulate`）、逻辑位置（如 `lane` 或 `element_index`）以及适用 `shape`。
+- 错误字段全部对齐 `error` 的封闭枚举：`InvalidArgument`，`ShapeMismatch`。
 
 ---
 
@@ -492,7 +484,7 @@ where
 | 高维输入 `shape=[1,1,1,1,1,1]` 调用 `dot`  | 返回 `InvalidArgument`，诊断字段完整                          |
 | `10^7` 量级元素向量 `dot`                  | 阈值切换、文档化容差与 panic 契约在标量/SIMD/并行路径上一致   |
 | 阈值边界输入                               | 覆盖低于/等于/高于并行阈值时的路径裁决与结果一致性            |
-| 非连续向量（切片后）                       | dispatch 不会选择 `ExecPath::Simd`；最终走 Serial 标量或 Parallel 路径；结果与标量基线一致（worker 内 SIMD admission 在 chunk 内独立判断，是否可 SIMD 由 chunk 连续性与对齐条件决定，不满足则走标量） |
+| 非连续向量（切片后）                       | dispatch 不会选择 `ExecPath::Simd`；最终走 Serial 标量或 Parallel 路径；结果与标量基线一致 |
 | `NaN` 输入                                 | 实数 `dot([NaN], [1.0])` 或 `dot([1.0], [NaN])` 返回 `NaN`    |
 | `Inf` / `-Inf` 输入                        | 遵循 IEEE 754；例如实数 `dot([Inf], [2.0]) == Inf`            |
 
