@@ -380,25 +380,23 @@ pub trait MyPublicSealedTrait: crate::private::Sealed { /* ... */ }
 #![warn(clippy::missing_safety_doc)]      // Unsafe functions need Safety section
 ```
 
-以上 lint 对应 §5.4.2 中 `# Errors`、`# Panics`、`# Safety` 三节的必须规则，仅在 CI 中作为自动化门禁补充；完整文档节定义仍以 §5.4.2 为准。
+以上 lint 对应 §5.4.2 中 `# Errors`、`# Panics`、`# Safety` 三节的必须规则，仅在 CI 中作为自动化门禁补充；完整文档节定义仍以 §5.4.2 为准。完整 `lib.rs` 基线（含 `missing_docs`、`unsafe_op_in_unsafe_fn`、`missing_debug_implementations` 等）见 `00-coding.md §7.1`。
 
-完整 `lib.rs` 基线（含 `missing_docs`、`unsafe_op_in_unsafe_fn`、`missing_debug_implementations` 等）见 `00-coding.md §7.1`。
+#### 5.5.3 Sealed-trait doc grep 检查
 
-#### 5.5.3 Sealed-trait doc grep 检查（v2.0.2）
-
-针对 §5.4.3 列出的所有公开 sealed trait（05-storage 6 storage trait + 4 marker trait、02-dim Dimension/Reverse、03-element Element/Numeric/RealScalar/ComplexScalar/CastElement、21-type CastTo），CI 必须执行一项 grep / 脚本检查：
+针对 §5.4.3 列出的所有公开 sealed trait，CI 必须执行一项 grep / 脚本检查：
 
 - 在源码中扫描所有满足 `pub trait <Name>(<...>): ... crate::private::Sealed` 或在 §5.4.3 列表内的 `pub trait` 声明；
-- 对每个匹配的 trait，断言其**紧邻前置** doc comment（`///` 连续块）必须出现 `# Sealed` 段落；
+- 对每个匹配的 trait，断言其紧邻前置 doc comment（`///` 连续块）必须出现 `# Sealed` 段落；
 - 不出现 `# Sealed` 段落 → CI 失败。
 
-最小实现示例（CI shell hook，伪代码）。**关键**：检查的是 `pub trait` 行**之前**的连续 `///` 块，**不是**之后的函数体内容；R11 E-02 之前的实现搜了 `pub trait...}` 范围，会漏掉前置 doc comment 而误报：
+最小实现示例（CI shell hook，伪代码）。**关键**：检查的是 `pub trait` 行**之前**的连续 `///` 块，**不是**之后的函数体内容：
 
 ```bash
 # Fail if any sealed pub trait lacks the `# Sealed` doc section in its
 # IMMEDIATELY PRECEDING contiguous `///` doc-comment block.
 #
-# Candidate discovery uses TWO sources unioned (R14 E-01 fix):
+# Candidate discovery uses TWO sources unioned:
 #   (1) Direct grep match: `pub trait <Name>...crate::private::Sealed` —
 #       catches traits whose declaration line contains the Sealed bound.
 #   (2) §5.4.3 whitelist: explicit list of sealed pub trait names — catches
@@ -408,7 +406,7 @@ pub trait MyPublicSealedTrait: crate::private::Sealed { /* ... */ }
 #       with §5.4.3.
 set -euo pipefail
 
-# §5.4.3 whitelist (R14 E-01; sync with §5.4.3 listing):
+# §5.4.3 whitelist:
 WHITELIST='RawStorage|RawStorageMut|Storage|StorageMut|StorageOwned|StorageShared|IsOwned|IsView|IsViewMut|IsShared|Dimension|Reverse|Element|Numeric|RealScalar|ComplexScalar|CastElement|CastTo'
 
 # Union of (1) direct Sealed match and (2) whitelist match.
@@ -446,7 +444,7 @@ exit $exit_code
 
 | 规范       | 说明                                                                                                                        |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------- |
-| 可编译运行 | 所有 doctest 通过 `cargo test --doc`；**关键示例**（见下方定义）至少通过 `cargo run --example ...` 实际运行，其余 examples 至少编译通过 |
+| 可编译运行 | 所有 doctest 通过 `cargo test --doc`；关键示例至少通过 `cargo run --example ...` 实际运行，其余 examples 至少编译通过 |
 | 使用 `?`   | doctest 天然返回 `Result` 时必须优先使用 `?`；避免在文档示例中使用 `unwrap()`                                               |
 | 隐藏样板   | 用 `# ` 隐藏 use 语句                                                                                                       |
 | 最小化     | 只展示当前 API 用法                                                                                                         |
