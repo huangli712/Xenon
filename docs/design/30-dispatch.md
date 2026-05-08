@@ -16,7 +16,7 @@
 | 路径裁决   | `ExecPath` 三路仲裁（Serial / Simd / Parallel）                             |
 | 阈值管理   | 并行阈值与 SIMD 通用阈值均提供编译期默认值+ 对称的内部运行时覆写与重置接口  |
 | 嵌套防护   | `ParallelGuard` / `ParallelContext` 的 thread-local RAII 保护，防止二次并行 |
-| 策略参数   | `ParallelExecStrategy` 定义，供 parallel/ 后端消费 i                        |
+| 策略参数   | `ParallelExecStrategy` 定义，供 parallel/ 后端消费                          |
 | 快捷查询   | `should_parallelize()` 布尔查询，供仅关注串行/并行二选的调用方使用          |
 
 | 职责       | 不包含                                                      |
@@ -279,7 +279,7 @@ impl Drop for ParallelGuard {
 
 **关键 API 边界变化：** `ParallelGuard::enter()` 不再作为公开 API 暴露。取而代之，进入并行区域的唯一入口是 `select_exec_path()` 返回 `(ExecPath::Parallel, Some(guard))`。`parallel/` 后端在收到该 guard 后将其持有到并行区域结束即可，无需也不能再次调用 `enter()`。
 
-**线程亲和性（thread affinity）契约：** `ParallelGuard` 有意 `!Send + !Sync`（通过 `_private: PhantomData<*const ()>` 推导）。其 `Drop` 实现清除调用线程的 thread-local `IN_PARALLEL` flag——若 guard 被 move 到 Rayon worker 线程并在 worker 上 drop，会清错线程的 TLS，破坏嵌套并行检测的正确性。因此：
+**线程亲和性契约：** `ParallelGuard` 有意 `!Send + !Sync`（通过 `_private: PhantomData<*const ()>` 推导）。其 `Drop` 实现清除调用线程的 thread-local `IN_PARALLEL` flag——若 guard 被 move 到 Rayon worker 线程并在 worker 上 drop，会清错线程的 TLS，破坏嵌套并行检测的正确性。因此：
 - `parallel/` 后端必须保持 outer guard 在调用线程（dispatching thread）的入口函数栈帧上，直到整个 Rayon 并行区域结束。
 - Rayon worker 闭包不得捕获 outer guard。
 - 每个 worker 闭包内 chunk 的执行必须包裹在 `dispatch::with_parallel_worker_context` 中，使该 worker 自身的 TLS 在 chunk 执行期间观测到 `IN_PARALLEL == true`，从而让 worker 内部嵌套调用 dispatch 时正确回退串行路径。
