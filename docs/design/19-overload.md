@@ -365,14 +365,14 @@ where
 ```
 
 - `Scalar<A>` 包装器是实现“泛型左标量 + 张量”时的工程性折中，而不是原生`scalar + tensor` 整体不可行的证明。对 Xenon 支持的具体标量类型（`i32`、`i64`、`f32`、`f64`、`Complex<f32>`、`Complex<f64>`），可以逐类型生成 `impl Add<TensorBase<...>> for T`；真正不可行的是 `impl<T> Add<TensorBase<...>> for T` 这种 blanket impl。因此“常用原生标量”在本文中明确指上述 6 个受支持算术元素类型，而不包括 `bool`、`usize` 或其他范围外类型。
-- `Scalar<A>` 保持 `pub` 可见以满足泛型左标量路径的编译需求，但**不通过 prelude 或 crate 根导出**，仅通过 `xenon::overload::Scalar` 可访问。其定位是孤儿规则下的工程设施，非核心抽象——绝大多数场景下用户应使用 `tensor + scalar`、`scalar + tensor`（原生类型）或方法调用 `.add_scalar()` 等更直接的路径，仅在编写泛型函数 `fn foo<A: Numeric>(a: A, t: Tensor<A, D>)` 且需要 `a + t` 语法时才需引入 `Scalar(a)`。
+- `Scalar<A>` 保持 `pub` 可见以满足泛型左标量路径的编译需求，但不通过 prelude 或 crate 根导出，仅通过 `xenon::overload::Scalar` 可访问。其定位是孤儿规则下的工程设施，非核心抽象——绝大多数场景下用户应使用 `tensor + scalar`、`scalar + tensor`（原生类型）或方法调用 `.add_scalar()` 等更直接的路径，仅在编写泛型函数 `fn foo<A: Numeric>(a: A, t: Tensor<A, D>)` 且需要 `a + t` 语法时才需引入 `Scalar(a)`。
 - 标量运算符的 LHS/RHS 组合通过宏生成，覆盖矩阵参见 §5.4。
 - 标量路径无形状不兼容风险，不返回 `Result`；运算符返回 `Tensor` 直接。整数溢出仍遵循 panic 语义。
-- 当前版本**不**稳定承诺 `&A` 形式的标量运算符重载。公开契约仅保证值形式 `tensor + scalar`、`Scalar(scalar) + tensor`，以及常用原生左标量（如 `5.0 + tensor`）。若后续版本需要 `&A` 支持，应以独立议题评估。
+- 当前版本不稳定承诺 `&A` 形式的标量运算符重载。公开契约仅保证值形式 `tensor + scalar`、`Scalar(scalar) + tensor`，以及常用原生左标量（如 `5.0 + tensor`）。
 - 标量运算符重载已覆盖 owned `Tensor` 和 `TensorView`（只读视图）。`TensorViewMut` 不直接参与标量运算符重载——使用方需先调用 `.view()` 转为 `TensorView` 后再使用运算符，或显式调用 `.add_scalar()` 等方法，参见 `11-math.md §5.9`。
 - 标量路径的委托分为两类，对 owned `Tensor` 和 `TensorView` 均适用：
   - **右标量与交换性左标量**：`tensor op scalar`、`scalar + tensor`、`scalar * tensor` 直接调用 `11-math.md §5.9` 的公开标量方法（`.add_scalar()` / `.sub_scalar()` / `.mul_scalar()` / `.div_scalar()`），不重复实现。
-  - **非交换性左标量**：`scalar - tensor`、`scalar / tensor` 委托到 `11-math.md §5.9.1` 的 `pub(crate)` 内部入口 `tensor.sub_from_scalar(scalar)` / `tensor.div_from_scalar(scalar)`。本模块**不得**自行实现逐元素遍历——所有逐元素执行骨架（dispatch 路径选择、SIMD/Parallel admission、checked arithmetic、panic 语义）由 `11-math.md` 单点维护，避免左标量路径游离于 math 执行优化之外。本模块内部 helper（如 `sub_scalar_left_impl` / `div_scalar_left_impl`）仅作为 trait impl 的薄桥接，函数体应仅一行委托：`fn sub_scalar_left_impl(scalar, tensor) -> Tensor { tensor.sub_from_scalar(scalar) }`，不得包含逐元素循环或 dispatch 调用。
+  - **非交换性左标量**：`scalar - tensor`、`scalar / tensor` 委托到 `11-math.md §5.9.1` 的 `pub(crate)` 内部入口 `tensor.sub_from_scalar(scalar)` / `tensor.div_from_scalar(scalar)`。本模块不得自行实现逐元素遍历——所有逐元素执行骨架（dispatch 路径选择、SIMD/Parallel admission、checked arithmetic、panic 语义）由 `11-math.md` 单点维护，避免左标量路径游离于 math 执行优化之外。本模块内部 helper（如 `sub_scalar_left_impl` / `div_scalar_left_impl`）仅作为 trait impl 的薄桥接，函数体应仅一行委托：`fn sub_scalar_left_impl(scalar, tensor) -> Tensor { tensor.sub_from_scalar(scalar) }`，不得包含逐元素循环或 dispatch 调用。
 
 ### 5.4 Sub / Mul / Div
 
@@ -388,7 +388,9 @@ where
 
 对整数类型，`Div` 路径中的除以零和结果不可表示（如最小负值除以 `-1`）均遵循 `需求说明书 §12` 与 `需求说明书 §27` 的统一 panic 语义；运算符重载仅把广播不兼容报告为 `Result::Err`，不额外吞掉或包装这类不可恢复错误。
 
-**TensorView 标量路径**（与 owned `Tensor` 对称，覆盖 3 种 LHS/RHS 组合 × 4 种运算符）：
+**TensorView 标量路径**：
+
+与 owned `Tensor` 对称，覆盖 3 种 LHS/RHS 组合 × 4 种运算符。
 
 ```rust,ignore
 // ── Sub ─────────────────────────────────────────────
@@ -469,7 +471,9 @@ where A: Numeric, D: Dimension
 - 同 owned `Tensor` 路径，本处 `TensorView` 标量运算符组合也通过宏生成实际代码。
 - 原生左标量（如 `5.0 + tensor_view`、`3.0 / tensor_view`）的 `TensorView` 版本同样受支持。
 
-**标量重载委托路径**（覆盖全部 `Numeric` 类型：`i32`、`i64`、`f32`、`f64`、`Complex<f32>`、`Complex<f64>`；表中 `tensor` 指 owned `Tensor` 与 `TensorView` 两者）：
+**标量重载委托路径**：
+
+覆盖全部 `Numeric` 类型：`i32`、`i64`、`f32`、`f64`、`Complex<f32>`、`Complex<f64>`；表中 `tensor` 指 owned `Tensor` 与 `TensorView` 两者。"交换性"指运算满足交换律，左标量可复用右标量的 math 方法（如 `scalar + tensor` → `tensor.add_scalar(scalar)`）。`TensorView` 标量路径与 owned `Tensor` 标量路径在生成宏中合并，共享同一委托规则。
 
 | 运算符 | `tensor op scalar` | `scalar op tensor`（交换性） | `scalar op tensor`（非交换性） |
 | ------ | ------------------ | ---------------------------- | ------------------------------ |
@@ -477,8 +481,6 @@ where A: Numeric, D: Dimension
 | `-`    | → `.sub_scalar()`  | —                            | 原生左标量 / `Scalar<A>` → `sub_scalar_left_impl` |
 | `*`    | → `.mul_scalar()`  | 原生左标量 / `Scalar<A>` → `.mul_scalar()` | — |
 | `/`    | → `.div_scalar()`  | —                            | 原生左标量 / `Scalar<A>` → `div_scalar_left_impl` |
-
-- "交换性"指运算满足交换律，左标量可复用右标量的 math 方法（如 `scalar + tensor` → `tensor.add_scalar(scalar)`）——此处 `tensor` 泛指 owned `Tensor` 与 `TensorView`。`TensorView` 标量路径与 owned `Tensor` 标量路径在生成宏中合并，共享同一委托规则。
 
 ### 5.5 Good / Bad 对比
 
