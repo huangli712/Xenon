@@ -576,7 +576,7 @@ fn test_unique_non_contiguous() {
 | `test_bool_not_participating_in_cast`    | `bool` 不参与逐元素类型转换，相关入口在类型层或运行时被拒绝 | 高     |
 | `test_cast_nan_to_int`                   | `cast()` 对 NaN→整数返回 `TypeConversion` 错误              | 中     |
 
-转换测试遵循 `21-type.md` 的三层结构：静态无损 `From`、静态有损 `CastTo<T>`、动态条件性 `CastTo<T>`。`TypeConversion` 错误断言必须匹配五字段：`operation: Cow::Borrowed("cast")`（标量级 `CastTo::cast_to()` 自身填 `Cow::Borrowed("cast_to")`，张量入口 `cast()` 在 rewrap 时覆盖为 `"cast"`；空字符串被禁止——见 `04-complex.md §10` / `21-type.md §6.1`）、`source_type: &'static str`（断言示例：`assert_eq!(err.source_type, "f64")`，为字符串字面量比较）、`target_type: &'static str`（同前）、`reason: ConversionFailureReason`、`element_index: Option<usize>`；类型身份只使用 `&'static str`，值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供（详见 `26-error.md §5.1` 与 `03-element.md v1.4.0 §5.1.1`）。
+转换测试遵循 `21-type.md` 的三层结构：静态无损 `From`、静态有损 `CastTo<T>`、动态条件性 `CastTo<T>`。`TypeConversion` 错误断言必须匹配五字段：`operation: Cow::Borrowed("cast")`（标量级 `CastTo::cast_to()` 自身填 `Cow::Borrowed("cast_to")`，张量入口 `cast()` 在 rewrap 时覆盖为 `"cast"`；空字符串被禁止——见 `04-complex.md §10` / `21-type.md §6.1`）、`source_type: &'static str`（断言示例：`assert_eq!(err.source_type, "f64")`，为字符串字面量比较）、`target_type: &'static str`（同前）、`reason: ConversionFailureReason`、`element_index: Option<usize>`；类型身份只使用 `&'static str`，值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供（详见 `26-error.md §5.1` 与 `03-element.md §5.1.1`）。
 
 ### 5.15 test_utility.rs
 
