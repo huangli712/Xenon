@@ -205,33 +205,31 @@ where
 }
 ```
 
-为支持 `XenonError::IndexOutOfBounds` 与 `26-error.md` 的规范对齐，`NdIndex<D>` 将提供 `fn to_index_vec(&self) -> Vec<usize>`（或等价 helper）用于把任意合法索引表示统一转换为 `Vec<usize>`。这样 tuple-based `Ix0`~`Ix6` 与切片形式索引都能在错误上报路径中生成一致的结构化诊断数据。
+为支持 `XenonError::IndexOutOfBounds` 与 `26-error.md` 的规范对齐，`NdIndex<D>` 将提供 `fn to_index_vec(&self) -> Vec<usize>`用于把任意合法索引表示统一转换为 `Vec<usize>`。这样 tuple-based `Ix0`~`Ix6` 与切片形式索引都能在错误上报路径中生成一致的结构化诊断数据。`SliceInfo<I, D>` 是切片描述符的公开包装类型：`D` 表示输入维度，`I` 表示切片后的输出维度；其内部字段保持私有，必须通过带校验的公开构造器建立，以避免手工拼出"索引长度、输入维度、输出维度彼此矛盾"的无效状态。
 
-`SliceInfo<I, D>` 是切片描述符的公开包装类型：`D` 表示输入维度，`I` 表示切片后的输出维度；其内部字段保持私有，必须通过带校验的公开构造器建立，以避免手工拼出"索引长度、输入维度、输出维度彼此矛盾"的无效状态。
-
-**校验职责分工（决策 3 / 用户已批准 B9.a）**：
+**校验职责分工**：
 
 | 校验类型 | 由谁负责 | 时机 | 失败错误 |
 | --- | --- | --- | --- |
-| 结构性校验（rank 一致、output 维度匹配 Range 计数、Range start≤end） | `SliceInfo::new` | 构造时 | `XenonError::InvalidArgument { kind: InvalidArgumentKind::OperationSpecific / RangeStartAfterEnd }` |
-| 边界校验（Range.end ≤ shape[axis]、Index < shape[axis]） | `TensorBase::slice(info)` | 切片应用时 | `XenonError::InvalidArgument { kind: InvalidArgumentKind::RangeOutOfBounds }` |
+| 结构性校验（rank 一致、output 维度匹配 Range 计数、Range start≤end） | `SliceInfo::new` | 构造时 | `XenonError::InvalidArgument`  |
+| 边界校验（Range.end ≤ shape[axis]、Index < shape[axis]） | `TensorBase::slice(info)` | 切片应用时 | `XenonError::InvalidArgument` |
 
-理由：`SliceInfo::new` 只接收 `in_dim: D`（维度类型，不携带 shape 值），无法验证具体 shape 边界。把边界校验下沉到 `TensorBase::slice(info)` 让 SliceInfo 可在不绑定具体 shape 的前提下被构造、传递、复用。
+`SliceInfo::new` 只接收 `in_dim: D`（维度类型，不携带 shape 值），无法验证具体 shape 边界。把边界校验下沉到 `TensorBase::slice(info)` 让 SliceInfo 可在不绑定具体 shape 的前提下被构造、传递、复用。
 
 `SliceInfo::new` 在构造时执行的结构性校验：
 
-1. **indices 长度 == in_dim.ndim()**：切片描述符的元素数量必须精确匹配输入维度数。失败 → `InvalidArgumentKind::OperationSpecific { argument: "indices", constraint: "len must equal in_dim.ndim()" }`。
-2. **out_dim.ndim() == count_of(Range)**：每个 `Range` 元素保留一个输出轴，每个 `Index(usize)` 折叠一个轴；输出维度数必须等于 `Range` 元素的计数。失败 → `InvalidArgumentKind::OperationSpecific { argument: "out_dim", constraint: "ndim must equal Range count in indices" }`。
-3. **Range 内部一致性**：每个 `Range { start, end }` 必须满足 `start <= end`。失败 → `InvalidArgumentKind::RangeStartAfterEnd { axis, start, end }`（参见 26-error v3.2.0 §5.1）。
+1. **indices 长度 == in_dim.ndim()**：切片描述符的元素数量必须精确匹配输入维度数。失败 → `InvalidArgumentKind::OperationSpecific`。
+2. **out_dim.ndim() == count_of(Range)**：每个 `Range` 元素保留一个输出轴，每个 `Index(usize)` 折叠一个轴；输出维度数必须等于 `Range` 元素的计数。失败 → `InvalidArgumentKind::OperationSpecific`。
+3. **Range 内部一致性**：每个 `Range { start, end }` 必须满足 `start <= end`。失败 → `InvalidArgumentKind::RangeStartAfterEnd`。
 
-`TensorBase::slice(info)` 在切片应用时执行的边界校验（决策 3 详见 §11）：
+`TensorBase::slice(info)` 在切片应用时执行的边界校验：
 
-4. **每个 Range 的 `end <= shape[axis]`**：失败 → `InvalidArgumentKind::RangeOutOfBounds { axis, axis_len, start, end }`。
-5. **每个 Index 的值 < shape[axis]**：失败 → `XenonError::IndexOutOfBounds { operation: "slice", attempted_index, axis, shape }`。
+4. **每个 Range 的 `end <= shape[axis]`**：失败 → `InvalidArgumentKind::RangeOutOfBounds`。
+5. **每个 Index 的值 < shape[axis]**：失败 → `XenonError::IndexOutOfBounds`。
 
 这为当前版本的 `slice()` 提供了稳定、可验证的编程式入口，同时把"shape-aware"校验留给真正持有 shape 的层。范围语法中的省略边界应在进入 `SliceInfoElem::Range` 前先被规范化为显式 `start` / `end`。
 
-**Inline / Dynamic 选择规则**：`SliceInfoIndices::Inline { len, elems }` 使用固定 6 槽位，覆盖静态维度集合 `Ix0..Ix6` 的所有合法切片描述。当输入维度为 `IxDyn` 且 `indices.len() > 6` 时，`SliceInfo::new` 必须使用 `SliceInfoIndices::Dynamic(Vec<SliceInfoElem>)` 路径以容纳任意 rank。`indices.len() <= 6` 时两种表示都合法，但实现 SHOULD 优先选择 `Inline` 以避免堆分配。
+**Inline / Dynamic 选择规则**：`SliceInfoIndices::Inline { len, elems }` 使用固定 6 槽位，覆盖静态维度集合 `Ix0..Ix6` 的所有合法切片描述。当输入维度为 `IxDyn` 且 `indices.len() > 6` 时，`SliceInfo::new` 必须使用 `SliceInfoIndices::Dynamic(Vec<SliceInfoElem>)` 路径以容纳任意 rank。`indices.len() <= 6` 时两种表示都合法，但实现优先选择 `Inline` 以避免堆分配。
 
 ### 5.2 张量访问与切片 API
 
@@ -254,7 +252,7 @@ where
 
     pub fn slice<I>(&self, info: SliceInfo<I, D>) -> Result<TensorView<'_, A, I>, XenonError>
     where
-        I: Dimension;    // I = output dimension after slicing; corresponds to D in TensorView<'a, A, D> defined in 07-tensor.md
+        I: Dimension; // I = output dimension after slicing; corresponds to D in TensorView<'a, A, D> defined in 07-tensor.md
 
 }
 
@@ -279,8 +277,8 @@ where
 ```
 
 - 当前版本把 `try_at()` / `try_at_mut()` 与 `slice()` 作为对外规范的主恢复路径；`get(&[usize])` / `get_mut(&[usize])` 保留为基于 slice index 的 convenience wrapper，不取代规范主入口。
-- `get(&[usize])` / `get_mut(&[usize])` 作为 convenience wrapper：先验证 `index.len() == self.ndim()`（不一致时返回 `XenonError::DimensionMismatch { operation, expected: self.ndim(), actual: index.len() }`），再逐轴验证 `index[i] < shape[i]`（越界时返回 `XenonError::IndexOutOfBounds { operation: "get" / "get_mut", attempted_index: index.to_vec(), axis: 首个越界轴, shape: self.shape().to_vec() }`），最后用 `compute_offset` 直接计算偏移返回引用。这条路径**不通过** `try_at<I: NdIndex<D>>` 委托，因为对静态 `D=Ix2`，`IxDyn` 没有实现 `NdIndex<Ix2>`（封闭元素集合的 `NdIndex` 实现按维度类型严格分类），强制把 `&[usize]` 转 `IxDyn` 再走 `try_at` 会触发 trait bound 不满足。两条路径的偏移计算逻辑等价（都使用 §6.2 `compute_offset`），但 trait 分派路径不同，独立实现以避免类型约束混淆。
-- `SliceInfo` 稳定构造入口： 调用方可通过 `SliceInfo::new(indices, in_dim, out_dim)` 直接构造切片描述符；该构造器是公开且带**结构性**校验的稳定 API（边界校验由 `TensorBase::slice(info)` 在应用时完成，参见 §5.1 表）。
+- `get(&[usize])` / `get_mut(&[usize])` 作为 convenience wrapper：先验证 `index.len() == self.ndim()`（不一致时返回 `XenonError::DimensionMismatch`），再逐轴验证 `index[i] < shape[i]`（越界时返回 `XenonError::IndexOutOfBounds`），最后用 `compute_offset` 直接计算偏移返回引用。这条路径不通过 `try_at<I: NdIndex<D>>` 委托，因为对静态 `D=Ix2`，`IxDyn` 没有实现 `NdIndex<Ix2>`（封闭元素集合的 `NdIndex` 实现按维度类型严格分类），强制把 `&[usize]` 转 `IxDyn` 再走 `try_at` 会触发 trait bound 不满足。两条路径的偏移计算逻辑等价（都使用 §6.2 `compute_offset`），但 trait 分派路径不同，独立实现以避免类型约束混淆。
+- `SliceInfo` 稳定构造入口： 调用方可通过 `SliceInfo::new(indices, in_dim, out_dim)` 直接构造切片描述符；该构造器是公开且带结构性校验的稳定 API。
 
 ### 5.3 Good / Bad 对比
 
@@ -373,37 +371,36 @@ TensorBase::slice(info):
        relative slice_delta exactly once. Forbidden: `self.as_ptr().add(new_offset)`
        (would double-apply offset). The unsafe pointer add executes only after
        shape-aware bounds checks and checked offset arithmetic have proved
-       the element offset valid. See "切片 offset 计算与空切片规则（v3.0.2）"
-       below for the full SAFETY contract.
+       the element offset valid. 
     4. Construct and return TensorView<'_, A, I> with ViewRepr borrowed from
        self.storage.
 ```
 
-切片后的语义约束如下：
+**语义约束**：
 
 - 结果须保持原有逻辑元素顺序。
-- `Index(usize)` 会折叠对应轴并以 checked arithmetic 累加 offset；任一 checked_mul / checked_add 溢出返回 `XenonError::InvalidLayout { reason: AccessRangeExceedsStorage, .. }`（参见 26-error v3.2.0 §5.1 `InvalidLayoutReason`）。
+- `Index(usize)` 会折叠对应轴并以 checked arithmetic 累加 offset；任一 checked_mul / checked_add 溢出返回 `XenonError::InvalidLayout`。
 - `Range` 会按起止边界更新 shape；对应轴的 stride 值保持不变。
 - 切片结果与源张量共享底层数据时，仅可落在只读或共享只读范围内，不提供共享可写视图。
-- **存储表示绝对降级：** 范围索引/切片产出的张量始终承载 `ViewRepr<'a, A>`，与 `15-broadcast.md §6.4` 的广播降级规则、`16-shape.md §5.3` 的转置降级规则保持一致（统一规则见 `05-storage.md v2.0.0 §5.11.1`）。无论源张量是 `Owned<A>`、`ArcRepr<A>`、`ViewRepr<'_, A>` 还是 `ViewMutRepr<'_, A>`，切片产出的视图均为 `ViewRepr<'a, A>`（生命周期绑定源张量），不保留 `ArcRepr` 的引用计数共享所有权语义。
-- **`derived_from_view_mut` 传播规则：** 切片操作按 **07-tensor.md §5.1 / §5.3**（唯一权威）的规则设置 `derived_from_view_mut` 字段：从 `ViewMutRepr` 源或其已带标记的 `ViewRepr` 继承该标记；其他情形设为 `false`。完整 3 条规则与 `access_semantics()` 5-rule 判定表定义见 07-tensor.md §5.1 字段文档与 §5.3。
+- 存储表示绝对降级： 范围索引/切片产出的张量始终承载 `ViewRepr<'a, A>`，与 `15-broadcast.md §6.4` 的广播降级规则、`16-shape.md §5.3` 的转置降级规则保持一致（统一规则见 `05-storage.md §5.11.1`）。无论源张量是 `Owned<A>`、`ArcRepr<A>`、`ViewRepr<'_, A>` 还是 `ViewMutRepr<'_, A>`，切片产出的视图均为 `ViewRepr<'a, A>`（生命周期绑定源张量），不保留 `ArcRepr` 的引用计数共享所有权语义。
+- `derived_from_view_mut` 传播规则： 切片操作按规则设置 `derived_from_view_mut` 字段：从 `ViewMutRepr` 源或其已带标记的 `ViewRepr` 继承该标记；其他情形设为 `false`。完整 3 条规则与 `access_semantics()` 5-rule 判定表定义见 `07-tensor.md §5.1` 字段文档与 `§5.3`。
 - 布局状态只能重新落在 `FContiguous`、`NonContiguous`、`BroadcastView` 三种之一。
 
 **offset 单位：** 本模块中所有 `offset` 字段一律是元素单位（element-count），不是字节单位。指针算术 `self.as_ptr().add(offset)` 对 `*const A` 调用 `add(n: usize)` 时，自动按 `size_of::<A>()` 字节换算，由 Rust 标准库 pointer 类型保证；本模块直接传 element offset 即可。该 `add` 调用必须位于已完成 shape-aware bounds 校验与 checked offset 算术验证之后的 unsafe block 中。
 
-**SliceInfo 校验职责回顾：** `SliceInfo::new` 只做结构性校验（rank 一致、output 维度匹配 Range 计数、Range start≤end）；shape 边界校验（Range.end <= shape[axis]、Index < shape[axis]）由 `TensorBase::slice(info)` 在切片应用时完成，理由详见 §5.1 和决策 3。
+**SliceInfo 校验职责回顾：** `SliceInfo::new` 只做结构性校验（rank 一致、output 维度匹配 Range 计数、Range start≤end）；shape 边界校验（Range.end <= shape[axis]、Index < shape[axis]）由 `TensorBase::slice(info)` 在切片应用时完成，理由详见 §5.1。
 
-切片布局标志规则：切片结果的 layout flags 通过 `compute_layout_flags()`（06-layout.md §5.12）重新计算。切片后的 `HAS_ZERO_STRIDE` flag 与 `LayoutState::BroadcastView` 分类以 **06-layout.md §5.11**（唯一权威）为准：非空切片保留零步长轴时归入 `BroadcastView`；空切片（`product(shape) == 0`）即使存在 stride == 0 也不触发广播分类，详见 06-layout.md §5.11 边界情形覆盖表。
+**切片布局标志规则**：切片结果的 layout flags 通过 `compute_layout_flags()`（`06-layout.md §5.12`）重新计算。切片后的 `HAS_ZERO_STRIDE` flag 与 `LayoutState::BroadcastView` 分类以 `06-layout.md §5.11`为准：非空切片保留零步长轴时归入 `BroadcastView`；空切片（`product(shape) == 0`）即使存在 stride == 0 也不触发广播分类。
 
-**切片 offset 计算与空切片规则（v3.0.2）：** 切片应用时**必须**严格区分两个 offset 概念：
+**切片 offset 计算与空切片规则**： 切片应用时必须严格区分两个 offset 概念：
 
-1. `slice_delta`（element 单位）：本次切片在每个轴上累加得到的相对偏移，由 `TensorBase::slice(info)` 在 bounds-check 通过后计算。`Index` 与 `Range { start, end }` **两类元素都贡献** `slice_delta`（见上方步骤 2a / 2b）：
+1. `slice_delta`（element 单位）：本次切片在每个轴上累加得到的相对偏移，由 `TensorBase::slice(info)` 在 bounds-check 通过后计算。`Index` 与 `Range { start, end }` 两类元素都贡献 `slice_delta`：
    - `Index(idx)` 折轴：`slice_delta += idx * src_strides[i]`；
    - `Range { start, end }`：`slice_delta += start * src_strides[i]`（`start == 0` 时贡献为 0）；保留 `stride[i]`，更新输出 shape[axis] = `end - start`。
    形式化：`slice_delta = Σᵢ contribution_i * src_strides[i]`，其中 `contribution_i` 对 `Index(idx)` 取 `idx`、对 `Range { start, end }` 取 `start`。所有累加都使用 `checked_add` / `checked_mul` 防溢出。
-2. `new_offset = src.offset.checked_add(slice_delta)?`：写回切片结果 `TensorBase::offset` 字段的绝对偏移（仍以 storage base 为基准）。**必须 checked**：尽管 `slice_delta` 的累加已使用 `checked_add` / `checked_mul`，最后从相对 delta 折回绝对 offset 时仍可能在 `usize::MAX` 边界溢出；溢出映射 `XenonError::InvalidLayout { operation: Cow::Borrowed("slice"), reason: InvalidLayoutReason::AccessRangeExceedsStorage, .. }`（R15 B-01 修复）。
+2. `new_offset = src.offset.checked_add(slice_delta)?`：写回切片结果 `TensorBase::offset` 字段的绝对偏移（仍以 storage base 为基准）。**必须检查**：尽管 `slice_delta` 的累加已使用 `checked_add` / `checked_mul`，最后从相对 delta 折回绝对 offset 时仍可能在 `usize::MAX` 边界溢出；溢出映射 `XenonError::InvalidLayout`。
 
-`compute_layout_flags::<A, I>` 需要的是**逻辑首元素指针**（non-derefenceable 即可），不是绝对 offset；因此必须按结果 `len` 分支：
+`compute_layout_flags::<A, I>` 需要的是逻辑首元素指针，不是绝对 offset；因此必须按结果 `len` 分支：
 
 ```rust,ignore
 let logical_ptr: *const A = if result_len == 0 {
@@ -425,7 +422,7 @@ let logical_ptr: *const A = if result_len == 0 {
 let new_flags = layout::compute_layout_flags::<A, I>(&new_shape, &new_strides, logical_ptr);
 ```
 
-**禁止**直接写 `src.as_ptr().add(new_offset)` —— `src.as_ptr()` 已经叠加过 `src.offset`，再 add `new_offset` 会双重 offset；且空切片场景下 storage base 可能是 dangling，对其做 add 算术违反 `07-tensor.md §6.2` 空张量规则。
+禁止直接写 `src.as_ptr().add(new_offset)` —— `src.as_ptr()` 已经叠加过 `src.offset`，再 add `new_offset` 会双重 offset；且空切片场景下 storage base 可能是 dangling，对其做 add 算术违反 `07-tensor.md §6.2` 空张量规则。
 
 ### 6.4 安全性论证
 
