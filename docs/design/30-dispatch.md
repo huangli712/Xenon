@@ -550,16 +550,11 @@ pub(crate) fn reset_simd_threshold();
 
 ### 5.7 Guard API
 
-`ParallelGuard` 没有公开（pub/pub(crate)）的构造函数。
-进入并行区域的唯一入口是 `select_exec_path()` 返回 `(ExecPath::Parallel, Some(guard))`。
-该设计让调用方拿到的 guard 与"select 到 Parallel 的决策"严格对应，
-消除了"先 select 到 Parallel，再 enter() 失败回退"的无效中间状态。
+`ParallelGuard` 没有公开（pub/pub(crate)）的构造函数。进入并行区域的唯一入口是 `select_exec_path()` 返回 `(ExecPath::Parallel, Some(guard))`。该设计让调用方拿到的 guard 与"select 到 Parallel 的决策"严格对应，消除了"先 select 到 Parallel，再 enter() 失败回退"的无效中间状态。`Drop` 实现释放 thread-local flag，是 `ParallelGuard` 唯一对外可观察的行为。
 
-`Drop` 实现释放 thread-local flag，是 `ParallelGuard` 唯一对外可观察的行为。
+### 5.8 路径选择阈值
 
-### 5.8 路径选择阈值（分操作类型参考）
-
-dispatch 持有的阈值适用于**所有操作类型**的统一入口裁决。各操作的具体 SIMD 阈值差异由 `simd/` 内部处理。以下表格仅供参考说明各模块的总体阈值策略，**dispatch 自身只持有两个统一阈值**（`PARALLEL_THRESHOLD = 65536`、`SIMD_THRESHOLD = 64`），不感知操作类型；**具体 per-op 阈值由 `simd/` 后端在 `ExecPath::Simd` 被选中后执行最终 admission 时裁决**（与下方"调用方-dispatch-后端的阈值分工"以及 `08-simd.md §5.6` "条件实现，默认标量回退" 一致；调用方**不**做 per-op **长度阈值** gating，但**必须**做 op-语义 gating——参见 `08-simd.md §5.6.1` / `09-parallel.md §6.5` 整数 checked 等价性等场景）：
+dispatch 持有的阈值适用于所有操作类型的统一入口裁决。各操作的具体 SIMD 阈值差异由 `simd/` 内部处理。以下表格仅供参考说明各模块的总体阈值策略，dispatch 自身只持有两个统一阈值（`PARALLEL_THRESHOLD = 65536`、`SIMD_THRESHOLD = 64`），不感知操作类型；具体 per-op 阈值由 `simd/` 后端在 `ExecPath::Simd` 被选中后执行最终 admission 时裁决：
 
 | 操作类型       | 元素类型                        | 并行最小长度 | SIMD 最小长度 | 说明                                   |
 | -------------- | ------------------------------- | :----------: | :-----------: | -------------------------------------- |
