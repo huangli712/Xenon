@@ -792,7 +792,7 @@ math / reduction / matrix call dispatch entry
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | 决策     | `par_map` / `par_zip_map` / `par_sum` / `par_dot` / `par_reduce_impl` / `par_map_checked` 都接收 `_guard: ParallelGuard` 按值参数                |
 | 理由     | 把"裁决到 Parallel"和"进入并行临界区"在调用图上原子绑定；调用方无法忘记 acquire guard，guard RAII 在函数返回时自动清除 thread-local 嵌套防护标记 |
-| 替代方案 | 在 `parallel` 内部自行 `enter()` —— 放弃，会让 `select_exec_path` 与实际并行进入分离，重新引入 30-dispatch v1.0 的 C6 矛盾（哪个函数 consume guard） |
+| 替代方案 | 在 `parallel` 内部自行 `enter()` —— 放弃，会让 `select_exec_path` 与实际并行进入分离，重新引入 30-dispatch 的矛盾（哪个函数 consume guard） |
 | 替代方案 | 不传 guard，依赖 thread_local 隐式状态 —— 放弃，无法让类型系统强制"只有被 dispatch 选中的调用才能进入并行" |
 
 ### 决策 8：`ParIter` 实现 `IndexedParallelIterator` + `Producer`
@@ -809,7 +809,7 @@ math / reduction / matrix call dispatch entry
 | -------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | 决策     | 单个 worker chunk 内可独立调用 `simd` 后端 kernel；chunk 间合并仍由 `parallel` 控制                                            |
 | 理由     | 与 08-simd.md 对齐：撤销并行/SIMD 互斥，提供 thread × SIMD 双层加速                                              |
-| 替代方案 | 保留 v1.x 设计（worker 内禁止 SIMD）—— 放弃，会牺牲大数据吞吐                                                                  |
+| 替代方案 | 保留旧设计（worker 内禁止 SIMD）—— 放弃，会牺牲大数据吞吐                                                                  |
 | 替代方案 | worker 跨 chunk 共享 SIMD 状态 —— 放弃，会让 chunk 不变量与 SIMD admission 互相耦合                                            |
 
 ---

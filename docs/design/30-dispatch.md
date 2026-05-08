@@ -278,9 +278,9 @@ impl Drop for ParallelGuard {
 }
 ```
 
-**关键 API 边界变化（v1.1.0）：** `ParallelGuard::enter()` 不再作为公开 API 暴露。取而代之，进入并行区域的 **唯一** 入口是 `select_exec_path()` 返回 `(ExecPath::Parallel, Some(guard))`。`parallel/` 后端在收到该 guard 后将其持有到并行区域结束即可，无需也不能再次调用 `enter()`。详细论证见决策 7（§11）。
+**关键 API 边界变化：** `ParallelGuard::enter()` 不再作为公开 API 暴露。取而代之，进入并行区域的 **唯一** 入口是 `select_exec_path()` 返回 `(ExecPath::Parallel, Some(guard))`。`parallel/` 后端在收到该 guard 后将其持有到并行区域结束即可，无需也不能再次调用 `enter()`。详细论证见决策 7（§11）。
 
-**线程亲和性（thread affinity）契约（v1.2.0）：** `ParallelGuard` 有意 `!Send + !Sync`（通过 `_private: PhantomData<*const ()>` 推导）。其 `Drop` 实现清除调用线程的 thread-local `IN_PARALLEL` flag——若 guard 被 move 到 Rayon worker 线程并在 worker 上 drop，会清错线程的 TLS，破坏嵌套并行检测的正确性。因此：
+**线程亲和性（thread affinity）契约：** `ParallelGuard` 有意 `!Send + !Sync`（通过 `_private: PhantomData<*const ()>` 推导）。其 `Drop` 实现清除调用线程的 thread-local `IN_PARALLEL` flag——若 guard 被 move 到 Rayon worker 线程并在 worker 上 drop，会清错线程的 TLS，破坏嵌套并行检测的正确性。因此：
 
 - `parallel/` 后端必须保持 outer guard 在 **调用线程**（dispatching thread）的入口函数栈帧上，直到整个 Rayon 并行区域结束。
 - Rayon worker 闭包 **不得** 捕获 outer guard。
@@ -402,7 +402,7 @@ pub(crate) fn with_parallel_worker_context<R>(f: impl FnOnce() -> R) -> R {
 ///   `is_contiguous`, **and** `len >= SIMD_THRESHOLD`,
 ///   **and** `ExecPath::Parallel` was not chosen.
 ///
-///   **Note (v1.1.3 alignment policy):** `alignment_ok` is **NOT** a
+///   **Note:** `alignment_ok` is **NOT** a
 ///   hard precondition for `ExecPath::Simd`. It is propagated to the
 ///   `simd` backend as a kernel-capability hint; the SIMD kernel
 ///   itself decides whether to dispatch to an aligned or unaligned
@@ -539,10 +539,10 @@ pub(crate) fn reset_simd_threshold();
 | 输入条件          | 是否考虑 `Simd`           | 是否考虑 `Parallel`                                  |
 | ----------------- | ------------------------- | ---------------------------------------------------- |
 | 连续 + 对齐       | 是（`len >= SIMD_THRESHOLD`），`alignment_ok` 作为能力提示传入 simd 后端 | 是（`len >= PARALLEL_THRESHOLD`）                |
-| 连续 + 非对齐     | **是**（v1.1.3 起放宽：连续 + `len >= SIMD_THRESHOLD` 即可进入；`alignment_ok = false` 转为传给 simd 的 unaligned-kernel 提示，由 `08-simd.md §5.7` 决定具体 kernel 选择） | 是（`len >= PARALLEL_THRESHOLD`）            |
+| 连续 + 非对齐     | **是**（连续 + `len >= SIMD_THRESHOLD` 即可进入；`alignment_ok = false` 转为传给 simd 的 unaligned-kernel 提示，由 `08-simd.md §5.7` 决定具体 kernel 选择） | 是（`len >= PARALLEL_THRESHOLD`）            |
 | 非连续            | **否**（连续性仍是 SIMD 准入硬性条件） | 是，但 `len >= 2 * PARALLEL_THRESHOLD`（饱和乘法防溢出） |
 
-**三条规则的差异有意为之（v1.1.3 起）：**
+**三条规则的差异有意为之：**
 
 - **SIMD 连续性**：`is_contiguous == false` 时**直接拒绝**进入 `Simd` 路径——SIMD 后端要求连续输入，无法通过单纯放宽阈值满足。
 - **SIMD 对齐**：`alignment_ok == false` 时**不拒绝**进入 `Simd` 路径——`alignment_ok` 仅作为能力提示位透传到 simd 后端，由 `08-simd.md §5.7` 的 admission 规则决定走 aligned 或 unaligned kernel；多数逐元素 kernel 默认接受 unaligned 输入（与 `08-simd.md` 协同）。这是与 v1.1.x 的破坏性差异——v1.1.x 把 alignment 当作硬门槛，会错误关闭合法 unaligned SIMD 路径。
@@ -1235,7 +1235,7 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 | 属性     | 值                                                                                                              |
 | -------- | --------------------------------------------------------------------------------------------------------------- |
 | 决策     | `set_parallel_threshold(0)` 唯一含义为"禁用并行路径"，永不解释为"对所有 len 都启用"。                              |
-| 理由     | C7 指出 v1.0.0 算法 `len >= effective_parallel_threshold` 在 threshold == 0 时会让所有 len（含 0）满足并行条件，与 §5.6 文字"effectively disables the parallel path"直接矛盾。把 0 作为显式 sentinel 一次性闭合该语义，且对测试/基准最有用——禁用而非穷尽启用。 |
+| 理由     | C7 指出`len >= effective_parallel_threshold` 在 threshold == 0 时会让所有 len（含 0）满足并行条件，与 §5.6 文字"effectively disables the parallel path"直接矛盾。把 0 作为显式 sentinel 一次性闭合该语义，且对测试/基准最有用——禁用而非穷尽启用。 |
 | 替代方案 | 用 `Option<usize>` 表达启用/禁用——放弃，与 `AtomicUsize` 存储不兼容；引入 `usize::MAX` 当作 disable 又无法与"巨大但非禁用"区分。 |
 
 ---

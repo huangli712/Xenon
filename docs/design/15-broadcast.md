@@ -92,7 +92,7 @@ src/broadcast/
 | 来源模块    | 使用的类型/trait                                                                                                                                    |
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tensor`    | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `.shape()`, `.strides()`, `.offset()`, 视图构造入口，以及从任意受支持存储模式降级到只读广播视图的入口。 |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<Other>`（public sealed trait，对外可命名；对称性见 02-dimension v1.x §5.10），`IntoDimension`（用于 `broadcast_to<E>` 接受目标 shape 的多种语法形式：`IxN` / 元组 / 数组 / `Vec<usize>` / `&[usize]`）。 |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<Other>`（public sealed trait，对外可命名；对称性见 02-dimension §5.10），`IntoDimension`（用于 `broadcast_to<E>` 接受目标 shape 的多种语法形式：`IxN` / 元组 / 数组 / `Vec<usize>` / `&[usize]`）。 |
 | `layout`    | `Strides<D>`, `LayoutFlags`, `LayoutState::BroadcastView`（广播结果的目标布局状态），以及通过 `compute_layout_flags()` 间接关联的 `LayoutState::FContiguous` / `LayoutState::NonContiguous`。 |
 | `error`     | `XenonError::BroadcastError`, `XenonError::InvalidArgument`（`InvalidArgumentKind::OperationSpecific` 用于 `broadcast_strides` 的 rank/长度前提失败），以及 `Cow<'static, str>` 用于 `operation` 字段（参见 26-error §5.1）。|
 
@@ -154,7 +154,7 @@ where
 
 **关于 `broadcast_with` 双向 `BroadcastDim` bound 的可满足性**：
 
-`broadcast_with` 的 `where` 子句同时要求 `D: BroadcastDim<E>` 与 `E: BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>`。这条双向 bound 看似过强，但能完整覆盖封闭维度集合 `{Ix0..Ix6, IxDyn}` 的所有 `(D, E)` 组合（57 项），由 02-dimension v1.x §5.10 实现矩阵保证。57 项的计数口径是“同 rank 自广播 + 跨静态 rank 双向合并行 + 静态/IxDyn 双向合并行 + IxDyn 自广播”的文档矩阵行数，而不是底层 trait impl 条数：
+`broadcast_with` 的 `where` 子句同时要求 `D: BroadcastDim<E>` 与 `E: BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>`。这条双向 bound 看似过强，但能完整覆盖封闭维度集合 `{Ix0..Ix6, IxDyn}` 的所有 `(D, E)` 组合（57 项），由 02-dimension §5.10 实现矩阵保证。57 项的计数口径是“同 rank 自广播 + 跨静态 rank 双向合并行 + 静态/IxDyn 双向合并行 + IxDyn 自广播”的文档矩阵行数，而不是底层 trait impl 条数：
 
 - 同 rank自广播 7 项（`IxN BroadcastDim IxN → IxN`，自然对称）
 - 跨静态 rank 双向合并 42 项（每个无序静态 rank 对在文档矩阵中列出两个方向：`IxM BroadcastDim IxN` 与 `IxN BroadcastDim IxM`，`Output` 都为较高 rank 的 `IxK`，`K = max(M, N)`）
@@ -163,7 +163,7 @@ where
 
 公式：`7 + 42 + 7 + 1 = 57`。其中“静态 + IxDyn 双向合并 7 项”每项包含两个方向的对称实现；若按单个 trait impl 逐条计数，会得到不同数字，但 `broadcast_with` 只依赖 02-dimension §5.10 已声明的 57 项矩阵及其对称性测试。
 
-02-dimension v1.x §5.10 通过显式 trait 实现对称性保证：对所有 `(D, E)`，`<D as BroadcastDim<E>>::Output == <E as BroadcastDim<D>>::Output`，并在 §5.10 末尾增加 compile-time 类型等价测试覆盖（见 02-dimension v1.x 修复说明）。因此 `broadcast_with` 的 bound 在所有合法组合上可满足，不会因为反向 trait 缺失而拒绝调用。
+02-dimension §5.10 通过显式 trait 实现对称性保证：对所有 `(D, E)`，`<D as BroadcastDim<E>>::Output == <E as BroadcastDim<D>>::Output`，并在 §5.10 末尾增加 compile-time 类型等价测试覆盖。因此 `broadcast_with` 的 bound 在所有合法组合上可满足，不会因为反向 trait 缺失而拒绝调用。
 
 ### 5.2 API 语义约束
 
