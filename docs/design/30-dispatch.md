@@ -206,7 +206,7 @@ impl ParallelExecStrategy {
     /// Construct a validated strategy.
     ///
     /// All `max_workers` and `chunk_size` validation happens here at
-    /// construction time (v1.1.3, fail-fast):
+    /// construction time:
     ///
     /// - `chunk_size == Some(0)` → `InvalidArgument`
     /// - `max_workers == Some(0)` → `InvalidArgument`
@@ -240,7 +240,7 @@ impl ParallelExecStrategy {
 
 | 字段          | 合法范围                          | 默认值 | 非法时行为                                                                  |
 | ------------- | --------------------------------- | ------ | --------------------------------------------------------------------------- |
-| `max_workers` | `Some(1..=rayon::current_num_threads())` 或 `None` | `None` | `Some(0)` 与 `Some(n) where n > pool_size` 都在 `new()` 内返回 `InvalidArgument`（v1.1.3 起统一在构造期校验） |
+| `max_workers` | `Some(1..=rayon::current_num_threads())` 或 `None` | `None` | `Some(0)` 与 `Some(n) where n > pool_size` 都在 `new()` 内返回 `InvalidArgument` |
 | `chunk_size`  | `Some(n)` where `n > 0` 或 `None`                  | `None` | `Some(0)` 在 `new()` 内返回 `InvalidArgument`                              |
 
 **字段不变量归属：** 所有 `max_workers` / `chunk_size` 校验统一在 dispatch 内的 `ParallelExecStrategy::new()` 构造器中完成，包括对 rayon 线程池上限的检查（通过 `rayon::current_num_threads()` 一次性读取）。`parallel/` 模块只消费已校验的策略，**不再**返回 `max_workers` 相关的 `InvalidArgument`。这与 `09-parallel.md §5.4` 协同（"dispatch 构造期一次性校验"），消除歧义。
