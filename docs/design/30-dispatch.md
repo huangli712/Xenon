@@ -366,8 +366,8 @@ pub(crate) fn with_parallel_worker_context<R>(f: impl FnOnce() -> R) -> R {
 ///   the alignment expected by the SIMD kernel that would be selected
 ///   at the given length (`layout::is_aligned()`). If `false`, the SIMD
 ///   path may select an unaligned variant or fall back internally. This
-///   is a HINT, not a hard precondition; the SIMD backend
-///   (`08-simd.md §5.7`) makes the final per-kernel admission decision.
+///   is a HINT, not a hard precondition; the SIMD backend makes the
+///   final per-kernel admission decision.
 ///
 /// # Returns
 ///
@@ -384,7 +384,7 @@ pub(crate) fn with_parallel_worker_context<R>(f: impl FnOnce() -> R) -> R {
 /// * `(ExecPath::Serial, None)` — the serial path was selected
 ///   (default fallback). No guard.
 ///
-/// The `Option<ParallelGuard>` is `Some` **iff** the first element
+/// The `Option<ParallelGuard>` is `Some` **if** the first element
 /// is `ExecPath::Parallel`. This invariant is enforced by the
 /// implementation and may be relied upon by callers.
 ///
@@ -473,7 +473,7 @@ pub(crate) fn should_parallelize(len: usize, is_contiguous: bool) -> bool;
 
 ### 5.6 阈值配置
 
-**编译期默认值：**
+**编译期默认值**：
 
 | 阈值参数              | 默认值  | 适用场景                               |
 | --------------------- | :-----: | -------------------------------------- |
@@ -482,7 +482,7 @@ pub(crate) fn should_parallelize(len: usize, is_contiguous: bool) -> bool;
 
 以上默认值与 `08-simd.md` §5.7 所述一致。归约（`sum`/`dot`）的 SIMD 阈值更高（1024 / 512），但该阈值由 `simd/` 模块内部管理，不属于 dispatch 裁决范围（dispatch 仅依据调用方传入的 `len` 和 `alignment_ok` 做统一推荐）。
 
-**内部覆写接口（pub(crate)）：**
+**内部覆写接口**：
 
 ```rust,ignore
 /// Override the parallel threshold at runtime.
@@ -532,21 +532,21 @@ pub(crate) fn set_simd_threshold(threshold: usize);
 pub(crate) fn reset_simd_threshold();
 ```
 
-**非连续策略（统一规则）：** SIMD 路径与并行路径采取不同规则——
+**非连续策略**： SIMD 路径与并行路径采取不同规则——
 
 | 输入条件          | 是否考虑 `Simd`           | 是否考虑 `Parallel`                                  |
 | ----------------- | ------------------------- | ---------------------------------------------------- |
-| 连续 + 对齐       | 是（`len >= SIMD_THRESHOLD`），`alignment_ok` 作为能力提示传入 simd 后端 | 是（`len >= PARALLEL_THRESHOLD`）                |
+| 连续 + 对齐       | **是**（`len >= SIMD_THRESHOLD`），`alignment_ok` 作为能力提示传入 simd 后端 | 是（`len >= PARALLEL_THRESHOLD`）                |
 | 连续 + 非对齐     | **是**（连续 + `len >= SIMD_THRESHOLD` 即可进入；`alignment_ok = false` 转为传给 simd 的 unaligned-kernel 提示，由 `08-simd.md §5.7` 决定具体 kernel 选择） | 是（`len >= PARALLEL_THRESHOLD`）            |
 | 非连续            | **否**（连续性仍是 SIMD 准入硬性条件） | 是，但 `len >= 2 * PARALLEL_THRESHOLD`（饱和乘法防溢出） |
 
-**三条规则的差异有意为之：**
+**三条规则的差异**：
 
-- **SIMD 连续性**：`is_contiguous == false` 时**直接拒绝**进入 `Simd` 路径——SIMD 后端要求连续输入，无法通过单纯放宽阈值满足。
-- **SIMD 对齐**：`alignment_ok == false` 时**不拒绝**进入 `Simd` 路径——`alignment_ok` 仅作为能力提示位透传到 simd 后端，由 `08-simd.md §5.7` 的 admission 规则决定走 aligned 或 unaligned kernel；多数逐元素 kernel 默认接受 unaligned 输入（与 `08-simd.md` 协同）。
-- **Parallel 非连续**：`is_contiguous == false` 时**不拒绝**，但通过**有效阈值翻倍**抑制进入——非连续的并行 worker 仍可执行（只是缓存局部性差），收益曲线由翻倍阈值近似补偿。
+- **SIMD 连续性**：`is_contiguous == false` 时直接拒绝进入 `Simd` 路径——SIMD 后端要求连续输入，无法通过单纯放宽阈值满足。
+- **SIMD 对齐**：`alignment_ok == false` 时不拒绝进入 `Simd` 路径——`alignment_ok` 仅作为能力提示位透传到 simd 后端，由 `08-simd.md §5.7` 的 admission 规则决定走 aligned 或 unaligned kernel；多数逐元素 kernel 默认接受 unaligned 输入（与 `08-simd.md` 协同）。
+- **Parallel 非连续**：`is_contiguous == false` 时不拒绝，但通过有效阈值翻倍抑制进入——非连续的并行 worker 仍可执行（只是缓存局部性差），收益曲线由翻倍阈值近似补偿。
 
-**溢出保护：** `effective_parallel_threshold = base.saturating_mul(2)`。当 `set_parallel_threshold` 被设为接近 `usize::MAX` 的值时，饱和乘法把翻倍结果钉在 `usize::MAX`，从而 `len >= effective` 永不成立——同样落到 `Serial`。这避免任何 wrap-around 导致的非确定性路径选择。
+**溢出保护**：`effective_parallel_threshold = base.saturating_mul(2)`。当 `set_parallel_threshold` 被设为接近 `usize::MAX` 的值时，饱和乘法把翻倍结果钉在 `usize::MAX`，从而 `len >= effective` 永不成立——同样落到 `Serial`。这避免任何 wrap-around 导致的非确定性路径选择。
 
 ### 5.7 Guard API
 
