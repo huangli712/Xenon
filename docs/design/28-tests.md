@@ -531,8 +531,8 @@ Storage 协同测试遵循 `05-storage.md`：广播、转置、切片均产生 `
 
 | 测试函数                        | 测试内容                                          | 优先级 |
 | ------------------------------- | ------------------------------------------------- | ------ |
-| `test_unique_set_equality`      | unique 返回不重复元素，按 **multiset 语义** 与输入对比（**不依赖输出顺序**——与 `14-set.md v2.0.2 §5.1` / §11 决策 4 保持一致；输出顺序自 v2.0.2 起 unspecified，与 `require.md §15` 对齐）；NaN 元素按出现次数比较 | 高     |
-| `test_unique_order_unspecified` | 编译期/lint 锚点：测试 **禁止** 依赖任何特定输出顺序——任何 `assert_eq!(unique_result.iter().collect::<Vec<_>>(), vec![...])` 形式的向量等值断言视为反模式（v2.0.2 起，取代 v2.0.0/v2.0.1 的 first-occurrence-order 测试） | 高     |
+| `test_unique_set_equality`      | unique 返回不重复元素，按 **multiset 语义** 与输入对比（**不依赖输出顺序**——与 `14-set.md §5.1` 保持一致；输出顺序unspecified，与 `require.md §15` 对齐）；NaN 元素按出现次数比较 | 高     |
+| `test_unique_order_unspecified` | 编译期/lint 锚点：测试 **禁止** 依赖任何特定输出顺序——任何 `assert_eq!(unique_result.iter().collect::<Vec<_>>(), vec![...])` 形式的向量等值断言视为反模式 | 高     |
 | `test_unique_integers`          | 整数 unique                                       | 中     |
 | `test_unique_nan_preserved`     | 浮点 `NaN != NaN`，输入中的每个 NaN 都应保留      | 高     |
 | `test_unique_signed_zero_equal` | `-0.0` 与 `0.0` 视为相等，仅保留一个零值          | 高     |
@@ -716,7 +716,7 @@ Workspace 借用测试须调用 `Workspace::borrow_mut(&mut self)` 与顶层 `Wo
 
 **归属说明**：`test_send_sync_contracts` 语义上属于 safety（`25-safety.md`），`test_complex_c99_layout` 属于 FFI 布局（`23-ffi.md`），`test_ix0_iter_single` 属于迭代器（`10-iterator.md`），`test_zst_storage_no_ub` 属于存储/tensor UB 验证（`05-storage.md`）。它们置于 `test_error.rs` 是因为均通过 `XenonError` 统一公开错误边界进行校验，或依赖 error 模块的类型约束（如 `Send`/`Sync` bound 传播需 `XenonError: Send + Sync`）。若后续测试文件职责边界收紧，可分别移至 `test_parallel.rs`、`test_ffi.rs`、`test_iterator.rs`、`test_tensor.rs`。
 
-**TODO（v2）**：当前安全不变量测试（`test_send_sync_contracts`、`test_zst_storage_no_ub` 等）暂置于 `test_error.rs` 中以利用统一的 `XenonError` 校验入口。未来若新增独立的 `test_safety.rs` 文件以匹配模块职责边界，须同步更新 §3 文件位置与 §9.1 测试文件映射表。
+**TODO**：当前安全不变量测试（`test_send_sync_contracts`、`test_zst_storage_no_ub` 等）暂置于 `test_error.rs` 中以利用统一的 `XenonError` 校验入口。未来若新增独立的 `test_safety.rs` 文件以匹配模块职责边界，须同步更新 §3 文件位置与 §9.1 测试文件映射表。
 
 panic 诊断信息测试：验证 panic message 包含 `需求说明书 §27` 要求的诊断上下文（至少包含错误类别和相关参数子集）。通过 `#[should_panic(expected = "...")]` 或 `std::panic::catch_unwind` 捕获并断言。
 
@@ -1265,7 +1265,7 @@ fn prop_broadcast_shape_rule() {
 
 - [ ] **T10**: 实现 `tests/test_set.rs`
   - 文件: `tests/test_set.rs`
-  - 内容: 集合操作（unique 整数/复数/NaN/±0.0/multiset 等值；输出顺序 unspecified——与 `14-set.md v2.0.2 §5.1 / §11 决策 4 / §8.2` 一致，对齐 `require.md §15`）
+  - 内容: 集合操作（unique 整数/复数/NaN/±0.0/multiset 等值；输出顺序 unspecified——与 `14-set.md` 一致，对齐 `require.md §15`）
   - 测试: `cargo test --test test_set`
   - 前置: T1
   - 预计: 15 min
@@ -1410,33 +1410,6 @@ test:
     - name: Cooperative-baseline pin drift (hard gate, ref design.md §6.5.4)
       run: tools/check_baseline_pins.py docs/design/
 ```
-
-#### 8.2.1 协同基线 pin-drift 校验脚本规格（闭合 `design.md §6.5.4`）
-
-`tools/check_baseline_pins.py` 是设计文档协同基线的 CI 校验工具，须满足：
-
-**输入：** `docs/design/` 目录路径
-
-**算法：**
-
-1. 遍历 `docs/design/*.md`，对每个文档：
-   - 解析其 §1.x 元信息块中的「协同基线」声明（v2.0.x 标准格式：`> 协同基线（关键依赖）：` 列表，每项形如 `- \`NN-name.md vX.Y.Z\`：理由说明`）
-   - 提取声明中的 pin 字符串数组：`[(目标文档名, 期望版本号), ...]`
-2. 遍历每条 pin：
-   - 读取目标文档自身当前版本号（从其 §版本历史最新条目或元信息块标识行）
-   - 比较 pin 期望版本与目标当前版本
-3. 若所有 pin 均一致，退出码 0
-4. 若存在不一致，退出码 1 并输出报告，至少包含：
-   - 漂移文档列表
-   - 每条漂移的：源文档名 + 行号 + pin 期望版本 + 目标当前版本
-
-**附加校验（强制）：**
-
-- 每条 pin 必须附带原因说明（`：` 后非空），无原因 pin 视为格式违规，CI fail
-- 单文档 pin 数量超过 `design.md §6.5.1` 硬上限 8 项时 CI fail
-- 协同基线列表不得引用尚未存在的文档名（防止拼写错误）
-
-**测试要求：** `tools/check_baseline_pins.py` 自身须有单元测试覆盖：(a) 正常对齐场景；(b) 漂移检测；(c) 缺失原因说明的格式校验；(d) pin 数量超限。
 
 ### 8.3 Feature gate / 配置测试
 

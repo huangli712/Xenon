@@ -422,7 +422,7 @@ fn parallel_iteration(tensor: &Tensor2<f64>) {
 }
 ```
 
-### 5.11 FFI unsafe 与线程安全边界（v2.0.1 新增）
+### 5.11 FFI unsafe 与线程安全边界
 
 **适用范围：** `src/ffi/`（详见 `23-ffi.md`）。本节是横切线程安全规范在 FFI 边界的延伸，与 `23-ffi.md` 的 unsafe 接口契约协同。
 
@@ -442,7 +442,7 @@ fn parallel_iteration(tensor: &Tensor2<f64>) {
 
 更详细的 FFI 错误模型与 unsafe 边界：见 `23-ffi.md §10 / §11`。本节只规范线程安全维度。
 
-### 5.12 unsafe 入口索引（v2.0.1 新增；R10 B-04 拆分双表）
+### 5.12 unsafe 入口索引
 
 下列 `unsafe fn` 在 Xenon crate 内部 / 公开 API 面使用，每个调用点必须用 `unsafe { ... }` 块包裹并附 `// SAFETY:` 注释证明其契约满足。本节只列入口，详细 `# Safety` 契约由各 owner 文档维护。
 
@@ -452,7 +452,7 @@ fn parallel_iteration(tensor: &Tensor2<f64>) {
 
 | `pub(crate) unsafe fn` | Owner 文档 | 契约要点 |
 |:--|:--|:--|
-| `TensorBase::<S, D>::new_unchecked(storage, shape, strides, offset, flags, derived_from_view_mut) where S: RawStorage` | `07-tensor.md §5.6` | **唯一 canonical unsafe 构造器**（v2.0.5 起；早期 v2.0.4 下曾有 Owned-specialized 重复定义，已删除以修复 Rust E0592 编译错误）——所有其他内部 unchecked 构造器必须 forward 到此处；shape/strides/flags/offset 互一致；flags 由 `compute_layout_flags` 产出；逻辑访问范围在 storage 内；shape product 已 overflow-check；`derived_from_view_mut` 对 Owned 路径（`S = Owned<A>`）必须 `false`，仅在 `ViewMutRepr` 降级 / 切片自带降级标记的源场景为 `true` |
+| `TensorBase::<S, D>::new_unchecked(storage, shape, strides, offset, flags, derived_from_view_mut) where S: RawStorage` | `07-tensor.md §5.6` | **唯一 canonical unsafe 构造器**——所有其他内部 unchecked 构造器必须 forward 到此处；shape/strides/flags/offset 互一致；flags 由 `compute_layout_flags` 产出；逻辑访问范围在 storage 内；shape product 已 overflow-check；`derived_from_view_mut` 对 Owned 路径（`S = Owned<A>`）必须 `false`，仅在 `ViewMutRepr` 降级 / 切片自带降级标记的源场景为 `true` |
 | `TensorBase::<Owned<A>, D>::from_raw_vec_unchecked(data: Vec<A>, shape: D)` | `07-tensor.md §5.6` | `data.as_ptr()` 满足 `A` 对齐；`shape.checked_size()` 已验证；`data.len()` 等于该值；F-order 元数据合法 |
 | `Tensor::from_shape_vec_aligned_unchecked(shape: D, data: Vec<A>)` | `21-type.md §5.6` (cast/to_owned helper) | `TensorBase::new_unchecked` 的**薄封装**（本条指数录存在供完整性索引；实质性安全契约已 forward 到 07-tensor.md §5.6）；`data.len() == product(shape)`；shape 已验证；无独立 unsafe 不变式 |
 

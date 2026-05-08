@@ -998,8 +998,6 @@ SIMD 与并行的组合策略（分层原则见 §1.2）：`dispatch.rs` 仅决�
 
 这是 Xenon 二级裁决模型的更新边界：`dispatch.rs` 决定线程级串/并选择，`simd` 决定每个执行上下文（串行或单个 worker chunk）内是否启用 SIMD。两层是正交的，不互斥。
 
-> 历史说明：v1.x 设计明确禁止并行 worker 内调用 SIMD helper。v2.0 起放开此限制（决策 5）。
-
 ### 9.4 与 layout 模块
 
 SIMD 模块依赖 layout 提供的连续性和对齐信息来判断是否可以使用 SIMD 路径（参见 `06-layout.md` §5.7, §5.9）。

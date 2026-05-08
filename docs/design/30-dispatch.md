@@ -243,7 +243,7 @@ impl ParallelExecStrategy {
 | `max_workers` | `Some(1..=rayon::current_num_threads())` 或 `None` | `None` | `Some(0)` 与 `Some(n) where n > pool_size` 都在 `new()` 内返回 `InvalidArgument`（v1.1.3 起统一在构造期校验） |
 | `chunk_size`  | `Some(n)` where `n > 0` 或 `None`                  | `None` | `Some(0)` 在 `new()` 内返回 `InvalidArgument`                              |
 
-**字段不变量归属（v1.1.3 起）：** 所有 `max_workers` / `chunk_size` 校验统一在 dispatch 内的 `ParallelExecStrategy::new()` 构造器中完成，包括对 rayon 线程池上限的检查（通过 `rayon::current_num_threads()` 一次性读取）。`parallel/` 模块只消费已校验的策略，**不再**返回 `max_workers` 相关的 `InvalidArgument`。这与 `09-parallel.md v2.0.1 §5.4` 协同（"dispatch 构造期一次性校验"），消除 v1.1.x 与 v1.1.2 之间存在的"分两层校验"歧义。
+**字段不变量归属：** 所有 `max_workers` / `chunk_size` 校验统一在 dispatch 内的 `ParallelExecStrategy::new()` 构造器中完成，包括对 rayon 线程池上限的检查（通过 `rayon::current_num_threads()` 一次性读取）。`parallel/` 模块只消费已校验的策略，**不再**返回 `max_workers` 相关的 `InvalidArgument`。这与 `09-parallel.md §5.4` 协同（"dispatch 构造期一次性校验"），消除歧义。
 
 ### 5.4 ParallelGuard / ParallelContext
 
@@ -442,7 +442,7 @@ pub(crate) fn select_exec_path(
 ) -> (ExecPath, Option<ParallelGuard>);
 
 // ---
-// Op-agnostic boundary (v2.0.2): select_exec_path is purely a hardware/
+// Op-agnostic boundary: select_exec_path is purely a hardware/
 // path arbitration function. It does NOT consider operation semantics
 // (element type, integer overflow, ordering equivalence, NaN propagation).
 // Callers responsible for op-level legality MUST gate before calling this
@@ -545,7 +545,7 @@ pub(crate) fn reset_simd_threshold();
 **三条规则的差异有意为之（v1.1.3 起）：**
 
 - **SIMD 连续性**：`is_contiguous == false` 时**直接拒绝**进入 `Simd` 路径——SIMD 后端要求连续输入，无法通过单纯放宽阈值满足。
-- **SIMD 对齐**：`alignment_ok == false` 时**不拒绝**进入 `Simd` 路径——`alignment_ok` 仅作为能力提示位透传到 simd 后端，由 `08-simd.md §5.7` 的 admission 规则决定走 aligned 或 unaligned kernel；多数逐元素 kernel 默认接受 unaligned 输入（与 `08-simd.md v2.0.1` 协同）。这是与 v1.1.x 的破坏性差异——v1.1.x 把 alignment 当作硬门槛，会错误关闭合法 unaligned SIMD 路径。
+- **SIMD 对齐**：`alignment_ok == false` 时**不拒绝**进入 `Simd` 路径——`alignment_ok` 仅作为能力提示位透传到 simd 后端，由 `08-simd.md §5.7` 的 admission 规则决定走 aligned 或 unaligned kernel；多数逐元素 kernel 默认接受 unaligned 输入（与 `08-simd.md` 协同）。这是与 v1.1.x 的破坏性差异——v1.1.x 把 alignment 当作硬门槛，会错误关闭合法 unaligned SIMD 路径。
 - **Parallel 非连续**：`is_contiguous == false` 时**不拒绝**，但通过**有效阈值翻倍**抑制进入——非连续的并行 worker 仍可执行（只是缓存局部性差），收益曲线由翻倍阈值近似补偿。
 
 **溢出保护：** `effective_parallel_threshold = base.saturating_mul(2)`。当 `set_parallel_threshold` 被设为接近 `usize::MAX` 的值时，饱和乘法把翻倍结果钉在 `usize::MAX`，从而 `len >= effective` 永不成立——同样落到 `Serial`。这避免任何 wrap-around 导致的非确定性路径选择。
@@ -573,7 +573,7 @@ dispatch 持有的阈值适用于**所有操作类型**的统一入口裁决。�
 | 内积 `dot`     | `f32` / `f64`                   |    65536     |     512       | 同归约                                 |
 | 内积 `dot`     | `i32` / `i64`                   |    65536     |     256       | 同归约                                 |
 
-**调用方-dispatch-后端的阈值分工（v2.0.x 锁定，与 §5.6 / §9.4 + `08-simd.md §5.6` 一致）：**
+**调用方-dispatch-后端的阈值分工：**
 
 - **dispatch 持有**：通用最小阈值（`PARALLEL_THRESHOLD`、`SIMD_THRESHOLD`），用于"是否值得进入非标量路径"的粗粒度裁决。调用方**不得**基于通用长度阈值（`len`）在调用 `select_exec_path()` 之前自行 gate（即不得绕过 dispatch 自行做 `Serial` 长度短路）。
 - **调用方持有两类职责**：
@@ -916,8 +916,8 @@ Caller (math / matrix / reduction)
 │ worker_context;    │ │              │ │              │
 │ chunk MAY invoke   │ │              │ │              │
 │ SIMD per chunk-    │ │              │ │              │
-│ local admission    │ │              │ │              │
-│ (v2.0). Outer      │ │              │ │              │
+│ local admission.   │ │              │ │              │
+│ Outer              │ │              │ │              │
 │ guard Drop on the  │ │              │ │              │
 │ dispatching thread │ │              │ │              │
 │ releases TLS flag. │ │              │ │              │
@@ -1085,7 +1085,7 @@ Caller (math / matrix / reduction)
 
 | 方向           | 对方模块         | 接口/类型                                  | 约定                                                                                            |
 | -------------- | ---------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| 被调用（输出） | `math`           | `select_exec_path()`, `should_parallelize()` | `math` 在广播裁决后调用 dispatch 决定串行/并行路径；并行 worker 内 chunk 可独立做 SIMD admission（v2.0 起，参见 `08-simd.md` §9.3 / 决策 5、`09-parallel.md` 决策 9） |
+| 被调用（输出） | `math`           | `select_exec_path()`, `should_parallelize()` | `math` 在广播裁决后调用 dispatch 决定串行/并行路径；并行 worker 内 chunk 可独立做 SIMD admission（参见 `08-simd.md` §9.3、`09-parallel.md`） |
 | 被调用（输出） | `matrix`         | `select_exec_path()`, `should_parallelize()` | `matrix::dot()` 完成 rank/shape 校验后调用 dispatch 三路分发（参见 `12-matrix.md` §6.1）         |
 | 被调用（输出） | `reduction`      | `select_exec_path()`                        | `reduction::sum()` 调用 dispatch 决定执行路径（参见 `13-reduction.md` §6.3）                    |
 | 被调用（输出） | `simd`（间接）   | `ExecPath::Simd`                            | dispatch 仅推荐 SIMD 路径；`simd/` 内部做最终 admission（ISA/ lane 宽度检测）                   |
@@ -1105,7 +1105,7 @@ math / matrix / reduction 调用方
     │       │
     │       ├── ExecPath::Serial  → 调用方自己的标量实现
     │       ├── ExecPath::Simd    → simd/ 后端（可能内部回退标量）
-    │       └── ExecPath::Parallel → parallel/ 后端（各 worker chunk 可独立做 SIMD admission，v2.0 起）
+    │       └── ExecPath::Parallel → parallel/ 后端（各 worker chunk 可独立做 SIMD admission）
     │
     └── 返回结果（Tensor / scalar / Result），公开语义不变
 ```
@@ -1172,7 +1172,7 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 | 决策     | `ExecPath` 枚举包含三个变体：`Serial`、`Simd`、`Parallel`。调用方通过单次 `match` 分发。                    |
 | 理由     | 调用方（`math`/`matrix`/`reduction`）需要区分三种互斥执行策略；三路枚举比两层 `Option` 或独立布尔值更清晰，且 match 强制穷尽检查，编译器可做分支优化。 |
 | 替代方案 | 两层 `Option<ParallelPath>` + `Option<SimdPath>` —— 放弃，语义模糊，易出现不完整分支覆盖。                  |
-| 替代方案 | 四路（含 `SimdParallel`） —— 放弃，三路枚举已覆盖路径选择。注：v2.0 起架构允许并行 worker 内做 SIMD admission（08-simd v2.0.1 决策 5、09-parallel v2.0.1 决策 9），但仍由 `simd/` 在 worker chunk 内自治判定，不需要在 `ExecPath` 顶层新增 `SimdParallel` 变体；dispatch 只返回 `Parallel`，SIMD 进入由 worker 自决。 |
+| 替代方案 | 四路（含 `SimdParallel`） —— 放弃，三路枚举已覆盖路径选择。注：架构允许并行 worker 内做 SIMD admission（08-simd.md、09-parallel.md），但仍由 `simd/` 在 worker chunk 内自治判定，不需要在 `ExecPath` 顶层新增 `SimdParallel` 变体；dispatch 只返回 `Parallel`，SIMD 进入由 worker 自决。 |
 | 来源     | **用户决策 B**：`ExecPath` 有三个变体。                                                                     |
 
 ### 决策 2：dispatch 是 ISA-agnostic

@@ -557,7 +557,7 @@ where
     D: Dimension,
 {
     /// Checked indexing — returns `Err(XenonError::IndexOutOfBounds{...})` on out of bounds.
-    /// Authoritative signature: see `17-indexing.md` v3.0.2 §5.2.
+    /// Authoritative signature: see `17-indexing.md` §5.2.
     pub fn try_at<I: NdIndex<D>>(&self, index: I) -> Result<&A> {
         let index_vec = index.to_index_vec();
         if !self.is_index_valid(&index_vec) {

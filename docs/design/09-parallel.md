@@ -235,11 +235,11 @@ where
     A: Numeric + Send + Sync;
 ```
 
-**`_guard: ParallelGuard` 设计要点**（与 30-dispatch v2.0.3 决策 7 / v1.2.0 线程亲和性契约一致）：
+**`_guard: ParallelGuard` 设计要点**（与 30-dispatch 线程亲和性契约一致）：
 - `_guard` 由 `dispatch::select_exec_path()` 在裁决到 `ExecPath::Parallel` 时返回 `Some(ParallelGuard)`，并由调用侧（`math` / `reduction` / `matrix`）按值移交到 `parallel` 后端入口。
 - `parallel` 在函数体内只持有 `_guard` 直至并行执行结束；`ParallelGuard::drop()` 自动清除 thread-local 嵌套防护标记。
 - 这样 “选中并行路径” 与 “进入并行临界区” 在调用图上原子绑定：调用方无法忘记 acquire guard，也无法在函数返回后越界使用 guard。
-- **线程亲和性实现规则（v2.0.x）：** `_guard` 必须留在 `parallel` 入口函数（`par_map` / `par_zip_map` / `par_sum` / `par_dot` / `par_reduce_impl` / `par_map_checked`）的栈帧上，**不得**被 Rayon 闭包捕获。`ParallelGuard` 是 `!Send + !Sync`（其 `Drop` 清除调用线程 TLS），若被 move 到 worker 线程会清错线程的 flag，破坏嵌套并行检测。每个 Rayon worker 闭包**必须**把 chunk 执行包裹在 `dispatch::with_parallel_worker_context(|| { ... })` 中，使 worker 自身 TLS 在 chunk 执行期间观测到 `IN_PARALLEL == true`，进而让 worker 内部嵌套调用 `select_exec_path()` 正确回退串行路径。
+- **线程亲和性实现规则：** `_guard` 必须留在 `parallel` 入口函数（`par_map` / `par_zip_map` / `par_sum` / `par_dot` / `par_reduce_impl` / `par_map_checked`）的栈帧上，**不得**被 Rayon 闭包捕获。`ParallelGuard` 是 `!Send + !Sync`（其 `Drop` 清除调用线程 TLS），若被 move 到 worker 线程会清错线程的 flag，破坏嵌套并行检测。每个 Rayon worker 闭包**必须**把 chunk 执行包裹在 `dispatch::with_parallel_worker_context(|| { ... })` 中，使 worker 自身 TLS 在 chunk 执行期间观测到 `IN_PARALLEL == true`，进而让 worker 内部嵌套调用 `select_exec_path()` 正确回退串行路径。
 - `ParallelGuard` 类型在 `parallel` feature 关闭时由 `dispatch.rs` 提供为零大小 `Send + Sync` 占位类型（无 Drop 行为、不可构造），相关并行入口本身整体被 `#[cfg(feature = "parallel")]` 排除，签名层不会泄露。
 
 - `par_dot()` 在类型层面接受任意 `Dimension` 输入，以便与更通用的上层张量调用路径对接；但其语义契约仍限定为一维向量内积，因此实现必须在运行时检查 `lhs.ndim() == 1`、`rhs.ndim() == 1`，并在进入并行归约前再次确认两侧逻辑长度一致。
@@ -324,7 +324,6 @@ dispatch-selected parallel entry (receives ParallelGuard by value;
     │                 // so any nested select_exec_path() call from inside
     │                 // this chunk correctly falls back to ExecPath::Serial
     │                 optionally call into simd backend (SIMD admission per chunk)
-    │                 — see 08-simd.md v2.0.1 决策 5（worker 内 SIMD）
     │             })
     │             // worker closure does NOT capture the outer ParallelGuard
     │             // (ParallelGuard is !Send and stays on the dispatching thread)
@@ -334,14 +333,14 @@ dispatch-selected parallel entry (receives ParallelGuard by value;
 
 - `parallel` 假定调用方已经完成阈值、线程环境、嵌套并行治理判断（由 `dispatch.rs` 的 `select_exec_path()` 完成）。
 - 并行函数只负责固定 chunking + 执行 `rayon` 并行迭代（语义一致性要求见 §1.2）。
-- **线程亲和性（v2.0.x）**：outer `ParallelGuard` 始终保留在调用线程的入口函数栈帧上（`!Send + !Sync`，禁止 move 到 worker 线程）；每个 Rayon worker 闭包内 chunk 执行**必须**包裹在 `dispatch::with_parallel_worker_context` 中，使 worker 自身 TLS 在 chunk 期间为 `IN_PARALLEL == true`。这是嵌套并行检测在 work-stealing 模型下保持正确性的唯一方法。
-- **Worker 内 SIMD（v2.0 起）**：单个 worker 拿到 chunk 后，可在 chunk 内部独立调用 `simd` 后端的 `pub(crate)` kernel（如 `dispatch_vector_binary_op`），按 `08-simd.md` §5.4 的 SIMD admission（连续性、对齐、长度阈值、操作覆盖、ISA）独立判断；不进入 SIMD 时回退到该 chunk 内的标量循环。chunk 间合并顺序仍由 `parallel` 模块的固定 chunking + 固定 merge tree 控制，跨 chunk 的语义一致性不被 SIMD 影响。
+- **线程亲和性**：outer `ParallelGuard` 始终保留在调用线程的入口函数栈帧上（`!Send + !Sync`，禁止 move 到 worker 线程）；每个 Rayon worker 闭包内 chunk 执行**必须**包裹在 `dispatch::with_parallel_worker_context` 中，使 worker 自身 TLS 在 chunk 期间为 `IN_PARALLEL == true`。这是嵌套并行检测在 work-stealing 模型下保持正确性的唯一方法。
+- **Worker 内 SIMD**：单个 worker 拿到 chunk 后，可在 chunk 内部独立调用 `simd` 后端的 `pub(crate)` kernel（如 `dispatch_vector_binary_op`），按 `08-simd.md` §5.4 的 SIMD admission（连续性、对齐、长度阈值、操作覆盖、ISA）独立判断；不进入 SIMD 时回退到该 chunk 内的标量循环。chunk 间合并顺序仍由 `parallel` 模块的固定 chunking + 固定 merge tree 控制，跨 chunk 的语义一致性不被 SIMD 影响。
 
 ### 6.3 二元逐元素并行路径
 
 分块策略统一通过 `compute_safe_chunks(total, num_workers)` 计算，该函数定义于 `src/parallel/mod.rs`（参见 01-architecture.md §5.2a）。这避免了多处重复内联公式造成的不一致风险。
 
-**`compute_safe_chunks` 策略定义（v2.0.1 显式化）：**
+**`compute_safe_chunks` 策略定义：**
 
 ```text
 compute_safe_chunks(total, num_workers) -> chunk_size:
@@ -416,8 +415,7 @@ where
 
     // Build broadcast-compatible read-only chunk views for lhs / rhs via
     // ParIter-style IndexedParallelIterator + Producer split (see §5.6).
-    // Each worker chunk MAY independently call into the simd backend
-    // (08-simd.md v2.0.1 决策 5; admission per chunk).
+    // Each worker chunk MAY independently call into the simd backend.
     // Use indexed collect (.collect_into_vec / collect()) to recover F-order
     // result placement regardless of worker completion order.
     // Panic propagation follows Rayon defaults; see §6.7 and §10.
@@ -517,7 +515,7 @@ where
 | `ParallelGuard` 转移              | `_guard: ParallelGuard` 由 dispatch 在 `select_exec_path` 内构造并按值移交；`parallel` 函数体在并行执行结束后自然 drop guard，由 RAII 保证 thread-local 嵌套防护标记一定被清除（与 30-dispatch.md 决策 7 一致）。 |
 | panic / `Err` 传播               | 并行操作中发生 panic 或返回 `Err(XenonError)` 时，错误不会被静默忽略；语义上最终结果须至少传播一个错误。一般错误不保证传播"第一个"发生的错误（整型 `sum` / `dot` 除外：整型运算的失败诊断固定按逻辑 chunk 索引顺序仲裁，始终选择首个失败 chunk，参见 §5.5、§6.5）。实现上 Rayon 的并行 collect/reduce 可能不会物理中断其他 worker，但错误信息会被收集并在最终结果中报告。 |
 | Send/Sync/借用边界               | 并行执行只借用输入张量的只读视图；闭包与元素类型必须满足 `Send` / `Sync` 约束；输出分配与写入归当前 worker 独占，不能向其他 worker 暴露共享可写借用。 |
-| Worker 内 SIMD 安全性              | worker 在自己 chunk 的连续内存切片（或逻辑区间）上独立调用 `simd` 后端 kernel，不跨 worker 访问；SIMD admission 由 `08-simd.md` §5.4 在 chunk 内部独立判断，不与跨 worker 的 chunking/合并语义产生交叉依赖（v2.0 起决策 5）。 |
+| Worker 内 SIMD 安全性              | worker 在自己 chunk 的连续内存切片（或逻辑区间）上独立调用 `simd` 后端 kernel，不跨 worker 访问；SIMD admission 由 `08-simd.md` §5.4 在 chunk 内部独立判断，不与跨 worker 的 chunking/合并语义产生交叉依赖。 |
 
 ---
 
@@ -690,11 +688,10 @@ math / reduction / matrix call dispatch entry
     │      │
     │      ├── par_iter() / par_zip_map(.., guard) / par_sum(.., guard) / par_dot(.., guard)
     │      └── inside each worker chunk, SIMD admission may apply per chunk
-    │              (08-simd.md v2.0.1 决策 5)
     └── return Tensor or Result with unchanged public semantics; guard auto-drops
 ```
 
-- `select_exec_path()` 返回类型为 `(ExecPath, Option<ParallelGuard>)`；`Option` 仅在 `ExecPath::Parallel` 分支返回 `Some(_)`，`Serial` / `Simd` 分支返回 `None`（与 30-dispatch.md v2.0.3 决策 7 完全一致）。
+- `select_exec_path()` 返回类型为 `(ExecPath, Option<ParallelGuard>)`；`Option` 仅在 `ExecPath::Parallel` 分支返回 `Some(_)`，`Serial` / `Simd` 分支返回 `None`（与 30-dispatch.md 完全一致）。
 - 调用方负责把 `Some(guard)` 按值移交到 `parallel` 后端入口；guard 在并行函数返回时被 drop，自动清除 thread-local 嵌套防护标记。
 
 ---
@@ -811,7 +808,7 @@ math / reduction / matrix call dispatch entry
 | 属性     | 值                                                                                                                            |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | 决策     | 单个 worker chunk 内可独立调用 `simd` 后端 kernel；chunk 间合并仍由 `parallel` 控制                                            |
-| 理由     | 与 08-simd.md v2.0.1 决策 5 对齐：撤销并行/SIMD 互斥，提供 thread × SIMD 双层加速                                              |
+| 理由     | 与 08-simd.md 对齐：撤销并行/SIMD 互斥，提供 thread × SIMD 双层加速                                              |
 | 替代方案 | 保留 v1.x 设计（worker 内禁止 SIMD）—— 放弃，会牺牲大数据吞吐                                                                  |
 | 替代方案 | worker 跨 chunk 共享 SIMD 状态 —— 放弃，会让 chunk 不变量与 SIMD admission 互相耦合                                            |
 
