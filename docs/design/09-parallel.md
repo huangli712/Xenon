@@ -392,7 +392,7 @@ where
     F: Fn(&A, &B) -> Result<C, XenonError> + Send + Sync,
 {
     // checked_size overflow → InvalidShape with the closed-enum kind defined
-    // in 26-error.md v3.2.0 §5.1 (InvalidShapeKind::ProductOverflow).
+    // in 26-error.md §5.1 (InvalidShapeKind::ProductOverflow).
     let total = output_dim.checked_size().map_err(|_| XenonError::InvalidShape {
         operation: Cow::Borrowed("par_zip_map"),
         shape: output_dim.slice().to_vec(),
@@ -429,7 +429,7 @@ where
 - 广播 chunk 映射草图：优先按 `output_dim` 的外轴边界生成块状多维 tile，使 chunk 在输出空间内保持可直接切片的矩形子域；若某些退化形状无法形成理想矩形 tile，则实现可退化为“逻辑区间 + 逐元素广播投影”的内部执行形式，而不是要求把任意线性区间整体重建成单个 broadcast sub-view。对输出维中的广播轴，输入侧固定复用同一逻辑坐标；对非广播轴，chunk 保持对应 tile 的区间跨度。实现不得为广播轴做物理展开或额外分配。
 - `par_zip_map` 仅包含并行执行逻辑；若调用发生，表示 `dispatch.rs` 已确认当前输入适合走并行路径。
 - `par_zip_map()` 作为内部并行入口，假定广播兼容性已由调用方验证，不再额外定义单独的 checked 变体，也不依赖 `BroadcastError`。此为内部前置条件。违反时视为内部 bug，可触发 debug assert，但不得破坏内存安全或对外错误模型。release 模式下行为保持语义定义，不引入未指定行为。panic 与 `Err` 传播语义参见 §6.7 与 §10。
-- **唯一仍由本函数返回的可恢复错误**是 `output_dim.checked_size()` 的整型溢出，归类为 `XenonError::InvalidShape { operation: "par_zip_map", shape, kind: InvalidShapeKind::ProductOverflow, offending_dim: None }`（封闭枚举字段，参见 26-error.md v3.2.0 §5.1）。
+- **唯一仍由本函数返回的可恢复错误**是 `output_dim.checked_size()` 的整型溢出，归类为 `XenonError::InvalidShape { operation: "par_zip_map", shape, kind: InvalidShapeKind::ProductOverflow, offending_dim: None }`（封闭枚举字段，参见 26-error.md §5.1）。
 
 ### 6.4 轴向归约并行方案
 
@@ -700,7 +700,7 @@ math / reduction / matrix call dispatch entry
 
 | 主题              | 说明                                                                                                            |
 | ----------------- | --------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | `par_dot()` 的长度不兼容返回 `XenonError::ShapeMismatch { operation: "par_dot", left_shape, right_shape }`；`par_dot()` 的非一维输入返回 `XenonError::InvalidArgument { operation: "par_dot", kind: InvalidArgumentKind::OperationSpecific { argument: "ndim", constraint: "rank == 1" } }`；`par_zip_map()` 的元素总数溢出返回 `InvalidShape { operation: "par_zip_map", shape, kind: InvalidShapeKind::ProductOverflow, offending_dim: None }`。所有字段对齐 26-error.md v3.2.0 §5.1 的封闭枚举字段。 |
+| Recoverable error | `par_dot()` 的长度不兼容返回 `XenonError::ShapeMismatch { operation: "par_dot", left_shape, right_shape }`；`par_dot()` 的非一维输入返回 `XenonError::InvalidArgument { operation: "par_dot", kind: InvalidArgumentKind::OperationSpecific { argument: "ndim", constraint: "rank == 1" } }`；`par_zip_map()` 的元素总数溢出返回 `InvalidShape { operation: "par_zip_map", shape, kind: InvalidShapeKind::ProductOverflow, offending_dim: None }`。所有字段对齐 26-error.md §5.1 的封闭枚举字段。 |
 | Panic             | 归约中的整数溢出仍属于不可恢复错误，必须 panic，而不是包装为 `XenonError`                                       |
 | 路径一致性        | 一旦进入 `parallel/`，并行路径必须返回与调用方串行基线相同形状、相同错误类别，以及满足同一数值语义约束的结果（路径选择见 §6.1）  |
 | 容差边界          | 浮点与复数若存在执行路径相关的已知舍入差异，只能落在 `需求说明书 §28.3` 与 `需求说明书 §28.5` 允许且已文档化的范围内；以 `需求说明书 §28.3` 为权威基线，`00-coding.md §8` 仅作为实现参考。|

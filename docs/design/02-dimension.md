@@ -435,7 +435,7 @@ impl Dimension for IxDyn {
             acc = acc.checked_mul(dim).ok_or(XenonError::InvalidShape {
                 operation: Cow::Borrowed("Dimension::checked_size"),
                 shape: self.dims.clone(),
-                // Per 26-error v3.2.0 §5.1: ProductOverflow is a unit
+                // Per 26-error §5.1: ProductOverflow is a unit
                 // variant; no expected/actual fields are encoded because
                 // overflowed products cannot be expressed in `usize`.
                 kind: InvalidShapeKind::ProductOverflow,

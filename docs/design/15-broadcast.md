@@ -94,7 +94,7 @@ src/broadcast/
 | `tensor`    | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `.shape()`, `.strides()`, `.offset()`, 视图构造入口，以及从任意受支持存储模式降级到只读广播视图的入口。 |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim<Other>`（public sealed trait，对外可命名；对称性见 02-dimension v1.x §5.10），`IntoDimension`（用于 `broadcast_to<E>` 接受目标 shape 的多种语法形式：`IxN` / 元组 / 数组 / `Vec<usize>` / `&[usize]`）。 |
 | `layout`    | `Strides<D>`, `LayoutFlags`, `LayoutState::BroadcastView`（广播结果的目标布局状态），以及通过 `compute_layout_flags()` 间接关联的 `LayoutState::FContiguous` / `LayoutState::NonContiguous`。 |
-| `error`     | `XenonError::BroadcastError`, `XenonError::InvalidArgument`（`InvalidArgumentKind::OperationSpecific` 用于 `broadcast_strides` 的 rank/长度前提失败），以及 `Cow<'static, str>` 用于 `operation` 字段（参见 26-error v3.2.0 §5.1）。|
+| `error`     | `XenonError::BroadcastError`, `XenonError::InvalidArgument`（`InvalidArgumentKind::OperationSpecific` 用于 `broadcast_strides` 的 rank/长度前提失败），以及 `Cow<'static, str>` 用于 `operation` 字段（参见 26-error §5.1）。|
 
 ### 4.3 依赖合法性
 
@@ -171,7 +171,7 @@ where
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `can_broadcast()`     | 仅回答兼容性，不分配、不生成中间结果。                                                                                                                                   |
 | `broadcast_shape()`   | 运行时计算公共 shape；不兼容时返回 `XenonError::BroadcastError`。                                                                                                        |
-| `broadcast_strides()` | 对齐原 shape 与目标 shape，广播轴写入 `0` 步长；当 `orig_shape.len() != orig_strides.len()` 时返回 `XenonError::InvalidArgument { operation: Cow::Borrowed("broadcast_strides"), kind: InvalidArgumentKind::OperationSpecific { argument: Cow::Borrowed("orig_strides"), constraint: Cow::Borrowed("len must match orig_shape.len()") } }`（字段对齐 26-error v3.2.0 §5.1）。 |
+| `broadcast_strides()` | 对齐原 shape 与目标 shape，广播轴写入 `0` 步长；当 `orig_shape.len() != orig_strides.len()` 时返回 `XenonError::InvalidArgument { operation: Cow::Borrowed("broadcast_strides"), kind: InvalidArgumentKind::OperationSpecific { argument: Cow::Borrowed("orig_strides"), constraint: Cow::Borrowed("len must match orig_shape.len()") } }`（字段对齐 26-error §5.1）。 |
 | `broadcast_to()`      | 显式广播入口；成功时返回共享底层数据的只读 `TensorView`。结果必须满足 `需求说明书 §6` 对“共享只读引用”的约束：可在多个张量实例之间共享同一底层数据，但不提供可写访问权。 |
 | `broadcast_with()`    | 面向两个张量输入的 `pub(crate)` 助手：先计算共同 shape，再分别构造两个只读广播视图。它不承担通用 shape 工具职责；仅需 shape 判定时应使用 `can_broadcast()` / `broadcast_shape()`。 |
 
@@ -180,7 +180,7 @@ where
 - **目标秩语义**：`broadcast_to()` 的目标 shape 秩决定了输出视图的维度类型；标量广播到高维时，缺失前导轴按 `1` 补齐。
 - **`IntoDimension` 说明：** `IntoDimension` 只决定目标 rank/type；逐轴长度兼容性完全由 `broadcast_shape()` / `broadcast_strides()` 在运行时检查。
 - **类型设计说明：** `broadcast_to()` 是目标 shape 主导的 API，只需目标维度类型 `E: IntoDimension`。`broadcast_with()` 是双输入 shape 合流 API，需要双向 `BroadcastDim` 一致性以保证输出维度类型的静态可推导性。`BroadcastDim` 本身是 public sealed trait，因此在这些公开签名中对外可命名。
-- **BroadcastError 字段映射：** 各 API 返回 `XenonError::BroadcastError` 时，结构化字段按以下规则填充（字段类型对齐 26-error v3.2.0 §5.1：`operation: Cow<'static, str>`，`lhs_shape` / `rhs_shape` 总是 `Vec<usize>`，`attempted_target_shape: Option<Vec<usize>>`，`axis: Option<usize>`）：
+- **BroadcastError 字段映射：** 各 API 返回 `XenonError::BroadcastError` 时，结构化字段按以下规则填充（字段类型对齐 26-error §5.1：`operation: Cow<'static, str>`，`lhs_shape` / `rhs_shape` 总是 `Vec<usize>`，`attempted_target_shape: Option<Vec<usize>>`，`axis: Option<usize>`）：
 
   | API | `operation` | `lhs_shape` | `rhs_shape` | `attempted_target_shape` | `axis` |
   | --- | --- | --- | --- | --- | --- |
