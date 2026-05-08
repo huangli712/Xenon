@@ -254,9 +254,9 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 
 `broadcast_to()` 和 `broadcast_with()` 只负责在元数据层重建视图：保留原始 storage 与 offset，改写 shape、strides 与 flags。返回类型虽然仍是 `TensorView`，但其公开语义必须统一收敛到共享只读引用：广播结果内部承载 `ViewRepr<'a, A>`，`storage_kind()` 返回 `StorageKind::View`；只读共享语义由广播布局标志与访问控制 API 共同保证，任何试图从广播结果取得可变访问权的 API，都必须在类型层缺失或运行时返回错误。
 
-**安全性论证（unchecked 视图构造）：** 若内部使用 `TensorView::new_unchecked()` 或等价未检查构造器，调用点必须先证明：1）目标 `shape` 与源 `shape` 广播兼容；2）新 `shape` / `stride` / `offset` 组合不会访问到底层 storage 可见边界之外；3）任何零步长元素都不会通过结果视图暴露为可变访问。
+**安全性论证（unchecked 视图构造）**：若内部使用 `TensorView::new_unchecked()` 或等价未检查构造器，调用点必须先证明：1）目标 `shape` 与源 `shape` 广播兼容；2）新 `shape` / `stride` / `offset` 组合不会访问到底层 storage 可见边界之外；3）任何零步长元素都不会通过结果视图暴露为可变访问。
 
-**布局状态判定（由视图构造方负责）：** 广播视图的 `LayoutFlags` 必须通过 `compute_layout_flags()`（见 `06-layout.md`）重算。广播结果的布局状态分类以 `06-layout.md §5.11` 为准。非空广播视图（`product(shape) > 0` 且存在广播零步长轴）归入 `LayoutState::BroadcastView`；空数组退化（`product(shape) == 0`，即使存在零步长写入）不触发广播分类。
+**布局状态判定（由视图构造方负责）**：广播视图的 `LayoutFlags` 必须通过 `compute_layout_flags()`（见 `06-layout.md`）重算。广播结果的布局状态分类以 `06-layout.md §5.11` 为准。非空广播视图（`product(shape) > 0` 且存在广播零步长轴）归入 `LayoutState::BroadcastView`；空数组退化（`product(shape) == 0`，即使存在零步长写入）不触发广播分类。
 
 ### 6.5 `BroadcastDim` 的职责边界
 
@@ -272,9 +272,9 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 
 ### 6.6 与存储系统的对接
 
-- **查询：** 广播结果内部使用 `ViewRepr<'a, A>`，因此 `storage_kind()` 返回 `StorageKind::View`，`access_semantics()` 返回 `AccessSemantics::SharedReadOnly`；是否为广播结果由 layout flags 中的 `LayoutFlags::HAS_ZERO_STRIDE` / `LayoutState::BroadcastView` 指示。
-- **转换：** 广播结果可通过显式分配转成 `Owned` 连续张量（如 `to_owned()` / `to_contiguous()` 一类路径）；由于广播视图存在零步长别名，当前版本不允许把它转换为 `ViewMut`，也不提供 `into_mut()`。
-- **线程：** 广播 `ViewRepr` 遵循标准借用规则；当 `A: Sync` 时可满足只读跨线程共享前提，`Send`/`Sync` 语义与普通只读视图一致，不因广播额外放宽。
+- **查询**： 广播结果内部使用 `ViewRepr<'a, A>`，因此 `storage_kind()` 返回 `StorageKind::View`，`access_semantics()` 返回 `AccessSemantics::SharedReadOnly`；是否为广播结果由 layout flags 中的 `LayoutFlags::HAS_ZERO_STRIDE` / `LayoutState::BroadcastView` 指示。
+- **转换**： 广播结果可通过显式分配转成 `Owned` 连续张量（如 `to_owned()` / `to_contiguous()` 一类路径）；由于广播视图存在零步长别名，当前版本不允许把它转换为 `ViewMut`，也不提供 `into_mut()`。
+- **线程**： 广播 `ViewRepr` 遵循标准借用规则；当 `A: Sync` 时可满足只读跨线程共享前提，`Send`/`Sync` 语义与普通只读视图一致，不因广播额外放宽。
 
 ---
 
@@ -404,11 +404,11 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 
 ### 8.6 Feature gate / 配置测试
 
-| 配置                          | 验证点                                                          |
-| ----------------------------- | --------------------------------------------------------------- |
-| 默认配置                      | 显式广播 API、零步长和共享只读语义保持一致。                    |
-| `rayon` / SIMD/pulp 相关 feature（按 Cargo.toml 命名） | 广播模块本身不改变语义；不同执行路径不得改变 shape 与错误类别。 |
-| 无额外 feature                | 当前模块不新增独立 feature gate。                               |
+| 配置                         | 验证点                                                          |
+| ---------------------------- | --------------------------------------------------------------- |
+| 默认配置                     | 显式广播 API、零步长和共享只读语义保持一致。                    |
+| `rayon / simd` 相关 feature  | 广播模块本身不改变语义；不同执行路径不得改变 shape 与错误类别。 |
+| 无额外 feature               | 当前模块不新增独立 feature gate。                               |
 
 ### 8.7 类型边界 / 编译期测试
 
