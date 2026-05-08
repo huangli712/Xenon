@@ -243,12 +243,12 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
     4. Return the computed stride vector.
 ```
 
-对广播轴写入零步长意味着该轴被逻辑扩展（或在空轴广播中收缩为 0 长度目标），但所有有效索引都回落到同一底层元素；这与 `06-layout.md` §5.11 的零步长语义保持一致。`orig_dim == 1 && target_dim == 0` 是兼容的空轴广播，输出 stride 写为 `0`，且因为目标轴长度为 0 不会产生实际元素访问。布局分类口径以 **06-layout.md §5.11**（`HAS_ZERO_STRIDE` 权威定义）为准，由 `compute_layout_flags()`（06-layout.md §5.12）执行。非空广播视图进入 `BroadcastView`；空数组退化情形不触发广播分类——详见 06-layout.md §5.11 边界情形覆盖表。
+对广播轴写入零步长意味着该轴被逻辑扩展（或在空轴广播中收缩为 0 长度目标），但所有有效索引都回落到同一底层元素；这与 `06-layout.md` §5.11 的零步长语义保持一致。`orig_dim == 1 && target_dim == 0` 是兼容的空轴广播，输出 stride 写为 `0`，且因为目标轴长度为 0 不会产生实际元素访问。布局分类口径以 `06-layout.md §5.11`为准，由 `compute_layout_flags()`（`06-layout.md §5.12`）执行。非空广播视图进入 `BroadcastView`；空数组退化情形不触发广播分类。
 
 - **再次广播规则：** 对已广播视图再次广播时，已有零步长轴保持为 `0`，新增广播轴也写入 `0` 步长；结果 `shape` 取"当前视图 shape"与"新目标 shape"的广播结果。 `broadcast_strides()` 的 `orig_shape` 参数始终传入当前视图的逻辑 shape（即 `.shape()` 返回值），而非某个"广播前的原始 shape"。
 
-  **关于"已有零步长轴的识别"**：算法通过 `orig_strides[i] == 0` 直接识别零步长轴，而**不是**依赖 `orig_shape[i] == 1`。理由是：广播视图的当前逻辑 shape 中，原本被广播的轴长度可能已大于 1（例如 `[1] -broadcast→ [4]` 后再次广播，新视图 `orig_shape[axis] == 4` 但 `orig_strides[axis] == 0`）。算法的第 3 步分支"if original dimension == target dimension, keep the original stride"对此场景天然正确：保留原始 stride 即保留 0 步长，无需基于 shape 值判断。读者不应把 `orig_shape[i] == 1` 误认为零步长轴的识别条件——它只是"原始尚未广播的轴可被广播到更大目标"的条件，与"已存在的零步长轴"无关。
-- **布局标志重算规则：** 布局标志必须通过 `compute_layout_flags()`（见 `06-layout.md`）重算，而非直接复制源标志。广播不改变逻辑首元素指针，因此重算后 `ALIGNED` 结果与源视图一致；`F_CONTIGUOUS` 仅在不存在零步长且结果 stride 仍满足 F-order 规则时保留。广播结果的 `HAS_ZERO_STRIDE` flag 与 `LayoutState` 分类按 **06-layout.md §5.11**（唯一权威）判定。非空广播视图归入 `LayoutState::BroadcastView`；空数组退化（`product(shape) == 0`）不触发，详见 06-layout.md §5.11 空张量退化规则。
+  **关于"已有零步长轴的识别"**：算法通过 `orig_strides[i] == 0` 直接识别零步长轴，而不是依赖 `orig_shape[i] == 1`。理由是：广播视图的当前逻辑 shape 中，原本被广播的轴长度可能已大于 1（例如 `[1] -broadcast→ [4]` 后再次广播，新视图 `orig_shape[axis] == 4` 但 `orig_strides[axis] == 0`）。算法的第 3 步分支"if original dimension == target dimension, keep the original stride"对此场景天然正确：保留原始 stride 即保留 0 步长，无需基于 shape 值判断。读者不应把 `orig_shape[i] == 1` 误认为零步长轴的识别条件——它只是"原始尚未广播的轴可被广播到更大目标"的条件，与"已存在的零步长轴"无关。
+- **布局标志重算规则：** 布局标志必须通过 `compute_layout_flags()`（见 `06-layout.md`）重算，而非直接复制源标志。广播不改变逻辑首元素指针，因此重算后 `ALIGNED` 结果与源视图一致；`F_CONTIGUOUS` 仅在不存在零步长且结果 stride 仍满足 F-order 规则时保留。广播结果的 `HAS_ZERO_STRIDE` flag 与 `LayoutState` 分类按 `06-layout.md §5.11`判定。非空广播视图归入 `LayoutState::BroadcastView`；空数组退化（`product(shape) == 0`）不触发，详见 `06-layout.md §5.11` 空张量退化规则。
 
 ### 6.4 共享只读视图构造
 
