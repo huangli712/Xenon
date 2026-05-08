@@ -147,7 +147,7 @@ where
         // the enumerated `index` is thus the 0-based logical element index
         // used in `element_index` of XenonError::TypeConversion (see §10).
         //
-        // Three-tier dispatch (per §6.1 / §6.1.bis / §11 Decision 4):
+        // Three-tier dispatch:
         //   ConvertTo::<B>::convert((*x))
         //     ├── Tier-1 (lossless static): impl returns `Ok(B::from(value))`,
         //     │   delegating to Rust std `From`. Never errors.
@@ -228,18 +228,18 @@ where
 | `i64`          | `Complex<f64>` | 错误     | 由 `i64 -> f64` 精度敏感导致默认失败（同 `i64 → f64` 条目） |
 | `i64`          | `Complex<f32>` | 错误     | 有损，默认失败                              |
 | `f64`          | `Complex<f32>` | 错误     | 有损，默认失败                              |
-| `Complex<f32>` | `f64`          | 条件成功 | 条件成功（虚部非 0 时返回 `NonZeroImaginaryPart`；虚部为 0 时再按 `f32 -> f64` 规则处理） |
-| `Complex<f32>` | `f32`          | 条件成功 | 条件成功（虚部非 0 时返回 `NonZeroImaginaryPart`；虚部为 0 时返回实部） |
-| `Complex<f32>` | `i32`          | 条件成功 | 条件成功（虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误） |
-| `Complex<f32>` | `i64`          | 条件成功 | 条件成功（虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误） |
-| `Complex<f64>` | `f64`          | 条件成功 | 条件成功（虚部非 0 时返回 `NonZeroImaginaryPart`；虚部为 0 时返回实部） |
-| `Complex<f64>` | `f32`          | 条件成功 | 条件成功（虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误） |
-| `Complex<f64>` | `i32`          | 条件成功 | 条件成功（虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误） |
-| `Complex<f64>` | `i64`          | 条件成功 | 条件成功（虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误） |
+| `Complex<f32>` | `f64`          | 条件成功 | 虚部非 0 时返回 `NonZeroImaginaryPart`；虚部为 0 时再按 `f32 -> f64` 规则处理 |
+| `Complex<f32>` | `f32`          | 条件成功 | 虚部非 0 时返回 `NonZeroImaginaryPart`；虚部为 0 时返回实部 |
+| `Complex<f32>` | `i32`          | 条件成功 | 虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误 |
+| `Complex<f32>` | `i64`          | 条件成功 | 虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误 |
+| `Complex<f64>` | `f64`          | 条件成功 | 虚部非 0 时返回 `NonZeroImaginaryPart`；虚部为 0 时返回实部 |
+| `Complex<f64>` | `f32`          | 条件成功 | 虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误 |
+| `Complex<f64>` | `i32`          | 条件成功 | 虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误 |
+| `Complex<f64>` | `i64`          | 条件成功 | 虚部为 0 时，按内层实数转换规则处理；内层有损则仍返回错误 |
 | `Complex<f64>` | `Complex<f32>` | 错误     | 分量精度丢失，默认失败                      |
 
 - `bool` 不参与 `cast()`；任何 `bool` 相关逐元素类型转换都不在本模块范围内。
-- `CastTo` 的完整实现矩阵通过显式 impl 列表（每对 `(A, B)` 一份手写 `impl CastTo<B> for A`）或 crate-internal `macro_rules!` 生成 impl，并以 compile-fail 矩阵测试 / 完整性测试守住覆盖。**不**使用任何形式的运行时 enum dispatch 来选择转换路径——所有 cast 行为在编译期通过单态化决议，避免引入额外间接调用与代码路径。
+- `CastTo` 的完整实现矩阵通过显式 impl 列表（每对 `(A, B)` 一份手写 `impl CastTo<B> for A`）或 crate-internal `macro_rules!` 生成 impl，并以 compile-fail 矩阵测试 / 完整性测试守住覆盖。不使用任何形式的运行时 enum dispatch 来选择转换路径——所有 cast 行为在编译期通过单态化决议，避免引入额外间接调用与代码路径。
 - §5.3 和 §5.4 的表项加闭合规则覆盖所有受支持组合，编译期测试验证无遗漏。
 
 ### 5.4 闭合规则映射
@@ -247,9 +247,7 @@ where
 - 凡 `需求说明书 §23.1` 已逐项列出的组合，其默认语义与附加成功前提以 `需求说明书 §23.1` 表格为准；闭合规则仅用于补足未逐项列出的受支持组合，不得覆盖或重新解释已列组合的语义。
 - 未在上表逐项展开、但属于受支持源/目标集合的组合，按 `需求说明书 §23.2` 闭合：
   - 实数 → 整数：一律默认为 `FloatToInteger` 错误（浮点值域与整数表示不兼容，包括 NaN/Inf 场景）
-  - 整数 → 浮点（窄精度）：一律默认为有损失败（如 `i64 → f32`、`i64 → f64`[^precision_note]、`i32 → f32`），返回 `IntegerToFloatPrecisionLoss`
-
-[^precision_note]: `i64 → f64` 在数学上 `±2^53` 范围内可精确表示，但超出此范围的 `i64` 值在转为 `f64` 时按 IEEE 754 round-to-nearest-even 可能丢失低阶位信息。当前按 B10.a 选定为有损默认失败。
+  - 整数 → 浮点（窄精度）：一律默认为有损失败（如 `i64 → f32`、`i64 → f64`、`i32 → f32`），返回 `IntegerToFloatPrecisionLoss`
   - 实数 → 复数：先按实数到目标复数实部分量类型的规则转换实部，再补 `0` 虚部
   - 复数 → 实数：仅当虚部为 `0` 时才可继续；但这只是必要条件而非充分条件。若实部到目标实数类型的内层转换按 `需求说明书 §23.1` 属于默认有损失败，则整体转换仍为默认错误并必须返回 `Err`
   - 复数 → 复数：实部和虚部分别按对应实数转换规则处理
@@ -330,7 +328,7 @@ where
         // Use storage-level StorageIntoOwned::into_owned_storage() to
         // convert the storage to Owned (see 05-storage.md §5.9).
         // The tensor-level method then ensures canonical F-order:
-        //   Owned    → O(1) when source is already F-contiguous with offset=0
+        //   Owned → O(1) when source is already F-contiguous with offset=0
         //   View/ViewMut/Arc → O(n) allocate + copy into canonical F-order
         let owned_storage = self.storage.into_owned_storage();
         self.into_owned_from_owned_storage(owned_storage)
@@ -340,7 +338,7 @@ where
 
 ### 5.6 内部构造辅助边界
 
-`from_shape_vec_aligned_unchecked` 是 `TensorBase::new_unchecked`（07-tensor.md §5.6）的**薄封装**（thin wrapper），存在目的是为 `cast()` / `to_owned()` / `into_owned()` 提供从已验证 `(shape, Vec<A>)` 对零开销构造 owned 张量的单一路径。它不是独立的 unsafe 入口——其安全性由 `new_unchecked` 的安全契约兜底。
+`from_shape_vec_aligned_unchecked` 是 `TensorBase::new_unchecked`（`07-tensor.md §5.6`）的薄封装，存在目的是为 `cast()` / `to_owned()` / `into_owned()` 提供从已验证 `(shape, Vec<A>)` 对零开销构造 owned 张量的单一路径。它不是独立的 unsafe 入口——其安全性由 `new_unchecked` 的安全契约兜底。
 
 - 内部实现调用链：
   1. 通过 `Owned::from_vec_aligned` 从 `data: Vec<A>` 构造对齐 storage
@@ -348,12 +346,12 @@ where
   3. 通过 `layout::compute_layout_flags` 从 `(shape, strides, storage.as_ptr())` 计算布局标志
   4. 调用 `TensorBase::new_unchecked(storage, shape, strides, /*offset=*/ 0, flags, /*derived_from_view_mut=*/ false)` 完成构造
 
-- **本函数的安全契约**（v2.1.2 大幅缩减，其余 forwarded 到 `new_unchecked`）：
+- 本函数的安全契约：
   - 调用方必须证明 `shape.checked_size().is_ok()` 且 `data.len() == shape.checked_size().unwrap()`。
-  - 所有其他张量不变式（offset 计算、别名安全、布局标志正确性、F-order 元数据合法性）均由 `TensorBase::new_unchecked` 的契约兜底——详见 07-tensor.md §5.6。
-  - 本函数**永远**不设置 `derived_from_view_mut = true`（它始终构造 Owned，无从携带 ViewMut 降级标记）。
+  - 所有其他张量不变式（offset 计算、别名安全、布局标志正确性、F-order 元数据合法性）均由 `TensorBase::new_unchecked` 的契约兜底（`07-tensor.md §5.6`）。
+  - 本函数永远不设置 `derived_from_view_mut = true`（它始终构造 Owned，无从携带 ViewMut 降级标记）。
 
-  规范签名（被 `25-safety.md §5.12.1` 索引引用）：
+- 规范签名：
 
   ```rust,ignore
   impl<A, D> Tensor<A, D>
@@ -361,7 +359,7 @@ where
       A: Element,
       D: Dimension,
   {
-      /// Thin wrapper around `TensorBase::new_unchecked` (&sect;07-tensor.md §5.6)
+      /// Thin wrapper around `TensorBase::new_unchecked`
       /// for zero-overhead Owned construction from a validated `(shape, Vec<A>)` pair.
       ///
       /// Internally builds aligned storage via `Owned::from_vec_aligned`, computes
@@ -377,8 +375,7 @@ where
       /// - `data.len() == shape.checked_size().unwrap()`
       ///
       /// All other tensor invariants (offset arithmetic, alias safety, layout
-      /// flag correctness) are forwarded to `TensorBase::new_unchecked`'s contract
-      /// — see 07-tensor.md §5.6.
+      /// flag correctness) are forwarded to `TensorBase::new_unchecked`'s contract.
       ///
       /// Used by `cast()` / `to_owned()` / `into_owned()` after they have
       /// already proved length / shape consistency at the call site.
@@ -388,7 +385,7 @@ where
       ) -> Tensor<A, D>;
   }
   ```
-- helper 名称中的 `unchecked` 严格表示"跳过可由调用方安全封装重复检查的 metadata 校验"，**不**表示"内部实现可放任任意输入"；违反本函数安全契约（shape/data 长度不匹配）的后果是 UB，由 `new_unchecked` 的存储/元数据不一致语义传递过去。
+- helper 名称中的 `unchecked` 严格表示"跳过可由调用方安全封装重复检查的 metadata 校验"，不表示内部实现可放任任意输入；违反本函数安全契约（shape/data 长度不匹配）的后果是 UB，由 `new_unchecked` 的存储/元数据不一致语义传递过去。
 - 之所以让 helper 保留 `unsafe` 而不是把它做成 safe 函数，是为了让 `cast()` / `to_owned()` 的 infallible 签名真正零额外检查开销；safe wrapper 路径已由 `Tensor::from_shape_vec` 提供（fallible，返回 `Result`）。
 
 ### 5.7 Good / Bad 对比
