@@ -4,8 +4,6 @@
 > 模块目录: src/index/
 > 任务阶段: Phase 3
 > 前置文档: 02-dimension.md, 06-layout.md, 07-tensor.md, 26-error.md
-> 需求参考: 需求说明书 §4、§6、§18、§27、§28
-> 范围声明: 范围内
 
 ---
 
@@ -40,12 +38,12 @@
 
 ## 2. 需求映射与范围约束
 
-| 类型     | 内容                                                                                                                     |
-| -------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 需求映射 | 需求说明书 §4、§6、§18、§27、§28                                                                                         |
-| 范围内   | `usize` 多维索引、范围索引（切片）、rank 一致性检查、越界 recoverable error、unsafe 未检查变体、切片后 shape/stride 更新 |
-| 范围外   | **本模块仅覆盖 Numpy "basic indexing" 的子集，不覆盖 Numpy "advanced/fancy indexing"。** 明确不在当前版本范围内的能力：(1) 负索引（`a[-1]`）；(2) 负步长切片（`a[::-1]`）；(3) 布尔掩码索引（`a[mask]`）；(4) 整数数组高级索引（`a[[0, 2, 4]]`）；(5) `np.newaxis` / `None` 添加新轴；(6) 共享可写视图；(7) 额外索引语法。**也不实现** `std::ops::Index` 与 `std::ops::IndexMut` trait（原因：标准库 trait 强制 panic 语义，不符合 Xenon 的 Result 错误模型）。访问元素请使用 `try_at()` / `get()` / `try_at_mut()` / `get_mut()` 或 `unsafe` 的 `get_unchecked` 系列。未来若引入 fancy indexing，需单独的设计文档与 ABI 兼容评估，**不应**作为隐式扩展加入本模块。 |
-| 非目标   | 不新增索引能力，不引入新的存储模式或复制语义                                                                             |
+| 类型     | 内容                                                                                                              |
+| -------- | ----------------------------------------------------------------------------------------------------------------- |
+| 需求映射 | 需求说明书 §4、§6、§18、§27、§28                                                                                  |
+| 范围内   | `usize` 多维索引、范围索引、rank 一致性检查、越界 recoverable error、unsafe 未检查变体、切片后 shape/stride 更新  |
+| 范围外   | 需求说明书没有明确要求的高级索引。                                                                                |
+| 非目标   | 不新增索引能力，不引入新的存储模式或复制语义                                                                      |
 
 ---
 
@@ -59,8 +57,6 @@ src/
     ├── access.rs        # try_at/get/get_unchecked and mutable variants
     └── slice.rs         # SliceInfo, slice, shape/stride updates
 ```
-
-按能力拆分为 `ndindex`、`access`、`slice`，可把“索引地址计算”和“切片元数据变换”分开维护；`mod.rs` 负责统一导出，保持对外仍是单一 `src/index/` 模块边界。
 
 ---
 
@@ -97,14 +93,14 @@ src/index/
 
 ### 4.2 类型级依赖
 
-| 来源模块    | 使用的类型/trait                                                                                    |
-| ----------- | --------------------------------------------------------------------------------------------------- |
-| `tensor`    | `TensorBase<S, D>`, `TensorView<'a, A, I>`, `.shape()`, `.strides()`, `.ndim()`, storage mode query |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, rank / axis metadata                                             |
-| `layout`    | `Strides<D>`, layout flags, F-order offset interpretation                                           |
-| `storage`   | `Storage`, `StorageMut`, read-only / writable storage capability                                    |
-| `error`     | `XenonError::InvalidAxis`, `InvalidArgument`, `IndexOutOfBounds`, `DimensionMismatch`               |
-| `private`   | `Sealed`，用于封闭 `NdIndex` 的外部实现面                                                           |
+| 来源模块    | 使用的类型/trait                                                                        |
+| ----------- | --------------------------------------------------------------------------------------- |
+| `tensor`    | `TensorBase`, `TensorView`, `.shape()`, `.strides()`, `.ndim()`, storage mode query     |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, rank / axis metadata                                 |
+| `layout`    | `Strides<D>`, layout flags, F-order offset interpretation                               |
+| `storage`   | `Storage`, `StorageMut`, read-only / writable storage capability                        |
+| `error`     | `XenonError::InvalidAxis`, `InvalidArgument`, `IndexOutOfBounds`, `DimensionMismatch`   |
+| `private`   | `Sealed`，用于封闭 `NdIndex` 的外部实现面                                               |
 
 ### 4.3 依赖合法性
 
@@ -152,7 +148,6 @@ pub enum SliceInfoElem {
     Range {
         start: usize,
         end: usize,
-        // Step slicing is not in scope for the current version and may be designed in a future version.
     },
 }
 
@@ -183,12 +178,11 @@ where
     /// Constructs a `SliceInfo` from indices and dimension types.
     ///
     /// Performs **structural** validation only; it does **not** validate
-    /// per-axis bounds against any tensor shape. See decision 3 (B9.a).
+    /// per-axis bounds against any tensor shape.
     ///
     /// # Errors
     ///
-    /// Returns `XenonError::InvalidArgument { operation: "SliceInfo::new",
-    /// kind: InvalidArgumentKind::OperationSpecific { .. } }` when:
+    /// Returns `XenonError::InvalidArgument` when:
     ///
     /// - `indices.len() != in_dim.ndim()` (rank of slice descriptor must
     ///   match the input dimension type's rank).
@@ -211,7 +205,7 @@ where
 }
 ```
 
-设计说明：为支持 `XenonError::IndexOutOfBounds` 与 `26-error.md` 的规范对齐，`NdIndex<D>` 将提供 `fn to_index_vec(&self) -> Vec<usize>`（或等价 helper）用于把任意合法索引表示统一转换为 `Vec<usize>`。这样 tuple-based `Ix0`~`Ix6` 与切片形式索引都能在错误上报路径中生成一致的结构化诊断数据。
+为支持 `XenonError::IndexOutOfBounds` 与 `26-error.md` 的规范对齐，`NdIndex<D>` 将提供 `fn to_index_vec(&self) -> Vec<usize>`（或等价 helper）用于把任意合法索引表示统一转换为 `Vec<usize>`。这样 tuple-based `Ix0`~`Ix6` 与切片形式索引都能在错误上报路径中生成一致的结构化诊断数据。
 
 `SliceInfo<I, D>` 是切片描述符的公开包装类型：`D` 表示输入维度，`I` 表示切片后的输出维度；其内部字段保持私有，必须通过带校验的公开构造器建立，以避免手工拼出"索引长度、输入维度、输出维度彼此矛盾"的无效状态。
 
