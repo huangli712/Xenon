@@ -705,7 +705,6 @@ fn is_in_parallel() -> bool {
 | 线程亲和性        | `ParallelGuard` 是 `!Send + !Sync`，因为 `Drop` 清除当前线程的 TLS——若 guard 被 drop 在另一线程会清错线程的 flag。`parallel/` 后端必须在调用线程持有 guard，禁止在 Rayon 闭包中捕获。 |
 | Worker 上下文     | Rayon worker 闭包必须使用 `with_parallel_worker_context` 在 chunk 执行期间设置 worker 自身 TLS；不得捕获或 move outer guard。 |
 | 零分配            | 不在堆上分配，不涉及原子操作（`Cell` 是非原子内部可变性），开销为单次 thread-local 访问。         |
-```
 
 ### 6.3 阈值存储
 
@@ -841,9 +840,9 @@ pub(crate) fn should_parallelize(_len: usize, _is_contiguous: bool) -> bool {
 }
 ```
 
-**关于 `alignment_ok` 的实际传递路径**：本伪代码中 `_simd_alignment_hint` 仅在 dispatch 选路阶段使用，作为"是否进入 SIMD 路径"的早期短路提示，并不会通过参数或数据结构显式 forward 给 SIMD 后端。SIMD 后端在 chunk 内部独立通过 `layout::is_aligned()` 重新检查实际指针对齐情况，并在 per-kernel admission 阶段（见 08-simd.md §5.7）选择 aligned 或 unaligned 变体。因此 `alignment_ok = false` 不会硬性禁止 SIMD 路径，仅作为 dispatch 阶段的优化启发；最终对齐准入由 SIMD 后端独立裁决。
+**关于 `alignment_ok` 的实际传递路径**：本伪代码中 `_simd_alignment_hint` 仅在 dispatch 选路阶段使用，作为"是否进入 SIMD 路径"的早期短路提示，并不会通过参数或数据结构显式 forward 给 SIMD 后端。SIMD 后端在 chunk 内部独立通过 `layout::is_aligned()` 重新检查实际指针对齐情况，并在 per-kernel admission 阶段（见 `08-simd.md` §5.7）选择 aligned 或 unaligned 变体。因此 `alignment_ok = false` 不会硬性禁止 SIMD 路径，仅作为 dispatch 阶段的优化启发；最终对齐准入由 SIMD 后端独立裁决。
 
-**`ParallelGuard` 的 cfg 处理：** `ParallelGuard` 类型与 `try_acquire_guard()` / `is_in_parallel()` / `IN_PARALLEL` thread-local 仅在 `feature = "parallel"` 启用时存在对应实现；`feature = "parallel"` 关闭时仅保留一个零大小占位结构体以保持 `select_exec_path()` 的返回类型签名稳定，但**永不构造**且**无 Drop 行为**。
+**`ParallelGuard` 的 cfg 处理：** `ParallelGuard` 类型与 `try_acquire_guard()` / `is_in_parallel()` / `IN_PARALLEL` thread-local 仅在 `feature = "parallel"` 启用时存在对应实现；`feature = "parallel"` 关闭时仅保留一个零大小占位结构体以保持 `select_exec_path()` 的返回类型签名稳定，但永不构造且无 Drop 行为。
 
 ```rust,ignore
 #[cfg(not(feature = "parallel"))]
@@ -860,7 +859,7 @@ pub(crate) struct ParallelGuard {
 // No `try_acquire_guard()`, no `Drop` impl needed — the type is unconstructible.
 ```
 
-**真 guard !Send vs placeholder Send 的有意不对称：** 在 `feature = "parallel"` 启用下，真 `ParallelGuard` 必须是 `!Send + !Sync`，因为它持有清除当前线程 TLS flag 的释放语义。在 `feature = "parallel"` 关闭下，placeholder `ParallelGuard` **不**持有任何线程亲和的释放语义（无构造、无 Drop），因此**必须**是 `Send + Sync`，以避免 `Option<ParallelGuard>`（始终 `None`）在默认构建下被无端打上 `!Send` 标签。这种不对称是有意为之的安全契约差异，并非疏漏。
+**真 guard !Send vs placeholder Send 的有意不对称：** 在 `feature = "parallel"` 启用下，真 `ParallelGuard` 必须是 `!Send + !Sync`，因为它持有清除当前线程 TLS flag 的释放语义。在 `feature = "parallel"` 关闭下，placeholder `ParallelGuard` 不持有任何线程亲和的释放语义（无构造、无 Drop），因此必须是 `Send + Sync`，以避免 `Option<ParallelGuard>`（始终 `None`）在默认构建下被无端打上 `!Send` 标签。这种不对称是有意为之的安全契约差异，并非疏漏。
 
 ### 6.5 决策流 ASCII 图
 
@@ -870,9 +869,9 @@ Caller (math / matrix / reduction)
     ▼
 ┌────────────────────────────────────────────────────────────┐
 │  dispatch::select_exec_path(len, is_contiguous, align_ok)  │
-│                                                             │
-│  Returns: (ExecPath, Option<ParallelGuard>)                 │
-│  Invariant: guard is Some(_) IFF ExecPath::Parallel         │
+│                                                            │
+│  Returns: (ExecPath, Option<ParallelGuard>)                │
+│  Invariant: guard is Some(_) IFF ExecPath::Parallel        │
 └────────────────────────┬───────────────────────────────────┘
                          │
         ┌────────────────┼────────────────┐
@@ -905,10 +904,10 @@ Caller (math / matrix / reduction)
 │ chunk MAY invoke   │ │              │ │              │
 │ SIMD per chunk-    │ │              │ │              │
 │ local admission.   │ │              │ │              │
-│ Outer              │ │              │ │              │
-│ guard Drop on the  │ │              │ │              │
-│ dispatching thread │ │              │ │              │
-│ releases TLS flag. │ │              │ │              │
+│ Outer guard Drop   │ │              │ │              │
+│ on the dispatching │ │              │ │              │
+│ thread releases    │ │              │ │              │
+│ TLS flag.          │ │              │ │              │
 └────────────────────┘ └──────────────┘ └──────────────┘
 ```
 
