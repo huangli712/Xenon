@@ -567,6 +567,8 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
     └── iter yields elements or sub-views for math / reduction / overload
 ```
 
+---
+
 ## 10. 错误处理与语义边界
 
 | 主题              | 内容                                                                                 |
