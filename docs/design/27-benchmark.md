@@ -48,7 +48,7 @@
 benches/
 ├── utils/
 │   ├── mod.rs              # Shared constants and utility exports
-│   └── generators.rs         # Test data generators
+│   └── generators.rs       # Test data generators
 ├── math.rs                 # Element-wise operation benchmarks
 ├── reduction.rs            # Reduction benchmarks (sum)
 ├── dot.rs                  # Vector dot-product benchmarks
@@ -85,18 +85,18 @@ benches/
 
 ### 4.2 类型级依赖
 
-| 来源模块    | 使用的 API（类型/trait/函数）                                                                 |
-| ----------- | --------------------------------------------------------------------------------------------- |
-| `tensor`    | `Tensor<A, D>`, `TensorView`, `TensorViewMut`, `.shape()`（参见 `07-tensor.md §5`）           |
-| `dimension` | `Ix1`, `Ix2`, `Ix3`, `IxDyn`, `Dimension`（参见 `02-dimension.md §5`）                        |
-| `element`   | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element.md §5`）                |
-| `math`      | `add`, `sub`, `mul`, `div`, `sin`, `exp`, `abs`（参见 `11-math.md §5`）                       |
-| `reduction` | `sum`, `sum_axis`（参见 `13-reduction.md §5`）                                                |
-| `matrix`    | `dot`（参见 `12-matrix.md §5`）                                                               |
-| `shape`     | `transpose`（参见 `16-shape.md §5`）                                                          |
-| `set`       | `unique`（参见 `14-set.md §5`）                                                               |
-| `construct` | `zeros`, `ones`, `from_shape_vec`（参见 `18-construction.md §5`）                             |
-| `broadcast` | `broadcast_shape`（参见 `15-broadcast.md §5`）、广播视图构造                                  |
+| 来源模块    | 使用的 API（类型/trait/函数）                                                   |
+| ----------- | ------------------------------------------------------------------------------- |
+| `tensor`    | `Tensor`, `TensorView`, `TensorViewMut`, `.shape()`（参见 `07-tensor.md §5`）   |
+| `dimension` | `Ix1`, `Ix2`, `Ix3`, `IxDyn`, `Dimension`（参见 `02-dimension.md §5`）          |
+| `element`   | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`（参见 `03-element.md §5`）  |
+| `math`      | `add`, `sub`, `mul`, `div`, `sin`, `exp`, `abs`（参见 `11-math.md §5`）         |
+| `reduction` | `sum`, `sum_axis`（参见 `13-reduction.md §5`）                                  |
+| `matrix`    | `dot`（参见 `12-matrix.md §5`）                                                 |
+| `shape`     | `transpose`（参见 `16-shape.md §5`）                                            |
+| `set`       | `unique`（参见 `14-set.md §5`）                                                 |
+| `construct` | `zeros`, `ones`, `from_shape_vec`（参见 `18-construction.md §5`）               |
+| `broadcast` | `broadcast_shape`（参见 `15-broadcast.md §5`）、广播视图构造                    |
 
 ### 4.3 依赖合法性
 
@@ -106,11 +106,9 @@ benches/
 | 合法性结论     | 以 `std::time::Instant`、`std::hint::black_box` 与仓库内脚本作为当前版本基线，符合最小依赖约束 |
 | 替代方案       | 外部 benchmark 框架可作为未来方案评估，但不属于当前版本默认要求                                |
 
-**工具链依赖说明**：`tools/bench/report.py`（CI 结果汇总脚本）使用 Python 实现，属于 CI 工具链依赖（与 cargo/rustc 同一级别），**不属于** crate 的 `dev-dependency`。它不影响基准测试本身的可重现性——所有 benchmark 代码仅使用 `std::time::Instant` 和 `std::hint::black_box`。
-
 ### 4.4 依赖方向声明
 
-依赖方向：单向消费。`benches` 消费 crate 公共 API 与部分 `pub(crate)` 内部 API（如 `broadcast_with`）；benchmark 工具链属于可选维护设施，不被任何模块依赖。
+依赖方向：单向消费。`benches` 消费 crate 公共 API 与部分 `pub(crate)` 内部 API。benchmark 工具链属于可选维护设施，不被任何模块依赖。
 
 ---
 
@@ -253,11 +251,11 @@ Benchmark categories
 
 | 类型           | 优先级   | 说明              |
 | -------------- | -------- | ----------------- |
-| `f64`          | **必测** | 科学计算默认精度  |
-| `f32`          | **必测** | SIMD 向量宽度更大 |
-| `Complex<f64>` | **必测** | 复数运算开销验证  |
+| `f64`          | 必测     | 科学计算默认精度  |
+| `f32`          | 必测     | SIMD 向量宽度更大 |
+| `Complex<f64>` | 必测     | 复数运算开销验证  |
 
-**补充**：Comparison benchmark（§5.5 中 `simd_*_compare` / `par_*_compare` 组）可额外使用 `i32`、`i64` 等整数类型，以覆盖对应后端路径的特定加速场景（参见 `08-simd.md §5.6`、`09-parallel.md §5`）。
+Comparison benchmark 可额外使用 `i32`、`i64` 等整数类型，以覆盖对应后端路径的特定加速场景（参见 `08-simd.md §5.6`、`09-parallel.md §5`）。
 
 #### 5.4.3 内存布局
 
@@ -266,9 +264,10 @@ Benchmark categories
 | F-contiguous   | `zeros(shape)`                    | 默认路径性能基线   |
 | Non-contiguous | F-order 2D 张量的行视图或转置视图 | 非连续路径性能惩罚 |
 
-**注意**：Xenon 仅支持 F-order 布局，不存在 C-order 路径。非连续布局通过切片/转置视图产生（参见 `06-layout.md §5.3` / `§5.7`）。
+**注意**：
 
-**补充**：数据竞争和 UB 验证由 `28-tests.md` 覆盖。benchmark 仅验证性能指标，不承担正确性验证职责。
+- Xenon 仅支持 F-order 布局，不存在 C-order 路径。非连续布局通过切片/转置视图产生（参见 `06-layout.md §5.3` / `§5.7`）。
+- 数据竞争和 UB 验证由 `28-tests.md` 覆盖。benchmark 仅验证性能指标，不承担正确性验证职责。
 
 ### 5.5 Benchmark 清单
 
@@ -299,7 +298,7 @@ Benchmark categories
 | `broadcast_with`           | 双张量广播协作          | S/M/L | f64            | F-contiguous   | broadcast_with 协作模式（参见 `15-broadcast.md §5`） |
 | `transpose_2d`             | 2D 转置（零拷贝）       | S/M/L | f64            | F-contiguous   | 转置视图创建                                    |
 | `simd_add_compare`         | `a + b` (SIMD vs 标量)  | M     | f32/f64        | F-contiguous   | SIMD 加速比（参见 `08-simd.md §12`）            |
-| `simd_sum_compare`         | sum (SIMD vs 标量)      | M     | i32/f32/f64    | F-contiguous   | SIMD sum 对比；i32 覆盖整数 admission / scalar fallback 路径（仅在已验证 widening kernel 存在时记录 SIMD vs 标量对比，否则记录 fallback 等价路径；参见 `08-simd.md §5.6` 的"条件实现，默认标量回退"约定），f32/f64 覆盖已实现 SIMD 路径  |
+| `simd_sum_compare`         | sum (SIMD vs 标量)      | M     | i32/f32/f64    | F-contiguous   | SIMD sum 对比；i32 覆盖整数 admission / scalar fallback 路径 |
 | `simd_dot_compare`         | dot (SIMD vs 标量)      | M     | f32/f64        | F-contiguous   | SIMD dot kernel 已在 `08-simd.md` 中设计        |
 | `par_sum_compare`          | sum (并行 vs 串行)      | L     | i64            | F-contiguous   | 并行加速比（参见 `09-parallel.md §12`）         |
 | `par_add_compare`          | `a + b` (并行 vs 串行)  | L     | f64            | F-contiguous   | 并行逐元素加速                                  |
@@ -310,15 +309,15 @@ Benchmark categories
 
 ### 5.6 可选 CI 三级工作流
 
-| 工作流               | 基准数量                                                                    | 预计时间 | 启用方式                     |
-| -------------------- | --------------------------------------------------------------------------- | -------- | ---------------------------- |
-| **Smoke Test**       | 3 个核心文件 × `--quick`                                                    | ~5 min   | 仓库可按需启用；不阻塞交付   |
-| **Regression Check** | `elem_add_f64` 和 `sum_1d_f64`                                              | ~10 min  | 存在 baseline 时可选启用     |
-| **Full Benchmark**   | 全部文件 × 4 feature 组合（`default`、`simd`、`parallel`、`simd+parallel`） | ~60 min  | 维护期按需运行               |
+| 工作流               | 基准数量                                                                    | 启用方式                     |
+| -------------------- | --------------------------------------------------------------------------- | ---------------------------- |
+| **Smoke Test**       | 3 个核心文件 × `--quick`                                                    | 仓库可按需启用；不阻塞交付   |
+| **Regression Check** | `elem_add_f64` 和 `sum_1d_f64`                                              | 存在 baseline 时可选启用     |
+| **Full Benchmark**   | 全部文件 × 4 feature 组合（`default`、`simd`、`parallel`、`simd+parallel`） | 维护期按需运行               |
 
-**Smoke Test 覆盖范围**
+**Smoke Test 覆盖范围**：
 
-Smoke Test 仅验证 benchmark 代码可以正常编译和运行（"不崩溃"），不用于性能判断，也不执行回归阈值门禁。其调用约定统一使用 `--quick`；若仓库选择启用性能回归检测，再由 Regression Check（§5.6.2）承担趋势观测。
+Smoke Test 仅验证 benchmark 代码可以正常编译和运行，不用于性能判断，也不执行回归阈值门禁。其调用约定统一使用 `--quick`；若仓库选择启用性能回归检测，再由 Regression Check 承担趋势观测。
 
 | 文件              | 组                      | 说明           |
 | ----------------- | ----------------------- | -------------- |
@@ -326,12 +325,10 @@ Smoke Test 仅验证 benchmark 代码可以正常编译和运行（"不崩溃"�
 | `reduction.rs`    | `sum_1d_f64` (Medium)   | 核心归约路径   |
 | `construction.rs` | `zeros_1d` (Medium)     | 基础构造路径   |
 
-**Regression Check 覆盖范围**
+**Regression Check 覆盖范围**：
 
 - 当仓库显式启用 Regression Check 时，可监测以下核心基准：`elem_add_f64`（逐元素加法，f64，65536 元素）和 `sum_1d_f64`（一维归约，f64，65536 元素）。其中 `65536` 与 §5.4.1 的 1D Medium 规模保持一致。
-
 - 本文档统一使用同一组规模基线：Small = `64` / `8×8`，Medium = `65,536` / `256×256`，Large = `16,777,216` / `4096×4096`。
-
 - Large 规模基准测试（如 `4096×4096`）仅在 weekly/full benchmark 流水线中执行。PR 级别的 Smoke Test 仅使用 Small/Medium 规模。CI 配置须设置合理的内存上限；当可用内存低于 Large 用例估算峰值的 1.5× 安全阈值时，大张量测试应跳过并标记为 skipped。
 
 **CI 配置示例**
