@@ -256,7 +256,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 
 **安全性论证（unchecked 视图构造）：** 若内部使用 `TensorView::new_unchecked()` 或等价未检查构造器，调用点必须先证明：1）目标 `shape` 与源 `shape` 广播兼容；2）新 `shape` / `stride` / `offset` 组合不会访问到底层 storage 可见边界之外；3）任何零步长元素都不会通过结果视图暴露为可变访问。
 
-**布局状态判定（由视图构造方负责）：** 广播视图的 `LayoutFlags` 必须通过 `compute_layout_flags()`（见 `06-layout.md`）重算。广播结果的布局状态分类以 **06-layout.md §5.11**（`HAS_ZERO_STRIDE` 权威定义）为准。非空广播视图（`product(shape) > 0` 且存在广播零步长轴）归入 `LayoutState::BroadcastView`；空数组退化（`product(shape) == 0`，即使存在零步长写入）不触发广播分类，详见 06-layout.md §5.11 边界情形覆盖表。
+**布局状态判定（由视图构造方负责）：** 广播视图的 `LayoutFlags` 必须通过 `compute_layout_flags()`（见 `06-layout.md`）重算。广播结果的布局状态分类以 `06-layout.md §5.11` 为准。非空广播视图（`product(shape) > 0` 且存在广播零步长轴）归入 `LayoutState::BroadcastView`；空数组退化（`product(shape) == 0`，即使存在零步长写入）不触发广播分类。
 
 ### 6.5 `BroadcastDim` 的职责边界
 
