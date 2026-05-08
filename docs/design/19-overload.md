@@ -157,7 +157,7 @@ src/overload/
 
 ### 5.2 张量×张量运算符
 
-> **重要：方法解析说明（v2.1.0）**：以下伪代码体内出现的 `self.add(rhs)` / `self.sub(rhs)` / `self.mul(rhs)` / `self.div(rhs)` 调用**必须**解析到 `11-math.md §5` 定义的 inherent method，**不能**递归到本 trait `core::ops::Add` 实现，否则会无限递归并 stack overflow。Rust 方法解析优先级是"inherent method 优先于 trait method"，因此只要 `TensorBase` 上存在同名 inherent `add` / `sub` / `mul` / `div`，调用即正确委托——这正是 §5.1 选择"trait 委托 inherent"模式的原因。委托关系由 `tests/compile/operator_inherent_method_resolution.rs` 守护（详见 §5.3 末尾）。如实现层为了消除任何歧义，可改为完全限定调用形式 `<TensorBase<Owned<A>, D>>::add(self, &rhs)` 或在 inherent method 改名为 `add_impl` / `_add` 等内部名称——这两种形态本质等价；当前文档保留 `self.add(rhs)` 是为了与公开 API 命名一致。
+**方法解析说明**：以下伪代码体内出现的 `self.add(rhs)` / `self.sub(rhs)` / `self.mul(rhs)` / `self.div(rhs)` 调用必须解析到 `11-math.md §5` 定义的 inherent method，不能递归到本 trait `core::ops::Add` 实现，否则会无限递归并 stack overflow。Rust 方法解析优先级是"inherent method 优先于 trait method"，因此只要 `TensorBase` 上存在同名 inherent `add` / `sub` / `mul` / `div`，调用即正确委托——这正是 §5.1 选择"trait 委托 inherent"模式的原因。委托关系由 `tests/compile/operator_inherent_method_resolution.rs` 守护（详见 §5.3 末尾）。如实现层为了消除任何歧义，可改为完全限定调用形式 `<TensorBase<Owned<A>, D>>::add(self, &rhs)` 或在 inherent method 改名为 `add_impl` / `_add` 等内部名称——这两种形态本质等价；当前文档保留 `self.add(rhs)` 是为了与公开 API 命名一致。
 
 ```rust,ignore
 // Tensor + Tensor (owned + owned)
@@ -235,14 +235,13 @@ where
 - 与 `15-broadcast.md` 保持一致；对称张量×张量运算须同时满足 `D: BroadcastDim<E>` 与 `E: BroadcastDim<D>`，以保证输出维度类型可双向收敛到同一关联类型。
 - 张量×张量运算符直接委托给 `11-math.md §5` 的方法型逐元素 API（`TensorBase::add()` / `TensorBase::sub()` / `TensorBase::mul()` / `TensorBase::div()`）。运算符 impl 中的 `self.add(rhs)` 不会产生递归：Rust 的方法解析规则优先匹配固有方法（`math` 模块提供的 `pub fn add(&self, ...)`），而非 `Add` trait 自身的 `fn add(self, ...)`。
 
-**测试保障**：`tests/compile/operator_inherent_method_resolution.rs` 验证 `Tensor + Tensor` 始终调用 inherent `add()` 方法（来自 11-math），而非 `core::ops::Add` trait 方法。如果 `add` inherent 方法被改名或删除，该测试将编译失败，阻止悄悄破坏委托关系。
-- 广播失败走 `Err(XenonError::BroadcastError)` ；整数除零、整数溢出与结果不可表示仍保持 panic。本文 §11 的决策 3 / 决策 4 仅记录该 ADR 在本模块中的细化范围。
+- 广播失败走 `Err(XenonError::BroadcastError)` ；整数除零、整数溢出与结果不可表示仍保持 panic。
 - 当前稳定承诺覆盖 `Owned×Owned`、`TensorView×TensorView`、`TensorView×Tensor`、`Tensor×TensorView` 以及标量路径。实现优先级：`Owned×Owned` > `Owned/View` 混合路径。
 - 当前稳定 API 直接承诺只读 `TensorView` 参与运算符重载，这样 `broadcast_to()`、`transpose()`、`slice()` 等返回视图的操作结果可以继续参与四则运算。
-- `TensorViewMut` **不**直接参与运算符重载。若要使用运算符，必须先调用 `.view()` 获取只读 `TensorView`，再对该只读视图应用运算符。若调用方需要从视图结果恢复 owned / shared 链（如 `tensor.transpose().to_owned().into_shared()`），参见 `21-type.md §5.5` 以及 storage shared ownership 相关设计。
+- `TensorViewMut` 不直接参与运算符重载。若要使用运算符，必须先调用 `.view()` 获取只读 `TensorView`，再对该只读视图应用运算符。若调用方需要从视图结果恢复 owned / shared 链（如 `tensor.transpose().to_owned().into_shared()`），参见 `21-type.md §5.5` 以及 storage shared ownership 相关设计。
 - 无论输入组合如何，成功结果都分配新的 owned 张量，不提供原地写回或视图就地更新。
 
-#### TensorViewMut 与运算符
+**TensorViewMut 与运算符**：
 
 `TensorViewMut<'a, A, D>` 不直接参与运算符重载。原因：可变独占借用语义与运算符的“输入按值或共享引用消费”模式冲突。使用方需要先调用 `.view()` 转为 `TensorView` 再使用运算符：
 
