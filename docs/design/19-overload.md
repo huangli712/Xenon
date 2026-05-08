@@ -4,8 +4,6 @@
 > 模块目录: src/overload/
 > 任务阶段: Phase 4
 > 前置文档: 07-tensor.md, 11-math.md, 15-broadcast.md
-> 需求参考: 需求说明书 §12、§20、§27、§28
-> 范围声明: 范围内
 
 ---
 
@@ -25,7 +23,7 @@
 | 职责               | 不包含                                           |
 | ------------------ | ------------------------------------------------ |
 | 四则运算运算符语法 | 原地运算符 `+=`/`-=`/`*=`/`/=`（当前版本不提供） |
-| 张量×张量运算      | 矩阵乘法（由 `matrix` 提供）                     |
+| 张量×张量运算      | 矩阵乘法（将来由 `matrix` 提供）                 |
 | 张量×标量运算      | 完全泛型的 `T op Tensor<T>` blanket impl         |
 | 广播支持           | 比较运算符（在 `math` 提供）                     |
 | 新张量产生         | 原地修改运算                                     |
@@ -100,7 +98,7 @@ src/overload/
 
 ### 4.4 依赖方向声明
 
-依赖方向：单向向上。`overload` 仅消费 `math`、`tensor`、`element`、`dimension`、`error` 的 trait 和类型，不被它们依赖。`broadcast` 为传递依赖（通过 `math` 间接使用）。`overload` 是最上层的用户 API 模块。
+依赖方向：单向向上。`overload` 仅消费 `math`、`tensor`、`element`、`dimension`、`error` 的 trait 和类型，不被它们依赖。
 
 ---
 
@@ -110,8 +108,11 @@ src/overload/
 
 **当前稳定承诺的 `impl` 组合表（以 `Add` 为例，`Sub`/`Mul`/`Div` 同理）：**
 
-> 本表列举本版本 SemVer 稳定承诺的组合，不是所有可能 owned/借用组合的笛卡尔积。表中已覆盖：所有 owned-or-borrowed × owned-or-borrowed 的张量×张量 16 种组合中**实际承诺**的子集。其它未列出的按值/借用排列（如 `TensorView<A, D> + TensorView<A, E>` 按值×按值），调用方应通过显式 `&view + &other` 或 `view.add(other)?` 表达；这是有意收窄，不是文档遗漏。`Tensor<A, D> + Tensor<A, E>`（owned×owned）虽列在表中，但生产代码推荐使用 `&a + &b` 避免不必要的所有权消费。详细按值 vs 按引用决策见 §6.2。
-
+- 本表列举本版本 SemVer 稳定承诺的组合，不是所有可能 owned/借用组合的笛卡尔积。
+- 表中已覆盖：所有 owned-or-borrowed × owned-or-borrowed 的张量×张量 16 种组合中实际承诺的子集。
+- 其它未列出的按值/借用排列（如 `TensorView<A, D> + TensorView<A, E>` 按值×按值），调用方应通过显式 `&view + &other` 或 `view.add(other)?` 表达。
+- `Tensor<A, D> + Tensor<A, E>`（owned×owned）虽列在表中，但生产代码推荐使用 `&a + &b` 避免不必要的所有权消费。
+- 详细按值 vs 按引用决策见 §6.2。
 
 | Lhs                  | Rhs                  | Output         | 广播     | impl 签名                                                                           |
 | -------------------- | -------------------- | -------------- | -------- | ----------------------------------------------------------------------------------- |
@@ -127,31 +128,31 @@ src/overload/
 | `&Tensor<A, D>`      | `A`                  | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for &TensorBase<Owned<A>,D>`                                      |
 | `Scalar<A>`          | `Tensor<A, D>`       | `Tensor<A, D>` | 标量广播 | `impl<...> Add<TensorBase<Owned<A>,D>> for Scalar<A>`                               |
 | `Scalar<A>`          | `&Tensor<A, D>`      | `Tensor<A, D>` | 标量广播 | `impl<...> Add<&TensorBase<Owned<A>,D>> for Scalar<A>`                              |
-| `T`（逐类型：`f32`/`f64`/`i32`/`i64`/`Complex<f32>`/`Complex<f64>`） | `Tensor<T, D>` | `Tensor<T, D>` | 标量广播 | 逐具体类型生成（**不是泛型 `T`**），例如 `impl<D: Dimension> Add<TensorBase<Owned<f32>, D>> for f32 { ... }`、`impl<D: Dimension> Add<TensorBase<Owned<i32>, D>> for i32 { ... }`，每个受支持的算术标量一份。Rust 孤儿规则允许这种 impl：`Self = f32` 是确定的外部类型，但 trait 类型参数 `Add<TensorBase<...>>` 含本地类型 `TensorBase`，因此本 crate 拥有 impl 权（详见 §5.4 与 §6 决策记录） |
+| `T`（逐类型：`f32`/`f64`/`i32`/`i64`/`Complex<f32>`/`Complex<f64>`） | `Tensor<T, D>` | `Tensor<T, D>` | 标量广播 | 逐具体类型生成（不是泛型 `T`），例如 `impl<D: Dimension> Add<TensorBase<Owned<f32>, D>> for f32 { ... }`、`impl<D: Dimension> Add<TensorBase<Owned<i32>, D>> for i32 { ... }`，每个受支持的算术标量一份。Rust 孤儿规则允许这种 impl：`Self = f32` 是确定的外部类型，但 trait 类型参数 `Add<TensorBase<...>>` 含本地类型 `TensorBase`，因此本 crate 拥有 impl 权（详见 §5.4 与 §6 决策记录） |
 | `T`（逐类型：`f32`/`f64`/`i32`/`i64`/`Complex<..>`） | `&Tensor<T, D>` | `Tensor<T, D>` | 标量广播 | `impl<D> Add<&TensorBase<Owned<T>,D>> for T`（逐类型生成，`T == A`） |
 | `TensorView<A, D>`   | `A`                  | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for TensorBase<ViewRepr<'a, A>,D>`                                   |
 | `&TensorView<A, D>`  | `A`                  | `Tensor<A, D>` | 标量广播 | `impl<...> Add<A> for &TensorBase<ViewRepr<'a, A>,D>`                                  |
 | `Scalar<A>`          | `TensorView<A, D>`   | `Tensor<A, D>` | 标量广播 | `impl<...> Add<TensorBase<ViewRepr<'a, A>,D>> for Scalar<A>`                           |
-| `T`（逐类型：`f32`/`f64`/`i32`/`i64`/`Complex<f32>`/`Complex<f64>`） | `TensorView<T, D>` | `Tensor<T, D>` | 标量广播 | 逐具体类型生成（**不是泛型 `T`**），例如 `impl<'a, D: Dimension> Add<TensorBase<ViewRepr<'a, f32>, D>> for f32 { ... }`，每个受支持的算术标量一份。Rust 孤儿规则允许此模式：`Self = f32` 是非泛型外部类型，trait 类型参数含本地 `TensorBase`，**禁止**的写法是 `impl<T> Add<TensorBase<..., T, D>> for T`（泛型 `T` 在 trait 第一个本地类型参数之前）。 |
+| `T`（逐类型：`f32`/`f64`/`i32`/`i64`/`Complex<f32>`/`Complex<f64>`） | `TensorView<T, D>` | `Tensor<T, D>` | 标量广播 | 逐具体类型生成（不是泛型 `T`），例如 `impl<'a, D: Dimension> Add<TensorBase<ViewRepr<'a, f32>, D>> for f32 { ... }`，每个受支持的算术标量一份。Rust 孤儿规则允许此模式：`Self = f32` 是非泛型外部类型，trait 类型参数含本地 `TensorBase`，禁止的写法是 `impl<T> Add<TensorBase<..., T, D>> for T`（泛型 `T` 在 trait 第一个本地类型参数之前）。 |
 
 - 上表仅列出当前稳定承诺。张量×张量/视图路径（前 7 行）与标量路径（后 10 行）通过空行分隔；原生左标量逐类型 impl 只覆盖 `T op Tensor<T, D>` / `T op TensorView<T, D>`，不提供 `T op Tensor<A, D>` 的混合元素类型提升。
 - `TensorView` 相关组合已纳入当前稳定范围，与 `broadcast_to()` / `transpose()` / `slice()` 返回视图的既有设计保持一致。`TensorView` 参与张量×张量/视图路径的运算符重载，同时标量运算符重载（`TensorView + scalar`、`&TensorView + scalar`、`Scalar(s) + TensorView`、原生左标量）也已覆盖 `TensorView`（只读视图）。`TensorViewMut` 不直接参与标量运算符重载——使用方需先调用 `.view()` 转为 `TensorView` 后再使用运算符，或显式调用 `.add_scalar()` 等方法。
 - `BroadcastDim` 定义于 `02-dimension.md §5.10`，被 `01-architecture.md §11` 记为“公开 sealed trait”（允许命名但禁止外部实现）。由于它出现在 `broadcast` / `overload` 的公开签名与 trait bound 中，稳定承诺要求用户可在签名中命名该 trait，但不要求用户自行实现它。
 
-#### 同形状 vs 异形状路径使用建议（B1.c）
+**同形状 vs 异形状路径使用建议**：
 
-虽然张量×张量运算符的 `Output` 类型一律为 `Result<Tensor<A, F>, XenonError>`（决策 3），但实际调用语义按 LHS / RHS 形状关系可分为两个使用场景，**推荐选择不同的写法以提高代码可读性**：
+虽然张量×张量运算符的 `Output` 类型一律为 `Result<Tensor<A, F>, XenonError>`，但实际调用语义按 LHS / RHS 形状关系可分为两个使用场景，推荐选择不同的写法以提高代码可读性：
 
 | 场景                  | 形状关系                                       | 失败可能性                                     | 推荐写法                                | 理由                                                                                  |
 | --------------------- | ---------------------------------------------- | ---------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------- |
-| 同形状路径            | `a.shape() == b.shape()`（且 rank 类型一致）   | **无**（广播必然成功，结果永远 `Ok`）          | `a + b`（直接用运算符）                 | 调用点最简洁；`.unwrap()` 安全，可在静态已知同形状的上下文中通过类型层进一步收敛       |
-| 异形状路径 / 广播路径 | `a.shape() != b.shape()` 或维度类型不同        | **有**（广播可能失败 → `Err::BroadcastError`） | `a.add(b)?`（显式方法 + `?` 传播）      | 显式方法名 `add` 比运算符 `+` 更突出"可能失败"语义，与 Rust `Result`-传播习惯一致     |
+| 同形状路径            | `a.shape() == b.shape()`（且 rank 类型一致）   | 无（广播必然成功，结果永远 `Ok`）          | `a + b`（直接用运算符）                 | 调用点最简洁；`.unwrap()` 安全，可在静态已知同形状的上下文中通过类型层进一步收敛       |
+| 异形状路径 / 广播路径 | `a.shape() != b.shape()` 或维度类型不同        | 有（广播可能失败 → `Err::BroadcastError`） | `a.add(b)?`（显式方法 + `?` 传播）      | 显式方法名 `add` 比运算符 `+` 更突出"可能失败"语义，与 Rust `Result`-传播习惯一致     |
 
 具体含义：
 
 - **同形状路径**：当编译期或运行期已知 `a` 与 `b` 同形状（含 rank 类型一致），`a + b` 永远返回 `Ok(...)`，对返回值 `.unwrap()` 是安全的；运算符语法的简洁优势在此场景最大化。
 - **异形状路径**：当 `a` 与 `b` 形状不同（含 rank 不同或某些轴维度不同），运算符 `a + b` 仍合法，但是否成功取决于 `BroadcastDim` 的运行期校验；此时显式方法 `a.add(&b)?`（由 `11-math.md §5.3` 提供）更能突出失败可恢复的语义。
-- **API 等价性**：运算符 `a + b` 与方法 `a.add(&b)` 在语义、错误模型、性能上完全等价（前者委托给后者，参见 §6.1）；区别仅在调用点风格。本节是**风格建议**，不是语义约束——任意场景下两种写法都合法。
+- **API 等价性**：运算符 `a + b` 与方法 `a.add(&b)` 在语义、错误模型、性能上完全等价（前者委托给后者，参见 §6.1）；区别仅在调用点风格。本节是风格建议，不是语义约束——任意场景下两种写法都合法。
 - **不引入新方法**：`11-math.md §5` 现有 `add()` / `sub()` / `mul()` / `div()` 方法已经返回 `Result<Tensor<A, F>, XenonError>`，自身扮演 `try_add` 角色；本模块**不**新增独立 `try_add` / `try_sub` / `try_mul` / `try_div` 方法。运算符与方法的二元划分已经足够，引入第三套命名只会增加 API 表面噪音。
 
 ### 5.2 张量×张量运算符
