@@ -343,11 +343,11 @@ pub(crate) fn with_parallel_worker_context<R>(f: impl FnOnce() -> R) -> R {
 | 场景                              | `select_exec_path()` 中的 guard 检查 | 返回值                                 |
 | --------------------------------- | :----------------------------------: | -------------------------------------- |
 | 首次进入并行区域，且阈值满足      | 获取成功                             | `(ExecPath::Parallel, Some(guard))`    |
-| 已在并行区域内，再次调用          | 获取失败                             | `(ExecPath::Serial, None)` 或 `Simd/Serial` 路径（按其他条件）  |
+| 已在并行区域内，再次调用          | 获取失败                             | `(ExecPath::Serial, None)` 或 `Simd/Serial` 路径 |
 | guard drop 后再次调用             | 获取成功                             | `(ExecPath::Parallel, Some(guard))`    |
 | 库内部嵌套并行 API 调用           | 获取失败                             | `(ExecPath::Serial, None)`             |
-| `feature = "parallel"` 关闭       | 不进入 guard 路径                    | `(ExecPath::Serial, None)` 或 `Simd`  |
-| `len < effective_parallel_threshold` | 不进入 guard 路径                 | `(ExecPath::Simd, None)` 或 `Serial`  |
+| `feature = "parallel"` 关闭       | 不进入 guard 路径                    | `(ExecPath::Serial, None)` 或 `Simd`   |
+| `len < effective_parallel_threshold` | 不进入 guard 路径                 | `(ExecPath::Simd, None)` 或 `Serial`   |
 
 ### 5.5 核心 API 函数
 
