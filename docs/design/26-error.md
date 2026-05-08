@@ -741,7 +741,7 @@ where
 
 // Bad - silently saturating or truncating; also wrongly bounds on
 // `A: CastTo<B>` (which would forbid Tier-1 lossless pairs since Tier-1
-// type pairs intentionally have NO `CastTo` impl per `21-type.md §6.1.bis`
+// type pairs intentionally have NO `CastTo` impl per `21-type.md §6.1.2`
 // — this Bad example would not even compile for `f32 -> f64`, and the
 // non-fallible signature also drops the structured TypeConversion error).
 pub fn cast_bad<B: Element>(&self) -> Tensor<B, D>

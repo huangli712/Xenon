@@ -414,12 +414,13 @@ let ints: Tensor<i32, Ix1> = floats.cast().unwrap();  // forbidden: returns Type
 
 ### 6.1 CastTo 实现
 
-> **三层架构（v2.1.1，与 §11 决策 4 一致）**：
-> - **Tier-1 — 静态无损（`From`）**：通过 Rust 标准 `From`/`Into` 表达，例如 `f64: From<f32>`、`i64: From<i32>`、`f64: From<i32>`。这一层**不**经过 `CastTo`，调用点用 `T::from(value)` 或 `value.into()` 即零开销转换。`cast()` 主循环对静态无损 type pair 不实例化 `CastTo`，而是内部直接走 `From` 委托。
-> - **Tier-2 — 静态有损（`CastTo` 静态 `Err`）**：例如 `f64 → f32`、`f64 → i32`。`impl CastTo<T> for U` 直接 `Err(TypeConversion { reason: LossyFloatNarrowing | LossyFloatToInt | ... })`，无运行时值域检查。
-> - **Tier-3 — 动态条件（`CastTo` 运行时判定）**：仅 `Complex<T> → T` 这一类需要按 `im == 0.0` 等运行时条件决定 `Ok / Err`。
->
-> 下方仅展示 Tier-2 / Tier-3 的 `CastTo` 实现；Tier-1 通过 `From` 表达，本节为完整记录附录展示在 §6.1.bis。
+#### 6.1.1 三层架构
+
+- **Tier-1 — 静态无损（`From`）**：通过 Rust 标准 `From`/`Into` 表达，例如 `f64: From<f32>`、`i64: From<i32>`、`f64: From<i32>`。这一层不经过 `CastTo`，调用点用 `T::from(value)` 或 `value.into()` 即零开销转换。`cast()` 主循环对静态无损 type pair 不实例化 `CastTo`，而是内部直接走 `From` 委托。
+- **Tier-2 — 静态有损（`CastTo` 静态 `Err`）**：例如 `f64 → f32`、`f64 → i32`。`impl CastTo<T> for U` 直接 `Err(TypeConversion { reason: LossyFloatNarrowing | LossyFloatToInt | ... })`，无运行时值域检查。
+- **Tier-3 — 动态条件（`CastTo` 运行时判定）**：仅 `Complex<T> → T` 这一类需要按 `im == 0.0` 等运行时条件决定 `Ok / Err`。
+
+下方仅展示 Tier-2 / Tier-3 的 `CastTo` 实现；Tier-1 通过 `From` 表达，本节为完整记录附录展示在 §6.1.2。
 
 `CastTo` 的规范签名统一为（与 `03-element.md` §5.9 的权威定义对齐）：
 
@@ -475,7 +476,7 @@ impl CastTo<f32> for f64 {
 // f32 → f64, i32 → i64, i32 → f64 are expressed via Rust standard `From`
 // (e.g. `f64::from(x)`, `<f64 as From<i32>>::from(x)`). They do NOT have
 // a `CastTo` impl; the `cast()` main loop dispatches statically-known
-// lossless pairs to `T::from(value)` directly. See §6.1.bis for the
+// lossless pairs to `T::from(value)` directly. See §6.1.2 for the
 // lossless impl listing and §11 Decision 4 for the three-tier rationale.
 
 // === Float → integer (lossy-by-default) ===
@@ -495,13 +496,13 @@ impl CastTo<i32> for f64 {
 // === Real → complex (lossless, zero imaginary) ===
 // NOT a `CastTo` impl. These cells are Tier-1 lossless and routed through
 // `ConvertTo<B>` directly with `Ok(Complex::new(value, 0.0))` shims (see
-// §6.1.ter "Tier-1 lossless real→complex and complex widening" block); `cast()` dispatches them
+// §6.1.3 "Tier-1 lossless real→complex and complex widening" block); `cast()` dispatches them
 // without ever instantiating `CastTo`. Listed here only as a reminder that
 // real→complex zero-imaginary widenings are NOT `CastTo` cases.
 
 // === Complex → complex (lossless widening) ===
 // NOT a `CastTo` impl. `Complex<f32> → Complex<f64>` is Tier-1 lossless and
-// expressed in §6.1.ter via a direct `ConvertTo` shim (componentwise
+// expressed in §6.1.3 via a direct `ConvertTo` shim (componentwise
 // `f64::from(...)`). It is NOT routed through `CastTo`. Listed here only
 // as a reminder that complex widening is NOT a `CastTo` case.
 
@@ -542,7 +543,7 @@ impl CastTo<i32> for i64 {
 // See §5.3 i64→f64 entry: B10.a selects lossy-by-default failure.
 ```
 
-### 6.1.bis Tier-1 静态无损（`From` impls）
+### 6.1.2 Tier-1 静态无损（`From` impls）
 
 下列 `From` impls **不**通过 `CastTo`，由 Rust 标准库直接提供。锁定的 6×6 `CastElement`-only 矩阵 (bool 排除) 中包含的 Tier-1 std `From` 共 3 对：`f64: From<f32>`、`i64: From<i32>`、`f64: From<i32>`（`u32` 等其它整数类型不在封闭元素集，不参与 ConvertTo 矩阵）。`cast()` 主循环对 Tier-1 type pair 的实现委托：
 
@@ -574,7 +575,7 @@ impl CastTo<i32> for i64 {
 - **Tier-2/Tier-3 由 `CastTo` 承担**：见 §6.1 上方代码块。Tier-2 静态返回 `Err`，Tier-3 按运行时条件返回 `Ok / Err`。
 - **静态分流的实现细节**：`STATICALLY_LOSSLESS::<A, T>()` 是 §5.2 内部 helper（不公开），按 `<A as Element>::ELEMENT_TYPE` × `<T as Element>::ELEMENT_TYPE` 静态判定。具体实现可用 trait 关联常量、宏、或 specialization-free 的若干 `where` 子句穷举三对，详见 §5.2 伪代码注释。
 
-### 6.1.ter `ConvertTo<B>` 内部 sealed 分流 trait
+### 6.1.3 `ConvertTo<B>` 内部 sealed 分流 trait
 
 `ConvertTo<B>` 是 `convert/cast.rs` 内部的 `pub(crate) sealed` trait，作为 `cast<B>()` 公开 API 的静态分流入口。它统一三层架构的实现（Tier-0 / Tier-1 / Tier-2 / Tier-3），让 `cast<B>()` 的 trait bound 不必直接要求 `CastTo<B>`（避免 Tier-1 type pair 因不实现 `CastTo` 而无法通过 bound）：
 
@@ -734,7 +735,7 @@ impl ConvertTo<i64> for Complex<f64> { #[inline] fn convert(self) -> Result<i64,
 
 - [ ] **T1**: 实现 `CastTo` trait 的 Tier-2 / Tier-3 转换路径（Tier-1 不经过 `CastTo`）
   - 文件: `src/convert/cast.rs`
-  - 内容: 实现 `element` 模块中的 fallible `CastTo<T>` trait 的 Tier-2 lossy（静态错误，14 cells）+ Tier-3 dynamic（条件性，8 cells）两层；Tier-1 lossless（11 cells: 6 identity + 3 std `From` + 5 real→complex zero-imaginary widening + 1 complex widening）由 `ConvertTo` 直接走 std `From` / direct shims，**不**实例化 `CastTo`，详见 §6.1 / §6.1.ter
+  - 内容: 实现 `element` 模块中的 fallible `CastTo<T>` trait 的 Tier-2 lossy（静态错误，14 cells）+ Tier-3 dynamic（条件性，8 cells）两层；Tier-1 lossless（11 cells: 6 identity + 3 std `From` + 5 real→complex zero-imaginary widening + 1 complex widening）由 `ConvertTo` 直接走 std `From` / direct shims，**不**实例化 `CastTo`，详见 §6.1.3
   - 测试: `test_cast_f32_to_f64`（Tier-1，验证 `ConvertTo` 直通不实例化 `CastTo`）、`test_cast_f64_to_f32`（Tier-2 lossy）、`test_cast_complex_f64_to_f64_when_imag_zero`（Tier-3 dynamic）
   - 前置: element 模块完成
   - 预计: 10 min
@@ -853,7 +854,7 @@ impl ConvertTo<i64> for Complex<f64> { #[inline] fn convert(self) -> Result<i64,
 | 方向                | 对方模块  | 接口/类型                               | 约定                                                                                              |
 | ------------------- | --------- | --------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `convert → tensor`  | `tensor`  | `TensorBase<S, D>` / `StorageIntoOwned` | `cast()`、`to_owned()`、`into_owned()` 都定义在张量抽象之上；其中 `to_owned()` / `into_owned()` 负责产出 canonical F-order owned 结果 |
-| `convert → element` | `element` | `ConvertTo` (internal) / `CastTo`       | 逐元素类型转换通过内部 `ConvertTo<B>` 分流：Tier-1 lossless 走 std `From` / direct shims（**不**实例化 `CastTo`）；Tier-2 lossy 与 Tier-3 dynamic 委托 `<A as CastTo<B>>::cast_to(value)`。`CastTo` trait 定义见 `03-element.md §5.9`，三层架构详见 §6.1 / §6.1.ter |
+| `convert → element` | `element` | `ConvertTo` (internal) / `CastTo`       | 逐元素类型转换通过内部 `ConvertTo<B>` 分流：Tier-1 lossless 走 std `From` / direct shims（**不**实例化 `CastTo`）；Tier-2 lossy 与 Tier-3 dynamic 委托 `<A as CastTo<B>>::cast_to(value)`。`CastTo` trait 定义见 `03-element.md §5.9`，三层架构详见 §6.1.3 |
 | `convert → math`    | `math`    | 逐元素转换语义                          | `cast()` 采用迭代收集路径，不复用 `mapv()` 的同类型返回语义                                       |
 | `convert → storage` | `storage` | `Owned` / readable storage traits       | convert 只消费可读存储与 owned 化能力，不在本文扩展额外存储模式互转矩阵                           |
 | `convert → utility` | `utility`  | `to_contiguous`, `into_contiguous`   | 外部调用方若需要显式连续化入口，由 `util::to_contiguous()` 负责（参见 `20-utility.md §5.5`） |
