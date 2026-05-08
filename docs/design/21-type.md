@@ -99,12 +99,7 @@ External dependencies:
 ### 5.1 CastTo trait
 
 - `CastTo<T>` trait 的唯一 owner 是 `03-element.md §5.9`。`convert` 模块只消费该 trait，并在受支持的源/目标类型矩阵上提供 `cast()` 路径，不重新定义 trait。
-- `CastElement` 是公开 sealed marker trait，**唯一 owner 是 `03-element.md §5.9.1`**（v2.1.0 协同新增）。`convert` 模块只消费、不重新定义。`bool` 不属于 `CastElement`，因此 `cast::<bool>()` 在编译期被拒绝。封闭实现集合见 `03-element.md §5.9.1`：i32 / i64 / f32 / f64 / Complex<f32> / Complex<f64>。
-
-```rust,ignore
-// In `21-type.md`, only consumed via `use crate::element::CastElement;`.
-// See `03-element.md §5.9.1` for the trait definition and impl set.
-```
+- `CastElement` 是公开 sealed marker trait，唯一 owner 是 `03-element.md §5.9.1`。`convert` 模块只消费、不重新定义。`bool` 不属于 `CastElement`，因此 `cast::<bool>()` 在编译期被拒绝。封闭实现集合见 `03-element.md §5.9.1`。
 
 ### 5.2 cast 方法
 
@@ -112,7 +107,7 @@ External dependencies:
 - `element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引。
 - `cast()` 面向所有可读存储开放；无论输入是 `Owned`、`ViewRepr`、`ViewMutRepr` 还是 `ArcRepr`，结果统一物化为新的 owned 张量，以保持返回类型与所有权语义一致。源类型与目标类型都进一步收缩为 `CastElement`，从签名层面排除 `bool`。
 - `cast<B>()` 仅在 `A: CastElement + ConvertTo<B>` 时可用。`bool` 不实现 `CastElement`，因此 `Tensor<bool, _>` 上 `cast()` 在编译期不可调用，而不是落到运行时 `TypeConversion`。
-- **`ConvertTo<B>` 是 `pub(crate) sealed` 内部分流 trait**，仅在 `convert/cast.rs` 定义，作为三层架构（§6.1 / §6.1.bis / §11 决策 4）的静态调度入口：Tier-1 lossless type pair 的 impl 直接走 `B::from(value)` 委托给 std `From`，Tier-2 / Tier-3 的 impl 委托给 `<A as CastTo<B>>::cast_to(value)`。这样公开的 `cast<B>()` 不再要求源/目标对必须实现 `CastTo`，避免 Tier-1 因为没有 `CastTo` impl 而无法通过 trait bound（项目不变量：Tier-1 不实现 `CastTo`）。
+- `ConvertTo<B>` 是 `pub(crate) sealed` 内部分流 trait，仅在 `convert/cast.rs` 定义，作为三层架构的静态调度入口：Tier-1 lossless type pair 的 impl 直接走 `B::from(value)` 委托给 std `From`，Tier-2 / Tier-3 的 impl 委托给 `<A as CastTo<B>>::cast_to(value)`。这样公开的 `cast<B>()` 不再要求源/目标对必须实现 `CastTo`，避免 Tier-1 因为没有 `CastTo` impl 而无法通过 trait bound。
 
 ````rust,ignore
 impl<S, A, D> TensorBase<S, D>
@@ -132,20 +127,8 @@ where
     ///
     /// # Errors
     ///
-    /// Returns `XenonError::TypeConversion {
-    ///     operation: Cow::Borrowed("cast"),
-    ///     source_type: &'static str,
-    ///     target_type: &'static str,
-    ///     reason: ConversionFailureReason,
-    ///     element_index: Some(usize),
-    /// }` when any element cannot be converted under the rules defined in
-    /// `需求说明书 §23`. `source_type` / `target_type` are `&'static str`
-    /// (see `26-error.md v3.2.0 §5.1`); the canonical name strings come
-    /// from `<A as Element>::ELEMENT_TYPE_NAME`
-    /// (see `03-element.md §5.1.1`). They **must not** use
-    /// `core::any::TypeId` and **must not** be free-form text. `operation`
-    /// must be supplied (the v3.0.0 contract removed the implicit-empty
-    /// default).
+    /// Returns `XenonError::TypeConversion` when any element cannot be converted
+    /// under the rules defined in `require.md §23`.
     ///
     /// # Examples
     ///
