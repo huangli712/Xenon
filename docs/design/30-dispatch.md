@@ -102,12 +102,16 @@ src/dispatch.rs
 ### 5.1 Crate 级约束
 
 - 所有 dispatch API 均为 `pub(crate)`；不对外公开任何 dispatch 类型或函数。
-- `Cargo.toml` feature 交互：dispatch.rs **始终编译**，模块本体不依赖任何 feature gate；但**`ParallelExecStrategy` 相关代码路径（`new()` 内对 `max_workers` 上限的校验调用 `rayon::current_num_threads()`）只在 `feature = "parallel"` 下编译并使用 rayon**。具体形态：dispatch 内涉及读取 rayon 池大小的代码必须用 `#[cfg(feature = "parallel")]` 包裹；非 parallel feature 下，`ParallelExecStrategy::new()` 不可达（dispatch 永远不返回 `ExecPath::Parallel`），调用方也不会构造该策略。这等价于：**dispatch 对 rayon 的依赖是"feature-gated 内部传递"，与 `parallel/` 后端共享同一个 `optional = true, feature = "parallel"` 的 rayon 依赖项**，没有引入新的 always-on 依赖。运行时行为随 feature flag 变化：
+- `dispatch.rs` 始终编译，模块本体不依赖任何 feature gate。
+- `ParallelExecStrategy` 相关代码路径只在 `feature = "parallel"` 下编译并使用 `rayon`。
+- dispatch 内涉及读取 rayon 池大小的代码必须用 `#[cfg(feature = "parallel")]` 包裹。
+- 非 parallel feature 下，`ParallelExecStrategy::new()` 不可达，即 dispatch 永远不返回 `ExecPath::Parallel`。
+- 运行时行为随 feature flag 变化：
   - `feature = "parallel"` 关闭时，`select_exec_path()` 永不返回 `ExecPath::Parallel`
   - `feature = "simd"` 关闭时，`select_exec_path()` 永不返回 `ExecPath::Simd`
   - 两者均关闭时，`select_exec_path()` 总是返回 `ExecPath::Serial`
 
-### 5.2 ExecPath 枚举（核心类型）
+### 5.2 ExecPath 枚举
 
 ```rust,ignore
 /// ExecPath represents the three mutually exclusive execution paths
@@ -152,15 +156,14 @@ pub(crate) enum ExecPath {
     ///
     /// When this variant is returned, `select_exec_path()` also yields
     /// the corresponding `ParallelGuard` (held by the caller) — selection
-    /// and entry are bound into a single atomic step. See §5.5 and
-    /// Decision 7 (§11).
+    /// and entry are bound into a single atomic step. See §5.5.
     Parallel,
 }
 ```
 
-**语义约定：** `ExecPath::Simd` 表示 dispatch **推荐** SIMD 路径；`simd/` 模块仍保有最终准入权（检测 ISA、lane 宽度、对齐细节等），并可在内部回退标量。dispatch 不参与该回退决策，也不感知其发生。
+**语义约定**：`ExecPath::Simd` 表示 dispatch 推荐 SIMD 路径；`simd/` 模块仍保有最终准入权（检测 ISA、lane 宽度、对齐细节等），并可在内部回退标量。dispatch 不参与该回退决策，也不感知其发生。
 
-**`ExecPath::Parallel` 与 guard 的原子绑定：** 一旦 `select_exec_path()` 返回 `ExecPath::Parallel`，调用方必然拿到 `Some(ParallelGuard)`。两者**不可分离**——这是 Decision 7 的核心契约（参见 §11）。任何让调用方先收到 `ExecPath::Parallel` 再尝试单独 `enter()` 的设计都会引入 TOCTOU 窗口（中间被另一并行 API 抢占进入），与"嵌套并行检测"语义冲突。
+**`ExecPath::Parallel` 与 guard 的原子绑定**： 一旦 `select_exec_path()` 返回 `ExecPath::Parallel`，调用方必然拿到 `Some(ParallelGuard)`。两者不可分离。任何让调用方先收到 `ExecPath::Parallel` 再尝试单独 `enter()` 的设计都会引入 TOCTOU 窗口（中间被另一并行 API 抢占进入），与"嵌套并行检测"语义冲突。
 
 **feature gate 影响：**
 
@@ -237,9 +240,9 @@ impl ParallelExecStrategy {
 | 字段          | 合法范围                          | 默认值 | 非法时行为                                                                  |
 | ------------- | --------------------------------- | ------ | --------------------------------------------------------------------------- |
 | `max_workers` | `Some(1..=rayon::current_num_threads())` 或 `None` | `None` | `Some(0)` 与 `Some(n) where n > pool_size` 都在 `new()` 内返回 `InvalidArgument` |
-| `chunk_size`  | `Some(n)` where `n > 0` 或 `None`                  | `None` | `Some(0)` 在 `new()` 内返回 `InvalidArgument`                              |
+| `chunk_size`  | `Some(n)` where `n > 0` 或 `None`                  | `None` | `Some(0)` 在 `new()` 内返回 `InvalidArgument`              |
 
-**字段不变量归属：** 所有 `max_workers` / `chunk_size` 校验统一在 dispatch 内的 `ParallelExecStrategy::new()` 构造器中完成，包括对 rayon 线程池上限的检查（通过 `rayon::current_num_threads()` 一次性读取）。`parallel/` 模块只消费已校验的策略，**不再**返回 `max_workers` 相关的 `InvalidArgument`。这与 `09-parallel.md §5.4` 协同（"dispatch 构造期一次性校验"），消除歧义。
+**字段不变量归属：** 所有 `max_workers` / `chunk_size` 校验统一在 dispatch 内的 `ParallelExecStrategy::new()` 构造器中完成，包括对 rayon 线程池上限的检查（通过 `rayon::current_num_threads()` 一次性读取）。`parallel/` 模块只消费已校验的策略，不再返回 `max_workers` 相关的 `InvalidArgument`。
 
 ### 5.4 ParallelGuard / ParallelContext
 
