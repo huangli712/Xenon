@@ -566,20 +566,16 @@ dispatch 持有的阈值适用于所有操作类型的统一入口裁决。各�
 | 内积 `dot`     | `f32` / `f64`                   |    65536     |     512       | 同归约                                 |
 | 内积 `dot`     | `i32` / `i64`                   |    65536     |     256       | 同归约                                 |
 
-**调用方-dispatch-后端的阈值分工：**
+**调用方-dispatch-后端的阈值分工**：
 
-- **dispatch 持有**：通用最小阈值（`PARALLEL_THRESHOLD`、`SIMD_THRESHOLD`），用于"是否值得进入非标量路径"的粗粒度裁决。调用方**不得**基于通用长度阈值（`len`）在调用 `select_exec_path()` 之前自行 gate（即不得绕过 dispatch 自行做 `Serial` 长度短路）。
+- **dispatch 持有**：通用最小阈值（`PARALLEL_THRESHOLD`、`SIMD_THRESHOLD`），用于"是否值得进入非标量路径"的粗粒度裁决。调用方不得基于通用长度阈值（`len`）在调用 `select_exec_path()` 之前自行 gate（即不得绕过 dispatch 自行做 `Serial` 长度短路）。
 - **调用方持有两类职责**：
-  1. **通用元数据传入**：`len` / `is_contiguous` / `alignment_ok` 直接传入 `select_exec_path()`，不持有 op-/element-type-specific **长度阈值**。
-  2. **op-语义合法性 gating（必须）**：调用方**必须**基于操作语义合法性在调用 `select_exec_path()` 之前 gate，包括但不限于：
-     - 整数路径 SIMD/Parallel checked-arithmetic 等价性缺失（如 `sum<i32>` / `dot<i32>` 在某后端无 checked SIMD widening kernel）→ 调用方直接走 Serial，不调用 `select_exec_path()`；详见 `08-simd.md §5.6.1` / `09-parallel.md §6.5` / `13-reduction.md §6.3` / `12-matrix.md §6.1`。
-     - 顺序敏感约束（如归约要求确定性 chunk-order）→ 调用方裁定是否进入 Parallel；详见 `09-parallel.md §6.5`。
+  1. **通用元数据传入**：`len` / `is_contiguous` / `alignment_ok` 直接传入 `select_exec_path()`，不持有 op-/element-type-specific 长度阈值。
+  2. **op-语义合法性 gating**：调用方必须基于操作语义合法性在调用 `select_exec_path()` 之前 gate，包括但不限于：
+     - 整数路径 SIMD/Parallel checked-arithmetic 等价性缺失（如 `sum<i32>` / `dot<i32>` 在某后端无 checked SIMD widening kernel）→ 调用方直接走 Serial，不调用 `select_exec_path()`。
+     - 顺序敏感约束（如归约要求确定性 chunk-order）→ 调用方裁定是否进入 Parallel。
      - 元素类型在该 op 下被显式排除（如 `bool` 不进入 `sum`）→ 调用方在类型层或调用前直接拒绝。
-  
-  这两类职责的边界是：**通用长度阈值**由 dispatch 持有，调用方不得绕过；**op-语义合法性**由调用方持有，dispatch 不感知。
-- **`simd/` 后端持有**：op-/element-type-specific 阈值（如归约 `sum_f64` 的 SIMD 准入阈值 1024）、lane 宽度、ISA 可用性、操作覆盖矩阵等最终准入条件。`simd/` 在 `ExecPath::Simd` 被选中后执行**最终二次 admission**——通过则走 SIMD kernel，不通过则内部回退标量。这与 `08-simd.md §5.6` "条件实现，默认标量回退" 与本文 §9.4 "simd 持有最终 admission" 严格一致。
-
-非连续与对齐处理见 §5.6。
+- **`simd/` 后端持有**：op-/element-type-specific 阈值、lane 宽度、ISA 可用性、操作覆盖矩阵等最终准入条件。`simd/` 在 `ExecPath::Simd` 被选中后执行最终二次 admission——通过则走 SIMD kernel，不通过则内部回退标量。
 
 ---
 
