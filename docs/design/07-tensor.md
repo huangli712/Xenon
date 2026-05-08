@@ -4,8 +4,6 @@
 > 模块目录: src/tensor/
 > 任务阶段: Phase 3
 > 前置文档: 01-architecture.md, 02-dimension.md, 03-element.md, 05-storage.md, 06-layout.md
-> 需求参考: 需求说明书 §6 - §8、§10、§19、§22、§27、§28
-> 范围声明: 范围内
 
 ---
 
@@ -13,14 +11,14 @@
 
 ### 1.1 职责边界
 
-| 职责        | 包含                                                                          |
-| ----------- | ----------------------------------------------------------------------------- |
-| 核心结构体  | `TensorBase<S, D>` 双参数泛型结构体定义                                       |
-| 类型别名    | `Tensor`/`TensorView`/`TensorViewMut`/`ArcTensor` 及维度便捷别名              |
-| 基础查询    | shape/ndim/len/strides/is_empty/is_f_contiguous/is_aligned/存储位置查询等方法 |
-| 安全构造    | 从形状和数据构造，验证合法性                                                  |
-| unsafe 构造 | `from_raw_parts`，用于 FFI                                                    |
-| 视图方法    | view/view_mut                                                                 |
+| 职责        | 包含                                                                            |
+| ----------- | ------------------------------------------------------------------------------- |
+| 核心结构体  | `TensorBase<S, D>` 双参数泛型结构体定义                                         |
+| 类型别名    | `Tensor`/`TensorView`/`TensorViewMut`/`ArcTensor` 及维度便捷别名                |
+| 基础查询    | `shape/ndim/len/strides/is_empty/is_f_contiguous/is_aligned/`存储位置查询等方法 |
+| 安全构造    | 从形状和数据构造，验证合法性                                                    |
+| unsafe 构造 | `from_raw_parts`，用于 FFI                                                      |
+| 视图方法    | `view/view_mut`                                                                 |
 
 | 职责        | 不包含                                                   |
 | ----------- | -------------------------------------------------------- |
@@ -53,7 +51,7 @@
 | 非目标   | 引入运行时动态张量类型系统、隐藏存储模式差异或跳过元数据合法性校验       |
 
 - 存储模式转换矩阵与具体转换 API 由 `05-storage.md` 承载实现设计。
-- 本文档仅定义 `storage_kind()`、view/raw-parts 与张量查询接口，不重复展开转换细节。
+- 本文档仅定义 `storage_kind()`、`view/raw-parts` 与张量查询接口，不重复展开转换细节。
 - 不引入公开 `Layout` 结构体；`TensorBase` 直接内联 `offset` 与 `LayoutFlags` 等布局元数据。
 
 ---
@@ -70,9 +68,6 @@ src/tensor/
 ```
 
 文件划分理由：结构体定义、方法实现、类型别名、构造方法各自独立且职责清晰。
-
-- 公开安全构造方法（`from_shape_vec`、`zeros`、`ones`、`eye` 等）的实现位于独立的上层模块 `src/construct/`（参见 `18-construction.md`）。
-- 本目录下的 `construct.rs` 负责内部 unsafe 低级构造（`from_raw_parts`、`from_raw_vec_unchecked`）以及 Owned 张量的裸指针分解与重建（`into_raw_parts`、`from_raw_parts_owned`、`OwnedRawParts`）。这些方法需要直接访问 `TensorBase` 的私有字段，因此只能在本模块内定义；FFI 模块通过公开 API 或 re-export 暴露给外部消费者。
 
 ---
 
@@ -107,10 +102,10 @@ src/tensor/
 | 来源模块    | 使用的类型/trait                                                                                                                   |
 | ----------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `storage`   | `Owned`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`, `Storage`, `StorageMut`, `StorageOwned`, `StorageShared`（参见 `05-storage.md §5`） |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`, `.slice()`, `.checked_size()`, `.ndim()`（参见 `02-dimension.md §5`、`§5.6`）   |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`, `.slice()`, `.checked_size()`, `.ndim()`（参见 `02-dimension.md §5`）          |
 | `layout`    | `LayoutFlags`, `Strides<D>`, `compute_f_strides()`, `compute_layout_flags()`, `is_f_contiguous()`, `is_aligned()`（参见 `06-layout.md §5`） |
-| `element`   | `Element`（构造方法中 `A: Element` 约束；参见 `03-element.md §5`）                                                                  |
-| `error`     | `XenonError`（`InvalidLayout` 含 `InvalidLayoutReason` / `StorageKindTag` 字段、`InvalidShape` 含 `InvalidShapeKind`；构造校验与 `validate_access_range`；参见 `26-error.md §5.1`） |
+| `element`   | `Element`（参见 `03-element.md §5`）                                                                                               |
+| `error`     | `XenonError`（`InvalidLayout`、`InvalidShape`；参见 `26-error.md §5.1`）                                                           |
 
 ### 4.3 依赖合法性
 
@@ -212,7 +207,7 @@ pub struct TensorBase<S, D> {
 | ------------------------- | --------------------------------- | ------------------------------ | ------------------------------------------------- |
 | `Tensor<Owned<A>, D>`     | 取决于 `Owned<A>: Send`           | 取决于 `Owned<A>: Sync`        | 拥有型规则与 `05-storage.md`、`25-safety.md` 一致 |
 | `TensorView<'a, A, D>`    | 取决于 `ViewRepr<'a, A>: Send`    | 取决于 `ViewRepr<'a, A>: Sync` | 只读借用可跨线程共享的前提由 storage 层定义       |
-| `TensorViewMut<'a, A, D>` | 取决于 `ViewMutRepr<'a, A>: Send` | 永不实现 `Sync` | 可变视图只允许独占传播；`!Sync` 由 `ViewMutRepr` 内部 raw `*mut A` 字段使 auto-trait 不实现 `Sync`、且 storage 层不提供 `unsafe impl Sync` 共同保证（参见 `05-storage.md §6.8`） |
+| `TensorViewMut<'a, A, D>` | 取决于 `ViewMutRepr<'a, A>: Send` | 永不实现 `Sync` | 可变视图只允许独占传播；`!Sync` 由 `ViewMutRepr` 内部 raw `*mut A` 字段使 auto-trait 不实现 `Sync`、且 storage 层不提供 `unsafe impl Sync` 共同保证 |
 | `ArcTensor<A, D>`         | 取决于 `ArcRepr<A>: Send`         | 取决于 `ArcRepr<A>: Sync`      | 共享只读线程安全前提完全继承 storage 层           |
 
 ### 5.2 Type aliases
@@ -344,18 +339,6 @@ where
     }
 
     /// Returns the precise alias classification for this tensor.
-    ///
-    /// This is the **single recommended entry point** for L4/L5 modules
-    /// (FFI export, parallel chunk safety, unsafe pointer arithmetic)
-    /// to determine aliasing class. Callers SHOULD NOT manually combine
-    /// `storage_kind()`, `has_zero_stride()`, and `derived_from_view_mut()`
-    /// flags — those flag combinations are the implementation detail of
-    /// this method and are forbidden by the safety contract defined in
-    /// 25-safety.md §5.
-    ///
-    /// `AccessSemantics::SharedReadOnly` remains a 3-way summary for
-    /// general access-permission queries; `AliasClass` provides the
-    /// specific provenance needed for soundness reasoning.
     pub fn alias_class(&self) -> AliasClass {
         if self.storage_kind() == StorageKind::Shared {
             AliasClass::ArcShared
@@ -399,29 +382,31 @@ pub enum AccessSemantics {
     Owned,
 }
 
-/// 别名分类：`TensorBase::alias_class()` 返回的精确别名类别枚举。
+/// Alias classification enum returned by `TensorBase::alias_class()`.
 ///
-/// 与 `AccessSemantics` 不同，此枚举提供精确的别名来源区分，
-/// 用于 L4/L5 模块的安全推理（如 unsafe 指针算术、并行分块安全、
-/// FFI 导出决策）。
+/// Unlike `AccessSemantics`, this enum provides precise alias origin
+/// discrimination for safety reasoning in L4/L5 modules (e.g., unsafe
+/// pointer arithmetic, parallel chunking safety, FFI export decisions).
 ///
-/// `AccessSemantics::SharedReadOnly` 将三类语义不同的张量合并
-/// 为单一变体；`AliasClass` 将其拆分为独立变体，方便调用方在
-/// 需要区分别名来源时进行模式匹配，而不必手动组合
-/// `storage_kind()`、`has_zero_stride()`、`derived_from_view_mut()`
-/// 三个标志。
+/// `AccessSemantics::SharedReadOnly` merges three semantically distinct
+/// tensor categories into a single variant; `AliasClass` splits them into
+/// separate variants so callers can pattern-match on alias origin without
+/// manually composing the three flags `storage_kind()`, `has_zero_stride()`,
+/// and `derived_from_view_mut()`.
 ///
-/// 详见 25-safety.md §5 的安全契约。
+/// See 25-safety.md §5 for the safety contract.
 pub enum AliasClass {
-    /// 张量独占其底层数据，无别名: 来源为 Owned 或独占 ViewMut。
+    /// Tensor exclusively owns its underlying data with no aliases:
+    /// source is Owned or exclusive ViewMut.
     Unique,
-    /// Arc 共享所有权: 多个 ArcTensor 实例共享底层 SharedBuf。
+    /// Arc shared ownership: multiple ArcTensor instances share the
+    /// underlying SharedBuf.
     ArcShared,
-    /// 广播零步长别名: 同一物理元素被多个逻辑索引访问
-    /// (any(stride == 0) && product(shape) > 0)。
+    /// Broadcast zero-stride alias: the same physical element is accessed
+    /// by multiple logical indices (any(stride == 0) && product(shape) > 0).
     BroadcastAlias,
-    /// ViewMut 降级而来的只读视图: derived_from_view_mut == true
-    /// 且非广播、非 Arc。
+    /// Read-only view demoted from ViewMut: derived_from_view_mut == true
+    /// and not broadcast, not Arc.
     ViewMutDerived,
 }
 
@@ -431,23 +416,21 @@ pub enum DataLocation {
 }
 ```
 
-- **`len` / storage 长度不变量：** `TensorBase::len()` 返回逻辑元素总数（由 `shape` 计算）；`Storage::len()` 返回底层存储的可见长度。对于视图类型，storage len 可能大于 logical len。所有 bounds check 基于 logical len，raw-parts 构造基于 storage len。
+- **`len` / storage 长度不变量**： `TensorBase::len()` 返回逻辑元素总数（由 `shape` 计算）；`Storage::len()` 返回底层存储的可见长度。对于视图类型，storage len 可能大于 logical len。所有 bounds check 基于 logical len，raw-parts 构造基于 storage len。
 - **数据位置查询说明：** 当前版本仅支持 CPU 内存，`data_location()` 恒返回 `DataLocation::Cpu`，用于满足 `需求说明书 §8` 的存储位置查询接口。
-- **`storage_kind()` 语义说明：** `storage_kind()` 返回底层**实际存储表示类型**对应的 `Owned / View / ViewMut / Shared`，而不是高层语义分类。`Owned` 报告 `Owned`，`ViewRepr` 报告 `View`，`ViewMutRepr` 报告 `ViewMut`，`ArcRepr` 报告 `Shared`。因此广播结果若底层表示为 `ViewRepr`，其 `storage_kind()` 也必须返回 `View`，而不是 `Shared`。
+- **`storage_kind()` 语义说明**： `storage_kind()` 返回底层实际存储表示类型对应的 `Owned / View / ViewMut / Shared`，而不是高层语义分类。`Owned` 报告 `Owned`，`ViewRepr` 报告 `View`，`ViewMutRepr` 报告 `ViewMut`，`ArcRepr` 报告 `Shared`。因此广播结果若底层表示为 `ViewRepr`，其 `storage_kind()` 也必须返回 `View`，而不是 `Shared`。
 - **广播语义补充：** 广播结果的只读共享语义通过 layout flags 和访问控制表达，而非通过 `storage_kind()` 伪装。详见 `15-broadcast.md`。
-- **`access_semantics()` 广播判定机制：** 当 `ViewRepr` 的 `LayoutFlags` 包含 `HAS_ZERO_STRIDE` 时，`access_semantics()` 返回 `AccessSemantics::SharedReadOnly`，以区分普通只读视图（`ReadOnly`）与广播只读视图（`SharedReadOnly`）。此判定与 `LayoutState::BroadcastView` 的分类条件一致（见 `06-layout.md §5.11`）。
-- **`ViewMutRepr → ViewRepr` 零拷贝降级的来源标记（v3.0.1）：** 当 `view_mut().view()` 把可写视图降级为只读视图时，结果的 `LayoutFlags` 不一定包含 `HAS_ZERO_STRIDE`（普通 contiguous mutable view 降级后仍是 contiguous）。为了让 `access_semantics()` 在不依赖来源上下文的前提下仍能区分"普通 view 借用"与"由 ViewMut 降级而来的共享只读视图"，`TensorBase` 携带一个**独立的、私有的** 1-bit 内部标记字段 `derived_from_view_mut: bool`（结构体字段层面，**不**复用 `LayoutFlags` 任何 bit；`06-layout.md §5.1` 的 `LayoutFlags` 权威定义仅包含 `F_CONTIGUOUS / ALIGNED / HAS_ZERO_STRIDE`，且 `compute_layout_flags(shape, strides, ptr)` 是其唯一权威计算入口，与张量来源信息正交）。该字段对外不暴露 setter，仅由 `ViewMutRepr::view()` 降级为只读 `ViewRepr` 的路径，以及 `17-indexing.md §6.3` 切片传播规则（源为 `ViewMutRepr` 或源已带 `derived_from_view_mut == true`）设置；`view_mut()` 的可写 reborrow 仍返回 `ViewMutRepr`，**不**设置该标记。可以与 `TensorBase` 中其它内部 bool 通过私有 `#[repr(transparent)]` 包装位组打包以避免 padding 浪费，但其语义边界与 `LayoutFlags` 严格分离。`access_semantics()` 的判定规则因此扩展为：(1) `storage_kind() == StorageKind::Shared` → `SharedReadOnly`；(2) `storage_kind() == StorageKind::ViewMut` → `Writable`；(3) `storage_kind() == StorageKind::View` 且 `(layout_flags().has_zero_stride() || self.derived_from_view_mut)` → `SharedReadOnly`；(4) `storage_kind() == StorageKind::View` 且二者都未设置 → `ReadOnly`；(5) `storage_kind() == StorageKind::Owned` → `Owned`。这避免了 `access_semantics()` 输出与构造来源的歧义，且实现成本只有一个独立标志位，不污染 `LayoutFlags` 权威计算。
-- **`SharedReadOnly` 三重含义说明：** `AccessSemantics::SharedReadOnly` 覆盖三类语义不同的张量，由不同的 (`storage_kind()`, `layout_flags().has_zero_stride()`, `derived_from_view_mut`) 组合识别：
-  1. **所有权共享（`ArcRepr`）：** `storage_kind() == Shared`。多个张量句柄通过 `Arc` 共享底层存储；写访问需要先唯一化（参见 `05-storage.md §5.8`、`§11` 决策 2）。这里"共享"指存储所有权层面的共享。
-  2. **同物理地址共享（广播 `ViewRepr`）：** `storage_kind() == View && layout_flags().has_zero_stride()`。多个不同逻辑索引映射到同一物理地址（典型来源：`broadcast_to` / `broadcast_with`）。这里"共享"指同一物理元素被多个逻辑索引共享读取。
-  3. **来源共享（ViewMut 降级而来的 `ViewRepr`）：** `storage_kind() == View && self.derived_from_view_mut`（**与零步长无关**：普通 contiguous mutable view 降级后逻辑索引 1:1 物理索引，没有地址重叠，但仍标记为"共享只读"以反映"原始独占借用已转交，再获取写访问需要重新论证")。
-  三类共享在写访问安全性上的结论相同（都不能直接可写），因此合并到同一变体；但调用方若需要区分（例如内部 CoW 唯一化路径只对 `ArcRepr` 适用，BLAS / SIMD 路径需要拒绝零步长但可接受 ViewMut 降级），必须先通过 `storage_kind()` 判断底层存储类型，再由 `flags().has_zero_stride()` 区分广播视图，最后由内部 `derived_from_view_mut` 区分降级来源。`access_semantics()` 本身不暴露这一三向区分。
-- **权威约束：** 访问语义的权威查询入口是 `access_semantics()`；`storage_kind()` 只报告底层表示类型，不能替代访问语义判定。
-- **`HAS_ZERO_STRIDE` 权威约束：** `HAS_ZERO_STRIDE` 标志位的定义以 **06-layout.md §5.11** 为唯一权威（`any(stride == 0) && product(shape) > 0`）；本节仅通过 `flags().has_zero_stride()` 和 `LayoutState` 查询使用该标志，不重复定义其规则。
+- **`ViewMutRepr → ViewRepr` 零拷贝降级的来源标记**： 当 `view_mut().view()` 把可写视图降级为只读视图时，结果的 `LayoutFlags` 不一定包含 `HAS_ZERO_STRIDE`（普通 contiguous mutable view 降级后仍是 contiguous）。为了让 `access_semantics()` 在不依赖来源上下文的前提下仍能区分"普通 view 借用"与"由 ViewMut 降级而来的共享只读视图"，`TensorBase` 携带一个独立的、私有的 1-bit 内部标记字段 `derived_from_view_mut: bool`（结构体字段层面，不复用 `LayoutFlags` 任何 bit；`06-layout.md §5.1` 的 `LayoutFlags` 权威定义仅包含 `F_CONTIGUOUS / ALIGNED / HAS_ZERO_STRIDE`，且 `compute_layout_flags(shape, strides, ptr)` 是其唯一权威计算入口，与张量来源信息正交）。该字段对外不暴露 setter，仅由 `ViewMutRepr::view()` 降级为只读 `ViewRepr` 的路径，以及 `17-indexing.md §6.3` 切片传播规则（源为 `ViewMutRepr` 或源已带 `derived_from_view_mut == true`）设置；`view_mut()` 的可写 reborrow 仍返回 `ViewMutRepr`，不设置该标记。可以与 `TensorBase` 中其它内部 bool 通过私有 `#[repr(transparent)]` 包装位组打包以避免 padding 浪费，但其语义边界与 `LayoutFlags` 严格分离。
+- **`access_semantics()` 的判定规则**：(1) `storage_kind() == StorageKind::Shared` → `SharedReadOnly`；(2) `storage_kind() == StorageKind::ViewMut` → `Writable`；(3) `storage_kind() == StorageKind::View` 且 `(layout_flags().has_zero_stride() || self.derived_from_view_mut)` → `SharedReadOnly`；(4) `storage_kind() == StorageKind::View` 且二者都未设置 → `ReadOnly`；(5) `storage_kind() == StorageKind::Owned` → `Owned`。这避免了 `access_semantics()` 输出与构造来源的歧义，且实现成本只有一个独立标志位，不污染 `LayoutFlags` 权威计算。
+- **`SharedReadOnly` 三重含义说明**： `AccessSemantics::SharedReadOnly` 覆盖三类语义不同的张量，由不同的 (`storage_kind()`, `layout_flags().has_zero_stride()`, `derived_from_view_mut`) 组合识别：
+  1. **所有权共享（`ArcRepr`）**： `storage_kind() == Shared`。多个张量句柄通过 `Arc` 共享底层存储；写访问需要先唯一化。这里"共享"指存储所有权层面的共享。
+  2. **同物理地址共享（广播 `ViewRepr`）**： `storage_kind() == View && layout_flags().has_zero_stride()`。多个不同逻辑索引映射到同一物理地址（典型来源：`broadcast_to` / `broadcast_with`）。这里"共享"指同一物理元素被多个逻辑索引共享读取。
+  3. **来源共享（ViewMut 降级而来的 `ViewRepr`）**： `storage_kind() == View && self.derived_from_view_mut`（与零步长无关：普通 contiguous mutable view 降级后逻辑索引 1:1 物理索引，没有地址重叠，但仍标记为"共享只读"以反映"原始独占借用已转交，再获取写访问需要重新论证")。
+  4. 三类共享在写访问安全性上的结论相同（都不能直接可写），因此合并到同一变体；但调用方若需要区分（例如内部 CoW 唯一化路径只对 `ArcRepr` 适用，BLAS / SIMD 路径需要拒绝零步长但可接受 ViewMut 降级），必须先通过 `storage_kind()` 判断底层存储类型，再由 `flags().has_zero_stride()` 区分广播视图，最后由内部 `derived_from_view_mut` 区分降级来源。`access_semantics()` 本身不暴露这一三向区分。
+- **权威约束**： 访问语义的权威查询入口是 `access_semantics()`；`storage_kind()` 只报告底层表示类型，不能替代访问语义判定。
+- **`HAS_ZERO_STRIDE` 权威约束**： `HAS_ZERO_STRIDE` 标志位的定义以 `06-layout.md §5.11` 为唯一权威（`any(stride == 0) && product(shape) > 0`）；本节仅通过 `flags().has_zero_stride()` 和 `LayoutState` 查询使用该标志，不重复定义其规则。
 - `LayoutState` 使用 `crate::layout::LayoutState`（参见 `06-layout.md §5`）；
 - 本文档不再重复定义 `FContiguous`、`NonContiguous`、`BroadcastView` 三个变体。
-
-- **`alias_class()` 规范入口：** `TensorBase::alias_class() -> AliasClass` 是 L4/L5 模块（FFI 导出、并行分块安全、unsafe 指针算术）判断别名类别的 **单一推荐入口**。L4/L5 模块 **不应** 手动组合 `storage_kind()`、`has_zero_stride()`、`derived_from_view_mut()` 三个标志——这些标志组合是本方法的实现细节，由 25-safety.md §5 的安全契约禁止在外部直接组合。`AccessSemantics::SharedReadOnly` 保留为三合一语义摘要，用于通用访问权限查询；`AliasClass` 提供具体的别名来源（Arc 共享 / 广播零步长 / ViewMut 降级 / 独占），为安全性论证提供精确依据。安全契约详见 25-safety.md §5。
 
 **三层语义模型：**
 
@@ -582,11 +565,10 @@ where
 
 安全构造路径必须验证全部可验证元数据约束，至少包括 shape/stride 可表示性、元素总数计算不溢出、以及逻辑访问范围不越界。`from_shape_vec` 这类 API 不得把这些前提留给调用方；safe 构造负责兜底全部可检查元数据条件。
 
-> **权威分工说明（避免双权威）：**
->
-> - `TensorBase<Owned<A>, D>::from_shape_vec` 等公开安全构造方法的**完整设计**（包含算法、错误字段、对齐策略、边界场景）位于 `18-construction.md §5.3`。
-> - 本节仅给出**公开签名与公开契约摘要**，不重复展开实现算法。任何与 `18-construction.md` 不一致的描述均以 `18-construction.md` 为准。
-> - 本节列出 `from_shape_vec` 的目的，是说明它是 `TensorBase<Owned<A>, D>` 的固有方法签名，并固定其错误返回类型与文档化前置条件，方便 `tensor` 模块下游消费者在不阅读 `18-construction.md` 时也能理解类型签名。
+**权威分工说明**：
+
+- `TensorBase<Owned<A>, D>::from_shape_vec` 等公开安全构造方法的完整设计位于 `18-construction.md §5.3`。
+- 本节仅给出公开签名与公开契约摘要，不重复展开实现算法。任何与 `18-construction.md` 不一致的描述均以 `18-construction.md` 为准。
 
 ````rust,ignore
 impl<A, D> TensorBase<Owned<A>, D>
@@ -600,7 +582,7 @@ where
     ///
     /// * `shape` - Length of each axis
     /// * `data` - Element data following logical-index correspondence semantics
-    ///   defined by `需求说明书 §19`; the input order defines which element belongs
+    ///   defined by `require.md §19`; the input order defines which element belongs
     ///   to each logical index, rather than requiring callers to pre-arrange bytes
     ///   in a specific physical layout
     ///
@@ -666,7 +648,7 @@ where
     /// - `data.len()` must equal the previously validated element count
     /// - `shape` must be representable by the current dimension type
     /// - The default packed F-order stride derived from `shape` must be
-    ///   representable and consistent with `需求说明书 §7`
+    ///   representable and consistent with `require.md §7`
     /// - The constructor assumes no extra offset and therefore treats the input
     ///   buffer as the full logical tensor payload
     pub(crate) unsafe fn from_raw_vec_unchecked(data: Vec<A>, shape: D) -> Self {
@@ -675,89 +657,14 @@ where
         // ...
     }
 
-    /// Construct a tensor from already-validated parts, skipping all
-    /// `Result`-returning validation. This is the canonical `pub(crate)`
-    /// internal constructor used by `src/construct/` (see `18-construction.md
-    /// §5.1` / `§5.4` / `§5.5`) when shape, strides, storage, and flags have
-    /// each been produced by their authoritative `Result`-returning helpers
-    /// (`shape.into_dimension()` + `shape.checked_size()`, `Owned::from_vec`
-    /// / `Owned::from_vec_aligned` / `<Owned<A> as StorageOwned>::from_elem`,
-    /// `layout::compute_f_strides`, `layout::compute_layout_flags`).
-    ///
-    /// The `_unchecked` suffix means: the caller has already proved the
-    /// listed safety contract holds, and this constructor performs no
-    /// validation. Any violation is undefined behavior at the type-system
-    /// level (private fields are bypassed), not a recoverable error.
-    ///
-    /// **Core unsafe constructor** — `TensorBase::new_unchecked` is the single
-    /// canonical unsafe entry point for tensor metadata assembly. All other
-    /// internal unchecked constructors MUST forward to it rather than defining
-    /// their own safety invariants for tensor layout fields. For example,
-    /// `Tensor::from_shape_vec_aligned_unchecked` (`21-type.md §5.6`) is a
-    /// thin wrapper that builds storage/strides/flags internally and then
-    /// delegates to `new_unchecked` with `offset=0` and
-    /// `derived_from_view_mut=false`. Any future internal unchecked entry MUST
-    /// also route through `new_unchecked` — no new independent unsafe
-    /// contracts are permitted for tensor metadata assembly.
-    ///
-    /// This helper exists so that constructor-module call sites do not write
-    /// `TensorBase { storage, shape, strides, offset, flags, derived_from_view_mut }`
-    /// directly, keeping `pub(crate)` field access localized to one named entry
-    /// point and providing a single grep target for tensor construction tracing.
-    /// Construction-path rules for `derived_from_view_mut` (must match §5.1
-    /// field doc + §5.3 access_semantics rule (3) + `17-indexing.md §6.3`
-    /// propagation table):
-    /// - `true` callers: (a) `ViewMutRepr::view()` downgrading to read-only
-    ///   `ViewRepr`; (b) slicing routes whose source is `ViewMutRepr` OR a
-    ///   `ViewRepr` already carrying `derived_from_view_mut == true` (the
-    ///   tag propagates through nested slicing).
-    /// - `false` callers: all other construction paths — `zeros` / `ones` /
-    ///   `from_shape_vec` / `from_scalar`, broadcast / transpose, slicing on
-    ///   sources that are neither `ViewMutRepr` nor an already-tagged
-    ///   `ViewRepr`, `from_raw_parts*`, Owned reconstructions.
-    /// - `view_mut()` reborrow chained on a `ViewMutRepr` stays
-    ///   `ViewMutRepr` (writable) and does NOT use this constructor with
-    ///   `true`.
-    ///
-    /// # Safety
-    /// - `shape`, `strides`, `offset`, and `flags` must be mutually
-    ///   consistent: `flags` was produced by
-    ///   `layout::compute_layout_flags::<A, D>(&shape, &strides, storage_ptr)`
-    ///   for the same `shape` and `strides` actually stored, where
-    ///   `storage_ptr` is the same logical-first pointer the caller will
-    ///   later expose via `as_ptr()`
-    /// - The logical access range derived from `shape` / `strides` / `offset`
-    ///   must lie entirely within `storage` (no overflow, no out-of-bounds)
-    /// - `shape.checked_size()` must already have been validated (no
-    ///   overflow) before calling this method
-    /// - When `offset == 0` and `shape` is canonical-F-contiguous w.r.t.
-    ///   `strides`, the value of `flags` must reflect that (the caller
-    ///   should use `compute_layout_flags` rather than fabricating bits
-    ///   manually)
-    /// - `derived_from_view_mut` semantics: the caller must pass `true`
-    ///   ONLY when this tensor is a `ViewRepr` produced by demoting a
-    ///   `ViewMutRepr` source (see §5.3 rule (3) for the
-    ///   `access_semantics()` consequence); for the `Owned`-specialized
-    ///   form, the caller MUST pass `false` (Owned tensors never carry
-    ///   downgrade provenance)
-    pub(crate) unsafe fn new_unchecked(
-        storage: Owned<A>,
-        shape: D,
-        strides: Strides<D>,
-        offset: usize,
-        flags: LayoutFlags,
-        derived_from_view_mut: bool,
-    ) -> Self {
-        // No revalidation; all six constructor inputs are caller-proved
-        // (storage, shape, strides, offset, flags, derived_from_view_mut).
-        // This is the Owned-specialized form; the generic form for
-        // `S: RawStorage` lives below as `TensorBase::<S, D>::new_unchecked`
-        // and is the canonical entry point for View / ViewMut / Arc paths.
-        // Both forms are `unsafe fn` because the # Safety contract above
-        // promises UB on metadata mismatch (caller-proved invariants); the
-        // signature must match the documented hazard.
-        TensorBase { storage, shape, strides, offset, flags, derived_from_view_mut }
-    }
+    // `new_unchecked` intentionally NOT defined here on the
+    // `Owned`-specialized impl block. A separate
+    // `impl<A, D> TensorBase<Owned<A>, D> { fn new_unchecked(...) }` would
+    // collide with the generic `impl<S: RawStorage, D> { fn new_unchecked }`
+    // below (Rust E0592: duplicate definitions for
+    // `TensorBase<Owned<A>, D>` because `Owned<A>: RawStorage`). All Owned
+    // construction paths route through the generic `new_unchecked` below;
+    // see that method's doc comment for the full safety contract.
 }
 
 impl<S, D> TensorBase<S, D>
@@ -765,25 +672,48 @@ where
     S: crate::storage::RawStorage,
     D: Dimension,
 {
-    /// Generic unchecked constructor over storage representation.
+    /// Canonical unchecked constructor for tensor metadata assembly.
     ///
-    /// This is the canonical `pub(crate)` internal constructor used by
-    /// view / view_mut / arc-tensor paths (broadcast, transpose, slicing,
-    /// `view()` / `view_mut()`) when shape, strides, storage, and flags
-    /// have already been produced by their authoritative `Result`-returning
-    /// helpers. Same safety contract as the `Owned`-specialized form
-    /// above; see that doc comment for the full SAFETY contract, including
-    /// the `derived_from_view_mut` rules.
+    /// **Single canonical `pub(crate)` unsafe entry point.** All construction
+    /// paths (Owned via `zeros` / `ones` / `from_shape_vec` / `from_scalar`,
+    /// View / ViewMut via slicing / transpose / broadcast / `view()` /
+    /// `view_mut()`, Arc via Arc-storage construction) route through this
+    /// single generic form. No Owned-specialized parallel form exists — see
+    /// the comment block above for the Rust coherence reason (E0592 collision
+    /// when both an Owned-specialized impl and a generic
+    /// `impl<S: RawStorage, D>` impl define a method with the same name).
+    ///
+    /// All other internal unchecked constructors (e.g.
+    /// `Tensor::from_shape_vec_aligned_unchecked` in `21-type.md §5.6`) MUST
+    /// forward to this method rather than defining their own safety
+    /// invariants for tensor layout fields. They build storage / strides /
+    /// flags internally, then delegate to `new_unchecked` with `offset = 0`
+    /// and `derived_from_view_mut = false`.
     ///
     /// # Safety
-    /// Same as the `Owned`-specialized variant: shape, strides, offset,
-    /// and flags must be mutually consistent (flags produced by
-    /// `compute_layout_flags::<A, D>` for the same shape/strides/storage_ptr
-    /// pair); the logical access range must lie within `storage`; shape
-    /// product must already be overflow-checked. `derived_from_view_mut`
-    /// must be `true` ONLY for `ViewRepr` results downgraded from a
-    /// `ViewMutRepr` source (or sliced from a source that itself had
-    /// `derived_from_view_mut == true`); `false` for all other paths.
+    /// - `shape`, `strides`, `offset`, and `flags` must be mutually
+    ///   consistent: `flags` was produced by
+    ///   `layout::compute_layout_flags::<A, D>(&shape, &strides, storage_ptr)`
+    ///   for the same `shape` and `strides` actually stored, where
+    ///   `storage_ptr` is the same logical-first pointer the caller will
+    ///   later expose via `as_ptr()`.
+    /// - The logical access range derived from `shape` / `strides` / `offset`
+    ///   must lie entirely within `storage` (no overflow, no out-of-bounds).
+    /// - `shape.checked_size()` must already have been validated (no
+    ///   overflow) before calling this method.
+    /// - When `offset == 0` and `shape` is canonical-F-contiguous w.r.t.
+    ///   `strides`, the value of `flags` must reflect that (the caller
+    ///   should use `compute_layout_flags` rather than fabricating bits
+    ///   manually).
+    /// - `derived_from_view_mut` semantics: must be `true` ONLY when this
+    ///   tensor is a `ViewRepr` produced by demoting a `ViewMutRepr` source
+    ///   (see §5.3 rule (3) for the `access_semantics()` consequence) or
+    ///   when slicing a source that itself has `derived_from_view_mut == true`
+    ///   (the tag propagates through nested slicing). For Owned construction
+    ///   paths (`S = Owned<A>`), the caller MUST pass `false` (Owned tensors
+    ///   never carry downgrade provenance).
+    /// - `view_mut()` reborrow chained on a `ViewMutRepr` stays `ViewMutRepr`
+    ///   (writable) and does NOT use this constructor with `true`.
     pub(crate) unsafe fn new_unchecked(
         storage: S,
         shape: D,
@@ -792,6 +722,10 @@ where
         flags: LayoutFlags,
         derived_from_view_mut: bool,
     ) -> Self {
+        // No revalidation; all six constructor inputs are caller-proved
+        // (storage, shape, strides, offset, flags, derived_from_view_mut).
+        // `unsafe fn` is required because the # Safety contract documents
+        // UB on metadata mismatch.
         TensorBase { storage, shape, strides, offset, flags, derived_from_view_mut }
     }
 }
@@ -799,7 +733,7 @@ where
 
 ### 5.7 unsafe 构造方法
 
-`from_raw_parts*()` 这类接口只验证能够基于输入元数据直接检查的条件；safe 构造会兜底验证全部可检查元数据，而 unsafe 构造仅拒绝明显非法的 shape/stride/offset/storage_len 组合。若这些元数据校验失败，构造器返回 `Err(XenonError::InvalidLayout)`（附带上下文）。调用方仍负责保证指针有效性、对齐、可访问范围和生命周期等库无法自行证明的内存前提。文档中的 `# Safety` 说明必须与这一分工保持一致。
+`from_raw_parts*()` 这类接口只验证能够基于输入元数据直接检查的条件；safe 构造会兜底验证全部可检查元数据，而 unsafe 构造仅拒绝明显非法的 `shape/stride/offset/storage_len` 组合。若这些元数据校验失败，构造器返回 `Err(XenonError::InvalidLayout)`。调用方仍负责保证指针有效性、对齐、可访问范围和生命周期等库无法自行证明的内存前提。文档中的 `# Safety` 说明必须与这一分工保持一致。
 
 ```rust,ignore
 impl<'a, A, D> TensorBase<ViewRepr<'a, A>, D>
@@ -896,13 +830,13 @@ where
 }
 ```
 
-**可写布局非重叠校验：** `from_raw_parts_mut()` 还必须拒绝会让两个不同逻辑索引映射到同一地址的可写布局。"非重叠"定义为：任意两个不同逻辑索引 `i != j`，其可写目标地址 `addr(i)` 与 `addr(j)` 必须不同。该校验不得通过枚举全部可达 offset 来实现；当前版本只承诺接受可高效保守判定的正步长布局。
+**可写布局非重叠校验**： `from_raw_parts_mut()` 还必须拒绝会让两个不同逻辑索引映射到同一地址的可写布局。"非重叠"定义为：任意两个不同逻辑索引 `i != j`，其可写目标地址 `addr(i)` 与 `addr(j)` 必须不同。该校验不得通过枚举全部可达 offset 来实现；当前版本只承诺接受可高效保守判定的正步长布局。
 
-**核心不变量：** 对一个非单元素轴 `i`，该轴单独可达的 offset 集合是
+**核心不变量**： 对一个非单元素轴 `i`，该轴单独可达的 offset 集合是
 `{ k_i * stride[i] | 0 <= k_i < shape[i] }`，其大小为 `(shape[i] - 1) * stride[i] + 1`
 （"+1" 来自 `k_i = 0` 这一项）。因此在按 stride 升序逐轴并入时，"下一轴 stride" 必须严格大于 "已覆盖子空间最大可达 offset"，下一轴的最小非零步进 `1 * stride[next]` 才不会与已覆盖区域产生别名。
 
-算法如下（**保守 dense-prefix 充分判定**，并非完备判定）：
+**算法**：
 
 ```text
 // Algorithm name: dense-prefix sufficient non-overlap test.
@@ -952,16 +886,9 @@ validate_non_overlapping_layout(shape, strides, offset, storage_len):
     7. Otherwise return Ok(()).
 ```
 
-> **示例（核对算法正确性）：** `shape = [2, 2]`, `strides = [1, 1]`。
-> 排序后第一轴 stride=1，进入步骤 5：要求 `1 > 0`（成立），然后
-> `covered_max_offset = 0 + (2-1)*1 = 1`。第二轴 stride=1，要求 `1 > 1`（不成立），
-> 拒绝。该结果正确，因为两个轴单独可达 offset 集合 `{0, 1}` 与 `{0, 1}` 完全重叠。
+该保守算法允许拒绝一部分理论上合法但无法高效证明不重叠的 exotic stride 布局；当前版本不为这类布局提供可写 raw-parts 构造承诺。
 
-该保守算法允许拒绝一部分理论上合法但无法高效证明不重叠的 exotic stride 布局；当前版本不为这类布局提供可写 raw-parts 构造承诺。FFI 文档（`23-ffi.md §6.3`）引用此算法。
-
-#### Owned 裸指针分解与重建
-
-上述 `from_raw_parts*()` 构造视图；以下方法专用于 Owned 张量的分解与重建，构成完整的 round-trip 对。核心实现定义于本模块（`src/tensor/construct.rs`），FFI 模块仅做薄包装——参见 `23-ffi.md §5.8`。
+**Owned 裸指针分解与重建**：上述 `from_raw_parts*()` 构造视图；以下方法专用于 Owned 张量的分解与重建，构成完整的 round-trip 对。核心实现定义于本模块（`src/tensor/construct.rs`），FFI 模块仅做薄包装——参见 `23-ffi.md §5.8`。
 
 ```rust,ignore
 /// Decomposition of an owned tensor into raw pointer + allocator metadata.
@@ -1135,10 +1062,13 @@ where
             raw.ptr
         };
         let flags = layout::compute_layout_flags::<A, D>(&raw.shape, &raw.strides, logical_ptr);
-        // Routed through the named `pub(crate) unsafe fn new_unchecked` (§5.6
-        // Owned-specialized form) to keep private-field access localized to
-        // ONE entry point and to satisfy the locked invariant "TensorBase has
-        // 6 fields including `derived_from_view_mut`" (R10 B-01).
+        // Routed through the single canonical `pub(crate) unsafe fn
+        // new_unchecked` (§5.6, generic `impl<S: RawStorage, D>` form — the
+        // Owned-specialized parallel form was removed because it would
+        // collide with the generic form for `S = Owned<A>`; see §5.6 comment
+        // block) to keep private-field access localized to ONE entry point
+        // and to satisfy the locked invariant "TensorBase has 6 fields
+        // including `derived_from_view_mut`".
         // SAFETY: All six constructor-input invariants of `new_unchecked`
         // are satisfied: (1) shape was overflow-checked above; (2) strides
         // were verified canonical F-order above; (3) offset == 0 was
@@ -1148,20 +1078,14 @@ where
         // because `raw.len == shape.checked_size()` and `raw.cap >= raw.len`
         // were both verified; (6) `derived_from_view_mut: false` —
         // `from_raw_parts_owned` is an Owned reconstruction path, not a
-        // ViewMut downgrade (the Owned-specialized `new_unchecked` requires
-        // this argument to be `false`).
+        // ViewMut downgrade (the generic `new_unchecked` Safety contract
+        // mandates this argument be `false` for any `S = Owned<A>` call).
         Ok(unsafe {
             TensorBase::new_unchecked(storage, raw.shape, raw.strides, raw.offset, flags, false)
         })
     }
 }
 ```
-
-> **`InvalidLayoutReason` 字段引用（v2.0.x）：** 上述错误构造使用 `26-error.md §5.1` 定义的**封闭超集枚举**字段。Owned raw-parts 专属错误使用 `OwnedRequiresZeroOffset` / `LenShapeMismatch` / `CapacityBelowLen` / `AlignmentInvalid` / `OwnedRequiresCanonicalFOrder`；shape 元素数溢出统一使用 `ShapeProductOverflow`（不再使用旧名 `ElementCountOverflow`）；无法证明可写布局不重叠统一使用 `AmbiguousOverlap`（不再使用旧名 `OverlapNotProvable`）。**禁止**在本节新增未列入 `26-error.md §5.1` 的局部变体——`26-error.md §5.1` 是 `InvalidLayoutReason` 的唯一权威源；新增 case 必须先扩展该枚举。`Cow::Borrowed("...")` 与 `StorageKindTag::Owned` 同样按 `26-error.md §5.1` 字段表填写。
->
-> **关于 `# Safety` 与 `unsafe block`：** Rust 2024 / `unsafe_op_in_unsafe_fn` 要求即便函数本身已是 `unsafe fn`，函数体内执行 unsafe 操作仍需显式 `unsafe { ... }` 包裹。上面伪码中的 `Owned::from_raw_parts(...)` 调用已用 `unsafe { ... }` 包裹并附 `// SAFETY:` 注释。
->
-> **关于 `into_raw_parts` 中读取 storage base pointer：** 由于 `ManuallyDrop` 内仍然对内部 storage 拥有所有权，`storage_base_mut_ptr_unchecked` 是 `Owned<A>` 的 `pub(crate)` 内部 helper，等价于 `Owned::as_mut_ptr` 的读字段实现，但避免对 `&mut` 的形式要求；调用本身仍是 `unsafe`，因为读取裸指针不构造任何外部别名。
 
 **设计约束：** `into_raw_parts` 仅适用于 Owned 存储，且导出的内存布局必须满足 Xenon 的 owned 不变量：F-order contiguous、`offset == 0`、canonical F-order strides。若调用方持有的是 view 或带 offset 的逻辑子视图，必须先显式物化为新的 owned contiguous tensor，再跨越 FFI 边界导出裸指针。如需将 View 转为 Owned 再解构，参见 `21-type.md §5.5`。
 
@@ -1246,11 +1170,11 @@ let t = unsafe {
 
 **实现方案：**
 
-| 层次                 | 类型         | 说明                                                                                                  |
-| -------------------- | ------------ | ----------------------------------------------------------------------------------------------------- |
-| `TensorBase.strides` | `Strides<D>` | 与 shape rank 一致：静态维度编译期保证、`IxDyn` 构造期保证（参见 `06-layout.md §5.5`）                |
-| `strides()` 返回值   | `&[usize]`   | 直接来自 `Strides<D>`（参见 `06-layout.md §5`）                                                       |
-| layout 模块计算      | `usize`      | F-order、转置与零步长布局在 layout 层计算（参见 `06-layout.md §5.3` / `§5.7`）                        |
+| 层次                 | 类型         | 说明                                                                                   |
+| -------------------- | ------------ | -------------------------------------------------------------------------------------- |
+| `TensorBase.strides` | `Strides<D>` | 与 shape rank 一致：静态维度编译期保证、`IxDyn` 构造期保证（参见 `06-layout.md §5.5`） |
+| `strides()` 返回值   | `&[usize]`   | 直接来自 `Strides<D>`（参见 `06-layout.md §5`）                                        |
+| layout 模块计算      | `usize`      | F-order、转置与零步长布局在 layout 层计算（参见 `06-layout.md §5.3` / `§5.7`）         |
 
 **权衡：**
 
@@ -1275,22 +1199,6 @@ Logical view: [c, d, e]
 - **logical-first pointer 契约：** `TensorBase::as_ptr()` / `as_mut_ptr()` 返回的是逻辑首元素指针，而不是 storage base pointer。layout 标志计算、连续切片快路径和 FFI raw-parts safety 文档都必须使用这一同一约定；若需要 storage base pointer，只能通过 storage 层 API 或 raw-parts 输入显式提供。
 - **raw-parts 设计补充：** `storage_len` 是 raw-parts 视图构造的必填输入。`ViewRepr` / `ViewMutRepr` 需要保存 backing storage 的可访问元素数，`validate_access_range(...)` 也必须基于该长度执行边界校验；仅有 `ptr + shape + strides + offset` 不足以安全重建视图。
 - **空张量指针说明：** 当 `len == 0` 时，元数据仍可描述一个合法的空视图，但 `as_ptr()` / `as_mut_ptr()` 不能对 storage base pointer 执行 `add(offset)`。Rust 的指针算术要求结果仍落在同一已分配对象内；对悬垂哨兵或空存储基指针做偏移计算会触发未定义行为，且对 ZST 即使执行 `add(0)` 也不应依赖这种做法。设计上因此统一采用“空张量 `offset` 仅需满足 `offset <= storage_len`，但不做实际偏移”的契约，并让指针 API 直接返回 `NonNull::dangling().as_ptr()` 快路径。
-
-> **错误字段约定（v2.0.x）：** `validate_access_range` 与 `validate_non_overlapping_layout`
-> 构造的 `XenonError::InvalidLayout` 字段必须使用 `26-error.md §5.1` 定义的封闭枚举
-> （`InvalidLayoutReason` / `StorageKindTag` / `Cow<'static, str>`），不得退化为自由
-> 文本，也**不得**在本节发明未列入 `26-error.md §5.1` 的局部 reason——下面伪码中
-> 出现的所有 `InvalidLayoutReason::*` 标识符（`ShapeProductOverflow` /
-> `EmptyTensorOffsetExceedsStorage` / `StrideExceedsIsizeMax` / `StrideSpanOverflow`
-> / `AccessRangeOverflow` / `AccessRangeExceedsStorage` / `AmbiguousOverlap` 等）
-> 必须已在 `26-error.md §5.1` 列出。新增 case 必须先扩展 `26-error.md §5.1` 的枚举。
-> `storage_kind` 由调用方提供（视图路径填 `StorageKindTag::View` /
-> `StorageKindTag::ViewMut`，owned raw-parts 路径填 `StorageKindTag::Owned`）。
->
-> **验证前提：** `validate_access_range` 假定调用方已在更早阶段拒绝
-> `stride > isize::MAX` 的 stride，或在算法首部追加该检查。这是因为后续
-> `<*const A>::add(stride * (shape - 1))` 的指针运算需要 stride 可表示为非负
-> `isize`；该前提在 §5.7 的 `# Safety` 列表中已显式列入构造器自验项。
 
 ```text
 validate_access_range(shape, strides, offset, storage_len, op_name, kind):
@@ -1410,7 +1318,7 @@ Logical view:
 
 - [ ] **T2**: 定义 `TensorBase<S, D>` 结构体
   - 文件: `src/tensor/mod.rs`
-  - 内容: 结构体定义，6 个字段：storage、shape、strides、offset、flags、derived_from_view_mut（最后一个为私有 1-bit ViewMut→View 降级来源标记，仅由 view_mut().view() / 内部切片降级路径设置；详见 §5.1 / §5.3）
+  - 内容: 结构体定义，6 个字段：storage、shape、strides、offset、flags、derived_from_view_mut
   - 测试: 结构体编译通过
   - 前置: T1
   - 预计: 10 min
@@ -1461,10 +1369,6 @@ Logical view:
   - 前置: T5, T7
   - 预计: 5 min
 
-> **注意**：公开安全构造方法 `from_shape_vec` 的实现位于 `src/construct/from.rs`（参见
-> `18-construction.md §5.3`），本文件 §5.6 仅列其公开签名，不属于本目录任务。对应测试
-> `test_from_shape_vec_valid` / `test_from_shape_vec_invalid` 应在构造模块的测试文件中。
-
 - [ ] **T9**: 实现视图创建方法
   - 文件: `src/tensor/impls.rs`
   - 内容: `view()`/`view_mut()`
@@ -1511,13 +1415,13 @@ Logical view:
 | `test_tensor_as_ptr`                | 指针指向正确位置                                                  | 高     |
 | `test_tensor_as_mut_ptr`            | 可变指针指向正确位置                                              | 高     |
 | `test_tensor_storage_kind`          | `Owned`/`View`/`ViewMut`/`Shared` 的存储位置查询正确              | 高     |
-| `test_tensor_access_semantics`      | 各存储模式返回正确的 `AccessSemantics`                           | 高     |
-| `test_tensor_data_location`         | `data_location()` 返回 `DataLocation::Cpu`                       | 中     |
-| `test_tensor_as_storage_ptr`        | `as_storage_ptr()` 返回 storage 基指针而非逻辑首元素指针         | 高     |
-| `test_tensor_has_zero_stride`       | 广播视图 `has_zero_stride()` 返回 true                           | 中     |
-| `test_tensor_as_slice`              | 连续张量 `as_slice()` 返回 `Some`，非连续返回 `None`             | 高     |
-| `test_tensor_as_slice_empty`        | 空张量 `as_slice()` 返回 `Some(&[])`                             | 中     |
-| `test_tensor_as_mut_slice`          | 可写连续张量 `as_mut_slice()` 返回 `Some`                        | 高     |
+| `test_tensor_access_semantics`      | 各存储模式返回正确的 `AccessSemantics`                            | 高     |
+| `test_tensor_data_location`         | `data_location()` 返回 `DataLocation::Cpu`                        | 中     |
+| `test_tensor_as_storage_ptr`        | `as_storage_ptr()` 返回 storage 基指针而非逻辑首元素指针          | 高     |
+| `test_tensor_has_zero_stride`       | 广播视图 `has_zero_stride()` 返回 true                            | 中     |
+| `test_tensor_as_slice`              | 连续张量 `as_slice()` 返回 `Some`，非连续返回 `None`              | 高     |
+| `test_tensor_as_slice_empty`        | 空张量 `as_slice()` 返回 `Some(&[])`                              | 中     |
+| `test_tensor_as_mut_slice`          | 可写连续张量 `as_mut_slice()` 返回 `Some`                         | 高     |
 | `test_tensor_view`                  | `view()` 创建正确视图                                             | 高     |
 | `test_tensor_view_mut`              | `view_mut()` 创建正确可变视图                                     | 高     |
 | `test_from_shape_vec_valid`         | 合法构造成功                                                      | 高     |
@@ -1536,10 +1440,10 @@ Logical view:
 | 标量 `Tensor0<f64>`   | `ndim()==0`, `len()==1`                      |
 | 高维 `Tensor6`        | `ndim()==6`, 步长正确                        |
 | 动态维度 `TensorD`    | `ndim()` 运行时值正确                        |
-| 大张量 `10_000_000` 元素 | 构造成功，长度与 flags 保持正确              |
-| 非连续转置视图        | 可构造 `view()`，但连续切片快路径返回 `None`                          |
-| 非零 offset 视图      | `as_storage_ptr() != as_ptr()`，差值等于 `offset`                     |
-| 空张量 + 多种 offset  | 只要 `offset <= storage_len` 即合法                                    |
+| 大张量 `10_000_000` 元素 | 构造成功，长度与 flags 保持正确           |
+| 非连续转置视图        | 可构造 `view()`，但连续切片快路径返回 `None`      |
+| 非零 offset 视图      | `as_storage_ptr() != as_ptr()`，差值等于 `offset` |
+| 空张量 + 多种 offset  | 只要 `offset <= storage_len` 即合法               |
 | 非法元素类型编译失败  | compile-fail 测试拒绝不满足元素约束的类型    |
 
 ### 8.4 属性测试不变量
@@ -1699,12 +1603,12 @@ authoritative implementation resides in src/construct/, see 18-construction.md �
 
 ## 10. 错误处理与语义边界
 
-| 项目              | 内容                                                                                                                                                    |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | `from_shape_vec()`、`from_raw_parts*()` 等构造校验失败返回 `XenonError`；上下文字段应包含操作名、shape、strides、offset、storage_len 或期望长度等元数据 |
-| Panic             | 本模块公开安全构造不以 panic 作为常规错误通道；仅在内部已验证快捷路径或明显违背 `unsafe` 前提的后续使用中可能出现 panic/未定义行为风险                  |
-| 路径一致性        | scalar、SIMD 快路径与 parallel 上游消费必须共享同一逻辑首元素与 flags 语义，不允许因路径差异改变结果                                                    |
-| 容差边界          | 不适用                                                                                                                                                  |
+| 项目              | 内容                                                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Recoverable error | `from_shape_vec()`、`from_raw_parts*()` 等构造校验失败返回 `XenonError`                                                  |
+| Panic             | 本模块公开安全构造不以 panic 作为常规错误通道；仅在内部已验证快捷路径或明显违背 `unsafe` 前提的后续使用中可能出现 panic  |
+| 路径一致性        | scalar、SIMD 快路径与 parallel 上游消费必须共享同一逻辑首元素与 flags 语义，不允许因路径差异改变结果                     |
+| 容差边界          | 不适用                                                                                                                   |
 
 ---
 
@@ -1728,7 +1632,7 @@ authoritative implementation resides in src/construct/, see 18-construction.md �
 | 理由     | 显式保留 stride 元数据；与 `shape: D` 职责分离；静态维度仍可栈分配，动态维度仍可保持维度数一致 |
 | 替代方案 | `strides: Vec<isize>` — 放弃，静态维度也要堆分配                                               |
 | 替代方案 | `strides: [isize; N]` — 放弃，不支持动态维度                                                   |
-| 替代方案 | 裸用 `strides: D`（直接把 `D` 当 stride carrier 用）— 放弃，无法显式区分 shape 与 stride 的语义，且会让 `Strides<D>` 失去 newtype 文档价值。**当前方案使用 `Strides<D>` newtype 内部复用 `D` 表示**（详见 `06-layout.md §5.2`），这是"复用 D 的存储表示但隔离语义"的折中——并非该替代方案，请勿混淆 |
+| 替代方案 | 裸用 `strides: D`（直接把 `D` 当 stride carrier 用）— 放弃，无法显式区分 shape 与 stride 的语义，且会让 `Strides<D>` 失去 newtype 文档价值。|
 
 ### 决策 3：offset 字段必要性
 
@@ -1745,22 +1649,6 @@ authoritative implementation resides in src/construct/, see 18-construction.md �
 | 决策     | 不实现 `Deref<Target = TensorView>`                                           |
 | 理由     | 显式优于隐式（`.view()` 清晰表达意图）；避免隐式生命周期传播；与 ndarray 一致 |
 | 替代方案 | 实现 Deref — 放弃，隐式转换可能导致意外借用                                   |
-
-### 决策 5：`OwnedRawParts<A, D>` 不承诺 C ABI 稳定
-
-| 属性     | 值                                                                                                                                                              |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | 移除原先的 `#[repr(C)]` 注释，明确 `OwnedRawParts<A, D>` 是 Rust 内部 round-trip 类型，不作为 FFI ABI 边界                                                       |
-| 理由     | `D` 与 `Strides<D>` 是 Rust 泛型，对 `IxDyn` 包含 `Vec<usize>` 字段，无法被 `#[repr(C)]` 稳定描述；FFI 已有专用 `TensorExport` / `TensorExportMut` 类型           |
-| 替代方案 | 强行保留 `#[repr(C)]` — 放弃，会让外部 C 代码误以为可解码该结构，导致跨语言 UB                                                                                  |
-
-### 决策 6：`from_raw_vec_unchecked` 走 `pub(crate)` 真正的 unchecked 路径
-
-| 属性     | 值                                                                                                                              |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | `from_raw_vec_unchecked` 不再隐式重做 `shape.checked_size()` 验证；调用方在 `# Safety` 中证明已验证                              |
-| 理由     | "_unchecked" 名称要求语义透明：要么不做任何 fallible 校验，要么提供 `Result` 版本。混合"unchecked + 内部 panic"会让安全契约模糊 |
-| 替代方案 | 改名 `from_raw_vec_with_shape_check` 并返回 `Result` — 放弃，会引入冗余 fallible 路径与上层 `from_shape_vec` 重复                |
 
 ---
 
@@ -1827,69 +1715,6 @@ TensorBase<S, D>
 | `TensorView{N}`    | `TensorView2<'a, A>`    | N 维不可变视图     |
 | `TensorViewMut{N}` | `TensorViewMut2<'a, A>` | N 维可变视图       |
 | `ArcTensor{N}`     | `ArcTensor2<A>`         | N 维 Arc 共享数组  |
-
-## 版本历史
-
-| 版本  | 日期       |
-| ----- | ---------- |
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.0.4 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.1.1 | 2026-04-10 |
-| 1.1.2 | 2026-04-10 |
-| 1.1.3 | 2026-04-14 |
-| 1.1.4 | 2026-04-15 |
-| 1.1.5 | 2026-04-15 |
-| 1.1.6 | 2026-04-16 |
-| 2.0.0 | 2026-05-02 |
-| 2.0.1 | 2026-05-03 |
-| 2.0.2 | 2026-05-04 |
-| 2.0.3 | 2026-05-04 |
-| 2.0.4 | 2026-05-04 |
-
-### 2.0.4 (2026-05-04) — patch: 指定 TensorBase::new_unchecked 为核心 unsafe 构造器
-
-- §5.6 `new_unchecked` doc comment 新增"Core unsafe constructor"段落：声明 `new_unchecked` 为所有内部 unchecked 构造器的唯一规范入口；其他内部 unchecked 构造器（如 `21-type.md §5.6` 的 `from_shape_vec_aligned_unchecked`）必须 forward 到此入口，不得定义独立的安全不变式。
-- 交叉引用 `21-type.md §5.6` 作为 thin wrapper 示例；未来新增内部 unchecked 入口也必须经过 `new_unchecked`。
-
-### 2.0.3 (2026-05-04) — patch: 引入 AliasClass + alias_class() 统一别名分类入口
-
-- §5.3 新增 `pub enum AliasClass { Unique, ArcShared, BroadcastAlias, ViewMutDerived }` 精确别名类别枚举（替代调用方手动组合 `storage_kind()` + `has_zero_stride()` + `derived_from_view_mut()` 三个标志的易错模式）。
-- §5.3 新增 `pub fn alias_class(&self) -> AliasClass` 方法，实现从存储模式、零步长标志、ViewMut 降级标志到别名类别的统一映射。
-- §5.3 新增 "`alias_class()` 规范入口" 文档条目：声明 `alias_class()` 为 L4/L5 模块判断别名类别的单一推荐入口，禁止外部手动组合三个标志；交叉引用 25-safety.md §5 的安全契约。
-- `AccessSemantics::SharedReadOnly` 保持不变（保留为三合一语义摘要）。
-
-### 2.0.2 (2026-05-04) — patch: HAS_ZERO_STRIDE 权威边界显式声明
-
-- §5.3 新增"`HAS_ZERO_STRIDE` 权威约束"条目：明确 `HAS_ZERO_STRIDE` 标志位定义以 **06-layout.md §5.11** 为唯一权威，本节仅使用该标志的查询接口而不重复定义其规则。
-- 这是布局标志位权威分离（R14）的一部分；07-tensor.md 作为 `derived_from_view_mut` 的权威源，同时显式声明不重复定义 HA_ZERO_STRIDE 规则。
-
-### 2.0.1
-
-- Replaced the checked-size unwrap safety-text example with a reference to the previously validated element count.
-- Clarified that construction uses a `pub(crate)` tensor-internal constructor rather than cross-module struct literal access to private fields.
-- §5.6 actually introduced `pub(crate) unsafe fn TensorBase::new_unchecked(storage, shape, strides, offset, flags, derived_from_view_mut) -> Self` (Owned-specialized + generic `S: RawStorage` forms; both `unsafe fn` because the # Safety contract documents UB on metadata mismatch) as the named entry point for that contract; `18-construction.md §5.1` / `§5.3` / `§5.4` route every construction site through it inside `unsafe { ... }` blocks with `// SAFETY:` comments, so private-field access is localized to one grep target. All non-downgrade construction sites pass `derived_from_view_mut: false`; only the `ViewMutRepr` → `ViewRepr` downgrade routes pass `true` (see §5.3 + `17-indexing.md §6.3`).
-- Polished punctuation and numeric formatting in constructor and boundary-test prose.
-
-### 2.0.0 (SemVer breaking)
-
-- **B14**：§4.2 类型级依赖表补齐 `IntoDimension`、`Strides<D>`、`compute_layout_flags`、`InvalidLayoutReason` / `InvalidShapeKind` / `StorageKindTag` 等条目，避免 `from_shape_vec` 等公开签名引用未声明类型。
-- **B15**：`into_raw_parts` 的 `impl` 块绑定改为 `D: Dimension + Clone`，与方法体内 `shape.clone()` / `strides.clone()` 一致。
-- **B16/B17**：`from_raw_parts_owned` 全面对齐契约：使用 `shape.checked_size()` 而非未承诺的 `size()`；`shape.slice().to_vec()` / `strides.as_slice().to_vec()` 替代未声明的 `to_vec()` 调用；调用 `Owned::from_raw_parts` 已显式 `unsafe { ... }` 包裹并附 `// SAFETY:` 注释，符合 Rust 2024 `unsafe_op_in_unsafe_fn` lint 基线。
-- **B18**：`OwnedRawParts<A, D>` 不再标注 `#[repr(C)]`，文档明确它仅作 Rust 内部 round-trip 载体，FFI 一律使用 `TensorExport` / `TensorExportMut`。
-- **B19**：`from_raw_vec_unchecked` 改为真正 unchecked，`# Safety` 增加"调用方负责 `shape.checked_size()` 已成功"前置条件，且不再以 panic 兜底失败。
-- **H-I7**：§5.1 线程安全表对 `TensorViewMut<'a, A, D>` 的 `Sync` 论证修正，归因为 storage 层 `ViewMutRepr` 内部的 raw `*mut A` 字段使 auto-trait 不实现 `Sync` 与未提供 `unsafe impl Sync` 共同保证（与 `05-storage.md §6.8` 同步）。
-- **§5.6 双权威收敛**：`from_shape_vec` 公开签名保留在本节，但完整算法、错误字段、对齐策略一律以 `18-construction.md §5.3` 为权威；本节加 "权威分工说明" 段落，删除原"测试归 18 构造模块"的零散注释。
-- **§5.7 # Safety 完整列表**：`from_raw_parts` / `from_raw_parts_mut` 的 `# Safety` 拆分为 "Pointer / memory invariants (caller-only)" 与 "Constructor-validated metadata (no caller obligation)" 两个清单，显式包含 provenance、stride `<= isize::MAX`、ZST aligned dangling、initialization、aliasing、可写时 layout 非重叠等 Rust unsafe 必要前提。
-- **§5.5 ZST 契约**：`as_slice` / `as_mut_slice` 增加 ZST 契约说明：当前封闭元素集合不含 ZST，`size_of::<A>() > 0` 始终成立；若未来扩展到 ZST，必须连同 `05-storage.md §5.5` 一起重新审视。
-- **§5.3 SharedReadOnly 双重含义**：增加显式说明，区分"所有权共享（`ArcRepr`）"与"同物理地址共享（`HAS_ZERO_STRIDE` 的 `ViewRepr`）"两种共享语义。
-- **§6.1 IxDyn rank 论证**：将原"`Strides<D>` 保证 strides 与 shape 维度数相同（编译期）"改为对静态维度编译期、对 `IxDyn` 构造期分别保证的说法，与 `06-layout.md §5.5` 一致。
-- **§6.2 `validate_non_overlapping_layout` off-by-one 修正**：算法明确 "`covered_max_offset` 是已覆盖子空间的最大可达 offset，对应集合大小为 `covered_max_offset + 1`"；下一轴 stride 必须 **严格大于** `covered_max_offset`。新增 `[2,2]` strides `[1,1]` 的核对示例。
-- **§6.2 错误字段对齐 26-error v3.0.0**：`validate_access_range` / `validate_non_overlapping_layout` / `from_raw_parts_owned` 的 `XenonError::InvalidLayout` 全部改用封闭枚举字段 `InvalidLayoutReason::*` / `StorageKindTag::*` / `Cow::Borrowed(...)`，不再使用自由文本 `reason: "..."`。
-- **§6.2 stride <= isize::MAX 校验前置**：`validate_access_range` 算法首部追加 stride `<= isize::MAX` 校验，作为后续指针运算的合法性保证；同步在 §5.7 `# Safety` 列入构造器自验项。
 
 ---
 

@@ -985,14 +985,35 @@ where
             });
         }
 
-        let data_ptr = self.as_ptr();
         let rows = self.shape()[0];
         let cols = self.shape()[1];
-        // After is_blas_layout_compatible() check, we know:
-        // - ndim == 2, F-contiguous, no zero strides
-        // - rows > 0: if rows == 0, F-order strides[1] = rows = 0,
-        //   making has_zero_stride() return true, which would have
-        //   already failed the is_blas_layout_compatible() check above.
+        // BLAS requires `lda >= max(1, rows)`. For F-order shape `[0, n]`
+        // (zero-row matrix), `product(shape) == 0`, so by the authoritative
+        // `HAS_ZERO_STRIDE := any(stride == 0) && product(shape) > 0` rule
+        // (06-layout.md §5.11) the layout is still classified F_CONTIGUOUS
+        // and `is_blas_layout_compatible()` returns `true`. The naturally
+        // computed F-order `strides[1]` equals `rows == 0`, which violates
+        // BLAS's `lda >= 1` requirement and would induce UB in any BLAS
+        // routine. Reject zero-row matrices here as a separate gate so the
+        // exported `BlasInfo::leading_dim` is always `>= max(1, rows)`.
+        // The mirror rule for zero-column matrices (`cols == 0 && rows > 0`)
+        // is naturally satisfied because F-order `strides[1] == rows` already
+        // gives `lda == rows >= 1`.
+        if rows == 0 {
+            return Err(XenonError::Ffi {
+                operation: Cow::Borrowed("ffi::blas_info"),
+                category: FfiErrorCategory::BlasIncompatibleLayout {
+                    shape: self.shape().to_vec(),
+                    strides: self.strides().to_vec(),
+                },
+                backend: FfiBackend::Blas,
+                cause: None,
+            });
+        }
+
+        let data_ptr = self.as_ptr();
+        // Post `rows > 0` gate: F-order `strides[1] == rows >= 1`, so
+        // `leading_dim` always satisfies BLAS's `lda >= max(1, rows)`.
         let leading_dim = self.strides()[1];
 
         Ok(BlasInfo {
@@ -1060,7 +1081,26 @@ where
                 cause: None,
             });
         }
+        // Mirror `blas_info()` rows-gate: BLAS requires `lda >= max(1, rows)`.
+        // For F-order shape `[0, n]`, `product(shape) == 0` ⇒
+        // `HAS_ZERO_STRIDE` stays false (06-layout.md §5.11), so the layout
+        // is still F_CONTIGUOUS and `is_blas_layout_compatible()` returns
+        // true; raw `strides[1] == rows == 0` would violate BLAS's `lda >= 1`.
+        // Reject zero-row matrices explicitly.
+        if self.shape()[0] == 0 {
+            return Err(XenonError::Ffi {
+                operation: Cow::Borrowed("ffi::lda"),
+                category: FfiErrorCategory::BlasIncompatibleLayout {
+                    shape: self.shape().to_vec(),
+                    strides: self.strides().to_vec(),
+                },
+                backend: FfiBackend::Blas,
+                cause: None,
+            });
+        }
         let strides = self.strides();
+        // Post rows-gate: F-order `strides[1] == rows >= 1`, satisfying
+        // BLAS's `lda >= max(1, rows)`.
         Ok(strides[1])
     }
 }
@@ -1370,7 +1410,7 @@ Additional caller-side checks:
 | 非连续切片     | `is_blas_layout_compatible()` 返回 `false`                                                                                                                        |
 | 广播维度       | `is_blas_layout_compatible()` 返回 `false`                                                                                                                        |
 | 自别名可写布局 | `from_raw_parts_mut()` 返回 `XenonError::Ffi { category: FfiErrorCategory::OverlapRejected{shape, strides}, backend: FfiBackend::RawParts, .. }`（v2.x 协同 26-error v3.1.0） |
-| 零尺寸矩阵     | `lda()` 在 `rows == 0` 时返回 `BlasIncompatibleLayout` 错误（F-order 下 `strides[1] = 0`，触发 `has_zero_stride`）；在 `cols == 0 && rows > 0` 时返回 `strides[1]`（= rows），满足 `lda >= max(1, rows)` |
+| 零尺寸矩阵     | `blas_info()` / `lda()` 在 `rows == 0` 时返回 `BlasIncompatibleLayout` 错误（由 `blas_info()` / `lda()` 内部的 `rows == 0` 显式 gate 拒绝；**注意**：空数组 `product(shape) == 0` 不会触发 `has_zero_stride`，参见 `06-layout.md §5.11` 的 `HAS_ZERO_STRIDE := any(stride == 0) && product(shape) > 0` 权威定义；因此 `is_blas_layout_compatible()` 单独无法过滤 `[0, n]`，需 `blas_info()` 自行 gate）。在 `cols == 0 && rows > 0` 时返回 `strides[1]`（= rows），满足 `lda >= max(1, rows)` |
 | 1D 张量        | `lda()` 返回错误                                                                                                                                                  |
 | 零维张量       | `try_offset_of(&[])` 返回 `Ok(0)`                                                                                                                                 |
 | 未对齐指针     | `from_raw_parts` 的 Safety 文档需说明对齐要求                                                                                                                     |
@@ -1521,95 +1561,6 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | 索引类型    | 逻辑索引统一使用 `usize`；BLAS/LAPACK 整数参数在边界处按目标后端转换为 `i32` 或 `i64`                                                                                            |
 | stride 范围 | 当前版本只接受非负 stride；负步长导入不在范围内                                                                                                                                  |
 | 错误诊断    | `blas_info()` / `lda()` 返回 `Result`，保留失败原因                                                                                                                              |
-
----
-
-## 版本历史
-
-| 版本  | 日期       |
-| ----- | ---------- |
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-08 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.0.4 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.1.1 | 2026-04-08 |
-| 1.1.2 | 2026-04-10 |
-| 1.1.3 | 2026-04-10 |
-| 1.1.4 | 2026-04-14 |
-| 1.1.5 | 2026-04-15 |
-| 1.2.0 | 2026-04-15 |
-| 1.2.1 | 2026-04-15 |
-| 1.2.2 | 2026-04-15 |
-| 1.2.3 | 2026-04-16 |
-| 1.2.4 | 2026-04-16 |
-| 1.2.5 | 2026-04-16 |
-| 1.2.6 | 2026-04-16 |
-| 2.0.0 | 2026-05-02 |
-| 2.0.1 | 2026-05-03 |
-| 2.1.0 | 2026-05-03 |
-| 3.0.0 | 2026-05-03 |
-| 3.0.1 | 2026-05-03 |
-| 3.0.2 | 2026-05-04 |
-| 3.0.3 | 2026-05-04 |
-
-### v3.0.3 (2026-05-04) — patch: refresh stale 26-error v3.0.0 reference to v3.2.0
-
-- §5 文档注释：`per 26-error.md` 引用从 v3.0.0 更新到 v3.2.0。
-
-### v2.0.0 (2026-05-02) — 错误字段对齐 26-error v3.0.0
-
-> 本版本与 26-error v3.0.0 协同更新。`XenonError::Ffi` 变体的 4 个字段 (`operation`, `category`, `backend`, `cause`) 与 v3.0.0 保持一致，移除了原 v1.x 文本中错误使用的 `precondition` / `actual` 自由文本字段，全部改用 `FfiErrorCategory` 子变体的结构化负载。这是文档级的破坏性更新（与原文档示例不兼容），但与正式 `error` 模块定义对齐后即恢复一致。
-
-**Blocker 修复**：
-
-- §5.1 辅助类型重写：`XenonError::Ffi` 字段从错误的 `{operation, category, backend, precondition, actual}` 改为正确的 `{operation, category, backend, cause}`；明示 `category: FfiErrorCategory` 是封闭枚举的结构化负载；包含 `cause: Option<Box<XenonError>>`，叶子错误通常为 `None`，包装底层错误时使用 `Some(Box::new(inner))`。
-- §5.11 `BlasInfo::as_blas_int` 重写：`FfiErrorCategory::IntegerOverflow` 从无负载的占位符改为 `IntegerOverflow { value, target_width_bits }` 结构化负载，`target_width_bits` 由 `core::mem::size_of::<I>() * 8` 计算；`backend: "blas/lapack"` 改为 `FfiBackend::Blas`；移除 `precondition` / `actual` 字段；`operation` 改为 `Cow::Borrowed("ffi::blas_info::as_blas_int")`。
-- §5.11 `blas_info()` 重写：`FfiErrorCategory::InvalidRank` 改为 `InvalidRank { expected: 2, actual: ndim }`；`FfiErrorCategory::BlasIncompatibleLayout` 改为 `BlasIncompatibleLayout { shape, strides }`；`backend: "blas"` 改为 `FfiBackend::Blas`；移除 `precondition` / `actual`。
-- §5.12 `lda()` 重写：同 `blas_info()` 的修复。
-- §5.13 `try_offset_of` 重写：`storage_kind` 一次性提取为 `StorageKindTag`（避免在每个 `ok_or_else` 分支重复调用 `.into()`，同时移除 self 借用问题）；`reason` 从自由文本 `"index-to-offset multiplication overflow"` / `"index-to-offset accumulation overflow"` 改为封闭枚举 `InvalidLayoutReason::AccessRangeExceedsStorage`；`operation` 改为 `Cow::Borrowed("ffi::try_offset_of")`。
-- §6.2 `validate_access_range` 伪代码重写：所有 `reason: "..."` 自由文本改为 `InvalidLayoutReason::ShapeProductOverflow` / `AccessRangeExceedsStorage`；`storage_kind: "raw_parts"` 改为由调用方传入的 `caller_storage_kind: StorageKindTag`；`operation` 字段改 `Cow::Borrowed(..)`。
-
-**High 修复**：
-
-- §1.2 设计原则新增"错误结构化"行：FFI 错误一律使用封闭枚举，禁止自由文本 payload。
-- §4.2 `error` 行展开：完整列出 `FfiErrorCategory` 八个子变体名 + `FfiBackend` 两个变体名 + `InvalidLayoutReason` + `StorageKindTag`，让后续维护者无需跳转 26-error 即可定位字段集合。
-- §10 错误处理表 Recoverable error 重写：完整列出每个错误变体的字段构造模板，明示禁止 `Cow<str>` 自由文本 payload。
-
-**协同与一致性更新**：
-
-- 与 `07-tensor.md` v2.0.0 §6.2 / §5.7 的 `InvalidLayoutReason` / `StorageKindTag` 字段命名对齐。
-- 与 `26-error.md` v3.0.0 §5.1 的 `FfiErrorCategory` 八子变体（`NullPointer` / `AlignmentMismatch` / `InvalidRank` / `BlasIncompatibleLayout` / `IntegerOverflow` / `AbiMismatch` / `OverlapRejected` / `ForeignAllocatorMismatch`）和 `FfiBackend` 两子变体（`RawParts` / `Blas`）保持双向引用一致。
-
-
-### v2.0.1 (2026-05-03) — Medium/Low documentation follow-up
-
-- Added a minimal `cause: Some(Box::new(inner))` source-chain example for `XenonError::Ffi` wrapping a lower-level workspace error.
-- Clarified version-history wording: `cause: Option<Box<XenonError>>` is part of the FFI error shape; leaf errors usually use `None`, wrappers use `Some(Box::new(inner))`.
-
-### v3.0.2 (2026-05-04) — R8 cbindgen 三道闸门 + private.rs 子模块（R9 同步）
-
-- §3 文件布局：FFI 模块树新增 `src/ffi/private.rs` 子模块，承载泛型 `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 等 Rust-only descriptor 定义，对外不导出（R8-D-03 落地）。`01-architecture.md §3` 的 ffi 目录树同步反映该子模块。
-- §5.3.bis cbindgen 三道闸门契约：(1) `extern "C"` 签名只引用 raw 类型 `TensorExportRaw` / `TensorExportMutRaw`；(2) 泛型 descriptor 物理隔离在 `crate::ffi::private` 子模块，不参与 cbindgen emission 路径；(3) `cbindgen.toml` 使用 `exclude` 严格列表（`[export] include` 不是 allowlist）。`28-tests.md §5.17` 的 `test_cbindgen_header_exports_only_raw_descriptors` 在 (2) gate 中同时断言 `private.rs` 物理边界。
-- 与 `00-coding.md §1.3` / `28-tests.md §1.0` 锁定基线版本号严格对齐。
-
-### v3.0.1 (2026-05-03) — TensorExportRaw 非泛型描述符落地
-
-- `TensorExportRaw` / `TensorExportMutRaw` 是非泛型 `*const c_void` C ABI 描述符；提供 `From<TensorExport<'a, A>> for TensorExportRaw` 与 `From<TensorExportMut<'a, A>> for TensorExportMutRaw` 的 generic→raw 转换。
-- C ABI 表面只暴露 raw descriptor + `ElementType` 显式 discriminants（`Bool=0..Complex64=6`，`03-element.md §5.1.1`）。
-
-### v3.0.0 (2026-05-03) — FFI 错误结构化 + offset_of! padding 守门
-
-- `XenonError::Ffi` 四字段 `{ operation, category: FfiErrorCategory, backend: FfiBackend, cause }` 与 `26-error.md v3.x` 同步（`FfiErrorCategory` 八变体、`FfiBackend` 二变体）；FFI 路径 padding / alignment 通过 `core::mem::offset_of!` 编译期断言守门。
-
-### v2.1.0 (2026-05-03) — from_raw_parts_mut 自别名改返 OverlapRejected
-
-> 本版本与 `26-error.md v3.1.0` 协同，启用此前死变体 `FfiErrorCategory::OverlapRejected`。公开错误变体类别（仍是 `XenonError::Ffi`）保持兼容；变化仅在错误分类的精确度。
-
-- §10：`from_raw_parts_mut()` 在可写布局自别名时的错误分类从 `XenonError::InvalidLayout { reason: AmbiguousOverlap, storage_kind: ViewMut, .. }` 改为 `XenonError::Ffi { category: FfiErrorCategory::OverlapRejected{shape, strides}, backend: FfiBackend::RawParts, .. }`。
-- 理由：FFI raw-parts 自别名属于 FFI 类错误（在 FFI 边界拒绝），归到 `Ffi` 变体的 `OverlapRejected` 比归到通用 `InvalidLayout::AmbiguousOverlap` 更精确，也为 v3.1.0 之前是死变体的 `OverlapRejected` 提供了真正的触发点。
-- `InvalidLayoutReason::AmbiguousOverlap` 仍保留，但范围收窄到非 FFI 入口的内部 layout 自检场景。
 
 ---
 

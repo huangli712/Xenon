@@ -4,8 +4,6 @@
 > 模块目录: src/element/
 > 任务阶段: Phase 1
 > 前置文档: 00-coding.md, 01-architecture.md
-> 需求参考: 需求说明书 §4、§5、§12 - §15、§23
-> 范围声明: 范围内
 
 ---
 
@@ -22,14 +20,14 @@
 | 基础类型实现        | 为 i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool 实现上述 trait  |
 | Sealed trait        | 封闭集合，禁止外部 crate 实现                                     |
 
-| 职责                | 不包含                                                          |
-| ------------------- | --------------------------------------------------------------- |
-| Element trait       | -                                                               |
-| Numeric trait       | 运算实现本身（委托给 core::ops）                                |
-| RealScalar trait    | 复数运算                                                        |
-| ComplexScalar trait | 复数类型定义（在 `src/complex/` 模块，参见 `04-complex.md` §5） |
-| 基础类型实现        | 类型转换逻辑（在 `src/convert/` 模块）                          |
-| Sealed trait        | 开放扩展                                                        |
+| 职责                | 不包含                              |
+| ------------------- | ----------------------------------- |
+| Element trait       | -                                   |
+| Numeric trait       | 运算实现本身（委托给 core::ops）    |
+| RealScalar trait    | 复数运算                            |
+| ComplexScalar trait | 复数类型定义（在 `complex/` 模块）  |
+| 基础类型实现        | 类型转换逻辑（在 `convert/` 模块）  |
+| Sealed trait        | 开放扩展                            |
 
 ### 1.2 设计原则
 
@@ -65,8 +63,6 @@ src/element/
 └── primitives.rs      # Trait implementations for primitive element types
 ```
 
-模块内聚设计：四层 trait 按文件分离，基础类型实现集中在 `primitives.rs`。
-
 ---
 
 ## 4. 依赖关系
@@ -76,8 +72,6 @@ src/element/
 ```
 src/element/
 ├── crate::error      # XenonError only (consumed for fallible APIs).
-                      # NOTE (v1.4.0): `ElementType` is defined HERE in the
-                      # element module (see §5.1.1), NOT in error.
 ├── crate::complex    # Complex<T> type definition
 ├── crate::private    # Sealed trait infrastructure
 ├── core::ops         # Add/Sub/Mul/Div/Neg operator traits
@@ -89,14 +83,14 @@ src/element/
 
 | 来源模块         | 使用的类型/trait                                           |
 | ---------------- | ---------------------------------------------------------- |
-| `crate::error`   | `XenonError`（显式类型转换失败时返回）；本模块**不**反向依赖 error。注意 `ElementType` 枚举在 v1.4.0 起重新由本模块拥有（详见 §5.1.1），`error` 模块用 `&'static str` 记录类型诊断信息（来自 `Element::ELEMENT_TYPE_NAME`），不再持有 `ElementType` 字段 |
+| `crate::error`   | `XenonError`（显式类型转换失败时返回）                     |
 | `crate::complex` | `Complex<f32>`, `Complex<f64>`（元素类型实现目标）         |
 | `crate::private` | `Sealed`（封闭 trait 实现边界）                            |
 | `core::ops`      | `Add`, `Sub`, `Mul`, `Div`, `Neg`（Numeric supertrait）    |
 | `core::fmt`      | `Debug`, `Display`（Element supertrait）                   |
 | `core::cmp`      | `PartialEq`, `PartialOrd`（Element/RealScalar supertrait） |
 
-### 4.3 依赖合法性与新增依赖说明
+### 4.3 依赖合法性
 
 | 项目           | 结论                       |
 | -------------- | -------------------------- |
@@ -106,15 +100,17 @@ src/element/
 
 ### 4.4 依赖方向声明
 
-**依赖方向**：单向向上。 `element/` 消费 `complex` 的类型定义（即 `element` 依赖 `complex`），`complex` 不反向依赖 `element`。
+依赖方向：单向向上。 `element` 消费 `complex` 的类型定义，`complex` 不反向依赖 `element`。
 
 ---
 
 ## 5. 公共 API 设计
 
-**sealed 约束说明**：以下所有公开 trait 均通过 `private::Sealed` 实现 sealed trait 模式，禁止下游 crate 为自定义类型实现这些 trait。元素类型集合为封闭集合，不支持外部扩展。
+以下所有公开 trait 均通过 `private::Sealed` 实现 sealed trait 模式，禁止下游 crate 为自定义类型实现这些 trait。元素类型集合为封闭集合，不支持外部扩展。
 
 ### 5.1 Element trait
+
+#### 5.1.1 基本定义
 
 ```rust,ignore
 /// Base trait for all tensor element types.
@@ -140,27 +136,15 @@ pub trait Element:
     /// Element type discriminant for FFI consumers.
     ///
     /// Maps Rust element types to a C-compatible enum discriminant at
-    /// compile time. `ElementType` is **owned by this module**
-    /// (authoritative definition below in §5.1.1) so that `error` (L0)
-    /// stays free of any element-trait dependency. `ffi` (L4) re-exports
-    /// `crate::element::ElementType` for C consumers — the C ABI surface
-    /// path is `crate::ffi::ElementType` (which equals
-    /// `crate::element::ElementType`).
+    /// compile time.
     const ELEMENT_TYPE: ElementType;
 
     /// Human-readable static name of this element type, e.g. "f32",
     /// "Complex<f64>".
     ///
-    /// This is the string form used in **error** diagnostics
-    /// (`XenonError::TypeConversion::source_type` /  `target_type`,
-    /// `AbiMismatchKind::ElementTypeMismatch::expected` / `actual`,
-    /// see `26-error.md §5.1`). Storing the static `&'static str` in
-    /// the `Element` trait — rather than carrying an `ElementType`
-    /// value into the error module — keeps `error` (L0) free of any
-    /// dependency on `element` (L2): error fields just hold
-    /// `&'static str` and Display them directly. The string values
-    /// here are the canonical Xenon names and **must** stay in sync
-    /// with `ElementType::name()` below.
+    /// This is the string form used in **error** diagnostics.
+    /// The string values here are the canonical Xenon names and
+    /// **must** stay in sync with `ElementType::name()` below.
     const ELEMENT_TYPE_NAME: &'static str;
 }
 ```
@@ -176,9 +160,7 @@ pub trait Element:
 | `Sync`      | 可跨线程共享引用（并行只读访问必需）   |
 | `Sealed`    | 防止外部类型实现                       |
 
-### 5.1.1 `ElementType` 枚举（权威定义；element 模块拥有）
-
-**v1.4.0 起，`ElementType` 的权威定义重新搬回 `crate::element`**（之前 v1.3.x 曾下沉到 `crate::error`，详见下方决策回滚说明）。`error` 模块**不再**直接持有 `ElementType` —— 它使用 `&'static str`（来自 `Element::ELEMENT_TYPE_NAME`）记录类型诊断信息，从而严格保持 `error`（L0）→ 不依赖任何上层模块。`ffi` 模块（L4）通过 `pub use crate::element::ElementType` re-export 暴露给 C 消费者。
+#### 5.1.2 `ElementType` 枚举
 
 ```rust,ignore
 // src/element/mod.rs (authoritative definition)
@@ -192,7 +174,7 @@ pub trait Element:
 ///
 /// `#[repr(u8)]` keeps the enum cheap to copy/hash and gives the FFI layer
 /// (see `23-ffi.md`) a stable single-byte tag. **Discriminant values ARE
-/// part of the public C ABI contract** (v1.4.0+): they are SemVer-pinned
+/// part of the public C ABI contract**: they are SemVer-pinned
 /// for `crate::ffi::ElementType` C consumers. Reordering existing variants
 /// or reusing existing values is a breaking change and requires a major
 /// version bump. Adding a new variant gets a new value and is non-breaking
@@ -244,7 +226,7 @@ impl ElementType {
     ///
     /// Equivalent to the free function `element_type_of::<A>()`. Provided
     /// for ergonomic call sites that prefer `ElementType::of::<f32>()`
-    /// over the free-function form. v1.4.0 onward.
+    /// over the free-function form.
     pub const fn of<A: Element>() -> Self {
         A::ELEMENT_TYPE
     }
@@ -275,7 +257,7 @@ pub const fn element_type_name_of<A: Element>() -> &'static str {
 }
 ```
 
-**Element impl 必须同时设置 `ELEMENT_TYPE` 与 `ELEMENT_TYPE_NAME`，且后者等于前者的 `.name()`：**
+Element impl 必须同时设置 `ELEMENT_TYPE` 与 `ELEMENT_TYPE_NAME`，且后者等于前者的 `.name()`：
 
 ```rust,ignore
 impl Element for f32 {
@@ -298,18 +280,6 @@ const _: () = {
 };
 ```
 
-**设计决策（v1.4.0：ElementType owner 回到 element）：**
-
-| 项 | v1.3.x（已废弃） | v1.4.0（当前） |
-|:--|:--|:--|
-| `ElementType` 定义位置 | `crate::error` | `crate::element` |
-| `error` 字段类型 | `source_type: ElementType` | `source_type: &'static str` |
-| `error` 是否依赖 `element` | 不依赖（用 enum 自带 Display） | 不依赖（用 `&'static str` 自带 Display） |
-| FFI 字段 | `pub use crate::error::ElementType` | `pub use crate::element::ElementType` |
-| Element 关联常量 | `ELEMENT_TYPE` | `ELEMENT_TYPE` + 新增 `ELEMENT_TYPE_NAME` |
-
-回滚理由：v1.3.x 把 `ElementType` 下沉到 L0 是为了让 error 模块能直接 Display 类型名；但这同时让"元素类型枚举"在概念归属上离开了 element 模块，命名与所在位置出现张力（`Element::ELEMENT_TYPE` 关联常量类型却定义在 error）。v1.4.0 通过引入 `Element::ELEMENT_TYPE_NAME: &'static str` 让 error 直接持有用于 Display 的字符串，**两个目标同时达成**：error 不依赖 element + element 重新拥有 `ElementType` 类型。`element_type_of::<A>()` 仍是自由函数（不是 inherent impl），保留是因为它是 `pub const fn` 形态的便利入口；inherent impl 也可以现在加上（`impl ElementType { pub const fn of<A: Element>() -> Self { A::ELEMENT_TYPE } }`）因为类型定义已回 element 模块、Rust E0116 不再触发——v1.4.0 同时新增此 inherent 形式作为推荐入口（自由函数保留作为完全等价的别名供调用点选择）。
-
 ### 5.2 Numeric trait
 
 ```rust,ignore
@@ -325,9 +295,6 @@ const _: () = {
 /// Overflow-sensitive integer paths must additionally follow Xenon's checked
 /// arithmetic contracts in operation modules so that recoverable vs panic
 /// behavior remains consistent with the requirements specification.
-///
-/// Note: `Sealed` is not listed as a separate supertrait here because
-/// `Element` already inherits `Sealed`.
 pub trait Numeric:
     Element
     + core::ops::Add<Output = Self>
@@ -366,14 +333,9 @@ pub trait RealScalar: Numeric + PartialOrd + Sealed {
     // Sealed is already inherited via Element (which Numeric extends),
     // but listed here for defensive clarity — makes the sealed intent explicit
     // at each trait level.
+    
     // ========== Math functions ==========
     fn abs(self) -> Self;
-    /// Returns the standard-library sign of the value.
-    ///
-    /// Finite non-NaN inputs return `1.0` or `-1.0`; specifically,
-    /// `signum(+0.0) == 1.0`, `signum(-0.0) == -1.0`,
-    /// `signum(+∞) == 1.0`, `signum(-∞) == -1.0`, and
-    /// `signum(NaN) == NaN`.
     fn signum(self) -> Self;
     fn sqrt(self) -> Self;
     fn sin(self) -> Self;
@@ -426,10 +388,6 @@ pub trait ComplexScalar: Numeric + Sealed {
 
 ```rust,ignore
 /// Ordered comparison element trait.
-///
-/// Publicly exposed for the `lt` / `gt` comparison API in the math module,
-/// while remaining sealed so only Xenon's supported ordered element types can
-/// implement it.
 pub trait OrderedCompareElement: Element + PartialOrd + Sealed {}
 
 impl OrderedCompareElement for i32 {}
@@ -441,7 +399,7 @@ impl OrderedCompareElement for f64 {}
 - `OrderedCompareElement` 需要作为公开 sealed trait 暴露，因为 `11-math` 的公开比较 API（`less` / `greater`，详见 `11-math.md §5` 与 `01-architecture.md §10.1`）直接使用它作为元素类型约束；但其实现集合仍限制为 Xenon 当前支持的有序比较元素类型。
 - `OrderedCompareElement` 用于把有序比较能力显式收敛到 `i32`、`i64`、`f32`、`f64`。该 trait 虽然为配合 `11-math` 的公开 `less` / `greater` 比较 API 而公开暴露，但仍通过 `Sealed` 保持 sealed，只允许 Xenon 为这四种类型提供实现。
 
-### 5.6 BoolElement（`pub(crate)` sealed）
+### 5.6 BoolElement
 
 `BoolElement` 是仅在 element 模块内部使用的辅助 trait，标记 `bool` 类型以区分布尔运算的可用性（例如 `not()`）。
 
@@ -456,7 +414,7 @@ impl BoolElement for bool {}
 ```
 
 - **用途**：`11-math.md` 的 `not()` 方法 trait bound 使用 `A: BoolElement`，阻止其他元素类型偶然实现该 trait。
-- **`pub(crate)` 与公开 API 边界**：`BoolElement` 本身不出现在 `not()` 等方法的 *公开* 签名上；公开 API 仅通过 `impl<S, D> TensorBase<S, D> where S: Storage<Elem = bool>` 之类的具体类型约束暴露 `not()`，避免出现私有 trait 出现在公开 bound 上的可见性冲突。详见 `11-math.md §5.7`。
+- **`pub(crate)` 与公开 API 边界**：`BoolElement` 本身不出现在 `not()` 等方法的公开签名上；公开 API 仅通过 `impl<S, D> TensorBase<S, D> where S: Storage<Elem = bool>` 之类的具体类型约束暴露 `not()`，避免出现私有 trait 出现在公开 bound 上的可见性冲突。详见 `11-math.md §5.7`。
 
 ### 5.7 支持的类型与 trait 矩阵
 
@@ -474,20 +432,20 @@ impl BoolElement for bool {}
 - 不支持 `usize`、u8/u16/u32/i8/i16 等其他整数类型。
 - `usize` 仅作为索引和形状元数据使用。
 
-**按运算的元素类型可用矩阵（跨模块快速参考，非规范性索引）：** 以下表格汇总各运算模块支持的元素类型；个别运算因数学语义限制（如有序比较对复数无定义）仅支持子集。**权威定义仍以各运算模块文档为准**，本表仅作为单点查询与 sealed trait 实现一致性核对的参考；每行的“权威文档”列必须保留对应 owner 链接。
+**按运算的元素类型可用矩阵：** 以下表格汇总各运算模块支持的元素类型。个别运算因数学语义限制（如有序比较对复数无定义）仅支持子集。权威定义仍以各运算模块文档为准，本表仅作为单点查询与 sealed trait 实现一致性核对的参考；每行的“权威文档”列必须保留对应 owner 链接。
 
-| 运算 / 模块 | i32 | i64 | f32 | f64 | Complex<f32> | Complex<f64> | bool | 权威文档 |
+| 运算 | i32 | i64 | f32 | f64 | Complex<f32> | Complex<f64> | bool | 权威文档 |
 | ----------- | :-: | :-: | :-: | :-: | :----------: | :----------: | :--: | -------- |
-| 算术 add/sub/mul/div（11-math） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `11-math.md §5.3` |
-| neg / abs / square（11-math） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `11-math.md §5.4` |
-| 内积 dot（12-matrix） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `12-matrix.md §5.1` |
-| sum 归约（13-reduction） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `13-reduction.md §5`（当前版本仅 sum；mean/min/max 不在范围） |
-| unique 集合运算（14-set） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `14-set.md §6.1`（哈希查重 + F-order 顺序输出） |
-| eye 单位矩阵构造（18-construction） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `18-construction.md` |
-| clip（20-utility） | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | `20-utility.md`（无序比较不适用） |
-| cast 类型转换（21-type） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `21-type.md` |
-| 有序比较 less/greater（OrderedCompareElement） | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | `03-element.md §5.5`（复数无序；命名权威见 `11-math.md §5`，仅 less/greater，不含 less_equal/greater_equal） |
-| Checked 整数原语（CheckedAdd/Sub/Mul/Neg/Div） | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | `03-element.md §5.10` |
+| 算术 add/sub/mul/div | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `11-math.md §5.3` |
+| neg / abs / square | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `11-math.md §5.4` |
+| 内积 dot | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `12-matrix.md §5.1` |
+| sum 归约 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `13-reduction.md §5` |
+| unique 集合运算 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `14-set.md §6.1` |
+| eye 单位矩阵构造 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `18-construction.md` |
+| clip | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | `20-utility.md` |
+| cast 类型转换 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | `21-type.md` |
+| 有序比较 less/greater | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | `03-element.md §5.5` |
+| Checked 整数原语 | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | `03-element.md §5.10` |
 
 ### 5.8 Sealed trait 策略
 
@@ -522,8 +480,7 @@ use crate::error::XenonError;
 ///
 /// Defines explicit conversion from `Self` to `T`.
 /// Lossless conversions return `Ok(T)`.
-/// Lossy conversions default to recoverable
-/// `XenonError::TypeConversion { operation, source_type, target_type, reason, element_index }`
+/// Lossy conversions default to recoverable `XenonError::TypeConversion`
 /// unless a documented success precondition is satisfied (see `21-type.md §5.3`).
 ///
 /// This trait is implemented only inside Xenon for the supported source/target pairs.
@@ -541,7 +498,7 @@ pub trait CastTo<T: Element>: Element {
 - 类型转换错误载荷的完整定义见 `26-error.md §5.1`，`CastTo<T>` 的转换矩阵与实现约束见 `21-type.md §5.2`、`§6.1`。本节仅保留元素层 trait 骨架。
 - `CastTo<T>` 直接返回 `XenonError::TypeConversion`。
 - 类型参数 `T` 必须满足 `T: Element`，结合 `Self: Element` 的 sealed 边界，从 trait 层面把转换关系限制在 Xenon 封闭元素集合内。
-- `bool` 不出现为任何 `CastTo<T>` 的 *源类型*，也不出现为任何 `CastTo<T>` 的 *目标类型*；这两个方向都通过"不提供 impl"在编译期阻断（与 §6.1 决策一致）。
+- `bool` 不出现为任何 `CastTo<T>` 的 *源类型*，也不出现为任何 `CastTo<T>` 的 *目标类型*；这两个方向都通过"不提供 impl"在编译期阻断。
 - `Complex<T> -> Real` 的条件成功语义、受支持矩阵与 `XenonError::TypeConversion` 字段约束，统一以 `21-type.md §5.3`、`§6.1` 以及 `26-error.md §5.6` 为准。
 
 #### 5.9.1 CastElement marker trait
@@ -576,6 +533,30 @@ impl CastElement for Complex<f64> {}
 - **与 `CastTo<T>` 的关系**：`CastElement` 是"哪些元素类型属于 cast 矩阵"的封闭集合标记；`CastTo<T>` 是"具体的 (源, 目标) 对存在合法转换"的关系。两者同属 §5.9 类型转换主题，但语义槽位不同：`CastElement` 让 `cast()` 公开签名能用单一 trait 边界排除 `bool`；`CastTo<T>` 表达具体可转换关系并实现转换逻辑。
 - **sealed 论证**：`CastElement: Element` 间接 sealed（`Element: Sealed`），下游 crate 无法为新类型实现。
 - **owner**：`CastElement` 定义在 `src/element/mod.rs`；`21-type.md §5.1` 仅消费、不重新定义。
+
+#### 5.9.2 转换矩阵 Tier 索引表
+
+本节给出 `CastElement` 6 种元素类型间 6×6 = 36 个 (源, 目标) 对的 **Tier 分类索引表**。本表 **仅作为 element 层 trait 设计的对照参考**，让 trait 设计者能快速判断每对类型的 trait 实现策略（是否需要 `CastTo<T>`、是否走 `From` / `ConvertTo` 静态分发、是否默认 `Err`）；完整转换语义、错误条件、闭合规则等权威详细定义统一以 `21-type.md §5` / `§6` 为准。
+
+**Tier 分类约定**（与 `21-type.md` 保持一致）：
+
+| Tier | 含义 | trait 实现策略 |
+|------|------|---------------|
+| **T0** | identity（同类型拷贝） | 通过 `Clone` / `Copy`；不需 `CastTo<T>` impl；`cast::<A>()` 走 `to_owned()` 同等路径 |
+| **T1** | lossless（无损扩宽 / 引入虚部 0） | 默认成功；可通过 `From` / `ConvertTo` 静态分发，不进入 `CastTo<T>` fallible 路径 |
+| **T2** | lossy（有损：精度丢失 / 截断 / 范围溢出风险） | 默认返回 `Err(XenonError::TypeConversion)`；通过 `CastTo<T>` impl 承载，调用方需显式处理 |
+| **T3** | conditional lossy（动态条件：复数→实数虚部为 0 才成功） | 通过 `CastTo<T>` impl 承载；运行时检查虚部，虚部为 0 时按内层规则继续，否则 `Err(XenonError::TypeConversion)` |
+
+**6×6 矩阵索引（行=源类型，列=目标类型）**：
+
+| 源 → 目标       | `i32`     | `i64`     | `f32`     | `f64`     | `Complex<f32>` | `Complex<f64>` |
+|-----------------|-----------|-----------|-----------|-----------|----------------|----------------|
+| **`i32`**       | T0        | T1        | T2        | T1        | T2             | T1             |
+| **`i64`**       | T2        | T0        | T2        | T2        | T2             | T2             |
+| **`f32`**       | T2        | T2        | T0        | T1        | T1             | T1             |
+| **`f64`**       | T2        | T2        | T2        | T0        | T2             | T1             |
+| **`Complex<f32>`** | T3     | T3        | T3        | T3        | T0             | T1             |
+| **`Complex<f64>`** | T3     | T3        | T3        | T3        | T2             | T0             |
 
 ### 5.10 Checked arithmetic traits
 
@@ -680,7 +661,7 @@ impl CheckedDiv for i64 {
 
 - 此 trait 为内部实现辅助，不纳入稳定公开 API 面。具体可见性由实现决定。
 - `CheckedAdd` 仅覆盖整数加法（`i32`/`i64`），用于归约等必须精确检测溢出的路径。
-- 当前元素层统一提供 `CheckedAdd` / `CheckedSub` / `CheckedMul` / `CheckedNeg` / `CheckedDiv` 五类整数 checked 原语，作为整数溢出检测的**唯一权威定义点**，供 `math`、`matrix`、`reduction` 等所有上层模块复用。上层模块**不应**重新定义同语义 trait；余数与更高阶组合检查仍由具体运算模块在实现层基于这些原语组合完成。
+- 当前元素层统一提供 `CheckedAdd` / `CheckedSub` / `CheckedMul` / `CheckedNeg` / `CheckedDiv` 五类整数 checked 原语，作为整数溢出检测的**唯一权威定义点**，供 `math`、`matrix`、`reduction` 等所有上层模块复用。上层模块不应重新定义同语义 trait；余数与更高阶组合检查仍由具体运算模块在实现层基于这些原语组合完成。
 
 ### 5.11 Good / Bad 对比示例
 
@@ -732,7 +713,7 @@ impl Element for bool {
     fn one() -> Self { true }
 
     // Both `ELEMENT_TYPE` and `ELEMENT_TYPE_NAME` are mandatory for *every*
-    // `Element` impl (see §5.1 trait definition + §5.1.1 ElementType).
+    // `Element` impl (see §5.1.1 trait definition + §5.1.2 ElementType).
     // For `bool`, the type-tag pair maps to (Bool, "bool"). FFI consumers
     // identify `Tensor<bool, _>` via `ELEMENT_TYPE`; error diagnostics
     // (e.g. `XenonError::TypeConversion::source_type`) use the
@@ -749,11 +730,6 @@ impl Element for bool {
 //   impl Element for f64          { ... ELEMENT_TYPE = ElementType::F64;       NAME = "f64";          }
 //   impl Element for Complex<f32> { ... ELEMENT_TYPE = ElementType::Complex32; NAME = "Complex<f32>"; }
 //   impl Element for Complex<f64> { ... ELEMENT_TYPE = ElementType::Complex64; NAME = "Complex<f64>"; }
-//
-// Each NAME literal MUST equal `ElementType::<discriminant>.name()` exactly;
-// this is enforced by a crate-internal unit test (inside `src/element/`'s
-// `#[cfg(test)] mod tests`, exercised through `tests/test_tensor.rs` /
-// `tests/test_conversion.rs`; see §5.1.1 / §8.5 + `28-tests.md §9.2`).
 ```
 
 编译时阻止无效泛型实例化：`fn sum<A: Numeric>` 无法接受 `bool` 张量；需要布尔专用逐元素逻辑非时，使用 `!`。此外，`bool` 不实现任何 `CastTo<T>`；`bool_tensor.cast::<f32>()` 必须在编译期失败，而不是返回运行时类型转换错误。
@@ -909,7 +885,7 @@ impl RealScalar for f64 {
   - 预计: 10 min
 
 - [ ] **T12**: 集成测试（跨模块交互验证）
-  - 文件: element 内部单元测试 + doctest，跨模块协同覆盖经由 `tests/test_tensor.rs` / `tests/test_math.rs` / `tests/test_reduction.rs` / `tests/test_conversion.rs` 等已存在的集成测试间接验证（与 `28-tests.md §9.2` 覆盖映射一致；**不**新增独立 `tests/test_element.rs`）
+  - 文件: element 内部单元测试 + doctest，跨模块协同覆盖经由 `tests/test_tensor.rs` / `tests/test_math.rs` / `tests/test_reduction.rs` / `tests/test_conversion.rs` 等已存在的集成测试间接验证（与 `28-tests.md §9.2` 覆盖映射一致；不新增独立 `tests/test_element.rs`）
   - 内容: 各类型各层 trait 的完整性验证
   - 测试: 见测试计划 §8
   - 前置: T10, T11
@@ -924,7 +900,7 @@ impl RealScalar for f64 {
 | 测试分类 | 位置                      | 说明                                       |
 | -------- | ------------------------- | ------------------------------------------ |
 | 单元测试 | `#[cfg(test)] mod tests`  | 验证各 trait 和基础类型实现                |
-| 集成测试 | `tests/test_tensor.rs` / `tests/test_math.rs` / `tests/test_reduction.rs` / `tests/test_conversion.rs` | 通过张量/数学/归约/转换层间接验证 element 协同路径（**不**新增独立 `tests/test_element.rs`，与 `28-tests.md §9.2` 一致） |
+| 集成测试 | `tests/test_tensor.rs` / `tests/test_math.rs` / `tests/test_reduction.rs` / `tests/test_conversion.rs` | 通过张量/数学/归约/转换层间接验证 element 协同路径 |
 | 边界测试 | 同模块测试中标注          | 覆盖 NaN/Inf、bool 限制与 sealed 行为      |
 | 属性测试 | 同模块单元测试 / `tests/property_tests.rs` | 验证零元、单位元与数学函数不变量（不依赖独立 `test_element.rs`） |
 
@@ -974,15 +950,13 @@ impl RealScalar for f64 {
 
 ### 8.5 集成测试
 
-> **不**新增独立 `tests/test_element.rs`（与 `28-tests.md §9.2` 一致）。element 模块的端到端协同路径通过下列已存在的集成测试间接覆盖：
-
 | 集成测试文件             | 覆盖的 element 协同路径                                                |
 | ------------------------ | ---------------------------------------------------------------------- |
 | `tests/test_tensor.rs`   | `Element` / `Numeric` bound 在张量构造、`storage_kind`、`access_semantics` 等路径上 |
 | `tests/test_math.rs`     | `RealScalar` / `ComplexScalar` 数学函数语义                            |
-| `tests/test_reduction.rs`| 元素类型与归约结果类型协同（`Numeric` bound 在 sum 路径；当前 reduction 仅 sum，dot 在 matrix 测试覆盖；matrix-matrix multiplication / matmul 在 `01-architecture.md §2.2` 范围外） |
-| `tests/test_matrix.rs`   | dot 中 `Numeric` bound 协同路径（matrix-matrix multiplication / matmul 在 `01-architecture.md §2.2` 范围外）                               |
-| `tests/test_conversion.rs` | `CastElement` 在 cast 路径上的 6×6 矩阵覆盖（文件名与 `01-architecture.md §3` ./tests 目录树严格一致） |
+| `tests/test_reduction.rs`| 元素类型与归约结果类型协同                                             |
+| `tests/test_matrix.rs`   | dot 中 `Numeric` bound 协同路径                                        |
+| `tests/test_conversion.rs` | `CastElement` 在 cast 路径上的 6×6 矩阵覆盖                          |
 
 ### 8.6 Feature gate / 配置测试
 
@@ -1113,69 +1087,6 @@ Upstream modules declare element bounds
 | 单 crate   | 保持单 crate 边界                             |
 | SemVer     | 公开 trait、类型约束与转换语义变更遵循 SemVer |
 | 最小依赖   | 无新增第三方依赖                              |
-
----
-
-## 版本历史
-
-| 版本  | 日期       |
-| ----- | ---------- |
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.2.0 | 2026-04-08 |
-| 1.2.1 | 2026-04-10 |
-| 1.2.2 | 2026-04-14 |
-| 1.2.3 | 2026-04-14 |
-| 1.2.4 | 2026-04-14 |
-| 1.2.5 | 2026-04-15 |
-| 1.2.6 | 2026-04-15 |
-| 1.2.7 | 2026-04-15 |
-| 1.2.8 | 2026-04-16 |
-| 1.2.9 | 2026-05-03 |
-| 1.3.0 | 2026-05-03 |
-| 1.3.1 | 2026-05-03 |
-| 1.4.0 | 2026-05-03 |
-
-### v1.4.0 (2026-05-03) — ElementType 回归 element + Element 新增 ELEMENT_TYPE_NAME
-
-> 本版本与 `26-error.md v3.2.0` 协同。语义破坏性变更：`ElementType` 类型定义所在模块从 `crate::error` 改回 `crate::element`，同时 `Element` trait 新增 `ELEMENT_TYPE_NAME: &'static str` 关联常量。下游编译影响：(1) 路径 `crate::error::ElementType` 不再存在（`crate::element::ElementType` 是唯一权威路径，`crate::ffi::ElementType` 是 ffi re-export）；(2) 每个 `impl Element for X` 必须新增 `const ELEMENT_TYPE_NAME: &'static str = "..."` 行，值与 `ElementType::name()` 严格一致；(3) `XenonError::TypeConversion::source_type` / `target_type` 与 `AbiMismatchKind::ElementTypeMismatch::expected` / `actual` 字段类型从 `ElementType` 改为 `&'static str`。
-
-**契约更新：**
-
-- §5.1 + §5.1.1：`ElementType` 枚举回到本模块；`Element` trait 新增 `ELEMENT_TYPE_NAME: &'static str`；新增 `ElementType::name() -> &'static str` 与同名自由函数 `element_type_name_of::<A>()`。
-- §4.1：本模块**不**反向依赖 `error`；error 改用 `&'static str` 字段，详见 `26-error.md v3.2.0`。
-- §5.9.1（无变化）`CastElement` 保持 v1.3.0 形态。
-- §5.7（无变化）越界词汇仍删除。
-
-**与 v1.3.x 的取舍：** v1.3.x 把 `ElementType` 下沉到 L0 是为了让 error 自带枚举 Display；v1.4.0 改用"error 持有 `&'static str`，element 拥有枚举"的双层方案，两边职责更清晰，error 仍能直接 Display 类型名（写字符串即可），且不再有 v1.3.1 中跨模块 inherent impl E0116 的限制——`impl ElementType { fn of::<A: Element>() }` 可以正常存在于 element 模块。
-
-### v1.3.1 (2026-05-03) — element_type_of 自由函数
-
-> v1.3.0 计划中作为 `element` inherent impl 的 `ElementType::of::<A>()` 因 Rust E0116（跨模块 inherent impl 禁止）改为自由函数 `element_type_of::<A>()`。该决策在 v1.4.0 因 `ElementType` 类型回归 `element` 模块而失效，v1.4.0 同时支持 inherent 与自由函数两种入口。
-
-### v1.3.0 (2026-05-03) — ElementType 下沉到 L0 + 新增 CastElement + 删除越界词汇
-
-> 本版本是 P0 修复任务（C2 + C1 + C14）的落地，与 `26-error.md v3.1.0` 协同。
-
-**契约更新（破坏性内部变更，公开 trait 名称兼容）**：
-
-- §4.1 / §4.2 / §5.1 / §5.1.1：v1.4.0 起 `ElementType` 枚举的权威定义**重新回到 `crate::element`**（不再下沉到 `error`），同时 `error` 模块改用 `&'static str` 字段（值来自 `Element::ELEMENT_TYPE_NAME` 关联常量）记录类型诊断信息——L0 单向依赖仍然成立，因为 `error` 持有的是字面量字符串而非枚举类型。`Element::ELEMENT_TYPE` 关联常量类型与定义都回到本模块；新增 `Element::ELEMENT_TYPE_NAME: &'static str`，由每个 Element impl 设置（与 `ElementType::name()` 严格一致）。`element_type_of::<A>()` 自由函数保留作为便利入口；同时新增 `impl ElementType { pub const fn of<A: Element>() -> Self }` inherent 形式（v1.3.x 因跨模块 E0116 不可用，v1.4.0 类型回 element 后已可用）。详见 §5.1.1 决策表与 v1.4.0 changelog 段。
-- §5.9.1：新增 `CastElement` 公开 sealed marker trait——标记"可作为 `cast()` 操作源/目标元素类型集合"。封闭实现集合：i32 / i64 / f32 / f64 / Complex<f32> / Complex<f64>（排除 bool）。`21-type.md v2.1.0 §5.1` 通过 `use crate::element::CastElement;` 消费。这填补了 v1.x 中 `21-type.md` 引用 `CastElement` 但 `03-element.md` 未定义的 owner 缺口。
-- §5.8：sealed trait 列表新增 `CastElement`。
-
-**协同与一致性更新**：
-
-- §5.7 跨模块运算矩阵（非规范性索引）：删除 `mean`、`min` / `max` 行，与 `require.md §14`（当前版本仅 `sum`）一致；保留 `sum 归约` 一行并标注 `mean/min/max 不在范围`。
-
-### v1.2.9 (2026-05-03) — Medium/Low 文档修复
-
-- 将跨模块运算矩阵标注为非规范性索引，并为 `unique` 复数支持补充 `14-set.md §6.1` 的哈希查重与 F-order 输出引用。
-- 澄清 `CastTo<T>` 通过 `Self: Element` 间接 sealed，并同步 `RealScalar` 实现任务的方法范围。
-- 移除 element 单元测试中属于 math/reduction 语义的 `min(NaN, 1.0)` 测试项。
-- 修正文档表格格式、`全部 Traits` 术语空格，并为最近版本补充变更摘要。
 
 ---
 

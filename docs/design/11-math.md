@@ -4,8 +4,6 @@
 > 模块目录: src/math/
 > 任务阶段: Phase 4
 > 前置文档: 03-element.md, 08-simd.md, 09-parallel.md, 10-iterator.md, 15-broadcast.md, 26-error.md
-> 需求参考: 需求说明书 §4、§9、§12、§27、§28
-> 范围声明: 范围内
 
 ---
 
@@ -13,27 +11,27 @@
 
 ### 1.1 职责边界
 
-| 职责     | 包含                                                                  |
-| -------- | --------------------------------------------------------------------- |
-| 算术运算 | add/sub/mul/div，数值类型：i32/i64/f32/f64/Complex                    |
-| 一元运算 | abs（有序数值）；signum（浮点按符号位、整数按比较）；neg/square（Numeric）；数学函数（RealScalar） |
-| 数学函数 | sin/sqrt/exp/ln/floor/ceil，仅 f32/f64                                |
-| 复数运算 | modulus/模（返回实数类型）/conjugate（公开 API；内部 Complex 方法名可记为 conj），仅 Complex |
-| 逻辑非   | `!`，仅 bool                                                          |
-| 比较运算 | `equal`/`not_equal` 对所有 Element 可用；`less`/`greater` 对 i32/i64/f32/f64 可用，返回 bool 张量，NaN 遵循 IEEE 754 |
-| 标量运算 | 标量与张量的逐元素运算                                                |
-| 广播支持 | 所有二元运算和比较运算支持广播                                        |
+| 职责     | 包含                                                |
+| -------- | --------------------------------------------------- |
+| 算术运算 | add/sub/mul/div，数值类型：i32/i64/f32/f64/Complex  |
+| 一元运算 | abs/signum/neg/square                               |
+| 数学函数 | sin/sqrt/exp/ln/floor/ceil，仅 f32/f64              |
+| 复数运算 | modulus/conjugate，仅 Complex                       |
+| 逻辑非   | !，仅 bool                                          |
+| 比较运算 | equal/not_equal/less/greater                        |
+| 标量运算 | 标量与张量的逐元素运算                              |
+| 广播支持 | 所有二元运算和比较运算支持广播                      |
 
-| 职责     | 不包含                                                  |
-| -------- | ------------------------------------------------------- |
-| 算术运算 | 归约运算（参见 `13-reduction.md §1`） |
-| 一元运算 | 筛选/排序                                               |
-| 数学函数 | 运算符重载（参见 `19-overload.md §1`）                  |
-| 复数运算 | 比较运算（`less`/`greater`；`equal`/`not_equal` 对复数仍可用）|
-| 逻辑非   | 位运算                                                  |
-| 比较运算 | 搜索/排序                                               |
-| 标量运算 | 矩阵运算（dot/matmul）                                  |
-| 广播支持 | 批量运算                                                |
+| 职责     | 不包含                                                |
+| -------- | ----------------------------------------------------- |
+| 算术运算 | 归约运算（参见 `13-reduction.md §1`）                 |
+| 一元运算 | 筛选/排序                                             |
+| 数学函数 | 运算符重载（参见 `19-overload.md §1`）                |
+| 复数运算 | 比较运算（less/greater/equal/not_equal 对复数仍可用） |
+| 逻辑非   | 位运算                                                |
+| 比较运算 | 搜索/排序                                             |
+| 标量运算 | 矩阵运算（dot/matmul）                                |
+| 广播支持 | 批量运算                                              |
 
 ### 1.2 设计原则
 
@@ -51,8 +49,8 @@
 | 项目     | 内容 |
 | -------- | ---- |
 | 需求映射 | 需求说明书 §4、§9、§12、§27、§28 |
-| 范围内   | 逐元素算术、一元运算、数学函数、复数 `modulus` / `conjugate`、逻辑非、比较运算、标量-张量逐元素语义与广播语义。当前版本的数学函数集合**仅包含** `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil`。 |
-| 范围外   | 混合类型逐元素运算以及 `map` 系列公开 API。**当前版本的数学函数集合不包含**：`cos` / `tan` / `asin` / `acos` / `atan` / `atan2` / `sinh` / `cosh` / `tanh` / `asinh` / `acosh` / `atanh` 等其他三角与双曲函数；`log2` / `log10` / `log1p` / `expm1` / `exp2`；`pow` / `powi` / `powf` / `cbrt` / `hypot` 等幂/根函数；`round` / `trunc` / `fract` 等取整变体；任何 special functions（`erf` / `gamma` / `lgamma` / `bessel*` 等）。这些函数若有需求需单独引入议题评估（包括 NaN / 边界 / SIMD admission / `f32` vs `f64` 精度策略）；不在当前版本作为隐式扩展加入。SIMD 与并行覆盖范围仅限本模块负责的逐元素运算；若当前类型/ISA/语义约束不满足，则自动回退标量。 |
+| 范围内   | 逐元素算术、一元运算、数学函数`sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil`、复数 `modulus` / `conjugate`、逻辑非、比较运算、标量-张量逐元素语义与广播语义。 |
+| 范围外   | 混合类型逐元素运算以及 `map` 系列公开 API。|
 | 非目标   | 不新增新的数学库依赖，不在本文扩展 mixed-type API 或更通用的逐元素映射原语。 |
 
 ---
@@ -70,8 +68,6 @@ Optional dependency touchpoints:
 src/simd/               # optional SIMD backend consumed by math dispatch
 src/parallel/           # optional parallel backend consumed by math dispatch
 ```
-
-多文件设计理由：按操作元数分组（一元 vs 二元）可保持当前最小范围；更通用的逐元素映射基础设施不属于 `需求说明书 §12` 的本期最小交付，暂不纳入当前版本。运算符重载（Add/Sub/Mul/Div trait 实现）保留在 `src/overload/arithmetic.rs`。SIMD 加速由独立 backend 模块 `src/simd/` 承载，`math/` 仅负责语义 API 与分发入口。
 
 ---
 
@@ -100,12 +96,12 @@ src/math/
 | `element`      | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`, `OrderedCompareElement`（定义见 `03-element.md §5.5`）|
 | `complex`      | `Complex<f32>`, `Complex<f64>`（参见 `04-complex.md §5`）                              |
 | `broadcast`    | `broadcast_shape()`, `broadcast_to()` 返回的 `TensorView`（参见 `15-broadcast.md §5`） |
-| `dimension`    | `BroadcastDim<E>` public sealed trait（对外可命名的公开 sealed trait，用于编译期维度推导，参见 `02-dimension.md §5.10`）|
+| `dimension`    | `BroadcastDim<E>` public sealed trait（参见 `02-dimension.md §5.10`）                  |
 | `storage`      | `Storage<Elem = A>`, `StorageMut<Elem = A>`                                            |
-| `error`        | `XenonError`（含 `BroadcastError` 变体，参见 `26-error.md §5`）                        |
-| `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`ParallelGuard`（`select_exec_path` 返回 `(ExecPath, Option<ParallelGuard>)`，与 30-dispatch v1.1.0 select-and-enter 原子裁决一致；旧 `should_parallelize()` 已废弃） |
+| `error`        | `XenonError`（参见 `26-error.md §5`）                                                  |
+| `dispatch`（内部） | `select_exec_path()`、`ExecPath`、`ParallelGuard`                                  |
 | `simd`（可选） | `pulp::Arch`（参见 `08-simd.md §5`）                                                   |
-| `parallel`（可选） | `par_zip_map()`（纯并行执行入口，不含串行回退，参见 `09-parallel.md §5` / `§6`）   |
+| `parallel`（可选） | `par_zip_map()`（参见 `09-parallel.md §5` / `§6`）                                 |
 
 ### 4.3 依赖合法性
 
@@ -129,9 +125,16 @@ src/math/
 
 ### 5.2 二元逐元素执行约定
 
-二元逐元素方法统一使用 `BroadcastDim<DB>` 进行编译期维度推导；`BroadcastDim` 是 public sealed trait，因此在公开 API 中可被外部稳定命名。该 trait 定义于 `02-dimension.md §5.10`，详见该文档。
+- 二元逐元素方法统一使用 `BroadcastDim<DB>` 进行编译期维度推导；`BroadcastDim` 是 public sealed trait，因此在公开 API 中可被外部稳定命名。该 trait 定义于 `02-dimension.md §5.10`，详见该文档。
 
-当前版本不承诺独立的通用二元逐元素 helper 公开函数。二元算术、比较与内部辅助路径统一采用"先广播，再直接遍历广播后视图并写入结果张量"的执行模型。调度模型：由 `dispatch.rs` 通过 `let (path, guard) = dispatch::select_exec_path(...)` 统一决定串行 / SIMD / 并行路径（参见 30-dispatch.md v1.1.0 决策 7）；进入并行路径后，单个 worker chunk 内**可以**独立调用 SIMD 后端 kernel（v2.0 起，参见 08-simd.md v2.0.0 决策 5），即"thread × SIMD 双层加速"模型。串行路径下 SIMD 由 `simd` 后端按其 admission 规则独立判断是否启用；不进入 SIMD 时回退到该路径内的标量循环。
+- 当前版本不承诺独立的通用二元逐元素 helper 公开函数。二元算术、比较与内部辅助路径统一采用"先广播，再直接遍历广播后视图并写入结果张量"的执行模型。
+
+调度模型：
+
+1. 由 `dispatch.rs` 通过 `let (path, guard) = dispatch::select_exec_path(...)` 统一决定串行 / SIMD / 并行路径。
+2. 进入并行路径后，单个 worker chunk 内可以独立调用 SIMD 后端 kernel，即"thread × SIMD 双层加速"模型。
+3. 串行路径下 SIMD 由 `simd` 后端按其 admission 规则独立判断是否启用；不进入 SIMD 时回退到该路径内的标量循环。
+4. `simd` 后端在 admission 内部独立通过 `layout::is_aligned()` 重检查。
 
 ### 5.3 算术运算（Numeric 约束）
 
@@ -176,13 +179,11 @@ where
 }
 ```
 
-**Trait bound 简化说明**：旧版方法签名重复写 `A: Numeric + Copy + Add<Output = A>` 等，但 `Numeric: Add + Sub + Mul + Div + Neg`（参见 `03-element.md §5.2` super-trait 定义），且 `Numeric: Element: Copy`，因此 `Add` / `Sub` / `Mul` / `Div` / `Copy` 全部由 `A: Numeric` 间接保证；新版直接以 `A: Numeric` 表达，避免冗余 bound 与"签名 trait 与实现 trait 不闭合"的歧义。整数路径的 checked 语义不通过 `Add<Output = A>` 等原生运算符落实，而是通过 `crate::element::Checked*` 原语显式包装（§5.3 末尾示例）。
-
 所有整数逐元素运算在实现层使用此 trait，确保 debug 和 release 均在溢出/除零时 panic。浮点和复数使用标准算术运算符。
 
 - 支持的类型：i32, i64, f32, f64, Complex<f32>, Complex<f64>。
-- 对 `i32` / `i64` 的 `add` / `sub` / `mul` / `div`，实现必须使用 checked arithmetic；凡发生溢出、除以零或结果不可表示，均按 `需求说明书 §12` 与 `需求说明书 §27` 走 panic 语义，不得回落为 wrapping 行为。
-- 整数 checked arithmetic 直接复用 element 层原语，**不在 math 模块内部定义同语义 trait**：使用 `crate::element::{CheckedAdd, CheckedSub, CheckedMul, CheckedNeg, CheckedDiv}`（权威定义见 `03-element.md §5.9`）。这些原语返回 `Option<Self>`；math 模块的整数路径将 `None` 翻译为 panic，由此实现"在 debug 与 release 均在溢出/除零时 panic"的语义。
+- 对 `i32` / `i64` 的 `add` / `sub` / `mul` / `div`，实现必须使用 checked arithmetic；凡发生溢出、除以零或结果不可表示，均走 panic 语义，不得回落为 wrapping 行为。
+- 整数 checked arithmetic 直接复用 element 层原语，不在 math 模块内部定义同语义 trait。这些原语返回 `Option<Self>`；math 模块的整数路径将 `None` 翻译为 panic，由此实现"在 debug 与 release 均在溢出/除零时 panic"的语义。
 
 ```rust,ignore
 // Inside math implementation (illustrative; not a new trait):
@@ -200,7 +201,7 @@ fn add_or_panic<A: CheckedAdd>(a: A, b: A) -> A {
 // Analogous wrappers for sub / mul / div reuse element-layer primitives.
 ```
 
-### 5.4 一元运算（分离 trait bounds）
+### 5.4 一元运算
 
 ```rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -252,7 +253,7 @@ where
 - `abs` / `signum` 仅对具备自然顺序的数值类型开放：i32, i64, f32, f64。
 - `neg` / `square` 对所有 `Numeric` 类型开放：i32, i64, f32, f64, Complex<f32>, Complex<f64>。
 - `abs()` 约束说明：`OrderedCompareElement` 限定到 i32/i64/f32/f64 四种类型，与 abs 的实际支持范围严格匹配。
-- `signum()` trait bound 修正：旧版仅要求 `A: OrderedCompareElement`，无法表达"返回 -1 / 0 / 1"所需的常量构造能力。新版 bound 为 `A: Numeric + OrderedCompareElement`，由 `Numeric: Element` 提供 `A::zero()`、`A::one()`，由 `Numeric` 的 `Neg` 提供 `-A::one()`；浮点路径直接调用 `RealScalar::signum`（不使用 `-A::one()`）。`OrderedCompareElement` 限定到 `i32/i64/f32/f64`，`Numeric` 不引入复数路径（`Complex<T>` 不实现 `OrderedCompareElement`，编译期已被排除）。
+- `signum()` trait bound 为 `A: Numeric + OrderedCompareElement`，由 `Numeric: Element` 提供 `A::zero()`、`A::one()`，由 `Numeric` 的 `Neg` 提供 `-A::one()`；浮点路径直接调用 `RealScalar::signum`（不使用 `-A::one()`）。`OrderedCompareElement` 限定到 `i32/i64/f32/f64`，`Numeric` 不引入复数路径。
 - 对有符号整数，`neg(i32::MIN)` / `neg(i64::MIN)` 等不可表示情形视为不可恢复错误，遵循 panic 语义；实现层使用 `crate::element::CheckedNeg::checked_neg`（参见 `03-element.md §5.10`），`None` 翻译为 panic。
 - `abs` 在整数路径上的 checked 推导：对 `A: i32 / i64`，`abs(x) := if x >= A::zero() { x } else { x.checked_neg().expect("integer overflow in abs") }`，等价于"在最小负值处溢出 → panic"。无需新增 `CheckedAbs` trait。
 - `square` 在整数路径上必须使用 `CheckedMul`；溢出 → panic。
@@ -314,8 +315,7 @@ where
 ```
 
 - 公开张量 API 统一使用 `conjugate()`（与 `Numeric::conjugate()` 保持一致）；`conj` 仅允许作为内部 `Complex` 方法名或实现细节出现，不构成公开 API 命名承诺。
-
-**关于实数张量的 conjugate()**：实数（`i32`/`i64`/`f32`/`f64`）类型的共轭等于自身。Xenon 不为实数张量提供 `conjugate()` 入口，要求显式调用避免冗余 API。如需统一处理，使用 `Numeric::conjugate()`（标量级）或在泛型代码中通过 trait bound 调用。
+- 实数（`i32`/`i64`/`f32`/`f64`）类型的共轭等于自身。Xenon 不为实数张量提供 `conjugate()` 入口，要求显式调用避免冗余 API。如需统一处理，使用 `Numeric::conjugate()`（标量级）或在泛型代码中通过 trait bound 调用。
 - `modulus()` 对应 `需求说明书 §12` 中的“模”运算。`Complex<f32> → f32`，`Complex<f64> → f64`。
 - 参与逐元素运算或比较的双方元素类型须预先一致。因此，`Complex<T>` 与实数标量的混合张量 API（如 `add_real_scalar` / `mul_real_scalar`）不属于当前公开范围；若内部实现需要复用相应标量逻辑，也只能作为不对外承诺的内部辅助路径存在。
 
@@ -332,14 +332,11 @@ where
 }
 ```
 
-### 5.8 比较运算（NumPy 风格命名）
+### 5.8 比较运算
 
 - `equal` / `not_equal` 对所有元素类型可用（包括 `bool` 与 `Complex`）。
 - `less` / `greater` 的需求级支持范围固定为 `i32`、`i64`、`f32`、`f64`，返回 `Tensor<bool, _>`。
 - `bool` 与 `Complex` 类型不支持 `less` / `greater`。
-
-**命名规则（设计决策 4，对齐 NumPy）**：
-公开 API 不使用 `eq` / `ne` / `lt` / `gt` 这组缩写命名，避免与 Rust 标准库 `PartialEq::eq`、`PartialOrd::lt` 等同名 trait 方法在调用语法、文档自动链接、IDE 跳转上产生命名冲突。Rust 标准库这些方法返回 `bool`（标量布尔），而 Xenon 张量比较方法返回 `Tensor<bool, _>`（逐元素布尔张量），语义不同；用 NumPy 风格的全词命名（`equal` / `not_equal` / `less` / `greater`）让张量逐元素比较与标量布尔比较在调用点上明确可区分。
 
 ```rust,ignore
 impl<S, D, A> TensorBase<S, D>
@@ -446,7 +443,7 @@ where
 - 标量版算术方法与张量-张量运算遵循相同的 checked arithmetic 语义：有符号整数溢出、除以零、结果不可表示均遵循 panic 语义。
 - 标量与张量之间的逐元素运算，标量按可广播到目标张量全形状的零维输入语义处理，统一经由广播路径实现，不另起独立语义。
 
-#### 5.9.1 非交换左标量内部入口（`pub(crate)`）
+**非交换左标量内部入口**
 
 为支撑 `19-overload.md` 的左标量运算符（`scalar - tensor`、`scalar / tensor`）而设。可交换运算（`+`、`*`）由 19-overload 直接复用 `add_scalar` / `mul_scalar`，不需要独立左标量入口。
 
@@ -469,9 +466,9 @@ where
 
 **契约：**
 
-- 这两个方法**必须**复用与 `sub_scalar` / `div_scalar` 完全相同的执行骨架（同一套 `dispatch::select_exec_path` → Serial / SIMD / Parallel 路径选择，同一套 worker 内 SIMD admission 逻辑），仅在逐元素 kernel 内部对 (lhs, rhs) 操作数顺序做翻转：`sub_from_scalar` 计算 `scalar - element`，`div_from_scalar` 计算 `scalar / element`
+- 这两个方法必须复用与 `sub_scalar` / `div_scalar` 完全相同的执行骨架（同一套 `dispatch::select_exec_path` → Serial / SIMD / Parallel 路径选择，同一套 worker 内 SIMD admission 逻辑），仅在逐元素 kernel 内部对 (lhs, rhs) 操作数顺序做翻转：`sub_from_scalar` 计算 `scalar - element`，`div_from_scalar` 计算 `scalar / element`
 - panic 语义、整数 checked arithmetic、除零规则、输出布局（F-order owned）与 `sub_scalar` / `div_scalar` 完全对齐
-- 19-overload 的左标量运算符**必须**调用本节方法，不得自行实现逐元素遍历——避免 11-math 后续优化（SIMD/并行新路径）无法被左标量受益
+- 19-overload 的左标量运算符必须调用本节方法，不得自行实现逐元素遍历——避免 11-math 后续优化（SIMD/并行新路径）无法被左标量受益
 - 可见性为 `pub(crate)` 而非 `pub`：左标量运算的公开入口由 19-overload 通过 `impl Sub<Tensor<A, D>> for A` 等运算符提供，本方法仅作为内部委托靶点
 
 ### 5.10 Good / Bad 对比示例
@@ -513,7 +510,7 @@ apply_unary(view, f):
 
 `modulus()` 的内部执行骨架与标准一元运算不同：输入元素类型为 `Complex<T>`，输出为 `T`。因此它不能直接复用 `apply_unary(view, f)` 这类“输入/输出同类型”的骨架，而需要独立的执行骨架处理类型变化。
 
-### 6.2 二元逐元素实现（含广播）
+### 6.2 二元逐元素实现
 
 ```
 apply_binary(a, b, f):
@@ -537,11 +534,11 @@ apply_binary(a, b, f):
 
 本文描述的逐元素运算功能范围以 `需求说明书 §12` 为准。SIMD 和并行加速路径的当前正式支持子集以 `08-simd.md` 和 `09-parallel.md` 定义的能力边界为准，不在本文档中另行扩张覆盖承诺。
 
-调度模型（v2.0 起，与 30-dispatch v1.1.0、08-simd v2.0.0、09-parallel v2.0.0 协同）：
+调度模型：
 
 1. 由 `dispatch::select_exec_path(...)` 返回 `(ExecPath, Option<ParallelGuard>)`，三路 `Serial / Simd / Parallel` 互斥裁决。
-2. 若选中 `Serial` 或 `Simd`：在串行执行上下文中由 `simd` 后端按 `08-simd.md §5.4` admission 规则独立决定是否进入 SIMD kernel；不进入时走标量循环。
-3. 若选中 `Parallel`：调用方将 `Some(guard)` 按值移交到 `parallel` 后端入口；每个 worker 拿到 chunk 后**可以**独立调用 SIMD 后端 kernel（即 worker 内 SIMD admission，与上一条路径上的 SIMD admission 同源），这是 v2.0 起新增的"thread × SIMD 双层加速"能力（08-simd v2.0.0 决策 5、09-parallel v2.0.0 决策 9）。chunk 间合并顺序仍由 `parallel` 模块的固定 chunking + 固定 merge tree 控制。
+2. 若选中 `Serial` 或 `Simd`：在串行执行上下文中由 `simd` 后端按规则独立决定是否进入 SIMD kernel；不进入时走标量循环。
+3. 若选中 `Parallel`：调用方将 `Some(guard)` 按值移交到 `parallel` 后端入口。每个 worker 拿到 chunk 后可以独立调用 SIMD 后端 kernel（即 worker 内 SIMD admission，与上一条路径上的 SIMD admission 同源）。chunk 间合并顺序仍由 `parallel` 模块的固定 chunking + 固定 merge tree 控制。
 4. 未列出的运算、类型、ISA 或不满足语义约束的路径统一回退标量实现。
 
 | 操作类别 | SIMD 状态 | 并行状态 |
@@ -638,7 +635,7 @@ apply_binary(a, b, f):
 | ------------------------------ | ---------------------------------------- | ------ |
 | `test_add_i32`                 | i32 加法正确                             | 高     |
 | `test_add_f64`                 | f64 加法正确                             | 高     |
-| `test_add_complex`             | Complex\<f64\> 加法正确                  | 高     |
+| `test_add_complex`             | Complex<f64> 加法正确                    | 高     |
 | `test_add_broadcast`           | 广播加法 shape [3,1]+[1,4]=[3,4]         | 高     |
 | `test_mul_scalar`              | 标量乘法正确                             | 中     |
 | `test_abs`                     | abs(-3) = 3, abs(f64) 正确               | 高     |
@@ -652,16 +649,16 @@ apply_binary(a, b, f):
 | `test_modulus`                 | Complex{3,4}.modulus() = 5.0             | 高     |
 | `test_conjugate`               | Complex{1,2}.conjugate() = Complex{1,-2} | 中     |
 | `test_not_bool`                | !true = false, !false = true             | 中     |
-| `test_equal_f64`               | 逐元素相等比较（NumPy 风格命名）         | 高     |
-| `test_less_i32`                | 逐元素小于比较（NumPy 风格命名）         | 高     |
+| `test_equal_f64`               | 逐元素相等比较（Numpy 风格命名）         | 高     |
+| `test_less_i32`                | 逐元素小于比较（Numpy 风格命名）         | 高     |
 | `test_nan_comparison`          | NaN 比较遵循 IEEE 754                    | 高     |
 | `test_empty_tensor`            | 空张量运算返回空张量                     | 中     |
 | `test_add_simd_vs_scalar`      | SIMD 路径结果与标量一致                  | 中     |
 | `test_large_tensor_add_parallel` | 大张量（`10^7` 量级元素）在串行/并行配置下结果与 shape 一致 | 高     |
 | `test_high_rank_broadcast`     | 高 rank 动态维张量广播逐元素运算保持正确 shape 与元素对应 | 高     |
-| `test_inf_math_functions`      | `Inf` / `-Inf` 输入遵循 IEEE 754 语义   | 高     |
-| `test_div_i32_by_zero_panics`  | 整数除零触发带诊断的 panic              | 高     |
-| `test_abs_i32_min_panics`      | `abs(i32::MIN)` 触发带诊断的 panic      | 高     |
+| `test_inf_math_functions`      | `Inf` / `-Inf` 输入遵循 IEEE 754 语义    | 高     |
+| `test_div_i32_by_zero_panics`  | 整数除零触发带诊断的 panic               | 高     |
+| `test_abs_i32_min_panics`      | `abs(i32::MIN)` 触发带诊断的 panic       | 高     |
 
 ### 8.3 边界测试场景
 
@@ -700,9 +697,9 @@ apply_binary(a, b, f):
 | 配置 | 验证点 |
 | ---- | ---- |
 | 默认配置 | 所有逐元素运算走标量 / fallback 路径且语义满足文档约束。 |
-| 启用 `simd`（`simd = ["dep:pulp"]`） | 连续输入上的 SIMD 分发结果与默认配置保持一致，非连续输入仍正确回退。 |
-| 启用 `parallel`（`parallel = ["dep:rayon"]`） | 大输入上的并行逐元素路径与默认配置保持相同 shape、错误类别与数值语义，并遵守阈值与无嵌套并行约束。 |
-| 同时启用 `simd,parallel` | 串行路径上 SIMD admission 可生效；并行路径中每个 worker chunk 可独立做 SIMD admission，不满足条件时该 chunk 回退标量；对外语义仍与默认配置一致。 |
+| 启用 `simd` | 连续输入上的 SIMD 分发结果与默认配置保持一致，非连续输入仍正确回退。 |
+| 启用 `parallel` | 大输入上的并行逐元素路径与默认配置保持相同 shape、错误类别与数值语义，并遵守阈值与无嵌套并行约束。 |
+| 同时启用 `simd,parallel` | 串行路径上 SIMD admission 可生效；并行路径中每个 worker chunk 可独立做 SIMD admission，不满足条件时该 chunk 回退标量。 |
 
 ### 8.7 类型边界 / 编译期测试
 
@@ -721,10 +718,10 @@ apply_binary(a, b, f):
 | 方向               | 对方模块    | 接口/类型                                  | 约定                                   |
 | ------------------ | ----------- | ------------------------------------------ | -------------------------------------- |
 | `math → iter`      | `iter`      | `Elements`, `ElementsMut`                  | 逐元素运算复用 `iter()` / `iter_mut()` 及相关遍历入口；二元路径直接遍历广播后的视图（参见 `10-iterator.md` §5）|
-| `math → broadcast` | `broadcast` | `broadcast_shape()`                        | 二元运算先调用广播模块推导兼容视图（参见 `15-broadcast.md` §5）|
+| `math → broadcast` | `broadcast` | `broadcast_shape`                          | 二元运算先调用广播模块推导兼容视图（参见 `15-broadcast.md` §5）|
 | `math → element`   | `element`   | `Numeric` / `RealScalar` / `ComplexScalar` | 通过元素约束区分数值与复数运算语义（参见 `03-element.md` §5）|
 | `math → simd`      | `simd`      | SIMD backend dispatch facade               | 连续数组且 feature 开启时通过稳定的 backend facade 分发到 SIMD 或标量路径，`math` 不直接依赖具体 vector kernel 名称（参见 `08-simd.md` §5） |
-| `math → parallel`  | `parallel`  | `par_zip_map(.., guard, ..)` / `ParallelGuard` | `dispatch::select_exec_path()` 返回 `(ExecPath, Option<ParallelGuard>)`；选中 `Parallel` 时 `math` 把 `Some(guard)` 按值移交给 `parallel` 后端入口。worker 内允许独立调用 SIMD 后端 kernel（参见 `09-parallel.md` v2.0.0 §6.2 / §11 决策 9） |
+| `math → parallel`  | `parallel`  | `par_zip_map` / `ParallelGuard` | `dispatch::select_exec_path()` 返回 `(ExecPath, Option<ParallelGuard>)`；选中 `Parallel` 时 `math` 把 `Some(guard)` 按值移交给 `parallel` 后端入口。worker 内允许独立调用 SIMD 后端 kernel（参见 `09-parallel.md`） |
 
 ### 9.2 数据流描述
 
@@ -738,7 +735,7 @@ User calls add / unary op / comparison method
     │       ├── (Simd,   None)        → SIMD kernel by simd backend
     │       └── (Parallel, Some(g))   → parallel path; pass guard by value
     ├── parallel path: workers split logical work into chunks
-    │       └── each chunk MAY call SIMD backend independently (v2.0 decision)
+    │       └── each chunk MAY call SIMD backend independently
     └── iter produces element streams from shape + strides on each path
 ```
 
@@ -748,7 +745,7 @@ User calls add / unary op / comparison method
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | 广播不兼容时返回 `XenonError::BroadcastError { operation, lhs_shape, rhs_shape, attempted_target_shape, axis }`（字段对齐 26-error v3.2.0 §5.1）。参数不满足公开前提时返回 `XenonError::InvalidArgument { operation, kind: InvalidArgumentKind::* }`，按操作族选择对应封闭枚举变体。 |
+| Recoverable error | 广播不兼容时返回 `XenonError::BroadcastError`。参数不满足公开前提时返回 `XenonError::InvalidArgument`，按操作族选择对应封闭枚举变体。 |
 | Panic | 整数 `add/sub/mul/div`、标量版 `add_scalar/sub_scalar/mul_scalar/div_scalar`、`abs/neg/square` 的溢出、除零或结果不可表示均按需求触发 panic；`signum` 不新增 panic 约束。panic 信息至少包含 `operation`、`type`、`trigger`、`element_index`，并在适用时附带 `shape`。 |
 | 路径一致性 | 标量、SIMD 与并行（含 worker 内 SIMD）路径必须保持相同 shape、错误类别、NaN/复数语义；不满足前提或 SIMD admission 失败时各路径内部回退到该路径上的标量实现，不跨路径切换。 |
 | 容差边界 | 精确类（`floor` / `ceil`）结果须与标量路径逐元素一致。近似类（`sin` / `sqrt` / `exp` / `ln`）以 `需求说明书 §28.3` 为权威基线；实现细节参见 `00-coding.md §8.4`。复数结果按实部、虚部分量分别应用对应实数规则；同执行路径基础算术/比较默认精确一致；仅跨路径比较和数学函数比较允许使用文档化容差。 |
@@ -763,7 +760,7 @@ User calls add / unary op / comparison method
 | -------- | -------------------------------------------------------------- |
 | 决策     | 当前版本不把更通用的逐元素映射基础设施纳入公开 API 承诺        |
 | 理由     | `需求说明书 §12` 仅要求明确列出的逐元素运算，不要求额外的通用映射原语 |
-| 替代方案 | 直接在本期暴露完整映射 helper 集合 |
+| 替代方案 | 直接在本期暴露完整映射 helper 集合                             |
 | 拒绝原因 | 会扩大 API 面且引入额外语义边界，不符合当前最小范围            |
 
 ### 决策 2：NaN 比较遵循 IEEE 754
@@ -771,7 +768,7 @@ User calls add / unary op / comparison method
 | 属性     | 值                                                                    |
 | -------- | --------------------------------------------------------------------- |
 | 决策     | 比较运算（`equal` / `not_equal` / `less` / `greater`）遵循 IEEE 754 语义：NaN != NaN |
-| 理由     | 与 Rust 标准库 `f64::partial_cmp` 行为一致；与 NumPy/ndarray 行为一致 |
+| 理由     | 与 Rust 标准库 `f64::partial_cmp` 行为一致；与 Numpy/ndarray 行为一致 |
 | 替代方案 | 提供总排序比较（total_cmp）                                           |
 | 拒绝原因 | 当前版本不需要总排序，可未来扩展                                      |
 
@@ -784,50 +781,18 @@ User calls add / unary op / comparison method
 | 替代方案 | 所有路径都用标量                                          |
 | 拒绝原因 | 性能差距显著（2-4x），科学计算用户期望高性能              |
 
-SIMD 实现位于独立 backend 模块 `src/simd/`，`math/` 仅按连续性和 feature gate 决定是否委托该 backend；逐元素运算的 SIMD 设计细节见 `08-simd.md`。若某个操作在当前类型或 ISA 上尚无满足语义约束的 SIMD kernel，则自动回退标量实现。
+### 决策 4：worker 内允许 SIMD
 
-### 决策 4：比较运算采用 NumPy 风格命名（`equal/not_equal/less/greater`）
-
-| 属性     | 值                                                                                                                              |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | 公开 API 使用 `equal` / `not_equal` / `less` / `greater`（及对应 `_scalar` 版本），不使用 `eq` / `ne` / `lt` / `gt` 缩写命名      |
-| 理由     | Rust 标准库 `PartialEq::eq`、`PartialOrd::lt` 等同名 trait 方法返回标量 `bool`；张量逐元素比较返回 `Tensor<bool, _>`，语义不同。同名会让方法解析、文档自动链接、IDE 跳转产生歧义。NumPy 风格全词命名让张量逐元素比较与标量布尔比较在调用点上明确可区分。 |
-| 替代方案 | 保留 `eq` / `ne` / `lt` / `gt` 命名 |
-| 拒绝原因 | 与 Rust 习惯冲突；用户在泛型代码中无法靠类型签名区分张量比较与标量比较 |
-
-### 决策 5：worker 内允许 SIMD（与 09-parallel v2.0.0 决策 9 / 08-simd v2.0.0 决策 5 协同）
-
-| 属性     | 值                                                                                                                                      |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | 进入并行路径后，单个 worker chunk 内可独立做 SIMD admission；chunk 间合并仍由 `parallel` 控制                                            |
-| 理由     | 撤销 v1.x 的"并行 vs SIMD 互斥"，提供 thread × SIMD 双层加速，对大数组吞吐显著提升                                                     |
-| 替代方案 | 保留 v1.x 设计（worker 内禁止 SIMD）                                                                                                    |
-| 拒绝原因 | 与并行路径的可消费性能上限脱节；用户感知到的并行路径与串行 SIMD 路径在大数据量下相互妨碍                                                |
-
-### 决策 6：标量算术 API trait bound 简化
-
-| 属性     | 值                                                                                                                |
-| -------- | ----------------------------------------------------------------------------------------------------------------- |
-| 决策     | `add` / `sub` / `mul` / `div`（及标量版本）方法签名只声明 `A: Numeric`，不重复声明 `Add<Output = A>` / `Copy` 等  |
-| 理由     | `Numeric: Element + Add + Sub + Mul + Div + Neg`（参见 03-element §5.2），`Numeric: Element: Copy`；重复 bound 制造"签名 trait 与实现 trait 不闭合"的歧义 |
-| 替代方案 | 保留显式 `+ Copy + Add<Output = A>` 等                                                                            |
-| 拒绝原因 | 冗余且容易误读为"非 Numeric 但 Add 的类型也允许"，不符合封闭元素集合 |
+| 属性     | 值                                                                                             |
+| -------- | ---------------------------------------------------------------------------------------------- |
+| 决策     | 进入并行路径后，单个 worker chunk 内可独立做 SIMD admission；chunk 间合并仍由 `parallel` 控制  |
+| 理由     | 提供 thread × SIMD 双层加速，对大数组吞吐显著提升                                              |
+| 替代方案 | worker 内禁止 SIMD                                                                             |
+| 拒绝原因 | 与并行路径的可消费性能上限脱节；用户感知到的并行路径与串行 SIMD 路径在大数据量下相互妨碍       |
 
 ---
 
 ## 12. 性能考量
-
-### 12.1 SIMD 加速预期（参考性，不作为契约）
-
-下表为典型 AVX2 平台上的指示性测量结果，仅供性能基线参考；具体加速比因 ISA / 元素类型 / 数据量 / `feature` 配置而异。基准测试的权威覆盖与回归阈值见 `27-benchmark.md`。
-
-| 操作         | 标量路径 | SIMD 路径（AVX2）  | 加速比 |
-| ------------ | -------- | ------------------ | ------ |
-| add f32 (1M) | ~2ms     | ~0.5ms             | 4x     |
-| mul f64 (1M) | ~3ms     | ~1ms               | 3x     |
-| sin f64 (1M) | ~20ms    | 标量回退（≈20ms）  | ≈1.0x  |
-
-### 12.2 复杂度标注
 
 - 二元逐元素执行骨架：O(n) 时间，O(n) 空间
 - 广播操作: O(n) 时间，O(n) 空间（结果），广播本身零拷贝
@@ -843,52 +808,6 @@ SIMD 实现位于独立 backend 模块 `src/simd/`，`math/` 仅按连续性和 
 | 单 crate   | 保持单 crate 结构，不拆分独立 math crate                                                       |
 | SemVer     | 逐元素方法签名、支持类型集合、广播错误类别以及整数 panic 诊断字段均属于稳定契约；后续新增优化路径不得改变这些公开语义 |
 | 最小依赖   | 仅允许项目基线中的可选 SIMD / 并行依赖，不新增额外第三方数学库                                 |
-
----
-
-## 版本历史
-
-| 版本  | 日期       |
-| ----- | ---------- |
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.0.4 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.2.0 | 2026-04-08 |
-| 1.2.1 | 2026-04-10 |
-| 1.2.2 | 2026-04-14 |
-| 1.2.3 | 2026-04-15 |
-| 1.2.4 | 2026-04-15 |
-| 1.2.5 | 2026-04-15 |
-| 1.3.0 | 2026-04-15 |
-| 1.3.1 | 2026-04-16 |
-| 2.0.0 | 2026-05-02 |
-| 2.0.1 | 2026-05-03 |
-| 2.0.2 | 2026-05-04 |
-
-### v2.0.2 (2026-05-04) — patch: refresh stale 26-error v3.0.0 reference to v3.2.0
-
-- §10 错误处理表：`26-error` 引用从 v3.0.0 更新到 v3.2.0。
-
-### v2.0.1 (2026-05-03) — Medium/Low review fixes
-
-- §5.3：将 checked arithmetic 示例从 `expect` 改为 `match` + 诊断化 panic 示意。
-- §7 / §8.2：同步比较测试命名为 `equal` / `less`，并将 T8 改为接入 SIMD backend 统一分发，覆盖以 08-simd 为准。
-- §8.6：同步 `simd,parallel` 组合配置下 worker chunk 独立 SIMD admission 的 v2.0 规则。
-
-### v2.0.0 (2026-05-02) — SemVer breaking changes
-
-> 本版本是与 26-error v3.0.0、30-dispatch v1.1.0、08-simd v2.0.0、09-parallel v2.0.0 协同的破坏性更新。
-
-- §1.1、§5.8 / §5.8 标量版：比较方法重命名为 NumPy 风格 `equal` / `not_equal` / `less` / `greater`（及 `_scalar` 后缀变体），撤销 `eq` / `ne` / `lt` / `gt`（决策 4）。这是公开 API 的破坏性重命名。
-- §5.2 / §6.3 / §9.1 / §9.2：调度模型对齐 30-dispatch v1.1.0 决策 7（`select_exec_path()` 返回 `(ExecPath, Option<ParallelGuard>)`）和 09-parallel v2.0.0 决策 9（worker 内允许 SIMD）；`math` 把 `Some(guard)` 按值移交给 `parallel` 后端入口（决策 5）。
-- §5.3：算术方法 trait bound 简化为只写 `A: Numeric`，移除冗余的 `Copy` / `Add<Output = A>` 等（决策 6）；功能不变。
-- §5.4：`signum` trait bound 从 `A: OrderedCompareElement` 加强为 `A: Numeric + OrderedCompareElement`，使 `-1 / 0 / 1` 的常量构造在 trait 层有承载（修复 H-R "signum bound 不足"）；浮点 / 整数 signum 语义在同一 doc 注释中并列展示，不再前后矛盾。
-- §5.4：`abs` 整数 panic 推导改为基于 `crate::element::CheckedNeg`，无需新增 `CheckedAbs` trait；`square` 显式标注使用 `CheckedMul`。
-- §10：错误字段引用对齐 26-error v3.0.0（`BroadcastError`、`InvalidArgument { kind: InvalidArgumentKind::* }`）。
-- §11：新增决策 4 / 5 / 6。
 
 ---
 

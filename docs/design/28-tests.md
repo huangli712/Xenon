@@ -13,10 +13,6 @@
 
 本文档属于横切质量保证文档，统一定义 Xenon 在 `tests`、doctest 与 CI 测试矩阵中的验证策略，而非单一源码模块的实施方案。
 
-### 1.0 协同基线
-
-本文档 v2.0.3 以下游已修文档为协同基线（与 `00-coding.md §1.3` 一致）：`00-coding.md v2.0.3`、`01-architecture.md` v2.0.2、`02-dimension.md` v1.2.7、`03-element.md` v1.4.0、`04-complex.md` v2.0.3、`05-storage.md` v2.0.2、`06-layout.md` v1.3.2、`07-tensor.md` v2.0.4、`08-simd.md` v2.0.2、`09-parallel.md` v2.0.2、`10-iterator.md` v1.2.6、`11-math.md` v2.0.2、`12-matrix.md` v2.0.1、`13-reduction.md` v3.0.2、`14-set.md` v2.0.1、`15-broadcast.md` v3.0.4、`16-shape.md` v2.0.2、`17-indexing.md` v3.0.4、`18-construction.md` v3.0.2、`19-overload.md` v2.0.0、`20-utility.md` v3.0.2、`21-type.md` v2.1.2、`22-output.md` v2.0.1、`23-ffi.md` v3.0.3、`24-workspace.md` v3.0.2、`25-safety.md` v2.0.4、`26-error.md` v3.2.0、`27-benchmark.md` v2.0.2、`29-documentation.md` v2.0.4、`30-dispatch.md` v2.0.3。
-
 ### 1.1 职责边界
 
 | 职责       | 包含                                                                   |
@@ -89,7 +85,7 @@ tests/
 ├── test_shape.rs               # Shape operations (transpose)
 ├── test_conversion.rs          # Type conversion (cast)
 ├── test_utility.rs             # Utility operations (fill/clip/to_contiguous)
-├── test_output.rs              # NumPy-style formatted output (Display/Debug/truncation)
+├── test_output.rs              # Numpy-style formatted output (Display/Debug/truncation)
 ├── test_ffi.rs                 # FFI integration (raw pointers/BLAS compatibility)
 ├── test_workspace.rs           # Workspace-specific errors and borrow/split/growth
 ├── test_parallel.rs            # Parallel computation (consistency/data races)
@@ -139,7 +135,7 @@ tests/
 ├── crate::overload         # Add, Sub, Mul, Div trait implementations
 ├── crate::util             # clip, fill, to_contiguous
 ├── crate::convert          # CastTo, type conversion
-├── crate::format           # NumPy-style formatted output
+├── crate::format           # Numpy-style formatted output
 ├── crate::dispatch         # Dispatch routing (pub(crate); verified indirectly through feature effects)
 └── public API feature effects (`simd` / `parallel`) # Internal backends (including dispatch) are verified indirectly through observable public behavior
 ```
@@ -535,7 +531,8 @@ Storage 协同测试遵循 `05-storage.md`：广播、转置、切片均产生 `
 
 | 测试函数                        | 测试内容                                          | 优先级 |
 | ------------------------------- | ------------------------------------------------- | ------ |
-| `test_unique_first_occurrence_order` | unique 返回不重复元素；按 F-order 逻辑遍历的**首次出现顺序**（与 `14-set.md v2.0.1 §5.1` / §8.2 锁定的稳定顺序契约一致），且在同一进程内的多次调用结果可复现 | 高     |
+| `test_unique_set_equality`      | unique 返回不重复元素，按 **multiset 语义** 与输入对比（**不依赖输出顺序**——与 `14-set.md v2.0.2 §5.1` / §11 决策 4 保持一致；输出顺序自 v2.0.2 起 unspecified，与 `require.md §15` 对齐）；NaN 元素按出现次数比较 | 高     |
+| `test_unique_order_unspecified` | 编译期/lint 锚点：测试 **禁止** 依赖任何特定输出顺序——任何 `assert_eq!(unique_result.iter().collect::<Vec<_>>(), vec![...])` 形式的向量等值断言视为反模式（v2.0.2 起，取代 v2.0.0/v2.0.1 的 first-occurrence-order 测试） | 高     |
 | `test_unique_integers`          | 整数 unique                                       | 中     |
 | `test_unique_nan_preserved`     | 浮点 `NaN != NaN`，输入中的每个 NaN 都应保留      | 高     |
 | `test_unique_signed_zero_equal` | `-0.0` 与 `0.0` 视为相等，仅保留一个零值          | 高     |
@@ -600,7 +597,7 @@ fn test_unique_non_contiguous() {
 
 | 测试函数                       | 测试内容                          | 优先级 |
 | ------------------------------ | --------------------------------- | ------ |
-| `test_display_small_tensor`    | 小张量 NumPy 风格输出             | 高     |
+| `test_display_small_tensor`    | 小张量 Numpy 风格输出             | 高     |
 | `test_display_truncated`       | 超阈值触发截断                    | 高     |
 | `test_debug_includes_metadata` | Debug 包含 shape/stride/type 信息 | 中     |
 | `test_output_complex`          | 复数格式化输出基础 case (`a+bj` / `a-bj`) | 中     |
@@ -698,7 +695,7 @@ Workspace 借用测试须调用 `Workspace::borrow_mut(&mut self)` 与顶层 `Wo
 | `prop_unique_len_bound`     | `unique(a).len()` 不超过 `a.len()`（ops_props.rs） | 中     |
 | `prop_unique_no_duplicate`  | 对非 `NaN` 元素 `unique` 结果不含重复；`NaN` 按 IEEE 754 自反不相等语义逐个保留（ops_props.rs） | 中     |
 | `prop_sum_additive_identity`| 空数组 `sum == 0`，验证归约保加法单位元（ops_props.rs） | 高     |
-| `prop_broadcast_shape_rule` | 广播结果形状遵循 NumPy 规则（shape_props.rs） | 高     |
+| `prop_broadcast_shape_rule` | 广播结果形状遵循 Numpy 规则（shape_props.rs） | 高     |
 
 ### 5.23 test_error.rs
 
@@ -1066,7 +1063,7 @@ fn test_simd_add_consistency() {
 | 加法交换律         | `a + b` == `b + a`（同执行路径下精确一致）                                                        | 中     |
 | `unique` 保元素数  | `unique(a).len()` ≤ `a.len()`                                                                     | 中     |
 | `unique` 不含重复  | 对非 `NaN` 元素，结果中不得重复；`NaN` 按 IEEE 754 自反不相等语义逐个保留                         | 中     |
-| 广播形状一致性     | 广播结果形状遵循 NumPy 规则：相等取该值，一方为 1 取另一方，否则报错（参见 `15-broadcast.md §5`） | 高     |
+| 广播形状一致性     | 广播结果形状遵循 Numpy 规则：相等取该值，一方为 1 取另一方，否则报错（参见 `15-broadcast.md §5`） | 高     |
 
 #### 6.4.2 属性测试框架
 
@@ -1268,7 +1265,7 @@ fn prop_broadcast_shape_rule() {
 
 - [ ] **T10**: 实现 `tests/test_set.rs`
   - 文件: `tests/test_set.rs`
-  - 内容: 集合操作（unique 按 F-order 首次出现顺序/整数/复数/NaN/±0.0；与 `14-set.md v2.0.1 §5.1 / §8.2` 稳定顺序契约一致）
+  - 内容: 集合操作（unique 整数/复数/NaN/±0.0/multiset 等值；输出顺序 unspecified——与 `14-set.md v2.0.2 §5.1 / §11 决策 4 / §8.2` 一致，对齐 `require.md §15`）
   - 测试: `cargo test --test test_set`
   - 前置: T1
   - 预计: 15 min
@@ -1579,80 +1576,6 @@ Test files
 | crate 结构 | 测试方案依附当前单 crate，不拆分额外测试 crate     |
 | SemVer     | 无影响；测试矩阵与 CI 分层属于工程验证约束，不改变公开 API 语义 |
 | 最小依赖   | 维持标准测试工具链，不为测试矩阵引入额外第三方依赖 |
-
----
-
-## 版本历史
-
-| 版本  | 日期       |
-| ----- | ---------- |
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.2.0 | 2026-04-08 |
-| 1.2.1 | 2026-04-08 |
-| 1.2.2 | 2026-04-10 |
-| 1.2.3 | 2026-04-14 |
-| 1.2.4 | 2026-04-15 |
-| 1.2.5 | 2026-04-15 |
-| 1.2.6 | 2026-04-15 |
-| 1.2.7 | 2026-04-15 |
-| 1.2.8 | 2026-04-15 |
-| 1.2.9 | 2026-04-16 |
-| 1.3.0 | 2026-04-16 |
-| 1.3.1 | 2026-04-16 |
-| 2.0.0 | 2026-05-03 |
-| 2.0.1 | 2026-05-03 |
-| 2.0.2 | 2026-05-04 |
-| 2.0.3 | 2026-05-04 |
-
-### v2.0.3 (2026-05-04) — patch fix: refresh §1.0 协同基线 pins to current actual versions of all 30 referenced docs (post 7-condition convergence cascade)
-
-- §1.0 协同基线：将设计文档 pins 刷新到当前实际版本，并对齐本轮 7 个基线 owner 文档的 post-bump 固定点。
-
-### v2.0.2 (2026-05-04) — CI 硬门禁对齐 00-coding §7.1
-
-> 本版本在 §8.2 CI 矩阵中新增三项硬门禁（rustdoc / clippy / cargo check），对齐 `00-coding.md §7.1`。非破坏性追加。
-
-**变更**：
-
-- §8.2 CI 矩阵新增三个 step：`RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`（Gate 1）、`cargo clippy --all-features -- -D warnings`（Gate 5）、`RUSTFLAGS="-D warnings" cargo check --all-features`（Gate 6），均运行于每个 PR 矩阵。
-- 新增注释引用 `00-coding.md §7.1` 作为硬门禁依据。
-
-**未变更**：
-
-- 原有 `Unit + Integration tests` 与 `Doc tests` step 命令、matrix feature 维度均保留不变。
-- Priority / 测试函数列表 / 属性测试 / compile-fail / 边界测试等未变动。
-
-### v2.0.0 修订记录
-
-**Blocker 修复**：
-
-- 对齐 `17-indexing.md` v2.0.0：测试规范改为 `try_at` / `try_at_mut` 与 `slice`，删除公开下标索引写法，并明确 `SliceInfo::new` 只做结构性校验。
-- 对齐 `19-overload.md` v2.0.0：运算符测试保持 `Output = Result<Tensor, XenonError>`，删除原生 `i32 + Tensor` 左标量测试，改为 `Scalar<A>` 包装类型契约。
-- 对齐 `21-type.md` v2.1.1 与 `26-error.md` v3.2.0：`TypeConversion` 测试使用 `&'static str`（值由 `Element::ELEMENT_TYPE_NAME` 提供，例如 `"f64"`、`"Complex<f64>"`）替代 `ElementType` 枚举，禁止开放式运行时类型身份，并要求 `operation` 使用 `Cow::Borrowed("...")`。
-- 对齐 `24-workspace.md` v2.0.0：workspace 借用入口改为 `&mut self` 契约，错误分类改为七个结构化 `WorkspaceErrorCategory` 子变体，淘汰旧借用冲突变体与旧可选字段。
-
-**High 修复**：
-
-- 新增 §1 协同基线，列出本文档依赖的已修订下游版本。
-- 对齐 `18-construction.md` v2.0.0：明确 `from_shape_vec` 长度不匹配使用 `InvalidShapeKind::ElementCountMismatch { expected, actual }`，`zeros` / `ones` 使用完全限定 `StorageOwned::from_elem` 路径。
-- 对齐 `23-ffi.md` v2.0.0：明确 `XenonError::Ffi` 四字段结构、八个 `FfiErrorCategory` 子变体与 `FfiBackend::RawParts` / `Blas`。
-- 对齐 `06-layout.md` v1.3 与 `05-storage.md` v2.0.0：明确广播零步长、`compute_layout_flags`、`LayoutState` 三态、`ViewRepr` 生成规则、`deep_clone` / 张量层 `to_owned` 分层命名。
-- 对齐 `11-math.md` v2.0.0：比较测试命名改为 `equal` / `not_equal` / `less` / `greater`。
-- 对齐 `25-safety.md` v2.0.0 与 `04-complex.md` v2.0.0：补充安全索引、`ViewMutRepr`/`ArcRepr` 线程边界，以及复数构造/运算限制。
-
-**未变更项**：
-
-- 保留 §6.2 ULP-based 数值精度规范，不放宽 Tier 1 / Tier 2 / Tier 3 契约。
-- 保留 §5.21 compile-fail 测试章节结构与语义，仅在类型边界列表补充复数协同约束。
-- 保留测试矩阵、CI 分层、属性测试列表与大张量 extended test 分层，不扩大测试范围。
-
-
-### v2.0.1 (2026-05-03) — Medium/Low documentation follow-up
-
-- Reconciled storage test placement: storage module's public boundary is fully exercised through `test_tensor.rs` (ViewRepr/ViewMutRepr/Owned/ArcRepr semantics) and doctests; this revision drops the previously-listed standalone `test_storage.rs` because storage has no public boundary that cannot be triggered via tensor-layer APIs (see §9.2 storage row).
-- Clarified that any future `test_safety.rs` addition must also update the file layout and mapping sections.
 
 ---
 

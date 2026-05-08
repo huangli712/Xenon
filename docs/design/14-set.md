@@ -4,8 +4,6 @@
 > 模块目录: src/set/
 > 任务阶段: Phase 4
 > 前置文档: 03-element.md, 04-complex.md, 07-tensor.md, 10-iterator.md
-> 需求参考: 需求说明书 §4、§15、§28
-> 范围声明: 范围内
 
 ---
 
@@ -13,17 +11,17 @@
 
 ### 1.1 职责边界
 
-| 职责         | 包含                                                      |
-| ------------ | --------------------------------------------------------- |
-| 集合操作     | unique: 返回不重复元素组成的新 1D 张量；按"逻辑首次出现顺序"输出（参见 §1.2 / 决策 4） |
-| 支持类型     | i32, i64, f32, f64, Complex<f32>, Complex<f64>            |
+| 职责         | 包含                                                          |
+| ------------ | ------------------------------------------------------------- |
+| 集合操作     | unique: 返回不重复元素组成的新 1D 张量；返回顺序不作 API 契约 |
+| 支持类型     | i32, i64, f32, f64, Complex<f32>, Complex<f64>                |
 
 | 职责         | 不包含                                              |
 | ------------ | --------------------------------------------------- |
 | 集合操作     | intersection / union / difference                   |
 | 统计操作     | bincount / histogram                                |
 | 归约索引     | argmin / argmax                                     |
-| 支持类型     | `需求说明书 §15` 明确将 bool 排除在 `unique` 之外 |
+| 支持类型     | `需求说明书 §15` 明确将 bool 排除在 `unique` 之外   |
 
 ### 1.2 设计原则
 
@@ -31,8 +29,8 @@
 | -------------- | ------------------------------------------------------------- |
 | 最小范围       | 当前仅实现 unique，其他集合操作留待未来扩展                   |
 | 类型安全       | bool 显式排除；仅对受支持的元素类型开放                       |
-| 相等语义优先   | `unique` 基于逐元素相等关系去重，不承诺排序结果（不进行 lexicographic / 模长 / 数值排序）|
-| 顺序可复现     | 输出元素按"逻辑首次出现顺序"排列（按 F-order 元素遍历顺序的首次出现位置）；同一进程内对相同输入的多次调用结果完全一致（决策 4，对应需求说明书 §15）|
+| 相等语义优先   | `unique` 基于逐元素相等关系去重，不承诺任何排序结果           |
+| 顺序未定义     | 输出顺序不作 API 契约——允许同输入下结果顺序不稳定             |
 | IEEE 754 一致  | `NaN != NaN`，因此每个 `NaN` 单独保留；`-0.0 == 0.0` 视为同值 |
 | 复数按分量判等 | 复数去重按实部/虚部分别比较，并沿用对应实数语义               |
 
@@ -57,7 +55,7 @@ src/set/
 └── unique.rs           # set operations (this module)
 ```
 
-双文件设计理由：当前范围由 `mod.rs` 承担模块入口、`unique.rs` 承担唯一公开集合操作实现，保持导出边界与语义实现分离。
+由 `mod.rs` 承担模块入口、`unique.rs` 承担唯一公开集合操作实现，保持导出边界与语义实现分离。
 
 ---
 
@@ -82,7 +80,7 @@ src/set/unique.rs
 | `tensor`    | `TensorBase<S, D>`, `Tensor<A, Ix1>`, `.iter()`, `.len()`，参见 `07-tensor.md` §5  |
 | `storage`   | `Storage<Elem = A>` trait（read-only element access via `Storage<Elem = A>`）      |
 | `dimension` | `Dimension`, `Ix1`（output dimension type for flatten result）                     |
-| `element`   | `Element`（参见 `03-element.md` §5.1）；`UniqueElement: Element` 蕴含 `Copy`（`Element: Copy`），无需额外约束元素层 trait。`ComplexScalar` **未实际使用**——`Complex<f32>` / `Complex<f64>` 通过为这两个具体类型分别 impl `UniqueElement` 来支持，而不是通过 `ComplexScalar` 泛型。 |
+| `element`   | `Element`，参见 `03-element.md` §5.1                                               |
 | `complex`   | `Complex<f32>`, `Complex<f64>`，参见 `04-complex.md` §5                            |
 | `iter`      | `Elements`（遍历收集元素），参见 `10-iterator.md` §5.1                             |
 
@@ -111,16 +109,15 @@ where
     D: Dimension,
     A: UniqueElement,
 {
-    /// Returns unique elements in **first-occurrence order**.
+    /// Returns unique elements as a 1D owned tensor.
     ///
     /// # Output ordering contract
     ///
-    /// Elements are returned in the order each unique value is **first**
-    /// encountered when iterating logical elements of `self` in F-order
-    /// (column-major). Two calls on the same input within the same process
-    /// produce bit-identical outputs (decision 4); cross-process / cross-platform
-    /// reproducibility is not promised because float bit patterns may differ.
-    /// No sorting is performed (no lexicographic / magnitude / numeric ordering).
+    /// Implementations MAY internally choose a deterministic order (such as
+    /// F-order first-occurrence) for performance or debugging convenience,
+    /// but that choice is an internal implementation detail and is NOT part
+    /// of the public API contract — see decision 4. Tests MUST assert
+    /// set-equality, not vector-equality.
     ///
     /// # Supported types
     ///
@@ -150,7 +147,7 @@ where
     /// For inputs of any dimension, `unique()` logically flattens all elements
     /// into a 1D sequence (in F-order) before deduplication. The output is always
     /// a 1D tensor (`Tensor<A, Ix1>`) with owned contiguous F-order storage;
-    /// element order within the output is the first-occurrence order described above.
+    /// element order within the output is unspecified.
     ///
     /// # Trait bound rationale
     ///
@@ -164,14 +161,19 @@ where
     /// Implementation-defined. Reference implementations may use linear scan
     /// for small inputs (O(N²)); large inputs SHOULD use a hash-aided structure
     /// (close to O(N) amortized) per §6.5. External semantics do not depend on
-    /// the chosen strategy: ordering and deduplication results are identical.
+    /// the chosen strategy: deduplication results (as a multiset) are identical
+    /// across strategies; element order is unspecified regardless.
     ///
     /// # Examples
     ///
     /// ```ignore
+    /// use std::collections::HashSet;
     /// let a = Tensor::<i32, Ix1>::from_shape_vec(Ix1(6), vec![3, 1, 2, 1, 3, 2])?;
     /// let u = a.unique();
-    /// assert_eq!(u.iter().copied().collect::<Vec<_>>(), vec![3, 1, 2]);
+    /// // Order is unspecified — assert as a set, not as a vector.
+    /// let got: HashSet<i32> = u.iter().copied().collect();
+    /// let want: HashSet<i32> = [3, 1, 2].into_iter().collect();
+    /// assert_eq!(got, want);
     ///
     /// // empty
     /// let empty: Tensor<i32, Ix1> = Tensor::zeros([0])?;
@@ -184,10 +186,17 @@ where
 ### 5.2 Good / Bad 对比示例
 
 ```rust,ignore
-// Good - use unique; output is in first-occurrence order (deterministic per input)
+// Good - use unique; output order is unspecified — assert set membership, not order.
+use std::collections::HashSet;
 let a = Tensor::<i32, Ix1>::from_shape_vec(Ix1(5), vec![3, 1, 2, 1, 3])?;
 let u = a.unique();
 assert_eq!(u.len(), 3);
+let got: HashSet<i32> = u.iter().copied().collect();
+let want: HashSet<i32> = [1, 2, 3].into_iter().collect();
+assert_eq!(got, want);
+
+// Bad - relying on a specific element order in the output
+// assert_eq!(u.iter().copied().collect::<Vec<_>>(), vec![3, 1, 2]); // BUG: order not contractually guaranteed
 
 // Good - empty array returns empty `Tensor<A, Ix1>`
 let empty: Tensor<i32, Ix1> = Tensor::zeros([0])?;
@@ -206,12 +215,14 @@ assert_eq!(empty.unique().len(), 0);
 
 ```
 unique(self):
-    1. Iterate logical elements of `self` in F-order (column-major).
-    2. For each element x, decide whether x already has a representative in the
-       output set:
+    1. Iterate logical elements of `self` in F-order (column-major). The
+       iteration order is an implementation choice — not part of the API
+       contract.
+    2. For each element x, decide whether x already has a representative in
+       the output set:
          - For non-NaN values: equivalent under `unique_eq`.
          - For NaN values (per IEEE 754): every NaN is its own class; do not
-           merge with any prior NaN. Keep all NaN instances in encounter order.
+           merge with any prior NaN. Keep all NaN instances.
        Use linear scan for small inputs, or hash-aided lookup for large inputs
        (key construction rules in §6.1.1 below).
     3. If x is the first occurrence of its class (or x is NaN), append x to
@@ -219,36 +230,39 @@ unique(self):
     4. Construct `Tensor<A, Ix1>` from the appended sequence (owned F-order
        contiguous buffer).
 
-Ordering contract (decision 4):
-    - Output elements appear in F-order first-occurrence order.
-    - Same input in the same process gives bit-identical output.
-    - Implementations MUST NOT use a strategy that produces order-varying
-      output (e.g., a HashMap with default randomized hasher used as the
-      *output* container; using a hash table only as a lookup index for
-      first-occurrence detection is fine because the output sequence is
-      driven by the iteration order of the input).
+Ordering contract (decision 4, post v2.0.2):
+    - Output element order is UNSPECIFIED. Two calls on the same input MAY
+      produce outputs in different orders.
+    - The reference implementation above happens to be deterministic (driven
+      by input F-order iteration), but that is an implementation detail, not
+      a contract. Future implementations MAY use, for example, a HashMap
+      iteration order as the output sequence (which is randomized per process
+      under Rust's default hasher).
+    - Implementations are free to choose any output order, including one that
+      varies between calls; the only multiset-level contract is that the
+      output is the deduplication of input under `unique_eq`, with NaN values
+      preserved per IEEE 754.
 ```
 
-#### 6.1.1 哈希键规范（用于大输入快路径）
-
- **实现约束**:
-
- 对 `f32` / `f64` 及 `Complex<f32>` / `Complex<f64>` 的 `unique` 实现，**不得**直接依赖标准 Rust `Hash` / `Eq` 语义，也**不得**直接建立在 `BTreeSet` / `HashSet` 这类标准集合之上；必须使用线性扫描或自定义哈希键策略，以严格满足本文档定义的判等规则：
+对 `f32` / `f64` 及 `Complex<f32>` / `Complex<f64>` 的 `unique` 实现，不得直接依赖标准 Rust `Hash` / `Eq` 语义，也不得直接建立在 `BTreeSet` / `HashSet` 这类标准集合之上；必须使用线性扫描或自定义哈希键策略，以严格满足本文档定义的判等规则：
 
  1. `NaN != NaN`，因此每个 `NaN` 都必须单独保留，不能因为"同为 NaN"而被合并。
  2. `-0.0 == 0.0`，因此两者必须视为同一个 unique 值。
  3. 复数按分量比较，且每个分量分别沿用对应实数的上述语义。
- 4. 若实现采用哈希优化，键规范固定如下：NaN 元素不进入普通去重键路径。实现须对 NaN 单独旁路处理，保证输入中的每个 NaN（无论位模式是否相同）均被保留。普通哈希键仅用于非 NaN 元素；其中 `i32` / `i64` 直接以数值作为键，`f32` / `f64` 对所有 `+0.0` / `-0.0` 归一到同一键，`Complex<T>` 的键为 `(re_key, im_key)`，并对含 NaN 的分量同样走旁路保留逻辑。
- 5. **哈希表只作为查重索引使用，不作为输出容器**。输出顺序必须由"输入逻辑迭代顺序"驱动（决策 4），因此哈希表的迭代顺序（即使是默认随机化 hasher 的）不会泄漏到输出。
-
-换言之，若实现采用哈希优化，则键设计必须显式编码这些语义；若无法保证，则应退回线性扫描，禁止使用与本文档语义不一致的默认集合判重行为。
+ 4. 若实现采用哈希优化，键规范固定如下：
+   - NaN 元素不进入普通去重键路径。
+   - 实现须对 NaN 单独旁路处理，保证输入中的每个 NaN（无论位模式是否相同）均被保留。
+   - 普通哈希键仅用于非 NaN 元素。
+   - `i32` / `i64` 直接以数值作为键。
+   - `f32` / `f64` 对所有 `+0.0` / `-0.0` 归一到同一键。
+   - `Complex<T>` 的键为 `(re_key, im_key)`。
 
 ### 6.2 浮点判等处理
 
 - 非 NaN 浮点值的相等判定遵循 Rust / IEEE 754 `==` 语义
 - `NaN != NaN`，因此输入中的每个 `NaN` 必须独立保留，不参与去重
 - `+0.0 == -0.0`，因此两者视为同一个 unique 值
-- 本文档约束相等语义与输出顺序（按 §1.2 / 决策 4 的"逻辑首次出现顺序"）；不限制实现使用哈希、线性扫描或其他**查重**策略，但策略不得改变输出顺序契约
+- 输出顺序不构成 API 契约。不限制实现使用哈希、线性扫描或其他查重策略
 
 ### 6.3 复数判等规则
 
@@ -265,23 +279,10 @@ Ordering contract (decision 4):
 /// Provides the equality semantics required by `unique`.
 /// `bool` does not implement this trait.
 ///
-/// Note: `Ord` is intentionally not required because `unique` does not
-/// define or expose any sorting contract.
-///
-/// # Why in set/unique.rs, not element module?
-///
-/// UniqueElement is defined here rather than in the element module because
-/// its semantic (equality for deduplication) is operation-specific, not a
-/// fundamental element property. This avoids making the element module depend
-/// on `unique`-specific rules.
-///
-/// # Sealing
-///
 /// `UniqueElement` is a sealed trait. It reuses the shared `crate::private::Sealed`
 /// infrastructure (defined in `03-element.md §5.7`), consistent with all other
-/// public element capability traits.
-/// It is implemented only inside this crate for supported element types,
-/// so the closed element set is preserved.
+/// public element capability traits. It is implemented only inside this crate for 
+/// supported element types, so the closed element set is preserved.
 pub trait UniqueElement: crate::private::Sealed + Element {
     /// Equality check used by `unique`.
     fn unique_eq(&self, other: &Self) -> bool;
@@ -333,22 +334,11 @@ impl UniqueElement for Complex<f64> {
 
 | 场景              | 推荐策略          | 说明                                                                      |
 | ----------------- | ----------------- | ------------------------------------------------------------------------- |
-| 小输入或原型实现（约 N ≤ 64 的简单类型；阈值由实现选取） | 线性扫描          | 直接复用 `unique_eq`，最坏 O(N²)；不引入额外内存分配，常数项小，对短输入更快。|
-| 大输入主路径      | 哈希查重 + 顺序输出列表 | 用哈希表作为"该元素是否已见过"的查重索引，输出序列另用 `Vec<A>` 按输入逻辑顺序追加。重复检测降到近似 O(N) 摊销，输出顺序与线性扫描严格一致（决策 4）。|
-| 浮点/复数特殊值 | 专门分支处理        | `NaN != NaN`，因此哈希或索引策略也必须显式保留每个 `NaN`（旁路路径直接追加到输出列表，不进入哈希表），不得把它们合并。|
+| 小输入或原型实现 | 线性扫描 | 直接复用 `unique_eq`，最坏 O(N²)；不引入额外内存分配，常数项小，对短输入更快。|
+| 大输入主路径 | 哈希查重 | 用哈希表作为查重索引，重复检测降到近似 O(N) 摊销。可用 `Vec<A>` 按输入迭代顺序追加，也可直接以 `HashMap` iteration 序输出，由实现自行选择。|
+| 浮点/复数特殊值 | 专门分支处理 | `NaN != NaN`，因此哈希或索引策略也必须显式保留每个 `NaN`，不得把它们合并。|
 
-**何时必须用哈希路径**：实现可自行选择阈值（如 N > 1024 或元素总数与去重比例的启发式），但当输入规模导致线性扫描的 O(N²) 内存或 CPU 成本不可接受时，必须切换到哈希路径以避免大张量上的不可接受性能。
-
-**性能门槛（参考非强制，v2.0.2）：** 在 `27-benchmark.md` 标准硬件下，`unique` 应满足以下趋势期望：
-
-| 输入规模 N | 期望复杂度上限 | 实测应优于 |
-|:--|:--|:--|
-| N ≤ 64 | O(N²) | 1µs（线性扫描足以） |
-| 64 < N ≤ 1024 | 实现可选（线性 vs 哈希） | 100µs |
-| N > 1024 | **必须** O(N) 摊销（哈希） | 1ms / 10⁴ 元素 |
-| N = 10⁷ | O(N) 摊销 | < 1s（在 28-tests `extended` 测试集中） |
-
-实现若不满足上述趋势（例如 N = 10⁷ 时仍是纯 O(N²)），视为性能 bug 而非语义 bug——`unique` 仍返回正确结果，但应在 CI 性能监控触发警报。具体阈值与基准方法由 `27-benchmark.md` 维护。
+**何时必须用哈希路径**：当输入规模导致线性扫描的 O(N²) 内存或 CPU 成本不可接受时，必须切换到哈希路径以避免大张量上的不可接受性能。
 
 ---
 
@@ -414,7 +404,7 @@ impl UniqueElement for Complex<f64> {
 
 | 测试函数                                    | 测试内容                                     | 优先级 |
 | ------------------------------------------- | -------------------------------------------- | ------ |
-| `test_unique_basic_i32`                     | 输入 `[3,1,2,1,3,2]` 完整断言输出 `[3,1,2]`（F-order 首次出现顺序） | 高     |
+| `test_unique_basic_i32`                     | 输入 `[3,1,2,1,3,2]` 输出按 multiset 等于 `{1, 2, 3}`（顺序未定义） | 高     |
 | `test_unique_basic_i64`                     | i64 类型正确性                               | 高     |
 | `test_unique_basic_f32`                     | f32 类型正确性                               | 高     |
 | `test_unique_basic_f64`                     | f64 类型正确性                               | 高     |
@@ -431,8 +421,8 @@ impl UniqueElement for Complex<f64> {
 | `test_unique_non_contiguous_view`           | 切片视图输入仍按逻辑元素去重                 | 高     |
 | `test_unique_transposed_view`               | 转置视图输入仍按逻辑元素去重                 | 高     |
 | `test_unique_padded_tensor_ignores_padding` | padding 区域不应暴露到 unique 语义中         | 高     |
-| `test_unique_first_occurrence_order`        | 同一输入断言完整输出向量按 F-order 首次出现顺序排列 | 高     |
-| `test_unique_reproducible_within_process`   | 同一输入连续两次调用结果 bit-identical（决策 4）    | 高     |
+| `test_unique_order_unspecified`             | 文档化：测试不依赖顺序——仅验证 multiset 相等 | 高     |
+| `test_unique_set_equality`                  | 输入与输出按 multiset 语义相等（不依赖顺序） | 高     |
 | `test_unique_large_tensor_high_dup`         | `10^7` 元素高重复输入主路径保持正确          | 中     |
 | `test_unique_high_rank_ixdyn`               | `IxDyn` rank 5+ 输入仍统一展平到 1D          | 中     |
 | `test_unique_extreme_i64_values`            | `i32` / `i64` 极值去重语义正确               | 中     |
@@ -457,14 +447,14 @@ impl UniqueElement for Complex<f64> {
 
 ### 8.4 属性测试不变量
 
-| 不变量                                                  | 测试方法                                                              |
-| ------------------------------------------------------- | --------------------------------------------------------------------- |
-| 输出无重复（按 `unique_eq` 定义）                       | 任意两个保留元素都不满足 `unique_eq`                                  |
-| 非 NaN 输入时输出元素集合与输入集合相同                 | 以参考集合语义对比                                                    |
-| NaN 元素按出现次数保留                                  | 统计输入/输出中的 NaN 数量并比较                                      |
-| 多维输入始终返回 1D 结果                                | 随机 2D/3D 形状输入                                                   |
-| 输出按 F-order 首次出现顺序排列（决策 4）               | 与参考线性扫描实现的输出向量逐位比较                                  |
-| 同进程内同输入两次调用 bit-identical（决策 4）          | `a.unique() == a.unique()`，对所有受支持类型的随机输入                  |
+| 不变量                                       | 测试方法                                                              |
+| -------------------------------------------- | --------------------------------------------------------------------- |
+| 输出无重复（按 `unique_eq` 定义）            | 任意两个保留元素都不满足 `unique_eq`                                  |
+| 非 NaN 输入时输出元素集合与输入集合相同      | 以参考集合语义对比                                                    |
+| NaN 元素按出现次数保留                       | 统计输入/输出中的 NaN 数量并比较                                      |
+| 多维输入始终返回 1D 结果                     | 随机 2D/3D 形状输入                                                   |
+| 输出与输入按 multiset 语义相等（除 NaN 外）  | 输入去重后与输出按 `HashSet` / multiset 比较；NaN 元素按出现次数比较  |
+| 输出元素两两不满足 `unique_eq`               | 任意两元素 `unique_eq` 为 `false`（NaN 永远互不相等）                 |
 
 ### 8.5 集成测试
 
@@ -476,7 +466,7 @@ impl UniqueElement for Complex<f64> {
 
 | 配置              | 验证点                                                                 |
 | ----------------- | ---------------------------------------------------------------------- |
-| 默认配置          | `unique()` 在默认构建下保持 NaN 保留、`-0.0 == 0.0` 与"逻辑首次出现顺序、同输入可复现"契约（决策 4）。|
+| 默认配置          | `unique()` 在默认构建下保持 NaN 保留、`-0.0 == 0.0` 与"输出顺序未定义"契约。|
 | 其他 feature 组合 | 不适用；当前模块无额外 feature gate。                                  |
 
 ### 8.7 类型边界 / 编译期测试
@@ -493,12 +483,12 @@ impl UniqueElement for Complex<f64> {
 
 ### 9.1 接口约定
 
-| 方向            | 对方模块  | 接口/类型                             | 约定                                         |
-| --------------- | --------- | ------------------------------------- | -------------------------------------------- |
-| `set → tensor`  | `tensor`  | `TensorBase<S, D>` / `Tensor<A, Ix1>` | 消费输入张量并返回 1D owned 结果，参见 `07-tensor.md` §5                  |
-| `set → iter`    | `iter`    | `Elements`                            | 使用元素迭代器收集逻辑元素，参见 `10-iterator.md` §5.1                    |
-| `set → element` | `element` | `Element`（其 `Copy` 继承用于元素值复制）| 元素 trait 边界由 `UniqueElement: Element` 提供；`ComplexScalar` 未直接使用，复数支持通过对 `Complex<f32>` / `Complex<f64>` 分别 impl `UniqueElement` 完成（参见 `03-element.md` §5.1）|
-| `set → set`     | `set`     | `UniqueElement`                       | `UniqueElement` 定义在 `src/set/unique.rs`，通过 `unique_eq` 约束去重语义 |
+| 方向            | 对方模块  | 接口/类型                             | 约定                                    |
+| --------------- | --------- | ------------------------------------- | --------------------------------------- |
+| `set → tensor`  | `tensor`  | `TensorBase<S, D>` / `Tensor<A, Ix1>` | 消费输入张量并返回 1D owned 结果        |
+| `set → iter`    | `iter`    | `Elements`                            | 使用元素迭代器收集逻辑元素              |
+| `set → element` | `element` | `Element`                             | 元素 trait 边界由 `UniqueElement` 提供  |
+| `set → set`     | `set`     | `UniqueElement`                       | 通过 `unique_eq` 约束去重语义           |
 
 ### 9.2 数据流描述
 
@@ -519,7 +509,7 @@ User calls unique()
 | ----------------- | ------------------------------------------------------------------------------ |
 | Recoverable error | 不适用；当前 `unique()` API 直接返回结果张量，不暴露模块级 `Result` 错误路径。 |
 | Panic             | 不适用；除分配失败等通用运行时故障外，模块不定义额外 panic 语义。              |
-| 路径一致性        | 当前仅有单一执行路径（标量）；本模块不接入 SIMD / 并行后端（决策 5）。外部语义由 `unique_eq` 与决策 4 的"逻辑首次出现顺序"共同决定。|
+| 路径一致性        | 本模块不接入 SIMD / 并行后端。外部语义由 `unique_eq`单独决定。                 |
 | 容差边界          | 不适用。                                                                       |
 
 ---
@@ -528,22 +518,22 @@ User calls unique()
 
 ### 决策 1：bool 排除理由
 
-| 属性     | 值                                                                      |
-| -------- | ----------------------------------------------------------------------- |
-| 决策     | unique 不支持 bool 类型                                                 |
-| 理由     | `需求说明书 §15` 已明确将 bool 排除在当前版本范围之外                   |
-| 替代方案 | 支持 bool unique，返回 [false, true]                                    |
-| 拒绝原因 | 增加维护负担，收益几乎为零；`需求说明书 §15` "bool 不适用"              |
+| 属性     | 值                                                          |
+| -------- | ----------------------------------------------------------- |
+| 决策     | unique 不支持 bool 类型                                     |
+| 理由     | `需求说明书 §15` 已明确将 bool 排除在当前版本范围之外       |
+| 替代方案 | 支持 bool unique，返回 [false, true]                        |
+| 拒绝原因 | 增加维护负担，收益几乎为零；`需求说明书 §15` "bool 不适用"  |
 
 ### 决策 2：NaN / signed-zero 处理策略
 
-| 属性          | 值                                                                              |
-| ------------- | ------------------------------------------------------------------------------- |
-| 决策          | `unique` 严格沿用 IEEE 754 / Rust 相等语义：`NaN != NaN`，`-0.0 == 0.0`          |
-| 理由          | 直接满足 `需求说明书 §15`，避免文档额外发明"canonical NaN"语义                  |
-| 替代方案 (a)  | 归并全部 NaN                                                                    |
-| 替代方案 (b)  | 把 `-0.0` 与 `0.0` 视为不同值                                                   |
-| 拒绝原因      | 均与需求说明书冲突                                                              |
+| 属性          | 值                                                                       |
+| ------------- | ------------------------------------------------------------------------ |
+| 决策          | `unique` 严格沿用 IEEE 754 / Rust 相等语义：`NaN != NaN`，`-0.0 == 0.0`  |
+| 理由          | 直接满足 `需求说明书 §15`，避免文档额外发明"canonical NaN"语义           |
+| 替代方案 (a)  | 归并全部 NaN                                                             |
+| 替代方案 (b)  | 把 `-0.0` 与 `0.0` 视为不同值                                            |
+| 拒绝原因      | 均与需求说明书冲突                                                       |
 
 ### 决策 3：复数按分量判等
 
@@ -554,28 +544,14 @@ User calls unique()
 | 替代方案 | lexicographic order                                                   |
 | 拒绝原因 | 会把排序错误地写入公开契约，并掩盖 NaN 分量应逐个保留的要求           |
 
-### 决策 4：输出顺序按"逻辑首次出现"，同进程同输入可复现
+### 决策 4：当前版本不引入 SIMD / 并行路径
 
-| 属性          | 值                                                                                                                                                                                                                                       |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 决策          | `unique()` 输出按输入逻辑迭代顺序（F-order）每个等价类首次出现的位置排列；同一进程内对相同输入的多次调用产生 bit-identical 输出                                                                                                          |
-| 理由          | (1) 用户广泛预期数组库 `unique` 输出可复现（NumPy `np.unique` 无序但单调；Pandas / R `unique` 严格首次出现序）；(2) 测试可断言完整向量而不只是元素集合，调试与回归基线更稳定；(3) 不要求排序，避免引入排序成本与"哪种 order"的语义负担 |
-| 替代方案 (a)  | 输出顺序完全未定义（v1.x 设计）                                                                                                                                                                                                          |
-| 拒绝原因      | 数组库用户对 `unique` 输出可复现性的预期强烈；"未定义"会让单元测试只能断言集合语义而不能断言完整向量，调试经验差                                                                                                                          |
-| 替代方案 (b)  | 数值排序                                                                                                                                                                                                                                 |
-| 拒绝原因      | 强制排序会引入 O(N log N) 成本；NaN 与复数排序语义需要额外定义；且 `需求说明书 §15` 未要求排序                                                                                                                                            |
-| 实现影响      | 哈希优化路径下，哈希表只作为"是否已见过"的查重索引，不作为输出容器；输出序列必须由输入迭代顺序驱动                                                                                                                                          |
-| 跨进程 / 跨平台 | 不承诺。浮点 NaN 位模式可能不同；不同平台 SIMD / 并行配置不影响顺序（决策 5），但实现版本变更可能影响重复元素的"首次"判定来源（取最早索引），故承诺仅限同实现版本                                                                          |
-
-### 决策 5：当前版本不引入 SIMD / 并行路径，未来若引入需保留顺序契约
-
-| 属性          | 值                                                                                                                                                |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 决策          | 当前版本只有单一执行路径（标量），不接入 SIMD / 并行后端                                                                                          |
-| 理由          | `unique` 的难点在于查重逻辑而非元素吞吐；标量路径已可满足当前性能需求                                                                            |
-| 未来约束      | 若未来引入 SIMD / 并行优化，必须保留决策 4 的"逻辑首次出现顺序、同输入可复现"契约——即并行实现也要按 chunk index 升序合并首次出现位置             |
-| 替代方案      | 当前版本就引入 SIMD / 并行                                                                                                                        |
-| 拒绝原因      | 复杂度收益不成正比；引入会让顺序契约的并行实现策略提前固化                                                                                        |
+| 属性          | 值                                                                     |
+| ------------- | ---------------------------------------------------------------------- |
+| 决策          | 当前版本只有单一执行路径（标量），不接入 SIMD / 并行后端               |
+| 理由          | `unique` 的难点在于查重逻辑而非元素吞吐；标量路径已可满足当前性能需求  |
+| 替代方案      | 当前版本就引入 SIMD / 并行                                             |
+| 拒绝原因      | 复杂度收益不成正比                                                     |
 
 ---
 
@@ -584,8 +560,9 @@ User calls unique()
 ### 12.1 复杂度
 
 - 对外语义不承诺具体算法复杂度
-- 参考实现可采用线性扫描去重（O(N^2)），但对大张量主路径应优先采用不改变外部语义的哈希或索引辅助结构；当 O(N²) CPU 成本不可接受时应切换到哈希路径
-- 无论内部实现如何，输出顺序都遵循 F-order 逻辑首次出现顺序
+- 参考实现可采用线性扫描去重，但对大张量主路径应优先采用不改变外部语义的哈希辅助结构
+- 当 O(N²) CPU 成本不可接受时应切换到哈希路径
+- 输出顺序未定义；实现可任选 first-occurrence、hash-iteration 等顺序
 
 ### 12.2 内存开销
 
@@ -597,60 +574,13 @@ User calls unique()
 
 ## 13. 平台与工程约束
 
-| 约束       | 说明                                                                   |
-| ---------- | ---------------------------------------------------------------------- |
-| `std` only | Xenon 当前版本仅支持 `std` 环境，本文不再讨论 `no_std` 路径            |
-| MSRV       | Rust 1.85+                                                             |
-| 单 crate   | `set` 设计保持在现有 crate 内，不引入额外 crate                        |
-| SemVer     | 遵循SemVer                                                             |
-| 最小依赖   | 本模块不新增第三方依赖                                                 |
-| 语义一致性 | 当前版本只有标量执行路径（决策 5）；若未来引入 SIMD / 并行等执行路径，必须保留 `unique` 的外部语义，包括决策 4 的"逻辑首次出现顺序、同进程同输入可复现" |
-
----
-
-## 版本历史
-
-| 版本  | 日期       |
-| ----- | ---------- |
-| 1.0.0 | 2026-04-07 |
-| 1.0.1 | 2026-04-07 |
-| 1.0.2 | 2026-04-08 |
-| 1.0.3 | 2026-04-08 |
-| 1.0.4 | 2026-04-08 |
-| 1.1.0 | 2026-04-08 |
-| 1.1.1 | 2026-04-10 |
-| 1.1.2 | 2026-04-14 |
-| 1.1.3 | 2026-04-15 |
-| 2.0.0 | 2026-05-02 |
-| 2.0.1 | 2026-05-03 |
-
-### v2.0.1 (2026-05-03) — Medium/Low 文档修复
-
-- §1.1：删除 bool 排除说明中的多余右括号。
-- §5.1 / §8.2：示例与 `test_unique_basic_i32` 改为完整向量断言，落实 F-order 首次出现顺序契约。
-- §12.1：删除旧版“结果顺序不是稳定契约”残留，改为输出顺序始终遵循 F-order 逻辑首次出现顺序；同时将大输入线性扫描问题表述为 O(N²) CPU 成本。
-
-### v2.0.0 (2026-05-02) — 顺序契约与一致性更新
-
-> 本版本是与用户决策 B5.c 协同的破坏性契约更新；同时纳入 26-error v3.0.0 / 03-element 一致性更新。
-
-**契约破坏（B5.c 用户已批准）**：
-
-- §1.1 / §1.2 / §5.1：`unique()` 输出顺序从"unspecified, may vary between calls"改为"按 F-order 逻辑首次出现顺序排列；同进程同输入可复现"（决策 4）。这是公开 API 契约的破坏性更新——v1.x 用户若依赖"顺序不稳定"假设进行容错测试，行为变得更严格但不会出错；若用户假设"无法测试输出向量"，新契约提供了更强保证，可向后兼容。
-
-**协同与一致性更新**：
-
-- §1.2 设计原则表新增"顺序可复现"行；移除 v1.x 隐含的"顺序不作要求"。
-- §4.2 / §4.1 / §9.1：移除对 `ComplexScalar` 的依赖（实际未使用），改为 `Complex<f32>` / `Complex<f64>` 的具体类型 impl；明确 `UniqueElement: Element` 通过 `Element: Copy` 继承得到 `Copy` 能力，trait bound 不再不闭合。
-- §5.1：doc comment 重写"Output ordering contract"段；新增"Trait bound rationale"段说明 `Copy` 继承；新增"Complexity"段引用 §6.5 大输入哈希策略。
-- §6.1：unique 实现步骤重写为"输入迭代驱动 + 哈希查重索引（不作输出容器）"模型；明确哈希表只用于查重，不作为输出容器，输出序列必须由输入迭代顺序驱动。
-- §6.2：本文档约束扩展到"相等语义 + 输出顺序"。
-- §6.5 推荐策略表细化：小输入用线性扫描（约 N ≤ 64 阈值由实现选取），大输入用"哈希查重 + 顺序输出列表"；新增"何时必须用哈希路径"段。
-- §10：路径一致性表述改为"当前仅有单一标量执行路径（决策 5）"，去掉 v1.x 含糊的"无 SIMD/并行分支"。
-- §11：决策 2 修复重复"替代方案"行的 markdown 结构错误；新增决策 4（顺序契约）和决策 5（当前不引入 SIMD/并行 + 未来约束）。
-- §13 平台约束："SIMD/并行不得改变外部语义"重写为"当前只有标量执行路径，未来若引入需保留决策 4 的顺序契约"。
-- §8.2 单元测试：新增 `test_unique_first_occurrence_order`、`test_unique_reproducible_within_process`；删除 `test_unique_order_unspecified`。
-- §8.4 属性测试：新增"输出按 F-order 首次出现顺序排列"和"同进程同输入两次调用 bit-identical"两条不变量。
+| 约束       | 说明                                                         |
+| ---------- | ------------------------------------------------------------ |
+| `std` only | Xenon 当前版本仅支持 `std` 环境，本文不再讨论 `no_std` 路径  |
+| MSRV       | Rust 1.85+                                                   |
+| 单 crate   | `set` 设计保持在现有 crate 内，不引入额外 crate              |
+| SemVer     | 遵循SemVer                                                   |
+| 最小依赖   | 本模块不新增第三方依赖                                       |
 
 ---
 

@@ -235,7 +235,7 @@ where
     A: Numeric + Send + Sync;
 ```
 
-**`_guard: ParallelGuard` 设计要点**（与 30-dispatch v1.1.0 决策 7 / v1.2.0 线程亲和性契约一致）：
+**`_guard: ParallelGuard` 设计要点**（与 30-dispatch v2.0.3 决策 7 / v1.2.0 线程亲和性契约一致）：
 - `_guard` 由 `dispatch::select_exec_path()` 在裁决到 `ExecPath::Parallel` 时返回 `Some(ParallelGuard)`，并由调用侧（`math` / `reduction` / `matrix`）按值移交到 `parallel` 后端入口。
 - `parallel` 在函数体内只持有 `_guard` 直至并行执行结束；`ParallelGuard::drop()` 自动清除 thread-local 嵌套防护标记。
 - 这样 “选中并行路径” 与 “进入并行临界区” 在调用图上原子绑定：调用方无法忘记 acquire guard，也无法在函数返回后越界使用 guard。
@@ -694,7 +694,7 @@ math / reduction / matrix call dispatch entry
     └── return Tensor or Result with unchanged public semantics; guard auto-drops
 ```
 
-- `select_exec_path()` 返回类型为 `(ExecPath, Option<ParallelGuard>)`；`Option` 仅在 `ExecPath::Parallel` 分支返回 `Some(_)`，`Serial` / `Simd` 分支返回 `None`（与 30-dispatch.md v1.1.0 决策 7 完全一致）。
+- `select_exec_path()` 返回类型为 `(ExecPath, Option<ParallelGuard>)`；`Option` 仅在 `ExecPath::Parallel` 分支返回 `Some(_)`，`Serial` / `Simd` 分支返回 `None`（与 30-dispatch.md v2.0.3 决策 7 完全一致）。
 - 调用方负责把 `Some(guard)` 按值移交到 `parallel` 后端入口；guard 在并行函数返回时被 drop，自动清除 thread-local 嵌套防护标记。
 
 ---
@@ -844,53 +844,6 @@ math / reduction / matrix call dispatch entry
 | 单 crate   | 设计保持在 Xenon 单 crate 内，不引入额外 crate 拆分                                                            |
 | SemVer     | 并行后端入口属于 `pub(crate)` 内部契约；其语义仍需在 crate 内保持稳定，但不构成面向最终用户的独立公开 API 承诺 |
 | 最小依赖   | 仅使用允许的可选依赖 `rayon`，默认关闭                                                                         |
-
-## 版本历史
-
-| 版本  | 日期       |
-| ----- | ---------- |
-| 1.0.0 | 2026-04-14 |
-| 1.1.0 | 2026-04-14 |
-| 1.1.1 | 2026-04-14 |
-| 1.1.2 | 2026-04-14 |
-| 1.2.0 | 2026-04-15 |
-| 1.2.1 | 2026-04-15 |
-| 1.3.0 | 2026-04-15 |
-| 1.3.1 | 2026-04-15 |
-| 1.3.2 | 2026-04-15 |
-| 1.3.3 | 2026-04-16 |
-| 1.3.4 | 2026-04-16 |
-| 1.4.0 | 2026-04-28 |
-| 2.0.0 | 2026-05-02 |
-| 2.0.1 | 2026-05-03 |
-| 2.0.2 | 2026-05-04 |
-
-### v2.0.2 (2026-05-04) — dispatch op-agnostic boundary fix + stale references
-
-- §6.3 伪代码注释、§6.3 正文、§10 错误处理表：`26-error` 引用从 v3.0.0 更新到 v3.2.0。
-- **§5.5 / §6.5 / §10**：将 "dispatch.rs 必须拒绝路由整数 sum/dot 到 Parallel" 的表述修正为调用方模块（reduction / matrix）自行 gate。`dispatch.rs` 本身是 op-agnostic 的——其 `select_exec_path()` 签名不含元素类型或操作类型参数，无法在内部根据操作语义做路由裁决（交叉引用 30-dispatch.md §5.5）。调用方负责在调用 `select_exec_path()` 之前判断并行是否合法，对不合法的 op 直接走 Serial 或跳过调用。
-
-### v2.0.1 (2026-05-03)
-
-- Corrected the `par_zip_map()` shape-product overflow description to use `InvalidShape { kind: InvalidShapeKind::ProductOverflow, .. }`.
-- Removed the chunk-index-order claim from generic checked-map error probing and documented the side-effect-free deterministic closure precondition for the two-pass pattern.
-- Clarified that integer reduction fallback is selected by `dispatch.rs` not by the `parallel` backend.
-- Added brief rationale for retained `Send + Sync` bounds on parallel input elements and reducers.
-
-### v2.0.0 (2026-05-02) — SemVer breaking changes
-
-> 本版本是与 30-dispatch v1.1.0、08-simd v2.0.0 协同的破坏性更新；所有 `parallel` 后端入口均为 `pub(crate)` 内部 API，故对外 SemVer 影响实际为零，但内部契约破坏列出如下：
-
-- §5.4 / §5.5：`ParallelExecStrategy` 字段从 `pub` 改为 `pub(crate)`，构造方式收敛到 `ParallelExecStrategy::new()`；`parallel` 模块不再返回 `InvalidArgument` 处置非法策略字段（已由 dispatch 端在构造期拒绝）。
-- §5.5：`par_map` / `par_zip_map` / `par_sum` / `par_dot` / `par_reduce_impl` / `par_map_checked` 全部新增 `_guard: ParallelGuard` 按值参数（决策 7）。
-- §5.5：`par_reduce_impl` 闭包 bound 从 `F: Fn(A, A) -> A + Sync` 加强为 `F: Fn(A, A) -> A + Send + Sync`，`ID` 同样从 `Fn() -> A + Sync + Clone` 加强为 `Fn() -> A + Send + Sync + Clone`，与其他并行入口保持一致。
-- §5.6：`ParElements` 实现 `IndexedParallelIterator` + `Producer`（决策 8），修复 v1.x 缺失的 producer 拆分语义（Blocker B7）。
-- §6.1 / §6.2 / §6.3 / §9.2：worker 内允许调用 SIMD 后端 kernel（决策 9，与 08-simd v2.0.0 决策 5 对齐）。
-- §6.3：`par_zip_map` 的元素总数溢出错误对齐 26-error v3.0.0 的 `InvalidShape { kind: InvalidShapeKind::ProductOverflow, .. }` 封闭枚举（v2.0.0-rc 误用 invalid-argument shape overflow，已修正）；`num_threads` 来源统一为 `strategy.max_workers.unwrap_or_else(rayon::current_num_threads)`（修复 §5.6 与 §6.3 的不一致）。
-- §6.5：整数 `sum` / `dot` 的"首个失败 chunk 仲裁"前提不成立时，**回退责任由 dispatch 承担**（即 `select_exec_path()` 不选择 Parallel）；`parallel` 模块本身永远不串行回退（保持决策 4）。
-- §6.6：`par_map_checked` 改用两遍模式（`try_for_each` 错误探测 + `collect_into_vec` 索引收集），从 producer 不变量证明 F-order 顺序与 `from_raw_vec_unchecked` 安全前提（修复 Blocker B8）。
-- §10：错误返回字段全部对齐 26-error v3.0.0 的封闭枚举（`InvalidArgumentKind::*`、`ShapeMismatch.operation`）。
-- §11：新增决策 7 / 8 / 9。
 
 ---
 
