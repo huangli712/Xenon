@@ -4,8 +4,6 @@
 > 模块目录: src/convert/
 > 任务阶段: Phase 4
 > 前置文档: 07-tensor.md, 03-element.md
-> 需求参考: 需求说明书 §23、§27、§28
-> 范围声明: 范围内
 
 ---
 
@@ -24,10 +22,9 @@
 | 原则       | 体现                                                                       |
 | ---------- | -------------------------------------------------------------------------- |
 | 显式转换   | 所有类型转换须显式调用 `cast()`，无隐式提升                                |
-| 失败可诊断 | 有损转换默认返回可恢复错误，错误上下文由 `XenonError::TypeConversion` 承载（字段对齐 `26-error.md v3.2.0 §5.1`，`source_type` / `target_type` 字段类型为 `&'static str`，值来自 `<A as Element>::ELEMENT_TYPE_NAME`；不使用 `TypeId`，也不直接持有 `ElementType` 枚举值） |
+| 失败可诊断 | 有损转换默认返回可恢复错误，错误上下文由 `XenonError::TypeConversion` 承载 |
 | 存储约束   | `cast` 面向所有可读存储开放，但结果统一物化为 owned 张量                   |
 | 需求闭合   | 仅支持 `需求说明书 §23.1` 与 `需求说明书 §23.2` 定义的类型对及其成功前提   |
-| 静态分流   | 决策 4（B10.a）：无损/默认有损在类型对级别静态判定，不做逐元素扫描；仅 `Complex → Real` 等条件性成功才在 `cast_to()` 内逐元素判定（如 `im == 0.0`）|
 
 ---
 
@@ -73,15 +70,15 @@ External dependencies:
 
 ### 4.2 类型级依赖
 
-| 来源模块    | 使用的类型/trait                                                                                             |
-| ----------- | ------------------------------------------------------------------------------------------------------------ |
-| `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, `.shape()`, `.strides()`, `.is_f_contiguous()`（参见 `07-tensor.md` §5） |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §5）                                               |
-| `storage`   | `Storage<Elem=A>`, `StorageMut`, `Owned<A>`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`（参见 `05-storage.md` §5） |
-| `element`   | `Element`, `CastTo<B>`（参见 `03-element.md` §5.9）, `CastElement`（sealed marker，参见 `03-element.md §5.9.1`）。convert 只消费这些，不重新定义 |
-| `layout`    | `is_f_contiguous()`（参见 `06-layout.md` §5）                                                                |
-| `error`     | `XenonError`（含 `TypeConversion::source_type` / `target_type: &'static str`，v3.2.0 起；详见 `26-error.md §5.4`）、`Result<T>`、`ConversionFailureReason`。本模块**不**通过 error 间接消费 `ElementType`——`ElementType` 类型权威定义在 `crate::element`（`03-element.md §5.1.1`），如需本类型本模块直接 `use crate::element::ElementType;`；如需类型名字符串，使用 `<A as Element>::ELEMENT_TYPE_NAME` 或 `crate::element::element_type_name_of::<A>()` |
-| `iter`      | `iter()` 用于 `cast()` / `to_owned()` 的逐元素遍历（参见 `10-iterator.md` §5）                             |
+| 来源模块    | 使用的类型/trait                                                                                     |
+| ----------- | ---------------------------------------------------------------------------------------------------- |
+| `tensor`    | `TensorBase`, `Tensor`, `.shape()`, `.strides()`, `.is_f_contiguous()`（参见 `07-tensor.md` §5）     |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`（参见 `02-dimension.md` §5）                                       |
+| `storage`   | `Storage`, `StorageMut`, `Owned<A>`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`（参见 `05-storage.md` §5） |
+| `element`   | `Element`, `CastTo<B>`（参见 `03-element.md` §5.9）, `CastElement`（参见 `03-element.md §5.9.1`）    |
+| `layout`    | `is_f_contiguous()`（参见 `06-layout.md` §5）                                                        |
+| `error`     | `XenonError`、`Result<T>`、`ConversionFailureReason`                                                 |
+| `iter`      | `iter()` 用于 `cast()` / `to_owned()` 的逐元素遍历（参见 `10-iterator.md` §5）                       |
 
 ### 4.3 依赖合法性
 
