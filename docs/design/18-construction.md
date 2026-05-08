@@ -428,7 +428,7 @@ where
     where
         Sh: IntoDimension<Dim = D>,
     {
-        // Implementation note (v3.0.1):
+        // Implementation note:
         //
         // The `arr.into_iter().collect::<Vec<A>>()` step here introduces a
         // single temporary `Vec<A>` of length N, which is then handed to
@@ -714,9 +714,9 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 | `construct → tensor`    | `tensor`    | `TensorBase`                         | 构造张量实例，参见 `07-tensor.md` §5.1                                                             |
 | `construct → storage`   | `storage`   | `from_elem()` / `from_vec_aligned()` | 使用项目统一的 owned 存储构造路径完成底层分配；具体对齐值、是否重打包输入缓冲区由 storage 内部负责 |
 | `construct → layout`    | `layout`    | F-order 步长                         | 构造阶段计算 F-order 步长，参见 `06-layout.md` §5.6                                                |
-| `construct → dimension` | `dimension` | `IntoDimension`, `checked_size()`    | 接受灵活形状参数并归一化；通过 `checked_size()` 验证元素总数，参见 `02-dimension.md` §5 |
+| `construct → dimension` | `dimension` | `IntoDimension`, `checked_size()`    | 接受灵活形状参数并归一化；通过 `checked_size()` 验证元素总数，参见 `02-dimension.md` §5            |
 | `construct → element`   | `element`   | `Element`                            | 通过 `Element::zero()` / `Element::one()` 约束构造 API，参见 `03-element.md` §5.1                  |
-| `construct → error`     | `error`     | `XenonError`                         | `InvalidShape` 用于 shape/length 不匹配与元素总数溢出；`compute_f_strides` 步长溢出错误以 `06-layout.md` §5.6 为准直接传播 |
+| `construct → error`     | `error`     | `XenonError`                         | `InvalidShape` 用于 shape/length 不匹配与元素总数溢出；`compute_f_strides` 步长溢出错误以 `06-layout.md` §5.6 为准 |
 | `construct → index`     | `index`     | 索引访问语义                         | `eye()` 内部通过 `get_unchecked_mut` 写入对角线元素；构造后的张量继续复用索引路径，参见 `17-indexing.md` §5.2 |
 
 ### 9.2 数据流描述
@@ -791,7 +791,7 @@ User calls zeros / from_shape_vec / eye
 | 场景             | 优化方式                 | 预期性能                           |
 | ---------------- | ------------------------ | ---------------------------------- |
 | `zeros` 大数组   | storage 层可选择 memset 等零值优化 | 可接近平台内存带宽，具体取决于后端与硬件 |
-| `ones` 大数组    | storage 层逐元素或批量填充         | 受元素类型、后端与硬件影响             |
+| `ones` 大数组    | storage 层逐元素或批量填充         | 受元素类型、后端与硬件影响 |
 | `from_shape_vec` | 共享 owned 构造路径      | O(n)                               |
 | `eye` 大矩阵     | 先零后对角               | n 次 `write` + n² 次 `write_bytes` |
 
