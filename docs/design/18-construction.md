@@ -4,8 +4,6 @@
 > 模块目录: src/construct/
 > 任务阶段: Phase 4
 > 前置文档: 07-tensor.md, 05-storage.md
-> 需求参考: 需求说明书 §7、§8、§19、§27、§28
-> 范围声明: 范围内
 
 ---
 
@@ -39,24 +37,24 @@
 
 ### 1.2 设计原则
 
-| 原则         | 体现                                                                                                                                    |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| 合法性验证   | 所有构造路径须验证合法性，防止越界访问（`需求说明书 §8`）                                                                               |
-| F-order 默认 | 构造时数据按 F-order 存放，默认列优先布局                                                                                               |
-| 对齐分配     | `zeros`/`ones` 使用项目统一的对齐分配策略，满足拥有型连续存储的实现需求；具体对齐值不作为构造 API 的公开语义。对齐策略详见 `05-storage.md` §6.1 AlignedBuf 定义。                            |
-| 对齐优先     | `from_shape_vec` 可复用项目统一的 owned 存储构造路径；是否复制输入 `Vec<A>`、以及采用何种对齐值，均属于内部实现选择，不单独形成公开承诺 |
-| 类型安全     | 形状和元素类型通过泛型约束在编译期检查                                                                                                  |
+| 原则         | 体现                                                                      |
+| ------------ | ------------------------------------------------------------------------- |
+| 合法性验证   | 所有构造路径须验证合法性，防止越界访问                                    |
+| F-order 默认 | 构造时数据按 F-order 存放，默认列优先布局                                 |
+| 对齐分配     | `zeros`/`ones` 使用项目统一的对齐分配策略，满足拥有型连续存储的实现需求。 |
+| 对齐优先     | `from_shape_vec` 可复用项目统一的 owned 存储构造路径。                    |
+| 类型安全     | 形状和元素类型通过泛型约束在编译期检查                                    |
 
 ---
 
 ## 2. 需求映射与范围约束
 
-| 类型     | 内容                                                                                                                                                  |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §7、§8、§19、§27、§28                                                                                                                      |
-| 范围内   | `zeros` / `ones` / `eye` / `from_shape_vec` / `from_vec` / `from_shape_slice` / `from_array` / `from_scalar`，以及空张量 / 零维张量 / ZST 路径的合法性与错误语义。 |
-| 范围外   | **以下序列/生成式构造器全部不在当前版本范围内**：`arange(start, stop, step)`、`linspace(start, stop, n)`、`logspace(start, stop, n, base)`、`geomspace(...)`、`meshgrid(...)`、`from_fn<A, D, F>(shape, f)`、`from_iter<I: Iterator>(...)`、随机构造器（`rand` / `randn` / `randint` / `random_uniform` 等）、`full(shape, value)`、`empty_like` / `zeros_like` / `ones_like`（"like" 系列）。这些 API 需要独立的设计文档（例如序列生成需要数值步长 / 端点策略 / NaN 行为决策；随机构造器需要 PRNG 依赖与 reproducibility 策略），不应作为本模块的隐式扩展加入。 |
-| 非目标   | 不新增新的构造器家族，不改变 F-order / 对齐分配基线，也不引入第三方随机或数据加载依赖。                                                               |
+| 类型     | 内容                                                                                                                                                 |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 需求映射 | 需求说明书 §7、§8、§19、§27、§28                                                                                                                     |
+| 范围内   | `zeros / ones / eye / from_shape_vec / from_vec / from_shape_slice / from_array / from_scalar`，以及空张量 / 零维张量 / ZST 路径的合法性与错误语义。 |
+| 范围外   | 其余序列/生成式构造器全部不在当前版本范围内。                                                                                                        |
+| 非目标   | 不新增新的构造器家族，不改变 F-order / 对齐分配基线，也不引入第三方随机或数据加载依赖。                                                              |
 
 ---
 
@@ -90,15 +88,15 @@ src/construct/
 │   ├── crate::layout      # LayoutFlags, compute_layout_flags
 │   ├── crate::dimension   # Dimension, Ix0~Ix6, IxDyn, IntoDimension
 │   ├── crate::element     # Element (zero() / one())
-│   └── crate::error       # XenonError (InvalidShape + compute_f_strides 传播的错误)
+│   └── crate::error       # XenonError
 |
 ├── eye.rs
 │   ├── crate::tensor      # TensorBase<Owned<A>, Ix2>
 │   ├── crate::storage     # Owned<A>
-│   ├── crate::index       # get_unchecked_mut (对角线元素写入)
+│   ├── crate::index       # get_unchecked_mut
 │   ├── crate::layout      # LayoutFlags
 │   ├── crate::element     # Element
-│   └── crate::error       # XenonError::InvalidShape (经由 zeros 间接传播)
+│   └── crate::error       # XenonError::InvalidShape
 |
 ├── from.rs
 │   ├── crate::tensor      # TensorBase<S, D>, Tensor<A, D>
@@ -106,7 +104,7 @@ src/construct/
 │   ├── crate::layout      # LayoutFlags, compute_layout_flags, Strides<D>
 │   ├── crate::dimension   # Dimension, IntoDimension
 │   ├── crate::element     # Element
-│   └── crate::error       # XenonError (InvalidShape + compute_f_strides 传播的错误)
+│   └── crate::error       # XenonError
 |
 └── scalar.rs
     ├── crate::tensor      # TensorBase<Owned<A>, Ix0>
@@ -114,19 +112,19 @@ src/construct/
     ├── crate::layout      # LayoutFlags, compute_layout_flags, compute_f_strides
     ├── crate::dimension   # Ix0
     ├── crate::element     # Element
-    └── crate::error       # XenonError (from_vec_aligned + compute_f_strides 传播的错误)
+    └── crate::error       # XenonError
 ```
 
 ### 4.2 类型级依赖
 
-| 来源模块    | 使用的类型/trait                                                                                                  |
-| ----------- | ----------------------------------------------------------------------------------------------------------------- |
-| `tensor`    | `TensorBase<S, D>`, `Tensor<A, D>`, 类型别名 `Tensor0`~`Tensor6`（参见 `07-tensor.md` §5）                        |
-| `storage`   | `Owned<A>`, `Storage<Elem = A>`, `Owned::from_vec_aligned()` 与 `<Owned<A> as StorageOwned>::from_elem()`（参见 `05-storage.md` §5.7、§6.1）                                  |
-| `layout`    | `LayoutFlags`, `Strides<D>`, `compute_f_strides`, `compute_layout_flags`（F-order stride 计算与权威布局标志计算入口，参见 `06-layout.md` §5.6, §5.12） |
-| `dimension` | `Dimension::checked_size()`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`（元素总数验证与形状归一化，参见 `02-dimension.md` §5） |
-| `element`   | `Element`（`zero()` / `one()` 由 `Element` 提供，参见 `03-element.md` §5.1）                                      |
-| `error`     | `XenonError`（`InvalidShape` 用于 shape/length 基数不匹配与元素总数溢出；`compute_f_strides` 步长溢出错误以 `06-layout.md` §5.6 为准直接传播） |
+| 来源模块    | 使用的类型/trait                                                                                   |
+| ----------- | -------------------------------------------------------------------------------------------------- |
+| `tensor`    | `TensorBase`, `Tensor`, 类型别名 `Tensor0`~`Tensor6`（参见 `07-tensor.md` §5）                     |
+| `storage`   | `Owned`, `Storage`, `from_vec_aligned()` 与 `from_elem()`（参见 `05-storage.md` §5）               |
+| `layout`    | `LayoutFlags`, `Strides<D>`, `compute_f_strides`, `compute_layout_flags`（参见 `06-layout.md` §5） |
+| `dimension` | `checked_size()`, `Ix0`~`Ix6`, `IxDyn`, `IntoDimension`（参见 `02-dimension.md` §5）               |
+| `element`   | `Element`（`zero()` / `one()` 由 `Element` 提供，参见 `03-element.md` §5.1）                       |
+| `error`     | `XenonError`（`InvalidShape`）                                                                     |
 
 ### 4.3 依赖合法性
 
