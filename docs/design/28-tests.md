@@ -731,7 +731,7 @@ panic 诊断信息测试：验证 panic message 包含 `需求说明书 §27` �
 | `test_add_ref_owned`                | `&a + b` 返回 `Ok(...)`，b 被消费                              | 中     |
 | `test_add_scalar`                   | `tensor + 5.0` 返回 `Ok(...)`，逐元素验证                      | 高     |
 | `test_scalar_wrapper_add_tensor`    | `Scalar(5.0) + tensor` 返回 `Ok(...)`，逐元素验证              | 高     |
-| `test_native_scalar_add_tensor_i32`    | 原生 `i32 + Tensor<i32>` 左标量写法返回 `Tensor<i32>`，逐元素验证；19-overload §5.4 为受支持具体标量类型逐类型生成 `impl Add<TensorBase<...>> for f32 / f64 / i32 / i64 / Complex<f32> / Complex<f64>`，Rust 孤儿规则允许（`Self` 是非泛型外部类型 + trait 含本地 `TensorBase`，详见 19-overload §6 决策） | 高     |
+| `test_native_scalar_add_tensor_i32`    | 原生 `i32 + Tensor<i32>` 左标量写法返回 `Tensor<i32>`，逐元素验证；19-overload §5.4 为受支持具体标量类型逐类型生成 `impl Add<TensorBase<...>> for f32 / f64 / i32 / i64 / Complex<f32> / Complex<f64>`，Rust 孤儿规则允许（`Self` 是非泛型外部类型 + trait 含本地 `TensorBase`，详见 19-overload §6） | 高     |
 | `test_native_scalar_add_tensor_f64`    | `5.0_f64 + Tensor<f64>` 同上 | 高     |
 | `ui_blanket_scalar_add_rejected`       | `impl<T> Add<TensorBase<...>> for T` 这种**泛型 T** blanket impl 被孤儿规则编译期拒绝；这条 compile-fail 测试守住边界，区别于上面具体类型的正向测试 | 高     |
 | `test_sub_basic`                    | `a - b` 返回 `Ok(...)` 且结果正确                              | 高     |
