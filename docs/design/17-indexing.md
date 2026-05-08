@@ -516,7 +516,7 @@ unsafe 变体只省略检查，不改变偏移量公式、shape/stride 解释或
 | rank-0 张量索引                       | 仅接受零维合法索引形式，偏移为 0                           |
 | 广播视图上的只读索引                  | 索引成功但结果仍遵循只读/共享只读语义                      |
 | 非连续切片后的访问                    | 偏移量计算继续基于 stride，不假设连续                      |
-| 任一轴越界                            | 安全接口返回 recoverable error                            |
+| 任一轴越界                            | 安全接口返回 recoverable error                             |
 | 高 rank（静态上限附近或 `IxDyn`）切片 | rank 校验、输出 shape 与 stride 更新保持正确               |
 | `10^7` 元素张量 `[3162,3162]` 的末元素索引与极端 offset 组合 | 合法索引返回正确元素；会溢出的 offset 计算返回错误而非 panic |
 
@@ -530,9 +530,9 @@ unsafe 变体只省略检查，不改变偏移量公式、shape/stride 解释或
 
 ### 8.5 集成测试
 
-| 测试文件                | 测试内容                                                                           |
-| ----------------------- | ---------------------------------------------------------------------------------- |
-| `tests/test_index.rs` | 索引 API 与 `tensor`、`dimension`、`layout`、`storage`、`error` 的端到端集成测试     |
+| 测试文件                | 测试内容                                                                         |
+| ----------------------- | -------------------------------------------------------------------------------- |
+| `tests/test_index.rs` | 索引 API 与 `tensor`、`dimension`、`layout`、`storage`、`error` 的端到端集成测试   |
 
 ### 8.6 Feature gate / 配置测试
 
@@ -586,13 +586,13 @@ User calls tensor.slice(info)
 
 ## 10. 错误处理与语义边界
 
-| 主题              | 说明                                                                                                                                                                 |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | `try_at()` / `get()` / `slice()` 在 rank 不匹配、轴非法、越界时返回 `XenonError`。其中索引长度与张量 `ndim` 不匹配时，错误类型固定为 `XenonError::DimensionMismatch { operation, expected, actual }`；多维索引越界使用 `XenonError::IndexOutOfBounds { operation, attempted_index, axis, shape }`；`slice()` 的 Range 越界使用 `InvalidArgument { kind: InvalidArgumentKind::RangeOutOfBounds { axis, axis_len, start, end } }`；`SliceInfo::new` 的 Range start>end 使用 `InvalidArgument { kind: InvalidArgumentKind::RangeStartAfterEnd { axis, start, end } }`；offset 算术溢出使用 `InvalidLayout { reason: InvalidLayoutReason::AccessRangeExceedsStorage, .. }`。所有字段对齐 26-error v3.2.0 §5.1 封闭枚举。 |
-| Trait-bound 边界  | `try_at_mut()` / `get_mut()` / `get_unchecked_mut()` 仅在 `S: StorageMut` 前提成立时存在；不再为“只读存储上的可写索引”设计运行时 `InvalidStorageMode` 分支           |
-| Panic             | `std::ops::Index` 与 `std::ops::IndexMut` 不在 Xenon 稳定 API 中实现（见 §3 范围约束）。规范安全主路径是返回 `Result` 的 checked API                                                                                                                  |
-| 路径一致性        | 对同一合法输入，checked 与 unchecked 路径必须给出同一偏移和同一逻辑结果；unsafe 只省略检查                                                                           |
-| 容差边界          | 不适用；本模块不涉及浮点容差、SIMD 误差或并行归约差异                                                                                                                |
+| 主题              | 说明                                                                                                                                                       |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Recoverable error | `try_at()` / `get()` / `slice()` 在 rank 不匹配、轴非法、越界时返回 `XenonError`。其中索引长度与张量 `ndim` 不匹配时，错误类型固定为 `DimensionMismatch`；多维索引越界使用 `IndexOutOfBounds`；`slice()` 的 Range 越界使用 `InvalidArgument`；`SliceInfo::new` 的 Range start>end 使用 `InvalidArgument`；offset 算术溢出使用 `InvalidLayout`。 |
+| Trait-bound 边界  | `try_at_mut()` / `get_mut()` / `get_unchecked_mut()` 仅在 `S: StorageMut` 前提成立时存在；不再为“只读存储上的可写索引”设计运行时 `InvalidStorageMode` 分支 |
+| Panic             | `std::ops::Index` 与 `std::ops::IndexMut` 不在 Xenon 稳定 API 中实现（见 §3 范围约束）。规范安全主路径是返回 `Result` 的 checked API                       |
+| 路径一致性        | 对同一合法输入，checked 与 unchecked 路径必须给出同一偏移和同一逻辑结果；unsafe 只省略检查                                                                 |
+| 容差边界          | 不适用；本模块不涉及浮点容差、SIMD 误差或并行归约差异                                                                                                      |
 
 ---
 
@@ -615,17 +615,6 @@ User calls tensor.slice(info)
 | 理由     | 符合 `需求说明书 §18` 与 `需求说明书 §6`，对共享数据结果收敛到可验证的只读语义 |
 | 替代方案 | 允许共享可写切片 — 放弃，超出当前版本范围且引入别名写入风险       |
 | 替代方案 | 切片总是复制生成独立张量 — 放弃，会破坏零拷贝视图语义并扩大成本   |
-
-### 决策 3: SliceInfo::new 仅做结构性校验，shape 边界校验下沉到 TensorBase::slice (B9.a)
-
-| 属性     | 值                                                                                                                                                                                                                            |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | `SliceInfo::new(indices, in_dim, out_dim)` 只校验结构性约束（rank 一致、output 维度匹配 Range 计数、Range 内 start ≤ end）；shape 边界校验（Range.end ≤ shape[axis]、Index < shape[axis]）由 `TensorBase::slice(info)` 在应用时完成 |
-| 理由     | (1) `SliceInfo::new` 只接收维度类型 `D`，不携带具体 shape 值，根本无法验证 shape 边界；(2) 把校验下沉让同一个 `SliceInfo` 实例可在不同 shape 但 rank 相同的张量上复用；(3) 错误来源更清晰：结构错 → SliceInfo 构造期失败；shape 错 → slice 应用期失败 |
-| 替代方案 | 在 `SliceInfo::new` 强制要求传入 shape 一并校验                                                                                                                                                                              |
-| 拒绝原因 | 会让 `SliceInfo` 与具体张量 shape 强耦合，丢失"切片描述符可在不同张量上复用"的能力，并把构造器签名复杂化（`new(indices, in_dim, out_dim, shape)`）                                                                          |
-| 替代方案 | 不在 SliceInfo 做任何校验，全部下沉到 slice                                                                                                                                                                                  |
-| 拒绝原因 | 结构性约束（rank 一致、output 维度匹配）在没有 shape 也能校验，下沉会让显然非法的 SliceInfo 在构造期就溜过去，错误诊断时机过晚                                                                                                |
 
 ---
 
