@@ -33,21 +33,21 @@
 | ------------ | ----------------------------------------------------------------------------------------- |
 | 单一裁决点   | 所有 `math` / `matrix` / `reduction` 模块通过 `dispatch::select_exec_path()` 进行三路裁决 |
 | 二级裁决模型 | dispatch 选择三条互斥路径之一；SIMD / Parallel 后端在被选中后做内部细化                   |
-| 零成本抽象   | `feature = "parallel"` 关闭时 dispatch 仍然存在，但 `ExecPath::Parallel` 永不返回；`ExecPath::Simd` 仅当 `feature = "simd"` 启用时返回 |
-| 嵌套并行防护 | thread-local guard 防止库内部二次并行，失败时静默回退 `Serial` 路径                        |
+| 零成本抽象   | `feature = "parallel/simd"` 关闭时 dispatch 仍然存在                                      |
+| 嵌套并行防护 | thread-local guard 防止库内部二次并行，失败时静默回退 `Serial` 路径                       |
 | 透明回退     | 进入失败或条件不满足时静默回退到 `ExecPath::Serial`，绝不 panic 或返回错误                |
 
 ---
 
 ## 2. 需求映射与范围约束
 
-| 类型     | 内容                                                                         |
-| -------- | ---------------------------------------------------------------------------- |
-| 需求映射 | 需求说明书 §9（并行需求）、§13（内积需求）、§14（归约需求）、§28（性能需求） |
+| 类型     | 内容                                                                            |
+| -------- | ------------------------------------------------------------------------------- |
+| 需求映射 | 需求说明书 §9、§13、§14、§28                                                    |
 | 范围内   | `ExecPath` 三路裁决、并行阈值配置、嵌套并行防护、`ParallelExecStrategy` 定义、SIMD 路径推荐 |
-| 范围外   | SIMD 准入判定（ISA 检测、lane 宽度选择）、scalar implementations、广播形状仲裁 |
+| 范围外   | SIMD 准入判定（ISA 检测、lane 宽度选择）、scalar implementations、广播形状仲裁  |
 | 标量回退 | dispatch 自身不包含标量实现代码；回退到 `Serial` 后由各语义模块自行执行标量路径 |
-| 非目标   | 不在 dispatch 模块内引入第三方依赖（包括 pulp）；不扩展 dispatch 为子目录模块 |
+| 非目标   | 不在 dispatch 模块内引入第三方依赖（包括 pulp）；不扩展 dispatch 为子目录模块   |
 
 ---
 
@@ -56,8 +56,6 @@
 ```
 src/dispatch.rs                    # Single-file module
 ```
-
-单文件设计理由：dispatch 模块表面积极小、内聚性极高——仅包含 `ExecPath` 枚举、`ParallelExecStrategy` 结构体、`ParallelGuard` / `ParallelContext`、`select_exec_path()` / `should_parallelize()` 两个核心函数以及阈值配置访问器。拆分为子目录会增加模块边界管理成本而无实际收益。
 
 ---
 
