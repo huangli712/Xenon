@@ -265,7 +265,7 @@ use crate::error::{FfiErrorCategory, FfiBackend};
 
 ### 5.3 C 侧结构化导出格式
 
-`ElementType` 枚举定义于 `element` 模块（见 `03-element.md §5.1.1`，v1.4.0 起），`ffi` 模块通过 `pub use crate::element::ElementType` re-export 以供 FFI 消费者使用稳定路径 `crate::ffi::ElementType`。此设计让 element 拥有类型枚举，让 ffi 提供 C ABI 边界稳定路径，同时 error 模块完全不依赖 ElementType（error 用 `&'static str` 记录类型诊断信息，详见 `26-error.md v3.2.0 §5.4`）。
+`ElementType` 枚举定义于 `element` 模块（见 `03-element.md §5.1.1`，v1.4.0 起），`ffi` 模块通过 `pub use crate::element::ElementType` re-export 以供 FFI 消费者使用稳定路径 `crate::ffi::ElementType`。此设计让 element 拥有类型枚举，让 ffi 提供 C ABI 边界稳定路径，同时 error 模块完全不依赖 ElementType（error 用 `&'static str` 记录类型诊断信息，详见 `26-error.md §5.4`）。
 
 ```rust,ignore
 // src/ffi/types.rs
@@ -302,7 +302,7 @@ pub struct BlasInfo<A> { /* fields omitted — see §5.5 */ }
 // }
 ```
 
-#### 5.3.bis C 头文件可见的非泛型导出 schema（v3.0.2）
+#### 5.3.bis C 头文件可见的非泛型导出 schema
 
 `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 是 Rust 侧带生命周期与 `PhantomData` 的泛型类型，C 头文件无法直接表达"泛型 + 生命周期 + PhantomData"。`crate::ffi` 因此对外暴露**非泛型**的 C-visible 描述符，作为 cbindgen 的固定输出 schema：
 
@@ -370,7 +370,7 @@ impl<'a, A: Element> From<TensorExportMut<'a, A>> for TensorExportMutRaw {
 
 C 消费者**只能**绑定到 `TensorExportRaw` / `TensorExportMutRaw`；Rust 侧的 `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 是内部表达类型，包含生命周期借用证据与类型化指针，cbindgen 不会为其生成 C 头文件条目。两类描述符通过 `From` 在 FFI 边界一次性转换。这一设计保留了 Rust 侧的借用安全（`PhantomData<&'a A>` 阻止借用越界），同时给 C 一份稳定可消费的 ABI schema。
 
-#### cbindgen 配置合约（v3.0.2 强制）
+#### cbindgen 配置合约
 
 为强制 generic Rust-only 描述符不进入 C 头文件，工程依赖 **三道闸门**协同（cbindgen 没有真正的 "exhaustive allowlist" 机制；`[export] include` 只是把那些没被 `extern "C"` 函数引用、但也想强制纳入的额外类型 *补充进来*，并不能把生成集合限制为只有列表中的项）：
 
