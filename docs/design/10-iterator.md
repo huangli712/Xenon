@@ -50,9 +50,6 @@
 | 范围外   | 独立的多输入 lock-step 迭代抽象、`DoubleEndedIterator`、`Windows` / `LaneIter`、负步长布局以及并行公开迭代接口。           |
 | 非目标   | 不扩展当前公开迭代器集合，不新增第三方依赖，不放宽广播只读约束，也不在本文定义新的并行 API 契约。                          |
 
-- 只读迭代器（`Elements`、`AxisIter`、`IndexedIter`）实现 `Send + Sync` 当且仅当 `A: Sync`，与底层 `ViewRepr` 的线程安全语义一致。
-- 可变迭代器（`ElementsMut`、`AxisIterMut`、`IndexedIterMut`）仅实现 `Send`（当 `A: Send`），不实现 `Sync`，与 `ViewMutRepr` 不提供 `Sync` impl 保持一致（`ViewMutRepr` 内部通过 `PhantomData<&'a mut A>` 阻止自动 `Sync` 推导）。参见 `05-storage.md §6.8`、`25-safety.md §5.5`。
-
 ---
 
 ## 3. 文件位置
@@ -60,7 +57,7 @@
 ```
 src/iter/
 ├── mod.rs         # module entry, public exports, iterator trait definitions
-├── elements.rs    # Elements / ElementsMut flat element iteration
+├── elements.rs    # Iter / IterMut flat element iteration
 ├── axis.rs        # AxisIter / AxisIterMut axis-wise iteration
 └── indexed.rs     # IndexedIter / IndexedIterMut indexed iteration
 ```
@@ -81,13 +78,13 @@ src/iter/
 
 ### 4.2 类型级依赖
 
-| 来源模块    | 使用的类型/trait                                                                                                                                  |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tensor`    | `TensorBase<S, D>`, `TensorView<'a, A, D>`, `TensorViewMut<'a, A, D>`, `.shape()`, `.strides()`, `.as_ptr()`, `.len()`（参见 `07-tensor.md §5` ） |
-| `dimension` | `Dimension`, `Axis`, `Ix0`~`Ix6`, `IxDyn`，以及在公开签名中使用的 `RemoveAxis` / `D::Smaller`（参见 `02-dimension.md §5`）                  |
-| `storage`   | `Storage<Elem = A>`, `StorageMut<Elem = A>`（参见 `05-storage.md §5`）                                                                            |
-| `error`     | `XenonError::InvalidAxis`（参见 `26-error.md §5`）                                                                                                |
-| `tensor`    | `.is_f_contiguous()`, 布局标志查询（参见 `07-tensor.md §5`）                                                                                      |
+| 来源模块    | 使用的类型/trait                                                                                                        |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `tensor`    | `TensorBase`, `TensorView`, `TensorViewMut`, `.shape()`, `.strides()`, `.as_ptr()`, `.len()`（参见 `07-tensor.md §5` ） |
+| `dimension` | `Dimension`, `Axis`, `Ix0`~`Ix6`, `IxDyn`，`RemoveAxis` / `D::Smaller`（参见 `02-dimension.md §5`）                     |
+| `storage`   | `Storage<Elem = A>`, `StorageMut<Elem = A>`（参见 `05-storage.md §5`）                                                  |
+| `error`     | `XenonError::InvalidAxis`（参见 `26-error.md §5`）                                                                      |
+| `tensor`    | `.is_f_contiguous()`, 布局标志查询（参见 `07-tensor.md §5`）                                                            |
 
 ### 4.3 依赖合法性
 
@@ -99,41 +96,41 @@ src/iter/
 
 ### 4.4 依赖方向声明
 
-依赖方向：单向向上。`iter` 仅消费 `tensor`、`dimension`、`storage`、`error` 等核心模块，不被核心模块反向依赖。上层运算模块（`math`、`reduction`、`matrix`、`set`、`utility` 等）可消费 `iter` 提供的公开迭代器类型。布局/连续性判断通过 `TensorBase` 暴露的查询接口完成。
+依赖方向：单向向上。`iter` 仅消费 `tensor`、`dimension`、`storage`、`error` 等核心模块，不被核心模块反向依赖。
 
 ---
 
 ## 5. 公共 API 设计
 
-### 5.1 Elements 迭代器
+### 5.1 Iter 迭代器
 
 ```rust,ignore
 /// Flat element iterator, traverses all elements in logical F-order index order.
-pub struct Elements<'a, A, D: Dimension> {
+pub struct Iter<'a, A, D: Dimension> {
     // Internal fields: view, pointer/index state, remaining count,
     // and PhantomData<&'a A> to tie the yielded references to lifetime 'a.
 }
 
 /// Mutable flat element iterator.
-pub struct ElementsMut<'a, A, D: Dimension> {
+pub struct IterMut<'a, A, D: Dimension> {
     // Internal fields: mutable view, pointer/index state, remaining count
 }
 
-impl<'a, A, D: Dimension> Iterator for Elements<'a, A, D> {
+impl<'a, A, D: Dimension> Iterator for Iter<'a, A, D> {
     type Item = &'a A;
     fn next(&mut self) -> Option<Self::Item>;
     fn size_hint(&self) -> (usize, Option<usize>);
 }
 
-impl<'a, A, D: Dimension> ExactSizeIterator for Elements<'a, A, D> {}
+impl<'a, A, D: Dimension> ExactSizeIterator for Iter<'a, A, D> {}
 
-impl<'a, A, D: Dimension> Iterator for ElementsMut<'a, A, D> {
+impl<'a, A, D: Dimension> Iterator for IterMut<'a, A, D> {
     type Item = &'a mut A;
     fn next(&mut self) -> Option<Self::Item>;
     fn size_hint(&self) -> (usize, Option<usize>);
 }
 
-impl<'a, A, D: Dimension> ExactSizeIterator for ElementsMut<'a, A, D> {}
+impl<'a, A, D: Dimension> ExactSizeIterator for IterMut<'a, A, D> {}
 ```
 
 ### 5.2 AxisIter 沿轴迭代器
@@ -205,7 +202,7 @@ where
 
 ### 5.3 内部迭代分发说明
 
-当前版本不在 `iter` 模块中设计统一的多输入 lock-step 结构体或配套方法。逐元素运算、广播、归约等需要多输入同步遍历的模块，应直接基于 `Elements` / `ElementsMut`、广播视图和各自的内部状态机完成迭代分发。这样可以避免在 `iter` 模块额外引入一个被误解为稳定能力边界的中间抽象。
+当前版本不在 `iter` 模块中设计统一的多输入 lock-step 结构体或配套方法。逐元素运算、广播、归约等需要多输入同步遍历的模块，应直接基于 `Iter` / `IterMut`、广播视图和各自的内部状态机完成迭代分发。这样可以避免在 `iter` 模块额外引入一个被误解为稳定能力边界的中间抽象。
 
 ### 5.4 IndexedIter 带索引迭代器
 
@@ -214,7 +211,7 @@ where
 ///
 /// Yields (D, &'a A) tuples, indices increment in F-order.
 pub struct IndexedIter<'a, A, D: Dimension> {
-    // Internal fields: Elements iterator, current index, stride state machine
+    // Internal fields: Iter iterator, current index, stride state machine
 }
 
 /// Mutable indexed iterator.
@@ -267,7 +264,7 @@ where
     D: Dimension,
 {
     /// Element iterator (immutable).
-    pub fn iter(&self) -> Elements<'_, A, D>;
+    pub fn iter(&self) -> Iter<'_, A, D>;
 
     /// Indexed iterator (immutable).
     pub fn indexed_iter(&self) -> IndexedIter<'_, A, D>;
@@ -285,7 +282,7 @@ where
     D: Dimension,
 {
     /// Mutable element iterator.
-    pub fn iter_mut(&mut self) -> ElementsMut<'_, A, D>;
+    pub fn iter_mut(&mut self) -> IterMut<'_, A, D>;
 
     /// Mutable indexed iterator.
     pub fn indexed_iter_mut(&mut self) -> IndexedIterMut<'_, A, D>;
@@ -329,10 +326,10 @@ let scalar = Tensor::<f64, IxDyn>::from_shape_vec(IxDyn::from_slice(&[]), vec![1
 
 ## 6. 内部实现设计
 
-### 6.1 Elements 快速/慢速路径选择
+### 6.1 Iter 快速/慢速路径选择
 
 ```text
-Elements::new(view):
+Iter::new(view):
     if view.is_f_contiguous():
         // Fast path: pointer increment
         ptr = view.as_ptr()
@@ -379,7 +376,7 @@ increment_index_f(shape, index):
 
 **布局合法性前提**
 
-`ElementsMut`、`AxisIterMut` 与 `IndexedIterMut` 的安全性论证除“访问区间不重叠”外，还依赖张量层先前已经建立的**布局合法性前提**：
+`IterMut`、`AxisIterMut` 与 `IndexedIterMut` 的安全性论证除“访问区间不重叠”外，还依赖张量层先前已经建立的**布局合法性前提**：
 
 | 前提                | 说明                                                                                                                                       |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -408,9 +405,9 @@ increment_index_f(shape, index):
 
 **关于 `rayon::iter::ParallelIterator`：** 本 `iter/` 模块**不**对外提供 `rayon::ParallelIterator` 实现，也不维护"串行 / 并行迭代器双轨公开 API"。本模块设计为单轨：定义**串行**的 `Iterator` / `ExactSizeIterator` 公开接口。
 
-**`09-parallel.md` 中的 `pub(crate) ParElements<'a, A, D>` 与 `TensorBase::par_iter()` 不属于本模块的稳定 API**：它们是 `parallel/` 后端为内部并行执行实现的 `pub(crate)` Rayon 适配，仅在 crate 内部消费；外部 crate 不能命名 `ParElements`、不能把它当成 `iter/` 的扩展。所有公开的并行执行（含分块、worker 调度、worker 内 SIMD admission）通过对底层 storage / shape / strides / offset 的直接访问完成，由 `parallel/` 模块独立实现，不要求 `iter/` 做出 rayon 协议适配。
+**`09-parallel.md` 中的 `pub(crate) ParIter<'a, A, D>` 与 `TensorBase::par_iter()` 不属于本模块的稳定 API**：它们是 `parallel/` 后端为内部并行执行实现的 `pub(crate)` Rayon 适配，仅在 crate 内部消费；外部 crate 不能命名 `ParIter`、不能把它当成 `iter/` 的扩展。所有公开的并行执行（含分块、worker 调度、worker 内 SIMD admission）通过对底层 storage / shape / strides / offset 的直接访问完成，由 `parallel/` 模块独立实现，不要求 `iter/` 做出 rayon 协议适配。
 
-这种分工避免了把 rayon 的 producer / consumer 协议固化到 `iter/` 模块的稳定 API；任何把 `ParElements` 暴露成稳定 API 的尝试需要单独的设计文档与 SemVer 评估。
+这种分工避免了把 rayon 的 producer / consumer 协议固化到 `iter/` 模块的稳定 API；任何把 `ParIter` 暴露成稳定 API 的尝试需要单独的设计文档与 SemVer 评估。
 
 ---
 
@@ -432,7 +429,7 @@ increment_index_f(shape, index):
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T3**: 实现 `Elements` / `ElementsMut`
+- [ ] **T3**: 实现 `Iter` / `IterMut`
   - 文件: `src/iter/elements.rs`
   - 内容: `Iterator` + `ExactSizeIterator` 实现，含快速/慢速路径
   - 测试: `test_elements_contig`, `test_elements_non_contiguous`, `test_elements_empty`, `test_elements_ix0`
@@ -452,7 +449,7 @@ increment_index_f(shape, index):
 
 - [ ] **T5**: 实现 `IndexedIter` / `IndexedIterMut`
   - 文件: `src/iter/indexed.rs`
-  - 内容: 基于 Elements 的索引包装
+  - 内容: 基于 Iter 的索引包装
   - 测试: `test_indexed_iter_order`, `test_indexed_iter_ix0`
   - 前置: T3
   - 预计: 10 min
@@ -635,9 +632,9 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
 
 ### 12.2 复杂度标注
 
-- `Elements::new()`: O(1)，仅初始化状态
-- `Elements::next()`（快速路径）: O(1)，指针递增
-- `Elements::next()`（慢速路径）: O(ndim)，索引递增
+- `Iter::new()`: O(1)，仅初始化状态
+- `Iter::next()`（快速路径）: O(1)，指针递增
+- `Iter::next()`（慢速路径）: O(ndim)，索引递增
 - `AxisIter::next()`: O(1)，子视图切片
 - `IndexedIter::next()`: O(ndim)，维护逻辑索引递增与打包
 
