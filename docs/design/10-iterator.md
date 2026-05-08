@@ -376,7 +376,7 @@ increment_index_f(shape, index):
 
 **布局合法性前提**
 
-`IterMut`、`AxisIterMut` 与 `IndexedIterMut` 的安全性论证除“访问区间不重叠”外，还依赖张量层先前已经建立的**布局合法性前提**：
+`IterMut`、`AxisIterMut` 与 `IndexedIterMut` 的安全性论证除“访问区间不重叠”外，还依赖张量层先前已经建立的布局合法性前提：
 
 | 前提                | 说明                                                                                                                                       |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -403,9 +403,9 @@ increment_index_f(shape, index):
 
 当前版本不在 `iter` 模块中设计独立的内部区间分块抽象。若并行后端需要对元素遍历做分块，应由并行执行模块基于自身的任务划分策略直接维护逻辑区间和调度状态。此约束与 §5.3 的设计原则一致。
 
-**关于 `rayon::iter::ParallelIterator`：** 本 `iter/` 模块**不**对外提供 `rayon::ParallelIterator` 实现，也不维护"串行 / 并行迭代器双轨公开 API"。本模块设计为单轨：定义**串行**的 `Iterator` / `ExactSizeIterator` 公开接口。
+**关于 `rayon::iter::ParallelIterator`：** 本 `iter/` 模块不对外提供 `rayon::ParallelIterator` 实现，也不维护"串行 / 并行迭代器双轨公开 API"。本模块设计为单轨：定义串行的 `Iterator` / `ExactSizeIterator` 公开接口。
 
-**`09-parallel.md` 中的 `pub(crate) ParIter<'a, A, D>` 与 `TensorBase::par_iter()` 不属于本模块的稳定 API**：它们是 `parallel/` 后端为内部并行执行实现的 `pub(crate)` Rayon 适配，仅在 crate 内部消费；外部 crate 不能命名 `ParIter`、不能把它当成 `iter/` 的扩展。所有公开的并行执行（含分块、worker 调度、worker 内 SIMD admission）通过对底层 storage / shape / strides / offset 的直接访问完成，由 `parallel/` 模块独立实现，不要求 `iter/` 做出 rayon 协议适配。
+`09-parallel.md` 中的 `pub(crate) ParIter<'a, A, D>` 与 `TensorBase::par_iter()` 不属于本模块的稳定 API：它们是 `parallel/` 后端为内部并行执行实现的 `pub(crate)` Rayon 适配，仅在 crate 内部消费；外部 crate 不能命名 `ParIter`、不能把它当成 `iter/` 的扩展。所有公开的并行执行（含分块、worker 调度、worker 内 SIMD admission）通过对底层 storage / shape / strides / offset 的直接访问完成，由 `parallel/` 模块独立实现，不要求 `iter/` 做出 rayon 协议适配。
 
 这种分工避免了把 rayon 的 producer / consumer 协议固化到 `iter/` 模块的稳定 API；任何把 `ParIter` 暴露成稳定 API 的尝试需要单独的设计文档与 SemVer 评估。
 
@@ -423,7 +423,7 @@ increment_index_f(shape, index):
   - 预计: 5 min
 
 - [ ] **T2**: 实现 StrideState 步长状态机
-  - 文件: `src/iter/elements.rs`（内部辅助结构）
+  - 文件: `src/iter/elements.rs`
   - 内容: F-order 索引递增逻辑
   - 测试: `test_stride_state_increment`
   - 前置: T1
@@ -493,7 +493,7 @@ increment_index_f(shape, index):
 | `test_axis_iter_dyn_rank0_error`        | rank-0 `IxDyn` 调用 `axis_iter()` 返回 `InvalidAxis` 可恢复错误          | 高     |
 | `test_elements_large_tensor_count`      | 大张量（`10^7` 量级元素）上的 `count()` / `len()` 一致，且不访问越界内存 | 高     |
 | `test_indexed_iter_high_rank_ixdyn`     | 高 rank `IxDyn`（接近静态上限/超过静态维度）索引遍历次序与数量正确       | 高     |
-| `test_axis_iter_large_axis_index_error` | 极端 axis 值（如 `usize::MAX`）返回 `InvalidAxis`，字段包含 `operation`、`axis`、`ndim`、`shape` | 高     |
+| `test_axis_iter_large_axis_index_error` | 极端 axis 值（如 `usize::MAX`）返回 `XenonError::InvalidAxis`            | 高     |
 | `test_padded_iter`                      | 填充数组仅遍历逻辑元素                                                   | 低     |
 
 ### 8.3 边界测试场景
@@ -511,7 +511,7 @@ increment_index_f(shape, index):
 | `10^7` 元素张量沿轴迭代                        | `axis_iter()` 在大输入上保持 `count()` / `len()` 一致，并记录性能基线且不越界                                                               |
 | 大张量 `len ≈ 10^7`                            | `ExactSizeIterator` 长度、`count()` 与 `len()` 保持一致                                                                                     |
 | 高维动态张量 `IxDyn([1, 1, 1, 1, 1, 1, 1, 1])` | `indexed_iter()` 产出数量正确，索引按 F-order 递增                                                                                          |
-| 极端 axis 值 `Axis(usize::MAX)`                | `axis_iter()` / `axis_iter_mut()` 返回 `InvalidAxis`，诊断字段包含 `operation`、`axis`、`ndim`、`shape`                                     |
+| 极端 axis 值 `Axis(usize::MAX)`                | `axis_iter()` / `axis_iter_mut()` 返回 `InvalidAxis`                                                                                        |
 
 ### 8.4 属性测试不变量
 
@@ -550,11 +550,11 @@ increment_index_f(shape, index):
 
 ### 9.1 接口约定
 
-| 方向               | 对方模块    | 接口/类型                                                             | 约定                                                                     |
-| ------------------ | ----------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `iter → tensor`    | `tensor`    | `TensorBase<S, D>`、`TensorView<'a, A, D>`、`TensorViewMut<'a, A, D>` | 视图类型由 `tensor` 提供（参见 `07-tensor.md` §5），迭代器入口方法由 `iter` 在 `TensorBase` 上实现（参见 `10-iterator.md` §5.5）。 |
-| `iter → dimension` | `dimension` | `Dimension`、`Axis`，以及内部轴迭代实现使用的 `RemoveAxis`            | 迭代状态机按维度与轴语义推进，参见 `02-dimension.md` §5。                |
-| `iter → storage`   | `storage`   | `Storage`、`StorageMut`                                               | 元素访问与可变访问分别受只读/可写存储约束保护，参见 `05-storage.md` §5。 |
+| 方向               | 对方模块    | 接口/类型                                    | 约定                                                                     |
+| ------------------ | ----------- | -------------------------------------------- | ------------------------------------------------------------------------ |
+| `iter → tensor`    | `tensor`    | `TensorBase`、`TensorView`、`TensorViewMut`  | 视图类型由 `tensor` 提供（参见 `07-tensor.md` §5），迭代器入口方法由 `iter` 在 `TensorBase` 上实现（参见 `10-iterator.md` §5.5）。 |
+| `iter → dimension` | `dimension` | `Dimension`、`Axis`、`RemoveAxis`            | 迭代状态机按维度与轴语义推进，参见 `02-dimension.md` §5。                |
+| `iter → storage`   | `storage`   | `Storage`、`StorageMut`                      | 元素访问与可变访问分别受只读/可写存储约束保护，参见 `05-storage.md` §5。 |
 
 ### 9.2 数据流描述
 
@@ -569,12 +569,12 @@ User calls tensor.iter() / axis_iter() / indexed_iter()
 
 ## 10. 错误处理与语义边界
 
-| 主题              | 内容                                                                                                                                              |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 主题              | 内容                                                                                 |
+| ----------------- | ------------------------------------------------------------------------------------ |
 | Recoverable error | `axis_iter()` / `axis_iter_mut()` 在 `axis` 越界（含 `ndim == 0` 的静态 `Ix0` 与动态 `IxDyn` 输入）上返回 `XenonError::InvalidAxis`。静态 `Ix0` 虽满足 `RemoveAxis` 约束（参见 `02-dimension.md §5.8`），但因其 `ndim == 0`，任意 `Axis(n)` 均触发 `n >= ndim` 检查，统一返回 `InvalidAxis`。 |
-| Panic             | 公开迭代器 API 不引入新的 panic 语义；仅内部 producer 分块等不变量破坏可使用断言。                                                                |
-| 路径一致性        | 连续、非连续、零步长广播视图及并行 producer 的外部迭代顺序与长度语义必须一致。                                                                    |
-| 容差边界          | 不适用。                                                                                                                                          |
+| Panic             | 公开迭代器 API 不引入新的 panic 语义；仅内部 producer 分块等不变量破坏可使用断言。   |
+| 路径一致性        | 连续、非连续、零步长广播视图及并行 producer 的外部迭代顺序与长度语义必须一致。       |
+| 容差边界          | 不适用。                                                                             |
 
 ---
 
