@@ -331,7 +331,7 @@ Smoke Test 仅验证 benchmark 代码可以正常编译和运行，不用于性�
 - 本文档统一使用同一组规模基线：Small = `64` / `8×8`，Medium = `65,536` / `256×256`，Large = `16,777,216` / `4096×4096`。
 - Large 规模基准测试（如 `4096×4096`）仅在 weekly/full benchmark 流水线中执行。PR 级别的 Smoke Test 仅使用 Small/Medium 规模。CI 配置须设置合理的内存上限；当可用内存低于 Large 用例估算峰值的 1.5× 安全阈值时，大张量测试应跳过并标记为 skipped。
 
-**CI 配置示例**
+**CI 配置示例**：
 
 ```yaml
 # .github/workflows/bench.yml
@@ -342,9 +342,9 @@ benchmark-smoke:
 
         - name: Smoke benchmarks
           run: |
-cargo bench --bench math -- "elem_add_f64" --quick
-cargo bench --bench reduction -- "sum_1d_f64" --quick
-cargo bench --bench construction -- "zeros_1d" --quick
+            cargo bench --bench math -- "elem_add_f64" --quick
+            cargo bench --bench reduction -- "sum_1d_f64" --quick
+            cargo bench --bench construction -- "zeros_1d" --quick
 
         - name: Summarize results
           run: python tools/bench/report.py --input target/benchmark-results --output target/benchmark-results/regression.json
