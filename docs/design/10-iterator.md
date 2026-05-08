@@ -198,7 +198,7 @@ where
 ```
 
 - `需求说明书 §11` 与 `02-dimension.md §5.8` 要求 0D 按轴遍历通过运行时 `InvalidAxis` 拒绝。`RemoveAxis` 是公开 sealed trait（定义见 `02-dimension.md §5.8`），对外可命名但禁止外部实现。当前文档保留 `D: RemoveAxis` 的公开签名，是通过 `RemoveAxis::Smaller` 关联类型精确描述输出秩降语义，与 `BroadcastDim` 地位一致。所有进入运行时路径的按轴迭代必须对 `axis < ndim`（含动态 rank-0）返回 `XenonError::InvalidAxis`。
-- **`ExactSizeIterator` 契约说明：** `AxisIter` / `AxisIterMut` 的 `len()` 返回 `shape[axis]`；因此 `size_hint()` 的上下界必须始终相等，并与剩余未产出的轴切片数量一致。空轴（`shape[axis] == 0`）时，`len() == 0`。
+- `AxisIter` / `AxisIterMut` 的 `len()` 返回 `shape[axis]`；因此 `size_hint()` 的上下界必须始终相等，并与剩余未产出的轴切片数量一致。空轴（`shape[axis] == 0`）时，`len() == 0`。
 
 ### 5.3 内部迭代分发说明
 
@@ -309,10 +309,10 @@ assert_eq!(tensor.iter().count(), 12);
 let iter = tensor.iter();
 assert_eq!(iter.len(), 12);
 
-// Bad - manual index traversal (poor performance, repeated bounds checks, loses unified iteration semantics)
+// Bad - manual index traversal
 for i in 0..tensor.shape()[0] {
     for j in 0..tensor.shape()[1] {
-        let _ = tensor.try_at((i, j))?;  // not recommended; see 17-indexing v3.0.2 决策 7
+        let _ = tensor.try_at((i, j))?;  // not recommended
     }
 }
 
@@ -340,7 +340,7 @@ Iter::new(view):
         index = D::zeros(view.ndim())
 ```
 
-### 6.2 步长状态机（StrideState）
+### 6.2 步长状态机
 
 ```text
 increment_index_f(shape, index):
