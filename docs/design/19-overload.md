@@ -512,7 +512,7 @@ fn compute_bad(a: Tensor<f64, Ix2>, b: &Tensor<f64, Ix2>) -> Result<Tensor<f64, 
 
 ### 6.1 委托模式
 
-运算符重载的核心设计模式是 **委托**：
+运算符重载的核心设计模式是委托：
 
 ```
 Operator syntax (arithmetic.rs)
@@ -677,7 +677,7 @@ tensor + scalar:
 | ---- | ------ |
 | 默认配置 | 运算符语法在纯标量后端下与方法型 API 语义保持一致，包括广播失败返回 `Result::Err`。 |
 | 启用 SIMD 相关 feature（按 `Cargo.toml` 实际命名） | 通过 `math` 委托的 SIMD 路径不改变广播、`Result` 与结果所有权语义。 |
-| 启用 rayon-backed 并行 feature（按 `Cargo.toml` 实际命名） | 通过 `math` 委托的并行路径不改变广播、错误边界与结果所有权语义。 |
+| 启用 rayon 并行 feature（按 `Cargo.toml` 实际命名） | 通过 `math` 委托的并行路径不改变广播、错误边界与结果所有权语义。 |
 
 ### 8.7 类型边界 / 编译期测试
 
@@ -698,7 +698,7 @@ tensor + scalar:
 
 | 方向                     | 对方模块    | 接口/类型                  | 约定                                                            |
 | ------------------------ | ----------- | -------------------------- | --------------------------------------------------------------- |
-| `arithmetic → math`      | `math`      | `add()` / `sub()` / `mul()` / `div()` / scalar helpers | 张量路径走方法型逐元素运算，标量路径走内部 scalar helper，参见 `11-math.md` §5 |
+| `arithmetic → math`      | `math`      | `add() / sub() / mul() / div()` / scalar helpers | 张量路径走方法型逐元素运算，标量路径走内部 scalar helper，参见 `11-math.md` §5 |
 | `arithmetic → tensor`    | `tensor`    | `Tensor<A, D>` / `.view()`        | 构造 owned 结果并在需要时创建视图，参见 `07-tensor.md` §5        |
 | `arithmetic → element`   | `element`   | `Numeric`                         | 通过元素约束排除不支持的类型，参见 `03-element.md` §5.2          |
 | `arithmetic → dimension` | `dimension` | `<D as BroadcastDim<E>>::Output`  | 通过维度级关联类型推导广播输出形状，参见 `02-dimension.md` §5.10 |
@@ -724,17 +724,6 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | Panic | 广播不兼容不再 panic；整数除零、溢出与结果不可表示继续沿用 `math` 的 panic 语义，且 panic 消息须包含操作类型、元素类型与第一个失败元素索引（若可确定）。 |
 | 路径一致性 | 借用 / owned / 标量以及由 `math` 触发的标量 / SIMD 路径必须保持相同输出 shape 与数值语义。 |
 | 容差边界 | 当前不引入额外容差；容差基线以 `需求说明书 §28.3` 为权威。若底层 `math` 使用 SIMD，仍须与该基线及标量路径语义一致。 |
-
-### 10.1 运算符错误模型
-
-| 错误类型 | 处理方式 | 理由 |
-|----------|---------|------|
-| 形状不匹配（不可广播） | 返回 `Result::Err(XenonError::BroadcastError)` | 形状错误是用户输入问题，可恢复；**所有** `+ - * /` 运算符与 `add/sub/mul/div` 方法的逐元素广播路径，shape 不可广播（含 rank 不一致但走逐元素广播规则的情形）一律走 `BroadcastError`。`BroadcastError` 的字段定义、构造时机与广播失败语义见 `15-broadcast.md §5.2 BroadcastError 字段映射表` + `§10 错误处理与语义边界`，由 broadcast 模块作为 owner 维护。本模块运算符**不**返回 `ShapeMismatch` 或 `DimensionMismatch`。`ShapeMismatch` 保留给 `dot` 这类**非广播**双输入操作（详见 `12-matrix.md §5.1`：rank ≠ 1 走 `InvalidArgument`，长度不匹配走 `ShapeMismatch`），它们要求 rank 与对应轴长度严格相等，没有"尝试广播"语义，因此用 `ShapeMismatch` 而非 `BroadcastError`。`DimensionMismatch` 在本项目中是更宽泛的"维度不一致"语义（详见 `26-error.md §5.1`），不适用于 dot 也不适用于运算符路径。 |
-| 整数溢出（add/sub/mul/neg） | panic | 算术错误是程序员 bug，不可恢复 |
-| 整数除零（div） | panic | 同上 |
-| 浮点 NaN/Inf | 按 IEEE 754 传播 | 不视为错误，标量行为 |
-
-设计决策：形状/广播错误返回 `Result`，因为它们源自合法但不兼容的输入；算术错误 panic，因为它们指示程序逻辑错误。这种双错误模型在同一运算符表面下统一存在。
 
 ---
 
@@ -767,36 +756,6 @@ User writes a + b / tensor + scalar / Scalar(x) + tensor
 | 替代方案 | 运算符 panic + 提供 `try_add` / `try_sub` 系列方法 — 放弃，因为需求明确要求广播不兼容为可恢复错误，panic 违反语义 |
 | 替代方案 | 运算符不返回 `Result`，广播失败由单独的 broadcast 步骤处理 — 放弃，增加调用复杂度 |
 | 确认     | 本决策经跨模块评审后确认，现作为项目级稳定 API 风格决策生效 |
-
-### 决策 4：仅张量×张量路径共享 Result 边界
-
-| 属性     | 值 |
-| -------- | --- |
-| 决策     | 仅张量×张量/视图路径在广播失败时返回 `Result<Tensor<A, <D as BroadcastDim<E>>::Output>, XenonError>`；标量路径直接返回 `Tensor<A, D>` |
-| 理由     | `需求说明书 §20` 只要求广播支持张量与标量之间的逐元素运算，但标量路径不存在形状不兼容分支；因此只把真正可能出现的广播错误保留在张量×张量路径，既满足 `需求说明书 §12` / `需求说明书 §27` 的可恢复错误约束，也避免为无错误分支的标量路径强加 `Result` |
-| 替代方案 | 所有运算符路径统一返回 `Result`，或让张量×张量路径也 panic |
-| 拒绝原因 | 前者会给无广播失败分支的标量路径引入无依据的错误包装；后者违反需求中“可恢复错误须以返回值形式报告”的约束 |
-
-### 决策 5：标量路径使用直接标量方法而非广播视图
-
-| 属性     | 值 |
-| -------- | --- |
-| 决策     | 张量×标量运算委托给 `*_scalar` 方法，由方法内部直接遍历并写入结果，而非创建广播视图 |
-| 理由     | 更高效（直接迭代 vs 间接寻址），同时避免把通用映射 helper 误写成当前版本的稳定设计依赖 |
-| 替代方案 | 创建标量广播视图 `Tensor0::from_scalar(scalar).view().broadcast_to(shape)` |
-| 拒绝原因 | 会增加间接寻址与额外中间视图概念，不符合当前最小实现描述 |
-
-### 决策 6：同形状路径优先运算符、异形状路径推荐显式方法（B1.c）
-
-| 属性     | 值 |
-| -------- | --- |
-| 决策     | 保持运算符 `Output = Result<Tensor<A, F>, XenonError>`（决策 3 不动），但在 §5.1 与 §5.5 提供风格建议：同形状场景推荐直接 `a + b`、异形状场景推荐显式 `a.add(&b)?` |
-| 理由     | (1) 同形状路径广播必然成功，运算符简洁性优势最大化，`.unwrap()` 安全；(2) 异形状/广播路径失败可能性是真实的，显式方法名 `add` / `sub` 比运算符 `+` / `-` 更突出"可能 `Err`"的语义，与 Rust `?` 传播习惯一致；(3) 不引入新 API，仅是风格建议——任意场景下两种写法都合法 |
-| 替代方案 | 让运算符 `Output = Tensor<A, F>`，异形状走独立 `try_add` 方法返回 `Result`（运算符 panic on broadcast error） |
-| 拒绝原因 | 直接违反需求说明书 §12 / §27 "广播错误必须以返回值形式报告"；与决策 2 拒绝 panic 路径的论证矛盾；增加 API 表面（需要新增 try_* 命名） |
-| 替代方案 | 在 11-math 新增 `try_add` 等方法作为 `add` 的别名 |
-| 拒绝原因 | 命名重复（`add` 已经返回 `Result`），无新语义价值，反而增加用户决策成本 |
-| 关联     | 该决策是 B1.c 的解读 A 落地，与决策 3、4 互补；用户已批准（参见用户决策 2026-04-25） |
 
 ---
 
