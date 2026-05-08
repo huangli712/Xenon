@@ -201,11 +201,11 @@ pub struct StridedFixture1D {
 
 impl StridedFixture1D {
     /// Returns a non-contiguous view by taking a row slice of the F-order 2D owner.
-    /// Actual slicing API follows `17-indexing.md v3.0.2`; the expression below
+    /// Actual slicing API follows `17-indexing.md`; the expression below
     /// is illustrative and must be adapted to the final slice syntax at
     /// implementation. `SliceInfo::new` performs structural validation only;
     /// shape-aware bounds checking happens inside `TensorBase::slice` (see
-    /// 17-indexing v3.0.2 §5.1 and decision 3 / B9.a).
+    /// 17-indexing §5.1).
     pub fn view(&self) -> TensorView1<'_, f64> {
         // Illustrative: take row 1 from the F-order 2D owner, yielding a
         // non-contiguous 1D view with stride == ncols (not 1).

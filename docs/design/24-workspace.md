@@ -356,9 +356,9 @@ impl Workspace {
     /// runtime by the internal `AtomicU8` state machine — multiple read
     /// guards are mutually exclusive but do not require compile-time
     /// exclusivity. By contrast, `borrow_mut()` and `split_at_mut()` take
-    /// `&mut self` (decision 6) so that compile-time exclusivity makes
-    /// "exclusive borrow while another guard is alive" a static type error,
-    /// in addition to the runtime CAS check.
+    /// `&mut self` so that compile-time exclusivity makes "exclusive borrow
+    /// while another guard is alive" a static type error, in addition to
+    /// the runtime CAS check.
     pub fn borrow(&self) -> Result<WorkspaceBorrow<'_>> {
         let prev = self.borrow_state.compare_exchange(
             Self::BORROW_NONE,
@@ -387,10 +387,10 @@ impl Workspace {
 
     /// Mutably borrow the workspace.
     ///
-    /// Takes `&mut self` (decision 6 / B12.a): compile-time exclusivity
-    /// makes "exclusive borrow while another guard exists" a static type
-    /// error. The internal `AtomicU8` CAS still runs as a defense-in-depth
-    /// check that observes residual state from prior split lifecycles.
+    /// Takes `&mut self`: compile-time exclusivity makes "exclusive borrow
+    /// while another guard exists" a static type error. The internal
+    /// `AtomicU8` CAS still runs as a defense-in-depth check that observes
+    /// residual state from prior split lifecycles.
     ///
     /// # Errors
     ///

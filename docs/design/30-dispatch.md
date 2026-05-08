@@ -141,7 +141,7 @@ pub(crate) enum ExecPath {
     /// element type support). That fallback is invisible to dispatch.
     ///
     /// dispatch only signals "SIMD path is preferred for this input shape";
-    /// `simd/` retains final admission authority per Decision 2 (§11).
+    /// `simd/` retains final admission authority.
     Simd,
 
     /// Parallel execution.
@@ -149,10 +149,10 @@ pub(crate) enum ExecPath {
     /// Caller delegates to the `parallel/` backend. Each worker chunk
     /// MAY independently invoke a SIMD kernel from `simd/` per chunk-local
     /// admission (thread × SIMD double-layer acceleration; see
-    /// `08-simd.md v2.0.1` §9.3 / decision 5 and `09-parallel.md v2.0.1`
-    /// decision 9). This path is only returned when `feature = "parallel"`
-    /// is enabled AND the input meets the parallel threshold AND the
-    /// thread is not already inside a library-internal parallel region.
+    /// `08-simd.md` §9.3 and `09-parallel.md`). This path is only returned
+    /// when `feature = "parallel"` is enabled AND the input meets the
+    /// parallel threshold AND the thread is not already inside a library-internal
+    /// parallel region.
     ///
     /// When this variant is returned, `select_exec_path()` also yields
     /// the corresponding `ParallelGuard` (held by the caller) — selection
@@ -434,7 +434,7 @@ pub(crate) fn with_parallel_worker_context<R>(f: impl FnOnce() -> R) -> R {
 /// region" are performed as a single critical section against the
 /// thread-local flag. There is no observable intermediate state
 /// where another caller on the same thread could see "Parallel
-/// selected but not yet entered" — see Decision 7 (§11).
+/// selected but not yet entered".
 pub(crate) fn select_exec_path(
     len: usize,
     is_contiguous: bool,
@@ -1182,7 +1182,7 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 | 决策     | dispatch.rs 不参与 ISA 检测或 SIMD 能力判定。ISA 检测、lane 宽度选择、对齐细节均保留在 `simd/` 模块内部。                 |
 | 理由     | ISA 检测属于 SIMD 后端实现细节；将其隔离在 `simd/` 内部保持 dispatch 简单、可测试、无平台依赖。dispatch 只需要知道"输入是否连续+对齐"。 |
 | 替代方案 | dispatch 调用 `pulp::Arch::new()` 做 ISA 检测 —— 放弃，会引入 `pulp` 依赖到 dispatch（违反零依赖原则）、模糊职责边界。  |
-| 来源     | **用户决策（dispatch decision 2）**：dispatch 是 ISA-agnostic；ISA 检测是 `pulp::Arch` 的职责。                                               |
+| 来源     | 用户决策：dispatch 是 ISA-agnostic；ISA 检测是 `pulp::Arch` 的职责。                                               |
 
 ### 决策 3：嵌套并行检测通过 thread-local + RAII guard
 

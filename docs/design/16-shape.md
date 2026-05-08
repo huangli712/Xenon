@@ -207,8 +207,8 @@ let b = a.transpose();  // O(1), zero-copy
 assert_eq!(b.shape(), &[1000, 1000]);
 
 // Bad - manually copy data for transpose (wastes memory and time).
-// Note: `[]` indexing is intentionally not implemented (see 17-indexing
-// decisions). Use the safe `try_at` / `try_at_mut` APIs explicitly.
+// Note: `[]` indexing is intentionally not implemented (see 17-indexing).
+// Use the safe `try_at` / `try_at_mut` APIs explicitly.
 let a = Tensor::<f64, _>::zeros([1000, 1000])?;
 let mut b = Tensor::<f64, _>::zeros([1000, 1000])?;
 for i in 0..1000 {

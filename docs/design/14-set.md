@@ -116,8 +116,7 @@ where
     /// Implementations MAY internally choose a deterministic order (such as
     /// F-order first-occurrence) for performance or debugging convenience,
     /// but that choice is an internal implementation detail and is NOT part
-    /// of the public API contract — see decision 4. Tests MUST assert
-    /// set-equality, not vector-equality.
+    /// of the public API contract. Tests MUST assert set-equality, not vector-equality.
     ///
     /// # Supported types
     ///
@@ -229,8 +228,10 @@ unique(self):
        the output sequence.
     4. Construct `Tensor<A, Ix1>` from the appended sequence (owned F-order
        contiguous buffer).
+```
 
-Ordering contract (decision 4, post v2.0.2):
+```
+Ordering contract:
     - Output element order is UNSPECIFIED. Two calls on the same input MAY
       produce outputs in different orders.
     - The reference implementation above happens to be deterministic (driven
