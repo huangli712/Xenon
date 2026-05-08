@@ -188,7 +188,7 @@ where
   | `broadcast_to(self, target)` | `Cow::Borrowed("broadcast_to")` | `self.shape().to_vec()` | `vec![]`（无右侧输入；用空 Vec 作占位） | `Some(target.shape().to_vec())` | `Some(失败轴 index)` |
   | `broadcast_with(a, b)` | `Cow::Borrowed("broadcast_with")` | `a.shape().to_vec()` | `b.shape().to_vec()` | `None` | `Some(失败轴 index)` |
 
-  > 字段类型说明：v3.0.0 中 `lhs_shape` 与 `rhs_shape` 不再是 `Option<Vec<usize>>`，而是 `Vec<usize>`。`broadcast_to` 这种"单输入 + 显式目标"的场景没有右侧输入，按约定用 `vec![]` 占位以满足结构体字段非 Option 的要求；调用方据此可识别"右侧输入不存在"。该占位只在 `operation == "broadcast_to"` 且 `attempted_target_shape.is_some()` 的语境下表示无右侧输入；标量 shape `[]` 仍需结合具体 operation / 字段位置解释。`attempted_target_shape` 仅 `broadcast_to` 填 `Some(..)`，其它 API 用 `None`。
+  > 字段类型说明：`lhs_shape` 与 `rhs_shape` 不再是 `Option<Vec<usize>>`，而是 `Vec<usize>`。`broadcast_to` 这种"单输入 + 显式目标"的场景没有右侧输入，按约定用 `vec![]` 占位以满足结构体字段非 Option 的要求；调用方据此可识别"右侧输入不存在"。该占位只在 `operation == "broadcast_to"` 且 `attempted_target_shape.is_some()` 的语境下表示无右侧输入；标量 shape `[]` 仍需结合具体 operation / 字段位置解释。`attempted_target_shape` 仅 `broadcast_to` 填 `Some(..)`，其它 API 用 `None`。
 - **返回类型与共享只读保证：** 当前版本复用 `TensorView` 作为返回类型，不引入单独的 `BroadcastView` 新类型。广播结果内部承载 `ViewRepr<'a, A>`（与 `05-storage.md` §5.11.1 "广播 / 转置 / 切片产生的只读视图统一使用 ViewRepr" 规则一致），`storage_kind()` 返回 `StorageKind::View`，`access_semantics()` 返回 `AccessSemantics::SharedReadOnly`。由于广播引入零步长布局，多个逻辑位置映射到同一物理元素，因此只读共享语义由以下机制共同保证：1) `LayoutFlags::HAS_ZERO_STRIDE` / `LayoutState::BroadcastView` 标识广播布局；2) 广播结果类型层缺失 `StorageMut` 能力且不提供 `into_mut()` 等 API；3) 广播结果的生命周期绑定源张量。
 
 ### 5.3 Good / Bad 对比
@@ -467,7 +467,7 @@ User calls broadcast_to() or broadcast_with()
 | 主题              | 内容                                                                                                                               |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | Recoverable error | 广播不兼容时统一返回 `XenonError::BroadcastError`；`broadcast_to`、`broadcast_shape`、`broadcast_with` 都必须填充结构化字段（按 §5.2 表）。`operation` 用 `Cow::Borrowed(..)`，`lhs_shape` / `rhs_shape` 总是 `Vec<usize>`，`attempted_target_shape` / `axis` 是 `Option`。|
-| 参数错误          | 当 `orig_shape.len() != orig_strides.len()` 等公开前提被破坏时，`broadcast_strides()` 返回 `XenonError::InvalidArgument { operation: Cow::Borrowed("broadcast_strides"), kind: InvalidArgumentKind::OperationSpecific { argument, constraint } }`（封闭枚举字段对齐 26-error v3.2.0 §5.1）。|
+| 参数错误          | 当 `orig_shape.len() != orig_strides.len()` 等公开前提被破坏时，`broadcast_strides()` 返回 `XenonError::InvalidArgument { operation: Cow::Borrowed("broadcast_strides"), kind: InvalidArgumentKind::OperationSpecific { argument, constraint } }`（封闭枚举字段对齐 26-error §5.1）。|
 | Panic             | 不允许把 shape 不兼容隐藏为 panic；公开 API 使用 `Result` 表达失败。                                                               |
 | 语义边界          | 广播只负责显式元数据扩展，不改变元素值、不重排数据、不授予可写访问。                                                               |
 | 路径一致性        | 默认路径、后续可能启用的 SIMD/并行消费路径都必须共享同一广播规则与错误类别；广播模块自身不分裂语义分支。                           |

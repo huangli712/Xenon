@@ -397,7 +397,7 @@ fn share_arc_tensor() -> Result<(), XenonError> {
     let arc_clone = arc.clone();  // strong_count = 2
 
     // Read fixed offsets up-front. Xenon does not implement `std::ops::Index`;
-    // use `try_at` (17-indexing v3.0.2 §5.2) for fallible structured indexing.
+    // use `try_at` (17-indexing §5.2) for fallible structured indexing.
     let parent_v1 = *arc.try_at(Ix1(1))?;
     assert_eq!(parent_v1, 2.0);
 

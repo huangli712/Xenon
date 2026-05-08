@@ -829,7 +829,7 @@ fmt_display(error, formatter):
           and OrAny<T> for Option<T>
         - for Ffi / Workspace: append "; caused by: <inner>" if cause is Some
         - for TypeConversion: write source_type / target_type as the
-          stored &'static str directly (v3.2.0); no Debug formatting
+          stored &'static str directly; no Debug formatting
     3. write formatted string to formatter
 ```
 

@@ -194,7 +194,7 @@ pub fn sequential_2d(rows: usize, cols: usize) -> Tensor2<f64> {
 
 /// Generate a truly non-contiguous 1D view from an F-order 2D owner.
 /// NOTE: The slice construction below uses pseudo-code; actual API shape
-/// must follow `17-indexing.md v3.0.2` frozen interface at implementation time.
+/// must follow `17-indexing.md` frozen interface at implementation time.
 pub struct StridedFixture1D {
     pub owner: Tensor2<f64>,
 }
@@ -372,7 +372,7 @@ cargo bench --bench construction -- "zeros_1d" --quick
 
 > **算子返回类型说明**：`std::ops::Add`/`Sub`/`Mul`/`Div` 等运算符的 `Output = Result<Tensor, XenonError>`（参见 `19-overload.md §5.1` 决策 3/4）。在 benchmark 中，输入张量都由 `generators::*` 在迭代回调外预生成且形状已知一致，因此 `(&a + &b).unwrap()` 在该路径上等价于一次永远成功的 `Result` 解包；`unwrap()` 不构成 hot-path 噪声，仅作为编译期 sanity check。同形状路径不应失败；如失败应视为 benchmark fixture 配置错误。
 >
-> **构造返回类型说明（与 18-construction v3.0.1 协同）**：`Tensor::from_shape_vec` 返回 `Result<Self, XenonError>`，失败时 `kind: InvalidShapeKind::ElementCountMismatch { expected, actual }`（参见 `18-construction.md v3.0.1 §5.3`）。Generator 中的 `expect(...)` 仅作为预生成阶段的 assertion，不进入计时区间。
+> **构造返回类型说明**：`Tensor::from_shape_vec` 返回 `Result<Self, XenonError>`，失败时 `kind: InvalidShapeKind::ElementCountMismatch { expected, actual }`（参见 `18-construction.md §5.3`）。Generator 中的 `expect(...)` 仅作为预生成阶段的 assertion，不进入计时区间。
 
 ```rust,ignore
 // benches/math.rs

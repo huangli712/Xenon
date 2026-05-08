@@ -364,7 +364,7 @@ TensorBase::slice(info):
        (R15 B-01 closes this gap).
     3. Recompute layout flags via compute_layout_flags::<A, I>(&new_shape,
        &new_strides, logical_ptr) where `logical_ptr` is computed per the
-       v3.0.2 SAFETY rule below: for empty results (`product(new_shape) == 0`)
+       SAFETY rule below: for empty results (`product(new_shape) == 0`)
        use NonNull::<A>::dangling().as_ptr() (do NOT touch the storage
        pointer); for non-empty results use unsafe { self.as_ptr().add(slice_delta) }
        — note `self.as_ptr()` already includes self.offset, so we add the
