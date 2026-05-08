@@ -4,8 +4,6 @@
 > 模块文件: src/dispatch.rs
 > 任务阶段: Phase 5
 > 前置文档: 06-layout.md, 07-tensor.md, 09-parallel.md
-> 需求参考: 需求说明书 §9、§13、§14、§28
-> 范围声明: 范围内
 
 ---
 
@@ -13,21 +11,21 @@
 
 ### 1.1 职责边界
 
-| 职责       | 包含                                                                 |
-| ---------- | -------------------------------------------------------------------- |
-| 路径裁决   | `ExecPath` 三路仲裁（Serial / Simd / Parallel），通过 `select_exec_path()` 统一入口 |
-| 阈值管理   | 并行阈值与 SIMD 通用阈值均提供编译期默认值（`PARALLEL_THRESHOLD` / `SIMD_THRESHOLD`）+ 对称的内部运行时覆写与重置接口（`set_parallel_threshold` / `reset_parallel_threshold`、`set_simd_threshold` / `reset_simd_threshold`），用于内部测试与基准。per-op SIMD admission 阈值由 `simd/` 后端管理（参见 §5.6 / §6.3 + `08-simd.md §5.6` "条件实现，默认标量回退"） |
-| 嵌套防护   | `ParallelGuard` / `ParallelContext` 的 thread-local RAII 保护，防止库内部二次并行 |
-| 策略参数   | `ParallelExecStrategy` 定义（chunk_size、max_workers），供 parallel/ 后端消费 |
-| 快捷查询   | `should_parallelize()` 布尔查询，供仅关注串行/并行二选的调用方使用    |
+| 职责       | 包含                                                                        |
+| ---------- | --------------------------------------------------------------------------- |
+| 路径裁决   | `ExecPath` 三路仲裁（Serial / Simd / Parallel）                             |
+| 阈值管理   | 并行阈值与 SIMD 通用阈值均提供编译期默认值+ 对称的内部运行时覆写与重置接口  |
+| 嵌套防护   | `ParallelGuard` / `ParallelContext` 的 thread-local RAII 保护，防止二次并行 |
+| 策略参数   | `ParallelExecStrategy` 定义，供 parallel/ 后端消费 i                        |
+| 快捷查询   | `should_parallelize()` 布尔查询，供仅关注串行/并行二选的调用方使用          |
 
 | 职责       | 不包含                                                      |
 | ---------- | ----------------------------------------------------------- |
-| 路径裁决   | ISA 检测与选择（那归 `pulp::Arch`，在 `simd/` 内部完成）    |
-| 阈值管理   | SIMD 最终准入判定（lane 宽度、元素类型支持等——那归 `simd/`） |
-| 嵌套防护   | 串行回退实现或并行/ SIMD 执行逻辑本身（那归各语义模块与后端） |
-| 策略参数   | 广播形状仲裁（那归 `math/broadcast`）                        |
-| 快捷查询   | 标量实现代码（那归 `math/matrix/reduction`）                 |
+| 路径裁决   | ISA 检测与选择（归 `pulp::Arch`，在 `simd/` 内部完成）      |
+| 阈值管理   | SIMD 最终准入判定（lane 宽度、元素类型支持等——归 `simd/`）  |
+| 嵌套防护   | 串行回退实现或并行/ SIMD 执行逻辑本身（归各语义模块与后端） |
+| 策略参数   | 广播形状仲裁（归 `math/broadcast`）                         |
+| 快捷查询   | 标量实现代码（归 `math/matrix/reduction`）                  |
 
 ### 1.2 设计原则
 
