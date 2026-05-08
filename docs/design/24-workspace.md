@@ -84,7 +84,7 @@ External dependencies:
 | -------------------- | ---------------------------------------------------------------------- |
 | `core`               | `NonNull<u8>`, `PhantomData`, `AtomicU8`, `fmt::Debug`, `fmt::Display` |
 | `alloc`              | `alloc()`, `dealloc()`, `Layout`                                       |
-| `crate::error`       | `XenonError`（公开 Xenon API 错误类型，含 `Workspace` 变体）、`Result<T>`、`WorkspaceErrorCategory`（七子变体：`AllocFailed` / `InvalidLayout` / `BorrowConflict` / `SplitOutOfBounds` / `SplitCountInvariant` / `GrowOverflow` / `TypedViewRejected`）、`WorkspaceBorrowKind`（Shared/Exclusive/Split）、`WorkspaceBorrowState`（None/Shared/Exclusive/SplitActive）、`TypedViewRejection`（`ZeroSizedType` / `AlignmentMismatch { required, actual }` / `TypedByteLengthOverflow { count, elem_size }`，**均见 `26-error.md v3.2.0 §5.1`**；旧 `LengthNotMultipleOfSize` 已在 v3.1.0 删除——typed view API 仅按 `count` 申请、不存在按字节长度 reinterpret 的路径，溢出走 `TypedByteLengthOverflow`，详见 §5.6 与 `26-error.md v3.1.1` changelog）。本模块**不**使用 `Cow<'static, str>` 作为自由文本诊断字段（即不向错误结构体注入用户可见的随意诊断字符串）；按 `26-error.md v3.2.0` 要求，仅使用 `Cow<'static, str>` 填充稳定标识符字段 `operation`（值取自字面量集合，例如 `Cow::Borrowed("Workspace::new")`、`Cow::Borrowed("Workspace::reserve")` 等），用于诊断"哪个 API 触发了错误"，不携带运行时信息。 |
+| `crate::error`       | `XenonError`（公开 Xenon API 错误类型，含 `Workspace` 变体）、`Result<T>`、`WorkspaceErrorCategory`（七子变体：`AllocFailed` / `InvalidLayout` / `BorrowConflict` / `SplitOutOfBounds` / `SplitCountInvariant` / `GrowOverflow` / `TypedViewRejected`）、`WorkspaceBorrowKind`（Shared/Exclusive/Split）、`WorkspaceBorrowState`（None/Shared/Exclusive/SplitActive）、`TypedViewRejection`（`ZeroSizedType` / `AlignmentMismatch { required, actual }` / `TypedByteLengthOverflow { count, elem_size }`，**均见 `26-error.md §5.1`**；旧 `LengthNotMultipleOfSize` 已删除——typed view API 仅按 `count` 申请、不存在按字节长度 reinterpret 的路径，溢出走 `TypedByteLengthOverflow`，详见 §5.6）。本模块**不**使用 `Cow<'static, str>` 作为自由文本诊断字段（即不向错误结构体注入用户可见的随意诊断字符串）；按 `26-error.md` 要求，仅使用 `Cow<'static, str>` 填充稳定标识符字段 `operation`（值取自字面量集合，例如 `Cow::Borrowed("Workspace::new")`、`Cow::Borrowed("Workspace::reserve")` 等），用于诊断"哪个 API 触发了错误"，不携带运行时信息。 |
 
 ### 4.3 依赖合法性
 
@@ -600,7 +600,7 @@ impl<'a> WorkspaceBorrowMut<'a> {
                 // express the requested byte length, so reuse of `GrowOverflow`
                 // (which expects bytes in both fields) would lie about the
                 // request. Use `TypedViewRejected::TypedByteLengthOverflow`
-                // (see `26-error.md §5.1` v3.1.1) which carries `count` and
+                // (see `26-error.md §5.1`) which carries `count` and
                 // `elem_size` in their natural units.
                 category: WorkspaceErrorCategory::TypedViewRejected {
                     detail: TypedViewRejection::TypedByteLengthOverflow {
@@ -1097,7 +1097,7 @@ let scratch = buf.as_maybe_uninit_slice();
 // Bad - Treating scratch memory as initialized typed elements without proof
 let mut ws = Workspace::new(1024, 64)?;
 let mut buf = ws.borrow_mut()?;
-// Note: typed view is sealed to T: Element (per §5.6, v3.0.1). Even with the
+// Note: typed view is sealed to T: Element (per §5.6). Even with the
 // proper bound, calling `assume_init_typed_slice` without first writing valid
 // `i32` values via the `MaybeUninit` view is UB.
 let ints: &mut [i32] = unsafe { buf.assume_init_typed_slice::<i32>(256)? };

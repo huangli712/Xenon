@@ -166,7 +166,7 @@ use crate::error::{FfiErrorCategory, FfiBackend};
 /// - `backend: FfiBackend` — closed enum: `RawParts` for generic raw-parts
 ///   FFI, `Blas` for BLAS-compatible export.
 /// - `cause: Option<Box<XenonError>>` — optional source-chain pointer
-///   per `26-error.md` v3.2.0 §5.1; the chain is exposed to callers via
+///   per `26-error.md` §5.1; the chain is exposed to callers via
 ///   `std::error::Error::source()` (see `26-error.md` §5.1 `impl Error`).
 ///
 /// Example source-chain construction when an FFI boundary wraps a lower-level
@@ -278,7 +278,7 @@ pub struct BlasInfo<A> { /* fields omitted — see §5.5 */ }
 // See 03-element.md §5.1.1 for the full ElementType definition.
 // Only the FFI-consumer-visible public API signature is shown here.
 //
-// **C ABI value pinning (v3.0.2)**: each variant has an explicit
+// **C ABI value pinning**: each variant has an explicit
 // discriminant. These values are SemVer-pinned for `crate::ffi::ElementType`
 // consumers — adding a new variant gets a new value and is a non-breaking
 // change under `#[non_exhaustive]`; reordering or reusing existing values

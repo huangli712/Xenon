@@ -576,7 +576,7 @@ fn test_unique_non_contiguous() {
 | `test_bool_not_participating_in_cast`    | `bool` 不参与逐元素类型转换，相关入口在类型层或运行时被拒绝 | 高     |
 | `test_cast_nan_to_int`                   | `cast()` 对 NaN→整数返回 `TypeConversion` 错误              | 中     |
 
-转换测试遵循 `21-type.md` 的三层结构：静态无损 `From`、静态有损 `CastTo<T>`、动态条件性 `CastTo<T>`。`TypeConversion` 错误断言必须匹配五字段：`operation: Cow::Borrowed("cast")`（标量级 `CastTo::cast_to()` 自身填 `Cow::Borrowed("cast_to")`，张量入口 `cast()` 在 rewrap 时覆盖为 `"cast"`；空字符串被禁止——见 `04-complex.md §10` / `21-type.md §6.1`）、`source_type: &'static str`（断言示例：`assert_eq!(err.source_type, "f64")`，v3.2.0 起改为字符串字面量比较）、`target_type: &'static str`（同前）、`reason: ConversionFailureReason`、`element_index: Option<usize>`；类型身份只使用 `&'static str`，值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供（详见 `26-error.md §5.1` 与 `03-element.md v1.4.0 §5.1.1`）。
+转换测试遵循 `21-type.md` 的三层结构：静态无损 `From`、静态有损 `CastTo<T>`、动态条件性 `CastTo<T>`。`TypeConversion` 错误断言必须匹配五字段：`operation: Cow::Borrowed("cast")`（标量级 `CastTo::cast_to()` 自身填 `Cow::Borrowed("cast_to")`，张量入口 `cast()` 在 rewrap 时覆盖为 `"cast"`；空字符串被禁止——见 `04-complex.md §10` / `21-type.md §6.1`）、`source_type: &'static str`（断言示例：`assert_eq!(err.source_type, "f64")`，为字符串字面量比较）、`target_type: &'static str`（同前）、`reason: ConversionFailureReason`、`element_index: Option<usize>`；类型身份只使用 `&'static str`，值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供（详见 `26-error.md §5.1` 与 `03-element.md v1.4.0 §5.1.1`）。
 
 ### 5.15 test_utility.rs
 
@@ -629,7 +629,7 @@ fn test_unique_non_contiguous() {
 | `test_from_raw_parts_mut_reject_overlap` | `from_raw_parts_mut` 对地址重叠/别名冲突执行检查 | 高     |
 | `test_try_offset_of`                     | try_offset_of 正确计算                           | 高     |
 | `test_export_alignment_preconditions`    | 导出描述符仅在满足对齐前提时声明可供上游直接消费 | 高     |
-| `test_cbindgen_header_exports_only_raw_descriptors` | cbindgen 三道闸门契约（per `23-ffi.md §5.3.bis` v3.0.2 + `§3` 文件布局）：(1) 生成的 C 头文件包含 `TensorExportRaw` / `TensorExportMutRaw` / `enum ElementType` 定义；(2a) **不**包含泛型 `TensorExport` / `TensorExportMut` 的任何 typedef / struct / enum 出现——必须使用 word-boundary 正则 `\bTensorExport\b` / `\bTensorExportMut\b`（**不**使用普通 substring grep；否则 `TensorExportRaw` / `TensorExportMutRaw` 会被前缀误命中）；(2b) **断言**泛型 `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 仅定义在 `src/ffi/private.rs`，且该模块不被 cbindgen emission 路径引用（通过源码 grep + cbindgen.toml `exclude` 规则两路验证）；(3) `ElementType` 枚举值与 `03-element.md §5.1.1` 显式 discriminants 严格一致（`Bool=0..Complex64=6`）。CI 在每次 PR 重新生成头文件并对比预期 schema | 高     |
+| `test_cbindgen_header_exports_only_raw_descriptors` | cbindgen 三道闸门契约（per `23-ffi.md §5.3.bis` + `§3` 文件布局）：(1) 生成的 C 头文件包含 `TensorExportRaw` / `TensorExportMutRaw` / `enum ElementType` 定义；(2a) **不**包含泛型 `TensorExport` / `TensorExportMut` 的任何 typedef / struct / enum 出现——必须使用 word-boundary 正则 `\bTensorExport\b` / `\bTensorExportMut\b`（**不**使用普通 substring grep；否则 `TensorExportRaw` / `TensorExportMutRaw` 会被前缀误命中）；(2b) **断言**泛型 `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 仅定义在 `src/ffi/private.rs`，且该模块不被 cbindgen emission 路径引用（通过源码 grep + cbindgen.toml `exclude` 规则两路验证）；(3) `ElementType` 枚举值与 `03-element.md §5.1.1` 显式 discriminants 严格一致（`Bool=0..Complex64=6`）。CI 在每次 PR 重新生成头文件并对比预期 schema | 高     |
 
 FFI 错误测试必须匹配 `XenonError::Ffi { operation, category: FfiErrorCategory, backend: FfiBackend, cause }` 四字段结构，`operation` 使用 `Cow::Borrowed("...")`。`FfiErrorCategory` 覆盖 `NullPointer`、`AlignmentMismatch`、`InvalidRank`、`BlasIncompatibleLayout`、`IntegerOverflow`、`AbiMismatch`、`OverlapRejected`、`ForeignAllocatorMismatch`，`FfiBackend` 仅为 `RawParts` / `Blas`。
 
