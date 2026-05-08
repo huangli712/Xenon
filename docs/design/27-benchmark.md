@@ -459,8 +459,6 @@ fn bench_sum_bad2() {
 
 ### 6.1 测量方法论
 
-使用仓库内轻量 benchmark harness：预热后以 `Instant` 计时，并由脚本统一汇总结果。
-
 | 阶段            | 说明                                                     |
 | --------------- | -------------------------------------------------------- |
 | 预热 (warm-up)  | 每个基准先运行固定轮数预热，消除冷启动效应               |
@@ -468,6 +466,8 @@ fn bench_sum_bad2() {
 | 汇总            | 由仓库脚本统一读取 stdout / JSON 摘要，使用 median 而非 mean 计算回归百分比 |
 | 报告            | CLI 文本摘要；如后续需要更复杂报告，须单独裁决引入新工具 |
 
+使用仓库内轻量 benchmark harness：
+- 预热后以 `Instant` 计时，并由脚本统一汇总结果。
 - 记录环境信息：至少包含 CPU、编译配置、feature flags。
 - 可选 CPU pinning：如仓库环境允许，可将 benchmark 进程绑定到固定核心以降低抖动。
 - 当前测量方法为简化版本。回归阈值（5%/20%）为参考值，CI 环境波动可能导致误判。未来可升级为统计显著性检验。
@@ -482,7 +482,7 @@ fn bench_sum_bad2() {
 | 预分配 + 复用 | 数据在计时循环外生成                                            | 避免测量中混入构造开销 |
 | 非连续视图    | 行视图或转置视图                                                | 模拟真实非连续访问场景 |
 
-**设计决策**：所有数据在迭代回调外预生成（参见 §5.9 Bad 示例），确保仅测量目标操作本身的性能。
+**设计决策**：所有数据在迭代回调外预生成，确保仅测量目标操作本身的性能。
 
 ### 6.3 black_box 使用规范
 
@@ -519,7 +519,7 @@ benchmark 不定义正确性容差，也不在本文件内重复维护 `MathTole
 - [ ] **T1**: 配置 `Cargo.toml` bench 入口和仓库内基准 harness
   - 文件: `Cargo.toml`
   - 内容: 添加 9 个 `[[bench]]` 入口，不新增 benchmark 专用第三方依赖
-  - 测试: `cargo bench --bench math -- "elem_add_f64" --quick` 能编译并冒烟运行至少一个基准组（自定义 `harness = false` 模板仅识别 `--quick` 与单个 filter 字符串，**不**支持 `--list` —— 见 §5.8 模板）
+  - 测试: `cargo bench --bench math -- "elem_add_f64" --quick` 能编译并冒烟运行至少一个基准组（自定义 `harness = false` 模板仅识别 `--quick` 与单个 filter 字符串，不支持 `--list`）
   - 前置: 无
   - 预计: 5 min
 
@@ -616,7 +616,7 @@ benchmark 不定义正确性容差，也不在本文件内重复维护 `MathTole
 
 | 类型     | 位置                                   | 目的                                                     |
 | -------- | -------------------------------------- | -------------------------------------------------------- |
-| 单元验证 | `cargo bench --bench X -- "<name>" --quick` | 每个 benchmark 文件可编译并冒烟运行至少一个基准组（自定义 harness 不实现 `--list`） |
+| 单元验证 | `cargo bench --bench X -- "<name>" --quick` | 每个 benchmark 文件可编译并冒烟运行至少一个基准组   |
 | 集成验证 | `cargo bench --bench X -- "Y" --quick` | 快速验证单个 benchmark 可运行，输入与 feature 组合正确   |
 | 边界验证 | CI smoke/regression                    | 验证 benchmark 分组、输入规模、feature 组合与回归阈值流程符合预期 |
 | 基线校验 | benchmark 输入准备与路径选择检查       | 验证 benchmark 分组、输入规模与 feature 组合符合预期     |
@@ -634,7 +634,7 @@ benchmark 不定义正确性容差，也不在本文件内重复维护 `MathTole
 
 | 场景                         | 测试方式                                           |
 | ---------------------------- | -------------------------------------------------- |
-| feature-gated benchmark 入口 | `cargo bench --bench ... --features ... -- "<filter>" --quick`（自定义 `harness=false` runner 仅识别 filter + `--quick`，不实现 `--list`；与 §7 T1 / §8.1 一致） |
+| feature-gated benchmark 入口 | `cargo bench --bench ... --features ... -- "<filter>" --quick`（自定义 `harness=false` runner 仅识别 filter + `--quick`，不实现 `--list`） |
 | SIMD / 并行比较组导出边界    | 配置矩阵编译检查                                   |
 | 非法 feature 组合            | CI 配置矩阵与 smoke check                          |
 
@@ -710,8 +710,6 @@ benchmark files
 | 决策     | 若仓库后续启用 Regression Check，可采用 >5% warning、>20% fail、>5% 改善记录 的工程门限 |
 | 理由     | 该门限有助于持续观察性能趋势，但属于 CI/维护流程增强，不是 `需求说明书` 当前版本的必需交付 |
 | 替代方案 | 完全不设门限 — 允许，当前版本至少需保留可重复 benchmark 方案与结果汇总口径 |
-
-**补充**：Regression Check、baseline 更新与 5% / 20% 门限均属于可选工程增强；当前版本必需交付的是 benchmark 分组、输入矩阵、feature 组合与可重复测量方法，Smoke Test 只验证 benchmark 可运行性，不应阻塞合并。
 
 ### 决策 5：仅 F-order 布局测试
 
