@@ -280,7 +280,9 @@ impl EyeElement for Complex<f64> {}
 
 ### 5.3 from_shape_vec / from_shape_slice / from_array
 
-> **与 `07-tensor.md` 的关系：** `from_shape_vec` 的公开签名作为 `TensorBase<Owned<A>, D>` 的固有方法列于 `07-tensor.md` §5.5；本节是其权威实现设计，实际代码位于 `src/construct/from.rs`。`07-tensor.md` §9 中的数据流图仅用于展示 `tensor` 与 `layout` 模块的交互方式，以本节为准。
+- `from_shape_vec` 的公开签名作为 `TensorBase<Owned<A>, D>` 的固有方法列于 `07-tensor.md` §5.5。
+- 本节是其权威实现设计，实际代码位于 `src/construct/from.rs`。
+- `07-tensor.md` §9 中的数据流图仅用于展示 `tensor` 与 `layout` 模块的交互方式，以本节为准。
 
 ```rust,ignore
 # use std::borrow::Cow;
@@ -557,14 +559,14 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 
 | 构造方法           | 分配策略                                                  | 初始化                                         |
 | ------------------ | --------------------------------------------------------- | ---------------------------------------------- |
-| `zeros`            | 委托 `<Owned<A> as StorageOwned>::from_elem(len, A::zero())` | 具体初始化策略由 storage 层决定                |
-| `ones`             | 委托 `<Owned<A> as StorageOwned>::from_elem(len, A::one())`  | 具体填充策略由 storage 层决定                  |
+| `zeros`            | 委托 `<Owned<A> as StorageOwned>::from_elem(len, A::zero())` | 具体初始化策略由 storage 层决定             |
+| `ones`             | 委托 `<Owned<A> as StorageOwned>::from_elem(len, A::one())`  | 具体填充策略由 storage 层决定               |
 | `from_shape_vec`   | 走共享 owned 构造路径；可按实现需要复用或重打包输入缓冲区 | 用户提供数据                                   |
 | `from_shape_slice` | 先物化 owned 缓冲区，再委托共享 owned 构造路径            | 至少一次切片拷贝；后续是否再搬运取决于内部实现 |
 | `from_scalar`      | 对齐分配（1 元素）                                        | 单元素写入                                     |
 | `eye`              | 先 `zeros` 再对角线写入                                   | 两步：零初始化 + 对角线                        |
 
-### 6.2 范围外能力记录
+### 6.2 范围外能力
 
 `full()` 与 `from_fn()` 属于后续版本候选能力，当前文档不继续展开其内部填充策略或任务拆分。
 
@@ -695,11 +697,11 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 
 ### 8.7 类型边界 / 编译期测试
 
-| 场景                                                             | 测试方式                     |
-| ---------------------------------------------------------------- | ---------------------------- |
-| `eye::<bool>` 不被支持                                           | 编译期测试。                 |
-| `from_scalar` 仅产出 `Ix0`                                       | 编译期签名检查与运行时断言。 |
-| arange / linspace / from_fn / random constructors 不属于当前 API | API 缺失断言。               |
+| 场景                                                               | 测试方式                     |
+| ------------------------------------------------------------------ | ---------------------------- |
+| `eye::<bool>` 不被支持                                             | 编译期测试。                 |
+| `from_scalar` 仅产出 `Ix0`                                         | 编译期签名检查与运行时断言。 |
+| `arange / linspace / from_fn / random constructors 不属于当前 API` | API 缺失断言。               |
 
 ---
 
@@ -710,9 +712,9 @@ fn create_matrix_bad(data: Vec<f64>) -> Tensor<f64, Ix2> {
 | 方向                    | 对方模块    | 接口/类型                            | 约定                                                                                               |
 | ----------------------- | ----------- | ------------------------------------ | -------------------------------------------------------------------------------------------------- |
 | `construct → tensor`    | `tensor`    | `TensorBase`                         | 构造张量实例，参见 `07-tensor.md` §5.1                                                             |
-| `construct → storage`   | `storage`   | `Owned::from_elem()` / `Owned::from_vec_aligned()` | 使用项目统一的 owned 存储构造路径完成底层分配；具体对齐值、是否重打包输入缓冲区由 storage 内部负责 |
+| `construct → storage`   | `storage`   | `from_elem()` / `from_vec_aligned()` | 使用项目统一的 owned 存储构造路径完成底层分配；具体对齐值、是否重打包输入缓冲区由 storage 内部负责 |
 | `construct → layout`    | `layout`    | F-order 步长                         | 构造阶段计算 F-order 步长，参见 `06-layout.md` §5.6                                                |
-| `construct → dimension` | `dimension` | `IntoDimension`, `checked_size()`     | 接受灵活形状参数并归一化；通过 `checked_size()` 验证元素总数，参见 `02-dimension.md` §5 |
+| `construct → dimension` | `dimension` | `IntoDimension`, `checked_size()`    | 接受灵活形状参数并归一化；通过 `checked_size()` 验证元素总数，参见 `02-dimension.md` §5 |
 | `construct → element`   | `element`   | `Element`                            | 通过 `Element::zero()` / `Element::one()` 约束构造 API，参见 `03-element.md` §5.1                  |
 | `construct → error`     | `error`     | `XenonError`                         | `InvalidShape` 用于 shape/length 不匹配与元素总数溢出；`compute_f_strides` 步长溢出错误以 `06-layout.md` §5.6 为准直接传播 |
 | `construct → index`     | `index`     | 索引访问语义                         | `eye()` 内部通过 `get_unchecked_mut` 写入对角线元素；构造后的张量继续复用索引路径，参见 `17-indexing.md` §5.2 |
@@ -734,7 +736,7 @@ User calls zeros / from_shape_vec / eye
 
 | 主题              | 内容                                                                     |
 | ----------------- | ------------------------------------------------------------------------ |
-| Recoverable error | 构造路径返回两类 `XenonError`，字段严格对齐 `26-error.md` v3.2.0 §5.1：(1) `InvalidShape` —— 元素总数溢出由 `dim.checked_size()` 直接返回 `kind: InvalidShapeKind::ProductOverflow`（参见 `02-dimension.md`）；shape 与数据长度不匹配由构造方法自身构造 `kind: InvalidShapeKind::ElementCountMismatch { expected, actual }`，`offending_dim` 在当前路径设为 `None`，`operation` 使用 `Cow::Borrowed("from_shape_vec" \| "from_shape_slice" \| ..)`；(2) F-order 步长计算溢出由 `compute_f_strides` 通过 `?` 直接传播，错误类别以 `06-layout.md` §5.6 为准（`InvalidLayout { reason: InvalidLayoutReason::ShapeProductOverflow }` 等），构造路径不再二次转换为 `InvalidShape`。 |
+| Recoverable error | 构造路径返回两类 `XenonError`：(1) `InvalidShape`；(2) F-order 步长计算溢出由 `compute_f_strides` 通过 `?` 直接传播，错误类别为`InvalidLayout`。 |
 | Panic             | 公开构造 API 不定义额外 panic 语义；失败统一走 `Result`。                |
 | 路径一致性        | 所有构造路径都必须产出 canonical F-order owned 张量，并保持一致的 shape / strides / flags 语义。 |
 | 容差边界          | 不适用。                                                                 |
