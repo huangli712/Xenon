@@ -741,7 +741,7 @@ After a storage type is created or borrowed
 
 ### 9.5 与 workspace 模块的边界
 
-workspace 的线程安全规则（`!Send + !Sync` 实现选择及理由，参见 `24-workspace.md §5.1` 与 `24-workspace.md` 决策 5）、借用状态机与分割守卫生命周期（参见 `24-workspace.md §6.3`）不属于本文档范围。本文仅要求并行与张量存储相关设计在引用 workspace 时，不得与该文档定义的线程安全边界冲突。
+workspace 的线程安全规则（`!Send + !Sync` 实现选择及理由，参见 `24-workspace.md §5.1` 与 `24-workspace.md`）、借用状态机与分割守卫生命周期（参见 `24-workspace.md §6.3`）不属于本文档范围。本文仅要求并行与张量存储相关设计在引用 workspace 时，不得与该文档定义的线程安全边界冲突。
 
 ---
 

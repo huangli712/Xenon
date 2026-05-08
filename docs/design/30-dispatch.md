@@ -278,7 +278,7 @@ impl Drop for ParallelGuard {
 }
 ```
 
-**关键 API 边界变化：** `ParallelGuard::enter()` 不再作为公开 API 暴露。取而代之，进入并行区域的 **唯一** 入口是 `select_exec_path()` 返回 `(ExecPath::Parallel, Some(guard))`。`parallel/` 后端在收到该 guard 后将其持有到并行区域结束即可，无需也不能再次调用 `enter()`。详细论证见决策 7（§11）。
+**关键 API 边界变化：** `ParallelGuard::enter()` 不再作为公开 API 暴露。取而代之，进入并行区域的 **唯一** 入口是 `select_exec_path()` 返回 `(ExecPath::Parallel, Some(guard))`。`parallel/` 后端在收到该 guard 后将其持有到并行区域结束即可，无需也不能再次调用 `enter()`。
 
 **线程亲和性（thread affinity）契约：** `ParallelGuard` 有意 `!Send + !Sync`（通过 `_private: PhantomData<*const ()>` 推导）。其 `Drop` 实现清除调用线程的 thread-local `IN_PARALLEL` flag——若 guard 被 move 到 Rayon worker 线程并在 worker 上 drop，会清错线程的 TLS，破坏嵌套并行检测的正确性。因此：
 
@@ -545,14 +545,14 @@ pub(crate) fn reset_simd_threshold();
 **三条规则的差异有意为之：**
 
 - **SIMD 连续性**：`is_contiguous == false` 时**直接拒绝**进入 `Simd` 路径——SIMD 后端要求连续输入，无法通过单纯放宽阈值满足。
-- **SIMD 对齐**：`alignment_ok == false` 时**不拒绝**进入 `Simd` 路径——`alignment_ok` 仅作为能力提示位透传到 simd 后端，由 `08-simd.md §5.7` 的 admission 规则决定走 aligned 或 unaligned kernel；多数逐元素 kernel 默认接受 unaligned 输入（与 `08-simd.md` 协同）。这是与 v1.1.x 的破坏性差异——v1.1.x 把 alignment 当作硬门槛，会错误关闭合法 unaligned SIMD 路径。
+- **SIMD 对齐**：`alignment_ok == false` 时**不拒绝**进入 `Simd` 路径——`alignment_ok` 仅作为能力提示位透传到 simd 后端，由 `08-simd.md §5.7` 的 admission 规则决定走 aligned 或 unaligned kernel；多数逐元素 kernel 默认接受 unaligned 输入（与 `08-simd.md` 协同）。
 - **Parallel 非连续**：`is_contiguous == false` 时**不拒绝**，但通过**有效阈值翻倍**抑制进入——非连续的并行 worker 仍可执行（只是缓存局部性差），收益曲线由翻倍阈值近似补偿。
 
 **溢出保护：** `effective_parallel_threshold = base.saturating_mul(2)`。当 `set_parallel_threshold` 被设为接近 `usize::MAX` 的值时，饱和乘法把翻倍结果钉在 `usize::MAX`，从而 `len >= effective` 永不成立——同样落到 `Serial`。这避免任何 wrap-around 导致的非确定性路径选择。
 
-### 5.7 Guard API（补充）
+### 5.7 Guard API
 
-`ParallelGuard` 在 v1.1.0 起**没有**公开（pub/pub(crate)）的构造函数。
+`ParallelGuard` 没有公开（pub/pub(crate)）的构造函数。
 进入并行区域的唯一入口是 `select_exec_path()` 返回 `(ExecPath::Parallel, Some(guard))`。
 该设计让调用方拿到的 guard 与"select 到 Parallel 的决策"严格对应，
 消除了"先 select 到 Parallel，再 enter() 失败回退"的无效中间状态。
@@ -635,12 +635,12 @@ Steps:
 
     3. // Check SIMD eligibility (no guard involved)
        //
-       // v1.1.3: alignment_ok is NOT a hard gate here. It is propagated
-       // to the simd backend as a kernel-capability hint; the simd
-       // kernel itself (per 08-simd.md §5.7 admission rules) decides
-       // whether to use aligned or unaligned variants. Most element-wise
-       // kernels accept unaligned input, so forcing alignment here would
-       // wrongly close legal SIMD paths.
+       // alignment_ok is NOT a hard gate here. It is propagated to the
+       // simd backend as a kernel-capability hint; the simd kernel itself
+       // (per 08-simd.md §5.7 admission rules) decides whether to use
+       // aligned or unaligned variants. Most element-wise kernels accept
+       // unaligned input, so forcing alignment here would wrongly close
+       // legal SIMD paths.
        if cfg!(feature = "simd")
           AND is_contiguous
           AND len >= get_simd_threshold():
@@ -657,7 +657,7 @@ Steps:
 - Step 2 中 `try_acquire_guard()` **要么**返回 `Some(guard)` 并设置 thread-local flag、并立即返回 `(Parallel, Some(guard))`；**要么**返回 `None` 并落到 Step 3/4。中间没有其他状态。
 - 一旦 `Some(guard)` 被产生，guard 必然作为返回值的一部分被调用方持有；guard 永不在 dispatch 内部被丢弃。
 
-**确定性保证：** 该算法在以下输入集合相同时确定性：`(len, is_contiguous, alignment_ok, threshold_state, feature_flags, thread_local_in_parallel_state)`。这是与 v1.0.0 不同的细节——thread-local 的 `IN_PARALLEL` 状态显式被纳入"输入"，因为嵌套并行场景下相同的 `(len, contig, align)` 在不同 thread-local 状态下会有不同结果。这是正确语义。
+**确定性保证：** 该算法在以下输入集合相同时确定性：`(len, is_contiguous, alignment_ok, threshold_state, feature_flags, thread_local_in_parallel_state)`。thread-local 的 `IN_PARALLEL` 状态显式被纳入"输入"，因为嵌套并行场景下相同的 `(len, contig, align)` 在不同 thread-local 状态下会有不同结果。这是正确语义。
 
 ### 6.2 ParallelGuard 实现
 
@@ -814,8 +814,8 @@ pub(crate) fn select_exec_path(
 
     // SIMD check: compiled away when feature is absent
     //
-    // v1.1.3: alignment_ok is consumed by the simd backend as a capability
-    // hint, not as a dispatch-side hard gate. See §5.5 / §5.6.
+    // alignment_ok is consumed by the simd backend as a capability hint,
+    // not as a dispatch-side hard gate. See §5.5 / §5.6.
     #[cfg(feature = "simd")]
     {
         if is_contiguous && len >= get_simd_threshold() {
@@ -1135,7 +1135,7 @@ pub(crate) fn par_map_internal<...>(
 
 **线程亲和性约束：** 由于 `ParallelGuard` 是 `!Send + !Sync`（见 §5.4 / §6.2），parallel 后端**必须**把 guard 保留在调用线程的 entry function frame 中（即 `par_map_internal` 的栈帧），**不得**把 guard 捕获进 Rayon worker 闭包。每个 worker 闭包内 chunk 执行必须包裹在 `dispatch::with_parallel_worker_context(|| { ... })` 中——该 helper 不构造、不消费 guard，仅在 worker 自身 TLS 上设置/还原 `IN_PARALLEL == true`，使 worker 内部嵌套调用 `select_exec_path()` 正确回退串行路径。
 
-参见 `09-parallel.md` §6.1（路径选择）、决策 4（parallel 不包含串行回退）、决策 6（执行路径裁决由 dispatch 统一收口）。
+参见 `09-parallel.md` §6.1（路径选择）。
 
 ### 9.4 与 simd 模块的交互
 
@@ -1147,7 +1147,7 @@ pub(crate) fn par_map_internal<...>(
 | 长度阈值     | dispatch 持有 SIMD 通用阈值（64）                           | simd 持有操作特定阈值（如 sum 的 1024，参见 `08-simd.md` §5.7）|
 | 调用方式     | dispatch 不直接调用 simd 代码                               | 语义模块在 `match ExecPath::Simd` 分支中调用 simd 后端       |
 
-dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系。dispatch 说"SIMD 路径可能合适"，simd 说"我能做"或"我回退"。这种分层避免 dispatch 理解 ISA 细节（per 决策 2 "dispatch 是 ISA-agnostic"，§11）。
+dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系。dispatch 说"SIMD 路径可能合适"，simd 说"我能做"或"我回退"。这种分层避免 dispatch 理解 ISA 细节。
 
 ---
 

@@ -25,7 +25,7 @@
 
 | 原则           | 体现                                                                                                 |
 | -------------- | ---------------------------------------------------------------------------------------------------- |
-| 语义一致性     | 并行路径不得改变公开 API 的形状、错误类别和数值语义；路径裁决见 §6.1、决策 4                       |
+| 语义一致性     | 并行路径不得改变公开 API 的形状、错误类别和数值语义；路径裁决见 §6.1                       |
 | 最小能力边界   | 当前版本只覆盖 `par_map`、`par_zip_map`、`par_sum`、`par_dot`，不扩展到 GPU 或通用多输入同步公开接口 |
 | 可选依赖最小化 | 仅在 `parallel` feature 下引入 `rayon`，默认关闭                                                     |
 
@@ -122,7 +122,7 @@ pub(crate) struct ParallelPool {
 
 **可见性说明：** `parallel` 是 `pub(crate)` 内部后端；所有执行后端函数与类型（包括 `par_map`、`par_zip_map`、`par_sum`、`par_dot`、`ParallelPool`、`ParIter`）均保持 `pub(crate)`，仅供 `math` / `reduction` / `matrix` 等语义模块通过 `dispatch.rs` 自动调用。
 
-**执行策略：** 阈值配置与嵌套并行防护由 `dispatch.rs` 统一管理（见 §6.1、决策 4）；本模块仅通过 `ParallelExecStrategy` 接收 dispatch 已裁决的执行参数，不提供独立的公开阈值配置接口。
+**执行策略：** 阈值配置与嵌套并行防护由 `dispatch.rs` 统一管理（见 §6.1）；本模块仅通过 `ParallelExecStrategy` 接收 dispatch 已裁决的执行参数，不提供独立的公开阈值配置接口。
 
 ### 5.3 内部执行策略参数规范
 
@@ -135,7 +135,7 @@ pub(crate) struct ParallelPool {
 
 ### 5.4 `ParallelExecStrategy` 参数校验规则
 
-`ParallelExecStrategy` 的字段合法性由 `dispatch.rs` 在构造时（`ParallelExecStrategy::new(...) -> Result<Self, XenonError>`）一次性校验完成（参见 30-dispatch.md §5.3、决策 8）。`parallel` 模块收到的策略实例已经满足以下范围；若违反则视为 `dispatch.rs` 的内部 bug，可触发 `debug_assert!`，但**不再**由 `parallel` 自己重新返回 `InvalidArgument`。
+`ParallelExecStrategy` 的字段合法性由 `dispatch.rs` 在构造时（`ParallelExecStrategy::new(...) -> Result<Self, XenonError>`）一次性校验完成（参见 30-dispatch.md §5.3）。`parallel` 模块收到的策略实例已经满足以下范围；若违反则视为 `dispatch.rs` 的内部 bug，可触发 `debug_assert!`，但**不再**由 `parallel` 自己重新返回 `InvalidArgument`。
 
 | 字段          | 合法范围                          | 默认值（dispatch 端） | 非法值的处置                                                |
 | ------------- | --------------------------------- | --------------------- | ----------------------------------------------------------- |
@@ -512,7 +512,7 @@ where
 | `Tensor::from_raw_vec_unchecked`（长度） | 这里只在输出向量长度与 `tensor.raw_dim()` 已由输入张量长度和映射过程保持一致时使用；并行与串行路径都必须保证产出元素数等于输入逻辑元素数。`ParIter: IndexedParallelIterator` 提供 `len()` 与 `Producer::split_at` 的不重叠覆盖不变量（§5.6），从而 `collect_into_vec` 后 `out.len() == checked_size(raw_dim)`。 |
 | `Tensor::from_raw_vec_unchecked`（顺序） | F-order 顺序由 producer 拆分契约 + `IndexedParallelIterator::collect_into_vec` 的"按索引写入"语义共同保证（修复 Blocker B8）。worker 完成顺序乱序不影响 `out[i]` 对应的逻辑索引；这与串行 `map` 的 F-order 收集严格等价。 |
 | `par_zip_map` broadcast chunking | 每个并行 chunk 仅借用两个输入的只读 broadcast-compatible sub-view；广播轴保持逻辑重复语义，不进行额外物理展开，因此不会引入越界写或悬垂引用。Producer split 不切分广播轴的物理切片，仅切分逻辑输出区间。 |
-| `ParallelGuard` 转移              | `_guard: ParallelGuard` 由 dispatch 在 `select_exec_path` 内构造并按值移交；`parallel` 函数体在并行执行结束后自然 drop guard，由 RAII 保证 thread-local 嵌套防护标记一定被清除（与 30-dispatch.md 决策 7 一致）。 |
+| `ParallelGuard` 转移              | `_guard: ParallelGuard` 由 dispatch 在 `select_exec_path` 内构造并按值移交；`parallel` 函数体在并行执行结束后自然 drop guard，由 RAII 保证 thread-local 嵌套防护标记一定被清除（与 30-dispatch.md 一致）。 |
 | panic / `Err` 传播               | 并行操作中发生 panic 或返回 `Err(XenonError)` 时，错误不会被静默忽略；语义上最终结果须至少传播一个错误。一般错误不保证传播"第一个"发生的错误（整型 `sum` / `dot` 除外：整型运算的失败诊断固定按逻辑 chunk 索引顺序仲裁，始终选择首个失败 chunk，参见 §5.5、§6.5）。实现上 Rayon 的并行 collect/reduce 可能不会物理中断其他 worker，但错误信息会被收集并在最终结果中报告。 |
 | Send/Sync/借用边界               | 并行执行只借用输入张量的只读视图；闭包与元素类型必须满足 `Send` / `Sync` 约束；输出分配与写入归当前 worker 独占，不能向其他 worker 暴露共享可写借用。 |
 | Worker 内 SIMD 安全性              | worker 在自己 chunk 的连续内存切片（或逻辑区间）上独立调用 `simd` 后端 kernel，不跨 worker 访问；SIMD admission 由 `08-simd.md` §5.4 在 chunk 内部独立判断，不与跨 worker 的 chunking/合并语义产生交叉依赖。 |
@@ -708,10 +708,10 @@ math / reduction / matrix call dispatch entry
 路径语义边界：
 
 - 并行模块本身不新增专属错误枚举；公开错误必须复用 `26-error.md` 中的统一模型。
-- 自定义线程池类参数若存在非法值，由 `dispatch::ParallelExecStrategy::new()` 在构造期统一返回 `InvalidArgument`；`parallel` 模块在收到合法策略实例后不再重复返回该错误（参见 §5.4 与 30-dispatch.md §5.3、决策 8）。
+- 自定义线程池类参数若存在非法值，由 `dispatch::ParallelExecStrategy::new()` 在构造期统一返回 `InvalidArgument`；`parallel` 模块在收到合法策略实例后不再重复返回该错误（参见 §5.4 与 30-dispatch.md §5.3）。
 - 当前 `par_zip_map()` 不承担广播兼容性校验，也不新增广播专属错误构造。
 - panic 与 `Err(XenonError)` 都不得被吞掉；并行执行中发生的错误须至少传播一个。仅对整数 `sum` / `dot`，失败诊断必须额外满足"按逻辑 chunk 索引顺序固定选择首个失败 chunk"；做不到则由调用方模块不进入 `Parallel` 路径（通过自行 gating，见 30-dispatch.md §5.5）。
-- 路径裁决语义见 §6.1 与决策 4、决策 6。
+- 路径裁决语义见 §6.1。
 
 ### 10.1 浮点/复数并行归约容差
 
