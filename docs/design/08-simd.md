@@ -443,7 +443,7 @@ L1 的规则是"调用方仍走完整三路 dispatch，不在 dispatch 之前自
 
 **契约 4：worker 内 SIMD admission 的对应行为**
 
-并行 worker chunk 内独立调用 `simd` 后端时（v2.0 双层加速），同样适用契约 1：worker 闭包入口须保证传入的元素类型已通过调用方上层 gate。worker 不二次执行 type gate（避免热路径开销），由调用方上层（reduction/matrix 模块）在进入并行入口前一次性完成。
+并行 worker chunk 内独立调用 `simd` 后端时，同样适用契约 1：worker 闭包入口须保证传入的元素类型已通过调用方上层 gate。worker 不二次执行 type gate（避免热路径开销），由调用方上层（reduction/matrix 模块）在进入并行入口前一次性完成。
 
 ---
 
@@ -457,7 +457,7 @@ L1 的规则是"调用方仍走完整三路 dispatch，不在 dispatch 之前自
     - 若 kernel 选择 unaligned 变体（这是大多数逐元素 kernel 的默认选择），不要求统一对齐快路径；调用侧无需为此预先回退。
 3. **ISA width check**：运行时需确认当前 `pulp::Arch` 上存在可用 ISA 且 lane 宽度大于 1；若目标类型或当前 ISA 无法提供有效向量宽度，则不进入 SIMD。
 
-> **alignment_ok 来源说明（v2.0.2）**：`alignment_ok` 参数由 `30-dispatch.md §5.5` 定义，是调用方透传的对齐能力提示位。`08-simd` 后端根据本节的按 ISA/操作动态选择规则做最终 per-kernel admission 裁决——`alignment_ok = true` 不保证一定能走 aligned kernel，`alignment_ok = false` 也不排斥 unaligned kernel。该参数的具体契约见 30-dispatch.md §5.5。
+> **alignment_ok 来源说明**：`alignment_ok` 参数由 `30-dispatch.md §5.5` 定义，是调用方透传的对齐能力提示位。`08-simd` 后端根据本节的按 ISA/操作动态选择规则做最终 per-kernel admission 裁决——`alignment_ok = true` 不保证一定能走 aligned kernel，`alignment_ok = false` 也不排斥 unaligned kernel。该参数的具体契约见 30-dispatch.md §5.5。
 
 | 操作类型                  | 元素类型                        | SIMD 最小长度 | 说明                                                         |
 | ------------------------- | ------------------------------- | ------------- | ------------------------------------------------------------ |
