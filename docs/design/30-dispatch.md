@@ -946,7 +946,7 @@ Caller (math / matrix / reduction)
 
 - [ ] **T4**: 实现 `ParallelGuard` 与模块私有 `try_acquire_guard()`
   - 文件: `src/dispatch.rs`
-  - 内容: `thread_local! { IN_PARALLEL: Cell<bool> }`、`ParallelGuard` 类型（无公开/`pub(crate)` 构造函数）、模块私有 `try_acquire_guard()`、`is_in_parallel()` 诊断 helper、`Drop` 实现
+  - 内容: `thread_local! { IN_PARALLEL: Cell<bool> }`、`ParallelGuard` 类型、模块私有 `try_acquire_guard()`、`is_in_parallel()` 诊断 helper、`Drop` 实现
   - 测试: `test_nested_select_falls_back_to_serial`, `test_guard_drop_releases_flag`
   - 前置: T1
   - 预计: 10 min
@@ -966,8 +966,6 @@ Caller (math / matrix / reduction)
   - 测试: 见 §8.2 完整清单
   - 前置: T2, T3, T4, T5
   - 预计: 10 min
-
-**总预计时间：** ~45 min。所有任务均在同一文件 `src/dispatch.rs` 内完成。
 
 ---
 
@@ -992,7 +990,7 @@ Caller (math / matrix / reduction)
 | `test_exec_path_parallel_above_threshold`         | 连续大输入启用 parallel feature 时返回 `(Parallel, Some(_))`   | 高     |
 | `test_exec_path_simd_when_aligned`                | 中等输入 + 连续 + 对齐且启用 simd feature 时返回 `(Simd, None)`| 高     |
 | `test_exec_path_serial_when_noncontiguous_below_doubled_threshold` | 非连续且 len < 2*threshold 时返回 `(Serial, None)` | 高 |
-| `test_select_returns_guard_iff_parallel`          | 返回值不变量：`Some(guard)` 当且仅当 `ExecPath::Parallel`     | 高     |
+| `test_select_returns_guard_iff_parallel`          | 返回值不变量：`Some(guard)` 当且仅当 `ExecPath::Parallel`      | 高     |
 | `test_nested_select_falls_back_to_serial`         | 持有未 drop 的 guard 时再次 `select_exec_path()` 返回 Serial（非 Parallel）| 高 |
 | `test_guard_drop_releases_flag`                   | guard drop 后再次调用 `select_exec_path()` 可重新获得 Parallel + 新 guard | 高 |
 | `test_threshold_override_respected`               | `set_parallel_threshold()` 后 `select_exec_path()` 使用新阈值  | 高     |
@@ -1000,14 +998,14 @@ Caller (math / matrix / reduction)
 | `test_threshold_saturating_mul_no_overflow`       | `set_parallel_threshold(usize::MAX / 2 + 1)` 后非连续路径 saturating，永不返回 Parallel | 高 |
 | `test_reset_threshold_restores_default`           | `reset_parallel_threshold()` 恢复编译期默认值                  | 中     |
 | `test_no_parallel_feature_never_returns_parallel` | 未启用 `parallel` feature 时永不为 `Parallel`                  | 高     |
-| `test_no_simd_feature_never_returns_simd`         | 未启用 `simd` feature 时永不为 `Simd`                         | 高     |
+| `test_no_simd_feature_never_returns_simd`         | 未启用 `simd` feature 时永不为 `Simd`                          | 高     |
 | `test_should_parallelize_diagnostic_does_not_acquire_guard` | `should_parallelize() == true` 后 thread-local 仍为 false；可立即 `select_exec_path()` 拿到 guard | 高 |
 | `test_parallel_preferred_over_simd_for_large_input` | 同时满足并行和 SIMD 条件时返回 `(Parallel, Some(_))`         | 中     |
 | `test_deterministic_same_input_same_output`       | 固定 thread-local 状态时相同输入多次调用返回结构等价的结果（含 ExecPath，guard 不参与等价比较） | 中 |
-| `test_simd_rejected_when_noncontiguous`           | 非连续输入即便 `len >= SIMD_THRESHOLD` 也不返回 Simd          | 高     |
-| `test_simd_allows_misaligned_hint_when_contiguous` | 连续但非对齐（`alignment_ok = false`）时，只要 `len >= SIMD_THRESHOLD` 仍应返回 `ExecPath::Simd`；`alignment_ok` 仅作为能力提示位透传给 simd 后端，由 `08-simd.md §5.7` 决定具体 kernel；dispatch 层不再以非对齐为由拒绝 SIMD 路径。任何 aligned-only kernel 的最终拒绝由 simd 后端测试覆盖，不在本测试范围内。 | 高     |
+| `test_simd_rejected_when_noncontiguous`           | 非连续输入即便 `len >= SIMD_THRESHOLD` 也不返回 Simd           | 高     |
+| `test_simd_allows_misaligned_hint_when_contiguous` | 连续但非对齐（`alignment_ok = false`）时，只要 `len >= SIMD_THRESHOLD` 仍应返回 `ExecPath::Simd` | 高     |
 | `test_parallel_strategy_new_rejects_zero`         | `ParallelExecStrategy::new(Some(0), _)` 与 `new(_, Some(0))` 返回 `InvalidArgument` | 高 |
-| `test_parallel_strategy_new_accepts_none`         | `ParallelExecStrategy::new(None, None)` 等价 `auto()`         | 中     |
+| `test_parallel_strategy_new_accepts_none`         | `ParallelExecStrategy::new(None, None)` 等价 `auto()`          | 中     |
 
 ### 8.3 边界测试场景
 
@@ -1017,12 +1015,12 @@ Caller (math / matrix / reduction)
 | `len = 1`                                   | 返回 `(Serial, None)`（远低于任何阈值）                    |
 | `len = PARALLEL_THRESHOLD - 1`              | 返回 `(Serial, None)` 或 `(Simd, None)`（取决于 alignment）|
 | `len = PARALLEL_THRESHOLD`（恰在阈值）      | 返回 `(Parallel, Some(_))`（若连续且 feature 启用）        |
-| 非连续 `len = 2 * PARALLEL_THRESHOLD - 1`   | 不满足翻倍阈值，返回 `(Serial, None)`                       |
-| 非连续 `len = 2 * PARALLEL_THRESHOLD`       | 满足翻倍阈值，可能返回 `(Parallel, Some(_))`                |
+| 非连续 `len = 2 * PARALLEL_THRESHOLD - 1`   | 不满足翻倍阈值，返回 `(Serial, None)`                      |
+| 非连续 `len = 2 * PARALLEL_THRESHOLD`       | 满足翻倍阈值，可能返回 `(Parallel, Some(_))`               |
 | `ParallelGuard` 在 panic unwind 中          | `Drop` 仍执行，flag 被正确清除；后续 select 可重新获得 guard |
-| 阈值被设为 `0`                              | `select_exec_path()` 永不返回 `Parallel`（显式禁用 sentinel） |
-| 阈值被设为 `usize::MAX`                     | 连续路径下需 `len == usize::MAX` 才进 Parallel；非连续路径 `saturating_mul(2) = usize::MAX`，永不进 Parallel |
-| 阈值被设为 `usize::MAX / 2 + 1`             | 连续路径下需要 `len >= usize::MAX/2+1`；非连续路径饱和到 `usize::MAX`，永不进 Parallel（验证 saturating_mul） |
+| 阈值被设为 `0`                              | `select_exec_path()` 永不返回 `Parallel`（显式禁用 sentinel）|
+| 阈值被设为 `usize::MAX`                     | 连续路径下需 `len == usize::MAX` 才进 Parallel；非连续路径 `saturating_mul(2) = usize::MAX` |
+| 阈值被设为 `usize::MAX / 2 + 1`             | 连续路径下需要 `len >= usize::MAX/2+1`；非连续路径饱和到 `usize::MAX`，永不进 Parallel |
 
 ### 8.4 属性测试不变量
 
@@ -1036,22 +1034,22 @@ Caller (math / matrix / reduction)
 
 ### 8.5 集成测试
 
-| 测试文件                   | 测试内容                                                                 |
-| -------------------------- | ------------------------------------------------------------------------ |
-| `tests/test_parallel.rs`   | dispatch 与 `parallel/` 组合的端到端路径裁决、嵌套防护验证               |
-| `tests/test_matrix.rs`     | `matrix::dot()` 通过 dispatch 的三路分发与结果一致性验证（§12-matrix.md）|
-| `tests/test_reduction.rs`  | `reduction::sum()` 通过 dispatch 的路径裁决与串行基线一致性              |
-| `tests/test_math.rs`       | `math` 二元逐元素通过 dispatch 的并行/SIMD 路径与标量结果一致性          |
+| 测试文件                   | 测试内容                                                         |
+| -------------------------- | ---------------------------------------------------------------- |
+| `tests/test_parallel.rs`   | dispatch 与 `parallel/` 组合的端到端路径裁决、嵌套防护验证       |
+| `tests/test_matrix.rs`     | `matrix::dot()` 通过 dispatch 的三路分发与结果一致性验证         |
+| `tests/test_reduction.rs`  | `reduction::sum()` 通过 dispatch 的路径裁决与串行基线一致性      |
+| `tests/test_math.rs`       | `math` 二元逐元素通过 dispatch 的并行/SIMD 路径与标量结果一致性  |
 
 ### 8.6 Feature gate / 配置测试
 
-| 配置                     | 验证点                                                                |
-| ------------------------ | --------------------------------------------------------------------- |
-| 默认配置                 | 仅返回 `Serial`，dispatch 编译通过且所有单元测试 pass                 |
-| 仅启用 `parallel`        | `Simd` 永不返回；`Parallel` 条件返回                                  |
-| 仅启用 `simd`            | `Parallel` 永不返回；`Simd` 条件返回                                  |
-| 同时启用 `simd,parallel` | 三路裁决按优先级正确；阈值与 guard 行为一致                           |
-| 阈值覆写                 | 运行时 `set_parallel_threshold()` 生效且不影响其他不变量               |
+| 配置                     | 验证点                                                    |
+| ------------------------ | --------------------------------------------------------- |
+| 默认配置                 | 仅返回 `Serial`，dispatch 编译通过且所有单元测试 pass     |
+| 仅启用 `parallel`        | `Simd` 永不返回；`Parallel` 条件返回                      |
+| 仅启用 `simd`            | `Parallel` 永不返回；`Simd` 条件返回                      |
+| 同时启用 `simd,parallel` | 三路裁决按优先级正确；阈值与 guard 行为一致               |
+| 阈值覆写                 | 运行时 `set_parallel_threshold()` 生效且不影响其他不变量  |
 
 ### 8.7 类型边界 / 编译期测试
 
@@ -1062,7 +1060,7 @@ Caller (math / matrix / reduction)
 | `ParallelExecStrategy` 无 `pub` 导出，字段私有  | 编译期可见性检查             |
 | `feature = "parallel"` 启用下，真 `ParallelGuard` 是 `!Send + !Sync` | compile-fail（尝试把 guard `move` 到另一线程闭包应失败）+ static 类型断言 |
 | `feature = "parallel"` 关闭下，placeholder `ParallelGuard` 是 `Send + Sync`，因此 `Option<ParallelGuard>` 不应被错误打上 `!Send` 标签 | static 类型断言（`fn assert_send<T: Send>()`、`fn assert_sync<T: Sync>()`） |
-| dispatch 模块在默认 feature 集（不启用 `parallel` / `simd`）下不依赖 `pulp` 或 `rayon` | `cargo tree --no-dev-deps --no-default-features` 验证。在 `--features parallel` 下 dispatch 通过 cfg 共享 rayon 依赖（用于 `current_num_threads()` 池大小校验），不引入新顶层依赖 |
+| dispatch 模块在默认 feature 集（不启用 `parallel` / `simd`）下不依赖 `pulp` 或 `rayon` | `cargo tree --no-dev-deps --no-default-features` 验证。在 `--features parallel` 下 dispatch 通过 cfg 共享 rayon 依赖，不引入新顶层依赖 |
 
 ---
 
@@ -1073,13 +1071,13 @@ Caller (math / matrix / reduction)
 | 方向           | 对方模块         | 接口/类型                                  | 约定                                                                                            |
 | -------------- | ---------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------- |
 | 被调用（输出） | `math`           | `select_exec_path()`, `should_parallelize()` | `math` 在广播裁决后调用 dispatch 决定串行/并行路径；并行 worker 内 chunk 可独立做 SIMD admission（参见 `08-simd.md` §9.3、`09-parallel.md`） |
-| 被调用（输出） | `matrix`         | `select_exec_path()`, `should_parallelize()` | `matrix::dot()` 完成 rank/shape 校验后调用 dispatch 三路分发（参见 `12-matrix.md` §6.1）         |
-| 被调用（输出） | `reduction`      | `select_exec_path()`                        | `reduction::sum()` 调用 dispatch 决定执行路径（参见 `13-reduction.md` §6.3）                    |
-| 被调用（输出） | `simd`（间接）   | `ExecPath::Simd`                            | dispatch 仅推荐 SIMD 路径；`simd/` 内部做最终 admission（ISA/ lane 宽度检测）                   |
-| 被消费（输入） | `parallel`       | `ParallelExecStrategy`                      | dispatch 定义该类型，`parallel/` 通过 `crate::dispatch` 引用并消费其字段                        |
-| 被消费（输入） | `parallel`       | `ParallelGuard`                             | `parallel/` 后端接收并持有 `select_exec_path()` 返回的 `ParallelGuard`（select-and-enter 原子绑定，不再单独调用 `enter()`；参见 §5.4 / §5.7 / §9.3 与 `09-parallel.md` §5.1） |
-| 消费（输入）   | `tensor`         | `.len()`, `.is_f_contiguous()`              | 调用方在调用 dispatch 前自行查询这些元数据并传入                                               |
-| 消费（输入）   | `layout`（间接） | `is_aligned()`                              | 调用方在调用 dispatch 前自行查询对齐状态并传入 `alignment_ok`                                  |
+| 被调用（输出） | `matrix`         | `select_exec_path()`, `should_parallelize()` | `matrix::dot()` 完成 rank/shape 校验后调用 dispatch 三路分发（参见 `12-matrix.md` §6.1）      |
+| 被调用（输出） | `reduction`      | `select_exec_path()`                       | `reduction::sum()` 调用 dispatch 决定执行路径（参见 `13-reduction.md` §6.3）                    |
+| 被调用（输出） | `simd`（间接）   | `ExecPath::Simd`                           | dispatch 仅推荐 SIMD 路径；`simd/` 内部做最终 admission（ISA/ lane 宽度检测）                   |
+| 被消费（输入） | `parallel`       | `ParallelExecStrategy`                     | dispatch 定义该类型，`parallel/` 通过 `crate::dispatch` 引用并消费其字段                        |
+| 被消费（输入） | `parallel`       | `ParallelGuard`                            | `parallel/` 后端接收并持有 `select_exec_path()` 返回的 `ParallelGuard`（select-and-enter 原子绑定，不再单独调用 `enter()`；参见 §5.4 / §5.7 / §9.3 与 `09-parallel.md` §5.1） |
+| 消费（输入）   | `tensor`         | `.len()`, `.is_f_contiguous()`             | 调用方在调用 dispatch 前自行查询这些元数据并传入                                                |
+| 消费（输入）   | `layout`（间接） | `is_aligned()`                             | 调用方在调用 dispatch 前自行查询对齐状态并传入 `alignment_ok`                                   |
 
 ### 9.2 数据流
 
@@ -1107,7 +1105,7 @@ math / matrix / reduction 调用方
 | `ParallelExecStrategy` | dispatch 定义该结构体并提供构造器校验   | parallel 消费 chunk_size / max_workers 字段    |
 | 串行回退         | dispatch 选择 `ExecPath::Serial` 时不进入 parallel | parallel 自身不包含串行回退代码               |
 
-**guard 传递契约：** parallel 后端函数（如 `par_map`、`par_sum`）的内部入口不再调用 `ParallelGuard::enter()`——该函数已在 dispatch 内部消失，由 `try_acquire_guard()` 模块私有 helper 取代。parallel 后端的入口签名（概念上）应当接受 guard 作为参数：
+**guard 传递契约**： parallel 后端函数（如 `par_map`、`par_sum`）的内部入口不再调用 `ParallelGuard::enter()`——该函数已在 dispatch 内部消失，由 `try_acquire_guard()` 模块私有 helper 取代。parallel 后端的入口签名（概念上）应当接受 guard 作为参数：
 
 ```rust,ignore
 // Conceptual signature inside parallel/ backend
@@ -1120,21 +1118,19 @@ pub(crate) fn par_map_internal<...>(
 
 调用方持有 `(ExecPath::Parallel, Some(guard))` 时通过 `match` 把 guard 转交给 parallel 后端入口；parallel 后端拥有 guard 直到工作完成，guard 在函数退出（含 panic unwind）时 `Drop` 释放 thread-local flag。
 
-**线程亲和性约束：** 由于 `ParallelGuard` 是 `!Send + !Sync`（见 §5.4 / §6.2），parallel 后端**必须**把 guard 保留在调用线程的 entry function frame 中（即 `par_map_internal` 的栈帧），**不得**把 guard 捕获进 Rayon worker 闭包。每个 worker 闭包内 chunk 执行必须包裹在 `dispatch::with_parallel_worker_context(|| { ... })` 中——该 helper 不构造、不消费 guard，仅在 worker 自身 TLS 上设置/还原 `IN_PARALLEL == true`，使 worker 内部嵌套调用 `select_exec_path()` 正确回退串行路径。
-
-参见 `09-parallel.md` §6.1（路径选择）。
+**线程亲和性约束：** 由于 `ParallelGuard` 是 `!Send + !Sync`（见 §5.4 / §6.2），parallel 后端必须把 guard 保留在调用线程的 entry function frame 中（即 `par_map_internal` 的栈帧），不得把 guard 捕获进 Rayon worker 闭包。每个 worker 闭包内 chunk 执行必须包裹在 `dispatch::with_parallel_worker_context(|| { ... })` 中——该 helper 不构造、不消费 guard，仅在 worker 自身 TLS 上设置/还原 `IN_PARALLEL == true`，使 worker 内部嵌套调用 `select_exec_path()` 正确回退串行路径。
 
 ### 9.4 与 simd 模块的交互
 
 | 交互项       | dispatch 职责                                               | simd 职责                                                   |
 | ------------ | ----------------------------------------------------------- | ----------------------------------------------------------- |
-| ISA 检测     | dispatch **不参与** ISA 检测                                | `pulp::Arch` 做 ISA 检测与缓存（参见 `08-simd.md` §5.4）    |
-| 路径推荐     | dispatch 通过 `ExecPath::Simd` 推荐 SIMD 路径               | simd 接收推荐后可自行拒绝（内部回退标量）                    |
+| ISA 检测     | dispatch 不参与 ISA 检测                                    | `pulp::Arch` 做 ISA 检测与缓存（参见 `08-simd.md` §5.4）    |
+| 路径推荐     | dispatch 通过 `ExecPath::Simd` 推荐 SIMD 路径               | simd 接收推荐后可自行拒绝（内部回退标量）                   |
 | 准入条件     | dispatch 仅检查 len 与 F-连续性；`alignment_ok` 仅作为 hint 透传给 simd，不作为硬门槛 | simd 内部检查元素类型、ISA lane 宽度、操作支持矩阵；自行决定 aligned vs unaligned kernel 分发 |
 | 长度阈值     | dispatch 持有 SIMD 通用阈值（64）                           | simd 持有操作特定阈值（如 sum 的 1024，参见 `08-simd.md` §5.7）|
 | 调用方式     | dispatch 不直接调用 simd 代码                               | 语义模块在 `match ExecPath::Simd` 分支中调用 simd 后端       |
 
-dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系。dispatch 说"SIMD 路径可能合适"，simd 说"我能做"或"我回退"。这种分层避免 dispatch 理解 ISA 细节。
+dispatch 与 simd 之间是推荐-接受关系，而非命令-执行关系。dispatch 说"SIMD 路径可能合适"，simd 说"我能做"或"我回退"。这种分层避免 dispatch 理解 ISA 细节。
 
 ---
 
@@ -1142,7 +1138,7 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 
 | 主题              | 说明                                                                                                        |
 | ----------------- | ----------------------------------------------------------------------------------------------------------- |
-| Recoverable error | dispatch 大部分 API **不产生**可恢复错误。所有路径裁决条件不满足时静默回退 `Serial`。`ParallelExecStrategy::new()` 是唯一例外：构造非法策略时返回 `XenonError::InvalidArgument`（参数不符合 §5.3 字段不变量）。 |
+| Recoverable error | dispatch 大部分 API 不产生可恢复错误。所有路径裁决条件不满足时静默回退 `Serial`。`ParallelExecStrategy::new()` 是唯一例外：构造非法策略时返回 `XenonError::InvalidArgument`。 |
 | Panic             | dispatch 在正常操作中永不 panic。唯一可能的 panic 场景是内部不变量违反（如 `AtomicUsize` 存储逻辑错误），属于实现 bug。`saturating_mul(2)` 显式避免了非连续阈值翻倍的 wrap-around 风险。 |
 | 路径一致性        | `select_exec_path()` 在固定的输入集合（含 thread-local 状态）下确定性。详见 §6.1 与 §12.3。                |
 | 语义透明          | 调用方从 dispatch 获得的只是路径推荐；无论走哪条路径，公开 API 的 shape、错误类别和数值语义必须一致。       |
@@ -1156,74 +1152,36 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 
 | 属性     | 值                                                                                                         |
 | -------- | ---------------------------------------------------------------------------------------------------------- |
-| 决策     | `ExecPath` 枚举包含三个变体：`Serial`、`Simd`、`Parallel`。调用方通过单次 `match` 分发。                    |
+| 决策     | `ExecPath` 枚举包含三个变体：`Serial`、`Simd`、`Parallel`。调用方通过单次 `match` 分发。                   |
 | 理由     | 调用方（`math`/`matrix`/`reduction`）需要区分三种互斥执行策略；三路枚举比两层 `Option` 或独立布尔值更清晰，且 match 强制穷尽检查，编译器可做分支优化。 |
-| 替代方案 | 两层 `Option<ParallelPath>` + `Option<SimdPath>` —— 放弃，语义模糊，易出现不完整分支覆盖。                  |
-| 替代方案 | 四路（含 `SimdParallel`） —— 放弃，三路枚举已覆盖路径选择。注：架构允许并行 worker 内做 SIMD admission（08-simd.md、09-parallel.md），但仍由 `simd/` 在 worker chunk 内自治判定，不需要在 `ExecPath` 顶层新增 `SimdParallel` 变体；dispatch 只返回 `Parallel`，SIMD 进入由 worker 自决。 |
-| 来源     | **用户决策 B**：`ExecPath` 有三个变体。                                                                     |
+| 替代方案 | 两层 `Option<ParallelPath>` + `Option<SimdPath>` —— 放弃，语义模糊，易出现不完整分支覆盖。                 |
+| 替代方案 | 四路（含 `SimdParallel`） —— 放弃，三路枚举已覆盖路径选择。                                                |
 
 ### 决策 2：dispatch 是 ISA-agnostic
 
-| 属性     | 值                                                                                                                       |
-| -------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 决策     | dispatch.rs 不参与 ISA 检测或 SIMD 能力判定。ISA 检测、lane 宽度选择、对齐细节均保留在 `simd/` 模块内部。                 |
-| 理由     | ISA 检测属于 SIMD 后端实现细节；将其隔离在 `simd/` 内部保持 dispatch 简单、可测试、无平台依赖。dispatch 只需要知道"输入是否连续+对齐"。 |
-| 替代方案 | dispatch 调用 `pulp::Arch::new()` 做 ISA 检测 —— 放弃，会引入 `pulp` 依赖到 dispatch（违反零依赖原则）、模糊职责边界。  |
-| 来源     | 用户决策：dispatch 是 ISA-agnostic；ISA 检测是 `pulp::Arch` 的职责。                                               |
+| 属性     | 值                                                                                                          |
+| -------- | ----------------------------------------------------------------------------------------------------------- |
+| 决策     | `dispatch.rs` 不参与 ISA 检测或 SIMD 能力判定。ISA 检测、lane 宽度选择、对齐细节均保留在 `simd/` 模块内部。 |
+| 理由     | ISA 检测属于 SIMD 后端实现细节；将其隔离在 `simd/` 内部保持 dispatch 简单、可测试、无平台依赖。             |
+| 替代方案 | dispatch 调用 `pulp::Arch::new()` 做 ISA 检测 —— 放弃，会引入 `pulp` 依赖到 dispatch、模糊职责边界。        |
 
 ### 决策 3：嵌套并行检测通过 thread-local + RAII guard
 
-| 属性     | 值                                                                                                               |
-| -------- | ---------------------------------------------------------------------------------------------------------------- |
-| 决策     | 使用 `thread_local! { Cell<bool> }` 配合 `ParallelGuard` RAII 实现嵌套并行检测。                                 |
+| 属性     | 值                                                                                      |
+| -------- | --------------------------------------------------------------------------------------- |
+| 决策     | 使用 `thread_local! { Cell<bool> }` 配合 `ParallelGuard` RAII 实现嵌套并行检测。        |
 | 理由     | `需求说明书 §9.2` 明确禁止库内部二次并行。thread-local 检测零分配、零同步开销；RAII 保证异常安全（panic unwind 时正确释放）。 |
-| 替代方案 | 全局 `AtomicBool` —— 放弃，无法区分不同线程；且 `ParallelGuard` 必须是 per-thread 的。                            |
-| 替代方案 | 将嵌套并行视为可恢复错误 —— 放弃，会污染公开 API 语义，且违背"静默回退"设计原则。                                |
+| 替代方案 | 全局 `AtomicBool` —— 放弃，无法区分不同线程；且 `ParallelGuard` 必须是 per-thread 的。  |
+| 替代方案 | 将嵌套并行视为可恢复错误 —— 放弃，会污染公开 API 语义，且违背"静默回退"设计原则。       |
 
 ### 决策 4：编译期默认阈值 + 可选内部运行时覆写
 
 | 属性     | 值                                                                                                 |
 | -------- | -------------------------------------------------------------------------------------------------- |
-| 决策     | 并行阈值持有编译期默认值（65536），并通过 `AtomicUsize` 允许内部运行时覆写（`pub(crate)`）。        |
+| 决策     | 并行阈值持有编译期默认值（65536），并通过 `AtomicUsize` 允许内部运行时覆写（`pub(crate)`）。       |
 | 理由     | 满足 `需求说明书 §9.2` 对"须支持并行阈值配置"的要求；编译期默认值维持稳定基线；运行时覆写满足测试/基准需求。 |
-| 替代方案 | 仅保留不可配置的固定常量 —— 放弃，违反需求。                                                        |
+| 替代方案 | 仅保留不可配置的固定常量 —— 放弃，违反需求。                                                       |
 | 替代方案 | 每次调用显式传参 —— 放弃，会让 `select_exec_path()` 签名膨胀且与现有调用方（`math`/`matrix`/`reduction`）不一致。 |
-
-### 决策 5：非连续惩罚——有效阈值翻倍
-
-| 属性     | 值                                                                                       |
-| -------- | ---------------------------------------------------------------------------------------- |
-| 决策     | 非连续输入时，Parallel 有效阈值翻倍；SIMD 直接拒绝非连续输入。                           |
-| 理由     | 非连续输入缓存局部性差；在输入不够大时进入并行路径的收益可能为负（调度开销 > 加速）。Parallel 通过翻倍阈值保守抑制，SIMD 则因连续性是硬性准入条件而直接拒绝。 |
-| 替代方案 | 完全不考虑连续性 —— 放弃，会在小规模非连续输入上引起性能退化。                           |
-| 替代方案 | 更复杂的性能模型（如 stride 模式分析）—— 放弃，超出当前版本范围且增加维护成本。           |
-
-### 决策 6：单文件模块（非子目录）
-
-| 属性     | 值                                                                                               |
-| -------- | ------------------------------------------------------------------------------------------------ |
-| 决策     | dispatch 保持为单一文件 `src/dispatch.rs`，不拆分为 `src/dispatch/` 子目录。                      |
-| 理由     | dispatch 表面积极小且内聚性极高（≤200 行实现代码）。单文件减少模块边界样板代码、简化依赖声明。    |
-| 替代方案 | 拆分为 `dispatch/` 子目录（如 `path.rs` + `guard.rs` + `threshold.rs`）—— 放弃，对当前规模过度工程化。 |
-| 触发条件 | 若未来 dispatch 膨胀到 >500 行或引入新的独立关注点（如更细粒度的 per-op 阈值配置），可重新评估。  |
-
-### 决策 7：select-and-enter 原子绑定
-
-| 属性     | 值                                                                                                                       |
-| -------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 决策     | `select_exec_path()` 返回 `(ExecPath, Option<ParallelGuard>)`；当且仅当首元素为 `ExecPath::Parallel` 时第二元素为 `Some(_)`。`ParallelGuard` 没有任何公开/`pub(crate)` 构造函数；唯一产生途径是 dispatch 模块内部的 `try_acquire_guard()`。 |
-| 理由     | 旧设计中 `select_exec_path()` 只返回 `ExecPath`，调用方再单独 `enter()`。这造成两个问题：(a) C6 矛盾——三处文档（§5.4 / §6.1 / §6.4）对"select 是否 consume guard"表述不一致；(b) TOCTOU 窗口——select 返回 Parallel 与 backend 调用 enter() 之间，另一并行 API 可能抢先进入 parallel region，使 backend 实际执行嵌套并行。把 select 与 acquire 绑定为单次 thread-local 临界区根本性消除这两个问题。 |
-| 替代方案 | 保留独立 `enter()` 并通过文档约束调用方"必须立刻 enter"——放弃，约束无法在类型系统层面强制，且不消除 TOCTOU。 |
-| 替代方案 | `select_exec_path()` 返回 `Result<ParallelGuard, ExecPath>` 风格——放弃，过度工程化且让 Serial/SIMD 路径退化为"错误"，语义反直觉。 |
-| 来源     | **用户决策 B8.a**（"select_exec_path() 返回 (ExecPath, Option<ParallelGuard>)"）。                                       |
-
-### 决策 8：`set_parallel_threshold(0)` 为显式禁用 sentinel
-
-| 属性     | 值                                                                                                              |
-| -------- | --------------------------------------------------------------------------------------------------------------- |
-| 决策     | `set_parallel_threshold(0)` 唯一含义为"禁用并行路径"，永不解释为"对所有 len 都启用"。                              |
-| 理由     | C7 指出`len >= effective_parallel_threshold` 在 threshold == 0 时会让所有 len（含 0）满足并行条件，与 §5.6 文字"effectively disables the parallel path"直接矛盾。把 0 作为显式 sentinel 一次性闭合该语义，且对测试/基准最有用——禁用而非穷尽启用。 |
-| 替代方案 | 用 `Option<usize>` 表达启用/禁用——放弃，与 `AtomicUsize` 存储不兼容；引入 `usize::MAX` 当作 disable 又无法与"巨大但非禁用"区分。 |
 
 ---
 
@@ -1231,14 +1189,12 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 
 ### 12.1 开销分析
 
-| 开销点                    | 每调用成本              | 说明                                                                     |
-| ------------------------- | ----------------------- | ------------------------------------------------------------------------ |
-| `select_exec_path()`      | ~3 comparisons + 2 loads | 两次 `AtomicUsize::load(Relaxed)` + 一次 `Cell::get()`（仅并行分支）      |
-| 阈值读取                 | 单次 Relaxed atomic load | 无锁，无竞争；Relaxed 在 x86 上等同于普通 load。                          |
-| guard 获取（select 内部） | 一次 thread-local 访问   | `select_exec_path()` 内部 `Cell::get()` + `Cell::set()`，纳秒级；不再暴露独立的 `ParallelGuard::enter()` API |
-| ParallelGuard::drop()    | 一次 thread-local 访问   | `Cell::set(false)`，纳秒级                                                |
-
-**总体评估：** 每次 `select_exec_path()` 调用的总开销 < 10 ns（在典型 x86_64 硬件上）。相比之下，被派发的操作本身（如 1M 元素的 `add`）耗时在微秒至毫秒级，dispatch 开销可忽略不计。
+| 开销点                 | 每调用成本              | 说明                                                                     |
+| ---------------------- | ----------------------- | ------------------------------------------------------------------------ |
+| `select_exec_path()`   | ~3 comparisons + 2 loads | 两次 `AtomicUsize::load(Relaxed)` + 一次 `Cell::get()`                  |
+| 阈值读取               | 单次 Relaxed atomic load | 无锁，无竞争；Relaxed 在 x86 上等同于普通 load。                        |
+| guard 获取             | 一次 thread-local 访问   | `select_exec_path()` 内部 `Cell::get()` + `Cell::set()`，纳秒级；不暴露 `ParallelGuard::enter()` API |
+| ParallelGuard::drop()  | 一次 thread-local 访问   | `Cell::set(false)`，纳秒级                                              |
 
 ### 12.2 零成本抽象
 
@@ -1253,21 +1209,19 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 
 - 阈值存储在 `static AtomicUsize` 中，不与其他频繁写入的变量共享 cache line，无 false sharing 风险。
 - `IN_PARALLEL` thread-local 变量每个线程一份，无跨线程竞争。
-- `select_exec_path()` **不是**严格意义上的纯函数。它读取两类隐式状态（全局阈值 `AtomicUsize` 与 thread-local `IN_PARALLEL` flag），并且在选中并行路径时**修改** thread-local flag。它在以下意义上确定：固定 `(len, is_contiguous, alignment_ok, threshold_state, in_parallel_state)` 时返回值确定。其结果**不可**跨调用缓存——`IN_PARALLEL` 状态会在 guard 生命周期内变化，且即便单线程内不同时刻调用 dispatch，全局阈值也可能被覆写。每操作调用一次 dispatch 的开销已经极低，无需缓存。
+- `select_exec_path()` 不是严格意义上的纯函数。它读取两类隐式状态（全局阈值 `AtomicUsize` 与 thread-local `IN_PARALLEL` flag），并且在选中并行路径时修改 thread-local flag。它在以下意义上确定：固定 `(len, is_contiguous, alignment_ok, threshold_state, in_parallel_state)` 时返回值确定。其结果不可跨调用缓存——`IN_PARALLEL` 状态会在 guard 生命周期内变化，且即便单线程内不同时刻调用 dispatch，全局阈值也可能被覆写。每操作调用一次 dispatch 的开销已经极低，无需缓存。
 
 ---
 
 ## 13. 平台与工程约束
 
-| 约束       | 说明                                                                                                             |
-| ---------- | ---------------------------------------------------------------------------------------------------------------- |
-| `std` only | dispatch 仅使用 `std`（`AtomicUsize`、`Cell`、`thread_local!`），不依赖任何外部 crate                            |
-| MSRV       | Rust 1.85+                                                                                                       |
-| 单 crate   | dispatch 是 Xenon 单 crate 的内部模块，不独立发布                                                               |
-| SemVer     | dispatch 全为 `pub(crate)`——无对外 SemVer 承诺。内部 API 变更不影响下游用户，但需保持与 `parallel`/`math`/`matrix`/`reduction` 的接口一致 |
-| 最小依赖   | 不引入**额外**第三方 crate；`pulp` / `rayon` 仅作为 `feature = "simd"` / `feature = "parallel"` 下的可选依赖，dispatch 共享 `parallel/` 已声明的 rayon 依赖项以读取池大小（仅在 `cfg(feature = "parallel")` 块内使用 `rayon::current_num_threads()`）。非 `parallel` 编译下 dispatch 完全不引入 rayon 符号 |
-| 确定性     | 同平台、同编译配置、同输入下 `select_exec_path()` 结果必须确定，不依赖随机数或时间                               |
-| 不变量     | `ExecPath` 枚举为 `#[derive(Copy, Clone, Debug, PartialEq, Eq)]`，零成本传递                                     |
+| 约束       | 说明                                                |
+| ---------- | --------------------------------------------------- |
+| `std` only | dispatch 仅使用 `std`，不依赖任何外部 crate         |
+| MSRV       | Rust 1.85+                                          |
+| 单 crate   | dispatch 是 Xenon 单 crate 的内部模块，不独立发布   |
+| SemVer     | dispatch 全为 `pub(crate)`——无对外 SemVer 承诺。    |
+| 最小依赖   | 不引入**额外**第三方 crate                          |
 
 ---
 
