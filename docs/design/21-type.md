@@ -420,9 +420,7 @@ let ints: Tensor<i32, Ix1> = floats.cast().unwrap();  // forbidden: returns Type
 - **Tier-2 — 静态有损（`CastTo` 静态 `Err`）**：例如 `f64 → f32`、`f64 → i32`。`impl CastTo<T> for U` 直接 `Err(TypeConversion { reason: LossyFloatNarrowing | LossyFloatToInt | ... })`，无运行时值域检查。
 - **Tier-3 — 动态条件（`CastTo` 运行时判定）**：仅 `Complex<T> → T` 这一类需要按 `im == 0.0` 等运行时条件决定 `Ok / Err`。
 
-下方仅展示 Tier-2 / Tier-3 的 `CastTo` 实现；Tier-1 通过 `From` 表达，本节为完整记录附录展示在 §6.1.2。
-
-`CastTo` 的规范签名统一为（与 `03-element.md` §5.9 的权威定义对齐）：
+下方仅展示 Tier-2 / Tier-3 的 `CastTo` 实现；Tier-1 通过 `From` 表达，本节为完整记录，附录展示在 §6.1.2。`CastTo` 的规范签名统一为（与 `03-element.md` §5.9 的权威定义对齐）：
 
 ```rust,ignore
 pub trait CastTo<T: Element>: Element {
@@ -430,9 +428,7 @@ pub trait CastTo<T: Element>: Element {
 }
 ```
 
-`T: Element` bound 与 `Self: Element` super-trait 一起约束源/目标类型只能在封闭元素集合（`i32 / i64 / f32 / f64 / Complex<f32> / Complex<f64> / bool`）内取值，外部 crate 无法扩展转换矩阵。`bool` 默认排除在源/目标之外（参见 `03-element.md §5.9`）。
-
-调用形态为 `value.cast_to()`；`element_index` 由调用方在逐元素遍历时单独跟踪，而不是作为 `CastTo` 的参数传入。`element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引。
+`T: Element` bound 与 `Self: Element` super-trait 一起约束源/目标类型只能在封闭元素集合（`i32 / i64 / f32 / f64 / Complex<f32> / Complex<f64> / bool`）内取值，外部 crate 无法扩展转换矩阵。`bool` 默认排除在源/目标之外（参见 `03-element.md §5.9`）。调用形态为 `value.cast_to()`；`element_index` 由调用方在逐元素遍历时单独跟踪，而不是作为 `CastTo` 的参数传入。`element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引。
 
 ```rust,ignore
 // Element index is tracked by the caller, not passed to CastTo
@@ -452,11 +448,6 @@ use crate::error::{ConversionFailureReason, XenonError};
 // rewraps to `operation = Cow::Borrowed("cast")` and injects the
 // resolved element index. See §5.2 cast() for the rewrap pattern.
 // Empty `Cow::Borrowed("")` is FORBIDDEN at this layer.
-//
-// Note (26-error v3.2.0): source_type / target_type are `&'static str`
-// (NOT `core::any::TypeId`, NOT `ElementType` enum). Values come from
-// `<A as Element>::ELEMENT_TYPE_NAME`, ensuring `error` (L0) holds no
-// `element` dependency while still producing readable Display output.
 
 // === Lossy-by-default conversion ===
 impl CastTo<f32> for f64 {
@@ -477,7 +468,7 @@ impl CastTo<f32> for f64 {
 // (e.g. `f64::from(x)`, `<f64 as From<i32>>::from(x)`). They do NOT have
 // a `CastTo` impl; the `cast()` main loop dispatches statically-known
 // lossless pairs to `T::from(value)` directly. See §6.1.2 for the
-// lossless impl listing and §11 Decision 4 for the three-tier rationale.
+// lossless impl listing.
 
 // === Float → integer (lossy-by-default) ===
 impl CastTo<i32> for f64 {
@@ -543,9 +534,9 @@ impl CastTo<i32> for i64 {
 // See §5.3 i64→f64 entry: B10.a selects lossy-by-default failure.
 ```
 
-### 6.1.2 Tier-1 静态无损（`From` impls）
+#### 6.1.2 Tier-1 静态无损（`From` impls）
 
-下列 `From` impls **不**通过 `CastTo`，由 Rust 标准库直接提供。锁定的 6×6 `CastElement`-only 矩阵 (bool 排除) 中包含的 Tier-1 std `From` 共 3 对：`f64: From<f32>`、`i64: From<i32>`、`f64: From<i32>`（`u32` 等其它整数类型不在封闭元素集，不参与 ConvertTo 矩阵）。`cast()` 主循环对 Tier-1 type pair 的实现委托：
+下列 `From` impls 不通过 `CastTo`，由 Rust 标准库直接提供。锁定的 6×6 `CastElement`-only 矩阵 (bool 排除) 中包含的 Tier-1 std `From` 共 3 对：`f64: From<f32>`、`i64: From<i32>`、`f64: From<i32>`。`cast()` 主循环对 Tier-1 type pair 的实现委托：
 
 ```rust,ignore
 // In `cast()` main loop (§5.2 pseudo-code), the static dispatch picks
@@ -575,11 +566,11 @@ impl CastTo<i32> for i64 {
 - **Tier-2/Tier-3 由 `CastTo` 承担**：见 §6.1 上方代码块。Tier-2 静态返回 `Err`，Tier-3 按运行时条件返回 `Ok / Err`。
 - **静态分流的实现细节**：`STATICALLY_LOSSLESS::<A, T>()` 是 §5.2 内部 helper（不公开），按 `<A as Element>::ELEMENT_TYPE` × `<T as Element>::ELEMENT_TYPE` 静态判定。具体实现可用 trait 关联常量、宏、或 specialization-free 的若干 `where` 子句穷举三对，详见 §5.2 伪代码注释。
 
-### 6.1.3 `ConvertTo<B>` 内部 sealed 分流 trait
+#### 6.1.3 `ConvertTo<B>` 内部 sealed 分流 trait
 
 `ConvertTo<B>` 是 `convert/cast.rs` 内部的 `pub(crate) sealed` trait，作为 `cast<B>()` 公开 API 的静态分流入口。它统一三层架构的实现（Tier-0 / Tier-1 / Tier-2 / Tier-3），让 `cast<B>()` 的 trait bound 不必直接要求 `CastTo<B>`（避免 Tier-1 type pair 因不实现 `CastTo` 而无法通过 bound）：
 
-> **覆盖范围（`CastElement`-only 6×6 矩阵）**：`ConvertTo<B>` 的源/目标类型集合严格为 `CastElement` 封闭实现集（`i32 / i64 / f32 / f64 / Complex<f32> / Complex<f64>`，**不**包含 `bool`），因此完整矩阵是 6×6 = 36 个 type pair，**不**是基于 7 元素全集的 49 对。`bool` 既不在 `CastElement` 封闭集合内（`03-element.md §5.9.1`），也不在 `cast()` 类型矩阵内（`§5.1`）；`Tensor<bool, _>` 不能调用 `cast()`、`Tensor<_, _>` 也不能 `cast::<bool>()`，编译期通过 `B: CastElement` bound 拒绝。`bool` 张量的同型拷贝由 `to_owned()` 承担（`§5.5`），不走 `cast::<bool>()` 路径。下方"same-type identity short-circuit (Tier-0)"块仅覆盖 `CastElement` 6 类同型对，`bool -> bool` 不属于该 Tier-0。
+**覆盖范围**：`ConvertTo<B>` 的源/目标类型集合严格为 `CastElement` 封闭实现集（`i32 / i64 / f32 / f64 / Complex<f32> / Complex<f64>`，不包含 `bool`），因此完整矩阵是 6×6 = 36 个 type pair，不是基于 7 元素全集的 49 对。`bool` 既不在 `CastElement` 封闭集合内（`03-element.md §5.9.1`），也不在 `cast()` 类型矩阵内（`§5.1`）；`Tensor<bool, _>` 不能调用 `cast()`、`Tensor<_, _>` 也不能 `cast::<bool>()`，编译期通过 `B: CastElement` bound 拒绝。`bool` 张量的同型拷贝由 `to_owned()` 承担（`§5.5`），不走 `cast::<bool>()` 路径。下方"same-type identity short-circuit (Tier-0)"块仅覆盖 `CastElement` 6 类同型对，`bool -> bool` 不属于该 Tier-0。
 
 ```rust,ignore
 // crate-internal, NOT exported. Sealed via crate::private::Sealed.
@@ -613,7 +604,7 @@ impl ConvertTo<i64>          for i64          { #[inline] fn convert(self) -> Re
 impl ConvertTo<Complex<f32>> for Complex<f32> { #[inline] fn convert(self) -> Result<Complex<f32>, XenonError> { Ok(self) } }
 impl ConvertTo<Complex<f64>> for Complex<f64> { #[inline] fn convert(self) -> Result<Complex<f64>, XenonError> { Ok(self) } }
 
-// === Tier-1 lossless real→complex and complex widening (zero-imaginary widening for real→complex; componentwise f64::from for complex widening) ===
+// === Tier-1 lossless real→complex and complex widening ===
 // `f → Complex<f>` and `i → Complex<f>` lossless cells are expressed by
 // `From` (where std provides them) or by direct `Ok(Complex::new(...))`
 // shims here when std does not. They are NOT routed through `CastTo`:
@@ -682,36 +673,23 @@ impl ConvertTo<f32> for Complex<f64> { #[inline] fn convert(self) -> Result<f32,
 impl ConvertTo<f64> for Complex<f64> { #[inline] fn convert(self) -> Result<f64, XenonError> { <Complex<f64> as CastTo<f64>>::cast_to(self) } }
 impl ConvertTo<i32> for Complex<f64> { #[inline] fn convert(self) -> Result<i32, XenonError> { <Complex<f64> as CastTo<i32>>::cast_to(self) } }
 impl ConvertTo<i64> for Complex<f64> { #[inline] fn convert(self) -> Result<i64, XenonError> { <Complex<f64> as CastTo<i64>>::cast_to(self) } }
-
-// === 36-cell coverage check ===
-//   Tier-0 identity:            6 cells (f32/f64/i32/i64/Complex<f32>/Complex<f64> self)
-//   Tier-1 std From:            3 cells (f32→f64, i32→i64, i32→f64)
-//   Tier-1 real→complex:        5 cells (f32→C<f32>, f64→C<f64>, f32→C<f64>, i32→C<f64>, C<f32>→C<f64>)
-//   Tier-2 lossy:              14 cells (f64→{f32,i32,i64}, f32→{i32,i64}, i64→{i32,f32,f64},
-//                                       i32→f32, i32→C<f32>, i64→C<f32>, i64→C<f64>, f64→C<f32>, C<f64>→C<f32>)
-//   Tier-3 dynamic:             8 cells (C<f32>→{f32,f64,i32,i64}, C<f64>→{f32,f64,i32,i64})
-//   Total:                     36 cells = 6 × 6.
 ```
 
-> **6×6 矩阵分类总览（行=源 A，列=目标 B；编号即上文 impl 的 Tier 标签）**：
->
-> | A \ B          | `i32` | `i64` | `f32` | `f64` | `Complex<f32>` | `Complex<f64>` |
-> | -------------- | ----- | ----- | ----- | ----- | -------------- | -------------- |
-> | `i32`          | T0    | T1    | T2    | T1    | T2             | T1             |
-> | `i64`          | T2    | T0    | T2    | T2    | T2             | T2             |
-> | `f32`          | T2    | T2    | T0    | T1    | T1             | T1             |
-> | `f64`          | T2    | T2    | T2    | T0    | T2             | T1             |
-> | `Complex<f32>` | T3    | T3    | T3    | T3    | T0             | T1             |
-> | `Complex<f64>` | T3    | T3    | T3    | T3    | T2             | T0             |
->
-> Tier-0 = identity (6); Tier-1 = lossless via `From` 或 zero-imaginary widening (8); Tier-2 = lossy 静态失败 (14); Tier-3 = 动态条件 (8)。合计 36，与上方 impl 列表一一对应。
+**6×6 矩阵分类总览（行=源 A，列=目标 B；编号即上文 impl 的 Tier 标签）**：
 
-> **同型 `cast::<A>()` 语义澄清（与 §5.5 协同）**：`§5.5` 说"`cast::<A>()` 不适用于同类型拷贝场景"——这是**使用建议**，不是编译期禁止；技术上 Tier-0 identity impls (`ConvertTo<f32> for f32` 等) 让 `Tensor<f32>.cast::<f32>()` 编译通过并返回 `Ok(self)`。同型 cast 在功能上等价于 `to_owned()`，但走 `cast()` 路径会引入 fallible signature 与 enumerate 开销，因此推荐使用 `to_owned()`。Tier-0 identity impls 存在的真正目的是让 `ConvertTo<B>` 的 trait bound 在泛型上下文中也能覆盖 `A == B` 边界，避免上层调用方为同型/异型分支两条路径。
+| A \ B          | `i32` | `i64` | `f32` | `f64` | `Complex<f32>` | `Complex<f64>` |
+| -------------- | ----- | ----- | ----- | ----- | -------------- | -------------- |
+| `i32`          | T0    | T1    | T2    | T1    | T2             | T1             |
+| `i64`          | T2    | T0    | T2    | T2    | T2             | T2             |
+| `f32`          | T2    | T2    | T0    | T1    | T1             | T1             |
+| `f64`          | T2    | T2    | T2    | T0    | T2             | T1             |
+| `Complex<f32>` | T3    | T3    | T3    | T3    | T0             | T1             |
+| `Complex<f64>` | T3    | T3    | T3    | T3    | T2             | T0             |
 
-设计要点：
+**设计要点**：
 
 - **零运行时开销**：每个 `impl ConvertTo<B> for A` 都是 `#[inline]` 的 thin shim，编译器单态化后等同于直接 `From` / `CastTo` 调用。
-- **bound 与 Tier-1 兼容**：`cast<B>()` 只要求 `A: ConvertTo<B>`，Tier-1 type pair（`f32→f64` 等）有 `ConvertTo` impl 但**没有** `CastTo` impl，编译通过。
+- **bound 与 Tier-1 兼容**：`cast<B>()` 只要求 `A: ConvertTo<B>`，Tier-1 type pair（`f32→f64` 等）有 `ConvertTo` impl 但没有 `CastTo` impl，编译通过。
 - **错误形态统一**：`ConvertTo::convert` 永远返回 `Result<B, XenonError>`；Tier-1 必为 `Ok`，Tier-2/Tier-3 与 `CastTo::cast_to` 一致。
 - **sealed**：通过 `crate::private::Sealed` 阻止外部 crate 实现 `ConvertTo`，与 `CastTo` 的 sealed 方式一致。
 
@@ -735,7 +713,7 @@ impl ConvertTo<i64> for Complex<f64> { #[inline] fn convert(self) -> Result<i64,
 
 - [ ] **T1**: 实现 `CastTo` trait 的 Tier-2 / Tier-3 转换路径（Tier-1 不经过 `CastTo`）
   - 文件: `src/convert/cast.rs`
-  - 内容: 实现 `element` 模块中的 fallible `CastTo<T>` trait 的 Tier-2 lossy（静态错误，14 cells）+ Tier-3 dynamic（条件性，8 cells）两层；Tier-1 lossless（11 cells: 6 identity + 3 std `From` + 5 real→complex zero-imaginary widening + 1 complex widening）由 `ConvertTo` 直接走 std `From` / direct shims，**不**实例化 `CastTo`，详见 §6.1.3
+  - 内容: 实现 `element` 模块中的 fallible `CastTo<T>` trait 的 Tier-2 lossy（静态错误，14 cells）+ Tier-3 dynamic（条件性，8 cells）两层；Tier-1 lossless（11 cells: 6 identity + 3 std `From` + 5 real→complex zero-imaginary widening + 1 complex widening）由 `ConvertTo` 直接走 std `From` / direct shims，不实例化 `CastTo`，详见 §6.1.3
   - 测试: `test_cast_f32_to_f64`（Tier-1，验证 `ConvertTo` 直通不实例化 `CastTo`）、`test_cast_f64_to_f32`（Tier-2 lossy）、`test_cast_complex_f64_to_f64_when_imag_zero`（Tier-3 dynamic）
   - 前置: element 模块完成
   - 预计: 10 min
@@ -853,12 +831,12 @@ impl ConvertTo<i64> for Complex<f64> { #[inline] fn convert(self) -> Result<i64,
 
 | 方向                | 对方模块  | 接口/类型                               | 约定                                                                                              |
 | ------------------- | --------- | --------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `convert → tensor`  | `tensor`  | `TensorBase<S, D>` / `StorageIntoOwned` | `cast()`、`to_owned()`、`into_owned()` 都定义在张量抽象之上；其中 `to_owned()` / `into_owned()` 负责产出 canonical F-order owned 结果 |
-| `convert → element` | `element` | `ConvertTo` (internal) / `CastTo`       | 逐元素类型转换通过内部 `ConvertTo<B>` 分流：Tier-1 lossless 走 std `From` / direct shims（**不**实例化 `CastTo`）；Tier-2 lossy 与 Tier-3 dynamic 委托 `<A as CastTo<B>>::cast_to(value)`。`CastTo` trait 定义见 `03-element.md §5.9`，三层架构详见 §6.1.3 |
+| `convert → tensor`  | `tensor`  | `TensorBase<S, D>` / `StorageIntoOwned` | `cast()`、`to_owned()`、`into_owned()` 都定义在张量抽象之上。                                     |
+| `convert → element` | `element` | `ConvertTo` / `CastTo` | 逐元素类型转换通过内部 `ConvertTo<B>` 分流：Tier-1 走 std `From` / direct shims；Tier-2 与 Tier-3 委托 `<A as CastTo<B>>::cast_to(value)`。|
 | `convert → math`    | `math`    | 逐元素转换语义                          | `cast()` 采用迭代收集路径，不复用 `mapv()` 的同类型返回语义                                       |
 | `convert → storage` | `storage` | `Owned` / readable storage traits       | convert 只消费可读存储与 owned 化能力，不在本文扩展额外存储模式互转矩阵                           |
-| `convert → utility` | `utility`  | `to_contiguous`, `into_contiguous`   | 外部调用方若需要显式连续化入口，由 `util::to_contiguous()` 负责（参见 `20-utility.md §5.5`） |
-| `convert → complex` | `complex` | `Complex<T>`                            | 复数目标类型转换依赖 `Complex` 定义；Complex → 实数默认为错误（虚部非 0 时返回 `NonZeroImaginaryPart`），仅在 `im == 0` 且内层实数转换本身无损时可成功，参见 `04-complex.md` §5 |
+| `convert → utility` | `utility` | `to_contiguous`, `into_contiguous`      | 外部调用方若需要显式连续化入口，由 `util::to_contiguous()` 负责（参见 `20-utility.md §5.5`）      |
+| `convert → complex` | `complex` | `Complex<T>` | 复数目标类型转换依赖 `Complex` 定义；Complex → 实数默认为错误，仅在 `im == 0` 且内层实数转换本身无损时可成功，参见 `04-complex.md §5` |
 
 ### 9.2 数据流描述
 
@@ -879,9 +857,9 @@ User calls cast() / to_owned() / into_owned()
 
 | 主题 | 内容 |
 | ---- | ---- |
-| Recoverable error | `cast()` 在有损转换、虚部非零或其他规则不满足时返回 `XenonError::TypeConversion { operation: Cow::Borrowed("cast"), source_type: &'static str, target_type: &'static str, reason: ConversionFailureReason, element_index: Some(usize) }`（字段定义见 `26-error.md v3.2.0 §5.1`）。源/目标类型字段为 `&'static str`，值由 `<A as Element>::ELEMENT_TYPE_NAME` 提供（`03-element.md §5.1.1`），**不**使用 `core::any::TypeId`，**也不**直接持有 `ElementType` 枚举值。`element_index` 为按逻辑元素遍历顺序的 0-based 线性索引，非多维索引；`CastTo::cast_to()` 自身不知道线性索引，因此其返回的错误中 `operation = Cow::Borrowed("cast_to")`（**稳定非空操作名**，与 `26-error.md §8.2` `test_type_conversion_carries_operation` 的非空契约一致；空字符串被禁止，参见 §6.1 / `04-complex.md §10`），`element_index` 为 `None`，由 `cast()` 在 `map_err` 中将 `operation` 覆盖为 `Cow::Borrowed("cast")` 并注入实际索引（见 §5.2 实现）。 |
+| Recoverable error | `cast()` 在有损转换、虚部非零或其他规则不满足时返回 `XenonError::TypeConversion`。 |
 | Panic | 公开转换 API 不定义额外 panic 语义；有损场景统一返回可恢复错误。 |
-| 路径一致性 | `cast`、`to_owned`、`into_owned` 必须保持相同 shape 与逻辑元素顺序；其中 `to_owned` / `into_owned` 的 owned 结果固定为 canonical F-order。无 SIMD / 并行分支。 |
+| 路径一致性 | `cast`、`to_owned`、`into_owned` 必须保持相同 shape 与逻辑元素顺序。无 SIMD / 并行分支。 |
 | 容差边界 | 不适用。 |
 
 ---
@@ -913,16 +891,6 @@ User calls cast() / to_owned() / into_owned()
 | 决策     | `convert/` 的核心覆盖面收敛到 `cast()` / `CastTo`；`to_owned()` / `into_owned()` 仅作为同模块便利 API 保留，其余存储模式互转仅作跨文档引用，不在本文展开 |
 | 理由     | 当前 `需求说明书 §23` 只要求逐元素类型转换与同类型拷贝；以 cast 作为模块核心可保持边界清晰，同时允许便利 API 复用同一基础设施而不把文档扩展到完整存储模式互转 |
 | 替代方案 | 在本文继续完整展开所有存储模式互转 — 放弃，会把 convert 文档扩展到非本节需求范围 |
-
-### 决策 4：默认无损成功、有损 TypeConversion 错误、逐元素检查（B10.a）
-
-| 属性     | 值                                                                                                                                  |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | **三层架构（v2.1.1）**：(Tier-1) 静态无损通过 Rust 标准 `From` / `Into` 表达（`f64: From<f32>`、`i64: From<i32>`、`f64: From<i32>`），**不**经过 `CastTo`，`cast()` 主循环对 Tier-1 直接 `T::from(value)` 零开销；(Tier-2) 静态有损在 `impl CastTo<T> for U` 中直接 `Err(TypeConversion)`，不尝试运行时值域检查；(Tier-3) 动态条件性（如 `Complex<T> → T` 仅当 `im == 0.0`）在 `CastTo::cast_to()` 内做逐元素运行时判定 |
-| 理由     | (1) `需求说明书 §23` 要求"有损转换默认失败"，把判定下推到类型对级别（即 `impl CastTo<i32> for f64` 一律 `Err`）即可满足；(2) 不需要为每个 i64 值检查 `±2^53` 边界（这超出了当前需求；§5.3 中已标注 i64→f64 待需求方确认）；(3) 唯一需要逐元素检查的场景是 `Complex → Real`：`im == 0.0` 是动态条件，必须运行时判定 — 这部分实现已在 §6.1 `CastTo<f64> for Complex<f64>` 中正确给出 |
-| 替代方案 | 默认对所有有损转换尝试动态饱和/截断 — 放弃，与 `需求说明书 §23` 冲突                                                                |
-| 替代方案 | 对 `i64 → f64` 默认成功（数学上窄化但 IEEE 754 round-to-nearest）— 暂保守归类有损，§5.3 已标注待需求方决定                         |
-| 替代方案 | 在 `cast()` 主循环中对每个元素跑值域检查 — 放弃，多数有损 type pair（如 `f64 → f32`）静态可判失败，无需逐元素扫描                   |
 
 ---
 
