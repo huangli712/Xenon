@@ -65,35 +65,35 @@ src/dispatch.rs                    # Single-file module
 
 ```
 src/dispatch.rs
-├── std::sync::atomic        # AtomicUsize (threshold storage)
-├── std::cell::Cell          # Cell<bool> (thread-local guard)
+├── std::sync::atomic         # AtomicUsize (threshold storage)
+├── std::cell::Cell           # Cell<bool> (thread-local guard)
 ├── core::marker::PhantomData # Guard's _private field
-├── crate::error             # XenonError, InvalidArgument (only via ParallelExecStrategy::new)
-├── crate::tensor            # .len(), .is_f_contiguous() (layout queries via tensor)
-└── crate::layout            # Alignment helpers (via tensor)
+├── crate::error              # XenonError, InvalidArgument (only via ParallelExecStrategy::new)
+├── crate::tensor             # .len(), .is_f_contiguous() (layout queries via tensor)
+└── crate::layout             # Alignment helpers (via tensor)
 ```
 
 ### 4.2 类型级依赖
 
-| 来源模块  | 使用的类型/trait                                         |
-| --------- | -------------------------------------------------------- |
-| `tensor`  | `TensorBase<S, D>`, `.len()`, `.is_f_contiguous()`       |
-| `layout`  | `is_aligned()`（通过 tensor 暴露的查询接口间接使用）     |
-| `error`   | `XenonError`, `XenonError::InvalidArgument`（仅 `ParallelExecStrategy::new()` 使用） |
-| `std`     | `AtomicUsize`, `Cell<bool>`, `thread_local!`             |
-| `core`    | `core::marker::PhantomData`                              |
+| 来源模块  | 使用的类型/trait                              |
+| --------- | --------------------------------------------- |
+| `tensor`  | `TensorBase`, `.len()`, `.is_f_contiguous()`  |
+| `layout`  | `is_aligned()`                                |
+| `error`   | `XenonError`, `XenonError::InvalidArgument`   |
+| `std`     | `AtomicUsize`, `Cell<bool>`, `thread_local!`  |
+| `core`    | `core::marker::PhantomData`                   |
 
 ### 4.3 依赖合法性
 
-| 项目           | 说明                                                                 |
-| -------------- | -------------------------------------------------------------------- |
-| 新增第三方依赖 | 无                                                                    |
-| 合法性结论     | 合法；dispatch 仅使用 std 与 crate 内部既有模块，符合最小依赖原则     |
-| 替代方案       | 不适用；当前设计无需额外依赖                                          |
+| 项目           | 说明                                                               |
+| -------------- | ------------------------------------------------------------------ |
+| 新增第三方依赖 | 无                                                                 |
+| 合法性结论     | 合法；dispatch 仅使用 std 与 crate 内部既有模块，符合最小依赖原则  |
+| 替代方案       | 不适用；当前设计无需额外依赖                                       |
 
 ### 4.4 依赖方向声明
 
-依赖方向：单向向上。dispatch 处于 L4 层级（参见 `01-architecture.md` §5.2），仅消费 `tensor`/`layout` 等核心模块；被 `parallel`、`math`、`matrix`、`reduction` 等 L5 模块消费。dispatch 绝不被其下游消费方反向依赖。
+依赖方向：单向向上。dispatch 仅消费 `tensor`/`layout` 等核心模块；被 `parallel`、`math`、`matrix`、`reduction` 等模块消费。
 
 ---
 
