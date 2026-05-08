@@ -154,7 +154,7 @@ xenon/
 │   │
 │   ├── iter/                  # Iterator system
 │   │   ├── mod.rs             # Iterator trait definitions
-│   │   ├── elements.rs        # Elements iterator (flat traversal)
+│   │   ├── elements.rs        # Iter iterator (flat traversal)
 │   │   ├── axis.rs            # AxisIter over one axis
 │   │   └── indexed.rs         # IndexedIter with indices
 │   │

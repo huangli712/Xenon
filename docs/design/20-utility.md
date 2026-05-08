@@ -70,7 +70,7 @@ src/util/
 ├── crate::storage       # Storage, StorageMut trait
 ├── crate::element       # Element, OrderedCompareElement trait
 ├── crate::layout        # is_f_contiguous query
-├── crate::iter          # Elements iterator for fill / clip internals
+├── crate::iter          # Iter iterator for fill / clip internals
 └── crate::error         # XenonError (clip / try_fill recoverable errors)
 ```
 

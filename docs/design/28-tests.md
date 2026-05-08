@@ -159,7 +159,7 @@ tests/
 | `storage`   | `Owned`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`, `Storage`（参见 `05-storage.md §5`）                            |
 | `layout`    | `LayoutFlags`（参见 `06-layout.md §5`）                                                                        |
 | `error`     | `XenonError`, `Result<T>`（参见 `26-error.md §5`）                                                             |
-| `iter`      | `Elements`, `AxisIter`, `IndexedIter`（参见 `10-iterator.md §5`）                                              |
+| `iter`      | `Iter`, `AxisIter`, `IndexedIter`（参见 `10-iterator.md §5`）                                              |
 | `matrix`    | `.dot()`（TensorBase 固有方法）；`crate::matrix::dot(&a, &b)`（自由函数）；双入口等价性见上方 §4.1 说明（参见 `12-matrix.md §5`） |
 | `overload`  | `Tensor<A, D>` 运算符 trait bounds（参见 `19-overload.md §5`）                                                 |
 | `util`      | `.clip()`, `.fill()`, `.try_fill()`, `.to_contiguous()`, `.into_contiguous()`（参见 `20-utility.md §5`）       |

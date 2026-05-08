@@ -78,7 +78,7 @@ src/parallel/           # optional parallel backend consumed by math dispatch
 ```
 src/math/
 ├── crate::tensor        # TensorBase<S, D>, TensorView
-├── crate::iter          # Elements, ElementsMut
+├── crate::iter          # Iter, IterMut
 ├── crate::element       # Element, Numeric, RealScalar, ComplexScalar
 ├── crate::broadcast     # broadcast_shape() for binary ops
 ├── crate::dispatch      # ExecPath, select_exec_path() for execution path decision
@@ -92,7 +92,7 @@ src/math/
 | 来源模块       | 使用的类型/trait                                                                       |
 | -------------- | -------------------------------------------------------------------------------------- |
 | `tensor`       | `TensorBase<S, D>`, `Tensor<A, D>`, `TensorView`, `.shape()`（参见 `07-tensor.md §5`） |
-| `iter`         | `Elements`, `ElementsMut`（参见 `10-iterator.md §5`）                                  |
+| `iter`         | `Iter`, `IterMut`（参见 `10-iterator.md §5`）                                  |
 | `element`      | `Element`, `Numeric`, `RealScalar`, `ComplexScalar`, `OrderedCompareElement`（定义见 `03-element.md §5.5`）|
 | `complex`      | `Complex<f32>`, `Complex<f64>`（参见 `04-complex.md §5`）                              |
 | `broadcast`    | `broadcast_shape()`, `broadcast_to()` 返回的 `TensorView`（参见 `15-broadcast.md §5`） |
@@ -717,7 +717,7 @@ apply_binary(a, b, f):
 
 | 方向               | 对方模块    | 接口/类型                                  | 约定                                   |
 | ------------------ | ----------- | ------------------------------------------ | -------------------------------------- |
-| `math → iter`      | `iter`      | `Elements`, `ElementsMut`                  | 逐元素运算复用 `iter()` / `iter_mut()` 及相关遍历入口；二元路径直接遍历广播后的视图（参见 `10-iterator.md` §5）|
+| `math → iter`      | `iter`      | `Iter`, `IterMut`                  | 逐元素运算复用 `iter()` / `iter_mut()` 及相关遍历入口；二元路径直接遍历广播后的视图（参见 `10-iterator.md` §5）|
 | `math → broadcast` | `broadcast` | `broadcast_shape`                          | 二元运算先调用广播模块推导兼容视图（参见 `15-broadcast.md` §5）|
 | `math → element`   | `element`   | `Numeric` / `RealScalar` / `ComplexScalar` | 通过元素约束区分数值与复数运算语义（参见 `03-element.md` §5）|
 | `math → simd`      | `simd`      | SIMD backend dispatch facade               | 连续数组且 feature 开启时通过稳定的 backend facade 分发到 SIMD 或标量路径，`math` 不直接依赖具体 vector kernel 名称（参见 `08-simd.md` §5） |

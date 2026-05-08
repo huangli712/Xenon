@@ -66,13 +66,13 @@ src/matrix/
 ├── mod.rs
 │   ├── crate::tensor        # TensorView<A, D>
 │   ├── crate::element       # Numeric, ComplexScalar
-│   ├── crate::iter          # Elements
+│   ├── crate::iter          # Iter
 │   ├── crate::dispatch      # ExecPath, select_exec_path() for execution path decision
 │   └── crate::error         # XenonError
 ├── dot.rs
 │   ├── crate::tensor        # TensorView<A, D>
 │   ├── crate::element       # Numeric
-│   ├── crate::iter          # Elements
+│   ├── crate::iter          # Iter
 │   ├── crate::dispatch      # select_exec_path(), ExecPath, ParallelGuard
 │   ├── crate::error         # XenonError
 │   ├── crate::simd (opt.)   # Pure vectorized dot kernel
@@ -85,7 +85,7 @@ src/matrix/
 | ------------------ | ------------------------------------------------------------------------------------------ |
 | `tensor`           | `TensorView<'a, A, D>`, `.ndim()`, `.shape()`, `.len()`, `.as_ptr()`, `.is_f_contiguous()` |
 | `element`          | `Numeric`, `ComplexScalar`                                                                 |
-| `iter`             | `Elements`, `.iter()`                                                                      |
+| `iter`             | `Iter`, `.iter()`                                                                      |
 | `dispatch`         | `select_exec_path()`、`ExecPath`、`ParallelGuard`                                          |
 | `error`            | `XenonError::InvalidArgument`, `XenonError::ShapeMismatch`                                 |
 | `simd`（可选）     | 为满足条件的输入提供 dot 的 SIMD kernel                                                    |
@@ -268,7 +268,7 @@ dot_impl(a, b):
 
 ### 6.3 标量实现
 
-公开 API 允许 `D1 != D2`（例如 `Tensor<f64, IxDyn>` 与 `Tensor<f64, Ix1>`）。运行时 1D 校验通过后，两个视图都是逻辑 1D；标量 helper 用 `Elements` 元素迭代器消费，不要求两个泛型维度类型相同。
+公开 API 允许 `D1 != D2`（例如 `Tensor<f64, IxDyn>` 与 `Tensor<f64, Ix1>`）。运行时 1D 校验通过后，两个视图都是逻辑 1D；标量 helper 用 `Iter` 元素迭代器消费，不要求两个泛型维度类型相同。
 
 ```rust,ignore
 fn scalar_dot_int<I, S1, S2, D1, D2>(
@@ -528,7 +528,7 @@ where
 | 方向                | 对方模块   | 接口/类型      | 约定                                                     |
 | ------------------- | ---------- | -------------- | -------------------------------------------------------- |
 | `matrix → tensor`   | `tensor`   | `TensorView<'_, A, D>` | 消费任意维度张量视图，但在运行时检查其逻辑 rank 是否为 1，参见 `07-tensor.md` §5 |
-| `matrix → iter`     | `iter`     | `Elements` | 使用元素迭代器遍历输入，参见 `10-iterator.md` §5.1                       |
+| `matrix → iter`     | `iter`     | `Iter` | 使用元素迭代器遍历输入，参见 `10-iterator.md` §5.1                       |
 | `matrix → element`  | `element`  | `Numeric` / `ComplexScalar` | 通过泛型约束区分实数与复数路径，参见 `03-element.md` §5 |
 | `matrix → simd`     | `simd`     | dot kernel | 满足条件时委托给 `simd` 模块做内积加速，且保持统一语义             |
 | `matrix → parallel` | `parallel` | parallel reduction | 大输入时可委托给 `parallel` 模块做并行归约，且保持统一语义 |

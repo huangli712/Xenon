@@ -47,7 +47,7 @@
 ```text
 src/parallel/
 ├── mod.rs         # Module entry, re-exports, ParallelPool
-├── iter.rs        # ParElements and TensorBase::par_iter()
+├── iter.rs        # ParIter and TensorBase::par_iter()
 ├── map.rs         # par_map, par_zip_map
 ├── reduce.rs      # par_reduce_impl, par_sum, par_dot
 └── checked.rs     # par_map_checked and error/panic propagation
@@ -66,7 +66,7 @@ src/parallel/
 ├── crate::element           # Element, Numeric
 ├── crate::dimension         # Dimension
 ├── crate::dispatch          # ParallelExecStrategy (defined in dispatch.rs)
-├── (module-owned)           # ParElements and par_iter() entry belong to parallel/
+├── (module-owned)           # ParIter and par_iter() entry belong to parallel/
 └── crate::error             # XenonError
 ```
 
@@ -79,7 +79,7 @@ src/parallel/
 | `element`   | `Element`, `Numeric`                                                                                     |
 | `dimension` | `Dimension`                                                                                              |
 | `dispatch`  | `ParallelExecStrategy`, `ParallelGuard`                                                                  |
-| `parallel`  | `ParElements<'a, A, D>`, `TensorBase::par_iter()`, `par_zip_map()`                                       |
+| `parallel`  | `ParIter<'a, A, D>`, `TensorBase::par_iter()`, `par_zip_map()`                                       |
 | `error`     | `XenonError`, `XenonError::ShapeMismatch`, `XenonError::InvalidShape`, `XenonError::InvalidArgument`, `InvalidShapeKind::ProductOverflow`, `InvalidArgumentKind::OperationSpecific`, `Cow<'static, str>` |
 
 ### 4.3 依赖合法性
@@ -92,7 +92,7 @@ src/parallel/
 
 ### 4.4 依赖方向
 
-依赖方向：单向向上。`parallel` 只提供纯并行执行入口，不包含串行回退（路径裁决见 §6.1）。`parallel` 通过 `crate::dispatch` 引用 `ParallelExecStrategy` 类型（定义于 `dispatch.rs`），但不依赖 dispatch 的路径裁决实现逻辑。`ParElements` 与 `TensorBase::par_iter()` 归属 `parallel` 模块本身，不属于 `iter` 模块。并行路径只建立在上层已完成的张量形状、布局与类型约束之上；广播形状裁决由 `math` 调用侧先完成，再以 `output_dim` 形式传入。
+依赖方向：单向向上。`parallel` 只提供纯并行执行入口，不包含串行回退（路径裁决见 §6.1）。`parallel` 通过 `crate::dispatch` 引用 `ParallelExecStrategy` 类型（定义于 `dispatch.rs`），但不依赖 dispatch 的路径裁决实现逻辑。`ParIter` 与 `TensorBase::par_iter()` 归属 `parallel` 模块本身，不属于 `iter` 模块。并行路径只建立在上层已完成的张量形状、布局与类型约束之上；广播形状裁决由 `math` 调用侧先完成，再以 `output_dim` 形式传入。
 
 ---
 
@@ -120,7 +120,7 @@ pub(crate) struct ParallelPool {
 
 ### 5.2 内部执行入口与可见性
 
-**可见性说明：** `parallel` 是 `pub(crate)` 内部后端；所有执行后端函数与类型（包括 `par_map`、`par_zip_map`、`par_sum`、`par_dot`、`ParallelPool`、`ParElements`）均保持 `pub(crate)`，仅供 `math` / `reduction` / `matrix` 等语义模块通过 `dispatch.rs` 自动调用。
+**可见性说明：** `parallel` 是 `pub(crate)` 内部后端；所有执行后端函数与类型（包括 `par_map`、`par_zip_map`、`par_sum`、`par_dot`、`ParallelPool`、`ParIter`）均保持 `pub(crate)`，仅供 `math` / `reduction` / `matrix` 等语义模块通过 `dispatch.rs` 自动调用。
 
 **执行策略：** 阈值配置与嵌套并行防护由 `dispatch.rs` 统一管理（见 §6.1、决策 4）；本模块仅通过 `ParallelExecStrategy` 接收 dispatch 已裁决的执行参数，不提供独立的公开阈值配置接口。
 
@@ -252,7 +252,7 @@ where
 
 ```rust,ignore
 #[cfg(feature = "parallel")]
-pub(crate) struct ParElements<'a, A, D>
+pub(crate) struct ParIter<'a, A, D>
 where
     A: Element + Send + Sync,
     D: Dimension,
@@ -263,16 +263,16 @@ where
 }
 ```
 
-`ParElements` 通过同时实现 `rayon::iter::IndexedParallelIterator`（`Item = &'a A`，由其 supertrait `ParallelIterator` 自动得到）以及对应的 `rayon::iter::plumbing::Producer` 桥接来提供并行遍历能力。`&A: Send` 需要 `A: Sync`；`A: Send` 保留用于统一内部并行入口的 worker bound：
+`ParIter` 通过同时实现 `rayon::iter::IndexedParallelIterator`（`Item = &'a A`，由其 supertrait `ParallelIterator` 自动得到）以及对应的 `rayon::iter::plumbing::Producer` 桥接来提供并行遍历能力。`&A: Send` 需要 `A: Sync`；`A: Send` 保留用于统一内部并行入口的 worker bound：
 
-- **producer 拆分（修复 Blocker B7）**：`ParElements` 内部实现 `rayon::iter::plumbing::Producer`，由 `with_producer()` 把 view + 当前逻辑区间 `[lo, hi)` 转交给 rayon scheduler；rayon 通过 `producer.split_at(mid)` 将逻辑区间均分为两个互不重叠的子 producer：
+- **producer 拆分（修复 Blocker B7）**：`ParIter` 内部实现 `rayon::iter::plumbing::Producer`，由 `with_producer()` 把 view + 当前逻辑区间 `[lo, hi)` 转交给 rayon scheduler；rayon 通过 `producer.split_at(mid)` 将逻辑区间均分为两个互不重叠的子 producer：
   - F-contiguous 子区间：`split_at` 直接对 base pointer 做指针算术 `ptr.add(mid - lo)`，两个子 producer 持有不相交的连续切片。
   - 非连续 / 转置视图：`split_at` 不切分物理切片，而是切分逻辑区间 `[lo, mid)` 与 `[mid, hi)`；每个 producer 内部维护一个轻量的 stride 状态机，按 F-order 对该子区间进行逐元素 stride 访问；rayon 仍可保证两个子 producer 不共享同一逻辑元素。
   - **不变量**：任意 producer 拆分序列覆盖原区间正好一次且互不相交（`Disjoint Coverage`），由 `with_producer` 的契约和 `split_at` 的实现共同保证；该不变量是 `IndexedParallelIterator` 的安全前提，也是 `par_map_checked` 顺序恢复（§6.6）能成立的基础。
 - **逻辑顺序契约**：`IndexedParallelIterator` 要求 producer 按 `[0, n)` 的索引顺序覆盖输出；rayon worker 之间执行顺序未定，但每个元素仅被访问一次，且 `collect_into_vec(&mut Vec<_>)` / `collect()` 等 indexed 收集 API 会**按索引位置**写入结果，与 worker 完成顺序无关。
 - 对于 F-contiguous 布局，直接按连续内存切片分割以获得最佳缓存局部性；对于非连续布局（如转置视图），退化为逻辑区间 + 逐元素步长访问。
 - 分片粒度由 `chunk_size` 和 `max_workers` 字段控制：若 `chunk_size` 为 `Some(n)`，每个分片至多包含 `n` 个元素；若为 `None`，通过 `compute_safe_chunks(total, num_threads)` 自动计算（定义于 `src/parallel/mod.rs`，见 01-architecture.md §5.2a），其中 `num_threads` 取 `max_workers` 或 `rayon::current_num_threads()`。
-- `par_iter()` 返回使用默认策略（`chunk_size: None`, `max_workers: None`）的 `ParElements`；`ParElements::with_strategy()` 接受显式策略参数，供 `par_map_checked` 等需要精确控制分块的内部入口使用。
+- `par_iter()` 返回使用默认策略（`chunk_size: None`, `max_workers: None`）的 `ParIter`；`ParIter::with_strategy()` 接受显式策略参数，供 `par_map_checked` 等需要精确控制分块的内部入口使用。
 
 ```rust,ignore
 #[cfg(feature = "parallel")]
@@ -282,8 +282,8 @@ where
     D: Dimension + Clone,
     A: Element + Send + Sync,
 {
-    pub(crate) fn par_iter(&self) -> ParElements<'_, A, D> {
-        ParElements::new(self.view())
+    pub(crate) fn par_iter(&self) -> ParIter<'_, A, D> {
+        ParIter::new(self.view())
     }
 }
 ```
@@ -415,7 +415,7 @@ where
         .unwrap_or_else(|| crate::parallel::compute_safe_chunks(total, num_threads));
 
     // Build broadcast-compatible read-only chunk views for lhs / rhs via
-    // ParElements-style IndexedParallelIterator + Producer split (see §5.6).
+    // ParIter-style IndexedParallelIterator + Producer split (see §5.6).
     // Each worker chunk MAY independently call into the simd backend
     // (08-simd.md v2.0.1 决策 5; admission per chunk).
     // Use indexed collect (.collect_into_vec / collect()) to recover F-order
@@ -468,7 +468,7 @@ where
     B: Element + Send,
     F: Fn(&A) -> Result<B, XenonError> + Sync + Send,
 {
-    // ParElements implements IndexedParallelIterator (see §5.6), so .collect()
+    // ParIter implements IndexedParallelIterator (see §5.6), so .collect()
     // and .collect_into_vec() preserve F-order index→position mapping
     // regardless of worker completion order.
     //
@@ -479,14 +479,14 @@ where
     // Internal precondition: `f` must be side-effect free and deterministic,
     // because the success path evaluates it once during error probing and once
     // during indexed collection.
-    let iter = ParElements::with_strategy(tensor.view(), strategy);
+    let iter = ParIter::with_strategy(tensor.view(), strategy);
     let total = iter.len(); // IndexedParallelIterator → ExactSize semantics
     let mut out: Vec<B> = Vec::with_capacity(total);
     // Sketch: collect_into_vec writes by index; if any element returns Err,
     // we instead surface an Err via a separate try_reduce_with pass that does
     // NOT rely on completion order.
     let result: Result<(), XenonError> = iter
-        .clone() // ParElements is cheap to clone (metadata only)
+        .clone() // ParIter is cheap to clone (metadata only)
         .try_for_each(|item| { let _ = f(item)?; Ok(()) });
     result?;
     iter.map(|item| f(item).expect("error already surfaced by try_for_each pass"))
@@ -499,7 +499,7 @@ where
 }
 ```
 
-**顺序保证（修复 Blocker B8）**：`ParElements` 实现 `IndexedParallelIterator`（§5.6 producer 拆分契约），其 `collect()` / `collect_into_vec()` 按 producer 索引位置（即 F-order 逻辑顺序）写入输出 buffer，而不是按 worker 完成顺序追加。因此：
+**顺序保证（修复 Blocker B8）**：`ParIter` 实现 `IndexedParallelIterator`（§5.6 producer 拆分契约），其 `collect()` / `collect_into_vec()` 按 producer 索引位置（即 F-order 逻辑顺序）写入输出 buffer，而不是按 worker 完成顺序追加。因此：
 
 - 即便 worker 之间执行顺序不确定，`out[i]` 必然对应 `tensor` 的第 `i` 个 F-order 逻辑元素，`Tensor::from_raw_vec_unchecked(out, raw_dim)` 的"长度一致 + 顺序一致"前提两条都满足。
 - 错误优先性：若闭包返回 `Err`，单次 `IndexedParallelIterator::collect()` 在 rayon 当前实现中不保证返回"最早索引"的 `Err`。本设计采用两遍模式：第一遍 `try_for_each` 用作错误探测，遇到 `Err` 立即停止；只有所有 chunk 都成功时，第二遍 `collect_into_vec` 按索引位置写入最终结果。第一遍内部的 `Err` 选择仍由 rayon 决定，但调用方对外语义只承诺"至少传播一个 `Err`"（与 §6.7、§10 一致），不要求"第一个发生的 `Err`"。整数 `sum`/`dot` 的"首个失败 chunk 仲裁"是另一种更强约束，只在 §6.5 中适用，不向 `par_map_checked` 推广。
@@ -511,7 +511,7 @@ where
 
 | 主题                             | 论证                                                                                                                                                                                                                                         |
 | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Tensor::from_raw_vec_unchecked`（长度） | 这里只在输出向量长度与 `tensor.raw_dim()` 已由输入张量长度和映射过程保持一致时使用；并行与串行路径都必须保证产出元素数等于输入逻辑元素数。`ParElements: IndexedParallelIterator` 提供 `len()` 与 `Producer::split_at` 的不重叠覆盖不变量（§5.6），从而 `collect_into_vec` 后 `out.len() == checked_size(raw_dim)`。 |
+| `Tensor::from_raw_vec_unchecked`（长度） | 这里只在输出向量长度与 `tensor.raw_dim()` 已由输入张量长度和映射过程保持一致时使用；并行与串行路径都必须保证产出元素数等于输入逻辑元素数。`ParIter: IndexedParallelIterator` 提供 `len()` 与 `Producer::split_at` 的不重叠覆盖不变量（§5.6），从而 `collect_into_vec` 后 `out.len() == checked_size(raw_dim)`。 |
 | `Tensor::from_raw_vec_unchecked`（顺序） | F-order 顺序由 producer 拆分契约 + `IndexedParallelIterator::collect_into_vec` 的"按索引写入"语义共同保证（修复 Blocker B8）。worker 完成顺序乱序不影响 `out[i]` 对应的逻辑索引；这与串行 `map` 的 F-order 收集严格等价。 |
 | `par_zip_map` broadcast chunking | 每个并行 chunk 仅借用两个输入的只读 broadcast-compatible sub-view；广播轴保持逻辑重复语义，不进行额外物理展开，因此不会引入越界写或悬垂引用。Producer split 不切分广播轴的物理切片，仅切分逻辑输出区间。 |
 | `ParallelGuard` 转移              | `_guard: ParallelGuard` 由 dispatch 在 `select_exec_path` 内构造并按值移交；`parallel` 函数体在并行执行结束后自然 drop guard，由 RAII 保证 thread-local 嵌套防护标记一定被清除（与 30-dispatch.md 决策 7 一致）。 |
@@ -529,7 +529,7 @@ where
 
 ### Wave 2: 并行入口与执行内核
 
-- [ ] **T1**: 实现 `ParElements` 与 `TensorBase::par_iter()`
+- [ ] **T1**: 实现 `ParIter` 与 `TensorBase::par_iter()`
   - 文件: `src/parallel/iter.rs`
   - 内容: 单输入元素级并行遍历入口
   - 测试: `test_par_iter_len_matches_tensor_len`
@@ -672,7 +672,7 @@ where
 | 消费（输入）   | `tensor`                     | `Tensor<A, D>`, `TensorBase<S, D>`                | 调用前已满足 shape、layout、类型约束                                |
 | 消费（输入）   | `element`                    | `Element`, `Numeric`                              | 函数签名中 trait 约束所需                                           |
 | 消费（输入）   | `error`                      | `XenonError`                                      | 可恢复错误统一复用项目错误模型                                      |
-| 模块内部       | `parallel`                   | `TensorBase::par_iter()`, `ParElements<'a, A, D>` | 定义于本模块（参见 §5.6），`pub(crate)` 内部入口，提供单输入只读并行遍历 |
+| 模块内部       | `parallel`                   | `TensorBase::par_iter()`, `ParIter<'a, A, D>` | 定义于本模块（参见 §5.6），`pub(crate)` 内部入口，提供单输入只读并行遍历 |
 | 被调用（输出） | 上层语义模块 / `dispatch.rs` | `par_map` / `par_sum` / `par_dot` / `par_zip_map` | 仅在 `dispatch.rs` 已选中并行路径后执行                             |
 | 产出（输出）   | 上层语义模块                 | `Tensor<B, D>` 或 `Result<A, XenonError>`         | 并行与串行路径保持相同外部语义                                      |
 
@@ -798,11 +798,11 @@ math / reduction / matrix call dispatch entry
 | 替代方案 | 在 `parallel` 内部自行 `enter()` —— 放弃，会让 `select_exec_path` 与实际并行进入分离，重新引入 30-dispatch v1.0 的 C6 矛盾（哪个函数 consume guard） |
 | 替代方案 | 不传 guard，依赖 thread_local 隐式状态 —— 放弃，无法让类型系统强制"只有被 dispatch 选中的调用才能进入并行" |
 
-### 决策 8：`ParElements` 实现 `IndexedParallelIterator` + `Producer`
+### 决策 8：`ParIter` 实现 `IndexedParallelIterator` + `Producer`
 
 | 属性     | 值                                                                                                                                  |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | `ParElements` 同时实现 `rayon::iter::IndexedParallelIterator` 和 `rayon::iter::plumbing::Producer`，提供 `split_at`-based 不重叠拆分 |
+| 决策     | `ParIter` 同时实现 `rayon::iter::IndexedParallelIterator` 和 `rayon::iter::plumbing::Producer`，提供 `split_at`-based 不重叠拆分 |
 | 理由     | 为 `par_map_checked` 顺序保证、`par_zip_map` 索引收集、`par_sum`/`par_dot` 固定 chunking 提供唯一可证明的 producer 不变量基础（修复 Blocker B7） |
 | 替代方案 | 仅实现 `ParallelIterator` —— 放弃，rayon 无法保证 `collect` 的索引顺序；`from_raw_vec_unchecked` 元素错位将导致内存安全前提缺失 |
 

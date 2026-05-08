@@ -70,7 +70,7 @@ src/set/unique.rs
 ├── crate::dimension     # Dimension, Ix1
 ├── crate::element       # Element (Copy supertrait)
 ├── crate::complex       # Complex<f32>, Complex<f64> (concrete UniqueElement impls)
-└── crate::iter          # Elements for collection
+└── crate::iter          # Iter for collection
 ```
 
 ### 4.2 类型级依赖
@@ -82,7 +82,7 @@ src/set/unique.rs
 | `dimension` | `Dimension`, `Ix1`（output dimension type for flatten result）                     |
 | `element`   | `Element`，参见 `03-element.md` §5.1                                               |
 | `complex`   | `Complex<f32>`, `Complex<f64>`，参见 `04-complex.md` §5                            |
-| `iter`      | `Elements`（遍历收集元素），参见 `10-iterator.md` §5.1                             |
+| `iter`      | `Iter`（遍历收集元素），参见 `10-iterator.md` §5.1                             |
 
 ### 4.3 依赖合法性
 
@@ -486,7 +486,7 @@ impl UniqueElement for Complex<f64> {
 | 方向            | 对方模块  | 接口/类型                             | 约定                                    |
 | --------------- | --------- | ------------------------------------- | --------------------------------------- |
 | `set → tensor`  | `tensor`  | `TensorBase<S, D>` / `Tensor<A, Ix1>` | 消费输入张量并返回 1D owned 结果        |
-| `set → iter`    | `iter`    | `Elements`                            | 使用元素迭代器收集逻辑元素              |
+| `set → iter`    | `iter`    | `Iter`                            | 使用元素迭代器收集逻辑元素              |
 | `set → element` | `element` | `Element`                             | 元素 trait 边界由 `UniqueElement` 提供  |
 | `set → set`     | `set`     | `UniqueElement`                       | 通过 `unique_eq` 约束去重语义           |
 
