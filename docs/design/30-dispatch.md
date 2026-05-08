@@ -964,7 +964,7 @@ Caller (math / matrix / reduction)
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T4.1**: 实现 `ParallelExecStrategy::new()` 校验构造器
+- [ ] **T5**: 实现 `ParallelExecStrategy::new()` 校验构造器
   - 文件: `src/dispatch.rs`
   - 内容: 字段私有化、`new()` 拒绝 `Some(0)`、`auto()` infallible 默认、字段访问器
   - 测试: `test_parallel_strategy_new_rejects_zero`, `test_parallel_strategy_new_accepts_none`
@@ -973,14 +973,14 @@ Caller (math / matrix / reduction)
 
 ### Wave 4: 测试与验证
 
-- [ ] **T5**: 编写 dispatch 全套单元测试
+- [ ] **T6**: 编写 dispatch 全套单元测试
   - 文件: `src/dispatch.rs` (#[cfg(test)])
   - 内容: 各路径返回验证、阈值边界、feature gate 组合、嵌套防护、非连续惩罚
   - 测试: 见 §8.2 完整清单
-  - 前置: T2, T3, T4
+  - 前置: T2, T3, T4, T5
   - 预计: 10 min
 
-**总预计时间：** ~45 min（v1.1.0 增加 T4.1）。所有任务均在同一文件 `src/dispatch.rs` 内完成。
+**总预计时间：** ~45 min。所有任务均在同一文件 `src/dispatch.rs` 内完成。
 
 ---
 
@@ -1120,7 +1120,7 @@ math / matrix / reduction 调用方
 | `ParallelExecStrategy` | dispatch 定义该结构体并提供构造器校验   | parallel 消费 chunk_size / max_workers 字段    |
 | 串行回退         | dispatch 选择 `ExecPath::Serial` 时不进入 parallel | parallel 自身不包含串行回退代码               |
 
-**guard 传递契约（v1.1.0）：** parallel 后端函数（如 `par_map`、`par_sum`）的内部入口不再调用 `ParallelGuard::enter()`——该函数已在 dispatch 内部消失，由 `try_acquire_guard()` 模块私有 helper 取代。parallel 后端的入口签名（概念上）应当接受 guard 作为参数：
+**guard 传递契约：** parallel 后端函数（如 `par_map`、`par_sum`）的内部入口不再调用 `ParallelGuard::enter()`——该函数已在 dispatch 内部消失，由 `try_acquire_guard()` 模块私有 helper 取代。parallel 后端的入口签名（概念上）应当接受 guard 作为参数：
 
 ```rust,ignore
 // Conceptual signature inside parallel/ backend
@@ -1133,7 +1133,7 @@ pub(crate) fn par_map_internal<...>(
 
 调用方持有 `(ExecPath::Parallel, Some(guard))` 时通过 `match` 把 guard 转交给 parallel 后端入口；parallel 后端拥有 guard 直到工作完成，guard 在函数退出（含 panic unwind）时 `Drop` 释放 thread-local flag。
 
-**线程亲和性约束（v1.2.0）：** 由于 `ParallelGuard` 是 `!Send + !Sync`（见 §5.4 / §6.2），parallel 后端**必须**把 guard 保留在调用线程的 entry function frame 中（即 `par_map_internal` 的栈帧），**不得**把 guard 捕获进 Rayon worker 闭包。每个 worker 闭包内 chunk 执行必须包裹在 `dispatch::with_parallel_worker_context(|| { ... })` 中——该 helper 不构造、不消费 guard，仅在 worker 自身 TLS 上设置/还原 `IN_PARALLEL == true`，使 worker 内部嵌套调用 `select_exec_path()` 正确回退串行路径。
+**线程亲和性约束：** 由于 `ParallelGuard` 是 `!Send + !Sync`（见 §5.4 / §6.2），parallel 后端**必须**把 guard 保留在调用线程的 entry function frame 中（即 `par_map_internal` 的栈帧），**不得**把 guard 捕获进 Rayon worker 闭包。每个 worker 闭包内 chunk 执行必须包裹在 `dispatch::with_parallel_worker_context(|| { ... })` 中——该 helper 不构造、不消费 guard，仅在 worker 自身 TLS 上设置/还原 `IN_PARALLEL == true`，使 worker 内部嵌套调用 `select_exec_path()` 正确回退串行路径。
 
 参见 `09-parallel.md` §6.1（路径选择）、决策 4（parallel 不包含串行回退）、决策 6（执行路径裁决由 dispatch 统一收口）。
 
@@ -1143,7 +1143,7 @@ pub(crate) fn par_map_internal<...>(
 | ------------ | ----------------------------------------------------------- | ----------------------------------------------------------- |
 | ISA 检测     | dispatch **不参与** ISA 检测                                | `pulp::Arch` 做 ISA 检测与缓存（参见 `08-simd.md` §5.4）    |
 | 路径推荐     | dispatch 通过 `ExecPath::Simd` 推荐 SIMD 路径               | simd 接收推荐后可自行拒绝（内部回退标量）                    |
-| 准入条件     | dispatch 仅检查 len 与 F-连续性；`alignment_ok` 仅作为 hint 透传给 simd，**不**作为硬门槛（v1.1.3 起，与 §5.5/§6.1 一致） | simd 内部检查元素类型、ISA lane 宽度、操作支持矩阵；自行决定 aligned vs unaligned kernel 分发 |
+| 准入条件     | dispatch 仅检查 len 与 F-连续性；`alignment_ok` 仅作为 hint 透传给 simd，不作为硬门槛 | simd 内部检查元素类型、ISA lane 宽度、操作支持矩阵；自行决定 aligned vs unaligned kernel 分发 |
 | 长度阈值     | dispatch 持有 SIMD 通用阈值（64）                           | simd 持有操作特定阈值（如 sum 的 1024，参见 `08-simd.md` §5.7）|
 | 调用方式     | dispatch 不直接调用 simd 代码                               | 语义模块在 `match ExecPath::Simd` 分支中调用 simd 后端       |
 
@@ -1220,12 +1220,12 @@ dispatch 与 simd 之间是**推荐-接受**关系，而非命令-执行关系�
 | 替代方案 | 拆分为 `dispatch/` 子目录（如 `path.rs` + `guard.rs` + `threshold.rs`）—— 放弃，对当前规模过度工程化。 |
 | 触发条件 | 若未来 dispatch 膨胀到 >500 行或引入新的独立关注点（如更细粒度的 per-op 阈值配置），可重新评估。  |
 
-### 决策 7：select-and-enter 原子绑定（v1.1.0 修订）
+### 决策 7：select-and-enter 原子绑定
 
 | 属性     | 值                                                                                                                       |
 | -------- | ------------------------------------------------------------------------------------------------------------------------ |
 | 决策     | `select_exec_path()` 返回 `(ExecPath, Option<ParallelGuard>)`；当且仅当首元素为 `ExecPath::Parallel` 时第二元素为 `Some(_)`。`ParallelGuard` 没有任何公开/`pub(crate)` 构造函数；唯一产生途径是 dispatch 模块内部的 `try_acquire_guard()`。 |
-| 理由     | v1.0.0 设计中 `select_exec_path()` 只返回 `ExecPath`，调用方再单独 `enter()`。这造成两个问题：(a) C6 矛盾——三处文档（§5.4 / §6.1 / §6.4）对"select 是否 consume guard"表述不一致；(b) TOCTOU 窗口——select 返回 Parallel 与 backend 调用 enter() 之间，另一并行 API 可能抢先进入 parallel region，使 backend 实际执行嵌套并行。把 select 与 acquire 绑定为单次 thread-local 临界区根本性消除这两个问题。 |
+| 理由     | 旧设计中 `select_exec_path()` 只返回 `ExecPath`，调用方再单独 `enter()`。这造成两个问题：(a) C6 矛盾——三处文档（§5.4 / §6.1 / §6.4）对"select 是否 consume guard"表述不一致；(b) TOCTOU 窗口——select 返回 Parallel 与 backend 调用 enter() 之间，另一并行 API 可能抢先进入 parallel region，使 backend 实际执行嵌套并行。把 select 与 acquire 绑定为单次 thread-local 临界区根本性消除这两个问题。 |
 | 替代方案 | 保留独立 `enter()` 并通过文档约束调用方"必须立刻 enter"——放弃，约束无法在类型系统层面强制，且不消除 TOCTOU。 |
 | 替代方案 | `select_exec_path()` 返回 `Result<ParallelGuard, ExecPath>` 风格——放弃，过度工程化且让 Serial/SIMD 路径退化为"错误"，语义反直觉。 |
 | 来源     | **用户决策 B8.a**（"select_exec_path() 返回 (ExecPath, Option<ParallelGuard>)"）。                                       |
