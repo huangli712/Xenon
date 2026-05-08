@@ -639,11 +639,10 @@ Steps:
        return (ExecPath::Serial, None)
 ```
 
-**优先级说明：** 并行检查在 SIMD 之前。这是因为在同时启用两个 feature 且输入足够大的场景下，并行路径的吞吐收益通常高于 SIMD 串行加速。若并行不可用或输入未达并行阈值，再考虑 SIMD。
+**优先级说明**：并行检查在 SIMD 之前。这是因为在同时启用两个 feature 且输入足够大的场景下，并行路径的吞吐收益通常高于 SIMD 串行加速。若并行不可用或输入未达并行阈值，再考虑 SIMD。
 
-**Guard 与路径绑定的关键不变量：**
-
-- Step 2 中 `try_acquire_guard()` **要么**返回 `Some(guard)` 并设置 thread-local flag、并立即返回 `(Parallel, Some(guard))`；**要么**返回 `None` 并落到 Step 3/4。中间没有其他状态。
+**Guard 与路径绑定的关键不变量**：
+- Step 2 中 `try_acquire_guard()` 要么返回 `Some(guard)` 并设置 thread-local flag、并立即返回 `(Parallel, Some(guard))`；要么返回 `None` 并落到 Step 3/4。中间没有其他状态。
 - 一旦 `Some(guard)` 被产生，guard 必然作为返回值的一部分被调用方持有；guard 永不在 dispatch 内部被丢弃。
 
 **确定性保证：** 该算法在以下输入集合相同时确定性：`(len, is_contiguous, alignment_ok, threshold_state, feature_flags, thread_local_in_parallel_state)`。thread-local 的 `IN_PARALLEL` 状态显式被纳入"输入"，因为嵌套并行场景下相同的 `(len, contig, align)` 在不同 thread-local 状态下会有不同结果。这是正确语义。
