@@ -431,7 +431,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 | `broadcast → dimension`     | `dimension`  | `Dimension`, `BroadcastDim`                     | 运行时 shape 计算与编译期输出维度类型推导分离。          |
 | `broadcast → layout`        | `layout`     | `Strides<D>`, `LayoutState::BroadcastView`      | 非空（`product(shape) > 0`）且至少一轴 stride 为 0 的视图必须映射到 `BroadcastView` 布局状态；空数组退化的零步长不触发该状态（与 `06-layout.md §5.11` 严格一致）。 |
 | `broadcast → error`         | `error`      | `XenonError::BroadcastError`, `InvalidArgument` | 广播不兼容与参数前提失败都必须返回结构化错误。           |
-| `math ← broadcast`          | `math`       | `broadcast_with()`, `broadcast_shape()`         | 二元运算先广播再计算。`math` 模块内部统一调用 `broadcast_with()`（pub(crate) 唯一入口）完成双输入广播，不允许各模块私自重复定义广播规则。具体调用路径：`math` 通过 `dispatch::select_exec_path` 决定串行/SIMD/并行三路；并行路径下 `par_zip_map` 接收已广播好的 `output_dim`，所有广播裁决发生在调用 `parallel/` 后端**之前**（参见 11-math §5.2、09-parallel §6.3）。 |
+| `math ← broadcast`          | `math`       | `broadcast_with()`, `broadcast_shape()`         | 二元运算先广播再计算。`math` 模块内部统一调用 `broadcast_with()`完成双输入广播，不允许各模块私自重复定义广播规则。具体调用路径：`math` 通过 `dispatch::select_exec_path` 决定串行/SIMD/并行三路；并行路径下 `par_zip_map` 接收已广播好的 `output_dim`，所有广播裁决发生在调用 `parallel/` 后端之前（参见 11-math §5.2、09-parallel §6.3）。 |
 | `iter ← broadcast`          | `iter`       | 只读广播视图                                    | 广播结果可被读取遍历，但不得提供可变迭代能力。           |
 
 ### 9.2 数据流描述
@@ -449,13 +449,13 @@ User calls broadcast_to() or broadcast_with()
 
 ## 10. 错误处理与语义边界
 
-| 主题              | 内容                                                                                                                               |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | 广播不兼容时统一返回 `XenonError::BroadcastError`；`broadcast_to`、`broadcast_shape`、`broadcast_with` 都必须填充结构化字段（按 §5.2 表）。`operation` 用 `Cow::Borrowed(..)`，`lhs_shape` / `rhs_shape` 总是 `Vec<usize>`，`attempted_target_shape` / `axis` 是 `Option`。|
-| 参数错误          | 当 `orig_shape.len() != orig_strides.len()` 等公开前提被破坏时，`broadcast_strides()` 返回 `XenonError::InvalidArgument { operation: Cow::Borrowed("broadcast_strides"), kind: InvalidArgumentKind::OperationSpecific { argument, constraint } }`（封闭枚举字段对齐 26-error §5.1）。|
-| Panic             | 不允许把 shape 不兼容隐藏为 panic；公开 API 使用 `Result` 表达失败。                                                               |
-| 语义边界          | 广播只负责显式元数据扩展，不改变元素值、不重排数据、不授予可写访问。                                                               |
-| 路径一致性        | 默认路径、后续可能启用的 SIMD/并行消费路径都必须共享同一广播规则与错误类别；广播模块自身不分裂语义分支。                           |
+| 主题              | 内容                                                                                                                       |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Recoverable error | 广播不兼容时统一返回 `XenonError::BroadcastError`。                                                                        |
+| 参数错误          | 当 `orig_shape.len() != orig_strides.len()` 等公开前提被破坏时，`broadcast_strides()` 返回 `XenonError::InvalidArgument`。 |
+| Panic             | 不允许把 shape 不兼容隐藏为 panic；公开 API 使用 `Result` 表达失败。                                                       |
+| 语义边界          | 广播只负责显式元数据扩展，不改变元素值、不重排数据、不授予可写访问。                                                       |
+| 路径一致性        | 默认路径、后续可能启用的 SIMD/并行消费路径都必须共享同一广播规则与错误类别；广播模块自身不分裂语义分支。                   |
 
 ---
 
@@ -527,7 +527,6 @@ User calls broadcast_to() or broadcast_with()
 | 单 crate   | 广播模块保持在现有 crate 内，不拆分为独立 crate。               |
 | SemVer     | 本设计只收敛现有广播语义与文档结构，不扩展超范围公开能力。      |
 | 最小依赖   | 不新增任何第三方依赖，仅消费现有模块与标准库。                  |
-| 负步长禁用 | 步长保持 `usize`，仅允许非负步长与零步长广播语义。              |
 
 ---
 
