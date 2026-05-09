@@ -335,37 +335,35 @@ dispatch-selected parallel entry (receives ParallelGuard by value;
 
 ### 6.3 二元逐元素并行路径
 
-分块策略统一通过 `compute_safe_chunks(total, num_workers)` 计算，该函数定义于 `src/parallel/mod.rs`（参见 01-architecture.md §5.2a）。这避免了多处重复内联公式造成的不一致风险。
+分块策略统一通过 `compute_safe_chunks(total, num_workers)` 计算，该函数定义于 `src/parallel/mod.rs`。这避免了多处重复内联公式造成的不一致风险。
 
-**`compute_safe_chunks` 策略定义：**
+**`compute_safe_chunks` 策略定义**：
 
 ```text
 compute_safe_chunks(total, num_workers) -> chunk_size:
     constants:
-        MIN_CHUNK = 1024            // lower bound on chunk size (elements)
+        MIN_CHUNK = 1024             // lower bound on chunk size (elements)
         TARGET_CHUNKS_PER_WORKER = 4 // aim for ~4 chunks per worker so
                                      // rayon's work-stealing has slack;
                                      // not a hard guarantee.
     if total == 0:
-        return 1                    // dummy; no work scheduled
+        return 1                     // dummy; no work scheduled
     if total <= num_workers:
-        return 1                    // each element in its own chunk; only
-                                    // up to `total` workers will get work
+        return 1                     // each element in its own chunk; only
+                                     // up to `total` workers will get work
     target_chunks = num_workers * TARGET_CHUNKS_PER_WORKER
     raw = ceil_div(total, target_chunks)
     chunk = max(raw, MIN_CHUNK)
     return chunk
 ```
 
-设计理由：
+**设计理由**：
 - **`MIN_CHUNK = 1024`**：避免 chunk 过小导致 rayon 调度开销超过实际工作（典型 f32/f64 标量运算 < 1µs / 1024 元素）。该常数是经验值，对所有受支持元素类型 + ExecPath::Parallel 路径统一使用，不区分类型。
 - **`TARGET_CHUNKS_PER_WORKER = 4`**：让 rayon 的 work-stealing 有空间均衡负载，避免最慢的 worker 拖累整体延迟。系数小于 4 时尾延迟敏感，大于 4 时调度开销显著。
 - **`total < num_workers` fallback**：直接 chunk_size = 1，让 `total` 个 worker 各得一个元素，剩余 worker 闲置；不再尝试聚合（聚合会导致 worker 不满载）。
 - **不基于元素 byte 大小调整**：所有受支持元素类型都是简单 POD（最大 16 bytes for `Complex<f64>`），1024 元素 chunk = 16 KiB，完全在 L1 cache 内。
 
-**与 `ParallelExecStrategy::chunk_size` 的关系：** 调用方通过 `with_strategy()` 提供 `chunk_size: Some(n)` 时，**完全覆盖** `compute_safe_chunks` 的输出（不再调用该函数）；`chunk_size: None` 时才调用 `compute_safe_chunks`。这把"自动选择 vs 显式覆盖"的边界写在调用点，避免实现层每次重新决策。
-
-**性能基线（参考非强制）：** 在 `27-benchmark.md` 的标准硬件下，`compute_safe_chunks` 应让 1M-element f32 add 在 8 worker 上达到 ≥ 5x 串行加速（详见 `27-benchmark.md §6`）；如果实测低于 4x，应优先排查热路径中的非 chunk 因素（如不必要的临时分配）。
+**与 `ParallelExecStrategy::chunk_size` 的关系：** 调用方通过 `with_strategy()` 提供 `chunk_size: Some(n)` 时，完全覆盖 `compute_safe_chunks` 的输出（不再调用该函数）；`chunk_size: None` 时才调用 `compute_safe_chunks`。这把"自动选择 vs 显式覆盖"的边界写在调用点，避免实现层每次重新决策。
 
 ```rust,ignore
 #[cfg(feature = "parallel")]
@@ -404,7 +402,7 @@ where
         .max_workers
         .unwrap_or_else(rayon::current_num_threads);
 
-    // Use compute_safe_chunks from src/parallel/mod.rs (declared in 01-architecture.md §5.2a)
+    // Use compute_safe_chunks from src/parallel/mod.rs
     // to centralize chunk-size policy and apply safety bounds.
     let chunk_size = strategy
         .chunk_size
@@ -422,11 +420,11 @@ where
 
 - `par_zip_map()` 是二元逐元素并行路径的统一设计入口，供 `math` 模块中的 `add` / `sub` / `mul` / `div` 广播运算消费，不直接暴露为公开用户 API。
 - `par_zip_map()` 接收的 `lhs`、`rhs` 与 `output_dim` 必须已由调用侧完成兼容性验证；广播裁决（含输出 rank/shape 计算）属于 `math` 模块职责，`parallel/` 不重复做形状推导。
-- 广播处理顺序固定为：先由 `math` 模块验证 `lhs` / `rhs` 广播兼容并产出 `output_dim`，再由 `parallel` 按外轴/块状多维 tile 分块；默认 chunk_size 通过 `compute_safe_chunks(total, num_threads)` 确定（定义于 `src/parallel/mod.rs`，见 01-architecture.md §5.2a），作为 tile 目标工作量上界，其中 `num_threads = strategy.max_workers.unwrap_or_else(rayon::current_num_threads)`（与 §5.6 一致：`max_workers` 优先，回退到 rayon 默认）。chunk 间合并按 `IndexedParallelIterator` 的索引顺序写入输出 buffer。每个 chunk 为两个输入分别构造与该 tile 对应、且仍与 `output_dim` 兼容的只读 sub-view。若某一侧是广播轴（stride 为 `0` 或逻辑重复维），chunk 视图保持该广播语义，不做物理复制。`DL`、`DR`、`DO` 独立建模，以表达输入与输出 rank 可能不同的广播结果。
+- 广播处理顺序固定为：先由 `math` 模块验证 `lhs` / `rhs` 广播兼容并产出 `output_dim`，再由 `parallel` 按外轴/块状多维 tile 分块；默认 chunk_size 通过 `compute_safe_chunks(total, num_threads)` 确定（定义于 `src/parallel/mod.rs`），作为 tile 目标工作量上界，其中 `num_threads = strategy.max_workers.unwrap_or_else(rayon::current_num_threads)`（与 §5.6 一致：`max_workers` 优先，回退到 rayon 默认）。chunk 间合并按 `IndexedParallelIterator` 的索引顺序写入输出 buffer。每个 chunk 为两个输入分别构造与该 tile 对应、且仍与 `output_dim` 兼容的只读 sub-view。若某一侧是广播轴（stride 为 `0` 或逻辑重复维），chunk 视图保持该广播语义，不做物理复制。`DL`、`DR`、`DO` 独立建模，以表达输入与输出 rank 可能不同的广播结果。
 - 广播 chunk 映射草图：优先按 `output_dim` 的外轴边界生成块状多维 tile，使 chunk 在输出空间内保持可直接切片的矩形子域；若某些退化形状无法形成理想矩形 tile，则实现可退化为“逻辑区间 + 逐元素广播投影”的内部执行形式，而不是要求把任意线性区间整体重建成单个 broadcast sub-view。对输出维中的广播轴，输入侧固定复用同一逻辑坐标；对非广播轴，chunk 保持对应 tile 的区间跨度。实现不得为广播轴做物理展开或额外分配。
 - `par_zip_map` 仅包含并行执行逻辑；若调用发生，表示 `dispatch.rs` 已确认当前输入适合走并行路径。
 - `par_zip_map()` 作为内部并行入口，假定广播兼容性已由调用方验证，不再额外定义单独的 checked 变体，也不依赖 `BroadcastError`。此为内部前置条件。违反时视为内部 bug，可触发 debug assert，但不得破坏内存安全或对外错误模型。release 模式下行为保持语义定义，不引入未指定行为。panic 与 `Err` 传播语义参见 §6.7 与 §10。
-- **唯一仍由本函数返回的可恢复错误**是 `output_dim.checked_size()` 的整型溢出，归类为 `XenonError::InvalidShape { operation: "par_zip_map", shape, kind: InvalidShapeKind::ProductOverflow, offending_dim: None }`（封闭枚举字段，参见 26-error.md §5.1）。
+- 唯一仍由本函数返回的可恢复错误是 `output_dim.checked_size()` 的整型溢出，归类为 `XenonError::InvalidShape`。
 
 ### 6.4 轴向归约并行方案
 
