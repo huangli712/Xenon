@@ -144,7 +144,7 @@ parallel feature implementation paths/
 
 当前所有受支持元素类型（`i32/i64/f32/f64`、`Complex<f32/f64>`、`bool`）均满足 `Send + Sync`，其线程安全属性随 §5.1 规则自动传播至各存储模式。
 
-### 5.5 Owned<A> 的 Send/Sync
+### 5.5 Owned 的 Send/Sync
 
 ```rust,ignore
 // src/storage/owned.rs
@@ -229,7 +229,7 @@ unsafe impl<'a, A: Sync> Send for ViewRepr<'a, A> {}
 unsafe impl<'a, A: Sync> Sync for ViewRepr<'a, A> {}
 ```
 
-### 5.7 ViewMutRepr<'a, A> 的 Send（不实现 Sync）
+### 5.7 ViewMutRepr 的 Send
 
 ```rust,ignore
 // src/storage/viewmut.rs
@@ -287,9 +287,9 @@ unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
 // aligned if the design changes.
 ```
 
-### 5.8 ArcRepr<A> 的 Send/Sync
+### 5.8 ArcRepr 的 Send/Sync
 
-**共享可写边界说明：** ArcRepr 相关的唯一化（uniquify）后恢复独占写能力仅是内部实现机制。这不构成共享可写存储模式。当前版本不提供共享可写存储模式（参见 `需求说明书 §6.1`）。
+**共享可写边界说明**： ArcRepr 相关的唯一化后恢复独占写能力仅是内部实现机制。这不构成共享可写存储模式。当前版本不提供共享可写存储模式（参见 `需求说明书 §6.1`）。
 
 ```rust,ignore
 // src/storage/arc.rs
@@ -352,9 +352,57 @@ let sum: f64 = b.iter().sum();  // OK: read-only iteration
 // b_mut.iter_mut()  // Compile error! ViewRepr does not implement StorageMut
 ```
 
-**设计决策：** 广播结果使用 `ViewRepr`（只读视图），因为广播不拷贝数据，语义上仅为只读（参见 `15-broadcast.md §5`）。如果允许可变迭代，修改广播结果会意外修改原数据的多个位置，这既不符合广播语义，也容易引入 bug。
+**设计决策**： 广播结果使用 `ViewRepr`（只读视图），因为广播不拷贝数据，语义上仅为只读（参见 `15-broadcast.md §5`）。如果允许可变迭代，修改广播结果会意外修改原数据的多个位置，这既不符合广播语义，也容易引入 bug。
 
-### 5.10 Good/Bad 对比示例
+### 5.10 FFI unsafe 与线程安全边界
+
+**适用范围：** `src/ffi/`（详见 `23-ffi.md`）。本节是横切线程安全规范在 FFI 边界的延伸，与 `23-ffi.md` 的 unsafe 接口契约协同。
+
+**核心约束：**
+
+| 约束类别 | 规则 |
+|:--|:--|
+| 描述符 Send/Sync | `TensorExport<'a, A>` / `TensorExportMut<'a, A>`（`23-ffi.md §5.4`）按 Rust auto-trait 推导：含 `*const A` / `*mut A` 字段使其默认 `!Send + !Sync`；不为这两个类型提供任何 `unsafe impl Send/Sync`。跨线程移动/共享导出的 raw 描述符**必须**由调用方在 `unsafe` 块中重新构造一个匹配 lifetime/borrow 的描述符，且仅在能证明无别名 + 无并发写时进行 |
+| C 端并发写 | 同一 `TensorExportMut` 在 C 侧**禁止**并发写（即便 C 端没有 Rust 借用规则的强制）；这是 `from_raw_parts_mut` round-trip 的隐含前提，违反时 Rust 侧重新构造的 `&mut` 别名会导致 UB |
+| Raw pointer 输入责任 | `TensorBase::from_raw_parts(_mut)`（`07-tensor.md §5.6 / §5.7`）的调用方必须保证：(1) provenance — `data_ptr` 必须从可被 `'a` 长度合法借用的对象派生；(2) lifetime — `'a` 不超过该对象的有效借用期；(3) alignment — `data_ptr % align_of::<A>() == 0`；(4) initialization — 范围内所有元素已是有效的 `A` 实例；(5) aliasing — `from_raw_parts_mut` 时无其他活跃别名（无论 Rust 侧还是 C 侧） |
+| Allocator 归属 | Owned 路径不得跨 allocator 释放：通过 `from_raw_parts` 接收的 raw 描述符**禁止**被 Xenon 用 `dealloc(System)` 释放（除非显式声明的 round-trip 构造由 Xenon 自己分配）。详见 `23-ffi.md §10` 的 `ForeignAllocatorMismatch` 错误 |
+| Panic 跨边界 | Rust 侧 panic 不得跨 `extern "C"` 函数边界。所有 `extern "C"` 导出函数必须用 `catch_unwind` 包裹并把 panic 转换为错误码（`23-ffi.md §6.4`），否则会触发 UB |
+
+**与本文档其他章节的关系：**
+- §5.7 的 `ViewMutRepr !Sync` 论证适用于 Xenon 内部的 ViewMut；FFI 中的 `TensorExportMut` 是**单独的、独立的描述符类型**，不实现 ViewMut 的相关 trait，因此 FFI 描述符不沿用 ViewMut 的 Send/Sync 结论，而是按 raw pointer 默认推导。
+- §5.4 的 "当前受支持元素类型线程安全传播" 同样适用于通过 FFI 传出的元素类型，但前提是元素以原生 Rust 类型（i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool）形式存在；C 侧若把字节范围重新解释为另一种类型，进入 `23-ffi.md §10` 的 `AbiMismatch` 错误路径。
+
+更详细的 FFI 错误模型与 unsafe 边界：见 `23-ffi.md §10 / §11`。本节只规范线程安全维度。
+
+### 5.11 unsafe 入口索引
+
+下列 `unsafe fn` 在 Xenon crate 内部 / 公开 API 面使用，每个调用点必须用 `unsafe { ... }` 块包裹并附 `// SAFETY:` 注释证明其契约满足。本节只列入口，详细 `# Safety` 契约由各 owner 文档维护。
+
+#### 5.11.1 `pub(crate)` 内部 unsafe fn 清单（4 项）
+
+仅 crate 内部可见，不进入公开 API。调用点全部位于本 crate 源代码内：
+
+| `pub(crate) unsafe fn` | Owner 文档 | 契约要点 |
+|:--|:--|:--|
+| `TensorBase::<S, D>::new_unchecked(storage, shape, strides, offset, flags, derived_from_view_mut) where S: RawStorage` | `07-tensor.md §5.6` | **唯一 canonical unsafe 构造器**——所有其他内部 unchecked 构造器必须 forward 到此处；shape/strides/flags/offset 互一致；flags 由 `compute_layout_flags` 产出；逻辑访问范围在 storage 内；shape product 已 overflow-check；`derived_from_view_mut` 对 Owned 路径（`S = Owned<A>`）必须 `false`，仅在 `ViewMutRepr` 降级 / 切片自带降级标记的源场景为 `true` |
+| `TensorBase::<Owned<A>, D>::from_raw_vec_unchecked(data: Vec<A>, shape: D)` | `07-tensor.md §5.6` | `data.as_ptr()` 满足 `A` 对齐；`shape.checked_size()` 已验证；`data.len()` 等于该值；F-order 元数据合法 |
+| `Tensor::from_shape_vec_aligned_unchecked(shape: D, data: Vec<A>)` | `21-type.md §5.6` (cast/to_owned helper) | `TensorBase::new_unchecked` 的**薄封装**（本条指数录存在供完整性索引；实质性安全契约已 forward 到 07-tensor.md §5.6）；`data.len() == product(shape)`；shape 已验证；无独立 unsafe 不变式 |
+
+#### 5.11.2 `pub` 公开 unsafe API 清单（5 项）
+
+公开 unsafe API；下游用户可直接调用，必须遵守同样的 `unsafe { } + // SAFETY:` 调用规范：
+
+| `pub unsafe fn` | Owner 文档 | 契约要点 |
+|:--|:--|:--|
+| `TensorBase::<ViewRepr<'a, A>, D>::from_raw_parts(...)` | `07-tensor.md §5.7` (FFI 入口) | provenance / lifetime / alignment / initialization / aliasing 五点（与本文 §5.11 一致） |
+| `TensorBase::<ViewMutRepr<'a, A>, D>::from_raw_parts_mut(...)` | `07-tensor.md §5.7` (FFI 入口) | 同 `from_raw_parts` 五点 + 可写布局非重叠校验（参见 `07-tensor.md §5.7`） |
+| `TensorBase::<Owned<A>, D>::from_raw_parts_owned(raw: OwnedRawParts<A, D>)` | `07-tensor.md §5.7` (Owned 重建入口) | `raw` 必须由配对的 `into_raw_parts` 产生且未被释放；元数据互一致；详见 `07-tensor.md §5.7` |
+| `WorkspaceBorrowMut::as_maybe_uninit_typed_slice<T>(&mut self, count)` | `24-workspace.md §5.6` | `T: crate::element::Element`；count 不致 byte 长度溢出（否则 `TypedViewRejection::TypedByteLengthOverflow`）；返回 `&mut [MaybeUninit<T>]` 调用方负责完整初始化才能 `assume_init`（R13 E-01：从 §5.12.1 移到此公开表，与 `24-workspace.md §5.6` `pub unsafe fn` 实际定义可见性一致） |
+| `WorkspaceBorrowMut::assume_init_typed_slice<T>(&mut self, count)` | `24-workspace.md §5.6` | `T: Element`；调用方已保证范围内 `count` 个 `T` 已被有效初始化（R13 E-01：可见性同上） |
+
+调用点要求：每个 `unsafe { ... }` 块必须紧邻 `// SAFETY:` 注释，注释引用 owner 文档章节并列出本调用点已建立的不变式如何满足契约。25-safety §5.12 仅作为索引；具体契约文本以 owner 文档为准，禁止在两处分别维护。
+
+### 5.12 Good/Bad 对比示例
 
 ```rust,ignore
 // Good - ViewMutRepr cross-thread movement inside thread::scope
@@ -417,54 +465,6 @@ fn parallel_iteration(tensor: &Tensor2<f64>) {
     let sum = tensor.sum();
 }
 ```
-
-### 5.11 FFI unsafe 与线程安全边界
-
-**适用范围：** `src/ffi/`（详见 `23-ffi.md`）。本节是横切线程安全规范在 FFI 边界的延伸，与 `23-ffi.md` 的 unsafe 接口契约协同。
-
-**核心约束：**
-
-| 约束类别 | 规则 |
-|:--|:--|
-| 描述符 Send/Sync | `TensorExport<'a, A>` / `TensorExportMut<'a, A>`（`23-ffi.md §5.4`）按 Rust auto-trait 推导：含 `*const A` / `*mut A` 字段使其默认 `!Send + !Sync`；不为这两个类型提供任何 `unsafe impl Send/Sync`。跨线程移动/共享导出的 raw 描述符**必须**由调用方在 `unsafe` 块中重新构造一个匹配 lifetime/borrow 的描述符，且仅在能证明无别名 + 无并发写时进行 |
-| C 端并发写 | 同一 `TensorExportMut` 在 C 侧**禁止**并发写（即便 C 端没有 Rust 借用规则的强制）；这是 `from_raw_parts_mut` round-trip 的隐含前提，违反时 Rust 侧重新构造的 `&mut` 别名会导致 UB |
-| Raw pointer 输入责任 | `TensorBase::from_raw_parts(_mut)`（`07-tensor.md §5.6 / §5.7`）的调用方必须保证：(1) provenance — `data_ptr` 必须从可被 `'a` 长度合法借用的对象派生；(2) lifetime — `'a` 不超过该对象的有效借用期；(3) alignment — `data_ptr % align_of::<A>() == 0`；(4) initialization — 范围内所有元素已是有效的 `A` 实例；(5) aliasing — `from_raw_parts_mut` 时无其他活跃别名（无论 Rust 侧还是 C 侧） |
-| Allocator 归属 | Owned 路径不得跨 allocator 释放：通过 `from_raw_parts` 接收的 raw 描述符**禁止**被 Xenon 用 `dealloc(System)` 释放（除非显式声明的 round-trip 构造由 Xenon 自己分配）。详见 `23-ffi.md §10` 的 `ForeignAllocatorMismatch` 错误 |
-| Panic 跨边界 | Rust 侧 panic 不得跨 `extern "C"` 函数边界。所有 `extern "C"` 导出函数必须用 `catch_unwind` 包裹并把 panic 转换为错误码（`23-ffi.md §6.4`），否则会触发 UB |
-
-**与本文档其他章节的关系：**
-- §5.7 的 `ViewMutRepr !Sync` 论证适用于 Xenon 内部的 ViewMut；FFI 中的 `TensorExportMut` 是**单独的、独立的描述符类型**，不实现 ViewMut 的相关 trait，因此 FFI 描述符不沿用 ViewMut 的 Send/Sync 结论，而是按 raw pointer 默认推导。
-- §5.4 的 "当前受支持元素类型线程安全传播" 同样适用于通过 FFI 传出的元素类型，但前提是元素以原生 Rust 类型（i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool）形式存在；C 侧若把字节范围重新解释为另一种类型，进入 `23-ffi.md §10` 的 `AbiMismatch` 错误路径。
-
-更详细的 FFI 错误模型与 unsafe 边界：见 `23-ffi.md §10 / §11`。本节只规范线程安全维度。
-
-### 5.12 unsafe 入口索引
-
-下列 `unsafe fn` 在 Xenon crate 内部 / 公开 API 面使用，每个调用点必须用 `unsafe { ... }` 块包裹并附 `// SAFETY:` 注释证明其契约满足。本节只列入口，详细 `# Safety` 契约由各 owner 文档维护。
-
-#### 5.12.1 `pub(crate)` 内部 unsafe fn 清单（4 项）
-
-仅 crate 内部可见，不进入公开 API。调用点全部位于本 crate 源代码内：
-
-| `pub(crate) unsafe fn` | Owner 文档 | 契约要点 |
-|:--|:--|:--|
-| `TensorBase::<S, D>::new_unchecked(storage, shape, strides, offset, flags, derived_from_view_mut) where S: RawStorage` | `07-tensor.md §5.6` | **唯一 canonical unsafe 构造器**——所有其他内部 unchecked 构造器必须 forward 到此处；shape/strides/flags/offset 互一致；flags 由 `compute_layout_flags` 产出；逻辑访问范围在 storage 内；shape product 已 overflow-check；`derived_from_view_mut` 对 Owned 路径（`S = Owned<A>`）必须 `false`，仅在 `ViewMutRepr` 降级 / 切片自带降级标记的源场景为 `true` |
-| `TensorBase::<Owned<A>, D>::from_raw_vec_unchecked(data: Vec<A>, shape: D)` | `07-tensor.md §5.6` | `data.as_ptr()` 满足 `A` 对齐；`shape.checked_size()` 已验证；`data.len()` 等于该值；F-order 元数据合法 |
-| `Tensor::from_shape_vec_aligned_unchecked(shape: D, data: Vec<A>)` | `21-type.md §5.6` (cast/to_owned helper) | `TensorBase::new_unchecked` 的**薄封装**（本条指数录存在供完整性索引；实质性安全契约已 forward 到 07-tensor.md §5.6）；`data.len() == product(shape)`；shape 已验证；无独立 unsafe 不变式 |
-
-#### 5.12.2 `pub` 公开 unsafe API 清单（5 项）
-
-公开 unsafe API；下游用户可直接调用，必须遵守同样的 `unsafe { } + // SAFETY:` 调用规范：
-
-| `pub unsafe fn` | Owner 文档 | 契约要点 |
-|:--|:--|:--|
-| `TensorBase::<ViewRepr<'a, A>, D>::from_raw_parts(...)` | `07-tensor.md §5.7` (FFI 入口) | provenance / lifetime / alignment / initialization / aliasing 五点（与本文 §5.11 一致） |
-| `TensorBase::<ViewMutRepr<'a, A>, D>::from_raw_parts_mut(...)` | `07-tensor.md §5.7` (FFI 入口) | 同 `from_raw_parts` 五点 + 可写布局非重叠校验（参见 `07-tensor.md §5.7`） |
-| `TensorBase::<Owned<A>, D>::from_raw_parts_owned(raw: OwnedRawParts<A, D>)` | `07-tensor.md §5.7` (Owned 重建入口) | `raw` 必须由配对的 `into_raw_parts` 产生且未被释放；元数据互一致；详见 `07-tensor.md §5.7` |
-| `WorkspaceBorrowMut::as_maybe_uninit_typed_slice<T>(&mut self, count)` | `24-workspace.md §5.6` | `T: crate::element::Element`；count 不致 byte 长度溢出（否则 `TypedViewRejection::TypedByteLengthOverflow`）；返回 `&mut [MaybeUninit<T>]` 调用方负责完整初始化才能 `assume_init`（R13 E-01：从 §5.12.1 移到此公开表，与 `24-workspace.md §5.6` `pub unsafe fn` 实际定义可见性一致） |
-| `WorkspaceBorrowMut::assume_init_typed_slice<T>(&mut self, count)` | `24-workspace.md §5.6` | `T: Element`；调用方已保证范围内 `count` 个 `T` 已被有效初始化（R13 E-01：可见性同上） |
-
-调用点要求：每个 `unsafe { ... }` 块必须紧邻 `// SAFETY:` 注释，注释引用 owner 文档章节并列出本调用点已建立的不变式如何满足契约。25-safety §5.12 仅作为索引；具体契约文本以 owner 文档为准，禁止在两处分别维护。
 
 ---
 
