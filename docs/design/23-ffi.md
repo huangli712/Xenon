@@ -407,7 +407,7 @@ parse_deps = false  # do not parse dependency crates' types
 ///
 /// **Visibility & file location**: Generic descriptors are
 /// `pub(crate)` Rust-only borrowing evidence and live in
-/// `src/ffi/private.rs` (see §3 file layout + §5.3.1 cbindgen gate #2:
+/// `src/ffi/private.rs` (see §3 file layout + §5.3.2 cbindgen gate #2:
 /// generic descriptors are physically isolated and excluded from cbindgen
 /// emission set). They are NOT part of any C ABI surface; the C-visible
 /// raw descriptors are `TensorExportRaw` / `TensorExportMutRaw` (defined
@@ -459,7 +459,7 @@ pub(crate) struct TensorExport<'a, A> {
 /// The only differences are: `data` is `*mut A` (writable), and
 /// `_marker` uses `PhantomData<&'a mut A>` (exclusive borrow).
 ///
-/// **Visibility & file location (R13 D-01):** Same `pub(crate)` Rust-only
+/// **Visibility & file location**: Same `pub(crate)` Rust-only
 /// scope and `src/ffi/private.rs` location as `TensorExport`. Not part of
 /// any C ABI surface; C consumers see `TensorExportMutRaw` instead.
 // File: src/ffi/private.rs
@@ -593,7 +593,7 @@ where
 
     /// Export tensor data with mutable access.
     ///
-    /// **Visibility & return type (R15 D-01 fix):** Public FFI entry; returns
+    /// **Visibility & return type**: Public FFI entry; returns
     /// `TensorExportMutRaw` (the C-visible non-generic raw descriptor). The
     /// intermediate generic `TensorExportMut<'_, A>` is `pub(crate)` Rust-only
     /// (located in `src/ffi/private.rs`) and cannot appear in `pub fn` return
@@ -639,16 +639,14 @@ where
 
 **生命周期与 auto trait**：导出结果不拥有底层内存，`data`、`shape`、`strides` 均借用源张量内部数据，源张量 drop 后立即失效。`TensorExport` 包含 `*const A`（裸指针），因此 Rust 自动推导为 `!Send + !Sync`。如果 FFI 消费者需要跨线程共享，必须显式包装（如 `Arc<TensorExport<...>>` + 手动 `unsafe impl`）。Xenon 不为 `TensorExport` 提供 `Send/Sync` 自动实现。
 
-#### 5.4.1 FFI panic 边界与回调限制
+**FFI panic 边界与回调限制**：
 
-`TensorExport<'a, A>` / `TensorExportMut<'a, A>` 只是借用源张量内部数据和元数据的 Rust 结构体；本模块**不**提供 `pub extern "C"` 导出函数，也不承诺替调用方管理 C ABI 边界的 panic 行为。
+`TensorExport<'a, A>` / `TensorExportMut<'a, A>` 只是借用源张量内部数据和元数据的 Rust 结构体；本模块不提供 `pub extern "C"` 导出函数，也不承诺替调用方管理 C ABI 边界的 panic 行为。当上游库把 `TensorExport` 传给 C 代码时，必须满足以下额外约束：
 
-当上游库把 `TensorExport` 传给 C 代码时，必须满足以下额外约束：
-
-- Rust panic **不得**穿越 `extern "C"` ABI 边界。任何由上游定义的 `extern "C"` wrapper 都必须在最外层使用 `std::panic::catch_unwind` 捕获 panic 并转换为上游 ABI 的错误码，或在该 FFI 边界采用 `panic = "abort"` 策略。
+- Rust panic 不得穿越 `extern "C"` ABI 边界。任何由上游定义的 `extern "C"` wrapper 都必须在最外层使用 `std::panic::catch_unwind` 捕获 panic 并转换为上游 ABI 的错误码，或在该 FFI 边界采用 `panic = "abort"` 策略。
 - `TensorExport` / `TensorExportMut` 的所有指针只在源张量借用仍然存活、且没有发生 unwinding 导致源张量或相关 owner 被 drop 的期间有效。
 - C 代码不得在持有 `TensorExport` 指针期间 re-enter Rust 并调用可能 panic 的 callback，除非该 callback 的 Rust ABI 边界同样捕获 panic 或直接 abort。
-- 如果捕获到 panic，wrapper 必须把当前导出的所有 borrowed pointer 视为失效，**不得**继续让 C 侧读取或缓存这些指针。
+- 如果捕获到 panic，wrapper 必须把当前导出的所有 borrowed pointer 视为失效，不得继续让 C 侧读取或缓存这些指针。
 
 推荐的上游 wrapper 形态如下：
 
@@ -692,27 +690,27 @@ pub struct Complex64 {
 }
 ```
 
-**Complex 布局约定：** `Complex<f32>` 与 `Complex<f64>` 的 FFI 表示分别等价于 `#[repr(C)] struct { re: f32, im: f32 }` 和 `#[repr(C)] struct { re: f64, im: f64 }`。复数类型的完整定义、运算和 ABI 约定参见 `04-complex.md`。
+**Complex 布局约定**： `Complex<f32>` 与 `Complex<f64>` 的 FFI 表示分别等价于 `#[repr(C)] struct { re: f32, im: f32 }` 和 `#[repr(C)] struct { re: f64, im: f64 }`。复数类型的完整定义、运算和 ABI 约定参见 `04-complex.md`。
 
-**内存保证：** `#[repr(C)]` 保证字段顺序固定为 `re` 后接 `im`，整体对齐分别等于 `f32` / `f64` 的 C ABI 对齐要求；若目标 ABI 需要尾部 padding，则该 padding 仅作用于单个复数元素末尾，不改变数组按该结构逐元素重复排布的语义。
+**内存保证**： `#[repr(C)]` 保证字段顺序固定为 `re` 后接 `im`，整体对齐分别等于 `f32` / `f64` 的 C ABI 对齐要求；若目标 ABI 需要尾部 padding，则该 padding 仅作用于单个复数元素末尾，不改变数组按该结构逐元素重复排布的语义。
 
-**导出语义：** 导出复数张量时，`TensorExport<Complex<f32>>` / `TensorExport<Complex<f64>>` 和 `TensorExportMut<Complex<f32>>` / `TensorExportMut<Complex<f64>>` 中的 `data` 仍是“复数元素指针”，`offset` 与 `strides` 仍按“复数元素个数”计量，而不是按标量 `re/im` 分量或字节计量。C 侧看到的是 `Complex32*` / `Complex64*` 加上相同的 shape/stride 元数据。
+**导出语义**： 导出复数张量时，`TensorExport<Complex<f32>>` / `TensorExport<Complex<f64>>` 和 `TensorExportMut<Complex<f32>>` / `TensorExportMut<Complex<f64>>` 中的 `data` 仍是“复数元素指针”，`offset` 与 `strides` 仍按“复数元素个数”计量，而不是按标量 `re/im` 分量或字节计量。C 侧看到的是 `Complex32*` / `Complex64*` 加上相同的 shape/stride 元数据。
 
 ### 5.6 Bool FFI 布局契约
 
-**Bool ABI 约束：** `bool` 与 C `_Bool` / C23 `bool` 的互操作仅在文档明确支持的平台/ABI 下成立；它用于说明当前支持目标上的对接方式，不作为跨语言、跨目标的稳定 ABI 承诺。对这些已支持平台，C 消费者应使用 `_Bool` 或 `bool`（C23）来匹配 `TensorExport<bool>` / `TensorExportMut<bool>` 中的 `data` 指针类型，并避免使用 `int`、`unsigned char` 等其它整数类型。
+**Bool ABI 约束**： `bool` 与 C `_Bool` / C23 `bool` 的互操作仅在文档明确支持的平台/ABI 下成立；它用于说明当前支持目标上的对接方式，不作为跨语言、跨目标的稳定 ABI 承诺。对这些已支持平台，C 消费者应使用 `_Bool` 或 `bool`（C23）来匹配 `TensorExport<bool>` / `TensorExportMut<bool>` 中的 `data` 指针类型，并避免使用 `int`、`unsigned char` 等其它整数类型。
 
-**导出语义：** 导出 `bool` 张量时，`TensorExport<bool>` 中的 `data` 为 `*const bool`（C 侧 `const _Bool*`），`TensorExportMut<bool>` 中的 `data` 为 `*mut bool`（C 侧 `_Bool*`），`offset` 与 `strides` 按 `bool` 元素个数计量。`strides[i] == 1` 表示相邻逻辑元素在内存中连续排列（每个占 1 字节）。
+**导出语义**： 导出 `bool` 张量时，`TensorExport<bool>` 中的 `data` 为 `*const bool`（C 侧 `const _Bool*`），`TensorExportMut<bool>` 中的 `data` 为 `*mut bool`（C 侧 `_Bool*`），`offset` 与 `strides` 按 `bool` 元素个数计量。`strides[i] == 1` 表示相邻逻辑元素在内存中连续排列（每个占 1 字节）。
 
-**C 侧验证说明：** Xenon 仅对文档明确支持的平台/ABI 给出 Rust `bool` 与 C `_Bool` 的互操作说明；跨语言集成时，调用方仍应在目标工具链侧通过 `sizeof(_Bool) == 1`、`_Alignof(_Bool) == 1` 等静态断言验证兼容性，不应把该文档表述解读为跨平台稳定 ABI 保证。
+**C 侧验证说明**： Xenon 仅对文档明确支持的平台/ABI 给出 Rust `bool` 与 C `_Bool` 的互操作说明；跨语言集成时，调用方仍应在目标工具链侧通过 `sizeof(_Bool) == 1`、`_Alignof(_Bool) == 1` 等静态断言验证兼容性，不应把该文档表述解读为跨平台稳定 ABI 保证。
 
-**测试边界说明：** 与上述 ABI 约束一致，`bool` FFI ABI 相关测试也只应在文档明确支持的 targets/ABI 上启用；其它目标上应通过 `#[cfg(...)]` 跳过，而不是把 `_Bool` 兼容性断言提升为无条件测试基线。
+**测试边界说明**： 与上述 ABI 约束一致，`bool` FFI ABI 相关测试也只应在文档明确支持的 targets/ABI 上启用；其它目标上应通过 `#[cfg(...)]` 跳过，而不是把 `_Bool` 兼容性断言提升为无条件测试基线。
 
 ### 5.7 从裸指针构造张量
 
-**核心定义归属：** `from_raw_parts()` 和 `from_raw_parts_mut()` 的完整签名、实现和 Safety 文档定义在 `07-tensor.md` §5.7，代码位于 `src/tensor/construct.rs`。本文仅描述 FFI 边界的语义要点和校验逻辑概述。
+**核心定义归属**： `from_raw_parts()` 和 `from_raw_parts_mut()` 的完整签名、实现和 Safety 文档定义在 `07-tensor.md` §5.7，代码位于 `src/tensor/construct.rs`。本文仅描述 FFI 边界的语义要点和校验逻辑概述。
 
-**语义契约摘要：**
+**语义契约摘要**：
 
 ```rust,ignore
 // from_raw_parts() — see 07-tensor.md §5.7 for the full implementation
@@ -747,15 +745,15 @@ pub struct Complex64 {
 //   3. Empty tensors use NonNull::dangling() as logical_ptr
 ```
 
-**校验边界说明：** 与 `07-tensor.md` §5.7 一致，`from_raw_parts*()` 只验证库能够直接检查的元数据约束（例如 shape/stride/offset/storage*len 组合是否合法、是否溢出、是否越界），并在失败时返回 `Result<*, XenonError>`。指针有效性、对齐、实际可访问范围与生命周期仍由调用方在 `unsafe` 前提下负责。
+**校验边界说明**： 与 `07-tensor.md` §5.7 一致，`from_raw_parts*()` 只验证库能够直接检查的元数据约束（例如 shape/stride/offset/storage*len 组合是否合法、是否溢出、是否越界），并在失败时返回 `Result<*, XenonError>`。指针有效性、对齐、实际可访问范围与生命周期仍由调用方在 `unsafe` 前提下负责。
 
-**空张量补充：** `ptr.add(offset)` 形式的逻辑首元素地址计算只适用于非空张量；空张量路径必须跳过该指针运算，并改用 `NonNull::dangling()` 这类明确定义的非解引用哨兵值参与 flags / metadata 初始化。
+**空张量补充**： `ptr.add(offset)` 形式的逻辑首元素地址计算只适用于非空张量；空张量路径必须跳过该指针运算，并改用 `NonNull::dangling()` 这类明确定义的非解引用哨兵值参与 flags / metadata 初始化。
 
-**可写视图补充：** `from_raw_parts_mut()` 不仅必须拒绝所有非空零步长布局（任何非单元素轴的 `stride == 0`），还必须拒绝一切能被高效保守判定为潜在自别名的布局。实现上先用 `validate_access_range()` 验证越界与可表示性，再用 `validate_non_overlapping_layout(shape, strides, offset, storage_len)` 对受支持的正步长布局做保守非重叠判定；若布局超出该高效判定范围，也必须返回可恢复错误，而不是枚举全部可达 offset。
+**可写视图补充**： `from_raw_parts_mut()` 不仅必须拒绝所有非空零步长布局（任何非单元素轴的 `stride == 0`），还必须拒绝一切能被高效保守判定为潜在自别名的布局。实现上先用 `validate_access_range()` 验证越界与可表示性，再用 `validate_non_overlapping_layout(shape, strides, offset, storage_len)` 对受支持的正步长布局做保守非重叠判定；若布局超出该高效判定范围，也必须返回可恢复错误，而不是枚举全部可达 offset。
 
 ### 5.8 将张量解构为裸指针
 
-**实现归属：** `OwnedRawParts` 结构体及 `into_raw_parts()` / `from_raw_parts_owned()` 方法的**核心实现**定义于 `07-tensor.md §5.7`（`src/tensor/construct.rs`）。这些方法需要直接访问 `TensorBase` 的私有字段（`storage`、`shape`、`strides`、`offset`、`flags`），因此只能在 tensor 模块内定义。本模块（`src/ffi/ptr.rs`）通过 re-export 向 FFI 消费者暴露：
+**实现归属**： `OwnedRawParts` 结构体及 `into_raw_parts()` / `from_raw_parts_owned()` 方法的核心实现定义于 `07-tensor.md §5.7`（`src/tensor/construct.rs`）。这些方法需要直接访问 `TensorBase` 的私有字段（`storage`、`shape`、`strides`、`offset`、`flags`），因此只能在 tensor 模块内定义。本模块（`src/ffi/ptr.rs`）通过 re-export 向 FFI 消费者暴露：
 
 ```rust,ignore
 // src/ffi/ptr.rs
@@ -780,11 +778,11 @@ pub use crate::tensor::{OwnedRawParts, TensorBase};
 | ❌ 直接调用系统 free | 分配器不匹配，导致 UB 或内存泄漏                                |
 | ❌ 忽略返回值        | 内存泄漏                                                        |
 
-**实现归属：** `from_raw_parts_owned()` 的核心实现（含完整验证逻辑与 `TensorBase` 构造）定义于 `07-tensor.md §5.7`（`src/tensor/construct.rs`）。本模块通过 re-export 暴露该方法。完整 `# Safety` 契约及验证步骤详见该文档。
+**实现归属**：`from_raw_parts_owned()` 的核心实现（含完整验证逻辑与 `TensorBase` 构造）定义于 `07-tensor.md §5.7`（`src/tensor/construct.rs`）。本模块通过 re-export 暴露该方法。完整 `# Safety` 契约及验证步骤详见该文档。
 
-**owned 重建校验说明：** `from_raw_parts_owned()` 虽然仍是 `unsafe`，但必须先验证所有可直接从元数据证明的约束：`offset == 0`、`strides` 等于 canonical F-order、`len == product(shape)`、`cap >= len`、`align` 是对 `A` 有效的 2 的幂对齐。只有指针真实来源、分配器匹配和初始化状态等无法由元数据单独证明的前提继续留给调用方承担。
+**owned 重建校验说明**：`from_raw_parts_owned()` 虽然仍是 `unsafe`，但必须先验证所有可直接从元数据证明的约束：`offset == 0`、`strides` 等于 canonical F-order、`len == product(shape)`、`cap >= len`、`align` 是对 `A` 有效的 2 的幂对齐。只有指针真实来源、分配器匹配和初始化状态等无法由元数据单独证明的前提继续留给调用方承担。
 
-**裸指针直接构造 Owned 张量的设计约束：** 当前版本不提供从任意裸指针直接构造 `Owned` 张量的接口。`from_raw_parts()` / `from_raw_parts_mut()` 仅构造视图（View / ViewMut），`from_raw_parts_owned()` 仅从 `into_raw_parts()` 导出的 `OwnedRawParts` 重建 Owned 张量。原因是 `Owned` 存储需要 Xenon 分配器的元数据（capacity、alignment），这些信息无法从单一裸指针推断。若调用方需要从裸指针创建 Owned 张量，须先将数据复制到 Xenon 分配的张量中（如通过 `Tensor::from_shape_vec()` 等构造方法）。
+**裸指针直接构造 Owned 张量的设计约束**：当前版本不提供从任意裸指针直接构造 `Owned` 张量的接口。`from_raw_parts()` / `from_raw_parts_mut()` 仅构造视图（View / ViewMut），`from_raw_parts_owned()` 仅从 `into_raw_parts()` 导出的 `OwnedRawParts` 重建 Owned 张量。原因是 `Owned` 存储需要 Xenon 分配器的元数据（capacity、alignment），这些信息无法从单一裸指针推断。若调用方需要从裸指针创建 Owned 张量，须先将数据复制到 Xenon 分配的张量中（如通过 `Tensor::from_shape_vec()` 等构造方法）。
 
 ```rust,ignore
 // Correct round-trip: into_raw_parts → use pointer → from_raw_parts_owned → drop
@@ -1010,7 +1008,7 @@ where
     /// `stride[1]` (= rows for F-order) so that `lda >= max(1, rows)` is
     /// still satisfied.
     ///
-    /// **Note:** `lda()` is only valid for BLAS-compatible 2D tensors. For non-contiguous tensors (such as sliced views),
+    /// `lda()` is only valid for BLAS-compatible 2D tensors. For non-contiguous tensors (such as sliced views),
     /// the returned stride cannot be used directly in a BLAS call. Check `is_blas_layout_compatible()` first.
     ///
     /// # Returns
