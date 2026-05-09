@@ -4,8 +4,6 @@
 > 适用目录: src/storage/, src/tensor/, src/iter/, src/simd/, src/ffi/，以及启用 `parallel` feature 后受影响的公开 API
 > 任务阶段: Phase 2
 > 前置文档: 05-storage.md, 07-tensor.md
-> 需求参考: 需求说明书 §10、§16、§17、§21、§26、§28
-> 范围声明: 范围内
 
 ---
 
