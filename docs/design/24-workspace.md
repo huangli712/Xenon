@@ -1460,7 +1460,7 @@ Upper-layer code requests temporary scratch space
 | `ensure_capacity()`             | O(n)       | O(new_capacity) | 分配 + 拷贝 + 释放             |
 | `as_maybe_uninit_typed_slice()` | O(1)       | O(1)            | 仅指针转换                     |
 | `assume_init_typed_slice()`     | O(1)       | O(1)            | 仅在调用方已证明初始化后重解释 |
-| `assume_init_slice()`          | O(1)       | O(1)            | 仅在调用方已证明初始化后重解释（非泛型字节版本） |
+| `assume_init_slice()`           | O(1)       | O(1)            | 仅在调用方已证明初始化后重解释（非泛型字节版本） |
 
 **性能提示**:
 
