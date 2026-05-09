@@ -368,10 +368,6 @@ let sum: f64 = b.iter().sum();  // OK: read-only iteration
 | Allocator 归属 | Owned 路径不得跨 allocator 释放：通过 `from_raw_parts` 接收的 raw 描述符禁止被 Xenon 用 `dealloc(System)` 释放（除非显式声明的 round-trip 构造由 Xenon 自己分配）。详见 `23-ffi.md §10` 的 `ForeignAllocatorMismatch` 错误 |
 | Panic 跨边界 | Rust 侧 panic 不得跨 `extern "C"` 函数边界。所有 `extern "C"` 导出函数必须用 `catch_unwind` 包裹并把 panic 转换为错误码（`23-ffi.md §6.4`），否则会触发 UB |
 
-**与本文档其他章节的关系：**
-- §5.7 的 `ViewMutRepr !Sync` 论证适用于 Xenon 内部的 ViewMut；FFI 中的 `TensorExportMut` 是**单独的、独立的描述符类型**，不实现 ViewMut 的相关 trait，因此 FFI 描述符不沿用 ViewMut 的 Send/Sync 结论，而是按 raw pointer 默认推导。
-- §5.4 的 "当前受支持元素类型线程安全传播" 同样适用于通过 FFI 传出的元素类型，但前提是元素以原生 Rust 类型（i32/i64/f32/f64/Complex<f32>/Complex<f64>/bool）形式存在；C 侧若把字节范围重新解释为另一种类型，进入 `23-ffi.md §10` 的 `AbiMismatch` 错误路径。
-
 更详细的 FFI 错误模型与 unsafe 边界：见 `23-ffi.md §10 / §11`。本节只规范线程安全维度。
 
 ### 5.11 unsafe 入口索引
