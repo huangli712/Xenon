@@ -413,7 +413,7 @@ clip(tensor, min, max):
 
 ### 6.3 to_contiguous 路径选择
 
-`to_contiguous` / `into_contiguous` 共用同一 canonical 输出契约（无 inter-axis / tail padding，offset == 0，layout 由 `06-layout` 计算），但分派逻辑使用两套 predicate：
+`to_contiguous` / `into_contiguous` 共用同一 canonical 输出契约（无 inter-axis / tail padding，offset == 0，layout 由 `06-layout.md` 计算），但分派逻辑使用两套 predicate：
 
 | Predicate                                     | 含义                                                                                                                                                                                                                          | 用途                                                            |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
@@ -450,7 +450,7 @@ into_contiguous(tensor):
 
 设计契约：
 
-- `to_contiguous()` 与 `into_contiguous()` 都必须返回 canonical F-order owned 张量：无 inter-axis padding、无 tail padding、`offset == 0`、layout flags 重新由 `06-layout` 计算。
+- `to_contiguous()` 与 `into_contiguous()` 都必须返回 canonical F-order owned 张量：无 inter-axis padding、无 tail padding、`offset == 0`、layout flags 重新由 `06-layout.md` 计算。
 - `is_f_contiguous()` 不是 `into_contiguous()` 复用的充分条件，因为它不能区分 owned/Arc/View、不能保证 offset==0、不能拒绝 tail padding。把它误用为 `into_contiguous()` 分派条件会让带 tail padding 的输入直接跨过 re-pack，破坏 SIMD/FFI 等下游对 canonical contiguous 的隐式假设。
 - `is_canonical_f_contiguous_owned()` 是 crate-internal predicate，外部调用方不能名指；它的具体判定由 storage / layout 协同提供（参见 `05-storage.md §5.9` 的 ArcRepr→Owned 转换不变量与 `06-layout.md §5.7` 的连续性公式）。
 
