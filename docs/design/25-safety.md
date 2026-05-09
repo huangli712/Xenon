@@ -374,7 +374,7 @@ let sum: f64 = b.iter().sum();  // OK: read-only iteration
 
 下列 `unsafe fn` 在 Xenon crate 内部 / 公开 API 面使用，每个调用点必须用 `unsafe { ... }` 块包裹并附 `// SAFETY:` 注释证明其契约满足。本节只列入口，详细 `# Safety` 契约由各 owner 文档维护。
 
-#### 5.11.1 `pub(crate)` 内部 unsafe fn 清单（4 项）
+#### 5.11.1 `pub(crate)` 内部 unsafe fn 清单
 
 仅 crate 内部可见，不进入公开 API。调用点全部位于本 crate 源代码内：
 
