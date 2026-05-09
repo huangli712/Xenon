@@ -1074,8 +1074,8 @@ impl Workspace {
 }
 ````
 
-- **错误映射说明：** `reallocate()` 使用统一的 `Result<()>` 别名作为模块内实现签名，并直接构造 `XenonError::Workspace`；不得绕过统一错误模型。
-- **扩容语义说明：** `ensure_capacity()` / `reallocate()` 的公开契约仅保证扩容后容量不小于请求值且对齐保持不变。当前实现可能复制旧缓冲区中的字节，但调用方不得依赖内容被保留；扩容后所有旧视图与借用均失效，必须把整个 scratch 区域重新视为 unspecified 状态，并在重新初始化后再通过 `assume_init_*` 系列 API 解释为已初始化数据。
+- **错误映射说明**：`reallocate()` 使用统一的 `Result<()>` 别名作为模块内实现签名，并直接构造 `XenonError::Workspace`；不得绕过统一错误模型。
+- **扩容语义说明**： `ensure_capacity()` / `reallocate()` 的公开契约仅保证扩容后容量不小于请求值且对齐保持不变。当前实现可能复制旧缓冲区中的字节，但调用方不得依赖内容被保留；扩容后所有旧视图与借用均失效，必须把整个 scratch 区域重新视为 unspecified 状态，并在重新初始化后再通过 `assume_init_*` 系列 API 解释为已初始化数据。
 
 ### 5.9 Good/Bad 对比
 
@@ -1175,9 +1175,9 @@ This design (zero allocation):
 
 ### 6.3 split_at_mut 安全设计
 
-**安全设计决策：** `split_at_mut` 采用消费式设计（consuming self）而非借用：调用 `split_at_mut(self, mid)` 消耗原 `SplitBorrowMut`，返回两个新的子 `SplitBorrowMut`。这确保每个 `SplitBorrowMut` 实例有独立的生命周期，避免计数器不一致问题。原始 `SplitBorrowMut` 被消耗后不再有效，两个子分割各自独立管理其 Drop 行为。
+**安全设计决策**：`split_at_mut` 采用消费式设计（consuming self）而非借用：调用 `split_at_mut(self, mid)` 消耗原 `SplitBorrowMut`，返回两个新的子 `SplitBorrowMut`。这确保每个 `SplitBorrowMut` 实例有独立的生命周期，避免计数器不一致问题。原始 `SplitBorrowMut` 被消耗后不再有效，两个子分割各自独立管理其 Drop 行为。
 
-**引用计数安全性：** `split_at_mut` 在创建两个子分割之前，通过 `fetch_add(1)` 原子递增 `split_count`。这是因为：
+**引用计数安全性**：`split_at_mut` 在创建两个子分割之前，通过 `fetch_add(1)` 原子递增 `split_count`。这是因为：
 
 - 消耗 `self` 意味着原 `SplitBorrowMut` 的 `Drop` 不会执行（避免了隐含的 −1 递减）
 - 但两个新的 `SplitBorrowMut` 被创建（产生 +2 递减）
