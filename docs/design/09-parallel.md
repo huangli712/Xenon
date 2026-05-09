@@ -502,9 +502,9 @@ where
 | 主题                             | 论证                                                                                                                                                                                                                                         |
 | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Tensor::from_raw_vec_unchecked`（长度） | 这里只在输出向量长度与 `tensor.raw_dim()` 已由输入张量长度和映射过程保持一致时使用；并行与串行路径都必须保证产出元素数等于输入逻辑元素数。`ParIter: IndexedParallelIterator` 提供 `len()` 与 `Producer::split_at` 的不重叠覆盖不变量（§5.6），从而 `collect_into_vec` 后 `out.len() == checked_size(raw_dim)`。 |
-| `Tensor::from_raw_vec_unchecked`（顺序） | F-order 顺序由 producer 拆分契约 + `IndexedParallelIterator::collect_into_vec` 的"按索引写入"语义共同保证（修复 Blocker B8）。worker 完成顺序乱序不影响 `out[i]` 对应的逻辑索引；这与串行 `map` 的 F-order 收集严格等价。 |
+| `Tensor::from_raw_vec_unchecked`（顺序） | F-order 顺序由 producer 拆分契约 + `IndexedParallelIterator::collect_into_vec` 的"按索引写入"语义共同保证。worker 完成顺序乱序不影响 `out[i]` 对应的逻辑索引；这与串行 `map` 的 F-order 收集严格等价。 |
 | `par_zip_map` broadcast chunking | 每个并行 chunk 仅借用两个输入的只读 broadcast-compatible sub-view；广播轴保持逻辑重复语义，不进行额外物理展开，因此不会引入越界写或悬垂引用。Producer split 不切分广播轴的物理切片，仅切分逻辑输出区间。 |
-| `ParallelGuard` 转移              | `_guard: ParallelGuard` 由 dispatch 在 `select_exec_path` 内构造并按值移交；`parallel` 函数体在并行执行结束后自然 drop guard，由 RAII 保证 thread-local 嵌套防护标记一定被清除（与 30-dispatch.md 一致）。 |
+| `ParallelGuard` 转移              | `_guard: ParallelGuard` 由 dispatch 在 `select_exec_path` 内构造并按值移交；`parallel` 函数体在并行执行结束后自然 drop guard，由 RAII 保证 thread-local 嵌套防护标记一定被清除（与 `30-dispatch.md` 一致）。 |
 | panic / `Err` 传播               | 并行操作中发生 panic 或返回 `Err(XenonError)` 时，错误不会被静默忽略；语义上最终结果须至少传播一个错误。一般错误不保证传播"第一个"发生的错误（整型 `sum` / `dot` 除外：整型运算的失败诊断固定按逻辑 chunk 索引顺序仲裁，始终选择首个失败 chunk，参见 §5.5、§6.5）。实现上 Rayon 的并行 collect/reduce 可能不会物理中断其他 worker，但错误信息会被收集并在最终结果中报告。 |
 | Send/Sync/借用边界               | 并行执行只借用输入张量的只读视图；闭包与元素类型必须满足 `Send` / `Sync` 约束；输出分配与写入归当前 worker 独占，不能向其他 worker 暴露共享可写借用。 |
 | Worker 内 SIMD 安全性              | worker 在自己 chunk 的连续内存切片（或逻辑区间）上独立调用 `simd` 后端 kernel，不跨 worker 访问；SIMD admission 由 `08-simd.md` §5.4 在 chunk 内部独立判断，不与跨 worker 的 chunking/合并语义产生交叉依赖。 |
@@ -513,11 +513,7 @@ where
 
 ## 7. 实现任务拆分
 
-### Wave 1: 基础状态与路径裁决
-
-阈值状态、路径选择与嵌套并行防护已迁移至 `dispatch.rs` 模块，参见 `01-architecture.md`。
-
-### Wave 2: 并行入口与执行内核
+### Wave 1: 并行入口与执行内核
 
 - [ ] **T1**: 实现 `ParIter` 与 `TensorBase::par_iter()`
   - 文件: `src/parallel/iter.rs`
@@ -554,7 +550,7 @@ where
   - 前置: T4
   - 预计: 10 min
 
-### Wave 3: 线程池与异常传播
+### Wave 2: 线程池与异常传播
 
 - [ ] **T6**: 实现 `ParallelPool`
   - 文件: `src/parallel/mod.rs`
@@ -570,7 +566,7 @@ where
   - 前置: T2, T4, T5
   - 预计: 10 min
 
-### Wave 4: 配置与回归验证
+### Wave 3: 配置与回归验证
 
 - [ ] **T8**: 补齐 feature gate 与配置矩阵测试
   - 文件: `src/parallel/` (全部子文件), `tests/test_parallel.rs`
@@ -616,7 +612,7 @@ where
 | 非连续视图           | 若 `dispatch.rs` 选择并行路径，结果仍与串行一致                                     |
 | 单线程环境           | 不由 `parallel/` 自行处理；调用方不应选择并行路径                                   |
 | 非一维输入           | `par_dot()` 在任一输入 `ndim() != 1` 时返回错误                                     |
-| 长度不匹配的一维输入 | `par_dot()` 返回 `XenonError::ShapeMismatch { operation, left_shape, right_shape }`    |
+| 长度不匹配的一维输入 | `par_dot()` 返回 `XenonError::ShapeMismatch`                                        |
 | 二元广播逐元素输入   | `par_zip_map()` 在广播兼容时返回与串行 `add/sub/mul/div` 一致的结果                 |
 
 ### 8.4 属性测试不变量
