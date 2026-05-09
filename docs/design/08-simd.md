@@ -941,16 +941,14 @@ Consistency guarantee strategy
 
 ### 9.1 接口约定
 
-| 方向         | 对方模块                     | 接口/类型                                                                                                    | 契约                                                                                            |
-| ------------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| 消费（输入） | `tensor`                     | `TensorBase<S, D>::as_slice()`                                                                               | 只消费满足 `07-tensor.md` 连续切片契约的输入；非连续或广播视图保持语义模块串行路径              |
-| 消费（输入） | `math` / `reduction` / `dot` | `dispatch.rs` / `dispatch_vector_binary_op()` / `SimdKernel::sum()` / `SimdKernel::dot()` / `simd_vector_width()` | 上层语义模块先完成形状和类型裁决；SIMD 分支选择由 `simd/` 后端内部完成（分层原则见 §1.2） |
-| 消费（输入） | `layout`                     | 对齐/连续性元数据                                                                                            | SIMD 后端按 kernel 选择 aligned 或 unaligned 变体；若所选 admission 不满足，则保持非 SIMD 路径                  |
-| 产出（输出） | 上层语义模块                 | 标量结果或写回目标切片                                                                                       | 不改变公开 API 形状、错误类别和数值语义边界                                                     |
+| 方向 | 对方模块                     | 接口/类型                       | 契约                                                                                            |
+| ---- | ---------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------- |
+| 输入 | `tensor`                     | `TensorBase<S, D>::as_slice()`  | 只消费满足 `07-tensor.md` 连续切片契约的输入；非连续或广播视图保持语义模块串行路径              |
+| 输入 | `math` / `reduction` / `dot` | `dispatch_vector_binary_op() / SimdKernel::sum() / SimdKernel::dot() / simd_vector_width()` | 上层语义模块先完成形状和类型裁决；SIMD 分支选择由 `simd/` 后端内部完成 |
+| 输入 | `layout`                     | 对齐/连续性元数据               | SIMD 后端按 kernel 选择 aligned 或 unaligned 变体；若所选 admission 不满足，则保持非 SIMD 路径  |
+| 输出 | 上层语义模块                 | 标量结果或写回目标切片          | 不改变公开 API 形状、错误类别和数值语义边界                                                     |
 
-`math` 模块在执行逐元素运算时，先经 `dispatch.rs` 决定是串行还是并行执行；无论选择哪一层，对应执行上下文（串行整段，或并行 worker 拿到的 chunk）内 `simd` 后端再根据兼容连续切片、对齐策略与 ISA 能力独立决定是否进入 SIMD，否则保持其串行实现（参见 `11-math.md §6.3`、本文 §9.3）。
-
-**分派策略**: `math` 模块提供公共 `sqrt()` API，但在当前版本中 `sqrt()` 不接入 SIMD kernel，而是保持语义模块串行路径。用户仅调用 `math::sqrt()`，无需关心底层是否存在加速能力。
+`math` 模块在执行逐元素运算时，先经 `dispatch.rs` 决定是串行还是并行执行；无论选择哪一层，对应执行上下文（串行整段，或并行 worker 拿到的 chunk）内 `simd` 后端再根据兼容连续切片、对齐策略与 ISA 能力独立决定是否进入 SIMD，否则保持其串行实现。
 
 ### 9.2 数据流描述
 
@@ -970,18 +968,16 @@ math/reduction/dot call acceleration entry
 
 ### 9.3 与 parallel 模块
 
-SIMD 与并行的组合策略（分层原则见 §1.2）：`dispatch.rs` 仅决定**线程级**路径选择（串行 vs 并行），不再排斥 SIMD。SIMD 与并行可同时启用：
+SIMD 与并行的组合策略：`dispatch.rs` 仅决定线程级路径选择（串行 vs 并行），不排斥 SIMD。SIMD 与并行可同时启用：
 
-- **串行路径**：进入非并行执行上下文后，`simd` 后端在单线程内按 §5.7 / §5.6 决定是否启用 SIMD。
-- **并行路径**：每个 rayon worker 线程拿到自己的 chunk 后，**仍可在该 chunk 内由 `simd` 后端按 §5.7 / §5.6 独立决定是否启用 SIMD**。准入条件（最小长度、对齐策略、ISA 宽度、操作覆盖）以 chunk 为单位评估。
+- **串行路径**：进入非并行执行上下文后，`simd` 后端在单线程内决定是否启用 SIMD。
+- **并行路径**：每个 worker 线程拿到自己的 chunk 后，仍可在该 chunk 内由 `simd` 后端独立决定是否启用 SIMD。准入条件以 chunk 为单位评估。
   - 实现要求：`simd` 公开给并行后端的 kernel 入口必须 `Send + Sync`，且对 chunk 内部状态无跨线程共享假设。
-  - 一致性要求：worker 内 SIMD 不改变并行归约的合并顺序——SIMD 仅影响 chunk 内部累加，chunk 之间的合并仍由 `parallel` 模块按其文档化容差规则执行。
-
-这是 Xenon 二级裁决模型的更新边界：`dispatch.rs` 决定线程级串/并选择，`simd` 决定每个执行上下文（串行或单个 worker chunk）内是否启用 SIMD。两层是正交的，不互斥。
+  - 一致性要求：worker 内 SIMD 不改变并行归约的合并顺序。SIMD 仅影响 chunk 内部累加，chunk 之间的合并仍由 `parallel` 模块按其文档化容差规则执行。
 
 ### 9.4 与 layout 模块
 
-SIMD 模块依赖 layout 提供的连续性和对齐信息来判断是否可以使用 SIMD 路径（参见 `06-layout.md` §5.7, §5.9）。
+SIMD 模块依赖 layout 提供的连续性和对齐信息来判断是否可以使用 SIMD 路径。
 
 ---
 
