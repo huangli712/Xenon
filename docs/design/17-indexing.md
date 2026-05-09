@@ -405,14 +405,14 @@ TensorBase::slice(info):
 ```rust,ignore
 let logical_ptr: *const A = if result_len == 0 {
     // Empty slice: do NOT call src.as_ptr().add(slice_delta), the storage
-    // base might already be NonNull::<A>::dangling() (per 07-tensor §6.2);
+    // base might already be NonNull::<A>::dangling() (per 07-tensor.md §6.2);
     // pass a well-defined non-dereferenceable sentinel instead.
     core::ptr::NonNull::<A>::dangling().as_ptr()
 } else {
     // result_len > 0: slice_delta is a pure relative element-unit offset,
     // already verified by TensorBase::slice(info) to land within the
     // source's reachable storage range; src.as_ptr() already includes
-    // src.offset (07-tensor §5.4), so adding slice_delta (NOT new_offset)
+    // src.offset (07-tensor.md §5.4), so adding slice_delta (NOT new_offset)
     // gives the result's logical-first pointer exactly once.
     // SAFETY: TensorBase::slice(info) verified bounds + checked-offset
     // arithmetic; result range [logical_ptr, logical_ptr + result_len)

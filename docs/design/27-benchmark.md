@@ -201,7 +201,7 @@ impl StridedFixture1D {
     /// is illustrative and must be adapted to the final slice syntax at
     /// implementation. `SliceInfo::new` performs structural validation only;
     /// shape-aware bounds checking happens inside `TensorBase::slice` (see
-    /// 17-indexing §5.1).
+    /// 17-indexing.md §5.1).
     pub fn view(&self) -> TensorView1<'_, f64> {
         // Illustrative: take row 1 from the F-order 2D owner, yielding a
         // non-contiguous 1D view with stride == ncols (not 1).

@@ -157,7 +157,7 @@ where
 - 静态 + IxDyn 双向合并 7 项（每项覆盖 `IxN BroadcastDim IxDyn` 与 `IxDyn BroadcastDim IxN`，`Output` 都为 `IxDyn`）
 - `IxDyn BroadcastDim IxDyn → IxDyn` 1 项
 
-其中“静态 + IxDyn 双向合并 7 项”每项包含两个方向的对称实现；若按单个 trait impl 逐条计数，会得到不同数字，但 `broadcast_with` 只依赖 `02-dimension §5.10` 已声明的 57 项矩阵及其对称性测试。`02-dimension.md` §5.10 通过显式 trait 实现对称性保证：对所有 `(D, E)`，`<D as BroadcastDim<E>>::Output == <E as BroadcastDim<D>>::Output`，并在 §5.10 末尾增加 compile-time 类型等价测试覆盖。因此 `broadcast_with` 的 bound 在所有合法组合上可满足，不会因为反向 trait 缺失而拒绝调用。
+其中“静态 + IxDyn 双向合并 7 项”每项包含两个方向的对称实现；若按单个 trait impl 逐条计数，会得到不同数字，但 `broadcast_with` 只依赖 `02-dimension.md §5.10` 已声明的 57 项矩阵及其对称性测试。`02-dimension.md` §5.10 通过显式 trait 实现对称性保证：对所有 `(D, E)`，`<D as BroadcastDim<E>>::Output == <E as BroadcastDim<D>>::Output`，并在 §5.10 末尾增加 compile-time 类型等价测试覆盖。因此 `broadcast_with` 的 bound 在所有合法组合上可满足，不会因为反向 trait 缺失而拒绝调用。
 
 ### 5.2 API 语义约束
 

@@ -222,8 +222,7 @@ unique(self):
          - For non-NaN values: equivalent under `unique_eq`.
          - For NaN values (per IEEE 754): every NaN is its own class; do not
            merge with any prior NaN. Keep all NaN instances.
-       Use linear scan for small inputs, or hash-aided lookup for large inputs
-       (key construction rules in §6.1.1 below).
+       Use linear scan for small inputs, or hash-aided lookup for large inputs.
     3. If x is the first occurrence of its class (or x is NaN), append x to
        the output sequence.
     4. Construct `Tensor<A, Ix1>` from the appended sequence (owned F-order

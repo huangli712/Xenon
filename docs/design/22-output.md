@@ -587,7 +587,7 @@ fmt_nd(tensor, f, prefix):
 // `ElementType` is the closed enum authoritatively defined in `crate::element`
 use crate::element::{Element, ElementType};
 
-// Static dispatch via Element::ELEMENT_TYPE — the closed enum from 03-element §5.1.
+// Static dispatch via Element::ELEMENT_TYPE — the closed enum from 03-element.md §5.1.
 // No core::any::TypeId, no 'static bound, no fallback path: Element is a sealed
 // trait with a closed implementor set ({i32, i64, f32, f64, Complex<f32>,
 // Complex<f64>, bool}); the match below is exhaustive.
