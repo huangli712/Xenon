@@ -887,7 +887,7 @@ impl Reverse for IxDyn {
 }
 ```
 
-- 当前版本的形状操作只包含 `transpose()`。维度层保留 `PermuteAxes` 作为内部泛化能力，但公开 `transpose()` 契约当前仅承诺默认的轴反转（reverse-axis transpose）；显式轴置换保留为后续版本扩展，不构成当前版本公开 API 承诺。参见 `需求说明书 §17` 与 `16-shape.md §5.1.1`。
+- 当前版本的形状操作只包含 `transpose()`。维度层保留 `PermuteAxes` 作为内部泛化能力，但公开 `transpose()` 契约当前仅承诺默认的轴反转（reverse-axis transpose）；显式轴置换保留为后续版本扩展，不构成当前版本公开 API 承诺。参见 `需求说明书 §17` 与 `16-shape.md §5.1`。
 - 对静态维度 `Ix0`..`Ix6`，`PermuteAxes` 若实现，仍属于内部辅助能力；当前版本公开 `transpose()` 由 `16-shape.md` 定义，不把通用显式轴置换提升为规范性 API。其生成签名模式可写为：`impl PermuteAxes for Ix3 { fn permuted_axes(&self, permutation: &[Axis]) -> Result<Ix3, XenonError>; }`，更高/更低静态维度按同一模板展开。
 - 对 `IxN` 的 `PermuteAxes` 实现，输入 `permutation` 的长度必须恰好等于 `N`，并且必须是 `0..N-1` 上的双射；任何越界轴、重复轴或缺失轴都统一返回 `XenonError::InvalidAxis`，不引入额外错误类别。
 - `BroadcastDim`、静态 `PermuteAxes` 等宏生成实现应至少通过三类测试覆盖：成功路径（每个静态 rank 至少一例）、compile-fail 边界（非法 rank/非法输入不暴露实现）、以及文档/trait 矩阵核对，防止某个 rank 在宏展开中遗漏。

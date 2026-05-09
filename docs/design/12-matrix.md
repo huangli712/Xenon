@@ -335,7 +335,7 @@ where
     D2: Dimension,
 {
     // 1. Validate rank-1 precondition at runtime; either side non-1D returns
-    //    InvalidArgument with closed-enum kind (see 26-error §5.1).
+    //    InvalidArgument with closed-enum kind (see 26-error.md §5.1).
     if a.ndim() != 1 {
         return Err(XenonError::InvalidArgument {
             operation: Cow::Borrowed("dot"),
@@ -555,7 +555,7 @@ User calls dot(a, b)
 
 | 主题              | 内容                                                                      |
 | ----------------- | ------------------------------------------------------------------------- |
-| Recoverable error | 左/右输入非 1D 时返回 `InvalidArgument`；长度不匹配时返回 `ShapeMismatch`。字段对齐 26-error §5.1 封闭枚举。 |
+| Recoverable error | 左/右输入非 1D 时返回 `InvalidArgument`；长度不匹配时返回 `ShapeMismatch`。 |
 | Panic             | 整数 dot 的乘法溢出与累加溢出均为不可恢复错误，按 checked arithmetic 触发 panic。|
 | 路径一致性        | 执行路径选择参见 §6.1；任何可选路径都不得改变结果、错误类别或 panic 语义。|
 | 容差边界          | 浮点/复数 `dot` 跨路径有限值结果比较使用 §10.1 容差表；同执行路径基础算术/比较默认精确一致；以 `需求说明书 §28.3` 为权威基线，实现细节参见 `00-coding.md §8.4`。|

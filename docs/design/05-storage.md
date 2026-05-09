@@ -1001,7 +1001,7 @@ pub struct ArcRepr<A> {
     inner: std::sync::Arc<SharedBuf<A>>,
 }
 
-// `SharedBuf<A>` is defined once in §6.5 and is the single authoritative
+// `SharedBuf<A>` is defined once in §6.6 and is the single authoritative
 // source for the shared backing buffer. Do not duplicate the field list here.
 //
 // `Debug` for `ArcRepr<A>` is implemented manually to avoid forcing
@@ -1346,7 +1346,7 @@ where
 
 ### 9.4 与 Parallel 模块
 
-并行迭代要求 `S: Storage + Sync`（读）或 `S: StorageMut + Send`（写），由 storage 的 Send/Sync 实现保证（参见 `09-parallel.md` §10.2）。
+并行迭代要求 `S: Storage + Sync`（读）或 `S: StorageMut + Send`（写），由 storage 的 Send/Sync 实现保证（参见 `09-parallel.md` §10.3）。
 
 ### 9.5 数据流描述
 

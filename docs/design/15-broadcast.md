@@ -90,7 +90,7 @@ src/broadcast/
 | `tensor`    | `TensorBase`, `TensorView`, `.shape()`, `.strides()`, `.offset()`, 视图构造入口，以及从任意受支持存储模式降级到只读广播视图的入口。 |
 | `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`, `BroadcastDim`，`IntoDimension`。                                                                |
 | `layout`    | `Strides`, `，LayoutFlags`, `LayoutState::BroadcastView`，`LayoutState::FContiguous`，`LayoutState::NonContiguous`。                |
-| `error`     | `XenonError::BroadcastError`, `XenonError::InvalidArgument` （参见 26-error §5.1）。                                                |
+| `error`     | `XenonError::BroadcastError`, `XenonError::InvalidArgument` （参见 26-error.md §5.1）。                                                |
 
 ### 4.3 依赖合法性
 
@@ -150,14 +150,14 @@ where
 
 **关于 `broadcast_with` 双向 `BroadcastDim` bound 的可满足性**：
 
-`broadcast_with` 的 `where` 子句同时要求 `D: BroadcastDim<E>` 与 `E: BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>`。这条双向 bound 看似过强，但能完整覆盖封闭维度集合 `{Ix0..Ix6, IxDyn}` 的所有 `(D, E)` 组合（57 项），由 `02-dimension §5.10` 实现矩阵保证。57 项的计数口径是“同 rank 自广播 + 跨静态 rank 双向合并行 + 静态/IxDyn 双向合并行 + IxDyn 自广播”的文档矩阵行数，而不是底层 trait impl 条数：
+`broadcast_with` 的 `where` 子句同时要求 `D: BroadcastDim<E>` 与 `E: BroadcastDim<D, Output = <D as BroadcastDim<E>>::Output>`。这条双向 bound 看似过强，但能完整覆盖封闭维度集合 `{Ix0..Ix6, IxDyn}` 的所有 `(D, E)` 组合（57 项），由 `02-dimension.md §5.10` 实现矩阵保证。57 项的计数口径是“同 rank 自广播 + 跨静态 rank 双向合并行 + 静态/IxDyn 双向合并行 + IxDyn 自广播”的文档矩阵行数，而不是底层 trait impl 条数：
 
 - 同 rank自广播 7 项（`IxN BroadcastDim IxN → IxN`，自然对称）
 - 跨静态 rank 双向合并 42 项（每个无序静态 rank 对在文档矩阵中列出两个方向：`IxM BroadcastDim IxN` 与 `IxN BroadcastDim IxM`，`Output` 都为较高 rank 的 `IxK`，`K = max(M, N)`）
 - 静态 + IxDyn 双向合并 7 项（每项覆盖 `IxN BroadcastDim IxDyn` 与 `IxDyn BroadcastDim IxN`，`Output` 都为 `IxDyn`）
 - `IxDyn BroadcastDim IxDyn → IxDyn` 1 项
 
-其中“静态 + IxDyn 双向合并 7 项”每项包含两个方向的对称实现；若按单个 trait impl 逐条计数，会得到不同数字，但 `broadcast_with` 只依赖 `02-dimension §5.10` 已声明的 57 项矩阵及其对称性测试。02-dimension §5.10 通过显式 trait 实现对称性保证：对所有 `(D, E)`，`<D as BroadcastDim<E>>::Output == <E as BroadcastDim<D>>::Output`，并在 §5.10 末尾增加 compile-time 类型等价测试覆盖。因此 `broadcast_with` 的 bound 在所有合法组合上可满足，不会因为反向 trait 缺失而拒绝调用。
+其中“静态 + IxDyn 双向合并 7 项”每项包含两个方向的对称实现；若按单个 trait impl 逐条计数，会得到不同数字，但 `broadcast_with` 只依赖 `02-dimension §5.10` 已声明的 57 项矩阵及其对称性测试。`02-dimension.md` §5.10 通过显式 trait 实现对称性保证：对所有 `(D, E)`，`<D as BroadcastDim<E>>::Output == <E as BroadcastDim<D>>::Output`，并在 §5.10 末尾增加 compile-time 类型等价测试覆盖。因此 `broadcast_with` 的 bound 在所有合法组合上可满足，不会因为反向 trait 缺失而拒绝调用。
 
 ### 5.2 API 语义约束
 
@@ -430,7 +430,7 @@ broadcast_strides(orig_shape, orig_strides, target_shape):
 | `broadcast → dimension`     | `dimension`  | `Dimension`, `BroadcastDim`                     | 运行时 shape 计算与编译期输出维度类型推导分离。          |
 | `broadcast → layout`        | `layout`     | `Strides<D>`, `LayoutState::BroadcastView`      | 非空（`product(shape) > 0`）且至少一轴 stride 为 0 的视图必须映射到 `BroadcastView` 布局状态；空数组退化的零步长不触发该状态（与 `06-layout.md §5.11` 严格一致）。 |
 | `broadcast → error`         | `error`      | `XenonError::BroadcastError`, `InvalidArgument` | 广播不兼容与参数前提失败都必须返回结构化错误。           |
-| `math ← broadcast`          | `math`       | `broadcast_with()`, `broadcast_shape()`         | 二元运算先广播再计算。`math` 模块内部统一调用 `broadcast_with()`完成双输入广播，不允许各模块私自重复定义广播规则。具体调用路径：`math` 通过 `dispatch::select_exec_path` 决定串行/SIMD/并行三路；并行路径下 `par_zip_map` 接收已广播好的 `output_dim`，所有广播裁决发生在调用 `parallel/` 后端之前（参见 11-math §5.2、09-parallel §6.3）。 |
+| `math ← broadcast`          | `math`       | `broadcast_with()`, `broadcast_shape()`         | 二元运算先广播再计算。`math` 模块内部统一调用 `broadcast_with()`完成双输入广播，不允许各模块私自重复定义广播规则。具体调用路径：`math` 通过 `dispatch::select_exec_path` 决定串行/SIMD/并行三路；并行路径下 `par_zip_map` 接收已广播好的 `output_dim`，所有广播裁决发生在调用 `parallel/` 后端之前（参见 `11-math.md` §5.2、`09-parallel.md` §6.3）。 |
 | `iter ← broadcast`          | `iter`       | 只读广播视图                                    | 广播结果可被读取遍历，但不得提供可变迭代能力。           |
 
 ### 9.2 数据流描述

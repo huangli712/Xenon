@@ -372,7 +372,7 @@ where
 - 标量运算符重载已覆盖 owned `Tensor` 和 `TensorView`（只读视图）。`TensorViewMut` 不直接参与标量运算符重载——使用方需先调用 `.view()` 转为 `TensorView` 后再使用运算符，或显式调用 `.add_scalar()` 等方法，参见 `11-math.md §5.9`。
 - 标量路径的委托分为两类，对 owned `Tensor` 和 `TensorView` 均适用：
   - **右标量与交换性左标量**：`tensor op scalar`、`scalar + tensor`、`scalar * tensor` 直接调用 `11-math.md §5.9` 的公开标量方法（`.add_scalar()` / `.sub_scalar()` / `.mul_scalar()` / `.div_scalar()`），不重复实现。
-  - **非交换性左标量**：`scalar - tensor`、`scalar / tensor` 委托到 `11-math.md §5.9.1` 的 `pub(crate)` 内部入口 `tensor.sub_from_scalar(scalar)` / `tensor.div_from_scalar(scalar)`。本模块不得自行实现逐元素遍历——所有逐元素执行骨架（dispatch 路径选择、SIMD/Parallel admission、checked arithmetic、panic 语义）由 `11-math.md` 单点维护，避免左标量路径游离于 math 执行优化之外。本模块内部 helper（如 `sub_scalar_left_impl` / `div_scalar_left_impl`）仅作为 trait impl 的薄桥接，函数体应仅一行委托：`fn sub_scalar_left_impl(scalar, tensor) -> Tensor { tensor.sub_from_scalar(scalar) }`，不得包含逐元素循环或 dispatch 调用。
+  - **非交换性左标量**：`scalar - tensor`、`scalar / tensor` 委托到 `11-math.md §5.9` 的 `pub(crate)` 内部入口 `tensor.sub_from_scalar(scalar)` / `tensor.div_from_scalar(scalar)`。本模块不得自行实现逐元素遍历——所有逐元素执行骨架（dispatch 路径选择、SIMD/Parallel admission、checked arithmetic、panic 语义）由 `11-math.md` 单点维护，避免左标量路径游离于 math 执行优化之外。本模块内部 helper（如 `sub_scalar_left_impl` / `div_scalar_left_impl`）仅作为 trait impl 的薄桥接，函数体应仅一行委托：`fn sub_scalar_left_impl(scalar, tensor) -> Tensor { tensor.sub_from_scalar(scalar) }`，不得包含逐元素循环或 dispatch 调用。
 
 ### 5.4 Sub / Mul / Div
 
@@ -411,7 +411,7 @@ where A: Numeric, D: Dimension
 //     pub(crate) fn sub_scalar_left_impl<S, D, A>(scalar: A, t: &TensorBase<S, D>) -> Tensor<A, D>
 //     where S: Storage<Elem = A>, D: Dimension, A: Numeric
 //     { t.sub_from_scalar(scalar) }
-// All element-wise execution lives in `11-math.md §5.9.1`; this helper exists
+// All element-wise execution lives in `11-math.md §5.9`; this helper exists
 // only to satisfy trait-impl call-site ergonomics, never as a parallel impl path.
 impl<'a, A, D> Sub<TensorBase<ViewRepr<'a, A>, D>> for Scalar<A>
 where A: Numeric, D: Dimension
@@ -467,7 +467,7 @@ where A: Numeric, D: Dimension
 }
 ```
 
-- 上述 12 个 impl 与 owned `Tensor` 的标量路径完全对称：右标量路径和交换性左标量路径委托给 `11-math.md §5.9` 的公开标量方法；非交换左标量路径（`Scalar<A> - TensorView` / `Scalar<A> / TensorView`）通过本模块内部 helper（`sub_scalar_left_impl`/`div_scalar_left_impl`）转委托——helper 自身仅一行薄桥接 `t.sub_from_scalar(scalar)` / `t.div_from_scalar(scalar)`，逐元素执行骨架由 `11-math.md §5.9.1` 单点维护。
+- 上述 12 个 impl 与 owned `Tensor` 的标量路径完全对称：右标量路径和交换性左标量路径委托给 `11-math.md §5.9` 的公开标量方法；非交换左标量路径（`Scalar<A> - TensorView` / `Scalar<A> / TensorView`）通过本模块内部 helper（`sub_scalar_left_impl`/`div_scalar_left_impl`）转委托——helper 自身仅一行薄桥接 `t.sub_from_scalar(scalar)` / `t.div_from_scalar(scalar)`，逐元素执行骨架由 `11-math.md §5.9` 单点维护。
 - 同 owned `Tensor` 路径，本处 `TensorView` 标量运算符组合也通过宏生成实际代码。
 - 原生左标量（如 `5.0 + tensor_view`、`3.0 / tensor_view`）的 `TensorView` 版本同样受支持。
 

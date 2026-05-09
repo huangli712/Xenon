@@ -1442,7 +1442,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | `into_raw_parts()`                          | 消费源张量（`self`），将内存所有权转移给调用方。调用方须按 Xenon 分配契约回收：通过 `from_raw_parts_owned()` 重建张量并由 Drop 释放，或使用与 Xenon 分配器元数据等价的专用回收路径；不得直接调用系统 `free` 或其他 foreign allocator。 |
 | `from_raw_parts()` / `from_raw_parts_mut()` | 构造的视图生命周期 `'a` 由调用方在 `unsafe` 前提下保证，须与底层内存的实际存活期一致。视图不拥有内存，drop 时不会释放。                                                                                                                |
 | `from_raw_parts_owned()`                    | 接收 `OwnedRawParts` 并重建 Owned 张量，内存所有权回归 Xenon 的 Drop 管理。                                                                                                                                                            |
-| `export()` / `export_mut()`                 | 返回的 `TensorExport` / `TensorExportMut` 中 `data`、`shape`、`strides` 均借用源张量内部存储；源张量 drop 后全部指针失效。若上游 C ABI wrapper 捕获到 panic，或 unwinding 可能已 drop 源张量 / owner，则这些 borrowed pointer 必须立即视为失效，C 侧不得继续读取或缓存（参见 §5.4.1）。`export_mut()` 额外要求 `&mut self` 且 `S: StorageMut`，确保独占可写访问。 |
+| `export()` / `export_mut()`                 | 返回的 `TensorExport` / `TensorExportMut` 中 `data`、`shape`、`strides` 均借用源张量内部存储；源张量 drop 后全部指针失效。若上游 C ABI wrapper 捕获到 panic，或 unwinding 可能已 drop 源张量 / owner，则这些 borrowed pointer 必须立即视为失效，C 侧不得继续读取或缓存（参见 §5.4）。`export_mut()` 额外要求 `&mut self` 且 `S: StorageMut`，确保独占可写访问。 |
 
 ---
 
@@ -1451,7 +1451,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | 主题              | 内容                                                                                                      |
 | ----------------- | --------------------------------------------------------------------------------------------------------- |
 | Recoverable error | `blas_info()` / `lda()` 在 rank 或布局非法时返回 `XenonError::Ffi`；BLAS 整数宽度转换失败由 `BlasInfo::as_blas_int()` 返回 `FfiErrorCategory::IntegerOverflow`；`from_raw_parts_owned()` 在 owned 元数据非法时返回 `XenonError::InvalidLayout`；`try_offset_of()` / `try_ptr_at()` 在 rank 失配时返回 `XenonError::DimensionMismatch`，在 bounds 越界时返回 `XenonError::IndexOutOfBounds`，在 checked arithmetic 溢出时返回 `XenonError::InvalidLayout`；`from_raw_parts_mut()` 在可写布局自别名时返回 `XenonError::Ffi`。所有错误变体禁止使用 `Cow<str>` 自由文本作为诊断 payload；结构化负载由 `26-error.md §5.1` 的封闭子枚举承担。 |
-| Panic             | 本模块不提供公开 panic-sugar 索引转换 API，也不定义 `extern "C"` 导出函数。若上游把 Xenon API 包装为 C ABI，wrapper 必须阻止 Rust panic 穿越 C ABI：使用 `std::panic::catch_unwind` 转换为上游 ABI 错误码，或采用 `panic = "abort"`（参见 §1.2 与 §5.4.1）。`from_raw_parts*()` 中那些无法直接验证的不安全前提若被违反，仍属于 unsafe UB，而非 recoverable error。 |
+| Panic             | 本模块不提供公开 panic-sugar 索引转换 API，也不定义 `extern "C"` 导出函数。若上游把 Xenon API 包装为 C ABI，wrapper 必须阻止 Rust panic 穿越 C ABI：使用 `std::panic::catch_unwind` 转换为上游 ABI 错误码，或采用 `panic = "abort"`（参见 §1.2 与 §5.4）。`from_raw_parts*()` 中那些无法直接验证的不安全前提若被违反，仍属于 unsafe UB，而非 recoverable error。 |
 | 路径一致性        | 指针访问、BLAS 查询与 raw-parts roundtrip 必须共享同一 shape / strides / offset 解释；无 SIMD / 并行分支。|
 | 容差边界          | 不适用。|
 
