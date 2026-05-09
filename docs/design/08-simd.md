@@ -889,9 +889,7 @@ Consistency guarantee strategy
 | `test_tail_handling`     | 非宽度整数倍数组尾部处理               | 中     |
 | `test_empty_array`       | 空数组不 panic                         | 中     |
 | `test_single_element`    | 单元素数组正确处理                     | 中     |
-| `test_misaligned_ptr`    | aligned-only kernel 回退或 unaligned kernel 正确执行                   | 中     |
-
-SIMD 路径与各语义模块串行实现的一致性测试，由各语义模块的测试计划覆盖。
+| `test_misaligned_ptr`    | aligned-only kernel 回退或 unaligned kernel 正确执行 | 中     |
 
 ### 8.3 边界测试场景
 
@@ -900,7 +898,7 @@ SIMD 路径与各语义模块串行实现的一致性测试，由各语义模块
 | 空数组 `len=0`            | 立即返回，不 panic                  |
 | 单元素 `len=1`            | 由 `simd/` 后端内部保持非 SIMD 路径 |
 | 短数组 `len < SIMD_WIDTH` | 由 `simd/` 后端内部保持非 SIMD 路径 |
-| 非对齐数据                | 由 `simd/` 后端按 §5.7 admission rule 自行决定走 unaligned kernel 或回退标量；**dispatch 层不再以非对齐为由拒绝 SIMD 路径**（与 `30-dispatch.md §5.5/§6.1/§9.4` 协同：`alignment_ok` 是能力提示位，不是硬门槛）。多数逐元素 kernel 默认接受 unaligned 输入，仅 aligned-only kernel 才会内部回退 |
+| 非对齐数据                | 由 `simd/` 后端自行决定走 unaligned kernel 或回退标量；dispatch 层不再以非对齐为由拒绝 SIMD 路径 |
 | 非 F-order 连续           | 由 `simd/` 后端内部保持非 SIMD 路径 |
 | `len = SIMD_WIDTH`        | 恰好一个 SIMD 块，无尾部            |
 | `len = SIMD_WIDTH + 1`    | 一个 SIMD 块 + 1 个标量尾部         |
