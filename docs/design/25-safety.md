@@ -356,9 +356,9 @@ let sum: f64 = b.iter().sum();  // OK: read-only iteration
 
 ### 5.10 FFI unsafe 与线程安全边界
 
-**适用范围：** `src/ffi/`（详见 `23-ffi.md`）。本节是横切线程安全规范在 FFI 边界的延伸，与 `23-ffi.md` 的 unsafe 接口契约协同。
+**适用范围**：`src/ffi/`（详见 `23-ffi.md`）。本节是横切线程安全规范在 FFI 边界的延伸，与 `23-ffi.md` 的 unsafe 接口契约协同。
 
-**核心约束：**
+**核心约束**：
 
 | 约束类别 | 规则 |
 |:--|:--|
