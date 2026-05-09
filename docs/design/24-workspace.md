@@ -4,8 +4,6 @@
 > 模块目录: src/workspace/
 > 任务阶段: Phase 4
 > 前置文档: 00-coding.md, 01-architecture.md, 26-error.md
-> 需求参考: 需求说明书 §26 - §28
-> 范围声明: 范围内
 
 ---
 
@@ -22,13 +20,13 @@
 
 ### 1.2 设计原则
 
-| 原则         | 体现                                                                                                                    |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| 借用语义     | 借出期间不可再次借出；只读借用当前版本同一时刻最多一个活跃 guard，归还后可复用                                          |
-| 单向增长     | 只扩容不缩容，避免内存抖动                                                                                              |
-| 未初始化感知 | 底层字节视为 `MaybeUninit<u8>`；只有调用方显式声明初始化完成后，才能获取已初始化视图                                    |
-| O(1) 分割    | 仅指针算术，无内存分配                                                                                                  |
-| 显式生命周期 | 当前实现默认不可跨线程传递（`!Send + !Sync`）；这是为简化借用安全性论证采取的实现选择，而非 `需求说明书 §26` 的强制要求 |
+| 原则         | 体现                                                                                  |
+| ------------ | ------------------------------------------------------------------------------------- |
+| 借用语义     | 借出期间不可再次借出；只读借用当前版本同一时刻最多一个活跃 guard，归还后可复用        |
+| 单向增长     | 只扩容不缩容，避免内存抖动                                                            |
+| 未初始化感知 | 底层字节视为 `MaybeUninit<u8>`；只有调用方显式声明初始化完成后，才能获取已初始化视图  |
+| O(1) 分割    | 仅指针算术，无内存分配                                                                |
+| 显式生命周期 | 当前实现默认不可跨线程传递（`!Send + !Sync`）                                         |
 
 ---
 
@@ -47,7 +45,7 @@
 
 ```
 src/
-├── error.rs                    # WorkspaceErrorCategory definitions (shared error module)
+├── error.rs                 # WorkspaceErrorCategory definitions (shared error module)
 └── workspace/               # Temporary workspace (directory module)
     ├── mod.rs               # Module root, re-exports
     ├── workspace.rs         # Workspace struct, constants, constructors, destructor
@@ -84,7 +82,7 @@ External dependencies:
 | -------------------- | ---------------------------------------------------------------------- |
 | `core`               | `NonNull<u8>`, `PhantomData`, `AtomicU8`, `fmt::Debug`, `fmt::Display` |
 | `alloc`              | `alloc()`, `dealloc()`, `Layout`                                       |
-| `crate::error`       | `XenonError`（公开 Xenon API 错误类型，含 `Workspace` 变体）、`Result<T>`、`WorkspaceErrorCategory`（七子变体：`AllocFailed` / `InvalidLayout` / `BorrowConflict` / `SplitOutOfBounds` / `SplitCountInvariant` / `GrowOverflow` / `TypedViewRejected`）、`WorkspaceBorrowKind`（Shared/Exclusive/Split）、`WorkspaceBorrowState`（None/Shared/Exclusive/SplitActive）、`TypedViewRejection`（`ZeroSizedType` / `AlignmentMismatch { required, actual }` / `TypedByteLengthOverflow { count, elem_size }`，**均见 `26-error.md §5.1`**；旧 `LengthNotMultipleOfSize` 已删除——typed view API 仅按 `count` 申请、不存在按字节长度 reinterpret 的路径，溢出走 `TypedByteLengthOverflow`，详见 §5.6）。本模块**不**使用 `Cow<'static, str>` 作为自由文本诊断字段（即不向错误结构体注入用户可见的随意诊断字符串）；按 `26-error.md` 要求，仅使用 `Cow<'static, str>` 填充稳定标识符字段 `operation`（值取自字面量集合，例如 `Cow::Borrowed("Workspace::new")`、`Cow::Borrowed("Workspace::reserve")` 等），用于诊断"哪个 API 触发了错误"，不携带运行时信息。 |
+| `crate::error`       | `XenonError`、`Result<T>`、`WorkspaceErrorCategory`、`WorkspaceBorrowKind`、`WorkspaceBorrowState`、`TypedViewRejection` |
 
 ### 4.3 依赖合法性
 
@@ -96,7 +94,7 @@ External dependencies:
 
 ### 4.4 依赖方向声明
 
-依赖方向：单向。`workspace` 仅依赖 `core`、`alloc`、原子能力、`crate::error` 中的 `WorkspaceErrorCategory`，以及 `crate::error` 中 `XenonError::Workspace` 的公开错误边界，不依赖 `tensor`（参见 `07-tensor.md §4.4`）。上游库和 `tensor` 可消费 `workspace`。
+依赖方向：单向。`workspace` 仅依赖 `core`、`alloc`、原子能力、`crate::error` 中的 `WorkspaceErrorCategory` / `XenonError::Workspace`。
 
 ---
 
