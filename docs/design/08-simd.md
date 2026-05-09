@@ -392,19 +392,17 @@ SIMD 路径选择已收敛到 `simd` 后端内部。
 
 ### 5.7 sum / dot 的 admission 信号契约
 
-`SimdKernel` 的二元运算入口 `dispatch_vector_binary_op(...) -> bool` 通过返回值显式表达"是否实际进入 SIMD"——`false` 时调用方负责走标量回退，`dst` 未被修改（§5.4 / §5.6 已规定）。
-
-`SimdKernel::sum(&self, data: &[A]) -> A` 与 `SimdKernel::dot(&self, lhs: &[A], rhs: &[A]) -> A` 因为返回归约结果 `A` 本身，签名上**无法**承载 admission 信号。本节明确这两个入口的契约：
+`SimdKernel` 的二元运算入口 `dispatch_vector_binary_op(...) -> bool` 通过返回值显式表达"是否实际进入 SIMD"——`false` 时调用方负责走标量回退，`dst` 未被修改。`SimdKernel::sum(&self, data: &[A]) -> A` 与 `SimdKernel::dot(&self, lhs: &[A], rhs: &[A]) -> A` 因为返回归约结果 `A` 本身，签名上无法承载 admission 信号。本节明确这两个入口的契约：
 
 **契约 1：SIMD sum / dot 入口的调用前提（调用方义务）**
 
-调用 `SimdKernel::sum` / `SimdKernel::dot` 之前，调用方模块（`13-reduction.md` / `12-matrix.md`）**必须**自行完成 type gate，确保被调用类型在本平台/本 ISA 上属于 §5.6 表中"已实现"或"已验证 widening 可用"的子集。具体规则：
+调用 `SimdKernel::sum` / `SimdKernel::dot` 之前，调用方模块（`13-reduction.md` / `12-matrix.md`）必须自行完成 type gate，确保被调用类型在本平台/本 ISA 上属于 §5.6 表中"已实现"或"已验证 widening 可用"的子集。具体规则：
 
 | 元素类型 | sum | dot | 调用方 gate 决策 |
 |---|---|---|---|
 | `f32` / `f64` | 已实现 | 已实现 | 可直接调用 SIMD 入口 |
 | `Complex<f32>` / `Complex<f64>` | 已实现 | 已实现 | 可直接调用 SIMD 入口 |
-| `i32` / `i64`（无已验证 widening） | 条件实现 | 条件实现 | **不得**调用 SIMD 入口；调用方在 dispatch 之前自行选 Serial |
+| `i32` / `i64`（无已验证 widening） | 条件实现 | 条件实现 | 不得调用 SIMD 入口；调用方在 dispatch 之前自行选 Serial |
 | `i32` / `i64`（已验证 ISA widening） | 条件实现 | 条件实现 | 可调用 SIMD 入口；实现侧保证 checked 等价 |
 
 **契约 2：SIMD sum / dot 入口的实现侧义务**
@@ -412,7 +410,7 @@ SIMD 路径选择已收敛到 `simd` 后端内部。
 `simd/` 后端在实现 `sum` / `dot` 时：
 
 - 仅对契约 1 中"可直接调用"的类型实现真正 SIMD 路径
-- 对"不得调用"的类型，实现侧**不**提供 SIMD 实现入口（在类型系统层面以 trait bound + 编译期分派排除，而非运行时分支）；调用方若违反契约 1 在编译期即报错，避免运行时无信号失败
+- 对"不得调用"的类型，实现侧不提供 SIMD 实现入口（在类型系统层面以 trait bound + 编译期分派排除，而非运行时分支）；调用方若违反契约 1 在编译期即报错，避免运行时无信号失败
 - 这与二元运算的 `dispatch_vector_binary_op -> bool` 不同：二元运算允许"运行时失败回退"（因为 dst 缓冲区可对照 `false` 不消费），归约/内积的 `A` 返回值无法承载该语义，故强制移到编译期
 
 **契约 3：与 dispatch 阈值层的两层 gate 协同**
@@ -424,9 +422,9 @@ dispatch 模块（`30-dispatch.md`）有两个层次的 gate，本契约属于�
 | L1 | **通用阈值 gate**（`SIMD_THRESHOLD` / `PARALLEL_THRESHOLD`） | dispatch 内部 `select_exec_path` | 30-dispatch §5.6 |
 | L2 | **op-specific type gate**（如整数 sum/dot 无 widening 时跳过 SIMD/Parallel） | 调用方模块（reduction / matrix） | 30-dispatch §5.5 op-agnostic boundary + 本节契约 |
 
-L1 的规则是"调用方仍走完整三路 dispatch，不在 dispatch 之前自行裁决 Serial 短路"（30-dispatch §5.5 末尾）——这指的是**通用阈值层**，不允许调用方提前根据 `len` 短路。L2 是 op-specific 的类型可行性判定，与通用阈值无关，本契约要求调用方在 L2 早退。两者并不矛盾：
+L1 的规则是"调用方仍走完整三路 dispatch，不在 dispatch 之前自行裁决 Serial 短路"（30-dispatch §5.5 末尾）——这指的是通用阈值层，不允许调用方提前根据 `len` 短路。L2 是 op-specific 的类型可行性判定，与通用阈值无关，本契约要求调用方在 L2 早退。两者并不矛盾：
 
-- 调用方先做 L2 type gate：若该元素类型 + 操作组合在本平台**根本不存在 SIMD/Parallel 实现路径**（如整数 sum/dot 无 widening），则**不**调用 `select_exec_path()`，直接走标量串行——这不是阈值短路，而是路径可用性判定
+- 调用方先做 L2 type gate：若该元素类型 + 操作组合在本平台根本不存在 SIMD/Parallel 实现路径（如整数 sum/dot 无 widening），则不调用 `select_exec_path()`，直接走标量串行——这不是阈值短路，而是路径可用性判定
 - 若 L2 通过，调用方走完整 `select_exec_path()`，由 dispatch 按 L1 通用阈值裁决 `ExecPath`
 - SIMD 路径中可安全调用 `SimdKernel::sum / dot`，因为类型已通过 L2 gate
 
