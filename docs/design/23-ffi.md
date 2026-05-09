@@ -97,14 +97,14 @@ src/ffi/
 
 ### 4.2 类型级依赖
 
-| 来源模块    | 使用的类型/trait                                                                                        |
-| ----------- | ------------------------------------------------------------------------------------------------------- |
-| `tensor`    | `TensorBase<S, D>`, `.shape()`, `.strides()`, `.offset()`                                               |
-| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`                                                                       |
-| `element`   | `Element`、`ElementType`（**权威定义在 `crate::element`**，本模块通过 `pub use crate::element::ElementType` re-export 暴露 `crate::ffi::ElementType` 给 C 消费者）、`element_type_of::<A>()`（`pub const fn`，定义在 `crate::element`，配合 inherent `ElementType::of::<A>()` 共同提供入口；详见 `03-element.md §5.1.1`） |
-| `storage`   | `Storage<Elem=A>`, `StorageMut<Elem=A>`, owned allocator metadata（供 `OwnedRawParts<A, D>` 导出/重建） |
-| `layout`    | `is_f_contiguous()`（定义于 `06-layout.md` §5.7）、`has_zero_stride()`（定义于 `06-layout.md` §5.1）；`TensorBase` 方法参见 `07-tensor.md` §5.3 |
-| `error`     | `XenonError`（含 `Ffi`、`DimensionMismatch`、`IndexOutOfBounds`、`InvalidLayout` 等变体）、`FfiErrorCategory`（封闭枚举，定义于 `26-error.md` §5.1，含 `NullPointer`/`AlignmentMismatch`/`InvalidRank`/`BlasIncompatibleLayout`/`IntegerOverflow`/`AbiMismatch`/`OverlapRejected`/`ForeignAllocatorMismatch` 八个结构化子变体）、`FfiBackend`（封闭枚举：`RawParts`/`Blas`，定义于 `26-error.md` §5.1）、`InvalidLayoutReason`（封闭枚举，定义于 `26-error.md` §5.1）、`StorageKindTag`（封闭枚举：`Owned`/`View`/`ViewMut`/`Shared`，由 `ArcRepr<A>` 支撑 `Shared`；定义于 `26-error.md` §5.1） |
+| 来源模块    | 使用的类型/trait                                                                        |
+| ----------- | --------------------------------------------------------------------------------------- |
+| `tensor`    | `TensorBase<S, D>`, `.shape()`, `.strides()`, `.offset()`                               |
+| `dimension` | `Dimension`, `Ix0`~`Ix6`, `IxDyn`                                                       |
+| `element`   | `Element`、`ElementType`、`element_type_of::<A>()`                                      |
+| `storage`   | `Storage`, `StorageMut`, owned allocator metadata                                       |
+| `layout`    | `is_f_contiguous()`、`has_zero_stride()`                                                |
+| `error`     | `XenonError`、`FfiErrorCategory`、`FfiBackend`、`InvalidLayoutReason`、`StorageKindTag` |
 
 ### 4.3 依赖合法性
 
@@ -118,20 +118,9 @@ src/ffi/
 
 依赖方向：单向向上。`ffi` 仅消费 `tensor`、`storage` 等核心模块，为上游库提供接口。
 
-本文聚焦这些能力在 FFI 边界的公开形态，因此依赖表中仍把相关实现文件归入 `ffi` 模块文档范围，而不把它写成反向依赖。
-
 ---
 
 ## 5. 公共 API 设计
-
-**inherent 方法模式：** FFI 模块中的 `export()`、`export_mut()`、`is_blas_layout_compatible()`、`blas_info()`、`lda()`、`try_offset_of()`、`try_ptr_at()` 均为 `TensorBase<S, D>` 的 inherent 方法，但代码组织在 `src/ffi/` 子目录中。这些方法需要访问 `TensorBase` 的公开接口（`shape()`、`strides()` 等），无需直接操作私有字段，因此通过 inherent impl 在 ffi 模块中定义而不影响模块边界。这遵循了 §4.4 中的 owner 约定：核心构造与解构方法（`from_raw_parts*()`、`into_raw_parts()`）保留在 tensor 模块，FFI 模块仅负责面向 FFI 消费者的查询与导出方法。
-
-**owner 约定：** 
-
-- `as_ptr()` / `as_mut_ptr()` 的核心定义在 `07-tensor.md`（tensor 核心层）。
-- `into_raw_parts()` / `from_raw_parts_owned()` / `OwnedRawParts` 的核心实现同样在 `07-tensor.md §5.7`（`src/tensor/construct.rs`），因为它们需要访问 `TensorBase` 的私有字段。
-- `ffi` 模块负责指针导出格式（`TensorExport` / `TensorExportMut`）、BLAS 辅助 API 和裸指针偏移计算（`try_offset_of` / `try_ptr_at`）。
-- `ffi` 模块通过 `pub use crate::tensor::OwnedRawParts` 向 FFI 消费者 re-export tensor 模块定义的类型。`into_raw_parts()` 和 `from_raw_parts_owned()` 作为 `TensorBase` 的 inherent 方法可直接在 FFI 上下文中调用，无需额外包装。
 
 ### 5.1 辅助类型
 
@@ -187,9 +176,9 @@ use crate::error::{FfiErrorCategory, FfiBackend};
 
 ### 5.2 原始指针 API
 
-**结果类型说明：** 公开 API 统一使用 `Result<T, XenonError>`，`crate::error::Result<_>` 为等价类型别名。
+**结果类型说明**： 公开 API 统一使用 `Result<T, XenonError>`，`crate::error::Result<_>` 为等价类型别名。
 
-**核心定义归属：** `as_ptr()`、`as_mut_ptr()`、`from_raw_parts()`、`from_raw_parts_mut()` 的实现定义在 `07-tensor.md` §5.4 和 §5.7，代码位于 `src/tensor/construct.rs`。本文仅描述这些方法在 FFI 边界的语义契约和 Safety 要求；完整签名与实现参见 `07-tensor.md`。
+**核心定义归属**： `as_ptr()`、`as_mut_ptr()`、`from_raw_parts()`、`from_raw_parts_mut()` 的实现定义在 `07-tensor.md` §5.4 和 §5.7，代码位于 `src/tensor/construct.rs`。本文仅描述这些方法在 FFI 边界的语义契约和 Safety 要求；完整签名与实现参见 `07-tensor.md`。
 
 ````rust,ignore
 // as_ptr() — see 07-tensor.md §5.4
@@ -240,7 +229,7 @@ use crate::error::{FfiErrorCategory, FfiBackend};
 // }
 ````
 
-**FFI 侧 Safety 摘要（调用方须保证）：**
+**FFI 侧 Safety 摘要**：
 
 | 方法 | 调用方义务 |
 |------|-----------|
@@ -251,7 +240,7 @@ use crate::error::{FfiErrorCategory, FfiBackend};
 
 ### 5.3 C 侧结构化导出格式
 
-`ElementType` 枚举定义于 `element` 模块（见 `03-element.md §5.1.1`），`ffi` 模块通过 `pub use crate::element::ElementType` re-export 以供 FFI 消费者使用稳定路径 `crate::ffi::ElementType`。此设计让 element 拥有类型枚举，让 ffi 提供 C ABI 边界稳定路径，同时 error 模块完全不依赖 ElementType（error 用 `&'static str` 记录类型诊断信息，详见 `26-error.md §5.4`）。
+`ElementType` 枚举定义于 `element` 模块（见 `03-element.md §5.1.1`），`ffi` 模块通过 `pub use crate::element::ElementType` re-export 以供 FFI 消费者使用稳定路径 `crate::ffi::ElementType`。此设计让 element 拥有类型枚举，让 ffi 提供 C ABI 边界稳定路径。
 
 ```rust,ignore
 // src/ffi/types.rs
@@ -288,9 +277,9 @@ pub struct BlasInfo<A> { /* fields omitted — see §5.5 */ }
 // }
 ```
 
-#### 5.3.bis C 头文件可见的非泛型导出 schema
+#### 5.3.1 C 头文件可见的非泛型导出 schema
 
-`TensorExport<'a, A>` / `TensorExportMut<'a, A>` 是 Rust 侧带生命周期与 `PhantomData` 的泛型类型，C 头文件无法直接表达"泛型 + 生命周期 + PhantomData"。`crate::ffi` 因此对外暴露**非泛型**的 C-visible 描述符，作为 cbindgen 的固定输出 schema：
+`TensorExport<'a, A>` / `TensorExportMut<'a, A>` 是 Rust 侧带生命周期与 `PhantomData` 的泛型类型，C 头文件无法直接表达"泛型 + 生命周期 + PhantomData"。`crate::ffi` 因此对外暴露非泛型的 C-visible 描述符，作为 cbindgen 的固定输出 schema：
 
 ```rust,ignore
 /// C-visible read-only tensor descriptor.
@@ -354,11 +343,11 @@ impl<'a, A: Element> From<TensorExportMut<'a, A>> for TensorExportMutRaw {
 }
 ```
 
-C 消费者**只能**绑定到 `TensorExportRaw` / `TensorExportMutRaw`；Rust 侧的 `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 是内部表达类型，包含生命周期借用证据与类型化指针，cbindgen 不会为其生成 C 头文件条目。两类描述符通过 `From` 在 FFI 边界一次性转换。这一设计保留了 Rust 侧的借用安全（`PhantomData<&'a A>` 阻止借用越界），同时给 C 一份稳定可消费的 ABI schema。
+C 消费者只能绑定到 `TensorExportRaw` / `TensorExportMutRaw`；Rust 侧的 `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 是内部表达类型，包含生命周期借用证据与类型化指针，cbindgen 不会为其生成 C 头文件条目。两类描述符通过 `From` 在 FFI 边界一次性转换。这一设计保留了 Rust 侧的借用安全（`PhantomData<&'a A>` 阻止借用越界），同时给 C 一份稳定可消费的 ABI schema。
 
-#### cbindgen 配置合约
+#### 5.3.2 cbindgen 配置合约
 
-为强制 generic Rust-only 描述符不进入 C 头文件，工程依赖 **三道闸门**协同（cbindgen 没有真正的 "exhaustive allowlist" 机制；`[export] include` 只是把那些没被 `extern "C"` 函数引用、但也想强制纳入的额外类型 *补充进来*，并不能把生成集合限制为只有列表中的项）：
+为强制 generic Rust-only 描述符不进入 C 头文件，工程依赖三道闸门协同：
 
 1. **`extern "C"` 函数签名只引用 raw 描述符。** `crate::ffi` 的所有 `extern "C"` 函数只接受 / 返回 `TensorExportRaw` / `TensorExportMutRaw` / `ElementType` 等非泛型 C-visible 类型。这是最强约束：cbindgen 仅会生成被 `extern "C"` 函数实际依赖的类型。
 2. **`#[doc(hidden)] mod private { ... }` 隔离泛型类型。** `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 与 `From` 转换 impl 全部放在 `crate::ffi::private` 子模块内，让 cbindgen 的 parser 把它们视为内部细节；同时通过 `[export.exclude]` 显式列出名字作为第二道闸门防止意外暴露。
@@ -391,14 +380,6 @@ exclude = [
 parse_deps = false  # do not parse dependency crates' types
 ```
 
-**测试合约（28-tests）**：必须包含 `test_cbindgen_header_exports_only_raw_descriptors`，断言生成的 C 头文件：
-
-1. 包含 `typedef ... TensorExportRaw;` / `typedef ... TensorExportMutRaw;` / `enum ElementType` 定义；
-2. **不**包含 `TensorExport` / `TensorExportMut` 这两个**裸标识符**（必须使用 word-boundary 正则匹配，例如 `\bTensorExport\b` / `\bTensorExportMut\b`，**不**使用普通 substring grep；否则 `TensorExportRaw` / `TensorExportMutRaw` 会被前缀误命中）的任何 typedef / struct / enum 出现——这是三道闸门的最终验证；
-3. `ElementType` 枚举值与 03-element §5.1.1 显式 discriminants 严格一致（`Bool=0..Complex64=6`）。
-
-CI 在每次 PR 重新生成 C 头并对比预期 schema；schema 差异需 reviewer 在 PR 中显式确认。
-
 ### 5.4 指针约定对照
 
 | API                         | 基准                 | 说明                                                                 |
@@ -424,9 +405,9 @@ CI 在每次 PR 重新生成 C 头并对比预期 schema；schema 差异需 revi
 /// - `TensorExport` is the read-only export form and uses `*const A`.
 ///   `TensorExportMut` is the writable export form and uses `*mut A`.
 ///
-/// **Visibility & file location (R13 D-01):** Generic descriptors are
+/// **Visibility & file location**: Generic descriptors are
 /// `pub(crate)` Rust-only borrowing evidence and live in
-/// `src/ffi/private.rs` (see §3 file layout + §5.3.bis cbindgen gate #2:
+/// `src/ffi/private.rs` (see §3 file layout + §5.3.1 cbindgen gate #2:
 /// generic descriptors are physically isolated and excluded from cbindgen
 /// emission set). They are NOT part of any C ABI surface; the C-visible
 /// raw descriptors are `TensorExportRaw` / `TensorExportMutRaw` (defined
@@ -567,7 +548,7 @@ where
     /// entry; it returns `TensorExportRaw` (the C-visible non-generic raw
     /// descriptor; see §5.4 above). The intermediate generic descriptor
     /// `TensorExport<'_, A>` is `pub(crate)` Rust-only borrowing evidence
-    /// (located in `src/ffi/private.rs`, §3 + §5.3.bis) and cannot appear
+    /// (located in `src/ffi/private.rs`, §3 + §5.3.1) and cannot appear
     /// in a `pub fn` return type — Rust's `private_in_public` rule
     /// (`error[E0446]`) would reject that signature. The internal generic
     /// descriptor is built within this method and immediately converted to
@@ -1542,7 +1523,7 @@ Upstream code calls as_ptr() / blas_info() / into_raw_parts()
 | `std` only  | 当前版本仅讨论 `std` 环境下的 FFI 接口；FFI 指针操作依赖 `std` 提供的分配器与布局保证                                                                                            |
 | MSRV        | Rust 1.85+                                                                                                                                                                       |
 | 单 crate    | FFI 模块位于 `src/ffi/`，不引入额外 crate，保持 Xenon 单 crate 结构                                                                                                              |
-| SemVer      | C ABI 稳定契约**仅**覆盖 C-visible raw descriptors：`TensorExportRaw` / `TensorExportMutRaw` 的字段布局与 `#[repr(C)]` 表示，以及 `crate::ffi::ElementType` 的显式 discriminants（参见 `03-element.md §5.1.1`）。Generic descriptors `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 是 `pub(crate)` Rust-only 借用证据（位于 `src/ffi/private.rs`，参见 §3 / §5.3.bis），**不**进入 C ABI 稳定契约面，可在不破坏 SemVer 的前提下变更字段。`OwnedRawParts<A, D>` 是 owned 解构/重建的 Rust API 表面，字段布局变更须遵循 SemVer。新增公共 FFI 方法或 raw descriptor 变体属于 minor 变更 |
+| SemVer      | C ABI 稳定契约**仅**覆盖 C-visible raw descriptors：`TensorExportRaw` / `TensorExportMutRaw` 的字段布局与 `#[repr(C)]` 表示，以及 `crate::ffi::ElementType` 的显式 discriminants（参见 `03-element.md §5.1.1`）。Generic descriptors `TensorExport<'a, A>` / `TensorExportMut<'a, A>` 是 `pub(crate)` Rust-only 借用证据（位于 `src/ffi/private.rs`，参见 §3 / §5.3.1），**不**进入 C ABI 稳定契约面，可在不破坏 SemVer 的前提下变更字段。`OwnedRawParts<A, D>` 是 owned 解构/重建的 Rust API 表面，字段布局变更须遵循 SemVer。新增公共 FFI 方法或 raw descriptor 变体属于 minor 变更 |
 | 最小依赖    | 无新增第三方依赖，符合 `需求说明书 §1.3` 对最小依赖的限制                                                                                                                        |
 | 索引类型    | 逻辑索引统一使用 `usize`；BLAS/LAPACK 整数参数在边界处按目标后端转换为 `i32` 或 `i64`                                                                                            |
 | stride 范围 | 当前版本只接受非负 stride；负步长导入不在范围内                                                                                                                                  |
