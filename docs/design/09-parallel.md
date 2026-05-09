@@ -4,14 +4,12 @@
 > 模块目录: src/parallel/
 > 任务阶段: Phase 5
 > 前置文档: 01-architecture.md, 03-element.md, 07-tensor.md, 26-error.md
-> 需求参考: 需求说明书 §1、§9、§12 - §14、§27、§28
-> 范围声明: 范围内
 
 ---
 
 ## 1. 模块定位/概述
 
-并行后端模块是 Xenon 的可选执行后端，通过 `rayon` 为逐元素映射、二元逐元素运算与归约提供纯数据并行能力。该模块默认关闭，仅在启用 `parallel` feature 时参与构建。当前版本覆盖内部 `par_map`、供 `math` 模块消费的 `par_zip_map`、并行 `sum` / `dot`；本模块不负责串行回退、阈值控制或嵌套并行检测，这些执行路径裁决职责已迁移至 `dispatch.rs`。
+并行后端模块是 Xenon 的可选执行后端，通过 `rayon` 为逐元素映射、二元逐元素运算与归约提供纯数据并行能力。该模块默认关闭，仅在启用 `parallel` feature 时参与构建。本模块不负责串行回退、阈值控制或嵌套并行检测，这些执行路径裁决职责已迁移至 `dispatch.rs`。
 
 ### 1.1 职责边界表
 
@@ -25,7 +23,7 @@
 
 | 原则           | 体现                                                                                                 |
 | -------------- | ---------------------------------------------------------------------------------------------------- |
-| 语义一致性     | 并行路径不得改变公开 API 的形状、错误类别和数值语义；路径裁决见 §6.1                       |
+| 语义一致性     | 并行路径不得改变公开 API 的形状、错误类别和数值语义；路径裁决见 §6.1                                 |
 | 最小能力边界   | 当前版本只覆盖 `par_map`、`par_zip_map`、`par_sum`、`par_dot`，不扩展到 GPU 或通用多输入同步公开接口 |
 | 可选依赖最小化 | 仅在 `parallel` feature 下引入 `rayon`，默认关闭                                                     |
 
@@ -72,15 +70,15 @@ src/parallel/
 
 ### 4.2 类型级依赖
 
-| 来源模块    | 使用的类型/trait                                                                                         |
-| ----------- | -------------------------------------------------------------------------------------------------------- |
-| `rayon`     | `rayon::ThreadPool`, `rayon::current_num_threads`, `rayon::iter::ParallelIterator`                       |
-| `tensor`    | `Tensor<A, D>`, `TensorBase<S, D>`, `TensorView<'a, A, D>`, `.len()`, `.raw_dim()`, `.is_f_contiguous()` |
-| `element`   | `Element`, `Numeric`                                                                                     |
-| `dimension` | `Dimension`                                                                                              |
-| `dispatch`  | `ParallelExecStrategy`, `ParallelGuard`                                                                  |
-| `parallel`  | `ParIter<'a, A, D>`, `TensorBase::par_iter()`, `par_zip_map()`                                       |
-| `error`     | `XenonError`, `XenonError::ShapeMismatch`, `XenonError::InvalidShape`, `XenonError::InvalidArgument`, `InvalidShapeKind::ProductOverflow`, `InvalidArgumentKind::OperationSpecific`, `Cow<'static, str>` |
+| 来源模块    | 使用的类型/trait                                                                    |
+| ----------- | ----------------------------------------------------------------------------------- |
+| `rayon`     | `rayon::ThreadPool`, `rayon::current_num_threads`, `rayon::iter::ParallelIterator`  |
+| `tensor`    | `Tensor`, `TensorBase`, `TensorView`, `.len()`, `.raw_dim()`, `.is_f_contiguous()`  |
+| `element`   | `Element`, `Numeric`                                                                |
+| `dimension` | `Dimension`                                                                         |
+| `dispatch`  | `ParallelExecStrategy`, `ParallelGuard`                                             |
+| `parallel`  | `ParIter`, `TensorBase::par_iter()`, `par_zip_map()`                                |
+| `error`     | `XenonError`, `ShapeMismatch`, `InvalidShape`, `InvalidArgument`                    |
 
 ### 4.3 依赖合法性
 
@@ -92,7 +90,7 @@ src/parallel/
 
 ### 4.4 依赖方向
 
-依赖方向：单向向上。`parallel` 只提供纯并行执行入口，不包含串行回退（路径裁决见 §6.1）。`parallel` 通过 `crate::dispatch` 引用 `ParallelExecStrategy` 类型（定义于 `dispatch.rs`），但不依赖 dispatch 的路径裁决实现逻辑。`ParIter` 与 `TensorBase::par_iter()` 归属 `parallel` 模块本身，不属于 `iter` 模块。并行路径只建立在上层已完成的张量形状、布局与类型约束之上；广播形状裁决由 `math` 调用侧先完成，再以 `output_dim` 形式传入。
+依赖方向：单向向上。`parallel` 只提供纯并行执行入口，不包含串行回退。
 
 ---
 
