@@ -4,8 +4,6 @@
 > 模块目录: src/ffi/
 > 任务阶段: Phase 4
 > 前置文档: 02-dimension.md, 03-element.md, 05-storage.md, 06-layout.md, 07-tensor.md, 26-error.md
-> 需求参考: 需求说明书 §5 - §8、§25、§27、§28
-> 范围声明: 范围内
 
 ---
 
@@ -13,13 +11,13 @@
 
 ### 1.1 职责边界
 
-| 职责            | 包含                                                                        |
-| --------------- | --------------------------------------------------------------------------- |
-| 原始指针 API    | `as_ptr()`/`as_mut_ptr()`                                                   |
-| 裸指针构造张量  | `from_raw_parts`/`from_raw_parts_mut`                                       |
-| 裸指针解构张量  | `into_raw_parts`                                                            |
-| BLAS 兼容性 API | `is_blas_layout_compatible()` 与 BLAS 元数据导出（`blas_info()` / `lda()`） |
-| 多维索引转换    | `try_offset_of()`/`try_ptr_at()`                                            |
+| 职责            | 包含                                                      |
+| --------------- | --------------------------------------------------------- |
+| 原始指针 API    | `as_ptr()`/`as_mut_ptr()`                                 |
+| 裸指针构造张量  | `from_raw_parts`/`from_raw_parts_mut`                     |
+| 裸指针解构张量  | `into_raw_parts`                                          |
+| BLAS 兼容性 API | `is_blas_layout_compatible()` / `blas_info()` / `lda()`） |
+| 多维索引转换    | `try_offset_of()`/`try_ptr_at()`                          |
 
 | 职责            | 不包含                                              |
 | --------------- | --------------------------------------------------- |
@@ -31,14 +29,14 @@
 
 ### 1.2 设计原则
 
-| 原则         | 体现                                        |
-| ------------ | ------------------------------------------- |
-| 零拷贝       | 指针 API 无数据拷贝，O(1) 开销              |
-| 安全边界清晰 | 所有 unsafe 函数有详尽 Safety 文档          |
-| BLAS 友好    | 提供完整的 BLAS 兼容性检查和布局查询        |
-| 最小约束     | FFI 方法避免重复安全检查（调用方已 unsafe） |
-| 错误结构化   | FFI 错误一律使用 `26-error.md §5.1` 封闭枚举（`FfiErrorCategory` / `FfiBackend` / `InvalidLayoutReason` / `StorageKindTag`）；禁止自由文本 `precondition`/`actual`/`reason` |
-| FFI panic 边界 | Xenon 本模块**不**定义 `extern "C"` 导出函数；任何上游 C ABI wrapper 必须阻止 Rust panic 穿越 C ABI（`std::panic::catch_unwind` 或在 FFI 边界采用 `panic = "abort"`），并保证 panic 后不会继续使用已失效的 `TensorExport` 指针 |
+| 原则           | 体现                                          |
+| -------------- | --------------------------------------------- |
+| 零拷贝         | 指针 API 无数据拷贝，O(1) 开销                |
+| 安全边界清晰   | 所有 unsafe 函数有详尽 Safety 文档            |
+| BLAS 友好      | 提供完整的 BLAS 兼容性检查和布局查询          |
+| 最小约束       | FFI 方法避免重复安全检查（调用方已 unsafe）   |
+| 错误结构化     | FFI 错误一律使用 `26-error.md` 定义的封闭枚举 |
+| FFI panic 边界 | Xenon 不定义 `extern "C"` 导出函数            |
 
 ---
 
