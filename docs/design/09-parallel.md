@@ -118,9 +118,9 @@ pub(crate) struct ParallelPool {
 
 ### 5.2 内部执行入口与可见性
 
-**可见性说明：** `parallel` 是 `pub(crate)` 内部后端；所有执行后端函数与类型（包括 `par_map`、`par_zip_map`、`par_sum`、`par_dot`、`ParallelPool`、`ParIter`）均保持 `pub(crate)`，仅供 `math` / `reduction` / `matrix` 等语义模块通过 `dispatch.rs` 自动调用。
+**可见性说明**：`parallel` 是 `pub(crate)` 内部后端；所有执行后端函数与类型均保持 `pub(crate)`，仅供 `math` / `reduction` / `matrix` 等语义模块通过 `dispatch.rs` 自动调用。
 
-**执行策略：** 阈值配置与嵌套并行防护由 `dispatch.rs` 统一管理（见 §6.1）；本模块仅通过 `ParallelExecStrategy` 接收 dispatch 已裁决的执行参数，不提供独立的公开阈值配置接口。
+**执行策略**：阈值配置与嵌套并行防护由 `dispatch.rs` 统一管理（见 §6.1）；本模块仅通过 `ParallelExecStrategy` 接收 dispatch 已裁决的执行参数，不提供独立的公开阈值配置接口。
 
 ### 5.3 内部执行策略参数规范
 
@@ -133,18 +133,16 @@ pub(crate) struct ParallelPool {
 
 ### 5.4 `ParallelExecStrategy` 参数校验规则
 
-`ParallelExecStrategy` 的字段合法性由 `dispatch.rs` 在构造时（`ParallelExecStrategy::new(...) -> Result<Self, XenonError>`）一次性校验完成（参见 30-dispatch.md §5.3）。`parallel` 模块收到的策略实例已经满足以下范围；若违反则视为 `dispatch.rs` 的内部 bug，可触发 `debug_assert!`，但**不再**由 `parallel` 自己重新返回 `InvalidArgument`。
+`ParallelExecStrategy` 的字段合法性由 `dispatch.rs` 在构造时（`ParallelExecStrategy::new(...) -> Result<Self, XenonError>`）一次性校验完成（参见 `30-dispatch.md §5.3`）。`parallel` 模块收到的策略实例已经满足以下范围；若违反则视为 `dispatch.rs` 的内部 bug，可触发 `debug_assert!`，但不再由 `parallel` 自己重新返回 `InvalidArgument`。
 
 | 字段          | 合法范围                          | 默认值（dispatch 端） | 非法值的处置                                                |
 | ------------- | --------------------------------- | --------------------- | ----------------------------------------------------------- |
 | `max_workers` | `Some(1..=pool_size)` 或 `None`   | `None`                | dispatch 端在 `new()` 中拒绝并返回 `InvalidArgument`        |
 | `chunk_size`  | `Some(n)` where `n > 0` 或 `None` | `None`                | dispatch 端在 `new()` 中拒绝并返回 `InvalidArgument`        |
 
-**与 §5.5 函数签名的一致性**：因为参数合法性已由 dispatch 保证，`par_map` / `par_reduce_impl` / `par_sum` 等签名不返回 `Result`（它们只可能因为整数溢出 panic 或正常完成，没有可恢复错误通道），不再存在“函数签名无法返回 `InvalidArgument`”的不一致问题。
-
 ### 5.5 函数签名
 
-**定义位置**：`ParallelExecStrategy` 定义于 `dispatch.rs`（30-dispatch.md §5.3，字段为 `pub(crate)` 私有，构造仅通过 `ParallelExecStrategy::new(chunk_size, max_workers) -> Result<Self, XenonError>`）。`parallel` 通过 `crate::dispatch` 引用，仅做只读消费。
+**定义位置**：`ParallelExecStrategy` 定义于 `dispatch.rs`。`parallel` 通过 `crate::dispatch` 引用，仅做只读消费。
 
 ```rust,ignore
 // Authoritative definition lives in dispatch.rs; reproduced here as reference only.
@@ -233,17 +231,18 @@ where
     A: Numeric + Send + Sync;
 ```
 
-**`_guard: ParallelGuard` 设计要点**（与 30-dispatch 线程亲和性契约一致）：
+**`_guard: ParallelGuard` 设计要点**：
 - `_guard` 由 `dispatch::select_exec_path()` 在裁决到 `ExecPath::Parallel` 时返回 `Some(ParallelGuard)`，并由调用侧（`math` / `reduction` / `matrix`）按值移交到 `parallel` 后端入口。
 - `parallel` 在函数体内只持有 `_guard` 直至并行执行结束；`ParallelGuard::drop()` 自动清除 thread-local 嵌套防护标记。
 - 这样 “选中并行路径” 与 “进入并行临界区” 在调用图上原子绑定：调用方无法忘记 acquire guard，也无法在函数返回后越界使用 guard。
-- **线程亲和性实现规则：** `_guard` 必须留在 `parallel` 入口函数（`par_map` / `par_zip_map` / `par_sum` / `par_dot` / `par_reduce_impl` / `par_map_checked`）的栈帧上，**不得**被 Rayon 闭包捕获。`ParallelGuard` 是 `!Send + !Sync`（其 `Drop` 清除调用线程 TLS），若被 move 到 worker 线程会清错线程的 flag，破坏嵌套并行检测。每个 Rayon worker 闭包**必须**把 chunk 执行包裹在 `dispatch::with_parallel_worker_context(|| { ... })` 中，使 worker 自身 TLS 在 chunk 执行期间观测到 `IN_PARALLEL == true`，进而让 worker 内部嵌套调用 `select_exec_path()` 正确回退串行路径。
+- 线程亲和性实现规则：`_guard` 必须留在 `parallel` 入口函数（`par_map` / `par_zip_map` / `par_sum` / `par_dot` / `par_reduce_impl` / `par_map_checked`）的栈帧上，不得被 Rayon 闭包捕获。`ParallelGuard` 是 `!Send + !Sync`（其 `Drop` 清除调用线程 TLS），若被 move 到 worker 线程会清错线程的 flag，破坏嵌套并行检测。每个 Rayon worker 闭包必须把 chunk 执行包裹在 `dispatch::with_parallel_worker_context(|| { ... })` 中，使 worker 自身 TLS 在 chunk 执行期间观测到 `IN_PARALLEL == true`，进而让 worker 内部嵌套调用 `select_exec_path()` 正确回退串行路径。
 - `ParallelGuard` 类型在 `parallel` feature 关闭时由 `dispatch.rs` 提供为零大小 `Send + Sync` 占位类型（无 Drop 行为、不可构造），相关并行入口本身整体被 `#[cfg(feature = "parallel")]` 排除，签名层不会泄露。
 
+**其它要点**：
 - `par_dot()` 在类型层面接受任意 `Dimension` 输入，以便与更通用的上层张量调用路径对接；但其语义契约仍限定为一维向量内积，因此实现必须在运行时检查 `lhs.ndim() == 1`、`rhs.ndim() == 1`，并在进入并行归约前再次确认两侧逻辑长度一致。
 - 复数内积采用共轭线性定义：`result = sum(conj(lhs_i) * rhs_i)`，与 `08-simd.md` §6.6 中复数 dot kernel 的共轭线性方向完全一致。
 - `Numeric` trait 定义于 `03-element.md` §5.2，提供通用数值运算能力标记（`Element + Add + Sub + Mul + Div + Neg + conjugate`）。
-- 整数 `par_sum` / `par_dot` 在并行路径中，每个分片独立执行 checked 算术；若任一分片检测到溢出，panic 将在并行收集完成后传播。诊断仲裁必须按逻辑 chunk 索引确定：始终报告首个失败 chunk（按逻辑索引顺序）。**若实现无法保证这一确定性，调用方模块（如 reduction / matrix）必须自行避免进入 Parallel 分支**（例如：将该操作的 len 视为低于阈值、无条件走 Serial 分支、或对该 op 完全不调用 `select_exec_path()`）。`dispatch.rs` 本身是 op-agnostic 的——其 `select_exec_path()` 签名不含元素类型或操作类型参数，因此无法也不应在内部根据操作语义做路由裁决（见 30-dispatch.md §5.5）。
+- 整数 `par_sum` / `par_dot` 在并行路径中，每个分片独立执行 checked 算术；若任一分片检测到溢出，panic 将在并行收集完成后传播。诊断仲裁必须按逻辑 chunk 索引确定：始终报告首个失败 chunk（按逻辑索引顺序）。若实现无法保证这一确定性，调用方模块（如 reduction / matrix）必须自行避免进入 Parallel 分支（例如：将该操作的 len 视为低于阈值、无条件走 Serial 分支、或对该 op 完全不调用 `select_exec_path()`）。
 - 闭包 bound 统一要求 `Send + Sync`：`F: Fn(...) -> ... + Send + Sync`、`ID: Fn() -> A + Send + Sync + Clone`。`Send` 是 rayon worker 跨线程移动闭包数据的必要前提；仅 `Sync` 不足以覆盖 closure 在某些 by-value 工作单元中的所有权迁移场景。
 
 ### 5.6 并行迭代入口
