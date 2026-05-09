@@ -441,9 +441,9 @@ where
 
 - `par_map`、`par_zip_map`、`par_sum` 接收的输入都已由上层语义模块和 `dispatch.rs` 验证完毕；`par_dot` 在进入并行归约前仍需自行做运行时校验，要求 `lhs.ndim() == 1`、`rhs.ndim() == 1` 且两侧逻辑长度一致。
 - 对归约和内积，若调用方选择并行路径，则 `parallel/` 必须提供固定 chunking 与固定 merge tree，保证同平台、同配置、同路径下结果确定；整数 `sum` / `dot` 的失败诊断还必须按逻辑 chunk 索引顺序仲裁，始终选择首个失败 chunk。
-- 并行归约采用固定分块策略：chunk 大小由 `compute_safe_chunks(n, num_workers)` 确定（定义于 `src/parallel/mod.rs`，见 01-architecture.md §5.2a），worker 按固定索引范围分配，merge 按 worker 索引顺序合并。
+- 并行归约采用固定分块策略：chunk 大小由 `compute_safe_chunks(n, num_workers)` 确定，worker 按固定索引范围分配，merge 按 worker 索引顺序合并。
 - 若执行对象为整数 `sum` / `dot`，每个 worker 必须在本分片内执行 `checked_add` / `checked_mul` + `checked_add`；任一 worker 发现溢出时必须传播 panic，不得转写为 `XenonError`。失败诊断固定按逻辑 chunk 索引顺序仲裁。
-- **回退归属**：若某实现选择不能保证 “首个失败 chunk 仲裁” 这一不变量，则**调用方模块（reduction / matrix）必须在调用 `select_exec_path()` 之前自行 gate**——例如不将整数归约路由到 Parallel 路径（直接走 Serial、或将 len 视为低于并行阈值、或完全不调用 `select_exec_path()`）。`dispatch.rs` 本身是 op-agnostic 的（其 `select_exec_path()` 不感知元素类型或操作类型，见 30-dispatch.md §5.5 "Op-agnostic boundary"），因此无法也不应在内部根据操作语义做路由裁决。`parallel` 一旦被调用，就永远不会自行切换到串行路径。
+- 若某实现选择不能保证 “首个失败 chunk 仲裁” 这一不变量，则调用方模块（reduction / matrix）必须在调用 `select_exec_path()` 之前自行 gate——例如不将整数归约路由到 Parallel 路径（直接走 Serial、或将 len 视为低于并行阈值、或完全不调用 `select_exec_path()`）。`dispatch.rs` 本身是 op-agnostic 的（其 `select_exec_path()` 不感知元素类型或操作类型，见 `30-dispatch.md §5.5`），因此无法也不应在内部根据操作语义做路由裁决。`parallel` 一旦被调用，就永远不会自行切换到串行路径。
 
 ### 6.6 Checked 映射与错误传播
 
