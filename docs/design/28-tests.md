@@ -1402,17 +1402,6 @@ test:
 | 非法元素类型与 trait 边界 | 编译期失败测试或等价约束验证              |
 | feature gate 导出边界     | `cargo test` 配置矩阵与条件编译测试       |
 
-安全边界须与 `25-safety.md` 一致：示例访问使用 `try_at(Ix1(...))` 或等价安全入口，不使用下标索引语法；`ViewMutRepr` 不实现 `Sync`；`ArcRepr` 的线程共享要求 `A: Send + Sync`。
-
-### 8.5 `需求说明书 §28.5` 专项约束测试
-
-| 约束                                                      | 验证方式                        |
-| --------------------------------------------------------- | ------------------------------- |
-| 验证 `usize` 仅承担元数据角色（索引、轴、形状、切片边界） | 编译期断言 + compile-fail 用例  |
-| 验证 `usize` 不属于张量元素类型                           | `Tensor<usize, D>` compile-fail |
-| 验证 `usize` 不参与逐元素算术或类型转换                   | trait-bound / compile-fail 用例 |
-| 验证其他非法无符号元素类型边界不被放宽                    | trait-bound / compile-fail 用例 |
-
 编译期失败测试采用仓库内 harness：通过 `cargo test` 驱动，并在测试体中调用 `rustc` / `cargo check` 校验预期失败，不新增测试专用 dev-dependency：
 
 ```text
