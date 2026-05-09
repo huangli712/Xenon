@@ -653,14 +653,14 @@ where
 
 ### 9.1 接口约定
 
-| 方向           | 对方模块                     | 接口/类型                                         | 约定                                                                |
-| -------------- | ---------------------------- | ------------------------------------------------- | ------------------------------------------------------------------- |
-| 消费（输入）   | `tensor`                     | `Tensor<A, D>`, `TensorBase<S, D>`                | 调用前已满足 shape、layout、类型约束                                |
-| 消费（输入）   | `element`                    | `Element`, `Numeric`                              | 函数签名中 trait 约束所需                                           |
-| 消费（输入）   | `error`                      | `XenonError`                                      | 可恢复错误统一复用项目错误模型                                      |
-| 模块内部       | `parallel`                   | `TensorBase::par_iter()`, `ParIter<'a, A, D>` | 定义于本模块（参见 §5.6），`pub(crate)` 内部入口，提供单输入只读并行遍历 |
-| 被调用（输出） | 上层语义模块 / `dispatch.rs` | `par_map` / `par_sum` / `par_dot` / `par_zip_map` | 仅在 `dispatch.rs` 已选中并行路径后执行                             |
-| 产出（输出）   | 上层语义模块                 | `Tensor<B, D>` 或 `Result<A, XenonError>`         | 并行与串行路径保持相同外部语义                                      |
+| 方向           | 对方模块                     | 接口/类型                                         | 约定                                           |
+| -------------- | ---------------------------- | ------------------------------------------------- | ---------------------------------------------- |
+| 消费（输入）   | `tensor`                     | `Tensor<A, D>`, `TensorBase<S, D>`                | 调用前已满足 shape、layout、类型约束           |
+| 消费（输入）   | `element`                    | `Element`, `Numeric`                              | 函数签名中 trait 约束所需                      |
+| 消费（输入）   | `error`                      | `XenonError`                                      | 可恢复错误统一复用项目错误模型                 |
+| 模块内部       | `parallel`                   | `TensorBase::par_iter()`, `ParIter` | 定义于本模块，`pub(crate)` 内部入口，提供单输入只读并行遍历  |
+| 被调用（输出） | 上层语义模块 / `dispatch.rs` | `par_map` / `par_sum` / `par_dot` / `par_zip_map` | 仅在 `dispatch.rs` 已选中并行路径后执行        |
+| 产出（输出）   | 上层语义模块                 | `Tensor<B, D>` 或 `Result<A, XenonError>`         | 并行与串行路径保持相同外部语义                 |
 
 ### 9.2 数据流
 
@@ -679,8 +679,7 @@ math / reduction / matrix call dispatch entry
     └── return Tensor or Result with unchanged public semantics; guard auto-drops
 ```
 
-- `select_exec_path()` 返回类型为 `(ExecPath, Option<ParallelGuard>)`；`Option` 仅在 `ExecPath::Parallel` 分支返回 `Some(_)`，`Serial` / `Simd` 分支返回 `None`（与 30-dispatch.md 完全一致）。
-- 调用方负责把 `Some(guard)` 按值移交到 `parallel` 后端入口；guard 在并行函数返回时被 drop，自动清除 thread-local 嵌套防护标记。
+`select_exec_path()` 返回类型为 `(ExecPath, Option<ParallelGuard>)`；`Option` 仅在 `ExecPath::Parallel` 分支返回 `Some(_)`，`Serial` / `Simd` 分支返回 `None`（与 `30-dispatch.md` 完全一致）。调用方负责把 `Some(guard)` 按值移交到 `parallel` 后端入口；guard 在并行函数返回时被 drop，自动清除 thread-local 嵌套防护标记。
 
 ---
 
@@ -688,20 +687,20 @@ math / reduction / matrix call dispatch entry
 
 | 主题              | 说明                                                                                                            |
 | ----------------- | --------------------------------------------------------------------------------------------------------------- |
-| Recoverable error | `par_dot()` 的长度不兼容返回 `XenonError::ShapeMismatch { operation: "par_dot", left_shape, right_shape }`；`par_dot()` 的非一维输入返回 `XenonError::InvalidArgument { operation: "par_dot", kind: InvalidArgumentKind::OperationSpecific { argument: "ndim", constraint: "rank == 1" } }`；`par_zip_map()` 的元素总数溢出返回 `InvalidShape { operation: "par_zip_map", shape, kind: InvalidShapeKind::ProductOverflow, offending_dim: None }`。所有字段对齐 26-error.md §5.1 的封闭枚举字段。 |
+| Recoverable error | `par_dot()` 的长度不兼容返回 `ShapeMismatch`；`par_dot()` 的非一维输入返回 `InvalidArgument`；`par_zip_map()` 的元素总数溢出返回 `InvalidShape`。 |
 | Panic             | 归约中的整数溢出仍属于不可恢复错误，必须 panic，而不是包装为 `XenonError`                                       |
-| 路径一致性        | 一旦进入 `parallel/`，并行路径必须返回与调用方串行基线相同形状、相同错误类别，以及满足同一数值语义约束的结果（路径选择见 §6.1）  |
-| 容差边界          | 浮点与复数若存在执行路径相关的已知舍入差异，只能落在 `需求说明书 §28.3` 与 `需求说明书 §28.5` 允许且已文档化的范围内；以 `需求说明书 §28.3` 为权威基线，`00-coding.md §8` 仅作为实现参考。|
+| 路径一致性        | 一旦进入 `parallel/`，并行路径必须返回与调用方串行基线相同形状、相同错误类别，以及满足同一数值语义约束的结果    |
+| 容差边界          | 浮点与复数若存在执行路径相关的已知舍入差异，只能落在 `需求说明书 §28.3` 与 `需求说明书 §28.5` 允许且已文档化的范围内。|
 
-路径语义边界：
+### 10.1 路径语义边界
 
 - 并行模块本身不新增专属错误枚举；公开错误必须复用 `26-error.md` 中的统一模型。
-- 自定义线程池类参数若存在非法值，由 `dispatch::ParallelExecStrategy::new()` 在构造期统一返回 `InvalidArgument`；`parallel` 模块在收到合法策略实例后不再重复返回该错误（参见 §5.4 与 30-dispatch.md §5.3）。
+- 自定义线程池类参数若存在非法值，由 `dispatch::ParallelExecStrategy::new()` 在构造期统一返回 `InvalidArgument`；`parallel` 模块在收到合法策略实例后不再重复返回该错误（参见 §5.4）。
 - 当前 `par_zip_map()` 不承担广播兼容性校验，也不新增广播专属错误构造。
-- panic 与 `Err(XenonError)` 都不得被吞掉；并行执行中发生的错误须至少传播一个。仅对整数 `sum` / `dot`，失败诊断必须额外满足"按逻辑 chunk 索引顺序固定选择首个失败 chunk"；做不到则由调用方模块不进入 `Parallel` 路径（通过自行 gating，见 30-dispatch.md §5.5）。
+- panic 与 `Err(XenonError)` 都不得被吞掉；并行执行中发生的错误须至少传播一个。仅对整数 `sum` / `dot`，失败诊断必须额外满足"按逻辑 chunk 索引顺序固定选择首个失败 chunk"；做不到则由调用方模块不进入 `Parallel` 路径（通过自行 gating，见 `30-dispatch.md §5.5`）。
 - 路径裁决语义见 §6.1。
 
-### 10.1 浮点/复数并行归约容差
+### 10.2 浮点/复数并行归约容差
 
 - 浮点与复数并行归约允许与标量路径不同的合并顺序；该差异视为合法实现细节，但必须受 `需求说明书 §28.3` 文档化容差约束。
 - 以 `需求说明书 §28.3` 为权威基线，`00-coding.md §8` 仅作为实现参考。
@@ -712,7 +711,7 @@ math / reduction / matrix call dispatch entry
 - 容差规则仅适用于有限值结果。
 - 复数按实部、虚部分别适用同一文档化规则；若某一并行实现无法满足该容差或无法提供固定 chunking + fixed merge tree 的确定性约束，则必须回退串行或调整分块/合并策略。
 
-### 10.2 线程安全
+### 10.3 线程安全
 
 并行后端不改变 `TensorBase<S, D>` 的 `Send` / `Sync` 判定。线程安全性仍由元素类型与存储模式共同决定（参见 `25-safety.md`）。
 
