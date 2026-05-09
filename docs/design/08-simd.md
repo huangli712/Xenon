@@ -365,34 +365,32 @@ SIMD 路径选择已收敛到 `simd` 后端内部。
 
 根据 `需求说明书 §9.1`，SIMD 路径当前已覆盖逐元素运算、归约与内积三个大类。是否实际进入 SIMD 仍取决于元素类型、ISA 能力、统一对齐快路径与语义约束。
 
-- **SIMD 覆盖范围**：当前版本正式承诺的 SIMD 覆盖以下两类：
-  1. 逐元素算术（`add` / `sub` / `mul` / `div` / `neg`）：覆盖 `f32` / `f64` / `Complex<f32>` / `Complex<f64>`，状态为"已实现"。
-  2. 归约（`sum`）与内积（`dot`）：覆盖 `f32` / `f64` / `Complex<f32>` / `Complex<f64>`，状态为"已实现"；`i32` / `i64` 为"条件实现，默认标量回退"（详见 §5.6）。
-- 其他运算（除上述以外的一元运算如 `abs` / `square`、比较运算、逻辑 `not`、未列入的复数运算如 `complex_abs` / `conjugate`、数学函数如 `sin` / `sqrt` 等）的 SIMD 路径作为按阶段推进的实现优化项，不构成当前版本的稳定交付承诺。每条具体规则以 §5.6 覆盖状态表为权威。
-- **透明回退说明：** 对于 §5.6 表中尚未提供 SIMD kernel 的操作，或运行时不满足 SIMD 入口条件的输入，标量回退按 §1.1 职责边界由对应语义模块自行执行；公开 API 与结果语义保持不变。
+**SIMD 覆盖范围**：当前版本正式承诺的 SIMD 覆盖以下两类：
+- 逐元素算术（`add` / `sub` / `mul` / `div` / `neg`）：覆盖 `f32` / `f64` / `Complex<f32>` / `Complex<f64>`，状态为"已实现"。
+- 归约（`sum`）与内积（`dot`）：覆盖 `f32` / `f64` / `Complex<f32>` / `Complex<f64>`，状态为"已实现"；`i32` / `i64` 为"条件实现，默认标量回退"。
+- 其他运算的 SIMD 路径作为按阶段推进的实现优化项，不构成当前版本的稳定交付承诺。
+
+**透明回退说明：** 对于 §5.6 表中尚未提供 SIMD kernel 的操作，或运行时不满足 SIMD 入口条件的输入，标量回退由对应语义模块自行执行；公开 API 与结果语义保持不变。
 
 ### 5.6 SIMD 操作覆盖状态表
 
-| 操作                                             | 类型                                                            | 状态（已实现/规划中/标量回退）  | 说明                                                                                                                                           |
-| ------------------------------------------------ | --------------------------------------------------------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `add` / `sub` / `mul` / `div`                    | `f32` / `f64` / `Complex<f32>` / `Complex<f64>`                 | 已实现                          | 当前版本提供 SIMD kernel                                                                                                                       |
-| `neg`                                            | `f32` / `f64` / `Complex<f32>` / `Complex<f64>`                 | 已实现                          | 当前版本提供 SIMD kernel                                                                                                                       |
-| `signum`                                         | `f32` / `f64`                                                   | 优化项（不构成稳定交付承诺）    | 当前版本仅为实数浮点提供 SIMD 路径；其他类型保持标量/串行路径                                                                                  |
-| `sum`                                            | `f32` / `f64` / `Complex<f32>` / `Complex<f64>`                 | 已实现                          | 浮点/复数遵循本文档记录的归约容差                                                                                                              |
-| `sum`                                            | `i32` / `i64`                                                   | 条件实现，默认标量回退          | 整数 `sum` 默认走串行 checked 路径；仅在存在已验证的 ISA 专用 widening SIMD 实现时启用（例如 `i32 -> i64`），且必须与标量 checked 语义完全等价 |
-| `dot`                                            | `f32` / `f64` / `Complex<f32>` / `Complex<f64>`                 | 已实现                          | 复数 `dot` 采用 `sum(conj(lhs_i) * rhs_i)`                                                                                                     |
-| `dot`                                            | `i32` / `i64`                                                   | 条件实现，默认标量回退          | 整数 `dot` 默认走串行 checked 路径；仅在存在已验证的 ISA 专用 widening SIMD 实现时启用（例如 `i32 -> i64`），且必须与标量 checked 语义完全等价 |
-| `abs`                                            | `f32` / `f64`                                                   | 优化项（不构成稳定交付承诺）    | 通过专用一元 kernel 路径或共享装载/收尾框架实现，不经 `SimdKernel` 二元算术 trait                                                              |
-| `square`                                         | `i32` / `i64` / `f32` / `f64` / `Complex<f32>` / `Complex<f64>` | 优化项（不构成稳定交付承诺）    | 通过专用一元 kernel 路径或复用乘法/分量级 kernel，不经 `SimdKernel` 二元算术 trait                                                             |
-| `eq` / `ne` / `lt` / `gt`                        | 适用的整数 / 浮点类型                                           | 优化项（不构成稳定交付承诺）    | 比较 kernel 将布尔结果写入 `bool` 目标缓冲区，不经 `SimdKernel` 二元算术 trait                                                                 |
-| `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` | `f32` / `f64`                                                   | 标量回退 + 可选 SIMD 加速       | 数学函数的 SIMD 实现依赖平台 libm 或手动实现，精度以 `需求说明书 §28.3` 为权威基线，`00-coding.md §8.4` 为实现/测试参考 |
-| `not`                                            | `bool`                                                          | 优化项（不构成稳定交付承诺）    | 通过独立 bool / mask kernel 实现，不经 `SimdKernel` 二元算术 trait                                                                             |
-| `complex_abs` / `conjugate`                      | `Complex<f32>` / `Complex<f64>`                                 | 优化项（不构成稳定交付承诺）    | 通过专用一元/复数 kernel 路径实现；复数 AoS 输入在寄存器内重排后执行，不经 `SimdKernel` 二元算术 trait                                         |
+| 操作                           | 类型                                             | 状态     | 说明                                                                                                                       |
+| -------------------------------| ------------------------------------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `add` / `sub` / `mul` / `div`  | `f32` / `f64` / `Complex<f32>` / `Complex<f64>`  | 已实现   | 当前版本提供 SIMD kernel                                                                                                   |
+| `neg`                          | `f32` / `f64` / `Complex<f32>` / `Complex<f64>`  | 已实现   | 当前版本提供 SIMD kernel                                                                                                   |
+| `signum`                       | `f32` / `f64`                                    | 优化项   | 当前版本仅为实数浮点提供 SIMD 路径；其他类型保持标量/串行路径                                                              |
+| `sum`                          | `f32` / `f64` / `Complex<f32>` / `Complex<f64>`  | 已实现   | 浮点/复数遵循本文档记录的归约容差                                                                                          |
+| `sum`                          | `i32` / `i64`                      | 条件实现，默认标量回退 | 整数 `sum` 默认走串行 checked 路径；仅在存在已验证的 ISA 专用 widening SIMD 实现时启用，且必须与标量 checked 语义完全等价  |
+| `dot`                          | `f32` / `f64` / `Complex<f32>` / `Complex<f64>`  | 已实现   | 复数 `dot` 采用 `sum(conj(lhs_i) * rhs_i)`                                                                                 |
+| `dot`                          | `i32` / `i64`                      | 条件实现，默认标量回退 | 整数 `dot` 默认走串行 checked 路径；仅在存在已验证的 ISA 专用 widening SIMD 实现时启用，且必须与标量 checked 语义完全等价  |
+| `abs`                          | `f32` / `f64`                                    | 优化项   | 通过专用一元 kernel 路径或共享装载/收尾框架实现，不经 `SimdKernel` 二元算术 trait                                          |
+| `square`                       | `i32` / `i64` / `f32` / `f64` / `Complex<f32>` / `Complex<f64>` | 优化项 | 通过专用一元 kernel 路径或复用乘法/分量级 kernel，不经 `SimdKernel` 二元算术 trait                            |
+| `eq` / `ne` / `lt` / `gt`      | 适用的整数 / 浮点类型                            | 优化项   | 比较 kernel 将布尔结果写入 `bool` 目标缓冲区，不经 `SimdKernel` 二元算术 trait                                             |
+| `sin` / `sqrt` / `exp` / `ln` / `floor` / `ceil` | `f32` / `f64`    | 标量回退 + 可选 SIMD 加速 | 数学函数的 SIMD 实现依赖平台 libm 或手动实现，精度以 `需求说明书 §28.3` 为权威基线，`00-coding.md §8.4` 为实现/测试参考 |
+| `not`                          | `bool`                                           | 优化项   | 通过独立 bool / mask kernel 实现，不经 `SimdKernel` 二元算术 trait                                                         |
+| `complex_abs` / `conjugate`    | `Complex<f32>` / `Complex<f64>`                  | 优化项   | 通过专用一元/复数 kernel 路径实现；复数 AoS 输入在寄存器内重排后执行，不经 `SimdKernel` 二元算术 trait                     |
 
-- `dot()` 为当前版本正式能力；`SimdKernel` 直接覆盖 `f32` / `f64` / `Complex<f32>` / `Complex<f64>`。整数 `dot` 仅在存在已验证的 ISA 专用 widening 实现时才进入 SIMD，否则按 §1.1 职责边界回到语义模块串行路径。整数归约/内积的详细约束见 §6.6。
-- 该覆盖目标不改变公开 API 的可用性；SIMD 仅影响执行路径选择，不改变公开语义契约。
-
-### 5.6.1 sum / dot 的 admission 信号契约
+### 5.7 sum / dot 的 admission 信号契约
 
 `SimdKernel` 的二元运算入口 `dispatch_vector_binary_op(...) -> bool` 通过返回值显式表达"是否实际进入 SIMD"——`false` 时调用方负责走标量回退，`dst` 未被修改（§5.4 / §5.6 已规定）。
 
@@ -438,7 +436,7 @@ L1 的规则是"调用方仍走完整三路 dispatch，不在 dispatch 之前自
 
 ---
 
-### 5.7 SIMD Path Selection Thresholds
+### 5.8 SIMD Path Selection Thresholds
 
 `simd` 后端内部在尝试进入 SIMD 前，至少按以下规则做统一裁决：
 
@@ -467,9 +465,9 @@ L1 的规则是"调用方仍走完整三路 dispatch，不在 dispatch 之前自
 - 以上阈值为内部默认值。当输入长度低于阈值时，`simd` 后端不进入 SIMD（kernel 入口对外通过返回 `false` 或不写入结果通知调用侧；调用侧语义模块按 §1.1 走自身串行实现）。
 - 这些阈值只影响执行路径选择，不改变 API 结果；未通过任一条件时，整体行为透明等价于非 SIMD 路径。
 
-### 5.8 SIMD 加速路径设计
+### 5.9 SIMD 加速路径设计
 
-#### 5.8.1 逐元素运算
+#### 5.9.1 逐元素运算
 
 ```
 Element-wise operation flow
@@ -501,7 +499,7 @@ Element-wise operation flow
                  └──────────────────────────┘
 ```
 
-#### 5.8.2 归约运算
+#### 5.9.2 归约运算
 
 ```
 SIMD sum reduction flow
@@ -534,13 +532,13 @@ SIMD sum reduction flow
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-#### 5.8.3 轴向归约 SIMD 策略
+#### 5.9.3 轴向归约 SIMD 策略
 
 - 轴向 `sum_axis(axis)` / `sum_axis_keepdims(axis)` 的 SIMD 路径仅在被归约维对应连续内层维度时启用。
 - 若输入布局非连续，或目标轴无法映射为连续内层归约区间，则由对应语义模块保持串行路径。
 - 当目标轴是连续内层维度时，实现可在每个逻辑归约段内使用 SIMD 加速全局归约，再按轴向输出形状写回结果；`keepdims` 仅影响输出 shape，不改变 SIMD/标量裁决规则。
 
-#### 5.8.4 向量内积
+#### 5.9.4 向量内积
 
 ```
 SIMD dot dispatch flow
@@ -564,7 +562,7 @@ SIMD dot dispatch flow
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 5.9 条件检查与自动回退
+### 5.10 条件检查与自动回退
 
 ```rust,ignore
 // src/simd/mod.rs
@@ -578,7 +576,7 @@ SIMD dot dispatch flow
 - SIMD 条件判断已收敛到 `simd` 后端内部（分层原则见 §1.2）。
 - 进入任一执行上下文（串行执行或并行 worker 内的单个 chunk）后，`simd` 再按统一规则检查 feature、连续性、对齐、元素类型与运行时可用 lane 宽度，决定是否使用向量化路径。该裁决在串行与并行 worker 中一致（详见 §9.3）。
 
-### 5.10 `simd` 能力查询接口
+### 5.12 `simd` 能力查询接口
 
 ```rust,ignore
 // src/simd/mod.rs
@@ -597,7 +595,7 @@ pub(crate) fn simd_vector_width<T: SimdElement>() -> Option<usize>;
 - 具体的操作覆盖矩阵（哪些类型 + 哪些操作已实现）由 §5.6 覆盖状态表决定，各 kernel 入口内部按表裁决；对状态为"优化项"或"标量回退"的条目，对应 kernel 入口直接通过 §5.4 的 `false` 返回值告知调用方走串行实现。
 - 当需要为新增操作扩展 SIMD 时，只需在对应 kernel 入口添加分支，无需修改此查询接口。
 
-### 5.11 Good/Bad 对比示例
+### 5.13 Good/Bad 对比示例
 
 ```rust,ignore
 // Good - use the public semantic entry; dispatch only decides serial vs parallel.
