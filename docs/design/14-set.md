@@ -280,7 +280,7 @@ Ordering contract:
 /// `bool` does not implement this trait.
 ///
 /// `UniqueElement` is a sealed trait. It reuses the shared `crate::private::Sealed`
-/// infrastructure (defined in `03-element.md §5.7`), consistent with all other
+/// infrastructure (defined in `03-element.md §5.8`), consistent with all other
 /// public element capability traits. It is implemented only inside this crate for 
 /// supported element types, so the closed element set is preserved.
 pub trait UniqueElement: crate::private::Sealed + Element {

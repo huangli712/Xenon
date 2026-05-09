@@ -247,8 +247,8 @@ use crate::error::{FfiErrorCategory, FfiBackend};
 pub use crate::element::ElementType;      // re-export from element module
 pub use crate::error::FfiErrorCategory;   // re-export from error module
 
-/// BLAS layout metadata (full definition in §5.5).
-pub struct BlasInfo<A> { /* fields omitted — see §5.5 */ }
+/// BLAS layout metadata (full definition in §5.11).
+pub struct BlasInfo<A> { /* fields omitted — see §5.11 */ }
 
 // See 03-element.md §5.1.1 for the full ElementType definition.
 // Only the FFI-consumer-visible public API signature is shown here.

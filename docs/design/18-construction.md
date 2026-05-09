@@ -280,7 +280,7 @@ impl EyeElement for Complex<f64> {}
 
 ### 5.3 from_shape_vec / from_shape_slice / from_array
 
-- `from_shape_vec` 的公开签名作为 `TensorBase<Owned<A>, D>` 的固有方法列于 `07-tensor.md` §5.5。
+- `from_shape_vec` 的公开签名作为 `TensorBase<Owned<A>, D>` 的固有方法列于 `07-tensor.md` §5.6。
 - 本节是其权威实现设计，实际代码位于 `src/construct/from.rs`。
 - `07-tensor.md` §9 中的数据流图仅用于展示 `tensor` 与 `layout` 模块的交互方式，以本节为准。
 

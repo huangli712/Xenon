@@ -590,7 +590,7 @@ User calls tensor.slice(info)
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Recoverable error | `try_at()` / `get()` / `slice()` 在 rank 不匹配、轴非法、越界时返回 `XenonError`。其中索引长度与张量 `ndim` 不匹配时，错误类型固定为 `DimensionMismatch`；多维索引越界使用 `IndexOutOfBounds`；`slice()` 的 Range 越界使用 `InvalidArgument`；`SliceInfo::new` 的 Range start>end 使用 `InvalidArgument`；offset 算术溢出使用 `InvalidLayout`。 |
 | Trait-bound 边界  | `try_at_mut()` / `get_mut()` / `get_unchecked_mut()` 仅在 `S: StorageMut` 前提成立时存在；不再为“只读存储上的可写索引”设计运行时 `InvalidStorageMode` 分支 |
-| Panic             | `std::ops::Index` 与 `std::ops::IndexMut` 不在 Xenon 稳定 API 中实现（见 §3 范围约束）。规范安全主路径是返回 `Result` 的 checked API                       |
+| Panic             | `std::ops::Index` 与 `std::ops::IndexMut` 不在 Xenon 稳定 API 中实现（见 §2 范围约束）。规范安全主路径是返回 `Result` 的 checked API                       |
 | 路径一致性        | 对同一合法输入，checked 与 unchecked 路径必须给出同一偏移和同一逻辑结果；unsafe 只省略检查                                                                 |
 | 容差边界          | 不适用；本模块不涉及浮点容差、SIMD 误差或并行归约差异                                                                                                      |
 
