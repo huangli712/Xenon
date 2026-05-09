@@ -80,15 +80,14 @@ src/simd/
 
 ### 4.2 类型级依赖
 
-| 来源模块  | 使用的类型/trait                                                                   |
-| --------- | ---------------------------------------------------------------------------------- |
-| `pulp`    | `Arch`, `Simd`, `WithSimd`                                                         |
-| `tensor`  | `TensorBase<S, D>`, `.as_ptr()`, `.as_slice()`（参见 `07-tensor.md` §5.4 / §5.5）  |
-| `tensor`  | `.is_f_contiguous()`, 布局标志查询（参见 `07-tensor.md` §5）                       |
-| `element` | `Element`（参见 `03-element.md` §5.1）                                             |
-| `element` | `Numeric`（参见 `03-element.md` §5.2）                                             |
-| `complex` | `Complex<T>`（参见 `04-complex.md`）                                               |
-| `simd`    | `SimdElement`（本模块定义，见 §5.2）                                               |
+| 来源模块  | 使用的类型/trait                                                            |
+| --------- | --------------------------------------------------------------------------- |
+| `pulp`    | `Arch`, `Simd`, `WithSimd`                                                  |
+| `tensor`  | `TensorBase`, `.as_ptr()`, `.as_slice()`（参见 `07-tensor.md` §5.4 / §5.5） |
+| `tensor`  | `.is_f_contiguous()`, 布局标志查询（参见 `07-tensor.md` §5）                |
+| `element` | `Element`（参见 `03-element.md` §5.1）                                      |
+| `element` | `Numeric`（参见 `03-element.md` §5.2）                                      |
+| `complex` | `Complex<T>`（参见 `04-complex.md`）                                        |
 
 ### 4.3 依赖合法性
 
@@ -100,7 +99,7 @@ src/simd/
 
 ### 4.4 依赖方向声明
 
-依赖方向：单向向上。`simd` 直接消费 `tensor`、`layout`、`element`、`complex` 等核心模块（直接依赖关系参见 §4.1 依赖图与 §4.2 类型级依赖表，含 `crate::tensor` 与 `crate::layout`），不被它们依赖。`layout` 是 `simd` 的**直接**依赖：`simd` 既通过 `tensor` 暴露的查询接口使用部分语义入口（如 `tensor.is_f_contiguous()`），也直接调用 `crate::layout` 模块的对齐 helper（如 `layout::is_aligned()` 用于 admission 内部重检查）。两条访问路径并存，没有"间接 vs 直接"的取舍——选择哪条路径取决于上下文是否已持有 `Tensor` 引用。`simd` 模块在未启用 feature 时完全不存在。
+依赖方向：单向向上。`simd` 直接消费 `tensor`、`layout`、`element`、`complex` 等核心模块，不被它们依赖。
 
 ---
 
@@ -356,15 +355,15 @@ where
 }
 ```
 
-SIMD 路径选择已收敛到 `simd` 后端内部（分层原则见 §1.2）。
+SIMD 路径选择已收敛到 `simd` 后端内部。
 
-**职责边界说明：** SIMD 路径选择由 `simd` 后端内部处理，包括 feature、元素类型、操作种类、连续性、对齐与 ISA 能力检查。`dispatch.rs` 不承担 SIMD admission/selection（分层原则见 §1.2）。
+**职责边界说明：** SIMD 路径选择由 `simd` 后端内部处理，包括 feature、元素类型、操作种类、连续性、对齐与 ISA 能力检查。`dispatch.rs` 不承担 SIMD admission/selection。
 
-**回退归属说明：** `simd/` 模块永不承担标量回退实现。当 SIMD 不可进入时，`dispatch_vector_binary_op` 返回 `false`，并保证不修改 `dst`；调用侧的语义模块（`math` / `matrix::dot` / `reduction`）按各自串行实现处理。这与 §1.1 "标量回退由各语义模块串行实现承担" 形成单一事实源。
+**回退归属说明：** `simd/` 模块永不承担标量回退实现。当 SIMD 不可进入时，`dispatch_vector_binary_op` 返回 `false`，并保证不修改 `dst`；调用侧的语义模块（`math` / `matrix::dot` / `reduction`）按各自串行实现处理。
 
-### 5.5 当前版本的 SIMD 覆盖范围
+### 5.5 SIMD 覆盖范围
 
-根据 `需求说明书 §9.1`，SIMD 路径当前已覆盖逐元素运算、归约与内积三个大类。是否实际进入 SIMD 仍取决于元素类型、ISA 能力、统一对齐快路径与语义约束；当前版本在 `matrix` 相关范围内仅承载 **vector dot**，不展开矩阵乘法或其他 matrix 范围能力。
+根据 `需求说明书 §9.1`，SIMD 路径当前已覆盖逐元素运算、归约与内积三个大类。是否实际进入 SIMD 仍取决于元素类型、ISA 能力、统一对齐快路径与语义约束。
 
 - **SIMD 覆盖范围**：当前版本正式承诺的 SIMD 覆盖以下两类：
   1. 逐元素算术（`add` / `sub` / `mul` / `div` / `neg`）：覆盖 `f32` / `f64` / `Complex<f32>` / `Complex<f64>`，状态为"已实现"。
