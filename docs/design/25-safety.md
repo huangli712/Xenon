@@ -9,9 +9,7 @@
 
 ## 1. 主题定位与适用范围
 
-本文档为横切规范文档，关注线程安全性约束的跨模块适用。部分模块化章节（如文件位置、公共 API）仅用于补充说明，主线为约束定义与验证。线程安全是 Xenon 的横切关注点，贯穿所有存储模式和计算后端。本文档定义各存储模式（参见 `05-storage.md §5`）的 `Send`/`Sync` 实现规则，确保 Xenon 张量（参见 `07-tensor.md §5`）可在多线程环境下安全使用。
-
-**范围注记：** workspace 的线程安全属性参见 `24-workspace.md`；本文不将 workspace 纳入 `需求说明书 §10` 的存储模式线程安全矩阵。
+本文档为横切规范文档，关注线程安全性约束的跨模块适用。部分模块化章节（如文件位置、公共 API）仅用于补充说明，主线为约束定义与验证。线程安全是 Xenon 的横切关注点，贯穿所有存储模式和计算后端。本文档定义各存储模式（参见 `05-storage.md §5`）的 `Send`/`Sync` 实现规则，确保 Xenon 张量（参见 `07-tensor.md §5`）可在多线程环境下安全使用。workspace 的线程安全属性参见 `24-workspace.md`；本文不将 workspace 纳入 `需求说明书 §10` 的存储模式线程安全矩阵。
 
 ### 1.1 职责边界
 
@@ -111,7 +109,7 @@ parallel feature implementation paths/
 
 ## 5. 公共 API 设计
 
-**权威来源声明：** 本文档（25-safety.md §5.1）是 Xenon 库 Send/Sync 与线程安全规则的**唯一权威定义**。00-coding.md §4.4、05-storage.md §6.8、07-tensor.md §5.1 等其他文档若与本节冲突，应以本节为准统一校正。需求说明书作为更高层规范，若与本节冲突时以需求说明书为最终基线。
+**权威来源声明**： 本文档是 Xenon 库 Send/Sync 与线程安全规则的唯一权威定义。其他文档若与本节冲突，应以本节为准统一校正。`需求说明书`作为更高层规范，若与本节冲突时以`需求说明书`为最终基线。
 
 ### 5.1 Send/Sync 实现规则表
 
@@ -124,7 +122,7 @@ parallel feature implementation paths/
 | `ViewMutRepr<'a, A>` |  ✅  |  ✗   | `A: Send`                        | 独占可写视图可转移但不可共享                       |
 | `ArcRepr<A>`         |  ✅  |  ✅  | `A: Send + Sync`                 | Arc 原子计数，读共享安全；写路径仅能在内部唯一化 / 必要时复制后恢复可写性 |
 
-**补充说明：** `ViewRepr` 仅持有共享引用（`&A`），跨线程传递共享引用只要求 `A: Sync`（允许多线程共享读取），不要求 `A: Send`（所有权转移）。这是 Rust 标准库 `&T: Send + Sync where T: Sync` 的直接推论。各存储模式的完整 API 定义参见 `05-storage.md §5`；对应的语义访问分类（`ReadOnly`/`SharedReadOnly`/`Writable`/`Owned`）参见 `07-tensor.md §5.3` 中 `AccessSemantics` 枚举定义（亦见 `05-storage.md §5.1` 的语义分类表）。
+`ViewRepr` 仅持有共享引用（`&A`），跨线程传递共享引用只要求 `A: Sync`（允许多线程共享读取），不要求 `A: Send`（所有权转移）。这是 Rust 标准库 `&T: Send + Sync where T: Sync` 的直接推论。各存储模式的完整 API 定义参见 `05-storage.md §5`；对应的语义访问分类（`ReadOnly`/`SharedReadOnly`/`Writable`/`Owned`）参见 `07-tensor.md §5.3` 中 `AccessSemantics` 枚举定义（亦见 `05-storage.md §5.1` 的语义分类表）。
 
 ### 5.2 TensorBase<S, D> 自动推导规则
 
@@ -140,7 +138,7 @@ parallel feature implementation paths/
 | 逐元素算术 / 归约 / 内积中的整数溢出 | 运行时（checked arithmetic） | panic（不可恢复）   |
 | 元数据 / 索引偏移 / FFI 校验类 checked arithmetic 失败 | 运行时（checked arithmetic） | 按 `26-error.md` 返回 `Result` |
 
-**别名分类规范入口：** 凡是需要区分别名类别的模块（如 unsafe 指针算术、并行分块安全、FFI 导出决策），**必须** 使用 `TensorBase::alias_class()`（定义于 `07-tensor.md §5.3`）作为**规范入口**。`alias_class()` 返回 `AliasClass` 枚举，将 `AccessSemantics::SharedReadOnly` 的三合一语义摘要拆分为 `ArcShared` / `BroadcastAlias` / `ViewMutDerived` / `Unique` 四种精确类别。在该入口外部直接组合 `storage_kind()`、`has_zero_stride()`、`derived_from_view_mut()` 三个标志由本安全契约禁止——这些标志组合是 `alias_class()` 的实现细节，外部直接组合会引入遗漏边缘情形（如空张量广播条件 `product(shape) > 0`）的风险。`AliasClass` 枚举与 `alias_class()` 方法的权威定义见 `07-tensor.md §5.3`；`HAS_ZERO_STRIDE` 边界条件（`any(stride == 0) && product(shape) > 0`）以 `06-layout.md §5.11` 为准。
+**别名分类规范入口**：凡是需要区分别名类别的模块（如 unsafe 指针算术、并行分块安全、FFI 导出决策），必须使用 `TensorBase::alias_class()`（定义于 `07-tensor.md §5.3`）作为规范入口。`alias_class()` 返回 `AliasClass` 枚举，将 `AccessSemantics::SharedReadOnly` 的三合一语义摘要拆分为 `ArcShared` / `BroadcastAlias` / `ViewMutDerived` / `Unique` 四种精确类别。在该入口外部直接组合 `storage_kind()`、`has_zero_stride()`、`derived_from_view_mut()` 三个标志由本安全契约禁止——这些标志组合是 `alias_class()` 的实现细节，外部直接组合会引入遗漏边缘情形（如空张量广播条件 `product(shape) > 0`）的风险。`AliasClass` 枚举与 `alias_class()` 方法的权威定义见 `07-tensor.md §5.3`；`HAS_ZERO_STRIDE` 边界条件（`any(stride == 0) && product(shape) > 0`）以 `06-layout.md §5.11` 为准。
 
 ### 5.4 当前受支持元素类型的线程安全传播
 
@@ -188,7 +186,7 @@ unsafe impl<A: Send> Send for Owned<A> {}
 unsafe impl<A: Sync> Sync for Owned<A> {}
 ```
 
-### 5.6 ViewRepr<'a, A> 的 Send/Sync
+### 5.6 ViewRepr 的 Send/Sync
 
 ```rust,ignore
 // src/storage/view.rs
