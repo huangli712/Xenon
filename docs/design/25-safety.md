@@ -396,7 +396,7 @@ let sum: f64 = b.iter().sum();  // OK: read-only iteration
 | `WorkspaceBorrowMut::as_maybe_uninit_typed_slice<T>(&mut self, count)` | `24-workspace.md §5.6` | `T: crate::element::Element`；count 不致 byte 长度溢出（否则 `TypedViewRejection::TypedByteLengthOverflow`）；返回 `&mut [MaybeUninit<T>]` 调用方负责完整初始化才能 `assume_init`（与 `24-workspace.md §5.6` `pub unsafe fn` 实际定义可见性一致） |
 | `WorkspaceBorrowMut::assume_init_typed_slice<T>(&mut self, count)` | `24-workspace.md §5.6` | `T: Element`；调用方已保证范围内 `count` 个 `T` 已被有效初始化 |
 
-调用点要求：每个 `unsafe { ... }` 块必须紧邻 `// SAFETY:` 注释，注释引用 owner 文档章节并列出本调用点已建立的不变式如何满足契约。25-safety §5.11 仅作为索引；具体契约文本以 owner 文档为准，禁止在两处分别维护。
+调用点要求：每个 `unsafe { ... }` 块必须紧邻 `// SAFETY:` 注释，注释引用 owner 文档章节并列出本调用点已建立的不变式如何满足契约。25-safety.md §5.11 仅作为索引；具体契约文本以 owner 文档为准，禁止在两处分别维护。
 
 ### 5.12 Good/Bad 对比示例
 
@@ -437,7 +437,7 @@ fn share_arc_tensor() -> Result<(), XenonError> {
     let arc_clone = arc.clone();  // strong_count = 2
 
     // Read fixed offsets up-front. Xenon does not implement `std::ops::Index`;
-    // use `try_at` (17-indexing §5.2) for fallible structured indexing.
+    // use `try_at` (17-indexing.md §5.2) for fallible structured indexing.
     let parent_v1 = *arc.try_at(Ix1(1))?;
     assert_eq!(parent_v1, 2.0);
 

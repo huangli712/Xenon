@@ -433,7 +433,7 @@ where
         // The `arr.into_iter().collect::<Vec<A>>()` step here introduces a
         // single temporary `Vec<A>` of length N, which is then handed to
         // `from_shape_vec` and ultimately to `Owned::from_vec_aligned`. The
-        // owned-buffer path (see 05-storage.md §5.4) MAY repack the data
+        // owned-buffer path (see 05-storage.md §6.2) MAY repack the data
         // into a 64B-aligned buffer if the incoming `Vec` is not already
         // suitably aligned, in which case there is one temp Vec + one
         // owned aligned buffer = two allocations. This is documented as

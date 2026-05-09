@@ -419,10 +419,10 @@ dispatch 模块（`30-dispatch.md`）有两个层次的 gate，本契约属于�
 
 | 层次 | 名称 | 由谁实施 | 依据 |
 |---|---|---|---|
-| L1 | **通用阈值 gate**（`SIMD_THRESHOLD` / `PARALLEL_THRESHOLD`） | dispatch 内部 `select_exec_path` | 30-dispatch §5.6 |
-| L2 | **op-specific type gate**（如整数 sum/dot 无 widening 时跳过 SIMD/Parallel） | 调用方模块（reduction / matrix） | 30-dispatch §5.5 op-agnostic boundary + 本节契约 |
+| L1 | **通用阈值 gate**（`SIMD_THRESHOLD` / `PARALLEL_THRESHOLD`） | dispatch 内部 `select_exec_path` | 30-dispatch.md §5.6 |
+| L2 | **op-specific type gate**（如整数 sum/dot 无 widening 时跳过 SIMD/Parallel） | 调用方模块（reduction / matrix） | 30-dispatch.md §5.5 op-agnostic boundary + 本节契约 |
 
-L1 的规则是"调用方仍走完整三路 dispatch，不在 dispatch 之前自行裁决 Serial 短路"（30-dispatch §5.5 末尾）——这指的是通用阈值层，不允许调用方提前根据 `len` 短路。L2 是 op-specific 的类型可行性判定，与通用阈值无关，本契约要求调用方在 L2 早退。两者并不矛盾：
+L1 的规则是"调用方仍走完整三路 dispatch，不在 dispatch 之前自行裁决 Serial 短路"（30-dispatch.md §5.5 末尾）——这指的是通用阈值层，不允许调用方提前根据 `len` 短路。L2 是 op-specific 的类型可行性判定，与通用阈值无关，本契约要求调用方在 L2 早退。两者并不矛盾：
 
 - 调用方先做 L2 type gate：若该元素类型 + 操作组合在本平台根本不存在 SIMD/Parallel 实现路径（如整数 sum/dot 无 widening），则不调用 `select_exec_path()`，直接走标量串行——这不是阈值短路，而是路径可用性判定
 - 若 L2 通过，调用方走完整 `select_exec_path()`，由 dispatch 按 L1 通用阈值裁决 `ExecPath`
