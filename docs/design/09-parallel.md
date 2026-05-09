@@ -492,13 +492,10 @@ where
 }
 ```
 
-**顺序保证（修复 Blocker B8）**：`ParIter` 实现 `IndexedParallelIterator`（§5.6 producer 拆分契约），其 `collect()` / `collect_into_vec()` 按 producer 索引位置（即 F-order 逻辑顺序）写入输出 buffer，而不是按 worker 完成顺序追加。因此：
-
+**顺序保证**：`ParIter` 实现 `IndexedParallelIterator`（§5.6 producer 拆分契约），其 `collect()` / `collect_into_vec()` 按 producer 索引位置（即 F-order 逻辑顺序）写入输出 buffer，而不是按 worker 完成顺序追加。因此：
 - 即便 worker 之间执行顺序不确定，`out[i]` 必然对应 `tensor` 的第 `i` 个 F-order 逻辑元素，`Tensor::from_raw_vec_unchecked(out, raw_dim)` 的"长度一致 + 顺序一致"前提两条都满足。
 - 错误优先性：若闭包返回 `Err`，单次 `IndexedParallelIterator::collect()` 在 rayon 当前实现中不保证返回"最早索引"的 `Err`。本设计采用两遍模式：第一遍 `try_for_each` 用作错误探测，遇到 `Err` 立即停止；只有所有 chunk 都成功时，第二遍 `collect_into_vec` 按索引位置写入最终结果。第一遍内部的 `Err` 选择仍由 rayon 决定，但调用方对外语义只承诺"至少传播一个 `Err`"（与 §6.7、§10 一致），不要求"第一个发生的 `Err`"。整数 `sum`/`dot` 的"首个失败 chunk 仲裁"是另一种更强约束，只在 §6.5 中适用，不向 `par_map_checked` 推广。
-- panic 中途 drop：`out` 通过 `Vec::with_capacity(total)` 预分配但**未先初始化**；`collect_into_vec` 内部按 `Vec::resize` + indexed writeback 完成填充。若闭包 panic，`Vec` 的 drop 会安全释放已写入元素的存储。`B: Element` 即 `Copy + Sized`，无 drop side-effects，进一步简化论证。
-
-`par_map_checked()` 不再自行决定是否并行（路径选择见 §6.1）；`strategy` 参数控制并行分块策略，与其他并行入口保持一致。
+- panic 中途 drop：`out` 通过 `Vec::with_capacity(total)` 预分配但未先初始化；`collect_into_vec` 内部按 `Vec::resize` + indexed writeback 完成填充。若闭包 panic，`Vec` 的 drop 会安全释放已写入元素的存储。`B: Element` 即 `Copy + Sized`，无 drop side-effects，进一步简化论证。
 
 ### 6.7 安全性论证
 
