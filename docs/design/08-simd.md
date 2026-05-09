@@ -586,7 +586,7 @@ pub(crate) fn simd_vector_width<T: SimdElement>() -> Option<usize>;
 ```
 
 - `simd` 后端内部通过该接口查询某元素类型在当前平台上的自然向量宽度。
-- 返回 `Some(width)`（其中 `width > 1`）表示当前平台对该类型存在可用的 SIMD 向量宽度。**这并不意味着对任意调用一定会进入 SIMD 路径**——是否实际进入 SIMD 仍需通过 §5.7 的最小长度、对齐策略、ISA 能力检查，以及 §5.6 覆盖状态表中的"已实现/条件实现"裁决。
+- 返回 `Some(width)`（其中 `width > 1`）表示当前平台对该类型存在可用的 SIMD 向量宽度。这并不意味着对任意调用一定会进入 SIMD 路径——是否实际进入 SIMD 仍需通过 §5.7 的最小长度、对齐策略、ISA 能力检查，以及 §5.6 覆盖状态表中的"已实现/条件实现"裁决。
 - 返回 `None` 表示该平台对该类型没有可用 lane 宽度，可作为提前短路依据。
 - 该查询只回答向量宽度，不替代连续性、对齐、长度阈值、操作覆盖与 per-op 准入检查。
 - 具体的操作覆盖矩阵（哪些类型 + 哪些操作已实现）由 §5.6 覆盖状态表决定，各 kernel 入口内部按表裁决；对状态为"优化项"或"标量回退"的条目，对应 kernel 入口直接通过 §5.4 的 `false` 返回值告知调用方走串行实现。
@@ -687,7 +687,7 @@ pub(crate) fn add_f32_simd(lhs: &[f32], rhs: &[f32], dst: &mut [f32]) {
 
 ### 6.2 标量回退实现
 
-ScalarKernel（标量回退）已在方案中移除。标量路径职责见 §1.1。
+标量路径职责见 §1.1。
 
 ### 6.3 `unsafe` 健全性边界
 
@@ -698,7 +698,7 @@ SIMD 内核中的 `unsafe` 只允许用于底层 load/store 与寄存器装载�
 | 对齐要求        | 若内核调用对齐 load/store 变体，输入与输出指针必须满足 Xenon 统一对齐快路径要求；若只满足非对齐访问语义，则必须改用相应的 unaligned load/store 变体或直接不进入 SIMD |
 | load/store 安全 | 对任一主循环迭代，`offset + width <= len`；`lhs`、`rhs`、`dst` 的切片长度已经过调用侧验证；`dst` 可写区间与本次 store 范围完全重合且不越界                           |
 | 尾部处理不变量  | 向量主循环仅覆盖 `[0, chunks * width)`；标量尾部只覆盖 `[chunks * width, len)`；两段区间不重叠且并集恰好等于完整输入区间                                             |
-| `#[target_feature]` 契约 | Xenon 不在自身代码中显式书写 `#[target_feature]` 函数定义；所有平台特定 ISA 指令的启用与调用均通过 `pulp::Arch::dispatch(WithSimd)` 间接进行，由 pulp 在其内部以 `#[target_feature(enable = "…")]` 标注 ISA 专用入口并在调用点用 `unsafe { … }` 封装。Xenon 调用 `Arch::dispatch` 是 **safe API**——其安全前提由 pulp 通过 `Arch::new()` 的 CPU 特性运行时检测保证：`Arch` 仅暴露已检测可用的 ISA 入口，调用 `dispatch` 时不会启用未检测的指令集，因此从 Xenon 视角不引入额外的 `unsafe` 调用义务。若未来选择不通过 pulp 而手写 `#[target_feature]` 函数（例如新增 ISA 内核），则必须满足：(1) 函数本体声明为 `unsafe fn` 并附 `# Safety` 文档节，明确"调用方必须确保 CPU 支持 X 指令集"；(2) 所有调用点用 `is_x86_feature_detected!` 或等价 ARM/aarch64 检测 gate 后再 `unsafe { fn() }` 调用；(3) 在 §5.6 覆盖状态表中显式登记新 ISA 入口与其检测策略。 |
+| `#[target_feature]` 契约 | Xenon 不在自身代码中显式书写 `#[target_feature]` 函数定义；所有平台特定 ISA 指令的启用与调用均通过 `pulp::Arch::dispatch(WithSimd)` 间接进行，由 pulp 在其内部以 `#[target_feature(enable = "…")]` 标注 ISA 专用入口并在调用点用 `unsafe { … }` 封装。Xenon 调用 `Arch::dispatch` 是 safe API——其安全前提由 pulp 通过 `Arch::new()` 的 CPU 特性运行时检测保证：`Arch` 仅暴露已检测可用的 ISA 入口，调用 `dispatch` 时不会启用未检测的指令集，因此从 Xenon 视角不引入额外的 `unsafe` 调用义务。|
 
 若上述任一条件无法证明成立，则该实现不得进入 `unsafe` SIMD 主循环。
 
@@ -760,10 +760,7 @@ Consistency guarantee strategy
 
 **设计决策：** 对于逐元素运算，SIMD 与标量路径必须保持相同公开语义；当前版本仅对 §5.6 覆盖状态表中“已实现”或“本版覆盖”的条目提供对应 SIMD kernel 路径，其中比较、一元与 bool 操作走独立专用 kernel，不经 `SimdKernel` 二元算术 trait。对于归约和内积，当前版本仅对已验证的 SIMD 覆盖子集启用向量化：`f32` / `f64` / `Complex<f32>` / `Complex<f64>` 为正式 SIMD 覆盖，`i32` / `i64` 的默认策略与 SIMD 启用条件见 §5.6（容差与精度约束见 §10）。
 
- **一致性说明：** 对于逐元素操作（add、mul 等），SIMD 和标量路径产生逐位一致的结果。
-对于归约/内积操作，Xenon 不接受未记录的“近似一致”；若某个 SIMD 内核无法满足文档定义的数值语义与容差边界，则不走 SIMD 路径。
-
-**覆盖说明：** 当前版本只覆盖 §5.6 覆盖状态表中列出的“已实现”“本版覆盖”与“条件实现，默认标量回退”子集。其余条目按 §1.1 职责边界回退。数学函数作为后续增强目标逐步补齐；这不改变 `math` 模块对这些逐元素运算的公开 API 承诺。完整覆盖计划见 §5.6。
+ **一致性说明：** 对于逐元素操作（add、mul 等），SIMD 和标量路径产生逐位一致的结果。对于归约/内积操作，Xenon 不接受未记录的“近似一致”；若某个 SIMD 内核无法满足文档定义的数值语义与容差边界，则不走 SIMD 路径。
 
 ### 6.6 SIMD 内部策略
 
@@ -782,9 +779,9 @@ Consistency guarantee strategy
 
 **整数归约/内积补充约束：** 对 `i32` / `i64` 的 `sum()` / `dot()`，默认策略与 SIMD 启用条件见 §5.6 覆盖状态表。`i64` 不做泛化 widening 承诺。
 
-**FMA 使用约束：** 元素级 `mul()` / `add()` / `dot()` 主循环中的乘法和加法必须按标量表达式顺序分开执行，不得在这些公开语义上隐式启用 FMA，以保持逐元素路径与标量路径的逐位一致。对于 `dot()` 而言，其主循环中的 per-element `mul` + lane-local `accumulate` 属于元素级步骤，同样禁用 FMA。仅在 `sum()` / `dot()` 的内部 **horizontal reduction merge** 阶段（已显式声明“允许末位 ULP 差异”），才能在特定 ISA 上使用 FMA 作为局部优化；启用时必须满足本节容差约束。
+**FMA 使用约束：** 元素级 `mul()` / `add()` / `dot()` 主循环中的乘法和加法必须按标量表达式顺序分开执行，不得在这些公开语义上隐式启用 FMA，以保持逐元素路径与标量路径的逐位一致。对于 `dot()` 而言，其主循环中的 per-element `mul` + lane-local `accumulate` 属于元素级步骤，同样禁用 FMA。仅在 `sum()` / `dot()` 的内部 horizontal reduction merge 阶段（已显式声明“允许末位 ULP 差异”），才能在特定 ISA 上使用 FMA 作为局部优化；启用时必须满足本节容差约束。
 
-**ISA 检测补充：** `pulp::Arch` 的主分支检测顺序按 `AVX-512 -> AVX2 -> SSE4.1 -> NEON` 组织（由 pulp 内部实现，dispatch.rs 不参与 ISA 检测）。FMA 可用性若需要利用，必须作为独立能力位单独检测，不得把 `AVX2` 与 `FMA` 隐式绑定成同一准入条件。
+**ISA 检测补充：** `pulp::Arch` 的主分支检测顺序按 `AVX-512 -> AVX2 -> SSE4.1 -> NEON` 组织。FMA 可用性若需要利用，必须作为独立能力位单独检测，不得把 `AVX2` 与 `FMA` 隐式绑定成同一准入条件。
 
 ---
 
