@@ -1073,7 +1073,7 @@ SIMD 模块依赖 layout 提供的连续性和对齐信息来判断是否可以�
 | `std` only | SIMD 路径依赖 `std` 环境  |
 | MSRV       | Rust 1.85+                |
 | 单 crate   | 保持单 crate 边界         |
-| SemVer     | `simd/` 内所有类型与入口均为 `pub(crate)` 内部 API，**不构成稳定公开 API**；变更不强制走 SemVer，但需在 `CHANGELOG.md` 中显式记录。本模块对外可见的影响仅通过 §9.1 列出的语义模块公开 API 表现（详见 §5.1）。 |
+| SemVer     | `simd/` 内所有类型与入口均为 `pub(crate)` 内部 API；变更不强制走 SemVer。 |
 | 最小依赖   | 可选依赖 `pulp`，默认关闭 |
 
 ---
