@@ -737,8 +737,6 @@ math / reduction / matrix call dispatch entry
 | 替代方案 | 允许库内部继续二次并行 —— 放弃，违反需求                                         |
 | 替代方案 | 将嵌套并行视为 recoverable error —— 放弃，会污染公开 API 语义                    |
 
-`ParallelPool` 内部调用同样必须经过 `dispatch.rs` 中的 `ParallelGuard`。若用户在自定义 pool 中再次调用内部并行后端，每个 Rayon worker 闭包通过 `dispatch::with_parallel_worker_context` 在 worker 自身 TLS 上设置 `IN_PARALLEL == true`（**不**捕获 `ParallelGuard` 或任何非 Send context token——`ParallelGuard` 是 `!Send`，move 到 worker 会清错线程的 TLS）。worker 内嵌套 `select_exec_path()` 因此自动回退串行，与全局线程池行为一致。同时不允许嵌套 `ParallelPool` 实例，以避免引入额外调度语义。
-
 ### 决策 3：并行模块不新增专属公开错误类型
 
 | 属性     | 值                                                      |
