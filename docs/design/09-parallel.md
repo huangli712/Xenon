@@ -754,48 +754,13 @@ math / reduction / matrix call dispatch entry
 | 理由     | 执行路径裁决（串行 vs 并行）由 `dispatch.rs` 统一承担，`parallel` 不需要自行判断       |
 | 替代方案 | 在 `parallel` 内保留串行回退 —— 放弃，会导致 `dispatch` 判断与 `parallel` 内部判断重复 |
 
-### 决策 5：二元逐元素并行能力以 `par_zip_map()` 形式提供给 `math`
-
-| 属性     | 值                                                                                                |
-| -------- | ------------------------------------------------------------------------------------------------- |
-| 决策     | `parallel` 提供 `pub(crate)` 级 `par_zip_map()`，由 `math` 在广播裁决完成后调用                   |
-| 理由     | 满足 `需求说明书 §9.2` 对逐元素二元运算并行路径的要求，同时不把通用多输入并行迭代器暴露为公开 API |
-| 替代方案 | 仅保留 `par_map` —— 放弃，无法覆盖 `add/sub/mul/div` 广播逐元素并行需求                           |
-| 替代方案 | 将二元广播并行逻辑直接写进 `math` —— 放弃，会复制 `dispatch.rs` 之外的并行执行实现与错误传播策略  |
-
-### 决策 6：执行路径裁决由 `dispatch.rs` 统一收口
+### 决策 5：执行路径裁决由 `dispatch.rs` 统一收口
 
 | 属性     | 值                                                                               |
 | -------- | -------------------------------------------------------------------------------- |
 | 决策     | `math` / `reduction` / `matrix` 调用 `dispatch::select_exec_path()` 决定执行路径 |
 | 理由     | 统一串并阈值与并行前置条件判断，避免多个模块各自实现分支树                       |
 | 替代方案 | 每个模块自行判断 serial/parallel —— 放弃，易产生阈值漂移和行为不一致             |
-
-### 决策 7：并行入口接收 `_guard: ParallelGuard` 按值参数
-
-| 属性     | 值                                                                                                                                              |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | `par_map` / `par_zip_map` / `par_sum` / `par_dot` / `par_reduce_impl` / `par_map_checked` 都接收 `_guard: ParallelGuard` 按值参数                |
-| 理由     | 把"裁决到 Parallel"和"进入并行临界区"在调用图上原子绑定；调用方无法忘记 acquire guard，guard RAII 在函数返回时自动清除 thread-local 嵌套防护标记 |
-| 替代方案 | 在 `parallel` 内部自行 `enter()` —— 放弃，会让 `select_exec_path` 与实际并行进入分离，重新引入 30-dispatch 的矛盾（哪个函数 consume guard） |
-| 替代方案 | 不传 guard，依赖 thread_local 隐式状态 —— 放弃，无法让类型系统强制"只有被 dispatch 选中的调用才能进入并行" |
-
-### 决策 8：`ParIter` 实现 `IndexedParallelIterator` + `Producer`
-
-| 属性     | 值                                                                                                                                  |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | `ParIter` 同时实现 `rayon::iter::IndexedParallelIterator` 和 `rayon::iter::plumbing::Producer`，提供 `split_at`-based 不重叠拆分 |
-| 理由     | 为 `par_map_checked` 顺序保证、`par_zip_map` 索引收集、`par_sum`/`par_dot` 固定 chunking 提供唯一可证明的 producer 不变量基础（修复 Blocker B7） |
-| 替代方案 | 仅实现 `ParallelIterator` —— 放弃，rayon 无法保证 `collect` 的索引顺序；`from_raw_vec_unchecked` 元素错位将导致内存安全前提缺失 |
-
-### 决策 9：worker 内允许 SIMD（决策 4 + 决策 5 协同）
-
-| 属性     | 值                                                                                                                            |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| 决策     | 单个 worker chunk 内可独立调用 `simd` 后端 kernel；chunk 间合并仍由 `parallel` 控制                                            |
-| 理由     | 与 08-simd.md 对齐：撤销并行/SIMD 互斥，提供 thread × SIMD 双层加速                                              |
-| 替代方案 | 保留旧设计（worker 内禁止 SIMD）—— 放弃，会牺牲大数据吞吐                                                                  |
-| 替代方案 | worker 跨 chunk 共享 SIMD 状态 —— 放弃，会让 chunk 不变量与 SIMD admission 互相耦合                                            |
 
 ---
 
