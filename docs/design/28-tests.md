@@ -1188,91 +1188,91 @@ fn prop_broadcast_shape_rule() {
   - 前置: T1
   - 预计: 30 min
 
-- [ ] **T3b**: 实现 `tests/test_overload.rs`
+- [ ] **T4**: 实现 `tests/test_overload.rs`
   - 文件: `tests/test_overload.rs`
   - 内容: 运算符重载（Add/Sub/Mul/Div trait 实现、广播分派、Result 所有权语义、标量运算符）
   - 测试: `cargo test --test test_overload`
   - 前置: T1, T3
   - 预计: 25 min
 
-- [ ] **T4**: 实现 `tests/test_broadcast.rs`
+- [ ] **T5**: 实现 `tests/test_broadcast.rs`
   - 文件: `tests/test_broadcast.rs`
   - 内容: 广播机制（标量/行/列/不兼容/只读）
   - 测试: `cargo test --test test_broadcast`
   - 前置: T1
   - 预计: 15 min
 
-- [ ] **T5**: 实现 `tests/test_index.rs`
+- [ ] **T6**: 实现 `tests/test_index.rs`
   - 文件: `tests/test_index.rs`
   - 内容: 索引操作（多维索引/越界返回错误/切片/结构性 SliceInfo 校验）
   - 测试: `cargo test --test test_index`
   - 前置: T1
   - 预计: 20 min
 
-- [ ] **T6**: 实现 `tests/test_construction.rs`
+- [ ] **T7**: 实现 `tests/test_construction.rs`
   - 文件: `tests/test_construction.rs`
   - 内容: 构造方法（zeros/ones/eye/from_shape_vec/from_shape_slice/from_scalar/from_array；`from_vec` 仅覆盖 Ix1 非规范便捷路径）
   - 测试: `cargo test --test test_construction`
   - 前置: T1
   - 预计: 25 min
 
-- [ ] **T7**: 实现 `tests/test_reduction.rs`
+- [ ] **T8**: 实现 `tests/test_reduction.rs`
   - 文件: `tests/test_reduction.rs`
   - 内容: 归约运算（sum/sum_axis/keepdims/empty/NaN/overflow）
   - 测试: `cargo test --test test_reduction`
   - 前置: T1
   - 预计: 20 min
 
-- [ ] **T8**: 实现 `tests/test_iterator.rs`
+- [ ] **T9**: 实现 `tests/test_iterator.rs`
   - 文件: `tests/test_iterator.rs`
   - 内容: 迭代器（elements/axis/indexed）
   - 测试: `cargo test --test test_iterator`
   - 前置: T1
   - 预计: 15 min
 
-- [ ] **T9**: 实现 `tests/test_matrix.rs`
+- [ ] **T10**: 实现 `tests/test_matrix.rs`
   - 文件: `tests/test_matrix.rs`
   - 内容: 向量内积（dot/complex/shape mismatch）
   - 测试: `cargo test --test test_matrix`
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T10**: 实现 `tests/test_set.rs`
+- [ ] **T11**: 实现 `tests/test_set.rs`
   - 文件: `tests/test_set.rs`
   - 内容: 集合操作（unique 整数/复数/NaN/±0.0/multiset 等值；输出顺序 unspecified——与 `14-set.md` 一致，对齐 `require.md §15`）
   - 测试: `cargo test --test test_set`
   - 前置: T1
   - 预计: 15 min
 
-- [ ] **T11**: 实现 `tests/test_shape.rs`
+- [ ] **T12**: 实现 `tests/test_shape.rs`
   - 文件: `tests/test_shape.rs`
   - 内容: 形状操作（transpose/高维）
   - 测试: `cargo test --test test_shape`
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T12**: 实现 `tests/test_conversion.rs`
+- [ ] **T13**: 实现 `tests/test_conversion.rs`
   - 文件: `tests/test_conversion.rs`
   - 内容: 类型转换（cast/to_owned/into_owned）
   - 测试: `cargo test --test test_conversion`
   - 前置: T1
   - 预计: 15 min
 
-- [ ] **T13**: 实现 `tests/test_utility.rs`
+- [ ] **T14**: 实现 `tests/test_utility.rs`
   - 文件: `tests/test_utility.rs`
   - 内容: 实用操作（fill/clip/to_contiguous）
   - 测试: `cargo test --test test_utility`
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T14**: 实现 `tests/test_output.rs`
+- [ ] **T15**: 实现 `tests/test_output.rs`
   - 文件: `tests/test_output.rs`
   - 内容: Numpy 风格输出（Display/Debug/截断/复数）
   - 测试: `cargo test --test test_output`
   - 前置: T1
   - 预计: 10 min
 
-- [ ] **T15**: 实现 `tests/test_error.rs`
+- [ ] **T16**: 实现 `tests/test_error.rs`
   - 文件: `tests/test_error.rs`
   - 内容: `XenonError` 边界与 display 输出验证（其中 workspace 相关公开边界断言 `XenonError::Workspace` 结构化字段）
   - 测试: `cargo test --test test_error`
@@ -1281,35 +1281,35 @@ fn prop_broadcast_shape_rule() {
 
 ### Wave 3: 特化测试
 
-- [ ] **T16**: 实现 `tests/test_workspace.rs`
+- [ ] **T17**: 实现 `tests/test_workspace.rs`
   - 文件: `tests/test_workspace.rs`
   - 内容: Workspace 语义（非法对齐/借用守卫/split/扩容/assume_init/!Send+!Sync）
   - 测试: `cargo test --test test_workspace`
   - 前置: T1, T2
   - 预计: 20 min
 
-- [ ] **T17**: 实现 `tests/test_ffi.rs`
+- [ ] **T18**: 实现 `tests/test_ffi.rs`
   - 文件: `tests/test_ffi.rs`
   - 内容: FFI 集成（指针/BLAS 兼容性辅助判断/export/export_mut/offset）
   - 测试: `cargo test --test test_ffi`
   - 前置: T2
   - 预计: 20 min
 
-- [ ] **T18**: 实现 `tests/test_parallel.rs`
+- [ ] **T19**: 实现 `tests/test_parallel.rs`
   - 文件: `tests/test_parallel.rs`
   - 内容: 启用 `parallel` feature 后公开 `sum`/`add` 行为一致性、并发读取、嵌套禁止
   - 测试: `cargo test --test test_parallel --features parallel`
-  - 前置: T3, T7
+  - 前置: T3, T8
   - 预计: 15 min
 
-- [ ] **T19**: 实现 `tests/test_simd.rs`
+- [ ] **T20**: 实现 `tests/test_simd.rs`
   - 文件: `tests/test_simd.rs`
   - 内容: SIMD 结果一致性（add/sum/fallback）
   - 测试: `cargo test --test test_simd --features simd`
-  - 前置: T3, T7
+  - 前置: T3, T8
   - 预计: 15 min
 
-- [ ] **T20**: 校验测试矩阵仅覆盖 `std` 环境
+- [ ] **T21**: 校验测试矩阵仅覆盖 `std` 环境
   - 文件: `.github/workflows/test.yml`
   - 内容: 维持 lib/tests/doctest 的 `std` 环境测试矩阵，不增加额外平台编译验证分支
   - 测试: CI 中运行默认测试矩阵
@@ -1318,20 +1318,20 @@ fn prop_broadcast_shape_rule() {
 
 ### Wave 4: 属性测试
 
-- [ ] **T21**: 实现 `tests/property` 属性测试模块
+- [ ] **T22**: 实现 `tests/property` 属性测试模块
   - 文件: `tests/property_tests.rs`, `tests/property/tensor_props.rs`, `tests/property/ops_props.rs`, `tests/property/shape_props.rs`
   - 内容: transpose 自反/加法交换律/unique 不含重复/sum 保加法单位元/广播形状一致性
   - 测试: `cargo test --test property_tests`
-  - 前置: T3, T7, T11
+  - 前置: T3, T8, T12
   - 预计: 20 min
 
 ### Wave 5: CI 集成
 
-- [ ] **T22**: 配置 CI 测试矩阵
+- [ ] **T23**: 配置 CI 测试矩阵
   - 文件: `.github/workflows/test.yml`
   - 内容: `std` 环境下的默认/`parallel`/`simd`/全 feature 组合；不额外扩展平台矩阵，不设置覆盖率门禁
   - 测试: CI 触发运行
-  - 前置: T1-T21
+  - 前置: T1-T22
   - 预计: 15 min
 
 ---
