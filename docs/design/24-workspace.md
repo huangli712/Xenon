@@ -1346,10 +1346,10 @@ ensure_capacity(&mut self, 2048)
 
 ### 8.6 Feature gate / 配置测试
 
-| 配置              | 验证点                                                                                                                                        |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| 默认配置          | workspace 在默认构建下验证当前实现采用 `!Send + !Sync`，并保持 MaybeUninit 暴露与借用状态机语义；该约束仅验证现状，不构成未来版本的稳定保证。 |
-| 其他 feature 组合 | 不适用；当前模块无额外 feature gate。                                                                                                         |
+| 配置              | 验证点                                                                                            |
+| ----------------- | ------------------------------------------------------------------------------------------------- |
+| 默认配置          | workspace 在默认构建下验证当前实现采用 `!Send + !Sync`，并保持 MaybeUninit 暴露与借用状态机语义。 |
+| 其他 feature 组合 | 不适用；当前模块无额外 feature gate。                                                             |
 
 ### 8.7 类型边界 / 编译期测试
 
@@ -1366,12 +1366,12 @@ ensure_capacity(&mut self, 2048)
 
 ### 9.1 接口约定
 
-| 方向                 | 对方模块  | 接口/类型         | 约定                                                                                                                          |
-| -------------------- | --------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `workspace` ← 上游库 | 上游库    | 临时缓冲区请求    | 上游数值库可把 workspace 作为临时缓冲区使用；默认只获得 `MaybeUninit` 视图                                                    |
-| `workspace` ← 上游库 | 上游库    | `split_at_mut()`  | 上游数值库场景可通过分割接口拆分工作空间；子空间同样只暴露 `MaybeUninit` 视图                                                 |
-| `workspace` ← 上游库 | 上游库    | `assume_init_*`   | 调用方必须先完成写入并证明对应前缀/typed region 已初始化，才能重解释为已初始化视图                                            |
-| `workspace ← tensor` | `tensor`  | 临时 scratch 空间 | 张量运算在需要时可借用 workspace 提供临时空间；这是运行时的可选协作模式，不是模块级别的类型依赖（`01-architecture.md §5.2` 中 tensor 的编译期依赖不包含 workspace）；任何借出的 scratch 视图都不得跨越 `ensure_capacity` 或持久化到 tensor 元数据中 |
+| 方向                 | 对方模块  | 接口/类型         | 约定                                                                                             |
+| -------------------- | --------- | ----------------- | ------------------------------------------------------------------------------------------------ |
+| `workspace` ← 上游库 | 上游库    | 临时缓冲区请求    | 上游数值库可把 workspace 作为临时缓冲区使用；默认只获得 `MaybeUninit` 视图                       |
+| `workspace` ← 上游库 | 上游库    | `split_at_mut()`  | 上游数值库场景可通过分割接口拆分工作空间；子空间同样只暴露 `MaybeUninit` 视图                    |
+| `workspace` ← 上游库 | 上游库    | `assume_init_*`   | 调用方必须先完成写入并证明对应前缀/typed region 已初始化，才能重解释为已初始化视图               |
+| `workspace ← tensor` | `tensor`  | 临时 scratch 空间 | 张量运算在需要时可借用 workspace 提供临时空间；这是运行时的可选协作模式，不是模块级别的类型依赖  |
 
 ### 9.2 数据流描述
 
@@ -1396,7 +1396,7 @@ Upper-layer code requests temporary scratch space
 
 | 主题              | 内容                                                                                        |
 | ----------------- | ------------------------------------------------------------------------------------------- |
-| Recoverable error | `new()` / `ensure_capacity()` / `borrow*()` / `split_at_mut()` / typed helper 失败时统一返回 `XenonError::Workspace { operation: Cow<'static, str>, category: WorkspaceErrorCategory, cause: Option<Box<XenonError>> }`（三字段，对齐 26-error §5.1）。`operation` 一律使用 `Cow::Borrowed(..)`。`category` 子变体与触发场景：`AllocFailed { size, align }`（`alloc` 返回 null）；`InvalidLayout { size, align }`（`alignment` 非 2 的幂或 `Layout::from_size_align` 拒绝）；`BorrowConflict { requested: WorkspaceBorrowKind, current: WorkspaceBorrowState }`（CAS 失败 / 残留状态）；`SplitOutOfBounds { mid, len }`（`split_at_mut` mid 越界 / `assume_init_*` initialized_len 越界 / typed helper byte_len 越界）；`GrowOverflow { current_capacity, additional }`（容量乘 1.5 倍溢出）；`TypedViewRejected { detail: TypedViewRejection }`（ZST / pointer 不满足 T 对齐 / typed helper `count * size_of::<T>()` 字节长度溢出 → `TypedByteLengthOverflow { count, elem_size }`，参见 §5.6 + `26-error.md §5.1` 的 `TypedViewRejection` 三变体）；`SplitCountInvariant { detail }`（保留给未来内部不变量违反检查）。`cause` 字段用于源链：workspace 自身产生的叶子错误通常为 `None`；若未来需要包装更底层的 `XenonError`，外层错误使用 `Some(Box::new(inner))` 并通过 `Error::source()` 暴露内层。**禁止使用** `size: Option<usize>` / `reason: Cow<str>` 等自由文本字段。 |
+| Recoverable error | `new()` / `ensure_capacity()` / `borrow*()` / `split_at_mut()` / typed helper 失败时统一返回 `XenonError::Workspace`。|
 | Panic             | 不为公开 API 输入校验引入 panic；`unsafe` 初始化前提若被违反，仍属于调用方责任范围内的 UB。 |
 | 路径一致性        | 当前仅有单一借用状态机与扩容路径；无 SIMD / 并行分支，所有 guard 释放规则必须保持一致。     |
 | 别名隔离          | `WorkspaceBorrow` / `WorkspaceBorrowMut` 上的 `as_maybe_uninit_slice` 与 `assume_init_slice` 均取 `&mut self`；API shape 防止同一 borrow 同时存在 `&[MaybeUninit<u8>]` 与 `&[u8]` / `&mut [u8]` 两种 safe 引用，杜绝在同一块内存上同时声称"已初始化"与"可能未初始化"造成的 `MaybeUninit` 别名违规。 |
@@ -1444,19 +1444,8 @@ Upper-layer code requests temporary scratch space
 | 属性     | 值                                                                                                       |
 | -------- | -------------------------------------------------------------------------------------------------------- |
 | 决策     | Workspace 当前实现不实现 Send 或 Sync；该结论记录当前实现选择，而非冻结为长期稳定保证                    |
-| 理由     | `!Send + !Sync` 为当前实现选择，目的是简化借用安全性论证。即使存在运行时借用状态检查，也暂不将其建模为可跨线程传递或共享的基础类型；若调用方需要多线程临时缓冲区，应在线程边界外自行分配和管理独立工作空间。相关测试仅验证当前行为，未来版本可在补充安全的跨线程借用检查后重新评估并放宽。此决策的线程安全背景分析详见 `25-safety.md §9.5`。                    |
+| 理由     | `!Send + !Sync` 为当前实现选择，目的是简化借用安全性论证                                                 |
 | 替代方案 | 放宽为 Send（并配套跨线程借用检查） — 未来可评估；仅依赖当前 AtomicU8 状态机不足以直接支持完整多线程语义 |
-
-### 决策 6：独占类方法统一使用 &mut self（B12.a）
-
-| 属性     | 值                                                                                                       |
-| -------- | -------------------------------------------------------------------------------------------------------- |
-| 决策     | `borrow_mut()` / `split_at_mut()` / `ensure_capacity()` 一律使用 `&mut self`；`borrow()`（共享只读守卫）保留 `&self` |
-| 理由     | (1) `borrow_mut` 与 `split_at_mut` 在语义上请求**独占**访问 workspace；用 `&mut self` 让"独占借用与其他守卫共存"成为编译期类型错误，而不仅仅是运行时 CAS 失败。(2) `ensure_capacity` 直接 `dealloc` 原指针并替换 `ptr` / `capacity`，必须独占 self 才能避免悬挂引用。(3) 内部 `AtomicU8` CAS 仍保留作为残留状态的防御性检查（如未来跨线程语义放宽时仍能正确拒绝）。(4) `borrow()` 保留 `&self` 是因为它语义上是**共享只读**借用——多个读守卫之间可以互斥但无需编译期独占（运行时 CAS 限制单个活跃读守卫已足够）。 |
-| 落地变更 | §5.5 `borrow_mut(&mut self)`；§5.7 顶层 `Workspace::split_at_mut(&mut self)`；§5.8 `ensure_capacity(&mut self)` 保持不变；递归 `SplitBorrowMut::split_at_mut(self)` 仍是消费式（因 SplitBorrowMut 本身就是 owned guard） |
-| 替代方案 | `borrow_mut(&self)` + 纯运行时 CAS                                                                        |
-| 拒绝原因 | 失去编译期独占检查，等价于把潜在的别名错误推迟到运行时；与 `ensure_capacity(&mut self)` 形成签名不对称且缺乏论证支撑 |
-| 用户决策 | B12.a 已批准                                                                                              |
 
 ---
 
