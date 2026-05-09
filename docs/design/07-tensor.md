@@ -610,8 +610,7 @@ where
     /// the same logical element order. See `05-storage.md §5` and `18-construction.md §5.3`.
     /// Owned tensors constructed from shape + data also use the canonical packed
     /// F-order stride for their logical layout; any mentioned "padding" refers only
-    /// to allocation-level tail capacity, not to logical tensor stride gaps. See
-    /// `06-layout.md` Decision 5 for the full ADR.
+    /// to allocation-level tail capacity, not to logical tensor stride gaps.
     ///
     /// # Example
     ///
