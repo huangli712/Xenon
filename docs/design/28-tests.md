@@ -1,11 +1,9 @@
 # 集成测试模块设计
 
 > 文档编号: 28
-> 适用目录: tests/（crate 根下集成测试）、src/**/*.rs 的 `#[cfg(test)] mod tests` 单元测试块、doctest（在 doc comment 内）、CI test matrix。Rust 集成测试目录约定为 crate 根下的 `tests/`，**不是** `src/tests`
+> 适用目录: tests/、src/**/*.rs 的 `#[cfg(test)] mod tests` 单元测试块、doctest（在 doc comment 内）、CI test matrix
 > 任务阶段: Phase 6
 > 前置文档: 所有前置文档（00-coding.md ~ 27-benchmark.md）
-> 需求参考: 需求说明书 §28
-> 范围声明: 范围内
 
 ---
 
@@ -15,13 +13,13 @@
 
 ### 1.1 职责边界
 
-| 职责       | 包含                                                                   |
-| ---------- | ---------------------------------------------------------------------- |
-| 跨模块验证 | 维度、存储、布局、运算等模块的协同行为（参见 `01-architecture.md §1.5`） |
-| 边界覆盖   | 空张量、单元素、大张量、极端值、非连续、高维                           |
-| 数值精度   | IEEE 754 精度验证                                                      |
-| 属性测试   | 代数不变量验证                                                         |
-| 并行安全   | 无数据竞争、并行/串行一致性                                            |
+| 职责       | 包含                                          |
+| ---------- | --------------------------------------------- |
+| 跨模块验证 | 维度、存储、布局、运算等模块的协同行为        |
+| 边界覆盖   | 空张量、单元素、大张量、极端值、非连续、高维  |
+| 数值精度   | IEEE 754 精度验证                             |
+| 属性测试   | 代数不变量验证                                |
+| 并行安全   | 无数据竞争、并行/串行一致性                   |
 
 | 职责       | 不包含                                         |
 | ---------- | ---------------------------------------------- |
@@ -70,14 +68,14 @@ tests/
 │   ├── ui_bool_sum_rejected.rs
 │   ├── ui_bool_unique_rejected.rs
 │   ├── ui_bool_arithmetic_rejected.rs
-│   └── blanket_scalar_add_rejected.rs   # blanket `impl<T> Add<TensorBase<...>> for T` 被孤儿规则拒绝（§5.24 ui_blanket_scalar_add_rejected）
+│   └── blanket_scalar_add_rejected.rs
 │
 ├── test_tensor.rs              # Tensor core functionality (creation/query/type aliases)
 ├── test_math.rs                # Element-wise operations (arithmetic/math/comparison/logic)
 ├── test_overload.rs            # Operator overloading (Add/Sub/Mul/Div trait implementations)
 ├── test_broadcast.rs           # Broadcasting (scalar/vector/matrix broadcasting)
 ├── test_index.rs               # Indexing operations (multi-dimensional indexing/range slicing)
-├── test_construction.rs        # Constructors (zeros/ones/eye/from_shape_vec/from_shape_slice/from_scalar/from_array/from_vec)
+├── test_construction.rs        # Constructors (zeros/ones/eye/from_shape_vec/...)
 ├── test_iterator.rs            # Iterators (elements/by-axis/by-index)
 ├── test_reduction.rs           # Reduction operations (sum/sum along axis)
 ├── test_matrix.rs              # Vector dot product (dot)
@@ -96,8 +94,6 @@ tests/
 │ # test files. Their public boundaries are covered by doctests +
 │ # compile-fail tests + cross-cutting integration tests in test_tensor.rs /
 │ # test_shape.rs / test_broadcast.rs / test_index.rs (see §9.2 mapping).
-│ # This avoids the 4-way (file tree / §5.x section / §7 Wave / §9.1
-│ # mapping) consistency drift seen in R5-E-02 / R6-E-02.
 │
 ├── property_tests.rs           # Property-test entry point (integration test target)
 └── property/
@@ -130,23 +126,17 @@ tests/
 ├── crate::workspace        # Workspace
 ├── crate::error            # XenonError
 ├── crate::iter             # element/axis/index iterators
-├── crate::matrix           # dot (inner product, dual entry: free function + TensorBase inherent method, see 01-architecture.md §10)
+├── crate::matrix           # dot (inner product, dual entry: free function + TensorBase inherent method)
 ├── crate::reduction        # sum
 ├── crate::overload         # Add, Sub, Mul, Div trait implementations
 ├── crate::util             # clip, fill, to_contiguous
 ├── crate::convert          # CastTo, type conversion
 ├── crate::format           # Numpy-style formatted output
 ├── crate::dispatch         # Dispatch routing (pub(crate); verified indirectly through feature effects)
-└── public API feature effects (`simd` / `parallel`) # Internal backends (including dispatch) are verified indirectly through observable public behavior
+└── public API feature effects (`simd` / `parallel`) # Internal backends (including dispatch) are verified indirectly
 ```
 
-**API 暴露方式说明**（参见 `01-architecture.md §10`，仅列出重点 API，非穷举）：上方依赖图列出的是实现模块路径，但部分模块的公共 API 通过 TensorBase 固有方法暴露，而非自由函数。
-
-测试代码的实际调用方式如下：
-- TensorBase 固有方法：`t.transpose()`（shape）、`t.unique()`（set）、`t.sum()`（reduction）、`t.clip()` / `t.fill()` / `t.try_fill()` / `t.to_contiguous()` / `t.into_contiguous()`（util）、`t.cast()`（convert）、`t.iter()` / `t.axis_iter()`（iter）、`t.dot()`（matrix，另有自由函数入口）、`t.broadcast_to()`（broadcast）
-- 注：`to_contiguous()` / `into_contiguous()` 已列入 `01-architecture.md §10.13`，均为 TensorBase inherent method；测试覆盖见 §5.15。
-- trait impl：`Display` / `Debug`（format）
-- 自由函数：`broadcast_shape()`（broadcast）、`zeros()` / `ones()` / `eye()` / `from_shape_vec()` 等（construct）
+**API 暴露方式说明**：上方依赖图列出的是实现模块路径，但部分模块的公共 API 通过 TensorBase 固有方法暴露，而非自由函数。
 
 ### 4.2 类型级依赖
 
@@ -159,8 +149,8 @@ tests/
 | `storage`   | `Owned`, `ViewRepr`, `ViewMutRepr`, `ArcRepr`, `Storage`（参见 `05-storage.md §5`）                            |
 | `layout`    | `LayoutFlags`（参见 `06-layout.md §5`）                                                                        |
 | `error`     | `XenonError`, `Result<T>`（参见 `26-error.md §5`）                                                             |
-| `iter`      | `Iter`, `AxisIter`, `IndexedIter`（参见 `10-iterator.md §5`）                                              |
-| `matrix`    | `.dot()`（TensorBase 固有方法）；`crate::matrix::dot(&a, &b)`（自由函数）；双入口等价性见上方 §4.1 说明（参见 `12-matrix.md §5`） |
+| `iter`      | `Iter`, `AxisIter`, `IndexedIter`（参见 `10-iterator.md §5`）                                                  |
+| `matrix`    | `.dot()`（TensorBase 固有方法）；`crate::matrix::dot(&a, &b)`（自由函数）（参见 `12-matrix.md §5`）            |
 | `overload`  | `Tensor<A, D>` 运算符 trait bounds（参见 `19-overload.md §5`）                                                 |
 | `util`      | `.clip()`, `.fill()`, `.try_fill()`, `.to_contiguous()`, `.into_contiguous()`（参见 `20-utility.md §5`）       |
 | `convert`   | `CastTo<T>` trait, `.cast()` 张量级转换（参见 `21-type.md §5`；标量级转换使用 `CastTo::<f64>::cast_to`）       |
@@ -169,8 +159,8 @@ tests/
 | `shape`     | `.transpose()`（参见 `16-shape.md §5`）                                                                        |
 | `reduction` | `.sum()`（参见 `13-reduction.md §5`）                                                                          |
 | `construct` | `zeros`, `ones`, `eye`, `from_shape_vec` 构造器（参见 `18-construction.md §5`）                                |
-| `index`     | `try_at` / `try_at_mut` 安全索引与 `SliceInfo::new` / `slice` 范围切片（参见 `17-indexing.md §5`）              |
-| `ffi`       | `as_ptr()`, `as_mut_ptr()`（参见 `23-ffi.md §5`）；`from_raw_parts` 核心定义归属 `07-tensor.md §5.7`，`23-ffi.md §5` 仅 re-export |
+| `index`     | `try_at` / `try_at_mut` 安全索引与 `SliceInfo::new` / `slice` 范围切片（参见 `17-indexing.md §5`）             |
+| `ffi`       | `as_ptr()`, `as_mut_ptr()`（参见 `23-ffi.md §5`）；`from_raw_parts` 核心定义归属 `07-tensor.md §5.7`           |
 | `set`       | `.unique()`（参见 `14-set.md §5`）                                                                             |
 | `workspace` | `Workspace`（参见 `24-workspace.md §5`）                                                                       |
 
@@ -184,7 +174,7 @@ tests/
 
 ### 4.4 依赖方向声明
 
-依赖方向：单向消费。`tests` 仅消费 crate 公共 API（参见 `01-architecture.md §10`），不被任何模块依赖。
+依赖方向：单向消费。`tests` 仅消费 crate 公共 API，不被任何模块依赖。
 
 ---
 
@@ -492,7 +482,7 @@ Storage 协同测试遵循 `05-storage.md`：广播、转置、切片均产生 `
 | `test_from_fixed_array`       | 从固定数组构造                                                                       | 中     |
 | `test_from_shape_vec_f_order_mapping` | F-order 逻辑元素顺序与线性输入映射正确                                       | 高     |
 
-构造测试须断言 `Tensor::from_shape_vec` 的长度不匹配失败为 `XenonError::InvalidShape { kind: InvalidShapeKind::ElementCountMismatch { expected, actual }, .. }`。`zeros` / `ones` 的实现路径按 `18-construction.md` 使用 `<Owned<A> as StorageOwned>::from_elem(len, value)` 完全限定调用；`pub(crate) Tensor::from_shape_vec_aligned_unchecked(shape, data)` 是供 `21-type.md` 张量层 `to_owned` 使用的 infallible 内部路径，不作为集成测试公开入口。
+构造测试须断言 `Tensor::from_shape_vec` 的长度不匹配失败为 `XenonError::InvalidShape`。`zeros` / `ones` 的实现路径按 `18-construction.md` 使用 `<Owned<A> as StorageOwned>::from_elem(len, value)` 完全限定调用；`pub(crate) Tensor::from_shape_vec_aligned_unchecked(shape, data)` 是供 `21-type.md` 张量层 `to_owned` 使用的 infallible 内部路径，不作为集成测试公开入口。
 
 ### 5.9 test_reduction.rs
 
