@@ -365,7 +365,7 @@ let sum: f64 = b.iter().sum();  // OK: read-only iteration
 | 描述符 Send/Sync | `TensorExport<'a, A>` / `TensorExportMut<'a, A>`（`23-ffi.md §5.4`）按 Rust auto-trait 推导：含 `*const A` / `*mut A` 字段使其默认 `!Send + !Sync`；不为这两个类型提供任何 `unsafe impl Send/Sync`。跨线程移动/共享导出的 raw 描述符必须由调用方在 `unsafe` 块中重新构造一个匹配 lifetime/borrow 的描述符，且仅在能证明无别名 + 无并发写时进行 |
 | C 端并发写 | 同一 `TensorExportMut` 在 C 侧禁止并发写（即便 C 端没有 Rust 借用规则的强制）；这是 `from_raw_parts_mut` round-trip 的隐含前提，违反时 Rust 侧重新构造的 `&mut` 别名会导致 UB |
 | Raw pointer 输入责任 | `TensorBase::from_raw_parts(_mut)`（`07-tensor.md §5.6 / §5.7`）的调用方必须保证：(1) provenance — `data_ptr` 必须从可被 `'a` 长度合法借用的对象派生；(2) lifetime — `'a` 不超过该对象的有效借用期；(3) alignment — `data_ptr % align_of::<A>() == 0`；(4) initialization — 范围内所有元素已是有效的 `A` 实例；(5) aliasing — `from_raw_parts_mut` 时无其他活跃别名（无论 Rust 侧还是 C 侧） |
-| Allocator 归属 | Owned 路径不得跨 allocator 释放：通过 `from_raw_parts` 接收的 raw 描述符**禁止**被 Xenon 用 `dealloc(System)` 释放（除非显式声明的 round-trip 构造由 Xenon 自己分配）。详见 `23-ffi.md §10` 的 `ForeignAllocatorMismatch` 错误 |
+| Allocator 归属 | Owned 路径不得跨 allocator 释放：通过 `from_raw_parts` 接收的 raw 描述符禁止被 Xenon 用 `dealloc(System)` 释放（除非显式声明的 round-trip 构造由 Xenon 自己分配）。详见 `23-ffi.md §10` 的 `ForeignAllocatorMismatch` 错误 |
 | Panic 跨边界 | Rust 侧 panic 不得跨 `extern "C"` 函数边界。所有 `extern "C"` 导出函数必须用 `catch_unwind` 包裹并把 panic 转换为错误码（`23-ffi.md §6.4`），否则会触发 UB |
 
 **与本文档其他章节的关系：**
