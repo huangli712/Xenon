@@ -262,13 +262,13 @@ where
 
 `ParIter` 通过同时实现 `rayon::iter::IndexedParallelIterator`（`Item = &'a A`，由其 supertrait `ParallelIterator` 自动得到）以及对应的 `rayon::iter::plumbing::Producer` 桥接来提供并行遍历能力。`&A: Send` 需要 `A: Sync`；`A: Send` 保留用于统一内部并行入口的 worker bound：
 
-- **producer 拆分（修复 Blocker B7）**：`ParIter` 内部实现 `rayon::iter::plumbing::Producer`，由 `with_producer()` 把 view + 当前逻辑区间 `[lo, hi)` 转交给 rayon scheduler；rayon 通过 `producer.split_at(mid)` 将逻辑区间均分为两个互不重叠的子 producer：
+- **producer 拆分**：`ParIter` 内部实现 `rayon::iter::plumbing::Producer`，由 `with_producer()` 把 view + 当前逻辑区间 `[lo, hi)` 转交给 rayon scheduler；rayon 通过 `producer.split_at(mid)` 将逻辑区间均分为两个互不重叠的子 producer：
   - F-contiguous 子区间：`split_at` 直接对 base pointer 做指针算术 `ptr.add(mid - lo)`，两个子 producer 持有不相交的连续切片。
   - 非连续 / 转置视图：`split_at` 不切分物理切片，而是切分逻辑区间 `[lo, mid)` 与 `[mid, hi)`；每个 producer 内部维护一个轻量的 stride 状态机，按 F-order 对该子区间进行逐元素 stride 访问；rayon 仍可保证两个子 producer 不共享同一逻辑元素。
-  - **不变量**：任意 producer 拆分序列覆盖原区间正好一次且互不相交（`Disjoint Coverage`），由 `with_producer` 的契约和 `split_at` 的实现共同保证；该不变量是 `IndexedParallelIterator` 的安全前提，也是 `par_map_checked` 顺序恢复（§6.6）能成立的基础。
-- **逻辑顺序契约**：`IndexedParallelIterator` 要求 producer 按 `[0, n)` 的索引顺序覆盖输出；rayon worker 之间执行顺序未定，但每个元素仅被访问一次，且 `collect_into_vec(&mut Vec<_>)` / `collect()` 等 indexed 收集 API 会**按索引位置**写入结果，与 worker 完成顺序无关。
+  - 不变量：任意 producer 拆分序列覆盖原区间正好一次且互不相交（`Disjoint Coverage`），由 `with_producer` 的契约和 `split_at` 的实现共同保证；该不变量是 `IndexedParallelIterator` 的安全前提，也是 `par_map_checked` 顺序恢复（§6.6）能成立的基础。
+- **逻辑顺序契约**：`IndexedParallelIterator` 要求 producer 按 `[0, n)` 的索引顺序覆盖输出；rayon worker 之间执行顺序未定，但每个元素仅被访问一次，且 `collect_into_vec(&mut Vec<_>)` / `collect()` 等 indexed 收集 API 会按索引位置写入结果，与 worker 完成顺序无关。
 - 对于 F-contiguous 布局，直接按连续内存切片分割以获得最佳缓存局部性；对于非连续布局（如转置视图），退化为逻辑区间 + 逐元素步长访问。
-- 分片粒度由 `chunk_size` 和 `max_workers` 字段控制：若 `chunk_size` 为 `Some(n)`，每个分片至多包含 `n` 个元素；若为 `None`，通过 `compute_safe_chunks(total, num_threads)` 自动计算（定义于 `src/parallel/mod.rs`，见 01-architecture.md §5.2a），其中 `num_threads` 取 `max_workers` 或 `rayon::current_num_threads()`。
+- 分片粒度由 `chunk_size` 和 `max_workers` 字段控制：若 `chunk_size` 为 `Some(n)`，每个分片至多包含 `n` 个元素；若为 `None`，通过 `compute_safe_chunks(total, num_threads)` 自动计算（定义于 `src/parallel/mod.rs`，见 `01-architecture.md §5`），其中 `num_threads` 取 `max_workers` 或 `rayon::current_num_threads()`。
 - `par_iter()` 返回使用默认策略（`chunk_size: None`, `max_workers: None`）的 `ParIter`；`ParIter::with_strategy()` 接受显式策略参数，供 `par_map_checked` 等需要精确控制分块的内部入口使用。
 
 ```rust,ignore
@@ -330,8 +330,8 @@ dispatch-selected parallel entry (receives ParallelGuard by value;
 
 - `parallel` 假定调用方已经完成阈值、线程环境、嵌套并行治理判断（由 `dispatch.rs` 的 `select_exec_path()` 完成）。
 - 并行函数只负责固定 chunking + 执行 `rayon` 并行迭代（语义一致性要求见 §1.2）。
-- **线程亲和性**：outer `ParallelGuard` 始终保留在调用线程的入口函数栈帧上（`!Send + !Sync`，禁止 move 到 worker 线程）；每个 Rayon worker 闭包内 chunk 执行**必须**包裹在 `dispatch::with_parallel_worker_context` 中，使 worker 自身 TLS 在 chunk 期间为 `IN_PARALLEL == true`。这是嵌套并行检测在 work-stealing 模型下保持正确性的唯一方法。
-- **Worker 内 SIMD**：单个 worker 拿到 chunk 后，可在 chunk 内部独立调用 `simd` 后端的 `pub(crate)` kernel（如 `dispatch_vector_binary_op`），按 `08-simd.md` §5.4 的 SIMD admission（连续性、对齐、长度阈值、操作覆盖、ISA）独立判断；不进入 SIMD 时回退到该 chunk 内的标量循环。chunk 间合并顺序仍由 `parallel` 模块的固定 chunking + 固定 merge tree 控制，跨 chunk 的语义一致性不被 SIMD 影响。
+- 线程亲和性：outer `ParallelGuard` 始终保留在调用线程的入口函数栈帧上（`!Send + !Sync`，禁止 move 到 worker 线程）；每个 Rayon worker 闭包内 chunk 执行必须包裹在 `dispatch::with_parallel_worker_context` 中，使 worker 自身 TLS 在 chunk 期间为 `IN_PARALLEL == true`。这是嵌套并行检测在 work-stealing 模型下保持正确性的唯一方法。
+- Worker 内 SIMD：单个 worker 拿到 chunk 后，可在 chunk 内部独立调用 `simd` 后端的 `pub(crate)` kernel（如 `dispatch_vector_binary_op`），按 `08-simd.md` §5.4 的 SIMD admission（连续性、对齐、长度阈值、操作覆盖、ISA）独立判断；不进入 SIMD 时回退到该 chunk 内的标量循环。chunk 间合并顺序仍由 `parallel` 模块的固定 chunking + 固定 merge tree 控制，跨 chunk 的语义一致性不被 SIMD 影响。
 
 ### 6.3 二元逐元素并行路径
 
