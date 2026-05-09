@@ -1472,7 +1472,7 @@ fn compile_fail_harness() {
 | `compile_fail_tests.rs`| 编译期断言           | `03-element.md`, `02-dimension.md`, `05-storage.md` |
 | `property_tests.rs`    | 属性测试（shape/math/broadcast 不变量） | `16-shape.md`, `11-math.md`, `15-broadcast.md` |
 
-**说明**：workspace 错误直接构造 `XenonError::Workspace`，集成测试通过公共 API 验证结构化字段；`test_workspace.rs` 关注 workspace 语义与公开诊断文本（含 workspace 与 ffi 的协同场景，参见 `24-workspace.md`），`test_error.rs` 关注统一公开错误边界。`test_ffi.rs` 仅覆盖 ffi 模块自身语义（原始指针、BLAS 兼容、导出前提），不涉及 workspace 协同——该协同场景已由 `test_workspace.rs` 覆盖。
+**说明**：workspace 错误直接构造 `XenonError::Workspace`，集成测试通过公共 API 验证结构化字段；`test_workspace.rs` 关注 workspace 语义与公开诊断文本（含 workspace 与 ffi 的协同场景，参见 `24-workspace.md`）。`test_error.rs` 关注统一公开错误边界。`test_ffi.rs` 仅覆盖 ffi 模块自身语义（原始指针、BLAS 兼容、导出前提），不涉及 workspace 协同——该协同场景已由 `test_workspace.rs` 覆盖。
 
 ### 9.2 基础模块补充覆盖映射
 
@@ -1480,9 +1480,9 @@ fn compile_fail_harness() {
 | ----------- | ----------------------------------------- | ---- |
 | `dimension` | doctest + compile-fail + integration tests | doctest 覆盖维度构造与示例；compile-fail 覆盖非法维度类型；集成测试覆盖 shape、broadcast、index、IxDyn 行为 |
 | `element`   | doctest + compile-fail + integration tests | doctest 覆盖 trait/公开类型边界示例；compile-fail 覆盖非法元素类型与 trait bound；集成测试覆盖合法元素语义 |
-| `complex`   | doctest + integration tests                | doctest 覆盖公开用法示例；集成测试覆盖复数逐元素运算、归约、内积、格式化与 FFI 布局 |
-| `layout`    | doctest + integration tests                | doctest 覆盖布局/连续性示例；集成测试覆盖 F-order、非连续视图、transpose、to_contiguous 与导出前提 |
-| `storage`   | doctest + integration tests (`test_tensor.rs`) | Storage 内部 doctest 与 dimension/element 集成测试间接覆盖 trait/元素/维度协同；storage 公开边界（Owned/View/ViewMut/Shared 模式、`into_shared` 等）通过 `test_tensor.rs` 的 ViewRepr/ViewMutRepr/Owned/ArcRepr 张量层语义测试覆盖（参见 §5.4 test_tensor_view_creation / test_tensor_to_owned / test_arc_tensor_clone / test_arc_tensor_alias_isolation_on_write）；本版本不引入独立 `test_storage.rs` —— storage 模块没有 ViewRepr/ArcRepr 之外、不能通过张量层 API 触发的公开边界 |
+| `complex`   | doctest + integration tests | doctest 覆盖公开用法示例；集成测试覆盖复数逐元素运算、归约、内积、格式化与 FFI 布局 |
+| `layout`    | doctest + integration tests | doctest 覆盖布局/连续性示例；集成测试覆盖 F-order、非连续视图、transpose、to_contiguous 与导出前提 |
+| `storage`   | doctest + integration tests | Storage 内部 doctest 与 dimension/element 集成测试间接覆盖 trait/元素/维度协同；storage 公开边界通过 `test_tensor.rs` 的 ViewRepr/ViewMutRepr/Owned/ArcRepr 张量层语义测试覆盖 |
 
 ### 9.3 数据流
 
