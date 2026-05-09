@@ -57,24 +57,12 @@
 src/
 └── ffi/
     ├── mod.rs         # Module root, re-exports
-    ├── types.rs       # TensorExportRaw / TensorExportMutRaw (non-generic, C-visible);
-    │                  #   BlasInfo type definitions; re-exports ElementType (from element),
-    │                  #   FfiErrorCategory (from error)
+    ├── types.rs       # TensorExportRaw / TensorExportMutRaw / BlasInfo / re-exports
     ├── ptr.rs         # Raw-pointer API wrappers (export/export_mut, re-export from tensor module)
     ├── blas.rs        # BLAS compatibility checks (is_blas_layout_compatible, blas_info, lda)
     ├── offset.rs      # Multi-dimensional index to pointer offset (try_offset_of, try_ptr_at)
-    └── private.rs     # Generic Rust-only descriptors `TensorExport<'a, A>` /
-                       #   `TensorExportMut<'a, A>` + `From` impls converting them to
-                       #   the C-visible `TensorExportRaw` / `TensorExportMutRaw`.
-                       #
-                       # Marked `#[doc(hidden)]` and `pub(crate)`-exported. cbindgen
-                       # treats this as internal — these generic types never appear
-                       # in any `extern "C"` function signature, so they are not
-                       # reachable from cbindgen's transitive emission set. This is
-                       # gate #2 of the three-gate cbindgen contract (see §5.3.bis).
+    └── private.rs     # Generic Rust-only descriptors `TensorExport` / `TensorExportMut` / `From`
 ```
-
-多文件设计：将 FFI 按职责拆分为多个文件，便于后期拓展和维护。`private.rs` 隔离 generic Rust-only 描述符，是 cbindgen 三道闸门契约的 gate #2（见 §5.3.bis），确保泛型类型与 C-visible raw 描述符在文件层面就分离。
 
 ---
 
