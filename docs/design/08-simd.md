@@ -439,26 +439,25 @@ L1 的规则是"调用方仍走完整三路 dispatch，不在 dispatch 之前自
 `simd` 后端内部在尝试进入 SIMD 前，至少按以下规则做统一裁决：
 
 1. **Minimum length**：输入长度必须达到对应操作的最小向量化阈值，避免短切片因装载/收尾成本高于收益而误入 SIMD。
-2. **Alignment policy（按 ISA/操作动态选择）**：`simd` 内部根据当前 ISA 与操作类型选择 aligned 或 unaligned load/store 变体。`layout::is_aligned()` 仅作为 kernel 内部能力位输入，不作为 SIMD 准入的强制条件。具体规则：
+2. **Alignment policy**：`simd` 内部根据当前 ISA 与操作类型选择 aligned 或 unaligned load/store 变体。`layout::is_aligned()` 仅作为 kernel 内部能力位输入，不作为 SIMD 准入的强制条件。具体规则：
    - 若 kernel 选择 aligned 变体（如某些归约的 horizontal merge 阶段），输入对齐必须满足该变体的硬件前提；不满足时改用同 kernel 的 unaligned 变体或不进入 SIMD。
     - 若 kernel 选择 unaligned 变体（这是大多数逐元素 kernel 的默认选择），不要求统一对齐快路径；调用侧无需为此预先回退。
 3. **ISA width check**：运行时需确认当前 `pulp::Arch` 上存在可用 ISA 且 lane 宽度大于 1；若目标类型或当前 ISA 无法提供有效向量宽度，则不进入 SIMD。
+4. **alignment_ok 来源说明**：`alignment_ok` 参数由 `30-dispatch.md §5.5` 定义，是调用方透传的对齐能力提示位。`08-simd` 后端根据本节的按 ISA/操作动态选择规则做最终 per-kernel admission 裁决——`alignment_ok = true` 不保证一定能走 aligned kernel，`alignment_ok = false` 也不排斥 unaligned kernel。
 
-> **alignment_ok 来源说明**：`alignment_ok` 参数由 `30-dispatch.md §5.5` 定义，是调用方透传的对齐能力提示位。`08-simd` 后端根据本节的按 ISA/操作动态选择规则做最终 per-kernel admission 裁决——`alignment_ok = true` 不保证一定能走 aligned kernel，`alignment_ok = false` 也不排斥 unaligned kernel。该参数的具体契约见 30-dispatch.md §5.5。
-
-| 操作类型                  | 元素类型                        | SIMD 最小长度 | 说明                                                         |
-| ------------------------- | ------------------------------- | ------------- | ------------------------------------------------------------ |
-| 逐元素算术                | `f32` / `f64`                   | 64            | 对齐后向量宽度                                               |
-| 逐元素算术                | `Complex<f32>` / `Complex<f64>` | 128           | AoS 输入需寄存器内重排，默认阈值高于实数路径                 |
-| 比较                      | 适用的整数 / 浮点类型           | 64            | 与逐元素算术共享向量装载/收尾框架                            |
-| `abs` / `signum`          | `f32` / `f64`                   | 64            | 一元实数路径，通常复用比较/位运算或算术框架                  |
-| `square`                  | `i32` / `i64` / `f32` / `f64`   | 64            | 复用逐元素乘法 kernel                                        |
-| `square`                  | `Complex<f32>` / `Complex<f64>` | 128           | 复用 complex 算术路径与寄存器重排框架                        |
-| `bool` (`not`)            | `bool`                          | N/A           | 由独立 bool / mask kernel 决定，不在统一数值阈值表内单独承诺 |
-| 归约 `sum`                | `f32` / `f64`                   | 1024          | 归约开销较高，需更大输入                                     |
-| 归约 `sum`                | `i32` / `i64`                   | 512           | widening accumulator                                         |
-| 内积 `dot`                | `f32` / `f64`                   | 512           | 同归约                                                       |
-| 内积 `dot`                | `i32` / `i64`                   | 256           | 同上                                                         |
+| 操作类型          | 元素类型                        | SIMD 最小长度 | 说明                                                         |
+| ----------------- | ------------------------------- | ------------- | ------------------------------------------------------------ |
+| 逐元素算术        | `f32` / `f64`                   | 64            | 对齐后向量宽度                                               |
+| 逐元素算术        | `Complex<f32>` / `Complex<f64>` | 128           | AoS 输入需寄存器内重排，默认阈值高于实数路径                 |
+| 比较              | 适用的整数 / 浮点类型           | 64            | 与逐元素算术共享向量装载/收尾框架                            |
+| `abs` / `signum`  | `f32` / `f64`                   | 64            | 一元实数路径，通常复用比较/位运算或算术框架                  |
+| `square`          | `i32` / `i64` / `f32` / `f64`   | 64            | 复用逐元素乘法 kernel                                        |
+| `square`          | `Complex<f32>` / `Complex<f64>` | 128           | 复用 complex 算术路径与寄存器重排框架                        |
+| `bool` (`not`)    | `bool`                          | N/A           | 由独立 bool / mask kernel 决定，不在统一数值阈值表内单独承诺 |
+| 归约 `sum`        | `f32` / `f64`                   | 1024          | 归约开销较高，需更大输入                                     |
+| 归约 `sum`        | `i32` / `i64`                   | 512           | widening accumulator                                         |
+| 内积 `dot`        | `f32` / `f64`                   | 512           | 同归约                                                       |
+| 内积 `dot`        | `i32` / `i64`                   | 256           | 同上                                                         |
 
 - 以上阈值为内部默认值。当输入长度低于阈值时，`simd` 后端不进入 SIMD（kernel 入口对外通过返回 `false` 或不写入结果通知调用侧；调用侧语义模块按 §1.1 走自身串行实现）。
 - 这些阈值只影响执行路径选择，不改变 API 结果；未通过任一条件时，整体行为透明等价于非 SIMD 路径。
