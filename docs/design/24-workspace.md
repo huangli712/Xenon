@@ -1189,7 +1189,7 @@ This design (zero allocation):
 1. `split_at_mut(512)` → `split_count = 2`，创建 `left` 和 `right`
 2. `right.split_at_mut(128)` → `fetch_add(1)`，`split_count = 3`，创建 `right_a` 和 `right_b`
 
-**公开/内部边界说明：** 本文中的公开安全 API（如 `new`、`borrow`、`borrow_mut`、`split_at_mut`、`ensure_capacity`）统一返回可恢复错误，而不是把输入校验失败暴露为 panic；只有无法直接验证的 `unsafe` 初始化前提继续由调用方承担。
+**公开/内部边界说明**：本文中的公开安全 API（如 `new`、`borrow`、`borrow_mut`、`split_at_mut`、`ensure_capacity`）统一返回可恢复错误，而不是把输入校验失败暴露为 panic；只有无法直接验证的 `unsafe` 初始化前提继续由调用方承担。
 
 1. `left` drop → `split_count: 3→2`，`prev=3 ≠ 1`，不重置 ✅
 2. `right_a` drop → `split_count: 2→1`，`prev=2 ≠ 1`，不重置 ✅
