@@ -86,7 +86,7 @@
 | W3T13 | `src/dimension/axes.rs` | Axis newtype with new/index/checked_next/next/prev/is_first/is_last | W3T1 | 02-dimension §7 |
 | W3T14 | `src/private.rs`, `src/dimension/mod.rs` | Sealed trait impl for all dimension types + public exports | W3T11, W3T12, W3T13 | 02-dimension §7 |
 | W3T15 | All `src/dimension/` files | Doc comments on all pub items, cargo doc verification | W3T14 | 02-dimension §7 |
-| W3T16 | `tests/test_dimension.rs` | Integration and boundary tests for full dimension system | W3T14 | 02-dimension §7 |
+| W3T16 | `src/dimension/` (`#[cfg(test)] mod tests`), `tests/test_tensor.rs`, `tests/test_shape.rs`, `tests/test_index.rs`, `tests/property_tests.rs` | Dimension integration tests: boundary/edge cases (Ix0, zero-length axis, large dim, overflow) via in-module unit tests + cross-module coverage through existing tensor/shape/index/property test files; do NOT add standalone tests/test_dimension.rs | W3T15 | 02-dimension §7 |
 
 ### W4: Element Type Hierarchy (L1)
 
