@@ -147,7 +147,7 @@
 | W7T3 | `src/storage/mod.rs` | unsafe trait Storage: RawStorage + get/get_unchecked/as_slice | W7T2 | 05-storage §7 |
 | W7T4 | `src/storage/mod.rs` | RawStorageMut and StorageMut trait definitions | W7T3 | 05-storage §7 |
 | W7T5 | `src/storage/mod.rs` | StorageOwned and StorageShared trait definitions | W7T4 | 05-storage §7 |
-| W7T6 | `src/storage/traits.rs` | Marker traits such as IsOwned and IsView | W7T5 | 01-architecture §3, 05-storage §7 |
+| W7T6 | `src/storage/traits.rs` | Marker traits: IsOwned, IsView, IsViewMut, IsShared | W7T5 | 01-architecture §3, 05-storage §7 |
 | W7T7 | `src/storage/alloc.rs` | AlignedAlloc struct: 64-byte aligned alloc/alloc_zeroed/dealloc | W7T1 | 05-storage §7 |
 | W7T8 | `src/storage/owned.rs` | Owned\<A\> struct + new/with_capacity/from_vec/from_vec_aligned/zeros/from_elem constructors | W7T7 | 05-storage §7 |
 | W7T9 | `src/storage/owned.rs` | Owned\<A\> all trait impls (RawStorage/Storage/StorageMut/StorageOwned) + into_shared/Send/Sync/From/Default | W7T5, W7T8 | 05-storage §7 |
@@ -156,7 +156,7 @@
 | W7T12 | `src/storage/arc.rs` | ArcRepr\<A\>: struct, from_vec/from_vec_aligned/zeros/from_elem constructors, Clone (ref-count bump), all trait impls | W7T5 | 05-storage §7 |
 | W7T13 | `src/storage/arc.rs` | ArcRepr\<A\> Send/Sync + Default + From impls | W7T12 | 05-storage §7 |
 | W7T14 | `src/storage/mod.rs` | Module re-exports (all types + traits) + doc comments | W7T9, W7T10, W7T11, W7T13 | 05-storage §7 |
-| W7T15 | `tests/test_storage.rs` | Integration tests: alloc alignment, owned/view/viewmut/arc trait semantics, Send/Sync | W7T14 | 05-storage §7 |
+| W7T15 | `src/storage/` (`#[cfg(test)] mod tests`), `tests/test_tensor.rs`, `tests/test_index.rs`, `tests/test_ffi.rs`, `tests/test_iterator.rs` | Storage integration tests: cross-storage interaction, ZST behavior, empty arrays, alloc alignment, trait semantics via in-module unit tests + cross-module coverage through existing tensor/index/ffi/iterator test files; do NOT add standalone tests/test_storage.rs | W7T14 | 05-storage §7 |
 
 ### W8: Tensor Core (L3)
 
