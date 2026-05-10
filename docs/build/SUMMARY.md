@@ -136,7 +136,7 @@
 | W6T4 | `src/layout/contiguous.rs` | is_f_contiguous\<D\>: F-order contiguity detection | W6T1 | 06-layout §7 |
 | W6T5 | `src/layout/strides.rs` | has_zero_stride: raw zero-stride detector (flag assignment checks product(shape) > 0) | W6T1 | 06-layout §7 |
 | W6T6 | `src/layout/strides.rs` | is_aligned_to / is_aligned alignment check functions | W6T1 | 06-layout §7 |
-| W6T7 | Layout unit/integration tests (coord with tensor/shape/index/ffi/simd tests) | Comprehensive verification: strides, contiguity, zero-stride, alignment | W6T3–W6T6 | 06-layout §7 |
+| W6T7 | `src/layout/` (`#[cfg(test)] mod tests`), `tests/test_tensor.rs`, `tests/test_shape.rs`, `tests/test_index.rs`, `tests/test_ffi.rs`, `tests/test_simd.rs` | Layout integration tests: stride computation, contiguity, zero-stride, alignment via in-module unit tests + cross-module coverage through existing tensor/shape/index/ffi/simd test files; do NOT add standalone tests/test_layout.rs | W6T3–W6T6 | 06-layout §7 |
 
 ### W7: Storage System (L2)
 
