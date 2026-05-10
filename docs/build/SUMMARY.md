@@ -103,7 +103,7 @@
 | W4T9 | `src/element/primitives.rs` | Element + Numeric + ComplexScalar impls for Complex\<f32\>/Complex\<f64\> | W4T4, W4T5 | 03-element §7 |
 | W4T10 | `src/element/real.rs`, `src/element/mod.rs` | Calibrate math capability boundaries + document lossy CastTo error semantics | W4T6 | 03-element §7 |
 | W4T11 | All `src/element/` files | Doc comments on all pub items, cargo doc verification | W4T9 | 03-element §7 |
-| W4T12 | Element unit/doctest, cross-module via tests/test_tensor/test_math/test_reduction/test_conversion | Integration tests for element trait system | W4T9 | 03-element §7 |
+| W4T12 | `src/element/` (`#[cfg(test)] mod tests`), `tests/test_tensor.rs`, `tests/test_math.rs`, `tests/test_reduction.rs`, `tests/test_conversion.rs` | Element integration tests: verify trait implementations for all 7 element types via in-module unit tests + cross-module coverage through existing tensor/math/reduction/conversion test files; do NOT add standalone tests/test_element.rs | W4T9 | 03-element §7 |
 
 ### W5: Complex Type (L1)
 
