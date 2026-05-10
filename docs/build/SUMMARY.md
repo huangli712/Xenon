@@ -116,8 +116,8 @@
 | W5T5 | `src/complex/mod.rs` | from_imag(), conj(), and From\<T\> constructors | W5T1 | 04-complex §7 |
 | W5T6 | `src/complex/mod.rs` | is_real() / is_imaginary() predicates | W5T1 | 04-complex §7 |
 | W5T7 | `src/complex/mod.rs` | PartialEq (NaN!=NaN) + Display (a+bj format) impls | W5T1 | 04-complex §7 |
-| W5T8 | `src/complex/ops.rs` | Complex Add + AddAssign operators | W5T1 | 04-complex §7 |
-| W5T9 | `src/complex/ops.rs` | Complex Sub + SubAssign operators | W5T8 | 04-complex §7 |
+| W5T8 | `src/complex/ops.rs` | Complex Add operator | W5T1 | 04-complex §7 |
+| W5T9 | `src/complex/ops.rs` | Complex Sub operator | W5T8 | 04-complex §7 |
 | W5T10 | `src/complex/ops.rs` | Complex Mul operator | W5T1 | 04-complex §7 |
 | W5T11 | `src/complex/ops.rs` | Complex Div operator | W5T10 | 04-complex §7 |
 | W5T12 | `src/complex/ops.rs` | Complex Neg operator | W5T1 | 04-complex §7 |
