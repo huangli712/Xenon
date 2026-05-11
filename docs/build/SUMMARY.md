@@ -16,7 +16,7 @@
 | W4 | Element Type Hierarchy | L1 | 12 | Element/Numeric/RealScalar/ComplexScalar traits, sealed, primitives impls, integration |
 | W5 | Complex Type | L1 | 16 | Complex\<T\> struct, arithmetic ops (Add/Sub/Mul/Div/Neg), Display/Debug, math methods, FFI layout, convert |
 | W6 | Layout System | L2 | 7 | LayoutFlags bitflags, F-order stride computation, contiguity checks, alignment, zero-stride detection |
-| W7 | Storage System | L2 | 15 | RawStorage/Storage/StorageMut/RawStorageMut/StorageOwned/StorageShared traits, marker traits, Owned/A, AlignedAlloc, ViewRepr, ViewMutRepr, ArcRepr |
+| W7 | Storage System | L2 | 19 | RawStorage/Storage/StorageMut/RawStorageMut/StorageOwned/StorageShared traits, marker traits, Owned/A, AlignedAlloc, ViewRepr, ViewMutRepr, ArcRepr |
 | W8 | Tensor Core | L3 | 10 | TensorBase\<S,D\>, type aliases (Tensor/TensorView/TensorViewMut/ArcTensor + dimension convenience aliases), constructors, view methods, accessors, from_raw_parts |
 | W9 | Workspace | L2 | 7 | Workspace struct, borrow guards (WorkspaceBorrow/WorkspaceBorrowMut), split (SplitBorrowMut), expand (ensure_capacity/reallocate), docs |
 | W10 | Dispatch | L4 | 6 | ExecPath enum, select_exec_path, thresholds, ParallelGuard (nested parallel protection), ParallelExecStrategy |
@@ -25,7 +25,7 @@
 | W13 | FFI Helpers | L4 | 5 | BlasInfo, TensorExport/TensorExportMut private descriptors, ptr re-exports (as_ptr/as_mut_ptr/from_raw_parts), export/export_mut, is_blas_compatible/lda, try_offset_of/try_ptr_at |
 | W14 | SIMD Backend | L5 | 10 | SimdKernel trait, element-wise SIMD (add/sub/mul/div), SIMD sum (float/int/complex), SIMD dot, feature gates, property tests |
 | W15 | Parallel Backend | L5 | 8 | ParIter, par_map, par_zip_map, par_sum, par_dot, ParallelPool, error/panic propagation, feature gates |
-| W16 | Math Operations | L5 | 8 | Binary element-wise ops (add/sub/mul/div), unary ops (abs/neg/signum/square/sin/sqrt/exp/ln/floor/ceil/conj/modulus/not), comparison ops (eq/ne/lt/le/gt/ge), SIMD dispatch |
+| W16 | Math Operations | L5 | 11 | Binary element-wise ops (add/sub/mul/div), unary ops (abs/neg/signum/square/sin/sqrt/exp/ln/floor/ceil/conj/modulus), comparison ops (eq/ne/lt/le/gt/ge), logical not, SIMD dispatch |
 | W17 | Matrix Operations | L5 | 6 | dot product (serial + SIMD + parallel paths), rank/shape validation, complex dot, integration tests |
 | W18 | Reduction Operations | L5 | 6 | sum (global), sum_axis, sum_axis_keepdims, SIMD/parallel dispatch gates, error convergence |
 | W19 | Set Operations | L5 | 6 | set module root, unique (real/complex/NaN/signed-zero handling), TensorBase entry method |
@@ -34,13 +34,13 @@
 | W22 | Tensor Construction | L5 | 5 | zeros/ones, eye, from_shape_vec/from_shape_slice/from_vec, from_array/from_scalar |
 | W23 | Operator Overloading | L6 | 9 | overload module root, Add/Sub/Mul/Div for owned/ref/mixed/scalar tensor combinations, integration tests |
 | W24 | Utility Operations | L5 | 5 | util module root, fill, clip, to_contiguous/into_contiguous |
-| W25 | Type Conversion | L5 | 5 | CastTo trait (lossy + dynamic tiers), ConvertTo (lossless), cast method, to_owned/into_owned |
+| W25 | Type Conversion | L5 | 7 | CastTo trait (lossy + dynamic tiers), ConvertTo (lossless), cast method, to_owned/into_owned |
 | W26 | Output Formatting | L5 | 5 | FormatConfig, Display (Numpy-style), Debug (with metadata), pretty formatting helpers |
 | W27 | Safety Audit | cross-cutting | 7 | Send/Sync impls for Owned/ViewRepr/ViewMutRepr/ArcRepr, parallel chunk safety, thread-safety integration tests |
 | W28 | Benchmarks | cross-cutting | 12 | bench infrastructure (utils/generators), core benches (math/reduction/dot/set/broadcast), shape/construction benches, SIMD/parallel comparison, CI/report script |
 | W29 | Integration Tests | cross-cutting | 25 | tests/common utils, core test files (tensor/math/overload/broadcast/index/construction/reduction/iter/matrix/set/shape/conversion/utility/output/error), specialized tests (workspace/ffi/parallel/simd), compile-fail tests, property tests, CI matrix |
 | W30 | Documentation | cross-cutting | 31 | Crate-level docs, module-level docs, type/function-level docs, usage examples (basic/complex/broadcasting/features/simd/ffi/workspace), README/LICENSE/CHANGELOG, docs CI |
-| | **Total** | | **276** | |
+| | **Total** | | **285** | |
 
 ---
 
@@ -150,13 +150,17 @@
 | W7T6 | `src/storage/traits.rs` | Marker traits: IsOwned, IsView, IsViewMut, IsShared | W7T5 | 01-architecture §3, 05-storage §7 |
 | W7T7 | `src/storage/alloc.rs` | AlignedAlloc struct: 64-byte aligned alloc/alloc_zeroed/dealloc | W7T1 | 05-storage §7 |
 | W7T8 | `src/storage/owned.rs` | Owned\<A\> struct + new/with_capacity/from_vec/from_vec_aligned/zeros/from_elem constructors | W7T7 | 05-storage §7 |
-| W7T9 | `src/storage/owned.rs` | Owned\<A\> all trait impls (RawStorage/Storage/StorageMut/StorageOwned) + into_shared/Send/Sync/From/Default | W7T5, W7T8 | 05-storage §7 |
-| W7T10 | `src/storage/view.rs` | ViewRepr\<'a, A\>: struct, from_raw_parts/from_slice/view/slice, Clone/Copy, RawStorage/Storage impls | W7T5, W7T6 | 05-storage §7 |
-| W7T11 | `src/storage/viewmut.rs` | ViewMutRepr\<'a, A\>: struct, from_raw_parts_mut/from_mut_slice/view_mut/view, no Clone, all trait impls | W7T5, W7T6 | 05-storage §7 |
-| W7T12 | `src/storage/arc.rs` | ArcRepr\<A\>: struct, from_vec/from_vec_aligned/zeros/from_elem constructors, Clone (ref-count bump), all trait impls | W7T5 | 05-storage §7 |
-| W7T13 | `src/storage/arc.rs` | ArcRepr\<A\> Send/Sync + Default + From impls | W7T12 | 05-storage §7 |
-| W7T14 | `src/storage/mod.rs` | Module re-exports (all types + traits) + doc comments | W7T9, W7T10, W7T11, W7T13 | 05-storage §7 |
-| W7T15 | `src/storage/` (`#[cfg(test)] mod tests`), `tests/test_tensor.rs`, `tests/test_index.rs`, `tests/test_ffi.rs`, `tests/test_iterator.rs` | Storage integration tests: cross-storage interaction, ZST behavior, empty arrays, alloc alignment, trait semantics via in-module unit tests + cross-module coverage through existing tensor/index/ffi/iterator test files; do NOT add standalone tests/test_storage.rs | W7T14 | 05-storage §7 |
+| W7T9 | `src/storage/owned.rs` | Owned\<A\> RawStorage trait impl | W7T5, W7T8 | 05-storage §7 |
+| W7T10 | `src/storage/owned.rs` | Owned\<A\> Storage trait impl | W7T9 | 05-storage §7 |
+| W7T11 | `src/storage/owned.rs` | Owned\<A\> StorageMut + StorageOwned trait impls | W7T10 | 05-storage §7 |
+| W7T12 | `src/storage/owned.rs` | Owned\<A\> into_shared + unsafe impl Send + unsafe impl Sync | W7T8 | 05-storage §7 |
+| W7T13 | `src/storage/owned.rs` | Owned\<A\> From + Default impls | W7T8 | 05-storage §7 |
+| W7T14 | `src/storage/view.rs` | ViewRepr\<'a, A\>: struct, from_raw_parts/from_slice/view/slice, Clone/Copy, RawStorage/Storage impls | W7T5, W7T6 | 05-storage §7 |
+| W7T15 | `src/storage/viewmut.rs` | ViewMutRepr\<'a, A\>: struct, from_raw_parts_mut/from_mut_slice/view_mut/view, no Clone, all trait impls | W7T5, W7T6 | 05-storage §7 |
+| W7T16 | `src/storage/arc.rs` | ArcRepr\<A\>: struct, from_vec/from_vec_aligned/zeros/from_elem constructors, Clone (ref-count bump), all trait impls | W7T5 | 05-storage §7 |
+| W7T17 | `src/storage/arc.rs` | ArcRepr\<A\> Send/Sync + Default + From impls | W7T16 | 05-storage §7 |
+| W7T18 | `src/storage/mod.rs` | Module re-exports (all types + traits) + doc comments | W7T13, W7T14, W7T15, W7T17 | 05-storage §7 |
+| W7T19 | `src/storage/` (`#[cfg(test)] mod tests`), `tests/test_tensor.rs`, `tests/test_index.rs`, `tests/test_ffi.rs`, `tests/test_iterator.rs` | Storage integration tests: cross-storage interaction, ZST behavior, empty arrays, alloc alignment, trait semantics via in-module unit tests + cross-module coverage through existing tensor/index/ffi/iterator test files; do NOT add standalone tests/test_storage.rs | W7T18 | 05-storage §7 |
 
 ### W8: Tensor Core (L3)
 
@@ -268,8 +272,11 @@
 | W16T4 | `src/math/unary.rs` | Math functions for RealScalar: sin, sqrt, exp, ln, floor, ceil | W16T1 | 11-math §7 |
 | W16T5 | `src/math/unary.rs` | Complex ops: conjugate, modulus | W16T1 | 11-math §7 |
 | W16T6 | `src/math/binary.rs` | Arithmetic ops: add, sub, mul, div (scalar variants) via shared binary skeleton | W16T2 | 11-math §7 |
-| W16T7 | `src/math/unary.rs`, `src/math/comparison.rs` | Logical not (bool) + comparison ops: equal, not_equal, less, greater (return bool tensors) | W16T2 | 11-math §7 |
-| W16T8 | `src/math/binary.rs`, `unary.rs`, `comparison.rs`, `src/simd/vector.rs` | SIMD backend unified dispatch integration for math module | W16T3, W14 | 11-math §7 |
+| W16T7 | `src/math/unary.rs` | Logical not for bool tensors | W16T1 | 11-math §7 |
+| W16T8 | `src/math/comparison.rs` | Equal + not_equal comparison ops (return bool tensors) | W16T2 | 11-math §7 |
+| W16T9 | `src/math/comparison.rs` | Less + less_equal comparison ops (return bool tensors) | W16T8 | 11-math §7 |
+| W16T10 | `src/math/comparison.rs` | Greater + greater_equal comparison ops (return bool tensors) | W16T8 | 11-math §7 |
+| W16T11 | `src/math/binary.rs`, `unary.rs`, `comparison.rs`, `src/simd/vector.rs` | SIMD backend unified dispatch integration for math module | W16T6, W14 | 11-math §7 |
 
 ### W17: Matrix Operations (L5)
 
@@ -361,11 +368,13 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W25T1 | `src/convert/cast.rs` | CastTo trait: Tier-2 lossy (14 cells) + Tier-3 dynamic (8 cells); Tier-1 lossless (11 cells) via ConvertTo/From shims | None | 21-type §7 |
-| W25T2 | `src/convert/mod.rs`, `src/lib.rs` | Module skeleton: sub-module declarations, pub use exports | W25T1 | 21-type §7 |
-| W25T3 | `src/convert/cast.rs` | to_owned() / into_owned(): clone and consume owned conversion methods | W25T2 | 21-type §7 |
-| W25T4 | `src/convert/cast.rs` | cast\<B\>() method: all readable storage inputs → owned result with error reporting | W25T2 | 21-type §7 |
-| W25T5 | `src/convert/cast.rs` | Complete CastTo impls: int↔int, real↔complex, complex↔complex (all combos from require.md §23) | W25T1 | 21-type §7 |
+| W25T1 | `src/convert/mod.rs`, `src/lib.rs` | Module skeleton: sub-module declarations, pub use exports | None | 21-type §7 |
+| W25T2 | `src/convert/cast.rs` | CastTo trait definition (lossy + dynamic) + ConvertTo shim (lossless) trait signatures only, no impls | W25T1 | 21-type §7 |
+| W25T3 | `src/convert/cast.rs` | Tier-1 lossless CastTo impls: int↔int primitive conversions (11 cells) | W25T2 | 21-type §7 |
+| W25T4 | `src/convert/cast.rs` | Tier-2 lossy CastTo impls: real↔int, complex↔int, complex↔real (14 cells) | W25T2 | 21-type §7 |
+| W25T5 | `src/convert/cast.rs` | Tier-3 dynamic CastTo impls: remaining cross-type conversions (8 cells) | W25T2 | 21-type §7 |
+| W25T6 | `src/convert/cast.rs` | cast\<B\>() method on TensorBase\<S, D\>: all readable storage inputs → owned result with error reporting | W25T3, W25T4, W25T5 | 21-type §7 |
+| W25T7 | `src/convert/cast.rs` | to_owned() + into_owned(): clone and consume owned conversion methods | W25T1 | 21-type §7 |
 
 ### W26: Output Formatting (L5)
 
@@ -381,10 +390,10 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W27T1 | `src/storage/owned.rs` | unsafe impl Send for Owned\<A\> + unsafe impl Sync for Owned\<A\> with full SAFETY comments | W7T9 | 25-safety §7 |
-| W27T2 | `src/storage/view.rs` | unsafe impl Send for ViewRepr\<'a, A\> + unsafe impl Sync for ViewRepr\<'a, A\> with SAFETY comments | W7T10 | 25-safety §7 |
-| W27T3 | `src/storage/viewmut.rs` | unsafe impl Send for ViewMutRepr\<'a, A\>, no Sync impl (documented), SAFETY comments | W7T11 | 25-safety §7 |
-| W27T4 | `src/storage/arc.rs` | unsafe impl Send + Sync for ArcRepr\<A\> with SAFETY comments | W7T13 | 25-safety §7 |
+| W27T1 | `src/storage/owned.rs` | Audit and strengthen SAFETY comments for Owned\<A\> Send + Sync impls | W7T12 | 25-safety §7 |
+| W27T2 | `src/storage/view.rs` | Audit and strengthen SAFETY comments for ViewRepr\<'a, A\> Send + Sync impls | W7T14 | 25-safety §7 |
+| W27T3 | `src/storage/viewmut.rs` | Audit and strengthen SAFETY comments for ViewMutRepr\<'a, A\> Send (no Sync) | W7T15 | 25-safety §7 |
+| W27T4 | `src/storage/arc.rs` | Audit and strengthen SAFETY comments for ArcRepr\<A\> Send + Sync impls | W7T17 | 25-safety §7 |
 | W27T5 | `src/parallel/iter.rs` | Parallel execution chunk safety: completeness, non-overlap, boundary tests | W27T1–W27T4 | 25-safety §7 |
 | W27T6 | `tests/test_parallel.rs`, `tests/test_error.rs` | Thread-safety integration tests: cross-thread transfer, concurrent access | W27T1–W27T5 | 25-safety §7 |
 | W27T7 | `src/storage/mod.rs` | Module-level thread-safety docs, Send/Sync matrix, cargo doc pass | W27T1–W27T4 | 25-safety §7 |
