@@ -97,7 +97,7 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W4T1 | `src/element/mod.rs` | Module skeleton + import shared Sealed + Element trait definition | W3T15 | 03-element §7 |
+| W4T1 | `src/element/mod.rs` | Module skeleton + import shared Sealed + Element trait definition | W3T15, W2T1 | 03-element §7 |
 | W4T2 | `src/element/numeric.rs` | Numeric trait definition (arithmetic supertraits + conjugate) | W4T1 | 03-element §7 |
 | W4T3 | `src/element/real.rs` | RealScalar trait: math functions (abs/sqrt/sin/exp/ln/floor/ceil) + NaN detection | W4T2 | 03-element §7 |
 | W4T4 | `src/element/complex.rs` | ComplexScalar trait: associated type Real + complex methods (re/im/norm) | W4T2 | 03-element §7 |
@@ -108,7 +108,7 @@
 | W4T9 | `src/element/mod.rs` | Documentation clarifying usize as index/shape metadata only, not an element type | W4T1 | 03-element §7 |
 | W4T10 | `src/element/primitives.rs` | Element + Numeric + ComplexScalar impls for Complex\<f32\>/Complex\<f64\> | W4T4, W4T6 | 03-element §7 |
 | W4T11 | `src/element/real.rs`, `src/element/mod.rs` | Calibrate math capability boundaries + document lossy CastTo error semantics | W4T7 | 03-element §7 |
-| W4T12 | All `src/element/` files | Doc comments on all pub items, cargo doc verification | W4T10 | 03-element §7 |
+| W4T12 | All `src/element/` files | Doc comments on all pub items, cargo doc verification | W4T10, W4T11 | 03-element §7 |
 | W4T13 | `src/element/` (`#[cfg(test)] mod tests`) | Element in-module unit tests: verify trait impls for all 7 element types | W4T10 | 03-element §7 |
 | W4T14 | `tests/test_tensor.rs` | Element cross-module tests for tensor interaction | W4T10 | 03-element §7 |
 | W4T15 | `tests/test_math.rs` | Element cross-module tests for math operations | W4T10 | 03-element §7 |
@@ -120,10 +120,10 @@
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
 | W5T1 | `src/complex/mod.rs` | Complex\<T\> struct (repr(C)) + new() constructor | W1T3 | 04-complex §7 |
-| W5T2 | `src/complex/mod.rs` | ComplexFloat sealed trait + f32/f64 impls | W5T1 | 04-complex §7 |
+| W5T2 | `src/complex/mod.rs` | ComplexFloat sealed trait + f32/f64 impls | W5T1, W3T15 | 04-complex §7 |
 | W5T3 | `src/complex/mod.rs` | const size/align assertions for FFI layout guarantees | W5T1 | 04-complex §7 |
 | W5T4 | `src/complex/mod.rs` | re() / im() accessors | W5T1 | 04-complex §7 |
-| W5T5 | `src/complex/mod.rs` | from_imag(), conj(), and From\<T\> constructors | W5T1 | 04-complex §7 |
+| W5T5 | `src/complex/mod.rs` | from_imag(), conj(), and From\<T\> constructors | W5T1, W5T4 | 04-complex §7 |
 | W5T6 | `src/complex/mod.rs` | is_real() / is_imaginary() predicates | W5T1 | 04-complex §7 |
 | W5T7 | `src/complex/mod.rs` | PartialEq (NaN!=NaN) + Display (a+bj format) impls | W5T1 | 04-complex §7 |
 | W5T8 | `src/complex/ops.rs` | Complex Add operator | W5T1 | 04-complex §7 |
@@ -145,9 +145,9 @@
 | W6T3 | `src/layout/strides.rs` | Module skeleton: file placeholder, declarations | W6T1 | 06-layout §7 |
 | W6T4 | `src/layout/contiguous.rs` | Module skeleton: file placeholder, declarations | W6T1 | 06-layout §7 |
 | W6T5 | `src/layout/flags.rs` | LayoutFlags(u8) bitflags: F_CONTIGUOUS, ALIGNED, HAS_ZERO_STRIDE + query/set methods | W6T2 | 06-layout §7 |
-| W6T6 | `src/layout/strides.rs` | compute_f_strides\<D\>: F-order stride computation with overflow check returning Result | W6T3 | 06-layout §7 |
-| W6T7 | `src/layout/contiguous.rs` | is_f_contiguous\<D\>: F-order contiguity detection | W6T4 | 06-layout §7 |
-| W6T8 | `src/layout/strides.rs` | has_zero_stride: raw zero-stride detector (flag assignment checks product(shape) > 0) | W6T3 | 06-layout §7 |
+| W6T6 | `src/layout/strides.rs` | compute_f_strides\<D\>: F-order stride computation with overflow check returning Result | W6T3, W3T2 | 06-layout §7 |
+| W6T7 | `src/layout/contiguous.rs` | is_f_contiguous\<D\>: F-order contiguity detection | W6T4, W3T2 | 06-layout §7 |
+| W6T8 | `src/layout/strides.rs` | has_zero_stride: raw zero-stride detector (flag assignment checks product(shape) > 0) | W6T3, W3T2 | 06-layout §7 |
 | W6T9 | `src/layout/strides.rs` | is_aligned_to / is_aligned alignment check functions | W6T3 | 06-layout §7 |
 | W6T10 | `src/layout/` (`#[cfg(test)] mod tests`), `tests/test_tensor.rs`, `tests/test_shape.rs`, `tests/test_index.rs`, `tests/test_ffi.rs`, `tests/test_simd.rs` | Layout integration tests | W6T6–W6T9 | 06-layout §7 |
 
@@ -180,12 +180,12 @@
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
 | W8T1 | `src/tensor/mod.rs` | Module skeleton: sub-module declarations, public exports | None | 07-tensor §7 |
-| W8T2 | `src/tensor/mod.rs` | TensorBase\<S, D\> struct: 6 fields (storage, shape, strides, offset, flags, derived_from_view_mut) | W8T1 | 07-tensor §7 |
+| W8T2 | `src/tensor/mod.rs` | TensorBase\<S, D\> struct: 6 fields (storage, shape, strides, offset, flags, derived_from_view_mut) | W8T1, W6T5 | 07-tensor §7 |
 | W8T3 | `src/tensor/aliases.rs` | 4 primary type aliases (Tensor/TensorView/TensorViewMut/ArcTensor) + 4×8=32 dim convenience aliases | W8T2 | 07-tensor §7 |
-| W8T4 | `src/tensor/impls.rs` | Shape & stride query methods: shape/strides/ndim/len/is_empty/offset/raw_dim/flags/storage_kind/access_semantics/data_location | W8T2 | 07-tensor §7 |
+| W8T4 | `src/tensor/impls.rs` | Shape & stride query methods: shape/strides/ndim/len/is_empty/offset/raw_dim/flags/storage_kind/access_semantics/data_location | W8T2, W3T2, W6T5 | 07-tensor §7 |
 | W8T5 | `src/tensor/impls.rs` | Layout query delegation: layout_state/is_f_contiguous/is_aligned/has_zero_stride | W8T4 | 07-tensor §7 |
 | W8T6 | `src/tensor/impls.rs` | Pointer access & slice: as_ptr/as_storage_ptr/as_mut_ptr/as_slice/as_mut_slice | W8T4 | 07-tensor §7 |
-| W8T7 | `src/tensor/construct.rs` | from_raw_parts / from_raw_parts_mut with storage_len and validate_access_range | W8T2 | 07-tensor §7 |
+| W8T7 | `src/tensor/construct.rs` | from_raw_parts / from_raw_parts_mut with storage_len and validate_access_range | W8T2, W6T5, W3T2 | 07-tensor §7 |
 | W8T8 | `src/tensor/construct.rs` | from_raw_vec_unchecked (pub(crate) unsafe internal constructor) | W8T5, W8T7 | 07-tensor §7 |
 | W8T9 | `src/tensor/impls.rs` | View creation methods: view() / view_mut() | W8T6 | 07-tensor §7 |
 | W8T10 | `tests/test_tensor.rs` | Integration tests: cross-module interaction, boundary tests, type alias compilation | W8T3, W8T9 | 07-tensor §7 |
@@ -270,7 +270,7 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W15T1 | `src/parallel/iter.rs` | ParIter + TensorBase::par_iter(): single-input element-level parallel traversal entry | None | 09-parallel §7 |
+| W15T1 | `src/parallel/iter.rs` | ParIter + TensorBase::par_iter(): single-input element-level parallel traversal entry | W10T4 | 09-parallel §7 |
 | W15T2 | `src/parallel/map.rs` | par_map: pure parallel element-wise map entry, strategy from dispatch | W15T1 | 09-parallel §7 |
 | W15T3 | `src/parallel/map.rs` | par_zip_map: dual-input broadcast element-wise parallel entry for math consumption | W15T1 | 09-parallel §7 |
 | W15T4 | `src/parallel/reduce.rs` | par_reduce_impl + par_sum: parallel reduction, identity merge, semantic alignment with caller's serial baseline | W15T1 | 09-parallel §7 |
@@ -501,20 +501,20 @@
 | W30T26 | `src/util/mod.rs` | Util module-level docs: responsibility overview, utility function category notes | W30T2 | 29-documentation §7 |
 | W30T27 | `src/simd/mod.rs` | SIMD module-level docs: SimdKernel trait, kernel wiring, feature gate notes | W30T2 | 29-documentation §7 |
 | W30T28 | `src/parallel/mod.rs` | Parallel module-level docs: ParIter, map/reduce patterns, thread-safety, feature gate | W30T2 | 29-documentation §7 |
-| W30T29 | `src/util/mod.rs` | Util module-level docs: responsibility overview, utility function category notes (module-level only, no function-level doctests) | W30T2 | 29-documentation §7 |
-| W30T30 | `src/tensor/mod.rs` + related files | Tensor type-level docs + doctests: TensorBase, Tensor, TensorView, TensorViewMut, ArcTensor | W30T5–W30T28 | 29-documentation §7 |
-| W30T31 | `src/dimension/mod.rs` | Dimension type-level docs + doctests: Ix0–Ix6, IxDyn, Dimension trait | W30T5–W30T28 | 29-documentation §7 |
-| W30T32 | `src/element/mod.rs` | Element type-level docs + doctests: Element, Numeric, RealScalar, ComplexScalar traits | W30T5–W30T28 | 29-documentation §7 |
-| W30T33 | `src/storage/mod.rs` | Storage type-level docs + doctests: Owned, ViewRepr, StorageMut trait | W30T5–W30T28 | 29-documentation §7 |
-| W30T34 | `src/layout/mod.rs` | Layout type-level docs + doctests: LayoutFlags, compute_f_strides | W30T5–W30T28 | 29-documentation §7 |
-| W30T35 | `src/math/` files | Math function docs + doctests: add, sub, mul, div, sin, sqrt, exp, ln, abs | W30T5–W30T28 | 29-documentation §7 |
-| W30T36 | `src/reduction/`, `src/matrix/` | Reduction + matrix docs + doctests: sum, sum_axis, dot | W30T5–W30T28 | 29-documentation §7 |
+| W30T29 | `src/tensor/mod.rs` + related files | Tensor type-level docs + doctests: TensorBase, Tensor, TensorView, TensorViewMut, ArcTensor | W30T5–W30T28 | 29-documentation §7 |
+| W30T30 | `src/dimension/mod.rs` | Dimension type-level docs + doctests: Ix0–Ix6, IxDyn, Dimension trait | W30T5–W30T28 | 29-documentation §7 |
+| W30T31 | `src/element/mod.rs` | Element type-level docs + doctests: Element, Numeric, RealScalar, ComplexScalar traits | W30T5–W30T28 | 29-documentation §7 |
+| W30T32 | `src/storage/mod.rs` | Storage type-level docs + doctests: Owned, ViewRepr, StorageMut trait | W30T5–W30T28 | 29-documentation §7 |
+| W30T33 | `src/layout/mod.rs` | Layout type-level docs + doctests: LayoutFlags, compute_f_strides | W30T5–W30T28 | 29-documentation §7 |
+| W30T34 | `src/math/` files | Math function docs + doctests: add, sub, mul, div, sin, sqrt, exp, ln, abs | W30T5–W30T28 | 29-documentation §7 |
+| W30T35 | `src/reduction/` | Reduction docs + doctests: sum, sum_axis | W30T5–W30T28 | 29-documentation §7 |
+| W30T36 | `src/matrix/` | Matrix docs + doctests: dot | W30T5–W30T28 | 29-documentation §7 |
 | W30T37 | `src/broadcast/`, `src/shape/mod.rs` | Broadcast + shape docs + doctests: broadcast_shape, transpose | W30T5–W30T28 | 29-documentation §7 |
 | W30T38 | `src/construct/mod.rs`, `src/set/mod.rs` | Construct + set docs + doctests: zeros, ones, eye, from_shape_vec, unique + error semantics | W30T5–W30T28 | 29-documentation §7 |
 | W30T39 | `src/ffi/mod.rs`, `src/workspace/mod.rs`, `src/error.rs` | FFI + workspace + error docs + doctests | W30T5–W30T28 | 29-documentation §7 |
 | W30T40 | `src/iter/mod.rs`, `src/convert/mod.rs`, `src/format/mod.rs`, `src/overload/mod.rs` | Iter + convert + format + overload module docs + doctests | W30T5–W30T28 | 29-documentation §7 |
 | W30T41 | `src/index/mod.rs` | Index function-level docs + doctests | W30T5–W30T28 | 29-documentation §7 |
-| W30T42 | `src/util/mod.rs` | Util function-level docs + doctests: clip, fill, try_fill, to_contiguous, into_contiguous | W30T29 | 29-documentation §7 |
+| W30T42 | `src/util/mod.rs` | Util function-level docs + doctests: clip, fill, try_fill, to_contiguous, into_contiguous | W30T26 | 29-documentation §7 |
 | W30T43 | `examples/basic.rs` | Usage example: create, operate, reduce, print | W30T1 | 29-documentation §7 |
 | W30T44 | `examples/complex.rs` | Usage example: complex construction, same-type arithmetic, explicit conversion ops | W30T1 | 29-documentation §7 |
 | W30T45 | `examples/broadcasting.rs` | Usage example: broadcast rules, row/col/scalar broadcast | W30T1 | 29-documentation §7 |
