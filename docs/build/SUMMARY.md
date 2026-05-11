@@ -37,9 +37,9 @@
 | W25 | Type Conversion | L5 | 5 | CastTo trait (lossy + dynamic tiers), ConvertTo (lossless), cast method, to_owned/into_owned |
 | W26 | Output Formatting | L5 | 5 | FormatConfig, Display (Numpy-style), Debug (with metadata), pretty formatting helpers |
 | W27 | Safety Audit | cross-cutting | 7 | Send/Sync impls for Owned/ViewRepr/ViewMutRepr/ArcRepr, parallel chunk safety, thread-safety integration tests |
-| W28 | Benchmarks | — | 12 | bench infrastructure (utils/generators), core benches (math/reduction/dot/set/broadcast), shape/construction benches, SIMD/parallel comparison, CI/report script |
-| W29 | Integration Tests | — | 25 | tests/common utils, core test files (tensor/math/overload/broadcast/index/construction/reduction/iter/matrix/set/shape/conversion/utility/output/error), specialized tests (workspace/ffi/parallel/simd), compile-fail tests, property tests, CI matrix |
-| W30 | Documentation | — | 31 | Crate-level docs, module-level docs, type/function-level docs, usage examples (basic/complex/broadcasting/features/simd/ffi/workspace), README/LICENSE/CHANGELOG, docs CI |
+| W28 | Benchmarks | cross-cutting | 12 | bench infrastructure (utils/generators), core benches (math/reduction/dot/set/broadcast), shape/construction benches, SIMD/parallel comparison, CI/report script |
+| W29 | Integration Tests | cross-cutting | 25 | tests/common utils, core test files (tensor/math/overload/broadcast/index/construction/reduction/iter/matrix/set/shape/conversion/utility/output/error), specialized tests (workspace/ffi/parallel/simd), compile-fail tests, property tests, CI matrix |
+| W30 | Documentation | cross-cutting | 31 | Crate-level docs, module-level docs, type/function-level docs, usage examples (basic/complex/broadcasting/features/simd/ffi/workspace), README/LICENSE/CHANGELOG, docs CI |
 | | **Total** | | **276** | |
 
 ---
