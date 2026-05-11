@@ -49,7 +49,7 @@ W22 完成 ──→ W30 (Documentation)
 ### W1: Coding Standards & Project Setup (L0)
 
 ```
-批次1 (并行):
+批次1:
   W1T1 (Cargo.toml)
 批次2 (并行):
   W1T2 (rustfmt.toml, 需 W1T1)
@@ -67,13 +67,13 @@ W22 完成 ──→ W30 (Documentation)
 ```
 批次1:
   W2T1 (XenonError enum)
-批次2 (并行):
+批次2:
   W2T2 (aux enums+Result, 需 W2T1)
 批次3 (并行):
   W2T3 (Display, 需 W2T2)
   W2T4 (Error impl, 需 W2T2)
 批次4:
-  W2T5 (prelude exports, 需 W2T3+W2T4)
+  W2T5 (prelude exports, 需 W2T4)
 ```
 
 ---
@@ -83,7 +83,7 @@ W22 完成 ──→ W30 (Documentation)
 ```
 批次1:
   W3T1 (mod.rs skeleton)
-批次2 (并行):
+批次2:
   W3T2 (Dimension trait, 需 W3T1)
 批次3 (并行):
   W3T3 (Ix0, 需 W3T2)
@@ -106,7 +106,7 @@ W22 完成 ──→ W30 (Documentation)
 批次11:
   W3T12 (error integration, 需 W2T1+W3T11)
 批次12:
-  W3T13 (IntoDimension, 需 W3T11+W3T12)
+  W3T13 (IntoDimension, 需 W3T12)
 批次13:
   W3T15 (Sealed+exports, 需 W3T12+W3T13+W3T14)
 批次14:
@@ -182,7 +182,7 @@ W22 完成 ──→ W30 (Documentation)
   W5T11 (Div, 需 W5T10)
 批次7:
   W5T13 (tighten boundary, 需 W5T8–W5T12)
-批次8 (并行):
+批次8:
   W5T14 (norm/norm_sqr, 需 W5T1)
 批次9:
   W5T15 (doc comments, 需 W5T13+W5T14)
@@ -347,7 +347,7 @@ W22 完成 ──→ W30 (Documentation)
   W12T1 (mod.rs skeleton)
 批次2:
   W12T2 (StrideState, 需 W12T1)
-批次3 (并行):
+批次3:
   W12T5 (AxisIter/AxisIterMut, 需 W12T1)
 批次4:
   W12T3 (Iter, 需 W12T2)
@@ -366,7 +366,7 @@ W22 完成 ──→ W30 (Documentation)
 ```
 批次1:
   W13T1 (mod.rs, 需 W8T7)
-批次2 (并行):
+批次2:
   W13T2 (types, 需 W13T1)
 批次3:
   W13T3 (private descriptors, 需 W13T2)
@@ -386,7 +386,7 @@ W22 完成 ──→ W30 (Documentation)
   W14T1 (mod.rs skeleton)
 批次2:
   W14T2 (element-wise SIMD, 需 W14T1)
-批次3 (并行):
+批次3:
   W14T3 (float sum SIMD, 需 W14T2)
 批次4 (并行):
   W14T4 (integer sum/dot, 需 W14T3)
