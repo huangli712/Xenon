@@ -8,37 +8,37 @@
 
 ## Wave Overview
 
-| Wave | Name | Layer | Task Count |  |
+| Wave | Name | Layer | Task Count | Description |
 |------|------|-------|------------|-------------|
 | W1 | Coding Standards & Project Setup | L0 | 6 | Cargo.toml, rustfmt.toml, lib.rs/prelude.rs skeleton with lint attrs, .clippy.toml, CI config |
 | W2 | Error System | L0 | 5 | XenonError enum, Result alias, Display/Error impls, auxiliary enums, prelude exports |
 | W3 | Dimension System | L1 | 21 | Static dims (Ix0–Ix6), IxDyn, Dimension/IntoDimension/RemoveAxis traits, Axis, Sealed |
-| W4 | Element Type Hierarchy | L1 | 17 |  |
-| W5 | Complex Type | L1 | 16 |  |
+| W4 | Element Type Hierarchy | L1 | 17 | Element/Numeric/RealScalar/ComplexScalar traits, sealed, primitives impls, integration |
+| W5 | Complex Type | L1 | 16 | Complex\<T\> struct, arithmetic ops (Add/Sub/Mul/Div/Neg), Display/Debug, math methods, FFI layout, convert |
 | W6 | Layout System | L2 | 10 | LayoutFlags bitflags, F-order stride computation, contiguity checks, alignment, zero-stride detection |
 | W7 | Storage System | L2 | 19 | RawStorage/Storage/StorageMut/RawStorageMut/StorageOwned/StorageShared traits, marker traits, Owned/A, AlignedAlloc, ViewRepr, ViewMutRepr, ArcRepr |
-| W8 | Tensor Core | L3 | 10 |  |
+| W8 | Tensor Core | L3 | 10 | TensorBase\<S,D\>, type aliases (Tensor/TensorView/TensorViewMut/ArcTensor + dimension convenience aliases), constructors, view methods, accessors, from_raw_parts |
 | W9 | Workspace | L2 | 7 | Workspace struct, borrow guards (WorkspaceBorrow/WorkspaceBorrowMut), split (SplitBorrowMut), expand (ensure_capacity/reallocate), docs |
 | W10 | Dispatch | L4 | 6 | ExecPath enum, select_exec_path, thresholds, ParallelGuard (nested parallel protection), ParallelExecStrategy |
 | W11 | Broadcasting | L4 | 10 | BroadcastDim trait, can_broadcast, broadcast_shape, broadcast_strides, broadcast_to, broadcast_with, error handling, integration tests |
-| W12 | Iterators | L4 | 7 |  |
-| W13 | FFI Helpers | L4 | 6 |  |
+| W12 | Iterators | L4 | 7 | StrideState, Iter, IterMut, AxisIter/AxisIterMut, IndexedIter/IndexedIterMut, TensorBase entry methods |
+| W13 | FFI Helpers | L4 | 6 | BlasInfo, TensorExport/TensorExportMut private descriptors, ptr re-exports, export/export_mut, is_blas_compatible/lda, try_offset_of/try_ptr_at |
 | W14 | SIMD Backend | L5 | 10 | SimdKernel trait, element-wise SIMD (add/sub/mul/div), SIMD sum (float/int/complex), SIMD dot, feature gates, property tests |
 | W15 | Parallel Backend | L5 | 8 | ParIter, par_map, par_zip_map, par_sum, par_dot, ParallelPool, error/panic propagation, feature gates |
 | W16 | Math Operations | L5 | 11 | Binary element-wise ops (add/sub/mul/div), unary ops (abs/neg/signum/square/sin/sqrt/exp/ln/floor/ceil/conj/modulus), comparison ops (eq/ne/lt/le/gt/ge), logical not, SIMD dispatch |
 | W17 | Matrix Operations | L5 | 7 | dot product (serial + SIMD + parallel paths), rank/shape validation, complex dot, integration tests |
 | W18 | Reduction Operations | L5 | 6 | sum (global), sum_axis, sum_axis_keepdims, SIMD/parallel dispatch gates, error convergence |
-| W19 | Set Operations | L5 | 6 |  |
+| W19 | Set Operations | L5 | 6 | set module root, unique (real/complex/NaN/signed-zero handling), TensorBase entry method |
 | W20 | Shape Operations | L5 | 4 | transpose (full-axis reversal), contiguity recomputation, integration tests |
 | W21 | Indexing | L5 | 6 | index module root, NdIndex trait, try_at/get/get_unchecked, SliceInfo, try_at_mut/get_mut/get_unchecked_mut, slice shape/stride update |
-| W22 | Tensor Construction | L5 | 9 |  |
+| W22 | Tensor Construction | L5 | 9 | zeros, ones, eye, from_shape_vec, from_shape_slice, from_vec, from_array, from_scalar |
 | W23 | Operator Overloading | L6 | 9 | overload module root, Add/Sub/Mul/Div for owned/ref/mixed/scalar tensor combinations, integration tests |
 | W24 | Utility Operations | L5 | 5 | util module root, fill, clip, to_contiguous/into_contiguous |
-| W25 | Type Conversion | L5 | 7 |  |
+| W25 | Type Conversion | L5 | 7 | CastTo trait (lossy + dynamic tiers), ConvertTo (lossless), cast method, to_owned/into_owned |
 | W26 | Output Formatting | L5 | 6 | FormatConfig, Display (Numpy-style), Debug (with metadata), pretty formatting helpers |
 | W27 | Safety Audit | cross-cutting | 7 | Send/Sync impls for Owned/ViewRepr/ViewMutRepr/ArcRepr, parallel chunk safety, thread-safety integration tests |
 | W28 | Benchmarks | cross-cutting | 12 | bench infrastructure (utils/generators), core benches (math/reduction/dot/set/broadcast), shape/construction benches, SIMD/parallel comparison, CI/report script |
-| W29 | Integration Tests | cross-cutting | 25 |  |
+| W29 | Integration Tests | cross-cutting | 25 | tests/common utils, core test files (tensor/math/overload/broadcast/index/construction/reduction/iter/matrix/set/shape/conversion/utility/output/error), specialized tests (workspace/ffi/parallel/simd), compile-fail tests, property tests, CI matrix |
 | W30 | Documentation | cross-cutting | 52 | Crate-level docs, per-module docs, type/function-level docs + doctests, usage examples, README/LICENSE/CHANGELOG, docs CI |
 | | **Total** | | **330** | |
 
@@ -535,19 +535,20 @@ W1 (Coding/Setup) ──┬──→ W2 (Error)
                     ├──→ W3 (Dimension) ──→ W6 (Layout)
                     └──→ W5 (Complex)
 
+W2 ──→ W3
 W3 + W5 ──→ W4 (Element)
 W6 + W3 ──→ W7 (Storage)
 W2 ──→ W9 (Workspace, L2)
-W3 + W4 + W6 + W7 ──→ W8 (Tensor Core)
+W3 + W6 + W7 ──→ W8 (Tensor Core)
 
-W8 + W6 + W2 ─→ W10 (Dispatch)
-W8 + W6 + W3 + W2 ─→ W11 (Broadcast)
-W8 + W7 + W3 + W2 ─→ W12 (Iterators)
-W8 + W6 + W3 + W4 + W2 ─→ W13 (FFI)
-W8 + W6 + W4 + W5 ─→ W14 (SIMD)
-W8 + W4 + W10 ─→ W15 (Parallel)
+W8 ─→ W10 (Dispatch)
+W8 + W6 + W3 ─→ W11 (Broadcast)
+W8 + W7 + W3 ─→ W12 (Iterators)
+W8 + W6 + W3 ─→ W13 (FFI)
+W4 + W5 ─→ W14 (SIMD)
+W8 + W10 ─→ W15 (Parallel)
 
-W8 + W4 + W11 + W12 + W14 + W15 ─→ W16 (Math)
+W4 + W8 + W11 + W12 + W14 + W15 ─→ W16 (Math)
 W8 + W14 + W15 ─→ W17 (Matrix)
 W8 + W14 + W15 ─→ W18 (Reduction)
 W8 + W12 ─→ W19 (Set)
@@ -560,9 +561,9 @@ W4 + W5 + W8 ─→ W25 (Type Conversion)
 W8 ─→ W26 (Output Formatting)
 
 W1–W26 ─→ W27 (Safety Audit)
-W22 ─→ W28 (Benchmarks)
-W22 ─→ W29 (Integration Tests)
-W22 ─→ W30 (Documentation)
+W1–W26 ─→ W28 (Benchmarks)
+W1–W26 ─→ W29 (Integration Tests)
+W1–W26 ─→ W30 (Documentation)
 ```
 
 ---
