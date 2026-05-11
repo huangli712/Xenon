@@ -12,35 +12,35 @@
 |------|------|-------|------------|-------------|
 | W1 | Coding Standards & Project Setup | L0 | 6 | Cargo.toml, rustfmt.toml, lib.rs/prelude.rs skeleton with lint attrs, .clippy.toml, CI config |
 | W2 | Error System | L0 | 5 | XenonError enum, Result alias, Display/Error impls, auxiliary enums, prelude exports |
-| W3 | Dimension System | L1 | 16 | Static dims (Ix0–Ix6), IxDyn, Dimension/IntoDimension/RemoveAxis traits, Axis, Sealed |
-| W4 | Element Type Hierarchy | L1 | 12 | Element/Numeric/RealScalar/ComplexScalar traits, sealed, primitives impls, integration |
+| W3 | Dimension System | L1 | 20 | Static dims (Ix0–Ix6), IxDyn, Dimension/IntoDimension/RemoveAxis traits, Axis, Sealed |
+| W4 | Element Type Hierarchy | L1 | 16 | Element/Numeric/RealScalar/ComplexScalar traits, sealed, primitives impls, integration |
 | W5 | Complex Type | L1 | 16 | Complex\<T\> struct, arithmetic ops (Add/Sub/Mul/Div/Neg), Display/Debug, math methods, FFI layout, convert |
-| W6 | Layout System | L2 | 7 | LayoutFlags bitflags, F-order stride computation, contiguity checks, alignment, zero-stride detection |
+| W6 | Layout System | L2 | 10 | LayoutFlags bitflags, F-order stride computation, contiguity checks, alignment, zero-stride detection |
 | W7 | Storage System | L2 | 19 | RawStorage/Storage/StorageMut/RawStorageMut/StorageOwned/StorageShared traits, marker traits, Owned/A, AlignedAlloc, ViewRepr, ViewMutRepr, ArcRepr |
 | W8 | Tensor Core | L3 | 10 | TensorBase\<S,D\>, type aliases (Tensor/TensorView/TensorViewMut/ArcTensor + dimension convenience aliases), constructors, view methods, accessors, from_raw_parts |
 | W9 | Workspace | L2 | 7 | Workspace struct, borrow guards (WorkspaceBorrow/WorkspaceBorrowMut), split (SplitBorrowMut), expand (ensure_capacity/reallocate), docs |
 | W10 | Dispatch | L4 | 6 | ExecPath enum, select_exec_path, thresholds, ParallelGuard (nested parallel protection), ParallelExecStrategy |
-| W11 | Broadcasting | L4 | 8 | BroadcastDim trait, can_broadcast, broadcast_shape, broadcast_strides, broadcast_to, broadcast_with, error handling, integration tests |
+| W11 | Broadcasting | L4 | 10 | BroadcastDim trait, can_broadcast, broadcast_shape, broadcast_strides, broadcast_to, broadcast_with, error handling, integration tests |
 | W12 | Iterators | L4 | 6 | StrideState, Elements (flat Iter/IterMut), AxisIter/AxisIterMut, IndexedIter/IndexedIterMut, TensorBase entry methods |
-| W13 | FFI Helpers | L4 | 5 | BlasInfo, TensorExport/TensorExportMut private descriptors, ptr re-exports (as_ptr/as_mut_ptr/from_raw_parts), export/export_mut, is_blas_compatible/lda, try_offset_of/try_ptr_at |
+| W13 | FFI Helpers | L4 | 6 | BlasInfo, TensorExport/TensorExportMut private descriptors, ptr re-exports, export/export_mut, is_blas_compatible/lda, try_offset_of/try_ptr_at |
 | W14 | SIMD Backend | L5 | 10 | SimdKernel trait, element-wise SIMD (add/sub/mul/div), SIMD sum (float/int/complex), SIMD dot, feature gates, property tests |
 | W15 | Parallel Backend | L5 | 8 | ParIter, par_map, par_zip_map, par_sum, par_dot, ParallelPool, error/panic propagation, feature gates |
 | W16 | Math Operations | L5 | 11 | Binary element-wise ops (add/sub/mul/div), unary ops (abs/neg/signum/square/sin/sqrt/exp/ln/floor/ceil/conj/modulus), comparison ops (eq/ne/lt/le/gt/ge), logical not, SIMD dispatch |
-| W17 | Matrix Operations | L5 | 6 | dot product (serial + SIMD + parallel paths), rank/shape validation, complex dot, integration tests |
+| W17 | Matrix Operations | L5 | 7 | dot product (serial + SIMD + parallel paths), rank/shape validation, complex dot, integration tests |
 | W18 | Reduction Operations | L5 | 6 | sum (global), sum_axis, sum_axis_keepdims, SIMD/parallel dispatch gates, error convergence |
 | W19 | Set Operations | L5 | 6 | set module root, unique (real/complex/NaN/signed-zero handling), TensorBase entry method |
-| W20 | Shape Operations | L5 | 3 | transpose (full-axis reversal), contiguity recomputation, integration tests |
+| W20 | Shape Operations | L5 | 4 | transpose (full-axis reversal), contiguity recomputation, integration tests |
 | W21 | Indexing | L5 | 6 | index module root, NdIndex trait, try_at/get/get_unchecked, SliceInfo, try_at_mut/get_mut/get_unchecked_mut, slice shape/stride update |
-| W22 | Tensor Construction | L5 | 5 | zeros/ones, eye, from_shape_vec/from_shape_slice/from_vec, from_array/from_scalar |
+| W22 | Tensor Construction | L5 | 9 | zeros, ones, eye, from_shape_vec, from_shape_slice, from_vec, from_array, from_scalar |
 | W23 | Operator Overloading | L6 | 9 | overload module root, Add/Sub/Mul/Div for owned/ref/mixed/scalar tensor combinations, integration tests |
 | W24 | Utility Operations | L5 | 5 | util module root, fill, clip, to_contiguous/into_contiguous |
 | W25 | Type Conversion | L5 | 7 | CastTo trait (lossy + dynamic tiers), ConvertTo (lossless), cast method, to_owned/into_owned |
-| W26 | Output Formatting | L5 | 5 | FormatConfig, Display (Numpy-style), Debug (with metadata), pretty formatting helpers |
+| W26 | Output Formatting | L5 | 6 | FormatConfig, Display (Numpy-style), Debug (with metadata), pretty formatting helpers |
 | W27 | Safety Audit | cross-cutting | 7 | Send/Sync impls for Owned/ViewRepr/ViewMutRepr/ArcRepr, parallel chunk safety, thread-safety integration tests |
 | W28 | Benchmarks | cross-cutting | 12 | bench infrastructure (utils/generators), core benches (math/reduction/dot/set/broadcast), shape/construction benches, SIMD/parallel comparison, CI/report script |
 | W29 | Integration Tests | cross-cutting | 25 | tests/common utils, core test files (tensor/math/overload/broadcast/index/construction/reduction/iter/matrix/set/shape/conversion/utility/output/error), specialized tests (workspace/ffi/parallel/simd), compile-fail tests, property tests, CI matrix |
-| W30 | Documentation | cross-cutting | 31 | Crate-level docs, module-level docs, type/function-level docs, usage examples (basic/complex/broadcasting/features/simd/ffi/workspace), README/LICENSE/CHANGELOG, docs CI |
-| | **Total** | | **285** | |
+| W30 | Documentation | cross-cutting | 52 | Crate-level docs, per-module docs, type/function-level docs + doctests, usage examples, README/LICENSE/CHANGELOG, docs CI |
+| | **Total** | | **327** | |
 
 ---
 
@@ -86,7 +86,11 @@
 | W3T13 | `src/dimension/axes.rs` | Axis newtype with new/index/checked_next/next/prev/is_first/is_last | W3T1 | 02-dimension §7 |
 | W3T14 | `src/private.rs`, `src/dimension/mod.rs` | Sealed trait impl for all dimension types + public exports | W3T11, W3T12, W3T13 | 02-dimension §7 |
 | W3T15 | All `src/dimension/` files | Doc comments on all pub items, cargo doc verification | W3T14 | 02-dimension §7 |
-| W3T16 | `src/dimension/` (`#[cfg(test)] mod tests`), `tests/test_tensor.rs`, `tests/test_shape.rs`, `tests/test_index.rs`, `tests/property_tests.rs` | Dimension integration tests: boundary/edge cases (Ix0, zero-length axis, large dim, overflow) via in-module unit tests + cross-module coverage through existing tensor/shape/index/property test files; do NOT add standalone tests/test_dimension.rs | W3T15 | 02-dimension §7 |
+| W3T16 | `src/dimension/` (`#[cfg(test)] mod tests`) | Dimension in-module unit tests: Ix0, zero-length axis, large dim, overflow | W3T15 | 02-dimension §7 |
+| W3T17 | `tests/test_tensor.rs` | Dimension cross-module tests for tensor interaction | W3T15 | 02-dimension §7 |
+| W3T18 | `tests/test_shape.rs` | Dimension cross-module tests for shape operations | W3T15 | 02-dimension §7 |
+| W3T19 | `tests/test_index.rs` | Dimension cross-module tests for indexing | W3T15 | 02-dimension §7 |
+| W3T20 | `tests/property_tests.rs` | Dimension cross-module property tests | W3T15 | 02-dimension §7 |
 
 ### W4: Element Type Hierarchy (L1)
 
@@ -103,7 +107,11 @@
 | W4T9 | `src/element/primitives.rs` | Element + Numeric + ComplexScalar impls for Complex\<f32\>/Complex\<f64\> | W4T4, W4T5 | 03-element §7 |
 | W4T10 | `src/element/real.rs`, `src/element/mod.rs` | Calibrate math capability boundaries + document lossy CastTo error semantics | W4T6 | 03-element §7 |
 | W4T11 | All `src/element/` files | Doc comments on all pub items, cargo doc verification | W4T9 | 03-element §7 |
-| W4T12 | `src/element/` (`#[cfg(test)] mod tests`), `tests/test_tensor.rs`, `tests/test_math.rs`, `tests/test_reduction.rs`, `tests/test_conversion.rs` | Element integration tests: verify trait implementations for all 7 element types via in-module unit tests + cross-module coverage through existing tensor/math/reduction/conversion test files; do NOT add standalone tests/test_element.rs | W4T9 | 03-element §7 |
+| W4T12 | `src/element/` (`#[cfg(test)] mod tests`) | Element in-module unit tests: verify trait impls for all 7 element types | W4T9 | 03-element §7 |
+| W4T13 | `tests/test_tensor.rs` | Element cross-module tests for tensor interaction | W4T9 | 03-element §7 |
+| W4T14 | `tests/test_math.rs` | Element cross-module tests for math operations | W4T9 | 03-element §7 |
+| W4T15 | `tests/test_reduction.rs` | Element cross-module tests for reductions | W4T9 | 03-element §7 |
+| W4T16 | `tests/test_conversion.rs` | Element cross-module tests for type conversion | W4T9 | 03-element §7 |
 
 ### W5: Complex Type (L1)
 
@@ -130,13 +138,16 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W6T1 | `src/layout/mod.rs`, `flags.rs`, `strides.rs`, `contiguous.rs` | Module skeleton: declarations, sub-module placeholders, public exports | None | 06-layout §7 |
-| W6T2 | `src/layout/flags.rs` | LayoutFlags(u8) bitflags: F_CONTIGUOUS, ALIGNED, HAS_ZERO_STRIDE + query/set methods | W6T1 | 06-layout §7 |
-| W6T3 | `src/layout/strides.rs` | compute_f_strides\<D\>: F-order stride computation with overflow check returning Result | W6T1 | 06-layout §7 |
-| W6T4 | `src/layout/contiguous.rs` | is_f_contiguous\<D\>: F-order contiguity detection | W6T1 | 06-layout §7 |
-| W6T5 | `src/layout/strides.rs` | has_zero_stride: raw zero-stride detector (flag assignment checks product(shape) > 0) | W6T1 | 06-layout §7 |
-| W6T6 | `src/layout/strides.rs` | is_aligned_to / is_aligned alignment check functions | W6T1 | 06-layout §7 |
-| W6T7 | `src/layout/` (`#[cfg(test)] mod tests`), `tests/test_tensor.rs`, `tests/test_shape.rs`, `tests/test_index.rs`, `tests/test_ffi.rs`, `tests/test_simd.rs` | Layout integration tests: stride computation, contiguity, zero-stride, alignment via in-module unit tests + cross-module coverage through existing tensor/shape/index/ffi/simd test files; do NOT add standalone tests/test_layout.rs | W6T3–W6T6 | 06-layout §7 |
+| W6T1 | `src/layout/mod.rs` | Module skeleton: sub-module declarations, public exports | None | 06-layout §7 |
+| W6T2 | `src/layout/flags.rs` | Module skeleton: file placeholder, declarations | W6T1 | 06-layout §7 |
+| W6T3 | `src/layout/strides.rs` | Module skeleton: file placeholder, declarations | W6T1 | 06-layout §7 |
+| W6T4 | `src/layout/contiguous.rs` | Module skeleton: file placeholder, declarations | W6T1 | 06-layout §7 |
+| W6T5 | `src/layout/flags.rs` | LayoutFlags(u8) bitflags: F_CONTIGUOUS, ALIGNED, HAS_ZERO_STRIDE + query/set methods | W6T2 | 06-layout §7 |
+| W6T6 | `src/layout/strides.rs` | compute_f_strides\<D\>: F-order stride computation with overflow check returning Result | W6T3 | 06-layout §7 |
+| W6T7 | `src/layout/contiguous.rs` | is_f_contiguous\<D\>: F-order contiguity detection | W6T4 | 06-layout §7 |
+| W6T8 | `src/layout/strides.rs` | has_zero_stride: raw zero-stride detector (flag assignment checks product(shape) > 0) | W6T3 | 06-layout §7 |
+| W6T9 | `src/layout/strides.rs` | is_aligned_to / is_aligned alignment check functions | W6T3 | 06-layout §7 |
+| W6T10 | `src/layout/` (`#[cfg(test)] mod tests`), `tests/test_tensor.rs`, `tests/test_shape.rs`, `tests/test_index.rs`, `tests/test_ffi.rs`, `tests/test_simd.rs` | Layout integration tests | W6T6–W6T9 | 06-layout §7 |
 
 ### W7: Storage System (L2)
 
@@ -204,14 +215,16 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W11T1 | `src/broadcast/mod.rs`, `shape.rs`, `view.rs` | Module skeleton: declarations, rule function stubs, view entry placeholders | None | 15-broadcast §7 |
-| W11T2 | `src/broadcast/shape.rs` | can_broadcast(): trailing-axis alignment compatibility check | W11T1 | 15-broadcast §7 |
-| W11T3 | `src/broadcast/shape.rs` | broadcast_shape(): shared shape derivation with structured broadcast errors | W11T2 | 15-broadcast §7 |
-| W11T4 | `src/broadcast/shape.rs` | broadcast_strides(): zero-stride insertion with input precondition validation | W11T3 | 15-broadcast §7 |
-| W11T5 | `src/broadcast/view.rs` | broadcast_to() basic path: target shape validation + read-only view construction | W11T4 | 15-broadcast §7 |
-| W11T6 | `src/broadcast/view.rs` | broadcast_to() error path + BroadcastView layout state update | W11T5 | 15-broadcast §7 |
-| W11T7 | `src/broadcast/view.rs` | broadcast_with(): shared shape derivation, dual-input broadcast, BroadcastDim output type alignment | W11T4, W11T5 | 15-broadcast §7 |
-| W11T8 | `tests/test_broadcast.rs` | Unit + integration tests: compatibility rules, zero-stride semantics, shared read-only boundary, property tests | W11T6, W11T7 | 15-broadcast §7 |
+| W11T1 | `src/broadcast/mod.rs` | Module skeleton: sub-module declarations, re-exports | None | 15-broadcast §7 |
+| W11T2 | `src/broadcast/shape.rs` | Module skeleton: file placeholder, rule function stubs | W11T1 | 15-broadcast §7 |
+| W11T3 | `src/broadcast/view.rs` | Module skeleton: file placeholder, view entry stubs | W11T1 | 15-broadcast §7 |
+| W11T4 | `src/broadcast/shape.rs` | can_broadcast(): trailing-axis alignment compatibility check | W11T2 | 15-broadcast §7 |
+| W11T5 | `src/broadcast/shape.rs` | broadcast_shape(): shared shape derivation with structured broadcast errors | W11T4 | 15-broadcast §7 |
+| W11T6 | `src/broadcast/shape.rs` | broadcast_strides(): zero-stride insertion with input precondition validation | W11T5 | 15-broadcast §7 |
+| W11T7 | `src/broadcast/view.rs` | broadcast_to() basic path: target shape validation + read-only view construction | W11T6 | 15-broadcast §7 |
+| W11T8 | `src/broadcast/view.rs` | broadcast_to() error path + BroadcastView layout state update | W11T7 | 15-broadcast §7 |
+| W11T9 | `src/broadcast/view.rs` | broadcast_with(): shared shape derivation, dual-input broadcast | W11T6, W11T7 | 15-broadcast §7 |
+| W11T10 | `tests/test_broadcast.rs` | Integration tests | W11T8, W11T9 | 15-broadcast §7 |
 
 ### W12: Iterators (L4)
 
@@ -228,11 +241,12 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W13T1 | `src/ffi/mod.rs`, `src/ffi/types.rs` | Module skeleton: declarations, re-exports, FfiErrorCategory, BlasInfo struct | W8T7 | 23-ffi §7 |
-| W13T2 | `src/ffi/private.rs` | Internal generic descriptors: TensorExport and TensorExportMut | W13T1 | 01-architecture §3, 23-ffi §7 |
-| W13T3 | `src/ffi/ptr.rs` | Re-export as_ptr/as_mut_ptr/from_raw_parts/from_raw_parts_mut/into_raw_parts + FFI wrappers export()/export_mut() | W13T2 | 23-ffi §7 |
-| W13T4 | `src/ffi/blas.rs` | is_blas_layout_compatible(), blas_info(), lda() | W13T1 | 23-ffi §7 |
-| W13T5 | `src/ffi/offset.rs` | try_offset_of() / try_ptr_at() with checked arithmetic validation | W13T1 | 23-ffi §7 |
+| W13T1 | `src/ffi/mod.rs` | Module skeleton: sub-module declarations, re-exports | W8T7 | 23-ffi §7 |
+| W13T2 | `src/ffi/types.rs` | Module skeleton + FfiErrorCategory + BlasInfo struct | W13T1 | 23-ffi §7 |
+| W13T3 | `src/ffi/private.rs` | Internal generic descriptors: TensorExport and TensorExportMut | W13T2 | 23-ffi §7 |
+| W13T4 | `src/ffi/ptr.rs` | Re-export as_ptr/as_mut_ptr/from_raw_parts/from_raw_parts_mut/into_raw_parts + FFI wrappers export()/export_mut() | W13T3 | 23-ffi §7 |
+| W13T5 | `src/ffi/blas.rs` | is_blas_layout_compatible(), blas_info(), lda() | W13T2 | 23-ffi §7 |
+| W13T6 | `src/ffi/offset.rs` | try_offset_of() / try_ptr_at() with checked arithmetic validation | W13T2 | 23-ffi §7 |
 
 ### W14: SIMD Backend (L5)
 
@@ -282,12 +296,13 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W17T1 | `src/matrix/mod.rs`, `dot.rs` | Module skeleton: declarations, dot function signatures | None | 12-matrix §7 |
-| W17T2 | `src/matrix/dot.rs` | dot() base execution: rank/shape validation, scalar inner product (real + complex), dispatch skeleton | W17T1 | 12-matrix §7 |
-| W17T3 | `src/matrix/dot.rs` | Scalar path consolidation: harden rank/shape validation + wire dispatch serial/parallel decision | W17T2 | 12-matrix §7 |
-| W17T4 | `src/matrix/dot.rs`, `src/simd/mod.rs` | SIMD path integration: SIMD kernel wiring, scalar fallback when conditions not met | W17T3, W14 | 12-matrix §7 |
-| W17T5 | `src/matrix/dot.rs`, `src/parallel/mod.rs` | Parallel path integration: dispatch-driven parallel decision, nested-parallel guard, per-worker local path selection | W17T3, W15 | 12-matrix §7 |
-| W17T6 | `tests/test_matrix.rs` | Integration tests: correctness, dimension mismatch, complex, feature-gate fallback | W17T2–W17T5 | 12-matrix §7 |
+| W17T1 | `src/matrix/mod.rs` | Module skeleton: sub-module declarations, dot function signatures | None | 12-matrix §7 |
+| W17T2 | `src/matrix/dot.rs` | Module skeleton: file placeholder, declarations | W17T1 | 12-matrix §7 |
+| W17T3 | `src/matrix/dot.rs` | dot() base execution: rank/shape validation, scalar inner product (real + complex), dispatch skeleton | W17T2 | 12-matrix §7 |
+| W17T4 | `src/matrix/dot.rs` | Scalar path consolidation: harden rank/shape validation + wire dispatch serial/parallel decision | W17T3 | 12-matrix §7 |
+| W17T5 | `src/matrix/dot.rs`, `src/simd/mod.rs` | SIMD path integration | W17T4, W14 | 12-matrix §7 |
+| W17T6 | `src/matrix/dot.rs`, `src/parallel/mod.rs` | Parallel path integration | W17T4, W15 | 12-matrix §7 |
+| W17T7 | `tests/test_matrix.rs` | Integration tests | W17T3–W17T6 | 12-matrix §7 |
 
 ### W18: Reduction Operations (L5)
 
@@ -315,9 +330,10 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W20T1 | `src/shape/mod.rs`, `transpose.rs` | Module skeleton: declarations, transpose file placeholder, public exports | None | 16-shape §7 |
-| W20T2 | `src/shape/transpose.rs` | transpose(): axis swap, O(1) shape/stride recomputation | W20T1 | 16-shape §7 |
-| W20T3 | `tests/test_shape.rs` | Integration tests: transpose correctness, 0D/1D no-op semantics, large-array O(1) behavior | W20T2 | 16-shape §7 |
+| W20T1 | `src/shape/mod.rs` | Module skeleton: sub-module declarations, public exports | None | 16-shape §7 |
+| W20T2 | `src/shape/transpose.rs` | Module skeleton: file placeholder, declarations | W20T1 | 16-shape §7 |
+| W20T3 | `src/shape/transpose.rs` | transpose(): axis swap, O(1) shape/stride recomputation | W20T2 | 16-shape §7 |
+| W20T4 | `tests/test_shape.rs` | Integration tests | W20T3 | 16-shape §7 |
 
 ### W21: Indexing (L5)
 
@@ -334,11 +350,15 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W22T1 | `src/construct/mod.rs`, `src/construct/init.rs` | Module skeleton + zeros() / ones() | None | 18-construction §7 |
-| W22T2 | `src/construct/eye.rs` | eye(): identity matrix constructor | W22T1 | 18-construction §7 |
-| W22T3 | `src/construct/from.rs` | from_shape_vec + from_shape_slice + from_vec: consume Vec into shared owned path, copy from slice, 1D convenience | W22T1 | 18-construction §7 |
-| W22T4 | `src/construct/from.rs`, `src/construct/scalar.rs` | from_array + from_scalar: fixed-array construction, zero-dim tensor | W22T3 | 18-construction §7 |
-| W22T5 | `tests/test_construction.rs` | Integration tests: all construction methods, boundary cases | W22T1–W22T4 | 18-construction §7 |
+| W22T1 | `src/construct/mod.rs`, `src/construct/init.rs` | Module skeleton: sub-module declarations, public exports (declarations only, no impls) | None | 18-construction §7 |
+| W22T2 | `src/construct/init.rs` | zeros() constructor | W22T1 | 18-construction §7 |
+| W22T3 | `src/construct/init.rs` | ones() constructor | W22T1 | 18-construction §7 |
+| W22T4 | `src/construct/eye.rs` | eye(): identity matrix constructor | W22T1 | 18-construction §7 |
+| W22T5 | `src/construct/from.rs` | from_shape_vec + from_vec: consume Vec into Owned path, 1D convenience | W22T1 | 18-construction §7 |
+| W22T6 | `src/construct/from.rs` | from_shape_slice: copy from slice into Owned storage | W22T5 | 18-construction §7 |
+| W22T7 | `src/construct/from.rs` | from_array: fixed-array construction | W22T6 | 18-construction §7 |
+| W22T8 | `src/construct/scalar.rs` | from_scalar: zero-dim tensor constructor | W22T1 | 18-construction §7 |
+| W22T9 | `tests/test_construction.rs` | Integration tests | W22T2–W22T8 | 18-construction §7 |
 
 ### W23: Operator Overloading (L6)
 
@@ -380,11 +400,12 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W26T1 | `src/format/mod.rs`, `src/format/config.rs` | Module skeleton: declarations, re-exports, FormatConfig struct + Default | None | 22-output §7 |
-| W26T2 | `src/format/pretty.rs` | Numpy-style formatting helpers: fmt_1d_display, fmt_1d_debug, fmt_nd_display, fmt_nd_debug with truncation | W26T1 | 22-output §7 |
-| W26T3 | `src/format/display.rs` | core::fmt::Display for TensorBase\<S, D\>, delegating to pretty.rs | W26T2 | 22-output §7 |
-| W26T4 | `src/format/debug.rs` | core::fmt::Debug for TensorBase\<S, D\> with shape/stride/type metadata, delegating to pretty.rs | W26T2 | 22-output §7 |
-| W26T5 | `src/format/mod.rs`, `display.rs` | Module docs + re-exports completion | W26T3, W26T4 | 22-output §7 |
+| W26T1 | `src/format/mod.rs` | Module skeleton: sub-module declarations, re-exports | None | 22-output §7 |
+| W26T2 | `src/format/config.rs` | FormatConfig struct + Default impl | W26T1 | 22-output §7 |
+| W26T3 | `src/format/pretty.rs` | Numpy-style formatting helpers: fmt_1d_display, fmt_1d_debug, fmt_nd_display, fmt_nd_debug with truncation | W26T2 | 22-output §7 |
+| W26T4 | `src/format/display.rs` | core::fmt::Display for TensorBase\<S, D\> | W26T3 | 22-output §7 |
+| W26T5 | `src/format/debug.rs` | core::fmt::Debug for TensorBase\<S, D\> with metadata | W26T3 | 22-output §7 |
+| W26T6 | `src/format/mod.rs`, `display.rs` | Module docs + re-exports completion | W26T4, W26T5 | 22-output §7 |
 
 ### W27: Safety Audit (cross-cutting)
 
@@ -453,33 +474,54 @@
 | W30T2 | `src/lib.rs`, `Cargo.toml` | #![warn(missing_docs)] lint + docs.rs metadata: all-features = true | W30T1 | 29-documentation §7 |
 | W30T3 | `README.md` | Project README: intro, features, Quick Start, install, doc links, license | W30T1 | 29-documentation §7 |
 | W30T4 | `CHANGELOG.md` | Optional CHANGELOG.md in Keep a Changelog format | None | 29-documentation §7 |
-| W30T5 | Core module docs: `dimension/`, `element/`, `complex/`, `storage/`, `layout/` | Module-level docs: responsibilities, core concepts, usage examples, dependency graph, design decisions | W30T2 | 29-documentation §7 |
-| W30T6 | Tensor + ops module docs: `tensor/`, `iter/`, `math/`, `overload/`, `broadcast/`, `reduction/`, `matrix/`, `shape/`, `index/`, `construct/`, `set/` | Module-level docs: responsibilities, core types, op categories, type constraint quick reference | W30T2 | 29-documentation §7 |
-| W30T7 | Infrastructure module docs: `ffi/`, `workspace/`, `error/`, `convert/`, `format/`, `util/`, `simd/`, `parallel/` | Module-level docs: responsibilities, safety conventions, feature gate notes, conversion/output semantics | W30T2 | 29-documentation §7 |
-| W30T8 | `src/util/mod.rs` | Util module-level docs: responsibility overview, utility function category notes (module-level only, no function-level doctests) | W30T2 | 29-documentation §7 |
-| W30T9 | `src/tensor/mod.rs` + related files | Tensor type-level docs: TensorBase, Tensor, TensorView, TensorViewMut, ArcTensor | W30T5–W30T7 | 29-documentation §7 |
-| W30T10 | `src/dimension/mod.rs` | Dimension docs: Ix0–Ix6, IxDyn, Dimension trait | W30T5–W30T7 | 29-documentation §7 |
-| W30T11 | `src/element/mod.rs` | Element docs: Element, Numeric, RealScalar, ComplexScalar traits | W30T5–W30T7 | 29-documentation §7 |
-| W30T12 | `src/storage/mod.rs` | Storage docs: Owned, ViewRepr, StorageMut trait | W30T5–W30T7 | 29-documentation §7 |
-| W30T13 | `src/layout/mod.rs` | Layout docs: LayoutFlags, compute_f_strides | W30T5–W30T7 | 29-documentation §7 |
-| W30T14 | `src/math/` files | Math function docs + doctests: add, sub, mul, div, sin, sqrt, exp, ln, abs | W30T5–W30T7 | 29-documentation §7 |
-| W30T15 | `src/reduction/`, `src/matrix/` | Reduction + matrix docs + doctests: sum, sum_axis, dot | W30T5–W30T7 | 29-documentation §7 |
-| W30T16 | `src/broadcast/`, `src/shape/mod.rs` | Broadcast + shape docs + doctests: broadcast_shape, transpose | W30T5–W30T7 | 29-documentation §7 |
-| W30T17 | `src/construct/mod.rs`, `src/set/mod.rs` | Construct + set docs + doctests: zeros, ones, eye, from_shape_vec, unique + error semantics | W30T5–W30T7 | 29-documentation §7 |
-| W30T18 | `src/ffi/mod.rs`, `src/workspace/mod.rs`, `src/error.rs` | FFI + workspace + error docs + doctests | W30T5–W30T7 | 29-documentation §7 |
-| W30T19 | `src/iter/mod.rs`, `src/convert/mod.rs`, `src/format/mod.rs`, `src/overload/mod.rs` | Iter + convert + format + overload module docs + doctests | W30T5–W30T7 | 29-documentation §7 |
-| W30T20 | `src/index/mod.rs` | Index function-level docs + doctests | W30T5–W30T7 | 29-documentation §7 |
-| W30T21 | `src/util/mod.rs` | Util function-level docs + doctests: clip, fill, try_fill, to_contiguous, into_contiguous | W30T8 | 29-documentation §7 |
-| W30T22 | `examples/basic.rs` | Usage example: create, operate, reduce, print | W30T1 | 29-documentation §7 |
-| W30T23 | `examples/complex.rs` | Usage example: complex construction, same-type arithmetic, explicit conversion ops | W30T1 | 29-documentation §7 |
-| W30T24 | `examples/broadcasting.rs` | Usage example: broadcast rules, row/col/scalar broadcast | W30T1 | 29-documentation §7 |
-| W30T25 | `examples/features.rs` | Feature-gated example: conditional compile with simd/parallel features | W30T1 | 29-documentation §7 |
-| W30T26 | `examples/simd.rs` | Usage example: SIMD feature-gated execution and fallback behavior | W30T1 | 29-documentation §7 |
-| W30T27 | `examples/ffi.rs` | Usage example: FFI export, pointer access, BLAS layout checks | W30T1 | 29-documentation §7 |
-| W30T28 | `examples/workspace.rs` | Usage example: workspace allocation and borrow/split workflow | W30T1 | 29-documentation §7 |
-| W30T29 | `src/lib.rs`, `README.md`, `examples/` | Audit that examples and crate docs only declare `std` environment; remove out-of-scope platform notes | W30T1, W30T3, W30T22–W30T28 | 29-documentation §7 |
-| W30T30 | `LICENSE` | Project license file matching Cargo.toml package metadata | W1T1 | 01-architecture §3, §4 |
-| W30T31 | `.github/workflows/docs.yml` | docs.rs CI integration, missing-docs check, doctest and example compilation | W30T19, W30T22–W30T28 | 29-documentation §7 |
+| W30T5 | `src/dimension/mod.rs` | Dimension module-level docs: responsibilities, core concepts, Ix0–Ix6 usage, Dimension trait guide | W30T2 | 29-documentation §7 |
+| W30T6 | `src/element/mod.rs` | Element module-level docs: trait hierarchy, 7 element types, sealed design rationale | W30T2 | 29-documentation §7 |
+| W30T7 | `src/complex/mod.rs` | Complex module-level docs: repr(C) layout, FFI guarantees, arithmetic semantics | W30T2 | 29-documentation §7 |
+| W30T8 | `src/storage/mod.rs` | Storage module-level docs: trait hierarchy, Owned/ViewRepr/ArcRepr, alignment guarantees | W30T2 | 29-documentation §7 |
+| W30T9 | `src/layout/mod.rs` | Layout module-level docs: F-order conventions, LayoutFlags, stride computation | W30T2 | 29-documentation §7 |
+| W30T10 | `src/tensor/mod.rs` | Tensor module-level docs: TensorBase, type aliases, storage kinds, memory model | W30T2 | 29-documentation §7 |
+| W30T11 | `src/iter/mod.rs` | Iterator module-level docs: Iter/IterMut, AxisIter, IndexedIter, entry methods | W30T2 | 29-documentation §7 |
+| W30T12 | `src/math/mod.rs` | Math module-level docs: binary/unary ops, comparison ops, SIMD dispatch | W30T2 | 29-documentation §7 |
+| W30T13 | `src/overload/mod.rs` | Overload module-level docs: operator traits, broadcast dispatch, ownership rules | W30T2 | 29-documentation §7 |
+| W30T14 | `src/broadcast/mod.rs` | Broadcast module-level docs: dimension rules, zero-stride semantics, read-only boundary | W30T2 | 29-documentation §7 |
+| W30T15 | `src/reduction/mod.rs` | Reduction module-level docs: sum/sum_axis/keepdims, SIMD/parallel dispatch gates | W30T2 | 29-documentation §7 |
+| W30T16 | `src/matrix/mod.rs` | Matrix module-level docs: dot product, rank validation, complex support | W30T2 | 29-documentation §7 |
+| W30T17 | `src/shape/mod.rs` | Shape module-level docs: transpose, O(1) semantics, F-order contiguity | W30T2 | 29-documentation §7 |
+| W30T18 | `src/index/mod.rs` | Index module-level docs: NdIndex trait, multi-dim access, slicing, bounds checking | W30T2 | 29-documentation §7 |
+| W30T19 | `src/construct/mod.rs` | Construct module-level docs: initialization methods, ownership guarantees, error semantics | W30T2 | 29-documentation §7 |
+| W30T20 | `src/set/mod.rs` | Set module-level docs: unique, NaN/±0.0 handling, complex equality | W30T2 | 29-documentation §7 |
+| W30T21 | `src/ffi/mod.rs` | FFI module-level docs: pointer access, BLAS compatibility, C repr guarantees | W30T2 | 29-documentation §7 |
+| W30T22 | `src/workspace/mod.rs` | Workspace module-level docs: allocation strategy, borrow guards, split semantics | W30T2 | 29-documentation §7 |
+| W30T23 | `src/error.rs` | Error module-level docs: XenonError variants, Result alias, error categories | W30T2 | 29-documentation §7 |
+| W30T24 | `src/convert/mod.rs` | Convert module-level docs: CastTo/ConvertTo traits, lossy/lossless semantics, tiered conversion | W30T2 | 29-documentation §7 |
+| W30T25 | `src/format/mod.rs` | Format module-level docs: NumPy-style output, FormatConfig, truncation helpers | W30T2 | 29-documentation §7 |
+| W30T26 | `src/util/mod.rs` | Util module-level docs: responsibility overview, utility function category notes | W30T2 | 29-documentation §7 |
+| W30T27 | `src/simd/mod.rs` | SIMD module-level docs: SimdKernel trait, kernel wiring, feature gate notes | W30T2 | 29-documentation §7 |
+| W30T28 | `src/parallel/mod.rs` | Parallel module-level docs: ParIter, map/reduce patterns, thread-safety, feature gate | W30T2 | 29-documentation §7 |
+| W30T29 | `src/util/mod.rs` | Util module-level docs: responsibility overview, utility function category notes (module-level only, no function-level doctests) | W30T2 | 29-documentation §7 |
+| W30T30 | `src/tensor/mod.rs` + related files | Tensor type-level docs + doctests: TensorBase, Tensor, TensorView, TensorViewMut, ArcTensor | W30T5–W30T28 | 29-documentation §7 |
+| W30T31 | `src/dimension/mod.rs` | Dimension type-level docs + doctests: Ix0–Ix6, IxDyn, Dimension trait | W30T5–W30T28 | 29-documentation §7 |
+| W30T32 | `src/element/mod.rs` | Element type-level docs + doctests: Element, Numeric, RealScalar, ComplexScalar traits | W30T5–W30T28 | 29-documentation §7 |
+| W30T33 | `src/storage/mod.rs` | Storage type-level docs + doctests: Owned, ViewRepr, StorageMut trait | W30T5–W30T28 | 29-documentation §7 |
+| W30T34 | `src/layout/mod.rs` | Layout type-level docs + doctests: LayoutFlags, compute_f_strides | W30T5–W30T28 | 29-documentation §7 |
+| W30T35 | `src/math/` files | Math function docs + doctests: add, sub, mul, div, sin, sqrt, exp, ln, abs | W30T5–W30T28 | 29-documentation §7 |
+| W30T36 | `src/reduction/`, `src/matrix/` | Reduction + matrix docs + doctests: sum, sum_axis, dot | W30T5–W30T28 | 29-documentation §7 |
+| W30T37 | `src/broadcast/`, `src/shape/mod.rs` | Broadcast + shape docs + doctests: broadcast_shape, transpose | W30T5–W30T28 | 29-documentation §7 |
+| W30T38 | `src/construct/mod.rs`, `src/set/mod.rs` | Construct + set docs + doctests: zeros, ones, eye, from_shape_vec, unique + error semantics | W30T5–W30T28 | 29-documentation §7 |
+| W30T39 | `src/ffi/mod.rs`, `src/workspace/mod.rs`, `src/error.rs` | FFI + workspace + error docs + doctests | W30T5–W30T28 | 29-documentation §7 |
+| W30T40 | `src/iter/mod.rs`, `src/convert/mod.rs`, `src/format/mod.rs`, `src/overload/mod.rs` | Iter + convert + format + overload module docs + doctests | W30T5–W30T28 | 29-documentation §7 |
+| W30T41 | `src/index/mod.rs` | Index function-level docs + doctests | W30T5–W30T28 | 29-documentation §7 |
+| W30T42 | `src/util/mod.rs` | Util function-level docs + doctests: clip, fill, try_fill, to_contiguous, into_contiguous | W30T29 | 29-documentation §7 |
+| W30T43 | `examples/basic.rs` | Usage example: create, operate, reduce, print | W30T1 | 29-documentation §7 |
+| W30T44 | `examples/complex.rs` | Usage example: complex construction, same-type arithmetic, explicit conversion ops | W30T1 | 29-documentation §7 |
+| W30T45 | `examples/broadcasting.rs` | Usage example: broadcast rules, row/col/scalar broadcast | W30T1 | 29-documentation §7 |
+| W30T46 | `examples/features.rs` | Feature-gated example: conditional compile with simd/parallel features | W30T1 | 29-documentation §7 |
+| W30T47 | `examples/simd.rs` | Usage example: SIMD feature-gated execution and fallback behavior | W30T1 | 29-documentation §7 |
+| W30T48 | `examples/ffi.rs` | Usage example: FFI export, pointer access, BLAS layout checks | W30T1 | 29-documentation §7 |
+| W30T49 | `examples/workspace.rs` | Usage example: workspace allocation and borrow/split workflow | W30T1 | 29-documentation §7 |
+| W30T50 | `src/lib.rs`, `README.md`, `examples/` | Audit that examples and crate docs only declare `std` environment; remove out-of-scope platform notes | W30T1, W30T3, W30T43–W30T49 | 29-documentation §7 |
+| W30T51 | `LICENSE` | Project license file matching Cargo.toml package metadata | W1T1 | 01-architecture §3, §4 |
+| W30T52 | `.github/workflows/docs.yml` | docs.rs CI integration, missing-docs check, doctest and example compilation | W30T40, W30T43–W30T49 | 29-documentation §7 |
 
 ---
 
