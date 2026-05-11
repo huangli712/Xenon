@@ -324,10 +324,10 @@
 |------|------|------|-------------|-------------|
 | W19T1 | `src/set/mod.rs` | Module skeleton: declarations for unique and public re-exports | None | 01-architecture §3, 14-set §5, §6, §7, §8 |
 | W19T2 | `src/set/unique.rs` | Module skeleton: UniqueElement trait definition | W19T1 | 14-set §5, §6, §7, §8 |
-| W19T3 | `src/set/unique.rs` | unique(): element collection, equality-based deduplication, Tensor construction | W19T2 | 14-set §5, §6, §7, §8 |
+| W19T3 | `src/set/unique.rs` | unique_impl(): element collection, equality-based deduplication, Tensor construction | W19T2 | 14-set §5, §6, §7, §8 |
 | W19T4 | `src/set/unique.rs` | Float NaN / ±0.0 equality handling: preserve each NaN, treat -0.0 and 0.0 as equal | W19T3 | 14-set §5, §6, §7, §8 |
 | W19T5 | `src/set/unique.rs` | Complex component-wise equality: real/imag parts follow respective real semantics, no ordering | W19T3 | 14-set §5, §6, §7, §8 |
-| W19T6 | `src/set/unique.rs` | unique() entry method on TensorBase | W19T3–W19T5 | 14-set §5, §6, §7, §8 |
+| W19T6 | `src/set/unique.rs, src/lib.rs` | unique() entry method on TensorBase, lib.rs module wiring, integration tests | W19T3–W19T5 | 14-set §5, §6, §7, §8 |
 
 ### W20: Shape Operations (L5)
 
@@ -353,14 +353,14 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W22T1 | `src/construct/mod.rs`, `src/construct/init.rs` | Module skeleton: sub-module declarations, public exports (declarations only, no impls) | None | 18-construction §5, §6, §7, §8 |
+| W22T1 | `src/construct/mod.rs`, `src/construct/init.rs` | Module skeleton: sub-module declarations only (pub use re-exports delegated to W22T2–W22T8) | None | 18-construction §5, §6, §7, §8 |
 | W22T2 | `src/construct/init.rs` | zeros() constructor | W22T1 | 18-construction §5, §6, §7, §8 |
 | W22T3 | `src/construct/init.rs` | ones() constructor | W22T1 | 18-construction §5, §6, §7, §8 |
-| W22T4 | `src/construct/eye.rs` | eye(): identity matrix constructor | W22T1 | 18-construction §5, §6, §7, §8 |
+| W22T4 | `src/construct/eye.rs` | eye(): identity matrix constructor | W22T1, W22T2 | 18-construction §5, §6, §7, §8 |
 | W22T5 | `src/construct/from.rs` | from_shape_vec + from_vec: consume Vec into Owned path, 1D convenience | W22T1 | 18-construction §5, §6, §7, §8 |
 | W22T6 | `src/construct/from.rs` | from_shape_slice: copy from slice into Owned storage | W22T5 | 18-construction §5, §6, §7, §8 |
 | W22T7 | `src/construct/from.rs` | from_array: fixed-array construction | W22T6 | 18-construction §5, §6, §7, §8 |
-| W22T8 | `src/construct/scalar.rs` | from_scalar: zero-dim tensor constructor | W22T1 | 18-construction §5, §6, §7, §8 |
+| W22T8 | `src/construct/scalar.rs` | from_scalar: zero-dim tensor constructor | W22T1, W22T5 | 18-construction §5, §6, §7, §8 |
 | W22T9 | `tests/test_construction.rs` | Integration tests | W22T2–W22T8 | 18-construction §5, §6, §7, §8 |
 
 ### W23: Operator Overloading (L6)
@@ -370,7 +370,7 @@
 | W23T1 | `src/overload/mod.rs` | Module skeleton: declarations for arithmetic and public operator re-exports | None | 01-architecture §3, 19-overload §5, §6, §7, §8 |
 | W23T2 | `src/overload/arithmetic.rs` | Module skeleton: declarations, imports | W23T1 | 19-overload §5, §6, §7, §8 |
 | W23T3 | `src/overload/arithmetic.rs` | Add\<Tensor, Tensor\> for owned: Tensor + Tensor impl | W23T2 | 19-overload §5, §6, §7, §8 |
-| W23T4 | `src/overload/arithmetic.rs` | Add for ref/mixed: &Tensor + &Tensor, Tensor + &Tensor, &Tensor + Tensor (4 combos) | W23T3 | 19-overload §5, §6, §7, §8 |
+| W23T4 | `src/overload/arithmetic.rs` | Add for ref/mixed: &Tensor + &Tensor, Tensor + &Tensor, &Tensor + Tensor (3 combos) | W23T3 | 19-overload §5, §6, §7, §8 |
 | W23T5 | `src/overload/arithmetic.rs` | Add with scalar: Tensor + scalar, scalar + Tensor | W23T3 | 19-overload §5, §6, §7, §8 |
 | W23T6 | `src/overload/arithmetic.rs` | Sub operators for owned/ref/mixed/scalar tensor combinations | W23T4, W23T5 | 19-overload §5, §6, §7, §8 |
 | W23T7 | `src/overload/arithmetic.rs` | Mul operators for owned/ref/mixed/scalar tensor combinations | W23T4, W23T5 | 19-overload §5, §6, §7, §8 |
@@ -392,10 +392,10 @@
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
 | W25T1 | `src/convert/mod.rs`, `src/lib.rs` | Module skeleton: sub-module declarations, pub use exports | None | 21-type §5, §6, §7, §8 |
-| W25T2 | `src/convert/cast.rs` | CastTo trait definition (lossy + dynamic) + ConvertTo shim (lossless) trait signatures only, no impls | W25T1 | 21-type §5, §6, §7, §8 |
-| W25T3 | `src/convert/cast.rs` | Tier-1 lossless CastTo impls: int↔int primitive conversions (11 cells) | W25T2 | 21-type §5, §6, §7, §8 |
-| W25T4 | `src/convert/cast.rs` | Tier-2 lossy CastTo impls: real↔int, complex↔int, complex↔real (14 cells) | W25T2 | 21-type §5, §6, §7, §8 |
-| W25T5 | `src/convert/cast.rs` | Tier-3 dynamic CastTo impls: remaining cross-type conversions (8 cells) | W25T2 | 21-type §5, §6, §7, §8 |
+| W25T2 | `src/convert/cast.rs` | ConvertTo sealed trait signature + CastTo ownership doc: trait signatures only, no impls | W25T1 | 21-type §5, §6, §7, §8 |
+| W25T3 | `src/convert/cast.rs` | Tier-1 lossless ConvertTo impls: 6 identity + 8 widening/From shims (14 cells) | W25T2 | 21-type §5, §6, §7, §8 |
+| W25T4 | `src/convert/cast.rs` | Tier-2 lossy CastTo + ConvertTo impls: float↔int, int↔int narrowing, real→complex lossy, complex narrowing (14 cells) | W25T2 | 21-type §5, §6, §7, §8 |
+| W25T5 | `src/convert/cast.rs` | Tier-3 dynamic CastTo + ConvertTo impls: remaining cross-type conversions (8 cells) | W25T2 | 21-type §5, §6, §7, §8 |
 | W25T6 | `src/convert/cast.rs` | cast\<B\>() method on TensorBase\<S, D\>: all readable storage inputs → owned result with error reporting | W25T3, W25T4, W25T5 | 21-type §5, §6, §7, §8 |
 | W25T7 | `src/convert/cast.rs` | to_owned() + into_owned(): clone and consume owned conversion methods | W25T1 | 21-type §5, §6, §7, §8 |
 

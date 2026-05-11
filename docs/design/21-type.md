@@ -709,43 +709,57 @@ impl ConvertTo<i64> for Complex<f64> { #[inline] fn convert(self) -> Result<i64,
 
 ## 7. 实现任务拆分
 
-### Wave 1: 基础设施
+### Wave 1: 基础设施 — 模块骨架与转换矩阵
 
-- [ ] **T1**: 实现 `CastTo` trait 的 Tier-2 / Tier-3 转换路径（Tier-1 不经过 `CastTo`）
+- [ ] **T1** (W25T1): 创建 `convert/` 模块骨架
+  - 文件: `src/convert/mod.rs`, `src/lib.rs`
+  - 内容: 子模块声明（`mod cast;`）、`pub(crate) use` 导出 `ConvertTo`、`src/lib.rs` 新增 `pub mod convert;`
+  - 测试: `test_convert_module_exports_compile`（编译测试）
+  - 前置: None
+  - 预计: 5 min
+
+- [ ] **T2** (W25T2): `ConvertTo` sealed trait 签名 + `CastTo` 所有权文档
   - 文件: `src/convert/cast.rs`
-  - 内容: 实现 `element` 模块中的 fallible `CastTo<T>` trait 的 Tier-2 lossy（静态错误，14 cells）+ Tier-3 dynamic（条件性，8 cells）两层；Tier-1 lossless（11 cells: 6 identity + 3 std `From` + 5 real→complex zero-imaginary widening + 1 complex widening）由 `ConvertTo` 直接走 std `From` / direct shims，不实例化 `CastTo`，详见 §6.1.3
-  - 测试: `test_cast_f32_to_f64`（Tier-1，验证 `ConvertTo` 直通不实例化 `CastTo`）、`test_cast_f64_to_f32`（Tier-2 lossy）、`test_cast_complex_f64_to_f64_when_imag_zero`（Tier-3 dynamic）
-  - 前置: element 模块完成
+  - 内容: 定义 `pub(crate) trait ConvertTo<B: CastElement>: CastElement + private::Sealed` 及 `fn convert(self) -> Result<B>` 签名；添加模块级文档声明 `CastTo` 由 `crate::element` 拥有；不实现任何 impl
+  - 测试: `test_convert_to_trait_signature_accepts_cast_elements`（编译测试）
+  - 前置: W25T1
+  - 预计: 5 min
+
+- [ ] **T3** (W25T3): Tier-1 lossless `ConvertTo` impls
+  - 文件: `src/convert/cast.rs`
+  - 内容: Tier-1 lossless（14 cells: 6 identity + 3 std `From` 算术 widening + 4 real→complex zero-imaginary widening + 1 complex widening），全部通过 `ConvertTo` 直通（identity 返回 `Ok(self)`、widening 走 `f64::from(value)` 或 `Complex::new(T::from(value), 0.0)`、complex widening 走 componentwise `From`），不实例化 `CastTo`；详见 §6.1.3
+  - 测试: `test_cast_f32_to_f64`（Tier-1，验证 `ConvertTo` 直通不实例化 `CastTo`）、`test_cast_real_to_complex`（real→complex shim 正确性）
+  - 前置: W25T2
   - 预计: 10 min
 
-- [ ] **T2**: 创建 `convert/` 模块骨架
-  - 文件: `src/convert/mod.rs`, `src/lib.rs`
-  - 内容: 子模块声明、`pub use` 导出
-  - 测试: 编译通过
-  - 前置: T1
-  - 预计: 5 min
+- [ ] **T4** (W25T4): Tier-2 lossy `CastTo` + `ConvertTo` impls
+  - 文件: `src/convert/cast.rs`
+  - 内容: Tier-2 lossy（14 cells: f64→{f32,i32,i64}、f32→{i32,i64}、i64→{i32,f32,f64}、i32→f32 + real→complex lossy + complex narrowing）。每个 type pair 均需：一个 `CastTo` impl（静态 `Err` 不检查值域）和对应的 `ConvertTo` forwarding `#[inline]` thin shim；详见 §6.1.3
+  - 测试: `test_cast_f64_to_f32_returns_error`（Tier-2 lossy）、`test_cast_int_narrowing_returns_error`
+  - 前置: W25T2
+  - 预计: 10 min
+
+- [ ] **T5** (W25T5): Tier-3 dynamic `CastTo` + `ConvertTo` impls
+  - 文件: `src/convert/cast.rs`
+  - 内容: Tier-3 dynamic（8 cells: Complex<f32/f64> → {i32,i64,f32,f64}），每个 type pair 均需：一个 `CastTo` impl（运行时 `im == 0` 检查）和对应的 `ConvertTo` forwarding thin shim；详见 §6.1.3
+  - 测试: `test_cast_complex_to_real_requires_zero_imag`
+  - 前置: W25T2
+  - 预计: 10 min
 
 ### Wave 2: 核心方法
 
-- [ ] **T3**: 实现 `to_owned` / `into_owned`
-  - 文件: `src/convert/cast.rs`（或与 `cast()` 共置的同模块实现文件）
-  - 内容: `to_owned()` 克隆方法与 `into_owned()` 消费方法；不在本模块扩展 view/view_mut/into_shared 等额外存储模式互转入口，也不把同类型 owned 化表述为独立“存储模式互转”任务
-  - 测试: `test_to_owned_from_view`, `test_into_owned_from_tensor`, `test_into_owned_from_arc`
-  - 前置: T2, tensor 模块完成
+- [ ] **T6** (W25T6): `cast()` 方法
+  - 文件: `src/convert/cast.rs`
+  - 内容: `cast<B>(&self) -> Result<Tensor<B, D>>` 方法实现，对所有可读存储遍历逻辑元素，通过 `ConvertTo` 逐元素转换，`Vec` 中间缓冲后调用 `from_shape_vec` 产出 owned 结果；实现 `rewrap_cast_error` 将 `cast_to` → `cast` operation 并注入 `element_index: Some(idx)`
+  - 测试: `test_cast_i32_to_f64`, `test_cast_reports_element_index`
+  - 前置: W25T3, W25T4, W25T5
   - 预计: 10 min
 
-- [ ] **T4**: 实现 `cast` 方法
+- [ ] **T7** (W25T7): `to_owned()` + `into_owned()`
   - 文件: `src/convert/cast.rs`
-  - 内容: `cast<B>(&self) -> Result<Tensor<B, D>, XenonError>` 方法实现，覆盖所有可读存储输入并统一产出 owned 结果
-  - 测试: `test_cast_f64_to_f32_returns_error`, `test_cast_i32_to_f64`, `test_cast_reports_element_index`
-  - 前置: T2, tensor 模块完成
-  - 预计: 10 min
-
-- [ ] **T5**: 扩展 CastTo 实现（整数↔整数、实数↔复数、复数↔复数）
-  - 文件: `src/convert/cast.rs`
-  - 内容: 补齐 `需求说明书 §23.1` 与 `需求说明书 §23.2` 定义的全部组合；`bool` 不参与
-  - 测试: `test_cast_real_to_complex`, `test_cast_complex_to_real_requires_zero_imag`, `test_cast_complex_f64_to_complex_f32_returns_error`
-  - 前置: T1
+  - 内容: `to_owned()` 对所有可读存储克隆逻辑元素到 canonical F-order owned tensor；`into_owned(self)` 对 `Tensor<A, D>` 返回 `self`（零拷贝），对 `TensorBase<S, D>` 回退到 `self.to_owned()`；仅限同类型 owned 化，不扩展其他存储模式互转
+  - 测试: `test_to_owned_from_view`, `test_to_owned_from_arc`, `test_into_owned_from_tensor`
+  - 前置: W25T1, tensor 模块完成
   - 预计: 10 min
 
 ---

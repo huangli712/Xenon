@@ -543,15 +543,15 @@ W22 完成 ──→ W30 (Documentation)
 
 ```
 批次1:
-  W22T1 (mod.rs+init.rs skeleton)
+  W22T1 (mod.rs skeleton)
 批次2 (全并行):
   W22T2 (zeros, 需 W22T1)
   W22T3 (ones, 需 W22T1)
-  W22T4 (eye, 需 W22T1)
   W22T5 (from_shape_vec+from_vec, 需 W22T1)
-  W22T8 (from_scalar, 需 W22T1)
-批次3:
+批次3 (全并行):
+  W22T4 (eye, 需 W22T1, W22T2)
   W22T6 (from_shape_slice, 需 W22T5)
+  W22T8 (from_scalar, 需 W22T1, W22T5)
 批次4:
   W22T7 (from_array, 需 W22T6)
 批次5:
