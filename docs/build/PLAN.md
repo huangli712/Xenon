@@ -69,9 +69,9 @@ W22 完成 ──→ W30 (Documentation)
   W2T1 (XenonError enum)
 批次2:
   W2T2 (aux enums+Result, 需 W2T1)
-批次3 (并行):
+批次3:
   W2T3 (Display, 需 W2T2)
-  W2T4 (Error impl, 需 W2T2)
+  W2T4 (Error impl, 需 W2T3)
 批次4:
   W2T5 (prelude exports, 需 W2T4)
 ```
