@@ -412,9 +412,9 @@ W22 完成 ──→ W30 (Documentation)
   W15T1 (ParIter, 需 W10T4)
 批次2 (并行):
   W15T2 (par_map, 需 W15T1)
-  W15T3 (par_zip_map, 需 W15T1)
   W15T4 (par_reduce+par_sum, 需 W15T1)
-批次3:
+批次3 (并行):
+  W15T3 (par_zip_map, 需 W15T2)
   W15T5 (par_dot, 需 W15T4)
 批次4 (并行):
   W15T6 (ParallelPool, 需 W15T2+W15T4+W15T5)

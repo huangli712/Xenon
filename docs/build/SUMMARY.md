@@ -262,9 +262,9 @@
 | W14T5 | `src/simd/vector.rs` | Complex sum SIMD: Complex\<f32\>/Complex\<f64\> AoS split real/imag accumulation | W14T3 | 08-simd §5, §6, §7, §8 |
 | W14T6 | `src/simd/vector.rs` | Float + complex dot SIMD: f32/f64/Complex\<f32\>/Complex\<f64\> dot kernel with conjugate contract | W14T3, W14T5 | 08-simd §5, §6, §7, §8 |
 | W14T7 | `src/simd/mod.rs`, `Cargo.toml` | Feature gate conditional compilation: #[cfg(feature = "simd")], public API export, dispatch integration | W14T1, W14T2 | 08-simd §5, §6, §7, §8 |
-| W14T8 | `src/simd/vector.rs` (#[cfg(test)]) | Element-wise consistency tests: SIMD vs serial baseline bitwise agreement | W14T7 | 08-simd §5, §6, §7, §8 |
-| W14T9 | `src/simd/vector.rs` (#[cfg(test)]) | Reduction/dot semantic + tolerance tests: float/complex/int SIMD entry condition constraints | W14T8 | 08-simd §5, §6, §7, §8 |
-| W14T10 | `tests/property/` | Randomized property tests: element-wise consistency + reduction/dot invariants under random input | W14T9 | 08-simd §5, §6, §7, §8 |
+| W14T8 | `src/simd/vector.rs` (#[cfg(test)]) | Element-wise consistency tests: SIMD vs serial baseline bitwise agreement | W14T2, W14T3, W14T5, W14T7 | 08-simd §5, §6, §7, §8 |
+| W14T9 | `src/simd/vector.rs` (#[cfg(test)]) | Reduction/dot semantic + tolerance tests: float/complex/int SIMD entry condition constraints | W14T3, W14T4, W14T5, W14T6, W14T8 | 08-simd §5, §6, §7, §8 |
+| W14T10 | `tests/property/` | Randomized property tests: element-wise consistency + reduction/dot invariants under random input | W14T6, W14T9 | 08-simd §5, §6, §7, §8 |
 
 ### W15: Parallel Backend (L5)
 
@@ -272,7 +272,7 @@
 |------|------|------|-------------|-------------|
 | W15T1 | `src/parallel/iter.rs` | ParIter + TensorBase::par_iter(): single-input element-level parallel traversal entry | W10T4 | 09-parallel §5, §6, §7, §8 |
 | W15T2 | `src/parallel/map.rs` | par_map: pure parallel element-wise map entry, strategy from dispatch | W15T1 | 09-parallel §5, §6, §7, §8 |
-| W15T3 | `src/parallel/map.rs` | par_zip_map: dual-input broadcast element-wise parallel entry for math consumption | W15T1 | 09-parallel §5, §6, §7, §8 |
+| W15T3 | `src/parallel/map.rs` | par_zip_map: dual-input broadcast element-wise parallel entry for math consumption | W15T2 | 09-parallel §5, §6, §7, §8 |
 | W15T4 | `src/parallel/reduce.rs` | par_reduce_impl + par_sum: parallel reduction, identity merge, semantic alignment with caller's serial baseline | W15T1 | 09-parallel §5, §6, §7, §8 |
 | W15T5 | `src/parallel/reduce.rs` | par_dot: ndim==1 check, length consistency, parallel inner product, error return + empty identity | W15T4 | 09-parallel §5, §6, §7, §8 |
 | W15T6 | `src/parallel/mod.rs` | ParallelPool: custom rayon::ThreadPool wrapper, preserving public API result semantics | W15T2, W15T4, W15T5 | 09-parallel §5, §6, §7, §8 |
@@ -293,7 +293,7 @@
 | W16T8 | `src/math/comparison.rs` | Equal + not_equal comparison ops (return bool tensors) | W16T2 | 11-math §5, §6, §7, §8 |
 | W16T9 | `src/math/comparison.rs` | Less + less_equal comparison ops (return bool tensors) | W16T8 | 11-math §5, §6, §7, §8 |
 | W16T10 | `src/math/comparison.rs` | Greater + greater_equal comparison ops (return bool tensors) | W16T8 | 11-math §5, §6, §7, §8 |
-| W16T11 | `src/math/binary.rs`, `unary.rs`, `comparison.rs`, `src/simd/vector.rs` | SIMD backend unified dispatch integration for math module | W16T6, W14 | 11-math §5, §6, §7, §8 |
+| W16T11 | `src/math/binary.rs`, `unary.rs`, `comparison.rs`, `src/simd/vector.rs` | SIMD backend unified dispatch integration for math module | W16T3, W14 | 11-math §5, §6, §7, §8 |
 
 ### W17: Matrix Operations (L5)
 

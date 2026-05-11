@@ -400,6 +400,39 @@ impl<S, D, A> TensorBase<S, D>
 where
     S: Storage<Elem = A>,
     D: Dimension,
+    A: OrderedCompareElement,
+{
+    /// Element-wise less-than-or-equal comparison, composed from `less` and `equal`
+    /// with element-wise logical OR.
+    pub fn less_equal<S2, DB>(&self, other: &TensorBase<S2, DB>)
+        -> Result<Tensor<bool, <D as BroadcastDim<DB>>::Output>, XenonError>
+    where
+        S2: Storage<Elem = A>,
+        D: BroadcastDim<DB>,
+        DB: Dimension;
+
+    /// Element-wise greater-than-or-equal comparison, composed from `greater` and
+    /// `equal` with element-wise logical OR.
+    pub fn greater_equal<S2, DB>(&self, other: &TensorBase<S2, DB>)
+        -> Result<Tensor<bool, <D as BroadcastDim<DB>>::Output>, XenonError>
+    where
+        S2: Storage<Elem = A>,
+        D: BroadcastDim<DB>,
+        DB: Dimension;
+}
+```
+
+- `less_equal` / `greater_equal` 由 `less` / `greater` 与 `equal` 通过逐元素逻辑或组合而成，不引入独立的逐元素遍历路径。实现参见 `07-tensor.md §6.3`（组合算子优于重复遍历）。
+- `less_equal` / `greater_equal` 的 trait bound 与 `less` / `greater` 一致：`A: OrderedCompareElement`，复数编译时排除。
+- `less_equal` / `greater_equal` 的广播行为与 `less` / `greater` 完全一致：形状不兼容时返回 `XenonError::BroadcastError`。
+
+- 标量比较入口与…标量按可广播到目标全形状的零维输入处理，因此成功路径的形状与对应张量输入版本一致。
+
+```rust,ignore
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
     A: Element + PartialEq,
 {
     pub fn equal_scalar(&self, scalar: A) -> Tensor<bool, D>;
@@ -413,7 +446,9 @@ where
     A: OrderedCompareElement,
 {
     pub fn less_scalar(&self, scalar: A) -> Tensor<bool, D>;
+    pub fn less_equal_scalar(&self, scalar: A) -> Tensor<bool, D>;
     pub fn greater_scalar(&self, scalar: A) -> Tensor<bool, D>;
+    pub fn greater_equal_scalar(&self, scalar: A) -> Tensor<bool, D>;
 }
 ```
 
@@ -651,6 +686,8 @@ apply_binary(a, b, f):
 | `test_not_bool`                | !true = false, !false = true             | 中     |
 | `test_equal_f64`               | 逐元素相等比较（Numpy 风格命名）         | 高     |
 | `test_less_i32`                | 逐元素小于比较（Numpy 风格命名）         | 高     |
+| `test_less_equal_i32`          | i32 小于等于比较正确，验证组合路径    | 高     |
+| `test_greater_equal_f64`       | f64 大于等于比较正确，验证组合路径    | 中     |
 | `test_nan_comparison`          | NaN 比较遵循 IEEE 754                    | 高     |
 | `test_empty_tensor`            | 空张量运算返回空张量                     | 中     |
 | `test_add_simd_vs_scalar`      | SIMD 路径结果与标量一致                  | 中     |
