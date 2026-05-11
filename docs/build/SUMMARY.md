@@ -39,8 +39,8 @@
 | W27 | Safety Audit | cross-cutting | 7 | Send/Sync impls for Owned/ViewRepr/ViewMutRepr/ArcRepr, parallel chunk safety, thread-safety integration tests |
 | W28 | Benchmarks | — | 12 | bench infrastructure (utils/generators), core benches (math/reduction/dot/set/broadcast), shape/construction benches, SIMD/parallel comparison, CI/report script |
 | W29 | Integration Tests | — | 25 | tests/common utils, core test files (tensor/math/overload/broadcast/index/construction/reduction/iter/matrix/set/shape/conversion/utility/output/error), specialized tests (workspace/ffi/parallel/simd), compile-fail tests, property tests, CI matrix |
-| W30 | Documentation | — | 30 | Crate-level docs, module-level docs, type/function-level docs, usage examples (basic/complex/broadcasting/features/simd/ffi/workspace), README/LICENSE/CHANGELOG, docs CI |
-| | **Total** | | **275** | |
+| W30 | Documentation | — | 31 | Crate-level docs, module-level docs, type/function-level docs, usage examples (basic/complex/broadcasting/features/simd/ffi/workspace), README/LICENSE/CHANGELOG, docs CI |
+| | **Total** | | **276** | |
 
 ---
 
@@ -468,8 +468,9 @@
 | W30T26 | `examples/simd.rs` | Usage example: SIMD feature-gated execution and fallback behavior | W30T1 | 29-documentation §7 |
 | W30T27 | `examples/ffi.rs` | Usage example: FFI export, pointer access, BLAS layout checks | W30T1 | 29-documentation §7 |
 | W30T28 | `examples/workspace.rs` | Usage example: workspace allocation and borrow/split workflow | W30T1 | 29-documentation §7 |
-| W30T29 | `LICENSE` | Project license file matching Cargo.toml package metadata | W1T1 | 01-architecture §3, §4 |
-| W30T30 | `.github/workflows/docs.yml` | docs.rs CI integration, missing-docs check, doctest and example compilation | W30T19, W30T22–W30T28 | 29-documentation §7 |
+| W30T29 | `src/lib.rs`, `README.md`, `examples/` | Audit that examples and crate docs only declare `std` environment; remove out-of-scope platform notes | W30T1, W30T3, W30T22–W30T28 | 29-documentation §7 |
+| W30T30 | `LICENSE` | Project license file matching Cargo.toml package metadata | W1T1 | 01-architecture §3, §4 |
+| W30T31 | `.github/workflows/docs.yml` | docs.rs CI integration, missing-docs check, doctest and example compilation | W30T19, W30T22–W30T28 | 29-documentation §7 |
 
 ---
 
