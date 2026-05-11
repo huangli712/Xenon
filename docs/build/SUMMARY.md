@@ -12,8 +12,8 @@
 |------|------|-------|------------|-------------|
 | W1 | Coding Standards & Project Setup | L0 | 6 | Cargo.toml, rustfmt.toml, lib.rs/prelude.rs skeleton with lint attrs, .clippy.toml, CI config |
 | W2 | Error System | L0 | 5 | XenonError enum, Result alias, Display/Error impls, auxiliary enums, prelude exports |
-| W3 | Dimension System | L1 | 20 | Static dims (Ix0–Ix6), IxDyn, Dimension/IntoDimension/RemoveAxis traits, Axis, Sealed |
-| W4 | Element Type Hierarchy | L1 | 16 | Element/Numeric/RealScalar/ComplexScalar traits, sealed, primitives impls, integration |
+| W3 | Dimension System | L1 | 21 | Static dims (Ix0–Ix6), IxDyn, Dimension/IntoDimension/RemoveAxis traits, Axis, Sealed |
+| W4 | Element Type Hierarchy | L1 | 17 | Element/Numeric/RealScalar/ComplexScalar traits, sealed, primitives impls, integration |
 | W5 | Complex Type | L1 | 16 | Complex\<T\> struct, arithmetic ops (Add/Sub/Mul/Div/Neg), Display/Debug, math methods, FFI layout, convert |
 | W6 | Layout System | L2 | 10 | LayoutFlags bitflags, F-order stride computation, contiguity checks, alignment, zero-stride detection |
 | W7 | Storage System | L2 | 19 | RawStorage/Storage/StorageMut/RawStorageMut/StorageOwned/StorageShared traits, marker traits, Owned/A, AlignedAlloc, ViewRepr, ViewMutRepr, ArcRepr |
@@ -21,7 +21,7 @@
 | W9 | Workspace | L2 | 7 | Workspace struct, borrow guards (WorkspaceBorrow/WorkspaceBorrowMut), split (SplitBorrowMut), expand (ensure_capacity/reallocate), docs |
 | W10 | Dispatch | L4 | 6 | ExecPath enum, select_exec_path, thresholds, ParallelGuard (nested parallel protection), ParallelExecStrategy |
 | W11 | Broadcasting | L4 | 10 | BroadcastDim trait, can_broadcast, broadcast_shape, broadcast_strides, broadcast_to, broadcast_with, error handling, integration tests |
-| W12 | Iterators | L4 | 6 | StrideState, Elements (flat Iter/IterMut), AxisIter/AxisIterMut, IndexedIter/IndexedIterMut, TensorBase entry methods |
+| W12 | Iterators | L4 | 7 | StrideState, Iter, IterMut, AxisIter/AxisIterMut, IndexedIter/IndexedIterMut, TensorBase entry methods |
 | W13 | FFI Helpers | L4 | 6 | BlasInfo, TensorExport/TensorExportMut private descriptors, ptr re-exports, export/export_mut, is_blas_compatible/lda, try_offset_of/try_ptr_at |
 | W14 | SIMD Backend | L5 | 10 | SimdKernel trait, element-wise SIMD (add/sub/mul/div), SIMD sum (float/int/complex), SIMD dot, feature gates, property tests |
 | W15 | Parallel Backend | L5 | 8 | ParIter, par_map, par_zip_map, par_sum, par_dot, ParallelPool, error/panic propagation, feature gates |
@@ -40,7 +40,7 @@
 | W28 | Benchmarks | cross-cutting | 12 | bench infrastructure (utils/generators), core benches (math/reduction/dot/set/broadcast), shape/construction benches, SIMD/parallel comparison, CI/report script |
 | W29 | Integration Tests | cross-cutting | 25 | tests/common utils, core test files (tensor/math/overload/broadcast/index/construction/reduction/iter/matrix/set/shape/conversion/utility/output/error), specialized tests (workspace/ffi/parallel/simd), compile-fail tests, property tests, CI matrix |
 | W30 | Documentation | cross-cutting | 52 | Crate-level docs, per-module docs, type/function-level docs + doctests, usage examples, README/LICENSE/CHANGELOG, docs CI |
-| | **Total** | | **327** | |
+| | **Total** | | **330** | |
 
 ---
 
@@ -74,44 +74,46 @@
 | W3T1 | `src/dimension/mod.rs` | Module skeleton: sub-module declarations, public re-exports | None | 02-dimension §7 |
 | W3T2 | `src/dimension/mod.rs` | Dimension trait definition (all method signatures, MAX_DIMENSION constant) | W3T1 | 02-dimension §7 |
 | W3T3 | `src/dimension/static.rs` | Ix0 zero-dimensional scalar with Dimension impl | W3T2 | 02-dimension §7 |
-| W3T4 | `src/dimension/static.rs` | Ix1, Ix2 structs with Dimension impl + Index\<usize\> | W3T3 | 02-dimension §7 |
-| W3T5 | `src/dimension/static.rs` | Ix3 struct with Dimension impl + From\<(usize, usize, usize)\> | W3T4 | 02-dimension §7 |
-| W3T6 | `src/dimension/static.rs` | Ix4 struct with Dimension impl + From\<tuple\> | W3T5 | 02-dimension §7 |
-| W3T7 | `src/dimension/static.rs` | Ix5 struct with Dimension impl + From\<tuple\> | W3T6 | 02-dimension §7 |
-| W3T8 | `src/dimension/static.rs` | Ix6 struct with Dimension impl + From\<tuple\> | W3T7 | 02-dimension §7 |
-| W3T9 | `src/dimension/dynamic.rs` | IxDyn dynamic dimension with Dimension impl + constructors | W3T2 | 02-dimension §7 |
-| W3T10 | `src/dimension/static.rs`, `dynamic.rs` | into_dyn() / try_from_dyn() conversion methods | W3T8, W3T9 | 02-dimension §7 |
-| W3T11 | `src/error.rs` | XenonError::DimensionMismatch integration for dimension conversion failures | W2T1, W3T10 | 02-dimension §7 |
-| W3T12 | `src/dimension/into.rs` | IntoDimension trait + tuple/array/slice/Vec impls | W3T11 | 02-dimension §7 |
-| W3T13 | `src/dimension/axes.rs` | Axis newtype with new/index/checked_next/next/prev/is_first/is_last | W3T1 | 02-dimension §7 |
-| W3T14 | `src/private.rs`, `src/dimension/mod.rs` | Sealed trait impl for all dimension types + public exports | W3T11, W3T12, W3T13 | 02-dimension §7 |
-| W3T15 | All `src/dimension/` files | Doc comments on all pub items, cargo doc verification | W3T14 | 02-dimension §7 |
-| W3T16 | `src/dimension/` (`#[cfg(test)] mod tests`) | Dimension in-module unit tests: Ix0, zero-length axis, large dim, overflow | W3T15 | 02-dimension §7 |
-| W3T17 | `tests/test_tensor.rs` | Dimension cross-module tests for tensor interaction | W3T15 | 02-dimension §7 |
-| W3T18 | `tests/test_shape.rs` | Dimension cross-module tests for shape operations | W3T15 | 02-dimension §7 |
-| W3T19 | `tests/test_index.rs` | Dimension cross-module tests for indexing | W3T15 | 02-dimension §7 |
-| W3T20 | `tests/property_tests.rs` | Dimension cross-module property tests | W3T15 | 02-dimension §7 |
+| W3T4 | `src/dimension/static.rs` | Ix1 struct with Dimension impl + Index\<usize\> | W3T3 | 02-dimension §7 |
+| W3T5 | `src/dimension/static.rs` | Ix2 struct with Dimension impl + Index\<usize\> | W3T4 | 02-dimension §7 |
+| W3T6 | `src/dimension/static.rs` | Ix3 struct with Dimension impl + From\<(usize, usize, usize)\> | W3T5 | 02-dimension §7 |
+| W3T7 | `src/dimension/static.rs` | Ix4 struct with Dimension impl + From\<tuple\> | W3T6 | 02-dimension §7 |
+| W3T8 | `src/dimension/static.rs` | Ix5 struct with Dimension impl + From\<tuple\> | W3T7 | 02-dimension §7 |
+| W3T9 | `src/dimension/static.rs` | Ix6 struct with Dimension impl + From\<tuple\> | W3T8 | 02-dimension §7 |
+| W3T10 | `src/dimension/dynamic.rs` | IxDyn dynamic dimension with Dimension impl + constructors | W3T2 | 02-dimension §7 |
+| W3T11 | `src/dimension/static.rs`, `dynamic.rs` | into_dyn() / try_from_dyn() conversion methods | W3T9, W3T10 | 02-dimension §7 |
+| W3T12 | `src/error.rs` | XenonError::DimensionMismatch integration for dimension conversion failures | W2T1, W3T11 | 02-dimension §7 |
+| W3T13 | `src/dimension/into.rs` | IntoDimension trait + tuple/array/slice/Vec impls | W3T12 | 02-dimension §7 |
+| W3T14 | `src/dimension/axes.rs` | Axis newtype with new/index/checked_next/next/prev/is_first/is_last | W3T1 | 02-dimension §7 |
+| W3T15 | `src/private.rs`, `src/dimension/mod.rs` | Sealed trait impl for all dimension types + public exports | W3T12, W3T13, W3T14 | 02-dimension §7 |
+| W3T16 | All `src/dimension/` files | Doc comments on all pub items, cargo doc verification | W3T15 | 02-dimension §7 |
+| W3T17 | `src/dimension/` (`#[cfg(test)] mod tests`) | Dimension in-module unit tests: Ix0, zero-length axis, large dim, overflow | W3T16 | 02-dimension §7 |
+| W3T18 | `tests/test_tensor.rs` | Dimension cross-module tests for tensor interaction | W3T16 | 02-dimension §7 |
+| W3T19 | `tests/test_shape.rs` | Dimension cross-module tests for shape operations | W3T16 | 02-dimension §7 |
+| W3T20 | `tests/test_index.rs` | Dimension cross-module tests for indexing | W3T16 | 02-dimension §7 |
+| W3T21 | `tests/property_tests.rs` | Dimension cross-module property tests | W3T16 | 02-dimension §7 |
 
 ### W4: Element Type Hierarchy (L1)
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W4T1 | `src/element/mod.rs` | Module skeleton + import shared Sealed + Element trait definition | W3T14 | 03-element §7 |
+| W4T1 | `src/element/mod.rs` | Module skeleton + import shared Sealed + Element trait definition | W3T15 | 03-element §7 |
 | W4T2 | `src/element/numeric.rs` | Numeric trait definition (arithmetic supertraits + conjugate) | W4T1 | 03-element §7 |
 | W4T3 | `src/element/real.rs` | RealScalar trait: math functions (abs/sqrt/sin/exp/ln/floor/ceil) + NaN detection | W4T2 | 03-element §7 |
 | W4T4 | `src/element/complex.rs` | ComplexScalar trait: associated type Real + complex methods (re/im/norm) | W4T2 | 03-element §7 |
-| W4T5 | `src/element/primitives.rs` | Element + Numeric impls for i32, i64 | W4T2 | 03-element §7 |
-| W4T6 | `src/element/primitives.rs` | Element + Numeric + RealScalar impls for f32, f64 | W4T3, W4T5 | 03-element §7 |
-| W4T7 | `src/element/primitives.rs` | Element impl for bool (zero=false, one=true, no Numeric) | W4T1 | 03-element §7 |
-| W4T8 | `src/element/mod.rs` | Documentation clarifying usize as index/shape metadata only, not an element type | W4T1 | 03-element §7 |
-| W4T9 | `src/element/primitives.rs` | Element + Numeric + ComplexScalar impls for Complex\<f32\>/Complex\<f64\> | W4T4, W4T5 | 03-element §7 |
-| W4T10 | `src/element/real.rs`, `src/element/mod.rs` | Calibrate math capability boundaries + document lossy CastTo error semantics | W4T6 | 03-element §7 |
-| W4T11 | All `src/element/` files | Doc comments on all pub items, cargo doc verification | W4T9 | 03-element §7 |
-| W4T12 | `src/element/` (`#[cfg(test)] mod tests`) | Element in-module unit tests: verify trait impls for all 7 element types | W4T9 | 03-element §7 |
-| W4T13 | `tests/test_tensor.rs` | Element cross-module tests for tensor interaction | W4T9 | 03-element §7 |
-| W4T14 | `tests/test_math.rs` | Element cross-module tests for math operations | W4T9 | 03-element §7 |
-| W4T15 | `tests/test_reduction.rs` | Element cross-module tests for reductions | W4T9 | 03-element §7 |
-| W4T16 | `tests/test_conversion.rs` | Element cross-module tests for type conversion | W4T9 | 03-element §7 |
+| W4T5 | `src/element/primitives.rs` | Element + Numeric impl for i32 | W4T2 | 03-element §7 |
+| W4T6 | `src/element/primitives.rs` | Element + Numeric impl for i64 | W4T5 | 03-element §7 |
+| W4T7 | `src/element/primitives.rs` | Element + Numeric + RealScalar impls for f32, f64 | W4T3, W4T6 | 03-element §7 |
+| W4T8 | `src/element/primitives.rs` | Element impl for bool (zero=false, one=true, no Numeric) | W4T1 | 03-element §7 |
+| W4T9 | `src/element/mod.rs` | Documentation clarifying usize as index/shape metadata only, not an element type | W4T1 | 03-element §7 |
+| W4T10 | `src/element/primitives.rs` | Element + Numeric + ComplexScalar impls for Complex\<f32\>/Complex\<f64\> | W4T4, W4T6 | 03-element §7 |
+| W4T11 | `src/element/real.rs`, `src/element/mod.rs` | Calibrate math capability boundaries + document lossy CastTo error semantics | W4T7 | 03-element §7 |
+| W4T12 | All `src/element/` files | Doc comments on all pub items, cargo doc verification | W4T10 | 03-element §7 |
+| W4T13 | `src/element/` (`#[cfg(test)] mod tests`) | Element in-module unit tests: verify trait impls for all 7 element types | W4T10 | 03-element §7 |
+| W4T14 | `tests/test_tensor.rs` | Element cross-module tests for tensor interaction | W4T10 | 03-element §7 |
+| W4T15 | `tests/test_math.rs` | Element cross-module tests for math operations | W4T10 | 03-element §7 |
+| W4T16 | `tests/test_reduction.rs` | Element cross-module tests for reductions | W4T10 | 03-element §7 |
+| W4T17 | `tests/test_conversion.rs` | Element cross-module tests for type conversion | W4T10 | 03-element §7 |
 
 ### W5: Complex Type (L1)
 
@@ -232,10 +234,11 @@
 |------|------|------|-------------|-------------|
 | W12T1 | `src/iter/mod.rs` | Module skeleton: declarations, sub-module placeholders, public exports | None | 10-iterator §7 |
 | W12T2 | `src/iter/elements.rs` | StrideState: F-order index increment state machine | W12T1 | 10-iterator §7 |
-| W12T3 | `src/iter/elements.rs` | Iter / IterMut: Iterator + ExactSizeIterator impls with fast/slow paths (contiguous vs non-contiguous) | W12T2 | 10-iterator §7 |
-| W12T4 | `src/iter/axis.rs` | AxisIter / AxisIterMut: iterate along one axis, yielding sub-views | W12T1 | 10-iterator §7 |
-| W12T5 | `src/iter/indexed.rs` | IndexedIter / IndexedIterMut: index-wrapped iteration based on Iter | W12T3 | 10-iterator §7 |
-| W12T6 | `src/iter/mod.rs` | TensorBase entry methods: iter(), iter_mut(), axis_iter(), indexed_iter() | W12T3, W12T4, W12T5 | 10-iterator §7 |
+| W12T3 | `src/iter/elements.rs` | Iter: Iterator + ExactSizeIterator impls with fast/slow paths (contiguous vs non-contiguous) | W12T2 | 10-iterator §7 |
+| W12T4 | `src/iter/elements.rs` | IterMut: Iterator + ExactSizeIterator impls | W12T3 | 10-iterator §7 |
+| W12T5 | `src/iter/axis.rs` | AxisIter / AxisIterMut: iterate along one axis, yielding sub-views | W12T1 | 10-iterator §7 |
+| W12T6 | `src/iter/indexed.rs` | IndexedIter / IndexedIterMut: index-wrapped iteration based on Iter | W12T4 | 10-iterator §7 |
+| W12T7 | `src/iter/mod.rs` | TensorBase entry methods: iter(), iter_mut(), axis_iter(), indexed_iter() | W12T4, W12T5, W12T6 | 10-iterator §7 |
 
 ### W13: FFI Helpers (L4)
 
