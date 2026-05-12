@@ -378,9 +378,9 @@
 | W23T6 | `src/overload/arithmetic.rs` | Sub operators for owned tensor: tensor×tensor (owned/ref/mixed) + scalar (right / `Scalar<A>` left / native left per-type); non-commutative left scalar delegates to `sub_from_scalar` | W23T4, W23T5 | 19-overload §5, §6, §7, §8 |
 | W23T7 | `src/overload/arithmetic.rs` | Mul operators for owned tensor: tensor×tensor + scalar; commutative — left scalar reuses `mul_scalar` | W23T4, W23T5 | 19-overload §5, §6, §7, §8 |
 | W23T8 | `src/overload/arithmetic.rs` | Div operators for owned tensor: tensor×tensor + scalar; non-commutative left scalar delegates to `div_from_scalar` | W23T4, W23T5 | 19-overload §5, §6, §7, §8 |
-| W23T10 | `src/overload/arithmetic.rs` | `TensorView` tensor×tensor combos for Add/Sub/Mul/Div: `&View+&View`, `&View+&T`, `&T+&View` (3 combos × 4 operators = 12 impls); per §5.1 lines 123–125 | W23T6, W23T7, W23T8 | 19-overload §5, §6, §7, §8 |
-| W23T11 | `src/overload/arithmetic.rs` | `TensorView` scalar paths for Add/Sub/Mul/Div: right scalar + `Scalar<A>` left + native left per-type (4 operators × {right2 + ScalarLeft2 + nativeLeft12} = 64 impls); per §5.1 lines 133–136 & §5.4 lines 391–467 | W23T10 | 19-overload §5, §6, §7, §8 |
-| W23T9 | `tests/test_overload.rs` | Integration tests: broadcast combos, scalar combos (right/wrapper/native, owned+ref), non-commutative left-scalar (Sub/Div), type combos (f64/i32/Complex), deep-copy verification; integration-test-only (no `mod tests` wrapper, no `crate::` paths) | W23T1–W23T8, W23T10, W23T11 | 19-overload §5, §6, §7, §8 |
+| W23T9 | `src/overload/arithmetic.rs` | `TensorView` tensor×tensor combos for Add/Sub/Mul/Div: `&View+&View`, `&View+&T`, `&T+&View` (3 combos × 4 operators = 12 impls); per §5.1 lines 123–125 | W23T6, W23T7, W23T8 | 19-overload §5, §6, §7, §8 |
+| W23T10 | `src/overload/arithmetic.rs` | `TensorView` scalar paths for Add/Sub/Mul/Div: right scalar + `Scalar<A>` left + native left per-type (4 operators × {right2 + ScalarLeft2 + nativeLeft12} = 64 impls); per §5.1 lines 133–136 & §5.4 lines 391–467 | W23T9 | 19-overload §5, §6, §7, §8 |
+| W23T11 | `tests/test_overload.rs` | Integration tests: broadcast combos, scalar combos (right/wrapper/native, owned+ref), non-commutative left-scalar (Sub/Div), type combos (f64/i32/Complex), deep-copy verification; integration-test-only (no `mod tests` wrapper, no `crate::` paths) | W23T1–W23T8, W23T9, W23T10 | 19-overload §5, §6, §7, §8 |
 
 ### W24: Utility Operations (L5)
 

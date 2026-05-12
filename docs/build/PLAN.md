@@ -620,11 +620,11 @@ W22 完成 ──→ W30 (Documentation)
   W23T7 (Mul owned full matrix, 需 W23T4+W23T5)
   W23T8 (Div owned full matrix, 需 W23T4+W23T5)
 批次6:
-  W23T10 (TensorView tensor×tensor 12 impls for Add/Sub/Mul/Div, 需 W23T6+W23T7+W23T8)
+  W23T9 (TensorView tensor×tensor 12 impls for Add/Sub/Mul/Div, 需 W23T6+W23T7+W23T8)
 批次7:
-  W23T11 (TensorView scalar 64 impls for Add/Sub/Mul/Div, 需 W23T10)
+  W23T10 (TensorView scalar 64 impls for Add/Sub/Mul/Div, 需 W23T9)
 批次8:
-  W23T9 (integration tests, 需 W23T1–W23T8 + W23T10 + W23T11)
+  W23T11 (integration tests, 需 W23T1–W23T8 + W23T9 + W23T10)
 ```
 
 ---
