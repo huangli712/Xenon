@@ -755,7 +755,7 @@ W22 完成 ──→ W30 (Documentation)
 批次4:
   W29T21 (CI test matrix, 需 W29T2)
 批次5:
-  W29T25 (compile-fail fixtures, 需 W29T24)
+   W29T25 (compile-fail fixtures, 9 files, 需 W29T24)
 批次6:
   W29T23 (CI full matrix, 需 W29T1–W29T22)
 ```

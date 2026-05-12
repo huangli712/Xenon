@@ -386,11 +386,11 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W24T1 | `src/util/mod.rs` | Module skeleton: declarations for fill/clip/contiguous and public re-exports | None | 20-utility §3, §5, §6, §7, §8 |
-| W24T2 | `src/util/fill.rs` | fill(): StorageMut-level fill helper + try_fill() dispatch for all tensor types | W24T1, W7, W8, W12, W2 | 20-utility §5, §6, §7, §8 |
-| W24T3 | `src/util/clip.rs` | clip(): element-wise clipping with NaN/min=max/NaN-bound/Integer error handling | W24T1, W4, W8, W12, W2 | 20-utility §5, §6, §7, §8 |
-| W24T4 | `src/util/contiguous.rs` | to_contiguous() + into_contiguous(): F-contiguous guarantee, reuse or repack | W24T1, W6, W8, W25 | 20-utility §5, §6, §7, §8 |
-| W24T5 | `tests/test_utility.rs` | Integration tests: boundary cases (empty, single-element, non-contiguous, zero-dim) for all utility ops | W24T2–W24T4 | 20-utility §5, §6, §7, §8 |
+| W24T1 | `src/util/mod.rs` | Module skeleton: submodule declarations (no `pub use`; algorithms exposed as inherent methods) | W1T3 | 20-utility §5, §6, §7, §8 |
+| W24T2 | `src/util/fill.rs` | fill(): StorageMut-level fill helper + try_fill() sealed-marker dispatch for all tensor types | W24T1, W7T6, W7T18, W7T19, W8T4, W8T7, W12T7, W2T1 | 20-utility §5, §6, §7, §8 |
+| W24T3 | `src/util/clip.rs` | clip(): element-wise clipping with NaN/min=max/NaN-bound/Integer error handling | W24T1, W4, W8, W12T1, W2T1 | 20-utility §5, §6, §7, §8 |
+| W24T4 | `src/util/contiguous.rs` | to_contiguous() + into_contiguous(): F-contiguous guarantee, reuse or repack | W24T1, W6T6, W6T7, W6T11, W7T18, W7T19, W8T4, W8T7, W12T1, W25T7 | 20-utility §5, §6, §7, §8 |
+| W24T5 | `tests/test_utility.rs` | Integration tests: boundary cases (empty, single-element, non-contiguous, zero-dim, large) for all utility ops | W24T2, W24T3, W24T4 | 20-utility §5, §6, §7, §8 |
 
 ### W25: Type Conversion (L5)
 
@@ -454,7 +454,7 @@
 | W29T4 | `tests/test_overload.rs` | Overload tests: Add/Sub/Mul/Div traits, broadcast dispatch, Result ownership, scalar operators | W29T1, W29T3 | 28-tests §5, §6, §7, §8 |
 | W29T5 | `tests/test_broadcast.rs` | Broadcast tests: scalar/row/col/incompatible/read-only broadcast | W29T1 | 28-tests §5, §6, §7, §8 |
 | W29T6 | `tests/test_index.rs` | Index tests: multi-dim indexing, OOB errors, slicing, structural SliceInfo validation | W29T1 | 28-tests §5, §6, §7, §8 |
-| W29T7 | `tests/test_construction.rs` | Construction tests: zeros/ones/eye/from_shape_vec/slice/from_scalar/from_array | W29T1 | 28-tests §5, §6, §7, §8 |
+| W29T7 | `tests/test_construction.rs` | Construction tests: zeros/ones/eye/from_shape_vec/from_shape_slice/from_scalar/from_array | W29T1 | 28-tests §5, §6, §7, §8 |
 | W29T8 | `tests/test_reduction.rs` | Reduction tests: sum/sum_axis/keepdims/empty/NaN/overflow | W29T1 | 28-tests §5, §6, §7, §8 |
 | W29T9 | `tests/test_iterator.rs` | Iterator tests: elements/axis/indexed iteration | W29T1 | 28-tests §5, §6, §7, §8 |
 | W29T10 | `tests/test_matrix.rs` | Matrix tests: dot/complex/shape mismatch | W29T1 | 28-tests §5, §6, §7, §8 |
@@ -472,7 +472,7 @@
 | W29T22 | `tests/property_tests.rs`, `property/tensor_props.rs`, `ops_props.rs`, `shape_props.rs` | Property tests: transpose involution, addition commutativity, unique no-duplicates, sum preserves identity, broadcast shape consistency | W29T3, W29T8, W29T12 | 28-tests §5, §6, §7, §8 |
 | W29T23 | `.github/workflows/test.yml` | CI test matrix full config: all feature combos and property tests | W29T1–W29T22 | 28-tests §5, §6, §7, §8 |
 | W29T24 | `tests/compile_fail_tests.rs` | Compile-fail harness using trybuild-style fixtures and assertion conventions | W29T1 | 28-tests §5, §6, §7, §8 |
-| W29T25 | `tests/compile-fail/*.rs` | Compile-fail fixtures: wrong dimension, missing element bound, storage mismatch, unsigned/bool/scalar rejection cases | W29T24 | 28-tests §5, §6, §7, §8 |
+| W29T25 | `tests/compile-fail/*.rs` | Compile-fail fixtures (9 files per design §3): wrong_dimension_type, missing_element_bound, mismatched_storage_type, unsigned_tensor_element_rejected, invalid_unsigned_element_rejected, ui_bool_sum_rejected, ui_bool_unique_rejected, ui_bool_arithmetic_rejected, blanket_scalar_add_rejected | W29T24 | 28-tests §5, §6, §7, §8 |
 
 ### W30: Documentation
 
