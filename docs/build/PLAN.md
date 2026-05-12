@@ -84,34 +84,35 @@ W22 完成 ──→ W30 (Documentation)
 批次1:
   W3T1 (mod.rs skeleton)
 批次2:
-  W3T2 (Dimension trait, 需 W3T1)
-批次3 (并行):
+  W3T14 (Axis, 需 W3T1)
+批次3:
+  W3T2 (Dimension trait, 需 W3T1+W3T14)
+批次4 (并行):
   W3T3 (Ix0, 需 W3T2)
   W3T10 (IxDyn, 需 W3T2)
-  W3T14 (Axis, 需 W3T1)
-批次4:
-  W3T4 (Ix1, 需 W3T3)
 批次5:
-  W3T5 (Ix2, 需 W3T4)
+  W3T4 (Ix1, 需 W3T3)
 批次6:
-  W3T6 (Ix3, 需 W3T5)
+  W3T5 (Ix2, 需 W3T4)
 批次7:
-  W3T7 (Ix4, 需 W3T6)
+  W3T6 (Ix3, 需 W3T5)
 批次8:
-  W3T8 (Ix5, 需 W3T7)
+  W3T7 (Ix4, 需 W3T6)
 批次9:
-  W3T9 (Ix6, 需 W3T8)
+  W3T8 (Ix5, 需 W3T7)
 批次10:
-  W3T11 (into_dyn/try_from_dyn, 需 W3T9+W3T10)
+  W3T9 (Ix6, 需 W3T8)
 批次11:
-  W3T12 (error integration, 需 W2T1+W3T11)
+  W3T12 (error variant, 需 W2T1)
 批次12:
-  W3T13 (IntoDimension, 需 W3T12)
+  W3T11 (into_dyn/try_from_dyn, 需 W3T9+W3T10+W3T12)
 批次13:
-  W3T15 (Sealed+exports, 需 W3T12+W3T13+W3T14)
+  W3T13 (IntoDimension, 需 W3T12)
 批次14:
+  W3T15 (Sealed+exports, 需 W3T12+W3T13+W3T14)
+批次15:
   W3T16 (doc comments, 需 W3T15)
-批次15 (全并行):
+批次16 (全并行):
   W3T17 (in-module tests, 需 W3T16)
   W3T18 (test_tensor, 需 W3T16)
   W3T19 (test_shape, 需 W3T16)
@@ -119,8 +120,14 @@ W22 完成 ──→ W30 (Documentation)
   W3T21 (property tests, 需 W3T16)
 ```
 
-> **注**: W3T3–W3T10 中，Ix0 和 IxDyn 可并行（均仅依赖 Dimension trait），
+> **注1**: W3T14 (Axis) 前置到批次2，因为 W3T2 的 `Dimension::axis()` 签名依赖 `Axis` 类型。
+> W3T14 仅需 W3T1 (模块骨架) 即可实现，不依赖任何维度类型。
+> 
+> **注2**: W3T3–W3T10 中，Ix0 和 IxDyn 可并行（均仅依赖 Dimension trait），
 > 其余 Ix1–Ix6 必须串行（每个依赖前一个）。
+> 
+> **注3**: W3T12 (DimensionMismatch) 前置到批次11，W3T11 后置到批次12。
+> W3T12 仅向 `error.rs` 添加 enum variant（只需 W2T1），W3T11 的 `try_from_dyn()` 依赖此 variant。
 
 ---
 
@@ -604,13 +611,14 @@ W22 完成 ──→ W30 (Documentation)
   W25T1 (mod.rs+lib.rs exports)
 批次2:
   W25T2 (CastTo+ConvertTo trait defs, 需 W25T1)
-批次3 (全并行 — 三个 tier 独立):
-  W25T3 (Tier-1 lossless 11 cells, 需 W25T2)
+批次3 (W25T3 ∥ W25T4，W25T5 需 W25T4 的内层 impl):
+  W25T3 (Tier-1 lossless 14 cells, 需 W25T2)
   W25T4 (Tier-2 lossy 14 cells, 需 W25T2)
-  W25T5 (Tier-3 dynamic 8 cells, 需 W25T2)
+批次3.5 (需 W25T4):
+  W25T5 (Tier-3 dynamic 8 cells, 需 W25T2+W25T4 — complex→real 委托到 W25T4 内层 CastTo impl)
 批次4 (并行):
   W25T6 (cast method, 需 W25T3+W25T4+W25T5)
-  W25T7 (to_owned/into_owned, 需 W25T1)
+  W25T7 (to_owned/into_owned, 需 W25T1+W7 — StorageIntoOwned trait dispatch)
 ```
 
 ---

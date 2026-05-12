@@ -23,7 +23,7 @@
 | W11 | Broadcasting | L4 | 10 | BroadcastDim trait, can_broadcast, broadcast_shape, broadcast_strides, broadcast_to, broadcast_with, error handling, integration tests |
 | W12 | Iterators | L4 | 7 | StrideState, Iter, IterMut, AxisIter/AxisIterMut, IndexedIter/IndexedIterMut, TensorBase entry methods |
 | W13 | FFI Helpers | L4 | 6 | BlasInfo, TensorExport/TensorExportMut private descriptors, ptr re-exports, export/export_mut, is_blas_compatible/lda, try_offset_of/try_ptr_at |
-| W14 | SIMD Backend | L5 | 10 | SimdKernel trait, element-wise SIMD (add/sub/mul/div), SIMD sum (float/int/complex), SIMD dot, feature gates, property tests |
+| W14 | SIMD Backend | L5 | 10 | SimdKernel trait, element-wise SIMD (add/sub/mul/div/neg), SIMD sum (float/int/complex), SIMD dot, feature gates, property tests |
 | W15 | Parallel Backend | L5 | 8 | ParIter, par_map, par_zip_map, par_sum, par_dot, ParallelPool, error/panic propagation, feature gates |
 | W16 | Math Operations | L5 | 11 | Binary element-wise ops (add/sub/mul/div), unary ops (abs/neg/signum/square/sin/sqrt/exp/ln/floor/ceil/conj/modulus), comparison ops (eq/ne/lt/le/gt/ge), logical not, SIMD dispatch |
 | W17 | Matrix Operations | L5 | 7 | dot product (serial + SIMD + parallel paths), rank/shape validation, complex dot, integration tests |
@@ -110,10 +110,10 @@
 | W4T11 | `src/element/real.rs`, `src/element/mod.rs` | Calibrate math capability boundaries + document lossy CastTo error semantics | W4T7 | 03-element §5, §6, §7, §8 |
 | W4T12 | All `src/element/` files | Doc comments on all pub items, cargo doc verification | W4T10, W4T11 | 03-element §5, §6, §7, §8 |
 | W4T13 | `src/element/` (`#[cfg(test)] mod tests`) | Element in-module unit tests: verify trait impls for all 7 element types | W4T10 | 03-element §5, §6, §7, §8 |
-| W4T14 | `tests/test_tensor.rs` | Element cross-module tests for tensor interaction | W4T10 | 03-element §5, §6, §7, §8 |
+| W4T14 | `tests/test_tensor.rs` | Element cross-module tests for tensor interaction | W4T10, W8 | 03-element §5, §6, §7, §8 |
 | W4T15 | `tests/test_math.rs` | Element cross-module tests for math operations | W4T10 | 03-element §5, §6, §7, §8 |
-| W4T16 | `tests/test_reduction.rs` | Element cross-module tests for reductions | W4T10 | 03-element §5, §6, §7, §8 |
-| W4T17 | `tests/test_conversion.rs` | Element cross-module tests for type conversion | W4T10 | 03-element §5, §6, §7, §8 |
+| W4T16 | `tests/test_reduction.rs` | Element cross-module tests for reductions | W4T10, W8 | 03-element §5, §6, §7, §8 |
+| W4T17 | `tests/test_conversion.rs` | Element cross-module tests for type conversion | W4T10, W8 | 03-element §5, §6, §7, §8 |
 
 ### W5: Complex Type (L1)
 
@@ -247,7 +247,7 @@
 | W13T1 | `src/ffi/mod.rs` | Module skeleton: sub-module declarations, re-exports | W8T7 | 23-ffi §5, §6, §7, §8 |
 | W13T2 | `src/ffi/types.rs` | Module skeleton + FfiErrorCategory + BlasInfo struct | W13T1 | 23-ffi §5, §6, §7, §8 |
 | W13T3 | `src/ffi/private.rs` | Internal generic descriptors: TensorExport and TensorExportMut | W13T2 | 23-ffi §5, §6, §7, §8 |
-| W13T4 | `src/ffi/ptr.rs` | Re-export as_ptr/as_mut_ptr/from_raw_parts/from_raw_parts_mut/into_raw_parts + FFI wrappers export()/export_mut() | W13T3 | 23-ffi §5, §6, §7, §8 |
+| W13T4 | `src/ffi/ptr.rs` | Re-export from_raw_parts/from_raw_parts_mut/into_raw_parts + FFI wrappers export()/export_mut() | W13T3 | 23-ffi §5, §6, §7, §8 |
 | W13T5 | `src/ffi/blas.rs` | is_blas_layout_compatible(), blas_info(), lda() | W13T2 | 23-ffi §5, §6, §7, §8 |
 | W13T6 | `src/ffi/offset.rs` | try_offset_of() / try_ptr_at() with checked arithmetic validation | W13T2 | 23-ffi §5, §6, §7, §8 |
 
@@ -256,7 +256,7 @@
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
 | W14T1 | `src/simd/mod.rs` | Module skeleton: SimdElement trait, SimdKernel trait, Arch cache, public vectorized entry points | None | 08-simd §5, §6, §7, §8 |
-| W14T2 | `src/simd/vector.rs` | Element-wise SIMD: VectorKernel\<A\>, Add/Sub/Mul/Div Kernel WithSimd impls for f32/f64 | W14T1 | 08-simd §5, §6, §7, §8 |
+| W14T2 | `src/simd/vector.rs` | Element-wise SIMD: VectorKernel\<A\>, Add/Sub/Mul/Div/Neg Kernel WithSimd impls for f32/f64 | W14T1 | 08-simd §5, §6, §7, §8 |
 | W14T3 | `src/simd/vector.rs` | Float sum SIMD: f32/f64 SumKernel with lane accumulation + documented merge | W14T2 | 08-simd §5, §6, §7, §8 |
 | W14T4 | `src/simd/vector.rs` | Integer sum/dot SIMD admission + fallback: i32/i64 checked semantics, ISA widening kernel gating | W14T3 | 08-simd §5, §6, §7, §8 |
 | W14T5 | `src/simd/vector.rs` | Complex sum SIMD: Complex\<f32\>/Complex\<f64\> AoS split real/imag accumulation | W14T3 | 08-simd §5, §6, §7, §8 |
@@ -301,7 +301,7 @@
 |------|------|------|-------------|-------------|
 | W17T1 | `src/matrix/mod.rs` | Module skeleton: sub-module declarations, dot function signatures | None | 12-matrix §5, §6, §7, §8 |
 | W17T2 | `src/matrix/dot.rs` | Module skeleton: file placeholder, declarations | W17T1 | 12-matrix §5, §6, §7, §8 |
-| W17T3 | `src/matrix/dot.rs` | dot() base execution: rank/shape validation, scalar inner product (real + complex), dispatch skeleton | W17T2 | 12-matrix §5, §6, §7, §8 |
+| W17T3 | `src/matrix/dot.rs` | dot() base execution: scalar inner product (real with conjugate,complex), checked integer arithmetic, TensorBase::dot method | W17T2 | 12-matrix §5, §6, §7, §8 |
 | W17T4 | `src/matrix/dot.rs` | Scalar path consolidation: harden rank/shape validation + wire dispatch serial/parallel decision | W17T3 | 12-matrix §5, §6, §7, §8 |
 | W17T5 | `src/matrix/dot.rs`, `src/simd/mod.rs` | SIMD path integration | W17T4, W14 | 12-matrix §5, §6, §7, §8 |
 | W17T6 | `src/matrix/dot.rs`, `src/parallel/mod.rs` | Parallel path integration | W17T4, W15 | 12-matrix §5, §6, §7, §8 |
