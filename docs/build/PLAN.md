@@ -84,32 +84,32 @@ W22 完成 ──→ W30 (Documentation)
 批次1:
   W3T1 (mod.rs skeleton)
 批次2:
-  W3T14 (Axis, 需 W3T1)
+  W3T2 (Axis, 需 W3T1)
 批次3:
-  W3T2 (Dimension trait, 需 W3T1+W3T14)
+  W3T3 (Dimension trait, 需 W3T1+W3T2)
 批次4 (并行):
-  W3T3 (Ix0, 需 W3T2)
-  W3T10 (IxDyn, 需 W3T2)
+  W3T4 (Ix0, 需 W3T3)
+  W3T11 (IxDyn, 需 W3T3)
 批次5:
-  W3T4 (Ix1, 需 W3T3)
+  W3T5 (Ix1, 需 W3T4)
 批次6:
-  W3T5 (Ix2, 需 W3T4)
+  W3T6 (Ix2, 需 W3T5)
 批次7:
-  W3T6 (Ix3, 需 W3T5)
+  W3T7 (Ix3, 需 W3T6)
 批次8:
-  W3T7 (Ix4, 需 W3T6)
+  W3T8 (Ix4, 需 W3T7)
 批次9:
-  W3T8 (Ix5, 需 W3T7)
+  W3T9 (Ix5, 需 W3T8)
 批次10:
-  W3T9 (Ix6, 需 W3T8)
+  W3T10 (Ix6, 需 W3T9)
 批次11:
-  W3T11 (into_dyn/try_from_dyn, 需 W3T9+W3T10)
+  W3T12 (into_dyn/try_from_dyn, 需 W3T10+W3T11)
 批次12:
-  W3T12 (DimensionMismatch verification, 需 W2T1+W3T11)
+  W3T13 (DimensionMismatch verification, 需 W2T1+W3T12)
 批次13:
-  W3T13 (IntoDimension, 需 W3T12)
+  W3T14 (IntoDimension, 需 W3T13)
 批次14:
-  W3T15 (Sealed+exports, 需 W3T12+W3T13+W3T14)
+  W3T15 (Sealed+exports, 需 W3T13+W3T14+W3T2)
 批次15:
   W3T16 (doc comments, 需 W3T15)
 批次16 (全并行):
@@ -121,16 +121,16 @@ W22 完成 ──→ W30 (Documentation)
   W3T22 (BroadcastDim trait + impl matrix + 对称性测试, 需 W3T15+W3T16)
 ```
 
-> **注1**: W3T14 (Axis) 前置到批次2，因为 W3T2 的 `Dimension::axis()` 签名依赖 `Axis` 类型。
-> W3T14 仅需 W3T1 (模块骨架) 即可实现，不依赖任何维度类型。
+> **注1**: W3T2 (Axis) 置于批次2，因为 W3T3 的 `Dimension::axis()` 签名依赖 `Axis` 类型。
+> W3T2 仅需 W3T1 (模块骨架) 即可实现，不依赖任何维度类型。
 > 
-> **注2**: W3T3–W3T10 中，Ix0 和 IxDyn 可并行（均仅依赖 Dimension trait），
+> **注2**: W3T4–W3T11 中，Ix0 和 IxDyn 可并行（均仅依赖 Dimension trait），
 > 其余 Ix1–Ix6 必须串行（每个依赖前一个）。
 > 
 > **注3**: `DimensionMismatch` enum variant 已在 W2T1 中预先添加（见 `26-error.md`）。
-> W3T12 改为校验型任务：核对 W2T1 已添加的 `DimensionMismatch` 字段（特别是 `operation: Cow<'static, str>`）符合设计文档，必要时补齐。因此 W3T12 在 W3T11 之后执行，验证 W3T11 实际使用 variant 的字段构造是否正确。
+> W3T13 改为校验型任务：核对 W2T1 已添加的 `DimensionMismatch` 字段（特别是 `operation: Cow<'static, str>`）符合设计文档，必要时补齐。因此 W3T13 在 W3T12 之后执行，验证 W3T12 实际使用 variant 的字段构造是否正确。
 >
-> **注4**: `into_dyn` 与 `try_from_dyn` 不在 `Dimension` trait 中定义；它们是各具体类型（`Ix0`-`Ix6`、`IxDyn`）的 inherent 方法。W3T11 集中实现这些 inherent 方法。详见 `02-dimension.md` §5.1 设计决策。
+> **注4**: `into_dyn` 与 `try_from_dyn` 不在 `Dimension` trait 中定义；它们是各具体类型（`Ix0`-`Ix6`、`IxDyn`）的 inherent 方法。W3T12 集中实现这些 inherent 方法。详见 `02-dimension.md` §5.1 设计决策。
 >
 > **注5**: W3T22 在 Wave 11 审计修复（docs_fix 分支）中补充。原 SUMMARY.md `W11 ... BroadcastDim trait` 描述无对应 task，且 W3T19 placeholder 与 W11T3/W11T9 调用方都依赖该上游 trait。W3T22 归到 W3 batch 16（与 W3T17-W3T21 并行）是因为 `BroadcastDim` 是 dimension 模块的类型层逻辑（与 `Dimension`、`Sealed`、`IntoDimension` 同源），不属于 W11 广播运行时范畴。详见 `02-dimension.md §5.10`。
 

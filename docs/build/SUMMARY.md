@@ -72,19 +72,19 @@
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
 | W3T1 | `src/dimension/mod.rs` | Module skeleton: sub-module declarations, public re-exports | None | 02-dimension §5, §6, §7, §8 |
-| W3T2 | `src/dimension/mod.rs` | Dimension trait definition (all method signatures, MAX_DIMENSION constant) | W3T1, W3T14 | 02-dimension §5, §6, §7, §8 |
-| W3T3 | `src/dimension/static.rs` | Ix0 zero-dimensional scalar with Dimension impl | W3T2 | 02-dimension §5, §6, §7, §8 |
-| W3T4 | `src/dimension/static.rs` | Ix1 struct with Dimension impl + Index\<usize\> | W3T3 | 02-dimension §5, §6, §7, §8 |
-| W3T5 | `src/dimension/static.rs` | Ix2 struct with Dimension impl + Index\<usize\> | W3T4 | 02-dimension §5, §6, §7, §8 |
-| W3T6 | `src/dimension/static.rs` | Ix3 struct with Dimension impl + From\<(usize, usize, usize)\> | W3T5 | 02-dimension §5, §6, §7, §8 |
-| W3T7 | `src/dimension/static.rs` | Ix4 struct with Dimension impl + From\<tuple\> | W3T6 | 02-dimension §5, §6, §7, §8 |
-| W3T8 | `src/dimension/static.rs` | Ix5 struct with Dimension impl + From\<tuple\> | W3T7 | 02-dimension §5, §6, §7, §8 |
-| W3T9 | `src/dimension/static.rs` | Ix6 struct with Dimension impl + From\<tuple\> | W3T8 | 02-dimension §5, §6, §7, §8 |
-| W3T10 | `src/dimension/dynamic.rs` | IxDyn dynamic dimension with Dimension impl + constructors | W3T2 | 02-dimension §5, §6, §7, §8 |
-| W3T11 | `src/dimension/static.rs`, `dynamic.rs` | into_dyn() / try_from_dyn() conversion methods | W3T9, W3T10 | 02-dimension §5, §6, §7, §8 |
-| W3T12 | `src/error.rs` | XenonError::DimensionMismatch integration for dimension conversion failures | W2T1, W3T11 | 02-dimension §5, §6, §7, §8 |
-| W3T13 | `src/dimension/into.rs` | IntoDimension trait + tuple/array/slice/Vec impls | W3T12 | 02-dimension §5, §6, §7, §8 |
-| W3T14 | `src/dimension/axes.rs` | Axis newtype with new/index/checked_next/next/prev/is_first/is_last | W3T1 | 02-dimension §5, §6, §7, §8 |
+| W3T2 | `src/dimension/axes.rs` | Axis newtype with new/index/checked_next/next/prev/is_first/is_last | W3T1 | 02-dimension §5, §6, §7, §8 |
+| W3T3 | `src/dimension/mod.rs` | Dimension trait definition (all method signatures, MAX_DIMENSION constant) | W3T1, W3T2 | 02-dimension §5, §6, §7, §8 |
+| W3T4 | `src/dimension/static.rs` | Ix0 zero-dimensional scalar with Dimension impl | W3T3 | 02-dimension §5, §6, §7, §8 |
+| W3T5 | `src/dimension/static.rs` | Ix1 struct with Dimension impl + Index\<usize\> | W3T4 | 02-dimension §5, §6, §7, §8 |
+| W3T6 | `src/dimension/static.rs` | Ix2 struct with Dimension impl + Index\<usize\> | W3T5 | 02-dimension §5, §6, §7, §8 |
+| W3T7 | `src/dimension/static.rs` | Ix3 struct with Dimension impl + From\<(usize, usize, usize)\> | W3T6 | 02-dimension §5, §6, §7, §8 |
+| W3T8 | `src/dimension/static.rs` | Ix4 struct with Dimension impl + From\<tuple\> | W3T7 | 02-dimension §5, §6, §7, §8 |
+| W3T9 | `src/dimension/static.rs` | Ix5 struct with Dimension impl + From\<tuple\> | W3T8 | 02-dimension §5, §6, §7, §8 |
+| W3T10 | `src/dimension/static.rs` | Ix6 struct with Dimension impl + From\<tuple\> | W3T9 | 02-dimension §5, §6, §7, §8 |
+| W3T11 | `src/dimension/dynamic.rs` | IxDyn dynamic dimension with Dimension impl + constructors | W3T3 | 02-dimension §5, §6, §7, §8 |
+| W3T12 | `src/dimension/static.rs`, `dynamic.rs` | into_dyn() / try_from_dyn() conversion methods | W3T10, W3T11 | 02-dimension §5, §6, §7, §8 |
+| W3T13 | `src/error.rs` | XenonError::DimensionMismatch integration for dimension conversion failures | W2T1, W3T12 | 02-dimension §5, §6, §7, §8 |
+| W3T14 | `src/dimension/into.rs` | IntoDimension trait + tuple/array/slice/Vec impls | W3T13 | 02-dimension §5, §6, §7, §8 |
 | W3T15 | `src/private.rs`, `src/dimension/mod.rs` | Sealed trait impl for all dimension types + public exports | W3T12, W3T13, W3T14 | 02-dimension §5, §6, §7, §8 |
 | W3T16 | All `src/dimension/` files | Doc comments on all pub items, cargo doc verification | W3T15 | 02-dimension §5, §6, §7, §8 |
 | W3T17 | `src/dimension/` (`#[cfg(test)] mod tests`) | Dimension in-module unit tests: Ix0, zero-length axis, large dim, overflow | W3T16 | 02-dimension §5, §6, §7, §8 |
@@ -146,9 +146,9 @@
 | W6T3 | `src/layout/strides.rs` | Module skeleton: file placeholder, declarations | W6T1 | 06-layout §5, §6, §7, §8 |
 | W6T4 | `src/layout/contiguous.rs` | Module skeleton: file placeholder, declarations | W6T1 | 06-layout §5, §6, §7, §8 |
 | W6T5 | `src/layout/flags.rs` | LayoutFlags(u8) bitflags: F_CONTIGUOUS, ALIGNED, HAS_ZERO_STRIDE + query/set methods + classify() (BroadcastView→FContiguous→NonContiguous) | W6T2 | 06-layout §5, §6, §7, §8 |
-| W6T6 | `src/layout/strides.rs` | compute_f_strides\<D\>: F-order stride computation with overflow check returning Result (InvalidShape::ProductOverflow) | W6T3, W3T2 | 06-layout §5, §6, §7, §8 |
-| W6T7 | `src/layout/contiguous.rs` | is_f_contiguous\<D\>: F-order contiguity detection | W6T4, W3T2 | 06-layout §5, §6, §7, §8 |
-| W6T8 | `src/layout/strides.rs` | has_zero_stride: raw zero-stride detector + should_set_zero_stride_flag (checks product(shape) > 0) | W6T3, W3T2 | 06-layout §5, §6, §7, §8 |
+| W6T6 | `src/layout/strides.rs` | compute_f_strides\<D\>: F-order stride computation with overflow check returning Result (InvalidShape::ProductOverflow) | W6T3, W3T3 | 06-layout §5, §6, §7, §8 |
+| W6T7 | `src/layout/contiguous.rs` | is_f_contiguous\<D\>: F-order contiguity detection | W6T4, W3T3 | 06-layout §5, §6, §7, §8 |
+| W6T8 | `src/layout/strides.rs` | has_zero_stride: raw zero-stride detector + should_set_zero_stride_flag (checks product(shape) > 0) | W6T3, W3T3 | 06-layout §5, §6, §7, §8 |
 | W6T9 | `src/layout/strides.rs` | is_aligned_to / is_aligned alignment check functions | W6T3 | 06-layout §5, §6, §7, §8 |
 | W6T10 | `src/layout/mod.rs` (`#[cfg(test)] mod integration_tests`), `tests/test_layout.rs` | Layout integration tests (compute_f_strides + is_f_contiguous + compute_layout_flags cross-flow) | W6T6–W6T9, W6T11 | 06-layout §5, §6, §7, §8 |
 | W6T11 | `src/layout/mod.rs` | compute_layout_flags\<A, D\> central entry + flags_for_f_layout (§5.2, §5.12, §6.1) | W6T5, W6T6, W6T7, W6T8, W6T9 | 06-layout §5, §6, §7, §8 |
@@ -184,7 +184,7 @@
 | W8T1 | `src/tensor/mod.rs` | Module skeleton: sub-module declarations, public exports | None | 07-tensor §5, §6, §7, §8 |
 | W8T2 | `src/tensor/mod.rs` | TensorBase\<S, D\> struct: 6 fields (storage, shape, strides, offset, flags, derived_from_view_mut) | W8T1, W6T5 | 07-tensor §5, §6, §7, §8 |
 | W8T3 | `src/tensor/aliases.rs` | 4 primary type aliases (Tensor/TensorView/TensorViewMut/ArcTensor) + 4×8=32 dim convenience aliases | W8T2 | 07-tensor §5, §6, §7, §8 |
-| W8T4 | `src/tensor/impls.rs` | Shape & stride query methods: shape/strides/ndim/len/is_empty/offset/raw_dim/flags/storage_kind/access_semantics/data_location | W8T2, W3T2, W6T5 | 07-tensor §5, §6, §7, §8 |
+| W8T4 | `src/tensor/impls.rs` | Shape & stride query methods: shape/strides/ndim/len/is_empty/offset/raw_dim/flags/storage_kind/access_semantics/data_location | W8T2, W3T3, W6T5 | 07-tensor §5, §6, §7, §8 |
 | W8T5 | `src/tensor/impls.rs` | Layout query delegation: layout_state/is_f_contiguous/is_aligned/has_zero_stride | W8T4 | 07-tensor §5, §6, §7, §8 |
 | W8T6 | `src/tensor/impls.rs` | Pointer access & slice: as_ptr/as_storage_ptr/as_mut_ptr/as_slice/as_mut_slice | W8T4 | 07-tensor §5, §6, §7, §8 |
 | W8T7 | `src/tensor/construct.rs` | from_raw_parts / from_raw_parts_mut with storage_len and validate_access_range | W8T2, W6T5, W3T2 | 07-tensor §5, §6, §7, §8 |
