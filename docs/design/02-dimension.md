@@ -143,15 +143,6 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
     /// The default contract is equivalent to `self.checked_size().map(|_| ())`.
     fn checked(&self) -> Result<(), XenonError>;
 
-    /// Converts to dynamic dimension. Always succeeds.
-    fn into_dyn(self) -> IxDyn;
-
-    /// Attempts to convert from dynamic dimension.
-    /// Returns `XenonError::DimensionMismatch` if ndim doesn't match.
-    fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError>
-    where
-        Self: Sized;
-
     /// Tries to create a dimension from a slice.
     /// Returns `XenonError::DimensionMismatch` on rank mismatch.
     fn try_from_slice(slice: &[usize]) -> Result<Self, XenonError>
@@ -171,7 +162,9 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
 }
 ```
 
-`Dimension` 稳定公开面仅保留 `ndim`、`slice`、`checked_size`、`checked`、`into_dyn`、`try_from_dyn`、`try_from_slice` 与只读 `axis` 查询等核心契约。
+`Dimension` 稳定公开面仅保留 `ndim`、`slice`、`checked_size`、`checked`、`try_from_slice` 与只读 `axis` 查询等核心契约。
+
+> **设计决策**：`into_dyn` 与 `try_from_dyn` 不作为 `Dimension` trait 方法，而是各具体类型（`Ix0`-`Ix6`、`IxDyn`）的 **inherent 方法**。理由：(1) 避免 trait 引用 `IxDyn` 造成 `Dimension` 与 `IxDyn` 互相依赖；(2) inherent 方法支持各静态维度返回 `Self`（不依赖 `where Self: Sized`）；(3) trait 仍可通过 `try_from_slice` 完成 rank 验证用例。具体 inherent 方法签名见 §5.4（Ix1-Ix6）、§5.5（IxDyn）。
 
 ### 5.2 静态维度类型 Ix0-Ix6
 
@@ -347,25 +340,6 @@ impl Dimension for Ix3 {
     }
 
     #[inline]
-    fn into_dyn(self) -> IxDyn {
-        IxDyn::from_vec(vec![self.0, self.1, self.2])
-    }
-
-    #[inline]
-    fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
-        if dyn_dim.ndim() == 3 {
-            let s = dyn_dim.slice();
-            Ok(Ix3(s[0], s[1], s[2]))
-        } else {
-            Err(XenonError::DimensionMismatch {
-                operation: "Dimension::try_from_dyn".into(),
-                expected: 3,
-                actual: dyn_dim.ndim(),
-            })
-        }
-    }
-
-    #[inline]
     fn try_from_slice(slice: &[usize]) -> Result<Self, XenonError> {
         if slice.len() == 3 {
             Ok(Ix3(slice[0], slice[1], slice[2]))
@@ -380,6 +354,34 @@ impl Dimension for Ix3 {
 
     // Other static ranks implement the same `Dimension` methods.
 }
+
+// `into_dyn` / `try_from_dyn` are inherent methods on each static type,
+// not `Dimension` trait methods. See §5.1 design decision note.
+impl Ix3 {
+    /// Converts to dynamic dimension. Always succeeds.
+    #[inline]
+    pub fn into_dyn(self) -> IxDyn {
+        IxDyn::from_vec(vec![self.0, self.1, self.2])
+    }
+
+    /// Attempts to convert from a dynamic dimension.
+    /// Returns `XenonError::DimensionMismatch` if `dyn_dim.ndim() != 3`.
+    #[inline]
+    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
+        if dyn_dim.ndim() == 3 {
+            let s = dyn_dim.slice();
+            Ok(Ix3(s[0], s[1], s[2]))
+        } else {
+            Err(XenonError::DimensionMismatch {
+                operation: "Ix3::try_from_dyn".into(),
+                expected: 3,
+                actual: dyn_dim.ndim(),
+            })
+        }
+    }
+}
+
+// Ix0, Ix1, Ix2, Ix4, Ix5, Ix6 follow the same inherent-impl pattern.
 ```
 
 ### 5.5 动态维度 IxDyn
@@ -449,14 +451,21 @@ impl Dimension for IxDyn {
         self.checked_size().map(|_| ())
     }
 
-    fn into_dyn(self) -> IxDyn { self }
-
-    #[inline]
-    fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
-        Ok(dyn_dim) // IxDyn always accepts IxDyn
-    }
-
     // ...
+}
+
+// `into_dyn` / `try_from_dyn` are inherent methods on `IxDyn`, not
+// `Dimension` trait methods. See §5.1 design decision note.
+impl IxDyn {
+    /// Identity conversion. Always succeeds.
+    #[inline]
+    pub fn into_dyn(self) -> Self { self }
+
+    /// Identity conversion. Always succeeds (no rank check needed).
+    #[inline]
+    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
+        Ok(dyn_dim)
+    }
 }
 ```
 

@@ -103,9 +103,9 @@ W22 完成 ──→ W30 (Documentation)
 批次10:
   W3T9 (Ix6, 需 W3T8)
 批次11:
-  W3T12 (error variant, 需 W2T1)
+  W3T11 (into_dyn/try_from_dyn, 需 W3T9+W3T10)
 批次12:
-  W3T11 (into_dyn/try_from_dyn, 需 W3T9+W3T10+W3T12)
+  W3T12 (DimensionMismatch verification, 需 W2T1+W3T11)
 批次13:
   W3T13 (IntoDimension, 需 W3T12)
 批次14:
@@ -115,9 +115,10 @@ W22 完成 ──→ W30 (Documentation)
 批次16 (全并行):
   W3T17 (in-module tests, 需 W3T16)
   W3T18 (test_tensor, 需 W3T16)
-  W3T19 (test_shape, 需 W3T16)
+  W3T19 (test_shape, 需 W3T16+W3T22)  # BroadcastDim placeholder 在 W3T22 完成后激活
   W3T20 (test_index, 需 W3T16)
   W3T21 (property tests, 需 W3T16)
+  W3T22 (BroadcastDim trait + impl matrix + 对称性测试, 需 W3T15+W3T16)
 ```
 
 > **注1**: W3T14 (Axis) 前置到批次2，因为 W3T2 的 `Dimension::axis()` 签名依赖 `Axis` 类型。
@@ -126,8 +127,12 @@ W22 完成 ──→ W30 (Documentation)
 > **注2**: W3T3–W3T10 中，Ix0 和 IxDyn 可并行（均仅依赖 Dimension trait），
 > 其余 Ix1–Ix6 必须串行（每个依赖前一个）。
 > 
-> **注3**: W3T12 (DimensionMismatch) 前置到批次11，W3T11 后置到批次12。
-> W3T12 仅向 `error.rs` 添加 enum variant（只需 W2T1），W3T11 的 `try_from_dyn()` 依赖此 variant。
+> **注3**: `DimensionMismatch` enum variant 已在 W2T1 中预先添加（见 `26-error.md`）。
+> W3T12 改为校验型任务：核对 W2T1 已添加的 `DimensionMismatch` 字段（特别是 `operation: Cow<'static, str>`）符合设计文档，必要时补齐。因此 W3T12 在 W3T11 之后执行，验证 W3T11 实际使用 variant 的字段构造是否正确。
+>
+> **注4**: `into_dyn` 与 `try_from_dyn` 不在 `Dimension` trait 中定义；它们是各具体类型（`Ix0`-`Ix6`、`IxDyn`）的 inherent 方法。W3T11 集中实现这些 inherent 方法。详见 `02-dimension.md` §5.1 设计决策。
+>
+> **注5**: W3T22 在 Wave 11 审计修复（docs_fix 分支）中补充。原 SUMMARY.md `W11 ... BroadcastDim trait` 描述无对应 task，且 W3T19 placeholder 与 W11T3/W11T9 调用方都依赖该上游 trait。W3T22 归到 W3 batch 16（与 W3T17-W3T21 并行）是因为 `BroadcastDim` 是 dimension 模块的类型层逻辑（与 `Dimension`、`Sealed`、`IntoDimension` 同源），不属于 W11 广播运行时范畴。详见 `02-dimension.md §5.10`。
 
 ---
 
@@ -156,13 +161,14 @@ W22 完成 ──→ W30 (Documentation)
   W4T12 (all doc comments, 需 W4T10+W4T11)
 批次9 (全并行):
   W4T13 (in-module tests, 需 W4T10)
-  W4T14 (test_tensor, 需 W4T10)
+  W4T14 (test_tensor, 需 W4T10+W8)
   W4T15 (test_math, 需 W4T10)
-  W4T16 (test_reduction, 需 W4T10)
-  W4T17 (test_conversion, 需 W4T10)
+  W4T16 (test_reduction, 需 W4T10+W8)
+  W4T17 (test_conversion, 需 W4T10+W8)
 ```
 
 > **注**: W4T10 依赖 W5T1（Complex 类型），需要 W5 先完成 W5T1。
+> **注**: W4T14/W4T16/W4T17 跨 Wave 依赖 W8 (Tensor Core)，需在 Wave 4 实施时带 `#[ignore]` 标记，等 W8 完成后激活。
 
 ---
 
@@ -170,30 +176,31 @@ W22 完成 ──→ W30 (Documentation)
 
 ```
 批次1:
-  W5T1 (Complex struct+new, 需 W1T3)
+  W5T1 (Complex struct+new+minimal ComplexFloat+lib.rs wiring, 需 W1T3)
 批次2 (并行):
-  W5T2 (ComplexFloat sealed, 需 W5T1+W3T15)
-  W5T3 (FFI assertions, 需 W5T1)
+  W5T2 (Extend ComplexFloat supertraits + sealed compile_fail doctest, 需 W5T1+W3T15)
+  W5T3 (FFI assertions + field offset tests, 需 W5T1)
   W5T4 (re/im, 需 W5T1)
-  W5T6 (is_real/is_imaginary, 需 W5T1)
-  W5T7 (PartialEq+Display, 需 W5T1)
-批次3:
-  W5T5 (from_imag/conj/From, 需 W5T1+W5T4)
-批次4 (并行=Add/Mul/Neg 无相互依赖):
-  W5T8 (Add, 需 W5T1)
-  W5T10 (Mul, 需 W5T1)
-  W5T12 (Neg, 需 W5T1)
-批次5:
-  W5T9 (Sub, 需 W5T8)
+批次3 (并行):
+  W5T6 (is_real/is_imaginary, 需 W5T1+W5T2)
+  W5T7 (PartialEq+Display+PositiveZero, 需 W5T1+W5T2)
+批次4:
+  W5T5 (from_imag/conj/From, 需 W5T1+W5T2+W5T4)
+批次5 (并行=Add/Mul/Neg 无相互依赖):
+  W5T8 (Add, 需 W5T1+W5T2)
+  W5T10 (Mul, 需 W5T1+W5T2)
+  W5T12 (Neg, 需 W5T1+W5T2)
 批次6:
-  W5T11 (Div, 需 W5T10)
+  W5T9 (Sub, 需 W5T8)
 批次7:
-  W5T13 (tighten boundary, 需 W5T8–W5T12)
+  W5T11 (Div, 需 W5T10)
 批次8:
-  W5T14 (norm/norm_sqr, 需 W5T1)
+  W5T13 (tighten boundary, 需 W5T8–W5T12)
 批次9:
-  W5T15 (doc comments, 需 W5T13+W5T14)
+  W5T14 (norm/norm_sqr+is_nan/is_finite, 需 W5T1)
 批次10:
+  W5T15 (doc comments, 需 W5T13+W5T14)
+批次11:
   W5T16 (integration tests, 需 W5T15)
 ```
 
@@ -216,7 +223,9 @@ W22 完成 ──→ W30 (Documentation)
   W6T8 (has_zero_stride, 需 W6T3+W3T2)
   W6T9 (is_aligned, 需 W6T3)
 批次5:
-  W6T10 (integration tests, 需 W6T6–W6T9)
+  W6T11 (compute_layout_flags + flags_for_f_layout, 需 W6T5+W6T6+W6T7+W6T8+W6T9)
+批次6:
+  W6T10 (integration tests, 需 W6T6–W6T9+W6T11)
 ```
 
 ---
@@ -370,15 +379,28 @@ W22 完成 ──→ W30 (Documentation)
 
 ### W13: FFI Helpers (L4)
 
+> **Traceability**: `23-ffi.md` §7 把 Wave 1 的 mod.rs / types.rs / FfiErrorCategory /
+> BlasInfo 合并为单个设计 task。本 PLAN 内部进一步拆分：W13T1 = mod.rs 骨架（仅
+> 声明 5 个子模块，遵循 W1T3 模块演进协议），W13T2 = types.rs（C-visible raw
+> 描述符 + BlasInfo + re-exports），W13T3 = private.rs（generic Rust-only 描述符）。
+> 这一拆分纯属实施粒度细分，不改变设计 §7 的语义边界，便于评审与并行/串行依赖追踪。
+>
+> **重要 API 形式**：W13T4 / W13T5 / W13T6 全部以 `TensorBase` 的 inherent methods
+> 形式提供（`tensor.export()` / `tensor.blas_info()?` / `tensor.try_offset_of(&[..])?`），
+> 严格遵循 `23-ffi.md` §5.4 / §5.10-§5.13。`from_raw_parts*` / `into_raw_parts` /
+> `from_raw_parts_owned` 是 W8T7 已实现的 `TensorBase` inherent methods，**无自由
+> 路径符号可被 `pub use`**；W13T4 仅 re-export `OwnedRawParts` 与 `TensorBase` 类
+> 型（`23-ffi.md` §5.8）。
+
 ```
 批次1:
-  W13T1 (mod.rs, 需 W8T7)
+  W13T1 (mod.rs 骨架, 需 W8T7)
 批次2:
-  W13T2 (types, 需 W13T1)
+  W13T2 (types.rs, 需 W13T1)
 批次3:
-  W13T3 (private descriptors, 需 W13T2)
+  W13T3 (private.rs generic descriptors, 需 W13T2)
 批次4:
-  W13T4 (ptr re-exports, 需 W13T3)
+  W13T4 (ptr.rs export/export_mut + raw-parts type re-exports, 需 W13T3)
 批次5 (并行):
   W13T5 (BLAS helpers, 需 W13T2)
   W13T6 (offset helpers, 需 W13T2)
@@ -388,26 +410,35 @@ W22 完成 ──→ W30 (Documentation)
 
 ### W14: SIMD Backend (L5)
 
+> **docs_fix 修订（W14 全面审计后）**：
+> - 新增 W14T0（pulp 0.18 API capability spike）作为全 Wave 14 前置；T2/T4/T5/T6/T7 均依赖 W14T0 的能力清单。
+> - W14T1 负责 `src/lib.rs` 模块注册（与 W14T7 解耦；W14T7 仅修改 `src/simd/mod.rs` + `Cargo.toml`）。
+> - W14T8 依赖修正为 `W14T1, W14T2, W14T7`（去除原 SUMMARY 中冗余的 T3/T5 — element-wise 测试与 sum/complex sum 正交）。
+> - W14T10 依赖修正为 `W14T2, W14T6, W14T7, W14T9`（补齐实际 API 提供者）。
+> - W14T10 目标文件改为 `tests/simd_property.rs` 顶层文件，通过 Tensor 公有 API 测试，无需 Cargo.toml 显式声明。
+
 ```
 批次1:
-  W14T1 (mod.rs skeleton)
+  W14T0 (pulp 0.18 API capability spike)
 批次2:
-  W14T2 (element-wise SIMD, 需 W14T1)
+  W14T1 (mod.rs + lib.rs skeleton, 需 W14T0)
 批次3:
+  W14T2 (element-wise SIMD incl. Neg unary, 需 W14T0+W14T1)
+批次4:
   W14T3 (float sum SIMD, 需 W14T2)
-批次4 (并行):
-  W14T4 (integer sum/dot, 需 W14T3)
-  W14T5 (complex sum, 需 W14T3)
-批次5:
-  W14T6 (float+complex dot, 需 W14T3+W14T5)
+批次5 (并行):
+  W14T4 (integer i32 widening + i64 scalar fallback, 需 W14T0+W14T3)
+  W14T5 (complex sum threshold=1024, 需 W14T0+W14T3)
 批次6:
-  W14T7 (feature gate+exports, 需 W14T1+W14T2)
+  W14T6 (float+complex dot threshold=512, 需 W14T0+W14T3+W14T5)
 批次7:
-  W14T8 (consistency tests, 需 W14T7)
+  W14T7 (feature gate+exports+dispatch integration, 需 W14T0+W14T1+W14T2)
 批次8:
-  W14T9 (reduction/dot tests, 需 W14T8)
+  W14T8 (element-wise consistency tests, 需 W14T1+W14T2+W14T7)
 批次9:
-  W14T10 (property tests, 需 W14T9)
+  W14T9 (reduction/dot semantic+tolerance tests, 需 W14T3+W14T4+W14T5+W14T6+W14T8)
+批次10:
+  W14T10 (randomized property tests via public API, 需 W14T2+W14T6+W14T7+W14T9)
 ```
 
 ---
@@ -416,18 +447,21 @@ W22 完成 ──→ W30 (Documentation)
 
 ```
 批次1:
-  W15T1 (ParIter, 需 W10T4)
+  W15T1 (module skeleton + ParIter + compute_safe_chunks, 需 W10T4)
+        — 建立 src/parallel/{mod.rs, iter.rs}, 在 lib.rs 声明 parallel
+        — 实现 compute_safe_chunks (W15T2-T5 共享的基础工具)
+        — 实现 ParIter + ParIter::with_strategy + TensorBase::par_iter
 批次2 (并行):
   W15T2 (par_map, 需 W15T1)
-  W15T4 (par_reduce+par_sum, 需 W15T1)
+  W15T4 (par_reduce_impl + par_sum, 需 W15T1)
 批次3 (并行):
   W15T3 (par_zip_map, 需 W15T2)
   W15T5 (par_dot, 需 W15T4)
 批次4 (并行):
-  W15T6 (ParallelPool, 需 W15T2+W15T4+W15T5)
-  W15T7 (error propagation, 需 W15T2+W15T4+W15T5)
+  W15T6 (ParallelPool 增量加到 mod.rs, 需 W15T2+W15T4+W15T5)
+  W15T7 (par_map_checked + error/panic propagation, 需 W15T2+W15T4+W15T5)
 批次5:
-  W15T8 (feature gate tests, 需 W15T1–W15T7)
+  W15T8 (feature gate + config matrix tests, 需 W15T1–W15T7)
 ```
 
 ---
@@ -452,7 +486,7 @@ W22 完成 ──→ W30 (Documentation)
   W16T9 (less/less_equal, 需 W16T8)
   W16T10 (greater/greater_equal, 需 W16T8)
 批次7:
-  W16T11 (SIMD dispatch integration, 需 W16T6+W14)
+  W16T11 (SIMD/parallel dispatch integration, 需 W16T3+W16T4+W16T5+W16T6+W16T7+W16T8+W16T9+W16T10+W14+W15)
 ```
 
 ---
@@ -500,17 +534,19 @@ W22 完成 ──→ W30 (Documentation)
 
 ```
 批次1:
-  W19T1 (mod.rs)
+  W19T1 (mod.rs + lib.rs wiring, forward re-exports)
 批次2:
-  W19T2 (UniqueElement trait, 需 W19T1)
+  W19T2 (UniqueElement trait + real scalar impls, 需 W19T1)
 批次3:
-  W19T3 (unique core, 需 W19T2)
+  W19T3 (unique_impl core, 需 W19T2)
 批次4 (并行):
-  W19T4 (float NaN/±0.0, 需 W19T3)
-  W19T5 (complex equality, 需 W19T3)
+  W19T4 (float NaN/±0.0 tests, test-only, 需 W19T3)
+  W19T5 (complex equality impl + tests, 需 W19T3)
 批次5:
-  W19T6 (TensorBase entry, 需 W19T3–W19T5)
+  W19T6 (TensorBase entry + prelude re-export + remaining in-module unit tests, 需 W19T3–W19T5)
 ```
+
+> W19T4 与 W19T5 并行成立的前提是 W19T4 改为 test-only（不修改 `unique_impl`），避免同文件写冲突。
 
 ---
 
@@ -550,15 +586,15 @@ W22 完成 ──→ W30 (Documentation)
 
 ```
 批次1:
-  W22T1 (mod.rs skeleton)
+  W22T1 (mod.rs skeleton + 4 个子模块占位文件 + lib.rs pub mod construct;)
 批次2 (全并行):
   W22T2 (zeros, 需 W22T1)
   W22T3 (ones, 需 W22T1)
   W22T5 (from_shape_vec+from_vec, 需 W22T1)
+  W22T8 (from_scalar, 需 W22T1)
 批次3 (全并行):
-  W22T4 (eye, 需 W22T1, W22T2)
+  W22T4 (eye + EyeElement sealed trait, 需 W22T1, W22T2)
   W22T6 (from_shape_slice, 需 W22T5)
-  W22T8 (from_scalar, 需 W22T1, W22T5)
 批次4:
   W22T7 (from_array, 需 W22T6)
 批次5:
