@@ -32,7 +32,7 @@
 | W20 | Shape Operations | L5 | 4 | transpose (full-axis reversal), contiguity recomputation, integration tests |
 | W21 | Indexing | L5 | 6 | index module root, NdIndex trait, try_at/get/get_unchecked, SliceInfo, try_at_mut/get_mut/get_unchecked_mut, slice shape/stride update |
 | W22 | Tensor Construction | L5 | 9 | zeros, ones, eye, from_shape_vec, from_shape_slice, from_vec, from_array, from_scalar |
-| W23 | Operator Overloading | L6 | 9 | overload module root, Add/Sub/Mul/Div for owned/ref/mixed/scalar tensor combinations, integration tests |
+| W23 | Operator Overloading | L6 | 11 | overload module root, Add/Sub/Mul/Div for owned/ref/mixed/scalar tensor combinations, integration tests |
 | W24 | Utility Operations | L5 | 5 | util module root, fill, clip, to_contiguous/into_contiguous |
 | W25 | Type Conversion | L5 | 7 | CastTo trait (lossy + dynamic tiers), ConvertTo (lossless), cast method, to_owned/into_owned |
 | W26 | Output Formatting | L5 | 6 | FormatConfig, Display (Numpy-style), Debug (with metadata), pretty formatting helpers |
@@ -40,7 +40,7 @@
 | W28 | Benchmarks | cross-cutting | 12 | bench infrastructure (utils/generators), core benches (math/reduction/dot/set/broadcast), shape/construction benches, SIMD/parallel comparison, CI/report script |
 | W29 | Integration Tests | cross-cutting | 25 | tests/common utils, core test files (tensor/math/overload/broadcast/index/construction/reduction/iter/matrix/set/shape/conversion/utility/output/error), specialized tests (workspace/ffi/parallel/simd), compile-fail tests, property tests, CI matrix |
 | W30 | Documentation | cross-cutting | 52 | Crate-level docs, per-module docs, type/function-level docs + doctests, usage examples, README/LICENSE/CHANGELOG, docs CI |
-| | **Total** | | **330** | |
+| | **Total** | | **335** | |
 
 ---
 
