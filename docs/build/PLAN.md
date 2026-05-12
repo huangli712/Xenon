@@ -39,7 +39,7 @@ W22 完成 ──→ W30 (Documentation)
 | A | W3, W5 | 均在 W1 之后，互不依赖 |
 | B | W6, W9 | W6 需 W3, W9 需 W2; 可并行 |
 | C | W4, W7 | W4 需 W3+W5, W7 需 W3+W6; W6 先于 W7, W5 先于 W4 |
-| D | W11,W12,W13,W14,W20,W21,W22,W24,W25,W26 | 全部在 W8 之后，互相独立 |
+| D | W11,W12,W13,W14,W20,W21,W22,W24,W25,W26 | 全部在 W8 之后；除 W25 与 W26 需要 W12T7（`TensorBase::iter()` 入口方法）外，组内互相独立 |
 | E | W28, W29, W30 | 全部在 W22 之后，互相独立 |
 
 ---
@@ -607,20 +607,24 @@ W22 完成 ──→ W30 (Documentation)
 
 ```
 批次1:
-  W23T1 (mod.rs)
+  W23T1 (mod.rs + placeholder arithmetic.rs)
 批次2:
-  W23T2 (arithmetic.rs skeleton, 需 W23T1)
+  W23T2 (arithmetic.rs imports + Scalar<A>, 需 W23T1)
 批次3:
-  W23T3 (Add owned, 需 W23T2)
+  W23T3 (Add owned×owned, 需 W23T2)
 批次4 (并行):
-  W23T4 (Add ref/mixed, 需 W23T3)
-  W23T5 (Add scalar, 需 W23T3)
-批次5 (全并行 — 复用同一模式):
-  W23T6 (Sub, 需 W23T4+W23T5)
-  W23T7 (Mul, 需 W23T4+W23T5)
-  W23T8 (Div, 需 W23T4+W23T5)
+  W23T4 (Add ref/mixed owned 3 combos, 需 W23T3)
+  W23T5 (Add scalar owned 16 impls, 需 W23T3)
+批次5 (全并行 — 复用 Add 模式):
+  W23T6 (Sub owned full matrix, 需 W23T4+W23T5)
+  W23T7 (Mul owned full matrix, 需 W23T4+W23T5)
+  W23T8 (Div owned full matrix, 需 W23T4+W23T5)
 批次6:
-  W23T9 (tests, 需 W23T1–W23T8)
+  W23T10 (TensorView tensor×tensor 12 impls for Add/Sub/Mul/Div, 需 W23T6+W23T7+W23T8)
+批次7:
+  W23T11 (TensorView scalar 64 impls for Add/Sub/Mul/Div, 需 W23T10)
+批次8:
+  W23T9 (integration tests, 需 W23T1–W23T8 + W23T10 + W23T11)
 ```
 
 ---
@@ -646,15 +650,15 @@ W22 完成 ──→ W30 (Documentation)
 批次1:
   W25T1 (mod.rs+lib.rs exports)
 批次2:
-  W25T2 (CastTo+ConvertTo trait defs, 需 W25T1)
+  W25T2 (ConvertTo trait def + CastTo doc note, 需 W25T1)
 批次3 (W25T3 ∥ W25T4，W25T5 需 W25T4 的内层 impl):
   W25T3 (Tier-1 lossless 14 cells, 需 W25T2)
   W25T4 (Tier-2 lossy 14 cells, 需 W25T2)
 批次3.5 (需 W25T4):
   W25T5 (Tier-3 dynamic 8 cells, 需 W25T2+W25T4 — complex→real 委托到 W25T4 内层 CastTo impl)
-批次4 (并行):
-  W25T6 (cast method, 需 W25T3+W25T4+W25T5)
-  W25T7 (to_owned/into_owned, 需 W25T1+W7 — StorageIntoOwned trait dispatch)
+批次4 (并行，均需 W12T7 提供 `TensorBase::iter()`):
+  W25T6 (cast method, 需 W25T3+W25T4+W25T5+W12T7)
+  W25T7 (to_owned/into_owned, 需 W25T1+W7T5+W12T7 — StorageIntoOwned trait dispatch + iter())
 ```
 
 ---

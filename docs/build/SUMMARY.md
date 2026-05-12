@@ -23,7 +23,7 @@
 | W11 | Broadcasting | L4 | 10 | can_broadcast, broadcast_shape, broadcast_strides, broadcast_to, broadcast_with, error handling, integration tests (BroadcastDim trait is delivered by W3T22) |
 | W12 | Iterators | L4 | 7 | StrideState, Iter, IterMut, AxisIter/AxisIterMut, IndexedIter/IndexedIterMut, TensorBase entry methods |
 | W13 | FFI Helpers | L4 | 6 | BlasInfo, TensorExport/TensorExportMut private descriptors, ptr re-exports, export/export_mut, is_blas_compatible/lda, try_offset_of/try_ptr_at |
-| W14 | SIMD Backend | L5 | 11 | pulp 0.18 API spike (W14T0), SimdKernel trait, element-wise SIMD (add/sub/mul/div/neg via dispatch_vector_binary_op + dispatch_vector_unary_op), SIMD sum/dot (float/complex via `try_*` facades; integer i32 only with i64 scalar fallback), feature gates, property tests |
+| W14 | SIMD Backend | L5 | 11 | pulp 0.18 API spike (W14T0), SimdKernel trait, element-wise SIMD (add/sub/mul/div/neg via dispatch_vector_binary_op + dispatch_vector_unary_op), SIMD sum/dot (float/complex via `try_*` facades; integer i32 only with checked i64→i32 narrowing; i64 has no SIMD facade), feature gates, property tests |
 | W15 | Parallel Backend | L5 | 8 | ParIter, par_map, par_zip_map, par_sum, par_dot, ParallelPool, error/panic propagation, feature gates |
 | W16 | Math Operations | L5 | 11 | Binary element-wise ops (add/sub/mul/div), unary ops (abs/neg/signum/square/sin/sqrt/exp/ln/floor/ceil/conj/modulus), comparison ops (eq/ne/lt/le/gt/ge), logical not, SIMD dispatch |
 | W17 | Matrix Operations | L5 | 7 | dot product (serial + SIMD + parallel paths), rank/shape validation, complex dot, integration tests |
@@ -266,7 +266,7 @@
 | W14T6 | `src/simd/vector.rs` | Float + complex dot SIMD: f32/f64/Complex\<f32\>/Complex\<f64\> dot kernel; BLAS xdotc conjugate contract `sum(conj(lhs_i)*rhs_i)`; **Complex dot threshold = 512** (temporary decision); reuses W14T5 split accumulator | W14T0, W14T3, W14T5 | 08-simd §5, §6, §8, §10 |
 | W14T7 | `src/simd/mod.rs`, `Cargo.toml` | Feature gate conditional compilation: #[cfg(feature = "simd")] guards all items including trait definitions; pub(crate) facade export (no lib.rs modification — W14T1 owns lib.rs registration); W10 ExecPath::Simd dispatch integration contract | W14T0, W14T1, W14T2 | 08-simd §5, §6, §8, §10 |
 | W14T8 | `src/simd/vector.rs` (#[cfg(all(test, feature = "simd"))]) | Element-wise consistency tests: SIMD vs serial bitwise agreement for Add/Sub/Mul/Div/Neg on f32+f64; boundary lengths (0/1/below/at/tail/SIMD_WIDTH+k); NaN-aware comparison | W14T1, W14T2, W14T7 | 08-simd §5, §6, §8, §10 |
-| W14T9 | `src/simd/vector.rs` (#[cfg(all(test, feature = "simd"))]) | Reduction/dot semantic + tolerance tests: entry threshold boundaries (1023/1024 etc.), ISA gating fallback, tolerance per 13-reduction §6.3 + 12-matrix dot bound, complex component-wise comparison, i32 admission tests (i64 always-None) | W14T3, W14T4, W14T5, W14T6, W14T8 | 08-simd §5, §6, §8, §10 |
+| W14T9 | `src/simd/vector.rs` (#[cfg(all(test, feature = "simd"))]) | Reduction/dot semantic + tolerance tests: entry threshold boundaries (1023/1024 etc.), ISA gating fallback, tolerance per 13-reduction §6.3 + 12-matrix dot bound, complex component-wise comparison, i32 admission tests (i64 has no SIMD facade — not in test scope) | W14T3, W14T4, W14T5, W14T6, W14T8 | 08-simd §5, §6, §8, §10 |
 | W14T10 | `tests/simd_property.rs` | Randomized property tests via **public Tensor API** (no pub(crate) imports); Cargo top-level discovery; deterministic splitmix64 PRNG (no proptest/quickcheck dep); element-wise consistency + sum/dot tolerance + complex dot conjugate + i32 no-panic + tail handling + ISA fallback; all of f32/f64/Complex\<f32\>/Complex\<f64\> | W14T2, W14T6, W14T7, W14T9 | 08-simd §5, §8, §10; 28-tests §6.4.2 |
 
 ### W15: Parallel Backend (L5)
@@ -302,13 +302,13 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W17T1 | `src/matrix/mod.rs` | Module skeleton: sub-module declarations, dot function signatures | None | 12-matrix §5, §6, §7, §8 |
-| W17T2 | `src/matrix/dot.rs` | Module skeleton: file placeholder, declarations | W17T1 | 12-matrix §5, §6, §7, §8 |
-| W17T3 | `src/matrix/dot.rs` | dot() base execution: scalar inner product (real with conjugate,complex), checked integer arithmetic, TensorBase::dot method | W17T2 | 12-matrix §5, §6, §7, §8 |
-| W17T4 | `src/matrix/dot.rs` | Scalar path consolidation: harden rank/shape validation + wire dispatch serial/parallel decision | W17T3 | 12-matrix §5, §6, §7, §8 |
-| W17T5 | `src/matrix/dot.rs`, `src/simd/mod.rs` | SIMD path integration | W17T4, W14 | 12-matrix §5, §6, §7, §8 |
-| W17T6 | `src/matrix/dot.rs`, `src/parallel/mod.rs` | Parallel path integration | W17T4, W15 | 12-matrix §5, §6, §7, §8 |
-| W17T7 | `tests/test_matrix.rs` | Integration tests | W17T3–W17T6 | 12-matrix §5, §6, §7, §8 |
+| W17T1 | `src/matrix/mod.rs`, `src/matrix/dot.rs`, `src/lib.rs` | Module skeleton: matrix module + dot.rs compilable stub returning `Ok(A::zero())`, crate-root re-export | None | 12-matrix §5, §6, §7, §8 |
+| W17T2 | `src/matrix/dot.rs` | Input validation: rank/length checks returning `InvalidArgument` / `ShapeMismatch` | W17T1 | 12-matrix §5, §6, §7, §8 |
+| W17T3 | `src/matrix/dot.rs` | Scalar inner product via private `DotAccumulate` trait: float/complex via `acc + x.conjugate() * y`, integer via `CheckedMul`+`CheckedAdd` with typed panic diagnostics, `TensorBase::dot` method | W17T2 | 12-matrix §5, §6, §7, §8 |
+| W17T4 | `src/matrix/dot.rs` | Dispatch wiring: `alignment_ok(a, b)` private helper + `let (path, guard) = select_exec_path(...)` tuple destructure with all arms falling back to scalar | W17T3 | 12-matrix §5, §6, §7, §8 |
+| W17T5 | `src/matrix/dot.rs` | SIMD path: `can_use_simd_dot` admission gate + per-type dispatch to `simd::try_dot_*` slice API, scalar fallback on `None` | W17T4, W14 | 12-matrix §5, §6, §7, §8 |
+| W17T6 | `src/matrix/dot.rs` | Parallel path: route `ExecPath::Parallel` to `parallel::par_dot(lhs, rhs, &strategy, guard)` using `ParallelExecStrategy::auto()`, nested parallel fallback test | W17T4, W15 | 12-matrix §5, §6, §7, §8 |
+| W17T7 | `tests/test_matrix.rs` | Integration tests covering full §8.2 14-test matrix incl. tolerance + NaN cross-path | W17T3–W17T6 | 12-matrix §5, §6, §7, §8 |
 
 ### W18: Reduction Operations (L5)
 
@@ -370,15 +370,17 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W23T1 | `src/overload/mod.rs` | Module skeleton: declarations for arithmetic and public operator re-exports | None | 01-architecture §3, 19-overload §5, §6, §7, §8 |
-| W23T2 | `src/overload/arithmetic.rs` | Module skeleton: declarations, imports | W23T1 | 19-overload §5, §6, §7, §8 |
-| W23T3 | `src/overload/arithmetic.rs` | Add\<Tensor, Tensor\> for owned: Tensor + Tensor impl | W23T2 | 19-overload §5, §6, §7, §8 |
-| W23T4 | `src/overload/arithmetic.rs` | Add for ref/mixed: &Tensor + &Tensor, Tensor + &Tensor, &Tensor + Tensor (3 combos) | W23T3 | 19-overload §5, §6, §7, §8 |
-| W23T5 | `src/overload/arithmetic.rs` | Add with scalar: Tensor + scalar, scalar + Tensor | W23T3 | 19-overload §5, §6, §7, §8 |
-| W23T6 | `src/overload/arithmetic.rs` | Sub operators for owned/ref/mixed/scalar tensor combinations | W23T4, W23T5 | 19-overload §5, §6, §7, §8 |
-| W23T7 | `src/overload/arithmetic.rs` | Mul operators for owned/ref/mixed/scalar tensor combinations | W23T4, W23T5 | 19-overload §5, §6, §7, §8 |
-| W23T8 | `src/overload/arithmetic.rs` | Div operators for owned/ref/mixed/scalar tensor combinations | W23T4, W23T5 | 19-overload §5, §6, §7, §8 |
-| W23T9 | `tests/test_overload.rs` | Integration tests: broadcast combos, scalar combos, type combos, deep-copy verification | W23T1–W23T8 | 19-overload §5, §6, §7, §8 |
+| W23T1 | `src/overload/mod.rs` (+ placeholder `src/overload/arithmetic.rs`) | Module skeleton: `pub mod arithmetic;` + `pub use arithmetic::Scalar;`; create empty `arithmetic.rs` so the module declaration resolves | None | 01-architecture §3, 19-overload §5, §6, §7, §8 |
+| W23T2 | `src/overload/arithmetic.rs` | Imports for operators / math / broadcast / tensor / element / error / storage / complex; `Scalar<A>` declaration (no derives — strictly per §5.3 line 273) | W23T1 | 19-overload §5, §6, §7, §8 |
+| W23T3 | `src/overload/arithmetic.rs` | `Add<TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>` (owned + owned) with symmetric BroadcastDim where bound; delegates to inherent `TensorBase::add(&rhs)` | W23T2 | 19-overload §5, §6, §7, §8 |
+| W23T4 | `src/overload/arithmetic.rs` | Add for ref/mixed owned combos: `&T+&T`, `T+&T`, `&T+T` (3 combos), all delegating to inherent `TensorBase::add` | W23T3 | 19-overload §5, §6, §7, §8 |
+| W23T5 | `src/overload/arithmetic.rs` | Add scalar paths (owned `Tensor` only): `T+A`, `&T+A`, `Scalar<A>+T`, `Scalar<A>+&T`, native `T+Tensor<T,D>` and `T+&Tensor<T,D>` per-type for {f32,f64,i32,i64,Complex<f32>,Complex<f64>} | W23T3 | 19-overload §5, §6, §7, §8 |
+| W23T6 | `src/overload/arithmetic.rs` | Sub operators for owned tensor: tensor×tensor (owned/ref/mixed) + scalar (right / `Scalar<A>` left / native left per-type); non-commutative left scalar delegates to `sub_from_scalar` | W23T4, W23T5 | 19-overload §5, §6, §7, §8 |
+| W23T7 | `src/overload/arithmetic.rs` | Mul operators for owned tensor: tensor×tensor + scalar; commutative — left scalar reuses `mul_scalar` | W23T4, W23T5 | 19-overload §5, §6, §7, §8 |
+| W23T8 | `src/overload/arithmetic.rs` | Div operators for owned tensor: tensor×tensor + scalar; non-commutative left scalar delegates to `div_from_scalar` | W23T4, W23T5 | 19-overload §5, §6, §7, §8 |
+| W23T10 | `src/overload/arithmetic.rs` | `TensorView` tensor×tensor combos for Add/Sub/Mul/Div: `&View+&View`, `&View+&T`, `&T+&View` (3 combos × 4 operators = 12 impls); per §5.1 lines 123–125 | W23T6, W23T7, W23T8 | 19-overload §5, §6, §7, §8 |
+| W23T11 | `src/overload/arithmetic.rs` | `TensorView` scalar paths for Add/Sub/Mul/Div: right scalar + `Scalar<A>` left + native left per-type (4 operators × {right2 + ScalarLeft2 + nativeLeft12} = 64 impls); per §5.1 lines 133–136 & §5.4 lines 391–467 | W23T10 | 19-overload §5, §6, §7, §8 |
+| W23T9 | `tests/test_overload.rs` | Integration tests: broadcast combos, scalar combos (right/wrapper/native, owned+ref), non-commutative left-scalar (Sub/Div), type combos (f64/i32/Complex), deep-copy verification; integration-test-only (no `mod tests` wrapper, no `crate::` paths) | W23T1–W23T8, W23T10, W23T11 | 19-overload §5, §6, §7, §8 |
 
 ### W24: Utility Operations (L5)
 
@@ -398,9 +400,9 @@
 | W25T2 | `src/convert/cast.rs` | ConvertTo sealed trait signature + CastTo ownership doc: trait signatures only, no impls | W25T1 | 21-type §5, §6, §7, §8 |
 | W25T3 | `src/convert/cast.rs` | Tier-1 lossless ConvertTo impls: 6 identity + 8 widening/From shims (14 cells) | W25T2 | 21-type §5, §6, §7, §8 |
 | W25T4 | `src/convert/cast.rs` | Tier-2 lossy CastTo + ConvertTo impls: float↔int, int↔int narrowing, real→complex lossy, complex narrowing (14 cells) | W25T2 | 21-type §5, §6, §7, §8 |
-| W25T5 | `src/convert/cast.rs` | Tier-3 dynamic CastTo + ConvertTo impls: remaining cross-type conversions (8 cells) | W25T2 | 21-type §5, §6, §7, §8 |
-| W25T6 | `src/convert/cast.rs` | cast\<B\>() method on TensorBase\<S, D\>: all readable storage inputs → owned result with error reporting | W25T3, W25T4, W25T5 | 21-type §5, §6, §7, §8 |
-| W25T7 | `src/convert/cast.rs` | to_owned() + into_owned(): clone and consume owned conversion methods | W25T1 | 21-type §5, §6, §7, §8 |
+| W25T5 | `src/convert/cast.rs` | Tier-3 dynamic CastTo + ConvertTo impls: remaining cross-type conversions (8 cells) | W25T2, W25T4 | 21-type §5, §6, §7, §8 |
+| W25T6 | `src/convert/cast.rs` | cast\<B\>() method on TensorBase\<S, D\>: all readable storage inputs → owned result with error reporting | W25T3, W25T4, W25T5, W12T7 | 21-type §5, §6, §7, §8 |
+| W25T7 | `src/convert/cast.rs` | to_owned() + into_owned(): clone and consume owned conversion methods | W25T1, W7T5, W12T7 | 21-type §5, §6, §7, §8 |
 
 ### W26: Output Formatting (L5)
 
@@ -560,7 +562,7 @@ W8 + W3 ─→ W21 (Indexing)
 W8 ─→ W22 (Construction)
 W8 + W11 + W16 ─→ W23 (Overload)
 W8 ─→ W24 (Utility)
-W4 + W5 + W8 ─→ W25 (Type Conversion)
+W4 + W5 + W8 + W12 ─→ W25 (Type Conversion)  // W12T7 supplies TensorBase::iter() consumed by W25T6/W25T7
 W8 ─→ W26 (Output Formatting)
 
 W1–W26 ─→ W27 (Safety Audit)
