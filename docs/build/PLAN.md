@@ -66,13 +66,14 @@ W22 完成 ──→ W30 (Documentation)
 
 ```
 批次1:
-  W2T1 (XenonError enum)
+  W2T1 (aux enums)
 批次2:
-  W2T2 (aux enums+Result, 需 W2T1)
+  W2T2 (XenonError enum + Result, 需 W2T1)
 批次3:
   W2T3 (Display, 需 W2T2)
-  W2T4 (Error impl, 需 W2T3)
 批次4:
+  W2T4 (Error impl, 需 W2T3)
+批次5:
   W2T5 (prelude exports, 需 W2T4)
 ```
 
@@ -148,15 +149,15 @@ W22 完成 ──→ W30 (Documentation)
   W4T4 (ComplexScalar, 需 W4T2)
   W4T5 (i32 impl, 需 W4T2)
   W4T8 (bool impl, 需 W4T1)
-  W4T9 (usize doc, 需 W4T1)
 批次4:
   W4T6 (i64 impl, 需 W4T5)
 批次5:
   W4T7 (f32+f64 impls, 需 W4T3+W4T6)
-批次6:
+批次6 (并行):
+  W4T9 (usize doc, 需 W4T7)
   W4T10 (Complex impls, 需 W4T4+W5T1)
 批次7:
-  W4T11 (calibrate+doc, 需 W4T7)
+  W4T11 (calibrate+doc+marker impls, 需 W4T7+W4T10)
 批次8:
   W4T12 (all doc comments, 需 W4T10+W4T11)
 批次9 (全并行):
@@ -213,15 +214,18 @@ W22 完成 ──→ W30 (Documentation)
   W6T1 (mod.rs skeleton)
 批次2 (全并行):
   W6T2 (flags.rs skeleton, 需 W6T1)
-  W6T3 (strides.rs skeleton, 需 W6T1)
-  W6T4 (contiguous.rs skeleton, 需 W6T1)
+  W6T3 (strides.rs skeleton, 需 W6T1+W3T3)
+  W6T4 (contiguous.rs skeleton, 需 W6T1+W3T3)
 批次3:
   W6T5 (LayoutFlags, 需 W6T2)
-批次4 (全并行):
-  W6T6 (compute_f_strides, 需 W6T3+W3T2)
-  W6T7 (is_f_contiguous, 需 W6T4+W3T2)
-  W6T8 (has_zero_stride, 需 W6T3+W3T2)
-  W6T9 (is_aligned, 需 W6T3)
+批次4:
+  # strides.rs 同文件三任务必须串行执行（避免 git merge 冲突）；
+  # 三者间无逻辑依赖，只是物理上共享文件。执行顺序任选（推荐 W6T6→W6T8→W6T9）。
+  W6T6 (compute_f_strides, 需 W6T3+W3T3)         [strides.rs]
+  W6T8 (has_zero_stride, 需 W6T3+W3T3)           [strides.rs，与 W6T6 串行]
+  W6T9 (is_aligned, 需 W6T3)                     [strides.rs，与 W6T6/W6T8 串行]
+  # W6T7 写入独立文件 contiguous.rs，可与 strides.rs 三任务并行执行
+  W6T7 (is_f_contiguous, 需 W6T4+W3T3)           [contiguous.rs，独立并行]
 批次5:
   W6T11 (compute_layout_flags + flags_for_f_layout, 需 W6T5+W6T6+W6T7+W6T8+W6T9)
 批次6:
@@ -279,13 +283,13 @@ W22 完成 ──→ W30 (Documentation)
   W8T2 (TensorBase struct, 需 W8T1+W6T5)
 批次3 (并行):
   W8T3 (type aliases, 需 W8T2)
-  W8T4 (query methods, 需 W8T2+W3T2+W6T5)
-  W8T7 (from_raw_parts, 需 W8T2+W6T5+W3T2)
+  W8T4 (query methods, 需 W8T2+W3T3+W6T5)
+  W8T7 (from_raw_parts, 需 W8T2+W6T5+W3T3)
 批次4 (并行):
   W8T5 (layout delegation, 需 W8T4)
   W8T6 (pointer access, 需 W8T4)
 批次5:
-  W8T8 (from_raw_vec_unchecked, 需 W8T5+W8T7)
+  W8T8 (from_raw_vec_unchecked, 需 W8T5+W8T7+W6T5)
 批次6:
   W8T9 (view/view_mut, 需 W8T6)
 批次7:
@@ -300,15 +304,18 @@ W22 完成 ──→ W30 (Documentation)
 批次1:
   W9T1 (WorkspaceErrorCategory, 需 W2T2)
 批次2 (并行):
-  W9T2 (Workspace struct, 需 W9T1)
-  W9T3 (mod.rs, 需 W9T1)
-批次3 (全并行):
-  W9T4 (borrow guards, 需 W9T2+W9T1)
-  W9T5 (split guard, 需 W9T2+W9T1)
-  W9T6 (expand, 需 W9T2+W9T1)
-批次4:
+  W9T2 (mod.rs, 需 W9T1)
+  W9T3 (Workspace struct, 需 W9T1+W9T2)
+批次3:
+  W9T4 (borrow guards, 需 W9T3+W9T1)
+批次4 (并行):
+  W9T5 (split guard, 需 W9T3+W9T1+W9T4)
+  W9T6 (expand, 需 W9T3+W9T1+W9T4)
+批次5:
   W9T7 (exports+doc, 需 W9T4+W9T5+W9T6)
 ```
+
+**编号说明**：本 PLAN 的 W9T2/W9T3 编号与设计文档 `24-workspace.md §7` 的 T2/T3 **反向**（设计 T2=workspace.rs/T3=mod.rs；本 PLAN W9T2=mod.rs/W9T3=workspace.rs）。**理由**：批次2 中 mod.rs 拓扑应先于 workspace.rs，便于后续 `use super::workspace` 路径解析；且 SUMMARY.md 与所有 W9T*.md 任务文件已采用此编号，保持一致性。
 
 ---
 
@@ -416,6 +423,12 @@ W22 完成 ──→ W30 (Documentation)
 > - W14T8 依赖修正为 `W14T1, W14T2, W14T7`（去除原 SUMMARY 中冗余的 T3/T5 — element-wise 测试与 sum/complex sum 正交）。
 > - W14T10 依赖修正为 `W14T2, W14T6, W14T7, W14T9`（补齐实际 API 提供者）。
 > - W14T10 目标文件改为 `tests/simd_property.rs` 顶层文件，通过 Tensor 公有 API 测试，无需 Cargo.toml 显式声明。
+>
+> **W14 docs_fix 补充决策 — Complex sum/dot 阈值**：
+> design/08-simd.md §5.8 阈值表未列出 Complex 条目。本文件作为 build/ 实施层正式决策承载点，确定：
+> - **Complex sum 阈值 = 1024**（派生自 §5.8 "f32/f64 sum=1024"，按 §5.2 "Complex SIMD 策略：AoS 输入 + 寄存器内重排按实部/虚部分离"推导；deinterleave 开销吸收在累加阶段，不改变 sum 量级）。
+> - **Complex dot 阈值 = 512**（派生自 §5.8 "f32/f64 dot=512"，同 §5.2 推导；xdotc 共轭乘法仍归 dot 开销量级）。
+> 本决策不修改 design/。W14T5/W14T6 实施中若 W14T0 spike 表明阈值不合理，经本节修订后可调整，设计文档不受影响。
 
 ```
 批次1:
@@ -495,18 +508,18 @@ W22 完成 ──→ W30 (Documentation)
 
 ```
 批次1:
-  W17T1 (mod.rs)
+  W17T1 (module skeleton + Ok(A::zero()) stub)
 批次2:
-  W17T2 (dot.rs skeleton, 需 W17T1)
+  W17T2 (input validation: rank/length checks, 需 W17T1)
 批次3:
-  W17T3 (dot base, 需 W17T2)
+  W17T3 (scalar inner product via DotAccumulate trait + TensorBase::dot method, 需 W17T2)
 批次4:
-  W17T4 (scalar path, 需 W17T3)
+  W17T4 (dispatch wiring with alignment_ok helper, 需 W17T3)
 批次5 (并行):
-  W17T5 (SIMD path, 需 W17T4+W14)
-  W17T6 (parallel path, 需 W17T4+W15)
+  W17T5 (SIMD path via simd::try_dot_*, 需 W17T4+W14)
+  W17T6 (parallel path via parallel::par_dot, 需 W17T4+W15)
 批次6:
-  W17T7 (tests, 需 W17T3–W17T6)
+  W17T7 (integration tests, 需 W17T3–W17T6)
 ```
 
 ---
@@ -624,7 +637,9 @@ W22 完成 ──→ W30 (Documentation)
 批次7:
   W23T10 (TensorView scalar 64 impls for Add/Sub/Mul/Div, 需 W23T9)
 批次8:
-  W23T11 (integration tests, 需 W23T1–W23T8 + W23T9 + W23T10)
+  W23T11 (integration tests, 需 W23T1–W23T8) — 仅覆盖 owned Tensor 路径；
+    TensorView 的覆盖由 W23T9/W23T10 自身的 unit tests 提供，集成测试不再
+    重复 view 路径，故依赖不含 W23T9/W23T10，可与其并行执行
 ```
 
 ---

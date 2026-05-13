@@ -19,7 +19,7 @@
 | W7 | Storage System | L2 | 19 | RawStorage/Storage/StorageMut/RawStorageMut/StorageOwned/StorageShared traits, marker traits, Owned/A, AlignedAlloc, ViewRepr, ViewMutRepr, ArcRepr |
 | W8 | Tensor Core | L3 | 10 | TensorBase\<S,D\>, type aliases (Tensor/TensorView/TensorViewMut/ArcTensor + dimension convenience aliases), constructors, view methods, accessors, from_raw_parts |
 | W9 | Workspace | L2 | 7 | Workspace struct, borrow guards (WorkspaceBorrow/WorkspaceBorrowMut), split (SplitBorrowMut), expand (ensure_capacity/reallocate), docs |
-| W10 | Dispatch | L4 | 6 | ExecPath enum, select_exec_path, thresholds, ParallelGuard (nested parallel protection), ParallelExecStrategy |
+| W10 | Dispatch | L4 | 6 | ExecPath enum, select_exec_path, parallel/SIMD threshold config (set/reset for both), ParallelGuard (nested parallel protection), with_parallel_worker_context, ParallelExecStrategy |
 | W11 | Broadcasting | L4 | 10 | can_broadcast, broadcast_shape, broadcast_strides, broadcast_to, broadcast_with, error handling, integration tests (BroadcastDim trait is delivered by W3T22) |
 | W12 | Iterators | L4 | 7 | StrideState, Iter, IterMut, AxisIter/AxisIterMut, IndexedIter/IndexedIterMut, TensorBase entry methods |
 | W13 | FFI Helpers | L4 | 6 | BlasInfo, TensorExport/TensorExportMut private descriptors, ptr re-exports, export/export_mut, is_blas_compatible/lda, try_offset_of/try_ptr_at |
@@ -106,11 +106,11 @@
 | W4T6 | `src/element/primitives.rs` | Element + Numeric impl for i64 | W4T5 | 03-element §5, §6, §7, §8 |
 | W4T7 | `src/element/primitives.rs` | Element + Numeric + RealScalar impls for f32, f64 | W4T3, W4T6 | 03-element §5, §6, §7, §8 |
 | W4T8 | `src/element/primitives.rs` | Element impl for bool (zero=false, one=true, no Numeric) | W4T1 | 03-element §5, §6, §7, §8 |
-| W4T9 | `src/element/mod.rs` | Documentation clarifying usize as index/shape metadata only, not an element type | W4T1 | 03-element §5, §6, §7, §8 |
+| W4T9 | `src/element/mod.rs` | Documentation clarifying usize as index/shape metadata only, not an element type | W4T7 | 03-element §5, §6, §7, §8 |
 | W4T10 | `src/element/primitives.rs` | Element + Numeric + ComplexScalar impls for Complex\<f32\>/Complex\<f64\> | W4T4, W5T1 | 03-element §5, §6, §7, §8 |
-| W4T11 | `src/element/real.rs`, `src/element/mod.rs` | Calibrate math capability boundaries + document lossy CastTo error semantics | W4T7 | 03-element §5, §6, §7, §8 |
+| W4T11 | `src/element/real.rs`, `src/element/mod.rs`, `src/element/primitives.rs` | Calibrate math boundaries + add CastElement/BoolElement/OrderedCompareElement impls + document CastTo semantics | W4T7, W4T10 | 03-element §5, §6, §7, §8 |
 | W4T12 | All `src/element/` files | Doc comments on all pub items, cargo doc verification | W4T10, W4T11 | 03-element §5, §6, §7, §8 |
-| W4T13 | `src/element/` (`#[cfg(test)] mod tests`) | Element in-module unit tests: verify trait impls for all 7 element types | W4T10 | 03-element §5, §6, §7, §8 |
+| W4T13 | `src/element/primitives.rs` (`#[cfg(test)] mod tests`) | Element in-module unit tests: verify trait impls for all 7 element types | W4T10 | 03-element §5, §6, §7, §8 |
 | W4T14 | `tests/test_tensor.rs` | Element cross-module tests for tensor interaction | W4T10, W8 | 03-element §5, §6, §7, §8 |
 | W4T15 | `tests/test_math.rs` | Element cross-module tests for math operations | W4T10 | 03-element §5, §6, §7, §8 |
 | W4T16 | `tests/test_reduction.rs` | Element cross-module tests for reductions | W4T10, W8 | 03-element §5, §6, §7, §8 |
@@ -143,10 +143,10 @@
 |------|------|------|-------------|-------------|
 | W6T1 | `src/layout/mod.rs` | Module skeleton: sub-module declarations, public exports | None | 06-layout §5, §6, §7, §8 |
 | W6T2 | `src/layout/flags.rs` | Module skeleton: file placeholder, declarations | W6T1 | 06-layout §5, §6, §7, §8 |
-| W6T3 | `src/layout/strides.rs` | Module skeleton: file placeholder, declarations | W6T1 | 06-layout §5, §6, §7, §8 |
-| W6T4 | `src/layout/contiguous.rs` | Module skeleton: file placeholder, declarations | W6T1 | 06-layout §5, §6, §7, §8 |
+| W6T3 | `src/layout/strides.rs` | Module skeleton: file placeholder, declarations | W6T1, W3T3 | 06-layout §5, §6, §7, §8 |
+| W6T4 | `src/layout/contiguous.rs` | Module skeleton: file placeholder, declarations | W6T1, W3T3 | 06-layout §5, §6, §7, §8 |
 | W6T5 | `src/layout/flags.rs` | LayoutFlags(u8) bitflags: F_CONTIGUOUS, ALIGNED, HAS_ZERO_STRIDE + query/set methods + classify() (BroadcastView→FContiguous→NonContiguous) | W6T2 | 06-layout §5, §6, §7, §8 |
-| W6T6 | `src/layout/strides.rs` | compute_f_strides\<D\>: F-order stride computation with overflow check returning Result (InvalidShape::ProductOverflow) | W6T3, W3T3 | 06-layout §5, §6, §7, §8 |
+| W6T6 | `src/layout/strides.rs` | compute_f_strides\<D\> + Strides::from_slice/f_contiguous/try_stride/iter: F-order stride computation with overflow check returning Result (InvalidShape::ProductOverflow) | W6T3, W3T3 | 06-layout §5, §6, §7, §8 |
 | W6T7 | `src/layout/contiguous.rs` | is_f_contiguous\<D\>: F-order contiguity detection | W6T4, W3T3 | 06-layout §5, §6, §7, §8 |
 | W6T8 | `src/layout/strides.rs` | has_zero_stride: raw zero-stride detector + should_set_zero_stride_flag (checks product(shape) > 0) | W6T3, W3T3 | 06-layout §5, §6, §7, §8 |
 | W6T9 | `src/layout/strides.rs` | is_aligned_to / is_aligned alignment check functions | W6T3 | 06-layout §5, §6, §7, §8 |
@@ -161,13 +161,13 @@
 | W7T2 | `src/storage/mod.rs` | unsafe trait RawStorage: as_ptr/len/is_empty/is_aligned_to/is_aligned | W7T1 | 05-storage §5, §6, §7, §8 |
 | W7T3 | `src/storage/mod.rs` | unsafe trait Storage: RawStorage + get/get_unchecked/as_slice | W7T2 | 05-storage §5, §6, §7, §8 |
 | W7T4 | `src/storage/mod.rs` | RawStorageMut and StorageMut trait definitions | W7T3 | 05-storage §5, §6, §7, §8 |
-| W7T5 | `src/storage/mod.rs` | StorageOwned and StorageShared trait definitions | W7T4 | 05-storage §5, §6, §7, §8 |
+| W7T5 | `src/storage/mod.rs` | StorageOwned, StorageShared, StorageSharedExt, and StorageIntoOwned trait definitions | W7T4 | 05-storage §5.7, §5.8, §5.9, §6, §7, §8 |
 | W7T6 | `src/storage/traits.rs` | Marker traits: IsOwned, IsView, IsViewMut, IsShared | W7T5 | 01-architecture §3, 05-storage §5, §6, §7, §8 |
 | W7T7 | `src/storage/alloc.rs` | AlignedAlloc struct: 64-byte aligned alloc/alloc_zeroed/dealloc | W7T1 | 05-storage §5, §6, §7, §8 |
 | W7T8 | `src/storage/owned.rs` | Owned\<A\> struct + new/with_capacity/from_vec/from_vec_aligned/zeros/from_elem constructors | W7T7 | 05-storage §5, §6, §7, §8 |
 | W7T9 | `src/storage/owned.rs` | Owned\<A\> RawStorage trait impl | W7T5, W7T8 | 05-storage §5, §6, §7, §8 |
 | W7T10 | `src/storage/owned.rs` | Owned\<A\> Storage trait impl | W7T9 | 05-storage §5, §6, §7, §8 |
-| W7T11 | `src/storage/owned.rs` | Owned\<A\> StorageMut + StorageOwned trait impls | W7T10 | 05-storage §5, §6, §7, §8 |
+| W7T11 | `src/storage/owned.rs` | Owned\<A\> StorageMut + StorageOwned trait impls + IsOwned marker impl | W7T10 | 05-storage §5, §6, §7, §8 |
 | W7T12 | `src/storage/owned.rs` | Owned\<A\> into_shared + unsafe impl Send + unsafe impl Sync | W7T8, W7T16 | 05-storage §5, §6, §7, §8, 25-safety §5.5 |
 | W7T13 | `src/storage/owned.rs` | Owned\<A\> TryFrom\<Vec\<A\>\> + Default impls | W7T8 | 05-storage §5, §6, §7, §8 |
 | W7T14 | `src/storage/view.rs` | ViewRepr\<'a, A\>: struct, from_raw_parts/from_slice/view/slice, Clone/Copy, RawStorage/Storage impls | W7T5, W7T6 | 05-storage §5, §6, §7, §8 |
@@ -185,10 +185,10 @@
 | W8T2 | `src/tensor/mod.rs` | TensorBase\<S, D\> struct: 6 fields (storage, shape, strides, offset, flags, derived_from_view_mut) | W8T1, W6T5 | 07-tensor §5, §6, §7, §8 |
 | W8T3 | `src/tensor/aliases.rs` | 4 primary type aliases (Tensor/TensorView/TensorViewMut/ArcTensor) + 4×8=32 dim convenience aliases | W8T2 | 07-tensor §5, §6, §7, §8 |
 | W8T4 | `src/tensor/impls.rs` | Shape & stride query methods: shape/strides/ndim/len/is_empty/offset/raw_dim/flags/storage_kind/access_semantics/data_location | W8T2, W3T3, W6T5 | 07-tensor §5, §6, §7, §8 |
-| W8T5 | `src/tensor/impls.rs` | Layout query delegation: layout_state/is_f_contiguous/is_aligned/has_zero_stride | W8T4 | 07-tensor §5, §6, §7, §8 |
-| W8T6 | `src/tensor/impls.rs` | Pointer access & slice: as_ptr/as_storage_ptr/as_mut_ptr/as_slice/as_mut_slice | W8T4 | 07-tensor §5, §6, §7, §8 |
+| W8T5 | `src/tensor/impls.rs` | Layout query delegation: layout_state/is_f_contiguous/is_aligned/has_zero_stride + AliasClass enum + alias_class() method | W8T4 | 07-tensor §5, §6, §7, §8 |
+| W8T6 | `src/tensor/impls.rs` | Pointer access & slice: as_ptr/as_storage_ptr/storage_len/as_mut_ptr/as_storage_mut_ptr/as_slice/as_mut_slice | W8T4 | 07-tensor §5, §6, §7, §8 |
 | W8T7 | `src/tensor/construct.rs` | from_raw_parts / from_raw_parts_mut with storage_len and validate_access_range | W8T2, W6T5, W3T3 | 07-tensor §5, §6, §7, §8 |
-| W8T8 | `src/tensor/construct.rs` | from_raw_vec_unchecked (pub(crate) unsafe internal constructor) | W8T5, W8T7 | 07-tensor §5, §6, §7, §8 |
+| W8T8 | `src/tensor/construct.rs` | from_raw_vec_unchecked (pub(crate) unsafe internal constructor) | W8T5, W8T7, W6T5 | 07-tensor §5, §6, §7, §8 |
 | W8T9 | `src/tensor/impls.rs` | View creation methods: view() / view_mut() | W8T6 | 07-tensor §5, §6, §7, §8 |
 | W8T10 | `tests/test_tensor.rs` | Integration tests: cross-module interaction, boundary tests, type alias compilation | W8T3, W8T9 | 07-tensor §5, §6, §7, §8 |
 
@@ -197,19 +197,21 @@
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
 | W9T1 | `src/error.rs` | WorkspaceErrorCategory definition, wired into XenonError::Workspace | W2T2 | 24-workspace §5, §6, §7, §8 |
-| W9T2 | `src/workspace/mod.rs` | Module root: sub-module declarations, re-exports | W9T1 | 24-workspace §5, §6, §7, §8 |
-| W9T3 | `src/workspace/workspace.rs` | Workspace struct, constants, new(), with_default_capacity(), Drop | W9T1, W9T2 | 24-workspace §5, §6, §7, §8 |
-| W9T4 | `src/workspace/borrow.rs` | WorkspaceBorrow/WorkspaceBorrowMut guards + borrow/borrow_mut + MaybeUninit access methods + Drop | W9T3, W9T1 | 24-workspace §5, §6, §7, §8 |
-| W9T5 | `src/workspace/split.rs` | SplitBorrowMut guard, split_at_mut (top-level + recursive), Drop | W9T3, W9T1 | 24-workspace §5, §6, §7, §8 |
-| W9T6 | `src/workspace/expand.rs` | ensure_capacity() / reallocate() expansion strategy | W9T3, W9T1 | 24-workspace §5, §6, §7, §8 |
-| W9T7 | `src/workspace/mod.rs` + sub-modules | Complete public exports + doc comments + cargo doc verification | W9T4, W9T5, W9T6 | 24-workspace §5, §6, §7, §8 |
+| W9T2 | `src/workspace/mod.rs` | Module root: sub-module declarations, re-exports | W9T1 | 24-workspace §3, §4, §7 T3 |
+| W9T3 | `src/workspace/workspace.rs` | Workspace struct, constants, new(), with_default_capacity(), Drop | W9T1, W9T2 | 24-workspace §5.1–§5.4, §7 T2, §8 |
+| W9T4 | `src/workspace/borrow.rs` | WorkspaceBorrow/WorkspaceBorrowMut guards + borrow/borrow_mut + MaybeUninit access methods + Drop | W9T3, W9T1 | 24-workspace §5.5–§5.6, §6, §7 T4, §8 |
+| W9T5 | `src/workspace/split.rs` | SplitBorrowMut guard, split_at_mut (top-level + recursive), Drop | W9T3, W9T1, W9T4 | 24-workspace §5.7, §6.2–§6.3, §7 T5, §8 |
+| W9T6 | `src/workspace/expand.rs` | ensure_capacity() / reallocate() expansion strategy | W9T3, W9T1, W9T4 | 24-workspace §5.8, §6.4, §7 T6, §8 |
+| W9T7 | `src/workspace/mod.rs` + sub-modules | Complete public exports + doc comments + cargo doc verification | W9T4, W9T5, W9T6 | 24-workspace §5–§9, §7 T7 |
+
+**编号说明**：W9T2/W9T3 编号与设计文档 `24-workspace.md §7` 的 T2/T3 **反向**（设计 T2=workspace.rs/T3=mod.rs；本 SUMMARY W9T2=mod.rs/W9T3=workspace.rs）。**理由**：批次2 中 mod.rs 拓扑应先于 workspace.rs，便于后续 `use super::workspace` 路径解析。
 
 ### W10: Dispatch (L4)
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
 | W10T1 | `src/dispatch.rs` | Module skeleton: ExecPath enum, ParallelExecStrategy struct, module docs | None | 30-dispatch §5, §6, §7, §8 |
-| W10T2 | `src/dispatch.rs` | ParallelGuard type + try_acquire_guard(): thread_local Cell\<bool\>, Drop impl | W10T1 | 30-dispatch §5, §6, §7, §8 |
+| W10T2 | `src/dispatch.rs` | ParallelGuard type + try_acquire_guard() + with_parallel_worker_context(): thread_local Cell\<bool\>, Drop impl, panic-safe worker context helper | W10T1 | 30-dispatch §5, §6, §7, §8 |
 | W10T3 | `src/dispatch.rs` | ParallelExecStrategy::new() validating constructor, auto() infallible default, field accessors | W10T1 | 30-dispatch §5, §6, §7, §8 |
 | W10T4 | `src/dispatch.rs` | select_exec_path() + should_parallelize(): three-way dispatch, threshold reading, feature gate branching | W10T1, W10T2 | 30-dispatch §5, §6, §7, §8 |
 | W10T5 | `src/dispatch.rs` | Threshold config: AtomicUsize storage, set/reset_parallel_threshold, set/reset_simd_threshold, Relaxed ordering | W10T4 | 30-dispatch §5, §6, §7, §8 |
@@ -258,12 +260,12 @@
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
 | W14T0 | `docs/spike/pulp-api-survey.md` | pulp 0.18 API capability spike: i32→i64 widening, complex AoS deinterleave/shuffle, FMA capability bit, unaligned load/store, lane width — report availability + fallback per API | None | 08-simd §6.1 |
-| W14T1 | `src/simd/mod.rs`, `src/lib.rs` | Module skeleton: SimdElement sealed marker, SimdKernel trait, BinaryOp + UnaryOp enums, Arch cache, facade 统一表 (`dispatch_vector_binary_op`/`dispatch_vector_unary_op` → bool; `try_sum_*`/`try_dot_*` → Option<A>); register `pub(crate) mod simd;` in lib.rs | W14T0 | 08-simd §5, §6, §8, §10 |
-| W14T2 | `src/simd/vector.rs` | Element-wise SIMD: Add/Sub/Mul/Div Kernel WithSimd impls for f32/f64 + independent Neg unary Kernel; FMA forbidden in per-element main loop | W14T0, W14T1 | 08-simd §5, §6, §8, §10 |
+| W14T1 | `src/simd/mod.rs`, `src/lib.rs` | Module skeleton: SimdElement sealed marker, SimdKernel trait, BinaryOp + UnaryOp enums, Arch cache, facade 统一表 (`dispatch_vector_binary_op`/`dispatch_vector_unary_op` → bool; `try_sum_*`/`try_dot_*` → Option<A>); register `pub(crate) mod simd;` in lib.rs | W14T0 | 08-simd §5, §6, §7, §8, §10 |
+| W14T2 | `src/simd/vector.rs` | Element-wise SIMD: Add/Sub/Mul/Div Kernel WithSimd impls for f32/f64 + independent Neg unary Kernel; FMA forbidden in per-element main loop | W14T0, W14T1 | 08-simd §5.5, §5.6, §5.8, §6.1, §6.6, §8.2, §10 |
 | W14T3 | `src/simd/vector.rs` | Float sum SIMD: f32/f64 SumKernel with pairwise lane accumulation; tolerance per 13-reduction §6.3 | W14T2 | 08-simd §5.6, §5.8, §6.6, §8.2, §10 |
 | W14T4 | `src/simd/vector.rs` | Integer sum/dot SIMD admission + fallback: i32 widening primary path (per W14T0 spike); i64 default scalar fallback only (checked_add/checked_mul) | W14T0, W14T3 | 08-simd §5, §6, §8, §10 |
-| W14T5 | `src/simd/vector.rs` | Complex sum SIMD: Complex\<f32\>/Complex\<f64\> AoS→SoA deinterleave + split real/imag pairwise accumulation; **Complex sum threshold = 1024** (temporary decision, pending 08-simd §5.8 update) | W14T0, W14T3 | 08-simd §5, §6, §8, §10 |
-| W14T6 | `src/simd/vector.rs` | Float + complex dot SIMD: f32/f64/Complex\<f32\>/Complex\<f64\> dot kernel; BLAS xdotc conjugate contract `sum(conj(lhs_i)*rhs_i)`; **Complex dot threshold = 512** (temporary decision); reuses W14T5 split accumulator | W14T0, W14T3, W14T5 | 08-simd §5, §6, §8, §10 |
+| W14T5 | `src/simd/vector.rs` | Complex sum SIMD: Complex\<f32\>/Complex\<f64\> AoS→SoA deinterleave + split real/imag pairwise accumulation; **Complex sum threshold = 1024** (per PLAN.md W14 补充决策) | W14T0, W14T3 | 08-simd §5, §6, §8, §10 |
+| W14T6 | `src/simd/vector.rs` | Float + complex dot SIMD: f32/f64/Complex\<f32\>/Complex\<f64\> dot kernel; BLAS xdotc conjugate contract `sum(conj(lhs_i)*rhs_i)`; **Complex dot threshold = 512** (per PLAN.md W14 补充决策); reuses W14T5 split accumulator | W14T0, W14T3, W14T5 | 08-simd §5, §6, §8, §10 |
 | W14T7 | `src/simd/mod.rs`, `Cargo.toml` | Feature gate conditional compilation: #[cfg(feature = "simd")] guards all items including trait definitions; pub(crate) facade export (no lib.rs modification — W14T1 owns lib.rs registration); W10 ExecPath::Simd dispatch integration contract | W14T0, W14T1, W14T2 | 08-simd §5, §6, §8, §10 |
 | W14T8 | `src/simd/vector.rs` (#[cfg(all(test, feature = "simd"))]) | Element-wise consistency tests: SIMD vs serial bitwise agreement for Add/Sub/Mul/Div/Neg on f32+f64; boundary lengths (0/1/below/at/tail/SIMD_WIDTH+k); NaN-aware comparison | W14T1, W14T2, W14T7 | 08-simd §5, §6, §8, §10 |
 | W14T9 | `src/simd/vector.rs` (#[cfg(all(test, feature = "simd"))]) | Reduction/dot semantic + tolerance tests: entry threshold boundaries (1023/1024 etc.), ISA gating fallback, tolerance per 13-reduction §6.3 + 12-matrix dot bound, complex component-wise comparison, i32 admission tests (i64 has no SIMD facade — not in test scope) | W14T3, W14T4, W14T5, W14T6, W14T8 | 08-simd §5, §6, §8, §10 |
@@ -286,7 +288,7 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W16T1 | `src/math/mod.rs` | Module skeleton: declarations, public API re-exports | None | 11-math §5, §6, §7, §8 |
+| W16T1 | `src/math/mod.rs`, `src/math/helpers.rs` | Module skeleton: declarations, shared element-wise helpers (apply_unary, apply_complex_to_real), public API re-exports | None | 11-math §5, §6, §7, §8 |
 | W16T2 | `src/math/binary.rs` | Shared binary element-wise execution skeleton with broadcast support | W16T1 | 11-math §5, §6, §7, §8 |
 | W16T3 | `src/math/unary.rs` | Unary element-wise ops: abs, neg, signum, square (with checked arithmetic for integers) | W16T1 | 11-math §5, §6, §7, §8 |
 | W16T4 | `src/math/unary.rs` | Math functions for RealScalar: sin, sqrt, exp, ln, floor, ceil | W16T1 | 11-math §5, §6, §7, §8 |
@@ -314,12 +316,12 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W18T1 | `src/reduction/mod.rs` | Module skeleton: public API exports (sum family) | None | 13-reduction §5, §6, §7, §8 |
+| W18T1 | `src/reduction/mod.rs`, `src/reduction/sum.rs`, `src/lib.rs` | Module skeleton: empty sum.rs placeholder + public API exports (sum family) + crate-root wiring | None | 13-reduction §5, §6, §7, §8 |
 | W18T2 | `src/reduction/sum.rs` | sum() + `checked_add_step` TypeId-dispatched helper: full traversal, integer checked arithmetic, empty array zero semantics, NaN / complex NaN propagation tests | W18T1 | 13-reduction §5, §6, §7, §8 |
 | W18T3 | `src/reduction/sum.rs` | sum_axis() + `validate_axis` pub(crate) helper: axis validation, output shape reduction, per-axis slot accumulation via `try_at_mut`, zero-length reduced axis test | W18T2 | 13-reduction §5, §6, §7, §8 |
 | W18T4 | `src/reduction/sum.rs` | sum_axis_keepdims() + local `dim_with_axis_set` helper: preserve rank with reduced axis length 1, reuses `validate_axis` / `checked_add_step`, zero-length keepdims test | W18T3 | 13-reduction §5, §6, §7, §8 |
-| W18T5 | `src/reduction/sum.rs`, `src/simd/`, `src/parallel/` | SIMD / parallel dispatch guards: integer type gate before `select_exec_path`, TypeId-dispatched W14 `try_sum_*` facades, `par_sum` integration, §6.3 tolerance-based consistency tests | W18T4, W14, W15 | 13-reduction §5, §6, §7, §8 |
-| W18T6 | `src/reduction/sum.rs`, `tests/test_reduction.rs` | Integration tests: axis OOB → InvalidAxis, integer overflow → panic, IEEE 754 Inf, high-rank IxDyn shape semantics, 10^7-class parallel-path §6.3 tolerance | W18T3–W18T5 | 13-reduction §5, §6, §7, §8 |
+| W18T5 | `src/reduction/sum.rs` | SIMD / parallel dispatch guards: integer type gate before `select_exec_path`, TypeId-dispatched W14 `try_sum_*` facades, `par_sum` integration, §6.3 tolerance-based consistency tests | W18T4, W14, W15 | 13-reduction §5, §6, §7, §8 |
+| W18T6 | `tests/test_reduction.rs` | Integration tests: axis OOB → InvalidAxis on sum_axis/sum_axis_keepdims, integer overflow → panic on sum/sum_axis/sum_axis_keepdims, IEEE 754 Inf, high-rank IxDyn shape semantics, 10^7-class parallel-path §6.3 tolerance | W18T3–W18T5 | 13-reduction §5, §6, §7, §8 |
 
 ### W19: Set Operations (L5)
 
@@ -356,7 +358,7 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W22T1 | `src/construct/mod.rs`, `src/construct/init.rs` | Module skeleton: sub-module declarations only (pub use re-exports delegated to W22T2–W22T8) | None | 18-construction §5, §6, §7, §8 |
+| W22T1 | `src/construct/mod.rs`, `src/construct/init.rs`, `src/construct/eye.rs`, `src/construct/from.rs`, `src/construct/scalar.rs`, `src/lib.rs` | Module skeleton: sub-module declarations + empty placeholder files (impl blocks for constructors are added by W22T2–W22T8; only `pub use eye::EyeElement;` re-export is deferred to W22T4 since all other constructors are `TensorBase` associated functions and auto-visible via impl blocks) | None | 18-construction §5, §6, §7, §8 |
 | W22T2 | `src/construct/init.rs` | zeros() constructor | W22T1 | 18-construction §5, §6, §7, §8 |
 | W22T3 | `src/construct/init.rs` | ones() constructor | W22T1 | 18-construction §5, §6, §7, §8 |
 | W22T4 | `src/construct/eye.rs` | eye(): identity matrix constructor | W22T1, W22T2 | 18-construction §5, §6, §7, §8 |
@@ -370,8 +372,8 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W23T1 | `src/overload/mod.rs` (+ placeholder `src/overload/arithmetic.rs`) | Module skeleton: `pub mod arithmetic;` + `pub use arithmetic::Scalar;`; create empty `arithmetic.rs` so the module declaration resolves | None | 01-architecture §3, 19-overload §5, §6, §7, §8 |
-| W23T2 | `src/overload/arithmetic.rs` | Imports for operators / math / broadcast / tensor / element / error / storage / complex; `Scalar<A>` declaration (no derives — strictly per §5.3 line 273) | W23T1 | 19-overload §5, §6, §7, §8 |
+| W23T1 | `src/overload/mod.rs` (+ placeholder `src/overload/arithmetic.rs`) | Module skeleton: `pub mod arithmetic;` declaration + compile-time anchor test; create empty `arithmetic.rs` so the module declaration resolves. `pub use arithmetic::Scalar;` is intentionally deferred to W23T2 (when `Scalar` is first declared) to keep this task's `cargo check` green | None | 01-architecture §3, 19-overload §5, §6, §7, §8 |
+| W23T2 | `src/overload/arithmetic.rs` (+ `src/overload/mod.rs` backfill) | Imports for operators / math / broadcast / tensor / element / error / storage / complex; `Scalar<A>` declaration (no derives — strictly per §5.3 line 273); backfill `pub use arithmetic::Scalar;` into `mod.rs` and add the reexport unit test | W23T1 | 19-overload §5, §6, §7, §8 |
 | W23T3 | `src/overload/arithmetic.rs` | `Add<TensorBase<Owned<A>,E>> for TensorBase<Owned<A>,D>` (owned + owned) with symmetric BroadcastDim where bound; delegates to inherent `TensorBase::add(&rhs)` | W23T2 | 19-overload §5, §6, §7, §8 |
 | W23T4 | `src/overload/arithmetic.rs` | Add for ref/mixed owned combos: `&T+&T`, `T+&T`, `&T+T` (3 combos), all delegating to inherent `TensorBase::add` | W23T3 | 19-overload §5, §6, §7, §8 |
 | W23T5 | `src/overload/arithmetic.rs` | Add scalar paths (owned `Tensor` only): `T+A`, `&T+A`, `Scalar<A>+T`, `Scalar<A>+&T`, native `T+Tensor<T,D>` and `T+&Tensor<T,D>` per-type for {f32,f64,i32,i64,Complex<f32>,Complex<f64>} | W23T3 | 19-overload §5, §6, §7, §8 |
@@ -380,7 +382,7 @@
 | W23T8 | `src/overload/arithmetic.rs` | Div operators for owned tensor: tensor×tensor + scalar; non-commutative left scalar delegates to `div_from_scalar` | W23T4, W23T5 | 19-overload §5, §6, §7, §8 |
 | W23T9 | `src/overload/arithmetic.rs` | `TensorView` tensor×tensor combos for Add/Sub/Mul/Div: `&View+&View`, `&View+&T`, `&T+&View` (3 combos × 4 operators = 12 impls); per §5.1 lines 123–125 | W23T6, W23T7, W23T8 | 19-overload §5, §6, §7, §8 |
 | W23T10 | `src/overload/arithmetic.rs` | `TensorView` scalar paths for Add/Sub/Mul/Div: right scalar + `Scalar<A>` left + native left per-type (4 operators × {right2 + ScalarLeft2 + nativeLeft12} = 64 impls); per §5.1 lines 133–136 & §5.4 lines 391–467 | W23T9 | 19-overload §5, §6, §7, §8 |
-| W23T11 | `tests/test_overload.rs` | Integration tests: broadcast combos, scalar combos (right/wrapper/native, owned+ref), non-commutative left-scalar (Sub/Div), type combos (f64/i32/Complex), deep-copy verification; integration-test-only (no `mod tests` wrapper, no `crate::` paths) | W23T1–W23T8, W23T9, W23T10 | 19-overload §5, §6, §7, §8 |
+| W23T11 | `tests/test_overload.rs` | Integration tests: broadcast combos, scalar combos (right/wrapper/native, owned+ref), non-commutative left-scalar (Sub/Div), type combos (f64/i32/Complex), deep-copy verification; integration-test-only (no `mod tests` wrapper, no `crate::` paths). Owned Tensor path only — TensorView coverage stays in W23T9/W23T10 unit tests | W23T1–W23T8 | 19-overload §5, §6, §7, §8 |
 
 ### W24: Utility Operations (L5)
 
@@ -396,24 +398,24 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W25T1 | `src/convert/mod.rs`, `src/lib.rs` | Module skeleton: sub-module declarations, pub use exports | None | 21-type §5, §6, §7, §8 |
-| W25T2 | `src/convert/cast.rs` | ConvertTo sealed trait signature + CastTo ownership doc: trait signatures only, no impls | W25T1 | 21-type §5, §6, §7, §8 |
-| W25T3 | `src/convert/cast.rs` | Tier-1 lossless ConvertTo impls: 6 identity + 8 widening/From shims (14 cells) | W25T2 | 21-type §5, §6, §7, §8 |
-| W25T4 | `src/convert/cast.rs` | Tier-2 lossy CastTo + ConvertTo impls: float↔int, int↔int narrowing, real→complex lossy, complex narrowing (14 cells) | W25T2 | 21-type §5, §6, §7, §8 |
-| W25T5 | `src/convert/cast.rs` | Tier-3 dynamic CastTo + ConvertTo impls: remaining cross-type conversions (8 cells) | W25T2, W25T4 | 21-type §5, §6, §7, §8 |
+| W25T1 | `src/convert/mod.rs`, `src/convert/cast.rs` (placeholder), `src/lib.rs` | Module skeleton: `mod cast;` declaration, placeholder `cast.rs`, `pub mod convert;` in `lib.rs`. `pub(crate) use cast::ConvertTo;` is deferred to W25T2 so W25T1 compiles standalone. | None | 21-type §5, §6, §7, §8 |
+| W25T2 | `src/convert/cast.rs`, `src/convert/mod.rs` | ConvertTo sealed trait signature (`pub(crate) trait ConvertTo<B>: CastElement + Sealed`) + CastTo ownership doc + `pub(crate) use cast::ConvertTo;` in mod.rs. Trait signatures only, no impls. | W25T1 | 21-type §5, §6, §7, §8 |
+| W25T3 | `src/convert/cast.rs` | Tier-1 lossless ConvertTo impls: 6 identity + 3 std From arithmetic widening + 4 real→complex zero-imag widening + 1 complex→complex widening (14 cells) | W25T2 | 21-type §5, §6, §7, §8 |
+| W25T4 | `src/convert/cast.rs` | Tier-2 lossy CastTo + ConvertTo impls: float↔int, int↔int narrowing, int→narrow float, real→complex lossy, complex narrowing (14 cells with reason mapping table) | W25T2 | 21-type §5, §6, §7, §8 |
+| W25T5 | `src/convert/cast.rs` | Tier-3 dynamic CastTo + ConvertTo impls: Complex\<f32/f64\> → {i32,i64,f32,f64} (8 cells); inner path branches per (src,tgt): identity / `From` widening / Tier-2 delegation | W25T2, W25T4 | 21-type §5, §6, §7, §8 |
 | W25T6 | `src/convert/cast.rs` | cast\<B\>() method on TensorBase\<S, D\>: all readable storage inputs → owned result with error reporting | W25T3, W25T4, W25T5, W12T7 | 21-type §5, §6, §7, §8 |
-| W25T7 | `src/convert/cast.rs` | to_owned() + into_owned(): clone and consume owned conversion methods | W25T1, W7T5, W12T7 | 21-type §5, §6, §7, §8 |
+| W25T7 | `src/convert/cast.rs` | to_owned() + into_owned(): clone and consume owned conversion methods; includes self-contained `pub(crate) fn into_owned_from_owned_storage` helper (not provided by 07-tensor.md / W8) | W25T1, W7T5, W12T7 | 21-type §5, §6, §7, §8 |
 
 ### W26: Output Formatting (L5)
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W26T1 | `src/format/mod.rs` | Module skeleton: sub-module declarations, re-exports | None | 22-output §5, §6, §7, §8 |
+| W26T1 | `src/format/mod.rs`, `src/lib.rs` | Module skeleton: crate-root declaration + format module root (no submodule declarations; submodules declared incrementally by W26T2-W26T5; re-exports finalized by W26T6) | None | 22-output §5, §6, §7, §8 |
 | W26T2 | `src/format/config.rs` | FormatConfig struct + Default impl | W26T1 | 22-output §5, §6, §7, §8 |
 | W26T3 | `src/format/pretty.rs` | Numpy-style formatting helpers: fmt_1d_display, fmt_1d_debug, fmt_nd_display, fmt_nd_debug with truncation | W26T2 | 22-output §5, §6, §7, §8 |
 | W26T4 | `src/format/display.rs` | core::fmt::Display for TensorBase\<S, D\> | W26T3 | 22-output §5, §6, §7, §8 |
 | W26T5 | `src/format/debug.rs` | core::fmt::Debug for TensorBase\<S, D\> with metadata | W26T3 | 22-output §5, §6, §7, §8 |
-| W26T6 | `src/format/mod.rs`, `display.rs` | Module docs + re-exports completion | W26T4, W26T5 | 22-output §5, §6, §7, §8 |
+| W26T6 | `src/format/mod.rs` | Module docs + re-exports completion (`pub use config::FormatConfig;` + `pub use display::TensorDisplay;`) | W26T4, W26T5 | 22-output §5, §6, §7, §8 |
 
 ### W27: Safety Audit (cross-cutting)
 
