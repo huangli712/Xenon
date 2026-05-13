@@ -85,7 +85,7 @@
 | W3T12 | `src/dimension/static.rs`, `dynamic.rs` | into_dyn() / try_from_dyn() conversion methods | W3T10, W3T11 | 02-dimension §5, §6, §7, §8 |
 | W3T13 | `src/error.rs` | XenonError::DimensionMismatch integration for dimension conversion failures | W2T1, W3T12 | 02-dimension §5, §6, §7, §8 |
 | W3T14 | `src/dimension/into.rs` | IntoDimension trait + tuple/array/slice/Vec impls | W3T13 | 02-dimension §5, §6, §7, §8 |
-| W3T15 | `src/private.rs`, `src/dimension/mod.rs` | Sealed trait impl for all dimension types + public exports | W3T12, W3T13, W3T14 | 02-dimension §5, §6, §7, §8 |
+| W3T15 | `src/private.rs`, `src/dimension/mod.rs` | Sealed trait impl for all dimension types + public exports | W3T2, W3T12, W3T13, W3T14 | 02-dimension §5, §6, §7, §8 |
 | W3T16 | All `src/dimension/` files | Doc comments on all pub items, cargo doc verification | W3T15 | 02-dimension §5, §6, §7, §8 |
 | W3T17 | `src/dimension/` (`#[cfg(test)] mod tests`) | Dimension in-module unit tests: Ix0, zero-length axis, large dim, overflow | W3T16 | 02-dimension §5, §6, §7, §8 |
 | W3T18 | `tests/test_tensor.rs` | Dimension cross-module tests for tensor interaction | W3T16 | 02-dimension §5, §6, §7, §8 |
@@ -101,7 +101,7 @@
 | W4T1 | `src/element/mod.rs` | Module skeleton + import shared Sealed + Element trait definition | W3T15, W2T1 | 03-element §5, §6, §7, §8 |
 | W4T2 | `src/element/numeric.rs` | Numeric trait definition (arithmetic supertraits + conjugate) | W4T1 | 03-element §5, §6, §7, §8 |
 | W4T3 | `src/element/real.rs` | RealScalar trait: math functions (abs/sqrt/sin/exp/ln/floor/ceil) + NaN detection | W4T2 | 03-element §5, §6, §7, §8 |
-| W4T4 | `src/element/complex.rs` | ComplexScalar trait: associated type Real + complex methods (re/im/norm) | W4T2 | 03-element §5, §6, §7, §8 |
+| W4T4 | `src/element/complex.rs` | ComplexScalar trait: associated type Real + complex methods (re/im/norm) | W4T2, W4T3 | 03-element §5, §6, §7, §8 |
 | W4T5 | `src/element/primitives.rs` | Element + Numeric impl for i32 | W4T2 | 03-element §5, §6, §7, §8 |
 | W4T6 | `src/element/primitives.rs` | Element + Numeric impl for i64 | W4T5 | 03-element §5, §6, §7, §8 |
 | W4T7 | `src/element/primitives.rs` | Element + Numeric + RealScalar impls for f32, f64 | W4T3, W4T6 | 03-element §5, §6, §7, §8 |
@@ -225,7 +225,7 @@
 | W11T4 | `src/broadcast/shape.rs` | can_broadcast(): trailing-axis alignment compatibility check | W11T2 | 15-broadcast §5, §6, §7, §8 |
 | W11T5 | `src/broadcast/shape.rs` | broadcast_shape(): shared shape derivation with structured broadcast errors | W11T4 | 15-broadcast §5, §6, §7, §8 |
 | W11T6 | `src/broadcast/shape.rs` | broadcast_strides(): zero-stride insertion with input precondition validation | W11T5 | 15-broadcast §5, §6, §7, §8 |
-| W11T7 | `src/broadcast/view.rs` | broadcast_to() basic path: target shape validation + read-only view construction | W11T6 | 15-broadcast §5, §6, §7, §8 |
+| W11T7 | `src/broadcast/view.rs` | broadcast_to() basic path: target shape validation + read-only view construction | W11T3, W11T6 | 15-broadcast §5, §6, §7, §8 |
 | W11T8 | `src/broadcast/view.rs` | broadcast_to() error path + BroadcastView layout state update | W11T7 | 15-broadcast §5, §6, §7, §8 |
 | W11T9 | `src/broadcast/view.rs` | broadcast_with(): shared shape derivation, dual-input broadcast | W11T6, W11T7 | 15-broadcast §5, §6, §7, §8 |
 | W11T10 | `tests/test_broadcast.rs` | Integration tests | W11T8, W11T9 | 15-broadcast §5, §6, §7, §8 |
