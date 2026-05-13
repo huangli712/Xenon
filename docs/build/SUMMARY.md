@@ -197,11 +197,11 @@
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
 | W9T1 | `src/error.rs` | WorkspaceErrorCategory definition, wired into XenonError::Workspace | W2T2 | 24-workspace §5, §6, §7, §8 |
-| W9T2 | `src/workspace/workspace.rs` | Workspace struct, constants, new(), with_default_capacity(), Drop | W9T1 | 24-workspace §5, §6, §7, §8 |
-| W9T3 | `src/workspace/mod.rs` | Module root: sub-module declarations, re-exports | W9T1 | 24-workspace §5, §6, §7, §8 |
-| W9T4 | `src/workspace/borrow.rs` | WorkspaceBorrow/WorkspaceBorrowMut guards + borrow/borrow_mut + MaybeUninit access methods + Drop | W9T2, W9T1 | 24-workspace §5, §6, §7, §8 |
-| W9T5 | `src/workspace/split.rs` | SplitBorrowMut guard, split_at_mut (top-level + recursive), Drop | W9T2, W9T1 | 24-workspace §5, §6, §7, §8 |
-| W9T6 | `src/workspace/expand.rs` | ensure_capacity() / reallocate() expansion strategy | W9T2, W9T1 | 24-workspace §5, §6, §7, §8 |
+| W9T2 | `src/workspace/mod.rs` | Module root: sub-module declarations, re-exports | W9T1 | 24-workspace §5, §6, §7, §8 |
+| W9T3 | `src/workspace/workspace.rs` | Workspace struct, constants, new(), with_default_capacity(), Drop | W9T1, W9T2 | 24-workspace §5, §6, §7, §8 |
+| W9T4 | `src/workspace/borrow.rs` | WorkspaceBorrow/WorkspaceBorrowMut guards + borrow/borrow_mut + MaybeUninit access methods + Drop | W9T3, W9T1 | 24-workspace §5, §6, §7, §8 |
+| W9T5 | `src/workspace/split.rs` | SplitBorrowMut guard, split_at_mut (top-level + recursive), Drop | W9T3, W9T1 | 24-workspace §5, §6, §7, §8 |
+| W9T6 | `src/workspace/expand.rs` | ensure_capacity() / reallocate() expansion strategy | W9T3, W9T1 | 24-workspace §5, §6, §7, §8 |
 | W9T7 | `src/workspace/mod.rs` + sub-modules | Complete public exports + doc comments + cargo doc verification | W9T4, W9T5, W9T6 | 24-workspace §5, §6, §7, §8 |
 
 ### W10: Dispatch (L4)
