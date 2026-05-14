@@ -61,8 +61,8 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W2T1 | `src/error.rs` | Auxiliary enum types: FfiErrorCategory, WorkspaceErrorCategory, ConversionFailureReason + Result alias | W1T3 | 26-error §5, §6, §7, §8 |
-| W2T2 | `src/error.rs` | XenonError enum definition with all structured variants | W2T1 | 26-error §5, §6, §7, §8 |
+| W2T1 | `src/error.rs` | Auxiliary enum types: FfiErrorCategory, WorkspaceErrorCategory, ConversionFailureReason, InvalidArgumentKind, InvalidLayoutReason, StorageKindTag, StorageConversionKind, InvalidShapeKind, AbiMismatchKind, FfiBackend, WorkspaceBorrowKind, WorkspaceBorrowState, TypedViewRejection | W1T3 | 26-error §5, §6, §7, §8 |
+| W2T2 | `src/error.rs` | XenonError enum definition with all structured variants + Result type alias | W2T1 | 26-error §5, §6, §7, §8 |
 | W2T3 | `src/error.rs` | fmt::Display impl for XenonError with OrAny\<T\>, FmtShape helpers | W2T2 | 26-error §5, §6, §7, §8 |
 | W2T4 | `src/error.rs` | std::error::Error impl (source chaining for Ffi/Workspace, None for leaf variants) | W2T3 | 26-error §5, §6, §7, §8 |
 | W2T5 | `src/prelude.rs`, `src/lib.rs` | Public exports of XenonError, Result alias, auxiliary enums via prelude + `pub use error::XenonError;` direct re-export at crate root | W2T4 | 26-error §5, §6, §7, §8, 01-architecture §7, §8 |
