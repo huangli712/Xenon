@@ -57,7 +57,10 @@ build/W{wave}T{task}.md
 
 > **强制要求**:
 > - 本步骤必须包含一个或者多个单元测试。
-> - 测试函数名称和测试内容必须参考对应设计文档的 **「测试计划」** 一节。
+> - 测试函数名称和测试内容必须参考对应设计文档：
+>   - **命名**来源于「公共 API 设计」一节（§5 及其子节，各子节表头枚举 `test_*` 函数名），
+>   - **分层执行与矩阵**来源于「测试计划」一节（§8）。
+>   §8 提供 CI 测试矩阵、feature gate 表与编译期测试规范，不直接枚举具体的 `test_*` 函数名。
 > - 编译检查与Lint检查不等同于单元测试。
 > - 如果测试没有通过需要修复直至测试通过。
 > - **无测试 = 任务未完成。**
@@ -133,6 +136,24 @@ print("OK", file=sys.stderr)
 > **注意**：等效验证条款是对「无测试 = 任务未完成」原则的**等效履行**，**不是豁免**。
 > 验证脚本本身必须可执行、可失败、可纳入 CI。
 
+#### 纯文档改动的 Rust 源码等效验证豁免
+
+当 task 的「目标文件」为 Rust 源码（`.rs`）但**仅修改 `//!` / `///` doc comment 而不引入函数逻辑**时（典型场景：模块级 `mod.rs` 仅补文档注释、crate 级 `lib.rs` 仅补顶档、类型/函数级文档仅补 `///` 注释 + doctest），由于没有可挂载 `#[test]` 的运行时函数体，允许采用以下等效验证组合替代 `#[test]`：
+
+1. **必须同时**执行：
+   - `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps` （missing_docs / broken_intra_doc_links 失败即非零退出）；
+   - `cargo test --doc --all-features` （若本 task 引入了 doctest）；
+   - `cargo clippy --all-features -- -D clippy::missing_errors_doc -D clippy::missing_panics_doc -D clippy::missing_safety_doc`（包含 unsafe API / Result API 时）。
+2. **只有在以下条件全部满足时**才适用豁免：
+   - 本 task 不添加、不修改任何 `fn` / `impl` / `struct` 体；
+   - 本 task 不修改类型签名、可见性或 `unsafe` 属性；
+   - 修改内容仅限于 `//!` 模块文档和 `///` 项文档（可包含 `# Examples` / `# Safety` / `# Errors` / `# Sealed` 小节 + doctest 代码块）。
+3. **豁免不适用**的场景：新增/修改任何可运行函数时，必须按 §1 主条款补 `#[test]` 单元测试。
+4. 「验证方式」一节必须显式列出等效验证命令，纳入验收门禁；以 `cargo test --doc` 通过 / `cargo doc -D warnings` 无 warning 作为验收凭证。
+
+> **适用范例**：`docs/build/W30T5.md` 至 `W30T41.md` 一批文档类 task。
+> **不适用反例**：任何在 `.rs` 中新增 `pub fn foo() { ... }` 的 task。
+
 ## 关键设计决策
 
 {列出此实现中的重要设计选择和权衡}
@@ -158,7 +179,7 @@ print("OK", file=sys.stderr)
 1. **代码示例必须可编译**（标注依赖哪些类型/ trait 已存在）
 2. **实施步骤必须原子化**，每步一个独立动作
 3. **实施步骤最后一个 Step 必须为单元测试或等效验证**：
-   - 目标文件为 Rust 源码（`.rs`）时，必须包含 `#[test]` 单元测试，测试函数和内容参考设计文档「测试计划」节；
+   - 目标文件为 Rust 源码（`.rs`）时，必须包含 `#[test]` 单元测试；测试函数的**命名**参考对应设计文档「公共 API 设计」节（§5 及其子节），**分层执行与矩阵**参考「测试计划」节（§8）；
    - 目标文件为非 Rust 配置/工程文件（如 `Cargo.toml`、`rustfmt.toml`、`.clippy.toml`、`.yml`、`.md` 等）时，必须按本模板「等效验证条款」提供可执行、可失败的验证脚本。
 4. **无测试步骤（或无等效验证步骤）的方案视为未完成**
 5. **验证方式必须可执行且具备失败语义**：

@@ -61,17 +61,17 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W2T1 | `src/error.rs` | XenonError enum definition with all structured variants | W1T3 | 26-error §5, §6, §7, §8 |
-| W2T2 | `src/error.rs` | Auxiliary enum types: FfiErrorCategory, WorkspaceErrorCategory, ConversionFailureReason + Result alias | W2T1 | 26-error §5, §6, §7, §8 |
+| W2T1 | `src/error.rs` | Auxiliary enum types: FfiErrorCategory, WorkspaceErrorCategory, ConversionFailureReason + Result alias | W1T3 | 26-error §5, §6, §7, §8 |
+| W2T2 | `src/error.rs` | XenonError enum definition with all structured variants | W2T1 | 26-error §5, §6, §7, §8 |
 | W2T3 | `src/error.rs` | fmt::Display impl for XenonError with OrAny\<T\>, FmtShape helpers | W2T2 | 26-error §5, §6, §7, §8 |
 | W2T4 | `src/error.rs` | std::error::Error impl (source chaining for Ffi/Workspace, None for leaf variants) | W2T3 | 26-error §5, §6, §7, §8 |
-| W2T5 | `src/prelude.rs` | Public exports of XenonError, Result alias, auxiliary enums via prelude | W2T4 | 26-error §5, §6, §7, §8 |
+| W2T5 | `src/prelude.rs`, `src/lib.rs` | Public exports of XenonError, Result alias, auxiliary enums via prelude + `pub use error::XenonError;` direct re-export at crate root | W2T4 | 26-error §5, §6, §7, §8, 01-architecture §7, §8 |
 
 ### W3: Dimension System (L1)
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W3T1 | `src/dimension/mod.rs` | Module skeleton: sub-module declarations, public re-exports | None | 02-dimension §5, §6, §7, §8 |
+| W3T1 | `src/dimension/mod.rs` | Module skeleton: sub-module declarations + crate-root wiring (public re-exports deferred to W3T15) | None | 02-dimension §5, §6, §7, §8 |
 | W3T2 | `src/dimension/axes.rs` | Axis newtype with new/index/checked_next/next/prev/is_first/is_last | W3T1 | 02-dimension §5, §6, §7, §8 |
 | W3T3 | `src/dimension/mod.rs` | Dimension trait definition (all method signatures, MAX_DIMENSION constant) | W3T1, W3T2 | 02-dimension §5, §6, §7, §8 |
 | W3T4 | `src/dimension/static.rs` | Ix0 zero-dimensional scalar with Dimension impl | W3T3 | 02-dimension §5, §6, §7, §8 |
@@ -98,7 +98,7 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W4T1 | `src/element/mod.rs` | Module skeleton + import shared Sealed + Element trait definition | W3T15, W2T1 | 03-element §5, §6, §7, §8 |
+| W4T1 | `src/element/mod.rs` | Module skeleton + import shared Sealed + Element trait + ElementType enum + element_type_of/element_type_name_of helpers + OrderedCompareElement trait (§5.5) + CastTo<T> trait (§5.9) definitions | W3T15, W2T1 | 03-element §5, §6, §7, §8 |
 | W4T2 | `src/element/numeric.rs` | Numeric trait definition (arithmetic supertraits + conjugate) | W4T1 | 03-element §5, §6, §7, §8 |
 | W4T3 | `src/element/real.rs` | RealScalar trait: math functions (abs/sqrt/sin/exp/ln/floor/ceil) + NaN detection | W4T2 | 03-element §5, §6, §7, §8 |
 | W4T4 | `src/element/complex.rs` | ComplexScalar trait: associated type Real + complex methods (re/im/norm) | W4T2, W4T3 | 03-element §5, §6, §7, §8 |
@@ -124,14 +124,14 @@
 | W5T2 | `src/complex/mod.rs` | Extend ComplexFloat supertraits (Debug + PartialEq + PartialOrd + Add/Sub/Mul/Div/Neg) + sealed compile_fail doctest | W5T1, W3T15 | 04-complex §5, §6, §7, §8 |
 | W5T3 | `src/complex/mod.rs` | const size/align assertions + field offset unit tests for FFI layout guarantees | W5T1 | 04-complex §5, §6, §7, §8 |
 | W5T4 | `src/complex/mod.rs` | re() / im() accessors | W5T1 | 04-complex §5, §6, §7, §8 |
-| W5T5 | `src/complex/mod.rs` | from_imag(), conj(), and From\<T\> constructors | W5T1, W5T2, W5T4 | 04-complex §5, §6, §7, §8 |
+| W5T5 | `src/complex/mod.rs` | from_imag(), conj(), and From\<T\> constructors | W5T1, W5T2, W5T4, W5T7 | 04-complex §5, §6, §7, §8 |
 | W5T6 | `src/complex/mod.rs` | is_real() / is_imaginary() predicates | W5T1, W5T2 | 04-complex §5, §6, §7, §8 |
 | W5T7 | `src/complex/mod.rs` | PartialEq (NaN!=NaN) + Display (NaN-aware, -0.0-preserving, precision-aware) + crate-private PositiveZero | W5T1, W5T2 | 04-complex §5, §6, §7, §8 |
-| W5T8 | `src/complex/ops.rs` | Complex Add operator | W5T1, W5T2 | 04-complex §5, §6, §7, §8 |
+| W5T8 | `src/complex/ops.rs` | Complex Add operator | W5T1, W5T2, W5T7 | 04-complex §5, §6, §7, §8 |
 | W5T9 | `src/complex/ops.rs` | Complex Sub operator | W5T8 | 04-complex §5, §6, §7, §8 |
-| W5T10 | `src/complex/ops.rs` | Complex Mul operator | W5T1, W5T2 | 04-complex §5, §6, §7, §8 |
+| W5T10 | `src/complex/ops.rs` | Complex Mul operator | W5T1, W5T2, W5T7 | 04-complex §5, §6, §7, §8 |
 | W5T11 | `src/complex/ops.rs` | Complex Div operator (independent Smith algorithm for f32 and f64) | W5T10 | 04-complex §5, §6, §7, §8 |
-| W5T12 | `src/complex/ops.rs` | Complex Neg operator | W5T1, W5T2 | 04-complex §5, §6, §7, §8 |
+| W5T12 | `src/complex/ops.rs` | Complex Neg operator | W5T1, W5T2, W5T7 | 04-complex §5, §6, §7, §8 |
 | W5T13 | `src/complex/ops.rs`, `src/complex/mod.rs` | Tighten real-complex mixed arithmetic boundary (static audit + 8 compile_fail doctests + explicit-conversion unit tests) | W5T8–W5T12 | 04-complex §5, §6, §7, §8 |
 | W5T14 | `src/complex/mod.rs` | Math methods (norm via hypot, norm_sqr) + concrete predicates (is_nan, is_finite) for f32/f64 | W5T1 | 04-complex §5, §6, §7, §8 |
 | W5T15 | All `src/complex/` files | Doc comments on all pub complex items, cargo doc verification | W5T13, W5T14 | 04-complex §5, §6, §7, §8 |
@@ -213,8 +213,8 @@
 | W10T1 | `src/dispatch.rs` | Module skeleton: ExecPath enum, ParallelExecStrategy struct, module docs | None | 30-dispatch §5, §6, §7, §8 |
 | W10T2 | `src/dispatch.rs` | ParallelGuard type + try_acquire_guard() + with_parallel_worker_context(): thread_local Cell\<bool\>, Drop impl, panic-safe worker context helper | W10T1 | 30-dispatch §5, §6, §7, §8 |
 | W10T3 | `src/dispatch.rs` | ParallelExecStrategy::new() validating constructor, auto() infallible default, field accessors | W10T1 | 30-dispatch §5, §6, §7, §8 |
-| W10T4 | `src/dispatch.rs` | select_exec_path() + should_parallelize(): three-way dispatch, threshold reading, feature gate branching | W10T1, W10T2 | 30-dispatch §5, §6, §7, §8 |
-| W10T5 | `src/dispatch.rs` | Threshold config: AtomicUsize storage, set/reset_parallel_threshold, set/reset_simd_threshold, Relaxed ordering | W10T4 | 30-dispatch §5, §6, §7, §8 |
+| W10T4 | `src/dispatch.rs` | select_exec_path() + should_parallelize(): three-way dispatch, threshold storage + getters (DEFAULT_* consts, AtomicUsize), feature gate branching | W10T1, W10T2 | 30-dispatch §5, §6, §7, §8 |
+| W10T5 | `src/dispatch.rs` | Threshold config: set/reset_parallel_threshold, set/reset_simd_threshold, Relaxed ordering | W10T4 | 30-dispatch §5, §6, §7, §8 |
 | W10T6 | `src/dispatch.rs` (#[cfg(test)]) | Full dispatch unit tests: path return, threshold boundaries, feature gate combos, nested guard, non-contiguous penalty | W10T4, W10T5, W10T2, W10T3 | 30-dispatch §5, §6, §7, §8 |
 
 ### W11: Broadcasting (L4)
@@ -230,7 +230,7 @@
 | W11T7 | `src/broadcast/view.rs` | broadcast_to() basic path: target shape validation + read-only view construction | W11T3, W11T6 | 15-broadcast §5, §6, §7, §8 |
 | W11T8 | `src/broadcast/view.rs` | broadcast_to() error path + BroadcastView layout state update | W11T7 | 15-broadcast §5, §6, §7, §8 |
 | W11T9 | `src/broadcast/view.rs` | broadcast_with(): shared shape derivation, dual-input broadcast | W11T6, W11T7 | 15-broadcast §5, §6, §7, §8 |
-| W11T10 | `tests/test_broadcast.rs` | Integration tests | W11T8, W11T9 | 15-broadcast §5, §6, §7, §8 |
+| W11T10 | `tests/test_broadcast.rs` | Integration tests | W11T8, W11T9, W12T*, W22T* | 15-broadcast §5, §6, §7, §8 |
 
 ### W12: Iterators (L4)
 
@@ -259,17 +259,17 @@
 
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
-| W14T0 | `docs/spike/pulp-api-survey.md` | pulp 0.18 API capability spike: i32→i64 widening, complex AoS deinterleave/shuffle, FMA capability bit, unaligned load/store, lane width — report availability + fallback per API | None | 08-simd §6.1 |
+| W14T0 | `docs/spike/pulp-api-survey.md` | pulp 0.18 API capability spike: i32→i64 widening, complex AoS deinterleave/shuffle, FMA capability bit, unaligned load/store, lane width — report availability + fallback per API | None | 08-simd §5.1, §6.1, §7 |
 | W14T1 | `src/simd/mod.rs`, `src/lib.rs` | Module skeleton: SimdElement sealed marker, SimdKernel trait, BinaryOp + UnaryOp enums, Arch cache, facade 统一表 (`dispatch_vector_binary_op`/`dispatch_vector_unary_op` → bool; `try_sum_*`/`try_dot_*` → Option<A>); register `pub(crate) mod simd;` in lib.rs | W14T0 | 08-simd §5, §6, §7, §8, §10 |
-| W14T2 | `src/simd/vector.rs` | Element-wise SIMD: Add/Sub/Mul/Div Kernel WithSimd impls for f32/f64 + independent Neg unary Kernel; FMA forbidden in per-element main loop | W14T0, W14T1 | 08-simd §5.5, §5.6, §5.8, §6.1, §6.6, §8.2, §10 |
-| W14T3 | `src/simd/vector.rs` | Float sum SIMD: f32/f64 SumKernel with pairwise lane accumulation; tolerance per 13-reduction §6.3 | W14T2 | 08-simd §5.6, §5.8, §6.6, §8.2, §10 |
-| W14T4 | `src/simd/vector.rs` | Integer sum/dot SIMD admission + fallback: i32 widening primary path (per W14T0 spike); i64 default scalar fallback only (checked_add/checked_mul) | W14T0, W14T3 | 08-simd §5, §6, §8, §10 |
-| W14T5 | `src/simd/vector.rs` | Complex sum SIMD: Complex\<f32\>/Complex\<f64\> AoS→SoA deinterleave + split real/imag pairwise accumulation; **Complex sum threshold = 1024** (per PLAN.md W14 补充决策) | W14T0, W14T3 | 08-simd §5, §6, §8, §10 |
-| W14T6 | `src/simd/vector.rs` | Float + complex dot SIMD: f32/f64/Complex\<f32\>/Complex\<f64\> dot kernel; BLAS xdotc conjugate contract `sum(conj(lhs_i)*rhs_i)`; **Complex dot threshold = 512** (per PLAN.md W14 补充决策); reuses W14T5 split accumulator | W14T0, W14T3, W14T5 | 08-simd §5, §6, §8, §10 |
-| W14T7 | `src/simd/mod.rs`, `Cargo.toml` | Feature gate conditional compilation: #[cfg(feature = "simd")] guards all items including trait definitions; pub(crate) facade export (no lib.rs modification — W14T1 owns lib.rs registration); W10 ExecPath::Simd dispatch integration contract | W14T0, W14T1, W14T2 | 08-simd §5, §6, §8, §10 |
-| W14T8 | `src/simd/vector.rs` (#[cfg(all(test, feature = "simd"))]) | Element-wise consistency tests: SIMD vs serial bitwise agreement for Add/Sub/Mul/Div/Neg on f32+f64; boundary lengths (0/1/below/at/tail/SIMD_WIDTH+k); NaN-aware comparison | W14T1, W14T2, W14T7 | 08-simd §5, §6, §8, §10 |
-| W14T9 | `src/simd/vector.rs` (#[cfg(all(test, feature = "simd"))]) | Reduction/dot semantic + tolerance tests: entry threshold boundaries (1023/1024 etc.), ISA gating fallback, tolerance per 13-reduction §6.3 + 12-matrix dot bound, complex component-wise comparison, i32 admission tests (i64 has no SIMD facade — not in test scope) | W14T3, W14T4, W14T5, W14T6, W14T8 | 08-simd §5, §6, §8, §10 |
-| W14T10 | `tests/simd_property.rs` | Randomized property tests via **public Tensor API** (no pub(crate) imports); Cargo top-level discovery; deterministic splitmix64 PRNG (no proptest/quickcheck dep); element-wise consistency + sum/dot tolerance + complex dot conjugate + i32 no-panic + tail handling + ISA fallback; all of f32/f64/Complex\<f32\>/Complex\<f64\> | W14T2, W14T6, W14T7, W14T9 | 08-simd §5, §8, §10; 28-tests §6.4.2 |
+| W14T2 | `src/simd/vector.rs` | Element-wise SIMD: Add/Sub/Mul/Div Kernel WithSimd impls for f32/f64 + independent Neg unary Kernel; FMA forbidden in per-element main loop | W14T0, W14T1 | 08-simd §5.5, §5.6, §5.8, §6.1, §6.6, §7, §8.2, §10 |
+| W14T3 | `src/simd/vector.rs` | Float sum SIMD: f32/f64 SumKernel with pairwise lane accumulation; tolerance per 13-reduction §6.3 | W14T2 | 08-simd §5.6, §5.8, §6.6, §7, §8.2, §10 |
+| W14T4 | `src/simd/vector.rs` | Integer sum/dot SIMD admission + fallback: i32 widening primary path (per W14T0 spike); i64 default scalar fallback only (checked_add/checked_mul) | W14T0, W14T3 | 08-simd §5, §6, §7, §8, §10 |
+| W14T5 | `src/simd/vector.rs` | Complex sum SIMD: Complex\<f32\>/Complex\<f64\> AoS→SoA deinterleave + split real/imag pairwise accumulation; **Complex sum threshold = 1024** (per PLAN.md W14 补充决策) | W14T0, W14T3 | 08-simd §5, §6, §7, §8, §10 |
+| W14T6 | `src/simd/vector.rs` | Float + complex dot SIMD: f32/f64/Complex\<f32\>/Complex\<f64\> dot kernel; BLAS xdotc conjugate contract `sum(conj(lhs_i)*rhs_i)`; **Complex dot threshold = 512** (per PLAN.md W14 补充决策); reuses W14T5 split accumulator | W14T0, W14T3, W14T5 | 08-simd §5, §6, §7, §8, §10 |
+| W14T7 | `src/simd/mod.rs`, `Cargo.toml` | Feature gate conditional compilation: #[cfg(feature = "simd")] guards all items including trait definitions; pub(crate) facade export (no lib.rs modification — W14T1 owns lib.rs registration); W10 ExecPath::Simd dispatch integration contract | W14T0, W14T1, W14T2 | 08-simd §5, §6, §7, §8, §10 |
+| W14T8 | `src/simd/vector.rs` (#[cfg(all(test, feature = "simd"))]) | Element-wise consistency tests: SIMD vs serial bitwise agreement for Add/Sub/Mul/Div/Neg on f32+f64; boundary lengths (0/1/below/at/tail/SIMD_WIDTH+k); NaN-aware comparison | W14T1, W14T2, W14T7 | 08-simd §5, §6, §7, §8, §10 |
+| W14T9 | `src/simd/vector.rs` (#[cfg(all(test, feature = "simd"))]) | Reduction/dot semantic + tolerance tests: entry threshold boundaries (1023/1024 etc.), ISA gating fallback, tolerance per 13-reduction §6.3 + 12-matrix dot bound, complex component-wise comparison, i32 admission tests (i64 has no SIMD facade — not in test scope) | W14T3, W14T4, W14T5, W14T6, W14T8 | 08-simd §5, §6, §7, §8, §10 |
+| W14T10 | `tests/simd_property.rs` | Randomized property tests via **public Tensor API** (no pub(crate) imports); Cargo top-level discovery; deterministic splitmix64 PRNG (no proptest/quickcheck dep); element-wise consistency + sum/dot tolerance + complex dot conjugate + i32 no-panic + tail handling + ISA fallback; all of f32/f64/Complex\<f32\>/Complex\<f64\> | W14T2, W14T6, W14T7, W14T9 | 08-simd §5, §6, §7, §8.4, §8.5, §10; 28-tests §6.4.2 |
 
 ### W15: Parallel Backend (L5)
 
@@ -293,7 +293,7 @@
 | W16T3 | `src/math/unary.rs` | Unary element-wise ops: abs, neg, signum, square (with checked arithmetic for integers) | W16T1 | 11-math §5, §6, §7, §8 |
 | W16T4 | `src/math/unary.rs` | Math functions for RealScalar: sin, sqrt, exp, ln, floor, ceil | W16T1 | 11-math §5, §6, §7, §8 |
 | W16T5 | `src/math/unary.rs` | Complex ops: conjugate, modulus | W16T1 | 11-math §5, §6, §7, §8 |
-| W16T6 | `src/math/binary.rs` | Arithmetic ops: add, sub, mul, div (tensor-tensor + scalar variants) via shared binary skeleton | W16T2 | 11-math §5, §6, §7, §8 |
+| W16T6 | `src/math/binary.rs` | Arithmetic ops: add, sub, mul, div (tensor-tensor + scalar + `pub(crate)` left-scalar variants `sub_from_scalar` / `div_from_scalar` per 11-math §5.9) via shared binary skeleton | W16T2 | 11-math §5, §6, §7, §8 |
 | W16T7 | `src/math/unary.rs` | Logical not for bool tensors | W16T1 | 11-math §5, §6, §7, §8 |
 | W16T8 | `src/math/comparison.rs` | Equal + not_equal comparison ops (tensor-tensor + scalar variants, return bool tensors) | W16T2 | 11-math §5, §6, §7, §8 |
 | W16T9 | `src/math/comparison.rs` | Less + less_equal comparison ops (tensor-tensor + scalar variants, return bool tensors) | W16T8 | 11-math §5, §6, §7, §8 |
@@ -341,7 +341,7 @@
 | W20T1 | `src/shape/mod.rs`, `src/lib.rs` | Module skeleton: declare transpose sub-module, wire `pub mod shape;` in lib.rs | None | 16-shape §5, §6, §7, §8 |
 | W20T2 | `src/shape/transpose.rs` | Module skeleton: file placeholder, declarations | W20T1 | 16-shape §5, §6, §7, §8 |
 | W20T3 | `src/shape/transpose.rs` | transpose(): axis swap, O(1) shape/stride recomputation | W20T2 | 16-shape §5, §6, §7, §8 |
-| W20T4 | `tests/test_shape.rs` | Integration tests | W20T3 | 16-shape §5, §6, §7, §8 |
+| W20T4 | `tests/test_shape.rs`, `tests/property/test_shape.rs` | Integration tests (含大数组 O(1)、Ix6、IxDyn、ArcRepr 降级、view+index 组合) + property tests (§8.4 三项不变量) | W20T3 | 16-shape §5, §6, §7, §8 |
 
 ### W21: Indexing (L5)
 
@@ -391,8 +391,8 @@
 | W24T1 | `src/util/mod.rs` | Module skeleton: submodule declarations (no `pub use`; algorithms exposed as inherent methods) | W1T3 | 20-utility §5, §6, §7, §8 |
 | W24T2 | `src/util/fill.rs` | fill(): StorageMut-level fill helper + try_fill() sealed-marker dispatch for all tensor types | W24T1, W7T6, W7T18, W7T19, W8T4, W8T7, W12T7, W2T1 | 20-utility §5, §6, §7, §8 |
 | W24T3 | `src/util/clip.rs` | clip(): element-wise clipping with NaN/min=max/NaN-bound/Integer error handling | W24T1, W4, W8, W12T1, W2T1 | 20-utility §5, §6, §7, §8 |
-| W24T4 | `src/util/contiguous.rs` | to_contiguous() + into_contiguous(): F-contiguous guarantee, reuse or repack | W24T1, W6T6, W6T7, W6T11, W7T18, W7T19, W8T4, W8T7, W12T1, W25T7 | 20-utility §5, §6, §7, §8 |
-| W24T5 | `tests/test_utility.rs` | Integration tests: boundary cases (empty, single-element, non-contiguous, zero-dim, large) for all utility ops | W24T2, W24T3, W24T4 | 20-utility §5, §6, §7, §8 |
+| W24T4 | `src/util/contiguous.rs` | to_contiguous() + into_contiguous(): F-contiguous guarantee, reuse or repack | W24T1, W6T6, W6T7, W6T11, W7T18, W7T19, W8T4, W8T6, W8T7, W12T1, W25T7 | 20-utility §5, §6, §7, §8 |
+| W24T5 | `tests/test_utility.rs` | Integration tests: boundary cases (empty, single-element, non-contiguous, zero-dim, large) for all utility ops | W24T2, W24T3, W24T4, W22T8 | 20-utility §5, §6, §7, §8 |
 
 ### W25: Type Conversion (L5)
 
@@ -411,10 +411,10 @@
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
 | W26T1 | `src/format/mod.rs`, `src/lib.rs` | Module skeleton: crate-root declaration + format module root (no submodule declarations; submodules declared incrementally by W26T2-W26T5; re-exports finalized by W26T6) | None | 22-output §5, §6, §7, §8 |
-| W26T2 | `src/format/config.rs` | FormatConfig struct + Default impl | W26T1 | 22-output §5, §6, §7, §8 |
-| W26T3 | `src/format/pretty.rs` | Numpy-style formatting helpers: fmt_1d_display, fmt_1d_debug, fmt_nd_display, fmt_nd_debug with truncation | W26T2 | 22-output §5, §6, §7, §8 |
-| W26T4 | `src/format/display.rs` | core::fmt::Display for TensorBase\<S, D\> | W26T3 | 22-output §5, §6, §7, §8 |
-| W26T5 | `src/format/debug.rs` | core::fmt::Debug for TensorBase\<S, D\> with metadata | W26T3 | 22-output §5, §6, §7, §8 |
+| W26T2 | `src/format/config.rs`, `src/format/mod.rs` (append `mod config;`) | FormatConfig struct + Default impl | W26T1 | 22-output §5, §6, §7, §8 |
+| W26T3 | `src/format/pretty.rs`, `src/format/mod.rs` (append `mod pretty;`) | Numpy-style formatting helpers: fmt_1d_display, fmt_1d_debug, fmt_nd_display, fmt_nd_debug with truncation + line_width soft-wrap (via module-private LineWriter column tracker) | W26T2 | 22-output §5, §6, §7, §8 |
+| W26T4 | `src/format/display.rs`, `src/format/mod.rs` (append `mod display;`) | core::fmt::Display for TensorBase\<S, D\> + TensorDisplay\<'a, S, D, A\> wrapper + display_with(config) entry method | W26T3 | 22-output §5, §6, §7, §8 |
+| W26T5 | `src/format/debug.rs`, `src/format/mod.rs` (append `mod debug;`) | core::fmt::Debug for TensorBase\<S, D\> with metadata | W26T3 | 22-output §5, §6, §7, §8 |
 | W26T6 | `src/format/mod.rs` | Module docs + re-exports completion (`pub use config::FormatConfig;` + `pub use display::TensorDisplay;`) | W26T4, W26T5 | 22-output §5, §6, §7, §8 |
 
 ### W27: Safety Audit (cross-cutting)
@@ -468,12 +468,12 @@
 | W29T16 | `tests/test_error.rs` | Error tests: XenonError boundary + display output validation, Workspace structured fields | W29T1 | 28-tests §5, §6, §7, §8 |
 | W29T17 | `tests/test_workspace.rs` | Workspace tests: illegal alignment/borrow guard/split/expand/assume_init/!Send+!Sync | W29T1, W29T2 | 28-tests §5, §6, §7, §8 |
 | W29T18 | `tests/test_ffi.rs` | FFI tests: pointer/BLAS compatibility/export/export_mut/offset | W29T2 | 28-tests §5, §6, §7, §8 |
-| W29T19 | `tests/test_parallel.rs` | Parallel tests: sum/add behavioral consistency with parallel feature, concurrent read, nested prohibition | W29T3, W29T8 | 28-tests §5, §6, §7, §8 |
-| W29T20 | `tests/test_simd.rs` | SIMD tests: result consistency (add/sum/fallback) | W29T3, W29T8 | 28-tests §5, §6, §7, §8 |
+| W29T19 | `tests/test_parallel.rs` | Parallel tests: sum/add/dot behavioral consistency with parallel feature, concurrent read, nested prohibition, determinism | W29T3, W29T8 | 28-tests §5, §6, §7, §8 |
+| W29T20 | `tests/test_simd.rs` | SIMD tests: result consistency (add/sum/dot/fallback/complex path) | W29T3, W29T8 | 28-tests §5, §6, §7, §8 |
 | W29T21 | `.github/workflows/test.yml` | CI test matrix: maintain std-environment lib/tests/doctest matrix | W29T2 | 28-tests §5, §6, §7, §8 |
 | W29T22 | `tests/property_tests.rs`, `property/tensor_props.rs`, `ops_props.rs`, `shape_props.rs` | Property tests: transpose involution, addition commutativity, unique no-duplicates, sum preserves identity, broadcast shape consistency | W29T3, W29T8, W29T12 | 28-tests §5, §6, §7, §8 |
 | W29T23 | `.github/workflows/test.yml` | CI test matrix full config: all feature combos and property tests | W29T1–W29T22 | 28-tests §5, §6, §7, §8 |
-| W29T24 | `tests/compile_fail_tests.rs` | Compile-fail harness using trybuild-style fixtures and assertion conventions | W29T1 | 28-tests §5, §6, §7, §8 |
+| W29T24 | `tests/compile_fail_tests.rs` | Compile-fail harness using repository-local fixtures and assertion conventions (no trybuild dev-dep per 28-tests §4.3) | W29T1 | 28-tests §5, §6, §7, §8 |
 | W29T25 | `tests/compile-fail/*.rs` | Compile-fail fixtures (9 files per design §3): wrong_dimension_type, missing_element_bound, mismatched_storage_type, unsigned_tensor_element_rejected, invalid_unsigned_element_rejected, ui_bool_sum_rejected, ui_bool_unique_rejected, ui_bool_arithmetic_rejected, blanket_scalar_add_rejected | W29T24 | 28-tests §5, §6, §7, §8 |
 
 ### W30: Documentation
@@ -484,51 +484,51 @@
 | W30T2 | `src/lib.rs`, `Cargo.toml` | #![warn(missing_docs)] lint + docs.rs metadata: all-features = true | W30T1 | 29-documentation §5, §6, §7, §8 |
 | W30T3 | `README.md` | Project README: intro, features, Quick Start, install, doc links, license | W30T1 | 29-documentation §5, §6, §7, §8 |
 | W30T4 | `CHANGELOG.md` | Optional CHANGELOG.md in Keep a Changelog format | None | 29-documentation §5, §6, §7, §8 |
-| W30T5 | `src/dimension/mod.rs` | Dimension module-level docs: responsibilities, core concepts, Ix0–Ix6 usage, Dimension trait guide | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T6 | `src/element/mod.rs` | Element module-level docs: trait hierarchy, 7 element types, sealed design rationale | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T7 | `src/complex/mod.rs` | Complex module-level docs: repr(C) layout, FFI guarantees, arithmetic semantics | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T8 | `src/storage/mod.rs` | Storage module-level docs: trait hierarchy, Owned/ViewRepr/ArcRepr, alignment guarantees | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T9 | `src/layout/mod.rs` | Layout module-level docs: F-order conventions, LayoutFlags, stride computation | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T10 | `src/tensor/mod.rs` | Tensor module-level docs: TensorBase, type aliases, storage kinds, memory model | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T11 | `src/iter/mod.rs` | Iterator module-level docs: Iter/IterMut, AxisIter, IndexedIter, entry methods | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T12 | `src/math/mod.rs` | Math module-level docs: binary/unary ops, comparison ops, SIMD dispatch | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T13 | `src/overload/mod.rs` | Overload module-level docs: operator traits, broadcast dispatch, ownership rules | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T14 | `src/broadcast/mod.rs` | Broadcast module-level docs: dimension rules, zero-stride semantics, read-only boundary | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T15 | `src/reduction/mod.rs` | Reduction module-level docs: sum/sum_axis/keepdims, SIMD/parallel dispatch gates | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T16 | `src/matrix/mod.rs` | Matrix module-level docs: dot product, rank validation, complex support | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T17 | `src/shape/mod.rs` | Shape module-level docs: transpose, O(1) semantics, F-order contiguity | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T18 | `src/index/mod.rs` | Index module-level docs: NdIndex trait, multi-dim access, slicing, bounds checking | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T19 | `src/construct/mod.rs` | Construct module-level docs: initialization methods, ownership guarantees, error semantics | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T20 | `src/set/mod.rs` | Set module-level docs: unique, NaN/±0.0 handling, complex equality | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T21 | `src/ffi/mod.rs` | FFI module-level docs: pointer access, BLAS compatibility, C repr guarantees | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T22 | `src/workspace/mod.rs` | Workspace module-level docs: allocation strategy, borrow guards, split semantics | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T23 | `src/error.rs` | Error module-level docs: XenonError variants, Result alias, error categories | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T24 | `src/convert/mod.rs` | Convert module-level docs: CastTo/ConvertTo traits, lossy/lossless semantics, tiered conversion | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T25 | `src/format/mod.rs` | Format module-level docs: NumPy-style output, FormatConfig, truncation helpers | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T26 | `src/util/mod.rs` | Util module-level docs: responsibility overview, utility function category notes | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T27 | `src/simd/mod.rs` | SIMD module-level docs: SimdKernel trait, kernel wiring, feature gate notes | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T28 | `src/parallel/mod.rs` | Parallel module-level docs: ParIter, map/reduce patterns, thread-safety, feature gate | W30T2 | 29-documentation §5, §6, §7, §8 |
-| W30T29 | `src/tensor/mod.rs` + related files | Tensor type-level docs + doctests: TensorBase, Tensor, TensorView, TensorViewMut, ArcTensor | W30T5–W30T28 | 29-documentation §5, §6, §7, §8 |
-| W30T30 | `src/dimension/mod.rs` | Dimension type-level docs + doctests: Ix0–Ix6, IxDyn, Dimension trait | W30T5–W30T28 | 29-documentation §5, §6, §7, §8 |
-| W30T31 | `src/element/mod.rs` | Element type-level docs + doctests: Element, Numeric, RealScalar, ComplexScalar traits | W30T5–W30T28 | 29-documentation §5, §6, §7, §8 |
-| W30T32 | `src/storage/mod.rs` | Storage type-level docs + doctests: Owned, ViewRepr, StorageMut trait | W30T5–W30T28 | 29-documentation §5, §6, §7, §8 |
-| W30T33 | `src/layout/mod.rs` | Layout type-level docs + doctests: LayoutFlags, compute_f_strides | W30T5–W30T28 | 29-documentation §5, §6, §7, §8 |
-| W30T34 | `src/math/` files | Math function docs + doctests: add, sub, mul, div, sin, sqrt, exp, ln, abs | W30T5–W30T28 | 29-documentation §5, §6, §7, §8 |
-| W30T35 | `src/reduction/` | Reduction docs + doctests: sum, sum_axis | W30T5–W30T28 | 29-documentation §5, §6, §7, §8 |
-| W30T36 | `src/matrix/` | Matrix docs + doctests: dot | W30T5–W30T28 | 29-documentation §5, §6, §7, §8 |
-| W30T37 | `src/broadcast/`, `src/shape/mod.rs` | Broadcast + shape docs + doctests: broadcast_shape, transpose | W30T5–W30T28 | 29-documentation §5, §6, §7, §8 |
-| W30T38 | `src/construct/mod.rs`, `src/set/mod.rs` | Construct + set docs + doctests: zeros, ones, eye, from_shape_vec, unique + error semantics | W30T5–W30T28 | 29-documentation §5, §6, §7, §8 |
-| W30T39 | `src/ffi/mod.rs`, `src/workspace/mod.rs`, `src/error.rs` | FFI + workspace + error docs + doctests | W30T5–W30T28 | 29-documentation §5, §6, §7, §8 |
-| W30T40 | `src/iter/mod.rs`, `src/convert/mod.rs`, `src/format/mod.rs`, `src/overload/mod.rs` | Iter + convert + format + overload module docs + doctests | W30T5–W30T28 | 29-documentation §5, §6, §7, §8 |
-| W30T41 | `src/index/mod.rs` | Index function-level docs + doctests | W30T5–W30T28 | 29-documentation §5, §6, §7, §8 |
-| W30T42 | `src/util/mod.rs` | Util function-level docs + doctests: clip, fill, try_fill, to_contiguous, into_contiguous | W30T26 | 29-documentation §5, §6, §7, §8 |
-| W30T43 | `examples/basic.rs` | Usage example: create, operate, reduce, print | W30T1 | 29-documentation §5, §6, §7, §8 |
-| W30T44 | `examples/complex.rs` | Usage example: complex construction, same-type arithmetic, explicit conversion ops | W30T1 | 29-documentation §5, §6, §7, §8 |
-| W30T45 | `examples/broadcasting.rs` | Usage example: broadcast rules, row/col/scalar broadcast | W30T1 | 29-documentation §5, §6, §7, §8 |
-| W30T46 | `examples/features.rs` | Feature-gated example: conditional compile with simd/parallel features | W30T1 | 29-documentation §5, §6, §7, §8 |
-| W30T47 | `examples/simd.rs` | Usage example: SIMD feature-gated execution and fallback behavior | W30T1 | 29-documentation §5, §6, §7, §8 |
-| W30T48 | `examples/ffi.rs` | Usage example: FFI export, pointer access, BLAS layout checks | W30T1 | 29-documentation §5, §6, §7, §8 |
-| W30T49 | `examples/workspace.rs` | Usage example: workspace allocation and borrow/split workflow | W30T1 | 29-documentation §5, §6, §7, §8 |
+| W30T5 | `src/dimension/mod.rs` | Dimension module-level docs: responsibilities, core concepts, Ix0–Ix6 usage, Dimension trait guide | W30T2 | 29-documentation §5, §6, §7, §8; 02-dimension.md |
+| W30T6 | `src/element/mod.rs` | Element module-level docs: trait hierarchy, 7 element types, sealed design rationale | W30T2 | 29-documentation §5, §6, §7, §8; 03-element.md |
+| W30T7 | `src/complex/mod.rs` | Complex module-level docs: repr(C) layout, FFI guarantees, arithmetic semantics | W30T2 | 29-documentation §5, §6, §7, §8; 04-complex.md |
+| W30T8 | `src/storage/mod.rs` | Storage module-level docs: trait hierarchy, Owned/ViewRepr/ArcRepr, alignment guarantees | W30T2 | 29-documentation §5, §6, §7, §8; 05-storage.md |
+| W30T9 | `src/layout/mod.rs` | Layout module-level docs: F-order conventions, LayoutFlags, stride computation | W30T2 | 29-documentation §5, §6, §7, §8; 06-layout.md |
+| W30T10 | `src/tensor/mod.rs` | Tensor module-level docs: TensorBase, type aliases, storage kinds, memory model | W30T2 | 29-documentation §5, §6, §7, §8; 07-tensor.md |
+| W30T11 | `src/iter/mod.rs` | Iterator module-level docs: Iter/IterMut, AxisIter, IndexedIter, entry methods | W30T2 | 29-documentation §5, §6, §7, §8; 10-iterator.md |
+| W30T12 | `src/math/mod.rs` | Math module-level docs: binary/unary ops, comparison ops, SIMD dispatch | W30T2 | 29-documentation §5, §6, §7, §8; 11-math.md |
+| W30T13 | `src/overload/mod.rs` | Overload module-level docs: operator traits, broadcast dispatch, ownership rules | W30T2 | 29-documentation §5, §6, §7, §8; 19-overload.md |
+| W30T14 | `src/broadcast/mod.rs` | Broadcast module-level docs: dimension rules, zero-stride semantics, read-only boundary | W30T2 | 29-documentation §5, §6, §7, §8; 15-broadcast.md |
+| W30T15 | `src/reduction/mod.rs` | Reduction module-level docs: sum/sum_axis/keepdims, SIMD/parallel dispatch gates | W30T2 | 29-documentation §5, §6, §7, §8; 13-reduction.md |
+| W30T16 | `src/matrix/mod.rs` | Matrix module-level docs: dot product, rank validation, complex support | W30T2 | 29-documentation §5, §6, §7, §8; 12-matrix.md |
+| W30T17 | `src/shape/mod.rs` | Shape module-level docs: transpose, O(1) semantics, F-order contiguity | W30T2 | 29-documentation §5, §6, §7, §8; 16-shape.md |
+| W30T18 | `src/index/mod.rs` | Index module-level docs: NdIndex trait, multi-dim access, slicing, bounds checking | W30T2 | 29-documentation §5, §6, §7, §8; 17-indexing.md |
+| W30T19 | `src/construct/mod.rs` | Construct module-level docs: initialization methods, ownership guarantees, error semantics | W30T2 | 29-documentation §5, §6, §7, §8; 18-construction.md |
+| W30T20 | `src/set/mod.rs` | Set module-level docs: unique, NaN/±0.0 handling, complex equality | W30T2 | 29-documentation §5, §6, §7, §8; 14-set.md |
+| W30T21 | `src/ffi/mod.rs` | FFI module-level docs: pointer access, BLAS compatibility, C repr guarantees | W30T2 | 29-documentation §5, §6, §7, §8; 23-ffi.md |
+| W30T22 | `src/workspace/mod.rs` | Workspace module-level docs: allocation strategy, borrow guards, split semantics | W30T2 | 29-documentation §5, §6, §7, §8; 24-workspace.md |
+| W30T23 | `src/error.rs` | Error module-level docs: XenonError variants, Result alias, error categories | W30T2 | 29-documentation §5, §6, §7, §8; 26-error.md |
+| W30T24 | `src/convert/mod.rs` | Convert module-level docs: CastTo/ConvertTo traits, lossy/lossless semantics, tiered conversion | W30T2 | 29-documentation §5, §6, §7, §8; 21-type.md |
+| W30T25 | `src/format/mod.rs` | Format module-level docs: NumPy-style output, FormatConfig, truncation helpers | W30T2 | 29-documentation §5, §6, §7, §8; 22-output.md |
+| W30T26 | `src/util/mod.rs` | Util module-level docs: responsibility overview, utility function category notes | W30T2 | 29-documentation §5, §6, §7, §8; 20-utility.md |
+| W30T27 | `src/simd/mod.rs` | SIMD module-level docs: SimdKernel trait, kernel wiring, feature gate notes | W30T2 | 29-documentation §5, §6, §7, §8; 08-simd.md |
+| W30T28 | `src/parallel/mod.rs` | Parallel module-level docs: ParIter, map/reduce patterns, thread-safety, feature gate | W30T2 | 29-documentation §5, §6, §7, §8; 09-parallel.md |
+| W30T29 | `src/tensor/mod.rs` + related files | Tensor type-level docs + doctests: TensorBase, Tensor, TensorView, TensorViewMut, ArcTensor | W30T5–W30T28 | 29-documentation §5, §6, §7, §8; 07-tensor.md |
+| W30T30 | `src/dimension/mod.rs` | Dimension type-level docs + doctests: Ix0–Ix6, IxDyn, Dimension trait | W30T5–W30T28 | 29-documentation §5, §6, §7, §8; 02-dimension.md |
+| W30T31 | `src/element/mod.rs` | Element type-level docs + doctests: Element, Numeric, RealScalar, ComplexScalar traits | W30T5–W30T28 | 29-documentation §5, §6, §7, §8; 03-element.md |
+| W30T32 | `src/storage/mod.rs` | Storage type-level docs + doctests: Owned, ViewRepr, StorageMut trait | W30T5–W30T28 | 29-documentation §5, §6, §7, §8; 05-storage.md |
+| W30T33 | `src/layout/mod.rs` | Layout type-level docs + doctests: LayoutFlags, compute_f_strides | W30T5–W30T28 | 29-documentation §5, §6, §7, §8; 06-layout.md |
+| W30T34 | `src/math/` files | Math function docs + doctests: add, sub, mul, div, sin, sqrt, exp, ln, abs | W30T5–W30T28 | 29-documentation §5, §6, §7, §8; 11-math.md |
+| W30T35 | `src/reduction/` | Reduction docs + doctests: sum, sum_axis | W30T5–W30T28 | 29-documentation §5, §6, §7, §8; 13-reduction.md |
+| W30T36 | `src/matrix/` | Matrix docs + doctests: dot | W30T5–W30T28 | 29-documentation §5, §6, §7, §8; 12-matrix.md |
+| W30T37 | `src/broadcast/`, `src/shape/mod.rs` | Broadcast + shape docs + doctests: broadcast_shape, transpose | W30T5–W30T28 | 29-documentation §5, §6, §7, §8; 15-broadcast.md; 16-shape.md |
+| W30T38 | `src/construct/mod.rs`, `src/set/mod.rs` | Construct + set docs + doctests: zeros, ones, eye, from_shape_vec, unique + error semantics | W30T5–W30T28 | 29-documentation §5, §6, §7, §8; 18-construction.md; 14-set.md |
+| W30T39 | `src/ffi/mod.rs`, `src/workspace/mod.rs`, `src/error.rs` | FFI + workspace + error docs + doctests | W30T5–W30T28 | 29-documentation §5, §6, §7, §8; 23-ffi.md; 24-workspace.md; 26-error.md |
+| W30T40 | `src/iter/mod.rs`, `src/convert/mod.rs`, `src/format/mod.rs`, `src/overload/mod.rs` | Iter + convert + format + overload module docs + doctests | W30T5–W30T28 | 29-documentation §5, §6, §7, §8; 10-iterator.md; 21-type.md; 22-output.md; 19-overload.md |
+| W30T41 | `src/index/mod.rs` | Index function-level docs + doctests | W30T5–W30T28 | 29-documentation §5, §6, §7, §8; 17-indexing.md |
+| W30T42 | `src/util/mod.rs` | Util function-level docs + doctests: clip, fill, try_fill, to_contiguous, into_contiguous | W30T26 | 29-documentation §5, §6, §7, §8; 20-utility.md |
+| W30T43 | `examples/basic.rs` | Usage example: create, operate, reduce, print | W30T1 | 29-documentation §5, §6, §7, §8; 18-construction.md; 13-reduction.md; 22-output.md |
+| W30T44 | `examples/complex.rs` | Usage example: complex construction, same-type arithmetic, explicit conversion ops | W30T1 | 29-documentation §5, §6, §7, §8; 04-complex.md; 21-type.md |
+| W30T45 | `examples/broadcasting.rs` | Usage example: broadcast rules, row/col/scalar broadcast | W30T1 | 29-documentation §5, §6, §7, §8; 15-broadcast.md |
+| W30T46 | `examples/features.rs` | Feature-gated example: conditional compile with simd/parallel features | W30T1 | 29-documentation §5, §6, §7, §8; 08-simd.md; 09-parallel.md; 01-architecture §4 |
+| W30T47 | `examples/simd.rs` | Usage example: SIMD feature-gated execution and fallback behavior | W30T1 | 29-documentation §5, §6, §7, §8; 08-simd.md |
+| W30T48 | `examples/ffi.rs` | Usage example: FFI export, pointer access, BLAS layout checks | W30T1 | 29-documentation §5, §6, §7, §8; 23-ffi.md |
+| W30T49 | `examples/workspace.rs` | Usage example: workspace allocation and borrow/split workflow | W30T1 | 29-documentation §5, §6, §7, §8; 24-workspace.md |
 | W30T50 | `src/lib.rs`, `README.md`, `examples/` | Audit that examples and crate docs only declare `std` environment; remove out-of-scope platform notes | W30T1, W30T3, W30T43–W30T49 | 29-documentation §5, §6, §7, §8 |
 | W30T51 | `LICENSE` | Project license file matching Cargo.toml package metadata | W1T1 | 01-architecture §3, §4 |
 | W30T52 | `.github/workflows/docs.yml` | docs.rs CI integration, missing-docs check, doctest and example compilation | W30T40, W30T43–W30T49 | 29-documentation §5, §6, §7, §8 |

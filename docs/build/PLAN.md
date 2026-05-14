@@ -146,10 +146,10 @@ W22 完成 ──→ W30 (Documentation)
   W4T2 (Numeric trait, 需 W4T1)
 批次3 (并行):
   W4T3 (RealScalar, 需 W4T2)
-  W4T4 (ComplexScalar, 需 W4T2)
   W4T5 (i32 impl, 需 W4T2)
   W4T8 (bool impl, 需 W4T1)
-批次4:
+批次4 (并行):
+  W4T4 (ComplexScalar, 需 W4T2+W4T3)
   W4T6 (i64 impl, 需 W4T5)
 批次5:
   W4T7 (f32+f64 impls, 需 W4T3+W4T6)
@@ -186,11 +186,11 @@ W22 完成 ──→ W30 (Documentation)
   W5T6 (is_real/is_imaginary, 需 W5T1+W5T2)
   W5T7 (PartialEq+Display+PositiveZero, 需 W5T1+W5T2)
 批次4:
-  W5T5 (from_imag/conj/From, 需 W5T1+W5T2+W5T4)
+  W5T5 (from_imag/conj/From, 需 W5T1+W5T2+W5T4+W5T7)
 批次5 (并行=Add/Mul/Neg 无相互依赖):
-  W5T8 (Add, 需 W5T1+W5T2)
-  W5T10 (Mul, 需 W5T1+W5T2)
-  W5T12 (Neg, 需 W5T1+W5T2)
+  W5T8 (Add, 需 W5T1+W5T2+W5T7)
+  W5T10 (Mul, 需 W5T1+W5T2+W5T7)
+  W5T12 (Neg, 需 W5T1+W5T2+W5T7)
 批次6:
   W5T9 (Sub, 需 W5T8)
 批次7:
@@ -255,7 +255,7 @@ W22 完成 ──→ W30 (Documentation)
 批次8 (并行):
   W7T14 (ViewRepr, 需 W7T5+W7T6)
   W7T15 (ViewMutRepr, 需 W7T5+W7T6)
-  W7T16 (ArcRepr, 需 W7T5)
+  W7T16 (ArcRepr, 需 W7T5+W7T7)
 批次9:
   W7T9 (Owned RawStorage impl, 需 W7T5+W7T8)
 批次10:
@@ -352,13 +352,13 @@ W22 完成 ──→ W30 (Documentation)
 批次5:
   W11T6 (broadcast_strides, 需 W11T5)
 批次6:
-  W11T7 (broadcast_to basic, 需 W11T6)
+  W11T7 (broadcast_to basic, 需 W11T3+W11T6)
 批次7:
   W11T8 (broadcast_to error, 需 W11T7)
 批次8:
   W11T9 (broadcast_with, 需 W11T6+W11T7)
 批次9:
-  W11T10 (tests, 需 W11T8+W11T9)
+  W11T10 (tests, 需 W11T8+W11T9+W12T*+W22T*)
 ```
 
 ---
@@ -547,7 +547,7 @@ W22 完成 ──→ W30 (Documentation)
 
 ```
 批次1:
-  W19T1 (mod.rs + lib.rs wiring, forward re-exports)
+  W19T1 (mod.rs + lib.rs wiring, forward re-exports; 不创建 src/set/unique.rs — 推迟到 W19T2)
 批次2:
   W19T2 (UniqueElement trait + real scalar impls, 需 W19T1)
 批次3:
@@ -560,6 +560,10 @@ W22 完成 ──→ W30 (Documentation)
 ```
 
 > W19T4 与 W19T5 并行成立的前提是 W19T4 改为 test-only（不修改 `unique_impl`），避免同文件写冲突。
+>
+> **§6.5 哈希路径延后**：14-set §6.5 规定"当输入规模导致线性扫描的 O(N²) 成本不可接受时，必须切换到哈希路径"。W19 范围内仅实现线性扫描（见 W19T3 关键设计决策的 scope note），哈希路径作为后续性能任务延后执行；相应地，§8.2 的 stress 级 `test_unique_large_tensor_high_dup`（10^7 元素）推迟到 W29T11，且需在哈希路径就绪后方可稳定通过。
+>
+> **§8.2 跨 wave 依赖测试推迟**：`test_unique_non_contiguous_view` 与 `test_unique_transposed_view` 依赖 W20 (`transpose()`) 与 W21 (`slice(SliceInfo)`) 公开 API，超出 SUMMARY.md 第 561 行 `W8 + W12 ─→ W19` 的依赖链，且 W19 与 W20/W21 同处可并行组 D；两项测试推迟到 W29T11。
 
 ---
 
