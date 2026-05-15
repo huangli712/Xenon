@@ -17,8 +17,8 @@ pub mod error;
 /// Common exports for convenient use.
 pub mod prelude;
 
-#[expect(unused_imports)]
 pub use prelude::*;
+pub use error::XenonError;
 
 #[cfg(test)]
 mod tests {

@@ -784,6 +784,30 @@ impl fmt::Display for InvalidShapeKind {
 /// This enum is marked `#[non_exhaustive]`: downstream `match` expressions
 /// MUST include a wildcard arm (`_ => ...`) and MUST NOT exhaustively pattern
 /// against the listed variants. This lets future Xenon versions add new
+///
+/// # Examples
+///
+/// Access via direct re-export (matches `01-architecture.md §8` line 635):
+///
+/// ```
+/// use xenon::XenonError;
+/// let _: XenonError = XenonError::DimensionMismatch {
+///     operation: std::borrow::Cow::Borrowed("doc"),
+///     expected: 1,
+///     actual: 2,
+/// };
+/// ```
+///
+/// Access via prelude:
+///
+/// ```
+/// use xenon::prelude::*;
+/// let _: XenonError = XenonError::DimensionMismatch {
+///     operation: std::borrow::Cow::Borrowed("doc"),
+///     expected: 1,
+///     actual: 2,
+/// };
+/// ```
 /// top-level error categories (within the same SemVer major) without forcing
 /// a breaking change on every downstream `match`.
 #[derive(Debug, Clone, PartialEq)]
