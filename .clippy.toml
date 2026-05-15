@@ -1,0 +1,12 @@
+# .clippy.toml — Xenon Clippy lint configuration
+
+# Restrict `unwrap()` usage across the crate — require explicit error handling.
+# This is enforced via #![warn(clippy::unwrap_used)] in lib.rs.
+# Exceptions documented in safety sections of each module.
+# Numeric `as` cast lints are enabled by the local/CI clippy command; this file
+# must not define any global cast allow-list.
+
+disallowed-methods = [
+    { path = "std::option::Option::unwrap", reason = "Use ? or explicit match" },
+    { path = "std::result::Result::unwrap", reason = "Use ? or explicit match" },
+]
