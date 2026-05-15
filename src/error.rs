@@ -9,6 +9,41 @@ use std::borrow::Cow;
 use std::vec::Vec;
 use std::boxed::Box;
 
+/// Helper for formatting optional values in error messages.
+///
+/// Displays `<any>` if `None`, otherwise formats the value via `Display`.
+/// The `<any>` text is mandated by `26-error §5.7`.
+#[expect(dead_code)]
+struct OrAny<T>(Option<T>);
+
+impl<T: fmt::Display> fmt::Display for OrAny<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.0 {
+            Some(v) => write!(f, "{v}"),
+            None => write!(f, "<any>"),
+        }
+    }
+}
+
+/// Helper for formatting `[usize]` shape/stride slices in error messages.
+///
+/// Output format: `[]`、`[5]`、`[2 × 3 × 4]` — NumPy style;
+/// see `26-error §5.7` for Display output requirements.
+struct FmtShape<'a>(&'a [usize]);
+
+impl<'a> fmt::Display for FmtShape<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[")?;
+        for (i, dim) in self.0.iter().enumerate() {
+            if i > 0 {
+                write!(f, " × ")?;
+            }
+            write!(f, "{dim}")?;
+        }
+        write!(f, "]")
+    }
+}
+
 /// FFI error category for `XenonError::Ffi`. All categories are
 /// fully structured; no free-text fallback variant.
 ///
@@ -72,6 +107,56 @@ pub enum FfiErrorCategory {
     },
 }
 
+impl fmt::Display for FfiErrorCategory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NullPointer { argument } => {
+                write!(f, "null pointer for argument {argument}")
+            }
+            Self::AlignmentMismatch { required, actual } => {
+                write!(
+                    f,
+                    "alignment mismatch: required {required}, actual {actual}",
+                )
+            }
+            Self::InvalidRank { expected, actual } => {
+                write!(f, "invalid rank: expected {expected}, actual {actual}")
+            }
+            Self::BlasIncompatibleLayout { shape, strides } => {
+                write!(
+                    f,
+                    "BLAS-incompatible layout: shape {}, strides {}",
+                    FmtShape(shape),
+                    FmtShape(strides),
+                )
+            }
+            Self::IntegerOverflow {
+                value,
+                target_width_bits,
+            } => {
+                write!(
+                    f,
+                    "integer overflow: {value} does not fit in i{target_width_bits}",
+                )
+            }
+            Self::AbiMismatch { detail } => {
+                write!(f, "ABI mismatch: {detail:?}")
+            }
+            Self::OverlapRejected { shape, strides } => {
+                write!(
+                    f,
+                    "potentially overlapping layout rejected: shape {}, strides {}",
+                    FmtShape(shape),
+                    FmtShape(strides),
+                )
+            }
+            Self::ForeignAllocatorMismatch { detail } => {
+                write!(f, "foreign allocator metadata mismatch: {detail:?}")
+            }
+        }
+    }
+}
+
 /// Backend identifier for `XenonError::Ffi.backend`. Closed enum: any
 /// future backend must extend this enum (SemVer-tracked).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,6 +165,15 @@ pub enum FfiBackend {
     RawParts,
     /// BLAS-compatible export.
     Blas,
+}
+
+impl fmt::Display for FfiBackend {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::RawParts => write!(f, "raw parts"),
+            Self::Blas => write!(f, "BLAS"),
+        }
+    }
 }
 
 /// Detail kind for ABI mismatch / foreign allocator mismatch.
@@ -124,6 +218,46 @@ pub enum AbiMismatchKind {
         /// Number of strides provided.
         strides_ndim: usize,
     },
+}
+
+impl fmt::Display for AbiMismatchKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ElementTypeMismatch { expected, actual } => {
+                write!(
+                    f,
+                    "element type mismatch: expected {expected}, got {actual}",
+                )
+            }
+            Self::CapacityMismatch { expected, actual } => {
+                write!(f, "capacity mismatch: expected {expected}, got {actual}")
+            }
+            Self::AlignmentMismatch { expected, actual } => {
+                write!(
+                    f,
+                    "alignment mismatch: expected {expected}, got {actual}",
+                )
+            }
+            Self::ShapeProductExceedsLen {
+                product,
+                storage_len,
+            } => {
+                write!(
+                    f,
+                    "shape product ({product}) exceeds storage len ({storage_len})",
+                )
+            }
+            Self::StridesRankMismatch {
+                shape_ndim,
+                strides_ndim,
+            } => {
+                write!(
+                    f,
+                    "strides rank mismatch: shape_ndim={shape_ndim}, strides_ndim={strides_ndim}",
+                )
+            }
+        }
+    }
 }
 
 /// Workspace error category for `XenonError::Workspace`. All categories
@@ -192,6 +326,43 @@ pub enum WorkspaceErrorCategory {
     },
 }
 
+impl fmt::Display for WorkspaceErrorCategory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::AllocFailed { size, align } => {
+                write!(f, "allocation failed (size={size}, align={align})")
+            }
+            Self::InvalidLayout { size, align } => {
+                write!(f, "invalid layout (size={size}, align={align})")
+            }
+            Self::BorrowConflict { requested, current } => {
+                write!(
+                    f,
+                    "borrow conflict: requested {requested:?}, current {current:?}",
+                )
+            }
+            Self::SplitOutOfBounds { mid, len } => {
+                write!(f, "split out of bounds (mid={mid}, len={len})")
+            }
+            Self::SplitCountInvariant { detail } => {
+                write!(f, "split-count invariant violated: {detail}")
+            }
+            Self::GrowOverflow {
+                current_capacity,
+                additional,
+            } => {
+                write!(
+                    f,
+                    "grow overflow: capacity={current_capacity} + additional={additional}",
+                )
+            }
+            Self::TypedViewRejected { detail } => {
+                write!(f, "typed view rejected: {detail:?}")
+            }
+        }
+    }
+}
+
 /// Type of workspace borrow.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceBorrowKind {
@@ -235,7 +406,7 @@ impl fmt::Display for WorkspaceBorrowState {
             Self::None => f.write_str("none"),
             Self::Shared => f.write_str("shared"),
             Self::Exclusive => f.write_str("exclusive"),
-            Self::SplitActive { count } => write!(f, "split_active({count})"),
+            Self::SplitActive { count } => write!(f, "split active (count={count})"),
         }
     }
 }
@@ -265,6 +436,26 @@ pub enum TypedViewRejection {
     },
 }
 
+impl fmt::Display for TypedViewRejection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ZeroSizedType => write!(f, "zero-sized type"),
+            Self::AlignmentMismatch { required, actual } => {
+                write!(
+                    f,
+                    "alignment mismatch: required {required}, actual {actual}",
+                )
+            }
+            Self::TypedByteLengthOverflow { count, elem_size } => {
+                write!(
+                    f,
+                    "byte length overflow: count={count}, elem_size={elem_size}",
+                )
+            }
+        }
+    }
+}
+
 /// Reason for type conversion failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConversionFailureReason {
@@ -278,6 +469,20 @@ pub enum ConversionFailureReason {
     IntegerToFloatPrecisionLoss,
     /// Complex → real attempted but imaginary part is non-zero.
     NonZeroImaginaryPart,
+}
+
+impl fmt::Display for ConversionFailureReason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::LossyIntegerNarrowing => write!(f, "lossy integer narrowing"),
+            Self::LossyFloatNarrowing => write!(f, "lossy float narrowing"),
+            Self::FloatToInteger => write!(f, "float to integer"),
+            Self::IntegerToFloatPrecisionLoss => {
+                write!(f, "integer to float precision loss")
+            }
+            Self::NonZeroImaginaryPart => write!(f, "non-zero imaginary part"),
+        }
+    }
 }
 
 /// Kind for `XenonError::InvalidArgument`.
@@ -342,6 +547,56 @@ pub enum InvalidArgumentKind {
     },
 }
 
+impl fmt::Display for InvalidArgumentKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::RangeOutOfBounds {
+                axis,
+                axis_len,
+                start,
+                end,
+            } => {
+                write!(
+                    f,
+                    "range [{start}..{end}] out of bounds for axis {axis} (len={axis_len})",
+                )
+            }
+            Self::RangeStartAfterEnd { axis, start, end } => {
+                write!(
+                    f,
+                    "range start ({start}) after end ({end}) at axis {axis}",
+                )
+            }
+            Self::NumericOutOfRange {
+                argument,
+                domain,
+                actual,
+            } => {
+                write!(f, "`{argument}` out of range: {domain}, got {actual}")
+            }
+            Self::InvalidConfig {
+                argument,
+                constraint,
+                actual,
+            } => {
+                write!(
+                    f,
+                    "invalid config `{argument}`: {constraint}, got {actual}",
+                )
+            }
+            Self::DuplicateOrEmpty { argument } => {
+                write!(f, "duplicate or empty `{argument}`")
+            }
+            Self::OperationSpecific {
+                argument,
+                constraint,
+            } => {
+                write!(f, "`{argument}`: {constraint}")
+            }
+        }
+    }
+}
+
 /// Reason for `XenonError::InvalidLayout`. Closed enum: each reason
 /// has program-matchable semantics.
 ///
@@ -386,6 +641,36 @@ pub enum InvalidLayoutReason {
     OwnedRequiresCanonicalFOrder,
 }
 
+impl fmt::Display for InvalidLayoutReason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ShapeProductOverflow => write!(f, "shape product overflow"),
+            Self::StridesRankMismatch => write!(f, "strides rank mismatch"),
+            Self::AccessRangeExceedsStorage => {
+                write!(f, "access range exceeds storage")
+            }
+            Self::EmptyTensorOffsetExceedsStorage => {
+                write!(f, "empty tensor offset exceeds storage")
+            }
+            Self::UnsupportedStride => write!(f, "unsupported stride"),
+            Self::StrideExceedsIsizeMax => write!(f, "stride exceeds isize::MAX"),
+            Self::StrideSpanOverflow => write!(f, "stride span overflow"),
+            Self::AccessRangeOverflow => write!(f, "access range overflow"),
+            Self::UnexpectedZeroStride => write!(f, "unexpected zero stride"),
+            Self::AmbiguousOverlap => write!(f, "ambiguous overlap"),
+            Self::OwnedRequiresZeroOffset => {
+                write!(f, "owned requires zero offset")
+            }
+            Self::LenShapeMismatch => write!(f, "len-shape mismatch"),
+            Self::CapacityBelowLen => write!(f, "capacity below len"),
+            Self::AlignmentInvalid => write!(f, "alignment invalid"),
+            Self::OwnedRequiresCanonicalFOrder => {
+                write!(f, "owned requires canonical F-order")
+            }
+        }
+    }
+}
+
 /// Tag identifying which storage kind is currently in use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StorageKindTag {
@@ -397,6 +682,17 @@ pub enum StorageKindTag {
     ViewMut,
     /// Reference-counted shared storage.
     Shared,
+}
+
+impl fmt::Display for StorageKindTag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Owned => write!(f, "owned"),
+            Self::View => write!(f, "view"),
+            Self::ViewMut => write!(f, "view mut"),
+            Self::Shared => write!(f, "shared"),
+        }
+    }
 }
 
 /// Kind of storage conversion attempted (used as `conversion` field in
@@ -413,6 +709,18 @@ pub enum StorageConversionKind {
     SliceMut,
     /// Broadcast-to-shape operation.
     BroadcastTo,
+}
+
+impl fmt::Display for StorageConversionKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ToOwned => write!(f, "to owned"),
+            Self::IntoOwned => write!(f, "into owned"),
+            Self::Transpose => write!(f, "transpose"),
+            Self::SliceMut => write!(f, "slice mut"),
+            Self::BroadcastTo => write!(f, "broadcast to"),
+        }
+    }
 }
 
 /// Kind for `XenonError::InvalidShape`.
@@ -451,6 +759,25 @@ pub enum InvalidShapeKind {
     },
 }
 
+impl fmt::Display for InvalidShapeKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ProductOverflow => write!(f, "product overflow"),
+            Self::ElementCountMismatch { expected, actual } => {
+                write!(f, "element count mismatch: expected {expected}, got {actual}")
+            }
+            Self::RankExceedsStaticMax {
+                provided_ndim,
+                max_ndim,
+            } => {
+                write!(
+                    f,
+                    "rank exceeds static max: {provided_ndim} > {max_ndim}",
+                )
+            }
+        }
+    }
+}
 
 /// Unified recoverable error type for all public Xenon APIs.
 ///
@@ -621,10 +948,212 @@ pub enum XenonError {
     },
 }
 
+impl fmt::Display for XenonError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ShapeMismatch {
+                operation,
+                left_shape,
+                right_shape,
+            } => {
+                write!(
+                    f,
+                    "shape mismatch in `{operation}`: cannot operate on {} and {}",
+                    FmtShape(left_shape),
+                    FmtShape(right_shape),
+                )
+            }
+            Self::BroadcastError {
+                operation,
+                lhs_shape,
+                rhs_shape,
+                attempted_target_shape,
+                axis,
+            } => {
+                write!(
+                    f,
+                    "broadcast error in `{operation}`: cannot broadcast {} with {}",
+                    FmtShape(lhs_shape),
+                    FmtShape(rhs_shape),
+                )?;
+                if let Some(target) = attempted_target_shape {
+                    write!(f, " (attempted target: {})", FmtShape(target))?;
+                }
+                if let Some(ax) = axis {
+                    write!(f, " (axis: {ax})")?;
+                }
+                Ok(())
+            }
+            Self::LayoutMismatch {
+                operation,
+                required_layout,
+                actual_layout,
+                shape,
+            } => {
+                write!(
+                    f,
+                    "layout mismatch in `{operation}`: required {required_layout}, ",
+                )?;
+                write!(
+                    f,
+                    "got {actual_layout} for shape {}",
+                    FmtShape(shape),
+                )
+            }
+            Self::InvalidLayout {
+                operation,
+                storage_kind,
+                shape,
+                strides,
+                offset,
+                storage_len,
+                reason,
+            } => {
+                write!(
+                    f,
+                    "invalid layout ({reason}) in `{operation}`: storage={storage_kind}, ",
+                )?;
+                write!(
+                    f,
+                    "shape={}, strides={}, offset={offset}, len={storage_len}",
+                    FmtShape(shape),
+                    FmtShape(strides),
+                )
+            }
+            Self::InvalidAxis {
+                operation,
+                axis,
+                ndim,
+                shape,
+            } => {
+                write!(
+                    f,
+                    "invalid axis {axis} in `{operation}`: valid range is 0..{ndim} ",
+                )?;
+                write!(f, "for shape {}", FmtShape(shape))
+            }
+            Self::InvalidShape {
+                operation,
+                shape,
+                kind,
+                offending_dim,
+            } => {
+                write!(
+                    f,
+                    "invalid shape ({kind}) in `{operation}`: shape={}",
+                    FmtShape(shape),
+                )?;
+                if let Some(dim) = offending_dim {
+                    write!(f, " (offending dim: {dim})")?;
+                }
+                Ok(())
+            }
+            Self::DimensionMismatch {
+                operation,
+                expected,
+                actual,
+            } => {
+                write!(
+                    f,
+                    "dimension mismatch in `{operation}`: expected {expected} ",
+                )?;
+                write!(f, "dimensions, got {actual}")
+            }
+            Self::InvalidArgument { operation, kind } => {
+                write!(f, "invalid argument ({kind}) in `{operation}`")
+            }
+            Self::InvalidStorageMode {
+                operation,
+                expected,
+                actual,
+                shape,
+                conversion,
+            } => {
+                write!(
+                    f,
+                    "invalid storage mode in `{operation}`: expected {expected}, ",
+                )?;
+                write!(f, "got {actual}")?;
+                if let Some(s) = shape {
+                    write!(f, " for shape {}", FmtShape(s))?;
+                }
+                if let Some(c) = conversion {
+                    write!(f, " (conversion: {c})")?;
+                }
+                Ok(())
+            }
+            Self::Ffi {
+                operation,
+                category,
+                backend,
+                cause,
+            } => {
+                write!(
+                    f,
+                    "FFI error (`{category}`) in `{operation}` (backend: {backend})",
+                )?;
+                if let Some(inner) = cause {
+                    // Contract from `26-error §5.7`: append `; caused by: <inner>`
+                    // so a single Display call shows the whole chain. Programmatic
+                    // traversal still uses `std::error::Error::source()`.
+                    write!(f, "; caused by: {inner}")?;
+                }
+                Ok(())
+            }
+            Self::Workspace {
+                operation,
+                category,
+                cause,
+            } => {
+                write!(
+                    f,
+                    "workspace error (`{category}`) in `{operation}`",
+                )?;
+                if let Some(inner) = cause {
+                    // Same chain contract as `Ffi` above; see `26-error §5.7`.
+                    write!(f, "; caused by: {inner}")?;
+                }
+                Ok(())
+            }
+            Self::IndexOutOfBounds {
+                operation,
+                attempted_index,
+                axis,
+                shape,
+            } => {
+                write!(
+                    f,
+                    "index out of bounds in `{operation}`: attempted {} at ",
+                    FmtShape(attempted_index),
+                )?;
+                write!(f, "axis {axis} (shape: {})", FmtShape(shape))
+            }
+            Self::TypeConversion {
+                operation,
+                source_type,
+                target_type,
+                reason,
+                element_index,
+            } => {
+                write!(
+                    f,
+                    "type conversion failed in `{operation}`: {source_type} -> ",
+                )?;
+                write!(f, "{target_type} ({reason})")?;
+                if let Some(idx) = element_index {
+                    write!(f, " at element index {idx}")?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 /// Canonical `Result` alias used by all public Xenon APIs.
 ///
 /// Equivalent to `core::result::Result<T, XenonError>`.
 pub type Result<T> = core::result::Result<T, XenonError>;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -894,5 +1423,174 @@ mod tests {
             actual: 2,
         });
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn test_display_contains_structured_info() {
+        let e = XenonError::ShapeMismatch {
+            operation: Cow::Borrowed("dot"),
+            left_shape: vec![2, 3],
+            right_shape: vec![3, 4],
+        };
+        let s = format!("{}", e);
+        assert!(s.contains("dot"));
+        assert!(s.contains("[2 × 3]"));
+        assert!(s.contains("[3 × 4]"));
+    }
+
+    #[test]
+    fn test_display_index_out_of_bounds() {
+        let e = XenonError::IndexOutOfBounds {
+            operation: Cow::Borrowed("slice"),
+            attempted_index: vec![0, 5],
+            axis: 1,
+            shape: vec![3, 4],
+        };
+        let s = format!("{}", e);
+        assert!(s.contains("slice"));
+        assert!(s.contains("axis 1"));
+        assert!(s.contains("[3 × 4]"));
+    }
+
+    #[test]
+    fn test_display_type_conversion() {
+        let e = XenonError::TypeConversion {
+            operation: Cow::Borrowed("cast"),
+            source_type: "f64",
+            target_type: "i32",
+            reason: ConversionFailureReason::FloatToInteger,
+            element_index: None,
+        };
+        let s = format!("{}", e);
+        assert!(s.contains("f64"));
+        assert!(s.contains("i32"));
+        assert!(s.contains("float to integer"));
+    }
+
+    #[test]
+    fn test_display_broadcast_error() {
+        let e = XenonError::BroadcastError {
+            operation: Cow::Borrowed("add"),
+            lhs_shape: vec![3, 1],
+            rhs_shape: vec![1, 4],
+            attempted_target_shape: Some(vec![3, 4]),
+            axis: None,
+        };
+        let s = format!("{}", e);
+        assert!(s.contains("[3 × 1]"));
+        assert!(s.contains("[1 × 4]"));
+        assert!(s.contains("[3 × 4]"));
+    }
+
+    #[test]
+    fn test_fmt_shape_empty() {
+        assert_eq!(format!("{}", FmtShape(&[])), "[]");
+    }
+
+    #[test]
+    fn test_fmt_shape_1d() {
+        assert_eq!(format!("{}", FmtShape(&[5])), "[5]");
+    }
+
+    #[test]
+    fn test_fmt_shape_3d() {
+        assert_eq!(format!("{}", FmtShape(&[2, 3, 4])), "[2 × 3 × 4]");
+    }
+
+    #[test]
+    fn test_or_any_some() {
+        assert_eq!(format!("{}", OrAny(Some(42))), "42");
+    }
+
+    #[test]
+    fn test_or_any_none() {
+        // 26-error §5.7: `None` fields render as `<any>`.
+        assert_eq!(format!("{}", OrAny(None::<i32>)), "<any>");
+    }
+
+    /// Ref: 26-error §8.2 — test_display_option_fields_render_any
+    ///
+    /// `BroadcastError.attempted_target_shape` and `BroadcastError.axis`
+    /// are both `Option`; when `None` the Display must omit them, never
+    /// output `Some(...)` / `None` Debug text (§5.7 contract).
+    #[test]
+    fn test_display_option_fields_render_any() {
+        let e = XenonError::BroadcastError {
+            operation: Cow::Borrowed("add"),
+            lhs_shape: vec![3, 1],
+            rhs_shape: vec![1, 4],
+            attempted_target_shape: None,
+            axis: None,
+        };
+        let s = format!("{}", e);
+        assert!(!s.contains("Some("));
+        assert!(!s.contains("None"));
+        // sanity: core structured fields still present
+        assert!(s.contains("[3 × 1]"));
+        assert!(s.contains("[1 × 4]"));
+    }
+
+    /// Ref: 26-error §8.2 — test_type_conversion_carries_operation
+    ///
+    /// `TypeConversion.operation` field must appear in Display output,
+    /// never be empty (§5.5 contract).
+    #[test]
+    fn test_type_conversion_carries_operation() {
+        let e = XenonError::TypeConversion {
+            operation: Cow::Borrowed("cast"),
+            source_type: "f64",
+            target_type: "i32",
+            reason: ConversionFailureReason::FloatToInteger,
+            element_index: Some(7),
+        };
+        let s = format!("{}", e);
+        assert!(s.contains("cast"));
+        assert!(s.contains("element index 7"));
+    }
+
+    /// Ref: 26-error §8.2 — test_type_conversion_uses_element_type_name
+    ///
+    /// `source_type` / `target_type` are `&'static str`, Display must
+    /// write them directly; forbid `{:?}` / TypeId style (§5.7 contract).
+    #[test]
+    fn test_type_conversion_uses_element_type_name() {
+        let e = XenonError::TypeConversion {
+            operation: Cow::Borrowed("cast"),
+            source_type: "Complex<f64>",
+            target_type: "f64",
+            reason: ConversionFailureReason::NonZeroImaginaryPart,
+            element_index: None,
+        };
+        let s = format!("{}", e);
+        // type names appear directly (not Debug-wrapped)
+        assert!(s.contains("Complex<f64>"));
+        assert!(s.contains("f64"));
+        // reason uses Display, outputs readable text
+        assert!(s.contains("non-zero imaginary part"));
+    }
+
+    /// Ref: 26-error §5.7 — Ffi/Workspace cause chain Display contract
+    ///
+    /// When `cause: Some(_)`, Display must append `; caused by: <inner>`.
+    #[test]
+    fn test_display_ffi_cause_chain_format() {
+        let inner = Box::new(XenonError::InvalidAxis {
+            operation: Cow::Borrowed("validate"),
+            axis: 3,
+            ndim: 2,
+            shape: vec![2, 3],
+        });
+        let e = XenonError::Ffi {
+            operation: Cow::Borrowed("export"),
+            category: FfiErrorCategory::InvalidRank {
+                expected: 2,
+                actual: 3,
+            },
+            backend: FfiBackend::RawParts,
+            cause: Some(inner),
+        };
+        let s = format!("{}", e);
+        assert!(s.contains("; caused by:"));
+        assert!(s.contains("invalid axis"));
     }
 }
