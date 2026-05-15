@@ -1,1 +1,93 @@
 //! Axis types.
+
+/// Axis marker type. Provides type safety over raw `usize`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct Axis(pub usize);
+
+impl Axis {
+    /// Create a new Axis with the given index.
+    #[inline]
+    pub fn new(axis: usize) -> Self {
+        Axis(axis)
+    }
+
+    /// Return the raw index.
+    #[inline]
+    pub fn index(self) -> usize {
+        self.0
+    }
+
+    /// Returns the next axis, or `None` on overflow.
+    #[inline]
+    pub fn checked_next(self) -> Option<Self> {
+        self.0.checked_add(1).map(Axis)
+    }
+
+    /// Returns the next axis, or `None` if `self.0 == usize::MAX`.
+    /// Equivalent to `checked_next()`; both share the same non-panicking contract.
+    #[inline]
+    pub fn next(self) -> Option<Self> {
+        self.0.checked_add(1).map(Axis)
+    }
+
+    /// Returns the previous axis, or `None` if already at index 0.
+    #[inline]
+    pub fn prev(self) -> Option<Self> {
+        self.0.checked_sub(1).map(Axis)
+    }
+
+    /// True if this is the first axis (index 0).
+    #[inline]
+    pub fn is_first(self) -> bool {
+        self.0 == 0
+    }
+
+    /// True if this axis is the last axis in a dimension with `ndim` axes.
+    /// Returns `false` when `ndim == 0` (no axes exist).
+    #[inline]
+    pub fn is_last(self, ndim: usize) -> bool {
+        ndim > 0 && self.0 == ndim - 1
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// §8.2: test_axis_next_prev — normal next/prev navigation.
+    #[test]
+    fn test_axis_next_prev() {
+        let axis = Axis::new(2);
+        assert_eq!(axis.index(), 2);
+        assert_eq!(axis.next().expect("next of 2").index(), 3);
+        assert_eq!(axis.prev().expect("prev of 2").index(), 1);
+        assert_eq!(Axis::new(0).prev(), None);
+    }
+
+    /// §8.2: test_axis_checked_next — checked_next overflow returns None.
+    #[test]
+    fn test_axis_checked_next() {
+        assert_eq!(
+            Axis::new(0)
+                .checked_next()
+                .expect("checked_next of 0")
+                .index(),
+            1
+        );
+        assert_eq!(Axis::new(usize::MAX).checked_next(), None);
+        // `next()` shares the same checked contract.
+        assert_eq!(Axis::new(usize::MAX).next(), None);
+    }
+
+    /// §8.2: test_axis_is_first_last — boundary semantics.
+    /// Per §5.7 line 543: `is_last(_, ndim=0)` must return `false`.
+    #[test]
+    fn test_axis_is_first_last() {
+        assert!(Axis::new(0).is_first());
+        assert!(!Axis::new(1).is_first());
+        assert!(Axis::new(2).is_last(3));
+        assert!(!Axis::new(0).is_last(0));
+        assert!(!Axis::new(1).is_last(3));
+    }
+}
