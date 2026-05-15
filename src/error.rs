@@ -13,7 +13,7 @@ use std::boxed::Box;
 ///
 /// Displays `<any>` if `None`, otherwise formats the value via `Display`.
 /// The `<any>` text is mandated by `26-error §5.7`.
-#[expect(dead_code)]
+#[cfg_attr(not(test), expect(dead_code))]
 struct OrAny<T>(Option<T>);
 
 impl<T: fmt::Display> fmt::Display for OrAny<T> {
@@ -1149,6 +1149,21 @@ impl fmt::Display for XenonError {
     }
 }
 
+impl std::error::Error for XenonError {
+    /// Returns the underlying cause for chained errors.
+    ///
+    /// `Ffi` and `Workspace` variants propagate their inner `cause` field
+    /// via `source()`. All other variants are leaf errors and return `None`.
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Ffi { cause, .. } | Self::Workspace { cause, .. } => {
+                cause.as_ref().map(|e| e.as_ref() as &(dyn std::error::Error + 'static))
+            }
+            _ => None,
+        }
+    }
+}
+
 /// Canonical `Result` alias used by all public Xenon APIs.
 ///
 /// Equivalent to `core::result::Result<T, XenonError>`.
@@ -1158,6 +1173,7 @@ pub type Result<T> = core::result::Result<T, XenonError>;
 mod tests {
     use super::*;
     use std::borrow::Cow;
+    use std::error::Error;
 
     /// Verify FFI auxiliary enums are constructable.
     #[test]
@@ -1217,7 +1233,7 @@ mod tests {
     #[test]
     fn test_aux_enums_clone_eq() {
         let a = FfiBackend::Blas;
-        let b = a.clone();
+        let b = a;
         assert_eq!(a, b);
 
         let a = StorageKindTag::ViewMut;
@@ -1592,5 +1608,112 @@ mod tests {
         let s = format!("{}", e);
         assert!(s.contains("; caused by:"));
         assert!(s.contains("invalid axis"));
+    }
+
+
+    #[test]
+    fn test_error_trait_implemented() {
+        fn assert_error<E: std::error::Error>(_: &E) {}
+        let e = XenonError::IndexOutOfBounds {
+            operation: Cow::Borrowed("index"),
+            attempted_index: vec![0],
+            axis: 0,
+            shape: vec![5],
+        };
+        assert_error(&e);
+    }
+
+    #[test]
+    fn test_source_returns_none_for_leaf_variants() {
+        let e = XenonError::IndexOutOfBounds {
+            operation: Cow::Borrowed("index"),
+            attempted_index: vec![0],
+            axis: 0,
+            shape: vec![5],
+        };
+        assert!(e.source().is_none());
+
+        let e = XenonError::ShapeMismatch {
+            operation: Cow::Borrowed("test"),
+            left_shape: vec![],
+            right_shape: vec![1],
+        };
+        assert!(e.source().is_none());
+    }
+
+    #[test]
+    fn test_source_chains_ffi_cause() {
+        let inner = Box::new(XenonError::InvalidAxis {
+            operation: Cow::Borrowed("validate"),
+            axis: 3,
+            ndim: 2,
+            shape: vec![2, 3],
+        });
+        let e = XenonError::Ffi {
+            operation: Cow::Borrowed("export"),
+            category: FfiErrorCategory::InvalidRank {
+                expected: 2,
+                actual: 3,
+            },
+            backend: FfiBackend::RawParts,
+            cause: Some(inner),
+        };
+        let source = e.source();
+        assert!(source.is_some());
+        let source_msg = source.expect("source exists").to_string();
+        assert!(source_msg.contains("invalid axis"));
+    }
+
+    #[test]
+    fn test_source_chains_workspace_cause() {
+        let inner = Box::new(XenonError::InvalidLayout {
+            operation: Cow::Borrowed("alloc"),
+            storage_kind: StorageKindTag::Owned,
+            shape: vec![4],
+            strides: vec![1],
+            offset: 0,
+            storage_len: 4,
+            reason: InvalidLayoutReason::AlignmentInvalid,
+        });
+        let e = XenonError::Workspace {
+            operation: Cow::Borrowed("new"),
+            category: WorkspaceErrorCategory::TypedViewRejected {
+                detail: TypedViewRejection::ZeroSizedType,
+            },
+            cause: Some(inner),
+        };
+        let source = e.source();
+        assert!(source.is_some());
+        let source_msg = source.expect("source exists").to_string();
+        assert!(source_msg.contains("invalid layout"));
+    }
+
+    #[test]
+    fn test_source_returns_none_when_no_cause() {
+        let e = XenonError::Ffi {
+            operation: Cow::Borrowed("check"),
+            category: FfiErrorCategory::NullPointer {
+                argument: Cow::Borrowed("ptr"),
+            },
+            backend: FfiBackend::RawParts,
+            cause: None,
+        };
+        assert!(e.source().is_none());
+    }
+
+    #[test]
+    fn test_error_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<XenonError>();
+    }
+
+    #[test]
+    fn test_dyn_error_compatible() {
+        let e: Box<dyn std::error::Error> = Box::new(XenonError::DimensionMismatch {
+            operation: Cow::Borrowed("reshape"),
+            expected: 2,
+            actual: 3,
+        });
+        assert!(e.to_string().contains("2"));
     }
 }
