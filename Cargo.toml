@@ -1,0 +1,33 @@
+[package]
+name = "xenon"
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+description = "A Rust N-dimensional array library for scientific computing"
+keywords = ["tensor", "array", "numpy", "scientific", "ndarray"]
+categories = ["science", "mathematics", "data-structures"]
+
+[features]
+
+# Parallel computing (depends on rayon)
+parallel = ["dep:rayon"]
+
+# SIMD acceleration (depends on pulp)
+simd = ["dep:pulp"]
+
+[dependencies]
+rayon = { version = "1.12", optional = true }
+pulp = { version = "0.22", optional = true }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+opt-level = 3
+
+[profile.bench]
+lto = "thin"
+codegen-units = 1
+
+[package.metadata.docs.rs]
+all-features = true
