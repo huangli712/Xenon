@@ -14,6 +14,9 @@
 /// Structured error types for fallible operations.
 pub mod error;
 
+/// Dimension types for compile-time and runtime shape specification.
+pub mod dimension;
+
 /// Common exports for convenient use.
 pub mod prelude;
 
