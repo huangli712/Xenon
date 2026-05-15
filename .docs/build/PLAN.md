@@ -157,11 +157,11 @@ W22 完成 ──→ W30 (Documentation)
   W4T9 (usize doc, 需 W4T7)
   W4T10 (Complex impls, 需 W4T4+W5T1)
 批次7:
-  W4T11 (calibrate+doc+marker impls, 需 W4T7+W4T10)
+  W4T11 (calibrate+doc+marker impls+§5.10 checked traits, 需 W4T7+W4T10)
 批次8:
   W4T12 (all doc comments, 需 W4T10+W4T11)
 批次9 (全并行):
-  W4T13 (in-module tests, 需 W4T10)
+  W4T13 (in-module tests, 需 W4T10+W4T11)
   W4T14 (test_tensor, 需 W4T10+W8)
   W4T15 (test_math, 需 W4T10)
   W4T16 (test_reduction, 需 W4T10+W8)

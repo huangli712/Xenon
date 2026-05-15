@@ -108,9 +108,9 @@
 | W4T8 | `src/element/primitives.rs` | Element impl for bool (zero=false, one=true, no Numeric) | W4T1 | 03-element §5, §6, §7, §8 |
 | W4T9 | `src/element/mod.rs` | Documentation clarifying usize as index/shape metadata only, not an element type | W4T7 | 03-element §5, §6, §7, §8 |
 | W4T10 | `src/element/primitives.rs` | Element + Numeric + ComplexScalar impls for Complex\<f32\>/Complex\<f64\> | W4T4, W5T1 | 03-element §5, §6, §7, §8 |
-| W4T11 | `src/element/real.rs`, `src/element/mod.rs`, `src/element/primitives.rs` | Calibrate math boundaries + add CastElement/BoolElement/OrderedCompareElement impls + document CastTo semantics | W4T7, W4T10 | 03-element §5, §6, §7, §8 |
+| W4T11 | `src/element/real.rs`, `src/element/mod.rs`, `src/element/primitives.rs` | Calibrate math boundaries + add CastElement/BoolElement/OrderedCompareElement impls + define §5.10 Checked Arithmetic Traits + document CastTo semantics | W4T7, W4T10 | 03-element §5, §6, §7, §8 |
 | W4T12 | All `src/element/` files | Doc comments on all pub items, cargo doc verification | W4T10, W4T11 | 03-element §5, §6, §7, §8 |
-| W4T13 | `src/element/primitives.rs` (`#[cfg(test)] mod tests`) | Element in-module unit tests: verify trait impls for all 7 element types | W4T10 | 03-element §5, §6, §7, §8 |
+| W4T13 | `src/element/primitives.rs` (`#[cfg(test)] mod tests`) | Element in-module unit tests: verify trait impls for all 7 element types | W4T10, W4T11 | 03-element §5, §6, §7, §8 |
 | W4T14 | `tests/test_tensor.rs` | Element cross-module tests for tensor interaction | W4T10, W8 | 03-element §5, §6, §7, §8 |
 | W4T15 | `tests/test_math.rs` | Element cross-module tests for math operations | W4T10 | 03-element §5, §6, §7, §8 |
 | W4T16 | `tests/test_reduction.rs` | Element cross-module tests for reductions | W4T10, W8 | 03-element §5, §6, §7, §8 |
