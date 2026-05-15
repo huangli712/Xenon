@@ -7,6 +7,7 @@
 use core::fmt;
 use std::borrow::Cow;
 use std::vec::Vec;
+use std::boxed::Box;
 
 /// FFI error category for `XenonError::Ffi`. All categories are
 /// fully structured; no free-text fallback variant.
@@ -450,6 +451,180 @@ pub enum InvalidShapeKind {
     },
 }
 
+
+/// Unified recoverable error type for all public Xenon APIs.
+///
+/// This enum is marked `#[non_exhaustive]`: downstream `match` expressions
+/// MUST include a wildcard arm (`_ => ...`) and MUST NOT exhaustively pattern
+/// against the listed variants. This lets future Xenon versions add new
+/// top-level error categories (within the same SemVer major) without forcing
+/// a breaking change on every downstream `match`.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum XenonError {
+    /// Two shapes are incompatible for the requested operation.
+    ShapeMismatch {
+        /// The operation that failed.
+        operation: Cow<'static, str>,
+        /// Shape of the left operand.
+        left_shape: Vec<usize>,
+        /// Shape of the right operand.
+        right_shape: Vec<usize>,
+    },
+
+    /// Broadcasting shapes are incompatible.
+    BroadcastError {
+        /// The operation that failed.
+        operation: Cow<'static, str>,
+        /// Shape of the left-hand side.
+        lhs_shape: Vec<usize>,
+        /// Shape of the right-hand side.
+        rhs_shape: Vec<usize>,
+        /// Expected target shape, if one was computed.
+        attempted_target_shape: Option<Vec<usize>>,
+        /// Axis along which broadcasting was attempted, if applicable.
+        axis: Option<usize>,
+    },
+
+    /// Reserved for future BLAS/FFI layout validation.
+    LayoutMismatch {
+        /// The operation that failed.
+        operation: Cow<'static, str>,
+        /// Required layout description.
+        required_layout: Cow<'static, str>,
+        /// Actual layout description.
+        actual_layout: Cow<'static, str>,
+        /// Shape of the tensor.
+        shape: Vec<usize>,
+    },
+
+    /// Invalid memory layout detected (construction, view, raw-parts, etc.).
+    InvalidLayout {
+        /// The operation that failed.
+        operation: Cow<'static, str>,
+        /// Kind of storage being validated.
+        storage_kind: StorageKindTag,
+        /// Shape of the tensor.
+        shape: Vec<usize>,
+        /// Strides of the tensor.
+        strides: Vec<usize>,
+        /// Offset into the storage.
+        offset: usize,
+        /// Total length of the storage in elements.
+        storage_len: usize,
+        /// Detailed reason the layout was rejected.
+        reason: InvalidLayoutReason,
+    },
+
+    /// Axis index is out of the valid dimension range.
+    InvalidAxis {
+        /// The operation that failed.
+        operation: Cow<'static, str>,
+        /// The axis that was out of bounds.
+        axis: usize,
+        /// Number of dimensions in the tensor.
+        ndim: usize,
+        /// Shape of the tensor.
+        shape: Vec<usize>,
+    },
+
+    /// Shape value invalid for the requested operation.
+    InvalidShape {
+        /// The operation that failed.
+        operation: Cow<'static, str>,
+        /// The shape that was rejected.
+        shape: Vec<usize>,
+        /// Kind of shape validation failure.
+        kind: InvalidShapeKind,
+        /// The specific dimension that caused the failure, if identifiable.
+        offending_dim: Option<usize>,
+    },
+
+    /// The number of dimensions does not match what the operation expects.
+    DimensionMismatch {
+        /// The operation that failed.
+        operation: Cow<'static, str>,
+        /// Expected number of dimensions.
+        expected: usize,
+        /// Actual number of dimensions.
+        actual: usize,
+    },
+
+    /// Generic invalid argument error with structured classification.
+    InvalidArgument {
+        /// The operation that failed.
+        operation: Cow<'static, str>,
+        /// Structured classification of the invalid argument.
+        kind: InvalidArgumentKind,
+    },
+
+    /// Storage mode incompatible with the requested operation.
+    InvalidStorageMode {
+        /// The operation that failed.
+        operation: Cow<'static, str>,
+        /// Expected storage kind.
+        expected: StorageKindTag,
+        /// Actual storage kind.
+        actual: StorageKindTag,
+        /// Shape of the tensor, if available.
+        shape: Option<Vec<usize>>,
+        /// Kind of conversion that was attempted, if applicable.
+        conversion: Option<StorageConversionKind>,
+    },
+
+    /// FFI-related error (raw-parts, BLAS/LAPACK interoperability).
+    Ffi {
+        /// The operation that failed.
+        operation: Cow<'static, str>,
+        /// Structured classification of the FFI error.
+        category: FfiErrorCategory,
+        /// Backend involved in the FFI call.
+        backend: FfiBackend,
+        /// Chained inner error, if this wraps a lower-level failure.
+        cause: Option<Box<XenonError>>,
+    },
+
+    /// Workspace operation error (alloc, borrow, split, capacity).
+    Workspace {
+        /// The operation that failed.
+        operation: Cow<'static, str>,
+        /// Structured classification of the workspace error.
+        category: WorkspaceErrorCategory,
+        /// Chained inner error, if this wraps a lower-level failure.
+        cause: Option<Box<XenonError>>,
+    },
+
+    /// Multi-dimensional index out of bounds.
+    IndexOutOfBounds {
+        /// The operation that failed.
+        operation: Cow<'static, str>,
+        /// The full attempted index (one component per axis).
+        attempted_index: Vec<usize>,
+        /// Axis along which the index was out of bounds.
+        axis: usize,
+        /// Shape of the tensor.
+        shape: Vec<usize>,
+    },
+
+    /// Element type conversion failed (e.g. `cast`, `Complex -> Real`).
+    TypeConversion {
+        /// The operation that failed.
+        operation: Cow<'static, str>,
+        /// Name of the source type.
+        source_type: &'static str,
+        /// Name of the target type.
+        target_type: &'static str,
+        /// Reason for the conversion failure.
+        reason: ConversionFailureReason,
+        /// Index of the element that caused the failure, if known.
+        element_index: Option<usize>,
+    },
+}
+
+/// Canonical `Result` alias used by all public Xenon APIs.
+///
+/// Equivalent to `core::result::Result<T, XenonError>`.
+pub type Result<T> = core::result::Result<T, XenonError>;
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -547,5 +722,177 @@ mod tests {
         for c in cases {
             let _ = format!("{:?}", c);
         }
+    }
+
+    /// Verify XenonError enum is constructable with each variant.
+    #[test]
+    fn test_error_variants_construct() {
+        // ShapeMismatch
+        let e = XenonError::ShapeMismatch {
+            operation: Cow::Borrowed("dot"),
+            left_shape: vec![2, 3],
+            right_shape: vec![3, 4],
+        };
+        assert!(!format!("{:?}", e).is_empty());
+
+        // IndexOutOfBounds
+        let e = XenonError::IndexOutOfBounds {
+            operation: Cow::Borrowed("slice"),
+            attempted_index: vec![0, 5],
+            axis: 1,
+            shape: vec![3, 4],
+        };
+        if let XenonError::IndexOutOfBounds {
+            axis,
+            attempted_index,
+            ..
+        } = &e
+        {
+            assert_eq!(*axis, 1);
+            assert_eq!(attempted_index, &vec![0, 5]);
+        } else {
+            panic!("variant mismatch");
+        }
+
+        // TypeConversion
+        let e = XenonError::TypeConversion {
+            operation: Cow::Borrowed("cast"),
+            source_type: "f64",
+            target_type: "i32",
+            reason: ConversionFailureReason::FloatToInteger,
+            element_index: None,
+        };
+        if let XenonError::TypeConversion { source_type, .. } = &e {
+            assert_eq!(*source_type, "f64");
+        } else {
+            panic!("variant mismatch");
+        }
+
+        // DimensionMismatch
+        let e = XenonError::DimensionMismatch {
+            operation: Cow::Borrowed("reshape"),
+            expected: 2,
+            actual: 3,
+        };
+        if let XenonError::DimensionMismatch { expected, .. } = &e {
+            assert_eq!(*expected, 2);
+        } else {
+            panic!("variant mismatch");
+        }
+
+        // Ffi with cause chain
+        let inner = Box::new(XenonError::InvalidAxis {
+            operation: Cow::Borrowed("check"),
+            axis: 3,
+            ndim: 2,
+            shape: vec![2, 3],
+        });
+        let e = XenonError::Ffi {
+            operation: Cow::Borrowed("export"),
+            category: FfiErrorCategory::NullPointer {
+                argument: Cow::Borrowed("data"),
+            },
+            backend: FfiBackend::RawParts,
+            cause: Some(inner),
+        };
+        if let XenonError::Ffi { cause, .. } = &e {
+            assert!(cause.is_some());
+        } else {
+            panic!("variant mismatch");
+        }
+    }
+
+    /// Verify debug formatting does not panic for any error variant.
+    #[test]
+    fn test_error_debug_no_panic() {
+        let errors = [
+            XenonError::ShapeMismatch {
+                operation: Cow::Borrowed("reshape"),
+                left_shape: vec![],
+                right_shape: vec![1],
+            },
+            XenonError::InvalidShape {
+                operation: Cow::Borrowed("from_shape_vec"),
+                shape: vec![2, 3],
+                kind: InvalidShapeKind::ElementCountMismatch {
+                    expected: 6,
+                    actual: 5,
+                },
+                offending_dim: None,
+            },
+            XenonError::BroadcastError {
+                operation: Cow::Borrowed("add"),
+                lhs_shape: vec![2, 1],
+                rhs_shape: vec![3, 1],
+                attempted_target_shape: None,
+                axis: None,
+            },
+        ];
+        for e in &errors {
+            let _ = format!("{:?}", e);
+        }
+    }
+
+    /// Verify Clone + PartialEq roundtrip consistency.
+    #[test]
+    fn test_clone_eq_roundtrip() {
+        let e1 = XenonError::InvalidAxis {
+            operation: Cow::Borrowed("sum"),
+            axis: 1,
+            ndim: 2,
+            shape: vec![3, 4],
+        };
+        let e2 = e1.clone();
+        assert_eq!(e1, e2);
+
+        let e3 = XenonError::InvalidAxis {
+            operation: Cow::Borrowed("sum"),
+            axis: 0,
+            ndim: 2,
+            shape: vec![3, 4],
+        };
+        assert_ne!(e1, e3);
+    }
+
+    /// Verify IndexOutOfBounds carries axis and shape context.
+    #[test]
+    fn test_index_error_reports_axis_and_shape() {
+        let e = XenonError::IndexOutOfBounds {
+            operation: Cow::Borrowed("index"),
+            attempted_index: vec![2, 8],
+            axis: 1,
+            shape: vec![3, 4],
+        };
+        if let XenonError::IndexOutOfBounds {
+            axis,
+            shape,
+            attempted_index,
+            ..
+        } = &e
+        {
+            assert_eq!(*axis, 1);
+            assert_eq!(shape, &vec![3, 4]);
+            assert_eq!(attempted_index, &vec![2, 8]);
+        } else {
+            panic!("variant mismatch");
+        }
+    }
+
+    /// Verify Result type alias is usable.
+    #[test]
+    fn test_result_alias_usable() {
+        let ok: Result<i32> = Ok(42);
+        if let Ok(val) = ok {
+            assert_eq!(val, 42);
+        } else {
+            panic!("expected Ok");
+        }
+
+        let err: Result<i32> = Err(XenonError::DimensionMismatch {
+            operation: Cow::Borrowed("test"),
+            expected: 1,
+            actual: 2,
+        });
+        assert!(err.is_err());
     }
 }
