@@ -14,6 +14,9 @@
 /// Structured error types for fallible operations.
 pub mod error;
 
+/// Internal infrastructure for sealed traits.
+mod private;
+
 /// Dimension types for compile-time and runtime shape specification.
 pub mod dimension;
 
