@@ -1,0 +1,551 @@
+//! Xenon error types.
+//!
+//! All recoverable errors are represented by the [`XenonError`] enum.
+//! The crate uses `Result<T, XenonError>` (aliased as [`Result`]) for
+//! all fallible operations.
+
+use core::fmt;
+use std::borrow::Cow;
+use std::vec::Vec;
+
+/// FFI error category for `XenonError::Ffi`. All categories are
+/// fully structured; no free-text fallback variant.
+///
+/// Marked `#[non_exhaustive]` to absorb future FFI-error categories without
+/// breaking downstream `match` exhaustiveness within the same major version.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum FfiErrorCategory {
+    /// Caller passed a null raw pointer where a valid pointer was required.
+    NullPointer {
+        /// The argument name identifying the offending pointer.
+        argument: Cow<'static, str>,
+    },
+    /// Pointer alignment did not satisfy the type's alignment requirement.
+    AlignmentMismatch {
+        /// Required alignment in bytes.
+        required: usize,
+        /// Actual alignment in bytes.
+        actual: usize,
+    },
+    /// Rank check failed (e.g., BLAS layer expects 2D matrix).
+    InvalidRank {
+        /// Expected rank.
+        expected: usize,
+        /// Actual rank.
+        actual: usize,
+    },
+    /// Layout cannot be expressed in the FFI ABI (e.g., non F-contiguous
+    /// where BLAS layer requires column-major contiguous).
+    BlasIncompatibleLayout {
+        /// Shape of the tensor.
+        shape: Vec<usize>,
+        /// Strides of the tensor.
+        strides: Vec<usize>,
+    },
+    /// `usize`-to-backend-integer conversion overflowed (e.g., to `i32` LDA).
+    IntegerOverflow {
+        /// The value that overflowed.
+        value: usize,
+        /// Bit-width of the target integer type.
+        target_width_bits: u8,
+    },
+    /// ABI shape mismatch when reconstructing tensor from raw parts.
+    AbiMismatch {
+        /// Detail describing the mismatch.
+        detail: AbiMismatchKind,
+    },
+    /// `from_raw_parts_mut` rejected a layout whose disjointness cannot
+    /// be conservatively proven (overlap-rejected guard).
+    OverlapRejected {
+        /// Shape of the tensor.
+        shape: Vec<usize>,
+        /// Strides of the tensor.
+        strides: Vec<usize>,
+    },
+    /// Foreign allocator metadata does not match Xenon's owned-tensor
+    /// invariants (e.g., element type / capacity / alignment differ).
+    ForeignAllocatorMismatch {
+        /// Detail describing the mismatch.
+        detail: AbiMismatchKind,
+    },
+}
+
+/// Backend identifier for `XenonError::Ffi.backend`. Closed enum: any
+/// future backend must extend this enum (SemVer-tracked).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FfiBackend {
+    /// Generic raw-parts FFI (no specific backend library).
+    RawParts,
+    /// BLAS-compatible export.
+    Blas,
+}
+
+/// Detail kind for ABI mismatch / foreign allocator mismatch.
+///
+/// Marked `#[non_exhaustive]` to allow new ABI mismatch kinds in future
+/// minor versions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum AbiMismatchKind {
+    /// Element type did not match.
+    ElementTypeMismatch {
+        /// The expected type name.
+        expected: &'static str,
+        /// The actual type name.
+        actual: &'static str,
+    },
+    /// Capacity (byte length) did not match.
+    CapacityMismatch {
+        /// Expected capacity.
+        expected: usize,
+        /// Actual capacity.
+        actual: usize,
+    },
+    /// Address alignment did not match.
+    AlignmentMismatch {
+        /// Required alignment.
+        expected: usize,
+        /// Actual alignment.
+        actual: usize,
+    },
+    /// Shape product exceeds storage length.
+    ShapeProductExceedsLen {
+        /// The computed shape product.
+        product: usize,
+        /// The actual storage length.
+        storage_len: usize,
+    },
+    /// Strides length does not equal shape rank.
+    StridesRankMismatch {
+        /// Number of dimensions in the shape.
+        shape_ndim: usize,
+        /// Number of strides provided.
+        strides_ndim: usize,
+    },
+}
+
+/// Workspace error category for `XenonError::Workspace`. All categories
+/// carry structured context; no free-text fallback variant.
+///
+/// Marked `#[non_exhaustive]` to allow new workspace-error categories in
+/// future minor versions without breaking downstream `match` exhaustiveness.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum WorkspaceErrorCategory {
+    /// Underlying allocator returned failure (e.g., OOM / size==0 not
+    /// allowed).
+    AllocFailed {
+        /// Requested allocation size in bytes.
+        size: usize,
+        /// Requested allocation alignment in bytes.
+        align: usize,
+    },
+    /// Layout request violates `Layout::from_size_align` rules.
+    InvalidLayout {
+        /// Requested layout size in bytes.
+        size: usize,
+        /// Requested layout alignment in bytes.
+        align: usize,
+    },
+    /// Borrow request conflicts with current borrow state.
+    BorrowConflict {
+        /// The kind of borrow that was requested.
+        requested: WorkspaceBorrowKind,
+        /// The current borrow state preventing the request.
+        current: WorkspaceBorrowState,
+    },
+    /// `split_at_mut` mid index out of bounds for current view length.
+    SplitOutOfBounds {
+        /// The midpoint index that was out of bounds.
+        mid: usize,
+        /// The current view length.
+        len: usize,
+    },
+    /// Internal split-count atomic invariant was violated (e.g., underflow
+    /// or leak detected in debug).
+    SplitCountInvariant {
+        /// Human-readable description of the violated invariant.
+        detail: Cow<'static, str>,
+    },
+    /// Capacity grow overflow.
+    ///
+    /// `current_capacity` is the currently available byte length of the
+    /// region or workspace; `additional` is the requested additional
+    /// bytes (always in BYTES). For typed-view `count * size_of::<T>()`
+    /// overflows where `count` is in element units (not bytes), use
+    /// `TypedViewRejection::TypedByteLengthOverflow` instead — see
+    /// `24-workspace.md §5.6`.
+    GrowOverflow {
+        /// Current available byte capacity.
+        current_capacity: usize,
+        /// Requested additional bytes.
+        additional: usize,
+    },
+    /// Typed view request rejected (e.g., ZST not supported, range not
+    /// aligned for `T`, count×size_of overflow — the last via
+    /// `TypedViewRejection::TypedByteLengthOverflow`).
+    TypedViewRejected {
+        /// Detail of the rejection.
+        detail: TypedViewRejection,
+    },
+}
+
+/// Type of workspace borrow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceBorrowKind {
+    /// A shared (immutable) borrow.
+    Shared,
+    /// An exclusive (mutable) borrow.
+    Exclusive,
+    /// A split (partitioned) borrow.
+    Split,
+}
+
+impl fmt::Display for WorkspaceBorrowKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Shared => f.write_str("shared"),
+            Self::Exclusive => f.write_str("exclusive"),
+            Self::Split => f.write_str("split"),
+        }
+    }
+}
+
+/// Current borrow state tracked by the workspace.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceBorrowState {
+    /// No active borrow.
+    None,
+    /// One or more shared borrows are active.
+    Shared,
+    /// An exclusive borrow is active.
+    Exclusive,
+    /// Multiple split borrows are active.
+    SplitActive {
+        /// Number of active splits.
+        count: usize,
+    },
+}
+
+impl fmt::Display for WorkspaceBorrowState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::None => f.write_str("none"),
+            Self::Shared => f.write_str("shared"),
+            Self::Exclusive => f.write_str("exclusive"),
+            Self::SplitActive { count } => write!(f, "split_active({count})"),
+        }
+    }
+}
+
+/// Identifies a typed view rejection reason.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum TypedViewRejection {
+    /// `T` is a zero-sized type; typed view of ZST is rejected.
+    ZeroSizedType,
+    /// Buffer base address does not satisfy `align_of::<T>()`.
+    AlignmentMismatch {
+        /// Required alignment.
+        required: usize,
+        /// Actual alignment.
+        actual: usize,
+    },
+    /// `count.checked_mul(size_of::<T>())` overflowed `usize`. We cannot
+    /// represent the requested byte length, so reusing `GrowOverflow`
+    /// (which expects bytes) would produce a misleading diagnostic. Carry
+    /// `count` (element units) and `elem_size` (bytes per `T`) instead.
+    TypedByteLengthOverflow {
+        /// Requested element count.
+        count: usize,
+        /// Size of each element in bytes.
+        elem_size: usize,
+    },
+}
+
+/// Reason for type conversion failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConversionFailureReason {
+    /// Integer → narrower integer where value doesn't fit.
+    LossyIntegerNarrowing,
+    /// Float → narrower float where value doesn't fit.
+    LossyFloatNarrowing,
+    /// Float → integer conversion.
+    FloatToInteger,
+    /// Integer → float loses precision for the specific value.
+    IntegerToFloatPrecisionLoss,
+    /// Complex → real attempted but imaginary part is non-zero.
+    NonZeroImaginaryPart,
+}
+
+/// Kind for `XenonError::InvalidArgument`.
+///
+/// Marked `#[non_exhaustive]` to allow new invalid-argument kinds in
+/// future minor versions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum InvalidArgumentKind {
+    /// Range slice `start..end` is out of `[0, axis_len]`.
+    RangeOutOfBounds {
+        /// The axis index.
+        axis: usize,
+        /// Length of the axis.
+        axis_len: usize,
+        /// Start of the range (inclusive).
+        start: usize,
+        /// End of the range (exclusive).
+        end: usize,
+    },
+    /// Range slice has `start > end`.
+    RangeStartAfterEnd {
+        /// The axis index.
+        axis: usize,
+        /// Start of the invalid range.
+        start: usize,
+        /// End of the invalid range.
+        end: usize,
+    },
+    /// Numeric parameter outside its required domain.
+    NumericOutOfRange {
+        /// Name of the offending argument.
+        argument: Cow<'static, str>,
+        /// The required domain description.
+        domain: Cow<'static, str>,
+        /// The actual value received.
+        actual: Cow<'static, str>,
+    },
+    /// Threshold / chunk-size / max-workers etc. configuration violated.
+    InvalidConfig {
+        /// Name of the configuration argument.
+        argument: Cow<'static, str>,
+        /// The constraint that was violated.
+        constraint: Cow<'static, str>,
+        /// The actual value provided.
+        actual: Cow<'static, str>,
+    },
+    /// Unique-list / set parameter contained duplicate or empty groups.
+    DuplicateOrEmpty {
+        /// Name of the offending argument.
+        argument: Cow<'static, str>,
+    },
+    /// Caller-provided shape parameter inconsistent with operation
+    /// (e.g., `clip` min > max, `reshape` shape product mismatch but
+    /// reported via `InvalidShape::ElementCountMismatch` instead — this
+    /// variant covers operation-specific argument validation).
+    OperationSpecific {
+        /// Name of the offending argument.
+        argument: Cow<'static, str>,
+        /// The constraint that was violated.
+        constraint: Cow<'static, str>,
+    },
+}
+
+/// Reason for `XenonError::InvalidLayout`. Closed enum: each reason
+/// has program-matchable semantics.
+///
+/// Marked `#[non_exhaustive]` to allow new layout-validation reasons in
+/// future minor versions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum InvalidLayoutReason {
+    /// `shape.checked_size()` overflowed `usize`.
+    ShapeProductOverflow,
+    /// `strides.len() != shape.len()`.
+    StridesRankMismatch,
+    /// Computed `max_offset` exceeds `storage_len`.
+    AccessRangeExceedsStorage,
+    /// Empty tensor metadata uses `offset > storage_len`.
+    EmptyTensorOffsetExceedsStorage,
+    /// Stride along an axis is not allowed for the current storage kind
+    /// (e.g., negative stride; not representable as `usize`) or cannot
+    /// be represented for pointer arithmetic.
+    UnsupportedStride,
+    /// A stride exceeds `isize::MAX`, so pointer `.add()` arithmetic
+    /// cannot be proven valid.
+    StrideExceedsIsizeMax,
+    /// `(shape[axis] - 1) * stride[axis]` overflowed.
+    StrideSpanOverflow,
+    /// Accumulating the reachable access range overflowed.
+    AccessRangeOverflow,
+    /// Zero stride observed on a non-broadcast-view storage kind.
+    UnexpectedZeroStride,
+    /// Logical layout cannot be conservatively proven non-overlapping
+    /// for the requested mutable access.
+    AmbiguousOverlap,
+    /// Owned raw-parts reconstruction requires `offset == 0`.
+    OwnedRequiresZeroOffset,
+    /// Owned raw-parts `len` does not equal `shape.checked_size()`.
+    LenShapeMismatch,
+    /// Owned raw-parts `cap` is smaller than `len`.
+    CapacityBelowLen,
+    /// Owned raw-parts allocator alignment is invalid for the element type.
+    AlignmentInvalid,
+    /// Owned raw-parts strides do not match canonical F-order strides.
+    OwnedRequiresCanonicalFOrder,
+}
+
+/// Tag identifying which storage kind is currently in use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StorageKindTag {
+    /// Owned storage (heap-allocated, exclusive ownership).
+    Owned,
+    /// Immutable borrowed view.
+    View,
+    /// Mutable borrowed view.
+    ViewMut,
+    /// Reference-counted shared storage.
+    Shared,
+}
+
+/// Kind of storage conversion attempted (used as `conversion` field in
+/// `XenonError::InvalidStorageMode`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StorageConversionKind {
+    /// Conversion to owned storage.
+    ToOwned,
+    /// Conversion into owned storage (consuming self).
+    IntoOwned,
+    /// Transposition operation.
+    Transpose,
+    /// Mutable slice operation.
+    SliceMut,
+    /// Broadcast-to-shape operation.
+    BroadcastTo,
+}
+
+/// Kind for `XenonError::InvalidShape`.
+///
+/// Marked `#[non_exhaustive]` to allow new shape-validation kinds in future
+/// minor versions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum InvalidShapeKind {
+    /// `shape.checked_size()` overflowed `usize`. Element-count fields
+    /// are intentionally absent because no finite expected/actual
+    /// counts can be expressed.
+    ProductOverflow,
+    /// Provided element count does not equal `shape.checked_size()`.
+    ElementCountMismatch {
+        /// Expected element count from `shape.checked_size()`.
+        expected: usize,
+        /// Actual element count provided.
+        actual: usize,
+    },
+    /// Provided constructor input rank exceeds the static-rank support
+    /// policy (`Ix0..=Ix6`) on a non-`try_from_dyn` path — for example,
+    /// when an internal `IntoDimension` / `Tensor::from_shape_vec` pipeline
+    /// receives a shape vector with `provided_ndim > 6`.
+    ///
+    /// **Excludes** `Dimension::try_from_dyn(IxDyn(...))` rank-mismatch
+    /// path, which returns `XenonError::DimensionMismatch` (see
+    /// `02-dimension.md §5.4` + `§8.3` in this doc); that path is a
+    /// dimension-conversion mismatch, not a constructor rank-policy
+    /// violation.
+    RankExceedsStaticMax {
+        /// Number of dimensions provided.
+        provided_ndim: usize,
+        /// Maximum number of dimensions supported by the static rank.
+        max_ndim: usize,
+    },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::borrow::Cow;
+
+    /// Verify FFI auxiliary enums are constructable.
+    #[test]
+    fn test_ffi_aux_enums_construct() {
+        let _ = FfiErrorCategory::NullPointer {
+            argument: Cow::Borrowed("ptr"),
+        };
+        let _ = FfiErrorCategory::AbiMismatch {
+            detail: AbiMismatchKind::CapacityMismatch {
+                expected: 16,
+                actual: 8,
+            },
+        };
+        let _ = FfiBackend::RawParts;
+        let _ = FfiBackend::Blas;
+    }
+
+    /// Verify Workspace auxiliary enums are constructable.
+    #[test]
+    fn test_workspace_aux_enums_construct() {
+        let _ = WorkspaceErrorCategory::AllocFailed {
+            size: 4096,
+            align: 64,
+        };
+        let _ = WorkspaceErrorCategory::BorrowConflict {
+            requested: WorkspaceBorrowKind::Exclusive,
+            current: WorkspaceBorrowState::Shared,
+        };
+        let _ = WorkspaceBorrowState::SplitActive { count: 2 };
+        let _ = TypedViewRejection::TypedByteLengthOverflow {
+            count: usize::MAX,
+            elem_size: 8,
+        };
+    }
+
+    /// Verify Conversion / Argument / Layout / Storage enums are
+    /// constructable.
+    #[test]
+    fn test_other_aux_enums_construct() {
+        let _ = ConversionFailureReason::FloatToInteger;
+        let _ = InvalidArgumentKind::RangeOutOfBounds {
+            axis: 0,
+            axis_len: 5,
+            start: 3,
+            end: 10,
+        };
+        let _ = InvalidLayoutReason::AccessRangeExceedsStorage;
+        let _ = StorageKindTag::Owned;
+        let _ = StorageConversionKind::Transpose;
+        let _ = InvalidShapeKind::ElementCountMismatch {
+            expected: 6,
+            actual: 5,
+        };
+    }
+
+    /// Verify auxiliary enums are Clone + PartialEq.
+    #[test]
+    fn test_aux_enums_clone_eq() {
+        let a = FfiBackend::Blas;
+        let b = a.clone();
+        assert_eq!(a, b);
+
+        let a = StorageKindTag::ViewMut;
+        let b = a;
+        assert_eq!(a, b);
+
+        let a = InvalidShapeKind::ProductOverflow;
+        let b = a;
+        assert_eq!(a, b);
+    }
+
+    /// Verify Debug formatting does not panic for any aux enum.
+    #[test]
+    fn test_aux_enums_debug_no_panic() {
+        let cases: &[&dyn fmt::Debug] = &[
+            &FfiErrorCategory::IntegerOverflow {
+                value: usize::MAX,
+                target_width_bits: 32,
+            },
+            &WorkspaceErrorCategory::GrowOverflow {
+                current_capacity: 1024,
+                additional: usize::MAX,
+            },
+            &ConversionFailureReason::NonZeroImaginaryPart,
+            &InvalidArgumentKind::DuplicateOrEmpty {
+                argument: Cow::Borrowed("axes"),
+            },
+            &InvalidLayoutReason::AmbiguousOverlap,
+            &StorageKindTag::Shared,
+        ];
+        for c in cases {
+            let _ = format!("{:?}", c);
+        }
+    }
+}

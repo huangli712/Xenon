@@ -11,6 +11,9 @@
 #![warn(unsafe_op_in_unsafe_fn)]
 #![warn(clippy::unwrap_used)]
 
+/// Structured error types for fallible operations.
+pub mod error;
+
 /// Common exports for convenient use.
 pub mod prelude;
 
