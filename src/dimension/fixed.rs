@@ -9,10 +9,19 @@ use crate::error::InvalidShapeKind;
 
 /// Zero-dimensional index (scalar). Always has rank 0, size 1.
 /// This type is a ZST (Zero-Sized Type); `size_of::<Ix0>() == 0`.
+///
+/// # Examples
+///
+/// ```
+/// use xenon::dimension::{Dimension, Ix0};
+/// let dim = Ix0;
+/// assert_eq!(dim.ndim(), 0);
+/// assert_eq!(dim.slice(), &[] as &[usize]);
+/// assert_eq!(dim.checked_size(), Ok(1));
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix0;
 
-impl crate::private::Sealed for Ix0 {}
 
 impl Dimension for Ix0 {
     const NDIM: Option<usize> = Some(0);
@@ -79,11 +88,21 @@ impl Ix0 {
 }
 
 /// One-dimensional index.
+///
+/// # Examples
+///
+/// ```
+/// use xenon::dimension::{Dimension, Ix1};
+/// let dim = Ix1(5);
+/// assert_eq!(dim.ndim(), 1);
+/// assert_eq!(dim.slice(), &[5]);
+/// assert_eq!(dim[0], 5);
+/// assert_eq!(dim.checked_size().unwrap(), 5);
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 #[repr(C)]
 pub struct Ix1(pub usize);
 
-impl crate::private::Sealed for Ix1 {}
 
 impl Dimension for Ix1 {
     const NDIM: Option<usize> = Some(1);
@@ -159,11 +178,21 @@ impl Ix1 {
 }
 
 /// Two-dimensional index.
+///
+/// # Examples
+///
+/// ```
+/// use xenon::dimension::{Dimension, Ix2};
+/// let dim = Ix2(10, 20);
+/// assert_eq!(dim.ndim(), 2);
+/// assert_eq!(dim.slice(), &[10, 20]);
+/// assert_eq!(dim.checked_size().unwrap(), 200);
+/// assert_eq!(dim[0], 10);
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 #[repr(C)]
 pub struct Ix2(pub usize, pub usize);
 
-impl crate::private::Sealed for Ix2 {}
 
 impl Dimension for Ix2 {
     const NDIM: Option<usize> = Some(2);
@@ -254,11 +283,19 @@ impl Ix2 {
 }
 
 /// Three-dimensional index.
+///
+/// # Examples
+///
+/// ```
+/// use xenon::dimension::{Dimension, Ix3};
+/// let dim = Ix3(2, 3, 4);
+/// assert_eq!(dim.ndim(), 3);
+/// assert_eq!(dim.checked_size().unwrap(), 24);
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 #[repr(C)]
 pub struct Ix3(pub usize, pub usize, pub usize);
 
-impl crate::private::Sealed for Ix3 {}
 
 impl Dimension for Ix3 {
     const NDIM: Option<usize> = Some(3);
@@ -350,11 +387,19 @@ impl Ix3 {
 }
 
 /// Four-dimensional index.
+///
+/// # Examples
+///
+/// ```
+/// use xenon::dimension::{Dimension, Ix4};
+/// let dim = Ix4(2, 3, 4, 5);
+/// assert_eq!(dim.ndim(), 4);
+/// assert_eq!(dim.checked_size().unwrap(), 120);
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 #[repr(C)]
 pub struct Ix4(pub usize, pub usize, pub usize, pub usize);
 
-impl crate::private::Sealed for Ix4 {}
 
 impl Dimension for Ix4 {
     const NDIM: Option<usize> = Some(4);
@@ -440,16 +485,25 @@ impl Ix4 {
     }
 }
 
-/// Five-dimensional index.
+/// Five-dimensional dimension.
 ///
 /// `#[repr(C)]` is required because `slice()` reinterprets `&Self` as
 /// `&[usize; 5]` via pointer cast; this is only safe because `repr(C)`
-/// guarantees the `usize` fields are laid out contiguously starting at offset 0.
+/// guarantees the `usize` fields are laid out contiguously starting at
+/// offset 0.
+///
+/// # Examples
+///
+/// ```
+/// use xenon::dimension::{Dimension, Ix5};
+/// let dim = Ix5(2, 3, 4, 5, 6);
+/// assert_eq!(dim.ndim(), 5);
+/// assert_eq!(dim.checked_size().unwrap(), 720);
+/// ```
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix5(pub usize, pub usize, pub usize, pub usize, pub usize);
 
-impl crate::private::Sealed for Ix5 {}
 
 impl Dimension for Ix5 {
     const NDIM: Option<usize> = Some(5);
@@ -537,18 +591,27 @@ impl Ix5 {
     }
 }
 
-/// Six-dimensional index.
+/// Six-dimensional dimension.
 ///
 /// `#[repr(C)]` is required because `slice()` reinterprets `&Self` as
 /// `&[usize; 6]` via pointer cast; this is only safe because `repr(C)`
-/// guarantees the `usize` fields are laid out contiguously starting at offset 0.
+/// guarantees the `usize` fields are laid out contiguously starting at
+/// offset 0.
+///
+/// # Examples
+///
+/// ```
+/// use xenon::dimension::{Dimension, Ix6};
+/// let dim = Ix6(1, 2, 3, 4, 5, 6);
+/// assert_eq!(dim.ndim(), 6);
+/// assert_eq!(dim.checked_size().unwrap(), 720);
+/// ```
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix6(
     pub usize, pub usize, pub usize, pub usize, pub usize, pub usize,
 );
 
-impl crate::private::Sealed for Ix6 {}
 
 impl Dimension for Ix6 {
     const NDIM: Option<usize> = Some(6);

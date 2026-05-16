@@ -7,13 +7,23 @@ use crate::error::XenonError;
 use crate::error::InvalidShapeKind;
 
 /// Dynamic dimension type. Dimension count determined at runtime.
-/// Dynamic rank is bounded only by `usize` representability and available memory.
+/// Dynamic rank is bounded only by `usize` representability and
+/// available memory.
+///
+/// # Examples
+///
+/// ```
+/// use xenon::dimension::{Dimension, IxDyn};
+/// let dim = IxDyn::from_slice(&[2, 3, 4]);
+/// assert_eq!(dim.ndim(), 3);
+/// assert_eq!(dim.slice(), &[2, 3, 4]);
+/// assert_eq!(dim.checked_size(), Ok(24));
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub struct IxDyn {
     dims: Vec<usize>,
 }
 
-impl crate::private::Sealed for IxDyn {}
 
 impl IxDyn {
     /// Creates an empty (0-dimensional) dynamic dimension.

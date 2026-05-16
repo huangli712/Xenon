@@ -1,6 +1,15 @@
 //! Axis types.
 
 /// Axis marker type. Provides type safety over raw `usize`.
+///
+/// # Examples
+///
+/// ```
+/// use xenon::dimension::Axis;
+/// let ax = Axis::new(0);
+/// assert!(ax.is_first());
+/// assert_eq!(ax.index(), 0);
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct Axis(pub usize);
