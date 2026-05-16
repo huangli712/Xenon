@@ -212,10 +212,10 @@ W22 完成 ──→ W30 (Documentation)
 ```
 批次1:
   W6T1 (mod.rs skeleton)
-批次2 (全并行):
+批次2 (W6T2 ∥ W6T3 并行; W6T4 需 W6T3 先完成):
   W6T2 (flags.rs skeleton, 需 W6T1)
   W6T3 (strides.rs skeleton, 需 W6T1+W3T3)
-  W6T4 (contiguous.rs skeleton, 需 W6T1+W3T3)
+  W6T4 (contiguous.rs skeleton, 需 W6T1+W6T3+W3T3)
 批次3:
   W6T5 (LayoutFlags, 需 W6T2)
 批次4:

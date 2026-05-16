@@ -144,7 +144,7 @@
 | W6T1 | `src/layout/mod.rs` | Module skeleton: sub-module declarations, public exports | None | 06-layout §5, §6, §7, §8 |
 | W6T2 | `src/layout/flags.rs` | Module skeleton: file placeholder, declarations | W6T1 | 06-layout §5, §6, §7, §8 |
 | W6T3 | `src/layout/strides.rs` | Module skeleton: file placeholder, declarations | W6T1, W3T3 | 06-layout §5, §6, §7, §8 |
-| W6T4 | `src/layout/contiguous.rs` | Module skeleton: file placeholder, declarations | W6T1, W3T3 | 06-layout §5, §6, §7, §8 |
+| W6T4 | `src/layout/contiguous.rs` | Module skeleton: file placeholder, declarations | W6T1, W6T3, W3T3 | 06-layout §5, §6, §7, §8 |
 | W6T5 | `src/layout/flags.rs` | LayoutFlags(u8) bitflags: F_CONTIGUOUS, ALIGNED, HAS_ZERO_STRIDE + query/set methods + classify() (BroadcastView→FContiguous→NonContiguous) | W6T2 | 06-layout §5, §6, §7, §8 |
 | W6T6 | `src/layout/strides.rs` | compute_f_strides\<D\> + Strides::from_slice/f_contiguous/try_stride/iter: F-order stride computation with overflow check returning Result (InvalidShape::ProductOverflow) | W6T3, W3T3 | 06-layout §5, §6, §7, §8 |
 | W6T7 | `src/layout/contiguous.rs` | is_f_contiguous\<D\>: F-order contiguity detection | W6T4, W3T3 | 06-layout §5, §6, §7, §8 |
