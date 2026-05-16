@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 
 use crate::dimension::Dimension;
+use crate::dimension::dynamic::IxDyn;
 use crate::error::XenonError;
 use crate::error::InvalidShapeKind;
 
@@ -52,6 +53,29 @@ impl Dimension for Ix0 {
     // `axis()` uses the trait default implementation; out-of-range returns
     // `XenonError::InvalidAxis` automatically (slice is empty so any index is
     // invalid).
+}
+
+impl Ix0 {
+    /// Converts to dynamic dimension. Always succeeds. Returns a 0-rank IxDyn.
+    #[inline]
+    pub fn into_dyn(self) -> IxDyn {
+        IxDyn::new()
+    }
+
+    /// Attempts to convert from a dynamic dimension.
+    /// Returns `XenonError::DimensionMismatch` if `dyn_dim.ndim() != 0`.
+    #[inline]
+    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
+        if dyn_dim.ndim() == 0 {
+            Ok(Ix0)
+        } else {
+            Err(XenonError::DimensionMismatch {
+                operation: Cow::Borrowed("Ix0::try_from_dyn"),
+                expected: 0,
+                actual: dyn_dim.ndim(),
+            })
+        }
+    }
 }
 
 /// One-dimensional index.
@@ -108,6 +132,29 @@ impl std::ops::Index<usize> for Ix1 {
     fn index(&self, index: usize) -> &usize {
         assert_eq!(index, 0, "Ix1 index out of bounds: {index}");
         &self.0
+    }
+}
+
+impl Ix1 {
+    /// Converts to dynamic dimension.
+    #[inline]
+    pub fn into_dyn(self) -> IxDyn {
+        IxDyn::from_vec(vec![self.0])
+    }
+
+    /// Attempts to convert from a dynamic dimension.
+    #[inline]
+    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
+        if dyn_dim.ndim() == 1 {
+            let s = dyn_dim.slice();
+            Ok(Ix1(s[0]))
+        } else {
+            Err(XenonError::DimensionMismatch {
+                operation: Cow::Borrowed("Ix1::try_from_dyn"),
+                expected: 1,
+                actual: dyn_dim.ndim(),
+            })
+        }
     }
 }
 
@@ -179,6 +226,29 @@ impl std::ops::Index<usize> for Ix2 {
             0 => &self.0,
             1 => &self.1,
             _ => panic!("Ix2 index out of bounds: {index}"),
+        }
+    }
+}
+
+impl Ix2 {
+    /// Converts to dynamic dimension.
+    #[inline]
+    pub fn into_dyn(self) -> IxDyn {
+        IxDyn::from_vec(vec![self.0, self.1])
+    }
+
+    /// Attempts to convert from a dynamic dimension.
+    #[inline]
+    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
+        if dyn_dim.ndim() == 2 {
+            let s = dyn_dim.slice();
+            Ok(Ix2(s[0], s[1]))
+        } else {
+            Err(XenonError::DimensionMismatch {
+                operation: Cow::Borrowed("Ix2::try_from_dyn"),
+                expected: 2,
+                actual: dyn_dim.ndim(),
+            })
         }
     }
 }
@@ -256,6 +326,29 @@ impl From<(usize, usize, usize)> for Ix3 {
     }
 }
 
+impl Ix3 {
+    /// Converts to dynamic dimension.
+    #[inline]
+    pub fn into_dyn(self) -> IxDyn {
+        IxDyn::from_vec(vec![self.0, self.1, self.2])
+    }
+
+    /// Attempts to convert from a dynamic dimension.
+    #[inline]
+    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
+        if dyn_dim.ndim() == 3 {
+            let s = dyn_dim.slice();
+            Ok(Ix3(s[0], s[1], s[2]))
+        } else {
+            Err(XenonError::DimensionMismatch {
+                operation: Cow::Borrowed("Ix3::try_from_dyn"),
+                expected: 3,
+                actual: dyn_dim.ndim(),
+            })
+        }
+    }
+}
+
 /// Four-dimensional index.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 #[repr(C)]
@@ -321,6 +414,29 @@ impl From<(usize, usize, usize, usize)> for Ix4 {
     #[inline]
     fn from(t: (usize, usize, usize, usize)) -> Self {
         Ix4(t.0, t.1, t.2, t.3)
+    }
+}
+
+impl Ix4 {
+    /// Converts to dynamic dimension.
+    #[inline]
+    pub fn into_dyn(self) -> IxDyn {
+        IxDyn::from_vec(vec![self.0, self.1, self.2, self.3])
+    }
+
+    /// Attempts to convert from a dynamic dimension.
+    #[inline]
+    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
+        if dyn_dim.ndim() == 4 {
+            let s = dyn_dim.slice();
+            Ok(Ix4(s[0], s[1], s[2], s[3]))
+        } else {
+            Err(XenonError::DimensionMismatch {
+                operation: Cow::Borrowed("Ix4::try_from_dyn"),
+                expected: 4,
+                actual: dyn_dim.ndim(),
+            })
+        }
     }
 }
 
@@ -398,6 +514,29 @@ impl From<(usize, usize, usize, usize, usize)> for Ix5 {
     }
 }
 
+impl Ix5 {
+    /// Converts to dynamic dimension.
+    #[inline]
+    pub fn into_dyn(self) -> IxDyn {
+        IxDyn::from_vec(vec![self.0, self.1, self.2, self.3, self.4])
+    }
+
+    /// Attempts to convert from a dynamic dimension.
+    #[inline]
+    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
+        if dyn_dim.ndim() == 5 {
+            let s = dyn_dim.slice();
+            Ok(Ix5(s[0], s[1], s[2], s[3], s[4]))
+        } else {
+            Err(XenonError::DimensionMismatch {
+                operation: Cow::Borrowed("Ix5::try_from_dyn"),
+                expected: 5,
+                actual: dyn_dim.ndim(),
+            })
+        }
+    }
+}
+
 /// Six-dimensional index.
 ///
 /// `#[repr(C)]` is required because `slice()` reinterprets `&Self` as
@@ -471,6 +610,29 @@ impl From<(usize, usize, usize, usize, usize, usize)> for Ix6 {
     #[inline]
     fn from(t: (usize, usize, usize, usize, usize, usize)) -> Self {
         Ix6(t.0, t.1, t.2, t.3, t.4, t.5)
+    }
+}
+
+impl Ix6 {
+    /// Converts to dynamic dimension.
+    #[inline]
+    pub fn into_dyn(self) -> IxDyn {
+        IxDyn::from_vec(vec![self.0, self.1, self.2, self.3, self.4, self.5])
+    }
+
+    /// Attempts to convert from a dynamic dimension.
+    #[inline]
+    pub fn try_from_dyn(dyn_dim: IxDyn) -> Result<Self, XenonError> {
+        if dyn_dim.ndim() == 6 {
+            let s = dyn_dim.slice();
+            Ok(Ix6(s[0], s[1], s[2], s[3], s[4], s[5]))
+        } else {
+            Err(XenonError::DimensionMismatch {
+                operation: Cow::Borrowed("Ix6::try_from_dyn"),
+                expected: 6,
+                actual: dyn_dim.ndim(),
+            })
+        }
     }
 }
 #[cfg(test)]
@@ -646,4 +808,72 @@ mod tests {
             _ => panic!("expected ProductOverflow at axis 1, got {err:?}"),
         }
     }
+    /// §8.2: test_static_to_dyn — into_dyn for each static rank.
+    #[test]
+    fn test_static_to_dyn() {
+        assert_eq!(Ix0.into_dyn().slice(), &[] as &[usize]);
+        assert_eq!(Ix1(2).into_dyn().slice(), &[2]);
+        assert_eq!(Ix2(2, 3).into_dyn().slice(), &[2, 3]);
+        assert_eq!(Ix3(2, 3, 4).into_dyn().slice(), &[2, 3, 4]);
+        assert_eq!(Ix4(2, 3, 4, 5).into_dyn().slice(), &[2, 3, 4, 5]);
+        assert_eq!(Ix5(2, 3, 4, 5, 6).into_dyn().slice(), &[2, 3, 4, 5, 6]);
+        assert_eq!(
+            Ix6(2, 3, 4, 5, 6, 7).into_dyn().slice(),
+            &[2, 3, 4, 5, 6, 7]
+        );
+    }
+
+    /// §8.2: test_dyn_to_static_success — try_from_dyn succeeds
+    /// when rank matches.
+    #[test]
+    fn test_dyn_to_static_success() {
+        assert_eq!(
+            Ix0::try_from_dyn(IxDyn::new()),
+            Ok(Ix0)
+        );
+        assert_eq!(
+            Ix3::try_from_dyn(IxDyn::from_slice(&[2, 3, 4])),
+            Ok(Ix3(2, 3, 4))
+        );
+    }
+
+    /// §8.2: test_dyn_to_static_failure — try_from_dyn returns
+    /// DimensionMismatch on rank mismatch.
+    #[test]
+    fn test_dyn_to_static_failure() {
+        match Ix3::try_from_dyn(IxDyn::from_slice(&[2, 3, 4, 5])) {
+            Err(XenonError::DimensionMismatch {
+                operation,
+                expected,
+                actual,
+            }) => {
+                assert_eq!(operation, "Ix3::try_from_dyn");
+                assert_eq!(expected, 3);
+                assert_eq!(actual, 4);
+            }
+            other => panic!(
+                "expected DimensionMismatch, got {:?}",
+                other
+            ),
+        }
+    }
+
+    /// Roundtrip invariant:
+    /// try_from_dyn(into_dyn(d)) == Ok(d) for all static d.
+    #[test]
+    fn test_static_dynamic_roundtrip() {
+        let dim = Ix3(2, 3, 4);
+        let dyn_dim = dim.into_dyn();
+        assert_eq!(dyn_dim.slice(), &[2, 3, 4]);
+        assert_eq!(Ix3::try_from_dyn(dyn_dim), Ok(dim));
+    }
+
+    /// IxDyn identity conversions.
+    #[test]
+    fn test_ixdyn_identity_conversions() {
+        let d = IxDyn::from_slice(&[1, 2, 3]);
+        assert_eq!(d.clone().into_dyn().slice(), &[1, 2, 3]);
+        assert_eq!(IxDyn::try_from_dyn(d.clone()), Ok(d));
+    }
+
 }

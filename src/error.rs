@@ -1740,4 +1740,42 @@ mod tests {
         });
         assert!(e.to_string().contains("2"));
     }
+
+    /// §8.2-style verification: DimensionMismatch must carry
+    /// operation/expected/actual.
+    #[test]
+    fn test_dimension_mismatch_variant_fields() {
+        let err = XenonError::DimensionMismatch {
+            operation: Cow::Borrowed("Ix3::try_from_dyn"),
+            expected: 3,
+            actual: 4,
+        };
+        match err {
+            XenonError::DimensionMismatch {
+                operation,
+                expected,
+                actual,
+            } => {
+                assert_eq!(operation, "Ix3::try_from_dyn");
+                assert_eq!(expected, 3);
+                assert_eq!(actual, 4);
+            }
+            _ => panic!("not DimensionMismatch"),
+        }
+    }
+
+    /// W2T3 Display format includes operation, expected, actual.
+    #[test]
+    fn test_dimension_mismatch_display_includes_operation() {
+        let err = XenonError::DimensionMismatch {
+            operation: Cow::Borrowed("Ix2::try_from_dyn"),
+            expected: 2,
+            actual: 3,
+        };
+        let msg = format!("{err}");
+        assert!(msg.contains("Ix2::try_from_dyn"), "msg: {msg}");
+        assert!(msg.contains("expected 2"), "msg: {msg}");
+        assert!(msg.contains("3"), "msg: {msg}");
+}
+
 }
