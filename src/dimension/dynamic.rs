@@ -3,8 +3,8 @@
 use std::borrow::Cow;
 
 use crate::dimension::Dimension;
-use crate::error::XenonError;
 use crate::error::InvalidShapeKind;
+use crate::error::XenonError;
 
 /// Dynamic dimension type. Dimension count determined at runtime.
 /// Dynamic rank is bounded only by `usize` representability and
@@ -23,7 +23,6 @@ use crate::error::InvalidShapeKind;
 pub struct IxDyn {
     dims: Vec<usize>,
 }
-
 
 impl IxDyn {
     /// Creates an empty (0-dimensional) dynamic dimension.
@@ -150,10 +149,7 @@ mod tests {
         // 0-rank IxDyn (no axes) has size 1.
         assert_eq!(IxDyn::new().checked_size(), Ok(1));
         // Zero-length axis: total size is 0, not an error.
-        assert_eq!(
-            IxDyn::from_slice(&[3, 0, 5]).checked_size(),
-            Ok(0)
-        );
+        assert_eq!(IxDyn::from_slice(&[3, 0, 5]).checked_size(), Ok(0));
     }
 
     /// Constructor coverage: from_vec / from_element / ones / zeros /
@@ -161,16 +157,10 @@ mod tests {
     #[test]
     fn test_ixdyn_constructors() {
         assert_eq!(IxDyn::from_vec(vec![1, 2, 3]).slice(), &[1, 2, 3]);
-        assert_eq!(
-            IxDyn::from_element(5, 3).slice(),
-            &[5, 5, 5]
-        );
+        assert_eq!(IxDyn::from_element(5, 3).slice(), &[5, 5, 5]);
         assert_eq!(IxDyn::ones(2).slice(), &[1, 1]);
         assert_eq!(IxDyn::zeros(2).slice(), &[0, 0]);
-        assert_eq!(
-            IxDyn::from_slice(&[1, 2, 3]).into_vec(),
-            vec![1, 2, 3]
-        );
+        assert_eq!(IxDyn::from_slice(&[1, 2, 3]).into_vec(), vec![1, 2, 3]);
     }
 
     /// Overflow path: checked_size returns Err with offending_dim filled.
@@ -180,11 +170,8 @@ mod tests {
         match dim.checked_size() {
             Err(XenonError::InvalidShape { offending_dim, .. }) => {
                 assert_eq!(offending_dim, Some(1));
-            }
-            other => panic!(
-                "expected InvalidShape with offending_dim, got {:?}",
-                other
-            ),
+            },
+            other => panic!("expected InvalidShape with offending_dim, got {:?}", other),
         }
     }
 }

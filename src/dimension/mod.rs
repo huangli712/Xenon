@@ -65,9 +65,9 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
 }
 
 // Public re-exports — the canonical access path for dimension types.
-pub use fixed::{Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6};
-pub use dynamic::IxDyn;
 pub use axes::Axis;
+pub use dynamic::IxDyn;
+pub use fixed::{Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6};
 pub use into::IntoDimension;
 
 /// Maximum number of dimensions representable on this platform.

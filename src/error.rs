@@ -6,8 +6,8 @@
 
 use core::fmt;
 use std::borrow::Cow;
-use std::vec::Vec;
 use std::boxed::Box;
+use std::vec::Vec;
 
 /// Helper for formatting optional values in error messages.
 ///
@@ -112,16 +112,16 @@ impl fmt::Display for FfiErrorCategory {
         match self {
             Self::NullPointer { argument } => {
                 write!(f, "null pointer for argument {argument}")
-            }
+            },
             Self::AlignmentMismatch { required, actual } => {
                 write!(
                     f,
                     "alignment mismatch: required {required}, actual {actual}",
                 )
-            }
+            },
             Self::InvalidRank { expected, actual } => {
                 write!(f, "invalid rank: expected {expected}, actual {actual}")
-            }
+            },
             Self::BlasIncompatibleLayout { shape, strides } => {
                 write!(
                     f,
@@ -129,7 +129,7 @@ impl fmt::Display for FfiErrorCategory {
                     FmtShape(shape),
                     FmtShape(strides),
                 )
-            }
+            },
             Self::IntegerOverflow {
                 value,
                 target_width_bits,
@@ -138,10 +138,10 @@ impl fmt::Display for FfiErrorCategory {
                     f,
                     "integer overflow: {value} does not fit in i{target_width_bits}",
                 )
-            }
+            },
             Self::AbiMismatch { detail } => {
                 write!(f, "ABI mismatch: {detail:?}")
-            }
+            },
             Self::OverlapRejected { shape, strides } => {
                 write!(
                     f,
@@ -149,10 +149,10 @@ impl fmt::Display for FfiErrorCategory {
                     FmtShape(shape),
                     FmtShape(strides),
                 )
-            }
+            },
             Self::ForeignAllocatorMismatch { detail } => {
                 write!(f, "foreign allocator metadata mismatch: {detail:?}")
-            }
+            },
         }
     }
 }
@@ -228,16 +228,13 @@ impl fmt::Display for AbiMismatchKind {
                     f,
                     "element type mismatch: expected {expected}, got {actual}",
                 )
-            }
+            },
             Self::CapacityMismatch { expected, actual } => {
                 write!(f, "capacity mismatch: expected {expected}, got {actual}")
-            }
+            },
             Self::AlignmentMismatch { expected, actual } => {
-                write!(
-                    f,
-                    "alignment mismatch: expected {expected}, got {actual}",
-                )
-            }
+                write!(f, "alignment mismatch: expected {expected}, got {actual}",)
+            },
             Self::ShapeProductExceedsLen {
                 product,
                 storage_len,
@@ -246,7 +243,7 @@ impl fmt::Display for AbiMismatchKind {
                     f,
                     "shape product ({product}) exceeds storage len ({storage_len})",
                 )
-            }
+            },
             Self::StridesRankMismatch {
                 shape_ndim,
                 strides_ndim,
@@ -255,7 +252,7 @@ impl fmt::Display for AbiMismatchKind {
                     f,
                     "strides rank mismatch: shape_ndim={shape_ndim}, strides_ndim={strides_ndim}",
                 )
-            }
+            },
         }
     }
 }
@@ -331,22 +328,22 @@ impl fmt::Display for WorkspaceErrorCategory {
         match self {
             Self::AllocFailed { size, align } => {
                 write!(f, "allocation failed (size={size}, align={align})")
-            }
+            },
             Self::InvalidLayout { size, align } => {
                 write!(f, "invalid layout (size={size}, align={align})")
-            }
+            },
             Self::BorrowConflict { requested, current } => {
                 write!(
                     f,
                     "borrow conflict: requested {requested:?}, current {current:?}",
                 )
-            }
+            },
             Self::SplitOutOfBounds { mid, len } => {
                 write!(f, "split out of bounds (mid={mid}, len={len})")
-            }
+            },
             Self::SplitCountInvariant { detail } => {
                 write!(f, "split-count invariant violated: {detail}")
-            }
+            },
             Self::GrowOverflow {
                 current_capacity,
                 additional,
@@ -355,10 +352,10 @@ impl fmt::Display for WorkspaceErrorCategory {
                     f,
                     "grow overflow: capacity={current_capacity} + additional={additional}",
                 )
-            }
+            },
             Self::TypedViewRejected { detail } => {
                 write!(f, "typed view rejected: {detail:?}")
-            }
+            },
         }
     }
 }
@@ -445,13 +442,13 @@ impl fmt::Display for TypedViewRejection {
                     f,
                     "alignment mismatch: required {required}, actual {actual}",
                 )
-            }
+            },
             Self::TypedByteLengthOverflow { count, elem_size } => {
                 write!(
                     f,
                     "byte length overflow: count={count}, elem_size={elem_size}",
                 )
-            }
+            },
         }
     }
 }
@@ -479,7 +476,7 @@ impl fmt::Display for ConversionFailureReason {
             Self::FloatToInteger => write!(f, "float to integer"),
             Self::IntegerToFloatPrecisionLoss => {
                 write!(f, "integer to float precision loss")
-            }
+            },
             Self::NonZeroImaginaryPart => write!(f, "non-zero imaginary part"),
         }
     }
@@ -560,39 +557,33 @@ impl fmt::Display for InvalidArgumentKind {
                     f,
                     "range [{start}..{end}] out of bounds for axis {axis} (len={axis_len})",
                 )
-            }
+            },
             Self::RangeStartAfterEnd { axis, start, end } => {
-                write!(
-                    f,
-                    "range start ({start}) after end ({end}) at axis {axis}",
-                )
-            }
+                write!(f, "range start ({start}) after end ({end}) at axis {axis}",)
+            },
             Self::NumericOutOfRange {
                 argument,
                 domain,
                 actual,
             } => {
                 write!(f, "`{argument}` out of range: {domain}, got {actual}")
-            }
+            },
             Self::InvalidConfig {
                 argument,
                 constraint,
                 actual,
             } => {
-                write!(
-                    f,
-                    "invalid config `{argument}`: {constraint}, got {actual}",
-                )
-            }
+                write!(f, "invalid config `{argument}`: {constraint}, got {actual}",)
+            },
             Self::DuplicateOrEmpty { argument } => {
                 write!(f, "duplicate or empty `{argument}`")
-            }
+            },
             Self::OperationSpecific {
                 argument,
                 constraint,
             } => {
                 write!(f, "`{argument}`: {constraint}")
-            }
+            },
         }
     }
 }
@@ -648,10 +639,10 @@ impl fmt::Display for InvalidLayoutReason {
             Self::StridesRankMismatch => write!(f, "strides rank mismatch"),
             Self::AccessRangeExceedsStorage => {
                 write!(f, "access range exceeds storage")
-            }
+            },
             Self::EmptyTensorOffsetExceedsStorage => {
                 write!(f, "empty tensor offset exceeds storage")
-            }
+            },
             Self::UnsupportedStride => write!(f, "unsupported stride"),
             Self::StrideExceedsIsizeMax => write!(f, "stride exceeds isize::MAX"),
             Self::StrideSpanOverflow => write!(f, "stride span overflow"),
@@ -660,13 +651,13 @@ impl fmt::Display for InvalidLayoutReason {
             Self::AmbiguousOverlap => write!(f, "ambiguous overlap"),
             Self::OwnedRequiresZeroOffset => {
                 write!(f, "owned requires zero offset")
-            }
+            },
             Self::LenShapeMismatch => write!(f, "len-shape mismatch"),
             Self::CapacityBelowLen => write!(f, "capacity below len"),
             Self::AlignmentInvalid => write!(f, "alignment invalid"),
             Self::OwnedRequiresCanonicalFOrder => {
                 write!(f, "owned requires canonical F-order")
-            }
+            },
         }
     }
 }
@@ -764,17 +755,17 @@ impl fmt::Display for InvalidShapeKind {
         match self {
             Self::ProductOverflow => write!(f, "product overflow"),
             Self::ElementCountMismatch { expected, actual } => {
-                write!(f, "element count mismatch: expected {expected}, got {actual}")
-            }
+                write!(
+                    f,
+                    "element count mismatch: expected {expected}, got {actual}"
+                )
+            },
             Self::RankExceedsStaticMax {
                 provided_ndim,
                 max_ndim,
             } => {
-                write!(
-                    f,
-                    "rank exceeds static max: {provided_ndim} > {max_ndim}",
-                )
-            }
+                write!(f, "rank exceeds static max: {provided_ndim} > {max_ndim}",)
+            },
         }
     }
 }
@@ -986,7 +977,7 @@ impl fmt::Display for XenonError {
                     FmtShape(left_shape),
                     FmtShape(right_shape),
                 )
-            }
+            },
             Self::BroadcastError {
                 operation,
                 lhs_shape,
@@ -1007,7 +998,7 @@ impl fmt::Display for XenonError {
                     write!(f, " (axis: {ax})")?;
                 }
                 Ok(())
-            }
+            },
             Self::LayoutMismatch {
                 operation,
                 required_layout,
@@ -1018,12 +1009,8 @@ impl fmt::Display for XenonError {
                     f,
                     "layout mismatch in `{operation}`: required {required_layout}, ",
                 )?;
-                write!(
-                    f,
-                    "got {actual_layout} for shape {}",
-                    FmtShape(shape),
-                )
-            }
+                write!(f, "got {actual_layout} for shape {}", FmtShape(shape),)
+            },
             Self::InvalidLayout {
                 operation,
                 storage_kind,
@@ -1043,7 +1030,7 @@ impl fmt::Display for XenonError {
                     FmtShape(shape),
                     FmtShape(strides),
                 )
-            }
+            },
             Self::InvalidAxis {
                 operation,
                 axis,
@@ -1055,7 +1042,7 @@ impl fmt::Display for XenonError {
                     "invalid axis {axis} in `{operation}`: valid range is 0..{ndim} ",
                 )?;
                 write!(f, "for shape {}", FmtShape(shape))
-            }
+            },
             Self::InvalidShape {
                 operation,
                 shape,
@@ -1071,7 +1058,7 @@ impl fmt::Display for XenonError {
                     write!(f, " (offending dim: {dim})")?;
                 }
                 Ok(())
-            }
+            },
             Self::DimensionMismatch {
                 operation,
                 expected,
@@ -1082,10 +1069,10 @@ impl fmt::Display for XenonError {
                     "dimension mismatch in `{operation}`: expected {expected} ",
                 )?;
                 write!(f, "dimensions, got {actual}")
-            }
+            },
             Self::InvalidArgument { operation, kind } => {
                 write!(f, "invalid argument ({kind}) in `{operation}`")
-            }
+            },
             Self::InvalidStorageMode {
                 operation,
                 expected,
@@ -1105,7 +1092,7 @@ impl fmt::Display for XenonError {
                     write!(f, " (conversion: {c})")?;
                 }
                 Ok(())
-            }
+            },
             Self::Ffi {
                 operation,
                 category,
@@ -1123,22 +1110,19 @@ impl fmt::Display for XenonError {
                     write!(f, "; caused by: {inner}")?;
                 }
                 Ok(())
-            }
+            },
             Self::Workspace {
                 operation,
                 category,
                 cause,
             } => {
-                write!(
-                    f,
-                    "workspace error (`{category}`) in `{operation}`",
-                )?;
+                write!(f, "workspace error (`{category}`) in `{operation}`",)?;
                 if let Some(inner) = cause {
                     // Same chain contract as `Ffi` above; see `26-error §5.7`.
                     write!(f, "; caused by: {inner}")?;
                 }
                 Ok(())
-            }
+            },
             Self::IndexOutOfBounds {
                 operation,
                 attempted_index,
@@ -1151,7 +1135,7 @@ impl fmt::Display for XenonError {
                     FmtShape(attempted_index),
                 )?;
                 write!(f, "axis {axis} (shape: {})", FmtShape(shape))
-            }
+            },
             Self::TypeConversion {
                 operation,
                 source_type,
@@ -1168,7 +1152,7 @@ impl fmt::Display for XenonError {
                     write!(f, " at element index {idx}")?;
                 }
                 Ok(())
-            }
+            },
         }
     }
 }
@@ -1180,9 +1164,9 @@ impl std::error::Error for XenonError {
     /// via `source()`. All other variants are leaf errors and return `None`.
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Ffi { cause, .. } | Self::Workspace { cause, .. } => {
-                cause.as_ref().map(|e| e.as_ref() as &(dyn std::error::Error + 'static))
-            }
+            Self::Ffi { cause, .. } | Self::Workspace { cause, .. } => cause
+                .as_ref()
+                .map(|e| e.as_ref() as &(dyn std::error::Error + 'static)),
             _ => None,
         }
     }
@@ -1634,7 +1618,6 @@ mod tests {
         assert!(s.contains("invalid axis"));
     }
 
-
     #[test]
     fn test_error_trait_implemented() {
         fn assert_error<E: std::error::Error>(_: &E) {}
@@ -1759,7 +1742,7 @@ mod tests {
                 assert_eq!(operation, "Ix3::try_from_dyn");
                 assert_eq!(expected, 3);
                 assert_eq!(actual, 4);
-            }
+            },
             _ => panic!("not DimensionMismatch"),
         }
     }
@@ -1776,6 +1759,5 @@ mod tests {
         assert!(msg.contains("Ix2::try_from_dyn"), "msg: {msg}");
         assert!(msg.contains("expected 2"), "msg: {msg}");
         assert!(msg.contains("3"), "msg: {msg}");
-}
-
+    }
 }

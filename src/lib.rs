@@ -23,8 +23,8 @@ pub mod dimension;
 /// Common exports for convenient use.
 pub mod prelude;
 
-pub use prelude::*;
 pub use error::XenonError;
+pub use prelude::*;
 
 #[cfg(test)]
 mod tests {

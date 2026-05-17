@@ -4,8 +4,8 @@ use std::borrow::Cow;
 
 use crate::dimension::Dimension;
 use crate::dimension::dynamic::IxDyn;
-use crate::error::XenonError;
 use crate::error::InvalidShapeKind;
+use crate::error::XenonError;
 
 /// Zero-dimensional index (scalar). Always has rank 0, size 1.
 /// This type is a ZST (Zero-Sized Type); `size_of::<Ix0>() == 0`.
@@ -21,7 +21,6 @@ use crate::error::InvalidShapeKind;
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix0;
-
 
 impl Dimension for Ix0 {
     const NDIM: Option<usize> = Some(0);
@@ -103,7 +102,6 @@ impl Ix0 {
 #[repr(C)]
 pub struct Ix1(pub usize);
 
-
 impl Dimension for Ix1 {
     const NDIM: Option<usize> = Some(1);
 
@@ -123,11 +121,6 @@ impl Dimension for Ix1 {
     }
 
     #[inline]
-    fn checked(&self) -> Result<(), XenonError> {
-        self.checked_size().map(|_| ())
-    }
-
-    #[inline]
     fn try_from_slice(slice: &[usize]) -> Result<Self, XenonError> {
         if slice.len() == 1 {
             Ok(Ix1(slice[0]))
@@ -144,6 +137,11 @@ impl Dimension for Ix1 {
     // `XenonError::InvalidAxis` automatically (single axis at index 0).
 }
 
+/// Index-based access to axis length.
+///
+/// # Panics
+///
+/// Panics if `index != 0`, as `Ix1` has only one axis.
 impl std::ops::Index<usize> for Ix1 {
     type Output = usize;
 
@@ -193,7 +191,6 @@ impl Ix1 {
 #[repr(C)]
 pub struct Ix2(pub usize, pub usize);
 
-
 impl Dimension for Ix2 {
     const NDIM: Option<usize> = Some(2);
 
@@ -216,12 +213,14 @@ impl Dimension for Ix2 {
         let dims = [self.0, self.1];
         let mut acc = 1usize;
         for (axis, &dim) in dims.iter().enumerate() {
-            acc = acc.checked_mul(dim).ok_or_else(|| XenonError::InvalidShape {
-                operation: Cow::Borrowed("Dimension::checked_size"),
-                shape: dims.into(),
-                kind: InvalidShapeKind::ProductOverflow,
-                offending_dim: Some(axis),
-            })?;
+            acc = acc
+                .checked_mul(dim)
+                .ok_or_else(|| XenonError::InvalidShape {
+                    operation: Cow::Borrowed("Dimension::checked_size"),
+                    shape: dims.into(),
+                    kind: InvalidShapeKind::ProductOverflow,
+                    offending_dim: Some(axis),
+                })?;
         }
         Ok(acc)
     }
@@ -246,6 +245,11 @@ impl Dimension for Ix2 {
     // `XenonError::InvalidAxis` automatically.
 }
 
+/// Index-based access to axis lengths.
+///
+/// # Panics
+///
+/// Panics if `index` is not 0 or 1, as `Ix2` has only two axes.
 impl std::ops::Index<usize> for Ix2 {
     type Output = usize;
 
@@ -296,7 +300,6 @@ impl Ix2 {
 #[repr(C)]
 pub struct Ix3(pub usize, pub usize, pub usize);
 
-
 impl Dimension for Ix3 {
     const NDIM: Option<usize> = Some(3);
 
@@ -311,12 +314,7 @@ impl Dimension for Ix3 {
         // fields in declaration order. Reinterpreting &Ix3 as a
         // contiguous `*const usize` slice of length 3 is valid per
         // repr(C) layout guarantee.
-        unsafe {
-            core::slice::from_raw_parts(
-                self as *const Self as *const usize,
-                3,
-            )
-        }
+        unsafe { core::slice::from_raw_parts(self as *const Self as *const usize, 3) }
     }
 
     #[inline]
@@ -324,19 +322,16 @@ impl Dimension for Ix3 {
         let dims = [self.0, self.1, self.2];
         let mut acc = 1usize;
         for (axis, &dim) in dims.iter().enumerate() {
-            acc = acc.checked_mul(dim).ok_or_else(|| XenonError::InvalidShape {
-                operation: Cow::Borrowed("Dimension::checked_size"),
-                shape: dims.into(),
-                kind: InvalidShapeKind::ProductOverflow,
-                offending_dim: Some(axis),
-            })?;
+            acc = acc
+                .checked_mul(dim)
+                .ok_or_else(|| XenonError::InvalidShape {
+                    operation: Cow::Borrowed("Dimension::checked_size"),
+                    shape: dims.into(),
+                    kind: InvalidShapeKind::ProductOverflow,
+                    offending_dim: Some(axis),
+                })?;
         }
         Ok(acc)
-    }
-
-    #[inline]
-    fn checked(&self) -> Result<(), XenonError> {
-        self.checked_size().map(|_| ())
     }
 
     #[inline]
@@ -400,7 +395,6 @@ impl Ix3 {
 #[repr(C)]
 pub struct Ix4(pub usize, pub usize, pub usize, pub usize);
 
-
 impl Dimension for Ix4 {
     const NDIM: Option<usize> = Some(4);
 
@@ -413,9 +407,7 @@ impl Dimension for Ix4 {
     fn slice(&self) -> &[usize] {
         // SAFETY: Ix4 uses #[repr(C)] and contains exactly four `usize`
         // fields laid out contiguously starting at `self.0`.
-        unsafe {
-            std::slice::from_raw_parts(self as *const Self as *const usize, 4)
-        }
+        unsafe { std::slice::from_raw_parts(self as *const Self as *const usize, 4) }
     }
 
     #[inline]
@@ -423,19 +415,16 @@ impl Dimension for Ix4 {
         let mut size = 1usize;
         let axes = [self.0, self.1, self.2, self.3];
         for (i, &ax) in axes.iter().enumerate() {
-            size = size.checked_mul(ax).ok_or_else(|| XenonError::InvalidShape {
-                operation: Cow::Borrowed("Dimension::checked_size"),
-                shape: axes.into(),
-                kind: InvalidShapeKind::ProductOverflow,
-                offending_dim: Some(i),
-            })?;
+            size = size
+                .checked_mul(ax)
+                .ok_or_else(|| XenonError::InvalidShape {
+                    operation: Cow::Borrowed("Dimension::checked_size"),
+                    shape: axes.into(),
+                    kind: InvalidShapeKind::ProductOverflow,
+                    offending_dim: Some(i),
+                })?;
         }
         Ok(size)
-    }
-
-    #[inline]
-    fn checked(&self) -> Result<(), XenonError> {
-        self.checked_size().map(|_| ())
     }
 
     #[inline]
@@ -504,7 +493,6 @@ impl Ix4 {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix5(pub usize, pub usize, pub usize, pub usize, pub usize);
 
-
 impl Dimension for Ix5 {
     const NDIM: Option<usize> = Some(5);
 
@@ -519,9 +507,7 @@ impl Dimension for Ix5 {
         // fields in declaration order. Reinterpreting `&Ix5` as a contiguous
         // `*const usize` slice of length 5 preserves provenance, alignment,
         // and size.
-        unsafe {
-            core::slice::from_raw_parts(self as *const Self as *const usize, 5)
-        }
+        unsafe { core::slice::from_raw_parts(self as *const Self as *const usize, 5) }
     }
 
     #[inline]
@@ -529,19 +515,16 @@ impl Dimension for Ix5 {
         let dims = [self.0, self.1, self.2, self.3, self.4];
         let mut acc = 1usize;
         for (axis, &dim) in dims.iter().enumerate() {
-            acc = acc.checked_mul(dim).ok_or_else(|| XenonError::InvalidShape {
-                operation: Cow::Borrowed("Dimension::checked_size"),
-                shape: dims.into(),
-                kind: InvalidShapeKind::ProductOverflow,
-                offending_dim: Some(axis),
-            })?;
+            acc = acc
+                .checked_mul(dim)
+                .ok_or_else(|| XenonError::InvalidShape {
+                    operation: Cow::Borrowed("Dimension::checked_size"),
+                    shape: dims.into(),
+                    kind: InvalidShapeKind::ProductOverflow,
+                    offending_dim: Some(axis),
+                })?;
         }
         Ok(acc)
-    }
-
-    #[inline]
-    fn checked(&self) -> Result<(), XenonError> {
-        self.checked_size().map(|_| ())
     }
 
     #[inline]
@@ -609,9 +592,71 @@ impl Ix5 {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Ix6(
-    pub usize, pub usize, pub usize, pub usize, pub usize, pub usize,
+    pub usize,
+    pub usize,
+    pub usize,
+    pub usize,
+    pub usize,
+    pub usize,
 );
 
+/// Compile-time layout assertions for unsafe pointer casts in `slice()`.
+///
+/// Verifies `size_of`, `align_of`, and field offsets of each `IxN` type
+/// against the corresponding `[usize; N]` array.  If any `#[repr(C)]`
+/// attribute is removed or field types are altered, these assertions fail
+/// at compile time instead of silently introducing UB.
+///
+/// See `02-dimension.md` §5.2.
+const _: () = {
+    use core::mem::{align_of, offset_of, size_of};
+
+    // Ix0 is a ZST — no repr(C) / no pointer cast needed.
+    // Ix1
+    assert!(size_of::<Ix1>() == size_of::<[usize; 1]>());
+    assert!(align_of::<Ix1>() == align_of::<[usize; 1]>());
+    assert!(offset_of!(Ix1, 0) == 0);
+
+    // Ix2
+    assert!(size_of::<Ix2>() == size_of::<[usize; 2]>());
+    assert!(align_of::<Ix2>() == align_of::<[usize; 2]>());
+    assert!(offset_of!(Ix2, 0) == 0);
+    assert!(offset_of!(Ix2, 1) == size_of::<usize>());
+
+    // Ix3
+    assert!(size_of::<Ix3>() == size_of::<[usize; 3]>());
+    assert!(align_of::<Ix3>() == align_of::<[usize; 3]>());
+    assert!(offset_of!(Ix3, 0) == 0);
+    assert!(offset_of!(Ix3, 1) == size_of::<usize>());
+    assert!(offset_of!(Ix3, 2) == 2 * size_of::<usize>());
+
+    // Ix4
+    assert!(size_of::<Ix4>() == size_of::<[usize; 4]>());
+    assert!(align_of::<Ix4>() == align_of::<[usize; 4]>());
+    assert!(offset_of!(Ix4, 0) == 0);
+    assert!(offset_of!(Ix4, 1) == size_of::<usize>());
+    assert!(offset_of!(Ix4, 2) == 2 * size_of::<usize>());
+    assert!(offset_of!(Ix4, 3) == 3 * size_of::<usize>());
+
+    // Ix5
+    assert!(size_of::<Ix5>() == size_of::<[usize; 5]>());
+    assert!(align_of::<Ix5>() == align_of::<[usize; 5]>());
+    assert!(offset_of!(Ix5, 0) == 0);
+    assert!(offset_of!(Ix5, 1) == size_of::<usize>());
+    assert!(offset_of!(Ix5, 2) == 2 * size_of::<usize>());
+    assert!(offset_of!(Ix5, 3) == 3 * size_of::<usize>());
+    assert!(offset_of!(Ix5, 4) == 4 * size_of::<usize>());
+
+    // Ix6
+    assert!(size_of::<Ix6>() == size_of::<[usize; 6]>());
+    assert!(align_of::<Ix6>() == align_of::<[usize; 6]>());
+    assert!(offset_of!(Ix6, 0) == 0);
+    assert!(offset_of!(Ix6, 1) == size_of::<usize>());
+    assert!(offset_of!(Ix6, 2) == 2 * size_of::<usize>());
+    assert!(offset_of!(Ix6, 3) == 3 * size_of::<usize>());
+    assert!(offset_of!(Ix6, 4) == 4 * size_of::<usize>());
+    assert!(offset_of!(Ix6, 5) == 5 * size_of::<usize>());
+};
 
 impl Dimension for Ix6 {
     const NDIM: Option<usize> = Some(6);
@@ -635,19 +680,16 @@ impl Dimension for Ix6 {
         let dims = [self.0, self.1, self.2, self.3, self.4, self.5];
         let mut acc = 1usize;
         for (axis, &dim) in dims.iter().enumerate() {
-            acc = acc.checked_mul(dim).ok_or_else(|| XenonError::InvalidShape {
-                operation: Cow::Borrowed("Dimension::checked_size"),
-                shape: dims.into(),
-                kind: InvalidShapeKind::ProductOverflow,
-                offending_dim: Some(axis),
-            })?;
+            acc = acc
+                .checked_mul(dim)
+                .ok_or_else(|| XenonError::InvalidShape {
+                    operation: Cow::Borrowed("Dimension::checked_size"),
+                    shape: dims.into(),
+                    kind: InvalidShapeKind::ProductOverflow,
+                    offending_dim: Some(axis),
+                })?;
         }
         Ok(acc)
-    }
-
-    #[inline]
-    fn checked(&self) -> Result<(), XenonError> {
-        self.checked_size().map(|_| ())
     }
 
     #[inline]
@@ -751,7 +793,8 @@ mod tests {
         let err = dim.checked_size().expect_err("should overflow");
         match err {
             XenonError::InvalidShape {
-                offending_dim: Some(1), ..
+                offending_dim: Some(1),
+                ..
             } => {},
             _ => panic!(/* expected InvalidShape with offending_dim: Some(1), got {err:?} */),
         }
@@ -784,7 +827,7 @@ mod tests {
                 kind: InvalidShapeKind::ProductOverflow,
                 offending_dim: Some(1),
                 ..
-            } => {}
+            } => {},
             _ => panic!("expected InvalidShape with ProductOverflow at axis 1"),
         }
     }
@@ -812,8 +855,9 @@ mod tests {
         let err = large.checked_size().expect_err("should overflow");
         match err {
             XenonError::InvalidShape {
-                offending_dim: Some(1), ..
-            } => {}
+                offending_dim: Some(1),
+                ..
+            } => {},
             _ => panic!("expected offending_dim=Some(1), got {err:?}"),
         }
     }
@@ -832,10 +876,7 @@ mod tests {
     fn test_ix5_overflow() {
         let big = Ix5(usize::MAX, 2, 1, 1, 1);
         let err = big.checked_size().expect_err("should overflow");
-        if let XenonError::InvalidShape {
-            offending_dim, ..
-        } = err
-        {
+        if let XenonError::InvalidShape { offending_dim, .. } = err {
             assert_eq!(offending_dim, Some(1));
         } else {
             panic!("expected InvalidShape, got {:?}", err);
@@ -866,8 +907,9 @@ mod tests {
         let err = dim.checked_size().expect_err("should overflow");
         match &err {
             XenonError::InvalidShape {
-                offending_dim: Some(1), ..
-            } => { /* expected */ }
+                offending_dim: Some(1),
+                ..
+            } => { /* expected */ },
             _ => panic!("expected ProductOverflow at axis 1, got {err:?}"),
         }
     }
@@ -890,10 +932,7 @@ mod tests {
     /// when rank matches.
     #[test]
     fn test_dyn_to_static_success() {
-        assert_eq!(
-            Ix0::try_from_dyn(IxDyn::new()),
-            Ok(Ix0)
-        );
+        assert_eq!(Ix0::try_from_dyn(IxDyn::new()), Ok(Ix0));
         assert_eq!(
             Ix3::try_from_dyn(IxDyn::from_slice(&[2, 3, 4])),
             Ok(Ix3(2, 3, 4))
@@ -913,11 +952,8 @@ mod tests {
                 assert_eq!(operation, "Ix3::try_from_dyn");
                 assert_eq!(expected, 3);
                 assert_eq!(actual, 4);
-            }
-            other => panic!(
-                "expected DimensionMismatch, got {:?}",
-                other
-            ),
+            },
+            other => panic!("expected DimensionMismatch, got {:?}", other),
         }
     }
 
@@ -939,4 +975,17 @@ mod tests {
         assert_eq!(IxDyn::try_from_dyn(d.clone()), Ok(d));
     }
 
+    /// §8.2 / §5.3: Ix1 Index out of bounds panics.
+    #[test]
+    #[should_panic(expected = "Ix1 index out of bounds")]
+    fn test_ix1_index_oob_panics() {
+        let _ = Ix1(5)[1];
+    }
+
+    /// §8.2 / §5.3: Ix2 Index out of bounds panics.
+    #[test]
+    #[should_panic(expected = "Ix2 index out of bounds")]
+    fn test_ix2_index_oob_panics() {
+        let _ = Ix2(3, 4)[2];
+    }
 }
