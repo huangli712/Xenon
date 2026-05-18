@@ -11,17 +11,20 @@
 #![warn(unsafe_op_in_unsafe_fn)]
 #![warn(clippy::unwrap_used)]
 
-/// Structured error types for fallible operations.
-pub mod error;
-
 /// Internal infrastructure for sealed traits.
 mod private;
+
+/// Structured error types for fallible operations.
+pub mod error;
 
 /// Dimension types for compile-time and runtime shape specification.
 pub mod dimension;
 
 /// Common exports for convenient use.
 pub mod prelude;
+
+/// Complex number type with sealed component bound.
+pub mod complex;
 
 pub use error::XenonError;
 pub use prelude::*;
