@@ -174,4 +174,33 @@ mod tests {
             other => panic!("expected InvalidShape with offending_dim, got {:?}", other),
         }
     }
+
+    /// §8.3 line 1107: IxDyn::ones(0) — zero-rank dynamic dimension is
+    /// valid.
+    #[test]
+    fn test_ixdyn_ones_zero_rank() {
+        let dim = IxDyn::ones(0);
+        assert_eq!(dim.ndim(), 0);
+        assert_eq!(dim.slice(), &[] as &[usize]);
+        assert_eq!(dim.checked_size(), Ok(1));
+    }
+
+    /// §8.3 line 1106: large dynamic dim with overflow.
+    #[test]
+    fn test_ixdyn_large_dim_overflow() {
+        let dim = IxDyn::from_slice(&[usize::MAX, 2, 2]);
+        match dim.checked_size() {
+            Err(XenonError::InvalidShape {
+                offending_dim: Some(idx),
+                ..
+            }) => {
+                assert!(
+                    idx >= 1,
+                    "overflow should be detected at or after axis 1, got {}",
+                    idx
+                );
+            },
+            other => panic!("expected InvalidShape with offending_dim, got {:?}", other),
+        }
+    }
 }

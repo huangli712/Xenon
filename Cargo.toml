@@ -31,3 +31,6 @@ codegen-units = 1
 
 [package.metadata.docs.rs]
 all-features = true
+
+[dev-dependencies]
+proptest = "1"

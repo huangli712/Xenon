@@ -2,6 +2,7 @@ pub mod axes;
 pub mod dynamic;
 pub mod fixed;
 pub mod into;
+pub mod broadcast;
 
 use std::fmt::Debug;
 
@@ -69,6 +70,7 @@ pub use axes::Axis;
 pub use dynamic::IxDyn;
 pub use fixed::{Ix0, Ix1, Ix2, Ix3, Ix4, Ix5, Ix6};
 pub use into::IntoDimension;
+pub use broadcast::BroadcastDim;
 
 /// Maximum number of dimensions representable on this platform.
 pub const MAX_DIMENSION: usize = usize::MAX;

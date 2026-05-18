@@ -796,7 +796,7 @@ mod tests {
                 offending_dim: Some(1),
                 ..
             } => {},
-            _ => panic!(/* expected InvalidShape with offending_dim: Some(1), got {err:?} */),
+            _ => panic!("expected InvalidShape with offending_dim: Some(1), got {err:?}"),
         }
     }
 
@@ -987,5 +987,46 @@ mod tests {
     #[should_panic(expected = "Ix2 index out of bounds")]
     fn test_ix2_index_oob_panics() {
         let _ = Ix2(3, 4)[2];
+    }
+
+    /// §8.3 line 1105: zero-length axis case — size is `Ok(0)`, not an
+    /// error.
+    #[test]
+    fn test_zero_length_axis_yields_zero_size() {
+        let dim = Ix2(0, 5);
+        assert_eq!(dim.slice(), &[0, 5]);
+        assert_eq!(dim.checked_size(), Ok(0));
+        let dim = Ix3(3, 0, 5);
+        assert_eq!(dim.checked_size(), Ok(0));
+    }
+
+    /// §8.7 line 1139 / §5.2: test_static_ix_layout_assertions_compile —
+    /// verify that the `const _` layout assertion block in §5.2
+    /// compiles for Ix1-Ix6. This positive test ensures the assertion
+    /// block exists at compile time by referencing its values at
+    /// runtime.
+    #[test]
+    fn test_static_ix_layout_assertions_compile() {
+        use std::mem::{align_of, size_of};
+        assert_eq!(size_of::<Ix1>(), size_of::<[usize; 1]>());
+        assert_eq!(size_of::<Ix2>(), size_of::<[usize; 2]>());
+        assert_eq!(size_of::<Ix3>(), size_of::<[usize; 3]>());
+        assert_eq!(size_of::<Ix4>(), size_of::<[usize; 4]>());
+        assert_eq!(size_of::<Ix5>(), size_of::<[usize; 5]>());
+        assert_eq!(size_of::<Ix6>(), size_of::<[usize; 6]>());
+        assert_eq!(align_of::<Ix1>(), align_of::<[usize; 1]>());
+        assert_eq!(align_of::<Ix6>(), align_of::<[usize; 6]>());
+    }
+
+    /// §8.7 line 1137: zero-dim axis ops return InvalidAxis (recoverable
+    /// error).
+    #[test]
+    fn test_ix0_axis_returns_invalid_axis() {
+        use crate::dimension::axes::Axis;
+        use crate::error::XenonError;
+        assert!(matches!(
+            Ix0.axis(Axis::new(0)),
+            Err(XenonError::InvalidAxis { .. })
+        ));
     }
 }
