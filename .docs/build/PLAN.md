@@ -485,7 +485,7 @@ W22 完成 ──→ W30 (Documentation)
   W15T2 (par_map, 需 W15T1)
   W15T4 (par_reduce_impl + par_sum, 需 W15T1)
 批次3 (并行):
-  W15T3 (par_zip_map, 需 W15T2)
+  W15T3 (par_zip_map, 需 W15T2；**跨 wave：W11T7 + W21T3**)
   W15T5 (par_dot, 需 W15T4)
 批次4 (并行):
   W15T6 (ParallelPool 增量加到 mod.rs, 需 W15T2+W15T4+W15T5)
@@ -493,6 +493,14 @@ W22 完成 ──→ W30 (Documentation)
 批次5:
   W15T8 (feature gate + config matrix tests, 需 W15T1–W15T7)
 ```
+
+> **§8.2 跨 wave 依赖（docs_fix 补充）**：W15 与 W11/W21/W22 同处可并行组 D 但位于独立分支，存在以下隐式依赖：
+> 
+> 1. **W15T3 运行期依赖**：`par_zip_map` 调用 `lhs.broadcast_to(output_dim)`（**W11T7**）与 `lhs_view.get_unchecked(&coord)`（**W21T3**）。**W11T7 + W21T3 必须在 W15T3 之前完成**。
+> 2. **W15T2-T8 测试依赖推迟**：W15 task 内部测试不使用 W22T5 `Tensor::from_shape_vec`，改用 W8T7 `TensorView::from_raw_parts(ptr, storage_len, shape, strides, offset)` 手工构造载体张量（参照 W13 §423-429 / W19 §581-583 先例）。需要公开构造 API 与 `slice`/`transpose` 的集成测试推迟到 **W29T19 (`tests/test_parallel.rs`)**。
+> 3. **W15T1 非 F-contiguous 路径**：`ParIter::next()` 在非 F-contiguous 输入上使用 `unimplemented!()` 占位。虽然 30-dispatch §5.6 明确允许非连续走 Parallel（`len >= 2 * PARALLEL_THRESHOLD`），但 W15 范围内只支持 F-contiguous walk；**调用侧（par_map / par_map_checked / 未来 W16 math 入口）需在调用 `par_iter()` 前自行检查 `is_f_contiguous()`，非连续走 fallback**。`par_iter()` 入口增加了 `debug_assert!(is_f_contiguous())` 以提供开发阶段可见性。正确的非连续 stride 状态机推迟到后续 wave。
+> 4. **W15T5 `par_dot` 输入收束**：`par_dot` 增加 Step 2.5 前置校验，拒绝 1-D 非 F-contiguous / broadcast 视图，返回 `InvalidArgument`（复用 `OperationSpecific`）；避免 `as_slice().expect(...)` 在跨 wave 场景 panic。
+> 5. **W15T6 `ParallelPool` !Send + !Sync**：`ParallelPool` 增加 `_not_send: PhantomData<*const ()>` 字段强制 `!Send + !Sync`（与 30-dispatch §5.4 `ParallelGuard` 同模式），避免 `rayon::ThreadPool` 自动派生 `Send + Sync` 后跨线程 drop 破坏 `POOL_ACTIVE` TLS 不变量。
 
 ---
 

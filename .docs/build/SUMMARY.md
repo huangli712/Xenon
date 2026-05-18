@@ -278,7 +278,7 @@
 |------|------|------|-------------|-------------|
 | W15T1 | `src/parallel/iter.rs`, `src/parallel/mod.rs` (skeleton + `compute_safe_chunks`), `src/lib.rs` (`pub(crate) mod parallel`) | Module skeleton + ParIter + TensorBase::par_iter() + compute_safe_chunks: parallel module entry, single-input element-level parallel traversal, and shared chunk policy | W10T4 | 09-parallel §3, §5.1, §5.6, §6.3, §6.7, §8.2 |
 | W15T2 | `src/parallel/map.rs` | par_map: pure parallel element-wise map entry, strategy from dispatch | W15T1 | 09-parallel §5.4, §5.5, §6.2, §6.3, §6.7, §8.2 |
-| W15T3 | `src/parallel/map.rs` | par_zip_map: dual-input broadcast element-wise parallel entry for math consumption | W15T2 | 09-parallel §5.5, §6.3, §6.7, §8.2, §10 |
+| W15T3 | `src/parallel/map.rs` | par_zip_map: dual-input broadcast element-wise parallel entry for math consumption | W15T2, W11T7, W21T3 | 09-parallel §5.5, §6.3, §6.7, §8.2, §10 |
 | W15T4 | `src/parallel/reduce.rs` | par_reduce_impl + par_sum: parallel reduction, identity merge, semantic alignment with caller's serial baseline | W15T1 | 09-parallel §5.5, §6.3, §6.5, §6.7, §8.2 |
 | W15T5 | `src/parallel/reduce.rs` | par_dot: ndim==1 check (InvalidArgument), length consistency (ShapeMismatch), parallel inner product, error return + empty identity | W15T4 | 09-parallel §5.5, §6.5, §6.7, §8.2, §8.3, §10 |
 | W15T6 | `src/parallel/mod.rs` (increment over W15T1 skeleton) | ParallelPool: custom rayon::ThreadPool wrapper, preserving public API result semantics; nested-pool TLS guard | W15T2, W15T4, W15T5 | 09-parallel §5.1, §6.7, §8.2 |
