@@ -5,6 +5,8 @@
 //! Default` supertraits. Subsequent Wave-5 tasks extend `ComplexFloat` and
 //! add arithmetic, formatting, conversion, and math methods.
 
+mod ops;
+
 /// Public bound for `Complex<T>` — sealed to `f32` and `f64`.
 ///
 /// The supertrait set captures every algebraic / ordering capability used by
@@ -40,7 +42,79 @@ pub trait ComplexFloat:
 impl ComplexFloat for f32 {}
 impl ComplexFloat for f64 {}
 
-/// Complex number: a + bj.
+/// Complex number represented as `re + im*j`.
+///
+/// # Supported types
+///
+/// Only `Complex<f32>` and `Complex<f64>` are supported, enforced by
+/// the sealed [`ComplexFloat`] trait.
+///
+/// # Memory layout
+///
+/// `#[repr(C)]` keeps this type layout-compatible with a two-field C struct
+/// `{ T re; T im; }`. Size is `2 * size_of::<T>()`; alignment matches `T`.
+///
+/// # Examples
+///
+/// ```
+/// use xenon::complex::Complex;
+/// let z = Complex::new(3.0_f64, 4.0);
+/// assert_eq!(z.norm(), 5.0);
+/// ```
+///
+/// # Type safety: real-complex mixed arithmetic is rejected at compile time
+///
+/// Use [`Complex::from`] (provided by [`From<T>`] for [`Complex<T>`]) for
+/// explicit promotion. The following blocks must all fail to compile.
+///
+/// ## `Complex + T` is rejected
+/// ```compile_fail
+/// use xenon::complex::Complex;
+/// let c = Complex::new(1.0_f64, 2.0);
+/// let _ = c + 3.0_f64;
+/// ```
+/// ## `T + Complex` is rejected
+/// ```compile_fail
+/// use xenon::complex::Complex;
+/// let c = Complex::new(1.0_f64, 2.0);
+/// let _ = 3.0_f64 + c;
+/// ```
+/// ## `Complex - T` is rejected
+/// ```compile_fail
+/// use xenon::complex::Complex;
+/// let c = Complex::new(1.0_f64, 2.0);
+/// let _ = c - 3.0_f64;
+/// ```
+/// ## `T - Complex` is rejected
+/// ```compile_fail
+/// use xenon::complex::Complex;
+/// let c = Complex::new(1.0_f64, 2.0);
+/// let _ = 3.0_f64 - c;
+/// ```
+/// ## `Complex * T` is rejected
+/// ```compile_fail
+/// use xenon::complex::Complex;
+/// let c = Complex::new(1.0_f64, 2.0);
+/// let _ = c * 3.0_f64;
+/// ```
+/// ## `T * Complex` is rejected
+/// ```compile_fail
+/// use xenon::complex::Complex;
+/// let c = Complex::new(1.0_f64, 2.0);
+/// let _ = 3.0_f64 * c;
+/// ```
+/// ## `Complex / T` is rejected
+/// ```compile_fail
+/// use xenon::complex::Complex;
+/// let c = Complex::new(1.0_f64, 2.0);
+/// let _ = c / 3.0_f64;
+/// ```
+/// ## `T / Complex` is rejected
+/// ```compile_fail
+/// use xenon::complex::Complex;
+/// let c = Complex::new(1.0_f64, 2.0);
+/// let _ = 3.0_f64 / c;
+/// ```
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Complex<T: ComplexFloat> {
@@ -52,6 +126,17 @@ pub struct Complex<T: ComplexFloat> {
 
 impl<T: ComplexFloat> Complex<T> {
     /// Creates a new complex number.
+    ///
+    /// This is a `const fn` so it can be used in constant contexts.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use xenon::complex::Complex;
+    /// let z = Complex::new(3.0_f64, 4.0);
+    /// assert_eq!(z.re, 3.0);
+    /// assert_eq!(z.im, 4.0);
+    /// ```
     #[inline]
     pub const fn new(re: T, im: T) -> Self {
         Self { re, im }
@@ -70,27 +155,104 @@ impl<T: ComplexFloat> Complex<T> {
     }
 
     /// Returns true if imaginary part is zero.
+    ///
+    /// Note: `0` is simultaneously real and imaginary, so
+    /// [`Complex::new(0.0, 0.0)`](Complex::new) satisfies both predicates.
     #[inline]
     pub fn is_real(self) -> bool {
         self.im == T::default()
     }
 
     /// Returns true if real part is zero.
+    ///
+    /// Note: `0` is simultaneously real and imaginary, so
+    /// [`Complex::new(0.0, 0.0)`](Complex::new) satisfies both predicates.
     #[inline]
     pub fn is_imaginary(self) -> bool {
         self.re == T::default()
     }
 
     /// Creates a purely imaginary number (re = 0).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use xenon::complex::Complex;
+    /// let z = Complex::from_imag(4.0_f64);
+    /// assert_eq!(z, Complex::new(0.0, 4.0));
+    /// ```
     #[inline]
     pub fn from_imag(im: T) -> Self {
         Self::new(T::default(), im)
     }
 
     /// Returns the complex conjugate: conj(a + bj) = a - bj.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use xenon::complex::Complex;
+    /// let z = Complex::new(1.0_f64, 2.0);
+    /// let conj = z.conj();
+    /// assert_eq!(conj, Complex::new(1.0, -2.0));
+    /// ```
     #[inline]
     pub fn conj(self) -> Self {
         Self::new(self.re, -self.im)
+    }
+}
+
+// ── Concrete math methods for Complex<f64> ──
+
+impl Complex<f64> {
+    /// Modulus |z| = sqrt(re² + im²), via `hypot` to avoid overflow.
+    #[inline]
+    pub fn norm(self) -> f64 {
+        self.re.hypot(self.im)
+    }
+
+    /// Squared modulus |z|² = re² + im² (no sqrt).
+    #[inline]
+    pub fn norm_sqr(self) -> f64 {
+        self.re * self.re + self.im * self.im
+    }
+
+    /// True if either component is NaN.
+    #[inline]
+    pub fn is_nan(self) -> bool {
+        self.re.is_nan() || self.im.is_nan()
+    }
+
+    /// True if both components are finite (not NaN and not infinite).
+    #[inline]
+    pub fn is_finite(self) -> bool {
+        self.re.is_finite() && self.im.is_finite()
+    }
+}
+
+impl Complex<f32> {
+    /// Modulus |z| = sqrt(re² + im²), via `hypot` to avoid overflow.
+    #[inline]
+    pub fn norm(self) -> f32 {
+        self.re.hypot(self.im)
+    }
+
+    /// Squared modulus |z|² = re² + im² (no sqrt).
+    #[inline]
+    pub fn norm_sqr(self) -> f32 {
+        self.re * self.re + self.im * self.im
+    }
+
+    /// True if either component is NaN.
+    #[inline]
+    pub fn is_nan(self) -> bool {
+        self.re.is_nan() || self.im.is_nan()
+    }
+
+    /// True if both components are finite (not NaN and not infinite).
+    #[inline]
+    pub fn is_finite(self) -> bool {
+        self.re.is_finite() && self.im.is_finite()
     }
 }
 
@@ -107,6 +269,16 @@ const _: () = {
 // ── From<T>: explicit real-to-complex construction ──
 
 impl<T: ComplexFloat> From<T> for Complex<T> {
+    /// Converts a real number into a complex number with zero imaginary part.
+    ///
+    /// This is the only supported scalar-to-complex conversion path.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use xenon::complex::Complex;
+    /// assert_eq!(Complex::from(5.0_f64), Complex::new(5.0, 0.0));
+    /// ```
     #[inline]
     fn from(re: T) -> Self {
         Self::new(re, T::default())
@@ -154,6 +326,24 @@ impl<T> core::fmt::Display for Complex<T>
 where
     T: ComplexFloat + core::fmt::Display + PositiveZero,
 {
+    /// Formats the complex number in standard mathematical notation.
+    ///
+    /// # Formatting rules
+    ///
+    /// | Input | Output |
+    /// |---|---|
+    /// | `Complex::new(3.0, 4.0)` | `"3+4j"` |
+    /// | `Complex::new(3.0, -4.0)` | `"3-4j"` |
+    /// | `Complex::new(3.0, 0.0)` | `"3"` |
+    /// | `Complex::new(3.0, -0.0)` | `"3-0j"` |
+    /// | `Complex::new(0.0, 4.0)` | `"4j"` |
+    /// | `Complex::new(0.0, 0.0)` | `"0"` |
+    ///
+    /// Negative zero (`-0.0`) is distinguished from positive zero via the
+    /// crate-private `PositiveZero` helper, which checks the IEEE-754 bit
+    /// pattern. NaN imaginary parts are rendered explicitly as `NaNj`.
+    ///
+    /// Precision (e.g. `{:.2}`) is propagated to every write branch.
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let prec = f.precision();
         let zero = T::default();
@@ -390,6 +580,23 @@ mod tests {
         assert_eq!(Complex::new(1.0_f64, f64::NEG_INFINITY).to_string(), "1-infj");
     }
 
+    // ── Infinity + special-value Display combinations ──
+
+    #[test]
+    fn test_display_inf_nan_imag() {
+        assert_eq!(Complex::new(f64::INFINITY, f64::NAN).to_string(), "inf+NaNj");
+    }
+
+    #[test]
+    fn test_display_inf_zero_imag() {
+        assert_eq!(Complex::new(f64::INFINITY, 0.0).to_string(), "inf");
+    }
+
+    #[test]
+    fn test_display_inf_neg_zero_imag() {
+        assert_eq!(Complex::new(f64::INFINITY, -0.0).to_string(), "inf-0j");
+    }
+
     #[test]
     fn test_display_nan_nan() {
         let s = format!("{}", Complex::new(f64::NAN, f64::NAN));
@@ -451,5 +658,53 @@ mod tests {
     #[test]
     fn test_display_precision_zero_pure_imag() {
         assert_eq!(format!("{:.0}", Complex::new(0.5_f64, 2.5)), "0+2j");
+    }
+
+    #[test]
+    fn test_norm_3_4_5() {
+        let z = Complex::new(3.0_f64, 4.0);
+        assert_eq!(z.norm(), 5.0);
+        assert_eq!(z.norm_sqr(), 25.0);
+    }
+
+    #[test]
+    fn test_norm_sqr() {
+        let z = Complex::new(3.0_f64, 4.0);
+        assert_eq!(z.norm_sqr(), 3.0 * 3.0 + 4.0 * 4.0);
+    }
+
+    #[test]
+    fn test_norm_no_overflow() {
+        let z = Complex::new(1.0e200_f64, 1.0e200);
+        assert!(z.norm().is_finite());
+    }
+
+    #[test]
+    fn test_is_nan() {
+        assert!(Complex::new(f64::NAN, 0.0).is_nan());
+        assert!(Complex::new(0.0_f64, f64::NAN).is_nan());
+        assert!(!Complex::new(1.0_f64, 2.0).is_nan());
+    }
+
+    #[test]
+    fn test_is_finite() {
+        assert!(Complex::new(1.0_f64, 2.0).is_finite());
+        assert!(!Complex::new(f64::INFINITY, 0.0).is_finite());
+        assert!(!Complex::new(0.0_f64, f64::NAN).is_finite());
+    }
+
+    #[test]
+    fn test_norm_f32() {
+        let z = Complex::new(3.0_f32, 4.0);
+        assert_eq!(z.norm(), 5.0);
+    }
+
+    /// Mirrors the doc example in the `Complex<T>` struct comment to
+    /// guarantee the public usage stays compilable after W5T15.
+    #[test]
+    fn test_complex_docs_compile_example() {
+        let z = Complex::new(3.0_f64, 4.0);
+        assert!((z.norm() - 5.0).abs() < 1e-12);
+        assert_eq!(format!("{}", z), "3+4j");
     }
 }
