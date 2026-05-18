@@ -435,9 +435,10 @@ W22 完成 ──→ W30 (Documentation)
 > **docs_fix 修订（W14 全面审计后）**：
 > - 新增 W14T0（pulp 0.18 API capability spike）作为全 Wave 14 前置；T2/T4/T5/T6/T7 均依赖 W14T0 的能力清单。
 > - W14T1 负责 `src/lib.rs` 模块注册（与 W14T7 解耦；W14T7 仅修改 `src/simd/mod.rs` + `Cargo.toml`）。
-> - W14T8 依赖修正为 `W14T1, W14T2, W14T7`（去除原 SUMMARY 中冗余的 T3/T5 — element-wise 测试与 sum/complex sum 正交）。
-> - W14T10 依赖修正为 `W14T2, W14T6, W14T7, W14T9`（补齐实际 API 提供者）。
+> - W14T8 依赖修正为 `W14T1, W14T2, W14T2b, W14T7`（去除原 SUMMARY 中冗余的 T3/T5；补充 W14T2b 覆盖 Complex element-wise）。
+> - W14T10 依赖修正为 `W14T2, W14T2b, W14T6, W14T7, W14T9`（补齐实际 API 提供者，含 Complex element-wise）。
 > - W14T10 目标文件改为 `tests/simd_property.rs` 顶层文件，通过 Tensor 公有 API 测试，无需 Cargo.toml 显式声明。
+> - **新增 W14T2b**（docs_fix W14T2 audit FIND-1 修复）：Complex\<f32\>/Complex\<f64\> element-wise add/sub/mul/div/neg SIMD。原设计 08-simd §5.6 / §5.8 明示 Complex element-wise 「已实现」阈值=128，但原 W14T2 仅实现 f32/f64。W14T2b 独立 task 避免拓扑循环（W14T2→W14T5→W14T3→W14T2），在批次6 W14T5 后完成，与 W14T6 可并行。
 >
 > **W14 docs_fix 补充决策 — Complex sum/dot 阈值**：
 > design/08-simd.md §5.8 阈值表未列出 Complex 条目。本文件作为 build/ 实施层正式决策承载点，确定：
@@ -451,22 +452,23 @@ W22 完成 ──→ W30 (Documentation)
 批次2:
   W14T1 (mod.rs + lib.rs skeleton, 需 W14T0)
 批次3:
-  W14T2 (element-wise SIMD incl. Neg unary, 需 W14T0+W14T1)
+  W14T2 (element-wise SIMD incl. Neg unary for f32/f64 仅, 需 W14T0+W14T1)
 批次4:
   W14T3 (float sum SIMD, 需 W14T2)
 批次5 (并行):
   W14T4 (integer i32 widening + i64 scalar fallback, 需 W14T0+W14T3)
   W14T5 (complex sum threshold=1024, 需 W14T0+W14T3)
-批次6:
+批次6 (并行，均依赖 W14T5 提供的 Complex AoS deinterleave 路径):
   W14T6 (float+complex dot threshold=512, 需 W14T0+W14T3+W14T5)
+  W14T2b (Complex element-wise add/sub/mul/div/neg, threshold=128, 需 W14T0+W14T2+W14T5)
 批次7:
   W14T7 (feature gate+exports+dispatch integration, 需 W14T0+W14T1+W14T2)
 批次8:
-  W14T8 (element-wise consistency tests, 需 W14T1+W14T2+W14T7)
+  W14T8 (element-wise consistency tests, 需 W14T1+W14T2+W14T2b+W14T7)
 批次9:
   W14T9 (reduction/dot semantic+tolerance tests, 需 W14T3+W14T4+W14T5+W14T6+W14T8)
 批次10:
-  W14T10 (randomized property tests via public API, 需 W14T2+W14T6+W14T7+W14T9)
+  W14T10 (randomized property tests via public API, 需 W14T2+W14T2b+W14T6+W14T7+W14T9)
 ```
 
 ---

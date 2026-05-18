@@ -23,7 +23,7 @@
 | W11 | Broadcasting | L4 | 10 | can_broadcast, broadcast_shape, broadcast_strides, broadcast_to, broadcast_with, error handling, integration tests (BroadcastDim trait is delivered by W3T22) |
 | W12 | Iterators | L4 | 7 | StrideState, Iter, IterMut, AxisIter/AxisIterMut, IndexedIter/IndexedIterMut, TensorBase entry methods |
 | W13 | FFI Helpers | L4 | 6 | BlasInfo, TensorExport/TensorExportMut private descriptors, ptr re-exports, export/export_mut, is_blas_compatible/lda, try_offset_of/try_ptr_at (depends on W22T10 for OwnedRawParts) |
-| W14 | SIMD Backend | L5 | 11 | pulp 0.18 API spike (W14T0), SimdKernel trait, element-wise SIMD (add/sub/mul/div/neg via dispatch_vector_binary_op + dispatch_vector_unary_op), SIMD sum/dot (float/complex via `try_*` facades; integer i32 only with checked i64→i32 narrowing; i64 has no SIMD facade), feature gates, property tests |
+| W14 | SIMD Backend | L5 | 12 | pulp 0.18 API spike (W14T0), SimdKernel trait, element-wise SIMD (add/sub/mul/div/neg via dispatch_vector_binary_op + dispatch_vector_unary_op, for f32/f64 in W14T2 + Complex\<f32\>/Complex\<f64\> in W14T2b), SIMD sum/dot (float/complex via `try_*` facades; integer i32 only with checked i64→i32 narrowing; i64 has no SIMD facade), feature gates, property tests |
 | W15 | Parallel Backend | L5 | 8 | ParIter, par_map, par_zip_map, par_sum, par_dot, ParallelPool, error/panic propagation, feature gates |
 | W16 | Math Operations | L5 | 11 | Binary element-wise ops (add/sub/mul/div), unary ops (abs/neg/signum/square/sin/sqrt/exp/ln/floor/ceil/conj/modulus), comparison ops (eq/ne/lt/le/gt/ge), logical not, SIMD dispatch |
 | W17 | Matrix Operations | L5 | 7 | dot product (serial + SIMD + parallel paths), rank/shape validation, complex dot, integration tests |
@@ -40,7 +40,7 @@
 | W28 | Benchmarks | cross-cutting | 12 | bench infrastructure (utils/generators), core benches (math/reduction/dot/set/broadcast), shape/construction benches, SIMD/parallel comparison, CI/report script |
 | W29 | Integration Tests | cross-cutting | 25 | tests/common utils, core test files (tensor/math/overload/broadcast/index/construction/reduction/iter/matrix/set/shape/conversion/utility/output/error), specialized tests (workspace/ffi/parallel/simd), compile-fail tests, property tests, CI matrix |
 | W30 | Documentation | cross-cutting | 52 | Crate-level docs, per-module docs, type/function-level docs + doctests, usage examples, README/LICENSE/CHANGELOG, docs CI |
-| | **Total** | | **336** | |
+| | **Total** | | **337** | |
 
 ---
 
@@ -267,9 +267,10 @@
 | W14T5 | `src/simd/vector.rs` | Complex sum SIMD: Complex\<f32\>/Complex\<f64\> AoS→SoA deinterleave + split real/imag pairwise accumulation; **Complex sum threshold = 1024** (per PLAN.md W14 补充决策) | W14T0, W14T3 | 08-simd §5, §6, §7, §8, §10 |
 | W14T6 | `src/simd/vector.rs` | Float + complex dot SIMD: f32/f64/Complex\<f32\>/Complex\<f64\> dot kernel; BLAS xdotc conjugate contract `sum(conj(lhs_i)*rhs_i)`; **Complex dot threshold = 512** (per PLAN.md W14 补充决策); reuses W14T5 split accumulator | W14T0, W14T3, W14T5 | 08-simd §5, §6, §7, §8, §10 |
 | W14T7 | `src/simd/mod.rs`, `Cargo.toml` | Feature gate conditional compilation: #[cfg(feature = "simd")] guards all items including trait definitions; pub(crate) facade export (no lib.rs modification — W14T1 owns lib.rs registration); W10 ExecPath::Simd dispatch integration contract | W14T0, W14T1, W14T2 | 08-simd §5, §6, §7, §8, §10 |
-| W14T8 | `src/simd/vector.rs` (#[cfg(all(test, feature = "simd"))]) | Element-wise consistency tests: SIMD vs serial bitwise agreement for Add/Sub/Mul/Div/Neg on f32+f64; boundary lengths (0/1/below/at/tail/SIMD_WIDTH+k); NaN-aware comparison | W14T1, W14T2, W14T7 | 08-simd §5, §6, §7, §8, §10 |
+| W14T8 | `src/simd/vector.rs` (#[cfg(all(test, feature = "simd"))]) | Element-wise consistency tests: SIMD vs serial bitwise agreement for Add/Sub/Mul/Div/Neg on f32+f64 + Complex\<f32\>/Complex\<f64\>; boundary lengths (0/1/below/at/tail/SIMD_WIDTH+k); NaN-aware comparison | W14T1, W14T2, W14T2b, W14T7 | 08-simd §5, §6, §7, §8, §10 |
 | W14T9 | `src/simd/vector.rs` (#[cfg(all(test, feature = "simd"))]) | Reduction/dot semantic + tolerance tests: entry threshold boundaries (1023/1024 etc.), ISA gating fallback, tolerance per 13-reduction §6.3 + 12-matrix dot bound, complex component-wise comparison, i32 admission tests (i64 has no SIMD facade — not in test scope) | W14T3, W14T4, W14T5, W14T6, W14T8 | 08-simd §5, §6, §7, §8, §10 |
-| W14T10 | `tests/simd_property.rs` | Randomized property tests via **public Tensor API** (no pub(crate) imports); Cargo top-level discovery; deterministic splitmix64 PRNG (no proptest/quickcheck dep); element-wise consistency + sum/dot tolerance + complex dot conjugate + i32 no-panic + tail handling + ISA fallback; all of f32/f64/Complex\<f32\>/Complex\<f64\> | W14T2, W14T6, W14T7, W14T9 | 08-simd §5, §6, §7, §8.4, §8.5, §10; 28-tests §6.4.2 |
+| W14T10 | `tests/simd_property.rs` | Randomized property tests via **public Tensor API** (no pub(crate) imports); Cargo top-level discovery; deterministic splitmix64 PRNG (no proptest/quickcheck dep); element-wise consistency + sum/dot tolerance + complex dot conjugate + i32 no-panic + tail handling + ISA fallback; all of f32/f64/Complex\<f32\>/Complex\<f64\> | W14T2, W14T2b, W14T6, W14T7, W14T9 | 08-simd §5, §6, §7, §8.4, §8.5, §10; 28-tests §6.4.2 |
+| W14T2b | `src/simd/vector.rs` | Complex element-wise SIMD: Add/Sub/Mul/Div/Neg kernels for Complex\<f32\>/Complex\<f64\>; reuses W14T5 AoS deinterleave; threshold = 128 (08-simd §5.8 L451); FMA forbidden in element-wise main loop. docs_fix W14T2 audit FIND-1 修复 (原 W14T2 仅 f32/f64与设计不符)。 | W14T0, W14T2, W14T5 | 08-simd §5.2, §5.5, §5.6, §5.8 L451, §6.1, §6.6, §8.2, §10 |
 
 ### W15: Parallel Backend (L5)
 
