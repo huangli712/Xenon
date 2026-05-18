@@ -22,7 +22,7 @@
 | W10 | Dispatch | L4 | 6 | ExecPath enum, select_exec_path, parallel/SIMD threshold config (set/reset for both), ParallelGuard (nested parallel protection), with_parallel_worker_context, ParallelExecStrategy |
 | W11 | Broadcasting | L4 | 10 | can_broadcast, broadcast_shape, broadcast_strides, broadcast_to, broadcast_with, error handling, integration tests (BroadcastDim trait is delivered by W3T22) |
 | W12 | Iterators | L4 | 7 | StrideState, Iter, IterMut, AxisIter/AxisIterMut, IndexedIter/IndexedIterMut, TensorBase entry methods |
-| W13 | FFI Helpers | L4 | 6 | BlasInfo, TensorExport/TensorExportMut private descriptors, ptr re-exports, export/export_mut, is_blas_compatible/lda, try_offset_of/try_ptr_at |
+| W13 | FFI Helpers | L4 | 6 | BlasInfo, TensorExport/TensorExportMut private descriptors, ptr re-exports, export/export_mut, is_blas_compatible/lda, try_offset_of/try_ptr_at (depends on W22T10 for OwnedRawParts) |
 | W14 | SIMD Backend | L5 | 11 | pulp 0.18 API spike (W14T0), SimdKernel trait, element-wise SIMD (add/sub/mul/div/neg via dispatch_vector_binary_op + dispatch_vector_unary_op), SIMD sum/dot (float/complex via `try_*` facades; integer i32 only with checked i64→i32 narrowing; i64 has no SIMD facade), feature gates, property tests |
 | W15 | Parallel Backend | L5 | 8 | ParIter, par_map, par_zip_map, par_sum, par_dot, ParallelPool, error/panic propagation, feature gates |
 | W16 | Math Operations | L5 | 11 | Binary element-wise ops (add/sub/mul/div), unary ops (abs/neg/signum/square/sin/sqrt/exp/ln/floor/ceil/conj/modulus), comparison ops (eq/ne/lt/le/gt/ge), logical not, SIMD dispatch |
@@ -31,7 +31,7 @@
 | W19 | Set Operations | L5 | 6 | set module root, unique (real/complex/NaN/signed-zero handling), TensorBase entry method |
 | W20 | Shape Operations | L5 | 4 | transpose (full-axis reversal), contiguity recomputation, integration tests |
 | W21 | Indexing | L5 | 6 | index module root, NdIndex trait, try_at/get/get_unchecked, SliceInfo, try_at_mut/get_mut/get_unchecked_mut, slice shape/stride update |
-| W22 | Tensor Construction | L5 | 9 | zeros, ones, eye, from_shape_vec, from_shape_slice, from_vec, from_array, from_scalar |
+| W22 | Tensor Construction | L5 | 10 | zeros, ones, eye, from_shape_vec, from_shape_slice, from_vec, from_array, from_scalar, OwnedRawParts + into_raw_parts/from_raw_parts_owned |
 | W23 | Operator Overloading | L6 | 11 | overload module root, Add/Sub/Mul/Div for owned/ref/mixed/scalar tensor combinations, integration tests |
 | W24 | Utility Operations | L5 | 5 | util module root, fill, clip, to_contiguous/into_contiguous |
 | W25 | Type Conversion | L5 | 7 | CastTo trait (lossy + dynamic tiers), ConvertTo (lossless), cast method, to_owned/into_owned |
@@ -40,7 +40,7 @@
 | W28 | Benchmarks | cross-cutting | 12 | bench infrastructure (utils/generators), core benches (math/reduction/dot/set/broadcast), shape/construction benches, SIMD/parallel comparison, CI/report script |
 | W29 | Integration Tests | cross-cutting | 25 | tests/common utils, core test files (tensor/math/overload/broadcast/index/construction/reduction/iter/matrix/set/shape/conversion/utility/output/error), specialized tests (workspace/ffi/parallel/simd), compile-fail tests, property tests, CI matrix |
 | W30 | Documentation | cross-cutting | 52 | Crate-level docs, per-module docs, type/function-level docs + doctests, usage examples, README/LICENSE/CHANGELOG, docs CI |
-| | **Total** | | **335** | |
+| | **Total** | | **336** | |
 
 ---
 
@@ -249,9 +249,9 @@
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
 | W13T1 | `src/ffi/mod.rs` | Module skeleton: 5 sub-module declarations (types / private / ptr / blas / offset) + placeholder files; re-exports added by downstream tasks per W1T3 module-evolution protocol | W8T7 | 23-ffi §5, §6, §7, §8 |
-| W13T2 | `src/ffi/types.rs` | C-visible raw descriptors (TensorExportRaw / TensorExportMutRaw) + BlasInfo struct + ElementType / FfiErrorCategory re-exports | W13T1 | 23-ffi §5, §6, §7, §8 |
+| W13T2 | `src/ffi/types.rs` | C-visible raw descriptors (TensorExportRaw / TensorExportMutRaw) + BlasInfo struct + ElementType / FfiErrorCategory / FfiBackend re-exports | W13T1 | 23-ffi §5, §6, §7, §8 |
 | W13T3 | `src/ffi/private.rs` | Internal generic descriptors: TensorExport and TensorExportMut | W13T2 | 23-ffi §5, §6, §7, §8 |
-| W13T4 | `src/ffi/ptr.rs` | Inherent methods export() / export_mut() on TensorBase + re-export OwnedRawParts / TensorBase | W13T3 | 23-ffi §5, §6, §7, §8 |
+| W13T4 | `src/ffi/ptr.rs` | Inherent methods export() / export_mut() on TensorBase + re-export OwnedRawParts / TensorBase | W13T3, W22T10 | 23-ffi §5, §6, §7, §8 |
 | W13T5 | `src/ffi/blas.rs` | is_blas_layout_compatible(), blas_info(), lda() | W13T2 | 23-ffi §5, §6, §7, §8 |
 | W13T6 | `src/ffi/offset.rs` | try_offset_of() / try_ptr_at() with checked arithmetic validation | W13T2 | 23-ffi §5, §6, §7, §8 |
 
@@ -367,6 +367,7 @@
 | W22T7 | `src/construct/from.rs` | from_array: fixed-array construction | W22T6 | 18-construction §5, §6, §7, §8 |
 | W22T8 | `src/construct/scalar.rs` | from_scalar: zero-dim tensor constructor | W22T1 | 18-construction §5, §6, §7, §8 |
 | W22T9 | `tests/test_construction.rs` | Integration tests | W22T2–W22T8 | 18-construction §5, §6, §7, §8 |
+| W22T10 | `src/tensor/construct.rs`, `src/tensor/mod.rs` | OwnedRawParts struct + into_raw_parts() + from_raw_parts_owned() — Owned round-trip carrier (Rust-only, **non-C-ABI**); 5-gate validation (offset==0 / shape product / cap>=len / align valid / canonical F-order); routes to new_unchecked. Required by W13T4 for `pub use crate::tensor::OwnedRawParts`. | W8T7, W8T8；W22T5（测试构造器） | 07-tensor §5.7 (line 890-1086), §6.2, §6.3; 23-ffi §5.8 |
 
 ### W23: Operator Overloading (L6)
 

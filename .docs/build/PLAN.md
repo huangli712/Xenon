@@ -39,7 +39,7 @@ W22 完成 ──→ W30 (Documentation)
 | A | W3, W5 | 均在 W1 之后，互不依赖 |
 | B | W6, W9 | W6 需 W3, W9 需 W2; 可并行 |
 | C | W4, W7 | W4 需 W3+W5, W7 需 W3+W6; W6 先于 W7, W5 先于 W4 |
-| D | W11,W12,W13,W14,W20,W21,W22,W24,W25,W26 | 全部在 W8 之后；除 W25 与 W26 需要 W12T7（`TensorBase::iter()` 入口方法）外，组内互相独立 |
+| D | W11,W12,W13,W14,W20,W21,W22,W24,W25,W26 | 全部在 W8 之后；除 W25 与 W26 需要 W12T7（`TensorBase::iter()` 入口方法）外，组内互相独立。**例外：W13T4 依赖 W22T10 (OwnedRawParts)**，详见 W13 与 W22 节 |
 | E | W28, W29, W30 | 全部在 W22 之后，互相独立 |
 
 ---
@@ -394,10 +394,17 @@ W22 完成 ──→ W30 (Documentation)
 >
 > **重要 API 形式**：W13T4 / W13T5 / W13T6 全部以 `TensorBase` 的 inherent methods
 > 形式提供（`tensor.export()` / `tensor.blas_info()?` / `tensor.try_offset_of(&[..])?`），
-> 严格遵循 `23-ffi.md` §5.4 / §5.10-§5.13。`from_raw_parts*` / `into_raw_parts` /
-> `from_raw_parts_owned` 是 W8T7 已实现的 `TensorBase` inherent methods，**无自由
-> 路径符号可被 `pub use`**；W13T4 仅 re-export `OwnedRawParts` 与 `TensorBase` 类
-> 型（`23-ffi.md` §5.8）。
+> 严格遵循 `23-ffi.md` §5.4 / §5.10-§5.13。`from_raw_parts*` 是 W8T7 实现的
+> `TensorBase<ViewRepr,D>` / `TensorBase<ViewMutRepr,D>` 的 inherent methods，**无自
+> 由路径符号可被 `pub use`**；`OwnedRawParts` / `into_raw_parts` /
+> `from_raw_parts_owned` 是 Owned round-trip API，由 **W22T10** 负责实现
+> （原本 W8T7 line 511 推迟声明处，docs_fix 分支中补为独立 task）。
+> W13T4 仅 re-export `OwnedRawParts` 与 `TensorBase` 类型（`23-ffi.md` §5.8）。
+>
+> **W22T10 跨 wave 依赖**：W13T4 需要 `pub use crate::tensor::OwnedRawParts;`，
+> 而 `OwnedRawParts` 由 W22T10 在 `src/tensor/construct.rs` 中定义。W13 与 W22
+> 同处可并行组 D，本身互不隔离；为避免 W13T4 编译时未定义 OwnedRawParts，
+> 本 PLAN 定义在组 D 内部额外约束：**W22T10 必须在 W13T4 之前完成**。
 
 ```
 批次1:
@@ -407,11 +414,19 @@ W22 完成 ──→ W30 (Documentation)
 批次3:
   W13T3 (private.rs generic descriptors, 需 W13T2)
 批次4:
-  W13T4 (ptr.rs export/export_mut + raw-parts type re-exports, 需 W13T3)
+  W13T4 (ptr.rs export/export_mut + raw-parts type re-exports, 需 W13T3 + W22T10)
 批次5 (并行):
   W13T5 (BLAS helpers, 需 W13T2)
   W13T6 (offset helpers, 需 W13T2)
 ```
+
+> **§8.2 跨 wave 依赖测试推迟**：W13T2 / W13T4 / W13T5 / W13T6 的单元测试原使用 `Tensor::zeros`
+> （W22T2）与 `Tensor::from_shape_vec`（W22T5）构造测试张量。W13 与 W22 同处可并行组 D，该些构造 API
+> 在 W13 实施期不可用。为对齐 W19/W29T11 模式（详见本 PLAN §W19 说明），**W13 task 内部测试改用
+> W8T7 `from_raw_parts*` 路径手工构造测试张量**，避免依赖 W22；需要「zeros」语义的完整集成测试
+> （`test_lda_non_contiguous` 等需 `transpose()`《**W20T3**》或 `slice()`《**W21T6**》）一并推迟到 W29T18
+> （`tests/test_ffi.rs`）。**以前补丁中“W17/W18 提供 slicing API”的描述为误记**，W17 为 Matrix Ops (dot)、
+> W18 为 Reduction Ops (sum)，均不含 slice/transpose。
 
 ---
 
@@ -616,6 +631,8 @@ W22 完成 ──→ W30 (Documentation)
   W22T7 (from_array, 需 W22T6)
 批次5:
   W22T9 (tests, 需 W22T2–W22T8)
+批次6 (独立，与 W22T9 可并行，但须在 W13T4 之前完成):
+  W22T10 (OwnedRawParts + into_raw_parts + from_raw_parts_owned, 需 W8T7+W8T8；测试额外依赖 W22T5 提供的 from_shape_vec/from_vec)
 ```
 
 ---
