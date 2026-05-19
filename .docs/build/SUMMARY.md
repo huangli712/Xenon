@@ -330,7 +330,7 @@
 |------|------|------|-------------|-------------|
 | W19T1 | `src/lib.rs, src/set/mod.rs` | Module skeleton: crate root wiring, unique module declaration, and forward re-exports following existing skeleton pattern | None | 01-architecture §3, 14-set §3, §7 |
 | W19T2 | `src/set/unique.rs` | UniqueElement trait definition and real scalar impls (i32/i64/f32/f64) | W19T1 | 14-set §5, §6, §7, §8 |
-| W19T3 | `src/set/unique.rs` | unique_impl(): logical F-order element collection, equality-based deduplication, Tensor construction | W19T2 | 14-set §5, §6, §7, §8 |
+| W19T3 | `src/set/unique.rs` | unique_impl(): logical F-order element collection, equality-based deduplication, Tensor construction | W19T2, W12T7 | 14-set §5, §6, §7, §8 |
 | W19T4 | `src/set/unique.rs` | Float NaN / ±0.0 behavior tests (test-only): preserve each NaN, treat -0.0 and 0.0 as equal | W19T3 | 14-set §5, §6, §7, §8 |
 | W19T5 | `src/set/unique.rs` | Complex component-wise equality using direct real/imag `==` per design §6.4, no ordering | W19T3 | 14-set §5, §6, §7, §8 |
 | W19T6 | `src/set/unique.rs, src/prelude.rs` | unique() entry method on TensorBase, prelude re-export, remaining in-module unit tests | W19T3–W19T5 | 14-set §5, §6, §7, §8 |

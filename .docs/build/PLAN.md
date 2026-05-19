@@ -551,7 +551,7 @@ W22 完成 ──→ W30 (Documentation)
 > 
 > 1. **W17T5 SIMD path 依赖**：`simd::try_dot_f32 / try_dot_f64 / try_dot_complex_f32 / try_dot_complex_f64` 由 **W14T6** 提供（`src/simd/vector.rs`）；**W14T6 必须在 W17T5 之前完成**。`try_dot_i32` (W14T4) 本 task 不使用（仅作为覆盖文档参考）。
 > 2. **W17T6 Parallel path 依赖**：`parallel::par_dot` (4 参数签名) 由 **W15T5** 提供（`src/parallel/reduce.rs`）；`dispatch::with_parallel_worker_context` 由 **W10T2** 提供（`src/dispatch.rs`，与 `ParallelGuard` 同 task，见 SUMMARY.md line 214）；`ParallelExecStrategy::auto()` 由 **W10T3** 提供。**W15T5 必须在 W17T6 之前完成**。
-> 3. **W17T3 `TensorBase::iter()` 依赖**：`scalar_dot` 内部使用 `a.iter().copied().zip(b.iter().copied())` 迭代元素，依赖 **W12T7** 提供的 `TensorBase::iter()` entry method。与 W25T6 / W25T7 同为跨 wave 依赖（本 PLAN line 712-714 先例）。
+> 3. **W17T3 `TensorBase::iter()` 依赖**：`scalar_dot` 内部使用 `a.iter().copied().zip(b.iter().copied())` 迭代元素，依赖 **W12T7** 提供的 `TensorBase::iter()` entry method。与 W25T6 / W25T7 同为跨 wave 依赖（本 PLAN line 715-717 先例）。
 > 4. **W17T1-T7 测试依赖**：全部测试使用 `Tensor1::from_shape_vec` (W22T5) / `Tensor::from_shape_vec` (W22T5)。W17 需 W14+W15 完成，W14 与 W22 同处可并行组 D，拓扑序上 W22 在 W17 启动前已就绪。本结论与 W13 §423-429 / W19 §581-583 / W15 §497-503 先例一致，无需额外推迟。
 > 5. **W17T3 `DotAccumulate` 可见性**：`DotAccumulate` 设为 `pub` 但通过 `Numeric → Element → Sealed` (03-element §5.8) 链结构化封闭；避免 Rust 1.79+ `private_bounds` warn-by-default lint 触发（`pub fn dot` 携带 `+ DotAccumulate` 边界）。与 `OrderedCompareElement` (03-element §5.5 line 391) 同模式。
 
@@ -584,7 +584,7 @@ W22 完成 ──→ W30 (Documentation)
 批次2:
   W19T2 (UniqueElement trait + real scalar impls, 需 W19T1)
 批次3:
-  W19T3 (unique_impl core, 需 W19T2)
+  W19T3 (unique_impl core, 需 W19T2；**跨 wave：W12T7**)
 批次4 (并行):
   W19T4 (float NaN/±0.0 tests, test-only, 需 W19T3)
   W19T5 (complex equality impl + tests, 需 W19T3)
@@ -596,7 +596,9 @@ W22 完成 ──→ W30 (Documentation)
 >
 > **§6.5 哈希路径延后**：14-set §6.5 规定"当输入规模导致线性扫描的 O(N²) 成本不可接受时，必须切换到哈希路径"。W19 范围内仅实现线性扫描（见 W19T3 关键设计决策的 scope note），哈希路径作为后续性能任务延后执行；相应地，§8.2 的 stress 级 `test_unique_large_tensor_high_dup`（10^7 元素）推迟到 W29T11，且需在哈希路径就绪后方可稳定通过。
 >
-> **§8.2 跨 wave 依赖测试推迟**：`test_unique_non_contiguous_view` 与 `test_unique_transposed_view` 依赖 W20 (`transpose()`) 与 W21 (`slice(SliceInfo)`) 公开 API，超出 SUMMARY.md 第 561 行 `W8 + W12 ─→ W19` 的依赖链，且 W19 与 W20/W21 同处可并行组 D；两项测试推迟到 W29T11。
+> **§8.2 跨 wave 依赖测试推迟**：`test_unique_non_contiguous_view` 与 `test_unique_transposed_view` 依赖 W20 (`transpose()`) 与 W21 (`slice(SliceInfo)`) 公开 API，超出 SUMMARY.md 第 563 行 `W8 + W12 ─→ W19` 的依赖链，且 W19 与 W20/W21 同处可并行组 D；两项测试推迟到 W29T11。
+>
+> **§8.2 跨 wave 运行期依赖（docs_fix 补充）**：W19T3 `unique_impl` 内部使用 `tensor.iter().copied()` 迭代元素，依赖 **W12T7** 提供的 `TensorBase::iter()` entry method。与 W17T3 / W25T6 / W25T7 同为跨 wave 依赖（本 PLAN line 715-717 先例）。
 
 ---
 
