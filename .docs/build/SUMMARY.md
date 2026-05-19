@@ -391,7 +391,7 @@
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
 | W24T1 | `src/util/mod.rs` | Module skeleton: submodule declarations (no `pub use`; algorithms exposed as inherent methods) | W1T3 | 20-utility §5, §6, §7, §8 |
-| W24T2 | `src/util/fill.rs` | fill(): StorageMut-level fill helper + try_fill() sealed-marker dispatch for all tensor types | W24T1, W7T6, W7T18, W7T19, W8T4, W8T7, W12T7, W2T1 | 20-utility §5, §6, §7, §8 |
+| W24T2 | `src/util/fill.rs` | fill(): StorageMut-level fill helper + try_fill() sealed-marker dispatch for all tensor types | W24T1, W7T6, W7T18, W7T19, W8T4, W12T7, W2T1 | 20-utility §5, §6, §7, §8 |
 | W24T3 | `src/util/clip.rs` | clip(): element-wise clipping with NaN/min=max/NaN-bound/Integer error handling | W24T1, W4, W8, W12T1, W2T1 | 20-utility §5, §6, §7, §8 |
 | W24T4 | `src/util/contiguous.rs` | to_contiguous() + into_contiguous(): F-contiguous guarantee, reuse or repack | W24T1, W6T6, W6T7, W6T11, W7T18, W7T19, W8T4, W8T6, W8T7, W12T1, W25T7 | 20-utility §5, §6, §7, §8 |
 | W24T5 | `tests/test_utility.rs` | Integration tests: boundary cases (empty, single-element, non-contiguous, zero-dim, large) for all utility ops | W24T2, W24T3, W24T4, W22T8 | 20-utility §5, §6, §7, §8 |
