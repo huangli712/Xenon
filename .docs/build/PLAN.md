@@ -723,12 +723,12 @@ W22 完成 ──→ W30 (Documentation)
   W25T1 (mod.rs+lib.rs exports)
 批次2:
   W25T2 (ConvertTo trait def + CastTo doc note, 需 W25T1)
-批次3 (W25T3 ∥ W25T4，W25T5 需 W25T4 的内层 impl):
+批次3 (拓扑上可并行：W25T3 ∥ W25T4；但同文件 src/convert/cast.rs 迫使 serial：建议 W25T3 先完成，后续 W25T5 需 W25T4 的内层 impl):
   W25T3 (Tier-1 lossless 14 cells, 需 W25T2)
   W25T4 (Tier-2 lossy 14 cells, 需 W25T2)
 批次3.5 (需 W25T4):
   W25T5 (Tier-3 dynamic 8 cells, 需 W25T2+W25T4 — complex→real 委托到 W25T4 内层 CastTo impl)
-批次4 (并行，均需 W12T7 提供 `TensorBase::iter()`):
+批次4 (拓扑上可并行，均需 W12T7 提供 `TensorBase::iter()`；但 W25T6 / W25T7 同文件 src/convert/cast.rs + helper 依赖迫使 serial：建议 W25T6 先完成):
   W25T6 (cast method, 需 W25T3+W25T4+W25T5+W12T7)
   W25T7 (to_owned/into_owned, 需 W25T1+W7T5+W12T7 — StorageIntoOwned trait dispatch + iter())
 ```
