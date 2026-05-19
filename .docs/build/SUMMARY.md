@@ -307,10 +307,10 @@
 |------|------|------|-------------|-------------|
 | W17T1 | `src/matrix/mod.rs`, `src/matrix/dot.rs`, `src/lib.rs` | Module skeleton: matrix module + dot.rs compilable stub returning `Ok(A::zero())`, crate-root re-export | None | 12-matrix §5, §6, §7, §8 |
 | W17T2 | `src/matrix/dot.rs` | Input validation: rank/length checks returning `InvalidArgument` / `ShapeMismatch` | W17T1 | 12-matrix §5, §6, §7, §8 |
-| W17T3 | `src/matrix/dot.rs` | Scalar inner product via private `DotAccumulate` trait: float/complex via `acc + x.conjugate() * y`, integer via `CheckedMul`+`CheckedAdd` with typed panic diagnostics, `TensorBase::dot` method | W17T2 | 12-matrix §5, §6, §7, §8 |
+| W17T3 | `src/matrix/dot.rs` | Scalar inner product via sealed `DotAccumulate` trait (`pub`, sealed via Sealed chain): float/complex via `acc + x.conjugate() * y`, integer via `CheckedMul`+`CheckedAdd` with typed panic diagnostics, `TensorBase::dot` method | W17T2, W12T7 | 12-matrix §5, §6, §7, §8 |
 | W17T4 | `src/matrix/dot.rs` | Dispatch wiring: `alignment_ok(a, b)` private helper + `let (path, guard) = select_exec_path(...)` tuple destructure with all arms falling back to scalar | W17T3 | 12-matrix §5, §6, §7, §8 |
 | W17T5 | `src/matrix/dot.rs` | SIMD path: `can_use_simd_dot` admission gate + per-type dispatch to `simd::try_dot_*` slice API, scalar fallback on `None` | W17T4, W14 | 12-matrix §5, §6, §7, §8 |
-| W17T6 | `src/matrix/dot.rs` | Parallel path: route `ExecPath::Parallel` to `parallel::par_dot(lhs, rhs, &strategy, guard)` using `ParallelExecStrategy::auto()`, nested parallel fallback test | W17T4, W15 | 12-matrix §5, §6, §7, §8 |
+| W17T6 | `src/matrix/dot.rs` | Parallel path: route `ExecPath::Parallel` to `parallel::par_dot(lhs, rhs, &strategy, guard)` using `ParallelExecStrategy::auto()`, nested parallel fallback test; reuses `f64_dot_tolerance` helper defined by W17T5 | W17T4, W17T5, W15 | 12-matrix §5, §6, §7, §8 |
 | W17T7 | `tests/test_matrix.rs` | Integration tests covering full §8.2 14-test matrix incl. tolerance + NaN cross-path | W17T3–W17T6 | 12-matrix §5, §6, §7, §8 |
 
 ### W18: Reduction Operations (L5)
@@ -330,7 +330,7 @@
 |------|------|------|-------------|-------------|
 | W19T1 | `src/lib.rs, src/set/mod.rs` | Module skeleton: crate root wiring, unique module declaration, and forward re-exports following existing skeleton pattern | None | 01-architecture §3, 14-set §3, §7 |
 | W19T2 | `src/set/unique.rs` | UniqueElement trait definition and real scalar impls (i32/i64/f32/f64) | W19T1 | 14-set §5, §6, §7, §8 |
-| W19T3 | `src/set/unique.rs` | unique_impl(): logical F-order element collection, equality-based deduplication, Tensor construction | W19T2 | 14-set §5, §6, §7, §8 |
+| W19T3 | `src/set/unique.rs` | unique_impl(): logical F-order element collection, equality-based deduplication, Tensor construction | W19T2, W12T7 | 14-set §5, §6, §7, §8 |
 | W19T4 | `src/set/unique.rs` | Float NaN / ±0.0 behavior tests (test-only): preserve each NaN, treat -0.0 and 0.0 as equal | W19T3 | 14-set §5, §6, §7, §8 |
 | W19T5 | `src/set/unique.rs` | Complex component-wise equality using direct real/imag `==` per design §6.4, no ordering | W19T3 | 14-set §5, §6, §7, §8 |
 | W19T6 | `src/set/unique.rs, src/prelude.rs` | unique() entry method on TensorBase, prelude re-export, remaining in-module unit tests | W19T3–W19T5 | 14-set §5, §6, §7, §8 |
@@ -391,7 +391,7 @@
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
 | W24T1 | `src/util/mod.rs` | Module skeleton: submodule declarations (no `pub use`; algorithms exposed as inherent methods) | W1T3 | 20-utility §5, §6, §7, §8 |
-| W24T2 | `src/util/fill.rs` | fill(): StorageMut-level fill helper + try_fill() sealed-marker dispatch for all tensor types | W24T1, W7T6, W7T18, W7T19, W8T4, W8T7, W12T7, W2T1 | 20-utility §5, §6, §7, §8 |
+| W24T2 | `src/util/fill.rs` | fill(): StorageMut-level fill helper + try_fill() sealed-marker dispatch for all tensor types | W24T1, W7T6, W7T18, W7T19, W8T4, W12T7, W2T1 | 20-utility §5, §6, §7, §8 |
 | W24T3 | `src/util/clip.rs` | clip(): element-wise clipping with NaN/min=max/NaN-bound/Integer error handling | W24T1, W4, W8, W12T1, W2T1 | 20-utility §5, §6, §7, §8 |
 | W24T4 | `src/util/contiguous.rs` | to_contiguous() + into_contiguous(): F-contiguous guarantee, reuse or repack | W24T1, W6T6, W6T7, W6T11, W7T18, W7T19, W8T4, W8T6, W8T7, W12T1, W25T7 | 20-utility §5, §6, §7, §8 |
 | W24T5 | `tests/test_utility.rs` | Integration tests: boundary cases (empty, single-element, non-contiguous, zero-dim, large) for all utility ops | W24T2, W24T3, W24T4, W22T8 | 20-utility §5, §6, §7, §8 |
@@ -426,8 +426,8 @@
 | W27T1 | `src/storage/owned.rs` | Audit and strengthen SAFETY comments for Owned\<A\> Send + Sync impls | W7T12 | 25-safety §5, §6, §7, §8 |
 | W27T2 | `src/storage/view.rs` | Audit and strengthen SAFETY comments for ViewRepr\<'a, A\> Send + Sync impls | W7T14 | 25-safety §5, §6, §7, §8 |
 | W27T3 | `src/storage/viewmut.rs` | Audit and strengthen SAFETY comments for ViewMutRepr\<'a, A\> Send (no Sync) | W7T15 | 25-safety §5, §6, §7, §8 |
-| W27T4 | `src/storage/arc.rs` | Audit and strengthen SAFETY comments for ArcRepr\<A\> Send + Sync impls | W7T17 | 25-safety §5, §6, §7, §8 |
-| W27T5 | `src/parallel/iter.rs` | Parallel execution chunk safety: completeness, non-overlap, boundary tests | W27T1–W27T4 | 25-safety §5, §6, §7, §8 |
+| W27T4 | `src/storage/arc.rs` | Audit and strengthen SAFETY comments for ArcRepr\<A\> Send + Sync impls | W7T17, W7T12 (tests use into_shared) | 25-safety §5, §6, §7, §8 |
+| W27T5 | `src/parallel/iter.rs` | Parallel execution chunk safety: completeness, non-overlap, boundary tests | W27T1–W27T4, W15T1 (compute_safe_chunks) | 25-safety §5, §6, §7, §8 |
 | W27T6 | `tests/test_parallel.rs`, `tests/test_error.rs` | Thread-safety integration tests: cross-thread transfer, concurrent access | W27T1–W27T5 | 25-safety §5, §6, §7, §8 |
 | W27T7 | `src/storage/mod.rs` | Module-level thread-safety docs, Send/Sync matrix, cargo doc pass | W27T1–W27T4 | 25-safety §5, §6, §7, §8 |
 
