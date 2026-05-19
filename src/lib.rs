@@ -29,6 +29,9 @@ pub mod complex;
 /// Element type hierarchy: base traits and type discriminants.
 pub mod element;
 
+/// Layout module: F-order strides, contiguity, flags and alignment.
+pub mod layout;
+
 pub use error::XenonError;
 pub use prelude::*;
 
