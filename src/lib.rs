@@ -32,6 +32,9 @@ pub mod element;
 /// Layout module: F-order strides, contiguity, flags and alignment.
 pub mod layout;
 
+/// Storage system: trait hierarchy and concrete storage representations.
+pub mod storage;
+
 pub use error::XenonError;
 pub use prelude::*;
 
