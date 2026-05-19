@@ -307,10 +307,10 @@
 |------|------|------|-------------|-------------|
 | W17T1 | `src/matrix/mod.rs`, `src/matrix/dot.rs`, `src/lib.rs` | Module skeleton: matrix module + dot.rs compilable stub returning `Ok(A::zero())`, crate-root re-export | None | 12-matrix §5, §6, §7, §8 |
 | W17T2 | `src/matrix/dot.rs` | Input validation: rank/length checks returning `InvalidArgument` / `ShapeMismatch` | W17T1 | 12-matrix §5, §6, §7, §8 |
-| W17T3 | `src/matrix/dot.rs` | Scalar inner product via private `DotAccumulate` trait: float/complex via `acc + x.conjugate() * y`, integer via `CheckedMul`+`CheckedAdd` with typed panic diagnostics, `TensorBase::dot` method | W17T2 | 12-matrix §5, §6, §7, §8 |
+| W17T3 | `src/matrix/dot.rs` | Scalar inner product via sealed `DotAccumulate` trait (`pub`, sealed via Sealed chain): float/complex via `acc + x.conjugate() * y`, integer via `CheckedMul`+`CheckedAdd` with typed panic diagnostics, `TensorBase::dot` method | W17T2, W12T7 | 12-matrix §5, §6, §7, §8 |
 | W17T4 | `src/matrix/dot.rs` | Dispatch wiring: `alignment_ok(a, b)` private helper + `let (path, guard) = select_exec_path(...)` tuple destructure with all arms falling back to scalar | W17T3 | 12-matrix §5, §6, §7, §8 |
 | W17T5 | `src/matrix/dot.rs` | SIMD path: `can_use_simd_dot` admission gate + per-type dispatch to `simd::try_dot_*` slice API, scalar fallback on `None` | W17T4, W14 | 12-matrix §5, §6, §7, §8 |
-| W17T6 | `src/matrix/dot.rs` | Parallel path: route `ExecPath::Parallel` to `parallel::par_dot(lhs, rhs, &strategy, guard)` using `ParallelExecStrategy::auto()`, nested parallel fallback test | W17T4, W15 | 12-matrix §5, §6, §7, §8 |
+| W17T6 | `src/matrix/dot.rs` | Parallel path: route `ExecPath::Parallel` to `parallel::par_dot(lhs, rhs, &strategy, guard)` using `ParallelExecStrategy::auto()`, nested parallel fallback test; reuses `f64_dot_tolerance` helper defined by W17T5 | W17T4, W17T5, W15 | 12-matrix §5, §6, §7, §8 |
 | W17T7 | `tests/test_matrix.rs` | Integration tests covering full §8.2 14-test matrix incl. tolerance + NaN cross-path | W17T3–W17T6 | 12-matrix §5, §6, §7, §8 |
 
 ### W18: Reduction Operations (L5)
