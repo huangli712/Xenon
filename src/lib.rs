@@ -26,6 +26,9 @@ pub mod prelude;
 /// Complex number type with sealed component bound.
 pub mod complex;
 
+/// Element type hierarchy: base traits and type discriminants.
+pub mod element;
+
 pub use error::XenonError;
 pub use prelude::*;
 

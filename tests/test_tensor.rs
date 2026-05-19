@@ -72,7 +72,7 @@ fn test_tensor_from_shape_vec_accepts_intodimension() {
     //   assert_eq!(t.shape(), &[3, 4]);
     //   let t = Tensor::<f64, _>::from_shape_vec(&[2, 3, 4][..], vec![0.0; 24]).unwrap();
     //   assert_eq!(t.shape(), &[2, 3, 4]);
-    panic!("W8 placeholder — must be replaced before W8 completion");
+    unimplemented!("W8 Tensor type not yet available; replace body with the commented-out assertions above when Tensor is defined");
 }
 
 /// Placeholder for W8: Tensor::zeros via IntoDimension.
@@ -82,5 +82,16 @@ fn test_tensor_zeros_accepts_intodimension() {
     // W8 will implement:
     //   let t = Tensor::<f32, _>::zeros((10, 20));
     //   assert_eq!(t.dim().slice(), &[10, 20]);
-    panic!("W8 placeholder — must be replaced before W8 completion");
+    unimplemented!("W8 Tensor type not yet available; replace body with the commented-out assertions above when Tensor is defined");
+}
+
+/// Placeholder for W8: element type interaction via Tensor::from_shape_vec.
+#[test]
+#[ignore = "Requires W8 (Tensor Core) to be completed first"]
+fn test_tensor_accepts_element_types() {
+    // W8 will implement:
+    //   let values = vec![1.0f64, 2.0, 3.0, 4.0];
+    //   let tensor = Tensor::<f64, Ix2>::from_shape_vec((2, 2), values).unwrap();
+    //   assert_eq!(tensor.shape(), &[2, 2]);
+    unimplemented!("W8 Tensor type not yet available; replace body with the commented-out assertions above when Tensor is defined");
 }
