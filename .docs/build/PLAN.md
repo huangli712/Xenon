@@ -497,7 +497,7 @@ W22 完成 ──→ W30 (Documentation)
 > **§8.2 跨 wave 依赖（docs_fix 补充）**：W15 与 W11/W21/W22 同处可并行组 D 但位于独立分支，存在以下隐式依赖：
 > 
 > 1. **W15T3 运行期依赖**：`par_zip_map` 调用 `lhs.broadcast_to(output_dim)`（**W11T7**）与 `lhs_view.get_unchecked(&coord)`（**W21T3**）。**W11T7 + W21T3 必须在 W15T3 之前完成**。
-> 2. **W15T2-T8 测试依赖推迟**：W15 task 内部测试不使用 W22T5 `Tensor::from_shape_vec`，改用 W8T7 `TensorView::from_raw_parts(ptr, storage_len, shape, strides, offset)` 手工构造载体张量（参照 W13 §423-429 / W19 §581-583 先例）。需要公开构造 API 与 `slice`/`transpose` 的集成测试推迟到 **W29T19 (`tests/test_parallel.rs`)**。
+> 2. **W15T2-T8 测试依赖推迟**：W15 task 内部测试不使用 W22T5 `Tensor::from_shape_vec`，改用 W8T7 `TensorView::from_raw_parts(ptr, storage_len, shape, strides, offset)` 手工构造载体张量（参照 W13 §423-429 / W19 §599 先例）。需要公开构造 API 与 `slice`/`transpose` 的集成测试推迟到 **W29T19 (`tests/test_parallel.rs`)**。
 > 3. **W15T1 非 F-contiguous 路径**：`ParIter::next()` 在非 F-contiguous 输入上使用 `unimplemented!()` 占位。虽然 30-dispatch §5.6 明确允许非连续走 Parallel（`len >= 2 * PARALLEL_THRESHOLD`），但 W15 范围内只支持 F-contiguous walk；**调用侧（par_map / par_map_checked / 未来 W16 math 入口）需在调用 `par_iter()` 前自行检查 `is_f_contiguous()`，非连续走 fallback**。`par_iter()` 入口增加了 `debug_assert!(is_f_contiguous())` 以提供开发阶段可见性。正确的非连续 stride 状态机推迟到后续 wave。
 > 4. **W15T5 `par_dot` 输入收束**：`par_dot` 增加 Step 2.5 前置校验，拒绝 1-D 非 F-contiguous / broadcast 视图，返回 `InvalidArgument`（复用 `OperationSpecific`）；避免 `as_slice().expect(...)` 在跨 wave 场景 panic。
 > 5. **W15T6 `ParallelPool` !Send + !Sync**：`ParallelPool` 增加 `_not_send: PhantomData<*const ()>` 字段强制 `!Send + !Sync`（与 30-dispatch §5.4 `ParallelGuard` 同模式），避免 `rayon::ThreadPool` 自动派生 `Send + Sync` 后跨线程 drop 破坏 `POOL_ACTIVE` TLS 不变量。
@@ -552,7 +552,7 @@ W22 完成 ──→ W30 (Documentation)
 > 1. **W17T5 SIMD path 依赖**：`simd::try_dot_f32 / try_dot_f64 / try_dot_complex_f32 / try_dot_complex_f64` 由 **W14T6** 提供（`src/simd/vector.rs`）；**W14T6 必须在 W17T5 之前完成**。`try_dot_i32` (W14T4) 本 task 不使用（仅作为覆盖文档参考）。
 > 2. **W17T6 Parallel path 依赖**：`parallel::par_dot` (4 参数签名) 由 **W15T5** 提供（`src/parallel/reduce.rs`）；`dispatch::with_parallel_worker_context` 由 **W10T2** 提供（`src/dispatch.rs`，与 `ParallelGuard` 同 task，见 SUMMARY.md line 214）；`ParallelExecStrategy::auto()` 由 **W10T3** 提供。**W15T5 必须在 W17T6 之前完成**。
 > 3. **W17T3 `TensorBase::iter()` 依赖**：`scalar_dot` 内部使用 `a.iter().copied().zip(b.iter().copied())` 迭代元素，依赖 **W12T7** 提供的 `TensorBase::iter()` entry method。与 W25T6 / W25T7 同为跨 wave 依赖（本 PLAN line 715-717 先例）。
-> 4. **W17T1-T7 测试依赖**：全部测试使用 `Tensor1::from_shape_vec` (W22T5) / `Tensor::from_shape_vec` (W22T5)。W17 需 W14+W15 完成，W14 与 W22 同处可并行组 D，拓扑序上 W22 在 W17 启动前已就绪。本结论与 W13 §423-429 / W19 §581-583 / W15 §497-503 先例一致，无需额外推迟。
+> 4. **W17T1-T7 测试依赖**：全部测试使用 `Tensor1::from_shape_vec` (W22T5) / `Tensor::from_shape_vec` (W22T5)。W17 需 W14+W15 完成，W14 与 W22 同处可并行组 D，拓扑序上 W22 在 W17 启动前已就绪。本结论与 W13 §423-429 / W19 §599 / W15 §500 先例一致，无需额外推迟。
 > 5. **W17T3 `DotAccumulate` 可见性**：`DotAccumulate` 设为 `pub` 但通过 `Numeric → Element → Sealed` (03-element §5.8) 链结构化封闭；避免 Rust 1.79+ `private_bounds` warn-by-default lint 触发（`pub fn dot` 携带 `+ DotAccumulate` 边界）。与 `OrderedCompareElement` (03-element §5.5 line 391) 同模式。
 
 ---
@@ -631,6 +631,22 @@ W22 完成 ──→ W30 (Documentation)
   W21T5 (try_at_mut/get_mut, 需 W21T3)
   W21T6 (slice shape update, 需 W21T4)
 ```
+
+> **§8.2 跨 wave 依赖（docs_fix 补充）**：W21 与 W7/W8/W22 同处可并行组 D，W21T6 实施时下述依赖由提供方 wave 先行交付后才能启动；测试构造器跨 wave 项参照 W15/W17/W19 先例处理。
+>
+> 1. **W21T6 跨 wave API 依赖（W7T14 / W8）**：
+>    - `ViewRepr::from_ref(storage: &S) -> ViewRepr<'_, A>` 由 **W7T14** 提供（用于存储降级到只读视图）。当前 W7T14 SUMMARY 未明示 `from_ref`，实施阶段可按 W7 实际交付选择：若 W7 提供 `ViewRepr::borrow(..)` 或等价构造器则直接复用；若未提供则需 W7 补齐。
+>    - `TensorBase::new_unchecked` （6-arg storage-based 构造器）由 **W8** 提供，供 W21T6 `slice()` 在元数据全部校验完成后跳过重复校验直接构造 view。注意W8T7 `from_raw_parts` 是 raw pointer 接口（不合适本路径）；`from_raw_vec_unchecked` (W8T8) / `new_unchecked` 是内部构造器。实施阶段以 W8 交付的具体函数名为准。
+>    - `TensorBase::storage_kind()` / `TensorBase::derived_from_view_mut()` （`derived_from_view_mut` 传播 3-rule 需要）由 **W8T4** 提供。SUMMARY.md line 187 已列出 `storage_kind`，但 `derived_from_view_mut` getter 未明示；若 W8T4 未暴露需 W8 补齐。
+>    - `StorageKind::tag_of::<S>()` 或等价 `S::KIND` 关联常量（用于错误构造）由 **W7** 提供。以 W7 交付为准。
+>
+> 2. **W21T3 跨 wave 运行期依赖**：W21T3 `try_at` / `get` 仅依赖 W7/W8 已交付的 `Storage::get_unchecked` 与 `TensorBase` query/pointer methods，未引入额外跨 wave 依赖。
+>
+> 3. **W21T3 / W21T5 / W21T6 测试跨 wave 依赖**：全部测试使用 `Tensor::from_shape_vec` / `Tensor1::from_shape_vec`（由 **W22T5** 提供）。W21 与 W22 同处可并行组 D，拓扑上 W22T5 需先于 W21 测试运行。与 W13 §423-429 / W15 §500 / W17 §555 / W19 §599 先例一致，无需额外推迟到 W29。
+>
+> 4. **W21T5 `get_mut` 性能瑕疵**（docs_fix audit NEW-A）：`get_mut` 当前实施在 borrow checker 冲突处理中使用 `to_vec()` 克隆 shape / strides，带来 O(ndim) 堆分配。优化方向：抽出 `Self::validate_index(dim, strides, offset, index) -> Result<usize>` 关联函数（不持有 `self` 借用即可消除冲突且无堆分配）。当前以稳定性优先，优化推迟到 W21 后续修订或集成测试反馈后。
+>
+> 5. **W21T6 `test_slice_extreme_offset_checked` PARTIAL COVERAGE**：该测试仅覆盖正常路径；真正 offset 溢出需 poisoned stride，公开 API 难以构造。完整溢出验证下放到 **W29 (17-indexing §8.4 属性测试)**，跨 wave 推迟明示。
 
 ---
 
