@@ -426,8 +426,8 @@
 | W27T1 | `src/storage/owned.rs` | Audit and strengthen SAFETY comments for Owned\<A\> Send + Sync impls | W7T12 | 25-safety §5, §6, §7, §8 |
 | W27T2 | `src/storage/view.rs` | Audit and strengthen SAFETY comments for ViewRepr\<'a, A\> Send + Sync impls | W7T14 | 25-safety §5, §6, §7, §8 |
 | W27T3 | `src/storage/viewmut.rs` | Audit and strengthen SAFETY comments for ViewMutRepr\<'a, A\> Send (no Sync) | W7T15 | 25-safety §5, §6, §7, §8 |
-| W27T4 | `src/storage/arc.rs` | Audit and strengthen SAFETY comments for ArcRepr\<A\> Send + Sync impls | W7T17 | 25-safety §5, §6, §7, §8 |
-| W27T5 | `src/parallel/iter.rs` | Parallel execution chunk safety: completeness, non-overlap, boundary tests | W27T1–W27T4 | 25-safety §5, §6, §7, §8 |
+| W27T4 | `src/storage/arc.rs` | Audit and strengthen SAFETY comments for ArcRepr\<A\> Send + Sync impls | W7T17, W7T12 (tests use into_shared) | 25-safety §5, §6, §7, §8 |
+| W27T5 | `src/parallel/iter.rs` | Parallel execution chunk safety: completeness, non-overlap, boundary tests | W27T1–W27T4, W15T1 (compute_safe_chunks) | 25-safety §5, §6, §7, §8 |
 | W27T6 | `tests/test_parallel.rs`, `tests/test_error.rs` | Thread-safety integration tests: cross-thread transfer, concurrent access | W27T1–W27T5 | 25-safety §5, §6, §7, §8 |
 | W27T7 | `src/storage/mod.rs` | Module-level thread-safety docs, Send/Sync matrix, cargo doc pass | W27T1–W27T4 | 25-safety §5, §6, §7, §8 |
 

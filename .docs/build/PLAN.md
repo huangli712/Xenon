@@ -760,13 +760,20 @@ W22 完成 ──→ W30 (Documentation)
   W27T1 (Owned Send+Sync, 需 W7T12)
   W27T2 (ViewRepr Send+Sync, 需 W7T14)
   W27T3 (ViewMutRepr Send, 需 W7T15)
-  W27T4 (ArcRepr Send+Sync, 需 W7T17)
+  W27T4 (ArcRepr Send+Sync, 需 W7T17；**跨 wave：W7T12** 提供测试使用的 `Owned::into_shared`)
 批次2:
-  W27T5 (parallel chunk safety, 需 W27T1–W27T4)
+  W27T5 (parallel chunk safety, 需 W27T1–W27T4；**跨 wave：W15T1** 提供 `compute_safe_chunks` 实现)
 批次3 (并行):
   W27T6 (thread-safety tests, 需 W27T1–W27T5)
   W27T7 (Send/Sync docs, 需 W27T1–W27T4)
 ```
+
+> **§8.2 跨 wave 依赖（docs_fix 补充）**：W27 是 cross-cutting Safety Audit wave，拓扑上在 W1-W26 全部完成后启动；以下为 task 级依赖说明：
+>
+> 1. **W27T1 依赖 W7T12**：Owned `unsafe impl Send + Sync` 与 `into_shared` API 同在 W7T12（SUMMARY.md 行 171），本跨依赖已列出。
+> 2. **W27T4 跨 wave：W7T12**（测试路径）：`test_arc_concurrent_read` / `test_arc_cloned_handles_preserve_read_only_data` 调用 `Owned::into_shared`。拓扑上 W7T12 远早于 W27。
+> 3. **W27T5 跨 wave：W15T1**：`compute_safe_chunks` 函数定义于 `src/parallel/mod.rs`（W15T1 交付），与 MIN_CHUNK = 1024 常量一致。与 W17T3 / W19T3 / W25T6 同为跨 wave 依赖。
+> 4. **W27T5 设计文档冲突调和**：`25-safety §9.3` 行 706-712 描述 `compute_safe_chunks` 返回 `&[(usize, usize)]` intervals；`09-parallel §6.3` 行 338-358 返回 chunk_size 标量。以 09-parallel 为权威（更具体的实现设计），W15T1 已按此落地；W27T5 测试采用同一权威。`.docs/design/` 只读，不修改原设计文档。
 
 ---
 
