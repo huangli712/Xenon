@@ -6,92 +6,164 @@
 
 use crate::complex::Complex;
 use crate::element::{
-    BoolElement, CastElement, ComplexScalar, Element, ElementType, Numeric,
-    OrderedCompareElement, RealScalar,
+    BoolElement, CastElement, ComplexScalar, Element, ElementType, Numeric, OrderedCompareElement,
+    RealScalar,
 };
 use crate::private::Sealed;
 
 impl Sealed for i32 {}
 
 impl Element for i32 {
-    fn zero() -> Self { 0 }
-    fn one() -> Self { 1 }
+    fn zero() -> Self {
+        0
+    }
+    fn one() -> Self {
+        1
+    }
     const ELEMENT_TYPE: ElementType = ElementType::I32;
     const ELEMENT_TYPE_NAME: &'static str = "i32";
 }
 
 impl Numeric for i32 {
-    fn conjugate(self) -> Self { self }
+    fn conjugate(self) -> Self {
+        self
+    }
 }
 
 impl Sealed for i64 {}
 
 impl Element for i64 {
-    fn zero() -> Self { 0 }
-    fn one() -> Self { 1 }
+    fn zero() -> Self {
+        0
+    }
+    fn one() -> Self {
+        1
+    }
     const ELEMENT_TYPE: ElementType = ElementType::I64;
     const ELEMENT_TYPE_NAME: &'static str = "i64";
 }
 
 impl Numeric for i64 {
-    fn conjugate(self) -> Self { self }
+    fn conjugate(self) -> Self {
+        self
+    }
 }
 
 impl Element for f32 {
-    fn zero() -> Self { 0.0 }
-    fn one() -> Self { 1.0 }
+    fn zero() -> Self {
+        0.0
+    }
+    fn one() -> Self {
+        1.0
+    }
     const ELEMENT_TYPE: ElementType = ElementType::F32;
     const ELEMENT_TYPE_NAME: &'static str = "f32";
 }
 
 impl Numeric for f32 {
-    fn conjugate(self) -> Self { self }
+    fn conjugate(self) -> Self {
+        self
+    }
 }
 
 impl RealScalar for f32 {
-    fn abs(self) -> Self { f32::abs(self) }
-    fn signum(self) -> Self { f32::signum(self) }
-    fn sqrt(self) -> Self { f32::sqrt(self) }
-    fn sin(self) -> Self { f32::sin(self) }
-    fn exp(self) -> Self { f32::exp(self) }
-    fn ln(self) -> Self { f32::ln(self) }
-    fn floor(self) -> Self { f32::floor(self) }
-    fn ceil(self) -> Self { f32::ceil(self) }
-    fn is_nan(self) -> bool { f32::is_nan(self) }
-    fn is_infinite(self) -> bool { f32::is_infinite(self) }
-    fn is_finite(self) -> bool { f32::is_finite(self) }
+    fn abs(self) -> Self {
+        f32::abs(self)
+    }
+    fn signum(self) -> Self {
+        f32::signum(self)
+    }
+    fn sqrt(self) -> Self {
+        f32::sqrt(self)
+    }
+    fn sin(self) -> Self {
+        f32::sin(self)
+    }
+    fn exp(self) -> Self {
+        f32::exp(self)
+    }
+    fn ln(self) -> Self {
+        f32::ln(self)
+    }
+    fn floor(self) -> Self {
+        f32::floor(self)
+    }
+    fn ceil(self) -> Self {
+        f32::ceil(self)
+    }
+    fn is_nan(self) -> bool {
+        f32::is_nan(self)
+    }
+    fn is_infinite(self) -> bool {
+        f32::is_infinite(self)
+    }
+    fn is_finite(self) -> bool {
+        f32::is_finite(self)
+    }
 }
 
 impl Element for f64 {
-    fn zero() -> Self { 0.0 }
-    fn one() -> Self { 1.0 }
+    fn zero() -> Self {
+        0.0
+    }
+    fn one() -> Self {
+        1.0
+    }
     const ELEMENT_TYPE: ElementType = ElementType::F64;
     const ELEMENT_TYPE_NAME: &'static str = "f64";
 }
 
 impl Numeric for f64 {
-    fn conjugate(self) -> Self { self }
+    fn conjugate(self) -> Self {
+        self
+    }
 }
 
 impl RealScalar for f64 {
-    fn abs(self) -> Self { f64::abs(self) }
-    fn signum(self) -> Self { f64::signum(self) }
-    fn sqrt(self) -> Self { f64::sqrt(self) }
-    fn sin(self) -> Self { f64::sin(self) }
-    fn exp(self) -> Self { f64::exp(self) }
-    fn ln(self) -> Self { f64::ln(self) }
-    fn floor(self) -> Self { f64::floor(self) }
-    fn ceil(self) -> Self { f64::ceil(self) }
-    fn is_nan(self) -> bool { f64::is_nan(self) }
-    fn is_infinite(self) -> bool { f64::is_infinite(self) }
-    fn is_finite(self) -> bool { f64::is_finite(self) }
+    fn abs(self) -> Self {
+        f64::abs(self)
+    }
+    fn signum(self) -> Self {
+        f64::signum(self)
+    }
+    fn sqrt(self) -> Self {
+        f64::sqrt(self)
+    }
+    fn sin(self) -> Self {
+        f64::sin(self)
+    }
+    fn exp(self) -> Self {
+        f64::exp(self)
+    }
+    fn ln(self) -> Self {
+        f64::ln(self)
+    }
+    fn floor(self) -> Self {
+        f64::floor(self)
+    }
+    fn ceil(self) -> Self {
+        f64::ceil(self)
+    }
+    fn is_nan(self) -> bool {
+        f64::is_nan(self)
+    }
+    fn is_infinite(self) -> bool {
+        f64::is_infinite(self)
+    }
+    fn is_finite(self) -> bool {
+        f64::is_finite(self)
+    }
 }
 
 impl Sealed for bool {}
 
 impl Element for bool {
-    fn zero() -> Self { false }
-    fn one() -> Self { true }
+    fn zero() -> Self {
+        false
+    }
+    fn one() -> Self {
+        true
+    }
     const ELEMENT_TYPE: ElementType = ElementType::Bool;
     const ELEMENT_TYPE_NAME: &'static str = "bool";
 }
@@ -99,41 +171,65 @@ impl Element for bool {
 impl Sealed for Complex<f32> {}
 
 impl Element for Complex<f32> {
-    fn zero() -> Self { Complex::new(0.0, 0.0) }
-    fn one() -> Self { Complex::new(1.0, 0.0) }
+    fn zero() -> Self {
+        Complex::new(0.0, 0.0)
+    }
+    fn one() -> Self {
+        Complex::new(1.0, 0.0)
+    }
     const ELEMENT_TYPE: ElementType = ElementType::Complex32;
     const ELEMENT_TYPE_NAME: &'static str = "Complex<f32>";
 }
 
 impl Numeric for Complex<f32> {
-    fn conjugate(self) -> Self { self.conj() }
+    fn conjugate(self) -> Self {
+        self.conj()
+    }
 }
 
 impl ComplexScalar for Complex<f32> {
     type Real = f32;
-    fn re(self) -> f32 { self.re }
-    fn im(self) -> f32 { self.im }
-    fn norm(self) -> f32 { self.norm() }
+    fn re(self) -> f32 {
+        self.re
+    }
+    fn im(self) -> f32 {
+        self.im
+    }
+    fn norm(self) -> f32 {
+        self.norm()
+    }
 }
 
 impl Sealed for Complex<f64> {}
 
 impl Element for Complex<f64> {
-    fn zero() -> Self { Complex::new(0.0, 0.0) }
-    fn one() -> Self { Complex::new(1.0, 0.0) }
+    fn zero() -> Self {
+        Complex::new(0.0, 0.0)
+    }
+    fn one() -> Self {
+        Complex::new(1.0, 0.0)
+    }
     const ELEMENT_TYPE: ElementType = ElementType::Complex64;
     const ELEMENT_TYPE_NAME: &'static str = "Complex<f64>";
 }
 
 impl Numeric for Complex<f64> {
-    fn conjugate(self) -> Self { self.conj() }
+    fn conjugate(self) -> Self {
+        self.conj()
+    }
 }
 
 impl ComplexScalar for Complex<f64> {
     type Real = f64;
-    fn re(self) -> f64 { self.re }
-    fn im(self) -> f64 { self.im }
-    fn norm(self) -> f64 { self.norm() }
+    fn re(self) -> f64 {
+        self.re
+    }
+    fn im(self) -> f64 {
+        self.im
+    }
+    fn norm(self) -> f64 {
+        self.norm()
+    }
 }
 
 // ── Marker trait impls (§5.5, §5.6, §5.9.1) ──
@@ -250,7 +346,10 @@ mod tests {
     #[test]
     fn test_complex_f64_conj_and_norm() {
         let value = Complex::new(3.0f64, 4.0f64);
-        assert_eq!(<Complex<f64> as Numeric>::conjugate(value), Complex::new(3.0, -4.0));
+        assert_eq!(
+            <Complex<f64> as Numeric>::conjugate(value),
+            Complex::new(3.0, -4.0)
+        );
         assert_eq!(<Complex<f64> as ComplexScalar>::norm(value), 5.0);
         assert_eq!(Complex::<f64>::zero(), Complex::new(0.0, 0.0));
     }

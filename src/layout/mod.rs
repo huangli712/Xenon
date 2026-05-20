@@ -8,7 +8,7 @@ mod strides;
 
 pub use contiguous::is_f_contiguous;
 pub use flags::{LayoutFlags, LayoutState};
-pub use strides::{compute_f_strides, has_zero_stride, is_aligned, is_aligned_to, Strides};
+pub use strides::{Strides, compute_f_strides, has_zero_stride, is_aligned, is_aligned_to};
 
 use crate::dimension::Dimension;
 
@@ -220,7 +220,7 @@ mod tests {
     fn test_compute_layout_flags_aligned_non_empty() {
         // Verify that a non-empty tensor with a 64-byte-aligned pointer
         // correctly reports `is_aligned() == true`.
-        use std::alloc::{alloc, dealloc, Layout};
+        use std::alloc::{Layout, alloc, dealloc};
         let layout = Layout::from_size_align(128, 64).expect("valid layout");
         // SAFETY: layout is non-zero size with valid align.
         let ptr = unsafe { alloc(layout) };
@@ -233,7 +233,9 @@ mod tests {
         assert!(!flags.has_zero_stride());
         assert_eq!(flags.classify(), LayoutState::FContiguous);
         // SAFETY: ptr was obtained from `alloc(layout)`.
-        unsafe { dealloc(ptr, layout); }
+        unsafe {
+            dealloc(ptr, layout);
+        }
     }
 }
 
@@ -289,10 +291,14 @@ mod integration_tests {
         let strides = Strides::new(Ix2(1, 0));
         let dangling = dangling_u8();
         let flags = compute_layout_flags::<u8, Ix2>(&shape, &strides, dangling);
-        assert!(!flags.has_zero_stride(),
-                "empty array degenerate zero stride must NOT set HAS_ZERO_STRIDE");
-        assert!(flags.is_f_contiguous(),
-                "empty F-order metadata should remain F_CONTIGUOUS (§5.11)");
+        assert!(
+            !flags.has_zero_stride(),
+            "empty array degenerate zero stride must NOT set HAS_ZERO_STRIDE"
+        );
+        assert!(
+            flags.is_f_contiguous(),
+            "empty F-order metadata should remain F_CONTIGUOUS (§5.11)"
+        );
         // §5.9: empty tensor ⇒ ALIGNED true regardless of pointer.
         assert!(flags.is_aligned());
         assert_eq!(flags.classify(), LayoutState::FContiguous);

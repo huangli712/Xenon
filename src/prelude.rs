@@ -29,9 +29,6 @@
 
 // Error types — active (W2T5)
 pub use crate::error::{
-    // Core types
-    XenonError,
-    Result,
     // Auxiliary enums
     AbiMismatchKind,
     ConversionFailureReason,
@@ -40,12 +37,15 @@ pub use crate::error::{
     InvalidArgumentKind,
     InvalidLayoutReason,
     InvalidShapeKind,
+    Result,
     StorageConversionKind,
     StorageKindTag,
     TypedViewRejection,
     WorkspaceBorrowKind,
     WorkspaceBorrowState,
     WorkspaceErrorCategory,
+    // Core types
+    XenonError,
 };
 
 // Construction convenience helpers — available after W22

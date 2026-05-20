@@ -54,14 +54,15 @@ impl<D: Dimension> Strides<D> {
     /// See `06-layout §5.5`.
     pub fn try_stride(&self, axis: usize) -> Result<usize, XenonError> {
         let strides = self.as_slice();
-        strides.get(axis).copied().ok_or_else(|| {
-            XenonError::IndexOutOfBounds {
+        strides
+            .get(axis)
+            .copied()
+            .ok_or_else(|| XenonError::IndexOutOfBounds {
                 operation: Cow::Borrowed("Strides::try_stride"),
                 attempted_index: vec![axis],
                 axis: 0,
                 shape: vec![strides.len()],
-            }
-        })
+            })
     }
 
     /// Returns an iterator over stride values.
@@ -90,14 +91,14 @@ pub fn compute_f_strides<D: Dimension>(shape: &D) -> Result<Strides<D>, XenonErr
     let mut cumulative: usize = 1;
     for (axis_idx, &extent) in axes.iter().enumerate() {
         values[axis_idx] = cumulative;
-        cumulative = cumulative.checked_mul(extent).ok_or_else(|| {
-            XenonError::InvalidShape {
+        cumulative = cumulative
+            .checked_mul(extent)
+            .ok_or_else(|| XenonError::InvalidShape {
                 operation: Cow::Borrowed("layout::compute_f_strides"),
                 shape: axes.to_vec(),
                 kind: InvalidShapeKind::ProductOverflow,
                 offending_dim: Some(axis_idx),
-            }
-        })?;
+            })?;
     }
     Strides::from_slice(&values)
 }
@@ -121,10 +122,7 @@ pub fn has_zero_stride<D: Dimension>(strides: &Strides<D>) -> bool {
 /// metadata (`product(shape) == 0`) is excluded by this guard, so
 /// `compute_layout_flags` MUST call this helper instead of bare
 /// `has_zero_stride` when writing the bit.
-pub(crate) fn should_set_zero_stride_flag<D: Dimension>(
-    shape: &D,
-    strides: &Strides<D>,
-) -> bool {
+pub(crate) fn should_set_zero_stride_flag<D: Dimension>(shape: &D, strides: &Strides<D>) -> bool {
     if !has_zero_stride(strides) {
         return false;
     }
@@ -199,7 +197,10 @@ mod tests {
         let shape = Ix2(usize::MAX, usize::MAX);
         let err = compute_f_strides(&shape).expect_err("expected overflow error");
         match err {
-            XenonError::InvalidShape { kind: InvalidShapeKind::ProductOverflow, .. } => {}
+            XenonError::InvalidShape {
+                kind: InvalidShapeKind::ProductOverflow,
+                ..
+            } => {},
             other => panic!("expected InvalidShape::ProductOverflow, got {other:?}"),
         }
     }
@@ -217,9 +218,11 @@ mod tests {
     fn test_strides_try_stride_out_of_bounds() {
         // §5.5: try_stride returns Err(IndexOutOfBounds) for axis >= ndim.
         let strides = compute_f_strides(&Ix2(3, 4)).expect("valid test shape");
-        let err = strides.try_stride(2).expect_err("expected out-of-bounds error");
+        let err = strides
+            .try_stride(2)
+            .expect_err("expected out-of-bounds error");
         match err {
-            XenonError::IndexOutOfBounds { .. } => {}
+            XenonError::IndexOutOfBounds { .. } => {},
             other => panic!("expected IndexOutOfBounds, got {other:?}"),
         }
     }
@@ -265,7 +268,7 @@ mod tests {
 
     #[test]
     fn test_alignment_aligned() {
-        use std::alloc::{alloc, dealloc, Layout};
+        use std::alloc::{Layout, alloc, dealloc};
         let layout = Layout::from_size_align(256, 64).expect("valid layout");
         // SAFETY: layout is non-zero size with valid align.
         let ptr = unsafe { alloc(layout) };
@@ -275,7 +278,9 @@ mod tests {
         assert!(is_aligned_to(ptr, 32));
         assert!(is_aligned_to(ptr, 1));
         // SAFETY: ptr was obtained from `alloc(layout)`.
-        unsafe { dealloc(ptr, layout); }
+        unsafe {
+            dealloc(ptr, layout);
+        }
     }
 
     #[test]

@@ -1180,6 +1180,29 @@ impl std::error::Error for XenonError {
     }
 }
 
+impl XenonError {
+    /// Construct a dispatch-specific `InvalidArgument` error with an
+    /// `InvalidConfig` detail.
+    ///
+    /// Used by dispatch-side configuration validation where the offending
+    /// argument name, constraint, and actual value are known.
+    pub(crate) fn dispatch_invalid_argument(
+        argument: impl Into<Cow<'static, str>>,
+        constraint: impl Into<Cow<'static, str>>,
+        actual: impl Into<Cow<'static, str>>,
+    ) -> Self {
+        XenonError::InvalidArgument {
+            operation: Cow::Borrowed("dispatch"),
+            kind: InvalidArgumentKind::InvalidConfig {
+                argument: argument.into(),
+                constraint: constraint.into(),
+                actual: actual.into(),
+            },
+        }
+    }
+}
+
+/// Canonical `Result` alias used by all public Xenon APIs.
 /// Canonical `Result` alias used by all public Xenon APIs.
 ///
 /// Equivalent to `core::result::Result<T, XenonError>`.

@@ -175,10 +175,7 @@ mod tests {
 
     #[test]
     fn test_neg_complex() {
-        assert_eq!(
-            -Complex::new(1.0_f64, 2.0),
-            Complex::new(-1.0, -2.0)
-        );
+        assert_eq!(-Complex::new(1.0_f64, 2.0), Complex::new(-1.0, -2.0));
     }
 
     #[test]

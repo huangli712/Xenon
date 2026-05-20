@@ -37,7 +37,8 @@ pub trait ComplexFloat:
     + core::ops::Mul<Output = Self>
     + core::ops::Div<Output = Self>
     + core::ops::Neg<Output = Self>
-{}
+{
+}
 
 impl ComplexFloat for f32 {}
 impl ComplexFloat for f64 {}
@@ -414,13 +415,19 @@ mod tests {
     #[test]
     fn test_complex_layout_f64() {
         assert_eq!(core::mem::size_of::<Complex<f64>>(), 16);
-        assert_eq!(core::mem::align_of::<Complex<f64>>(), core::mem::align_of::<f64>());
+        assert_eq!(
+            core::mem::align_of::<Complex<f64>>(),
+            core::mem::align_of::<f64>()
+        );
     }
 
     #[test]
     fn test_complex_layout_f32() {
         assert_eq!(core::mem::size_of::<Complex<f32>>(), 8);
-        assert_eq!(core::mem::align_of::<Complex<f32>>(), core::mem::align_of::<f32>());
+        assert_eq!(
+            core::mem::align_of::<Complex<f32>>(),
+            core::mem::align_of::<f32>()
+        );
     }
 
     #[test]
@@ -577,14 +584,20 @@ mod tests {
 
     #[test]
     fn test_display_neg_infinity() {
-        assert_eq!(Complex::new(1.0_f64, f64::NEG_INFINITY).to_string(), "1-infj");
+        assert_eq!(
+            Complex::new(1.0_f64, f64::NEG_INFINITY).to_string(),
+            "1-infj"
+        );
     }
 
     // ── Infinity + special-value Display combinations ──
 
     #[test]
     fn test_display_inf_nan_imag() {
-        assert_eq!(Complex::new(f64::INFINITY, f64::NAN).to_string(), "inf+NaNj");
+        assert_eq!(
+            Complex::new(f64::INFINITY, f64::NAN).to_string(),
+            "inf+NaNj"
+        );
     }
 
     #[test]

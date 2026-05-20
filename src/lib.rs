@@ -39,6 +39,10 @@ pub mod storage;
 /// construction. See `07-tensor.md`.
 pub mod tensor;
 
+/// Execution-path dispatch: three-way arbitration (Serial / Simd / Parallel),
+/// threshold management, and nested-parallel guard. See `30-dispatch.md`.
+pub(crate) mod dispatch;
+
 pub use error::XenonError;
 pub use prelude::*;
 
@@ -57,8 +61,8 @@ mod tests {
         );
         assert_eq!(
             env!("CARGO_PKG_VERSION"),
-            "0.0.1",
-            "Cargo.toml [package] version must be '0.0.1'"
+            "0.0.2",
+            "Cargo.toml [package] version must be '0.0.2'"
         );
     }
 

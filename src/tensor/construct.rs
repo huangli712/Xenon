@@ -1,10 +1,10 @@
 //! Internal constructors and from_raw_parts (populated by W8T7, W8T8).
 
+use crate::Result;
 use crate::dimension::Dimension;
 use crate::error::{InvalidLayoutReason, StorageKindTag, XenonError};
-use crate::layout::{compute_layout_flags, LayoutFlags, Strides};
+use crate::layout::{LayoutFlags, Strides, compute_layout_flags};
 use crate::storage::{Owned, RawStorage, ViewMutRepr, ViewRepr};
-use crate::Result;
 use std::borrow::Cow;
 
 // ── canonical new_unchecked (07-tensor.md §5.6 L669-730) ──
@@ -27,7 +27,14 @@ where
         flags: LayoutFlags,
         derived_from_view_mut: bool,
     ) -> Self {
-        Self { storage, shape, strides, offset, flags, derived_from_view_mut }
+        Self {
+            storage,
+            shape,
+            strides,
+            offset,
+            flags,
+            derived_from_view_mut,
+        }
     }
 }
 
@@ -43,15 +50,17 @@ pub(crate) fn validate_access_range<D: Dimension>(
 ) -> Result<()> {
     let len = match shape.checked_size() {
         Ok(l) => l,
-        Err(_) => return Err(XenonError::InvalidLayout {
-            operation: Cow::Borrowed(op_name),
-            storage_kind: kind,
-            shape: shape.slice().to_vec(),
-            strides: strides.as_slice().to_vec(),
-            offset,
-            storage_len,
-            reason: InvalidLayoutReason::ShapeProductOverflow,
-        }),
+        Err(_) => {
+            return Err(XenonError::InvalidLayout {
+                operation: Cow::Borrowed(op_name),
+                storage_kind: kind,
+                shape: shape.slice().to_vec(),
+                strides: strides.as_slice().to_vec(),
+                offset,
+                storage_len,
+                reason: InvalidLayoutReason::ShapeProductOverflow,
+            });
+        },
     };
 
     if len == 0 {
@@ -85,30 +94,36 @@ pub(crate) fn validate_access_range<D: Dimension>(
 
     let mut max_offset = offset;
     for (&dim, &stride) in shape.slice().iter().zip(strides.as_slice()) {
-        if dim == 0 { continue; }
+        if dim == 0 {
+            continue;
+        }
         let span = match (dim - 1).checked_mul(stride) {
             Some(s) => s,
-            None => return Err(XenonError::InvalidLayout {
-                operation: Cow::Borrowed(op_name),
-                storage_kind: kind,
-                shape: shape.slice().to_vec(),
-                strides: strides.as_slice().to_vec(),
-                offset,
-                storage_len,
-                reason: InvalidLayoutReason::StrideSpanOverflow,
-            }),
+            None => {
+                return Err(XenonError::InvalidLayout {
+                    operation: Cow::Borrowed(op_name),
+                    storage_kind: kind,
+                    shape: shape.slice().to_vec(),
+                    strides: strides.as_slice().to_vec(),
+                    offset,
+                    storage_len,
+                    reason: InvalidLayoutReason::StrideSpanOverflow,
+                });
+            },
         };
         max_offset = match max_offset.checked_add(span) {
             Some(m) => m,
-            None => return Err(XenonError::InvalidLayout {
-                operation: Cow::Borrowed(op_name),
-                storage_kind: kind,
-                shape: shape.slice().to_vec(),
-                strides: strides.as_slice().to_vec(),
-                offset,
-                storage_len,
-                reason: InvalidLayoutReason::AccessRangeOverflow,
-            }),
+            None => {
+                return Err(XenonError::InvalidLayout {
+                    operation: Cow::Borrowed(op_name),
+                    storage_kind: kind,
+                    shape: shape.slice().to_vec(),
+                    strides: strides.as_slice().to_vec(),
+                    offset,
+                    storage_len,
+                    reason: InvalidLayoutReason::AccessRangeOverflow,
+                });
+            },
         };
     }
 
@@ -155,7 +170,9 @@ pub(crate) fn validate_non_overlapping_layout<D: Dimension>(
     }
 
     let mut axes: Vec<(usize, usize)> = shape
-        .slice().iter().zip(strides.as_slice())
+        .slice()
+        .iter()
+        .zip(strides.as_slice())
         .filter(|(dim, _)| **dim > 1)
         .map(|(&dim, &stride)| (dim, stride))
         .collect();
@@ -176,27 +193,31 @@ pub(crate) fn validate_non_overlapping_layout<D: Dimension>(
         }
         let span = match (dim - 1).checked_mul(stride) {
             Some(s) => s,
-            None => return Err(XenonError::InvalidLayout {
-                operation: Cow::Borrowed("tensor::validate_non_overlapping_layout"),
-                storage_kind: StorageKindTag::ViewMut,
-                shape: shape.slice().to_vec(),
-                strides: strides.as_slice().to_vec(),
-                offset,
-                storage_len,
-                reason: InvalidLayoutReason::StrideSpanOverflow,
-            }),
+            None => {
+                return Err(XenonError::InvalidLayout {
+                    operation: Cow::Borrowed("tensor::validate_non_overlapping_layout"),
+                    storage_kind: StorageKindTag::ViewMut,
+                    shape: shape.slice().to_vec(),
+                    strides: strides.as_slice().to_vec(),
+                    offset,
+                    storage_len,
+                    reason: InvalidLayoutReason::StrideSpanOverflow,
+                });
+            },
         };
         covered_max_offset = match covered_max_offset.checked_add(span) {
             Some(m) => m,
-            None => return Err(XenonError::InvalidLayout {
-                operation: Cow::Borrowed("tensor::validate_non_overlapping_layout"),
-                storage_kind: StorageKindTag::ViewMut,
-                shape: shape.slice().to_vec(),
-                strides: strides.as_slice().to_vec(),
-                offset,
-                storage_len,
-                reason: InvalidLayoutReason::StrideSpanOverflow,
-            }),
+            None => {
+                return Err(XenonError::InvalidLayout {
+                    operation: Cow::Borrowed("tensor::validate_non_overlapping_layout"),
+                    storage_kind: StorageKindTag::ViewMut,
+                    shape: shape.slice().to_vec(),
+                    strides: strides.as_slice().to_vec(),
+                    offset,
+                    storage_len,
+                    reason: InvalidLayoutReason::StrideSpanOverflow,
+                });
+            },
         };
     }
 
@@ -237,7 +258,10 @@ where
         offset: usize,
     ) -> Result<Self> {
         validate_access_range(
-            &shape, &strides, offset, storage_len,
+            &shape,
+            &strides,
+            offset,
+            storage_len,
             "TensorView::from_raw_parts",
             StorageKindTag::View,
         )?;
@@ -289,7 +313,10 @@ where
         offset: usize,
     ) -> Result<Self> {
         validate_access_range(
-            &shape, &strides, offset, storage_len,
+            &shape,
+            &strides,
+            offset,
+            storage_len,
             "TensorViewMut::from_raw_parts_mut",
             StorageKindTag::ViewMut,
         )?;
@@ -324,8 +351,7 @@ where
     /// - `shape.checked_size()` was previously validated (no overflow).
     /// - `data.len() == shape.checked_size()` — mismatch is undefined behaviour.
     pub(crate) unsafe fn from_raw_vec_unchecked(data: Vec<A>, shape: D) -> Self {
-        let strides = crate::layout::compute_f_strides(&shape)
-            .expect("caller-proved valid shape");
+        let strides = crate::layout::compute_f_strides(&shape).expect("caller-proved valid shape");
         let storage = Owned::from_vec(data).expect("caller-proved valid vec");
         let flags = compute_layout_flags::<A, D>(&shape, &strides, storage.as_ptr());
         unsafe { Self::new_unchecked(storage, shape, strides, 0, flags, false) }
@@ -342,8 +368,12 @@ mod tests {
     #[test]
     fn test_validate_access_range_valid() {
         let r = validate_access_range(
-            &Ix2(2, 2), &Strides::new(Ix2(1, 2)),
-            0, 4, "test", StorageKindTag::View,
+            &Ix2(2, 2),
+            &Strides::new(Ix2(1, 2)),
+            0,
+            4,
+            "test",
+            StorageKindTag::View,
         );
         assert!(r.is_ok());
     }
@@ -351,8 +381,12 @@ mod tests {
     #[test]
     fn test_validate_access_range_out_of_bounds() {
         let r = validate_access_range(
-            &Ix2(2, 2), &Strides::new(Ix2(1, 2)),
-            0, 3, "test", StorageKindTag::View,
+            &Ix2(2, 2),
+            &Strides::new(Ix2(1, 2)),
+            0,
+            3,
+            "test",
+            StorageKindTag::View,
         );
         assert!(r.is_err());
     }
@@ -360,33 +394,31 @@ mod tests {
     #[test]
     fn test_validate_access_range_empty_offset_ok() {
         let r = validate_access_range(
-            &Ix2(0, 3), &Strides::new(Ix2(1, 1)),
-            0, 0, "test", StorageKindTag::View,
+            &Ix2(0, 3),
+            &Strides::new(Ix2(1, 1)),
+            0,
+            0,
+            "test",
+            StorageKindTag::View,
         );
         assert!(r.is_ok());
     }
 
     #[test]
     fn test_validate_non_overlap_dense_prefix_ok() {
-        let r = validate_non_overlapping_layout(
-            &Ix2(2, 3), &Strides::new(Ix2(1, 2)), 0, 6,
-        );
+        let r = validate_non_overlapping_layout(&Ix2(2, 3), &Strides::new(Ix2(1, 2)), 0, 6);
         assert!(r.is_ok());
     }
 
     #[test]
     fn test_validate_non_overlap_zero_stride_rejected() {
-        let r = validate_non_overlapping_layout(
-            &Ix2(2, 3), &Strides::new(Ix2(0, 1)), 0, 6,
-        );
+        let r = validate_non_overlapping_layout(&Ix2(2, 3), &Strides::new(Ix2(0, 1)), 0, 6);
         assert!(r.is_err());
     }
 
     #[test]
     fn test_validate_non_overlap_ambiguous_rejected() {
-        let r = validate_non_overlapping_layout(
-            &Ix2(2, 2), &Strides::new(Ix2(1, 1)), 0, 4,
-        );
+        let r = validate_non_overlapping_layout(&Ix2(2, 2), &Strides::new(Ix2(1, 1)), 0, 4);
         assert!(r.is_err());
     }
 
@@ -410,9 +442,7 @@ mod tests {
 
     #[test]
     fn test_from_raw_vec_unchecked_zero_dim() {
-        let tensor = unsafe {
-            super::super::TensorBase::from_raw_vec_unchecked(vec![42_i32], Ix0)
-        };
+        let tensor = unsafe { super::super::TensorBase::from_raw_vec_unchecked(vec![42_i32], Ix0) };
         assert_eq!(tensor.ndim(), 0);
         assert_eq!(tensor.len(), 1);
     }

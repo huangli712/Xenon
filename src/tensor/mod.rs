@@ -49,14 +49,16 @@
 /// [`offset`]: #structfield.offset
 /// [`flags`]: #structfield.flags
 /// [`derived_from_view_mut`]: #structfield.derived_from_view_mut
-#[expect(missing_debug_implementations, reason = "intentionally no Debug; see struct doc")]
+#[expect(
+    missing_debug_implementations,
+    reason = "intentionally no Debug; see struct doc"
+)]
 pub struct TensorBase<S, D>
 where
     S: crate::storage::RawStorage,
     D: crate::dimension::Dimension,
 {
     /// Opaque storage handle. Private to the type; exposed through query API.
-
     // SAFETY INVARIANT: the six fields below together establish the tensor
     // layout contract described in `07-tensor.md §5`. Direct field mutation
     // (possible via `pub(crate)` visibility) can violate the shape/strides/
@@ -82,23 +84,23 @@ where
     pub(crate) derived_from_view_mut: bool,
 }
 
-mod impls;
 mod aliases;
 mod construct;
+mod impls;
 
 pub use aliases::*;
-pub use impls::{AccessSemantics, DataLocation, StorageKind};
 pub use impls::AliasClass;
 pub use impls::StorageSemantics;
+pub use impls::{AccessSemantics, DataLocation, StorageKind};
 
 // Re-exports are added incrementally by downstream tasks; see W8T2..W8T9.
 
 #[cfg(test)]
 mod tests {
-    use crate::dimension::Ix2;
-    use crate::layout::{compute_f_strides, LayoutFlags};
-    use crate::storage::Owned;
     use super::TensorBase;
+    use crate::dimension::Ix2;
+    use crate::layout::{LayoutFlags, compute_f_strides};
+    use crate::storage::Owned;
 
     /// Verify the tensor module skeleton compiles and all three sub-modules
     /// are reachable. If the placeholder `.rs` files in Step 1 are missing,
