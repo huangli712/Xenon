@@ -343,14 +343,13 @@ where
     D: Dimension,
 {
     /// Construct an Owned tensor from a Vec, skipping all consistency checks.
-    /// `pub(crate)` fast path for W22 constructor helpers.
     ///
     /// # Safety
     ///
     /// - `data.as_ptr()` remains valid for construction.
     /// - `shape.checked_size()` was previously validated (no overflow).
     /// - `data.len() == shape.checked_size()` — mismatch is undefined behaviour.
-    pub(crate) unsafe fn from_raw_vec_unchecked(data: Vec<A>, shape: D) -> Self {
+    pub unsafe fn from_raw_vec_unchecked(data: Vec<A>, shape: D) -> Self {
         let strides = crate::layout::compute_f_strides(&shape).expect("caller-proved valid shape");
         let storage = Owned::from_vec(data).expect("caller-proved valid vec");
         let flags = compute_layout_flags::<A, D>(&shape, &strides, storage.as_ptr());

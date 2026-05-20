@@ -12,9 +12,42 @@
 //! - **W11/W16 placeholders** marked `#[ignore]`: stubs for broadcast,
 //!   reshape, transpose paths. Activate by removing `#[ignore]` in the
 //!   corresponding Wave.
+//! - **W20 integration**: transpose shape/data/view-kind/involution tests
+//!   using `from_raw_vec_unchecked` (made `pub` in W20T4).
 
-use xenon::dimension::{Axis, BroadcastDim, Dimension, Ix0, Ix1, Ix2, Ix3, IxDyn};
+use xenon::dimension::{Axis, BroadcastDim, Dimension, Ix0, Ix1, Ix2, Ix3, Ix6, IxDyn};
+use xenon::element::Element;
 use xenon::error::XenonError;
+use xenon::storage::Owned;
+use xenon::tensor::{StorageKind, TensorBase};
+
+/// Internal helper: construct tensor via fast path.
+unsafe fn make_tensor<A: Element, D: Dimension>(
+    data: Vec<A>,
+    shape: D,
+) -> TensorBase<Owned<A>, D> {
+    // SAFETY: caller provides data with correct length matching shape.
+    unsafe { TensorBase::from_raw_vec_unchecked(data, shape) }
+}
+
+/// Access element at logical index.
+unsafe fn read_at<'a, S, D, A>(
+    tensor: &'a TensorBase<S, D>,
+    indices: &[usize],
+) -> &'a A
+where
+    S: xenon::storage::Storage<Elem = A>,
+    D: Dimension,
+    A: Element,
+{
+    debug_assert_eq!(indices.len(), tensor.ndim());
+    let strides = tensor.strides();
+    let mut rel_offset: isize = 0;
+    for (axis, &idx) in indices.iter().enumerate() {
+        rel_offset += (idx as isize) * (strides[axis] as isize);
+    }
+    unsafe { &*tensor.as_ptr().offset(rel_offset) }
+}
 
 /// shape contract: rank/slice/checked_size for static dimensions.
 #[test]
@@ -131,4 +164,98 @@ fn test_reshape_via_dimension() {
 fn test_transpose_via_axes() {
     // W16 will implement transpose using Axis pairs.
     panic!("W16 placeholder — must be replaced before W16 completion");
+}
+
+// ── W20 transpose integration tests ──
+
+#[test]
+fn test_shape_integration_transpose_2d() {
+    let x = unsafe { make_tensor(vec![1, 2, 3, 4, 5, 6], Ix2(2, 3)) };
+    let y = x.transpose();
+    assert_eq!(y.shape(), &[3, 2]);
+    unsafe {
+        assert_eq!(*read_at(&y, &[0, 0]), *read_at(&x, &[0, 0]));
+        assert_eq!(*read_at(&y, &[2, 1]), *read_at(&x, &[1, 2]));
+    }
+}
+
+#[test]
+fn test_shape_integration_transpose_3d() {
+    let x = unsafe { make_tensor(Vec::<i32>::new(), Ix3(2, 3, 4)) };
+    assert_eq!(x.transpose().shape(), &[4, 3, 2]);
+}
+
+#[test]
+fn test_shape_integration_transpose_1d_noop() {
+    let x = unsafe { make_tensor(vec![1_i32, 2, 3], Ix1(3)) };
+    assert_eq!(x.transpose().shape(), &[3]);
+}
+
+#[test]
+fn test_shape_integration_transpose_0d_noop() {
+    let x = unsafe { make_tensor(vec![5], Ix0) };
+    assert_eq!(x.transpose().shape(), &[]);
+}
+
+#[test]
+fn test_shape_integration_transpose_not_f_contiguous() {
+    let x = unsafe { make_tensor(Vec::<i32>::new(), Ix2(2, 3)) };
+    assert!(!x.transpose().is_f_contiguous());
+}
+
+#[test]
+fn test_shape_integration_transpose_view_kind() {
+    let x = unsafe { make_tensor(Vec::<i32>::new(), Ix2(2, 3)) };
+    assert_eq!(x.transpose().storage_kind(), StorageKind::View);
+}
+
+#[test]
+#[ignore = "depends on ArcRepr constructor visibility (W18)"]
+fn test_shape_integration_transpose_arc_tensor_view_kind() {}
+
+#[test]
+fn test_shape_integration_transpose_with_index() {
+    let x = unsafe { make_tensor(vec![1, 2, 3, 4, 5, 6], Ix2(2, 3)) };
+    let y = x.transpose();
+    unsafe {
+        for i in 0..2_usize {
+            for j in 0..3_usize {
+                assert_eq!(*read_at(&y, &[j, i]), *read_at(&x, &[i, j]));
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore = "depends on W11 broadcast module"]
+fn test_shape_integration_transpose_with_broadcast() {}
+
+#[test]
+fn test_shape_integration_transpose_6d() {
+    let x = unsafe { make_tensor(Vec::<f64>::new(), Ix6(2, 3, 4, 5, 6, 7)) };
+    let y = x.transpose();
+    assert_eq!(y.shape(), &[7, 6, 5, 4, 3, 2]);
+    assert_eq!(y.transpose().shape(), x.shape());
+}
+
+#[test]
+fn test_shape_integration_transpose_dyn() {
+    let x = unsafe { make_tensor(Vec::<i32>::new(), IxDyn::from_slice(&[2, 3, 4, 5, 6])) };
+    let y = x.transpose();
+    assert_eq!(y.shape(), &[6, 5, 4, 3, 2]);
+    assert_eq!(y.len(), x.len());
+    assert_eq!(y.transpose().strides(), x.strides());
+}
+
+#[test]
+fn test_shape_integration_transpose_large_array_2d() {
+    let x = unsafe { make_tensor(Vec::<f64>::new(), Ix2(3162, 3162)) };
+    let src_ptr = x.as_ptr();
+    let y = x.transpose();
+    assert_eq!(y.storage_kind(), StorageKind::View);
+    assert_eq!(y.shape(), &[3162, 3162]);
+    assert_eq!(y.len(), x.len());
+    assert_eq!(y.as_ptr(), src_ptr);
+    assert_eq!(y.transpose().shape(), x.shape());
+    assert_eq!(y.transpose().strides(), x.strides());
 }

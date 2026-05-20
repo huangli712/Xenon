@@ -65,6 +65,19 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
     }
 }
 
+/// Sealed trait for reversing the axis order of a dimension.
+///
+/// Every concrete `D` Xenon supports (Ix0..Ix6, IxDyn) implements
+/// `Reverse` returning `Self`, so the bound is satisfied for all
+/// supported dimensions. The trait is `pub` so that public API
+/// signatures can name `D: Reverse`, but sealed so that external
+/// crates cannot add their own implementations.
+pub trait Reverse: Dimension + Sealed {
+    /// Returns a new dimension with the axis order reversed.
+    /// Preserves the static rank (e.g., `Ix2 → Ix2`).
+    fn reverse(self) -> Self;
+}
+
 // Public re-exports — the canonical access path for dimension types.
 pub use axes::Axis;
 pub use broadcast::BroadcastDim;

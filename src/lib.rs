@@ -39,6 +39,18 @@ pub mod storage;
 /// construction. See `07-tensor.md`.
 pub mod tensor;
 
+/// Tensor formatting support.
+///
+/// Provides user-facing `Display` and developer-facing `Debug` for tensors,
+/// with configurable truncation and Numpy-style logical-index ordering.
+pub mod format;
+
+/// Shape operations.
+///
+/// The current public shape operation is full-axis transpose, exposed as a
+/// method on `TensorBase`.
+pub mod shape;
+
 /// Execution-path dispatch: three-way arbitration (Serial / Simd / Parallel),
 /// threshold management, and nested-parallel guard. See `30-dispatch.md`.
 pub(crate) mod dispatch;

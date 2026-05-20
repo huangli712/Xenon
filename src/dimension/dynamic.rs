@@ -126,6 +126,15 @@ impl Dimension for IxDyn {
     // `axis()` uses the trait default implementation; no override needed.
 }
 
+
+impl crate::dimension::Reverse for IxDyn {
+    fn reverse(self) -> Self {
+        let mut dims = self.dims;
+        dims.reverse();
+        IxDyn { dims }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

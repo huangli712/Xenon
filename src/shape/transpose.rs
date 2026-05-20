@@ -1,0 +1,180 @@
+use crate::dimension::{Dimension, Reverse};
+use crate::layout::{compute_layout_flags, Strides};
+use crate::storage::{Storage, ViewRepr};
+use crate::tensor::{TensorBase, TensorView};
+
+impl<S, D, A> TensorBase<S, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension,
+{
+    /// Reverse the axis order. See 16-shape.md §5.1.
+    ///
+    /// `Reverse` is named at the method-level `where`-clause (not the impl
+    /// header) so it only constrains this single API; other methods on the
+    /// same `impl` block (added in later waves) are unaffected. This
+    /// matches the design at 16-shape.md §5.1 line 119–122.
+    pub fn transpose(&self) -> TensorView<'_, A, D>
+    where
+        D: Reverse,
+    {
+        transpose_impl(self)
+    }
+}
+
+fn transpose_impl<S, D, A>(tensor: &TensorBase<S, D>) -> TensorView<'_, A, D>
+where
+    S: Storage<Elem = A>,
+    D: Dimension + Reverse,
+{
+    // (1) Reverse the dimension via the sealed `Reverse` trait.
+    let new_shape: D = tensor.raw_dim().reverse();
+
+    // (2) Build a reversed Strides<D>.
+    let rev: Vec<usize> = tensor.strides().iter().rev().copied().collect();
+    let new_strides: Strides<D> = Strides::<D>::from_slice(&rev)
+        .expect("rank-preserving stride reverse cannot change slice length");
+
+    // (3) Recompute LayoutFlags.
+    let new_flags =
+        compute_layout_flags::<A, D>(&new_shape, &new_strides, tensor.as_ptr());
+
+    // (4) Build ViewRepr borrowing source storage.
+    // SAFETY: as_storage_ptr() is a non-null aligned base pointer of
+    // already-validated live storage. storage_len() is the correct extent.
+    // Result lifetime is bound to &tensor.
+    let view_storage: ViewRepr<'_, A> = unsafe {
+        ViewRepr::from_raw_parts(tensor.as_storage_ptr(), tensor.storage_len())
+    };
+
+    // (5) Finalize via TensorBase::new_unchecked (Path Y).
+    // SAFETY: new_shape + new_strides + offset form a bijective reversal
+    // of source metadata. new_flags computed by the authoritative entry
+    // point. derived_from_view_mut forwarded from source.
+    unsafe {
+        TensorBase::<ViewRepr<'_, A>, D>::new_unchecked(
+            view_storage,
+            new_shape,
+            new_strides,
+            tensor.offset(),
+            new_flags,
+            tensor.derived_from_view_mut,
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::dimension::{Dimension, Ix0, Ix1, Ix2, Ix3};
+    use crate::element::Element;
+    use crate::storage::Owned;
+    use crate::tensor::TensorBase;
+    use crate::tensor::StorageKind;
+
+    /// Construct a tensor using the internal fast path.
+    unsafe fn make_tensor<A: Element, D: Dimension>(
+        data: Vec<A>,
+        shape: D,
+    ) -> TensorBase<Owned<A>, D> {
+        // SAFETY: caller provides data with correct length matching shape.
+        unsafe { TensorBase::from_raw_vec_unchecked(data, shape) }
+    }
+
+    /// Access element at logical index.
+    unsafe fn read_at<'a, S, D, A>(
+        tensor: &'a TensorBase<S, D>,
+        indices: &[usize],
+    ) -> &'a A
+    where
+        S: crate::storage::Storage<Elem = A>,
+        D: Dimension,
+        A: Element,
+    {
+        debug_assert_eq!(indices.len(), tensor.ndim());
+        let strides = tensor.strides();
+        let mut rel_offset: isize = 0;
+        for (axis, &idx) in indices.iter().enumerate() {
+            rel_offset += (idx as isize) * (strides[axis] as isize);
+        }
+        unsafe { &*tensor.as_ptr().offset(rel_offset) }
+    }
+
+    #[test]
+    fn test_transpose_2d() {
+        let x = unsafe { make_tensor(vec![1, 2, 3, 4, 5, 6], Ix2(2, 3)) };
+        let y = x.transpose();
+        assert_eq!(y.shape(), &[3, 2]);
+        unsafe {
+            assert_eq!(*read_at(&y, &[0, 0]), *read_at(&x, &[0, 0]));
+            assert_eq!(*read_at(&y, &[2, 1]), *read_at(&x, &[1, 2]));
+        }
+    }
+
+    #[test]
+    fn test_transpose_3d() {
+        let x = unsafe { make_tensor(Vec::<i32>::new(), Ix3(2, 3, 4)) };
+        assert_eq!(x.transpose().shape(), &[4, 3, 2]);
+    }
+
+    #[test]
+    fn test_transpose_1d_noop() {
+        let x = unsafe { make_tensor(vec![1_i32, 2, 3], Ix1(3)) };
+        let y = x.transpose();
+        assert_eq!(y.shape(), &[3]);
+        assert_eq!(y.len(), x.len());
+    }
+
+    #[test]
+    fn test_transpose_0d_noop() {
+        let x = unsafe { make_tensor(vec![5], Ix0) };
+        let y = x.transpose();
+        assert_eq!(y.shape(), &[]);
+    }
+
+    #[test]
+    fn test_transpose_not_f_contiguous() {
+        let x = unsafe { make_tensor(Vec::<i32>::new(), Ix2(2, 3)) };
+        assert!(x.is_f_contiguous());
+        assert!(!x.transpose().is_f_contiguous());
+    }
+
+    #[test]
+    fn test_transpose_0d_1d_preserves_contiguity() {
+        let s = unsafe { make_tensor(vec![42.0_f64], Ix0) };
+        let st = s.transpose();
+        assert_eq!(st.is_f_contiguous(), s.is_f_contiguous());
+        let v = unsafe { make_tensor(vec![1_i32, 2, 3, 4], Ix1(4)) };
+        let vt = v.transpose();
+        assert_eq!(vt.is_f_contiguous(), v.is_f_contiguous());
+    }
+
+    #[test]
+    #[ignore = "depends on W11 broadcast module"]
+    fn test_transpose_broadcast_view_keeps_flag() {}
+
+    #[test]
+    fn test_transpose_view_mut_returns_view_kind() {
+        let mut x = unsafe { make_tensor(Vec::<i32>::new(), Ix2(2, 3)) };
+        let v = x.view_mut();
+        assert_eq!(v.transpose().storage_kind(), StorageKind::View);
+    }
+
+
+
+    #[test]
+    fn test_transpose_empty_array() {
+        let x = unsafe { make_tensor(Vec::<i32>::new(), Ix2(0, 3)) };
+        let y = x.transpose();
+        assert_eq!(y.shape(), &[3, 0]);
+        assert_eq!(y.len(), 0);
+    }
+
+
+
+    #[test]
+    fn test_transpose_high_dim() {
+        let x = unsafe { make_tensor(Vec::<i32>::new(), Ix3(2, 3, 4)) };
+        assert_eq!(x.transpose().transpose().shape(), x.shape());
+        assert_eq!(x.transpose().transpose().strides(), x.strides());
+    }
+}

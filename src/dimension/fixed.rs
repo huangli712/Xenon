@@ -740,6 +740,37 @@ impl Ix6 {
         }
     }
 }
+
+// ── Reverse implementations for all static dimensions ──
+
+impl crate::dimension::Reverse for Ix0 {
+    fn reverse(self) -> Self { self }
+}
+
+impl crate::dimension::Reverse for Ix1 {
+    fn reverse(self) -> Self { self }
+}
+
+impl crate::dimension::Reverse for Ix2 {
+    fn reverse(self) -> Self { Ix2(self.1, self.0) }
+}
+
+impl crate::dimension::Reverse for Ix3 {
+    fn reverse(self) -> Self { Ix3(self.2, self.1, self.0) }
+}
+
+impl crate::dimension::Reverse for Ix4 {
+    fn reverse(self) -> Self { Ix4(self.3, self.2, self.1, self.0) }
+}
+
+impl crate::dimension::Reverse for Ix5 {
+    fn reverse(self) -> Self { Ix5(self.4, self.3, self.2, self.1, self.0) }
+}
+
+impl crate::dimension::Reverse for Ix6 {
+    fn reverse(self) -> Self { Ix6(self.5, self.4, self.3, self.2, self.1, self.0) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

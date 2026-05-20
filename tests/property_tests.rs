@@ -141,3 +141,5 @@ proptest! {
         }
     }
 }
+// W20T4: Shape module property tests for transpose (§8.4 invariants).
+mod property;
