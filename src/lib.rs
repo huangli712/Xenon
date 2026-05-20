@@ -35,6 +35,9 @@ pub mod layout;
 /// Storage system: trait hierarchy and concrete storage representations.
 pub mod storage;
 
+/// Type conversion: element-level cast dispatch and `to_owned` / `into_owned`.
+pub mod convert;
+
 /// Tensor core: TensorBase, type aliases, query methods, and raw-parts
 /// construction. See `07-tensor.md`.
 pub mod tensor;
