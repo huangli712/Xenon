@@ -35,6 +35,10 @@ pub mod layout;
 /// Storage system: trait hierarchy and concrete storage representations.
 pub mod storage;
 
+/// Tensor core: TensorBase, type aliases, query methods, and raw-parts
+/// construction. See `07-tensor.md`.
+pub mod tensor;
+
 pub use error::XenonError;
 pub use prelude::*;
 

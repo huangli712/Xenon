@@ -13,7 +13,7 @@ use crate::error::{InvalidShapeKind, XenonError};
 /// Stride carrier; element-offset along each axis, same rank as `D`.
 ///
 /// See `06-layout §5.5` for the full API contract.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Strides<D: Dimension> {
     strides: D,
 }

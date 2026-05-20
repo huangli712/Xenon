@@ -617,6 +617,11 @@ pub enum InvalidLayoutReason {
     AccessRangeOverflow,
     /// Zero stride observed on a non-broadcast-view storage kind.
     UnexpectedZeroStride,
+    /// Zero stride rejected specifically for ViewMut construction: the
+    /// layout passes `validate_access_range` but contains a non-singleton
+    /// axis with stride == 0. The caller can switch to a read-only view
+    /// instead, which does accept broadcast zero strides.
+    ZeroStrideRejectedForViewMut,
     /// Logical layout cannot be conservatively proven non-overlapping
     /// for the requested mutable access.
     AmbiguousOverlap,
@@ -648,6 +653,9 @@ impl fmt::Display for InvalidLayoutReason {
             Self::StrideSpanOverflow => write!(f, "stride span overflow"),
             Self::AccessRangeOverflow => write!(f, "access range overflow"),
             Self::UnexpectedZeroStride => write!(f, "unexpected zero stride"),
+            Self::ZeroStrideRejectedForViewMut => {
+                write!(f, "zero stride rejected for ViewMut")
+            },
             Self::AmbiguousOverlap => write!(f, "ambiguous overlap"),
             Self::OwnedRequiresZeroOffset => {
                 write!(f, "owned requires zero offset")

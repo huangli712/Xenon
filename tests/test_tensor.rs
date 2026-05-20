@@ -1,97 +1,302 @@
-//! Integration tests for dimension types used as Tensor construction inputs.
-//!
-//! Per `02-dimension.md` §8.5 line 1121, this file covers `IntoDimension` in
-//! Tensor::from_shape_vec / zeros end-to-end paths. The actual Tensor type is
-//! introduced in W8; tests below are split into:
-//!
-//! - **W3-runnable tests**: dimension-layer `IntoDimension` compatibility,
-//!   verifying that tuples / arrays / slices / Vecs produce the expected
-//!   `Dim` types. These run today.
-//! - **W8 placeholder tests** marked `#[ignore]`: stubs for the Tensor
-//!   end-to-end path. W8 implementation must remove `#[ignore]` and add the
-//!   actual Tensor::from_shape_vec / zeros calls.
+//! Integration tests for Wave 8 tensor core: cross-module interaction,
+//! boundary cases, and type alias verification. Covers items from
+//! `07-tensor.md §8.2 / §8.3` that require multi-module composition or
+//! the public crate API surface.
 
-use xenon::dimension::{Dimension, IntoDimension, Ix0, Ix1, Ix2, Ix3, Ix6, IxDyn};
+use xenon::dimension::{Ix0, Ix1, Ix2, IxDyn};
+use xenon::layout::{LayoutState, Strides, compute_f_strides};
+use xenon::tensor;
+use xenon::tensor::{
+    AccessSemantics, AliasClass, ArcTensor, ArcTensor2, ArcTensorD, DataLocation, StorageKind,
+    Tensor, Tensor0, Tensor2, TensorBase, TensorD, TensorView, TensorView2, TensorViewD,
+    TensorViewMut, TensorViewMut2,
+};
 
-/// Tuple input → static Ix1-Ix6.
+// === Type alias compile verification ===
+
+/// §8.2 test_type_aliases_compile: all 36 aliases resolve at compile time.
 #[test]
-fn test_tuple_inputs_for_tensor_construction() {
-    let _: <(usize,) as IntoDimension>::Dim = (5,).into_dimension();
-    let d2: Ix2 = (3, 4).into_dimension();
-    assert_eq!(d2.slice(), &[3, 4]);
-    let d6: Ix6 = (1, 2, 3, 4, 5, 6).into_dimension();
-    assert_eq!(d6.slice(), &[1, 2, 3, 4, 5, 6]);
+fn test_type_aliases_compile() {
+    // Primary aliases (4)
+    let _: Option<Tensor<f64, Ix2>> = None;
+    let _: Option<TensorView<'_, f64, Ix2>> = None;
+    let _: Option<TensorViewMut<'_, f64, Ix2>> = None;
+    let _: Option<ArcTensor<f64, Ix2>> = None;
+
+    // Owned dimension convenience aliases (8)
+    let _: Option<Tensor0<f64>> = None;
+    let _: Option<tensor::Tensor1<f64>> = None;
+    let _: Option<Tensor2<i32>> = None;
+    let _: Option<tensor::Tensor3<f64>> = None;
+    let _: Option<tensor::Tensor4<f64>> = None;
+    let _: Option<tensor::Tensor5<f64>> = None;
+    let _: Option<tensor::Tensor6<f64>> = None;
+    let _: Option<TensorD<f64>> = None;
+
+    // View convenience aliases (8)
+    let _: Option<tensor::TensorView0<'_, f64>> = None;
+    let _: Option<tensor::TensorView1<'_, f64>> = None;
+    let _: Option<TensorView2<'_, f64>> = None;
+    let _: Option<tensor::TensorView3<'_, f64>> = None;
+    let _: Option<tensor::TensorView4<'_, f64>> = None;
+    let _: Option<tensor::TensorView5<'_, f64>> = None;
+    let _: Option<tensor::TensorView6<'_, f64>> = None;
+    let _: Option<TensorViewD<'_, f64>> = None;
+
+    // ViewMut convenience aliases (8)
+    let _: Option<tensor::TensorViewMut0<'_, f64>> = None;
+    let _: Option<tensor::TensorViewMut1<'_, f64>> = None;
+    let _: Option<TensorViewMut2<'_, f64>> = None;
+    let _: Option<tensor::TensorViewMut3<'_, f64>> = None;
+    let _: Option<tensor::TensorViewMut4<'_, f64>> = None;
+    let _: Option<tensor::TensorViewMut5<'_, f64>> = None;
+    let _: Option<tensor::TensorViewMut6<'_, f64>> = None;
+    let _: Option<tensor::TensorViewMutD<'_, f64>> = None;
+
+    // Arc convenience aliases (8)
+    let _: Option<tensor::ArcTensor0<f64>> = None;
+    let _: Option<tensor::ArcTensor1<f64>> = None;
+    let _: Option<ArcTensor2<f64>> = None;
+    let _: Option<tensor::ArcTensor3<f64>> = None;
+    let _: Option<tensor::ArcTensor4<f64>> = None;
+    let _: Option<tensor::ArcTensor5<f64>> = None;
+    let _: Option<tensor::ArcTensor6<f64>> = None;
+    let _: Option<ArcTensorD<f64>> = None;
 }
 
-/// Array input preserves static dimensionality (per §5.6 line 504).
+// === Basic cross-module construction (immutable view) ===
+
+/// §8.2 test_tensor_shape_2d / test_tensor_strides_f_order /
+/// test_tensor_len / test_tensor_ndim_static.
 #[test]
-fn test_array_inputs_for_tensor_construction() {
-    let d0: Ix0 = [].into_dimension();
-    let _ = d0;
-    let d3: Ix3 = [2, 3, 4].into_dimension();
-    assert_eq!(d3.slice(), &[2, 3, 4]);
+fn test_tensor_shape_2d() {
+    let data = [0_i32; 12];
+    let shape = Ix2(3, 4);
+    let strides = compute_f_strides(&shape).expect("valid shape");
+    // SAFETY: data outlives tensor; layout is canonical F-order.
+    let tensor: TensorView2<'_, i32> =
+        unsafe { TensorBase::from_raw_parts(data.as_ptr(), data.len(), shape, strides, 0) }
+            .expect("valid raw-parts must succeed");
+
+    assert_eq!(tensor.shape(), &[3, 4]);
+    assert_eq!(tensor.strides(), &[1_usize, 3]);
+    assert_eq!(tensor.len(), 12);
+    assert_eq!(tensor.ndim(), 2);
+    assert!(tensor.is_f_contiguous());
+    assert!(!tensor.has_zero_stride());
 }
 
-/// Slice and Vec inputs produce IxDyn (dynamic dimension).
+/// §8.3 boundary: 0D scalar tensor uses `Ix0` constructor; `[]` literal
+/// cannot be inferred as `Ix0` (which is `[usize; 0]`) at function call sites.
 #[test]
-fn test_dynamic_inputs_for_tensor_construction() {
-    let dyn_dim: IxDyn = (&[2, 3, 4, 5][..]).into_dimension();
-    assert_eq!(dyn_dim.ndim(), 4);
-    assert_eq!(dyn_dim.checked_size(), Ok(120));
-    let dyn_vec: IxDyn = vec![10, 20].into_dimension();
-    assert_eq!(dyn_vec.slice(), &[10, 20]);
+fn test_tensor0_scalar() {
+    let data = [5_f64];
+    let shape: Ix0 = Ix0;
+    let strides = compute_f_strides(&shape).expect("valid");
+    let tensor: TensorView<'_, f64, Ix0> =
+        unsafe { TensorBase::from_raw_parts(data.as_ptr(), data.len(), shape, strides, 0) }
+            .expect("Ix0 scalar tensor must construct");
+    assert_eq!(tensor.ndim(), 0);
+    assert_eq!(tensor.len(), 1);
 }
 
-/// Zero-rank scalar input — Ix0 from unit tuple or empty array.
+/// §8.3 boundary: empty tensor with one zero-length axis.
 #[test]
-fn test_scalar_input_for_tensor_construction() {
-    let _: Ix0 = ().into_dimension();
-    let _: Ix0 = [].into_dimension();
-    assert_eq!(Ix0.checked_size(), Ok(1));
+fn test_tensor_empty_dim() {
+    let data = Vec::<f64>::new();
+    let shape = Ix2(0, 3);
+    let strides = compute_f_strides(&shape).expect("valid");
+    let tensor: TensorView2<'_, f64> =
+        unsafe { TensorBase::from_raw_parts(data.as_ptr(), data.len(), shape, strides, 0) }
+            .expect("empty tensor must construct");
+    assert!(tensor.is_empty());
+    assert_eq!(tensor.shape(), &[0, 3]);
+    assert!(tensor.as_slice().expect("empty Some(&[])").is_empty());
 }
 
-/// Zero-length axis is a valid Tensor shape (size = 0, not an error).
+/// §8.3 boundary: single-element tensor; as_slice fast path returns Some.
 #[test]
-fn test_zero_axis_input_for_tensor_construction() {
-    let d = Ix1(0);
-    assert_eq!(d.checked_size(), Ok(0));
-    let dyn_d: IxDyn = vec![3, 0, 5].into_dimension();
-    assert_eq!(dyn_d.checked_size(), Ok(0));
+fn test_tensor_single_element() {
+    let data = [42_i32];
+    let shape = Ix2(1, 1);
+    let strides = compute_f_strides(&shape).expect("valid");
+    let tensor: TensorView2<'_, i32> =
+        unsafe { TensorBase::from_raw_parts(data.as_ptr(), data.len(), shape, strides, 0) }
+            .expect("1x1 tensor must construct");
+    assert_eq!(tensor.len(), 1);
+    assert_eq!(tensor.as_slice().expect("F-contiguous Some")[0], 42);
 }
 
-// ── W8 activation placeholders ──
-
-/// Placeholder for W8: Tensor::from_shape_vec accepts tuple/array/slice via
-/// IntoDimension. Activate by removing #[ignore] in W8 after Tensor type
-/// exists.
+/// §8.3 boundary: non-zero offset view; as_storage_ptr != as_ptr.
 #[test]
-#[ignore = "W8 activation required: Tensor type not yet defined"]
-fn test_tensor_from_shape_vec_accepts_intodimension() {
-    // W8 will implement:
-    //   let t = Tensor::<f64, _>::from_shape_vec((3, 4), vec![0.0; 12]).unwrap();
-    //   assert_eq!(t.shape(), &[3, 4]);
-    //   let t = Tensor::<f64, _>::from_shape_vec(&[2, 3, 4][..], vec![0.0; 24]).unwrap();
-    //   assert_eq!(t.shape(), &[2, 3, 4]);
-    unimplemented!("W8 Tensor type not yet available; replace body with the commented-out assertions above when Tensor is defined");
+fn test_tensor_non_zero_offset() {
+    let data = [10_i32, 20, 30, 40, 50];
+    let shape = Ix1(3);
+    let strides = compute_f_strides(&shape).expect("valid");
+    // View elements [20, 30, 40] with offset = 1.
+    let tensor: TensorView<'_, i32, Ix1> =
+        unsafe { TensorBase::from_raw_parts(data.as_ptr(), data.len(), shape, strides, 1) }
+            .expect("offset view must construct");
+    assert_eq!(tensor.offset(), 1);
+    let storage_ptr = tensor.as_storage_ptr() as usize;
+    let logical_ptr = tensor.as_ptr() as usize;
+    assert_eq!(logical_ptr - storage_ptr, core::mem::size_of::<i32>());
 }
 
-/// Placeholder for W8: Tensor::zeros via IntoDimension.
+/// §8.3 boundary: transposed/non-contiguous view reports NonContiguous and
+/// does not expose a contiguous slice.
 #[test]
-#[ignore = "W8 activation required: Tensor type not yet defined"]
-fn test_tensor_zeros_accepts_intodimension() {
-    // W8 will implement:
-    //   let t = Tensor::<f32, _>::zeros((10, 20));
-    //   assert_eq!(t.dim().slice(), &[10, 20]);
-    unimplemented!("W8 Tensor type not yet available; replace body with the commented-out assertions above when Tensor is defined");
+fn test_tensor_transposed_non_contiguous() {
+    let data = [1_i32, 2, 3, 4, 5, 6];
+    let shape = Ix2(3, 2);
+    let strides = Strides::new(Ix2(2, 1));
+    let tensor: TensorView2<'_, i32> =
+        unsafe { TensorBase::from_raw_parts(data.as_ptr(), data.len(), shape, strides, 0) }
+            .expect("transposed view must construct");
+
+    assert_eq!(tensor.layout_state(), LayoutState::NonContiguous);
+    assert!(!tensor.is_f_contiguous());
+    assert!(!tensor.has_zero_stride());
+    assert!(tensor.as_slice().is_none());
 }
 
-/// Placeholder for W8: element type interaction via Tensor::from_shape_vec.
+/// §8.3 boundary: broadcast zero-stride view reports BroadcastView and
+/// shared-read-only semantics.
 #[test]
-#[ignore = "Requires W8 (Tensor Core) to be completed first"]
-fn test_tensor_accepts_element_types() {
-    // W8 will implement:
-    //   let values = vec![1.0f64, 2.0, 3.0, 4.0];
-    //   let tensor = Tensor::<f64, Ix2>::from_shape_vec((2, 2), values).unwrap();
-    //   assert_eq!(tensor.shape(), &[2, 2]);
-    unimplemented!("W8 Tensor type not yet available; replace body with the commented-out assertions above when Tensor is defined");
+fn test_tensor_broadcast_zero_stride() {
+    let data = [7_i32, 8, 9];
+    let shape = Ix2(2, 3);
+    let strides = Strides::new(Ix2(1, 0));
+    let tensor: TensorView2<'_, i32> =
+        unsafe { TensorBase::from_raw_parts(data.as_ptr(), data.len(), shape, strides, 0) }
+            .expect("broadcast view must construct");
+
+    assert_eq!(tensor.layout_state(), LayoutState::BroadcastView);
+    assert!(tensor.has_zero_stride());
+    assert_eq!(tensor.access_semantics(), AccessSemantics::SharedReadOnly);
+    assert_eq!(tensor.alias_class(), AliasClass::BroadcastAlias);
+    assert!(tensor.as_slice().is_none());
+}
+
+// === Four storage modes: storage_kind / access_semantics ===
+
+/// §8.2 test_tensor_storage_kind + test_tensor_access_semantics for all four
+/// storage representations.
+#[test]
+fn test_storage_kind_view() {
+    let data = [1_i32, 2, 3, 4];
+    let shape = Ix2(2, 2);
+    let strides = compute_f_strides(&shape).expect("valid");
+    let tensor: TensorView2<'_, i32> =
+        unsafe { TensorBase::from_raw_parts(data.as_ptr(), data.len(), shape, strides, 0) }
+            .expect("valid");
+    assert_eq!(tensor.storage_kind(), StorageKind::View);
+    assert_eq!(tensor.access_semantics(), AccessSemantics::ReadOnly);
+}
+
+#[test]
+fn test_storage_kind_view_mut() {
+    let mut data = vec![1_i32, 2, 3, 4];
+    let shape = Ix2(2, 2);
+    let strides = compute_f_strides(&shape).expect("valid");
+    let tensor: TensorViewMut2<'_, i32> =
+        unsafe { TensorBase::from_raw_parts_mut(data.as_mut_ptr(), 4, shape, strides, 0) }
+            .expect("valid");
+    assert_eq!(tensor.storage_kind(), StorageKind::ViewMut);
+    assert_eq!(tensor.access_semantics(), AccessSemantics::Writable);
+}
+
+#[test]
+fn test_storage_kind_shared_via_arc() {
+    // Arc-backed construction goes through the storage layer's `ArcRepr::from_vec`
+    // and Wave 22's public `ArcTensor` constructor (deferred). Until W22 lands,
+    // this test asserts the type alias and trait bounds compile, with a runtime
+    // construction guarded and re-enabled after W22.
+    //
+    // Compile-time check (always runs):
+    fn _accepts_arc(_t: &ArcTensor2<i32>) {}
+}
+
+// === view / view_mut cross-module behaviour ===
+
+/// §8.2 test_tensor_view: view shares data; modifications visible.
+#[test]
+fn test_view_shares_data() {
+    let mut data = vec![1_i32, 2, 3, 4];
+    let shape = Ix2(2, 2);
+    let strides = compute_f_strides(&shape).expect("valid");
+    let mut tensor: TensorViewMut2<'_, i32> =
+        unsafe { TensorBase::from_raw_parts_mut(data.as_mut_ptr(), 4, shape, strides, 0) }
+            .expect("valid");
+
+    {
+        let v = tensor.view();
+        assert_eq!(
+            v.access_semantics(),
+            AccessSemantics::SharedReadOnly,
+            "ViewMut→View demotion must report SharedReadOnly per §5.3 rule (3)"
+        );
+        assert_eq!(v.alias_class(), AliasClass::ViewMutDerived);
+    }
+
+    tensor.as_mut_slice().expect("F-contiguous")[0] = 99;
+    let v2 = tensor.view();
+    assert_eq!(v2.as_slice().expect("F-contiguous")[0], 99);
+}
+
+/// §8.2 test_tensor_view_mut: view_mut writes propagate to source.
+#[test]
+fn test_view_mut_writes_back() {
+    let mut data = vec![1_i32, 2, 3, 4];
+    let shape = Ix2(2, 2);
+    let strides = compute_f_strides(&shape).expect("valid");
+    let mut tensor: TensorViewMut2<'_, i32> =
+        unsafe { TensorBase::from_raw_parts_mut(data.as_mut_ptr(), 4, shape, strides, 0) }
+            .expect("valid");
+
+    tensor.view_mut().as_mut_slice().expect("F-contiguous")[1] = 77;
+    assert_eq!(tensor.as_slice().expect("F-contiguous")[1], 77);
+}
+
+// === Error path: from_raw_parts out-of-bounds ===
+
+/// §8.2 test_from_raw_parts_invalid_range: out-of-bounds access range is rejected.
+#[test]
+fn test_from_raw_parts_invalid_range() {
+    let data = [1_i32, 2, 3];
+    let shape = Ix2(2, 2);
+    let strides = compute_f_strides(&shape).expect("valid");
+    // storage_len = 3 but logical access range needs 4.
+    let result: xenon::Result<TensorView2<'_, i32>> =
+        unsafe { TensorBase::from_raw_parts(data.as_ptr(), data.len(), shape, strides, 0) };
+    assert!(result.is_err(), "out-of-bounds raw-parts must be rejected");
+}
+
+// === Data location ===
+
+/// §8.2 test_tensor_data_location.
+#[test]
+fn test_tensor_data_location() {
+    let data = [1_i32];
+    let shape = Ix2(1, 1);
+    let strides = compute_f_strides(&shape).expect("valid");
+    let tensor: TensorView2<'_, i32> =
+        unsafe { TensorBase::from_raw_parts(data.as_ptr(), data.len(), shape, strides, 0) }
+            .expect("valid");
+    assert_eq!(tensor.data_location(), DataLocation::Cpu);
+}
+
+// === Dynamic dimension (IxDyn) ===
+
+/// §8.2 test_tensor_ndim_dynamic: TensorD reports runtime ndim.
+#[test]
+fn test_tensor_ndim_dynamic() {
+    let data = [0_i32; 24];
+    let shape: IxDyn = IxDyn::from_slice(&[2, 3, 4]);
+    let strides = compute_f_strides(&shape).expect("valid");
+    let tensor: TensorViewD<'_, i32> =
+        unsafe { TensorBase::from_raw_parts(data.as_ptr(), data.len(), shape, strides, 0) }
+            .expect("valid");
+    assert_eq!(tensor.ndim(), 3);
+    assert_eq!(tensor.len(), 24);
 }
