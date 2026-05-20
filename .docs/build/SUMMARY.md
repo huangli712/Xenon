@@ -483,7 +483,7 @@
 | Task | File | Goal | Dependencies | Design Docs |
 |------|------|------|-------------|-------------|
 | W30T1 | `src/lib.rs` | Crate-level docs: project overview, Quick Start, Features table, element types table, memory layout | None | 29-documentation §5, §6, §7, §8 |
-| W30T2 | `src/lib.rs`, `Cargo.toml` | #![warn(missing_docs)] lint + docs.rs metadata: all-features = true | W30T1 | 29-documentation §5, §6, §7, §8 |
+| W30T2 | `src/lib.rs`, `Cargo.toml`, `src/prelude.rs` | #![warn(missing_docs)] lint + docs.rs metadata: all-features = true + Prelude `//!` module-level docs | W30T1 | 29-documentation §5, §6, §7, §8 |
 | W30T3 | `README.md` | Project README: intro, features, Quick Start, install, doc links, license | W30T1 | 29-documentation §5, §6, §7, §8 |
 | W30T4 | `CHANGELOG.md` | Optional CHANGELOG.md in Keep a Changelog format | None | 29-documentation §5, §6, §7, §8 |
 | W30T5 | `src/dimension/mod.rs` | Dimension module-level docs: responsibilities, core concepts, Ix0–Ix6 usage, Dimension trait guide | W30T2 | 29-documentation §5, §6, §7, §8; 02-dimension.md |

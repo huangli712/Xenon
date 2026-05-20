@@ -40,6 +40,7 @@
 | 28 | W28 | W14, W15 |
 | 29 | W29 | （无） |
 | 30 | W30 | W1 |
+
 ---
 
 ## 各 Wave 内部 Task 执行次序
@@ -852,7 +853,7 @@
   W30T1 (crate-level docs)
   W30T4 (CHANGELOG)
 批次2:
-  W30T2 (missing_docs+doxcs.rs, 需 W30T1)
+  W30T2 (missing_docs + docs.rs metadata + Prelude docs, 需 W30T1)
 批次3:
   W30T3 (README, 需 W30T1)
 批次4 (全并行 — 24 个模块级文档):
