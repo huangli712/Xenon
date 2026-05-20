@@ -581,6 +581,33 @@ impl<A> Owned<A> {
     pub fn into_shared(self) -> ArcRepr<A> {
         ArcRepr::from_aligned_buf(self.data)
     }
+
+    /// Returns the allocator alignment in bytes.
+    pub(crate) fn alignment(&self) -> usize {
+        self.data.align
+    }
+
+    /// Returns a mutable pointer to the storage base without requiring
+    /// `&mut self`. This is safe because `Owned<A>` has exclusive ownership.
+    pub(crate) fn as_mut_ptr_unchecked(&self) -> *mut A {
+        self.data.ptr.as_ptr()
+    }
+
+    /// Constructs `Owned<A>` from raw allocator components.
+    ///
+    /// # Safety
+    ///
+    /// Same preconditions as [`AlignedBuf::from_raw_parts`].
+    pub(crate) unsafe fn from_raw_parts(
+        ptr: *mut A,
+        len: usize,
+        cap: usize,
+        align: usize,
+    ) -> Self {
+        Self {
+            data: unsafe { AlignedBuf::from_raw_parts(ptr, len, cap, align) },
+        }
+    }
 }
 
 // SAFETY: Owned<A> has exclusive ownership of AlignedBuf<A>;

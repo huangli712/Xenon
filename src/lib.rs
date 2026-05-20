@@ -26,6 +26,9 @@ pub mod prelude;
 /// Complex number type with sealed component bound.
 pub mod complex;
 
+/// Tensor construction: zeros, ones, eye, from_shape_vec, from_scalar, etc.
+pub mod construct;
+
 /// Element type hierarchy: base traits and type discriminants.
 pub mod element;
 

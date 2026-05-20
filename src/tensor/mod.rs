@@ -89,6 +89,7 @@ mod construct;
 mod impls;
 
 pub use aliases::*;
+pub use construct::OwnedRawParts;
 pub use impls::AliasClass;
 pub use impls::StorageSemantics;
 pub use impls::{AccessSemantics, DataLocation, StorageKind};
