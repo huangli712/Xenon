@@ -30,6 +30,13 @@ W22 完成 ──→ W29 (Integration Tests)
 W22 完成 ──→ W30 (Documentation)
 ```
 
+> ⚠️ **W28 跨 wave 依赖补充（DAG 未画出的关键补充）**：上方 DAG 仅展示 Wave 级主依赖 `W22 → W28`（数据构造前置）。**W28 内部另存 task 级跨 wave 依赖**：
+>
+> - **W28T10 ← W14** ｜ SIMD 对比 bench 需 W14 的 SIMD kernel（`bench_simd_*_compare` 需 `cfg!(feature = "simd")` + `xenon::simd::*` 设施）
+> - **W28T11 ← W15** ｜ Parallel 对比 bench 需 W15 的 rayon 后端（`bench_par_*_compare` 需 `cfg!(feature = "parallel")` + `xenon::parallel::*` 设施）
+>
+> 这些 task 级跨依赖不在 Wave 级 DAG 中画出（避免抽象层次混杂），详见本 PLAN §W28 节批次列表 与 SUMMARY.md W28 依赖表。
+
 ---
 
 ## Wave 级并行要点
@@ -778,6 +785,12 @@ W22 完成 ──→ W30 (Documentation)
 ---
 
 ### W28: Benchmarks
+
+> **粒度豁免说明**：W28 为 bench 基础设施 wave，每个 task 含多个 bench 函数 + SIZES_1D/SIZES_2D 参数遍历，本质上不适用 SUMMARY.md line 5
+> 的「每个 task targets 1 function / 1 trait / 1 type, ~5–10 min, max 1 file」额度。本 wave 预估工时合理扩展至 **10–25 min**，max **2 files**。
+> （例：W28T2 包含 utils/mod.rs + utils/generators.rs 两文件；W28T12 包含 workflow + report.py 两文件。所有 W28T*.md 在项目表头重新填报了实际预估。）
+>
+> **W14/W15 跨 wave 依赖**：W28T10 / W28T11 的 bench 码调用公共 API（`tensor.dot()` / `tensor.sum()` / `&lhs + &rhs`），该公共 API 内部通过 dispatch 路由到低层：SIMD path 需 W14T6 的 `simd::try_dot_*` / W14T3 的 `simd::try_sum_*` / W14T2/T11 的 element-wise kernel；Parallel path 需 W15T5 的 `parallel::par_dot` / W15T4 的 `parallel::par_sum`。严格说 W28T10/T11 依赖公共 API 内部 dispatch 链能选择到这些底层实现，不是直接调用低层函数。跨 wave 依赖边已在本 PLAN 顶部 DAG 里明示加上，与 SUMMARY.md / W28T10.md / W28T11.md 三方一致。
 
 ```
 批次1:
