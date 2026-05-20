@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 
-use crate::dimension::Dimension;
+use crate::dimension::{Axis, Dimension};
 use crate::error::InvalidShapeKind;
 use crate::error::XenonError;
 
@@ -132,6 +132,25 @@ impl crate::dimension::Reverse for IxDyn {
         let mut dims = self.dims;
         dims.reverse();
         IxDyn { dims }
+    }
+}
+
+
+impl crate::dimension::RemoveAxis for IxDyn {
+    type Smaller = IxDyn;
+    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError> {
+        if axis.0 >= self.ndim() {
+            return Err(XenonError::InvalidAxis {
+                operation: Cow::Borrowed("IxDyn::remove_axis"),
+                axis: axis.0,
+                ndim: self.ndim(),
+                shape: self.slice().to_vec(),
+            });
+        }
+        let removed_len = self.dims[axis.0];
+        let mut dims = self.dims.clone();
+        dims.remove(axis.0);
+        Ok((IxDyn { dims }, removed_len))
     }
 }
 

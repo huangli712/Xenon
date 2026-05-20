@@ -78,6 +78,28 @@ pub trait Reverse: Dimension + Sealed {
     fn reverse(self) -> Self;
 }
 
+/// Sealed trait for removing one axis from a dimension, producing a
+/// dimension of one rank lower (`D::Smaller`).
+///
+/// Used by `AxisIter` / `AxisIterMut` to describe the reduced-dimension
+/// subview type yielded by each step. The trait is `pub` so that public
+/// API signatures can name `D: RemoveAxis`, but sealed so that external
+/// crates cannot add their own implementations.
+///
+/// For Ix0 the operation is always a runtime-recoverable error
+/// (`XenonError::InvalidAxis`); `Ix0` still implements the trait with
+/// `Smaller = Ix0` so type-level APIs compile, but `remove_axis` fails
+/// at runtime.
+pub trait RemoveAxis: Dimension + Sealed {
+    /// The dimension type after removing one axis.
+    type Smaller: Dimension;
+
+    /// Remove the axis at the given index.
+    ///
+    /// Returns `(Smaller_dim, removed_axis_len)` on success,
+    /// or `XenonError::InvalidAxis` when `axis >= ndim`.
+    fn remove_axis(&self, axis: Axis) -> Result<(Self::Smaller, usize), XenonError>;
+}
 // Public re-exports — the canonical access path for dimension types.
 pub use axes::Axis;
 pub use broadcast::BroadcastDim;

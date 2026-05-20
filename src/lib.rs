@@ -50,6 +50,12 @@ pub mod format;
 /// The current public shape operation is full-axis transpose, exposed as a
 /// method on `TensorBase`.
 pub mod shape;
+/// Tensor iterators.
+///
+/// Defines the public iterator surface: `Iter`, `IterMut`, `AxisIter`,
+/// `AxisIterMut`, `IndexedIter`, `IndexedIterMut`.
+pub mod iter;
+
 
 /// Execution-path dispatch: three-way arbitration (Serial / Simd / Parallel),
 /// threshold management, and nested-parallel guard. See `30-dispatch.md`.

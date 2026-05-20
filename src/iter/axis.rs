@@ -1,0 +1,309 @@
+use core::marker::PhantomData;
+use std::borrow::Cow;
+
+use crate::dimension::{Axis, Dimension, RemoveAxis};
+use crate::element::Element;
+use crate::error::XenonError;
+use crate::layout::Strides;
+use crate::tensor::{TensorView, TensorViewMut};
+/// Axis iterator: yields `D::Smaller` sub-views along the selected axis.
+/// (10-iterator §5.2)
+///
+/// The struct retains the minimal `D: Dimension` bound; the public iterator
+/// trait impls add `D: RemoveAxis` so the yielded item type can be
+/// `TensorView<'a, A, D::Smaller>`.
+#[expect(missing_debug_implementations, reason = "iterator is not meant to be introspected")]
+pub struct AxisIter<'a, A, D: Dimension> {
+    base_ptr: *const A,
+    base_offset: usize,
+    sub_shape: Vec<usize>,
+    sub_strides: Vec<usize>,
+    axis_stride: usize,
+    len: usize,
+    pos: usize,
+    storage_len: usize,
+    _marker: PhantomData<&'a A>,
+    _dim: PhantomData<D>,
+}
+
+impl<'a, A, D: Dimension> AxisIter<'a, A, D> {
+    pub(crate) fn new(
+        view: TensorView<'a, A, D>,
+        axis: Axis,
+    ) -> Result<Self, XenonError> {
+        let ndim = view.ndim();
+        if axis.0 >= ndim {
+            return Err(XenonError::InvalidAxis {
+                operation: Cow::Borrowed("iter::AxisIter::new"),
+                axis: axis.0,
+                ndim,
+                shape: view.shape().to_vec(),
+            });
+        }
+        let shape = view.shape();
+        let strides = view.strides();
+        let len = shape[axis.0];
+        let axis_stride = strides[axis.0];
+        let base_offset = view.offset();
+        let base_ptr = view.as_storage_ptr();
+        let storage_len = view.storage_len();
+
+        let mut sub_shape = Vec::with_capacity(ndim - 1);
+        let mut sub_strides = Vec::with_capacity(ndim - 1);
+        for (i, (&s, &st)) in shape.iter().zip(strides.iter()).enumerate() {
+            if i != axis.0 {
+                sub_shape.push(s);
+                sub_strides.push(st);
+            }
+        }
+
+        Ok(Self {
+            base_ptr,
+            base_offset,
+            sub_shape,
+            sub_strides,
+            axis_stride,
+            len,
+            pos: 0,
+            storage_len,
+            _marker: PhantomData,
+            _dim: PhantomData,
+        })
+    }
+}
+
+impl<'a, A, D> Iterator for AxisIter<'a, A, D>
+where
+    A: Element,
+    D: RemoveAxis,
+{
+    type Item = TensorView<'a, A, D::Smaller>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.pos == self.len {
+            return None;
+        }
+        let step_offset = self.base_offset + self.axis_stride * self.pos;
+        self.pos += 1;
+        let sub_dim = <D::Smaller as Dimension>::try_from_slice(&self.sub_shape)
+            .expect("rank invariant: D::Smaller has ndim == D::NDIM - 1");
+        let sub_strides = Strides::<D::Smaller>::from_slice(&self.sub_strides)
+            .expect("rank invariant: stride rank matches reduced shape rank");
+        let view = unsafe {
+            TensorView::<'a, A, D::Smaller>::from_raw_parts(
+                self.base_ptr,
+                self.storage_len,
+                sub_dim,
+                sub_strides,
+                step_offset,
+            )
+            .expect("§6.5 invariants pre-validated at AxisIter::new")
+        };
+        Some(view)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.len - self.pos;
+        (remaining, Some(remaining))
+    }
+}
+
+impl<'a, A, D> ExactSizeIterator for AxisIter<'a, A, D>
+where
+    A: Element,
+    D: RemoveAxis,
+{
+}
+/// Mutable axis iterator: yields `D::Smaller` mutable sub-views.
+/// (10-iterator §5.2)
+///
+/// # Safety
+///
+/// Each `next()` advances `pos` by 1 monotonically; consecutive yields are
+/// separated by `axis_stride` elements, so the produced `&mut`-backed views
+/// cover non-overlapping logical regions.
+#[expect(missing_debug_implementations, reason = "iterator is not meant to be introspected")]
+pub struct AxisIterMut<'a, A, D: Dimension> {
+    base_ptr: *mut A,
+    base_offset: usize,
+    sub_shape: Vec<usize>,
+    sub_strides: Vec<usize>,
+    axis_stride: usize,
+    len: usize,
+    pos: usize,
+    storage_len: usize,
+    _marker: PhantomData<&'a mut A>,
+    _dim: PhantomData<D>,
+}
+
+impl<'a, A, D: Dimension> AxisIterMut<'a, A, D> {
+    pub(crate) fn new(
+        view: TensorViewMut<'a, A, D>,
+        axis: Axis,
+    ) -> Result<Self, XenonError> {
+        let ndim = view.ndim();
+        if axis.0 >= ndim {
+            return Err(XenonError::InvalidAxis {
+                operation: Cow::Borrowed("iter::AxisIterMut::new"),
+                axis: axis.0,
+                ndim,
+                shape: view.shape().to_vec(),
+            });
+        }
+        debug_assert!(
+            !view.has_zero_stride(),
+            "AxisIterMut on zero-stride/broadcast view violates §6.3"
+        );
+
+        let shape = view.shape();
+        let strides = view.strides();
+        let len = shape[axis.0];
+        let axis_stride = strides[axis.0];
+        let base_offset = view.offset();
+        let storage_len = view.storage_len();
+
+        let mut sub_shape = Vec::with_capacity(ndim - 1);
+        let mut sub_strides = Vec::with_capacity(ndim - 1);
+        for (i, (&s, &st)) in shape.iter().zip(strides.iter()).enumerate() {
+            if i != axis.0 {
+                sub_shape.push(s);
+                sub_strides.push(st);
+            }
+        }
+
+        let mut view = view;
+        let base_ptr = view.as_storage_mut_ptr();
+
+        Ok(Self {
+            base_ptr,
+            base_offset,
+            sub_shape,
+            sub_strides,
+            axis_stride,
+            len,
+            pos: 0,
+            storage_len,
+            _marker: PhantomData,
+            _dim: PhantomData,
+        })
+    }
+}
+
+impl<'a, A, D> Iterator for AxisIterMut<'a, A, D>
+where
+    A: Element,
+    D: RemoveAxis,
+{
+    type Item = TensorViewMut<'a, A, D::Smaller>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.pos == self.len {
+            return None;
+        }
+        let step_offset = self.base_offset + self.axis_stride * self.pos;
+        self.pos += 1;
+        let sub_dim = <D::Smaller as Dimension>::try_from_slice(&self.sub_shape)
+            .expect("rank invariant: D::Smaller has ndim == D::NDIM - 1");
+        let sub_strides = Strides::<D::Smaller>::from_slice(&self.sub_strides)
+            .expect("rank invariant: stride rank matches reduced shape rank");
+        let view = unsafe {
+            TensorViewMut::<'a, A, D::Smaller>::from_raw_parts_mut(
+                self.base_ptr,
+                self.storage_len,
+                sub_dim,
+                sub_strides,
+                step_offset,
+            )
+            .expect("§6.5 invariants pre-validated at AxisIterMut::new")
+        };
+        Some(view)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.len - self.pos;
+        (remaining, Some(remaining))
+    }
+}
+
+impl<'a, A, D> ExactSizeIterator for AxisIterMut<'a, A, D>
+where
+    A: Element,
+    D: RemoveAxis,
+{
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dimension::{Axis, IxDyn};
+    use crate::tensor::TensorBase;
+
+    unsafe fn make_tensor<A: crate::element::Element, D: Dimension>(
+        data: Vec<A>,
+        shape: D,
+    ) -> TensorBase<crate::storage::Owned<A>, D> {
+        unsafe { TensorBase::from_raw_vec_unchecked(data, shape) }
+    }
+
+    #[test]
+    fn test_axis_iter_count() {
+        let tensor =
+            unsafe { make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3)) };
+        let iter = AxisIter::new(tensor.view(), Axis(0)).expect("Axis(0) is valid for 2-D tensor");
+        assert_eq!(iter.len(), 2);
+        assert_eq!(iter.count(), 2);
+    }
+
+    #[test]
+    fn test_axis_iter_shape() {
+        let tensor =
+            unsafe { make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3)) };
+        let mut iter = AxisIter::new(tensor.view(), Axis(0)).expect("Axis(0) is valid for 2-D tensor");
+        let sub = iter.next().expect("Iterator should yield at least one element");
+        assert_eq!(sub.shape(), &[3]);
+    }
+
+    #[test]
+    fn test_axis_iter_empty_axis() {
+        let tensor =
+            unsafe { make_tensor(Vec::<f64>::new(), crate::dimension::Ix2(0, 3)) };
+        let iter = AxisIter::new(tensor.view(), Axis(0)).expect("Axis(0) is valid even if empty");
+        assert_eq!(iter.len(), 0);
+        assert_eq!(iter.count(), 0);
+
+        let iter = AxisIter::new(tensor.view(), Axis(1)).expect("Axis(1) is valid");
+        assert_eq!(iter.len(), 3);
+        for sub in iter {
+            assert_eq!(sub.shape(), &[0]);
+        }
+    }
+
+    #[test]
+    fn test_axis_iter_dyn_rank0_error() {
+        let scalar = unsafe { make_tensor(vec![1.0_f64], IxDyn::from_slice(&[])) };
+        assert!(matches!(
+            AxisIter::new(scalar.view(), Axis(0)),
+            Err(XenonError::InvalidAxis { axis: 0, ndim: 0, .. })
+        ));
+    }
+
+    #[test]
+    fn test_axis_iter_large_axis_index_error() {
+        let tensor =
+            unsafe { make_tensor(vec![0.0_f64; 6], crate::dimension::Ix2(2, 3)) };
+        assert!(matches!(
+            AxisIter::new(tensor.view(), Axis(usize::MAX)),
+            Err(XenonError::InvalidAxis { .. })
+        ));
+    }
+
+    #[test]
+    fn test_axis_iter_mut_axis_out_of_bounds() {
+        let mut tensor =
+            unsafe { make_tensor(Vec::<f64>::new(), crate::dimension::Ix2(2, 3)) };
+        assert!(matches!(
+            AxisIterMut::new(tensor.view_mut(), Axis(2)),
+            Err(XenonError::InvalidAxis { axis: 2, ndim: 2, .. })
+        ));
+    }
+}
