@@ -45,6 +45,9 @@ pub mod tensor;
 /// with configurable truncation and Numpy-style logical-index ordering.
 pub mod format;
 
+/// N-dimensional indexing and slicing.
+pub mod index;
+
 /// Shape operations.
 ///
 /// The current public shape operation is full-axis transpose, exposed as a
