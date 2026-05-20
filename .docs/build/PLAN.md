@@ -27,7 +27,7 @@ W1 ────┬──→ W2 ──→ W9
 W1–W26 全部完成 ──→ W27 (Safety Audit)
 W22 完成 ──→ W28 (Benchmarks)
 W22 完成 ──→ W29 (Integration Tests)
-W22 完成 ──→ W30 (Documentation)
+W1–W26 全部完成 ──→ W30 (Documentation)
 ```
 
 > ⚠️ **W28 跨 wave 依赖补充（DAG 未画出的关键补充）**：上方 DAG 仅展示 Wave 级主依赖 `W22 → W28`（数据构造前置）。**W28 内部另存 task 级跨 wave 依赖**：
@@ -47,7 +47,8 @@ W22 完成 ──→ W30 (Documentation)
 | B | W6, W9 | W6 需 W3, W9 需 W2; 可并行 |
 | C | W4, W7 | W4 需 W3+W5, W7 需 W3+W6; W6 先于 W7, W5 先于 W4 |
 | D | W11,W12,W13,W14,W20,W21,W22,W24,W25,W26 | 全部在 W8 之后；除 W25 与 W26 需要 W12T7（`TensorBase::iter()` 入口方法）外，组内互相独立。**例外：W13T4 依赖 W22T10 (OwnedRawParts)**，详见 W13 与 W22 节 |
-| E | W28, W29, W30 | 全部在 W22 之后，互相独立 |
+| E | W28, W29 | 全部在 W22 之后，互相独立 |
+| E′ | W30 | 在 W1–W26 全部完成后（文档需覆盖全部实现 wave，与 SUMMARY.md L575 + W30T1 blockquote 一致） |
 
 ---
 
@@ -861,7 +862,7 @@ W22 完成 ──→ W30 (Documentation)
   W30T1 (crate-level docs)
   W30T4 (CHANGELOG)
 批次2:
-  W30T2 (missing_docs+doxcs.rs, 需 W30T1)
+  W30T2 (missing_docs + docs.rs metadata + Prelude docs, 需 W30T1)
 批次3:
   W30T3 (README, 需 W30T1)
 批次4 (全并行 — 24 个模块级文档):
