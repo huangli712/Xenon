@@ -34,7 +34,7 @@
 //! `std::panic::catch_unwind` to prevent Rust panics from crossing the C
 //! ABI (`23-ffi.md` §5.4 line 642-675, §8.2 line 1364).
 //!
-//! ```ignore
+//! ```text
 //! // Upstream library defines an extern "C" wrapper that calls into
 //! // Xenon and catches any panic at the FFI boundary.
 //! #[repr(C)]

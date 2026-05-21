@@ -15,7 +15,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! use xenon::workspace::Workspace;
 //!
 //! let mut ws = Workspace::new(1024, 64)?;

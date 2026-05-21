@@ -11,76 +11,64 @@
 #![warn(unsafe_op_in_unsafe_fn)]
 #![warn(clippy::unwrap_used)]
 
-/// Internal infrastructure for sealed traits.
+/// Internal sealed-trait infrastructure.
 mod private;
 
 /// Structured error types for fallible operations.
 pub mod error;
 
-/// Dimension types for compile-time and runtime shape specification.
+/// Static and dynamic dimension types with compile-time rank checking.
 pub mod dimension;
 
-/// Common exports for convenient use.
+/// Curated re-exports of the most commonly used types.
 pub mod prelude;
 
-/// Complex number type with sealed component bound.
+/// Complex number type with a sealed real-component bound.
 pub mod complex;
 
-/// Tensor construction: zeros, ones, eye, from_shape_vec, from_scalar, etc.
+/// Factory functions: zeros, ones, eye, from_shape_vec, from_scalar.
 pub mod construct;
 
 /// Element type hierarchy: base traits and type discriminants.
 pub mod element;
 
-/// Layout module: F-order strides, contiguity, flags and alignment.
+/// Memory layout: strides, contiguity, and layout flags.
 pub mod layout;
 
-/// Storage system: trait hierarchy and concrete storage representations.
+/// Storage backends: owned, arc-shared, and view representations.
 pub mod storage;
 
-/// Type conversion: element-level cast dispatch and `to_owned` / `into_owned`.
+/// Element-level type conversion: casts, to_owned, into_owned.
 pub mod convert;
 
-/// Tensor core: TensorBase, type aliases, query methods, and raw-parts
-/// construction. See `07-tensor.md`.
+/// Tensor core: TensorBase, type aliases, and raw-parts construction.
 pub mod tensor;
 
-/// Tensor formatting support.
-///
-/// Provides user-facing `Display` and developer-facing `Debug` for tensors,
-/// with configurable truncation and Numpy-style logical-index ordering.
+/// Display and Debug formatting with configurable truncation.
 pub mod format;
 
-/// N-dimensional indexing and slicing.
+/// N-dimensional indexing and slicing traits.
 pub mod index;
 
-/// Shape operations.
-///
-/// The current public shape operation is full-axis transpose, exposed as a
-/// method on `TensorBase`.
+/// Shape operations: full-axis transpose.
 pub mod shape;
-/// Tensor iterators.
-///
-/// Defines the public iterator surface: `Iter`, `IterMut`, `AxisIter`,
-/// `AxisIterMut`, `IndexedIter`, `IndexedIterMut`.
+
+/// Tensor iterators: element, axis, and indexed traversal.
 pub mod iter;
 
-/// Utility operations: clip, fill, to/into_contiguous.
-/// See `docs/design/20-utility.md`.
+/// Utility operations: clip, fill, to_contiguous, into_contiguous.
 pub mod util;
 
-/// FFI helper APIs: raw-pointer access, BLAS compatibility, index conversion. See docs/design/23-ffi.md.
+/// FFI helper APIs: raw-pointer access and BLAS compatibility.
 pub mod ffi;
 
-/// Execution-path dispatch: three-way arbitration (Serial / Simd / Parallel),
-/// threshold management, and nested-parallel guard. See `30-dispatch.md`.
+/// Execution-path dispatch: Serial, Simd, and Parallel arbitration.
 pub(crate) mod dispatch;
 
-/// Broadcasting utilities: shape compatibility checks, stride expansion,
-/// zero-copy broadcast view construction. See `15-broadcast.md`.
+/// Broadcasting: shape compatibility, stride expansion, zero-copy views.
 pub mod broadcast;
 
-/// Temporary aligned workspace for internal scratch buffers. See 24-workspace.md.
+/// Aligned scratch workspace for internal temporary buffers.
 pub mod workspace;
 
 pub use error::XenonError;
