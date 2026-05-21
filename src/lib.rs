@@ -82,6 +82,9 @@ pub(crate) mod simd;
 /// Module is always compiled; only rayon-dependent items are gated.
 pub(crate) mod parallel;
 
+pub mod matrix;
+pub use matrix::dot;
+
 pub use error::XenonError;
 pub use prelude::*;
 
