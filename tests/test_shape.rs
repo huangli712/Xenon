@@ -133,16 +133,16 @@ fn test_broadcast_dim_compatibility() {
 
 // ── W11 activation placeholder ──
 
-/// Placeholder for W11: runtime broadcast path (`broadcast_to` /
-/// `broadcast_with`).
+/// W11 activated: broadcast path (`broadcast_to` and shape compatibility).
 #[test]
-#[ignore = "W11 activation required: broadcast_to / broadcast_with not yet defined"]
 fn test_broadcast_runtime_with_dim() {
-    // W11 will implement, e.g.:
-    //   let t = Tensor2::<f64>::zeros([1, 4]).unwrap();
-    //   let v = t.broadcast_to([3, 4]).unwrap();
-    //   assert_eq!(v.shape(), &[3, 4]);
-    panic!("W11 placeholder — must be replaced before W11 completion");
+    let t = xenon::tensor::Tensor2::<f64>::zeros([1, 4]).expect("valid shape");
+    let v = t.broadcast_to([3, 4]).expect("compatible shapes");
+    assert_eq!(v.shape(), &[3, 4]);
+    // Transpose the broadcast view: shape swaps, broadcast stride moves.
+    let vt = v.transpose();
+    assert_eq!(vt.shape(), &[4, 3]);
+    assert_eq!(vt.strides()[1], 0); // broadcast axis 0 → trailing after transpose.
 }
 
 // ── W16 activation placeholders ──
@@ -226,9 +226,21 @@ fn test_shape_integration_transpose_with_index() {
     }
 }
 
+/// W11 activated: transpose of a broadcast view preserves the broadcast
+/// layout with axes swapped.
 #[test]
-#[ignore = "depends on W11 broadcast module"]
-fn test_shape_integration_transpose_with_broadcast() {}
+fn test_shape_integration_transpose_with_broadcast() {
+    let t = unsafe { make_tensor(vec![1.0_f64, 2.0, 3.0], Ix2(1, 3)) };
+    let b = t.broadcast_to([2, 3]).expect("compatible shapes");
+    // Broadcast: shape [2, 3], strides [0, 1]
+    assert_eq!(b.strides(), &[0, 1]);
+    // Transpose: shape [3, 2], strides [1, 0]
+    let bt = b.transpose();
+    assert_eq!(bt.shape(), &[3, 2]);
+    assert_eq!(bt.strides(), &[1, 0]);
+    // Zero-copy through both operations: pointer unchanged.
+    assert_eq!(bt.as_ptr(), t.as_ptr());
+}
 
 #[test]
 fn test_shape_integration_transpose_6d() {

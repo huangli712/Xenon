@@ -6,8 +6,6 @@
 
 mod cast;
 
-pub(crate) use cast::ConvertTo;
-
 #[cfg(test)]
 mod tests {
     #[test]

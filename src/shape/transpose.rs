@@ -67,6 +67,7 @@ where
 mod tests {
     use crate::dimension::{Dimension, Ix0, Ix1, Ix2, Ix3};
     use crate::element::Element;
+    use crate::layout::LayoutState;
     use crate::storage::Owned;
     use crate::tensor::TensorBase;
     use crate::tensor::StorageKind;
@@ -148,9 +149,18 @@ mod tests {
         assert_eq!(vt.is_f_contiguous(), v.is_f_contiguous());
     }
 
+    /// W11 activated: transpose of a broadcast view preserves the BroadcastView
+    /// layout state — the zero stride swaps axes but remains zero.
     #[test]
-    #[ignore = "depends on W11 broadcast module"]
-    fn test_transpose_broadcast_view_keeps_flag() {}
+    fn test_transpose_broadcast_view_keeps_flag() {
+        let t = unsafe { make_tensor(vec![1.0_f64, 2.0, 3.0], Ix2(1, 3)) };
+        let b = t.broadcast_to([2, 3]).expect("compatible shapes");
+        assert_eq!(b.layout_state(), LayoutState::BroadcastView);
+        // Transpose: broadcast axis moves from [0] to [1], stride stays zero.
+        let bt = b.transpose();
+        assert_eq!(bt.strides(), &[1, 0]);
+        assert_eq!(bt.layout_state(), LayoutState::BroadcastView);
+    }
 
     #[test]
     fn test_transpose_view_mut_returns_view_kind() {
