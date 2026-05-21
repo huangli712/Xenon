@@ -74,6 +74,10 @@ pub mod broadcast;
 /// Aligned scratch workspace for internal temporary buffers.
 pub mod workspace;
 
+/// SIMD vectorized computation backend (opt-in via `simd` feature).
+#[cfg(feature = "simd")]
+pub(crate) mod simd;
+
 pub use error::XenonError;
 pub use prelude::*;
 
