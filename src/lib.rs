@@ -59,6 +59,9 @@ pub mod iter;
 /// Utility operations: clip, fill, to_contiguous, into_contiguous.
 pub mod util;
 
+/// Set operations: unique deduplication.
+pub mod set;
+
 /// FFI helper APIs: raw-pointer access and BLAS compatibility.
 pub mod ffi;
 

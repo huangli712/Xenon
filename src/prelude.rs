@@ -51,6 +51,9 @@ pub use crate::error::{
 // Construction convenience helpers — available after W22
 // pub use crate::construct::{zeros, ones, eye, from_shape_vec};
 
+// Set operations — available after W19
+pub use crate::set::UniqueElement;
+
 #[cfg(test)]
 mod tests {
     use crate::prelude::*;
