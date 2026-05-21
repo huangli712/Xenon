@@ -192,17 +192,19 @@ mod tests {
     /// `strides * index` overflow must yield `InvalidLayout { reason:
     /// AccessRangeExceedsStorage }`, never panic.
     ///
-    /// **构造路径分析**：
-    ///   - `validate_access_range` 结构（W8T7 Step 2 / 07-tensor.md §6.2）：
+    /// **Construction path analysis**:
+    ///   - `validate_access_range` structure (W8T7 Step 2 / 07-tensor.md §6.2):
     ///     Step 1: shape.checked_size() → len
-    ///     Step 2: if len == 0: 早返回 Ok(())  ← 本测试依赖这个早返回路径
+    ///     Step 2: if len == 0: early-return Ok(())  ← this test relies on this path
     ///     Step 3: stride > isize::MAX  → StrideExceedsIsizeMax
-    ///     Step 4-5: span/max_offset 计算
-    ///   - shape=[3, 0] → len=0 → Step 2 早返回，**跳过 Step 3 的 isize::MAX 检查**
-    ///     这让载体张量能够携带 `stride[0] = usize::MAX` 通过构造期校验。
-    ///   - try_offset_of(&[2, 0]): axis 0 计算 `2 < 3 ✓ → term = usize::MAX * 2`，
-    ///     **checked_mul 溢出** → InvalidLayout { reason: AccessRangeExceedsStorage }。
-    ///   - axis 1 (index=0) 不参与乘法溢出，不影响测试语义。
+    ///     Step 4-5: span/max_offset computation
+    ///   - shape=[3, 0] → len=0 → Step 2 early-returns, **bypassing Step 3's
+    ///     isize::MAX check**. This lets the carrier tensor carry
+    ///     `stride[0] = usize::MAX` through construction-time validation.
+    ///   - try_offset_of(&[2, 0]): axis 0 computes `2 < 3 ✓ → term = usize::MAX * 2`,
+    ///     **checked_mul overflows** → InvalidLayout { reason: AccessRangeExceedsStorage }.
+    ///   - axis 1 (index=0) does not participate in the overflow, not affecting
+    ///     the test semantics.
     #[test]
     fn test_try_offset_of_checked_overflow() {
         let data = Vec::<i32>::new(); // empty storage
