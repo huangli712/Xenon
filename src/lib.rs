@@ -82,6 +82,9 @@ pub(crate) mod simd;
 /// Module is always compiled; only rayon-dependent items are gated.
 pub(crate) mod parallel;
 
+/// Reduction operations: sum, sum_axis, sum_axis_keepdims.
+pub mod reduction;
+
 pub mod matrix;
 pub use matrix::dot;
 
