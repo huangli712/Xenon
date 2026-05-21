@@ -69,13 +69,27 @@ pub mod iter;
 /// See `docs/design/20-utility.md`.
 pub mod util;
 
-/// FFI helper APIs: raw-pointer access, BLAS compatibility, index
-/// conversion. See `docs/design/23-ffi.md`.
+/// ```rust
+/// // FFI helper APIs: raw-pointer access, BLAS compatibility, index conversion.
+/// // See docs/design/23-ffi.md.
+/// # let _ = ();
+/// ```
 pub mod ffi;
 
 /// Execution-path dispatch: three-way arbitration (Serial / Simd / Parallel),
 /// threshold management, and nested-parallel guard. See `30-dispatch.md`.
 pub(crate) mod dispatch;
+
+/// Broadcasting utilities: shape compatibility checks, stride expansion,
+/// zero-copy broadcast view construction. See `15-broadcast.md`.
+pub mod broadcast;
+
+/// ```rust
+/// // Temporary aligned workspace for internal scratch buffers.
+/// // See 24-workspace.md.
+/// # let _ = ();
+/// ```
+pub mod workspace;
 
 pub use error::XenonError;
 pub use prelude::*;

@@ -1200,6 +1200,58 @@ impl XenonError {
             },
         }
     }
+
+    // --- XenonError::Workspace constructor helpers (used by W9T4, W9T5, W9T6) ---
+    //
+    // Each helper preserves the `operation` field and accepts structured
+    // borrow / overflow context so callers (the borrow/split/expand modules)
+    // never lose diagnostic fidelity. The `operation` string is `&'static str`
+    // to remain `Cow::Borrowed`-friendly with no allocation.
+
+    /// Construct a `Workspace::SplitOutOfBounds` error.
+    pub fn workspace_split_oob(
+        operation: &'static str,
+        mid: usize,
+        len: usize,
+    ) -> Self {
+        XenonError::Workspace {
+            operation: Cow::Borrowed(operation),
+            category: WorkspaceErrorCategory::SplitOutOfBounds { mid, len },
+            cause: None,
+        }
+    }
+
+    /// Construct a `Workspace::BorrowConflict` error.
+    pub fn workspace_borrow_conflict(
+        operation: &'static str,
+        requested: WorkspaceBorrowKind,
+        current: WorkspaceBorrowState,
+    ) -> Self {
+        XenonError::Workspace {
+            operation: Cow::Borrowed(operation),
+            category: WorkspaceErrorCategory::BorrowConflict {
+                requested,
+                current,
+            },
+            cause: None,
+        }
+    }
+
+    /// Construct a `Workspace::GrowOverflow` error.
+    pub fn workspace_grow_overflow(
+        operation: &'static str,
+        current_capacity: usize,
+        additional: usize,
+    ) -> Self {
+        XenonError::Workspace {
+            operation: Cow::Borrowed(operation),
+            category: WorkspaceErrorCategory::GrowOverflow {
+                current_capacity,
+                additional,
+            },
+            cause: None,
+        }
+    }
 }
 
 /// Canonical `Result` alias used by all public Xenon APIs.
@@ -1790,5 +1842,118 @@ mod tests {
         assert!(msg.contains("Ix2::try_from_dyn"), "msg: {msg}");
         assert!(msg.contains("expected 2"), "msg: {msg}");
         assert!(msg.contains("3"), "msg: {msg}");
+    }
+
+    // ── W9T1: workspace error category + constructor helper tests ──
+
+    /// Verify all 7 `WorkspaceErrorCategory` variants are constructable
+    /// and carry structured fields (24-workspace.md §8.2).
+    #[test]
+    fn test_workspace_workspace_error_category() {
+        // InvalidLayout
+        let cat = WorkspaceErrorCategory::InvalidLayout {
+            size: 0,
+            align: 3,
+        };
+        assert!(format!("{cat:?}").contains("InvalidLayout"));
+
+        // AllocFailed
+        let cat = WorkspaceErrorCategory::AllocFailed {
+            size: 1024,
+            align: 64,
+        };
+        assert!(format!("{cat:?}").contains("AllocFailed"));
+
+        // BorrowConflict
+        let cat = WorkspaceErrorCategory::BorrowConflict {
+            requested: WorkspaceBorrowKind::Exclusive,
+            current: WorkspaceBorrowState::SplitActive { count: 2 },
+        };
+        assert!(format!("{cat:?}").contains("BorrowConflict"));
+        assert!(format!("{cat:?}").contains("SplitActive"));
+
+        // SplitOutOfBounds — field name MUST be `mid` (not `split_at`).
+        let cat = WorkspaceErrorCategory::SplitOutOfBounds {
+            mid: 42,
+            len: 10,
+        };
+        assert!(format!("{cat:?}").contains("SplitOutOfBounds"));
+        assert!(format!("{cat:?}").contains("mid: 42"));
+
+        // SplitCountInvariant
+        let cat = WorkspaceErrorCategory::SplitCountInvariant {
+            detail: Cow::Borrowed("underflow"),
+        };
+        assert!(format!("{cat:?}").contains("SplitCountInvariant"));
+
+        // GrowOverflow — field names MUST be `current_capacity` and `additional`.
+        let cat = WorkspaceErrorCategory::GrowOverflow {
+            current_capacity: usize::MAX,
+            additional: 1,
+        };
+        assert!(format!("{cat:?}").contains("GrowOverflow"));
+        assert!(format!("{cat:?}").contains("current_capacity"));
+        assert!(format!("{cat:?}").contains("additional"));
+
+        // TypedViewRejected
+        let cat = WorkspaceErrorCategory::TypedViewRejected {
+            detail: TypedViewRejection::ZeroSizedType,
+        };
+        assert!(format!("{cat:?}").contains("TypedViewRejected"));
+    }
+
+    /// Verify all 3 `TypedViewRejection` variants carry expected fields.
+    #[test]
+    fn test_typed_view_rejection_variants() {
+        let r = TypedViewRejection::ZeroSizedType;
+        assert!(format!("{r:?}").contains("ZeroSizedType"));
+
+        let r = TypedViewRejection::AlignmentMismatch {
+            required: 8,
+            actual: 1,
+        };
+        assert!(format!("{r:?}").contains("AlignmentMismatch"));
+
+        let r = TypedViewRejection::TypedByteLengthOverflow {
+            count: usize::MAX,
+            elem_size: 4,
+        };
+        assert!(format!("{r:?}").contains("TypedByteLengthOverflow"));
+    }
+
+    /// Verify all 3 workspace constructor helpers carry `operation` and
+    /// structured context.
+    #[test]
+    fn test_workspace_constructor_helpers() {
+        // split_oob carries `operation`, `mid`, `len`.
+        let err = XenonError::workspace_split_oob("Workspace::split_at_mut", 10, 5);
+        let s = format!("{err:?}");
+        assert!(s.contains("Workspace::split_at_mut"));
+        assert!(s.contains("SplitOutOfBounds"));
+        assert!(s.contains("mid: 10"));
+
+        // borrow_conflict carries `operation`, `requested`, `current`.
+        let err = XenonError::workspace_borrow_conflict(
+            "Workspace::borrow",
+            WorkspaceBorrowKind::Shared,
+            WorkspaceBorrowState::Exclusive,
+        );
+        let s = format!("{err:?}");
+        assert!(s.contains("Workspace::borrow"));
+        assert!(s.contains("BorrowConflict"));
+        assert!(s.contains("Shared"));
+        assert!(s.contains("Exclusive"));
+
+        // grow_overflow carries `operation`, `current_capacity`, `additional`.
+        let err = XenonError::workspace_grow_overflow(
+            "Workspace::ensure_capacity",
+            usize::MAX,
+            1,
+        );
+        let s = format!("{err:?}");
+        assert!(s.contains("Workspace::ensure_capacity"));
+        assert!(s.contains("GrowOverflow"));
+        assert!(s.contains("current_capacity"));
+        assert!(s.contains("additional"));
     }
 }
