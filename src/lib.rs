@@ -69,6 +69,9 @@ pub mod iter;
 /// See `docs/design/20-utility.md`.
 pub mod util;
 
+/// FFI helper APIs: raw-pointer access, BLAS compatibility, index
+/// conversion. See `docs/design/23-ffi.md`.
+pub mod ffi;
 
 /// Execution-path dispatch: three-way arbitration (Serial / Simd / Parallel),
 /// threshold management, and nested-parallel guard. See `30-dispatch.md`.
