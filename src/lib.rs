@@ -65,6 +65,10 @@ pub mod shape;
 /// `AxisIterMut`, `IndexedIter`, `IndexedIterMut`.
 pub mod iter;
 
+/// Utility operations: clip, fill, to/into_contiguous.
+/// See `docs/design/20-utility.md`.
+pub mod util;
+
 
 /// Execution-path dispatch: three-way arbitration (Serial / Simd / Parallel),
 /// threshold management, and nested-parallel guard. See `30-dispatch.md`.
