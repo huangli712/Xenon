@@ -4,7 +4,6 @@
 //!
 //! Demonstrates tensor creation, element-wise addition, reduction, and display.
 
-use xenon::prelude::*;
 use xenon::tensor::Tensor;
 
 fn main() -> xenon::Result<()> {

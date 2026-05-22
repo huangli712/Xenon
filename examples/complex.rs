@@ -5,7 +5,6 @@
 //! Demonstrates complex tensor construction, same-type arithmetic, and display.
 
 use xenon::complex::Complex;
-use xenon::prelude::*;
 use xenon::tensor::Tensor;
 
 fn main() -> xenon::Result<()> {

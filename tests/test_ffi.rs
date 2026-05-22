@@ -66,7 +66,7 @@ fn test_lda() {
     assert_eq!(lda, 3);
 
     // Non-F-contiguous layout (C-order strides) should be rejected.
-    let data = vec![0.0_f64; 12];
+    let data = [0.0_f64; 12];
     let strides = Strides::from_slice(&[4_usize, 1]).expect("valid strides");
     let t = unsafe {
         TensorView::<f64, Ix2>::from_raw_parts(data.as_ptr(), data.len(), Ix2(3, 4), strides, 0)
@@ -88,7 +88,7 @@ fn test_is_blas_layout_compatible() {
     assert!(tensor.is_blas_layout_compatible());
 
     // Non-contiguous layout should return false.
-    let data = vec![0.0_f64; 12];
+    let data = [0.0_f64; 12];
     let strides = Strides::from_slice(&[4_usize, 1]).expect("valid strides");
     let t = unsafe {
         TensorView::<f64, Ix2>::from_raw_parts(data.as_ptr(), data.len(), Ix2(3, 4), strides, 0)

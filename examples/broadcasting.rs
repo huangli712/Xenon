@@ -2,7 +2,6 @@
 //!
 //! Run with: `cargo run --example broadcasting`
 
-use xenon::prelude::*;
 use xenon::tensor::Tensor;
 
 fn main() -> xenon::Result<()> {

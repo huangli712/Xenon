@@ -5,7 +5,6 @@
 //! Demonstrates how the `simd` feature enables internal SIMD acceleration
 //! while preserving the public API surface.
 
-use xenon::prelude::*;
 use xenon::tensor::Tensor;
 
 fn main() -> xenon::Result<()> {
