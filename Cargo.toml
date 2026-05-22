@@ -35,3 +35,38 @@ all-features = true
 [dev-dependencies]
 proptest = "1"
 static_assertions = "1"
+[[bench]]
+name = "math"
+harness = false
+
+[[bench]]
+name = "reduction"
+harness = false
+
+[[bench]]
+name = "dot"
+harness = false
+
+[[bench]]
+name = "set"
+harness = false
+
+[[bench]]
+name = "broadcast"
+harness = false
+
+[[bench]]
+name = "shape"
+harness = false
+
+[[bench]]
+name = "simd_comparison"
+harness = false
+
+[[bench]]
+name = "parallel_comparison"
+harness = false
+
+[[bench]]
+name = "construction"
+harness = false

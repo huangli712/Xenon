@@ -2,3 +2,4 @@
 target/
 .sisyphus
 .omo
+__pycache__

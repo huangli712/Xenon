@@ -1,0 +1,112 @@
+name: Benchmarks
+on:
+  workflow_dispatch:
+    inputs:
+      level:
+        description: 'Benchmark level'
+        required: true
+        type: choice
+        options: [smoke, regression, full]
+        default: smoke
+  pull_request:
+    paths:
+      - 'benches/**'
+      - 'src/**/*.rs'
+      - 'Cargo.toml'
+
+jobs:
+  bench-smoke:
+    if: github.event_name == 'pull_request' || inputs.level == 'smoke'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # 27-benchmark §5.6 Smoke Test: math.rs / reduction.rs / construction.rs
+      - name: Quick smoke — core benches
+        run: |
+          cargo bench --bench math -- "elem_add_f64" --quick
+          cargo bench --bench reduction -- "sum_1d_f64" --quick
+          cargo bench --bench construction -- "zeros_1d" --quick
+      - name: Quick smoke — comparison benches (feature matrix)
+        run: |
+          # SIMD comparison: run twice for A-B compare (feature-off vs feature-on)
+          cargo bench --bench simd_comparison -- "simd_add_compare" --quick
+          cargo bench --bench simd_comparison --features simd -- "simd_add_compare" --quick
+          # Parallel comparison: same A-B pattern
+          cargo bench --bench parallel_comparison -- "par_add_compare" --quick
+          cargo bench --bench parallel_comparison --features parallel -- "par_add_compare" --quick
+
+  bench-regression:
+    if: inputs.level == 'regression'
+    needs: bench-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # 27-benchmark §6.4 baseline consumption: elem_add_f64 + sum_1d_f64 (Medium = 65536)
+      - name: Run regression benches and capture output
+        run: |
+          cargo bench --bench math -- "elem_add_f64" > target/bench-smoke.txt
+          cargo bench --bench reduction -- "sum_1d_f64" >> target/bench-smoke.txt
+      - name: Report regression analysis
+        run: python tools/bench/report.py --input target/bench-smoke.txt --baseline tools/bench/baseline.json
+
+  bench-full:
+    if: inputs.level == 'full'
+    needs: bench-smoke
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # 27-benchmark §5.6: Full Benchmark = all files × 4 feature combinations
+        # (default / simd / parallel / simd+parallel)
+        include:
+          # math × 4
+          - { bench: math,                features: "" }
+          - { bench: math,                features: "--features simd" }
+          - { bench: math,                features: "--features parallel" }
+          - { bench: math,                features: "--features simd,parallel" }
+          # reduction × 4
+          - { bench: reduction,           features: "" }
+          - { bench: reduction,           features: "--features simd" }
+          - { bench: reduction,           features: "--features parallel" }
+          - { bench: reduction,           features: "--features simd,parallel" }
+          # dot × 4
+          - { bench: dot,                 features: "" }
+          - { bench: dot,                 features: "--features simd" }
+          - { bench: dot,                 features: "--features parallel" }
+          - { bench: dot,                 features: "--features simd,parallel" }
+          # set × 4
+          - { bench: set,                 features: "" }
+          - { bench: set,                 features: "--features simd" }
+          - { bench: set,                 features: "--features parallel" }
+          - { bench: set,                 features: "--features simd,parallel" }
+          # broadcast × 4
+          - { bench: broadcast,           features: "" }
+          - { bench: broadcast,           features: "--features simd" }
+          - { bench: broadcast,           features: "--features parallel" }
+          - { bench: broadcast,           features: "--features simd,parallel" }
+          # shape × 4
+          - { bench: shape,               features: "" }
+          - { bench: shape,               features: "--features simd" }
+          - { bench: shape,               features: "--features parallel" }
+          - { bench: shape,               features: "--features simd,parallel" }
+          # construction × 4
+          - { bench: construction,        features: "" }
+          - { bench: construction,        features: "--features simd" }
+          - { bench: construction,        features: "--features parallel" }
+          - { bench: construction,        features: "--features simd,parallel" }
+          # simd_comparison × 4
+          - { bench: simd_comparison,     features: "" }
+          - { bench: simd_comparison,     features: "--features simd" }
+          - { bench: simd_comparison,     features: "--features parallel" }
+          - { bench: simd_comparison,     features: "--features simd,parallel" }
+          # parallel_comparison × 4
+          - { bench: parallel_comparison, features: "" }
+          - { bench: parallel_comparison, features: "--features simd" }
+          - { bench: parallel_comparison, features: "--features parallel" }
+          - { bench: parallel_comparison, features: "--features simd,parallel" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run ${{ matrix.bench }} ${{ matrix.features || '(default)' }}
+        run: cargo bench --bench ${{ matrix.bench }} ${{ matrix.features }}
