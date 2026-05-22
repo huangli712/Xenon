@@ -56,6 +56,9 @@ where
         .reduce(identity, op)
 }
 
+/// Parallel sum reduction.
+///
+/// Test-only visibility: re-exported at crate root under `#[doc(hidden)]`.
 #[cfg(feature = "parallel")]
 pub fn par_sum<S, A, D>(
     tensor: &TensorBase<S, D>,
@@ -70,6 +73,9 @@ where
     par_reduce_impl(tensor, strategy, guard, || A::zero(), |a, b| a + b)
 }
 
+/// Parallel dot product of two 1-D tensors.
+///
+/// Test-only visibility: re-exported at crate root under `#[doc(hidden)]`.
 #[cfg(feature = "parallel")]
 pub fn par_dot<SL, SR, A, DL, DR>(
     lhs: &TensorBase<SL, DL>,

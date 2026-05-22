@@ -13,6 +13,9 @@ use crate::parallel::compute_safe_chunks;
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
 
+/// Parallel element-wise map.
+///
+/// Test-only visibility: re-exported at crate root under `#[doc(hidden)]`.
 #[cfg(feature = "parallel")]
 pub fn par_map<S, A, B, D, F>(
     tensor: &TensorBase<S, D>,

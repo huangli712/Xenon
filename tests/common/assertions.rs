@@ -45,11 +45,7 @@ pub fn ulp_distance_f64(a: f64, b: f64) -> u64 {
     }
     let a_bias = bias_f64(a.to_bits());
     let b_bias = bias_f64(b.to_bits());
-    if a_bias >= b_bias {
-        a_bias - b_bias
-    } else {
-        b_bias - a_bias
-    }
+    a_bias.abs_diff(b_bias)
 }
 
 /// Maps an `f32` bit pattern into a monotonic biased `u32`.
@@ -83,7 +79,7 @@ pub fn ulp_distance_f32(a: f32, b: f32) -> u64 {
 ///
 /// Public callers pass `f32`/`f64` directly — the extension trait is
 /// implemented for both, so call sites using `f32`/`f64` remain valid.
-trait RealScalarBits: RealScalar {
+pub(crate) trait RealScalarBits: RealScalar {
     type Bits: Eq;
     fn bits(self) -> Self::Bits;
     fn ulp(a: Self, b: Self) -> u64;

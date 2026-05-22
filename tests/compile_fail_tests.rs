@@ -30,7 +30,7 @@ impl CompileFailCase {
     fn from_path(path: PathBuf) -> Self {
         let src = std::fs::read_to_string(&path)
             .expect("compile-fail fixture must be readable");
-        let name = path.file_stem().unwrap().to_string_lossy().into_owned();
+        let name = path.file_stem().expect("compile-fail fixture must have a file stem").to_string_lossy().into_owned();
         let expected_tokens = Self::parse_expected_tokens(&src);
         Self {
             name,
@@ -144,9 +144,9 @@ mod tests {
     fn test_collect_compile_fail_cases_filters_rs_files() {
         let tmp = std::env::temp_dir().join("xenon_cf_collect");
         let _ = std::fs::remove_dir_all(&tmp);
-        std::fs::create_dir_all(&tmp).unwrap();
-        std::fs::write(tmp.join("a.rs"), "fn main() {}").unwrap();
-        std::fs::write(tmp.join("not_rust.txt"), "hello").unwrap();
+        std::fs::create_dir_all(&tmp).expect("temp dir creation failed");
+        std::fs::write(tmp.join("a.rs"), "fn main() {}").expect("write a.rs failed");
+        std::fs::write(tmp.join("not_rust.txt"), "hello").expect("write not_rust.txt failed");
         let cases = collect_compile_fail_cases(&tmp);
         assert_eq!(cases.len(), 1);
         assert!(cases

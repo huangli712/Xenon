@@ -79,7 +79,7 @@ fn test_workspace_borrow_rules() {
     let err = ws.borrow().expect_err("second borrow should conflict");
     match &err {
         XenonError::Workspace {
-            category: WorkspaceErrorCategory::BorrowConflict { requested, current },
+            category: WorkspaceErrorCategory::BorrowConflict { requested, current: _ },
             ..
         } => {
             assert!(format!("{requested:?}").contains("Shared"));

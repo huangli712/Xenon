@@ -2,7 +2,7 @@
 //! export/export_mut contracts, try_offset_of, and alignment preconditions.
 
 use xenon::dimension::{Ix1, Ix2};
-use xenon::error::{FfiBackend, FfiErrorCategory, XenonError};
+use xenon::error::{FfiErrorCategory, XenonError};
 use xenon::ffi::ElementType;
 use xenon::layout::Strides;
 use xenon::tensor::{Tensor, TensorView, TensorViewMut};
@@ -199,7 +199,7 @@ fn test_try_offset_of() {
     let tensor = Tensor::<f64, _>::zeros([3, 4]).expect("zeros [3,4]");
     assert_eq!(
         tensor.try_offset_of(&[2, 3]).expect("valid index"),
-        2 * 1 + 3 * 3
+        2 + 3 * 3
     );
 }
 

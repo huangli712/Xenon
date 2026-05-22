@@ -310,7 +310,7 @@ mod w29t2_tests {
 
     #[test]
     fn test_tensor_shape_strides() {
-        let t = Tensor1::<f64>::from_shape_vec([5], vec![1.0_f64, 2.0, 3.0, 4.0, 5.0]).unwrap();
+        let t = Tensor1::<f64>::from_shape_vec([5], vec![1.0_f64, 2.0, 3.0, 4.0, 5.0]).expect("valid shape");
         assert_eq!(t.shape(), &[5usize]);
         // strides() returns &[usize] (F-order strides for a 1D tensor is [1]).
         assert_eq!(t.strides(), &[1usize]);
@@ -319,14 +319,14 @@ mod w29t2_tests {
 
     #[test]
     fn test_tensor_is_empty() {
-        let t = Tensor1::<f64>::from_shape_vec([0], Vec::new()).unwrap();
+        let t = Tensor1::<f64>::from_shape_vec([0], Vec::new()).expect("valid shape");
         assert_eq!(t.len(), 0);
         assert!(t.is_empty());
     }
 
     #[test]
     fn test_tensor_view_creation() {
-        let mut t = Tensor1::<f64>::from_shape_vec([3], vec![1.0_f64, 2.0, 3.0]).unwrap();
+        let mut t = Tensor1::<f64>::from_shape_vec([3], vec![1.0_f64, 2.0, 3.0]).expect("valid shape");
 
         // (a) read-only view()
         {
@@ -339,8 +339,8 @@ mod w29t2_tests {
         {
             let mut vm = t.view_mut();
             assert_eq!(vm.shape(), &[3usize]);
-            *vm.try_at_mut((0,)).unwrap() = 10.0;
-            *vm.try_at_mut((2,)).unwrap() = 30.0;
+            *vm.try_at_mut((0,)).expect("valid index") = 10.0;
+            *vm.try_at_mut((2,)).expect("valid index") = 30.0;
         }
         assert_eq!(
             t.view().iter().copied().collect::<Vec<_>>(),
@@ -350,7 +350,7 @@ mod w29t2_tests {
 
     #[test]
     fn test_tensor_to_owned() {
-        let t = Tensor1::<f64>::from_shape_vec([2], vec![10.0_f64, 20.0]).unwrap();
+        let t = Tensor1::<f64>::from_shape_vec([2], vec![10.0_f64, 20.0]).expect("valid shape");
         let view = t.view();
         let owned = view.to_owned();
         assert_eq!(owned.shape(), &[2usize]);
@@ -359,7 +359,7 @@ mod w29t2_tests {
 
     #[test]
     fn test_tensor_into_owned() {
-        let t = Tensor1::<f64>::from_shape_vec([3], vec![1.0_f64, 2.0, 3.0]).unwrap();
+        let t = Tensor1::<f64>::from_shape_vec([3], vec![1.0_f64, 2.0, 3.0]).expect("valid shape");
         let view = t.view();
         let owned = view.into_owned();
         assert_eq!(owned.shape(), &[3usize]);
