@@ -5,13 +5,13 @@
 
 use std::borrow::Cow;
 
-use crate::dispatch::{ParallelExecStrategy, ParallelGuard, with_parallel_worker_context};
 use crate::dimension::Dimension;
+use crate::dispatch::{ParallelExecStrategy, ParallelGuard, with_parallel_worker_context};
 use crate::element::Element;
 use crate::error::{InvalidShapeKind, XenonError};
+use crate::parallel::compute_safe_chunks;
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
-use crate::parallel::compute_safe_chunks;
 
 #[cfg(feature = "parallel")]
 pub(crate) fn par_map<S, A, B, D, F>(
@@ -41,7 +41,7 @@ where
     // via rayon's par_iter() on slices.
     let src_slice = tensor.as_slice().expect(
         "par_map caller must ensure F-contiguous + non-broadcast; \
-         dispatch gates non-contiguous inputs to Serial"
+         dispatch gates non-contiguous inputs to Serial",
     );
 
     use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
@@ -88,12 +88,14 @@ where
     F: Fn(&A, &B) -> Result<C, XenonError> + Send + Sync,
 {
     // checked_size overflow -> InvalidShape with ProductOverflow
-    let total = output_dim.checked_size().map_err(|_| XenonError::InvalidShape {
-        operation: Cow::Borrowed("par_zip_map"),
-        shape: output_dim.slice().to_vec(),
-        kind: InvalidShapeKind::ProductOverflow,
-        offending_dim: None,
-    })?;
+    let total = output_dim
+        .checked_size()
+        .map_err(|_| XenonError::InvalidShape {
+            operation: Cow::Borrowed("par_zip_map"),
+            shape: output_dim.slice().to_vec(),
+            kind: InvalidShapeKind::ProductOverflow,
+            offending_dim: None,
+        })?;
 
     let num_threads = strategy
         .max_workers()
@@ -106,11 +108,11 @@ where
     // already broadcast against output_dim.
     let lhs_view = lhs.broadcast_to(output_dim.clone()).expect(
         "math layer ensures broadcast compatibility; violation is an internal bug \
-         (09-parallel 6.3 line 422, 30-dispatch debug_assert policy)"
+         (09-parallel 6.3 line 422, 30-dispatch debug_assert policy)",
     );
-    let rhs_view = rhs.broadcast_to(output_dim.clone()).expect(
-        "math layer ensures broadcast compatibility; violation is an internal bug"
-    );
+    let rhs_view = rhs
+        .broadcast_to(output_dim.clone())
+        .expect("math layer ensures broadcast compatibility; violation is an internal bug");
 
     // Pre-compute output shape for F-order index -> multi-dim coord conversion.
     let out_shape = output_dim.slice();
@@ -163,11 +165,11 @@ where
 #[cfg(all(test, feature = "parallel"))]
 mod tests {
     use super::*;
-    use crate::dispatch::{
-        select_exec_path, ExecPath, ParallelExecStrategy,
-        set_parallel_threshold, reset_parallel_threshold,
-    };
     use crate::dimension::Ix1;
+    use crate::dispatch::{
+        ExecPath, ParallelExecStrategy, reset_parallel_threshold, select_exec_path,
+        set_parallel_threshold,
+    };
     use crate::layout::Strides;
     use crate::tensor::TensorView;
 
@@ -186,17 +188,17 @@ mod tests {
             )
         }
         .expect("valid F-order [4] view");
-        let (path, guard_opt) = select_exec_path(
-            tensor.len(),
-            tensor.is_f_contiguous(),
-            tensor.is_aligned(),
-        );
+        let (path, guard_opt) =
+            select_exec_path(tensor.len(), tensor.is_f_contiguous(), tensor.is_aligned());
         assert_eq!(path, ExecPath::Parallel);
         let guard = guard_opt.expect("Parallel implies Some(guard) by 30-dispatch 5.5");
 
         let strategy = ParallelExecStrategy::auto();
         let result = par_map(&tensor, &strategy, guard, |v| v * 2.0);
-        assert_eq!(result.as_slice().expect("valid F-order test output"), &[2.0, 4.0, 6.0, 8.0]);
+        assert_eq!(
+            result.as_slice().expect("valid F-order test output"),
+            &[2.0, 4.0, 6.0, 8.0]
+        );
 
         reset_parallel_threshold();
     }
@@ -239,11 +241,12 @@ mod tests {
         let output_dim = Ix1(4);
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_parallel_guard(&lhs);
-        let result = par_zip_map(
-            &lhs, &rhs, &output_dim, &strategy, guard,
-            |a, b| Ok(a + b),
-        ).expect("par_zip_map should succeed for valid test input");
-        assert_eq!(result.as_slice().expect("valid F-order test output"), &[11.0, 22.0, 33.0, 44.0]);
+        let result = par_zip_map(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| Ok(a + b))
+            .expect("par_zip_map should succeed for valid test input");
+        assert_eq!(
+            result.as_slice().expect("valid F-order test output"),
+            &[11.0, 22.0, 33.0, 44.0]
+        );
         reset_parallel_threshold();
     }
 
@@ -270,11 +273,12 @@ mod tests {
         let output_dim = Ix1(4);
         let strategy = ParallelExecStrategy::auto();
         let guard = acquire_parallel_guard(&lhs);
-        let result = par_zip_map(
-            &lhs, &rhs, &output_dim, &strategy, guard,
-            |a, b| Ok(a + b),
-        ).expect("par_zip_map should succeed for valid test input");
-        assert_eq!(result.as_slice().expect("valid F-order test output"), &[11.0, 12.0, 13.0, 14.0]);
+        let result = par_zip_map(&lhs, &rhs, &output_dim, &strategy, guard, |a, b| Ok(a + b))
+            .expect("par_zip_map should succeed for valid test input");
+        assert_eq!(
+            result.as_slice().expect("valid F-order test output"),
+            &[11.0, 12.0, 13.0, 14.0]
+        );
         reset_parallel_threshold();
     }
 }

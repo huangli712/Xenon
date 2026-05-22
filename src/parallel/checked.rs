@@ -2,13 +2,13 @@
 //!
 //! W15T7: par_map_checked — two-pass checked parallel map with error + panic propagation.
 
-use crate::dispatch::{ParallelExecStrategy, ParallelGuard, with_parallel_worker_context};
 use crate::dimension::Dimension;
+use crate::dispatch::{ParallelExecStrategy, ParallelGuard, with_parallel_worker_context};
 use crate::element::Element;
 use crate::error::XenonError;
+use crate::parallel::compute_safe_chunks;
 use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
-use crate::parallel::compute_safe_chunks;
 
 #[cfg(feature = "parallel")]
 pub(crate) fn par_map_checked<S, A, B, D, F>(
@@ -32,9 +32,9 @@ where
         .chunk_size()
         .unwrap_or_else(|| compute_safe_chunks(total, num_threads));
 
-    let src_slice = tensor.as_slice().expect(
-        "par_map_checked caller must ensure F-contiguous + non-broadcast"
-    );
+    let src_slice = tensor
+        .as_slice()
+        .expect("par_map_checked caller must ensure F-contiguous + non-broadcast");
 
     use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
@@ -45,11 +45,7 @@ where
     let probe: Result<(), XenonError> = src_slice
         .par_iter()
         .with_min_len(chunk_size)
-        .try_for_each(|item| {
-            with_parallel_worker_context(|| {
-                f(item).map(|_| ())
-            })
-        });
+        .try_for_each(|item| with_parallel_worker_context(|| f(item).map(|_| ())));
     probe?;
 
     // Phase 2: success path — indexed collect into pre-sized Vec<B>.
@@ -64,7 +60,7 @@ where
                 f(item).expect(
                     "internal precondition violation: f returned Err on \
                      phase 2 after phase 1 probe passed; f must be \
-                     deterministic + side-effect free (09-parallel 6.6)"
+                     deterministic + side-effect free (09-parallel 6.6)",
                 )
             })
         })
@@ -80,15 +76,15 @@ where
 #[cfg(all(test, feature = "parallel"))]
 mod tests {
     use super::*;
-    use crate::dispatch::{
-        select_exec_path, ExecPath, ParallelExecStrategy,
-        set_parallel_threshold, reset_parallel_threshold,
-    };
     use crate::dimension::Ix1;
+    use crate::dispatch::{
+        ExecPath, ParallelExecStrategy, reset_parallel_threshold, select_exec_path,
+        set_parallel_threshold,
+    };
+    use crate::error::InvalidArgumentKind;
     use crate::layout::Strides;
     use crate::tensor::TensorView;
     use std::borrow::Cow;
-    use crate::error::InvalidArgumentKind;
 
     fn acquire_parallel_guard<S, D, A>(t: &TensorBase<S, D>) -> ParallelGuard
     where
@@ -126,7 +122,10 @@ mod tests {
         let guard = acquire_parallel_guard(&tensor);
         let result = par_map_checked(&tensor, &strategy, guard, |v| Ok(v * 2.0))
             .expect("par_map_checked should succeed for valid test input");
-        assert_eq!(result.as_slice().expect("valid F-order test output"), &[2.0, 4.0, 6.0, 8.0]);
+        assert_eq!(
+            result.as_slice().expect("valid F-order test output"),
+            &[2.0, 4.0, 6.0, 8.0]
+        );
         reset_parallel_threshold();
     }
 

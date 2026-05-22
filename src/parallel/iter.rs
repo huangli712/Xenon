@@ -1,8 +1,8 @@
-use crate::dispatch::ParallelExecStrategy;
 use crate::dimension::Dimension;
+use crate::dispatch::ParallelExecStrategy;
 use crate::element::Element;
+use crate::storage::{ArcRepr, Owned, ViewMutRepr, ViewRepr};
 use crate::tensor::{TensorBase, TensorView};
-use crate::storage::{Owned, ViewMutRepr, ViewRepr, ArcRepr};
 
 #[cfg(feature = "parallel")]
 pub(crate) struct ParIter<'a, A, D>
@@ -28,7 +28,13 @@ where
     /// Construct with default strategy fields. Used by `TensorBase::par_iter()`.
     pub(crate) fn new(base: TensorView<'a, A, D>) -> Self {
         let hi = base.len();
-        Self { base, lo: 0, hi, chunk_size: None, max_workers: None }
+        Self {
+            base,
+            lo: 0,
+            hi,
+            chunk_size: None,
+            max_workers: None,
+        }
     }
 
     /// Override strategy fields after construction (used by par_map_checked etc.).
@@ -196,7 +202,11 @@ where
     D: Dimension,
 {
     fn new(base: TensorView<'a, A, D>, lo: usize, hi: usize) -> Self {
-        Self { base, cursor: lo, end: hi }
+        Self {
+            base,
+            cursor: lo,
+            end: hi,
+        }
     }
 }
 
@@ -217,9 +227,10 @@ where
             // F-contiguous fast path: index directly into the underlying slice.
             // SAFETY: base is F-contiguous + non-broadcast, so as_slice()
             // returns Some, and i < base.len() — both guaranteed.
-            let slice = self.base.as_slice().expect(
-                "ParIterSeq only constructed for F-contiguous tensors"
-            );
+            let slice = self
+                .base
+                .as_slice()
+                .expect("ParIterSeq only constructed for F-contiguous tensors");
             // SAFETY: the slice is backed by the base storage whose lifetime
             // is 'a; extending from &self borrow to 'a is sound.
             Some(unsafe { &*(&slice[i] as *const A) })
@@ -246,7 +257,8 @@ impl<'a, A, D> ExactSizeIterator for ParIterSeq<'a, A, D>
 where
     A: Element + Send + Sync,
     D: Dimension,
-{}
+{
+}
 
 #[cfg(feature = "parallel")]
 impl<'a, A, D> DoubleEndedIterator for ParIterSeq<'a, A, D>
@@ -261,9 +273,10 @@ where
         self.end -= 1;
         let i = self.end;
         if self.base.is_f_contiguous() {
-            let slice = self.base.as_slice().expect(
-                "ParIterSeq only constructed for F-contiguous tensors"
-            );
+            let slice = self
+                .base
+                .as_slice()
+                .expect("ParIterSeq only constructed for F-contiguous tensors");
             // SAFETY: same reasoning as next() — storage lifetime is 'a.
             Some(unsafe { &*(&slice[i] as *const A) })
         } else {
@@ -300,9 +313,8 @@ where
             "par_iter() in W15 supports F-contiguous inputs only; \
              callers must gate non-F-contiguous inputs to serial."
         );
-        let storage = unsafe {
-            ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len())
-        };
+        let storage =
+            unsafe { ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len()) };
         let view = unsafe {
             TensorBase::new_unchecked(
                 storage,
@@ -329,9 +341,8 @@ where
             "par_iter() in W15 supports F-contiguous inputs only; \
              callers must gate non-F-contiguous inputs to serial."
         );
-        let storage = unsafe {
-            ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len())
-        };
+        let storage =
+            unsafe { ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len()) };
         let view = unsafe {
             TensorBase::new_unchecked(
                 storage,
@@ -358,9 +369,8 @@ where
             "par_iter() in W15 supports F-contiguous inputs only; \
              callers must gate non-F-contiguous inputs to serial."
         );
-        let storage = unsafe {
-            ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len())
-        };
+        let storage =
+            unsafe { ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len()) };
         let view = unsafe {
             TensorBase::new_unchecked(
                 storage,
@@ -387,9 +397,8 @@ where
             "par_iter() in W15 supports F-contiguous inputs only; \
              callers must gate non-F-contiguous inputs to serial."
         );
-        let storage = unsafe {
-            ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len())
-        };
+        let storage =
+            unsafe { ViewRepr::from_raw_parts(self.storage.as_ptr(), self.storage.len()) };
         let view = unsafe {
             TensorBase::new_unchecked(
                 storage,

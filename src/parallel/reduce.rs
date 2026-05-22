@@ -5,13 +5,13 @@
 
 use std::borrow::Cow;
 
-use crate::dispatch::{ParallelExecStrategy, ParallelGuard, with_parallel_worker_context};
 use crate::dimension::Dimension;
+use crate::dispatch::{ParallelExecStrategy, ParallelGuard, with_parallel_worker_context};
 use crate::element::{Element, Numeric};
 use crate::error::{InvalidArgumentKind, XenonError};
+use crate::parallel::compute_safe_chunks;
 use crate::storage::Storage;
 use crate::tensor::TensorBase;
-use crate::parallel::compute_safe_chunks;
 
 #[cfg(feature = "parallel")]
 pub(crate) fn par_reduce_impl<S, A, D, F, ID>(
@@ -40,9 +40,9 @@ where
         .chunk_size()
         .unwrap_or_else(|| compute_safe_chunks(total, num_threads));
 
-    let src_slice = tensor.as_slice().expect(
-        "par_reduce_impl caller must ensure F-contiguous + non-broadcast"
-    );
+    let src_slice = tensor
+        .as_slice()
+        .expect("par_reduce_impl caller must ensure F-contiguous + non-broadcast");
 
     use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
@@ -131,12 +131,12 @@ where
         });
     }
 
-    let lhs_slice = lhs.as_slice().expect(
-        "verified lhs is 1-D F-contiguous and not a broadcast view"
-    );
-    let rhs_slice = rhs.as_slice().expect(
-        "verified rhs is 1-D F-contiguous and not a broadcast view"
-    );
+    let lhs_slice = lhs
+        .as_slice()
+        .expect("verified lhs is 1-D F-contiguous and not a broadcast view");
+    let rhs_slice = rhs
+        .as_slice()
+        .expect("verified rhs is 1-D F-contiguous and not a broadcast view");
 
     let num_threads = strategy
         .max_workers()
@@ -165,11 +165,11 @@ where
 #[cfg(all(test, feature = "parallel"))]
 mod tests {
     use super::*;
-    use crate::dispatch::{
-        select_exec_path, ExecPath, ParallelExecStrategy,
-        set_parallel_threshold, reset_parallel_threshold, ParallelGuard,
-    };
     use crate::dimension::{Dimension, Ix1, Ix2};
+    use crate::dispatch::{
+        ExecPath, ParallelExecStrategy, ParallelGuard, reset_parallel_threshold, select_exec_path,
+        set_parallel_threshold,
+    };
     use crate::element::Element;
     use crate::layout::Strides;
     use crate::storage::Storage;
@@ -255,11 +255,10 @@ mod tests {
         let strategy = ParallelExecStrategy::auto();
         {
             let guard = acquire_guard(&a);
-            let par_result = par_dot(&a, &b, &strategy, guard).expect("par_dot should succeed for valid test input");
-            let serial_result: f64 = a_vec.iter().zip(b_vec.iter())
-                .map(|(x, y)| x * y).sum();
-            assert!((par_result - serial_result).abs()
-                < 1e-10 * serial_result.abs().max(1.0));
+            let par_result = par_dot(&a, &b, &strategy, guard)
+                .expect("par_dot should succeed for valid test input");
+            let serial_result: f64 = a_vec.iter().zip(b_vec.iter()).map(|(x, y)| x * y).sum();
+            assert!((par_result - serial_result).abs() < 1e-10 * serial_result.abs().max(1.0));
         }
 
         let empty: Vec<f64> = Vec::new();
@@ -269,7 +268,8 @@ mod tests {
         let one = unsafe { view_1d_f64(&one_data) };
         {
             let guard = acquire_guard(&one);
-            let result = par_dot(&ea, &eb, &strategy, guard).expect("empty par_dot should return identity");
+            let result =
+                par_dot(&ea, &eb, &strategy, guard).expect("empty par_dot should return identity");
             assert_eq!(result, 0.0f64);
         }
 
@@ -291,10 +291,14 @@ mod tests {
             let guard = acquire_guard(&a);
             let result = par_dot(&a, &b, &strategy, guard);
             match result {
-                Err(XenonError::ShapeMismatch { left_shape, right_shape, .. }) => {
+                Err(XenonError::ShapeMismatch {
+                    left_shape,
+                    right_shape,
+                    ..
+                }) => {
                     assert_eq!(left_shape, vec![3]);
                     assert_eq!(right_shape, vec![2]);
-                }
+                },
                 _ => panic!("expected ShapeMismatch, got {:?}", result),
             }
         }

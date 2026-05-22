@@ -7,8 +7,8 @@ use xenon::tensor::Tensor;
 /// between closed element types (i32 → f64).
 #[test]
 fn test_conversion_respects_element_boundaries() {
-    let tensor = Tensor::<i32, Ix1>::from_shape_vec((2,), vec![1, 2])
-        .expect("valid shape and data");
+    let tensor =
+        Tensor::<i32, Ix1>::from_shape_vec((2,), vec![1, 2]).expect("valid shape and data");
     let converted = tensor.cast::<f64>().expect("i32 to f64 conversion");
     assert_eq!(converted.as_slice().expect("F-contiguous"), &[1.0, 2.0]);
 }

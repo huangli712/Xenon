@@ -72,8 +72,9 @@ where
                     reason: InvalidLayoutReason::AccessRangeExceedsStorage,
                 }
             })?;
-            offset = offset.checked_add(term).ok_or_else(|| {
-                XenonError::InvalidLayout {
+            offset = offset
+                .checked_add(term)
+                .ok_or_else(|| XenonError::InvalidLayout {
                     operation: Cow::Borrowed("ffi::try_offset_of"),
                     storage_kind,
                     shape: shape.to_vec(),
@@ -81,8 +82,7 @@ where
                     offset: self.offset(),
                     storage_len: self.storage_len(),
                     reason: InvalidLayoutReason::AccessRangeExceedsStorage,
-                }
-            })?;
+                })?;
         }
         Ok(offset)
     }
@@ -164,7 +164,7 @@ mod tests {
                 assert_eq!(axis, 0);
                 assert_eq!(attempted_index, vec![2, 0]);
                 assert_eq!(shape, vec![2, 3]);
-            }
+            },
             other => panic!("expected IndexOutOfBounds, got {other:?}"),
         }
     }
@@ -183,7 +183,7 @@ mod tests {
             } => {
                 assert_eq!(expected, 2);
                 assert_eq!(actual, 1);
-            }
+            },
             other => panic!("expected DimensionMismatch, got {other:?}"),
         }
     }
@@ -214,11 +214,11 @@ mod tests {
         // try_offset_of will hit the checked_mul overflow path.
         let t = unsafe {
             crate::tensor::TensorView::<i32, Ix2>::from_raw_parts(
-                data.as_ptr(), // ptr: *const i32
-                data.len(),    // storage_len: usize = 0
-                Ix2(3, 0),     // shape: Ix2
+                data.as_ptr(),                                                 // ptr: *const i32
+                data.len(), // storage_len: usize = 0
+                Ix2(3, 0),  // shape: Ix2
                 Strides::from_slice(&[usize::MAX, 1]).expect("valid strides"), // strides: Strides<Ix2>
-                0,             // offset: usize
+                0,                                                             // offset: usize
             )
         }
         .expect(
@@ -238,7 +238,7 @@ mod tests {
                     reason,
                     InvalidLayoutReason::AccessRangeExceedsStorage
                 ));
-            }
+            },
             other => panic!("expected InvalidLayout, got {other:?}"),
         }
     }

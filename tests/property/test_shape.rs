@@ -55,10 +55,7 @@ fn test_shape_property_transpose_data_invariant() {
     unsafe {
         for i in 0..2_usize {
             for j in 0..3_usize {
-                assert_eq!(
-                    *read_at(&y, &[j, i]),
-                    *read_at(&x, &[i, j]),
-                );
+                assert_eq!(*read_at(&y, &[j, i]), *read_at(&x, &[i, j]),);
             }
         }
     }

@@ -5,7 +5,8 @@ use xenon::tensor::{Tensor0, Tensor1, Tensor2};
 
 #[test]
 fn test_clip_empty() {
-    let tensor = Tensor1::<f64>::from_shape_vec([0], Vec::new()).expect("from_shape_vec matching shape");
+    let tensor =
+        Tensor1::<f64>::from_shape_vec([0], Vec::new()).expect("from_shape_vec matching shape");
     let clipped = tensor.clip(0.0, 1.0).expect("valid clip bounds");
     assert_eq!(clipped.len(), 0);
 }
@@ -37,8 +38,8 @@ fn test_fill_zero_dim() {
 
 #[test]
 fn test_clip_non_contiguous() {
-    let tensor =
-        Tensor2::<i32>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6]).expect("from_shape_vec matching shape");
+    let tensor = Tensor2::<i32>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6])
+        .expect("from_shape_vec matching shape");
     let clipped = tensor.transpose().clip(2, 5).expect("valid clip bounds");
     assert_eq!(clipped.shape(), &[3, 2]);
     assert_eq!(*clipped.get(&[0, 0]).expect("valid index"), 2);
@@ -60,8 +61,8 @@ fn test_clip_non_contiguous() {
 
 #[test]
 fn test_to_contiguous_integration() {
-    let tensor =
-        Tensor2::<i32>::from_shape_vec([2, 2], vec![1, 2, 3, 4]).expect("from_shape_vec matching shape");
+    let tensor = Tensor2::<i32>::from_shape_vec([2, 2], vec![1, 2, 3, 4])
+        .expect("from_shape_vec matching shape");
     let contiguous = tensor.transpose().to_contiguous();
     assert!(contiguous.is_f_contiguous());
     assert_eq!(contiguous.shape(), &[2, 2]);
@@ -76,8 +77,8 @@ fn test_to_contiguous_integration() {
 
 #[test]
 fn test_into_contiguous_integration() {
-    let tensor =
-        Tensor2::<i32>::from_shape_vec([2, 2], vec![1, 2, 3, 4]).expect("from_shape_vec matching shape");
+    let tensor = Tensor2::<i32>::from_shape_vec([2, 2], vec![1, 2, 3, 4])
+        .expect("from_shape_vec matching shape");
     let contiguous = tensor.into_contiguous();
     assert!(contiguous.is_f_contiguous());
     // Element-wise (order-independent):
@@ -91,7 +92,8 @@ fn test_into_contiguous_integration() {
 
 #[test]
 fn test_try_fill_read_only_integration() {
-    let tensor = Tensor1::from_shape_vec([3], vec![1_i32, 2, 3]).expect("from_shape_vec matching shape");
+    let tensor =
+        Tensor1::from_shape_vec([3], vec![1_i32, 2, 3]).expect("from_shape_vec matching shape");
     let mut view = tensor.view();
     let err = view.try_fill(9).expect_err("view is read-only");
     assert!(matches!(err, XenonError::InvalidStorageMode { .. }));
@@ -101,7 +103,8 @@ fn test_try_fill_read_only_integration() {
 
 #[test]
 fn test_clip_single_element() {
-    let tensor = Tensor1::<i64>::from_shape_vec([1], vec![10]).expect("from_shape_vec matching shape");
+    let tensor =
+        Tensor1::<i64>::from_shape_vec([1], vec![10]).expect("from_shape_vec matching shape");
     let clipped = tensor.clip(0, 5).expect("valid clip bounds");
     assert_eq!(clipped.shape(), &[1]);
     assert_eq!(*clipped.get(&[0]).expect("valid index"), 5);
@@ -112,7 +115,8 @@ fn test_clip_single_element() {
 #[test]
 fn test_clip_large_array() {
     let data: Vec<i64> = (0..10_000).map(|i| i % 100).collect();
-    let tensor = Tensor1::<i64>::from_shape_vec([10_000], data).expect("from_shape_vec matching shape");
+    let tensor =
+        Tensor1::<i64>::from_shape_vec([10_000], data).expect("from_shape_vec matching shape");
     let clipped = tensor.clip(20, 80).expect("valid clip bounds");
     assert_eq!(clipped.shape(), &[10_000]);
     assert!(clipped.iter().all(|&x| (20..=80).contains(&x)));

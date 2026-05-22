@@ -74,6 +74,10 @@ pub(crate) mod dispatch;
 /// Broadcasting: shape compatibility, stride expansion, zero-copy views.
 pub mod broadcast;
 
+/// Operator overloading for `Tensor` / `TensorView` arithmetic.
+/// Delegates to inherent methods in [`crate::math`].
+pub mod overload;
+
 /// Aligned scratch workspace for internal temporary buffers.
 pub mod workspace;
 

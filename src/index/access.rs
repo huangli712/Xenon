@@ -43,9 +43,7 @@ where
             });
         }
         let mut offset = 0usize;
-        for (axis, ((&idx, &extent), &stride)) in
-            index.iter().zip(shape).zip(strides).enumerate()
-        {
+        for (axis, ((&idx, &extent), &stride)) in index.iter().zip(shape).zip(strides).enumerate() {
             if idx >= extent {
                 return Err(XenonError::IndexOutOfBounds {
                     operation: "TensorBase::get".into(),
@@ -212,10 +210,7 @@ mod tests {
     use crate::dimension::Ix2;
     use crate::tensor::Tensor;
 
-    fn tensor_ix2<A: crate::element::Element>(
-        data: Vec<A>,
-        shape: Ix2,
-    ) -> Tensor<A, Ix2> {
+    fn tensor_ix2<A: crate::element::Element>(data: Vec<A>, shape: Ix2) -> Tensor<A, Ix2> {
         unsafe { Tensor::from_raw_vec_unchecked(data, shape) }
     }
 
@@ -260,17 +255,16 @@ mod mut_tests {
     use crate::dimension::Ix2;
     use crate::tensor::Tensor;
 
-    fn tensor_ix2_mut<A: crate::element::Element>(
-        data: Vec<A>,
-        shape: Ix2,
-    ) -> Tensor<A, Ix2> {
+    fn tensor_ix2_mut<A: crate::element::Element>(data: Vec<A>, shape: Ix2) -> Tensor<A, Ix2> {
         unsafe { Tensor::from_raw_vec_unchecked(data, shape) }
     }
 
     #[test]
     fn test_try_at_mut_requires_storage_mut() {
         let mut tensor = tensor_ix2_mut(vec![1, 2, 3, 4], Ix2(2, 2));
-        *tensor.try_at_mut((1usize, 1usize)).expect("valid mut index") = 9;
+        *tensor
+            .try_at_mut((1usize, 1usize))
+            .expect("valid mut index") = 9;
         assert_eq!(*tensor.try_at((1usize, 1usize)).expect("valid index"), 9);
     }
 

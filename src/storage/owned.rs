@@ -598,12 +598,7 @@ impl<A> Owned<A> {
     /// # Safety
     ///
     /// Same preconditions as [`AlignedBuf::from_raw_parts`].
-    pub(crate) unsafe fn from_raw_parts(
-        ptr: *mut A,
-        len: usize,
-        cap: usize,
-        align: usize,
-    ) -> Self {
+    pub(crate) unsafe fn from_raw_parts(ptr: *mut A, len: usize, cap: usize, align: usize) -> Self {
         Self {
             data: unsafe { AlignedBuf::from_raw_parts(ptr, len, cap, align) },
         }

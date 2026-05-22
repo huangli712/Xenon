@@ -15,6 +15,8 @@ mod comparison;
 mod helpers;
 mod unary;
 
+pub(crate) use binary::BinaryArith;
+
 #[cfg(test)]
 mod tests {
     // Module skeleton verification: empty submodules + crate-root

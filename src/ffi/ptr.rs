@@ -9,7 +9,7 @@ use core::ptr::NonNull;
 use super::private::{TensorExport, TensorExportMut};
 use super::types::{TensorExportMutRaw, TensorExportRaw};
 use crate::dimension::Dimension;
-use crate::element::{element_type_of, Element};
+use crate::element::{Element, element_type_of};
 use crate::storage::{Storage, StorageMut};
 
 /// Re-exports for FFI consumers to access raw-parts metadata and the
@@ -156,8 +156,8 @@ fn _doctest_into_raw_parts_rejects_view() {}
 
 #[cfg(test)]
 mod tests {
-    use crate::ffi::types::ElementType;
     use crate::dimension::Ix1;
+    use crate::ffi::types::ElementType;
     use crate::layout::Strides;
     use crate::tensor::{TensorView, TensorViewMut};
 
@@ -200,11 +200,11 @@ mod tests {
         // storage_base = data.as_ptr(); logical_first = data.as_ptr() + 2.
         let tensor = unsafe {
             TensorView::<i32, Ix1>::from_raw_parts(
-                data.as_ptr(),          // ptr = storage base
-                data.len(),             // storage_len = 5
-                Ix1(2),                 // shape
+                data.as_ptr(), // ptr = storage base
+                data.len(),    // storage_len = 5
+                Ix1(2),        // shape
                 Strides::from_slice(&[1_usize]).expect("valid strides"),
-                2,                      // offset ≠ 0
+                2, // offset ≠ 0
             )
         }
         .expect("F-order [2] view starting at offset 2");

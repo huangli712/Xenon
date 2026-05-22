@@ -13,10 +13,7 @@ use crate::tensor::{Tensor, TensorBase};
 /// Output element type equals input element type. Type-changing
 /// traversal (`Complex<T> → T`) is handled by `apply_complex_to_real`.
 #[inline]
-pub(in crate::math) fn apply_unary<A, S, D, F>(
-    input: &TensorBase<S, D>,
-    mut f: F,
-) -> Tensor<A, D>
+pub(in crate::math) fn apply_unary<A, S, D, F>(input: &TensorBase<S, D>, mut f: F) -> Tensor<A, D>
 where
     A: Element,
     S: Storage<Elem = A>,
@@ -46,9 +43,8 @@ where
     D: Dimension,
     F: FnMut(A) -> <A as ComplexScalar>::Real,
 {
-    let mut result =
-        Tensor::<<A as ComplexScalar>::Real, D>::zeros(input.raw_dim())
-            .expect("input dimension must be valid since input tensor exists");
+    let mut result = Tensor::<<A as ComplexScalar>::Real, D>::zeros(input.raw_dim())
+        .expect("input dimension must be valid since input tensor exists");
     for (dst, src) in result.iter_mut().zip(input.iter()) {
         *dst = f(*src);
     }

@@ -40,9 +40,9 @@ pub fn broadcast_shape(shape_a: &[usize], shape_b: &[usize]) -> Result<IxDyn, Xe
             .unwrap_or(1);
 
         *item = match (a, b) {
-            (x, y) if x == y => x,    // §6.2 step 4: equal (covers `0 == 0` empty axis).
-            (1, y) => y,              // §6.2 step 4: a is 1 → take b.
-            (x, 1) => x,              // §6.2 step 4: b is 1 → take a.
+            (x, y) if x == y => x, // §6.2 step 4: equal (covers `0 == 0` empty axis).
+            (1, y) => y,           // §6.2 step 4: a is 1 → take b.
+            (x, 1) => x,           // §6.2 step 4: b is 1 → take a.
             _ => {
                 // §6.2 step 3 + 26-error §5.1: structured error with all 5 fields.
                 // No `attempted_target_shape` — this is the pure shape-derivation path
@@ -54,7 +54,7 @@ pub fn broadcast_shape(shape_a: &[usize], shape_b: &[usize]) -> Result<IxDyn, Xe
                     None,
                     out_axis,
                 ));
-            }
+            },
         };
     }
 
@@ -137,7 +137,7 @@ pub fn broadcast_strides(
                     Some(target_shape),
                     target_axis,
                 ));
-            }
+            },
         };
     }
     Ok(out)
@@ -242,7 +242,7 @@ mod tests {
                 assert_eq!(attempted_target_shape, None);
                 // Mismatch at result axis 0 (leading).
                 assert_eq!(axis, Some(0));
-            }
+            },
             other => panic!("expected BroadcastError, got {:?}", other),
         }
     }
@@ -258,8 +258,13 @@ mod tests {
             (&[2, 1, 4][..], &[3, 2, 5, 4][..]),
         ];
         for (a, b) in cases {
-            assert_eq!(can_broadcast(a, b), broadcast_shape(a, b).is_ok(),
-                "mismatch on {:?} vs {:?}", a, b);
+            assert_eq!(
+                can_broadcast(a, b),
+                broadcast_shape(a, b).is_ok(),
+                "mismatch on {:?} vs {:?}",
+                a,
+                b
+            );
         }
     }
 
@@ -303,13 +308,16 @@ mod tests {
             XenonError::InvalidArgument { operation, kind } => {
                 assert_eq!(operation.as_ref(), "broadcast_strides");
                 match kind {
-                    InvalidArgumentKind::OperationSpecific { argument, constraint } => {
+                    InvalidArgumentKind::OperationSpecific {
+                        argument,
+                        constraint,
+                    } => {
                         assert_eq!(argument.as_ref(), "orig_shape/orig_strides");
                         assert!(constraint.as_ref().contains("must equal"));
-                    }
+                    },
                     other => panic!("expected OperationSpecific, got {:?}", other),
                 }
-            }
+            },
             other => panic!("expected InvalidArgument, got {:?}", other),
         }
     }
@@ -330,7 +338,7 @@ mod tests {
                 assert_eq!(rhs_shape, vec![4, 3]);
                 assert_eq!(attempted_target_shape, Some(vec![4, 3]));
                 assert_eq!(axis, Some(0));
-            }
+            },
             other => panic!("expected BroadcastError, got {:?}", other),
         }
     }
@@ -338,7 +346,8 @@ mod tests {
     #[test]
     fn test_broadcast_strides_broadcast_error_on_rank_excess() {
         // orig rank 3 > target rank 2 → BroadcastError (right-align impossible).
-        let err = broadcast_strides(&[2, 3, 4], &[12, 4, 1], &[3, 4]).expect_err("incompatible strides");
+        let err =
+            broadcast_strides(&[2, 3, 4], &[12, 4, 1], &[3, 4]).expect_err("incompatible strides");
         assert!(matches!(err, XenonError::BroadcastError { .. }));
     }
 
@@ -358,7 +367,7 @@ mod tests {
                 assert_eq!(rhs_shape, vec![4, 3]);
                 assert_eq!(attempted_target_shape, None);
                 assert_eq!(axis, Some(0));
-            }
+            },
             other => panic!("expected BroadcastError, got {:?}", other),
         }
     }

@@ -469,9 +469,7 @@ where
     /// `InvalidLayoutReason` variants are listed above; the unsafe obligation
     /// remains the memory/pointer guarantees that cannot be checked from
     /// metadata alone.
-    pub unsafe fn from_raw_parts_owned(
-        raw: OwnedRawParts<A, D>,
-    ) -> Result<Self> {
+    pub unsafe fn from_raw_parts_owned(raw: OwnedRawParts<A, D>) -> Result<Self> {
         // Gate 1: offset must be zero for owned raw parts.
         if raw.offset != 0 {
             return Err(XenonError::InvalidLayout {
@@ -486,15 +484,18 @@ where
         }
 
         // Gate 2: shape product must be representable AND equal raw.len.
-        let expected_len = raw.shape.checked_size().map_err(|_| XenonError::InvalidLayout {
-            operation: Cow::Borrowed("tensor::from_raw_parts_owned"),
-            storage_kind: StorageKindTag::Owned,
-            shape: raw.shape.slice().to_vec(),
-            strides: raw.strides.as_slice().to_vec(),
-            offset: raw.offset,
-            storage_len: raw.len,
-            reason: InvalidLayoutReason::ShapeProductOverflow,
-        })?;
+        let expected_len = raw
+            .shape
+            .checked_size()
+            .map_err(|_| XenonError::InvalidLayout {
+                operation: Cow::Borrowed("tensor::from_raw_parts_owned"),
+                storage_kind: StorageKindTag::Owned,
+                shape: raw.shape.slice().to_vec(),
+                strides: raw.strides.as_slice().to_vec(),
+                offset: raw.offset,
+                storage_len: raw.len,
+                reason: InvalidLayoutReason::ShapeProductOverflow,
+            })?;
         if raw.len != expected_len {
             return Err(XenonError::InvalidLayout {
                 operation: Cow::Borrowed("tensor::from_raw_parts_owned"),
@@ -583,9 +584,9 @@ where
 mod tests {
     use super::{validate_access_range, validate_non_overlapping_layout};
     use crate::dimension::{Dimension, Ix0, Ix1, Ix2};
-    use crate::tensor::Tensor;
     use crate::error::StorageKindTag;
     use crate::layout::Strides;
+    use crate::tensor::Tensor;
 
     #[test]
     fn test_validate_access_range_valid() {
@@ -675,37 +676,47 @@ mod tests {
     /// round-trip preserves shape / strides / offset / element contents.
     #[test]
     fn test_into_raw_parts_roundtrip_2d() {
-        let original =
-            Tensor::<i32, Ix2>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6]).expect("test input valid");
+        let original = Tensor::<i32, Ix2>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6])
+            .expect("test input valid");
         let raw = original.into_raw_parts();
         assert_eq!(raw.len, 6);
         assert!(raw.cap >= 6);
         assert_eq!(raw.offset, 0);
         assert_eq!(raw.shape.slice(), &[2, 3]);
         // SAFETY: raw came directly from into_raw_parts; no external mutation.
-        let restored: Tensor<i32, Ix2> = unsafe { Tensor::from_raw_parts_owned(raw) }
-            .expect("round-trip must succeed");
+        let restored: Tensor<i32, Ix2> =
+            unsafe { Tensor::from_raw_parts_owned(raw) }.expect("round-trip must succeed");
         assert_eq!(restored.shape(), &[2, 3]);
-        assert_eq!(restored.as_slice().expect("test input valid"), &[1, 2, 3, 4, 5, 6]);
+        assert_eq!(
+            restored.as_slice().expect("test input valid"),
+            &[1, 2, 3, 4, 5, 6]
+        );
     }
 
     /// Round-trip for 1D tensors via the from_vec convenience path.
     #[test]
     fn test_into_raw_parts_roundtrip_1d() {
-        let original = Tensor::<f64, Ix1>::from_vec(vec![1.0, 2.0, 3.0, 4.0]).expect("test input valid");
+        let original =
+            Tensor::<f64, Ix1>::from_vec(vec![1.0, 2.0, 3.0, 4.0]).expect("test input valid");
         let raw = original.into_raw_parts();
-        let restored: Tensor<f64, Ix1> = unsafe { Tensor::from_raw_parts_owned(raw) }.expect("test input valid");
-        assert_eq!(restored.as_slice().expect("test input valid"), &[1.0, 2.0, 3.0, 4.0]);
+        let restored: Tensor<f64, Ix1> =
+            unsafe { Tensor::from_raw_parts_owned(raw) }.expect("test input valid");
+        assert_eq!(
+            restored.as_slice().expect("test input valid"),
+            &[1.0, 2.0, 3.0, 4.0]
+        );
     }
 
     /// Empty tensor round-trip — len=0 path must use dangling sentinel for
     /// compute_layout_flags input.
     #[test]
     fn test_into_raw_parts_roundtrip_empty() {
-        let original = Tensor::<i32, Ix1>::from_shape_vec([0], Vec::new()).expect("test input valid");
+        let original =
+            Tensor::<i32, Ix1>::from_shape_vec([0], Vec::new()).expect("test input valid");
         let raw = original.into_raw_parts();
         assert_eq!(raw.len, 0);
-        let restored: Tensor<i32, Ix1> = unsafe { Tensor::from_raw_parts_owned(raw) }.expect("test input valid");
+        let restored: Tensor<i32, Ix1> =
+            unsafe { Tensor::from_raw_parts_owned(raw) }.expect("test input valid");
         assert_eq!(restored.len(), 0);
     }
 
@@ -715,7 +726,8 @@ mod tests {
         let original = Tensor::<i32, Ix1>::from_vec(vec![1_i32, 2, 3]).expect("test input valid");
         let mut raw = original.into_raw_parts();
         raw.offset = 1; // Tamper with the offset.
-        let err = unsafe { Tensor::<i32, Ix1>::from_raw_parts_owned(raw) }.expect_err("tampered raw parts");
+        let err = unsafe { Tensor::<i32, Ix1>::from_raw_parts_owned(raw) }
+            .expect_err("tampered raw parts");
         assert!(matches!(
             err,
             crate::error::XenonError::InvalidLayout {
@@ -728,13 +740,15 @@ mod tests {
     /// Gate 2 (LenShapeMismatch): tampered shape produces wrong expected length.
     #[test]
     fn test_from_raw_parts_owned_rejects_len_shape_mismatch() {
-        let original = Tensor::<i32, Ix2>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6]).expect("test input valid");
+        let original = Tensor::<i32, Ix2>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6])
+            .expect("test input valid");
         let mut raw = original.into_raw_parts();
         // Tamper: claim shape [3, 3] (expected_len=9) but len stays at 6.
         // Gate 2 (LenShapeMismatch) fires before Gate 5 because the check
         // order in `from_raw_parts_owned` is offset → shape → cap → align → strides.
         raw.shape = crate::dimension::Ix2(3, 3);
-        let err = unsafe { Tensor::<i32, Ix2>::from_raw_parts_owned(raw) }.expect_err("tampered raw parts");
+        let err = unsafe { Tensor::<i32, Ix2>::from_raw_parts_owned(raw) }
+            .expect_err("tampered raw parts");
         assert!(matches!(
             err,
             crate::error::XenonError::InvalidLayout {
@@ -747,11 +761,13 @@ mod tests {
     /// Gate 5 (OwnedRequiresCanonicalFOrder): tampered strides reject.
     #[test]
     fn test_from_raw_parts_owned_rejects_non_canonical_strides() {
-        let original = Tensor::<i32, Ix2>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6]).expect("test input valid");
+        let original = Tensor::<i32, Ix2>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6])
+            .expect("test input valid");
         let mut raw = original.into_raw_parts();
         // Tamper strides — replace canonical [1, 2] with C-order [3, 1].
         raw.strides = crate::layout::Strides::from_slice(&[3, 1]).expect("test input valid");
-        let err = unsafe { Tensor::<i32, Ix2>::from_raw_parts_owned(raw) }.expect_err("tampered raw parts");
+        let err = unsafe { Tensor::<i32, Ix2>::from_raw_parts_owned(raw) }
+            .expect_err("tampered raw parts");
         assert!(matches!(
             err,
             crate::error::XenonError::InvalidLayout {

@@ -94,8 +94,8 @@ mod tests {
     // §8.2 — test_clip_basic
     #[test]
     fn test_clip_basic() {
-        let tensor =
-            Tensor1::from_shape_vec([5], vec![-1.0, 0.5, 1.0, 2.0, 3.0]).expect("from_shape_vec matching shape");
+        let tensor = Tensor1::from_shape_vec([5], vec![-1.0, 0.5, 1.0, 2.0, 3.0])
+            .expect("from_shape_vec matching shape");
         let clipped = tensor.clip(0.0, 2.0).expect("valid clip bounds");
         let values: Vec<f64> = clipped.iter().copied().collect();
         assert_eq!(values, vec![0.0, 0.5, 1.0, 2.0, 2.0]);
@@ -104,8 +104,8 @@ mod tests {
     // §8.2 — test_clip_no_change
     #[test]
     fn test_clip_no_change() {
-        let tensor =
-            Tensor1::from_shape_vec([3], vec![0.5, 1.0, 1.5]).expect("from_shape_vec matching shape");
+        let tensor = Tensor1::from_shape_vec([3], vec![0.5, 1.0, 1.5])
+            .expect("from_shape_vec matching shape");
         let clipped = tensor.clip(0.0, 2.0).expect("valid clip bounds");
         let values: Vec<f64> = clipped.iter().copied().collect();
         assert_eq!(values, vec![0.5, 1.0, 1.5]);
@@ -114,8 +114,8 @@ mod tests {
     // §8.2 — test_clip_nan (NaN inputs pass through unchanged, §6.4)
     #[test]
     fn test_clip_nan() {
-        let tensor =
-            Tensor1::from_shape_vec([3], vec![1.0_f64, f64::NAN, 3.0]).expect("from_shape_vec matching shape");
+        let tensor = Tensor1::from_shape_vec([3], vec![1.0_f64, f64::NAN, 3.0])
+            .expect("from_shape_vec matching shape");
         let clipped = tensor.clip(0.0, 4.0).expect("valid clip bounds");
         let values: Vec<f64> = clipped.iter().copied().collect();
         assert_eq!(values[0], 1.0);
@@ -126,7 +126,8 @@ mod tests {
     // §8.2 — test_clip_nan_bound (NaN as min or max → InvalidArgument)
     #[test]
     fn test_clip_nan_bound() {
-        let tensor = Tensor1::from_shape_vec([1], vec![1.0_f64]).expect("from_shape_vec matching shape");
+        let tensor =
+            Tensor1::from_shape_vec([1], vec![1.0_f64]).expect("from_shape_vec matching shape");
         assert!(matches!(
             tensor.clip(f64::NAN, 2.0),
             Err(XenonError::InvalidArgument { .. })
@@ -140,8 +141,8 @@ mod tests {
     // §8.2 — test_clip_integers
     #[test]
     fn test_clip_integers() {
-        let tensor =
-            Tensor1::from_shape_vec([4], vec![-5_i32, 0, 5, 10]).expect("from_shape_vec matching shape");
+        let tensor = Tensor1::from_shape_vec([4], vec![-5_i32, 0, 5, 10])
+            .expect("from_shape_vec matching shape");
         let clipped = tensor.clip(0, 7).expect("valid clip bounds");
         let values: Vec<i32> = clipped.iter().copied().collect();
         assert_eq!(values, vec![0, 0, 5, 7]);
@@ -166,11 +167,8 @@ mod tests {
     //     [2.0, 2.0, 3.0, 4.0, 5.0, 5.0].
     #[test]
     fn test_clip_non_contiguous() {
-        let tensor = Tensor2::from_shape_vec(
-            [2, 3],
-            vec![1.0_f64, 4.0, 2.0, 5.0, 3.0, 6.0],
-        )
-        .expect("from_shape_vec matching shape");
+        let tensor = Tensor2::from_shape_vec([2, 3], vec![1.0_f64, 4.0, 2.0, 5.0, 3.0, 6.0])
+            .expect("from_shape_vec matching shape");
         let transposed = tensor.transpose();
         let clipped = transposed.clip(2.0, 5.0).expect("valid clip bounds");
         assert_eq!(clipped.shape(), &[3, 2]);

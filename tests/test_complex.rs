@@ -143,12 +143,8 @@ fn test_conjugate_norm_invariant() {
     ];
     for z in cases {
         let product = z * z.conj();
-        assert!(
-            (product.re - z.norm_sqr()).abs() < 1e-9 * z.norm_sqr().abs().max(1.0)
-        );
-        assert!(
-            product.im.abs() < 1e-9 * z.norm_sqr().abs().max(1.0)
-        );
+        assert!((product.re - z.norm_sqr()).abs() < 1e-9 * z.norm_sqr().abs().max(1.0));
+        assert!(product.im.abs() < 1e-9 * z.norm_sqr().abs().max(1.0));
     }
 }
 

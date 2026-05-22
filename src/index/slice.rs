@@ -116,12 +116,12 @@ impl Iterator for SliceInfoIter<'_> {
                 } else {
                     None
                 }
-            }
+            },
             SliceInfoIndices::Dynamic(v) => {
                 let elem = *v.get(self.pos)?;
                 self.pos += 1;
                 Some(elem)
-            }
+            },
         }
     }
 }
@@ -196,7 +196,7 @@ impl<I: Dimension, D: Dimension> SliceInfo<I, D> {
 // ── TensorBase::slice (W21T6) ──
 
 use crate::error::{InvalidLayoutReason, StorageKindTag};
-use crate::layout::{compute_layout_flags, Strides};
+use crate::layout::{Strides, compute_layout_flags};
 use crate::storage::{Storage, ViewRepr};
 use crate::tensor::{StorageKind, TensorBase, TensorView};
 
@@ -245,7 +245,7 @@ where
                     slice_delta = slice_delta
                         .checked_add(term)
                         .ok_or_else(|| overflow_err(slice_delta))?;
-                }
+                },
                 SliceInfoElem::Range { start, end } => {
                     if end > shape[axis] {
                         return Err(XenonError::InvalidArgument {
@@ -266,7 +266,7 @@ where
                         .ok_or_else(|| overflow_err(slice_delta))?;
                     out_shape.push(end - start);
                     out_strides.push(strides[axis]);
-                }
+                },
             }
         }
 
@@ -398,10 +398,7 @@ mod tests {
             SliceInfoElem::Index(0),
             SliceInfoElem::Range { start: 0, end: 2 },
         ]);
-        assert!(matches!(
-            indices,
-            SliceInfoIndices::Inline { len: 2, .. }
-        ));
+        assert!(matches!(indices, SliceInfoIndices::Inline { len: 2, .. }));
     }
 
     #[test]
@@ -471,10 +468,7 @@ mod slice_tests {
         let total: usize = dyn_shape.slice().iter().product();
         // SAFETY: shape size == data.len().
         let tensor = unsafe {
-            Tensor::from_raw_vec_unchecked(
-                (0i32..total as i32).collect(),
-                dyn_shape.clone(),
-            )
+            Tensor::from_raw_vec_unchecked((0i32..total as i32).collect(), dyn_shape.clone())
         };
         let elems: Vec<SliceInfoElem> = (0..7).map(|_| SliceInfoElem::Index(0)).collect();
         let info = SliceInfo::new(

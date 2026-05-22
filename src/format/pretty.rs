@@ -13,11 +13,7 @@ use super::config::FormatConfig;
 /// Generic over `W: fmt::Write` so it accepts both `&mut Formatter<'_>`
 /// (used by 0D entries in W26T4 / W26T5) and `&mut LineWriter<'_, '_>`
 /// (used by 1D / ND walkers to track column positions for line_width).
-pub(crate) fn fmt_scalar_display<W, A>(
-    w: &mut W,
-    value: &A,
-    config: FormatConfig,
-) -> fmt::Result
+pub(crate) fn fmt_scalar_display<W, A>(w: &mut W, value: &A, config: FormatConfig) -> fmt::Result
 where
     W: fmt::Write,
     A: fmt::Display,
@@ -30,11 +26,7 @@ where
 
 /// Debug-mode scalar rendering. `precision` does NOT propagate into Debug
 /// (per `22-output §6.1` line 493 — precision is a Display concern).
-pub(crate) fn fmt_scalar_debug<W, A>(
-    w: &mut W,
-    value: &A,
-    _config: FormatConfig,
-) -> fmt::Result
+pub(crate) fn fmt_scalar_debug<W, A>(w: &mut W, value: &A, _config: FormatConfig) -> fmt::Result
 where
     W: fmt::Write,
     A: fmt::Debug,
@@ -81,10 +73,7 @@ impl fmt::Write for LineWriter<'_, '_> {
 /// Read the element at logical index `indices` (length must equal `ndim()`).
 /// Returns `&A` obtained via raw pointer arithmetic. Caller must ensure each
 /// index is in range; pretty.rs only generates in-range coordinates.
-pub(crate) fn read_logical<'a, S, D, A>(
-    tensor: &'a TensorBase<S, D>,
-    indices: &[usize],
-) -> &'a A
+pub(crate) fn read_logical<'a, S, D, A>(tensor: &'a TensorBase<S, D>, indices: &[usize]) -> &'a A
 where
     S: Storage<Elem = A>,
     D: Dimension,
@@ -480,10 +469,7 @@ mod tests {
     ) -> String {
         let mut s = String::new();
         struct Wrap<'a, A: Element>(
-            &'a TensorBase<
-                crate::storage::Owned<A>,
-                crate::dimension::Ix1,
-            >,
+            &'a TensorBase<crate::storage::Owned<A>, crate::dimension::Ix1>,
             FormatConfig,
         );
         impl<'a, A: Element + core::fmt::Display> core::fmt::Display for Wrap<'a, A> {
@@ -497,8 +483,7 @@ mod tests {
 
     #[test]
     fn test_fmt_1d_full() {
-        let tensor =
-            unsafe { TensorBase::from_raw_vec_unchecked(vec![1, 2, 3], Ix1(3)) };
+        let tensor = unsafe { TensorBase::from_raw_vec_unchecked(vec![1, 2, 3], Ix1(3)) };
         assert_eq!(
             fmt_1d_display_string(&tensor, FormatConfig::default()),
             "[1, 2, 3]"
@@ -550,10 +535,7 @@ mod tests {
         // Logical [i, j] reads tensor[i, j]; §5.5 line 322-326 expects
         // [[1, 4, 7], [2, 5, 8], [3, 6, 9]] with newline+indent between rows.
         let tensor = unsafe {
-            TensorBase::from_raw_vec_unchecked(
-                vec![1, 2, 3, 4, 5, 6, 7, 8, 9],
-                Ix2(3, 3),
-            )
+            TensorBase::from_raw_vec_unchecked(vec![1, 2, 3, 4, 5, 6, 7, 8, 9], Ix2(3, 3))
         };
         struct Wrap<'a>(&'a TensorBase<crate::storage::Owned<i32>, Ix2>);
         impl<'a> core::fmt::Display for Wrap<'a> {
@@ -576,8 +558,7 @@ mod tests {
         // §5.5 line 351-361: shape=[100, 100], edge_items=3, threshold=1000 →
         // each axis shows 6 indices → visible = 36, omitted = 9964.
         let data: Vec<i32> = (1..=10_000).collect();
-        let tensor =
-            unsafe { TensorBase::from_raw_vec_unchecked(data, Ix2(100, 100)) };
+        let tensor = unsafe { TensorBase::from_raw_vec_unchecked(data, Ix2(100, 100)) };
         struct Wrap<'a>(&'a TensorBase<crate::storage::Owned<i32>, Ix2>);
         impl<'a> core::fmt::Display for Wrap<'a> {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -609,14 +590,8 @@ mod tests {
         // (transpose or broadcast), keeping all logical indices within
         // the valid storage range.
         unsafe {
-            TensorBase::from_raw_parts(
-                base.as_ptr(),
-                base.storage_len(),
-                shape,
-                strides,
-                0,
-            )
-            .expect("valid layout from manually constructed strides")
+            TensorBase::from_raw_parts(base.as_ptr(), base.storage_len(), shape, strides, 0)
+                .expect("valid layout from manually constructed strides")
         }
     }
 
@@ -627,23 +602,11 @@ mod tests {
         // index order, not according to physical zero-stride aliasing.
         // Source: shape=[1, 3], data=[1, 2, 3]; broadcast to [4, 3] produces a
         // view where row 0 == row 1 == row 2 == row 3 == [1, 2, 3].
-        let base =
-            unsafe { TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3], Ix2(1, 3)) };
+        let base = unsafe { TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3], Ix2(1, 3)) };
         // Broadcast: shape=[4,3], strides=[0,1] (F-order for shape [1,3] is strides=[1,1];
         // broadcast adds zero stride for the broadcast axis).
-        let view = unsafe {
-            make_view(
-                &base,
-                Ix2(4, 3),
-                Strides::new(Ix2(0, 1)),
-            )
-        };
-        struct Wrap<'a>(
-            &'a TensorBase<
-                crate::storage::ViewRepr<'a, i32>,
-                crate::dimension::Ix2,
-            >,
-        );
+        let view = unsafe { make_view(&base, Ix2(4, 3), Strides::new(Ix2(0, 1))) };
+        struct Wrap<'a>(&'a TensorBase<crate::storage::ViewRepr<'a, i32>, crate::dimension::Ix2>);
         impl<'a> core::fmt::Display for Wrap<'a> {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 fmt_nd_display(f, self.0, FormatConfig::default())
@@ -653,10 +616,7 @@ mod tests {
         // All 4 logical rows must render as [1, 2, 3] in logical order,
         // regardless of the zero-stride physical aliasing.
         let row_count = text.matches("[1, 2, 3]").count();
-        assert_eq!(
-            row_count, 4,
-            "expected 4 broadcast rows; text = {text:?}"
-        );
+        assert_eq!(row_count, 4, "expected 4 broadcast rows; text = {text:?}");
     }
 
     #[test]
@@ -672,19 +632,8 @@ mod tests {
             unsafe { TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3, 4, 5, 6], Ix2(2, 3)) };
         // Original F-order strides for [2,3] = [1, 2]
         // Transposed: shape=[3,2], strides=[2,1]
-        let view = unsafe {
-            make_view(
-                &base,
-                Ix2(3, 2),
-                Strides::new(Ix2(2, 1)),
-            )
-        };
-        struct Wrap<'a>(
-            &'a TensorBase<
-                crate::storage::ViewRepr<'a, i32>,
-                crate::dimension::Ix2,
-            >,
-        );
+        let view = unsafe { make_view(&base, Ix2(3, 2), Strides::new(Ix2(2, 1))) };
+        struct Wrap<'a>(&'a TensorBase<crate::storage::ViewRepr<'a, i32>, crate::dimension::Ix2>);
         impl<'a> core::fmt::Display for Wrap<'a> {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 fmt_nd_display(f, self.0, FormatConfig::default())
@@ -707,10 +656,7 @@ mod tests {
         // shape=[2, 2, 2], F-order storage = [1, 2, 3, 4, 5, 6, 7, 8] →
         // logical = [[[1, 5], [3, 7]], [[2, 6], [4, 8]]].
         let tensor = unsafe {
-            TensorBase::from_raw_vec_unchecked(
-                vec![1_i32, 2, 3, 4, 5, 6, 7, 8],
-                Ix3(2, 2, 2),
-            )
+            TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3, 4, 5, 6, 7, 8], Ix3(2, 2, 2))
         };
         struct Wrap<'a>(&'a TensorBase<crate::storage::Owned<i32>, Ix3>);
         impl<'a> core::fmt::Display for Wrap<'a> {
@@ -772,12 +718,8 @@ mod tests {
         // §8.2 line 692 (medium priority): narrow line_width triggers more
         // frequent soft-wraps than a wide one, while keeping element set
         // and ordering identical.
-        let tensor = unsafe {
-            TensorBase::from_raw_vec_unchecked(
-                vec![10_i32, 20, 30, 40, 50, 60],
-                Ix1(6),
-            )
-        };
+        let tensor =
+            unsafe { TensorBase::from_raw_vec_unchecked(vec![10_i32, 20, 30, 40, 50, 60], Ix1(6)) };
         let wide = FormatConfig {
             line_width: 200,
             ..Default::default()

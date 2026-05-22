@@ -4,11 +4,11 @@
 // W17T7 fulfils §8.2 high-priority tests at the integration layer
 // where `pub(crate)` access is not required.
 
+use xenon::XenonError;
 use xenon::complex::Complex;
 use xenon::dimension::{Ix1, Ix2};
 use xenon::dot;
 use xenon::tensor::{Tensor, Tensor1};
-use xenon::XenonError;
 
 /// 12-matrix §10.1 line 574-575: f64 dot tolerance.
 /// Use 36× to accommodate SIMD accumulation order differences.
@@ -41,17 +41,14 @@ fn test_dot_basic() {
 #[test]
 fn test_dot_complex() {
     // §5.2 line 184-189 worked example: conj(1+2i) * (3+4i) = 11 - 2i.
-    let a = Tensor1::from_shape_vec(
-        Ix1(1),
-        vec![Complex::<f64>::new(1.0, 2.0)],
-    )
-    .expect("valid construction");
-    let b = Tensor1::from_shape_vec(
-        Ix1(1),
-        vec![Complex::<f64>::new(3.0, 4.0)],
-    )
-    .expect("valid construction");
-    assert_eq!(dot(&a, &b).expect("valid construction"), Complex::<f64>::new(11.0, -2.0));
+    let a = Tensor1::from_shape_vec(Ix1(1), vec![Complex::<f64>::new(1.0, 2.0)])
+        .expect("valid construction");
+    let b = Tensor1::from_shape_vec(Ix1(1), vec![Complex::<f64>::new(3.0, 4.0)])
+        .expect("valid construction");
+    assert_eq!(
+        dot(&a, &b).expect("valid construction"),
+        Complex::<f64>::new(11.0, -2.0)
+    );
 }
 
 // ── Error paths ──

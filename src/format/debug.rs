@@ -64,7 +64,7 @@ where
                 write!(f, "Tensor0(")?;
                 fmt_scalar_debug(f, read_logical(self, &[]), config)?;
                 write!(f, ")")
-            }
+            },
             1 => fmt_1d_debug(f, self, config),
             _ => fmt_nd_debug(f, self, config),
         }
@@ -79,9 +79,7 @@ mod tests {
 
     #[test]
     fn test_debug_tensor() {
-        let tensor = unsafe {
-            TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3, 4], Ix2(2, 2))
-        };
+        let tensor = unsafe { TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3, 4], Ix2(2, 2)) };
         let text = format!("{:?}", tensor);
         // §5.4 line 287-301 + §5.5 line 328-334 header.
         assert!(text.contains("shape=[2, 2]"), "text = {text:?}");
@@ -98,9 +96,7 @@ mod tests {
     #[test]
     fn test_debug_truncated_does_not_repeat_shape_suffix() {
         // §5.6 line 391 — Debug must NOT append "... shape=[...]".
-        let tensor = unsafe {
-            TensorBase::from_raw_vec_unchecked(vec![0_i32; 1001], Ix1(1001))
-        };
+        let tensor = unsafe { TensorBase::from_raw_vec_unchecked(vec![0_i32; 1001], Ix1(1001)) };
         let text = format!("{:?}", tensor);
         assert!(
             text.contains("shape=[1001]"),
@@ -121,14 +117,8 @@ mod tests {
         // SAFETY: shape/strides are manually constructed from the original
         // tensor's data with known valid geometric transformations.
         unsafe {
-            TensorBase::from_raw_parts(
-                base.as_ptr(),
-                base.storage_len(),
-                shape,
-                strides,
-                0,
-            )
-            .expect("valid layout from manually constructed strides")
+            TensorBase::from_raw_parts(base.as_ptr(), base.storage_len(), shape, strides, 0)
+                .expect("valid layout from manually constructed strides")
         }
     }
 
@@ -139,17 +129,13 @@ mod tests {
         //   logical = [[1, 3, 5], [2, 4, 6]]
         // Transposed to shape=[3, 2]:
         //   logical = [[1, 2], [3, 4], [5, 6]]
-        let tensor = unsafe {
-            TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3, 4, 5, 6], Ix2(2, 3))
-        };
+        let tensor =
+            unsafe { TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3, 4, 5, 6], Ix2(2, 3)) };
         // Transposed: shape=[3,2], strides=[2,1]
         let view = unsafe { make_view(&tensor, Ix2(3, 2), Strides::new(Ix2(2, 1))) };
         let text = format!("{:?}", view);
         // Header: layout classification.
-        assert!(
-            text.contains("layout=non-contiguous"),
-            "text = {text:?}"
-        );
+        assert!(text.contains("layout=non-contiguous"), "text = {text:?}");
         assert!(text.contains("shape=[3, 2]"), "text = {text:?}");
         // Data section: logical row order, not physical storage order.
         assert!(text.contains("[1, 2]"), "text = {text:?}");
@@ -160,8 +146,7 @@ mod tests {
     #[test]
     fn test_debug_broadcast_view() {
         // §5.5 line 332 + §5.4 line 258: broadcast view (zero stride) → layout=broadcast.
-        let tensor =
-            unsafe { TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3], Ix2(1, 3)) };
+        let tensor = unsafe { TensorBase::from_raw_vec_unchecked(vec![1_i32, 2, 3], Ix2(1, 3)) };
         // Broadcast: shape=[4,3], strides=[0,1]
         let view = unsafe { make_view(&tensor, Ix2(4, 3), Strides::new(Ix2(0, 1))) };
         let text = format!("{:?}", view);

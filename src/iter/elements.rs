@@ -88,11 +88,7 @@ impl StrideState {
 /// needed because tensor construction has already verified representability.
 /// See `10-iterator.md §6.2` boundary clause.
 #[inline]
-pub(crate) fn offset_of_index(
-    strides: &[usize],
-    base_offset: usize,
-    index: &[usize],
-) -> usize {
+pub(crate) fn offset_of_index(strides: &[usize], base_offset: usize, index: &[usize]) -> usize {
     debug_assert_eq!(strides.len(), index.len());
     let mut offset = base_offset;
     for (s, i) in strides.iter().zip(index.iter()) {
@@ -109,7 +105,10 @@ pub(crate) fn offset_of_index(
 /// `'a` and `A` are anchored by the embedded `tensor: TensorView<'a, A, D>`,
 /// so no extra `PhantomData<&'a A>` is required (10-iterator §5.1: PhantomData
 /// is only needed when the iterator does *not* keep the view around).
-#[expect(missing_debug_implementations, reason = "iterator is not meant to be introspected")]
+#[expect(
+    missing_debug_implementations,
+    reason = "iterator is not meant to be introspected"
+)]
 pub struct Iter<'a, A, D: Dimension> {
     tensor: TensorView<'a, A, D>,
     state: StrideState,
@@ -296,7 +295,7 @@ mod tests_iter {
         assert_eq!(values, vec![7]);
         assert_eq!(Iter::new(scalar.view()).len(), 1);
     }
-}// ── IterMut (W12T4) ──
+} // ── IterMut (W12T4) ──
 
 /// Mutable flat element iterator. Yields elements in logical F-order
 /// (10-iterator §5.1, §6.1).
@@ -308,7 +307,10 @@ mod tests_iter {
 /// invariants validated by `TensorViewMut` construction (07-tensor §5,
 /// 10-iterator §6.5): no negative strides, no zero-stride / broadcast layout,
 /// no padding exposure, and shape/stride/offset/storage_len consistency.
-#[expect(missing_debug_implementations, reason = "iterator is not meant to be introspected")]
+#[expect(
+    missing_debug_implementations,
+    reason = "iterator is not meant to be introspected"
+)]
 pub struct IterMut<'a, A, D: Dimension> {
     /// Base pointer captured at construction time. We do **not** keep the
     /// `TensorViewMut` around because doing so would conflict with the

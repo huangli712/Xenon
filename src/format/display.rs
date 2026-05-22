@@ -12,7 +12,10 @@ use super::pretty::{fmt_1d_display, fmt_nd_display, fmt_scalar_display, read_log
 ///
 /// Constructed via [`TensorBase::display_with`]. Implements [`core::fmt::Display`]
 /// so it can be used directly in `format!` / `write!` macros.
-#[expect(missing_debug_implementations, reason = "wrapper type; only used as a formatting adapter")]
+#[expect(
+    missing_debug_implementations,
+    reason = "wrapper type; only used as a formatting adapter"
+)]
 pub struct TensorDisplay<'a, S, D, A>
 where
     S: Storage<Elem = A>,
@@ -77,7 +80,7 @@ where
             write!(f, "Tensor0(")?;
             fmt_scalar_display(f, read_logical(tensor, &[]), config)?;
             write!(f, ")")
-        }
+        },
         1 => fmt_1d_display(f, tensor, config),
         _ => fmt_nd_display(f, tensor, config),
     }
@@ -91,9 +94,8 @@ mod tests {
 
     #[test]
     fn test_display_tensor() {
-        let tensor = unsafe {
-            TensorBase::from_raw_vec_unchecked(vec![1, 2, 3], crate::dimension::Ix1(3))
-        };
+        let tensor =
+            unsafe { TensorBase::from_raw_vec_unchecked(vec![1, 2, 3], crate::dimension::Ix1(3)) };
         assert_eq!(format!("{}", tensor), "[1, 2, 3]");
     }
 
@@ -112,9 +114,7 @@ mod tests {
     #[test]
     fn test_fmt_zero_dim() {
         // 18-construction.md §5 — scalar tensor constructed via raw parts.
-        let tensor = unsafe {
-            TensorBase::from_raw_vec_unchecked(vec![42_i32], Ix0)
-        };
+        let tensor = unsafe { TensorBase::from_raw_vec_unchecked(vec![42_i32], Ix0) };
         assert_eq!(format!("{}", tensor), "Tensor0(42)");
     }
 
@@ -126,7 +126,10 @@ mod tests {
     fn test_display_complex_f64() {
         let tensor = unsafe {
             TensorBase::from_raw_vec_unchecked(
-                vec![Complex::new(1.0_f64, 2.0_f64), Complex::new(3.0_f64, 4.0_f64)],
+                vec![
+                    Complex::new(1.0_f64, 2.0_f64),
+                    Complex::new(3.0_f64, 4.0_f64),
+                ],
                 crate::dimension::Ix1(2),
             )
         };

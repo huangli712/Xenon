@@ -132,14 +132,16 @@ mod tests {
 
     #[test]
     fn test_from_shape_vec_success() {
-        let tensor = Tensor::<i32, _>::from_shape_vec([2, 2], vec![1, 2, 3, 4]).expect("test input valid");
+        let tensor =
+            Tensor::<i32, _>::from_shape_vec([2, 2], vec![1, 2, 3, 4]).expect("test input valid");
         assert_eq!(tensor.shape(), &[2, 2]);
         assert_eq!(tensor.len(), 4);
     }
 
     #[test]
     fn test_from_shape_vec_mismatch() {
-        let err = Tensor::<i32, _>::from_shape_vec([2, 2], vec![1, 2, 3]).expect_err("mismatched shape");
+        let err =
+            Tensor::<i32, _>::from_shape_vec([2, 2], vec![1, 2, 3]).expect_err("mismatched shape");
         assert!(matches!(
             err,
             XenonError::InvalidShape {
@@ -156,7 +158,8 @@ mod tests {
     fn test_from_shape_vec_mismatch_operation_field() {
         // Verify `operation` field carries "from_shape_vec" — exercises the
         // structured-diagnostic contract from 26-error.md §5.1.
-        let err = Tensor::<i32, _>::from_shape_vec([2, 2], vec![1, 2, 3]).expect_err("mismatched shape");
+        let err =
+            Tensor::<i32, _>::from_shape_vec([2, 2], vec![1, 2, 3]).expect_err("mismatched shape");
         if let XenonError::InvalidShape { operation, .. } = err {
             assert_eq!(operation.as_ref(), "from_shape_vec");
         } else {
@@ -184,11 +187,15 @@ mod tests {
     #[test]
     fn test_from_shape_slice_mismatch() {
         let source = [1, 2, 3];
-        let err = Tensor::<i32, _>::from_shape_slice([2, 2], &source).expect_err("mismatched shape");
+        let err =
+            Tensor::<i32, _>::from_shape_slice([2, 2], &source).expect_err("mismatched shape");
         assert!(matches!(
             err,
             XenonError::InvalidShape {
-                kind: InvalidShapeKind::ElementCountMismatch { expected: 4, actual: 3 },
+                kind: InvalidShapeKind::ElementCountMismatch {
+                    expected: 4,
+                    actual: 3
+                },
                 ..
             }
         ));
@@ -199,7 +206,8 @@ mod tests {
         // `operation` must read "from_shape_slice", not "from_shape_vec",
         // even though the implementation eventually delegates.
         let source = [1, 2, 3];
-        let err = Tensor::<i32, _>::from_shape_slice([2, 2], &source).expect_err("mismatched shape");
+        let err =
+            Tensor::<i32, _>::from_shape_slice([2, 2], &source).expect_err("mismatched shape");
         if let XenonError::InvalidShape { operation, .. } = err {
             assert_eq!(operation.as_ref(), "from_shape_slice");
         } else {
@@ -209,7 +217,8 @@ mod tests {
 
     #[test]
     fn test_from_array_success() {
-        let tensor = Tensor::<i32, _>::from_array([2, 2], [1i32, 2, 3, 4]).expect("test input valid");
+        let tensor =
+            Tensor::<i32, _>::from_array([2, 2], [1i32, 2, 3, 4]).expect("test input valid");
         assert_eq!(tensor.len(), 4);
         assert_eq!(*tensor.get(&[0, 0]).expect("test input valid"), 1);
     }
@@ -220,7 +229,10 @@ mod tests {
         assert!(matches!(
             err,
             XenonError::InvalidShape {
-                kind: InvalidShapeKind::ElementCountMismatch { expected: 9, actual: 4 },
+                kind: InvalidShapeKind::ElementCountMismatch {
+                    expected: 9,
+                    actual: 4
+                },
                 ..
             }
         ));

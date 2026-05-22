@@ -11,7 +11,7 @@
 //! W29Tx) — not by W6T10.
 
 use xenon::dimension::{Ix2, Ix3};
-use xenon::layout::{compute_f_strides, is_f_contiguous, LayoutFlags, LayoutState, Strides};
+use xenon::layout::{LayoutFlags, LayoutState, Strides, compute_f_strides, is_f_contiguous};
 
 #[test]
 fn external_f_strides_symmetry() {

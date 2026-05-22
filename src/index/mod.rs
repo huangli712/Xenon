@@ -13,9 +13,9 @@ pub mod slice;
 // named in its trailing comment; until then it stays commented out to avoid
 // referencing symbols that do not yet exist.
 //
-pub use ndindex::NdIndex;                                       // W21T2
+pub use ndindex::NdIndex; // W21T2
 // pub use access::{/* inherent methods live on TensorBase */};    // W21T3/W21T5
-pub use slice::{SliceInfo, SliceInfoElem, SliceInfoIndices};    // W21T4
+pub use slice::{SliceInfo, SliceInfoElem, SliceInfoIndices}; // W21T4
 
 #[cfg(test)]
 mod tests {

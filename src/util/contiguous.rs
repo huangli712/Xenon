@@ -64,15 +64,14 @@ where
             // Per §6.3: canonical predicate already established
             // `is_f_contiguous()`, so shape.checked_size() must succeed
             // (construction-time invariant). Re-derive F-order strides.
-            let strides = compute_f_strides(&dim)
-                .expect("canonical predicate implies shape is valid");
+            let strides =
+                compute_f_strides(&dim).expect("canonical predicate implies shape is valid");
             // Move storage out (StorageIntoOwned, W7T19).
             let owned = self.storage.into_owned_storage();
             // Re-derive layout flags via the canonical entry point
             // (06-layout §5.12, W6T11). Uses the freshly moved storage's
             // logical-first pointer so the ALIGNED bit reflects reality.
-            let flags =
-                compute_layout_flags::<A, D>(&dim, &strides, owned.as_ptr());
+            let flags = compute_layout_flags::<A, D>(&dim, &strides, owned.as_ptr());
             // SAFETY:
             //   * `is_canonical_f_contiguous_owned` already verified:
             //     - shape/strides match (F-order),
@@ -85,11 +84,7 @@ where
             //     (dim, strides) we are storing.
             //   * Owned storage was never downgraded from a ViewMut, so
             //     `derived_from_view_mut = false` is correct.
-            unsafe {
-                TensorBase::new_unchecked(
-                    owned, dim, strides, 0, flags, false,
-                )
-            }
+            unsafe { TensorBase::new_unchecked(owned, dim, strides, 0, flags, false) }
         } else {
             // Repack path: `into_owned()` always produces canonical F-order
             // (`21-type §5.5`). Since `StorageIntoOwned: Storage` (W7T18),

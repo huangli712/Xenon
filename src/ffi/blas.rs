@@ -260,10 +260,10 @@ mod tests {
                     FfiErrorCategory::InvalidRank { expected, actual } => {
                         assert_eq!(expected, 2);
                         assert_eq!(actual, 1);
-                    }
+                    },
                     other => panic!("unexpected category: {other:?}"),
                 }
-            }
+            },
             other => panic!("unexpected variant: {other:?}"),
         }
     }
@@ -280,10 +280,10 @@ mod tests {
         let t = unsafe {
             TensorView::<f64, Ix2>::from_raw_parts(
                 data.as_ptr(),
-                0,                      // storage_len
-                Ix2(0, 4),              // shape
+                0,                                                          // storage_len
+                Ix2(0, 4),                                                  // shape
                 Strides::from_slice(&[1_usize, 0]).expect("valid strides"), // strides
-                0,                      // offset
+                0,                                                          // offset
             )
         }
         .expect("empty F-order [0, 4] should pass validation");
@@ -292,10 +292,9 @@ mod tests {
         };
         match err {
             XenonError::Ffi {
-                category:
-                    FfiErrorCategory::BlasIncompatibleLayout { .. },
+                category: FfiErrorCategory::BlasIncompatibleLayout { .. },
                 ..
-            } => {}
+            } => {},
             other => panic!("expected BlasIncompatibleLayout, got {other:?}"),
         }
     }
@@ -336,10 +335,9 @@ mod tests {
         };
         match err {
             XenonError::Ffi {
-                category:
-                    FfiErrorCategory::BlasIncompatibleLayout { .. },
+                category: FfiErrorCategory::BlasIncompatibleLayout { .. },
                 ..
-            } => {}
+            } => {},
             other => panic!("expected BlasIncompatibleLayout, got {other:?}"),
         }
     }
@@ -363,7 +361,7 @@ mod tests {
             } => {
                 assert_eq!(expected, 2);
                 assert_eq!(actual, 1);
-            }
+            },
             other => panic!("expected InvalidRank, got {other:?}"),
         }
     }

@@ -43,7 +43,8 @@ fn test_sum_overflow_panic() {
 fn test_sum_axis_overflow_panic() {
     // Shape (2, 1): single column, two rows summed along axis 0.
     // F-order: element (0,0)=MAX, (1,0)=1 → sum_axis(0) adds both → overflow.
-    let x = Tensor::<i32, Ix2>::from_shape_vec((2, 1), vec![i32::MAX, 1]).expect("valid test input");
+    let x =
+        Tensor::<i32, Ix2>::from_shape_vec((2, 1), vec![i32::MAX, 1]).expect("valid test input");
     let _ = x.sum_axis(Axis(0));
 }
 
@@ -53,7 +54,8 @@ fn test_sum_axis_overflow_panic() {
 #[test]
 #[should_panic(expected = "integer overflow in reduction sum_axis_keepdims")]
 fn test_sum_axis_keepdims_overflow_panic() {
-    let x = Tensor::<i32, Ix2>::from_shape_vec((2, 1), vec![i32::MAX, 1]).expect("valid test input");
+    let x =
+        Tensor::<i32, Ix2>::from_shape_vec((2, 1), vec![i32::MAX, 1]).expect("valid test input");
     let _ = x.sum_axis_keepdims(Axis(0));
 }
 
@@ -62,10 +64,12 @@ fn test_sum_axis_keepdims_overflow_panic() {
 /// 13-reduction §8.2: Inf inputs follow IEEE 754, do not trigger panic.
 #[test]
 fn test_sum_inf() {
-    let x = Tensor1::from_shape_vec(Ix1(3), vec![1.0_f64, f64::INFINITY, 2.0]).expect("valid test input");
+    let x = Tensor1::from_shape_vec(Ix1(3), vec![1.0_f64, f64::INFINITY, 2.0])
+        .expect("valid test input");
     assert_eq!(x.sum(), f64::INFINITY);
 
-    let neg = Tensor1::from_shape_vec(Ix1(2), vec![f64::INFINITY, f64::NEG_INFINITY]).expect("valid test input");
+    let neg = Tensor1::from_shape_vec(Ix1(2), vec![f64::INFINITY, f64::NEG_INFINITY])
+        .expect("valid test input");
     // Inf + (-Inf) = NaN per IEEE 754.
     assert!(neg.sum().is_nan());
 }
