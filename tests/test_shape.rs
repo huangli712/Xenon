@@ -265,3 +265,109 @@ fn test_shape_integration_transpose_large_array_2d() {
     assert_eq!(y.transpose().shape(), x.shape());
     assert_eq!(y.transpose().strides(), x.strides());
 }
+
+// ── Additional integration tests for transpose ──
+
+mod tests {
+    use xenon::dimension::{Ix2, Ix3, Ix6};
+    use xenon::storage::Owned;
+    use xenon::tensor::{TensorBase, StorageKind};
+
+    /// Helper: construct tensor via fast path.
+    unsafe fn make_tensor<A: xenon::element::Element, D: xenon::dimension::Dimension>(
+        data: Vec<A>,
+        shape: D,
+    ) -> TensorBase<Owned<A>, D> {
+        unsafe { TensorBase::from_raw_vec_unchecked(data, shape) }
+    }
+
+    /// Access element at logical index.
+    unsafe fn read_at<'a, S, D, A>(tensor: &'a TensorBase<S, D>, indices: &[usize]) -> &'a A
+    where
+        S: xenon::storage::Storage<Elem = A>,
+        D: xenon::dimension::Dimension,
+        A: xenon::element::Element,
+    {
+        debug_assert_eq!(indices.len(), tensor.ndim());
+        let strides = tensor.strides();
+        let mut rel_offset: isize = 0;
+        for (axis, &idx) in indices.iter().enumerate() {
+            rel_offset += (idx as isize) * (strides[axis] as isize);
+        }
+        unsafe { &*tensor.as_ptr().offset(rel_offset) }
+    }
+
+    #[test]
+    fn test_transpose_2d() {
+        // 2×3 F-order: data = [1, 2, 3, 4, 5, 6]
+        //   logical = [[1, 3, 5], [2, 4, 6]]
+        let x = unsafe { make_tensor(vec![1_i32, 2, 3, 4, 5, 6], Ix2(2, 3)) };
+        let y = x.transpose();
+        // Transpose swaps axes: shape [3, 2]
+        assert_eq!(y.shape(), &[3, 2]);
+        assert_eq!(y.ndim(), 2);
+        // Verify element access via logical indices (transposed order).
+        unsafe {
+            assert_eq!(*read_at(&y, &[0, 0]), *read_at(&x, &[0, 0])); // 1
+            assert_eq!(*read_at(&y, &[0, 1]), *read_at(&x, &[1, 0])); // 2
+            assert_eq!(*read_at(&y, &[1, 0]), *read_at(&x, &[0, 1])); // 3
+            assert_eq!(*read_at(&y, &[2, 1]), *read_at(&x, &[1, 2])); // 6
+        }
+        // Transpose of transpose recovers original shape and strides.
+        let z = y.transpose();
+        assert_eq!(z.shape(), x.shape());
+        assert_eq!(z.strides(), x.strides());
+        // Transpose always produces a View.
+        assert_eq!(y.storage_kind(), StorageKind::View);
+    }
+
+    #[test]
+    fn test_transpose_high_dim() {
+        // 6-D tensor: transpose reverses all axes.
+        let x = unsafe { make_tensor(Vec::<f64>::new(), Ix6(2, 3, 4, 5, 6, 7)) };
+        let y = x.transpose();
+        assert_eq!(y.shape(), &[7, 6, 5, 4, 3, 2]);
+        // Double transpose recovers original shape.
+        assert_eq!(y.transpose().shape(), x.shape());
+        // Storage kind is View.
+        assert_eq!(y.storage_kind(), StorageKind::View);
+    }
+}
+
+// ── Additional integration tests for transpose ──
+
+#[test]
+fn test_transpose_2d() {
+    // 2×3 F-order: data = [1, 2, 3, 4, 5, 6]
+    //   logical = [[1, 3, 5], [2, 4, 6]]
+    let x = unsafe { make_tensor(vec![1_i32, 2, 3, 4, 5, 6], Ix2(2, 3)) };
+    let y = x.transpose();
+    // Transpose swaps axes: shape [3, 2]
+    assert_eq!(y.shape(), &[3, 2]);
+    assert_eq!(y.ndim(), 2);
+    // Verify element access via logical indices (transposed order).
+    unsafe {
+        assert_eq!(*read_at(&y, &[0, 0]), *read_at(&x, &[0, 0])); // 1
+        assert_eq!(*read_at(&y, &[0, 1]), *read_at(&x, &[1, 0])); // 2
+        assert_eq!(*read_at(&y, &[1, 0]), *read_at(&x, &[0, 1])); // 3
+        assert_eq!(*read_at(&y, &[2, 1]), *read_at(&x, &[1, 2])); // 6
+    }
+    // Transpose of transpose recovers original shape and strides.
+    let z = y.transpose();
+    assert_eq!(z.shape(), x.shape());
+    assert_eq!(z.strides(), x.strides());
+    // Transpose always produces a View.
+    assert_eq!(y.storage_kind(), StorageKind::View);
+}
+
+#[test]
+fn test_transpose_high_dim() {
+    // 6-D tensor: transpose reverses all axes.
+    let x = unsafe { make_tensor(Vec::<f64>::new(), Ix6(2, 3, 4, 5, 6, 7)) };
+    let y = x.transpose();
+    assert_eq!(y.shape(), &[7, 6, 5, 4, 3, 2]);
+    // Double transpose recovers original shape.
+    assert_eq!(y.transpose().shape(), x.shape());
+    // Storage kind is View.
+    assert_eq!(y.storage_kind(), StorageKind::View);
+}

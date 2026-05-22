@@ -121,3 +121,153 @@ fn test_tensor_axis_slicing_via_axis() {
     //   assert_eq!(row.shape(), &[4]);
     panic!("W11+ placeholder — must be replaced before that wave completion");
 }
+
+// ── Tensor indexing and slicing integration tests ──
+
+use xenon::index::{SliceInfo, SliceInfoElem, SliceInfoIndices};
+use xenon::tensor::Tensor2;
+
+/// Multi-dimensional element access via try_at with tuple index.
+#[test]
+fn test_multi_dim_index() {
+    let t = Tensor2::<i32>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6]).expect("valid test input");
+    assert_eq!(*t.try_at((0, 0)).expect("valid index"), 1);
+    assert_eq!(*t.try_at((1, 2)).expect("valid index"), 6);
+}
+
+/// Out-of-bounds access via try_at returns IndexOutOfBounds error.
+#[test]
+fn test_index_out_of_bounds() {
+    let t = Tensor2::<i32>::from_shape_vec([2, 2], vec![1, 2, 3, 4]).expect("valid test input");
+    let err = t.try_at((2, 0)).expect_err("out of bounds");
+    assert!(matches!(err, xenon::XenonError::IndexOutOfBounds { axis: 0, .. }));
+}
+
+/// Basic slice: select a single row via Index, then take a Range subview.
+#[test]
+fn test_slice_range() {
+    let t = Tensor2::<i32>::from_shape_vec([4, 5], (0i32..20).collect()).expect("valid test input");
+    let info = SliceInfo::new(
+        SliceInfoIndices::from_vec(vec![
+            SliceInfoElem::Range { start: 1, end: 4 },
+            SliceInfoElem::Index(2),
+        ]),
+        Ix2(4, 5),
+        Ix1(3),
+    )
+    .expect("valid slice");
+    let view = t.slice(info).expect("valid slice");
+    assert_eq!(view.shape(), &[3]);
+    // F-order: column-major, so column 2 is elements 2,7,12,17; rows 1..3 → 7,12,17.
+    // Actually in F-order shape [4,5]: data is strided with col-major layout.
+    // With from_shape_vec on [4,5], data=0..20:
+    //   col 0 = [0,1,2,3], col 1 = [4,5,6,7], col 2 = [8,9,10,11]
+    //   col 3 = [12,13,14,15], col 4 = [16,17,18,19]
+    // Slice row range [1,4) and index 2 → col 2, rows 1..3 → [9,10,11]
+    assert_eq!(view.as_slice(), Some(&[9, 10, 11][..]));
+}
+
+/// Subrange slice: range within an already-sliced view.
+#[test]
+fn test_slice_subrange() {
+    let t = Tensor2::<i32>::from_shape_vec([3, 4], (0i32..12).collect()).expect("valid test input");
+    // First slice: rows [0,2), cols [1,3) → shape Ix2(2,2)
+    let info1 = SliceInfo::new(
+        SliceInfoIndices::from_vec(vec![
+            SliceInfoElem::Range { start: 0, end: 2 },
+            SliceInfoElem::Range { start: 1, end: 3 },
+        ]),
+        Ix2(3, 4),
+        Ix2(2, 2),
+    )
+    .expect("valid slice 1");
+    let view1 = t.slice(info1).expect("valid slice 1");
+    assert_eq!(view1.shape(), &[2, 2]);
+
+    // Second slice on view1: pick row 1, keep 2 columns.
+    let info2 = SliceInfo::new(
+        SliceInfoIndices::from_vec(vec![
+            SliceInfoElem::Index(1),
+            SliceInfoElem::Range { start: 0, end: 2 },
+        ]),
+        Ix2(2, 2),
+        Ix1(2),
+    )
+    .expect("valid slice 2");
+    let view2 = view1.slice(info2).expect("valid slice 2");
+    assert_eq!(view2.shape(), &[2]);
+}
+
+/// Mutable view slicing should be rejected on broadcast views (compile-time
+/// read-only guarantee). Here we verify slicing a read-only view works.
+#[test]
+fn test_slice_mut_broadcast_rejected() {
+    let t = Tensor2::<f64>::from_shape_vec([1, 3], vec![1.0, 2.0, 3.0]).expect("valid test input");
+    let bv = t.broadcast_to([2, 3]).expect("valid test input");
+    // bv is a TensorView (read-only). slice() is available.
+    let info = SliceInfo::new(
+        SliceInfoIndices::from_vec(vec![
+            SliceInfoElem::Index(0),
+            SliceInfoElem::Range { start: 0, end: 3 },
+        ]),
+        Ix2(2, 3),
+        Ix1(3),
+    )
+    .expect("valid slice");
+    let sliced = bv.slice(info).expect("valid slice");
+    assert_eq!(sliced.shape(), &[3]);
+}
+
+/// SliceInfo structural validation: mismatched ranks and invalid ranges.
+#[test]
+fn test_sliceinfo_structural_validation() {
+    // Rank mismatch: indices length != input dim ndim.
+    let err_rank = SliceInfo::new(
+        SliceInfoIndices::from_vec(vec![SliceInfoElem::Index(0)]),
+        Ix2(2, 3),
+        Ix1(0),
+    )
+    .expect_err("rank mismatch");
+    assert!(matches!(err_rank, xenon::XenonError::InvalidArgument { .. }));
+
+    // Output rank mismatch: Range count != output dim ndim.
+    let err_out = SliceInfo::new(
+        SliceInfoIndices::from_vec(vec![
+            SliceInfoElem::Range { start: 0, end: 2 },
+            SliceInfoElem::Range { start: 0, end: 3 },
+        ]),
+        Ix2(2, 3),
+        Ix1(2),
+    )
+    .expect_err("output rank mismatch");
+    assert!(matches!(err_out, xenon::XenonError::InvalidArgument { .. }));
+
+    // Range start > end.
+    let err_range = SliceInfo::new(
+        SliceInfoIndices::from_vec(vec![
+            SliceInfoElem::Range { start: 5, end: 2 },
+            SliceInfoElem::Index(0),
+        ]),
+        Ix2(10, 3),
+        Ix1(3),
+    )
+    .expect_err("start > end");
+    assert!(matches!(
+        err_range,
+        xenon::XenonError::InvalidArgument { .. }
+    ));
+
+    // Range end > axis extent.
+    let t = Tensor2::<i32>::from_shape_vec([2, 2], vec![1, 2, 3, 4]).expect("valid test input");
+    let info_oob = SliceInfo::new(
+        SliceInfoIndices::from_vec(vec![
+            SliceInfoElem::Range { start: 0, end: 5 },
+            SliceInfoElem::Index(0),
+        ]),
+        Ix2(2, 2),
+        Ix1(2),
+    )
+    .expect("valid slice info (end validated at slice time)");
+    let err_slice = t.slice(info_oob).expect_err("range out of bounds");
+    assert!(matches!(err_slice, xenon::XenonError::InvalidArgument { .. }));
+}

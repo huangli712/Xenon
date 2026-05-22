@@ -157,3 +157,75 @@ fn test_invariant_can_broadcast_matches_broadcast_shape() {
 //
 // W29 task list must include `test_broadcast_property_*` entries covering these
 // four invariants; this comment block is the authoritative scheduling record.
+
+// ── Additional broadcast integration tests ──
+
+use xenon::tensor::Tensor;
+
+/// Scalar (1x1) broadcasting to a larger shape preserves zero-copy.
+#[test]
+fn test_broadcast_scalar() {
+    let t: Tensor2<f64> = Tensor2::ones([1, 1]).expect("valid test input");
+    let view = t.broadcast_to([3, 4]).expect("valid test input");
+    assert_eq!(view.shape(), &[3, 4]);
+    assert_eq!(view.strides(), &[0, 0]);
+    assert_eq!(view.as_ptr(), t.as_ptr());
+}
+
+/// Row (1x3) to (2x3) and column (3x1) to (3x4) broadcast.
+#[test]
+fn test_broadcast_row_col() {
+    let row: Tensor2<f64> = Tensor2::from_shape_vec([1, 3], vec![1.0, 2.0, 3.0]).expect("valid test input");
+    let row_bc = row.broadcast_to([2, 3]).expect("valid test input");
+    assert_eq!(row_bc.shape(), &[2, 3]);
+    assert_eq!(row_bc.strides()[0], 0);
+
+    let col: Tensor2<f64> = Tensor2::from_shape_vec([3, 1], vec![1.0, 2.0, 3.0]).expect("valid test input");
+    let col_bc = col.broadcast_to([3, 4]).expect("valid test input");
+    assert_eq!(col_bc.shape(), &[3, 4]);
+    assert_eq!(col_bc.strides()[1], 0);
+}
+
+/// Incompatible shapes return BroadcastError.
+#[test]
+fn test_broadcast_incompatible_shapes() {
+    let t: Tensor2<f64> = Tensor2::zeros([2, 3]).expect("valid test input");
+    let err = t.broadcast_to([4, 3]).expect_err("expected BroadcastError");
+    assert!(matches!(err, xenon::XenonError::BroadcastError { .. }));
+}
+
+/// Left-padding: lower-rank shape [3] broadcast to [2, 3].
+#[test]
+fn test_broadcast_left_pad() {
+    let t = Tensor::<f64, _>::from_shape_vec([3], vec![1.0, 2.0, 3.0]).expect("valid test input");
+    let view = t.broadcast_to([2, 3]).expect("valid test input");
+    assert_eq!(view.shape(), &[2, 3]);
+    // Axis 0 was introduced (left-padded) with stride 0.
+    assert_eq!(view.strides()[0], 0);
+    assert_eq!(view.strides()[1], 1);
+}
+
+/// Rebroadcasting preserves zero strides on already-broadcast axes.
+#[test]
+fn test_broadcast_zero_stride() {
+    let t: Tensor2<f64> = Tensor2::from_shape_vec([1, 3], vec![1.0, 2.0, 3.0]).expect("valid test input");
+    let view1 = t.broadcast_to([2, 3]).expect("valid test input");
+    assert_eq!(view1.strides(), &[0, 1]);
+    // Rebroadcast the already-broadcast view to the same shape.
+    let view2 = view1.broadcast_to([2, 3]).expect("valid test input");
+    assert_eq!(view2.strides(), &[0, 1]);
+}
+
+/// Broadcast views are read-only; iteration works correctly.
+#[test]
+fn test_broadcast_view_readonly() {
+    let t: Tensor2<f64> = Tensor2::from_shape_vec([1, 3], vec![1.0, 2.0, 3.0]).expect("valid test input");
+    let view = t.broadcast_to([2, 3]).expect("valid test input");
+    let n: usize = view.iter().count();
+    assert_eq!(n, 6);
+    // Verify content via iteration.
+    let collected: Vec<f64> = view.iter().copied().collect();
+    assert_eq!(collected, vec![1.0, 1.0, 2.0, 2.0, 3.0, 3.0]);
+    // Non-empty broadcast view must be classified as BroadcastView.
+    assert_eq!(view.layout_state(), LayoutState::BroadcastView);
+}

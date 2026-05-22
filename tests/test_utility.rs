@@ -30,7 +30,7 @@ fn test_fill_zero_dim() {
 // After `transpose()` → 3×2:
 //     [1 2]
 //     [3 4]
-//     [5 6]
+//     [5 5]
 // clip(2, 5):
 //     [2 2]
 //     [3 4]
@@ -120,4 +120,100 @@ fn test_clip_large_array() {
     let clipped = tensor.clip(20, 80).expect("valid clip bounds");
     assert_eq!(clipped.shape(), &[10_000]);
     assert!(clipped.iter().all(|&x| (20..=80).contains(&x)));
+}
+
+// ── Additional integration tests for clip / fill / to_contiguous / into_contiguous / try_fill ──
+
+#[test]
+fn test_try_fill_writable_success() {
+    let mut tensor = Tensor1::<i32>::zeros([4]).expect("zeros valid shape");
+    tensor.try_fill(7).expect("try_fill on owned should succeed");
+    let values: Vec<i32> = tensor.iter().copied().collect();
+    assert_eq!(values, vec![7, 7, 7, 7]);
+}
+
+#[test]
+fn test_clip() {
+    let tensor = Tensor1::from_shape_vec([5], vec![-5_i32, 0, 3, 8, 12])
+        .expect("valid construction");
+    let clipped = tensor.clip(0, 10).expect("valid clip bounds");
+    let values: Vec<i32> = clipped.iter().copied().collect();
+    assert_eq!(values, vec![0, 0, 3, 8, 10]);
+}
+
+#[test]
+fn test_to_contiguous() {
+    let tensor = xenon::tensor::Tensor2::<i32>::from_shape_vec([2, 2], vec![1, 2, 3, 4])
+        .expect("valid construction");
+    // Transposed view is non-contiguous.
+    let view = tensor.transpose();
+    assert!(!view.is_f_contiguous());
+    let contiguous = view.to_contiguous();
+    assert!(contiguous.is_f_contiguous());
+    assert_eq!(contiguous.shape(), &[2, 2]);
+    // Values preserved (logical F-order iter → canonical F-order owned).
+    assert_eq!(*contiguous.try_at((0, 0)).expect("valid index"), 1);
+    assert_eq!(*contiguous.try_at((0, 1)).expect("valid index"), 2);
+    assert_eq!(*contiguous.try_at((1, 0)).expect("valid index"), 3);
+    assert_eq!(*contiguous.try_at((1, 1)).expect("valid index"), 4);
+}
+
+#[test]
+fn test_fill_inplace() {
+    let mut tensor = Tensor1::<f64>::zeros([5]).expect("zeros valid shape");
+    tensor.fill(3.14);
+    let values: Vec<f64> = tensor.iter().copied().collect();
+    assert_eq!(values, vec![3.14; 5]);
+}
+
+#[test]
+fn test_try_fill_rejects_readonly_or_broadcast() {
+    let tensor = Tensor1::<i32>::from_shape_vec([3], vec![1, 2, 3])
+        .expect("valid construction");
+    let mut view = tensor.view();
+    let err = view.try_fill(0).expect_err("view is read-only");
+    assert!(matches!(err, XenonError::InvalidStorageMode { .. }));
+}
+
+// test_clip_non_contiguous already exists at line 39 — not duplicated here.
+
+#[test]
+fn test_clip_invalid_parameters() {
+    let tensor = Tensor1::<i32>::from_shape_vec([3], vec![1, 2, 3])
+        .expect("valid construction");
+    let err = tensor.clip(10, 5).expect_err("min > max should be rejected");
+    assert!(matches!(err, XenonError::InvalidArgument { .. }));
+}
+
+#[test]
+fn test_into_contiguous_reuses_owned_data() {
+    let tensor = xenon::tensor::Tensor2::<i32>::from_shape_vec([2, 2], vec![1, 2, 3, 4])
+        .expect("valid construction");
+    let contiguous = tensor.into_contiguous();
+    assert!(contiguous.is_f_contiguous());
+    assert_eq!(*contiguous.try_at((0, 0)).expect("valid index"), 1);
+    assert_eq!(*contiguous.try_at((1, 0)).expect("valid index"), 2);
+    assert_eq!(*contiguous.try_at((0, 1)).expect("valid index"), 3);
+    assert_eq!(*contiguous.try_at((1, 1)).expect("valid index"), 4);
+}
+
+#[test]
+fn test_into_contiguous_materializes_view() {
+    // The view is non-contiguous; into_contiguous() copies raw physical storage
+    // (StorageIntoOwned for ViewRepr) and wraps with canonical F-order strides.
+    let tensor = xenon::tensor::Tensor2::<i32>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6])
+        .expect("valid construction");
+    let view = tensor.transpose(); // shape [3, 2], non-contiguous.
+    assert!(!view.is_f_contiguous());
+    let contiguous = view.into_contiguous();
+    assert!(contiguous.is_f_contiguous());
+    assert_eq!(contiguous.shape(), &[3, 2]);
+    // Physical storage is [1, 2, 3, 4, 5, 6]; canonical F-order strides for [3,2] are [1, 3].
+    // Logical F-order matrix: [[1, 4], [2, 5], [3, 6]]
+    assert_eq!(*contiguous.try_at((0, 0)).expect("valid index"), 1);
+    assert_eq!(*contiguous.try_at((0, 1)).expect("valid index"), 4);
+    assert_eq!(*contiguous.try_at((1, 0)).expect("valid index"), 2);
+    assert_eq!(*contiguous.try_at((1, 1)).expect("valid index"), 5);
+    assert_eq!(*contiguous.try_at((2, 0)).expect("valid index"), 3);
+    assert_eq!(*contiguous.try_at((2, 1)).expect("valid index"), 6);
 }

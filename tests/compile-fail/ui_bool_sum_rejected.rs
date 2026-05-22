@@ -1,0 +1,7 @@
+//! bool does not participate in sum reduction (§5.21 line 671).
+use xenon::tensor::Tensor1;
+
+fn main() {
+    let t = Tensor1::<bool>::from_shape_vec([2], vec![true, false]).unwrap();
+    let _s = t.sum(); //~ ERROR: bool
+}

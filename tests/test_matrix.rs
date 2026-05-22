@@ -201,3 +201,62 @@ fn test_dot_parallel_threshold_boundary() {
         );
     }
 }
+
+// ── Additional integration tests for matrix::dot ──
+
+/// Basic dot product: i32 3-element vectors (different arrangement from
+/// the existing test_dot_basic, verifying consistent results).
+#[test]
+fn test_dot_product() {
+    let a = Tensor1::from_shape_vec(Ix1(4), vec![2_i32, 3, 5, 7])
+        .expect("valid construction");
+    let b = Tensor1::from_shape_vec(Ix1(4), vec![11_i32, 13, 17, 19])
+        .expect("valid construction");
+    // 2*11 + 3*13 + 5*17 + 7*19 = 22 + 39 + 85 + 133 = 279
+    assert_eq!(xenon::dot(&a, &b).expect("valid construction"), 279_i32);
+}
+
+/// i32 overflow panics: multiplication of large values triggers panic.
+#[test]
+#[should_panic(expected = "dot: integer overflow during multiplication")]
+fn test_i32_dot_overflow_panics() {
+    let a = Tensor1::from_shape_vec(Ix1(2), vec![i32::MAX, 1_i32])
+        .expect("valid construction");
+    let b = Tensor1::from_shape_vec(Ix1(2), vec![2_i32, 1_i32])
+        .expect("valid construction");
+    let _ = xenon::dot(&a, &b).expect("construction");
+}
+
+/// i64 overflow panics: accumulation overflow.
+#[test]
+#[should_panic(expected = "dot: integer overflow during accumulation")]
+fn test_i64_dot_overflow_panics() {
+    let a = Tensor1::from_shape_vec(Ix1(3), vec![i64::MAX, 1_i64, 1])
+        .expect("valid construction");
+    let b = Tensor1::from_shape_vec(Ix1(3), vec![1_i64, i64::MAX, 1])
+        .expect("valid construction");
+    let _ = xenon::dot(&a, &b).expect("construction");
+}
+
+/// Free-function dot(xenon::dot) entry point works correctly.
+#[test]
+fn test_dot_free_function() {
+    let a = Tensor1::from_shape_vec(Ix1(3), vec![1.0_f64, 2.0, 3.0])
+        .expect("valid construction");
+    let b = Tensor1::from_shape_vec(Ix1(3), vec![4.0_f64, 5.0, 6.0])
+        .expect("valid construction");
+    let result = xenon::dot(&a, &b).expect("valid construction");
+    assert_eq!(result, 32.0_f64);
+}
+
+/// Dual-entry equivalence: free function and method produce identical results.
+#[test]
+fn test_dot_dual_entry_equivalence() {
+    let a = Tensor1::from_shape_vec(Ix1(3), vec![7_i32, 8, 9])
+        .expect("valid construction");
+    let b = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3])
+        .expect("valid construction");
+    let free = xenon::dot(&a, &b).expect("valid construction");
+    let method = a.dot(&b).expect("valid construction");
+    assert_eq!(free, method);
+}
