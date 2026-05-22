@@ -14,6 +14,20 @@
 //! `ArcRepr<A>` and `ViewRepr<'a, A>` both expose read-only access, but their
 //! ownership models differ: `ArcRepr<A>` is an owning shared handle, while
 //! `ViewRepr<'a, A>` is a borrowed read-only view tied to an external lifetime.
+//!
+//! # Thread Safety
+//!
+//! Storage thread-safety follows the matrix below:
+//!
+//! | Storage               | Send | Sync | Condition              |
+//! |-----------------------|------|------|------------------------|
+//! | `Owned<A>`            | yes  | yes  | `A: Send` / `A: Sync`  |
+//! | `ViewRepr<'a, A>`     | yes  | yes  | `A: Sync`              |
+//! | `ViewMutRepr<'a, A>`  | yes  | no   | `A: Send`              |
+//! | `ArcRepr<A>`          | yes  | yes  | `A: Send + Sync`       |
+//!
+//! `ViewMutRepr` is intentionally not `Sync`; parallel mutable execution must
+//! split exclusive access into non-overlapping chunks before crossing threads.
 
 mod alloc;
 mod arc;
@@ -590,5 +604,18 @@ mod tests {
 
         assert_eq!(copied.as_slice(), &[9, 2, 3]);
         assert_eq!(shared.as_slice(), &[1, 2, 3]);
+    }
+
+    #[test]
+    fn test_storage_thread_safety_matrix_compile() {
+        fn assert_send<T: Send>() {}
+        fn assert_sync<T: Sync>() {}
+        assert_send::<Owned<i32>>();
+        assert_sync::<Owned<i32>>();
+        assert_send::<ViewRepr<'_, i32>>();
+        assert_sync::<ViewRepr<'_, i32>>();
+        assert_send::<ViewMutRepr<'_, i32>>();
+        assert_send::<ArcRepr<i32>>();
+        assert_sync::<ArcRepr<i32>>();
     }
 }

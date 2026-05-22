@@ -162,10 +162,14 @@ impl<A: Element + Clone> StorageIntoOwned for ArcRepr<A> {
 // W7T17: Send/Sync + Default + TryFrom for ArcRepr<A>
 // ---------------------------------------------------------------------------
 
-// SAFETY: ArcRepr<A> shares read-only data through Arc<SharedBuf<A>>.
-// No interior mutability exposed; A: Send + Sync makes concurrent
-// read-only access safe across threads. See 25-safety.md §5.5.
+// SAFETY: `ArcRepr<A>` shares storage through atomic reference counting.
+// Moving the handle across threads is sound when `A` can be sent and shared
+// across threads, matching `Arc<[A]>` requirements.
 unsafe impl<A: Send + Sync> Send for ArcRepr<A> {}
+
+// SAFETY: `&ArcRepr<A>` may be accessed concurrently and exposes shared reads
+// of `A`. Concurrent shared reads are sound when `A: Sync`, and cloned handles
+// may move between threads when `A: Send`.
 unsafe impl<A: Send + Sync> Sync for ArcRepr<A> {}
 
 impl<A> Default for ArcRepr<A> {
@@ -251,5 +255,29 @@ mod tests {
             .expect("ArcRepr::try_from should succeed for small i32 input");
         assert_eq!(arc.len(), 3);
         assert_eq!(arc.as_slice(), &[1, 2, 3]);
+    }
+
+    #[test]
+    fn test_arc_concurrent_read() {
+        let arc = ArcRepr::from_vec(vec![1_i32, 2, 3])
+            .expect("ArcRepr::from_vec should succeed for small i32 input");
+        let left = arc.clone();
+        let right = arc.clone();
+        let a = std::thread::spawn(move || {
+            left.as_slice().iter().copied().sum::<i32>()
+        });
+        let b = std::thread::spawn(move || {
+            right.as_slice().iter().copied().sum::<i32>()
+        });
+        assert_eq!(a.join().expect("thread should not panic"), 6);
+        assert_eq!(b.join().expect("thread should not panic"), 6);
+    }
+
+    #[test]
+    fn test_arc_cloned_handles_preserve_read_only_data() {
+        let arc = ArcRepr::from_vec(vec![4_i64, 5])
+            .expect("ArcRepr::from_vec should succeed for small i64 input");
+        let cloned = arc.clone();
+        assert_eq!(arc.as_slice(), cloned.as_slice());
     }
 }

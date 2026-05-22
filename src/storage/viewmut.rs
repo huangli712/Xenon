@@ -109,10 +109,14 @@ unsafe impl<'a, A> StorageMut for ViewMutRepr<'a, A> {}
 // exclusive mutable borrowed storage category.
 unsafe impl<'a, A> IsViewMut for ViewMutRepr<'a, A> {}
 
-// SAFETY: ViewMutRepr allows exclusive access via &mut self.
-// Safe to send between threads if A: Send.
-// Sync is intentionally NOT implemented (see §6.10).
+// SAFETY: `ViewMutRepr` represents an exclusive mutable borrow of a logical
+// tensor region. Moving it to another thread transfers that exclusive access;
+// it does not create aliases. Moving contained element access across threads is
+// sound exactly when `A: Send`.
 unsafe impl<'a, A: Send> Send for ViewMutRepr<'a, A> {}
+
+// Intentionally no `Sync` impl: sharing `&ViewMutRepr` would share an exclusive
+// write capability and violate the aliasing model described in 25-safety §5.1.
 
 impl<'a, A: Clone> StorageIntoOwned for ViewMutRepr<'a, A> {
     fn into_owned_storage(self) -> Owned<A>
@@ -137,6 +141,14 @@ impl<'a, A: Clone> StorageIntoOwned for ViewMutRepr<'a, A> {
         Owned { data: buf }
     }
 }
+
+/// ```compile_fail
+/// # use xenon::storage::ViewMutRepr;
+/// fn assert_sync<T: Sync>() {}
+/// assert_sync::<ViewMutRepr<'_, f64>>();
+/// ```
+#[allow(dead_code)]
+fn test_view_mut_not_sync() {}
 
 #[cfg(test)]
 mod tests {
@@ -164,5 +176,31 @@ mod tests {
         let view = ViewMutRepr::from_mut_slice(&mut data);
         fn assert_marker<T: FailsIfViewMutBecomesClone>(_: T) {}
         assert_marker(view);
+    }
+
+    #[test]
+    fn test_view_mut_send() {
+        fn assert_send<T: Send>() {}
+        assert_send::<ViewMutRepr<'_, f64>>();
+    }
+
+    #[test]
+    fn test_view_mut_cross_thread_write() {
+        use crate::dimension::Ix1;
+        use crate::tensor::Tensor1;
+
+        let mut tensor = Tensor1::from_shape_vec(Ix1(2), vec![1_i32, 2])
+            .expect("Tensor1::from_shape_vec should succeed for valid shape");
+        std::thread::scope(|scope| {
+            let mut view = tensor.view_mut();
+            let handle = scope.spawn(move || {
+                view.fill(7);
+            });
+            handle.join().expect("thread should not panic");
+        });
+        assert_eq!(
+            tensor.as_slice().expect("from_shape_vec produces F-contiguous tensor"),
+            &[7, 7]
+        );
     }
 }

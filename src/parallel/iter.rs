@@ -429,4 +429,30 @@ mod tests {
         let par_iter = tensor.par_iter();
         assert_eq!(par_iter.len(), 2048);
     }
+
+    #[test]
+    fn test_chunks_cover_all() {
+        const MIN_CHUNK: usize = 1024;
+        assert_eq!(super::super::compute_safe_chunks(0, 4), 1);
+        let size = super::super::compute_safe_chunks(100_000, 4);
+        assert!(size >= MIN_CHUNK, "chunk_size must be >= MIN_CHUNK for non-trivial inputs, got {}", size);
+    }
+
+    #[test]
+    fn test_chunks_no_overlap() {
+        assert_eq!(super::super::compute_safe_chunks(3, 8), 1);
+        assert_eq!(super::super::compute_safe_chunks(1, 4), 1);
+        assert!(super::super::compute_safe_chunks(17, 4) >= 1);
+    }
+
+    #[test]
+    fn test_chunks_boundary() {
+        const MIN_CHUNK: usize = 1024;
+        assert_eq!(super::super::compute_safe_chunks(0, 4), 1);
+        assert_eq!(super::super::compute_safe_chunks(1, 4), 1);
+        assert_eq!(super::super::compute_safe_chunks(3, 8), 1);
+        assert_eq!(super::super::compute_safe_chunks(64, 8), MIN_CHUNK);
+        assert_eq!(super::super::compute_safe_chunks(10_000, 3), MIN_CHUNK);
+        assert_eq!(super::super::compute_safe_chunks(1_000_000, 4), 62_500);
+    }
 }

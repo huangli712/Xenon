@@ -610,14 +610,14 @@ impl<A> Owned<A> {
     }
 }
 
-// SAFETY: Owned<A> has exclusive ownership of AlignedBuf<A>;
-// no data races across threads. Element Send safety follows from A: Send.
-// See 25-safety.md §5.5, 05-storage.md §11.
+// SAFETY: `Owned<A>` has exclusive ownership of its allocation and moving it to
+// another thread moves the only owner. Element values are only moved across
+// threads when `A: Send`, so no non-Send element can cross a thread boundary.
 unsafe impl<A: Send> Send for Owned<A> {}
 
-// SAFETY: &Owned<A> only exposes immutable pointer/slice access;
-// no interior mutability. Element Sync safety follows from A: Sync.
-// See 25-safety.md §5.5, 05-storage.md §11.
+// SAFETY: Shared access to `Owned<A>` only exposes shared access to initialized
+// `A` elements and immutable metadata. Sharing those elements across threads is
+// sound exactly when `A: Sync`.
 unsafe impl<A: Sync> Sync for Owned<A> {}
 
 // ---------------------------------------------------------------------------
@@ -637,6 +637,15 @@ impl<A: Element + Copy> TryFrom<Vec<A>> for Owned<A> {
         Self::from_vec(value)
     }
 }
+
+/// ```compile_fail
+/// # use std::rc::Rc;
+/// # use xenon::storage::Owned;
+/// fn assert_send<T: Send>() {}
+/// assert_send::<Owned<Rc<i32>>>();
+/// ```
+#[allow(dead_code)]
+fn test_owned_negative_rc() {}
 
 #[cfg(test)]
 mod tests {
@@ -854,6 +863,14 @@ mod tests {
         fn assert_sync<T: Sync>() {}
         assert_send::<Owned<i32>>();
         assert_sync::<Owned<i32>>();
+    }
+
+    #[test]
+    fn test_owned_cross_thread() {
+        let owned = Owned::from_vec(vec![1_i32, 2, 3])
+            .expect("Owned::from_vec should succeed for small i32 input");
+        let handle = std::thread::spawn(move || owned.len());
+        assert_eq!(handle.join().expect("thread should not panic"), 3);
     }
 
     // W7T13 tests

@@ -83,10 +83,13 @@ unsafe impl<'a, A> RawStorage for ViewRepr<'a, A> {
 unsafe impl<'a, A> Storage for ViewRepr<'a, A> {}
 unsafe impl<'a, A> IsView for ViewRepr<'a, A> {}
 
-// SAFETY: ViewRepr only allows shared (read-only) access.
-// Safe to send between threads if A: Sync (shared refs are Send when T: Sync).
+// SAFETY: `ViewRepr` is a borrowed read-only view. Moving it to another
+// thread only moves shared access to `A` values, which is sound exactly when
+// `A: Sync`. The lifetime `'a` still prevents outliving the borrowed storage.
 unsafe impl<'a, A: Sync> Send for ViewRepr<'a, A> {}
-// SAFETY: Multiple threads can hold &ViewRepr simultaneously if A: Sync.
+
+// SAFETY: Sharing `&ViewRepr` across threads permits only shared reads of
+// `A` through the original borrow. Shared reads are thread-safe when `A: Sync`.
 unsafe impl<'a, A: Sync> Sync for ViewRepr<'a, A> {}
 
 impl<'a, A: Clone> StorageIntoOwned for ViewRepr<'a, A> {
@@ -143,5 +146,39 @@ mod tests {
         let data = [1_i32, 2, 3];
         let view = assert_lifetime(&data);
         assert_eq!(view.as_slice(), &[1, 2, 3]);
+    }
+
+    #[test]
+    fn test_view_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<ViewRepr<'_, f64>>();
+    }
+
+    #[test]
+    fn test_view_cross_thread() {
+        use crate::dimension::Ix1;
+        use crate::tensor::Tensor1;
+
+        let tensor = Tensor1::from_shape_vec(Ix1(3), vec![1_i32, 2, 3])
+            .expect("Tensor1::from_shape_vec should succeed for valid shape");
+        std::thread::scope(|scope| {
+            let view = tensor.view();
+            let handle = scope.spawn(move || view.len());
+            assert_eq!(handle.join().expect("thread should not panic"), 3);
+        });
+    }
+
+    #[test]
+    fn test_view_read_only_across_threads() {
+        use crate::dimension::Ix1;
+        use crate::tensor::Tensor1;
+
+        let tensor = Tensor1::from_shape_vec(Ix1(2), vec![10_i32, 20])
+            .expect("Tensor1::from_shape_vec should succeed for valid shape");
+        std::thread::scope(|scope| {
+            let view = tensor.view();
+            let handle = scope.spawn(move || view.iter().copied().sum::<i32>());
+            assert_eq!(handle.join().expect("thread should not panic"), 30);
+        });
     }
 }
