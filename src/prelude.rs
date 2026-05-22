@@ -1,11 +1,14 @@
-//! Xenon prelude module.
+//! The Xenon prelude.
 //!
-//! Provides a convenient way to import the most commonly used types and traits
-//! from the Xenon crate.
+//! Re-exports the most commonly used types so downstream code can
+//! write `use xenon::prelude::*;` instead of importing each item.
+//! Includes: `Tensor`, dimension aliases, `XenonError`, `Result`, and
+//! the conventional element/storage marker traits required by typical
+//! tensor construction and arithmetic.
 //!
-//! # Usage
+//! # Example
 //!
-//! ```
+//! ```rust
 //! use xenon::prelude::*;
 //! ```
 

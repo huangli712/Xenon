@@ -187,7 +187,9 @@ pub(crate) trait BoolElement: Element + Sealed {}
 /// trait to exclude `bool` from conversion at compile time and narrow the
 /// element set to the 6 numeric types.
 ///
-/// Sealed: `CastElement: Element` inherits seal via `Element: Sealed`.
+/// # Sealed
+///
+/// This trait is sealed and cannot be implemented outside of `Xenon`.
 pub trait CastElement: Element {}
 
 // ── Checked Arithmetic Traits (§5.10) ──

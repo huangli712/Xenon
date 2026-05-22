@@ -1,3 +1,23 @@
+//! Dimensions describe tensor rank and shape metadata.
+//!
+//! `Ix0` through `Ix6` represent statically ranked tensors, while `IxDyn`
+//! stores a runtime-rank shape. The `Dimension` and `Reverse` traits are
+//! sealed so the crate can keep stride, indexing, and broadcasting invariants
+//! coherent.
+//!
+//! ## Type overview
+//!
+//! | Type | Rank | Description |
+//! |------|------|-------------|
+//! | `Ix0` | 0 | Scalar (zero-dimensional) |
+//! | `Ix1` | 1 | Vector |
+//! | `Ix2` | 2 | Matrix |
+//! | `Ix3`–`Ix6` | 3–6 | Higher-rank tensors |
+//! | `IxDyn` | runtime | Dynamically-sized dimensions |
+//!
+//! Conversion from tuples (`(usize,)`, etc.), arrays (`[usize; N]`),
+//! and slices is provided through `IntoDimension`.
+
 pub mod axes;
 pub mod broadcast;
 pub mod dynamic;
@@ -14,6 +34,14 @@ use crate::private::Sealed;
 /// This trait is sealed and cannot be implemented outside of this crate.
 /// Implementations exist for `Ix0`, `Ix1`, ..., `Ix6` (static dimensions)
 /// and `IxDyn` (dynamic dimension).
+///
+/// # Sealed
+///
+/// This trait is sealed and cannot be implemented outside of `Xenon`.
+/// External crates may name it in `where` clauses or trait bounds, but
+/// adding new implementations is intentionally not supported. The
+/// implementor set is closed: see the design document for the complete
+/// list and the rationale.
 ///
 /// # Examples
 ///
@@ -72,6 +100,10 @@ pub trait Dimension: Sealed + Clone + PartialEq + Eq + Debug + Send + Sync + 'st
 /// supported dimensions. The trait is `pub` so that public API
 /// signatures can name `D: Reverse`, but sealed so that external
 /// crates cannot add their own implementations.
+///
+/// # Sealed
+///
+/// This trait is sealed and cannot be implemented outside of `Xenon`.
 pub trait Reverse: Dimension + Sealed {
     /// Returns a new dimension with the axis order reversed.
     /// Preserves the static rank (e.g., `Ix2 → Ix2`).

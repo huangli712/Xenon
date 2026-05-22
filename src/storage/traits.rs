@@ -13,6 +13,10 @@ use crate::storage::RawStorage;
 /// Implementors must satisfy the [`RawStorage`] contract and represent a
 /// storage mode with exclusive ownership semantics controlled by this crate.
 /// This trait is sealed and must not be implemented outside Xenon.
+///
+/// # Sealed
+///
+/// This trait is sealed and cannot be implemented outside of `Xenon`.
 pub unsafe trait IsOwned: RawStorage + crate::private::Sealed {}
 
 /// Marker trait for immutable borrowed view storage representations.
@@ -22,6 +26,10 @@ pub unsafe trait IsOwned: RawStorage + crate::private::Sealed {}
 /// Implementors must satisfy the [`RawStorage`] contract and represent a
 /// read-only borrowed storage mode controlled by this crate. This trait is
 /// sealed and must not be implemented outside Xenon.
+///
+/// # Sealed
+///
+/// This trait is sealed and cannot be implemented outside of `Xenon`.
 pub unsafe trait IsView: RawStorage + crate::private::Sealed {}
 
 /// Marker trait for mutable borrowed view storage representations.
@@ -31,6 +39,10 @@ pub unsafe trait IsView: RawStorage + crate::private::Sealed {}
 /// Implementors must satisfy the [`RawStorage`] contract and represent an
 /// exclusive mutable borrowed storage mode controlled by this crate. This
 /// trait is sealed and must not be implemented outside Xenon.
+///
+/// # Sealed
+///
+/// This trait is sealed and cannot be implemented outside of `Xenon`.
 pub unsafe trait IsViewMut: RawStorage + crate::private::Sealed {}
 
 /// Marker trait for shared read-only storage representations.
@@ -40,6 +52,10 @@ pub unsafe trait IsViewMut: RawStorage + crate::private::Sealed {}
 /// Implementors must satisfy the [`RawStorage`] contract and represent a
 /// shared read-only storage mode controlled by this crate. This trait is
 /// sealed and must not be implemented outside Xenon.
+///
+/// # Sealed
+///
+/// This trait is sealed and cannot be implemented outside of `Xenon`.
 pub unsafe trait IsShared: RawStorage + crate::private::Sealed {}
 
 #[cfg(test)]

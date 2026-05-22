@@ -61,6 +61,10 @@ use core::ptr::NonNull;
 /// storage lifetime, repeated calls return the same address, the pointer is
 /// non-null and properly aligned, the `len()` range is initialized within one
 /// allocation, and the total range does not exceed `isize::MAX`.
+///
+/// # Sealed
+///
+/// This trait is sealed and cannot be implemented outside of `Xenon`.
 pub unsafe trait RawStorage: crate::private::Sealed {
     /// The element type of the storage.
     type Elem;
@@ -101,6 +105,10 @@ pub unsafe trait RawStorage: crate::private::Sealed {
 /// Implementors must uphold the [`RawStorage`] contract and guarantee that
 /// the storage-visible range exposed through safe shared access remains
 /// fully initialized, aligned, and valid for the duration of `&self`.
+///
+/// # Sealed
+///
+/// This trait is sealed and cannot be implemented outside of `Xenon`.
 pub unsafe trait Storage: RawStorage + crate::private::Sealed {
     /// Returns an immutable reference to the element at the given index.
     fn get(&self, index: usize) -> Option<&Self::Elem> {
@@ -148,6 +156,10 @@ pub unsafe trait Storage: RawStorage + crate::private::Sealed {
 /// Implementors must ensure the pointer returned by `as_mut_ptr()` remains
 /// valid for the storage's lifetime and that no other mutable references
 /// to the same data exist (aliasing rules).
+///
+/// # Sealed
+///
+/// This trait is sealed and cannot be implemented outside of `Xenon`.
 pub unsafe trait RawStorageMut: RawStorage + crate::private::Sealed {
     /// Returns a raw mutable pointer to the start of the data.
     fn as_mut_ptr(&mut self) -> *mut Self::Elem;
@@ -176,6 +188,10 @@ pub unsafe trait RawStorageMut: RawStorage + crate::private::Sealed {
 /// Implementors must uphold the contracts of both [`Storage`] and
 /// [`RawStorageMut`], and guarantee exclusive mutable access to the
 /// storage-visible range for the duration of `&mut self`.
+///
+/// # Sealed
+///
+/// This trait is sealed and cannot be implemented outside of `Xenon`.
 pub unsafe trait StorageMut: Storage + RawStorageMut + crate::private::Sealed {
     /// Returns a mutable reference to the element at the given index.
     fn get_mut(&mut self, index: usize) -> Option<&mut Self::Elem> {
@@ -232,6 +248,10 @@ pub unsafe trait StorageMut: Storage + RawStorageMut + crate::private::Sealed {
 /// Implementors must uphold the [`StorageMut`] contract, own their backing
 /// allocation exclusively, and ensure all constructors and conversions
 /// preserve the storage invariants required by this module.
+///
+/// # Sealed
+///
+/// This trait is sealed and cannot be implemented outside of `Xenon`.
 pub unsafe trait StorageOwned: StorageMut + Clone + crate::private::Sealed {
     /// Allocates storage of the given size, zero-filled.
     fn zeros(len: usize) -> Self
@@ -268,8 +288,9 @@ pub unsafe trait StorageOwned: StorageMut + Clone + crate::private::Sealed {
 
 /// Marker trait for shared read-only storage.
 ///
-/// **Sealed**: this `unsafe` trait is sealed via the `Sealed` super-bound
-/// from `crate::private`.
+/// # Sealed
+///
+/// This trait is sealed and cannot be implemented outside of `Xenon`.
 ///
 /// # Safety
 ///

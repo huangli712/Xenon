@@ -120,6 +120,11 @@ impl Workspace {
     }
 
     /// Allocate a workspace with default capacity and alignment.
+    ///
+    /// # Errors
+    ///
+    /// Returns errors from the underlying allocator, wrapped as
+    /// `XenonError::Workspace { AllocationFailed }`.
     pub fn with_default_capacity() -> Result<Self> {
         Self::new(Self::DEFAULT_CAPACITY, Self::DEFAULT_ALIGNMENT)
     }

@@ -21,7 +21,7 @@
 //! `TensorBase<S, D>` itself is defined in this `mod.rs`.
 //! The `construct` module remains private, but it hosts both the internal
 //! `new_unchecked` constructor and the public raw-parts entry points exposed
-//! as `TensorBase::from_raw_parts` and `TensorBase::from_raw_parts_mut`.
+//! as `TensorBase`'s `from_raw_parts` and `from_raw_parts_mut`.
 
 /// N-dimensional array with type-level storage and dimension descriptors.
 ///

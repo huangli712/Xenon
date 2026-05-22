@@ -8,7 +8,7 @@ use crate::tensor::TensorBase;
 use super::config::FormatConfig;
 use super::pretty::{fmt_1d_display, fmt_nd_display, fmt_scalar_display, read_logical};
 
-/// A wrapper that formats a tensor with a specific [`FormatConfig`].
+/// A wrapper that formats a tensor with a specific [`FormatConfig`](crate::format::FormatConfig).
 ///
 /// Constructed via [`TensorBase::display_with`]. Implements [`core::fmt::Display`]
 /// so it can be used directly in `format!` / `write!` macros.

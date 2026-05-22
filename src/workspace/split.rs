@@ -135,6 +135,10 @@ impl<'a> SplitBorrowMut<'a> {
     /// change is +1. We `fetch_add(1, Release)` before constructing the
     /// children so the last sibling's Drop correctly waits for ALL active
     /// sub-splits before resetting `borrow_state`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `WorkspaceBorrowKind::SplitOutOfBounds` when `mid > self.len`.
     pub fn split_at_mut(
         self,
         mid: usize,

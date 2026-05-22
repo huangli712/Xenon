@@ -1,15 +1,75 @@
-//! # Xenon — N-dimensional array library
+//! # Xenon — N-dimensional Tensor Library for Rust
 //!
-//! Xenon is a pure Rust N-dimensional array library for scientific computing.
+//! Xenon is a high-performance N-dimensional array (tensor) library for Rust,
+//! designed as numerical infrastructure for scientific computing.
 //!
-//! Public API examples are added by later documentation tasks after the
-//! corresponding types and functions exist.
+//! ## Quick Start
+//!
+//! ```
+//! # use xenon::prelude::*;
+//! # use xenon::tensor::Tensor;
+//!
+//! # fn demo() -> xenon::Result<()> {
+//! // Create two 2×3 f64 tensors filled with zeros and ones
+//! let a = Tensor::<f64, _>::zeros([2, 3])?;
+//! let b = Tensor::<f64, _>::ones([2, 3])?;
+//!
+//! // Element-wise addition (same shape)
+//! let c = (&a + &b)?;
+//! assert_eq!(c.shape(), &[2, 3]);
+//!
+//! // Reduction: sum of all elements
+//! assert_eq!(c.sum(), 6.0);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Runtime Environment
+//!
+//! Xenon supports only the `std` environment.
+//! It does not need or provide a `std` feature toggle.
+//! All documentation assumes a `std` environment.
+//!
+//! ## Optional Features
+//!
+//! | Feature | Default | Description |
+//! |---------|:-------:|-------------|
+//! | `parallel` | ✗ | Data parallelism via rayon |
+//! | `simd` | ✗ | SIMD acceleration via pulp |
+//!
+//! ## Supported Element Types
+//!
+//! | Level | Types | Trait Bound |
+//! |-------|-------|-------------|
+//! | Base | i32, i64, f32, f64, `Complex<f32>`, `Complex<f64>`, bool | `Element` |
+//! | Numeric | i32, i64, f32, f64, `Complex<f32>`, `Complex<f64>` | `Numeric: Element` |
+//! | Real | f32, f64 | `RealScalar: Numeric` |
+//! | Complex | `Complex<f32>`, `Complex<f64>` | `ComplexScalar: Numeric` |
+//!
+//! `usize` is reserved for shape and index metadata, not as a tensor element type.
+//!
+//! ## Memory Layout
+//!
+//! Default layout is **F-order (column-major)**.
+//! Xenon provides helper APIs that make upstream BLAS/LAPACK integration easier,
+//! but not every legal layout is natively BLAS/LAPACK-compatible.
+//!
+//! ## License
+//!
+//! Xenon is distributed under the terms of the MIT license.
+//! See [LICENSE](https://github.com/Xenon/LICENSE) for details.
 
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
 #![warn(rust_2024_compatibility)]
 #![warn(unsafe_op_in_unsafe_fn)]
 #![warn(clippy::unwrap_used)]
+#![warn(rustdoc::missing_crate_level_docs)]
+#![deny(rustdoc::broken_intra_doc_links)]
+#![deny(rustdoc::private_intra_doc_links)]
+#![warn(clippy::missing_errors_doc)]
+#![warn(clippy::missing_panics_doc)]
+#![warn(clippy::missing_safety_doc)]
 
 /// Internal sealed-trait infrastructure.
 mod private;

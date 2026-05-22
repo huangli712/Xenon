@@ -1,3 +1,28 @@
+//! Tensor construction methods.
+//!
+//! Provides factory methods for creating tensors with common initialization
+//! patterns. All constructors return `Result<Tensor, XenonError>` to enforce
+//! validation at construction time.
+//!
+//! ## Core constructors
+//!
+//! | Method | Description | Returns |
+//! |--------|-------------|---------|
+//! | `zeros` | Zero-initialized tensor | `Result<Tensor<A, D>>` |
+//! | `ones` | One-initialized tensor | `Result<Tensor<A, D>>` |
+//! | `eye` | Identity matrix (2D only) | `Result<Tensor<A, Ix2>>` |
+//! | `from_shape_vec` | From flat Vec with shape validation | `Result<Tensor<A, D>>` |
+//! | `from_scalar` | Scalar repeated across shape | `Result<Tensor<A, D>>` |
+//!
+//! Construction errors include `InvalidShapeKind::ProductOverflow` for
+//! overflowed element counts and `InvalidShapeKind::ElementCountMismatch`
+//! for mismatched shape-Vec sizes.
+//!
+//! ## Implementation
+//!
+//! Constructors use `<Owned<A> as StorageOwned>::from_elem(len, value)` for
+//! element-level initialization with canonical F-order strides.
+
 // Construction module skeleton (W22T1).
 //
 // Implementations are added by sub-tasks in their respective files:

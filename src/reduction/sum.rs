@@ -271,6 +271,8 @@ where
     /// Reduces along `axis` and removes that axis from the output shape.
     /// See `13-reduction.md §5.1`.
     ///
+    /// # Errors
+    ///
     /// Returns `XenonError::InvalidAxis` when `axis.index() >= self.ndim()`.
     pub fn sum_axis(&self, axis: Axis) -> Result<Tensor<A, D::Smaller>, XenonError> {
         crate::reduction::sum_axis_impl(self, axis)
@@ -288,6 +290,8 @@ where
     /// Reduces along `axis` and keeps the reduced axis with length 1.
     /// See `13-reduction.md §5.1`. For 0D tensors, every `axis` returns
     /// `XenonError::InvalidAxis` (no axis is valid at rank 0).
+    ///
+    /// # Errors
     ///
     /// Returns `XenonError::InvalidAxis` when `axis.index() >= self.ndim()`.
     pub fn sum_axis_keepdims(&self, axis: Axis) -> Result<Tensor<A, D>, XenonError> {

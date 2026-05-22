@@ -1,0 +1,81 @@
+name: Docs
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95
+        with:
+          components: clippy
+      - name: Gate 1 — rustdoc warnings
+        run: RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
+      - name: Gate 2 — documentation clippy lints
+        run: cargo clippy --all-features -- -D clippy::missing_errors_doc -D clippy::missing_panics_doc -D clippy::missing_safety_doc
+      - name: Gate 3 — doctest
+        run: cargo test --doc --all-features
+      - name: Gate 4 — build examples
+        run: cargo build --examples --all-features
+      - name: Gate 4 — run key examples (default features)
+        run: |
+          cargo run --example basic
+          cargo run --example broadcasting
+          cargo run --example workspace
+          cargo run --example complex
+          cargo run --example ffi
+      - name: Gate 4 — run feature-gated examples
+        run: |
+          cargo run --example features --features parallel,simd
+          cargo run --example simd --features simd
+      - name: Gate 7 — std env audit
+        run: |
+          set -euo pipefail
+          [ -f src/lib.rs ] || { echo 'Missing src/lib.rs (W30T1 prereq incomplete)'; exit 1; }
+          [ -f README.md ] || { echo 'Missing README.md (W30T3 prereq incomplete)'; exit 1; }
+          [ -d examples/ ] || { echo 'Missing examples/ (W30T43-T49 prereq incomplete)'; exit 1; }
+          if grep -rnPE 'no_std|nostd|\balloc(-only)?\b|wasm|webassembly|embedded|bare[-_. ]metal|freestanding' \
+                  src/lib.rs README.md examples/ ; then
+              echo '✗ Out-of-scope platform declarations remain'
+              exit 1
+          fi
+          grep -q 'Xenon supports only the .std. environment' src/lib.rs \
+              || { echo 'Missing std-only declaration in src/lib.rs'; exit 1; }
+          echo 'OK: std env audit gate passed'
+      - name: Docs — sealed trait grep
+        run: |
+          set -euo pipefail
+          # Whitelist: §5.4.3 listed public sealed traits
+          WHITELIST=(
+            "Dimension" "Reverse"
+            "Element" "Numeric" "RealScalar" "ComplexScalar" "CastElement"
+            "RawStorage" "RawStorageMut" "Storage" "StorageMut" "StorageOwned" "StorageShared"
+            "IsOwned" "IsView" "IsViewMut" "IsShared"
+            "CastTo"
+          )
+          fail=0
+          for name in "${WHITELIST[@]}"; do
+            loc=$(grep -rn "pub trait ${name}\b" src/ || true)
+            if [ -z "$loc" ]; then
+              echo "::warning::Sealed trait ${name} not found (may be feature-gated)."
+              continue
+            fi
+            file=$(echo "$loc" | head -1 | cut -d: -f1)
+            line=$(echo "$loc" | head -1 | cut -d: -f2)
+            start=$((line - 30))
+            [ $start -lt 1 ] && start=1
+            block=$(sed -n "${start},${line}p" "$file" | grep -B0 -E '^///' || true)
+            if ! echo "$block" | grep -q "# Sealed"; then
+              echo "::error file=$file,line=$line::Sealed trait ${name} missing '# Sealed' doc section"
+              fail=1
+            fi
+          done
+          [ $fail -eq 0 ]
+      - name: Gate 5 — full clippy
+        run: cargo clippy --all-features -- -D warnings
+      - name: Gate 6 — compile warnings
+        run: RUSTFLAGS="-D warnings" cargo check --all-features

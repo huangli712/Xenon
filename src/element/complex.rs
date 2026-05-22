@@ -13,6 +13,10 @@ use crate::private::Sealed;
 /// provided by [`Numeric::conjugate`] and is not repeated here.
 ///
 /// Only `Complex<f32>` and `Complex<f64>` implement this trait.
+///
+/// # Sealed
+///
+/// This trait is sealed and cannot be implemented outside of `Xenon`.
 pub trait ComplexScalar: Numeric + Sealed {
     /// The real component type; must satisfy [`RealScalar`].
     type Real: RealScalar;

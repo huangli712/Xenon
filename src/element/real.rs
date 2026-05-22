@@ -21,6 +21,10 @@ use crate::private::Sealed;
 /// (`abs`, `sqrt`, `sin`, `exp`, `ln`, `floor`, `ceil`), a `signum`
 /// discriminant, and predicates for detecting NaN, infinity, and
 /// finiteness. Only `f32` and `f64` implement this trait.
+///
+/// # Sealed
+///
+/// This trait is sealed and cannot be implemented outside of `Xenon`.
 pub trait RealScalar: Numeric + PartialOrd + Sealed {
     /// Absolute value.
     fn abs(self) -> Self;

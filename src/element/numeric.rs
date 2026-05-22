@@ -11,6 +11,10 @@ use crate::element::Element;
 /// `Mul`, `Div`, `Neg`) and a unified `conjugate()` entry point. Real and
 /// integer types return `self` from `conjugate()`; complex types compute the
 /// mathematical conjugate in their own impl blocks.
+///
+/// # Sealed
+///
+/// This trait is sealed and cannot be implemented outside of `Xenon`.
 pub trait Numeric:
     Element
     + core::ops::Add<Output = Self>

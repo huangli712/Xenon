@@ -262,6 +262,12 @@ fn reinterpret_value<A: 'static + Copy, B: 'static + Copy>(v: A) -> B {
 /// Vector dot product entry point.
 ///
 /// See 12-matrix §5.1 for the final user-visible contract.
+///
+/// # Errors
+///
+/// Returns `XenonError::DimensionMismatch` when the two tensors do not
+/// have the same element count. Returns `XenonError::InvalidLayout`
+/// when shape product overflow or stride validation fails.
 pub fn dot<S1, S2, A, D1, D2>(
     a: &TensorBase<S1, D1>,
     b: &TensorBase<S2, D2>,
@@ -328,6 +334,12 @@ where
 {
     /// Stable method-style API; semantically equivalent to
     /// `matrix::dot(self, other)`. See 12-matrix §5.1.
+    ///
+    /// # Errors
+    ///
+    /// Returns `XenonError::InvalidArgument` when either tensor is not
+    /// 1-dimensional. Returns `XenonError::ShapeMismatch` when the two
+    /// tensors have different element counts.
     pub fn dot<S2, D2>(&self, other: &TensorBase<S2, D2>) -> Result<A, XenonError>
     where
         S2: Storage<Elem = A>,

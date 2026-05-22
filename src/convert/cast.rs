@@ -188,7 +188,7 @@ where
 {
     /// Consume the tensor into an owned tensor.
     ///
-    /// - `Tensor` (S=Owned<A>): returned directly, O(1), same data
+    /// - `Tensor` (S=`Owned<A>`): returned directly, O(1), same data
     /// - `TensorView` / `TensorViewMut` / `ArcTensor`: O(n) allocate+copy
     ///   into canonical F-order
     pub fn into_owned(self) -> Tensor<A, D> {

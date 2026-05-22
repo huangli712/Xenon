@@ -306,7 +306,7 @@ where
     /// Same as [`from_raw_parts`], plus rejects zero-stride on non-singleton
     /// axes and ambiguous-overlap layouts.
     ///
-    /// [`from_raw_parts`]: TensorBase::from_raw_parts
+    /// [`from_raw_parts`]: crate::tensor::TensorBase::from_raw_parts
     pub unsafe fn from_raw_parts_mut(
         ptr: *mut A,
         storage_len: usize,
