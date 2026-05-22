@@ -4,8 +4,7 @@
 // per 22-output.md §8.
 
 use xenon::complex::Complex;
-use xenon::dimension::{Ix0, Ix1, Ix2};
-use xenon::format::FormatConfig;
+use xenon::dimension::{Ix0, Ix1};
 use xenon::tensor::{Tensor, Tensor1, Tensor2};
 
 #[test]

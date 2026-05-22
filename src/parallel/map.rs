@@ -14,7 +14,7 @@ use crate::storage::Storage;
 use crate::tensor::{Tensor, TensorBase};
 
 #[cfg(feature = "parallel")]
-pub(crate) fn par_map<S, A, B, D, F>(
+pub fn par_map<S, A, B, D, F>(
     tensor: &TensorBase<S, D>,
     strategy: &ParallelExecStrategy,
     _guard: ParallelGuard,

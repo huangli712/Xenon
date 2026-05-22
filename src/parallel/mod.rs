@@ -11,7 +11,7 @@
 //! ```compile_fail
 //! // This doctest is run by `cargo test --doc` WITHOUT --features parallel.
 //! // It must fail to compile because the `parallel` module is gated out.
-//! use xenon::parallel::map::par_map;
+//! use xenon::par_map;
 //! fn main() {}
 //! ```
 //!
@@ -27,7 +27,7 @@
 //! use xenon::storage::Owned;
 //! use xenon::dimension::Ix1;
 //! use xenon::dispatch::{select_exec_path, ParallelExecStrategy};
-//! use xenon::parallel::reduce::par_sum;
+//! use xenon::par_sum;
 //! let t: TensorBase<Owned<bool>, Ix1> = TensorBase::from_shape_vec(
 //!     Ix1(2), vec![true, false],
 //! ).unwrap();

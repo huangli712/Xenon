@@ -71,19 +71,17 @@ use common::assertions::{
 };
 
 #[cfg(feature = "parallel")]
-use xenon::dispatch::{
+use xenon::{
     reset_parallel_threshold, select_exec_path, set_parallel_threshold, ParallelExecStrategy,
 };
 #[cfg(feature = "parallel")]
-use xenon::error::XenonError;
-#[cfg(feature = "parallel")]
 use xenon::layout::Strides;
 #[cfg(feature = "parallel")]
-use xenon::parallel::map::par_map;
+use xenon::par_map;
 #[cfg(feature = "parallel")]
-use xenon::parallel::reduce::{par_dot, par_sum};
+use xenon::{par_dot, par_sum};
 #[cfg(feature = "parallel")]
-use xenon::tensor::{Tensor, TensorBase, TensorView};
+use xenon::tensor::{TensorBase, TensorView};
 
 #[cfg(feature = "parallel")]
 unsafe fn view_1d_f64<'a>(data: &'a [f64]) -> TensorView<'a, f64, Ix1> {
@@ -100,14 +98,14 @@ unsafe fn view_1d_f64<'a>(data: &'a [f64]) -> TensorView<'a, f64, Ix1> {
 }
 
 #[cfg(feature = "parallel")]
-fn acquire_guard<S, D, A>(t: &TensorBase<S, D>) -> xenon::dispatch::ParallelGuard
+fn acquire_guard<S, D, A>(t: &TensorBase<S, D>) -> xenon::ParallelGuard
 where
     S: xenon::storage::Storage<Elem = A>,
     D: xenon::dimension::Dimension,
     A: xenon::element::Element,
 {
     let (path, g) = select_exec_path(t.len(), t.is_f_contiguous(), t.is_aligned());
-    if !matches!(path, xenon::dispatch::ExecPath::Parallel) {
+    if !matches!(path, xenon::ExecPath::Parallel) {
         panic!("select_exec_path returned {path:?}, not Parallel");
     }
     g.expect("Parallel implies Some(guard)")
@@ -146,7 +144,7 @@ fn test_par_add_consistency() {
     let b = unsafe { view_1d_f64(&b_data) };
     let strategy = ParallelExecStrategy::auto();
     let guard = acquire_guard(&a);
-    let result = par_map(&a, &strategy, guard, |v| v);
+    let result = par_map(&a, &strategy, guard, |v| *v);
     // Drop the guard before calling par_map again (we use the same tensor a).
     // Just check the result length.
     assert_eq!(result.len(), 2048);
@@ -210,7 +208,7 @@ fn test_nested_parallel_falls_back_to_serial() {
 
     // While the guard is held, a nested select_exec_path must fall back to Serial.
     let (path, nested_guard) = select_exec_path(usize::MAX, true, true);
-    assert_eq!(path, xenon::dispatch::ExecPath::Serial);
+    assert_eq!(path, xenon::ExecPath::Serial);
     assert!(nested_guard.is_none());
 
     drop(guard);

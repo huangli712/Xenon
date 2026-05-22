@@ -4,7 +4,7 @@
 // Tests exercise the public entry points: iter(), iter_mut(), axis_iter(),
 // indexed_iter(), and edge cases (empty tensors, rank-0 runtime errors).
 
-use xenon::dimension::{Axis, Ix1, Ix2, IxDyn};
+use xenon::dimension::{Axis, Ix1, IxDyn};
 use xenon::error::XenonError;
 use xenon::tensor::{Tensor, Tensor1, Tensor2};
 
@@ -62,7 +62,7 @@ fn test_axis_iter_ix0_runtime_error() {
     // because Ix0 does not implement RemoveAxis (required by axis_iter).
     let scalar = Tensor::<f64, IxDyn>::from_shape_vec(
         IxDyn::from_slice(&[]),
-        vec![3.14],
+        vec![1.23],
     )
     .expect("valid construction");
     // axis_iter is not supported on rank-0; use match to avoid Debug bound on AxisIter.

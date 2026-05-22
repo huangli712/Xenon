@@ -161,9 +161,9 @@ fn test_to_contiguous() {
 #[test]
 fn test_fill_inplace() {
     let mut tensor = Tensor1::<f64>::zeros([5]).expect("zeros valid shape");
-    tensor.fill(3.14);
+    tensor.fill(1.23);
     let values: Vec<f64> = tensor.iter().copied().collect();
-    assert_eq!(values, vec![3.14; 5]);
+    assert_eq!(values, vec![1.23; 5]);
 }
 
 #[test]

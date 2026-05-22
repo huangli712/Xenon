@@ -57,7 +57,7 @@ where
 }
 
 #[cfg(feature = "parallel")]
-pub(crate) fn par_sum<S, A, D>(
+pub fn par_sum<S, A, D>(
     tensor: &TensorBase<S, D>,
     strategy: &ParallelExecStrategy,
     guard: ParallelGuard,
@@ -71,7 +71,7 @@ where
 }
 
 #[cfg(feature = "parallel")]
-pub(crate) fn par_dot<SL, SR, A, DL, DR>(
+pub fn par_dot<SL, SR, A, DL, DR>(
     lhs: &TensorBase<SL, DL>,
     rhs: &TensorBase<SR, DR>,
     strategy: &ParallelExecStrategy,

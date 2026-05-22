@@ -269,7 +269,7 @@ fn test_shape_integration_transpose_large_array_2d() {
 // ── Additional integration tests for transpose ──
 
 mod tests {
-    use xenon::dimension::{Ix2, Ix3, Ix6};
+    use xenon::dimension::{Ix2, Ix6};
     use xenon::storage::Owned;
     use xenon::tensor::{TensorBase, StorageKind};
 

@@ -2,13 +2,16 @@
 //!
 //! See `docs/design/30-dispatch.md` for the full design (path
 //! arbitration, nested-parallel guard, threshold storage, feature
-//! gates). All items in this module are `pub(crate)`.
+//! gates). All items in this module are `pub(crate)` by default; a
+//! minimal subset is re-exported under `#[doc(hidden)]` at the crate
+//! root solely so integration tests under `tests/` can observe
+//! dispatch decisions. These re-exports are NOT a stable public API.
 
 /// Three mutually exclusive execution paths recommended by dispatch.
 ///
 /// See `30-dispatch.md §5.2` for full per-variant semantics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ExecPath {
+pub enum ExecPath {
     /// Serial scalar execution. Default fallback when neither SIMD
     /// nor parallel preconditions are met.
     Serial,
@@ -36,7 +39,7 @@ pub(crate) enum ExecPath {
 /// so the strategy type itself is unreachable.
 #[cfg(feature = "parallel")]
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ParallelExecStrategy {
+pub struct ParallelExecStrategy {
     /// Suggested chunk size for parallel chunking. `None` means the
     /// parallel backend decides (typically via `compute_safe_chunks`).
     chunk_size: Option<usize>,
@@ -50,11 +53,7 @@ impl ParallelExecStrategy {
     /// Construct a validated strategy. Performs ALL field-level
     /// validation per 30-dispatch.md §5.3 so that the parallel/
     /// backend can consume the value without re-validation.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "dispatch is staged before downstream integration")
-    )]
-    pub(crate) fn new(
+    pub fn new(
         chunk_size: Option<usize>,
         max_workers: Option<usize>,
     ) -> crate::error::Result<Self> {
@@ -90,11 +89,7 @@ impl ParallelExecStrategy {
     }
 
     /// Default strategy: let the parallel backend decide everything.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "dispatch is staged before downstream integration")
-    )]
-    pub(crate) fn auto() -> Self {
+    pub fn auto() -> Self {
         Self {
             chunk_size: None,
             max_workers: None,
@@ -155,16 +150,12 @@ fn get_simd_threshold() -> usize {
 ///
 /// Setting `threshold = 0` disables the parallel path entirely
 /// (sentinel per 30-dispatch.md §5.6 line 494-499).
-pub(crate) fn set_parallel_threshold(threshold: usize) {
+pub fn set_parallel_threshold(threshold: usize) {
     PARALLEL_THRESHOLD.store(threshold, std::sync::atomic::Ordering::Relaxed);
 }
 
 /// Reset the parallel threshold to its compile-time default.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "dispatch is staged before downstream integration")
-)]
-pub(crate) fn reset_parallel_threshold() {
+pub fn reset_parallel_threshold() {
     set_parallel_threshold(DEFAULT_PARALLEL_THRESHOLD);
 }
 
@@ -172,16 +163,12 @@ pub(crate) fn reset_parallel_threshold() {
 ///
 /// Use `usize::MAX` to disable the SIMD path (sentinel per
 /// 30-dispatch.md §5.6 line 520-523).
-pub(crate) fn set_simd_threshold(threshold: usize) {
+pub fn set_simd_threshold(threshold: usize) {
     SIMD_THRESHOLD.store(threshold, std::sync::atomic::Ordering::Relaxed);
 }
 
 /// Reset the SIMD threshold to its compile-time default.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "dispatch is staged before downstream integration")
-)]
-pub(crate) fn reset_simd_threshold() {
+pub fn reset_simd_threshold() {
     set_simd_threshold(DEFAULT_SIMD_THRESHOLD);
 }
 
@@ -193,11 +180,7 @@ pub(crate) fn reset_simd_threshold() {
 /// binding "select Parallel" with "enter the parallel region".
 ///
 /// See `30-dispatch.md §5.5` for the full contract.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "dispatch is staged before downstream integration")
-)]
-pub(crate) fn select_exec_path(
+pub fn select_exec_path(
     len: usize,
     is_contiguous: bool,
     alignment_ok: bool,
@@ -300,7 +283,7 @@ pub(crate) fn should_parallelize(_len: usize, _is_contiguous: bool) -> bool {
 /// Under `feature = "parallel"`, the guard is `!Send + !Sync` because
 /// its `Drop` clears the **current** thread's TLS flag.
 #[cfg(feature = "parallel")]
-pub(crate) struct ParallelGuard {
+pub struct ParallelGuard {
     _private: core::marker::PhantomData<*const ()>,
 }
 
@@ -317,11 +300,7 @@ impl Drop for ParallelGuard {
 /// This keeps `(ExecPath, Option<ParallelGuard>)` `Send + Sync` in
 /// default builds where the option is always `None`.
 #[cfg(not(feature = "parallel"))]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "dispatch is staged before downstream integration")
-)]
-pub(crate) struct ParallelGuard {
+pub struct ParallelGuard {
     _private: core::marker::PhantomData<()>,
 }
 

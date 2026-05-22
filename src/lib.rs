@@ -131,6 +131,25 @@ pub mod math;
 /// Execution-path dispatch: Serial, Simd, and Parallel arbitration.
 pub(crate) mod dispatch;
 
+// ── Test-only re-exports ────────────────────────────────────────────
+//
+// Integration tests under `tests/` are external crates and cannot reach
+// `pub(crate)` items inside `dispatch`. The items below are re-exported
+// solely so those tests can observe dispatch decisions and tweak
+// thresholds. They are NOT a stable public API: marked `#[doc(hidden)]`
+// to keep them out of generated documentation.
+
+#[doc(hidden)]
+pub use crate::dispatch::{
+    ExecPath, reset_simd_threshold, select_exec_path, set_simd_threshold,
+};
+
+#[cfg(feature = "parallel")]
+#[doc(hidden)]
+pub use crate::dispatch::{
+    ParallelExecStrategy, ParallelGuard, reset_parallel_threshold, set_parallel_threshold,
+};
+
 /// Broadcasting: shape compatibility, stride expansion, zero-copy views.
 pub mod broadcast;
 
@@ -148,6 +167,22 @@ pub(crate) mod simd;
 /// Parallel computation backend (opt-in via `parallel` feature).
 /// Module is always compiled; only rayon-dependent items are gated.
 pub(crate) mod parallel;
+
+// ── Test-only re-exports ────────────────────────────────────────────
+//
+// Integration tests under `tests/` are external crates and cannot reach
+// `pub(crate)` items inside `parallel`. The items below are re-exported
+// solely so those tests can exercise the parallel kernels directly.
+// They are NOT a stable public API: marked `#[doc(hidden)]` to keep
+// them out of generated documentation.
+
+#[cfg(feature = "parallel")]
+#[doc(hidden)]
+pub use crate::parallel::map::par_map;
+
+#[cfg(feature = "parallel")]
+#[doc(hidden)]
+pub use crate::parallel::reduce::{par_dot, par_sum};
 
 /// Reduction operations: sum, sum_axis, sum_axis_keepdims.
 pub mod reduction;

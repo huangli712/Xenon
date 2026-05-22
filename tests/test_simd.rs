@@ -9,15 +9,11 @@
 #[path = "common/mod.rs"]
 mod common;
 
-use common::assertions::MathTolerance;
-
 use xenon::complex::Complex;
 use xenon::dimension::Ix1;
-use xenon::dispatch::{reset_simd_threshold, select_exec_path, set_simd_threshold};
-use xenon::element::RealScalar;
+use xenon::{reset_simd_threshold, select_exec_path, set_simd_threshold};
 use xenon::layout::Strides;
-use xenon::storage::Storage;
-use xenon::tensor::{Tensor, TensorView};
+use xenon::tensor::{TensorView};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -100,7 +96,7 @@ fn test_simd_add_consistency() {
     // is selected, then compute via scalar if not. The key assertion is that
     // the SIMD path (when triggered) produces the same result as serial.
     let (path, _guard) = select_exec_path(a.len(), a.is_f_contiguous(), a.is_aligned());
-    if matches!(path, xenon::dispatch::ExecPath::Simd) {
+    if matches!(path, xenon::ExecPath::Simd) {
         // The actual SIMD dispatch happens inside the math operations.
         // For now, verify that the dispatch function recognizes the SIMD path.
     }
@@ -172,7 +168,7 @@ fn test_simd_fallback_small() {
     let (path, _guard) = select_exec_path(tensor.len(), tensor.is_f_contiguous(), tensor.is_aligned());
     assert_eq!(
         path,
-        xenon::dispatch::ExecPath::Serial,
+        xenon::ExecPath::Serial,
         "small input below SIMD threshold must select Serial path"
     );
 
@@ -190,7 +186,7 @@ fn test_simd_fallback_small() {
     );
     assert_eq!(
         path_f32,
-        xenon::dispatch::ExecPath::Serial,
+        xenon::ExecPath::Serial,
         "small f32 input must also select Serial path"
     );
 
@@ -204,7 +200,7 @@ fn test_simd_fallback_small() {
     );
     assert_eq!(
         path_i32,
-        xenon::dispatch::ExecPath::Serial,
+        xenon::ExecPath::Serial,
         "small i32 input must select Serial path"
     );
 
@@ -218,7 +214,7 @@ fn test_simd_fallback_small() {
     );
     assert_eq!(
         path_i64,
-        xenon::dispatch::ExecPath::Serial,
+        xenon::ExecPath::Serial,
         "small i64 input must select Serial path"
     );
 
