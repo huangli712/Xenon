@@ -4,7 +4,7 @@
 // Uses the public API: tensor.unique() → Tensor<A, Ix1>.
 
 use xenon::complex::Complex;
-use xenon::dimension::{Ix1, Ix2};
+use xenon::dimension::Ix1;
 use xenon::tensor::{Tensor, Tensor1, Tensor2};
 
 /// Helper: assert that `actual` contains exactly the expected set of i32 values

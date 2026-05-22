@@ -87,7 +87,7 @@ fn test_simd_add_consistency() {
     let a_data: Vec<f64> = (0..256).map(|i| i as f64).collect();
     let b_data: Vec<f64> = (0..256).map(|i| (255 - i) as f64).collect();
     let a = unsafe { view_1d_f64(&a_data) };
-    let b = unsafe { view_1d_f64(&b_data) };
+    //let b = unsafe { view_1d_f64(&b_data) };
 
     // Serial addition.
     let serial: Vec<f64> = a_data.iter().zip(b_data.iter()).map(|(x, y)| x + y).collect();

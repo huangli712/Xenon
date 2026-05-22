@@ -69,11 +69,7 @@ pub fn ulp_distance_f32(a: f32, b: f32) -> u64 {
     }
     let a_bias = bias_f32(a.to_bits());
     let b_bias = bias_f32(b.to_bits());
-    let d = if a_bias >= b_bias {
-        a_bias - b_bias
-    } else {
-        b_bias - a_bias
-    };
+    let d = a_bias.abs_diff(b_bias);
     d as u64
 }
 
