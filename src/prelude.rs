@@ -81,12 +81,9 @@ pub use crate::overload::Scalar;
 pub use crate::workspace::Workspace;
 
 // FFI types — available after W13
-pub use crate::ffi::{
-    BlasInfo, ElementType, FfiBackend as FfiBackendReexport, FfiErrorCategory as FfiErrorCategoryReexport,
-    TensorExportMutRaw, TensorExportRaw,
-};
-// Note: FfiBackend and FfiErrorCategory are already exported via `pub use crate::error::{...}` above;
-// we intentionally do NOT re-export them from `crate::ffi` to avoid name conflicts.
+// Note: FfiBackend and FfiErrorCategory are already exported via `crate::error` above;
+// no need to re-export them from `crate::ffi` to avoid name conflicts.
+pub use crate::ffi::{BlasInfo, ElementType, TensorExportMutRaw, TensorExportRaw};
 
 pub use crate::matrix::dot;
 
