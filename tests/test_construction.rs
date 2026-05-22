@@ -1,5 +1,5 @@
-use xenon::dimension::{Ix0, Ix1, Ix2, IxDyn};
 use xenon::tensor::Tensor;
+use xenon::dimension::{Ix0, Ix1, Ix2, IxDyn};
 
 #[test]
 fn test_construction_high_rank_ixdyn() {
@@ -139,4 +139,87 @@ fn test_overflow_shape_integration() {
     } else {
         panic!("Expected InvalidShape with ProductOverflow");
     }
+}
+
+// ── Additional construction integration tests ──
+use xenon::tensor::Tensor1;
+
+
+/// zeros, ones, from_scalar constructors produce correctly-shaped tensors.
+#[test]
+fn test_zeros_ones_from_scalar() {
+    let z = Tensor::<i32, _>::zeros([2, 3]).expect("valid test input");
+    assert_eq!(z.shape(), &[2, 3]);
+    assert!(z.iter().all(|v| *v == 0));
+
+    let o = Tensor::<f64, _>::ones([2, 2]).expect("valid test input");
+    assert_eq!(o.shape(), &[2, 2]);
+    assert!(o.iter().all(|v| (*v - 1.0).abs() < f64::EPSILON));
+
+    let s = Tensor::<i32, Ix0>::from_scalar(42).expect("valid test input");
+    assert_eq!(s.ndim(), 0);
+    assert_eq!(*s.try_at(()).expect("valid index"), 42);
+}
+
+/// eye and identity produce correct diagonal structure.
+#[test]
+fn test_eye_identity() {
+    let eye3 = Tensor::<i32, Ix2>::eye(3).expect("valid test input");
+    assert_eq!(eye3.shape(), &[3, 3]);
+    for i in 0..3 {
+        for j in 0..3 {
+            let v = *eye3.try_at((i, j)).expect("valid index");
+            if i == j {
+                assert_eq!(v, 1);
+            } else {
+                assert_eq!(v, 0);
+            }
+        }
+    }
+    // eye(0) produces empty matrix.
+    let eye0 = Tensor::<f64, Ix2>::eye(0).expect("valid test input");
+    assert_eq!(eye0.len(), 0);
+}
+
+/// from_shape_vec, from_shape_slice, from_vec constructors.
+#[test]
+fn test_from_data_constructors() {
+    let sv = Tensor::<i32, _>::from_shape_vec([2, 2], vec![1, 2, 3, 4]).expect("valid test input");
+    assert_eq!(sv.len(), 4);
+
+    let data = [5i32, 6, 7, 8];
+    let ss = Tensor::<i32, _>::from_shape_slice([2, 2], &data).expect("valid test input");
+    assert_eq!(ss.len(), 4);
+
+    let fv = Tensor1::<i32>::from_vec(vec![1, 2, 3]).expect("valid test input");
+    assert_eq!(fv.shape(), &[3]);
+
+    // ElementCountMismatch error.
+    let err = Tensor::<i32, _>::from_shape_vec([2, 2], vec![1, 2, 3]).expect_err("mismatch");
+    assert!(matches!(err, xenon::XenonError::InvalidShape { .. }));
+}
+
+/// from_array with fixed-size array.
+#[test]
+fn test_from_fixed_array() {
+    let t = Tensor::<i32, _>::from_array([2, 2], [1, 2, 3, 4]).expect("valid test input");
+    assert_eq!(t.shape(), &[2, 2]);
+    // F-order: col 0 = [1,2], col 1 = [3,4]
+    assert_eq!(*t.try_at((0, 0)).expect("valid index"), 1);
+    assert_eq!(*t.try_at((1, 1)).expect("valid index"), 4);
+}
+
+/// F-order mapping: from_shape_vec stores data in column-major order.
+#[test]
+fn test_from_shape_vec_f_order_mapping() {
+    // For shape [2,3] with data [1,2,3,4,5,6]:
+    // F-order stores: col 0 = [1,2], col 1 = [3,4], col 2 = [5,6]
+    // Logical matrix: row 0 = [1,3,5], row 1 = [2,4,6]
+    let t = Tensor::<i32, _>::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6]).expect("valid test input");
+    assert_eq!(*t.try_at((0, 0)).expect("valid index"), 1);
+    assert_eq!(*t.try_at((0, 1)).expect("valid index"), 3);
+    assert_eq!(*t.try_at((0, 2)).expect("valid index"), 5);
+    assert_eq!(*t.try_at((1, 0)).expect("valid index"), 2);
+    assert_eq!(*t.try_at((1, 1)).expect("valid index"), 4);
+    assert_eq!(*t.try_at((1, 2)).expect("valid index"), 6);
 }

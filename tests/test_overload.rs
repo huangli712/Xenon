@@ -172,3 +172,130 @@ fn test_result_ownership_no_alias() {
     // Both inputs remain accessible
     assert_eq!(left.as_slice().expect("c"), &[1, 2]);
 }
+
+// ── Additional overload integration tests ──
+
+use xenon::tensor::Tensor1;
+
+#[test]
+fn test_add_same_shape_overload() {
+    let left = Tensor1::<i32>::from_shape_vec([3], vec![1, 2, 3]).expect("valid test input");
+    let right = Tensor1::<i32>::from_shape_vec([3], vec![10, 20, 30]).expect("valid test input");
+    let result = (left + right).expect("broadcast succeeds");
+    assert_eq!(result.as_slice().expect("c"), &[11, 22, 33]);
+}
+
+#[test]
+fn test_add_scalar() {
+    let tensor = Tensor1::<f64>::from_shape_vec([3], vec![1.0, 2.0, 3.0]).expect("valid test input");
+    assert_eq!((tensor + 10.0).as_slice().expect("c"), &[11.0, 12.0, 13.0]);
+}
+
+#[test]
+fn test_add_ref_ref_overload() {
+    let left = Tensor1::<i32>::from_shape_vec([2], vec![1, 2]).expect("valid test input");
+    let right = Tensor1::<i32>::from_shape_vec([2], vec![3, 4]).expect("valid test input");
+    let result = (&left + &right).expect("broadcast succeeds");
+    assert_eq!(result.as_slice().expect("c"), &[4, 6]);
+    assert_eq!(left.as_slice().expect("c"), &[1, 2]);
+    assert_eq!(right.as_slice().expect("c"), &[3, 4]);
+}
+
+#[test]
+fn test_add_owned_ref_ext() {
+    let left = Tensor1::<i32>::from_shape_vec([2], vec![1, 2]).expect("valid test input");
+    let right = Tensor1::<i32>::from_shape_vec([2], vec![3, 4]).expect("valid test input");
+    let result = (left + &right).expect("broadcast succeeds");
+    assert_eq!(result.as_slice().expect("c"), &[4, 6]);
+    assert_eq!(right.as_slice().expect("c"), &[3, 4]);
+}
+
+#[test]
+fn test_add_ref_owned_ext() {
+    let left = Tensor1::<i32>::from_shape_vec([2], vec![1, 2]).expect("valid test input");
+    let right = Tensor1::<i32>::from_shape_vec([2], vec![3, 4]).expect("valid test input");
+    let result = (&left + right).expect("broadcast succeeds");
+    assert_eq!(result.as_slice().expect("c"), &[4, 6]);
+    assert_eq!(left.as_slice().expect("c"), &[1, 2]);
+}
+
+#[test]
+fn test_scalar_wrapper_add_tensor() {
+    let tensor = Tensor1::<i32>::from_shape_vec([3], vec![1, 2, 3]).expect("valid test input");
+    assert_eq!((Scalar(10) + tensor).as_slice().expect("c"), &[11, 12, 13]);
+}
+
+#[test]
+fn test_native_scalar_add_tensor_i32_ext() {
+    let tensor = Tensor1::<i32>::from_shape_vec([3], vec![1, 2, 3]).expect("valid test input");
+    assert_eq!((10i32 + tensor).as_slice().expect("c"), &[11, 12, 13]);
+}
+
+#[test]
+fn test_sub_basic_overload() {
+    let left = Tensor1::<i32>::from_shape_vec([2], vec![10, 20]).expect("valid test input");
+    let right = Tensor1::<i32>::from_shape_vec([2], vec![3, 4]).expect("valid test input");
+    assert_eq!((left - right).expect("broadcast succeeds").as_slice().expect("c"), &[7, 16]);
+}
+
+#[test]
+fn test_mul_basic_overload() {
+    let left = Tensor1::<i32>::from_shape_vec([2], vec![2, 3]).expect("valid test input");
+    let right = Tensor1::<i32>::from_shape_vec([2], vec![4, 5]).expect("valid test input");
+    assert_eq!((left * right).expect("broadcast succeeds").as_slice().expect("c"), &[8, 15]);
+}
+
+#[test]
+fn test_div_basic_overload() {
+    let left = Tensor1::<f64>::from_shape_vec([2], vec![8.0, 9.0]).expect("valid test input");
+    let right = Tensor1::<f64>::from_shape_vec([2], vec![2.0, 3.0]).expect("valid test input");
+    assert_eq!((left / right).expect("broadcast succeeds").as_slice().expect("c"), &[4.0, 3.0]);
+}
+
+#[test]
+fn test_result_ownership() {
+    let left = Tensor1::<i32>::from_shape_vec([2], vec![1, 2]).expect("valid test input");
+    let right = Tensor1::<i32>::from_shape_vec([2], vec![3, 4]).expect("valid test input");
+    let result = (&left + &right).expect("broadcast succeeds");
+    assert_eq!(left.as_slice().expect("c"), &[1, 2]);
+    assert_eq!(right.as_slice().expect("c"), &[3, 4]);
+    assert_eq!(result.as_slice().expect("c"), &[4, 6]);
+}
+
+#[test]
+fn test_add_broadcast_overload() {
+    let left = Tensor::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6]).expect("valid test input");
+    let right = Tensor::from_shape_vec([3], vec![10, 20, 30]).expect("valid test input");
+    let result = (&left + &right).expect("broadcast succeeds");
+    assert_eq!(result.shape(), &[2, 3]);
+    assert_eq!(result.as_slice().expect("c"), &[11, 12, 23, 24, 35, 36]);
+}
+
+#[test]
+fn test_native_scalar_add_tensor_f64_ext() {
+    let tensor = Tensor1::<f64>::from_shape_vec([2], vec![1.0, 2.0]).expect("valid test input");
+    assert_eq!((5.0f64 + tensor).as_slice().expect("c"), &[6.0, 7.0]);
+}
+
+#[test]
+fn test_broadcast_incompatible_shapes() {
+    let left = Tensor::from_shape_vec([2, 3], vec![1, 2, 3, 4, 5, 6]).expect("valid test input");
+    let right = Tensor::from_shape_vec([4], vec![10, 20, 30, 40]).expect("valid test input");
+    assert!((&left + &right).is_err());
+}
+
+#[test]
+fn test_i32_tensor_ops() {
+    let left = Tensor1::<i32>::from_shape_vec([2], vec![1, 2]).expect("valid test input");
+    let right = Tensor1::<i32>::from_shape_vec([2], vec![3, 4]).expect("valid test input");
+    let result = (&left + &right).expect("broadcast succeeds");
+    assert_eq!(result.as_slice().expect("c"), &[4, 6]);
+}
+
+#[test]
+fn test_complex_tensor_ops() {
+    let left = Tensor1::from_shape_vec([2], vec![Complex::new(1.0, 0.0), Complex::new(2.0, 0.0)]).expect("valid test input");
+    let right = Tensor1::from_shape_vec([2], vec![Complex::new(3.0, 0.0), Complex::new(4.0, 0.0)]).expect("valid test input");
+    let result = (&left + &right).expect("broadcast succeeds");
+    assert_eq!(result.as_slice().expect("c"), &[Complex::new(4.0, 0.0), Complex::new(6.0, 0.0)]);
+}

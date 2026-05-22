@@ -126,3 +126,58 @@ fn test_sum_large_tensor_parallel_threshold() {
         "parallel sum {parallel_result} vs baseline {serial_baseline} exceeds §6.3 tolerance {tol}"
     );
 }
+
+// ── Additional reduction integration tests ──
+
+use xenon::tensor::Tensor2;
+
+/// Global sum of a 2D tensor.
+#[test]
+fn test_sum_global() {
+    let x = Tensor2::<i32>::from_shape_vec((2, 3), vec![1, 2, 3, 4, 5, 6]).expect("valid test input");
+    assert_eq!(x.sum(), 21);
+}
+
+/// Sum along a specific axis, removing that axis.
+#[test]
+fn test_sum_axis() {
+    // F-order: shape (2,3) → matrix [[1,3,5],[2,4,6]].
+    // sum_axis(0) sums rows: [3, 7, 11]
+    let x = Tensor2::<i32>::from_shape_vec((2, 3), vec![1, 2, 3, 4, 5, 6]).expect("valid test input");
+    let y = x.sum_axis(Axis(0)).expect("valid test input");
+    assert_eq!(y.shape(), &[3]);
+    assert_eq!(y.as_slice().expect("contiguous"), &[3, 7, 11]);
+}
+
+/// sum_axis_keepdims preserves the reduced axis with length 1.
+#[test]
+fn test_sum_keepdims() {
+    let x = Tensor2::<i32>::from_shape_vec((2, 3), vec![1, 2, 3, 4, 5, 6]).expect("valid test input");
+    let y = x.sum_axis_keepdims(Axis(1)).expect("valid test input");
+    assert_eq!(y.shape(), &[2, 1]);
+    assert_eq!(y.as_slice().expect("contiguous"), &[9, 12]);
+}
+
+/// Empty tensors return additive identity (zero).
+#[test]
+fn test_sum_empty() {
+    let x = Tensor1::<i32>::from_shape_vec(Ix1(0), vec![]).expect("valid test input");
+    assert_eq!(x.sum(), 0);
+    let x2 = Tensor::<i32, Ix2>::from_shape_vec((0, 3), vec![]).expect("valid test input");
+    assert_eq!(x2.sum(), 0);
+}
+
+/// NaN propagates through sum for float types.
+#[test]
+fn test_sum_nan() {
+    let x = Tensor1::<f64>::from_shape_vec(Ix1(3), vec![1.0, f64::NAN, 2.0]).expect("valid test input");
+    assert!(x.sum().is_nan());
+}
+
+/// Integer overflow in sum panics.
+#[test]
+#[should_panic(expected = "overflow")]
+fn test_integer_sum_overflow_panics() {
+    let x = Tensor1::<i32>::from_shape_vec(Ix1(2), vec![i32::MAX, 1]).expect("valid test input");
+    let _ = x.sum();
+}
