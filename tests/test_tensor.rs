@@ -387,7 +387,7 @@ mod w29t2_tests {
 
     #[test]
     fn test_tensor_debug_display() {
-        let t = Tensor1::<f64>::from_shape_vec([3], vec![1.0_f64, 2.0, 3.0]).unwrap();
+        let t = Tensor1::<f64>::from_shape_vec([3], vec![1.0_f64, 2.0, 3.0]).expect("valid shape");
         let dbg = format!("{:?}", t);
         let disp = format!("{}", t);
         assert!(!dbg.is_empty(), "Debug must produce non-empty output");

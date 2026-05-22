@@ -6,9 +6,8 @@
 use std::borrow::Cow;
 
 use xenon::broadcast::broadcast_shape;
-use xenon::dimension::Ix0;
 use xenon::error::{
-    self, AbiMismatchKind, ConversionFailureReason, FfiBackend, FfiErrorCategory,
+    AbiMismatchKind, ConversionFailureReason, FfiBackend, FfiErrorCategory,
     InvalidArgumentKind, InvalidLayoutReason, InvalidShapeKind, StorageConversionKind,
     StorageKindTag, TypedViewRejection, WorkspaceBorrowKind, WorkspaceBorrowState,
     WorkspaceErrorCategory, XenonError,
