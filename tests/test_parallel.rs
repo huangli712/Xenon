@@ -139,9 +139,9 @@ fn test_sum_parallel_feature_consistency() {
 fn test_par_add_consistency() {
     set_parallel_threshold(1);
     let a_data: Vec<f64> = (0..2048).map(|i| i as f64 * 2.0).collect();
-    let b_data: Vec<f64> = (0..2048).map(|i| i as f64 * 3.0).collect();
+    // let b_data: Vec<f64> = (0..2048).map(|i| i as f64 * 3.0).collect();
     let a = unsafe { view_1d_f64(&a_data) };
-    let b = unsafe { view_1d_f64(&b_data) };
+    // let b = unsafe { view_1d_f64(&b_data) };
     let strategy = ParallelExecStrategy::auto();
     let guard = acquire_guard(&a);
     let result = par_map(&a, &strategy, guard, |v| *v);
@@ -203,7 +203,7 @@ fn test_nested_parallel_falls_back_to_serial() {
     // First parallel call acquires the guard (marks thread as in-parallel).
     let data: Vec<f64> = (0..2048).map(|i| i as f64).collect();
     let tensor = unsafe { view_1d_f64(&data) };
-    let strategy = ParallelExecStrategy::auto();
+    // let strategy = ParallelExecStrategy::auto();
     let guard = acquire_guard(&tensor);
 
     // While the guard is held, a nested select_exec_path must fall back to Serial.

@@ -5,7 +5,6 @@
 //! Demonstrates raw pointer access and layout compatibility checks for
 //! upstream C / BLAS / LAPACK integration.
 
-use xenon::ffi;
 use xenon::tensor::Tensor;
 
 fn main() -> xenon::Result<()> {
