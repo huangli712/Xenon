@@ -76,8 +76,10 @@ pub(crate) fn compute_safe_chunks(total: usize, num_workers: usize) -> usize {
 
 // ── W15T6: ParallelPool ──
 
+#[cfg(feature = "parallel")]
 use std::borrow::Cow;
 
+#[cfg(feature = "parallel")]
 use crate::error::{InvalidArgumentKind, XenonError};
 
 #[cfg(feature = "parallel")]

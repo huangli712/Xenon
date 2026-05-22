@@ -65,6 +65,9 @@ pub mod set;
 /// FFI helper APIs: raw-pointer access and BLAS compatibility.
 pub mod ffi;
 
+/// Element-wise math operations: arithmetic, unary, comparison.
+pub mod math;
+
 /// Execution-path dispatch: Serial, Simd, and Parallel arbitration.
 pub(crate) mod dispatch;
 
