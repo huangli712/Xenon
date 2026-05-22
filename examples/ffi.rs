@@ -6,7 +6,6 @@
 //! upstream C / BLAS / LAPACK integration.
 
 use xenon::ffi;
-use xenon::prelude::*;
 use xenon::tensor::Tensor;
 
 fn main() -> xenon::Result<()> {

@@ -5,7 +5,6 @@
 //! Demonstrates how `parallel` and `simd` features affect public API behavior.
 //! The public API remains identical; features influence internal execution paths.
 
-use xenon::prelude::*;
 use xenon::tensor::Tensor;
 
 fn main() -> xenon::Result<()> {
